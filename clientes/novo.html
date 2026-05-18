@@ -52,7 +52,6 @@
       <div id="formError" class="form-error"></div>
       <div id="formSuccess" class="form-success"></div>
 
-      <!-- SEÇÃO: IDENTIFICAÇÃO -->
       <section class="form-section">
         <div class="form-section-head">
           <h2>Identificação</h2>
@@ -88,7 +87,6 @@
             <div class="form-group">
               <label for="nome_principal" id="lblNome">Razão social<span class="required-mark">*</span></label>
               <input type="text" id="nome_principal" class="input" required>
-              <div class="field-error" id="err_nome">Informe o nome.</div>
             </div>
           </div>
 
@@ -96,7 +94,6 @@
             <div class="form-group">
               <label for="documento" id="lblDoc">CNPJ<span class="required-mark">*</span></label>
               <input type="text" id="documento" class="input" required>
-              <div class="field-error" id="err_doc">Documento inválido.</div>
             </div>
           </div>
 
@@ -121,7 +118,6 @@
         </div>
       </section>
 
-      <!-- SEÇÃO: CONTATO -->
       <section class="form-section">
         <div class="form-section-head">
           <h2>Contato</h2>
@@ -144,7 +140,6 @@
         </div>
       </section>
 
-      <!-- SEÇÃO: ENDEREÇO -->
       <section class="form-section">
         <div class="form-section-head">
           <h2>Endereço</h2>
@@ -152,6 +147,7 @@
         </div>
 
         <div class="form-grid">
+          <!-- Linha 1: CEP | Logradouro | Número -->
           <div class="fg-col-3">
             <div class="form-group">
               <label for="cep">CEP</label>
@@ -174,7 +170,8 @@
             </div>
           </div>
 
-          <div class="fg-col-4">
+          <!-- Linha 2: Complemento | Bairro | Cidade | UF -->
+          <div class="fg-col-3">
             <div class="form-group">
               <label for="complemento">Complemento</label>
               <input type="text" id="complemento" class="input">
@@ -195,18 +192,17 @@
             </div>
           </div>
 
-          <div class="fg-col-1">
+          <div class="fg-col-2">
             <div class="form-group">
               <label for="uf">UF</label>
               <select id="uf" class="select">
-                <option value=""></option>
+                <option value="">—</option>
               </select>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- SEÇÃO: DADOS PJ -->
       <section class="form-section" id="sectionPJ">
         <div class="form-section-head">
           <h2>Dados da empresa</h2>
@@ -239,7 +235,7 @@
             <div class="form-group">
               <label for="regime_tributario">Regime tributário</label>
               <select id="regime_tributario" class="select">
-                <option value=""></option>
+                <option value="">—</option>
                 <option value="Simples Nacional">Simples Nacional</option>
                 <option value="Lucro Presumido">Lucro Presumido</option>
                 <option value="Lucro Real">Lucro Real</option>
@@ -254,7 +250,7 @@
             <div class="form-group">
               <label for="porte_empresa">Porte</label>
               <select id="porte_empresa" class="select">
-                <option value=""></option>
+                <option value="">—</option>
                 <option value="MEI">MEI</option>
                 <option value="ME">ME (Microempresa)</option>
                 <option value="EPP">EPP (Pequeno Porte)</option>
@@ -293,7 +289,6 @@
         </div>
       </section>
 
-      <!-- SEÇÃO: DADOS PF -->
       <section class="form-section" id="sectionPF" hidden>
         <div class="form-section-head">
           <h2>Dados pessoais</h2>
@@ -318,7 +313,7 @@
             <div class="form-group">
               <label for="estado_civil">Estado civil</label>
               <select id="estado_civil" class="select">
-                <option value=""></option>
+                <option value="">—</option>
                 <option value="Solteiro(a)">Solteiro(a)</option>
                 <option value="Casado(a)">Casado(a)</option>
                 <option value="Divorciado(a)">Divorciado(a)</option>
@@ -344,7 +339,6 @@
         </div>
       </section>
 
-      <!-- SEÇÃO: SETORES CONTRATADOS -->
       <section class="form-section">
         <div class="form-section-head">
           <h2>Setores contratados</h2>
@@ -380,7 +374,6 @@
         </div>
       </section>
 
-      <!-- SEÇÃO: INTEGRAÇÃO E OBSERVAÇÕES -->
       <section class="form-section">
         <div class="form-section-head">
           <h2>Pasta no Drive e observações</h2>
@@ -404,7 +397,6 @@
         </div>
       </section>
 
-      <!-- AÇÕES -->
       <div class="form-actions">
         <a href="index.html" class="btn btn-ghost">Cancelar</a>
         <button type="button" class="btn btn-primary" id="btnSalvar">Salvar cliente</button>
@@ -456,21 +448,15 @@
       lblDoc.innerHTML = (ehPJ ? 'CNPJ' : 'CPF') + '<span class="required-mark">*</span>';
       docInput.placeholder = ehPJ ? '00.000.000/0000-00' : '000.000.000-00';
       docInput.value = '';
-      // Re-bind a máscara correspondente
-      docInput.dispatchEvent(new Event('input'));
     }
 
     radioPJ.addEventListener('change', aplicaTipo);
     radioPF.addEventListener('change', aplicaTipo);
 
-    // --- Máscaras ---
-    // Documento: máscara dinâmica baseada no tipo
+    // --- Máscara do documento (dinâmica baseada no tipo) ---
     docInput.addEventListener('input', () => {
-      const cursorEnd = docInput.selectionEnd === docInput.value.length;
       const maskFn = radioPJ.checked ? maskCNPJ : maskCPF;
-      const masked = maskFn(docInput.value);
-      docInput.value = masked;
-      if (cursorEnd) docInput.setSelectionRange(masked.length, masked.length);
+      docInput.value = maskFn(docInput.value);
     });
 
     bindMask(document.getElementById('telefone_principal'), maskTelefone);
@@ -484,27 +470,34 @@
       const d = onlyDigits(cepInput.value);
       if (d.length !== 8) return;
       cepStatus.textContent = 'Buscando endereço...';
+      cepStatus.style.color = '';
       const endereco = await buscarCEP(d);
       if (endereco) {
-        document.getElementById('logradouro').value = endereco.logradouro;
-        document.getElementById('bairro').value = endereco.bairro;
-        document.getElementById('cidade').value = endereco.cidade;
-        document.getElementById('uf').value = endereco.uf;
-        cepStatus.textContent = 'Endereço encontrado.';
-        cepStatus.style.color = 'var(--success)';
-        setTimeout(() => { cepStatus.textContent = ''; cepStatus.style.color = ''; }, 3000);
+        if (endereco.logradouro) document.getElementById('logradouro').value = endereco.logradouro;
+        if (endereco.bairro) document.getElementById('bairro').value = endereco.bairro;
+        if (endereco.cidade) document.getElementById('cidade').value = endereco.cidade;
+        if (endereco.uf) document.getElementById('uf').value = endereco.uf;
+        cepStatus.textContent = endereco.logradouro
+          ? 'Endereço encontrado.'
+          : 'CEP genérico — preencha logradouro e bairro manualmente.';
+        cepStatus.style.color = endereco.logradouro ? 'var(--success)' : 'var(--warning)';
+        setTimeout(() => { cepStatus.textContent = ''; cepStatus.style.color = ''; }, 4000);
       } else {
         cepStatus.textContent = 'CEP não encontrado.';
         cepStatus.style.color = 'var(--warning)';
       }
     });
 
-    // --- Helpers de erro ---
+    // --- Mensagens de formulário ---
     const formError = document.getElementById('formError');
     const formSuccess = document.getElementById('formSuccess');
 
-    function showError(msg) {
-      formError.textContent = msg;
+    function showErrors(errors) {
+      if (errors.length === 1) {
+        formError.textContent = errors[0];
+      } else {
+        formError.innerHTML = `<strong>Corrija os seguintes pontos:</strong><ul>${errors.map(e => `<li>${e}</li>`).join('')}</ul>`;
+      }
       formError.classList.add('is-visible');
       formSuccess.classList.remove('is-visible');
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -521,45 +514,47 @@
       formSuccess.classList.remove('is-visible');
     }
 
-    function setFieldError(id, hasError) {
-      const input = document.getElementById(id);
-      const errEl = document.getElementById('err_' + id.split('_')[0]);
-      if (input) input.classList.toggle('is-invalid', !!hasError);
-      if (errEl) errEl.classList.toggle('is-visible', !!hasError);
+    function clearFieldErrors() {
+      document.querySelectorAll('.is-invalid').forEach(el => el.classList.remove('is-invalid'));
     }
 
-    // --- Submit ---
+    function markInvalid(id) {
+      const el = document.getElementById(id);
+      if (el) el.classList.add('is-invalid');
+    }
+
+    // --- Submit (valida tudo de uma vez antes de mostrar erros) ---
     document.getElementById('btnSalvar').addEventListener('click', async () => {
       clearMessages();
-      setFieldError('nome_principal', false);
-      setFieldError('documento', false);
+      clearFieldErrors();
 
       const tipo_pessoa = radioPJ.checked ? 'PJ' : 'PF';
       const nome_principal = document.getElementById('nome_principal').value.trim();
       const documentoRaw = onlyDigits(document.getElementById('documento').value);
+      const errors = [];
 
-      // Validações
       if (!nome_principal) {
-        setFieldError('nome_principal', true);
-        showError('Informe o nome / razão social.');
+        errors.push(tipo_pessoa === 'PJ' ? 'Informe a razão social.' : 'Informe o nome completo.');
+        markInvalid('nome_principal');
+      }
+
+      if (!documentoRaw) {
+        errors.push(`Informe o ${tipo_pessoa === 'PJ' ? 'CNPJ' : 'CPF'}.`);
+        markInvalid('documento');
+      } else if (tipo_pessoa === 'PJ' && !isValidCNPJ(documentoRaw)) {
+        errors.push('CNPJ inválido. Confira os dígitos.');
+        markInvalid('documento');
+      } else if (tipo_pessoa === 'PF' && !isValidCPF(documentoRaw)) {
+        errors.push('CPF inválido. Confira os dígitos.');
+        markInvalid('documento');
+      }
+
+      if (errors.length > 0) {
+        showErrors(errors);
         return;
       }
 
-      if (tipo_pessoa === 'PJ' && !isValidCNPJ(documentoRaw)) {
-        setFieldError('documento', true);
-        document.getElementById('err_doc').textContent = 'CNPJ inválido.';
-        showError('CNPJ inválido. Confira os dígitos.');
-        return;
-      }
-
-      if (tipo_pessoa === 'PF' && !isValidCPF(documentoRaw)) {
-        setFieldError('documento', true);
-        document.getElementById('err_doc').textContent = 'CPF inválido.';
-        showError('CPF inválido. Confira os dígitos.');
-        return;
-      }
-
-      // Monta payload do cliente
+      // Monta payload
       const payload = {
         tipo_pessoa,
         nome_principal,
@@ -601,15 +596,12 @@
         });
       }
 
-      // Setores contratados
       const setoresChecked = Array.from(document.querySelectorAll('#setoresGroup input:checked')).map(c => c.value);
 
-      // Disable botão
       const btn = document.getElementById('btnSalvar');
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner spinner-sm"></span>Salvando...';
 
-      // Insert cliente
       const { data: cliente, error } = await supabase
         .from('clientes')
         .insert(payload)
@@ -620,14 +612,13 @@
         btn.disabled = false;
         btn.textContent = 'Salvar cliente';
         if (error.code === '23505') {
-          showError('Já existe um cliente cadastrado com esse CNPJ/CPF.');
+          showErrors(['Já existe um cliente cadastrado com esse CNPJ/CPF.']);
         } else {
-          showError('Erro ao salvar: ' + error.message);
+          showErrors(['Erro ao salvar: ' + error.message]);
         }
         return;
       }
 
-      // Insert setores
       if (setoresChecked.length > 0) {
         const setoresPayload = setoresChecked.map(setor => ({
           cliente_id: cliente.id,
@@ -649,7 +640,7 @@
       setTimeout(() => window.location.href = 'index.html', 1500);
     });
 
-    // Inicializa estado da máscara
+    // Inicializa estado da UI
     aplicaTipo();
   </script>
 </body>
