@@ -104,7 +104,6 @@
 
     let allClientes = [];
 
-    // Carrega info do usuário logado
     (async () => {
       const user = await getCurrentUser();
       if (user) {
@@ -116,7 +115,6 @@
 
     document.getElementById('btnLogout').addEventListener('click', signOut);
 
-    // Carrega clientes do Supabase
     async function loadClientes() {
       const { data, error } = await supabase
         .from('clientes')
@@ -183,7 +181,6 @@
     }
 
     function goToNovo() {
-      // Página de cadastro virá na próxima entrega
       alert('Página de cadastro será implementada na próxima entrega.');
     }
 

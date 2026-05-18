@@ -43,7 +43,6 @@
       </div>
 
       <div class="dashboard-grid">
-        <!-- Clientes (ATIVO) -->
         <a href="clientes/index.html" class="dashboard-card">
           <div class="dashboard-card-icon">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -61,7 +60,6 @@
           </div>
         </a>
 
-        <!-- DP -->
         <div class="dashboard-card is-disabled">
           <div class="dashboard-card-icon">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -78,7 +76,6 @@
           </div>
         </div>
 
-        <!-- Fiscal -->
         <div class="dashboard-card is-disabled">
           <div class="dashboard-card-icon">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -96,7 +93,6 @@
           </div>
         </div>
 
-        <!-- Contábil -->
         <div class="dashboard-card is-disabled">
           <div class="dashboard-card-icon">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -113,7 +109,6 @@
           </div>
         </div>
 
-        <!-- Societário -->
         <div class="dashboard-card is-disabled">
           <div class="dashboard-card-icon">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -130,7 +125,6 @@
           </div>
         </div>
 
-        <!-- Financeiro -->
         <div class="dashboard-card is-disabled">
           <div class="dashboard-card-icon">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -150,17 +144,14 @@
   </div>
 
   <script type="module">
-    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { getCurrentUser, signOut } from './assets/js/supabase.js';
 
-    // Carrega info do usuário logado
     (async () => {
       const user = await getCurrentUser();
       if (user) {
-        const userName = document.getElementById('userName');
-        const userAvatar = document.getElementById('userAvatar');
         const displayName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário';
-        userName.textContent = displayName;
-        userAvatar.textContent = displayName.charAt(0).toUpperCase();
+        document.getElementById('userName').textContent = displayName;
+        document.getElementById('userAvatar').textContent = displayName.charAt(0).toUpperCase();
       }
     })();
 
