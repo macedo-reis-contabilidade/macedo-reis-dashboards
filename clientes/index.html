@@ -63,13 +63,13 @@
             <option value="prospect">Prospect</option>
           </select>
         </div>
-        <button class="btn btn-primary" id="btnNovo">
+        <a href="novo.html" class="btn btn-primary">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <line x1="12" y1="5" x2="12" y2="19"/>
             <line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
           Novo cliente
-        </button>
+        </a>
       </div>
 
       <div class="table-wrap" id="tableWrap">
@@ -100,7 +100,6 @@
     const searchInput = document.getElementById('searchInput');
     const filterTipo = document.getElementById('filterTipo');
     const filterStatus = document.getElementById('filterStatus');
-    const btnNovo = document.getElementById('btnNovo');
 
     let allClientes = [];
 
@@ -157,11 +156,9 @@
               </svg>
               <h3>${allClientes.length === 0 ? 'Nenhum cliente cadastrado' : 'Nenhum resultado'}</h3>
               <p>${allClientes.length === 0 ? 'Comece cadastrando o primeiro cliente do escritório.' : 'Tente ajustar os filtros ou a busca.'}</p>
-              ${allClientes.length === 0 ? '<button class="btn btn-primary" id="btnNovoEmpty">Cadastrar primeiro cliente</button>' : ''}
+              ${allClientes.length === 0 ? '<a href="novo.html" class="btn btn-primary">Cadastrar primeiro cliente</a>' : ''}
             </div>
           </td></tr>`;
-        const btnEmpty = document.getElementById('btnNovoEmpty');
-        if (btnEmpty) btnEmpty.addEventListener('click', goToNovo);
         return;
       }
 
@@ -180,11 +177,6 @@
       `).join('');
     }
 
-    function goToNovo() {
-      alert('Página de cadastro será implementada na próxima entrega.');
-    }
-
-    btnNovo.addEventListener('click', goToNovo);
     searchInput.addEventListener('input', render);
     filterTipo.addEventListener('change', render);
     filterStatus.addEventListener('change', render);
