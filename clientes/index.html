@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clientes — Macedo & Reis</title>
+  <link rel="stylesheet" href="../assets/css/style.css">
+  <script type="module" src="../assets/js/auth-guard.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo">
+          <svg width="32" height="32" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M28 4 C30 14, 42 24, 52 28 C42 32, 30 42, 28 52 C26 42, 14 32, 4 28 C14 24, 26 14, 28 4 Z" fill="url(#topbarPetal2)"/>
+            <defs>
+              <linearGradient id="topbarPetal2" x1="4" y1="4" x2="52" y2="52" gradientUnits="userSpaceOnUse">
+                <stop offset="0" stop-color="#8AAEC8"/>
+                <stop offset="0.5" stop-color="#5B82A6"/>
+                <stop offset="1" stop-color="#3A5878"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+
+      <div class="topbar-actions">
+        <div class="user-chip">
+          <div class="user-avatar" id="userAvatar">—</div>
+          <span id="userName">Carregando…</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="../index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Clientes</span>
+        </div>
+        <div class="eyebrow">Cadastro</div>
+        <h1>Clientes</h1>
+        <p>Base mestre de clientes PJ e PF do escritório.</p>
+      </div>
+
+      <div class="toolbar">
+        <div class="toolbar-filters">
+          <input type="text" id="searchInput" class="input input-search" placeholder="Buscar por nome, CNPJ ou CPF…">
+          <select id="filterTipo" class="select">
+            <option value="">Todos os tipos</option>
+            <option value="PJ">Pessoa Jurídica</option>
+            <option value="PF">Pessoa Física</option>
+          </select>
+          <select id="filterStatus" class="select">
+            <option value="">Todos os status</option>
+            <option value="ativo">Ativo</option>
+            <option value="inativo">Inativo</option>
+            <option value="em_transicao">Em transição</option>
+            <option value="prospect">Prospect</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" id="btnNovo">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          Novo cliente
+        </button>
+      </div>
+
+      <div class="table-wrap" id="tableWrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Nome / Razão social</th>
+              <th>Documento</th>
+              <th>Tipo</th>
+              <th>Status</th>
+              <th>Cidade / UF</th>
+              <th>Cadastrado em</th>
+            </tr>
+          </thead>
+          <tbody id="tbody">
+            <tr class="loading-row"><td colspan="6"><span class="spinner"></span>Carregando clientes…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from '../assets/js/supabase.js';
+    import { formatDocumento, formatDate, STATUS_LABELS } from '../assets/js/utils.js';
+
+    const tbody = document.getElementById('tbody');
+    const searchInput = document.getElementById('searchInput');
+    const filterTipo = document.getElementById('filterTipo');
+    const filterStatus = document.getElementById('filterStatus');
+    const btnNovo = document.getElementById('btnNovo');
+
+    let allClientes = [];
+
+    // Carrega info do usuário logado
+    (async () => {
+      const user = await getCurrentUser();
+      if (user) {
+        const displayName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário';
+        document.getElementById('userName').textContent = displayName;
+        document.getElementById('userAvatar').textContent = displayName.charAt(0).toUpperCase();
+      }
+    })();
+
+    document.getElementById('btnLogout').addEventListener('click', signOut);
+
+    // Carrega clientes do Supabase
+    async function loadClientes() {
+      const { data, error } = await supabase
+        .from('clientes')
+        .select('id, tipo_pessoa, nome_principal, nome_fantasia, documento, status, cidade, uf, created_at')
+        .order('nome_principal');
+
+      if (error) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--danger); padding: 40px;">Erro ao carregar clientes: ${error.message}</td></tr>`;
+        return;
+      }
+
+      allClientes = data || [];
+      render();
+    }
+
+    function render() {
+      const search = searchInput.value.toLowerCase().trim();
+      const tipo = filterTipo.value;
+      const status = filterStatus.value;
+
+      const filtered = allClientes.filter(c => {
+        if (tipo && c.tipo_pessoa !== tipo) return false;
+        if (status && c.status !== status) return false;
+        if (search) {
+          const haystack = `${c.nome_principal} ${c.nome_fantasia || ''} ${c.documento}`.toLowerCase();
+          if (!haystack.includes(search)) return false;
+        }
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `
+          <tr><td colspan="6">
+            <div class="empty-state">
+              <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
+              <h3>${allClientes.length === 0 ? 'Nenhum cliente cadastrado' : 'Nenhum resultado'}</h3>
+              <p>${allClientes.length === 0 ? 'Comece cadastrando o primeiro cliente do escritório.' : 'Tente ajustar os filtros ou a busca.'}</p>
+              ${allClientes.length === 0 ? '<button class="btn btn-primary" id="btnNovoEmpty">Cadastrar primeiro cliente</button>' : ''}
+            </div>
+          </td></tr>`;
+        const btnEmpty = document.getElementById('btnNovoEmpty');
+        if (btnEmpty) btnEmpty.addEventListener('click', goToNovo);
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(c => `
+        <tr>
+          <td data-label="Nome">
+            <div class="table-name">${c.nome_principal}</div>
+            ${c.nome_fantasia ? `<div class="table-sub">${c.nome_fantasia}</div>` : ''}
+          </td>
+          <td data-label="Documento">${formatDocumento(c.documento)}</td>
+          <td data-label="Tipo">${c.tipo_pessoa}</td>
+          <td data-label="Status"><span class="status-pill status-${c.status}">${STATUS_LABELS[c.status] || c.status}</span></td>
+          <td data-label="Localização">${c.cidade ? `${c.cidade}${c.uf ? '/' + c.uf : ''}` : '—'}</td>
+          <td data-label="Cadastrado">${formatDate(c.created_at)}</td>
+        </tr>
+      `).join('');
+    }
+
+    function goToNovo() {
+      // Página de cadastro virá na próxima entrega
+      alert('Página de cadastro será implementada na próxima entrega.');
+    }
+
+    btnNovo.addEventListener('click', goToNovo);
+    searchInput.addEventListener('input', render);
+    filterTipo.addEventListener('change', render);
+    filterStatus.addEventListener('change', render);
+
+    loadClientes();
+  </script>
+</body>
+</html>

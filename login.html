@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Entrar — Macedo & Reis Dashboards</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+  <div class="login-shell">
+    <div class="login-card">
+      <div class="login-brand">
+        <div class="login-brand-logo">
+          <!-- Logo placeholder (quatro pétalas) -->
+          <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M28 4 C30 14, 42 24, 52 28 C42 32, 30 42, 28 52 C26 42, 14 32, 4 28 C14 24, 26 14, 28 4 Z" fill="url(#petalGrad)"/>
+            <defs>
+              <linearGradient id="petalGrad" x1="4" y1="4" x2="52" y2="52" gradientUnits="userSpaceOnUse">
+                <stop offset="0" stop-color="#8AAEC8"/>
+                <stop offset="0.5" stop-color="#5B82A6"/>
+                <stop offset="1" stop-color="#3A5878"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <h1>Macedo <span>&</span> Reis</h1>
+        <p>Dashboards internos</p>
+      </div>
+
+      <div id="formError" class="form-error"></div>
+
+      <div class="form-group">
+        <label for="email">Email</label>
+        <input type="email" id="email" class="input" autocomplete="username" required>
+      </div>
+
+      <div class="form-group">
+        <label for="password">Senha</label>
+        <input type="password" id="password" class="input" autocomplete="current-password" required>
+      </div>
+
+      <button type="button" id="btnLogin" class="btn btn-primary">Entrar</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase } from './assets/js/supabase.js';
+
+    const emailInput = document.getElementById('email');
+    const passwordInput = document.getElementById('password');
+    const btnLogin = document.getElementById('btnLogin');
+    const formError = document.getElementById('formError');
+
+    // Se já está logado, redireciona pro menu
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        window.location.href = 'index.html';
+      }
+    })();
+
+    function showError(msg) {
+      formError.textContent = msg;
+      formError.classList.add('is-visible');
+    }
+
+    function clearError() {
+      formError.classList.remove('is-visible');
+      formError.textContent = '';
+    }
+
+    async function doLogin() {
+      clearError();
+      const email = emailInput.value.trim();
+      const password = passwordInput.value;
+
+      if (!email || !password) {
+        showError('Preencha email e senha.');
+        return;
+      }
+
+      btnLogin.disabled = true;
+      btnLogin.textContent = 'Entrando...';
+
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+      if (error) {
+        showError('Email ou senha incorretos.');
+        btnLogin.disabled = false;
+        btnLogin.textContent = 'Entrar';
+        return;
+      }
+
+      // Redireciona pro destino original ou pro menu
+      const urlParams = new URLSearchParams(window.location.search);
+      const redirect = urlParams.get('redirect');
+      window.location.href = redirect || 'index.html';
+    }
+
+    btnLogin.addEventListener('click', doLogin);
+
+    [emailInput, passwordInput].forEach(input => {
+      input.addEventListener('keypress', e => {
+        if (e.key === 'Enter') doLogin();
+      });
+    });
+  </script>
+</body>
+</html>
