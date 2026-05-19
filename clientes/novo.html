@@ -46,12 +46,54 @@
         </div>
         <div class="eyebrow">Novo cadastro</div>
         <h1>Novo cliente</h1>
-        <p>Preencha os dados do cliente. Campos obrigatórios marcados com <span class="required-mark">*</span>.</p>
+        <p>Preencha os dados manualmente ou carregue documentos para o sistema extrair automaticamente.</p>
       </div>
 
       <div id="formError" class="form-error"></div>
       <div id="formSuccess" class="form-success"></div>
 
+      <!-- ============================================================
+           EXTRAÇÃO AUTOMÁTICA
+           ============================================================ -->
+      <section class="extract-section">
+        <div class="form-section-head">
+          <h2>
+            Extração automática
+            <span class="extract-badge-ai">IA</span>
+          </h2>
+          <span class="form-section-sub">Contrato social, cartão CNPJ, RG/CPF — o sistema preenche os campos</span>
+        </div>
+
+        <div class="drop-zone" id="dropZone">
+          <div class="drop-zone-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+          </div>
+          <div class="drop-zone-title">Arraste os documentos aqui ou <span class="drop-zone-link">clique para selecionar</span></div>
+          <div class="drop-zone-sub">PDF, JPG ou PNG. Múltiplos arquivos permitidos. Até 5MB por arquivo.</div>
+        </div>
+
+        <input type="file" id="fileInput" accept="application/pdf,image/jpeg,image/png" multiple hidden>
+
+        <div class="file-list" id="fileList"></div>
+
+        <div class="extract-actions" id="extractActions" hidden>
+          <div class="extract-actions-info" id="extractInfo"></div>
+          <button class="btn btn-primary" id="btnExtrair">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+            Extrair dados dos documentos
+          </button>
+        </div>
+      </section>
+
+      <!-- ============================================================
+           IDENTIFICAÇÃO
+           ============================================================ -->
       <section class="form-section">
         <div class="form-section-head">
           <h2>Identificação</h2>
@@ -119,10 +161,7 @@
       </section>
 
       <section class="form-section">
-        <div class="form-section-head">
-          <h2>Contato</h2>
-        </div>
-
+        <div class="form-section-head"><h2>Contato</h2></div>
         <div class="form-grid">
           <div class="fg-col-6">
             <div class="form-group">
@@ -130,7 +169,6 @@
               <input type="email" id="email_principal" class="input" placeholder="contato@empresa.com.br">
             </div>
           </div>
-
           <div class="fg-col-6">
             <div class="form-group">
               <label for="telefone_principal">Telefone (preferencial WhatsApp)</label>
@@ -145,9 +183,7 @@
           <h2>Endereço</h2>
           <span class="form-section-sub">Digite o CEP e os campos se preenchem automaticamente</span>
         </div>
-
         <div class="form-grid">
-          <!-- Linha 1: CEP | Logradouro | Número -->
           <div class="fg-col-3">
             <div class="form-group">
               <label for="cep">CEP</label>
@@ -155,49 +191,40 @@
               <div class="field-help" id="cepStatus"></div>
             </div>
           </div>
-
           <div class="fg-col-7">
             <div class="form-group">
               <label for="logradouro">Logradouro</label>
               <input type="text" id="logradouro" class="input">
             </div>
           </div>
-
           <div class="fg-col-2">
             <div class="form-group">
               <label for="numero">Número</label>
               <input type="text" id="numero" class="input">
             </div>
           </div>
-
-          <!-- Linha 2: Complemento | Bairro | Cidade | UF -->
           <div class="fg-col-3">
             <div class="form-group">
               <label for="complemento">Complemento</label>
               <input type="text" id="complemento" class="input">
             </div>
           </div>
-
           <div class="fg-col-4">
             <div class="form-group">
               <label for="bairro">Bairro</label>
               <input type="text" id="bairro" class="input">
             </div>
           </div>
-
           <div class="fg-col-3">
             <div class="form-group">
               <label for="cidade">Cidade</label>
               <input type="text" id="cidade" class="input">
             </div>
           </div>
-
           <div class="fg-col-2">
             <div class="form-group">
               <label for="uf">UF</label>
-              <select id="uf" class="select">
-                <option value="">—</option>
-              </select>
+              <select id="uf" class="select"><option value="">—</option></select>
             </div>
           </div>
         </div>
@@ -208,7 +235,6 @@
           <h2>Dados da empresa</h2>
           <span class="form-section-sub">Informações fiscais e cadastrais</span>
         </div>
-
         <div class="form-grid">
           <div class="fg-col-12">
             <div class="form-group">
@@ -216,21 +242,18 @@
               <input type="text" id="nome_fantasia" class="input">
             </div>
           </div>
-
           <div class="fg-col-6">
             <div class="form-group">
               <label for="inscricao_estadual">Inscrição estadual</label>
               <input type="text" id="inscricao_estadual" class="input">
             </div>
           </div>
-
           <div class="fg-col-6">
             <div class="form-group">
               <label for="inscricao_municipal">Inscrição municipal</label>
               <input type="text" id="inscricao_municipal" class="input">
             </div>
           </div>
-
           <div class="fg-col-6">
             <div class="form-group">
               <label for="regime_tributario">Regime tributário</label>
@@ -245,7 +268,6 @@
               </select>
             </div>
           </div>
-
           <div class="fg-col-6">
             <div class="form-group">
               <label for="porte_empresa">Porte</label>
@@ -258,28 +280,24 @@
               </select>
             </div>
           </div>
-
           <div class="fg-col-6">
             <div class="form-group">
               <label for="cnae_principal">CNAE principal</label>
               <input type="text" id="cnae_principal" class="input" placeholder="0000-0/00">
             </div>
           </div>
-
           <div class="fg-col-3">
             <div class="form-group">
               <label for="data_abertura">Data de abertura</label>
               <input type="date" id="data_abertura" class="input">
             </div>
           </div>
-
           <div class="fg-col-3">
             <div class="form-group">
               <label for="capital_social">Capital social (R$)</label>
               <input type="number" id="capital_social" class="input" step="0.01" min="0" placeholder="0,00">
             </div>
           </div>
-
           <div class="fg-col-12">
             <div class="form-group">
               <label for="natureza_juridica">Natureza jurídica</label>
@@ -290,10 +308,7 @@
       </section>
 
       <section class="form-section" id="sectionPF" hidden>
-        <div class="form-section-head">
-          <h2>Dados pessoais</h2>
-        </div>
-
+        <div class="form-section-head"><h2>Dados pessoais</h2></div>
         <div class="form-grid">
           <div class="fg-col-4">
             <div class="form-group">
@@ -301,14 +316,12 @@
               <input type="text" id="rg" class="input">
             </div>
           </div>
-
           <div class="fg-col-4">
             <div class="form-group">
               <label for="data_nascimento">Data de nascimento</label>
               <input type="date" id="data_nascimento" class="input">
             </div>
           </div>
-
           <div class="fg-col-4">
             <div class="form-group">
               <label for="estado_civil">Estado civil</label>
@@ -322,14 +335,12 @@
               </select>
             </div>
           </div>
-
           <div class="fg-col-8">
             <div class="form-group">
               <label for="profissao">Profissão</label>
               <input type="text" id="profissao" class="input">
             </div>
           </div>
-
           <div class="fg-col-4">
             <div class="form-group">
               <label for="nacionalidade">Nacionalidade</label>
@@ -344,50 +355,25 @@
           <h2>Setores contratados</h2>
           <span class="form-section-sub">Quais áreas do escritório atendem este cliente</span>
         </div>
-
         <div class="checkbox-group" id="setoresGroup">
-          <label class="checkbox-card">
-            <input type="checkbox" value="fiscal">
-            <span class="check-indicator"></span>
-            <span>Fiscal</span>
-          </label>
-          <label class="checkbox-card">
-            <input type="checkbox" value="departamento_pessoal">
-            <span class="check-indicator"></span>
-            <span>Departamento Pessoal</span>
-          </label>
-          <label class="checkbox-card">
-            <input type="checkbox" value="contabil">
-            <span class="check-indicator"></span>
-            <span>Contábil</span>
-          </label>
-          <label class="checkbox-card">
-            <input type="checkbox" value="societario">
-            <span class="check-indicator"></span>
-            <span>Societário</span>
-          </label>
-          <label class="checkbox-card">
-            <input type="checkbox" value="financeiro">
-            <span class="check-indicator"></span>
-            <span>Financeiro</span>
-          </label>
+          <label class="checkbox-card"><input type="checkbox" value="fiscal"><span class="check-indicator"></span><span>Fiscal</span></label>
+          <label class="checkbox-card"><input type="checkbox" value="departamento_pessoal"><span class="check-indicator"></span><span>Departamento Pessoal</span></label>
+          <label class="checkbox-card"><input type="checkbox" value="contabil"><span class="check-indicator"></span><span>Contábil</span></label>
+          <label class="checkbox-card"><input type="checkbox" value="societario"><span class="check-indicator"></span><span>Societário</span></label>
+          <label class="checkbox-card"><input type="checkbox" value="financeiro"><span class="check-indicator"></span><span>Financeiro</span></label>
         </div>
       </section>
 
       <section class="form-section">
-        <div class="form-section-head">
-          <h2>Pasta no Drive e observações</h2>
-        </div>
-
+        <div class="form-section-head"><h2>Pasta no Drive e observações</h2></div>
         <div class="form-grid">
           <div class="fg-col-12">
             <div class="form-group">
               <label for="drive_folder_url">URL da pasta do cliente no Drive</label>
               <input type="url" id="drive_folder_url" class="input" placeholder="https://drive.google.com/drive/folders/…">
-              <div class="field-help">Cole o link da pasta deste cliente em "Banco de Informações > Clientes Ativos". A automação de vínculo automático com Drive virá em entregas futuras.</div>
+              <div class="field-help">Cole o link da pasta deste cliente no Drive.</div>
             </div>
           </div>
-
           <div class="fg-col-12">
             <div class="form-group">
               <label for="observacoes">Observações</label>
@@ -431,7 +417,7 @@
       ufSelect.appendChild(opt);
     });
 
-    // --- Tipo de pessoa controla campos ---
+    // --- Tipo de pessoa ---
     const radioPJ = document.querySelector('input[name="tipo_pessoa"][value="PJ"]');
     const radioPF = document.querySelector('input[name="tipo_pessoa"][value="PF"]');
     const sectionPJ = document.getElementById('sectionPJ');
@@ -447,13 +433,11 @@
       lblNome.innerHTML = (ehPJ ? 'Razão social' : 'Nome completo') + '<span class="required-mark">*</span>';
       lblDoc.innerHTML = (ehPJ ? 'CNPJ' : 'CPF') + '<span class="required-mark">*</span>';
       docInput.placeholder = ehPJ ? '00.000.000/0000-00' : '000.000.000-00';
-      docInput.value = '';
     }
 
     radioPJ.addEventListener('change', aplicaTipo);
     radioPF.addEventListener('change', aplicaTipo);
 
-    // --- Máscara do documento (dinâmica baseada no tipo) ---
     docInput.addEventListener('input', () => {
       const maskFn = radioPJ.checked ? maskCNPJ : maskCPF;
       docInput.value = maskFn(docInput.value);
@@ -463,12 +447,10 @@
     bindMask(document.getElementById('cep'), maskCEP);
 
     // --- ViaCEP ---
-    const cepInput = document.getElementById('cep');
-    const cepStatus = document.getElementById('cepStatus');
-
-    cepInput.addEventListener('blur', async () => {
-      const d = onlyDigits(cepInput.value);
+    document.getElementById('cep').addEventListener('blur', async () => {
+      const d = onlyDigits(document.getElementById('cep').value);
       if (d.length !== 8) return;
+      const cepStatus = document.getElementById('cepStatus');
       cepStatus.textContent = 'Buscando endereço...';
       cepStatus.style.color = '';
       const endereco = await buscarCEP(d);
@@ -477,9 +459,7 @@
         if (endereco.bairro) document.getElementById('bairro').value = endereco.bairro;
         if (endereco.cidade) document.getElementById('cidade').value = endereco.cidade;
         if (endereco.uf) document.getElementById('uf').value = endereco.uf;
-        cepStatus.textContent = endereco.logradouro
-          ? 'Endereço encontrado.'
-          : 'CEP genérico — preencha logradouro e bairro manualmente.';
+        cepStatus.textContent = endereco.logradouro ? 'Endereço encontrado.' : 'CEP genérico — preencha logradouro e bairro manualmente.';
         cepStatus.style.color = endereco.logradouro ? 'var(--success)' : 'var(--warning)';
         setTimeout(() => { cepStatus.textContent = ''; cepStatus.style.color = ''; }, 4000);
       } else {
@@ -488,7 +468,7 @@
       }
     });
 
-    // --- Mensagens de formulário ---
+    // --- Mensagens ---
     const formError = document.getElementById('formError');
     const formSuccess = document.getElementById('formSuccess');
 
@@ -504,9 +484,10 @@
     }
 
     function showSuccess(msg) {
-      formSuccess.textContent = msg;
+      formSuccess.innerHTML = msg;
       formSuccess.classList.add('is-visible');
       formError.classList.remove('is-visible');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     function clearMessages() {
@@ -514,19 +495,250 @@
       formSuccess.classList.remove('is-visible');
     }
 
-    function clearFieldErrors() {
-      document.querySelectorAll('.is-invalid').forEach(el => el.classList.remove('is-invalid'));
+    // ============================================================
+    // EXTRAÇÃO AUTOMÁTICA
+    // ============================================================
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const fileList = document.getElementById('fileList');
+    const extractActions = document.getElementById('extractActions');
+    const extractInfo = document.getElementById('extractInfo');
+    const btnExtrair = document.getElementById('btnExtrair');
+
+    let selectedFiles = [];
+    let sociosExtraidos = []; // armazenados pra inserir junto com o cliente
+
+    const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+    const ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/png'];
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', e => addFiles(Array.from(e.target.files)));
+
+    dropZone.addEventListener('dragover', e => {
+      e.preventDefault();
+      dropZone.classList.add('is-dragging');
+    });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('is-dragging'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('is-dragging');
+      addFiles(Array.from(e.dataTransfer.files));
+    });
+
+    function addFiles(files) {
+      const errors = [];
+      files.forEach(f => {
+        if (!ALLOWED_TYPES.includes(f.type)) {
+          errors.push(`"${f.name}": formato não suportado.`);
+          return;
+        }
+        if (f.size > MAX_FILE_SIZE) {
+          errors.push(`"${f.name}": maior que 5MB.`);
+          return;
+        }
+        selectedFiles.push(f);
+      });
+      if (errors.length > 0) showErrors(errors);
+      renderFileList();
     }
 
-    function markInvalid(id) {
-      const el = document.getElementById(id);
-      if (el) el.classList.add('is-invalid');
+    function removeFile(index) {
+      selectedFiles.splice(index, 1);
+      renderFileList();
     }
 
-    // --- Submit (valida tudo de uma vez antes de mostrar erros) ---
+    function formatBytes(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' KB';
+      return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+    }
+
+    function iconFor(mediaType) {
+      const isImg = mediaType.startsWith('image/');
+      if (isImg) {
+        return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+        </svg>`;
+      }
+      return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+      </svg>`;
+    }
+
+    function renderFileList() {
+      if (selectedFiles.length === 0) {
+        fileList.innerHTML = '';
+        extractActions.hidden = true;
+        return;
+      }
+
+      fileList.innerHTML = selectedFiles.map((f, i) => `
+        <div class="file-item">
+          <span class="file-item-icon">${iconFor(f.type)}</span>
+          <div class="file-item-info">
+            <div class="file-item-name">${f.name}</div>
+            <div class="file-item-size">${formatBytes(f.size)}</div>
+          </div>
+          <button class="icon-btn icon-btn-danger" data-remove="${i}" title="Remover">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+      `).join('');
+
+      fileList.querySelectorAll('[data-remove]').forEach(b => {
+        b.addEventListener('click', () => removeFile(parseInt(b.dataset.remove)));
+      });
+
+      extractActions.hidden = false;
+      extractInfo.textContent = `${selectedFiles.length} arquivo${selectedFiles.length > 1 ? 's' : ''} pronto${selectedFiles.length > 1 ? 's' : ''} pra extração`;
+    }
+
+    function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const b64 = reader.result.toString().split(',')[1];
+          resolve(b64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    btnExtrair.addEventListener('click', async () => {
+      if (selectedFiles.length === 0) return;
+      clearMessages();
+      btnExtrair.disabled = true;
+      btnExtrair.innerHTML = '<span class="spinner spinner-sm"></span>Analisando documentos...';
+      extractInfo.textContent = 'A IA está lendo os documentos. Isso pode levar alguns segundos.';
+
+      try {
+        const documents = await Promise.all(selectedFiles.map(async f => ({
+          media_type: f.type,
+          data: await fileToBase64(f),
+          filename: f.name
+        })));
+
+        const { data: response, error } = await supabase.functions.invoke('extract-document', {
+          body: { documents }
+        });
+
+        if (error) {
+          showErrors([`Erro na extração: ${error.message || error}`]);
+          btnExtrair.disabled = false;
+          btnExtrair.innerHTML = 'Tentar novamente';
+          return;
+        }
+
+        if (response?.error) {
+          showErrors([`Erro: ${response.error}${response.details ? ' (' + response.details.substring(0, 200) + ')' : ''}`]);
+          btnExtrair.disabled = false;
+          btnExtrair.innerHTML = 'Tentar novamente';
+          return;
+        }
+
+        const extracted = response?.data;
+        if (!extracted) {
+          showErrors(['Não foi possível extrair dados dos documentos.']);
+          btnExtrair.disabled = false;
+          btnExtrair.innerHTML = 'Tentar novamente';
+          return;
+        }
+
+        preencherFormulario(extracted);
+
+        const camposPreenchidos = countFilled(extracted);
+        const sociosCount = (extracted.socios || []).length;
+        let msg = `<strong>Dados extraídos com sucesso.</strong> ${camposPreenchidos} campos preenchidos${sociosCount > 0 ? ` e ${sociosCount} sócio${sociosCount > 1 ? 's' : ''} identificado${sociosCount > 1 ? 's' : ''}` : ''}. Revise tudo abaixo e clique em "Salvar cliente".`;
+        if (extracted.confianca === 'baixa' || extracted.confianca === 'media') {
+          msg += `<br><br><em>Confiança da extração: ${extracted.confianca}. Verifique os campos com atenção.</em>`;
+        }
+        if (extracted.observacoes_extracao) {
+          msg += `<br><br><em>Observações da IA: ${extracted.observacoes_extracao}</em>`;
+        }
+        showSuccess(msg);
+
+        // Reset upload area
+        selectedFiles = [];
+        renderFileList();
+        fileInput.value = '';
+        btnExtrair.disabled = false;
+        btnExtrair.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Extrair dados dos documentos';
+
+      } catch (e) {
+        showErrors([`Erro inesperado: ${e.message}`]);
+        btnExtrair.disabled = false;
+        btnExtrair.innerHTML = 'Tentar novamente';
+      }
+    });
+
+    function countFilled(obj) {
+      let count = 0;
+      for (const k in obj) {
+        if (k === 'socios' || k === 'confianca' || k === 'observacoes_extracao') continue;
+        if (obj[k] !== null && obj[k] !== undefined && obj[k] !== '') count++;
+      }
+      return count;
+    }
+
+    function preencherFormulario(d) {
+      // Tipo de pessoa
+      if (d.tipo_pessoa === 'PJ') { radioPJ.checked = true; radioPF.checked = false; }
+      else if (d.tipo_pessoa === 'PF') { radioPF.checked = true; radioPJ.checked = false; }
+      aplicaTipo();
+
+      // Helpers
+      const setVal = (id, val) => {
+        const el = document.getElementById(id);
+        if (el && val !== null && val !== undefined) el.value = val;
+      };
+      const setMasked = (id, val, maskFn) => {
+        const el = document.getElementById(id);
+        if (el && val) el.value = maskFn(val);
+      };
+
+      setVal('nome_principal', d.nome_principal);
+      setMasked('documento', d.documento, d.tipo_pessoa === 'PJ' ? maskCNPJ : maskCPF);
+      setVal('email_principal', d.email_principal);
+      setMasked('telefone_principal', d.telefone_principal, maskTelefone);
+      setMasked('cep', d.cep, maskCEP);
+      setVal('logradouro', d.logradouro);
+      setVal('numero', d.numero);
+      setVal('complemento', d.complemento);
+      setVal('bairro', d.bairro);
+      setVal('cidade', d.cidade);
+      setVal('uf', d.uf);
+
+      if (d.tipo_pessoa === 'PJ') {
+        setVal('nome_fantasia', d.nome_fantasia);
+        setVal('inscricao_estadual', d.inscricao_estadual);
+        setVal('inscricao_municipal', d.inscricao_municipal);
+        setVal('regime_tributario', d.regime_tributario);
+        setVal('cnae_principal', d.cnae_principal);
+        setVal('data_abertura', d.data_abertura);
+        setVal('capital_social', d.capital_social);
+        setVal('natureza_juridica', d.natureza_juridica);
+        setVal('porte_empresa', d.porte_empresa);
+      } else if (d.tipo_pessoa === 'PF') {
+        setVal('rg', d.rg);
+        setVal('data_nascimento', d.data_nascimento);
+        setVal('profissao', d.profissao);
+        setVal('estado_civil', d.estado_civil);
+        setVal('nacionalidade', d.nacionalidade);
+      }
+
+      // Sócios: armazena para inserir após criar cliente
+      sociosExtraidos = Array.isArray(d.socios) ? d.socios.filter(s => s && s.nome) : [];
+    }
+
+    // ============================================================
+    // SUBMIT
+    // ============================================================
     document.getElementById('btnSalvar').addEventListener('click', async () => {
       clearMessages();
-      clearFieldErrors();
+      document.querySelectorAll('.is-invalid').forEach(el => el.classList.remove('is-invalid'));
 
       const tipo_pessoa = radioPJ.checked ? 'PJ' : 'PF';
       const nome_principal = document.getElementById('nome_principal').value.trim();
@@ -535,26 +747,22 @@
 
       if (!nome_principal) {
         errors.push(tipo_pessoa === 'PJ' ? 'Informe a razão social.' : 'Informe o nome completo.');
-        markInvalid('nome_principal');
+        document.getElementById('nome_principal').classList.add('is-invalid');
       }
 
       if (!documentoRaw) {
         errors.push(`Informe o ${tipo_pessoa === 'PJ' ? 'CNPJ' : 'CPF'}.`);
-        markInvalid('documento');
+        document.getElementById('documento').classList.add('is-invalid');
       } else if (tipo_pessoa === 'PJ' && !isValidCNPJ(documentoRaw)) {
         errors.push('CNPJ inválido. Confira os dígitos.');
-        markInvalid('documento');
+        document.getElementById('documento').classList.add('is-invalid');
       } else if (tipo_pessoa === 'PF' && !isValidCPF(documentoRaw)) {
         errors.push('CPF inválido. Confira os dígitos.');
-        markInvalid('documento');
+        document.getElementById('documento').classList.add('is-invalid');
       }
 
-      if (errors.length > 0) {
-        showErrors(errors);
-        return;
-      }
+      if (errors.length > 0) { showErrors(errors); return; }
 
-      // Monta payload
       const payload = {
         tipo_pessoa,
         nome_principal,
@@ -602,45 +810,41 @@
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner spinner-sm"></span>Salvando...';
 
-      const { data: cliente, error } = await supabase
-        .from('clientes')
-        .insert(payload)
-        .select()
-        .single();
+      const { data: cliente, error } = await supabase.from('clientes').insert(payload).select().single();
 
       if (error) {
         btn.disabled = false;
         btn.textContent = 'Salvar cliente';
-        if (error.code === '23505') {
-          showErrors(['Já existe um cliente cadastrado com esse CNPJ/CPF.']);
-        } else {
-          showErrors(['Erro ao salvar: ' + error.message]);
-        }
+        if (error.code === '23505') showErrors(['Já existe um cliente cadastrado com esse CNPJ/CPF.']);
+        else showErrors(['Erro ao salvar: ' + error.message]);
         return;
       }
 
+      // Insert setores
       if (setoresChecked.length > 0) {
         const setoresPayload = setoresChecked.map(setor => ({
-          cliente_id: cliente.id,
-          setor,
-          ativo: true,
-          data_inicio: payload.data_inicio_cliente
+          cliente_id: cliente.id, setor, ativo: true, data_inicio: payload.data_inicio_cliente
         }));
-        const { error: errSetores } = await supabase
-          .from('servicos_contratados')
-          .insert(setoresPayload);
-        if (errSetores) {
-          showSuccess('Cliente salvo, mas não foi possível registrar os setores. Você pode editar depois.');
-          setTimeout(() => window.location.href = 'index.html', 2500);
-          return;
-        }
+        await supabase.from('servicos_contratados').insert(setoresPayload);
+      }
+
+      // Insert sócios extraídos (se houver)
+      if (tipo_pessoa === 'PJ' && sociosExtraidos.length > 0) {
+        const sociosPayload = sociosExtraidos.map(s => ({
+          cliente_id: cliente.id,
+          nome: s.nome,
+          cpf: s.cpf ? onlyDigits(s.cpf) : null,
+          participacao_percentual: s.participacao_percentual || null,
+          qualificacao: s.qualificacao || null,
+          eh_administrador: !!s.eh_administrador
+        }));
+        await supabase.from('socios').insert(sociosPayload);
       }
 
       showSuccess('Cliente cadastrado com sucesso! Redirecionando...');
       setTimeout(() => window.location.href = 'index.html', 1500);
     });
 
-    // Inicializa estado da UI
     aplicaTipo();
   </script>
 </body>
