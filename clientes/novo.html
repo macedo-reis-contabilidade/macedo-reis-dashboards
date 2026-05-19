@@ -46,15 +46,12 @@
         </div>
         <div class="eyebrow">Novo cadastro</div>
         <h1>Novo cliente</h1>
-        <p>Preencha os dados manualmente ou carregue documentos para o sistema extrair automaticamente.</p>
+        <p>Preencha os dados manualmente ou carregue documentos para o sistema extrair automaticamente. A pasta no Drive é criada automaticamente após salvar.</p>
       </div>
 
       <div id="formError" class="form-error"></div>
       <div id="formSuccess" class="form-success"></div>
 
-      <!-- ============================================================
-           EXTRAÇÃO AUTOMÁTICA
-           ============================================================ -->
       <section class="extract-section">
         <div class="form-section-head">
           <h2>
@@ -91,15 +88,11 @@
         </div>
       </section>
 
-      <!-- ============================================================
-           IDENTIFICAÇÃO
-           ============================================================ -->
       <section class="form-section">
         <div class="form-section-head">
           <h2>Identificação</h2>
           <span class="form-section-sub">Dados principais do cliente</span>
         </div>
-
         <div class="form-grid">
           <div class="fg-col-12">
             <div class="form-group">
@@ -365,15 +358,8 @@
       </section>
 
       <section class="form-section">
-        <div class="form-section-head"><h2>Pasta no Drive e observações</h2></div>
+        <div class="form-section-head"><h2>Observações</h2></div>
         <div class="form-grid">
-          <div class="fg-col-12">
-            <div class="form-group">
-              <label for="drive_folder_url">URL da pasta do cliente no Drive</label>
-              <input type="url" id="drive_folder_url" class="input" placeholder="https://drive.google.com/drive/folders/…">
-              <div class="field-help">Cole o link da pasta deste cliente no Drive.</div>
-            </div>
-          </div>
           <div class="fg-col-12">
             <div class="form-group">
               <label for="observacoes">Observações</label>
@@ -397,7 +383,6 @@
       isValidCNPJ, isValidCPF, onlyDigits, buscarCEP, ESTADOS_BR
     } from '../assets/js/utils.js';
 
-    // --- Topbar / Auth ---
     (async () => {
       const user = await getCurrentUser();
       if (user) {
@@ -408,16 +393,12 @@
     })();
     document.getElementById('btnLogout').addEventListener('click', signOut);
 
-    // --- Popula UFs ---
     const ufSelect = document.getElementById('uf');
     ESTADOS_BR.forEach(uf => {
       const opt = document.createElement('option');
-      opt.value = uf;
-      opt.textContent = uf;
-      ufSelect.appendChild(opt);
+      opt.value = uf; opt.textContent = uf; ufSelect.appendChild(opt);
     });
 
-    // --- Tipo de pessoa ---
     const radioPJ = document.querySelector('input[name="tipo_pessoa"][value="PJ"]');
     const radioPF = document.querySelector('input[name="tipo_pessoa"][value="PF"]');
     const sectionPJ = document.getElementById('sectionPJ');
@@ -434,7 +415,6 @@
       lblDoc.innerHTML = (ehPJ ? 'CNPJ' : 'CPF') + '<span class="required-mark">*</span>';
       docInput.placeholder = ehPJ ? '00.000.000/0000-00' : '000.000.000-00';
     }
-
     radioPJ.addEventListener('change', aplicaTipo);
     radioPF.addEventListener('change', aplicaTipo);
 
@@ -446,7 +426,6 @@
     bindMask(document.getElementById('telefone_principal'), maskTelefone);
     bindMask(document.getElementById('cep'), maskCEP);
 
-    // --- ViaCEP ---
     document.getElementById('cep').addEventListener('blur', async () => {
       const d = onlyDigits(document.getElementById('cep').value);
       if (d.length !== 8) return;
@@ -468,28 +447,22 @@
       }
     });
 
-    // --- Mensagens ---
     const formError = document.getElementById('formError');
     const formSuccess = document.getElementById('formSuccess');
 
     function showErrors(errors) {
-      if (errors.length === 1) {
-        formError.textContent = errors[0];
-      } else {
-        formError.innerHTML = `<strong>Corrija os seguintes pontos:</strong><ul>${errors.map(e => `<li>${e}</li>`).join('')}</ul>`;
-      }
+      if (errors.length === 1) formError.textContent = errors[0];
+      else formError.innerHTML = `<strong>Corrija os seguintes pontos:</strong><ul>${errors.map(e => `<li>${e}</li>`).join('')}</ul>`;
       formError.classList.add('is-visible');
       formSuccess.classList.remove('is-visible');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
-
     function showSuccess(msg) {
       formSuccess.innerHTML = msg;
       formSuccess.classList.add('is-visible');
       formError.classList.remove('is-visible');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
-
     function clearMessages() {
       formError.classList.remove('is-visible');
       formSuccess.classList.remove('is-visible');
@@ -506,18 +479,14 @@
     const btnExtrair = document.getElementById('btnExtrair');
 
     let selectedFiles = [];
-    let sociosExtraidos = []; // armazenados pra inserir junto com o cliente
+    let sociosExtraidos = [];
 
-    const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+    const MAX_FILE_SIZE = 5 * 1024 * 1024;
     const ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/png'];
 
     dropZone.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', e => addFiles(Array.from(e.target.files)));
-
-    dropZone.addEventListener('dragover', e => {
-      e.preventDefault();
-      dropZone.classList.add('is-dragging');
-    });
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('is-dragging'); });
     dropZone.addEventListener('dragleave', () => dropZone.classList.remove('is-dragging'));
     dropZone.addEventListener('drop', e => {
       e.preventDefault();
@@ -528,50 +497,31 @@
     function addFiles(files) {
       const errors = [];
       files.forEach(f => {
-        if (!ALLOWED_TYPES.includes(f.type)) {
-          errors.push(`"${f.name}": formato não suportado.`);
-          return;
-        }
-        if (f.size > MAX_FILE_SIZE) {
-          errors.push(`"${f.name}": maior que 5MB.`);
-          return;
-        }
+        if (!ALLOWED_TYPES.includes(f.type)) { errors.push(`"${f.name}": formato não suportado.`); return; }
+        if (f.size > MAX_FILE_SIZE) { errors.push(`"${f.name}": maior que 5MB.`); return; }
         selectedFiles.push(f);
       });
       if (errors.length > 0) showErrors(errors);
       renderFileList();
     }
-
-    function removeFile(index) {
-      selectedFiles.splice(index, 1);
-      renderFileList();
-    }
-
+    function removeFile(index) { selectedFiles.splice(index, 1); renderFileList(); }
     function formatBytes(bytes) {
       if (bytes < 1024) return bytes + ' B';
       if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' KB';
       return (bytes / 1024 / 1024).toFixed(1) + ' MB';
     }
-
     function iconFor(mediaType) {
       const isImg = mediaType.startsWith('image/');
-      if (isImg) {
-        return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
-        </svg>`;
-      }
-      return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
-      </svg>`;
+      return isImg
+        ? `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`
+        : `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
     }
-
     function renderFileList() {
       if (selectedFiles.length === 0) {
         fileList.innerHTML = '';
         extractActions.hidden = true;
         return;
       }
-
       fileList.innerHTML = selectedFiles.map((f, i) => `
         <div class="file-item">
           <span class="file-item-icon">${iconFor(f.type)}</span>
@@ -580,17 +530,11 @@
             <div class="file-item-size">${formatBytes(f.size)}</div>
           </div>
           <button class="icon-btn icon-btn-danger" data-remove="${i}" title="Remover">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
       `).join('');
-
-      fileList.querySelectorAll('[data-remove]').forEach(b => {
-        b.addEventListener('click', () => removeFile(parseInt(b.dataset.remove)));
-      });
-
+      fileList.querySelectorAll('[data-remove]').forEach(b => b.addEventListener('click', () => removeFile(parseInt(b.dataset.remove))));
       extractActions.hidden = false;
       extractInfo.textContent = `${selectedFiles.length} arquivo${selectedFiles.length > 1 ? 's' : ''} pronto${selectedFiles.length > 1 ? 's' : ''} pra extração`;
     }
@@ -598,10 +542,7 @@
     function fileToBase64(file) {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = () => {
-          const b64 = reader.result.toString().split(',')[1];
-          resolve(b64);
-        };
+        reader.onload = () => resolve(reader.result.toString().split(',')[1]);
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
@@ -616,57 +557,31 @@
 
       try {
         const documents = await Promise.all(selectedFiles.map(async f => ({
-          media_type: f.type,
-          data: await fileToBase64(f),
-          filename: f.name
+          media_type: f.type, data: await fileToBase64(f), filename: f.name
         })));
 
-        const { data: response, error } = await supabase.functions.invoke('extract-document', {
-          body: { documents }
-        });
+        const { data: response, error } = await supabase.functions.invoke('extract-document', { body: { documents } });
 
-        if (error) {
-          showErrors([`Erro na extração: ${error.message || error}`]);
-          btnExtrair.disabled = false;
-          btnExtrair.innerHTML = 'Tentar novamente';
-          return;
-        }
-
-        if (response?.error) {
-          showErrors([`Erro: ${response.error}${response.details ? ' (' + response.details.substring(0, 200) + ')' : ''}`]);
-          btnExtrair.disabled = false;
-          btnExtrair.innerHTML = 'Tentar novamente';
-          return;
-        }
+        if (error) { showErrors([`Erro na extração: ${error.message || error}`]); btnExtrair.disabled = false; btnExtrair.innerHTML = 'Tentar novamente'; return; }
+        if (response?.error) { showErrors([`Erro: ${response.error}${response.details ? ' (' + response.details.substring(0, 200) + ')' : ''}`]); btnExtrair.disabled = false; btnExtrair.innerHTML = 'Tentar novamente'; return; }
 
         const extracted = response?.data;
-        if (!extracted) {
-          showErrors(['Não foi possível extrair dados dos documentos.']);
-          btnExtrair.disabled = false;
-          btnExtrair.innerHTML = 'Tentar novamente';
-          return;
-        }
+        if (!extracted) { showErrors(['Não foi possível extrair dados dos documentos.']); btnExtrair.disabled = false; btnExtrair.innerHTML = 'Tentar novamente'; return; }
 
         preencherFormulario(extracted);
 
         const camposPreenchidos = countFilled(extracted);
         const sociosCount = (extracted.socios || []).length;
         let msg = `<strong>Dados extraídos com sucesso.</strong> ${camposPreenchidos} campos preenchidos${sociosCount > 0 ? ` e ${sociosCount} sócio${sociosCount > 1 ? 's' : ''} identificado${sociosCount > 1 ? 's' : ''}` : ''}. Revise tudo abaixo e clique em "Salvar cliente".`;
-        if (extracted.confianca === 'baixa' || extracted.confianca === 'media') {
-          msg += `<br><br><em>Confiança da extração: ${extracted.confianca}. Verifique os campos com atenção.</em>`;
-        }
-        if (extracted.observacoes_extracao) {
-          msg += `<br><br><em>Observações da IA: ${extracted.observacoes_extracao}</em>`;
-        }
+        if (extracted.confianca === 'baixa' || extracted.confianca === 'media') msg += `<br><br><em>Confiança da extração: ${extracted.confianca}. Verifique os campos com atenção.</em>`;
+        if (extracted.observacoes_extracao) msg += `<br><br><em>Observações da IA: ${extracted.observacoes_extracao}</em>`;
         showSuccess(msg);
 
-        // Reset upload area
         selectedFiles = [];
         renderFileList();
         fileInput.value = '';
         btnExtrair.disabled = false;
         btnExtrair.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Extrair dados dos documentos';
-
       } catch (e) {
         showErrors([`Erro inesperado: ${e.message}`]);
         btnExtrair.disabled = false;
@@ -684,20 +599,12 @@
     }
 
     function preencherFormulario(d) {
-      // Tipo de pessoa
       if (d.tipo_pessoa === 'PJ') { radioPJ.checked = true; radioPF.checked = false; }
       else if (d.tipo_pessoa === 'PF') { radioPF.checked = true; radioPJ.checked = false; }
       aplicaTipo();
 
-      // Helpers
-      const setVal = (id, val) => {
-        const el = document.getElementById(id);
-        if (el && val !== null && val !== undefined) el.value = val;
-      };
-      const setMasked = (id, val, maskFn) => {
-        const el = document.getElementById(id);
-        if (el && val) el.value = maskFn(val);
-      };
+      const setVal = (id, val) => { const el = document.getElementById(id); if (el && val !== null && val !== undefined) el.value = val; };
+      const setMasked = (id, val, maskFn) => { const el = document.getElementById(id); if (el && val) el.value = maskFn(val); };
 
       setVal('nome_principal', d.nome_principal);
       setMasked('documento', d.documento, d.tipo_pessoa === 'PJ' ? maskCNPJ : maskCPF);
@@ -729,7 +636,6 @@
         setVal('nacionalidade', d.nacionalidade);
       }
 
-      // Sócios: armazena para inserir após criar cliente
       sociosExtraidos = Array.isArray(d.socios) ? d.socios.filter(s => s && s.nome) : [];
     }
 
@@ -749,7 +655,6 @@
         errors.push(tipo_pessoa === 'PJ' ? 'Informe a razão social.' : 'Informe o nome completo.');
         document.getElementById('nome_principal').classList.add('is-invalid');
       }
-
       if (!documentoRaw) {
         errors.push(`Informe o ${tipo_pessoa === 'PJ' ? 'CNPJ' : 'CPF'}.`);
         document.getElementById('documento').classList.add('is-invalid');
@@ -760,13 +665,10 @@
         errors.push('CPF inválido. Confira os dígitos.');
         document.getElementById('documento').classList.add('is-invalid');
       }
-
       if (errors.length > 0) { showErrors(errors); return; }
 
       const payload = {
-        tipo_pessoa,
-        nome_principal,
-        documento: documentoRaw,
+        tipo_pessoa, nome_principal, documento: documentoRaw,
         email_principal: document.getElementById('email_principal').value.trim() || null,
         telefone_principal: onlyDigits(document.getElementById('telefone_principal').value) || null,
         cep: onlyDigits(document.getElementById('cep').value) || null,
@@ -778,7 +680,6 @@
         uf: document.getElementById('uf').value || null,
         status: document.getElementById('status').value,
         data_inicio_cliente: document.getElementById('data_inicio_cliente').value || null,
-        drive_folder_url: document.getElementById('drive_folder_url').value.trim() || null,
         observacoes: document.getElementById('observacoes').value.trim() || null
       };
 
@@ -813,26 +714,22 @@
       const { data: cliente, error } = await supabase.from('clientes').insert(payload).select().single();
 
       if (error) {
-        btn.disabled = false;
-        btn.textContent = 'Salvar cliente';
+        btn.disabled = false; btn.textContent = 'Salvar cliente';
         if (error.code === '23505') showErrors(['Já existe um cliente cadastrado com esse CNPJ/CPF.']);
         else showErrors(['Erro ao salvar: ' + error.message]);
         return;
       }
 
-      // Insert setores
+      // Insere setores
       if (setoresChecked.length > 0) {
-        const setoresPayload = setoresChecked.map(setor => ({
-          cliente_id: cliente.id, setor, ativo: true, data_inicio: payload.data_inicio_cliente
-        }));
+        const setoresPayload = setoresChecked.map(setor => ({ cliente_id: cliente.id, setor, ativo: true, data_inicio: payload.data_inicio_cliente }));
         await supabase.from('servicos_contratados').insert(setoresPayload);
       }
 
-      // Insert sócios extraídos (se houver)
+      // Insere sócios extraídos
       if (tipo_pessoa === 'PJ' && sociosExtraidos.length > 0) {
         const sociosPayload = sociosExtraidos.map(s => ({
-          cliente_id: cliente.id,
-          nome: s.nome,
+          cliente_id: cliente.id, nome: s.nome,
           cpf: s.cpf ? onlyDigits(s.cpf) : null,
           participacao_percentual: s.participacao_percentual || null,
           qualificacao: s.qualificacao || null,
@@ -841,8 +738,26 @@
         await supabase.from('socios').insert(sociosPayload);
       }
 
-      showSuccess('Cliente cadastrado com sucesso! Redirecionando...');
-      setTimeout(() => window.location.href = 'index.html', 1500);
+      // ============================================================
+      // CRIAÇÃO AUTOMÁTICA DA PASTA NO DRIVE
+      // ============================================================
+      btn.innerHTML = '<span class="spinner spinner-sm"></span>Criando pasta no Drive...';
+
+      const { data: driveResponse, error: driveError } = await supabase.functions.invoke('create-drive-folder', {
+        body: { cliente_id: cliente.id, nome_cliente: nome_principal }
+      });
+
+      if (driveError || driveResponse?.error) {
+        const msg = driveError?.message || driveResponse?.error || 'erro desconhecido';
+        showSuccess(`Cliente cadastrado com sucesso, mas a pasta no Drive não pôde ser criada: <em>${msg}</em>. Você pode tentar criar manualmente pela tela de edição. Redirecionando...`);
+      } else {
+        const subInfo = driveResponse?.subpastas_falharam > 0
+          ? ` (${driveResponse.subpastas_falharam} subpasta${driveResponse.subpastas_falharam > 1 ? 's' : ''} não criada${driveResponse.subpastas_falharam > 1 ? 's' : ''})`
+          : '';
+        showSuccess(`Cliente cadastrado e pasta criada no Drive${subInfo}. Redirecionando...`);
+      }
+
+      setTimeout(() => window.location.href = 'index.html', 2000);
     });
 
     aplicaTipo();

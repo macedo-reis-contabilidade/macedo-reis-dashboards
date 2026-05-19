@@ -59,9 +59,7 @@
             <div class="page-header-actions">
               <button class="btn btn-danger" id="btnExcluir">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="3 6 5 6 21 6"/>
-                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-                  <path d="M10 11v6M14 11v6"/>
+                  <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/>
                 </svg>
                 Excluir
               </button>
@@ -74,13 +72,11 @@
         <div id="formError" class="form-error"></div>
         <div id="formSuccess" class="form-success"></div>
 
-        <!-- IDENTIFICAÇÃO -->
         <section class="form-section">
           <div class="form-section-head">
             <h2>Identificação</h2>
             <span class="form-section-sub">Tipo e documento não podem ser alterados</span>
           </div>
-
           <div class="form-grid">
             <div class="fg-col-3">
               <div class="form-group">
@@ -88,14 +84,12 @@
                 <input type="text" id="tipoPessoaDisplay" class="input" disabled>
               </div>
             </div>
-
             <div class="fg-col-6">
               <div class="form-group">
                 <label id="lblDocDisplay">CNPJ / CPF</label>
                 <input type="text" id="documentoDisplay" class="input" disabled>
               </div>
             </div>
-
             <div class="fg-col-3">
               <div class="form-group">
                 <label for="status">Status</label>
@@ -107,21 +101,18 @@
                 </select>
               </div>
             </div>
-
             <div class="fg-col-12">
               <div class="form-group">
                 <label for="nome_principal" id="lblNome">Razão social<span class="required-mark">*</span></label>
                 <input type="text" id="nome_principal" class="input" required>
               </div>
             </div>
-
             <div class="fg-col-6">
               <div class="form-group">
                 <label for="data_inicio_cliente">Início como cliente</label>
                 <input type="date" id="data_inicio_cliente" class="input">
               </div>
             </div>
-
             <div class="fg-col-6">
               <div class="form-group">
                 <label for="data_fim_cliente">Fim como cliente</label>
@@ -131,7 +122,6 @@
           </div>
         </section>
 
-        <!-- CONTATO -->
         <section class="form-section">
           <div class="form-section-head"><h2>Contato</h2></div>
           <div class="form-grid">
@@ -150,7 +140,6 @@
           </div>
         </section>
 
-        <!-- ENDEREÇO -->
         <section class="form-section">
           <div class="form-section-head">
             <h2>Endereço</h2>
@@ -203,7 +192,6 @@
           </div>
         </section>
 
-        <!-- DADOS PJ -->
         <section class="form-section" id="sectionPJ" hidden>
           <div class="form-section-head"><h2>Dados da empresa</h2></div>
           <div class="form-grid">
@@ -278,7 +266,6 @@
           </div>
         </section>
 
-        <!-- DADOS PF -->
         <section class="form-section" id="sectionPF" hidden>
           <div class="form-section-head"><h2>Dados pessoais</h2></div>
           <div class="form-grid">
@@ -322,7 +309,6 @@
           </div>
         </section>
 
-        <!-- SETORES -->
         <section class="form-section">
           <div class="form-section-head">
             <h2>Setores contratados</h2>
@@ -337,47 +323,64 @@
           </div>
         </section>
 
-        <!-- SÓCIOS (PJ apenas) -->
         <section class="form-section" id="sectionSocios" hidden>
           <div class="form-section-head">
             <h2>Sócios</h2>
             <span class="form-section-sub">Salvos automaticamente ao adicionar/remover</span>
             <button class="btn btn-ghost btn-sm" id="btnAddSocio">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-              </svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               Adicionar sócio
             </button>
           </div>
           <div id="sociosList" class="item-list"></div>
         </section>
 
-        <!-- CONTATOS -->
         <section class="form-section">
           <div class="form-section-head">
             <h2>Contatos adicionais</h2>
             <span class="form-section-sub">Salvos automaticamente ao adicionar/remover</span>
             <button class="btn btn-ghost btn-sm" id="btnAddContato">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-              </svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               Adicionar contato
             </button>
           </div>
           <div id="contatosList" class="item-list"></div>
         </section>
 
-        <!-- DRIVE / OBSERVAÇÕES -->
         <section class="form-section">
-          <div class="form-section-head"><h2>Pasta no Drive e observações</h2></div>
+          <div class="form-section-head">
+            <h2>Pasta no Drive</h2>
+            <span class="form-section-sub">Vinculada automaticamente ao cadastrar</span>
+          </div>
           <div class="form-grid">
             <div class="fg-col-12">
               <div class="form-group">
-                <label for="drive_folder_url">URL da pasta do cliente no Drive</label>
-                <input type="url" id="drive_folder_url" class="input">
-                <div class="field-help">Cole o link da pasta deste cliente no Drive.</div>
+                <label for="drive_folder_url">URL da pasta</label>
+                <div style="display: flex; gap: 10px; align-items: stretch;">
+                  <input type="url" id="drive_folder_url" class="input" style="flex: 1;" placeholder="https://drive.google.com/drive/folders/…">
+                  <a id="btnAbrirDrive" href="#" target="_blank" class="btn btn-ghost" hidden>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+                    </svg>
+                    Abrir
+                  </a>
+                  <button id="btnCriarPastaDrive" class="btn btn-primary" type="button" hidden>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                      <line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/>
+                    </svg>
+                    Criar pasta no Drive
+                  </button>
+                </div>
+                <div class="field-help" id="drivePastaStatus">Quando vazio, clique em "Criar pasta no Drive" para gerar a estrutura padrão.</div>
               </div>
             </div>
+          </div>
+        </section>
+
+        <section class="form-section">
+          <div class="form-section-head"><h2>Observações</h2></div>
+          <div class="form-grid">
             <div class="fg-col-12">
               <div class="form-group">
                 <label for="observacoes">Observações</label>
@@ -395,7 +398,7 @@
     </main>
   </div>
 
-  <!-- DIALOG: ADICIONAR/EDITAR SÓCIO -->
+  <!-- DIALOGS -->
   <dialog id="dialogSocio">
     <div class="dialog-card">
       <div class="dialog-head">
@@ -403,51 +406,13 @@
         <p>Dados do sócio da empresa</p>
       </div>
       <div class="form-grid">
-        <div class="fg-col-12">
-          <div class="form-group">
-            <label for="socio_nome">Nome completo<span class="required-mark">*</span></label>
-            <input type="text" id="socio_nome" class="input">
-          </div>
-        </div>
-        <div class="fg-col-7">
-          <div class="form-group">
-            <label for="socio_cpf">CPF</label>
-            <input type="text" id="socio_cpf" class="input">
-          </div>
-        </div>
-        <div class="fg-col-5">
-          <div class="form-group">
-            <label for="socio_participacao">Participação (%)</label>
-            <input type="number" id="socio_participacao" class="input" step="0.01" min="0" max="100">
-          </div>
-        </div>
-        <div class="fg-col-7">
-          <div class="form-group">
-            <label for="socio_qualificacao">Qualificação</label>
-            <input type="text" id="socio_qualificacao" class="input" placeholder="Ex: Sócio-Administrador">
-          </div>
-        </div>
-        <div class="fg-col-5">
-          <div class="form-group" style="display: flex; align-items: flex-end; height: 100%;">
-            <label class="checkbox-card" style="width: 100%;">
-              <input type="checkbox" id="socio_admin">
-              <span class="check-indicator"></span>
-              <span>É administrador</span>
-            </label>
-          </div>
-        </div>
-        <div class="fg-col-6">
-          <div class="form-group">
-            <label for="socio_telefone">Telefone</label>
-            <input type="text" id="socio_telefone" class="input">
-          </div>
-        </div>
-        <div class="fg-col-6">
-          <div class="form-group">
-            <label for="socio_email">Email</label>
-            <input type="email" id="socio_email" class="input">
-          </div>
-        </div>
+        <div class="fg-col-12"><div class="form-group"><label for="socio_nome">Nome completo<span class="required-mark">*</span></label><input type="text" id="socio_nome" class="input"></div></div>
+        <div class="fg-col-7"><div class="form-group"><label for="socio_cpf">CPF</label><input type="text" id="socio_cpf" class="input"></div></div>
+        <div class="fg-col-5"><div class="form-group"><label for="socio_participacao">Participação (%)</label><input type="number" id="socio_participacao" class="input" step="0.01" min="0" max="100"></div></div>
+        <div class="fg-col-7"><div class="form-group"><label for="socio_qualificacao">Qualificação</label><input type="text" id="socio_qualificacao" class="input" placeholder="Ex: Sócio-Administrador"></div></div>
+        <div class="fg-col-5"><div class="form-group" style="display: flex; align-items: flex-end; height: 100%;"><label class="checkbox-card" style="width: 100%;"><input type="checkbox" id="socio_admin"><span class="check-indicator"></span><span>É administrador</span></label></div></div>
+        <div class="fg-col-6"><div class="form-group"><label for="socio_telefone">Telefone</label><input type="text" id="socio_telefone" class="input"></div></div>
+        <div class="fg-col-6"><div class="form-group"><label for="socio_email">Email</label><input type="email" id="socio_email" class="input"></div></div>
       </div>
       <div class="dialog-actions">
         <button class="btn btn-ghost" id="btnSocioCancelar">Cancelar</button>
@@ -456,45 +421,18 @@
     </div>
   </dialog>
 
-  <!-- DIALOG: ADICIONAR/EDITAR CONTATO -->
   <dialog id="dialogContato">
     <div class="dialog-card">
       <div class="dialog-head">
         <h2 id="dialogContatoTitulo">Adicionar contato</h2>
-        <p>Contato adicional do cliente (financeiro, RH, etc)</p>
+        <p>Contato adicional do cliente</p>
       </div>
       <div class="form-grid">
-        <div class="fg-col-12">
-          <div class="form-group">
-            <label for="contato_nome">Nome<span class="required-mark">*</span></label>
-            <input type="text" id="contato_nome" class="input">
-          </div>
-        </div>
-        <div class="fg-col-12">
-          <div class="form-group">
-            <label for="contato_papel">Papel / função</label>
-            <input type="text" id="contato_papel" class="input" placeholder="Ex: Financeiro, RH, Diretor">
-          </div>
-        </div>
-        <div class="fg-col-6">
-          <div class="form-group">
-            <label for="contato_telefone">Telefone</label>
-            <input type="text" id="contato_telefone" class="input">
-          </div>
-        </div>
-        <div class="fg-col-6">
-          <div class="form-group">
-            <label for="contato_email">Email</label>
-            <input type="email" id="contato_email" class="input">
-          </div>
-        </div>
-        <div class="fg-col-12">
-          <label class="checkbox-card">
-            <input type="checkbox" id="contato_principal">
-            <span class="check-indicator"></span>
-            <span>Marcar como contato principal</span>
-          </label>
-        </div>
+        <div class="fg-col-12"><div class="form-group"><label for="contato_nome">Nome<span class="required-mark">*</span></label><input type="text" id="contato_nome" class="input"></div></div>
+        <div class="fg-col-12"><div class="form-group"><label for="contato_papel">Papel / função</label><input type="text" id="contato_papel" class="input" placeholder="Ex: Financeiro, RH, Diretor"></div></div>
+        <div class="fg-col-6"><div class="form-group"><label for="contato_telefone">Telefone</label><input type="text" id="contato_telefone" class="input"></div></div>
+        <div class="fg-col-6"><div class="form-group"><label for="contato_email">Email</label><input type="email" id="contato_email" class="input"></div></div>
+        <div class="fg-col-12"><label class="checkbox-card"><input type="checkbox" id="contato_principal"><span class="check-indicator"></span><span>Marcar como contato principal</span></label></div>
       </div>
       <div class="dialog-actions">
         <button class="btn btn-ghost" id="btnContatoCancelar">Cancelar</button>
@@ -503,12 +441,11 @@
     </div>
   </dialog>
 
-  <!-- DIALOG: CONFIRMAR EXCLUSÃO -->
   <dialog id="dialogConfirmDelete">
     <div class="dialog-card dialog-card-narrow">
       <div class="dialog-head">
         <h2>Excluir cliente?</h2>
-        <p>Esta ação é permanente e não pode ser desfeita. Todos os sócios, contatos e setores vinculados a este cliente também serão excluídos.</p>
+        <p>Esta ação é permanente. Todos os sócios, contatos e setores vinculados serão excluídos.</p>
       </div>
       <p style="font-size: 0.88rem; color: var(--text-muted); padding: 14px 16px; background: var(--surface-2); border-radius: var(--radius); border-left: 3px solid var(--danger);">
         <strong id="deleteClienteNome" style="color: var(--text);">—</strong>
@@ -528,7 +465,6 @@
       onlyDigits, buscarCEP, ESTADOS_BR
     } from '../assets/js/utils.js';
 
-    // --- Topbar / Auth ---
     (async () => {
       const user = await getCurrentUser();
       if (user) {
@@ -539,7 +475,6 @@
     })();
     document.getElementById('btnLogout').addEventListener('click', signOut);
 
-    // --- Estado ---
     const urlParams = new URLSearchParams(window.location.search);
     const clienteId = urlParams.get('id');
     let cliente = null;
@@ -548,27 +483,20 @@
     let socioEditId = null;
     let contatoEditId = null;
 
-    if (!clienteId) {
-      window.location.href = 'index.html';
-    }
+    if (!clienteId) window.location.href = 'index.html';
 
-    // --- Popula UFs ---
     const ufSelect = document.getElementById('uf');
     ESTADOS_BR.forEach(uf => {
       const opt = document.createElement('option');
-      opt.value = uf;
-      opt.textContent = uf;
-      ufSelect.appendChild(opt);
+      opt.value = uf; opt.textContent = uf; ufSelect.appendChild(opt);
     });
 
-    // --- Máscaras ---
     bindMask(document.getElementById('telefone_principal'), maskTelefone);
     bindMask(document.getElementById('cep'), maskCEP);
     bindMask(document.getElementById('socio_cpf'), maskCPF);
     bindMask(document.getElementById('socio_telefone'), maskTelefone);
     bindMask(document.getElementById('contato_telefone'), maskTelefone);
 
-    // --- ViaCEP ---
     document.getElementById('cep').addEventListener('blur', async () => {
       const d = onlyDigits(document.getElementById('cep').value);
       if (d.length !== 8) return;
@@ -581,9 +509,7 @@
         if (endereco.bairro) document.getElementById('bairro').value = endereco.bairro;
         if (endereco.cidade) document.getElementById('cidade').value = endereco.cidade;
         if (endereco.uf) document.getElementById('uf').value = endereco.uf;
-        cepStatus.textContent = endereco.logradouro
-          ? 'Endereço atualizado.'
-          : 'CEP genérico — preencha logradouro e bairro manualmente.';
+        cepStatus.textContent = endereco.logradouro ? 'Endereço atualizado.' : 'CEP genérico — preencha logradouro e bairro manualmente.';
         cepStatus.style.color = endereco.logradouro ? 'var(--success)' : 'var(--warning)';
         setTimeout(() => { cepStatus.textContent = ''; cepStatus.style.color = ''; }, 4000);
       } else {
@@ -592,7 +518,6 @@
       }
     });
 
-    // --- Carrega dados do cliente ---
     async function loadCliente() {
       const [clienteRes, sociosRes, contatosRes, servicosRes] = await Promise.all([
         supabase.from('clientes').select('*').eq('id', clienteId).single(),
@@ -612,21 +537,16 @@
       cliente = clienteRes.data;
       socios = sociosRes.data || [];
       contatos = contatosRes.data || [];
-      const servicos = servicosRes.data || [];
-
-      preencheCampos(servicos);
-
+      preencheCampos(servicosRes.data || []);
       document.getElementById('loader').hidden = true;
       document.getElementById('formArea').hidden = false;
     }
 
     function preencheCampos(servicos) {
-      // Identificação não-editável
       document.getElementById('tipoPessoaDisplay').value = cliente.tipo_pessoa === 'PJ' ? 'Pessoa Jurídica' : 'Pessoa Física';
       document.getElementById('documentoDisplay').value = formatDocumento(cliente.documento);
       document.getElementById('lblDocDisplay').textContent = cliente.tipo_pessoa === 'PJ' ? 'CNPJ' : 'CPF';
 
-      // Header / breadcrumb
       const displayName = cliente.nome_principal;
       document.getElementById('bcNome').textContent = displayName;
       document.getElementById('pageTitle').textContent = displayName;
@@ -634,7 +554,6 @@
       document.getElementById('deleteClienteNome').textContent = displayName;
       document.title = `${displayName} — Macedo & Reis`;
 
-      // Campos editáveis comuns
       document.getElementById('nome_principal').value = cliente.nome_principal || '';
       document.getElementById('lblNome').innerHTML = (cliente.tipo_pessoa === 'PJ' ? 'Razão social' : 'Nome completo') + '<span class="required-mark">*</span>';
       document.getElementById('status').value = cliente.status || 'ativo';
@@ -652,7 +571,8 @@
       document.getElementById('drive_folder_url').value = cliente.drive_folder_url || '';
       document.getElementById('observacoes').value = cliente.observacoes || '';
 
-      // Campos PJ vs PF
+      atualizaBotoesDrive();
+
       if (cliente.tipo_pessoa === 'PJ') {
         document.getElementById('sectionPJ').hidden = false;
         document.getElementById('sectionPF').hidden = true;
@@ -677,31 +597,79 @@
         document.getElementById('nacionalidade').value = cliente.nacionalidade || 'Brasileira';
       }
 
-      // Setores
       const setoresAtivos = servicos.filter(s => s.ativo).map(s => s.setor);
       document.querySelectorAll('#setoresGroup input[type="checkbox"]').forEach(cb => {
         cb.checked = setoresAtivos.includes(cb.value);
       });
 
-      // Sócios e contatos
       renderSocios();
       renderContatos();
     }
 
-    // --- Renderização de listas ---
-    function renderSocios() {
-      const wrap = document.getElementById('sociosList');
-      if (socios.length === 0) {
-        wrap.innerHTML = '<div class="empty-mini">Nenhum sócio cadastrado.</div>';
+    // ============================================================
+    // PASTA NO DRIVE
+    // ============================================================
+    function atualizaBotoesDrive() {
+      const url = document.getElementById('drive_folder_url').value.trim();
+      const btnAbrir = document.getElementById('btnAbrirDrive');
+      const btnCriar = document.getElementById('btnCriarPastaDrive');
+      const status = document.getElementById('drivePastaStatus');
+      if (url) {
+        btnAbrir.hidden = false;
+        btnAbrir.href = url;
+        btnCriar.hidden = true;
+        status.textContent = 'Pasta vinculada. Clique em "Abrir" para acessar no Drive.';
+      } else {
+        btnAbrir.hidden = true;
+        btnCriar.hidden = false;
+        status.textContent = 'Quando vazio, clique em "Criar pasta no Drive" para gerar a estrutura padrão (com subpastas).';
+      }
+    }
+
+    document.getElementById('drive_folder_url').addEventListener('input', atualizaBotoesDrive);
+
+    document.getElementById('btnCriarPastaDrive').addEventListener('click', async () => {
+      const btn = document.getElementById('btnCriarPastaDrive');
+      const status = document.getElementById('drivePastaStatus');
+      const nome = document.getElementById('nome_principal').value.trim() || cliente.nome_principal;
+
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner spinner-sm"></span>Criando...';
+      status.textContent = 'Criando pasta e subpastas no Drive...';
+      status.style.color = '';
+
+      const { data: response, error } = await supabase.functions.invoke('create-drive-folder', {
+        body: { cliente_id: clienteId, nome_cliente: nome }
+      });
+
+      if (error || response?.error) {
+        const msg = error?.message || response?.error || 'erro desconhecido';
+        status.textContent = `Erro ao criar pasta: ${msg}`;
+        status.style.color = 'var(--danger)';
+        btn.disabled = false;
+        btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>Tentar novamente';
         return;
       }
+
+      document.getElementById('drive_folder_url').value = response.folder_url;
+      cliente.drive_folder_url = response.folder_url;
+      atualizaBotoesDrive();
+      status.textContent = `Pasta criada${response.subpastas_falharam > 0 ? ` (${response.subpastas_falharam} subpasta(s) não criada(s))` : ' com 6 subpastas'}.`;
+      status.style.color = 'var(--success)';
+      btn.disabled = false;
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>Criar pasta no Drive';
+    });
+
+    // ============================================================
+    // SÓCIOS / CONTATOS / SALVAR / EXCLUIR
+    // ============================================================
+    function renderSocios() {
+      const wrap = document.getElementById('sociosList');
+      if (socios.length === 0) { wrap.innerHTML = '<div class="empty-mini">Nenhum sócio cadastrado.</div>'; return; }
       wrap.innerHTML = socios.map(s => `
         <div class="list-item">
           <div class="list-item-info">
-            <div class="list-item-name">
-              ${s.nome}
-              ${s.eh_administrador ? '<span class="list-item-meta-tag">Administrador</span>' : ''}
-            </div>
+            <div class="list-item-name">${s.nome}${s.eh_administrador ? '<span class="list-item-meta-tag">Administrador</span>' : ''}</div>
             <div class="list-item-meta">
               ${s.cpf ? `<span>CPF: ${formatCPF(s.cpf)}</span>` : ''}
               ${s.participacao_percentual ? `<span>${s.participacao_percentual}%</span>` : ''}
@@ -711,16 +679,8 @@
             </div>
           </div>
           <div class="list-item-actions">
-            <button class="icon-btn" data-edit-socio="${s.id}" title="Editar">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/>
-              </svg>
-            </button>
-            <button class="icon-btn icon-btn-danger" data-remove-socio="${s.id}" title="Remover">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-              </svg>
-            </button>
+            <button class="icon-btn" data-edit-socio="${s.id}" title="Editar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button>
+            <button class="icon-btn icon-btn-danger" data-remove-socio="${s.id}" title="Remover"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>
           </div>
         </div>
       `).join('');
@@ -730,17 +690,11 @@
 
     function renderContatos() {
       const wrap = document.getElementById('contatosList');
-      if (contatos.length === 0) {
-        wrap.innerHTML = '<div class="empty-mini">Nenhum contato adicional cadastrado.</div>';
-        return;
-      }
+      if (contatos.length === 0) { wrap.innerHTML = '<div class="empty-mini">Nenhum contato adicional cadastrado.</div>'; return; }
       wrap.innerHTML = contatos.map(c => `
         <div class="list-item">
           <div class="list-item-info">
-            <div class="list-item-name">
-              ${c.nome}
-              ${c.eh_principal ? '<span class="list-item-meta-tag">Principal</span>' : ''}
-            </div>
+            <div class="list-item-name">${c.nome}${c.eh_principal ? '<span class="list-item-meta-tag">Principal</span>' : ''}</div>
             <div class="list-item-meta">
               ${c.papel ? `<span>${c.papel}</span>` : ''}
               ${c.telefone ? `<span>${formatTelefone(c.telefone)}</span>` : ''}
@@ -748,16 +702,8 @@
             </div>
           </div>
           <div class="list-item-actions">
-            <button class="icon-btn" data-edit-contato="${c.id}" title="Editar">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/>
-              </svg>
-            </button>
-            <button class="icon-btn icon-btn-danger" data-remove-contato="${c.id}" title="Remover">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-              </svg>
-            </button>
+            <button class="icon-btn" data-edit-contato="${c.id}" title="Editar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button>
+            <button class="icon-btn icon-btn-danger" data-remove-contato="${c.id}" title="Remover"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>
           </div>
         </div>
       `).join('');
@@ -765,9 +711,7 @@
       wrap.querySelectorAll('[data-remove-contato]').forEach(b => b.addEventListener('click', () => removeContato(b.dataset.removeContato)));
     }
 
-    // --- DIALOG SÓCIO ---
     const dialogSocio = document.getElementById('dialogSocio');
-
     function openSocioDialog(id = null) {
       socioEditId = id;
       document.getElementById('dialogSocioTitulo').textContent = id ? 'Editar sócio' : 'Adicionar sócio';
@@ -793,10 +737,8 @@
     document.getElementById('btnSocioSalvar').addEventListener('click', async () => {
       const nome = document.getElementById('socio_nome').value.trim();
       if (!nome) { alert('Informe o nome do sócio.'); return; }
-
       const payload = {
-        cliente_id: clienteId,
-        nome,
+        cliente_id: clienteId, nome,
         cpf: onlyDigits(document.getElementById('socio_cpf').value) || null,
         participacao_percentual: document.getElementById('socio_participacao').value || null,
         qualificacao: document.getElementById('socio_qualificacao').value.trim() || null,
@@ -804,24 +746,12 @@
         telefone: onlyDigits(document.getElementById('socio_telefone').value) || null,
         email: document.getElementById('socio_email').value.trim() || null
       };
-
       let res;
-      if (socioEditId) {
-        res = await supabase.from('socios').update(payload).eq('id', socioEditId).select().single();
-      } else {
-        res = await supabase.from('socios').insert(payload).select().single();
-      }
-
-      if (res.error) {
-        alert('Erro ao salvar sócio: ' + res.error.message);
-        return;
-      }
-
-      if (socioEditId) {
-        socios = socios.map(s => s.id === socioEditId ? res.data : s);
-      } else {
-        socios.push(res.data);
-      }
+      if (socioEditId) res = await supabase.from('socios').update(payload).eq('id', socioEditId).select().single();
+      else res = await supabase.from('socios').insert(payload).select().single();
+      if (res.error) { alert('Erro ao salvar sócio: ' + res.error.message); return; }
+      if (socioEditId) socios = socios.map(s => s.id === socioEditId ? res.data : s);
+      else socios.push(res.data);
       renderSocios();
       dialogSocio.close();
     });
@@ -834,9 +764,7 @@
       renderSocios();
     }
 
-    // --- DIALOG CONTATO ---
     const dialogContato = document.getElementById('dialogContato');
-
     function openContatoDialog(id = null) {
       contatoEditId = id;
       document.getElementById('dialogContatoTitulo').textContent = id ? 'Editar contato' : 'Adicionar contato';
@@ -860,33 +788,19 @@
     document.getElementById('btnContatoSalvar').addEventListener('click', async () => {
       const nome = document.getElementById('contato_nome').value.trim();
       if (!nome) { alert('Informe o nome do contato.'); return; }
-
       const payload = {
-        cliente_id: clienteId,
-        nome,
+        cliente_id: clienteId, nome,
         papel: document.getElementById('contato_papel').value.trim() || null,
         telefone: onlyDigits(document.getElementById('contato_telefone').value) || null,
         email: document.getElementById('contato_email').value.trim() || null,
         eh_principal: document.getElementById('contato_principal').checked
       };
-
       let res;
-      if (contatoEditId) {
-        res = await supabase.from('contatos').update(payload).eq('id', contatoEditId).select().single();
-      } else {
-        res = await supabase.from('contatos').insert(payload).select().single();
-      }
-
-      if (res.error) {
-        alert('Erro ao salvar contato: ' + res.error.message);
-        return;
-      }
-
-      if (contatoEditId) {
-        contatos = contatos.map(c => c.id === contatoEditId ? res.data : c);
-      } else {
-        contatos.push(res.data);
-      }
+      if (contatoEditId) res = await supabase.from('contatos').update(payload).eq('id', contatoEditId).select().single();
+      else res = await supabase.from('contatos').insert(payload).select().single();
+      if (res.error) { alert('Erro ao salvar contato: ' + res.error.message); return; }
+      if (contatoEditId) contatos = contatos.map(c => c.id === contatoEditId ? res.data : c);
+      else contatos.push(res.data);
       renderContatos();
       dialogContato.close();
     });
@@ -899,7 +813,6 @@
       renderContatos();
     }
 
-    // --- SALVAR ALTERAÇÕES (campos do cliente + setores) ---
     const formError = document.getElementById('formError');
     const formSuccess = document.getElementById('formSuccess');
 
@@ -909,7 +822,6 @@
       formSuccess.classList.remove('is-visible');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
-
     function showSuccess(msg) {
       formSuccess.textContent = msg;
       formSuccess.classList.add('is-visible');
@@ -920,10 +832,7 @@
 
     async function salvar() {
       const nome = document.getElementById('nome_principal').value.trim();
-      if (!nome) {
-        showError(cliente.tipo_pessoa === 'PJ' ? 'Informe a razão social.' : 'Informe o nome completo.');
-        return;
-      }
+      if (!nome) { showError(cliente.tipo_pessoa === 'PJ' ? 'Informe a razão social.' : 'Informe o nome completo.'); return; }
 
       const payload = {
         nome_principal: nome,
@@ -970,7 +879,6 @@
       const btns = [document.getElementById('btnSalvar'), document.getElementById('btnSalvarBottom')];
       btns.forEach(b => { b.disabled = true; b.innerHTML = '<span class="spinner spinner-sm"></span>Salvando...'; });
 
-      // Update cliente
       const { error: errUpdate } = await supabase.from('clientes').update(payload).eq('id', clienteId);
       if (errUpdate) {
         btns.forEach(b => { b.disabled = false; b.textContent = 'Salvar alterações'; });
@@ -978,19 +886,12 @@
         return;
       }
 
-      // Reset setores (delete all + insert new selection)
       await supabase.from('servicos_contratados').delete().eq('cliente_id', clienteId);
       if (setoresSel.length > 0) {
-        const setoresPayload = setoresSel.map(setor => ({
-          cliente_id: clienteId,
-          setor,
-          ativo: true,
-          data_inicio: payload.data_inicio_cliente
-        }));
+        const setoresPayload = setoresSel.map(setor => ({ cliente_id: clienteId, setor, ativo: true, data_inicio: payload.data_inicio_cliente }));
         await supabase.from('servicos_contratados').insert(setoresPayload);
       }
 
-      // Atualiza estado local
       Object.assign(cliente, payload);
       document.getElementById('bcNome').textContent = nome;
       document.getElementById('pageTitle').textContent = nome;
@@ -1002,7 +903,6 @@
     document.getElementById('btnSalvar').addEventListener('click', salvar);
     document.getElementById('btnSalvarBottom').addEventListener('click', salvar);
 
-    // --- EXCLUIR CLIENTE ---
     const dialogDelete = document.getElementById('dialogConfirmDelete');
     document.getElementById('btnExcluir').addEventListener('click', () => dialogDelete.showModal());
     document.getElementById('btnDeleteCancelar').addEventListener('click', () => dialogDelete.close());
@@ -1021,7 +921,6 @@
       window.location.href = 'index.html';
     });
 
-    // --- Inicia ---
     loadCliente();
   </script>
 </body>
