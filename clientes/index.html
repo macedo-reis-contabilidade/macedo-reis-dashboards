@@ -44,7 +44,7 @@
         </div>
         <div class="eyebrow">Cadastro</div>
         <h1>Clientes</h1>
-        <p>Base mestre de clientes PJ e PF do escritório.</p>
+        <p>Base mestre de clientes PJ e PF do escritório. Clique em uma linha para editar.</p>
       </div>
 
       <div class="toolbar">
@@ -82,10 +82,11 @@
               <th>Status</th>
               <th>Cidade / UF</th>
               <th>Cadastrado em</th>
+              <th></th>
             </tr>
           </thead>
           <tbody id="tbody">
-            <tr class="loading-row"><td colspan="6"><span class="spinner"></span>Carregando clientes…</td></tr>
+            <tr class="loading-row"><td colspan="7"><span class="spinner"></span>Carregando clientes…</td></tr>
           </tbody>
         </table>
       </div>
@@ -121,7 +122,7 @@
         .order('nome_principal');
 
       if (error) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--danger); padding: 40px;">Erro ao carregar clientes: ${error.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--danger); padding: 40px;">Erro ao carregar clientes: ${error.message}</td></tr>`;
         return;
       }
 
@@ -146,7 +147,7 @@
 
       if (filtered.length === 0) {
         tbody.innerHTML = `
-          <tr><td colspan="6">
+          <tr><td colspan="7">
             <div class="empty-state">
               <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
@@ -163,7 +164,7 @@
       }
 
       tbody.innerHTML = filtered.map(c => `
-        <tr>
+        <tr class="is-clickable" data-id="${c.id}">
           <td data-label="Nome">
             <div class="table-name">${c.nome_principal}</div>
             ${c.nome_fantasia ? `<div class="table-sub">${c.nome_fantasia}</div>` : ''}
@@ -173,8 +174,19 @@
           <td data-label="Status"><span class="status-pill status-${c.status}">${STATUS_LABELS[c.status] || c.status}</span></td>
           <td data-label="Localização">${c.cidade ? `${c.cidade}${c.uf ? '/' + c.uf : ''}` : '—'}</td>
           <td data-label="Cadastrado">${formatDate(c.created_at)}</td>
+          <td data-label="" style="text-align: right;">
+            <svg class="chevron-right" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+          </td>
         </tr>
       `).join('');
+
+      tbody.querySelectorAll('tr.is-clickable').forEach(tr => {
+        tr.addEventListener('click', () => {
+          window.location.href = `editar.html?id=${tr.dataset.id}`;
+        });
+      });
     }
 
     searchInput.addEventListener('input', render);
