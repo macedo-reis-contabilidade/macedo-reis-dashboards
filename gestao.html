@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gestão — Macedo & Reis</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip"><div class="user-avatar" id="userAvatar">—</div><span id="userName">Carregando…</span></div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Gestão</span>
+        </div>
+        <div class="eyebrow">Sócios</div>
+        <h1>Gestão</h1>
+        <p>O painel de vocês dois. Pautas são os assuntos a discutir nas reuniões; tarefas são as ações decididas. Uma pauta resolvida pode virar tarefa.</p>
+      </div>
+
+      <div class="fa-subnav">
+        <button class="fa-tab is-active" data-modo="pauta">Pautas</button>
+        <button class="fa-tab" data-modo="tarefa">Tarefas</button>
+      </div>
+
+      <div class="toolbar">
+        <div class="toolbar-filters">
+          <input type="text" id="searchInput" class="input input-search" placeholder="Buscar…">
+          <select id="filterResp" class="select fa-sel">
+            <option value="">Todos</option>
+            <option value="Samuel">Samuel</option>
+            <option value="Diego">Diego</option>
+            <option value="Ambos">Ambos</option>
+          </select>
+          <select id="filterStatus" class="select fa-sel">
+            <option value="abertos">Em aberto</option>
+            <option value="concluida">Concluídos</option>
+            <option value="todas">Todos</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" id="btnNovo">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <span id="btnNovoLabel">Nova pauta</span>
+        </button>
+      </div>
+
+      <div id="lista"><div class="loading-row" style="padding:40px;text-align:center;"><span class="spinner"></span>Carregando…</div></div>
+    </main>
+  </div>
+
+  <div class="fa-modal-overlay" id="modalOverlay">
+    <div class="fa-modal">
+      <div class="fa-modal-head"><h3 id="modalTitulo">Nova pauta</h3><button class="fa-modal-close" id="modalClose">&times;</button></div>
+      <div class="fa-modal-body">
+        <label class="fa-field"><span>Título *</span><input type="text" id="gTitulo" class="input" placeholder=""></label>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Responsável</span>
+            <select id="gResp" class="select"><option value="">—</option><option value="Samuel">Samuel</option><option value="Diego">Diego</option><option value="Ambos">Ambos</option></select>
+          </label>
+          <label class="fa-field" id="gPrazoWrap"><span>Prazo</span><input type="date" id="gPrazo" class="input"></label>
+        </div>
+        <label class="fa-field"><span>Descrição</span><textarea id="gDescricao" class="input" rows="3" placeholder="Detalhes (opcional)"></textarea></label>
+      </div>
+      <div class="fa-modal-foot"><button class="btn btn-ghost" id="btnCancelar">Cancelar</button><button class="btn btn-primary" id="btnSalvar">Salvar</button></div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { formatDate } from './assets/js/utils.js';
+
+    const SETOR = 'gestao';
+    const elLista = document.getElementById('lista');
+    const searchInput = document.getElementById('searchInput');
+    const filterResp = document.getElementById('filterResp');
+    const filterStatus = document.getElementById('filterStatus');
+
+    let itens = [];
+    let usuarioEmail = null;
+    let modo = 'pauta';
+
+    (async () => {
+      const user = await getCurrentUser();
+      if (user) {
+        usuarioEmail = user.email;
+        const n = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário';
+        document.getElementById('userName').textContent = n;
+        document.getElementById('userAvatar').textContent = n.charAt(0).toUpperCase();
+      }
+      await carregar();
+    })();
+
+    document.getElementById('btnLogout').addEventListener('click', signOut);
+
+    document.querySelectorAll('.fa-tab').forEach(t => t.addEventListener('click', () => {
+      modo = t.dataset.modo;
+      document.querySelectorAll('.fa-tab').forEach(x => x.classList.toggle('is-active', x === t));
+      document.getElementById('btnNovoLabel').textContent = modo === 'pauta' ? 'Nova pauta' : 'Nova tarefa';
+      render();
+    }));
+
+    // Modal
+    const overlay = document.getElementById('modalOverlay');
+    document.getElementById('btnNovo').addEventListener('click', abrirModal);
+    document.getElementById('modalClose').addEventListener('click', fecharModal);
+    document.getElementById('btnCancelar').addEventListener('click', fecharModal);
+    overlay.addEventListener('click', e => { if (e.target === overlay) fecharModal(); });
+    function abrirModal() {
+      document.getElementById('modalTitulo').textContent = modo === 'pauta' ? 'Nova pauta' : 'Nova tarefa';
+      document.getElementById('gTitulo').placeholder = modo === 'pauta' ? 'Ex.: Revisar tabela de honorários' : 'Ex.: Fechar integração Banco Inter';
+      document.getElementById('gPrazoWrap').style.display = modo === 'tarefa' ? 'flex' : 'none';
+      overlay.classList.add('is-open');
+    }
+    function fecharModal(){ overlay.classList.remove('is-open'); ['gTitulo','gPrazo','gDescricao'].forEach(id=>document.getElementById(id).value=''); document.getElementById('gResp').value=''; }
+
+    document.getElementById('btnSalvar').addEventListener('click', async () => {
+      const titulo = document.getElementById('gTitulo').value.trim();
+      if (!titulo) { alert('Informe o título.'); return; }
+      const novo = {
+        setor: SETOR, tipo: modo, titulo,
+        responsavel: document.getElementById('gResp').value || null,
+        descricao: document.getElementById('gDescricao').value.trim() || null,
+        prazo: (modo === 'tarefa' && document.getElementById('gPrazo').value) ? document.getElementById('gPrazo').value : null,
+        status: 'pendente', origem: 'avulsa', cliente_id: null
+      };
+      const { error } = await supabase.from('tarefas').insert(novo);
+      if (error) { alert('Erro ao salvar: ' + error.message); return; }
+      fecharModal();
+      await carregar();
+    });
+
+    async function carregar() {
+      const { data, error } = await supabase.from('tarefas').select('*').eq('setor', SETOR).order('created_at', { ascending: false });
+      if (error) { elLista.innerHTML = '<div style="text-align:center;color:var(--danger);padding:40px;">Erro: ' + error.message + '</div>'; return; }
+      itens = data || [];
+      render();
+    }
+
+    function render() {
+      const s = searchInput.value.toLowerCase().trim();
+      const fr = filterResp.value, fs = filterStatus.value;
+      const vis = itens.filter(t => {
+        if ((t.tipo || 'tarefa') !== modo) return false;
+        if (fr && t.responsavel !== fr) return false;
+        if (fs === 'abertos' && t.status === 'concluida') return false;
+        if (fs === 'concluida' && t.status !== 'concluida') return false;
+        if (s && !((t.titulo + ' ' + (t.descricao || '') + ' ' + (t.responsavel || '')).toLowerCase().includes(s))) return false;
+        return true;
+      });
+
+      if (vis.length === 0) {
+        const vazio = modo === 'pauta' ? 'Nenhuma pauta em aberto. Adicione os assuntos da próxima reunião.' : 'Nenhuma tarefa. Crie ou converta uma pauta decidida.';
+        elLista.innerHTML = '<div class="empty-state" style="padding:48px 24px;"><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg><h3>'+(modo==='pauta'?'Sem pautas':'Sem tarefas')+'</h3><p>'+vazio+'</p></div>';
+        return;
+      }
+
+      elLista.innerHTML = vis.map(t => {
+        const concl = t.status === 'concluida';
+        const meta = [];
+        if (t.responsavel) meta.push(escapeHtml(t.responsavel));
+        if (modo === 'tarefa' && t.prazo) meta.push('prazo ' + formatDate(t.prazo));
+        let acoes = '';
+        if (modo === 'pauta') {
+          acoes = '<button class="gz-link" data-act="toggle" data-id="'+t.id+'">'+(concl?'Reabrir':'Marcar discutida')+'</button>'+
+                  (concl?'':'<button class="gz-link" data-act="virar" data-id="'+t.id+'">Virar tarefa →</button>')+
+                  '<button class="gz-link gz-del" data-act="excluir" data-id="'+t.id+'">Excluir</button>';
+        } else {
+          acoes = '<select class="gz-status" data-id="'+t.id+'">'+
+            '<option value="pendente"'+(t.status==='pendente'?' selected':'')+'>Pendente</option>'+
+            '<option value="em_andamento"'+(t.status==='em_andamento'?' selected':'')+'>Em andamento</option>'+
+            '<option value="concluida"'+(t.status==='concluida'?' selected':'')+'>Concluída</option>'+
+          '</select><button class="gz-link gz-del" data-act="excluir" data-id="'+t.id+'">Excluir</button>';
+        }
+        const badge = modo === 'pauta'
+          ? '<span class="gz-badge '+(concl?'gz-ok':'gz-open')+'">'+(concl?'Discutida':'A discutir')+'</span>'
+          : '<span class="gz-badge '+statusCls(t.status)+'">'+statusLbl(t.status)+'</span>';
+        return '<div class="gz-card '+(concl?'gz-done':'')+'">'+
+          '<div class="gz-top"><strong>'+escapeHtml(t.titulo)+'</strong>'+badge+'</div>'+
+          (meta.length?'<div class="gz-meta">'+meta.join(' · ')+'</div>':'')+
+          (t.descricao?'<div class="gz-desc">'+escapeHtml(t.descricao)+'</div>':'')+
+          '<div class="gz-acoes">'+acoes+'</div>'+
+        '</div>';
+      }).join('');
+
+      elLista.querySelectorAll('.gz-link').forEach(b => b.addEventListener('click', onAcao));
+      elLista.querySelectorAll('.gz-status').forEach(sel => sel.addEventListener('change', async e => {
+        const id = e.target.dataset.id, novo = e.target.value;
+        const patch = { status: novo };
+        if (novo === 'concluida') { patch.concluida_em = new Date().toISOString(); patch.concluida_por = usuarioEmail; }
+        else { patch.concluida_em = null; patch.concluida_por = null; }
+        const { error } = await supabase.from('tarefas').update(patch).eq('id', id);
+        if (error) { alert('Erro: ' + error.message); return; }
+        await carregar();
+      }));
+    }
+
+    async function onAcao(e) {
+      const id = e.target.dataset.id, act = e.target.dataset.act;
+      const t = itens.find(x => x.id === id);
+      if (!t) return;
+      if (act === 'toggle') {
+        const novo = t.status === 'concluida' ? 'pendente' : 'concluida';
+        const { error } = await supabase.from('tarefas').update({ status: novo }).eq('id', id);
+        if (error) { alert('Erro: ' + error.message); return; }
+        await carregar();
+      } else if (act === 'virar') {
+        const { error: e1 } = await supabase.from('tarefas').insert({
+          setor: SETOR, tipo: 'tarefa', titulo: t.titulo, descricao: t.descricao,
+          responsavel: t.responsavel, status: 'pendente', origem: 'avulsa', cliente_id: null
+        });
+        if (e1) { alert('Erro ao criar tarefa: ' + e1.message); return; }
+        await supabase.from('tarefas').update({ status: 'concluida' }).eq('id', id);
+        alert('Pauta convertida em tarefa. Veja na aba Tarefas.');
+        await carregar();
+      } else if (act === 'excluir') {
+        if (!confirm('Excluir este item?')) return;
+        const { error } = await supabase.from('tarefas').delete().eq('id', id);
+        if (error) { alert('Erro: ' + error.message); return; }
+        await carregar();
+      }
+    }
+
+    function statusCls(s){ return s==='pendente'?'gz-pend':(s==='em_andamento'?'gz-and':'gz-ok'); }
+    function statusLbl(s){ return s==='pendente'?'Pendente':(s==='em_andamento'?'Em andamento':'Concluída'); }
+    function escapeHtml(t){ return String(t==null?'':t).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
+
+    searchInput.addEventListener('input', render);
+    filterResp.addEventListener('change', render);
+    filterStatus.addEventListener('change', render);
+  </script>
+
+  <style>
+    .fa-subnav { display:flex; gap:6px; margin-bottom:22px; border-bottom:1px solid rgba(255,255,255,.08); }
+    .fa-tab { padding:9px 16px; font-size:14px; color:#8A93A6; background:none; border:none; border-bottom:2px solid transparent; margin-bottom:-1px; cursor:pointer; }
+    .fa-tab:hover { color:#C5D8E8; }
+    .fa-tab.is-active { color:#C5D8E8; border-bottom-color:#5B82A6; font-weight:600; }
+    .fa-sel { max-width:180px; }
+
+    .gz-card { background:rgba(255,255,255,.025); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:14px 18px; margin-bottom:10px; }
+    .gz-card.gz-done { opacity:.55; }
+    .gz-top { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .gz-top strong { color:#E6EBF2; font-size:15px; }
+    .gz-meta { color:#8A93A6; font-size:13px; margin-top:4px; }
+    .gz-desc { color:#A9B2C2; font-size:13.5px; margin-top:8px; line-height:1.5; }
+    .gz-acoes { display:flex; align-items:center; gap:8px; margin-top:12px; flex-wrap:wrap; }
+    .gz-link { background:none; border:none; color:#8AAEC8; cursor:pointer; font-size:13px; padding:3px 6px; }
+    .gz-link:hover { color:#C5D8E8; text-decoration:underline; }
+    .gz-del:hover { color:#E06C6C; }
+    .gz-status { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.14); color:#D7DEE8; border-radius:8px; padding:5px 10px; font-size:13px; cursor:pointer; }
+    .gz-badge { font-size:11px; font-weight:600; border-radius:999px; padding:2px 10px; }
+    .gz-open { color:#E3B341; background:rgba(227,179,65,.14); border:1px solid rgba(227,179,65,.3); }
+    .gz-pend { color:#E3B341; background:rgba(227,179,65,.14); border:1px solid rgba(227,179,65,.3); }
+    .gz-and { color:#8AAEC8; background:rgba(91,130,166,.14); border:1px solid rgba(91,130,166,.3); }
+    .gz-ok { color:#3FB07A; background:rgba(63,176,122,.14); border:1px solid rgba(63,176,122,.3); }
+
+    .fa-modal-overlay { position:fixed; inset:0; background:rgba(8,12,18,.72); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
+    .fa-modal-overlay.is-open { display:flex; }
+    .fa-modal { width:100%; max-width:520px; background:#141A22; border:1px solid rgba(255,255,255,.10); border-radius:16px; overflow:hidden; }
+    .fa-modal-head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid rgba(255,255,255,.08); }
+    .fa-modal-head h3 { margin:0; color:#E6EBF2; font-size:18px; }
+    .fa-modal-close { background:none; border:none; color:#8A93A6; font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }
+    .fa-modal-body { padding:22px; display:flex; flex-direction:column; gap:14px; }
+    .fa-field { display:flex; flex-direction:column; gap:6px; }
+    .fa-field > span { font-size:13px; color:#8AAEC8; }
+    .fa-field-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .fa-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid rgba(255,255,255,.08); }
+    .fa-modal textarea.input { resize:vertical; font-family:inherit; }
+  </style>
+</body>
+</html>
