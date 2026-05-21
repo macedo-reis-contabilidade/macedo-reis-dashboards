@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Análise fiscal — Macedo & Reis</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo">
+          <svg width="32" height="32" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M28 4 C30 14, 42 24, 52 28 C42 32, 30 42, 28 52 C26 42, 14 32, 4 28 C14 24, 26 14, 28 4 Z" fill="url(#topbarPetal4)"/>
+            <defs>
+              <linearGradient id="topbarPetal4" x1="4" y1="4" x2="52" y2="52" gradientUnits="userSpaceOnUse">
+                <stop offset="0" stop-color="#8AAEC8"/>
+                <stop offset="0.5" stop-color="#5B82A6"/>
+                <stop offset="1" stop-color="#3A5878"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+
+      <div class="topbar-actions">
+        <div class="user-chip">
+          <div class="user-avatar" id="userAvatar">—</div>
+          <span id="userName">Carregando…</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <a href="fiscal.html">Fiscal</a>
+          <span class="breadcrumb-sep">/</span>
+          <span id="bcCliente">Análise</span>
+        </div>
+        <div class="eyebrow">Análise tributária</div>
+        <h1 id="clienteNome">Carregando…</h1>
+        <p id="clienteSub">—</p>
+      </div>
+
+      <!-- Barra de ação -->
+      <div class="fa-actionbar">
+        <div id="metaArea" class="fa-meta"></div>
+        <button class="btn btn-primary" id="btnGerar">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+          </svg>
+          <span id="btnGerarLabel">Gerar análise</span>
+        </button>
+      </div>
+
+      <div id="resultado"></div>
+    </main>
+  </div>
+
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { formatDocumento, formatDate } from './assets/js/utils.js';
+
+    const params = new URLSearchParams(window.location.search);
+    const clienteId = params.get('id');
+
+    const resultado = document.getElementById('resultado');
+    const btnGerar = document.getElementById('btnGerar');
+    const btnGerarLabel = document.getElementById('btnGerarLabel');
+    const metaArea = document.getElementById('metaArea');
+
+    let cliente = null;
+    let usuarioEmail = null;
+    let analiseAtual = null; // registro da fiscal_analises (mais recente)
+
+    (async () => {
+      const user = await getCurrentUser();
+      if (user) {
+        usuarioEmail = user.email;
+        const displayName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário';
+        document.getElementById('userName').textContent = displayName;
+        document.getElementById('userAvatar').textContent = displayName.charAt(0).toUpperCase();
+      }
+      await carregarCliente();
+      await carregarAnaliseMaisRecente();
+    })();
+
+    document.getElementById('btnLogout').addEventListener('click', signOut);
+    btnGerar.addEventListener('click', gerarAnalise);
+
+    async function carregarCliente() {
+      if (!clienteId) {
+        resultado.innerHTML = `<div class="fa-empty">Cliente não informado.</div>`;
+        return;
+      }
+      const { data, error } = await supabase
+        .from('clientes')
+        .select('*')
+        .eq('id', clienteId)
+        .single();
+
+      if (error || !data) {
+        resultado.innerHTML = `<div class="fa-empty" style="color:var(--danger)">Erro ao carregar cliente: ${error?.message || 'não encontrado'}</div>`;
+        return;
+      }
+      cliente = data;
+      document.getElementById('clienteNome').textContent = cliente.nome_principal || 'Cliente';
+      document.getElementById('bcCliente').textContent = cliente.nome_principal || 'Análise';
+      const partes = [];
+      if (cliente.documento) partes.push(formatDocumento(cliente.documento));
+      if (cliente.cidade) partes.push(`${cliente.cidade}${cliente.uf ? '/' + cliente.uf : ''}`);
+      document.getElementById('clienteSub').textContent = partes.join(' · ') || '—';
+    }
+
+    async function carregarAnaliseMaisRecente() {
+      const { data } = await supabase
+        .from('fiscal_analises')
+        .select('*')
+        .eq('cliente_id', clienteId)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      analiseAtual = (data && data[0]) || null;
+      if (analiseAtual) {
+        btnGerarLabel.textContent = 'Gerar nova análise';
+        render(analiseAtual);
+      } else {
+        resultado.innerHTML = `
+          <div class="fa-empty">
+            <p>Este cliente ainda não tem análise tributária.</p>
+            <p style="color:var(--text-muted, #8A93A6); font-size:14px;">Clique em <strong>Gerar análise</strong> acima para o agente fiscal analisar este cliente.</p>
+          </div>`;
+      }
+    }
+
+    async function gerarAnalise() {
+      if (!cliente) return;
+      btnGerar.disabled = true;
+      btnGerarLabel.textContent = 'Analisando…';
+      resultado.innerHTML = `<div class="fa-loading"><span class="spinner"></span> O agente fiscal está analisando este cliente. Isso pode levar de 10 a 40 segundos…</div>`;
+
+      // Monta o corpo: campos conhecidos + objeto completo do cadastro para o agente interpretar
+      const body = {
+        cliente_id: cliente.id,
+        cnpj: cliente.documento || null,
+        razao_social: cliente.nome_principal || null,
+        nome_fantasia: cliente.nome_fantasia || null,
+        municipio: cliente.cidade || null,
+        uf: cliente.uf || null,
+        tipo_pessoa: cliente.tipo_pessoa || null,
+        regime_tributario: cliente.regime_tributario ?? null,
+        cnaes: cliente.cnaes ?? null,
+        porte: cliente.porte ?? null,
+        faturamento_12m: cliente.faturamento_12m ?? null,
+        operacoes: cliente.operacoes ?? cliente.observacoes ?? null,
+        dados_cadastrais_completos: cliente
+      };
+
+      try {
+        const { data, error } = await supabase.functions.invoke('analise-fiscal', { body });
+
+        if (error) throw new Error(error.message || 'Erro na função');
+        if (!data || data.ok === false) {
+          throw new Error((data && data.erro) || 'A análise não retornou um resultado válido.');
+        }
+
+        // A função já gravou na tabela; recarrega a versão persistida
+        await carregarAnaliseMaisRecente();
+      } catch (e) {
+        resultado.innerHTML = `<div class="fa-empty" style="color:var(--danger)">Não foi possível gerar a análise: ${e.message}</div>`;
+      } finally {
+        btnGerar.disabled = false;
+        btnGerarLabel.textContent = analiseAtual ? 'Gerar nova análise' : 'Gerar análise';
+      }
+    }
+
+    // ----------------- RENDERIZAÇÃO -----------------
+    function confBadge(c) {
+      const map = { alta: 'fa-c-alta', media: 'fa-c-media', baixa: 'fa-c-baixa' };
+      const label = { alta: 'Confiança alta', media: 'Confiança média', baixa: 'Confiança baixa' };
+      return `<span class="fa-conf ${map[c] || 'fa-c-media'}">${label[c] || 'Confiança ' + (c || '—')}</span>`;
+    }
+
+    function sevClass(s) {
+      return { critica: 'fa-sev-critica', alta: 'fa-sev-alta', media: 'fa-sev-media', baixa: 'fa-sev-baixa' }[s] || 'fa-sev-media';
+    }
+
+    function esc(t) {
+      if (t === null || t === undefined) return '';
+      return String(t).replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]));
+    }
+
+    function renderTributo(t) {
+      const chipsFund = (t.fundamento || []).map(f => `<span class="fa-chip">${esc(f)}</span>`).join('');
+      const parts = (t.particularidades || []).map(p => `<li>${esc(p)}</li>`).join('');
+      return `
+        <div class="fa-trib ${t.incide ? '' : 'fa-trib-off'}">
+          <div class="fa-trib-head">
+            <div class="fa-trib-title">
+              <span class="fa-trib-dot ${t.incide ? 'on' : 'off'}"></span>
+              <strong>${esc(t.tributo)}</strong>
+              <span class="fa-trib-incide">${t.incide ? 'Incide' : 'Não incide'}</span>
+            </div>
+            <div class="fa-trib-flags">
+              ${confBadge(t.confianca)}
+              ${t.requer_verificacao ? '<span class="fa-verif">Requer verificação</span>' : ''}
+            </div>
+          </div>
+          ${t.forma_apuracao ? `<div class="fa-trib-row"><span>Apuração</span><div>${esc(t.forma_apuracao)}</div></div>` : ''}
+          ${t.base_calculo ? `<div class="fa-trib-row"><span>Base</span><div>${esc(t.base_calculo)}</div></div>` : ''}
+          ${t.aliquota_ou_valor ? `<div class="fa-trib-row"><span>Alíquota/valor</span><div>${esc(t.aliquota_ou_valor)}</div></div>` : ''}
+          ${t.periodicidade ? `<div class="fa-trib-row"><span>Periodicidade</span><div>${esc(t.periodicidade)}</div></div>` : ''}
+          ${parts ? `<div class="fa-trib-row"><span>Particularidades</span><ul class="fa-list">${parts}</ul></div>` : ''}
+          ${chipsFund ? `<div class="fa-trib-fund">${chipsFund}</div>` : ''}
+        </div>`;
+    }
+
+    function renderGrupoTributos(titulo, arr) {
+      if (!arr || arr.length === 0) return '';
+      return `
+        <div class="fa-trib-group">
+          <h4 class="fa-group-title">${titulo}</h4>
+          <div class="fa-trib-grid">${arr.map(renderTributo).join('')}</div>
+        </div>`;
+    }
+
+    function render(registro) {
+      const a = registro.analise || {};
+      const meta = a.meta || {};
+      const trib = a.tributos || {};
+      const precisaRevisao = registro.requer_revisao && !registro.revisado;
+
+      // Meta na barra de ação
+      metaArea.innerHTML = `
+        ${confBadge(meta.confianca_geral)}
+        <span class="fa-meta-item">Análise de ${formatDate(registro.created_at)}</span>
+        ${registro.revisado ? '<span class="fa-pill fa-pill-ok">Revisada</span>' : ''}
+      `;
+
+      let html = '';
+
+      // Banner de revisão
+      if (precisaRevisao) {
+        const itens = (a.verificacao_humana || []).length;
+        html += `
+          <div class="fa-banner">
+            <div class="fa-banner-text">
+              <strong>Esta análise tem ${itens} ponto(s) que precisam de revisão humana.</strong>
+              Confira a seção “Pontos para revisão” abaixo antes de usar em parecer ou orientação ao cliente.
+            </div>
+            <button class="btn btn-primary btn-sm" id="btnRevisar">Marcar como revisada</button>
+          </div>`;
+      }
+
+      // Enquadramento
+      const enq = a.enquadramento || {};
+      html += `
+        <section class="fa-section">
+          <h3 class="fa-section-title">Enquadramento</h3>
+          <div class="fa-enq">
+            <div><span>Regime</span><strong>${esc(enq.regime || '—')}</strong></div>
+            <div><span>Anexos</span><strong>${esc((enq.anexos_aplicaveis || []).join(', ') || '—')}</strong></div>
+            <div><span>Sublimite ultrapassado</span><strong>${enq.sublimite_ultrapassado ? 'Sim' : 'Não'}</strong></div>
+            <div><span>Fator R relevante</span><strong>${enq.fator_r_relevante ? 'Sim' : 'Não'}</strong></div>
+          </div>
+          ${enq.observacoes ? `<p class="fa-enq-obs">${esc(enq.observacoes)}</p>` : ''}
+        </section>`;
+
+      // Tributos
+      html += `
+        <section class="fa-section">
+          <h3 class="fa-section-title">Tributos</h3>
+          ${renderGrupoTributos('Federal', trib.federal)}
+          ${renderGrupoTributos('Estadual', trib.estadual)}
+          ${renderGrupoTributos('Municipal', trib.municipal)}
+        </section>`;
+
+      // Obrigações acessórias
+      const obrs = a.obrigacoes_acessorias || [];
+      if (obrs.length) {
+        html += `
+          <section class="fa-section">
+            <h3 class="fa-section-title">Obrigações acessórias</h3>
+            <div class="fa-cards">
+              ${obrs.map(o => `
+                <div class="fa-card">
+                  <div class="fa-card-head"><strong>${esc(o.obrigacao)}</strong>${confBadge(o.confianca)}</div>
+                  <div class="fa-card-line"><span>Esfera</span> ${esc(o.esfera)}</div>
+                  <div class="fa-card-line"><span>Periodicidade</span> ${esc(o.periodicidade)}</div>
+                  ${o.prazo ? `<div class="fa-card-line"><span>Prazo</span> ${esc(o.prazo)}</div>` : ''}
+                  ${o.aplicavel_porque ? `<div class="fa-card-note">${esc(o.aplicavel_porque)}</div>` : ''}
+                  ${o.requer_verificacao ? '<span class="fa-verif">Requer verificação</span>' : ''}
+                </div>`).join('')}
+            </div>
+          </section>`;
+      }
+
+      // Cruzamentos
+      const cruz = a.cruzamentos || [];
+      if (cruz.length) {
+        html += `
+          <section class="fa-section">
+            <h3 class="fa-section-title">Cruzamentos entre setores</h3>
+            <div class="fa-cards">
+              ${cruz.map(c => `
+                <div class="fa-card">
+                  <div class="fa-card-head"><strong>${esc(c.descricao)}</strong>${confBadge(c.confianca)}</div>
+                  ${c.acao_requerida ? `<div class="fa-card-line"><span>Ação</span> ${esc(c.acao_requerida)}</div>` : ''}
+                  ${c.risco_se_ignorado ? `<div class="fa-card-note fa-risco">Risco: ${esc(c.risco_se_ignorado)}</div>` : ''}
+                </div>`).join('')}
+            </div>
+          </section>`;
+      }
+
+      // Alertas
+      const alertas = a.alertas || [];
+      if (alertas.length) {
+        html += `
+          <section class="fa-section">
+            <h3 class="fa-section-title">Alertas</h3>
+            <div class="fa-alertas">
+              ${alertas.map(al => `
+                <div class="fa-alerta ${sevClass(al.severidade)}">
+                  <span class="fa-alerta-sev">${esc(al.severidade)}</span>
+                  <div class="fa-alerta-msg">${esc(al.mensagem)}</div>
+                </div>`).join('')}
+            </div>
+          </section>`;
+      }
+
+      // Verificação humana — DESTAQUE
+      const vh = a.verificacao_humana || [];
+      if (vh.length) {
+        html += `
+          <section class="fa-section fa-section-verif">
+            <h3 class="fa-section-title">Pontos para revisão humana</h3>
+            <p class="fa-section-desc">O agente sinalizou os itens abaixo como incertos. Confirme cada um antes de usar a análise oficialmente.</p>
+            <div class="fa-vh-list">
+              ${vh.map(v => `
+                <div class="fa-vh">
+                  <div class="fa-vh-prio fa-prio-${esc(v.prioridade)}">${esc(v.prioridade)}</div>
+                  <div class="fa-vh-body">
+                    <strong>${esc(v.item)}</strong>
+                    <div class="fa-vh-motivo">${esc(v.motivo)}</div>
+                    ${v.como_resolver ? `<div class="fa-vh-resolver">→ ${esc(v.como_resolver)}</div>` : ''}
+                  </div>
+                </div>`).join('')}
+            </div>
+          </section>`;
+      }
+
+      // Reforma tributária
+      const rt = a.reforma_tributaria || {};
+      if (rt.impactos && rt.impactos.length) {
+        html += `
+          <section class="fa-section">
+            <h3 class="fa-section-title">Reforma tributária</h3>
+            <ul class="fa-list">${rt.impactos.map(i => `<li>${esc(i)}</li>`).join('')}</ul>
+          </section>`;
+      }
+
+      // Fundamentos
+      const fund = a.fundamentos || [];
+      if (fund.length) {
+        html += `
+          <section class="fa-section">
+            <h3 class="fa-section-title">Fundamentos citados</h3>
+            <div class="fa-fund-list">
+              ${fund.map(f => `<div class="fa-fund-item"><strong>${esc(f.norma)}</strong> ${esc(f.dispositivo || '')} — ${esc(f.assunto || '')}</div>`).join('')}
+            </div>
+          </section>`;
+      }
+
+      resultado.innerHTML = html;
+
+      const btnRev = document.getElementById('btnRevisar');
+      if (btnRev) btnRev.addEventListener('click', () => marcarRevisada(registro.id));
+    }
+
+    async function marcarRevisada(id) {
+      const { error } = await supabase
+        .from('fiscal_analises')
+        .update({ revisado: true, revisado_por: usuarioEmail, revisado_em: new Date().toISOString() })
+        .eq('id', id);
+      if (error) {
+        alert('Erro ao marcar como revisada: ' + error.message);
+        return;
+      }
+      await carregarAnaliseMaisRecente();
+    }
+  </script>
+
+  <style>
+    /* ===== Componentes da análise fiscal (tema escuro, cores da marca) ===== */
+    .fa-actionbar { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:24px; }
+    .fa-meta { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+    .fa-meta-item { color:#8A93A6; font-size:13px; }
+
+    .fa-loading, .fa-empty { padding:48px 24px; text-align:center; color:#A9B2C2; background:rgba(255,255,255,.02); border:1px solid rgba(255,255,255,.06); border-radius:14px; }
+    .fa-empty p { margin:4px 0; }
+
+    .fa-conf { display:inline-block; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600; border:1px solid transparent; white-space:nowrap; }
+    .fa-c-alta  { color:#3FB07A; background:rgba(63,176,122,.12); border-color:rgba(63,176,122,.30); }
+    .fa-c-media { color:#E3B341; background:rgba(227,179,65,.12); border-color:rgba(227,179,65,.30); }
+    .fa-c-baixa { color:#E06C6C; background:rgba(224,108,108,.12); border-color:rgba(224,108,108,.30); }
+
+    .fa-pill { display:inline-block; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600; border:1px solid transparent; }
+    .fa-pill-ok { color:#3FB07A; background:rgba(63,176,122,.12); border-color:rgba(63,176,122,.30); }
+
+    .fa-verif { display:inline-block; margin-top:6px; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:600; color:#E3B341; background:rgba(227,179,65,.10); border:1px solid rgba(227,179,65,.28); }
+
+    .fa-banner { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
+      background:rgba(227,179,65,.08); border:1px solid rgba(227,179,65,.30); border-radius:14px; padding:16px 18px; margin-bottom:24px; }
+    .fa-banner-text { color:#E8D9A8; font-size:14px; line-height:1.5; }
+    .fa-banner-text strong { color:#F0E4BC; display:block; margin-bottom:2px; }
+
+    .fa-section { margin-bottom:28px; }
+    .fa-section-title { font-size:13px; text-transform:uppercase; letter-spacing:1.2px; color:#8AAEC8; margin:0 0 14px; font-weight:600; }
+    .fa-section-desc { color:#A9B2C2; font-size:14px; margin:-6px 0 16px; }
+
+    .fa-enq { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; }
+    .fa-enq > div { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07); border-radius:12px; padding:12px 14px; }
+    .fa-enq span { display:block; font-size:12px; color:#8A93A6; margin-bottom:4px; }
+    .fa-enq strong { color:#E6EBF2; font-size:15px; }
+    .fa-enq-obs { margin-top:12px; color:#A9B2C2; font-size:14px; line-height:1.55; }
+
+    .fa-trib-group { margin-bottom:18px; }
+    .fa-group-title { font-size:14px; color:#C5D8E8; margin:0 0 10px; font-weight:600; }
+    .fa-trib-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; }
+    .fa-trib { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:16px; }
+    .fa-trib-off { opacity:.62; }
+    .fa-trib-head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
+    .fa-trib-title { display:flex; align-items:center; gap:8px; }
+    .fa-trib-title strong { color:#E6EBF2; font-size:15px; }
+    .fa-trib-dot { width:8px; height:8px; border-radius:50%; }
+    .fa-trib-dot.on { background:#3FB07A; box-shadow:0 0 0 3px rgba(63,176,122,.18); }
+    .fa-trib-dot.off { background:#5A6273; }
+    .fa-trib-incide { font-size:11px; color:#8A93A6; }
+    .fa-trib-flags { display:flex; flex-direction:column; align-items:flex-end; gap:4px; }
+    .fa-trib-row { display:flex; gap:10px; padding:5px 0; border-top:1px solid rgba(255,255,255,.05); font-size:13px; }
+    .fa-trib-row > span { flex:0 0 96px; color:#8A93A6; }
+    .fa-trib-row > div, .fa-trib-row > ul { color:#CAD2DE; flex:1; }
+    .fa-list { margin:0; padding-left:18px; }
+    .fa-list li { margin:2px 0; color:#CAD2DE; font-size:13px; line-height:1.5; }
+    .fa-trib-fund { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+    .fa-chip { font-size:11px; color:#8AAEC8; background:rgba(91,130,166,.12); border:1px solid rgba(91,130,166,.28); border-radius:6px; padding:2px 8px; }
+
+    .fa-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px; }
+    .fa-card { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:14px 16px; }
+    .fa-card-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px; }
+    .fa-card-head strong { color:#E6EBF2; font-size:14px; }
+    .fa-card-line { font-size:13px; color:#CAD2DE; padding:2px 0; }
+    .fa-card-line span { color:#8A93A6; }
+    .fa-card-note { margin-top:8px; font-size:13px; color:#A9B2C2; line-height:1.5; }
+    .fa-risco { color:#E0A06C; }
+
+    .fa-alertas { display:flex; flex-direction:column; gap:10px; }
+    .fa-alerta { display:flex; align-items:flex-start; gap:12px; padding:12px 14px; border-radius:12px; border:1px solid; }
+    .fa-alerta-sev { font-size:10px; text-transform:uppercase; letter-spacing:.6px; font-weight:700; padding:3px 8px; border-radius:6px; white-space:nowrap; }
+    .fa-alerta-msg { font-size:14px; line-height:1.5; color:#D7DEE8; }
+    .fa-sev-critica { background:rgba(224,108,108,.08); border-color:rgba(224,108,108,.32); }
+    .fa-sev-critica .fa-alerta-sev { background:rgba(224,108,108,.20); color:#F0A0A0; }
+    .fa-sev-alta { background:rgba(227,179,65,.07); border-color:rgba(227,179,65,.30); }
+    .fa-sev-alta .fa-alerta-sev { background:rgba(227,179,65,.20); color:#F0E4BC; }
+    .fa-sev-media { background:rgba(91,130,166,.07); border-color:rgba(91,130,166,.28); }
+    .fa-sev-media .fa-alerta-sev { background:rgba(91,130,166,.20); color:#B8D0E6; }
+    .fa-sev-baixa { background:rgba(138,147,166,.06); border-color:rgba(138,147,166,.22); }
+    .fa-sev-baixa .fa-alerta-sev { background:rgba(138,147,166,.18); color:#BFC6D2; }
+
+    .fa-section-verif { background:rgba(227,179,65,.05); border:1px solid rgba(227,179,65,.22); border-radius:16px; padding:20px; }
+    .fa-vh-list { display:flex; flex-direction:column; gap:12px; }
+    .fa-vh { display:flex; gap:14px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07); border-radius:12px; padding:14px 16px; }
+    .fa-vh-prio { flex:0 0 auto; align-self:flex-start; font-size:10px; text-transform:uppercase; letter-spacing:.6px; font-weight:700; padding:3px 9px; border-radius:6px; }
+    .fa-prio-alta { background:rgba(224,108,108,.18); color:#F0A0A0; }
+    .fa-prio-media { background:rgba(227,179,65,.18); color:#F0E4BC; }
+    .fa-prio-baixa { background:rgba(138,147,166,.18); color:#BFC6D2; }
+    .fa-vh-body strong { color:#E6EBF2; font-size:14px; }
+    .fa-vh-motivo { color:#A9B2C2; font-size:13px; margin-top:4px; line-height:1.5; }
+    .fa-vh-resolver { color:#8AAEC8; font-size:13px; margin-top:6px; }
+
+    .fa-fund-list { display:flex; flex-direction:column; gap:6px; }
+    .fa-fund-item { font-size:13px; color:#A9B2C2; padding:6px 0; border-bottom:1px solid rgba(255,255,255,.05); }
+    .fa-fund-item strong { color:#C5D8E8; }
+  </style>
+</body>
+</html>
