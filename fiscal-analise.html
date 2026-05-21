@@ -289,7 +289,10 @@
       if (obrs.length) {
         html += `
           <section class="fa-section">
-            <h3 class="fa-section-title">Obrigações acessórias</h3>
+            <div class="fa-section-head">
+              <h3 class="fa-section-title" style="margin:0;">Obrigações acessórias</h3>
+              <button class="btn btn-ghost btn-sm" id="btnRecorrentes">Gerar tarefas recorrentes →</button>
+            </div>
             <div class="fa-cards">
               ${obrs.map(o => `
                 <div class="fa-card">
@@ -384,6 +387,9 @@
 
       const btnRev = document.getElementById('btnRevisar');
       if (btnRev) btnRev.addEventListener('click', () => marcarRevisada(registro.id));
+
+      const btnRec = document.getElementById('btnRecorrentes');
+      if (btnRec) btnRec.addEventListener('click', () => abrirModalRecorrentes(a.obrigacoes_acessorias || []));
     }
 
     async function marcarRevisada(id) {
@@ -397,9 +403,99 @@
       }
       await carregarAnaliseMaisRecente();
     }
+
+    // ---------- Tarefas recorrentes a partir da análise ----------
+    const PERIODOS = ['mensal','bimestral','trimestral','semestral','anual'];
+    const recOverlay = document.getElementById('recOverlay');
+    const recLista = document.getElementById('recLista');
+
+    function extrairDia(prazo) {
+      if (!prazo) return '';
+      const m = String(prazo).match(/\b([0-2]?[0-9]|3[01])\b/);
+      return m ? m[1] : '';
+    }
+    function periodoValido(p) { return PERIODOS.includes(p) ? p : 'mensal'; }
+
+    function abrirModalRecorrentes(obrs) {
+      if (!obrs.length) { alert('Esta análise não tem obrigações para gerar tarefas.'); return; }
+      recLista.innerHTML = obrs.map((o, i) => {
+        const periodo = periodoValido(o.periodicidade);
+        const dia = extrairDia(o.prazo);
+        const recorrente = PERIODOS.includes(o.periodicidade);
+        return `
+          <div class="rec-item">
+            <input type="checkbox" class="rec-inc" data-i="${i}" ${recorrente ? 'checked' : ''}>
+            <input type="text" class="input rec-titulo" data-i="${i}" value="${esc(o.obrigacao)}">
+            <select class="select rec-periodo" data-i="${i}">
+              ${PERIODOS.map(p => `<option value="${p}" ${p===periodo?'selected':''}>${p}</option>`).join('')}
+            </select>
+            <input type="number" class="input rec-dia" data-i="${i}" min="1" max="31" placeholder="dia" value="${dia}">
+          </div>`;
+      }).join('');
+      recOverlay.classList.add('is-open');
+    }
+
+    document.getElementById('recClose').addEventListener('click', () => recOverlay.classList.remove('is-open'));
+    document.getElementById('recCancelar').addEventListener('click', () => recOverlay.classList.remove('is-open'));
+    recOverlay.addEventListener('click', e => { if (e.target === recOverlay) recOverlay.classList.remove('is-open'); });
+    document.getElementById('recSalvar').addEventListener('click', criarRecorrentes);
+
+    async function criarRecorrentes() {
+      const respGeral = document.getElementById('recResp').value.trim() || null;
+      const incs = [...recLista.querySelectorAll('.rec-inc')].filter(c => c.checked);
+      if (incs.length === 0) { alert('Selecione ao menos uma obrigação.'); return; }
+
+      const hoje = new Date();
+      const competencia = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
+      let criadas = 0;
+
+      for (const chk of incs) {
+        const i = chk.dataset.i;
+        const titulo = recLista.querySelector(`.rec-titulo[data-i="${i}"]`).value.trim();
+        const periodicidade = recLista.querySelector(`.rec-periodo[data-i="${i}"]`).value;
+        const diaVal = recLista.querySelector(`.rec-dia[data-i="${i}"]`).value;
+        const dia = diaVal ? parseInt(diaVal, 10) : null;
+        if (!titulo) continue;
+
+        const { data: regra, error: e1 } = await supabase.from('tarefas_recorrentes').insert({
+          cliente_id: cliente.id, setor: 'fiscal', titulo, periodicidade,
+          dia_vencimento: dia, responsavel: respGeral, origem: 'analise', ativo: true
+        }).select('id').single();
+        if (e1) { alert('Erro ao criar regra: ' + e1.message); return; }
+
+        let prazo = null;
+        if (dia) prazo = `${competencia}-${String(dia).padStart(2,'0')}`;
+        const { error: e2 } = await supabase.from('tarefas').insert({
+          cliente_id: cliente.id, setor: 'fiscal', titulo, responsavel: respGeral,
+          prazo, status: 'pendente', prioridade: 'media', origem: 'recorrente',
+          regra_id: regra.id, competencia
+        });
+        if (e2) { alert('Erro ao criar tarefa: ' + e2.message); return; }
+        criadas++;
+      }
+      recOverlay.classList.remove('is-open');
+      alert(criadas + ' tarefa(s) recorrente(s) criada(s). Veja na aba Tarefas.');
+    }
   </script>
 
   <style>
+    .fa-section-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
+    .fa-modal-overlay { position:fixed; inset:0; background:rgba(8,12,18,.72); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
+    .fa-modal-overlay.is-open { display:flex; }
+    .fa-modal { width:100%; max-width:520px; background:#141A22; border:1px solid rgba(255,255,255,.10); border-radius:16px; overflow:hidden; max-height:90vh; display:flex; flex-direction:column; }
+    .fa-modal-head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid rgba(255,255,255,.08); }
+    .fa-modal-head h3 { margin:0; color:#E6EBF2; font-size:18px; }
+    .fa-modal-close { background:none; border:none; color:#8A93A6; font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }
+    .fa-modal-close:hover { color:#E6EBF2; }
+    .fa-modal-body { padding:22px; display:flex; flex-direction:column; gap:12px; overflow-y:auto; }
+    .fa-field { display:flex; flex-direction:column; gap:6px; }
+    .fa-field > span { font-size:13px; color:#8AAEC8; }
+    .fa-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid rgba(255,255,255,.08); }
+    .rec-head { display:grid; grid-template-columns:28px 1fr 130px 70px; gap:8px; font-size:11px; color:#8A93A6; text-transform:uppercase; letter-spacing:.4px; padding:4px 2px 0; }
+    .rec-item { display:grid; grid-template-columns:28px 1fr 130px 70px; gap:8px; align-items:center; margin-bottom:8px; }
+    .rec-item .input, .rec-item .select { padding:7px 9px; font-size:13px; }
+    .rec-inc { width:18px; height:18px; cursor:pointer; }
+
     /* ===== Componentes da análise fiscal (tema escuro, cores da marca) ===== */
     .fa-actionbar { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:24px; }
     .fa-meta { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
@@ -491,5 +587,27 @@
     .fa-fund-item { font-size:13px; color:#A9B2C2; padding:6px 0; border-bottom:1px solid rgba(255,255,255,.05); }
     .fa-fund-item strong { color:#C5D8E8; }
   </style>
+  <div class="fa-modal-overlay" id="recOverlay">
+    <div class="fa-modal" style="max-width:680px;">
+      <div class="fa-modal-head">
+        <h3>Gerar tarefas recorrentes</h3>
+        <button class="fa-modal-close" id="recClose">&times;</button>
+      </div>
+      <div class="fa-modal-body">
+        <p style="color:#A9B2C2;font-size:13px;margin:0;">Revise as obrigações abaixo. Marque as que devem virar tarefas recorrentes, ajuste o dia de vencimento e confirme. Elas viram regras e já aparecem como tarefas do mês atual na aba Tarefas.</p>
+        <label class="fa-field">
+          <span>Responsável (aplica a todas)</span>
+          <input type="text" id="recResp" class="input" placeholder="Ex.: Thalia">
+        </label>
+        <div class="rec-head"><span></span><span>Tarefa</span><span>Periodicidade</span><span>Dia</span></div>
+        <div id="recLista"></div>
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-ghost" id="recCancelar">Cancelar</button>
+        <button class="btn btn-primary" id="recSalvar">Criar tarefas recorrentes</button>
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>
