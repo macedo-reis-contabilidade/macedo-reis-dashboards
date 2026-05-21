@@ -55,6 +55,14 @@
       <div class="fa-actionbar">
         <div id="metaArea" class="fa-meta"></div>
         <div class="fa-action-btns">
+          <button class="btn btn-ghost btn-sm" id="btnPdfInterno" style="display:none;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            PDF interno
+          </button>
+          <button class="btn btn-ghost btn-sm" id="btnPdfCliente" style="display:none;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            PDF cliente
+          </button>
           <button class="btn btn-ghost btn-sm" id="btnExcluir" style="display:none;">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -105,6 +113,8 @@
     document.getElementById('btnLogout').addEventListener('click', signOut);
     btnGerar.addEventListener('click', gerarAnalise);
     document.getElementById('btnExcluir').addEventListener('click', excluirAnalise);
+    document.getElementById('btnPdfInterno').addEventListener('click', () => gerarPDF('interno'));
+    document.getElementById('btnPdfCliente').addEventListener('click', () => gerarPDF('cliente'));
 
     async function carregarCliente() {
       if (!clienteId) {
@@ -140,12 +150,15 @@
 
       analiseAtual = (data && data[0]) || null;
       const btnExcluir = document.getElementById('btnExcluir');
+      const btnsPdf = [document.getElementById('btnPdfInterno'), document.getElementById('btnPdfCliente')];
       if (analiseAtual) {
         btnGerarLabel.textContent = 'Gerar nova análise';
         btnExcluir.style.display = '';
+        btnsPdf.forEach(b => b.style.display = '');
         render(analiseAtual);
       } else {
         btnExcluir.style.display = 'none';
+        btnsPdf.forEach(b => b.style.display = 'none');
         metaArea.innerHTML = '';
         resultado.innerHTML = `
           <div class="fa-empty">
@@ -497,6 +510,163 @@
       recOverlay.classList.remove('is-open');
       alert(criadas + ' tarefa(s) recorrente(s) criada(s). Veja na aba Tarefas.');
     }
+
+    // ---------- Relatório em PDF (interno / cliente) ----------
+    function gerarPDF(modo) {
+      if (!analiseAtual) return;
+      const interno = (modo === 'interno');
+      if (!interno && !analiseAtual.revisado) {
+        if (!confirm('Esta análise ainda não foi marcada como revisada pela equipe. Recomenda-se revisar antes de enviar ao cliente. Gerar a versão do cliente mesmo assim?')) return;
+      }
+      const html = montarRelatorioHTML(analiseAtual, cliente, interno);
+      const w = window.open('', '_blank');
+      if (!w) { alert('O navegador bloqueou a janela. Permita pop-ups para este site e tente novamente.'); return; }
+      w.document.write(html);
+      w.document.close();
+    }
+
+    function montarRelatorioHTML(registro, cli, interno) {
+      const a = registro.analise || {};
+      const enq = a.enquadramento || {};
+      const trib = a.tributos || {};
+      const E = s => String(s==null?'':s).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
+      const docTitulo = interno ? 'Análise Tributária — Uso Interno' : 'Diagnóstico Tributário';
+      const cnpj = cli.documento ? formatDocumento(cli.documento) : '';
+      const cidade = cli.cidade ? (cli.cidade + (cli.uf ? '/' + cli.uf : '')) : '';
+      const hoje = new Date().toLocaleDateString('pt-BR');
+      const dataAnalise = formatDate(registro.created_at);
+
+      const linha = (k,v) => '<tr><td class="rk">'+E(k)+'</td><td>'+E(v)+'</td></tr>';
+      function tributoBloco(t) {
+        const parts = (t.particularidades||[]).map(p=>'<li>'+E(p)+'</li>').join('');
+        let rows = '';
+        if (t.forma_apuracao) rows += linha('Apuração', t.forma_apuracao);
+        if (t.base_calculo) rows += linha('Base de cálculo', t.base_calculo);
+        if (t.aliquota_ou_valor) rows += linha('Alíquota / valor', t.aliquota_ou_valor);
+        if (t.periodicidade) rows += linha('Periodicidade', t.periodicidade);
+        if (parts) rows += '<tr><td class="rk">Particularidades</td><td><ul>'+parts+'</ul></td></tr>';
+        if (interno && (t.fundamento||[]).length) rows += linha('Fundamento', (t.fundamento||[]).join(', '));
+        const flag = (interno && t.requer_verificacao) ? ' <span class="verif">verificar</span>' : '';
+        return '<div class="trib"><div class="trib-h"><span class="dot '+(t.incide?'on':'off')+'"></span><strong>'+E(t.tributo)+'</strong> <span class="incide">'+(t.incide?'Incide':'Não incide')+'</span>'+flag+'</div>'+(rows?'<table class="kv">'+rows+'</table>':'')+'</div>';
+      }
+      function grupoTrib(titulo, arr){ if(!arr||!arr.length) return ''; return '<h3 class="sub">'+titulo+'</h3>'+arr.map(tributoBloco).join(''); }
+
+      let secoes = '';
+      secoes += '<section><h2>Enquadramento</h2><table class="kv">';
+      secoes += linha('Regime', enq.regime || '—');
+      if ((enq.anexos_aplicaveis||[]).length) secoes += linha('Anexos', (enq.anexos_aplicaveis||[]).join(', '));
+      if (interno) { secoes += linha('Sublimite ultrapassado', enq.sublimite_ultrapassado?'Sim':'Não'); secoes += linha('Fator R relevante', enq.fator_r_relevante?'Sim':'Não'); }
+      secoes += '</table>';
+      if (enq.observacoes) secoes += '<p class="obs">'+E(enq.observacoes)+'</p>';
+      secoes += '</section>';
+
+      const tf=grupoTrib('Federal',trib.federal), te=grupoTrib('Estadual',trib.estadual), tm=grupoTrib('Municipal',trib.municipal);
+      if (tf||te||tm) secoes += '<section><h2>Tributos</h2>'+tf+te+tm+'</section>';
+
+      const obrs = a.obrigacoes_acessorias || [];
+      if (obrs.length) {
+        secoes += '<section><h2>Obrigações acessórias</h2><table class="tbl"><thead><tr><th>Obrigação</th><th>Esfera</th><th>Periodicidade</th><th>Prazo</th></tr></thead><tbody>';
+        secoes += obrs.map(o => '<tr><td><strong>'+E(o.obrigacao)+'</strong>'+((interno&&o.requer_verificacao)?' <span class="verif">verificar</span>':'')+'</td><td>'+E(o.esfera||'')+'</td><td>'+E(o.periodicidade||'')+'</td><td>'+E(o.prazo||'—')+'</td></tr>').join('');
+        secoes += '</tbody></table></section>';
+      }
+
+      if (interno) {
+        const cruz = a.cruzamentos || [];
+        if (cruz.length) {
+          secoes += '<section><h2>Cruzamentos entre setores</h2>';
+          secoes += cruz.map(c => '<div class="bloco"><strong>'+E(c.descricao)+'</strong>'+(c.acao_requerida?'<div class="bl-l"><b>Ação:</b> '+E(c.acao_requerida)+'</div>':'')+(c.risco_se_ignorado?'<div class="bl-risco">Risco: '+E(c.risco_se_ignorado)+'</div>':'')+'</div>').join('');
+          secoes += '</section>';
+        }
+      }
+
+      const alertas = a.alertas || [];
+      if (alertas.length) {
+        secoes += '<section><h2>Alertas</h2>';
+        secoes += alertas.map(al => '<div class="alerta sev-'+E(al.severidade)+'"><span class="sev">'+E(al.severidade)+'</span> '+E(al.mensagem)+'</div>').join('');
+        secoes += '</section>';
+      }
+
+      if (interno) {
+        const vh = a.verificacao_humana || [];
+        if (vh.length) {
+          secoes += '<section class="rev"><h2>Pontos para revisão humana</h2><p class="obs">Itens sinalizados como incertos pelo agente. Confirmar antes do uso oficial.</p>';
+          secoes += vh.map(v => '<div class="bloco"><span class="prio prio-'+E(v.prioridade)+'">'+E(v.prioridade)+'</span><strong>'+E(v.item)+'</strong><div class="bl-l">'+E(v.motivo)+'</div>'+(v.como_resolver?'<div class="bl-resolver">→ '+E(v.como_resolver)+'</div>':'')+'</div>').join('');
+          secoes += '</section>';
+        }
+      }
+
+      const rt = a.reforma_tributaria || {};
+      if (rt.impactos && rt.impactos.length) secoes += '<section><h2>Reforma tributária</h2><ul>'+rt.impactos.map(i=>'<li>'+E(i)+'</li>').join('')+'</ul></section>';
+
+      const fund = a.fundamentos || [];
+      if (fund.length) secoes += '<section><h2>Fundamentos</h2><ul class="fund">'+fund.map(f=>'<li><strong>'+E(f.norma)+'</strong> '+E(f.dispositivo||'')+(f.assunto?(' — '+E(f.assunto)):'')+'</li>').join('')+'</ul></section>';
+
+      let statusLinha = '';
+      if (interno) {
+        const conf = (a.meta && a.meta.confianca_geral) || registro.confianca_geral || '';
+        statusLinha = '<div class="status">'+(registro.revisado?'Revisada':'Não revisada')+(conf?(' · confiança '+E(conf)):'')+'</div>';
+      }
+      const disclaimer = interno
+        ? 'Documento interno de trabalho. Contém apontamentos de revisão e não deve ser encaminhado ao cliente nesta forma.'
+        : 'Diagnóstico tributário orientativo elaborado pela Macedo & Reis Contabilidade, com base nas informações cadastrais disponíveis e na legislação vigente na data de emissão. Sujeito a confirmação documental.';
+      const logo = '<svg width="34" height="34" viewBox="0 0 56 56"><path d="M28 4 C30 14, 42 24, 52 28 C42 32, 30 42, 28 52 C26 42, 14 32, 4 28 C14 24, 26 14, 28 4 Z" fill="#3A5878"/></svg>';
+
+      return '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>'+E(docTitulo)+' — '+E(cli.nome_principal||'')+'</title><style>'+CSS_PDF+'</style></head><body>'+
+        '<div class="page">'+
+          '<header class="cab"><div class="marca">'+logo+'<div><div class="m-nome">Macedo & Reis Contabilidade</div><div class="m-crc">CRC/RS 006418/O · Três Coroas – RS</div></div></div><div class="doc-tit">'+E(docTitulo)+'</div></header>'+
+          '<div class="cli"><div class="cli-nome">'+E(cli.nome_principal||'Cliente')+'</div><div class="cli-meta">'+E([cnpj,cidade].filter(Boolean).join(' · '))+'</div><div class="cli-meta">Análise gerada em '+E(dataAnalise)+'</div>'+statusLinha+'</div>'+
+          secoes+
+          '<footer class="rodape"><div>'+E(disclaimer)+'</div><div class="rod-data">Emitido em '+E(hoje)+'</div></footer>'+
+        '</div>'+
+        '<scr'+'ipt>window.onload=function(){setTimeout(function(){window.print();},150);};<\/scr'+'ipt>'+
+      '</body></html>';
+    }
+
+    const CSS_PDF = `
+      *{margin:0;padding:0;box-sizing:border-box;}
+      body{font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#1f2630;background:#fff;font-size:12px;line-height:1.5;}
+      .page{max-width:780px;margin:0 auto;padding:32px 36px;}
+      .cab{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #3A5878;padding-bottom:14px;margin-bottom:18px;}
+      .marca{display:flex;gap:10px;align-items:center;}
+      .m-nome{font-family:Georgia,'Times New Roman',serif;font-size:16px;font-weight:700;color:#1f2630;}
+      .m-crc{font-size:10px;color:#6b7686;margin-top:2px;}
+      .doc-tit{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#3A5878;font-weight:700;text-align:right;padding-top:4px;}
+      .cli{background:#f4f7fa;border:1px solid #e2e8f0;border-radius:8px;padding:14px 16px;margin-bottom:20px;}
+      .cli-nome{font-family:Georgia,serif;font-size:18px;font-weight:700;color:#26303c;}
+      .cli-meta{font-size:11px;color:#5b6573;margin-top:3px;}
+      .status{display:inline-block;margin-top:8px;font-size:10px;font-weight:600;color:#3A5878;background:#e3ecf4;border-radius:4px;padding:2px 8px;}
+      section{margin-bottom:18px;page-break-inside:avoid;}
+      h2{font-family:Georgia,serif;font-size:14px;color:#3A5878;border-bottom:1px solid #e2e8f0;padding-bottom:5px;margin-bottom:10px;}
+      h3.sub{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#6b7686;margin:12px 0 6px;}
+      .kv{width:100%;border-collapse:collapse;}
+      .kv td{padding:4px 8px;vertical-align:top;border-bottom:1px solid #f0f3f7;font-size:11.5px;}
+      .kv td.rk{width:160px;color:#6b7686;font-weight:600;}
+      .kv ul{margin-left:16px;}
+      .trib{border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;margin-bottom:8px;}
+      .trib-h{font-size:13px;margin-bottom:4px;}
+      .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;}
+      .dot.on{background:#2e9e6b;}.dot.off{background:#c0c7d0;}
+      .incide{font-size:10px;color:#6b7686;}
+      .verif{font-size:9px;font-weight:700;color:#9a6800;background:#fdf0d8;border-radius:3px;padding:1px 5px;text-transform:uppercase;}
+      .tbl{width:100%;border-collapse:collapse;font-size:11.5px;}
+      .tbl th{text-align:left;background:#f4f7fa;color:#5b6573;font-size:10px;text-transform:uppercase;letter-spacing:.4px;padding:6px 8px;border-bottom:1px solid #e2e8f0;}
+      .tbl td{padding:6px 8px;border-bottom:1px solid #f0f3f7;vertical-align:top;}
+      .bloco{border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;margin-bottom:8px;}
+      .bl-l{font-size:11px;color:#46505d;margin-top:3px;}
+      .bl-risco{font-size:11px;color:#b3261e;margin-top:4px;}
+      .bl-resolver{font-size:11px;color:#2e7d52;margin-top:4px;}
+      .prio{display:inline-block;font-size:9px;font-weight:700;text-transform:uppercase;border-radius:3px;padding:1px 6px;margin-right:6px;}
+      .prio-alta{background:#fde0e0;color:#b3261e;}.prio-media{background:#fdf0d8;color:#9a6800;}.prio-baixa{background:#e3ecf4;color:#3A5878;}
+      .alerta{font-size:11.5px;padding:7px 10px;border-radius:6px;margin-bottom:6px;border-left:3px solid #c0c7d0;background:#f7f9fb;}
+      .alerta .sev{font-weight:700;text-transform:uppercase;font-size:9px;margin-right:6px;}
+      .sev-alta{border-left-color:#b3261e;}.sev-media{border-left-color:#d99100;}.sev-baixa{border-left-color:#3A5878;}
+      .rev{background:#fffaf2;border:1px solid #f0e2c8;border-radius:8px;padding:12px 14px;}
+      .obs{font-size:11px;color:#5b6573;font-style:italic;margin-top:6px;}
+      ul{margin-left:18px;font-size:11.5px;}ul li{margin-bottom:3px;}
+      .fund li{color:#46505d;}
+      .rodape{margin-top:24px;border-top:1px solid #e2e8f0;padding-top:10px;font-size:9.5px;color:#8a93a0;display:flex;justify-content:space-between;gap:16px;}
+      @media print{.page{max-width:none;padding:0;}body{font-size:11px;}@page{margin:1.5cm;}}
+    `;
   </script>
 
   <style>
