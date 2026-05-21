@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Fiscal — Macedo & Reis</title>
+  <title>Fiscal — Tarefas — Macedo & Reis</title>
   <link rel="stylesheet" href="assets/css/style.css">
   <script type="module" src="assets/js/auth-guard.js"></script>
 </head>
@@ -13,24 +13,16 @@
       <div class="topbar-brand">
         <div class="topbar-logo">
           <svg width="32" height="32" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M28 4 C30 14, 42 24, 52 28 C42 32, 30 42, 28 52 C26 42, 14 32, 4 28 C14 24, 26 14, 28 4 Z" fill="url(#topbarPetal3)"/>
-            <defs>
-              <linearGradient id="topbarPetal3" x1="4" y1="4" x2="52" y2="52" gradientUnits="userSpaceOnUse">
-                <stop offset="0" stop-color="#8AAEC8"/>
-                <stop offset="0.5" stop-color="#5B82A6"/>
-                <stop offset="1" stop-color="#3A5878"/>
-              </linearGradient>
-            </defs>
+            <path d="M28 4 C30 14, 42 24, 52 28 C42 32, 30 42, 28 52 C26 42, 14 32, 4 28 C14 24, 26 14, 28 4 Z" fill="url(#tp)"/>
+            <defs><linearGradient id="tp" x1="4" y1="4" x2="52" y2="52" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#8AAEC8"/><stop offset="0.5" stop-color="#5B82A6"/><stop offset="1" stop-color="#3A5878"/>
+            </linearGradient></defs>
           </svg>
         </div>
         <div class="topbar-name">Macedo <span>&</span> Reis</div>
       </div>
-
       <div class="topbar-actions">
-        <div class="user-chip">
-          <div class="user-avatar" id="userAvatar">—</div>
-          <span id="userName">Carregando…</span>
-        </div>
+        <div class="user-chip"><div class="user-avatar" id="userAvatar">—</div><span id="userName">Carregando…</span></div>
         <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
       </div>
     </header>
@@ -42,180 +34,272 @@
           <span class="breadcrumb-sep">/</span>
           <span>Fiscal</span>
         </div>
-        <div class="eyebrow">Análise tributária</div>
+        <div class="eyebrow">Controle de tarefas</div>
         <h1>Fiscal</h1>
-        <p>Selecione um cliente para gerar ou consultar a análise tributária. A análise descobre os tributos e obrigações aplicáveis e sinaliza os pontos que precisam de revisão humana.</p>
+        <p>Tarefas e obrigações do setor fiscal. Crie tarefas avulsas, acompanhe os prazos e marque o andamento.</p>
+      </div>
+
+      <div class="fa-subnav">
+        <a href="fiscal.html" class="fa-tab is-active">Tarefas</a>
+        <a href="fiscal-clientes.html" class="fa-tab">Análise por cliente</a>
       </div>
 
       <div class="toolbar">
         <div class="toolbar-filters">
-          <input type="text" id="searchInput" class="input input-search" placeholder="Buscar por nome, CNPJ ou CPF…">
-          <select id="filterAnalise" class="select">
-            <option value="">Todas as análises</option>
-            <option value="sem">Não analisados</option>
-            <option value="revisar">Requer revisão</option>
-            <option value="ok">Revisada</option>
+          <input type="text" id="searchInput" class="input input-search" placeholder="Buscar por tarefa ou cliente…">
+          <select id="filterStatus" class="select">
+            <option value="">Todos os status</option>
+            <option value="pendente">Pendente</option>
+            <option value="em_andamento">Em andamento</option>
+            <option value="concluida">Concluída</option>
           </select>
         </div>
+        <button class="btn btn-primary" id="btnNova">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          Nova tarefa
+        </button>
       </div>
 
-      <div class="table-wrap" id="tableWrap">
+      <div class="table-wrap">
         <table class="table">
           <thead>
             <tr>
-              <th>Nome / Razão social</th>
-              <th>Documento</th>
-              <th>Cidade / UF</th>
-              <th>Análise</th>
-              <th>Última análise</th>
-              <th></th>
+              <th>Tarefa</th>
+              <th>Cliente</th>
+              <th>Responsável</th>
+              <th>Prazo</th>
+              <th>Status</th>
             </tr>
           </thead>
           <tbody id="tbody">
-            <tr class="loading-row"><td colspan="6"><span class="spinner"></span>Carregando clientes…</td></tr>
+            <tr class="loading-row"><td colspan="5"><span class="spinner"></span>Carregando tarefas…</td></tr>
           </tbody>
         </table>
       </div>
     </main>
   </div>
 
+  <div class="fa-modal-overlay" id="modalOverlay">
+    <div class="fa-modal">
+      <div class="fa-modal-head">
+        <h3>Nova tarefa</h3>
+        <button class="fa-modal-close" id="modalClose">&times;</button>
+      </div>
+      <div class="fa-modal-body">
+        <label class="fa-field">
+          <span>Título *</span>
+          <input type="text" id="fTitulo" class="input" placeholder="Ex.: Apurar DAS de maio">
+        </label>
+        <label class="fa-field">
+          <span>Cliente</span>
+          <select id="fCliente" class="select"><option value="">— Sem cliente (interna) —</option></select>
+        </label>
+        <div class="fa-field-row">
+          <label class="fa-field">
+            <span>Responsável</span>
+            <input type="text" id="fResponsavel" class="input" placeholder="Ex.: Thalia">
+          </label>
+          <label class="fa-field">
+            <span>Prazo</span>
+            <input type="date" id="fPrazo" class="input">
+          </label>
+        </div>
+        <label class="fa-field">
+          <span>Prioridade</span>
+          <select id="fPrioridade" class="select">
+            <option value="media">Média</option>
+            <option value="alta">Alta</option>
+            <option value="baixa">Baixa</option>
+          </select>
+        </label>
+        <label class="fa-field">
+          <span>Descrição</span>
+          <textarea id="fDescricao" class="input" rows="3" placeholder="Detalhes da tarefa (opcional)"></textarea>
+        </label>
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-ghost" id="btnCancelar">Cancelar</button>
+        <button class="btn btn-primary" id="btnSalvar">Salvar tarefa</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
-    import { formatDocumento, formatDate } from './assets/js/utils.js';
+    import { formatDate } from './assets/js/utils.js';
 
+    const SETOR = 'fiscal';
     const tbody = document.getElementById('tbody');
     const searchInput = document.getElementById('searchInput');
-    const filterAnalise = document.getElementById('filterAnalise');
+    const filterStatus = document.getElementById('filterStatus');
 
-    let allClientes = [];
-    let analisePorCliente = {}; // cliente_id -> { confianca_geral, requer_revisao, revisado, created_at }
+    let tarefas = [];
+    let usuarioEmail = null;
 
     (async () => {
       const user = await getCurrentUser();
       if (user) {
-        const displayName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário';
-        document.getElementById('userName').textContent = displayName;
-        document.getElementById('userAvatar').textContent = displayName.charAt(0).toUpperCase();
+        usuarioEmail = user.email;
+        const n = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário';
+        document.getElementById('userName').textContent = n;
+        document.getElementById('userAvatar').textContent = n.charAt(0).toUpperCase();
       }
+      await carregarClientesSelect();
+      await carregarTarefas();
     })();
 
     document.getElementById('btnLogout').addEventListener('click', signOut);
 
-    async function loadDados() {
-      // 1) Clientes
-      const { data: clientes, error: errC } = await supabase
-        .from('clientes')
-        .select('id, tipo_pessoa, nome_principal, nome_fantasia, documento, status, cidade, uf')
-        .order('nome_principal');
+    const overlay = document.getElementById('modalOverlay');
+    document.getElementById('btnNova').addEventListener('click', () => overlay.classList.add('is-open'));
+    document.getElementById('modalClose').addEventListener('click', fecharModal);
+    document.getElementById('btnCancelar').addEventListener('click', fecharModal);
+    overlay.addEventListener('click', e => { if (e.target === overlay) fecharModal(); });
+    function fecharModal() {
+      overlay.classList.remove('is-open');
+      document.getElementById('fTitulo').value = '';
+      document.getElementById('fCliente').value = '';
+      document.getElementById('fResponsavel').value = '';
+      document.getElementById('fPrazo').value = '';
+      document.getElementById('fPrioridade').value = 'media';
+      document.getElementById('fDescricao').value = '';
+    }
 
-      if (errC) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color: var(--danger); padding:40px;">Erro ao carregar clientes: ${errC.message}</td></tr>`;
+    async function carregarClientesSelect() {
+      const { data } = await supabase.from('clientes').select('id, nome_principal').order('nome_principal');
+      const sel = document.getElementById('fCliente');
+      (data || []).forEach(c => {
+        const o = document.createElement('option');
+        o.value = c.id; o.textContent = c.nome_principal;
+        sel.appendChild(o);
+      });
+    }
+
+    document.getElementById('btnSalvar').addEventListener('click', async () => {
+      const titulo = document.getElementById('fTitulo').value.trim();
+      if (!titulo) { alert('Informe o título da tarefa.'); return; }
+      const novo = {
+        setor: SETOR,
+        titulo,
+        cliente_id: document.getElementById('fCliente').value || null,
+        responsavel: document.getElementById('fResponsavel').value.trim() || null,
+        prazo: document.getElementById('fPrazo').value || null,
+        prioridade: document.getElementById('fPrioridade').value,
+        descricao: document.getElementById('fDescricao').value.trim() || null,
+        origem: 'avulsa',
+        status: 'pendente'
+      };
+      const { error } = await supabase.from('tarefas').insert(novo);
+      if (error) { alert('Erro ao salvar: ' + error.message); return; }
+      fecharModal();
+      await carregarTarefas();
+    });
+
+    async function carregarTarefas() {
+      const { data, error } = await supabase
+        .from('tarefas')
+        .select('*, clientes(nome_principal)')
+        .eq('setor', SETOR)
+        .order('prazo', { ascending: true, nullsFirst: false });
+
+      if (error) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--danger);padding:40px;">Erro ao carregar tarefas: ' + error.message + '</td></tr>';
         return;
       }
-      allClientes = clientes || [];
-
-      // 2) Análises (a mais recente por cliente)
-      const { data: analises } = await supabase
-        .from('fiscal_analises')
-        .select('cliente_id, confianca_geral, requer_revisao, revisado, created_at')
-        .order('created_at', { ascending: false });
-
-      analisePorCliente = {};
-      (analises || []).forEach(a => {
-        if (!analisePorCliente[a.cliente_id]) {
-          analisePorCliente[a.cliente_id] = a; // primeira = mais recente
-        }
-      });
-
+      tarefas = data || [];
       render();
     }
 
-    function statusAnalise(clienteId) {
-      const a = analisePorCliente[clienteId];
-      if (!a) return { key: 'sem', label: 'Não analisado', cls: 'fa-pill-none' };
-      if (a.requer_revisao && !a.revisado) return { key: 'revisar', label: 'Requer revisão', cls: 'fa-pill-warn' };
-      if (a.revisado) return { key: 'ok', label: 'Revisada', cls: 'fa-pill-ok' };
-      return { key: 'ok', label: 'Concluída', cls: 'fa-pill-ok' };
-    }
-
     function render() {
-      const search = searchInput.value.toLowerCase().trim();
-      const fAnalise = filterAnalise.value;
-
-      const filtered = allClientes.filter(c => {
-        const st = statusAnalise(c.id);
-        if (fAnalise && st.key !== fAnalise) return false;
-        if (search) {
-          const haystack = `${c.nome_principal} ${c.nome_fantasia || ''} ${c.documento}`.toLowerCase();
-          if (!haystack.includes(search)) return false;
+      const s = searchInput.value.toLowerCase().trim();
+      const fs = filterStatus.value;
+      const filtered = tarefas.filter(t => {
+        if (fs && t.status !== fs) return false;
+        if (s) {
+          const hay = (t.titulo + ' ' + (t.clientes?.nome_principal || '') + ' ' + (t.responsavel || '')).toLowerCase();
+          if (!hay.includes(s)) return false;
         }
         return true;
       });
 
       if (filtered.length === 0) {
-        tbody.innerHTML = `
-          <tr><td colspan="6">
-            <div class="empty-state">
-              <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14 2 14 8 20 8"/>
-              </svg>
-              <h3>${allClientes.length === 0 ? 'Nenhum cliente cadastrado' : 'Nenhum resultado'}</h3>
-              <p>${allClientes.length === 0 ? 'Cadastre clientes no dashboard de Clientes para analisá-los aqui.' : 'Tente ajustar os filtros ou a busca.'}</p>
-            </div>
-          </td></tr>`;
+        tbody.innerHTML = '<tr><td colspan="5">' +
+          '<div class="empty-state">' +
+          '<svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>' +
+          '<h3>' + (tarefas.length === 0 ? 'Nenhuma tarefa ainda' : 'Nenhum resultado') + '</h3>' +
+          '<p>' + (tarefas.length === 0 ? 'Crie a primeira tarefa do setor fiscal no botão “Nova tarefa”.' : 'Ajuste a busca ou o filtro.') + '</p>' +
+          '</div></td></tr>';
         return;
       }
 
-      tbody.innerHTML = filtered.map(c => {
-        const st = statusAnalise(c.id);
-        const a = analisePorCliente[c.id];
-        return `
-        <tr class="is-clickable" data-id="${c.id}">
-          <td data-label="Nome">
-            <div class="table-name">${c.nome_principal}</div>
-            ${c.nome_fantasia ? `<div class="table-sub">${c.nome_fantasia}</div>` : ''}
-          </td>
-          <td data-label="Documento">${formatDocumento(c.documento)}</td>
-          <td data-label="Localização">${c.cidade ? `${c.cidade}${c.uf ? '/' + c.uf : ''}` : '—'}</td>
-          <td data-label="Análise"><span class="fa-pill ${st.cls}">${st.label}</span></td>
-          <td data-label="Última análise">${a ? formatDate(a.created_at) : '—'}</td>
-          <td data-label="" style="text-align:right;">
-            <svg class="chevron-right" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="9 18 15 12 9 6"/>
-            </svg>
-          </td>
-        </tr>`;
+      const hoje = new Date().toISOString().slice(0, 10);
+      tbody.innerHTML = filtered.map(t => {
+        const atrasada = t.prazo && t.prazo < hoje && t.status !== 'concluida';
+        const cliente = t.clientes?.nome_principal ? escapeHtml(t.clientes.nome_principal) : '<span style="color:#6B7385">Interna</span>';
+        const prazo = t.prazo ? '<span class="' + (atrasada ? 'fa-atrasada' : '') + '">' + formatDate(t.prazo) + '</span>' : '—';
+        return '<tr data-id="' + t.id + '" class="' + (t.status === 'concluida' ? 'fa-row-done' : '') + '">' +
+          '<td data-label="Tarefa"><div class="table-name">' + escapeHtml(t.titulo) + '</div>' + (t.prioridade === 'alta' ? '<span class="fa-prio-tag">Alta</span>' : '') + '</td>' +
+          '<td data-label="Cliente">' + cliente + '</td>' +
+          '<td data-label="Responsável">' + (t.responsavel ? escapeHtml(t.responsavel) : '—') + '</td>' +
+          '<td data-label="Prazo">' + prazo + '</td>' +
+          '<td data-label="Status"><select class="fa-status-sel ' + statusCls(t.status) + '" data-id="' + t.id + '">' +
+            '<option value="pendente"' + (t.status==='pendente'?' selected':'') + '>Pendente</option>' +
+            '<option value="em_andamento"' + (t.status==='em_andamento'?' selected':'') + '>Em andamento</option>' +
+            '<option value="concluida"' + (t.status==='concluida'?' selected':'') + '>Concluída</option>' +
+          '</select></td></tr>';
       }).join('');
 
-      tbody.querySelectorAll('tr.is-clickable').forEach(tr => {
-        tr.addEventListener('click', () => {
-          window.location.href = `fiscal-analise.html?id=${tr.dataset.id}`;
+      tbody.querySelectorAll('.fa-status-sel').forEach(sel => {
+        sel.addEventListener('change', async (e) => {
+          const id = e.target.dataset.id;
+          const novoStatus = e.target.value;
+          const patch = { status: novoStatus };
+          if (novoStatus === 'concluida') { patch.concluida_em = new Date().toISOString(); patch.concluida_por = usuarioEmail; }
+          else { patch.concluida_em = null; patch.concluida_por = null; }
+          const { error } = await supabase.from('tarefas').update(patch).eq('id', id);
+          if (error) { alert('Erro ao atualizar status: ' + error.message); return; }
+          await carregarTarefas();
         });
       });
     }
 
-    searchInput.addEventListener('input', render);
-    filterAnalise.addEventListener('change', render);
+    function statusCls(s){ return s==='pendente'?'st-pend':(s==='em_andamento'?'st-and':'st-ok'); }
+    function escapeHtml(t){ return String(t==null?'':t).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
 
-    loadDados();
+    searchInput.addEventListener('input', render);
+    filterStatus.addEventListener('change', render);
   </script>
 
   <style>
-    /* Pílulas de status da análise — herdam o tom escuro do tema */
-    .fa-pill {
-      display: inline-block;
-      padding: 3px 10px;
-      border-radius: 999px;
-      font-size: 12px;
-      font-weight: 600;
-      letter-spacing: .2px;
-      border: 1px solid transparent;
-      white-space: nowrap;
-    }
-    .fa-pill-none { color: #8A93A6; background: rgba(138,147,166,.12); border-color: rgba(138,147,166,.25); }
-    .fa-pill-warn { color: #E3B341; background: rgba(227,179,65,.12); border-color: rgba(227,179,65,.30); }
-    .fa-pill-ok   { color: #3FB07A; background: rgba(63,176,122,.12); border-color: rgba(63,176,122,.30); }
+    .fa-subnav { display:flex; gap:6px; margin-bottom:22px; border-bottom:1px solid rgba(255,255,255,.08); }
+    .fa-tab { padding:9px 16px; font-size:14px; color:#8A93A6; text-decoration:none; border-bottom:2px solid transparent; margin-bottom:-1px; }
+    .fa-tab:hover { color:#C5D8E8; }
+    .fa-tab.is-active { color:#C5D8E8; border-bottom-color:#5B82A6; font-weight:600; }
+
+    .fa-prio-tag { display:inline-block; margin-top:4px; font-size:10px; font-weight:700; letter-spacing:.4px; color:#F0A0A0; background:rgba(224,108,108,.16); border:1px solid rgba(224,108,108,.3); border-radius:5px; padding:1px 7px; }
+    .fa-atrasada { color:#E06C6C; font-weight:600; }
+    .fa-row-done { opacity:.55; }
+
+    .fa-status-sel { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.14); color:#D7DEE8; border-radius:8px; padding:5px 10px; font-size:13px; cursor:pointer; }
+    .fa-status-sel.st-pend { color:#E3B341; border-color:rgba(227,179,65,.4); }
+    .fa-status-sel.st-and { color:#8AAEC8; border-color:rgba(91,130,166,.45); }
+    .fa-status-sel.st-ok { color:#3FB07A; border-color:rgba(63,176,122,.45); }
+
+    .fa-modal-overlay { position:fixed; inset:0; background:rgba(8,12,18,.72); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
+    .fa-modal-overlay.is-open { display:flex; }
+    .fa-modal { width:100%; max-width:520px; background:#141A22; border:1px solid rgba(255,255,255,.10); border-radius:16px; overflow:hidden; }
+    .fa-modal-head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid rgba(255,255,255,.08); }
+    .fa-modal-head h3 { margin:0; color:#E6EBF2; font-size:18px; }
+    .fa-modal-close { background:none; border:none; color:#8A93A6; font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }
+    .fa-modal-close:hover { color:#E6EBF2; }
+    .fa-modal-body { padding:22px; display:flex; flex-direction:column; gap:14px; }
+    .fa-field { display:flex; flex-direction:column; gap:6px; }
+    .fa-field > span { font-size:13px; color:#8AAEC8; }
+    .fa-field-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .fa-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid rgba(255,255,255,.08); }
+    .fa-modal textarea.input { resize:vertical; font-family:inherit; }
   </style>
 </body>
 </html>

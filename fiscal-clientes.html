@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fiscal — Macedo & Reis</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo">
+          <svg width="32" height="32" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M28 4 C30 14, 42 24, 52 28 C42 32, 30 42, 28 52 C26 42, 14 32, 4 28 C14 24, 26 14, 28 4 Z" fill="url(#topbarPetal3)"/>
+            <defs>
+              <linearGradient id="topbarPetal3" x1="4" y1="4" x2="52" y2="52" gradientUnits="userSpaceOnUse">
+                <stop offset="0" stop-color="#8AAEC8"/>
+                <stop offset="0.5" stop-color="#5B82A6"/>
+                <stop offset="1" stop-color="#3A5878"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+
+      <div class="topbar-actions">
+        <div class="user-chip">
+          <div class="user-avatar" id="userAvatar">—</div>
+          <span id="userName">Carregando…</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Fiscal</span>
+        </div>
+        <div class="eyebrow">Análise tributária</div>
+        <h1>Fiscal</h1>
+        <p>Selecione um cliente para gerar ou consultar a análise tributária. A análise descobre os tributos e obrigações aplicáveis e sinaliza os pontos que precisam de revisão humana.</p>
+      </div>
+
+      <div class="fa-subnav">
+        <a href="fiscal.html" class="fa-tab">Tarefas</a>
+        <a href="fiscal-clientes.html" class="fa-tab is-active">Análise por cliente</a>
+      </div>
+
+      <div class="toolbar">
+        <div class="toolbar-filters">
+          <input type="text" id="searchInput" class="input input-search" placeholder="Buscar por nome, CNPJ ou CPF…">
+          <select id="filterAnalise" class="select">
+            <option value="">Todas as análises</option>
+            <option value="sem">Não analisados</option>
+            <option value="revisar">Requer revisão</option>
+            <option value="ok">Revisada</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="table-wrap" id="tableWrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Nome / Razão social</th>
+              <th>Documento</th>
+              <th>Cidade / UF</th>
+              <th>Análise</th>
+              <th>Última análise</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="tbody">
+            <tr class="loading-row"><td colspan="6"><span class="spinner"></span>Carregando clientes…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { formatDocumento, formatDate } from './assets/js/utils.js';
+
+    const tbody = document.getElementById('tbody');
+    const searchInput = document.getElementById('searchInput');
+    const filterAnalise = document.getElementById('filterAnalise');
+
+    let allClientes = [];
+    let analisePorCliente = {}; // cliente_id -> { confianca_geral, requer_revisao, revisado, created_at }
+
+    (async () => {
+      const user = await getCurrentUser();
+      if (user) {
+        const displayName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário';
+        document.getElementById('userName').textContent = displayName;
+        document.getElementById('userAvatar').textContent = displayName.charAt(0).toUpperCase();
+      }
+    })();
+
+    document.getElementById('btnLogout').addEventListener('click', signOut);
+
+    async function loadDados() {
+      // 1) Clientes
+      const { data: clientes, error: errC } = await supabase
+        .from('clientes')
+        .select('id, tipo_pessoa, nome_principal, nome_fantasia, documento, status, cidade, uf')
+        .order('nome_principal');
+
+      if (errC) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color: var(--danger); padding:40px;">Erro ao carregar clientes: ${errC.message}</td></tr>`;
+        return;
+      }
+      allClientes = clientes || [];
+
+      // 2) Análises (a mais recente por cliente)
+      const { data: analises } = await supabase
+        .from('fiscal_analises')
+        .select('cliente_id, confianca_geral, requer_revisao, revisado, created_at')
+        .order('created_at', { ascending: false });
+
+      analisePorCliente = {};
+      (analises || []).forEach(a => {
+        if (!analisePorCliente[a.cliente_id]) {
+          analisePorCliente[a.cliente_id] = a; // primeira = mais recente
+        }
+      });
+
+      render();
+    }
+
+    function statusAnalise(clienteId) {
+      const a = analisePorCliente[clienteId];
+      if (!a) return { key: 'sem', label: 'Não analisado', cls: 'fa-pill-none' };
+      if (a.requer_revisao && !a.revisado) return { key: 'revisar', label: 'Requer revisão', cls: 'fa-pill-warn' };
+      if (a.revisado) return { key: 'ok', label: 'Revisada', cls: 'fa-pill-ok' };
+      return { key: 'ok', label: 'Concluída', cls: 'fa-pill-ok' };
+    }
+
+    function render() {
+      const search = searchInput.value.toLowerCase().trim();
+      const fAnalise = filterAnalise.value;
+
+      const filtered = allClientes.filter(c => {
+        const st = statusAnalise(c.id);
+        if (fAnalise && st.key !== fAnalise) return false;
+        if (search) {
+          const haystack = `${c.nome_principal} ${c.nome_fantasia || ''} ${c.documento}`.toLowerCase();
+          if (!haystack.includes(search)) return false;
+        }
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `
+          <tr><td colspan="6">
+            <div class="empty-state">
+              <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
+              <h3>${allClientes.length === 0 ? 'Nenhum cliente cadastrado' : 'Nenhum resultado'}</h3>
+              <p>${allClientes.length === 0 ? 'Cadastre clientes no dashboard de Clientes para analisá-los aqui.' : 'Tente ajustar os filtros ou a busca.'}</p>
+            </div>
+          </td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(c => {
+        const st = statusAnalise(c.id);
+        const a = analisePorCliente[c.id];
+        return `
+        <tr class="is-clickable" data-id="${c.id}">
+          <td data-label="Nome">
+            <div class="table-name">${c.nome_principal}</div>
+            ${c.nome_fantasia ? `<div class="table-sub">${c.nome_fantasia}</div>` : ''}
+          </td>
+          <td data-label="Documento">${formatDocumento(c.documento)}</td>
+          <td data-label="Localização">${c.cidade ? `${c.cidade}${c.uf ? '/' + c.uf : ''}` : '—'}</td>
+          <td data-label="Análise"><span class="fa-pill ${st.cls}">${st.label}</span></td>
+          <td data-label="Última análise">${a ? formatDate(a.created_at) : '—'}</td>
+          <td data-label="" style="text-align:right;">
+            <svg class="chevron-right" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+          </td>
+        </tr>`;
+      }).join('');
+
+      tbody.querySelectorAll('tr.is-clickable').forEach(tr => {
+        tr.addEventListener('click', () => {
+          window.location.href = `fiscal-analise.html?id=${tr.dataset.id}`;
+        });
+      });
+    }
+
+    searchInput.addEventListener('input', render);
+    filterAnalise.addEventListener('change', render);
+
+    loadDados();
+  </script>
+
+  <style>
+    .fa-subnav { display:flex; gap:6px; margin-bottom:22px; border-bottom:1px solid rgba(255,255,255,.08); }
+    .fa-tab { padding:9px 16px; font-size:14px; color:#8A93A6; text-decoration:none; border-bottom:2px solid transparent; margin-bottom:-1px; }
+    .fa-tab:hover { color:#C5D8E8; }
+    .fa-tab.is-active { color:#C5D8E8; border-bottom-color:#5B82A6; font-weight:600; }
+
+    /* Pílulas de status da análise — herdam o tom escuro do tema */
+    .fa-pill {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: .2px;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+    .fa-pill-none { color: #8A93A6; background: rgba(138,147,166,.12); border-color: rgba(138,147,166,.25); }
+    .fa-pill-warn { color: #E3B341; background: rgba(227,179,65,.12); border-color: rgba(227,179,65,.30); }
+    .fa-pill-ok   { color: #3FB07A; background: rgba(63,176,122,.12); border-color: rgba(63,176,122,.30); }
+  </style>
+</body>
+</html>
