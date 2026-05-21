@@ -54,12 +54,20 @@
       <!-- Barra de ação -->
       <div class="fa-actionbar">
         <div id="metaArea" class="fa-meta"></div>
-        <button class="btn btn-primary" id="btnGerar">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
-          </svg>
-          <span id="btnGerarLabel">Gerar análise</span>
-        </button>
+        <div class="fa-action-btns">
+          <button class="btn btn-ghost btn-sm" id="btnExcluir" style="display:none;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+            Excluir análise
+          </button>
+          <button class="btn btn-primary" id="btnGerar">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+            </svg>
+            <span id="btnGerarLabel">Gerar análise</span>
+          </button>
+        </div>
       </div>
 
       <div id="resultado"></div>
@@ -96,6 +104,7 @@
 
     document.getElementById('btnLogout').addEventListener('click', signOut);
     btnGerar.addEventListener('click', gerarAnalise);
+    document.getElementById('btnExcluir').addEventListener('click', excluirAnalise);
 
     async function carregarCliente() {
       if (!clienteId) {
@@ -130,16 +139,28 @@
         .limit(1);
 
       analiseAtual = (data && data[0]) || null;
+      const btnExcluir = document.getElementById('btnExcluir');
       if (analiseAtual) {
         btnGerarLabel.textContent = 'Gerar nova análise';
+        btnExcluir.style.display = '';
         render(analiseAtual);
       } else {
+        btnExcluir.style.display = 'none';
+        metaArea.innerHTML = '';
         resultado.innerHTML = `
           <div class="fa-empty">
             <p>Este cliente ainda não tem análise tributária.</p>
             <p style="color:var(--text-muted, #8A93A6); font-size:14px;">Clique em <strong>Gerar análise</strong> acima para o agente fiscal analisar este cliente.</p>
           </div>`;
       }
+    }
+
+    async function excluirAnalise() {
+      if (!analiseAtual) return;
+      if (!confirm('Excluir esta análise? Esta ação não pode ser desfeita.')) return;
+      const { error } = await supabase.from('fiscal_analises').delete().eq('id', analiseAtual.id);
+      if (error) { alert('Erro ao excluir: ' + error.message); return; }
+      await carregarAnaliseMaisRecente();
     }
 
     async function gerarAnalise() {
@@ -498,6 +519,7 @@
 
     /* ===== Componentes da análise fiscal (tema escuro, cores da marca) ===== */
     .fa-actionbar { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:24px; }
+    .fa-action-btns { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
     .fa-meta { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
     .fa-meta-item { color:#8A93A6; font-size:13px; }
 
