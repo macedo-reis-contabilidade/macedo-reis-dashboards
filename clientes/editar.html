@@ -379,6 +379,22 @@
           </div>
         </section>
 
+        <section class="form-section">
+          <div class="form-section-head" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+            <h2>Credenciais / Acessos</h2>
+            <button type="button" class="btn btn-ghost btn-sm" id="btnRevelarCred">Revelar</button>
+          </div>
+          <div class="form-grid">
+            <div class="fg-col-12">
+              <div class="form-group">
+                <label for="credenciais">Senhas e acessos (gov.br, e-CAC, Simples, certificado, prefeitura…)</label>
+                <textarea id="credenciais" class="textarea" rows="6" style="filter:blur(6px);transition:filter .15s;"></textarea>
+                <div class="field-help">Conteúdo sensível — visível apenas à equipe logada. Use "Revelar" só quando precisar consultar.</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <div class="form-actions">
           <a href="index.html" class="btn btn-ghost">Cancelar</a>
           <button type="button" class="btn btn-primary" id="btnSalvarBottom">Salvar alterações</button>
@@ -559,6 +575,7 @@
       document.getElementById('uf').value = cliente.uf || '';
       document.getElementById('drive_folder_url').value = cliente.drive_folder_url || '';
       document.getElementById('observacoes').value = cliente.observacoes || '';
+      document.getElementById('credenciais').value = cliente.credenciais || '';
 
       atualizaBotoesDrive();
 
@@ -838,7 +855,8 @@
         data_inicio_cliente: document.getElementById('data_inicio_cliente').value || null,
         data_fim_cliente: document.getElementById('data_fim_cliente').value || null,
         drive_folder_url: document.getElementById('drive_folder_url').value.trim() || null,
-        observacoes: document.getElementById('observacoes').value.trim() || null
+        observacoes: document.getElementById('observacoes').value.trim() || null,
+        credenciais: document.getElementById('credenciais').value.trim() || null
       };
 
       if (cliente.tipo_pessoa === 'PJ') {
@@ -891,6 +909,15 @@
 
     document.getElementById('btnSalvar').addEventListener('click', salvar);
     document.getElementById('btnSalvarBottom').addEventListener('click', salvar);
+
+    (function(){
+      const ta = document.getElementById('credenciais');
+      const btn = document.getElementById('btnRevelarCred');
+      let vis = false;
+      function apply(){ ta.style.filter = vis ? 'none' : 'blur(6px)'; btn.textContent = vis ? 'Ocultar' : 'Revelar'; }
+      btn.addEventListener('click', () => { vis = !vis; apply(); });
+      apply();
+    })();
 
     const dialogDelete = document.getElementById('dialogConfirmDelete');
     document.getElementById('btnExcluir').addEventListener('click', () => dialogDelete.showModal());
