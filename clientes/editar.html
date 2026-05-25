@@ -336,7 +336,7 @@
           <div id="contatosList" class="item-list"></div>
         </section>
 
-        <section class="form-section">
+        <section class="form-section" id="sectionDrive">
           <div class="form-section-head">
             <h2>Pasta no Drive</h2>
             <span class="form-section-sub">Vinculada automaticamente ao cadastrar</span>
@@ -583,6 +583,7 @@
         document.getElementById('sectionPJ').hidden = false;
         document.getElementById('sectionPF').hidden = true;
         document.getElementById('sectionSocios').hidden = false;
+        document.getElementById('sectionDrive').hidden = false;
         document.getElementById('nome_fantasia').value = cliente.nome_fantasia || '';
         document.getElementById('inscricao_estadual').value = cliente.inscricao_estadual || '';
         document.getElementById('inscricao_municipal').value = cliente.inscricao_municipal || '';
@@ -596,6 +597,7 @@
         document.getElementById('sectionPJ').hidden = true;
         document.getElementById('sectionPF').hidden = false;
         document.getElementById('sectionSocios').hidden = true;
+        document.getElementById('sectionDrive').hidden = true;
         document.getElementById('rg').value = cliente.rg || '';
         document.getElementById('data_nascimento').value = cliente.data_nascimento || '';
         document.getElementById('profissao').value = cliente.profissao || '';

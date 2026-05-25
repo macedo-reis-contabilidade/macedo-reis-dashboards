@@ -15,7 +15,22 @@
       .toolbar-filters .input-search,
       .toolbar-filters .select { flex: 1 1 100%; max-width: none; width: 100% !important; }
     }
+    .imp-overlay { position:fixed; inset:0; background:rgba(8,12,18,.72); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
+    .imp-overlay.is-open { display:flex; }
+    .imp-modal { width:100%; max-width:520px; background:#141A22; border:1px solid rgba(255,255,255,.10); border-radius:16px; overflow:hidden; }
+    .imp-head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid rgba(255,255,255,.08); }
+    .imp-head h3 { margin:0; color:#E6EBF2; font-size:18px; }
+    .imp-close { background:none; border:none; color:#8A93A6; font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }
+    .imp-close:hover { color:#E6EBF2; }
+    .imp-body { padding:22px; color:#C5D8E8; font-size:14px; }
+    .imp-body p { margin-top:0; line-height:1.6; }
+    .imp-body input[type=file] { width:100%; padding:12px; background:rgba(255,255,255,.04); border:1px dashed rgba(255,255,255,.22); border-radius:10px; color:#C5D8E8; font-size:13px; box-sizing:border-box; }
+    .imp-resumo { margin-top:16px; padding:14px 16px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:10px; line-height:1.8; }
+    .imp-resumo b { color:#E6EBF2; }
+    .imp-num { color:#3FB07A; font-weight:700; }
+    .imp-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid rgba(255,255,255,.08); }
   </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script type="module" src="../assets/js/auth-guard.js"></script>
 </head>
 <body>
@@ -63,13 +78,21 @@
             <option value="prospect">Prospect</option>
           </select>
         </div>
-        <a href="novo.html" class="btn btn-primary">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19"/>
-            <line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-          Novo cliente
-        </a>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <button class="btn btn-ghost" id="btnImportar" type="button">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Importar
+          </button>
+          <a href="novo.html" class="btn btn-primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Novo cliente
+          </a>
+        </div>
       </div>
 
       <div class="table-wrap" id="tableWrap">
@@ -91,6 +114,21 @@
         </table>
       </div>
     </main>
+  </div>
+
+  <div class="imp-overlay" id="impOverlay">
+    <div class="imp-modal">
+      <div class="imp-head"><h3>Importar clientes do Taskdo</h3><button class="imp-close" id="impClose" type="button">&times;</button></div>
+      <div class="imp-body">
+        <p>Selecione o arquivo <b>.xls</b> exportado do Taskdo (relatório de clientes). Entram só os clientes que ainda não existem — os já cadastrados (mesmo CNPJ/CPF) são ignorados.</p>
+        <input type="file" id="impFile" accept=".xls,.xlsx">
+        <div class="imp-resumo" id="impResumo" hidden></div>
+      </div>
+      <div class="imp-foot">
+        <button class="btn btn-ghost" id="impCancelar" type="button">Cancelar</button>
+        <button class="btn btn-primary" id="impAcao" type="button" disabled>Analisar arquivo</button>
+      </div>
+    </div>
   </div>
 
   <script type="module">
@@ -192,6 +230,125 @@
     searchInput.addEventListener('input', render);
     filterTipo.addEventListener('change', render);
     filterStatus.addEventListener('change', render);
+
+    // ===== Importação de clientes do Taskdo (.xls) =====
+    const REG_MAP = { 'MEI':'MEI', 'SIMPLES NACIONAL':'Simples Nacional', 'LUCRO PRESUMIDO':'Lucro Presumido', 'LUCRO REAL':'Lucro Real', 'IMUNE - ISENTA':'Imune' };
+    const dig = s => String(s==null?'':s).replace(/\D/g,'');
+    const st = s => String(s==null?'':s).trim();
+    const firstEmail = s => { const m = String(s==null?'':s).match(/[\w.\-+]+@[\w.\-]+\.\w+/); return m ? m[0] : ''; };
+    const titleCase = s => s.toLowerCase().replace(/(^|\s|\/)([^\s\/])/g, (_,p,c) => p + c.toUpperCase());
+    function parseData(v){
+      const s = st(v); if (!s) return null;
+      let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+      m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+      return null;
+    }
+    function mapearLinha(r){
+      const doc = dig(r['IDENTIFICAÇÃO']);
+      const nome = st(r['RAZÃO']);
+      if (![11,14].includes(doc.length) || doc.startsWith('0000000000') || nome.toUpperCase().startsWith('CLIENTES')) return null;
+      const nomeLimpo = nome.replace(/^[\d.\-/]+\s+/, '').trim();
+      const muni = st(r['MUNICÍPIO']);
+      let cidade = muni, uf = '';
+      if (muni.includes('/')) { const i = muni.lastIndexOf('/'); cidade = muni.slice(0,i); uf = muni.slice(i+1); }
+      const reg = st(r['REGIME']).toUpperCase();
+      return {
+        tipo_pessoa: doc.length === 14 ? 'PJ' : 'PF',
+        nome_principal: nomeLimpo,
+        nome_fantasia: st(r['NOME FANTASIA']) || null,
+        documento: doc,
+        email_principal: firstEmail(r['E-MAILS']) || null,
+        telefone_principal: st(r['CONTATO']) || null,
+        cidade: cidade.trim() ? titleCase(cidade.trim()) : null,
+        uf: uf.trim() ? uf.trim().toUpperCase().slice(0,2) : null,
+        status: reg === 'INATIVAS' ? 'inativo' : 'ativo',
+        regime_tributario: REG_MAP[reg] || null,
+        porte_empresa: reg === 'MEI' ? 'MEI' : null,
+        inscricao_estadual: st(r['INSCRIÇÃO ESTADUAL']) || null,
+        inscricao_municipal: st(r['INSCRIÇÃO MUNICIPAL']) || null,
+        data_abertura: parseData(r['DATA ABERTURA']),
+        data_inicio_cliente: parseData(r['DATA INÍCIO CONTROLE']),
+        credenciais: st(r['OBSERVAÇÃO']) || null,
+      };
+    }
+    async function lerArquivo(file){
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      const nome = wb.SheetNames.includes('cliente-consulta') ? 'cliente-consulta' : wb.SheetNames[0];
+      return XLSX.utils.sheet_to_json(wb.Sheets[nome], { defval: '', raw: false });
+    }
+    async function filtrarNovos(registros){
+      const docs = registros.map(r => r.documento);
+      const existentes = new Set();
+      for (let i = 0; i < docs.length; i += 150) {
+        const chunk = docs.slice(i, i + 150);
+        const { data, error } = await supabase.from('clientes').select('documento').in('documento', chunk);
+        if (error) throw error;
+        (data || []).forEach(e => existentes.add(e.documento));
+      }
+      const vistos = new Set(); const novos = [];
+      for (const r of registros) {
+        if (existentes.has(r.documento) || vistos.has(r.documento)) continue;
+        vistos.add(r.documento); novos.push(r);
+      }
+      return novos;
+    }
+    async function inserir(novos){
+      for (let i = 0; i < novos.length; i += 300) {
+        const { error } = await supabase.from('clientes').insert(novos.slice(i, i + 300));
+        if (error) throw error;
+      }
+    }
+
+    let novosParaImportar = null;
+    const impOverlay = document.getElementById('impOverlay');
+    const impFile = document.getElementById('impFile');
+    const impAcao = document.getElementById('impAcao');
+    const impResumo = document.getElementById('impResumo');
+
+    function fecharImp(){ impOverlay.classList.remove('is-open'); }
+    function resetImp(){ novosParaImportar = null; impFile.value = ''; impResumo.hidden = true; impResumo.innerHTML = ''; impAcao.textContent = 'Analisar arquivo'; impAcao.disabled = true; }
+
+    document.getElementById('btnImportar').addEventListener('click', () => { resetImp(); impOverlay.classList.add('is-open'); });
+    document.getElementById('impClose').addEventListener('click', fecharImp);
+    document.getElementById('impCancelar').addEventListener('click', fecharImp);
+    impOverlay.addEventListener('click', e => { if (e.target === impOverlay) fecharImp(); });
+    impFile.addEventListener('change', () => { novosParaImportar = null; impResumo.hidden = true; impAcao.textContent = 'Analisar arquivo'; impAcao.disabled = !impFile.files.length; });
+
+    impAcao.addEventListener('click', async () => {
+      if (novosParaImportar === null) {
+        if (!impFile.files.length) return;
+        if (typeof XLSX === 'undefined') { impResumo.hidden = false; impResumo.innerHTML = '<span style="color:#E06C6C;">A biblioteca de leitura não carregou. Verifique a conexão e recarregue a página.</span>'; return; }
+        impAcao.disabled = true; impAcao.textContent = 'Analisando…';
+        try {
+          const rows = await lerArquivo(impFile.files[0]);
+          const validos = rows.map(mapearLinha).filter(Boolean);
+          const novos = await filtrarNovos(validos);
+          novosParaImportar = novos;
+          impResumo.hidden = false;
+          impResumo.innerHTML = `<b>${rows.length}</b> linhas no arquivo<br><b>${validos.length}</b> clientes válidos<br><span class="imp-num">${novos.length}</span> novos para importar<br><b>${validos.length - novos.length}</b> já cadastrados (ignorados)`;
+          if (novos.length > 0) { impAcao.textContent = `Importar ${novos.length} cliente${novos.length>1?'s':''}`; impAcao.disabled = false; }
+          else { impAcao.textContent = 'Nada para importar'; impAcao.disabled = true; }
+        } catch (err) {
+          impResumo.hidden = false; impResumo.innerHTML = `<span style="color:#E06C6C;">Erro ao ler o arquivo: ${err.message}</span>`;
+          novosParaImportar = null; impAcao.textContent = 'Analisar arquivo'; impAcao.disabled = false;
+        }
+      } else {
+        impAcao.disabled = true; impAcao.textContent = 'Importando…';
+        try {
+          const n = novosParaImportar.length;
+          await inserir(novosParaImportar);
+          impResumo.innerHTML = `<span class="imp-num">${n}</span> cliente${n>1?'s':''} importado${n>1?'s':''} com sucesso!`;
+          impAcao.textContent = 'Concluído';
+          setTimeout(() => { fecharImp(); loadClientes(); }, 1300);
+        } catch (err) {
+          impResumo.innerHTML = `<span style="color:#E06C6C;">Erro ao importar: ${err.message}</span>`;
+          impAcao.textContent = 'Tentar de novo'; impAcao.disabled = false;
+        }
+      }
+    });
 
     loadClientes();
   </script>
