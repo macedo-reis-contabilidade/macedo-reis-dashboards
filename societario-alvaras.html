@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Societário — Alvarás — Macedo & Reis</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip"><div class="user-avatar" id="userAvatar">—</div><span id="userName">Carregando…</span></div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <a href="societario.html">Societário</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Alvarás</span>
+        </div>
+        <div class="eyebrow">Controle de alvarás</div>
+        <h1>Alvarás</h1>
+        <p>Acompanhe cada alvará do início ao fim. Registre os andamentos na linha do tempo — útil para os processos que andam, param e voltam a andar.</p>
+      </div>
+
+      <div class="fa-subnav">
+        <a href="societario.html" class="fa-tab">Tarefas</a>
+        <a href="societario-regras.html" class="fa-tab">Regras recorrentes</a>
+        <a href="societario-relatorios.html" class="fa-tab">Relatórios</a>
+        <a href="societario-alvaras.html" class="fa-tab is-active">Alvarás</a>
+      </div>
+
+      <div class="fa-focus">
+        <button class="fa-focus-card fc-danger" data-f="atrasados"><span class="fc-num" id="cAtras">0</span><span class="fc-lbl">Atrasados</span></button>
+        <button class="fa-focus-card" data-f="prox30"><span class="fc-num" id="cProx">0</span><span class="fc-lbl">Vencem em 30 dias</span></button>
+        <button class="fa-focus-card is-active" data-f="abertos"><span class="fc-num" id="cAbertos">0</span><span class="fc-lbl">Em aberto</span></button>
+        <button class="fa-focus-card" data-f="concluidos"><span class="fc-num" id="cConcl">0</span><span class="fc-lbl">Concluídos</span></button>
+        <button class="fa-focus-card" data-f="todos"><span class="fc-num" id="cTodos">0</span><span class="fc-lbl">Todos</span></button>
+      </div>
+
+      <div class="toolbar">
+        <div class="toolbar-filters">
+          <input type="text" id="searchInput" class="input input-search" placeholder="Buscar por empresa, tipo ou cidade…">
+        </div>
+        <div class="fa-toolbar-actions">
+          <button class="btn btn-primary" id="btnNovo">+ Novo alvará</button>
+        </div>
+      </div>
+
+      <div id="lista"></div>
+      <div id="vazio" class="empty-state" hidden>Nenhum alvará neste filtro.</div>
+    </main>
+  </div>
+
+  <!-- MODAL: NOVO ALVARÁ -->
+  <div class="fa-modal-overlay" id="ovNovo">
+    <div class="fa-modal">
+      <div class="fa-modal-head"><h3>Novo alvará</h3><button class="fa-modal-close" id="nClose">&times;</button></div>
+      <div class="fa-modal-body">
+        <label class="fa-field"><span>Empresa *</span>
+          <select id="nCliente" class="input"><option value="">Selecione…</option></select>
+        </label>
+        <label class="fa-field"><span>Tipo de alvará *</span>
+          <select id="nTipo" class="input"><option value="">Selecione…</option></select>
+        </label>
+        <label class="fa-field" id="nTipoOutroWrap" hidden><span>Qual?</span>
+          <input type="text" id="nTipoOutro" class="input" placeholder="Descreva o tipo de alvará">
+        </label>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Cidade</span><input type="text" id="nCidade" class="input"></label>
+          <label class="fa-field"><span>Responsável</span><input type="text" id="nResp" class="input"></label>
+        </div>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Vencimento</span><input type="date" id="nVenc" class="input"></label>
+          <label class="fa-field"><span>Recorrência</span>
+            <select id="nRecorr" class="input">
+              <option value="nenhuma">Sem recorrência</option>
+              <option value="mensal">Mensal</option>
+              <option value="semestral">Semestral</option>
+              <option value="anual">Anual</option>
+              <option value="bienal">Bienal (2 anos)</option>
+            </select>
+          </label>
+        </div>
+        <label class="fa-field"><span>Observações</span><textarea id="nObs" class="input" rows="2"></textarea></label>
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-ghost" id="nCancelar">Cancelar</button>
+        <button class="btn btn-primary" id="nSalvar">Cadastrar alvará</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: DETALHE + TIMELINE -->
+  <div class="fa-modal-overlay" id="ovDet">
+    <div class="fa-modal" style="max-width:640px;">
+      <div class="fa-modal-head"><h3 id="dTipo">Alvará</h3><button class="fa-modal-close" id="dClose">&times;</button></div>
+      <div class="fa-modal-body" style="max-height:74vh; overflow:auto;">
+        <div class="alv-empresa" id="dEmpresa"></div>
+        <div id="dConcBanner" class="alv-conc-banner" hidden></div>
+
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Status</span>
+            <select id="dStatus" class="input">
+              <option value="em_andamento">Em andamento</option>
+              <option value="aguardando">Aguardando</option>
+            </select>
+          </label>
+          <label class="fa-field"><span>Vencimento</span><input type="date" id="dVenc" class="input"></label>
+        </div>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Responsável</span><input type="text" id="dResp" class="input"></label>
+          <label class="fa-field"><span>Recorrência</span>
+            <select id="dRecorr" class="input">
+              <option value="nenhuma">Sem recorrência</option>
+              <option value="mensal">Mensal</option>
+              <option value="semestral">Semestral</option>
+              <option value="anual">Anual</option>
+              <option value="bienal">Bienal (2 anos)</option>
+            </select>
+          </label>
+        </div>
+        <label class="fa-field"><span>Cidade</span><input type="text" id="dCidade" class="input"></label>
+        <label class="fa-field"><span>Observações</span><textarea id="dObs" class="input" rows="2"></textarea></label>
+        <div class="alv-acoes">
+          <button class="btn btn-ghost btn-sm" id="dSalvar">Salvar alterações</button>
+          <button class="btn btn-sm alv-btn-ok" id="dConcluir">Concluir alvará</button>
+          <button class="btn btn-ghost btn-sm" id="dReabrir" hidden>Reabrir</button>
+        </div>
+
+        <hr class="alv-hr">
+
+        <div class="alv-tl-head">Linha do tempo</div>
+        <label class="fa-field"><span>Registrar andamento</span>
+          <textarea id="dNovoAnd" class="input" rows="2" placeholder="O que foi feito agora? (ex.: protocolo enviado à prefeitura, aguardando vistoria…)"></textarea>
+        </label>
+        <div><button class="btn btn-primary btn-sm" id="dAddAnd">Adicionar andamento</button></div>
+        <div id="dTimeline" class="tl"></div>
+
+        <div class="alv-excluir-wrap"><button class="btn btn-danger btn-sm" id="dExcluir">Excluir alvará</button></div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+
+    const TIPOS = [
+      'Alvará de Funcionamento',
+      'Alvará de Localização',
+      'Alvará Sanitário (Vigilância Sanitária)',
+      'Alvará do Corpo de Bombeiros (AVCB)',
+      'Licença Ambiental',
+      'Alvará de Publicidade',
+      'Inscrição Municipal'
+    ];
+    const RECOR_LBL = { nenhuma:'Sem recorrência', mensal:'Mensal', semestral:'Semestral', anual:'Anual', bienal:'Bienal' };
+    const REC_MESES = { mensal:1, semestral:6, anual:12, bienal:24 };
+
+    let alvaras = [];
+    let clientesNome = {};
+    let clientesCidade = {};
+    let usuarioEmail = null;
+    let filtro = 'abertos';
+    let alvAtual = null;
+
+    const elLista = document.getElementById('lista');
+    const elVazio = document.getElementById('vazio');
+    const searchInput = document.getElementById('searchInput');
+
+    function pad(n){ return String(n).padStart(2,'0'); }
+    function toYMD(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+    function fmtData(ymd){ if(!ymd) return '—'; const p = String(ymd).slice(0,10).split('-'); return p.length===3 ? `${p[2]}/${p[1]}/${p[0]}` : '—'; }
+    function fmtDataHora(iso){ try { return new Date(iso).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); } catch(e){ return ''; } }
+    function escapeHtml(t){ return String(t==null?'':t).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
+
+    const hojeStr = toYMD(new Date());
+    const em30 = new Date(); em30.setDate(em30.getDate()+30); const em30Str = toYMD(em30);
+
+    function proxVenc(ymd, recorr){
+      const meses = REC_MESES[recorr];
+      if(!meses) return null;
+      const base = ymd ? new Date(String(ymd).slice(0,10)+'T00:00:00') : new Date();
+      base.setMonth(base.getMonth()+meses);
+      return toYMD(base);
+    }
+
+    (async () => {
+      const user = await getCurrentUser();
+      if (user) {
+        usuarioEmail = user.email;
+        const n = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário';
+        document.getElementById('userName').textContent = n;
+        document.getElementById('userAvatar').textContent = n.charAt(0).toUpperCase();
+      }
+      // popular selects de tipo
+      const selT = document.getElementById('nTipo');
+      TIPOS.forEach(t => { const o=document.createElement('option'); o.value=t; o.textContent=t; selT.appendChild(o); });
+      const oOutro=document.createElement('option'); oOutro.value='__outro__'; oOutro.textContent='Outro…'; selT.appendChild(oOutro);
+      await carregarClientes();
+      await carregar();
+    })();
+
+    document.getElementById('btnLogout').addEventListener('click', signOut);
+
+    // Foco
+    document.querySelectorAll('.fa-focus-card').forEach(c => c.addEventListener('click', () => {
+      filtro = c.dataset.f;
+      document.querySelectorAll('.fa-focus-card').forEach(x => x.classList.toggle('is-active', x === c));
+      render();
+    }));
+    searchInput.addEventListener('input', render);
+
+    async function carregarClientes(){
+      const { data } = await supabase.from('clientes').select('id, nome_principal, cidade').order('nome_principal');
+      const sel = document.getElementById('nCliente');
+      (data || []).forEach(c => {
+        clientesNome[c.id] = c.nome_principal;
+        clientesCidade[c.id] = c.cidade || '';
+        const o=document.createElement('option'); o.value=c.id; o.textContent=c.nome_principal; sel.appendChild(o);
+      });
+    }
+
+    async function carregar(){
+      const { data, error } = await supabase
+        .from('alvaras')
+        .select('*, clientes(nome_principal)')
+        .order('vencimento', { ascending: true, nullsFirst: false });
+      if (error) { elLista.innerHTML = '<p style="color:#E06C6C;">Erro ao carregar: '+escapeHtml(error.message)+'</p>'; return; }
+      alvaras = data || [];
+      atualizarContadores();
+      render();
+    }
+
+    function nomeEmpresa(a){ return (a.clientes && a.clientes.nome_principal) || clientesNome[a.cliente_id] || '— sem empresa —'; }
+    function aberto(a){ return a.status !== 'concluido'; }
+    function atrasado(a){ return aberto(a) && a.vencimento && a.vencimento < hojeStr; }
+
+    function atualizarContadores(){
+      const cAtras = alvaras.filter(atrasado).length;
+      const cProx = alvaras.filter(a => aberto(a) && a.vencimento && a.vencimento >= hojeStr && a.vencimento <= em30Str).length;
+      const cAbertos = alvaras.filter(aberto).length;
+      const cConcl = alvaras.filter(a => a.status==='concluido').length;
+      document.getElementById('cAtras').textContent = cAtras;
+      document.getElementById('cProx').textContent = cProx;
+      document.getElementById('cAbertos').textContent = cAbertos;
+      document.getElementById('cConcl').textContent = cConcl;
+      document.getElementById('cTodos').textContent = alvaras.length;
+    }
+
+    function aplicaFiltro(a){
+      if (filtro==='atrasados') return atrasado(a);
+      if (filtro==='prox30') return aberto(a) && a.vencimento && a.vencimento>=hojeStr && a.vencimento<=em30Str;
+      if (filtro==='abertos') return aberto(a);
+      if (filtro==='concluidos') return a.status==='concluido';
+      return true;
+    }
+
+    function render(){
+      const q = searchInput.value.trim().toLowerCase();
+      let itens = alvaras.filter(aplicaFiltro);
+      if (q) itens = itens.filter(a =>
+        (nomeEmpresa(a)+' '+(a.tipo||'')+' '+(a.cidade||'')).toLowerCase().includes(q)
+      );
+      if (!itens.length){ elLista.innerHTML=''; elVazio.hidden=false; return; }
+      elVazio.hidden = true;
+      elLista.innerHTML = itens.map(a => {
+        const pill = a.status==='concluido' ? '<span class="pill pill-ok">Concluído</span>'
+          : a.status==='aguardando' ? '<span class="pill pill-agu">Aguardando</span>'
+          : '<span class="pill pill-and">Em andamento</span>';
+        const rec = (a.recorrencia && a.recorrencia!=='nenhuma') ? `<span class="alv-recorr">↻ ${RECOR_LBL[a.recorrencia]}</span>` : '';
+        const vencCls = atrasado(a) ? 'alv-venc-atras' : '';
+        const vencTxt = a.vencimento ? `Vence ${fmtData(a.vencimento)}` : 'Sem vencimento';
+        return `<div class="alv-card" data-id="${a.id}">
+          <div class="alv-top">
+            <span class="alv-tipo">${escapeHtml(a.tipo||'Alvará')}</span>
+            ${pill} ${rec}
+          </div>
+          <div class="alv-empresa">${escapeHtml(nomeEmpresa(a))}</div>
+          <div class="alv-meta">
+            <span>${escapeHtml(a.cidade||'—')}</span>
+            <span>${escapeHtml(a.responsavel||'Sem responsável')}</span>
+            <span class="${vencCls}">${vencTxt}</span>
+          </div>
+        </div>`;
+      }).join('');
+      elLista.querySelectorAll('.alv-card').forEach(c => c.addEventListener('click', () => abrirDetalhe(c.dataset.id)));
+    }
+
+    /* ---------- MODAL NOVO ---------- */
+    const ovNovo = document.getElementById('ovNovo');
+    function abrirNovo(){ ovNovo.classList.add('is-open'); }
+    function fecharNovo(){
+      ovNovo.classList.remove('is-open');
+      ['nCliente','nTipo','nTipoOutro','nCidade','nResp','nVenc','nObs'].forEach(id=>document.getElementById(id).value='');
+      document.getElementById('nRecorr').value='nenhuma';
+      document.getElementById('nTipoOutroWrap').hidden = true;
+    }
+    document.getElementById('btnNovo').addEventListener('click', abrirNovo);
+    document.getElementById('nClose').addEventListener('click', fecharNovo);
+    document.getElementById('nCancelar').addEventListener('click', fecharNovo);
+    ovNovo.addEventListener('click', e => { if (e.target===ovNovo) fecharNovo(); });
+
+    document.getElementById('nTipo').addEventListener('change', e => {
+      document.getElementById('nTipoOutroWrap').hidden = (e.target.value !== '__outro__');
+    });
+    document.getElementById('nCliente').addEventListener('change', e => {
+      const cid = e.target.value;
+      if (cid && clientesCidade[cid] && !document.getElementById('nCidade').value) {
+        document.getElementById('nCidade').value = clientesCidade[cid];
+      }
+    });
+
+    document.getElementById('nSalvar').addEventListener('click', async () => {
+      const cliente_id = document.getElementById('nCliente').value;
+      let tipo = document.getElementById('nTipo').value;
+      if (tipo==='__outro__') tipo = document.getElementById('nTipoOutro').value.trim();
+      if (!cliente_id) { alert('Selecione a empresa.'); return; }
+      if (!tipo) { alert('Informe o tipo de alvará.'); return; }
+
+      const btn = document.getElementById('nSalvar');
+      btn.disabled = true; btn.innerHTML = '<span class="spinner spinner-sm"></span>Salvando...';
+      const novo = {
+        cliente_id, tipo,
+        cidade: document.getElementById('nCidade').value.trim() || null,
+        responsavel: document.getElementById('nResp').value.trim() || null,
+        vencimento: document.getElementById('nVenc').value || null,
+        recorrencia: document.getElementById('nRecorr').value,
+        observacoes: document.getElementById('nObs').value.trim() || null,
+        status: 'em_andamento'
+      };
+      const { data: ins, error } = await supabase.from('alvaras').insert(novo).select('id').single();
+      btn.disabled = false; btn.textContent = 'Cadastrar alvará';
+      if (error) { alert('Erro ao salvar: ' + error.message); return; }
+      await supabase.from('alvara_historico').insert({ alvara_id: ins.id, descricao: 'Alvará cadastrado.', autor: usuarioEmail });
+      fecharNovo();
+      await carregar();
+    });
+
+    /* ---------- MODAL DETALHE ---------- */
+    const ovDet = document.getElementById('ovDet');
+    function fecharDet(){ ovDet.classList.remove('is-open'); alvAtual=null; }
+    document.getElementById('dClose').addEventListener('click', fecharDet);
+    ovDet.addEventListener('click', e => { if (e.target===ovDet) fecharDet(); });
+
+    async function abrirDetalhe(id){
+      alvAtual = alvaras.find(a => a.id===id);
+      if (!alvAtual) return;
+      const a = alvAtual;
+      document.getElementById('dTipo').textContent = a.tipo || 'Alvará';
+      document.getElementById('dEmpresa').textContent = nomeEmpresa(a);
+      document.getElementById('dStatus').value = a.status==='concluido' ? 'em_andamento' : (a.status||'em_andamento');
+      document.getElementById('dVenc').value = a.vencimento ? String(a.vencimento).slice(0,10) : '';
+      document.getElementById('dResp').value = a.responsavel || '';
+      document.getElementById('dRecorr').value = a.recorrencia || 'nenhuma';
+      document.getElementById('dCidade').value = a.cidade || '';
+      document.getElementById('dObs').value = a.observacoes || '';
+
+      const concluido = a.status==='concluido';
+      const banner = document.getElementById('dConcBanner');
+      banner.hidden = !concluido;
+      if (concluido) banner.textContent = 'Concluído em ' + fmtDataHora(a.concluido_em) + (a.concluido_por ? ' por ' + a.concluido_por : '');
+      document.getElementById('dConcluir').hidden = concluido;
+      document.getElementById('dReabrir').hidden = !concluido;
+
+      ovDet.classList.add('is-open');
+      await carregarTimeline(id);
+    }
+
+    async function carregarTimeline(alvId){
+      const tl = document.getElementById('dTimeline');
+      tl.innerHTML = '<span class="spinner spinner-sm"></span>';
+      const { data } = await supabase.from('alvara_historico').select('*').eq('alvara_id', alvId).order('created_at', { ascending: false });
+      if (!data || !data.length){ tl.innerHTML = '<div class="tl-empty">Nenhum andamento ainda.</div>'; return; }
+      tl.innerHTML = data.map(h => `<div class="tl-item">
+        <div class="tl-when">${fmtDataHora(h.created_at)}</div>
+        <div class="tl-desc">${escapeHtml(h.descricao)}</div>
+        ${h.autor ? `<div class="tl-autor">${escapeHtml(h.autor)}</div>` : ''}
+      </div>`).join('');
+    }
+
+    document.getElementById('dAddAnd').addEventListener('click', async () => {
+      if (!alvAtual) return;
+      const txt = document.getElementById('dNovoAnd').value.trim();
+      if (!txt) { alert('Escreva o andamento.'); return; }
+      const btn = document.getElementById('dAddAnd');
+      btn.disabled = true; btn.innerHTML = '<span class="spinner spinner-sm"></span>';
+      const { error } = await supabase.from('alvara_historico').insert({ alvara_id: alvAtual.id, descricao: txt, autor: usuarioEmail });
+      btn.disabled = false; btn.textContent = 'Adicionar andamento';
+      if (error) { alert('Erro: ' + error.message); return; }
+      document.getElementById('dNovoAnd').value = '';
+      await carregarTimeline(alvAtual.id);
+    });
+
+    document.getElementById('dSalvar').addEventListener('click', async () => {
+      if (!alvAtual) return;
+      const novoStatus = document.getElementById('dStatus').value;
+      const statusMudou = !( alvAtual.status==='concluido' ) && novoStatus !== alvAtual.status;
+      const patch = {
+        status: alvAtual.status==='concluido' ? alvAtual.status : novoStatus,
+        vencimento: document.getElementById('dVenc').value || null,
+        responsavel: document.getElementById('dResp').value.trim() || null,
+        recorrencia: document.getElementById('dRecorr').value,
+        cidade: document.getElementById('dCidade').value.trim() || null,
+        observacoes: document.getElementById('dObs').value.trim() || null
+      };
+      const btn = document.getElementById('dSalvar');
+      btn.disabled = true; btn.innerHTML = '<span class="spinner spinner-sm"></span>';
+      const { error } = await supabase.from('alvaras').update(patch).eq('id', alvAtual.id);
+      if (!error && statusMudou) {
+        await supabase.from('alvara_historico').insert({ alvara_id: alvAtual.id, descricao: 'Status alterado para: ' + (novoStatus==='aguardando'?'Aguardando':'Em andamento') + '.', autor: usuarioEmail });
+      }
+      btn.disabled = false; btn.textContent = 'Salvar alterações';
+      if (error) { alert('Erro ao salvar: ' + error.message); return; }
+      Object.assign(alvAtual, patch);
+      await carregar();
+      if (statusMudou) await carregarTimeline(alvAtual.id);
+    });
+
+    document.getElementById('dConcluir').addEventListener('click', async () => {
+      if (!alvAtual) return;
+      const recorrente = alvAtual.recorrencia && alvAtual.recorrencia !== 'nenhuma';
+      const prox = recorrente ? proxVenc(alvAtual.vencimento, alvAtual.recorrencia) : null;
+      const msg = recorrente
+        ? `Concluir este alvará?\n\nComo é recorrente (${RECOR_LBL[alvAtual.recorrencia]}), um novo será gerado automaticamente com vencimento em ${fmtData(prox)}.`
+        : 'Concluir este alvará?';
+      if (!confirm(msg)) return;
+
+      const agora = new Date().toISOString();
+      const { error } = await supabase.from('alvaras').update({ status:'concluido', concluido_em:agora, concluido_por:usuarioEmail }).eq('id', alvAtual.id);
+      if (error) { alert('Erro ao concluir: ' + error.message); return; }
+      await supabase.from('alvara_historico').insert({ alvara_id: alvAtual.id, descricao:'Alvará concluído.', autor: usuarioEmail });
+
+      if (recorrente) {
+        const novo = {
+          cliente_id: alvAtual.cliente_id, tipo: alvAtual.tipo, cidade: alvAtual.cidade,
+          responsavel: alvAtual.responsavel, vencimento: prox, recorrencia: alvAtual.recorrencia,
+          observacoes: alvAtual.observacoes, status:'em_andamento'
+        };
+        const { data: ins } = await supabase.from('alvaras').insert(novo).select('id').single();
+        if (ins) await supabase.from('alvara_historico').insert({ alvara_id: ins.id, descricao: `Renovação gerada automaticamente (ciclo anterior venceu em ${fmtData(alvAtual.vencimento)}).`, autor: usuarioEmail });
+      }
+      fecharDet();
+      await carregar();
+      if (recorrente) alert('Alvará concluído. Novo gerado para ' + fmtData(prox) + '.');
+    });
+
+    document.getElementById('dReabrir').addEventListener('click', async () => {
+      if (!alvAtual) return;
+      const { error } = await supabase.from('alvaras').update({ status:'em_andamento', concluido_em:null, concluido_por:null }).eq('id', alvAtual.id);
+      if (error) { alert('Erro ao reabrir: ' + error.message); return; }
+      await supabase.from('alvara_historico').insert({ alvara_id: alvAtual.id, descricao:'Alvará reaberto.', autor: usuarioEmail });
+      fecharDet();
+      await carregar();
+    });
+
+    document.getElementById('dExcluir').addEventListener('click', async () => {
+      if (!alvAtual) return;
+      if (!confirm('Excluir este alvará e toda a sua linha do tempo? Esta ação não pode ser desfeita.')) return;
+      const { error } = await supabase.from('alvaras').delete().eq('id', alvAtual.id);
+      if (error) { alert('Erro ao excluir: ' + error.message); return; }
+      fecharDet();
+      await carregar();
+    });
+  </script>
+
+  <style>
+    .fa-subnav { display:flex; gap:6px; margin-bottom:22px; border-bottom:1px solid rgba(255,255,255,.08); }
+    .fa-tab { padding:9px 16px; font-size:14px; color:#8A93A6; text-decoration:none; border-bottom:2px solid transparent; margin-bottom:-1px; }
+    .fa-tab:hover { color:#C5D8E8; }
+    .fa-tab.is-active { color:#C5D8E8; border-bottom-color:#5B82A6; font-weight:600; }
+
+    .fa-focus { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:22px; }
+    .fa-focus-card { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:14px 16px; cursor:pointer; text-align:left; transition:border-color .15s, background .15s; display:flex; flex-direction:column; gap:4px; }
+    .fa-focus-card:hover { border-color:rgba(138,174,200,.4); }
+    .fa-focus-card.is-active { border-color:#5B82A6; background:rgba(91,130,166,.10); }
+    .fc-num { font-size:24px; font-weight:700; color:#E6EBF2; line-height:1; }
+    .fc-lbl { font-size:12px; color:#8A93A6; }
+    .fa-focus-card.fc-danger .fc-num { color:#E06C6C; }
+
+    .fa-toolbar-actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+
+    .alv-card { background:rgba(255,255,255,.025); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:14px 18px; margin-bottom:10px; cursor:pointer; transition:border-color .15s; }
+    .alv-card:hover { border-color:rgba(138,174,200,.45); }
+    .alv-top { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .alv-tipo { font-weight:600; color:#E6EBF2; font-size:15px; }
+    .alv-empresa { color:#C5D8E8; font-size:14px; margin-top:3px; }
+    .alv-meta { color:#8A93A6; font-size:13px; margin-top:6px; display:flex; gap:16px; flex-wrap:wrap; }
+    .alv-venc-atras { color:#E06C6C; font-weight:600; }
+
+    .pill { font-size:12px; padding:2px 10px; border-radius:999px; border:1px solid; }
+    .pill-and { color:#8AAEC8; border-color:rgba(91,130,166,.45); }
+    .pill-agu { color:#E3B341; border-color:rgba(227,179,65,.45); }
+    .pill-ok  { color:#3FB07A; border-color:rgba(63,176,122,.45); }
+    .alv-recorr { font-size:12px; color:#8AAEC8; background:rgba(91,130,166,.12); border:1px solid rgba(91,130,166,.25); border-radius:999px; padding:2px 10px; }
+
+    .fa-modal-overlay { position:fixed; inset:0; background:rgba(8,12,18,.72); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
+    .fa-modal-overlay.is-open { display:flex; }
+    .fa-modal { width:100%; max-width:520px; background:#141A22; border:1px solid rgba(255,255,255,.10); border-radius:16px; overflow:hidden; }
+    .fa-modal-head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid rgba(255,255,255,.08); }
+    .fa-modal-head h3 { margin:0; color:#E6EBF2; font-size:18px; }
+    .fa-modal-close { background:none; border:none; color:#8A93A6; font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }
+    .fa-modal-close:hover { color:#E6EBF2; }
+    .fa-modal-body { padding:22px; display:flex; flex-direction:column; gap:14px; }
+    .fa-field { display:flex; flex-direction:column; gap:6px; }
+    .fa-field > span { font-size:13px; color:#8AAEC8; }
+    .fa-field-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .fa-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid rgba(255,255,255,.08); }
+    .fa-modal textarea.input { resize:vertical; font-family:inherit; }
+
+    .alv-acoes { display:flex; gap:10px; flex-wrap:wrap; margin-top:4px; }
+    .alv-btn-ok { background:#3FB07A; border-color:#3FB07A; color:#0c1116; }
+    .alv-btn-ok:hover { filter:brightness(1.07); }
+    .alv-hr { border:none; border-top:1px solid rgba(255,255,255,.08); margin:8px 0 2px; }
+    .alv-tl-head { font-weight:600; color:#E6EBF2; font-size:15px; }
+    .alv-conc-banner { background:rgba(63,176,122,.12); border:1px solid rgba(63,176,122,.35); color:#3FB07A; border-radius:10px; padding:8px 12px; font-size:13px; }
+    .alv-excluir-wrap { text-align:right; margin-top:4px; }
+
+    .tl { display:flex; flex-direction:column; gap:0; margin-top:4px; }
+    .tl-item { position:relative; padding:0 0 16px 22px; border-left:2px solid rgba(255,255,255,.10); }
+    .tl-item:last-child { border-left-color:transparent; padding-bottom:2px; }
+    .tl-item::before { content:''; position:absolute; left:-6px; top:3px; width:10px; height:10px; border-radius:50%; background:#5B82A6; border:2px solid #141A22; }
+    .tl-when { font-size:12px; color:#8A93A6; }
+    .tl-desc { color:#E6EBF2; font-size:14px; margin-top:2px; white-space:pre-wrap; }
+    .tl-autor { font-size:12px; color:#8AAEC8; margin-top:2px; }
+    .tl-empty { color:#8A93A6; font-size:13px; }
+
+    @media (max-width:720px){ .fa-focus { grid-template-columns:repeat(2,1fr); } .fa-field-row { grid-template-columns:1fr; } }
+  </style>
+</body>
+</html>
