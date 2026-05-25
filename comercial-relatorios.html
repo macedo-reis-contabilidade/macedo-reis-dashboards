@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Comercial — Relatórios — Macedo & Reis</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+  <style>
+    .fa-subnav { display:flex; gap:6px; margin-bottom:22px; border-bottom:1px solid rgba(255,255,255,.08); flex-wrap:wrap; }
+    .fa-tab { padding:9px 16px; font-size:14px; color:#8A93A6; text-decoration:none; border-bottom:2px solid transparent; margin-bottom:-1px; }
+    .fa-tab:hover { color:#C5D8E8; }
+    .fa-tab.is-active { color:#C5D8E8; border-bottom-color:#5B82A6; font-weight:600; }
+
+    .fa-focus { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:22px; }
+    .fa-focus-card { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:14px 16px; display:flex; flex-direction:column; gap:4px; }
+    .fc-num { font-size:24px; font-weight:700; color:#E6EBF2; line-height:1; }
+    .fc-lbl { font-size:12px; color:#8A93A6; }
+    .fc-ok .fc-num { color:#3FB07A; }
+    .fc-pend .fc-num { color:#E3B341; }
+    .fc-danger .fc-num { color:#E06C6C; }
+
+    .fa-sel { max-width:220px; }
+    .toolbar-filters { display:flex; flex-wrap:wrap; gap:12px; align-items:center; flex:1 1 auto; }
+    .toolbar-filters .input-search { flex:1 1 220px; min-width:180px; max-width:320px; }
+
+    .sit { display:inline-block; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600; white-space:nowrap; }
+    .sit-concluida { background:rgba(63,176,122,.15); color:#3FB07A; }
+    .sit-pendente { background:rgba(255,255,255,.08); color:#C5D8E8; }
+    .sit-atrasada { background:rgba(224,108,108,.15); color:#E06C6C; }
+
+    @media (max-width:720px){ .fa-focus { grid-template-columns:repeat(2,1fr); } }
+
+    .print-only { display:none; }
+    @media print {
+      .topbar, .fa-subnav, .toolbar, .page-header, .btn { display:none !important; }
+      body, .app-shell, .content { background:#fff !important; color:#000 !important; }
+      .print-only { display:block !important; margin-bottom:16px; }
+      .print-logo { font-size:13px; font-weight:700; color:#000; letter-spacing:.02em; }
+      .print-title { font-size:22px; font-weight:700; margin:2px 0 6px; color:#000; }
+      .print-filtros { font-size:13px; color:#222; }
+      .print-data { font-size:11px; color:#666; margin-top:2px; }
+      .fa-focus { display:grid !important; grid-template-columns:repeat(4,1fr) !important; gap:10px; margin-bottom:16px; }
+      .fa-focus-card { background:#f5f5f5 !important; border:1px solid #ccc !important; }
+      .fc-num { color:#000 !important; }
+      .fc-lbl { color:#333 !important; }
+      .fc-ok .fc-num { color:#1a7a47 !important; }
+      .fc-pend .fc-num { color:#8a6d10 !important; }
+      .fc-danger .fc-num { color:#b03a3a !important; }
+      .table-wrap { background:#fff !important; border:none !important; box-shadow:none !important; }
+      .table, .table th, .table td { color:#000 !important; }
+      .table th, .table td { border-bottom:1px solid #bbb !important; padding:6px 8px !important; }
+      .table thead th { border-bottom:2px solid #000 !important; }
+      .sit { background:#fff !important; border:1px solid #999; }
+      .sit-concluida { color:#1a7a47 !important; border-color:#1a7a47 !important; }
+      .sit-pendente { color:#333 !important; }
+      .sit-atrasada { color:#b03a3a !important; border-color:#b03a3a !important; }
+      .empty-state { color:#000 !important; }
+      @page { margin:1.4cm; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip">
+          <div class="user-avatar" id="userAvatar">—</div>
+          <span id="userName">Carregando…</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div id="printHeader" class="print-only">
+        <div class="print-logo">MACEDO &amp; REIS CONTABILIDADE — CRC/RS 006418/O</div>
+        <div class="print-title">Relatório — Comercial</div>
+        <div class="print-filtros" id="printFiltros"></div>
+        <div class="print-data" id="printData"></div>
+      </div>
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Comercial</span>
+        </div>
+        <div class="eyebrow">Controle de tarefas</div>
+        <h1>Comercial</h1>
+        <p>Relatório do que o setor executou. Filtre por competência, situação ou empresa.</p>
+      </div>
+
+      <div class="fa-subnav">
+        <a href="comercial.html" class="fa-tab">Tarefas</a>
+        <a href="comercial-regras.html" class="fa-tab">Regras recorrentes</a>
+        <a href="comercial-relatorios.html" class="fa-tab is-active">Relatórios</a>
+      </div>
+
+      <div class="fa-focus">
+        <div class="fa-focus-card"><span class="fc-num" id="statTotal">0</span><span class="fc-lbl">No filtro</span></div>
+        <div class="fa-focus-card fc-ok"><span class="fc-num" id="statOk">0</span><span class="fc-lbl">Concluídas</span></div>
+        <div class="fa-focus-card fc-pend"><span class="fc-num" id="statPend">0</span><span class="fc-lbl">Pendentes</span></div>
+        <div class="fa-focus-card fc-danger"><span class="fc-num" id="statAtr">0</span><span class="fc-lbl">Atrasadas</span></div>
+      </div>
+
+      <div class="toolbar">
+        <div class="toolbar-filters">
+          <input type="text" id="searchInput" class="input input-search" placeholder="Buscar por empresa ou tarefa…">
+          <select id="filterCompetencia" class="select fa-sel"><option value="">Todas as competências</option></select>
+          <select id="filterSituacao" class="select fa-sel">
+            <option value="">Todas as situações</option>
+            <option value="concluida">Concluída</option>
+            <option value="pendente">Pendente</option>
+            <option value="atrasada">Atrasada</option>
+          </select>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-ghost" id="btnLimpar">Limpar filtros</button>
+          <button class="btn btn-primary" id="btnPDF">Emitir PDF</button>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Empresa</th>
+              <th>Tarefa</th>
+              <th>Competência</th>
+              <th>Prazo</th>
+              <th>Situação</th>
+              <th>Concluída em</th>
+              <th>Por quem</th>
+            </tr>
+          </thead>
+          <tbody id="tbody">
+            <tr class="loading-row"><td colspan="7"><span class="spinner"></span>Carregando…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { formatDate } from './assets/js/utils.js';
+
+    const SETOR = 'comercial';
+    const SIT_LABELS = { concluida:'Concluída', pendente:'Pendente', atrasada:'Atrasada' };
+    const HOJE = new Date().toISOString().slice(0,10);
+
+    const tbody = document.getElementById('tbody');
+    const searchInput = document.getElementById('searchInput');
+    const filterCompetencia = document.getElementById('filterCompetencia');
+    const filterSituacao = document.getElementById('filterSituacao');
+
+    let all = [];
+
+    (async () => {
+      const user = await getCurrentUser();
+      if (user) {
+        const n = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário';
+        document.getElementById('userName').textContent = n;
+        document.getElementById('userAvatar').textContent = n.charAt(0).toUpperCase();
+      }
+    })();
+    document.getElementById('btnLogout').addEventListener('click', signOut);
+
+    function compLabel(c){ if(!c) return '—'; const m = String(c).match(/^(\d{4})-(\d{2})/); return m ? `${m[2]}/${m[1]}` : c; }
+    function situacao(t){
+      if (t.concluida_em) return 'concluida';
+      if (t.prazo && t.prazo < HOJE) return 'atrasada';
+      return 'pendente';
+    }
+
+    async function load() {
+      const { data, error } = await supabase
+        .from('tarefas')
+        .select('id, titulo, competencia, prazo, concluida_em, concluida_por, cliente_id, clientes(nome_principal)')
+        .eq('setor', SETOR)
+        .order('prazo', { ascending: false, nullsFirst: false });
+
+      if (error) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#E06C6C;padding:40px;">Erro ao carregar: ${error.message}</td></tr>`;
+        return;
+      }
+      all = data || [];
+      const comps = [...new Set(all.map(t => t.competencia).filter(Boolean))].sort().reverse();
+      comps.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = compLabel(c); filterCompetencia.appendChild(o); });
+      render();
+    }
+
+    function render() {
+      const busca = searchInput.value.toLowerCase().trim();
+      const comp = filterCompetencia.value;
+      const sit = filterSituacao.value;
+
+      const filtered = all.filter(t => {
+        if (comp && t.competencia !== comp) return false;
+        if (sit && situacao(t) !== sit) return false;
+        if (busca) {
+          const hay = `${t.clientes?.nome_principal || ''} ${t.titulo || ''}`.toLowerCase();
+          if (!hay.includes(busca)) return false;
+        }
+        return true;
+      });
+
+      document.getElementById('statTotal').textContent = filtered.length;
+      document.getElementById('statOk').textContent = filtered.filter(t => situacao(t) === 'concluida').length;
+      document.getElementById('statPend').textContent = filtered.filter(t => situacao(t) === 'pendente').length;
+      document.getElementById('statAtr').textContent = filtered.filter(t => situacao(t) === 'atrasada').length;
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><h3>${all.length === 0 ? 'Nada registrado ainda no fiscal' : 'Nenhum resultado'}</h3><p>${all.length === 0 ? 'Conforme as tarefas do fiscal forem concluídas, aparecem aqui.' : 'Tente ajustar os filtros.'}</p></div></td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(t => {
+        const s = situacao(t);
+        return `<tr>
+          <td data-label="Empresa">${t.clientes?.nome_principal || '—'}</td>
+          <td data-label="Tarefa">${t.titulo || '—'}</td>
+          <td data-label="Competência">${compLabel(t.competencia)}</td>
+          <td data-label="Prazo">${t.prazo ? formatDate(t.prazo) : '—'}</td>
+          <td data-label="Situação"><span class="sit sit-${s}">${SIT_LABELS[s]}</span></td>
+          <td data-label="Concluída em">${t.concluida_em ? formatDate(t.concluida_em) : '—'}</td>
+          <td data-label="Por quem">${t.concluida_por || '—'}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    searchInput.addEventListener('input', render);
+    filterCompetencia.addEventListener('change', render);
+    filterSituacao.addEventListener('change', render);
+    document.getElementById('btnLimpar').addEventListener('click', () => {
+      searchInput.value = ''; filterCompetencia.value = ''; filterSituacao.value = '';
+      render();
+    });
+
+    document.getElementById('btnPDF').addEventListener('click', () => {
+      const partes = [];
+      if (searchInput.value.trim()) partes.push(`Empresa/tarefa: "${searchInput.value.trim()}"`);
+      if (filterCompetencia.value) partes.push(`Competência: ${compLabel(filterCompetencia.value)}`);
+      if (filterSituacao.value) partes.push(`Situação: ${SIT_LABELS[filterSituacao.value]}`);
+      document.getElementById('printFiltros').textContent = partes.length ? 'Filtros aplicados — ' + partes.join('  •  ') : 'Sem filtros — todas as tarefas do setor';
+      const agora = new Date();
+      document.getElementById('printData').textContent = 'Emitido em ' + agora.toLocaleDateString('pt-BR') + ' às ' + agora.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
+      window.print();
+    });
+
+    load();
+  </script>
+</body>
+</html>
