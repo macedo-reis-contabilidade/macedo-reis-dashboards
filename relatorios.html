@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Relatórios — Macedo & Reis</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <style>
+    .stats-row { display:flex; gap:14px; flex-wrap:wrap; margin-bottom:22px; }
+    .stat-card { flex:1 1 150px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.09); border-radius:12px; padding:16px 18px; }
+    .stat-card .num { font-size:26px; font-weight:700; line-height:1; }
+    .stat-card .lbl { font-size:12px; opacity:0.7; margin-top:6px; text-transform:uppercase; letter-spacing:0.04em; }
+    .stat-card.ok .num { color:#5fcf80; }
+    .stat-card.pend .num { color:#e0b341; }
+    .stat-card.atr .num { color:#e06a5a; }
+    .sit { display:inline-block; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600; white-space:nowrap; }
+    .sit-concluida { background:rgba(95,207,128,0.15); color:#5fcf80; }
+    .sit-pendente { background:rgba(255,255,255,0.08); color:#c5d8e8; }
+    .sit-atrasada { background:rgba(224,106,90,0.15); color:#e06a5a; }
+    .toolbar-filters { display:flex; flex-direction:row; flex-wrap:wrap; gap:12px; align-items:center; flex:1 1 auto; }
+    .toolbar-filters .input-search { flex:1 1 220px; min-width:180px; max-width:320px; }
+    .toolbar-filters .select { flex:0 0 auto; width:auto; min-width:140px; }
+  </style>
+  <script type="module" src="assets/js/auth-guard.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip">
+          <div class="user-avatar" id="userAvatar">—</div>
+          <span id="userName">Carregando…</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Relatórios</span>
+        </div>
+        <div class="eyebrow">Execução</div>
+        <h1>Relatório de tarefas</h1>
+        <p>Tudo que foi registrado pelos setores. Filtre por mês, setor, situação ou empresa.</p>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-card"><div class="num" id="statTotal">0</div><div class="lbl">No filtro</div></div>
+        <div class="stat-card ok"><div class="num" id="statOk">0</div><div class="lbl">Concluídas</div></div>
+        <div class="stat-card pend"><div class="num" id="statPend">0</div><div class="lbl">Pendentes</div></div>
+        <div class="stat-card atr"><div class="num" id="statAtr">0</div><div class="lbl">Atrasadas</div></div>
+      </div>
+
+      <div class="toolbar">
+        <div class="toolbar-filters">
+          <input type="text" id="searchInput" class="input input-search" placeholder="Buscar por empresa ou tarefa…">
+          <select id="filterCompetencia" class="select"><option value="">Todas as competências</option></select>
+          <select id="filterSetor" class="select"><option value="">Todos os setores</option></select>
+          <select id="filterSituacao" class="select">
+            <option value="">Todas as situações</option>
+            <option value="concluida">Concluída</option>
+            <option value="pendente">Pendente</option>
+            <option value="atrasada">Atrasada</option>
+          </select>
+        </div>
+        <button class="btn btn-ghost" id="btnLimpar">Limpar filtros</button>
+      </div>
+
+      <div class="table-wrap" id="tableWrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Empresa</th>
+              <th>Tarefa</th>
+              <th>Setor</th>
+              <th>Competência</th>
+              <th>Prazo</th>
+              <th>Situação</th>
+              <th>Concluída em</th>
+              <th>Por quem</th>
+            </tr>
+          </thead>
+          <tbody id="tbody">
+            <tr class="loading-row"><td colspan="8"><span class="spinner"></span>Carregando…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { formatDate } from './assets/js/utils.js';
+
+    const SETOR_LABELS = { fiscal:'Fiscal', departamento_pessoal:'Departamento Pessoal', contabil:'Contábil', societario:'Societário', financeiro:'Financeiro' };
+    const SIT_LABELS = { concluida:'Concluída', pendente:'Pendente', atrasada:'Atrasada' };
+    const HOJE = new Date().toISOString().slice(0,10);
+
+    const tbody = document.getElementById('tbody');
+    const searchInput = document.getElementById('searchInput');
+    const filterCompetencia = document.getElementById('filterCompetencia');
+    const filterSetor = document.getElementById('filterSetor');
+    const filterSituacao = document.getElementById('filterSituacao');
+
+    let all = [];
+
+    (async () => {
+      const user = await getCurrentUser();
+      if (user) {
+        const n = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário';
+        document.getElementById('userName').textContent = n;
+        document.getElementById('userAvatar').textContent = n.charAt(0).toUpperCase();
+      }
+    })();
+    document.getElementById('btnLogout').addEventListener('click', signOut);
+
+    function setor(t){ return SETOR_LABELS[t.setor] || t.setor || '—'; }
+    function compLabel(c){ if(!c) return '—'; const m = String(c).match(/^(\d{4})-(\d{2})/); return m ? `${m[2]}/${m[1]}` : c; }
+    function situacao(t){
+      if (t.concluida_em) return 'concluida';
+      if (t.prazo && t.prazo < HOJE) return 'atrasada';
+      return 'pendente';
+    }
+
+    async function load() {
+      const { data, error } = await supabase
+        .from('tarefas')
+        .select('id, titulo, setor, tipo, status, competencia, prazo, concluida_em, concluida_por, responsavel, cliente_id, clientes(nome_principal)')
+        .order('prazo', { ascending: false, nullsFirst: false });
+
+      if (error) {
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--danger);padding:40px;">Erro ao carregar: ${error.message}</td></tr>`;
+        return;
+      }
+      all = data || [];
+      popularFiltros();
+      render();
+    }
+
+    function popularFiltros() {
+      const comps = [...new Set(all.map(t => t.competencia).filter(Boolean))].sort().reverse();
+      comps.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = compLabel(c); filterCompetencia.appendChild(o); });
+      const setores = [...new Set(all.map(t => t.setor).filter(Boolean))];
+      setores.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = SETOR_LABELS[s] || s; filterSetor.appendChild(o); });
+    }
+
+    function render() {
+      const busca = searchInput.value.toLowerCase().trim();
+      const comp = filterCompetencia.value;
+      const set = filterSetor.value;
+      const sit = filterSituacao.value;
+
+      const filtered = all.filter(t => {
+        if (comp && t.competencia !== comp) return false;
+        if (set && t.setor !== set) return false;
+        if (sit && situacao(t) !== sit) return false;
+        if (busca) {
+          const hay = `${t.clientes?.nome_principal || ''} ${t.titulo || ''}`.toLowerCase();
+          if (!hay.includes(busca)) return false;
+        }
+        return true;
+      });
+
+      document.getElementById('statTotal').textContent = filtered.length;
+      document.getElementById('statOk').textContent = filtered.filter(t => situacao(t) === 'concluida').length;
+      document.getElementById('statPend').textContent = filtered.filter(t => situacao(t) === 'pendente').length;
+      document.getElementById('statAtr').textContent = filtered.filter(t => situacao(t) === 'atrasada').length;
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><h3>${all.length === 0 ? 'Nenhuma tarefa registrada ainda' : 'Nenhum resultado'}</h3><p>${all.length === 0 ? 'Conforme os setores forem concluindo tarefas, elas aparecem aqui.' : 'Tente ajustar os filtros.'}</p></div></td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(t => {
+        const s = situacao(t);
+        return `<tr>
+          <td data-label="Empresa">${t.clientes?.nome_principal || '—'}</td>
+          <td data-label="Tarefa">${t.titulo || '—'}</td>
+          <td data-label="Setor">${setor(t)}</td>
+          <td data-label="Competência">${compLabel(t.competencia)}</td>
+          <td data-label="Prazo">${t.prazo ? formatDate(t.prazo) : '—'}</td>
+          <td data-label="Situação"><span class="sit sit-${s}">${SIT_LABELS[s]}</span></td>
+          <td data-label="Concluída em">${t.concluida_em ? formatDate(t.concluida_em) : '—'}</td>
+          <td data-label="Por quem">${t.concluida_por || '—'}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    searchInput.addEventListener('input', render);
+    filterCompetencia.addEventListener('change', render);
+    filterSetor.addEventListener('change', render);
+    filterSituacao.addEventListener('change', render);
+    document.getElementById('btnLimpar').addEventListener('click', () => {
+      searchInput.value = ''; filterCompetencia.value = ''; filterSetor.value = ''; filterSituacao.value = '';
+      render();
+    });
+
+    load();
+  </script>
+</body>
+</html>
