@@ -23,8 +23,25 @@
     .sg-block:last-child { margin-bottom:0; }
     .sg-block-lbl { font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:#8AAEC8; margin-bottom:3px; }
     .sg-block-txt { font-size:14px; color:#D7DEE8; white-space:pre-wrap; line-height:1.5; }
-    .sg-del { background:none; border:none; color:#6B7385; cursor:pointer; font-size:13px; padding:3px 8px; border-radius:6px; flex:none; }
+
+    .sg-actions { display:flex; gap:6px; flex:none; align-items:flex-start; }
+    .sg-act-done { background:rgba(63,176,122,.12); border:1px solid rgba(63,176,122,.30); color:#3FB07A; cursor:pointer; font-size:13px; padding:4px 12px; border-radius:8px; white-space:nowrap; }
+    .sg-act-done:hover { background:rgba(63,176,122,.20); }
+    .sg-del { background:none; border:none; color:#6B7385; cursor:pointer; font-size:13px; padding:4px 8px; border-radius:8px; flex:none; }
     .sg-del:hover { color:#E06C6C; background:rgba(224,108,108,.1); }
+
+    .sg-done-sec { margin-top:26px; }
+    .sg-done-sec-title { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:#8A93A6; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid rgba(255,255,255,.08); }
+    .sg-done { background:rgba(255,255,255,.015); border:1px solid rgba(255,255,255,.06); border-radius:10px; margin-bottom:8px; overflow:hidden; }
+    .sg-done > summary { display:flex; align-items:center; gap:10px; padding:11px 16px; cursor:pointer; list-style:none; }
+    .sg-done > summary::-webkit-details-marker { display:none; }
+    .sg-done-check { color:#3FB07A; flex:none; }
+    .sg-done-title { color:#AEB7C4; font-size:14px; font-weight:500; }
+    .sg-done-meta { color:#6B7385; font-size:12px; margin-left:auto; flex:none; white-space:nowrap; }
+    .sg-done-body { padding:6px 16px 16px; border-top:1px solid rgba(255,255,255,.05); }
+    .sg-done-acts { display:flex; gap:8px; margin-top:12px; }
+    .sg-act-reopen { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.14); color:#C5D8E8; cursor:pointer; font-size:13px; padding:4px 12px; border-radius:8px; }
+    .sg-act-reopen:hover { background:rgba(255,255,255,.08); }
 
     .fa-modal-overlay { position:fixed; inset:0; background:rgba(8,12,18,.72); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
     .fa-modal-overlay.is-open { display:flex; }
@@ -40,7 +57,7 @@
     .fa-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid rgba(255,255,255,.08); }
     .fa-modal textarea.input { resize:vertical; font-family:inherit; }
 
-    @media (max-width:560px){ .fa-field-row { grid-template-columns:1fr; } }
+    @media (max-width:560px){ .fa-field-row { grid-template-columns:1fr; } .sg-done-meta { display:none; } }
   </style>
 </head>
 <body>
@@ -118,10 +135,12 @@
     const overlay = document.getElementById('modalOverlay');
 
     let all = [];
+    let usuarioEmail = null;
 
     (async () => {
       const user = await getCurrentUser();
       if (user) {
+        usuarioEmail = user.email;
         const n = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário';
         document.getElementById('userName').textContent = n;
         document.getElementById('userAvatar').textContent = n.charAt(0).toUpperCase();
@@ -143,10 +162,52 @@
       return `<div class="sg-block"><div class="sg-block-lbl">${lbl}</div><div class="sg-block-txt">${esc(txt)}</div></div>`;
     }
 
+    function cardPendente(s){
+      return `
+        <div class="sg-card">
+          <div class="sg-card-head">
+            <h3 class="sg-title">${esc(s.titulo)}</h3>
+            <div class="sg-actions">
+              <button class="sg-act-done" data-done="${s.id}">Concluir</button>
+              <button class="sg-del" data-del="${s.id}" title="Excluir sugestão">Excluir</button>
+            </div>
+          </div>
+          <div class="sg-meta">por ${esc(s.autor||'—')} · ${formatDate(s.created_at)}</div>
+          ${bloco('Melhoria sugerida', s.melhoria)}
+          ${bloco('Como é feito hoje', s.como_atual)}
+          ${bloco('Como poderia ser melhorado', s.como_melhorar)}
+          ${bloco('Cenário ideal', s.cenario_ideal)}
+        </div>`;
+    }
+
+    function linhaConcluida(s){
+      return `
+        <details class="sg-done">
+          <summary>
+            <svg class="sg-done-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            <span class="sg-done-title">${esc(s.titulo)}</span>
+            <span class="sg-done-meta">${s.autor?('por '+esc(s.autor)+' · '):''}concluída em ${s.concluida_em?formatDate(s.concluida_em):'—'}</span>
+          </summary>
+          <div class="sg-done-body">
+            ${bloco('Melhoria sugerida', s.melhoria)}
+            ${bloco('Como era feito', s.como_atual)}
+            ${bloco('Como poderia ser melhorado', s.como_melhorar)}
+            ${bloco('Cenário ideal', s.cenario_ideal)}
+            <div class="sg-done-acts">
+              <button class="sg-act-reopen" data-reopen="${s.id}">Reabrir</button>
+              <button class="sg-del" data-del="${s.id}">Excluir</button>
+            </div>
+          </div>
+        </details>`;
+    }
+
     function render(){
       const q = searchInput.value.toLowerCase().trim();
-      const vis = all.filter(s => !q || `${s.titulo} ${s.autor||''} ${s.melhoria||''}`.toLowerCase().includes(q));
-      if (vis.length === 0){
+      const match = s => !q || `${s.titulo} ${s.autor||''} ${s.melhoria||''}`.toLowerCase().includes(q);
+      const pend = all.filter(s => s.status !== 'concluida' && match(s));
+      const done = all.filter(s => s.status === 'concluida' && match(s));
+
+      if (pend.length === 0 && done.length === 0){
         lista.innerHTML = `<div class="empty-state" style="padding:48px 24px;">
           <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1h6c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z"/></svg>
           <h3>${all.length===0?'Nenhuma sugestão ainda':'Nenhum resultado'}</h3>
@@ -154,22 +215,25 @@
         </div>`;
         return;
       }
-      lista.innerHTML = vis.map(s => `
-        <div class="sg-card">
-          <div class="sg-card-head">
-            <h3 class="sg-title">${esc(s.titulo)}</h3>
-            <button class="sg-del" data-id="${s.id}" title="Excluir sugestão">Excluir</button>
-          </div>
-          <div class="sg-meta">por ${esc(s.autor||'—')} · ${formatDate(s.created_at)}</div>
-          ${bloco('Melhoria sugerida', s.melhoria)}
-          ${bloco('Como é feito hoje', s.como_atual)}
-          ${bloco('Como poderia ser melhorado', s.como_melhorar)}
-          ${bloco('Cenário ideal', s.cenario_ideal)}
-        </div>`).join('');
 
-      lista.querySelectorAll('.sg-del').forEach(b => b.addEventListener('click', async () => {
+      let html = '';
+      if (pend.length) html += pend.map(cardPendente).join('');
+      if (done.length) html += `<div class="sg-done-sec"><div class="sg-done-sec-title">Concluídas · ${done.length}</div>${done.map(linhaConcluida).join('')}</div>`;
+      lista.innerHTML = html;
+
+      lista.querySelectorAll('[data-done]').forEach(b => b.addEventListener('click', async () => {
+        const { error } = await supabase.from('sugestoes').update({ status:'concluida', concluida_em:new Date().toISOString(), concluida_por: usuarioEmail }).eq('id', b.dataset.done);
+        if (error){ alert('Erro: ' + error.message); return; }
+        await load();
+      }));
+      lista.querySelectorAll('[data-reopen]').forEach(b => b.addEventListener('click', async () => {
+        const { error } = await supabase.from('sugestoes').update({ status:'nova', concluida_em:null, concluida_por:null }).eq('id', b.dataset.reopen);
+        if (error){ alert('Erro: ' + error.message); return; }
+        await load();
+      }));
+      lista.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
         if (!confirm('Excluir esta sugestão? Essa ação não pode ser desfeita.')) return;
-        const { error } = await supabase.from('sugestoes').delete().eq('id', b.dataset.id);
+        const { error } = await supabase.from('sugestoes').delete().eq('id', b.dataset.del);
         if (error){ alert('Erro ao excluir: ' + error.message); return; }
         await load();
       }));
