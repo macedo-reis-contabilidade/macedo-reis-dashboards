@@ -71,7 +71,7 @@
           <label class="fa-field"><span>Responsável</span>
             <select id="gResp" class="select"><option value="">—</option><option value="Samuel">Samuel</option><option value="Diego">Diego</option><option value="Ambos">Ambos</option></select>
           </label>
-          <label class="fa-field" id="gPrazoWrap"><span>Prazo</span><input type="date" id="gPrazo" class="input"></label>
+          <label class="fa-field" id="gPrazoWrap"><span id="gPrazoLabel">Prazo</span><input type="date" id="gPrazo" class="input"></label>
         </div>
         <label class="fa-field"><span>Descrição</span><textarea id="gDescricao" class="input" rows="3" placeholder="Detalhes (opcional)"></textarea></label>
       </div>
@@ -122,7 +122,8 @@
     function abrirModal() {
       document.getElementById('modalTitulo').textContent = modo === 'pauta' ? 'Nova pauta' : 'Nova tarefa';
       document.getElementById('gTitulo').placeholder = modo === 'pauta' ? 'Ex.: Revisar tabela de honorários' : 'Ex.: Fechar integração Banco Inter';
-      document.getElementById('gPrazoWrap').style.display = modo === 'tarefa' ? 'flex' : 'none';
+      document.getElementById('gPrazoWrap').style.display = 'flex';
+      document.getElementById('gPrazoLabel').textContent = modo === 'pauta' ? 'Prazo p/ discussão' : 'Prazo';
       overlay.classList.add('is-open');
     }
     function fecharModal(){ overlay.classList.remove('is-open'); ['gTitulo','gPrazo','gDescricao'].forEach(id=>document.getElementById(id).value=''); document.getElementById('gResp').value=''; }
@@ -134,7 +135,7 @@
         setor: SETOR, tipo: modo, titulo,
         responsavel: document.getElementById('gResp').value || null,
         descricao: document.getElementById('gDescricao').value.trim() || null,
-        prazo: (modo === 'tarefa' && document.getElementById('gPrazo').value) ? document.getElementById('gPrazo').value : null,
+        prazo: document.getElementById('gPrazo').value || null,
         status: 'pendente', origem: 'avulsa', cliente_id: null
       };
       const { error } = await supabase.from('tarefas').insert(novo);
@@ -172,7 +173,7 @@
         const concl = t.status === 'concluida';
         const meta = [];
         if (t.responsavel) meta.push(escapeHtml(t.responsavel));
-        if (modo === 'tarefa' && t.prazo) meta.push('prazo ' + formatDate(t.prazo));
+        if (t.prazo) meta.push('prazo ' + formatDate(t.prazo));
         let acoes = '';
         if (modo === 'pauta') {
           acoes = '<button class="gz-link" data-act="toggle" data-id="'+t.id+'">'+(concl?'Reabrir':'Marcar discutida')+'</button>'+
