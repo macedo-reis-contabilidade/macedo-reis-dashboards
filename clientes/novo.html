@@ -48,6 +48,23 @@
       <div id="formError" class="form-error"></div>
       <div id="formSuccess" class="form-success"></div>
 
+      <section class="form-section" id="sectionExtrai">
+        <div class="form-section-head">
+          <h2>Cadastro automático por documento</h2>
+          <span class="form-section-sub">Suba o contrato social, cartão CNPJ ou RG e o sistema preenche os campos pra você</span>
+        </div>
+        <div class="extrai-drop" id="extraiDrop">
+          <input type="file" id="docFiles" accept=".pdf,image/*" multiple hidden>
+          <p class="extrai-hint">Arraste os documentos aqui (PDF ou imagem) ou</p>
+          <button type="button" class="btn btn-ghost btn-sm" id="btnEscolherDocs">Escolher arquivos</button>
+          <div id="docsLista" class="extrai-lista"></div>
+        </div>
+        <div class="extrai-acoes">
+          <button type="button" class="btn btn-primary" id="btnExtrair" disabled>Extrair dados dos documentos</button>
+          <span id="extraiStatus" class="extrai-status"></span>
+        </div>
+      </section>
+
       <section class="form-section">
         <div class="form-section-head">
           <h2>Identificação</h2>
@@ -339,6 +356,15 @@
     </main>
   </div>
 
+  <style>
+    .extrai-drop { border:1.5px dashed rgba(138,174,200,.4); border-radius:12px; padding:20px; text-align:center; background:rgba(91,130,166,.06); transition:border-color .15s, background .15s; }
+    .extrai-drop.is-over { border-color:#5B82A6; background:rgba(91,130,166,.16); }
+    .extrai-hint { color:#8A93A6; font-size:14px; margin:0 0 8px; }
+    .extrai-lista { margin-top:10px; display:flex; flex-direction:column; gap:4px; font-size:13px; color:#C5D8E8; }
+    .extrai-acoes { display:flex; align-items:center; gap:14px; margin-top:14px; flex-wrap:wrap; }
+    .extrai-status { font-size:13px; color:#8A93A6; }
+  </style>
+
   <script type="module">
     import { supabase, getCurrentUser, signOut } from '../assets/js/supabase.js';
     import {
@@ -532,8 +558,122 @@
         await supabase.from('servicos_contratados').insert(setoresPayload);
       }
 
+      // sócios detectados na extração do documento → gravados já no cadastro
+      if (sociosExtraidos.length > 0) {
+        const sociosPayload = sociosExtraidos.map(s => ({
+          cliente_id: novo.id,
+          nome: s.nome,
+          cpf: s.cpf ? onlyDigits(String(s.cpf)) : null,
+          participacao: (s.participacao_percentual != null ? s.participacao_percentual : null),
+          qualificacao: s.qualificacao || null,
+          admin: !!s.eh_administrador
+        }));
+        await supabase.from('socios').insert(sociosPayload);
+      }
+
       // cliente criado → leva pra edição pra completar sócios, contatos e Drive
       window.location.href = `editar.html?id=${novo.id}`;
+    }
+
+    // ---------- Extração automática por documento ----------
+    let sociosExtraidos = [];
+    let arquivosDoc = [];
+    const docFiles = document.getElementById('docFiles');
+    const btnExtrair = document.getElementById('btnExtrair');
+    const docsLista = document.getElementById('docsLista');
+    const extraiStatus = document.getElementById('extraiStatus');
+    const extraiDrop = document.getElementById('extraiDrop');
+
+    document.getElementById('btnEscolherDocs').addEventListener('click', () => docFiles.click());
+    docFiles.addEventListener('change', () => { arquivosDoc = Array.from(docFiles.files); renderDocs(); });
+
+    ['dragover','dragenter'].forEach(ev => extraiDrop.addEventListener(ev, e => { e.preventDefault(); extraiDrop.classList.add('is-over'); }));
+    ['dragleave','dragend'].forEach(ev => extraiDrop.addEventListener(ev, e => { e.preventDefault(); extraiDrop.classList.remove('is-over'); }));
+    extraiDrop.addEventListener('drop', e => { e.preventDefault(); extraiDrop.classList.remove('is-over'); arquivosDoc = Array.from(e.dataTransfer.files); renderDocs(); });
+
+    function renderDocs(){
+      docsLista.innerHTML = arquivosDoc.map(f => '📄 ' + f.name).join('<br>');
+      btnExtrair.disabled = arquivosDoc.length === 0;
+    }
+
+    function lerBase64(file){
+      return new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(String(r.result).split(',')[1]);
+        r.onerror = () => rej(new Error('Falha ao ler ' + file.name));
+        r.readAsDataURL(file);
+      });
+    }
+
+    btnExtrair.addEventListener('click', async () => {
+      if (!arquivosDoc.length) return;
+      const txtOrig = btnExtrair.textContent;
+      btnExtrair.disabled = true;
+      btnExtrair.innerHTML = '<span class="spinner spinner-sm"></span>Lendo documentos...';
+      extraiStatus.textContent = 'Isso pode levar alguns segundos.';
+      extraiStatus.style.color = '';
+      try {
+        const documents = await Promise.all(arquivosDoc.map(async f => ({
+          media_type: f.type || 'application/octet-stream',
+          data: await lerBase64(f),
+          filename: f.name
+        })));
+        const { data: resp, error } = await supabase.functions.invoke('extract-document', { body: { documents } });
+        if (error) throw new Error(error.message || 'Erro ao chamar a extração.');
+        if (resp && resp.error) throw new Error(resp.error);
+        const d = resp && resp.data ? resp.data : null;
+        if (!d) throw new Error('A extração não retornou dados.');
+        preencherDoExtrator(d);
+        const conf = d.confianca ? (' Confiança da leitura: ' + d.confianca + '.') : '';
+        const obs = d.observacoes_extracao ? (' ' + d.observacoes_extracao) : '';
+        const nSoc = sociosExtraidos.length ? (' ' + sociosExtraidos.length + ' sócio(s) detectado(s) — serão gravados ao cadastrar.') : '';
+        extraiStatus.textContent = 'Campos preenchidos abaixo — confira antes de cadastrar.' + conf + nSoc + obs;
+        extraiStatus.style.color = 'var(--success)';
+      } catch (e) {
+        extraiStatus.textContent = 'Não consegui extrair: ' + (e.message || e);
+        extraiStatus.style.color = 'var(--warning)';
+      } finally {
+        btnExtrair.disabled = false;
+        btnExtrair.textContent = txtOrig;
+      }
+    });
+
+    function setVal(id, v){ const el = document.getElementById(id); if (el && v != null && v !== '') el.value = v; }
+
+    function preencherDoExtrator(d){
+      if (d.tipo_pessoa === 'PJ' || d.tipo_pessoa === 'PF') {
+        selTipo.value = d.tipo_pessoa;
+        selTipo.dispatchEvent(new Event('change'));
+      }
+      if (d.documento) {
+        const dig = onlyDigits(String(d.documento));
+        docInput.value = (selTipo.value === 'PJ') ? maskCNPJ(dig) : (selTipo.value === 'PF' ? maskCPF(dig) : dig);
+      }
+      setVal('nome_principal', d.nome_principal);
+      setVal('email_principal', d.email_principal);
+      if (d.telefone_principal) setVal('telefone_principal', maskTelefone(onlyDigits(String(d.telefone_principal))));
+      if (d.cep) setVal('cep', maskCEP(onlyDigits(String(d.cep))));
+      setVal('logradouro', d.logradouro);
+      setVal('numero', d.numero);
+      setVal('complemento', d.complemento);
+      setVal('bairro', d.bairro);
+      setVal('cidade', d.cidade);
+      setVal('uf', d.uf);
+      setVal('nome_fantasia', d.nome_fantasia);
+      setVal('inscricao_estadual', d.inscricao_estadual);
+      setVal('inscricao_municipal', d.inscricao_municipal);
+      setVal('regime_tributario', d.regime_tributario);
+      setVal('cnae_principal', d.cnae_principal);
+      setVal('data_abertura', d.data_abertura);
+      setVal('capital_social', d.capital_social);
+      setVal('natureza_juridica', d.natureza_juridica);
+      setVal('porte_empresa', d.porte_empresa);
+      setVal('rg', d.rg);
+      setVal('data_nascimento', d.data_nascimento);
+      setVal('profissao', d.profissao);
+      setVal('estado_civil', d.estado_civil);
+      setVal('nacionalidade', d.nacionalidade);
+      sociosExtraidos = Array.isArray(d.socios) ? d.socios.filter(s => s && s.nome) : [];
     }
 
     document.getElementById('btnSalvar').addEventListener('click', cadastrar);
