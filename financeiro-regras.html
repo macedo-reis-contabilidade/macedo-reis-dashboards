@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Financeiro — Regras recorrentes — Macedo & Reis</title>
+  <title>Financeiro — Tarefas recorrentes — Macedo & Reis</title>
   <link rel="stylesheet" href="assets/css/style.css">
   <script type="module" src="assets/js/auth-guard.js"></script>
 </head>
@@ -34,7 +34,7 @@
 
       <div class="fa-subnav">
         <a href="financeiro.html" class="fa-tab">Tarefas</a>
-        <a href="financeiro-regras.html" class="fa-tab is-active">Regras recorrentes</a>
+        <a href="financeiro-regras.html" class="fa-tab is-active">Tarefas recorrentes</a>
       </div>
 
       <div class="toolbar">
@@ -42,6 +42,8 @@
           <select id="filterCliente" class="select fa-sel-cli"><option value="">Todos os clientes</option></select>
           <select id="filterPeriod" class="select fa-sel">
             <option value="">Toda periodicidade</option>
+            <option value="diaria">Diária</option>
+            <option value="semanal">Semanal</option>
             <option value="mensal">Mensal</option>
             <option value="bimestral">Bimestral</option>
             <option value="trimestral">Trimestral</option>
@@ -68,17 +70,18 @@
 
   <div class="fa-modal-overlay" id="modalOverlay">
     <div class="fa-modal">
-      <div class="fa-modal-head"><h3 id="modalTitulo">Nova regra recorrente</h3><button class="fa-modal-close" id="modalClose">&times;</button></div>
+      <div class="fa-modal-head"><h3 id="modalTitulo">Nova tarefa recorrente</h3><button class="fa-modal-close" id="modalClose">&times;</button></div>
       <div class="fa-modal-body">
-        <label class="fa-field"><span>Cliente *</span><select id="rCliente" class="select"></select></label>
-        <label class="fa-field"><span>Obrigação / título *</span><input type="text" id="rTitulo" class="input" placeholder="Ex.: PGDAS-D"></label>
+        <label class="fa-field"><span>Cliente <span style="color:#8A93A6;font-weight:400;">(opcional)</span></span><select id="rCliente" class="select"></select></label>
+        <label class="fa-field"><span>Obrigação / título *</span><input type="text" id="rTitulo" class="input" placeholder="Ex.: PGDAS-D, Conferir e-mails…"></label>
+        <label class="fa-field"><span>Descrição <span style="color:#8A93A6;font-weight:400;">(opcional)</span></span><textarea id="rDesc" class="input" rows="2" placeholder="O que é essa atividade"></textarea></label>
         <div class="fa-field-row">
           <label class="fa-field"><span>Periodicidade</span>
             <select id="rPeriod" class="select">
-              <option value="mensal">Mensal</option><option value="bimestral">Bimestral</option><option value="trimestral">Trimestral</option><option value="semestral">Semestral</option><option value="anual">Anual</option>
+              <option value="diaria">Diária</option><option value="semanal">Semanal</option><option value="mensal">Mensal</option><option value="bimestral">Bimestral</option><option value="trimestral">Trimestral</option><option value="semestral">Semestral</option><option value="anual">Anual</option>
             </select>
           </label>
-          <label class="fa-field"><span>Dia de vencimento</span><input type="number" id="rDia" class="input" min="1" max="31" placeholder="ex.: 20"></label>
+          <label class="fa-field" id="rDiaWrap"><span>Dia de vencimento</span><input type="number" id="rDia" class="input" min="1" max="31" placeholder="ex.: 20"></label>
         </div>
         <label class="fa-field" id="rMesWrap" style="display:none;"><span>Mês de vencimento (1 a 12)</span><input type="number" id="rMes" class="input" min="1" max="12" placeholder="ex.: 5 para maio"></label>
         <label class="fa-field"><span>Responsável</span><input type="text" id="rResp" class="input" placeholder="Ex.: Thalia"></label>
@@ -92,7 +95,7 @@
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
 
     const SETOR = 'financeiro';
-    const PERIODOS = { mensal:'Mensal', bimestral:'Bimestral', trimestral:'Trimestral', semestral:'Semestral', anual:'Anual' };
+    const PERIODOS = { diaria:'Diária', semanal:'Semanal', mensal:'Mensal', bimestral:'Bimestral', trimestral:'Trimestral', semestral:'Semestral', anual:'Anual' };
     const MESES = ['','jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
     const elLista = document.getElementById('lista');
     const filterCliente = document.getElementById('filterCliente');
@@ -122,7 +125,7 @@
       clientes = data || [];
       const opts = clientes.map(c => '<option value="'+c.id+'">'+escapeHtml(c.nome_principal)+'</option>').join('');
       filterCliente.innerHTML = '<option value="">Todos os clientes</option>' + opts;
-      document.getElementById('rCliente').innerHTML = '<option value="">Selecione…</option>' + opts;
+      document.getElementById('rCliente').innerHTML = '<option value="">— Sem cliente (escritório) —</option>' + opts;
     }
 
     async function carregarRegras() {
@@ -164,10 +167,12 @@
         const aberto = (abrirTudo || abertos.has(k)) ? 'open' : '';
         const ativas = itens.filter(r => r.ativo).length;
         const linhas = itens.map(r => {
-          const dia = r.dia_vencimento ? ('dia ' + r.dia_vencimento) : '—';
-          const quando = r.periodicidade === 'mensal' ? dia : (dia + (r.mes_vencimento ? (' / ' + MESES[r.mes_vencimento]) : ''));
+          let quando;
+          if (r.periodicidade === 'diaria') quando = 'todo dia';
+          else if (r.periodicidade === 'semanal') quando = 'toda semana';
+          else { const dia = r.dia_vencimento ? ('dia ' + r.dia_vencimento) : '—'; quando = r.periodicidade === 'mensal' ? dia : (dia + (r.mes_vencimento ? (' / ' + MESES[r.mes_vencimento]) : '')); }
           return '<tr class="'+(r.ativo?'':'rg-inativa')+'">'+
-            '<td data-label="Obrigação"><strong>'+escapeHtml(r.titulo)+'</strong>'+(r.origem==='analise'?' <span class="rg-origem">da análise</span>':'')+'</td>'+
+            '<td data-label="Obrigação"><strong>'+escapeHtml(r.titulo)+'</strong>'+(r.origem==='analise'?' <span class="rg-origem">da análise</span>':'')+(r.descricao?'<div class="rg-desc">'+escapeHtml(r.descricao)+'</div>':'')+'</td>'+
             '<td data-label="Periodicidade">'+(PERIODOS[r.periodicidade]||r.periodicidade)+'</td>'+
             '<td data-label="Vencimento">'+quando+'</td>'+
             '<td data-label="Responsável">'+(r.responsavel?escapeHtml(r.responsavel):'—')+'</td>'+
@@ -215,7 +220,12 @@
     const overlay = document.getElementById('modalOverlay');
     const rPeriod = document.getElementById('rPeriod');
     rPeriod.addEventListener('change', toggleMes);
-    function toggleMes(){ document.getElementById('rMesWrap').style.display = (rPeriod.value === 'mensal') ? 'none' : 'flex'; }
+    function toggleMes(){
+      const p = rPeriod.value;
+      const semDiaMes = (p === 'diaria' || p === 'semanal');
+      document.getElementById('rDiaWrap').style.display = semDiaMes ? 'none' : 'flex';
+      document.getElementById('rMesWrap').style.display = (semDiaMes || p === 'mensal') ? 'none' : 'flex';
+    }
 
     document.getElementById('btnNova').addEventListener('click', () => abrirModal(null));
     document.getElementById('modalClose').addEventListener('click', fecharModal);
@@ -224,9 +234,10 @@
 
     function abrirModal(r) {
       editandoId = r ? r.id : null;
-      document.getElementById('modalTitulo').textContent = r ? 'Editar regra' : 'Nova regra recorrente';
+      document.getElementById('modalTitulo').textContent = r ? 'Editar regra' : 'Nova tarefa recorrente';
       document.getElementById('rCliente').value = r ? (r.cliente_id || '') : (filterCliente.value || '');
       document.getElementById('rTitulo').value = r ? r.titulo : '';
+      document.getElementById('rDesc').value = r && r.descricao ? r.descricao : '';
       rPeriod.value = r ? (r.periodicidade || 'mensal') : 'mensal';
       document.getElementById('rDia').value = r && r.dia_vencimento ? r.dia_vencimento : '';
       document.getElementById('rMes').value = r && r.mes_vencimento ? r.mes_vencimento : '';
@@ -240,14 +251,15 @@
     document.getElementById('btnSalvar').addEventListener('click', async () => {
       const cliente_id = document.getElementById('rCliente').value || null;
       const titulo = document.getElementById('rTitulo').value.trim();
-      if (!cliente_id) { alert('Selecione o cliente.'); return; }
       if (!titulo) { alert('Informe a obrigação / título.'); return; }
       const period = rPeriod.value;
-      const dia = document.getElementById('rDia').value ? parseInt(document.getElementById('rDia').value,10) : null;
-      const mes = (period !== 'mensal' && document.getElementById('rMes').value) ? parseInt(document.getElementById('rMes').value,10) : null;
+      const semDiaMes = (period === 'diaria' || period === 'semanal');
+      const dia = (!semDiaMes && document.getElementById('rDia').value) ? parseInt(document.getElementById('rDia').value,10) : null;
+      const mes = (!semDiaMes && period !== 'mensal' && document.getElementById('rMes').value) ? parseInt(document.getElementById('rMes').value,10) : null;
       const payload = {
         cliente_id, setor: SETOR, titulo, periodicidade: period,
         dia_vencimento: dia, mes_vencimento: mes,
+        descricao: document.getElementById('rDesc').value.trim() || null,
         responsavel: document.getElementById('rResp').value.trim() || null,
         ativo: document.getElementById('rAtivo').checked
       };
@@ -274,6 +286,7 @@
     .fa-tab.is-active { color:#C5D8E8; border-bottom-color:#5B82A6; font-weight:600; }
     .fa-sel { max-width:200px; }
     .fa-sel-cli { max-width:240px; }
+    .rg-desc { font-size:12px; color:#8A93A6; margin-top:3px; font-weight:400; }
 
     .fa-grupo { background:rgba(255,255,255,.025); border:1px solid rgba(255,255,255,.08); border-radius:14px; margin-bottom:10px; overflow:hidden; }
     .fa-grupo-head { display:flex; align-items:center; gap:12px; padding:14px 18px; cursor:pointer; list-style:none; user-select:none; }
