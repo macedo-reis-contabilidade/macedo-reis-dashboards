@@ -34,7 +34,7 @@
 
       <div class="fa-subnav">
         <a href="societario.html" class="fa-tab is-active">Tarefas</a>
-        <a href="societario-regras.html" class="fa-tab">Regras recorrentes</a>
+        <a href="societario-regras.html" class="fa-tab">Tarefas recorrentes</a>
         <a href="societario-relatorios.html" class="fa-tab">Relatórios</a>
         <a href="societario-alvaras.html" class="fa-tab">Alvarás</a>
       </div>
@@ -168,7 +168,7 @@
     document.getElementById('btnGerarMes').addEventListener('click', gerarTarefasDoMes);
     async function gerarTarefasDoMes() {
       const { data: regras } = await supabase.from('tarefas_recorrentes').select('*').eq('setor', SETOR).eq('ativo', true).eq('periodicidade', 'mensal');
-      if (!regras || !regras.length) { alert('Não há regras mensais cadastradas. Crie regras na aba Regras recorrentes.'); return; }
+      if (!regras || !regras.length) { alert('Não há regras mensais cadastradas. Crie regras na aba Tarefas recorrentes.'); return; }
       const { data: existentes } = await supabase.from('tarefas').select('regra_id').eq('setor', SETOR).eq('competencia', anoMes).not('regra_id', 'is', null);
       const jaTem = new Set((existentes || []).map(t => t.regra_id));
       const novas = [];

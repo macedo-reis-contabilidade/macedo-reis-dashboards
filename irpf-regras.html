@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>IRPF — Regras recorrentes — Macedo & Reis</title>
+  <title>IRPF — Tarefas recorrentes — Macedo & Reis</title>
   <link rel="stylesheet" href="assets/css/style.css">
   <script type="module" src="assets/js/auth-guard.js"></script>
 </head>
@@ -34,7 +34,7 @@
 
       <div class="fa-subnav">
         <a href="irpf.html" class="fa-tab">Tarefas</a>
-        <a href="irpf-regras.html" class="fa-tab is-active">Regras recorrentes</a>
+        <a href="irpf-regras.html" class="fa-tab is-active">Tarefas recorrentes</a>
         <a href="irpf-relatorios.html" class="fa-tab">Relatórios</a>
       </div>
 
@@ -69,7 +69,7 @@
 
   <div class="fa-modal-overlay" id="modalOverlay">
     <div class="fa-modal">
-      <div class="fa-modal-head"><h3 id="modalTitulo">Nova regra recorrente</h3><button class="fa-modal-close" id="modalClose">&times;</button></div>
+      <div class="fa-modal-head"><h3 id="modalTitulo">Nova tarefa recorrente</h3><button class="fa-modal-close" id="modalClose">&times;</button></div>
       <div class="fa-modal-body">
         <label class="fa-field"><span>Cliente *</span><select id="rCliente" class="select"></select></label>
         <label class="fa-field"><span>Obrigação / título *</span><input type="text" id="rTitulo" class="input" placeholder="Ex.: PGDAS-D"></label>
@@ -225,7 +225,7 @@
 
     function abrirModal(r) {
       editandoId = r ? r.id : null;
-      document.getElementById('modalTitulo').textContent = r ? 'Editar regra' : 'Nova regra recorrente';
+      document.getElementById('modalTitulo').textContent = r ? 'Editar regra' : 'Nova tarefa recorrente';
       document.getElementById('rCliente').value = r ? (r.cliente_id || '') : (filterCliente.value || '');
       document.getElementById('rTitulo').value = r ? r.titulo : '';
       rPeriod.value = r ? (r.periodicidade || 'mensal') : 'mensal';
