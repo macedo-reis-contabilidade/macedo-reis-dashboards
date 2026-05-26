@@ -92,6 +92,7 @@
     let itens = [];
     let usuarioEmail = null;
     let modo = 'pauta';
+    let editandoId = null;
 
     (async () => {
       const user = await getCurrentUser();
@@ -115,30 +116,42 @@
 
     // Modal
     const overlay = document.getElementById('modalOverlay');
-    document.getElementById('btnNovo').addEventListener('click', abrirModal);
+    document.getElementById('btnNovo').addEventListener('click', () => abrirModal());
     document.getElementById('modalClose').addEventListener('click', fecharModal);
     document.getElementById('btnCancelar').addEventListener('click', fecharModal);
     overlay.addEventListener('click', e => { if (e.target === overlay) fecharModal(); });
-    function abrirModal() {
-      document.getElementById('modalTitulo').textContent = modo === 'pauta' ? 'Nova pauta' : 'Nova tarefa';
+    function abrirModal(t) {
+      editandoId = t ? t.id : null;
+      const nome = modo === 'pauta' ? 'pauta' : 'tarefa';
+      document.getElementById('modalTitulo').textContent = (editandoId ? 'Editar ' : 'Nova ') + nome;
       document.getElementById('gTitulo').placeholder = modo === 'pauta' ? 'Ex.: Revisar tabela de honorários' : 'Ex.: Fechar integração Banco Inter';
       document.getElementById('gPrazoWrap').style.display = 'flex';
       document.getElementById('gPrazoLabel').textContent = modo === 'pauta' ? 'Prazo p/ discussão' : 'Prazo';
+      document.getElementById('gTitulo').value = t ? t.titulo : '';
+      document.getElementById('gResp').value = t ? (t.responsavel || '') : '';
+      document.getElementById('gPrazo').value = (t && t.prazo) ? String(t.prazo).slice(0, 10) : '';
+      document.getElementById('gDescricao').value = t ? (t.descricao || '') : '';
       overlay.classList.add('is-open');
     }
-    function fecharModal(){ overlay.classList.remove('is-open'); ['gTitulo','gPrazo','gDescricao'].forEach(id=>document.getElementById(id).value=''); document.getElementById('gResp').value=''; }
+    function fecharModal(){ overlay.classList.remove('is-open'); editandoId = null; ['gTitulo','gPrazo','gDescricao'].forEach(id=>document.getElementById(id).value=''); document.getElementById('gResp').value=''; }
 
     document.getElementById('btnSalvar').addEventListener('click', async () => {
       const titulo = document.getElementById('gTitulo').value.trim();
       if (!titulo) { alert('Informe o título.'); return; }
-      const novo = {
-        setor: SETOR, tipo: modo, titulo,
+      const campos = {
+        titulo,
         responsavel: document.getElementById('gResp').value || null,
         descricao: document.getElementById('gDescricao').value.trim() || null,
-        prazo: document.getElementById('gPrazo').value || null,
-        status: 'pendente', origem: 'avulsa', cliente_id: null
+        prazo: document.getElementById('gPrazo').value || null
       };
-      const { error } = await supabase.from('tarefas').insert(novo);
+      let error;
+      if (editandoId) {
+        ({ error } = await supabase.from('tarefas').update(campos).eq('id', editandoId));
+      } else {
+        ({ error } = await supabase.from('tarefas').insert({
+          ...campos, setor: SETOR, tipo: modo, status: 'pendente', origem: 'avulsa', cliente_id: null
+        }));
+      }
       if (error) { alert('Erro ao salvar: ' + error.message); return; }
       fecharModal();
       await carregar();
@@ -176,11 +189,13 @@
         if (t.prazo) meta.push('prazo ' + formatDate(t.prazo));
         let acoes = '';
         if (modo === 'pauta') {
-          acoes = '<button class="gz-link" data-act="toggle" data-id="'+t.id+'">'+(concl?'Reabrir':'Marcar discutida')+'</button>'+
+          acoes = '<button class="gz-link" data-act="editar" data-id="'+t.id+'">Editar</button>'+
+                  '<button class="gz-link" data-act="toggle" data-id="'+t.id+'">'+(concl?'Reabrir':'Marcar discutida')+'</button>'+
                   (concl?'':'<button class="gz-link" data-act="virar" data-id="'+t.id+'">Virar tarefa →</button>')+
                   '<button class="gz-link gz-del" data-act="excluir" data-id="'+t.id+'">Excluir</button>';
         } else {
-          acoes = '<select class="gz-status" data-id="'+t.id+'">'+
+          acoes = '<button class="gz-link" data-act="editar" data-id="'+t.id+'">Editar</button>'+
+            '<select class="gz-status" data-id="'+t.id+'">'+
             '<option value="pendente"'+(t.status==='pendente'?' selected':'')+'>Pendente</option>'+
             '<option value="em_andamento"'+(t.status==='em_andamento'?' selected':'')+'>Em andamento</option>'+
             '<option value="concluida"'+(t.status==='concluida'?' selected':'')+'>Concluída</option>'+
@@ -213,6 +228,7 @@
       const id = e.target.dataset.id, act = e.target.dataset.act;
       const t = itens.find(x => x.id === id);
       if (!t) return;
+      if (act === 'editar') { abrirModal(t); return; }
       if (act === 'toggle') {
         const novo = t.status === 'concluida' ? 'pendente' : 'concluida';
         const { error } = await supabase.from('tarefas').update({ status: novo }).eq('id', id);
