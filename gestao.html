@@ -176,6 +176,17 @@
         return true;
       });
 
+      vis.sort((a, b) => {
+        const ac = a.status === 'concluida' ? 1 : 0;
+        const bc = b.status === 'concluida' ? 1 : 0;
+        if (ac !== bc) return ac - bc;                 // concluídos/discutidos vão pro fim
+        if (a.prazo && b.prazo) {                      // ambos com prazo: o que vence antes primeiro
+          if (a.prazo !== b.prazo) return a.prazo < b.prazo ? -1 : 1;
+        } else if (a.prazo) { return -1; }             // com prazo antes de sem prazo
+        else if (b.prazo) { return 1; }
+        return (b.created_at || '').localeCompare(a.created_at || ''); // desempate: mais recente primeiro
+      });
+
       if (vis.length === 0) {
         const vazio = modo === 'pauta' ? 'Nenhuma pauta em aberto. Adicione os assuntos da próxima reunião.' : 'Nenhuma tarefa. Crie ou converta uma pauta decidida.';
         elLista.innerHTML = '<div class="empty-state" style="padding:48px 24px;"><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg><h3>'+(modo==='pauta'?'Sem pautas':'Sem tarefas')+'</h3><p>'+vazio+'</p></div>';
