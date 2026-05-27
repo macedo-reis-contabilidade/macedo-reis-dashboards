@@ -5,7 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Macedo & Reis — Dashboards</title>
   <link rel="stylesheet" href="assets/css/style.css">
-  <script type="module" src="assets/js/auth-guard.js"></script> 
+  <script type="module" src="assets/js/auth-guard.js"></script>
+  <style>
+    .badge-hoje { background:rgba(227,179,65,.16); border:1px solid rgba(227,179,65,.35); color:#E3B341; font-size:11px; font-weight:600; padding:3px 8px; border-radius:999px; margin-right:6px; }
+  </style>
 </head>
 <body>
   <div class="app-shell">
@@ -179,7 +182,10 @@
   </div>
 
   <script type="module">
-    import { getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+
+    const HOJE = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD local
+    const GESTAO_ADMINS = ['financeiro@macedoereis.com.br', 'diego@macedoereis.com.br'];
 
     (async () => {
       const user = await getCurrentUser();
@@ -188,9 +194,50 @@
         document.getElementById('userName').textContent = displayName;
         document.getElementById('userAvatar').textContent = displayName.charAt(0).toUpperCase();
       }
+      const isGestaoAdmin = !!user && GESTAO_ADMINS.includes((user.email || '').toLowerCase());
+      await pintarSelosDoDia(isGestaoAdmin);
     })();
 
     document.getElementById('btnLogout').addEventListener('click', signOut);
+
+    async function pintarSelosDoDia(isGestaoAdmin) {
+      // mapeia card -> setor (pelo href). Cadastro de clientes fica de fora.
+      const mapa = {};
+      document.querySelectorAll('a.dashboard-card').forEach(c => {
+        const href = c.getAttribute('href') || '';
+        if (!/^[a-z]+\.html$/i.test(href)) return;   // pula clientes/index.html etc.
+        const setor = href.replace('.html', '');
+        if (setor === 'gestao' && !isGestaoAdmin) return; // restringe contagem do Gestão
+        mapa[setor] = c;
+      });
+      const setores = Object.keys(mapa);
+      if (!setores.length) return;
+
+      // tarefas com prazo de hoje e não concluídas, por setor
+      const contT = {};
+      const { data: ts } = await supabase.from('tarefas').select('setor')
+        .in('setor', setores).eq('prazo', HOJE).neq('status', 'concluida');
+      (ts || []).forEach(t => { contT[t.setor] = (contT[t.setor] || 0) + 1; });
+
+      // rotinas ativas não feitas hoje, por setor
+      const contR = {};
+      const { data: rs } = await supabase.from('rotinas').select('setor, ultima_execucao')
+        .in('setor', setores).eq('ativo', true);
+      (rs || []).forEach(r => { if (r.ultima_execucao !== HOJE) contR[r.setor] = (contR[r.setor] || 0) + 1; });
+
+      // injeta o selinho no footer de cada card que tiver algo
+      setores.forEach(s => {
+        const total = (contT[s] || 0) + (contR[s] || 0);
+        if (!total) return;
+        const footer = mapa[s].querySelector('.dashboard-card-footer');
+        if (!footer) return;
+        const ativo = footer.querySelector('.badge-active');
+        const pill = document.createElement('span');
+        pill.className = 'badge badge-hoje';
+        pill.textContent = total + ' hoje';
+        if (ativo) footer.insertBefore(pill, ativo); else footer.appendChild(pill);
+      });
+    }
   </script>
 </body>
 </html>
