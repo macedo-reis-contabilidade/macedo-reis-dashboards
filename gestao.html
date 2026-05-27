@@ -95,7 +95,7 @@
     let modo = 'pauta';
     let editandoId = null;
 
-    const GESTAO_ADMINS = ['samuel@macedoereis.com.br', 'diego@macedoereis.com.br'];
+    const GESTAO_ADMINS = ['financeiro@macedoereis.com.br', 'diego@macedoereis.com.br'];
     function ehAutorizado(user){ return user && GESTAO_ADMINS.includes((user.email || '').toLowerCase()); }
     function bloquearAcesso(){
       document.querySelector('.content').innerHTML = '<div class="empty-state" style="padding:64px 24px;text-align:center;">'
