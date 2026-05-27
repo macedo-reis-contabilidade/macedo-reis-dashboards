@@ -58,6 +58,7 @@
         <label class="fa-field"><span>Responsável</span>
           <select id="rResp" class="select"><option value="">—</option><option value="Samuel">Samuel</option><option value="Diego">Diego</option><option value="Ambos">Ambos</option></select>
         </label>
+        <label class="fa-field"><span>Descrição</span><textarea id="rDesc" class="input" rows="3" placeholder="O que fazer nessa rotina (opcional)"></textarea></label>
         <label class="fa-checkline"><input type="checkbox" id="rAtivo" checked><span>Rotina ativa (aparece no checklist)</span></label>
       </div>
       <div class="fa-modal-foot">
@@ -153,7 +154,8 @@
           + '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
         + '</button>'
         + '<div class="rt-body"><div class="rt-titulo">' + escapeHtml(r.titulo) + '</div>'
-          + (meta.length ? '<div class="rt-meta">' + meta.join(' · ') + '</div>' : '') + '</div>'
+          + (meta.length ? '<div class="rt-meta">' + meta.join(' · ') + '</div>' : '')
+          + (r.descricao ? '<div class="rt-desc">' + escapeHtml(r.descricao) + '</div>' : '') + '</div>'
         + '<div class="rt-acoes">'
           + '<button class="rt-link" data-act="editar" data-id="' + r.id + '">Editar</button>'
           + '<button class="rt-link" data-act="desativar" data-id="' + r.id + '">Desativar</button>'
@@ -210,6 +212,7 @@
       document.getElementById('modalTitulo').textContent = editandoId ? 'Editar rotina' : 'Nova rotina';
       document.getElementById('rTitulo').value = r ? r.titulo : '';
       document.getElementById('rResp').value = r ? (r.responsavel || '') : '';
+      document.getElementById('rDesc').value = r ? (r.descricao || '') : '';
       document.getElementById('rAtivo').checked = r ? !!r.ativo : true;
       document.getElementById('btnExcluir').style.display = editandoId ? 'inline-flex' : 'none';
       overlay.classList.add('is-open');
@@ -220,6 +223,7 @@
       editandoId = null;
       document.getElementById('rTitulo').value = '';
       document.getElementById('rResp').value = '';
+      document.getElementById('rDesc').value = '';
       document.getElementById('rAtivo').checked = true;
     }
 
@@ -229,6 +233,7 @@
       const campos = {
         titulo,
         responsavel: document.getElementById('rResp').value || null,
+        descricao: document.getElementById('rDesc').value.trim() || null,
         ativo: document.getElementById('rAtivo').checked
       };
       let error;
@@ -277,6 +282,7 @@
     .rt-titulo { color:#E6EBF2; font-size:15px; font-weight:500; }
     .rt-item.is-done .rt-titulo { text-decoration:line-through; color:#8A93A6; }
     .rt-meta { color:#8A93A6; font-size:13px; margin-top:3px; }
+    .rt-desc { color:#A9B2C2; font-size:13.5px; margin-top:6px; line-height:1.5; white-space:pre-wrap; }
     .rt-acoes { display:flex; align-items:center; gap:6px; flex:0 0 auto; }
     .rt-link { background:none; border:none; color:#8AAEC8; cursor:pointer; font-size:13px; padding:3px 6px; }
     .rt-link:hover { color:#C5D8E8; text-decoration:underline; }
@@ -295,6 +301,7 @@
     .fa-field > span { font-size:13px; color:#8AAEC8; }
     .fa-checkline { display:flex; align-items:center; gap:8px; color:#C5D8E8; font-size:14px; cursor:pointer; }
     .fa-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid rgba(255,255,255,.08); }
+    .fa-modal textarea.input { resize:vertical; font-family:inherit; }
 
     @media (max-width:560px) {
       .rt-item { flex-wrap:wrap; }
