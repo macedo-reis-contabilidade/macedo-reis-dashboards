@@ -217,7 +217,7 @@
       // filtro pessoal: pra alguns users, conta SÓ o que é deles (responsável)
       const FILTRO_PESSOAL = { 'financeiro@macedoereis.com.br': ['Samuel', 'Ambos'] };
       const meusNomes = user ? FILTRO_PESSOAL[(user.email || '').toLowerCase()] : null;
-      const filtroResp = meusNomes ? meusNomes.map(n => `responsavel.ilike.%${n}%`).join(',') : null;
+      const filtroResp = meusNomes ? meusNomes.map(n => `responsavel.ilike.*${n}*`).join(',') : null;
 
       // tarefas com prazo de hoje e não concluídas, por setor
       const contT = {};
