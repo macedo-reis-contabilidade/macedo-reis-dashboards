@@ -226,15 +226,43 @@
 
       // tarefas com prazo de hoje e não concluídas, por setor
       const contT = {};
-      const { data: ts } = await supabase.from('tarefas').select('setor, responsavel')
+      const { data: ts, error: errT } = await supabase.from('tarefas').select('setor, responsavel')
         .in('setor', setores).eq('prazo', HOJE).neq('status', 'concluida');
       (ts || []).forEach(t => { if (ehMeu(t.responsavel)) contT[t.setor] = (contT[t.setor] || 0) + 1; });
 
       // rotinas ativas não feitas hoje, por setor
       const contR = {};
-      const { data: rs } = await supabase.from('rotinas').select('setor, ultima_execucao, responsavel')
+      const { data: rs, error: errR } = await supabase.from('rotinas').select('setor, ultima_execucao, responsavel')
         .in('setor', setores).eq('ativo', true);
       (rs || []).forEach(r => { if (r.ultima_execucao !== HOJE && ehMeu(r.responsavel)) contR[r.setor] = (contR[r.setor] || 0) + 1; });
+
+      // ===== CAIXA DE DIAGNÓSTICO TEMPORÁRIA (remover depois) =====
+      const dbg = document.createElement('pre');
+      dbg.style.cssText = 'background:#0F1620;border:1px solid #5B82A6;color:#C5D8E8;padding:14px 18px;margin:0 0 18px;border-radius:10px;font-size:12px;line-height:1.5;white-space:pre-wrap;overflow-x:auto;';
+      const lTarefas = (ts || []).map(t => `   [${t.setor}] responsável: ${t.responsavel ?? '(vazio)'} — passa? ${ehMeu(t.responsavel)}`).join('\n') || '   (nenhuma)';
+      const rsAtrasoMostrar = (rs || []).filter(r => r.ultima_execucao !== HOJE);
+      const lRotinas = rsAtrasoMostrar.map(r => `   [${r.setor}] responsável: ${r.responsavel ?? '(vazio)'} — passa? ${ehMeu(r.responsavel)}`).join('\n') || '   (nenhuma)';
+      dbg.textContent = [
+        'DIAGNÓSTICO (temporário) — mandar print pro Claude',
+        '─────────────────────────────────────────────',
+        'Data de hoje (local): ' + HOJE,
+        'User: ' + (user?.email || '(não logado)'),
+        'Filtro pessoal: ' + (meusNomes ? meusNomes.join(', ') + ' (+ sem dono)' : 'nenhum'),
+        'Setores mapeados nos cards: ' + setores.join(', '),
+        '',
+        'TAREFAS retornadas (prazo=hoje, status≠concluida): ' + ((ts || []).length) + (errT ? '  ERRO: ' + errT.message : ''),
+        lTarefas,
+        '',
+        'ROTINAS ativas não feitas hoje: ' + rsAtrasoMostrar.length + (errR ? '  ERRO: ' + errR.message : ''),
+        lRotinas,
+        '',
+        'CONTAGENS por setor (após filtro):',
+        '  tarefas: ' + JSON.stringify(contT),
+        '  rotinas: ' + JSON.stringify(contR),
+      ].join('\n');
+      const pageHeader = document.querySelector('.page-header');
+      pageHeader.parentNode.insertBefore(dbg, pageHeader.nextSibling);
+      // ===== FIM DEBUG =====
 
       // injeta o selinho no canto superior direito do card que tiver algo
       setores.forEach(s => {
