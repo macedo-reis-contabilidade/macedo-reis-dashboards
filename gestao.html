@@ -35,6 +35,7 @@
       <div class="fa-subnav">
         <button class="fa-tab is-active" data-modo="pauta">Pautas</button>
         <button class="fa-tab" data-modo="tarefa">Tarefas</button>
+        <a href="gestao-rotinas.html" class="fa-tab" style="text-decoration:none;">Rotinas</a>
       </div>
 
       <div class="toolbar">
@@ -107,9 +108,9 @@
 
     document.getElementById('btnLogout').addEventListener('click', signOut);
 
-    document.querySelectorAll('.fa-tab').forEach(t => t.addEventListener('click', () => {
+    document.querySelectorAll('.fa-tab[data-modo]').forEach(t => t.addEventListener('click', () => {
       modo = t.dataset.modo;
-      document.querySelectorAll('.fa-tab').forEach(x => x.classList.toggle('is-active', x === t));
+      document.querySelectorAll('.fa-tab[data-modo]').forEach(x => x.classList.toggle('is-active', x === t));
       document.getElementById('btnNovoLabel').textContent = modo === 'pauta' ? 'Nova pauta' : 'Nova tarefa';
       render();
     }));

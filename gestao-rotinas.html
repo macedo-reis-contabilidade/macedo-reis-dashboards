@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gestão — Rotinas — Macedo & Reis</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip"><div class="user-avatar" id="userAvatar">—</div><span id="userName">Carregando…</span></div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <a href="gestao.html">Gestão</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Rotinas</span>
+        </div>
+        <div class="eyebrow">Sócios</div>
+        <h1>Rotinas</h1>
+        <p>Checklist do dia a dia. Marque o que já fez hoje; quando virar o dia, a lista zera sozinha.</p>
+      </div>
+
+      <div class="fa-subnav">
+        <a href="gestao.html" class="fa-tab" style="text-decoration:none;">Gestão</a>
+        <a href="gestao-rotinas.html" class="fa-tab is-active" style="text-decoration:none;">Rotinas</a>
+      </div>
+
+      <div class="toolbar" style="display:flex;justify-content:flex-end;margin-bottom:18px;">
+        <button class="btn btn-primary" id="btnNovo">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <span>Nova rotina</span>
+        </button>
+      </div>
+
+      <div id="lista"><div class="loading-row" style="padding:40px;text-align:center;"><span class="spinner"></span>Carregando…</div></div>
+    </main>
+  </div>
+
+  <div class="fa-modal-overlay" id="modalOverlay">
+    <div class="fa-modal">
+      <div class="fa-modal-head"><h3 id="modalTitulo">Nova rotina</h3><button class="fa-modal-close" id="modalClose">&times;</button></div>
+      <div class="fa-modal-body">
+        <label class="fa-field"><span>Título *</span><input type="text" id="rTitulo" class="input" placeholder="Ex.: Conferir e-mails"></label>
+        <label class="fa-field"><span>Responsável</span>
+          <select id="rResp" class="select"><option value="">—</option><option value="Samuel">Samuel</option><option value="Diego">Diego</option><option value="Ambos">Ambos</option></select>
+        </label>
+        <label class="fa-checkline"><input type="checkbox" id="rAtivo" checked><span>Rotina ativa (aparece no checklist)</span></label>
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-danger" id="btnExcluir" style="display:none;margin-right:auto;">Excluir</button>
+        <button class="btn btn-ghost" id="btnCancelar">Cancelar</button>
+        <button class="btn btn-primary" id="btnSalvar">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+
+    const SETOR = 'gestao';
+    const hoje = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD no fuso local
+    const elLista = document.getElementById('lista');
+    const overlay = document.getElementById('modalOverlay');
+    let rotinas = [];
+    let usuarioNome = 'Usuário';
+    let editandoId = null;
+
+    (async () => {
+      const user = await getCurrentUser();
+      if (user) {
+        const n = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário';
+        usuarioNome = n.charAt(0).toUpperCase() + n.slice(1);
+        document.getElementById('userName').textContent = usuarioNome;
+        document.getElementById('userAvatar').textContent = usuarioNome.charAt(0).toUpperCase();
+      }
+      await carregar();
+    })();
+
+    document.getElementById('btnLogout').addEventListener('click', signOut);
+    document.getElementById('btnNovo').addEventListener('click', () => abrirModal());
+    document.getElementById('modalClose').addEventListener('click', fecharModal);
+    document.getElementById('btnCancelar').addEventListener('click', fecharModal);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) fecharModal(); });
+
+    async function carregar() {
+      const { data, error } = await supabase.from('rotinas').select('*').eq('setor', SETOR)
+        .order('ordem', { ascending: true }).order('titulo', { ascending: true });
+      if (error) { elLista.innerHTML = '<div style="text-align:center;color:var(--danger);padding:40px;">Erro: ' + error.message + '</div>'; return; }
+      rotinas = data || [];
+      render();
+    }
+
+    function render() {
+      const ativas = rotinas.filter(r => r.ativo);
+      const inativas = rotinas.filter(r => !r.ativo);
+      const feitas = ativas.filter(r => r.ultima_execucao === hoje).length;
+      const total = ativas.length;
+      const pct = total ? Math.round(feitas / total * 100) : 0;
+      let dataExt = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+      dataExt = dataExt.charAt(0).toUpperCase() + dataExt.slice(1);
+
+      let html = '<div class="rt-resumo">'
+        + '<div class="rt-resumo-top"><span class="rt-data">' + dataExt + '</span>'
+        + '<span class="rt-cont">' + feitas + ' de ' + total + ' feitas hoje</span></div>'
+        + '<div class="rt-bar"><div class="rt-bar-fill" style="width:' + pct + '%"></div></div>'
+        + '</div>';
+
+      if (total === 0 && inativas.length === 0) {
+        html += '<div class="empty-state" style="padding:48px 24px;"><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><h3>Sem rotinas</h3><p>Cadastre suas rotinas diárias (ex.: conferir e-mails) no botão “Nova rotina”.</p></div>';
+        elLista.innerHTML = html;
+        return;
+      }
+
+      const ord = ativas.slice().sort((a, b) => {
+        const af = a.ultima_execucao === hoje ? 1 : 0;
+        const bf = b.ultima_execucao === hoje ? 1 : 0;
+        if (af !== bf) return af - bf;           // não feitas primeiro
+        return (a.titulo || '').localeCompare(b.titulo || '');
+      });
+      html += ord.map(cardAtiva).join('');
+
+      if (inativas.length) {
+        html += '<div class="rt-sec-title">Desativadas</div>';
+        html += inativas.map(cardInativa).join('');
+      }
+      elLista.innerHTML = html;
+
+      elLista.querySelectorAll('.rt-check').forEach(b => b.addEventListener('click', toggleFeito));
+      elLista.querySelectorAll('.rt-link').forEach(b => b.addEventListener('click', onAcao));
+    }
+
+    function cardAtiva(r) {
+      const done = r.ultima_execucao === hoje;
+      const meta = [];
+      if (r.responsavel) meta.push(escapeHtml(r.responsavel));
+      if (done) meta.push('feito hoje' + (r.ultima_por ? ' por ' + escapeHtml(r.ultima_por) : ''));
+      return '<div class="rt-item' + (done ? ' is-done' : '') + '">'
+        + '<button class="rt-check' + (done ? ' is-done' : '') + '" data-id="' + r.id + '" title="' + (done ? 'Desmarcar' : 'Marcar feito') + '">'
+          + '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
+        + '</button>'
+        + '<div class="rt-body"><div class="rt-titulo">' + escapeHtml(r.titulo) + '</div>'
+          + (meta.length ? '<div class="rt-meta">' + meta.join(' · ') + '</div>' : '') + '</div>'
+        + '<div class="rt-acoes">'
+          + '<button class="rt-link" data-act="editar" data-id="' + r.id + '">Editar</button>'
+          + '<button class="rt-link" data-act="desativar" data-id="' + r.id + '">Desativar</button>'
+          + '<button class="rt-link rt-del" data-act="excluir" data-id="' + r.id + '">Excluir</button>'
+        + '</div></div>';
+    }
+
+    function cardInativa(r) {
+      return '<div class="rt-item rt-inativa">'
+        + '<div class="rt-body"><div class="rt-titulo">' + escapeHtml(r.titulo) + '</div>'
+          + (r.responsavel ? '<div class="rt-meta">' + escapeHtml(r.responsavel) + '</div>' : '') + '</div>'
+        + '<div class="rt-acoes">'
+          + '<button class="rt-link" data-act="reativar" data-id="' + r.id + '">Reativar</button>'
+          + '<button class="rt-link rt-del" data-act="excluir" data-id="' + r.id + '">Excluir</button>'
+        + '</div></div>';
+    }
+
+    async function toggleFeito(e) {
+      const id = e.currentTarget.dataset.id;
+      const r = rotinas.find(x => x.id === id);
+      if (!r) return;
+      const done = r.ultima_execucao === hoje;
+      const patch = done ? { ultima_execucao: null, ultima_por: null } : { ultima_execucao: hoje, ultima_por: usuarioNome };
+      Object.assign(r, patch);   // atualização otimista
+      render();
+      const { error } = await supabase.from('rotinas').update(patch).eq('id', id);
+      if (error) { alert('Erro ao salvar: ' + error.message); await carregar(); }
+    }
+
+    async function onAcao(e) {
+      const id = e.currentTarget.dataset.id;
+      const act = e.currentTarget.dataset.act;
+      const r = rotinas.find(x => x.id === id);
+      if (!r) return;
+      if (act === 'editar') { abrirModal(r); return; }
+      if (act === 'desativar') { await mut({ ativo: false }, id); return; }
+      if (act === 'reativar') { await mut({ ativo: true }, id); return; }
+      if (act === 'excluir') {
+        if (!confirm('Excluir a rotina “' + r.titulo + '”?')) return;
+        const { error } = await supabase.from('rotinas').delete().eq('id', id);
+        if (error) { alert('Erro: ' + error.message); return; }
+        await carregar();
+      }
+    }
+
+    async function mut(patch, id) {
+      const { error } = await supabase.from('rotinas').update(patch).eq('id', id);
+      if (error) { alert('Erro: ' + error.message); return; }
+      await carregar();
+    }
+
+    function abrirModal(r) {
+      editandoId = r ? r.id : null;
+      document.getElementById('modalTitulo').textContent = editandoId ? 'Editar rotina' : 'Nova rotina';
+      document.getElementById('rTitulo').value = r ? r.titulo : '';
+      document.getElementById('rResp').value = r ? (r.responsavel || '') : '';
+      document.getElementById('rAtivo').checked = r ? !!r.ativo : true;
+      document.getElementById('btnExcluir').style.display = editandoId ? 'inline-flex' : 'none';
+      overlay.classList.add('is-open');
+    }
+
+    function fecharModal() {
+      overlay.classList.remove('is-open');
+      editandoId = null;
+      document.getElementById('rTitulo').value = '';
+      document.getElementById('rResp').value = '';
+      document.getElementById('rAtivo').checked = true;
+    }
+
+    document.getElementById('btnSalvar').addEventListener('click', async () => {
+      const titulo = document.getElementById('rTitulo').value.trim();
+      if (!titulo) { alert('Informe o título da rotina.'); return; }
+      const campos = {
+        titulo,
+        responsavel: document.getElementById('rResp').value || null,
+        ativo: document.getElementById('rAtivo').checked
+      };
+      let error;
+      if (editandoId) {
+        ({ error } = await supabase.from('rotinas').update(campos).eq('id', editandoId));
+      } else {
+        ({ error } = await supabase.from('rotinas').insert({ ...campos, setor: SETOR }));
+      }
+      if (error) { alert('Erro ao salvar: ' + error.message); return; }
+      fecharModal();
+      await carregar();
+    });
+
+    document.getElementById('btnExcluir').addEventListener('click', async () => {
+      if (!editandoId) return;
+      const r = rotinas.find(x => x.id === editandoId);
+      if (!confirm('Excluir a rotina “' + (r ? r.titulo : '') + '”?')) return;
+      const { error } = await supabase.from('rotinas').delete().eq('id', editandoId);
+      if (error) { alert('Erro: ' + error.message); return; }
+      fecharModal();
+      await carregar();
+    });
+
+    function escapeHtml(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  </script>
+
+  <style>
+    .fa-subnav { display:flex; gap:6px; margin-bottom:22px; border-bottom:1px solid rgba(255,255,255,.08); }
+    .fa-tab { padding:9px 16px; font-size:14px; color:#8A93A6; background:none; border:none; border-bottom:2px solid transparent; margin-bottom:-1px; cursor:pointer; text-decoration:none; }
+    .fa-tab:hover { color:#C5D8E8; }
+    .fa-tab.is-active { color:#C5D8E8; border-bottom-color:#5B82A6; font-weight:600; }
+
+    .rt-resumo { background:rgba(91,130,166,.08); border:1px solid rgba(91,130,166,.22); border-radius:14px; padding:16px 18px; margin-bottom:18px; }
+    .rt-resumo-top { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; }
+    .rt-data { color:#E6EBF2; font-size:15px; font-weight:600; }
+    .rt-cont { color:#8AAEC8; font-size:13.5px; }
+    .rt-bar { height:7px; background:rgba(255,255,255,.08); border-radius:999px; overflow:hidden; }
+    .rt-bar-fill { height:100%; background:#3FB07A; border-radius:999px; transition:width .3s ease; }
+
+    .rt-item { display:flex; align-items:center; gap:14px; background:rgba(255,255,255,.025); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:14px 18px; margin-bottom:10px; }
+    .rt-item.is-done { background:rgba(63,176,122,.06); border-color:rgba(63,176,122,.18); }
+    .rt-check { flex:0 0 auto; width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,.25); background:none; color:transparent; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all .15s ease; }
+    .rt-check:hover { border-color:#3FB07A; }
+    .rt-check.is-done { background:#3FB07A; border-color:#3FB07A; color:#0B0F14; }
+    .rt-body { flex:1 1 auto; min-width:0; }
+    .rt-titulo { color:#E6EBF2; font-size:15px; font-weight:500; }
+    .rt-item.is-done .rt-titulo { text-decoration:line-through; color:#8A93A6; }
+    .rt-meta { color:#8A93A6; font-size:13px; margin-top:3px; }
+    .rt-acoes { display:flex; align-items:center; gap:6px; flex:0 0 auto; }
+    .rt-link { background:none; border:none; color:#8AAEC8; cursor:pointer; font-size:13px; padding:3px 6px; }
+    .rt-link:hover { color:#C5D8E8; text-decoration:underline; }
+    .rt-del:hover { color:#E06C6C; }
+    .rt-inativa { opacity:.5; }
+    .rt-sec-title { color:#8A93A6; font-size:13px; text-transform:uppercase; letter-spacing:.04em; margin:22px 0 10px; }
+
+    .fa-modal-overlay { position:fixed; inset:0; background:rgba(8,12,18,.72); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
+    .fa-modal-overlay.is-open { display:flex; }
+    .fa-modal { width:100%; max-width:520px; background:#141A22; border:1px solid rgba(255,255,255,.10); border-radius:16px; overflow:hidden; }
+    .fa-modal-head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid rgba(255,255,255,.08); }
+    .fa-modal-head h3 { margin:0; color:#E6EBF2; font-size:18px; }
+    .fa-modal-close { background:none; border:none; color:#8A93A6; font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }
+    .fa-modal-body { padding:22px; display:flex; flex-direction:column; gap:14px; }
+    .fa-field { display:flex; flex-direction:column; gap:6px; }
+    .fa-field > span { font-size:13px; color:#8AAEC8; }
+    .fa-checkline { display:flex; align-items:center; gap:8px; color:#C5D8E8; font-size:14px; cursor:pointer; }
+    .fa-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid rgba(255,255,255,.08); }
+
+    @media (max-width:560px) {
+      .rt-item { flex-wrap:wrap; }
+      .rt-acoes { width:100%; justify-content:flex-end; margin-top:4px; }
+    }
+  </style>
+</body>
+</html>
