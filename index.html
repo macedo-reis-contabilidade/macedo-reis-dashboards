@@ -7,7 +7,8 @@
   <link rel="stylesheet" href="assets/css/style.css">
   <script type="module" src="assets/js/auth-guard.js"></script>
   <style>
-    .badge-hoje { background:rgba(227,179,65,.16); border:1px solid rgba(227,179,65,.35); color:#E3B341; font-size:11px; font-weight:600; padding:3px 8px; border-radius:999px; margin-right:6px; }
+    .dashboard-card { position:relative; }
+    .badge-hoje { position:absolute; top:14px; right:14px; background:rgba(227,179,65,.18); border:1px solid rgba(227,179,65,.45); color:#E3B341; font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.04em; text-transform:uppercase; }
   </style>
 </head>
 <body>
@@ -225,17 +226,14 @@
         .in('setor', setores).eq('ativo', true);
       (rs || []).forEach(r => { if (r.ultima_execucao !== HOJE) contR[r.setor] = (contR[r.setor] || 0) + 1; });
 
-      // injeta o selinho no footer de cada card que tiver algo
+      // injeta o selinho no canto superior direito do card que tiver algo
       setores.forEach(s => {
         const total = (contT[s] || 0) + (contR[s] || 0);
         if (!total) return;
-        const footer = mapa[s].querySelector('.dashboard-card-footer');
-        if (!footer) return;
-        const ativo = footer.querySelector('.badge-active');
         const pill = document.createElement('span');
-        pill.className = 'badge badge-hoje';
+        pill.className = 'badge-hoje';
         pill.textContent = total + ' hoje';
-        if (ativo) footer.insertBefore(pill, ativo); else footer.appendChild(pill);
+        mapa[s].appendChild(pill);
       });
     }
   </script>
