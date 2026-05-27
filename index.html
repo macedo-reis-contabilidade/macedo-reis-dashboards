@@ -217,23 +217,24 @@
       // filtro pessoal: pra alguns users, conta SÓ o que é deles (responsável)
       const FILTRO_PESSOAL = { 'financeiro@macedoereis.com.br': ['Samuel', 'Ambos'] };
       const meusNomes = user ? FILTRO_PESSOAL[(user.email || '').toLowerCase()] : null;
-      const filtroResp = meusNomes ? meusNomes.map(n => `responsavel.ilike.*${n}*`).concat(['responsavel.is.null']).join(',') : null;
+      const ehMeu = (resp) => {
+        if (!meusNomes) return true;              // sem filtro pessoal: tudo conta
+        if (!resp) return true;                   // sem dono: conta como meu
+        const r = String(resp).toLowerCase();
+        return meusNomes.some(n => r.includes(n.toLowerCase()));
+      };
 
       // tarefas com prazo de hoje e não concluídas, por setor
       const contT = {};
-      let qT = supabase.from('tarefas').select('setor')
+      const { data: ts } = await supabase.from('tarefas').select('setor, responsavel')
         .in('setor', setores).eq('prazo', HOJE).neq('status', 'concluida');
-      if (filtroResp) qT = qT.or(filtroResp);
-      const { data: ts } = await qT;
-      (ts || []).forEach(t => { contT[t.setor] = (contT[t.setor] || 0) + 1; });
+      (ts || []).forEach(t => { if (ehMeu(t.responsavel)) contT[t.setor] = (contT[t.setor] || 0) + 1; });
 
       // rotinas ativas não feitas hoje, por setor
       const contR = {};
-      let qR = supabase.from('rotinas').select('setor, ultima_execucao')
+      const { data: rs } = await supabase.from('rotinas').select('setor, ultima_execucao, responsavel')
         .in('setor', setores).eq('ativo', true);
-      if (filtroResp) qR = qR.or(filtroResp);
-      const { data: rs } = await qR;
-      (rs || []).forEach(r => { if (r.ultima_execucao !== HOJE) contR[r.setor] = (contR[r.setor] || 0) + 1; });
+      (rs || []).forEach(r => { if (r.ultima_execucao !== HOJE && ehMeu(r.responsavel)) contR[r.setor] = (contR[r.setor] || 0) + 1; });
 
       // injeta o selinho no canto superior direito do card que tiver algo
       setores.forEach(s => {
