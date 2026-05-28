@@ -90,6 +90,36 @@
     </div>
   </div>
 
+  <div class="fa-modal-overlay" id="detOverlay">
+    <div class="fa-modal" style="max-width:560px;">
+      <div class="fa-modal-head"><h3 id="dTipo">Tarefa</h3><button class="fa-modal-close" id="detClose">&times;</button></div>
+      <div class="fa-modal-body">
+        <div class="alv-conc-banner" id="dConcBanner" style="display:none;"></div>
+        <div class="det-empresa"><span>Cliente</span><strong id="dEmpresa"></strong></div>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Responsável</span><input type="text" id="dResp" class="input"></label>
+          <label class="fa-field"><span>Prazo</span><input type="date" id="dPrazo" class="input"></label>
+        </div>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Prioridade</span><select id="dPrioridade" class="select"><option value="media">Média</option><option value="alta">Alta</option><option value="baixa">Baixa</option></select></label>
+          <label class="fa-field" id="dStatusWrap"><span>Status</span><select id="dStatus" class="select"><option value="pendente">Pendente</option><option value="em_andamento">Em andamento</option></select></label>
+        </div>
+        <label class="fa-field"><span>Descrição</span><textarea id="dDescricao" class="input" rows="2"></textarea></label>
+        <div><button class="btn btn-primary btn-sm" id="dSalvar">Salvar alterações</button></div>
+        <hr class="alv-hr">
+        <div class="alv-tl-head">Linha do tempo</div>
+        <label class="fa-field"><span>Registrar andamento</span><textarea id="dNovoAnd" class="input" rows="2" placeholder="Ex.: Cliente enviou informe de rendimentos; falta recibo médico…"></textarea></label>
+        <div><button class="btn btn-primary btn-sm" id="dAddAnd">Adicionar andamento</button></div>
+        <div class="tl" id="dTimeline"></div>
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-danger" id="dExcluir" style="margin-right:auto;">Excluir</button>
+        <button class="btn btn-ghost" id="dBtnReabrir" style="display:none;">Reabrir</button>
+        <button class="btn btn-primary" id="dBtnConcluir">Concluir tarefa</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { formatDate } from './assets/js/utils.js';
@@ -158,8 +188,9 @@
         descricao: document.getElementById('fDescricao').value.trim() || null,
         origem: 'avulsa', status: 'pendente'
       };
-      const { error } = await supabase.from('tarefas').insert(novo);
+      const { data: ins, error } = await supabase.from('tarefas').insert(novo).select('id').single();
       if (error) { alert('Erro ao salvar: ' + error.message); return; }
+      if (ins) await supabase.from('tarefa_historico').insert({ tarefa_id: ins.id, descricao: 'Tarefa cadastrada.', autor: usuarioEmail });
       fecharModal();
       await carregarTarefas();
     });
@@ -254,15 +285,11 @@
         const linhas = itens.map(t => {
           const atrasada = t.prazo && t.prazo < hojeStr && t.status !== 'concluida';
           const cli = t.clientes?.nome_principal ? escapeHtml(t.clientes.nome_principal) : '<span style="color:#6B7385">Interna</span>';
-          return '<tr class="'+(t.status==='concluida'?'fa-row-done':'')+'">'+
+          return '<tr class="fa-row-proc '+(t.status==='concluida'?'fa-row-done':'')+'" data-id="'+t.id+'">'+
             '<td data-label="Cliente">'+cli+'</td>'+
             '<td data-label="Responsável">'+(t.responsavel?escapeHtml(t.responsavel):'—')+'</td>'+
             '<td data-label="Prazo">'+(t.prazo?'<span class="'+(atrasada?'fa-atrasada':'')+'">'+formatDate(t.prazo)+'</span>':'—')+'</td>'+
-            '<td data-label="Status"><select class="fa-status-sel '+statusCls(t.status)+'" data-id="'+t.id+'">'+
-              '<option value="pendente"'+(t.status==='pendente'?' selected':'')+'>Pendente</option>'+
-              '<option value="em_andamento"'+(t.status==='em_andamento'?' selected':'')+'>Em andamento</option>'+
-              '<option value="concluida"'+(t.status==='concluida'?' selected':'')+'>Concluída</option>'+
-            '</select></td></tr>';
+            '<td data-label="Status">'+statusPill(t.status)+'</td></tr>';
         }).join('');
         return '<details class="fa-grupo" '+aberto+' data-titulo="'+escapeAttr(titulo)+'">'+
           '<summary class="fa-grupo-head">'+
@@ -278,23 +305,125 @@
       elGrupos.querySelectorAll('details.fa-grupo').forEach(d => {
         d.addEventListener('toggle', () => { if (d.open) gruposAbertos.add(d.dataset.titulo); else gruposAbertos.delete(d.dataset.titulo); });
       });
-      elGrupos.querySelectorAll('.fa-status-sel').forEach(sel => {
-        sel.addEventListener('change', async (e) => {
-          const id = e.target.dataset.id, novo = e.target.value;
-          const patch = { status: novo };
-          if (novo === 'concluida') { patch.concluida_em = new Date().toISOString(); patch.concluida_por = usuarioEmail; }
-          else { patch.concluida_em = null; patch.concluida_por = null; }
-          const { error } = await supabase.from('tarefas').update(patch).eq('id', id);
-          if (error) { alert('Erro ao atualizar: ' + error.message); return; }
-          await carregarTarefas();
-        });
+      elGrupos.querySelectorAll('tr.fa-row-proc').forEach(tr => {
+        tr.addEventListener('click', () => abrirDetalhe(tr.dataset.id));
       });
     }
 
     function menorPrazo(itens){ const ps = itens.map(t=>t.prazo).filter(Boolean).sort(); return ps[0] || ''; }
     function statusCls(s){ return s==='pendente'?'st-pend':(s==='em_andamento'?'st-and':'st-ok'); }
+    const STATUS_LBL = { pendente:'Pendente', em_andamento:'Em andamento', concluida:'Concluído' };
+    function statusPill(s){
+      if (s==='concluida') return '<span class="pill pill-ok">Concluído</span>';
+      if (s==='em_andamento') return '<span class="pill pill-and">Em andamento</span>';
+      return '<span class="pill pill-pend">Pendente</span>';
+    }
+    function fmtDataHora(iso){ if(!iso) return ''; const d=new Date(iso); return d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }
     function escapeHtml(t){ return String(t==null?'':t).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
     function escapeAttr(t){ return String(t==null?'':t).replace(/"/g,'&quot;'); }
+
+    // ===== Detalhe da tarefa (linha do tempo) =====
+    const detOverlay = document.getElementById('detOverlay');
+    let procAtual = null;
+
+    document.getElementById('detClose').addEventListener('click', fecharDetalhe);
+    detOverlay.addEventListener('click', e => { if (e.target === detOverlay) fecharDetalhe(); });
+    document.getElementById('dAddAnd').addEventListener('click', addAndamento);
+    document.getElementById('dSalvar').addEventListener('click', salvarDetalhe);
+    document.getElementById('dBtnConcluir').addEventListener('click', concluirProc);
+    document.getElementById('dBtnReabrir').addEventListener('click', reabrirProc);
+    document.getElementById('dExcluir').addEventListener('click', excluirProc);
+
+    function fecharDetalhe(){ detOverlay.classList.remove('is-open'); procAtual = null; document.getElementById('dNovoAnd').value = ''; }
+
+    async function abrirDetalhe(id){
+      const t = tarefas.find(x => x.id === id);
+      if (!t) return;
+      procAtual = t;
+      const concl = t.status === 'concluida';
+      document.getElementById('dTipo').textContent = t.titulo || 'Tarefa';
+      document.getElementById('dEmpresa').textContent = t.clientes?.nome_principal || 'Sem cliente';
+      document.getElementById('dResp').value = t.responsavel || '';
+      document.getElementById('dPrazo').value = t.prazo ? String(t.prazo).slice(0,10) : '';
+      document.getElementById('dPrioridade').value = t.prioridade || 'media';
+      document.getElementById('dStatus').value = concl ? 'em_andamento' : (t.status || 'pendente');
+      document.getElementById('dDescricao').value = t.descricao || '';
+      const banner = document.getElementById('dConcBanner');
+      banner.style.display = concl ? 'block' : 'none';
+      if (concl) banner.textContent = 'Concluído em ' + fmtDataHora(t.concluida_em) + (t.concluida_por ? ' por ' + t.concluida_por : '');
+      document.getElementById('dStatusWrap').style.display = concl ? 'none' : 'flex';
+      document.getElementById('dBtnConcluir').style.display = concl ? 'none' : 'inline-flex';
+      document.getElementById('dBtnReabrir').style.display = concl ? 'inline-flex' : 'none';
+      detOverlay.classList.add('is-open');
+      await renderTimeline(id);
+    }
+
+    async function renderTimeline(id){
+      const tl = document.getElementById('dTimeline');
+      tl.innerHTML = '<div class="tl-empty">Carregando…</div>';
+      const { data } = await supabase.from('tarefa_historico').select('*').eq('tarefa_id', id).order('created_at', { ascending: false });
+      if (!data || !data.length){ tl.innerHTML = '<div class="tl-empty">Nenhum andamento ainda.</div>'; return; }
+      tl.innerHTML = data.map(h => `<div class="tl-item"><div class="tl-when">${fmtDataHora(h.created_at)}</div><div class="tl-desc">${escapeHtml(h.descricao)}</div>${h.autor ? `<div class="tl-autor">${escapeHtml(h.autor)}</div>` : ''}</div>`).join('');
+    }
+
+    async function addAndamento(){
+      const inp = document.getElementById('dNovoAnd');
+      const txt = inp.value.trim();
+      if (!txt) { alert('Escreva o andamento.'); return; }
+      const btn = document.getElementById('dAddAnd'); btn.disabled = true; btn.textContent = 'Salvando…';
+      const { error } = await supabase.from('tarefa_historico').insert({ tarefa_id: procAtual.id, descricao: txt, autor: usuarioEmail });
+      btn.disabled = false; btn.textContent = 'Adicionar andamento';
+      if (error) { alert('Erro: ' + error.message); return; }
+      inp.value = '';
+      await renderTimeline(procAtual.id);
+    }
+
+    async function salvarDetalhe(){
+      if (!procAtual) return;
+      const concl = procAtual.status === 'concluida';
+      const novoStatus = document.getElementById('dStatus').value;
+      const patch = {
+        responsavel: document.getElementById('dResp').value.trim() || null,
+        prazo: document.getElementById('dPrazo').value || null,
+        prioridade: document.getElementById('dPrioridade').value,
+        descricao: document.getElementById('dDescricao').value.trim() || null
+      };
+      if (!concl) patch.status = novoStatus;
+      const statusMudou = !concl && procAtual.status !== novoStatus;
+      const { error } = await supabase.from('tarefas').update(patch).eq('id', procAtual.id);
+      if (error) { alert('Erro ao salvar: ' + error.message); return; }
+      if (statusMudou) await supabase.from('tarefa_historico').insert({ tarefa_id: procAtual.id, descricao: 'Status alterado para: ' + STATUS_LBL[novoStatus] + '.', autor: usuarioEmail });
+      fecharDetalhe();
+      await carregarTarefas();
+    }
+
+    async function concluirProc(){
+      if (!procAtual) return;
+      if (!confirm('Concluir esta tarefa?')) return;
+      const { error } = await supabase.from('tarefas').update({ status:'concluida', concluida_em:new Date().toISOString(), concluida_por:usuarioEmail }).eq('id', procAtual.id);
+      if (error){ alert('Erro: '+error.message); return; }
+      await supabase.from('tarefa_historico').insert({ tarefa_id:procAtual.id, descricao:'Tarefa concluída.', autor:usuarioEmail });
+      fecharDetalhe();
+      await carregarTarefas();
+    }
+
+    async function reabrirProc(){
+      if (!procAtual) return;
+      const { error } = await supabase.from('tarefas').update({ status:'em_andamento', concluida_em:null, concluida_por:null }).eq('id', procAtual.id);
+      if (error){ alert('Erro: '+error.message); return; }
+      await supabase.from('tarefa_historico').insert({ tarefa_id:procAtual.id, descricao:'Tarefa reaberta.', autor:usuarioEmail });
+      fecharDetalhe();
+      await carregarTarefas();
+    }
+
+    async function excluirProc(){
+      if (!procAtual) return;
+      if (!confirm('Excluir esta tarefa e toda a sua linha do tempo? Esta ação não pode ser desfeita.')) return;
+      const { error } = await supabase.from('tarefas').delete().eq('id', procAtual.id);
+      if (error){ alert('Erro: '+error.message); return; }
+      fecharDetalhe();
+      await carregarTarefas();
+    }
 
     searchInput.addEventListener('input', render);
     filterStatus.addEventListener('change', render);
@@ -336,6 +465,26 @@
     .fa-status-sel.st-pend { color:#E3B341; border-color:rgba(227,179,65,.4); }
     .fa-status-sel.st-and { color:#8AAEC8; border-color:rgba(91,130,166,.45); }
     .fa-status-sel.st-ok { color:#3FB07A; border-color:rgba(63,176,122,.45); }
+    .fa-row-proc { cursor:pointer; transition:background .12s; }
+    .fa-row-proc:hover { background:rgba(255,255,255,.04); }
+    .pill { display:inline-block; font-size:11px; font-weight:600; border-radius:999px; padding:3px 10px; }
+    .pill-pend { color:#E3B341; background:rgba(227,179,65,.14); border:1px solid rgba(227,179,65,.3); }
+    .pill-and { color:#8AAEC8; background:rgba(91,130,166,.14); border:1px solid rgba(91,130,166,.3); }
+    .pill-ok { color:#3FB07A; background:rgba(63,176,122,.14); border:1px solid rgba(63,176,122,.3); }
+    .det-empresa { display:flex; flex-direction:column; gap:2px; }
+    .det-empresa span { font-size:13px; color:#8AAEC8; }
+    .det-empresa strong { color:#E6EBF2; font-size:15px; }
+    .alv-conc-banner { background:rgba(63,176,122,.12); border:1px solid rgba(63,176,122,.35); color:#3FB07A; border-radius:10px; padding:8px 12px; font-size:13px; }
+    .alv-hr { border:none; border-top:1px solid rgba(255,255,255,.08); margin:8px 0 2px; }
+    .alv-tl-head { font-weight:600; color:#E6EBF2; font-size:15px; }
+    .tl { display:flex; flex-direction:column; gap:0; margin-top:8px; }
+    .tl-item { position:relative; padding:0 0 16px 22px; border-left:2px solid rgba(255,255,255,.10); }
+    .tl-item:last-child { border-left-color:transparent; padding-bottom:2px; }
+    .tl-item::before { content:''; position:absolute; left:-6px; top:3px; width:10px; height:10px; border-radius:50%; background:#5B82A6; border:2px solid #141A22; }
+    .tl-when { font-size:12px; color:#8A93A6; }
+    .tl-desc { color:#E6EBF2; font-size:14px; margin-top:2px; white-space:pre-wrap; }
+    .tl-autor { font-size:12px; color:#8AAEC8; margin-top:2px; }
+    .tl-empty { color:#8A93A6; font-size:13px; }
 
     .fa-modal-overlay { position:fixed; inset:0; background:rgba(8,12,18,.72); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
     .fa-modal-overlay.is-open { display:flex; }
