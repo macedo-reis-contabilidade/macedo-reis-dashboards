@@ -188,6 +188,33 @@
     const HOJE = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD local
     const GESTAO_ADMINS = ['financeiro@macedoereis.com.br', 'diego@macedoereis.com.br'];
 
+    // ---- lógica de periodicidade das rotinas (igual ao dashboard) ----
+    const hojeD = new Date(HOJE + 'T00:00:00');
+    function diaSemanaISO(d){ const x = d.getDay(); return x === 0 ? 7 : x; }
+    function diasNoMes(ano, mes0){ return new Date(ano, mes0 + 1, 0).getDate(); }
+    function segundaDaSemana(d){ const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - (diaSemanaISO(x) - 1)); return x; }
+    function periodicidadeDe(r){ return r.periodicidade || 'diaria'; }
+    function dataGatilho(r){
+      const ano = hojeD.getFullYear(), mes0 = hojeD.getMonth();
+      const p = periodicidadeDe(r);
+      if (p === 'semanal') { const seg = segundaDaSemana(hojeD); const alvo = new Date(seg); alvo.setDate(seg.getDate() + ((r.dia_semana || 1) - 1)); return alvo; }
+      if (p === 'mensal') return new Date(ano, mes0, Math.min(r.dia_mes || 1, diasNoMes(ano, mes0)));
+      if (p === 'anual') { const a = String(r.dia_anual || '01-01').split('-').map(Number); return new Date(ano, (a[0]||1)-1, Math.min(a[1]||1, diasNoMes(ano,(a[0]||1)-1))); }
+      return hojeD;
+    }
+    function gatilhoChegou(r){ return periodicidadeDe(r) === 'diaria' ? true : dataGatilho(r) <= hojeD; }
+    function feitaNoPeriodo(r){
+      if (!r.ultima_execucao) return false;
+      const u = new Date(r.ultima_execucao + 'T00:00:00');
+      const p = periodicidadeDe(r);
+      if (p === 'diaria') return r.ultima_execucao === HOJE;
+      if (p === 'semanal') return segundaDaSemana(u).getTime() === segundaDaSemana(hojeD).getTime();
+      if (p === 'mensal') return u.getFullYear() === hojeD.getFullYear() && u.getMonth() === hojeD.getMonth();
+      if (p === 'anual') return u.getFullYear() === hojeD.getFullYear();
+      return r.ultima_execucao === HOJE;
+    }
+    function pendenteHoje(r){ return gatilhoChegou(r) && !feitaNoPeriodo(r); }
+
     (async () => {
       const user = await getCurrentUser();
       if (user) {
@@ -232,9 +259,9 @@
 
       // rotinas ativas não feitas hoje, por setor
       const contR = {};
-      const { data: rs } = await supabase.from('rotinas').select('setor, ultima_execucao, responsavel')
+      const { data: rs } = await supabase.from('rotinas').select('setor, ultima_execucao, responsavel, periodicidade, dia_semana, dia_mes, dia_anual')
         .in('setor', setores).eq('ativo', true);
-      (rs || []).forEach(r => { if (r.ultima_execucao !== HOJE && ehMeu(r.responsavel)) contR[r.setor] = (contR[r.setor] || 0) + 1; });
+      (rs || []).forEach(r => { if (pendenteHoje(r) && ehMeu(r.responsavel)) contR[r.setor] = (contR[r.setor] || 0) + 1; });
 
       // injeta o selinho no canto superior direito do card que tiver algo
       setores.forEach(s => {
