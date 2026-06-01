@@ -48,6 +48,7 @@
             <input type="text" id="searchInput" class="input input-search" placeholder="Buscar por cliente…">
             <select id="filterStatus" class="select fa-sel">
               <option value="todas">Todas</option>
+              <option value="em_preparacao">Em preparação</option>
               <option value="agendada">Agendadas</option>
               <option value="realizada">Realizadas</option>
             </select>
@@ -101,7 +102,7 @@
         <label class="fa-field"><span>Cliente *</span><select id="rCliente" class="select"><option value="">— Selecione —</option></select></label>
         <div class="fa-field-row">
           <label class="fa-field"><span>Data</span><input type="date" id="rData" class="input"></label>
-          <label class="fa-field"><span>Status</span><select id="rStatus" class="select"><option value="agendada">Agendada</option><option value="realizada">Realizada</option></select></label>
+          <label class="fa-field"><span>Status</span><select id="rStatus" class="select"><option value="em_preparacao">Em preparação</option><option value="agendada">Agendada</option><option value="realizada">Realizada</option></select></label>
         </div>
         <label class="fa-field"><span>Assunto (opcional)</span><input type="text" id="rTituloR" class="input" placeholder="Ex.: Reunião trimestral de resultados"></label>
       </div>
@@ -239,8 +240,11 @@
       document.getElementById('dData').textContent = fmtData(reuniaoAtual.data_reuniao);
       document.getElementById('dStatusPill').innerHTML = statusPill(reuniaoAtual.status);
       document.getElementById('dAssunto').textContent = reuniaoAtual.titulo || '';
-      const concl = (reuniaoAtual.status || 'agendada') === 'realizada';
-      document.getElementById('btnStatusReuniao').textContent = concl ? 'Reabrir' : 'Marcar realizada';
+      const st = reuniaoAtual.status || 'agendada';
+      document.getElementById('btnStatusReuniao').textContent =
+        st === 'em_preparacao' ? 'Marcar agendada'
+        : st === 'realizada' ? 'Reabrir'
+        : 'Marcar realizada';
       painelLista.hidden = true;
       painelDetalhe.hidden = false;
       window.scrollTo(0, 0);
@@ -283,7 +287,7 @@
       document.getElementById('mrTitulo').textContent = editReuniaoId ? 'Editar reunião' : 'Nova reunião';
       document.getElementById('rCliente').value = r ? (r.cliente_id || '') : '';
       document.getElementById('rData').value = r && r.data_reuniao ? String(r.data_reuniao).slice(0, 10) : '';
-      document.getElementById('rStatus').value = r ? (r.status || 'agendada') : 'agendada';
+      document.getElementById('rStatus').value = r ? (r.status || 'agendada') : 'em_preparacao';
       document.getElementById('rTituloR').value = r ? (r.titulo || '') : '';
       ovReuniao.classList.add('is-open');
     }
@@ -314,7 +318,8 @@
 
     document.getElementById('btnStatusReuniao').addEventListener('click', async () => {
       if (!reuniaoAtual) return;
-      const novo = (reuniaoAtual.status || 'agendada') === 'realizada' ? 'agendada' : 'realizada';
+      const st = reuniaoAtual.status || 'agendada';
+      const novo = st === 'agendada' ? 'realizada' : 'agendada';
       const { error } = await supabase.from('reunioes').update({ status: novo }).eq('id', reuniaoAtual.id);
       if (error) { alert('Erro: ' + error.message); return; }
       reuniaoAtual.status = novo;
@@ -440,6 +445,7 @@
     function statusPill(s) {
       const st = s || 'agendada';
       if (st === 'realizada') return '<span class="rn-pill rn-pill-ok">Realizada</span>';
+      if (st === 'em_preparacao') return '<span class="rn-pill rn-pill-prep">Em preparação</span>';
       return '<span class="rn-pill rn-pill-ag">Agendada</span>';
     }
     function fmtData(d) { if (!d) return 'Sem data'; const x = new Date(String(d).slice(0, 10) + 'T00:00:00'); return x.toLocaleDateString('pt-BR'); }
@@ -464,6 +470,7 @@
     .rn-pill { display:inline-block; font-size:11px; font-weight:600; border-radius:999px; padding:3px 10px; }
     .rn-pill-ag { color:#E3B341; background:rgba(227,179,65,.14); border:1px solid rgba(227,179,65,.3); }
     .rn-pill-ok { color:#3FB07A; background:rgba(63,176,122,.14); border:1px solid rgba(63,176,122,.3); }
+    .rn-pill-prep { color:#8AAEC8; background:rgba(138,174,200,.12); border:1px solid rgba(138,174,200,.28); }
 
     .rn-det-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; background:rgba(91,130,166,.08); border:1px solid rgba(91,130,166,.22); border-radius:14px; padding:18px 20px; margin-bottom:18px; }
     .rn-det-cliente { color:#E6EBF2; font-size:20px; font-weight:700; }
