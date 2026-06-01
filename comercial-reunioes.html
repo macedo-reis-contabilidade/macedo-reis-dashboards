@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Comercial — Reuniões — Macedo & Reis</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip"><div class="user-avatar" id="userAvatar">—</div><span id="userName">Carregando…</span></div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <a href="comercial.html">Comercial</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Reuniões</span>
+        </div>
+        <div class="eyebrow">Reuniões com clientes</div>
+        <h1>Reuniões</h1>
+        <p>Monte a pauta da reunião com o cliente. Cada setor adiciona seus pontos; ao final, gere o documento no padrão Macedo &amp; Reis para o encontro.</p>
+      </div>
+
+      <div class="fa-subnav">
+        <a href="comercial.html" class="fa-tab">Tarefas</a>
+        <a href="comercial-regras.html" class="fa-tab">Tarefas recorrentes</a>
+        <a href="comercial-relatorios.html" class="fa-tab">Relatórios</a>
+        <a href="comercial-reunioes.html" class="fa-tab is-active">Reuniões</a>
+      </div>
+
+      <!-- PAINEL LISTA -->
+      <section id="painelLista">
+        <div class="toolbar">
+          <div class="toolbar-filters">
+            <input type="text" id="searchInput" class="input input-search" placeholder="Buscar por cliente…">
+            <select id="filterStatus" class="select fa-sel">
+              <option value="todas">Todas</option>
+              <option value="agendada">Agendadas</option>
+              <option value="realizada">Realizadas</option>
+            </select>
+          </div>
+          <div class="fa-toolbar-actions">
+            <button class="btn btn-primary" id="btnNova">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Nova reunião
+            </button>
+          </div>
+        </div>
+        <div id="lista">
+          <div class="loading-row" style="padding:40px;text-align:center;"><span class="spinner"></span>Carregando reuniões…</div>
+        </div>
+      </section>
+
+      <!-- PAINEL DETALHE -->
+      <section id="painelDetalhe" hidden>
+        <button class="btn btn-ghost btn-sm" id="btnVoltar" style="margin-bottom:16px;">← Voltar para a lista</button>
+        <div class="rn-det-head">
+          <div class="rn-det-info">
+            <div class="rn-det-cliente" id="dCliente">—</div>
+            <div class="rn-det-sub"><span id="dData">—</span> <span id="dStatusPill"></span></div>
+            <div class="rn-det-assunto" id="dAssunto"></div>
+          </div>
+          <div class="rn-det-acoes">
+            <button class="btn btn-ghost btn-sm" id="btnEditarReuniao">Editar</button>
+            <button class="btn btn-ghost btn-sm" id="btnStatusReuniao">Marcar realizada</button>
+            <button class="btn btn-primary btn-sm" id="btnPDF">Gerar PDF</button>
+          </div>
+        </div>
+
+        <div class="rn-pauta-bar">
+          <h3 class="rn-pautas-titulo">Pauta</h3>
+          <button class="btn btn-primary btn-sm" id="btnNovaPauta">+ Adicionar pauta</button>
+        </div>
+        <div id="pautas">
+          <div class="loading-row" style="padding:24px;text-align:center;"><span class="spinner"></span>Carregando pauta…</div>
+        </div>
+
+        <button class="btn btn-danger btn-sm" id="btnExcluirReuniao" style="margin-top:24px;">Excluir reunião</button>
+      </section>
+    </main>
+  </div>
+
+  <!-- MODAL REUNIÃO -->
+  <div class="fa-modal-overlay" id="modalReuniao">
+    <div class="fa-modal">
+      <div class="fa-modal-head"><h3 id="mrTitulo">Nova reunião</h3><button class="fa-modal-close" id="mrClose">&times;</button></div>
+      <div class="fa-modal-body">
+        <label class="fa-field"><span>Cliente *</span><select id="rCliente" class="select"><option value="">— Selecione —</option></select></label>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Data</span><input type="date" id="rData" class="input"></label>
+          <label class="fa-field"><span>Status</span><select id="rStatus" class="select"><option value="agendada">Agendada</option><option value="realizada">Realizada</option></select></label>
+        </div>
+        <label class="fa-field"><span>Assunto (opcional)</span><input type="text" id="rTituloR" class="input" placeholder="Ex.: Reunião trimestral de resultados"></label>
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-ghost" id="mrCancelar">Cancelar</button>
+        <button class="btn btn-primary" id="mrSalvar">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL PAUTA -->
+  <div class="fa-modal-overlay" id="modalPauta">
+    <div class="fa-modal">
+      <div class="fa-modal-head"><h3 id="mpTitulo">Adicionar pauta</h3><button class="fa-modal-close" id="mpClose">&times;</button></div>
+      <div class="fa-modal-body">
+        <label class="fa-field"><span>Setor *</span>
+          <select id="pSetor" class="select">
+            <option value="fiscal">Fiscal</option>
+            <option value="dp">Departamento Pessoal</option>
+            <option value="contabil">Contábil</option>
+            <option value="societario">Societário</option>
+            <option value="financeiro">Financeiro</option>
+            <option value="comercial">Comercial</option>
+            <option value="direcao">Direção</option>
+          </select>
+        </label>
+        <label class="fa-field"><span>Assunto *</span><input type="text" id="pTitulo" class="input" placeholder="Ex.: Revisar enquadramento tributário"></label>
+        <label class="fa-field"><span>Detalhe</span><textarea id="pDescricao" class="input" rows="3" placeholder="O que precisa ser discutido / contexto (opcional)"></textarea></label>
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-danger" id="mpExcluir" style="display:none;margin-right:auto;">Excluir</button>
+        <button class="btn btn-ghost" id="mpCancelar">Cancelar</button>
+        <button class="btn btn-primary" id="mpSalvar">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+
+    const SETORES_PAUTA = [['fiscal','Fiscal'],['dp','Departamento Pessoal'],['contabil','Contábil'],['societario','Societário'],['financeiro','Financeiro'],['comercial','Comercial'],['direcao','Direção']];
+    const setorLabel = s => (SETORES_PAUTA.find(x => x[0] === s) || [s, s])[1];
+
+    let usuarioEmail = null;
+    let reunioes = [];
+    let clientes = [];
+    let reuniaoAtual = null;
+    let pautas = [];
+    let editPautaId = null;
+    let editReuniaoId = null;
+
+    const elLista = document.getElementById('lista');
+    const elPautas = document.getElementById('pautas');
+    const painelLista = document.getElementById('painelLista');
+    const painelDetalhe = document.getElementById('painelDetalhe');
+    const searchInput = document.getElementById('searchInput');
+    const filterStatus = document.getElementById('filterStatus');
+    const ovReuniao = document.getElementById('modalReuniao');
+    const ovPauta = document.getElementById('modalPauta');
+
+    (async () => {
+      const user = await getCurrentUser();
+      if (user) {
+        usuarioEmail = user.email;
+        const n = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário';
+        const nome = n.charAt(0).toUpperCase() + n.slice(1);
+        document.getElementById('userName').textContent = nome;
+        document.getElementById('userAvatar').textContent = nome.charAt(0).toUpperCase();
+      }
+      await carregarClientes();
+      await carregarReunioes();
+    })();
+
+    document.getElementById('btnLogout').addEventListener('click', signOut);
+    document.getElementById('btnNova').addEventListener('click', () => abrirModalReuniao());
+    document.getElementById('btnVoltar').addEventListener('click', mostrarLista);
+    searchInput.addEventListener('input', renderLista);
+    filterStatus.addEventListener('change', renderLista);
+
+    // ---- clientes ----
+    async function carregarClientes() {
+      const { data } = await supabase.from('clientes').select('id, nome_principal').order('nome_principal');
+      clientes = data || [];
+      const sel = document.getElementById('rCliente');
+      clientes.forEach(c => { const o = document.createElement('option'); o.value = c.id; o.textContent = c.nome_principal; sel.appendChild(o); });
+    }
+    function clienteNome(id) { const c = clientes.find(x => x.id === id); return c ? c.nome_principal : 'Cliente removido'; }
+
+    // ---- reuniões: lista ----
+    async function carregarReunioes() {
+      const { data, error } = await supabase.from('reunioes').select('*').order('data_reuniao', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false });
+      if (error) { elLista.innerHTML = '<div style="text-align:center;color:var(--danger);padding:40px;">Erro: ' + error.message + '</div>'; return; }
+      reunioes = data || [];
+      // contagem de pautas por reunião
+      const ids = reunioes.map(r => r.id);
+      if (ids.length) {
+        const { data: ps } = await supabase.from('reuniao_pautas').select('reuniao_id').in('reuniao_id', ids);
+        const cont = {};
+        (ps || []).forEach(p => { cont[p.reuniao_id] = (cont[p.reuniao_id] || 0) + 1; });
+        reunioes.forEach(r => { r._nPautas = cont[r.id] || 0; });
+      }
+      renderLista();
+    }
+
+    function renderLista() {
+      const q = searchInput.value.toLowerCase().trim();
+      const fs = filterStatus.value;
+      let vis = reunioes.filter(r => {
+        if (fs !== 'todas' && (r.status || 'agendada') !== fs) return false;
+        if (q && !clienteNome(r.cliente_id).toLowerCase().includes(q)) return false;
+        return true;
+      });
+      if (!vis.length) {
+        elLista.innerHTML = '<div class="empty-state" style="padding:48px 24px;"><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg><h3>Nenhuma reunião</h3><p>Crie a primeira reunião no botão “Nova reunião”.</p></div>';
+        return;
+      }
+      elLista.innerHTML = vis.map(r => {
+        const concl = (r.status || 'agendada') === 'realizada';
+        return '<div class="rn-card" data-id="' + r.id + '">'
+          + '<div class="rn-card-main">'
+            + '<div class="rn-card-cliente">' + escapeHtml(clienteNome(r.cliente_id)) + '</div>'
+            + '<div class="rn-card-meta">' + fmtData(r.data_reuniao) + (r.titulo ? ' · ' + escapeHtml(r.titulo) : '') + ' · ' + (r._nPautas || 0) + ' pauta(s)</div>'
+          + '</div>'
+          + '<div class="rn-card-side">' + statusPill(r.status) + '<span class="rn-card-go">Abrir →</span></div>'
+        + '</div>';
+      }).join('');
+      elLista.querySelectorAll('.rn-card').forEach(c => c.addEventListener('click', () => abrirReuniao(c.dataset.id)));
+    }
+
+    // ---- detalhe ----
+    async function abrirReuniao(id) {
+      reuniaoAtual = reunioes.find(r => r.id === id);
+      if (!reuniaoAtual) return;
+      document.getElementById('dCliente').textContent = clienteNome(reuniaoAtual.cliente_id);
+      document.getElementById('dData').textContent = fmtData(reuniaoAtual.data_reuniao);
+      document.getElementById('dStatusPill').innerHTML = statusPill(reuniaoAtual.status);
+      document.getElementById('dAssunto').textContent = reuniaoAtual.titulo || '';
+      const concl = (reuniaoAtual.status || 'agendada') === 'realizada';
+      document.getElementById('btnStatusReuniao').textContent = concl ? 'Reabrir' : 'Marcar realizada';
+      painelLista.hidden = true;
+      painelDetalhe.hidden = false;
+      window.scrollTo(0, 0);
+      await carregarPautas();
+    }
+    function mostrarLista() { painelDetalhe.hidden = true; painelLista.hidden = false; reuniaoAtual = null; }
+
+    async function carregarPautas() {
+      elPautas.innerHTML = '<div class="loading-row" style="padding:24px;text-align:center;"><span class="spinner"></span>Carregando pauta…</div>';
+      const { data, error } = await supabase.from('reuniao_pautas').select('*').eq('reuniao_id', reuniaoAtual.id).order('ordem', { ascending: true }).order('created_at', { ascending: true });
+      if (error) { elPautas.innerHTML = '<div style="color:var(--danger);padding:20px;">Erro: ' + error.message + '</div>'; return; }
+      pautas = data || [];
+      renderPautas();
+    }
+
+    function renderPautas() {
+      if (!pautas.length) {
+        elPautas.innerHTML = '<div class="empty-state" style="padding:40px 24px;"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><h3>Pauta vazia</h3><p>Cada setor adiciona seus pontos no botão “Adicionar pauta”.</p></div>';
+        return;
+      }
+      let html = '';
+      SETORES_PAUTA.forEach(([s, lbl]) => {
+        const itens = pautas.filter(p => p.setor === s);
+        if (!itens.length) return;
+        html += '<div class="pauta-grupo"><div class="pauta-grupo-head">' + lbl + ' <span class="pauta-grupo-n">' + itens.length + '</span></div>';
+        html += itens.map(p => '<div class="pauta-item" data-id="' + p.id + '">'
+          + '<div class="pauta-item-body"><div class="pauta-item-tit">' + escapeHtml(p.titulo) + '</div>'
+          + (p.descricao ? '<div class="pauta-item-desc">' + escapeHtml(p.descricao) + '</div>' : '') + '</div>'
+          + '<div class="pauta-item-acoes"><button class="rn-link" data-edit="' + p.id + '">Editar</button></div>'
+        + '</div>').join('');
+        html += '</div>';
+      });
+      elPautas.innerHTML = html;
+      elPautas.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => abrirModalPauta(pautas.find(p => p.id === b.dataset.edit))));
+    }
+
+    // ---- modal reunião ----
+    function abrirModalReuniao(r) {
+      editReuniaoId = r ? r.id : null;
+      document.getElementById('mrTitulo').textContent = editReuniaoId ? 'Editar reunião' : 'Nova reunião';
+      document.getElementById('rCliente').value = r ? (r.cliente_id || '') : '';
+      document.getElementById('rData').value = r && r.data_reuniao ? String(r.data_reuniao).slice(0, 10) : '';
+      document.getElementById('rStatus').value = r ? (r.status || 'agendada') : 'agendada';
+      document.getElementById('rTituloR').value = r ? (r.titulo || '') : '';
+      ovReuniao.classList.add('is-open');
+    }
+    function fecharModalReuniao() { ovReuniao.classList.remove('is-open'); editReuniaoId = null; }
+    document.getElementById('mrClose').addEventListener('click', fecharModalReuniao);
+    document.getElementById('mrCancelar').addEventListener('click', fecharModalReuniao);
+    ovReuniao.addEventListener('click', e => { if (e.target === ovReuniao) fecharModalReuniao(); });
+    document.getElementById('btnEditarReuniao').addEventListener('click', () => abrirModalReuniao(reuniaoAtual));
+
+    document.getElementById('mrSalvar').addEventListener('click', async () => {
+      const cliente_id = document.getElementById('rCliente').value;
+      if (!cliente_id) { alert('Selecione o cliente.'); return; }
+      const campos = {
+        cliente_id,
+        data_reuniao: document.getElementById('rData').value || null,
+        status: document.getElementById('rStatus').value,
+        titulo: document.getElementById('rTituloR').value.trim() || null
+      };
+      let error;
+      if (editReuniaoId) ({ error } = await supabase.from('reunioes').update(campos).eq('id', editReuniaoId));
+      else ({ error } = await supabase.from('reunioes').insert(campos));
+      if (error) { alert('Erro ao salvar: ' + error.message); return; }
+      const reabrirId = editReuniaoId;
+      fecharModalReuniao();
+      await carregarReunioes();
+      if (reabrirId) { const r = reunioes.find(x => x.id === reabrirId); if (r) abrirReuniao(reabrirId); }
+    });
+
+    document.getElementById('btnStatusReuniao').addEventListener('click', async () => {
+      if (!reuniaoAtual) return;
+      const novo = (reuniaoAtual.status || 'agendada') === 'realizada' ? 'agendada' : 'realizada';
+      const { error } = await supabase.from('reunioes').update({ status: novo }).eq('id', reuniaoAtual.id);
+      if (error) { alert('Erro: ' + error.message); return; }
+      reuniaoAtual.status = novo;
+      await carregarReunioes();
+      abrirReuniao(reuniaoAtual.id);
+    });
+
+    document.getElementById('btnExcluirReuniao').addEventListener('click', async () => {
+      if (!reuniaoAtual) return;
+      if (!confirm('Excluir esta reunião e toda a sua pauta? Esta ação não pode ser desfeita.')) return;
+      const { error } = await supabase.from('reunioes').delete().eq('id', reuniaoAtual.id);
+      if (error) { alert('Erro: ' + error.message); return; }
+      mostrarLista();
+      await carregarReunioes();
+    });
+
+    // ---- modal pauta ----
+    function abrirModalPauta(p) {
+      editPautaId = p ? p.id : null;
+      document.getElementById('mpTitulo').textContent = editPautaId ? 'Editar pauta' : 'Adicionar pauta';
+      document.getElementById('pSetor').value = p ? p.setor : 'fiscal';
+      document.getElementById('pTitulo').value = p ? p.titulo : '';
+      document.getElementById('pDescricao').value = p ? (p.descricao || '') : '';
+      document.getElementById('mpExcluir').style.display = editPautaId ? 'inline-flex' : 'none';
+      ovPauta.classList.add('is-open');
+    }
+    function fecharModalPauta() { ovPauta.classList.remove('is-open'); editPautaId = null; }
+    document.getElementById('mpClose').addEventListener('click', fecharModalPauta);
+    document.getElementById('mpCancelar').addEventListener('click', fecharModalPauta);
+    ovPauta.addEventListener('click', e => { if (e.target === ovPauta) fecharModalPauta(); });
+    document.getElementById('btnNovaPauta').addEventListener('click', () => abrirModalPauta());
+
+    document.getElementById('mpSalvar').addEventListener('click', async () => {
+      const titulo = document.getElementById('pTitulo').value.trim();
+      if (!titulo) { alert('Informe o assunto da pauta.'); return; }
+      const campos = {
+        reuniao_id: reuniaoAtual.id,
+        setor: document.getElementById('pSetor').value,
+        titulo,
+        descricao: document.getElementById('pDescricao').value.trim() || null
+      };
+      let error;
+      if (editPautaId) ({ error } = await supabase.from('reuniao_pautas').update({ setor: campos.setor, titulo: campos.titulo, descricao: campos.descricao }).eq('id', editPautaId));
+      else ({ error } = await supabase.from('reuniao_pautas').insert(campos));
+      if (error) { alert('Erro ao salvar: ' + error.message); return; }
+      fecharModalPauta();
+      await carregarPautas();
+      await atualizarContagemLista();
+    });
+
+    document.getElementById('mpExcluir').addEventListener('click', async () => {
+      if (!editPautaId) return;
+      if (!confirm('Excluir esta pauta?')) return;
+      const { error } = await supabase.from('reuniao_pautas').delete().eq('id', editPautaId);
+      if (error) { alert('Erro: ' + error.message); return; }
+      fecharModalPauta();
+      await carregarPautas();
+      await atualizarContagemLista();
+    });
+
+    async function atualizarContagemLista() {
+      const r = reunioes.find(x => x.id === reuniaoAtual.id);
+      if (r) r._nPautas = pautas.length;
+    }
+
+    // ---- gerar PDF (folha de impressão Macedo & Reis) ----
+    document.getElementById('btnPDF').addEventListener('click', gerarPDF);
+    function gerarPDF() {
+      if (!reuniaoAtual) return;
+      const cli = clienteNome(reuniaoAtual.cliente_id);
+      const logoUrl = new URL('assets/logo-mr.png', location.href).href;
+      let blocos = '';
+      SETORES_PAUTA.forEach(([s, lbl]) => {
+        const itens = pautas.filter(p => p.setor === s);
+        if (!itens.length) return;
+        blocos += '<div class="bloco"><div class="bloco-setor">' + lbl + '</div>'
+          + itens.map(p => '<div class="pauta"><div class="pauta-tit">' + escapeHtml(p.titulo) + '</div>'
+            + (p.descricao ? '<div class="pauta-desc">' + escapeHtml(p.descricao).replace(/\n/g, '<br>') + '</div>' : '') + '</div>').join('')
+          + '</div>';
+      });
+      if (!blocos) blocos = '<p class="vazio">Nenhuma pauta cadastrada para esta reunião.</p>';
+      const hojeStr = new Date().toLocaleDateString('pt-BR');
+      const html = '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">'
+        + '<title>Pauta de Reunião — ' + escapeHtml(cli) + '</title><style>'
+        + '*{box-sizing:border-box;margin:0;padding:0;} body{font-family:"Segoe UI",Helvetica,Arial,sans-serif;color:#2A2F37;background:#fff;padding:32px;}'
+        + '.toolbar-print{max-width:780px;margin:0 auto 18px;text-align:right;} .toolbar-print button{background:#5B82A6;color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:14px;cursor:pointer;}'
+        + '.folha{max-width:780px;margin:0 auto;}'
+        + '.cab{display:flex;align-items:center;justify-content:space-between;gap:16px;}'
+        + '.cab img{height:52px;width:auto;object-fit:contain;} .firma{text-align:right;line-height:1.4;}'
+        + '.firma strong{display:block;color:#3A5878;font-size:16px;} .firma span{display:block;color:#6B7280;font-size:12px;}'
+        + '.reg{border:none;border-top:2px solid #5B82A6;margin:14px 0 22px;}'
+        + 'h1{color:#3A5878;font-size:22px;margin-bottom:14px;}'
+        + '.dados{display:flex;flex-wrap:wrap;gap:6px 28px;font-size:14px;margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid #E3E8EF;}'
+        + '.dados b{color:#3A5878;}'
+        + '.bloco{margin-bottom:18px;break-inside:avoid;}'
+        + '.bloco-setor{background:#5B82A6;color:#fff;font-weight:600;font-size:14px;padding:7px 14px;border-radius:8px 8px 0 0;}'
+        + '.pauta{border:1px solid #E3E8EF;border-top:none;border-left:3px solid #8AAEC8;padding:10px 14px;}'
+        + '.pauta:last-child{border-radius:0 0 8px 8px;}'
+        + '.pauta-tit{font-weight:600;font-size:14px;color:#2A2F37;} .pauta-desc{font-size:13px;color:#555B66;margin-top:4px;line-height:1.5;}'
+        + '.vazio{color:#888;font-size:14px;font-style:italic;}'
+        + '.notas{margin-top:30px;break-inside:avoid;} .notas-tit{color:#3A5878;font-weight:600;font-size:14px;margin-bottom:10px;}'
+        + '.linhas{border-bottom:1px solid #C9D2DD;height:26px;} .linhas+.linhas{margin-top:0;}'
+        + '.rodape{margin-top:34px;padding-top:12px;border-top:1px solid #E3E8EF;color:#8A93A6;font-size:11px;text-align:center;}'
+        + '@page{margin:1.4cm;} @media print{ body{padding:0;} .toolbar-print{display:none;} }'
+        + '</style></head><body onload="window.print()">'
+        + '<div class="toolbar-print"><button onclick="window.print()">Imprimir / Salvar PDF</button></div>'
+        + '<div class="folha">'
+        + '<header class="cab"><img src="' + logoUrl + '" alt="Macedo & Reis"><div class="firma"><strong>Macedo &amp; Reis Contabilidade</strong><span>CRC/RS 006418/O</span><span>Três Coroas – RS</span></div></header>'
+        + '<hr class="reg"><h1>Pauta de Reunião</h1>'
+        + '<div class="dados"><div><b>Cliente:</b> ' + escapeHtml(cli) + '</div><div><b>Data:</b> ' + fmtData(reuniaoAtual.data_reuniao) + '</div>'
+        + (reuniaoAtual.titulo ? '<div><b>Assunto:</b> ' + escapeHtml(reuniaoAtual.titulo) + '</div>' : '') + '</div>'
+        + blocos
+        + '<div class="notas"><div class="notas-tit">Encaminhamentos / anotações</div><div class="linhas"></div><div class="linhas"></div><div class="linhas"></div><div class="linhas"></div></div>'
+        + '<div class="rodape">Emitido em ' + hojeStr + ' · Macedo &amp; Reis Contabilidade · CRC/RS 006418/O</div>'
+        + '</div></body></html>';
+      const w = window.open('', '_blank');
+      if (!w) { alert('Permita pop-ups para gerar o PDF.'); return; }
+      w.document.write(html);
+      w.document.close();
+    }
+
+    // ---- helpers ----
+    function statusPill(s) {
+      const st = s || 'agendada';
+      if (st === 'realizada') return '<span class="rn-pill rn-pill-ok">Realizada</span>';
+      return '<span class="rn-pill rn-pill-ag">Agendada</span>';
+    }
+    function fmtData(d) { if (!d) return 'Sem data'; const x = new Date(String(d).slice(0, 10) + 'T00:00:00'); return x.toLocaleDateString('pt-BR'); }
+    function escapeHtml(t) { return String(t == null ? '' : t).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
+  </script>
+
+  <style>
+    .fa-subnav { display:flex; gap:6px; margin-bottom:22px; border-bottom:1px solid rgba(255,255,255,.08); }
+    .fa-tab { padding:9px 16px; font-size:14px; color:#8A93A6; text-decoration:none; border-bottom:2px solid transparent; margin-bottom:-1px; }
+    .fa-tab:hover { color:#C5D8E8; }
+    .fa-tab.is-active { color:#C5D8E8; border-bottom-color:#5B82A6; font-weight:600; }
+    .fa-sel { max-width:200px; }
+    .fa-toolbar-actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+
+    .rn-card { display:flex; align-items:center; justify-content:space-between; gap:14px; background:rgba(255,255,255,.025); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:16px 18px; margin-bottom:10px; cursor:pointer; transition:border-color .12s, background .12s; }
+    .rn-card:hover { border-color:rgba(138,174,200,.4); background:rgba(255,255,255,.04); }
+    .rn-card-cliente { color:#E6EBF2; font-size:16px; font-weight:600; }
+    .rn-card-meta { color:#8A93A6; font-size:13px; margin-top:3px; }
+    .rn-card-side { display:flex; align-items:center; gap:14px; flex:none; }
+    .rn-card-go { color:#8AAEC8; font-size:13px; }
+
+    .rn-pill { display:inline-block; font-size:11px; font-weight:600; border-radius:999px; padding:3px 10px; }
+    .rn-pill-ag { color:#E3B341; background:rgba(227,179,65,.14); border:1px solid rgba(227,179,65,.3); }
+    .rn-pill-ok { color:#3FB07A; background:rgba(63,176,122,.14); border:1px solid rgba(63,176,122,.3); }
+
+    .rn-det-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; background:rgba(91,130,166,.08); border:1px solid rgba(91,130,166,.22); border-radius:14px; padding:18px 20px; margin-bottom:18px; }
+    .rn-det-cliente { color:#E6EBF2; font-size:20px; font-weight:700; }
+    .rn-det-sub { color:#8AAEC8; font-size:14px; margin-top:4px; display:flex; align-items:center; gap:10px; }
+    .rn-det-assunto { color:#A9B2C2; font-size:14px; margin-top:6px; }
+    .rn-det-acoes { display:flex; gap:8px; flex-wrap:wrap; flex:none; }
+
+    .rn-pauta-bar { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+    .rn-pautas-titulo { color:#E6EBF2; font-size:16px; margin:0; }
+
+    .pauta-grupo { margin-bottom:16px; }
+    .pauta-grupo-head { color:#C5D8E8; font-size:13px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; padding:6px 0; border-bottom:1px solid rgba(91,130,166,.3); margin-bottom:8px; }
+    .pauta-grupo-n { color:#8AAEC8; background:rgba(91,130,166,.16); border-radius:999px; padding:1px 8px; font-size:12px; margin-left:6px; }
+    .pauta-item { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; background:rgba(255,255,255,.025); border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:12px 16px; margin-bottom:8px; }
+    .pauta-item-tit { color:#E6EBF2; font-size:14.5px; font-weight:500; }
+    .pauta-item-desc { color:#A9B2C2; font-size:13px; margin-top:4px; line-height:1.5; white-space:pre-wrap; }
+    .pauta-item-acoes { flex:none; }
+    .rn-link { background:none; border:none; color:#8AAEC8; cursor:pointer; font-size:13px; padding:3px 6px; }
+    .rn-link:hover { color:#C5D8E8; text-decoration:underline; }
+
+    .fa-modal-overlay { position:fixed; inset:0; background:rgba(8,12,18,.72); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
+    .fa-modal-overlay.is-open { display:flex; }
+    .fa-modal { width:100%; max-width:520px; background:#141A22; border:1px solid rgba(255,255,255,.10); border-radius:16px; overflow:hidden; }
+    .fa-modal-head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid rgba(255,255,255,.08); }
+    .fa-modal-head h3 { margin:0; color:#E6EBF2; font-size:18px; }
+    .fa-modal-close { background:none; border:none; color:#8A93A6; font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }
+    .fa-modal-close:hover { color:#E6EBF2; }
+    .fa-modal-body { padding:22px; display:flex; flex-direction:column; gap:14px; }
+    .fa-field { display:flex; flex-direction:column; gap:6px; }
+    .fa-field > span { font-size:13px; color:#8AAEC8; }
+    .fa-field-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .fa-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid rgba(255,255,255,.08); }
+    .fa-modal textarea.input { resize:vertical; font-family:inherit; }
+
+    @media (max-width:640px) {
+      .rn-det-head { flex-direction:column; }
+      .fa-field-row { grid-template-columns:1fr; }
+    }
+  </style>
+</body>
+</html>
