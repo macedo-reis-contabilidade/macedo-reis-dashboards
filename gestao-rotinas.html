@@ -31,7 +31,7 @@
         </div>
         <div class="eyebrow">Sócios</div>
         <h1>Rotinas</h1>
-        <p>Checklist do dia a dia. Marque o que já fez hoje; quando virar o dia, a lista zera sozinha.</p>
+        <p>Rotinas com periodicidade. Cada uma aparece em "A fazer" no dia certo; ao marcar, ela fica feita pelo período (dia, semana, mês ou ano) e reabre sozinha no ciclo seguinte.</p>
       </div>
 
       <div class="fa-subnav">
@@ -58,6 +58,39 @@
         <label class="fa-field"><span>Responsável</span>
           <select id="rResp" class="select"><option value="">—</option><option value="Samuel">Samuel</option><option value="Diego">Diego</option><option value="Ambos">Ambos</option></select>
         </label>
+        <label class="fa-field"><span>Periodicidade</span>
+          <select id="rPeri" class="input">
+            <option value="diaria">Diária — todo dia</option>
+            <option value="semanal">Semanal — num dia da semana</option>
+            <option value="mensal">Mensal — num dia do mês</option>
+            <option value="anual">Anual — numa data fixa</option>
+          </select>
+        </label>
+        <label class="fa-field" id="campoSemana" style="display:none;"><span>Dia da semana</span>
+          <select id="rDiaSemana" class="input">
+            <option value="1">Segunda-feira</option>
+            <option value="2">Terça-feira</option>
+            <option value="3">Quarta-feira</option>
+            <option value="4">Quinta-feira</option>
+            <option value="5">Sexta-feira</option>
+            <option value="6">Sábado</option>
+            <option value="7">Domingo</option>
+          </select>
+        </label>
+        <label class="fa-field" id="campoMes" style="display:none;"><span>Dia do mês</span>
+          <input type="number" id="rDiaMes" class="input" min="1" max="31" placeholder="Ex.: 5">
+        </label>
+        <div class="fa-field-row" id="campoAnual" style="display:none;">
+          <label class="fa-field" style="flex:0 0 90px;"><span>Dia</span><input type="number" id="rDiaAnualD" class="input" min="1" max="31" placeholder="31"></label>
+          <label class="fa-field" style="flex:1;"><span>Mês</span>
+            <select id="rDiaAnualM" class="input">
+              <option value="1">Janeiro</option><option value="2">Fevereiro</option><option value="3">Março</option>
+              <option value="4">Abril</option><option value="5">Maio</option><option value="6">Junho</option>
+              <option value="7">Julho</option><option value="8">Agosto</option><option value="9">Setembro</option>
+              <option value="10">Outubro</option><option value="11">Novembro</option><option value="12">Dezembro</option>
+            </select>
+          </label>
+        </div>
         <label class="fa-field"><span>Descrição</span><textarea id="rDesc" class="input" rows="3" placeholder="O que fazer nessa rotina (opcional)"></textarea></label>
         <label class="fa-checkline"><input type="checkbox" id="rAtivo" checked><span>Rotina ativa (aparece no checklist)</span></label>
       </div>
@@ -108,6 +141,13 @@
     document.getElementById('modalClose').addEventListener('click', fecharModal);
     document.getElementById('btnCancelar').addEventListener('click', fecharModal);
     overlay.addEventListener('click', (e) => { if (e.target === overlay) fecharModal(); });
+    document.getElementById('rPeri').addEventListener('change', atualizaCamposPeri);
+    function atualizaCamposPeri() {
+      const p = document.getElementById('rPeri').value;
+      document.getElementById('campoSemana').style.display = p === 'semanal' ? 'flex' : 'none';
+      document.getElementById('campoMes').style.display = p === 'mensal' ? 'flex' : 'none';
+      document.getElementById('campoAnual').style.display = p === 'anual' ? 'flex' : 'none';
+    }
 
     async function carregar() {
       const { data, error } = await supabase.from('rotinas').select('*').eq('setor', SETOR)
@@ -117,56 +157,104 @@
       render();
     }
 
+    // ---- lógica de periodicidade ----
+    const SEM_ABREV = { 1:'seg', 2:'ter', 3:'qua', 4:'qui', 5:'sex', 6:'sáb', 7:'dom' };
+    const SEM_NOME  = { 1:'segunda', 2:'terça', 3:'quarta', 4:'quinta', 5:'sexta', 6:'sábado', 7:'domingo' };
+    const hojeD = new Date(hoje + 'T00:00:00');
+    function diaSemanaISO(d){ const x = d.getDay(); return x === 0 ? 7 : x; }
+    function diasNoMes(ano, mes0){ return new Date(ano, mes0 + 1, 0).getDate(); }
+    function segundaDaSemana(d){ const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - (diaSemanaISO(x) - 1)); return x; }
+    function periodicidadeDe(r){ return r.periodicidade || 'diaria'; }
+    function dataGatilho(r){
+      const ano = hojeD.getFullYear(), mes0 = hojeD.getMonth();
+      const p = periodicidadeDe(r);
+      if (p === 'semanal') { const seg = segundaDaSemana(hojeD); const alvo = new Date(seg); alvo.setDate(seg.getDate() + ((r.dia_semana || 1) - 1)); return alvo; }
+      if (p === 'mensal') return new Date(ano, mes0, Math.min(r.dia_mes || 1, diasNoMes(ano, mes0)));
+      if (p === 'anual') { const a = String(r.dia_anual || '01-01').split('-').map(Number); const mm = a[0], dd = a[1]; return new Date(ano, (mm || 1) - 1, Math.min(dd || 1, diasNoMes(ano, (mm || 1) - 1))); }
+      return hojeD;
+    }
+    function gatilhoChegou(r){ return periodicidadeDe(r) === 'diaria' ? true : dataGatilho(r) <= hojeD; }
+    function feitaNoPeriodo(r){
+      if (!r.ultima_execucao) return false;
+      const u = new Date(r.ultima_execucao + 'T00:00:00');
+      const p = periodicidadeDe(r);
+      if (p === 'diaria') return r.ultima_execucao === hoje;
+      if (p === 'semanal') return segundaDaSemana(u).getTime() === segundaDaSemana(hojeD).getTime();
+      if (p === 'mensal') return u.getFullYear() === hojeD.getFullYear() && u.getMonth() === hojeD.getMonth();
+      if (p === 'anual') return u.getFullYear() === hojeD.getFullYear();
+      return r.ultima_execucao === hoje;
+    }
+    function pillTexto(r){
+      const p = periodicidadeDe(r);
+      if (p === 'semanal') return 'Semanal · ' + (SEM_ABREV[r.dia_semana] || 'seg');
+      if (p === 'mensal') return 'Mensal · dia ' + (r.dia_mes || 1);
+      if (p === 'anual') { const a = String(r.dia_anual || '01-01').split('-'); return 'Anual · ' + a[1] + '/' + a[0]; }
+      return 'Diária';
+    }
+    function fmtDia(d){ return d.toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' }); }
+
     function render() {
       const ativas = rotinas.filter(r => r.ativo);
       const inativas = rotinas.filter(r => !r.ativo);
-      const feitas = ativas.filter(r => r.ultima_execucao === hoje).length;
-      const total = ativas.length;
-      const pct = total ? Math.round(feitas / total * 100) : 0;
+
+      const feitas = [], aFazer = [], agendadas = [];
+      ativas.forEach(r => {
+        if (feitaNoPeriodo(r)) feitas.push(r);
+        else if (gatilhoChegou(r)) aFazer.push(r);
+        else agendadas.push(r);
+      });
+      const baseTotal = feitas.length + aFazer.length;
+      const pct = baseTotal ? Math.round(feitas.length / baseTotal * 100) : (agendadas.length ? 0 : 100);
       let dataExt = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
       dataExt = dataExt.charAt(0).toUpperCase() + dataExt.slice(1);
 
       let html = '<div class="rt-resumo">'
         + '<div class="rt-resumo-top"><span class="rt-data">' + dataExt + '</span>'
-        + '<span class="rt-cont">' + feitas + ' de ' + total + ' feitas hoje</span></div>'
+        + '<span class="rt-cont">' + feitas.length + ' de ' + baseTotal + ' feitas</span></div>'
         + '<div class="rt-bar"><div class="rt-bar-fill" style="width:' + pct + '%"></div></div>'
         + '</div>';
 
-      if (total === 0 && inativas.length === 0) {
-        html += '<div class="empty-state" style="padding:48px 24px;"><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><h3>Sem rotinas</h3><p>Cadastre suas rotinas diárias (ex.: conferir e-mails) no botão “Nova rotina”.</p></div>';
+      if (!ativas.length && !inativas.length) {
+        html += '<div class="empty-state" style="padding:48px 24px;"><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><h3>Sem rotinas</h3><p>Cadastre suas rotinas no botão “Nova rotina”.</p></div>';
         elLista.innerHTML = html;
         return;
       }
 
-      const ord = ativas.slice().sort((a, b) => {
-        const af = a.ultima_execucao === hoje ? 1 : 0;
-        const bf = b.ultima_execucao === hoje ? 1 : 0;
-        if (af !== bf) return af - bf;           // não feitas primeiro
-        return (a.titulo || '').localeCompare(b.titulo || '');
-      });
-      html += ord.map(cardAtiva).join('');
+      const ordGat = (a, b) => (dataGatilho(a) - dataGatilho(b)) || (a.titulo || '').localeCompare(b.titulo || '');
+      const ordTit = (a, b) => (a.titulo || '').localeCompare(b.titulo || '');
 
-      if (inativas.length) {
-        html += '<div class="rt-sec-title">Desativadas</div>';
-        html += inativas.map(cardInativa).join('');
-      }
+      if (aFazer.length) { html += '<div class="rt-sec-title">A fazer</div>'; html += aFazer.sort(ordGat).map(r => cardAtiva(r, 'afazer')).join(''); }
+      if (feitas.length) { html += '<div class="rt-sec-title">Feitas</div>'; html += feitas.sort(ordTit).map(r => cardAtiva(r, 'feita')).join(''); }
+      if (agendadas.length) { html += '<div class="rt-sec-title">Agendadas</div>'; html += agendadas.sort(ordGat).map(r => cardAtiva(r, 'agendada')).join(''); }
+      if (inativas.length) { html += '<div class="rt-sec-title">Desativadas</div>'; html += inativas.map(cardInativa).join(''); }
       elLista.innerHTML = html;
 
-      elLista.querySelectorAll('.rt-check').forEach(b => b.addEventListener('click', toggleFeito));
+      elLista.querySelectorAll('.rt-check[data-id]').forEach(b => b.addEventListener('click', toggleFeito));
       elLista.querySelectorAll('.rt-link').forEach(b => b.addEventListener('click', onAcao));
     }
 
-    function cardAtiva(r) {
-      const done = r.ultima_execucao === hoje;
-      const meta = [];
-      if (r.responsavel) meta.push(escapeHtml(r.responsavel));
-      if (done) meta.push('feito hoje' + (r.ultima_por ? ' por ' + escapeHtml(r.ultima_por) : ''));
-      return '<div class="rt-item' + (done ? ' is-done' : '') + '">'
-        + '<button class="rt-check' + (done ? ' is-done' : '') + '" data-id="' + r.id + '" title="' + (done ? 'Desmarcar' : 'Marcar feito') + '">'
-          + '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
-        + '</button>'
+    function cardAtiva(r, estado) {
+      const done = estado === 'feita';
+      const agendada = estado === 'agendada';
+      const partes = [];
+      if (r.responsavel) partes.push(escapeHtml(r.responsavel));
+      if (done) {
+        const u = r.ultima_execucao ? new Date(r.ultima_execucao + 'T00:00:00') : null;
+        partes.push('feito' + (u ? ' em ' + fmtDia(u) : '') + (r.ultima_por ? ' por ' + escapeHtml(r.ultima_por) : ''));
+      } else if (agendada) {
+        partes.push('abre ' + (periodicidadeDe(r) === 'semanal' ? (SEM_NOME[r.dia_semana] || 'segunda') : fmtDia(dataGatilho(r))));
+      } else {
+        const g = dataGatilho(r);
+        if (periodicidadeDe(r) !== 'diaria' && g < hojeD) partes.push('desde ' + fmtDia(g));
+      }
+      const meta = '<span class="rt-pill">' + pillTexto(r) + '</span>' + (partes.length ? ' · ' + partes.join(' · ') : '');
+      const check = agendada
+        ? '<span class="rt-check rt-check-off" title="Abre depois"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 8 12 12 14 14"/></svg></span>'
+        : '<button class="rt-check' + (done ? ' is-done' : '') + '" data-id="' + r.id + '" title="' + (done ? 'Desmarcar' : 'Marcar feito') + '"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></button>';
+      return '<div class="rt-item' + (done ? ' is-done' : '') + (agendada ? ' rt-agendada' : '') + '">'
+        + check
         + '<div class="rt-body"><div class="rt-titulo">' + escapeHtml(r.titulo) + '</div>'
-          + (meta.length ? '<div class="rt-meta">' + meta.join(' · ') + '</div>' : '')
+          + '<div class="rt-meta">' + meta + '</div>'
           + (r.descricao ? '<div class="rt-desc">' + escapeHtml(r.descricao) + '</div>' : '') + '</div>'
         + '<div class="rt-acoes">'
           + '<button class="rt-link" data-act="editar" data-id="' + r.id + '">Editar</button>'
@@ -189,7 +277,7 @@
       const id = e.currentTarget.dataset.id;
       const r = rotinas.find(x => x.id === id);
       if (!r) return;
-      const done = r.ultima_execucao === hoje;
+      const done = feitaNoPeriodo(r);
       const patch = done ? { ultima_execucao: null, ultima_por: null } : { ultima_execucao: hoje, ultima_por: usuarioNome };
       Object.assign(r, patch);   // atualização otimista
       render();
@@ -227,6 +315,13 @@
       document.getElementById('rDesc').value = r ? (r.descricao || '') : '';
       document.getElementById('rAtivo').checked = r ? !!r.ativo : true;
       document.getElementById('btnExcluir').style.display = editandoId ? 'inline-flex' : 'none';
+      const peri = r ? periodicidadeDe(r) : 'diaria';
+      document.getElementById('rPeri').value = peri;
+      document.getElementById('rDiaSemana').value = String(r && r.dia_semana ? r.dia_semana : 1);
+      document.getElementById('rDiaMes').value = r && r.dia_mes ? r.dia_mes : '';
+      if (r && r.dia_anual) { const a = String(r.dia_anual).split('-'); document.getElementById('rDiaAnualM').value = String(Number(a[0])); document.getElementById('rDiaAnualD').value = String(Number(a[1])); }
+      else { document.getElementById('rDiaAnualM').value = '1'; document.getElementById('rDiaAnualD').value = ''; }
+      atualizaCamposPeri();
       overlay.classList.add('is-open');
     }
 
@@ -237,17 +332,36 @@
       document.getElementById('rResp').value = '';
       document.getElementById('rDesc').value = '';
       document.getElementById('rAtivo').checked = true;
+      document.getElementById('rPeri').value = 'diaria';
+      document.getElementById('rDiaMes').value = '';
+      document.getElementById('rDiaAnualD').value = '';
+      atualizaCamposPeri();
     }
 
     document.getElementById('btnSalvar').addEventListener('click', async () => {
       const titulo = document.getElementById('rTitulo').value.trim();
       if (!titulo) { alert('Informe o título da rotina.'); return; }
+      const peri = document.getElementById('rPeri').value;
       const campos = {
         titulo,
         responsavel: document.getElementById('rResp').value || null,
         descricao: document.getElementById('rDesc').value.trim() || null,
-        ativo: document.getElementById('rAtivo').checked
+        ativo: document.getElementById('rAtivo').checked,
+        periodicidade: peri,
+        dia_semana: null, dia_mes: null, dia_anual: null
       };
+      if (peri === 'semanal') {
+        campos.dia_semana = Number(document.getElementById('rDiaSemana').value);
+      } else if (peri === 'mensal') {
+        const dm = Number(document.getElementById('rDiaMes').value);
+        if (!dm || dm < 1 || dm > 31) { alert('Informe o dia do mês (1 a 31).'); return; }
+        campos.dia_mes = dm;
+      } else if (peri === 'anual') {
+        const dd = Number(document.getElementById('rDiaAnualD').value);
+        const mm = Number(document.getElementById('rDiaAnualM').value);
+        if (!dd || dd < 1 || dd > 31) { alert('Informe o dia (1 a 31) para a rotina anual.'); return; }
+        campos.dia_anual = String(mm).padStart(2, '0') + '-' + String(dd).padStart(2, '0');
+      }
       let error;
       if (editandoId) {
         ({ error } = await supabase.from('rotinas').update(campos).eq('id', editandoId));
@@ -314,6 +428,14 @@
     .fa-checkline { display:flex; align-items:center; gap:8px; color:#C5D8E8; font-size:14px; cursor:pointer; }
     .fa-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid rgba(255,255,255,.08); }
     .fa-modal textarea.input { resize:vertical; font-family:inherit; }
+
+    .rt-pill { display:inline-block; font-size:11px; font-weight:600; color:#8AAEC8; background:rgba(91,130,166,.16); border:1px solid rgba(91,130,166,.3); border-radius:999px; padding:2px 8px; }
+    .rt-item.is-done .rt-pill { color:#7FB59C; border-color:rgba(63,176,122,.3); background:rgba(63,176,122,.12); }
+    .rt-agendada { opacity:.7; }
+    .rt-check-off { color:#8A93A6; cursor:default; }
+    .rt-check-off:hover { border-color:rgba(255,255,255,.25); }
+    .fa-field-row { display:flex; gap:12px; }
+    .fa-modal select.input { width:100%; }
 
     @media (max-width:560px) {
       .rt-item { flex-wrap:wrap; }
