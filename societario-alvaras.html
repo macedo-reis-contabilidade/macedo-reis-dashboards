@@ -43,6 +43,7 @@
       <div class="fa-focus">
         <button class="fa-focus-card fc-danger" data-f="atrasados"><span class="fc-num" id="cAtras">0</span><span class="fc-lbl">Atrasados</span></button>
         <button class="fa-focus-card" data-f="prox30"><span class="fc-num" id="cProx">0</span><span class="fc-lbl">Vencem em 30 dias</span></button>
+        <button class="fa-focus-card" data-f="aconfirmar"><span class="fc-num" id="cAConf">0</span><span class="fc-lbl">A confirmar</span></button>
         <button class="fa-focus-card is-active" data-f="abertos"><span class="fc-num" id="cAbertos">0</span><span class="fc-lbl">Em aberto</span></button>
         <button class="fa-focus-card" data-f="concluidos"><span class="fc-num" id="cConcl">0</span><span class="fc-lbl">Concluídos</span></button>
         <button class="fa-focus-card" data-f="todos"><span class="fc-num" id="cTodos">0</span><span class="fc-lbl">Todos</span></button>
@@ -77,6 +78,10 @@
           <input type="text" id="nTipoOutro" class="input" placeholder="Descreva o tipo de alvará">
         </label>
         <div class="fa-field-row">
+          <label class="fa-field"><span>Número do alvará</span><input type="text" id="nNumero" class="input"></label>
+          <label class="fa-field"><span>Órgão emissor</span><input type="text" id="nOrgao" class="input" placeholder="Ex.: Prefeitura, Bombeiros, Vigilância…"></label>
+        </div>
+        <div class="fa-field-row">
           <label class="fa-field"><span>Cidade</span><input type="text" id="nCidade" class="input"></label>
           <label class="fa-field"><span>Responsável</span><input type="text" id="nResp" class="input"></label>
         </div>
@@ -92,6 +97,7 @@
             </select>
           </label>
         </div>
+        <label class="fa-field"><span>Link do documento (Drive)</span><input type="url" id="nLink" class="input" placeholder="Cole o link do PDF na pasta ALVARÁS"></label>
         <label class="fa-field"><span>Observações</span><textarea id="nObs" class="input" rows="2"></textarea></label>
       </div>
       <div class="fa-modal-foot">
@@ -107,16 +113,22 @@
       <div class="fa-modal-head"><h3 id="dTipo">Alvará</h3><button class="fa-modal-close" id="dClose">&times;</button></div>
       <div class="fa-modal-body" style="max-height:74vh; overflow:auto;">
         <div class="alv-empresa" id="dEmpresa"></div>
+        <a id="dLinkAbrir" class="alv-doc-link" target="_blank" rel="noopener" hidden>Abrir documento ↗</a>
         <div id="dConcBanner" class="alv-conc-banner" hidden></div>
 
         <div class="fa-field-row">
           <label class="fa-field"><span>Status</span>
             <select id="dStatus" class="input">
+              <option value="a_confirmar">A confirmar</option>
               <option value="em_andamento">Em andamento</option>
               <option value="aguardando">Aguardando</option>
             </select>
           </label>
           <label class="fa-field"><span>Vencimento</span><input type="date" id="dVenc" class="input"></label>
+        </div>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Número do alvará</span><input type="text" id="dNumero" class="input"></label>
+          <label class="fa-field"><span>Órgão emissor</span><input type="text" id="dOrgao" class="input"></label>
         </div>
         <div class="fa-field-row">
           <label class="fa-field"><span>Responsável</span><input type="text" id="dResp" class="input"></label>
@@ -131,6 +143,7 @@
           </label>
         </div>
         <label class="fa-field"><span>Cidade</span><input type="text" id="dCidade" class="input"></label>
+        <label class="fa-field"><span>Link do documento (Drive)</span><input type="url" id="dLink" class="input" placeholder="Cole o link do PDF na pasta ALVARÁS"></label>
         <label class="fa-field"><span>Observações</span><textarea id="dObs" class="input" rows="2"></textarea></label>
         <div class="alv-acoes">
           <button class="btn btn-ghost btn-sm" id="dSalvar">Salvar alterações</button>
@@ -243,16 +256,19 @@
     }
 
     function nomeEmpresa(a){ return (a.clientes && a.clientes.nome_principal) || clientesNome[a.cliente_id] || '— sem empresa —'; }
-    function aberto(a){ return a.status !== 'concluido'; }
+    function aConfirmar(a){ return a.status === 'a_confirmar'; }
+    function aberto(a){ return a.status !== 'concluido' && a.status !== 'a_confirmar'; }
     function atrasado(a){ return aberto(a) && a.vencimento && a.vencimento < hojeStr; }
 
     function atualizarContadores(){
       const cAtras = alvaras.filter(atrasado).length;
       const cProx = alvaras.filter(a => aberto(a) && a.vencimento && a.vencimento >= hojeStr && a.vencimento <= em30Str).length;
+      const cAConf = alvaras.filter(aConfirmar).length;
       const cAbertos = alvaras.filter(aberto).length;
       const cConcl = alvaras.filter(a => a.status==='concluido').length;
       document.getElementById('cAtras').textContent = cAtras;
       document.getElementById('cProx').textContent = cProx;
+      document.getElementById('cAConf').textContent = cAConf;
       document.getElementById('cAbertos').textContent = cAbertos;
       document.getElementById('cConcl').textContent = cConcl;
       document.getElementById('cTodos').textContent = alvaras.length;
@@ -261,6 +277,7 @@
     function aplicaFiltro(a){
       if (filtro==='atrasados') return atrasado(a);
       if (filtro==='prox30') return aberto(a) && a.vencimento && a.vencimento>=hojeStr && a.vencimento<=em30Str;
+      if (filtro==='aconfirmar') return aConfirmar(a);
       if (filtro==='abertos') return aberto(a);
       if (filtro==='concluidos') return a.status==='concluido';
       return true;
@@ -270,12 +287,13 @@
       const q = searchInput.value.trim().toLowerCase();
       let itens = alvaras.filter(aplicaFiltro);
       if (q) itens = itens.filter(a =>
-        (nomeEmpresa(a)+' '+(a.tipo||'')+' '+(a.cidade||'')).toLowerCase().includes(q)
+        (nomeEmpresa(a)+' '+(a.tipo||'')+' '+(a.cidade||'')+' '+(a.numero||'')+' '+(a.orgao||'')).toLowerCase().includes(q)
       );
       if (!itens.length){ elLista.innerHTML=''; elVazio.hidden=false; return; }
       elVazio.hidden = true;
       elLista.innerHTML = itens.map(a => {
         const pill = a.status==='concluido' ? '<span class="pill pill-ok">Concluído</span>'
+          : a.status==='a_confirmar' ? '<span class="pill pill-conf">A confirmar</span>'
           : a.status==='aguardando' ? '<span class="pill pill-agu">Aguardando</span>'
           : '<span class="pill pill-and">Em andamento</span>';
         const rec = (a.recorrencia && a.recorrencia!=='nenhuma') ? `<span class="alv-recorr">↻ ${RECOR_LBL[a.recorrencia]}</span>` : '';
@@ -291,6 +309,7 @@
             <span>${escapeHtml(a.cidade||'—')}</span>
             <span>${escapeHtml(a.responsavel||'Sem responsável')}</span>
             <span class="${vencCls}">${vencTxt}</span>
+            ${a.link_drive ? '<span class="alv-doc-flag">doc no Drive</span>' : ''}
           </div>
         </div>`;
       }).join('');
@@ -302,7 +321,7 @@
     function abrirNovo(){ ovNovo.classList.add('is-open'); }
     function fecharNovo(){
       ovNovo.classList.remove('is-open');
-      ['nCliente','nTipo','nTipoOutro','nCidade','nResp','nVenc','nObs'].forEach(id=>document.getElementById(id).value='');
+      ['nCliente','nTipo','nTipoOutro','nNumero','nOrgao','nCidade','nResp','nVenc','nLink','nObs'].forEach(id=>document.getElementById(id).value='');
       document.getElementById('nRecorr').value='nenhuma';
       document.getElementById('nTipoOutroWrap').hidden = true;
     }
@@ -332,10 +351,13 @@
       btn.disabled = true; btn.innerHTML = '<span class="spinner spinner-sm"></span>Salvando...';
       const novo = {
         cliente_id, tipo,
+        numero: document.getElementById('nNumero').value.trim() || null,
+        orgao: document.getElementById('nOrgao').value.trim() || null,
         cidade: document.getElementById('nCidade').value.trim() || null,
         responsavel: document.getElementById('nResp').value.trim() || null,
         vencimento: document.getElementById('nVenc').value || null,
         recorrencia: document.getElementById('nRecorr').value,
+        link_drive: document.getElementById('nLink').value.trim() || null,
         observacoes: document.getElementById('nObs').value.trim() || null,
         status: 'em_andamento'
       };
@@ -361,10 +383,16 @@
       document.getElementById('dEmpresa').textContent = nomeEmpresa(a);
       document.getElementById('dStatus').value = a.status==='concluido' ? 'em_andamento' : (a.status||'em_andamento');
       document.getElementById('dVenc').value = a.vencimento ? String(a.vencimento).slice(0,10) : '';
+      document.getElementById('dNumero').value = a.numero || '';
+      document.getElementById('dOrgao').value = a.orgao || '';
       document.getElementById('dResp').value = a.responsavel || '';
       document.getElementById('dRecorr').value = a.recorrencia || 'nenhuma';
       document.getElementById('dCidade').value = a.cidade || '';
+      document.getElementById('dLink').value = a.link_drive || '';
       document.getElementById('dObs').value = a.observacoes || '';
+      const dLinkAbrir = document.getElementById('dLinkAbrir');
+      if (a.link_drive) { dLinkAbrir.href = a.link_drive; dLinkAbrir.hidden = false; }
+      else { dLinkAbrir.removeAttribute('href'); dLinkAbrir.hidden = true; }
 
       const concluido = a.status==='concluido';
       const banner = document.getElementById('dConcBanner');
@@ -409,16 +437,19 @@
       const patch = {
         status: alvAtual.status==='concluido' ? alvAtual.status : novoStatus,
         vencimento: document.getElementById('dVenc').value || null,
+        numero: document.getElementById('dNumero').value.trim() || null,
+        orgao: document.getElementById('dOrgao').value.trim() || null,
         responsavel: document.getElementById('dResp').value.trim() || null,
         recorrencia: document.getElementById('dRecorr').value,
         cidade: document.getElementById('dCidade').value.trim() || null,
+        link_drive: document.getElementById('dLink').value.trim() || null,
         observacoes: document.getElementById('dObs').value.trim() || null
       };
       const btn = document.getElementById('dSalvar');
       btn.disabled = true; btn.innerHTML = '<span class="spinner spinner-sm"></span>';
       const { error } = await supabase.from('alvaras').update(patch).eq('id', alvAtual.id);
       if (!error && statusMudou) {
-        await supabase.from('alvara_historico').insert({ alvara_id: alvAtual.id, descricao: 'Status alterado para: ' + (novoStatus==='aguardando'?'Aguardando':'Em andamento') + '.', autor: usuarioEmail });
+        await supabase.from('alvara_historico').insert({ alvara_id: alvAtual.id, descricao: 'Status alterado para: ' + (novoStatus==='aguardando'?'Aguardando':novoStatus==='a_confirmar'?'A confirmar':'Em andamento') + '.', autor: usuarioEmail });
       }
       btn.disabled = false; btn.textContent = 'Salvar alterações';
       if (error) { alert('Erro ao salvar: ' + error.message); return; }
@@ -444,6 +475,7 @@
       if (recorrente) {
         const novo = {
           cliente_id: alvAtual.cliente_id, tipo: alvAtual.tipo, cidade: alvAtual.cidade,
+          orgao: alvAtual.orgao,
           responsavel: alvAtual.responsavel, vencimento: prox, recorrencia: alvAtual.recorrencia,
           observacoes: alvAtual.observacoes, status:'em_andamento'
         };
@@ -480,7 +512,7 @@
     .fa-tab:hover { color:#C5D8E8; }
     .fa-tab.is-active { color:#C5D8E8; border-bottom-color:#5B82A6; font-weight:600; }
 
-    .fa-focus { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:22px; }
+    .fa-focus { display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin-bottom:22px; }
     .fa-focus-card { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:14px 16px; cursor:pointer; text-align:left; transition:border-color .15s, background .15s; display:flex; flex-direction:column; gap:4px; }
     .fa-focus-card:hover { border-color:rgba(138,174,200,.4); }
     .fa-focus-card.is-active { border-color:#5B82A6; background:rgba(91,130,166,.10); }
@@ -497,11 +529,15 @@
     .alv-empresa { color:#C5D8E8; font-size:14px; margin-top:3px; }
     .alv-meta { color:#8A93A6; font-size:13px; margin-top:6px; display:flex; gap:16px; flex-wrap:wrap; }
     .alv-venc-atras { color:#E06C6C; font-weight:600; }
+    .alv-doc-link { display:inline-block; margin-top:6px; color:#8AAEC8; font-size:13px; text-decoration:none; }
+    .alv-doc-link:hover { color:#C5D8E8; text-decoration:underline; }
+    .alv-doc-flag { color:#3FB07A; }
 
     .pill { font-size:12px; padding:2px 10px; border-radius:999px; border:1px solid; }
     .pill-and { color:#8AAEC8; border-color:rgba(91,130,166,.45); }
     .pill-agu { color:#E3B341; border-color:rgba(227,179,65,.45); }
     .pill-ok  { color:#3FB07A; border-color:rgba(63,176,122,.45); }
+    .pill-conf { color:#8A93A6; border-color:rgba(138,147,166,.45); }
     .alv-recorr { font-size:12px; color:#8AAEC8; background:rgba(91,130,166,.12); border:1px solid rgba(91,130,166,.25); border-radius:999px; padding:2px 10px; }
 
     .fa-modal-overlay { position:fixed; inset:0; background:rgba(8,12,18,.72); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
