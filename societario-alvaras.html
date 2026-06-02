@@ -68,6 +68,15 @@
     <div class="fa-modal">
       <div class="fa-modal-head"><h3>Novo alvará</h3><button class="fa-modal-close" id="nClose">&times;</button></div>
       <div class="fa-modal-body">
+        <div class="alv-extrai">
+          <input type="file" id="aDoc" accept=".pdf,image/*" multiple hidden>
+          <div class="alv-extrai-row">
+            <button type="button" class="btn btn-ghost btn-sm" id="aBtnEscolher">Anexar alvará (PDF/imagem)</button>
+            <button type="button" class="btn btn-primary btn-sm" id="aBtnExtrair" hidden>Ler e preencher</button>
+          </div>
+          <div id="aArquivos" class="alv-extrai-files"></div>
+          <div id="aStatus" class="alv-extrai-status"></div>
+        </div>
         <label class="fa-field"><span>Empresa *</span>
           <select id="nCliente" class="input"><option value="">Selecione…</option></select>
         </label>
@@ -340,6 +349,94 @@
       }
     });
 
+    // ---------- Anexar alvará e preencher (extract-document, modo alvara) ----------
+    let aArquivos = [];
+    const aDoc = document.getElementById('aDoc');
+    const aBtnEscolher = document.getElementById('aBtnEscolher');
+    const aBtnExtrair = document.getElementById('aBtnExtrair');
+    const aArquivosEl = document.getElementById('aArquivos');
+    const aStatus = document.getElementById('aStatus');
+
+    aBtnEscolher.addEventListener('click', () => aDoc.click());
+    aDoc.addEventListener('change', () => { aArquivos = Array.from(aDoc.files); renderAArquivos(); });
+    function renderAArquivos(){
+      aArquivosEl.innerHTML = aArquivos.map(f => '📄 ' + escapeHtml(f.name)).join('<br>');
+      aBtnExtrair.hidden = aArquivos.length === 0;
+    }
+    function aLerBase64(file){
+      return new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(String(r.result).split(',')[1]);
+        r.onerror = () => rej(new Error('Falha ao ler ' + file.name));
+        r.readAsDataURL(file);
+      });
+    }
+    function normNome(x){ return String(x||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/\s+/g,' ').trim(); }
+    function matchClienteId(empresa){
+      if (!empresa) return null;
+      const alvo = normNome(empresa);
+      if (alvo.length < 3) return null;
+      const sel = document.getElementById('nCliente');
+      let achou = null;
+      Array.from(sel.options).forEach(o => {
+        if (!o.value || achou) return;
+        const t = normNome(o.textContent);
+        if (t === alvo || t.includes(alvo) || alvo.includes(t)) achou = o.value;
+      });
+      return achou;
+    }
+
+    aBtnExtrair.addEventListener('click', async () => {
+      if (!aArquivos.length) return;
+      const txt = aBtnExtrair.textContent;
+      aBtnExtrair.disabled = true; aBtnExtrair.innerHTML = '<span class="spinner spinner-sm"></span>Lendo…';
+      aStatus.style.color = ''; aStatus.textContent = 'Pode levar alguns segundos.';
+      try {
+        const documents = await Promise.all(aArquivos.map(async f => ({
+          media_type: f.type || 'application/octet-stream',
+          data: await aLerBase64(f),
+          filename: f.name
+        })));
+        const { data: resp, error } = await supabase.functions.invoke('extract-document', { body: { documents, modo: 'alvara' } });
+        if (error) throw new Error(error.message || 'Erro ao chamar a extração.');
+        if (resp && resp.error) throw new Error(resp.error);
+        const d = resp && resp.data ? resp.data : null;
+        if (!d) throw new Error('A extração não retornou dados.');
+        preencherAlvara(d);
+      } catch (e) {
+        aStatus.style.color = 'var(--danger)';
+        aStatus.textContent = 'Não consegui ler: ' + (e.message || e);
+      } finally {
+        aBtnExtrair.disabled = false; aBtnExtrair.textContent = txt;
+      }
+    });
+
+    function preencherAlvara(d){
+      const selT = document.getElementById('nTipo');
+      const temOpcao = d.tipo ? Array.from(selT.options).some(o => o.value === d.tipo) : false;
+      if (d.tipo) {
+        selT.value = temOpcao ? d.tipo : '__outro__';
+        selT.dispatchEvent(new Event('change'));
+        if (!temOpcao) document.getElementById('nTipoOutro').value = d.tipo;
+      }
+      if (d.numero) document.getElementById('nNumero').value = d.numero;
+      if (d.orgao) document.getElementById('nOrgao').value = d.orgao;
+      if (d.vencimento) document.getElementById('nVenc').value = String(d.vencimento).slice(0,10);
+      let msgEmpresa = '';
+      const cid = matchClienteId(d.empresa);
+      if (cid) {
+        const selC = document.getElementById('nCliente');
+        selC.value = cid; selC.dispatchEvent(new Event('change'));
+      } else if (d.empresa) {
+        msgEmpresa = ' Empresa “' + d.empresa + '” não bateu com nenhum cadastro — selecione na mão.';
+      }
+      if (d.municipio) document.getElementById('nCidade').value = d.municipio;
+      const conf = d.confianca ? (' Confiança: ' + d.confianca + '.') : '';
+      const obs = d.observacoes_extracao ? (' ' + d.observacoes_extracao) : '';
+      aStatus.style.color = (cid || !d.empresa) ? 'var(--success)' : 'var(--warning)';
+      aStatus.textContent = 'Campos preenchidos abaixo — confira antes de salvar.' + conf + msgEmpresa + obs;
+    }
+
     document.getElementById('nSalvar').addEventListener('click', async () => {
       const cliente_id = document.getElementById('nCliente').value;
       let tipo = document.getElementById('nTipo').value;
@@ -561,6 +658,10 @@
     .alv-tl-head { font-weight:600; color:#E6EBF2; font-size:15px; }
     .alv-conc-banner { background:rgba(63,176,122,.12); border:1px solid rgba(63,176,122,.35); color:#3FB07A; border-radius:10px; padding:8px 12px; font-size:13px; }
     .alv-excluir-wrap { text-align:right; margin-top:4px; }
+    .alv-extrai { background:rgba(91,130,166,.08); border:1px dashed rgba(138,174,200,.35); border-radius:12px; padding:14px 16px; display:flex; flex-direction:column; gap:10px; }
+    .alv-extrai-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .alv-extrai-files { font-size:13px; color:#C5D8E8; }
+    .alv-extrai-status { font-size:13px; color:#8A93A6; line-height:1.4; }
 
     .tl { display:flex; flex-direction:column; gap:0; margin-top:4px; }
     .tl-item { position:relative; padding:0 0 16px 22px; border-left:2px solid rgba(255,255,255,.10); }
