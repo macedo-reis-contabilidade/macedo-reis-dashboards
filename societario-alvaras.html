@@ -122,7 +122,6 @@
       <div class="fa-modal-head"><h3 id="dTipo">Alvará</h3><button class="fa-modal-close" id="dClose">&times;</button></div>
       <div class="fa-modal-body" style="max-height:74vh; overflow:auto;">
         <div class="alv-empresa" id="dEmpresa"></div>
-        <a id="dLinkAbrir" class="alv-doc-link" target="_blank" rel="noopener" hidden>Abrir documento ↗</a>
         <div id="dConcBanner" class="alv-conc-banner" hidden></div>
 
         <div class="fa-field-row">
@@ -153,6 +152,7 @@
         </div>
         <label class="fa-field"><span>Cidade</span><input type="text" id="dCidade" class="input"></label>
         <label class="fa-field"><span>Link do documento (Drive)</span><input type="url" id="dLink" class="input" placeholder="Cole o link do PDF na pasta ALVARÁS"></label>
+        <a id="dLinkAbrir" class="alv-doc-link" target="_blank" rel="noopener" style="display:none;">Abrir documento ↗</a>
         <label class="fa-field"><span>Observações</span><textarea id="dObs" class="input" rows="2"></textarea></label>
         <div class="alv-acoes">
           <button class="btn btn-ghost btn-sm" id="dSalvar">Salvar alterações</button>
@@ -318,11 +318,12 @@
             <span>${escapeHtml(a.cidade||'—')}</span>
             <span>${escapeHtml(a.responsavel||'Sem responsável')}</span>
             <span class="${vencCls}">${vencTxt}</span>
-            ${a.link_drive ? '<span class="alv-doc-flag">doc no Drive</span>' : ''}
+            ${a.link_drive ? `<a class="alv-doc-flag" href="${escapeHtml(a.link_drive)}" target="_blank" rel="noopener">abrir documento ↗</a>` : ''}
           </div>
         </div>`;
       }).join('');
       elLista.querySelectorAll('.alv-card').forEach(c => c.addEventListener('click', () => abrirDetalhe(c.dataset.id)));
+      elLista.querySelectorAll('.alv-doc-flag').forEach(a => a.addEventListener('click', e => e.stopPropagation()));
     }
 
     /* ---------- MODAL NOVO ---------- */
@@ -488,8 +489,8 @@
       document.getElementById('dLink').value = a.link_drive || '';
       document.getElementById('dObs').value = a.observacoes || '';
       const dLinkAbrir = document.getElementById('dLinkAbrir');
-      if (a.link_drive) { dLinkAbrir.href = a.link_drive; dLinkAbrir.hidden = false; }
-      else { dLinkAbrir.removeAttribute('href'); dLinkAbrir.hidden = true; }
+      if (a.link_drive) { dLinkAbrir.href = a.link_drive; dLinkAbrir.style.display = 'inline-block'; }
+      else { dLinkAbrir.removeAttribute('href'); dLinkAbrir.style.display = 'none'; }
 
       const concluido = a.status==='concluido';
       const banner = document.getElementById('dConcBanner');
@@ -628,7 +629,8 @@
     .alv-venc-atras { color:#E06C6C; font-weight:600; }
     .alv-doc-link { display:inline-block; margin-top:6px; color:#8AAEC8; font-size:13px; text-decoration:none; }
     .alv-doc-link:hover { color:#C5D8E8; text-decoration:underline; }
-    .alv-doc-flag { color:#3FB07A; }
+    .alv-doc-flag { color:#3FB07A; text-decoration:none; cursor:pointer; }
+    .alv-doc-flag:hover { text-decoration:underline; }
 
     .pill { font-size:12px; padding:2px 10px; border-radius:999px; border:1px solid; }
     .pill-and { color:#8AAEC8; border-color:rgba(91,130,166,.45); }
