@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DP — Convenções Coletivas — Macedo & Reis</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip"><div class="user-avatar" id="userAvatar">—</div><span id="userName">Carregando…</span></div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Departamento Pessoal</span>
+        </div>
+        <div class="eyebrow">Análise de convenção coletiva</div>
+        <h1>Convenções Coletivas</h1>
+        <p>Registre as convenções (CCT) por categoria e consulte pisos por função e vigência com agilidade. Anexe o PDF: a ferramenta lê e preenche os dados pra você conferir.</p>
+      </div>
+
+      <div class="fa-subnav">
+        <a href="dp.html" class="fa-tab">Tarefas</a>
+        <a href="dp-regras.html" class="fa-tab">Tarefas recorrentes</a>
+        <a href="dp-relatorios.html" class="fa-tab">Relatórios</a>
+        <a href="dp-sugestoes.html" class="fa-tab">Sugestões de melhoria</a>
+        <a href="dp-convencoes.html" class="fa-tab is-active">Convenções</a>
+      </div>
+
+      <div class="fa-focus">
+        <button class="fa-focus-card is-active" data-filtro="todas"><span class="fc-num" id="cTodas">0</span><span class="fc-lbl">Todas</span></button>
+        <button class="fa-focus-card" data-filtro="vigente"><span class="fc-num" id="cVig">0</span><span class="fc-lbl">Vigentes</span></button>
+        <button class="fa-focus-card" data-filtro="vencendo"><span class="fc-num" id="cVenc60">0</span><span class="fc-lbl">Vencem em 60 dias</span></button>
+        <button class="fa-focus-card fc-danger" data-filtro="vencida"><span class="fc-num" id="cVenc">0</span><span class="fc-lbl">Vencidas</span></button>
+      </div>
+
+      <div class="toolbar">
+        <div class="toolbar-filters">
+          <input type="text" id="searchInput" class="input input-search" placeholder="Buscar por categoria, sindicato, função…">
+        </div>
+        <div class="fa-toolbar-actions">
+          <button class="btn btn-primary" id="btnNova">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Nova convenção
+          </button>
+        </div>
+      </div>
+
+      <div id="lista">
+        <div class="loading-row" style="padding:40px;text-align:center;"><span class="spinner"></span>Carregando convenções…</div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ===== MODAL NOVO / EDITAR ===== -->
+  <div class="fa-modal-overlay" id="ovNovo">
+    <div class="fa-modal" style="max-width:720px;">
+      <div class="fa-modal-head"><h3 id="mTitulo">Nova convenção</h3><button class="fa-modal-close" id="nClose">&times;</button></div>
+      <div class="fa-modal-body" style="max-height:78vh; overflow:auto;">
+
+        <div class="conv-anexo">
+          <div class="conv-anexo-row">
+            <input type="file" id="nArquivo" accept="application/pdf,.pdf" class="input">
+            <button class="btn btn-primary btn-sm" id="nExtrair" type="button">Ler e preencher</button>
+          </div>
+          <div class="conv-anexo-status" id="nStatus">Anexe o PDF da convenção e clique em “Ler e preencher” — depois confira os campos abaixo.</div>
+        </div>
+
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Categoria *</span><input type="text" id="nCategoria" class="input" placeholder="Ex.: Indústria Gráfica - RS"></label>
+          <label class="fa-field"><span>Nº registro MTE</span><input type="text" id="nRegistro" class="input" placeholder="Ex.: RS000123/2025"></label>
+        </div>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Sindicato laboral (empregados)</span><input type="text" id="nSindLab" class="input"></label>
+          <label class="fa-field"><span>Sindicato patronal (empregadores)</span><input type="text" id="nSindPat" class="input"></label>
+        </div>
+        <label class="fa-field"><span>Abrangência (base territorial)</span><input type="text" id="nAbrangencia" class="input" placeholder="Municípios / região"></label>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Vigência início</span><input type="date" id="nVigIni" class="input"></label>
+          <label class="fa-field"><span>Vigência fim</span><input type="date" id="nVigFim" class="input"></label>
+        </div>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Data-base (mês)</span><input type="text" id="nDataBase" class="input" placeholder="Ex.: Maio"></label>
+          <label class="fa-field"><span>Reajuste (%)</span><input type="number" step="0.01" id="nReajuste" class="input" placeholder="Ex.: 5.5"></label>
+        </div>
+        <label class="fa-field"><span>Benefícios</span><textarea id="nBeneficios" class="input" rows="2" placeholder="Vale-refeição, vale-transporte, PLR, adicionais…"></textarea></label>
+        <label class="fa-field"><span>Observações</span><textarea id="nObs" class="input" rows="2"></textarea></label>
+
+        <div class="conv-pisos-head">
+          <span>Pisos por função</span>
+          <button class="btn btn-ghost btn-sm" id="nAddPiso" type="button">+ adicionar piso</button>
+        </div>
+        <div class="conv-pisos-editor-head">
+          <span>Função</span><span>Piso (R$)</span><span>Jornada</span><span>Observação</span><span></span>
+        </div>
+        <div id="pisosWrap"></div>
+
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-ghost" id="nCancelar">Cancelar</button>
+        <button class="btn btn-primary" id="nSalvar">Salvar convenção</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL DETALHE ===== -->
+  <div class="fa-modal-overlay" id="ovDet">
+    <div class="fa-modal" style="max-width:720px;">
+      <div class="fa-modal-head"><h3 id="dCategoria">Convenção</h3><button class="fa-modal-close" id="dClose">&times;</button></div>
+      <div class="fa-modal-body" style="max-height:78vh; overflow:auto;">
+        <div class="conv-vig-banner" id="dVigBanner"></div>
+        <div class="conv-meta" id="dMeta"></div>
+        <a id="dAbrirPdf" class="alv-doc-link" style="display:none;cursor:pointer;">Abrir PDF da convenção ↗</a>
+        <div class="conv-pisos-detalhe-head">Pisos por função</div>
+        <div id="dPisos"></div>
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-danger btn-sm" id="dExcluir" style="margin-right:auto;">Excluir</button>
+        <button class="btn btn-ghost btn-sm" id="dEditar">Editar</button>
+        <button class="btn btn-primary btn-sm" id="dFechar">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { formatDate } from './assets/js/utils.js';
+
+    const elLista = document.getElementById('lista');
+    const searchInput = document.getElementById('searchInput');
+
+    let convencoes = [];
+    let usuarioEmail = null;
+    let filtro = 'todas';
+    let editId = null;             // id da convenção em edição (null = nova)
+    let arquivoFile = null;        // File anexado nesta sessão do modal
+    let arquivoPathAtual = null;   // path já existente (ao editar, sem trocar arquivo)
+    let detAtual = null;
+
+    function pad(n){ return String(n).padStart(2,'0'); }
+    function toYMD(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+    const hojeD = new Date(); hojeD.setHours(0,0,0,0);
+    const hojeStr = toYMD(hojeD);
+    const em60D = new Date(hojeD); em60D.setDate(em60D.getDate()+60);
+    const em60Str = toYMD(em60D);
+
+    (async () => {
+      const user = await getCurrentUser();
+      if (user) {
+        usuarioEmail = user.email;
+        const n = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário';
+        document.getElementById('userName').textContent = n;
+        document.getElementById('userAvatar').textContent = n.charAt(0).toUpperCase();
+      }
+      await carregar();
+    })();
+
+    document.getElementById('btnLogout').addEventListener('click', signOut);
+
+    document.querySelectorAll('.fa-focus-card').forEach(c => c.addEventListener('click', () => {
+      filtro = c.dataset.filtro;
+      document.querySelectorAll('.fa-focus-card').forEach(x => x.classList.toggle('is-active', x === c));
+      render();
+    }));
+    searchInput.addEventListener('input', render);
+
+    // ---------- carregar / status ----------
+    async function carregar(){
+      const { data, error } = await supabase
+        .from('convencoes')
+        .select('*, convencao_pisos(*)')
+        .order('created_at', { ascending: false });
+      if (error) { elLista.innerHTML = '<div style="text-align:center;color:var(--danger);padding:40px;">Erro ao carregar: ' + error.message + '</div>'; return; }
+      convencoes = data || [];
+      render();
+    }
+
+    function statusVig(c){
+      const f = c.vigencia_fim;
+      if (!f) return { key:'sem', label:'Vigência não informada', cls:'pillc-sem' };
+      if (f < hojeStr) return { key:'vencida', label:'Vencida em ' + formatDate(f), cls:'pillc-venc' };
+      if (f <= em60Str) return { key:'vencendo', label:'Vence em ' + formatDate(f), cls:'pillc-venc60' };
+      return { key:'vigente', label:'Vigente até ' + formatDate(f), cls:'pillc-vig' };
+    }
+
+    function atualizarFocos(){
+      let v=0, ve=0, vc=0;
+      convencoes.forEach(c => { const s = statusVig(c).key; if (s==='vigente') v++; else if (s==='vencendo') ve++; else if (s==='vencida') vc++; });
+      document.getElementById('cTodas').textContent = convencoes.length;
+      document.getElementById('cVig').textContent = v;
+      document.getElementById('cVenc60').textContent = ve;
+      document.getElementById('cVenc').textContent = vc;
+    }
+
+    function render(){
+      atualizarFocos();
+      const s = searchInput.value.toLowerCase().trim();
+      const vis = convencoes.filter(c => {
+        if (filtro !== 'todas' && statusVig(c).key !== filtro) return false;
+        if (!s) return true;
+        const pisosTxt = (c.convencao_pisos || []).map(p => p.funcao).join(' ');
+        return ((c.categoria||'')+' '+(c.sindicato_laboral||'')+' '+(c.sindicato_patronal||'')+' '+(c.abrangencia||'')+' '+pisosTxt).toLowerCase().includes(s);
+      });
+
+      if (!vis.length) {
+        elLista.innerHTML = '<div class="empty-state" style="padding:48px 24px;">'+
+          '<svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>'+
+          '<h3>'+(convencoes.length===0?'Nenhuma convenção cadastrada':'Nada neste recorte')+'</h3>'+
+          '<p>'+(convencoes.length===0?'Clique em “Nova convenção” e anexe o PDF.':'Ajuste o filtro ou a busca.')+'</p></div>';
+        return;
+      }
+
+      elLista.innerHTML = vis.map(c => {
+        const st = statusVig(c);
+        const nPisos = (c.convencao_pisos || []).length;
+        const sinds = [c.sindicato_laboral, c.sindicato_patronal].filter(Boolean).join(' · ');
+        return '<div class="conv-card" data-id="'+c.id+'">'+
+          '<div class="conv-card-main">'+
+            '<div class="conv-card-titulo">'+escapeHtml(c.categoria || 'Sem categoria')+'</div>'+
+            (sinds ? '<div class="conv-card-sub">'+escapeHtml(sinds)+'</div>' : '')+
+            '<div class="conv-card-tags">'+
+              '<span class="pillc '+st.cls+'">'+escapeHtml(st.label)+'</span>'+
+              '<span class="conv-chip">'+nPisos+' '+(nPisos===1?'piso':'pisos')+'</span>'+
+              (c.reajuste_percentual!=null ? '<span class="conv-chip">reajuste '+String(c.reajuste_percentual).replace('.',',')+'%</span>' : '')+
+            '</div>'+
+          '</div>'+
+          '<svg class="conv-card-chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>'+
+        '</div>';
+      }).join('');
+
+      elLista.querySelectorAll('.conv-card').forEach(el => el.addEventListener('click', () => abrirDetalhe(el.dataset.id)));
+    }
+
+    // ---------- pisos editor ----------
+    const pisosWrap = document.getElementById('pisosWrap');
+    function addPisoRow(piso){
+      const row = document.createElement('div');
+      row.className = 'piso-row';
+      row.innerHTML =
+        '<input class="input piso-funcao" placeholder="Função">'+
+        '<input class="input piso-valor" type="number" step="0.01" placeholder="0,00">'+
+        '<input class="input piso-jornada" placeholder="opc.">'+
+        '<input class="input piso-obs" placeholder="opc.">'+
+        '<button type="button" class="btn btn-ghost btn-sm piso-del" title="Remover">&times;</button>';
+      if (piso){
+        row.querySelector('.piso-funcao').value = piso.funcao || '';
+        row.querySelector('.piso-valor').value = (piso.piso_salarial!=null ? piso.piso_salarial : '');
+        row.querySelector('.piso-jornada').value = piso.jornada || '';
+        row.querySelector('.piso-obs').value = piso.observacoes || '';
+      }
+      row.querySelector('.piso-del').addEventListener('click', () => row.remove());
+      pisosWrap.appendChild(row);
+    }
+    function setPisos(arr){
+      pisosWrap.innerHTML = '';
+      if (arr && arr.length) arr.forEach(p => addPisoRow(p));
+      else addPisoRow();
+    }
+    function lerPisos(){
+      return Array.from(pisosWrap.querySelectorAll('.piso-row')).map(r => ({
+        funcao: r.querySelector('.piso-funcao').value.trim(),
+        piso_salarial: r.querySelector('.piso-valor').value !== '' ? Number(r.querySelector('.piso-valor').value) : null,
+        jornada: r.querySelector('.piso-jornada').value.trim() || null,
+        observacoes: r.querySelector('.piso-obs').value.trim() || null
+      })).filter(p => p.funcao);
+    }
+    document.getElementById('nAddPiso').addEventListener('click', () => addPisoRow());
+
+    // ---------- modal novo/editar ----------
+    const ovNovo = document.getElementById('ovNovo');
+    function abrirNovo(){
+      editId = null; arquivoFile = null; arquivoPathAtual = null;
+      document.getElementById('mTitulo').textContent = 'Nova convenção';
+      ['nCategoria','nRegistro','nSindLab','nSindPat','nAbrangencia','nVigIni','nVigFim','nDataBase','nReajuste','nBeneficios','nObs'].forEach(id => document.getElementById(id).value = '');
+      document.getElementById('nArquivo').value = '';
+      document.getElementById('nStatus').style.color = '';
+      document.getElementById('nStatus').textContent = 'Anexe o PDF da convenção e clique em “Ler e preencher” — depois confira os campos abaixo.';
+      setPisos(null);
+      ovNovo.classList.add('is-open');
+    }
+    function fecharNovo(){ ovNovo.classList.remove('is-open'); }
+    document.getElementById('btnNova').addEventListener('click', abrirNovo);
+    document.getElementById('nClose').addEventListener('click', fecharNovo);
+    document.getElementById('nCancelar').addEventListener('click', fecharNovo);
+    ovNovo.addEventListener('click', e => { if (e.target === ovNovo) fecharNovo(); });
+
+    document.getElementById('nArquivo').addEventListener('change', e => {
+      arquivoFile = e.target.files && e.target.files[0] ? e.target.files[0] : null;
+      const st = document.getElementById('nStatus');
+      if (arquivoFile) { st.style.color = ''; st.textContent = 'Arquivo anexado: ' + arquivoFile.name + '. Clique em “Ler e preencher”.'; }
+    });
+
+    function toBase64(file){
+      return new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(String(r.result).split(',')[1]);
+        r.onerror = () => rej(new Error('Falha ao ler o arquivo'));
+        r.readAsDataURL(file);
+      });
+    }
+
+    document.getElementById('nExtrair').addEventListener('click', async () => {
+      if (!arquivoFile) { alert('Anexe o PDF da convenção primeiro.'); return; }
+      const btn = document.getElementById('nExtrair');
+      const st = document.getElementById('nStatus');
+      btn.disabled = true; btn.innerHTML = '<span class="spinner spinner-sm"></span>Lendo…';
+      st.style.color = ''; st.textContent = 'Lendo a convenção… isso pode levar alguns segundos.';
+      try {
+        const b64 = await toBase64(arquivoFile);
+        const documents = [{ media_type: arquivoFile.type || 'application/pdf', data: b64, filename: arquivoFile.name }];
+        const { data: resp, error } = await supabase.functions.invoke('extract-document', { body: { documents, modo: 'convencao' } });
+        if (error) throw new Error(error.message || 'Erro na função');
+        const d = resp && resp.data ? resp.data : null;
+        if (!d) throw new Error('A extração não retornou dados.');
+        preencher(d);
+        const conf = d.confianca ? (' Confiança: ' + d.confianca + '.') : '';
+        const obs = d.observacoes_extracao ? (' ' + d.observacoes_extracao) : '';
+        const nP = (d.pisos || []).length;
+        st.style.color = nP ? 'var(--success)' : 'var(--warning)';
+        st.textContent = 'Campos preenchidos — confira e ajuste antes de salvar. ' + nP + ' piso(s) lido(s).' + conf + obs;
+      } catch (e) {
+        st.style.color = 'var(--danger)';
+        st.textContent = 'Não consegui ler: ' + (e.message || e);
+      } finally {
+        btn.disabled = false; btn.textContent = 'Ler e preencher';
+      }
+    });
+
+    function preencher(d){
+      if (d.categoria) document.getElementById('nCategoria').value = d.categoria;
+      if (d.numero_registro_mte) document.getElementById('nRegistro').value = d.numero_registro_mte;
+      if (d.sindicato_laboral) document.getElementById('nSindLab').value = d.sindicato_laboral;
+      if (d.sindicato_patronal) document.getElementById('nSindPat').value = d.sindicato_patronal;
+      if (d.abrangencia) document.getElementById('nAbrangencia').value = d.abrangencia;
+      if (d.vigencia_inicio) document.getElementById('nVigIni').value = String(d.vigencia_inicio).slice(0,10);
+      if (d.vigencia_fim) document.getElementById('nVigFim').value = String(d.vigencia_fim).slice(0,10);
+      if (d.data_base) document.getElementById('nDataBase').value = d.data_base;
+      if (d.reajuste_percentual != null) document.getElementById('nReajuste').value = d.reajuste_percentual;
+      if (d.beneficios) document.getElementById('nBeneficios').value = d.beneficios;
+      if (d.observacoes_extracao) document.getElementById('nObs').value = d.observacoes_extracao;
+      if (Array.isArray(d.pisos)) setPisos(d.pisos);
+    }
+
+    function safeName(name){ return String(name||'arquivo.pdf').replace(/[^\w.\-]+/g,'_'); }
+
+    document.getElementById('nSalvar').addEventListener('click', async () => {
+      const categoria = document.getElementById('nCategoria').value.trim();
+      if (!categoria) { alert('Informe ao menos a categoria.'); return; }
+      const btn = document.getElementById('nSalvar');
+      btn.disabled = true; btn.innerHTML = '<span class="spinner spinner-sm"></span>Salvando…';
+      try {
+        let arquivo_path = arquivoPathAtual;
+        let arquivo_nome = null;
+        if (arquivoFile) {
+          const path = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())) + '/' + safeName(arquivoFile.name);
+          const { error: upErr } = await supabase.storage.from('convencoes').upload(path, arquivoFile, { contentType: arquivoFile.type || 'application/pdf', upsert: false });
+          if (upErr) throw new Error('Falha ao enviar o PDF: ' + upErr.message);
+          arquivo_path = path;
+          arquivo_nome = arquivoFile.name;
+        }
+
+        const header = {
+          categoria,
+          sindicato_laboral: document.getElementById('nSindLab').value.trim() || null,
+          sindicato_patronal: document.getElementById('nSindPat').value.trim() || null,
+          numero_registro_mte: document.getElementById('nRegistro').value.trim() || null,
+          abrangencia: document.getElementById('nAbrangencia').value.trim() || null,
+          vigencia_inicio: document.getElementById('nVigIni').value || null,
+          vigencia_fim: document.getElementById('nVigFim').value || null,
+          data_base: document.getElementById('nDataBase').value.trim() || null,
+          reajuste_percentual: document.getElementById('nReajuste').value !== '' ? Number(document.getElementById('nReajuste').value) : null,
+          beneficios: document.getElementById('nBeneficios').value.trim() || null,
+          observacoes: document.getElementById('nObs').value.trim() || null
+        };
+        if (arquivo_path) header.arquivo_path = arquivo_path;
+        if (arquivo_nome) header.arquivo_nome = arquivo_nome;
+
+        const pisos = lerPisos();
+        let convId = editId;
+
+        if (editId) {
+          const { error: upd } = await supabase.from('convencoes').update(header).eq('id', editId);
+          if (upd) throw new Error(upd.message);
+          await supabase.from('convencao_pisos').delete().eq('convencao_id', editId);
+        } else {
+          header.created_by = usuarioEmail;
+          const { data: ins, error: insErr } = await supabase.from('convencoes').insert(header).select('id').single();
+          if (insErr) throw new Error(insErr.message);
+          convId = ins.id;
+        }
+
+        if (pisos.length) {
+          const rows = pisos.map(p => ({ convencao_id: convId, funcao: p.funcao, piso_salarial: p.piso_salarial, jornada: p.jornada, observacoes: p.observacoes }));
+          const { error: pErr } = await supabase.from('convencao_pisos').insert(rows);
+          if (pErr) throw new Error('Convenção salva, mas houve erro nos pisos: ' + pErr.message);
+        }
+
+        fecharNovo();
+        await carregar();
+      } catch (e) {
+        alert('Erro ao salvar: ' + (e.message || e));
+      } finally {
+        btn.disabled = false; btn.textContent = 'Salvar convenção';
+      }
+    });
+
+    // ---------- detalhe ----------
+    const ovDet = document.getElementById('ovDet');
+    function fecharDet(){ ovDet.classList.remove('is-open'); detAtual = null; }
+    document.getElementById('dClose').addEventListener('click', fecharDet);
+    document.getElementById('dFechar').addEventListener('click', fecharDet);
+    ovDet.addEventListener('click', e => { if (e.target === ovDet) fecharDet(); });
+
+    function linhaMeta(rotulo, valor){ return valor ? '<div class="conv-meta-item"><span>'+rotulo+'</span><strong>'+escapeHtml(String(valor))+'</strong></div>' : ''; }
+
+    function abrirDetalhe(id){
+      const c = convencoes.find(x => x.id === id);
+      if (!c) return;
+      detAtual = c;
+      const st = statusVig(c);
+      document.getElementById('dCategoria').textContent = c.categoria || 'Convenção';
+      const banner = document.getElementById('dVigBanner');
+      banner.className = 'conv-vig-banner ' + st.cls;
+      banner.textContent = st.label + (c.data_base ? ' · data-base ' + c.data_base : '');
+
+      const vig = (c.vigencia_inicio || c.vigencia_fim) ? (formatDate(c.vigencia_inicio) + (c.vigencia_fim ? ' a ' + formatDate(c.vigencia_fim) : '')) : '';
+      document.getElementById('dMeta').innerHTML =
+        linhaMeta('Sindicato laboral', c.sindicato_laboral) +
+        linhaMeta('Sindicato patronal', c.sindicato_patronal) +
+        linhaMeta('Abrangência', c.abrangencia) +
+        linhaMeta('Vigência', vig) +
+        linhaMeta('Nº registro MTE', c.numero_registro_mte) +
+        (c.reajuste_percentual!=null ? linhaMeta('Reajuste', String(c.reajuste_percentual).replace('.',',')+'%') : '') +
+        linhaMeta('Benefícios', c.beneficios) +
+        linhaMeta('Observações', c.observacoes);
+
+      const pdf = document.getElementById('dAbrirPdf');
+      if (c.arquivo_path) {
+        pdf.style.display = 'inline-flex';
+        pdf.onclick = async () => {
+          const { data, error } = await supabase.storage.from('convencoes').createSignedUrl(c.arquivo_path, 3600);
+          if (error || !data) { alert('Não consegui abrir o PDF: ' + (error?.message || 'erro')); return; }
+          window.open(data.signedUrl, '_blank');
+        };
+      } else {
+        pdf.style.display = 'none';
+        pdf.onclick = null;
+      }
+
+      const pisos = (c.convencao_pisos || []).slice().sort((a,b) => String(a.funcao).localeCompare(String(b.funcao), 'pt-BR'));
+      const dP = document.getElementById('dPisos');
+      if (!pisos.length) {
+        dP.innerHTML = '<div class="conv-pisos-empty">Nenhum piso cadastrado nesta convenção.</div>';
+      } else {
+        dP.innerHTML = '<table class="conv-pisos-table"><thead><tr><th>Função</th><th>Piso</th><th>Jornada</th><th>Obs.</th></tr></thead><tbody>'+
+          pisos.map(p => '<tr>'+
+            '<td>'+escapeHtml(p.funcao)+'</td>'+
+            '<td class="conv-piso-val">'+(p.piso_salarial!=null ? fmtMoney(p.piso_salarial) : '—')+'</td>'+
+            '<td>'+(p.jornada?escapeHtml(p.jornada):'—')+'</td>'+
+            '<td>'+(p.observacoes?escapeHtml(p.observacoes):'—')+'</td>'+
+          '</tr>').join('')+
+          '</tbody></table>';
+      }
+      ovDet.classList.add('is-open');
+    }
+
+    document.getElementById('dEditar').addEventListener('click', () => {
+      if (!detAtual) return;
+      const c = detAtual;
+      fecharDet();
+      abrirNovo();
+      editId = c.id; arquivoFile = null; arquivoPathAtual = c.arquivo_path || null;
+      document.getElementById('mTitulo').textContent = 'Editar convenção';
+      document.getElementById('nCategoria').value = c.categoria || '';
+      document.getElementById('nRegistro').value = c.numero_registro_mte || '';
+      document.getElementById('nSindLab').value = c.sindicato_laboral || '';
+      document.getElementById('nSindPat').value = c.sindicato_patronal || '';
+      document.getElementById('nAbrangencia').value = c.abrangencia || '';
+      document.getElementById('nVigIni').value = c.vigencia_inicio ? String(c.vigencia_inicio).slice(0,10) : '';
+      document.getElementById('nVigFim').value = c.vigencia_fim ? String(c.vigencia_fim).slice(0,10) : '';
+      document.getElementById('nDataBase').value = c.data_base || '';
+      document.getElementById('nReajuste').value = (c.reajuste_percentual!=null ? c.reajuste_percentual : '');
+      document.getElementById('nBeneficios').value = c.beneficios || '';
+      document.getElementById('nObs').value = c.observacoes || '';
+      setPisos((c.convencao_pisos || []).slice().sort((a,b)=>String(a.funcao).localeCompare(String(b.funcao),'pt-BR')));
+      const st = document.getElementById('nStatus');
+      st.style.color = '';
+      st.textContent = c.arquivo_path ? 'PDF atual mantido. Para trocar, anexe outro e clique em “Ler e preencher”.' : 'Sem PDF anexado. Você pode anexar um agora.';
+    });
+
+    document.getElementById('dExcluir').addEventListener('click', async () => {
+      if (!detAtual) return;
+      if (!confirm('Excluir esta convenção e todos os seus pisos? Esta ação não pode ser desfeita.')) return;
+      const c = detAtual;
+      const { error } = await supabase.from('convencoes').delete().eq('id', c.id);
+      if (error) { alert('Erro ao excluir: ' + error.message); return; }
+      if (c.arquivo_path) { try { await supabase.storage.from('convencoes').remove([c.arquivo_path]); } catch (e) {} }
+      fecharDet();
+      await carregar();
+    });
+
+    // ---------- helpers ----------
+    function fmtMoney(n){ try { return Number(n).toLocaleString('pt-BR', { style:'currency', currency:'BRL' }); } catch(e){ return 'R$ ' + n; } }
+    function escapeHtml(t){ return String(t==null?'':t).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
+  </script>
+
+  <style>
+    .fa-subnav { display:flex; gap:6px; margin-bottom:22px; border-bottom:1px solid rgba(255,255,255,.08); flex-wrap:wrap; }
+    .fa-tab { padding:9px 16px; font-size:14px; color:#8A93A6; text-decoration:none; border-bottom:2px solid transparent; margin-bottom:-1px; }
+    .fa-tab:hover { color:#C5D8E8; }
+    .fa-tab.is-active { color:#C5D8E8; border-bottom-color:#5B82A6; font-weight:600; }
+
+    .fa-focus { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:22px; }
+    .fa-focus-card { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:14px 16px; cursor:pointer; text-align:left; transition:border-color .15s, background .15s; display:flex; flex-direction:column; gap:4px; }
+    .fa-focus-card:hover { border-color:rgba(138,174,200,.4); }
+    .fa-focus-card.is-active { border-color:#5B82A6; background:rgba(91,130,166,.10); }
+    .fc-num { font-size:24px; font-weight:700; color:#E6EBF2; line-height:1; }
+    .fc-lbl { font-size:12px; color:#8A93A6; }
+    .fa-focus-card.fc-danger .fc-num { color:#E06C6C; }
+
+    .fa-toolbar-actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+
+    /* lista de convenções */
+    .conv-card { background:rgba(255,255,255,.025); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:16px 18px; margin-bottom:10px; cursor:pointer; display:flex; align-items:center; gap:14px; transition:border-color .15s, background .15s; }
+    .conv-card:hover { border-color:rgba(138,174,200,.4); background:rgba(255,255,255,.04); }
+    .conv-card-main { flex:1; min-width:0; }
+    .conv-card-titulo { font-weight:600; color:#E6EBF2; font-size:16px; }
+    .conv-card-sub { color:#8A93A6; font-size:13px; margin-top:2px; }
+    .conv-card-tags { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; align-items:center; }
+    .conv-card-chev { color:#8A93A6; flex:none; }
+    .conv-chip { font-size:12px; color:#8AAEC8; background:rgba(91,130,166,.12); border:1px solid rgba(91,130,166,.25); border-radius:999px; padding:2px 10px; }
+
+    .pillc { font-size:12px; font-weight:600; border-radius:999px; padding:3px 10px; }
+    .pillc-vig { color:#3FB07A; background:rgba(63,176,122,.14); border:1px solid rgba(63,176,122,.3); }
+    .pillc-venc60 { color:#E3B341; background:rgba(227,179,65,.14); border:1px solid rgba(227,179,65,.3); }
+    .pillc-venc { color:#E06C6C; background:rgba(224,108,108,.14); border:1px solid rgba(224,108,108,.35); }
+    .pillc-sem { color:#8A93A6; background:rgba(138,147,166,.12); border:1px solid rgba(138,147,166,.3); }
+
+    /* anexo */
+    .conv-anexo { background:rgba(91,130,166,.08); border:1px solid rgba(91,130,166,.22); border-radius:12px; padding:14px; margin-bottom:18px; }
+    .conv-anexo-row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .conv-anexo-row .input { flex:1; min-width:220px; }
+    .conv-anexo-status { font-size:13px; color:#8A93A6; margin-top:10px; }
+
+    /* pisos editor */
+    .conv-pisos-head { display:flex; align-items:center; justify-content:space-between; margin-top:8px; }
+    .conv-pisos-head > span { font-size:14px; font-weight:600; color:#C5D8E8; }
+    .conv-pisos-editor-head { display:grid; grid-template-columns:2fr 1fr 1fr 2fr 34px; gap:8px; margin-top:10px; padding:0 2px; }
+    .conv-pisos-editor-head > span { font-size:11px; color:#8A93A6; text-transform:uppercase; letter-spacing:.04em; }
+    .piso-row { display:grid; grid-template-columns:2fr 1fr 1fr 2fr 34px; gap:8px; margin-top:6px; align-items:center; }
+    .piso-row .input { padding:7px 9px; font-size:13px; }
+    .piso-del { padding:6px 10px; line-height:1; }
+
+    /* detalhe */
+    .conv-vig-banner { border-radius:10px; padding:9px 13px; font-size:13px; font-weight:600; margin-bottom:14px; }
+    .conv-meta { display:grid; grid-template-columns:1fr 1fr; gap:10px 18px; margin-bottom:14px; }
+    .conv-meta-item { display:flex; flex-direction:column; gap:2px; }
+    .conv-meta-item span { font-size:12px; color:#8AAEC8; }
+    .conv-meta-item strong { color:#E6EBF2; font-size:14px; font-weight:500; }
+    .conv-pisos-detalhe-head { font-size:15px; font-weight:600; color:#E6EBF2; margin:6px 0 8px; border-top:1px solid rgba(255,255,255,.08); padding-top:14px; }
+    .conv-pisos-table { width:100%; border-collapse:collapse; }
+    .conv-pisos-table th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:#8A93A6; padding:6px 10px; border-bottom:1px solid rgba(255,255,255,.1); }
+    .conv-pisos-table td { padding:8px 10px; font-size:14px; color:#E6EBF2; border-bottom:1px solid rgba(255,255,255,.05); }
+    .conv-piso-val { font-variant-numeric:tabular-nums; color:#8AAEC8; font-weight:600; white-space:nowrap; }
+    .conv-pisos-empty { color:#8A93A6; font-size:13px; padding:8px 0; }
+    .alv-doc-link { display:inline-flex; align-items:center; gap:6px; color:#8AAEC8; font-size:13px; text-decoration:none; margin-bottom:14px; }
+    .alv-doc-link:hover { color:#C5D8E8; text-decoration:underline; }
+
+    .fa-modal-overlay { position:fixed; inset:0; background:rgba(8,12,18,.72); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
+    .fa-modal-overlay.is-open { display:flex; }
+    .fa-modal { width:100%; max-width:520px; background:#141A22; border:1px solid rgba(255,255,255,.10); border-radius:16px; overflow:hidden; }
+    .fa-modal-head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid rgba(255,255,255,.08); }
+    .fa-modal-head h3 { margin:0; color:#E6EBF2; font-size:18px; }
+    .fa-modal-close { background:none; border:none; color:#8A93A6; font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }
+    .fa-modal-close:hover { color:#E6EBF2; }
+    .fa-modal-body { padding:22px; display:flex; flex-direction:column; gap:14px; }
+    .fa-field { display:flex; flex-direction:column; gap:6px; }
+    .fa-field > span { font-size:13px; color:#8AAEC8; }
+    .fa-field-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .fa-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid rgba(255,255,255,.08); }
+    .fa-modal textarea.input { resize:vertical; font-family:inherit; }
+
+    @media (max-width:720px){
+      .fa-focus { grid-template-columns:repeat(2,1fr); }
+      .conv-meta { grid-template-columns:1fr; }
+      .conv-pisos-editor-head, .piso-row { grid-template-columns:1.6fr 1fr 30px; }
+      .conv-pisos-editor-head > span:nth-child(3), .conv-pisos-editor-head > span:nth-child(4),
+      .piso-row .piso-jornada, .piso-row .piso-obs { display:none; }
+    }
+  </style>
+</body>
+</html>
