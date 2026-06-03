@@ -7,6 +7,49 @@
   <link rel="stylesheet" href="assets/css/style.css">
   <script type="module" src="assets/js/auth-guard.js"></script>
   <style>
+    /* relatório para o cliente (impressão) */
+    #reportArea { display:none; }
+    @media print {
+      html, body { background:#fff !important; }
+      .app-shell { display:none !important; }
+      #reportArea { display:block; }
+      @page { margin:14mm; }
+    }
+    .rep { color:#23282f; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif; max-width:740px; margin:0 auto; }
+    .rep-head { display:flex; align-items:center; gap:14px; border-bottom:3px solid #3A5878; padding-bottom:12px; }
+    .rep-logo { width:50px; height:50px; object-fit:contain; }
+    .rep-firm-name { font-size:18px; font-weight:700; color:#3A5878; }
+    .rep-firm-sub { font-size:12px; color:#5B82A6; letter-spacing:.02em; }
+    .rep-title { font-size:21px; color:#23282f; margin:20px 0 2px; }
+    .rep-meta { display:grid; grid-template-columns:1fr 1fr; gap:5px 20px; font-size:13px; color:#333; margin:12px 0 6px; }
+    .rep-h2 { font-size:13.5px; color:#3A5878; border-bottom:1px solid #cfd8e2; padding-bottom:5px; margin:22px 0 8px; text-transform:uppercase; letter-spacing:.03em; }
+    .rep-tbl { width:100%; border-collapse:collapse; font-size:13px; }
+    .rep-tbl th { text-align:left; color:#5B82A6; font-size:10.5px; text-transform:uppercase; letter-spacing:.03em; border-bottom:1px solid #bcc6d2; padding:6px; }
+    .rep-tbl td { padding:6px; border-bottom:1px solid #eee; }
+    .rep-tbl .r { text-align:right; font-variant-numeric:tabular-nums; }
+    .rep-tbl .pc { color:#8a93a0; width:96px; }
+    .rep-tbl tfoot td { font-weight:700; border-top:2px solid #3A5878; border-bottom:0; color:#23282f; padding-top:9px; }
+    .rep-cards { display:flex; gap:12px; margin:16px 0 4px; }
+    .rep-card { flex:1; border:1px solid #d5dde6; border-radius:9px; padding:11px 13px; }
+    .rep-card span { display:block; font-size:10.5px; color:#5B82A6; text-transform:uppercase; letter-spacing:.03em; }
+    .rep-card b { font-size:18px; color:#23282f; }
+    .rep-card.hl { background:#eef3f8; border-color:#5B82A6; }
+    .rep-note { font-size:11px; color:#666; font-style:italic; margin-top:20px; line-height:1.55; }
+    .rep-foot { margin-top:14px; border-top:1px solid #cfd8e2; padding-top:8px; font-size:11px; color:#8a93a0; text-align:center; }
+    /* subnav (faltava nesta página) */
+    .fa-subnav { display:flex; gap:6px; margin-bottom:22px; border-bottom:1px solid rgba(255,255,255,.08); flex-wrap:wrap; }
+    .fa-tab { padding:9px 16px; font-size:14px; color:#8A93A6; text-decoration:none; border-bottom:2px solid transparent; margin-bottom:-1px; }
+    .fa-tab:hover { color:#C5D8E8; }
+    .fa-tab.is-active { color:#C5D8E8; border-bottom-color:#5B82A6; font-weight:600; }
+    /* subtotal na tabela de custo + cards */
+    .cc-result tr.cc-subtot td { font-weight:600; color:#8AAEC8 !important; background:rgba(91,130,166,.07); }
+    .cc-big .cc-big-sub { color:#8A93A6; font-size:10.5px; margin-top:2px; }
+    .cc-big.cc-caixa { background:rgba(138,174,200,.13); border-color:rgba(138,174,200,.3); }
+    /* grupos/subtotais e explicação no relatório */
+    .rep-tbl tr.grp td { background:#eef3f8; color:#3A5878; font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:.03em; padding:6px; border-bottom:1px solid #cfd8e2; }
+    .rep-tbl tr.sub td { font-weight:700; color:#3A5878; border-top:1px solid #cfd8e2; }
+    .rep-card i { display:block; font-size:10px; color:#777; font-style:normal; margin-top:2px; }
+    .rep-explain { font-size:12px; color:#3a4048; line-height:1.6; margin:14px 0 4px; background:#f4f7fb; border-left:3px solid #5B82A6; padding:11px 13px; border-radius:0 7px 7px 0; }
     .cc-wrap { display:grid; grid-template-columns:1fr; gap:18px; align-items:start; }
     @media (min-width:1000px){ .cc-wrap { grid-template-columns:1.15fr .85fr; } .cc-right { position:sticky; top:18px; } }
     .cc-card { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:18px 18px 16px; margin-bottom:16px; }
@@ -123,6 +166,10 @@
               </div>
             </div>
             <p class="cc-hint" style="margin:10px 0 0;">No Simples, INSS patronal e terceiros entram no DAS (exceto Anexo IV) — por isso ficam desligados. O FGTS é sempre devido. Tudo pode ser ligado/desligado manualmente.</p>
+            <div class="cc-top-grid" style="margin-top:12px;">
+              <label class="cc-field"><span>Cliente (p/ relatório)</span><input type="text" id="repCliente" class="input" placeholder="Nome do cliente"></label>
+              <label class="cc-field"><span>Função / cargo (opcional)</span><input type="text" id="repCargo" class="input" placeholder="Ex.: Auxiliar de acabamento"></label>
+            </div>
           </section>
 
           <section class="cc-card">
@@ -237,7 +284,8 @@
             <p class="cc-hint">Cada linha em reais e em % do salário.</p>
             <table><tbody id="outEmpresa"></tbody></table>
             <div class="cc-bigs">
-              <div class="cc-big"><div class="cc-big-lbl">Custo mensal</div><div class="cc-big-val" id="ccMensal">—</div></div>
+              <div class="cc-big cc-caixa"><div class="cc-big-lbl">Caixa mensal</div><div class="cc-big-val" id="ccCaixa">—</div><div class="cc-big-sub">saída efetiva/mês</div></div>
+              <div class="cc-big"><div class="cc-big-lbl">Custo mensal total</div><div class="cc-big-val" id="ccMensal">—</div><div class="cc-big-sub">com provisões</div></div>
               <div class="cc-big"><div class="cc-big-lbl">Custo anual</div><div class="cc-big-val" id="ccAnual">—</div></div>
               <div class="cc-big cc-mult"><div class="cc-big-lbl">Multiplicador</div><div class="cc-big-val" id="ccMult">—</div></div>
             </div>
@@ -249,10 +297,15 @@
             <table><tbody id="outLiquido"></tbody></table>
             <p class="cc-nota" id="liqNota"></p>
           </section>
+
+          <button type="button" class="btn btn-primary" id="btnReport" style="width:100%;">Gerar relatório para o cliente</button>
+          <p class="cc-hint" style="text-align:center; margin-top:8px;">Abre a janela de impressão — escolha “Salvar como PDF”.</p>
         </div>
       </div>
     </main>
   </div>
+
+  <div id="reportArea"></div>
 
   <script type="module">
     import { getCurrentUser, signOut } from './assets/js/supabase.js';
@@ -286,9 +339,13 @@
       { on:'onFGTS', pct:'pctFGTS', label:'FGTS' },
     ];
 
+    let last = {};
+    let regimeAtual = 'Simples Nacional';
+
     // ---------- regime ----------
     function setRegime(r){
       const simples = (r === 'simples');
+      regimeAtual = simples ? 'Simples Nacional' : 'Lucro Presumido ou Real';
       document.getElementById('onINSS').checked = !simples;
       document.getElementById('onRAT').checked  = !simples;
       document.getElementById('onTerc').checked = !simples;
@@ -398,28 +455,41 @@
         if (val) { custTotal += amt; custLines.push({ lbl, amt, tipo, val }); }
       });
 
-      // ---- tabela de custo ----
-      let rows = line('Salário base', sal, sal);
+      // ---- composição: caixa mensal vs provisões ----
+      const elCaixa = [];
+      elCaixa.push({ lbl:'Salário base', v: sal });
+      let patronalTotal = 0;
       patronais.forEach(p => {
         if (chk(p.on)) {
           const r = getNum(p.pct)/100;
-          rows += line(p.label + ' (' + pctNum(r*100) + ')', sal * r, sal);
+          const v = sal * r;
+          patronalTotal += v;
+          elCaixa.push({ lbl: p.label + ' (' + pctNum(r*100) + ')', v });
         }
       });
-      if (prov13) rows += line('13º salário', prov13, sal);
-      if (provFer) rows += line('Férias + 1/3', provFer, sal);
-      if (encProv) rows += line('Encargos sobre 13º e férias', encProv, sal);
-      if (multa) rows += line('Multa FGTS (rescisão)', multa, sal);
-      benLines.forEach(b => rows += line(b.lbl, b.net, sal));
-      custLines.forEach(c => rows += line(c.lbl + (c.tipo === '%' ? ' (' + pctNum(c.val) + ')' : ''), c.amt, sal));
+      benLines.forEach(b => elCaixa.push({ lbl: b.lbl, v: b.net }));
+      custLines.forEach(c => elCaixa.push({ lbl: c.lbl + (c.tipo === '%' ? ' (' + pctNum(c.val) + ')' : ''), v: c.amt }));
 
-      let patronalTotal = 0;
-      patronais.forEach(p => { if (chk(p.on)) patronalTotal += sal * getNum(p.pct)/100; });
-      const totalMensal = sal + patronalTotal + prov13 + provFer + encProv + multa + benTotal + custTotal;
+      const elProv = [];
+      if (prov13) elProv.push({ lbl:'13º salário', v: prov13 });
+      if (provFer) elProv.push({ lbl:'Férias + 1/3', v: provFer });
+      if (encProv) elProv.push({ lbl:'Encargos sobre 13º e férias', v: encProv });
+      if (multa) elProv.push({ lbl:'Multa FGTS (rescisão)', v: multa });
 
+      const caixaMensal = elCaixa.reduce((s, x) => s + x.v, 0);
+      const provTotal = elProv.reduce((s, x) => s + x.v, 0);
+      const totalMensal = caixaMensal + provTotal;
+
+      let rows = elCaixa.map(x => line(x.lbl, x.v, sal)).join('');
+      rows += subRow('Saída de caixa mensal', caixaMensal, sal);
+      if (elProv.length) {
+        rows += elProv.map(x => line(x.lbl, x.v, sal)).join('');
+        rows += subRow('Provisões (13º, férias, rescisão)', provTotal, sal);
+      }
       rows += '<tr class="cc-total"><td>Custo mensal total</td><td class="cc-num">' + money(totalMensal) + '</td><td class="cc-num cc-sub">' + pctOf(totalMensal, sal) + '</td></tr>';
       document.getElementById('outEmpresa').innerHTML = rows;
 
+      document.getElementById('ccCaixa').textContent = money(caixaMensal);
       document.getElementById('ccMensal').textContent = money(totalMensal);
       document.getElementById('ccAnual').textContent = money(totalMensal * 12);
       document.getElementById('ccMult').textContent = sal > 0 ? '×' + (totalMensal/sal).toLocaleString('pt-BR',{minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
@@ -456,15 +526,74 @@
       document.getElementById('liqNota').textContent =
         'INSS: alíquota ' + pctNum(inssAliq*100) + ' (base ' + money(Math.min(sal, teto)) + '). ' +
         'IRRF: base de cálculo ' + money(baseIR) + ' — ' + redutorNota + '.';
+
+      last = { sal, regimeLabel: regimeAtual, elCaixa, elProv, caixaMensal, provTotal, totalMensal, totalAnual: totalMensal*12, inss, ir, descTotal, liquido, inssAliq, baseIR, redutorNota };
     }
 
     function line(label, v, base){
       return '<tr><td>' + escapeHtml(label) + '</td><td class="cc-num">' + money(v) + '</td><td class="cc-num cc-sub">' + pctOf(v, base) + '</td></tr>';
     }
+    function subRow(label, v, base){
+      return '<tr class="cc-subtot"><td>' + escapeHtml(label) + '</td><td class="cc-num">' + money(v) + '</td><td class="cc-num cc-sub">' + pctOf(v, base) + '</td></tr>';
+    }
     function lineL(label, v){
       return '<tr><td>' + escapeHtml(label) + '</td><td class="cc-num">' + money(v) + '</td></tr>';
     }
     function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+    // ---------- relatório para o cliente ----------
+    function buildReport(){
+      calc();
+      const cliente = (document.getElementById('repCliente').value || '').trim();
+      const cargo = (document.getElementById('repCargo').value || '').trim();
+      const dataStr = new Date().toLocaleDateString('pt-BR');
+      const logoEl = document.querySelector('.topbar-logo img');
+      const logoSrc = logoEl ? logoEl.src : 'assets/logo-mr.png';
+      const rowR = (x) => '<tr><td>' + escapeHtml(x.lbl) + '</td><td class="r">' + money(x.v) + '</td><td class="r pc">' + pctOf(x.v, last.sal) + '</td></tr>';
+      const caixaRows = (last.elCaixa || []).map(rowR).join('');
+      const provRows = (last.elProv || []).map(rowR).join('');
+      const provBlock = (last.elProv && last.elProv.length)
+        ? '<tr class="grp"><td colspan="3">Provisões — pagas em outros momentos</td></tr>' + provRows +
+          '<tr class="sub"><td>Subtotal — provisões</td><td class="r">' + money(last.provTotal) + '</td><td class="r pc">' + pctOf(last.provTotal, last.sal) + '</td></tr>'
+        : '';
+      const html =
+        '<div class="rep">' +
+          '<div class="rep-head"><img src="' + logoSrc + '" alt="" class="rep-logo"><div class="rep-firm"><div class="rep-firm-name">Macedo &amp; Reis Contabilidade</div><div class="rep-firm-sub">CRC/RS 006418/O</div></div></div>' +
+          '<h1 class="rep-title">Simulação de custo de funcionário</h1>' +
+          '<div class="rep-meta">' +
+            (cliente ? '<div><b>Cliente:</b> ' + escapeHtml(cliente) + '</div>' : '') +
+            (cargo ? '<div><b>Função:</b> ' + escapeHtml(cargo) + '</div>' : '') +
+            '<div><b>Salário base:</b> ' + money(last.sal) + '</div>' +
+            '<div><b>Regime:</b> ' + escapeHtml(last.regimeLabel || '') + '</div>' +
+            '<div><b>Data:</b> ' + dataStr + '</div>' +
+          '</div>' +
+          '<div class="rep-cards">' +
+            '<div class="rep-card hl"><span>Custo mensal de caixa</span><b>' + money(last.caixaMensal) + '</b><i>saída efetiva todo mês</i></div>' +
+            '<div class="rep-card"><span>Custo mensal total</span><b>' + money(last.totalMensal) + '</b><i>com provisões (competência)</i></div>' +
+            '<div class="rep-card"><span>Custo anual</span><b>' + money(last.totalAnual) + '</b><i>total × 12</i></div>' +
+          '</div>' +
+          '<h2 class="rep-h2">Composição do custo mensal</h2>' +
+          '<table class="rep-tbl"><thead><tr><th>Item</th><th class="r">Valor</th><th class="r">% do salário</th></tr></thead><tbody>' +
+            '<tr class="grp"><td colspan="3">Saída de caixa mensal</td></tr>' + caixaRows +
+            '<tr class="sub"><td>Subtotal — caixa mensal</td><td class="r">' + money(last.caixaMensal) + '</td><td class="r pc">' + pctOf(last.caixaMensal, last.sal) + '</td></tr>' +
+            provBlock +
+          '</tbody>' +
+          '<tfoot><tr><td>Custo mensal total</td><td class="r">' + money(last.totalMensal) + '</td><td class="r pc">' + pctOf(last.totalMensal, last.sal) + '</td></tr></tfoot></table>' +
+          '<p class="rep-explain"><b>Como ler:</b> o <b>custo mensal de caixa</b> (' + money(last.caixaMensal) + ') é o que efetivamente sai do caixa todo mês — salário, encargos recolhidos no mês e benefícios. As <b>provisões</b> (' + money(last.provTotal) + ') — 13º, férias + 1/3 e multa de FGTS — são apropriadas mensalmente por competência, mas pagas em outros momentos (13º no fim do ano, férias quando gozadas, multa apenas em rescisão). O <b>custo mensal total</b> (' + money(last.totalMensal) + ') considera tudo e, multiplicado por 12, chega ao custo anual.</p>' +
+          '<h2 class="rep-h2">Líquido do funcionário</h2>' +
+          '<table class="rep-tbl"><tbody>' +
+            '<tr><td>Salário bruto</td><td class="r">' + money(last.sal) + '</td></tr>' +
+            '<tr><td>(−) INSS</td><td class="r">' + money(-last.inss) + '</td></tr>' +
+            '<tr><td>(−) IRRF</td><td class="r">' + money(-last.ir) + '</td></tr>' +
+            (last.descTotal > 0 ? '<tr><td>(−) Descontos em benefícios</td><td class="r">' + money(-last.descTotal) + '</td></tr>' : '') +
+          '</tbody><tfoot><tr><td>Líquido a receber</td><td class="r">' + money(last.liquido) + '</td></tr></tfoot></table>' +
+          '<p class="rep-note">Valores estimados com base nos parâmetros informados em ' + dataStr + '. Encargos, provisões e benefícios podem variar conforme a convenção coletiva aplicável e a legislação vigente. Documento de caráter informativo/orientativo, que não substitui a folha de pagamento oficial.</p>' +
+          '<div class="rep-foot">Macedo &amp; Reis Contabilidade · CRC/RS 006418/O · Três Coroas/RS</div>' +
+        '</div>';
+      document.getElementById('reportArea').innerHTML = html;
+      window.print();
+    }
+    document.getElementById('btnReport').addEventListener('click', buildReport);
 
     // recalcular em qualquer mudança dos campos estáticos
     document.querySelectorAll('.cc-left input, .cc-left select').forEach(el => {
