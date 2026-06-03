@@ -126,6 +126,16 @@
         <a id="dAbrirPdf" class="alv-doc-link" style="display:none;cursor:pointer;">Abrir PDF da convenção ↗</a>
         <div class="conv-pisos-detalhe-head">Pisos por função</div>
         <div id="dPisos"></div>
+
+        <div class="conv-consulta">
+          <div class="conv-consulta-head">Consulta rápida</div>
+          <label class="fa-field"><span>Descreva a função / o que a pessoa vai fazer</span><textarea id="cqDesc" class="input" rows="2" placeholder="Ex.: acabamento em material de gráfica e atendimento ao cliente"></textarea></label>
+          <div class="conv-consulta-row">
+            <label class="fa-field" style="flex:1;"><span>Salário pretendido (opcional)</span><input type="number" step="0.01" id="cqSalario" class="input" placeholder="Ex.: 1800"></label>
+            <button class="btn btn-primary btn-sm" id="cqBtn" type="button">Consultar</button>
+          </div>
+          <div id="cqResult"></div>
+        </div>
       </div>
       <div class="fa-modal-foot">
         <button class="btn btn-danger btn-sm" id="dExcluir" style="margin-right:auto;">Excluir</button>
@@ -474,6 +484,9 @@
           '</tr>').join('')+
           '</tbody></table>';
       }
+      document.getElementById('cqDesc').value = '';
+      document.getElementById('cqSalario').value = '';
+      document.getElementById('cqResult').innerHTML = '';
       ovDet.classList.add('is-open');
     }
 
@@ -511,6 +524,64 @@
       fecharDet();
       await carregar();
     });
+
+    // ---------- consulta rápida ----------
+    document.getElementById('cqBtn').addEventListener('click', consultar);
+    async function consultar(){
+      if (!detAtual) return;
+      const pergunta = document.getElementById('cqDesc').value.trim();
+      if (!pergunta) { alert('Descreva a função para consultar.'); return; }
+      const salEl = document.getElementById('cqSalario');
+      const salario = salEl.value !== '' ? Number(salEl.value) : null;
+      const pisos = (detAtual.convencao_pisos || []).map(p => ({ funcao: p.funcao, piso_salarial: p.piso_salarial, jornada: p.jornada, observacoes: p.observacoes }));
+      const out = document.getElementById('cqResult');
+      if (!pisos.length) { out.innerHTML = '<div class="cq-empty">Esta convenção não tem pisos cadastrados para consultar.</div>'; return; }
+      const btn = document.getElementById('cqBtn');
+      btn.disabled = true; btn.innerHTML = '<span class="spinner spinner-sm"></span>Consultando…';
+      out.innerHTML = '';
+      try {
+        const convencao = { categoria: detAtual.categoria, vigencia_fim: detAtual.vigencia_fim, data_base: detAtual.data_base, reajuste_percentual: detAtual.reajuste_percentual };
+        const { data: resp, error } = await supabase.functions.invoke('extract-document', { body: { modo: 'consulta', pergunta, salario, convencao, pisos } });
+        if (error) throw new Error(error.message || 'Erro na função');
+        const d = resp && resp.data ? resp.data : null;
+        if (!d) throw new Error('A consulta não retornou resultado.');
+        renderConsulta(d);
+      } catch (e) {
+        out.innerHTML = '<div class="cq-empty" style="color:var(--danger);">Não consegui consultar: ' + escapeHtml(e.message || String(e)) + '</div>';
+      } finally {
+        btn.disabled = false; btn.textContent = 'Consultar';
+      }
+    }
+    function renderConsulta(d){
+      const out = document.getElementById('cqResult');
+      const sugs = Array.isArray(d.sugestoes) ? d.sugestoes : [];
+      let html = '';
+      if (d.veredito_salario) {
+        const v = String(d.veredito_salario);
+        const abaixo = /abaixo/i.test(v);
+        const okp = /acima|no piso/i.test(v);
+        const cls = abaixo ? 'cq-vered-bad' : (okp ? 'cq-vered-ok' : 'cq-vered-neutro');
+        html += '<div class="cq-veredito ' + cls + '">' + escapeHtml(v) + '</div>';
+      }
+      if (sugs.length) {
+        html += sugs.map(s => {
+          const ad = String(s.aderencia || '').toLowerCase();
+          const adcls = ad === 'alta' ? 'cq-ad-alta' : (ad === 'media' ? 'cq-ad-media' : 'cq-ad-baixa');
+          return '<div class="cq-sug">'+
+            '<div class="cq-sug-top">'+
+              '<span class="cq-sug-funcao">'+escapeHtml(s.funcao||'—')+'</span>'+
+              '<span class="cq-sug-piso">'+(s.piso_salarial!=null?fmtMoney(s.piso_salarial):'piso n/d')+'</span>'+
+              '<span class="cq-ad '+adcls+'">'+escapeHtml(s.aderencia||'—')+'</span>'+
+            '</div>'+
+            (s.justificativa ? '<div class="cq-sug-just">'+escapeHtml(s.justificativa)+'</div>' : '')+
+          '</div>';
+        }).join('');
+      } else {
+        html += '<div class="cq-empty">Nenhuma função se encaixou bem na descrição.</div>';
+      }
+      if (d.observacoes) html += '<div class="cq-obs">'+escapeHtml(d.observacoes)+'</div>';
+      out.innerHTML = html;
+    }
 
     // ---------- helpers ----------
     function fmtMoney(n){ try { return Number(n).toLocaleString('pt-BR', { style:'currency', currency:'BRL' }); } catch(e){ return 'R$ ' + n; } }
@@ -579,6 +650,24 @@
     .alv-doc-link { display:inline-flex; align-items:center; gap:6px; color:#8AAEC8; font-size:13px; text-decoration:none; margin-bottom:14px; }
     .alv-doc-link:hover { color:#C5D8E8; text-decoration:underline; }
 
+    .conv-consulta { border-top:1px solid rgba(255,255,255,.08); margin-top:16px; padding-top:14px; }
+    .conv-consulta-head { font-size:15px; font-weight:600; color:#E6EBF2; margin-bottom:10px; }
+    .conv-consulta-row { display:flex; gap:10px; align-items:flex-end; }
+    .cq-veredito { border-radius:10px; padding:10px 13px; font-size:14px; font-weight:600; margin:12px 0; }
+    .cq-vered-ok { color:#3FB07A; background:rgba(63,176,122,.14); border:1px solid rgba(63,176,122,.3); }
+    .cq-vered-bad { color:#E06C6C; background:rgba(224,108,108,.14); border:1px solid rgba(224,108,108,.35); }
+    .cq-vered-neutro { color:#8AAEC8; background:rgba(91,130,166,.14); border:1px solid rgba(91,130,166,.3); }
+    .cq-sug { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:11px 13px; margin-bottom:8px; }
+    .cq-sug-top { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .cq-sug-funcao { font-weight:600; color:#E6EBF2; font-size:14px; flex:1; min-width:120px; }
+    .cq-sug-piso { color:#8AAEC8; font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .cq-ad { font-size:11px; font-weight:600; border-radius:999px; padding:2px 9px; text-transform:uppercase; letter-spacing:.03em; }
+    .cq-ad-alta { color:#3FB07A; background:rgba(63,176,122,.14); border:1px solid rgba(63,176,122,.3); }
+    .cq-ad-media { color:#E3B341; background:rgba(227,179,65,.14); border:1px solid rgba(227,179,65,.3); }
+    .cq-ad-baixa { color:#8A93A6; background:rgba(138,147,166,.12); border:1px solid rgba(138,147,166,.3); }
+    .cq-sug-just { color:#C5D8E8; font-size:13px; margin-top:6px; line-height:1.45; }
+    .cq-obs { color:#8A93A6; font-size:13px; margin-top:10px; font-style:italic; }
+    .cq-empty { color:#8A93A6; font-size:13px; padding:8px 0; }
     .fa-modal-overlay { position:fixed; inset:0; background:rgba(8,12,18,.72); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
     .fa-modal-overlay.is-open { display:flex; }
     .fa-modal { width:100%; max-width:520px; background:#141A22; border:1px solid rgba(255,255,255,.10); border-radius:16px; overflow:hidden; }
