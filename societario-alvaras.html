@@ -41,12 +41,12 @@
       </div>
 
       <div class="fa-focus">
-        <button class="fa-focus-card fc-danger" data-f="atrasados"><span class="fc-num" id="cAtras">0</span><span class="fc-lbl">Atrasados</span></button>
+        <button class="fa-focus-card fc-danger" data-f="vencidos"><span class="fc-num" id="cVenc">0</span><span class="fc-lbl">Vencidos</span></button>
         <button class="fa-focus-card" data-f="prox30"><span class="fc-num" id="cProx">0</span><span class="fc-lbl">Vencem em 30 dias</span></button>
+        <button class="fa-focus-card" data-f="vigentes"><span class="fc-num" id="cVig">0</span><span class="fc-lbl">Vigentes</span></button>
+        <button class="fa-focus-card" data-f="renovacao"><span class="fc-num" id="cRenov">0</span><span class="fc-lbl">Em renovação</span></button>
         <button class="fa-focus-card" data-f="aconfirmar"><span class="fc-num" id="cAConf">0</span><span class="fc-lbl">A confirmar</span></button>
-        <button class="fa-focus-card is-active" data-f="abertos"><span class="fc-num" id="cAbertos">0</span><span class="fc-lbl">Em aberto</span></button>
-        <button class="fa-focus-card" data-f="concluidos"><span class="fc-num" id="cConcl">0</span><span class="fc-lbl">Concluídos</span></button>
-        <button class="fa-focus-card" data-f="todos"><span class="fc-num" id="cTodos">0</span><span class="fc-lbl">Todos</span></button>
+        <button class="fa-focus-card is-active" data-f="todos"><span class="fc-num" id="cTodos">0</span><span class="fc-lbl">Todos</span></button>
       </div>
 
       <div class="toolbar">
@@ -127,9 +127,9 @@
         <div class="fa-field-row">
           <label class="fa-field"><span>Status</span>
             <select id="dStatus" class="input">
+              <option value="vigente">Vigente</option>
+              <option value="em_renovacao">Em renovação</option>
               <option value="a_confirmar">A confirmar</option>
-              <option value="em_andamento">Em andamento</option>
-              <option value="aguardando">Aguardando</option>
             </select>
           </label>
           <label class="fa-field"><span>Vencimento</span><input type="date" id="dVenc" class="input"></label>
@@ -156,8 +156,7 @@
         <label class="fa-field"><span>Observações</span><textarea id="dObs" class="input" rows="2"></textarea></label>
         <div class="alv-acoes">
           <button class="btn btn-ghost btn-sm" id="dSalvar">Salvar alterações</button>
-          <button class="btn btn-sm alv-btn-ok" id="dConcluir">Concluir alvará</button>
-          <button class="btn btn-ghost btn-sm" id="dReabrir" hidden>Reabrir</button>
+          <button class="btn btn-sm alv-btn-ok" id="dRenovar">Renovar</button>
         </div>
 
         <hr class="alv-hr">
@@ -193,7 +192,7 @@
     let clientesNome = {};
     let clientesCidade = {};
     let usuarioEmail = null;
-    let filtro = 'abertos';
+    let filtro = 'todos';
     let alvAtual = null;
 
     const elLista = document.getElementById('lista');
@@ -266,29 +265,26 @@
 
     function nomeEmpresa(a){ return (a.clientes && a.clientes.nome_principal) || clientesNome[a.cliente_id] || '— sem empresa —'; }
     function aConfirmar(a){ return a.status === 'a_confirmar'; }
-    function aberto(a){ return a.status !== 'concluido' && a.status !== 'a_confirmar'; }
-    function atrasado(a){ return aberto(a) && a.vencimento && a.vencimento < hojeStr; }
+    function emRenovacao(a){ return a.status === 'em_renovacao'; }
+    function vencido(a){ return !aConfirmar(a) && a.vencimento && a.vencimento < hojeStr; }
+    function vigente(a){ return !aConfirmar(a) && !emRenovacao(a) && !vencido(a); }
+    function venceEm30(a){ return vigente(a) && a.vencimento && a.vencimento <= em30Str; }
 
     function atualizarContadores(){
-      const cAtras = alvaras.filter(atrasado).length;
-      const cProx = alvaras.filter(a => aberto(a) && a.vencimento && a.vencimento >= hojeStr && a.vencimento <= em30Str).length;
-      const cAConf = alvaras.filter(aConfirmar).length;
-      const cAbertos = alvaras.filter(aberto).length;
-      const cConcl = alvaras.filter(a => a.status==='concluido').length;
-      document.getElementById('cAtras').textContent = cAtras;
-      document.getElementById('cProx').textContent = cProx;
-      document.getElementById('cAConf').textContent = cAConf;
-      document.getElementById('cAbertos').textContent = cAbertos;
-      document.getElementById('cConcl').textContent = cConcl;
+      document.getElementById('cVenc').textContent = alvaras.filter(vencido).length;
+      document.getElementById('cProx').textContent = alvaras.filter(venceEm30).length;
+      document.getElementById('cRenov').textContent = alvaras.filter(emRenovacao).length;
+      document.getElementById('cAConf').textContent = alvaras.filter(aConfirmar).length;
+      document.getElementById('cVig').textContent = alvaras.filter(vigente).length;
       document.getElementById('cTodos').textContent = alvaras.length;
     }
 
     function aplicaFiltro(a){
-      if (filtro==='atrasados') return atrasado(a);
-      if (filtro==='prox30') return aberto(a) && a.vencimento && a.vencimento>=hojeStr && a.vencimento<=em30Str;
+      if (filtro==='vencidos') return vencido(a);
+      if (filtro==='prox30') return venceEm30(a);
+      if (filtro==='renovacao') return emRenovacao(a);
       if (filtro==='aconfirmar') return aConfirmar(a);
-      if (filtro==='abertos') return aberto(a);
-      if (filtro==='concluidos') return a.status==='concluido';
+      if (filtro==='vigentes') return vigente(a);
       return true;
     }
 
@@ -301,12 +297,12 @@
       if (!itens.length){ elLista.innerHTML=''; elVazio.hidden=false; return; }
       elVazio.hidden = true;
       elLista.innerHTML = itens.map(a => {
-        const pill = a.status==='concluido' ? '<span class="pill pill-ok">Concluído</span>'
+        const pill = vencido(a) ? '<span class="pill pill-venc">Vencido</span>'
           : a.status==='a_confirmar' ? '<span class="pill pill-conf">A confirmar</span>'
-          : a.status==='aguardando' ? '<span class="pill pill-agu">Aguardando</span>'
-          : '<span class="pill pill-and">Em andamento</span>';
+          : a.status==='em_renovacao' ? '<span class="pill pill-renov">Em renovação</span>'
+          : '<span class="pill pill-vig">Vigente</span>';
         const rec = (a.recorrencia && a.recorrencia!=='nenhuma') ? `<span class="alv-recorr">↻ ${RECOR_LBL[a.recorrencia]}</span>` : '';
-        const vencCls = atrasado(a) ? 'alv-venc-atras' : '';
+        const vencCls = vencido(a) ? 'alv-venc-atras' : '';
         const vencTxt = a.vencimento ? `Vence ${fmtData(a.vencimento)}` : 'Sem vencimento';
         return `<div class="alv-card" data-id="${a.id}">
           <div class="alv-top">
@@ -457,7 +453,7 @@
         recorrencia: document.getElementById('nRecorr').value,
         link_drive: document.getElementById('nLink').value.trim() || null,
         observacoes: document.getElementById('nObs').value.trim() || null,
-        status: 'em_andamento'
+        status: 'vigente'
       };
       const { data: ins, error } = await supabase.from('alvaras').insert(novo).select('id').single();
       btn.disabled = false; btn.textContent = 'Cadastrar alvará';
@@ -479,7 +475,7 @@
       const a = alvAtual;
       document.getElementById('dTipo').textContent = a.tipo || 'Alvará';
       document.getElementById('dEmpresa').textContent = nomeEmpresa(a);
-      document.getElementById('dStatus').value = a.status==='concluido' ? 'em_andamento' : (a.status||'em_andamento');
+      document.getElementById('dStatus').value = ['vigente','em_renovacao','a_confirmar'].includes(a.status) ? a.status : 'vigente';
       document.getElementById('dVenc').value = a.vencimento ? String(a.vencimento).slice(0,10) : '';
       document.getElementById('dNumero').value = a.numero || '';
       document.getElementById('dOrgao').value = a.orgao || '';
@@ -492,12 +488,9 @@
       if (a.link_drive) { dLinkAbrir.href = a.link_drive; dLinkAbrir.style.display = 'inline-block'; }
       else { dLinkAbrir.removeAttribute('href'); dLinkAbrir.style.display = 'none'; }
 
-      const concluido = a.status==='concluido';
       const banner = document.getElementById('dConcBanner');
-      banner.hidden = !concluido;
-      if (concluido) banner.textContent = 'Concluído em ' + fmtDataHora(a.concluido_em) + (a.concluido_por ? ' por ' + a.concluido_por : '');
-      document.getElementById('dConcluir').hidden = concluido;
-      document.getElementById('dReabrir').hidden = !concluido;
+      if (vencido(a)) { banner.hidden = false; banner.className = 'alv-venc-banner'; banner.textContent = 'Vencido em ' + fmtData(a.vencimento) + ' — precisa renovar.'; }
+      else { banner.hidden = true; banner.className = 'alv-conc-banner'; }
 
       ovDet.classList.add('is-open');
       await carregarTimeline(id);
@@ -531,9 +524,9 @@
     document.getElementById('dSalvar').addEventListener('click', async () => {
       if (!alvAtual) return;
       const novoStatus = document.getElementById('dStatus').value;
-      const statusMudou = !( alvAtual.status==='concluido' ) && novoStatus !== alvAtual.status;
+      const statusMudou = novoStatus !== alvAtual.status;
       const patch = {
-        status: alvAtual.status==='concluido' ? alvAtual.status : novoStatus,
+        status: novoStatus,
         vencimento: document.getElementById('dVenc').value || null,
         numero: document.getElementById('dNumero').value.trim() || null,
         orgao: document.getElementById('dOrgao').value.trim() || null,
@@ -547,7 +540,7 @@
       btn.disabled = true; btn.innerHTML = '<span class="spinner spinner-sm"></span>';
       const { error } = await supabase.from('alvaras').update(patch).eq('id', alvAtual.id);
       if (!error && statusMudou) {
-        await supabase.from('alvara_historico').insert({ alvara_id: alvAtual.id, descricao: 'Status alterado para: ' + (novoStatus==='aguardando'?'Aguardando':novoStatus==='a_confirmar'?'A confirmar':'Em andamento') + '.', autor: usuarioEmail });
+        await supabase.from('alvara_historico').insert({ alvara_id: alvAtual.id, descricao: 'Status alterado para: ' + ({vigente:'Vigente', em_renovacao:'Em renovação', a_confirmar:'A confirmar'}[novoStatus] || novoStatus) + '.', autor: usuarioEmail });
       }
       btn.disabled = false; btn.textContent = 'Salvar alterações';
       if (error) { alert('Erro ao salvar: ' + error.message); return; }
@@ -556,42 +549,35 @@
       if (statusMudou) await carregarTimeline(alvAtual.id);
     });
 
-    document.getElementById('dConcluir').addEventListener('click', async () => {
+    document.getElementById('dRenovar').addEventListener('click', async () => {
       if (!alvAtual) return;
-      const recorrente = alvAtual.recorrencia && alvAtual.recorrencia !== 'nenhuma';
-      const prox = recorrente ? proxVenc(alvAtual.vencimento, alvAtual.recorrencia) : null;
-      const msg = recorrente
-        ? `Concluir este alvará?\n\nComo é recorrente (${RECOR_LBL[alvAtual.recorrencia]}), um novo será gerado automaticamente com vencimento em ${fmtData(prox)}.`
-        : 'Concluir este alvará?';
-      if (!confirm(msg)) return;
-
-      const agora = new Date().toISOString();
-      const { error } = await supabase.from('alvaras').update({ status:'concluido', concluido_em:agora, concluido_por:usuarioEmail }).eq('id', alvAtual.id);
-      if (error) { alert('Erro ao concluir: ' + error.message); return; }
-      await supabase.from('alvara_historico').insert({ alvara_id: alvAtual.id, descricao:'Alvará concluído.', autor: usuarioEmail });
-
-      if (recorrente) {
-        const novo = {
-          cliente_id: alvAtual.cliente_id, tipo: alvAtual.tipo, cidade: alvAtual.cidade,
-          orgao: alvAtual.orgao,
-          responsavel: alvAtual.responsavel, vencimento: prox, recorrencia: alvAtual.recorrencia,
-          observacoes: alvAtual.observacoes, status:'em_andamento'
-        };
-        const { data: ins } = await supabase.from('alvaras').insert(novo).select('id').single();
-        if (ins) await supabase.from('alvara_historico').insert({ alvara_id: ins.id, descricao: `Renovação gerada automaticamente (ciclo anterior venceu em ${fmtData(alvAtual.vencimento)}).`, autor: usuarioEmail });
+      const novaData = document.getElementById('dVenc').value;
+      if (!novaData) { alert('Informe a nova data de vencimento (campo Vencimento) antes de renovar.'); return; }
+      const atual = alvAtual.vencimento ? String(alvAtual.vencimento).slice(0,10) : '';
+      if (novaData === atual && !confirm('A data de vencimento continua a mesma. Renovar mesmo assim?')) return;
+      const antiga = alvAtual.vencimento ? fmtData(alvAtual.vencimento) : '—';
+      const patch = {
+        status: 'vigente',
+        vencimento: novaData,
+        numero: document.getElementById('dNumero').value.trim() || null,
+        orgao: document.getElementById('dOrgao').value.trim() || null,
+        responsavel: document.getElementById('dResp').value.trim() || null,
+        recorrencia: document.getElementById('dRecorr').value,
+        cidade: document.getElementById('dCidade').value.trim() || null,
+        link_drive: document.getElementById('dLink').value.trim() || null,
+        observacoes: document.getElementById('dObs').value.trim() || null
+      };
+      const btn = document.getElementById('dRenovar');
+      btn.disabled = true; btn.innerHTML = '<span class="spinner spinner-sm"></span>';
+      const { error } = await supabase.from('alvaras').update(patch).eq('id', alvAtual.id);
+      if (!error) {
+        await supabase.from('alvara_historico').insert({ alvara_id: alvAtual.id, descricao: 'Renovado: vencimento ' + antiga + ' → ' + fmtData(novaData) + '.', autor: usuarioEmail });
       }
-      fecharDet();
+      btn.disabled = false; btn.textContent = 'Renovar';
+      if (error) { alert('Erro ao renovar: ' + error.message); return; }
+      Object.assign(alvAtual, patch);
       await carregar();
-      if (recorrente) alert('Alvará concluído. Novo gerado para ' + fmtData(prox) + '.');
-    });
-
-    document.getElementById('dReabrir').addEventListener('click', async () => {
-      if (!alvAtual) return;
-      const { error } = await supabase.from('alvaras').update({ status:'em_andamento', concluido_em:null, concluido_por:null }).eq('id', alvAtual.id);
-      if (error) { alert('Erro ao reabrir: ' + error.message); return; }
-      await supabase.from('alvara_historico').insert({ alvara_id: alvAtual.id, descricao:'Alvará reaberto.', autor: usuarioEmail });
-      fecharDet();
-      await carregar();
+      await carregarTimeline(alvAtual.id);
     });
 
     document.getElementById('dExcluir').addEventListener('click', async () => {
@@ -637,6 +623,9 @@
     .pill-agu { color:#E3B341; border-color:rgba(227,179,65,.45); }
     .pill-ok  { color:#3FB07A; border-color:rgba(63,176,122,.45); }
     .pill-conf { color:#8A93A6; border-color:rgba(138,147,166,.45); }
+    .pill-vig { color:#3FB07A; border-color:rgba(63,176,122,.45); }
+    .pill-renov { color:#E3B341; border-color:rgba(227,179,65,.45); }
+    .pill-venc { color:#E06C6C; border-color:rgba(224,108,108,.5); }
     .alv-recorr { font-size:12px; color:#8AAEC8; background:rgba(91,130,166,.12); border:1px solid rgba(91,130,166,.25); border-radius:999px; padding:2px 10px; }
 
     .fa-modal-overlay { position:fixed; inset:0; background:rgba(8,12,18,.72); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
@@ -659,6 +648,7 @@
     .alv-hr { border:none; border-top:1px solid rgba(255,255,255,.08); margin:8px 0 2px; }
     .alv-tl-head { font-weight:600; color:#E6EBF2; font-size:15px; }
     .alv-conc-banner { background:rgba(63,176,122,.12); border:1px solid rgba(63,176,122,.35); color:#3FB07A; border-radius:10px; padding:8px 12px; font-size:13px; }
+    .alv-venc-banner { background:rgba(224,108,108,.12); border:1px solid rgba(224,108,108,.4); color:#E06C6C; border-radius:10px; padding:8px 12px; font-size:13px; }
     .alv-excluir-wrap { text-align:right; margin-top:4px; }
     .alv-extrai { background:rgba(91,130,166,.08); border:1px dashed rgba(138,174,200,.35); border-radius:12px; padding:14px 16px; display:flex; flex-direction:column; gap:10px; }
     .alv-extrai-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
