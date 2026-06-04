@@ -55,6 +55,21 @@
     .pr-hist-tit { flex:1; color:#E6EBF2; font-size:14px; font-weight:500; min-width:0; }
     .pr-hist-meta { color:#8A93A6; font-size:12px; white-space:nowrap; }
     .pr-empty { color:#8A93A6; font-size:13px; padding:10px 0; }
+    .rev-panel { margin-top:18px; }
+    .rev-panel:empty { display:none; }
+    .rev-head-lbl { font-size:11px; color:#8A93A6; text-transform:uppercase; letter-spacing:.04em; margin-bottom:8px; }
+    .rev-veredito { background:rgba(91,130,166,.12); border:1px solid rgba(91,130,166,.28); border-radius:10px; padding:10px 13px; color:#C5D8E8; font-size:13.5px; margin-bottom:12px; }
+    .rev-item { border-radius:10px; padding:10px 13px; margin-bottom:8px; border:1px solid rgba(255,255,255,.08); border-left-width:3px; background:rgba(255,255,255,.03); }
+    .rev-item-head { display:flex; align-items:center; gap:8px; margin-bottom:5px; }
+    .rev-sev { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; }
+    .rev-cat { font-size:11px; color:#8A93A6; }
+    .rev-obs { font-size:13.5px; color:#E6EBF2; line-height:1.5; }
+    .rev-sug { font-size:12.5px; color:#8AAEC8; margin-top:5px; }
+    .rev-alta { border-left-color:#E06C6C; } .rev-alta .rev-sev { color:#E06C6C; }
+    .rev-media { border-left-color:#E3B341; } .rev-media .rev-sev { color:#E3B341; }
+    .rev-baixa { border-left-color:#5B82A6; } .rev-baixa .rev-sev { color:#8AAEC8; }
+    .rev-ok { background:rgba(63,176,122,.12); border:1px solid rgba(63,176,122,.28); border-radius:10px; padding:10px 13px; color:#3FB07A; font-size:13.5px; }
+    .rev-err { color:#E06C6C; font-size:13px; padding:8px 0; }
 
     /* relatório / impressão */
     #reportArea { display:none; }
@@ -161,10 +176,12 @@
         </div>
         <div class="pr-actions">
           <button type="button" class="btn btn-primary" id="btnSalvar">Salvar</button>
+          <button type="button" class="btn btn-ghost" id="btnRevisar">Revisar</button>
           <button type="button" class="btn btn-ghost" id="btnPDF">Gerar PDF</button>
           <button type="button" class="btn btn-ghost" id="btnNovo">Novo</button>
           <button type="button" class="btn btn-danger btn-sm" id="btnExcluir" style="margin-left:auto;">Excluir</button>
         </div>
+        <div id="revPanel" class="rev-panel"></div>
       </section>
 
       <!-- HISTÓRICO -->
@@ -323,6 +340,7 @@
       $('edTipoLabel').textContent = editAtual.tipo === 'parecer' ? 'Parecer' : 'Informativo';
       $('edTipoLabel').className = 'pr-tipo-label ' + (editAtual.tipo === 'parecer' ? 'pr-tipo-par' : 'pr-tipo-inf');
       $('btnExcluir').style.display = editAtual.id ? '' : 'none';
+      $('revPanel').innerHTML = '';
       updatePreview();
     }
     function updatePreview(){
@@ -410,13 +428,71 @@
       win.document.close();
     }
 
+    // ---------- revisar ----------
+    $('btnRevisar').addEventListener('click', revisarDoc);
+    async function revisarDoc(){
+      const titulo = $('edTitulo').value.trim();
+      const conteudo = $('edMd').value.trim();
+      if (!conteudo){ alert('Não há documento para revisar.'); return; }
+      const btn = $('btnRevisar'); btn.disabled = true; const prev = btn.textContent;
+      btn.innerHTML = '<span class="spinner spinner-sm"></span>Revisando… conferindo as citações';
+      $('revPanel').innerHTML = '';
+      try {
+        const tipo = editAtual ? editAtual.tipo : 'informativo';
+        const { data: resp, error } = await supabase.functions.invoke('extract-document', { body: { modo: 'revisao', tipo, titulo, conteudo } });
+        if (error) throw new Error(error.message || 'Erro na função');
+        const d = resp && resp.data ? resp.data : null;
+        const texto = d && d.review ? d.review : '';
+        if (!texto) throw new Error('A revisão não retornou nada.');
+        const parsed = tryParseReview(texto);
+        if (parsed) renderReview(parsed);
+        else $('revPanel').innerHTML = '<div class="rev-head-lbl">Revisão</div>' + mdToHtml(texto);
+      } catch (e) {
+        $('revPanel').innerHTML = '<div class="rev-err">Não consegui revisar: ' + escHtml(e.message || String(e)) + '</div>';
+      } finally {
+        btn.disabled = false; btn.textContent = prev;
+      }
+    }
+    function tryParseReview(t){
+      try {
+        const s = String(t);
+        const a = s.indexOf('{'), b = s.lastIndexOf('}');
+        if (a < 0 || b <= a) return null;
+        const o = JSON.parse(s.slice(a, b + 1));
+        if (o && (o.veredito || Array.isArray(o.itens))) return o;
+      } catch (e) {}
+      return null;
+    }
+    function renderReview(d){
+      const sevCls = { alta: 'rev-alta', media: 'rev-media', baixa: 'rev-baixa' };
+      const sevLbl = { alta: 'Crítico', media: 'Atenção', baixa: 'Sugestão' };
+      const itens = Array.isArray(d.itens) ? d.itens : [];
+      let html = '<div class="rev-head-lbl">Revisão' + (itens.length ? ' · ' + itens.length + ' ponto(s)' : '') + '</div>';
+      if (d.veredito) html += '<div class="rev-veredito">' + escHtml(d.veredito) + '</div>';
+      if (itens.length){
+        html += itens.map(function(it){
+          const s = String(it.severidade || 'baixa').toLowerCase();
+          const cls = sevCls[s] || 'rev-baixa';
+          const lbl = sevLbl[s] || 'Nota';
+          return '<div class="rev-item ' + cls + '">' +
+            '<div class="rev-item-head"><span class="rev-sev">' + lbl + '</span>' + (it.categoria ? '<span class="rev-cat">' + escHtml(it.categoria) + '</span>' : '') + '</div>' +
+            '<div class="rev-obs">' + escHtml(it.observacao || '') + '</div>' +
+            (it.sugestao ? '<div class="rev-sug">Sugestão: ' + escHtml(it.sugestao) + '</div>' : '') +
+          '</div>';
+        }).join('');
+      } else {
+        html += '<div class="rev-ok">Nenhum ponto crítico apontado pela revisão automática. Ainda assim, confira antes de enviar — a palavra final é sua.</div>';
+      }
+      $('revPanel').innerHTML = html;
+    }
+
     // ---------- novo / excluir ----------
     $('btnNovo').addEventListener('click', novoDoc);
     function novoDoc(){
       editAtual = null;
       $('fAssunto').value = ''; $('fContexto').value = ''; $('fCliente').value = ''; $('fInstrucoes').value = '';
       $('edTitulo').value = ''; $('edCliente').value = ''; $('edMd').value = ''; $('edPreview').innerHTML = '';
-      $('edStatus').textContent = ''; $('genStatus').textContent = '';
+      $('edStatus').textContent = ''; $('genStatus').textContent = ''; $('revPanel').innerHTML = '';
       $('editorCard').classList.add('is-hidden');
     }
     $('btnExcluir').addEventListener('click', excluirDoc);
