@@ -208,6 +208,7 @@
     let tipoAtual = 'informativo';
     let histAll = [];
     let histFiltro = 'todos';
+    let ultimaRevisao = null;
 
     const $ = (id) => document.getElementById(id);
 
@@ -340,7 +341,7 @@
       $('edTipoLabel').textContent = editAtual.tipo === 'parecer' ? 'Parecer' : 'Informativo';
       $('edTipoLabel').className = 'pr-tipo-label ' + (editAtual.tipo === 'parecer' ? 'pr-tipo-par' : 'pr-tipo-inf');
       $('btnExcluir').style.display = editAtual.id ? '' : 'none';
-      $('revPanel').innerHTML = '';
+      $('revPanel').innerHTML = ''; ultimaRevisao = null;
       updatePreview();
     }
     function updatePreview(){
@@ -445,6 +446,7 @@
         const texto = d && d.review ? d.review : '';
         if (!texto) throw new Error('A revisão não retornou nada.');
         const parsed = tryParseReview(texto);
+        ultimaRevisao = { texto, parsed };
         if (parsed) renderReview(parsed);
         else $('revPanel').innerHTML = '<div class="rev-head-lbl">Revisão</div>' + mdToHtml(texto);
       } catch (e) {
@@ -483,7 +485,37 @@
       } else {
         html += '<div class="rev-ok">Nenhum ponto crítico apontado pela revisão automática. Ainda assim, confira antes de enviar — a palavra final é sua.</div>';
       }
+      if (itens.length){ html += '<button type="button" class="btn btn-primary btn-sm" id="btnCorrigir" style="margin-top:12px;">Corrigir com base na revisão</button>'; }
       $('revPanel').innerHTML = html;
+      const bc = document.getElementById('btnCorrigir');
+      if (bc) bc.addEventListener('click', corrigirDoc);
+    }
+
+    // ---------- corrigir a partir da revisão ----------
+    async function corrigirDoc(){
+      if (!editAtual || !ultimaRevisao) return;
+      if (!confirm('Vou gerar uma versão corrigida aplicando os apontamentos e substituir o texto no editor. Você revisa de novo depois. Continuar?')) return;
+      const conteudo = $('edMd').value.trim();
+      const titulo = $('edTitulo').value.trim();
+      const instrucoes = $('fInstrucoes').value.trim();
+      const bc = document.getElementById('btnCorrigir');
+      if (bc){ bc.disabled = true; bc.innerHTML = '<span class="spinner spinner-sm"></span>Corrigindo… aplicando os apontamentos'; }
+      try {
+        const { data: resp, error } = await supabase.functions.invoke('extract-document', { body: { modo: 'correcao', tipo: editAtual.tipo, titulo, conteudo, revisao: ultimaRevisao.texto, instrucoes } });
+        if (error) throw new Error(error.message || 'Erro na função');
+        const d = resp && resp.data ? resp.data : null;
+        if (!d || !d.markdown) throw new Error('A correção não retornou texto.');
+        const ex = extractTitulo(d.markdown);
+        editAtual.conteudo = limparMeta(ex.body);
+        editAtual.titulo = ex.titulo || editAtual.titulo;
+        ultimaRevisao = null;
+        fillEditor();
+        $('edStatus').textContent = 'Versão corrigida (rascunho) — revise novamente antes de salvar';
+        $('editorCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch (e) {
+        if (bc){ bc.disabled = false; bc.textContent = 'Corrigir com base na revisão'; }
+        alert('Não consegui corrigir: ' + (e.message || String(e)));
+      }
     }
 
     // ---------- novo / excluir ----------
@@ -492,7 +524,7 @@
       editAtual = null;
       $('fAssunto').value = ''; $('fContexto').value = ''; $('fCliente').value = ''; $('fInstrucoes').value = '';
       $('edTitulo').value = ''; $('edCliente').value = ''; $('edMd').value = ''; $('edPreview').innerHTML = '';
-      $('edStatus').textContent = ''; $('genStatus').textContent = ''; $('revPanel').innerHTML = '';
+      $('edStatus').textContent = ''; $('genStatus').textContent = ''; $('revPanel').innerHTML = ''; ultimaRevisao = null;
       $('editorCard').classList.add('is-hidden');
     }
     $('btnExcluir').addEventListener('click', excluirDoc);
