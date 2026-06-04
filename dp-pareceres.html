@@ -448,7 +448,11 @@
         const parsed = tryParseReview(texto);
         ultimaRevisao = { texto, parsed };
         if (parsed) renderReview(parsed);
-        else $('revPanel').innerHTML = '<div class="rev-head-lbl">Revisão</div>' + mdToHtml(texto);
+        else {
+          $('revPanel').innerHTML = '<div class="rev-head-lbl">Revisão</div>' + mdToHtml(texto) + '<button type="button" class="btn btn-primary btn-sm" id="btnCorrigir" style="margin-top:12px;">Corrigir com base na revisão</button>';
+          const bc = document.getElementById('btnCorrigir');
+          if (bc) bc.addEventListener('click', corrigirDoc);
+        }
       } catch (e) {
         $('revPanel').innerHTML = '<div class="rev-err">Não consegui revisar: ' + escHtml(e.message || String(e)) + '</div>';
       } finally {
