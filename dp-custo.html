@@ -591,8 +591,38 @@
           '<p class="rep-note">Valores estimados com base nos parâmetros informados em ' + dataStr + '. Encargos, provisões e benefícios podem variar conforme a convenção coletiva aplicável e a legislação vigente. Documento de caráter informativo/orientativo, que não substitui a folha de pagamento oficial.</p>' +
           '<div class="rep-foot">Macedo &amp; Reis Contabilidade · CRC/RS 006418/O · Três Coroas/RS</div>' +
         '</div>';
-      document.getElementById('reportArea').innerHTML = html;
-      window.print();
+      const cssDoc =
+        '@page{margin:14mm;}' +
+        'body{margin:0;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif;color:#23282f;-webkit-print-color-adjust:exact;print-color-adjust:exact;}' +
+        '.rep{max-width:740px;margin:0 auto;padding:8px;}' +
+        '.rep-head{display:flex;align-items:center;gap:14px;border-bottom:3px solid #3A5878;padding-bottom:12px;}' +
+        '.rep-logo{width:50px;height:50px;object-fit:contain;}' +
+        '.rep-firm-name{font-size:18px;font-weight:700;color:#3A5878;}' +
+        '.rep-firm-sub{font-size:12px;color:#5B82A6;}' +
+        '.rep-title{font-size:21px;color:#23282f;margin:20px 0 2px;}' +
+        '.rep-meta{display:grid;grid-template-columns:1fr 1fr;gap:5px 20px;font-size:13px;color:#333;margin:12px 0 6px;}' +
+        '.rep-h2{font-size:13.5px;color:#3A5878;border-bottom:1px solid #cfd8e2;padding-bottom:5px;margin:22px 0 8px;text-transform:uppercase;letter-spacing:.03em;}' +
+        '.rep-tbl{width:100%;border-collapse:collapse;font-size:13px;}' +
+        '.rep-tbl th{text-align:left;color:#5B82A6;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;border-bottom:1px solid #bcc6d2;padding:6px;}' +
+        '.rep-tbl td{padding:6px;border-bottom:1px solid #eee;}' +
+        '.rep-tbl .r{text-align:right;}' +
+        '.rep-tbl .pc{color:#8a93a0;width:96px;}' +
+        '.rep-tbl tfoot td{font-weight:700;border-top:2px solid #3A5878;border-bottom:0;color:#23282f;padding-top:9px;}' +
+        '.rep-tbl tr.grp td{background:#eef3f8;color:#3A5878;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.03em;padding:6px;border-bottom:1px solid #cfd8e2;}' +
+        '.rep-tbl tr.sub td{font-weight:700;color:#3A5878;border-top:1px solid #cfd8e2;}' +
+        '.rep-cards{display:flex;gap:12px;margin:16px 0 4px;}' +
+        '.rep-card{flex:1;border:1px solid #d5dde6;border-radius:9px;padding:11px 13px;}' +
+        '.rep-card span{display:block;font-size:10.5px;color:#5B82A6;text-transform:uppercase;letter-spacing:.03em;}' +
+        '.rep-card b{font-size:18px;color:#23282f;}' +
+        '.rep-card.hl{background:#eef3f8;border-color:#5B82A6;}' +
+        '.rep-card i{display:block;font-size:10px;color:#777;font-style:normal;margin-top:2px;}' +
+        '.rep-explain{font-size:12px;color:#3a4048;line-height:1.6;margin:14px 0 4px;background:#f4f7fb;border-left:3px solid #5B82A6;padding:11px 13px;border-radius:0 7px 7px 0;}' +
+        '.rep-note{font-size:11px;color:#666;font-style:italic;margin-top:20px;line-height:1.55;}' +
+        '.rep-foot{margin-top:14px;border-top:1px solid #cfd8e2;padding-top:8px;font-size:11px;color:#8a93a0;text-align:center;}';
+      const win = window.open('', '_blank');
+      if (!win){ alert('Permita pop-ups para este site para gerar o PDF.'); return; }
+      win.document.write('<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Custo do funcionário</title><style>' + cssDoc + '</style></head><body onload="window.focus();window.print();" onafterprint="window.close();">' + html + '</body></html>');
+      win.document.close();
     }
     document.getElementById('btnReport').addEventListener('click', buildReport);
 

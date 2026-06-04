@@ -351,9 +351,9 @@
       const cliente = $('edCliente').value.trim();
       const dataStr = new Date().toLocaleDateString('pt-BR');
       const logoEl = document.querySelector('.topbar-logo img');
-      const logoSrc = logoEl ? logoEl.src : 'assets/logo-mr.png';
+      const logoSrc = logoEl ? logoEl.src : new URL('assets/logo-mr.png', location.href).href;
       const corpo = mdToHtml($('edMd').value);
-      const html =
+      const repHtml =
         '<div class="rep">' +
           '<div class="rep-head"><img src="' + logoSrc + '" alt="" class="rep-logo"><div class="rep-firm"><div class="rep-firm-name">Macedo &amp; Reis Contabilidade</div><div class="rep-firm-sub">CRC/RS 006418/O</div></div></div>' +
           '<div class="rep-tag">' + tipoLabel + '</div>' +
@@ -366,8 +366,31 @@
           '<p class="rep-note">Documento de caráter técnico/orientativo, elaborado com base na legislação vigente na data de emissão. Sujeito às particularidades do caso concreto e à convenção coletiva aplicável, não substituindo análise individualizada quando necessária.</p>' +
           '<div class="rep-foot">Macedo &amp; Reis Contabilidade · CRC/RS 006418/O · Três Coroas/RS</div>' +
         '</div>';
-      $('reportArea').innerHTML = html;
-      window.print();
+      const css =
+        '@page{margin:16mm;}' +
+        'body{margin:0;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif;color:#23282f;-webkit-print-color-adjust:exact;print-color-adjust:exact;}' +
+        '.rep{max-width:760px;margin:0 auto;padding:8px;}' +
+        '.rep-head{display:flex;align-items:center;gap:14px;border-bottom:3px solid #3A5878;padding-bottom:12px;}' +
+        '.rep-logo{width:50px;height:50px;object-fit:contain;}' +
+        '.rep-firm-name{font-size:18px;font-weight:700;color:#3A5878;}' +
+        '.rep-firm-sub{font-size:12px;color:#5B82A6;}' +
+        '.rep-tag{display:inline-block;margin-top:16px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#5B82A6;}' +
+        '.rep-title{font-size:22px;color:#23282f;margin:4px 0 2px;}' +
+        '.rep-meta{display:flex;gap:24px;font-size:13px;color:#333;margin:8px 0 18px;flex-wrap:wrap;}' +
+        '.rep-body{font-size:13.5px;color:#2a2f36;line-height:1.6;}' +
+        '.rep-body h1{font-size:18px;color:#23282f;margin:18px 0 8px;}' +
+        '.rep-body h2{font-size:15px;color:#3A5878;margin:18px 0 7px;border-bottom:1px solid #cfd8e2;padding-bottom:4px;}' +
+        '.rep-body h3{font-size:13.5px;color:#3A5878;margin:14px 0 5px;}' +
+        '.rep-body p{margin:0 0 10px;}' +
+        '.rep-body ul,.rep-body ol{margin:0 0 10px;padding-left:22px;}' +
+        '.rep-body li{margin-bottom:4px;}' +
+        '.rep-body strong{color:#23282f;}' +
+        '.rep-note{font-size:11px;color:#666;font-style:italic;margin-top:22px;line-height:1.55;border-top:1px solid #e3e8ee;padding-top:10px;}' +
+        '.rep-foot{margin-top:12px;border-top:1px solid #cfd8e2;padding-top:8px;font-size:11px;color:#8a93a0;text-align:center;}';
+      const win = window.open('', '_blank');
+      if (!win){ alert('Permita pop-ups para este site para gerar o PDF.'); return; }
+      win.document.write('<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>' + escHtml(titulo) + '</title><style>' + css + '</style></head><body onload="window.focus();window.print();" onafterprint="window.close();">' + repHtml + '</body></html>');
+      win.document.close();
     }
 
     // ---------- novo / excluir ----------
