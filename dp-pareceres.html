@@ -134,6 +134,7 @@
         <label class="pr-field"><span>Cliente (opcional)</span><input type="text" id="fCliente" class="input" placeholder="Nome do cliente"></label>
         <label class="pr-field"><span>Assunto / pergunta</span><textarea id="fAssunto" class="input" rows="3" placeholder="Ex.: diferença entre comprovante de comparecimento e atestado médico; quantos atestados a CLT garante por ano; é válido exigir que consultas não urgentes não sejam marcadas em semanas com feriado?"></textarea></label>
         <label class="pr-field"><span>Contexto adicional (opcional)</span><textarea id="fContexto" class="input" rows="2" placeholder="Ex.: a empresa não trabalha com banco de horas"></textarea></label>
+        <label class="pr-field"><span>Orientações de redação (opcional)</span><textarea id="fInstrucoes" class="input" rows="2" placeholder="Ex.: linguagem simples, cliente leigo — ou: pode ser técnico, RH experiente"></textarea></label>
         <button type="button" class="btn btn-primary" id="btnGerar">Gerar documento</button>
         <div class="pr-status" id="genStatus"></div>
       </section>
@@ -288,11 +289,12 @@
       const tipo = tipoAtual;
       const cliente = $('fCliente').value.trim();
       const contexto = $('fContexto').value.trim();
+      const instrucoes = $('fInstrucoes').value.trim();
       const btn = $('btnGerar');
       btn.disabled = true; $('genStatus').textContent = '';
       btn.innerHTML = '<span class="spinner spinner-sm"></span>Gerando… pesquisando a legislação (pode levar alguns segundos)';
       try {
-        const { data: resp, error } = await supabase.functions.invoke('extract-document', { body: { modo: 'documento', tipo, assunto, cliente, contexto } });
+        const { data: resp, error } = await supabase.functions.invoke('extract-document', { body: { modo: 'documento', tipo, assunto, cliente, contexto, instrucoes } });
         if (error) throw new Error(error.message || 'Erro na função');
         const d = resp && resp.data ? resp.data : null;
         if (!d || !d.markdown) throw new Error('A geração não retornou texto.');
@@ -408,7 +410,7 @@
     $('btnNovo').addEventListener('click', novoDoc);
     function novoDoc(){
       editAtual = null;
-      $('fAssunto').value = ''; $('fContexto').value = ''; $('fCliente').value = '';
+      $('fAssunto').value = ''; $('fContexto').value = ''; $('fCliente').value = ''; $('fInstrucoes').value = '';
       $('edTitulo').value = ''; $('edCliente').value = ''; $('edMd').value = ''; $('edPreview').innerHTML = '';
       $('edStatus').textContent = ''; $('genStatus').textContent = '';
       $('editorCard').classList.add('is-hidden');
