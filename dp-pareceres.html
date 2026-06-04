@@ -40,6 +40,7 @@
     .pr-preview ul, .pr-preview ol { margin:0 0 10px; padding-left:22px; }
     .pr-preview li { font-size:13.5px; color:#C5D8E8; line-height:1.55; margin-bottom:4px; }
     .pr-preview strong { color:#E6EBF2; }
+    .pr-preview hr { border:0; border-top:1px solid rgba(255,255,255,.1); margin:16px 0; }
     .pr-col-lbl { font-size:10.5px; color:#8A93A6; text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px; }
     .pr-actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:16px; align-items:center; }
 
@@ -220,6 +221,7 @@
     function leadingHashes(t){ let j = 0; while (j < t.length && t[j] === '#') j++; return (j >= 1 && j <= 6 && t[j] === ' ') ? j : 0; }
     function bulletItem(t){ return (t.startsWith('- ') || t.startsWith('* ')) ? t.slice(2) : null; }
     function orderedItem(t){ let j = 0; while (j < t.length && t[j] >= '0' && t[j] <= '9') j++; return (j > 0 && t[j] === '.' && t[j+1] === ' ') ? t.slice(j+2) : null; }
+    function isRule(t){ if (t.length < 3) return false; const c = t[0]; if (c !== '-' && c !== '*' && c !== '_') return false; for (let k = 0; k < t.length; k++){ if (t[k] !== c) return false; } return true; }
     function mdToHtml(md){
       const lines = String(md).split('\r').join('').split('\n');
       let html = '', i = 0;
@@ -227,6 +229,7 @@
         const t = lines[i].trim();
         const h = leadingHashes(t);
         if (h){ html += '<h' + h + '>' + mdInline(t.slice(h + 1).trim()) + '</h' + h + '>'; i++; continue; }
+        if (isRule(t)){ html += '<hr>'; i++; continue; }
         if (bulletItem(t) !== null){
           html += '<ul>';
           while (i < lines.length && bulletItem(lines[i].trim()) !== null){ html += '<li>' + mdInline(bulletItem(lines[i].trim())) + '</li>'; i++; }
@@ -241,7 +244,7 @@
         const para = [];
         while (i < lines.length){
           const tt = lines[i].trim();
-          if (tt === '' || leadingHashes(tt) || bulletItem(tt) !== null || orderedItem(tt) !== null) break;
+          if (tt === '' || leadingHashes(tt) || isRule(tt) || bulletItem(tt) !== null || orderedItem(tt) !== null) break;
           para.push(tt); i++;
         }
         html += '<p>' + mdInline(para.join(' ')) + '</p>';
@@ -398,6 +401,7 @@
         '.rep-body ul,.rep-body ol{margin:0 0 10px;padding-left:22px;}' +
         '.rep-body li{margin-bottom:4px;}' +
         '.rep-body strong{color:#23282f;}' +
+        '.rep-body hr{border:0;border-top:1px solid #dfe5ec;margin:16px 0;}' +
         '.rep-note{font-size:11px;color:#666;font-style:italic;margin-top:22px;line-height:1.55;border-top:1px solid #e3e8ee;padding-top:10px;}' +
         '.rep-foot{margin-top:12px;border-top:1px solid #cfd8e2;padding-top:8px;font-size:11px;color:#8a93a0;text-align:center;}';
       const win = window.open('', '_blank');
