@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pareceres e informativos — DP — Macedo & Reis</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+  <style>
+    .fa-subnav { display:flex; gap:6px; margin-bottom:22px; border-bottom:1px solid rgba(255,255,255,.08); flex-wrap:wrap; }
+    .fa-tab { padding:9px 16px; font-size:14px; color:#8A93A6; text-decoration:none; border-bottom:2px solid transparent; margin-bottom:-1px; }
+    .fa-tab:hover { color:#C5D8E8; }
+    .fa-tab.is-active { color:#C5D8E8; border-bottom-color:#5B82A6; font-weight:600; }
+
+    .pr-card { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:18px; margin-bottom:18px; }
+    .pr-card h3 { margin:0 0 4px; font-size:16px; color:#E6EBF2; }
+    .pr-card .pr-hint { color:#8A93A6; font-size:12.5px; margin:0 0 14px; line-height:1.5; }
+    .pr-field { display:flex; flex-direction:column; gap:6px; margin-bottom:12px; }
+    .pr-field > span { font-size:12.5px; color:#C5D8E8; font-weight:500; }
+    .pr-field .input, .pr-field textarea { width:100%; }
+    .pr-seg { display:flex; gap:8px; max-width:380px; }
+    .pr-seg-btn { flex:1; padding:9px 10px; border-radius:10px; border:1px solid rgba(255,255,255,.12); background:transparent; color:#8A93A6; font-size:13px; font-weight:600; cursor:pointer; transition:all .15s; }
+    .pr-seg-btn:hover { border-color:#5B82A6; color:#C5D8E8; }
+    .pr-seg-btn.is-active { background:rgba(91,130,166,.18); border-color:#5B82A6; color:#E6EBF2; }
+    .pr-status { font-size:12.5px; color:#8A93A6; margin-top:10px; }
+
+    .is-hidden { display:none; }
+    .pr-editor-head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:6px; }
+    .pr-tipo-label { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; padding:3px 10px; border-radius:999px; }
+    .pr-tipo-inf { color:#8AAEC8; background:rgba(91,130,166,.16); border:1px solid rgba(91,130,166,.3); }
+    .pr-tipo-par { color:#E3B341; background:rgba(227,179,65,.14); border:1px solid rgba(227,179,65,.3); }
+    .pr-editor { display:grid; grid-template-columns:1fr; gap:14px; }
+    @media (min-width:980px){ .pr-editor { grid-template-columns:1fr 1fr; } }
+    .pr-md { width:100%; min-height:420px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12.5px; line-height:1.55; resize:vertical; }
+    .pr-preview { min-height:420px; max-height:560px; overflow:auto; background:rgba(255,255,255,.02); border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:16px 18px; }
+    .pr-preview h1 { font-size:19px; color:#E6EBF2; margin:0 0 12px; }
+    .pr-preview h2 { font-size:15px; color:#8AAEC8; margin:18px 0 7px; border-bottom:1px solid rgba(255,255,255,.08); padding-bottom:4px; }
+    .pr-preview h3 { font-size:13.5px; color:#C5D8E8; margin:14px 0 5px; }
+    .pr-preview p { font-size:13.5px; color:#C5D8E8; line-height:1.6; margin:0 0 10px; }
+    .pr-preview ul, .pr-preview ol { margin:0 0 10px; padding-left:22px; }
+    .pr-preview li { font-size:13.5px; color:#C5D8E8; line-height:1.55; margin-bottom:4px; }
+    .pr-preview strong { color:#E6EBF2; }
+    .pr-col-lbl { font-size:10.5px; color:#8A93A6; text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px; }
+    .pr-actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:16px; align-items:center; }
+
+    .pr-hist-filter { display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap; }
+    .pr-fbtn { padding:6px 13px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background:transparent; color:#8A93A6; font-size:12.5px; cursor:pointer; }
+    .pr-fbtn.is-active { background:rgba(91,130,166,.18); border-color:#5B82A6; color:#E6EBF2; }
+    .pr-hist-item { display:flex; align-items:center; gap:10px; width:100%; text-align:left; padding:11px 13px; margin-bottom:8px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:12px; cursor:pointer; transition:border-color .15s; }
+    .pr-hist-item:hover { border-color:#5B82A6; }
+    .pr-badge { font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.03em; padding:2px 9px; border-radius:999px; flex-shrink:0; }
+    .pr-badge-inf { color:#8AAEC8; background:rgba(91,130,166,.16); border:1px solid rgba(91,130,166,.3); }
+    .pr-badge-par { color:#E3B341; background:rgba(227,179,65,.14); border:1px solid rgba(227,179,65,.3); }
+    .pr-hist-tit { flex:1; color:#E6EBF2; font-size:14px; font-weight:500; min-width:0; }
+    .pr-hist-meta { color:#8A93A6; font-size:12px; white-space:nowrap; }
+    .pr-empty { color:#8A93A6; font-size:13px; padding:10px 0; }
+
+    /* relatório / impressão */
+    #reportArea { display:none; }
+    @media print {
+      html, body { background:#fff !important; }
+      .app-shell { display:none !important; }
+      #reportArea { display:block; }
+      @page { margin:16mm; }
+    }
+    .rep { color:#23282f; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif; max-width:760px; margin:0 auto; }
+    .rep-head { display:flex; align-items:center; gap:14px; border-bottom:3px solid #3A5878; padding-bottom:12px; }
+    .rep-logo { width:50px; height:50px; object-fit:contain; }
+    .rep-firm-name { font-size:18px; font-weight:700; color:#3A5878; }
+    .rep-firm-sub { font-size:12px; color:#5B82A6; letter-spacing:.02em; }
+    .rep-tag { display:inline-block; margin-top:16px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#5B82A6; }
+    .rep-title { font-size:22px; color:#23282f; margin:4px 0 2px; }
+    .rep-meta { display:flex; gap:24px; font-size:13px; color:#333; margin:8px 0 18px; flex-wrap:wrap; }
+    .rep-body { font-size:13.5px; color:#2a2f36; line-height:1.6; }
+    .rep-body h1 { font-size:18px; color:#23282f; margin:18px 0 8px; }
+    .rep-body h2 { font-size:15px; color:#3A5878; margin:18px 0 7px; border-bottom:1px solid #cfd8e2; padding-bottom:4px; }
+    .rep-body h3 { font-size:13.5px; color:#3A5878; margin:14px 0 5px; }
+    .rep-body p { margin:0 0 10px; }
+    .rep-body ul, .rep-body ol { margin:0 0 10px; padding-left:22px; }
+    .rep-body li { margin-bottom:4px; }
+    .rep-body strong { color:#23282f; }
+    .rep-note { font-size:11px; color:#666; font-style:italic; margin-top:22px; line-height:1.55; border-top:1px solid #e3e8ee; padding-top:10px; }
+    .rep-foot { margin-top:12px; border-top:1px solid #cfd8e2; padding-top:8px; font-size:11px; color:#8a93a0; text-align:center; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip"><div class="user-avatar" id="userAvatar">—</div><span id="userName">Carregando…</span></div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <a href="dp.html">Departamento Pessoal</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Pareceres e informativos</span>
+        </div>
+        <div class="eyebrow">Ferramenta de documentos</div>
+        <h1>Pareceres e informativos</h1>
+        <p>Gere um informativo ou parecer trabalhista fundamentado para o cliente. A ferramenta pesquisa a legislação vigente, você revisa e edita o texto, salva no histórico e exporta em PDF com o timbre do escritório.</p>
+      </div>
+
+      <div class="fa-subnav">
+        <a href="dp.html" class="fa-tab">Tarefas</a>
+        <a href="dp-regras.html" class="fa-tab">Tarefas recorrentes</a>
+        <a href="dp-relatorios.html" class="fa-tab">Relatórios</a>
+        <a href="dp-sugestoes.html" class="fa-tab">Sugestões de melhoria</a>
+        <a href="dp-convencoes.html" class="fa-tab">Convenções</a>
+        <a href="dp-custo.html" class="fa-tab">Custo do funcionário</a>
+        <a href="dp-pareceres.html" class="fa-tab is-active">Pareceres</a>
+      </div>
+
+      <!-- NOVO DOCUMENTO -->
+      <section class="pr-card">
+        <h3>Novo documento</h3>
+        <p class="pr-hint">Escolha o tipo, descreva o assunto ou a pergunta do cliente e gere. Você poderá ajustar tudo antes de salvar ou exportar.</p>
+        <div class="pr-field">
+          <span>Tipo de documento</span>
+          <div class="pr-seg">
+            <button type="button" class="pr-seg-btn is-active" id="tipoInfo">Informativo</button>
+            <button type="button" class="pr-seg-btn" id="tipoParecer">Parecer</button>
+          </div>
+        </div>
+        <label class="pr-field"><span>Cliente (opcional)</span><input type="text" id="fCliente" class="input" placeholder="Nome do cliente"></label>
+        <label class="pr-field"><span>Assunto / pergunta</span><textarea id="fAssunto" class="input" rows="3" placeholder="Ex.: diferença entre comprovante de comparecimento e atestado médico; quantos atestados a CLT garante por ano; é válido exigir que consultas não urgentes não sejam marcadas em semanas com feriado?"></textarea></label>
+        <label class="pr-field"><span>Contexto adicional (opcional)</span><textarea id="fContexto" class="input" rows="2" placeholder="Ex.: a empresa não trabalha com banco de horas"></textarea></label>
+        <button type="button" class="btn btn-primary" id="btnGerar">Gerar documento</button>
+        <div class="pr-status" id="genStatus"></div>
+      </section>
+
+      <!-- EDITOR -->
+      <section class="pr-card is-hidden" id="editorCard">
+        <div class="pr-editor-head">
+          <h3 style="margin:0;">Documento</h3>
+          <span class="pr-tipo-label pr-tipo-inf" id="edTipoLabel">Informativo</span>
+          <span class="pr-status" id="edStatus" style="margin:0 0 0 auto;"></span>
+        </div>
+        <label class="pr-field"><span>Título</span><input type="text" id="edTitulo" class="input"></label>
+        <label class="pr-field"><span>Cliente</span><input type="text" id="edCliente" class="input" placeholder="(opcional)"></label>
+        <div class="pr-editor">
+          <div>
+            <div class="pr-col-lbl">Editar (markdown)</div>
+            <textarea id="edMd" class="input pr-md"></textarea>
+          </div>
+          <div>
+            <div class="pr-col-lbl">Pré-visualização</div>
+            <div class="pr-preview" id="edPreview"></div>
+          </div>
+        </div>
+        <div class="pr-actions">
+          <button type="button" class="btn btn-primary" id="btnSalvar">Salvar</button>
+          <button type="button" class="btn btn-ghost" id="btnPDF">Gerar PDF</button>
+          <button type="button" class="btn btn-ghost" id="btnNovo">Novo</button>
+          <button type="button" class="btn btn-danger btn-sm" id="btnExcluir" style="margin-left:auto;">Excluir</button>
+        </div>
+      </section>
+
+      <!-- HISTÓRICO -->
+      <section class="pr-card">
+        <h3>Histórico</h3>
+        <p class="pr-hint">Documentos emitidos. Clique para abrir, editar de novo ou reexportar.</p>
+        <div class="pr-hist-filter">
+          <button type="button" class="pr-fbtn is-active" data-f="todos">Todos</button>
+          <button type="button" class="pr-fbtn" data-f="informativo">Informativos</button>
+          <button type="button" class="pr-fbtn" data-f="parecer">Pareceres</button>
+        </div>
+        <div id="histList"><div class="pr-empty">Carregando…</div></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="reportArea"></div>
+
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+
+    let userEmail = '';
+    let editAtual = null;
+    let tipoAtual = 'informativo';
+    let histAll = [];
+    let histFiltro = 'todos';
+
+    const $ = (id) => document.getElementById(id);
+
+    // ---------- topbar ----------
+    (async () => {
+      try {
+        const user = await getCurrentUser();
+        if (user) {
+          userEmail = user.email || '';
+          const n = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário';
+          $('userName').textContent = n;
+          $('userAvatar').textContent = n.charAt(0).toUpperCase();
+        }
+      } catch (e) {}
+    })();
+    $('btnLogout').addEventListener('click', signOut);
+
+    // ---------- markdown (mini-render, sem dependências) ----------
+    function mdEsc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    function escHtml(s){ return mdEsc(s); }
+    function mdInline(t){
+      t = mdEsc(t);
+      const parts = t.split('**');
+      let out = '';
+      for (let k = 0; k < parts.length; k++){ out += (k % 2 === 1) ? '<strong>' + parts[k] + '</strong>' : parts[k]; }
+      return out;
+    }
+    function leadingHashes(t){ let j = 0; while (j < t.length && t[j] === '#') j++; return (j >= 1 && j <= 6 && t[j] === ' ') ? j : 0; }
+    function bulletItem(t){ return (t.startsWith('- ') || t.startsWith('* ')) ? t.slice(2) : null; }
+    function orderedItem(t){ let j = 0; while (j < t.length && t[j] >= '0' && t[j] <= '9') j++; return (j > 0 && t[j] === '.' && t[j+1] === ' ') ? t.slice(j+2) : null; }
+    function mdToHtml(md){
+      const lines = String(md).split('\r').join('').split('\n');
+      let html = '', i = 0;
+      while (i < lines.length){
+        const t = lines[i].trim();
+        const h = leadingHashes(t);
+        if (h){ html += '<h' + h + '>' + mdInline(t.slice(h + 1).trim()) + '</h' + h + '>'; i++; continue; }
+        if (bulletItem(t) !== null){
+          html += '<ul>';
+          while (i < lines.length && bulletItem(lines[i].trim()) !== null){ html += '<li>' + mdInline(bulletItem(lines[i].trim())) + '</li>'; i++; }
+          html += '</ul>'; continue;
+        }
+        if (orderedItem(t) !== null){
+          html += '<ol>';
+          while (i < lines.length && orderedItem(lines[i].trim()) !== null){ html += '<li>' + mdInline(orderedItem(lines[i].trim())) + '</li>'; i++; }
+          html += '</ol>'; continue;
+        }
+        if (t === ''){ i++; continue; }
+        const para = [];
+        while (i < lines.length){
+          const tt = lines[i].trim();
+          if (tt === '' || leadingHashes(tt) || bulletItem(tt) !== null || orderedItem(tt) !== null) break;
+          para.push(tt); i++;
+        }
+        html += '<p>' + mdInline(para.join(' ')) + '</p>';
+      }
+      return html;
+    }
+    function extractTitulo(md){
+      const lines = String(md).split('\n');
+      for (let k = 0; k < lines.length; k++){
+        const t = lines[k].trim();
+        if (t.startsWith('# ')){ const titulo = t.slice(2).trim(); lines.splice(k, 1); return { titulo, body: lines.join('\n').trim() }; }
+      }
+      return { titulo: '', body: String(md) };
+    }
+
+    // ---------- tipo ----------
+    function setTipo(t){
+      tipoAtual = (t === 'parecer') ? 'parecer' : 'informativo';
+      $('tipoInfo').classList.toggle('is-active', tipoAtual === 'informativo');
+      $('tipoParecer').classList.toggle('is-active', tipoAtual === 'parecer');
+    }
+    $('tipoInfo').addEventListener('click', () => setTipo('informativo'));
+    $('tipoParecer').addEventListener('click', () => setTipo('parecer'));
+
+    // ---------- gerar ----------
+    $('btnGerar').addEventListener('click', gerarDoc);
+    async function gerarDoc(){
+      const assunto = $('fAssunto').value.trim();
+      if (!assunto){ alert('Descreva o assunto ou a pergunta.'); return; }
+      const tipo = tipoAtual;
+      const cliente = $('fCliente').value.trim();
+      const contexto = $('fContexto').value.trim();
+      const btn = $('btnGerar');
+      btn.disabled = true; $('genStatus').textContent = '';
+      btn.innerHTML = '<span class="spinner spinner-sm"></span>Gerando… pesquisando a legislação (pode levar alguns segundos)';
+      try {
+        const { data: resp, error } = await supabase.functions.invoke('extract-document', { body: { modo: 'documento', tipo, assunto, cliente, contexto } });
+        if (error) throw new Error(error.message || 'Erro na função');
+        const d = resp && resp.data ? resp.data : null;
+        if (!d || !d.markdown) throw new Error('A geração não retornou texto.');
+        const ex = extractTitulo(d.markdown);
+        editAtual = { id: null, tipo, titulo: ex.titulo || 'Documento', cliente, assunto, contexto, conteudo: ex.body, created_at: null };
+        setTipo(tipo);
+        fillEditor();
+        $('edStatus').textContent = 'Rascunho não salvo';
+        $('editorCard').classList.remove('is-hidden');
+        $('editorCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch (e) {
+        $('genStatus').textContent = 'Não consegui gerar: ' + (e.message || String(e));
+      } finally {
+        btn.disabled = false; btn.textContent = 'Gerar documento';
+      }
+    }
+
+    // ---------- editor ----------
+    function fillEditor(){
+      $('edTitulo').value = editAtual.titulo || '';
+      $('edCliente').value = editAtual.cliente || '';
+      $('edMd').value = editAtual.conteudo || '';
+      $('edTipoLabel').textContent = editAtual.tipo === 'parecer' ? 'Parecer' : 'Informativo';
+      $('edTipoLabel').className = 'pr-tipo-label ' + (editAtual.tipo === 'parecer' ? 'pr-tipo-par' : 'pr-tipo-inf');
+      $('btnExcluir').style.display = editAtual.id ? '' : 'none';
+      updatePreview();
+    }
+    function updatePreview(){
+      const titulo = $('edTitulo').value.trim();
+      $('edPreview').innerHTML = (titulo ? '<h1>' + escHtml(titulo) + '</h1>' : '') + mdToHtml($('edMd').value);
+    }
+    $('edTitulo').addEventListener('input', updatePreview);
+    $('edMd').addEventListener('input', updatePreview);
+
+    // ---------- salvar ----------
+    $('btnSalvar').addEventListener('click', salvarDoc);
+    async function salvarDoc(){
+      if (!editAtual) return;
+      const titulo = $('edTitulo').value.trim() || 'Documento';
+      const conteudo = $('edMd').value.trim();
+      const cliente = $('edCliente').value.trim();
+      if (!conteudo){ alert('O documento está vazio.'); return; }
+      editAtual.titulo = titulo; editAtual.conteudo = conteudo; editAtual.cliente = cliente;
+      const payload = { tipo: editAtual.tipo, titulo, cliente: cliente || null, assunto: editAtual.assunto || titulo, contexto: editAtual.contexto || null, conteudo, created_by: userEmail };
+      const btn = $('btnSalvar'); btn.disabled = true; const prev = btn.textContent;
+      btn.innerHTML = '<span class="spinner spinner-sm"></span>Salvando…';
+      try {
+        if (editAtual.id){
+          const { error } = await supabase.from('documentos_dp').update(payload).eq('id', editAtual.id);
+          if (error) throw error;
+        } else {
+          const { data, error } = await supabase.from('documentos_dp').insert(payload).select().single();
+          if (error) throw error;
+          editAtual.id = data.id; editAtual.created_at = data.created_at;
+        }
+        $('edStatus').textContent = 'Salvo';
+        $('btnExcluir').style.display = '';
+        await carregarHistorico();
+      } catch (e) {
+        $('edStatus').textContent = 'Erro ao salvar: ' + (e.message || String(e));
+      } finally {
+        btn.disabled = false; btn.textContent = prev;
+      }
+    }
+
+    // ---------- PDF ----------
+    $('btnPDF').addEventListener('click', gerarPDF);
+    function gerarPDF(){
+      const titulo = $('edTitulo').value.trim() || 'Documento';
+      const tipoLabel = (editAtual && editAtual.tipo === 'parecer') ? 'Parecer' : 'Informativo';
+      const cliente = $('edCliente').value.trim();
+      const dataStr = new Date().toLocaleDateString('pt-BR');
+      const logoEl = document.querySelector('.topbar-logo img');
+      const logoSrc = logoEl ? logoEl.src : 'assets/logo-mr.png';
+      const corpo = mdToHtml($('edMd').value);
+      const html =
+        '<div class="rep">' +
+          '<div class="rep-head"><img src="' + logoSrc + '" alt="" class="rep-logo"><div class="rep-firm"><div class="rep-firm-name">Macedo &amp; Reis Contabilidade</div><div class="rep-firm-sub">CRC/RS 006418/O</div></div></div>' +
+          '<div class="rep-tag">' + tipoLabel + '</div>' +
+          '<h1 class="rep-title">' + escHtml(titulo) + '</h1>' +
+          '<div class="rep-meta">' +
+            (cliente ? '<div><b>Cliente:</b> ' + escHtml(cliente) + '</div>' : '') +
+            '<div><b>Data:</b> ' + dataStr + '</div>' +
+          '</div>' +
+          '<div class="rep-body">' + corpo + '</div>' +
+          '<p class="rep-note">Documento de caráter técnico/orientativo, elaborado com base na legislação vigente na data de emissão. Sujeito às particularidades do caso concreto e à convenção coletiva aplicável, não substituindo análise individualizada quando necessária.</p>' +
+          '<div class="rep-foot">Macedo &amp; Reis Contabilidade · CRC/RS 006418/O · Três Coroas/RS</div>' +
+        '</div>';
+      $('reportArea').innerHTML = html;
+      window.print();
+    }
+
+    // ---------- novo / excluir ----------
+    $('btnNovo').addEventListener('click', novoDoc);
+    function novoDoc(){
+      editAtual = null;
+      $('fAssunto').value = ''; $('fContexto').value = ''; $('fCliente').value = '';
+      $('edTitulo').value = ''; $('edCliente').value = ''; $('edMd').value = ''; $('edPreview').innerHTML = '';
+      $('edStatus').textContent = ''; $('genStatus').textContent = '';
+      $('editorCard').classList.add('is-hidden');
+    }
+    $('btnExcluir').addEventListener('click', excluirDoc);
+    async function excluirDoc(){
+      if (!editAtual || !editAtual.id) return;
+      if (!confirm('Excluir este documento do histórico? Esta ação não pode ser desfeita.')) return;
+      try {
+        const { error } = await supabase.from('documentos_dp').delete().eq('id', editAtual.id);
+        if (error) throw error;
+        novoDoc();
+        await carregarHistorico();
+      } catch (e) { alert('Erro ao excluir: ' + (e.message || String(e))); }
+    }
+
+    // ---------- histórico ----------
+    document.querySelectorAll('.pr-fbtn').forEach(b => b.addEventListener('click', () => {
+      histFiltro = b.getAttribute('data-f');
+      document.querySelectorAll('.pr-fbtn').forEach(x => x.classList.toggle('is-active', x === b));
+      renderHist();
+    }));
+    async function carregarHistorico(){
+      try {
+        const { data, error } = await supabase.from('documentos_dp').select('*').order('created_at', { ascending: false });
+        if (error) throw error;
+        histAll = data || [];
+        renderHist();
+      } catch (e) {
+        $('histList').innerHTML = '<div class="pr-empty">Não consegui carregar o histórico.</div>';
+      }
+    }
+    function renderHist(){
+      let arr = histAll;
+      if (histFiltro !== 'todos') arr = histAll.filter(d => d.tipo === histFiltro);
+      if (!arr.length){ $('histList').innerHTML = '<div class="pr-empty">Nenhum documento por aqui ainda.</div>'; return; }
+      $('histList').innerHTML = arr.map(d => {
+        const badge = d.tipo === 'parecer' ? '<span class="pr-badge pr-badge-par">Parecer</span>' : '<span class="pr-badge pr-badge-inf">Informativo</span>';
+        const dt = d.created_at ? new Date(d.created_at).toLocaleDateString('pt-BR') : '';
+        const cli = d.cliente ? ' · ' + escHtml(d.cliente) : '';
+        return '<button type="button" class="pr-hist-item" data-id="' + d.id + '">' + badge +
+          '<span class="pr-hist-tit">' + escHtml(d.titulo || '(sem título)') + '</span>' +
+          '<span class="pr-hist-meta">' + dt + cli + '</span></button>';
+      }).join('');
+      $('histList').querySelectorAll('.pr-hist-item').forEach(b => b.addEventListener('click', () => abrirDoc(b.getAttribute('data-id'))));
+    }
+    function abrirDoc(id){
+      const d = histAll.find(x => String(x.id) === String(id));
+      if (!d) return;
+      editAtual = { id: d.id, tipo: d.tipo, titulo: d.titulo, cliente: d.cliente || '', assunto: d.assunto || '', contexto: d.contexto || '', conteudo: d.conteudo || '', created_at: d.created_at };
+      setTipo(d.tipo);
+      fillEditor();
+      $('edStatus').textContent = 'Salvo em ' + (d.created_at ? new Date(d.created_at).toLocaleString('pt-BR') : '');
+      $('editorCard').classList.remove('is-hidden');
+      $('editorCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    carregarHistorico();
+  </script>
+</body>
+</html>
