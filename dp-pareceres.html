@@ -255,6 +255,21 @@
       }
       return { titulo: '', body: String(md) };
     }
+    function limparMeta(body){
+      const labels = ['cliente:', 'assunto:', 'data:', 'elaborado por:', 'remetente:', 'destinatário:', 'destinatario:', 'ref:', 'referência:', 'referencia:', 'número:', 'numero:', 'de:', 'para:'];
+      const lines = String(body).split('\n');
+      let idx = 0;
+      while (idx < lines.length){
+        const t = lines[idx].trim();
+        if (t === ''){ idx++; continue; }
+        if (t === '---' || t === '***' || t === '___' || t === '* * *'){ idx++; continue; }
+        if (t.startsWith('#')) break;
+        const tl = t.toLowerCase().split('**').join('').split('*').join('').split('_').join('').trim();
+        if (labels.some(l => tl.startsWith(l))){ idx++; continue; }
+        break;
+      }
+      return lines.slice(idx).join('\n').trim();
+    }
 
     // ---------- tipo ----------
     function setTipo(t){
@@ -282,7 +297,7 @@
         const d = resp && resp.data ? resp.data : null;
         if (!d || !d.markdown) throw new Error('A geração não retornou texto.');
         const ex = extractTitulo(d.markdown);
-        editAtual = { id: null, tipo, titulo: ex.titulo || 'Documento', cliente, assunto, contexto, conteudo: ex.body, created_at: null };
+        editAtual = { id: null, tipo, titulo: ex.titulo || 'Documento', cliente, assunto, contexto, conteudo: limparMeta(ex.body), created_at: null };
         setTipo(tipo);
         fillEditor();
         $('edStatus').textContent = 'Rascunho não salvo';
@@ -358,13 +373,9 @@
           '<div class="rep-head"><img src="' + logoSrc + '" alt="" class="rep-logo"><div class="rep-firm"><div class="rep-firm-name">Macedo &amp; Reis Contabilidade</div><div class="rep-firm-sub">CRC/RS 006418/O</div></div></div>' +
           '<div class="rep-tag">' + tipoLabel + '</div>' +
           '<h1 class="rep-title">' + escHtml(titulo) + '</h1>' +
-          '<div class="rep-meta">' +
-            (cliente ? '<div><b>Cliente:</b> ' + escHtml(cliente) + '</div>' : '') +
-            '<div><b>Data:</b> ' + dataStr + '</div>' +
-          '</div>' +
           '<div class="rep-body">' + corpo + '</div>' +
           '<p class="rep-note">Documento de caráter técnico/orientativo, elaborado com base na legislação vigente na data de emissão. Sujeito às particularidades do caso concreto e à convenção coletiva aplicável, não substituindo análise individualizada quando necessária.</p>' +
-          '<div class="rep-foot">Macedo &amp; Reis Contabilidade · CRC/RS 006418/O · Três Coroas/RS</div>' +
+          '<div class="rep-foot">Macedo &amp; Reis Contabilidade · CRC/RS 006418/O · Três Coroas/RS<br>Documento emitido em ' + dataStr + '</div>' +
         '</div>';
       const css =
         '@page{margin:16mm;}' +
@@ -375,7 +386,7 @@
         '.rep-firm-name{font-size:18px;font-weight:700;color:#3A5878;}' +
         '.rep-firm-sub{font-size:12px;color:#5B82A6;}' +
         '.rep-tag{display:inline-block;margin-top:16px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#5B82A6;}' +
-        '.rep-title{font-size:22px;color:#23282f;margin:4px 0 2px;}' +
+        '.rep-title{font-size:22px;color:#23282f;margin:4px 0 16px;}' +
         '.rep-meta{display:flex;gap:24px;font-size:13px;color:#333;margin:8px 0 18px;flex-wrap:wrap;}' +
         '.rep-body{font-size:13.5px;color:#2a2f36;line-height:1.6;}' +
         '.rep-body h1{font-size:18px;color:#23282f;margin:18px 0 8px;}' +
