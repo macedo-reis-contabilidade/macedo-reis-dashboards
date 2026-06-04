@@ -41,6 +41,9 @@
     .pr-preview li { font-size:13.5px; color:#C5D8E8; line-height:1.55; margin-bottom:4px; }
     .pr-preview strong { color:#E6EBF2; }
     .pr-preview hr { border:0; border-top:1px solid rgba(255,255,255,.1); margin:16px 0; }
+    .pr-preview table.md-table { width:100%; border-collapse:collapse; margin:6px 0 14px; font-size:13px; }
+    .pr-preview table.md-table th, .pr-preview table.md-table td { border:1px solid rgba(255,255,255,.12); padding:7px 10px; text-align:left; vertical-align:top; color:#C5D8E8; }
+    .pr-preview table.md-table th { background:rgba(91,130,166,.18); color:#E6EBF2; font-weight:600; }
     .pr-col-lbl { font-size:10.5px; color:#8A93A6; text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px; }
     .pr-actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:16px; align-items:center; }
 
@@ -240,6 +243,9 @@
     function bulletItem(t){ return (t.startsWith('- ') || t.startsWith('* ')) ? t.slice(2) : null; }
     function orderedItem(t){ let j = 0; while (j < t.length && t[j] >= '0' && t[j] <= '9') j++; return (j > 0 && t[j] === '.' && t[j+1] === ' ') ? t.slice(j+2) : null; }
     function isRule(t){ if (t.length < 3) return false; const c = t[0]; if (c !== '-' && c !== '*' && c !== '_') return false; for (let k = 0; k < t.length; k++){ if (t[k] !== c) return false; } return true; }
+    function isTableSep(t){ if (t.indexOf('-') < 0 || t.indexOf('|') < 0) return false; for (let k = 0; k < t.length; k++){ const c = t[k]; if (c !== '|' && c !== '-' && c !== ':' && c !== ' ') return false; } return true; }
+    function splitRow(t){ let s = t.trim(); if (s[0] === '|') s = s.slice(1); if (s.length && s[s.length-1] === '|') s = s.slice(0, -1); return s.split('|').map(function(c){ return c.trim(); }); }
+    function isTableStart(lines, idx){ return idx + 1 < lines.length && lines[idx].trim().indexOf('|') >= 0 && isTableSep(lines[idx+1].trim()); }
     function mdToHtml(md){
       const lines = String(md).split('\r').join('').split('\n');
       let html = '', i = 0;
@@ -258,11 +264,27 @@
           while (i < lines.length && orderedItem(lines[i].trim()) !== null){ html += '<li>' + mdInline(orderedItem(lines[i].trim())) + '</li>'; i++; }
           html += '</ol>'; continue;
         }
+        if (isTableStart(lines, i)){
+          const headers = splitRow(t);
+          i += 2;
+          let tb = '';
+          while (i < lines.length && lines[i].trim() !== '' && lines[i].trim().indexOf('|') >= 0){
+            const cells = splitRow(lines[i].trim());
+            tb += '<tr>';
+            for (let c = 0; c < headers.length; c++){ tb += '<td>' + mdInline(cells[c] || '') + '</td>'; }
+            tb += '</tr>'; i++;
+          }
+          let th = '<tr>';
+          for (let c = 0; c < headers.length; c++){ th += '<th>' + mdInline(headers[c]) + '</th>'; }
+          th += '</tr>';
+          html += '<table class="md-table"><thead>' + th + '</thead><tbody>' + tb + '</tbody></table>';
+          continue;
+        }
         if (t === ''){ i++; continue; }
         const para = [];
         while (i < lines.length){
           const tt = lines[i].trim();
-          if (tt === '' || leadingHashes(tt) || isRule(tt) || bulletItem(tt) !== null || orderedItem(tt) !== null) break;
+          if (tt === '' || leadingHashes(tt) || isRule(tt) || bulletItem(tt) !== null || orderedItem(tt) !== null || isTableStart(lines, i)) break;
           para.push(tt); i++;
         }
         html += '<p>' + mdInline(para.join(' ')) + '</p>';
@@ -421,6 +443,9 @@
         '.rep-body li{margin-bottom:4px;}' +
         '.rep-body strong{color:#23282f;}' +
         '.rep-body hr{border:0;border-top:1px solid #dfe5ec;margin:16px 0;}' +
+        '.rep-body table{width:100%;border-collapse:collapse;margin:6px 0 14px;font-size:12.5px;}' +
+        '.rep-body th,.rep-body td{border:1px solid #cfd8e2;padding:6px 9px;text-align:left;vertical-align:top;}' +
+        '.rep-body th{background:#eef3f8;color:#23282f;font-weight:700;}' +
         '.rep-note{font-size:11px;color:#666;font-style:italic;margin-top:22px;line-height:1.55;border-top:1px solid #e3e8ee;padding-top:10px;}' +
         '.rep-foot{margin-top:12px;border-top:1px solid #cfd8e2;padding-top:8px;font-size:11px;color:#8a93a0;text-align:center;}';
       const win = window.open('', '_blank');
