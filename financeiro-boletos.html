@@ -174,7 +174,8 @@ function proxDiaUtil(d){
 function calcVencimento(competencia, dia){
   const [y,m]=competencia.split('-').map(Number);
   let vy=y, vm=m+1; if(vm>12){ vm=1; vy++; }
-  const dd=Math.min(Math.max(parseInt(dia)||10,1),28);
+  const lastDay=new Date(vy, vm, 0).getDate();       // último dia do mês de vencimento
+  const dd=Math.min(Math.max(parseInt(dia)||10,1), lastDay);
   return ymd(proxDiaUtil(new Date(vy, vm-1, dd)));
 }
 
