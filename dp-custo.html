@@ -111,6 +111,16 @@
     .cc-adv-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px 14px; }
     .cc-adv-grid .cc-field > span { font-size:11.5px; }
     .cc-adv-grid .input { padding:6px 8px; font-size:12.5px; }
+    /* adicionais: selects compactos e sub-linha recuada */
+    .cc-mini-sel { width:auto !important; padding:7px 8px; font-size:13px; }
+    .cc-subrow { padding-left:27px; }
+    .cc-subrow .cc-row-lbl { color:#8A93A6; font-weight:400; }
+    /* linha personalizada com coluna "compõe base" */
+    .cc-dyn-row.cust { grid-template-columns:1fr 74px 90px 50px 32px; }
+    .cc-dyn-head.cust { grid-template-columns:1fr 74px 90px 50px 32px; }
+    .cc-base-cell { display:flex; align-items:center; justify-content:center; }
+    .cc-base-cell input { width:17px; height:17px; accent-color:#5B82A6; cursor:pointer; }
+    .cc-dyn-head.cust span.base-h { text-align:center; }
   </style>
 </head>
 <body>
@@ -174,8 +184,47 @@
           </section>
 
           <section class="cc-card">
+            <h3>Adicionais sobre o salário</h3>
+            <p class="cc-hint">Adicionais habituais integram a remuneração — entram na base de FGTS, INSS, 13º e férias (e no bruto do funcionário). Periculosidade e insalubridade não se acumulam entre si; o adicional noturno acumula com qualquer uma.</p>
+            <div class="cc-row">
+              <input type="checkbox" class="cc-chk" id="onPeric">
+              <span class="cc-row-lbl">Periculosidade<small>30% sobre o salário-base (art. 193, §1º, CLT)</small></span>
+              <span class="cc-pct"><input type="number" step="0.01" id="pctPeric" value="30"><span class="cc-unit">%</span></span>
+            </div>
+            <div class="cc-row">
+              <input type="checkbox" class="cc-chk" id="onInsal">
+              <span class="cc-row-lbl">Insalubridade<small>grau sobre o salário mínimo (Súmula Vinculante 4 / art. 192 CLT)</small></span>
+              <span class="cc-pct" style="gap:6px;">
+                <select class="select cc-mini-sel" id="grauInsal">
+                  <option value="10">10%</option>
+                  <option value="20" selected>20%</option>
+                  <option value="40">40%</option>
+                </select>
+              </span>
+            </div>
+            <div class="cc-row cc-subrow">
+              <span class="cc-row-lbl">Base de cálculo da insalubridade</span>
+              <span class="cc-pct" style="gap:6px;">
+                <select class="select cc-mini-sel" id="baseInsal">
+                  <option value="min" selected>× salário mínimo</option>
+                  <option value="base">× salário-base</option>
+                </select>
+              </span>
+            </div>
+            <div class="cc-row cc-subrow">
+              <span class="cc-row-lbl">Salário mínimo vigente (R$)<small>usado quando a base é o mínimo; ajuste se a convenção fixar piso diferente</small></span>
+              <span class="cc-pct"><input type="number" step="0.01" id="salMin" value="1621.00"><span class="cc-unit">R$</span></span>
+            </div>
+            <div class="cc-row">
+              <input type="checkbox" class="cc-chk" id="onNot">
+              <span class="cc-row-lbl">Adicional noturno (+ extras noturnas)<small>valor mensal estimado — integra a base</small></span>
+              <span class="cc-pct"><input type="number" step="0.01" id="valNot" value="" placeholder="0,00"><span class="cc-unit">R$</span></span>
+            </div>
+          </section>
+
+          <section class="cc-card">
             <h3>Encargos patronais</h3>
-            <p class="cc-hint">Incidem sobre o salário. O percentual de cada um é editável.</p>
+            <p class="cc-hint">Incidem sobre a remuneração (salário-base + adicionais que integram a base). O percentual de cada um é editável.</p>
             <div class="cc-row">
               <input type="checkbox" class="cc-chk" id="onINSS">
               <span class="cc-row-lbl">INSS patronal (CPP)<small>20% — Presumido/Real</small></span>
@@ -203,7 +252,7 @@
             <p class="cc-hint">Custos diluídos por mês. Os encargos patronais ativos também incidem sobre 13º e férias.</p>
             <div class="cc-row">
               <input type="checkbox" class="cc-chk" id="on13" checked>
-              <span class="cc-row-lbl">13º salário<small>1/12 do salário</small></span>
+              <span class="cc-row-lbl">13º salário<small>1/12 da remuneração</small></span>
               <span class="cc-pct"><input type="number" step="0.01" id="pct13" value="8.33"><span class="cc-unit">%</span></span>
             </div>
             <div class="cc-row">
@@ -234,7 +283,7 @@
           <section class="cc-card">
             <h3>Linhas personalizadas</h3>
             <p class="cc-hint">Qualquer item extra, em R$ ou em % do salário — para simulações fora do padrão.</p>
-            <div class="cc-dyn-head cust"><span>Item</span><span>Tipo</span><span>Valor</span><span></span></div>
+            <div class="cc-dyn-head cust"><span>Item</span><span>Tipo</span><span>Valor</span><span class="base-h">Base?</span><span></span></div>
             <div id="custList"></div>
             <button type="button" class="btn btn-ghost btn-sm cc-add" id="btnAddCust">+ Adicionar linha</button>
           </section>
@@ -374,20 +423,23 @@
       row.querySelector('.cc-del').addEventListener('click', () => { row.remove(); calc(); });
       document.getElementById('benList').appendChild(row);
     }
-    function addCust(label, tipo, valor){
+    function addCust(label, tipo, valor, base){
       const row = document.createElement('div');
       row.className = 'cc-dyn-row cust';
       row.innerHTML =
-        '<input type="text" class="input cust-label" placeholder="Ex.: Adicional de insalubridade">' +
+        '<input type="text" class="input cust-label" placeholder="Ex.: Comissão habitual">' +
         '<select class="select cust-tipo"><option value="R$">R$</option><option value="%">%</option></select>' +
         '<input type="number" step="0.01" class="input cust-valor" placeholder="0,00">' +
+        '<div class="cc-base-cell"><input type="checkbox" class="cust-base" title="Compõe a base de FGTS, INSS, 13º e férias (verba salarial habitual)"></div>' +
         '<button type="button" class="cc-del" title="Remover">&times;</button>';
       row.querySelector('.cust-label').value = label || '';
       if (tipo) row.querySelector('.cust-tipo').value = tipo;
       if (valor != null) row.querySelector('.cust-valor').value = valor;
+      if (base) row.querySelector('.cust-base').checked = true;
       row.querySelector('.cust-label').addEventListener('input', calc);
       row.querySelector('.cust-tipo').addEventListener('change', calc);
       row.querySelector('.cust-valor').addEventListener('input', calc);
+      row.querySelector('.cust-base').addEventListener('change', calc);
       row.querySelector('.cc-del').addEventListener('click', () => { row.remove(); calc(); });
       document.getElementById('custList').appendChild(row);
     }
@@ -422,16 +474,41 @@
     function calc(){
       const sal = getNum('salario');
 
+      // ---- adicionais sobre o salário (integram a remuneração) ----
+      const pericPct = getNum('pctPeric');
+      const peric = chk('onPeric') ? sal * pericPct/100 : 0;
+      const grauIns = getNum('grauInsal');
+      const baseInsalSel = (document.getElementById('baseInsal') || {}).value || 'min';
+      const baseInsalVal = baseInsalSel === 'base' ? sal : getNum('salMin');
+      const insal = chk('onInsal') ? baseInsalVal * grauIns/100 : 0;
+      const noturno = chk('onNot') ? getNum('valNot') : 0;
+
+      // ---- linhas personalizadas (algumas compõem a base) ----
+      let custTotal = 0, custIntegra = 0;
+      const custLines = [];
+      document.querySelectorAll('#custList .cc-dyn-row').forEach(r => {
+        const lbl = (r.querySelector('.cust-label').value || '').trim() || 'Linha personalizada';
+        const tipo = r.querySelector('.cust-tipo').value;
+        const val = numEl(r.querySelector('.cust-valor'));
+        const compoe = !!(r.querySelector('.cust-base') && r.querySelector('.cust-base').checked);
+        const amt = tipo === '%' ? sal * val/100 : val;
+        if (val) { custTotal += amt; if (compoe) custIntegra += amt; custLines.push({ lbl, amt, tipo, val, compoe }); }
+      });
+
+      // ---- base de cálculo dos encargos = salário-base + adicionais habituais que integram ----
+      const adicBase = peric + insal + noturno + custIntegra;
+      const baseEnc = sal + adicBase;
+
       // soma das alíquotas patronais ativas
       let somaAtivas = 0;
       patronais.forEach(p => { if (chk(p.on)) somaAtivas += getNum(p.pct)/100; });
       document.getElementById('encProvRate').textContent = pctNum(somaAtivas * 100);
 
-      // provisões
-      const prov13 = chk('on13') ? sal * getNum('pct13')/100 : 0;
-      const provFer = chk('onFer') ? sal * getNum('pctFer')/100 : 0;
+      // provisões (sobre a base de encargos)
+      const prov13 = chk('on13') ? baseEnc * getNum('pct13')/100 : 0;
+      const provFer = chk('onFer') ? baseEnc * getNum('pctFer')/100 : 0;
       const encProv = chk('onEncProv') ? (prov13 + provFer) * somaAtivas : 0;
-      const multa = chk('onMulta') ? sal * getNum('pctMulta')/100 : 0;
+      const multa = chk('onMulta') ? baseEnc * getNum('pctMulta')/100 : 0;
 
       // benefícios
       let benTotal = 0, descTotal = 0;
@@ -445,31 +522,23 @@
         if (val || dsc) benLines.push({ lbl, net });
       });
 
-      // linhas personalizadas
-      let custTotal = 0;
-      const custLines = [];
-      document.querySelectorAll('#custList .cc-dyn-row').forEach(r => {
-        const lbl = (r.querySelector('.cust-label').value || '').trim() || 'Linha personalizada';
-        const tipo = r.querySelector('.cust-tipo').value;
-        const val = numEl(r.querySelector('.cust-valor'));
-        const amt = tipo === '%' ? sal * val/100 : val;
-        if (val) { custTotal += amt; custLines.push({ lbl, amt, tipo, val }); }
-      });
-
       // ---- composição: caixa mensal vs provisões ----
       const elCaixa = [];
       elCaixa.push({ lbl:'Salário base', v: sal });
+      if (peric)   elCaixa.push({ lbl:'Periculosidade (' + pctNum(pericPct) + ')', v: peric });
+      if (insal)   elCaixa.push({ lbl:'Insalubridade (' + grauIns + '% ' + (baseInsalSel === 'base' ? 's/ salário-base' : 's/ mínimo') + ')', v: insal });
+      if (noturno) elCaixa.push({ lbl:'Adicional noturno', v: noturno });
       let patronalTotal = 0;
       patronais.forEach(p => {
         if (chk(p.on)) {
           const r = getNum(p.pct)/100;
-          const v = sal * r;
+          const v = baseEnc * r;
           patronalTotal += v;
           elCaixa.push({ lbl: p.label + ' (' + pctNum(r*100) + ')', v });
         }
       });
       benLines.forEach(b => elCaixa.push({ lbl: b.lbl, v: b.net }));
-      custLines.forEach(c => elCaixa.push({ lbl: c.lbl + (c.tipo === '%' ? ' (' + pctNum(c.val) + ')' : ''), v: c.amt }));
+      custLines.forEach(c => elCaixa.push({ lbl: c.lbl + (c.tipo === '%' ? ' (' + pctNum(c.val) + ')' : '') + (c.compoe ? ' · base' : ''), v: c.amt }));
 
       const elProv = [];
       if (prov13) elProv.push({ lbl:'13º salário', v: prov13 });
@@ -495,29 +564,40 @@
       document.getElementById('ccAnual').textContent = money(totalMensal * 12);
       document.getElementById('ccMult').textContent = sal > 0 ? '×' + (totalMensal/sal).toLocaleString('pt-BR',{minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
 
-      // ---- líquido ----
-      const { inss, aliq: inssAliq } = calcINSS(sal);
+      // ---- líquido (sobre a remuneração bruta = salário + adicionais que integram) ----
+      const bruto = baseEnc;
+      const { inss, aliq: inssAliq } = calcINSS(bruto);
       const teto = getNum('inssLim4');
-      const baseLegal = sal - inss - getNum('dependentes') * getNum('irDep');
-      const baseSimpl = sal - getNum('irSimpl');
+      const baseLegal = bruto - inss - getNum('dependentes') * getNum('irDep');
+      const baseSimpl = bruto - getNum('irSimpl');
       const baseIR = Math.max(0, Math.min(baseLegal, baseSimpl));
       const { ir: irTab } = calcIRRFtab(baseIR);
 
       const redLim1 = getNum('redLim1'), redLim2 = getNum('redLim2');
       let ir = irTab, redutorNota;
-      if (sal <= redLim1) {
+      if (bruto <= redLim1) {
         ir = 0;
         redutorNota = 'isento (renda ≤ ' + money(redLim1) + ')';
-      } else if (sal <= redLim2) {
-        const red = Math.max(0, getNum('redA') - getNum('redB') * sal);
+      } else if (bruto <= redLim2) {
+        const red = Math.max(0, getNum('redA') - getNum('redB') * bruto);
         ir = Math.max(0, irTab - red);
         redutorNota = 'redutor de ' + money(Math.min(red, irTab)) + ' aplicado';
       } else {
         redutorNota = 'sem redutor (renda > ' + money(redLim2) + ')';
       }
 
-      const liquido = sal - inss - ir - descTotal;
-      let lr = lineL('Salário bruto', sal);
+      const liquido = bruto - inss - ir - descTotal;
+      let lr = '';
+      if (adicBase > 0) {
+        lr += lineL('Salário base', sal);
+        if (peric)       lr += lineL('+ Periculosidade', peric);
+        if (insal)       lr += lineL('+ Insalubridade', insal);
+        if (noturno)     lr += lineL('+ Adicional noturno', noturno);
+        if (custIntegra) lr += lineL('+ Verbas habituais (personalizadas)', custIntegra);
+        lr += '<tr class="cc-subtot"><td>Remuneração bruta</td><td class="cc-num">' + money(bruto) + '</td></tr>';
+      } else {
+        lr += lineL('Salário bruto', bruto);
+      }
       lr += lineL('INSS', -inss);
       lr += lineL('IRRF', -ir);
       if (descTotal > 0) lr += lineL('Descontos em benefícios', -descTotal);
@@ -525,10 +605,11 @@
       document.getElementById('outLiquido').innerHTML = lr;
 
       document.getElementById('liqNota').textContent =
-        'INSS: alíquota ' + pctNum(inssAliq*100) + ' (base ' + money(Math.min(sal, teto)) + '). ' +
+        'INSS: alíquota ' + pctNum(inssAliq*100) + ' (base ' + money(Math.min(bruto, teto)) + '). ' +
         'IRRF: base de cálculo ' + money(baseIR) + ' — ' + redutorNota + '.';
 
-      last = { sal, regimeLabel: regimeAtual, elCaixa, elProv, caixaMensal, provTotal, totalMensal, totalAnual: totalMensal*12, inss, ir, descTotal, liquido, inssAliq, baseIR, redutorNota };
+      last = { sal, bruto, adicBase, regimeLabel: regimeAtual, elCaixa, elProv, caixaMensal, provTotal, totalMensal, totalAnual: totalMensal*12, inss, ir, descTotal, liquido, inssAliq, baseIR, redutorNota,
+               adic: { peric, insal, noturno, custIntegra } };
     }
 
     function line(label, v, base){
@@ -583,7 +664,14 @@
           '<p class="rep-explain"><b>Como ler:</b> o <b>custo mensal de caixa</b> (' + money(last.caixaMensal) + ') é o que efetivamente sai do caixa todo mês — salário, encargos recolhidos no mês e benefícios. As <b>provisões</b> (' + money(last.provTotal) + ') — 13º, férias + 1/3 e multa de FGTS — são apropriadas mensalmente por competência, mas pagas em outros momentos (13º no fim do ano, férias quando gozadas, multa apenas em rescisão). O <b>custo mensal total</b> (' + money(last.totalMensal) + ') considera tudo e, multiplicado por 12, chega ao custo anual.</p>' +
           '<h2 class="rep-h2">Líquido do funcionário</h2>' +
           '<table class="rep-tbl"><tbody>' +
-            '<tr><td>Salário bruto</td><td class="r">' + money(last.sal) + '</td></tr>' +
+            ((last.adicBase > 0) ?
+              ('<tr><td>Salário base</td><td class="r">' + money(last.sal) + '</td></tr>' +
+               (last.adic.peric ? '<tr><td>+ Periculosidade</td><td class="r">' + money(last.adic.peric) + '</td></tr>' : '') +
+               (last.adic.insal ? '<tr><td>+ Insalubridade</td><td class="r">' + money(last.adic.insal) + '</td></tr>' : '') +
+               (last.adic.noturno ? '<tr><td>+ Adicional noturno</td><td class="r">' + money(last.adic.noturno) + '</td></tr>' : '') +
+               (last.adic.custIntegra ? '<tr><td>+ Verbas habituais</td><td class="r">' + money(last.adic.custIntegra) + '</td></tr>' : '') +
+               '<tr class="sub"><td>Remuneração bruta</td><td class="r">' + money(last.bruto) + '</td></tr>')
+              : '<tr><td>Salário bruto</td><td class="r">' + money(last.bruto) + '</td></tr>') +
             '<tr><td>(−) INSS</td><td class="r">' + money(-last.inss) + '</td></tr>' +
             '<tr><td>(−) IRRF</td><td class="r">' + money(-last.ir) + '</td></tr>' +
             (last.descTotal > 0 ? '<tr><td>(−) Descontos em benefícios</td><td class="r">' + money(-last.descTotal) + '</td></tr>' : '') +
