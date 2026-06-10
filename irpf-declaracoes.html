@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IRPF — Declarações — Macedo & Reis</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+  <style>
+    .fa-subnav { display:flex; gap:6px; margin-bottom:22px; border-bottom:1px solid rgba(255,255,255,.08); flex-wrap:wrap; }
+    .fa-tab { padding:9px 16px; font-size:14px; color:#8A93A6; text-decoration:none; border-bottom:2px solid transparent; margin-bottom:-1px; }
+    .fa-tab:hover { color:#C5D8E8; }
+    .fa-tab.is-active { color:#C5D8E8; border-bottom-color:#5B82A6; font-weight:600; }
+    .content { max-width:none; }
+    .page-header { max-width:880px; }
+
+    .fa-focus { display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin-bottom:20px; }
+    .fa-focus-card { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:14px 16px; display:flex; flex-direction:column; gap:4px; }
+    .fc-num { font-size:24px; font-weight:700; color:#E6EBF2; line-height:1; }
+    .fc-num.money { font-size:18px; }
+    .fc-lbl { font-size:12px; color:#8A93A6; }
+    @media (max-width:760px){ .fa-focus { grid-template-columns:repeat(2,1fr); } }
+
+    .bo-toolbar { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; justify-content:space-between; margin-bottom:16px; }
+    .bo-left, .bo-right { display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; }
+    .bo-comp { display:flex; flex-direction:column; gap:5px; font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:#8AAEC8; }
+
+    .bo-tablewrap { background:rgba(255,255,255,.025); border:1px solid rgba(255,255,255,.08); border-radius:14px; overflow-x:auto; }
+    table.bo { border-collapse:collapse; width:100%; min-width:1120px; font-size:12.5px; }
+    table.bo th { position:sticky; top:0; background:#11171f; color:#8AAEC8; font-weight:600; text-align:left; padding:8px 6px; border-bottom:1px solid rgba(255,255,255,.08); font-size:11px; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; z-index:1; }
+    table.bo td { padding:4px 6px; border-bottom:1px solid rgba(255,255,255,.05); vertical-align:middle; }
+    table.bo tr:hover td { background:rgba(255,255,255,.02); }
+    .ci { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.14); color:#E6EBF2; border-radius:7px; padding:5px 6px; font-size:12.5px; width:100%; outline:none; font-family:inherit; }
+    .ci:focus { border-color:#5B82A6; }
+    .ci.nome { min-width:175px; font-weight:600; }
+    .ci.val { width:78px; text-align:right; }
+    .ci.dt { width:122px; }
+    .ci.sel { width:104px; }
+    td.ant { color:#8A93A6; text-align:right; white-space:nowrap; width:78px; }
+    td.ant .novo { color:#8AAEC8; font-size:11px; font-weight:600; letter-spacing:.04em; }
+    .w-obs { min-width:150px; }
+    td.num { color:#8A93A6; text-align:center; width:30px; }
+    .st, .cb { border-radius:7px; padding:5px 6px; font-size:12px; font-weight:600; border:1px solid rgba(255,255,255,.14); font-family:inherit; cursor:pointer; background:rgba(255,255,255,.04); color:#D7DEE8; }
+    .st { width:128px; }
+    .cb { width:138px; }
+    .st-a_contatar { color:#c3c9d4; }
+    .st-em_andamento { color:#8AAEC8; border-color:rgba(91,130,166,.45); }
+    .st-entregue { color:#3FB07A; border-color:rgba(63,176,122,.45); }
+    .st-nao_declara { color:#8A93A6; }
+    .st-ja_fez { color:#8A93A6; }
+    .st-desvinculado { color:#E06C6C; border-color:rgba(224,108,108,.4); }
+    .cb-a_cobrar { color:#E3B341; border-color:rgba(227,179,65,.45); }
+    .cb-pago { color:#0e1a13; background:#3FB07A; border-color:#3FB07A; font-weight:700; }
+    .cb-lancado_ca { color:#8AAEC8; border-color:rgba(91,130,166,.45); }
+    .cb-nao_cobrar { color:#8A93A6; }
+    .cb-isento { color:#8A93A6; }
+    .rm { color:#8A93A6; cursor:pointer; border:none; background:none; font-size:16px; padding:2px 6px; border-radius:6px; }
+    .rm:hover { color:#E06C6C; background:rgba(224,108,108,.1); }
+
+    .bo-foot { display:flex; justify-content:flex-start; align-items:center; gap:12px; flex-wrap:wrap; margin-top:14px; }
+    .bo-msg { font-size:13px; color:#8A93A6; min-height:18px; }
+    .bo-empty { text-align:center; padding:46px 20px; color:#8A93A6; }
+    .spin { display:inline-block; width:13px; height:13px; border:2px solid rgba(255,255,255,.3); border-top-color:#fff; border-radius:50%; animation:sp .7s linear infinite; vertical-align:-2px; margin-right:6px; }
+    @keyframes sp { to { transform:rotate(360deg); } }
+
+    .ov { position:fixed; inset:0; background:rgba(8,12,18,.72); display:none; align-items:flex-start; justify-content:center; z-index:100; padding:60px 16px; }
+    .ov.open { display:flex; }
+    .ov-box { background:#141A22; border:1px solid rgba(255,255,255,.10); border-radius:16px; width:100%; max-width:460px; display:flex; flex-direction:column; overflow:hidden; }
+    .ov-head { padding:16px 20px; border-bottom:1px solid rgba(255,255,255,.08); display:flex; justify-content:space-between; align-items:center; }
+    .ov-head h3 { font-size:18px; font-weight:600; color:#E6EBF2; margin:0; }
+    .ov-body { padding:16px 20px; display:flex; flex-direction:column; gap:12px; }
+    .ov-err { color:#E06C6C; font-size:13px; min-height:16px; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip"><div class="user-avatar" id="userAvatar">—</div><span id="userName">Carregando…</span></div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <a href="irpf.html">IRPF</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Declarações</span>
+        </div>
+        <div class="eyebrow">Campanha anual</div>
+        <h1>Declarações IRPF</h1>
+        <p>Carteira de clientes da campanha do ano: contato, entrega, honorário e cobrança de cada declaração. As alterações são salvas automaticamente.</p>
+      </div>
+
+      <div class="fa-subnav">
+        <a href="irpf.html" class="fa-tab">Tarefas</a>
+        <a href="irpf-declaracoes.html" class="fa-tab is-active">Declarações</a>
+        <a href="irpf-regras.html" class="fa-tab">Regras</a>
+        <a href="irpf-relatorios.html" class="fa-tab">Relatórios</a>
+      </div>
+
+      <div class="bo-toolbar">
+        <div class="bo-left">
+          <label class="bo-comp">Ano-campanha
+            <input type="number" id="ano" class="input" value="2026" min="2020" max="2099" style="max-width:110px;">
+          </label>
+          <button class="btn btn-primary" id="btnGerar">Gerar ano a partir do anterior</button>
+          <button class="btn btn-ghost" id="btnAdd">+ Adicionar cliente</button>
+        </div>
+        <div class="bo-right">
+          <input type="text" id="busca" class="input input-search" placeholder="Buscar cliente…" style="max-width:220px;">
+          <select id="fSit" class="select" style="max-width:170px;">
+            <option value="">Todas as situações</option>
+            <option value="a_contatar">A contatar</option>
+            <option value="em_andamento">Em andamento</option>
+            <option value="entregue">Entregue</option>
+            <option value="nao_declara">Não vai declarar</option>
+            <option value="ja_fez">Já fez por fora</option>
+            <option value="desvinculado">Desvinculado</option>
+          </select>
+          <select id="fCob" class="select" style="max-width:170px;">
+            <option value="">Todas as cobranças</option>
+            <option value="a_cobrar">A cobrar</option>
+            <option value="pago">Pago</option>
+            <option value="lancado_ca">Lançado Conta Azul</option>
+            <option value="nao_cobrar">Não cobrar</option>
+            <option value="isento">Isento</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="fa-focus" id="cards"></div>
+
+      <div class="bo-tablewrap">
+        <table class="bo" id="tbl">
+          <thead>
+            <tr>
+              <th>#</th><th>Cliente</th><th>Ano ant.</th><th>Honorário</th><th>Canal</th>
+              <th>1º contato</th><th>Entrega</th><th>Situação</th><th>Cobrança</th><th>Observações</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+        <div class="bo-empty" id="empty" style="display:none;">Nenhum cliente nesse ano ainda. Use <b>“Gerar ano a partir do anterior”</b> para trazer a carteira, ou adicione clientes um a um.</div>
+      </div>
+
+      <div class="bo-foot">
+        <div class="bo-msg" id="msg"></div>
+      </div>
+    </main>
+  </div>
+
+  <div class="ov" id="ov">
+    <div class="ov-box">
+      <div class="ov-head"><h3>Adicionar cliente ao ano</h3><button class="btn btn-ghost btn-sm" id="ovClose">Fechar</button></div>
+      <div class="ov-body">
+        <input type="text" id="ovNome" class="input" placeholder="Nome completo do cliente" autocomplete="off">
+        <div class="ov-err" id="ovErr"></div>
+        <button class="btn btn-primary" id="ovAdd">Adicionar</button>
+      </div>
+    </div>
+  </div>
+
+<script type="module">
+import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+
+const $ = id => document.getElementById(id);
+const BRL = n => 'R$ ' + (Number(n)||0).toLocaleString('pt-BR',{minimumFractionDigits:2, maximumFractionDigits:2});
+const hoje = () => { const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+const norm = s => String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/\s+/g,' ').trim();
+
+const SITUACOES=[['a_contatar','A contatar'],['em_andamento','Em andamento'],['entregue','Entregue'],['nao_declara','Não vai declarar'],['ja_fez','Já fez por fora'],['desvinculado','Desvinculado']];
+const COBRANCAS=[['a_cobrar','A cobrar'],['pago','Pago'],['lancado_ca','Lançado Conta Azul'],['nao_cobrar','Não cobrar'],['isento','Isento']];
+const CANAIS=[['whatsapp','WhatsApp'],['presencial','Presencial'],['email','E-mail'],['outro','Outro']];
+
+let rows=[];     // registros do ano selecionado
+let prevMap={};  // norm(nome) -> registro do ano anterior
+
+async function init(){
+  try{
+    const u=await getCurrentUser();
+    if(u){ const n=u.user_metadata?.full_name || u.email?.split('@')[0] || 'Usuário';
+      $('userName').textContent=n; $('userAvatar').textContent=n.charAt(0).toUpperCase(); }
+  }catch(e){}
+  $('btnLogout').addEventListener('click', signOut);
+  await carregarAno();
+  $('ano').addEventListener('change', carregarAno);
+  $('btnGerar').addEventListener('click', gerarAno);
+  $('btnAdd').addEventListener('click', abrirAdd);
+  $('ovClose').addEventListener('click', ()=>$('ov').classList.remove('open'));
+  $('ovAdd').addEventListener('click', addCliente);
+  $('ovNome').addEventListener('keydown', e=>{ if(e.key==='Enter') addCliente(); });
+  $('busca').addEventListener('input', render);
+  $('fSit').addEventListener('change', render);
+  $('fCob').addEventListener('change', render);
+}
+
+async function carregarAno(){
+  const ano=parseInt($('ano').value)||new Date().getFullYear();
+  msg('Carregando…');
+  const [{ data, error }, { data: prev }] = await Promise.all([
+    supabase.from('irpf_declaracoes').select('*').eq('ano',ano),
+    supabase.from('irpf_declaracoes').select('nome,valor,cobranca').eq('ano',ano-1)
+  ]);
+  if(error){ msg('Erro ao carregar: '+error.message); return; }
+  rows=(data||[]).map(r=>({...r}));
+  rows.sort((a,b)=>a.nome.localeCompare(b.nome));
+  prevMap=Object.fromEntries((prev||[]).map(p=>[norm(p.nome),p]));
+  render(); msg('');
+}
+
+async function gerarAno(){
+  const ano=parseInt($('ano').value);
+  const btn=$('btnGerar'); btn.disabled=true; btn.innerHTML='<span class="spin"></span>Gerando…';
+  try{
+    const { data: prev, error } = await supabase.from('irpf_declaracoes').select('*').eq('ano',ano-1);
+    if(error) throw error;
+    if(!prev || !prev.length){ msg('Nenhum registro em '+(ano-1)+' para gerar a partir dele.'); return; }
+    const existentes=new Set(rows.map(r=>norm(r.nome)));
+    const novos=(prev||[])
+      .filter(p=>p.situacao!=='desvinculado' && !existentes.has(norm(p.nome)))
+      .map(p=>({
+        ano, nome:p.nome, canal:p.canal||'whatsapp',
+        situacao:'a_contatar', cobranca: p.cobranca==='isento' ? 'isento' : 'a_cobrar'
+      }));
+    if(novos.length){
+      const { error: e2 } = await supabase.from('irpf_declaracoes').insert(novos);
+      if(e2) throw e2;
+    }
+    await carregarAno();
+    msg(novos.length? `${novos.length} cliente(s) trazido(s) de ${ano-1}.` : 'Ano já estava completo (nada novo a gerar).');
+  }catch(e){ msg('Erro ao gerar: '+(e.message||e)); }
+  finally{ btn.disabled=false; btn.textContent='Gerar ano a partir do anterior'; }
+}
+
+function render(){
+  const q=norm($('busca').value);
+  const fs=$('fSit').value, fc=$('fCob').value;
+  const tb=$('tbody'); tb.innerHTML='';
+  let vis=rows.filter(r=>{
+    if(q && !norm(r.nome).includes(q)) return false;
+    if(fs && r.situacao!==fs) return false;
+    if(fc && r.cobranca!==fc) return false;
+    return true;
+  });
+  $('empty').style.display = rows.length? 'none':'block';
+  let i=0;
+  for(const r of vis){
+    i++;
+    const p=prevMap[norm(r.nome)];
+    const antTxt = p ? (p.cobranca==='isento' ? 'Isento' : (p.valor!=null ? BRL(p.valor) : '—')) : '<span class="novo">novo</span>';
+    const tr=document.createElement('tr');
+    tr.innerHTML=`
+      <td class="num">${i}</td>
+      <td><input class="ci nome" value="${esc(r.nome)}" data-f="nome"></td>
+      <td class="ant">${antTxt}</td>
+      <td><input class="ci val" type="number" step="0.01" value="${r.valor??''}" placeholder="—" data-f="valor"></td>
+      <td><select class="ci sel" data-f="canal">
+            ${CANAIS.map(c=>`<option value="${c[0]}"${(r.canal||'whatsapp')===c[0]?' selected':''}>${c[1]}</option>`).join('')}
+          </select></td>
+      <td><input class="ci dt" type="date" value="${r.data_contato||''}" data-f="data_contato"></td>
+      <td><input class="ci dt" type="date" value="${r.data_entrega||''}" data-f="data_entrega"></td>
+      <td><select class="st st-${r.situacao}" data-f="situacao">
+            ${SITUACOES.map(s=>`<option value="${s[0]}"${r.situacao===s[0]?' selected':''}>${s[1]}</option>`).join('')}
+          </select></td>
+      <td><select class="cb cb-${r.cobranca}" data-f="cobranca">
+            ${COBRANCAS.map(c=>`<option value="${c[0]}"${r.cobranca===c[0]?' selected':''}>${c[1]}</option>`).join('')}
+          </select></td>
+      <td class="w-obs"><input class="ci" value="${esc(r.obs||'')}" data-f="obs"></td>
+      <td><button class="rm" title="Remover">✕</button></td>`;
+    tr.querySelectorAll('[data-f]').forEach(el=>{
+      const f=el.dataset.f;
+      const apply=()=>{
+        r[f] = (f==='valor') ? (el.value===''? null : (parseFloat(el.value)||0)) : el.value;
+        if(f==='situacao'){
+          el.className='st st-'+r.situacao;
+          if(r.situacao==='entregue' && !r.data_entrega){
+            r.data_entrega=hoje();
+            const dt=tr.querySelector('[data-f="data_entrega"]'); if(dt) dt.value=r.data_entrega;
+          }
+          updateCards();
+        }
+        if(f==='cobranca'){ el.className='cb cb-'+r.cobranca; updateCards(); }
+        if(f==='valor'){ updateCards(); }
+      };
+      const isTexto = (el.tagName==='INPUT' && el.type!=='date');
+      if(isTexto){
+        el.addEventListener('input', ()=>{ apply(); agendarSalvar(r); });
+        el.addEventListener('change', ()=>{ apply(); salvarLinha(r); });
+      }else{
+        el.addEventListener('change', ()=>{ apply(); salvarLinha(r); });
+      }
+    });
+    tr.querySelector('.rm').addEventListener('click', ()=>removerRow(r));
+    tb.appendChild(tr);
+  }
+  updateCards();
+}
+
+function updateCards(){
+  const ativos=rows.filter(r=>['a_contatar','em_andamento','entregue'].includes(r.situacao));
+  const entregues=rows.filter(r=>r.situacao==='entregue').length;
+  const pct=ativos.length? Math.round(entregues/ativos.length*100):0;
+  const previstos=ativos.filter(r=>!['isento','nao_cobrar'].includes(r.cobranca)).reduce((s,r)=>s+(Number(r.valor)||0),0);
+  const recebido=rows.filter(r=>['pago','lancado_ca'].includes(r.cobranca)).reduce((s,r)=>s+(Number(r.valor)||0),0);
+  const pendEnt=rows.filter(r=>['a_contatar','em_andamento'].includes(r.situacao)).length;
+  const pendCob=rows.filter(r=>r.situacao==='entregue' && r.cobranca==='a_cobrar').length;
+  $('cards').innerHTML=`
+    <div class="fa-focus-card"><span class="fc-num">${rows.length}</span><span class="fc-lbl">Clientes no ano</span></div>
+    <div class="fa-focus-card"><span class="fc-num" style="color:#3FB07A">${entregues} <small style="font-size:13px;color:#8A93A6">(${pct}%)</small></span><span class="fc-lbl">Entregues</span></div>
+    <div class="fa-focus-card"><span class="fc-num money">${BRL(previstos)}</span><span class="fc-lbl">Honorários previstos</span></div>
+    <div class="fa-focus-card"><span class="fc-num money" style="color:#3FB07A">${BRL(recebido)}</span><span class="fc-lbl">Pago / lançado</span></div>
+    <div class="fa-focus-card"><span class="fc-num" style="color:#8AAEC8">${pendEnt}</span><span class="fc-lbl">Pendentes de entrega</span></div>
+    <div class="fa-focus-card"><span class="fc-num" style="color:#E3B341">${pendCob}</span><span class="fc-lbl">Entregues a cobrar</span></div>`;
+}
+
+async function removerRow(r){
+  if(!confirm('Remover '+r.nome+' do ano '+r.ano+'?')) return;
+  if(r.id){
+    const { error } = await supabase.from('irpf_declaracoes').delete().eq('id',r.id);
+    if(error){ msg('Erro ao remover: '+error.message); return; }
+  }
+  rows=rows.filter(x=>x!==r);
+  render(); msg('Cliente removido do ano.');
+}
+
+// ---- autosave por linha ----
+const SAVE_DELAY=800;
+function saveState(s){
+  const el=$('msg');
+  if(s==='saving'){ el.innerHTML='<span class="spin"></span>Salvando…'; el.style.color='#8A93A6'; }
+  else if(s==='saved'){ const t=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); el.textContent='Salvo ✓ '+t; el.style.color='#3FB07A'; }
+  else if(s==='error'){ el.textContent='Erro ao salvar — sem conexão? vou tentar de novo'; el.style.color='#E06C6C'; }
+}
+function agendarSalvar(r){ clearTimeout(r._t); r._t=setTimeout(()=>salvarLinha(r), SAVE_DELAY); }
+async function salvarLinha(r){
+  clearTimeout(r._t);
+  if(r._saving){ r._pend=true; return; }
+  r._saving=true; saveState('saving');
+  const payload={
+    ano:r.ano, nome:(r.nome||'').trim(), canal:r.canal||'whatsapp',
+    data_contato:r.data_contato||null, situacao:r.situacao||'a_contatar',
+    data_entrega:r.data_entrega||null, valor:(r.valor==null||r.valor==='')?null:Number(r.valor),
+    cobranca:r.cobranca||'a_cobrar', obs:r.obs||null
+  };
+  try{
+    if(!payload.nome) throw new Error('nome vazio');
+    if(r.id){
+      const { error } = await supabase.from('irpf_declaracoes').update(payload).eq('id',r.id);
+      if(error) throw error;
+    }else{
+      const { data, error } = await supabase.from('irpf_declaracoes').insert(payload).select('id').single();
+      if(error) throw error;
+      r.id=data.id;
+    }
+    r._retries=0;
+    saveState('saved');
+  }catch(e){
+    saveState('error');
+    r._retries=(r._retries||0)+1;
+    if(r._retries<=3) setTimeout(()=>salvarLinha(r), 3000);
+  }finally{
+    r._saving=false;
+    if(r._pend){ r._pend=false; salvarLinha(r); }
+  }
+}
+
+function abrirAdd(){ $('ovNome').value=''; $('ovErr').textContent=''; $('ov').classList.add('open'); $('ovNome').focus(); }
+async function addCliente(){
+  const nome=($('ovNome').value||'').replace(/\s+/g,' ').trim();
+  if(!nome){ $('ovErr').textContent='Digite o nome do cliente.'; return; }
+  if(rows.some(r=>norm(r.nome)===norm(nome))){ $('ovErr').textContent='Esse cliente já está no ano.'; return; }
+  const ano=parseInt($('ano').value);
+  const nova={ ano, nome, canal:'whatsapp', situacao:'a_contatar', cobranca:'a_cobrar',
+               data_contato:null, data_entrega:null, valor:null, obs:null };
+  rows.push(nova);
+  rows.sort((a,b)=>a.nome.localeCompare(b.nome));
+  $('ov').classList.remove('open');
+  render(); salvarLinha(nova);
+}
+
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function msg(t){ const el=$('msg'); el.textContent=t||''; el.style.color=''; }
+
+init();
+</script>
+</body>
+</html>
