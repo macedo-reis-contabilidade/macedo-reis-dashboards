@@ -241,14 +241,21 @@
       const setores = Object.keys(mapa);
       if (!setores.length) return;
 
-      // filtro pessoal: pra alguns users, conta SÓ o que é deles (responsável)
-      const FILTRO_PESSOAL = { 'financeiro@macedoereis.com.br': ['Samuel', 'Ambos'] };
+      // filtro pessoal: cada login vê SÓ as tarefas/rotinas em que é o responsável
+      const FILTRO_PESSOAL = {
+        'fiscal@macedoereis.com.br':     ['Thalia'],
+        'rh@macedoereis.com.br':         ['Vitoria', 'Vitória'],
+        'contabil@macedoereis.com.br':   ['Adaini'],
+        'financeiro@macedoereis.com.br': ['Samuel'],
+        'diego@macedoereis.com.br':      ['Diego'],
+      };
       const meusNomes = user ? FILTRO_PESSOAL[(user.email || '').toLowerCase()] : null;
+      const norm = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
       const ehMeu = (resp) => {
-        if (!meusNomes) return true;              // sem filtro pessoal: tudo conta
-        if (!resp) return true;                   // sem dono: conta como meu
-        const r = String(resp).toLowerCase();
-        return meusNomes.some(n => r.includes(n.toLowerCase()));
+        if (!meusNomes) return true;              // login fora do mapa: conta tudo (ex.: samuel@/admin genérico)
+        const r = norm(resp);
+        if (!r) return false;                     // tarefa sem responsável NÃO entra no "hoje" de ninguém com filtro
+        return meusNomes.some(n => r.includes(norm(n)));
       };
 
       // tarefas com prazo de hoje e não concluídas, por setor
