@@ -6,6 +6,32 @@
   <title>Editar cliente — Macedo & Reis</title>
   <link rel="stylesheet" href="../assets/css/style.css">
   <script type="module" src="../assets/js/auth-guard.js"></script>
+  <style>
+    .fa-modal-overlay { position:fixed; inset:0; background:rgba(8,12,18,.72); display:none; align-items:flex-start; justify-content:center; padding:48px 16px; z-index:200; overflow-y:auto; }
+    .fa-modal-overlay.is-open { display:flex; }
+    .fa-modal { width:100%; max-width:600px; background:#141A22; border:1px solid rgba(255,255,255,.10); border-radius:16px; overflow:hidden; }
+    .fa-modal-head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid rgba(255,255,255,.08); }
+    .fa-modal-head h3 { margin:0; color:#E6EBF2; font-size:18px; }
+    .fa-modal-close { background:none; border:none; color:#8A93A6; font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }
+    .fa-modal-close:hover { color:#E6EBF2; }
+    .fa-modal-body { padding:22px; display:flex; flex-direction:column; gap:14px; }
+    .fa-field { display:flex; flex-direction:column; gap:6px; }
+    .fa-field > span { font-size:13px; color:#8AAEC8; }
+    .fa-field-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .fa-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid rgba(255,255,255,.08); }
+    .fa-modal textarea.input { resize:vertical; font-family:inherit; }
+    .alv-hr { border:none; border-top:1px solid rgba(255,255,255,.08); margin:8px 0 2px; }
+    .alv-tl-head { font-weight:600; color:#E6EBF2; }
+    .proc-warn { background:rgba(227,179,65,.12); border:1px solid rgba(227,179,65,.35); color:#E3B341; border-radius:10px; padding:9px 12px; font-size:13px; }
+    .proc-status { font-size:13px; color:#8A93A6; min-height:16px; }
+    .proc-task { display:grid; grid-template-columns:26px 1fr 150px 130px 28px; gap:8px; align-items:center; margin-bottom:8px; }
+    .proc-task-chk { display:flex; align-items:center; justify-content:center; }
+    .proc-task-chk input { width:17px; height:17px; accent-color:#5B82A6; cursor:pointer; }
+    .proc-task .input, .proc-task .select { padding:7px 9px; font-size:13px; }
+    .rm-task { background:none; border:none; color:#8A93A6; font-size:18px; cursor:pointer; padding:0; border-radius:6px; }
+    .rm-task:hover { color:#E06C6C; }
+    @media (max-width:640px){ .proc-task { grid-template-columns:26px 1fr; } .proc-task .pt-setor,.proc-task .pt-resp{ grid-column:2; } .rm-task{ display:none; } .fa-field-row{ grid-template-columns:1fr; } }
+  </style>
 </head>
 <body>
   <div class="app-shell">
@@ -369,6 +395,22 @@
           </div>
         </section>
 
+        <section class="form-section" id="sectionProcessos">
+          <div class="form-section-head">
+            <h2>Processos / atualizações</h2>
+            <span class="form-section-sub">Registre uma alteração e dispare as tarefas dos setores</span>
+          </div>
+          <div class="form-grid">
+            <div class="fg-col-12">
+              <div class="field-help" id="procHelp" style="margin-bottom:12px;">Anexe o contrato social consolidado e o cartão CNPJ atualizados. Ao registrar, o sistema cria a subpasta do processo dentro de <b>PROCESSOS</b> no Drive, guarda os arquivos e abre as tarefas de atualização nos setores.</div>
+              <button id="btnRegistrarProcesso" class="btn btn-primary" type="button">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+                Registrar processo
+              </button>
+            </div>
+          </div>
+        </section>
+
         <section class="form-section">
           <div class="form-section-head"><h2>Observações</h2></div>
           <div class="form-grid">
@@ -464,6 +506,47 @@
     </div>
   </dialog>
 
+  <div class="fa-modal-overlay" id="procOverlay">
+    <div class="fa-modal" style="max-width:600px;">
+      <div class="fa-modal-head"><h3>Registrar processo</h3><button class="fa-modal-close" id="procClose">&times;</button></div>
+      <div class="fa-modal-body">
+        <div class="proc-warn" id="procNoDrive" style="display:none;">Este cliente ainda não tem pasta no Drive vinculada. Crie a pasta na seção "Pasta no Drive" antes de registrar um processo (os arquivos precisam ir para a subpasta PROCESSOS).</div>
+
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Tipo de processo</span>
+            <select id="procTipo" class="select"><option value="ALTERAÇÃO" selected>Alteração</option></select>
+          </label>
+          <label class="fa-field"><span>Nome da pasta no Drive</span>
+            <input type="text" id="procPastaNome" class="input" value="ALTERAÇÃO" placeholder="Ex.: ALTERAÇÃO">
+          </label>
+        </div>
+
+        <label class="fa-field"><span>Contrato social consolidado (PDF)</span>
+          <input type="file" id="procContrato" class="input" accept="application/pdf">
+        </label>
+        <label class="fa-field"><span>Cartão CNPJ atualizado (PDF)</span>
+          <input type="file" id="procCnpj" class="input" accept="application/pdf">
+        </label>
+
+        <label class="fa-field"><span>O que foi alterado (vai para o registro no Societário)</span>
+          <textarea id="procResumo" class="input" rows="3" placeholder="Ex.: Alteração de cotas do capital social; entrada do sócio X…"></textarea>
+        </label>
+
+        <hr class="alv-hr">
+        <div class="alv-tl-head" style="font-size:14px;">Tarefas a abrir</div>
+        <div class="field-help" style="margin:-2px 0 4px;">Marque o que se aplica. Você pode editar responsável e setor antes de confirmar.</div>
+        <div id="procTarefas"></div>
+        <button type="button" class="btn btn-ghost btn-sm" id="procAddTarefa" style="align-self:flex-start;">+ Adicionar tarefa</button>
+
+        <div class="proc-status" id="procStatus"></div>
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-ghost" id="procCancelar">Cancelar</button>
+        <button class="btn btn-primary" id="procConfirmar">Registrar e abrir tarefas</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module">
     import { supabase, getCurrentUser, signOut } from '../assets/js/supabase.js';
     import {
@@ -472,9 +555,11 @@
       onlyDigits, buscarCEP, ESTADOS_BR
     } from '../assets/js/utils.js';
 
+    let usuarioEmail = null;
     (async () => {
       const user = await getCurrentUser();
       if (user) {
+        usuarioEmail = user.email;
         const displayName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário';
         document.getElementById('userName').textContent = displayName;
         document.getElementById('userAvatar').textContent = displayName.charAt(0).toUpperCase();
@@ -939,6 +1024,141 @@
         return;
       }
       window.location.href = 'index.html';
+    });
+
+    // ===================== REGISTRAR PROCESSO =====================
+    const procOverlay = document.getElementById('procOverlay');
+    const SETOR_OPTS = [
+      ['societario','Societário'], ['fiscal','Fiscal'], ['clientes','Clientes'],
+      ['departamento_pessoal','Departamento Pessoal'], ['contabil','Contábil'], ['financeiro','Financeiro']
+    ];
+    // tarefas sugeridas por tipo de processo
+    const SUGESTOES = {
+      'ALTERAÇÃO': [
+        { titulo:'Atualização de alvará', setor:'societario', responsavel:'Samuel' },
+        { titulo:'Atualização de IE',     setor:'fiscal',     responsavel:'Thalia' },
+        { titulo:'Atualização Domínio',   setor:'clientes',   responsavel:'Adaini' },
+      ]
+    };
+
+    function procStatus(txt, cor){ const e=document.getElementById('procStatus'); e.textContent=txt||''; e.style.color=cor||'var(--text-muted)'; }
+    function selSetorHtml(val){ return SETOR_OPTS.map(s=>`<option value="${s[0]}"${s[0]===val?' selected':''}>${s[1]}</option>`).join(''); }
+
+    function linhaTarefa(t){
+      const row = document.createElement('div');
+      row.className = 'proc-task';
+      row.innerHTML =
+        `<label class="proc-task-chk"><input type="checkbox" class="pt-on"${t.on!==false?' checked':''}><span></span></label>`+
+        `<input type="text" class="input pt-titulo" value="${(t.titulo||'').replace(/"/g,'&quot;')}" placeholder="Título da tarefa">`+
+        `<select class="select pt-setor">${selSetorHtml(t.setor||'societario')}</select>`+
+        `<input type="text" class="input pt-resp" value="${(t.responsavel||'').replace(/"/g,'&quot;')}" placeholder="Responsável">`+
+        `<button type="button" class="rm-task" title="Remover">&times;</button>`;
+      row.querySelector('.rm-task').addEventListener('click', ()=>row.remove());
+      return row;
+    }
+    function montarTarefas(tipo){
+      const box = document.getElementById('procTarefas'); box.innerHTML='';
+      (SUGESTOES[tipo] || []).forEach(t => box.appendChild(linhaTarefa(t)));
+    }
+
+    document.getElementById('btnRegistrarProcesso').addEventListener('click', () => {
+      const temDrive = !!(cliente && cliente.drive_folder_url);
+      document.getElementById('procNoDrive').style.display = temDrive ? 'none' : 'block';
+      document.getElementById('procConfirmar').disabled = !temDrive;
+      const tipo = document.getElementById('procTipo').value;
+      document.getElementById('procPastaNome').value = tipo;
+      montarTarefas(tipo);
+      procStatus('');
+      procOverlay.classList.add('is-open');
+    });
+    document.getElementById('procTipo').addEventListener('change', e => {
+      document.getElementById('procPastaNome').value = e.target.value;
+      montarTarefas(e.target.value);
+    });
+    document.getElementById('procAddTarefa').addEventListener('click', () => {
+      document.getElementById('procTarefas').appendChild(linhaTarefa({ titulo:'', setor:'societario', responsavel:'' }));
+    });
+    document.getElementById('procClose').addEventListener('click', fecharProc);
+    document.getElementById('procCancelar').addEventListener('click', fecharProc);
+    procOverlay.addEventListener('click', e => { if (e.target === procOverlay) fecharProc(); });
+    function fecharProc(){ procOverlay.classList.remove('is-open'); }
+
+    function fileToBase64(file){
+      return new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(String(r.result).split(',')[1]);
+        r.onerror = () => rej(new Error('Falha ao ler ' + file.name));
+        r.readAsDataURL(file);
+      });
+    }
+
+    document.getElementById('procConfirmar').addEventListener('click', async () => {
+      if (!cliente || !cliente.drive_folder_url) { procStatus('Cliente sem pasta no Drive.', 'var(--danger)'); return; }
+      const tipo = document.getElementById('procTipo').value;
+      const pastaNome = document.getElementById('procPastaNome').value.trim() || tipo;
+      const resumo = document.getElementById('procResumo').value.trim();
+      const fC = document.getElementById('procContrato').files[0];
+      const fN = document.getElementById('procCnpj').files[0];
+
+      // tarefas marcadas
+      const tarefasSel = [];
+      document.querySelectorAll('#procTarefas .proc-task').forEach(row => {
+        if (!row.querySelector('.pt-on').checked) return;
+        const titulo = row.querySelector('.pt-titulo').value.trim();
+        if (!titulo) return;
+        tarefasSel.push({ titulo, setor: row.querySelector('.pt-setor').value, responsavel: row.querySelector('.pt-resp').value.trim() || null });
+      });
+
+      const btn = document.getElementById('procConfirmar'); btn.disabled = true;
+      const nomeCliente = cliente.nome_principal || 'Cliente';
+      try {
+        // 1) Drive: subir arquivos na subpasta do processo
+        const arquivos = [];
+        if (fC) arquivos.push({ nome: `Contrato Social - ${pastaNome} - ${nomeCliente}.pdf`, mime: 'application/pdf', base64: await fileToBase64(fC) });
+        if (fN) arquivos.push({ nome: `Cartao CNPJ - ${pastaNome} - ${nomeCliente}.pdf`, mime: 'application/pdf', base64: await fileToBase64(fN) });
+
+        let driveMsg = 'sem arquivos';
+        if (arquivos.length) {
+          procStatus('Enviando arquivos ao Drive…');
+          const { data: dr, error: derr } = await supabase.functions.invoke('registrar-processo-drive', {
+            body: { drive_folder_url: cliente.drive_folder_url, nome_processo: pastaNome, arquivos }
+          });
+          if (derr) throw new Error('Drive: ' + (derr.message || derr));
+          if (dr?.error) throw new Error('Drive: ' + dr.error);
+          driveMsg = `${(dr?.enviados||[]).length} arquivo(s) em PROCESSOS/${pastaNome}`;
+          if (dr?.falhas?.length) driveMsg += ` (${dr.falhas.length} falha(s))`;
+        }
+
+        // 2) Registro no Societário (tarefa-processo) + resumo
+        procStatus('Registrando no Societário…');
+        const descParts = [];
+        if (resumo) descParts.push(resumo);
+        descParts.push('Processo: ' + pastaNome + ' · Documentos salvos no Drive (' + driveMsg + ').');
+        const regSoc = {
+          setor: 'societario', titulo: tipo === 'ALTERAÇÃO' ? 'Alteração contratual' : tipo,
+          cliente_id: clienteId, responsavel: 'Samuel', prioridade: 'media',
+          descricao: descParts.join('\n'), origem: 'processo', status: 'pendente'
+        };
+        const { data: insSoc } = await supabase.from('tarefas').insert(regSoc).select('id').single();
+        if (insSoc) await supabase.from('tarefa_historico').insert({ tarefa_id: insSoc.id, descricao: 'Processo registrado a partir do cadastro do cliente.' + (resumo ? '\nAlterações: ' + resumo : ''), autor: usuarioEmail });
+
+        // 3) Tarefas dos setores
+        procStatus('Abrindo tarefas dos setores…');
+        let abertas = 0;
+        for (const t of tarefasSel) {
+          const novo = { setor: t.setor, titulo: t.titulo, cliente_id: clienteId, responsavel: t.responsavel, prioridade: 'media',
+            descricao: 'Gerada pelo processo "' + pastaNome + '" de ' + nomeCliente + '.', origem: 'processo', status: 'pendente' };
+          const { data: ins } = await supabase.from('tarefas').insert(novo).select('id').single();
+          if (ins) { abertas++; await supabase.from('tarefa_historico').insert({ tarefa_id: ins.id, descricao: 'Tarefa criada automaticamente pelo processo.', autor: usuarioEmail }); }
+        }
+
+        procStatus(`Pronto: ${driveMsg}; registro no Societário + ${abertas} tarefa(s) aberta(s).`, 'var(--success)');
+        setTimeout(fecharProc, 2200);
+      } catch (e) {
+        procStatus('Erro: ' + (e.message || e), 'var(--danger)');
+      } finally {
+        btn.disabled = false;
+      }
     });
 
     loadCliente();
