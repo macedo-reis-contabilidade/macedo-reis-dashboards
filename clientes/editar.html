@@ -1063,8 +1063,14 @@
 
     document.getElementById('btnRegistrarProcesso').addEventListener('click', () => {
       const temDrive = !!(cliente && cliente.drive_folder_url);
-      document.getElementById('procNoDrive').style.display = temDrive ? 'none' : 'block';
-      document.getElementById('procConfirmar').disabled = !temDrive;
+      // Aviso suave: se não há URL salva, o sistema vai PROCURAR a pasta no Drive pelo nome.
+      const aviso = document.getElementById('procNoDrive');
+      if (temDrive) { aviso.style.display = 'none'; }
+      else {
+        aviso.style.display = 'block';
+        aviso.textContent = 'Sem URL de pasta salva no cadastro — ao registrar, o sistema vai procurar a pasta deste cliente em "Clientes Ativos" pelo nome. Se encontrar, usa e vincula automaticamente; se não existir mesmo, avisa.';
+      }
+      document.getElementById('procConfirmar').disabled = false;  // nunca bloqueia: a função decide
       const tipo = document.getElementById('procTipo').value;
       document.getElementById('procPastaNome').value = tipo;
       montarTarefas(tipo);
@@ -1092,8 +1098,51 @@
       });
     }
 
+    // ao anexar o contrato, tenta resumir as alterações automaticamente
+    document.getElementById('procContrato').addEventListener('change', async (e) => {
+      const f = e.target.files[0];
+      if (!f) return;
+      const campo = document.getElementById('procResumo');
+      if (campo.value.trim()) return; // não sobrescreve o que o usuário já escreveu
+      procStatus('Lendo o contrato para resumir as alterações…');
+      try {
+        const base64 = await fileToBase64(f);
+        const { data: resp, error } = await supabase.functions.invoke('extract-document', {
+          body: { modo: 'cadastro', documents: [{ media_type: 'application/pdf', data: base64 }] }
+        });
+        if (error) throw error;
+        const d = resp?.data;
+        if (!d) { procStatus(''); return; }
+        campo.value = montarResumoAlteracoes(d);
+        procStatus('Resumo preenchido a partir do contrato — confira e ajuste se precisar.', 'var(--success)');
+      } catch (err) {
+        procStatus('Não consegui ler o contrato automaticamente — preencha o resumo na mão. (' + (err.message || err) + ')', 'var(--warning)');
+      }
+    });
+
+    function montarResumoAlteracoes(d){
+      const L = [];
+      if (d.nome_principal) L.push('Razão social: ' + d.nome_principal);
+      if (d.documento) L.push('CNPJ: ' + d.documento);
+      if (d.capital_social != null) L.push('Capital social: R$ ' + Number(d.capital_social).toLocaleString('pt-BR', {minimumFractionDigits:2}));
+      if (d.natureza_juridica) L.push('Natureza jurídica: ' + d.natureza_juridica);
+      if (Array.isArray(d.socios) && d.socios.length){
+        const socs = d.socios.map(s => {
+          const part = s.participacao_percentual != null ? ` (${s.participacao_percentual}%)` : '';
+          const adm = s.eh_administrador ? ' — administrador' : '';
+          return '• ' + (s.nome || 'sócio') + part + adm;
+        }).join('\n');
+        L.push('Quadro societário (conforme contrato consolidado):\n' + socs);
+      }
+      const endereco = [d.logradouro, d.numero, d.bairro, d.cidade, d.uf].filter(Boolean).join(', ');
+      if (endereco) L.push('Endereço: ' + endereco);
+      if (d.cnae_principal) L.push('CNAE principal: ' + d.cnae_principal);
+      if (d.observacoes_extracao) L.push('Obs.: ' + d.observacoes_extracao);
+      L.push('\n(Resumo extraído automaticamente do contrato consolidado — revisar e destacar o que de fato mudou.)');
+      return L.join('\n');
+    }
+
     document.getElementById('procConfirmar').addEventListener('click', async () => {
-      if (!cliente || !cliente.drive_folder_url) { procStatus('Cliente sem pasta no Drive.', 'var(--danger)'); return; }
       const tipo = document.getElementById('procTipo').value;
       const pastaNome = document.getElementById('procPastaNome').value.trim() || tipo;
       const resumo = document.getElementById('procResumo').value.trim();
@@ -1110,24 +1159,28 @@
       });
 
       const btn = document.getElementById('procConfirmar'); btn.disabled = true;
-      const nomeCliente = cliente.nome_principal || 'Cliente';
+      const nomeCliente = cliente?.nome_principal || 'Cliente';
       try {
-        // 1) Drive: subir arquivos na subpasta do processo
+        // 1) Drive: subir arquivos na subpasta do processo (a função localiza a pasta, mesmo sem URL salva)
         const arquivos = [];
         if (fC) arquivos.push({ nome: `Contrato Social - ${pastaNome} - ${nomeCliente}.pdf`, mime: 'application/pdf', base64: await fileToBase64(fC) });
         if (fN) arquivos.push({ nome: `Cartao CNPJ - ${pastaNome} - ${nomeCliente}.pdf`, mime: 'application/pdf', base64: await fileToBase64(fN) });
 
         let driveMsg = 'sem arquivos';
-        if (arquivos.length) {
-          procStatus('Enviando arquivos ao Drive…');
-          const { data: dr, error: derr } = await supabase.functions.invoke('registrar-processo-drive', {
-            body: { drive_folder_url: cliente.drive_folder_url, nome_processo: pastaNome, arquivos }
-          });
-          if (derr) throw new Error('Drive: ' + (derr.message || derr));
-          if (dr?.error) throw new Error('Drive: ' + dr.error);
-          driveMsg = `${(dr?.enviados||[]).length} arquivo(s) em PROCESSOS/${pastaNome}`;
-          if (dr?.falhas?.length) driveMsg += ` (${dr.falhas.length} falha(s))`;
+        procStatus('Localizando a pasta no Drive e enviando arquivos…');
+        const { data: dr, error: derr } = await supabase.functions.invoke('registrar-processo-drive', {
+          body: { drive_folder_url: cliente?.drive_folder_url || null, nome_processo: pastaNome, arquivos, cliente_id: clienteId, nome_cliente: nomeCliente }
+        });
+        if (derr) throw new Error('Drive: ' + (derr.message || derr));
+        if (dr?.error === 'NAO_ACHEI_PASTA') {
+          procStatus('Não encontrei a pasta deste cliente em "Clientes Ativos". Crie/vincule a pasta na seção "Pasta no Drive" e tente de novo.', 'var(--danger)');
+          btn.disabled = false; return;
         }
+        if (dr?.error) throw new Error('Drive: ' + dr.error);
+        // se a função achou a pasta por nome, guarda a URL no objeto local
+        if (dr?.cliente_folder_url && cliente) cliente.drive_folder_url = dr.cliente_folder_url;
+        driveMsg = `${(dr?.enviados||[]).length} arquivo(s) em PROCESSOS/${pastaNome}` + (dr?.achada_por_nome ? ' (pasta localizada e vinculada)' : '');
+        if (dr?.falhas?.length) driveMsg += ` · ${dr.falhas.length} falha(s)`;
 
         // 2) Registro no Societário (tarefa-processo) + resumo
         procStatus('Registrando no Societário…');
@@ -1153,7 +1206,7 @@
         }
 
         procStatus(`Pronto: ${driveMsg}; registro no Societário + ${abertas} tarefa(s) aberta(s).`, 'var(--success)');
-        setTimeout(fecharProc, 2200);
+        setTimeout(fecharProc, 2600);
       } catch (e) {
         procStatus('Erro: ' + (e.message || e), 'var(--danger)');
       } finally {
