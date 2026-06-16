@@ -6,6 +6,11 @@
   <title>Clientes — Macedo & Reis</title>
   <link rel="stylesheet" href="../assets/css/style.css">
   <style>
+    /* Subnav do setor Clientes */
+    .fa-subnav { display:flex; gap:6px; margin-bottom:22px; border-bottom:1px solid rgba(255,255,255,.08); flex-wrap:wrap; }
+    .fa-tab { padding:9px 16px; font-size:14px; color:#8A93A6; text-decoration:none; border-bottom:2px solid transparent; margin-bottom:-1px; }
+    .fa-tab:hover { color:#C5D8E8; }
+    .fa-tab.is-active { color:#C5D8E8; border-bottom-color:#5B82A6; font-weight:600; }
     /* Filtros compactos: busca + tipo + status numa linha, selects estreitos */
     .toolbar { flex-wrap: wrap; gap: 16px; align-items: center; }
     .toolbar-filters { display: flex; flex-direction: row; flex-wrap: wrap; gap: 12px; align-items: center; flex: 1 1 auto; }
@@ -60,6 +65,11 @@
         <div class="eyebrow">Cadastro</div>
         <h1>Clientes</h1>
         <p>Base mestre de clientes PJ e PF do escritório. Clique em uma linha para editar.</p>
+      </div>
+
+      <div class="fa-subnav">
+        <a href="index.html" class="fa-tab is-active">Cadastro</a>
+        <a href="clientes-tarefas.html" class="fa-tab">Tarefas</a>
       </div>
 
       <div class="toolbar">
