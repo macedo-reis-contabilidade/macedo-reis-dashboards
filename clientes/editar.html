@@ -21,6 +21,15 @@
     .fa-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid rgba(255,255,255,.08); }
     .fa-modal textarea.input { resize:vertical; font-family:inherit; }
     .alv-hr { border:none; border-top:1px solid rgba(255,255,255,.08); margin:8px 0 2px; }
+    .cmp-box { border:1px solid rgba(91,130,166,.25); background:rgba(91,130,166,.06); border-radius:10px; padding:10px 12px; }
+    .cmp-step { display:flex; flex-direction:column; gap:10px; }
+    .cmp-tbl { width:100%; border-collapse:collapse; font-size:12.5px; margin-top:4px; }
+    .cmp-tbl th { text-align:left; color:#8AAEC8; font-size:11px; text-transform:uppercase; letter-spacing:.04em; padding:6px 8px; border-bottom:1px solid rgba(255,255,255,.1); }
+    .cmp-tbl td { padding:6px 8px; border-bottom:1px solid rgba(255,255,255,.05); vertical-align:top; color:#D7DEE8; }
+    .cmp-tbl tr.mudou td { background:rgba(227,179,65,.10); }
+    .cmp-tbl tr.mudou td:first-child { border-left:2px solid #E3B341; }
+    .cmp-campo { color:#8A93A6; white-space:nowrap; }
+    .cmp-flag { color:#E3B341; font-weight:700; font-size:11px; }
     .alv-tl-head { font-weight:600; color:#E6EBF2; }
     .proc-warn { background:rgba(227,179,65,.12); border:1px solid rgba(227,179,65,.35); color:#E3B341; border-radius:10px; padding:9px 12px; font-size:13px; }
     .proc-status { font-size:13px; color:#8A93A6; min-height:16px; }
@@ -531,6 +540,22 @@
         <label class="fa-field"><span>O que foi alterado (vai para o registro no Societário)</span>
           <textarea id="procResumo" class="input" rows="3" placeholder="Ex.: Alteração de cotas do capital social; entrada do sócio X…"></textarea>
         </label>
+
+        <div class="cmp-box">
+          <button type="button" class="btn btn-ghost btn-sm" id="btnComparar">⇄ Comparar com documento anterior</button>
+          <div id="cmpArea" style="display:none; margin-top:10px;">
+            <div class="cmp-step">
+              <label class="fa-field"><span>1. Processo anterior (base de comparação)</span>
+                <select id="cmpProcesso" class="select"><option value="">Carregando pastas…</option></select>
+              </label>
+              <label class="fa-field"><span>2. Qual arquivo é o contrato anterior</span>
+                <select id="cmpArquivo" class="select"><option value="">Escolha o processo primeiro</option></select>
+              </label>
+              <button type="button" class="btn btn-primary btn-sm" id="btnRodarComparativo" disabled>Gerar comparativo</button>
+            </div>
+            <div id="cmpResultado" style="margin-top:10px;"></div>
+          </div>
+        </div>
 
         <hr class="alv-hr">
         <div class="alv-tl-head" style="font-size:14px;">Tarefas a abrir</div>
@@ -1140,6 +1165,128 @@
       if (d.observacoes_extracao) L.push('Obs.: ' + d.observacoes_extracao);
       L.push('\n(Resumo extraído automaticamente do contrato consolidado — revisar e destacar o que de fato mudou.)');
       return L.join('\n');
+    }
+
+    // ===================== COMPARATIVO ANTES × DEPOIS =====================
+    const FN_PROC = 'registrar-processo-drive';
+    function fmtData(iso){ try { return new Date(iso).toLocaleDateString('pt-BR'); } catch { return ''; } }
+
+    document.getElementById('btnComparar').addEventListener('click', async () => {
+      const area = document.getElementById('cmpArea');
+      if (area.style.display === 'none') { area.style.display = 'block'; } else { area.style.display = 'none'; return; }
+      const selP = document.getElementById('cmpProcesso');
+      selP.innerHTML = '<option value="">Carregando pastas…</option>';
+      try {
+        const { data, error } = await supabase.functions.invoke(FN_PROC, {
+          body: { acao: 'listar_processos', drive_folder_url: cliente?.drive_folder_url || null, nome_cliente: cliente?.nome_principal }
+        });
+        if (error) throw error;
+        if (data?.error === 'NAO_ACHEI_PASTA') { selP.innerHTML = '<option value="">Pasta do cliente não encontrada</option>'; return; }
+        const subs = data?.subpastas || [];
+        if (!subs.length) { selP.innerHTML = '<option value="">Nenhum processo anterior em PROCESSOS</option>'; return; }
+        selP.innerHTML = '<option value="">Selecione…</option>' + subs.map(s =>
+          `<option value="${s.id}">${s.name}${s.modifiedTime ? ' — ' + fmtData(s.modifiedTime) : ''}</option>`).join('');
+      } catch (e) {
+        selP.innerHTML = `<option value="">Erro: ${e.message || e}</option>`;
+      }
+    });
+
+    document.getElementById('cmpProcesso').addEventListener('change', async (e) => {
+      const pastaId = e.target.value;
+      const selA = document.getElementById('cmpArquivo');
+      document.getElementById('btnRodarComparativo').disabled = true;
+      if (!pastaId) { selA.innerHTML = '<option value="">Escolha o processo primeiro</option>'; return; }
+      selA.innerHTML = '<option value="">Carregando arquivos…</option>';
+      try {
+        const { data, error } = await supabase.functions.invoke(FN_PROC, { body: { acao: 'listar_pdfs', pasta_id: pastaId } });
+        if (error) throw error;
+        const pdfs = data?.pdfs || [];
+        if (!pdfs.length) { selA.innerHTML = '<option value="">Nenhum PDF nessa pasta</option>'; return; }
+        selA.innerHTML = '<option value="">Selecione o contrato…</option>' + pdfs.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+      } catch (err) {
+        selA.innerHTML = `<option value="">Erro: ${err.message || err}</option>`;
+      }
+    });
+
+    document.getElementById('cmpArquivo').addEventListener('change', (e) => {
+      document.getElementById('btnRodarComparativo').disabled = !e.target.value;
+    });
+
+    document.getElementById('btnRodarComparativo').addEventListener('click', async () => {
+      const fileId = document.getElementById('cmpArquivo').value;
+      const fNovo = document.getElementById('procContrato').files[0];
+      const res = document.getElementById('cmpResultado');
+      if (!fileId) { res.innerHTML = '<div class="proc-warn">Escolha o contrato anterior.</div>'; return; }
+      if (!fNovo) { res.innerHTML = '<div class="proc-warn">Anexe o contrato novo lá em cima primeiro.</div>'; return; }
+      const btn = document.getElementById('btnRodarComparativo'); btn.disabled = true;
+      res.innerHTML = '<div class="proc-status"><span class="spinner spinner-sm"></span> Lendo os dois contratos e comparando… (pode levar até 40s)</div>';
+      try {
+        // baixa o PDF antigo (base64) via Edge Function
+        const { data: dl, error: edl } = await supabase.functions.invoke(FN_PROC, { body: { acao: 'baixar_pdf', file_id: fileId } });
+        if (edl) throw edl; if (dl?.error) throw new Error(dl.error);
+        const base64Antigo = dl.base64;
+        const base64Novo = await fileToBase64(fNovo);
+
+        // extrai os dois em paralelo
+        const ext = (b64) => supabase.functions.invoke('extract-document', { body: { modo: 'cadastro', documents: [{ media_type: 'application/pdf', data: b64 }] } });
+        const [rA, rN] = await Promise.all([ext(base64Antigo), ext(base64Novo)]);
+        if (rA.error) throw rA.error; if (rN.error) throw rN.error;
+        const A = rA.data?.data, N = rN.data?.data;
+        if (!A || !N) throw new Error('Não consegui extrair um dos contratos.');
+
+        res.innerHTML = renderComparativo(A, N);
+        // joga um resumo do que mudou pro campo (sem sobrescrever se já houver texto)
+        const campo = document.getElementById('procResumo');
+        const mudancas = listarMudancas(A, N);
+        if (mudancas.length) {
+          const txt = 'Alterações identificadas (contrato anterior → atual):\n' + mudancas.map(m => `• ${m}`).join('\n');
+          campo.value = campo.value.trim() ? (campo.value.trim() + '\n\n' + txt) : txt;
+        }
+      } catch (err) {
+        res.innerHTML = `<div class="proc-warn">Não consegui comparar: ${err.message || err}</div>`;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    function vSocios(arr){
+      if (!Array.isArray(arr) || !arr.length) return '—';
+      return arr.map(s => (s.nome || '?') + (s.participacao_percentual != null ? ` (${s.participacao_percentual}%)` : '') + (s.eh_administrador ? ' [adm]' : '')).join('; ');
+    }
+    function vEndereco(d){ return [d.logradouro, d.numero, d.bairro, d.cidade, d.uf].filter(Boolean).join(', ') || '—'; }
+    function vCnaes(d){ const sec = Array.isArray(d.cnaes_secundarios) ? d.cnaes_secundarios.join(', ') : ''; return [d.cnae_principal, sec].filter(Boolean).join(' | ') || '—'; }
+    function vCap(v){ return v != null ? 'R$ ' + Number(v).toLocaleString('pt-BR', {minimumFractionDigits:2}) : '—'; }
+
+    function campos(d){
+      return [
+        ['Razão social', d.nome_principal || '—'],
+        ['Nome fantasia', d.nome_fantasia || '—'],
+        ['Capital social', vCap(d.capital_social)],
+        ['Natureza jurídica', d.natureza_juridica || '—'],
+        ['Atividades (CNAE)', vCnaes(d)],
+        ['Endereço', vEndereco(d)],
+        ['Sócios', vSocios(d.socios)],
+      ];
+    }
+    function renderComparativo(A, N){
+      const ca = campos(A), cn = campos(N);
+      let linhas = '';
+      for (let i = 0; i < ca.length; i++){
+        const dif = String(ca[i][1]) !== String(cn[i][1]);
+        linhas += `<tr class="${dif ? 'mudou' : ''}">
+          <td class="cmp-campo">${ca[i][0]}${dif ? ' <span class="cmp-flag">●</span>' : ''}</td>
+          <td>${ca[i][1]}</td>
+          <td>${cn[i][1]}</td></tr>`;
+      }
+      return `<table class="cmp-tbl"><thead><tr><th>Campo</th><th>Antes</th><th>Depois</th></tr></thead><tbody>${linhas}</tbody></table>
+        <div class="field-help" style="margin-top:6px;">As linhas em amarelo (●) são as que mudaram. Confira — a extração é automática e pode falhar em PDF escaneado.</div>`;
+    }
+    function listarMudancas(A, N){
+      const ca = campos(A), cn = campos(N), out = [];
+      for (let i = 0; i < ca.length; i++){
+        if (String(ca[i][1]) !== String(cn[i][1])) out.push(`${ca[i][0]}: "${ca[i][1]}" → "${cn[i][1]}"`);
+      }
+      return out;
     }
 
     document.getElementById('procConfirmar').addEventListener('click', async () => {
