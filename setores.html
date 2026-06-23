@@ -3,18 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Macedo & Reis — Dashboards</title>
+  <title>Setores — Macedo & Reis</title>
   <link rel="stylesheet" href="assets/css/style.css">
   <script type="module" src="assets/js/auth-guard.js"></script>
   <style>
     .dashboard-card { position:relative; transition: transform .15s ease, border-color .15s ease, background .15s ease, box-shadow .15s ease; }
     .dashboard-card:hover { transform: translateY(-2px); border-color: rgba(138,174,200,.35); background: rgba(255,255,255,.045); box-shadow: 0 8px 24px rgba(0,0,0,.25); }
 
-    /* Cor de identidade por grupo (no ícone) */
-    a[href="agenda.html"]         .dashboard-card-icon { background: rgba(120,170,230,.16); color:#8FC0F0; }
-    a[href="clientes/index.html"] .dashboard-card-icon { background: rgba(91,192,190,.15);  color:#7FD4D2; }
-    a[href="setores.html"]        .dashboard-card-icon { background: rgba(133,151,224,.15); color:#8597E0; }
-    a[href="administracao.html"]  .dashboard-card-icon { background: rgba(227,179,65,.15);  color:#E3B341; }
+    /* Cor de identidade por setor (no ícone) */
+    a[href="dp.html"]         .dashboard-card-icon { background: rgba(150,123,220,.15); color:#A48FE0; }
+    a[href="fiscal.html"]     .dashboard-card-icon { background: rgba(91,130,166,.18); color:#8AAEC8; }
+    a[href="contabil.html"]   .dashboard-card-icon { background: rgba(133,151,224,.15); color:#8597E0; }
+    a[href="societario.html"] .dashboard-card-icon { background: rgba(227,179,65,.15);  color:#E3B341; }
+    a[href="comercial.html"]  .dashboard-card-icon { background: rgba(224,160,95,.15);  color:#E0A05F; }
+    a[href="irpf.html"]       .dashboard-card-icon { background: rgba(224,143,168,.15); color:#E08FA8; }
 
     /* Selo "hoje" (urgência do dia) — canto superior direito */
     .badge-hoje { position:absolute; top:14px; right:14px; background:rgba(227,179,65,.18); border:1px solid rgba(227,179,65,.5); color:#E3B341; font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.04em; text-transform:uppercase; box-shadow:0 0 0 3px rgba(227,179,65,.06); }
@@ -45,71 +47,71 @@
 
     <main class="content">
       <div class="page-header">
-        <div class="eyebrow">Painel central</div>
-        <h1>Dashboards do escritório</h1>
-        <p>Acesso unificado aos sistemas internos. Cada card abre o dashboard correspondente.</p>
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Setores</span>
+        </div>
+        <div class="eyebrow">Operacional</div>
+        <h1>Setores</h1>
+        <p>Controle de tarefas dos setores operacionais do escritório.</p>
       </div>
 
       <div class="dashboard-grid">
-        <a href="agenda.html" class="dashboard-card">
+        <a href="dp.html" class="dashboard-card">
           <div class="dashboard-card-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-              <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-            </svg>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-3V5a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v2H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
           </div>
-          <h3>Agenda</h3>
-          <p>Suas tarefas e rotinas organizadas por dia, semana e mês. Ordene o dia por prioridade.</p>
-          <div class="dashboard-card-footer">
-            <span>Acessar →</span>
-          </div>
+          <h3>Departamento pessoal</h3>
+          <p>Admissões, rescisões, folha, férias e obrigações recorrentes.</p>
+          <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load">·</span></div>
         </a>
 
-        <a href="clientes/index.html" class="dashboard-card">
+        <a href="fiscal.html" class="dashboard-card">
           <div class="dashboard-card-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
-              <circle cx="9" cy="7" r="4"/>
-              <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
-              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-            </svg>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
           </div>
-          <h3>Cadastro de clientes</h3>
-          <p>Base mestre de clientes PJ e PF do escritório. Cadastro, edição e vínculo com pastas no Drive.</p>
-          <div class="dashboard-card-footer">
-            <span>Acessar →</span>
-            <span class="badge card-status st-load">·</span>
-          </div>
+          <h3>Fiscal</h3>
+          <p>Análise tributária por cliente: tributos, obrigações e pontos de revisão.</p>
+          <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load">·</span></div>
         </a>
 
-        <a href="setores.html" class="dashboard-card">
+        <a href="contabil.html" class="dashboard-card">
           <div class="dashboard-card-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
-            </svg>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
           </div>
-          <h3>Setores</h3>
-          <p>Tarefas dos setores operacionais: DP, Fiscal, Contábil, Societário, Comercial e IRPF.</p>
-          <div class="dashboard-card-footer">
-            <span>Acessar →</span>
-            <span class="badge card-status st-load">·</span>
-          </div>
+          <h3>Contábil</h3>
+          <p>Lançamentos, conciliações, balancetes e rotinas recorrentes.</p>
+          <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load">·</span></div>
         </a>
 
-        <a href="administracao.html" class="dashboard-card">
+        <a href="societario.html" class="dashboard-card">
           <div class="dashboard-card-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 21h18"/><path d="M5 21V8l7-5 7 5v13"/><path d="M9 21v-6h6v6"/>
-            </svg>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>
           </div>
-          <h3>Administração</h3>
-          <p>Gestão dos sócios e Financeiro do escritório.</p>
-          <div class="dashboard-card-footer">
-            <span>Acessar →</span>
-            <span class="badge card-status st-load">·</span>
-          </div>
+          <h3>Societário</h3>
+          <p>Aberturas, alterações contratuais, baixas e processos na Junta.</p>
+          <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load">·</span></div>
         </a>
-      </div>
+
+        <a href="comercial.html" class="dashboard-card">
+          <div class="dashboard-card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 16.5 8.5 11.5 1 19"/><polyline points="17 6 23 6 23 12"/></svg>
+          </div>
+          <h3>Comercial</h3>
+          <p>Prospecção, propostas, contratos e relacionamento com clientes.</p>
+          <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load">·</span></div>
+        </a>
+
+        <a href="irpf.html" class="dashboard-card">
+          <div class="dashboard-card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
+          </div>
+          <h3>IRPF</h3>
+          <p>Campanha do Imposto de Renda PF: coleta, elaboração e entregas.</p>
+          <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load">·</span></div>
+        </a>
+            </div>
     </main>
   </div>
 
@@ -161,9 +163,8 @@
     async function pintarSelosDoDia(user) {
       // cada card-grupo agrega a contagem dos setores que ele contém
       const GRUPOS = {
-        'clientes/index.html': ['clientes'],
-        'setores.html':        ['dp','fiscal','contabil','societario','comercial','irpf'],
-        'administracao.html':  ['gestao','financeiro'],
+        'dp.html':['dp'], 'fiscal.html':['fiscal'], 'contabil.html':['contabil'],
+        'societario.html':['societario'], 'comercial.html':['comercial'], 'irpf.html':['irpf'],
       };
       const cards = {};
       document.querySelectorAll('a.dashboard-card').forEach(c => {

@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agenda — Macedo & Reis</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+  <style>
+    .ag-toolbar { display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; margin-bottom:18px; }
+    .ag-views { display:flex; gap:4px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:3px; }
+    .ag-view-btn { padding:7px 16px; font-size:13px; font-weight:600; color:#8A93A6; background:none; border:none; border-radius:8px; cursor:pointer; font-family:inherit; }
+    .ag-view-btn:hover { color:#C5D8E8; }
+    .ag-view-btn.is-active { background:rgba(91,130,166,.25); color:#E6EBF2; }
+    .ag-nav { display:flex; align-items:center; gap:8px; }
+    .ag-nav button { width:32px; height:32px; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); border-radius:8px; color:#C5D8E8; cursor:pointer; font-size:16px; }
+    .ag-nav button:hover { background:rgba(255,255,255,.08); }
+    .ag-hoje-btn { width:auto !important; padding:0 12px; font-size:13px; font-weight:600; }
+    .ag-periodo { font-size:16px; font-weight:600; color:#E6EBF2; min-width:200px; text-transform:capitalize; }
+    .ag-filtros { display:flex; gap:8px; flex-wrap:wrap; }
+    .ag-filtros .select { max-width:180px; padding:7px 10px; font-size:13px; }
+
+    .setor-chip { display:inline-block; padding:2px 8px; border-radius:999px; font-size:10.5px; font-weight:600; border:1px solid; white-space:nowrap; }
+    .setor-dot { display:inline-block; width:8px; height:8px; border-radius:50%; flex:0 0 auto; }
+
+    /* ---------- DIA ---------- */
+    .ag-dia-secao { font-size:13px; font-weight:600; color:#8AAEC8; margin:20px 0 10px; display:flex; align-items:center; gap:8px; }
+    .ag-dia-secao .cont { background:rgba(255,255,255,.06); color:#C5D8E8; border-radius:999px; padding:1px 9px; font-size:12px; }
+    .ag-card { display:flex; align-items:center; gap:12px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-left:3px solid #8A93A6; border-radius:10px; padding:12px 14px; margin-bottom:8px; }
+    .ag-card.prio-alta  { border-left-color:#E06C6C; }
+    .ag-card.prio-media { border-left-color:#E3B341; }
+    .ag-card.prio-baixa { border-left-color:#5B82A6; }
+    .ag-card-main { flex:1 1 auto; min-width:0; }
+    .ag-card-titulo { font-size:14px; color:#E6EBF2; font-weight:500; margin-bottom:4px; }
+    .ag-card-meta { font-size:12px; color:#8A93A6; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+    .ag-card-meta .sep { opacity:.5; }
+    .ag-prio { padding:5px 8px; font-size:12px; border-radius:8px; background:#141A22; color:#C5D8E8; border:1px solid rgba(255,255,255,.12); cursor:pointer; }
+    .ag-card.feita { opacity:.55; }
+    .ag-card.feita .ag-card-titulo { text-decoration:line-through; }
+    .ag-rotina { border-left-style:dashed; }
+    .ag-vazio { padding:36px; text-align:center; color:#8A93A6; font-size:14px; background:rgba(255,255,255,.02); border:1px dashed rgba(255,255,255,.1); border-radius:12px; }
+
+    /* ---------- SEMANA ---------- */
+    .ag-semana { display:grid; grid-template-columns:repeat(7,1fr); gap:8px; }
+    .ag-wk-col { background:rgba(255,255,255,.02); border:1px solid rgba(255,255,255,.07); border-radius:10px; min-height:120px; padding:8px; }
+    .ag-wk-col.hoje { border-color:rgba(91,130,166,.5); background:rgba(91,130,166,.08); }
+    .ag-wk-head { font-size:11px; color:#8A93A6; text-align:center; margin-bottom:8px; font-weight:600; }
+    .ag-wk-head .dnum { display:block; font-size:18px; color:#E6EBF2; }
+    .ag-wk-item { display:flex; align-items:center; gap:5px; font-size:11.5px; color:#D7DEE8; padding:4px 6px; border-radius:6px; background:rgba(255,255,255,.04); margin-bottom:4px; border-left:2px solid #8A93A6; }
+    .ag-wk-item.prio-alta { border-left-color:#E06C6C; } .ag-wk-item.prio-media { border-left-color:#E3B341; } .ag-wk-item.prio-baixa { border-left-color:#5B82A6; }
+    .ag-wk-item.feita { opacity:.5; text-decoration:line-through; }
+    .ag-wk-item .t { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+    /* ---------- MÊS ---------- */
+    .ag-mes { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+    .ag-mes-dow { text-align:center; font-size:11px; color:#8A93A6; font-weight:600; text-transform:uppercase; letter-spacing:.04em; padding-bottom:4px; }
+    .ag-mo-cell { background:rgba(255,255,255,.02); border:1px solid rgba(255,255,255,.07); border-radius:8px; min-height:92px; padding:6px; cursor:pointer; transition:background .12s; }
+    .ag-mo-cell:hover { background:rgba(255,255,255,.05); }
+    .ag-mo-cell.fora { opacity:.4; }
+    .ag-mo-cell.hoje { border-color:rgba(91,130,166,.6); }
+    .ag-mo-day { font-size:13px; color:#C5D8E8; font-weight:600; margin-bottom:4px; }
+    .ag-mo-cell.hoje .ag-mo-day { color:#fff; }
+    .ag-mo-chip { display:flex; align-items:center; gap:4px; font-size:10.5px; color:#D7DEE8; margin-bottom:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .ag-mo-chip.feita { opacity:.5; text-decoration:line-through; }
+    .ag-mo-mais { font-size:10px; color:#8A93A6; margin-top:2px; }
+
+    @media (max-width:820px){
+      .ag-semana, .ag-mes { grid-template-columns:repeat(7,1fr); font-size:10px; }
+      .ag-wk-item .t, .ag-mo-chip { font-size:10px; }
+    }
+    @media (max-width:560px){
+      .ag-semana { grid-template-columns:1fr; }
+      .ag-periodo { min-width:auto; font-size:15px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip">
+          <div class="user-avatar" id="userAvatar">—</div>
+          <span id="userName">Carregando…</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Agenda</span>
+        </div>
+        <div class="eyebrow">Organização</div>
+        <h1>Agenda</h1>
+        <p>Suas tarefas e rotinas organizadas por dia. Na visão Dia, ordene pela prioridade de cada uma.</p>
+      </div>
+
+      <div class="ag-toolbar">
+        <div class="ag-views">
+          <button class="ag-view-btn is-active" data-view="dia">Dia</button>
+          <button class="ag-view-btn" data-view="semana">Semana</button>
+          <button class="ag-view-btn" data-view="mes">Mês</button>
+        </div>
+        <div class="ag-nav">
+          <button id="agPrev" title="Anterior">‹</button>
+          <button id="agHoje" class="ag-hoje-btn">Hoje</button>
+          <button id="agNext" title="Próximo">›</button>
+          <span class="ag-periodo" id="agPeriodo">—</span>
+        </div>
+        <div class="ag-filtros">
+          <select id="fSetor" class="select"><option value="">Todos os setores</option></select>
+          <select id="fResp" class="select"><option value="">Todos os responsáveis</option></select>
+        </div>
+      </div>
+
+      <div id="agConteudo">
+        <div class="ag-vazio"><span class="spinner"></span> Carregando…</div>
+      </div>
+    </main>
+  </div>
+
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+
+    // ---- identidade visual por setor ----
+    const SETOR_INFO = {
+      clientes:             ['Clientes', '#7FD4D2', 'rgba(91,192,190,.15)'],
+      dp:                   ['DP', '#A48FE0', 'rgba(150,123,220,.15)'],
+      departamento_pessoal: ['DP', '#A48FE0', 'rgba(150,123,220,.15)'],
+      fiscal:               ['Fiscal', '#8AAEC8', 'rgba(91,130,166,.18)'],
+      contabil:             ['Contábil', '#8597E0', 'rgba(133,151,224,.15)'],
+      societario:           ['Societário', '#E3B341', 'rgba(227,179,65,.15)'],
+      financeiro:           ['Financeiro', '#5FC698', 'rgba(63,176,122,.15)'],
+      comercial:            ['Comercial', '#E0A05F', 'rgba(224,160,95,.15)'],
+      irpf:                 ['IRPF', '#E08FA8', 'rgba(224,143,168,.15)'],
+      gestao:               ['Gestão', '#9AA8BE', 'rgba(154,168,190,.15)'],
+    };
+    const SETORES_LISTA = ['clientes','dp','fiscal','contabil','societario','financeiro','comercial','irpf','gestao'];
+    const EQUIPE = ['Thalia','Vitória','Adaini','Samuel','Diego','Edna'];
+    const FILTRO_PESSOAL = {
+      'fiscal@macedoereis.com.br':'Thalia', 'rh@macedoereis.com.br':'Vitória',
+      'contabil@macedoereis.com.br':'Adaini', 'financeiro@macedoereis.com.br':'Samuel',
+      'diego@macedoereis.com.br':'Diego',
+    };
+    const SOCIOS = ['financeiro@macedoereis.com.br','diego@macedoereis.com.br'];
+
+    const PRIO_ORDEM = { alta:0, media:1, média:1, baixa:2 };
+    const PRIO_LABEL = { alta:'Alta', media:'Média', baixa:'Baixa' };
+
+    // ---- estado ----
+    const estado = { view:'dia', cursor:hojeMeiaNoite(), setor:'', resp:'' };
+
+    // ---- helpers de data ----
+    function hojeMeiaNoite(){ const d=new Date(); d.setHours(0,0,0,0); return d; }
+    function ymd(d){ const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), dd=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${dd}`; }
+    function diaSemanaISO(d){ const x=d.getDay(); return x===0?7:x; }
+    function diasNoMes(ano, mes0){ return new Date(ano, mes0+1, 0).getDate(); }
+    function segundaDaSemana(d){ const x=new Date(d.getFullYear(),d.getMonth(),d.getDate()); x.setDate(x.getDate()-(diaSemanaISO(x)-1)); return x; }
+    function addDias(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
+    function mesmaData(a,b){ return ymd(a)===ymd(b); }
+    const HOJE_STR = ymd(hojeMeiaNoite());
+    const DOW = ['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
+    const fmtDiaLongo = (d)=> d.toLocaleDateString('pt-BR',{weekday:'long', day:'numeric', month:'long'});
+    const fmtMesAno = (d)=> d.toLocaleDateString('pt-BR',{month:'long', year:'numeric'});
+
+    // ---- rótulo de rotina (campo varia) ----
+    function rotuloRotina(r){ return r.titulo || r.descricao || r.nome || r.tarefa || r.atividade || 'Rotina'; }
+    function caiNoDia(r, d){
+      const p = r.periodicidade || 'diaria';
+      if (p==='diaria') return true;
+      if (p==='semanal') return diaSemanaISO(d) === (r.dia_semana||1);
+      if (p==='mensal') return d.getDate() === Math.min(r.dia_mes||1, diasNoMes(d.getFullYear(), d.getMonth()));
+      if (p==='anual'){ const a=String(r.dia_anual||'01-01').split('-').map(Number); const mm=(a[0]||1)-1, dd=a[1]||1; return d.getMonth()===mm && d.getDate()===Math.min(dd, diasNoMes(d.getFullYear(),mm)); }
+      return false;
+    }
+
+    // ---- filtros (responsável) ----
+    const norm = (s)=> String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+    function passaFiltro(item){
+      if (estado.setor && item.setor !== estado.setor) return false;
+      if (estado.resp){ if (norm(item.responsavel) !== norm(estado.resp)) return false; }
+      return true;
+    }
+
+    // ---- dados (cache simples por range) ----
+    let cacheTarefas = [];
+    let cacheRotinas = [];
+    async function carregarDados(ini, fim){
+      const iniS = ymd(ini), fimS = ymd(fim);
+      const { data: ts } = await supabase.from('tarefas')
+        .select('id, titulo, setor, responsavel, prazo, status, prioridade, cliente_id, clientes(nome_principal), concluida_em, concluida_por')
+        .gte('prazo', iniS).lte('prazo', fimS);
+      cacheTarefas = ts || [];
+      const { data: rs } = await supabase.from('rotinas').select('*').eq('ativo', true);
+      cacheRotinas = rs || [];
+    }
+
+    function tarefasDoDia(d){
+      const s = ymd(d);
+      return cacheTarefas.filter(t => t.prazo === s && passaFiltro(t));
+    }
+    function rotinasDoDia(d){
+      return cacheRotinas.filter(r => caiNoDia(r, d) && passaFiltro(r));
+    }
+
+    // ---- render: roteador ----
+    function render(){
+      atualizarPeriodo();
+      const c = document.getElementById('agConteudo');
+      if (estado.view==='dia') c.innerHTML = renderDia();
+      else if (estado.view==='semana') c.innerHTML = renderSemana();
+      else c.innerHTML = renderMes();
+      ligarInteracoes();
+    }
+
+    function atualizarPeriodo(){
+      const el = document.getElementById('agPeriodo');
+      if (estado.view==='dia') el.textContent = fmtDiaLongo(estado.cursor);
+      else if (estado.view==='semana'){ const seg=segundaDaSemana(estado.cursor), dom=addDias(seg,6);
+        el.textContent = `${seg.getDate()}/${seg.getMonth()+1} – ${dom.getDate()}/${dom.getMonth()+1}`; }
+      else el.textContent = fmtMesAno(estado.cursor);
+    }
+
+    function chip(setor){ const i=SETOR_INFO[setor]||[setor||'—','#8A93A6','rgba(255,255,255,.06)']; return `<span class="setor-chip" style="color:${i[1]};background:${i[2]};border-color:${i[1]}55;">${i[0]}</span>`; }
+    function dot(setor){ const i=SETOR_INFO[setor]||[setor,'#8A93A6']; return `<span class="setor-dot" style="background:${i[1]};"></span>`; }
+    function esc(t){ return String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    function classePrio(p){ const n=norm(p); if(n==='alta')return 'prio-alta'; if(n==='baixa')return 'prio-baixa'; return 'prio-media'; }
+
+    // ---------- DIA ----------
+    function renderDia(){
+      const d = estado.cursor;
+      const tarefas = tarefasDoDia(d);
+      const rotinas = rotinasDoDia(d);
+      const pend = tarefas.filter(t => t.status!=='concluida').sort((a,b)=>{
+        const pa=PRIO_ORDEM[norm(a.prioridade)] ?? 1, pb=PRIO_ORDEM[norm(b.prioridade)] ?? 1;
+        if (pa!==pb) return pa-pb;
+        return String(a.titulo||'').localeCompare(String(b.titulo||''));
+      });
+      const feitas = tarefas.filter(t => t.status==='concluida');
+
+      let html = '';
+      if (!tarefas.length && !rotinas.length){
+        return `<div class="ag-vazio">Nada para ${mesmaData(d,hojeMeiaNoite())?'hoje':'este dia'} com os filtros atuais.</div>`;
+      }
+
+      html += `<div class="ag-dia-secao">Tarefas <span class="cont">${pend.length}</span></div>`;
+      if (!pend.length) html += `<div class="ag-vazio" style="padding:18px;">Sem tarefas pendentes neste dia.</div>`;
+      pend.forEach(t => {
+        const cli = t.clientes?.nome_principal ? `<span>${esc(t.clientes.nome_principal)}</span><span class="sep">·</span>` : '';
+        const resp = t.responsavel ? `<span>${esc(t.responsavel)}</span>` : '';
+        html += `<div class="ag-card ${classePrio(t.prioridade)}">
+          <div class="ag-card-main">
+            <div class="ag-card-titulo">${esc(t.titulo)||'(sem título)'}</div>
+            <div class="ag-card-meta">${chip(t.setor)} ${cli} ${resp}</div>
+          </div>
+          <select class="ag-prio" data-id="${t.id}">
+            <option value="alta"${norm(t.prioridade)==='alta'?' selected':''}>Alta</option>
+            <option value="media"${norm(t.prioridade)!=='alta'&&norm(t.prioridade)!=='baixa'?' selected':''}>Média</option>
+            <option value="baixa"${norm(t.prioridade)==='baixa'?' selected':''}>Baixa</option>
+          </select>
+        </div>`;
+      });
+
+      if (rotinas.length){
+        html += `<div class="ag-dia-secao">Rotinas do dia <span class="cont">${rotinas.length}</span></div>`;
+        rotinas.forEach(r => {
+          const resp = r.responsavel ? `<span>${esc(r.responsavel)}</span>` : '';
+          html += `<div class="ag-card ag-rotina">
+            <div class="ag-card-main">
+              <div class="ag-card-titulo">${esc(rotuloRotina(r))}</div>
+              <div class="ag-card-meta">${chip(r.setor)} ${resp}</div>
+            </div>
+          </div>`;
+        });
+      }
+
+      if (feitas.length){
+        html += `<div class="ag-dia-secao">Concluídas <span class="cont">${feitas.length}</span></div>`;
+        feitas.forEach(t => {
+          const quem = t.concluida_por ? `<span>por ${esc(nomePorEmail(t.concluida_por))}</span>` : '';
+          html += `<div class="ag-card feita ${classePrio(t.prioridade)}">
+            <div class="ag-card-main">
+              <div class="ag-card-titulo">${esc(t.titulo)||'(sem título)'}</div>
+              <div class="ag-card-meta">${chip(t.setor)} ${quem}</div>
+            </div>
+          </div>`;
+        });
+      }
+      return html;
+    }
+    function nomePorEmail(e){ if(!e) return ''; const inv={'fiscal@macedoereis.com.br':'Thalia','rh@macedoereis.com.br':'Vitória','contabil@macedoereis.com.br':'Adaini','financeiro@macedoereis.com.br':'Samuel','diego@macedoereis.com.br':'Diego'}; return inv[String(e).toLowerCase()] || String(e).split('@')[0]; }
+
+    // ---------- SEMANA ----------
+    function renderSemana(){
+      const seg = segundaDaSemana(estado.cursor);
+      let html = '<div class="ag-semana">';
+      for (let i=0;i<7;i++){
+        const d = addDias(seg,i);
+        const ts = tarefasDoDia(d), rs = rotinasDoDia(d);
+        const ehHoje = ymd(d)===HOJE_STR;
+        html += `<div class="ag-wk-col ${ehHoje?'hoje':''}" data-goto="${ymd(d)}">
+          <div class="ag-wk-head">${DOW[i]}<span class="dnum">${d.getDate()}</span></div>`;
+        ts.sort((a,b)=>(PRIO_ORDEM[norm(a.prioridade)]??1)-(PRIO_ORDEM[norm(b.prioridade)]??1));
+        ts.forEach(t => {
+          html += `<div class="ag-wk-item ${classePrio(t.prioridade)} ${t.status==='concluida'?'feita':''}">${dot(t.setor)}<span class="t">${esc(t.titulo)||'—'}</span></div>`;
+        });
+        rs.forEach(r => {
+          html += `<div class="ag-wk-item"><span class="setor-dot" style="background:#8A93A6;"></span><span class="t">↻ ${esc(rotuloRotina(r))}</span></div>`;
+        });
+        html += `</div>`;
+      }
+      return html + '</div>';
+    }
+
+    // ---------- MÊS ----------
+    function renderMes(){
+      const d = estado.cursor;
+      const primeiro = new Date(d.getFullYear(), d.getMonth(), 1);
+      const inicioGrade = segundaDaSemana(primeiro);
+      let html = '<div class="ag-mes">';
+      DOW.forEach(n => html += `<div class="ag-mes-dow">${n}</div>`);
+      for (let i=0;i<42;i++){
+        const cur = addDias(inicioGrade, i);
+        const fora = cur.getMonth() !== d.getMonth();
+        const ehHoje = ymd(cur)===HOJE_STR;
+        const ts = tarefasDoDia(cur), rs = rotinasDoDia(cur);
+        const itens = [];
+        ts.sort((a,b)=>(PRIO_ORDEM[norm(a.prioridade)]??1)-(PRIO_ORDEM[norm(b.prioridade)]??1));
+        ts.forEach(t => itens.push({txt:t.titulo||'—', setor:t.setor, feita:t.status==='concluida'}));
+        rs.forEach(r => itens.push({txt:'↻ '+rotuloRotina(r), setor:r.setor, feita:false}));
+        let chips = itens.slice(0,3).map(it => `<div class="ag-mo-chip ${it.feita?'feita':''}">${dot(it.setor)} ${esc(it.txt)}</div>`).join('');
+        if (itens.length>3) chips += `<div class="ag-mo-mais">+${itens.length-3} mais</div>`;
+        html += `<div class="ag-mo-cell ${fora?'fora':''} ${ehHoje?'hoje':''}" data-goto="${ymd(cur)}">
+          <div class="ag-mo-day">${cur.getDate()}</div>${chips}</div>`;
+        if (i>=34 && cur.getMonth()!==d.getMonth() && diaSemanaISO(cur)===7) break;
+      }
+      return html + '</div>';
+    }
+
+    // ---- interações pós-render ----
+    function ligarInteracoes(){
+      // mudar prioridade (visão dia)
+      document.querySelectorAll('.ag-prio').forEach(sel => {
+        sel.addEventListener('change', async (e) => {
+          const id = e.target.dataset.id, novo = e.target.value;
+          e.target.disabled = true;
+          const { error } = await supabase.from('tarefas').update({ prioridade: novo }).eq('id', id);
+          e.target.disabled = false;
+          if (error){ alert('Erro ao mudar prioridade: '+error.message); return; }
+          const t = cacheTarefas.find(x => String(x.id)===String(id)); if (t) t.prioridade = novo;
+          render();
+        });
+      });
+      // clicar num dia (semana/mês) -> visão dia
+      document.querySelectorAll('[data-goto]').forEach(cel => {
+        cel.addEventListener('click', (e) => {
+          if (e.target.closest('.ag-prio')) return;
+          const [y,m,dd] = cel.dataset.goto.split('-').map(Number);
+          estado.cursor = new Date(y, m-1, dd); estado.view = 'dia';
+          document.querySelectorAll('.ag-view-btn').forEach(b => b.classList.toggle('is-active', b.dataset.view==='dia'));
+          recarregarERenderizar();
+        });
+      });
+    }
+
+    // ---- range conforme a visão ----
+    function rangeAtual(){
+      if (estado.view==='dia') return [estado.cursor, estado.cursor];
+      if (estado.view==='semana'){ const seg=segundaDaSemana(estado.cursor); return [seg, addDias(seg,6)]; }
+      const primeiro=new Date(estado.cursor.getFullYear(),estado.cursor.getMonth(),1);
+      const ini=segundaDaSemana(primeiro); return [ini, addDias(ini,41)];
+    }
+    async function recarregarERenderizar(){
+      const c = document.getElementById('agConteudo');
+      c.innerHTML = '<div class="ag-vazio"><span class="spinner"></span> Carregando…</div>';
+      const [ini,fim] = rangeAtual();
+      await carregarDados(ini, fim);
+      render();
+    }
+
+    // ---- navegação ----
+    function passo(dir){
+      if (estado.view==='dia') estado.cursor = addDias(estado.cursor, dir);
+      else if (estado.view==='semana') estado.cursor = addDias(estado.cursor, dir*7);
+      else estado.cursor = new Date(estado.cursor.getFullYear(), estado.cursor.getMonth()+dir, 1);
+      recarregarERenderizar();
+    }
+    document.getElementById('agPrev').addEventListener('click', ()=>passo(-1));
+    document.getElementById('agNext').addEventListener('click', ()=>passo(1));
+    document.getElementById('agHoje').addEventListener('click', ()=>{ estado.cursor = hojeMeiaNoite(); recarregarERenderizar(); });
+    document.querySelectorAll('.ag-view-btn').forEach(b => b.addEventListener('click', ()=>{
+      estado.view = b.dataset.view;
+      document.querySelectorAll('.ag-view-btn').forEach(x => x.classList.toggle('is-active', x===b));
+      recarregarERenderizar();
+    }));
+    document.getElementById('fSetor').addEventListener('change', e => { estado.setor = e.target.value; render(); });
+    document.getElementById('fResp').addEventListener('change', e => { estado.resp = e.target.value; render(); });
+
+    // ---- popular filtros ----
+    function popularFiltros(){
+      const fs = document.getElementById('fSetor');
+      SETORES_LISTA.forEach(s => { const o=document.createElement('option'); o.value=s; o.textContent=(SETOR_INFO[s]||[s])[0]; fs.appendChild(o); });
+      const fr = document.getElementById('fResp');
+      EQUIPE.forEach(n => { const o=document.createElement('option'); o.value=n; o.textContent=n; fr.appendChild(o); });
+    }
+
+    // ---- init ----
+    (async () => {
+      const user = await getCurrentUser();
+      if (user){
+        const nome = FILTRO_PESSOAL[(user.email||'').toLowerCase()] || user.email?.split('@')[0] || 'Usuário';
+        document.getElementById('userName').textContent = nome;
+        document.getElementById('userAvatar').textContent = nome.charAt(0).toUpperCase();
+      }
+      popularFiltros();
+      // filtro padrão: cada um vê o seu; sócios veem tudo
+      const email = (user?.email||'').toLowerCase();
+      if (!SOCIOS.includes(email) && FILTRO_PESSOAL[email]){
+        estado.resp = FILTRO_PESSOAL[email];
+        document.getElementById('fResp').value = estado.resp;
+      }
+      await recarregarERenderizar();
+    })();
+    document.getElementById('btnLogout').addEventListener('click', signOut);
+  </script>
+</body>
+</html>
