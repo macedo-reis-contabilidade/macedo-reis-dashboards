@@ -40,6 +40,26 @@
     .rm-task { background:none; border:none; color:#8A93A6; font-size:18px; cursor:pointer; padding:0; border-radius:6px; }
     .rm-task:hover { color:#E06C6C; }
     @media (max-width:640px){ .proc-task { grid-template-columns:26px 1fr; } .proc-task .pt-setor,.proc-task .pt-resp{ grid-column:2; } .rm-task{ display:none; } .fa-field-row{ grid-template-columns:1fr; } }
+
+    /* sub-abas Dados / Histórico */
+    .subtabs { display:flex; gap:4px; margin:2px 0 20px; border-bottom:1px solid rgba(255,255,255,.08); }
+    .stab { padding:9px 16px; font-size:14px; color:#8A93A6; background:none; border:none; border-bottom:2px solid transparent; margin-bottom:-1px; cursor:pointer; font-family:inherit; }
+    .stab:hover { color:#C5D8E8; }
+    .stab.is-active { color:#C5D8E8; border-bottom-color:#5B82A6; font-weight:600; }
+
+    /* histórico do cliente */
+    .hist-resumo { display:flex; gap:10px; flex-wrap:wrap; margin:4px 0 16px; }
+    .hist-stat { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:8px 14px; font-size:13px; color:#8A93A6; }
+    .hist-stat b { color:#E6EBF2; font-size:16px; margin-right:4px; }
+    .hist-stat-open b { color:#B6C7DA; }
+    .hist-stat-done b { color:#5FC698; }
+    .hist-secao { font-size:13px; font-weight:600; color:#8AAEC8; margin:18px 0 8px; }
+    .hist-tbl { width:100%; border-collapse:collapse; font-size:13px; }
+    .hist-tbl th { text-align:left; color:#8A93A6; font-size:11px; text-transform:uppercase; letter-spacing:.04em; font-weight:600; padding:8px 10px; border-bottom:1px solid rgba(255,255,255,.1); }
+    .hist-tbl td { padding:9px 10px; border-bottom:1px solid rgba(255,255,255,.05); color:#D7DEE8; }
+    .hist-tbl tr:hover td { background:rgba(255,255,255,.02); }
+    .setor-chip { display:inline-block; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:600; border:1px solid; white-space:nowrap; }
+    .hist-empty, .hist-loading { padding:30px; text-align:center; color:#8A93A6; font-size:14px; }
   </style>
 </head>
 <body>
@@ -95,6 +115,13 @@
 
         <div id="formError" class="form-error"></div>
         <div id="formSuccess" class="form-success"></div>
+
+        <div class="subtabs">
+          <button type="button" class="stab is-active" id="tabDados">Dados</button>
+          <button type="button" class="stab" id="tabHistorico">Histórico</button>
+        </div>
+
+        <div id="paneDados">
 
         <section class="form-section">
           <div class="form-section-head">
@@ -451,6 +478,12 @@
         <div class="form-actions">
           <a href="index.html" class="btn btn-ghost">Cancelar</a>
           <button type="button" class="btn btn-primary" id="btnSalvarBottom">Salvar alterações</button>
+        </div>
+        </div><!-- /paneDados -->
+
+        <div id="paneHistorico" style="display:none;">
+          <div id="histResumo" class="hist-resumo"></div>
+          <div id="histLista"></div>
         </div>
       </div>
     </main>
@@ -1360,6 +1393,83 @@
         btn.disabled = false;
       }
     });
+
+    // ===================== SUB-ABAS: DADOS / HISTÓRICO =====================
+    const _tabDados = document.getElementById('tabDados');
+    const _tabHist = document.getElementById('tabHistorico');
+    const _paneDados = document.getElementById('paneDados');
+    const _paneHist = document.getElementById('paneHistorico');
+    let _histCarregado = false;
+
+    function _toggleSalvarTopo(mostrar){ const b = document.getElementById('btnSalvar'); if (b) b.style.display = mostrar ? '' : 'none'; }
+    _tabDados.addEventListener('click', () => {
+      _tabDados.classList.add('is-active'); _tabHist.classList.remove('is-active');
+      _paneDados.style.display = ''; _paneHist.style.display = 'none'; _toggleSalvarTopo(true);
+    });
+    _tabHist.addEventListener('click', () => {
+      _tabHist.classList.add('is-active'); _tabDados.classList.remove('is-active');
+      _paneDados.style.display = 'none'; _paneHist.style.display = ''; _toggleSalvarTopo(false);
+      if (!_histCarregado) { _histCarregado = true; carregarHistorico(); }
+    });
+
+    const SETOR_INFO = {
+      clientes:             ['Clientes', '#7FD4D2', 'rgba(91,192,190,.15)'],
+      dp:                   ['DP', '#A48FE0', 'rgba(150,123,220,.15)'],
+      departamento_pessoal: ['DP', '#A48FE0', 'rgba(150,123,220,.15)'],
+      fiscal:               ['Fiscal', '#8AAEC8', 'rgba(91,130,166,.18)'],
+      contabil:             ['Contábil', '#8597E0', 'rgba(133,151,224,.15)'],
+      societario:           ['Societário', '#E3B341', 'rgba(227,179,65,.15)'],
+      financeiro:           ['Financeiro', '#5FC698', 'rgba(63,176,122,.15)'],
+      comercial:            ['Comercial', '#E0A05F', 'rgba(224,160,95,.15)'],
+      irpf:                 ['IRPF', '#E08FA8', 'rgba(224,143,168,.15)'],
+      gestao:               ['Gestão', '#9AA8BE', 'rgba(154,168,190,.15)'],
+    };
+    const EMAIL_NOME = {
+      'fiscal@macedoereis.com.br':'Thalia', 'rh@macedoereis.com.br':'Vitória',
+      'contabil@macedoereis.com.br':'Adaini', 'financeiro@macedoereis.com.br':'Samuel',
+      'diego@macedoereis.com.br':'Diego',
+    };
+    function nomePorEmail(e){ if (!e) return null; return EMAIL_NOME[String(e).toLowerCase()] || String(e).split('@')[0]; }
+    function fmtH(d){ if (!d) return '—'; try { const x = new Date(String(d).length <= 10 ? d + 'T00:00:00' : d); return x.toLocaleDateString('pt-BR'); } catch { return d; } }
+    function chipSetor(s){ const i = SETOR_INFO[s] || [s || '—', '#8A93A6', 'rgba(255,255,255,.06)']; return `<span class="setor-chip" style="color:${i[1]};background:${i[2]};border-color:${i[1]}55;">${i[0]}</span>`; }
+    function escH(t){ return String(t == null ? '' : t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    function _tabelaHist(arr, concluida){
+      const rows = arr.map(t => {
+        if (concluida) {
+          return `<tr><td>${escH(t.titulo) || '—'}</td><td>${chipSetor(t.setor)}</td><td>${escH(nomePorEmail(t.concluida_por)) || '—'}</td><td>${fmtH(t.concluida_em)}</td></tr>`;
+        }
+        return `<tr><td>${escH(t.titulo) || '—'}</td><td>${chipSetor(t.setor)}</td><td>${escH(t.responsavel) || '—'}</td><td>${t.prazo ? fmtH(t.prazo) : '—'}</td></tr>`;
+      }).join('');
+      const head = concluida
+        ? '<tr><th>Tarefa</th><th>Setor</th><th>Concluída por</th><th>Concluída em</th></tr>'
+        : '<tr><th>Tarefa</th><th>Setor</th><th>Responsável</th><th>Prazo</th></tr>';
+      return `<table class="hist-tbl"><thead>${head}</thead><tbody>${rows}</tbody></table>`;
+    }
+
+    async function carregarHistorico(){
+      const lista = document.getElementById('histLista');
+      const resumo = document.getElementById('histResumo');
+      lista.innerHTML = '<div class="hist-loading"><span class="spinner spinner-sm"></span> Carregando histórico…</div>';
+      const { data, error } = await supabase.from('tarefas')
+        .select('setor, titulo, status, responsavel, prazo, concluida_em, concluida_por')
+        .eq('cliente_id', clienteId);
+      if (error){ resumo.innerHTML = ''; lista.innerHTML = '<div class="hist-empty">Erro ao carregar: ' + error.message + '</div>'; return; }
+      const todas = data || [];
+      if (!todas.length){ resumo.innerHTML = ''; lista.innerHTML = '<div class="hist-empty">Nenhuma tarefa registrada para este cliente ainda.</div>'; return; }
+      const concl = todas.filter(t => t.status === 'concluida');
+      const abertas = todas.filter(t => t.status !== 'concluida');
+      abertas.sort((a, b) => String(a.prazo || '9999').localeCompare(String(b.prazo || '9999')));
+      concl.sort((a, b) => String(b.concluida_em || '').localeCompare(String(a.concluida_em || '')));
+      resumo.innerHTML =
+        `<span class="hist-stat"><b>${todas.length}</b> no total</span>` +
+        `<span class="hist-stat hist-stat-open"><b>${abertas.length}</b> em aberto</span>` +
+        `<span class="hist-stat hist-stat-done"><b>${concl.length}</b> concluídas</span>`;
+      let html = '';
+      if (abertas.length) html += '<div class="hist-secao">Em aberto</div>' + _tabelaHist(abertas, false);
+      if (concl.length)   html += '<div class="hist-secao">Concluídas</div>' + _tabelaHist(concl, true);
+      lista.innerHTML = html;
+    }
 
     loadCliente();
   </script>
