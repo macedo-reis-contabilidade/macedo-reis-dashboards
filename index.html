@@ -7,8 +7,28 @@
   <link rel="stylesheet" href="assets/css/style.css">
   <script type="module" src="assets/js/auth-guard.js"></script>
   <style>
-    .dashboard-card { position:relative; }
-    .badge-hoje { position:absolute; top:14px; right:14px; background:rgba(227,179,65,.18); border:1px solid rgba(227,179,65,.45); color:#E3B341; font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.04em; text-transform:uppercase; }
+    .dashboard-card { position:relative; transition: transform .15s ease, border-color .15s ease, background .15s ease, box-shadow .15s ease; }
+    .dashboard-card:hover { transform: translateY(-2px); border-color: rgba(138,174,200,.35); background: rgba(255,255,255,.045); box-shadow: 0 8px 24px rgba(0,0,0,.25); }
+
+    /* Cor de identidade por setor (no ícone) */
+    a[href="clientes/index.html"] .dashboard-card-icon { background: rgba(91,192,190,.15); color:#7FD4D2; }
+    a[href="dp.html"]          .dashboard-card-icon { background: rgba(150,123,220,.15); color:#A48FE0; }
+    a[href="fiscal.html"]      .dashboard-card-icon { background: rgba(91,130,166,.18); color:#8AAEC8; }
+    a[href="contabil.html"]    .dashboard-card-icon { background: rgba(133,151,224,.15); color:#8597E0; }
+    a[href="societario.html"]  .dashboard-card-icon { background: rgba(227,179,65,.15); color:#E3B341; }
+    a[href="financeiro.html"]  .dashboard-card-icon { background: rgba(63,176,122,.15); color:#5FC698; }
+    a[href="comercial.html"]   .dashboard-card-icon { background: rgba(224,160,95,.15); color:#E0A05F; }
+    a[href="irpf.html"]        .dashboard-card-icon { background: rgba(224,143,168,.15); color:#E08FA8; }
+    a[href="gestao.html"]      .dashboard-card-icon { background: rgba(154,168,190,.15); color:#9AA8BE; }
+
+    /* Selo "hoje" (urgência do dia) — canto superior direito */
+    .badge-hoje { position:absolute; top:14px; right:14px; background:rgba(227,179,65,.18); border:1px solid rgba(227,179,65,.5); color:#E3B341; font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.04em; text-transform:uppercase; box-shadow:0 0 0 3px rgba(227,179,65,.06); }
+
+    /* Status no rodapé: backlog de tarefas abertas (ou "em dia") */
+    .badge.card-status { font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.03em; }
+    .card-status.st-open  { background:rgba(138,174,200,.14); border:1px solid rgba(138,174,200,.38); color:#B6C7DA; }
+    .card-status.st-clear { background:rgba(63,176,122,.14);  border:1px solid rgba(63,176,122,.4);  color:#5FC698; }
+    .card-status.st-load  { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); color:#8A93A6; }
   </style>
 </head>
 <body>
@@ -49,7 +69,7 @@
           <p>Base mestre de clientes PJ e PF do escritório. Cadastro, edição e vínculo com pastas no Drive.</p>
           <div class="dashboard-card-footer">
             <span>Acessar →</span>
-            <span class="badge badge-active">Ativo</span>
+            <span class="badge card-status st-load">·</span>
           </div>
         </a>
 
@@ -65,7 +85,7 @@
           <p>Controle de tarefas do DP: admissões, rescisões, folha, férias e obrigações recorrentes.</p>
           <div class="dashboard-card-footer">
             <span>Acessar →</span>
-            <span class="badge badge-active">Ativo</span>
+            <span class="badge card-status st-load">·</span>
           </div>
         </a>
 
@@ -82,7 +102,7 @@
           <p>Análise tributária por cliente: descobre tributos e obrigações aplicáveis e sinaliza pontos de revisão.</p>
           <div class="dashboard-card-footer">
             <span>Acessar →</span>
-            <span class="badge badge-active">Ativo</span>
+            <span class="badge card-status st-load">·</span>
           </div>
         </a>
 
@@ -98,7 +118,7 @@
           <p>Controle de tarefas do contábil: lançamentos, conciliações, balancetes e rotinas recorrentes.</p>
           <div class="dashboard-card-footer">
             <span>Acessar →</span>
-            <span class="badge badge-active">Ativo</span>
+            <span class="badge card-status st-load">·</span>
           </div>
         </a>
 
@@ -114,7 +134,7 @@
           <p>Controle de tarefas do societário: aberturas, alterações contratuais, baixas e processos na Junta.</p>
           <div class="dashboard-card-footer">
             <span>Acessar →</span>
-            <span class="badge badge-active">Ativo</span>
+            <span class="badge card-status st-load">·</span>
           </div>
         </a>
 
@@ -129,7 +149,7 @@
           <p>Controle de tarefas do financeiro: boletos, honorários, recebimentos e rotinas recorrentes.</p>
           <div class="dashboard-card-footer">
             <span>Acessar →</span>
-            <span class="badge badge-active">Ativo</span>
+            <span class="badge card-status st-load">·</span>
           </div>
         </a>
 
@@ -144,7 +164,7 @@
           <p>Controle de tarefas do comercial: prospecção, propostas, contratos e relacionamento com clientes.</p>
           <div class="dashboard-card-footer">
             <span>Acessar →</span>
-            <span class="badge badge-active">Ativo</span>
+            <span class="badge card-status st-load">·</span>
           </div>
         </a>
 
@@ -160,7 +180,7 @@
           <p>Campanha anual do Imposto de Renda PF: coleta de documentos, elaboração e acompanhamento das entregas.</p>
           <div class="dashboard-card-footer">
             <span>Acessar →</span>
-            <span class="badge badge-active">Ativo</span>
+            <span class="badge card-status st-load">·</span>
           </div>
         </a>
 
@@ -175,7 +195,7 @@
           <p>Painel dos sócios: pautas de reunião e tarefas internas da diretoria.</p>
           <div class="dashboard-card-footer">
             <span>Acessar →</span>
-            <span class="badge badge-active">Ativo</span>
+            <span class="badge card-status st-load">·</span>
           </div>
         </a>
       </div>
@@ -229,12 +249,14 @@
     document.getElementById('btnLogout').addEventListener('click', signOut);
 
     async function pintarSelosDoDia(user, isGestaoAdmin) {
-      // mapeia card -> setor (pelo href). Cadastro de clientes fica de fora.
+      // mapeia card -> setor (pelo href). Inclui Cadastro de clientes (setor 'clientes').
       const mapa = {};
       document.querySelectorAll('a.dashboard-card').forEach(c => {
         const href = c.getAttribute('href') || '';
-        if (!/^[a-z]+\.html$/i.test(href)) return;
-        const setor = href.replace('.html', '');
+        let setor = null;
+        if (href === 'clientes/index.html') setor = 'clientes';
+        else if (/^[a-z]+\.html$/i.test(href)) setor = href.replace('.html', '');
+        if (!setor) return;
         if (setor === 'gestao' && !isGestaoAdmin) return;
         mapa[setor] = c;
       });
@@ -252,32 +274,44 @@
       const meusNomes = user ? FILTRO_PESSOAL[(user.email || '').toLowerCase()] : null;
       const norm = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
       const ehMeu = (resp) => {
-        if (!meusNomes) return true;              // login fora do mapa: conta tudo (ex.: samuel@/admin genérico)
+        if (!meusNomes) return true;              // login fora do mapa: conta tudo
         const r = norm(resp);
-        if (!r) return false;                     // tarefa sem responsável NÃO entra no "hoje" de ninguém com filtro
+        if (!r) return false;                     // sem responsável NÃO entra
         return meusNomes.some(n => r.includes(norm(n)));
       };
 
-      // tarefas com prazo de hoje e não concluídas, por setor
-      const contT = {};
+      // 1) HOJE: tarefas com prazo de hoje não concluídas + rotinas pendentes hoje
+      const contHoje = {};
       const { data: ts } = await supabase.from('tarefas').select('setor, responsavel')
         .in('setor', setores).eq('prazo', HOJE).neq('status', 'concluida');
-      (ts || []).forEach(t => { if (ehMeu(t.responsavel)) contT[t.setor] = (contT[t.setor] || 0) + 1; });
+      (ts || []).forEach(t => { if (ehMeu(t.responsavel)) contHoje[t.setor] = (contHoje[t.setor] || 0) + 1; });
 
-      // rotinas ativas não feitas hoje, por setor
-      const contR = {};
       const { data: rs } = await supabase.from('rotinas').select('setor, ultima_execucao, responsavel, periodicidade, dia_semana, dia_mes, dia_anual')
         .in('setor', setores).eq('ativo', true);
-      (rs || []).forEach(r => { if (pendenteHoje(r) && ehMeu(r.responsavel)) contR[r.setor] = (contR[r.setor] || 0) + 1; });
+      (rs || []).forEach(r => { if (pendenteHoje(r) && ehMeu(r.responsavel)) contHoje[r.setor] = (contHoje[r.setor] || 0) + 1; });
 
-      // injeta o selinho no canto superior direito do card que tiver algo
+      // 2) BACKLOG: todas as tarefas não concluídas (abertas), por setor
+      const contAbertas = {};
+      const { data: ab } = await supabase.from('tarefas').select('setor, responsavel')
+        .in('setor', setores).neq('status', 'concluida');
+      (ab || []).forEach(t => { if (ehMeu(t.responsavel)) contAbertas[t.setor] = (contAbertas[t.setor] || 0) + 1; });
+
+      // pinta cada card: selo "hoje" (urgência) + rodapé (abertas / em dia)
       setores.forEach(s => {
-        const total = (contT[s] || 0) + (contR[s] || 0);
-        if (!total) return;
-        const pill = document.createElement('span');
-        pill.className = 'badge-hoje';
-        pill.textContent = total + ' hoje';
-        mapa[s].appendChild(pill);
+        const card = mapa[s];
+        const h = contHoje[s] || 0;
+        if (h) {
+          const pill = document.createElement('span');
+          pill.className = 'badge-hoje';
+          pill.textContent = h + ' hoje';
+          card.appendChild(pill);
+        }
+        const st = card.querySelector('.card-status');
+        if (st) {
+          const n = contAbertas[s] || 0;
+          if (n > 0) { st.textContent = n + (n === 1 ? ' aberta' : ' abertas'); st.className = 'badge card-status st-open'; }
+          else { st.textContent = 'Em dia'; st.className = 'badge card-status st-clear'; }
+        }
       });
     }
   </script>
