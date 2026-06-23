@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Administração — Macedo & Reis</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+  <style>
+    .dashboard-card { position:relative; transition: transform .15s ease, border-color .15s ease, background .15s ease, box-shadow .15s ease; }
+    .dashboard-card:hover { transform: translateY(-2px); border-color: rgba(138,174,200,.35); background: rgba(255,255,255,.045); box-shadow: 0 8px 24px rgba(0,0,0,.25); }
+
+    /* Cor de identidade por card (no ícone) */
+    a[href="gestao.html"]     .dashboard-card-icon { background: rgba(154,168,190,.16); color:#9AA8BE; }
+    a[href="financeiro.html"] .dashboard-card-icon { background: rgba(63,176,122,.15);  color:#5FC698; }
+
+    /* Selo "hoje" (urgência do dia) — canto superior direito */
+    .badge-hoje { position:absolute; top:14px; right:14px; background:rgba(227,179,65,.18); border:1px solid rgba(227,179,65,.5); color:#E3B341; font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.04em; text-transform:uppercase; box-shadow:0 0 0 3px rgba(227,179,65,.06); }
+
+    /* Status no rodapé: backlog de tarefas abertas (ou "em dia") */
+    .badge.card-status { font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.03em; }
+    .card-status.st-open  { background:rgba(138,174,200,.14); border:1px solid rgba(138,174,200,.38); color:#B6C7DA; }
+    .card-status.st-clear { background:rgba(63,176,122,.14);  border:1px solid rgba(63,176,122,.4);  color:#5FC698; }
+    .card-status.st-load  { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); color:#8A93A6; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+
+      <div class="topbar-actions">
+        <div class="user-chip">
+          <div class="user-avatar" id="userAvatar">—</div>
+          <span id="userName">Carregando…</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Administração</span>
+        </div>
+        <div class="eyebrow">Direção</div>
+        <h1>Administração</h1>
+        <p>Gestão dos sócios e Financeiro do escritório.</p>
+      </div>
+
+      <div class="dashboard-grid">
+        <a href="gestao.html" class="dashboard-card">
+          <div class="dashboard-card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+          </div>
+          <h3>Gestão</h3>
+          <p>Painel dos sócios: pautas de reunião e tarefas internas da diretoria.</p>
+          <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load">·</span></div>
+        </a>
+
+        <a href="financeiro.html" class="dashboard-card">
+          <div class="dashboard-card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          </div>
+          <h3>Financeiro</h3>
+          <p>Boletos, honorários, recebimentos e rotinas recorrentes.</p>
+          <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load">·</span></div>
+        </a>
+            </div>
+    </main>
+  </div>
+
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+
+    const HOJE = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD local
+    const GESTAO_ADMINS = ['financeiro@macedoereis.com.br', 'diego@macedoereis.com.br'];
+
+    // ---- lógica de periodicidade das rotinas (igual ao dashboard) ----
+    const hojeD = new Date(HOJE + 'T00:00:00');
+    function diaSemanaISO(d){ const x = d.getDay(); return x === 0 ? 7 : x; }
+    function diasNoMes(ano, mes0){ return new Date(ano, mes0 + 1, 0).getDate(); }
+    function segundaDaSemana(d){ const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - (diaSemanaISO(x) - 1)); return x; }
+    function periodicidadeDe(r){ return r.periodicidade || 'diaria'; }
+    function dataGatilho(r){
+      const ano = hojeD.getFullYear(), mes0 = hojeD.getMonth();
+      const p = periodicidadeDe(r);
+      if (p === 'semanal') { const seg = segundaDaSemana(hojeD); const alvo = new Date(seg); alvo.setDate(seg.getDate() + ((r.dia_semana || 1) - 1)); return alvo; }
+      if (p === 'mensal') return new Date(ano, mes0, Math.min(r.dia_mes || 1, diasNoMes(ano, mes0)));
+      if (p === 'anual') { const a = String(r.dia_anual || '01-01').split('-').map(Number); return new Date(ano, (a[0]||1)-1, Math.min(a[1]||1, diasNoMes(ano,(a[0]||1)-1))); }
+      return hojeD;
+    }
+    function gatilhoChegou(r){ return periodicidadeDe(r) === 'diaria' ? true : dataGatilho(r) <= hojeD; }
+    function feitaNoPeriodo(r){
+      if (!r.ultima_execucao) return false;
+      const u = new Date(r.ultima_execucao + 'T00:00:00');
+      const p = periodicidadeDe(r);
+      if (p === 'diaria') return r.ultima_execucao === HOJE;
+      if (p === 'semanal') return segundaDaSemana(u).getTime() === segundaDaSemana(hojeD).getTime();
+      if (p === 'mensal') return u.getFullYear() === hojeD.getFullYear() && u.getMonth() === hojeD.getMonth();
+      if (p === 'anual') return u.getFullYear() === hojeD.getFullYear();
+      return r.ultima_execucao === HOJE;
+    }
+    function pendenteHoje(r){ return gatilhoChegou(r) && !feitaNoPeriodo(r); }
+
+    (async () => {
+      const user = await getCurrentUser();
+      if (user) {
+        const displayName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário';
+        document.getElementById('userName').textContent = displayName;
+        document.getElementById('userAvatar').textContent = displayName.charAt(0).toUpperCase();
+      }
+      // Gestão é só para sócios; Financeiro fica para todos
+      const SOCIOS = ['financeiro@macedoereis.com.br','diego@macedoereis.com.br'];
+      if (!SOCIOS.includes((user?.email||'').toLowerCase())) {
+        const g = document.querySelector('a[href="gestao.html"]'); if (g) g.remove();
+      }
+      await pintarSelosDoDia(user);
+    })();
+
+    document.getElementById('btnLogout').addEventListener('click', signOut);
+
+    async function pintarSelosDoDia(user) {
+      // cada card-grupo agrega a contagem dos setores que ele contém
+      const GRUPOS = {
+        'gestao.html':['gestao'], 'financeiro.html':['financeiro'],
+      };
+      const cards = {};
+      document.querySelectorAll('a.dashboard-card').forEach(c => {
+        const href = c.getAttribute('href') || '';
+        if (GRUPOS[href]) cards[href] = c;
+      });
+      const hrefs = Object.keys(cards);
+      if (!hrefs.length) return;
+      const todosSetores = [...new Set(Object.values(GRUPOS).flat())];
+
+      // filtro pessoal: cada login conta SÓ as tarefas/rotinas em que é o responsável
+      const FILTRO_PESSOAL = {
+        'fiscal@macedoereis.com.br':     ['Thalia'],
+        'rh@macedoereis.com.br':         ['Vitoria', 'Vitória'],
+        'contabil@macedoereis.com.br':   ['Adaini'],
+        'financeiro@macedoereis.com.br': ['Samuel'],
+        'diego@macedoereis.com.br':      ['Diego'],
+      };
+      const meusNomes = user ? FILTRO_PESSOAL[(user.email || '').toLowerCase()] : null;
+      const norm = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+      const ehMeu = (resp) => { if (!meusNomes) return true; const r = norm(resp); if (!r) return false; return meusNomes.some(n => r.includes(norm(n))); };
+
+      // contagem por setor
+      const hojePorSetor = {}, abertasPorSetor = {};
+      const { data: ts } = await supabase.from('tarefas').select('setor, responsavel')
+        .in('setor', todosSetores).eq('prazo', HOJE).neq('status', 'concluida');
+      (ts || []).forEach(t => { if (ehMeu(t.responsavel)) hojePorSetor[t.setor] = (hojePorSetor[t.setor] || 0) + 1; });
+
+      const { data: rs } = await supabase.from('rotinas').select('setor, ultima_execucao, responsavel, periodicidade, dia_semana, dia_mes, dia_anual')
+        .in('setor', todosSetores).eq('ativo', true);
+      (rs || []).forEach(r => { if (pendenteHoje(r) && ehMeu(r.responsavel)) hojePorSetor[r.setor] = (hojePorSetor[r.setor] || 0) + 1; });
+
+      const { data: ab } = await supabase.from('tarefas').select('setor, responsavel')
+        .in('setor', todosSetores).neq('status', 'concluida');
+      (ab || []).forEach(t => { if (ehMeu(t.responsavel)) abertasPorSetor[t.setor] = (abertasPorSetor[t.setor] || 0) + 1; });
+
+      // agrega por grupo e pinta: selo "hoje" + rodapé (abertas / em dia)
+      hrefs.forEach(href => {
+        const card = cards[href];
+        const membros = GRUPOS[href];
+        const h = membros.reduce((acc, s) => acc + (hojePorSetor[s] || 0), 0);
+        const n = membros.reduce((acc, s) => acc + (abertasPorSetor[s] || 0), 0);
+        if (h) {
+          const pill = document.createElement('span');
+          pill.className = 'badge-hoje';
+          pill.textContent = h + ' hoje';
+          card.appendChild(pill);
+        }
+        const st = card.querySelector('.card-status');
+        if (st) {
+          if (n > 0) { st.textContent = n + (n === 1 ? ' aberta' : ' abertas'); st.className = 'badge card-status st-open'; }
+          else { st.textContent = 'Em dia'; st.className = 'badge card-status st-clear'; }
+        }
+      });
+    }
+  </script>
+</body>
+</html>

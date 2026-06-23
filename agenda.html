@@ -72,6 +72,36 @@
       .ag-semana { grid-template-columns:1fr; }
       .ag-periodo { min-width:auto; font-size:15px; }
     }
+
+    /* modal de detalhe da tarefa (igual ao setor) */
+    .ag-card[data-taskid] { cursor:pointer; }
+    .fa-modal-overlay { position:fixed; inset:0; background:rgba(8,12,18,.72); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; overflow-y:auto; }
+    .fa-modal-overlay.is-open { display:flex; }
+    .fa-modal { width:100%; max-width:560px; background:#141A22; border:1px solid rgba(255,255,255,.10); border-radius:16px; overflow:hidden; margin:auto; }
+    .fa-modal-head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid rgba(255,255,255,.08); }
+    .fa-modal-head h3 { margin:0; color:#E6EBF2; font-size:18px; }
+    .fa-modal-close { background:none; border:none; color:#8A93A6; font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }
+    .fa-modal-close:hover { color:#E6EBF2; }
+    .fa-modal-body { padding:22px; display:flex; flex-direction:column; gap:14px; max-height:70vh; overflow-y:auto; }
+    .fa-field { display:flex; flex-direction:column; gap:6px; }
+    .fa-field > span { font-size:13px; color:#8AAEC8; }
+    .fa-field-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .fa-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid rgba(255,255,255,.08); }
+    .fa-modal textarea.input, .fa-modal .input, .fa-modal .select { resize:vertical; font-family:inherit; }
+    .det-empresa { display:flex; flex-direction:column; gap:2px; }
+    .det-empresa span { font-size:13px; color:#8AAEC8; }
+    .det-empresa strong { color:#E6EBF2; font-size:15px; }
+    .alv-conc-banner { background:rgba(63,176,122,.12); border:1px solid rgba(63,176,122,.35); color:#3FB07A; border-radius:10px; padding:8px 12px; font-size:13px; }
+    .alv-hr { border:none; border-top:1px solid rgba(255,255,255,.08); margin:8px 0 2px; }
+    .alv-tl-head { font-weight:600; color:#E6EBF2; font-size:15px; }
+    .tl { display:flex; flex-direction:column; gap:0; margin-top:8px; }
+    .tl-item { position:relative; padding:0 0 16px 22px; border-left:2px solid rgba(255,255,255,.10); }
+    .tl-item:last-child { border-left-color:transparent; padding-bottom:2px; }
+    .tl-item::before { content:''; position:absolute; left:-6px; top:3px; width:10px; height:10px; border-radius:50%; background:#5B82A6; border:2px solid #141A22; }
+    .tl-when { font-size:12px; color:#8A93A6; }
+    .tl-desc { color:#E6EBF2; font-size:14px; margin-top:2px; white-space:pre-wrap; }
+    .tl-autor { font-size:12px; color:#8AAEC8; margin-top:2px; }
+    .tl-empty { color:#8A93A6; font-size:13px; }
   </style>
 </head>
 <body>
@@ -126,6 +156,36 @@
     </main>
   </div>
 
+  <div class="fa-modal-overlay" id="detOverlay">
+    <div class="fa-modal" style="max-width:560px;">
+      <div class="fa-modal-head"><h3 id="dTipo">Tarefa</h3><button class="fa-modal-close" id="detClose">&times;</button></div>
+      <div class="fa-modal-body">
+        <div class="alv-conc-banner" id="dConcBanner" style="display:none;"></div>
+        <div class="det-empresa"><span>Empresa</span><strong id="dEmpresa"></strong></div>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Responsável</span><input type="text" id="dResp" class="input"></label>
+          <label class="fa-field"><span>Prazo</span><input type="date" id="dPrazo" class="input"></label>
+        </div>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Prioridade</span><select id="dPrioridade" class="select"><option value="media">Média</option><option value="alta">Alta</option><option value="baixa">Baixa</option></select></label>
+          <label class="fa-field" id="dStatusWrap"><span>Status</span><select id="dStatus" class="select"><option value="pendente">Pendente</option><option value="em_andamento">Em andamento</option></select></label>
+        </div>
+        <label class="fa-field"><span>Descrição</span><textarea id="dDescricao" class="input" rows="2"></textarea></label>
+        <div><button class="btn btn-primary btn-sm" id="dSalvar">Salvar alterações</button></div>
+        <hr class="alv-hr">
+        <div class="alv-tl-head">Linha do tempo</div>
+        <label class="fa-field"><span>Registrar andamento</span><textarea id="dNovoAnd" class="input" rows="2" placeholder="Ex.: Protocolado, retornou, etc…"></textarea></label>
+        <div><button class="btn btn-primary btn-sm" id="dAddAnd">Adicionar andamento</button></div>
+        <div class="tl" id="dTimeline"></div>
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-danger" id="dExcluir" style="margin-right:auto;">Excluir</button>
+        <button class="btn btn-ghost" id="dBtnReabrir" style="display:none;">Reabrir</button>
+        <button class="btn btn-primary" id="dBtnConcluir">Concluir</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
 
@@ -156,6 +216,8 @@
 
     // ---- estado ----
     const estado = { view:'dia', cursor:hojeMeiaNoite(), setor:'', resp:'' };
+    let usuarioEmail = null;
+    let procAtual = null;
 
     // ---- helpers de data ----
     function hojeMeiaNoite(){ const d=new Date(); d.setHours(0,0,0,0); return d; }
@@ -255,7 +317,7 @@
       pend.forEach(t => {
         const cli = t.clientes?.nome_principal ? `<span>${esc(t.clientes.nome_principal)}</span><span class="sep">·</span>` : '';
         const resp = t.responsavel ? `<span>${esc(t.responsavel)}</span>` : '';
-        html += `<div class="ag-card ${classePrio(t.prioridade)}">
+        html += `<div class="ag-card ${classePrio(t.prioridade)}" data-taskid="${t.id}">
           <div class="ag-card-main">
             <div class="ag-card-titulo">${esc(t.titulo)||'(sem título)'}</div>
             <div class="ag-card-meta">${chip(t.setor)} ${cli} ${resp}</div>
@@ -285,7 +347,7 @@
         html += `<div class="ag-dia-secao">Concluídas <span class="cont">${feitas.length}</span></div>`;
         feitas.forEach(t => {
           const quem = t.concluida_por ? `<span>por ${esc(nomePorEmail(t.concluida_por))}</span>` : '';
-          html += `<div class="ag-card feita ${classePrio(t.prioridade)}">
+          html += `<div class="ag-card feita ${classePrio(t.prioridade)}" data-taskid="${t.id}">
             <div class="ag-card-main">
               <div class="ag-card-titulo">${esc(t.titulo)||'(sem título)'}</div>
               <div class="ag-card-meta">${chip(t.setor)} ${quem}</div>
@@ -368,6 +430,121 @@
           recarregarERenderizar();
         });
       });
+      // clicar numa tarefa (visão dia) -> abre o modal de edição
+      document.querySelectorAll('.ag-card[data-taskid]').forEach(card => {
+        card.addEventListener('click', (e) => {
+          if (e.target.closest('.ag-prio')) return;  // mexer na prioridade não abre o modal
+          abrirDetalhe(card.dataset.taskid);
+        });
+      });
+    }
+
+    // ===================== MODAL DE DETALHE DA TAREFA =====================
+    const STATUS_LBL = { pendente:'Pendente', em_andamento:'Em andamento', concluida:'Concluído' };
+    function fmtDataHora(iso){ try { return new Date(iso).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); } catch(e){ return ''; } }
+    function escHtml(t){ return String(t==null?'':t).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
+    const detOverlay = document.getElementById('detOverlay');
+
+    document.getElementById('detClose').addEventListener('click', fecharDetalhe);
+    detOverlay.addEventListener('click', e => { if (e.target === detOverlay) fecharDetalhe(); });
+    document.getElementById('dAddAnd').addEventListener('click', addAndamento);
+    document.getElementById('dSalvar').addEventListener('click', salvarDetalhe);
+    document.getElementById('dBtnConcluir').addEventListener('click', concluirTarefa);
+    document.getElementById('dBtnReabrir').addEventListener('click', reabrirTarefa);
+    document.getElementById('dExcluir').addEventListener('click', excluirTarefa);
+
+    function fecharDetalhe(){ detOverlay.classList.remove('is-open'); procAtual = null; document.getElementById('dNovoAnd').value = ''; }
+
+    async function abrirDetalhe(id){
+      const t = cacheTarefas.find(x => String(x.id) === String(id));
+      if (!t) return;
+      procAtual = t;
+      const concl = t.status === 'concluida';
+      document.getElementById('dTipo').textContent = t.titulo || 'Tarefa';
+      document.getElementById('dEmpresa').textContent = t.clientes?.nome_principal || 'Interno (sem empresa)';
+      document.getElementById('dResp').value = t.responsavel || '';
+      document.getElementById('dPrazo').value = t.prazo ? String(t.prazo).slice(0,10) : '';
+      document.getElementById('dPrioridade').value = (norm(t.prioridade)==='alta'||norm(t.prioridade)==='baixa') ? norm(t.prioridade) : 'media';
+      document.getElementById('dStatus').value = concl ? 'em_andamento' : (t.status || 'pendente');
+      document.getElementById('dDescricao').value = t.descricao || '';
+      const banner = document.getElementById('dConcBanner');
+      banner.style.display = concl ? 'block' : 'none';
+      if (concl) banner.textContent = 'Concluído em ' + fmtDataHora(t.concluida_em) + (t.concluida_por ? ' por ' + nomePorEmail(t.concluida_por) : '');
+      document.getElementById('dStatusWrap').style.display = concl ? 'none' : 'flex';
+      document.getElementById('dBtnConcluir').style.display = concl ? 'none' : 'inline-flex';
+      document.getElementById('dBtnReabrir').style.display = concl ? 'inline-flex' : 'none';
+      detOverlay.classList.add('is-open');
+      await renderTimeline(id);
+    }
+
+    async function renderTimeline(id){
+      const tl = document.getElementById('dTimeline');
+      tl.innerHTML = '<div class="tl-empty">Carregando…</div>';
+      const { data } = await supabase.from('tarefa_historico').select('*').eq('tarefa_id', id).order('created_at', { ascending: false });
+      if (!data || !data.length){ tl.innerHTML = '<div class="tl-empty">Nenhum andamento ainda.</div>'; return; }
+      tl.innerHTML = data.map(h => `<div class="tl-item"><div class="tl-when">${fmtDataHora(h.created_at)}</div><div class="tl-desc">${escHtml(h.descricao)}</div>${h.autor ? `<div class="tl-autor">${escHtml(nomePorEmail(h.autor))}</div>` : ''}</div>`).join('');
+    }
+
+    async function addAndamento(){
+      if (!procAtual) return;
+      const inp = document.getElementById('dNovoAnd');
+      const txt = inp.value.trim();
+      if (!txt){ alert('Escreva o andamento.'); return; }
+      const btn = document.getElementById('dAddAnd'); btn.disabled = true; btn.textContent = 'Salvando…';
+      const { error } = await supabase.from('tarefa_historico').insert({ tarefa_id: procAtual.id, descricao: txt, autor: usuarioEmail });
+      btn.disabled = false; btn.textContent = 'Adicionar andamento';
+      if (error){ alert('Erro: ' + error.message); return; }
+      inp.value = '';
+      await renderTimeline(procAtual.id);
+    }
+
+    async function salvarDetalhe(){
+      if (!procAtual) return;
+      const concl = procAtual.status === 'concluida';
+      const novoStatus = document.getElementById('dStatus').value;
+      const patch = {
+        responsavel: document.getElementById('dResp').value.trim() || null,
+        prazo: document.getElementById('dPrazo').value || null,
+        prioridade: document.getElementById('dPrioridade').value,
+        descricao: document.getElementById('dDescricao').value.trim() || null,
+      };
+      if (!concl) patch.status = novoStatus;
+      const statusMudou = !concl && procAtual.status !== novoStatus;
+      const btn = document.getElementById('dSalvar'); btn.disabled = true;
+      const { error } = await supabase.from('tarefas').update(patch).eq('id', procAtual.id);
+      btn.disabled = false;
+      if (error){ alert('Erro ao salvar: ' + error.message); return; }
+      if (statusMudou) await supabase.from('tarefa_historico').insert({ tarefa_id: procAtual.id, descricao: 'Status alterado para: ' + STATUS_LBL[novoStatus] + '.', autor: usuarioEmail });
+      fecharDetalhe();
+      await recarregarERenderizar();
+    }
+
+    async function concluirTarefa(){
+      if (!procAtual) return;
+      if (!confirm('Concluir esta tarefa?')) return;
+      const { error } = await supabase.from('tarefas').update({ status:'concluida', concluida_em:new Date().toISOString(), concluida_por:usuarioEmail }).eq('id', procAtual.id);
+      if (error){ alert('Erro: '+error.message); return; }
+      await supabase.from('tarefa_historico').insert({ tarefa_id:procAtual.id, descricao:'Tarefa concluída.', autor:usuarioEmail });
+      fecharDetalhe();
+      await recarregarERenderizar();
+    }
+
+    async function reabrirTarefa(){
+      if (!procAtual) return;
+      const { error } = await supabase.from('tarefas').update({ status:'em_andamento', concluida_em:null, concluida_por:null }).eq('id', procAtual.id);
+      if (error){ alert('Erro: '+error.message); return; }
+      await supabase.from('tarefa_historico').insert({ tarefa_id:procAtual.id, descricao:'Tarefa reaberta.', autor:usuarioEmail });
+      fecharDetalhe();
+      await recarregarERenderizar();
+    }
+
+    async function excluirTarefa(){
+      if (!procAtual) return;
+      if (!confirm('Excluir esta tarefa e toda a sua linha do tempo? Esta ação não pode ser desfeita.')) return;
+      const { error } = await supabase.from('tarefas').delete().eq('id', procAtual.id);
+      if (error){ alert('Erro: '+error.message); return; }
+      fecharDetalhe();
+      await recarregarERenderizar();
     }
 
     // ---- range conforme a visão ----
@@ -414,6 +591,7 @@
     // ---- init ----
     (async () => {
       const user = await getCurrentUser();
+      usuarioEmail = user?.email || null;
       if (user){
         const nome = FILTRO_PESSOAL[(user.email||'').toLowerCase()] || user.email?.split('@')[0] || 'Usuário';
         document.getElementById('userName').textContent = nome;
