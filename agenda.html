@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="assets/css/style.css">
   <script type="module" src="assets/js/auth-guard.js"></script>
   <style>
-    .ag-toolbar { display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; margin-bottom:18px; }
+    .ag-toolbar { display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; margin-bottom:18px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07); border-radius:14px; padding:10px 12px; }
     .ag-views { display:flex; gap:4px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:3px; }
     .ag-view-btn { padding:7px 16px; font-size:13px; font-weight:600; color:#8A93A6; background:none; border:none; border-radius:8px; cursor:pointer; font-family:inherit; }
     .ag-view-btn:hover { color:#C5D8E8; }
@@ -23,10 +23,43 @@
     .setor-chip { display:inline-block; padding:2px 8px; border-radius:999px; font-size:10.5px; font-weight:600; border:1px solid; white-space:nowrap; }
     .setor-dot { display:inline-block; width:8px; height:8px; border-radius:50%; flex:0 0 auto; }
 
+    /* ---------- DIA: layout em duas colunas ---------- */
+    .ag-dia-layout { display:grid; grid-template-columns:minmax(0,1.7fr) minmax(260px,1fr); gap:18px; align-items:start; }
+    .ag-dia-col { min-width:0; }
+    .ag-resumo { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:16px; position:sticky; top:16px; }
+    .ag-resumo-titulo { font-size:14px; font-weight:600; color:#E6EBF2; margin-bottom:14px; display:flex; align-items:center; gap:8px; }
+    .ag-resumo-titulo svg { color:#8FC0F0; }
+    .ag-resumo-slide { min-height:150px; }
+    .rs-label { font-size:11px; font-weight:600; letter-spacing:.05em; color:#8AAEC8; text-transform:uppercase; margin-bottom:12px; }
+    .rs-big { display:flex; align-items:baseline; gap:6px; margin-bottom:8px; }
+    .rs-big .n { font-size:30px; font-weight:700; color:#E6EBF2; line-height:1; }
+    .rs-big .sub { font-size:14px; color:#8A93A6; }
+    .rs-bar { height:7px; background:rgba(255,255,255,.06); border-radius:999px; overflow:hidden; margin-bottom:10px; }
+    .rs-bar > div { height:100%; background:#3FB07A; border-radius:999px; transition:width .4s; }
+    .rs-foot { font-size:12px; color:#8A93A6; }
+    .rs-rows { display:flex; flex-direction:column; gap:9px; }
+    .rs-row { display:flex; align-items:center; justify-content:space-between; font-size:13px; color:#D7DEE8; }
+    .rs-row .lab { display:flex; align-items:center; gap:8px; }
+    .rs-row .val { font-weight:700; color:#E6EBF2; }
+    .rs-prox { display:flex; flex-direction:column; gap:10px; }
+    .rs-prox-item { display:flex; gap:9px; align-items:flex-start; font-size:12.5px; }
+    .rs-prox-data { color:#8FC0F0; font-weight:600; white-space:nowrap; min-width:42px; }
+    .rs-prox-txt { color:#D7DEE8; min-width:0; }
+    .rs-prox-txt .cli { color:#8A93A6; font-size:11.5px; }
+    .rs-empty { font-size:12.5px; color:#8A93A6; padding:8px 0; }
+    .ag-resumo-dots { display:flex; gap:6px; justify-content:center; margin-top:16px; }
+    .ag-resumo-dots button { width:7px; height:7px; padding:0; border-radius:50%; border:none; background:rgba(255,255,255,.18); cursor:pointer; transition:background .2s,width .2s; }
+    .ag-resumo-dots button.on { background:#8FC0F0; width:18px; border-radius:999px; }
+
+    @media (max-width:860px){
+      .ag-dia-layout { grid-template-columns:1fr; }
+      .ag-resumo { position:static; order:-1; }
+    }
+
     /* ---------- DIA ---------- */
     .ag-dia-secao { font-size:13px; font-weight:600; color:#8AAEC8; margin:20px 0 10px; display:flex; align-items:center; gap:8px; }
     .ag-dia-secao .cont { background:rgba(255,255,255,.06); color:#C5D8E8; border-radius:999px; padding:1px 9px; font-size:12px; }
-    .ag-card { display:flex; align-items:center; gap:12px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-left:3px solid #8A93A6; border-radius:10px; padding:12px 14px; margin-bottom:8px; }
+    .ag-card { display:flex; align-items:center; gap:12px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-left:3px solid #8A93A6; border-radius:10px; padding:10px 13px; margin-bottom:7px; }
     .ag-card.prio-alta  { border-left-color:#E06C6C; }
     .ag-card.prio-media { border-left-color:#E3B341; }
     .ag-card.prio-baixa { border-left-color:#5B82A6; }
@@ -38,6 +71,10 @@
     .ag-card.feita { opacity:.55; }
     .ag-card.feita .ag-card-titulo { text-decoration:line-through; }
     .ag-rotina { border-left-style:dashed; }
+    .ag-rot-check { width:24px; height:24px; flex:0 0 auto; border-radius:50%; border:2px solid rgba(255,255,255,.22); background:none; cursor:pointer; display:flex; align-items:center; justify-content:center; color:#fff; padding:0; transition:background .15s, border-color .15s; }
+    .ag-rot-check:hover { border-color:#3FB07A; }
+    .ag-rot-check.on { background:#3FB07A; border-color:#3FB07A; }
+    .ag-rot-check svg { width:14px; height:14px; }
     .ag-vazio { padding:36px; text-align:center; color:#8A93A6; font-size:14px; background:rgba(255,255,255,.02); border:1px dashed rgba(255,255,255,.1); border-radius:12px; }
 
     /* ---------- SEMANA ---------- */
@@ -242,6 +279,17 @@
       if (p==='anual'){ const a=String(r.dia_anual||'01-01').split('-').map(Number); const mm=(a[0]||1)-1, dd=a[1]||1; return d.getMonth()===mm && d.getDate()===Math.min(dd, diasNoMes(d.getFullYear(),mm)); }
       return false;
     }
+    // rotina "feita" para o dia exibido — espelha feitaNoPeriodo do painel
+    function rotinaFeita(r, d){
+      if (!r.ultima_execucao) return false;
+      const u = new Date(String(r.ultima_execucao).slice(0,10) + 'T00:00:00');
+      const p = r.periodicidade || 'diaria';
+      if (p==='diaria')  return String(r.ultima_execucao).slice(0,10) === ymd(d);
+      if (p==='semanal') return segundaDaSemana(u).getTime() === segundaDaSemana(d).getTime();
+      if (p==='mensal')  return u.getFullYear()===d.getFullYear() && u.getMonth()===d.getMonth();
+      if (p==='anual')   return u.getFullYear()===d.getFullYear();
+      return String(r.ultima_execucao).slice(0,10) === ymd(d);
+    }
 
     // ---- filtros (responsável) ----
     const norm = (s)=> String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
@@ -254,6 +302,8 @@
     // ---- dados (cache simples por range) ----
     let cacheTarefas = [];
     let cacheRotinas = [];
+    let cacheProximos = [];
+    let resumoTimer = null;
     async function carregarDados(ini, fim){
       const iniS = ymd(ini), fimS = ymd(fim);
       const { data: ts } = await supabase.from('tarefas')
@@ -262,6 +312,14 @@
       cacheTarefas = ts || [];
       const { data: rs } = await supabase.from('rotinas').select('*').eq('ativo', true);
       cacheRotinas = rs || [];
+    }
+    // próximos prazos (após hoje), para o slide do resumo — independe do dia exibido
+    async function carregarProximos(){
+      const { data } = await supabase.from('tarefas')
+        .select('id, titulo, setor, responsavel, prazo, status, clientes(nome_principal)')
+        .gt('prazo', HOJE_STR).neq('status','concluida')
+        .order('prazo', { ascending:true }).limit(20);
+      cacheProximos = data || [];
     }
 
     function tarefasDoDia(d){
@@ -280,6 +338,104 @@
       else if (estado.view==='semana') c.innerHTML = renderSemana();
       else c.innerHTML = renderMes();
       ligarInteracoes();
+      if (estado.view==='dia') montarResumo();
+      else if (resumoTimer){ clearInterval(resumoTimer); resumoTimer = null; }
+    }
+
+    // ===================== RESUMO DO DIA (rotativo) =====================
+    function montarResumo(){
+      if (resumoTimer){ clearInterval(resumoTimer); resumoTimer = null; }
+      const cont = document.getElementById('resumoSlide');
+      const dots = document.getElementById('resumoDots');
+      if (!cont || !dots) return;
+
+      const d = estado.cursor;
+      const tarefas = tarefasDoDia(d);
+      const pend = tarefas.filter(t => t.status!=='concluida');
+      const feitas = tarefas.filter(t => t.status==='concluida');
+      const total = tarefas.length;
+      const rotinasR = rotinasDoDia(d);
+      const rotFeitas = rotinasR.filter(r => rotinaFeita(r,d)).length;
+
+      const slides = [];
+
+      // 1) Andamento (tarefas + rotinas do dia)
+      const totalTudo = total + rotinasR.length;
+      const feitasTudo = feitas.length + rotFeitas;
+      if (totalTudo > 0){
+        const pct = Math.round((feitasTudo/totalTudo)*100);
+        const emAberto = (totalTudo - feitasTudo);
+        slides.push(`
+          <div class="rs-label">Andamento do dia</div>
+          <div class="rs-big"><span class="n">${feitasTudo}</span><span class="sub">de ${totalTudo} concluídas</span></div>
+          <div class="rs-bar"><div style="width:${pct}%;"></div></div>
+          <div class="rs-foot">${emAberto} ainda em aberto · ${pct}% do dia</div>`);
+      }
+
+      // 2) Por prioridade (tarefas em aberto)
+      if (pend.length > 0){
+        const cnt = { alta:0, media:0, baixa:0 };
+        pend.forEach(t => { const n=norm(t.prioridade); cnt[(n==='alta'||n==='baixa')?n:'media']++; });
+        slides.push(`
+          <div class="rs-label">Em aberto por prioridade</div>
+          <div class="rs-rows">
+            <div class="rs-row"><span class="lab"><span class="setor-dot" style="background:#E06C6C;"></span>Alta</span><span class="val">${cnt.alta}</span></div>
+            <div class="rs-row"><span class="lab"><span class="setor-dot" style="background:#E3B341;"></span>Média</span><span class="val">${cnt.media}</span></div>
+            <div class="rs-row"><span class="lab"><span class="setor-dot" style="background:#5B82A6;"></span>Baixa</span><span class="val">${cnt.baixa}</span></div>
+          </div>`);
+      }
+
+      // 3) Por setor (tarefas em aberto)
+      if (pend.length > 0){
+        const porSetor = {};
+        pend.forEach(t => { porSetor[t.setor] = (porSetor[t.setor]||0)+1; });
+        const linhas = Object.entries(porSetor)
+          .sort((a,b)=>b[1]-a[1])
+          .map(([s,n]) => `<div class="rs-row"><span class="lab">${dot(s)}${(SETOR_INFO[s]||[s])[0]}</span><span class="val">${n}</span></div>`)
+          .join('');
+        slides.push(`<div class="rs-label">Em aberto por setor</div><div class="rs-rows">${linhas}</div>`);
+      }
+
+      // 4) Próximos prazos (depois de hoje) — respeita os filtros atuais
+      const prox = cacheProximos.filter(passaFiltro).slice(0,4);
+      if (prox.length > 0){
+        const itens = prox.map(t => {
+          const [yy,mm,dd] = String(t.prazo).slice(0,10).split('-');
+          const cli = t.clientes?.nome_principal ? `<div class="cli">${esc(t.clientes.nome_principal)}</div>` : '';
+          return `<div class="rs-prox-item"><span class="rs-prox-data">${dd}/${mm}</span><div class="rs-prox-txt">${esc(t.titulo)||'—'}${cli}</div></div>`;
+        }).join('');
+        slides.push(`<div class="rs-label">Próximos prazos</div><div class="rs-prox">${itens}</div>`);
+      }
+
+      if (!slides.length){
+        cont.innerHTML = `<div class="rs-empty">Sem nada para resumir neste dia.</div>`;
+        dots.innerHTML = '';
+        return;
+      }
+
+      // render + navegação
+      let idx = 0;
+      const mostrar = (i) => {
+        idx = (i + slides.length) % slides.length;
+        cont.innerHTML = slides[idx];
+        dots.querySelectorAll('button').forEach((b,j)=> b.classList.toggle('on', j===idx));
+      };
+      dots.innerHTML = slides.map((_,i)=>`<button data-i="${i}" aria-label="Métrica ${i+1}"></button>`).join('');
+      dots.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+        mostrar(Number(b.dataset.i));
+        reiniciarTimer();
+      }));
+      mostrar(0);
+
+      // rotação automática (a cada 6s), pausa ao passar o mouse
+      function iniciarTimer(){ if (slides.length>1) resumoTimer = setInterval(()=>mostrar(idx+1), 6000); }
+      function reiniciarTimer(){ if (resumoTimer){ clearInterval(resumoTimer); resumoTimer=null; } iniciarTimer(); }
+      iniciarTimer();
+      const card = document.getElementById('agResumo');
+      if (card){
+        card.addEventListener('mouseenter', ()=>{ if(resumoTimer){ clearInterval(resumoTimer); resumoTimer=null; } });
+        card.addEventListener('mouseleave', ()=> reiniciarTimer());
+      }
     }
 
     function atualizarPeriodo(){
@@ -309,7 +465,7 @@
 
       let html = '';
       if (!tarefas.length && !rotinas.length){
-        return `<div class="ag-vazio">Nada para ${mesmaData(d,hojeMeiaNoite())?'hoje':'este dia'} com os filtros atuais.</div>`;
+        return envolverDia(`<div class="ag-vazio">Nada para ${mesmaData(d,hojeMeiaNoite())?'hoje':'este dia'} com os filtros atuais.</div>`);
       }
 
       html += `<div class="ag-dia-secao">Tarefas <span class="cont">${pend.length}</span></div>`;
@@ -331,10 +487,14 @@
       });
 
       if (rotinas.length){
-        html += `<div class="ag-dia-secao">Rotinas do dia <span class="cont">${rotinas.length}</span></div>`;
+        const feitasRot = rotinas.filter(r => rotinaFeita(r,d)).length;
+        html += `<div class="ag-dia-secao">Rotinas do dia <span class="cont">${feitasRot}/${rotinas.length}</span></div>`;
         rotinas.forEach(r => {
+          const feita = rotinaFeita(r, d);
           const resp = r.responsavel ? `<span>${esc(r.responsavel)}</span>` : '';
-          html += `<div class="ag-card ag-rotina">
+          const check = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+          html += `<div class="ag-card ag-rotina ${feita?'feita':''}">
+            <button class="ag-rot-check ${feita?'on':''}" data-rotid="${r.id}" data-feita="${feita?1:0}" title="${feita?'Desfazer':'Marcar como feita'}" aria-label="${feita?'Desfazer rotina':'Concluir rotina'}">${feita?check:''}</button>
             <div class="ag-card-main">
               <div class="ag-card-titulo">${esc(rotuloRotina(r))}</div>
               <div class="ag-card-meta">${chip(r.setor)} ${resp}</div>
@@ -355,7 +515,17 @@
           </div>`;
         });
       }
-      return html;
+      return envolverDia(html);
+    }
+    function envolverDia(left){
+      return `<div class="ag-dia-layout">
+        <div class="ag-dia-col">${left}</div>
+        <aside class="ag-resumo" id="agResumo">
+          <div class="ag-resumo-titulo"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> Resumo do dia</div>
+          <div class="ag-resumo-slide" id="resumoSlide"></div>
+          <div class="ag-resumo-dots" id="resumoDots"></div>
+        </aside>
+      </div>`;
     }
     function nomePorEmail(e){ if(!e) return ''; const inv={'fiscal@macedoereis.com.br':'Thalia','rh@macedoereis.com.br':'Vitória','contabil@macedoereis.com.br':'Adaini','financeiro@macedoereis.com.br':'Samuel','diego@macedoereis.com.br':'Diego'}; return inv[String(e).toLowerCase()] || String(e).split('@')[0]; }
 
@@ -435,6 +605,21 @@
         card.addEventListener('click', (e) => {
           if (e.target.closest('.ag-prio')) return;  // mexer na prioridade não abre o modal
           abrirDetalhe(card.dataset.taskid);
+        });
+      });
+      // concluir / desfazer rotina do dia
+      document.querySelectorAll('.ag-rot-check').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const id = btn.dataset.rotid;
+          const estaFeita = btn.dataset.feita === '1';
+          btn.disabled = true;
+          const novoValor = estaFeita ? null : ymd(estado.cursor);
+          const { error } = await supabase.from('rotinas').update({ ultima_execucao: novoValor }).eq('id', id);
+          btn.disabled = false;
+          if (error){ alert('Erro ao atualizar rotina: ' + error.message); return; }
+          const r = cacheRotinas.find(x => String(x.id) === String(id)); if (r) r.ultima_execucao = novoValor;
+          render();
         });
       });
     }
@@ -559,6 +744,7 @@
       c.innerHTML = '<div class="ag-vazio"><span class="spinner"></span> Carregando…</div>';
       const [ini,fim] = rangeAtual();
       await carregarDados(ini, fim);
+      if (estado.view==='dia') await carregarProximos();
       render();
     }
 
