@@ -7,7 +7,8 @@
   <link rel="stylesheet" href="assets/css/style.css">
   <script type="module" src="assets/js/auth-guard.js"></script>
   <style>
-    .ag-toolbar { display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; margin-bottom:18px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07); border-radius:14px; padding:10px 12px; }
+    .ag-toolbar { display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; margin-bottom:18px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07); border-radius:12px; padding:8px 12px; }
+    .ag-tb-group { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
     .ag-views { display:flex; gap:4px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:3px; }
     .ag-view-btn { padding:7px 16px; font-size:13px; font-weight:600; color:#8A93A6; background:none; border:none; border-radius:8px; cursor:pointer; font-family:inherit; }
     .ag-view-btn:hover { color:#C5D8E8; }
@@ -16,17 +17,17 @@
     .ag-nav button { width:32px; height:32px; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); border-radius:8px; color:#C5D8E8; cursor:pointer; font-size:16px; }
     .ag-nav button:hover { background:rgba(255,255,255,.08); }
     .ag-hoje-btn { width:auto !important; padding:0 12px; font-size:13px; font-weight:600; }
-    .ag-periodo { font-size:16px; font-weight:600; color:#E6EBF2; min-width:200px; text-transform:capitalize; }
-    .ag-filtros { display:flex; gap:8px; flex-wrap:wrap; }
-    .ag-filtros .select { max-width:180px; padding:7px 10px; font-size:13px; }
+    .ag-periodo { font-size:15px; font-weight:600; color:#E6EBF2; text-transform:capitalize; white-space:nowrap; }
+    .ag-toolbar .select { max-width:160px; padding:7px 10px; font-size:13px; }
 
     .setor-chip { display:inline-block; padding:2px 8px; border-radius:999px; font-size:10.5px; font-weight:600; border:1px solid; white-space:nowrap; }
     .setor-dot { display:inline-block; width:8px; height:8px; border-radius:50%; flex:0 0 auto; }
 
     /* ---------- DIA: layout em duas colunas ---------- */
-    .ag-dia-layout { display:grid; grid-template-columns:minmax(0,1.7fr) minmax(260px,1fr); gap:18px; align-items:start; }
+    .ag-dia-layout { display:grid; grid-template-columns:minmax(0,1.7fr) minmax(260px,1fr); gap:16px; align-items:start; }
     .ag-dia-col { min-width:0; }
-    .ag-resumo { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:16px; position:sticky; top:16px; }
+    .ag-resumo-wrap { position:sticky; top:16px; min-width:0; }
+    .ag-resumo { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:16px; }
     .ag-resumo-titulo { font-size:14px; font-weight:600; color:#E6EBF2; margin-bottom:14px; display:flex; align-items:center; gap:8px; }
     .ag-resumo-titulo svg { color:#8FC0F0; }
     .ag-resumo-slide { min-height:150px; }
@@ -57,7 +58,8 @@
     }
 
     /* ---------- DIA ---------- */
-    .ag-dia-secao { font-size:13px; font-weight:600; color:#8AAEC8; margin:20px 0 10px; display:flex; align-items:center; gap:8px; }
+    .ag-dia-secao { font-size:13px; font-weight:600; color:#8AAEC8; margin:16px 0 9px; display:flex; align-items:center; gap:8px; }
+    .ag-dia-secao:first-child { margin-top:2px; }
     .ag-dia-secao .cont { background:rgba(255,255,255,.06); color:#C5D8E8; border-radius:999px; padding:1px 9px; font-size:12px; }
     .ag-card { display:flex; align-items:center; gap:12px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-left:3px solid #8A93A6; border-radius:10px; padding:10px 13px; margin-bottom:7px; }
     .ag-card.prio-alta  { border-left-color:#E06C6C; }
@@ -170,18 +172,20 @@
       </div>
 
       <div class="ag-toolbar">
-        <div class="ag-views">
-          <button class="ag-view-btn is-active" data-view="dia">Dia</button>
-          <button class="ag-view-btn" data-view="semana">Semana</button>
-          <button class="ag-view-btn" data-view="mes">Mês</button>
-        </div>
-        <div class="ag-nav">
-          <button id="agPrev" title="Anterior">‹</button>
-          <button id="agHoje" class="ag-hoje-btn">Hoje</button>
-          <button id="agNext" title="Próximo">›</button>
+        <div class="ag-tb-group">
+          <div class="ag-nav">
+            <button id="agHoje" class="ag-hoje-btn">Hoje</button>
+            <button id="agPrev" title="Anterior">‹</button>
+            <button id="agNext" title="Próximo">›</button>
+          </div>
           <span class="ag-periodo" id="agPeriodo">—</span>
         </div>
-        <div class="ag-filtros">
+        <div class="ag-tb-group">
+          <div class="ag-views">
+            <button class="ag-view-btn is-active" data-view="dia">Dia</button>
+            <button class="ag-view-btn" data-view="semana">Semana</button>
+            <button class="ag-view-btn" data-view="mes">Mês</button>
+          </div>
           <select id="fSetor" class="select"><option value="">Todos os setores</option></select>
           <select id="fResp" class="select"><option value="">Todos os responsáveis</option></select>
         </div>
@@ -520,10 +524,12 @@
     function envolverDia(left){
       return `<div class="ag-dia-layout">
         <div class="ag-dia-col">${left}</div>
-        <aside class="ag-resumo" id="agResumo">
-          <div class="ag-resumo-titulo"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> Resumo do dia</div>
-          <div class="ag-resumo-slide" id="resumoSlide"></div>
-          <div class="ag-resumo-dots" id="resumoDots"></div>
+        <aside class="ag-resumo-wrap">
+          <div class="ag-dia-secao"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#8FC0F0;"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> Resumo do dia</div>
+          <div class="ag-resumo" id="agResumo">
+            <div class="ag-resumo-slide" id="resumoSlide"></div>
+            <div class="ag-resumo-dots" id="resumoDots"></div>
+          </div>
         </aside>
       </div>`;
     }
