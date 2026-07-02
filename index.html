@@ -3,34 +3,56 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Macedo & Reis — Dashboards</title>
-  <link rel="stylesheet" href="assets/css/style.css">
-  <script type="module" src="assets/js/auth-guard.js"></script>
+  <title>Clientes — Macedo & Reis</title>
+  <link rel="stylesheet" href="../assets/css/style.css">
   <style>
-    .dashboard-card { position:relative; transition: transform .15s ease, border-color .15s ease, background .15s ease, box-shadow .15s ease; }
-    .dashboard-card:hover { transform: translateY(-2px); border-color: rgba(138,174,200,.35); background: rgba(255,255,255,.045); box-shadow: 0 8px 24px rgba(0,0,0,.25); }
-
-    /* Cor de identidade por grupo (no ícone) */
-    a[href="agenda.html"]         .dashboard-card-icon { background: rgba(120,170,230,.16); color:#8FC0F0; }
-    a[href="clientes/index.html"] .dashboard-card-icon { background: rgba(91,192,190,.15);  color:#7FD4D2; }
-    a[href="setores.html"]        .dashboard-card-icon { background: rgba(133,151,224,.15); color:#8597E0; }
-    a[href="administracao.html"]  .dashboard-card-icon { background: rgba(227,179,65,.15);  color:#E3B341; }
-
-    /* Selo "hoje" (urgência do dia) — canto superior direito */
-    .badge-hoje { position:absolute; top:14px; right:14px; background:rgba(227,179,65,.18); border:1px solid rgba(227,179,65,.5); color:#E3B341; font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.04em; text-transform:uppercase; box-shadow:0 0 0 3px rgba(227,179,65,.06); }
-
-    /* Status no rodapé: backlog de tarefas abertas (ou "em dia") */
-    .badge.card-status { font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.03em; }
-    .card-status.st-open  { background:rgba(138,174,200,.14); border:1px solid rgba(138,174,200,.38); color:#B6C7DA; }
-    .card-status.st-clear { background:rgba(63,176,122,.14);  border:1px solid rgba(63,176,122,.4);  color:#5FC698; }
-    .card-status.st-load  { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); color:#8A93A6; }
+    /* Subnav do setor Clientes */
+    .fa-subnav { display:flex; gap:6px; margin-bottom:22px; border-bottom:1px solid rgba(255,255,255,.08); flex-wrap:wrap; }
+    .fa-tab { padding:9px 16px; font-size:14px; color:#8A93A6; text-decoration:none; border-bottom:2px solid transparent; margin-bottom:-1px; }
+    .fa-tab:hover { color:#C5D8E8; }
+    .fa-tab.is-active { color:#C5D8E8; border-bottom-color:#5B82A6; font-weight:600; }
+    /* Filtros compactos: busca + tipo + status numa linha, selects estreitos */
+    .toolbar { flex-wrap: wrap; gap: 16px; align-items: center; }
+    .toolbar-filters { display: flex; flex-direction: row; flex-wrap: wrap; gap: 12px; align-items: center; flex: 1 1 auto; }
+    .toolbar-filters .input-search { flex: 1 1 240px; min-width: 200px; max-width: 360px; }
+    .toolbar-filters .select { flex: 0 0 auto !important; width: auto !important; min-width: 150px; }
+    @media (max-width: 640px) {
+      .toolbar-filters .input-search,
+      .toolbar-filters .select { flex: 1 1 100%; max-width: none; width: 100% !important; }
+    }
+    .imp-overlay { position:fixed; inset:0; background:rgba(8,12,18,.72); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
+    .imp-overlay.is-open { display:flex; }
+    .imp-modal { width:100%; max-width:520px; background:#141A22; border:1px solid rgba(255,255,255,.10); border-radius:16px; overflow:hidden; }
+    .imp-head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid rgba(255,255,255,.08); }
+    .imp-head h3 { margin:0; color:#E6EBF2; font-size:18px; }
+    .imp-close { background:none; border:none; color:#8A93A6; font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }
+    .imp-close:hover { color:#E6EBF2; }
+    .imp-body { padding:22px; color:#C5D8E8; font-size:14px; }
+    .imp-body p { margin-top:0; line-height:1.6; }
+    .imp-body input[type=file] { width:100%; padding:12px; background:rgba(255,255,255,.04); border:1px dashed rgba(255,255,255,.22); border-radius:10px; color:#C5D8E8; font-size:13px; box-sizing:border-box; }
+    .imp-resumo { margin-top:16px; padding:14px 16px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:10px; line-height:1.8; }
+    .imp-resumo b { color:#E6EBF2; }
+    .imp-num { color:#3FB07A; font-weight:700; }
+    .imp-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid rgba(255,255,255,.08); }
+    /* Puxar dados da Receita */
+    .rcv-prog { margin-top:16px; }
+    .rcv-bar { height:10px; background:rgba(255,255,255,.07); border-radius:6px; overflow:hidden; }
+    .rcv-fill { height:100%; width:0%; background:#5B82A6; border-radius:6px; transition:width .25s; }
+    .rcv-stats { display:flex; gap:14px; margin-top:10px; font-size:13px; flex-wrap:wrap; }
+    .rcv-stats b { color:#E6EBF2; }
+    .rcv-ok { color:#3FB07A; } .rcv-skip { color:#8A93A6; } .rcv-err { color:#E06C75; }
+    .rcv-log { margin-top:12px; max-height:180px; overflow:auto; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:10px 14px; font-size:12.5px; line-height:1.7; display:none; }
+    .rcv-log.is-on { display:block; }
+    .rcv-atual { margin-top:8px; font-size:12.5px; color:#8A93A6; min-height:18px; }
   </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script type="module" src="../assets/js/auth-guard.js"></script>
 </head>
 <body>
   <div class="app-shell">
     <header class="topbar">
       <div class="topbar-brand">
-        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-logo"><img src="../assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
         <div class="topbar-name">Macedo <span>&</span> Reis</div>
       </div>
 
@@ -45,106 +67,139 @@
 
     <main class="content">
       <div class="page-header">
-        <div class="eyebrow">Painel central</div>
-        <h1>Dashboards do escritório</h1>
-        <p>Acesso unificado aos sistemas internos. Cada card abre o dashboard correspondente.</p>
+        <div class="breadcrumb">
+          <a href="../index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Clientes</span>
+        </div>
+        <div class="eyebrow">Cadastro</div>
+        <h1>Clientes</h1>
+        <p>Base mestre de clientes PJ e PF do escritório. Clique em uma linha para editar.</p>
       </div>
 
-      <div class="dashboard-grid">
-        <a href="agenda.html" class="dashboard-card">
-          <div class="dashboard-card-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-              <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-            </svg>
-          </div>
-          <h3>Agenda</h3>
-          <p>Suas tarefas e rotinas organizadas por dia, semana e mês. Ordene o dia por prioridade.</p>
-          <div class="dashboard-card-footer">
-            <span>Acessar →</span>
-          </div>
-        </a>
+      <div class="fa-subnav">
+        <a href="index.html" class="fa-tab is-active">Cadastro</a>
+        <a href="clientes-tarefas.html" class="fa-tab">Tarefas</a>
+      </div>
 
-        <a href="clientes/index.html" class="dashboard-card">
-          <div class="dashboard-card-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
-              <circle cx="9" cy="7" r="4"/>
-              <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
-              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+      <div class="toolbar">
+        <div class="toolbar-filters">
+          <input type="text" id="searchInput" class="input input-search" placeholder="Buscar por nome, CNPJ/CPF ou atividade…">
+          <select id="filterTipo" class="select">
+            <option value="">Todos os tipos</option>
+            <option value="PJ">Pessoa Jurídica</option>
+            <option value="PF">Pessoa Física</option>
+          </select>
+          <select id="filterStatus" class="select">
+            <option value="">Todos os status</option>
+            <option value="ativo">Ativo</option>
+            <option value="inativo">Inativo</option>
+            <option value="em_transicao">Em transição</option>
+            <option value="prospect">Prospect</option>
+          </select>
+        </div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <button class="btn btn-ghost" id="btnReceita" type="button">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12a9 9 0 1 1-9-9"/><polyline points="21 3 21 9 15 9"/>
             </svg>
-          </div>
-          <h3>Cadastro de clientes</h3>
-          <p>Base mestre de clientes PJ e PF do escritório. Cadastro, edição e vínculo com pastas no Drive.</p>
-          <div class="dashboard-card-footer">
-            <span>Acessar →</span>
-            <span class="badge card-status st-load">·</span>
-          </div>
-        </a>
+            Puxar dados da Receita
+          </button>
+          <button class="btn btn-ghost" id="btnImportar" type="button">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Importar
+          </button>
+          <a href="novo.html" class="btn btn-primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Novo cliente
+          </a>
+        </div>
+      </div>
 
-        <a href="setores.html" class="dashboard-card">
-          <div class="dashboard-card-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
-            </svg>
-          </div>
-          <h3>Setores</h3>
-          <p>Tarefas dos setores operacionais: DP, Fiscal, Contábil, Societário, Comercial e IRPF.</p>
-          <div class="dashboard-card-footer">
-            <span>Acessar →</span>
-            <span class="badge card-status st-load">·</span>
-          </div>
-        </a>
-
-        <a href="administracao.html" class="dashboard-card">
-          <div class="dashboard-card-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 21h18"/><path d="M5 21V8l7-5 7 5v13"/><path d="M9 21v-6h6v6"/>
-            </svg>
-          </div>
-          <h3>Administração</h3>
-          <p>Gestão dos sócios e Financeiro do escritório.</p>
-          <div class="dashboard-card-footer">
-            <span>Acessar →</span>
-            <span class="badge card-status st-load">·</span>
-          </div>
-        </a>
+      <div class="table-wrap" id="tableWrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Nome / Razão social</th>
+              <th>Documento</th>
+              <th>Tipo</th>
+              <th>Status</th>
+              <th>Cidade / UF</th>
+              <th>Cadastrado em</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="tbody">
+            <tr class="loading-row"><td colspan="7"><span class="spinner"></span>Carregando clientes…</td></tr>
+          </tbody>
+        </table>
       </div>
     </main>
   </div>
 
+  <div class="imp-overlay" id="impOverlay">
+    <div class="imp-modal">
+      <div class="imp-head"><h3>Importar clientes do Taskdo</h3><button class="imp-close" id="impClose" type="button">&times;</button></div>
+      <div class="imp-body">
+        <p>Selecione o arquivo <b>.xls</b> exportado do Taskdo (relatório de clientes). Entram só os clientes que ainda não existem — os já cadastrados (mesmo CNPJ/CPF) são ignorados.</p>
+        <input type="file" id="impFile" accept=".xls,.xlsx">
+        <div class="imp-resumo" id="impResumo" hidden></div>
+      </div>
+      <div class="imp-foot">
+        <button class="btn btn-ghost" id="impCancelar" type="button">Cancelar</button>
+        <button class="btn btn-primary" id="impAcao" type="button" disabled>Analisar arquivo</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="imp-overlay" id="rcvOverlay">
+    <div class="imp-modal">
+      <div class="imp-head"><h3>Puxar dados da Receita</h3><button class="imp-close" id="rcvClose" type="button">&times;</button></div>
+      <div class="imp-body">
+        <p>Consulta os dados públicos da Receita Federal (via BrasilAPI) de todos os clientes <b>PJ</b> e preenche <b>somente os campos vazios</b>: CNAE principal, CNAEs secundários, natureza jurídica, capital social e porte. Nada que já está preenchido é alterado.</p>
+        <div class="rcv-prog" id="rcvProg" hidden>
+          <div class="rcv-bar"><div class="rcv-fill" id="rcvFill"></div></div>
+          <div class="rcv-stats">
+            <span>Processados: <b id="rcvCont">0/0</b></span>
+            <span class="rcv-ok">Atualizados: <b id="rcvOk">0</b></span>
+            <span class="rcv-skip">Sem pendência: <b id="rcvSkip">0</b></span>
+            <span class="rcv-err">Falhas: <b id="rcvErr">0</b></span>
+          </div>
+          <div class="rcv-atual" id="rcvAtual"></div>
+        </div>
+        <div class="rcv-log" id="rcvLog"></div>
+      </div>
+      <div class="imp-foot">
+        <button class="btn btn-ghost" id="rcvFechar" type="button">Fechar</button>
+        <button class="btn btn-primary" id="rcvAcao" type="button">Iniciar</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module">
-    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { supabase, getCurrentUser, signOut } from '../assets/js/supabase.js';
+    import { formatDocumento, formatDate, STATUS_LABELS } from '../assets/js/utils.js';
 
-    const HOJE = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD local
-    const GESTAO_ADMINS = ['financeiro@macedoereis.com.br', 'diego@macedoereis.com.br'];
+    const tbody = document.getElementById('tbody');
+    const searchInput = document.getElementById('searchInput');
+    const filterTipo = document.getElementById('filterTipo');
+    const filterStatus = document.getElementById('filterStatus');
 
-    // ---- lógica de periodicidade das rotinas (igual ao dashboard) ----
-    const hojeD = new Date(HOJE + 'T00:00:00');
-    function diaSemanaISO(d){ const x = d.getDay(); return x === 0 ? 7 : x; }
-    function diasNoMes(ano, mes0){ return new Date(ano, mes0 + 1, 0).getDate(); }
-    function segundaDaSemana(d){ const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - (diaSemanaISO(x) - 1)); return x; }
-    function periodicidadeDe(r){ return r.periodicidade || 'diaria'; }
-    function dataGatilho(r){
-      const ano = hojeD.getFullYear(), mes0 = hojeD.getMonth();
-      const p = periodicidadeDe(r);
-      if (p === 'semanal') { const seg = segundaDaSemana(hojeD); const alvo = new Date(seg); alvo.setDate(seg.getDate() + ((r.dia_semana || 1) - 1)); return alvo; }
-      if (p === 'mensal') return new Date(ano, mes0, Math.min(r.dia_mes || 1, diasNoMes(ano, mes0)));
-      if (p === 'anual') { const a = String(r.dia_anual || '01-01').split('-').map(Number); return new Date(ano, (a[0]||1)-1, Math.min(a[1]||1, diasNoMes(ano,(a[0]||1)-1))); }
-      return hojeD;
+    let allClientes = [];
+
+    const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+    function cnaeMatchHtml(c, search){
+      if (!search) return '';
+      const linhas = [c.cnae_principal || '', ...(Array.isArray(c.cnaes_secundarios) ? c.cnaes_secundarios : [])];
+      const hit = linhas.find(l => l && norm(l).includes(search));
+      return hit ? `<div class="table-sub">CNAE: ${hit}</div>` : '';
     }
-    function gatilhoChegou(r){ return periodicidadeDe(r) === 'diaria' ? true : dataGatilho(r) <= hojeD; }
-    function feitaNoPeriodo(r){
-      if (!r.ultima_execucao) return false;
-      const u = new Date(r.ultima_execucao + 'T00:00:00');
-      const p = periodicidadeDe(r);
-      if (p === 'diaria') return r.ultima_execucao === HOJE;
-      if (p === 'semanal') return segundaDaSemana(u).getTime() === segundaDaSemana(hojeD).getTime();
-      if (p === 'mensal') return u.getFullYear() === hojeD.getFullYear() && u.getMonth() === hojeD.getMonth();
-      if (p === 'anual') return u.getFullYear() === hojeD.getFullYear();
-      return r.ultima_execucao === HOJE;
-    }
-    function pendenteHoje(r){ return gatilhoChegou(r) && !feitaNoPeriodo(r); }
 
     (async () => {
       const user = await getCurrentUser();
@@ -153,72 +208,323 @@
         document.getElementById('userName').textContent = displayName;
         document.getElementById('userAvatar').textContent = displayName.charAt(0).toUpperCase();
       }
-      await pintarSelosDoDia(user);
     })();
 
     document.getElementById('btnLogout').addEventListener('click', signOut);
 
-    async function pintarSelosDoDia(user) {
-      // cada card-grupo agrega a contagem dos setores que ele contém
-      const GRUPOS = {
-        'clientes/index.html': ['clientes'],
-        'setores.html':        ['dp','fiscal','contabil','societario','comercial','irpf'],
-        'administracao.html':  ['gestao','financeiro'],
-      };
-      const cards = {};
-      document.querySelectorAll('a.dashboard-card').forEach(c => {
-        const href = c.getAttribute('href') || '';
-        if (GRUPOS[href]) cards[href] = c;
+    async function loadClientes() {
+      const { data, error } = await supabase
+        .from('clientes')
+        .select('id, tipo_pessoa, nome_principal, nome_fantasia, documento, status, cidade, uf, created_at, cnae_principal, cnaes_secundarios')
+        .order('nome_principal');
+
+      if (error) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--danger); padding: 40px;">Erro ao carregar clientes: ${error.message}</td></tr>`;
+        return;
+      }
+
+      allClientes = data || [];
+      render();
+    }
+
+    function render() {
+      const search = norm(searchInput.value.trim());
+      const tipo = filterTipo.value;
+      const status = filterStatus.value;
+
+      const filtered = allClientes.filter(c => {
+        if (tipo && c.tipo_pessoa !== tipo) return false;
+        if (status && c.status !== status) return false;
+        if (search) {
+          const cnaes = `${c.cnae_principal || ''} ${Array.isArray(c.cnaes_secundarios) ? c.cnaes_secundarios.join(' ') : ''}`;
+          const haystack = norm(`${c.nome_principal} ${c.nome_fantasia || ''} ${c.documento} ${cnaes}`);
+          if (!haystack.includes(search)) return false;
+        }
+        return true;
       });
-      const hrefs = Object.keys(cards);
-      if (!hrefs.length) return;
-      const todosSetores = [...new Set(Object.values(GRUPOS).flat())];
 
-      // filtro pessoal: cada login conta SÓ as tarefas/rotinas em que é o responsável
-      const FILTRO_PESSOAL = {
-        'fiscal@macedoereis.com.br':     ['Thalia'],
-        'rh@macedoereis.com.br':         ['Vitoria', 'Vitória'],
-        'contabil@macedoereis.com.br':   ['Adaini'],
-        'financeiro@macedoereis.com.br': ['Samuel'],
-        'diego@macedoereis.com.br':      ['Diego'],
-      };
-      const meusNomes = user ? FILTRO_PESSOAL[(user.email || '').toLowerCase()] : null;
-      const norm = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-      const ehMeu = (resp) => { if (!meusNomes) return true; const r = norm(resp); if (!r) return false; return meusNomes.some(n => r.includes(norm(n))); };
+      if (filtered.length === 0) {
+        tbody.innerHTML = `
+          <tr><td colspan="7">
+            <div class="empty-state">
+              <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
+              <h3>${allClientes.length === 0 ? 'Nenhum cliente cadastrado' : 'Nenhum resultado'}</h3>
+              <p>${allClientes.length === 0 ? 'Comece cadastrando o primeiro cliente do escritório.' : 'Tente ajustar os filtros ou a busca.'}</p>
+              ${allClientes.length === 0 ? '<a href="novo.html" class="btn btn-primary">Cadastrar primeiro cliente</a>' : ''}
+            </div>
+          </td></tr>`;
+        return;
+      }
 
-      // contagem por setor
-      const hojePorSetor = {}, abertasPorSetor = {};
-      const { data: ts } = await supabase.from('tarefas').select('setor, responsavel')
-        .in('setor', todosSetores).eq('prazo', HOJE).neq('status', 'concluida');
-      (ts || []).forEach(t => { if (ehMeu(t.responsavel)) hojePorSetor[t.setor] = (hojePorSetor[t.setor] || 0) + 1; });
+      tbody.innerHTML = filtered.map(c => `
+        <tr class="is-clickable" data-id="${c.id}">
+          <td data-label="Nome">
+            <div class="table-name">${c.nome_principal}</div>
+            ${c.nome_fantasia ? `<div class="table-sub">${c.nome_fantasia}</div>` : ''}
+            ${cnaeMatchHtml(c, search)}
+          </td>
+          <td data-label="Documento">${formatDocumento(c.documento)}</td>
+          <td data-label="Tipo">${c.tipo_pessoa}</td>
+          <td data-label="Status"><span class="status-pill status-${c.status}">${STATUS_LABELS[c.status] || c.status}</span></td>
+          <td data-label="Localização">${c.cidade ? `${c.cidade}${c.uf ? '/' + c.uf : ''}` : '—'}</td>
+          <td data-label="Cadastrado">${formatDate(c.created_at)}</td>
+          <td data-label="" style="text-align: right;">
+            <svg class="chevron-right" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+          </td>
+        </tr>
+      `).join('');
 
-      const { data: rs } = await supabase.from('rotinas').select('setor, ultima_execucao, responsavel, periodicidade, dia_semana, dia_mes, dia_anual')
-        .in('setor', todosSetores).eq('ativo', true);
-      (rs || []).forEach(r => { if (pendenteHoje(r) && ehMeu(r.responsavel)) hojePorSetor[r.setor] = (hojePorSetor[r.setor] || 0) + 1; });
-
-      const { data: ab } = await supabase.from('tarefas').select('setor, responsavel')
-        .in('setor', todosSetores).neq('status', 'concluida');
-      (ab || []).forEach(t => { if (ehMeu(t.responsavel)) abertasPorSetor[t.setor] = (abertasPorSetor[t.setor] || 0) + 1; });
-
-      // agrega por grupo e pinta: selo "hoje" + rodapé (abertas / em dia)
-      hrefs.forEach(href => {
-        const card = cards[href];
-        const membros = GRUPOS[href];
-        const h = membros.reduce((acc, s) => acc + (hojePorSetor[s] || 0), 0);
-        const n = membros.reduce((acc, s) => acc + (abertasPorSetor[s] || 0), 0);
-        if (h) {
-          const pill = document.createElement('span');
-          pill.className = 'badge-hoje';
-          pill.textContent = h + ' hoje';
-          card.appendChild(pill);
-        }
-        const st = card.querySelector('.card-status');
-        if (st) {
-          if (n > 0) { st.textContent = n + (n === 1 ? ' aberta' : ' abertas'); st.className = 'badge card-status st-open'; }
-          else { st.textContent = 'Em dia'; st.className = 'badge card-status st-clear'; }
-        }
+      tbody.querySelectorAll('tr.is-clickable').forEach(tr => {
+        tr.addEventListener('click', () => {
+          window.location.href = `editar.html?id=${tr.dataset.id}`;
+        });
       });
     }
+
+    searchInput.addEventListener('input', render);
+    filterTipo.addEventListener('change', render);
+    filterStatus.addEventListener('change', render);
+
+    // ===== Importação de clientes do Taskdo (.xls) =====
+    const REG_MAP = { 'MEI':'MEI', 'SIMPLES NACIONAL':'Simples Nacional', 'LUCRO PRESUMIDO':'Lucro Presumido', 'LUCRO REAL':'Lucro Real', 'IMUNE - ISENTA':'Imune' };
+    const dig = s => String(s==null?'':s).replace(/\D/g,'');
+    const st = s => String(s==null?'':s).trim();
+    const firstEmail = s => { const m = String(s==null?'':s).match(/[\w.\-+]+@[\w.\-]+\.\w+/); return m ? m[0] : ''; };
+    const titleCase = s => s.toLowerCase().replace(/(^|\s|\/)([^\s\/])/g, (_,p,c) => p + c.toUpperCase());
+    function parseData(v){
+      const s = st(v); if (!s) return null;
+      let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+      m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+      return null;
+    }
+    function mapearLinha(r){
+      const doc = dig(r['IDENTIFICAÇÃO']);
+      const nome = st(r['RAZÃO']);
+      if (![11,14].includes(doc.length) || doc.startsWith('0000000000') || nome.toUpperCase().startsWith('CLIENTES')) return null;
+      const nomeLimpo = nome.replace(/^[\d.\-/]+\s+/, '').trim();
+      const muni = st(r['MUNICÍPIO']);
+      let cidade = muni, uf = '';
+      if (muni.includes('/')) { const i = muni.lastIndexOf('/'); cidade = muni.slice(0,i); uf = muni.slice(i+1); }
+      const reg = st(r['REGIME']).toUpperCase();
+      return {
+        tipo_pessoa: doc.length === 14 ? 'PJ' : 'PF',
+        nome_principal: nomeLimpo,
+        nome_fantasia: st(r['NOME FANTASIA']) || null,
+        documento: doc,
+        email_principal: firstEmail(r['E-MAILS']) || null,
+        telefone_principal: st(r['CONTATO']) || null,
+        cidade: cidade.trim() ? titleCase(cidade.trim()) : null,
+        uf: uf.trim() ? uf.trim().toUpperCase().slice(0,2) : null,
+        status: reg === 'INATIVAS' ? 'inativo' : 'ativo',
+        regime_tributario: REG_MAP[reg] || null,
+        porte_empresa: reg === 'MEI' ? 'MEI' : null,
+        inscricao_estadual: st(r['INSCRIÇÃO ESTADUAL']) || null,
+        inscricao_municipal: st(r['INSCRIÇÃO MUNICIPAL']) || null,
+        data_abertura: parseData(r['DATA ABERTURA']),
+        data_inicio_cliente: parseData(r['DATA INÍCIO CONTROLE']),
+        credenciais: st(r['OBSERVAÇÃO']) || null,
+      };
+    }
+    async function lerArquivo(file){
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      const nome = wb.SheetNames.includes('cliente-consulta') ? 'cliente-consulta' : wb.SheetNames[0];
+      return XLSX.utils.sheet_to_json(wb.Sheets[nome], { defval: '', raw: false });
+    }
+    async function filtrarNovos(registros){
+      const docs = registros.map(r => r.documento);
+      const existentes = new Set();
+      for (let i = 0; i < docs.length; i += 150) {
+        const chunk = docs.slice(i, i + 150);
+        const { data, error } = await supabase.from('clientes').select('documento').in('documento', chunk);
+        if (error) throw error;
+        (data || []).forEach(e => existentes.add(e.documento));
+      }
+      const vistos = new Set(); const novos = [];
+      for (const r of registros) {
+        if (existentes.has(r.documento) || vistos.has(r.documento)) continue;
+        vistos.add(r.documento); novos.push(r);
+      }
+      return novos;
+    }
+    async function inserir(novos){
+      for (let i = 0; i < novos.length; i += 300) {
+        const { error } = await supabase.from('clientes').insert(novos.slice(i, i + 300));
+        if (error) throw error;
+      }
+    }
+
+    let novosParaImportar = null;
+    const impOverlay = document.getElementById('impOverlay');
+    const impFile = document.getElementById('impFile');
+    const impAcao = document.getElementById('impAcao');
+    const impResumo = document.getElementById('impResumo');
+
+    function fecharImp(){ impOverlay.classList.remove('is-open'); }
+    function resetImp(){ novosParaImportar = null; impFile.value = ''; impResumo.hidden = true; impResumo.innerHTML = ''; impAcao.textContent = 'Analisar arquivo'; impAcao.disabled = true; }
+
+    document.getElementById('btnImportar').addEventListener('click', () => { resetImp(); impOverlay.classList.add('is-open'); });
+    document.getElementById('impClose').addEventListener('click', fecharImp);
+    document.getElementById('impCancelar').addEventListener('click', fecharImp);
+    impOverlay.addEventListener('click', e => { if (e.target === impOverlay) fecharImp(); });
+    impFile.addEventListener('change', () => { novosParaImportar = null; impResumo.hidden = true; impAcao.textContent = 'Analisar arquivo'; impAcao.disabled = !impFile.files.length; });
+
+    impAcao.addEventListener('click', async () => {
+      if (novosParaImportar === null) {
+        if (!impFile.files.length) return;
+        if (typeof XLSX === 'undefined') { impResumo.hidden = false; impResumo.innerHTML = '<span style="color:#E06C6C;">A biblioteca de leitura não carregou. Verifique a conexão e recarregue a página.</span>'; return; }
+        impAcao.disabled = true; impAcao.textContent = 'Analisando…';
+        try {
+          const rows = await lerArquivo(impFile.files[0]);
+          const validos = rows.map(mapearLinha).filter(Boolean);
+          const novos = await filtrarNovos(validos);
+          novosParaImportar = novos;
+          impResumo.hidden = false;
+          impResumo.innerHTML = `<b>${rows.length}</b> linhas no arquivo<br><b>${validos.length}</b> clientes válidos<br><span class="imp-num">${novos.length}</span> novos para importar<br><b>${validos.length - novos.length}</b> já cadastrados (ignorados)`;
+          if (novos.length > 0) { impAcao.textContent = `Importar ${novos.length} cliente${novos.length>1?'s':''}`; impAcao.disabled = false; }
+          else { impAcao.textContent = 'Nada para importar'; impAcao.disabled = true; }
+        } catch (err) {
+          impResumo.hidden = false; impResumo.innerHTML = `<span style="color:#E06C6C;">Erro ao ler o arquivo: ${err.message}</span>`;
+          novosParaImportar = null; impAcao.textContent = 'Analisar arquivo'; impAcao.disabled = false;
+        }
+      } else {
+        impAcao.disabled = true; impAcao.textContent = 'Importando…';
+        try {
+          const n = novosParaImportar.length;
+          await inserir(novosParaImportar);
+          impResumo.innerHTML = `<span class="imp-num">${n}</span> cliente${n>1?'s':''} importado${n>1?'s':''} com sucesso!`;
+          impAcao.textContent = 'Concluído';
+          setTimeout(() => { fecharImp(); loadClientes(); }, 1300);
+        } catch (err) {
+          impResumo.innerHTML = `<span style="color:#E06C6C;">Erro ao importar: ${err.message}</span>`;
+          impAcao.textContent = 'Tentar de novo'; impAcao.disabled = false;
+        }
+      }
+    });
+
+    // ===================== PUXAR DADOS DA RECEITA (BrasilAPI) =====================
+    const rcvOverlay = document.getElementById('rcvOverlay');
+    const rcvProg = document.getElementById('rcvProg');
+    const rcvLog = document.getElementById('rcvLog');
+    let rcvRodando = false;
+
+    document.getElementById('btnReceita').addEventListener('click', () => { rcvOverlay.classList.add('is-open'); });
+    document.getElementById('rcvClose').addEventListener('click', fecharRcv);
+    document.getElementById('rcvFechar').addEventListener('click', fecharRcv);
+    rcvOverlay.addEventListener('click', e => { if (e.target === rcvOverlay) fecharRcv(); });
+    function fecharRcv(){ if (rcvRodando) return; rcvOverlay.classList.remove('is-open'); }
+
+    const limpaDoc = s => String(s || '').replace(/[^0-9A-Za-z]/g, '').toUpperCase();
+    const fmtCnaeCod = c => { const d = String(c ?? '').replace(/\D/g,''); return d.length === 7 ? `${d.slice(0,4)}-${d.slice(4,5)}/${d.slice(5)}` : String(c ?? ''); };
+    const vazio = v => v == null || (typeof v === 'string' && v.trim() === '') || (Array.isArray(v) && v.length === 0);
+    const espera = ms => new Promise(r => setTimeout(r, ms));
+
+    function mapPorte(p){
+      const s = String(p || '').toUpperCase();
+      if (s.includes('MICRO')) return 'ME';
+      if (s.includes('PEQUENO')) return 'EPP';
+      if (s.includes('DEMAIS')) return 'Demais';
+      return null;
+    }
+
+    async function consultaBrasilAPI(cnpj){
+      for (let tent = 1; tent <= 2; tent++){
+        try {
+          const resp = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`);
+          if (resp.status === 404) return { erro: 'CNPJ não encontrado na base' };
+          if (resp.status === 429) { await espera(4000); continue; }
+          if (!resp.ok) { if (tent === 1) { await espera(3000); continue; } return { erro: `HTTP ${resp.status}` }; }
+          return { dados: await resp.json() };
+        } catch (e) {
+          if (tent === 1) { await espera(3000); continue; }
+          return { erro: 'falha de rede' };
+        }
+      }
+      return { erro: 'limite de consultas — rodar de novo mais tarde' };
+    }
+
+    document.getElementById('rcvAcao').addEventListener('click', async () => {
+      if (rcvRodando) return;
+      const btn = document.getElementById('rcvAcao');
+      rcvRodando = true; btn.disabled = true; btn.textContent = 'Consultando…';
+      rcvProg.hidden = false; rcvLog.innerHTML = ''; rcvLog.classList.remove('is-on');
+
+      const { data: pjs, error } = await supabase
+        .from('clientes')
+        .select('id, nome_principal, documento, cnae_principal, cnaes_secundarios, natureza_juridica, capital_social, porte_empresa')
+        .eq('tipo_pessoa', 'PJ')
+        .order('nome_principal');
+
+      if (error) { logLinha(`<span class="rcv-err">Erro ao listar clientes: ${error.message}</span>`); rcvRodando = false; btn.disabled = false; btn.textContent = 'Iniciar'; return; }
+
+      const alvo = (pjs || []).filter(c => vazio(c.cnae_principal) || vazio(c.cnaes_secundarios) || vazio(c.natureza_juridica) || c.capital_social == null || vazio(c.porte_empresa));
+      const total = alvo.length;
+      let feitos = 0, ok = 0, semNada = (pjs || []).length - total, falhas = 0;
+      atualizaPainel(feitos, total, ok, semNada, falhas);
+      if (semNada) logLinha(`<span class="rcv-skip">${semNada} cliente(s) PJ já estavam completos — pulados sem consulta.</span>`);
+      if (!total) { encerra(btn, ok, semNada, falhas); return; }
+
+      for (const c of alvo){
+        document.getElementById('rcvAtual').textContent = `Consultando: ${c.nome_principal}`;
+        const cnpj = limpaDoc(c.documento);
+        if (cnpj.length !== 14){
+          falhas++; logLinha(`<span class="rcv-err">✗ ${c.nome_principal}: documento inválido (${c.documento || 'vazio'})</span>`);
+        } else {
+          const r = await consultaBrasilAPI(cnpj);
+          if (r.erro){
+            falhas++; logLinha(`<span class="rcv-err">✗ ${c.nome_principal}: ${r.erro}</span>`);
+          } else {
+            const d = r.dados; const upd = {};
+            if (vazio(c.cnae_principal) && d.cnae_fiscal) upd.cnae_principal = `${fmtCnaeCod(d.cnae_fiscal)}${d.cnae_fiscal_descricao ? ' - ' + d.cnae_fiscal_descricao : ''}`;
+            if (vazio(c.cnaes_secundarios) && Array.isArray(d.cnaes_secundarios)){
+              const lista = d.cnaes_secundarios.filter(x => x && x.codigo).map(x => `${fmtCnaeCod(x.codigo)}${x.descricao ? ' - ' + x.descricao : ''}`);
+              if (lista.length) upd.cnaes_secundarios = lista;
+            }
+            if (vazio(c.natureza_juridica) && d.natureza_juridica) upd.natureza_juridica = d.natureza_juridica;
+            if (c.capital_social == null && d.capital_social != null && Number(d.capital_social) > 0) upd.capital_social = d.capital_social;
+            if (vazio(c.porte_empresa)){ const p = mapPorte(d.porte); if (p) upd.porte_empresa = p; }
+
+            if (Object.keys(upd).length){
+              const { error: eUp } = await supabase.from('clientes').update(upd).eq('id', c.id);
+              if (eUp){ falhas++; logLinha(`<span class="rcv-err">✗ ${c.nome_principal}: erro ao salvar (${eUp.message})</span>`); }
+              else { ok++; logLinha(`<span class="rcv-ok">✓ ${c.nome_principal}: ${Object.keys(upd).length} campo(s) preenchido(s)</span>`); }
+            } else {
+              semNada++; logLinha(`<span class="rcv-skip">– ${c.nome_principal}: Receita não trouxe nada além do que já tem</span>`);
+            }
+          }
+        }
+        feitos++;
+        atualizaPainel(feitos, total, ok, semNada, falhas);
+        if (feitos < total) await espera(1100);
+      }
+      encerra(btn, ok, semNada, falhas);
+      loadClientes();
+    });
+
+    function atualizaPainel(f, t, ok, s, e){
+      document.getElementById('rcvCont').textContent = `${f}/${t}`;
+      document.getElementById('rcvOk').textContent = ok;
+      document.getElementById('rcvSkip').textContent = s;
+      document.getElementById('rcvErr').textContent = e;
+      document.getElementById('rcvFill').style.width = t ? `${Math.round(f/t*100)}%` : '100%';
+    }
+    function logLinha(html){ rcvLog.classList.add('is-on'); rcvLog.insertAdjacentHTML('beforeend', `<div>${html}</div>`); rcvLog.scrollTop = rcvLog.scrollHeight; }
+    function encerra(btn, ok, s, e){
+      rcvRodando = false; btn.disabled = false; btn.textContent = 'Rodar de novo';
+      document.getElementById('rcvAtual').textContent = '';
+      logLinha(`<b>Concluído:</b> <span class="rcv-ok">${ok} atualizados</span> · <span class="rcv-skip">${s} sem pendência</span> · <span class="rcv-err">${e} falhas</span>${e ? ' — quem falhou continua com campos vazios: é só rodar de novo que ele tenta só esses.' : ''}`);
+    }
+
+    loadClientes();
   </script>
 </body>
 </html>
