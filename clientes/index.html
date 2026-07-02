@@ -84,7 +84,7 @@
 
       <div class="toolbar">
         <div class="toolbar-filters">
-          <input type="text" id="searchInput" class="input input-search" placeholder="Buscar por nome, CNPJ ou CPF…">
+          <input type="text" id="searchInput" class="input input-search" placeholder="Buscar por nome, CNPJ/CPF ou atividade…">
           <select id="filterTipo" class="select">
             <option value="">Todos os tipos</option>
             <option value="PJ">Pessoa Jurídica</option>
@@ -192,6 +192,15 @@
 
     let allClientes = [];
 
+    const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+    function cnaeMatchHtml(c, search){
+      if (!search) return '';
+      const linhas = [c.cnae_principal || '', ...(Array.isArray(c.cnaes_secundarios) ? c.cnaes_secundarios : [])];
+      const hit = linhas.find(l => l && norm(l).includes(search));
+      return hit ? `<div class="table-sub">CNAE: ${hit}</div>` : '';
+    }
+
     (async () => {
       const user = await getCurrentUser();
       if (user) {
@@ -206,7 +215,7 @@
     async function loadClientes() {
       const { data, error } = await supabase
         .from('clientes')
-        .select('id, tipo_pessoa, nome_principal, nome_fantasia, documento, status, cidade, uf, created_at')
+        .select('id, tipo_pessoa, nome_principal, nome_fantasia, documento, status, cidade, uf, created_at, cnae_principal, cnaes_secundarios')
         .order('nome_principal');
 
       if (error) {
@@ -219,7 +228,7 @@
     }
 
     function render() {
-      const search = searchInput.value.toLowerCase().trim();
+      const search = norm(searchInput.value.trim());
       const tipo = filterTipo.value;
       const status = filterStatus.value;
 
@@ -227,7 +236,8 @@
         if (tipo && c.tipo_pessoa !== tipo) return false;
         if (status && c.status !== status) return false;
         if (search) {
-          const haystack = `${c.nome_principal} ${c.nome_fantasia || ''} ${c.documento}`.toLowerCase();
+          const cnaes = `${c.cnae_principal || ''} ${Array.isArray(c.cnaes_secundarios) ? c.cnaes_secundarios.join(' ') : ''}`;
+          const haystack = norm(`${c.nome_principal} ${c.nome_fantasia || ''} ${c.documento} ${cnaes}`);
           if (!haystack.includes(search)) return false;
         }
         return true;
@@ -256,6 +266,7 @@
           <td data-label="Nome">
             <div class="table-name">${c.nome_principal}</div>
             ${c.nome_fantasia ? `<div class="table-sub">${c.nome_fantasia}</div>` : ''}
+            ${cnaeMatchHtml(c, search)}
           </td>
           <td data-label="Documento">${formatDocumento(c.documento)}</td>
           <td data-label="Tipo">${c.tipo_pessoa}</td>
