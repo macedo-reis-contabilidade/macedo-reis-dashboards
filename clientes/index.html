@@ -34,6 +34,16 @@
     .imp-resumo b { color:#E6EBF2; }
     .imp-num { color:#3FB07A; font-weight:700; }
     .imp-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid rgba(255,255,255,.08); }
+    /* Puxar dados da Receita */
+    .rcv-prog { margin-top:16px; }
+    .rcv-bar { height:10px; background:rgba(255,255,255,.07); border-radius:6px; overflow:hidden; }
+    .rcv-fill { height:100%; width:0%; background:#5B82A6; border-radius:6px; transition:width .25s; }
+    .rcv-stats { display:flex; gap:14px; margin-top:10px; font-size:13px; flex-wrap:wrap; }
+    .rcv-stats b { color:#E6EBF2; }
+    .rcv-ok { color:#3FB07A; } .rcv-skip { color:#8A93A6; } .rcv-err { color:#E06C75; }
+    .rcv-log { margin-top:12px; max-height:180px; overflow:auto; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:10px 14px; font-size:12.5px; line-height:1.7; display:none; }
+    .rcv-log.is-on { display:block; }
+    .rcv-atual { margin-top:8px; font-size:12.5px; color:#8A93A6; min-height:18px; }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script type="module" src="../assets/js/auth-guard.js"></script>
@@ -89,6 +99,12 @@
           </select>
         </div>
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <button class="btn btn-ghost" id="btnReceita" type="button">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12a9 9 0 1 1-9-9"/><polyline points="21 3 21 9 15 9"/>
+            </svg>
+            Puxar dados da Receita
+          </button>
           <button class="btn btn-ghost" id="btnImportar" type="button">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
@@ -137,6 +153,30 @@
       <div class="imp-foot">
         <button class="btn btn-ghost" id="impCancelar" type="button">Cancelar</button>
         <button class="btn btn-primary" id="impAcao" type="button" disabled>Analisar arquivo</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="imp-overlay" id="rcvOverlay">
+    <div class="imp-modal">
+      <div class="imp-head"><h3>Puxar dados da Receita</h3><button class="imp-close" id="rcvClose" type="button">&times;</button></div>
+      <div class="imp-body">
+        <p>Consulta os dados públicos da Receita Federal (via BrasilAPI) de todos os clientes <b>PJ</b> e preenche <b>somente os campos vazios</b>: CNAE principal, CNAEs secundários, natureza jurídica, capital social e porte. Nada que já está preenchido é alterado.</p>
+        <div class="rcv-prog" id="rcvProg" hidden>
+          <div class="rcv-bar"><div class="rcv-fill" id="rcvFill"></div></div>
+          <div class="rcv-stats">
+            <span>Processados: <b id="rcvCont">0/0</b></span>
+            <span class="rcv-ok">Atualizados: <b id="rcvOk">0</b></span>
+            <span class="rcv-skip">Sem pendência: <b id="rcvSkip">0</b></span>
+            <span class="rcv-err">Falhas: <b id="rcvErr">0</b></span>
+          </div>
+          <div class="rcv-atual" id="rcvAtual"></div>
+        </div>
+        <div class="rcv-log" id="rcvLog"></div>
+      </div>
+      <div class="imp-foot">
+        <button class="btn btn-ghost" id="rcvFechar" type="button">Fechar</button>
+        <button class="btn btn-primary" id="rcvAcao" type="button">Iniciar</button>
       </div>
     </div>
   </div>
@@ -359,6 +399,119 @@
         }
       }
     });
+
+    // ===================== PUXAR DADOS DA RECEITA (BrasilAPI) =====================
+    const rcvOverlay = document.getElementById('rcvOverlay');
+    const rcvProg = document.getElementById('rcvProg');
+    const rcvLog = document.getElementById('rcvLog');
+    let rcvRodando = false;
+
+    document.getElementById('btnReceita').addEventListener('click', () => { rcvOverlay.classList.add('is-open'); });
+    document.getElementById('rcvClose').addEventListener('click', fecharRcv);
+    document.getElementById('rcvFechar').addEventListener('click', fecharRcv);
+    rcvOverlay.addEventListener('click', e => { if (e.target === rcvOverlay) fecharRcv(); });
+    function fecharRcv(){ if (rcvRodando) return; rcvOverlay.classList.remove('is-open'); }
+
+    const limpaDoc = s => String(s || '').replace(/[^0-9A-Za-z]/g, '').toUpperCase();
+    const fmtCnaeCod = c => { const d = String(c ?? '').replace(/\D/g,''); return d.length === 7 ? `${d.slice(0,4)}-${d.slice(4,5)}/${d.slice(5)}` : String(c ?? ''); };
+    const vazio = v => v == null || (typeof v === 'string' && v.trim() === '') || (Array.isArray(v) && v.length === 0);
+    const espera = ms => new Promise(r => setTimeout(r, ms));
+
+    function mapPorte(p){
+      const s = String(p || '').toUpperCase();
+      if (s.includes('MICRO')) return 'ME';
+      if (s.includes('PEQUENO')) return 'EPP';
+      if (s.includes('DEMAIS')) return 'Demais';
+      return null;
+    }
+
+    async function consultaBrasilAPI(cnpj){
+      for (let tent = 1; tent <= 2; tent++){
+        try {
+          const resp = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`);
+          if (resp.status === 404) return { erro: 'CNPJ não encontrado na base' };
+          if (resp.status === 429) { await espera(4000); continue; }
+          if (!resp.ok) { if (tent === 1) { await espera(3000); continue; } return { erro: `HTTP ${resp.status}` }; }
+          return { dados: await resp.json() };
+        } catch (e) {
+          if (tent === 1) { await espera(3000); continue; }
+          return { erro: 'falha de rede' };
+        }
+      }
+      return { erro: 'limite de consultas — rodar de novo mais tarde' };
+    }
+
+    document.getElementById('rcvAcao').addEventListener('click', async () => {
+      if (rcvRodando) return;
+      const btn = document.getElementById('rcvAcao');
+      rcvRodando = true; btn.disabled = true; btn.textContent = 'Consultando…';
+      rcvProg.hidden = false; rcvLog.innerHTML = ''; rcvLog.classList.remove('is-on');
+
+      const { data: pjs, error } = await supabase
+        .from('clientes')
+        .select('id, nome_principal, documento, cnae_principal, cnaes_secundarios, natureza_juridica, capital_social, porte_empresa')
+        .eq('tipo_pessoa', 'PJ')
+        .order('nome_principal');
+
+      if (error) { logLinha(`<span class="rcv-err">Erro ao listar clientes: ${error.message}</span>`); rcvRodando = false; btn.disabled = false; btn.textContent = 'Iniciar'; return; }
+
+      const alvo = (pjs || []).filter(c => vazio(c.cnae_principal) || vazio(c.cnaes_secundarios) || vazio(c.natureza_juridica) || c.capital_social == null || vazio(c.porte_empresa));
+      const total = alvo.length;
+      let feitos = 0, ok = 0, semNada = (pjs || []).length - total, falhas = 0;
+      atualizaPainel(feitos, total, ok, semNada, falhas);
+      if (semNada) logLinha(`<span class="rcv-skip">${semNada} cliente(s) PJ já estavam completos — pulados sem consulta.</span>`);
+      if (!total) { encerra(btn, ok, semNada, falhas); return; }
+
+      for (const c of alvo){
+        document.getElementById('rcvAtual').textContent = `Consultando: ${c.nome_principal}`;
+        const cnpj = limpaDoc(c.documento);
+        if (cnpj.length !== 14){
+          falhas++; logLinha(`<span class="rcv-err">✗ ${c.nome_principal}: documento inválido (${c.documento || 'vazio'})</span>`);
+        } else {
+          const r = await consultaBrasilAPI(cnpj);
+          if (r.erro){
+            falhas++; logLinha(`<span class="rcv-err">✗ ${c.nome_principal}: ${r.erro}</span>`);
+          } else {
+            const d = r.dados; const upd = {};
+            if (vazio(c.cnae_principal) && d.cnae_fiscal) upd.cnae_principal = `${fmtCnaeCod(d.cnae_fiscal)}${d.cnae_fiscal_descricao ? ' - ' + d.cnae_fiscal_descricao : ''}`;
+            if (vazio(c.cnaes_secundarios) && Array.isArray(d.cnaes_secundarios)){
+              const lista = d.cnaes_secundarios.filter(x => x && x.codigo).map(x => `${fmtCnaeCod(x.codigo)}${x.descricao ? ' - ' + x.descricao : ''}`);
+              if (lista.length) upd.cnaes_secundarios = lista;
+            }
+            if (vazio(c.natureza_juridica) && d.natureza_juridica) upd.natureza_juridica = d.natureza_juridica;
+            if (c.capital_social == null && d.capital_social != null && Number(d.capital_social) > 0) upd.capital_social = d.capital_social;
+            if (vazio(c.porte_empresa)){ const p = mapPorte(d.porte); if (p) upd.porte_empresa = p; }
+
+            if (Object.keys(upd).length){
+              const { error: eUp } = await supabase.from('clientes').update(upd).eq('id', c.id);
+              if (eUp){ falhas++; logLinha(`<span class="rcv-err">✗ ${c.nome_principal}: erro ao salvar (${eUp.message})</span>`); }
+              else { ok++; logLinha(`<span class="rcv-ok">✓ ${c.nome_principal}: ${Object.keys(upd).length} campo(s) preenchido(s)</span>`); }
+            } else {
+              semNada++; logLinha(`<span class="rcv-skip">– ${c.nome_principal}: Receita não trouxe nada além do que já tem</span>`);
+            }
+          }
+        }
+        feitos++;
+        atualizaPainel(feitos, total, ok, semNada, falhas);
+        if (feitos < total) await espera(1100);
+      }
+      encerra(btn, ok, semNada, falhas);
+      loadClientes();
+    });
+
+    function atualizaPainel(f, t, ok, s, e){
+      document.getElementById('rcvCont').textContent = `${f}/${t}`;
+      document.getElementById('rcvOk').textContent = ok;
+      document.getElementById('rcvSkip').textContent = s;
+      document.getElementById('rcvErr').textContent = e;
+      document.getElementById('rcvFill').style.width = t ? `${Math.round(f/t*100)}%` : '100%';
+    }
+    function logLinha(html){ rcvLog.classList.add('is-on'); rcvLog.insertAdjacentHTML('beforeend', `<div>${html}</div>`); rcvLog.scrollTop = rcvLog.scrollHeight; }
+    function encerra(btn, ok, s, e){
+      rcvRodando = false; btn.disabled = false; btn.textContent = 'Rodar de novo';
+      document.getElementById('rcvAtual').textContent = '';
+      logLinha(`<b>Concluído:</b> <span class="rcv-ok">${ok} atualizados</span> · <span class="rcv-skip">${s} sem pendência</span> · <span class="rcv-err">${e} falhas</span>${e ? ' — quem falhou continua com campos vazios: é só rodar de novo que ele tenta só esses.' : ''}`);
+    }
 
     loadClientes();
   </script>
