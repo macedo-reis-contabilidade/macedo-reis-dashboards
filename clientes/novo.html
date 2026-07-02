@@ -261,6 +261,12 @@
               <input type="text" id="natureza_juridica" class="input">
             </div>
           </div>
+          <div class="fg-col-12">
+            <div class="form-group">
+              <label for="cnaes_secundarios">CNAEs secundários (um por linha)</label>
+              <textarea id="cnaes_secundarios" class="textarea" rows="4" placeholder="Ex.: 4330-4/04 - Serviços de pintura de edifícios em geral"></textarea>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -536,6 +542,7 @@
           inscricao_municipal: document.getElementById('inscricao_municipal').value.trim() || null,
           regime_tributario: document.getElementById('regime_tributario').value || null,
           cnae_principal: document.getElementById('cnae_principal').value.trim() || null,
+          cnaes_secundarios: lerCnaesSecundarios(),
           data_abertura: document.getElementById('data_abertura').value || null,
           capital_social: document.getElementById('capital_social').value || null,
           natureza_juridica: document.getElementById('natureza_juridica').value.trim() || null,
@@ -642,6 +649,13 @@
 
     function setVal(id, v){ const el = document.getElementById(id); if (el && v != null && v !== '') el.value = v; }
 
+    function lerCnaesSecundarios(){
+      const el = document.getElementById('cnaes_secundarios');
+      if (!el) return null;
+      const lista = el.value.split('\n').map(s => s.trim()).filter(Boolean);
+      return lista.length ? lista : null;
+    }
+
     function preencherDoExtrator(d){
       if (d.tipo_pessoa === 'PJ' || d.tipo_pessoa === 'PF') {
         selTipo.value = d.tipo_pessoa;
@@ -666,6 +680,7 @@
       setVal('inscricao_municipal', d.inscricao_municipal);
       setVal('regime_tributario', d.regime_tributario);
       setVal('cnae_principal', d.cnae_principal);
+      if (d.cnaes_secundarios) setVal('cnaes_secundarios', Array.isArray(d.cnaes_secundarios) ? d.cnaes_secundarios.join('\n') : String(d.cnaes_secundarios));
       setVal('data_abertura', d.data_abertura);
       setVal('capital_social', d.capital_social);
       setVal('natureza_juridica', d.natureza_juridica);
