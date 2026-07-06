@@ -38,7 +38,7 @@
         <div class="fa-focus-card"><span class="fc-num" id="qRegras">0</span><span class="fc-lbl">Regras ativas</span></div>
         <div class="fa-focus-card"><span class="fc-num" id="qVinculos">0</span><span class="fc-lbl">Vínculos ativos</span></div>
         <div class="fa-focus-card"><span class="fc-num" id="qClientes">0</span><span class="fc-lbl">Clientes vinculados</span></div>
-        <div class="fa-focus-card"><span class="fc-num" id="qGeradas">0</span><span class="fc-lbl">Tarefas geradas no mês</span></div>
+        <a href="fiscal-tarefas.html" class="fa-focus-card" style="text-decoration:none;color:inherit;" title="Abrir o módulo Tarefas"><span class="fc-num" id="qGeradas">0</span><span class="fc-lbl">Tarefas geradas no mês →</span></a>
       </div>
 
       <div class="obr-toolbar">
@@ -175,6 +175,11 @@
     .gen-fill { height:100%; width:0%; background:#3FB07A; border-radius:6px; transition:width .2s; }
     .gen-log { margin-top:12px; max-height:220px; overflow:auto; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:10px 14px; font-size:12.5px; line-height:1.75; }
     .gen-ok { color:#3FB07A; } .gen-skip { color:#8A93A6; } .gen-err { color:#E06C75; }
+    #genOverlay .fa-modal { max-height:85vh; display:flex; flex-direction:column; }
+    #genOverlay .fa-modal-body { overflow:hidden; display:flex; flex-direction:column; }
+    .gp-scroll { overflow:auto; max-height:46vh; padding-right:6px; }
+    .gp-total { margin-top:12px; border-top:1px solid rgba(255,255,255,.1); padding-top:10px; font-size:14px; flex:none; }
+    .gp-total b { color:#3FB07A; font-size:16px; }
   </style>
 
   <script type="module">
@@ -373,11 +378,13 @@
       }
 
       planoAtual = novas;
-      elPlano.innerHTML = resumo.map(x =>
+      const jaExistiam = resumo.reduce((s, x) => s + x.pular, 0);
+      elPlano.innerHTML = '<div class="gp-scroll">' + resumo.map(x =>
         '<div>' + (x.criar ? '<span class="gen-ok">✚ ' + x.criar + '</span>' : '<span class="gen-skip">–</span>') +
         ' <b>' + x.nome + '</b>' + (x.pular ? ' <span class="gen-skip">(' + x.pular + ' já existiam)</span>' : '') + '</div>'
-      ).join('') + '<div style="margin-top:12px;border-top:1px solid rgba(255,255,255,.08);padding-top:10px;"><b>' +
-        novas.length + '</b> tarefa(s) nova(s) a criar.</div>';
+      ).join('') + '</div>' +
+      '<div class="gp-total"><b>' + novas.length + '</b> tarefa(s) nova(s) a criar' +
+      (jaExistiam ? ' <span class="gen-skip">· ' + jaExistiam + ' já existiam (puladas)</span>' : '') + '</div>';
       document.getElementById('genConfirmar').disabled = novas.length === 0;
     }
 
