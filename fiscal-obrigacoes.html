@@ -42,6 +42,10 @@
       </div>
 
       <div class="obr-toolbar">
+        <div class="seg" id="segVisao">
+          <button type="button" data-v="obrigacao" class="is-on">Por obrigação</button>
+          <button type="button" data-v="cliente">Por cliente</button>
+        </div>
         <input type="text" id="busca" class="input" placeholder="Buscar obrigação…" style="max-width:280px;">
         <div class="sp"></div>
         <input type="month" id="mesRef" class="input" style="max-width:170px;">
@@ -51,6 +55,30 @@
       <div id="listaObr">Carregando…</div>
 
     </main>
+  </div>
+
+  <div class="fa-modal-overlay" id="vincOverlay">
+    <div class="fa-modal" style="max-width:560px;">
+      <div class="fa-modal-head"><h3 id="vincTitulo">Vincular</h3><button class="fa-modal-close" id="vincClose">&times;</button></div>
+      <div class="fa-modal-body">
+        <div id="vincEtapa1">
+          <input type="text" id="vincBusca" class="input" placeholder="Buscar…" style="width:100%;">
+          <div class="vm-lista" id="vincLista" style="margin-top:10px;">Carregando…</div>
+        </div>
+        <div id="vincEtapa2" hidden class="vm-form">
+          <div id="vincEscolha" style="font-size:14px;"></div>
+          <label for="vincResp">Responsável</label>
+          <input type="text" id="vincResp" class="input" list="respList" placeholder="Ex.: Thalia" style="width:100%;">
+          <datalist id="respList"></datalist>
+          <label for="vincDia">Dia do prazo (vazio = padrão da obrigação)</label>
+          <input type="number" id="vincDia" class="input" min="1" max="31" placeholder="padrão" style="width:140px;">
+        </div>
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-ghost" id="vincVoltar">Cancelar</button>
+        <button class="btn btn-primary" id="vincSalvar" hidden>Vincular</button>
+      </div>
+    </div>
   </div>
 
   <div class="fa-modal-overlay" id="genOverlay">
@@ -180,6 +208,19 @@
     .gp-scroll { overflow:auto; max-height:46vh; padding-right:6px; }
     .gp-total { margin-top:12px; border-top:1px solid rgba(255,255,255,.1); padding-top:10px; font-size:14px; flex:none; }
     .gp-total b { color:#3FB07A; font-size:16px; }
+    .seg { display:flex; border:1px solid rgba(255,255,255,.12); border-radius:10px; overflow:hidden; flex:none; }
+    .seg button { background:transparent; border:none; color:#8A93A6; font:inherit; font-size:13px; padding:8px 14px; cursor:pointer; }
+    .seg button.is-on { background:rgba(91,130,166,.22); color:#E6EBF2; }
+    .btn-add { display:inline-block; margin-top:10px; font-size:12.5px; padding:6px 12px; border-radius:8px; border:1px dashed rgba(138,174,200,.45); background:transparent; color:#8AAEC8; cursor:pointer; }
+    .btn-add:hover { background:rgba(138,174,200,.1); }
+    #vincOverlay .fa-modal { max-height:85vh; display:flex; flex-direction:column; }
+    #vincOverlay .fa-modal-body { overflow:hidden; display:flex; flex-direction:column; gap:10px; }
+    .vm-lista { overflow:auto; max-height:42vh; border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:4px; }
+    .vm-item { padding:9px 12px; border-radius:8px; cursor:pointer; font-size:13.5px; display:flex; gap:10px; align-items:center; }
+    .vm-item:hover { background:rgba(255,255,255,.05); }
+    .vm-item .vm-extra { color:#8A93A6; font-size:12px; margin-left:auto; white-space:nowrap; }
+    .vm-item.off { opacity:.4; cursor:default; }
+    .vm-form label { display:block; font-size:12.5px; color:#8A93A6; margin:10px 0 4px; }
   </style>
 
   <script type="module">
@@ -198,7 +239,8 @@
     const PER_LBL = { mensal:'Mensal', trimestral:'Trimestral', quadrimestral:'Quadrimestral', anual:'Anual' };
     const MES3 = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
 
-    let regras = [], vinculos = [], abertas = new Set(), planoAtual = null;
+    let regras = [], vinculos = [], abertas = new Set(), abertasCli = new Set(), planoAtual = null;
+    let visao = 'obrigacao', clientesTodos = null, vincCtx = null;
 
     const hoje = new Date();
     document.getElementById('mesRef').value = hoje.getFullYear() + '-' + pad(hoje.getMonth() + 1);
@@ -240,7 +282,22 @@
       return c.join('');
     }
 
+    function linhaVinculo(v, r, modo){
+      const esq = modo === 'cliente' ? r.nome : (v.clientes?.nome_principal || '(cliente removido)');
+      return `
+          <div class="obr-cli ${v.ativo ? '' : 'inativo'}" data-vid="${v.id}">
+            <span class="nm">${esq}</span>
+            <span class="dt">${v.responsavel || '—'}</span>
+            <span class="dt">dia ${v.dia_prazo_override || r.dia_prazo}${v.dia_prazo_override ? ' *' : ''}</span>
+            <label class="sw"><input type="checkbox" data-vid="${v.id}" ${v.ativo ? 'checked' : ''}><i></i></label>
+          </div>`;
+    }
+
     function render(){
+      visao === 'cliente' ? renderClientes() : renderObrigacoes();
+    }
+
+    function renderObrigacoes(){
       const q = norm(document.getElementById('busca').value.trim());
       const el = document.getElementById('listaObr');
       const porRegra = {};
@@ -250,13 +307,7 @@
       el.innerHTML = vis.map(r => {
         const vs = (porRegra[r.id] || []).sort((a, b) => (a.clientes?.nome_principal || '').localeCompare(b.clientes?.nome_principal || ''));
         const ativos = vs.filter(v => v.ativo).length;
-        const linhas = vs.map(v => `
-          <div class="obr-cli ${v.ativo ? '' : 'inativo'}" data-vid="${v.id}">
-            <span class="nm">${v.clientes?.nome_principal || '(cliente removido)'}</span>
-            <span class="dt">${v.responsavel || '—'}</span>
-            <span class="dt">dia ${v.dia_prazo_override || r.dia_prazo}${v.dia_prazo_override ? ' *' : ''}</span>
-            <label class="sw"><input type="checkbox" data-vid="${v.id}" ${v.ativo ? 'checked' : ''}><i></i></label>
-          </div>`).join('') || '<p style="color:#8A93A6;font-size:13px;">Nenhum cliente vinculado.</p>';
+        const linhas = vs.map(v => linhaVinculo(v, r, 'obrigacao')).join('');
         return `
         <div class="obr-item ${abertas.has(r.id) ? 'is-open' : ''}" data-rid="${r.id}">
           <div class="obr-head" data-rid="${r.id}">
@@ -265,16 +316,55 @@
             <span class="obr-chips">${chipsDe(r)}</span>
             <span class="obr-qtd"><b>${ativos}</b> vínculo${ativos === 1 ? '' : 's'}</span>
           </div>
-          <div class="obr-corpo">${linhas}</div>
+          <div class="obr-corpo">${linhas || '<p style="color:#8A93A6;font-size:13px;">Nenhum cliente vinculado.</p>'}
+            <button class="btn-add" data-add-rid="${r.id}">+ Vincular cliente</button>
+          </div>
         </div>`;
       }).join('');
+      ligarLista(el, abertas);
+    }
 
+    function renderClientes(){
+      const q = norm(document.getElementById('busca').value.trim());
+      const el = document.getElementById('listaObr');
+      const porCliente = {};
+      const regraDe = {}; regras.forEach(r => regraDe[r.id] = r);
+      vinculos.forEach(v => {
+        const nome = v.clientes?.nome_principal || '(cliente removido)';
+        (porCliente[v.cliente_id] = porCliente[v.cliente_id] || { nome, itens: [] }).itens.push(v);
+      });
+      const lista = Object.entries(porCliente)
+        .filter(([, c]) => !q || norm(c.nome).includes(q))
+        .sort((a, b) => a[1].nome.localeCompare(b[1].nome));
+      if (!lista.length) { el.innerHTML = '<p style="color:#8A93A6;">Nenhum cliente encontrado.</p>'; return; }
+      el.innerHTML = lista.map(([cid, c]) => {
+        const itens = c.itens.slice().sort((a, b) => (regraDe[a.obrigacao_id]?.nome || '').localeCompare(regraDe[b.obrigacao_id]?.nome || ''));
+        const ativos = itens.filter(v => v.ativo).length;
+        const linhas = itens.map(v => linhaVinculo(v, regraDe[v.obrigacao_id] || { nome: '(obrigação removida)', dia_prazo: '?' }, 'cliente')).join('');
+        return `
+        <div class="obr-item ${abertasCli.has(cid) ? 'is-open' : ''}" data-rid="${cid}">
+          <div class="obr-head" data-rid="${cid}">
+            <svg class="obr-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+            <span class="obr-nome">${c.nome}</span>
+            <span class="obr-qtd"><b>${ativos}</b> obrigaç${ativos === 1 ? 'ão' : 'ões'}</span>
+          </div>
+          <div class="obr-corpo">${linhas}
+            <button class="btn-add" data-add-cid="${cid}">+ Adicionar obrigação</button>
+          </div>
+        </div>`;
+      }).join('');
+      ligarLista(el, abertasCli);
+    }
+
+    function ligarLista(el, setAberto){
       el.querySelectorAll('.obr-head').forEach(h => h.addEventListener('click', () => {
         const id = h.dataset.rid;
-        abertas.has(id) ? abertas.delete(id) : abertas.add(id);
+        setAberto.has(id) ? setAberto.delete(id) : setAberto.add(id);
         h.closest('.obr-item').classList.toggle('is-open');
       }));
       el.querySelectorAll('.sw input').forEach(sw => sw.addEventListener('change', () => toggleVinculo(sw)));
+      el.querySelectorAll('[data-add-rid]').forEach(b => b.addEventListener('click', () => abrirVinculo({ modo: 'addCliente', obrigacaoId: b.dataset.addRid })));
+      el.querySelectorAll('[data-add-cid]').forEach(b => b.addEventListener('click', () => abrirVinculo({ modo: 'addObrigacao', clienteId: b.dataset.addCid })));
     }
 
     async function toggleVinculo(sw){
@@ -284,12 +374,121 @@
       const { error } = await supabase.from('cliente_obrigacoes').update({ ativo: novo }).eq('id', id);
       if (error) { sw.checked = !novo; alert('Erro: ' + error.message); return; }
       v.ativo = novo;
-      sw.closest('.obr-cli').classList.toggle('inativo', !novo);
       atualizarContadores();
-      const item = sw.closest('.obr-item');
-      const r = regras.find(x => x.id === item.dataset.rid);
-      const ativos = vinculos.filter(x => x.obrigacao_id === r.id && x.ativo).length;
-      item.querySelector('.obr-qtd').innerHTML = '<b>' + ativos + '</b> vínculo' + (ativos === 1 ? '' : 's');
+      render();
+    }
+
+    // ===================== VÍNCULO MANUAL =====================
+    const vincOverlay = document.getElementById('vincOverlay');
+    document.getElementById('vincClose').addEventListener('click', fecharVinculo);
+    vincOverlay.addEventListener('click', e => { if (e.target === vincOverlay) fecharVinculo(); });
+    document.getElementById('vincBusca').addEventListener('input', renderVincLista);
+    document.getElementById('vincVoltar').addEventListener('click', () => {
+      if (!document.getElementById('vincEtapa2').hidden) etapaVinculo(1); else fecharVinculo();
+    });
+    document.getElementById('vincSalvar').addEventListener('click', salvarVinculo);
+    function fecharVinculo(){ vincOverlay.classList.remove('is-open'); vincCtx = null; }
+
+    function etapaVinculo(n){
+      document.getElementById('vincEtapa1').hidden = n === 2;
+      document.getElementById('vincEtapa2').hidden = n !== 2;
+      document.getElementById('vincSalvar').hidden = n !== 2;
+      document.getElementById('vincVoltar').textContent = n === 2 ? 'Voltar' : 'Cancelar';
+    }
+
+    async function garantirClientes(){
+      if (clientesTodos) return;
+      const { data, error } = await supabase.from('clientes')
+        .select('id, nome_principal, tipo_pessoa').eq('status', 'ativo').order('nome_principal');
+      if (!error) clientesTodos = data || [];
+    }
+
+    async function abrirVinculo(ctx){
+      vincCtx = { ...ctx, escolhidoId: null };
+      const t = document.getElementById('vincTitulo');
+      const b = document.getElementById('vincBusca');
+      if (ctx.modo === 'addCliente') {
+        const r = regras.find(x => x.id === ctx.obrigacaoId);
+        t.textContent = 'Vincular cliente — ' + (r ? r.nome : '');
+        b.placeholder = 'Buscar cliente…';
+      } else {
+        const nome = (vinculos.find(v => v.cliente_id === ctx.clienteId)?.clientes?.nome_principal) || 'cliente';
+        t.textContent = 'Adicionar obrigação — ' + nome;
+        b.placeholder = 'Buscar obrigação…';
+      }
+      b.value = '';
+      etapaVinculo(1);
+      const dl = document.getElementById('respList');
+      dl.innerHTML = [...new Set(vinculos.map(v => v.responsavel).filter(Boolean))].sort()
+        .map(r => '<option value="' + r.replace(/"/g, '&quot;') + '">').join('');
+      vincOverlay.classList.add('is-open');
+      document.getElementById('vincLista').textContent = 'Carregando…';
+      if (ctx.modo === 'addCliente') await garantirClientes();
+      renderVincLista();
+    }
+
+    function renderVincLista(){
+      if (!vincCtx) return;
+      const q = norm(document.getElementById('vincBusca').value.trim());
+      const el = document.getElementById('vincLista');
+      let html = '';
+      if (vincCtx.modo === 'addCliente') {
+        if (!clientesTodos) { el.textContent = 'Carregando…'; return; }
+        const ja = new Set(vinculos.filter(v => v.obrigacao_id === vincCtx.obrigacaoId).map(v => v.cliente_id));
+        html = clientesTodos.filter(c => !q || norm(c.nome_principal).includes(q)).map(c => {
+          const off = ja.has(c.id);
+          return `<div class="vm-item ${off ? 'off' : ''}" data-id="${off ? '' : c.id}">${c.nome_principal}<span class="vm-extra">${off ? 'já vinculado' : c.tipo_pessoa}</span></div>`;
+        }).join('');
+      } else {
+        const ja = new Set(vinculos.filter(v => v.cliente_id === vincCtx.clienteId).map(v => v.obrigacao_id));
+        html = regras.filter(r => r.ativo && (!q || norm(r.nome).includes(q))).map(r => {
+          const off = ja.has(r.id);
+          return `<div class="vm-item ${off ? 'off' : ''}" data-id="${off ? '' : r.id}">${r.nome}<span class="vm-extra">${off ? 'já vinculada' : PER_LBL[r.periodicidade] + ' · dia ' + r.dia_prazo}</span></div>`;
+        }).join('');
+      }
+      el.innerHTML = html || '<p style="color:#8A93A6;padding:8px;">Nada encontrado.</p>';
+      el.querySelectorAll('.vm-item:not(.off)').forEach(it => it.addEventListener('click', () => escolherVinculo(it.dataset.id, it.firstChild.textContent)));
+    }
+
+    function escolherVinculo(id, rotulo){
+      if (!id) return;
+      vincCtx.escolhidoId = id;
+      const r = vincCtx.modo === 'addCliente' ? regras.find(x => x.id === vincCtx.obrigacaoId) : regras.find(x => x.id === id);
+      document.getElementById('vincEscolha').innerHTML = '<b>' + rotulo + '</b>';
+      document.getElementById('vincDia').value = '';
+      document.getElementById('vincDia').placeholder = 'padrão: dia ' + (r ? r.dia_prazo : '');
+      document.getElementById('vincResp').value = '';
+      etapaVinculo(2);
+    }
+
+    async function salvarVinculo(){
+      if (!vincCtx || !vincCtx.escolhidoId) return;
+      const clienteId = vincCtx.modo === 'addCliente' ? vincCtx.escolhidoId : vincCtx.clienteId;
+      const obrigacaoId = vincCtx.modo === 'addCliente' ? vincCtx.obrigacaoId : vincCtx.escolhidoId;
+      const r = regras.find(x => x.id === obrigacaoId);
+      const dia = parseInt(document.getElementById('vincDia').value, 10);
+      const linha = {
+        cliente_id: clienteId, obrigacao_id: obrigacaoId,
+        responsavel: document.getElementById('vincResp').value.trim() || null,
+        dia_prazo_override: (dia >= 1 && dia <= 31 && r && dia !== r.dia_prazo) ? dia : null,
+        ativo: true
+      };
+      const btn = document.getElementById('vincSalvar');
+      btn.disabled = true;
+      const { data, error } = await supabase.from('cliente_obrigacoes').insert(linha).select('id').single();
+      btn.disabled = false;
+      if (error) {
+        alert(error.code === '23505' ? 'Esse cliente já está vinculado a essa obrigação.' : 'Erro: ' + error.message);
+        return;
+      }
+      let nomeCliente = vinculos.find(v => v.cliente_id === clienteId)?.clientes?.nome_principal
+        || clientesTodos?.find(c => c.id === clienteId)?.nome_principal || '';
+      vinculos.push({ id: data.id, cliente_id: clienteId, obrigacao_id: obrigacaoId,
+        responsavel: linha.responsavel, dia_prazo_override: linha.dia_prazo_override,
+        ativo: true, clientes: { nome_principal: nomeCliente } });
+      fecharVinculo();
+      atualizarContadores();
+      render();
     }
 
     // ===================== GERADOR =====================
@@ -302,6 +501,12 @@
     document.getElementById('genConfirmar').addEventListener('click', executarPlano);
     document.getElementById('mesRef').addEventListener('change', atualizarGeradas);
     document.getElementById('busca').addEventListener('input', render);
+    document.querySelectorAll('#segVisao button').forEach(b => b.addEventListener('click', () => {
+      visao = b.dataset.v;
+      document.querySelectorAll('#segVisao button').forEach(x => x.classList.toggle('is-on', x === b));
+      document.getElementById('busca').placeholder = visao === 'cliente' ? 'Buscar cliente…' : 'Buscar obrigação…';
+      render();
+    }));
     function fecharGen(){ if (gerando) return; genOverlay.classList.remove('is-open'); }
 
     function ocorrenciasPara(ano, mes){
