@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Obrigações · Fiscal — Macedo & Reis</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip"><div class="user-avatar" id="userAvatar">—</div><span id="userName">Carregando…</span></div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <a href="fiscal.html">Fiscal</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Obrigações</span>
+        </div>
+        <div class="eyebrow">Motor de rotinas</div>
+        <h1>Obrigações</h1>
+        <p>Regras fiscais por periodicidade e vínculos por cliente — o motor que gera as tarefas do mês.</p>
+      </div>
+
+      <div class="fa-focus">
+        <div class="fa-focus-card"><span class="fc-num" id="qRegras">0</span><span class="fc-lbl">Regras ativas</span></div>
+        <div class="fa-focus-card"><span class="fc-num" id="qVinculos">0</span><span class="fc-lbl">Vínculos ativos</span></div>
+        <div class="fa-focus-card"><span class="fc-num" id="qClientes">0</span><span class="fc-lbl">Clientes vinculados</span></div>
+        <div class="fa-focus-card"><span class="fc-num" id="qGeradas">0</span><span class="fc-lbl">Tarefas geradas no mês</span></div>
+      </div>
+
+      <div class="obr-toolbar">
+        <input type="text" id="busca" class="input" placeholder="Buscar obrigação…" style="max-width:280px;">
+        <div class="sp"></div>
+        <input type="month" id="mesRef" class="input" style="max-width:170px;">
+        <button class="btn btn-primary" id="btnGerar">Gerar rotinas do mês</button>
+      </div>
+
+      <div id="listaObr">Carregando…</div>
+
+    </main>
+  </div>
+
+  <div class="fa-modal-overlay" id="genOverlay">
+    <div class="fa-modal" style="max-width:640px;">
+      <div class="fa-modal-head"><h3 id="genTitulo">Gerar rotinas do mês</h3><button class="fa-modal-close" id="genClose">&times;</button></div>
+      <div class="fa-modal-body">
+        <div id="genPlano">Calculando…</div>
+        <div id="genProg" hidden>
+          <div class="gen-bar"><div class="gen-fill" id="genFill"></div></div>
+        </div>
+        <div class="gen-log" id="genLog" hidden></div>
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-ghost" id="genFechar">Fechar</button>
+        <button class="btn btn-primary" id="genConfirmar" disabled>Gerar agora</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+
+    const user = await getCurrentUser();
+    if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; }
+    const btnOut = document.getElementById('btnLogout');
+    if (btnOut) btnOut.addEventListener('click', signOut);
+
+    const pad = n => String(n).padStart(2, '0');
+    const toYMD = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+    const ultimoDia = (a, m) => new Date(a, m, 0).getDate();
+    const proximoUtil = d => { const x = new Date(d); while (x.getDay() === 0 || x.getDay() === 6) x.setDate(x.getDate() + 1); return x; };
+    const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const PER_LBL = { mensal:'Mensal', trimestral:'Trimestral', quadrimestral:'Quadrimestral', anual:'Anual' };
+    const MES3 = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+
+    let regras = [], vinculos = [], abertas = new Set(), planoAtual = null;
+
+    const hoje = new Date();
+    document.getElementById('mesRef').value = hoje.getFullYear() + '-' + pad(hoje.getMonth() + 1);
+
+    async function carregar(){
+      const [{ data: rs, error: e1 }, { data: vs, error: e2 }] = await Promise.all([
+        supabase.from('obrigacoes_fiscais').select('*').order('nome'),
+        supabase.from('cliente_obrigacoes').select('id, cliente_id, obrigacao_id, responsavel, dia_prazo_override, ativo, clientes(nome_principal)')
+      ]);
+      if (e1 || e2) { document.getElementById('listaObr').textContent = 'Erro ao carregar: ' + (e1 || e2).message; return; }
+      regras = rs || []; vinculos = vs || [];
+      atualizarContadores();
+      render();
+      atualizarGeradas();
+    }
+
+    function atualizarContadores(){
+      document.getElementById('qRegras').textContent = regras.filter(r => r.ativo).length;
+      const va = vinculos.filter(v => v.ativo);
+      document.getElementById('qVinculos').textContent = va.length;
+      document.getElementById('qClientes').textContent = new Set(va.map(v => v.cliente_id)).size;
+    }
+
+    async function atualizarGeradas(){
+      const mes = document.getElementById('mesRef').value;
+      if (!mes) return;
+      const { count } = await supabase.from('tarefas').select('id', { count: 'exact', head: true })
+        .eq('competencia', mes).not('obrigacao_id', 'is', null);
+      document.getElementById('qGeradas').textContent = count ?? 0;
+    }
+
+    function chipsDe(r){
+      const c = [];
+      c.push('<span class="chip">' + (PER_LBL[r.periodicidade] || r.periodicidade) + '</span>');
+      if (r.periodicidade !== 'mensal') c.push('<span class="chip c-cinza">' + r.meses_vencimento.map(m => MES3[m-1]).join('/') + '</span>');
+      c.push('<span class="chip c-cinza">dia ' + r.dia_prazo + '</span>');
+      if (r.gatilho_dias_antes > 0) c.push('<span class="chip c-verde">aparece ' + r.gatilho_dias_antes + 'd antes</span>');
+      if (!r.ativo) c.push('<span class="chip c-cinza">regra inativa</span>');
+      return c.join('');
+    }
+
+    function render(){
+      const q = norm(document.getElementById('busca').value.trim());
+      const el = document.getElementById('listaObr');
+      const porRegra = {};
+      vinculos.forEach(v => { (porRegra[v.obrigacao_id] = porRegra[v.obrigacao_id] || []).push(v); });
+      const vis = regras.filter(r => !q || norm(r.nome).includes(q));
+      if (!vis.length) { el.innerHTML = '<p style="color:#8A93A6;">Nenhuma obrigação encontrada.</p>'; return; }
+      el.innerHTML = vis.map(r => {
+        const vs = (porRegra[r.id] || []).sort((a, b) => (a.clientes?.nome_principal || '').localeCompare(b.clientes?.nome_principal || ''));
+        const ativos = vs.filter(v => v.ativo).length;
+        const linhas = vs.map(v => `
+          <div class="obr-cli ${v.ativo ? '' : 'inativo'}" data-vid="${v.id}">
+            <span class="nm">${v.clientes?.nome_principal || '(cliente removido)'}</span>
+            <span class="dt">${v.responsavel || '—'}</span>
+            <span class="dt">dia ${v.dia_prazo_override || r.dia_prazo}${v.dia_prazo_override ? ' *' : ''}</span>
+            <label class="sw"><input type="checkbox" data-vid="${v.id}" ${v.ativo ? 'checked' : ''}><i></i></label>
+          </div>`).join('') || '<p style="color:#8A93A6;font-size:13px;">Nenhum cliente vinculado.</p>';
+        return `
+        <div class="obr-item ${abertas.has(r.id) ? 'is-open' : ''}" data-rid="${r.id}">
+          <div class="obr-head" data-rid="${r.id}">
+            <svg class="obr-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+            <span class="obr-nome">${r.nome}</span>
+            <span class="obr-chips">${chipsDe(r)}</span>
+            <span class="obr-qtd"><b>${ativos}</b> vínculo${ativos === 1 ? '' : 's'}</span>
+          </div>
+          <div class="obr-corpo">${linhas}</div>
+        </div>`;
+      }).join('');
+
+      el.querySelectorAll('.obr-head').forEach(h => h.addEventListener('click', () => {
+        const id = h.dataset.rid;
+        abertas.has(id) ? abertas.delete(id) : abertas.add(id);
+        h.closest('.obr-item').classList.toggle('is-open');
+      }));
+      el.querySelectorAll('.sw input').forEach(sw => sw.addEventListener('change', () => toggleVinculo(sw)));
+    }
+
+    async function toggleVinculo(sw){
+      const id = sw.dataset.vid;
+      const novo = sw.checked;
+      const v = vinculos.find(x => x.id === id);
+      const { error } = await supabase.from('cliente_obrigacoes').update({ ativo: novo }).eq('id', id);
+      if (error) { sw.checked = !novo; alert('Erro: ' + error.message); return; }
+      v.ativo = novo;
+      sw.closest('.obr-cli').classList.toggle('inativo', !novo);
+      atualizarContadores();
+      const item = sw.closest('.obr-item');
+      const r = regras.find(x => x.id === item.dataset.rid);
+      const ativos = vinculos.filter(x => x.obrigacao_id === r.id && x.ativo).length;
+      item.querySelector('.obr-qtd').innerHTML = '<b>' + ativos + '</b> vínculo' + (ativos === 1 ? '' : 's');
+    }
+
+    // ===================== GERADOR =====================
+    const genOverlay = document.getElementById('genOverlay');
+    let gerando = false;
+    document.getElementById('btnGerar').addEventListener('click', montarPlano);
+    document.getElementById('genClose').addEventListener('click', fecharGen);
+    document.getElementById('genFechar').addEventListener('click', fecharGen);
+    genOverlay.addEventListener('click', e => { if (e.target === genOverlay) fecharGen(); });
+    document.getElementById('genConfirmar').addEventListener('click', executarPlano);
+    document.getElementById('mesRef').addEventListener('change', atualizarGeradas);
+    document.getElementById('busca').addEventListener('input', render);
+    function fecharGen(){ if (gerando) return; genOverlay.classList.remove('is-open'); }
+
+    function ocorrenciasPara(ano, mes){
+      const alvo = ano * 12 + (mes - 1);
+      const occ = [];
+      for (const r of regras.filter(x => x.ativo)) {
+        const vistos = new Set();
+        for (const anoOcc of [ano, ano + 1]) {
+          for (const M of r.meses_vencimento) {
+            const chave = anoOcc + '-' + M;
+            if (vistos.has(chave)) continue;
+            const prazo = new Date(anoOcc, M - 1, Math.min(r.dia_prazo, ultimoDia(anoOcc, M)));
+            const ini = new Date(prazo); ini.setDate(ini.getDate() - (r.gatilho_dias_antes || 0));
+            const mIni = ini.getFullYear() * 12 + ini.getMonth();
+            const mFim = prazo.getFullYear() * 12 + prazo.getMonth();
+            if (alvo >= mIni && alvo <= mFim) { occ.push({ r, anoOcc, M }); vistos.add(chave); }
+          }
+        }
+      }
+      return occ;
+    }
+
+    function compFiscal(r, anoOcc, M){
+      if (r.competencia_formato === 'AAAA') return String(anoOcc - (r.competencia_offset_meses || 0));
+      let m = M - (r.competencia_offset_meses || 0), a = anoOcc;
+      while (m < 1) { m += 12; a -= 1; }
+      return pad(m) + '/' + a;
+    }
+
+    async function montarPlano(){
+      const mv = document.getElementById('mesRef').value;
+      if (!mv) { alert('Escolha o mês.'); return; }
+      const [ano, mes] = mv.split('-').map(Number);
+      genOverlay.classList.add('is-open');
+      document.getElementById('genTitulo').textContent = 'Gerar rotinas de ' + pad(mes) + '/' + ano;
+      const elPlano = document.getElementById('genPlano');
+      document.getElementById('genProg').hidden = true;
+      document.getElementById('genLog').hidden = true;
+      document.getElementById('genConfirmar').disabled = true;
+      elPlano.textContent = 'Calculando…';
+
+      const occ = ocorrenciasPara(ano, mes);
+      if (!occ.length) { elPlano.textContent = 'Nenhuma obrigação dispara para este mês.'; planoAtual = null; return; }
+
+      const chaves = [...new Set(occ.map(o => o.anoOcc + '-' + pad(o.M)))];
+      const { data: exist, error } = await supabase.from('tarefas')
+        .select('obrigacao_id, cliente_id, competencia')
+        .in('competencia', chaves).not('obrigacao_id', 'is', null);
+      if (error) { elPlano.textContent = 'Erro ao consultar tarefas existentes: ' + error.message; return; }
+      const jaTem = new Set((exist || []).map(t => t.obrigacao_id + '|' + t.cliente_id + '|' + t.competencia));
+
+      const porRegra = {};
+      vinculos.filter(v => v.ativo).forEach(v => { (porRegra[v.obrigacao_id] = porRegra[v.obrigacao_id] || []).push(v); });
+
+      const novas = []; const resumo = [];
+      for (const { r, anoOcc, M } of occ) {
+        const vs = porRegra[r.id] || [];
+        const chaveComp = anoOcc + '-' + pad(M);
+        let criar = 0, pular = 0;
+        for (const v of vs) {
+          if (jaTem.has(r.id + '|' + v.cliente_id + '|' + chaveComp)) { pular++; continue; }
+          const dia = Math.min(v.dia_prazo_override || r.dia_prazo, ultimoDia(anoOcc, M));
+          const prazoD = proximoUtil(new Date(anoOcc, M - 1, dia));
+          novas.push({
+            setor: 'fiscal', titulo: r.nome, cliente_id: v.cliente_id,
+            responsavel: v.responsavel || null, prazo: toYMD(prazoD),
+            status: 'pendente', prioridade: 'media', origem: 'recorrente',
+            obrigacao_id: r.id, competencia: chaveComp,
+            descricao: 'Competência ' + compFiscal(r, anoOcc, M) + ' · Gerada pelo módulo Obrigações'
+          });
+          criar++;
+        }
+        if (vs.length) resumo.push({ nome: r.nome, criar, pular });
+      }
+
+      planoAtual = novas;
+      elPlano.innerHTML = resumo.map(x =>
+        '<div>' + (x.criar ? '<span class="gen-ok">✚ ' + x.criar + '</span>' : '<span class="gen-skip">–</span>') +
+        ' <b>' + x.nome + '</b>' + (x.pular ? ' <span class="gen-skip">(' + x.pular + ' já existiam)</span>' : '') + '</div>'
+      ).join('') + '<div style="margin-top:12px;border-top:1px solid rgba(255,255,255,.08);padding-top:10px;"><b>' +
+        novas.length + '</b> tarefa(s) nova(s) a criar.</div>';
+      document.getElementById('genConfirmar').disabled = novas.length === 0;
+    }
+
+    async function executarPlano(){
+      if (!planoAtual || !planoAtual.length || gerando) return;
+      gerando = true;
+      const btn = document.getElementById('genConfirmar');
+      btn.disabled = true; btn.textContent = 'Gerando…';
+      const prog = document.getElementById('genProg'); prog.hidden = false;
+      const log = document.getElementById('genLog'); log.hidden = false; log.innerHTML = '';
+      const fill = document.getElementById('genFill');
+
+      const total = planoAtual.length;
+      let feito = 0, erro = null;
+      for (let i = 0; i < total; i += 100) {
+        const lote = planoAtual.slice(i, i + 100);
+        const { error } = await supabase.from('tarefas').insert(lote);
+        if (error) { erro = error; break; }
+        feito += lote.length;
+        fill.style.width = Math.round(feito / total * 100) + '%';
+        log.insertAdjacentHTML('beforeend', '<div class="gen-ok">✓ lote ' + (Math.floor(i / 100) + 1) + ': ' + lote.length + ' tarefa(s) criada(s)</div>');
+        log.scrollTop = log.scrollHeight;
+      }
+      if (erro) {
+        log.insertAdjacentHTML('beforeend', '<div class="gen-err">✗ Erro após ' + feito + ' criadas: ' + erro.message + '</div>');
+      } else {
+        log.insertAdjacentHTML('beforeend', '<div><b>Concluído:</b> <span class="gen-ok">' + feito + ' tarefa(s) criada(s)</span> — já visíveis em Tarefas e na Agenda.</div>');
+      }
+      gerando = false;
+      btn.textContent = 'Gerar agora';
+      planoAtual = null;
+      atualizarGeradas();
+    }
+
+    carregar();
+  </script>
+
+</body>
+</html>
