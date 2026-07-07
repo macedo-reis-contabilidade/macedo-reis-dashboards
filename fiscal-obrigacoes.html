@@ -772,7 +772,7 @@
       { el: '#btnGerar', titulo: 'Gerar rotinas do mês', texto: 'Sempre mostra o plano antes: o que vai criar e o que já existe. Nada é criado sem confirmação — e rodar de novo não duplica.' }
     ];
     carregar().then(() => {
-      if (window.MRTour) MRTour.iniciar(PASSOS_TOUR, 'obrigacoes_v1', new URLSearchParams(location.search).has('tour'));
+      if (window.MRTour) MRTour.iniciar(PASSOS_TOUR, 'obrigacoes_v1', new URLSearchParams(location.search).has('tour'), user ? (user.id || user.email) : '');
     });
   </script>
 
