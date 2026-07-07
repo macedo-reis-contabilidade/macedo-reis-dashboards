@@ -14,9 +14,24 @@
   .mrt-btn { font:inherit; font-size:12.5px; padding:6px 12px; border-radius:8px; cursor:pointer;
     border:1px solid rgba(255,255,255,.14); background:transparent; color:#B9C2D0; }
   .mrt-btn.pri { background:rgba(91,130,166,.35); border-color:rgba(138,174,200,.5); color:#E6EBF2; }
-  .mrt-btn:disabled { opacity:.35; cursor:default; }`;
+  .mrt-btn:disabled { opacity:.35; cursor:default; }
+  .mrt-help { position:fixed; right:18px; bottom:18px; z-index:9000; width:40px; height:40px;
+    border-radius:50%; display:flex; align-items:center; justify-content:center;
+    background:rgba(15,22,32,.92); border:1px solid rgba(224,143,168,.45); color:#E08FA8;
+    font-size:19px; font-weight:700; text-decoration:none; box-shadow:0 4px 16px rgba(0,0,0,.4); transition:.15s; }
+  .mrt-help:hover { background:rgba(224,143,168,.18); transform:scale(1.06); }
+  .mrt-menu { position:fixed; right:18px; bottom:66px; z-index:9001; background:#0F1620;
+    border:1px solid rgba(255,255,255,.12); border-radius:12px; padding:6px; min-width:220px;
+    box-shadow:0 12px 40px rgba(0,0,0,.5); display:none; }
+  .mrt-menu.is-open { display:block; }
+  .mrt-menu a, .mrt-menu button { display:block; width:100%; text-align:left; background:transparent;
+    border:none; color:#E6EBF2; font:inherit; font-size:13.5px; padding:9px 12px; border-radius:8px;
+    cursor:pointer; text-decoration:none; }
+  .mrt-menu a:hover, .mrt-menu button:hover { background:rgba(255,255,255,.06); }`;
 
   let estado = null;
+  let registrado = null; // { passos, chave } da página atual
+  let usuarioAtual = '';
 
   function montar() {
     if (document.getElementById('mrt-style')) return;
@@ -35,7 +50,7 @@
   }
 
   function terminar(concluiu) {
-    if (estado) localStorage.setItem('mr_tour_' + estado.chave, concluiu ? 'ok' : 'pulado');
+    if (estado) localStorage.setItem(chaveStorage(estado.chave), concluiu ? 'ok' : 'pulado');
     limpar();
   }
 
@@ -97,9 +112,15 @@
     reposicionar();
   }
 
-  function iniciar(passos, chave, forca) {
+  function chaveStorage(chave) {
+    return 'mr_tour_' + chave + (usuarioAtual ? '::' + usuarioAtual : '');
+  }
+
+  function iniciar(passos, chave, forca, usuario) {
+    if (usuario) usuarioAtual = String(usuario);
+    registrado = { passos, chave };
     if (estado) return;
-    if (!forca && localStorage.getItem('mr_tour_' + chave)) return;
+    if (!forca && localStorage.getItem(chaveStorage(chave))) return;
     if (!passos.some(p => document.querySelector(p.el))) return;
     montar();
     estado = { passos, chave, i: -1, dir: 1,
@@ -115,6 +136,36 @@
     document.addEventListener('keydown', teclas);
     avancar(1);
   }
+
+  function botaoAjuda() {
+    if (document.querySelector('.mrt-help')) return;
+    montar();
+    const hrefAjuda = location.pathname.includes('/clientes/') ? '../ajuda.html' : 'ajuda.html';
+    const a = document.createElement('a');
+    a.className = 'mrt-help';
+    a.href = hrefAjuda;
+    a.title = 'Ajuda';
+    a.textContent = '?';
+    const menu = document.createElement('div');
+    menu.className = 'mrt-menu';
+    menu.innerHTML = '<a href="' + hrefAjuda + '">Central de ajuda</a>' +
+                     '<button type="button" data-a="rever">↻ Rever o tour desta página</button>';
+    a.addEventListener('click', e => {
+      if (!registrado) return; // sem tour na página → link direto
+      e.preventDefault();
+      menu.classList.toggle('is-open');
+    });
+    menu.querySelector('[data-a="rever"]').addEventListener('click', () => {
+      menu.classList.remove('is-open');
+      if (registrado && !estado) iniciar(registrado.passos, registrado.chave, true);
+    });
+    document.addEventListener('click', e => {
+      if (!menu.contains(e.target) && e.target !== a) menu.classList.remove('is-open');
+    });
+    document.body.append(a, menu);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', botaoAjuda);
+  else botaoAjuda();
 
   window.MRTour = { iniciar };
 })();
