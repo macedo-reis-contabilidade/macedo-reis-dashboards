@@ -47,6 +47,7 @@
           <button type="button" data-v="cliente">Por cliente</button>
         </div>
         <input type="text" id="busca" class="input" placeholder="Buscar obrigação…" style="max-width:280px;">
+        <button class="btn btn-ghost" id="btnRenomear" type="button">Renomear responsável</button>
         <div class="sp"></div>
         <input type="month" id="mesRef" class="input" style="max-width:170px;">
         <button class="btn btn-primary" id="btnGerar">Gerar rotinas do mês</button>
@@ -55,6 +56,26 @@
       <div id="listaObr">Carregando…</div>
 
     </main>
+  </div>
+
+  <div class="fa-modal-overlay" id="renOverlay">
+    <div class="fa-modal" style="max-width:480px;">
+      <div class="fa-modal-head"><h3>Renomear responsável em lote</h3><button class="fa-modal-close" id="renClose">&times;</button></div>
+      <div class="fa-modal-body vm-form">
+        <label for="renDe">De</label>
+        <select id="renDe" class="input" style="width:100%;"></select>
+        <label for="renPara">Para</label>
+        <input type="text" id="renPara" class="input" list="respList" placeholder="Ex.: Fernanda" style="width:100%;">
+        <label style="display:flex;align-items:center;gap:8px;margin-top:14px;cursor:pointer;">
+          <input type="checkbox" id="renTarefas" checked> Atualizar também as tarefas pendentes já geradas
+        </label>
+        <p id="renInfo" style="font-size:13px;color:#8A93A6;margin-top:12px;"></p>
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-ghost" id="renFechar">Cancelar</button>
+        <button class="btn btn-primary" id="renSalvar">Renomear</button>
+      </div>
+    </div>
   </div>
 
   <div class="fa-modal-overlay" id="vincOverlay">
@@ -221,6 +242,10 @@
     .vm-item .vm-extra { color:#8A93A6; font-size:12px; margin-left:auto; white-space:nowrap; }
     .vm-item.off { opacity:.4; cursor:default; }
     .vm-form label { display:block; font-size:12.5px; color:#8A93A6; margin:10px 0 4px; }
+    .dt-edit { cursor:pointer; border-bottom:1px dashed rgba(138,174,200,.4); }
+    .dt-edit:hover { color:#C5D8E8; border-bottom-color:#8AAEC8; }
+    .input-inline { font:inherit; font-size:12.5px; padding:3px 8px; background:rgba(255,255,255,.07); border:1px solid rgba(91,130,166,.55); border-radius:6px; color:#E6EBF2; width:120px; }
+    .input-inline.curto { width:64px; }
   </style>
 
   <script type="module">
@@ -253,8 +278,15 @@
       if (e1 || e2) { document.getElementById('listaObr').textContent = 'Erro ao carregar: ' + (e1 || e2).message; return; }
       regras = rs || []; vinculos = vs || [];
       atualizarContadores();
+      preencherRespList();
       render();
       atualizarGeradas();
+    }
+
+    function preencherRespList(){
+      document.getElementById('respList').innerHTML =
+        [...new Set(vinculos.map(v => v.responsavel).filter(Boolean))].sort()
+          .map(r => '<option value="' + r.replace(/"/g, '&quot;') + '">').join('');
     }
 
     function atualizarContadores(){
@@ -287,8 +319,8 @@
       return `
           <div class="obr-cli ${v.ativo ? '' : 'inativo'}" data-vid="${v.id}">
             <span class="nm">${esq}</span>
-            <span class="dt">${v.responsavel || '—'}</span>
-            <span class="dt">dia ${v.dia_prazo_override || r.dia_prazo}${v.dia_prazo_override ? ' *' : ''}</span>
+            <span class="dt dt-edit" data-edit="resp" data-vid="${v.id}" title="Clique para editar o responsável">${v.responsavel || '—'}</span>
+            <span class="dt dt-edit" data-edit="dia" data-vid="${v.id}" title="Clique para editar o dia">dia ${v.dia_prazo_override || r.dia_prazo}${v.dia_prazo_override ? ' *' : ''}</span>
             <label class="sw"><input type="checkbox" data-vid="${v.id}" ${v.ativo ? 'checked' : ''}><i></i></label>
           </div>`;
     }
@@ -363,6 +395,7 @@
         h.closest('.obr-item').classList.toggle('is-open');
       }));
       el.querySelectorAll('.sw input').forEach(sw => sw.addEventListener('change', () => toggleVinculo(sw)));
+      el.querySelectorAll('.dt-edit').forEach(sp => sp.addEventListener('click', () => editarInline(sp)));
       el.querySelectorAll('[data-add-rid]').forEach(b => b.addEventListener('click', () => abrirVinculo({ modo: 'addCliente', obrigacaoId: b.dataset.addRid })));
       el.querySelectorAll('[data-add-cid]').forEach(b => b.addEventListener('click', () => abrirVinculo({ modo: 'addObrigacao', clienteId: b.dataset.addCid })));
     }
@@ -418,9 +451,7 @@
       }
       b.value = '';
       etapaVinculo(1);
-      const dl = document.getElementById('respList');
-      dl.innerHTML = [...new Set(vinculos.map(v => v.responsavel).filter(Boolean))].sort()
-        .map(r => '<option value="' + r.replace(/"/g, '&quot;') + '">').join('');
+      preencherRespList();
       vincOverlay.classList.add('is-open');
       document.getElementById('vincLista').textContent = 'Carregando…';
       if (ctx.modo === 'addCliente') await garantirClientes();
@@ -489,6 +520,112 @@
       fecharVinculo();
       atualizarContadores();
       render();
+    }
+
+    // ===================== EDIÇÃO INLINE =====================
+    function editarInline(sp){
+      if (sp.querySelector('input')) return;
+      const vid = sp.dataset.vid, campo = sp.dataset.edit;
+      const v = vinculos.find(x => x.id === vid);
+      const r = regras.find(x => x.id === v.obrigacao_id);
+      const inp = document.createElement('input');
+      inp.className = 'input-inline' + (campo === 'dia' ? ' curto' : '');
+      if (campo === 'resp') {
+        inp.type = 'text'; inp.setAttribute('list', 'respList');
+        inp.value = v.responsavel || '';
+        inp.placeholder = 'responsável';
+      } else {
+        inp.type = 'number'; inp.min = 1; inp.max = 31;
+        inp.value = v.dia_prazo_override || '';
+        inp.placeholder = 'padrão ' + (r ? r.dia_prazo : '');
+      }
+      sp.textContent = ''; sp.appendChild(inp);
+      inp.focus(); inp.select();
+      let feito = false;
+      const concluir = salvar => {
+        if (feito) return; feito = true;
+        salvar ? salvarInline(v, r, campo, inp.value) : render();
+      };
+      inp.addEventListener('keydown', e => {
+        if (e.key === 'Enter') concluir(true);
+        if (e.key === 'Escape') concluir(false);
+      });
+      inp.addEventListener('blur', () => concluir(true));
+    }
+
+    async function salvarInline(v, r, campo, bruto){
+      let payload;
+      if (campo === 'resp') {
+        const novo = bruto.trim() || null;
+        if (novo === v.responsavel) { render(); return; }
+        payload = { responsavel: novo };
+      } else {
+        const d = parseInt(bruto, 10);
+        const novo = (d >= 1 && d <= 31 && r && d !== r.dia_prazo) ? d : null;
+        if (novo === v.dia_prazo_override) { render(); return; }
+        payload = { dia_prazo_override: novo };
+      }
+      const { error } = await supabase.from('cliente_obrigacoes').update(payload).eq('id', v.id);
+      if (error) { alert('Erro ao salvar: ' + error.message); render(); return; }
+      Object.assign(v, payload);
+      preencherRespList();
+      render();
+    }
+
+    // ===================== RENOMEAR EM LOTE =====================
+    const renOverlay = document.getElementById('renOverlay');
+    document.getElementById('btnRenomear').addEventListener('click', abrirRenomear);
+    document.getElementById('renClose').addEventListener('click', () => renOverlay.classList.remove('is-open'));
+    document.getElementById('renFechar').addEventListener('click', () => renOverlay.classList.remove('is-open'));
+    renOverlay.addEventListener('click', e => { if (e.target === renOverlay) renOverlay.classList.remove('is-open'); });
+    document.getElementById('renDe').addEventListener('change', renPreview);
+    document.getElementById('renSalvar').addEventListener('click', renExecutar);
+
+    function abrirRenomear(){
+      const cont = {};
+      vinculos.forEach(v => { const k = v.responsavel || ''; cont[k] = (cont[k] || 0) + 1; });
+      const sel = document.getElementById('renDe');
+      sel.innerHTML = Object.entries(cont).sort((a, b) => b[1] - a[1])
+        .map(([nome, n]) => '<option value="' + nome.replace(/"/g, '&quot;') + '">' + (nome || '(sem responsável)') + ' — ' + n + ' vínculo(s)</option>').join('');
+      document.getElementById('renPara').value = '';
+      document.getElementById('renTarefas').checked = true;
+      document.getElementById('renSalvar').hidden = false;
+      preencherRespList();
+      renPreview();
+      renOverlay.classList.add('is-open');
+    }
+
+    function renPreview(){
+      const de = document.getElementById('renDe').value;
+      const n = vinculos.filter(v => (v.responsavel || '') === de).length;
+      document.getElementById('renInfo').textContent = n + ' vínculo(s) serão atualizados.';
+    }
+
+    async function renExecutar(){
+      const de = document.getElementById('renDe').value;
+      const para = document.getElementById('renPara').value.trim();
+      if (!para) { alert('Informa o nome novo.'); return; }
+      const btn = document.getElementById('renSalvar');
+      btn.disabled = true; btn.textContent = 'Renomeando…';
+      let q1 = supabase.from('cliente_obrigacoes').update({ responsavel: para });
+      q1 = de ? q1.eq('responsavel', de) : q1.is('responsavel', null);
+      const { error: e1 } = await q1;
+      let msgTarefas = '';
+      if (!e1 && document.getElementById('renTarefas').checked) {
+        let q2 = supabase.from('tarefas').update({ responsavel: para })
+          .eq('setor', 'fiscal').neq('status', 'concluida').not('obrigacao_id', 'is', null);
+        q2 = de ? q2.eq('responsavel', de) : q2.is('responsavel', null);
+        const { error: e2 } = await q2;
+        msgTarefas = e2 ? ' · tarefas: erro (' + e2.message + ')' : ' · tarefas pendentes atualizadas';
+      }
+      btn.disabled = false; btn.textContent = 'Renomear';
+      if (e1) { document.getElementById('renInfo').textContent = 'Erro: ' + e1.message; return; }
+      vinculos.forEach(v => { if ((v.responsavel || '') === de) v.responsavel = para; });
+      preencherRespList();
+      render();
+      document.getElementById('renInfo').textContent = '✓ Concluído' + msgTarefas + '.';
+      btn.hidden = true;
+      document.getElementById('renFechar').textContent = 'Fechar';
     }
 
     // ===================== GERADOR =====================
