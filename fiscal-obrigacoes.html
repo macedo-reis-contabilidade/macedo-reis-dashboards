@@ -58,6 +58,26 @@
     </main>
   </div>
 
+  <div class="fa-modal-overlay" id="guiaOverlay">
+    <div class="fa-modal" style="max-width:560px;">
+      <div class="fa-modal-head"><h3 id="gdTitulo">Guia</h3><button class="fa-modal-close" id="gdClose">&times;</button></div>
+      <div class="fa-modal-body">
+        <div class="gd-info" id="gdInfo"></div>
+        <div class="gd-comp">
+          <label for="gdComp">Competência</label>
+          <input type="text" id="gdComp" class="input" style="width:110px;" placeholder="MM-AAAA">
+        </div>
+        <div class="gd-drop" id="gdDrop">Arraste a guia aqui<br><span style="font-size:12px;">ou clique pra escolher o arquivo (PDF ou imagem, até 8&nbsp;MB)</span></div>
+        <input type="file" id="gdFile" accept=".pdf,image/*" hidden>
+        <div class="gd-status" id="gdStatus"></div>
+        <div class="gd-lista" id="gdLista"></div>
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-ghost" id="gdFechar">Fechar</button>
+      </div>
+    </div>
+  </div>
+
   <div class="fa-modal-overlay" id="renOverlay">
     <div class="fa-modal" style="max-width:480px;">
       <div class="fa-modal-head"><h3>Renomear responsável em lote</h3><button class="fa-modal-close" id="renClose">&times;</button></div>
@@ -246,6 +266,22 @@
     .dt-edit:hover { color:#C5D8E8; border-bottom-color:#8AAEC8; }
     .input-inline { font:inherit; font-size:12.5px; padding:3px 8px; background:rgba(255,255,255,.07); border:1px solid rgba(91,130,166,.55); border-radius:6px; color:#E6EBF2; width:120px; }
     .input-inline.curto { width:64px; }
+    .obr-cli .nm { cursor:pointer; }
+    .obr-cli .nm:hover { color:#C5D8E8; text-decoration:underline dotted rgba(138,174,200,.6); }
+    .gd-info { font-size:13px; color:#8A93A6; margin-bottom:12px; }
+    .gd-info b { color:#E6EBF2; }
+    .gd-comp { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+    .gd-comp label { font-size:12.5px; color:#8A93A6; }
+    .gd-drop { border:2px dashed rgba(138,174,200,.4); border-radius:12px; padding:26px 16px; text-align:center; color:#8A93A6; cursor:pointer; transition:.15s; font-size:13.5px; }
+    .gd-drop.is-over { background:rgba(138,174,200,.08); border-color:#8AAEC8; color:#C5D8E8; }
+    .gd-drop.is-off { opacity:.5; pointer-events:none; }
+    .gd-status { margin-top:10px; font-size:13px; min-height:18px; }
+    .gd-lista { margin-top:14px; border-top:1px solid rgba(255,255,255,.08); padding-top:10px; max-height:32vh; overflow:auto; }
+    .gd-item { display:flex; gap:10px; align-items:center; padding:7px 2px; font-size:13px; border-bottom:1px solid rgba(255,255,255,.05); }
+    .gd-item:last-child { border-bottom:none; }
+    .gd-item a { color:#8AAEC8; text-decoration:none; }
+    .gd-item a:hover { text-decoration:underline; }
+    .gd-item .gd-meta { margin-left:auto; color:#8A93A6; font-size:11.5px; white-space:nowrap; }
   </style>
 
   <script src="assets/js/tour.js"></script>
@@ -397,6 +433,8 @@
       }));
       el.querySelectorAll('.sw input').forEach(sw => sw.addEventListener('change', () => toggleVinculo(sw)));
       el.querySelectorAll('.dt-edit').forEach(sp => sp.addEventListener('click', () => editarInline(sp)));
+      el.querySelectorAll('.obr-cli .nm').forEach(nm => nm.addEventListener('click', () => abrirGuia(nm.closest('.obr-cli').dataset.vid)));
+      el.querySelectorAll('.obr-cli .nm').forEach(nm => nm.title = 'Clique para arquivar/ver guias no Drive');
       el.querySelectorAll('[data-add-rid]').forEach(b => b.addEventListener('click', () => abrirVinculo({ modo: 'addCliente', obrigacaoId: b.dataset.addRid })));
       el.querySelectorAll('[data-add-cid]').forEach(b => b.addEventListener('click', () => abrirVinculo({ modo: 'addObrigacao', clienteId: b.dataset.addCid })));
     }
@@ -521,6 +559,108 @@
       fecharVinculo();
       atualizarContadores();
       render();
+    }
+
+    // ===================== GUIAS NO DRIVE =====================
+    const guiaOverlay = document.getElementById('guiaOverlay');
+    let guiaCtx = null, enviandoGuia = false;
+    document.getElementById('gdClose').addEventListener('click', fecharGuia);
+    document.getElementById('gdFechar').addEventListener('click', fecharGuia);
+    guiaOverlay.addEventListener('click', e => { if (e.target === guiaOverlay) fecharGuia(); });
+    function fecharGuia(){ if (enviandoGuia) return; guiaOverlay.classList.remove('is-open'); guiaCtx = null; }
+
+    function mesRefMMAAAA(){
+      const v = document.getElementById('mesRef').value; // AAAA-MM
+      if (!/^\d{4}-\d{2}$/.test(v)) return '';
+      const [a, m] = v.split('-');
+      return m + '-' + a;
+    }
+
+    async function abrirGuia(vid){
+      const v = vinculos.find(x => x.id === vid);
+      if (!v) return;
+      const r = regras.find(x => x.id === v.obrigacao_id);
+      guiaCtx = { v, r };
+      document.getElementById('gdTitulo').textContent = 'Guia — ' + (v.clientes?.nome_principal || 'cliente');
+      document.getElementById('gdInfo').innerHTML = 'Obrigação: <b>' + (r ? r.nome : '?') + '</b> · destino: SETOR FISCAL / ' + (r?.pasta_drive || r?.nome || '?') + ' / competência';
+      document.getElementById('gdComp').value = mesRefMMAAAA();
+      document.getElementById('gdStatus').textContent = '';
+      document.getElementById('gdDrop').classList.remove('is-off');
+      guiaOverlay.classList.add('is-open');
+      carregarGuias();
+    }
+
+    async function carregarGuias(){
+      if (!guiaCtx) return;
+      const el = document.getElementById('gdLista');
+      el.innerHTML = '<span style="color:#8A93A6;font-size:12.5px;">Carregando guias arquivadas…</span>';
+      const { data, error } = await supabase.from('guias_arquivadas')
+        .select('competencia, nome_arquivo, drive_file_url, subido_por, criado_em')
+        .eq('cliente_id', guiaCtx.v.cliente_id).eq('obrigacao_id', guiaCtx.r.id)
+        .order('criado_em', { ascending: false }).limit(50);
+      if (error) { el.innerHTML = '<span class="gen-err">Erro ao listar: ' + error.message + '</span>'; return; }
+      if (!data || !data.length) { el.innerHTML = '<span style="color:#8A93A6;font-size:12.5px;">Nenhuma guia arquivada ainda pra esse cliente/obrigação.</span>'; return; }
+      el.innerHTML = data.map(g => `
+        <div class="gd-item">
+          <span class="chip c-cinza">${g.competencia}</span>
+          <a href="${g.drive_file_url}" target="_blank" rel="noopener">${g.nome_arquivo}</a>
+          <span class="gd-meta">${new Date(g.criado_em).toLocaleDateString('pt-BR')}${g.subido_por ? ' · ' + g.subido_por.split('@')[0] : ''}</span>
+        </div>`).join('');
+    }
+
+    const gdDrop = document.getElementById('gdDrop');
+    const gdFile = document.getElementById('gdFile');
+    gdDrop.addEventListener('click', () => gdFile.click());
+    gdFile.addEventListener('change', () => { if (gdFile.files[0]) enviarGuia(gdFile.files[0]); gdFile.value = ''; });
+    gdDrop.addEventListener('dragover', e => { e.preventDefault(); gdDrop.classList.add('is-over'); });
+    gdDrop.addEventListener('dragleave', () => gdDrop.classList.remove('is-over'));
+    gdDrop.addEventListener('drop', e => {
+      e.preventDefault(); gdDrop.classList.remove('is-over');
+      if (e.dataTransfer.files[0]) enviarGuia(e.dataTransfer.files[0]);
+    });
+
+    function limparNome(s){ return String(s).replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim(); }
+
+    async function enviarGuia(file){
+      if (!guiaCtx || enviandoGuia) return;
+      const st = document.getElementById('gdStatus');
+      const comp = document.getElementById('gdComp').value.trim();
+      if (!/^\d{2}-\d{4}$/.test(comp)) { st.innerHTML = '<span class="gen-err">Competência no formato MM-AAAA (ex.: 07-2026).</span>'; return; }
+      if (file.size > 8 * 1024 * 1024) { st.innerHTML = '<span class="gen-err">Arquivo acima de 8 MB.</span>'; return; }
+      enviandoGuia = true;
+      gdDrop.classList.add('is-off');
+      st.innerHTML = 'Enviando <b>' + file.name + '</b>…';
+      try {
+        const base64 = await new Promise((res, rej) => {
+          const fr = new FileReader();
+          fr.onload = () => res(String(fr.result).split(',')[1]);
+          fr.onerror = () => rej(new Error('falha ao ler o arquivo'));
+          fr.readAsDataURL(file);
+        });
+        const ext = (file.name.split('.').pop() || 'pdf').toLowerCase();
+        const nomeFinal = limparNome(
+          (guiaCtx.v.clientes?.nome_principal || 'CLIENTE') + ' - ' + guiaCtx.r.nome + ' - ' + comp
+        ) + '.' + ext;
+        const { data, error } = await supabase.functions.invoke('arquivar-guia', {
+          body: {
+            cliente_id: guiaCtx.v.cliente_id,
+            obrigacao_id: guiaCtx.r.id,
+            pasta_obrigacao: guiaCtx.r.pasta_drive || guiaCtx.r.nome,
+            competencia: comp,
+            arquivo: { nome: nomeFinal, mime: file.type || 'application/pdf', base64 },
+            subido_por: user ? user.email : null
+          }
+        });
+        if (error) throw new Error(error.message || 'erro na função');
+        if (data?.error) throw new Error(data.error);
+        st.innerHTML = '<span class="gen-ok">✓ Arquivada no Drive:</span> <a href="' + data.file_url + '" target="_blank" rel="noopener" style="color:#8AAEC8;">abrir arquivo</a>' +
+          (data.registro_ok ? '' : ' <span class="gen-err">(salvou no Drive, mas o registro no sistema falhou: ' + (data.registro_erro || '?') + ')</span>');
+        carregarGuias();
+      } catch (e) {
+        st.innerHTML = '<span class="gen-err">✗ ' + (e.message || e) + '</span>';
+      }
+      enviandoGuia = false;
+      gdDrop.classList.remove('is-off');
     }
 
     // ===================== EDIÇÃO INLINE =====================
@@ -766,7 +906,7 @@
       { el: '.fa-focus', titulo: 'Os números do motor', texto: 'Regras ativas, vínculos, clientes e quantas tarefas o mês selecionado já gerou. O último cartão é clicável e abre o módulo Tarefas.' },
       { el: '#segVisao', titulo: 'Duas formas de olhar', texto: 'Por obrigação: quem está em cada rotina. Por cliente: tudo que uma empresa tem. A busca se adapta à visão.' },
       { el: '#busca', titulo: 'Busca esperta', texto: 'Funciona sem acento: "situacao" acha "Situação". Vale nas duas visões.' },
-      { el: '.obr-item', titulo: 'Cada obrigação é uma caixa', texto: 'Clique pra abrir e ver os clientes. Dentro: responsável e dia são editáveis no clique (texto pontilhado), o switch liga/desliga o vínculo e o botão + vincula gente nova.' },
+      { el: '.obr-item', titulo: 'Cada obrigação é uma caixa', texto: 'Clique pra abrir e ver os clientes. Dentro: responsável e dia são editáveis no clique, o switch liga/desliga o vínculo, o + vincula gente nova — e clicar no NOME do cliente abre o arquivamento de guias no Drive.' },
       { el: '#btnRenomear', titulo: 'Renomear em lote', texto: 'Troca um responsável por outro em todos os vínculos de uma vez — com opção de atualizar também as tarefas pendentes.' },
       { el: '#mesRef', titulo: 'Mês de referência', texto: 'Define pra qual mês o motor vai trabalhar. Obrigações sazonais só aparecem quando a janela delas abre.' },
       { el: '#btnGerar', titulo: 'Gerar rotinas do mês', texto: 'Sempre mostra o plano antes: o que vai criar e o que já existe. Nada é criado sem confirmação — e rodar de novo não duplica.' }
