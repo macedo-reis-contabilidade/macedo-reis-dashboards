@@ -371,7 +371,40 @@
     .extrai-lista { margin-top:10px; display:flex; flex-direction:column; gap:4px; font-size:13px; color:#C5D8E8; }
     .extrai-acoes { display:flex; align-items:center; gap:14px; margin-top:14px; flex-wrap:wrap; }
     .extrai-status { font-size:13px; color:#8A93A6; }
+  
+    /* Passo opcional: vincular obrigações fiscais */
+    .vo-overlay { position:fixed; inset:0; background:rgba(6,10,16,.72); display:none; align-items:center; justify-content:center; z-index:60; padding:18px; }
+    .vo-overlay.is-open { display:flex; }
+    .vo-modal { background:#0F1620; border:1px solid rgba(255,255,255,.1); border-radius:14px; width:min(620px, 96vw); max-height:88vh; display:flex; flex-direction:column; }
+    .vo-head { padding:16px 22px; border-bottom:1px solid rgba(255,255,255,.08); }
+    .vo-head h3 { margin:0; font-size:17px; }
+    .vo-body { padding:16px 22px; overflow:hidden; display:flex; flex-direction:column; }
+    .vo-sub { margin:0 0 10px; font-size:13px; color:#8A93A6; }
+    .vo-lista { overflow:auto; max-height:44vh; border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:4px; }
+    .vo-item { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:8px; cursor:pointer; font-size:13.5px; }
+    .vo-item:hover { background:rgba(255,255,255,.05); }
+    .vo-item .vv-freq { margin-left:auto; color:#8A93A6; font-size:12px; white-space:nowrap; }
+    .vo-item .vv-dia { color:#8AAEC8; font-size:11.5px; border:1px solid rgba(91,130,166,.4); border-radius:999px; padding:2px 8px; white-space:nowrap; }
+    .vo-resp-l { display:block; font-size:12.5px; color:#8A93A6; margin:12px 0 5px; }
+    .vo-foot { display:flex; justify-content:flex-end; gap:10px; padding:14px 22px; border-top:1px solid rgba(255,255,255,.08); }
   </style>
+
+  <div class="vo-overlay" id="voOverlay">
+    <div class="vo-modal">
+      <div class="vo-head"><h3>Vincular obrigações fiscais</h3></div>
+      <div class="vo-body">
+        <p class="vo-sub" id="voSub">Sugestões pro regime do cliente — marca/desmarca à vontade.</p>
+        <div class="vo-lista" id="voLista">Carregando…</div>
+        <label class="vo-resp-l" for="voResp">Responsável (aplicado a todas as selecionadas — opcional)</label>
+        <input type="text" id="voResp" class="input" list="voRespList" placeholder="Ex.: Thalia">
+        <datalist id="voRespList"></datalist>
+      </div>
+      <div class="vo-foot">
+        <button type="button" class="btn btn-ghost" id="voPular">Pular</button>
+        <button type="button" class="btn btn-primary" id="voVincular">Vincular selecionadas</button>
+      </div>
+    </div>
+  </div>
 
   <script type="module">
     import { supabase, getCurrentUser, signOut } from '../assets/js/supabase.js';
@@ -580,8 +613,78 @@
         await supabase.from('socios').insert(sociosPayload);
       }
 
-      // cliente criado → leva pra edição pra completar sócios, contatos e Drive
-      window.location.href = `editar.html?id=${novo.id}`;
+      // cliente criado → passo opcional de obrigações fiscais, depois edição
+      await sugerirObrigacoes(novo.id);
+    }
+
+    // ---------- Herança de obrigações por regime ----------
+    const normV = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
+    async function sugerirObrigacoes(clienteId){
+      const irParaEdicao = () => { window.location.href = `editar.html?id=${clienteId}`; };
+      try {
+        const tipo = document.getElementById('tipo_pessoa').value;
+        const regime = document.getElementById('regime_tributario').value;
+        const cidade = document.getElementById('cidade').value;
+        if (tipo !== 'PJ' || !regime) { irParaEdicao(); return; }
+
+        const [{ data: regras }, { data: vincs }] = await Promise.all([
+          supabase.from('obrigacoes_fiscais').select('id, nome, dia_prazo, regimes_aplicaveis').eq('ativo', true).order('nome'),
+          supabase.from('cliente_obrigacoes').select('obrigacao_id, cliente_id, responsavel, ativo, clientes(regime_tributario)')
+        ]);
+        if (!regras || !regras.length) { irParaEdicao(); return; }
+
+        const doRegime = (vincs || []).filter(v => v.ativo && normV(v.clientes?.regime_tributario) === normV(regime));
+        const baseClientes = new Set(doRegime.map(v => v.cliente_id)).size || 1;
+        const freq = {};
+        doRegime.forEach(v => { (freq[v.obrigacao_id] = freq[v.obrigacao_id] || new Set()).add(v.cliente_id); });
+
+        const aplicaveis = regras
+          .filter(r => (r.regimes_aplicaveis || []).some(x => normV(x) === normV(regime)))
+          .map(r => {
+            const n = (freq[r.id] || new Set()).size;
+            const ehDeiss = /^DEISS - /i.test(r.nome);
+            const cidadeRegra = ehDeiss ? r.nome.replace(/^DEISS - /i, '') : null;
+            const marcada = ehDeiss
+              ? (cidade && normV(cidadeRegra) === normV(cidade))
+              : (n / baseClientes >= 0.6);
+            return { r, n, marcada };
+          })
+          .sort((a, b) => b.n - a.n || a.r.nome.localeCompare(b.r.nome));
+
+        if (!aplicaveis.length) { irParaEdicao(); return; }
+
+        document.getElementById('voSub').textContent =
+          'Sugestões pro regime ' + regime + ' — as mais comuns já vêm marcadas.';
+        document.getElementById('voLista').innerHTML = aplicaveis.map(a => `
+          <label class="vo-item">
+            <input type="checkbox" data-oid="${a.r.id}" ${a.marcada ? 'checked' : ''}>
+            <span>${a.r.nome}</span>
+            <span class="vv-dia">dia ${a.r.dia_prazo}</span>
+            <span class="vv-freq">${a.n ? a.n + ' cliente(s) do regime usam' : 'nenhum ainda'}</span>
+          </label>`).join('');
+        document.getElementById('voRespList').innerHTML =
+          [...new Set((vincs || []).map(v => v.responsavel).filter(Boolean))].sort()
+            .map(x => '<option value="' + x.replace(/"/g, '&quot;') + '">').join('');
+
+        document.getElementById('voPular').onclick = irParaEdicao;
+        document.getElementById('voVincular').onclick = async () => {
+          const marcadas = [...document.querySelectorAll('#voLista input:checked')].map(c => c.dataset.oid);
+          if (!marcadas.length) { irParaEdicao(); return; }
+          const resp = document.getElementById('voResp').value.trim() || null;
+          const btn = document.getElementById('voVincular');
+          btn.disabled = true; btn.textContent = 'Vinculando…';
+          const { error } = await supabase.from('cliente_obrigacoes')
+            .insert(marcadas.map(oid => ({ cliente_id: clienteId, obrigacao_id: oid, responsavel: resp, ativo: true })));
+          if (error) alert('Cliente salvo, mas houve erro ao vincular: ' + error.message + '\nDá pra vincular depois em Fiscal → Obrigações.');
+          irParaEdicao();
+        };
+
+        document.getElementById('voOverlay').classList.add('is-open');
+      } catch (e) {
+        console.error(e);
+        irParaEdicao();
+      }
     }
 
     // ---------- Extração automática por documento ----------
