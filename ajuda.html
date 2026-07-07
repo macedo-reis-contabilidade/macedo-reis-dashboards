@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ajuda — Macedo & Reis</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+  <style>
+    .dashboard-card { position:relative; transition: transform .15s ease, border-color .15s ease, background .15s ease, box-shadow .15s ease; }
+    .dashboard-card:hover { transform: translateY(-2px); border-color: rgba(138,174,200,.35); background: rgba(255,255,255,.045); box-shadow: 0 8px 24px rgba(0,0,0,.25); }
+
+    /* Cor de identidade por setor (no ícone) */
+    .hp-wrap { max-width:860px; }
+    .hp-busca { width:100%; max-width:480px; margin-bottom:22px; }
+    .hp-sec h2 { font-size:15px; text-transform:uppercase; letter-spacing:.06em; color:#8AAEC8; margin:26px 0 10px; }
+    .hp-item { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:10px; margin-bottom:8px; overflow:hidden; }
+    .hp-q { padding:12px 16px; cursor:pointer; font-weight:600; font-size:14px; display:flex; gap:10px; }
+    .hp-q::before { content:'›'; color:#8A93A6; transition:transform .15s; }
+    .hp-item.is-open .hp-q::before { transform:rotate(90deg); }
+    .hp-q:hover { background:rgba(255,255,255,.03); }
+    .hp-a { display:none; padding:0 16px 14px 34px; font-size:13.5px; line-height:1.65; color:#B9C2D0; }
+    .hp-item.is-open .hp-a { display:block; }
+    .hp-a b { color:#E6EBF2; }
+    .hp-vazio { color:#8A93A6; display:none; }
+
+    /* Selo "hoje" (urgência do dia) — canto superior direito */
+    .badge-hoje { position:absolute; top:14px; right:14px; background:rgba(227,179,65,.18); border:1px solid rgba(227,179,65,.5); color:#E3B341; font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.04em; text-transform:uppercase; box-shadow:0 0 0 3px rgba(227,179,65,.06); }
+
+    /* Status no rodapé: backlog de tarefas abertas (ou "em dia") */
+    .badge.card-status { font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.03em; }
+    .card-status.st-open  { background:rgba(138,174,200,.14); border:1px solid rgba(138,174,200,.38); color:#B6C7DA; }
+    .card-status.st-clear { background:rgba(63,176,122,.14);  border:1px solid rgba(63,176,122,.4);  color:#5FC698; }
+    .card-status.st-load  { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); color:#8A93A6; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+
+      <div class="topbar-actions">
+        <div class="user-chip">
+          <div class="user-avatar" id="userAvatar">—</div>
+          <span id="userName">Carregando…</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Ajuda</span>
+        </div>
+        <div class="eyebrow">Central de ajuda</div>
+        <h1>Ajuda</h1>
+        <p>Como usar cada parte do sistema — busca acima, clique na pergunta pra abrir a resposta.</p>
+      </div>
+
+      <div class="hp-wrap">
+        <input type="text" id="hpBusca" class="input hp-busca" placeholder="Buscar na ajuda… (ex.: gerar rotinas, receita, vincular)">
+<p class="hp-vazio" id="hpVazio">Nada encontrado com esse termo.</p>
+<div class="hp-sec"><h2>Começando</h2>
+        <div class="hp-item"><div class="hp-q">O que é este sistema?</div><div class="hp-a">A central do escritório: base de clientes + rotinas dos setores num lugar só, substituindo aos poucos os controles que viviam no TaskDo. Tudo que você faz aqui salva direto no banco — não existe "salvar geral".</div></div>
+        <div class="hp-item"><div class="hp-q">Como navego entre as áreas?</div><div class="hp-a">Tudo parte do <b>Painel central</b>: Clientes, Agenda, Setores e Administração. Dentro de um setor, cada módulo é um card. Pra voltar, use a trilha no topo (Painel central / Fiscal / …).</div></div>
+        <div class="hp-item"><div class="hp-q">Atualizei algo e a tela não mudou</div><div class="hp-a">Deve ser o cache do navegador. Recarregue com <b>Ctrl+F5</b> — ou adicione <b>?nocache=1</b> no fim do endereço. Se persistir, avise o Samuel.</div></div>
+</div>
+<div class="hp-sec"><h2>Clientes</h2>
+        <div class="hp-item"><div class="hp-q">Como cadastro um cliente novo?</div><div class="hp-a">Clientes → <b>+ Novo cliente</b>. Se tiver o cartão CNPJ ou contrato em PDF, arraste no cadastro: a extração automática preenche os campos (confira antes de salvar). CNAEs secundários vão um por linha.</div></div>
+        <div class="hp-item"><div class="hp-q">O que é o passo "Vincular obrigações fiscais" depois de salvar?</div><div class="hp-a">Ao salvar um cliente PJ com regime, o sistema sugere as obrigações típicas daquele regime — as mais comuns já vêm marcadas, e a DEISS da cidade do cliente também. Marque/desmarque e confirme, ou <b>Pular</b>: dá pra vincular depois em Fiscal → Obrigações.</div></div>
+        <div class="hp-item"><div class="hp-q">Como acho clientes por atividade (ex.: pintor)?</div><div class="hp-a">Na listagem de Clientes, digite a atividade na busca — ex.: <b>pintura</b>. Ela procura também dentro dos CNAEs e mostra qual CNAE bateu embaixo do nome. Funciona sem acento: "construcao" acha "construção".</div></div>
+        <div class="hp-item"><div class="hp-q">Pra que serve o botão "Puxar dados da Receita"?</div><div class="hp-a">Consulta os dados públicos da Receita de todos os PJ e preenche <b>somente campos vazios</b> (CNAE principal e secundários, natureza jurídica, capital, porte). Se alguns falharem, é só rodar de novo — ele tenta apenas os que faltam.</div></div>
+        <div class="hp-item"><div class="hp-q">Um cliente saiu do escritório — o que faço?</div><div class="hp-a">Dois passos: (1) no cadastro dele, mude o status para <b>inativo</b>; (2) em Fiscal → Obrigações → <b>Por cliente</b>, desligue os vínculos dele nos switches. Assim ele para de receber rotinas novas e o histórico fica preservado.</div></div>
+</div>
+<div class="hp-sec"><h2>Fiscal · Obrigações (o motor das rotinas)</h2>
+        <div class="hp-item"><div class="hp-q">O que são "regras" e "vínculos"?</div><div class="hp-a"><b>Regra</b> é a obrigação em si (PGDAS, ECF…), com periodicidade, dia e janela de aparecimento. <b>Vínculo</b> é a ligação cliente ↔ regra. Só vínculo <b>ativo</b> gera tarefa.</div></div>
+        <div class="hp-item"><div class="hp-q">Ver por obrigação ou por cliente?</div><div class="hp-a">O seletor no topo alterna: <b>Por obrigação</b> responde "quem está no PGDAS?"; <b>Por cliente</b> responde "o que a empresa X tem?". A busca se adapta à visão escolhida.</div></div>
+        <div class="hp-item"><div class="hp-q">Como vinculo um cliente a uma obrigação?</div><div class="hp-a">Abra a obrigação e clique em <b>+ Vincular cliente</b>. Quem já está vinculado aparece apagado (não duplica). Na segunda etapa dá pra definir responsável e um dia próprio.</div></div>
+        <div class="hp-item"><div class="hp-q">Como adiciono uma obrigação a um cliente?</div><div class="hp-a">Na visão <b>Por cliente</b>, abra o cliente e clique em <b>+ Adicionar obrigação</b>. Mesma lógica, no sentido inverso.</div></div>
+        <div class="hp-item"><div class="hp-q">Como edito o responsável ou o dia de um vínculo?</div><div class="hp-a">Clique no texto pontilhado da linha: vira um campo na hora. <b>Enter</b> salva, <b>Esc</b> cancela. Dia vazio (ou igual ao padrão) volta a seguir a regra; o <b>*</b> indica dia próprio do cliente.</div></div>
+        <div class="hp-item"><div class="hp-q">O que acontece quando desligo um vínculo no switch?</div><div class="hp-a">O cliente sai das <b>próximas</b> gerações daquela obrigação. As tarefas já criadas não são apagadas — histórico é histórico.</div></div>
+        <div class="hp-item"><div class="hp-q">Como troco um responsável em todos os vínculos de uma vez?</div><div class="hp-a">Botão <b>Renomear responsável</b> na barra: escolha "De" (mostra a contagem de cada um), digite "Para" e confirme. O checkbox atualiza também as tarefas <b>pendentes</b> já geradas — as concluídas ficam como estão.</div></div>
+        <div class="hp-item"><div class="hp-q">Como gero as rotinas do mês?</div><div class="hp-a">Escolha o mês e clique em <b>Gerar rotinas do mês</b>. O sistema mostra o <b>plano</b> primeiro (o que vai criar e o que já existe) — nada é criado sem confirmação. Pode rodar quantas vezes quiser: <b>não duplica</b>. Prazo em fim de semana vai pro próximo dia útil. Obrigações sazonais só aparecem na janela delas (ECF em julho; recadastramentos em agosto/setembro).</div></div>
+        <div class="hp-item"><div class="hp-q">Onde vejo as tarefas que o motor criou?</div><div class="hp-a">O cartão <b>"Tarefas geradas no mês"</b> mostra a contagem do mês selecionado e é clicável — leva direto ao módulo Tarefas. Elas também aparecem na Agenda, como qualquer tarefa.</div></div>
+</div>
+<div class="hp-sec"><h2>Fiscal · Tarefas e demais módulos</h2>
+        <div class="hp-item"><div class="hp-q">Qual a diferença entre "Tarefas recorrentes" e "Obrigações"?</div><div class="hp-a">São dois geradores que convivem: <b>Tarefas recorrentes</b> cria repetições simples do setor (sem cliente ou com regra fixa); <b>Obrigações</b> é o motor fiscal por cliente, com prazos, janelas e competências. No dia a dia, as rotinas dos clientes vêm das Obrigações.</div></div>
+        <div class="hp-item"><div class="hp-q">Pra que serve a faixa de foco (Atrasadas / Hoje / 7 dias…)?</div><div class="hp-a">São filtros rápidos da lista de tarefas — clique num cartão e a lista mostra só aquele recorte. "Todas" volta ao normal.</div></div>
+        <div class="hp-item"><div class="hp-q">Como crio uma tarefa avulsa?</div><div class="hp-a">No módulo Tarefas, botão <b>+ Nova tarefa</b>: título, cliente (opcional), responsável, prazo e prioridade.</div></div>
+</div>
+<div class="hp-sec"><h2>Agenda e Painel</h2>
+        <div class="hp-item"><div class="hp-q">O que a Agenda mostra?</div><div class="hp-a">As tarefas de todos os setores num calendário único — a visão geral do escritório por dia e responsável.</div></div>
+        <div class="hp-item"><div class="hp-q">O que são os selos nos cards do Painel?</div><div class="hp-a">Contagens ao vivo pra bater o olho: tarefas abertas por área e o selo amarelo "hoje" quando algo vence no dia.</div></div>
+</div>
+<div class="hp-sec"><h2>Tours guiados</h2>
+        <div class="hp-item"><div class="hp-q">O que é o tour?</div><div class="hp-a">Na primeira visita a uma tela, o sistema escurece o fundo e apresenta os elementos um a um. Dá pra pular a qualquer momento (botão Pular ou tecla Esc) e navegar com as setas do teclado.</div></div>
+        <div class="hp-item"><div class="hp-q">Como revejo um tour?</div><div class="hp-a">Tour disponível: <b><a href="fiscal-obrigacoes.html?tour=1" style="color:#8AAEC8;">Fiscal · Obrigações — rever tour</a></b>. Novos tours vão sendo adicionados conforme as telas evoluem.</div></div>
+</div>
+            </div>
+    </main>
+  </div>
+
+  <script type="module">
+    import { getCurrentUser, signOut } from './assets/js/supabase.js';
+    const user = await getCurrentUser();
+    if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; }
+    const btnOut = document.getElementById('btnLogout');
+    if (btnOut) btnOut.addEventListener('click', signOut);
+
+    const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    document.querySelectorAll('.hp-q').forEach(q =>
+      q.addEventListener('click', () => q.closest('.hp-item').classList.toggle('is-open')));
+
+    document.getElementById('hpBusca').addEventListener('input', e => {
+      const t = norm(e.target.value.trim());
+      let visiveis = 0;
+      document.querySelectorAll('.hp-item').forEach(it => {
+        const bate = !t || norm(it.textContent).includes(t);
+        it.style.display = bate ? '' : 'none';
+        it.classList.toggle('is-open', !!t && bate);
+        if (bate) visiveis++;
+      });
+      document.querySelectorAll('.hp-sec').forEach(sec => {
+        const tem = [...sec.querySelectorAll('.hp-item')].some(i => i.style.display !== 'none');
+        sec.style.display = tem ? '' : 'none';
+      });
+      document.getElementById('hpVazio').style.display = visiveis ? 'none' : 'block';
+    });
+  </script>
+</body>
+</html>

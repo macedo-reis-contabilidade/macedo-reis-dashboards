@@ -248,6 +248,7 @@
     .input-inline.curto { width:64px; }
   </style>
 
+  <script src="assets/js/tour.js"></script>
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
 
@@ -761,7 +762,18 @@
       atualizarGeradas();
     }
 
-    carregar();
+    const PASSOS_TOUR = [
+      { el: '.fa-focus', titulo: 'Os números do motor', texto: 'Regras ativas, vínculos, clientes e quantas tarefas o mês selecionado já gerou. O último cartão é clicável e abre o módulo Tarefas.' },
+      { el: '#segVisao', titulo: 'Duas formas de olhar', texto: 'Por obrigação: quem está em cada rotina. Por cliente: tudo que uma empresa tem. A busca se adapta à visão.' },
+      { el: '#busca', titulo: 'Busca esperta', texto: 'Funciona sem acento: "situacao" acha "Situação". Vale nas duas visões.' },
+      { el: '.obr-item', titulo: 'Cada obrigação é uma caixa', texto: 'Clique pra abrir e ver os clientes. Dentro: responsável e dia são editáveis no clique (texto pontilhado), o switch liga/desliga o vínculo e o botão + vincula gente nova.' },
+      { el: '#btnRenomear', titulo: 'Renomear em lote', texto: 'Troca um responsável por outro em todos os vínculos de uma vez — com opção de atualizar também as tarefas pendentes.' },
+      { el: '#mesRef', titulo: 'Mês de referência', texto: 'Define pra qual mês o motor vai trabalhar. Obrigações sazonais só aparecem quando a janela delas abre.' },
+      { el: '#btnGerar', titulo: 'Gerar rotinas do mês', texto: 'Sempre mostra o plano antes: o que vai criar e o que já existe. Nada é criado sem confirmação — e rodar de novo não duplica.' }
+    ];
+    carregar().then(() => {
+      if (window.MRTour) MRTour.iniciar(PASSOS_TOUR, 'obrigacoes_v1', new URLSearchParams(location.search).has('tour'));
+    });
   </script>
 
 </body>
