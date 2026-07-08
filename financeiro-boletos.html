@@ -300,7 +300,7 @@ function render(){
       const apply=()=>{
         r[f] = (f==='valor') ? (parseFloat(el.value)||0) : el.value;
         r._dirty=true;
-        if(f==='status'){ el.className='st st-'+r.status; updateCards(); }
+        if(f==='status'){ el.className='st st-'+r.status; updateCards(); render(); }
         if(f==='valor'){ updateCards(); }
       };
       const isTexto = (el.tagName==='INPUT' && el.type!=='date');
