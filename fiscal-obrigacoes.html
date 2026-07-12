@@ -58,6 +58,28 @@
     </main>
   </div>
 
+  <div class="fa-modal-overlay" id="envOverlay">
+    <div class="fa-modal" style="max-width:560px;">
+      <div class="fa-modal-head"><h3 id="envTitulo">Enviar guia</h3><button class="fa-modal-close" id="envClose">&times;</button></div>
+      <div class="fa-modal-body">
+        <label class="env-label" for="envDestino">Destino (WhatsApp ou e-mail do cliente — editável)</label>
+        <input type="text" id="envDestino" class="input" style="width:100%;" placeholder="buscando…">
+        <label class="env-label" for="envMsg">Mensagem</label>
+        <textarea id="envMsg" class="textarea" rows="5" style="width:100%;"></textarea>
+        <div class="env-acoes">
+          <button class="btn-mini" id="envBaixar">⬇ Baixar guia</button>
+          <button class="btn-mini" id="envCopiar">⧉ Copiar mensagem</button>
+          <button class="btn-mini" id="envWhats">💬 Abrir WhatsApp</button>
+        </div>
+        <div class="env-status" id="envStatus"></div>
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-ghost" id="envFechar">Fechar</button>
+        <button class="btn btn-primary" id="envMarcar">Marcar como enviada</button>
+      </div>
+    </div>
+  </div>
+
   <div class="fa-modal-overlay" id="guiaOverlay">
     <div class="fa-modal" style="max-width:560px;">
       <div class="fa-modal-head"><h3 id="gdTitulo">Guia</h3><button class="fa-modal-close" id="gdClose">&times;</button></div>
@@ -282,6 +304,11 @@
     .gd-item a { color:#8AAEC8; text-decoration:none; }
     .gd-item a:hover { text-decoration:underline; }
     .gd-item .gd-meta { margin-left:auto; color:#8A93A6; font-size:11.5px; white-space:nowrap; }
+    .btn-mini { font-size:11.5px; padding:4px 10px; border-radius:8px; border:1px solid rgba(138,174,200,.4); background:transparent; color:#8AAEC8; cursor:pointer; white-space:nowrap; }
+    .btn-mini:hover { background:rgba(138,174,200,.12); }
+    .env-label { display:block; font-size:12.5px; color:#8A93A6; margin:12px 0 5px; }
+    .env-status { margin-top:10px; font-size:13px; min-height:18px; }
+    .env-acoes { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
   </style>
 
   <script src="assets/js/tour.js"></script>
@@ -590,23 +617,141 @@
       carregarGuias();
     }
 
+    let guiasCache = [];
+
     async function carregarGuias(){
       if (!guiaCtx) return;
       const el = document.getElementById('gdLista');
       el.innerHTML = '<span style="color:#8A93A6;font-size:12.5px;">Carregando guias arquivadas…</span>';
       const { data, error } = await supabase.from('guias_arquivadas')
-        .select('competencia, nome_arquivo, drive_file_url, subido_por, criado_em')
+        .select('id, competencia, nome_arquivo, drive_file_url, drive_file_id, subido_por, criado_em, enviado_em, enviado_para')
         .eq('cliente_id', guiaCtx.v.cliente_id).eq('obrigacao_id', guiaCtx.r.id)
         .order('criado_em', { ascending: false }).limit(50);
       if (error) { el.innerHTML = '<span class="gen-err">Erro ao listar: ' + error.message + '</span>'; return; }
-      if (!data || !data.length) { el.innerHTML = '<span style="color:#8A93A6;font-size:12.5px;">Nenhuma guia arquivada ainda pra esse cliente/obrigação.</span>'; return; }
-      el.innerHTML = data.map(g => `
+      guiasCache = data || [];
+      renderGuias();
+    }
+
+    function renderGuias(){
+      const el = document.getElementById('gdLista');
+      if (!guiasCache.length) { el.innerHTML = '<span style="color:#8A93A6;font-size:12.5px;">Nenhuma guia arquivada ainda pra esse cliente/obrigação.</span>'; return; }
+      el.innerHTML = guiasCache.map(g => `
         <div class="gd-item">
           <span class="chip c-cinza">${g.competencia}</span>
           <a href="${g.drive_file_url}" target="_blank" rel="noopener">${g.nome_arquivo}</a>
+          ${g.enviado_em ? `<span class="chip c-verde" title="para ${(g.enviado_para || '').replace(/"/g, '&quot;')}">✓ ${new Date(g.enviado_em).toLocaleDateString('pt-BR')}</span>` : ''}
+          <button class="btn-mini" data-env="${g.id}">${g.enviado_em ? 'Reenviar' : 'Enviar'}</button>
           <span class="gd-meta">${new Date(g.criado_em).toLocaleDateString('pt-BR')}${g.subido_por ? ' · ' + g.subido_por.split('@')[0] : ''}</span>
         </div>`).join('');
+      el.querySelectorAll('[data-env]').forEach(b => b.addEventListener('click', () => abrirEnvio(b.dataset.env)));
     }
+
+    // ===================== ENVIO AO CLIENTE =====================
+    const envOverlay = document.getElementById('envOverlay');
+    let envCtx = null, templateEnvio = null;
+    document.getElementById('envClose').addEventListener('click', fecharEnvio);
+    document.getElementById('envFechar').addEventListener('click', fecharEnvio);
+    envOverlay.addEventListener('click', e => { if (e.target === envOverlay) fecharEnvio(); });
+    function fecharEnvio(){ envOverlay.classList.remove('is-open'); envCtx = null; }
+
+    async function pegarTemplate(){
+      if (templateEnvio !== null) return templateEnvio;
+      const { data } = await supabase.from('configuracoes_escritorio').select('valor').eq('chave', 'template_envio_guia').single();
+      templateEnvio = data?.valor || 'Segue a guia de {obrigacao} — competência {competencia} — {cliente}.';
+      return templateEnvio;
+    }
+
+    async function resolverDestino(clienteId){
+      const { data: cob } = await supabase.from('cobrancas_mensais')
+        .select('destino, competencia').eq('cliente_id', clienteId)
+        .not('destino', 'is', null).order('competencia', { ascending: false }).limit(1);
+      if (cob && cob[0]?.destino) return cob[0].destino;
+      const { data: cts } = await supabase.from('contatos').select('*')
+        .eq('cliente_id', clienteId).order('eh_principal', { ascending: false }).limit(3);
+      for (const c of (cts || [])) {
+        for (const k of ['whatsapp', 'celular', 'telefone', 'fone', 'numero', 'email']) {
+          if (c[k] && String(c[k]).trim()) return String(c[k]).trim();
+        }
+      }
+      return '';
+    }
+
+    async function abrirEnvio(gid){
+      const g = guiasCache.find(x => x.id === gid);
+      if (!g || !guiaCtx) return;
+      envCtx = { g };
+      document.getElementById('envTitulo').textContent = 'Enviar guia — ' + (guiaCtx.v.clientes?.nome_principal || '');
+      document.getElementById('envStatus').textContent = '';
+      const tpl = await pegarTemplate();
+      document.getElementById('envMsg').value = tpl
+        .replaceAll('{cliente}', guiaCtx.v.clientes?.nome_principal || '')
+        .replaceAll('{obrigacao}', guiaCtx.r.nome)
+        .replaceAll('{competencia}', g.competencia);
+      const dEl = document.getElementById('envDestino');
+      dEl.value = ''; dEl.placeholder = 'buscando…';
+      envOverlay.classList.add('is-open');
+      dEl.value = await resolverDestino(guiaCtx.v.cliente_id);
+      dEl.placeholder = 'número ou e-mail do cliente';
+    }
+
+    document.getElementById('envBaixar').addEventListener('click', async () => {
+      if (!envCtx) return;
+      const st = document.getElementById('envStatus');
+      st.innerHTML = 'Baixando do Drive…';
+      try {
+        const { data, error } = await supabase.functions.invoke('arquivar-guia', {
+          body: { acao: 'baixar', drive_file_id: envCtx.g.drive_file_id }
+        });
+        if (error) throw new Error(error.message || 'erro na função');
+        if (data?.error) throw new Error(data.error);
+        const bytes = Uint8Array.from(atob(data.base64), c => c.charCodeAt(0));
+        const blob = new Blob([bytes], { type: data.mime || 'application/pdf' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = data.nome || envCtx.g.nome_arquivo;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        st.innerHTML = '<span class="gen-ok">✓ Baixada — pronta pra anexar.</span>';
+      } catch (e) {
+        st.innerHTML = '<span class="gen-err">✗ ' + (e.message || e) + '</span>';
+      }
+    });
+
+    document.getElementById('envCopiar').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(document.getElementById('envMsg').value);
+        document.getElementById('envStatus').innerHTML = '<span class="gen-ok">✓ Mensagem copiada.</span>';
+      } catch {
+        document.getElementById('envStatus').innerHTML = '<span class="gen-err">Não deu pra copiar — seleciona e copia na mão.</span>';
+      }
+    });
+
+    document.getElementById('envWhats').addEventListener('click', () => {
+      const dig = document.getElementById('envDestino').value.replace(/\D/g, '');
+      if (dig.length < 10) {
+        document.getElementById('envStatus').innerHTML = '<span class="gen-err">O destino não parece um WhatsApp válido.</span>';
+        return;
+      }
+      const num = dig.length <= 11 ? '55' + dig : dig;
+      window.open('https://wa.me/' + num + '?text=' + encodeURIComponent(document.getElementById('envMsg').value), '_blank');
+    });
+
+    document.getElementById('envMarcar').addEventListener('click', async () => {
+      if (!envCtx) return;
+      const btn = document.getElementById('envMarcar');
+      btn.disabled = true;
+      const payload = {
+        enviado_em: new Date().toISOString(),
+        enviado_por: user ? user.email : null,
+        enviado_para: document.getElementById('envDestino').value.trim() || null
+      };
+      const { error } = await supabase.from('guias_arquivadas').update(payload).eq('id', envCtx.g.id);
+      btn.disabled = false;
+      if (error) { document.getElementById('envStatus').innerHTML = '<span class="gen-err">✗ ' + error.message + '</span>'; return; }
+      Object.assign(envCtx.g, payload);
+      renderGuias();
+      fecharEnvio();
+    });
 
     const gdDrop = document.getElementById('gdDrop');
     const gdFile = document.getElementById('gdFile');
@@ -906,7 +1051,7 @@
       { el: '.fa-focus', titulo: 'Os números do motor', texto: 'Regras ativas, vínculos, clientes e quantas tarefas o mês selecionado já gerou. O último cartão é clicável e abre o módulo Tarefas.' },
       { el: '#segVisao', titulo: 'Duas formas de olhar', texto: 'Por obrigação: quem está em cada rotina. Por cliente: tudo que uma empresa tem. A busca se adapta à visão.' },
       { el: '#busca', titulo: 'Busca esperta', texto: 'Funciona sem acento: "situacao" acha "Situação". Vale nas duas visões.' },
-      { el: '.obr-item', titulo: 'Cada obrigação é uma caixa', texto: 'Clique pra abrir e ver os clientes. Dentro: responsável e dia são editáveis no clique, o switch liga/desliga o vínculo, o + vincula gente nova — e clicar no NOME do cliente abre o arquivamento de guias no Drive.' },
+      { el: '.obr-item', titulo: 'Cada obrigação é uma caixa', texto: 'Clique pra abrir e ver os clientes. Dentro: responsável e dia são editáveis no clique, o switch liga/desliga o vínculo, o + vincula gente nova — e clicar no NOME do cliente abre o arquivamento e o envio de guias.' },
       { el: '#btnRenomear', titulo: 'Renomear em lote', texto: 'Troca um responsável por outro em todos os vínculos de uma vez — com opção de atualizar também as tarefas pendentes.' },
       { el: '#mesRef', titulo: 'Mês de referência', texto: 'Define pra qual mês o motor vai trabalhar. Obrigações sazonais só aparecem quando a janela delas abre.' },
       { el: '#btnGerar', titulo: 'Gerar rotinas do mês', texto: 'Sempre mostra o plano antes: o que vai criar e o que já existe. Nada é criado sem confirmação — e rodar de novo não duplica.' }
