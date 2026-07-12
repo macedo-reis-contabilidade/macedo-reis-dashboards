@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tarefas · IRPF — Macedo & Reis</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip"><div class="user-avatar" id="userAvatar">—</div><span id="userName">Carregando…</span></div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <a href="irpf.html">IRPF</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Tarefas</span>
+        </div>
+        <div class="eyebrow">Controle de tarefas</div>
+        <h1>Tarefas</h1>
+        <p>Tarefas do setor agrupadas por tipo. Use a faixa de foco para ver o que vence e abra cada grupo para trabalhar em lote.</p>
+      </div>
+
+      <div class="fa-focus">
+        <button class="fa-focus-card fc-danger" data-periodo="atrasadas"><span class="fc-num" id="cAtras">0</span><span class="fc-lbl">Atrasadas</span></button>
+        <button class="fa-focus-card" data-periodo="hoje"><span class="fc-num" id="cHoje">0</span><span class="fc-lbl">Vencem hoje</span></button>
+        <button class="fa-focus-card" data-periodo="7dias"><span class="fc-num" id="c7">0</span><span class="fc-lbl">Próximos 7 dias</span></button>
+        <button class="fa-focus-card is-active" data-periodo="mes"><span class="fc-num" id="cMes">0</span><span class="fc-lbl">Este mês</span></button>
+        <button class="fa-focus-card" data-periodo="todas"><span class="fc-num" id="cTodas">0</span><span class="fc-lbl">Todas</span></button>
+      </div>
+
+      <div class="toolbar">
+        <div class="toolbar-filters">
+          <input type="text" id="searchInput" class="input input-search" placeholder="Buscar por tarefa ou cliente…">
+          <select id="filterStatus" class="select fa-sel">
+            <option value="afazer">A fazer</option>
+            <option value="concluida">Concluídas</option>
+            <option value="todas">Todas</option>
+          </select>
+          <select id="filterResp" class="select fa-sel">
+            <option value="">Todos os responsáveis</option>
+          </select>
+        </div>
+        <div class="fa-toolbar-actions">
+          <button class="btn btn-ghost" id="btnGerarMes">Gerar tarefas do mês</button>
+          <button class="btn btn-primary" id="btnNova">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Nova tarefa
+          </button>
+        </div>
+      </div>
+
+      <div id="grupos">
+        <div class="loading-row" style="padding:40px;text-align:center;"><span class="spinner"></span>Carregando tarefas…</div>
+      </div>
+    </main>
+  </div>
+
+  <div class="fa-modal-overlay" id="modalOverlay">
+    <div class="fa-modal">
+      <div class="fa-modal-head"><h3>Nova tarefa</h3><button class="fa-modal-close" id="modalClose">&times;</button></div>
+      <div class="fa-modal-body">
+        <label class="fa-field"><span>Título *</span><input type="text" id="fTitulo" class="input" placeholder="Ex.: Processar folha de maio"></label>
+        <label class="fa-field"><span>Cliente</span><select id="fCliente" class="select"><option value="">— Sem cliente (interna) —</option></select></label>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Responsável</span><input type="text" id="fResponsavel" class="input" placeholder="Ex.: Thalia"></label>
+          <label class="fa-field"><span>Prazo</span><input type="date" id="fPrazo" class="input"></label>
+        </div>
+        <label class="fa-field"><span>Prioridade</span><select id="fPrioridade" class="select"><option value="media">Média</option><option value="alta">Alta</option><option value="baixa">Baixa</option></select></label>
+        <label class="fa-field"><span>Descrição</span><textarea id="fDescricao" class="input" rows="3" placeholder="Detalhes da tarefa (opcional)"></textarea></label>
+      </div>
+      <div class="fa-modal-foot"><button class="btn btn-ghost" id="btnCancelar">Cancelar</button><button class="btn btn-primary" id="btnSalvar">Salvar tarefa</button></div>
+    </div>
+  </div>
+
+  <div class="fa-modal-overlay" id="detOverlay">
+    <div class="fa-modal" style="max-width:560px;">
+      <div class="fa-modal-head"><h3 id="dTipo">Tarefa</h3><button class="fa-modal-close" id="detClose">&times;</button></div>
+      <div class="fa-modal-body">
+        <div class="alv-conc-banner" id="dConcBanner" style="display:none;"></div>
+        <div class="det-empresa"><span>Cliente</span><strong id="dEmpresa"></strong></div>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Responsável</span><input type="text" id="dResp" class="input"></label>
+          <label class="fa-field"><span>Prazo</span><input type="date" id="dPrazo" class="input"></label>
+        </div>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Prioridade</span><select id="dPrioridade" class="select"><option value="media">Média</option><option value="alta">Alta</option><option value="baixa">Baixa</option></select></label>
+          <label class="fa-field" id="dStatusWrap"><span>Status</span><select id="dStatus" class="select"><option value="pendente">Pendente</option><option value="em_andamento">Em andamento</option></select></label>
+        </div>
+        <label class="fa-field"><span>Descrição</span><textarea id="dDescricao" class="input" rows="2"></textarea></label>
+        <div><button class="btn btn-primary btn-sm" id="dSalvar">Salvar alterações</button></div>
+        <hr class="alv-hr">
+        <div class="alv-tl-head">Linha do tempo</div>
+        <label class="fa-field"><span>Registrar andamento</span><textarea id="dNovoAnd" class="input" rows="2" placeholder="Ex.: Cliente enviou informe de rendimentos; falta recibo médico…"></textarea></label>
+        <div><button class="btn btn-primary btn-sm" id="dAddAnd">Adicionar andamento</button></div>
+        <div class="tl" id="dTimeline"></div>
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-danger" id="dExcluir" style="margin-right:auto;">Excluir</button>
+        <button class="btn btn-ghost" id="dBtnReabrir" style="display:none;">Reabrir</button>
+        <button class="btn btn-primary" id="dBtnConcluir">Concluir tarefa</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { formatDate } from './assets/js/utils.js';
+
+    const SETOR = 'irpf';
+    const elGrupos = document.getElementById('grupos');
+    const searchInput = document.getElementById('searchInput');
+    const filterStatus = document.getElementById('filterStatus');
+    const filterResp = document.getElementById('filterResp');
+
+    let tarefas = [];
+    let usuarioEmail = null;
+    let periodo = 'mes';
+    let gruposAbertos = new Set();
+
+    function pad(n){ return String(n).padStart(2,'0'); }
+    function toYMD(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+    const hojeD = new Date(); hojeD.setHours(0,0,0,0);
+    const hojeStr = toYMD(hojeD);
+    const em7D = new Date(hojeD); em7D.setDate(em7D.getDate()+7);
+    const em7Str = toYMD(em7D);
+    const anoMes = hojeStr.slice(0,7);
+
+    (async () => {
+      const user = await getCurrentUser();
+      if (user) {
+        usuarioEmail = user.email;
+        const n = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário';
+        document.getElementById('userName').textContent = n;
+        document.getElementById('userAvatar').textContent = n.charAt(0).toUpperCase();
+      }
+      await carregarClientesSelect();
+      await carregarTarefas();
+    })();
+
+    document.getElementById('btnLogout').addEventListener('click', signOut);
+
+    document.querySelectorAll('.fa-focus-card').forEach(c => c.addEventListener('click', () => {
+      periodo = c.dataset.periodo;
+      document.querySelectorAll('.fa-focus-card').forEach(x => x.classList.toggle('is-active', x === c));
+      render();
+    }));
+
+    const overlay = document.getElementById('modalOverlay');
+    document.getElementById('btnNova').addEventListener('click', () => overlay.classList.add('is-open'));
+    document.getElementById('modalClose').addEventListener('click', fecharModal);
+    document.getElementById('btnCancelar').addEventListener('click', fecharModal);
+    overlay.addEventListener('click', e => { if (e.target === overlay) fecharModal(); });
+    function fecharModal(){ overlay.classList.remove('is-open'); ['fTitulo','fCliente','fResponsavel','fPrazo','fDescricao'].forEach(id=>document.getElementById(id).value=''); document.getElementById('fPrioridade').value='media'; }
+
+    async function carregarClientesSelect() {
+      const { data } = await supabase.from('clientes').select('id, nome_principal').order('nome_principal');
+      const sel = document.getElementById('fCliente');
+      (data || []).forEach(c => { const o=document.createElement('option'); o.value=c.id; o.textContent=c.nome_principal; sel.appendChild(o); });
+    }
+
+    document.getElementById('btnSalvar').addEventListener('click', async () => {
+      const titulo = document.getElementById('fTitulo').value.trim();
+      if (!titulo) { alert('Informe o título da tarefa.'); return; }
+      const novo = {
+        setor: SETOR, titulo,
+        cliente_id: document.getElementById('fCliente').value || null,
+        responsavel: document.getElementById('fResponsavel').value.trim() || null,
+        prazo: document.getElementById('fPrazo').value || null,
+        prioridade: document.getElementById('fPrioridade').value,
+        descricao: document.getElementById('fDescricao').value.trim() || null,
+        origem: 'avulsa', status: 'pendente'
+      };
+      const { data: ins, error } = await supabase.from('tarefas').insert(novo).select('id').single();
+      if (error) { alert('Erro ao salvar: ' + error.message); return; }
+      if (ins) await supabase.from('tarefa_historico').insert({ tarefa_id: ins.id, descricao: 'Tarefa cadastrada.', autor: usuarioEmail });
+      fecharModal();
+      await carregarTarefas();
+    });
+
+    document.getElementById('btnGerarMes').addEventListener('click', gerarTarefasDoMes);
+    async function gerarTarefasDoMes() {
+      const { data: regras } = await supabase.from('tarefas_recorrentes').select('*').eq('setor', SETOR).eq('ativo', true).eq('periodicidade', 'mensal');
+      if (!regras || !regras.length) { alert('Não há regras mensais cadastradas. Crie regras na aba Tarefas recorrentes.'); return; }
+      const { data: existentes } = await supabase.from('tarefas').select('regra_id').eq('setor', SETOR).eq('competencia', anoMes).not('regra_id', 'is', null);
+      const jaTem = new Set((existentes || []).map(t => t.regra_id));
+      const novas = [];
+      for (const r of regras) {
+        if (jaTem.has(r.id)) continue;
+        let prazo = r.dia_vencimento ? (anoMes + '-' + pad(r.dia_vencimento)) : null;
+        novas.push({ cliente_id: r.cliente_id, setor: SETOR, titulo: r.titulo, responsavel: r.responsavel, prazo, status: 'pendente', prioridade: 'media', origem: 'recorrente', regra_id: r.id, competencia: anoMes });
+      }
+      if (!novas.length) { alert('As tarefas mensais deste mês já foram geradas.'); return; }
+      const { error } = await supabase.from('tarefas').insert(novas);
+      if (error) { alert('Erro ao gerar: ' + error.message); return; }
+      alert(novas.length + ' tarefa(s) gerada(s) para ' + anoMes + '.');
+      await carregarTarefas();
+    }
+
+    async function carregarTarefas() {
+      const { data, error } = await supabase.from('tarefas').select('*, clientes(nome_principal)').eq('setor', SETOR).order('prazo', { ascending: true, nullsFirst: false });
+      if (error) { elGrupos.innerHTML = '<div style="text-align:center;color:var(--danger);padding:40px;">Erro ao carregar: ' + error.message + '</div>'; return; }
+      tarefas = data || [];
+      // popular responsáveis
+      const resps = [...new Set(tarefas.map(t => t.responsavel).filter(Boolean))].sort();
+      const cur = filterResp.value;
+      filterResp.innerHTML = '<option value="">Todos os responsáveis</option>' + resps.map(r => '<option value="'+escapeAttr(r)+'">'+escapeHtml(r)+'</option>').join('');
+      filterResp.value = cur;
+      render();
+    }
+
+    function noPeriodo(t){
+      if (periodo === 'todas') return true;
+      if (periodo === 'atrasadas') return t.prazo && t.prazo < hojeStr && t.status !== 'concluida';
+      if (periodo === 'hoje') return t.prazo === hojeStr;
+      if (periodo === '7dias') return t.prazo && t.prazo >= hojeStr && t.prazo <= em7Str;
+      if (periodo === 'mes') return !t.prazo || t.prazo.slice(0,7) === anoMes;
+      return true;
+    }
+    function noStatus(t){
+      const v = filterStatus.value;
+      if (v === 'concluida') return t.status === 'concluida';
+      if (v === 'todas') return true;
+      return t.status !== 'concluida';
+    }
+    function noResp(t){ const v = filterResp.value; return !v || t.responsavel === v; }
+    function noBusca(t){ const s = searchInput.value.toLowerCase().trim(); if(!s) return true; return (t.titulo+' '+(t.clientes?.nome_principal||'')+' '+(t.responsavel||'')).toLowerCase().includes(s); }
+
+    function atualizarFoco(){
+      const af = tarefas.filter(t => t.status !== 'concluida');
+      document.getElementById('cAtras').textContent = af.filter(t => t.prazo && t.prazo < hojeStr).length;
+      document.getElementById('cHoje').textContent = af.filter(t => t.prazo === hojeStr).length;
+      document.getElementById('c7').textContent = af.filter(t => t.prazo && t.prazo >= hojeStr && t.prazo <= em7Str).length;
+      document.getElementById('cMes').textContent = af.filter(t => !t.prazo || t.prazo.slice(0,7) === anoMes).length;
+      document.getElementById('cTodas').textContent = af.length;
+    }
+
+    function render() {
+      atualizarFoco();
+      const vis = tarefas.filter(t => noPeriodo(t) && noStatus(t) && noResp(t) && noBusca(t));
+
+      if (vis.length === 0) {
+        elGrupos.innerHTML = '<div class="empty-state" style="padding:48px 24px;">'+
+          '<svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>'+
+          '<h3>'+(tarefas.length===0?'Nenhuma tarefa ainda':'Nada neste recorte')+'</h3>'+
+          '<p>'+(tarefas.length===0?'Crie uma tarefa avulsa ou gere as recorrentes do mês.':'Ajuste a faixa de foco, o filtro ou a busca.')+'</p></div>';
+        return;
+      }
+
+      // agrupar por titulo
+      const grupos = {};
+      vis.forEach(t => { (grupos[t.titulo] = grupos[t.titulo] || []).push(t); });
+      // ordenar grupos pelo prazo mais próximo
+      const ordenados = Object.keys(grupos).sort((a,b) => {
+        const pa = menorPrazo(grupos[a]), pb = menorPrazo(grupos[b]);
+        if (!pa) return 1; if (!pb) return -1; return pa < pb ? -1 : 1;
+      });
+
+      elGrupos.innerHTML = ordenados.map(titulo => {
+        const itens = grupos[titulo];
+        const total = itens.length;
+        const concl = itens.filter(t => t.status === 'concluida').length;
+        const prazos = [...new Set(itens.map(t => t.prazo).filter(Boolean))];
+        let prazoLbl = '';
+        if (prazos.length === 1) prazoLbl = '· vence ' + formatDate(prazos[0]);
+        else if (prazos.length > 1) prazoLbl = '· vários prazos';
+        const aberto = gruposAbertos.has(titulo) ? 'open' : '';
+        const linhas = itens.map(t => {
+          const atrasada = t.prazo && t.prazo < hojeStr && t.status !== 'concluida';
+          const cli = t.clientes?.nome_principal ? escapeHtml(t.clientes.nome_principal) : '<span style="color:#6B7385">Interna</span>';
+          return '<tr class="fa-row-proc '+(t.status==='concluida'?'fa-row-done':'')+'" data-id="'+t.id+'">'+
+            '<td data-label="Cliente">'+cli+'</td>'+
+            '<td data-label="Responsável">'+(t.responsavel?escapeHtml(t.responsavel):'—')+'</td>'+
+            '<td data-label="Prazo">'+(t.prazo?'<span class="'+(atrasada?'fa-atrasada':'')+'">'+formatDate(t.prazo)+'</span>':'—')+'</td>'+
+            '<td data-label="Status">'+statusPill(t.status)+'</td></tr>';
+        }).join('');
+        return '<details class="fa-grupo" '+aberto+' data-titulo="'+escapeAttr(titulo)+'">'+
+          '<summary class="fa-grupo-head">'+
+            '<svg class="fa-grupo-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>'+
+            '<span class="fa-grupo-nome">'+escapeHtml(titulo)+'</span>'+
+            '<span class="fa-grupo-meta">'+total+(total>1?' empresas ':' tarefa ')+prazoLbl+'</span>'+
+            '<span class="fa-grupo-prog">'+concl+'/'+total+'</span>'+
+          '</summary>'+
+          '<div class="fa-grupo-body"><table class="table"><tbody>'+linhas+'</tbody></table></div>'+
+        '</details>';
+      }).join('');
+
+      elGrupos.querySelectorAll('details.fa-grupo').forEach(d => {
+        d.addEventListener('toggle', () => { if (d.open) gruposAbertos.add(d.dataset.titulo); else gruposAbertos.delete(d.dataset.titulo); });
+      });
+      elGrupos.querySelectorAll('tr.fa-row-proc').forEach(tr => {
+        tr.addEventListener('click', () => abrirDetalhe(tr.dataset.id));
+      });
+    }
+
+    function menorPrazo(itens){ const ps = itens.map(t=>t.prazo).filter(Boolean).sort(); return ps[0] || ''; }
+    function statusCls(s){ return s==='pendente'?'st-pend':(s==='em_andamento'?'st-and':'st-ok'); }
+    const STATUS_LBL = { pendente:'Pendente', em_andamento:'Em andamento', concluida:'Concluído' };
+    function statusPill(s){
+      if (s==='concluida') return '<span class="pill pill-ok">Concluído</span>';
+      if (s==='em_andamento') return '<span class="pill pill-and">Em andamento</span>';
+      return '<span class="pill pill-pend">Pendente</span>';
+    }
+    function fmtDataHora(iso){ if(!iso) return ''; const d=new Date(iso); return d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }
+    function escapeHtml(t){ return String(t==null?'':t).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
+    function escapeAttr(t){ return String(t==null?'':t).replace(/"/g,'&quot;'); }
+
+    // ===== Detalhe da tarefa (linha do tempo) =====
+    const detOverlay = document.getElementById('detOverlay');
+    let procAtual = null;
+
+    document.getElementById('detClose').addEventListener('click', fecharDetalhe);
+    detOverlay.addEventListener('click', e => { if (e.target === detOverlay) fecharDetalhe(); });
+    document.getElementById('dAddAnd').addEventListener('click', addAndamento);
+    document.getElementById('dSalvar').addEventListener('click', salvarDetalhe);
+    document.getElementById('dBtnConcluir').addEventListener('click', concluirProc);
+    document.getElementById('dBtnReabrir').addEventListener('click', reabrirProc);
+    document.getElementById('dExcluir').addEventListener('click', excluirProc);
+
+    function fecharDetalhe(){ detOverlay.classList.remove('is-open'); procAtual = null; document.getElementById('dNovoAnd').value = ''; }
+
+    async function abrirDetalhe(id){
+      const t = tarefas.find(x => x.id === id);
+      if (!t) return;
+      procAtual = t;
+      const concl = t.status === 'concluida';
+      document.getElementById('dTipo').textContent = t.titulo || 'Tarefa';
+      document.getElementById('dEmpresa').textContent = t.clientes?.nome_principal || 'Sem cliente';
+      document.getElementById('dResp').value = t.responsavel || '';
+      document.getElementById('dPrazo').value = t.prazo ? String(t.prazo).slice(0,10) : '';
+      document.getElementById('dPrioridade').value = t.prioridade || 'media';
+      document.getElementById('dStatus').value = concl ? 'em_andamento' : (t.status || 'pendente');
+      document.getElementById('dDescricao').value = t.descricao || '';
+      const banner = document.getElementById('dConcBanner');
+      banner.style.display = concl ? 'block' : 'none';
+      if (concl) banner.textContent = 'Concluído em ' + fmtDataHora(t.concluida_em) + (t.concluida_por ? ' por ' + t.concluida_por : '');
+      document.getElementById('dStatusWrap').style.display = concl ? 'none' : 'flex';
+      document.getElementById('dBtnConcluir').style.display = concl ? 'none' : 'inline-flex';
+      document.getElementById('dBtnReabrir').style.display = concl ? 'inline-flex' : 'none';
+      detOverlay.classList.add('is-open');
+      await renderTimeline(id);
+    }
+
+    async function renderTimeline(id){
+      const tl = document.getElementById('dTimeline');
+      tl.innerHTML = '<div class="tl-empty">Carregando…</div>';
+      const { data } = await supabase.from('tarefa_historico').select('*').eq('tarefa_id', id).order('created_at', { ascending: false });
+      if (!data || !data.length){ tl.innerHTML = '<div class="tl-empty">Nenhum andamento ainda.</div>'; return; }
+      tl.innerHTML = data.map(h => `<div class="tl-item"><div class="tl-when">${fmtDataHora(h.created_at)}</div><div class="tl-desc">${escapeHtml(h.descricao)}</div>${h.autor ? `<div class="tl-autor">${escapeHtml(h.autor)}</div>` : ''}</div>`).join('');
+    }
+
+    async function addAndamento(){
+      const inp = document.getElementById('dNovoAnd');
+      const txt = inp.value.trim();
+      if (!txt) { alert('Escreva o andamento.'); return; }
+      const btn = document.getElementById('dAddAnd'); btn.disabled = true; btn.textContent = 'Salvando…';
+      const { error } = await supabase.from('tarefa_historico').insert({ tarefa_id: procAtual.id, descricao: txt, autor: usuarioEmail });
+      btn.disabled = false; btn.textContent = 'Adicionar andamento';
+      if (error) { alert('Erro: ' + error.message); return; }
+      inp.value = '';
+      await renderTimeline(procAtual.id);
+    }
+
+    async function salvarDetalhe(){
+      if (!procAtual) return;
+      const concl = procAtual.status === 'concluida';
+      const novoStatus = document.getElementById('dStatus').value;
+      const patch = {
+        responsavel: document.getElementById('dResp').value.trim() || null,
+        prazo: document.getElementById('dPrazo').value || null,
+        prioridade: document.getElementById('dPrioridade').value,
+        descricao: document.getElementById('dDescricao').value.trim() || null
+      };
+      if (!concl) patch.status = novoStatus;
+      const statusMudou = !concl && procAtual.status !== novoStatus;
+      const { error } = await supabase.from('tarefas').update(patch).eq('id', procAtual.id);
+      if (error) { alert('Erro ao salvar: ' + error.message); return; }
+      if (statusMudou) await supabase.from('tarefa_historico').insert({ tarefa_id: procAtual.id, descricao: 'Status alterado para: ' + STATUS_LBL[novoStatus] + '.', autor: usuarioEmail });
+      fecharDetalhe();
+      await carregarTarefas();
+    }
+
+    async function concluirProc(){
+      if (!procAtual) return;
+      if (!confirm('Concluir esta tarefa?')) return;
+      const { error } = await supabase.from('tarefas').update({ status:'concluida', concluida_em:new Date().toISOString(), concluida_por:usuarioEmail }).eq('id', procAtual.id);
+      if (error){ alert('Erro: '+error.message); return; }
+      await supabase.from('tarefa_historico').insert({ tarefa_id:procAtual.id, descricao:'Tarefa concluída.', autor:usuarioEmail });
+      fecharDetalhe();
+      await carregarTarefas();
+    }
+
+    async function reabrirProc(){
+      if (!procAtual) return;
+      const { error } = await supabase.from('tarefas').update({ status:'em_andamento', concluida_em:null, concluida_por:null }).eq('id', procAtual.id);
+      if (error){ alert('Erro: '+error.message); return; }
+      await supabase.from('tarefa_historico').insert({ tarefa_id:procAtual.id, descricao:'Tarefa reaberta.', autor:usuarioEmail });
+      fecharDetalhe();
+      await carregarTarefas();
+    }
+
+    async function excluirProc(){
+      if (!procAtual) return;
+      if (!confirm('Excluir esta tarefa e toda a sua linha do tempo? Esta ação não pode ser desfeita.')) return;
+      const { error } = await supabase.from('tarefas').delete().eq('id', procAtual.id);
+      if (error){ alert('Erro: '+error.message); return; }
+      fecharDetalhe();
+      await carregarTarefas();
+    }
+
+    searchInput.addEventListener('input', render);
+    filterStatus.addEventListener('change', render);
+    filterResp.addEventListener('change', render);
+  </script>
+
+  <style>
+    .fa-subnav { display:flex; gap:6px; margin-bottom:22px; border-bottom:1px solid rgba(255,255,255,.08); }
+    .fa-tab { padding:9px 16px; font-size:14px; color:#8A93A6; text-decoration:none; border-bottom:2px solid transparent; margin-bottom:-1px; }
+    .fa-tab:hover { color:#C5D8E8; }
+    .fa-tab.is-active { color:#C5D8E8; border-bottom-color:#5B82A6; font-weight:600; }
+
+    .fa-focus { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:22px; }
+    .fa-focus-card { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:14px 16px; cursor:pointer; text-align:left; transition:border-color .15s, background .15s; display:flex; flex-direction:column; gap:4px; }
+    .fa-focus-card:hover { border-color:rgba(138,174,200,.4); }
+    .fa-focus-card.is-active { border-color:#5B82A6; background:rgba(91,130,166,.10); }
+    .fc-num { font-size:24px; font-weight:700; color:#E6EBF2; line-height:1; }
+    .fc-lbl { font-size:12px; color:#8A93A6; }
+    .fa-focus-card.fc-danger .fc-num { color:#E06C6C; }
+
+    .fa-sel { max-width:200px; }
+    .fa-toolbar-actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+
+    .fa-grupo { background:rgba(255,255,255,.025); border:1px solid rgba(255,255,255,.08); border-radius:14px; margin-bottom:10px; overflow:hidden; }
+    .fa-grupo-head { display:flex; align-items:center; gap:12px; padding:14px 18px; cursor:pointer; list-style:none; user-select:none; }
+    .fa-grupo-head::-webkit-details-marker { display:none; }
+    .fa-grupo-chev { color:#8A93A6; transition:transform .15s; flex:none; }
+    .fa-grupo[open] .fa-grupo-chev { transform:rotate(90deg); }
+    .fa-grupo-nome { font-weight:600; color:#E6EBF2; font-size:15px; }
+    .fa-grupo-meta { color:#8A93A6; font-size:13px; flex:1; }
+    .fa-grupo-prog { color:#8AAEC8; font-size:13px; font-variant-numeric:tabular-nums; background:rgba(91,130,166,.12); border:1px solid rgba(91,130,166,.25); border-radius:999px; padding:2px 10px; }
+    .fa-grupo-body { border-top:1px solid rgba(255,255,255,.06); padding:4px 6px 8px; }
+    .fa-grupo-body .table { margin:0; }
+    .fa-grupo-body .table td { padding:9px 12px; }
+
+    .fa-atrasada { color:#E06C6C; font-weight:600; }
+    .fa-row-done { opacity:.5; }
+    .fa-status-sel { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.14); color:#D7DEE8; border-radius:8px; padding:5px 10px; font-size:13px; cursor:pointer; }
+    .fa-status-sel.st-pend { color:#E3B341; border-color:rgba(227,179,65,.4); }
+    .fa-status-sel.st-and { color:#8AAEC8; border-color:rgba(91,130,166,.45); }
+    .fa-status-sel.st-ok { color:#3FB07A; border-color:rgba(63,176,122,.45); }
+    .fa-row-proc { cursor:pointer; transition:background .12s; }
+    .fa-row-proc:hover { background:rgba(255,255,255,.04); }
+    .pill { display:inline-block; font-size:11px; font-weight:600; border-radius:999px; padding:3px 10px; }
+    .pill-pend { color:#E3B341; background:rgba(227,179,65,.14); border:1px solid rgba(227,179,65,.3); }
+    .pill-and { color:#8AAEC8; background:rgba(91,130,166,.14); border:1px solid rgba(91,130,166,.3); }
+    .pill-ok { color:#3FB07A; background:rgba(63,176,122,.14); border:1px solid rgba(63,176,122,.3); }
+    .det-empresa { display:flex; flex-direction:column; gap:2px; }
+    .det-empresa span { font-size:13px; color:#8AAEC8; }
+    .det-empresa strong { color:#E6EBF2; font-size:15px; }
+    .alv-conc-banner { background:rgba(63,176,122,.12); border:1px solid rgba(63,176,122,.35); color:#3FB07A; border-radius:10px; padding:8px 12px; font-size:13px; }
+    .alv-hr { border:none; border-top:1px solid rgba(255,255,255,.08); margin:8px 0 2px; }
+    .alv-tl-head { font-weight:600; color:#E6EBF2; font-size:15px; }
+    .tl { display:flex; flex-direction:column; gap:0; margin-top:8px; }
+    .tl-item { position:relative; padding:0 0 16px 22px; border-left:2px solid rgba(255,255,255,.10); }
+    .tl-item:last-child { border-left-color:transparent; padding-bottom:2px; }
+    .tl-item::before { content:''; position:absolute; left:-6px; top:3px; width:10px; height:10px; border-radius:50%; background:#5B82A6; border:2px solid #141A22; }
+    .tl-when { font-size:12px; color:#8A93A6; }
+    .tl-desc { color:#E6EBF2; font-size:14px; margin-top:2px; white-space:pre-wrap; }
+    .tl-autor { font-size:12px; color:#8AAEC8; margin-top:2px; }
+    .tl-empty { color:#8A93A6; font-size:13px; }
+
+    .fa-modal-overlay { position:fixed; inset:0; background:rgba(8,12,18,.72); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
+    .fa-modal-overlay.is-open { display:flex; }
+    .fa-modal { width:100%; max-width:520px; background:#141A22; border:1px solid rgba(255,255,255,.10); border-radius:16px; overflow:hidden; }
+    .fa-modal-head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid rgba(255,255,255,.08); }
+    .fa-modal-head h3 { margin:0; color:#E6EBF2; font-size:18px; }
+    .fa-modal-close { background:none; border:none; color:#8A93A6; font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }
+    .fa-modal-close:hover { color:#E6EBF2; }
+    .fa-modal-body { padding:22px; display:flex; flex-direction:column; gap:14px; }
+    .fa-field { display:flex; flex-direction:column; gap:6px; }
+    .fa-field > span { font-size:13px; color:#8AAEC8; }
+    .fa-field-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .fa-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid rgba(255,255,255,.08); }
+    .fa-modal textarea.input { resize:vertical; font-family:inherit; }
+
+    @media (max-width:720px){ .fa-focus { grid-template-columns:repeat(2,1fr); } }
+  </style>
+</body>
+</html>
