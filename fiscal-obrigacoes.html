@@ -50,6 +50,10 @@
         <button class="btn btn-ghost" id="btnRenomear" type="button">Renomear responsável</button>
         <div class="sp"></div>
         <input type="month" id="mesRef" class="input" style="max-width:170px;">
+        <div class="seg" id="segFiltro">
+          <button type="button" data-f="pendentes" class="is-on">Pendentes do mês</button>
+          <button type="button" data-f="todos">Todos</button>
+        </div>
         <button class="btn btn-primary" id="btnGerar">Gerar rotinas do mês</button>
       </div>
 
@@ -360,6 +364,7 @@
 
     let regras = [], vinculos = [], abertas = new Set(), abertasCli = new Set(), planoAtual = null;
     let visao = 'obrigacao', clientesTodos = null, vincCtx = null;
+    let filtroMes = 'pendentes', statusMes = {};
 
     const hoje = new Date();
     document.getElementById('mesRef').value = hoje.getFullYear() + '-' + pad(hoje.getMonth() + 1);
@@ -373,8 +378,23 @@
       regras = rs || []; vinculos = vs || [];
       atualizarContadores();
       preencherRespList();
+      await carregarStatusMes();
       render();
       atualizarGeradas();
+    }
+
+    async function carregarStatusMes(){
+      statusMes = {};
+      const comp = document.getElementById('mesRef').value;
+      if (!comp) return;
+      const { data } = await supabase.from('tarefas')
+        .select('obrigacao_id, cliente_id, status')
+        .eq('competencia', comp).not('obrigacao_id', 'is', null);
+      (data || []).forEach(t => { statusMes[t.obrigacao_id + '|' + t.cliente_id] = t.status; });
+    }
+
+    function concluidoNoMes(v){
+      return statusMes[v.obrigacao_id + '|' + v.cliente_id] === 'concluida';
     }
 
     function preencherRespList(){
@@ -415,6 +435,7 @@
             <span class="nm">${esq}</span>
             <span class="dt dt-edit" data-edit="resp" data-vid="${v.id}" title="Clique para editar o responsável">${v.responsavel || '—'}</span>
             <span class="dt dt-edit" data-edit="dia" data-vid="${v.id}" title="Clique para editar o dia">dia ${v.dia_prazo_override || r.dia_prazo}${v.dia_prazo_override ? ' *' : ''}</span>
+            ${concluidoNoMes(v) ? '<span class="chip c-verde" title="Concluída no mês selecionado">✓ mês</span>' : ''}
             <label class="sw"><input type="checkbox" data-vid="${v.id}" ${v.ativo ? 'checked' : ''}><i></i></label>
           </div>`;
     }
@@ -431,8 +452,12 @@
       const vis = regras.filter(r => !q || norm(r.nome).includes(q));
       if (!vis.length) { el.innerHTML = '<p style="color:#8A93A6;">Nenhuma obrigação encontrada.</p>'; return; }
       el.innerHTML = vis.map(r => {
-        const vs = (porRegra[r.id] || []).sort((a, b) => (a.clientes?.nome_principal || '').localeCompare(b.clientes?.nome_principal || ''));
+        let vs = (porRegra[r.id] || []).sort((a, b) => (a.clientes?.nome_principal || '').localeCompare(b.clientes?.nome_principal || ''));
         const ativos = vs.filter(v => v.ativo).length;
+        if (filtroMes === 'pendentes') {
+          vs = vs.filter(v => v.ativo && !concluidoNoMes(v));
+          if (!vs.length) return '';
+        }
         const linhas = vs.map(v => linhaVinculo(v, r, 'obrigacao')).join('');
         return `
         <div class="obr-item ${abertas.has(r.id) ? 'is-open' : ''}" data-rid="${r.id}">
@@ -440,7 +465,7 @@
             <svg class="obr-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
             <span class="obr-nome">${r.nome}</span>
             <span class="obr-chips">${chipsDe(r)}</span>
-            <span class="obr-qtd"><b>${ativos}</b> vínculo${ativos === 1 ? '' : 's'}</span>
+            <span class="obr-qtd">${filtroMes === 'pendentes' ? `<b>${vs.length}</b> de ${ativos} no mês` : `<b>${ativos}</b> vínculo${ativos === 1 ? '' : 's'}`}</span>
           </div>
           <div class="obr-corpo">${linhas || '<p style="color:#8A93A6;font-size:13px;">Nenhum cliente vinculado.</p>'}
             <button class="btn-add" data-add-rid="${r.id}">+ Vincular cliente</button>
@@ -464,15 +489,19 @@
         .sort((a, b) => a[1].nome.localeCompare(b[1].nome));
       if (!lista.length) { el.innerHTML = '<p style="color:#8A93A6;">Nenhum cliente encontrado.</p>'; return; }
       el.innerHTML = lista.map(([cid, c]) => {
-        const itens = c.itens.slice().sort((a, b) => (regraDe[a.obrigacao_id]?.nome || '').localeCompare(regraDe[b.obrigacao_id]?.nome || ''));
+        let itens = c.itens.slice().sort((a, b) => (regraDe[a.obrigacao_id]?.nome || '').localeCompare(regraDe[b.obrigacao_id]?.nome || ''));
         const ativos = itens.filter(v => v.ativo).length;
+        if (filtroMes === 'pendentes') {
+          itens = itens.filter(v => v.ativo && !concluidoNoMes(v));
+          if (!itens.length) return '';
+        }
         const linhas = itens.map(v => linhaVinculo(v, regraDe[v.obrigacao_id] || { nome: '(obrigação removida)', dia_prazo: '?' }, 'cliente')).join('');
         return `
         <div class="obr-item ${abertasCli.has(cid) ? 'is-open' : ''}" data-rid="${cid}">
           <div class="obr-head" data-rid="${cid}">
             <svg class="obr-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
             <span class="obr-nome">${c.nome}</span>
-            <span class="obr-qtd"><b>${ativos}</b> obrigaç${ativos === 1 ? 'ão' : 'ões'}</span>
+            <span class="obr-qtd">${filtroMes === 'pendentes' ? `<b>${itens.length}</b> de ${ativos} no mês` : `<b>${ativos}</b> obrigaç${ativos === 1 ? 'ão' : 'ões'}`}</span>
           </div>
           <div class="obr-corpo">${linhas}
             <button class="btn-add" data-add-cid="${cid}">+ Adicionar obrigação</button>
@@ -767,6 +796,8 @@
       if (error) { alert('Erro: ' + error.message); return; }
       await supabase.from('tarefa_historico').insert({ tarefa_id: utTarefa.id, descricao: 'Tarefa concluída.', autor: user ? user.email : null });
       Object.assign(utTarefa, patch);
+      statusMes[utTarefa.obrigacao_id + '|' + utTarefa.cliente_id] = 'concluida';
+      render();
       renderUT();
       renderTimelineUT();
     });
@@ -778,6 +809,8 @@
       if (error) { alert('Erro: ' + error.message); return; }
       await supabase.from('tarefa_historico').insert({ tarefa_id: utTarefa.id, descricao: 'Tarefa reaberta.', autor: user ? user.email : null });
       Object.assign(utTarefa, patch);
+      statusMes[utTarefa.obrigacao_id + '|' + utTarefa.cliente_id] = 'em_andamento';
+      render();
       renderUT();
       renderTimelineUT();
     });
@@ -787,7 +820,9 @@
       if (!confirm('Excluir a tarefa deste mês? A guia arquivada não é afetada.')) return;
       const { error } = await supabase.from('tarefas').delete().eq('id', utTarefa.id);
       if (error) { alert('Erro: ' + error.message); return; }
+      if (guiaCtx) delete statusMes[guiaCtx.r.id + '|' + guiaCtx.v.cliente_id];
       utTarefa = null;
+      render();
       renderUT();
       atualizarGeradas();
     });
@@ -812,6 +847,8 @@
       btn.disabled = false;
       if (error) { alert('Erro: ' + error.message); return; }
       utTarefa = data;
+      statusMes[utTarefa.obrigacao_id + '|' + utTarefa.cliente_id] = 'pendente';
+      render();
       renderUT();
       renderTimelineUT();
       atualizarGeradas();
@@ -1093,7 +1130,16 @@
     document.getElementById('genFechar').addEventListener('click', fecharGen);
     genOverlay.addEventListener('click', e => { if (e.target === genOverlay) fecharGen(); });
     document.getElementById('genConfirmar').addEventListener('click', executarPlano);
-    document.getElementById('mesRef').addEventListener('change', atualizarGeradas);
+    document.getElementById('mesRef').addEventListener('change', async () => {
+      atualizarGeradas();
+      await carregarStatusMes();
+      render();
+    });
+    document.querySelectorAll('#segFiltro button').forEach(b => b.addEventListener('click', () => {
+      filtroMes = b.dataset.f;
+      document.querySelectorAll('#segFiltro button').forEach(x => x.classList.toggle('is-on', x === b));
+      render();
+    }));
     document.getElementById('busca').addEventListener('input', render);
     document.querySelectorAll('#segVisao button').forEach(b => b.addEventListener('click', () => {
       visao = b.dataset.v;
@@ -1225,6 +1271,7 @@
       { el: '.obr-item', titulo: 'Cada obrigação é uma caixa', texto: 'Clique pra abrir e ver os clientes. Dentro: responsável e dia são editáveis no clique, o switch liga/desliga o vínculo, o + vincula gente nova — e clicar no NOME do cliente abre a central da obrigação: a tarefa do mês (andamentos, concluir) + o arquivamento e envio da guia.' },
       { el: '#btnRenomear', titulo: 'Renomear em lote', texto: 'Troca um responsável por outro em todos os vínculos de uma vez — com opção de atualizar também as tarefas pendentes.' },
       { el: '#mesRef', titulo: 'Mês de referência', texto: 'Define pra qual mês o motor vai trabalhar. Obrigações sazonais só aparecem quando a janela delas abre.' },
+      { el: '#segFiltro', titulo: 'Foco no que falta', texto: 'Pendentes do mês esconde quem já foi concluído (e os vínculos desligados) — obrigação zerada some inteira. Troque pra Todos pra rever ou reabrir alguém: os feitos aparecem com o ✓ verde.' },
       { el: '#btnGerar', titulo: 'Gerar rotinas do mês', texto: 'Sempre mostra o plano antes: o que vai criar e o que já existe. Nada é criado sem confirmação — e rodar de novo não duplica.' }
     ];
     carregar().then(() => {
