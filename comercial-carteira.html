@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Carteira de clientes · Comercial — Macedo & Reis</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+  <style>
+    .dashboard-card { position:relative; transition: transform .15s ease, border-color .15s ease, background .15s ease, box-shadow .15s ease; }
+    .dashboard-card:hover { transform: translateY(-2px); border-color: rgba(138,174,200,.35); background: rgba(255,255,255,.045); box-shadow: 0 8px 24px rgba(0,0,0,.25); }
+
+    /* Cor de identidade por setor (no ícone) */
+    .seg { display:flex; border:1px solid rgba(255,255,255,.12); border-radius:10px; overflow:hidden; flex:none; }
+    .seg button { background:transparent; border:none; color:#8A93A6; font:inherit; font-size:13px; padding:8px 16px; cursor:pointer; }
+    .seg button.is-on { background:rgba(197,216,232,.18); color:#E6EBF2; }
+    .ct-bar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:16px 0; }
+    .ct-bar .input, .ct-bar select { font-size:13px; padding:7px 10px; }
+    .ct-bar select { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.12); border-radius:8px; color:#E6EBF2; font:inherit; }
+    .ct-cont { margin-left:auto; color:#8A93A6; font-size:12.5px; white-space:nowrap; }
+    .pr-tab { width:100%; border-collapse:collapse; font-size:13px; }
+    .pr-tab th { text-align:left; color:#8A93A6; font-size:11px; text-transform:uppercase; letter-spacing:.05em; padding:8px 8px; border-bottom:1px solid rgba(255,255,255,.1); }
+    .pr-tab td { padding:8px 8px; border-bottom:1px solid rgba(255,255,255,.06); vertical-align:middle; }
+    .ct-emp a { color:#E6EBF2; text-decoration:none; font-weight:600; }
+    .ct-emp a:hover { color:#C5D8E8; }
+    .ct-emp small { display:block; color:#6E7787; font-size:11px; }
+    .chip { font-size:11px; padding:3px 9px; border-radius:999px; background:rgba(91,130,166,.16); color:#8AAEC8; border:1px solid rgba(91,130,166,.35); white-space:nowrap; }
+    .chip.c-ama { background:rgba(227,179,65,.14); color:#E3B341; border-color:rgba(227,179,65,.35); }
+    .chip.c-verm { background:rgba(224,108,108,.14); color:#E06C6C; border-color:rgba(224,108,108,.35); }
+    .ed { cursor:pointer; border-bottom:1px dashed rgba(138,174,200,.35); }
+    .ed:hover { color:#C5D8E8; }
+    .ed.vazio { color:#4E5768; border-bottom-style:dotted; }
+    .input-inline { font:inherit; font-size:12.5px; padding:3px 8px; background:rgba(255,255,255,.07); border:1px solid rgba(91,130,166,.55); border-radius:6px; color:#E6EBF2; width:120px; }
+    .btn-mini { font-size:11.5px; padding:4px 10px; border-radius:8px; border:1px solid rgba(138,174,200,.4); background:transparent; color:#8AAEC8; cursor:pointer; white-space:nowrap; }
+    .btn-mini:hover { background:rgba(138,174,200,.12); }
+    .ana-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin:16px 0 22px; }
+    .ana-card { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.1); border-radius:12px; padding:14px 16px; }
+    .ana-card .num { font-size:24px; font-weight:700; color:#C5D8E8; }
+    .ana-card .num.pos { color:#3FB07A; } .ana-card .num.neg { color:#E06C6C; }
+    .ana-card .lbl { font-size:11.5px; color:#8A93A6; text-transform:uppercase; letter-spacing:.05em; margin-top:2px; }
+    .ana-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:20px; }
+    .ana-bloco h3 { font-size:13px; color:#C5D8E8; margin:6px 0 10px; text-transform:uppercase; letter-spacing:.05em; }
+    .barra { display:flex; align-items:center; gap:8px; font-size:12.5px; color:#B9C2D0; padding:3px 0; }
+    .barra .bl { flex:0 0 150px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .barra .bt { flex:1; height:8px; background:rgba(255,255,255,.06); border-radius:99px; overflow:hidden; }
+    .barra .bf { height:100%; background:linear-gradient(90deg,#5B82A6,#8AAEC8); border-radius:99px; }
+    .barra .bn { flex:0 0 34px; text-align:right; color:#8A93A6; font-size:12px; }
+    .mov-tab td, .mov-tab th { padding:5px 10px; }
+    .mov-tab .pos { color:#3FB07A; } .mov-tab .neg { color:#E06C6C; }
+    .ins-item { padding:8px 12px; border-left:3px solid #8AAEC8; background:rgba(255,255,255,.03); border-radius:0 8px 8px 0; margin-bottom:8px; font-size:13px; color:#B9C2D0; }
+    .fa-modal-overlay { position:fixed; inset:0; background:rgba(6,10,16,.7); display:none; align-items:center; justify-content:center; z-index:999; }
+    .fa-modal-overlay.is-open { display:flex; }
+    .fa-modal { background:#111A26; border:1px solid rgba(255,255,255,.12); border-radius:16px; width:min(480px,92vw); max-height:88vh; overflow:auto; }
+    .fa-modal-head { display:flex; justify-content:space-between; align-items:center; padding:14px 18px; border-bottom:1px solid rgba(255,255,255,.08); }
+    .fa-modal-head h3 { margin:0; font-size:15px; }
+    .fa-modal-close { background:none; border:none; color:#8A93A6; font-size:20px; cursor:pointer; }
+    .fa-modal-body { padding:16px 18px; }
+    .fa-modal-foot { display:flex; justify-content:flex-end; gap:8px; padding:12px 18px; border-top:1px solid rgba(255,255,255,.08); }
+    .fa-field { display:flex; flex-direction:column; gap:5px; margin-bottom:12px; font-size:12.5px; color:#8A93A6; }
+    .fa-field .input, .fa-field select { width:100%; }
+    .fa-field select { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.12); border-radius:8px; color:#E6EBF2; font:inherit; font-size:13px; padding:8px 10px; }
+    .add-res { border:1px solid rgba(255,255,255,.08); border-radius:10px; overflow:hidden; margin-top:6px; }
+    .add-res button { display:block; width:100%; text-align:left; background:transparent; border:none; border-bottom:1px solid rgba(255,255,255,.06); color:#E6EBF2; font:inherit; font-size:13px; padding:9px 12px; cursor:pointer; }
+    .add-res button:hover { background:rgba(138,174,200,.1); }
+    .add-res small { color:#6E7787; display:block; font-size:11px; }
+
+    /* Selo "hoje" (urgência do dia) — canto superior direito */
+    .badge-hoje { position:absolute; top:14px; right:14px; background:rgba(227,179,65,.18); border:1px solid rgba(227,179,65,.5); color:#E3B341; font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.04em; text-transform:uppercase; box-shadow:0 0 0 3px rgba(227,179,65,.06); }
+
+    /* Status no rodapé: backlog de tarefas abertas (ou "em dia") */
+    .badge.card-status { font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.03em; }
+    .card-status.st-open  { background:rgba(138,174,200,.14); border:1px solid rgba(138,174,200,.38); color:#B6C7DA; }
+    .card-status.st-clear { background:rgba(63,176,122,.14);  border:1px solid rgba(63,176,122,.4);  color:#5FC698; }
+    .card-status.st-load  { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); color:#8A93A6; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+
+      <div class="topbar-actions">
+        <div class="user-chip">
+          <div class="user-avatar" id="userAvatar">—</div>
+          <span id="userName">Carregando…</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <a href="comercial.html">Comercial</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Carteira de clientes</span>
+        </div>
+        <div class="eyebrow">Clientes mensais</div>
+        <h1>Carteira de clientes</h1>
+        <p>A lista viva dos clientes mensais: regime e município vêm do cadastro sozinhos; o resto edita aqui. A Análise conta a movimentação.</p>
+      </div>
+
+      <div>
+        <div style="display:flex; gap:12px; align-items:center;">
+          <div class="seg" id="ctSeg">
+            <button type="button" data-v="cart" class="is-on">Carteira</button>
+            <button type="button" data-v="ana">Análise</button>
+          </div>
+        </div>
+
+        <div id="vCart">
+          <div class="ct-bar">
+            <input type="text" id="fBusca" class="input" placeholder="Buscar razão ou fantasia…" style="min-width:220px;">
+            <select id="fRegime"><option value="">Regime: todos</option></select>
+            <select id="fMun"><option value="">Município: todos</option></select>
+            <select id="fSeg"><option value="">Segmento: todos</option></select>
+            <label style="font-size:12.5px;color:#8A93A6;display:flex;gap:6px;align-items:center;"><input type="checkbox" id="fSaidas"> incluir saídas</label>
+            <button class="btn btn-primary btn-sm" id="btnAdd" style="margin-left:auto;">+ Adicionar à carteira</button>
+            <span class="ct-cont" id="ctCont">—</span>
+          </div>
+          <table class="pr-tab"><thead><tr>
+            <th>Empresa</th><th>Regime</th><th>Município</th><th>Entrada</th><th>Segmento</th><th>Sistemas</th><th>Contato</th><th>Ramo</th><th>Saída</th>
+          </tr></thead><tbody id="ctBody"></tbody></table>
+          <div id="ctVazio" style="display:none; color:#8A93A6; text-align:center; padding:30px;">Nada encontrado com esses filtros.</div>
+        </div>
+
+        <div id="vAna" style="display:none;">
+          <div class="ct-bar">
+            <label style="font-size:12.5px;color:#8A93A6;">Movimentação do mês:</label>
+            <input type="month" id="anaMes" class="input" style="max-width:170px;">
+          </div>
+          <div class="ana-cards">
+            <div class="ana-card"><div class="num" id="cAtivos">—</div><div class="lbl">ativos na carteira</div></div>
+            <div class="ana-card"><div class="num pos" id="cEntradas">—</div><div class="lbl">entradas no mês</div></div>
+            <div class="ana-card"><div class="num neg" id="cSaidas">—</div><div class="lbl">saídas no mês</div></div>
+            <div class="ana-card"><div class="num" id="cSaldo">—</div><div class="lbl">saldo do mês</div></div>
+          </div>
+          <div class="ana-grid">
+            <div class="ana-bloco"><h3>Por regime</h3><div id="dRegime"></div></div>
+            <div class="ana-bloco"><h3>Por município</h3><div id="dMun"></div></div>
+            <div class="ana-bloco"><h3>Por segmento</h3><div id="dSeg"></div></div>
+            <div class="ana-bloco"><h3>Saídas por motivo</h3><div id="dMotivos"></div></div>
+          </div>
+          <div class="ana-grid" style="margin-top:24px;">
+            <div class="ana-bloco"><h3>Mês a mês (últimos 13)</h3>
+              <table class="pr-tab mov-tab"><thead><tr><th>Mês</th><th>Entradas</th><th>Saídas</th><th>Saldo</th><th>Carteira</th></tr></thead><tbody id="movBody"></tbody></table>
+            </div>
+            <div class="ana-bloco"><h3>Leituras automáticas</h3><div id="dInsights"></div></div>
+          </div>
+        </div>
+
+        <datalist id="segList">
+          <option>COMÉRCIO</option><option>SERVIÇO</option><option>INDÚSTRIA</option>
+          <option>COMÉRCIO + SERVIÇO</option><option>INDÚSTRIA + SERVIÇO</option>
+          <option>ASSOCIAÇÃO</option><option>PESSOA FÍSICA</option>
+        </datalist>
+
+  <div class="fa-modal-overlay" id="addOverlay">
+    <div class="fa-modal">
+      <div class="fa-modal-head"><h3>Adicionar cliente à carteira</h3><button class="fa-modal-close" id="addClose">&times;</button></div>
+      <div class="fa-modal-body">
+        <label class="fa-field"><span>Buscar no cadastro (razão ou fantasia)</span><input type="text" id="addBusca" class="input" placeholder="Digite pelo menos 3 letras…"></label>
+        <div class="add-res" id="addRes"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="fa-modal-overlay" id="saiOverlay">
+    <div class="fa-modal">
+      <div class="fa-modal-head"><h3 id="saiTitulo">Registrar saída</h3><button class="fa-modal-close" id="saiClose">&times;</button></div>
+      <div class="fa-modal-body">
+        <label class="fa-field"><span>Data da saída</span><input type="date" id="saiData" class="input"></label>
+        <label class="fa-field"><span>Motivo</span><select id="saiMotivo">
+          <option>FECHOU</option><option>INADIMPLÊNCIA</option><option>OUTRO ESCRITÓRIO</option><option>ENCERROU ATIVIDADE</option><option>OUTRO</option>
+        </select></label>
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-ghost" id="saiLimpar" style="margin-right:auto;">Limpar saída</button>
+        <button class="btn btn-ghost" id="saiCancelar">Cancelar</button>
+        <button class="btn btn-primary" id="saiSalvar">Salvar</button>
+      </div>
+    </div>
+  </div>
+            </div>
+    </main>
+  </div>
+
+  <script src="assets/js/tour.js"></script>
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    const user = await getCurrentUser();
+    if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; }
+    document.getElementById('btnLogout')?.addEventListener('click', signOut);
+
+    const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/&/g, 'e').toLowerCase();
+    const dBR = d => d ? String(d).slice(0, 10).split('-').reverse().join('/') : '';
+    const hoje = new Date();
+    const ymNow = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0');
+
+    let rows = [], filtro = { busca: '', regime: '', mun: '', seg: '', saidas: false };
+
+    async function carregar(){
+      const { data, error } = await supabase.from('carteira_info')
+        .select('*, clientes(id, nome_principal, nome_fantasia, regime_tributario, cidade, uf, status)')
+        .order('cliente_id');
+      if (error) { alert('Erro ao carregar: ' + error.message); return; }
+      rows = (data || []).filter(r => r.clientes);
+      rows.sort((a, b) => (a.clientes.nome_principal || '').localeCompare(b.clientes.nome_principal || ''));
+      rows.forEach(r => { r._busca = norm(r.clientes.nome_principal + ' ' + (r.clientes.nome_fantasia || '')); });
+      preencherFiltros();
+      render();
+      renderAnalise();
+    }
+
+    function preencherFiltros(){
+      const opt = (sel, vals) => {
+        const s = document.getElementById(sel); const atual = s.value;
+        s.innerHTML = s.options[0].outerHTML + [...vals].sort().map(v => `<option>${v}</option>`).join('');
+        s.value = atual;
+      };
+      opt('fRegime', new Set(rows.map(r => r.clientes.regime_tributario).filter(Boolean)));
+      opt('fMun', new Set(rows.map(r => r.clientes.cidade).filter(Boolean)));
+      opt('fSeg', new Set(rows.map(r => r.segmento).filter(Boolean)));
+    }
+
+    function passa(r){
+      if (!filtro.saidas && r.saida) return false;
+      if (filtro.busca && !r._busca.includes(filtro.busca)) return false;
+      if (filtro.regime && r.clientes.regime_tributario !== filtro.regime) return false;
+      if (filtro.mun && r.clientes.cidade !== filtro.mun) return false;
+      if (filtro.seg && r.segmento !== filtro.seg) return false;
+      return true;
+    }
+
+    const ed = (r, campo, val, tipo) => `<span class="ed ${val ? '' : 'vazio'}" data-ed="${campo}" data-cid="${r.cliente_id}" data-tipo="${tipo || 'texto'}">${val || '—'}</span>`;
+
+    function render(){
+      const vis = rows.filter(passa);
+      const tb = document.getElementById('ctBody');
+      document.getElementById('ctVazio').style.display = vis.length ? 'none' : 'block';
+      document.getElementById('ctCont').textContent =
+        vis.length + ' de ' + rows.filter(r => !r.saida).length + ' ativos' + (filtro.saidas ? ' (+saídas)' : '');
+      tb.innerHTML = vis.map(r => {
+        const c = r.clientes;
+        const inativo = c.status && c.status !== 'ativo';
+        return `<tr${r.saida ? ' style="opacity:.55;"' : ''}>
+          <td class="ct-emp"><a href="editar.html?id=${c.id}" target="_blank" rel="noopener">${c.nome_principal}</a>
+            ${c.nome_fantasia ? `<small>${c.nome_fantasia}</small>` : ''}${inativo ? ' <span class="chip c-ama">inativo no cadastro</span>' : ''}</td>
+          <td><span class="chip">${c.regime_tributario || '—'}</span></td>
+          <td>${c.cidade ? c.cidade : '<span class="chip c-ama" title="Preencha a cidade no cadastro do cliente">sem cidade</span>'}</td>
+          <td>${ed(r, 'entrada', dBR(r.entrada), 'data')}</td>
+          <td>${ed(r, 'segmento', r.segmento)}</td>
+          <td>${ed(r, 'sistemas', r.sistemas)}</td>
+          <td>${ed(r, 'contato', r.contato)}</td>
+          <td>${ed(r, 'ramo', r.ramo)}</td>
+          <td>${r.saida
+            ? `<span class="chip c-verm" style="cursor:pointer;" data-sai="${r.cliente_id}" title="${r.motivo_saida || ''}">✕ ${dBR(r.saida)}</span>`
+            : `<button class="btn-mini" data-sai="${r.cliente_id}">Registrar</button>`}</td>
+        </tr>`;
+      }).join('');
+      tb.querySelectorAll('[data-ed]').forEach(sp => sp.addEventListener('click', () => editarCampo(sp)));
+      tb.querySelectorAll('[data-sai]').forEach(b => b.addEventListener('click', () => abrirSaida(b.dataset.sai)));
+    }
+
+    function editarCampo(sp){
+      if (sp.querySelector('input')) return;
+      const r = rows.find(x => x.cliente_id === sp.dataset.cid);
+      const campo = sp.dataset.ed, tipo = sp.dataset.tipo;
+      const inp = document.createElement('input');
+      inp.type = tipo === 'data' ? 'date' : 'text';
+      inp.className = 'input-inline';
+      if (campo === 'segmento') inp.setAttribute('list', 'segList');
+      inp.value = tipo === 'data' ? (r[campo] ? String(r[campo]).slice(0, 10) : '') : (r[campo] || '');
+      sp.textContent = ''; sp.appendChild(inp); inp.focus();
+      let feito = false;
+      const fim = async salvar => {
+        if (feito) return; feito = true;
+        if (salvar) {
+          const novo = inp.value.trim() || null;
+          const { error } = await supabase.from('carteira_info')
+            .update({ [campo]: novo, atualizado_em: new Date().toISOString() }).eq('cliente_id', r.cliente_id);
+          if (error) alert('Erro: ' + error.message);
+          else r[campo] = novo;
+        }
+        preencherFiltros(); render(); renderAnalise();
+      };
+      inp.addEventListener('keydown', e => { if (e.key === 'Enter') fim(true); if (e.key === 'Escape') fim(false); });
+      inp.addEventListener('blur', () => fim(true));
+    }
+
+    // ---------- saída ----------
+    const saiOverlay = document.getElementById('saiOverlay');
+    let saiCid = null;
+    function abrirSaida(cid){
+      saiCid = cid;
+      const r = rows.find(x => x.cliente_id === cid);
+      document.getElementById('saiTitulo').textContent = 'Saída — ' + r.clientes.nome_principal;
+      document.getElementById('saiData').value = r.saida ? String(r.saida).slice(0, 10) : new Date().toISOString().slice(0, 10);
+      document.getElementById('saiMotivo').value = r.motivo_saida || 'FECHOU';
+      document.getElementById('saiLimpar').style.display = r.saida ? 'inline-flex' : 'none';
+      saiOverlay.classList.add('is-open');
+    }
+    const fecharSaida = () => { saiOverlay.classList.remove('is-open'); saiCid = null; };
+    document.getElementById('saiClose').addEventListener('click', fecharSaida);
+    document.getElementById('saiCancelar').addEventListener('click', fecharSaida);
+    saiOverlay.addEventListener('click', e => { if (e.target === saiOverlay) fecharSaida(); });
+    document.getElementById('saiSalvar').addEventListener('click', async () => {
+      const r = rows.find(x => x.cliente_id === saiCid);
+      const patch = { saida: document.getElementById('saiData').value || null,
+        motivo_saida: document.getElementById('saiMotivo').value, atualizado_em: new Date().toISOString() };
+      const { error } = await supabase.from('carteira_info').update(patch).eq('cliente_id', saiCid);
+      if (error) { alert('Erro: ' + error.message); return; }
+      Object.assign(r, patch); fecharSaida(); render(); renderAnalise();
+    });
+    document.getElementById('saiLimpar').addEventListener('click', async () => {
+      const r = rows.find(x => x.cliente_id === saiCid);
+      const patch = { saida: null, motivo_saida: null, atualizado_em: new Date().toISOString() };
+      const { error } = await supabase.from('carteira_info').update(patch).eq('cliente_id', saiCid);
+      if (error) { alert('Erro: ' + error.message); return; }
+      Object.assign(r, patch); fecharSaida(); render(); renderAnalise();
+    });
+
+    // ---------- adicionar ----------
+    const addOverlay = document.getElementById('addOverlay');
+    document.getElementById('btnAdd').addEventListener('click', () => {
+      document.getElementById('addBusca').value = '';
+      document.getElementById('addRes').innerHTML = '';
+      addOverlay.classList.add('is-open');
+      document.getElementById('addBusca').focus();
+    });
+    document.getElementById('addClose').addEventListener('click', () => addOverlay.classList.remove('is-open'));
+    addOverlay.addEventListener('click', e => { if (e.target === addOverlay) addOverlay.classList.remove('is-open'); });
+    let addTimer = null;
+    document.getElementById('addBusca').addEventListener('input', () => {
+      clearTimeout(addTimer);
+      addTimer = setTimeout(buscarCadastro, 300);
+    });
+    async function buscarCadastro(){
+      const t = document.getElementById('addBusca').value.trim();
+      const el = document.getElementById('addRes');
+      if (t.length < 3) { el.innerHTML = ''; return; }
+      const { data } = await supabase.from('clientes')
+        .select('id, nome_principal, nome_fantasia, regime_tributario, cidade')
+        .or(`nome_principal.ilike.*${t}*,nome_fantasia.ilike.*${t}*`)
+        .limit(8);
+      const jaIds = new Set(rows.map(r => r.cliente_id));
+      const livres = (data || []).filter(c => !jaIds.has(c.id));
+      el.innerHTML = livres.length
+        ? livres.map(c => `<button data-add="${c.id}">${c.nome_principal}
+            <small>${[c.nome_fantasia, c.regime_tributario, c.cidade].filter(Boolean).join(' · ') || '&nbsp;'}</small></button>`).join('')
+        : '<button disabled style="color:#6E7787;cursor:default;">Nada livre encontrado com esse termo.</button>';
+      el.querySelectorAll('[data-add]').forEach(b => b.addEventListener('click', async () => {
+        const { error } = await supabase.from('carteira_info').insert({ cliente_id: b.dataset.add });
+        if (error) { alert('Erro: ' + error.message); return; }
+        addOverlay.classList.remove('is-open');
+        await carregar();
+      }));
+    }
+
+    // ---------- análise ----------
+    const ymDe = d => d ? String(d).slice(0, 7) : null;
+    function renderAnalise(){
+      const mes = document.getElementById('anaMes').value || ymNow;
+      const ativos = rows.filter(r => !r.saida);
+      const entradasMes = rows.filter(r => ymDe(r.entrada) === mes).length;
+      const saidasMes = rows.filter(r => ymDe(r.saida) === mes).length;
+      document.getElementById('cAtivos').textContent = ativos.length;
+      document.getElementById('cEntradas').textContent = entradasMes;
+      document.getElementById('cSaidas').textContent = saidasMes;
+      const saldo = entradasMes - saidasMes;
+      const cS = document.getElementById('cSaldo');
+      cS.textContent = (saldo > 0 ? '+' : '') + saldo;
+      cS.className = 'num ' + (saldo > 0 ? 'pos' : saldo < 0 ? 'neg' : '');
+
+      const barras = (el, mapa, total) => {
+        const itens = Object.entries(mapa).sort((a, b) => b[1] - a[1]).slice(0, 8);
+        const max = itens[0]?.[1] || 1;
+        document.getElementById(el).innerHTML = itens.map(([k, v]) =>
+          `<div class="barra"><span class="bl" title="${k}">${k}</span><span class="bt"><span class="bf" style="width:${v / max * 100}%"></span></span><span class="bn">${v}</span></div>`
+        ).join('') || '<span style="color:#6E7787;font-size:12.5px;">Sem dados.</span>';
+      };
+      const conta = (arr, fn) => arr.reduce((m, r) => { const k = fn(r); if (k) m[k] = (m[k] || 0) + 1; return m; }, {});
+      barras('dRegime', conta(ativos, r => r.clientes.regime_tributario));
+      barras('dMun', conta(ativos, r => r.clientes.cidade));
+      barras('dSeg', conta(ativos, r => r.segmento));
+      barras('dMotivos', conta(rows.filter(r => r.saida), r => r.motivo_saida || '(sem motivo)'));
+
+      // mês a mês (últimos 13)
+      const meses = [];
+      for (let i = 12; i >= 0; i--) {
+        const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
+        meses.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'));
+      }
+      const fimDe = ym => { const [a, m] = ym.split('-').map(Number); return new Date(a, m, 0).toISOString().slice(0, 10); };
+      document.getElementById('movBody').innerHTML = meses.map(ym => {
+        const e = rows.filter(r => ymDe(r.entrada) === ym).length;
+        const s = rows.filter(r => ymDe(r.saida) === ym).length;
+        const sal = e - s;
+        const fim = fimDe(ym);
+        const cart = rows.filter(r => r.entrada && String(r.entrada).slice(0, 10) <= fim && (!r.saida || String(r.saida).slice(0, 10) > fim)).length;
+        const [a, m] = ym.split('-');
+        return `<tr><td>${m}/${a}</td><td>${e || ''}</td><td>${s || ''}</td>
+          <td class="${sal > 0 ? 'pos' : sal < 0 ? 'neg' : ''}">${sal > 0 ? '+' + sal : sal || ''}</td><td>${cart}</td></tr>`;
+      }).join('');
+
+      // leituras automáticas
+      const ins = [];
+      const munMap = conta(ativos, r => r.clientes.cidade);
+      const topMun = Object.entries(munMap).sort((a, b) => b[1] - a[1])[0];
+      if (topMun) ins.push(`<b>${topMun[0]}</b> concentra ${Math.round(topMun[1] / ativos.length * 100)}% da carteira (${topMun[1]} clientes).`);
+      const regMap = conta(ativos, r => r.clientes.regime_tributario);
+      const topReg = Object.entries(regMap).sort((a, b) => b[1] - a[1])[0];
+      if (topReg) ins.push(`Regime dominante: <b>${topReg[0]}</b> (${Math.round(topReg[1] / ativos.length * 100)}%).`);
+      const ult3 = meses.slice(-3).reduce((acc, ym) =>
+        acc + rows.filter(r => ymDe(r.entrada) === ym).length - rows.filter(r => ymDe(r.saida) === ym).length, 0);
+      ins.push(ult3 >= 0 ? `Últimos 3 meses: carteira <b>cresceu ${ult3}</b> cliente${ult3 === 1 ? '' : 's'} no líquido.`
+                         : `Últimos 3 meses: carteira <b>encolheu ${-ult3}</b> no líquido — vale olhar os motivos de saída.`);
+      const comEntrada = ativos.filter(r => r.entrada);
+      if (comEntrada.length) {
+        const anos = comEntrada.reduce((s, r) => s + (hoje - new Date(r.entrada)) / 31557600000, 0) / comEntrada.length;
+        ins.push(`Tempo médio de casa: <b>${anos.toFixed(1)} anos</b>.`);
+      }
+      const anoAtual = String(hoje.getFullYear());
+      const eYtd = rows.filter(r => r.entrada && String(r.entrada).startsWith(anoAtual)).length;
+      const sYtd = rows.filter(r => r.saida && String(r.saida).startsWith(anoAtual)).length;
+      ins.push(`Em ${anoAtual}: <b>${eYtd} entradas</b> × <b>${sYtd} saídas</b>.`);
+      document.getElementById('dInsights').innerHTML = ins.map(t => `<div class="ins-item">${t}</div>`).join('');
+    }
+
+    // ---------- visões, filtros e partida ----------
+    document.querySelectorAll('#ctSeg button').forEach(b => b.addEventListener('click', () => {
+      document.querySelectorAll('#ctSeg button').forEach(x => x.classList.toggle('is-on', x === b));
+      document.getElementById('vCart').style.display = b.dataset.v === 'cart' ? 'block' : 'none';
+      document.getElementById('vAna').style.display = b.dataset.v === 'ana' ? 'block' : 'none';
+    }));
+    document.getElementById('fBusca').addEventListener('input', e => { filtro.busca = norm(e.target.value); render(); });
+    ['fRegime', 'fMun', 'fSeg'].forEach(id => document.getElementById(id).addEventListener('change', e => {
+      filtro[id === 'fRegime' ? 'regime' : id === 'fMun' ? 'mun' : 'seg'] = e.target.value; render();
+    }));
+    document.getElementById('fSaidas').addEventListener('change', e => { filtro.saidas = e.target.checked; render(); });
+    document.getElementById('anaMes').value = ymNow;
+    document.getElementById('anaMes').addEventListener('change', renderAnalise);
+
+    carregar().then(() => {
+      if (window.MRTour) MRTour.iniciar([
+        { el: '#ctSeg', titulo: 'Duas visões', texto: 'Carteira é a lista viva; Análise é a leitura estratégica — distribuições, movimentação e comparativo mês a mês.' },
+        { el: '#ctBody', titulo: 'Lista viva', texto: 'Regime e município vêm do cadastro sozinhos (mudou lá, muda aqui). Os demais campos: clique, edite, Enter. O nome abre o cadastro completo.' },
+        { el: '#btnAdd', titulo: 'Cliente novo', texto: 'Busca por razão OU fantasia no cadastro e adiciona à carteira com um clique.' },
+        { el: '#fSaidas', titulo: 'Saídas', texto: 'Cliente que saiu: Registrar na última coluna (data + motivo). Ele sai da lista padrão mas segue contando a história na Análise.' }
+      ], 'carteira_v1', new URLSearchParams(location.search).has('tour'), user ? (user.id || user.email) : '');
+    });
+  </script>
+</body>
+</html>
