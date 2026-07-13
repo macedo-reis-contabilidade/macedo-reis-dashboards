@@ -14,7 +14,6 @@
     a[href="fiscal-tarefas.html"]     .dashboard-card-icon { background: rgba(138,174,200,.16); color:#8AAEC8; }
     a[href="fiscal-obrigacoes.html"] .dashboard-card-icon { background: rgba(63,176,122,.15);  color:#3FB07A; }
     a[href="fiscal-clientes.html"]   .dashboard-card-icon { background: rgba(133,151,224,.15); color:#8597E0; }
-    a[href="fiscal-regras.html"]     .dashboard-card-icon { background: rgba(164,143,224,.15); color:#A48FE0; }
     a[href="fiscal-relatorios.html"] .dashboard-card-icon { background: rgba(227,179,65,.15);  color:#E3B341; }
     a[href="fiscal-sugestoes.html"]  .dashboard-card-icon { background: rgba(224,143,168,.15); color:#E08FA8; }
 
@@ -85,15 +84,6 @@
           <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="fiscal-clientes.html">·</span></div>
         </a>
 
-        <a href="fiscal-regras.html" class="dashboard-card">
-          <div class="dashboard-card-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-          </div>
-          <h3>Tarefas recorrentes</h3>
-          <p>Regras simples de repetição mensal geradas a partir das análises.</p>
-          <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="fiscal-regras.html">·</span></div>
-        </a>
-
         <a href="fiscal-relatorios.html" class="dashboard-card">
           <div class="dashboard-card-icon">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
@@ -134,7 +124,7 @@
       try {
         const { count: abertas } = await supabase.from('tarefas')
           .select('id', { count: 'exact', head: true })
-          .eq('setor', 'fiscal').neq('status', 'concluida');
+          .eq('setor', 'fiscal').is('obrigacao_id', null).neq('status', 'concluida');
         setBadge('fiscal-tarefas.html', (abertas ?? 0) + ' abertas');
 
         const { count: vinc } = await supabase.from('cliente_obrigacoes')
@@ -143,14 +133,14 @@
 
         const { count: hoje } = await supabase.from('tarefas')
           .select('id', { count: 'exact', head: true })
-          .eq('setor', 'fiscal').eq('prazo', new Date().toISOString().slice(0,10)).neq('status', 'concluida');
+          .eq('setor', 'fiscal').eq('prazo', new Date().toISOString().slice(0,10)).is('obrigacao_id', null).neq('status', 'concluida');
         if (hoje) {
           const card = document.querySelector('a[href="fiscal-tarefas.html"]');
           const pill = document.createElement('span');
           pill.className = 'badge-hoje'; pill.textContent = hoje + ' hoje';
           card.appendChild(pill);
         }
-        ['fiscal-clientes.html','fiscal-regras.html','fiscal-relatorios.html','fiscal-sugestoes.html']
+        ['fiscal-clientes.html','fiscal-relatorios.html','fiscal-sugestoes.html']
           .forEach(h => setBadge(h, '—'));
       } catch (e) { console.error(e); }
     }

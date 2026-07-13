@@ -141,6 +141,8 @@
     .tl-desc { color:#E6EBF2; font-size:14px; margin-top:2px; white-space:pre-wrap; }
     .tl-autor { font-size:12px; color:#8AAEC8; margin-top:2px; }
     .tl-empty { color:#8A93A6; font-size:13px; }
+    .ag-semprazo { margin-bottom: 16px; }
+    .ag-semprazo .ag-dia-secao { color:#E3B341; }
   </style>
 </head>
 <body>
@@ -190,6 +192,8 @@
           <select id="fResp" class="select"><option value="">Todos os responsáveis</option></select>
         </div>
       </div>
+
+      <div class="ag-semprazo" id="agSemPrazo"></div>
 
       <div id="agConteudo">
         <div class="ag-vazio"><span class="spinner"></span> Carregando…</div>
@@ -307,6 +311,7 @@
     let cacheTarefas = [];
     let cacheRotinas = [];
     let cacheProximos = [];
+    let cacheSemPrazo = [];
     let resumoTimer = null;
     async function carregarDados(ini, fim){
       const iniS = ymd(ini), fimS = ymd(fim);
@@ -316,6 +321,10 @@
       cacheTarefas = ts || [];
       const { data: rs } = await supabase.from('rotinas').select('*').eq('ativo', true);
       cacheRotinas = rs || [];
+      const { data: sp } = await supabase.from('tarefas')
+        .select('id, titulo, setor, responsavel, prazo, status, prioridade, cliente_id, clientes(nome_principal), concluida_em, concluida_por')
+        .is('prazo', null).neq('status', 'concluida');
+      cacheSemPrazo = sp || [];
     }
     // próximos prazos (após hoje), para o slide do resumo — independe do dia exibido
     async function carregarProximos(){
@@ -335,7 +344,30 @@
     }
 
     // ---- render: roteador ----
+    function renderSemPrazo(){
+      const el = document.getElementById('agSemPrazo');
+      if (!el) return;
+      const itens = cacheSemPrazo.filter(passaFiltro)
+        .sort((a, b) => (PRIO_ORDEM[norm(a.prioridade)] ?? 1) - (PRIO_ORDEM[norm(b.prioridade)] ?? 1));
+      if (!itens.length) { el.innerHTML = ''; return; }
+      let html = `<div class="ag-dia-secao">⚠ Sem prazo definido <span class="cont">${itens.length}</span></div>`;
+      itens.forEach(t => {
+        const cli = t.clientes?.nome_principal ? `<span>${esc(t.clientes.nome_principal)}</span><span class="sep">·</span>` : '';
+        const resp = t.responsavel ? `<span>${esc(t.responsavel)}</span>` : '';
+        html += `<div class="ag-card ${classePrio(t.prioridade)}" data-sptask="${t.id}">
+          <div class="ag-card-main">
+            <div class="ag-card-titulo">${esc(t.titulo) || '(sem título)'}</div>
+            <div class="ag-card-meta">${chip(t.setor)} ${cli} ${resp}</div>
+          </div>
+        </div>`;
+      });
+      el.innerHTML = html;
+      el.querySelectorAll('[data-sptask]').forEach(card =>
+        card.addEventListener('click', () => abrirDetalhe(card.dataset.sptask)));
+    }
+
     function render(){
+      renderSemPrazo();
       atualizarPeriodo();
       const c = document.getElementById('agConteudo');
       if (estado.view==='dia') c.innerHTML = renderDia();
@@ -647,7 +679,7 @@
     function fecharDetalhe(){ detOverlay.classList.remove('is-open'); procAtual = null; document.getElementById('dNovoAnd').value = ''; }
 
     async function abrirDetalhe(id){
-      const t = cacheTarefas.find(x => String(x.id) === String(id));
+      const t = cacheTarefas.find(x => String(x.id) === String(id)) || cacheSemPrazo.find(x => String(x.id) === String(id));
       if (!t) return;
       procAtual = t;
       const concl = t.status === 'concluida';

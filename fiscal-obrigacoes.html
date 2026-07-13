@@ -84,6 +84,29 @@
     <div class="fa-modal" style="max-width:560px;">
       <div class="fa-modal-head"><h3 id="gdTitulo">Guia</h3><button class="fa-modal-close" id="gdClose">&times;</button></div>
       <div class="fa-modal-body">
+        <div id="utWrap">
+          <div class="alv-conc-banner" id="utBanner" style="display:none;"></div>
+          <div id="utSem" class="ut-aviso" style="display:none;">
+            <span>Nenhuma rotina gerada pra este cliente neste mês.</span>
+            <button class="btn-mini" id="utCriar">Gerar a deste mês</button>
+          </div>
+          <div id="utCampos" style="display:none;">
+            <div class="ut-grid">
+              <label class="fa-field"><span>Responsável</span><input id="utResp" class="input" list="respList"></label>
+              <label class="fa-field"><span>Prazo</span><input id="utPrazo" type="date" class="input"></label>
+              <label class="fa-field"><span>Prioridade</span><select id="utPrio" class="select"><option value="alta">Alta</option><option value="media">Média</option><option value="baixa">Baixa</option></select></label>
+              <label class="fa-field" id="utStatusWrap"><span>Status</span><select id="utStatus" class="select"><option value="pendente">Pendente</option><option value="em_andamento">Em andamento</option></select></label>
+            </div>
+            <label class="fa-field"><span>Descrição</span><textarea id="utDesc" class="input" rows="2"></textarea></label>
+            <div><button class="btn btn-primary btn-sm" id="utSalvar">Salvar alterações</button></div>
+            <hr class="alv-hr">
+            <div class="alv-tl-head">Linha do tempo</div>
+            <label class="fa-field"><span>Registrar andamento</span><textarea id="utNovoAnd" class="input" rows="2" placeholder="Ex.: Apurado; guia gerada e enviada ao cliente…"></textarea></label>
+            <div><button class="btn btn-primary btn-sm" id="utAddAnd">Adicionar andamento</button></div>
+            <div class="tl" id="utTimeline"></div>
+          </div>
+        </div>
+        <hr class="alv-hr">
         <div class="gd-info" id="gdInfo"></div>
         <div class="gd-comp">
           <label for="gdComp">Competência</label>
@@ -95,7 +118,10 @@
         <div class="gd-lista" id="gdLista"></div>
       </div>
       <div class="fa-modal-foot">
+        <button class="btn btn-danger" id="utExcluir" style="margin-right:auto;display:none;">Excluir</button>
         <button class="btn btn-ghost" id="gdFechar">Fechar</button>
+        <button class="btn btn-ghost" id="utReabrir" style="display:none;">Reabrir</button>
+        <button class="btn btn-primary" id="utConcluir" style="display:none;">Concluir tarefa</button>
       </div>
     </div>
   </div>
@@ -310,6 +336,9 @@
     .env-status { margin-top:10px; font-size:13px; min-height:18px; }
     .env-acoes { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
     #envOverlay { z-index: 999; }
+    #guiaOverlay .fa-modal { max-width: 700px; }
+    .ut-grid { display:grid; grid-template-columns:1fr 1fr; gap:4px 14px; }
+    .ut-aviso { padding:12px 14px; border:1px dashed rgba(227,179,65,.5); border-radius:10px; color:#E3B341; font-size:13px; display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:6px; }
   </style>
 
   <script src="assets/js/tour.js"></script>
@@ -609,13 +638,14 @@
       if (!v) return;
       const r = regras.find(x => x.id === v.obrigacao_id);
       guiaCtx = { v, r };
-      document.getElementById('gdTitulo').textContent = 'Guia — ' + (v.clientes?.nome_principal || 'cliente');
+      document.getElementById('gdTitulo').textContent = (r ? r.nome + ' — ' : '') + (v.clientes?.nome_principal || 'cliente');
       document.getElementById('gdInfo').innerHTML = 'Obrigação: <b>' + (r ? r.nome : '?') + '</b> · destino: SETOR FISCAL / ' + (r?.pasta_drive || r?.nome || '?') + ' / competência';
       document.getElementById('gdComp').value = mesRefMMAAAA();
       document.getElementById('gdStatus').textContent = '';
       document.getElementById('gdDrop').classList.remove('is-off');
       guiaOverlay.classList.add('is-open');
       carregarGuias();
+      buscarTarefaUT();
     }
 
     let guiasCache = [];
@@ -646,6 +676,146 @@
         </div>`).join('');
       el.querySelectorAll('[data-env]').forEach(b => b.addEventListener('click', () => abrirEnvio(b.dataset.env)));
     }
+
+    // ===================== CENTRAL DA OBRIGAÇÃO (tarefa do mês) =====================
+    let utTarefa = null;
+    const STATUS_LBL_UT = { pendente: 'Pendente', em_andamento: 'Em andamento', concluida: 'Concluída' };
+    const escU = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const fmtDH = s => s ? new Date(s).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+
+    async function buscarTarefaUT(){
+      utTarefa = null;
+      renderUT();
+      if (!guiaCtx) return;
+      const comp = document.getElementById('mesRef').value;
+      if (!comp) return;
+      const { data } = await supabase.from('tarefas').select('*')
+        .eq('obrigacao_id', guiaCtx.r.id).eq('cliente_id', guiaCtx.v.cliente_id)
+        .eq('competencia', comp).order('created_at', { ascending: false }).limit(1);
+      utTarefa = data && data[0] ? data[0] : null;
+      renderUT();
+      if (utTarefa) renderTimelineUT();
+    }
+
+    function renderUT(){
+      const tem = !!utTarefa;
+      document.getElementById('utSem').style.display = tem ? 'none' : 'flex';
+      document.getElementById('utCampos').style.display = tem ? 'block' : 'none';
+      document.getElementById('utExcluir').style.display = tem ? 'inline-flex' : 'none';
+      const banner = document.getElementById('utBanner');
+      if (!tem) { banner.style.display = 'none';
+        document.getElementById('utConcluir').style.display = 'none';
+        document.getElementById('utReabrir').style.display = 'none';
+        return; }
+      const concl = utTarefa.status === 'concluida';
+      document.getElementById('utResp').value = utTarefa.responsavel || '';
+      document.getElementById('utPrazo').value = utTarefa.prazo ? String(utTarefa.prazo).slice(0, 10) : '';
+      document.getElementById('utPrio').value = ['alta','baixa'].includes(String(utTarefa.prioridade)) ? utTarefa.prioridade : 'media';
+      document.getElementById('utStatus').value = concl ? 'em_andamento' : (utTarefa.status || 'pendente');
+      document.getElementById('utDesc').value = utTarefa.descricao || '';
+      document.getElementById('utStatusWrap').style.display = concl ? 'none' : 'flex';
+      banner.style.display = concl ? 'block' : 'none';
+      if (concl) banner.textContent = 'Concluído em ' + fmtDH(utTarefa.concluida_em) + (utTarefa.concluida_por ? ' por ' + utTarefa.concluida_por : '');
+      document.getElementById('utConcluir').style.display = concl ? 'none' : 'inline-flex';
+      document.getElementById('utReabrir').style.display = concl ? 'inline-flex' : 'none';
+    }
+
+    async function renderTimelineUT(){
+      const tl = document.getElementById('utTimeline');
+      if (!utTarefa) { tl.innerHTML = ''; return; }
+      const { data } = await supabase.from('tarefa_historico').select('*')
+        .eq('tarefa_id', utTarefa.id).order('created_at', { ascending: false });
+      if (!data || !data.length) { tl.innerHTML = '<div class="tl-empty">Nenhum andamento ainda.</div>'; return; }
+      tl.innerHTML = data.map(h => `<div class="tl-item"><div class="tl-when">${fmtDH(h.created_at)}</div><div class="tl-desc">${escU(h.descricao)}</div>${h.autor ? `<div class="tl-autor">${escU(h.autor)}</div>` : ''}</div>`).join('');
+    }
+
+    document.getElementById('utAddAnd').addEventListener('click', async () => {
+      if (!utTarefa) return;
+      const inp = document.getElementById('utNovoAnd');
+      const txt = inp.value.trim();
+      if (!txt) { alert('Escreva o andamento.'); return; }
+      const { error } = await supabase.from('tarefa_historico').insert({ tarefa_id: utTarefa.id, descricao: txt, autor: user ? user.email : null });
+      if (error) { alert('Erro: ' + error.message); return; }
+      inp.value = '';
+      renderTimelineUT();
+    });
+
+    document.getElementById('utSalvar').addEventListener('click', async () => {
+      if (!utTarefa) return;
+      const concl = utTarefa.status === 'concluida';
+      const novoStatus = document.getElementById('utStatus').value;
+      const patch = {
+        responsavel: document.getElementById('utResp').value.trim() || null,
+        prazo: document.getElementById('utPrazo').value || null,
+        prioridade: document.getElementById('utPrio').value,
+        descricao: document.getElementById('utDesc').value.trim() || null
+      };
+      if (!concl) patch.status = novoStatus;
+      const statusMudou = !concl && utTarefa.status !== novoStatus;
+      const { error } = await supabase.from('tarefas').update(patch).eq('id', utTarefa.id);
+      if (error) { alert('Erro ao salvar: ' + error.message); return; }
+      if (statusMudou) await supabase.from('tarefa_historico').insert({ tarefa_id: utTarefa.id, descricao: 'Status alterado para: ' + STATUS_LBL_UT[novoStatus] + '.', autor: user ? user.email : null });
+      Object.assign(utTarefa, patch);
+      renderUT();
+      renderTimelineUT();
+    });
+
+    document.getElementById('utConcluir').addEventListener('click', async () => {
+      if (!utTarefa) return;
+      const patch = { status: 'concluida', concluida_em: new Date().toISOString(), concluida_por: user ? user.email : null };
+      const { error } = await supabase.from('tarefas').update(patch).eq('id', utTarefa.id);
+      if (error) { alert('Erro: ' + error.message); return; }
+      await supabase.from('tarefa_historico').insert({ tarefa_id: utTarefa.id, descricao: 'Tarefa concluída.', autor: user ? user.email : null });
+      Object.assign(utTarefa, patch);
+      renderUT();
+      renderTimelineUT();
+    });
+
+    document.getElementById('utReabrir').addEventListener('click', async () => {
+      if (!utTarefa) return;
+      const patch = { status: 'em_andamento', concluida_em: null, concluida_por: null };
+      const { error } = await supabase.from('tarefas').update(patch).eq('id', utTarefa.id);
+      if (error) { alert('Erro: ' + error.message); return; }
+      await supabase.from('tarefa_historico').insert({ tarefa_id: utTarefa.id, descricao: 'Tarefa reaberta.', autor: user ? user.email : null });
+      Object.assign(utTarefa, patch);
+      renderUT();
+      renderTimelineUT();
+    });
+
+    document.getElementById('utExcluir').addEventListener('click', async () => {
+      if (!utTarefa) return;
+      if (!confirm('Excluir a tarefa deste mês? A guia arquivada não é afetada.')) return;
+      const { error } = await supabase.from('tarefas').delete().eq('id', utTarefa.id);
+      if (error) { alert('Erro: ' + error.message); return; }
+      utTarefa = null;
+      renderUT();
+      atualizarGeradas();
+    });
+
+    document.getElementById('utCriar').addEventListener('click', async () => {
+      if (!guiaCtx || utTarefa) return;
+      const comp = document.getElementById('mesRef').value;
+      if (!/^\d{4}-\d{2}$/.test(comp)) { alert('Escolha o mês na tela.'); return; }
+      const [ano, mes] = comp.split('-').map(Number);
+      const r = guiaCtx.r, v = guiaCtx.v;
+      const dia = Math.min(v.dia_prazo_override || r.dia_prazo, ultimoDia(ano, mes));
+      const prazoD = proximoUtil(new Date(ano, mes - 1, dia));
+      const btn = document.getElementById('utCriar');
+      btn.disabled = true;
+      const { data, error } = await supabase.from('tarefas').insert({
+        setor: 'fiscal', titulo: r.nome, cliente_id: v.cliente_id,
+        responsavel: v.responsavel || null, prazo: toYMD(prazoD),
+        status: 'pendente', prioridade: 'media', origem: 'recorrente',
+        obrigacao_id: r.id, competencia: comp,
+        descricao: 'Competência ' + compFiscal(r, ano, mes) + ' · Gerada pelo módulo Obrigações'
+      }).select('*').single();
+      btn.disabled = false;
+      if (error) { alert('Erro: ' + error.message); return; }
+      utTarefa = data;
+      renderUT();
+      renderTimelineUT();
+      atualizarGeradas();
+    });
 
     // ===================== ENVIO AO CLIENTE =====================
     const envOverlay = document.getElementById('envOverlay');
@@ -1052,7 +1222,7 @@
       { el: '.fa-focus', titulo: 'Os números do motor', texto: 'Regras ativas, vínculos, clientes e quantas tarefas o mês selecionado já gerou. O último cartão é clicável e abre o módulo Tarefas.' },
       { el: '#segVisao', titulo: 'Duas formas de olhar', texto: 'Por obrigação: quem está em cada rotina. Por cliente: tudo que uma empresa tem. A busca se adapta à visão.' },
       { el: '#busca', titulo: 'Busca esperta', texto: 'Funciona sem acento: "situacao" acha "Situação". Vale nas duas visões.' },
-      { el: '.obr-item', titulo: 'Cada obrigação é uma caixa', texto: 'Clique pra abrir e ver os clientes. Dentro: responsável e dia são editáveis no clique, o switch liga/desliga o vínculo, o + vincula gente nova — e clicar no NOME do cliente abre o arquivamento e o envio de guias.' },
+      { el: '.obr-item', titulo: 'Cada obrigação é uma caixa', texto: 'Clique pra abrir e ver os clientes. Dentro: responsável e dia são editáveis no clique, o switch liga/desliga o vínculo, o + vincula gente nova — e clicar no NOME do cliente abre a central da obrigação: a tarefa do mês (andamentos, concluir) + o arquivamento e envio da guia.' },
       { el: '#btnRenomear', titulo: 'Renomear em lote', texto: 'Troca um responsável por outro em todos os vínculos de uma vez — com opção de atualizar também as tarefas pendentes.' },
       { el: '#mesRef', titulo: 'Mês de referência', texto: 'Define pra qual mês o motor vai trabalhar. Obrigações sazonais só aparecem quando a janela delas abre.' },
       { el: '#btnGerar', titulo: 'Gerar rotinas do mês', texto: 'Sempre mostra o plano antes: o que vai criar e o que já existe. Nada é criado sem confirmação — e rodar de novo não duplica.' }

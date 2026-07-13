@@ -55,7 +55,6 @@
           </select>
         </div>
         <div class="fa-toolbar-actions">
-          <button class="btn btn-ghost" id="btnGerarMes">Gerar tarefas do mês</button>
           <button class="btn btn-primary" id="btnNova">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Nova tarefa
@@ -191,7 +190,6 @@
       await carregarTarefas();
     });
 
-    document.getElementById('btnGerarMes').addEventListener('click', gerarTarefasDoMes);
     async function gerarTarefasDoMes() {
       const { data: regras } = await supabase.from('tarefas_recorrentes').select('*').eq('setor', SETOR).eq('ativo', true).eq('periodicidade', 'mensal');
       if (!regras || !regras.length) { alert('Não há regras mensais cadastradas. Gere regras a partir de uma análise (aba Análise por cliente).'); return; }
@@ -211,7 +209,7 @@
     }
 
     async function carregarTarefas() {
-      const { data, error } = await supabase.from('tarefas').select('*, clientes(nome_principal)').eq('setor', SETOR).order('prazo', { ascending: true, nullsFirst: false });
+      const { data, error } = await supabase.from('tarefas').select('*, clientes(nome_principal)').eq('setor', SETOR).is('obrigacao_id', null).order('prazo', { ascending: true, nullsFirst: false });
       if (error) { elGrupos.innerHTML = '<div style="text-align:center;color:var(--danger);padding:40px;">Erro ao carregar: ' + error.message + '</div>'; return; }
       tarefas = data || [];
       // popular responsáveis
