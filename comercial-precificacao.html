@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Precificação · Comercial — Macedo & Reis</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+  <style>
+    .dashboard-card { position:relative; transition: transform .15s ease, border-color .15s ease, background .15s ease, box-shadow .15s ease; }
+    .dashboard-card:hover { transform: translateY(-2px); border-color: rgba(138,174,200,.35); background: rgba(255,255,255,.045); box-shadow: 0 8px 24px rgba(0,0,0,.25); }
+
+    /* Cor de identidade por setor (no ícone) */
+    .seg { display:flex; border:1px solid rgba(255,255,255,.12); border-radius:10px; overflow:hidden; flex:none; margin-bottom:18px; }
+    .seg button { background:transparent; border:none; color:#8A93A6; font:inherit; font-size:13px; padding:8px 16px; cursor:pointer; }
+    .seg button.is-on { background:rgba(82,180,198,.22); color:#E6EBF2; }
+    .pr-layout { display:grid; grid-template-columns: 1fr 340px; gap:20px; align-items:start; }
+    @media (max-width: 980px){ .pr-layout { grid-template-columns: 1fr; } }
+    .pr-bloco h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:#52B4C6; margin:22px 0 10px; }
+    .pr-q { display:grid; grid-template-columns: minmax(220px,1fr) 220px; gap:10px; align-items:center; padding:7px 0; border-bottom:1px solid rgba(255,255,255,.05); }
+    .pr-q label { font-size:13px; color:#B9C2D0; }
+    .pr-q label small { display:block; color:#6E7787; font-size:11px; margin-top:2px; }
+    .pr-q .input, .pr-q select { width:100%; font-size:13px; padding:7px 10px; }
+    .pr-q select { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.12); border-radius:8px; color:#E6EBF2; font:inherit; }
+    .pr-q .auto { color:#8AAEC8; font-size:13px; }
+    .pr-painel { position:sticky; top:16px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.1); border-radius:14px; padding:16px 18px; }
+    .pr-painel h3 { margin:0 0 10px; font-size:14px; color:#52B4C6; }
+    .pr-linha { display:flex; justify-content:space-between; font-size:12.5px; color:#8A93A6; padding:2.5px 0; }
+    .pr-linha b { color:#B9C2D0; font-weight:600; }
+    .pr-sub { display:flex; justify-content:space-between; font-size:13px; color:#E6EBF2; font-weight:600; border-top:1px solid rgba(255,255,255,.1); margin-top:6px; padding-top:6px; }
+    .pr-total { text-align:center; margin-top:14px; padding-top:12px; border-top:1px solid rgba(82,180,198,.35); }
+    .pr-total .num { font-size:28px; font-weight:700; color:#52B4C6; }
+    .pr-total .lbl { font-size:11.5px; color:#8A93A6; text-transform:uppercase; letter-spacing:.06em; }
+    .pr-taxa { text-align:center; margin-top:8px; font-size:13px; color:#E3B341; }
+    .pr-ref { margin-top:12px; display:flex; gap:8px; align-items:center; font-size:12.5px; color:#8A93A6; }
+    .pr-ref input { width:110px; }
+    .pr-acao { margin-top:14px; display:flex; gap:8px; }
+    .pr-tab { width:100%; border-collapse:collapse; font-size:13px; }
+    .pr-tab th { text-align:left; color:#8A93A6; font-size:11.5px; text-transform:uppercase; letter-spacing:.05em; padding:8px 10px; border-bottom:1px solid rgba(255,255,255,.1); }
+    .pr-tab td { padding:9px 10px; border-bottom:1px solid rgba(255,255,255,.06); }
+    .pr-tab tr.prop { cursor:pointer; }
+    .pr-tab tr.prop:hover { background:rgba(255,255,255,.03); }
+    .chip { font-size:11px; padding:3px 9px; border-radius:999px; background:rgba(91,130,166,.16); color:#8AAEC8; border:1px solid rgba(91,130,166,.35); white-space:nowrap; }
+    .chip.c-verde { background:rgba(63,176,122,.14); color:#3FB07A; border-color:rgba(63,176,122,.35); }
+    .chip.c-ama { background:rgba(227,179,65,.14); color:#E3B341; border-color:rgba(227,179,65,.35); }
+    .st-sel { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.12); border-radius:8px; color:#E6EBF2; font:inherit; font-size:12px; padding:4px 8px; }
+    .par-grupo h3 { font-size:13px; color:#52B4C6; margin:20px 0 8px; }
+    .par-item { display:flex; justify-content:space-between; gap:12px; padding:6px 0; border-bottom:1px solid rgba(255,255,255,.05); font-size:13px; }
+    .par-item .pv { cursor:pointer; border-bottom:1px dashed rgba(138,174,200,.4); color:#E6EBF2; }
+    .par-item .pv:hover { color:#C5D8E8; }
+    .input-inline { font:inherit; font-size:12.5px; padding:3px 8px; background:rgba(255,255,255,.07); border:1px solid rgba(91,130,166,.55); border-radius:6px; color:#E6EBF2; width:90px; }
+    .pr-vazio { color:#8A93A6; padding:24px; text-align:center; }
+
+    /* Selo "hoje" (urgência do dia) — canto superior direito */
+    .badge-hoje { position:absolute; top:14px; right:14px; background:rgba(227,179,65,.18); border:1px solid rgba(227,179,65,.5); color:#E3B341; font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.04em; text-transform:uppercase; box-shadow:0 0 0 3px rgba(227,179,65,.06); }
+
+    /* Status no rodapé: backlog de tarefas abertas (ou "em dia") */
+    .badge.card-status { font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.03em; }
+    .card-status.st-open  { background:rgba(138,174,200,.14); border:1px solid rgba(138,174,200,.38); color:#B6C7DA; }
+    .card-status.st-clear { background:rgba(63,176,122,.14);  border:1px solid rgba(63,176,122,.4);  color:#5FC698; }
+    .card-status.st-load  { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); color:#8A93A6; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+
+      <div class="topbar-actions">
+        <div class="user-chip">
+          <div class="user-avatar" id="userAvatar">—</div>
+          <span id="userName">Carregando…</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <a href="comercial.html">Comercial</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Precificação</span>
+        </div>
+        <div class="eyebrow">Motor de honorários</div>
+        <h1>Precificação</h1>
+        <p>O motor de honorários: responda o questionário e o cálculo acontece ao vivo — salve como proposta e calibre os parâmetros quando precisar.</p>
+      </div>
+
+      <div>
+        <div class="seg" id="prSeg">
+          <button type="button" data-v="form" class="is-on">Simulação</button>
+          <button type="button" data-v="props">Propostas</button>
+          <button type="button" data-v="params">Parâmetros</button>
+        </div>
+
+        <div id="vForm" class="pr-layout">
+          <div id="prQuestionario">Carregando questionário…</div>
+          <div class="pr-painel" id="prPainel">
+            <h3>Cálculo ao vivo</h3>
+            <div id="prLinhas"></div>
+            <div class="pr-total"><div class="num" id="prTotal">R$ 0</div><div class="lbl">honorário mensal sugerido</div></div>
+            <div class="pr-taxa" id="prTaxa" style="display:none;"></div>
+            <div class="pr-ref"><span>Ref. Sescon (opcional)</span><input type="number" id="prRef" class="input" min="0"><span id="prRefDiff"></span></div>
+            <div class="pr-acao">
+              <button class="btn btn-primary" id="prSalvar" style="flex:1;">Salvar proposta</button>
+              <button class="btn btn-ghost" id="prLimpar">Nova</button>
+            </div>
+            <div id="prSalvoMsg" style="margin-top:8px;font-size:12.5px;min-height:16px;"></div>
+          </div>
+        </div>
+
+        <div id="vProps" style="display:none;">
+          <table class="pr-tab"><thead><tr><th>Cliente</th><th>Honorário</th><th>Taxa única</th><th>Origem</th><th>Status</th><th>Quando</th><th>Por</th><th></th></tr></thead>
+          <tbody id="prProps"></tbody></table>
+          <div class="pr-vazio" id="prPropsVazio" style="display:none;">Nenhuma proposta salva ainda.</div>
+        </div>
+
+        <div id="vParams" style="display:none;">
+          <p style="font-size:13px;color:#8A93A6;">Clique num valor pra editar — Enter salva, Esc cancela. Tudo recalcula na hora.</p>
+          <div id="prParams">Carregando…</div>
+        </div>
+            </div>
+    </main>
+  </div>
+
+  <script src="assets/js/tour.js"></script>
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    const user = await getCurrentUser();
+    if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; }
+    const btnOut = document.getElementById('btnLogout');
+    if (btnOut) btnOut.addEventListener('click', signOut);
+
+    const fmt = v => 'R$ ' + (Math.round(v * 100) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+    const TITULOS = {"p01": "P1 · Faturamento anual → valor base", "p02": "P2 · Regime tributário → multiplicador", "p03": "P3 · Sócios e filiais", "p04": "P4 · Notas fiscais → adicional", "p05": "P5 · Estoque", "p06": "P6 · Lançamentos bancários", "p07": "P7 · Sistema ERP", "p08": "P8 · Folha de pagamento", "p09": "P9 · Rotatividade", "p10": "P10 · Risco trabalhista → multiplicador", "p11": "P11 · Obrigações acessórias", "p12": "P12 · Setor de risco fiscal → multiplicador", "p13": "P13 · Qualidade dos documentos → ajuste %", "p14": "P14 · Nível de serviço → multiplicador", "p15": "P15 · Seguro / taxa inicial", "p16": "P16 · Arredondamento"};
+
+    let questoes = [], params = [], P = {}, respostas = {}, editandoId = null, calcAtual = null;
+
+    function indexarParams(){
+      P = {};
+      params.forEach(p => {
+        const g = p.grupo.slice(0, 3);
+        (P[g] = P[g] || []).push(p);
+      });
+      for (const g in P) P[g].sort((a, b) => (a.ordem || 0) - (b.ordem || 0));
+    }
+    const pv = (g, chave) => { const it = (P[g] || []).find(x => x.chave === chave); return it ? Number(it.valor) : 0; };
+    const pFaixa = (g, faixa) => pv(g, String(faixa));
+    function baseFaturamento(anual){
+      let base = 0;
+      (P['p01'] || []).forEach(it => { if (Number(anual || 0) >= Number(it.limite_inferior ?? it.chave)) base = Number(it.valor); });
+      return base;
+    }
+    const num = id => Number(respostas[id]) || 0;
+    const sim = id => respostas[id] === 'Sim';
+    const R = id => respostas[id] ?? '';
+
+    function calcular(){
+      const linhas = [];
+      const L = (label, valor, sub) => linhas.push({ label, valor, sub: !!sub });
+
+      const base = baseFaturamento(num('A2'));
+      const multReg = pv('p02', R('A10')) || 1;
+      const baseAj = base * multReg;
+      const socios = Math.max(0, num('A5') - 1) * pv('p03', 'Valor por sócio adicional (além do 1º)');
+      const filiais = num('A8') * pv('p03', 'Valor por filial (mesmo município)');
+      const filiaisFora = R('A9') === 'Sim' ? num('A8') * pv('p03', 'Valor extra por filial em município/estado diferente') : 0;
+      const forasede = sim('A7') ? pv('p03', 'Valor por atendimento fora do município-sede') : 0;
+      L('Base (faturamento) × regime ' + (multReg + '×'), baseAj);
+      if (socios) L('Sócios adicionais', socios);
+      if (filiais) L('Filiais (mesmo município)', filiais);
+      if (filiaisFora) L('Filiais (outro município/UF)', filiaisFora);
+      if (forasede) L('Atendimento fora da sede', forasede);
+      const sub1 = baseAj + socios + filiais + filiaisFora + forasede;
+      L('Subtotal estrutura', sub1, true);
+
+      const nfE = pFaixa('p04', R('B1'));
+      const nfR = pFaixa('p04', R('B2'));
+      const estoque = (sim('B4') && R('B5') === 'Escritório') ? pv('p05', 'Adicional - controle de estoque pelo escritório') : 0;
+      const lanc = pFaixa('p06', R('B7'));
+      const contas = Math.max(0, num('B6') - 1) * pv('p06', 'Valor por conta bancária adicional (além da 1ª)');
+      const erp = pv('p07', R('B8'));
+      if (nfE) L('NF emitidas', nfE);
+      if (nfR) L('NF recebidas', nfR);
+      if (estoque) L('Estoque pelo escritório', estoque);
+      if (lanc) L('Lançamentos bancários', lanc);
+      if (contas) L('Contas bancárias adicionais', contas);
+      if (erp) L('ERP', erp);
+      const sub2 = nfE + nfR + estoque + lanc + contas + erp;
+      L('Subtotal operacional', sub2, true);
+
+      const folhaItens = num('C1') * pv('p08', 'Valor por funcionário registrado')
+        + num('C2') * pv('p08', 'Valor por funcionário a registrar (setup)')
+        + num('C3') * pv('p08', 'Valor por funcionário afastado')
+        + pFaixa('p09', R('C4'))
+        + (sim('C5') ? num('C6') * pv('p08', 'Pró-labore por sócio recebendo') : 0)
+        + num('C7') * pv('p08', 'Valor por terceirizado com retenção')
+        + (sim('C8') ? pv('p08', 'Adicional insalubridade/periculosidade/noturno') : 0);
+      const multTrab = pv('p10', R('C9')) || 1;
+      const sub3 = folhaItens * multTrab;
+      if (folhaItens) L('Folha (itens)', folhaItens);
+      if (multTrab !== 1) L('× risco trabalhista ' + multTrab + '×', sub3 - folhaItens);
+      L('Subtotal folha', sub3, true);
+
+      const OB = [['D1','SPED Fiscal'],['D2','SPED Contribuições'],['D3','ECD'],['D4','ECF'],['D5','DCTF'],
+        ['D6','eSocial/EFD-Reinf'],['D7','RAIS/CAGED'],['D8','GIA/ICMS'],['D9','ISS'],
+        ['D10','Reforma Tributária (transição/apuração dual)'],['D11','Passivo tributário em aberto']];
+      let obr = 0;
+      OB.forEach(([id, chave]) => { if (sim(id)) { const v = pv('p11', chave); obr += v; if (v) L(chave, v); } });
+      const parc = num('D12') * pv('p11', 'Valor por parcelamento ativo');
+      if (parc) { obr += parc; L('Parcelamentos ativos', parc); }
+      const multFiscal = R('D13') === 'Sim' ? pv('p12', 'Multiplicador - setor de risco elevado (Sim)') : pv('p12', 'Multiplicador - setor sem risco elevado (Não)') || 1;
+      const sub4 = obr * (multFiscal || 1);
+      if ((multFiscal || 1) !== 1) L('× setor de risco ' + multFiscal + '×', sub4 - obr);
+      L('Subtotal obrigações', sub4, true);
+
+      const subGeral = sub1 + sub2 + sub3 + sub4;
+      const ajQual = pv('p13', R('E2')) || 0;
+      const aposQual = subGeral * (1 + ajQual);
+      const multNivel = pv('p14', R('E3')) || 1;
+      const aposNivel = aposQual * multNivel;
+      const seguro = sim('E4') ? pv('p15', 'Adicional - seguro de responsabilidade civil profissional') : 0;
+      if (ajQual) L('Ajuste qualidade docs (' + (ajQual > 0 ? '+' : '') + (ajQual * 100) + '%)', aposQual - subGeral);
+      if (multNivel !== 1) L('× nível de serviço ' + multNivel + '×', aposNivel - aposQual);
+      if (seguro) L('Seguro RC profissional', seguro);
+
+      const bruto = aposNivel + seguro;
+      const passo = pv('p16', 'Arredondar honorário final para múltiplo de (R$)') || 10;
+      const honorario = Math.round(bruto / passo) * passo;
+      const taxaUnica = (R('A12') === 'Sim' && R('A13') === 'Desorganizada/inexistente')
+        ? pv('p15', 'Taxa única de organização inicial (migração desorganizada)') : 0;
+
+      calcAtual = { linhas, honorario, bruto, taxaUnica };
+      return calcAtual;
+    }
+
+    function renderPainel(){
+      const c = calcular();
+      document.getElementById('prLinhas').innerHTML = c.linhas.map(l =>
+        `<div class="${l.sub ? 'pr-sub' : 'pr-linha'}"><span>${l.label}</span><b>${fmt(l.valor)}</b></div>`).join('');
+      document.getElementById('prTotal').textContent = fmt(c.honorario);
+      const tx = document.getElementById('prTaxa');
+      tx.style.display = c.taxaUnica ? 'block' : 'none';
+      tx.textContent = c.taxaUnica ? '+ taxa única de organização inicial: ' + fmt(c.taxaUnica) : '';
+      renderRef();
+      const a3 = document.getElementById('auto_A3');
+      if (a3) a3.textContent = fmt(num('A2') / 12) + ' / mês';
+    }
+    function renderRef(){
+      const ref = Number(document.getElementById('prRef').value) || 0;
+      const el = document.getElementById('prRefDiff');
+      if (!ref || !calcAtual) { el.textContent = ''; return; }
+      const d = (calcAtual.honorario - ref) / ref * 100;
+      el.textContent = (d >= 0 ? '+' : '') + d.toFixed(1) + '%';
+      el.style.color = d >= 0 ? '#3FB07A' : '#E06C75';
+    }
+    document.getElementById('prRef').addEventListener('input', renderRef);
+
+    function campoDe(qd){
+      if (qd.tipo === 'auto') return `<span class="auto" id="auto_${qd.id}">—</span>`;
+      if (qd.tipo === 'sim_nao') return `<select data-q="${qd.id}"><option></option><option>Sim</option><option>Não</option></select>`;
+      if (qd.tipo === 'select') {
+        const ops = (qd.opcoes || []).map(o => `<option>${o}</option>`).join('');
+        return `<select data-q="${qd.id}"><option></option>${ops}</select>`;
+      }
+      if (qd.tipo === 'numero') return `<input type="number" class="input" data-q="${qd.id}" min="0">`;
+      return `<input type="text" class="input" data-q="${qd.id}">`;
+    }
+
+    function renderForm(){
+      const el = document.getElementById('prQuestionario');
+      let html = '', bloco = '';
+      questoes.forEach(qd => {
+        if (qd.bloco !== bloco) { bloco = qd.bloco; html += `<div class="pr-bloco"><h2>${bloco}</h2></div>`; }
+        html += `<div class="pr-q"><label>${qd.id} · ${qd.pergunta}${qd.ajuda ? `<small>${qd.ajuda}</small>` : ''}</label>${campoDe(qd)}</div>`;
+      });
+      el.innerHTML = html;
+      el.querySelectorAll('[data-q]').forEach(inp => {
+        const id = inp.dataset.q;
+        if (respostas[id] != null) inp.value = respostas[id];
+        inp.addEventListener('input', () => { respostas[id] = inp.value; renderPainel(); });
+      });
+      renderPainel();
+    }
+
+    // ---------- propostas ----------
+    async function salvar(){
+      const c = calcular();
+      const nome = String(respostas['A1'] || '').trim();
+      if (!nome) { alert('Preencha o nome da empresa/cliente (A1).'); return; }
+      const btn = document.getElementById('prSalvar');
+      btn.disabled = true;
+      const payload = {
+        cliente_nome: nome, respostas, resultado: c,
+        honorario: c.honorario, taxa_unica: c.taxaUnica || null,
+        status: 'calculada', atualizado_em: new Date().toISOString()
+      };
+      let erro;
+      if (editandoId) ({ error: erro } = await supabase.from('precificacoes').update(payload).eq('id', editandoId));
+      else {
+        payload.origem = 'interna'; payload.criado_por = user ? user.email : null;
+        const { data, error } = await supabase.from('precificacoes').insert(payload).select('id').single();
+        erro = error; if (data) editandoId = data.id;
+      }
+      btn.disabled = false;
+      const msg = document.getElementById('prSalvoMsg');
+      msg.innerHTML = erro ? `<span style="color:#E06C75;">✗ ${erro.message}</span>` : `<span style="color:#3FB07A;">✓ Proposta salva — ${fmt(c.honorario)}/mês.</span>`;
+    }
+    document.getElementById('prSalvar').addEventListener('click', salvar);
+    document.getElementById('prLimpar').addEventListener('click', () => {
+      respostas = {}; editandoId = null;
+      document.getElementById('prSalvoMsg').textContent = '';
+      renderForm();
+    });
+
+    const ST_PROP = ['recebida','rascunho','calculada','apresentada','fechada','descartada'];
+    async function carregarProps(){
+      const { data } = await supabase.from('precificacoes').select('*').order('criado_em', { ascending: false }).limit(200);
+      const tb = document.getElementById('prProps');
+      const lista = data || [];
+      document.getElementById('prPropsVazio').style.display = lista.length ? 'none' : 'block';
+      tb.innerHTML = lista.map(p => `
+        <tr class="prop" data-pid="${p.id}">
+          <td><b>${p.cliente_nome}</b>${p.contato ? `<br><small style="color:#8A93A6;">${p.contato}</small>` : ''}</td>
+          <td>${p.honorario != null ? fmt(p.honorario) : '—'}</td>
+          <td>${p.taxa_unica ? fmt(p.taxa_unica) : '—'}</td>
+          <td><span class="chip ${p.origem === 'externa' ? 'c-ama' : ''}">${p.origem}</span></td>
+          <td><select class="st-sel" data-st="${p.id}">${ST_PROP.map(s => `<option${s === p.status ? ' selected' : ''}>${s}</option>`).join('')}</select></td>
+          <td style="color:#8A93A6;">${new Date(p.criado_em).toLocaleDateString('pt-BR')}</td>
+          <td style="color:#8A93A6;">${p.criado_por ? p.criado_por.split('@')[0] : '—'}</td>
+          <td><button class="btn-x" data-del="${p.id}" title="Excluir" style="background:none;border:none;color:#8A93A6;cursor:pointer;">✕</button></td>
+        </tr>`).join('');
+      tb.querySelectorAll('tr.prop').forEach(tr => tr.addEventListener('click', e => {
+        if (e.target.closest('.st-sel') || e.target.closest('[data-del]')) return;
+        const p = lista.find(x => x.id === tr.dataset.pid);
+        respostas = p.respostas || {}; editandoId = p.id;
+        document.getElementById('prSalvoMsg').textContent = '';
+        trocarVisao('form'); renderForm();
+      }));
+      tb.querySelectorAll('.st-sel').forEach(s => s.addEventListener('change', async () => {
+        await supabase.from('precificacoes').update({ status: s.value, atualizado_em: new Date().toISOString() }).eq('id', s.dataset.st);
+      }));
+      tb.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
+        if (!confirm('Excluir esta proposta?')) return;
+        await supabase.from('precificacoes').delete().eq('id', b.dataset.del);
+        carregarProps();
+      }));
+    }
+
+    // ---------- parâmetros ----------
+    function renderParams(){
+      const el = document.getElementById('prParams');
+      const grupos = {};
+      params.forEach(p => (grupos[p.grupo.slice(0,3)] = grupos[p.grupo.slice(0,3)] || []).push(p));
+      el.innerHTML = Object.keys(grupos).sort().map(g => `
+        <div class="par-grupo"><h3>${TITULOS[g] || g}</h3>
+          ${grupos[g].sort((a,b)=>(a.ordem||0)-(b.ordem||0)).map(p => `
+            <div class="par-item"><span>${p.chave}</span><span class="pv" data-par="${p.id}">${p.valor}</span></div>`).join('')}
+        </div>`).join('');
+      el.querySelectorAll('.pv').forEach(sp => sp.addEventListener('click', () => editarParam(sp)));
+    }
+    function editarParam(sp){
+      if (sp.querySelector('input')) return;
+      const id = sp.dataset.par;
+      const p = params.find(x => x.id === id);
+      const inp = document.createElement('input');
+      inp.type = 'number'; inp.step = 'any'; inp.className = 'input-inline'; inp.value = p.valor;
+      sp.textContent = ''; sp.appendChild(inp); inp.focus(); inp.select();
+      let feito = false;
+      const fim = async salvar => {
+        if (feito) return; feito = true;
+        if (salvar && inp.value !== '' && Number(inp.value) !== Number(p.valor)) {
+          const { error } = await supabase.from('precificacao_parametros').update({ valor: Number(inp.value) }).eq('id', id);
+          if (!error) p.valor = Number(inp.value);
+        }
+        renderParams(); renderPainel();
+      };
+      inp.addEventListener('keydown', e => { if (e.key === 'Enter') fim(true); if (e.key === 'Escape') fim(false); });
+      inp.addEventListener('blur', () => fim(true));
+    }
+
+    // ---------- visões ----------
+    function trocarVisao(v){
+      document.querySelectorAll('#prSeg button').forEach(b => b.classList.toggle('is-on', b.dataset.v === v));
+      document.getElementById('vForm').style.display = v === 'form' ? 'grid' : 'none';
+      document.getElementById('vProps').style.display = v === 'props' ? 'block' : 'none';
+      document.getElementById('vParams').style.display = v === 'params' ? 'block' : 'none';
+      if (v === 'props') carregarProps();
+      if (v === 'params') renderParams();
+    }
+    document.querySelectorAll('#prSeg button').forEach(b => b.addEventListener('click', () => trocarVisao(b.dataset.v)));
+
+    async function iniciar(){
+      const [{ data: qs }, { data: ps }] = await Promise.all([
+        supabase.from('precificacao_questoes').select('*').eq('ativo', true).order('ordem'),
+        supabase.from('precificacao_parametros').select('*')
+      ]);
+      questoes = qs || []; params = ps || [];
+      indexarParams();
+      renderForm();
+      if (window.MRTour) MRTour.iniciar([
+        { el: '#prSeg', titulo: 'Três visões', texto: 'Simulação (o motor), Propostas (o histórico salvo) e Parâmetros (os preços — calibráveis sem código).' },
+        { el: '#prQuestionario', titulo: 'O questionário', texto: 'Responda os blocos — cada resposta mexe no cálculo na hora. Não precisa preencher tudo: o painel mostra o efeito do que já foi respondido.' },
+        { el: '#prPainel', titulo: 'Cálculo ao vivo', texto: 'O detalhamento fiel da planilha: subtotais por bloco, multiplicadores, honorário arredondado e a taxa única quando couber.' },
+        { el: '#prSalvar', titulo: 'Salvar proposta', texto: 'Grava respostas + resultado com nome, status e autor. Reabra depois na aba Propostas pra revisar ou recalcular.' }
+      ], 'precificacao_v1', new URLSearchParams(location.search).has('tour'), user ? (user.id || user.email) : '');
+    }
+    iniciar();
+  </script>
+</body>
+</html>

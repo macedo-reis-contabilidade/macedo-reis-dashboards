@@ -11,6 +11,7 @@
     .dashboard-card:hover { transform: translateY(-2px); border-color: rgba(138,174,200,.35); background: rgba(255,255,255,.045); box-shadow: 0 8px 24px rgba(0,0,0,.25); }
 
     /* Cor de identidade por setor (no ícone) */
+    a[href="comercial-precificacao.html"] .dashboard-card-icon { background: rgba(82,180,198,.16); color:#52B4C6; }
     a[href="comercial-tarefas.html"] .dashboard-card-icon { background: rgba(138,174,200,.16); color:#8AAEC8; }
     a[href="comercial-regras.html"] .dashboard-card-icon { background: rgba(63,176,122,.16); color:#3FB07A; }
     a[href="comercial-relatorios.html"] .dashboard-card-icon { background: rgba(133,151,224,.16); color:#8597E0; }
@@ -56,6 +57,15 @@
       </div>
 
       <div class="dashboard-grid">
+        <a href="comercial-precificacao.html" class="dashboard-card">
+          <div class="dashboard-card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="16" y1="14" x2="16" y2="18"/><path d="M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M8 18h.01M12 18h.01"/></svg>
+          </div>
+          <h3>Precificação</h3>
+          <p>O motor de honorários: questionário, cálculo ao vivo e propostas salvas.</p>
+          <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="comercial-precificacao.html">·</span></div>
+        </a>
+
         <a href="comercial-tarefas.html" class="dashboard-card">
           <div class="dashboard-card-icon">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
@@ -118,6 +128,10 @@
           pill.className = 'badge-hoje'; pill.textContent = hoje + ' hoje';
           card.appendChild(pill);
         }
+        const { count: props } = await supabase.from('precificacoes')
+          .select('id', { count: 'exact', head: true })
+          .not('status', 'in', '("fechada","descartada")');
+        setBadge('comercial-precificacao.html', (props ?? 0) + ' em aberto');
         ["comercial-regras.html", "comercial-relatorios.html", "comercial-reunioes.html"].forEach(h => setBadge(h, '—'));
       } catch (e) { console.error(e); }
     }
