@@ -53,6 +53,12 @@
     .mov-tab td, .mov-tab th { padding:5px 10px; }
     .mov-tab .pos { color:#3FB07A; } .mov-tab .neg { color:#E06C6C; }
     .ins-item { padding:8px 12px; border-left:3px solid #8AAEC8; background:rgba(255,255,255,.03); border-radius:0 8px 8px 0; margin-bottom:8px; font-size:13px; color:#B9C2D0; }
+    .mov-item { padding:7px 12px; border-left:3px solid #3FB07A; background:rgba(255,255,255,.03); border-radius:0 8px 8px 0; margin-bottom:6px; font-size:13px; }
+    .mov-item.sai { border-left-color:#E06C6C; }
+    .mov-item a { color:#E6EBF2; text-decoration:none; font-weight:600; }
+    .mov-item a:hover { color:#C5D8E8; }
+    .mov-item small { display:block; color:#6E7787; font-size:11px; }
+    .mov-item .mt { color:#8A93A6; font-size:11.5px; }
     .fa-modal-overlay { position:fixed; inset:0; background:rgba(6,10,16,.7); display:none; align-items:center; justify-content:center; z-index:999; }
     .fa-modal-overlay.is-open { display:flex; }
     .fa-modal { background:#111A26; border:1px solid rgba(255,255,255,.12); border-radius:16px; width:min(480px,92vw); max-height:88vh; overflow:auto; }
@@ -149,6 +155,7 @@
             <div class="ana-card"><div class="num neg" id="cSaidas">—</div><div class="lbl">saídas no mês</div></div>
             <div class="ana-card"><div class="num" id="cSaldo">—</div><div class="lbl">saldo do mês</div></div>
           </div>
+          <div class="ana-grid" id="anaMov" style="margin-bottom:22px;"></div>
           <div class="ana-grid">
             <div class="ana-bloco"><h3>Por regime</h3><div id="dRegime"></div></div>
             <div class="ana-bloco"><h3>Por município</h3><div id="dMun"></div></div>
@@ -419,11 +426,34 @@
         (!r.entrada || String(r.entrada).slice(0, 10) <= fim) &&
         (!r.saida || String(r.saida).slice(0, 10) > fim));
       const ativos = rows.filter(r => !r.saida);
-      const entradasMes = rows.filter(r => ymDe(r.entrada) === mes).length;
-      const saidasMes = rows.filter(r => ymDe(r.saida) === mes).length;
+      const entrouRows = rows.filter(r => ymDe(r.entrada) === mes)
+        .sort((a, b) => (a.clientes.nome_principal || '').localeCompare(b.clientes.nome_principal || ''));
+      const saiuRows = rows.filter(r => ymDe(r.saida) === mes)
+        .sort((a, b) => (a.clientes.nome_principal || '').localeCompare(b.clientes.nome_principal || ''));
+      const entradasMes = entrouRows.length;
+      const saidasMes = saiuRows.length;
       document.getElementById('cAtivos').textContent = presenteEm(fimDe(mes)).length;
       document.getElementById('cEntradas').textContent = entradasMes;
       document.getElementById('cSaidas').textContent = saidasMes;
+
+      const [anoM, mesM] = mes.split('-');
+      const rotMes = mesM + '/' + anoM;
+      const itemMov = (r, sai) => {
+        const c = r.clientes;
+        const dia = String(sai ? r.saida : r.entrada).slice(8, 10);
+        return `<div class="mov-item${sai ? ' sai' : ''}">
+          <a href="editar.html?id=${c.id}" target="_blank" rel="noopener">${c.nome_principal}</a>
+          ${c.nome_fantasia ? `<small>${c.nome_fantasia}</small>` : ''}
+          <span class="mt">dia ${dia}${sai ? ' · ' + (r.motivo_saida || 'sem motivo') : ''}</span>
+        </div>`;
+      };
+      const mov = document.getElementById('anaMov');
+      if (!entrouRows.length && !saiuRows.length) mov.innerHTML = '';
+      else mov.innerHTML = `
+        <div class="ana-bloco"><h3>Entraram em ${rotMes} (${entrouRows.length})</h3>
+          ${entrouRows.map(r => itemMov(r, false)).join('') || '<span style="color:#6E7787;font-size:12.5px;">Ninguém.</span>'}</div>
+        <div class="ana-bloco"><h3>Saíram em ${rotMes} (${saiuRows.length})</h3>
+          ${saiuRows.map(r => itemMov(r, true)).join('') || '<span style="color:#6E7787;font-size:12.5px;">Ninguém.</span>'}</div>`;
       const saldo = entradasMes - saidasMes;
       const cS = document.getElementById('cSaldo');
       cS.textContent = (saldo > 0 ? '+' : '') + saldo;
