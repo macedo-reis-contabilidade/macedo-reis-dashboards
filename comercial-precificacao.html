@@ -11,7 +11,11 @@
     .dashboard-card:hover { transform: translateY(-2px); border-color: rgba(138,174,200,.35); background: rgba(255,255,255,.045); box-shadow: 0 8px 24px rgba(0,0,0,.25); }
 
     /* Cor de identidade por setor (no ícone) */
-    .seg { display:flex; border:1px solid rgba(255,255,255,.12); border-radius:10px; overflow:hidden; flex:none; margin-bottom:18px; }
+    .pr-topo { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:18px; }
+    .pr-topo .btn-mini { font-size:12px; padding:6px 12px; border-radius:9px; border:1px solid rgba(138,174,200,.4); background:transparent; color:#8AAEC8; cursor:pointer; white-space:nowrap; }
+    .pr-topo .btn-mini:hover { background:rgba(138,174,200,.12); }
+    #lnkFeed { font-size:12px; color:#3FB07A; min-width:70px; }
+    .seg { display:flex; border:1px solid rgba(255,255,255,.12); border-radius:10px; overflow:hidden; flex:none; }
     .seg button { background:transparent; border:none; color:#8A93A6; font:inherit; font-size:13px; padding:8px 16px; cursor:pointer; }
     .seg button.is-on { background:rgba(82,180,198,.22); color:#E6EBF2; }
     .pr-layout { display:grid; grid-template-columns: 1fr 340px; gap:20px; align-items:start; }
@@ -95,10 +99,15 @@
       </div>
 
       <div>
-        <div class="seg" id="prSeg">
-          <button type="button" data-v="form" class="is-on">Simulação</button>
-          <button type="button" data-v="props">Propostas</button>
-          <button type="button" data-v="params">Parâmetros</button>
+        <div class="pr-topo">
+          <div class="seg" id="prSeg">
+            <button type="button" data-v="form" class="is-on">Simulação</button>
+            <button type="button" data-v="props">Propostas</button>
+            <button type="button" data-v="params">Parâmetros</button>
+          </div>
+          <button type="button" class="btn-mini" id="btnConvite" style="margin-left:auto;">💬 Convite p/ cliente</button>
+          <button type="button" class="btn-mini" id="btnLink" title="Copiar só o link do questionário">🔗</button>
+          <span id="lnkFeed"></span>
         </div>
 
         <div id="vForm" class="pr-layout">
@@ -293,6 +302,20 @@
       });
       renderPainel();
     }
+
+    // ---------- convite pro cliente ----------
+    const LINK_FORM = new URL('proposta.html', location.href).href;
+    const CONVITE = 'Olá! Pra montarmos sua proposta de honorários sob medida, preparamos um questionário rápido (uns 5 minutos, direto pelo celular): ' + LINK_FORM + ' — responda o que souber, pode pular o que não se aplicar. Assim que enviar, nossa equipe já recebe aqui e retornamos com a proposta. 😊';
+    let lnkTimer = null;
+    async function copiar(texto, aviso){
+      const feed = document.getElementById('lnkFeed');
+      try { await navigator.clipboard.writeText(texto); feed.textContent = '✓ ' + aviso; }
+      catch { prompt('Copia manualmente:', texto); feed.textContent = ''; }
+      clearTimeout(lnkTimer);
+      lnkTimer = setTimeout(() => { feed.textContent = ''; }, 2500);
+    }
+    document.getElementById('btnConvite').addEventListener('click', () => copiar(CONVITE, 'convite copiado'));
+    document.getElementById('btnLink').addEventListener('click', () => copiar(LINK_FORM, 'link copiado'));
 
     // ---------- propostas ----------
     function atualizarBotoesSalvar(){
@@ -521,10 +544,11 @@
       renderForm();
       if (window.MRTour) MRTour.iniciar([
         { el: '#prSeg', titulo: 'Três visões', texto: 'Simulação (o motor), Propostas (o histórico salvo) e Parâmetros (os preços — calibráveis sem código).' },
+        { el: '#btnConvite', titulo: 'Convite pro cliente', texto: 'Um clique copia a mensagem pronta com o link do questionário público — cola no WhatsApp do prospecto e a resposta dele cai sozinha na aba Propostas, como "recebida".' },
         { el: '#prQuestionario', titulo: 'O questionário', texto: 'Responda os blocos — cada resposta mexe no cálculo na hora. Não precisa preencher tudo: o painel mostra o efeito do que já foi respondido.' },
         { el: '#prPainel', titulo: 'Cálculo ao vivo', texto: 'O detalhamento fiel da planilha: subtotais por bloco, multiplicadores, honorário arredondado e a taxa única quando couber.' },
         { el: '#prSalvar', titulo: 'Salvar proposta', texto: 'Grava respostas + resultado com nome, status e autor. Reabra depois na aba Propostas pra revisar ou recalcular.' }
-      ], 'precificacao_v1', new URLSearchParams(location.search).has('tour'), user ? (user.id || user.email) : '');
+      ], 'precificacao_v2', new URLSearchParams(location.search).has('tour'), user ? (user.id || user.email) : '');
     }
     iniciar();
   </script>
