@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proposta de honorários — Macedo & Reis Contabilidade</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system, 'Segoe UI', Roboto, Arial, sans-serif; background:#EEF2F6; color:#1a2330; padding:0 0 60px; }
+  .topo { background:linear-gradient(135deg, #3A5878, #5B82A6); color:#fff; padding:26px 20px 22px; text-align:center; }
+  .topo h1 { font-size:19px; font-weight:700; letter-spacing:.02em; }
+  .topo p { font-size:12px; opacity:.85; margin-top:3px; }
+  .wrap { max-width:560px; margin:-14px auto 0; padding:0 14px; }
+  .card { background:#fff; border-radius:14px; box-shadow:0 4px 18px rgba(26,35,48,.08); padding:20px 18px; margin-bottom:14px; }
+  .intro h2 { font-size:16px; color:#3A5878; margin-bottom:8px; }
+  .intro p { font-size:13.5px; color:#4a5565; line-height:1.55; }
+  h3.bloco { font-size:12.5px; color:#3A5878; text-transform:uppercase; letter-spacing:.06em; margin:4px 0 12px; padding-bottom:8px; border-bottom:2px solid #E3EAF1; }
+  .campo { margin-bottom:14px; }
+  .campo label { display:block; font-size:13px; color:#33404f; font-weight:600; margin-bottom:5px; }
+  .campo small { display:block; font-weight:400; color:#8a94a3; font-size:11.5px; margin-top:2px; }
+  .campo input, .campo select { width:100%; font:inherit; font-size:15px; padding:11px 12px; border:1.5px solid #D5DEE7; border-radius:10px; background:#FBFCFE; color:#1a2330; }
+  .campo input:focus, .campo select:focus { outline:none; border-color:#5B82A6; background:#fff; }
+  .obr::after { content:' *'; color:#C0564F; }
+  .botao { width:100%; font:inherit; font-size:16px; font-weight:700; padding:14px; border:none; border-radius:12px; background:#3A5878; color:#fff; cursor:pointer; }
+  .botao:active { transform:scale(.99); }
+  .botao[disabled] { opacity:.6; }
+  .erro { color:#C0564F; font-size:13px; margin-top:10px; min-height:18px; text-align:center; }
+  #sucesso { display:none; text-align:center; padding:34px 20px; }
+  #sucesso .check { font-size:44px; }
+  #sucesso h2 { font-size:18px; color:#2E7D5B; margin:10px 0 8px; }
+  #sucesso p { font-size:14px; color:#4a5565; line-height:1.6; }
+  .rodape { text-align:center; font-size:11px; color:#9aa4b2; margin-top:18px; }
+</style>
+</head>
+<body>
+  <div class="topo">
+    <h1>Macedo &amp; Reis Contabilidade</h1>
+    <p>CRC/RS 006418/O · Três Coroas – RS</p>
+  </div>
+  <div class="wrap">
+    <div class="card intro" id="intro">
+      <h2>Vamos montar sua proposta de honorários</h2>
+      <p>Responda o que souber — leva uns <b>5 minutos</b> e pode pular o que não se aplicar. Com suas respostas, nossa equipe prepara uma proposta sob medida e retorna pelo WhatsApp.</p>
+    </div>
+    <div id="formArea">
+      <div class="card">
+        <h3 class="bloco">Quem está preenchendo</h3>
+        <div class="campo"><label class="obr">Seu nome</label><input type="text" id="mNome" autocomplete="name"></div>
+        <div class="campo"><label class="obr">Seu WhatsApp (para retorno)</label><input type="tel" id="mContato" inputmode="tel" placeholder="(51) 9 9999-9999"></div>
+      </div>
+      <div id="blocos"><div class="card"><p style="color:#8a94a3;font-size:13.5px;">Carregando o questionário…</p></div></div>
+      <div class="card">
+        <button class="botao" id="btnEnviar">Enviar respostas</button>
+        <div class="erro" id="msgErro"></div>
+      </div>
+    </div>
+    <div class="card" id="sucesso">
+      <div class="check">✅</div>
+      <h2>Respostas recebidas!</h2>
+      <p>Obrigado! Nossa equipe já está com suas informações e vai preparar a proposta de honorários. Retornamos pelo WhatsApp informado.</p>
+    </div>
+    <div class="rodape">Suas respostas vão direto para a equipe Macedo &amp; Reis e são usadas apenas para elaborar sua proposta.</div>
+  </div>
+
+<script type="module">
+  import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+  const supabase = createClient('https://ltsujjgzlhaxosbeudgg.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx0c3Vqamd6bGhheG9zYmV1ZGdnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4NTk1NDksImV4cCI6MjA5NDQzNTU0OX0.vShdPB7s30hsD6609909UrzjyQzFargV9R9BAk2rPhI');
+
+  let questoes = [];
+  const respostas = {};
+
+  function campoDe(qd){
+    if (qd.tipo === 'sim_nao') return `<select data-q="${qd.id}"><option value="">—</option><option>Sim</option><option>Não</option></select>`;
+    if (qd.tipo === 'select') {
+      const ops = (qd.opcoes || []).map(o => `<option>${o}</option>`).join('');
+      return `<select data-q="${qd.id}"><option value="">—</option>${ops}</select>`;
+    }
+    if (qd.tipo === 'numero') return `<input type="number" inputmode="numeric" min="0" data-q="${qd.id}">`;
+    return `<input type="text" data-q="${qd.id}">`;
+  }
+
+  async function iniciar(){
+    const { data, error } = await supabase.from('precificacao_questoes')
+      .select('id, bloco, ordem, pergunta, ajuda, tipo, opcoes')
+      .eq('externa', true).eq('ativo', true).order('ordem');
+    const el = document.getElementById('blocos');
+    if (error || !data || !data.length) {
+      el.innerHTML = '<div class="card"><p style="color:#C0564F;font-size:13.5px;">Não conseguimos carregar o questionário agora. Tente de novo em instantes.</p></div>';
+      return;
+    }
+    questoes = data;
+    let html = '', bloco = '';
+    questoes.forEach(qd => {
+      if (qd.bloco !== bloco) {
+        if (bloco) html += '</div>';
+        bloco = qd.bloco;
+        html += `<div class="card"><h3 class="bloco">${bloco.replace(/^[A-E]\.\s*/, '')}</h3>`;
+      }
+      const obr = qd.id === 'A1' ? ' class="obr"' : '';
+      html += `<div class="campo"><label${obr}>${qd.pergunta}${qd.ajuda ? `<small>${qd.ajuda}</small>` : ''}</label>${campoDe(qd)}</div>`;
+    });
+    html += '</div>';
+    el.innerHTML = html;
+    el.querySelectorAll('[data-q]').forEach(inp =>
+      inp.addEventListener('input', () => { respostas[inp.dataset.q] = inp.value; }));
+  }
+
+  document.getElementById('btnEnviar').addEventListener('click', async () => {
+    const nome = document.getElementById('mNome').value.trim();
+    const contato = document.getElementById('mContato').value.trim();
+    const empresa = String(respostas['A1'] || '').trim();
+    const erro = document.getElementById('msgErro');
+    if (!nome || !contato) { erro.textContent = 'Preencha seu nome e seu WhatsApp, por favor.'; return; }
+    if (!empresa) { erro.textContent = 'Preencha o nome da empresa (primeira pergunta do questionário).'; return; }
+    erro.textContent = '';
+    const btn = document.getElementById('btnEnviar');
+    btn.disabled = true; btn.textContent = 'Enviando…';
+    const { error: e } = await supabase.from('precificacoes').insert({
+      cliente_nome: empresa,
+      contato,
+      origem: 'externa',
+      status: 'recebida',
+      respostas,
+      criado_por: nome
+    });
+    if (e) {
+      btn.disabled = false; btn.textContent = 'Enviar respostas';
+      erro.textContent = 'Não foi possível enviar agora (' + e.message + '). Tente novamente.';
+      return;
+    }
+    document.getElementById('intro').style.display = 'none';
+    document.getElementById('formArea').style.display = 'none';
+    document.getElementById('sucesso').style.display = 'block';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  iniciar();
+</script>
+</body>
+</html>
