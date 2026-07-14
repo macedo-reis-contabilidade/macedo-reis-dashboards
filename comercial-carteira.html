@@ -251,7 +251,7 @@
         return `<tr${r.saida ? ' style="opacity:.55;"' : ''}>
           <td class="ct-emp"><a href="editar.html?id=${c.id}" target="_blank" rel="noopener">${c.nome_principal}</a>
             ${c.nome_fantasia ? `<small>${c.nome_fantasia}</small>` : ''}${inativo ? ' <span class="chip c-ama">inativo no cadastro</span>' : ''}</td>
-          <td><span class="chip">${c.regime_tributario || '—'}</span></td>
+          <td><span class="chip" data-reg="${r.cliente_id}" style="cursor:pointer;" title="Clique para definir o regime — grava direto no cadastro">${c.regime_tributario || '—'}</span></td>
           <td>${c.cidade ? c.cidade : '<span class="chip c-ama" title="Preencha a cidade no cadastro do cliente">sem cidade</span>'}</td>
           <td>${ed(r, 'entrada', dBR(r.entrada), 'data')}</td>
           <td>${ed(r, 'segmento', r.segmento)}</td>
@@ -265,6 +265,33 @@
       }).join('');
       tb.querySelectorAll('[data-ed]').forEach(sp => sp.addEventListener('click', () => editarCampo(sp)));
       tb.querySelectorAll('[data-sai]').forEach(b => b.addEventListener('click', () => abrirSaida(b.dataset.sai)));
+      tb.querySelectorAll('[data-reg]').forEach(sp => sp.addEventListener('click', () => editarRegime(sp)));
+    }
+
+    const REGIMES = ['Simples Nacional', 'MEI', 'Lucro Presumido', 'Lucro Real', 'Imune', 'Isento'];
+    function editarRegime(sp){
+      if (sp.querySelector('select')) return;
+      const r = rows.find(x => x.cliente_id === sp.dataset.reg);
+      const sel = document.createElement('select');
+      sel.className = 'input-inline';
+      sel.innerHTML = '<option value="">—</option>' + REGIMES.map(x =>
+        `<option${x === r.clientes.regime_tributario ? ' selected' : ''}>${x}</option>`).join('');
+      sp.textContent = ''; sp.appendChild(sel); sel.focus();
+      let feito = false;
+      const fim = async salvar => {
+        if (feito) return; feito = true;
+        const novo = sel.value || null;
+        if (salvar && novo !== r.clientes.regime_tributario) {
+          const { error } = await supabase.from('clientes')
+            .update({ regime_tributario: novo }).eq('id', r.cliente_id);
+          if (error) alert('Erro ao gravar no cadastro: ' + error.message);
+          else r.clientes.regime_tributario = novo;
+        }
+        preencherFiltros(); render(); renderAnalise();
+      };
+      sel.addEventListener('change', () => fim(true));
+      sel.addEventListener('keydown', e => { if (e.key === 'Escape') fim(false); });
+      sel.addEventListener('blur', () => fim(true));
     }
 
     function editarCampo(sp){
