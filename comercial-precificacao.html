@@ -40,7 +40,7 @@
     #printDoc { display:none; }
     @media print {
       @page { margin: 16mm; }
-      body { background:#fff; }
+      html, body { background:#fff; height:auto !important; overflow:visible !important; }
       body > *:not(#printDoc) { display:none !important; }
       #printDoc { display:block; width:100%;
         background:#fff; color:#1a2330; font-family: Georgia, 'Times New Roman', serif; }
@@ -363,6 +363,7 @@
       renderForm();
     });
 
+    document.body.appendChild(document.getElementById('printDoc'));
     document.getElementById('prPdf').addEventListener('click', () => {
       const c = calcular();
       const escP = s => String(s ?? '').replace(/[&<>]/g, x => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[x]));
