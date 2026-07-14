@@ -18,6 +18,11 @@
     .ct-bar .input, .ct-bar select { font-size:13px; padding:7px 10px; }
     .ct-bar select { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.12); border-radius:8px; color:#E6EBF2; font:inherit; }
     .ct-cont { margin-left:auto; color:#8A93A6; font-size:12.5px; white-space:nowrap; }
+    .ct-alerta { display:none; align-items:center; gap:12px; flex-wrap:wrap; margin:0 0 14px; padding:10px 14px;
+      border:1px solid rgba(227,179,65,.45); border-radius:10px; background:rgba(227,179,65,.08);
+      color:#E3B341; font-size:13px; }
+    .ct-alerta.is-on { display:flex; }
+    .ct-alerta button { margin-left:auto; }
     .pr-tab { width:100%; border-collapse:collapse; font-size:13px; }
     .pr-tab th { text-align:left; color:#8A93A6; font-size:11px; text-transform:uppercase; letter-spacing:.05em; padding:8px 8px; border-bottom:1px solid rgba(255,255,255,.1); }
     .pr-tab td { padding:8px 8px; border-bottom:1px solid rgba(255,255,255,.06); vertical-align:middle; }
@@ -123,6 +128,10 @@
             <button class="btn btn-primary btn-sm" id="btnAdd" style="margin-left:auto;">+ Adicionar à carteira</button>
             <span class="ct-cont" id="ctCont">—</span>
           </div>
+          <div class="ct-alerta" id="ctAlerta">
+            <span id="ctAlertaTxt"></span>
+            <button class="btn-mini" id="ctAlertaBtn">Revisar</button>
+          </div>
           <table class="pr-tab"><thead><tr>
             <th>Empresa</th><th>Regime</th><th>Município</th><th>Entrada</th><th>Segmento</th><th>Sistemas</th><th>Contato</th><th>Ramo</th><th>Saída</th>
           </tr></thead><tbody id="ctBody"></tbody></table>
@@ -202,7 +211,7 @@
     const hoje = new Date();
     const ymNow = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0');
 
-    let rows = [], filtro = { busca: '', regime: '', mun: '', seg: '', saidas: false };
+    let rows = [], filtro = { busca: '', regime: '', mun: '', seg: '', saidas: false, soPend: false };
 
     async function carregar(){
       const { data, error } = await supabase.from('carteira_info')
@@ -228,8 +237,11 @@
       opt('fSeg', new Set(rows.map(r => r.segmento).filter(Boolean)));
     }
 
+    const pendenteSaida = r => r.clientes.status && r.clientes.status !== 'ativo' && !r.saida;
+
     function passa(r){
-      if (!filtro.saidas && r.saida) return false;
+      if (filtro.soPend && !pendenteSaida(r)) return false;
+      if (!filtro.saidas && r.saida && !filtro.soPend) return false;
       if (filtro.busca && !r._busca.includes(filtro.busca)) return false;
       if (filtro.regime && r.clientes.regime_tributario !== filtro.regime) return false;
       if (filtro.mun && r.clientes.cidade !== filtro.mun) return false;
@@ -243,6 +255,15 @@
       const vis = rows.filter(passa);
       const tb = document.getElementById('ctBody');
       document.getElementById('ctVazio').style.display = vis.length ? 'none' : 'block';
+      const pend = rows.filter(pendenteSaida);
+      const al = document.getElementById('ctAlerta');
+      al.classList.toggle('is-on', pend.length > 0);
+      if (pend.length) {
+        document.getElementById('ctAlertaTxt').textContent =
+          '⚠ ' + pend.length + (pend.length === 1 ? ' cliente está inativo' : ' clientes estão inativos') +
+          ' no cadastro mas sem saída registrada na carteira.';
+        document.getElementById('ctAlertaBtn').textContent = filtro.soPend ? 'Mostrar todos' : 'Revisar';
+      }
       document.getElementById('ctCont').textContent =
         vis.length + ' de ' + rows.filter(r => !r.saida).length + ' ativos' + (filtro.saidas ? ' (+saídas)' : '');
       tb.innerHTML = vis.map(r => {
@@ -473,6 +494,7 @@
       filtro[id === 'fRegime' ? 'regime' : id === 'fMun' ? 'mun' : 'seg'] = e.target.value; render();
     }));
     document.getElementById('fSaidas').addEventListener('change', e => { filtro.saidas = e.target.checked; render(); });
+    document.getElementById('ctAlertaBtn').addEventListener('click', () => { filtro.soPend = !filtro.soPend; render(); });
     document.getElementById('anaMes').value = ymNow;
     document.getElementById('anaMes').addEventListener('change', renderAnalise);
 
