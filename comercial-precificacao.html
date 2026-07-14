@@ -109,6 +109,7 @@
             <div class="pr-ref"><span>Ref. Sescon (opcional)</span><input type="number" id="prRef" class="input" min="0"><span id="prRefDiff"></span></div>
             <div class="pr-acao">
               <button class="btn btn-primary" id="prSalvar" style="flex:1;">Salvar proposta</button>
+              <button class="btn btn-ghost" id="prSalvarNova" style="display:none;">Salvar como nova</button>
               <button class="btn btn-ghost" id="prLimpar">Nova</button>
             </div>
             <div id="prSalvoMsg" style="margin-top:8px;font-size:12.5px;min-height:16px;"></div>
@@ -290,7 +291,12 @@
     }
 
     // ---------- propostas ----------
-    async function salvar(){
+    function atualizarBotoesSalvar(){
+      document.getElementById('prSalvar').textContent = editandoId ? 'Atualizar proposta' : 'Salvar proposta';
+      document.getElementById('prSalvarNova').style.display = editandoId ? 'inline-flex' : 'none';
+    }
+
+    async function salvar(comoNova){
       const c = calcular();
       const nome = String(respostas['A1'] || '').trim();
       if (!nome) { alert('Preencha o nome da empresa/cliente (A1).'); return; }
@@ -301,21 +307,27 @@
         honorario: c.honorario, taxa_unica: c.taxaUnica || null,
         status: 'calculada', atualizado_em: new Date().toISOString()
       };
-      let erro;
-      if (editandoId) ({ error: erro } = await supabase.from('precificacoes').update(payload).eq('id', editandoId));
-      else {
+      let erro, atualizou = false;
+      if (editandoId && !comoNova) {
+        ({ error: erro } = await supabase.from('precificacoes').update(payload).eq('id', editandoId));
+        atualizou = true;
+      } else {
         payload.origem = 'interna'; payload.criado_por = user ? user.email : null;
         const { data, error } = await supabase.from('precificacoes').insert(payload).select('id').single();
         erro = error; if (data) editandoId = data.id;
       }
       btn.disabled = false;
+      atualizarBotoesSalvar();
       const msg = document.getElementById('prSalvoMsg');
-      msg.innerHTML = erro ? `<span style="color:#E06C75;">✗ ${erro.message}</span>` : `<span style="color:#3FB07A;">✓ Proposta salva — ${fmt(c.honorario)}/mês.</span>`;
+      msg.innerHTML = erro ? `<span style="color:#E06C75;">✗ ${erro.message}</span>`
+        : `<span style="color:#3FB07A;">✓ ${atualizou ? 'Proposta atualizada' : 'Nova proposta salva'} — ${fmt(c.honorario)}/mês.</span>`;
     }
-    document.getElementById('prSalvar').addEventListener('click', salvar);
+    document.getElementById('prSalvar').addEventListener('click', () => salvar(false));
+    document.getElementById('prSalvarNova').addEventListener('click', () => salvar(true));
     document.getElementById('prLimpar').addEventListener('click', () => {
       respostas = {}; editandoId = null;
       document.getElementById('prSalvoMsg').textContent = '';
+      atualizarBotoesSalvar();
       renderForm();
     });
 
@@ -341,6 +353,7 @@
         const p = lista.find(x => x.id === tr.dataset.pid);
         respostas = p.respostas || {}; editandoId = p.id;
         document.getElementById('prSalvoMsg').textContent = '';
+        atualizarBotoesSalvar();
         trocarVisao('form'); renderForm();
       }));
       tb.querySelectorAll('.st-sel').forEach(s => s.addEventListener('change', async () => {
