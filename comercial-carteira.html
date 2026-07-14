@@ -148,6 +148,7 @@
           <div class="ct-bar">
             <label style="font-size:12.5px;color:#8A93A6;">Movimentação do mês:</label>
             <input type="month" id="anaMes" class="input" style="max-width:170px;">
+            <button class="btn-mini" id="btnPdfCart" style="margin-left:auto;">🖨 PDF pra impressão</button>
           </div>
           <div class="ana-cards">
             <div class="ana-card"><div class="num" id="cAtivos">—</div><div class="lbl">ativos na carteira</div></div>
@@ -206,6 +207,7 @@
     </main>
   </div>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="assets/js/tour.js"></script>
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
@@ -527,6 +529,177 @@
     document.getElementById('ctAlertaBtn').addEventListener('click', () => { filtro.soPend = !filtro.soPend; render(); });
     document.getElementById('anaMes').value = ymNow;
     document.getElementById('anaMes').addEventListener('change', renderAnalise);
+
+    document.getElementById('btnPdfCart').addEventListener('click', () => {
+      if (!window.jspdf) { alert('Gerador de PDF carregando — tenta de novo em 2 segundos.'); return; }
+      const mes = document.getElementById('anaMes').value || ymNow;
+      const fimDe = ym => { const [a, m] = ym.split('-').map(Number); return new Date(a, m, 0).toISOString().slice(0, 10); };
+      const presenteEm = fim => rows.filter(r =>
+        (!r.entrada || String(r.entrada).slice(0, 10) <= fim) &&
+        (!r.saida || String(r.saida).slice(0, 10) > fim));
+      const [anoM, mesM] = mes.split('-');
+      const rot = mesM + '/' + anoM;
+      const lista = presenteEm(fimDe(mes))
+        .sort((a, b) => (a.clientes.nome_principal || '').localeCompare(b.clientes.nome_principal || ''));
+
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+      const W = 595, MX = 40, MR = W - MX;
+      const AZUL = [58, 88, 120], CINZA = [110, 120, 133], ESCURO = [26, 35, 48], LN = [210, 218, 226];
+      const AB = { 'Simples Nacional': 'SN', 'Lucro Presumido': 'LP', 'Lucro Real': 'LR' };
+      const clip = (t, w) => { t = String(t || ''); while (doc.getTextWidth(t) > w && t.length > 1) t = t.slice(0, -1); return t; };
+      let y = 0;
+
+      function cabecalho(sub){
+        y = 42;
+        doc.setFont('helvetica', 'bold').setFontSize(11).setTextColor(...AZUL);
+        doc.text('Macedo & Reis Contabilidade', MX, y);
+        doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(...CINZA);
+        doc.text(sub, MR, y, { align: 'right' });
+        doc.setDrawColor(...AZUL).setLineWidth(1.2).line(MX, y + 6, MR, y + 6);
+        y += 22;
+      }
+      function tituloLista(){
+        doc.setFont('helvetica', 'bold').setFontSize(7).setTextColor(...AZUL);
+        doc.text('Nº', MX, y);
+        doc.text('EMPRESA', MX + 24, y);
+        doc.text('REGIME', MX + 246, y);
+        doc.text('MUNICÍPIO', MX + 292, y);
+        doc.text('ENTRADA', MX + 390, y);
+        doc.text('SEGMENTO', MX + 442, y);
+        doc.setDrawColor(...LN).setLineWidth(.6).line(MX, y + 3.5, MR, y + 3.5);
+        y += 12;
+      }
+
+      cabecalho('Carteira de clientes — ' + rot + '  ·  gerado em ' + new Date().toLocaleDateString('pt-BR'));
+      doc.setFont('helvetica', 'bold').setFontSize(12).setTextColor(...ESCURO);
+      doc.text('Carteira de clientes — ' + rot, MX, y); y += 8;
+      doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(...CINZA);
+      doc.text(lista.length + ' clientes ativos ao fim do mês', MX, y + 9); y += 24;
+      tituloLista();
+      doc.setFontSize(7).setTextColor(...ESCURO);
+      lista.forEach((r, i) => {
+        if (y > 800) { doc.addPage(); cabecalho('Carteira de clientes — ' + rot + ' (continuação)'); tituloLista(); doc.setFontSize(7).setTextColor(...ESCURO); }
+        const c = r.clientes;
+        doc.setFont('helvetica', 'normal');
+        doc.text(String(i + 1), MX, y);
+        doc.text(clip(c.nome_principal, 216), MX + 24, y);
+        doc.text(AB[c.regime_tributario] || c.regime_tributario || '—', MX + 246, y);
+        doc.text(clip(c.cidade || '—', 92), MX + 292, y);
+        doc.text(r.entrada ? String(r.entrada).slice(0, 10).split('-').reverse().join('/').slice(0, 8) + String(r.entrada).slice(2, 4) : '—', MX + 390, y);
+        doc.text(clip(r.segmento || '—', 112), MX + 442, y);
+        if (i % 2) { doc.setDrawColor(240, 243, 246); }
+        doc.setDrawColor(...LN).setLineWidth(.25).line(MX, y + 3, MR, y + 3);
+        y += 10.5;
+      });
+
+      // ---------- página de resumo ----------
+      doc.addPage();
+      cabecalho('Resumo — ' + rot);
+      doc.setFont('helvetica', 'bold').setFontSize(12).setTextColor(...ESCURO);
+      doc.text('Resumo da carteira — ' + rot, MX, y); y += 20;
+
+      const entrou = rows.filter(r => String(r.entrada || '').slice(0, 7) === mes)
+        .sort((a, b) => (a.clientes.nome_principal || '').localeCompare(b.clientes.nome_principal || ''));
+      const saiu = rows.filter(r => String(r.saida || '').slice(0, 7) === mes)
+        .sort((a, b) => (a.clientes.nome_principal || '').localeCompare(b.clientes.nome_principal || ''));
+      const saldo = entrou.length - saiu.length;
+      doc.setFontSize(9);
+      const cardPdf = (x, num, lbl) => {
+        doc.setDrawColor(...LN).setLineWidth(.8).roundedRect(x, y - 12, 122, 34, 4, 4);
+        doc.setFont('helvetica', 'bold').setFontSize(13).setTextColor(...AZUL);
+        doc.text(String(num), x + 10, y + 4);
+        doc.setFont('helvetica', 'normal').setFontSize(6.5).setTextColor(...CINZA);
+        doc.text(lbl, x + 10, y + 14);
+      };
+      cardPdf(MX, lista.length, 'ATIVOS AO FIM DO MÊS');
+      cardPdf(MX + 131, entrou.length, 'ENTRADAS NO MÊS');
+      cardPdf(MX + 262, saiu.length, 'SAÍDAS NO MÊS');
+      cardPdf(MX + 393, (saldo > 0 ? '+' : '') + saldo, 'SALDO DO MÊS');
+      y += 40;
+
+      const secao = t => {
+        if (y > 770) { doc.addPage(); cabecalho('Resumo — ' + rot + ' (continuação)'); }
+        doc.setFont('helvetica', 'bold').setFontSize(8.5).setTextColor(...AZUL);
+        doc.text(t.toUpperCase(), MX, y);
+        doc.setDrawColor(...LN).setLineWidth(.5).line(MX, y + 3, MR, y + 3);
+        y += 13;
+        doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(...ESCURO);
+      };
+      const linhaTxt = t => {
+        if (y > 800) { doc.addPage(); cabecalho('Resumo — ' + rot + ' (continuação)'); doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(...ESCURO); }
+        doc.text(t, MX + 4, y); y += 10;
+      };
+
+      secao('Entraram em ' + rot + ' (' + entrou.length + ')');
+      if (!entrou.length) linhaTxt('Ninguém.');
+      entrou.forEach(r => linhaTxt('• ' + r.clientes.nome_principal + '  (dia ' + String(r.entrada).slice(8, 10) + ')'));
+      y += 4;
+      secao('Saíram em ' + rot + ' (' + saiu.length + ')');
+      if (!saiu.length) linhaTxt('Ninguém.');
+      saiu.forEach(r => linhaTxt('• ' + r.clientes.nome_principal + '  (dia ' + String(r.saida).slice(8, 10) + ' · ' + (r.motivo_saida || 'sem motivo') + ')'));
+      y += 4;
+
+      const ativosAtu = rows.filter(r => !r.saida);
+      const conta = (arr, fn) => arr.reduce((m, r) => { const k = fn(r); if (k) m[k] = (m[k] || 0) + 1; return m; }, {});
+      const blocoDist = (titulo, mapa, x, topo) => {
+        let yy = topo;
+        doc.setFont('helvetica', 'bold').setFontSize(8).setTextColor(...AZUL);
+        doc.text(titulo.toUpperCase(), x, yy); yy += 11;
+        doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(...ESCURO);
+        Object.entries(mapa).sort((a, b) => b[1] - a[1]).slice(0, 9).forEach(([k, v]) => {
+          doc.text(clip(k, 130), x, yy);
+          doc.text(String(v), x + 152, yy, { align: 'right' });
+          yy += 9.5;
+        });
+        return yy;
+      };
+      if (y > 640) { doc.addPage(); cabecalho('Resumo — ' + rot + ' (continuação)'); }
+      const topoDist = y + 6;
+      const y1 = blocoDist('Por regime', conta(ativosAtu, r => r.clientes.regime_tributario), MX, topoDist);
+      const y2 = blocoDist('Por município', conta(ativosAtu, r => r.clientes.cidade), MX + 178, topoDist);
+      const y3 = blocoDist('Por segmento', conta(ativosAtu, r => r.segmento), MX + 356, topoDist);
+      y = Math.max(y1, y2, y3) + 10;
+      const motivos = conta(rows.filter(r => r.saida), r => r.motivo_saida || '(sem motivo)');
+      if (Object.keys(motivos).length) { y = blocoDist('Saídas por motivo (acumulado)', motivos, MX, y + 6) + 6; }
+
+      secao('Mês a mês (últimos 13)');
+      doc.setFont('helvetica', 'bold').setFontSize(7).setTextColor(...CINZA);
+      doc.text('MÊS', MX + 4, y); doc.text('ENTRADAS', MX + 90, y); doc.text('SAÍDAS', MX + 160, y);
+      doc.text('SALDO', MX + 220, y); doc.text('CARTEIRA', MX + 280, y); y += 10;
+      doc.setFont('helvetica', 'normal').setTextColor(...ESCURO);
+      for (let i = 12; i >= 0; i--) {
+        const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
+        const ym = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+        const e = rows.filter(r => String(r.entrada || '').slice(0, 7) === ym).length;
+        const s = rows.filter(r => String(r.saida || '').slice(0, 7) === ym).length;
+        const cart = presenteEm(fimDe(ym)).length;
+        if (y > 800) { doc.addPage(); cabecalho('Resumo — ' + rot + ' (continuação)'); doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(...ESCURO); }
+        doc.text(ym.split('-')[1] + '/' + ym.split('-')[0], MX + 4, y);
+        doc.text(String(e || ''), MX + 90, y); doc.text(String(s || ''), MX + 160, y);
+        doc.text(e - s ? ((e - s > 0 ? '+' : '') + (e - s)) : '', MX + 220, y);
+        doc.text(String(cart), MX + 280, y);
+        y += 9.5;
+      }
+      y += 6;
+
+      secao('Leituras automáticas');
+      const munMap = conta(ativosAtu, r => r.clientes.cidade);
+      const topMun = Object.entries(munMap).sort((a, b) => b[1] - a[1])[0];
+      if (topMun) linhaTxt('• ' + topMun[0] + ' concentra ' + Math.round(topMun[1] / ativosAtu.length * 100) + '% da carteira (' + topMun[1] + ' clientes).');
+      const regMap = conta(ativosAtu, r => r.clientes.regime_tributario);
+      const topReg = Object.entries(regMap).sort((a, b) => b[1] - a[1])[0];
+      if (topReg) linhaTxt('• Regime dominante: ' + topReg[0] + ' (' + Math.round(topReg[1] / ativosAtu.length * 100) + '%).');
+      const comEnt = ativosAtu.filter(r => r.entrada);
+      if (comEnt.length) {
+        const anos = comEnt.reduce((s, r) => s + (hoje - new Date(r.entrada)) / 31557600000, 0) / comEnt.length;
+        linhaTxt('• Tempo médio de casa: ' + anos.toFixed(1) + ' anos.');
+      }
+      const anoA = String(hoje.getFullYear());
+      linhaTxt('• Em ' + anoA + ': ' + rows.filter(r => String(r.entrada || '').startsWith(anoA)).length + ' entradas × ' + rows.filter(r => String(r.saida || '').startsWith(anoA)).length + ' saídas.');
+
+      doc.save('Carteira de clientes - ' + mesM + '-' + anoM + '.pdf');
+    });
 
     carregar().then(() => {
       if (window.MRTour) MRTour.iniciar([
