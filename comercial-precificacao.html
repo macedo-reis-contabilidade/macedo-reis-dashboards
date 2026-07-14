@@ -37,37 +37,6 @@
     .pr-acao { margin-top:14px; display:flex; gap:8px; flex-wrap:wrap; }
     .pr-acao .btn-primary { flex:1 1 100%; }
     .pr-acao .btn-ghost { flex:1; }
-    #printDoc { display:none; }
-    @media print {
-      @page { margin: 16mm; }
-      html, body { background:#fff !important; height:auto !important; overflow:visible !important; }
-      body > *:not(#printDoc) { display:none !important; }
-      #printDoc { display:block !important; width:100%; background:#fff !important;
-        font-family: Georgia, 'Times New Roman', serif;
-        -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      #printDoc, #printDoc * { color:#1a2330 !important; background:transparent !important;
-        text-shadow:none !important; }
-      #printDoc .pd-head { border-bottom:3px solid #3A5878; padding-bottom:10px; margin-bottom:18px; }
-      #printDoc .pd-firma { font-size:19px; font-weight:700; color:#3A5878 !important; }
-      #printDoc .pd-sub { font-size:10.5px; color:#5a6675 !important; margin-top:2px; }
-      #printDoc h1 { font-size:16px; margin:0 0 4px; }
-      #printDoc .pd-meta { font-size:11px; color:#5a6675 !important; margin-bottom:16px; }
-      #printDoc table { width:100%; border-collapse:collapse; font-size:11.5px; }
-      #printDoc td { padding:4px 6px; border-bottom:1px solid #e3e8ee; }
-      #printDoc td:last-child { text-align:right; white-space:nowrap; }
-      #printDoc tr.sub td { font-weight:700; border-top:1.5px solid #9db2c6; border-bottom:1.5px solid #9db2c6;
-        background:#f2f6fa !important; }
-      #printDoc .pd-total { margin:18px 0 6px; padding:12px 16px; border:2px solid #3A5878; border-radius:8px;
-        display:flex; justify-content:space-between; align-items:center; }
-      #printDoc .pd-total .v { font-size:22px; font-weight:700; color:#3A5878 !important; }
-      #printDoc .pd-taxa { font-size:12px; color:#8a6d1a !important; margin:4px 0 14px; }
-      #printDoc h2 { font-size:12.5px; color:#3A5878 !important; margin:20px 0 8px;
-        text-transform:uppercase; letter-spacing:.05em; }
-      #printDoc .pd-resp { columns:2; column-gap:26px; font-size:10.5px; color:#3a4552 !important; }
-      #printDoc .pd-resp div { break-inside:avoid; padding:2.5px 0; border-bottom:1px dotted #dfe5eb; }
-      #printDoc .pd-foot { margin-top:22px; padding-top:8px; border-top:1px solid #cfd8e0;
-        font-size:9.5px; color:#7a8593 !important; }
-    }
     .pr-tab { width:100%; border-collapse:collapse; font-size:13px; }
     .pr-tab th { text-align:left; color:#8A93A6; font-size:11.5px; text-transform:uppercase; letter-spacing:.05em; padding:8px 10px; border-bottom:1px solid rgba(255,255,255,.1); }
     .pr-tab td { padding:9px 10px; border-bottom:1px solid rgba(255,255,255,.06); }
@@ -164,8 +133,7 @@
     </main>
   </div>
 
-  <div id="printDoc"></div>
-
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="assets/js/tour.js"></script>
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
@@ -367,34 +335,102 @@
       renderForm();
     });
 
-    document.body.appendChild(document.getElementById('printDoc'));
     document.getElementById('prPdf').addEventListener('click', () => {
+      if (!window.jspdf) { alert('Gerador de PDF ainda carregando — tenta de novo em 2 segundos.'); return; }
       const c = calcular();
-      const escP = s => String(s ?? '').replace(/[&<>]/g, x => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[x]));
       const nome = String(respostas['A1'] || '').trim() || '(cliente sem nome)';
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+      const W = 595, MX = 48, MR = W - MX;
+      const AZUL = [58, 88, 120], CINZA = [90, 102, 117], ESCURO = [26, 35, 48],
+            AMBAR = [138, 109, 26], LINHA = [201, 211, 221], FUNDO = [242, 246, 250];
+      let y = 52;
+      const quebra = alt => { if (y + alt > 800) { doc.addPage(); y = 52; } };
+
+      // timbre
+      doc.setFont('helvetica', 'bold').setFontSize(16).setTextColor(...AZUL);
+      doc.text('Macedo & Reis Contabilidade', MX, y);
+      doc.setFont('helvetica', 'normal').setFontSize(8.5).setTextColor(...CINZA);
+      doc.text('CRC/RS 006418/O · Três Coroas – RS', MX, y + 13);
+      doc.setDrawColor(...AZUL).setLineWidth(2).line(MX, y + 22, MR, y + 22);
+      y += 44;
+
+      doc.setFont('helvetica', 'bold').setFontSize(13).setTextColor(...ESCURO);
+      doc.text('Estudo de Precificação de Honorários', MX, y); y += 15;
       const agora = new Date();
-      const linhas = c.linhas.map(l =>
-        `<tr${l.sub ? ' class="sub"' : ''}><td>${escP(l.label)}</td><td>${fmt(l.valor)}</td></tr>`).join('');
+      doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(...CINZA);
+      doc.text(`Cliente: ${nome}   ·   Emitido em ${agora.toLocaleDateString('pt-BR')} às ${agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}${user ? '   ·   por ' + user.email : ''}`, MX, y);
+      y += 20;
+
+      // detalhamento
+      doc.setFontSize(9.5);
+      c.linhas.forEach(l => {
+        quebra(15);
+        if (l.sub) {
+          doc.setFillColor(...FUNDO).rect(MX, y - 10, MR - MX, 15, 'F');
+          doc.setDrawColor(157, 178, 198).setLineWidth(1);
+          doc.line(MX, y - 10, MR, y - 10); doc.line(MX, y + 5, MR, y + 5);
+          doc.setFont('helvetica', 'bold').setTextColor(...ESCURO);
+        } else {
+          doc.setDrawColor(...LINHA).setLineWidth(.5).line(MX, y + 4, MR, y + 4);
+          doc.setFont('helvetica', 'normal').setTextColor(...ESCURO);
+        }
+        doc.text(l.label, MX + 4, y);
+        doc.text(fmt(l.valor), MR - 4, y, { align: 'right' });
+        y += 15;
+      });
+
+      // total
+      quebra(46); y += 8;
+      doc.setDrawColor(...AZUL).setLineWidth(1.5).roundedRect(MX, y - 4, MR - MX, 34, 5, 5);
+      doc.setFont('helvetica', 'bold').setFontSize(10).setTextColor(...ESCURO);
+      doc.text('HONORÁRIO MENSAL SUGERIDO', MX + 12, y + 17);
+      doc.setFontSize(16).setTextColor(...AZUL);
+      doc.text(fmt(c.honorario), MR - 12, y + 18, { align: 'right' });
+      y += 46;
+
+      if (c.taxaUnica) {
+        quebra(14);
+        doc.setFont('helvetica', 'normal').setFontSize(9.5).setTextColor(...AMBAR);
+        doc.text(`+ Taxa única de organização inicial: ${fmt(c.taxaUnica)} (migração com escrituração desorganizada).`, MX, y);
+        y += 14;
+      }
       const ref = Number(document.getElementById('prRef').value) || 0;
-      const refHtml = ref ? `<div class="pd-taxa">Referência Sescon informada: ${fmt(ref)} — diferença de ${((c.honorario - ref) / ref * 100).toFixed(1)}%.</div>` : '';
-      const resps = questoes
-        .filter(qd => qd.tipo !== 'auto' && String(respostas[qd.id] ?? '').trim() !== '')
-        .map(qd => `<div><b>${qd.id}</b> · ${escP(qd.pergunta)}: <b>${escP(respostas[qd.id])}</b></div>`).join('');
-      document.getElementById('printDoc').innerHTML = `
-        <div class="pd-head">
-          <div class="pd-firma">Macedo &amp; Reis Contabilidade</div>
-          <div class="pd-sub">CRC/RS 006418/O · Três Coroas – RS</div>
-        </div>
-        <h1>Estudo de Precificação de Honorários</h1>
-        <div class="pd-meta">Cliente: <b>${escP(nome)}</b> &nbsp;·&nbsp; Emitido em ${agora.toLocaleDateString('pt-BR')} às ${agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}${user ? ' &nbsp;·&nbsp; por ' + escP(user.email) : ''}</div>
-        <table>${linhas}</table>
-        <div class="pd-total"><span>HONORÁRIO MENSAL SUGERIDO</span><span class="v">${fmt(c.honorario)}</span></div>
-        ${c.taxaUnica ? `<div class="pd-taxa">+ Taxa única de organização inicial: <b>${fmt(c.taxaUnica)}</b> (migração com escrituração desorganizada).</div>` : ''}
-        ${refHtml}
-        <h2>Parâmetros informados</h2>
-        <div class="pd-resp">${resps || '<div>Nenhuma resposta preenchida.</div>'}</div>
-        <div class="pd-foot">Documento interno de estudo — valores sugeridos pelo motor de precificação a partir dos parâmetros vigentes na data de emissão. Não constitui proposta formal.</div>`;
-      window.print();
+      if (ref) {
+        quebra(14);
+        doc.setFont('helvetica', 'normal').setFontSize(9.5).setTextColor(...CINZA);
+        doc.text(`Referência Sescon informada: ${fmt(ref)} — diferença de ${((c.honorario - ref) / ref * 100).toFixed(1)}%.`, MX, y);
+        y += 14;
+      }
+
+      // parâmetros informados, em duas colunas
+      quebra(30); y += 10;
+      doc.setFont('helvetica', 'bold').setFontSize(10).setTextColor(...AZUL);
+      doc.text('PARÂMETROS INFORMADOS', MX, y); y += 6;
+      const colW = (MR - MX - 20) / 2;
+      let col = 0, yCol = y + 12;
+      const topoResp = yCol;
+      doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(58, 69, 82);
+      questoes.filter(qd => qd.tipo !== 'auto' && String(respostas[qd.id] ?? '').trim() !== '')
+        .forEach(qd => {
+          const linhas = doc.splitTextToSize(`${qd.id} · ${qd.pergunta}: ${respostas[qd.id]}`, colW);
+          const alt = linhas.length * 9.5 + 4;
+          if (yCol + alt > 800) {
+            if (col === 0) { col = 1; yCol = topoResp; }
+            else { doc.addPage(); col = 0; yCol = 52; }
+          }
+          doc.text(linhas, MX + col * (colW + 20), yCol);
+          yCol += alt;
+        });
+      y = Math.max(yCol, topoResp) + 10;
+
+      // rodapé
+      quebra(24);
+      doc.setDrawColor(...LINHA).setLineWidth(.5).line(MX, y, MR, y); y += 10;
+      doc.setFont('helvetica', 'italic').setFontSize(7.5).setTextColor(122, 133, 147);
+      doc.text(doc.splitTextToSize('Documento interno de estudo — valores sugeridos pelo motor de precificação a partir dos parâmetros vigentes na data de emissão. Não constitui proposta formal.', MR - MX), MX, y);
+
+      doc.save(`Estudo de honorários - ${nome}.pdf`);
     });
 
     const ST_PROP = ['recebida','rascunho','calculada','apresentada','fechada','descartada'];
