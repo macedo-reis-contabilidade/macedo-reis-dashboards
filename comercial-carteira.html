@@ -366,10 +366,14 @@
     const ymDe = d => d ? String(d).slice(0, 7) : null;
     function renderAnalise(){
       const mes = document.getElementById('anaMes').value || ymNow;
+      const fimDe = ym => { const [a, m] = ym.split('-').map(Number); return new Date(a, m, 0).toISOString().slice(0, 10); };
+      const presenteEm = fim => rows.filter(r =>
+        (!r.entrada || String(r.entrada).slice(0, 10) <= fim) &&
+        (!r.saida || String(r.saida).slice(0, 10) > fim));
       const ativos = rows.filter(r => !r.saida);
       const entradasMes = rows.filter(r => ymDe(r.entrada) === mes).length;
       const saidasMes = rows.filter(r => ymDe(r.saida) === mes).length;
-      document.getElementById('cAtivos').textContent = ativos.length;
+      document.getElementById('cAtivos').textContent = presenteEm(fimDe(mes)).length;
       document.getElementById('cEntradas').textContent = entradasMes;
       document.getElementById('cSaidas').textContent = saidasMes;
       const saldo = entradasMes - saidasMes;
@@ -396,13 +400,12 @@
         const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
         meses.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'));
       }
-      const fimDe = ym => { const [a, m] = ym.split('-').map(Number); return new Date(a, m, 0).toISOString().slice(0, 10); };
       document.getElementById('movBody').innerHTML = meses.map(ym => {
         const e = rows.filter(r => ymDe(r.entrada) === ym).length;
         const s = rows.filter(r => ymDe(r.saida) === ym).length;
         const sal = e - s;
         const fim = fimDe(ym);
-        const cart = rows.filter(r => r.entrada && String(r.entrada).slice(0, 10) <= fim && (!r.saida || String(r.saida).slice(0, 10) > fim)).length;
+        const cart = presenteEm(fim).length;
         const [a, m] = ym.split('-');
         return `<tr><td>${m}/${a}</td><td>${e || ''}</td><td>${s || ''}</td>
           <td class="${sal > 0 ? 'pos' : sal < 0 ? 'neg' : ''}">${sal > 0 ? '+' + sal : sal || ''}</td><td>${cart}</td></tr>`;
