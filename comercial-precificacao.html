@@ -40,9 +40,9 @@
     #printDoc { display:none; }
     @media print {
       @page { margin: 16mm; }
-      body * { visibility: hidden; }
-      #printDoc, #printDoc * { visibility: visible; }
-      #printDoc { display:block; position:absolute; left:0; top:0; width:100%;
+      body { background:#fff; }
+      body > *:not(#printDoc) { display:none !important; }
+      #printDoc { display:block; width:100%;
         background:#fff; color:#1a2330; font-family: Georgia, 'Times New Roman', serif; }
       #printDoc .pd-head { border-bottom:3px solid #3A5878; padding-bottom:10px; margin-bottom:18px; }
       #printDoc .pd-firma { font-size:19px; font-weight:700; color:#3A5878; }
