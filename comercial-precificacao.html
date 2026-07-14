@@ -34,7 +34,9 @@
     .pr-taxa { text-align:center; margin-top:8px; font-size:13px; color:#E3B341; }
     .pr-ref { margin-top:12px; display:flex; gap:8px; align-items:center; font-size:12.5px; color:#8A93A6; }
     .pr-ref input { width:110px; }
-    .pr-acao { margin-top:14px; display:flex; gap:8px; }
+    .pr-acao { margin-top:14px; display:flex; gap:8px; flex-wrap:wrap; }
+    .pr-acao .btn-primary { flex:1 1 100%; }
+    .pr-acao .btn-ghost { flex:1; }
     .pr-tab { width:100%; border-collapse:collapse; font-size:13px; }
     .pr-tab th { text-align:left; color:#8A93A6; font-size:11.5px; text-transform:uppercase; letter-spacing:.05em; padding:8px 10px; border-bottom:1px solid rgba(255,255,255,.1); }
     .pr-tab td { padding:9px 10px; border-bottom:1px solid rgba(255,255,255,.06); }
@@ -108,7 +110,7 @@
             <div class="pr-taxa" id="prTaxa" style="display:none;"></div>
             <div class="pr-ref"><span>Ref. Sescon (opcional)</span><input type="number" id="prRef" class="input" min="0"><span id="prRefDiff"></span></div>
             <div class="pr-acao">
-              <button class="btn btn-primary" id="prSalvar" style="flex:1;">Salvar proposta</button>
+              <button class="btn btn-primary" id="prSalvar">Salvar proposta</button>
               <button class="btn btn-ghost" id="prSalvarNova" style="display:none;">Salvar como nova</button>
               <button class="btn btn-ghost" id="prLimpar">Nova</button>
             </div>
