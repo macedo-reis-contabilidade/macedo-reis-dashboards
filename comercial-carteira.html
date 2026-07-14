@@ -520,6 +520,14 @@
       document.querySelectorAll('#ctSeg button').forEach(x => x.classList.toggle('is-on', x === b));
       document.getElementById('vCart').style.display = b.dataset.v === 'cart' ? 'block' : 'none';
       document.getElementById('vAna').style.display = b.dataset.v === 'ana' ? 'block' : 'none';
+      if (b.dataset.v === 'ana' && window.MRTour) MRTour.iniciar([
+        { el: '#anaMes', titulo: 'O mês no comando', texto: 'Tudo nesta aba obedece este seletor: os cartões, quem entrou e saiu, e o retrato de "ativos ao fim do mês". Viaje no tempo à vontade.' },
+        { el: '.ana-cards', titulo: 'Os quatro números', texto: 'Ativos ao fim do mês escolhido, entradas, saídas e o saldo — verde crescendo, vermelho encolhendo.' },
+        { el: '#dRegime', titulo: 'Distribuições', texto: 'Regime, município e segmento do retrato atual da carteira, mais as saídas por motivo acumuladas — as antigas laterais da planilha, calculadas sozinhas.' },
+        { el: '#movBody', titulo: 'Mês a mês', texto: 'Treze meses de movimentação com o tamanho da carteira ao fim de cada um. A história inteira numa tabela.' },
+        { el: '#dInsights', titulo: 'Leituras automáticas', texto: 'Concentração por cidade, regime dominante, tendência do trimestre, tempo médio de casa e o placar do ano — insights prontos pra reunião.' },
+        { el: '#btnPdfCart', titulo: 'Pro papel', texto: 'Gera o PDF do mês selecionado: lista compacta dos ativos + esta página de resumo. Baixa pronto pra impressora do Diego.' }
+      ], 'carteira_analise_v1', new URLSearchParams(location.search).has('tour'), user ? (user.id || user.email) : '');
     }));
     document.getElementById('fBusca').addEventListener('input', e => { filtro.busca = norm(e.target.value); render(); });
     ['fRegime', 'fMun', 'fSeg'].forEach(id => document.getElementById(id).addEventListener('change', e => {
