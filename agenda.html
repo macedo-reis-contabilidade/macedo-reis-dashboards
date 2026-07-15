@@ -863,6 +863,76 @@
       await recarregarERenderizar();
     })();
     document.getElementById('btnLogout').addEventListener('click', signOut);
+      // ---------- tarefa rápida ----------
+    const avOverlay = document.getElementById('avOverlay');
+    let avCli = null, avTimer = null;
+    document.getElementById('avResp').innerHTML += EQUIPE.map(p => `<option>${p}</option>`).join('');
+    document.getElementById('btnNovaAv').addEventListener('click', () => {
+      avCli = null;
+      ['avTitulo', 'avDesc', 'avCliBusca'].forEach(id => document.getElementById(id).value = '');
+      document.getElementById('avSetor').value = 'geral';
+      document.getElementById('avResp').value = '';
+      document.getElementById('avPrazo').value = new Date().toISOString().slice(0, 10);
+      document.getElementById('avCliChip').style.display = 'none';
+      document.getElementById('avCliRes').style.display = 'none';
+      avOverlay.classList.add('is-open');
+      document.getElementById('avTitulo').focus();
+    });
+    const avFechar = () => avOverlay.classList.remove('is-open');
+    document.getElementById('avClose').addEventListener('click', avFechar);
+    document.getElementById('avCancelar').addEventListener('click', avFechar);
+    avOverlay.addEventListener('click', e => { if (e.target === avOverlay) avFechar(); });
+
+    document.getElementById('avCliBusca').addEventListener('input', () => {
+      clearTimeout(avTimer);
+      avTimer = setTimeout(async () => {
+        const t = document.getElementById('avCliBusca').value.trim();
+        const el = document.getElementById('avCliRes');
+        if (t.length < 3) { el.style.display = 'none'; return; }
+        const { data } = await supabase.from('clientes')
+          .select('id, nome_principal, nome_fantasia, cidade')
+          .or(`nome_principal.ilike.*${t}*,nome_fantasia.ilike.*${t}*`).limit(8);
+        el.innerHTML = (data || []).map(c => `<button data-id="${c.id}" data-nome="${(c.nome_principal || '').replace(/"/g, '&quot;')}">${c.nome_principal}<small>${[c.nome_fantasia, c.cidade].filter(Boolean).join(' · ') || '&nbsp;'}</small></button>`).join('')
+          || '<button disabled style="color:#6E7787;cursor:default;">Nada encontrado.</button>';
+        el.style.display = 'block';
+        el.querySelectorAll('[data-id]').forEach(b => b.addEventListener('click', () => {
+          avCli = { id: b.dataset.id, nome: b.dataset.nome };
+          document.getElementById('avCliNome').textContent = avCli.nome;
+          document.getElementById('avCliChip').style.display = 'block';
+          document.getElementById('avCliBusca').value = '';
+          el.style.display = 'none';
+        }));
+      }, 300);
+    });
+    document.getElementById('avCliTira').addEventListener('click', e => {
+      e.preventDefault(); avCli = null;
+      document.getElementById('avCliChip').style.display = 'none';
+    });
+
+    document.getElementById('avSalvar').addEventListener('click', async () => {
+      const titulo = document.getElementById('avTitulo').value.trim();
+      if (!titulo) { alert('Dá um nome pra tarefa, pelo menos isso kkk'); return; }
+      const btn = document.getElementById('avSalvar');
+      btn.disabled = true;
+      const payload = {
+        titulo,
+        setor: document.getElementById('avSetor').value,
+        responsavel: document.getElementById('avResp').value || null,
+        prazo: document.getElementById('avPrazo').value || null,
+        prioridade: document.getElementById('avPri').value,
+        descricao: document.getElementById('avDesc').value.trim() || null,
+        status: 'aberta',
+        tipo: 'tarefa',
+        origem: 'avulsa',
+        criado_por: user ? user.email : null
+      };
+      if (avCli) payload.cliente_id = avCli.id;
+      const { error } = await supabase.from('tarefas').insert(payload);
+      btn.disabled = false;
+      if (error) { alert('Erro ao criar: ' + error.message); return; }
+      avFechar();
+      location.reload();
+    });
   </script>
 </body>
 </html>
