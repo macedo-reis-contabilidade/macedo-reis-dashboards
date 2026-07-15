@@ -114,6 +114,10 @@
 
     /* modal de detalhe da tarefa (igual ao setor) */
     .ag-card[data-taskid] { cursor:pointer; }
+    .add-res { border:1px solid rgba(255,255,255,.1); border-radius:10px; overflow:hidden; margin:-6px 0 12px; }
+    .add-res button { display:block; width:100%; text-align:left; background:transparent; border:none; border-bottom:1px solid rgba(255,255,255,.06); color:#E6EBF2; font:inherit; font-size:13px; padding:9px 12px; cursor:pointer; }
+    .add-res button:hover { background:rgba(138,174,200,.1); }
+    .add-res small { color:#6E7787; display:block; font-size:11px; }
     .fa-modal-overlay { position:fixed; inset:0; background:rgba(8,12,18,.72); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; overflow-y:auto; }
     .fa-modal-overlay.is-open { display:flex; }
     .fa-modal { width:100%; max-width:560px; background:#141A22; border:1px solid rgba(255,255,255,.10); border-radius:16px; overflow:hidden; margin:auto; }
@@ -190,6 +194,7 @@
           </div>
           <select id="fSetor" class="select"><option value="">Todos os setores</option></select>
           <select id="fResp" class="select"><option value="">Todos os responsáveis</option></select>
+          <button class="btn btn-primary btn-sm" id="btnNovaAv">+ Tarefa</button>
         </div>
       </div>
 
@@ -199,6 +204,33 @@
         <div class="ag-vazio"><span class="spinner"></span> Carregando…</div>
       </div>
     </main>
+  </div>
+
+  <div class="fa-modal-overlay" id="avOverlay">
+    <div class="fa-modal" style="width:min(520px,94vw);">
+      <div class="fa-modal-head"><h3>Tarefa rápida</h3><button class="fa-modal-close" id="avClose">&times;</button></div>
+      <div class="fa-modal-body">
+        <label class="fa-field"><span>O que precisa ser feito? *</span><input type="text" id="avTitulo" class="input" placeholder="Ex.: Juntar CNDs e declarações do cliente"></label>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+          <label class="fa-field"><span>Setor</span><select id="avSetor" class="select">
+            <option value="geral" selected>Geral</option><option value="fiscal">Fiscal</option><option value="dp">Depto. Pessoal</option>
+            <option value="contabil">Contábil</option><option value="societario">Societário</option><option value="financeiro">Financeiro</option>
+            <option value="comercial">Comercial</option><option value="irpf">IRPF</option><option value="clientes">Clientes</option>
+          </select></label>
+          <label class="fa-field"><span>Responsável</span><select id="avResp" class="select"><option value="">— ninguém ainda —</option></select></label>
+          <label class="fa-field"><span>Prazo</span><input type="date" id="avPrazo" class="input"></label>
+          <label class="fa-field"><span>Prioridade</span><select id="avPri" class="select"><option value="media">Média</option><option value="alta">Alta</option><option value="baixa">Baixa</option></select></label>
+        </div>
+        <label class="fa-field"><span>Cliente (opcional)</span><input type="text" id="avCliBusca" class="input" placeholder="Buscar por razão ou fantasia…" autocomplete="off"></label>
+        <div id="avCliRes" class="add-res" style="display:none;"></div>
+        <div id="avCliChip" style="display:none; margin:-6px 0 12px;"><span class="chip">🏢 <span id="avCliNome"></span> <a href="#" id="avCliTira" style="color:inherit; text-decoration:none; margin-left:6px;">✕</a></span></div>
+        <label class="fa-field"><span>Descrição (opcional)</span><textarea id="avDesc" class="input" rows="3" style="resize:vertical;"></textarea></label>
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-ghost" id="avCancelar">Cancelar</button>
+        <button class="btn btn-primary" id="avSalvar">Criar tarefa</button>
+      </div>
+    </div>
   </div>
 
   <div class="fa-modal-overlay" id="detOverlay">
@@ -247,7 +279,7 @@
       irpf:                 ['IRPF', '#E08FA8', 'rgba(224,143,168,.15)'],
       gestao:               ['Gestão', '#9AA8BE', 'rgba(154,168,190,.15)'],
     };
-    const SETORES_LISTA = ['clientes','dp','fiscal','contabil','societario','financeiro','comercial','irpf','gestao'];
+    const SETORES_LISTA = ['clientes','dp','fiscal','contabil','societario','financeiro','comercial','irpf','gestao','geral'];
     const EQUIPE = ['Thalia','Vitória','Adaini','Samuel','Diego','Edna'];
     const FILTRO_PESSOAL = {
       'fiscal@macedoereis.com.br':'Thalia', 'rh@macedoereis.com.br':'Vitória',
