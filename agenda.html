@@ -263,6 +263,7 @@
     </div>
   </div>
 
+  <script src="assets/js/tour.js"></script>
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
 
@@ -943,6 +944,24 @@
         btn.disabled = false;
       }
     });
+      // ---------- tour de estreia (espera a tela nascer) ----------
+    if (window.MRTour) {
+      const espera = s => new Promise(res => {
+        const t0 = Date.now();
+        const t = setInterval(() => {
+          if (document.querySelector(s) || Date.now() - t0 > 4000) { clearInterval(t); res(); }
+        }, 200);
+      });
+      await espera('.ag-dia-col');
+      const au2 = await supabase.auth.getUser();
+      MRTour.iniciar([
+        { el: '.ag-views', titulo: 'Sua semana num olhar', texto: 'Dia, Semana ou Mês — as setas navegam no tempo e o Hoje te traz de volta pro agora.' },
+        { el: '#fSetor', titulo: 'Filtros', texto: 'Enxergue só um setor ou só um responsável — foco individual ou visão de reunião.' },
+        { el: '#btnNovaAv', titulo: 'Tarefa rápida ★', texto: 'Novidade: crie avulsos direto daqui — juntar documentação, pendência pontual. Só o título é obrigatório; setor Geral, cliente, prazo e responsável são à la carte.' },
+        { el: '.ag-dia-col', titulo: 'As tarefas do período', texto: 'Clique em qualquer cartão pra abrir o detalhe: andamento, histórico, concluir. As sem prazo moram no bloco próprio, no topo.' },
+        { el: '#agResumo', titulo: 'Resumo do dia', texto: 'O termômetro: concluídas, em aberto e o percentual do dia vencido.' }
+      ], 'agenda_v1', new URLSearchParams(location.search).has('tour'), au2?.data?.user?.email || '');
+    }
   </script>
 </body>
 </html>
