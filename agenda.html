@@ -929,9 +929,12 @@
         };
         const { data: ins, error } = await supabase.from('tarefas').insert(payload).select('id').single();
         if (error) { alert('Erro ao criar (' + (error.code || '?') + '): ' + error.message); return; }
-        if (ins) await supabase.from('tarefa_historico').insert({
-          tarefa_id: ins.id, descricao: 'Tarefa criada pela Agenda.', autor: user ? user.email : null
-        });
+        if (ins) {
+          const { data: au } = await supabase.auth.getUser();
+          await supabase.from('tarefa_historico').insert({
+            tarefa_id: ins.id, descricao: 'Tarefa criada pela Agenda.', autor: au?.user?.email || null
+          });
+        }
         avFechar();
         location.reload();
       } catch (e) {
