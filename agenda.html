@@ -944,7 +944,37 @@
         btn.disabled = false;
       }
     });
-      // ---------- tour de estreia (espera a tela nascer) ----------
+      // ---------- filtros que lembram de você ----------
+    {
+      const auF = await supabase.auth.getUser();
+      const emailF = auF?.data?.user?.email || '';
+      const chaveF = 'ag_filtros::' + emailF;
+      const normF = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      const selS = document.getElementById('fSetor');
+      const selR = document.getElementById('fResp');
+      const salvarF = () => localStorage.setItem(chaveF, JSON.stringify({ setor: selS.value, resp: selR.value }));
+      selS.addEventListener('change', salvarF);
+      selR.addEventListener('change', salvarF);
+      let alvoS = '', alvoR = '';
+      const salvo = localStorage.getItem(chaveF);
+      if (salvo) {
+        try { const s = JSON.parse(salvo); alvoS = s.setor || ''; alvoR = s.resp || ''; } catch {}
+      } else {
+        const local = normF(emailF.split('@')[0]);
+        const mapa = { financeiro: 'Samuel' };
+        alvoR = mapa[local] || EQUIPE.find(p => normF(p) === local || normF(p).startsWith(local)) || '';
+      }
+      const aplica = (sel, v) => {
+        if (v && [...sel.options].some(o => o.value === v) && sel.value !== v) {
+          sel.value = v;
+          sel.dispatchEvent(new Event('change'));
+        }
+      };
+      aplica(selS, alvoS);
+      aplica(selR, alvoR);
+    }
+
+    // ---------- tour de estreia (espera a tela nascer) ----------
     if (window.MRTour) {
       const espera = s => new Promise(res => {
         const t0 = Date.now();
