@@ -914,24 +914,31 @@
       if (!titulo) { alert('Dá um nome pra tarefa, pelo menos isso kkk'); return; }
       const btn = document.getElementById('avSalvar');
       btn.disabled = true;
-      const payload = {
-        titulo,
-        setor: document.getElementById('avSetor').value,
-        responsavel: document.getElementById('avResp').value || null,
-        prazo: document.getElementById('avPrazo').value || null,
-        prioridade: document.getElementById('avPri').value,
-        descricao: document.getElementById('avDesc').value.trim() || null,
-        status: 'aberta',
-        tipo: 'tarefa',
-        origem: 'avulsa',
-        criado_por: user ? user.email : null
-      };
-      if (avCli) payload.cliente_id = avCli.id;
-      const { error } = await supabase.from('tarefas').insert(payload);
-      btn.disabled = false;
-      if (error) { alert('Erro ao criar: ' + error.message); return; }
-      avFechar();
-      location.reload();
+      try {
+        const payload = {
+          titulo,
+          setor: document.getElementById('avSetor').value,
+          tipo: 'tarefa',
+          descricao: document.getElementById('avDesc').value.trim() || null,
+          responsavel: document.getElementById('avResp').value || null,
+          prazo: document.getElementById('avPrazo').value || null,
+          prioridade: document.getElementById('avPri').value,
+          status: 'pendente',
+          origem: 'avulsa',
+          cliente_id: avCli ? avCli.id : null
+        };
+        const { data: ins, error } = await supabase.from('tarefas').insert(payload).select('id').single();
+        if (error) { alert('Erro ao criar (' + (error.code || '?') + '): ' + error.message); return; }
+        if (ins) await supabase.from('tarefa_historico').insert({
+          tarefa_id: ins.id, descricao: 'Tarefa criada pela Agenda.', autor: user ? user.email : null
+        });
+        avFechar();
+        location.reload();
+      } catch (e) {
+        alert('Falha inesperada: ' + e.message);
+      } finally {
+        btn.disabled = false;
+      }
     });
   </script>
 </body>
