@@ -556,7 +556,7 @@
 
         <div class="fa-field-row">
           <label class="fa-field"><span>Tipo de processo</span>
-            <select id="procTipo" class="select"><option value="ALTERAÇÃO" selected>Alteração</option></select>
+            <select id="procTipo" class="select"><option value="ALTERAÇÃO" selected>Alteração</option><option value="TRANSFORMAÇÃO">Transformação (MEI → ME)</option></select>
           </label>
           <label class="fa-field"><span>Nome da pasta no Drive</span>
             <input type="text" id="procPastaNome" class="input" value="ALTERAÇÃO" placeholder="Ex.: ALTERAÇÃO">
@@ -1202,6 +1202,7 @@
 
     // ===================== COMPARATIVO ANTES × DEPOIS =====================
     const FN_PROC = 'registrar-processo-drive';
+    document.getElementById('procTipo').addEventListener('change', e => { document.getElementById('procPastaNome').value = e.target.value; });
     function fmtData(iso){ try { return new Date(iso).toLocaleDateString('pt-BR'); } catch { return ''; } }
 
     document.getElementById('btnComparar').addEventListener('click', async () => {
