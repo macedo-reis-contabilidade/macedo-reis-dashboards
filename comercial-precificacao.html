@@ -196,7 +196,7 @@
 
       const nfE = pFaixa('p04', R('B1'));
       const nfR = pFaixa('p04', R('B2'));
-      const estoque = (sim('B4') && R('B5') === 'Escritório') ? pv('p05', 'Adicional - controle de estoque pelo escritório') : 0;
+      const estoque = (sim('B4') && R('B5') === 'O escritório contábil') ? pv('p05', 'Adicional - controle de estoque pelo escritório') : 0;
       const lanc = pFaixa('p06', R('B7'));
       const contas = Math.max(0, num('B6') - 1) * pv('p06', 'Valor por conta bancária adicional (além da 1ª)');
       const erp = pv('p07', R('B8'));
