@@ -7,7 +7,10 @@
   <link rel="stylesheet" href="assets/css/style.css">
   <script type="module" src="assets/js/auth-guard.js"></script>
   <style>
-    .ag-toolbar { display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; margin-bottom:18px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07); border-radius:12px; padding:8px 12px; }
+    .ag-toolbar { display:flex; flex-direction:column; gap:10px; margin-bottom:18px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07); border-radius:12px; padding:10px 12px; }
+    .ag-tb-row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .ag-tb-topo { justify-content:space-between; }
+    #agBusca { flex:1; min-width:220px; font-size:13px; }
     .ag-tb-group { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
     .ag-views { display:flex; gap:4px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:3px; }
     .ag-view-btn { padding:7px 16px; font-size:13px; font-weight:600; color:#8A93A6; background:none; border:none; border-radius:8px; cursor:pointer; font-family:inherit; }
@@ -73,6 +76,23 @@
     .ag-card.feita { opacity:.55; }
     .ag-card.feita .ag-card-titulo { text-decoration:line-through; }
     .ag-rotina { border-left-style:dashed; }
+    #resumoPainel { display:flex; flex-direction:column; gap:10px; }
+    .rp-topo { display:flex; gap:14px; align-items:center; }
+    .rp-big { font-size:26px; font-weight:700; color:#E6EBF2; }
+    .rp-big span { font-size:13px; font-weight:400; color:#8A93A6; }
+    .rp-sub { font-size:12px; color:#8A93A6; margin-top:2px; }
+    .rp-prios { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
+    .rp-prio { font-size:10.5px; font-weight:600; padding:2px 8px; border:1px solid; border-radius:999px; }
+    .rp-festa { text-align:center; padding:8px; border-radius:10px; background:rgba(63,176,122,.12); color:#3FB07A; font-size:13px; font-weight:600; }
+    .rp-secao { font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:#8A93A6; margin-top:4px; padding-top:8px; border-top:1px solid rgba(255,255,255,.07); }
+    .rp-setores { display:flex; gap:8px; flex-wrap:wrap; }
+    .rp-setor { display:inline-flex; gap:5px; align-items:center; font-size:12px; color:#B9C2D0; }
+    .rp-prazos { display:flex; flex-direction:column; gap:6px; }
+    .rp-prazo { display:flex; gap:9px; align-items:center; cursor:pointer; padding:5px 7px; border-radius:8px; }
+    .rp-prazo:hover { background:rgba(255,255,255,.05); }
+    .rp-selo { flex:none; font-size:10px; font-weight:700; padding:2.5px 8px; border-radius:6px; border:1px solid; letter-spacing:.03em; }
+    .rp-ptit { font-size:12.5px; color:#D6DCE6; line-height:1.3; }
+    .rp-ptit small { display:block; color:#6E7787; font-size:10.5px; }
     .ag-rot-check { width:24px; height:24px; flex:0 0 auto; border-radius:50%; border:2px solid rgba(255,255,255,.22); background:none; cursor:pointer; display:flex; align-items:center; justify-content:center; color:#fff; padding:0; transition:background .15s, border-color .15s; }
     .ag-rot-check:hover { border-color:#3FB07A; }
     .ag-rot-check.on { background:#3FB07A; border-color:#3FB07A; }
@@ -178,21 +198,23 @@
       </div>
 
       <div class="ag-toolbar">
-        <div class="ag-tb-group">
+        <div class="ag-tb-row ag-tb-topo">
+          <div class="ag-tb-group">
           <div class="ag-nav">
             <button id="agHoje" class="ag-hoje-btn">Hoje</button>
             <button id="agPrev" title="Anterior">‹</button>
             <button id="agNext" title="Próximo">›</button>
           </div>
           <span class="ag-periodo" id="agPeriodo">—</span>
-        </div>
-        <div class="ag-tb-group">
+          </div>
           <div class="ag-views">
             <button class="ag-view-btn is-active" data-view="dia">Dia</button>
             <button class="ag-view-btn" data-view="semana">Semana</button>
             <button class="ag-view-btn" data-view="mes">Mês</button>
           </div>
-          <input type="text" id="agBusca" class="input" placeholder="🔎 Buscar tarefa ou cliente…" style="min-width:210px; font-size:13px;">
+        </div>
+        <div class="ag-tb-row">
+          <input type="text" id="agBusca" class="input" placeholder="🔎 Buscar tarefa ou cliente em qualquer data…">
           <select id="fSetor" class="select"><option value="">Todos os setores</option></select>
           <select id="fResp" class="select"><option value="">Todos os responsáveis</option></select>
           <button class="btn btn-primary btn-sm" id="btnNovaAv">+ Tarefa</button>
@@ -484,99 +506,79 @@
     }
 
     // ===================== RESUMO DO DIA (rotativo) =====================
+    const fmtISO = dt => dt.toISOString().slice(0, 10);
     function montarResumo(){
       if (resumoTimer){ clearInterval(resumoTimer); resumoTimer = null; }
-      const cont = document.getElementById('resumoSlide');
-      const dots = document.getElementById('resumoDots');
-      if (!cont || !dots) return;
+      const painel = document.getElementById('resumoPainel');
+      if (!painel) return;
 
       const d = estado.cursor;
       const tarefas = tarefasDoDia(d);
-      const pend = tarefas.filter(t => t.status!=='concluida');
-      const feitas = tarefas.filter(t => t.status==='concluida');
-      const total = tarefas.length;
+      const pend = tarefas.filter(t => t.status !== 'concluida');
+      const feitas = tarefas.length - pend.length;
       const rotinasR = rotinasDoDia(d);
-      const rotFeitas = rotinasR.filter(r => rotinaFeita(r,d)).length;
+      const rotFeitas = rotinasR.filter(r => rotinaFeita(r, d)).length;
+      const totalTudo = tarefas.length + rotinasR.length;
+      const feitasTudo = feitas + rotFeitas;
+      const pct = totalTudo ? Math.round(feitasTudo / totalTudo * 100) : 0;
 
-      const slides = [];
+      // anel de progresso
+      const R = 34, C = 2 * Math.PI * R;
+      const corAnel = pct >= 100 ? '#3FB07A' : pct >= 50 ? '#8AAEC8' : '#5B82A6';
+      const anel = `<svg width="86" height="86" viewBox="0 0 86 86">
+        <circle cx="43" cy="43" r="${R}" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="8"/>
+        <circle cx="43" cy="43" r="${R}" fill="none" stroke="${corAnel}" stroke-width="8" stroke-linecap="round"
+          stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - pct / 100)}"
+          transform="rotate(-90 43 43)" style="transition:stroke-dashoffset .6s ease;"/>
+        <text x="43" y="49" text-anchor="middle" font-size="19" font-weight="700" fill="${corAnel}">${pct}%</text>
+      </svg>`;
 
-      // 1) Andamento (tarefas + rotinas do dia)
-      const totalTudo = total + rotinasR.length;
-      const feitasTudo = feitas.length + rotFeitas;
-      if (totalTudo > 0){
-        const pct = Math.round((feitasTudo/totalTudo)*100);
-        const emAberto = (totalTudo - feitasTudo);
-        slides.push(`
-          <div class="rs-label">Andamento do dia</div>
-          <div class="rs-big"><span class="n">${feitasTudo}</span><span class="sub">de ${totalTudo} concluídas</span></div>
-          <div class="rs-bar"><div style="width:${pct}%;"></div></div>
-          <div class="rs-foot">${emAberto} ainda em aberto · ${pct}% do dia</div>`);
-      }
+      // prioridades em aberto
+      const cnt = { alta: 0, media: 0, baixa: 0 };
+      pend.forEach(t => { const n = norm(t.prioridade); cnt[(n === 'alta' || n === 'baixa') ? n : 'media']++; });
+      const prio = (lab, v, cor) => v ? `<span class="rp-prio" style="border-color:${cor};color:${cor};">${lab} ${v}</span>` : '';
 
-      // 2) Por prioridade (tarefas em aberto)
-      if (pend.length > 0){
-        const cnt = { alta:0, media:0, baixa:0 };
-        pend.forEach(t => { const n=norm(t.prioridade); cnt[(n==='alta'||n==='baixa')?n:'media']++; });
-        slides.push(`
-          <div class="rs-label">Em aberto por prioridade</div>
-          <div class="rs-rows">
-            <div class="rs-row"><span class="lab"><span class="setor-dot" style="background:#E06C6C;"></span>Alta</span><span class="val">${cnt.alta}</span></div>
-            <div class="rs-row"><span class="lab"><span class="setor-dot" style="background:#E3B341;"></span>Média</span><span class="val">${cnt.media}</span></div>
-            <div class="rs-row"><span class="lab"><span class="setor-dot" style="background:#5B82A6;"></span>Baixa</span><span class="val">${cnt.baixa}</span></div>
-          </div>`);
-      }
+      // setores do dia (pendentes)
+      const porSetor = {};
+      pend.forEach(t => { if (t.setor) porSetor[t.setor] = (porSetor[t.setor] || 0) + 1; });
+      const setoresHtml = Object.entries(porSetor).sort((a, b) => b[1] - a[1]).slice(0, 6)
+        .map(([s, v]) => `<span class="rp-setor">${chip(s)} <b>${v}</b></span>`).join('');
 
-      // 3) Por setor (tarefas em aberto)
-      if (pend.length > 0){
-        const porSetor = {};
-        pend.forEach(t => { porSetor[t.setor] = (porSetor[t.setor]||0)+1; });
-        const linhas = Object.entries(porSetor)
-          .sort((a,b)=>b[1]-a[1])
-          .map(([s,n]) => `<div class="rs-row"><span class="lab">${dot(s)}${(SETOR_INFO[s]||[s])[0]}</span><span class="val">${n}</span></div>`)
-          .join('');
-        slides.push(`<div class="rs-label">Em aberto por setor</div><div class="rs-rows">${linhas}</div>`);
-      }
-
-      // 4) Próximos prazos (depois de hoje) — respeita os filtros atuais
-      const prox = cacheProximos.filter(passaFiltro).slice(0,4);
-      if (prox.length > 0){
-        const itens = prox.map(t => {
-          const [yy,mm,dd] = String(t.prazo).slice(0,10).split('-');
-          const cli = t.clientes?.nome_principal ? `<div class="cli">${esc(t.clientes.nome_principal)}</div>` : '';
-          return `<div class="rs-prox-item"><span class="rs-prox-data">${dd}/${mm}</span><div class="rs-prox-txt">${esc(t.titulo)||'—'}${cli}</div></div>`;
-        }).join('');
-        slides.push(`<div class="rs-label">Próximos prazos</div><div class="rs-prox">${itens}</div>`);
-      }
-
-      if (!slides.length){
-        cont.innerHTML = `<div class="rs-empty">Sem nada para resumir neste dia.</div>`;
-        dots.innerHTML = '';
-        return;
-      }
-
-      // render + navegação
-      let idx = 0;
-      const mostrar = (i) => {
-        idx = (i + slides.length) % slides.length;
-        cont.innerHTML = slides[idx];
-        dots.querySelectorAll('button').forEach((b,j)=> b.classList.toggle('on', j===idx));
+      // próximos prazos com selo de urgência
+      const hojeS = fmtISO(estado.cursor ? new Date() : new Date());
+      const amanha = new Date(); amanha.setDate(amanha.getDate() + 1);
+      const amanhaS = fmtISO(amanha);
+      const selo = p => {
+        const s = String(p).slice(0, 10);
+        if (s < hojeS) return ['ATRASADA', '#E06C6C'];
+        if (s === hojeS) return ['HOJE', '#3FB07A'];
+        if (s === amanhaS) return ['AMANHÃ', '#E3B341'];
+        return [s.split('-').reverse().slice(0, 2).join('/'), '#8AAEC8'];
       };
-      dots.innerHTML = slides.map((_,i)=>`<button data-i="${i}" aria-label="Métrica ${i+1}"></button>`).join('');
-      dots.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
-        mostrar(Number(b.dataset.i));
-        reiniciarTimer();
-      }));
-      mostrar(0);
+      const proximos = (cacheProximos || []).slice(0, 5).map(t => {
+        const [txt, cor] = selo(t.prazo);
+        const cli = t.clientes?.nome_principal ? `<small>${esc(t.clientes.nome_principal)}</small>` : '';
+        return `<div class="rp-prazo" data-rptask="${t.id}">
+          <span class="rp-selo" style="background:${cor}1f;color:${cor};border-color:${cor}55;">${txt}</span>
+          <span class="rp-ptit">${esc(t.titulo)}${cli}</span>
+        </div>`;
+      }).join('') || '<div style="color:#6E7787;font-size:12px;padding:4px 0;">Nada no radar.</div>';
 
-      // rotação automática (a cada 6s), pausa ao passar o mouse
-      function iniciarTimer(){ if (slides.length>1) resumoTimer = setInterval(()=>mostrar(idx+1), 6000); }
-      function reiniciarTimer(){ if (resumoTimer){ clearInterval(resumoTimer); resumoTimer=null; } iniciarTimer(); }
-      iniciarTimer();
-      const card = document.getElementById('agResumo');
-      if (card){
-        card.addEventListener('mouseenter', ()=>{ if(resumoTimer){ clearInterval(resumoTimer); resumoTimer=null; } });
-        card.addEventListener('mouseleave', ()=> reiniciarTimer());
-      }
+      painel.innerHTML = `
+        <div class="rp-topo">
+          ${anel}
+          <div class="rp-nums">
+            <div class="rp-big">${feitasTudo}<span> de ${totalTudo}</span></div>
+            <div class="rp-sub">${totalTudo - feitasTudo} em aberto${rotinasR.length ? ` · rotinas ${rotFeitas}/${rotinasR.length} ✓` : ''}</div>
+            <div class="rp-prios">${prio('Alta', cnt.alta, '#E06C6C')}${prio('Média', cnt.media, '#E3B341')}${prio('Baixa', cnt.baixa, '#5B82A6')}</div>
+          </div>
+        </div>
+        ${pct >= 100 && totalTudo > 0 ? '<div class="rp-festa">🎉 Dia zerado — bora pro café!</div>' : ''}
+        ${setoresHtml ? `<div class="rp-secao">Setores do dia</div><div class="rp-setores">${setoresHtml}</div>` : ''}
+        <div class="rp-secao">⏰ Próximos prazos</div>
+        <div class="rp-prazos">${proximos}</div>`;
+      painel.querySelectorAll('[data-rptask]').forEach(el =>
+        el.addEventListener('click', () => abrirDetalhe(el.dataset.rptask)));
     }
 
     function atualizarPeriodo(){
@@ -664,8 +666,7 @@
         <aside class="ag-resumo-wrap">
           <div class="ag-dia-secao"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#8FC0F0;"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> Resumo do dia</div>
           <div class="ag-resumo" id="agResumo">
-            <div class="ag-resumo-slide" id="resumoSlide"></div>
-            <div class="ag-resumo-dots" id="resumoDots"></div>
+            <div id="resumoPainel"></div>
           </div>
         </aside>
       </div>`;
