@@ -473,10 +473,13 @@
     function renderSemPrazo(){
       const el = document.getElementById('agSemPrazo');
       if (!el) return;
+      if (modoBusca) { el.innerHTML = ''; return; } // na busca, os resultados já cobrem as sem-prazo
       const itens = cacheSemPrazo.filter(passaFiltro)
         .sort((a, b) => (PRIO_ORDEM[norm(a.prioridade)] ?? 1) - (PRIO_ORDEM[norm(b.prioridade)] ?? 1));
       if (!itens.length) { el.innerHTML = ''; return; }
-      let html = `<div class="ag-dia-secao">⚠ Sem prazo definido <span class="cont">${itens.length}</span></div>`;
+      const ocultas = cacheSemPrazo.length - itens.length;
+      const aviso = ocultas > 0 ? ` <span style="font-weight:400; font-size:11px; color:#6E7787;">+${ocultas} fora do filtro</span>` : '';
+      let html = `<div class="ag-dia-secao">⚠ Sem prazo definido <span class="cont">${itens.length}</span>${aviso}</div>`;
       itens.forEach(t => {
         const cli = t.clientes?.nome_principal ? `<span>${esc(t.clientes.nome_principal)}</span><span class="sep">·</span>` : '';
         const resp = t.responsavel ? `<span>${esc(t.responsavel)}</span>` : '';
