@@ -152,6 +152,9 @@
     .fa-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid rgba(255,255,255,.08); }
     .fa-modal textarea.input, .fa-modal .input, .fa-modal .select { resize:vertical; font-family:inherit; }
     .det-empresa { display:flex; flex-direction:column; gap:2px; }
+    .det-doc strong { letter-spacing:.03em; font-variant-numeric:tabular-nums; }
+    .det-doc button { background:transparent; border:1px solid rgba(255,255,255,.15); border-radius:7px; color:#B9C2D0; font-size:12px; padding:2px 9px; margin-left:8px; cursor:pointer; }
+    .det-doc button:hover { background:rgba(138,174,200,.12); }
     .det-empresa span { font-size:13px; color:#8AAEC8; }
     .det-empresa strong { color:#E6EBF2; font-size:15px; }
     .alv-conc-banner { background:rgba(63,176,122,.12); border:1px solid rgba(63,176,122,.35); color:#3FB07A; border-radius:10px; padding:8px 12px; font-size:13px; }
@@ -262,6 +265,7 @@
       <div class="fa-modal-body">
         <div class="alv-conc-banner" id="dConcBanner" style="display:none;"></div>
         <div class="det-empresa"><span>Empresa</span><strong id="dEmpresa"></strong></div>
+        <div class="det-empresa det-doc" id="dDocWrap" style="display:none;"><span id="dDocLabel">CNPJ</span><strong id="dDoc"></strong><button id="dDocCopy" title="Copiar (só números)">📋</button></div>
         <div class="fa-field-row">
           <label class="fa-field"><span>Responsável</span><input type="text" id="dResp" class="input"></label>
           <label class="fa-field"><span>Prazo</span><input type="date" id="dPrazo" class="input"></label>
@@ -372,20 +376,20 @@
     async function carregarDados(ini, fim){
       const iniS = ymd(ini), fimS = ymd(fim);
       const { data: ts } = await supabase.from('tarefas')
-        .select('id, titulo, setor, responsavel, prazo, status, prioridade, cliente_id, clientes(nome_principal), concluida_em, concluida_por')
+        .select('id, titulo, setor, responsavel, prazo, status, prioridade, cliente_id, clientes(nome_principal, documento), concluida_em, concluida_por')
         .gte('prazo', iniS).lte('prazo', fimS);
       cacheTarefas = ts || [];
       const { data: rs } = await supabase.from('rotinas').select('*').eq('ativo', true);
       cacheRotinas = rs || [];
       const { data: sp } = await supabase.from('tarefas')
-        .select('id, titulo, setor, responsavel, prazo, status, prioridade, cliente_id, clientes(nome_principal), concluida_em, concluida_por')
+        .select('id, titulo, setor, responsavel, prazo, status, prioridade, cliente_id, clientes(nome_principal, documento), concluida_em, concluida_por')
         .is('prazo', null).neq('status', 'concluida');
       cacheSemPrazo = sp || [];
     }
     // próximos prazos (após hoje), para o slide do resumo — independe do dia exibido
     async function carregarProximos(){
       const { data } = await supabase.from('tarefas')
-        .select('id, titulo, setor, responsavel, prazo, status, clientes(nome_principal)')
+        .select('id, titulo, setor, responsavel, prazo, status, clientes(nome_principal, documento)')
         .gt('prazo', HOJE_STR).neq('status','concluida')
         .order('prazo', { ascending:true }).limit(20);
       cacheProximos = data || [];
@@ -406,7 +410,7 @@
     async function executarBusca(termo){
       const t = termo.replace(/[,()]/g, ' ').trim();
       const [porTexto, cli] = await Promise.all([
-        supabase.from('tarefas').select('*, clientes(nome_principal, nome_fantasia)')
+        supabase.from('tarefas').select('*, clientes(nome_principal, nome_fantasia, documento)')
           .or(`titulo.ilike.*${t}*,descricao.ilike.*${t}*,responsavel.ilike.*${t}*`).limit(50),
         supabase.from('clientes').select('id')
           .or(`nome_principal.ilike.*${t}*,nome_fantasia.ilike.*${t}*`).limit(20)
@@ -415,7 +419,7 @@
       const ids = (cli.data || []).map(c => c.id);
       if (ids.length) {
         porCliente = await supabase.from('tarefas')
-          .select('*, clientes(nome_principal, nome_fantasia)')
+          .select('*, clientes(nome_principal, nome_fantasia, documento)')
           .in('cliente_id', ids).limit(50);
       }
       const mapa = new Map();
@@ -794,6 +798,19 @@
       const concl = t.status === 'concluida';
       document.getElementById('dTipo').textContent = t.titulo || 'Tarefa';
       document.getElementById('dEmpresa').textContent = t.clientes?.nome_principal || 'Interno (sem empresa)';
+      {
+        const docBруто = String(t.clientes?.documento || '').replace(/\D/g, '');
+        const wrapD = document.getElementById('dDocWrap');
+        if (docBруто.length === 11 || docBруто.length === 14) {
+          const fmtD = docBруто.length === 14
+            ? docBруто.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5')
+            : docBруто.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+          document.getElementById('dDocLabel').textContent = docBруто.length === 11 ? 'CPF' : 'CNPJ';
+          document.getElementById('dDoc').textContent = fmtD;
+          wrapD.dataset.raw = docBруто;
+          wrapD.style.display = '';
+        } else wrapD.style.display = 'none';
+      }
       document.getElementById('dResp').value = t.responsavel || '';
       document.getElementById('dPrazo').value = t.prazo ? String(t.prazo).slice(0,10) : '';
       document.getElementById('dPrioridade').value = (norm(t.prioridade)==='alta'||norm(t.prioridade)==='baixa') ? norm(t.prioridade) : 'media';
@@ -1049,6 +1066,14 @@
       aplica(selS, alvoS);
       aplica(selR, alvoR);
     }
+
+    document.getElementById('dDocCopy').addEventListener('click', async () => {
+      const raw = document.getElementById('dDocWrap').dataset.raw || '';
+      try { await navigator.clipboard.writeText(raw); } catch {}
+      const b = document.getElementById('dDocCopy');
+      b.textContent = '✓';
+      setTimeout(() => { b.textContent = '📋'; }, 1200);
+    });
 
     // ---------- tour de estreia (espera a tela nascer) ----------
     if (window.MRTour) {
