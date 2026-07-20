@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Iniciar alteração · Societário — Macedo & Reis</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+  <style>
+    .alt-card { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07); border-radius:14px; padding:20px 22px; }
+    .fa-field { display:block; margin-bottom:12px; }
+    .fa-field > span { display:block; font-size:12px; color:#8A93A6; margin-bottom:5px; }
+    .alt-res { border:1px solid rgba(255,255,255,.1); border-radius:10px; overflow:hidden; margin:-6px 0 12px; }
+    .alt-res button { display:block; width:100%; text-align:left; background:transparent; border:none; border-bottom:1px solid rgba(255,255,255,.06); color:#E6EBF2; font:inherit; font-size:13px; padding:9px 12px; cursor:pointer; }
+    .alt-res button:hover { background:rgba(138,174,200,.1); }
+    .alt-res small { color:#6E7787; display:block; font-size:11px; }
+    .alt-radios { display:flex; gap:18px; padding:8px 2px; }
+    .alt-radios label { display:flex; gap:7px; align-items:center; font-size:13.5px; color:#D6DCE6; cursor:pointer; }
+    .alt-sec { border:1px solid rgba(255,255,255,.08); border-radius:12px; margin-bottom:10px; overflow:hidden; }
+    .alt-sec-head { display:flex; gap:10px; align-items:center; padding:11px 14px; cursor:pointer; font-weight:600; font-size:13.5px; color:#D6DCE6; }
+    .alt-sec-head small { font-weight:400; color:#6E7787; }
+    .alt-sec-head input { accent-color:#5B82A6; width:15px; height:15px; }
+    .alt-sec-body { display:none; padding:4px 14px 14px; border-top:1px solid rgba(255,255,255,.06); }
+    .alt-sec.is-on { border-color:rgba(91,130,166,.5); }
+    .alt-sec.is-on .alt-sec-body { display:block; }
+    .f2 { display:grid; grid-template-columns:1fr 1fr; gap:0 12px; }
+    .chip { display:inline-flex; align-items:center; gap:4px; background:rgba(138,174,200,.12); border:1px solid rgba(138,174,200,.3); border-radius:999px; padding:6px 12px; font-size:13px; }
+    @media (max-width:640px){ .f2 { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip"><div class="user-avatar" id="userAvatar">—</div><span id="userName">Carregando…</span></div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <a href="societario.html">Societário</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Iniciar alteração</span>
+        </div>
+        <div class="eyebrow">Formulário de alteração contratual</div>
+        <h1>Iniciar alteração</h1>
+        <p>Marque as seções, preencha as novas informações e clique em Gerar — o formulário baixa aqui e é salvo em <b>SOCIETARIO › PROCESSOS EM ANDAMENTO › ano</b> no Drive.</p>
+      </div>
+
+      <div class="alt-card">
+        <label class="fa-field"><span>Empresa *</span><input type="text" id="cliBusca" class="input" placeholder="Buscar por razão ou fantasia…" autocomplete="off"></label>
+        <div id="cliRes" class="alt-res" style="display:none;"></div>
+        <div id="cliChip" style="display:none; margin:2px 0 14px;"><span class="chip">🏢 <b id="cliNome"></b> <span id="cliDoc" style="color:#8A93A6;"></span> <a href="#" id="cliTira" style="color:inherit; text-decoration:none;">✕</a></span></div>
+
+        <div class="fa-field"><span>Tipo de alteração</span>
+          <div class="alt-radios">
+            <label><input type="radio" name="tipoAlt" value="Simples"> Simples</label>
+            <label><input type="radio" name="tipoAlt" value="Consolidada" checked> Consolidada</label>
+          </div>
+        </div>
+
+        <div class="eyebrow" style="margin-top:18px; margin-bottom:10px;">Seções da alteração</div>
+
+        <div class="alt-sec" data-rot="NATUREZA JURÍDICA">
+          <label class="alt-sec-head"><input type="checkbox"> Natureza jurídica</label>
+          <div class="alt-sec-body">
+            <div class="f2">
+              <label class="fa-field"><span>Transformação em</span><select class="select" data-f="Transformação em"><option>LTDA</option><option>Empresário Individual</option><option>Outro</option></select></label>
+              <label class="fa-field"><span>Se "Outro", especificar</span><input type="text" class="input" data-f="Outro (especificar)"></label>
+            </div>
+            <label class="fa-field"><span>Novo nome empresarial</span><input type="text" class="input" data-f="Novo nome empresarial"></label>
+          </div>
+        </div>
+
+        <div class="alt-sec" data-rot="NOME EMPRESARIAL">
+          <label class="alt-sec-head"><input type="checkbox"> Nome empresarial <small>(mín. 2 opções — regras da Junta)</small></label>
+          <div class="alt-sec-body">
+            <label class="fa-field"><span>Opção 1</span><input type="text" class="input" data-f="Opção 1"></label>
+            <label class="fa-field"><span>Opção 2</span><input type="text" class="input" data-f="Opção 2"></label>
+          </div>
+        </div>
+
+        <div class="alt-sec" data-rot="ENDEREÇO">
+          <label class="alt-sec-head"><input type="checkbox"> Endereço comercial <small>(dados do novo endereço)</small></label>
+          <div class="alt-sec-body">
+            <div class="f2">
+              <label class="fa-field"><span>Rua/Avenida/Estrada</span><input type="text" class="input" data-f="Rua/Avenida/Estrada"></label>
+              <label class="fa-field"><span>Nº</span><input type="text" class="input" data-f="Nº"></label>
+              <label class="fa-field"><span>Nº IPTU (obrigatório fora do RS)</span><input type="text" class="input" data-f="Nº IPTU"></label>
+              <label class="fa-field"><span>Complemento</span><input type="text" class="input" data-f="Complemento"></label>
+              <label class="fa-field"><span>Bairro</span><input type="text" class="input" data-f="Bairro"></label>
+              <label class="fa-field"><span>Cidade</span><input type="text" class="input" data-f="Cidade"></label>
+              <label class="fa-field"><span>Estado</span><input type="text" class="input" data-f="Estado"></label>
+              <label class="fa-field"><span>CEP</span><input type="text" class="input" data-f="CEP"></label>
+            </div>
+            <label class="fa-field"><span>Área total edificação e área utilizada</span><input type="text" class="input" data-f="Área total e utilizada"></label>
+            <label class="fa-field"><span>Horários e dias de funcionamento</span><input type="text" class="input" data-f="Horários e dias de funcionamento"></label>
+            <label class="fa-field"><span>Tipo de estabelecimento</span><select class="select" data-f="Tipo de estabelecimento"><option>Estabelecimento fixo</option><option>Somente ponto de referência/endereço fiscal</option><option>Atividades online</option></select></label>
+            <label class="fa-field"><span>Todas as atividades serão exercidas no local? (ou indicar quais não)</span><textarea class="input" rows="2" data-f="Atividades no local"></textarea></label>
+          </div>
+        </div>
+
+        <div class="alt-sec" data-rot="ATIVIDADES">
+          <label class="alt-sec-head"><input type="checkbox"> Atividades / CNAEs</label>
+          <div class="alt-sec-body">
+            <label class="fa-field"><span>Novo CNAE principal (se for o caso)</span><input type="text" class="input" data-f="Novo CNAE principal"></label>
+            <label class="fa-field"><span>Novos CNAEs secundários</span><textarea class="input" rows="2" data-f="Novos CNAEs secundários"></textarea></label>
+            <label class="fa-field"><span>CNAEs a serem exclusos</span><textarea class="input" rows="2" data-f="CNAEs a excluir"></textarea></label>
+            <div class="f2">
+              <label class="fa-field"><span>Área total e utilizada</span><input type="text" class="input" data-f="Área total e utilizada"></label>
+              <label class="fa-field"><span>Horários e dias de funcionamento</span><input type="text" class="input" data-f="Horários e dias de funcionamento"></label>
+            </div>
+            <label class="fa-field"><span>Todas as atividades serão exercidas no local? (ou indicar quais não)</span><textarea class="input" rows="2" data-f="Atividades no local"></textarea></label>
+          </div>
+        </div>
+
+        <div class="alt-sec" data-rot="QUADRO SOCIETÁRIO">
+          <label class="alt-sec-head"><input type="checkbox"> Quadro de sócios — <b>&nbsp;entrada&nbsp;</b> de sócio</label>
+          <div class="alt-sec-body">
+            <label class="fa-field"><span>Nome completo do novo sócio</span><input type="text" class="input" data-f="Nome completo"></label>
+            <div class="f2">
+              <label class="fa-field"><span>Data de nascimento</span><input type="date" class="input" data-f="Data de nascimento"></label>
+              <label class="fa-field"><span>Naturalidade</span><input type="text" class="input" data-f="Naturalidade"></label>
+              <label class="fa-field"><span>CPF</span><input type="text" class="input" data-f="CPF"></label>
+              <label class="fa-field"><span>Regime de bens</span><input type="text" class="input" data-f="Regime de bens"></label>
+              <label class="fa-field"><span>Identidade</span><input type="text" class="input" data-f="Identidade"></label>
+              <label class="fa-field"><span>Órgão emissor</span><input type="text" class="input" data-f="Órgão emissor"></label>
+              <label class="fa-field"><span>Estado civil (se casado, regime)</span><input type="text" class="input" data-f="Estado civil"></label>
+              <label class="fa-field"><span>Profissão</span><input type="text" class="input" data-f="Profissão"></label>
+            </div>
+            <label class="fa-field"><span>Endereço</span><input type="text" class="input" data-f="Endereço"></label>
+            <div class="f2">
+              <label class="fa-field"><span>Nº</span><input type="text" class="input" data-f="Nº"></label>
+              <label class="fa-field"><span>Complemento</span><input type="text" class="input" data-f="Complemento"></label>
+              <label class="fa-field"><span>Bairro</span><input type="text" class="input" data-f="Bairro"></label>
+              <label class="fa-field"><span>Cidade</span><input type="text" class="input" data-f="Cidade"></label>
+              <label class="fa-field"><span>Estado</span><input type="text" class="input" data-f="Estado"></label>
+              <label class="fa-field"><span>CEP</span><input type="text" class="input" data-f="CEP"></label>
+              <label class="fa-field"><span>Papel</span><select class="select" data-f="Papel"><option>Sócio</option><option>Sócio/Administrador</option></select></label>
+              <label class="fa-field"><span>% de participação no capital</span><input type="text" class="input" data-f="% participação"></label>
+            </div>
+            <label class="fa-field"><span>Observações</span><textarea class="input" rows="2" data-f="Observações"></textarea></label>
+          </div>
+        </div>
+
+        <div class="alt-sec" data-rot="QUADRO SOCIETÁRIO">
+          <label class="alt-sec-head"><input type="checkbox"> Quadro de sócios — <b>&nbsp;saída&nbsp;</b> de sócio</label>
+          <div class="alt-sec-body">
+            <label class="fa-field"><span>Sócio retirante</span><select class="select" id="selRetirante" data-f="Sócio retirante"><option value="">— selecione a empresa primeiro —</option></select></label>
+            <label class="fa-field"><span>Destino das quotas do retirante (transferidas aos remanescentes? explicar)</span><textarea class="input" rows="3" data-f="Destino das quotas"></textarea></label>
+          </div>
+        </div>
+
+        <div class="alt-sec" data-rot="CAPITAL">
+          <label class="alt-sec-head"><input type="checkbox"> Capital — aumento em moeda corrente</label>
+          <div class="alt-sec-body">
+            <label class="fa-field"><span>Valor do novo capital social</span><input type="text" class="input" data-f="Novo capital social"></label>
+            <label class="fa-field"><span>Distribuição entre os sócios</span><textarea class="input" rows="2" data-f="Distribuição entre os sócios"></textarea></label>
+          </div>
+        </div>
+
+        <div class="alt-sec" data-rot="CAPITAL">
+          <label class="alt-sec-head"><input type="checkbox"> Capital — aumento por integralização de bens <small>(imóveis: matrículas e valor venal)</small></label>
+          <div class="alt-sec-body">
+            <label class="fa-field"><span>Valor do novo capital social</span><input type="text" class="input" data-f="Novo capital social"></label>
+            <label class="fa-field"><span>Distribuição entre os sócios</span><textarea class="input" rows="2" data-f="Distribuição entre os sócios"></textarea></label>
+          </div>
+        </div>
+
+        <div class="alt-sec" data-rot="CAPITAL">
+          <label class="alt-sec-head"><input type="checkbox"> Capital — redução <small>(pode exigir publicação em jornal)</small></label>
+          <div class="alt-sec-body">
+            <label class="fa-field"><span>Valor do novo capital social</span><input type="text" class="input" data-f="Novo capital social"></label>
+            <label class="fa-field"><span>Distribuição entre os sócios</span><textarea class="input" rows="2" data-f="Distribuição entre os sócios"></textarea></label>
+          </div>
+        </div>
+
+        <div class="alt-sec" data-rot="NOME FANTASIA">
+          <label class="alt-sec-head"><input type="checkbox"> Nome fantasia</label>
+          <div class="alt-sec-body">
+            <label class="fa-field"><span>Novo nome fantasia</span><input type="text" class="input" data-f="Novo nome fantasia"></label>
+          </div>
+        </div>
+
+        <div class="alt-sec" data-rot="PORTE">
+          <label class="alt-sec-head"><input type="checkbox"> Reenquadramento de porte</label>
+          <div class="alt-sec-body">
+            <label class="fa-field"><span>Novo porte</span><select class="select" data-f="Novo porte"><option>ME</option><option>EPP</option><option>DEMAIS</option></select></label>
+          </div>
+        </div>
+
+        <div class="alt-sec" data-rot="DADOS CNPJ">
+          <label class="alt-sec-head"><input type="checkbox"> Demais alterações CNPJ</label>
+          <div class="alt-sec-body">
+            <div class="f2">
+              <label class="fa-field"><span>Novo e-mail</span><input type="text" class="input" data-f="Novo e-mail"></label>
+              <label class="fa-field"><span>Novo telefone</span><input type="text" class="input" data-f="Novo telefone"></label>
+            </div>
+            <label class="fa-field"><span>Alterar sócio responsável perante a RFB</span><input type="text" class="input" data-f="Sócio responsável RFB"></label>
+          </div>
+        </div>
+
+        <div style="display:flex; gap:12px; align-items:center; margin-top:20px; flex-wrap:wrap;">
+          <button class="btn btn-primary" id="btnGerar">📄 Gerar formulário</button>
+          <span id="gerarStatus" style="font-size:13px; color:#8A93A6;"></span>
+        </div>
+        <div id="gerarOk" style="display:none; margin-top:14px; padding:12px 14px; border-radius:10px; background:rgba(63,176,122,.1); border:1px solid rgba(63,176,122,.35); font-size:13.5px;">
+          ✅ Formulário gerado e baixado. Salvo no Drive: <a id="gerarLink" href="#" target="_blank" rel="noopener" style="color:#8AAEC8;">abrir pasta</a>
+          · <a href="#" id="gerarDeNovo" style="color:#8AAEC8;">baixar novamente</a>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+
+    const $ = id => document.getElementById(id);
+    let cli = null, cliTimer = null, ultimoBlob = null, ultimoNome = '';
+
+    (async () => {
+      const user = await getCurrentUser();
+      if (user) {
+        const n = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário';
+        $('userName').textContent = n;
+        $('userAvatar').textContent = n.charAt(0).toUpperCase();
+      }
+    })();
+    $('btnLogout').addEventListener('click', signOut);
+
+    const fmtDoc = d => {
+      const n = String(d || '').replace(/\D/g, '');
+      if (n.length === 14) return n.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+      if (n.length === 11) return n.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+      return d || '';
+    };
+
+    $('cliBusca').addEventListener('input', () => {
+      clearTimeout(cliTimer);
+      cliTimer = setTimeout(async () => {
+        const t = $('cliBusca').value.trim();
+        if (t.length < 3) { $('cliRes').style.display = 'none'; return; }
+        const { data } = await supabase.from('clientes')
+          .select('id, nome_principal, nome_fantasia, documento, cidade')
+          .or(`nome_principal.ilike.*${t}*,nome_fantasia.ilike.*${t}*`).limit(8);
+        $('cliRes').innerHTML = (data || []).map(c =>
+          `<button data-id="${c.id}">${c.nome_principal}<small>${[c.nome_fantasia, fmtDoc(c.documento), c.cidade].filter(Boolean).join(' · ') || '&nbsp;'}</small></button>`
+        ).join('') || '<button disabled style="color:#6E7787;cursor:default;">Nada encontrado.</button>';
+        $('cliRes').style.display = 'block';
+        $('cliRes').querySelectorAll('[data-id]').forEach(b => b.addEventListener('click', async () => {
+          cli = (data || []).find(x => String(x.id) === b.dataset.id);
+          $('cliNome').textContent = cli.nome_principal;
+          $('cliDoc').textContent = fmtDoc(cli.documento);
+          $('cliChip').style.display = 'block';
+          $('cliBusca').value = ''; $('cliRes').style.display = 'none';
+          const { data: socios } = await supabase.from('socios')
+            .select('nome, participacao_percentual, eh_administrador')
+            .eq('cliente_id', cli.id).order('nome');
+          $('selRetirante').innerHTML = '<option value="">— selecionar —</option>' +
+            (socios || []).map(s => `<option>${s.nome}${s.participacao_percentual ? ` (${s.participacao_percentual}%)` : ''}${s.eh_administrador ? ' — administrador' : ''}</option>`).join('') +
+            '<option>Outro (detalhar no campo de quotas)</option>';
+        }));
+      }, 300);
+    });
+    $('cliTira').addEventListener('click', e => {
+      e.preventDefault(); cli = null;
+      $('cliChip').style.display = 'none';
+      $('selRetirante').innerHTML = '<option value="">— selecione a empresa primeiro —</option>';
+    });
+
+    document.querySelectorAll('.alt-sec-head input').forEach(cb =>
+      cb.addEventListener('change', () => cb.closest('.alt-sec').classList.toggle('is-on', cb.checked)));
+
+    function coletar(){
+      const secoes = [];
+      document.querySelectorAll('.alt-sec').forEach(sec => {
+        if (!sec.querySelector('.alt-sec-head input').checked) return;
+        const titulo = sec.querySelector('.alt-sec-head').textContent.replace(/\s+/g, ' ').trim();
+        const campos = [];
+        sec.querySelectorAll('[data-f]').forEach(el => {
+          const v = (el.value || '').trim();
+          if (v) campos.push([el.dataset.f, v]);
+        });
+        secoes.push({ rot: sec.dataset.rot, titulo, campos });
+      });
+      return secoes;
+    }
+
+    async function gerar(){
+      if (!cli) { alert('Selecione a empresa primeiro.'); return; }
+      const secoes = coletar();
+      if (!secoes.length) { alert('Marque pelo menos uma seção da alteração.'); return; }
+      const btn = $('btnGerar');
+      btn.disabled = true; $('gerarStatus').textContent = 'Montando o documento…'; $('gerarOk').style.display = 'none';
+      try {
+        const { Document, Packer, Paragraph, TextRun, AlignmentType, BorderStyle } = docx;
+        const tipo = document.querySelector('input[name="tipoAlt"]:checked').value;
+        const hoje = new Date().toLocaleDateString('pt-BR');
+        const filhos = [
+          new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: 'ALTERAÇÃO DE EMPRESAS', bold: true, underline: {}, size: 30 })] }),
+          new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 120 }, children: [new TextRun({ text: cli.nome_principal, bold: true, size: 24 })] }),
+          new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: `CNPJ ${fmtDoc(cli.documento)}${cli.cidade ? ' · ' + cli.cidade : ''}`, size: 20, color: '555555' })] }),
+          new Paragraph({ spacing: { before: 200 }, children: [
+            new TextRun({ text: 'Tipo de alteração: ', bold: true }),
+            new TextRun({ text: `( ${tipo === 'Simples' ? 'x' : ' '} ) Simples   ( ${tipo === 'Consolidada' ? 'x' : ' '} ) Consolidada` }) ] }),
+          new Paragraph({ children: [new TextRun({ text: `Data: ${hoje}`, color: '555555', size: 20 })] }),
+        ];
+        secoes.forEach(s => {
+          filhos.push(new Paragraph({ spacing: { before: 280, after: 60 }, border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: '5B82A6' } }, children: [new TextRun({ text: s.titulo.toUpperCase(), bold: true, size: 23, color: '3A5878' })] }));
+          if (!s.campos.length) filhos.push(new Paragraph({ children: [new TextRun({ text: '(sem informações adicionais)', italics: true, color: '777777', size: 20 })] }));
+          s.campos.forEach(([rot, val]) => {
+            const linhas = String(val).split('\n');
+            filhos.push(new Paragraph({ spacing: { before: 60 }, children: [new TextRun({ text: rot + ': ', bold: true }), new TextRun({ text: linhas[0] })] }));
+            linhas.slice(1).forEach(l => filhos.push(new Paragraph({ indent: { left: 360 }, children: [new TextRun({ text: l })] })));
+          });
+        });
+        filhos.push(new Paragraph({ spacing: { before: 340 }, children: [new TextRun({ text: 'Exigências:', bold: true })] }));
+        ['Necessário enviar atos aprovados anteriores.',
+         'Necessário enviar documento de identificação de cada sócio (foto nítida, aberta, completa).',
+         'Necessário acrescentar todos os sócios a serem inclusos/retirados da sociedade.']
+          .forEach(t => filhos.push(new Paragraph({ children: [new TextRun({ text: '– ' + t })] })));
+
+        const doc = new Document({ sections: [{ children: filhos }] });
+        const blob = await Packer.toBlob(doc);
+
+        const rots = [...new Set(secoes.map(s => s.rot))];
+        const sub = `ALTERAÇÃO DE ${rots.join(' + ')} - ${cli.nome_principal}`.slice(0, 120);
+        ultimoNome = `Formulário - ${sub}.docx`;
+        ultimoBlob = blob;
+        baixar();
+
+        $('gerarStatus').textContent = 'Salvando no Drive…';
+        const b64 = await new Promise((res, rej) => {
+          const r = new FileReader();
+          r.onload = () => res(String(r.result).split(',')[1]);
+          r.onerror = rej;
+          r.readAsDataURL(blob);
+        });
+        const { data: dr, error: derr } = await supabase.functions.invoke('registrar-processo-drive', {
+          body: { acao: 'salvar_societario', ano: String(new Date().getFullYear()), subpasta: sub,
+                  arquivo: { nome: ultimoNome, mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', base64: b64 } }
+        });
+        if (derr) throw new Error(derr.message);
+        if (dr?.error) throw new Error(dr.error);
+        $('gerarLink').href = dr.folder_url;
+        $('gerarOk').style.display = 'block';
+        $('gerarStatus').textContent = '';
+      } catch (e) {
+        $('gerarStatus').textContent = '';
+        alert('Erro: ' + e.message);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+    function baixar(){
+      if (!ultimoBlob) return;
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(ultimoBlob);
+      a.download = ultimoNome;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    }
+    $('btnGerar').addEventListener('click', gerar);
+    $('gerarDeNovo').addEventListener('click', e => { e.preventDefault(); baixar(); });
+  </script>
+</body>
+</html>
