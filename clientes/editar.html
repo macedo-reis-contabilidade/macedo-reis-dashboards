@@ -562,21 +562,21 @@
 
         <div class="fa-field-row">
           <label class="fa-field"><span>Tipo de processo</span>
-            <select id="procTipo" class="select"><option value="ALTERAÇÃO" selected>Alteração</option><option value="TRANSFORMAÇÃO">Transformação (MEI → ME)</option></select>
+            <select id="procTipo" class="select"><option value="ALTERAÇÃO" selected>Alteração</option><option value="TRANSFORMAÇÃO">Transformação (MEI → ME)</option><option value="EXTINÇÃO">Extinção (baixa de CNPJ)</option></select>
           </label>
           <label class="fa-field"><span>Nome da pasta no Drive</span>
             <input type="text" id="procPastaNome" class="input" value="ALTERAÇÃO" placeholder="Ex.: ALTERAÇÃO">
           </label>
         </div>
 
-        <label class="fa-field"><span>Contrato social consolidado (PDF)</span>
+        <label class="fa-field"><span id="procLbl1">Contrato social consolidado (PDF)</span>
           <input type="file" id="procContrato" class="input" accept="application/pdf">
         </label>
-        <label class="fa-field"><span>Cartão CNPJ atualizado (PDF)</span>
+        <label class="fa-field"><span id="procLbl2">Cartão CNPJ atualizado (PDF)</span>
           <input type="file" id="procCnpj" class="input" accept="application/pdf">
         </label>
 
-        <label class="fa-field"><span>O que foi alterado (vai para o registro no Societário)</span>
+        <label class="fa-field"><span id="procLbl3">O que foi alterado (vai para o registro no Societário)</span>
           <textarea id="procResumo" class="input" rows="3" placeholder="Ex.: Alteração de cotas do capital social; entrada do sócio X…"></textarea>
         </label>
 
@@ -1113,6 +1113,15 @@
         { titulo:'Atualização de alvará', setor:'societario', responsavel:'Samuel' },
         { titulo:'Atualização Domínio (novo enquadramento)', setor:'clientes', responsavel:'Adaini' },
         { titulo:'Precificar honorários do novo porte (módulo Precificação)', setor:'financeiro', responsavel:'Samuel' },
+      ],
+      'EXTINÇÃO': [
+        { titulo:'Encerrar obrigações fiscais e entregar declarações de baixa', setor:'fiscal', responsavel:'Thalia' },
+        { titulo:'Baixar Inscrição Estadual', setor:'fiscal', responsavel:'Thalia' },
+        { titulo:'Encerrar DP: rescisões e eSocial de encerramento', setor:'departamento_pessoal', responsavel:'Vitória' },
+        { titulo:'Balanço de encerramento e apuração final', setor:'contabil', responsavel:'Adaini' },
+        { titulo:'Baixar cliente no Domínio e sistemas', setor:'clientes', responsavel:'Adaini' },
+        { titulo:'Baixar alvará e inscrição municipal', setor:'societario', responsavel:'Samuel' },
+        { titulo:'Encerrar cobrança no Conta Azul e registrar saída na Carteira', setor:'financeiro', responsavel:'Samuel' },
       ]
     };
 
@@ -1133,6 +1142,13 @@
     }
     function montarTarefas(tipo){
       const box = document.getElementById('procTarefas'); box.innerHTML='';
+      const rot = ({
+        'EXTINÇÃO': ['Distrato social (PDF)', 'Certidão de baixa (PDF)', 'Registro da baixa (vai para o registro no Societário)']
+      })[tipo] || ['Contrato social consolidado (PDF)', 'Cartão CNPJ atualizado (PDF)', 'O que foi alterado (vai para o registro no Societário)'];
+      const l1 = document.getElementById('procLbl1'), l2 = document.getElementById('procLbl2'), l3 = document.getElementById('procLbl3');
+      if (l1) l1.textContent = rot[0];
+      if (l2) l2.textContent = rot[1];
+      if (l3) l3.textContent = rot[2];
       (SUGESTOES[tipo] || []).forEach(t => box.appendChild(linhaTarefa(t)));
     }
 
