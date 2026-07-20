@@ -799,15 +799,15 @@
       document.getElementById('dTipo').textContent = t.titulo || 'Tarefa';
       document.getElementById('dEmpresa').textContent = t.clientes?.nome_principal || 'Interno (sem empresa)';
       {
-        const docBруто = String(t.clientes?.documento || '').replace(/\D/g, '');
+        const docBruto = String(t.clientes?.documento || '').replace(/\D/g, '');
         const wrapD = document.getElementById('dDocWrap');
-        if (docBруто.length === 11 || docBруто.length === 14) {
-          const fmtD = docBруто.length === 14
-            ? docBруто.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5')
-            : docBруто.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-          document.getElementById('dDocLabel').textContent = docBруто.length === 11 ? 'CPF' : 'CNPJ';
+        if (docBruto.length === 11 || docBruto.length === 14) {
+          const fmtD = docBruto.length === 14
+            ? docBruto.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5')
+            : docBruto.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+          document.getElementById('dDocLabel').textContent = docBruto.length === 11 ? 'CPF' : 'CNPJ';
           document.getElementById('dDoc').textContent = fmtD;
-          wrapD.dataset.raw = docBруто;
+          wrapD.dataset.raw = docBruto;
           wrapD.style.display = '';
         } else wrapD.style.display = 'none';
       }
