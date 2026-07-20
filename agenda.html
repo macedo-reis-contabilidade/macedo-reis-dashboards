@@ -192,6 +192,7 @@
             <button class="ag-view-btn" data-view="semana">Semana</button>
             <button class="ag-view-btn" data-view="mes">Mês</button>
           </div>
+          <input type="text" id="agBusca" class="input" placeholder="🔎 Buscar tarefa ou cliente…" style="min-width:210px; font-size:13px;">
           <select id="fSetor" class="select"><option value="">Todos os setores</option></select>
           <select id="fResp" class="select"><option value="">Todos os responsáveis</option></select>
           <button class="btn btn-primary btn-sm" id="btnNovaAv">+ Tarefa</button>
@@ -377,6 +378,75 @@
       return cacheRotinas.filter(r => caiNoDia(r, d) && passaFiltro(r));
     }
 
+    // ---- busca global (todas as datas, todos os responsáveis) ----
+    let modoBusca = false, cacheBusca = [], termoBusca = '', buscaTimer = null;
+
+    async function executarBusca(termo){
+      const t = termo.replace(/[,()]/g, ' ').trim();
+      const [porTexto, cli] = await Promise.all([
+        supabase.from('tarefas').select('*, clientes(nome_principal, nome_fantasia)')
+          .or(`titulo.ilike.*${t}*,descricao.ilike.*${t}*,responsavel.ilike.*${t}*`).limit(50),
+        supabase.from('clientes').select('id')
+          .or(`nome_principal.ilike.*${t}*,nome_fantasia.ilike.*${t}*`).limit(20)
+      ]);
+      let porCliente = { data: [] };
+      const ids = (cli.data || []).map(c => c.id);
+      if (ids.length) {
+        porCliente = await supabase.from('tarefas')
+          .select('*, clientes(nome_principal, nome_fantasia)')
+          .in('cliente_id', ids).limit(50);
+      }
+      const mapa = new Map();
+      [...(porTexto.data || []), ...(porCliente.data || [])].forEach(x => mapa.set(x.id, x));
+      cacheBusca = [...mapa.values()].sort((a, b) => {
+        const ca = a.status === 'concluida' ? 1 : 0, cb = b.status === 'concluida' ? 1 : 0;
+        if (ca !== cb) return ca - cb;
+        return String(a.prazo || '0000') < String(b.prazo || '0000') ? -1 : 1;
+      });
+      termoBusca = termo; modoBusca = true;
+      render();
+    }
+
+    function renderBusca(){
+      const fData = p => p ? String(p).slice(0, 10).split('-').reverse().join('/') : 'Sem prazo';
+      let html = `<div class="ag-dia-secao">🔎 Resultados para "${esc(termoBusca)}" <span class="cont">${cacheBusca.length}</span>
+        <button class="btn btn-ghost btn-sm" id="agBuscaLimpar" style="margin-left:12px;">Limpar busca</button>
+        <span style="font-weight:400; font-size:11.5px; color:#6E7787; margin-left:10px;">busca em todas as datas e responsáveis</span></div>`;
+      if (!cacheBusca.length) html += '<div style="color:#8A93A6; padding:20px 4px;">Nada encontrado com esse termo.</div>';
+      cacheBusca.forEach(t => {
+        const concl = t.status === 'concluida';
+        const cli = t.clientes?.nome_principal ? `<span>${esc(t.clientes.nome_principal)}</span><span class="sep">·</span>` : '';
+        const resp = t.responsavel ? `<span>${esc(t.responsavel)}</span>` : '';
+        html += `<div class="ag-card ${classePrio(t.prioridade)}" data-bstask="${t.id}"${concl ? ' style="opacity:.55;"' : ''}>
+          <div class="ag-card-main">
+            <div class="ag-card-titulo">${concl ? '✓ ' : ''}${esc(t.titulo) || '(sem título)'}</div>
+            <div class="ag-card-meta"><b style="color:#8AAEC8;">${fData(t.prazo)}</b><span class="sep">·</span>${chip(t.setor)} ${cli} ${resp}</div>
+          </div>
+        </div>`;
+      });
+      return html;
+    }
+
+    function wireBusca(){
+      document.getElementById('agBuscaLimpar')?.addEventListener('click', limparBusca);
+      document.querySelectorAll('[data-bstask]').forEach(el =>
+        el.addEventListener('click', () => abrirDetalhe(el.dataset.bstask)));
+    }
+
+    function limparBusca(){
+      modoBusca = false; cacheBusca = []; termoBusca = '';
+      document.getElementById('agBusca').value = '';
+      render();
+    }
+
+    document.getElementById('agBusca').addEventListener('input', e => {
+      const v = e.target.value.trim();
+      clearTimeout(buscaTimer);
+      if (v.length < 2) { if (modoBusca) limparBusca(); return; }
+      buscaTimer = setTimeout(() => executarBusca(v), 300);
+    });
+    document.getElementById('agBusca').addEventListener('keydown', e => { if (e.key === 'Escape') limparBusca(); });
+
     // ---- render: roteador ----
     function renderSemPrazo(){
       const el = document.getElementById('agSemPrazo');
@@ -404,6 +474,7 @@
       renderSemPrazo();
       atualizarPeriodo();
       const c = document.getElementById('agConteudo');
+      if (modoBusca) { c.innerHTML = renderBusca(); wireBusca(); return; }
       if (estado.view==='dia') c.innerHTML = renderDia();
       else if (estado.view==='semana') c.innerHTML = renderSemana();
       else c.innerHTML = renderMes();
@@ -713,7 +784,7 @@
     function fecharDetalhe(){ detOverlay.classList.remove('is-open'); procAtual = null; document.getElementById('dNovoAnd').value = ''; }
 
     async function abrirDetalhe(id){
-      const t = cacheTarefas.find(x => String(x.id) === String(id)) || cacheSemPrazo.find(x => String(x.id) === String(id));
+      const t = cacheTarefas.find(x => String(x.id) === String(id)) || cacheSemPrazo.find(x => String(x.id) === String(id)) || cacheBusca.find(x => String(x.id) === String(id));
       if (!t) return;
       procAtual = t;
       const concl = t.status === 'concluida';
