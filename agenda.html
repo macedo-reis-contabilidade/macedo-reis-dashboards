@@ -243,6 +243,12 @@
             <option value="contabil">Contábil</option><option value="societario">Societário</option><option value="financeiro">Financeiro</option>
             <option value="comercial">Comercial</option><option value="irpf">IRPF</option><option value="clientes">Clientes</option>
           </select></label>
+          <div id="avAltWrap" style="display:none; margin:2px 0 12px;">
+            <label style="display:flex; gap:8px; align-items:center; font-size:13px; color:#D6DCE6; cursor:pointer;">
+              <input type="checkbox" id="avAbrirAlt" style="accent-color:#5B82A6; width:15px; height:15px;">
+              📄 Abrir o formulário de alteração contratual ao criar
+            </label>
+          </div>
           <label class="fa-field"><span>Responsável</span><select id="avResp" class="select"><option value="">— ninguém ainda —</option></select></label>
           <label class="fa-field"><span>Prazo</span><input type="date" id="avPrazo" class="input"></label>
           <label class="fa-field"><span>Prioridade</span><select id="avPri" class="select"><option value="media">Média</option><option value="alta">Alta</option><option value="baixa">Baixa</option></select></label>
@@ -960,6 +966,8 @@
     let avCli = null, avTimer = null;
     document.getElementById('avResp').innerHTML += EQUIPE.map(p => `<option>${p}</option>`).join('');
     document.getElementById('btnNovaAv').addEventListener('click', () => {
+      document.getElementById('avAbrirAlt').checked = false;
+      document.getElementById('avAltWrap').style.display = document.getElementById('avSetor').value === 'societario' ? 'block' : 'none';
       avCli = null;
       ['avTitulo', 'avDesc', 'avCliBusca'].forEach(id => document.getElementById(id).value = '');
       document.getElementById('avSetor').value = 'geral';
@@ -996,6 +1004,9 @@
         }));
       }, 300);
     });
+    document.getElementById('avSetor').addEventListener('change', e => {
+      document.getElementById('avAltWrap').style.display = e.target.value === 'societario' ? 'block' : 'none';
+    });
     document.getElementById('avCliTira').addEventListener('click', e => {
       e.preventDefault(); avCli = null;
       document.getElementById('avCliChip').style.display = 'none';
@@ -1026,6 +1037,10 @@
           await supabase.from('tarefa_historico').insert({
             tarefa_id: ins.id, descricao: 'Tarefa criada pela Agenda.', autor: au?.user?.email || null
           });
+        }
+        if (document.getElementById('avAbrirAlt').checked && payload.setor === 'societario') {
+          window.location.href = 'societario-alteracao.html' + (payload.cliente_id ? '?cliente=' + payload.cliente_id : '');
+          return;
         }
         avFechar();
         location.reload();
