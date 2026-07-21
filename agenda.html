@@ -387,20 +387,20 @@
     async function carregarDados(ini, fim){
       const iniS = ymd(ini), fimS = ymd(fim);
       const { data: ts } = await supabase.from('tarefas')
-        .select('id, titulo, setor, responsavel, prazo, status, prioridade, cliente_id, proposta_id, clientes(nome_principal, documento), concluida_em, concluida_por')
+        .select('id, titulo, descricao, setor, responsavel, prazo, status, prioridade, cliente_id, proposta_id, clientes(nome_principal, documento), concluida_em, concluida_por')
         .gte('prazo', iniS).lte('prazo', fimS);
       cacheTarefas = ts || [];
       const { data: rs } = await supabase.from('rotinas').select('*').eq('ativo', true);
       cacheRotinas = rs || [];
       const { data: sp } = await supabase.from('tarefas')
-        .select('id, titulo, setor, responsavel, prazo, status, prioridade, cliente_id, proposta_id, clientes(nome_principal, documento), concluida_em, concluida_por')
+        .select('id, titulo, descricao, setor, responsavel, prazo, status, prioridade, cliente_id, proposta_id, clientes(nome_principal, documento), concluida_em, concluida_por')
         .is('prazo', null).neq('status', 'concluida');
       cacheSemPrazo = sp || [];
     }
     // próximos prazos (após hoje), para o slide do resumo — independe do dia exibido
     async function carregarProximos(){
       const { data } = await supabase.from('tarefas')
-        .select('id, titulo, setor, responsavel, prazo, status, proposta_id, clientes(nome_principal, documento)')
+        .select('id, titulo, descricao, setor, responsavel, prazo, status, proposta_id, clientes(nome_principal, documento)')
         .gt('prazo', HOJE_STR).neq('status','concluida')
         .order('prazo', { ascending:true }).limit(20);
       cacheProximos = data || [];
@@ -805,6 +805,9 @@
     async function abrirDetalhe(id){
       const t = cacheTarefas.find(x => String(x.id) === String(id)) || cacheSemPrazo.find(x => String(x.id) === String(id)) || cacheBusca.find(x => String(x.id) === String(id));
       if (!t) return;
+      // relê a tarefa fresca do banco — o modal nunca abre com foto velha
+      const { data: fresca } = await supabase.from('tarefas').select('*, clientes(nome_principal, documento)').eq('id', id).single();
+      if (fresca) Object.assign(t, fresca);
       procAtual = t;
       const concl = t.status === 'concluida';
       document.getElementById('dTipo').textContent = t.titulo || 'Tarefa';

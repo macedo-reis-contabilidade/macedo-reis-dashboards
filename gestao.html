@@ -264,7 +264,10 @@
       const id = e.target.dataset.id, act = e.target.dataset.act;
       const t = itens.find(x => x.id === id);
       if (!t) return;
-      if (act === 'editar') { abrirModal(t); return; }
+      if (act === 'editar') {
+        const { data: fresca } = await supabase.from('tarefas').select('*').eq('id', id).single();
+        abrirModal(fresca || t); return;
+      }
       if (act === 'toggle') {
         const novo = t.status === 'concluida' ? 'pendente' : 'concluida';
         const { error } = await supabase.from('tarefas').update({ status: novo }).eq('id', id);
