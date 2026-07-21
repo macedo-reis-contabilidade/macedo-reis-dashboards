@@ -551,6 +551,18 @@
       ], 'precificacao_v2', new URLSearchParams(location.search).has('tour'), user ? (user.id || user.email) : '');
     }
     iniciar();
+  
+    // deep-link: ?proposta=<id> abre a proposta direto no formulário
+    (async () => {
+      const pid = new URLSearchParams(location.search).get('proposta');
+      if (!pid) return;
+      for (let i = 0; i < 50 && !questoes.length; i++) await new Promise(r => setTimeout(r, 150));
+      const { data: p } = await supabase.from('precificacoes').select('*').eq('id', pid).single();
+      if (!p) return;
+      respostas = p.respostas || {}; editandoId = p.id;
+      atualizarBotoesSalvar();
+      trocarVisao('form'); renderForm();
+    })();
   </script>
 </body>
 </html>

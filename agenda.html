@@ -271,6 +271,7 @@
       <div class="fa-modal-body">
         <div class="alv-conc-banner" id="dConcBanner" style="display:none;"></div>
         <div class="det-empresa"><span>Empresa</span><strong id="dEmpresa"></strong><span class="det-doc-inline" id="dDocWrap" style="display:none;"><span id="dDoc"></span><button id="dDocCopy" title="Copiar (só números)">📋</button></span></div>
+        <div id="dPropWrap" style="display:none; margin:2px 0 4px;"><a id="dPropLink" href="#" style="color:#8AAEC8; font-size:13px; text-decoration:none;">📄 Ver proposta no módulo Precificação →</a></div>
         <div class="fa-field-row">
           <label class="fa-field"><span>Responsável</span><input type="text" id="dResp" class="input"></label>
           <label class="fa-field"><span>Prazo</span><input type="date" id="dPrazo" class="input"></label>
@@ -381,20 +382,20 @@
     async function carregarDados(ini, fim){
       const iniS = ymd(ini), fimS = ymd(fim);
       const { data: ts } = await supabase.from('tarefas')
-        .select('id, titulo, setor, responsavel, prazo, status, prioridade, cliente_id, clientes(nome_principal, documento), concluida_em, concluida_por')
+        .select('id, titulo, setor, responsavel, prazo, status, prioridade, cliente_id, proposta_id, clientes(nome_principal, documento), concluida_em, concluida_por')
         .gte('prazo', iniS).lte('prazo', fimS);
       cacheTarefas = ts || [];
       const { data: rs } = await supabase.from('rotinas').select('*').eq('ativo', true);
       cacheRotinas = rs || [];
       const { data: sp } = await supabase.from('tarefas')
-        .select('id, titulo, setor, responsavel, prazo, status, prioridade, cliente_id, clientes(nome_principal, documento), concluida_em, concluida_por')
+        .select('id, titulo, setor, responsavel, prazo, status, prioridade, cliente_id, proposta_id, clientes(nome_principal, documento), concluida_em, concluida_por')
         .is('prazo', null).neq('status', 'concluida');
       cacheSemPrazo = sp || [];
     }
     // próximos prazos (após hoje), para o slide do resumo — independe do dia exibido
     async function carregarProximos(){
       const { data } = await supabase.from('tarefas')
-        .select('id, titulo, setor, responsavel, prazo, status, clientes(nome_principal, documento)')
+        .select('id, titulo, setor, responsavel, prazo, status, proposta_id, clientes(nome_principal, documento)')
         .gt('prazo', HOJE_STR).neq('status','concluida')
         .order('prazo', { ascending:true }).limit(20);
       cacheProximos = data || [];
@@ -803,6 +804,11 @@
       const concl = t.status === 'concluida';
       document.getElementById('dTipo').textContent = t.titulo || 'Tarefa';
       document.getElementById('dEmpresa').textContent = t.clientes?.nome_principal || 'Interno (sem empresa)';
+      const pw = document.getElementById('dPropWrap');
+      if (t.proposta_id) {
+        document.getElementById('dPropLink').href = 'comercial-precificacao.html?proposta=' + t.proposta_id;
+        pw.style.display = 'block';
+      } else { pw.style.display = 'none'; }
       {
         const docBruto = String(t.clientes?.documento || '').replace(/\D/g, '');
         const wrapD = document.getElementById('dDocWrap');
