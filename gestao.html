@@ -116,6 +116,18 @@
       }
       if (!ehAutorizado(user)) { bloquearAcesso(); return; }
       await carregar();
+      // deep-link vindo da Agenda: ?item=<id> abre a pauta/tarefa direto
+      const itemId = new URLSearchParams(location.search).get('item');
+      if (itemId) {
+        const t = itens.find(x => String(x.id) === String(itemId));
+        if (t) {
+          modo = (t.tipo || 'tarefa') === 'pauta' ? 'pauta' : 'tarefa';
+          document.querySelectorAll('.fa-tab[data-modo]').forEach(x => x.classList.toggle('is-active', x.dataset.modo === modo));
+          document.getElementById('btnNovoLabel').textContent = modo === 'pauta' ? 'Nova pauta' : 'Nova tarefa';
+          render();
+          abrirModal(t);
+        }
+      }
     })();
 
     document.getElementById('btnLogout').addEventListener('click', signOut);

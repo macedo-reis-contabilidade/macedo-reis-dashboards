@@ -272,6 +272,7 @@
         <div class="alv-conc-banner" id="dConcBanner" style="display:none;"></div>
         <div class="det-empresa"><span>Empresa</span><strong id="dEmpresa"></strong><span class="det-doc-inline" id="dDocWrap" style="display:none;"><span id="dDoc"></span><button id="dDocCopy" title="Copiar (só números)">📋</button></span></div>
         <div id="dPropWrap" style="display:none; margin:2px 0 4px;"><a id="dPropLink" href="#" style="color:#8AAEC8; font-size:13px; text-decoration:none;">📄 Ver proposta no módulo Precificação →</a></div>
+        <div id="dGestWrap" style="display:none; margin:2px 0 4px;"><a id="dGestLink" href="#" style="color:#8AAEC8; font-size:13px; text-decoration:none;">📌 Ver no módulo Gestão →</a></div>
         <div class="fa-field-row">
           <label class="fa-field"><span>Responsável</span><input type="text" id="dResp" class="input"></label>
           <label class="fa-field"><span>Prazo</span><input type="date" id="dPrazo" class="input"></label>
@@ -813,6 +814,11 @@
         document.getElementById('dPropLink').href = 'comercial-precificacao.html?proposta=' + t.proposta_id;
         pw.style.display = 'block';
       } else { pw.style.display = 'none'; }
+      const gw = document.getElementById('dGestWrap');
+      if (t.setor === 'gestao' && SOCIOS.includes(usuarioEmail)) {
+        document.getElementById('dGestLink').href = 'gestao.html?item=' + t.id;
+        gw.style.display = 'block';
+      } else { gw.style.display = 'none'; }
       {
         const docBruto = String(t.clientes?.documento || '').replace(/\D/g, '');
         const wrapD = document.getElementById('dDocWrap');
