@@ -369,7 +369,11 @@
     const norm = (s)=> String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
     function passaFiltro(item){
       if (estado.setor && item.setor !== estado.setor) return false;
-      if (estado.resp){ if (norm(item.responsavel) !== norm(estado.resp)) return false; }
+      if (estado.resp){
+        const r = norm(item.responsavel), f = norm(estado.resp);
+        const ehAmbos = r === 'ambos' && (f === 'samuel' || f === 'diego');
+        if (r !== f && !ehAmbos) return false;
+      }
       return true;
     }
 
