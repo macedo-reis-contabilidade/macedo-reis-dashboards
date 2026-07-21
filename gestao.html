@@ -271,9 +271,12 @@
         if (error) { alert('Erro: ' + error.message); return; }
         await carregar();
       } else if (act === 'virar') {
+        // conversão sempre parte da pauta FRESCA do banco — nunca da foto da tela
+        const { data: fresca, error: eF } = await supabase.from('tarefas').select('*').eq('id', id).single();
+        if (eF || !fresca) { alert('Erro ao ler a pauta antes de converter: ' + (eF?.message || 'pauta não encontrada')); return; }
         const { error: e1 } = await supabase.from('tarefas').insert({
-          setor: SETOR, tipo: 'tarefa', titulo: t.titulo, descricao: t.descricao,
-          responsavel: t.responsavel, prazo: t.prazo || null, status: 'pendente', origem: 'avulsa', cliente_id: null
+          setor: SETOR, tipo: 'tarefa', titulo: fresca.titulo, descricao: fresca.descricao,
+          responsavel: fresca.responsavel, prazo: fresca.prazo || null, status: 'pendente', origem: 'avulsa', cliente_id: null
         });
         if (e1) { alert('Erro ao criar tarefa: ' + e1.message); return; }
         await supabase.from('tarefas').update({ status: 'concluida' }).eq('id', id);
