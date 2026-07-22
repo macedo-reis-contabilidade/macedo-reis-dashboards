@@ -26,6 +26,10 @@
     .pr-q label small { display:block; color:#6E7787; font-size:11px; margin-top:2px; }
     .pr-q .input, .pr-q select { width:100%; font-size:13px; padding:7px 10px; }
     .pr-q select { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.12); border-radius:8px; color:#E6EBF2; font:inherit; }
+    .pr-q .pr-moeda { position:relative; display:block; }
+    .pr-q .pr-moeda i { position:absolute; left:10px; top:50%; transform:translateY(-50%); font-style:normal; color:#8AAEC8; font-size:13px; pointer-events:none; }
+    .pr-q .pr-moeda .input { padding-left:32px; }
+    .pr-chip-cli { display:inline-block; vertical-align:1px; margin-left:6px; padding:1px 7px; border-radius:999px; font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:#8AAEC8; border:1px solid rgba(138,174,200,.45); background:rgba(91,130,166,.12); }
     .pr-q .auto { color:#8AAEC8; font-size:13px; }
     .pr-painel { position:sticky; top:16px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.1); border-radius:14px; padding:16px 18px; }
     .pr-painel h3 { margin:0 0 10px; font-size:14px; color:#52B4C6; }
@@ -283,7 +287,10 @@
         const ops = (qd.opcoes || []).map(o => `<option>${o}</option>`).join('');
         return `<select data-q="${qd.id}"><option></option>${ops}</select>`;
       }
-      if (qd.tipo === 'numero') return `<input type="number" class="input" data-q="${qd.id}" min="0">`;
+      if (qd.tipo === 'numero') {
+        if (qd.pergunta.includes('R$')) return `<span class="pr-moeda"><i>R$</i><input type="number" class="input" data-q="${qd.id}" min="0" step="0.01"></span>`;
+        return `<input type="number" class="input" data-q="${qd.id}" min="0">`;
+      }
       return `<input type="text" class="input" data-q="${qd.id}">`;
     }
 
@@ -292,7 +299,7 @@
       let html = '', bloco = '';
       questoes.forEach(qd => {
         if (qd.bloco !== bloco) { bloco = qd.bloco; html += `<div class="pr-bloco"><h2>${bloco}</h2></div>`; }
-        html += `<div class="pr-q"><label>${qd.id} · ${qd.pergunta}${qd.ajuda ? `<small>${qd.ajuda}</small>` : ''}</label>${campoDe(qd)}</div>`;
+        html += `<div class="pr-q"><label>${qd.id} · ${qd.pergunta}${qd.externa ? '<span class="pr-chip-cli">cliente</span>' : ''}${qd.ajuda ? `<small>${qd.ajuda}</small>` : ''}</label>${campoDe(qd)}</div>`;
       });
       el.innerHTML = html;
       el.querySelectorAll('[data-q]').forEach(inp => {
@@ -545,7 +552,7 @@
       if (window.MRTour) MRTour.iniciar([
         { el: '#prSeg', titulo: 'Três visões', texto: 'Simulação (o motor), Propostas (o histórico salvo) e Parâmetros (os preços — calibráveis sem código).' },
         { el: '#btnConvite', titulo: 'Convite pro cliente', texto: 'Um clique copia a mensagem pronta com o link do questionário público — cola no WhatsApp do prospecto e a resposta dele cai sozinha na aba Propostas, como "recebida".' },
-        { el: '#prQuestionario', titulo: 'O questionário', texto: 'Responda os blocos — cada resposta mexe no cálculo na hora. Não precisa preencher tudo: o painel mostra o efeito do que já foi respondido.' },
+        { el: '#prQuestionario', titulo: 'O questionário', texto: 'Responda os blocos — cada resposta mexe no cálculo na hora. Não precisa preencher tudo: o painel mostra o efeito do que já foi respondido. O selo azul \'cliente\' marca as perguntas que também aparecem no questionário público.' },
         { el: '#prPainel', titulo: 'Cálculo ao vivo', texto: 'O detalhamento fiel da planilha: subtotais por bloco, multiplicadores, honorário arredondado e a taxa única quando couber.' },
         { el: '#prSalvar', titulo: 'Salvar proposta', texto: 'Grava respostas + resultado com nome, status e autor. Reabra depois na aba Propostas pra revisar ou recalcular.' }
       ], 'precificacao_v2', new URLSearchParams(location.search).has('tour'), user ? (user.id || user.email) : '');
