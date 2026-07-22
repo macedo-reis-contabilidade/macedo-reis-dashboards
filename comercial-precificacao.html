@@ -498,8 +498,7 @@
       doc.setFont('helvetica', 'bold').setFontSize(10).setTextColor(...AZUL);
       doc.text('PARÂMETROS INFORMADOS', MX, y); y += 6;
       const colW = (MR - MX - 20) / 2;
-      let col = 0, yCol = y + 12;
-      const topoResp = yCol;
+      let col = 0, yCol = y + 12, topoResp = yCol, maxYCol = yCol;
       doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(58, 69, 82);
       questoes.filter(qd => qd.tipo !== 'auto' && String(respostas[qd.id] ?? '').trim() !== '')
         .forEach(qd => {
@@ -507,12 +506,13 @@
           const alt = linhas.length * 9.5 + 4;
           if (yCol + alt > 800) {
             if (col === 0) { col = 1; yCol = topoResp; }
-            else { doc.addPage(); col = 0; yCol = 52; }
+            else { doc.addPage(); col = 0; yCol = 52; topoResp = 52; maxYCol = 52; }
           }
           doc.text(linhas, MX + col * (colW + 20), yCol);
           yCol += alt;
+          if (yCol > maxYCol) maxYCol = yCol;
         });
-      y = Math.max(yCol, topoResp) + 10;
+      y = maxYCol + 10;
 
       // obrigações e multas do regime
       const ob = obrigacoesDoRegime();
