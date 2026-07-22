@@ -490,6 +490,8 @@
       'Reemissão de guias de impostos;',
       'Parcelamento de impostos em atraso — adesão e envio das guias mensais do parcelamento;'
     ];
+    const LOGO_MR = new Image();
+    LOGO_MR.src = 'assets/logo-mr.png';
     document.getElementById('prOrc').addEventListener('click', () => {
       if (!window.jspdf) { alert('Gerador de PDF ainda carregando — tenta de novo em 2 segundos.'); return; }
       const c = calcular();
@@ -502,11 +504,16 @@
       let y = 52;
       const quebra = alt => { if (y + alt > 800) { doc.addPage(); y = 52; } };
 
+      let tx = MX;
+      if (LOGO_MR.complete && LOGO_MR.naturalWidth) {
+        doc.addImage(LOGO_MR, 'PNG', MX, y - 14, 40, 40);
+        tx = MX + 52;
+      }
       doc.setFont('helvetica', 'bold').setFontSize(16).setTextColor(...AZUL);
-      doc.text('Macedo & Reis Contabilidade', MX, y);
+      doc.text('Macedo & Reis Contabilidade', tx, y);
       doc.setFont('helvetica', 'normal').setFontSize(8.5).setTextColor(...CINZA);
-      doc.text('Rua Luiz Volkart, 35 – 1º andar · Centro · Três Coroas/RS · CEP 95660-000', MX, y + 13);
-      doc.text('CNPJ 19.208.576/0001-77 · CRC/RS 006418/O · (51) 99751-6966 · rh@macedoereis.com.br', MX, y + 24);
+      doc.text('Rua Luiz Volkart, 35 – 1º andar · Centro · Três Coroas/RS · CEP 95660-000', tx, y + 13);
+      doc.text('CNPJ 19.208.576/0001-77 · CRC/RS 006418/O · (51) 99751-6966 · rh@macedoereis.com.br', tx, y + 24);
       doc.setDrawColor(...AZUL).setLineWidth(2).line(MX, y + 33, MR, y + 33);
       y += 55;
 
