@@ -47,6 +47,8 @@
     .pr-ob-soma { display:flex; justify-content:space-between; margin-top:10px; padding-top:8px; border-top:1px solid rgba(255,255,255,.14); font-size:13px; font-weight:600; color:#E6EBF2; }
     .pr-ob-nota { font-size:11px; color:#6E7787; margin-top:6px; }
     .pr-ob-aviso { margin-top:8px; padding:7px 10px; border-radius:8px; font-size:11.5px; color:#C6A75A; border:1px solid rgba(198,167,90,.4); background:rgba(198,167,90,.08); }
+    .pr-ob .pr-ob-inp { width:118px; padding:4px 8px; font-size:12px; text-align:right; }
+    .pr-ob-soma2 { margin-top:0; padding-top:2px; border-top:none; }
     .pr-q .auto { color:#8AAEC8; font-size:13px; }
     .pr-painel { position:sticky; top:16px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.1); border-radius:14px; padding:16px 18px; }
     .pr-painel h3 { margin:0 0 10px; font-size:14px; color:#52B4C6; }
@@ -279,11 +281,14 @@
 
     // ---------- obrigações do regime (lista da Thalia) ----------
     let obrigacoes = [];
-    const fmtMulta = o => o.multa_tipo === 'fixa' ? fmt(Number(o.multa_valor))
-      : o.multa_tipo === 'faixa' ? fmt(Number(o.multa_valor)) + ' a ' + fmt(Number(o.multa_max))
-      : o.multa_tipo === 'percentual' ? (o.multa_obs || 'percentual')
-      : o.multa_tipo === 'municipal' ? 'varia por município'
-      : '—';
+    const fmtMulta = o => {
+      const tipo = o.efTipo || o.multa_tipo, val = (o.efValor != null ? o.efValor : Number(o.multa_valor || 0));
+      return tipo === 'fixa' ? fmt(val)
+        : tipo === 'faixa' ? fmt(Number(o.multa_valor)) + ' a ' + fmt(Number(o.multa_max))
+        : tipo === 'percentual' ? (o.multa_obs || 'percentual')
+        : tipo === 'municipal' ? 'varia por município'
+        : '—';
+    };
     function obrigacoesDoRegime(){
       const regime = String(respostas['A10'] || '').trim();
       if (!regime) return { regime: null };
@@ -293,12 +298,16 @@
           : respostas[o.questao_id] === 'Sim' ? 'aplicavel'
           : respostas[o.questao_id] === 'Não' ? 'nao'
           : 'pendente';
-        return { ...o, st };
+        const manual = o.multa_tipo === 'municipal' ? Number(respostas['multa_' + o.id] || 0) : 0;
+        const efTipo = manual > 0 ? 'fixa' : o.multa_tipo;
+        const efValor = manual > 0 ? manual : Number(o.multa_valor || 0);
+        return { ...o, st, manual, efTipo, efValor };
       });
       const aplicaveis = lista.filter(o => o.st === 'aplicavel');
-      const somaFixas = aplicaveis.filter(o => o.multa_tipo === 'fixa').reduce((s, o) => s + Number(o.multa_valor || 0), 0);
-      const variaveis = aplicaveis.filter(o => ['faixa','percentual','municipal'].includes(o.multa_tipo));
-      return { regime, lista, aplicaveis, somaFixas, variaveis, pendentes: lista.filter(o => o.st === 'pendente') };
+      const somaMensal = aplicaveis.filter(o => o.efTipo === 'fixa' && o.periodicidade === 'mensal').reduce((s, o) => s + o.efValor, 0);
+      const somaAnual = aplicaveis.filter(o => o.efTipo === 'fixa' && o.periodicidade === 'anual').reduce((s, o) => s + o.efValor, 0);
+      const variaveis = aplicaveis.filter(o => ['faixa','percentual','municipal'].includes(o.efTipo));
+      return { regime, lista, aplicaveis, somaMensal, somaAnual, variaveis, pendentes: lista.filter(o => o.st === 'pendente') };
     }
     function questaoVisivel(qd){
       const regimeAtual = String(respostas['A10'] || '').trim();
@@ -320,55 +329,35 @@
       const r = obrigacoesDoRegime();
       if (!r.regime) { el.innerHTML = '<div class="pr-ob-card"><h3>Obrigações do regime</h3><div class="pr-ob-nota">Responda o regime tributário (A10) pra ver as obrigações e multas.</div></div>'; return; }
       if (r.mei) { el.innerHTML = '<div class="pr-ob-card"><h3>Obrigações do regime — MEI</h3><div class="pr-ob-nota">MEI terá precificação específica — a lista de obrigações desse regime entra num segundo momento.</div></div>'; return; }
-      const linha = o => `<div class="pr-ob ${o.st === 'pendente' ? 'pend' : o.st === 'nao' ? 'na' : ''}"><span class="nome">${o.nome}${o.st === 'pendente' ? ` <small>(responda ${o.questao_id})</small>` : ''}</span><span class="multa">${o.st === 'nao' ? '' : fmtMulta(o)}</span></div>`;
+      const linha = o => {
+        const cel = (o.st === 'aplicavel' && o.multa_tipo === 'municipal')
+          ? `<input type="number" min="0" step="0.01" class="input pr-ob-inp" data-multa="${o.id}" placeholder="informar R$" value="${o.manual > 0 ? o.manual : ''}">`
+          : (o.st === 'nao' ? '' : fmtMulta(o));
+        return `<div class="pr-ob ${o.st === 'pendente' ? 'pend' : o.st === 'nao' ? 'na' : ''}"><span class="nome">${o.nome}${o.st === 'pendente' ? ` <small>(responda ${o.questao_id})</small>` : ''}</span><span class="multa">${cel}</span></div>`;
+      };
       const mensais = r.lista.filter(o => o.periodicidade === 'mensal');
       const anuais = r.lista.filter(o => o.periodicidade === 'anual');
+      const nM = mensais.filter(o => o.st === 'aplicavel').length;
+      const nA = anuais.filter(o => o.st === 'aplicavel').length;
       el.innerHTML = `<div class="pr-ob-card"><h3>Obrigações do regime — ${r.regime}</h3>
         <div class="pr-ob-nota" style="margin:0 0 4px;">Ao lado de cada obrigação: a <b>multa</b> por atraso ou omissão.</div>
-        <div class="pr-ob-grupo">Mensais</div>${mensais.map(linha).join('')}
-        <div class="pr-ob-grupo">Anuais</div>${anuais.map(linha).join('')}
-        <div class="pr-ob-soma"><span>Multas fixas (aplicáveis)</span><span>${fmt(r.somaFixas)}</span></div>
-        ${r.variaveis.length ? `<div class="pr-ob-nota">+ ${r.variaveis.length} multa(s) de valor variável fora da soma: ${r.variaveis.map(o => o.nome).join(', ')}.</div>` : ''}
+        <div class="pr-ob-grupo">Mensais · ${nM} aplicáve${nM === 1 ? 'l' : 'is'}</div>${mensais.map(linha).join('')}
+        <div class="pr-ob-grupo">Anuais · ${nA} aplicáve${nA === 1 ? 'l' : 'is'}</div>${anuais.map(linha).join('')}
+        <div class="pr-ob-soma"><span>Multas fixas mensais</span><span id="obSomaM">${fmt(r.somaMensal)}</span></div>
+        <div class="pr-ob-soma pr-ob-soma2"><span>Multas fixas anuais</span><span id="obSomaA">${fmt(r.somaAnual)}</span></div>
+        ${r.variaveis.length ? `<div class="pr-ob-nota">+ ${r.variaveis.length} multa(s) de valor variável fora das somas: ${r.variaveis.map(o => o.nome).join(', ')}.</div>` : ''}
         ${r.pendentes.length ? `<div class="pr-ob-aviso">⚠ Falta responder: ${r.pendentes.map(o => `${o.questao_id} (${o.nome})`).join(' · ')}</div>` : ''}
       </div>`;
+      el.querySelectorAll('[data-multa]').forEach(inp => {
+        inp.addEventListener('input', () => {
+          respostas['multa_' + inp.dataset.multa] = inp.value;
+          const r2 = obrigacoesDoRegime();
+          const sm = document.getElementById('obSomaM'), sa = document.getElementById('obSomaA');
+          if (sm) sm.textContent = fmt(r2.somaMensal);
+          if (sa) sa.textContent = fmt(r2.somaAnual);
+        });
+      });
     }
-    function renderPainel(){
-      const c = calcular();
-      document.getElementById('prLinhas').innerHTML = c.linhas.map(l =>
-        `<div class="${l.sub ? 'pr-sub' : 'pr-linha'}"><span>${l.label}</span><b>${fmt(l.valor)}</b></div>`).join('');
-      document.getElementById('prTotal').textContent = fmt(c.honorario);
-      const tx = document.getElementById('prTaxa');
-      tx.style.display = c.taxaUnica ? 'block' : 'none';
-      tx.textContent = c.taxaUnica ? '+ taxa única de organização inicial: ' + fmt(c.taxaUnica) : '';
-      renderRef();
-      const a3 = document.getElementById('auto_A3');
-      if (a3) a3.textContent = fmt(num('A2') / 12) + ' / mês';
-      renderObrigacoes();
-    }
-    function renderRef(){
-      const ref = Number(document.getElementById('prRef').value) || 0;
-      const el = document.getElementById('prRefDiff');
-      if (!ref || !calcAtual) { el.textContent = ''; return; }
-      const d = (calcAtual.honorario - ref) / ref * 100;
-      el.textContent = (d >= 0 ? '+' : '') + d.toFixed(1) + '%';
-      el.style.color = d >= 0 ? '#3FB07A' : '#E06C75';
-    }
-    document.getElementById('prRef').addEventListener('input', renderRef);
-
-    function campoDe(qd){
-      if (qd.tipo === 'auto') return `<span class="auto" id="auto_${qd.id}">—</span>`;
-      if (qd.tipo === 'sim_nao') return `<select data-q="${qd.id}"><option></option><option>Sim</option><option>Não</option></select>`;
-      if (qd.tipo === 'select') {
-        const ops = (qd.opcoes || []).map(o => `<option>${o}</option>`).join('');
-        return `<select data-q="${qd.id}"><option></option>${ops}</select>`;
-      }
-      if (qd.tipo === 'numero') {
-        if (qd.pergunta.includes('R$')) return `<span class="pr-moeda"><i>R$</i><input type="number" class="input" data-q="${qd.id}" min="0" step="0.01"></span>`;
-        return `<input type="number" class="input" data-q="${qd.id}" min="0">`;
-      }
-      return `<input type="text" class="input" data-q="${qd.id}">`;
-    }
-
     function renderForm(){
       const el = document.getElementById('prQuestionario');
       let html = '', bloco = '';
@@ -537,11 +526,11 @@
         doc.setFont('helvetica', 'bold').setFontSize(10).setTextColor(...AZUL);
         doc.text('OBRIGAÇÕES CUMPRIDAS PELO ESCRITÓRIO — ' + ob.regime.toUpperCase(), MX, y); y += 10;
 
-        // dois cartões: mensais | anuais
+        // dois cartões: mensais | anuais (com contagem)
         const cardW = (MR - MX - 14) / 2;
         const cartoes = [['MENSAIS','mensal'],['ANUAIS','anual']].map(([rot, per]) => {
           const itens = ob.aplicaveis.filter(o => o.periodicidade === per).map(o => o.nome);
-          return { rot, linhas: itens.length ? itens : ['—'] };
+          return { rot: `${rot} (${itens.length})`, linhas: itens.length ? itens : ['—'] };
         });
         const altCard = Math.max(...cartoes.map(c => c.linhas.length)) * 11 + 26;
         quebra(altCard + 8);
@@ -556,8 +545,8 @@
         });
         y += altCard + 16;
 
-        // tabela de multas: faixa azul + zebra
-        const multas = ob.aplicaveis.filter(o => o.multa_tipo !== 'nd');
+        // tabela de multas: faixa azul + grupos mensal/anual + zebra
+        const multas = ob.aplicaveis.filter(o => o.efTipo !== 'nd');
         if (multas.length) {
           quebra(22);
           doc.setFillColor(...AZUL).rect(MX, y - 10, MR - MX, 16, 'F');
@@ -565,34 +554,48 @@
           doc.text('EXPOSIÇÃO A MULTAS (ATRASO/OMISSÃO)', MX + 8, y + 1);
           doc.text('MULTA', MR - 8, y + 1, { align: 'right' });
           y += 14;
-          doc.setFont('helvetica','normal').setFontSize(8.5);
-          multas.forEach((o, i) => {
+          [['MENSAIS','mensal'],['ANUAIS','anual']].forEach(([rot, per]) => {
+            const rows = multas.filter(o => o.periodicidade === per);
+            if (!rows.length) return;
             quebra(14);
-            if (i % 2 === 0) doc.setFillColor(...FUNDO).rect(MX, y - 9, MR - MX, 13, 'F');
-            doc.setTextColor(...ESCURO);
-            doc.text(`${o.nome} (${o.periodicidade})`, MX + 8, y);
-            doc.text(fmtMulta(o) + (o.multa_tipo === 'fixa' && o.multa_obs ? ' *' : ''), MR - 8, y, { align: 'right' });
-            y += 13;
+            doc.setFillColor(...FUNDO).rect(MX, y - 9, MR - MX, 13, 'F');
+            doc.setFont('helvetica','bold').setFontSize(8).setTextColor(...AZUL);
+            doc.text(rot, MX + 8, y); y += 13;
+            doc.setFont('helvetica','normal').setFontSize(8.5);
+            rows.forEach((o, i) => {
+              quebra(14);
+              if (i % 2 === 1) doc.setFillColor(...FUNDO).rect(MX, y - 9, MR - MX, 13, 'F');
+              doc.setTextColor(...ESCURO);
+              doc.text(o.nome, MX + 8, y);
+              doc.text(fmtMulta(o) + (o.manual > 0 ? ' \u2022' : (o.efTipo === 'fixa' && o.multa_obs ? ' *' : '')), MR - 8, y, { align: 'right' });
+              y += 13;
+            });
           });
           y += 4;
 
-          // caixa da soma — eco da caixa do honorário
-          quebra(40);
-          doc.setDrawColor(...AZUL).setLineWidth(1.5).roundedRect(MX, y - 4, MR - MX, 30, 5, 5);
-          doc.setFont('helvetica','bold').setFontSize(9.5).setTextColor(...ESCURO);
-          doc.text('EXPOSIÇÃO TOTAL — MULTAS FIXAS', MX + 12, y + 15);
-          doc.setFontSize(13).setTextColor(...AZUL);
-          doc.text(fmt(ob.somaFixas), MR - 12, y + 16, { align: 'right' });
-          y += 40;
+          // duas caixas de soma: custo mês | custo ano
+          quebra(50); y += 2;
+          [['MULTAS FIXAS MENSAIS', ob.somaMensal, '/ mês'], ['MULTAS FIXAS ANUAIS', ob.somaAnual, '/ ano']].forEach(([rot, val, suf], i) => {
+            const x = MX + i * (cardW + 14);
+            doc.setDrawColor(...AZUL).setLineWidth(1.5).roundedRect(x, y - 4, cardW, 38, 5, 5);
+            doc.setFont('helvetica','bold').setFontSize(8).setTextColor(...ESCURO);
+            doc.text(rot, x + 10, y + 8);
+            doc.setFont('helvetica','bold').setFontSize(13).setTextColor(...AZUL);
+            doc.text(fmt(val) + ' ' + suf, x + 10, y + 26);
+          });
+          y += 48;
 
           doc.setFont('helvetica','normal').setFontSize(8).setTextColor(...CINZA);
           if (ob.variaveis.length) {
-            const t = doc.splitTextToSize('Fora da soma (valor variável): ' + ob.variaveis.map(o => `${o.nome} — ${fmtMulta(o)}`).join(' \u00b7 ') + '.', MR - MX);
+            const t = doc.splitTextToSize('Fora das somas (valor variável): ' + ob.variaveis.map(o => `${o.nome} — ${fmtMulta(o)}`).join(' \u00b7 ') + '.', MR - MX);
             quebra(t.length * 10 + 2); doc.text(t, MX, y); y += t.length * 10 + 4;
           }
-          ob.aplicaveis.filter(o => o.multa_tipo === 'fixa' && o.multa_obs).forEach(o => {
+          ob.aplicaveis.filter(o => o.efTipo === 'fixa' && o.multa_obs && !(o.manual > 0)).forEach(o => {
             quebra(11); doc.text(`* ${o.nome}: ${o.multa_obs}`, MX, y); y += 11;
           });
+          if (ob.aplicaveis.some(o => o.manual > 0)) {
+            quebra(11); doc.text('\u2022 multa municipal informada manualmente no estudo.', MX, y); y += 11;
+          }
         }
       }
 
@@ -696,7 +699,7 @@
         { el: '#prSeg', titulo: 'Três visões', texto: 'Simulação (o motor), Propostas (o histórico salvo) e Parâmetros (os preços — calibráveis sem código).' },
         { el: '#btnConvite', titulo: 'Convite pro cliente', texto: 'Um clique copia a mensagem pronta com o link do questionário público — cola no WhatsApp do prospecto e a resposta dele cai sozinha na aba Propostas, como "recebida".' },
         { el: '#prQuestionario', titulo: 'O questionário', texto: 'Responda os blocos — cada resposta mexe no cálculo na hora. Não precisa preencher tudo: o painel mostra o efeito do que já foi respondido. O selo azul \'cliente\' marca as perguntas que também aparecem no questionário público. Trocou o regime (A10), o bloco D se enxuga sozinho pras perguntas daquele regime.' },
-        { el: '#prObrigacoes', titulo: 'Obrigações e multas', texto: 'Com o regime (A10) respondido, acendem aqui as obrigações mensais e anuais dele — as condicionais dependem do bloco D — com a multa de cada uma e a soma das fixas. Tudo isso sai no PDF do estudo.' },
+        { el: '#prObrigacoes', titulo: 'Obrigações e multas', texto: 'Com o regime (A10) respondido, acendem aqui as obrigações mensais e anuais dele — as condicionais dependem do bloco D — com a multa de cada uma e as somas das fixas separadas em mensal e anual — DEISS e ISS aceitam multa do município informada na mão. Tudo isso sai no PDF do estudo.' },
         { el: '#prPainel', titulo: 'Cálculo ao vivo', texto: 'O detalhamento fiel da planilha: subtotais por bloco, multiplicadores, honorário arredondado e a taxa única quando couber.' },
         { el: '#prSalvar', titulo: 'Salvar proposta', texto: 'Grava respostas + resultado com nome, status e autor. Reabra depois na aba Propostas pra revisar ou recalcular.' }
       ], 'precificacao_v2', new URLSearchParams(location.search).has('tour'), user ? (user.id || user.email) : '');
