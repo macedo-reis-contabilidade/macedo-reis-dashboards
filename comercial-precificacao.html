@@ -492,8 +492,16 @@
     ];
     const LOGO_MR = new Image();
     LOGO_MR.src = 'assets/logo-mr.png';
-    document.getElementById('prOrc').addEventListener('click', () => {
+    function logoPronto(){
+      return new Promise(res => {
+        if (LOGO_MR.complete) return res();
+        LOGO_MR.onload = res; LOGO_MR.onerror = res;
+        setTimeout(res, 2000);
+      });
+    }
+    document.getElementById('prOrc').addEventListener('click', async () => {
       if (!window.jspdf) { alert('Gerador de PDF ainda carregando — tenta de novo em 2 segundos.'); return; }
+      await logoPronto();
       const c = calcular();
       const nome = String(respostas['A1'] || '').trim();
       if (!nome) { alert('Preencha o nome da empresa/cliente (A1).'); return; }
