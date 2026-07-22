@@ -358,6 +358,43 @@
         });
       });
     }
+    function renderPainel(){
+      const c = calcular();
+      document.getElementById('prLinhas').innerHTML = c.linhas.map(l =>
+        `<div class="${l.sub ? 'pr-sub' : 'pr-linha'}"><span>${l.label}</span><b>${fmt(l.valor)}</b></div>`).join('');
+      document.getElementById('prTotal').textContent = fmt(c.honorario);
+      const tx = document.getElementById('prTaxa');
+      tx.style.display = c.taxaUnica ? 'block' : 'none';
+      tx.textContent = c.taxaUnica ? '+ taxa única de organização inicial: ' + fmt(c.taxaUnica) : '';
+      renderRef();
+      const a3 = document.getElementById('auto_A3');
+      if (a3) a3.textContent = fmt(num('A2') / 12) + ' / mês';
+      renderObrigacoes();
+    }
+    function renderRef(){
+      const ref = Number(document.getElementById('prRef').value) || 0;
+      const el = document.getElementById('prRefDiff');
+      if (!ref || !calcAtual) { el.textContent = ''; return; }
+      const d = (calcAtual.honorario - ref) / ref * 100;
+      el.textContent = (d >= 0 ? '+' : '') + d.toFixed(1) + '%';
+      el.style.color = d >= 0 ? '#3FB07A' : '#E06C75';
+    }
+    document.getElementById('prRef').addEventListener('input', renderRef);
+
+    function campoDe(qd){
+      if (qd.tipo === 'auto') return `<span class="auto" id="auto_${qd.id}">—</span>`;
+      if (qd.tipo === 'sim_nao') return `<select data-q="${qd.id}"><option></option><option>Sim</option><option>Não</option></select>`;
+      if (qd.tipo === 'select') {
+        const ops = (qd.opcoes || []).map(o => `<option>${o}</option>`).join('');
+        return `<select data-q="${qd.id}"><option></option>${ops}</select>`;
+      }
+      if (qd.tipo === 'numero') {
+        if (qd.pergunta.includes('R$')) return `<span class="pr-moeda"><i>R$</i><input type="number" class="input" data-q="${qd.id}" min="0" step="0.01"></span>`;
+        return `<input type="number" class="input" data-q="${qd.id}" min="0">`;
+      }
+      return `<input type="text" class="input" data-q="${qd.id}">`;
+    }
+
     function renderForm(){
       const el = document.getElementById('prQuestionario');
       let html = '', bloco = '';
