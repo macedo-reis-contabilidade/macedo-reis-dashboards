@@ -49,6 +49,10 @@
     .pr-ob-aviso { margin-top:8px; padding:7px 10px; border-radius:8px; font-size:11.5px; color:#C6A75A; border:1px solid rgba(198,167,90,.4); background:rgba(198,167,90,.08); }
     .pr-ob .pr-ob-inp { width:118px; padding:4px 8px; font-size:12px; text-align:right; }
     .pr-ob-soma2 { margin-top:0; padding-top:2px; border-top:none; }
+    .pr-obs-orc { display:block; margin:12px 0 2px; }
+    .pr-obs-orc span { display:block; font-size:12px; color:#8A93A6; margin-bottom:4px; }
+    .pr-obs-orc i { font-style:normal; color:#6E7787; }
+    .pr-obs-orc textarea { width:100%; resize:vertical; font-size:12.5px; }
     .pr-q .auto { color:#8AAEC8; font-size:13px; }
     .pr-painel { position:sticky; top:16px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.1); border-radius:14px; padding:16px 18px; }
     .pr-painel h3 { margin:0 0 10px; font-size:14px; color:#52B4C6; }
@@ -141,11 +145,13 @@
             <div class="pr-total"><div class="num" id="prTotal">R$ 0</div><div class="lbl">honorário mensal sugerido</div></div>
             <div class="pr-taxa" id="prTaxa" style="display:none;"></div>
             <div class="pr-ref"><span>Ref. Sescon (opcional)</span><input type="number" id="prRef" class="input" min="0"><span id="prRefDiff"></span></div>
+            <label class="pr-obs-orc"><span>Observações do orçamento <i>(sai só no PDF do cliente)</i></span><textarea id="prObsOrc" rows="2" class="input" placeholder="condições específicas deste cliente…"></textarea></label>
             <div class="pr-acao">
               <button class="btn btn-primary" id="prSalvar">Salvar proposta</button>
               <button class="btn btn-ghost" id="prSalvarNova" style="display:none;">Salvar como nova</button>
               <button class="btn btn-ghost" id="prLimpar">Nova</button>
               <button class="btn btn-ghost" id="prPdf" style="flex:1 1 100%;">🖨 Gerar PDF do estudo</button>
+              <button class="btn btn-ghost" id="prOrc" style="flex:1 1 100%;">📄 Orçamento do cliente (PDF)</button>
             </div>
             <div id="prSalvoMsg" style="margin-top:8px;font-size:12.5px;min-height:16px;"></div>
           </div>
@@ -369,6 +375,8 @@
       renderRef();
       const a3 = document.getElementById('auto_A3');
       if (a3) a3.textContent = fmt(num('A2') / 12) + ' / mês';
+      const oo = document.getElementById('prObsOrc');
+      if (oo && document.activeElement !== oo && oo.value !== (respostas['obs_orcamento'] || '')) oo.value = respostas['obs_orcamento'] || '';
       renderObrigacoes();
     }
     function renderRef(){
@@ -465,6 +473,119 @@
       document.getElementById('prSalvoMsg').textContent = '';
       atualizarBotoesSalvar();
       renderForm();
+    });
+
+    // ---------- orçamento do cliente (PDF) — único material que sai pro cliente ----------
+    const ORC_DIFERENCIAIS = [
+      'Atendimento ágil, via WhatsApp;',
+      'Nosso escritório fica em Três Coroas, com espaço exclusivo para reuniões, treinamentos, cursos e palestras!',
+      'Reuniões periódicas — para entender as transformações do negócio e possíveis processos internos de trabalho;',
+      'Facebook e Instagram — canais de informação (cursos, eventos, lançamento de novos serviços, alterações na legislação, etc.);',
+      'Atuamos em mais de 12 cidades da região, com clientes nos mais variados ramos, nos setores de Serviços, Comércio e Indústria.'
+    ];
+    const ORC_SERVICOS_SEPARADOS = [
+      'Honorário adicional anual (fechamento de balanço, declarações anuais obrigatórias e demais serviços do encerramento do exercício) — competência outubro, pagamento em novembro;',
+      'Declaração de IRPF (anual);',
+      'Processos de alteração no CNPJ;',
+      'Reemissão de guias de impostos;',
+      'Parcelamento de impostos em atraso — adesão e envio das guias mensais do parcelamento;'
+    ];
+    document.getElementById('prOrc').addEventListener('click', () => {
+      if (!window.jspdf) { alert('Gerador de PDF ainda carregando — tenta de novo em 2 segundos.'); return; }
+      const c = calcular();
+      const nome = String(respostas['A1'] || '').trim();
+      if (!nome) { alert('Preencha o nome da empresa/cliente (A1).'); return; }
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+      const W = 595, MX = 48, MR = W - MX;
+      const AZUL = [58, 88, 120], CINZA = [90, 102, 117], ESCURO = [26, 35, 48], LINHA = [201, 211, 221], FUNDO = [242, 246, 250];
+      let y = 52;
+      const quebra = alt => { if (y + alt > 800) { doc.addPage(); y = 52; } };
+
+      doc.setFont('helvetica', 'bold').setFontSize(16).setTextColor(...AZUL);
+      doc.text('Macedo & Reis Contabilidade', MX, y);
+      doc.setFont('helvetica', 'normal').setFontSize(8.5).setTextColor(...CINZA);
+      doc.text('Rua Luiz Volkart, 35 – 1º andar · Centro · Três Coroas/RS · CEP 95660-000', MX, y + 13);
+      doc.text('CNPJ 19.208.576/0001-77 · CRC/RS 006418/O · (51) 99751-6966 · rh@macedoereis.com.br', MX, y + 24);
+      doc.setDrawColor(...AZUL).setLineWidth(2).line(MX, y + 33, MR, y + 33);
+      y += 55;
+
+      const agora = new Date();
+      const validade = new Date(agora.getTime() + 10 * 24 * 60 * 60 * 1000);
+      doc.setFont('helvetica', 'bold').setFontSize(13).setTextColor(...ESCURO);
+      doc.text('Proposta de Honorários Contábeis', MX, y);
+      doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(...CINZA);
+      doc.text(`Emitida em ${agora.toLocaleDateString('pt-BR')} · válida até ${validade.toLocaleDateString('pt-BR')}`, MR, y, { align: 'right' });
+      y += 20;
+
+      doc.setDrawColor(...LINHA).setLineWidth(.8).roundedRect(MX, y - 4, MR - MX, 26, 4, 4);
+      doc.setFont('helvetica', 'bold').setFontSize(10.5).setTextColor(...ESCURO);
+      doc.text(nome, MX + 10, y + 13);
+      y += 38;
+
+      doc.setFont('helvetica', 'bold').setFontSize(9).setTextColor(...AZUL);
+      doc.text('DIFERENCIAIS PARA OS CLIENTES DA MACEDO & REIS', MX, y); y += 12;
+      doc.setFont('helvetica', 'normal').setFontSize(8.5).setTextColor(...ESCURO);
+      ORC_DIFERENCIAIS.forEach(d => {
+        const t = doc.splitTextToSize('\u2022 ' + d, MR - MX);
+        quebra(t.length * 10 + 2); doc.text(t, MX, y); y += t.length * 10 + 2;
+      });
+      y += 10;
+
+      quebra(64);
+      doc.setFillColor(...AZUL).rect(MX, y - 10, MR - MX, 16, 'F');
+      doc.setFont('helvetica', 'bold').setFontSize(8.5).setTextColor(255, 255, 255);
+      doc.text('PRODUTO / SERVIÇO', MX + 8, y + 1);
+      doc.text('VALOR', MR - 8, y + 1, { align: 'right' });
+      y += 15;
+      doc.setFillColor(...FUNDO).rect(MX, y - 9, MR - MX, 13, 'F');
+      doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(...ESCURO);
+      doc.text('Honorário mensal — serviços contábeis', MX + 8, y);
+      doc.text(fmt(c.honorario) + ' / mês', MR - 8, y, { align: 'right' });
+      y += 13;
+      if (c.taxaUnica) {
+        doc.text('Taxa única de organização inicial', MX + 8, y);
+        doc.text(fmt(c.taxaUnica) + ' (única)', MR - 8, y, { align: 'right' });
+        y += 13;
+      }
+      y += 6;
+      quebra(44);
+      doc.setDrawColor(...AZUL).setLineWidth(1.5).roundedRect(MX, y - 4, MR - MX, 34, 5, 5);
+      doc.setFont('helvetica', 'bold').setFontSize(10).setTextColor(...ESCURO);
+      doc.text('HONORÁRIO MENSAL', MX + 12, y + 17);
+      doc.setFontSize(16).setTextColor(...AZUL);
+      doc.text(fmt(c.honorario), MR - 12, y + 18, { align: 'right' });
+      y += 50;
+
+      doc.setFont('helvetica', 'bold').setFontSize(9).setTextColor(...AZUL);
+      doc.text('FORMA DE PAGAMENTO', MX, y); y += 12;
+      doc.setFont('helvetica', 'normal').setFontSize(8.5).setTextColor(...ESCURO);
+      doc.text('Boleto bancário, com vencimento até o dia 10 de cada mês.', MX, y); y += 20;
+
+      quebra(30);
+      doc.setFont('helvetica', 'bold').setFontSize(9).setTextColor(...AZUL);
+      doc.text('SERVIÇOS COBRADOS SEPARADAMENTE', MX, y); y += 12;
+      doc.setFont('helvetica', 'normal').setFontSize(8.5).setTextColor(...ESCURO);
+      ORC_SERVICOS_SEPARADOS.forEach(s => {
+        const t = doc.splitTextToSize('\u2022 ' + s, MR - MX);
+        quebra(t.length * 10 + 2); doc.text(t, MX, y); y += t.length * 10 + 2;
+      });
+
+      const obsOrc = String(respostas['obs_orcamento'] || '').trim();
+      if (obsOrc) {
+        y += 10; quebra(26);
+        doc.setFont('helvetica', 'bold').setFontSize(9).setTextColor(...AZUL);
+        doc.text('OBSERVAÇÕES', MX, y); y += 12;
+        doc.setFont('helvetica', 'normal').setFontSize(8.5).setTextColor(...ESCURO);
+        const t = doc.splitTextToSize(obsOrc, MR - MX);
+        quebra(t.length * 10 + 2); doc.text(t, MX, y); y += t.length * 10 + 2;
+      }
+
+      y += 16; quebra(18);
+      doc.setDrawColor(...LINHA).setLineWidth(.5).line(MX, y - 6, MR, y - 6);
+      doc.setFont('helvetica', 'italic').setFontSize(7.5).setTextColor(...CINZA);
+      doc.text('Macedo & Reis Contabilidade · CRC/RS 006418/O · Três Coroas – RS', MX, y + 2);
+      doc.save(`Orçamento de honorários - ${nome}.pdf`);
     });
 
     document.getElementById('prPdf').addEventListener('click', () => {
@@ -738,7 +859,8 @@
         { el: '#prQuestionario', titulo: 'O questionário', texto: 'Responda os blocos — cada resposta mexe no cálculo na hora. Não precisa preencher tudo: o painel mostra o efeito do que já foi respondido. O selo azul \'cliente\' marca as perguntas que também aparecem no questionário público. Trocou o regime (A10), o bloco D se enxuga sozinho pras perguntas daquele regime.' },
         { el: '#prObrigacoes', titulo: 'Obrigações e multas', texto: 'Com o regime (A10) respondido, acendem aqui as obrigações mensais e anuais dele — as condicionais dependem do bloco D — com a multa de cada uma e as somas das fixas separadas em mensal e anual — DEISS e ISS aceitam multa do município informada na mão. Tudo isso sai no PDF do estudo.' },
         { el: '#prPainel', titulo: 'Cálculo ao vivo', texto: 'O detalhamento fiel da planilha: subtotais por bloco, multiplicadores, honorário arredondado e a taxa única quando couber.' },
-        { el: '#prSalvar', titulo: 'Salvar proposta', texto: 'Grava respostas + resultado com nome, status e autor. Reabra depois na aba Propostas pra revisar ou recalcular.' }
+        { el: '#prSalvar', titulo: 'Salvar proposta', texto: 'Grava respostas + resultado com nome, status e autor. Reabra depois na aba Propostas pra revisar ou recalcular.' },
+        { el: '#prOrc', titulo: 'Orçamento do cliente', texto: 'Gera o PDF que VAI pro cliente: timbre, diferenciais, honorário, forma de pagamento e os serviços cobrados separadamente — mais o campo de observações logo acima, que sai só nesse PDF. O Estudo continua sendo material interno: nunca vai pro cliente.' }
       ], 'precificacao_v2', new URLSearchParams(location.search).has('tour'), user ? (user.id || user.email) : '');
     }
     iniciar();
