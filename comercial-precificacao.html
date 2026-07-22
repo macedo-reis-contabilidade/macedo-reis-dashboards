@@ -30,6 +30,19 @@
     .pr-q .pr-moeda i { position:absolute; left:10px; top:50%; transform:translateY(-50%); font-style:normal; color:#8AAEC8; font-size:13px; pointer-events:none; }
     .pr-q .pr-moeda .input { padding-left:32px; }
     .pr-chip-cli { display:inline-block; vertical-align:1px; margin-left:6px; padding:1px 7px; border-radius:999px; font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:#8AAEC8; border:1px solid rgba(138,174,200,.45); background:rgba(91,130,166,.12); }
+    #prObrigacoes { margin-top:18px; }
+    .pr-ob-card { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.1); border-radius:14px; padding:14px 16px; }
+    .pr-ob-card h3 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:#52B4C6; margin:0 0 8px; }
+    .pr-ob-grupo { font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:#6E7787; margin:10px 0 4px; }
+    .pr-ob { display:flex; justify-content:space-between; gap:10px; padding:5px 0; border-bottom:1px solid rgba(255,255,255,.05); font-size:12.5px; }
+    .pr-ob .nome { color:#B9C2D0; }
+    .pr-ob .nome small { color:#C6A75A; }
+    .pr-ob .multa { color:#8AAEC8; white-space:nowrap; }
+    .pr-ob.pend .multa { color:#C6A75A; }
+    .pr-ob.na { opacity:.38; }
+    .pr-ob.na .nome { text-decoration:line-through; }
+    .pr-ob-soma { display:flex; justify-content:space-between; margin-top:10px; padding-top:8px; border-top:1px solid rgba(255,255,255,.14); font-size:13px; font-weight:600; color:#E6EBF2; }
+    .pr-ob-nota { font-size:11px; color:#6E7787; margin-top:6px; }
     .pr-q .auto { color:#8AAEC8; font-size:13px; }
     .pr-painel { position:sticky; top:16px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.1); border-radius:14px; padding:16px 18px; }
     .pr-painel h3 { margin:0 0 10px; font-size:14px; color:#52B4C6; }
@@ -116,6 +129,7 @@
 
         <div id="vForm" class="pr-layout">
           <div id="prQuestionario">Carregando questionário…</div>
+          <div id="prObrigacoes"></div>
           <div class="pr-painel" id="prPainel">
             <h3>Cálculo ao vivo</h3>
             <div id="prLinhas"></div>
@@ -258,6 +272,46 @@
       return calcAtual;
     }
 
+    // ---------- obrigações do regime (lista da Thalia) ----------
+    let obrigacoes = [];
+    const fmtMulta = o => o.multa_tipo === 'fixa' ? fmt(Number(o.multa_valor))
+      : o.multa_tipo === 'faixa' ? fmt(Number(o.multa_valor)) + ' a ' + fmt(Number(o.multa_max))
+      : o.multa_tipo === 'percentual' ? (o.multa_obs || 'percentual')
+      : o.multa_tipo === 'municipal' ? 'varia por município'
+      : '—';
+    function obrigacoesDoRegime(){
+      const regime = String(respostas['A10'] || '').trim();
+      if (!regime) return { regime: null };
+      if (regime === 'MEI') return { regime, mei: true };
+      const lista = obrigacoes.filter(o => (o.regimes || []).includes(regime)).map(o => {
+        const st = !o.questao_id ? 'aplicavel'
+          : respostas[o.questao_id] === 'Sim' ? 'aplicavel'
+          : respostas[o.questao_id] === 'Não' ? 'nao'
+          : 'pendente';
+        return { ...o, st };
+      });
+      const aplicaveis = lista.filter(o => o.st === 'aplicavel');
+      const somaFixas = aplicaveis.filter(o => o.multa_tipo === 'fixa').reduce((s, o) => s + Number(o.multa_valor || 0), 0);
+      const variaveis = aplicaveis.filter(o => ['faixa','percentual','municipal'].includes(o.multa_tipo));
+      return { regime, lista, aplicaveis, somaFixas, variaveis, pendentes: lista.filter(o => o.st === 'pendente') };
+    }
+    function renderObrigacoes(){
+      const el = document.getElementById('prObrigacoes');
+      if (!el) return;
+      const r = obrigacoesDoRegime();
+      if (!r.regime) { el.innerHTML = '<div class="pr-ob-card"><h3>Obrigações do regime</h3><div class="pr-ob-nota">Responda o regime tributário (A10) pra ver as obrigações e multas.</div></div>'; return; }
+      if (r.mei) { el.innerHTML = '<div class="pr-ob-card"><h3>Obrigações do regime — MEI</h3><div class="pr-ob-nota">MEI terá precificação específica — a lista de obrigações desse regime entra num segundo momento.</div></div>'; return; }
+      const linha = o => `<div class="pr-ob ${o.st === 'pendente' ? 'pend' : o.st === 'nao' ? 'na' : ''}"><span class="nome">${o.nome}${o.st === 'pendente' ? ` <small>(responda ${o.questao_id})</small>` : ''}</span><span class="multa">${o.st === 'nao' ? '' : fmtMulta(o)}</span></div>`;
+      const mensais = r.lista.filter(o => o.periodicidade === 'mensal');
+      const anuais = r.lista.filter(o => o.periodicidade === 'anual');
+      el.innerHTML = `<div class="pr-ob-card"><h3>Obrigações do regime — ${r.regime}</h3>
+        <div class="pr-ob-grupo">Mensais</div>${mensais.map(linha).join('')}
+        <div class="pr-ob-grupo">Anuais</div>${anuais.map(linha).join('')}
+        <div class="pr-ob-soma"><span>Multas fixas (aplicáveis)</span><span>${fmt(r.somaFixas)}</span></div>
+        ${r.variaveis.length ? `<div class="pr-ob-nota">+ ${r.variaveis.length} multa(s) de valor variável fora da soma: ${r.variaveis.map(o => o.nome).join(', ')}.</div>` : ''}
+        ${r.pendentes.length ? `<div class="pr-ob-nota">${r.pendentes.length} obrigação(ões) aguardando resposta no bloco D.</div>` : ''}
+      </div>`;
+    }
     function renderPainel(){
       const c = calcular();
       document.getElementById('prLinhas').innerHTML = c.linhas.map(l =>
@@ -269,6 +323,7 @@
       renderRef();
       const a3 = document.getElementById('auto_A3');
       if (a3) a3.textContent = fmt(num('A2') / 12) + ' / mês';
+      renderObrigacoes();
     }
     function renderRef(){
       const ref = Number(document.getElementById('prRef').value) || 0;
@@ -454,6 +509,51 @@
         });
       y = Math.max(yCol, topoResp) + 10;
 
+      // obrigações e multas do regime
+      const ob = obrigacoesDoRegime();
+      if (ob.regime && !ob.mei) {
+        quebra(30); y += 10;
+        doc.setFont('helvetica', 'bold').setFontSize(10).setTextColor(...AZUL);
+        doc.text('OBRIGAÇÕES CUMPRIDAS PELO ESCRITÓRIO — ' + ob.regime.toUpperCase(), MX, y); y += 14;
+        doc.setFontSize(8.5);
+        [['Mensais','mensal'],['Anuais','anual']].forEach(([rot, per]) => {
+          const itens = ob.aplicaveis.filter(o => o.periodicidade === per);
+          if (!itens.length) return;
+          const txt = doc.splitTextToSize(itens.map(o => o.nome).join(' · '), MR - MX - 55);
+          quebra(txt.length * 11 + 6);
+          doc.setFont('helvetica','bold').setTextColor(...ESCURO); doc.text(rot + ':', MX, y);
+          doc.setFont('helvetica','normal'); doc.text(txt, MX + 52, y); y += txt.length * 11 + 4;
+        });
+        quebra(20); y += 4;
+        doc.setFont('helvetica','bold').setFontSize(10).setTextColor(...AZUL);
+        doc.text('EXPOSIÇÃO A MULTAS (ATRASO/OMISSÃO)', MX, y); y += 13;
+        doc.setFont('helvetica','normal').setFontSize(8.5).setTextColor(...ESCURO);
+        ob.aplicaveis.filter(o => o.multa_tipo !== 'nd').forEach(o => {
+          quebra(12);
+          doc.text(`${o.nome} (${o.periodicidade})`, MX + 4, y);
+          doc.text(fmtMulta(o) + (o.multa_tipo === 'fixa' && o.multa_obs ? ' *' : ''), MR - 4, y, { align: 'right' });
+          y += 12;
+        });
+        quebra(18); y += 2;
+        doc.setDrawColor(...AZUL).setLineWidth(1).line(MX, y - 8, MR, y - 8);
+        doc.setFont('helvetica','bold').setFontSize(9.5);
+        doc.text('SOMA DAS MULTAS FIXAS', MX + 4, y + 4);
+        doc.text(fmt(ob.somaFixas), MR - 4, y + 4, { align: 'right' });
+        y += 18;
+        doc.setFont('helvetica','normal').setFontSize(8).setTextColor(...CINZA);
+        if (ob.variaveis.length) {
+          const t = doc.splitTextToSize('Fora da soma (valor variável): ' + ob.variaveis.map(o => `${o.nome} — ${fmtMulta(o)}`).join(' · ') + '.', MR - MX);
+          quebra(t.length * 10 + 2); doc.text(t, MX, y); y += t.length * 10 + 4;
+        }
+        ob.aplicaveis.filter(o => o.multa_tipo === 'fixa' && o.multa_obs).forEach(o => {
+          quebra(11); doc.text(`* ${o.nome}: ${o.multa_obs}`, MX, y); y += 11;
+        });
+        if (ob.pendentes.length) {
+          const t = doc.splitTextToSize('Pendentes de confirmação (bloco D sem resposta): ' + ob.pendentes.map(o => o.nome).join(', ') + '.', MR - MX);
+          quebra(t.length * 10 + 2); doc.text(t, MX, y); y += t.length * 10 + 4;
+        }
+      }
+
       // rodapé
       quebra(24);
       doc.setDrawColor(...LINHA).setLineWidth(.5).line(MX, y, MR, y); y += 10;
@@ -542,17 +642,19 @@
     document.querySelectorAll('#prSeg button').forEach(b => b.addEventListener('click', () => trocarVisao(b.dataset.v)));
 
     async function iniciar(){
-      const [{ data: qs }, { data: ps }] = await Promise.all([
+      const [{ data: qs }, { data: ps }, { data: obs }] = await Promise.all([
         supabase.from('precificacao_questoes').select('*').eq('ativo', true).order('ordem'),
-        supabase.from('precificacao_parametros').select('*')
+        supabase.from('precificacao_parametros').select('*'),
+        supabase.from('precificacao_obrigacoes').select('*').eq('ativo', true).order('ordem')
       ]);
-      questoes = qs || []; params = ps || [];
+      questoes = qs || []; params = ps || []; obrigacoes = obs || [];
       indexarParams();
       renderForm();
       if (window.MRTour) MRTour.iniciar([
         { el: '#prSeg', titulo: 'Três visões', texto: 'Simulação (o motor), Propostas (o histórico salvo) e Parâmetros (os preços — calibráveis sem código).' },
         { el: '#btnConvite', titulo: 'Convite pro cliente', texto: 'Um clique copia a mensagem pronta com o link do questionário público — cola no WhatsApp do prospecto e a resposta dele cai sozinha na aba Propostas, como "recebida".' },
         { el: '#prQuestionario', titulo: 'O questionário', texto: 'Responda os blocos — cada resposta mexe no cálculo na hora. Não precisa preencher tudo: o painel mostra o efeito do que já foi respondido. O selo azul \'cliente\' marca as perguntas que também aparecem no questionário público.' },
+        { el: '#prObrigacoes', titulo: 'Obrigações e multas', texto: 'Com o regime (A10) respondido, acendem aqui as obrigações mensais e anuais dele — as condicionais dependem do bloco D — com a multa de cada uma e a soma das fixas. Tudo isso sai no PDF do estudo.' },
         { el: '#prPainel', titulo: 'Cálculo ao vivo', texto: 'O detalhamento fiel da planilha: subtotais por bloco, multiplicadores, honorário arredondado e a taxa única quando couber.' },
         { el: '#prSalvar', titulo: 'Salvar proposta', texto: 'Grava respostas + resultado com nome, status e autor. Reabra depois na aba Propostas pra revisar ou recalcular.' }
       ], 'precificacao_v2', new URLSearchParams(location.search).has('tour'), user ? (user.id || user.email) : '');
