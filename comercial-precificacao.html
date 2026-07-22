@@ -300,6 +300,20 @@
       const variaveis = aplicaveis.filter(o => ['faixa','percentual','municipal'].includes(o.multa_tipo));
       return { regime, lista, aplicaveis, somaFixas, variaveis, pendentes: lista.filter(o => o.st === 'pendente') };
     }
+    function questaoVisivel(qd){
+      const regimeAtual = String(respostas['A10'] || '').trim();
+      if (!regimeAtual) return true;
+      if (qd.id === 'A11B') return regimeAtual === 'Simples Nacional';
+      let rgs = null;
+      obrigacoes.forEach(o => {
+        if (o.questao_id !== qd.id) return;
+        rgs = rgs || new Set();
+        (o.regimes || []).forEach(rg => rgs.add(rg));
+      });
+      if (!rgs) return true;
+      if (regimeAtual === 'MEI') return false;
+      return rgs.has(regimeAtual);
+    }
     function renderObrigacoes(){
       const el = document.getElementById('prObrigacoes');
       if (!el) return;
@@ -359,6 +373,7 @@
       const el = document.getElementById('prQuestionario');
       let html = '', bloco = '';
       questoes.forEach(qd => {
+        if (!questaoVisivel(qd)) return;
         if (qd.bloco !== bloco) { bloco = qd.bloco; html += `<div class="pr-bloco"><h2>${bloco}</h2></div>`; }
         html += `<div class="pr-q"><label>${qd.id} · ${qd.pergunta}${qd.externa ? '<span class="pr-chip-cli">cliente</span>' : ''}${qd.ajuda ? `<small>${qd.ajuda}</small>` : ''}</label>${campoDe(qd)}</div>`;
       });
@@ -366,7 +381,7 @@
       el.querySelectorAll('[data-q]').forEach(inp => {
         const id = inp.dataset.q;
         if (respostas[id] != null) inp.value = respostas[id];
-        inp.addEventListener('input', () => { respostas[id] = inp.value; renderPainel(); });
+        inp.addEventListener('input', () => { respostas[id] = inp.value; if (id === 'A10') renderForm(); else renderPainel(); });
       });
       renderPainel();
     }
@@ -501,7 +516,7 @@
       const colW = (MR - MX - 20) / 2;
       let col = 0, yCol = y + 12, topoResp = yCol, maxYCol = yCol;
       doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(58, 69, 82);
-      questoes.filter(qd => qd.tipo !== 'auto' && String(respostas[qd.id] ?? '').trim() !== '')
+      questoes.filter(qd => qd.tipo !== 'auto' && questaoVisivel(qd) && String(respostas[qd.id] ?? '').trim() !== '')
         .forEach(qd => {
           const linhas = doc.splitTextToSize(`${qd.id} · ${qd.pergunta}: ${respostas[qd.id]}`, colW);
           const alt = linhas.length * 9.5 + 4;
@@ -680,7 +695,7 @@
       if (window.MRTour) MRTour.iniciar([
         { el: '#prSeg', titulo: 'Três visões', texto: 'Simulação (o motor), Propostas (o histórico salvo) e Parâmetros (os preços — calibráveis sem código).' },
         { el: '#btnConvite', titulo: 'Convite pro cliente', texto: 'Um clique copia a mensagem pronta com o link do questionário público — cola no WhatsApp do prospecto e a resposta dele cai sozinha na aba Propostas, como "recebida".' },
-        { el: '#prQuestionario', titulo: 'O questionário', texto: 'Responda os blocos — cada resposta mexe no cálculo na hora. Não precisa preencher tudo: o painel mostra o efeito do que já foi respondido. O selo azul \'cliente\' marca as perguntas que também aparecem no questionário público.' },
+        { el: '#prQuestionario', titulo: 'O questionário', texto: 'Responda os blocos — cada resposta mexe no cálculo na hora. Não precisa preencher tudo: o painel mostra o efeito do que já foi respondido. O selo azul \'cliente\' marca as perguntas que também aparecem no questionário público. Trocou o regime (A10), o bloco D se enxuga sozinho pras perguntas daquele regime.' },
         { el: '#prObrigacoes', titulo: 'Obrigações e multas', texto: 'Com o regime (A10) respondido, acendem aqui as obrigações mensais e anuais dele — as condicionais dependem do bloco D — com a multa de cada uma e a soma das fixas. Tudo isso sai no PDF do estudo.' },
         { el: '#prPainel', titulo: 'Cálculo ao vivo', texto: 'O detalhamento fiel da planilha: subtotais por bloco, multiplicadores, honorário arredondado e a taxa única quando couber.' },
         { el: '#prSalvar', titulo: 'Salvar proposta', texto: 'Grava respostas + resultado com nome, status e autor. Reabra depois na aba Propostas pra revisar ou recalcular.' }
