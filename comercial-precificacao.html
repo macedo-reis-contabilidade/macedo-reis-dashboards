@@ -519,43 +519,68 @@
       if (ob.regime && !ob.mei) {
         quebra(30); y += 10;
         doc.setFont('helvetica', 'bold').setFontSize(10).setTextColor(...AZUL);
-        doc.text('OBRIGAÇÕES CUMPRIDAS PELO ESCRITÓRIO — ' + ob.regime.toUpperCase(), MX, y); y += 14;
-        doc.setFontSize(8.5);
-        [['Mensais','mensal'],['Anuais','anual']].forEach(([rot, per]) => {
-          const itens = ob.aplicaveis.filter(o => o.periodicidade === per);
-          if (!itens.length) return;
-          const txt = doc.splitTextToSize(itens.map(o => o.nome).join(' · '), MR - MX - 55);
-          quebra(txt.length * 11 + 6);
-          doc.setFont('helvetica','bold').setTextColor(...ESCURO); doc.text(rot + ':', MX, y);
-          doc.setFont('helvetica','normal'); doc.text(txt, MX + 52, y); y += txt.length * 11 + 4;
+        doc.text('OBRIGAÇÕES CUMPRIDAS PELO ESCRITÓRIO — ' + ob.regime.toUpperCase(), MX, y); y += 10;
+
+        // dois cartões: mensais | anuais
+        const cardW = (MR - MX - 14) / 2;
+        const cartoes = [['MENSAIS','mensal'],['ANUAIS','anual']].map(([rot, per]) => {
+          const itens = ob.aplicaveis.filter(o => o.periodicidade === per).map(o => o.nome);
+          return { rot, linhas: itens.length ? itens : ['—'] };
         });
-        quebra(20); y += 4;
-        doc.setFont('helvetica','bold').setFontSize(10).setTextColor(...AZUL);
-        doc.text('EXPOSIÇÃO A MULTAS (ATRASO/OMISSÃO)', MX, y); y += 13;
-        doc.setFont('helvetica','normal').setFontSize(8.5).setTextColor(...ESCURO);
-        ob.aplicaveis.filter(o => o.multa_tipo !== 'nd').forEach(o => {
-          quebra(12);
-          doc.text(`${o.nome} (${o.periodicidade})`, MX + 4, y);
-          doc.text(fmtMulta(o) + (o.multa_tipo === 'fixa' && o.multa_obs ? ' *' : ''), MR - 4, y, { align: 'right' });
-          y += 12;
+        const altCard = Math.max(...cartoes.map(c => c.linhas.length)) * 11 + 26;
+        quebra(altCard + 8);
+        cartoes.forEach((c, i) => {
+          const x = MX + i * (cardW + 14);
+          doc.setFillColor(...FUNDO).roundedRect(x, y, cardW, altCard, 6, 6, 'F');
+          doc.setDrawColor(...LINHA).setLineWidth(.5).roundedRect(x, y, cardW, altCard, 6, 6);
+          doc.setFont('helvetica','bold').setFontSize(8).setTextColor(...AZUL);
+          doc.text(c.rot, x + 10, y + 14);
+          doc.setFont('helvetica','normal').setFontSize(8.5).setTextColor(...ESCURO);
+          c.linhas.forEach((nome, j) => doc.text('\u2022 ' + nome, x + 10, y + 26 + j * 11));
         });
-        quebra(18); y += 2;
-        doc.setDrawColor(...AZUL).setLineWidth(1).line(MX, y - 8, MR, y - 8);
-        doc.setFont('helvetica','bold').setFontSize(9.5);
-        doc.text('SOMA DAS MULTAS FIXAS', MX + 4, y + 4);
-        doc.text(fmt(ob.somaFixas), MR - 4, y + 4, { align: 'right' });
-        y += 18;
-        doc.setFont('helvetica','normal').setFontSize(8).setTextColor(...CINZA);
-        if (ob.variaveis.length) {
-          const t = doc.splitTextToSize('Fora da soma (valor variável): ' + ob.variaveis.map(o => `${o.nome} — ${fmtMulta(o)}`).join(' · ') + '.', MR - MX);
-          quebra(t.length * 10 + 2); doc.text(t, MX, y); y += t.length * 10 + 4;
-        }
-        ob.aplicaveis.filter(o => o.multa_tipo === 'fixa' && o.multa_obs).forEach(o => {
-          quebra(11); doc.text(`* ${o.nome}: ${o.multa_obs}`, MX, y); y += 11;
-        });
-        if (ob.pendentes.length) {
-          const t = doc.splitTextToSize('Pendentes de confirmação (bloco D sem resposta): ' + ob.pendentes.map(o => o.nome).join(', ') + '.', MR - MX);
-          quebra(t.length * 10 + 2); doc.text(t, MX, y); y += t.length * 10 + 4;
+        y += altCard + 16;
+
+        // tabela de multas: faixa azul + zebra
+        const multas = ob.aplicaveis.filter(o => o.multa_tipo !== 'nd');
+        if (multas.length) {
+          quebra(22);
+          doc.setFillColor(...AZUL).rect(MX, y - 10, MR - MX, 16, 'F');
+          doc.setFont('helvetica','bold').setFontSize(8.5).setTextColor(255, 255, 255);
+          doc.text('EXPOSIÇÃO A MULTAS (ATRASO/OMISSÃO)', MX + 8, y + 1);
+          doc.text('MULTA', MR - 8, y + 1, { align: 'right' });
+          y += 14;
+          doc.setFont('helvetica','normal').setFontSize(8.5);
+          multas.forEach((o, i) => {
+            quebra(14);
+            if (i % 2 === 0) doc.setFillColor(...FUNDO).rect(MX, y - 9, MR - MX, 13, 'F');
+            doc.setTextColor(...ESCURO);
+            doc.text(`${o.nome} (${o.periodicidade})`, MX + 8, y);
+            doc.text(fmtMulta(o) + (o.multa_tipo === 'fixa' && o.multa_obs ? ' *' : ''), MR - 8, y, { align: 'right' });
+            y += 13;
+          });
+          y += 4;
+
+          // caixa da soma — eco da caixa do honorário
+          quebra(40);
+          doc.setDrawColor(...AZUL).setLineWidth(1.5).roundedRect(MX, y - 4, MR - MX, 30, 5, 5);
+          doc.setFont('helvetica','bold').setFontSize(9.5).setTextColor(...ESCURO);
+          doc.text('EXPOSIÇÃO TOTAL — MULTAS FIXAS', MX + 12, y + 15);
+          doc.setFontSize(13).setTextColor(...AZUL);
+          doc.text(fmt(ob.somaFixas), MR - 12, y + 16, { align: 'right' });
+          y += 40;
+
+          doc.setFont('helvetica','normal').setFontSize(8).setTextColor(...CINZA);
+          if (ob.variaveis.length) {
+            const t = doc.splitTextToSize('Fora da soma (valor variável): ' + ob.variaveis.map(o => `${o.nome} — ${fmtMulta(o)}`).join(' \u00b7 ') + '.', MR - MX);
+            quebra(t.length * 10 + 2); doc.text(t, MX, y); y += t.length * 10 + 4;
+          }
+          ob.aplicaveis.filter(o => o.multa_tipo === 'fixa' && o.multa_obs).forEach(o => {
+            quebra(11); doc.text(`* ${o.nome}: ${o.multa_obs}`, MX, y); y += 11;
+          });
+          if (ob.pendentes.length) {
+            const t = doc.splitTextToSize('Pendentes de confirmação (bloco D sem resposta): ' + ob.pendentes.map(o => o.nome).join(', ') + '.', MR - MX);
+            quebra(t.length * 10 + 2); doc.text(t, MX, y); y += t.length * 10 + 4;
+          }
         }
       }
 
