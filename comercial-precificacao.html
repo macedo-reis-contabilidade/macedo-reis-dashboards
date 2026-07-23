@@ -145,6 +145,7 @@
             <div class="pr-total"><div class="num" id="prTotal">R$ 0</div><div class="lbl">honorário mensal sugerido</div></div>
             <div class="pr-taxa" id="prTaxa" style="display:none;"></div>
             <div class="pr-ref"><span>Ref. Sescon (opcional)</span><input type="number" id="prRef" class="input" min="0"><span id="prRefDiff"></span></div>
+            <label class="pr-obs-orc"><span>Mensagem de abertura do orçamento <i>(opcional — sai só no PDF do cliente)</i></span><textarea id="prMsgOrc" rows="3" class="input" placeholder="ex.: Anderson e Sara, gostei muito de conhecer a história de vocês…"></textarea></label>
             <label class="pr-obs-orc"><span>Observações do orçamento <i>(sai só no PDF do cliente)</i></span><textarea id="prObsOrc" rows="2" class="input" placeholder="condições específicas deste cliente…"></textarea></label>
             <div class="pr-acao">
               <button class="btn btn-primary" id="prSalvar">Salvar proposta</button>
@@ -274,8 +275,10 @@
       if (ajQual) L('Ajuste qualidade docs (' + (ajQual > 0 ? '+' : '') + (ajQual * 100) + '%)', aposQual - subGeral);
       if (multNivel !== 1) L('× nível de serviço ' + multNivel + '×', aposNivel - aposQual);
       if (seguro) L('Seguro RC profissional', seguro);
+      const terce = R('D20') === 'Sim' ? num('D21') : 0;
+      if (terce) L('Terceirização de serviço (informado)', terce);
 
-      const bruto = aposNivel + seguro;
+      const bruto = aposNivel + seguro + terce;
       const passo = pv('p16', 'Arredondar honorário final para múltiplo de (R$)') || 10;
       const honorario = Math.round(bruto / passo) * passo;
       const taxaUnica = (R('A12') === 'Sim' && R('A13') === 'Desorganizada/inexistente')
@@ -319,6 +322,11 @@
       const regimeAtual = String(respostas['A10'] || '').trim();
       if (!regimeAtual) return true;
       if (qd.id === 'A11B') return regimeAtual === 'Simples Nacional';
+      if (qd.id === 'D20' || qd.id === 'D21') {
+        const lplr = regimeAtual === 'Lucro Presumido' || regimeAtual === 'Lucro Real';
+        if (qd.id === 'D21') return lplr && respostas['D20'] === 'Sim';
+        return lplr;
+      }
       let rgs = null;
       obrigacoes.forEach(o => {
         if (o.questao_id !== qd.id) return;
@@ -377,6 +385,8 @@
       if (a3) a3.textContent = fmt(num('A2') / 12) + ' / mês';
       const oo = document.getElementById('prObsOrc');
       if (oo && document.activeElement !== oo && oo.value !== (respostas['obs_orcamento'] || '')) oo.value = respostas['obs_orcamento'] || '';
+      const mm = document.getElementById('prMsgOrc');
+      if (mm && document.activeElement !== mm && mm.value !== (respostas['msg_orcamento'] || '')) mm.value = respostas['msg_orcamento'] || '';
       renderObrigacoes();
     }
     function renderRef(){
@@ -415,7 +425,7 @@
       el.querySelectorAll('[data-q]').forEach(inp => {
         const id = inp.dataset.q;
         if (respostas[id] != null) inp.value = respostas[id];
-        inp.addEventListener('input', () => { respostas[id] = inp.value; if (id === 'A10') renderForm(); else renderPainel(); });
+        inp.addEventListener('input', () => { respostas[id] = inp.value; if (id === 'A10' || id === 'D20') renderForm(); else renderPainel(); });
       });
       renderPainel();
     }
@@ -476,13 +486,6 @@
     });
 
     // ---------- orçamento do cliente (PDF) — único material que sai pro cliente ----------
-    const ORC_DIFERENCIAIS = [
-      'Atendimento ágil, via WhatsApp;',
-      'Nosso escritório fica em Três Coroas, com espaço exclusivo para reuniões, treinamentos, cursos e palestras!',
-      'Reuniões periódicas — para entender as transformações do negócio e possíveis processos internos de trabalho;',
-      'Facebook e Instagram — canais de informação (cursos, eventos, lançamento de novos serviços, alterações na legislação, etc.);',
-      'Atuamos em mais de 12 cidades da região, com clientes nos mais variados ramos, nos setores de Serviços, Comércio e Indústria.'
-    ];
     const ORC_SERVICOS_SEPARADOS = [
       'Honorário adicional anual (fechamento de balanço, declarações anuais obrigatórias e demais serviços do encerramento do exercício) — competência outubro, pagamento em novembro;',
       'Declaração de IRPF (anual);',
@@ -499,6 +502,10 @@
         setTimeout(res, 2000);
       });
     }
+    [['prObsOrc','obs_orcamento'],['prMsgOrc','msg_orcamento']].forEach(([idEl, chave]) => {
+      const el = document.getElementById(idEl);
+      if (el) el.addEventListener('input', () => { respostas[chave] = el.value; });
+    });
     document.getElementById('prOrc').addEventListener('click', async () => {
       if (!window.jspdf) { alert('Gerador de PDF ainda carregando — tenta de novo em 2 segundos.'); return; }
       await logoPronto();
@@ -521,7 +528,7 @@
       doc.text('Macedo & Reis Contabilidade', tx, y);
       doc.setFont('helvetica', 'normal').setFontSize(8.5).setTextColor(...CINZA);
       doc.text('Rua Luiz Volkart, 35 – 1º andar · Centro · Três Coroas/RS · CEP 95660-000', tx, y + 13);
-      doc.text('CNPJ 19.208.576/0001-77 · CRC/RS 006418/O · (51) 99751-6966 · rh@macedoereis.com.br', tx, y + 24);
+      doc.text('CNPJ 19.208.576/0001-77 · CRC/RS 006418/O · (51) 9 9823-7182 · atendimento@macedoereis.com.br', tx, y + 24);
       doc.setDrawColor(...AZUL).setLineWidth(2).line(MX, y + 33, MR, y + 33);
       y += 55;
 
@@ -538,14 +545,12 @@
       doc.text(nome, MX + 10, y + 13);
       y += 38;
 
-      doc.setFont('helvetica', 'bold').setFontSize(9).setTextColor(...AZUL);
-      doc.text('DIFERENCIAIS PARA OS CLIENTES DA MACEDO & REIS', MX, y); y += 12;
-      doc.setFont('helvetica', 'normal').setFontSize(8.5).setTextColor(...ESCURO);
-      ORC_DIFERENCIAIS.forEach(d => {
-        const t = doc.splitTextToSize('\u2022 ' + d, MR - MX);
-        quebra(t.length * 10 + 2); doc.text(t, MX, y); y += t.length * 10 + 2;
-      });
-      y += 10;
+      const msgOrc = String(respostas['msg_orcamento'] || '').trim();
+      if (msgOrc) {
+        doc.setFont('helvetica', 'italic').setFontSize(9.5).setTextColor(...ESCURO);
+        const t = doc.splitTextToSize(msgOrc, MR - MX - 8);
+        quebra(t.length * 12 + 6); doc.text(t, MX + 4, y); y += t.length * 12 + 10;
+      }
 
       quebra(64);
       doc.setFillColor(...AZUL).rect(MX, y - 10, MR - MX, 16, 'F');
@@ -875,7 +880,7 @@
         { el: '#prObrigacoes', titulo: 'Obrigações e multas', texto: 'Com o regime (A10) respondido, acendem aqui as obrigações mensais e anuais dele — as condicionais dependem do bloco D — com a multa de cada uma e as somas das fixas separadas em mensal e anual — DEISS e ISS aceitam multa do município informada na mão. Tudo isso sai no PDF do estudo.' },
         { el: '#prPainel', titulo: 'Cálculo ao vivo', texto: 'O detalhamento fiel da planilha: subtotais por bloco, multiplicadores, honorário arredondado e a taxa única quando couber.' },
         { el: '#prSalvar', titulo: 'Salvar proposta', texto: 'Grava respostas + resultado com nome, status e autor. Reabra depois na aba Propostas pra revisar ou recalcular.' },
-        { el: '#prOrc', titulo: 'Orçamento do cliente', texto: 'Gera o PDF que VAI pro cliente: timbre, diferenciais, honorário, forma de pagamento e os serviços cobrados separadamente — mais o campo de observações logo acima, que sai só nesse PDF. O Estudo continua sendo material interno: nunca vai pro cliente.' }
+        { el: '#prOrc', titulo: 'Orçamento do cliente', texto: 'Gera o PDF que VAI pro cliente: timbre, a mensagem personalizada de abertura (campo acima — escreva com suas palavras, ou deixe vazio), honorário, forma de pagamento e os serviços cobrados separadamente. Observações específicas também saem só nesse PDF. O Estudo continua interno: nunca vai pro cliente.' }
       ], 'precificacao_v2', new URLSearchParams(location.search).has('tour'), user ? (user.id || user.email) : '');
     }
     iniciar();
