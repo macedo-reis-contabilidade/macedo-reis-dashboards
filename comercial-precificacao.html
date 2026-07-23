@@ -146,7 +146,7 @@
             <div class="pr-total"><div class="num" id="prTotal">R$ 0</div><div class="lbl">honorário mensal sugerido</div></div>
             <div class="pr-taxa" id="prTaxa" style="display:none;"></div>
             <div class="pr-ref"><span>Ref. Sescon (opcional)</span><input type="number" id="prRef" class="input" min="0"><span id="prRefDiff"></span></div>
-            <label class="pr-obs-orc"><span>Vencimento do boleto <i>(dia ou DD/MM — sai na forma de pagamento)</i></span><input id="prVencOrc" class="input" maxlength="5" placeholder="10 ou 15/08"></label>
+            <label class="pr-obs-orc"><span>Vencimento do boleto <i>(dia, ou data do 1º pgto. — sai na forma de pagamento)</i></span><input id="prVencOrc" class="input" maxlength="10" placeholder="25 ou 25/08/2026"></label>
             <label class="pr-obs-orc"><span>Mensagem de abertura do orçamento <i>(opcional — sai só no PDF do cliente)</i></span><textarea id="prMsgOrc" rows="3" class="input" placeholder="ex.: Anderson e Sara, gostei muito de conhecer a história de vocês…"></textarea></label>
             <label class="pr-obs-orc"><span>Observações do orçamento <i>(sai só no PDF do cliente)</i></span><textarea id="prObsOrc" rows="2" class="input" placeholder="condições específicas deste cliente…"></textarea></label>
             <div class="pr-acao">
@@ -585,11 +585,10 @@
       doc.text('FORMA DE PAGAMENTO', MX, y); y += 12;
       doc.setFont('helvetica', 'normal').setFontSize(8.5).setTextColor(...ESCURO);
       const venc = String(respostas['venc_orcamento'] || '').trim();
-      let fraseVenc;
-      if (!venc) fraseVenc = 'Boleto bancário, com vencimento até o dia 10 de cada mês.';
-      else if (venc.includes('/')) fraseVenc = `Boleto bancário, com primeiro vencimento em ${venc} e demais até o dia ${venc.split('/')[0].replace(/^0/, '')} de cada mês.`;
-      else fraseVenc = `Boleto bancário, com vencimento até o dia ${venc.replace(/^0/, '')} de cada mês.`;
-      doc.text(fraseVenc, MX, y); y += 20;
+      const diaVenc = (venc.includes('/') ? venc.split('/')[0] : venc).replace(/^0/, '') || '10';
+      doc.text(`Boleto bancário com vencimento no dia ${diaVenc} de cada mês.`, MX, y); y += 12;
+      if (venc.includes('/')) { doc.text(`1º pgto. de honorário para: ${venc}`, MX, y); y += 12; }
+      y += 8;
 
       quebra(30);
       doc.setFont('helvetica', 'bold').setFontSize(9).setTextColor(...AZUL);
