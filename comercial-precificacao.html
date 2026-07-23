@@ -684,8 +684,8 @@
         y += 14;
       }
 
-      // parâmetros informados — página própria, duas colunas
-      doc.addPage(); y = 52;
+      // parâmetros informados, em duas colunas
+      quebra(30); y += 10;
       doc.setFont('helvetica', 'bold').setFontSize(10).setTextColor(...AZUL);
       doc.text('PARÂMETROS INFORMADOS', MX, y); y += 6;
       const colW = (MR - MX - 20) / 2;
