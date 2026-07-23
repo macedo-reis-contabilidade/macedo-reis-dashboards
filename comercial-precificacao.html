@@ -53,6 +53,7 @@
     .pr-obs-orc span { display:block; font-size:12px; color:#8A93A6; margin-bottom:4px; }
     .pr-obs-orc i { font-style:normal; color:#6E7787; }
     .pr-obs-orc textarea { width:100%; resize:vertical; font-size:12.5px; }
+    .pr-obs-orc input { display:block; width:120px; font-size:12.5px; }
     .pr-q .auto { color:#8AAEC8; font-size:13px; }
     .pr-painel { position:sticky; top:16px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.1); border-radius:14px; padding:16px 18px; }
     .pr-painel h3 { margin:0 0 10px; font-size:14px; color:#52B4C6; }
@@ -145,6 +146,7 @@
             <div class="pr-total"><div class="num" id="prTotal">R$ 0</div><div class="lbl">honorário mensal sugerido</div></div>
             <div class="pr-taxa" id="prTaxa" style="display:none;"></div>
             <div class="pr-ref"><span>Ref. Sescon (opcional)</span><input type="number" id="prRef" class="input" min="0"><span id="prRefDiff"></span></div>
+            <label class="pr-obs-orc"><span>Vencimento do boleto <i>(dia ou DD/MM — sai na forma de pagamento)</i></span><input id="prVencOrc" class="input" maxlength="5" placeholder="10 ou 15/08"></label>
             <label class="pr-obs-orc"><span>Mensagem de abertura do orçamento <i>(opcional — sai só no PDF do cliente)</i></span><textarea id="prMsgOrc" rows="3" class="input" placeholder="ex.: Anderson e Sara, gostei muito de conhecer a história de vocês…"></textarea></label>
             <label class="pr-obs-orc"><span>Observações do orçamento <i>(sai só no PDF do cliente)</i></span><textarea id="prObsOrc" rows="2" class="input" placeholder="condições específicas deste cliente…"></textarea></label>
             <div class="pr-acao">
@@ -387,6 +389,8 @@
       if (oo && document.activeElement !== oo && oo.value !== (respostas['obs_orcamento'] || '')) oo.value = respostas['obs_orcamento'] || '';
       const mm = document.getElementById('prMsgOrc');
       if (mm && document.activeElement !== mm && mm.value !== (respostas['msg_orcamento'] || '')) mm.value = respostas['msg_orcamento'] || '';
+      const vv = document.getElementById('prVencOrc');
+      if (vv && document.activeElement !== vv && vv.value !== (respostas['venc_orcamento'] || '')) vv.value = respostas['venc_orcamento'] || '';
       renderObrigacoes();
     }
     function renderRef(){
@@ -502,7 +506,7 @@
         setTimeout(res, 2000);
       });
     }
-    [['prObsOrc','obs_orcamento'],['prMsgOrc','msg_orcamento']].forEach(([idEl, chave]) => {
+    [['prObsOrc','obs_orcamento'],['prMsgOrc','msg_orcamento'],['prVencOrc','venc_orcamento']].forEach(([idEl, chave]) => {
       const el = document.getElementById(idEl);
       if (el) el.addEventListener('input', () => { respostas[chave] = el.value; });
     });
@@ -580,7 +584,12 @@
       doc.setFont('helvetica', 'bold').setFontSize(9).setTextColor(...AZUL);
       doc.text('FORMA DE PAGAMENTO', MX, y); y += 12;
       doc.setFont('helvetica', 'normal').setFontSize(8.5).setTextColor(...ESCURO);
-      doc.text('Boleto bancário, com vencimento até o dia 10 de cada mês.', MX, y); y += 20;
+      const venc = String(respostas['venc_orcamento'] || '').trim();
+      let fraseVenc;
+      if (!venc) fraseVenc = 'Boleto bancário, com vencimento até o dia 10 de cada mês.';
+      else if (venc.includes('/')) fraseVenc = `Boleto bancário, com primeiro vencimento em ${venc} e demais até o dia ${venc.split('/')[0].replace(/^0/, '')} de cada mês.`;
+      else fraseVenc = `Boleto bancário, com vencimento até o dia ${venc.replace(/^0/, '')} de cada mês.`;
+      doc.text(fraseVenc, MX, y); y += 20;
 
       quebra(30);
       doc.setFont('helvetica', 'bold').setFontSize(9).setTextColor(...AZUL);
