@@ -684,17 +684,17 @@
         y += 14;
       }
 
-      // parâmetros informados, em duas colunas
-      quebra(30); y += 10;
+      // parâmetros informados — página própria, duas colunas
+      doc.addPage(); y = 52;
       doc.setFont('helvetica', 'bold').setFontSize(10).setTextColor(...AZUL);
       doc.text('PARÂMETROS INFORMADOS', MX, y); y += 6;
       const colW = (MR - MX - 20) / 2;
       let col = 0, yCol = y + 12, topoResp = yCol, maxYCol = yCol;
-      doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(58, 69, 82);
+      doc.setFont('helvetica', 'normal').setFontSize(7.7).setTextColor(58, 69, 82);
       questoes.filter(qd => qd.tipo !== 'auto' && questaoVisivel(qd) && String(respostas[qd.id] ?? '').trim() !== '')
         .forEach(qd => {
           const linhas = doc.splitTextToSize(`${qd.id} · ${qd.pergunta}: ${respostas[qd.id]}`, colW);
-          const alt = linhas.length * 9.5 + 4;
+          const alt = linhas.length * 9 + 3;
           if (yCol + alt > 800) {
             if (col === 0) { col = 1; yCol = topoResp; }
             else { doc.addPage(); col = 0; yCol = 52; topoResp = 52; maxYCol = 52; }
