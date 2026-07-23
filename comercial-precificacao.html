@@ -54,6 +54,21 @@
     .pr-obs-orc i { font-style:normal; color:#6E7787; }
     .pr-obs-orc textarea { width:100%; resize:vertical; font-size:12.5px; }
     .pr-obs-orc input { display:block; width:120px; font-size:12.5px; }
+    .mei-cards { display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; margin-bottom:16px; }
+    .mei-card { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.1); border-radius:14px; padding:14px; display:flex; flex-direction:column; gap:6px; }
+    .mei-card.is-base { border-color:#52B4C6; box-shadow:0 0 0 1px rgba(82,180,198,.35); }
+    .mei-card h4 { margin:0; font-size:13.5px; color:#E6EBF2; }
+    .mei-card em { font-size:11.5px; color:#8A93A6; font-style:normal; min-height:28px; }
+    .mei-preco { font-size:20px; font-weight:700; color:#52B4C6; }
+    .mei-preco small { font-size:11px; color:#6E7787; font-weight:400; margin-left:2px; }
+    .mei-serv { display:flex; gap:8px; align-items:center; padding:6px 2px; border-bottom:1px solid rgba(255,255,255,.05); font-size:13px; color:#B9C2D0; cursor:pointer; }
+    .mei-serv.on { color:#E6EBF2; }
+    .mei-serv .mei-extra { font-style:normal; color:#C6A75A; font-size:11.5px; margin-left:6px; }
+    .mei-serv .mei-x { width:64px; padding:2px 6px; font-size:12px; margin:0 4px; }
+    .mei-total { text-align:center; margin:12px 0; }
+    .mei-total b { display:block; font-size:26px; color:#52B4C6; }
+    .mei-total small { font-size:10px; letter-spacing:.08em; color:#6E7787; }
+
     .pr-q .auto { color:#8AAEC8; font-size:13px; }
     .pr-painel { position:sticky; top:16px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.1); border-radius:14px; padding:16px 18px; }
     .pr-painel h3 { margin:0 0 10px; font-size:14px; color:#52B4C6; }
@@ -130,6 +145,7 @@
         <div class="pr-topo">
           <div class="seg" id="prSeg">
             <button type="button" data-v="form" class="is-on">Simulação</button>
+            <button type="button" data-v="mei">MEI</button>
             <button type="button" data-v="props">Propostas</button>
             <button type="button" data-v="params">Parâmetros</button>
           </div>
@@ -162,6 +178,25 @@
           </div>
         </div>
 
+        <div id="vMei" style="display:none;">
+          <div class="pr-layout">
+            <div>
+              <div id="meiCards" class="mei-cards"></div>
+              <div id="meiServicos">Carregando planos…</div>
+            </div>
+            <div class="pr-col-lateral"><div class="pr-painel">
+              <h3>Proposta MEI</h3>
+              <label class="pr-obs-orc"><span>Cliente</span><input id="meiCliente" class="input" style="width:100%;" placeholder="nome do MEI"></label>
+              <div id="meiResumo" style="margin-top:8px;"></div>
+              <div class="mei-total"><b id="meiTotal">R$ 0</b><small>MENSALIDADE MEI SUGERIDA</small></div>
+              <label class="pr-obs-orc"><span>Vencimento do boleto <i>(dia, ou data do 1º pgto.)</i></span><input id="meiVenc" class="input" maxlength="10" placeholder="25 ou 25/08/2026"></label>
+              <label class="pr-obs-orc"><span>Mensagem de abertura <i>(sai no PDF)</i></span><textarea id="meiMsg" rows="3" class="input" placeholder="mensagem personalizada pro cliente…"></textarea></label>
+              <div class="pr-acao"><button class="btn btn-ghost" id="meiOrc" style="flex:1 1 100%;">📄 Orçamento MEI (PDF)</button></div>
+              <div class="pr-ob-nota">Salvar/reabrir proposta MEI entra na próxima camada.</div>
+            </div></div>
+          </div>
+        </div>
+
         <div id="vProps" style="display:none;">
           <table class="pr-tab"><thead><tr><th>Cliente</th><th>Honorário</th><th>Taxa única</th><th>Origem</th><th>Status</th><th>Quando</th><th>Por</th><th></th></tr></thead>
           <tbody id="prProps"></tbody></table>
@@ -171,6 +206,7 @@
         <div id="vParams" style="display:none;">
           <p style="font-size:13px;color:#8A93A6;">Clique num valor pra editar — Enter salva, Esc cancela. Tudo recalcula na hora.</p>
           <div id="prParams">Carregando…</div>
+          <div id="meiParams"></div>
         </div>
             </div>
     </main>
@@ -840,6 +876,14 @@
             <div class="par-item"><span>${p.chave}</span><span class="pv" data-par="${p.id}">${p.valor}</span></div>`).join('')}
         </div>`).join('');
       el.querySelectorAll('.pv').forEach(sp => sp.addEventListener('click', () => editarParam(sp)));
+      const mpEl = document.getElementById('meiParams');
+      if (mpEl) {
+        mpEl.innerHTML = `<div class="par-grupo"><h3>MEI — Mensalidade dos planos</h3>` +
+          meiPlanos.map(p => `<div class="par-item"><span>${p.nome}</span><span class="pv-mei" data-tab="mei_planos" data-campo="valor_mensal" data-id="${p.id}">${p.valor_mensal}</span></div>`).join('') +
+          `</div><div class="par-grupo"><h3>MEI — Valor avulso dos serviços (fusão / à la carte)</h3>` +
+          meiServicos.map(s => `<div class="par-item"><span>${s.nome}</span><span class="pv-mei" data-tab="mei_servicos" data-campo="valor_avulso" data-id="${s.id}">${s.valor_avulso == null ? 0 : s.valor_avulso}</span></div>`).join('') + `</div>`;
+        mpEl.querySelectorAll('.pv-mei').forEach(sp => sp.addEventListener('click', () => editarMeiValor(sp)));
+      }
     }
     function editarParam(sp){
       if (sp.querySelector('input')) return;
@@ -861,24 +905,252 @@
       inp.addEventListener('blur', () => fim(true));
     }
 
+    // ---------- MEI: planos, fusão e orçamento ----------
+    let meiPlanos = [], meiServicos = [], meiComp = {};
+    const mei = { base: null, marcados: new Set(), qtd: {}, nfsInclusas: '', cliente: '', msg: '', venc: '' };
+    const GRUPOS_MEI = [['mensal','Mensais'],['semestral','Semestrais'],['anual','Anuais'],['demanda','Conforme demanda']];
+    function meiPreset(pid){ return new Set([...(meiComp[pid] || [])]); }
+    function usarBase(pid){
+      const seps = [...mei.marcados].filter(id => (meiServicos.find(s => s.id === id) || {}).grupo === 'separado');
+      mei.base = pid;
+      mei.marcados = meiPreset(pid);
+      seps.forEach(id => mei.marcados.add(id));
+      renderMei();
+    }
+    function calcMei(){
+      const linhas = [];
+      let total = 0;
+      const preset = mei.base ? meiPreset(mei.base) : new Set();
+      if (mei.base) {
+        const p = meiPlanos.find(x => x.id === mei.base);
+        const v = Number((p && p.valor_mensal) || 0);
+        linhas.push([`Plano base — ${p ? p.nome : ''}`, v]); total += v;
+      }
+      meiServicos.forEach(s => {
+        if (!mei.marcados.has(s.id)) return;
+        if (s.grupo === 'separado') {
+          const un = Number(s.valor_avulso || 0);
+          if (s.tipo === 'quantidade') {
+            const q = Number(mei.qtd[s.id] || 0);
+            if (q > 0) { linhas.push([`${s.nome} (${q} × ${fmt(un)})`, q * un]); total += q * un; }
+          } else { linhas.push([s.nome, un]); total += un; }
+        } else if (!preset.has(s.id)) {
+          const v = Number(s.valor_avulso || 0);
+          linhas.push([`${s.nome} (adicional)`, v]); total += v;
+        }
+      });
+      return { linhas, total, preset };
+    }
+    function renderMei(){
+      const cards = document.getElementById('meiCards');
+      if (!cards) return;
+      cards.innerHTML = meiPlanos.map(p => `
+        <div class="mei-card ${mei.base === p.id ? 'is-base' : ''}">
+          <h4>${p.nome}</h4><em>${p.slogan || ''}</em>
+          <div class="mei-preco">${fmt(Number(p.valor_mensal || 0))}<small>/mês</small></div>
+          <button class="btn ${mei.base === p.id ? '' : 'btn-ghost'}" data-base="${p.id}">${mei.base === p.id ? 'Plano base ✓' : 'Usar como base'}</button>
+        </div>`).join('');
+      cards.querySelectorAll('[data-base]').forEach(b => b.addEventListener('click', () => usarBase(b.dataset.base)));
+
+      const { preset } = calcMei();
+      const box = document.getElementById('meiServicos');
+      const linhaServ = s => {
+        const on = mei.marcados.has(s.id);
+        const extraTag = on && !preset.has(s.id) ? ` <i class="mei-extra">adicional · ${fmt(Number(s.valor_avulso || 0))}</i>` : '';
+        const xNfs = s.id === 'nfs_plano' && on ? ` — até <input type="number" min="0" class="input mei-x" id="meiX" value="${mei.nfsInclusas}" placeholder="X"> NFs/mês` : '';
+        return `<label class="mei-serv ${on ? 'on' : ''}"><input type="checkbox" data-serv="${s.id}" ${on ? 'checked' : ''}> <span>${s.nome.replace(' (até X/mês)','')}${xNfs}${extraTag}</span></label>`;
+      };
+      const linhaSep = s => {
+        const on = mei.marcados.has(s.id);
+        const un = Number(s.valor_avulso || 0);
+        const cauda = s.tipo === 'quantidade'
+          ? ` <input type="number" min="0" class="input mei-x" data-qtd="${s.id}" value="${mei.qtd[s.id] || ''}" placeholder="qtd"> × ${fmt(un)}`
+          : ` <i class="mei-extra">${fmt(un)}</i>`;
+        return `<label class="mei-serv ${on ? 'on' : ''}"><input type="checkbox" data-serv="${s.id}" ${on ? 'checked' : ''}> <span>${s.nome}${cauda}</span></label>`;
+      };
+      box.innerHTML = GRUPOS_MEI.map(([g, rot]) => {
+        const ss = meiServicos.filter(s => s.grupo === g);
+        if (!ss.length) return '';
+        return `<div class="pr-bloco"><h2>${rot}</h2></div>` + ss.map(linhaServ).join('');
+      }).join('') + `<div class="pr-bloco"><h2>Marcar separado — vale pra qualquer plano</h2></div>` + meiServicos.filter(s => s.grupo === 'separado').map(linhaSep).join('');
+
+      box.querySelectorAll('[data-serv]').forEach(cb => cb.addEventListener('change', () => {
+        if (cb.checked) mei.marcados.add(cb.dataset.serv); else mei.marcados.delete(cb.dataset.serv);
+        renderMei();
+      }));
+      box.querySelectorAll('[data-qtd]').forEach(inp => inp.addEventListener('input', () => {
+        mei.qtd[inp.dataset.qtd] = inp.value; atualizarMeiPainel();
+      }));
+      const mx = document.getElementById('meiX');
+      if (mx) mx.addEventListener('input', () => { mei.nfsInclusas = mx.value; });
+      atualizarMeiPainel();
+    }
+    function atualizarMeiPainel(){
+      const { linhas, total } = calcMei();
+      const r = document.getElementById('meiResumo');
+      if (r) r.innerHTML = linhas.map(([n, v]) => `<div class="pr-ob"><span class="nome">${n}</span><span class="multa">${fmt(v)}</span></div>`).join('') || '<div class="pr-ob-nota">Escolha um plano base ou marque serviços avulsos.</div>';
+      const t = document.getElementById('meiTotal');
+      if (t) t.textContent = fmt(total);
+    }
+    function ligarMeiPainel(){
+      [['meiCliente','cliente'],['meiVenc','venc'],['meiMsg','msg']].forEach(([id, k]) => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', () => { mei[k] = el.value; });
+      });
+      const btn = document.getElementById('meiOrc');
+      if (btn) btn.addEventListener('click', gerarOrcamentoMei);
+    }
+    async function gerarOrcamentoMei(){
+      if (!window.jspdf) { alert('Gerador de PDF ainda carregando — tenta de novo em 2 segundos.'); return; }
+      const nome = String(mei.cliente || '').trim();
+      if (!nome) { alert('Preencha o nome do cliente MEI.'); return; }
+      const { linhas, total, preset } = calcMei();
+      if (!linhas.length) { alert('Escolha um plano base ou marque serviços.'); return; }
+      await logoPronto();
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+      const W = 595, MX = 48, MR = W - MX;
+      const AZUL = [58, 88, 120], CINZA = [90, 102, 117], ESCURO = [26, 35, 48], LINHA = [201, 211, 221];
+      let y = 52;
+      const quebra = alt => { if (y + alt > 800) { doc.addPage(); y = 52; } };
+      let tx = MX;
+      if (LOGO_MR.complete && LOGO_MR.naturalWidth) { doc.addImage(LOGO_MR, 'PNG', MX, y - 14, 40, 40); tx = MX + 52; }
+      doc.setFont('helvetica', 'bold').setFontSize(16).setTextColor(...AZUL);
+      doc.text('Macedo & Reis Contabilidade', tx, y);
+      doc.setFont('helvetica', 'normal').setFontSize(8.5).setTextColor(...CINZA);
+      doc.text('Rua Luiz Volkart, 35 – 1º andar · Centro · Três Coroas/RS · CEP 95660-000', tx, y + 13);
+      doc.text('CNPJ 19.208.576/0001-77 · CRC/RS 006418/O · (51) 9 9823-7182 · atendimento@macedoereis.com.br', tx, y + 24);
+      doc.setDrawColor(...AZUL).setLineWidth(2).line(MX, y + 33, MR, y + 33);
+      y += 55;
+      const agora = new Date(), validade = new Date(agora.getTime() + 10 * 864e5);
+      doc.setFont('helvetica', 'bold').setFontSize(13).setTextColor(...ESCURO);
+      doc.text('Proposta de Honorários — MEI', MX, y);
+      doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(...CINZA);
+      doc.text(`Emitida em ${agora.toLocaleDateString('pt-BR')} · válida até ${validade.toLocaleDateString('pt-BR')}`, MR, y, { align: 'right' });
+      y += 20;
+      doc.setDrawColor(...LINHA).setLineWidth(.8).roundedRect(MX, y - 4, MR - MX, 26, 4, 4);
+      doc.setFont('helvetica', 'bold').setFontSize(10.5).setTextColor(...ESCURO);
+      doc.text(nome, MX + 10, y + 13);
+      y += 38;
+      const msg = String(mei.msg || '').trim();
+      if (msg) {
+        doc.setFont('helvetica', 'italic').setFontSize(9.5).setTextColor(...ESCURO);
+        const t = doc.splitTextToSize(msg, MR - MX - 8);
+        quebra(t.length * 12 + 6); doc.text(t, MX + 4, y); y += t.length * 12 + 10;
+      }
+      const pBase = meiPlanos.find(x => x.id === mei.base);
+      if (pBase) {
+        doc.setFont('helvetica', 'bold').setFontSize(11).setTextColor(...AZUL);
+        doc.text(pBase.nome, MX, y);
+        doc.setFont('helvetica', 'italic').setFontSize(8.5).setTextColor(...CINZA);
+        doc.text(pBase.slogan || '', MX, y + 11); y += 24;
+      }
+      GRUPOS_MEI.forEach(([g, rot]) => {
+        const marcs = meiServicos.filter(s => s.grupo === g && mei.marcados.has(s.id));
+        if (!marcs.length) return;
+        quebra(16);
+        doc.setFont('helvetica', 'bold').setFontSize(8.5).setTextColor(...AZUL);
+        doc.text(rot.toUpperCase() + ':', MX, y); y += 11;
+        doc.setFont('helvetica', 'normal').setFontSize(8.5).setTextColor(...ESCURO);
+        marcs.forEach(s => {
+          let nomeS = s.nome;
+          if (s.id === 'nfs_plano') nomeS = `Emissão de até ${mei.nfsInclusas || 'X'} NFs/mês`;
+          if (!preset.has(s.id)) nomeS += ' (adicional)';
+          const t = doc.splitTextToSize('\u2022 ' + nomeS, MR - MX);
+          quebra(t.length * 10 + 2); doc.text(t, MX, y); y += t.length * 10 + 2;
+        });
+        y += 4;
+      });
+      const seps = meiServicos.filter(s => s.grupo === 'separado' && mei.marcados.has(s.id));
+      if (seps.length) {
+        quebra(16);
+        doc.setFont('helvetica', 'bold').setFontSize(8.5).setTextColor(...AZUL);
+        doc.text('SERVIÇOS ADICIONAIS CONTRATADOS:', MX, y); y += 11;
+        doc.setFont('helvetica', 'normal').setFontSize(8.5).setTextColor(...ESCURO);
+        seps.forEach(s => {
+          const un = Number(s.valor_avulso || 0);
+          const q = Number(mei.qtd[s.id] || 0);
+          const rot = s.tipo === 'quantidade' ? `${s.nome} — ${q} × ${fmt(un)}` : `${s.nome} — ${fmt(un)}`;
+          const t = doc.splitTextToSize('\u2022 ' + rot, MR - MX);
+          quebra(t.length * 10 + 2); doc.text(t, MX, y); y += t.length * 10 + 2;
+        });
+        y += 4;
+      }
+      quebra(44); y += 2;
+      doc.setDrawColor(...AZUL).setLineWidth(1.5).roundedRect(MX, y - 4, MR - MX, 34, 5, 5);
+      doc.setFont('helvetica', 'bold').setFontSize(10).setTextColor(...ESCURO);
+      doc.text('TOTAL', MX + 12, y + 17);
+      doc.setFontSize(16).setTextColor(...AZUL);
+      doc.text(fmt(total) + ' / mês', MR - 12, y + 18, { align: 'right' });
+      y += 50;
+      doc.setFont('helvetica', 'bold').setFontSize(9).setTextColor(...AZUL);
+      doc.text('FORMA DE PAGAMENTO', MX, y); y += 12;
+      const venc = String(mei.venc || '').trim();
+      const diaVenc = (venc.includes('/') ? venc.split('/')[0] : venc).replace(/^0/, '') || '10';
+      doc.setFont('helvetica', 'normal').setFontSize(8.5).setTextColor(...ESCURO);
+      doc.text(`Boleto bancário com vencimento no dia ${diaVenc} de cada mês.`, MX, y); y += 12;
+      if (venc.includes('/')) { doc.text(`1º pgto. de honorário para: ${venc}`, MX, y); y += 12; }
+      y += 8;
+      quebra(24);
+      doc.setFont('helvetica', 'bold').setFontSize(9).setTextColor(...AZUL);
+      doc.text('COBRADO SEPARADAMENTE', MX, y); y += 12;
+      doc.setFont('helvetica', 'normal').setFontSize(8.5).setTextColor(...ESCURO);
+      doc.text('\u2022 Declaração de IRPF (anual);', MX, y); y += 12;
+      y += 10; quebra(18);
+      doc.setDrawColor(...LINHA).setLineWidth(.5).line(MX, y - 6, MR, y - 6);
+      doc.setFont('helvetica', 'italic').setFontSize(7.5).setTextColor(...CINZA);
+      doc.text('Macedo & Reis Contabilidade · CRC/RS 006418/O · Três Coroas – RS', MX, y + 2);
+      doc.save(`Orçamento MEI - ${nome}.pdf`);
+    }
+    async function editarMeiValor(sp){
+      if (sp.querySelector('input')) return;
+      const { tab, campo, id } = sp.dataset;
+      const atual = sp.textContent;
+      const inp = document.createElement('input');
+      inp.type = 'number'; inp.step = 'any'; inp.className = 'input-inline'; inp.value = atual;
+      sp.textContent = ''; sp.appendChild(inp); inp.focus(); inp.select();
+      let feito = false;
+      const fim = async ok => {
+        if (feito) return; feito = true;
+        const v = Number(inp.value);
+        if (ok && !Number.isNaN(v)) {
+          const { error } = await supabase.from(tab).update({ [campo]: v }).eq('id', id);
+          if (error) { alert('Erro ao salvar: ' + error.message); sp.textContent = atual; return; }
+          const alvo = tab === 'mei_planos' ? meiPlanos : meiServicos;
+          const row = alvo.find(x => x.id === id); if (row) row[campo] = v;
+          sp.textContent = String(v);
+        } else sp.textContent = atual;
+      };
+      inp.addEventListener('keydown', e => { if (e.key === 'Enter') fim(true); if (e.key === 'Escape') fim(false); });
+      inp.addEventListener('blur', () => fim(true));
+    }
+
     // ---------- visões ----------
     function trocarVisao(v){
       document.querySelectorAll('#prSeg button').forEach(b => b.classList.toggle('is-on', b.dataset.v === v));
       document.getElementById('vForm').style.display = v === 'form' ? 'grid' : 'none';
+      document.getElementById('vMei').style.display = v === 'mei' ? 'block' : 'none';
       document.getElementById('vProps').style.display = v === 'props' ? 'block' : 'none';
       document.getElementById('vParams').style.display = v === 'params' ? 'block' : 'none';
       if (v === 'props') carregarProps();
       if (v === 'params') renderParams();
+      if (v === 'mei') renderMei();
     }
     document.querySelectorAll('#prSeg button').forEach(b => b.addEventListener('click', () => trocarVisao(b.dataset.v)));
 
     async function iniciar(){
-      const [{ data: qs }, { data: ps }, { data: obs }] = await Promise.all([
+      const [{ data: qs }, { data: ps }, { data: obs }, { data: mp }, { data: ms }, { data: mps }] = await Promise.all([
         supabase.from('precificacao_questoes').select('*').eq('ativo', true).order('ordem'),
         supabase.from('precificacao_parametros').select('*'),
-        supabase.from('precificacao_obrigacoes').select('*').eq('ativo', true).order('ordem')
+        supabase.from('precificacao_obrigacoes').select('*').eq('ativo', true).order('ordem'),
+        supabase.from('mei_planos').select('*').eq('ativo', true).order('ordem'),
+        supabase.from('mei_servicos').select('*').eq('ativo', true).order('ordem'),
+        supabase.from('mei_plano_servicos').select('*')
       ]);
       questoes = qs || []; params = ps || []; obrigacoes = obs || [];
+      meiPlanos = mp || []; meiServicos = ms || []; meiComp = {};
+      (mps || []).forEach(x => (meiComp[x.plano_id] = meiComp[x.plano_id] || new Set()).add(x.servico_id));
+      ligarMeiPainel();
       indexarParams();
       renderForm();
       if (window.MRTour) MRTour.iniciar([
