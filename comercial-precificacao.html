@@ -911,6 +911,11 @@
     const GRUPOS_MEI = [['mensal','Mensais'],['semestral','Semestrais'],['anual','Anuais'],['demanda','Conforme demanda']];
     function meiPreset(pid){ return new Set([...(meiComp[pid] || [])]); }
     function usarBase(pid){
+      if (mei.base === pid) {
+        mei.base = null; mei.marcados = new Set(); mei.qtd = {}; mei.nfsInclusas = '';
+        renderMei();
+        return;
+      }
       const seps = [...mei.marcados].filter(id => (meiServicos.find(s => s.id === id) || {}).grupo === 'separado');
       mei.base = pid;
       mei.marcados = meiPreset(pid);
@@ -948,7 +953,7 @@
         <div class="mei-card ${mei.base === p.id ? 'is-base' : ''}">
           <h4>${p.nome}</h4><em>${p.slogan || ''}</em>
           <div class="mei-preco">${fmt(Number(p.valor_mensal || 0))}<small>/mês</small></div>
-          <button class="btn ${mei.base === p.id ? '' : 'btn-ghost'}" data-base="${p.id}">${mei.base === p.id ? 'Plano base ✓' : 'Usar como base'}</button>
+          <button class="btn ${mei.base === p.id ? '' : 'btn-ghost'}" data-base="${p.id}" ${mei.base === p.id ? 'title="Clique de novo pra limpar tudo"' : ''}>${mei.base === p.id ? 'Plano base ✓ (clique limpa)' : 'Usar como base'}</button>
         </div>`).join('');
       cards.querySelectorAll('[data-base]').forEach(b => b.addEventListener('click', () => usarBase(b.dataset.base)));
 
