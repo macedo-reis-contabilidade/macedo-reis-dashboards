@@ -191,8 +191,12 @@
               <div class="mei-total"><b id="meiTotal">R$ 0</b><small>MENSALIDADE MEI SUGERIDA</small></div>
               <label class="pr-obs-orc"><span>Vencimento do boleto <i>(dia, ou data do 1º pgto.)</i></span><input id="meiVenc" class="input" maxlength="10" placeholder="25 ou 25/08/2026"></label>
               <label class="pr-obs-orc"><span>Mensagem de abertura <i>(sai no PDF)</i></span><textarea id="meiMsg" rows="3" class="input" placeholder="mensagem personalizada pro cliente…"></textarea></label>
-              <div class="pr-acao"><button class="btn btn-ghost" id="meiOrc" style="flex:1 1 100%;">📄 Orçamento MEI (PDF)</button></div>
-              <div class="pr-ob-nota">Salvar/reabrir proposta MEI entra na próxima camada.</div>
+              <div class="pr-acao">
+                <button class="btn" id="meiSalvar" style="flex:1 1 100%;">Salvar proposta MEI</button>
+                <button class="btn btn-ghost" id="meiNova" style="flex:0 0 auto;">Nova</button>
+                <button class="btn btn-ghost" id="meiOrc" style="flex:1 1 auto;">📄 Orçamento MEI (PDF)</button>
+              </div>
+              <div id="meiSalvoMsg" style="margin-top:8px;font-size:12.5px;min-height:16px;"></div>
             </div></div>
           </div>
         </div>
@@ -838,7 +842,7 @@
       document.getElementById('prPropsVazio').style.display = lista.length ? 'none' : 'block';
       tb.innerHTML = lista.map(p => `
         <tr class="prop" data-pid="${p.id}">
-          <td><b>${p.cliente_nome}</b>${p.contato ? `<br><small style="color:#8A93A6;">${p.contato}</small>` : ''}</td>
+          <td><b>${p.cliente_nome}</b>${(p.respostas && p.respostas._tipo === 'mei') ? ' <span class="chip" style="background:rgba(82,180,198,.15);color:#52B4C6;">MEI</span>' : ''}${p.contato ? `<br><small style="color:#8A93A6;">${p.contato}</small>` : ''}</td>
           <td>${p.honorario != null ? fmt(p.honorario) : '—'}</td>
           <td>${p.taxa_unica ? fmt(p.taxa_unica) : '—'}</td>
           <td><span class="chip ${p.origem === 'externa' ? 'c-ama' : ''}">${p.origem}</span></td>
@@ -850,6 +854,7 @@
       tb.querySelectorAll('tr.prop').forEach(tr => tr.addEventListener('click', e => {
         if (e.target.closest('.st-sel') || e.target.closest('[data-del]')) return;
         const p = lista.find(x => x.id === tr.dataset.pid);
+        if (p.respostas && p.respostas._tipo === 'mei') { carregarPropostaMei(p); return; }
         respostas = p.respostas || {}; editandoId = p.id;
         document.getElementById('prSalvoMsg').textContent = '';
         atualizarBotoesSalvar();
@@ -1004,6 +1009,10 @@
       });
       const btn = document.getElementById('meiOrc');
       if (btn) btn.addEventListener('click', gerarOrcamentoMei);
+      const bs = document.getElementById('meiSalvar');
+      if (bs) bs.addEventListener('click', () => salvarMei(false));
+      const bn = document.getElementById('meiNova');
+      if (bn) bn.addEventListener('click', novaMei);
     }
     async function gerarOrcamentoMei(){
       if (!window.jspdf) { alert('Gerador de PDF ainda carregando — tenta de novo em 2 segundos.'); return; }
@@ -1107,6 +1116,65 @@
       doc.text('Macedo & Reis Contabilidade · CRC/RS 006418/O · Três Coroas – RS', MX, y + 2);
       doc.save(`Orçamento MEI - ${nome}.pdf`);
     }
+    let meiEditandoId = null;
+    async function salvarMei(comoNova){
+      const { linhas, total } = calcMei();
+      const nome = String(mei.cliente || '').trim();
+      if (!nome) { alert('Preencha o nome do cliente MEI.'); return; }
+      if (!linhas.length) { alert('Escolha um plano base ou marque serviços.'); return; }
+      const btn = document.getElementById('meiSalvar');
+      btn.disabled = true;
+      const payload = {
+        cliente_nome: nome,
+        respostas: { _tipo: 'mei', base: mei.base, marcados: [...mei.marcados], qtd: mei.qtd, nfsInclusas: mei.nfsInclusas, cliente: mei.cliente, msg: mei.msg, venc: mei.venc },
+        resultado: { linhas, total },
+        honorario: total, taxa_unica: null,
+        status: 'calculada', atualizado_em: new Date().toISOString()
+      };
+      let erro, atualizou = false;
+      if (meiEditandoId && !comoNova) {
+        ({ error: erro } = await supabase.from('precificacoes').update(payload).eq('id', meiEditandoId));
+        atualizou = true;
+      } else {
+        payload.origem = 'interna'; payload.criado_por = user ? user.email : null;
+        const { data, error } = await supabase.from('precificacoes').insert(payload).select('id').single();
+        erro = error; if (data) meiEditandoId = data.id;
+      }
+      btn.disabled = false;
+      atualizarBotoesMei();
+      const m = document.getElementById('meiSalvoMsg');
+      m.style.color = erro ? '#D08770' : '#7FBF8E';
+      m.textContent = erro ? ('Erro: ' + erro.message) : (atualizou ? 'Proposta MEI atualizada \u2713' : 'Proposta MEI salva \u2713');
+    }
+    function atualizarBotoesMei(){
+      const b = document.getElementById('meiSalvar');
+      if (b) b.textContent = meiEditandoId ? 'Atualizar proposta MEI' : 'Salvar proposta MEI';
+    }
+    function novaMei(){
+      meiEditandoId = null;
+      mei.base = null; mei.marcados = new Set(); mei.qtd = {}; mei.nfsInclusas = '';
+      mei.cliente = ''; mei.msg = ''; mei.venc = '';
+      ['meiCliente','meiVenc','meiMsg'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+      const m = document.getElementById('meiSalvoMsg'); if (m) m.textContent = '';
+      atualizarBotoesMei();
+      renderMei();
+    }
+    function carregarPropostaMei(p){
+      const r = p.respostas || {};
+      mei.base = r.base || null;
+      mei.marcados = new Set(r.marcados || []);
+      mei.qtd = r.qtd || {};
+      mei.nfsInclusas = r.nfsInclusas || '';
+      mei.cliente = r.cliente || p.cliente_nome || '';
+      mei.msg = r.msg || '';
+      mei.venc = r.venc || '';
+      meiEditandoId = p.id;
+      const setv = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+      setv('meiCliente', mei.cliente); setv('meiVenc', mei.venc); setv('meiMsg', mei.msg);
+      const m = document.getElementById('meiSalvoMsg'); if (m) m.textContent = '';
+      atualizarBotoesMei();
+      trocarVisao('mei');
+    }
     async function editarMeiValor(sp){
       if (sp.querySelector('input')) return;
       const { tab, campo, id } = sp.dataset;
@@ -1177,6 +1245,7 @@
       for (let i = 0; i < 50 && !questoes.length; i++) await new Promise(r => setTimeout(r, 150));
       const { data: p } = await supabase.from('precificacoes').select('*').eq('id', pid).single();
       if (!p) return;
+      if (p.respostas && p.respostas._tipo === 'mei') { carregarPropostaMei(p); return; }
       respostas = p.respostas || {}; editandoId = p.id;
       atualizarBotoesSalvar();
       trocarVisao('form'); renderForm();
