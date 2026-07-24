@@ -860,10 +860,10 @@
           <td><select class="st-sel" data-st="${p.id}">${ST_PROP.map(s => `<option${s === p.status ? ' selected' : ''}>${s}</option>`).join('')}</select></td>
           <td style="color:#8A93A6;">${new Date(p.criado_em).toLocaleDateString('pt-BR')}</td>
           <td style="color:#8A93A6;">${p.criado_por ? p.criado_por.split('@')[0] : '—'}</td>
-          <td><button class="btn-x" data-del="${p.id}" title="Excluir" style="background:none;border:none;color:#8A93A6;cursor:pointer;">✕</button></td>
+          <td style="white-space:nowrap;"><button class="btn-x" data-dup="${p.id}" title="Duplicar como nova" style="background:none;border:none;color:#8A93A6;cursor:pointer;">⧉</button> <button class="btn-x" data-del="${p.id}" title="Excluir" style="background:none;border:none;color:#8A93A6;cursor:pointer;">✕</button></td>
         </tr>`).join('');
       tb.querySelectorAll('tr.prop').forEach(tr => tr.addEventListener('click', e => {
-        if (e.target.closest('.st-sel') || e.target.closest('[data-del]')) return;
+        if (e.target.closest('.st-sel') || e.target.closest('[data-del]') || e.target.closest('[data-dup]')) return;
         const p = lista.find(x => x.id === tr.dataset.pid);
         if (p.respostas && p.respostas._tipo === 'mei') { carregarPropostaMei(p); return; }
         respostas = p.respostas || {}; editandoId = p.id;
@@ -878,6 +878,27 @@
         if (!confirm('Excluir esta proposta?')) return;
         await supabase.from('precificacoes').delete().eq('id', b.dataset.del);
         carregarProps();
+      }));
+      tb.querySelectorAll('[data-dup]').forEach(b => b.addEventListener('click', () => {
+        const p = lista.find(x => x.id === b.dataset.dup);
+        if (!p) return;
+        if (p.respostas && p.respostas._tipo === 'mei') {
+          carregarPropostaMei(p);
+          meiEditandoId = null;
+          mei.cliente = (mei.cliente || '').trim() + ' (cópia)';
+          const el = document.getElementById('meiCliente'); if (el) el.value = mei.cliente;
+          atualizarBotoesMei();
+          const m = document.getElementById('meiSalvoMsg');
+          if (m) { m.style.color = '#8AAEC8'; m.textContent = 'Cópia carregada — salvar cria a proposta nova.'; }
+        } else {
+          respostas = JSON.parse(JSON.stringify(p.respostas || {}));
+          respostas['A1'] = (String(respostas['A1'] || p.cliente_nome || '')).trim() + ' (cópia)';
+          editandoId = null;
+          atualizarBotoesSalvar();
+          const m = document.getElementById('prSalvoMsg');
+          m.style.color = '#8AAEC8'; m.textContent = 'Cópia carregada — salvar cria a proposta nova.';
+          trocarVisao('form'); renderForm();
+        }
       }));
     }
 
@@ -1174,7 +1195,7 @@
       const r = p.respostas || {};
       mei.base = r.base || null;
       mei.marcados = new Set(r.marcados || []);
-      mei.qtd = r.qtd || {};
+      mei.qtd = r.qtd ? JSON.parse(JSON.stringify(r.qtd)) : {};
       mei.nfsInclusas = r.nfsInclusas || '';
       mei.cliente = r.cliente || p.cliente_nome || '';
       mei.msg = r.msg || '';
