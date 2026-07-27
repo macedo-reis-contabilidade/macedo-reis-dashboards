@@ -1063,7 +1063,7 @@
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF({ unit: 'pt', format: 'a4' });
       const W = 595, MX = 48, MR = W - MX;
-      const AZUL = [58, 88, 120], CINZA = [90, 102, 117], ESCURO = [26, 35, 48], LINHA = [201, 211, 221];
+      const AZUL = [58, 88, 120], CINZA = [90, 102, 117], ESCURO = [26, 35, 48], LINHA = [201, 211, 221], FUNDO = [242, 246, 250];
       let y = 52;
       const quebra = alt => { if (y + alt > 800) { doc.addPage(); y = 52; } };
       let tx = MX;
