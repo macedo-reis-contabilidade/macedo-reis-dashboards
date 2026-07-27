@@ -189,6 +189,7 @@
               <h3>Proposta MEI</h3>
               <label class="pr-obs-orc"><span>Cliente</span><input id="meiCliente" class="input" style="width:100%;" placeholder="nome do MEI"></label>
               <div id="meiResumo" style="margin-top:8px;"></div>
+              <label class="pr-obs-orc"><span>Ajuste no total <i>(R$ — aceita negativo; só interno, cliente vê o total fechado)</i></span><input id="meiAjuste" class="input" type="number" step="0.01" placeholder="ex.: 150 ou -100"></label>
               <div class="mei-total"><b id="meiTotal">R$ 0</b><small>MENSALIDADE MEI SUGERIDA</small></div>
               <label class="pr-obs-orc"><span>Vencimento do boleto <i>(dia, ou data do 1º pgto.)</i></span><input id="meiVenc" class="input" maxlength="10" placeholder="25 ou 25/08/2026"></label>
               <label class="pr-obs-orc"><span>Mensagem de abertura <i>(sai no PDF)</i></span><textarea id="meiMsg" rows="3" class="input" placeholder="mensagem personalizada pro cliente…"></textarea></label>
@@ -944,7 +945,7 @@
 
     // ---------- MEI: planos, fusão e orçamento ----------
     let meiPlanos = [], meiServicos = [], meiComp = {};
-    const mei = { base: null, marcados: new Set(), qtd: {}, nfsInclusas: '', cliente: '', msg: '', venc: '' };
+    const mei = { base: null, marcados: new Set(), qtd: {}, nfsInclusas: '', cliente: '', msg: '', venc: '', ajuste: '' };
     const GRUPOS_MEI = [['mensal','Mensais'],['semestral','Semestrais'],['anual','Anuais'],['demanda','Conforme demanda']];
     function meiPreset(pid){ return new Set([...(meiComp[pid] || [])]); }
     function usarBase(pid){
@@ -981,6 +982,8 @@
           linhas.push([`${s.nome} (adicional)`, v]); total += v;
         }
       });
+      const aj = Number(mei.ajuste || 0);
+      if (aj) { linhas.push(['Ajuste comercial', aj]); total += aj; }
       return { linhas, total, preset };
     }
     function renderMei(){
@@ -1035,9 +1038,9 @@
       if (t) t.textContent = fmt(total);
     }
     function ligarMeiPainel(){
-      [['meiCliente','cliente'],['meiVenc','venc'],['meiMsg','msg']].forEach(([id, k]) => {
+      [['meiCliente','cliente'],['meiVenc','venc'],['meiMsg','msg'],['meiAjuste','ajuste']].forEach(([id, k]) => {
         const el = document.getElementById(id);
-        if (el) el.addEventListener('input', () => { mei[k] = el.value; });
+        if (el) el.addEventListener('input', () => { mei[k] = el.value; if (k === 'ajuste') atualizarMeiPainel(); });
       });
       const btn = document.getElementById('meiOrc');
       if (btn) btn.addEventListener('click', gerarOrcamentoMei);
@@ -1158,7 +1161,7 @@
       btn.disabled = true;
       const payload = {
         cliente_nome: nome,
-        respostas: { _tipo: 'mei', base: mei.base, marcados: [...mei.marcados], qtd: mei.qtd, nfsInclusas: mei.nfsInclusas, cliente: mei.cliente, msg: mei.msg, venc: mei.venc },
+        respostas: { _tipo: 'mei', base: mei.base, marcados: [...mei.marcados], qtd: mei.qtd, nfsInclusas: mei.nfsInclusas, cliente: mei.cliente, msg: mei.msg, venc: mei.venc, ajuste: mei.ajuste },
         resultado: { linhas, total },
         honorario: total, taxa_unica: null,
         status: 'calculada', atualizado_em: new Date().toISOString()
@@ -1185,8 +1188,8 @@
     function novaMei(){
       meiEditandoId = null;
       mei.base = null; mei.marcados = new Set(); mei.qtd = {}; mei.nfsInclusas = '';
-      mei.cliente = ''; mei.msg = ''; mei.venc = '';
-      ['meiCliente','meiVenc','meiMsg'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+      mei.cliente = ''; mei.msg = ''; mei.venc = ''; mei.ajuste = '';
+      ['meiCliente','meiVenc','meiMsg','meiAjuste'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
       const m = document.getElementById('meiSalvoMsg'); if (m) m.textContent = '';
       atualizarBotoesMei();
       renderMei();
@@ -1200,9 +1203,10 @@
       mei.cliente = r.cliente || p.cliente_nome || '';
       mei.msg = r.msg || '';
       mei.venc = r.venc || '';
+      mei.ajuste = r.ajuste || '';
       meiEditandoId = p.id;
       const setv = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
-      setv('meiCliente', mei.cliente); setv('meiVenc', mei.venc); setv('meiMsg', mei.msg);
+      setv('meiCliente', mei.cliente); setv('meiVenc', mei.venc); setv('meiMsg', mei.msg); setv('meiAjuste', mei.ajuste);
       const m = document.getElementById('meiSalvoMsg'); if (m) m.textContent = '';
       atualizarBotoesMei();
       trocarVisao('mei');
