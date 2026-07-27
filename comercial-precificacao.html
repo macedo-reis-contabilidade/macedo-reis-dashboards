@@ -945,30 +945,31 @@
 
     // ---------- MEI: planos, fusão e orçamento ----------
     let meiPlanos = [], meiServicos = [], meiComp = {};
-    const mei = { base: null, marcados: new Set(), qtd: {}, nfsInclusas: '', cliente: '', msg: '', venc: '', ajuste: '' };
+    const mei = { bases: new Set(), marcados: new Set(), qtd: {}, nfsInclusas: '', cliente: '', msg: '', venc: '', ajuste: '' };
     const GRUPOS_MEI = [['mensal','Mensais'],['semestral','Semestrais'],['anual','Anuais'],['demanda','Conforme demanda']];
     function meiPreset(pid){ return new Set([...(meiComp[pid] || [])]); }
+    function presetUniao(){
+      const u = new Set();
+      mei.bases.forEach(pid => (meiComp[pid] || new Set()).forEach(id => u.add(id)));
+      return u;
+    }
     function usarBase(pid){
-      if (mei.base === pid) {
-        mei.base = null; mei.marcados = new Set(); mei.qtd = {}; mei.nfsInclusas = '';
-        renderMei();
-        return;
-      }
-      const seps = [...mei.marcados].filter(id => (meiServicos.find(s => s.id === id) || {}).grupo === 'separado');
-      mei.base = pid;
-      mei.marcados = meiPreset(pid);
-      seps.forEach(id => mei.marcados.add(id));
+      const uniaoAntes = presetUniao();
+      const extras = [...mei.marcados].filter(id => !uniaoAntes.has(id));
+      if (mei.bases.has(pid)) mei.bases.delete(pid); else mei.bases.add(pid);
+      mei.marcados = presetUniao();
+      extras.forEach(id => mei.marcados.add(id));
       renderMei();
     }
     function calcMei(){
       const linhas = [];
       let total = 0;
-      const preset = mei.base ? meiPreset(mei.base) : new Set();
-      if (mei.base) {
-        const p = meiPlanos.find(x => x.id === mei.base);
+      const preset = presetUniao();
+      mei.bases.forEach(pid => {
+        const p = meiPlanos.find(x => x.id === pid);
         const v = Number((p && p.valor_mensal) || 0);
-        linhas.push([`Plano base — ${p ? p.nome : ''}`, v]); total += v;
-      }
+        linhas.push([`Plano — ${p ? p.nome : ''}`, v]); total += v;
+      });
       meiServicos.forEach(s => {
         if (!mei.marcados.has(s.id)) return;
         if (s.grupo === 'separado') {
@@ -989,12 +990,15 @@
     function renderMei(){
       const cards = document.getElementById('meiCards');
       if (!cards) return;
-      cards.innerHTML = meiPlanos.map(p => `
-        <div class="mei-card ${mei.base === p.id ? 'is-base' : ''}">
+      cards.innerHTML = meiPlanos.map(p => {
+        const sel = mei.bases.has(p.id);
+        return `
+        <div class="mei-card ${sel ? 'is-base' : ''}">
           <h4>${p.nome}</h4><em>${p.slogan || ''}</em>
           <div class="mei-preco">${fmt(Number(p.valor_mensal || 0))}<small>/mês</small></div>
-          <button class="btn ${mei.base === p.id ? '' : 'btn-ghost'}" data-base="${p.id}" ${mei.base === p.id ? 'title="Clique de novo pra limpar tudo"' : ''}>${mei.base === p.id ? 'Plano base ✓ (clique limpa)' : 'Usar como base'}</button>
-        </div>`).join('');
+          <button class="btn ${sel ? '' : 'btn-ghost'}" data-base="${p.id}" ${sel ? 'title="Clique de novo pra tirar este plano"' : ''}>${sel ? 'Plano marcado ✓ (clique tira)' : 'Marcar plano'}</button>
+        </div>`;
+      }).join('');
       cards.querySelectorAll('[data-base]').forEach(b => b.addEventListener('click', () => usarBase(b.dataset.base)));
 
       const { preset } = calcMei();
@@ -1087,13 +1091,13 @@
         const t = doc.splitTextToSize(msg, MR - MX - 8);
         quebra(t.length * 12 + 6); doc.text(t, MX + 4, y); y += t.length * 12 + 10;
       }
-      const pBase = meiPlanos.find(x => x.id === mei.base);
-      if (pBase) {
+      meiPlanos.filter(p => mei.bases.has(p.id)).forEach(p => {
+        quebra(26);
         doc.setFont('helvetica', 'bold').setFontSize(11).setTextColor(...AZUL);
-        doc.text(pBase.nome, MX, y);
+        doc.text(p.nome, MX, y);
         doc.setFont('helvetica', 'italic').setFontSize(8.5).setTextColor(...CINZA);
-        doc.text(pBase.slogan || '', MX, y + 11); y += 24;
-      }
+        doc.text(p.slogan || '', MX, y + 11); y += 24;
+      });
       GRUPOS_MEI.forEach(([g, rot]) => {
         const marcs = meiServicos.filter(s => s.grupo === g && mei.marcados.has(s.id));
         if (!marcs.length) return;
@@ -1161,7 +1165,7 @@
       btn.disabled = true;
       const payload = {
         cliente_nome: nome,
-        respostas: { _tipo: 'mei', base: mei.base, marcados: [...mei.marcados], qtd: mei.qtd, nfsInclusas: mei.nfsInclusas, cliente: mei.cliente, msg: mei.msg, venc: mei.venc, ajuste: mei.ajuste },
+        respostas: { _tipo: 'mei', bases: [...mei.bases], marcados: [...mei.marcados], qtd: mei.qtd, nfsInclusas: mei.nfsInclusas, cliente: mei.cliente, msg: mei.msg, venc: mei.venc, ajuste: mei.ajuste },
         resultado: { linhas, total },
         honorario: total, taxa_unica: null,
         status: 'calculada', atualizado_em: new Date().toISOString()
@@ -1187,7 +1191,7 @@
     }
     function novaMei(){
       meiEditandoId = null;
-      mei.base = null; mei.marcados = new Set(); mei.qtd = {}; mei.nfsInclusas = '';
+      mei.bases = new Set(); mei.marcados = new Set(); mei.qtd = {}; mei.nfsInclusas = '';
       mei.cliente = ''; mei.msg = ''; mei.venc = ''; mei.ajuste = '';
       ['meiCliente','meiVenc','meiMsg','meiAjuste'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
       const m = document.getElementById('meiSalvoMsg'); if (m) m.textContent = '';
@@ -1196,7 +1200,7 @@
     }
     function carregarPropostaMei(p){
       const r = p.respostas || {};
-      mei.base = r.base || null;
+      mei.bases = new Set(r.bases || (r.base ? [r.base] : []));
       mei.marcados = new Set(r.marcados || []);
       mei.qtd = r.qtd ? JSON.parse(JSON.stringify(r.qtd)) : {};
       mei.nfsInclusas = r.nfsInclusas || '';
