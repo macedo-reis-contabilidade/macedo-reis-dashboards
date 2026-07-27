@@ -93,6 +93,14 @@
     .chip.c-verde { background:rgba(63,176,122,.14); color:#3FB07A; border-color:rgba(63,176,122,.35); }
     .chip.c-ama { background:rgba(227,179,65,.14); color:#E3B341; border-color:rgba(227,179,65,.35); }
     .st-sel { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.12); border-radius:8px; color:#E6EBF2; font:inherit; font-size:12px; padding:4px 8px; }
+    tr.prop-fechada td { background:rgba(127,191,142,.07); }
+    tr.prop-fechada td:first-child { border-left:3px solid #7FBF8E; }
+    tr.prop-fechada td:first-child b { color:#7FBF8E; }
+    tr.prop-fechada td:nth-child(2) { color:#7FBF8E; font-weight:700; }
+    tr.prop-descartada td { opacity:.45; }
+    tr.prop-descartada td:first-child b { text-decoration:line-through; }
+    .prop-placar { display:flex; gap:8px; align-items:center; margin:0 0 14px; padding:10px 16px; background:rgba(127,191,142,.08); border:1px solid rgba(127,191,142,.25); border-radius:12px; font-size:13px; color:#B9C2D0; }
+    .prop-placar b { color:#7FBF8E; font-size:15px; }
     .par-grupo h3 { font-size:13px; color:#52B4C6; margin:20px 0 8px; }
     .par-item { display:flex; justify-content:space-between; gap:12px; padding:6px 0; border-bottom:1px solid rgba(255,255,255,.05); font-size:13px; }
     .par-item .pv { cursor:pointer; border-bottom:1px dashed rgba(138,174,200,.4); color:#E6EBF2; }
@@ -205,6 +213,7 @@
         </div>
 
         <div id="vProps" style="display:none;">
+          <div id="propPlacar" class="prop-placar" style="display:none;"></div>
           <table class="pr-tab"><thead><tr><th>Cliente</th><th>Honorário</th><th>Taxa única</th><th>Origem</th><th>Status</th><th>Quando</th><th>Por</th><th></th></tr></thead>
           <tbody id="prProps"></tbody></table>
           <div class="pr-vazio" id="prPropsVazio" style="display:none;">Nenhuma proposta salva ainda.</div>
@@ -857,8 +866,17 @@
       const tb = document.getElementById('prProps');
       const lista = data || [];
       document.getElementById('prPropsVazio').style.display = lista.length ? 'none' : 'block';
+      const fechadas = lista.filter(p => p.status === 'fechada');
+      const placar = document.getElementById('propPlacar');
+      if (placar) {
+        if (fechadas.length) {
+          const soma = fechadas.reduce((s, p) => s + Number(p.honorario || 0), 0);
+          placar.style.display = 'flex';
+          placar.innerHTML = `🏆 <b>${fechadas.length}</b> proposta${fechadas.length > 1 ? 's' : ''} fechada${fechadas.length > 1 ? 's' : ''} · <b>${fmt(soma)}</b>/mês em honorários conquistados`;
+        } else placar.style.display = 'none';
+      }
       tb.innerHTML = lista.map(p => `
-        <tr class="prop" data-pid="${p.id}">
+        <tr class="prop ${p.status === 'fechada' ? 'prop-fechada' : p.status === 'descartada' ? 'prop-descartada' : ''}" data-pid="${p.id}">
           <td><b>${p.cliente_nome}</b>${(p.respostas && p.respostas._tipo === 'mei') ? ' <span class="chip" style="background:rgba(82,180,198,.15);color:#52B4C6;">MEI</span>' : ''}${p.contato ? `<br><small style="color:#8A93A6;">${p.contato}</small>` : ''}</td>
           <td>${p.honorario != null ? fmt(p.honorario) : '—'}</td>
           <td>${p.taxa_unica ? fmt(p.taxa_unica) : '—'}</td>
@@ -879,6 +897,7 @@
       }));
       tb.querySelectorAll('.st-sel').forEach(s => s.addEventListener('change', async () => {
         await supabase.from('precificacoes').update({ status: s.value, atualizado_em: new Date().toISOString() }).eq('id', s.dataset.st);
+        carregarProps();
       }));
       tb.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
         if (!confirm('Excluir esta proposta?')) return;
