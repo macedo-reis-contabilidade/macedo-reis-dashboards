@@ -1091,13 +1091,31 @@
         const t = doc.splitTextToSize(msg, MR - MX - 8);
         quebra(t.length * 12 + 6); doc.text(t, MX + 4, y); y += t.length * 12 + 10;
       }
-      meiPlanos.filter(p => mei.bases.has(p.id)).forEach(p => {
-        quebra(26);
-        doc.setFont('helvetica', 'bold').setFontSize(11).setTextColor(...AZUL);
-        doc.text(p.nome, MX, y);
-        doc.setFont('helvetica', 'italic').setFontSize(8.5).setTextColor(...CINZA);
-        doc.text(p.slogan || '', MX, y + 11); y += 24;
-      });
+      const planosSel = meiPlanos.filter(p => mei.bases.has(p.id));
+      if (planosSel.length) {
+        const gap = 24;
+        const boxW = (MR - MX - gap * (planosSel.length - 1)) / planosSel.length;
+        doc.setFont('helvetica', 'bold').setFontSize(9.5);
+        const nomes = planosSel.map(p => doc.splitTextToSize(p.nome, boxW - 20));
+        doc.setFont('helvetica', 'italic').setFontSize(8.5);
+        const slogans = planosSel.map(p => doc.splitTextToSize(p.slogan || '', boxW - 20));
+        const altBox = 10 + Math.max(...nomes.map(t => t.length)) * 11 + Math.max(...slogans.map(t => t.length)) * 10 + 10;
+        quebra(altBox + 12);
+        planosSel.forEach((p, i) => {
+          const x = MX + i * (boxW + gap);
+          doc.setFillColor(...FUNDO).roundedRect(x, y - 4, boxW, altBox, 6, 6, 'F');
+          doc.setDrawColor(...LINHA).setLineWidth(.5).roundedRect(x, y - 4, boxW, altBox, 6, 6);
+          doc.setFont('helvetica', 'bold').setFontSize(9.5).setTextColor(...AZUL);
+          doc.text(nomes[i], x + 10, y + 10);
+          doc.setFont('helvetica', 'italic').setFontSize(8.5).setTextColor(...CINZA);
+          doc.text(slogans[i], x + 10, y + 10 + nomes[i].length * 11 + 2);
+          if (i < planosSel.length - 1) {
+            doc.setFont('helvetica', 'bold').setFontSize(16).setTextColor(...AZUL);
+            doc.text('+', x + boxW + gap / 2, y - 4 + altBox / 2 + 5, { align: 'center' });
+          }
+        });
+        y += altBox + 12;
+      }
       GRUPOS_MEI.forEach(([g, rot]) => {
         const marcs = meiServicos.filter(s => s.grupo === g && mei.marcados.has(s.id));
         if (!marcs.length) return;
