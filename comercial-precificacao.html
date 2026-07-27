@@ -163,6 +163,7 @@
             <div class="pr-total"><div class="num" id="prTotal">R$ 0</div><div class="lbl">honorário mensal sugerido</div></div>
             <div class="pr-taxa" id="prTaxa" style="display:none;"></div>
             <div class="pr-ref"><span>Ref. Sescon (opcional)</span><input type="number" id="prRef" class="input" min="0"><span id="prRefDiff"></span></div>
+            <label class="pr-obs-orc"><span>Ajuste no honorário <i>(R$ — aceita negativo; entra no total desta proposta, sem mexer nos parâmetros)</i></span><input id="prAjusteHon" class="input" type="number" step="0.01" placeholder="ex.: -200 ou 150"></label>
             <label class="pr-obs-orc"><span>Vencimento do boleto <i>(dia, ou data do 1º pgto. — sai na forma de pagamento)</i></span><input id="prVencOrc" class="input" maxlength="10" placeholder="25 ou 25/08/2026"></label>
             <label class="pr-obs-orc"><span>Mensagem de abertura do orçamento <i>(opcional — sai só no PDF do cliente)</i></span><textarea id="prMsgOrc" rows="3" class="input" placeholder="ex.: Anderson e Sara, gostei muito de conhecer a história de vocês…"></textarea></label>
             <label class="pr-obs-orc"><span>Observações do orçamento <i>(sai só no PDF do cliente)</i></span><textarea id="prObsOrc" rows="2" class="input" placeholder="condições específicas deste cliente…"></textarea></label>
@@ -334,7 +335,9 @@
 
       const bruto = aposNivel + seguro + terce;
       const passo = pv('p16', 'Arredondar honorário final para múltiplo de (R$)') || 10;
-      const honorario = Math.round(bruto / passo) * passo;
+      let honorario = Math.round(bruto / passo) * passo;
+      const ajusteHon = Number(respostas['ajuste_honorario'] || 0);
+      if (ajusteHon) { L('Ajuste comercial', ajusteHon); honorario += ajusteHon; }
       const taxaUnica = (R('A12') === 'Sim' && R('A13') === 'Desorganizada/inexistente')
         ? pv('p15', 'Taxa única de organização inicial (migração desorganizada)') : 0;
 
@@ -443,6 +446,8 @@
       if (mm && document.activeElement !== mm && mm.value !== (respostas['msg_orcamento'] || '')) mm.value = respostas['msg_orcamento'] || '';
       const vv = document.getElementById('prVencOrc');
       if (vv && document.activeElement !== vv && vv.value !== (respostas['venc_orcamento'] || '')) vv.value = respostas['venc_orcamento'] || '';
+      const aa = document.getElementById('prAjusteHon');
+      if (aa && document.activeElement !== aa && aa.value !== (respostas['ajuste_honorario'] || '')) aa.value = respostas['ajuste_honorario'] || '';
       renderObrigacoes();
     }
     function renderRef(){
@@ -558,9 +563,9 @@
         setTimeout(res, 2000);
       });
     }
-    [['prObsOrc','obs_orcamento'],['prMsgOrc','msg_orcamento'],['prVencOrc','venc_orcamento']].forEach(([idEl, chave]) => {
+    [['prObsOrc','obs_orcamento'],['prMsgOrc','msg_orcamento'],['prVencOrc','venc_orcamento'],['prAjusteHon','ajuste_honorario']].forEach(([idEl, chave]) => {
       const el = document.getElementById(idEl);
-      if (el) el.addEventListener('input', () => { respostas[chave] = el.value; });
+      if (el) el.addEventListener('input', () => { respostas[chave] = el.value; if (chave === 'ajuste_honorario') renderPainel(); });
     });
     document.getElementById('prOrc').addEventListener('click', async () => {
       if (!window.jspdf) { alert('Gerador de PDF ainda carregando — tenta de novo em 2 segundos.'); return; }
