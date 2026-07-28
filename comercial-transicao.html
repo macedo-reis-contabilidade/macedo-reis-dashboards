@@ -133,15 +133,12 @@
     <div class="ov-caixa">
       <h3>Nova transição</h3>
       <label class="campo"><span>Título</span><input id="nvTitulo" placeholder="ex.: ARSENAL DAS PIZZAS (matriz + filial)"></label>
-      <div class="duas">
-        <label class="campo"><span>Tipo</span>
-          <select id="nvTipo">
-            <option value="entrada">Entrada (vem de outro escritório)</option>
-            <option value="cnpj_novo">CNPJ novo</option>
-            <option value="saida">Saída (vai pra outro escritório)</option>
-          </select></label>
-        <label class="campo"><span>Padrinho</span><input id="nvPadrinho" list="dlEquipe" placeholder="quem responde pelo conjunto"></label>
-      </div>
+      <label class="campo"><span>Tipo</span>
+        <select id="nvTipo">
+          <option value="entrada">Entrada (vem de outro escritório)</option>
+          <option value="cnpj_novo">CNPJ novo</option>
+          <option value="saida">Saída (vai pra outro escritório)</option>
+        </select></label>
       <div class="duas">
         <label class="campo"><span>Início</span><input type="date" id="nvInicio"></label>
         <label class="campo"><span>Terá funcionários?</span>
@@ -243,7 +240,7 @@
         const emp = (t.transicao_empresas || []).length;
         return `<div class="tr-card ${t.status === 'concluida' ? 'concluida' : ''}" data-id="${t.id}">
           <h3>${t.titulo}</h3>
-          <div class="mm"><span class="tr-chip tipo">${TIPO_LABEL[t.tipo] || t.tipo}</span><span class="tr-chip">${emp} empresa${emp === 1 ? '' : 's'}</span> ${t.status === 'concluida' ? '🏁 concluída' : `dia ${dia} de 90`} · padrinho: ${t.padrinho || '—'}</div>
+          <div class="mm"><span class="tr-chip tipo">${TIPO_LABEL[t.tipo] || t.tipo}</span><span class="tr-chip">${emp} empresa${emp === 1 ? '' : 's'}</span> ${t.status === 'concluida' ? '🏁 concluída' : `dia ${dia} de 90`}</div>
           <div class="mini"><i style="width:${pct}%"></i></div>
           <div class="mm" style="margin-top:4px;">${p.feitas} de ${p.total} tarefas · ${pct}%</div>
         </div>`;
@@ -297,7 +294,6 @@
       const prev = new Date(new Date(inicio + 'T12:00:00').getTime() + 90 * 864e5).toISOString().slice(0, 10);
       const { data: tr, error } = await supabase.from('transicoes').insert({
         titulo, tipo,
-        padrinho: document.getElementById('nvPadrinho').value.trim() || null,
         inicio, previsao_fim: prev,
         tera_funcionarios: funcV === '' ? null : funcV === 'true',
         contato: document.getElementById('nvContato').value.trim() || null,
@@ -338,7 +334,7 @@
       const t = atual;
       document.getElementById('detTitulo').textContent = t.titulo;
       const dia = Math.max(1, Math.floor((new Date(hojeISO()) - new Date(t.inicio)) / 864e5) + 1);
-      document.getElementById('detMeta').innerHTML = `<span class="tr-chip tipo">${TIPO_LABEL[t.tipo] || t.tipo}</span> início ${fmtData(t.inicio)} · padrinho: <b style="color:#8AAEC8;">${t.padrinho || '—'}</b>${t.tera_funcionarios === true ? ' · terá funcionários' : t.tera_funcionarios === false ? ' · sem funcionários' : ''}${t.contato ? ' · ' + t.contato : ''}`;
+      document.getElementById('detMeta').innerHTML = `<span class="tr-chip tipo">${TIPO_LABEL[t.tipo] || t.tipo}</span> início ${fmtData(t.inicio)}${t.tera_funcionarios === true ? ' · terá funcionários' : t.tera_funcionarios === false ? ' · sem funcionários' : ''}${t.contato ? ' · ' + t.contato : ''}`;
       document.getElementById('detEmpresas').innerHTML = empresasAtual.map(e => `<span class="emp-chip">${e.clientes?.nome_principal || '?'}${e.clientes?.cidade ? ` · ${e.clientes.cidade}` : ''}</span>`).join('');
       document.getElementById('detDias').innerHTML = t.status === 'concluida' ? '🏁' : `Dia ${Math.min(dia, 999)} <span style="color:#6E7787;font-size:13px;">de 90</span>`;
       document.getElementById('detPrev').textContent = t.status === 'concluida' ? `concluída em ${fmtData((t.concluida_em || '').slice(0, 10))}` : `previsão de conclusão: ${fmtData(t.previsao_fim)}`;
