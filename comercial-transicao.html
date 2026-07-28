@@ -119,6 +119,7 @@
             <small id="detResumo"></small>
           </div>
           <div style="flex-basis:100%; display:flex; gap:10px; align-items:center;">
+            <button class="btn btn-ghost" id="btnEditar">✎ Editar</button>
             <button class="btn" id="btnConcluir">🏁 Concluir transição</button>
             <span id="detMsg"></span>
           </div>
@@ -144,7 +145,7 @@
         <label class="campo"><span>Terá funcionários?</span>
           <select id="nvFunc"><option value="">—</option><option value="true">Sim</option><option value="false">Não</option></select></label>
       </div>
-      <label class="campo"><span>Empresas (uma ou mais — matriz e filial juntas, por exemplo)</span>
+      <label class="campo"><span>Empresas (uma ou mais — e dá pra criar sem nenhuma e vincular depois, quando cadastradas)</span>
         <input id="nvEmpBusca" placeholder="digite pra buscar no cadastro…" autocomplete="off">
         <div class="emp-sug" id="nvEmpSug" style="display:none;"></div>
         <div class="emp-chips" id="nvEmpChips"></div>
@@ -155,6 +156,32 @@
       <div class="ov-acoes">
         <button class="btn btn-ghost" id="nvCancelar">Cancelar</button>
         <button class="btn" id="nvCriar">Criar transição</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- modal editar transição -->
+  <div class="ov" id="ovEditar">
+    <div class="ov-caixa">
+      <h3>Editar transição</h3>
+      <label class="campo"><span>Título</span><input id="edtTitulo"></label>
+      <div class="duas">
+        <label class="campo"><span>Início</span><input type="date" id="edtInicio"></label>
+        <label class="campo"><span>Terá funcionários?</span>
+          <select id="edtFunc"><option value="">—</option><option value="true">Sim</option><option value="false">Não</option></select></label>
+      </div>
+      <label class="campo"><span>Empresas vinculadas (do cadastro de clientes)</span>
+        <input id="edtEmpBusca" placeholder="digite pra buscar no cadastro…" autocomplete="off">
+        <div class="emp-sug" id="edtEmpSug" style="display:none;"></div>
+        <div class="emp-chips" id="edtEmpChips"></div>
+      </label>
+      <label class="campo"><span>Contato</span><input id="edtContato"></label>
+      <label class="campo"><span>Observações</span><textarea id="edtObs" rows="2"></textarea></label>
+      <div class="aviso">Mudar o início recalcula o "dia X de 90", mas não re-data as tarefas já geradas — elas seguem editáveis uma a uma.</div>
+      <div class="ov-acoes">
+        <button class="btn btn-ghost" id="edtCancelar">Cancelar</button>
+        <button class="btn" id="edtSalvar">Salvar</button>
       </div>
     </div>
   </div>
@@ -287,7 +314,6 @@
     document.getElementById('nvCriar').addEventListener('click', async () => {
       const titulo = document.getElementById('nvTitulo').value.trim();
       if (!titulo) { alert('Dá um título pra transição.'); return; }
-      if (!empSelecionadas.length) { alert('Escolhe pelo menos uma empresa do cadastro.'); return; }
       const inicio = document.getElementById('nvInicio').value || hojeISO();
       const tipo = document.getElementById('nvTipo').value;
       const funcV = document.getElementById('nvFunc').value;
@@ -300,7 +326,7 @@
         observacao: document.getElementById('nvObs').value.trim() || null
       }).select('id').single();
       if (error) { alert('Erro ao criar: ' + error.message); return; }
-      await supabase.from('transicao_empresas').insert(empSelecionadas.map(c => ({ transicao_id: tr.id, cliente_id: c.id })));
+      if (empSelecionadas.length) await supabase.from('transicao_empresas').insert(empSelecionadas.map(c => ({ transicao_id: tr.id, cliente_id: c.id })));
       const { data: kit } = await supabase.from('transicao_kit').select('*').eq('tipo', tipo).eq('ativo', true).order('ordem');
       if (kit && kit.length) {
         const base = new Date(inicio + 'T12:00:00').getTime();
@@ -335,7 +361,7 @@
       document.getElementById('detTitulo').textContent = t.titulo;
       const dia = Math.max(1, Math.floor((new Date(hojeISO()) - new Date(t.inicio)) / 864e5) + 1);
       document.getElementById('detMeta').innerHTML = `<span class="tr-chip tipo">${TIPO_LABEL[t.tipo] || t.tipo}</span> início ${fmtData(t.inicio)}${t.tera_funcionarios === true ? ' · terá funcionários' : t.tera_funcionarios === false ? ' · sem funcionários' : ''}${t.contato ? ' · ' + t.contato : ''}`;
-      document.getElementById('detEmpresas').innerHTML = empresasAtual.map(e => `<span class="emp-chip">${e.clientes?.nome_principal || '?'}${e.clientes?.cidade ? ` · ${e.clientes.cidade}` : ''}</span>`).join('');
+      document.getElementById('detEmpresas').innerHTML = empresasAtual.map(e => `<span class="emp-chip">${e.clientes?.nome_principal || '?'}${e.clientes?.cidade ? ` · ${e.clientes.cidade}` : ''}</span>`).join('') || '<span class="aviso">nenhuma empresa vinculada ainda — use o ✎ Editar quando o cadastro existir</span>';
       document.getElementById('detDias').innerHTML = t.status === 'concluida' ? '🏁' : `Dia ${Math.min(dia, 999)} <span style="color:#6E7787;font-size:13px;">de 90</span>`;
       document.getElementById('detPrev').textContent = t.status === 'concluida' ? `concluída em ${fmtData((t.concluida_em || '').slice(0, 10))}` : `previsão de conclusão: ${fmtData(t.previsao_fim)}`;
 
@@ -389,6 +415,65 @@
       atual.status = fechar ? 'concluida' : 'em_andamento';
       atual.concluida_em = fechar ? new Date().toISOString() : null;
       renderDetalhe();
+    });
+
+
+    // ---------- editar transição (empresas vinculadas depois do cadastro) ----------
+    const ovEditar = document.getElementById('ovEditar');
+    let edtSel = [];
+    document.getElementById('btnEditar').addEventListener('click', () => {
+      document.getElementById('edtTitulo').value = atual.titulo || '';
+      document.getElementById('edtInicio').value = atual.inicio || '';
+      document.getElementById('edtFunc').value = atual.tera_funcionarios === true ? 'true' : atual.tera_funcionarios === false ? 'false' : '';
+      document.getElementById('edtContato').value = atual.contato || '';
+      document.getElementById('edtObs').value = atual.observacao || '';
+      edtSel = empresasAtual.map(e => ({ id: e.cliente_id, nome_principal: e.clientes?.nome_principal || '?', cidade: e.clientes?.cidade || '' }));
+      document.getElementById('edtEmpBusca').value = '';
+      document.getElementById('edtEmpSug').style.display = 'none';
+      renderEdtChips();
+      ovEditar.classList.add('aberto');
+    });
+    document.getElementById('edtCancelar').addEventListener('click', () => ovEditar.classList.remove('aberto'));
+    const edtBusca = document.getElementById('edtEmpBusca');
+    const edtSug = document.getElementById('edtEmpSug');
+    edtBusca.addEventListener('input', () => {
+      const q = edtBusca.value.trim().toLowerCase();
+      if (q.length < 2) { edtSug.style.display = 'none'; return; }
+      const hits = clientes.filter(c => c.nome_principal.toLowerCase().includes(q) && !edtSel.find(e => e.id === c.id)).slice(0, 8);
+      edtSug.innerHTML = hits.map(c => `<div data-id="${c.id}">${c.nome_principal}${c.cidade ? ` <small style="color:#6E7787;">· ${c.cidade}</small>` : ''}</div>`).join('') || '<div style="color:#6E7787;">nada encontrado — a empresa já está cadastrada?</div>';
+      edtSug.style.display = 'block';
+      edtSug.querySelectorAll('[data-id]').forEach(d => d.addEventListener('click', () => {
+        const c = clientes.find(x => x.id === d.dataset.id);
+        if (c) edtSel.push(c);
+        edtBusca.value = ''; edtSug.style.display = 'none'; renderEdtChips();
+      }));
+    });
+    function renderEdtChips(){
+      document.getElementById('edtEmpChips').innerHTML = edtSel.map(c => `<span class="emp-chip">${c.nome_principal}<b data-rm="${c.id}">✕</b></span>`).join('') || '<span class="aviso">nenhuma empresa vinculada ainda</span>';
+      document.querySelectorAll('#edtEmpChips [data-rm]').forEach(b => b.addEventListener('click', () => {
+        edtSel = edtSel.filter(e => e.id !== b.dataset.rm);
+        renderEdtChips();
+      }));
+    }
+    document.getElementById('edtSalvar').addEventListener('click', async () => {
+      const funcV = document.getElementById('edtFunc').value;
+      const campos = {
+        titulo: document.getElementById('edtTitulo').value.trim() || atual.titulo,
+        inicio: document.getElementById('edtInicio').value || atual.inicio,
+        tera_funcionarios: funcV === '' ? null : funcV === 'true',
+        contato: document.getElementById('edtContato').value.trim() || null,
+        observacao: document.getElementById('edtObs').value.trim() || null
+      };
+      const { error } = await supabase.from('transicoes').update(campos).eq('id', atual.id);
+      if (error) { alert('Erro ao salvar: ' + error.message); return; }
+      const antes = empresasAtual.map(e => e.cliente_id);
+      const agora = edtSel.map(e => e.id);
+      const tirar = antes.filter(id => !agora.includes(id));
+      const por = agora.filter(id => !antes.includes(id));
+      if (tirar.length) await supabase.from('transicao_empresas').delete().eq('transicao_id', atual.id).in('cliente_id', tirar);
+      if (por.length) await supabase.from('transicao_empresas').insert(por.map(id => ({ transicao_id: atual.id, cliente_id: id })));
+      ovEditar.classList.remove('aberto');
+      abrirDetalhe(atual.id);
     });
 
     // ---------- edição de tarefa ----------
