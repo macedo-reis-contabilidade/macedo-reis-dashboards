@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Comercial — Transição de Clientes — Macedo & Reis</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+  <style>
+    .tr-cards { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:14px; }
+    .tr-card { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.1); border-radius:14px; padding:14px 16px; cursor:pointer; transition:border-color .15s; }
+    .tr-card:hover { border-color:rgba(138,174,200,.5); }
+    .tr-card h3 { margin:0 0 2px; font-size:15px; color:#E6EBF2; }
+    .tr-card .mm { font-size:11.5px; color:#6E7787; }
+    .tr-card .mini { height:7px; background:rgba(255,255,255,.07); border-radius:999px; margin-top:10px; overflow:hidden; }
+    .tr-card .mini i { display:block; height:100%; background:linear-gradient(90deg,#3A5878,#52B4C6); }
+    .tr-card.concluida { opacity:.55; }
+    .tr-chip { display:inline-block; padding:0 8px; border-radius:999px; font-size:10.5px; border:1px solid rgba(255,255,255,.16); color:#B9C2D0; margin-right:5px; }
+    .tr-chip.tipo { color:#52B4C6; border-color:rgba(82,180,198,.4); }
+
+    .tr-topo { display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.1); border-radius:16px; padding:16px 20px; margin-bottom:20px; }
+    .tr-topo h2 { margin:0; font-size:19px; }
+    .tr-topo .mm { color:#6E7787; font-size:12.5px; margin-top:3px; }
+    .tr-dias { margin-left:auto; text-align:right; }
+    .tr-dias b { font-size:22px; color:#52B4C6; display:block; }
+    .tr-prog { flex-basis:100%; }
+    .tr-prog .barra { height:9px; background:rgba(255,255,255,.07); border-radius:999px; overflow:hidden; }
+    .tr-prog .fill { height:100%; background:linear-gradient(90deg,#3A5878,#52B4C6); border-radius:999px; transition:width .3s; }
+    .tr-prog small { color:#6E7787; font-size:11.5px; }
+
+    .raia { display:grid; grid-template-columns:150px 1fr; gap:14px; margin-bottom:14px; }
+    .raia-rotulo { background:rgba(91,130,166,.1); border:1px solid rgba(138,174,200,.25); border-radius:12px; padding:12px; align-self:start; }
+    .raia-rotulo b { display:block; font-size:12.5px; color:#8AAEC8; text-transform:uppercase; letter-spacing:.05em; }
+    .raia-rotulo button { margin-top:8px; }
+    .raia-cards { display:flex; gap:10px; flex-wrap:wrap; }
+    .tcard { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.1); border-radius:12px; padding:10px 12px; width:256px; cursor:pointer; }
+    .tcard:hover { border-color:rgba(138,174,200,.45); }
+    .tcard .tt { font-size:12.5px; font-weight:500; margin-bottom:5px; color:#E6EBF2; }
+    .tcard .mm { font-size:11px; color:#6E7787; display:flex; gap:6px; flex-wrap:wrap; }
+    .tcard.concluida { border-color:rgba(127,191,142,.45); }
+    .tcard.concluida .tt { color:#7FBF8E; text-decoration:line-through; }
+    .tcard.aguardando { border-color:rgba(198,167,90,.55); background:rgba(198,167,90,.05); }
+    .tcard.bloqueada { opacity:.55; }
+    .tcard.andamento { border-color:rgba(82,180,198,.5); }
+    .tcard.atrasada { border-color:rgba(208,135,112,.65); }
+    .st-tag { display:inline-block; padding:0 7px; border-radius:999px; font-size:10.5px; border:1px solid rgba(255,255,255,.15); color:#B9C2D0; }
+    .st-tag.ag { color:#C6A75A; border-color:rgba(198,167,90,.5); }
+    .st-tag.bl { color:#8A93A6; }
+    .st-tag.an { color:#52B4C6; border-color:rgba(82,180,198,.45); }
+    .st-tag.at { color:#D08770; border-color:rgba(208,135,112,.55); }
+    .sit { font-size:10.5px; color:#8A93A6; margin-top:5px; font-style:italic; }
+
+    .ov { display:none; position:fixed; inset:0; background:rgba(6,10,16,.8); z-index:50; overflow:auto; padding:40px 16px; }
+    .ov.aberto { display:block; }
+    .ov-caixa { max-width:560px; margin:0 auto; background:#10161F; border:1px solid rgba(255,255,255,.12); border-radius:16px; padding:20px 22px; }
+    .ov-caixa h3 { margin:0 0 14px; font-size:15px; color:#52B4C6; text-transform:uppercase; letter-spacing:.05em; }
+    .campo { display:block; margin-bottom:12px; }
+    .campo span { display:block; font-size:12px; color:#8A93A6; margin-bottom:4px; }
+    .campo input, .campo select, .campo textarea { width:100%; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.12); border-radius:8px; color:#E6EBF2; font:inherit; font-size:13px; padding:8px 10px; }
+    .duas { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .emp-chips { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+    .emp-chip { background:rgba(91,130,166,.15); border:1px solid rgba(138,174,200,.4); color:#C5D8E8; border-radius:999px; padding:2px 10px; font-size:12px; }
+    .emp-chip b { cursor:pointer; margin-left:6px; color:#8AAEC8; }
+    .emp-sug { background:#0D131C; border:1px solid rgba(255,255,255,.12); border-radius:8px; margin-top:4px; max-height:160px; overflow:auto; }
+    .emp-sug div { padding:7px 10px; font-size:12.5px; cursor:pointer; }
+    .emp-sug div:hover { background:rgba(91,130,166,.15); }
+    .ov-acoes { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; }
+    .aviso { font-size:12px; color:#8A93A6; }
+    #detMsg { min-height:16px; font-size:12.5px; margin-top:6px; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip"><div class="user-avatar" id="userAvatar">—</div><span id="userName">Carregando…</span></div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <a href="comercial.html">Comercial</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Transição de clientes</span>
+        </div>
+        <div class="eyebrow">Da proposta fechada ao cliente regular</div>
+        <h1>Transição de clientes</h1>
+        <p>Todos os setores, prazos e responsáveis de cada transição numa tela só — tudo editável, porque cada caso é um caso.</p>
+      </div>
+
+      <section id="painelLista">
+        <div class="toolbar" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+          <div class="aviso">As tarefas geradas aqui aparecem na Agenda de cada responsável automaticamente.</div>
+          <button class="btn" id="btnNova">+ Nova transição</button>
+        </div>
+        <div class="tr-cards" id="lista"></div>
+        <div class="aviso" id="listaVazia" style="display:none; margin-top:20px;">Nenhuma transição ainda — clique em "+ Nova transição" pra inaugurar.</div>
+      </section>
+
+      <section id="painelDetalhe" style="display:none;">
+        <button class="btn btn-ghost btn-sm" id="btnVoltar" style="margin-bottom:14px;">← Voltar</button>
+        <div class="tr-topo">
+          <div>
+            <h2 id="detTitulo"></h2>
+            <div class="mm" id="detMeta"></div>
+            <div class="emp-chips" id="detEmpresas" style="margin-top:8px;"></div>
+          </div>
+          <div class="tr-dias"><b id="detDias"></b><span class="aviso" id="detPrev"></span></div>
+          <div class="tr-prog">
+            <div class="barra"><div class="fill" id="detFill" style="width:0"></div></div>
+            <small id="detResumo"></small>
+          </div>
+          <div style="flex-basis:100%; display:flex; gap:10px; align-items:center;">
+            <button class="btn" id="btnConcluir">🏁 Concluir transição</button>
+            <span id="detMsg"></span>
+          </div>
+        </div>
+        <div id="raias"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- modal nova transição -->
+  <div class="ov" id="ovNova">
+    <div class="ov-caixa">
+      <h3>Nova transição</h3>
+      <label class="campo"><span>Título</span><input id="nvTitulo" placeholder="ex.: ARSENAL DAS PIZZAS (matriz + filial)"></label>
+      <div class="duas">
+        <label class="campo"><span>Tipo</span>
+          <select id="nvTipo">
+            <option value="entrada">Entrada (vem de outro escritório)</option>
+            <option value="cnpj_novo">CNPJ novo</option>
+            <option value="saida">Saída (vai pra outro escritório)</option>
+          </select></label>
+        <label class="campo"><span>Padrinho</span><input id="nvPadrinho" list="dlEquipe" placeholder="quem responde pelo conjunto"></label>
+      </div>
+      <div class="duas">
+        <label class="campo"><span>Início</span><input type="date" id="nvInicio"></label>
+        <label class="campo"><span>Terá funcionários?</span>
+          <select id="nvFunc"><option value="">—</option><option value="true">Sim</option><option value="false">Não</option></select></label>
+      </div>
+      <label class="campo"><span>Empresas (uma ou mais — matriz e filial juntas, por exemplo)</span>
+        <input id="nvEmpBusca" placeholder="digite pra buscar no cadastro…" autocomplete="off">
+        <div class="emp-sug" id="nvEmpSug" style="display:none;"></div>
+        <div class="emp-chips" id="nvEmpChips"></div>
+      </label>
+      <label class="campo"><span>Contato</span><input id="nvContato" placeholder="telefone / e-mail de referência"></label>
+      <label class="campo"><span>Observações</span><textarea id="nvObs" rows="2"></textarea></label>
+      <div class="aviso">Ao criar, o kit do tipo escolhido gera as tarefas com prazos relativos ao início — e daí em diante tudo é editável: nome, prazo, responsável, status.</div>
+      <div class="ov-acoes">
+        <button class="btn btn-ghost" id="nvCancelar">Cancelar</button>
+        <button class="btn" id="nvCriar">Criar transição</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- modal edição de tarefa -->
+  <div class="ov" id="ovTarefa">
+    <div class="ov-caixa">
+      <h3 id="edTituloModal">Tarefa da transição</h3>
+      <label class="campo"><span>Título</span><input id="edTitulo"></label>
+      <div class="duas">
+        <label class="campo"><span>Responsável</span><input id="edResp" list="dlEquipe"></label>
+        <label class="campo"><span>Prazo</span><input type="date" id="edPrazo"></label>
+      </div>
+      <div class="duas">
+        <label class="campo"><span>Status</span>
+          <select id="edStatus">
+            <option value="pendente">Pendente</option>
+            <option value="em_andamento">Em andamento</option>
+            <option value="aguardando">⏳ Aguardando terceiro</option>
+            <option value="bloqueada">Bloqueada (depende de outra)</option>
+            <option value="concluida">Concluída</option>
+          </select></label>
+        <label class="campo"><span>Fase</span><input id="edFase" list="dlFases"></label>
+      </div>
+      <label class="campo"><span>Situação (anotação livre — ex.: "solicitado 18/07, reiterado 25/07")</span><textarea id="edSituacao" rows="2"></textarea></label>
+      <div class="ov-acoes">
+        <button class="btn btn-ghost" id="edExcluir" style="color:#D08770;">Excluir</button>
+        <button class="btn btn-ghost" id="edCancelar">Cancelar</button>
+        <button class="btn" id="edSalvar">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <datalist id="dlEquipe"><option>Thalia</option><option>Vitória</option><option>Adaini</option><option>Samuel</option><option>Diego</option><option>Edna</option></datalist>
+  <datalist id="dlFases"><option>Fechamento e boas-vindas</option><option>Documentos e escritório anterior</option><option>Cadastros e sistemas</option><option>Primeiras entregas</option><option>Acompanhamento</option></datalist>
+
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+
+    const SETORES = [['societario','Societário'],['fiscal','Fiscal'],['departamento_pessoal','Depto. Pessoal'],['contabil','Contábil'],['financeiro','Financeiro'],['comercial','Comercial']];
+    const TIPO_LABEL = { entrada:'Entrada', cnpj_novo:'CNPJ novo', saida:'Saída' };
+    const fmtData = d => d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
+    const hojeISO = () => new Date().toISOString().slice(0, 10);
+
+    let transicoes = [], clientes = [], atual = null, tarefasAtual = [], empresasAtual = [];
+    let empSelecionadas = [];
+    let tarefaEd = null;
+
+    (async () => {
+      const user = await getCurrentUser();
+      if (user) {
+        const n = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário';
+        const nome = n.charAt(0).toUpperCase() + n.slice(1);
+        document.getElementById('userName').textContent = nome;
+        document.getElementById('userAvatar').textContent = nome.charAt(0).toUpperCase();
+      }
+      const { data: cl } = await supabase.from('clientes').select('id, nome_principal, cidade').order('nome_principal');
+      clientes = cl || [];
+      await carregarLista();
+    })();
+
+    document.getElementById('btnLogout').addEventListener('click', signOut);
+    document.getElementById('btnVoltar').addEventListener('click', () => { document.getElementById('painelDetalhe').style.display = 'none'; document.getElementById('painelLista').style.display = 'block'; carregarLista(); });
+
+    // ---------- lista ----------
+    async function carregarLista(){
+      const { data } = await supabase.from('transicoes').select('*, transicao_empresas(cliente_id)').order('criado_em', { ascending: false });
+      transicoes = data || [];
+      const ids = transicoes.map(t => t.id);
+      let progresso = {};
+      if (ids.length) {
+        const { data: ts } = await supabase.from('tarefas').select('transicao_id, status').in('transicao_id', ids);
+        (ts || []).forEach(t => {
+          const p = progresso[t.transicao_id] = progresso[t.transicao_id] || { total: 0, feitas: 0 };
+          p.total++; if (t.status === 'concluida') p.feitas++;
+        });
+      }
+      const el = document.getElementById('lista');
+      el.innerHTML = transicoes.map(t => {
+        const p = progresso[t.id] || { total: 0, feitas: 0 };
+        const pct = p.total ? Math.round(p.feitas / p.total * 100) : 0;
+        const dia = Math.max(1, Math.floor((new Date(hojeISO()) - new Date(t.inicio)) / 864e5) + 1);
+        const emp = (t.transicao_empresas || []).length;
+        return `<div class="tr-card ${t.status === 'concluida' ? 'concluida' : ''}" data-id="${t.id}">
+          <h3>${t.titulo}</h3>
+          <div class="mm"><span class="tr-chip tipo">${TIPO_LABEL[t.tipo] || t.tipo}</span><span class="tr-chip">${emp} empresa${emp === 1 ? '' : 's'}</span> ${t.status === 'concluida' ? '🏁 concluída' : `dia ${dia} de 90`} · padrinho: ${t.padrinho || '—'}</div>
+          <div class="mini"><i style="width:${pct}%"></i></div>
+          <div class="mm" style="margin-top:4px;">${p.feitas} de ${p.total} tarefas · ${pct}%</div>
+        </div>`;
+      }).join('');
+      document.getElementById('listaVazia').style.display = transicoes.length ? 'none' : 'block';
+      el.querySelectorAll('.tr-card').forEach(c => c.addEventListener('click', () => abrirDetalhe(c.dataset.id)));
+    }
+
+    // ---------- nova transição ----------
+    const ovNova = document.getElementById('ovNova');
+    document.getElementById('btnNova').addEventListener('click', () => {
+      empSelecionadas = [];
+      ['nvTitulo','nvPadrinho','nvContato','nvObs','nvEmpBusca'].forEach(id => document.getElementById(id).value = '');
+      document.getElementById('nvTipo').value = 'entrada';
+      document.getElementById('nvFunc').value = '';
+      document.getElementById('nvInicio').value = hojeISO();
+      renderEmpChips();
+      ovNova.classList.add('aberto');
+    });
+    document.getElementById('nvCancelar').addEventListener('click', () => ovNova.classList.remove('aberto'));
+
+    const empBusca = document.getElementById('nvEmpBusca');
+    const empSug = document.getElementById('nvEmpSug');
+    empBusca.addEventListener('input', () => {
+      const q = empBusca.value.trim().toLowerCase();
+      if (q.length < 2) { empSug.style.display = 'none'; return; }
+      const hits = clientes.filter(c => c.nome_principal.toLowerCase().includes(q) && !empSelecionadas.find(e => e.id === c.id)).slice(0, 8);
+      empSug.innerHTML = hits.map(c => `<div data-id="${c.id}">${c.nome_principal}${c.cidade ? ` <small style="color:#6E7787;">· ${c.cidade}</small>` : ''}</div>`).join('') || '<div style="color:#6E7787;">nada encontrado</div>';
+      empSug.style.display = 'block';
+      empSug.querySelectorAll('[data-id]').forEach(d => d.addEventListener('click', () => {
+        const c = clientes.find(x => x.id === d.dataset.id);
+        if (c) empSelecionadas.push(c);
+        empBusca.value = ''; empSug.style.display = 'none'; renderEmpChips();
+      }));
+    });
+    function renderEmpChips(){
+      document.getElementById('nvEmpChips').innerHTML = empSelecionadas.map(c => `<span class="emp-chip">${c.nome_principal}<b data-rm="${c.id}">✕</b></span>`).join('');
+      document.querySelectorAll('#nvEmpChips [data-rm]').forEach(b => b.addEventListener('click', () => {
+        empSelecionadas = empSelecionadas.filter(e => e.id !== b.dataset.rm);
+        renderEmpChips();
+      }));
+    }
+
+    document.getElementById('nvCriar').addEventListener('click', async () => {
+      const titulo = document.getElementById('nvTitulo').value.trim();
+      if (!titulo) { alert('Dá um título pra transição.'); return; }
+      if (!empSelecionadas.length) { alert('Escolhe pelo menos uma empresa do cadastro.'); return; }
+      const inicio = document.getElementById('nvInicio').value || hojeISO();
+      const tipo = document.getElementById('nvTipo').value;
+      const funcV = document.getElementById('nvFunc').value;
+      const prev = new Date(new Date(inicio + 'T12:00:00').getTime() + 90 * 864e5).toISOString().slice(0, 10);
+      const { data: tr, error } = await supabase.from('transicoes').insert({
+        titulo, tipo,
+        padrinho: document.getElementById('nvPadrinho').value.trim() || null,
+        inicio, previsao_fim: prev,
+        tera_funcionarios: funcV === '' ? null : funcV === 'true',
+        contato: document.getElementById('nvContato').value.trim() || null,
+        observacao: document.getElementById('nvObs').value.trim() || null
+      }).select('id').single();
+      if (error) { alert('Erro ao criar: ' + error.message); return; }
+      await supabase.from('transicao_empresas').insert(empSelecionadas.map(c => ({ transicao_id: tr.id, cliente_id: c.id })));
+      const { data: kit } = await supabase.from('transicao_kit').select('*').eq('tipo', tipo).eq('ativo', true).order('ordem');
+      if (kit && kit.length) {
+        const base = new Date(inicio + 'T12:00:00').getTime();
+        await supabase.from('tarefas').insert(kit.map(k => ({
+          setor: k.setor, tipo: 'tarefa', titulo: k.titulo,
+          responsavel: k.responsavel_padrao || null,
+          prazo: new Date(base + (k.prazo_dias || 0) * 864e5).toISOString().slice(0, 10),
+          status: 'pendente', origem: 'transicao',
+          transicao_id: tr.id, fase: k.fase || null, cliente_id: null
+        })));
+      }
+      ovNova.classList.remove('aberto');
+      abrirDetalhe(tr.id);
+    });
+
+    // ---------- sala de guerra ----------
+    async function abrirDetalhe(id){
+      const { data: tr } = await supabase.from('transicoes').select('*').eq('id', id).single();
+      if (!tr) return;
+      atual = tr;
+      const { data: te } = await supabase.from('transicao_empresas').select('cliente_id, clientes(nome_principal, cidade)').eq('transicao_id', id);
+      empresasAtual = te || [];
+      const { data: ts } = await supabase.from('tarefas').select('*').eq('transicao_id', id).order('prazo', { ascending: true, nullsFirst: false });
+      tarefasAtual = ts || [];
+      document.getElementById('painelLista').style.display = 'none';
+      document.getElementById('painelDetalhe').style.display = 'block';
+      renderDetalhe();
+    }
+
+    function renderDetalhe(){
+      const t = atual;
+      document.getElementById('detTitulo').textContent = t.titulo;
+      const dia = Math.max(1, Math.floor((new Date(hojeISO()) - new Date(t.inicio)) / 864e5) + 1);
+      document.getElementById('detMeta').innerHTML = `<span class="tr-chip tipo">${TIPO_LABEL[t.tipo] || t.tipo}</span> início ${fmtData(t.inicio)} · padrinho: <b style="color:#8AAEC8;">${t.padrinho || '—'}</b>${t.tera_funcionarios === true ? ' · terá funcionários' : t.tera_funcionarios === false ? ' · sem funcionários' : ''}${t.contato ? ' · ' + t.contato : ''}`;
+      document.getElementById('detEmpresas').innerHTML = empresasAtual.map(e => `<span class="emp-chip">${e.clientes?.nome_principal || '?'}${e.clientes?.cidade ? ` · ${e.clientes.cidade}` : ''}</span>`).join('');
+      document.getElementById('detDias').innerHTML = t.status === 'concluida' ? '🏁' : `Dia ${Math.min(dia, 999)} <span style="color:#6E7787;font-size:13px;">de 90</span>`;
+      document.getElementById('detPrev').textContent = t.status === 'concluida' ? `concluída em ${fmtData((t.concluida_em || '').slice(0, 10))}` : `previsão de conclusão: ${fmtData(t.previsao_fim)}`;
+
+      const total = tarefasAtual.length;
+      const feitas = tarefasAtual.filter(x => x.status === 'concluida').length;
+      const aguard = tarefasAtual.filter(x => x.status === 'aguardando').length;
+      const atras = tarefasAtual.filter(x => x.status !== 'concluida' && x.prazo && x.prazo < hojeISO()).length;
+      const pct = total ? Math.round(feitas / total * 100) : 0;
+      document.getElementById('detFill').style.width = pct + '%';
+      document.getElementById('detResumo').textContent = `${feitas} de ${total} tarefas concluídas · ${pct}%` + (aguard ? ` — ${aguard} aguardando terceiro` : '') + (atras ? ` — ${atras} atrasada${atras > 1 ? 's' : ''}` : '');
+
+      const bc = document.getElementById('btnConcluir');
+      bc.textContent = t.status === 'concluida' ? '↩ Reabrir transição' : '🏁 Concluir transição';
+
+      const raias = document.getElementById('raias');
+      raias.innerHTML = SETORES.map(([chave, rotulo]) => {
+        const doSetor = tarefasAtual.filter(x => x.setor === chave);
+        if (!doSetor.length && !['societario','fiscal','departamento_pessoal','contabil','comercial'].includes(chave)) return '';
+        const cards = doSetor.map(x => {
+          const atrasada = x.status !== 'concluida' && x.prazo && x.prazo < hojeISO();
+          const cls = x.status === 'concluida' ? 'concluida' : x.status === 'aguardando' ? 'aguardando' : x.status === 'bloqueada' ? 'bloqueada' : x.status === 'em_andamento' ? 'andamento' : '';
+          const tag = x.status === 'aguardando' ? '<span class="st-tag ag">⏳ aguardando terceiro</span>'
+            : x.status === 'bloqueada' ? '<span class="st-tag bl">🔗 bloqueada</span>'
+            : x.status === 'em_andamento' ? '<span class="st-tag an">em andamento</span>'
+            : x.status === 'concluida' ? `<span class="st-tag">✓ ${fmtData(x.concluida_em ? x.concluida_em.slice(0, 10) : x.prazo)}</span>` : '';
+          return `<div class="tcard ${cls} ${atrasada ? 'atrasada' : ''}" data-tid="${x.id}">
+            <div class="tt">${x.titulo}</div>
+            <div class="mm">${atrasada ? '<span class="st-tag at">⚠ atrasada</span>' : ''}${tag}${x.prazo && x.status !== 'concluida' ? `<span class="st-tag">prazo ${fmtData(x.prazo)}</span>` : ''}${x.responsavel ? `<span class="st-tag">${x.responsavel}</span>` : ''}</div>
+            ${x.situacao ? `<div class="sit">${x.situacao}</div>` : ''}
+          </div>`;
+        }).join('');
+        return `<div class="raia">
+          <div class="raia-rotulo"><b>${rotulo}</b><button class="btn btn-ghost btn-sm" data-add="${chave}">+ tarefa</button></div>
+          <div class="raia-cards">${cards || '<span class="aviso">sem tarefas neste setor</span>'}</div>
+        </div>`;
+      }).join('');
+      raias.querySelectorAll('[data-tid]').forEach(c => c.addEventListener('click', () => abrirTarefa(c.dataset.tid)));
+      raias.querySelectorAll('[data-add]').forEach(b => b.addEventListener('click', () => novaTarefa(b.dataset.add)));
+    }
+
+    document.getElementById('btnConcluir').addEventListener('click', async () => {
+      const fechar = atual.status !== 'concluida';
+      if (fechar && !confirm('Concluir esta transição? O cliente vira "regular" e a sala sai da lista ativa.')) return;
+      const { error } = await supabase.from('transicoes').update({
+        status: fechar ? 'concluida' : 'em_andamento',
+        concluida_em: fechar ? new Date().toISOString() : null
+      }).eq('id', atual.id);
+      const m = document.getElementById('detMsg');
+      if (error) { m.style.color = '#D08770'; m.textContent = 'Erro: ' + error.message; return; }
+      m.style.color = '#7FBF8E'; m.textContent = fechar ? '🏁 Transição concluída — bem-vindo, cliente regular!' : 'Transição reaberta.';
+      atual.status = fechar ? 'concluida' : 'em_andamento';
+      atual.concluida_em = fechar ? new Date().toISOString() : null;
+      renderDetalhe();
+    });
+
+    // ---------- edição de tarefa ----------
+    const ovTarefa = document.getElementById('ovTarefa');
+    function abrirTarefa(tid){
+      tarefaEd = tarefasAtual.find(x => x.id === tid);
+      if (!tarefaEd) return;
+      document.getElementById('edTituloModal').textContent = 'Tarefa da transição — ' + (SETORES.find(s => s[0] === tarefaEd.setor)?.[1] || tarefaEd.setor);
+      document.getElementById('edTitulo').value = tarefaEd.titulo || '';
+      document.getElementById('edResp').value = tarefaEd.responsavel || '';
+      document.getElementById('edPrazo').value = tarefaEd.prazo || '';
+      document.getElementById('edStatus').value = ['pendente','em_andamento','aguardando','bloqueada','concluida'].includes(tarefaEd.status) ? tarefaEd.status : 'pendente';
+      document.getElementById('edFase').value = tarefaEd.fase || '';
+      document.getElementById('edSituacao').value = tarefaEd.situacao || '';
+      ovTarefa.classList.add('aberto');
+    }
+    async function novaTarefa(setor){
+      const { data, error } = await supabase.from('tarefas').insert({
+        setor, tipo: 'tarefa', titulo: 'Nova tarefa', status: 'pendente',
+        origem: 'transicao', transicao_id: atual.id, cliente_id: null,
+        prazo: hojeISO()
+      }).select('*').single();
+      if (error) { alert('Erro: ' + error.message); return; }
+      tarefasAtual.push(data);
+      renderDetalhe();
+      abrirTarefa(data.id);
+    }
+    document.getElementById('edCancelar').addEventListener('click', () => ovTarefa.classList.remove('aberto'));
+    document.getElementById('edSalvar').addEventListener('click', async () => {
+      const status = document.getElementById('edStatus').value;
+      const campos = {
+        titulo: document.getElementById('edTitulo').value.trim() || 'Sem título',
+        responsavel: document.getElementById('edResp').value.trim() || null,
+        prazo: document.getElementById('edPrazo').value || null,
+        status,
+        fase: document.getElementById('edFase').value.trim() || null,
+        situacao: document.getElementById('edSituacao').value.trim() || null,
+        concluida_em: status === 'concluida' ? (tarefaEd.concluida_em || new Date().toISOString()) : null
+      };
+      const { error } = await supabase.from('tarefas').update(campos).eq('id', tarefaEd.id);
+      if (error) { alert('Erro ao salvar: ' + error.message); return; }
+      Object.assign(tarefaEd, campos);
+      ovTarefa.classList.remove('aberto');
+      renderDetalhe();
+    });
+    document.getElementById('edExcluir').addEventListener('click', async () => {
+      if (!confirm('Excluir esta tarefa da transição?')) return;
+      const { error } = await supabase.from('tarefas').delete().eq('id', tarefaEd.id);
+      if (error) { alert('Erro: ' + error.message); return; }
+      tarefasAtual = tarefasAtual.filter(x => x.id !== tarefaEd.id);
+      ovTarefa.classList.remove('aberto');
+      renderDetalhe();
+    });
+  </script>
+</body>
+</html>
