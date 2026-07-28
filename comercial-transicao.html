@@ -253,7 +253,7 @@
     const ovNova = document.getElementById('ovNova');
     document.getElementById('btnNova').addEventListener('click', () => {
       empSelecionadas = [];
-      ['nvTitulo','nvPadrinho','nvContato','nvObs','nvEmpBusca'].forEach(id => document.getElementById(id).value = '');
+      ['nvTitulo','nvContato','nvObs','nvEmpBusca'].forEach(id => document.getElementById(id).value = '');
       document.getElementById('nvTipo').value = 'entrada';
       document.getElementById('nvFunc').value = '';
       document.getElementById('nvInicio').value = hojeISO();
