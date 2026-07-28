@@ -266,7 +266,7 @@
       <div class="fa-modal-head"><h3 id="dTipo">Tarefa</h3><button class="fa-modal-close" id="detClose">&times;</button></div>
       <div class="fa-modal-body">
         <div class="alv-conc-banner" id="dConcBanner" style="display:none;"></div>
-        <div class="det-empresa"><span>Empresa</span><strong id="dEmpresa"></strong><span id="dHora" class="t-hora" style="display:none;"></span><span class="det-doc-inline" id="dDocWrap" style="display:none;"><span id="dDoc"></span><button id="dDocCopy" title="Copiar (só números)">📋</button></span></div>
+        <div class="det-empresa"><span>Empresa</span><strong id="dEmpresa"></strong><span id="dHora" class="t-hora" style="display:none;"></span><div id="dTransicao" style="display:none; margin:6px 0 0;"><a id="dTransLink" class="t-hora" style="text-decoration:none; cursor:pointer;" href="#">🔁 <span id="dTransNome">transição</span> — abrir sala →</a></div><span class="det-doc-inline" id="dDocWrap" style="display:none;"><span id="dDoc"></span><button id="dDocCopy" title="Copiar (só números)">📋</button></span></div>
         <div id="dPropWrap" style="display:none; margin:2px 0 4px;"><a id="dPropLink" href="#" style="color:#8AAEC8; font-size:13px; text-decoration:none;">📄 Ver proposta no módulo Precificação →</a></div>
         <div id="dGestWrap" style="display:none; margin:2px 0 4px;"><a id="dGestLink" href="#" style="color:#8AAEC8; font-size:13px; text-decoration:none;">📌 Ver no módulo Gestão →</a></div>
         <div class="fa-field-row">
@@ -458,7 +458,7 @@
         const resp = t.responsavel ? `<span>${esc(t.responsavel)}</span>` : '';
         html += `<div class="ag-card ${classePrio(t.prioridade)}" data-bstask="${t.id}"${concl ? ' style="opacity:.55;"' : ''}>
           <div class="ag-card-main">
-            <div class="ag-card-titulo">${concl ? '✓ ' : ''}${esc(t.titulo) || '(sem título)'}${horaDaTarefa(t) ? `<span class="t-hora">🕐 ${horaDaTarefa(t)}</span>` : ''}</div>
+            <div class="ag-card-titulo">${concl ? '✓ ' : ''}${esc(t.titulo) || '(sem título)'}${horaDaTarefa(t) ? `<span class="t-hora">🕐 ${horaDaTarefa(t)}</span>` : ''}${t.transicao_id ? '<span class="t-hora" title="tarefa de transição">🔁</span>' : ''}</div>
             <div class="ag-card-meta"><b style="color:#8AAEC8;">${fData(t.prazo)}</b><span class="sep">·</span>${chip(t.setor)} ${cli} ${resp}</div>
           </div>
         </div>`;
@@ -502,7 +502,7 @@
         const resp = t.responsavel ? `<span>${esc(t.responsavel)}</span>` : '';
         html += `<div class="ag-card ${classePrio(t.prioridade)}" data-sptask="${t.id}">
           <div class="ag-card-main">
-            <div class="ag-card-titulo">${esc(t.titulo) || '(sem título)'}${horaDaTarefa(t) ? `<span class="t-hora">🕐 ${horaDaTarefa(t)}</span>` : ''}</div>
+            <div class="ag-card-titulo">${esc(t.titulo) || '(sem título)'}${horaDaTarefa(t) ? `<span class="t-hora">🕐 ${horaDaTarefa(t)}</span>` : ''}${t.transicao_id ? '<span class="t-hora" title="tarefa de transição">🔁</span>' : ''}</div>
             <div class="ag-card-meta">${chip(t.setor)} ${cli} ${resp}</div>
           </div>
         </div>`;
@@ -638,7 +638,7 @@
         const resp = t.responsavel ? `<span>${esc(t.responsavel)}</span>` : '';
         html += `<div class="ag-card ${classePrio(t.prioridade)}" data-taskid="${t.id}">
           <div class="ag-card-main">
-            <div class="ag-card-titulo">${esc(t.titulo)||'(sem título)'}${horaDaTarefa(t) ? `<span class="t-hora">🕐 ${horaDaTarefa(t)}</span>` : ''}</div>
+            <div class="ag-card-titulo">${esc(t.titulo)||'(sem título)'}${horaDaTarefa(t) ? `<span class="t-hora">🕐 ${horaDaTarefa(t)}</span>` : ''}${t.transicao_id ? '<span class="t-hora" title="tarefa de transição">🔁</span>' : ''}</div>
             <div class="ag-card-meta">${chip(t.setor)} ${cli} ${resp}</div>
           </div>
           <select class="ag-prio" data-id="${t.id}">
@@ -672,7 +672,7 @@
           const quem = t.concluida_por ? `<span>por ${esc(nomePorEmail(t.concluida_por))}</span>` : '';
           html += `<div class="ag-card feita ${classePrio(t.prioridade)}" data-taskid="${t.id}">
             <div class="ag-card-main">
-              <div class="ag-card-titulo">${esc(t.titulo)||'(sem título)'}${horaDaTarefa(t) ? `<span class="t-hora">🕐 ${horaDaTarefa(t)}</span>` : ''}</div>
+              <div class="ag-card-titulo">${esc(t.titulo)||'(sem título)'}${horaDaTarefa(t) ? `<span class="t-hora">🕐 ${horaDaTarefa(t)}</span>` : ''}${t.transicao_id ? '<span class="t-hora" title="tarefa de transição">🔁</span>' : ''}</div>
               <div class="ag-card-meta">${chip(t.setor)} ${quem}</div>
             </div>
           </div>`;
@@ -817,6 +817,15 @@
       const hEl = document.getElementById('dHora'), hV = horaDaTarefa(t);
       hEl.style.display = hV ? 'inline-block' : 'none';
       if (hV) hEl.textContent = '🕐 ' + hV;
+      const trEl = document.getElementById('dTransicao');
+      if (t.transicao_id) {
+        trEl.style.display = 'block';
+        document.getElementById('dTransLink').href = 'comercial-transicao.html?transicao=' + t.transicao_id;
+        document.getElementById('dTransNome').textContent = 'transição';
+        supabase.from('transicoes').select('titulo').eq('id', t.transicao_id).single().then(({ data }) => {
+          if (data) document.getElementById('dTransNome').textContent = data.titulo;
+        });
+      } else trEl.style.display = 'none';
       const pw = document.getElementById('dPropWrap');
       if (t.proposta_id) {
         document.getElementById('dPropLink').href = 'comercial-precificacao.html?proposta=' + t.proposta_id;

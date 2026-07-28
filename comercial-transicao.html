@@ -241,6 +241,8 @@
       const { data: cl } = await supabase.from('clientes').select('id, nome_principal, cidade').order('nome_principal');
       clientes = cl || [];
       await carregarLista();
+      const tid = new URLSearchParams(location.search).get('transicao');
+      if (tid) abrirDetalhe(tid);
     })();
 
     document.getElementById('btnLogout').addEventListener('click', signOut);
