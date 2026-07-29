@@ -385,12 +385,12 @@
       return { regime, lista, aplicaveis, somaMensal, somaAnual, variaveis, pendentes: lista.filter(o => o.st === 'pendente') };
     }
     function questaoVisivel(qd){
-      const regimeAtual = String(respostas['A10'] || '').trim();
-      if (!regimeAtual) return true;
       if (respostas['A4'] === 'MEI') {
         const SOME_MEI = ['A8','A9','A10','A11B','B4','B5','C4','C5','C6','C7','C8','C9','D3','D5','D6','D10','D13','D14','D15','D17','D18','D20','D21','E4'];
         if (SOME_MEI.includes(qd.id)) return false;
       }
+      const regimeAtual = String(respostas['A10'] || '').trim();
+      if (!regimeAtual) return true;
       if (qd.id === 'A11B') return regimeAtual === 'Simples Nacional';
       if (qd.id === 'D20' || qd.id === 'D21') {
         const lplr = regimeAtual === 'Lucro Presumido' || regimeAtual === 'Lucro Real';
