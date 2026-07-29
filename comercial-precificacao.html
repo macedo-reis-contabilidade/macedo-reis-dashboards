@@ -386,7 +386,7 @@
     }
     function questaoVisivel(qd){
       if (respostas['A4'] === 'MEI') {
-        const SOME_MEI = ['A8','A9','A10','A11B','B4','B5','C4','C5','C6','C7','C8','C9','D3','D5','D6','D10','D13','D14','D15','D17','D18','D20','D21','E4'];
+        const SOME_MEI = ['A8','A9','A10','A11B','B4','B5','C4','C5','C6','C7','C8','C9','D3','D5','D6','D10','D11','D12','D13','D14','D15','D17','D18','D20','D21','E4'];
         if (SOME_MEI.includes(qd.id)) return false;
       }
       const regimeAtual = String(respostas['A10'] || '').trim();
