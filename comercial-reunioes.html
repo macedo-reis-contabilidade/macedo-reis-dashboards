@@ -95,6 +95,7 @@
         <label class="fa-field"><span>Cliente *</span><select id="rCliente" class="select"><option value="">— Selecione —</option></select></label>
         <div class="fa-field-row">
           <label class="fa-field"><span>Data</span><input type="date" id="rData" class="input"></label>
+          <label class="fa-field"><span>Hora</span><input type="time" id="rHora" class="input"></label>
           <label class="fa-field"><span>Status</span><select id="rStatus" class="select"><option value="em_preparacao">Em preparação</option><option value="agendada">Agendada</option><option value="realizada">Realizada</option></select></label>
         </div>
         <label class="fa-field"><span>Assunto (opcional)</span><input type="text" id="rTituloR" class="input" placeholder="Ex.: Reunião trimestral de resultados"></label>
@@ -198,8 +199,15 @@
         reunioes.forEach(r => { r._nPautas = cont[r.id] || 0; });
       }
       renderLista();
+      if (!deepLinkFeito) {
+        deepLinkFeito = true;
+        const rid = new URLSearchParams(location.search).get('reuniao');
+        if (rid && reunioes.find(x => x.id === rid)) abrirReuniao(rid);
+      }
     }
 
+    let deepLinkFeito = false;
+    const fmtHora = h => h ? String(h).slice(0, 5).replace(':', 'h') : '';
     function renderLista() {
       const q = searchInput.value.toLowerCase().trim();
       const fs = filterStatus.value;
@@ -217,7 +225,7 @@
         return '<div class="rn-card" data-id="' + r.id + '">'
           + '<div class="rn-card-main">'
             + '<div class="rn-card-cliente">' + escapeHtml(clienteNome(r.cliente_id)) + '</div>'
-            + '<div class="rn-card-meta">' + fmtData(r.data_reuniao) + (r.titulo ? ' · ' + escapeHtml(r.titulo) : '') + ' · ' + (r._nPautas || 0) + ' pauta(s)</div>'
+            + '<div class="rn-card-meta">' + fmtData(r.data_reuniao) + (r.hora ? ' · 🕐 ' + fmtHora(r.hora) : '') + (r.titulo ? ' · ' + escapeHtml(r.titulo) : '') + ' · ' + (r._nPautas || 0) + ' pauta(s)</div>'
           + '</div>'
           + '<div class="rn-card-side">' + statusPill(r.status) + '<span class="rn-card-go">Abrir →</span></div>'
         + '</div>';
@@ -230,7 +238,7 @@
       reuniaoAtual = reunioes.find(r => r.id === id);
       if (!reuniaoAtual) return;
       document.getElementById('dCliente').textContent = clienteNome(reuniaoAtual.cliente_id);
-      document.getElementById('dData').textContent = fmtData(reuniaoAtual.data_reuniao);
+      document.getElementById('dData').textContent = fmtData(reuniaoAtual.data_reuniao) + (reuniaoAtual.hora ? ' · 🕐 ' + fmtHora(reuniaoAtual.hora) : '');
       document.getElementById('dStatusPill').innerHTML = statusPill(reuniaoAtual.status);
       document.getElementById('dAssunto').textContent = reuniaoAtual.titulo || '';
       const st = reuniaoAtual.status || 'agendada';
@@ -280,6 +288,7 @@
       document.getElementById('mrTitulo').textContent = editReuniaoId ? 'Editar reunião' : 'Nova reunião';
       document.getElementById('rCliente').value = r ? (r.cliente_id || '') : '';
       document.getElementById('rData').value = r && r.data_reuniao ? String(r.data_reuniao).slice(0, 10) : '';
+      document.getElementById('rHora').value = r && r.hora ? String(r.hora).slice(0, 5) : '';
       document.getElementById('rStatus').value = r ? (r.status || 'agendada') : 'em_preparacao';
       document.getElementById('rTituloR').value = r ? (r.titulo || '') : '';
       ovReuniao.classList.add('is-open');
@@ -296,6 +305,7 @@
       const campos = {
         cliente_id,
         data_reuniao: document.getElementById('rData').value || null,
+        hora: document.getElementById('rHora').value || null,
         status: document.getElementById('rStatus').value,
         titulo: document.getElementById('rTituloR').value.trim() || null
       };
@@ -306,7 +316,15 @@
       const reabrirId = editReuniaoId;
       fecharModalReuniao();
       await carregarReunioes();
-      if (reabrirId) { const r = reunioes.find(x => x.id === reabrirId); if (r) abrirReuniao(reabrirId); }
+      if (reabrirId) {
+        const r = reunioes.find(x => x.id === reabrirId);
+        if (r && r.tarefa_id && r.status === 'agendada') {
+          const cli = clientes.find(c => c.id === r.cliente_id);
+          const tituloT = 'Reunião' + (r.hora ? ' ' + fmtHora(r.hora) : '') + ' — ' + (cli ? cli.nome_principal : 'Cliente');
+          try { await supabase.from('tarefas').update({ titulo: tituloT, prazo: r.data_reuniao }).eq('id', r.tarefa_id); } catch (e) {}
+        }
+        if (r) abrirReuniao(reabrirId);
+      }
     });
 
     document.getElementById('btnStatusReuniao').addEventListener('click', async () => {
@@ -316,6 +334,27 @@
       const { error } = await supabase.from('reunioes').update({ status: novo }).eq('id', reuniaoAtual.id);
       if (error) { alert('Erro: ' + error.message); return; }
       reuniaoAtual.status = novo;
+      try {
+        const cli = clientes.find(c => c.id === reuniaoAtual.cliente_id);
+        const nomeCli = cli ? cli.nome_principal : 'Cliente';
+        const tituloT = 'Reunião' + (reuniaoAtual.hora ? ' ' + fmtHora(reuniaoAtual.hora) : '') + ' — ' + nomeCli;
+        if (novo === 'agendada') {
+          if (reuniaoAtual.tarefa_id) {
+            await supabase.from('tarefas').update({ titulo: tituloT, prazo: reuniaoAtual.data_reuniao, status: 'pendente', concluida_em: null }).eq('id', reuniaoAtual.tarefa_id);
+          } else {
+            const { data: t } = await supabase.from('tarefas').insert({
+              setor: 'comercial', tipo: 'tarefa', titulo: tituloT,
+              cliente_id: reuniaoAtual.cliente_id, prazo: reuniaoAtual.data_reuniao,
+              responsavel: (document.getElementById('userName').textContent || '').trim() || null,
+              status: 'pendente', origem: 'reuniao',
+              descricao: (reuniaoAtual.titulo ? reuniaoAtual.titulo + ' · ' : '') + 'Pauta completa no módulo Reuniões (Comercial).'
+            }).select('id').single();
+            if (t) { await supabase.from('reunioes').update({ tarefa_id: t.id }).eq('id', reuniaoAtual.id); reuniaoAtual.tarefa_id = t.id; }
+          }
+        } else if (novo === 'realizada' && reuniaoAtual.tarefa_id) {
+          await supabase.from('tarefas').update({ status: 'concluida', concluida_em: new Date().toISOString() }).eq('id', reuniaoAtual.tarefa_id);
+        }
+      } catch (e) { console.warn('Sincronia com a Agenda falhou:', e); }
       await carregarReunioes();
       abrirReuniao(reuniaoAtual.id);
     });
@@ -422,7 +461,7 @@
         + '<div class="folha">'
         + '<header class="cab"><img src="' + logoUrl + '" alt="Macedo & Reis"><div class="firma"><strong>Macedo &amp; Reis Contabilidade</strong><span>CRC/RS 006418/O</span><span>Três Coroas – RS</span></div></header>'
         + '<hr class="reg"><h1>Pauta de Reunião</h1>'
-        + '<div class="dados"><div><b>Cliente:</b> ' + escapeHtml(cli) + '</div><div><b>Data:</b> ' + fmtData(reuniaoAtual.data_reuniao) + '</div>'
+        + '<div class="dados"><div><b>Cliente:</b> ' + escapeHtml(cli) + '</div><div><b>Data:</b> ' + fmtData(reuniaoAtual.data_reuniao) + (reuniaoAtual.hora ? ' às ' + fmtHora(reuniaoAtual.hora) : '') + '</div>'
         + (reuniaoAtual.titulo ? '<div><b>Assunto:</b> ' + escapeHtml(reuniaoAtual.titulo) + '</div>' : '') + '</div>'
         + blocos
         + '<div class="notas"><div class="notas-tit">Encaminhamentos / anotações</div><div class="linhas"></div><div class="linhas"></div><div class="linhas"></div><div class="linhas"></div></div>'
