@@ -387,6 +387,10 @@
     function questaoVisivel(qd){
       const regimeAtual = String(respostas['A10'] || '').trim();
       if (!regimeAtual) return true;
+      if (respostas['A4'] === 'MEI') {
+        const SOME_MEI = ['A8','A9','A10','A11B','B4','B5','C4','C5','C6','C7','C8','C9','D3','D5','D6','D10','D13','D14','D15','D17','D18','D20','D21','E4'];
+        if (SOME_MEI.includes(qd.id)) return false;
+      }
       if (qd.id === 'A11B') return regimeAtual === 'Simples Nacional';
       if (qd.id === 'D20' || qd.id === 'D21') {
         const lplr = regimeAtual === 'Lucro Presumido' || regimeAtual === 'Lucro Real';
@@ -406,6 +410,7 @@
     function renderObrigacoes(){
       const el = document.getElementById('prObrigacoes');
       if (!el) return;
+      if (respostas['A4'] === 'MEI') { el.innerHTML = '<div class="pr-ob-card"><h3>Obrigações do regime — MEI</h3><div class="pr-ob-nota">MEI entrega o DAS mensal e a DASN-SIMEI anual — sem as declarações das demais empresas. Pra montar plano, serviços e preço, use a <b>aba MEI</b> aqui do módulo.</div></div>'; return; }
       const r = obrigacoesDoRegime();
       if (!r.regime) { el.innerHTML = '<div class="pr-ob-card"><h3>Obrigações do regime</h3><div class="pr-ob-nota">Responda o regime tributário (A10) pra ver as obrigações e multas.</div></div>'; return; }
       if (r.mei) { el.innerHTML = '<div class="pr-ob-card"><h3>Obrigações do regime — MEI</h3><div class="pr-ob-nota">MEI terá precificação específica — a lista de obrigações desse regime entra num segundo momento.</div></div>'; return; }
@@ -495,7 +500,7 @@
       el.querySelectorAll('[data-q]').forEach(inp => {
         const id = inp.dataset.q;
         if (respostas[id] != null) inp.value = respostas[id];
-        inp.addEventListener('input', () => { respostas[id] = inp.value; if (id === 'A10' || id === 'D20') renderForm(); else renderPainel(); });
+        inp.addEventListener('input', () => { respostas[id] = inp.value; if (id === 'A10' || id === 'D20' || id === 'A4') renderForm(); else renderPainel(); });
       });
       renderPainel();
     }
