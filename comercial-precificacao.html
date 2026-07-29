@@ -197,6 +197,7 @@
             <div class="pr-col-lateral"><div class="pr-painel">
               <h3>Proposta MEI</h3>
               <label class="pr-obs-orc"><span>Cliente</span><input id="meiCliente" class="input" style="width:100%;" placeholder="nome do MEI"></label>
+              <label class="pr-obs-orc"><span>CNPJ</span><input id="meiCnpj" class="input" style="width:100%;" maxlength="18" placeholder="00.000.000/0001-00"></label>
               <div id="meiResumo" style="margin-top:8px;"></div>
               <label class="pr-obs-orc"><span>Ajuste no total <i>(R$ — aceita negativo; só interno, cliente vê o total fechado)</i></span><input id="meiAjuste" class="input" type="number" step="0.01" placeholder="ex.: 150 ou -100"></label>
               <div class="mei-total"><b id="meiTotal">R$ 0</b><small>MENSALIDADE MEI SUGERIDA</small></div>
@@ -619,6 +620,10 @@
       doc.setDrawColor(...LINHA).setLineWidth(.8).roundedRect(MX, y - 4, MR - MX, 26, 4, 4);
       doc.setFont('helvetica', 'bold').setFontSize(10.5).setTextColor(...ESCURO);
       doc.text(nome, MX + 10, y + 13);
+      if (String(respostas['A1B'] || '').trim()) {
+        doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(...CINZA);
+        doc.text('CNPJ ' + String(respostas['A1B']).trim(), MR - 10, y + 13, { align: 'right' });
+      }
       y += 38;
 
       const msgOrc = String(respostas['msg_orcamento'] || '').trim();
@@ -975,7 +980,7 @@
 
     // ---------- MEI: planos, fusão e orçamento ----------
     let meiPlanos = [], meiServicos = [], meiComp = {};
-    const mei = { bases: new Set(), marcados: new Set(), qtd: {}, nfsInclusas: '', cliente: '', msg: '', venc: '', ajuste: '' };
+    const mei = { bases: new Set(), marcados: new Set(), qtd: {}, nfsInclusas: '', cliente: '', msg: '', venc: '', ajuste: '', cnpj: '' };
     const GRUPOS_MEI = [['mensal','Mensais'],['semestral','Semestrais'],['anual','Anuais'],['demanda','Conforme demanda']];
     function meiPreset(pid){ return new Set([...(meiComp[pid] || [])]); }
     function presetUniao(){
@@ -1072,7 +1077,7 @@
       if (t) t.textContent = fmt(total);
     }
     function ligarMeiPainel(){
-      [['meiCliente','cliente'],['meiVenc','venc'],['meiMsg','msg'],['meiAjuste','ajuste']].forEach(([id, k]) => {
+      [['meiCliente','cliente'],['meiCnpj','cnpj'],['meiVenc','venc'],['meiMsg','msg'],['meiAjuste','ajuste']].forEach(([id, k]) => {
         const el = document.getElementById(id);
         if (el) el.addEventListener('input', () => { mei[k] = el.value; if (k === 'ajuste') atualizarMeiPainel(); });
       });
@@ -1114,6 +1119,10 @@
       doc.setDrawColor(...LINHA).setLineWidth(.8).roundedRect(MX, y - 4, MR - MX, 26, 4, 4);
       doc.setFont('helvetica', 'bold').setFontSize(10.5).setTextColor(...ESCURO);
       doc.text(nome, MX + 10, y + 13);
+      if (String(mei.cnpj || '').trim()) {
+        doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(...CINZA);
+        doc.text('CNPJ ' + mei.cnpj.trim(), MR - 10, y + 13, { align: 'right' });
+      }
       y += 38;
       const msg = String(mei.msg || '').trim();
       if (msg) {
@@ -1213,7 +1222,7 @@
       btn.disabled = true;
       const payload = {
         cliente_nome: nome,
-        respostas: { _tipo: 'mei', bases: [...mei.bases], marcados: [...mei.marcados], qtd: mei.qtd, nfsInclusas: mei.nfsInclusas, cliente: mei.cliente, msg: mei.msg, venc: mei.venc, ajuste: mei.ajuste },
+        respostas: { _tipo: 'mei', bases: [...mei.bases], marcados: [...mei.marcados], qtd: mei.qtd, nfsInclusas: mei.nfsInclusas, cliente: mei.cliente, cnpj: mei.cnpj, msg: mei.msg, venc: mei.venc, ajuste: mei.ajuste },
         resultado: { linhas, total },
         honorario: total, taxa_unica: null,
         status: 'calculada', atualizado_em: new Date().toISOString()
@@ -1240,8 +1249,8 @@
     function novaMei(){
       meiEditandoId = null;
       mei.bases = new Set(); mei.marcados = new Set(); mei.qtd = {}; mei.nfsInclusas = '';
-      mei.cliente = ''; mei.msg = ''; mei.venc = ''; mei.ajuste = '';
-      ['meiCliente','meiVenc','meiMsg','meiAjuste'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+      mei.cliente = ''; mei.msg = ''; mei.venc = ''; mei.ajuste = ''; mei.cnpj = '';
+      ['meiCliente','meiCnpj','meiVenc','meiMsg','meiAjuste'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
       const m = document.getElementById('meiSalvoMsg'); if (m) m.textContent = '';
       atualizarBotoesMei();
       renderMei();
@@ -1256,9 +1265,10 @@
       mei.msg = r.msg || '';
       mei.venc = r.venc || '';
       mei.ajuste = r.ajuste || '';
+      mei.cnpj = r.cnpj || '';
       meiEditandoId = p.id;
       const setv = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
-      setv('meiCliente', mei.cliente); setv('meiVenc', mei.venc); setv('meiMsg', mei.msg); setv('meiAjuste', mei.ajuste);
+      setv('meiCliente', mei.cliente); setv('meiCnpj', mei.cnpj); setv('meiVenc', mei.venc); setv('meiMsg', mei.msg); setv('meiAjuste', mei.ajuste);
       const m = document.getElementById('meiSalvoMsg'); if (m) m.textContent = '';
       atualizarBotoesMei();
       trocarVisao('mei');
