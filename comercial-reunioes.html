@@ -134,6 +134,20 @@
     </div>
   </div>
 
+
+  <!-- modo reunião: anotações ao vivo da pauta -->
+  <div class="rn-overlay" id="ovDiscussao" style="display:none;">
+    <div class="rn-modal" style="max-width:640px;">
+      <div class="rn-modal-head"><h3 id="dscTitulo">Pauta</h3><button class="rn-modal-close" id="dscFechar">&times;</button></div>
+      <div class="rn-modal-body">
+        <div id="dscDesc" style="font-size:12.5px; color:#8A93A6; margin-bottom:10px; white-space:pre-wrap;"></div>
+        <label class="fa-field"><span>Anotações da reunião (salva sozinho enquanto digita)</span>
+          <textarea id="dscTexto" class="input" rows="10" placeholder="Vá registrando aqui o que está sendo conversado…"></textarea></label>
+        <div id="dscStatus" style="font-size:11.5px; color:#6E7787; min-height:14px; text-align:right;"></div>
+      </div>
+    </div>
+  </div>
+
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
 
@@ -271,15 +285,19 @@
         const itens = pautas.filter(p => p.setor === s);
         if (!itens.length) return;
         html += '<div class="pauta-grupo"><div class="pauta-grupo-head">' + lbl + ' <span class="pauta-grupo-n">' + itens.length + '</span></div>';
-        html += itens.map(p => '<div class="pauta-item" data-id="' + p.id + '">'
-          + '<div class="pauta-item-body"><div class="pauta-item-tit">' + escapeHtml(p.titulo) + '</div>'
+        html += itens.map(p => '<div class="pauta-item" data-id="' + p.id + '" style="cursor:pointer;" title="Clique pra abrir as anotações da reunião">'
+          + '<div class="pauta-item-body"><div class="pauta-item-tit">' + escapeHtml(p.titulo) + (p.discussao ? ' <span style="font-size:11px; color:#7FBF8E;">📝 anotações</span>' : '') + '</div>'
           + (p.descricao ? '<div class="pauta-item-desc">' + escapeHtml(p.descricao) + '</div>' : '') + '</div>'
           + '<div class="pauta-item-acoes"><button class="rn-link" data-edit="' + p.id + '">Editar</button></div>'
         + '</div>').join('');
         html += '</div>';
       });
       elPautas.innerHTML = html;
-      elPautas.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => abrirModalPauta(pautas.find(p => p.id === b.dataset.edit))));
+      elPautas.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); abrirModalPauta(pautas.find(p => p.id === b.dataset.edit)); }));
+      elPautas.querySelectorAll('.pauta-item').forEach(card => card.addEventListener('click', () => {
+        const p = pautas.find(x => x.id === card.dataset.id);
+        if (p) abrirDiscussao(p);
+      }));
     }
 
     // ---- modal reunião ----
@@ -369,6 +387,43 @@
     });
 
     // ---- modal pauta ----
+
+    // ---------- modo reunião: anotações ao vivo ----------
+    let dscPauta = null, dscTimer = null;
+    function abrirDiscussao(p){
+      dscPauta = p;
+      document.getElementById('dscTitulo').textContent = p.titulo || 'Pauta';
+      document.getElementById('dscDesc').textContent = p.descricao || '';
+      document.getElementById('dscTexto').value = p.discussao || '';
+      document.getElementById('dscStatus').textContent = '';
+      document.getElementById('ovDiscussao').style.display = 'flex';
+      document.getElementById('dscTexto').focus();
+    }
+    async function salvarDiscussao(){
+      if (!dscPauta) return;
+      const txt = document.getElementById('dscTexto').value;
+      const st = document.getElementById('dscStatus');
+      st.textContent = 'salvando…';
+      const { error } = await supabase.from('reuniao_pautas').update({ discussao: txt.trim() || null }).eq('id', dscPauta.id);
+      if (error) { st.style.color = '#D08770'; st.textContent = 'erro ao salvar — tenta de novo'; return; }
+      dscPauta.discussao = txt.trim() || null;
+      st.style.color = '#7FBF8E';
+      st.textContent = 'salvo ✓ ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    }
+    document.getElementById('dscTexto').addEventListener('input', () => {
+      clearTimeout(dscTimer);
+      document.getElementById('dscStatus').style.color = '#6E7787';
+      document.getElementById('dscStatus').textContent = 'digitando…';
+      dscTimer = setTimeout(salvarDiscussao, 800);
+    });
+    document.getElementById('dscFechar').addEventListener('click', async () => {
+      clearTimeout(dscTimer);
+      await salvarDiscussao();
+      document.getElementById('ovDiscussao').style.display = 'none';
+      dscPauta = null;
+      renderPautas();
+    });
+
     function abrirModalPauta(p) {
       editPautaId = p ? p.id : null;
       document.getElementById('mpTitulo').textContent = editPautaId ? 'Editar pauta' : 'Adicionar pauta';
@@ -429,7 +484,8 @@
         if (!itens.length) return;
         blocos += '<div class="bloco"><div class="bloco-setor">' + lbl + '</div>'
           + itens.map(p => '<div class="pauta"><div class="pauta-tit">' + escapeHtml(p.titulo) + '</div>'
-            + (p.descricao ? '<div class="pauta-desc">' + escapeHtml(p.descricao).replace(/\n/g, '<br>') + '</div>' : '') + '</div>').join('')
+            + (p.descricao ? '<div class="pauta-desc">' + escapeHtml(p.descricao).replace(/\n/g, '<br>') + '</div>' : '')
+            + (p.discussao ? '<div class="pauta-desc" style="margin-top:6px; padding:8px 10px; background:#F2F5F8; border-left:3px solid #5B82A6;"><b>Anotações da reunião:</b><br>' + escapeHtml(p.discussao).replace(/\n/g, '<br>') + '</div>' : '') + '</div>').join('')
           + '</div>';
       });
       if (!blocos) blocos = '<p class="vazio">Nenhuma pauta cadastrada para esta reunião.</p>';
