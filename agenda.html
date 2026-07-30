@@ -307,6 +307,20 @@
     </div>
   </div>
 
+  <div id="raOverlay" style="display:none; position:fixed; inset:0; background:rgba(6,10,16,.8); z-index:70; align-items:center; justify-content:center; padding:20px;">
+    <div style="background:#10161F; border:1px solid rgba(255,255,255,.12); border-radius:14px; padding:18px 20px; max-width:380px; width:100%;">
+      <h3 style="margin:0 0 4px; font-size:14px; color:#52B4C6; text-transform:uppercase; letter-spacing:.05em;">Adiar rotina</h3>
+      <div id="raNome" style="font-size:14px; color:#E6EBF2; margin-bottom:8px;"></div>
+      <div id="raAtual" style="font-size:12px; color:#C6A75A; margin-bottom:8px;"></div>
+      <label style="display:block; font-size:12px; color:#8A93A6; margin-bottom:4px;">Fazer em</label>
+      <input type="date" id="raData" class="input" style="width:100%;">
+      <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:14px;">
+        <button class="btn btn-ghost btn-sm" id="raVoltar" style="margin-right:auto;">↩ Voltar ao normal</button>
+        <button class="btn btn-ghost btn-sm" id="raCancelar">Cancelar</button>
+        <button class="btn btn-sm" id="raConfirmar">Adiar</button>
+      </div>
+    </div>
+  </div>
   <script src="assets/js/tour.js"></script>
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
@@ -429,7 +443,13 @@
     }
     function rotinasDoDia(d){
       if (d.getDay() === 0 || d.getDay() === 6) return []; // escritório é seg–sex: fim de semana zero rotinas
-      return cacheRotinas.filter(r => caiNoDia(r, d) && passaFiltro(r));
+      return cacheRotinas.filter(r => {
+        if (r.adiada_para) {
+          if (ymd(d) < r.adiada_para) return false;
+          if (ymd(d) === r.adiada_para) return passaFiltro(r);
+        }
+        return caiNoDia(r, d) && passaFiltro(r);
+      });
     }
 
     // ---- busca global (todas as datas, todos os responsáveis) ----
@@ -671,10 +691,10 @@
           const feita = rotinaFeita(r, d);
           const resp = r.responsavel ? `<span>${esc(r.responsavel)}</span>` : '';
           const check = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
-          html += `<div class="ag-card ag-rotina ${feita?'feita':''}">
+          html += `<div class="ag-card ag-rotina ${feita?'feita':''}" data-rotcard="${r.id}" style="cursor:pointer;" title="Clique pra adiar">
             <button class="ag-rot-check ${feita?'on':''}" data-rotid="${r.id}" data-feita="${feita?1:0}" title="${feita?'Desfazer':'Marcar como feita'}" aria-label="${feita?'Desfazer rotina':'Concluir rotina'}">${feita?check:''}</button>
             <div class="ag-card-main">
-              <div class="ag-card-titulo">${esc(rotuloRotina(r))}</div>
+              <div class="ag-card-titulo">${esc(rotuloRotina(r))}${r.adiada_para === ymd(d) ? ' <span class="t-hora">↪ adiada pra hoje</span>' : ''}</div>
               <div class="ag-card-meta">${chip(r.setor)} ${resp}</div>
             </div>
           </div>`;
@@ -787,6 +807,12 @@
         });
       });
       // concluir / desfazer rotina do dia
+      document.querySelectorAll('[data-rotcard]').forEach(card => {
+        card.addEventListener('click', (e) => {
+          if (e.target.closest('.ag-rot-check')) return;
+          abrirAdiarRotina(card.dataset.rotcard);
+        });
+      });
       document.querySelectorAll('.ag-rot-check').forEach(btn => {
         btn.addEventListener('click', async (e) => {
           e.stopPropagation();
@@ -794,10 +820,10 @@
           const estaFeita = btn.dataset.feita === '1';
           btn.disabled = true;
           const novoValor = estaFeita ? null : ymd(estado.cursor);
-          const { error } = await supabase.from('rotinas').update({ ultima_execucao: novoValor }).eq('id', id);
+          const { error } = await supabase.from('rotinas').update({ ultima_execucao: novoValor, adiada_para: null }).eq('id', id);
           btn.disabled = false;
           if (error){ alert('Erro ao atualizar rotina: ' + error.message); return; }
-          const r = cacheRotinas.find(x => String(x.id) === String(id)); if (r) r.ultima_execucao = novoValor;
+          const r = cacheRotinas.find(x => String(x.id) === String(id)); if (r) { r.ultima_execucao = novoValor; r.adiada_para = null; }
           render();
         });
       });
@@ -936,6 +962,34 @@
       detCli = { id: null, mudou: true };
       document.getElementById('dEmpresa').textContent = 'Interno (sem empresa)';
     });
+    let rotAdiando = null;
+    function abrirAdiarRotina(id){
+      const r = cacheRotinas.find(x => String(x.id) === String(id));
+      if (!r) return;
+      rotAdiando = r;
+      document.getElementById('raNome').textContent = rotuloRotina(r);
+      const amanha = new Date(estado.cursor.getTime() + 864e5);
+      document.getElementById('raData').value = r.adiada_para || ymd(amanha);
+      document.getElementById('raAtual').textContent = r.adiada_para ? ('Adiada pra ' + r.adiada_para.split('-').reverse().join('/') + '.') : '';
+      document.getElementById('raVoltar').style.display = r.adiada_para ? 'inline-block' : 'none';
+      document.getElementById('raOverlay').style.display = 'flex';
+    }
+    async function salvarAdiarRotina(valor){
+      if (!rotAdiando) return;
+      const { error } = await supabase.from('rotinas').update({ adiada_para: valor }).eq('id', rotAdiando.id);
+      if (error) { alert('Erro ao adiar: ' + error.message); return; }
+      rotAdiando.adiada_para = valor;
+      document.getElementById('raOverlay').style.display = 'none';
+      rotAdiando = null;
+      render();
+    }
+    document.getElementById('raCancelar').addEventListener('click', () => { document.getElementById('raOverlay').style.display = 'none'; rotAdiando = null; });
+    document.getElementById('raConfirmar').addEventListener('click', () => {
+      const v = document.getElementById('raData').value;
+      if (!v) { alert('Escolhe a data.'); return; }
+      salvarAdiarRotina(v);
+    });
+    document.getElementById('raVoltar').addEventListener('click', () => salvarAdiarRotina(null));
     async function salvarDetalhe(){
       if (!procAtual) return;
       const concl = procAtual.status === 'concluida';
