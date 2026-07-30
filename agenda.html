@@ -72,6 +72,10 @@
     .ag-card-titulo { font-size:14px; color:#E6EBF2; font-weight:500; margin-bottom:4px; }
     .t-hora { display:inline-block; margin-left:6px; padding:0 8px; border-radius:999px; font-size:11.5px; font-weight:500; color:#8AAEC8; background:rgba(91,130,166,.12); border:1px solid rgba(138,174,200,.35); white-space:nowrap; vertical-align:1px; }
     #dHora { align-self:flex-start; width:fit-content; margin:4px 0 0; }
+    .d-cli-res { background:#0D131C; border:1px solid rgba(255,255,255,.12); border-radius:8px; margin-top:4px; max-height:170px; overflow:auto; }
+    .d-cli-res button { display:block; width:100%; text-align:left; background:none; border:0; color:#E6EBF2; padding:7px 10px; cursor:pointer; font:inherit; font-size:13px; }
+    .d-cli-res button:hover { background:rgba(91,130,166,.15); }
+    .d-cli-res small { display:block; color:#6E7787; font-size:11px; }
     .ag-card-meta { font-size:12px; color:#8A93A6; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
     .ag-card-meta .sep { opacity:.5; }
     .ag-prio { padding:5px 8px; font-size:12px; border-radius:8px; background:#141A22; color:#C5D8E8; border:1px solid rgba(255,255,255,.12); cursor:pointer; }
@@ -269,9 +273,19 @@
         <div class="det-empresa"><span>Empresa</span><strong id="dEmpresa"></strong><span id="dHora" class="t-hora" style="display:none;"></span><div id="dTransicao" style="display:none; margin:6px 0 0;"><a id="dTransLink" class="t-hora" style="text-decoration:none; cursor:pointer;" href="#">🔁 <span id="dTransNome">transição</span> — abrir sala →</a></div><span class="det-doc-inline" id="dDocWrap" style="display:none;"><span id="dDoc"></span><button id="dDocCopy" title="Copiar (só números)">📋</button></span></div>
         <div id="dPropWrap" style="display:none; margin:2px 0 4px;"><a id="dPropLink" href="#" style="color:#8AAEC8; font-size:13px; text-decoration:none;">📄 Ver proposta no módulo Precificação →</a></div>
         <div id="dGestWrap" style="display:none; margin:2px 0 4px;"><a id="dGestLink" href="#" style="color:#8AAEC8; font-size:13px; text-decoration:none;">📌 Ver no módulo Gestão →</a></div>
+        <label class="fa-field"><span>Título</span><input type="text" id="dTituloInp" class="input"></label>
+        <div class="fa-field" style="margin-bottom:10px;"><span style="display:block;font-size:12px;color:#8A93A6;margin-bottom:4px;">Trocar empresa</span>
+          <input type="text" id="dCliBusca" class="input" placeholder="Buscar por razão ou fantasia… (3+ letras)" autocomplete="off">
+          <div class="d-cli-res" id="dCliRes" style="display:none;"></div>
+          <a href="#" id="dCliTira" style="font-size:12px;color:#8AAEC8;text-decoration:none;">✕ deixar sem empresa (interno)</a>
+        </div>
         <div class="fa-field-row">
           <label class="fa-field"><span>Responsável</span><input type="text" id="dResp" class="input"></label>
           <label class="fa-field"><span>Prazo</span><input type="date" id="dPrazo" class="input"></label>
+        </div>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Hora <i style="font-style:normal;color:#6E7787;">(alimenta o 🕐)</i></span><input type="time" id="dHoraInp" class="input"></label>
+          <label class="fa-field"><span>&nbsp;</span><span></span></label>
         </div>
         <div class="fa-field-row">
           <label class="fa-field"><span>Prioridade</span><select id="dPrioridade" class="select"><option value="media">Média</option><option value="alta">Alta</option><option value="baixa">Baixa</option></select></label>
@@ -365,6 +379,7 @@
     // ---- filtros (responsável) ----
     const norm = (s)=> String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
     function horaDaTarefa(t){
+      if (t.hora) return String(t.hora).slice(0, 5).replace(':', 'h');
       const alvo = `${t.titulo || ''} ${t.descricao || ''}`;
       const m = alvo.match(/\b([01]?\d|2[0-3])[:hH]([0-5]\d)?\b/);
       if (!m) return null;
@@ -813,6 +828,11 @@
       procAtual = t;
       const concl = t.status === 'concluida';
       document.getElementById('dTipo').textContent = t.titulo || 'Tarefa';
+      document.getElementById('dTituloInp').value = t.titulo || '';
+      document.getElementById('dHoraInp').value = t.hora ? String(t.hora).slice(0, 5) : '';
+      detCli = { id: t.cliente_id || null, mudou: false };
+      document.getElementById('dCliBusca').value = '';
+      document.getElementById('dCliRes').style.display = 'none';
       document.getElementById('dEmpresa').textContent = t.clientes?.nome_principal || 'Interno (sem empresa)';
       const hEl = document.getElementById('dHora'), hV = horaDaTarefa(t);
       hEl.style.display = hV ? 'inline-block' : 'none';
@@ -889,16 +909,46 @@
       await renderTimeline(procAtual.id);
     }
 
+    let detCli = { id: null, mudou: false };
+    let detCliTimer = null;
+    document.getElementById('dCliBusca').addEventListener('input', () => {
+      clearTimeout(detCliTimer);
+      detCliTimer = setTimeout(async () => {
+        const t = document.getElementById('dCliBusca').value.trim();
+        const el = document.getElementById('dCliRes');
+        if (t.length < 3) { el.style.display = 'none'; return; }
+        const { data } = await supabase.from('clientes')
+          .select('id, nome_principal, nome_fantasia, cidade')
+          .or(`nome_principal.ilike.*${t}*,nome_fantasia.ilike.*${t}*`).limit(8);
+        el.innerHTML = (data || []).map(c => `<button data-id="${c.id}">${c.nome_principal}<small>${[c.nome_fantasia, c.cidade].filter(Boolean).join(' · ') || '&nbsp;'}</small></button>`).join('')
+          || '<button disabled style="color:#6E7787;cursor:default;">Nada encontrado.</button>';
+        el.style.display = 'block';
+        el.querySelectorAll('[data-id]').forEach(b => b.addEventListener('click', () => {
+          detCli = { id: b.dataset.id, mudou: true };
+          document.getElementById('dEmpresa').textContent = (b.childNodes[0] && b.childNodes[0].textContent.trim()) || 'Empresa';
+          document.getElementById('dCliBusca').value = '';
+          el.style.display = 'none';
+        }));
+      }, 300);
+    });
+    document.getElementById('dCliTira').addEventListener('click', e => {
+      e.preventDefault();
+      detCli = { id: null, mudou: true };
+      document.getElementById('dEmpresa').textContent = 'Interno (sem empresa)';
+    });
     async function salvarDetalhe(){
       if (!procAtual) return;
       const concl = procAtual.status === 'concluida';
       const novoStatus = document.getElementById('dStatus').value;
       const patch = {
+        titulo: document.getElementById('dTituloInp').value.trim() || procAtual.titulo,
+        hora: document.getElementById('dHoraInp').value || null,
         responsavel: document.getElementById('dResp').value.trim() || null,
         prazo: document.getElementById('dPrazo').value || null,
         prioridade: document.getElementById('dPrioridade').value,
         descricao: document.getElementById('dDescricao').value.trim() || null,
       };
+      if (detCli.mudou) patch.cliente_id = detCli.id;
       if (!concl) patch.status = novoStatus;
       const statusMudou = !concl && procAtual.status !== novoStatus;
       const btn = document.getElementById('dSalvar'); btn.disabled = true;
