@@ -136,15 +136,16 @@
 
 
   <!-- modo reunião: anotações ao vivo da pauta -->
-  <div class="rn-overlay" id="ovDiscussao" style="display:none;">
-    <div class="rn-modal" style="max-width:640px;">
-      <div class="rn-modal-head"><h3 id="dscTitulo">Pauta</h3><button class="rn-modal-close" id="dscFechar">&times;</button></div>
-      <div class="rn-modal-body">
-        <div id="dscDesc" style="font-size:12.5px; color:#8A93A6; margin-bottom:10px; white-space:pre-wrap;"></div>
-        <label class="fa-field"><span>Anotações da reunião (salva sozinho enquanto digita)</span>
-          <textarea id="dscTexto" class="input" rows="10" placeholder="Vá registrando aqui o que está sendo conversado…"></textarea></label>
-        <div id="dscStatus" style="font-size:11.5px; color:#6E7787; min-height:14px; text-align:right;"></div>
+  <div id="ovDiscussao" style="display:none; position:fixed; inset:0; background:rgba(6,10,16,.82); z-index:80; align-items:flex-start; justify-content:center; overflow:auto; padding:40px 16px;">
+    <div style="background:#10161F; border:1px solid rgba(255,255,255,.12); border-radius:16px; padding:18px 22px; max-width:640px; width:100%;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+        <h3 id="dscTitulo" style="margin:0; font-size:15px; color:#E6EBF2;">Pauta</h3>
+        <button id="dscFechar" style="background:none; border:0; color:#8A93A6; font-size:22px; cursor:pointer; line-height:1;">&times;</button>
       </div>
+      <div id="dscDesc" style="font-size:12.5px; color:#8A93A6; margin-bottom:10px; white-space:pre-wrap;"></div>
+      <label class="fa-field"><span>Anotações da reunião (salva sozinho enquanto digita)</span>
+        <textarea id="dscTexto" class="input" rows="10" placeholder="Vá registrando aqui o que está sendo conversado…"></textarea></label>
+      <div id="dscStatus" style="font-size:11.5px; color:#6E7787; min-height:14px; text-align:right;"></div>
     </div>
   </div>
 
