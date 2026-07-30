@@ -323,7 +323,8 @@
 
       const OB = [['D1','SPED Fiscal'],['D2','SPED Contribuições'],['D3','ECD'],['D4','ECF'],['D5','DCTF'],
         ['D6','eSocial/EFD-Reinf'],['D7','RAIS/CAGED'],['D8','GIA/ICMS'],['D9','ISS'],
-        ['D10','Reforma Tributária (transição/apuração dual)'],['D11','Passivo tributário em aberto']];
+        ['D10','Reforma Tributária (transição/apuração dual)'],['D11','Passivo tributário em aberto'],
+        ['A11B','Fator R (monitoramento e planejamento)']];
       let obr = 0;
       OB.forEach(([id, chave]) => { if (sim(id)) { const v = pv('p11', chave); obr += v; if (v) L(chave, v); } });
       const parc = num('D12') * pv('p11', 'Valor por parcelamento ativo');
@@ -344,8 +345,12 @@
       if (seguro) L('Seguro RC profissional', seguro);
       const terce = R('D20') === 'Sim' ? num('D21') : 0;
       if (terce) L('Terceirização de serviço (informado)', terce);
+      const emiteNF = R('B3') === 'O escritório contábil' ? pv('p04', 'Adicional - escritório emite as notas fiscais') : 0;
+      if (emiteNF) L('Emissão de notas fiscais pelo escritório', emiteNF);
+      const semFin = R('E1') === 'Não possui' ? pv('p15', 'Adicional - cliente sem responsável financeiro') : 0;
+      if (semFin) L('Cliente sem responsável financeiro', semFin);
 
-      const bruto = aposNivel + seguro + terce;
+      const bruto = aposNivel + seguro + terce + emiteNF + semFin;
       const passo = pv('p16', 'Arredondar honorário final para múltiplo de (R$)') || 10;
       let honorario = Math.round(bruto / passo) * passo;
       const ajusteHon = Number(respostas['ajuste_honorario'] || 0);
