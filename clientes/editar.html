@@ -627,6 +627,8 @@
       </div>
       <label style="display:block; margin-bottom:10px;"><span style="display:block; font-size:12px; color:#8A93A6; margin-bottom:4px;">Sócio(a) que assina</span>
         <select id="kitSocio" class="input" style="width:100%;"></select></label>
+      <label style="display:block; margin-bottom:10px;"><span style="display:block; font-size:12px; color:#8A93A6; margin-bottom:4px;">Sócio(a) 2 — assina junto (contrato e carta)</span>
+        <select id="kitSocio2" class="input" style="width:100%;"></select></label>
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
         <label><span style="display:block; font-size:12px; color:#8A93A6; margin-bottom:4px;">RG</span><input id="kitRG" class="input" style="width:100%;"></label>
         <label><span style="display:block; font-size:12px; color:#8A93A6; margin-bottom:4px;">Nascimento</span><input type="date" id="kitNascimento" class="input" style="width:100%;"></label>
@@ -731,13 +733,21 @@
       sel.innerHTML = socios.map(s => `<option value="${s.id}">${s.nome}${s.eh_administrador ? ' (administrador)' : ''}</option>`).join('');
       const adm = socios.find(s => s.eh_administrador);
       if (adm) sel.value = adm.id;
+      const sel2 = document.getElementById('kitSocio2');
+      sel2.innerHTML = '<option value="">— só um assinante</option>' + socios.map(s => `<option value="${s.id}">${s.nome}${s.eh_administrador ? ' (administrador)' : ''}</option>`).join('');
+      const admins = socios.filter(s => s.eh_administrador);
+      sel2.value = admins.length === 2 ? (admins.find(a => a.id !== sel.value)?.id || '') : '';
       preencherSocioKit();
       document.getElementById('kitRegime').value = cliente.regime_tributario || '';
       document.getElementById('kitData').value = new Date().toISOString().slice(0, 10);
       document.getElementById('kitMsg').textContent = '';
       document.getElementById('ovKit').style.display = 'flex';
     });
-    document.getElementById('kitSocio').addEventListener('change', preencherSocioKit);
+    document.getElementById('kitSocio').addEventListener('change', () => {
+      const sel2 = document.getElementById('kitSocio2');
+      if (sel2.value === document.getElementById('kitSocio').value) sel2.value = '';
+      preencherSocioKit();
+    });
     document.getElementById('kitFechar').addEventListener('click', () => document.getElementById('ovKit').style.display = 'none');
     document.getElementById('kitCancelar').addEventListener('click', () => document.getElementById('ovKit').style.display = 'none');
     document.getElementById('kitGerar').addEventListener('click', async () => {
@@ -776,6 +786,12 @@
         DIA_VENCIMENTO: `${venc} (${extensoNum(venc)})`,
         REGIME: document.getElementById('kitRegime').value.trim() || cliente.regime_tributario || '—',
       };
+      const s2id = document.getElementById('kitSocio2').value;
+      const s2 = s2id && s2id !== s.id ? socios.find(x => x.id === s2id) : null;
+      valores.SOCIO2_QUALIFICACAO = s2 ? `Representada, em conjunto, também por seu(a) sócio(a), Sr(a). ${s2.nome}, ${s2.nacionalidade || 'brasileiro(a)'}, ${s2.profissao || 'empresário(a)'}, ${s2.estado_civil || ''}${s2.data_nascimento ? ', nascido(a) em ' + String(s2.data_nascimento).split('-').reverse().join('/') : ''}, inscrito(a) no CPF sob nº ${fmtCpfKit(s2.cpf)}${s2.rg ? ', portador(a) da cédula de identidade nº ' + s2.rg : ''}${s2.endereco_residencial ? ', residente e domiciliado(a) na ' + s2.endereco_residencial : ''}.` : '';
+      valores.ASS2_LINHA = s2 ? '_______________________________________' : '';
+      valores.ASS2_NOME = s2 ? (s2.nome || '') : '';
+      valores.ASS2_SUB = s2 ? (cliente.nome_principal || '') : '';
       msg.style.color = '#8A93A6'; msg.textContent = 'Gerando…';
       try {
         if (document.getElementById('chkSalvarSocio').checked) {
