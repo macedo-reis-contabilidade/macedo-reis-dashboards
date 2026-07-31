@@ -1184,7 +1184,14 @@
       if (milhoes) partes.push(milhoes === 1 ? 'um milhão' : trecho(milhoes) + ' milhões');
       if (milhares) partes.push(milhares === 1 ? 'mil' : trecho(milhares) + ' mil');
       if (resto) partes.push(trecho(resto));
-      return partes.join(partes.length > 1 && resto && resto < 100 && !milhares ? ' e ' : ' e ').replace(/ e $/, '') || partes.join(' ');
+      let s = '';
+      partes.forEach((p, i) => {
+        if (!i) { s = p; return; }
+        const ultimo = i === partes.length - 1;
+        const usaE = ultimo && resto > 0 && (resto < 100 || resto % 100 === 0);
+        s += (usaE ? ' e ' : ' ') + p;
+      });
+      return s;
     }
     function extensoReais(valor){
       const inteiro = Math.floor(valor); const cent = Math.round((valor - inteiro) * 100);
