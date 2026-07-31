@@ -76,6 +76,7 @@
     .d-cli-res button { display:block; width:100%; text-align:left; background:none; border:0; color:#E6EBF2; padding:7px 10px; cursor:pointer; font:inherit; font-size:13px; }
     .d-cli-res button:hover { background:rgba(91,130,166,.15); }
     .d-cli-res small { display:block; color:#6E7787; font-size:11px; }
+    .ag-card.arrastando { opacity:.45; }
     .ag-card-meta { font-size:12px; color:#8A93A6; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
     .ag-card-meta .sep { opacity:.5; }
     .ag-prio { padding:5px 8px; font-size:12px; border-radius:8px; background:#141A22; color:#C5D8E8; border:1px solid rgba(255,255,255,.12); cursor:pointer; }
@@ -418,20 +419,20 @@
     async function carregarDados(ini, fim){
       const iniS = ymd(ini), fimS = ymd(fim);
       const { data: ts } = await supabase.from('tarefas')
-        .select('id, titulo, descricao, setor, responsavel, prazo, status, prioridade, cliente_id, proposta_id, hora, transicao_id, clientes(nome_principal, documento), concluida_em, concluida_por')
+        .select('id, titulo, descricao, setor, responsavel, prazo, status, prioridade, cliente_id, proposta_id, hora, transicao_id, posicao, clientes(nome_principal, documento), concluida_em, concluida_por')
         .gte('prazo', iniS).lte('prazo', fimS);
       cacheTarefas = ts || [];
       const { data: rs } = await supabase.from('rotinas').select('*').eq('ativo', true);
       cacheRotinas = rs || [];
       const { data: sp } = await supabase.from('tarefas')
-        .select('id, titulo, descricao, setor, responsavel, prazo, status, prioridade, cliente_id, proposta_id, hora, transicao_id, clientes(nome_principal, documento), concluida_em, concluida_por')
+        .select('id, titulo, descricao, setor, responsavel, prazo, status, prioridade, cliente_id, proposta_id, hora, transicao_id, posicao, clientes(nome_principal, documento), concluida_em, concluida_por')
         .is('prazo', null).neq('status', 'concluida');
       cacheSemPrazo = sp || [];
     }
     // próximos prazos (após hoje), para o slide do resumo — independe do dia exibido
     async function carregarProximos(){
       const { data } = await supabase.from('tarefas')
-        .select('id, titulo, descricao, setor, responsavel, prazo, status, proposta_id, hora, transicao_id, clientes(nome_principal, documento)')
+        .select('id, titulo, descricao, setor, responsavel, prazo, status, proposta_id, hora, transicao_id, posicao, clientes(nome_principal, documento)')
         .gt('prazo', HOJE_STR).neq('status','concluida')
         .order('prazo', { ascending:true }).limit(20);
       cacheProximos = data || [];
@@ -655,6 +656,8 @@
       const tarefas = tarefasDoDia(d);
       const rotinas = rotinasDoDia(d);
       const pend = tarefas.filter(t => t.status!=='concluida').sort((a,b)=>{
+        const ma = a.posicao ?? 1e9, mb = b.posicao ?? 1e9;
+        if (ma !== mb) return ma - mb;
         const pa=PRIO_ORDEM[norm(a.prioridade)] ?? 1, pb=PRIO_ORDEM[norm(b.prioridade)] ?? 1;
         if (pa!==pb) return pa-pb;
         return String(a.titulo||'').localeCompare(String(b.titulo||''));
@@ -671,7 +674,7 @@
       pend.forEach(t => {
         const cli = t.clientes?.nome_principal ? `<span>${esc(t.clientes.nome_principal)}</span><span class="sep">·</span>` : '';
         const resp = t.responsavel ? `<span>${esc(t.responsavel)}</span>` : '';
-        html += `<div class="ag-card ${classePrio(t.prioridade)}" data-taskid="${t.id}">
+        html += `<div class="ag-card ${classePrio(t.prioridade)}" data-taskid="${t.id}" draggable="true" title="Arraste pra reordenar">
           <div class="ag-card-main">
             <div class="ag-card-titulo">${esc(t.titulo)||'(sem título)'}${horaDaTarefa(t) ? `<span class="t-hora">🕐 ${horaDaTarefa(t)}</span>` : ''}${t.transicao_id ? '<span class="t-hora" title="tarefa de transição">🔁</span>' : ''}</div>
             <div class="ag-card-meta">${chip(t.setor)} ${cli} ${resp}</div>
@@ -777,6 +780,32 @@
 
     // ---- interações pós-render ----
     function ligarInteracoes(){
+      // arrastar pra ordenar (visão dia) — só visual: nada de prazo/status muda
+      let cartaoArrastado = null;
+      document.querySelectorAll('.ag-card[draggable="true"]').forEach(card => {
+        card.addEventListener('dragstart', e => {
+          cartaoArrastado = card;
+          card.classList.add('arrastando');
+          e.dataTransfer.effectAllowed = 'move';
+        });
+        card.addEventListener('dragover', e => {
+          e.preventDefault();
+          if (!cartaoArrastado || cartaoArrastado === card) return;
+          const r = card.getBoundingClientRect();
+          const antes = (e.clientY - r.top) < r.height / 2;
+          card.parentNode.insertBefore(cartaoArrastado, antes ? card : card.nextSibling);
+        });
+        card.addEventListener('dragend', async () => {
+          card.classList.remove('arrastando');
+          if (!cartaoArrastado) return;
+          cartaoArrastado = null;
+          const ids = [...document.querySelectorAll('.ag-card[draggable="true"]')].map(c => c.dataset.taskid);
+          try {
+            await Promise.all(ids.map((id, i) => supabase.from('tarefas').update({ posicao: (i + 1) * 10 }).eq('id', id)));
+            ids.forEach((id, i) => { const t = cacheTarefas.find(x => String(x.id) === String(id)); if (t) t.posicao = (i + 1) * 10; });
+          } catch (e) { console.warn('Falha ao salvar a ordem:', e); }
+        });
+      });
       // mudar prioridade (visão dia)
       document.querySelectorAll('.ag-prio').forEach(sel => {
         sel.addEventListener('change', async (e) => {
