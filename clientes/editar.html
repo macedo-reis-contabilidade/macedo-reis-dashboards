@@ -643,8 +643,7 @@
       </div>
     </div>
   </div>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
   <script type="module">
     import { supabase, getCurrentUser, signOut } from '../assets/js/supabase.js';
@@ -709,7 +708,6 @@
       if (cent) s += ' e ' + extensoNum(cent) + (cent === 1 ? ' centavo' : ' centavos');
       return s;
     }
-    const escXmlKit = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     function linhaSocioKit(s, rotulo){
       if (!s) return '';
       const faltas = [];
@@ -727,6 +725,236 @@
       document.getElementById('kitResumoSocios').innerHTML = linhaSocioKit(s1, 'Assinante 1') + linhaSocioKit(s2, 'Assinante 2')
         + '<div style="font-size:11px; color:#6E7787;">Dados importados do cadastro de sócios (fonte: contrato social) — pra corrigir, edite o sócio na seção Sócios.</div>';
     }
+
+    // ---------- geração dos PDFs do kit (padrão GOV.br: folga de assinatura) ----------
+    function kitNovoPdf(){
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+      return doc;
+    }
+    const KIT_MX = 56, KIT_MR = 539, KIT_TOPO = 56, KIT_FUNDO = 780;
+    function kitRodape(doc){
+      const n = doc.getNumberOfPages();
+      for (let i = 1; i <= n; i++) {
+        doc.setPage(i);
+        doc.setFont('helvetica', 'bold').setFontSize(8).setTextColor(91, 130, 166);
+        doc.text('Macedo & Reis Contabilidade Ltda', 297.5, 800, { align: 'center' });
+        doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(138, 147, 166);
+        doc.text('Rua Luiz Volkart, 35, 1º andar - Centro - Três Coroas/RS', 297.5, 811, { align: 'center' });
+        doc.text('(51) 9 9823-7182 - atendimento@macedoereis.com.br', 297.5, 822, { align: 'center' });
+      }
+    }
+    function kitPar(ctx, txt, opts = {}){
+      const { doc } = ctx;
+      const size = opts.size || 9.5;
+      const lh = opts.lh || size * 1.32;
+      doc.setFont('helvetica', opts.bold ? 'bold' : 'normal').setFontSize(size).setTextColor(30, 34, 42);
+      const linhas = doc.splitTextToSize(txt, KIT_MR - KIT_MX);
+      const alt = linhas.length * lh;
+      if (ctx.y + alt > KIT_FUNDO) { doc.addPage(); ctx.y = KIT_TOPO; }
+      linhas.forEach(l => {
+        if (opts.center) doc.text(l, 297.5, ctx.y, { align: 'center' });
+        else doc.text(l, KIT_MX, ctx.y);
+        ctx.y += lh;
+      });
+      ctx.y += (opts.gap ?? 6);
+    }
+    function kitAssinatura(ctx, nome, sub){
+      const { doc } = ctx;
+      const ESPACO_GOV = 96; // folga generosa pro carimbo do GOV.br
+      if (ctx.y + ESPACO_GOV + 40 > KIT_FUNDO) { doc.addPage(); ctx.y = KIT_TOPO; }
+      ctx.y += ESPACO_GOV;
+      doc.setDrawColor(30, 34, 42).setLineWidth(.8);
+      doc.line(160, ctx.y, 435, ctx.y);
+      ctx.y += 14;
+      doc.setFont('helvetica', 'bold').setFontSize(10).setTextColor(30, 34, 42);
+      doc.text(nome, 297.5, ctx.y, { align: 'center' });
+      ctx.y += 13;
+      if (sub) {
+        doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(90, 98, 112);
+        doc.text(sub, 297.5, ctx.y, { align: 'center' });
+        ctx.y += 12;
+      }
+    }
+    function kitTitulo(ctx, txt){
+      kitPar(ctx, txt, { bold: true, center: true, size: 12.5, gap: 14 });
+    }
+    function gerarContratoPdf(v){
+      const doc = kitNovoPdf();
+      const ctx = { doc, y: KIT_TOPO };
+      kitTitulo(ctx, 'CONTRATO DE PRESTAÇÃO DE SERVIÇOS CONTÁBEIS');
+      kitPar(ctx, `CONTRATANTE: ${v.RAZAO_SOCIAL}, com sede à ${v.ENDERECO_EMPRESA}, no município de ${v.CIDADE_UF}, inscrita no CNPJ sob o nº ${v.CNPJ}, doravante denominada CONTRATANTE, neste ato representada por seu(a) sócio(a) titular, Sr(a). ${v.SOCIO_NOME}, ${v.SOCIO_NACIONALIDADE}, ${v.SOCIO_PROFISSAO}, ${v.SOCIO_ESTADO_CIVIL}, nascido(a) em ${v.SOCIO_NASCIMENTO}, inscrito(a) no CPF sob nº ${v.SOCIO_CPF}, portador(a) da cédula de identidade nº ${v.SOCIO_RG}, residente e domiciliado(a) na ${v.SOCIO_ENDERECO}.`);
+      if (v.SOCIO2_QUALIFICACAO) kitPar(ctx, v.SOCIO2_QUALIFICACAO);
+      kitPar(ctx, 'CONTRATADA: DIEGO REIS CONTABILIDADE LTDA, CNPJ 19.208.576/0001-77, Registro no CRC/RS 006418/O, estabelecida à Rua Luiz Volkart, 35, 1º andar, Centro, na cidade de Três Coroas/RS, representada neste ato pelo Sr. Contabilista DIEGO REIS, inscrito no CPF nº 002.975.920-09, registrado no CRC nº 090018/O, doravante CONTRATADA.');
+      kitPar(ctx, 'Pelo presente instrumento particular, as partes acima, devidamente qualificadas, e em atendimento à Resolução 987 CFC, de 11/12/2003 (DOU, 15/12/2003), ajustam e contratam a prestação de serviços profissionais, segundo as cláusulas e condições adiante arroladas.', { gap: 10 });
+      const S = t => kitPar(ctx, t, { bold: true, size: 10, gap: 6 });
+      S('DO OBJETO');
+      kitPar(ctx, 'O objeto do presente consiste na prestação pela CONTRATADA à CONTRATANTE, na sua sede ou nos estabelecimentos filiais que mantém ou, ainda, na sede da CONTRATANTE, mediante acordo entre as partes, dos serviços profissionais de contabilidade abaixo descritos:');
+      S('1. DA ÁREA CONTÁBIL');
+      kitPar(ctx, '1.1 Classificação da contabilidade de acordo com normas e princípios contábeis vigentes na ITG 1000.');
+      kitPar(ctx, '1.2 Emissão de balancetes.');
+      kitPar(ctx, '1.3 Elaboração de Balanço anual e demais Demonstrações Contábeis obrigatórias, conforme ITG 1000.');
+      S('2. DA ÁREA FISCAL');
+      kitPar(ctx, '2.1 Orientação dos dispositivos legais vigentes, sejam federais, estaduais ou municipais.');
+      kitPar(ctx, '2.2 Escrituração dos Registros Fiscais de Entrada, Saída, IPI e ISSQN.');
+      kitPar(ctx, `2.3 Apuração de Impostos – (${v.REGIME}).`);
+      S('3. DA ÁREA TRABALHISTA E PREVIDENCIÁRIA');
+      kitPar(ctx, '3.1 Registro de funcionário(s). 3.2 Cumprimento de declarações anuais e mensais. 3.3 Geração, transmissão e entrega da Folha de pagamento. 3.4 Geração, transmissão e entrega da guia de FGTS. 3.5 Geração, transmissão e entrega da guia de INSS e IRRF. 3.6 Geração, transmissão e entrega de aviso(s) e recibo(s) de férias. 3.7 Entrega da documentação de Rescisões (incluindo requerimento para Seguro Desemprego). 3.8 Termo de responsabilidade de concessão do salário família. 3.9 Comprovante de rendimento (empregados e empregadores).');
+      S('4. ENQUADRAMENTO TRIBUTÁRIO');
+      kitPar(ctx, 'A CONTRATADA promoverá todos os esclarecimentos e disponibilizará todos os dados e informações necessários para que a CONTRATANTE promova a melhor decisão no que se refere ao seu enquadramento tributário e fiscal, sempre com base na movimentação contábil e fiscal.');
+      S('5. DAS RESPONSABILIDADES');
+      kitPar(ctx, 'Os trabalhos necessários ao cumprimento do objeto do presente serão elaborados na sede da CONTRATADA, ou em uma de suas filiais, ou ainda nas dependências da CONTRATANTE, conforme acordo entre as partes, respeitando o pacote contratado. Destarte, as responsabilidades das partes são as que seguem:');
+      S('6. DAS RESPONSABILIDADES DA CONTRATANTE');
+      kitPar(ctx, '6.1 Toda a documentação, dados e informações necessários à execução dos serviços da CONTRATADA deverão ser disponibilizados pelo CONTRATANTE, em tempo hábil, não cabendo à CONTRATADA nenhuma responsabilidade em caso de serem recebidos intempestivamente, nos seguintes prazos:');
+      kitPar(ctx, '6.2 Despesas contábeis, extratos bancários, inclusive contas de aplicações financeiras, extratos de empréstimos bancários, comprovantes de depósitos, cópias de cheques identificando os respectivos pagamentos, pagamento a fornecedores, recebimentos de clientes, comprovantes de débito e de crédito em conta corrente, contratos de crédito, demais despesas operacionais, receitas extra operacionais, bem como todos os atos e fatos praticados pela empresa, devem ser enviados até o 4º (quarto) dia útil do mês subsequente ao de referência, respeitando o pacote contratado.');
+      kitPar(ctx, '6.3 Notas fiscais de entrada, de saída e de serviço, bem como comunicação de eventual cancelamento das mesmas, devem ser enviadas mensalmente, sendo que as relativas à última semana do mês, no 5º (quinto) dia útil do mês seguinte.');
+      kitPar(ctx, '6.4 Presume-se que a documentação fornecida corresponde à integralidade da documentação da empresa para fins contábeis, sendo exclusivamente de responsabilidade da CONTRATANTE qualquer omissão e seus reflexos.');
+      S('7. DAS RESPONSABILIDADES DA CONTRATADA');
+      kitPar(ctx, '7.1 A CONTRATADA compromete-se a cumprir todos os prazos estabelecidos na legislação de regência quanto aos serviços contratados, especificando-se, porém, os prazos abaixo:');
+      kitPar(ctx, '7.2 Poderá também, em decorrência do disposto na legislação em vigor, ficar a CONTRATADA dispensada da confecção e apresentação de balancetes e balanços, nas hipóteses em que as empresas optarem por sistemas de tributação que contemplem esta faculdade em sua normatização.');
+      kitPar(ctx, '7.3 Quando a CONTRATANTE não cumprir o disposto no item 6.2 (e seus subitens), hipóteses em que os serviços somente terão seus prazos de execução contados a partir da contemplação da documentação necessária à elaboração dos relatórios legais, principalmente o livro de inventários, cuja execução é de responsabilidade da CONTRATANTE.');
+      kitPar(ctx, '7.4 A CONTRATADA não se responsabiliza por ônus e multas se os prazos compreendidos na cláusula 6.2 não forem cumpridos pela contratante.');
+      kitPar(ctx, '7.5 A CONTRATADA assume a responsabilidade por eventuais multas fiscais decorrentes de imperfeições e/ou atraso nos serviços ora contratados, excetuando-se os ocasionados por caso fortuito ou força maior, assim definidos em lei, depois de esgotados os procedimentos de defesa administrativa, quando a CONTRATANTE tenha cumprido com as suas obrigações e prazos estabelecidos no presente contrato.');
+      kitPar(ctx, '7.6 Não se incluem nas responsabilidades assumidas pela CONTRATADA os juros e correção monetária de qualquer natureza, visto que não se trata de apenamento pela mora, mas sim recomposição e remuneração do valor não recolhido, bem como o valor original de impostos ou taxas.');
+      kitPar(ctx, '7.7 A CONTRATADA não assume nenhuma responsabilidade pelas consequências de informações, declarações ou documentação inidônea ou incompleta que lhe for apresentada, bem como por omissões próprias da CONTRATANTE, ou por recebimento intempestivo de documentações e informações, ou decorrentes do desrespeito à orientação prestada.');
+      kitPar(ctx, '7.8 Obriga-se a CONTRATADA a fornecer à CONTRATANTE, dentro do horário normal de expediente, de segunda a sexta das 8h às 12h e das 13h30min às 18h18min, todas as informações relativas ao andamento dos serviços ora contratados.');
+      kitPar(ctx, '7.9 A CONTRATADA cientificará a CONTRATANTE verbalmente ou por escrito sempre que tomar conhecimento de fato ou eventual omissão de documentos da qual tenha conhecimento pela análise e conferência da documentação recebida, podendo referida ciência ser realizada via e-mail e mediante disponibilização de relatório de conferência após conciliação da escrita contábil ou fiscal.');
+      kitPar(ctx, '7.10 A CONTRATADA poderá terceirizar parte dos serviços e/ou firmar parcerias sob sua responsabilidade técnica.');
+      kitPar(ctx, '7.11 A CONTRATADA desempenhará os serviços enumerados na cláusula 1ª com todo o zelo, diligência e honestidade, observada a legislação vigente, resguardando os interesses da CONTRATANTE, sem prejuízo da dignidade e independência profissional, sujeitando-se ainda às normas do Código de Ética do Contabilista, aprovado pela Resolução CFC 803/96, alterada pela Resolução nº 1.307/10 do Conselho Federal de Contabilidade.');
+      kitPar(ctx, '7.12 Responsabilizar-se-á a CONTRATADA por todos os prepostos que atuarem nos serviços ora contratados, indenizando a CONTRATANTE em caso de culpa ou dolo.');
+      kitPar(ctx, '7.13 Responsabilizar-se-á a CONTRATADA por todos os documentos a ela entregues pela CONTRATANTE, enquanto permanecerem sob sua guarda para a consecução dos serviços pactuados, se tal ocorrer por ação ou omissão de seus prepostos ou qualquer pessoa que a eles tenha acesso, respondendo pelo mau uso, perda, extravio ou inutilização, salvo comprovado caso fortuito ou força maior.');
+      S('8. DA REMUNERAÇÃO');
+      kitPar(ctx, 'Para execução dos serviços objeto do presente contrato, a CONTRATANTE pagará à CONTRATADA honorários profissionais mensais, no valor inicial e provisório conforme composto abaixo.');
+      S('9. DOS HONORÁRIOS MENSAIS');
+      kitPar(ctx, `9.1 Honorários profissionais correspondentes a R$ ${v.HONORARIO_VALOR} (${v.HONORARIO_EXTENSO}) mensais, referente aos serviços constantes nas cláusulas 1 a 3.`);
+      kitPar(ctx, '9.2 Caso a CONTRATANTE passe à condição de inativa (sem movimentação financeira ou operacional), será acordado outro valor de honorário, de acordo com as obrigações acessórias que devem ser cumpridas.');
+      S('10. DA COBRANÇA');
+      kitPar(ctx, '10.1 Os honorários serão cobrados pela via bancária ou em carteira.');
+      kitPar(ctx, `10.2 O prazo de adimplemento dos honorários mensais, previstos na cláusula 9.1, é até o dia ${v.DIA_VENCIMENTO} do mês seguinte ao de referência.`);
+      kitPar(ctx, '10.3 Além das medidas administrativas e judiciais pertinentes, o atraso no pagamento de honorários sujeitará a contratante à multa de 2% (dois por cento) sobre o valor a ser adimplido, sem prejudicar a incidência de juros moratórios e juros compensatórios, considerados, ambos, individualmente, à razão de 1% (um por cento) ao mês, ou fração, e correção monetária a critério da CONTRATADA.');
+      kitPar(ctx, '10.4 A CONTRATADA poderá, a seu exclusivo critério, conceder descontos sobre o valor dos honorários pactuados no item acima, de acordo com o volume e complexidade de trabalho demandado pela CONTRATANTE, por períodos e valores que a mesma julgar suficientes e compatíveis com os serviços desenvolvidos a cada mês da prestação, não representando, qualquer desconto ou abatimento concedido, novação aos valores determinados no presente instrumento.');
+      kitPar(ctx, '10.5 No caso de rescisão do contrato no decorrer do exercício, a parcela adicional será devida proporcionalmente aos meses da avença, considerando-se como mês a fração igual ou superior a 15 (quinze) dias.');
+      kitPar(ctx, '10.6 Caso o presente envolva recuperação de serviços não realizados/atrasados, a mensalidade adicional será devida desde o primeiro mês de atualização.');
+      S('11. DO REAJUSTE DOS HONORÁRIOS');
+      kitPar(ctx, '11.1 Os honorários serão reajustados anualmente, no mês de janeiro, segundo a variação da taxa SELIC ou IPCA no período (a que for maior), ou outro índice oficial que venha a substituí-lo.');
+      kitPar(ctx, '11.2 Os valores ajustados e propostos no presente instrumento deverão ser revistos sempre que ocorrer: 1) o surgimento de novas obrigações acessórias e/ou significativa mudança do procedimento de trabalho da contratada em razão de alterações legislativas; 2) considerável aumento do volume de trabalho.');
+      S('12. DAS DESPESAS EXTRAS');
+      kitPar(ctx, '12.1 A CONTRATANTE reembolsará à CONTRATADA o custo de todos os materiais utilizados na execução dos serviços ora ajustados, tais como: pastas, fotocópias, autenticações, reconhecimento de firmas, custas, emolumentos e taxas exigidas pelos serviços públicos, carimbos, entre outros, sempre que utilizados e mediante recibo discriminando acompanhamento dos respectivos comprovantes de desembolso.');
+      kitPar(ctx, '12.2 A CONTRATADA poderá, a seu exclusivo critério, dispensar a CONTRATANTE do pagamento das despesas extras previstas no item anterior, as quais serão cobradas na hipótese dos custos envolvidos na prestação de serviços não serem acobertados pelos honorários previstos.');
+      S('13. DOS SERVIÇOS EXTRAORDINÁRIOS E OBRIGAÇÕES ACESSÓRIAS');
+      kitPar(ctx, '13.1 Os serviços extraordinários e obrigações acessórias não pactuadas neste instrumento, descritos de forma exemplificativa e não exaustiva, tais como: hora técnica para serviços extraordinários, constituição ou alteração contratual, distrato social, Certidões Negativas do INSS, FGTS, ICMS Municipais e Federais, Certidão de Falência ou Protesto, parcelamentos de débitos, índices para licitações, confecção de cadastros e preenchimento de proposta de financiamento, requerimento de benefício junto ao INSS, retrabalhos em decorrência da CONTRATANTE, elaboração de contratos, declaração IRPF, atas anuais, impugnações e defesas administrativas, bem como demais serviços não contratados nos anexos deste contrato e eventuais obrigatoriedades criadas por órgãos públicos ao longo da vigência do contrato, serão cobrados em conformidade com a tabela referencial de honorários do SESCON/RS, em consonância com a Resolução n. 806/96 do CFC.');
+      kitPar(ctx, '13.2 Em se tratando de matéria ligada a Segurança e Medicina do Trabalho, não estão contempladas no presente contrato, entre outros, a realização e a manutenção do PCMSO (Programa de Controle Médico e Saúde Ocupacional), do PPRA (Programa de Prevenção de Riscos Ambientais), do LTCAT (Laudo Técnico de Condições Ambientais de Trabalho), do PPCI (Programa de Prevenção e Controle de Incêndio), ANVISA, licenças ambientais, cadastro e renovação do SICAF.');
+      kitPar(ctx, '13.3 A CONTRATANTE deverá buscar profissional qualificado e capacitado para atender as referidas normas de segurança (acima citadas), cabendo à contratada, sempre que solicitada, prestar informações sob sua responsabilidade técnica.');
+      kitPar(ctx, '13.4 Na competência outubro, vencimento novembro, haverá cobrança de 1 (um) honorário adicional anual, em virtude do fechamento de balanço, declarações jurídicas anuais, elaboração da 1ª e 2ª parcelas do 13º salário dos funcionários, apuração de estoque, entre outros serviços.');
+      S('14. DA SUSPENSÃO DOS SERVIÇOS');
+      kitPar(ctx, '14.1 A falta de pagamento de qualquer parcela de honorários facultará à CONTRATADA suspender imediatamente a execução dos serviços ora pactuados, bem como considerar rescindido o presente, independentemente de notificação judicial ou extrajudicial, sem prejuízo do previsto no item 11.');
+      S('15. DA RESPONSABILIDADE DOS SÓCIOS');
+      kitPar(ctx, '15.1 O(s) sócio(s) da CONTRATANTE assina(m) o presente na condição de fiador(es) solidário(s) e principal(is) pagador(es) em relação a todas as obrigações contratuais decorrentes.');
+      S('16. DA CONFIDENCIALIDADE');
+      kitPar(ctx, '16.1 A CONTRATADA, atendendo a legislação profissional e a legislação fiscal vigente, manterá confidencialidade acerca dos fatos e das práticas que vier a tomar conhecimento pelo trabalho que vier a desempenhar à CONTRATANTE em razão de sua atividade profissional.');
+      kitPar(ctx, '16.2 A CONTRATADA não poderá utilizar o nome da CONTRATANTE sem a prévia e expressa autorização da mesma.');
+      S('17. DA PROTEÇÃO DE DADOS – LGPD');
+      kitPar(ctx, '17.1 As Partes, por si, por seus representantes, colaboradores e por quaisquer terceiros que por sua determinação participem da prestação de serviços objeto desta relação, concordam e comprometem-se a atuar de modo a proteger e a garantir o tratamento adequado dos dados pessoais a que tiverem acesso durante a relação contratual.');
+      kitPar(ctx, '17.2 A CONTRATANTE e a CONTRATADA declaram-se cientes dos direitos, obrigações e penalidades aplicáveis constantes da Lei Geral de Proteção de Dados Pessoais (Lei 13.709/2018), e obrigam-se a assumir e adotar todas as medidas necessárias em conformidade com as disposições da Lei nº 13.709/2018 (LGPD).');
+      kitPar(ctx, '17.3 Cada Parte será individualmente responsável pelo cumprimento de suas obrigações decorrentes da LGPD e das regulamentações emitidas posteriormente pela autoridade reguladora competente.');
+      kitPar(ctx, '17.4 Cada uma das Partes deverá garantir que quaisquer dados pessoais que forneça à outra Parte tenham sido obtidos de acordo com as regras previstas na LGPD, possuindo todas as autorizações e avisos necessários para permitir a transferência legal de dados pessoais, sendo que o fornecimento e compartilhamento de dados pessoais devem ocorrer única e estritamente para cumprimento das finalidades objeto da presente relação contratual e pelo tempo necessário para o cumprimento das suas obrigações e para a adequada execução do objeto contratual, ou ainda com fundamento em outra base legal válida e específica.');
+      kitPar(ctx, '17.5 As partes são responsáveis, de forma individual e isolada, a adotarem as medidas de segurança, técnicas e administrativas, necessárias a proteger os dados pessoais de acessos não autorizados e de situações acidentais ou ilícitas de destruição, perda, alteração, comunicação ou qualquer forma de tratamento inadequado ou ilícito.');
+      kitPar(ctx, '17.6 O presente instrumento não modifica ou transfere a propriedade ou o controle sobre os dados pessoais disponibilizados, obtidos ou coletados no âmbito deste instrumento, que permanecerão sendo de propriedade do seu proprietário originário.');
+      kitPar(ctx, '17.7 Cada uma das Partes obriga-se a comunicar à outra, no prazo de até 02 dias úteis, qualquer descumprimento das obrigações previstas neste instrumento, evento adverso ou de risco relevante que possa acarretar risco ou dano relevante à outra Parte, aos dados pessoais e/ou aos seus titulares, informando ao menos a natureza e titularidade dos dados pessoais atingidos bem como as medidas que foram ou que serão adotadas para solucionar ou reduzir os efeitos dos danos ocorridos.');
+      kitPar(ctx, '17.8 As partes se comprometem, nas hipóteses de rescisão contratual, por solicitação da outra Parte ou determinação judicial, a devolver ou eliminar, conforme a situação, todos os dados pessoais fornecidos, obtidos ou coletados no âmbito da relação contratual, exceto nos casos em que haja base legal válida e hierarquicamente superior que justifique a manutenção de determinados dados pessoais.');
+      kitPar(ctx, '17.9 As partes comprometem-se ao fiel cumprimento do presente contrato de acordo com o que dispõe a LGPD, em especial respeitando os princípios da finalidade, adequação, transparência, livre acesso, segurança, prevenção e não discriminação no tratamento dos dados.');
+      S('18. DA VIGÊNCIA E RESCISÃO');
+      kitPar(ctx, '18.1 Transposto o termo supramencionado, o contrato passará a vigorar por prazo indeterminado, podendo ser rescindido por quaisquer das partes mediante prévia comunicação, por escrito, e com antecedência mínima de 30 (trinta) dias, ou indenização correspondente a 1 (um) mês de honorário, pela parte que romper o contrato sem aviso prévio.');
+      kitPar(ctx, '18.2 No caso de rescisão por parte da CONTRATANTE, a mesma deverá informar de imediato à CONTRATADA a qual profissional deverão ser encaminhados os documentos relativos aos serviços realizados e que, porventura, ainda não estejam encerrados. Na inércia da CONTRATANTE por mais de 30 (trinta) dias, os documentos relativos aos serviços prestados serão encaminhados ao seu endereço comercial.');
+      kitPar(ctx, '18.3 No caso de rescisão e durante o prazo do pré-aviso, a dispensa pela CONTRATANTE em relação à execução de quaisquer serviços, seja qual for a razão, deverá ser feita por escrito, não a desobrigando do pagamento dos honorários integrais até o termo final do contrato.');
+      kitPar(ctx, '18.4 A falência ou a concordata da CONTRATANTE facultará a rescisão do presente pela CONTRATADA, independente de notificação judicial ou extrajudicial, não estando incluídos nos serviços ora pactuados a elaboração das peças contábeis.');
+      kitPar(ctx, '18.5 Considerar-se-á rescindido o presente contrato, independentemente de notificação judicial ou extrajudicial, caso qualquer das partes CONTRATANTES venha a infringir qualquer cláusula.');
+      kitPar(ctx, '18.6 Quando da rescisão do contrato, a CONTRATADA: a) deverá fornecer ao contratante comprovante de entrega de todas as obrigações que competem à CONTRATADA em relação à empresa.');
+      kitPar(ctx, '18.7 Quando da rescisão do contrato, a CONTRATANTE: 1) deverá promover todos os procedimentos de cancelamento de qualquer procuração eletrônica que vier a ter concedido à CONTRATADA; 2) definirá se a CONTRATADA promoverá eventual entrega de obrigações acessórias a vencer e entregar em períodos futuros, eis que, neste caso, ainda deverá ser mantida a procuração eletrônica para fins de validação e entrega do arquivo digital junto aos órgãos governamentais de estilo.');
+      kitPar(ctx, '18.8 Operada a rescisão, a CONTRATANTE terá o prazo de 30 (trinta) dias para efetuar a retirada de toda a documentação junto à CONTRATADA, sob a pena de, ultrapassando este prazo, se submeter à cobrança de taxa de permanência mensal, equivalente a 20% (vinte por cento) sobre o valor atualizado da última mensalidade, quando da vigência do contrato.');
+      kitPar(ctx, '18.9 Não havendo a retirada dos documentos e não havendo o pagamento da taxa de permanência na forma como estabelecido no item 18.8, ficará a CONTRATADA, independentemente de notificação da CONTRATANTE, isenta de qualquer responsabilidade em relação à guarda dos documentos.');
+      kitPar(ctx, '18.10 A critério da CONTRATADA, poderá utilizar-se de quaisquer meios judiciais ou extrajudiciais, contra a CONTRATANTE ou na pessoa de qualquer de seus sócios, para fins de formalizar a devolução dos documentos não retirados, depois de extinto o contrato.');
+      S('19. DAS DISPOSIÇÕES GERAIS');
+      kitPar(ctx, '19.1 Eventual tolerância da CONTRATADA acerca do descumprimento das obrigações da contratante constitui-se mera liberalidade da CONTRATADA, não implicando em novação, renúncia ou repactuação do presente instrumento.');
+      kitPar(ctx, '19.2 De igual sorte, eventual alteração dos direitos e obrigações deste contrato somente será válida se pactuada de forma expressa e por escrito entre as partes.');
+      kitPar(ctx, '19.3 O presente instrumento obriga as partes, bem como seus herdeiros ou legais sucessores, e substitui todos e quaisquer acordos, escritos ou não, e de qualquer forma instrumentalizados, anteriormente havidos entre as partes e que tenham relação ao objeto deste contrato.');
+      kitPar(ctx, '19.4 O presente instrumento tem caráter de consolidação do contrato de prestação de serviços contábeis primitivo, anteriormente firmado entre as partes, mantendo as relações entre CONTRATANTE e CONTRATADA reguladas de acordo com a legislação em vigor e revogando expressamente as cláusulas e condições contidas no instrumento anterior, possuindo eficácia plena a partir da data de sua assinatura.');
+      S('20. DO FORO CONTRATUAL');
+      kitPar(ctx, '20.1 As questões emergentes do presente contrato serão resolvidas em conformidade com a legislação civil aplicável à espécie, ficando eleito o foro da Comarca de Três Coroas/RS para dirimi-las, renunciando as partes a qualquer outro, por mais privilegiado que seja.');
+      kitPar(ctx, '20.2 E, por estarem de pleno acordo, justas e contratadas, após terem LIDO e ACEITO o presente Contrato, nada tendo a OPOR ou RESSALVAR, as Partes firmam o presente confirmando por meio da assinatura eletrônica.', { gap: 12 });
+      kitPar(ctx, `Três Coroas, ${v.DATA_EXTENSO}.`);
+      kitAssinatura(ctx, 'DIEGO REIS CONTABILIDADE LTDA', 'CONTRATADA — Diego Reis');
+      kitAssinatura(ctx, v.SOCIO_NOME, `${v.RAZAO_SOCIAL} — CONTRATANTE`);
+      if (v.ASS2_NOME) kitAssinatura(ctx, v.ASS2_NOME, `${v.RAZAO_SOCIAL} — CONTRATANTE`);
+      kitRodape(doc);
+      doc.save(`Contrato de Prestação de Serviços - ${v.RAZAO_SOCIAL}.pdf`);
+    }
+    function gerarCartaPdf(v){
+      const doc = kitNovoPdf();
+      const ctx = { doc, y: KIT_TOPO };
+      kitTitulo(ctx, 'CARTA DE RESPONSABILIDADE DA ADMINISTRAÇÃO');
+      kitPar(ctx, `Três Coroas, ${v.DATA_EXTENSO}.`, { gap: 12 });
+      kitPar(ctx, 'À EMPRESA DE SERVIÇOS CONTÁBEIS DIEGO REIS CONTABILIDADE LTDA', { gap: 2 });
+      kitPar(ctx, 'CRC N.º RS-006418/O', { gap: 2 });
+      kitPar(ctx, 'ENDEREÇO: RUA LUIZ VOLKART, Nº 35, ANDAR 1, CENTRO.', { gap: 2 });
+      kitPar(ctx, 'TRÊS COROAS - RS - 95660-000.', { gap: 12 });
+      kitPar(ctx, 'Prezados Senhores:', { gap: 10 });
+      kitPar(ctx, `Declaro para os devidos fins, como administrador(a) e responsável legal da empresa ${v.RAZAO_SOCIAL}, CNPJ ${v.CNPJ}, que as informações fornecidas a Vossas Senhorias para escrituração e elaboração das demonstrações contábeis, obrigações acessórias, apuração de tributos e arquivos eletrônicos exigidos pela fiscalização federal, estadual, municipal, trabalhista e previdenciária são fidedignas. Do mesmo modo, declaro que recebi uma cópia, na data da assinatura deste contrato, contendo a Relação de Documentos que devem ser enviados/entregues mensalmente ao escritório, assim como Orientações e Rotinas a serem praticadas, para o andamento adequado do trabalho.`);
+      kitPar(ctx, 'Também declaro:', { gap: 6 });
+      kitPar(ctx, '(a) que os controles internos adotados pela nossa empresa são de responsabilidade da administração e estão adequados ao tipo de atividade e volume de transações;');
+      kitPar(ctx, '(b) que não realizamos nenhum tipo de operação que possa ser considerada ilegal, frente à legislação vigente;');
+      kitPar(ctx, '(c) que todos os documentos e/ou informações que geramos e recebemos de nossos fornecedores, encaminhados para a elaboração da escrituração contábil e demais serviços contratados, estão revestidos de total idoneidade;');
+      kitPar(ctx, '(d) que os estoques registrados em conta própria foram por nós contados e levantados fisicamente e avaliados de acordo com a política de mensuração de estoque determinada pela empresa e perfazem a realidade do período encerrado;');
+      kitPar(ctx, '(e) que as informações registradas no sistema de gestão e controle interno são controladas e validadas com documentação suporte adequada, sendo de nossa inteira responsabilidade todo o conteúdo do banco de dados e arquivos eletrônicos gerados.');
+      kitPar(ctx, 'Além disso, declaramos que não existem quaisquer fatos ocorridos no período base que afetam ou possam afetar as demonstrações contábeis ou, ainda, a continuidade das operações da empresa.');
+      kitPar(ctx, 'Confirmo que não houve:', { gap: 6 });
+      kitPar(ctx, '(a) fraude envolvendo a administração ou empregados em cargos de responsabilidade ou confiança;');
+      kitPar(ctx, '(b) fraude envolvendo terceiros que poderiam ter efeito material nas demonstrações contábeis;');
+      kitPar(ctx, '(c) violação de leis, normas ou regulamentos cujos efeitos deveriam ser considerados para divulgação nas demonstrações contábeis, ou mesmo dar origem ao registro de provisão para contingências passivas.');
+      kitPar(ctx, 'Atenciosamente,');
+      kitAssinatura(ctx, v.SOCIO_NOME, v.RAZAO_SOCIAL);
+      if (v.ASS2_NOME) kitAssinatura(ctx, v.ASS2_NOME, v.RAZAO_SOCIAL);
+      doc.addPage(); ctx.y = KIT_TOPO;
+      kitTitulo(ctx, 'RELAÇÃO DE DOCUMENTOS MENSAIS');
+      kitPar(ctx, 'Visando melhorar nosso processo administrativo e os serviços prestados por este escritório, remetemos instruções com relação à sua movimentação mensal. Estamos encaminhando uma relação dos principais documentos contábeis da empresa, bem como orientações e informações úteis:');
+      kitPar(ctx, 'Documentação mensal para envio ao escritório até dia 05', { bold: true, gap: 2 });
+      kitPar(ctx, '(Ex.: documentos de janeiro, entregar até 05 de fevereiro)', { gap: 10 });
+      kitPar(ctx, 'Será entregue ao escritório, para desenvolvimento do Balancete e lançamentos nos livros fiscais e contábeis, para posterior entrega dos relatórios obrigatórios aos respectivos órgãos públicos, a seguinte documentação, referente ao mês anterior:');
+      kitPar(ctx, '• Notas Fiscais dos Fornecedores / Duplicatas dos pagamentos;');
+      kitPar(ctx, '• Notas fiscais de despesas com material de escritório, manutenção de equipamento, aluguel, imobilizado (bens adquiridos), despesas com reformas, água, luz, telefone, internet — enfim, todas as despesas incorridas durante o mês;');
+      kitPar(ctx, '• Recibos de Salário (pró-labore e funcionários), devidamente assinados, Recibo de Aquisição do Vale-Transporte, Nota Fiscal do pagamento das Refeições, quando houver;');
+      kitPar(ctx, '• Pagamento de impostos: FGTS, INSS, SIMPLES NACIONAL, DARFs, ISS, Sindicatos, entre outros;');
+      kitPar(ctx, '• Movimentação bancária: extratos bancários PDF e OFX (conta corrente e aplicação/poupança), empréstimos e/ou financiamentos em nome da empresa (cópia dos contratos);');
+      kitPar(ctx, '• Se houver vendas a prazo, enviar relação de pagamentos dos clientes.');
+      kitPar(ctx, 'Fica combinado o dia 5 de cada mês para a entrega desta documentação; caso contrário, será responsabilidade da CONTRATANTE a entrega fora do prazo dos relatórios, declarações, impostos e multas.');
+      kitPar(ctx, 'Anualmente (no início de JANEIRO), ou sempre que solicitada, a empresa informará seu estoque físico (Balanço), referente a 31 de DEZEMBRO passado.');
+      kitPar(ctx, 'Será de responsabilidade da empresa:', { bold: true, gap: 6 });
+      kitPar(ctx, '• A reprodução dos formulários gerenciais e administrativos;');
+      kitPar(ctx, '• O controle de Contratos de Experiência de seus empregados;');
+      kitPar(ctx, '• O controle de Férias de seus empregados;');
+      kitPar(ctx, '• Os exames médicos sempre atualizados — o Anual (ocupacional), além do admissional e demissional, quando for o caso.');
+      kitPar(ctx, 'Atenção:', { bold: true, gap: 6 });
+      kitPar(ctx, '• As Fichas Registro dos funcionários devem estar sempre na empresa;');
+      kitPar(ctx, '• O prazo legal para pagamento de salários é o 5º dia útil, contando com o sábado;');
+      kitPar(ctx, '• As CTPS serão enviadas ao escritório, a fim de serem atualizadas, sempre que ocorrer alguma alteração.');
+      kitRodape(doc);
+      doc.save(`Carta de Responsabilidade - ${v.RAZAO_SOCIAL}.pdf`);
+    }
+    function gerarTermoPdf(v){
+      const doc = kitNovoPdf();
+      const ctx = { doc, y: KIT_TOPO };
+      kitTitulo(ctx, 'TERMO DE AUTORIZAÇÃO DE USO DE LOGOMARCA');
+      kitPar(ctx, `Eu, ${v.SOCIO_NOME}, ${v.SOCIO_NACIONALIDADE}, portador(a) do CPF nº ${v.SOCIO_CPF} e RG nº ${v.SOCIO_RG}, residente e domiciliado(a) na ${v.SOCIO_ENDERECO}, AUTORIZO o uso da logomarca da minha empresa ${v.RAZAO_SOCIAL}, com sede à ${v.ENDERECO_EMPRESA}, no município de ${v.CIDADE_UF}, inscrita no CNPJ sob o nº ${v.CNPJ}, em todo e qualquer material, incluindo fotos e documentos, para ser utilizada em campanhas de divulgação, sem que haja compensação financeira pela utilização da minha logomarca, para a empresa DIEGO REIS CONTABILIDADE LTDA, inscrita no CNPJ nº 19.208.576/0001-77, estabelecida na Rua Luís Volkart, nº 35, 1º andar, Bairro Centro, Três Coroas/RS.`, { size: 10 });
+      kitPar(ctx, 'A presente autorização é concedida a título gratuito, abrangendo o uso da imagem acima mencionada em todo o território nacional, das seguintes formas: (I) home-page; (II) cartazes; (III) redes sociais; (IV) divulgações em geral.', { size: 10 });
+      kitPar(ctx, 'Esta autorização será válida durante todo o período da minha vinculação com a empresa. Caso haja encerramento do vínculo, as imagens já utilizadas em materiais, campanhas ou quaisquer outros meios poderão ser mantidas pela empresa, não sendo necessário seu apagamento ou retirada. Contudo, fica expressamente vedada a utilização de minha logomarca em novos materiais após o encerramento.', { size: 10 });
+      kitPar(ctx, 'Nada mais a autorizar.', { size: 10, gap: 14 });
+      kitPar(ctx, `Três Coroas, ${v.DATA_EXTENSO}.`, { size: 10 });
+      kitAssinatura(ctx, 'DIEGO REIS CONTABILIDADE LTDA', 'Diego Reis');
+      kitAssinatura(ctx, v.SOCIO_NOME, v.RAZAO_SOCIAL);
+      kitRodape(doc);
+      doc.save(`Autorização de Logomarca - ${v.RAZAO_SOCIAL}.pdf`);
+    }
+
     document.getElementById('btnKitBoasVindas').addEventListener('click', () => {
       if (!socios.length) { alert('Cadastre ao menos um sócio antes de gerar o kit.'); return; }
       const sel = document.getElementById('kitSocio');
@@ -795,21 +1023,13 @@
       valores.ASS2_SUB = s2 ? (cliente.nome_principal || '') : '';
       msg.style.color = '#8A93A6'; msg.textContent = 'Gerando…';
       try {
-        const docs = [];
-        if (querContrato) docs.push(['contrato-prestacao.docx', 'Contrato de Prestação de Serviços']);
-        if (querCarta) docs.push(['carta-responsabilidade.docx', 'Carta de Responsabilidade']);
-        if (querTermo) docs.push(['autorizacao-logomarca.docx', 'Autorização de Logomarca']);
-        for (const [arq, titulo] of docs) {
-          const buf = await (await fetch('../assets/modelos/' + arq)).arrayBuffer();
-          const zip = await JSZip.loadAsync(buf);
-          let xml = await zip.file('word/document.xml').async('string');
-          Object.entries(valores).forEach(([k, v]) => { xml = xml.split('{{' + k + '}}').join(escXmlKit(v)); });
-          zip.file('word/document.xml', xml);
-          const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
-          saveAs(blob, `${titulo} - ${cliente.nome_principal}.docx`);
-        }
+        if (!window.jspdf) { msg.style.color = '#D08770'; msg.textContent = 'Gerador de PDF ainda carregando — tenta de novo em 2 segundos.'; return; }
+        let qtd = 0;
+        if (querContrato) { gerarContratoPdf(valores); qtd++; }
+        if (querCarta) { gerarCartaPdf(valores); qtd++; }
+        if (querTermo) { gerarTermoPdf(valores); qtd++; }
         msg.style.color = '#7FBF8E';
-        msg.textContent = `✓ ${docs.length} documento${docs.length > 1 ? 's' : ''} gerado${docs.length > 1 ? 's' : ''} — confere, assina e sobe na pasta do cliente.`;
+        msg.textContent = `✓ ${qtd} PDF${qtd > 1 ? 's' : ''} gerado${qtd > 1 ? 's' : ''} — confere, assina no GOV.br e sobe na pasta do cliente.`;
       } catch (e) {
         msg.style.color = '#D08770'; msg.textContent = 'Erro: ' + e.message;
       }
