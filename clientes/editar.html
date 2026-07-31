@@ -481,6 +481,16 @@
           </div>
         </section>
 
+        <section class="form-section">
+          <div class="form-section-head">
+            <h2>Documentos de boas-vindas</h2>
+            <span class="form-section-sub">Contrato, carta de responsabilidade e autorização de logomarca preenchidos com os dados deste cadastro</span>
+          </div>
+          <div class="form-grid"><div class="fg-col-12">
+            <button id="btnKitBoasVindas" class="btn" type="button">🤝 Gerar kit de boas-vindas</button>
+          </div></div>
+        </section>
+
         <div class="form-actions">
           <a href="index.html" class="btn btn-ghost">Cancelar</a>
           <button type="button" class="btn btn-primary" id="btnSalvarBottom">Salvar alterações</button>
@@ -611,6 +621,46 @@
     </div>
   </div>
 
+
+  <!-- kit de boas-vindas -->
+  <div id="ovKit" style="display:none; position:fixed; inset:0; background:rgba(6,10,16,.82); z-index:80; align-items:flex-start; justify-content:center; overflow:auto; padding:36px 16px;">
+    <div style="background:#10161F; border:1px solid rgba(255,255,255,.12); border-radius:16px; padding:20px 24px; max-width:620px; width:100%;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+        <h3 style="margin:0; font-size:15px; color:#52B4C6; text-transform:uppercase; letter-spacing:.05em;">🤝 Kit de boas-vindas</h3>
+        <button id="kitFechar" type="button" style="background:none; border:0; color:#8A93A6; font-size:22px; cursor:pointer; line-height:1;">&times;</button>
+      </div>
+      <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:12px; font-size:13px; color:#B9C2D0;">
+        <label><input type="checkbox" id="chkContrato" checked> Contrato de prestação</label>
+        <label><input type="checkbox" id="chkCarta" checked> Carta de responsabilidade</label>
+        <label><input type="checkbox" id="chkTermo" checked> Autorização de logomarca</label>
+      </div>
+      <label style="display:block; margin-bottom:10px;"><span style="display:block; font-size:12px; color:#8A93A6; margin-bottom:4px;">Sócio(a) que assina</span>
+        <select id="kitSocio" class="input" style="width:100%;"></select></label>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <label><span style="display:block; font-size:12px; color:#8A93A6; margin-bottom:4px;">RG</span><input id="kitRG" class="input" style="width:100%;"></label>
+        <label><span style="display:block; font-size:12px; color:#8A93A6; margin-bottom:4px;">Nascimento</span><input type="date" id="kitNascimento" class="input" style="width:100%;"></label>
+        <label><span style="display:block; font-size:12px; color:#8A93A6; margin-bottom:4px;">Estado civil</span><input id="kitEstadoCivil" class="input" style="width:100%;" placeholder="casado(a), solteiro(a)…"></label>
+        <label><span style="display:block; font-size:12px; color:#8A93A6; margin-bottom:4px;">Profissão</span><input id="kitProfissao" class="input" style="width:100%;" placeholder="empresário(a)…"></label>
+        <label><span style="display:block; font-size:12px; color:#8A93A6; margin-bottom:4px;">Nacionalidade</span><input id="kitNacionalidade" class="input" style="width:100%;" value="brasileiro(a)"></label>
+        <label style="grid-column:1/-1;"><span style="display:block; font-size:12px; color:#8A93A6; margin-bottom:4px;">Endereço residencial completo do sócio</span><input id="kitEndSocio" class="input" style="width:100%;" placeholder="Rua X, nº Y, bairro Z, município W/RS"></label>
+      </div>
+      <label style="display:block; margin:10px 0; font-size:12.5px; color:#8AAEC8;"><input type="checkbox" id="chkSalvarSocio" checked> Atualizar o cadastro do sócio com estes dados</label>
+      <div id="kitCamposContrato" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; border-top:1px solid rgba(255,255,255,.08); padding-top:12px;">
+        <label><span style="display:block; font-size:12px; color:#8A93A6; margin-bottom:4px;">Honorário mensal (R$)</span><input id="kitHonorario" class="input" style="width:100%;" placeholder="750,00"></label>
+        <label><span style="display:block; font-size:12px; color:#8A93A6; margin-bottom:4px;">Dia de vencimento</span><input type="number" id="kitVencimento" class="input" style="width:100%;" min="1" max="31" value="10"></label>
+        <label><span style="display:block; font-size:12px; color:#8A93A6; margin-bottom:4px;">Regime (cláusula fiscal)</span><input id="kitRegime" class="input" style="width:100%;"></label>
+      </div>
+      <label style="display:block; margin-top:10px;"><span style="display:block; font-size:12px; color:#8A93A6; margin-bottom:4px;">Data do documento</span><input type="date" id="kitData" class="input" style="width:180px;"></label>
+      <div id="kitMsg" style="min-height:16px; font-size:12.5px; margin-top:8px;"></div>
+      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:12px;">
+        <button class="btn btn-ghost" type="button" id="kitCancelar">Cancelar</button>
+        <button class="btn btn-primary" type="button" id="kitGerar">Gerar documentos</button>
+      </div>
+    </div>
+  </div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
   <script type="module">
     import { supabase, getCurrentUser, signOut } from '../assets/js/supabase.js';
     import {
@@ -635,6 +685,140 @@
     const clienteId = urlParams.get('id');
     let cliente = null;
     let socios = [];
+
+    // ---------- kit de boas-vindas ----------
+    const MESES_KIT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+    const fmtCnpjKit = d => { const s = String(d || '').replace(/\D/g, ''); return s.length === 14 ? s.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5') : (d || ''); };
+    const fmtCpfKit = d => { const s = String(d || '').replace(/\D/g, ''); return s.length === 11 ? s.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : (d || ''); };
+    function extensoNum(n){
+      n = Math.floor(Math.abs(n));
+      const u = ['','um','dois','três','quatro','cinco','seis','sete','oito','nove','dez','onze','doze','treze','quatorze','quinze','dezesseis','dezessete','dezoito','dezenove'];
+      const d = ['','','vinte','trinta','quarenta','cinquenta','sessenta','setenta','oitenta','noventa'];
+      const c = ['','cento','duzentos','trezentos','quatrocentos','quinhentos','seiscentos','setecentos','oitocentos','novecentos'];
+      if (n === 0) return 'zero';
+      if (n === 100) return 'cem';
+      const trecho = x => {
+        let s = '';
+        if (x >= 100) { s = c[Math.floor(x / 100)]; x %= 100; if (x) s += ' e '; }
+        if (x >= 20) { s += d[Math.floor(x / 10)]; x %= 10; if (x) s += ' e '; }
+        if (x > 0) s += u[x];
+        return s;
+      };
+      let partes = [];
+      const milhoes = Math.floor(n / 1000000); const milhares = Math.floor((n % 1000000) / 1000); const resto = n % 1000;
+      if (milhoes) partes.push(milhoes === 1 ? 'um milhão' : trecho(milhoes) + ' milhões');
+      if (milhares) partes.push(milhares === 1 ? 'mil' : trecho(milhares) + ' mil');
+      if (resto) partes.push(trecho(resto));
+      let s = '';
+      partes.forEach((p, i) => {
+        if (!i) { s = p; return; }
+        const ultimo = i === partes.length - 1;
+        const usaE = ultimo && resto > 0 && (resto < 100 || resto % 100 === 0);
+        s += (usaE ? ' e ' : ' ') + p;
+      });
+      return s;
+    }
+    function extensoReais(valor){
+      const inteiro = Math.floor(valor); const cent = Math.round((valor - inteiro) * 100);
+      let s = extensoNum(inteiro) + (inteiro === 1 ? ' real' : ' reais');
+      if (cent) s += ' e ' + extensoNum(cent) + (cent === 1 ? ' centavo' : ' centavos');
+      return s;
+    }
+    const escXmlKit = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    function preencherSocioKit(){
+      const s = socios.find(x => x.id === document.getElementById('kitSocio').value) || {};
+      document.getElementById('kitRG').value = s.rg || '';
+      document.getElementById('kitNascimento').value = s.data_nascimento || '';
+      document.getElementById('kitEstadoCivil').value = s.estado_civil || '';
+      document.getElementById('kitProfissao').value = s.profissao || '';
+      document.getElementById('kitNacionalidade').value = s.nacionalidade || 'brasileiro(a)';
+      document.getElementById('kitEndSocio').value = s.endereco_residencial || '';
+    }
+    document.getElementById('btnKitBoasVindas').addEventListener('click', () => {
+      if (!socios.length) { alert('Cadastre ao menos um sócio antes de gerar o kit.'); return; }
+      const sel = document.getElementById('kitSocio');
+      sel.innerHTML = socios.map(s => `<option value="${s.id}">${s.nome}${s.eh_administrador ? ' (administrador)' : ''}</option>`).join('');
+      const adm = socios.find(s => s.eh_administrador);
+      if (adm) sel.value = adm.id;
+      preencherSocioKit();
+      document.getElementById('kitRegime').value = cliente.regime_tributario || '';
+      document.getElementById('kitData').value = new Date().toISOString().slice(0, 10);
+      document.getElementById('kitMsg').textContent = '';
+      document.getElementById('ovKit').style.display = 'flex';
+    });
+    document.getElementById('kitSocio').addEventListener('change', preencherSocioKit);
+    document.getElementById('kitFechar').addEventListener('click', () => document.getElementById('ovKit').style.display = 'none');
+    document.getElementById('kitCancelar').addEventListener('click', () => document.getElementById('ovKit').style.display = 'none');
+    document.getElementById('kitGerar').addEventListener('click', async () => {
+      const msg = document.getElementById('kitMsg');
+      const querContrato = document.getElementById('chkContrato').checked;
+      const querCarta = document.getElementById('chkCarta').checked;
+      const querTermo = document.getElementById('chkTermo').checked;
+      if (!querContrato && !querCarta && !querTermo) { msg.style.color = '#D08770'; msg.textContent = 'Escolhe ao menos um documento.'; return; }
+      const s = socios.find(x => x.id === document.getElementById('kitSocio').value);
+      if (!s) { msg.style.color = '#D08770'; msg.textContent = 'Escolhe o sócio.'; return; }
+      let honor = 0, honorTxt = '';
+      if (querContrato) {
+        honorTxt = document.getElementById('kitHonorario').value.trim();
+        honor = parseFloat(honorTxt.replace(/\./g, '').replace(',', '.'));
+        if (!honor || honor <= 0) { msg.style.color = '#D08770'; msg.textContent = 'Informa o honorário mensal pro contrato.'; return; }
+      }
+      const dataDoc = document.getElementById('kitData').value || new Date().toISOString().slice(0, 10);
+      const [aa, mm, dd] = dataDoc.split('-');
+      const venc = parseInt(document.getElementById('kitVencimento').value || '10', 10);
+      const valores = {
+        RAZAO_SOCIAL: cliente.nome_principal || '',
+        CNPJ: fmtCnpjKit(cliente.documento),
+        ENDERECO_EMPRESA: [cliente.logradouro ? `${cliente.logradouro}, nº ${cliente.numero || 's/n'}` : '', cliente.bairro ? `bairro ${cliente.bairro}` : ''].filter(Boolean).join(', '),
+        CIDADE_UF: `${cliente.cidade || ''}/${cliente.uf || 'RS'}`,
+        SOCIO_NOME: s.nome || '',
+        SOCIO_CPF: fmtCpfKit(s.cpf),
+        SOCIO_RG: document.getElementById('kitRG').value.trim() || '____________',
+        SOCIO_NACIONALIDADE: document.getElementById('kitNacionalidade').value.trim() || 'brasileiro(a)',
+        SOCIO_ESTADO_CIVIL: document.getElementById('kitEstadoCivil').value.trim() || '____________',
+        SOCIO_PROFISSAO: document.getElementById('kitProfissao').value.trim() || 'empresário(a)',
+        SOCIO_NASCIMENTO: document.getElementById('kitNascimento').value ? document.getElementById('kitNascimento').value.split('-').reverse().join('/') : '__/__/____',
+        SOCIO_ENDERECO: document.getElementById('kitEndSocio').value.trim() || '________________________________',
+        DATA_EXTENSO: `${parseInt(dd, 10)} de ${MESES_KIT[parseInt(mm, 10) - 1]} de ${aa}`,
+        HONORARIO_VALOR: honor ? honor.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '',
+        HONORARIO_EXTENSO: honor ? extensoReais(honor) : '',
+        DIA_VENCIMENTO: `${venc} (${extensoNum(venc)})`,
+        REGIME: document.getElementById('kitRegime').value.trim() || cliente.regime_tributario || '—',
+      };
+      msg.style.color = '#8A93A6'; msg.textContent = 'Gerando…';
+      try {
+        if (document.getElementById('chkSalvarSocio').checked) {
+          await supabase.from('socios').update({
+            rg: document.getElementById('kitRG').value.trim() || null,
+            endereco_residencial: document.getElementById('kitEndSocio').value.trim() || null,
+            estado_civil: document.getElementById('kitEstadoCivil').value.trim() || null,
+            nacionalidade: document.getElementById('kitNacionalidade').value.trim() || null,
+            profissao: document.getElementById('kitProfissao').value.trim() || null,
+            data_nascimento: document.getElementById('kitNascimento').value || null,
+          }).eq('id', s.id);
+          const idx = socios.findIndex(x => x.id === s.id);
+          if (idx >= 0) Object.assign(socios[idx], { rg: document.getElementById('kitRG').value.trim(), endereco_residencial: document.getElementById('kitEndSocio').value.trim(), estado_civil: document.getElementById('kitEstadoCivil').value.trim(), nacionalidade: document.getElementById('kitNacionalidade').value.trim(), profissao: document.getElementById('kitProfissao').value.trim(), data_nascimento: document.getElementById('kitNascimento').value || null });
+        }
+        const docs = [];
+        if (querContrato) docs.push(['contrato-prestacao.docx', 'Contrato de Prestação de Serviços']);
+        if (querCarta) docs.push(['carta-responsabilidade.docx', 'Carta de Responsabilidade']);
+        if (querTermo) docs.push(['autorizacao-logomarca.docx', 'Autorização de Logomarca']);
+        for (const [arq, titulo] of docs) {
+          const buf = await (await fetch('../assets/modelos/' + arq)).arrayBuffer();
+          const zip = await JSZip.loadAsync(buf);
+          let xml = await zip.file('word/document.xml').async('string');
+          Object.entries(valores).forEach(([k, v]) => { xml = xml.split('{{' + k + '}}').join(escXmlKit(v)); });
+          zip.file('word/document.xml', xml);
+          const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+          saveAs(blob, `${titulo} - ${cliente.nome_principal}.docx`);
+        }
+        msg.style.color = '#7FBF8E';
+        msg.textContent = `✓ ${docs.length} documento${docs.length > 1 ? 's' : ''} gerado${docs.length > 1 ? 's' : ''} — confere, assina e sobe na pasta do cliente.`;
+      } catch (e) {
+        msg.style.color = '#D08770'; msg.textContent = 'Erro: ' + e.message;
+      }
+    });
+
     let contatos = [];
     let socioEditId = null;
     let contatoEditId = null;
