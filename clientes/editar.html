@@ -921,7 +921,7 @@
       const assinantesCarta = [{ nome: v.SOCIO_NOME, sub: v.RAZAO_SOCIAL }];
       if (v.ASS2_NOME) assinantesCarta.push({ nome: v.ASS2_NOME, sub: v.RAZAO_SOCIAL });
       kitLinhaAssinaturas(ctx, assinantesCarta, 84);
-      ctx.y += 16;
+      doc.addPage(); ctx.y = KIT_TOPO;
       kitTitulo(ctx, 'RELAÇÃO DE DOCUMENTOS MENSAIS');
       kitPar(ctx, 'Visando melhorar nosso processo administrativo e os serviços prestados por este escritório, remetemos instruções com relação à sua movimentação mensal. Estamos encaminhando uma relação dos principais documentos contábeis da empresa, bem como orientações e informações úteis:');
       kitPar(ctx, 'Documentação mensal para envio ao escritório até dia 05', { bold: true, gap: 2 });
