@@ -175,6 +175,7 @@
             <label class="pr-obs-orc"><span>Vencimento do boleto <i>(dia, ou data do 1º pgto. — sai na forma de pagamento)</i></span><input id="prVencOrc" class="input" maxlength="10" placeholder="25 ou 25/08/2026"></label>
             <label class="pr-obs-orc"><span>Mensagem de abertura do orçamento <i>(opcional — sai só no PDF do cliente)</i></span><textarea id="prMsgOrc" rows="3" class="input" placeholder="ex.: Anderson e Sara, gostei muito de conhecer a história de vocês…"></textarea></label>
             <label class="pr-obs-orc"><span>Observações do orçamento <i>(sai só no PDF do cliente)</i></span><textarea id="prObsOrc" rows="2" class="input" placeholder="condições específicas deste cliente…"></textarea></label>
+            <div style="margin-top:6px;"><button class="btn btn-ghost btn-sm" id="btnObsInterna" type="button">🔒 Anotações internas</button> <span id="obsInternaBadge" style="font-size:11px; color:#C6A75A;"></span></div>
             <div class="pr-acao">
               <button class="btn btn-primary" id="prSalvar">Salvar proposta</button>
               <button class="btn btn-ghost" id="prSalvarNova" style="display:none;">Salvar como nova</button>
@@ -243,6 +244,24 @@
     </div>
   </div>
   <script src="assets/js/tour.js"></script>
+
+  <!-- anotações internas da proposta (nunca sai em PDF) -->
+  <div id="ovObsInterna" style="display:none; position:fixed; inset:0; background:rgba(6,10,16,.82); z-index:90; align-items:flex-start; justify-content:center; overflow:auto; padding:40px 16px;">
+    <div style="background:#10161F; border:1px solid rgba(255,255,255,.12); border-radius:16px; padding:18px 22px; max-width:560px; width:100%;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+        <h3 style="margin:0; font-size:14px; color:#C6A75A; text-transform:uppercase; letter-spacing:.05em;">🔒 Anotações internas</h3>
+        <button id="obsIntFechar" type="button" style="background:none; border:0; color:#8A93A6; font-size:22px; cursor:pointer; line-height:1;">&times;</button>
+      </div>
+      <div style="font-size:12px; color:#8A93A6; margin-bottom:8px;">Só a equipe vê. Não sai no orçamento, no estudo nem em nenhum PDF.</div>
+      <textarea id="obsIntTexto" class="input" rows="9" style="width:100%;" placeholder="Situações pra levar na reunião, combinados na hora, impressões…"></textarea>
+      <div id="obsIntStatus" style="min-height:16px; font-size:12px; color:#6E7787; text-align:right; margin-top:4px;"></div>
+      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:8px;">
+        <button class="btn btn-ghost btn-sm" id="obsIntCancelar" type="button">Fechar</button>
+        <button class="btn btn-sm" id="obsIntSalvar" type="button">Salvar</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     const user = await getCurrentUser();
@@ -254,6 +273,34 @@
     const TITULOS = {"p01": "P1 · Faturamento anual → valor base", "p02": "P2 · Regime tributário → multiplicador", "p03": "P3 · Sócios e filiais", "p04": "P4 · Notas fiscais → adicional", "p05": "P5 · Estoque", "p06": "P6 · Lançamentos bancários", "p07": "P7 · Sistema ERP", "p08": "P8 · Folha de pagamento", "p09": "P9 · Rotatividade", "p10": "P10 · Risco trabalhista → multiplicador", "p11": "P11 · Obrigações acessórias", "p12": "P12 · Setor de risco fiscal → multiplicador", "p13": "P13 · Qualidade dos documentos → ajuste %", "p14": "P14 · Nível de serviço → multiplicador", "p15": "P15 · Seguro / taxa inicial", "p16": "P16 · Arredondamento"};
 
     let questoes = [], params = [], P = {}, respostas = {}, editandoId = null, calcAtual = null;
+
+    function atualizarBadgeObsInterna(){
+      const b = document.getElementById('obsInternaBadge');
+      if (b) b.textContent = String(respostas._obs_interna || '').trim() ? '• tem anotações' : '';
+    }
+    document.getElementById('btnObsInterna').addEventListener('click', () => {
+      document.getElementById('obsIntTexto').value = respostas._obs_interna || '';
+      document.getElementById('obsIntStatus').textContent = '';
+      document.getElementById('ovObsInterna').style.display = 'flex';
+      document.getElementById('obsIntTexto').focus();
+    });
+    const fecharObsInt = () => document.getElementById('ovObsInterna').style.display = 'none';
+    document.getElementById('obsIntFechar').addEventListener('click', fecharObsInt);
+    document.getElementById('obsIntCancelar').addEventListener('click', fecharObsInt);
+    document.getElementById('obsIntSalvar').addEventListener('click', async () => {
+      respostas._obs_interna = document.getElementById('obsIntTexto').value.trim();
+      const st = document.getElementById('obsIntStatus');
+      if (editandoId) {
+        st.style.color = '#6E7787'; st.textContent = 'salvando…';
+        const { error } = await supabase.from('precificacoes').update({ respostas }).eq('id', editandoId);
+        if (error) { st.style.color = '#D08770'; st.textContent = 'erro: ' + error.message; return; }
+        st.style.color = '#7FBF8E'; st.textContent = 'salvo na proposta ✓';
+      } else {
+        st.style.color = '#C6A75A'; st.textContent = 'guardado — salva a proposta pra fixar no banco';
+      }
+      atualizarBadgeObsInterna();
+    });
+
 
     function indexarParams(){
       P = {};
@@ -453,6 +500,7 @@
       });
     }
     function renderPainel(){
+      atualizarBadgeObsInterna();
       const c = calcular();
       document.getElementById('prLinhas').innerHTML = c.linhas.map(l =>
         `<div class="${l.sub ? 'pr-sub' : 'pr-linha'}"><span>${l.label}</span><b>${fmt(l.valor)}</b></div>`).join('');
