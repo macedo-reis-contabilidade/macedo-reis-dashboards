@@ -759,22 +759,26 @@
       });
       ctx.y += (opts.gap ?? 6);
     }
-    function kitAssinatura(ctx, nome, sub){
+    function kitLinhaAssinaturas(ctx, blocos, gapTop){
+      // blocos: [{nome, sub}] com 1 ou 2 itens — lado a lado, folga GOV.br em cima, nunca corta
       const { doc } = ctx;
-      const ESPACO_GOV = 96; // folga generosa pro carimbo do GOV.br
-      if (ctx.y + ESPACO_GOV + 40 > KIT_FUNDO) { doc.addPage(); ctx.y = KIT_TOPO; }
-      ctx.y += ESPACO_GOV;
-      doc.setDrawColor(30, 34, 42).setLineWidth(.8);
-      doc.line(160, ctx.y, 435, ctx.y);
-      ctx.y += 14;
-      doc.setFont('helvetica', 'bold').setFontSize(10).setTextColor(30, 34, 42);
-      doc.text(nome, 297.5, ctx.y, { align: 'center' });
-      ctx.y += 13;
-      if (sub) {
-        doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(90, 98, 112);
-        doc.text(sub, 297.5, ctx.y, { align: 'center' });
-        ctx.y += 12;
-      }
+      const alt = (gapTop ?? 80) + 42;
+      if (ctx.y + alt > KIT_FUNDO) { doc.addPage(); ctx.y = KIT_TOPO; }
+      ctx.y += (gapTop ?? 80);
+      const centros = blocos.length === 2 ? [173, 422] : [297.5];
+      const meia = blocos.length === 2 ? 108 : 138;
+      blocos.forEach((b, i) => {
+        const cx = centros[i];
+        doc.setDrawColor(30, 34, 42).setLineWidth(.8);
+        doc.line(cx - meia, ctx.y, cx + meia, ctx.y);
+        doc.setFont('helvetica', 'bold').setFontSize(9.5).setTextColor(30, 34, 42);
+        doc.text(b.nome, cx, ctx.y + 13, { align: 'center' });
+        if (b.sub) {
+          doc.setFont('helvetica', 'normal').setFontSize(8.5).setTextColor(90, 98, 112);
+          doc.text(b.sub, cx, ctx.y + 25, { align: 'center' });
+        }
+      });
+      ctx.y += 42;
     }
     function kitTitulo(ctx, txt){
       kitPar(ctx, txt, { bold: true, center: true, size: 12.5, gap: 14 });
@@ -883,9 +887,11 @@
       kitPar(ctx, '20.1 As questões emergentes do presente contrato serão resolvidas em conformidade com a legislação civil aplicável à espécie, ficando eleito o foro da Comarca de Três Coroas/RS para dirimi-las, renunciando as partes a qualquer outro, por mais privilegiado que seja.');
       kitPar(ctx, '20.2 E, por estarem de pleno acordo, justas e contratadas, após terem LIDO e ACEITO o presente Contrato, nada tendo a OPOR ou RESSALVAR, as Partes firmam o presente confirmando por meio da assinatura eletrônica.', { gap: 12 });
       kitPar(ctx, `Três Coroas, ${v.DATA_EXTENSO}.`);
-      kitAssinatura(ctx, 'DIEGO REIS CONTABILIDADE LTDA', 'CONTRATADA — Diego Reis');
-      kitAssinatura(ctx, v.SOCIO_NOME, `${v.RAZAO_SOCIAL} — CONTRATANTE`);
-      if (v.ASS2_NOME) kitAssinatura(ctx, v.ASS2_NOME, `${v.RAZAO_SOCIAL} — CONTRATANTE`);
+      kitLinhaAssinaturas(ctx, [
+        { nome: 'DIEGO REIS CONTABILIDADE LTDA', sub: 'CONTRATADA — Diego Reis' },
+        { nome: v.SOCIO_NOME, sub: `${v.RAZAO_SOCIAL} — CONTRATANTE` },
+      ], 84);
+      if (v.ASS2_NOME) kitLinhaAssinaturas(ctx, [{ nome: v.ASS2_NOME, sub: `${v.RAZAO_SOCIAL} — CONTRATANTE` }], 66);
       kitRodape(doc);
       doc.save(`Contrato de Prestação de Serviços - ${v.RAZAO_SOCIAL}.pdf`);
     }
@@ -912,9 +918,10 @@
       kitPar(ctx, '(b) fraude envolvendo terceiros que poderiam ter efeito material nas demonstrações contábeis;');
       kitPar(ctx, '(c) violação de leis, normas ou regulamentos cujos efeitos deveriam ser considerados para divulgação nas demonstrações contábeis, ou mesmo dar origem ao registro de provisão para contingências passivas.');
       kitPar(ctx, 'Atenciosamente,');
-      kitAssinatura(ctx, v.SOCIO_NOME, v.RAZAO_SOCIAL);
-      if (v.ASS2_NOME) kitAssinatura(ctx, v.ASS2_NOME, v.RAZAO_SOCIAL);
-      doc.addPage(); ctx.y = KIT_TOPO;
+      const assinantesCarta = [{ nome: v.SOCIO_NOME, sub: v.RAZAO_SOCIAL }];
+      if (v.ASS2_NOME) assinantesCarta.push({ nome: v.ASS2_NOME, sub: v.RAZAO_SOCIAL });
+      kitLinhaAssinaturas(ctx, assinantesCarta, 84);
+      ctx.y += 16;
       kitTitulo(ctx, 'RELAÇÃO DE DOCUMENTOS MENSAIS');
       kitPar(ctx, 'Visando melhorar nosso processo administrativo e os serviços prestados por este escritório, remetemos instruções com relação à sua movimentação mensal. Estamos encaminhando uma relação dos principais documentos contábeis da empresa, bem como orientações e informações úteis:');
       kitPar(ctx, 'Documentação mensal para envio ao escritório até dia 05', { bold: true, gap: 2 });
@@ -949,8 +956,10 @@
       kitPar(ctx, 'Esta autorização será válida durante todo o período da minha vinculação com a empresa. Caso haja encerramento do vínculo, as imagens já utilizadas em materiais, campanhas ou quaisquer outros meios poderão ser mantidas pela empresa, não sendo necessário seu apagamento ou retirada. Contudo, fica expressamente vedada a utilização de minha logomarca em novos materiais após o encerramento.', { size: 10 });
       kitPar(ctx, 'Nada mais a autorizar.', { size: 10, gap: 14 });
       kitPar(ctx, `Três Coroas, ${v.DATA_EXTENSO}.`, { size: 10 });
-      kitAssinatura(ctx, 'DIEGO REIS CONTABILIDADE LTDA', 'Diego Reis');
-      kitAssinatura(ctx, v.SOCIO_NOME, v.RAZAO_SOCIAL);
+      kitLinhaAssinaturas(ctx, [
+        { nome: 'DIEGO REIS CONTABILIDADE LTDA', sub: 'Diego Reis' },
+        { nome: v.SOCIO_NOME, sub: v.RAZAO_SOCIAL },
+      ], 96);
       kitRodape(doc);
       doc.save(`Autorização de Logomarca - ${v.RAZAO_SOCIAL}.pdf`);
     }
