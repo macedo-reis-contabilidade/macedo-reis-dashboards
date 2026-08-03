@@ -91,7 +91,7 @@
         </div>
         <div class="eyebrow">Faturamento</div>
         <h1>Boletos / Honorários</h1>
-        <p>Grade mensal de cobrança. Gere o mês a partir da base, ajuste valores, vencimentos e dados de envio, e marque o status conforme emite e envia. O vencimento é calculado no próximo dia útil.</p>
+        <p>Grade mensal de cobrança. Gere o mês copiando a última competência (valores e envio vivos; a base entra só pra empresa nova), ajuste valores, vencimentos e dados de envio, e marque o status conforme emite e envia. O vencimento é calculado no próximo dia útil.</p>
       </div>
 
       <div class="bo-toolbar">
@@ -233,23 +233,51 @@ async function gerarMes(){
   try{
     const { data: cfg, error } = await supabase.from('cobrancas_config').select('*').eq('ativo',true);
     if(error) throw error;
+    // fonte viva: a última competência anterior à selecionada
+    let fonte = {}, fonteComp = null;
+    const { data: ant } = await supabase.from('cobrancas_mensais')
+      .select('competencia').lt('competencia', comp)
+      .order('competencia', {ascending:false}).limit(1);
+    if (ant && ant.length) {
+      fonteComp = ant[0].competencia;
+      const { data: linhasAnt } = await supabase.from('cobrancas_mensais').select('*').eq('competencia', fonteComp);
+      (linhasAnt||[]).forEach(l => { fonte[l.cliente_id] = l; });
+    }
     const existentes=new Set(rows.map(r=>r.cliente_id));
     const novos=[];
+    let copiados=0, daBase=0;
     (cfg||[]).forEach(c=>{
       if(existentes.has(c.cliente_id)) return;
-      novos.push({
-        cliente_id:c.cliente_id, competencia:comp, valor:Number(c.valor_base)||0,
-        vencimento:calcVencimento(comp, c.dia_vencimento), canal:c.canal||'whatsapp',
-        contato_envio:c.contato_envio||'', destino:c.destino||'', responsavel:c.responsavel||'',
-        observacao:'', status:'a_emitir', itens_extras:[]
-      });
+      const f = fonte[c.cliente_id];
+      if (f) {
+        const diaVenc = f.vencimento ? parseInt(String(f.vencimento).slice(8,10),10) : c.dia_vencimento;
+        novos.push({
+          cliente_id:c.cliente_id, competencia:comp, valor:Number(f.valor)||0,
+          vencimento:calcVencimento(comp, diaVenc), canal:f.canal||c.canal||'whatsapp',
+          contato_envio:f.contato_envio||'', destino:f.destino||'', responsavel:f.responsavel||'',
+          observacao:'', status:'a_emitir', itens_extras:[]
+        });
+        copiados++;
+      } else {
+        novos.push({
+          cliente_id:c.cliente_id, competencia:comp, valor:Number(c.valor_base)||0,
+          vencimento:calcVencimento(comp, c.dia_vencimento), canal:c.canal||'whatsapp',
+          contato_envio:c.contato_envio||'', destino:c.destino||'', responsavel:c.responsavel||'',
+          observacao:'', status:'a_emitir', itens_extras:[]
+        });
+        daBase++;
+      }
     });
     if(novos.length){
       const { error: e2 } = await supabase.from('cobrancas_mensais').upsert(novos,{onConflict:'cliente_id,competencia',ignoreDuplicates:true});
       if(e2) throw e2;
     }
     await carregarMes();
-    msg(novos.length? `${novos.length} empresa(s) adicionada(s) ao mês.` : 'Mês já estava completo (nada novo a gerar).');
+    const [fa, fm] = fonteComp ? fonteComp.split('-') : [];
+    const nomeFonte = fonteComp ? new Date(Number(fa), Number(fm)-1, 1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'}) : null;
+    msg(novos.length
+      ? `${novos.length} empresa(s) adicionada(s)` + (copiados ? ` — ${copiados} copiada(s) de ${nomeFonte}` : '') + (daBase ? `, ${daBase} da base (sem histórico)` : '') + '.'
+      : 'Mês já estava completo (nada novo a gerar).');
   }catch(e){ msg('Erro ao gerar: '+(e.message||e)); }
   finally{ btn.disabled=false; btn.textContent='Gerar mês a partir da base'; }
 }
