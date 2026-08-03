@@ -131,6 +131,7 @@
             <select id="fMun"><option value="">Município: todos</option></select>
             <select id="fSeg"><option value="">Segmento: todos</option></select>
             <label style="font-size:12.5px;color:#8A93A6;display:flex;gap:6px;align-items:center;"><input type="checkbox" id="fSaidas"> incluir saídas</label>
+            <label style="font-size:12.5px;color:#D0715A;display:flex;gap:6px;align-items:center;"><input type="checkbox" id="fInad"> ⚠ só inadimplentes</label>
             <button class="btn btn-primary btn-sm" id="btnAdd" style="margin-left:auto;">+ Adicionar à carteira</button>
             <span class="ct-cont" id="ctCont">—</span>
           </div>
@@ -249,6 +250,7 @@
     const pendenteSaida = r => r.clientes.status && r.clientes.status !== 'ativo' && !r.saida;
 
     function passa(r){
+      if (filtro.inad && !r.inadimplente_desde) return false;
       if (filtro.soPend && !pendenteSaida(r)) return false;
       if (!filtro.saidas && r.saida && !filtro.soPend) return false;
       if (filtro.busca && !r._busca.includes(filtro.busca)) return false;
@@ -278,9 +280,11 @@
       tb.innerHTML = vis.map(r => {
         const c = r.clientes;
         const inativo = c.status && c.status !== 'ativo';
-        return `<tr${r.saida ? ' style="opacity:.55;"' : ''}>
-          <td class="ct-emp"><a href="editar.html?id=${c.id}" target="_blank" rel="noopener">${c.nome_principal}</a>
-            ${c.nome_fantasia ? `<small>${c.nome_fantasia}</small>` : ''}${inativo ? ' <span class="chip c-ama">inativo no cadastro</span>' : ''}</td>
+        const inad = !!r.inadimplente_desde;
+        const estilo = r.saida ? ' style="opacity:.55;"' : (inad ? ' style="background:rgba(208,113,90,.07); box-shadow:inset 3px 0 0 #D0715A;"' : '');
+        return `<tr${estilo}>
+          <td class="ct-emp"><span data-inad="${r.cliente_id}" title="${inad ? 'Marcar como em dia' : 'Marcar como inadimplente'}" style="cursor:pointer; margin-right:6px; opacity:${inad ? '1' : '.35'};">${inad ? '⚠' : '💰'}</span><a href="editar.html?id=${c.id}" target="_blank" rel="noopener">${c.nome_principal}</a>
+            ${c.nome_fantasia ? `<small>${c.nome_fantasia}</small>` : ''}${inativo ? ' <span class="chip c-ama">inativo no cadastro</span>' : ''}${inad ? ` <span class="chip c-verm">⚠ inadimplente desde ${dBR(r.inadimplente_desde)}</span>` : ''}</td>
           <td><span class="chip" data-reg="${r.cliente_id}" style="cursor:pointer;" title="Clique para definir o regime — grava direto no cadastro">${c.regime_tributario || '—'}</span></td>
           <td>${c.cidade ? c.cidade : '<span class="chip c-ama" title="Preencha a cidade no cadastro do cliente">sem cidade</span>'}</td>
           <td>${ed(r, 'entrada', dBR(r.entrada), 'data')}</td>
@@ -296,6 +300,16 @@
       tb.querySelectorAll('[data-ed]').forEach(sp => sp.addEventListener('click', () => editarCampo(sp)));
       tb.querySelectorAll('[data-sai]').forEach(b => b.addEventListener('click', () => abrirSaida(b.dataset.sai)));
       tb.querySelectorAll('[data-reg]').forEach(sp => sp.addEventListener('click', () => editarRegime(sp)));
+      tb.querySelectorAll('[data-inad]').forEach(sp => sp.addEventListener('click', async () => {
+        const r = rows.find(x => String(x.cliente_id) === String(sp.dataset.inad));
+        if (!r) return;
+        const novo = r.inadimplente_desde ? null : new Date().toISOString().slice(0, 10);
+        if (r.inadimplente_desde && !confirm('Marcar este cliente como em dia novamente?')) return;
+        const { error } = await supabase.from('carteira_info').update({ inadimplente_desde: novo }).eq('cliente_id', r.cliente_id);
+        if (error) { alert('Erro: ' + error.message); return; }
+        r.inadimplente_desde = novo;
+        renderCarteira();
+      }));
     }
 
     const REGIMES = ['Simples Nacional', 'MEI', 'Lucro Presumido', 'Lucro Real', 'Imune', 'Isento'];
@@ -534,6 +548,7 @@
       filtro[id === 'fRegime' ? 'regime' : id === 'fMun' ? 'mun' : 'seg'] = e.target.value; render();
     }));
     document.getElementById('fSaidas').addEventListener('change', e => { filtro.saidas = e.target.checked; render(); });
+    document.getElementById('fInad').addEventListener('change', e => { filtro.inad = e.target.checked; render(); });
     document.getElementById('ctAlertaBtn').addEventListener('click', () => { filtro.soPend = !filtro.soPend; render(); });
     document.getElementById('anaMes').value = ymNow;
     document.getElementById('anaMes').addEventListener('change', renderAnalise);
