@@ -656,10 +656,10 @@
       const tarefas = tarefasDoDia(d);
       const rotinas = rotinasDoDia(d);
       const pend = tarefas.filter(t => t.status!=='concluida').sort((a,b)=>{
-        const ma = a.posicao ?? 1e9, mb = b.posicao ?? 1e9;
-        if (ma !== mb) return ma - mb;
         const pa=PRIO_ORDEM[norm(a.prioridade)] ?? 1, pb=PRIO_ORDEM[norm(b.prioridade)] ?? 1;
         if (pa!==pb) return pa-pb;
+        const ma = a.posicao ?? 1e9, mb = b.posicao ?? 1e9;
+        if (ma !== mb) return ma - mb;
         return String(a.titulo||'').localeCompare(String(b.titulo||''));
       });
       const feitas = tarefas.filter(t => t.status==='concluida');
@@ -674,7 +674,7 @@
       pend.forEach(t => {
         const cli = t.clientes?.nome_principal ? `<span>${esc(t.clientes.nome_principal)}</span><span class="sep">·</span>` : '';
         const resp = t.responsavel ? `<span>${esc(t.responsavel)}</span>` : '';
-        html += `<div class="ag-card ${classePrio(t.prioridade)}" data-taskid="${t.id}" draggable="true" title="Arraste pra reordenar">
+        html += `<div class="ag-card ${classePrio(t.prioridade)}" data-taskid="${t.id}" data-prio="${norm(t.prioridade)}" draggable="true" title="Arraste pra reordenar (dentro da mesma prioridade)">
           <div class="ag-card-main">
             <div class="ag-card-titulo">${esc(t.titulo)||'(sem título)'}${horaDaTarefa(t) ? `<span class="t-hora">🕐 ${horaDaTarefa(t)}</span>` : ''}${t.transicao_id ? '<span class="t-hora" title="tarefa de transição">🔁</span>' : ''}</div>
             <div class="ag-card-meta">${chip(t.setor)} ${cli} ${resp}</div>
@@ -791,6 +791,7 @@
         card.addEventListener('dragover', e => {
           e.preventDefault();
           if (!cartaoArrastado || cartaoArrastado === card) return;
+          if (card.dataset.prio !== cartaoArrastado.dataset.prio) return; // hierarquia é soberana
           const r = card.getBoundingClientRect();
           const antes = (e.clientY - r.top) < r.height / 2;
           card.parentNode.insertBefore(cartaoArrastado, antes ? card : card.nextSibling);
