@@ -327,8 +327,9 @@
 
   <div id="raOverlay" style="display:none; position:fixed; inset:0; background:rgba(6,10,16,.8); z-index:70; align-items:center; justify-content:center; padding:20px;">
     <div style="background:#10161F; border:1px solid rgba(255,255,255,.12); border-radius:14px; padding:18px 20px; max-width:380px; width:100%;">
-      <h3 style="margin:0 0 4px; font-size:14px; color:#52B4C6; text-transform:uppercase; letter-spacing:.05em;">Adiar rotina</h3>
-      <div id="raNome" style="font-size:14px; color:#E6EBF2; margin-bottom:8px;"></div>
+      <h3 style="margin:0 0 4px; font-size:14px; color:#52B4C6; text-transform:uppercase; letter-spacing:.05em;">Rotina</h3>
+      <input type="text" id="raNomeInp" class="input" style="width:100%; font-size:14px;" placeholder="Nome da rotina">
+      <div id="raNomeStatus" style="font-size:11px; color:#6E7787; min-height:14px; text-align:right; margin:2px 0 6px;"></div>
       <div id="raAtual" style="font-size:12px; color:#C6A75A; margin-bottom:8px;"></div>
       <label style="display:block; font-size:12px; color:#8A93A6; margin-bottom:4px;">Fazer em</label>
       <input type="date" id="raData" class="input" style="width:100%;">
@@ -1025,7 +1026,8 @@
       const r = cacheRotinas.find(x => String(x.id) === String(id));
       if (!r) return;
       rotAdiando = r;
-      document.getElementById('raNome').textContent = rotuloRotina(r);
+      document.getElementById('raNomeInp').value = r.titulo || '';
+      document.getElementById('raNomeStatus').textContent = '';
       const amanha = new Date(estado.cursor.getTime() + 864e5);
       document.getElementById('raData').value = r.adiada_para || ymd(amanha);
       document.getElementById('raAtual').textContent = r.adiada_para ? ('Adiada pra ' + r.adiada_para.split('-').reverse().join('/') + '.') : '';
@@ -1041,7 +1043,23 @@
       rotAdiando = null;
       render();
     }
-    document.getElementById('raCancelar').addEventListener('click', () => { document.getElementById('raOverlay').style.display = 'none'; rotAdiando = null; });
+    let raNomeTimer = null;
+    document.getElementById('raNomeInp').addEventListener('input', () => {
+      clearTimeout(raNomeTimer);
+      const st = document.getElementById('raNomeStatus');
+      st.style.color = '#6E7787'; st.textContent = 'digitando…';
+      raNomeTimer = setTimeout(async () => {
+        if (!rotAdiando) return;
+        const novo = document.getElementById('raNomeInp').value.trim();
+        if (!novo) { st.style.color = '#C6A75A'; st.textContent = 'nome vazio — não salvei'; return; }
+        const { error } = await supabase.from('rotinas').update({ titulo: novo }).eq('id', rotAdiando.id);
+        if (error) { st.style.color = '#D08770'; st.textContent = 'erro ao salvar'; return; }
+        rotAdiando.titulo = novo;
+        st.style.color = '#7FBF8E';
+        st.textContent = 'salvo ✓ ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      }, 800);
+    });
+    document.getElementById('raCancelar').addEventListener('click', () => { clearTimeout(raNomeTimer); document.getElementById('raOverlay').style.display = 'none'; rotAdiando = null; render(); });
     document.getElementById('raConfirmar').addEventListener('click', () => {
       const v = document.getElementById('raData').value;
       if (!v) { alert('Escolhe a data.'); return; }
