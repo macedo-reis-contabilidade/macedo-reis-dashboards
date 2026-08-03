@@ -233,6 +233,10 @@ async function gerarMes(){
   try{
     const { data: cfg, error } = await supabase.from('cobrancas_config').select('*').eq('ativo',true);
     if(error) throw error;
+    // saiu da carteira = não cobra mais (cinto e suspensório automático)
+    const saidasCart = new Set();
+    const { data: cart } = await supabase.from('carteira_info').select('cliente_id').not('saida','is',null);
+    (cart||[]).forEach(x => saidasCart.add(x.cliente_id));
     // fonte viva: a última competência anterior à selecionada
     let fonte = {}, fonteComp = null;
     const { data: ant } = await supabase.from('cobrancas_mensais')
@@ -246,8 +250,10 @@ async function gerarMes(){
     const existentes=new Set(rows.map(r=>r.cliente_id));
     const novos=[];
     let copiados=0, daBase=0;
+    let puladasSaida=0;
     (cfg||[]).forEach(c=>{
       if(existentes.has(c.cliente_id)) return;
+      if(saidasCart.has(c.cliente_id)){ puladasSaida++; return; }
       const f = fonte[c.cliente_id];
       if (f) {
         const diaVenc = f.vencimento ? parseInt(String(f.vencimento).slice(8,10),10) : c.dia_vencimento;
@@ -276,8 +282,8 @@ async function gerarMes(){
     const [fa, fm] = fonteComp ? fonteComp.split('-') : [];
     const nomeFonte = fonteComp ? new Date(Number(fa), Number(fm)-1, 1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'}) : null;
     msg(novos.length
-      ? `${novos.length} empresa(s) adicionada(s)` + (copiados ? ` — ${copiados} copiada(s) de ${nomeFonte}` : '') + (daBase ? `, ${daBase} da base (sem histórico)` : '') + '.'
-      : 'Mês já estava completo (nada novo a gerar).');
+      ? `${novos.length} empresa(s) adicionada(s)` + (copiados ? ` — ${copiados} copiada(s) de ${nomeFonte}` : '') + (daBase ? `, ${daBase} da base (sem histórico)` : '') + (puladasSaida ? `; ${puladasSaida} pulada(s) por saída na carteira` : '') + '.'
+      : 'Mês já estava completo (nada novo a gerar)' + (puladasSaida ? ` — ${puladasSaida} pulada(s) por saída na carteira.` : '.'));
   }catch(e){ msg('Erro ao gerar: '+(e.message||e)); }
   finally{ btn.disabled=false; btn.textContent='Gerar mês a partir da base'; }
 }
@@ -352,13 +358,19 @@ function updateCards(){
 }
 
 async function removerRow(r){
-  if(!confirm('Remover '+(clientesMap[r.cliente_id]?.nome||'')+' deste mês?')) return;
+  const nome = clientesMap[r.cliente_id]?.nome || '';
+  if(!confirm('Remover '+nome+' deste mês?')) return;
+  const deVez = confirm('Também PARAR DE COBRAR de vez?\n\nOK = não entra mais em nenhuma geração futura (sai da base de cobrança)\nCancelar = remove só deste mês');
   if(r.id){
     const { error } = await supabase.from('cobrancas_mensais').delete().eq('id',r.id);
     if(error){ msg('Erro ao remover: '+error.message); return; }
   }
+  if(deVez){
+    const { error: e2 } = await supabase.from('cobrancas_config').update({ ativo:false }).eq('cliente_id', r.cliente_id);
+    if(e2){ msg('Removida do mês, mas falhou ao desativar na base: '+e2.message); }
+  }
   rows=rows.filter(x=>x!==r);
-  render(); msg('Empresa removida do mês.');
+  render(); msg(deVez ? 'Empresa removida do mês e desativada da base de cobrança.' : 'Empresa removida do mês.');
 }
 
 // ---- autosave por linha ----
