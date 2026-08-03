@@ -308,7 +308,7 @@
         const { error } = await supabase.from('carteira_info').update({ inadimplente_desde: novo }).eq('cliente_id', r.cliente_id);
         if (error) { alert('Erro: ' + error.message); return; }
         r.inadimplente_desde = novo;
-        renderCarteira();
+        render();
       }));
     }
 
