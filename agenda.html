@@ -254,6 +254,23 @@
           <label class="fa-field"><span>Prazo</span><input type="date" id="avPrazo" class="input"></label>
           <label class="fa-field"><span>Prioridade</span><select id="avPri" class="select"><option value="media">Média</option><option value="alta">Alta</option><option value="baixa">Baixa</option></select></label>
         </div>
+        <label style="display:flex; align-items:center; gap:8px; margin:2px 0 10px; font-size:13px; color:#8AAEC8; cursor:pointer;"><input type="checkbox" id="avRec"> 🔁 Repetir (vira rotina do quadro "Rotinas do dia")</label>
+        <div id="avRecParams" style="display:none; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:10px 12px; margin-bottom:12px;">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <label class="fa-field"><span>Frequência</span><select id="avRecPer" class="select">
+              <option value="mensal" selected>Mensal</option><option value="diaria">Diária (dias úteis)</option>
+              <option value="semanal">Semanal</option><option value="anual">Anual</option>
+            </select></label>
+            <label class="fa-field" id="avRecWrapSemana" style="display:none;"><span>Dia da semana</span><select id="avRecSemana" class="select">
+              <option value="1">Segunda</option><option value="2">Terça</option><option value="3">Quarta</option>
+              <option value="4">Quinta</option><option value="5">Sexta</option>
+            </select></label>
+            <label class="fa-field" id="avRecWrapMes"><span>Dia do mês</span><input type="number" id="avRecDiaMes" class="input" min="1" max="31" value="1"></label>
+            <label class="fa-field" id="avRecWrapAnual" style="display:none;"><span>Data (MM-DD)</span><input type="text" id="avRecAnual" class="input" placeholder="ex.: 01-15"></label>
+          </div>
+          <label id="avRecWrapUtil" style="display:flex; align-items:center; gap:8px; font-size:12.5px; color:#B9C2D0; margin-top:6px; cursor:pointer;"><input type="checkbox" id="avRecUtil" checked> Se cair no fim de semana, vale o próximo dia útil</label>
+          <div style="font-size:11.5px; color:#6E7787; margin-top:6px;">Ex.: dia 1 + dia útil = "primeiro dia útil do mês".</div>
+        </div>
         <label class="fa-field"><span>Cliente (opcional)</span><input type="text" id="avCliBusca" class="input" placeholder="Buscar por razão ou fantasia…" autocomplete="off"></label>
         <div id="avCliRes" class="add-res" style="display:none;"></div>
         <div id="avCliChip" style="display:none; margin:-6px 0 12px;"><span class="chip">🏢 <span id="avCliNome"></span> <a href="#" id="avCliTira" style="color:inherit; text-decoration:none; margin-left:6px;">✕</a></span></div>
@@ -375,8 +392,19 @@
       const p = r.periodicidade || 'diaria';
       if (p==='diaria') return true;
       if (p==='semanal') return diaSemanaISO(d) === (r.dia_semana||1);
-      if (p==='mensal') return d.getDate() === Math.min(r.dia_mes||1, diasNoMes(d.getFullYear(), d.getMonth()));
-      if (p==='anual'){ const a=String(r.dia_anual||'01-01').split('-').map(Number); const mm=(a[0]||1)-1, dd=a[1]||1; return d.getMonth()===mm && d.getDate()===Math.min(dd, diasNoMes(d.getFullYear(),mm)); }
+      if (p==='mensal'){
+        const alvo = Math.min(r.dia_mes||1, diasNoMes(d.getFullYear(), d.getMonth()));
+        if (!r.dia_util) return d.getDate() === alvo;
+        const dt = new Date(d.getFullYear(), d.getMonth(), alvo);
+        while (dt.getDay() === 0 || dt.getDay() === 6) dt.setDate(dt.getDate() + 1);
+        return d.getDate() === dt.getDate() && d.getMonth() === dt.getMonth();
+      }
+      if (p==='anual'){
+        const a=String(r.dia_anual||'01-01').split('-').map(Number); const mm=(a[0]||1)-1, dd=a[1]||1;
+        const dt = new Date(d.getFullYear(), mm, Math.min(dd, diasNoMes(d.getFullYear(), mm)));
+        if (r.dia_util) while (dt.getDay() === 0 || dt.getDay() === 6) dt.setDate(dt.getDate() + 1);
+        return d.getMonth() === dt.getMonth() && d.getDate() === dt.getDate();
+      }
       return false;
     }
     // rotina "feita" para o dia exibido — espelha feitaNoPeriodo do painel
@@ -1181,12 +1209,52 @@
       document.getElementById('avCliChip').style.display = 'none';
     });
 
+    function avRecToggle(){
+      const rec = document.getElementById('avRec').checked;
+      document.getElementById('avRecParams').style.display = rec ? 'block' : 'none';
+      ['avPrazo', 'avPri'].forEach(id => document.getElementById(id).closest('label').style.display = rec ? 'none' : '');
+      document.getElementById('avCliBusca').closest('label').style.display = rec ? 'none' : '';
+      if (rec) { document.getElementById('avCliRes').style.display = 'none'; }
+      document.getElementById('avSalvar').textContent = rec ? 'Criar rotina' : 'Criar tarefa';
+      const per = document.getElementById('avRecPer').value;
+      document.getElementById('avRecWrapSemana').style.display = per === 'semanal' ? '' : 'none';
+      document.getElementById('avRecWrapMes').style.display = per === 'mensal' ? '' : 'none';
+      document.getElementById('avRecWrapAnual').style.display = per === 'anual' ? '' : 'none';
+      document.getElementById('avRecWrapUtil').style.display = (per === 'mensal' || per === 'anual') ? 'flex' : 'none';
+    }
+    document.getElementById('avRec').addEventListener('change', avRecToggle);
+    document.getElementById('avRecPer').addEventListener('change', avRecToggle);
     document.getElementById('avSalvar').addEventListener('click', async () => {
       const titulo = document.getElementById('avTitulo').value.trim();
       if (!titulo) { alert('Dá um nome pra tarefa, pelo menos isso kkk'); return; }
       const btn = document.getElementById('avSalvar');
       btn.disabled = true;
       try {
+        if (document.getElementById('avRec').checked) {
+          const per = document.getElementById('avRecPer').value;
+          if (per === 'anual' && !/^\d{2}-\d{2}$/.test(document.getElementById('avRecAnual').value.trim())) {
+            alert('Data anual no formato MM-DD, ex.: 01-15'); return;
+          }
+          const rotina = {
+            titulo,
+            setor: document.getElementById('avSetor').value,
+            responsavel: document.getElementById('avResp').value || null,
+            descricao: document.getElementById('avDesc').value.trim() || null,
+            periodicidade: per,
+            dia_semana: per === 'semanal' ? parseInt(document.getElementById('avRecSemana').value, 10) : null,
+            dia_mes: per === 'mensal' ? Math.min(31, Math.max(1, parseInt(document.getElementById('avRecDiaMes').value || '1', 10))) : null,
+            dia_anual: per === 'anual' ? document.getElementById('avRecAnual').value.trim() : null,
+            dia_util: (per === 'mensal' || per === 'anual') ? document.getElementById('avRecUtil').checked : false,
+            ativo: true,
+            ordem: 999,
+          };
+          const { data: rIns, error: rErr } = await supabase.from('rotinas').insert(rotina).select('*').single();
+          if (rErr) { alert('Erro ao criar a rotina: ' + rErr.message); return; }
+          cacheRotinas.push(rIns);
+          avFechar();
+          render();
+          return;
+        }
         const payload = {
           titulo,
           setor: document.getElementById('avSetor').value,
