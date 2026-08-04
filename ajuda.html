@@ -25,7 +25,6 @@
     .hp-vazio { color:#8A93A6; display:none; }
 
     /* Selo "hoje" (urgência do dia) — canto superior direito */
-    .badge-hoje { position:absolute; top:14px; right:14px; background:rgba(227,179,65,.18); border:1px solid rgba(227,179,65,.5); color:#E3B341; font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.04em; text-transform:uppercase; box-shadow:0 0 0 3px rgba(227,179,65,.06); }
 
     /* Status no rodapé: backlog de tarefas abertas (ou "em dia") */
     .badge.card-status { font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.03em; }
@@ -67,6 +66,7 @@
         <input type="text" id="hpBusca" class="input hp-busca" placeholder="Buscar na ajuda… (ex.: gerar rotinas, receita, vincular)">
 <p class="hp-vazio" id="hpVazio">Nada encontrado com esse termo.</p>
 <div class="hp-sec"><h2>🆕 Novidades</h2>
+        <div class="hp-item"><div class="hp-q">04/08 · Faxina geral no código + três acertos visuais</div><div class="hp-a">Passamos um pente-fino em <b>todas as páginas do sistema</b>: funções que ninguém chamava, estilos órfãos e restos de features antigas foram removidos — <b>nada muda no dia a dia</b>, o sistema só fica mais leve de manter. Três acertos visíveis aproveitaram a carona: os <b>Relatórios de cada setor</b> pararam de dizer "Nada registrado ainda no fiscal" fora do fiscal (cada um agora fala do próprio setor); o <b>avatar do topo</b> (bolinha com a inicial do usuário) agora aparece em todas as páginas, não só em algumas; e o histórico de tarefas da <b>Agenda</b> registra direito os status "Aguardando terceiro" e "Bloqueada" (antes gravava "undefined"). O motor da Precificação também deixou de consultar a questão E3 (desativada) — sem efeito em nenhum valor.</div></div>
         <div class="hp-item"><div class="hp-q">31/07 · Precificação: 🔒 anotações internas na proposta</div><div class="hp-a">No painel da Simulação, abaixo das observações do orçamento, nasceu o botão <b>🔒 Anotações internas</b>: abre o modal, digita as situações pra levar (ou registrar durante) a reunião com o cliente e salva. O texto <b>não sai em relatório nenhum</b> — nem no orçamento, nem no estudo, nem em PDF algum — é só da equipe, guardado dentro da proposta. Quando tem conteúdo, o aviso "• tem anotações" fica aceso do lado do botão.</div></div>
         <div class="hp-item"><div class="hp-q">31/07 · Agenda: arraste as tarefas pra ordenar o seu dia</div><div class="hp-a">Na visão do dia, os cards de tarefas agora são <b>arrastáveis</b>: pega e solta na posição que quiser — o mais importante em cima, do teu jeito. A ordem <b>fica salva</b> (sobrevive ao F5) e vale <b>dentro de cada prioridade</b>: Alta sempre acima de Média, Média acima de Baixa — o arrasto reorganiza as tarefas da mesma faixa, sem furar a hierarquia. Prazo, status e prioridade seguem intactos.</div></div>
         <div class="hp-item"><div class="hp-q">31/07 · Kit de boas-vindas: os 3 documentos de entrada gerados pelo sistema</div><div class="hp-a">No cadastro do cliente (Clientes → clica na empresa → seção <b>Documentos de boas-vindas</b>, antes dos botões de salvar), nasceu o botão <b>🤝 Gerar kit de boas-vindas</b>: escolhe os documentos (<b>Contrato de Prestação de Serviços Contábeis</b>, <b>Carta de Responsabilidade</b> com a Relação de Documentos anexa, e <b>Autorização de Logomarca</b>), o sócio que assina, confere os dados — o sistema preenche razão social, CNPJ, endereço e regime sozinho — informa honorário/vencimento e baixa os <b>PDFs prontos no padrão da casa</b> — já no formato que o GOV.br assina, com folga generosa nos blocos de assinatura — pra conferir, assinar e subir na pasta do cliente. Dá pra escolher um <b>segundo sócio assinante</b> (contrato e carta ganham a qualificação e a assinatura dele — com dois administradores, o sistema já sugere sozinho). Os dados dos assinantes vêm <b>direto do cadastro de sócios</b> (fonte: contrato social) e aparecem num resumo de conferência — faltou algo, o modal avisa e você completa na seção Sócios. Modelos-base: os vigentes revisados do Drive (contrato digital fev/2026, carta e termo nov/2025).</div></div>
@@ -185,7 +185,7 @@
   <script type="module">
     import { getCurrentUser, signOut } from './assets/js/supabase.js';
     const user = await getCurrentUser();
-    if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; }
+    if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; const av = document.getElementById('userAvatar'); if (av) av.textContent = (user.email || '?').charAt(0).toUpperCase(); }
     const btnOut = document.getElementById('btnLogout');
     if (btnOut) btnOut.addEventListener('click', signOut);
 
