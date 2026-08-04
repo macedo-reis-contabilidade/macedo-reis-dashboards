@@ -5,6 +5,7 @@ Sistema interno de gestão do escritório **Macedo & Reis Contabilidade** (Três
 **Deploy:** GitHub Pages, branch `main`, raiz. Build automático a cada push (~30s; cache Fastly — testar com `?nocache=1`).
 
 ## Regras de ouro
+0. **Início de TODA sessão: rode `git pull` antes de qualquer coisa** — o arquiteto (Claude web) também empurra commits neste repo; trabalhar sem puxar gera conflito.
 1. **Páginas são auto-contidas**: HTML + `<script type="module">` no próprio arquivo. CSS compartilhado em `assets/css/style.css`; o client Supabase vem de `assets/js/supabase.js`.
 2. **Nunca inventar classe CSS** — conferir se existe no `style.css`; modais novos usam estilo inline (padrão da casa nos módulos recentes).
 3. **Selects explícitos**: várias consultas listam colunas uma a uma. Coluna nova no banco **entra nos selects** que alimentam a tela, senão vira feature muda (bug clássico já vivido).
