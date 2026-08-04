@@ -35,13 +35,6 @@ export function formatTelefone(tel) {
   return tel;
 }
 
-export function formatCEP(cep) {
-  if (!cep) return '';
-  const digits = cep.replace(/\D/g, '');
-  if (digits.length !== 8) return cep;
-  return digits.replace(/^(\d{5})(\d{3})$/, '$1-$2');
-}
-
 export function onlyDigits(str) {
   return (str || '').replace(/\D/g, '');
 }
@@ -51,16 +44,6 @@ export function formatDate(iso) {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
   return d.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-}
-
-export function formatCurrency(value) {
-  if (value === null || value === undefined || value === '') return '';
-  return Number(value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
-export function titleCase(str) {
-  if (!str) return '';
-  return str.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase());
 }
 
 // MÁSCARAS DINÂMICAS (aplicar ao input enquanto digita) -------------
@@ -109,41 +92,6 @@ export function maskCEP(value) {
   return `${d.slice(0,5)}-${d.slice(5)}`;
 }
 
-// VALIDAÇÕES (algoritmo dos dígitos verificadores) ------------------
-
-export function isValidCNPJ(cnpj) {
-  const d = onlyDigits(cnpj);
-  if (d.length !== 14) return false;
-  if (/^(\d)\1+$/.test(d)) return false; // todos iguais
-  const calc = (slice) => {
-    const weights = slice.length === 12
-      ? [5,4,3,2,9,8,7,6,5,4,3,2]
-      : [6,5,4,3,2,9,8,7,6,5,4,3,2];
-    let sum = 0;
-    for (let i = 0; i < slice.length; i++) sum += parseInt(slice[i]) * weights[i];
-    const mod = sum % 11;
-    return mod < 2 ? 0 : 11 - mod;
-  };
-  const dv1 = calc(d.slice(0, 12));
-  const dv2 = calc(d.slice(0, 13));
-  return dv1 === parseInt(d[12]) && dv2 === parseInt(d[13]);
-}
-
-export function isValidCPF(cpf) {
-  const d = onlyDigits(cpf);
-  if (d.length !== 11) return false;
-  if (/^(\d)\1+$/.test(d)) return false;
-  const calc = (slice, factor) => {
-    let sum = 0;
-    for (let i = 0; i < slice.length; i++) sum += parseInt(slice[i]) * (factor - i);
-    const mod = (sum * 10) % 11;
-    return mod === 10 ? 0 : mod;
-  };
-  const dv1 = calc(d.slice(0, 9), 10);
-  const dv2 = calc(d.slice(0, 10), 11);
-  return dv1 === parseInt(d[9]) && dv2 === parseInt(d[10]);
-}
-
 // VIACEP - busca endereço por CEP -----------------------------------
 
 export async function buscarCEP(cep) {
@@ -173,14 +121,6 @@ export const STATUS_LABELS = {
   inativo: 'Inativo',
   em_transicao: 'Em transição',
   prospect: 'Prospect'
-};
-
-export const SETOR_LABELS = {
-  fiscal: 'Fiscal',
-  departamento_pessoal: 'Departamento Pessoal',
-  contabil: 'Contábil',
-  societario: 'Societário',
-  financeiro: 'Financeiro'
 };
 
 export const ESTADOS_BR = [
