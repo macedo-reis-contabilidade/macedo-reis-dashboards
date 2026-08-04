@@ -15,27 +15,6 @@
       #reportArea { display:block; }
       @page { margin:14mm; }
     }
-    .rep { color:#23282f; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif; max-width:740px; margin:0 auto; }
-    .rep-head { display:flex; align-items:center; gap:14px; border-bottom:3px solid #3A5878; padding-bottom:12px; }
-    .rep-logo { width:50px; height:50px; object-fit:contain; }
-    .rep-firm-name { font-size:18px; font-weight:700; color:#3A5878; }
-    .rep-firm-sub { font-size:12px; color:#5B82A6; letter-spacing:.02em; }
-    .rep-title { font-size:21px; color:#23282f; margin:20px 0 2px; }
-    .rep-meta { display:grid; grid-template-columns:1fr 1fr; gap:5px 20px; font-size:13px; color:#333; margin:12px 0 6px; }
-    .rep-h2 { font-size:13.5px; color:#3A5878; border-bottom:1px solid #cfd8e2; padding-bottom:5px; margin:22px 0 8px; text-transform:uppercase; letter-spacing:.03em; }
-    .rep-tbl { width:100%; border-collapse:collapse; font-size:13px; }
-    .rep-tbl th { text-align:left; color:#5B82A6; font-size:10.5px; text-transform:uppercase; letter-spacing:.03em; border-bottom:1px solid #bcc6d2; padding:6px; }
-    .rep-tbl td { padding:6px; border-bottom:1px solid #eee; }
-    .rep-tbl .r { text-align:right; font-variant-numeric:tabular-nums; }
-    .rep-tbl .pc { color:#8a93a0; width:96px; }
-    .rep-tbl tfoot td { font-weight:700; border-top:2px solid #3A5878; border-bottom:0; color:#23282f; padding-top:9px; }
-    .rep-cards { display:flex; gap:12px; margin:16px 0 4px; }
-    .rep-card { flex:1; border:1px solid #d5dde6; border-radius:9px; padding:11px 13px; }
-    .rep-card span { display:block; font-size:10.5px; color:#5B82A6; text-transform:uppercase; letter-spacing:.03em; }
-    .rep-card b { font-size:18px; color:#23282f; }
-    .rep-card.hl { background:#eef3f8; border-color:#5B82A6; }
-    .rep-note { font-size:11px; color:#666; font-style:italic; margin-top:20px; line-height:1.55; }
-    .rep-foot { margin-top:14px; border-top:1px solid #cfd8e2; padding-top:8px; font-size:11px; color:#8a93a0; text-align:center; }
     /* subnav (faltava nesta página) */
     .fa-subnav { display:flex; gap:6px; margin-bottom:22px; border-bottom:1px solid rgba(255,255,255,.08); flex-wrap:wrap; }
     .fa-tab { padding:9px 16px; font-size:14px; color:#8A93A6; text-decoration:none; border-bottom:2px solid transparent; margin-bottom:-1px; }
@@ -45,11 +24,6 @@
     .cc-result tr.cc-subtot td { font-weight:600; color:#8AAEC8 !important; background:rgba(91,130,166,.07); }
     .cc-big .cc-big-sub { color:#8A93A6; font-size:10.5px; margin-top:2px; }
     .cc-big.cc-caixa { background:rgba(138,174,200,.13); border-color:rgba(138,174,200,.3); }
-    /* grupos/subtotais e explicação no relatório */
-    .rep-tbl tr.grp td { background:#eef3f8; color:#3A5878; font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:.03em; padding:6px; border-bottom:1px solid #cfd8e2; }
-    .rep-tbl tr.sub td { font-weight:700; color:#3A5878; border-top:1px solid #cfd8e2; }
-    .rep-card i { display:block; font-size:10px; color:#777; font-style:normal; margin-top:2px; }
-    .rep-explain { font-size:12px; color:#3a4048; line-height:1.6; margin:14px 0 4px; background:#f4f7fb; border-left:3px solid #5B82A6; padding:11px 13px; border-radius:0 7px 7px 0; }
     .cc-wrap { display:grid; grid-template-columns:1fr; gap:18px; align-items:start; }
     @media (min-width:1000px){ .cc-wrap { grid-template-columns:1.15fr .85fr; } .cc-right { position:sticky; top:18px; } }
     .cc-card { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:18px 18px 16px; margin-bottom:16px; }
@@ -75,12 +49,10 @@
     .cc-derived { color:#8AAEC8; font-size:13px; font-weight:600; font-variant-numeric:tabular-nums; }
     .cc-dyn-row { display:grid; grid-template-columns:1fr 110px 110px 34px; gap:8px; margin-bottom:8px; align-items:center; }
     .cc-dyn-row .input { padding:7px 9px; font-size:13px; }
-    .cc-dyn-row.cust { grid-template-columns:1fr 92px 110px 34px; }
     .cc-del { width:30px; height:30px; border-radius:8px; border:1px solid rgba(224,108,108,.3); background:rgba(224,108,108,.1); color:#E06C6C; font-size:18px; line-height:1; cursor:pointer; }
     .cc-del:hover { background:rgba(224,108,108,.2); }
     .cc-add { margin-top:6px; }
     .cc-dyn-head { display:grid; grid-template-columns:1fr 110px 110px 34px; gap:8px; margin-bottom:6px; }
-    .cc-dyn-head.cust { grid-template-columns:1fr 92px 110px 34px; }
     .cc-dyn-head span { font-size:10.5px; color:#8A93A6; text-transform:uppercase; letter-spacing:.04em; }
     .cc-result table { width:100%; border-collapse:collapse; }
     .cc-result td { padding:7px 0; font-size:13.5px; border-bottom:1px solid rgba(255,255,255,.05); }
