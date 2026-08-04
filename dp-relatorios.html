@@ -207,7 +207,7 @@
       document.getElementById('statAtr').textContent = filtered.filter(t => situacao(t) === 'atrasada').length;
 
       if (filtered.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><h3>${all.length === 0 ? 'Nada registrado ainda no fiscal' : 'Nenhum resultado'}</h3><p>${all.length === 0 ? 'Conforme as tarefas do fiscal forem concluídas, aparecem aqui.' : 'Tente ajustar os filtros.'}</p></div></td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><h3>${all.length === 0 ? 'Nada registrado ainda no DP' : 'Nenhum resultado'}</h3><p>${all.length === 0 ? 'Conforme as tarefas do DP forem concluídas, aparecem aqui.' : 'Tente ajustar os filtros.'}</p></div></td></tr>`;
         return;
       }
 
