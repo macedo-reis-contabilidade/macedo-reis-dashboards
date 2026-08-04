@@ -1377,7 +1377,6 @@
 
     // ===================== COMPARATIVO ANTES × DEPOIS =====================
     const FN_PROC = 'registrar-processo-drive';
-    document.getElementById('procTipo').addEventListener('change', e => { document.getElementById('procPastaNome').value = e.target.value; });
     function fmtData(iso){ try { return new Date(iso).toLocaleDateString('pt-BR'); } catch { return ''; } }
 
     document.getElementById('btnComparar').addEventListener('click', async () => {
