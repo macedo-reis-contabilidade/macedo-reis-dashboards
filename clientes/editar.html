@@ -1027,9 +1027,7 @@
       const s2id = document.getElementById('kitSocio2').value;
       const s2 = s2id && s2id !== s.id ? socios.find(x => x.id === s2id) : null;
       valores.SOCIO2_QUALIFICACAO = s2 ? `Representada, em conjunto, também por seu(a) sócio(a), Sr(a). ${s2.nome}, ${s2.nacionalidade || 'brasileiro(a)'}, ${s2.profissao || 'empresário(a)'}, ${s2.estado_civil || ''}${s2.data_nascimento ? ', nascido(a) em ' + String(s2.data_nascimento).split('-').reverse().join('/') : ''}, inscrito(a) no CPF sob nº ${fmtCpfKit(s2.cpf)}${s2.rg ? ', portador(a) da cédula de identidade nº ' + s2.rg : ''}${s2.endereco_residencial ? ', residente e domiciliado(a) na ' + s2.endereco_residencial : ''}.` : '';
-      valores.ASS2_LINHA = s2 ? '_______________________________________' : '';
       valores.ASS2_NOME = s2 ? (s2.nome || '') : '';
-      valores.ASS2_SUB = s2 ? (cliente.nome_principal || '') : '';
       msg.style.color = '#8A93A6'; msg.textContent = 'Gerando…';
       try {
         if (!window.jspdf) { msg.style.color = '#D08770'; msg.textContent = 'Gerador de PDF ainda carregando — tenta de novo em 2 segundos.'; return; }
