@@ -15,7 +15,6 @@
     a[href="comercial-precificacao.html"] .dashboard-card-icon { background: rgba(82,180,198,.16); color:#52B4C6; }
     a[href="comercial-transicao.html"] .dashboard-card-icon { background: rgba(127,191,142,.16); color:#7FBF8E; }
     a[href="comercial-tarefas.html"] .dashboard-card-icon { background: rgba(138,174,200,.16); color:#8AAEC8; }
-    a[href="comercial-regras.html"] .dashboard-card-icon { background: rgba(63,176,122,.16); color:#3FB07A; }
     a[href="comercial-relatorios.html"] .dashboard-card-icon { background: rgba(133,151,224,.16); color:#8597E0; }
     a[href="comercial-reunioes.html"] .dashboard-card-icon { background: rgba(164,143,224,.16); color:#A48FE0; }
 
@@ -146,7 +145,7 @@
         const { count: cart } = await supabase.from('carteira_info')
           .select('cliente_id', { count: 'exact', head: true }).is('saida', null);
         setBadge('comercial-carteira.html', (cart ?? 0) + ' ativos');
-        ["comercial-regras.html", "comercial-relatorios.html", "comercial-reunioes.html"].forEach(h => setBadge(h, '—'));
+        ["comercial-relatorios.html", "comercial-reunioes.html"].forEach(h => setBadge(h, '—'));
       } catch (e) { console.error(e); }
     }
     pintar();

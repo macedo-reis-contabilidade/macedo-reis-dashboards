@@ -113,7 +113,7 @@
     const btnOut = document.getElementById('btnLogout');
     if (btnOut) btnOut.addEventListener('click', signOut);
 
-    function setBadge(href, texto, ok){
+    function setBadge(href, texto){
       const el = document.querySelector(`.card-status[data-mod="${href}"]`);
       if (!el) return;
       el.textContent = texto;
