@@ -7,10 +7,6 @@
   <link rel="stylesheet" href="assets/css/style.css">
   <script type="module" src="assets/js/auth-guard.js"></script>
   <style>
-    .fa-subnav { display:flex; gap:6px; margin-bottom:22px; border-bottom:1px solid rgba(255,255,255,.08); flex-wrap:wrap; }
-    .fa-tab { padding:9px 16px; font-size:14px; color:#8A93A6; text-decoration:none; border-bottom:2px solid transparent; margin-bottom:-1px; }
-    .fa-tab:hover { color:#C5D8E8; }
-    .fa-tab.is-active { color:#C5D8E8; border-bottom-color:#5B82A6; font-weight:600; }
     .content { max-width:none; }
     .page-header { max-width:880px; }
 
@@ -222,7 +218,7 @@ async function carregarMes(){
   msg('Carregando…');
   const { data, error } = await supabase.from('cobrancas_mensais').select('*').eq('competencia',comp);
   if(error){ msg('Erro ao carregar: '+error.message); return; }
-  rows=(data||[]).map(r=>({...r, _dirty:false, _new:false}));
+  rows=(data||[]).map(r=>({...r, _dirty:false}));
   rows.sort((a,b)=> (clientesMap[a.cliente_id]?.nome||'').localeCompare(clientesMap[b.cliente_id]?.nome||''));
   render(); msg('');
 }
@@ -399,7 +395,7 @@ async function salvarLinha(r){
       .upsert(payload,{onConflict:'cliente_id,competencia'}).select('id').single();
     if(error) throw error;
     if(data && data.id) r.id=data.id;
-    r._dirty=false; r._new=false; r._retries=0;
+    r._dirty=false; r._retries=0;
     saveState('saved');
   }catch(e){
     saveState('error'); r._dirty=true;
@@ -432,7 +428,7 @@ function addEmpresa(id){
     contato_envio: cfg?(cfg.contato_envio||''):'',
     destino: cfg?(cfg.destino||''):'',
     responsavel: cfg?(cfg.responsavel||''):'',
-    observacao:'', status:'a_emitir', itens_extras:[], _dirty:true, _new:true
+    observacao:'', status:'a_emitir', itens_extras:[], _dirty:true
   };
   rows.push(nova);
   rows.sort((a,b)=> (clientesMap[a.cliente_id]?.nome||'').localeCompare(clientesMap[b.cliente_id]?.nome||''));
