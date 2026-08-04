@@ -384,11 +384,8 @@
       const subGeral = sub1 + sub2 + sub3 + sub4;
       const ajQual = pv('p13', R('E2')) || 0;
       const aposQual = subGeral * (1 + ajQual);
-      const multNivel = pv('p14', R('E3')) || 1;
-      const aposNivel = aposQual * multNivel;
       const seguro = sim('E4') ? pv('p15', 'Adicional - seguro de responsabilidade civil profissional') : 0;
       if (ajQual) L('Ajuste qualidade docs (' + (ajQual > 0 ? '+' : '') + (ajQual * 100) + '%)', aposQual - subGeral);
-      if (multNivel !== 1) L('× nível de serviço ' + multNivel + '×', aposNivel - aposQual);
       if (seguro) L('Seguro RC profissional', seguro);
       const terce = R('D20') === 'Sim' ? num('D21') : 0;
       if (terce) L('Terceirização de serviço (informado)', terce);
@@ -397,7 +394,7 @@
       const semFin = R('E1') === 'Não possui' ? pv('p15', 'Adicional - cliente sem responsável financeiro') : 0;
       if (semFin) L('Cliente sem responsável financeiro', semFin);
 
-      const bruto = aposNivel + seguro + terce + emiteNF + semFin;
+      const bruto = aposQual + seguro + terce + emiteNF + semFin;
       const passo = pv('p16', 'Arredondar honorário final para múltiplo de (R$)') || 10;
       let honorario = Math.round(bruto / passo) * passo;
       const ajusteHon = Number(respostas['ajuste_honorario'] || 0);
