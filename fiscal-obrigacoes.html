@@ -313,7 +313,7 @@
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
 
     const user = await getCurrentUser();
-    if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; }
+    if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; const av = document.getElementById('userAvatar'); if (av) av.textContent = (user.email || '?').charAt(0).toUpperCase(); }
     const btnOut = document.getElementById('btnLogout');
     if (btnOut) btnOut.addEventListener('click', signOut);
 

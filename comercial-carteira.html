@@ -212,7 +212,7 @@
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     const user = await getCurrentUser();
-    if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; }
+    if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; const av = document.getElementById('userAvatar'); if (av) av.textContent = (user.email || '?').charAt(0).toUpperCase(); }
     document.getElementById('btnLogout')?.addEventListener('click', signOut);
 
     const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/&/g, 'e').toLowerCase();
