@@ -511,6 +511,12 @@
         <div class="fg-col-5"><div class="form-group" style="display: flex; align-items: flex-end; height: 100%;"><label class="checkbox-card" style="width: 100%;"><input type="checkbox" id="socio_admin"><span class="check-indicator"></span><span>É administrador</span></label></div></div>
         <div class="fg-col-6"><div class="form-group"><label for="socio_telefone">Telefone</label><input type="text" id="socio_telefone" class="input"></div></div>
         <div class="fg-col-6"><div class="form-group"><label for="socio_email">Email</label><input type="email" id="socio_email" class="input"></div></div>
+        <div class="fg-col-6"><div class="form-group"><label for="socio_rg">RG</label><input type="text" id="socio_rg" class="input"></div></div>
+        <div class="fg-col-6"><div class="form-group"><label for="socio_nascimento">Nascimento</label><input type="date" id="socio_nascimento" class="input"></div></div>
+        <div class="fg-col-6"><div class="form-group"><label for="socio_estado_civil">Estado civil</label><input type="text" id="socio_estado_civil" class="input" placeholder="casado(a), solteiro(a)…"></div></div>
+        <div class="fg-col-6"><div class="form-group"><label for="socio_profissao">Profissão</label><input type="text" id="socio_profissao" class="input" placeholder="empresário(a)…"></div></div>
+        <div class="fg-col-6"><div class="form-group"><label for="socio_nacionalidade">Nacionalidade</label><input type="text" id="socio_nacionalidade" class="input" placeholder="brasileiro(a)"></div></div>
+        <div class="fg-col-12"><div class="form-group"><label for="socio_endereco">Endereço residencial completo (usado nos documentos do kit)</label><input type="text" id="socio_endereco" class="input" placeholder="Rua X, nº Y, bairro Z, município W/RS"></div></div>
       </div>
       <div class="dialog-actions">
         <button class="btn btn-ghost" id="btnSocioCancelar">Cancelar</button>
@@ -1291,8 +1297,14 @@
         document.getElementById('socio_admin').checked = !!s.eh_administrador;
         document.getElementById('socio_telefone').value = s.telefone ? maskTelefone(s.telefone) : '';
         document.getElementById('socio_email').value = s.email || '';
+        document.getElementById('socio_rg').value = s.rg || '';
+        document.getElementById('socio_nascimento').value = s.data_nascimento ? String(s.data_nascimento).slice(0, 10) : '';
+        document.getElementById('socio_estado_civil').value = s.estado_civil || '';
+        document.getElementById('socio_profissao').value = s.profissao || '';
+        document.getElementById('socio_nacionalidade').value = s.nacionalidade || '';
+        document.getElementById('socio_endereco').value = s.endereco_residencial || '';
       } else {
-        ['socio_nome','socio_cpf','socio_participacao','socio_qualificacao','socio_telefone','socio_email'].forEach(id => document.getElementById(id).value = '');
+        ['socio_nome','socio_cpf','socio_participacao','socio_qualificacao','socio_telefone','socio_email','socio_rg','socio_nascimento','socio_estado_civil','socio_profissao','socio_nacionalidade','socio_endereco'].forEach(id => document.getElementById(id).value = '');
         document.getElementById('socio_admin').checked = false;
       }
       dialogSocio.showModal();
@@ -1311,7 +1323,13 @@
         qualificacao: document.getElementById('socio_qualificacao').value.trim() || null,
         eh_administrador: document.getElementById('socio_admin').checked,
         telefone: onlyDigits(document.getElementById('socio_telefone').value) || null,
-        email: document.getElementById('socio_email').value.trim() || null
+        email: document.getElementById('socio_email').value.trim() || null,
+        rg: document.getElementById('socio_rg').value.trim() || null,
+        data_nascimento: document.getElementById('socio_nascimento').value || null,
+        estado_civil: document.getElementById('socio_estado_civil').value.trim() || null,
+        profissao: document.getElementById('socio_profissao').value.trim() || null,
+        nacionalidade: document.getElementById('socio_nacionalidade').value.trim() || null,
+        endereco_residencial: document.getElementById('socio_endereco').value.trim() || null
       };
       let res;
       if (socioEditId) res = await supabase.from('socios').update(payload).eq('id', socioEditId).select().single();
