@@ -11,7 +11,7 @@ document.documentElement.style.visibility = 'hidden';
   const { data: { session } } = await supabase.auth.getSession();
 
   if (!session) {
-    const redirect = encodeURIComponent(window.location.pathname);
+    const redirect = encodeURIComponent(window.location.pathname + window.location.search);
     window.location.href = '/macedo-reis-dashboards/login.html?redirect=' + redirect;
   } else {
     document.documentElement.style.visibility = 'visible';
