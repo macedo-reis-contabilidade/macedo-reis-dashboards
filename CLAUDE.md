@@ -20,7 +20,7 @@ Sistema interno de gestão do escritório **Macedo & Reis Contabilidade** (Três
 - `index.html` — painel central por setor.
 - `agenda.html` — agenda unificada: tarefas do dia (modal = editor universal: título, empresa com busca, hora, drag pra ordenar **dentro da faixa de prioridade** — prioridade é soberana), rotinas do dia (check, adiar via clique no card, renomear com autosave, recorrência com conceito de **dia útil**), tarefa rápida com modo 🔁 que cria rotina.
 - `clientes/` — `index.html` (listagem "Base mestre"), **`editar.html` (o editor REAL usado pela listagem)**: cadastro, sócios (com RG/endereço/estado civil etc.), credenciais, Registrar processo, **kit de boas-vindas** (3 PDFs jsPDF: contrato, carta, autorização — assinaturas lado a lado com folga GOV.br), `novo.html` (cadastro com extração de documento).
-- `editar.html` (RAIZ) — editor paralelo/legado, linkado só pela `comercial-carteira.html`. ⚠ Divergência conhecida; unificação é obra planejada (ver "Decisões").
+- `editar.html` (RAIZ) — apenas um **redirect** pro editor oficial (preserva `?id=`). A unificação foi concluída em 05/08/2026.
 - `comercial-precificacao.html` — questionário (~61 perguntas em `precificacao_questoes`), motor `calcular()` com parâmetros por grupo/chave, camaleão MEI (A4='MEI' esconde bloco D + lista SOME_MEI), orçamento e estudo em jsPDF, **anotações internas `respostas._obs_interna` que NUNCA saem em PDF**, aba MEI própria.
 - `comercial-carteira.html` — carteira mensal (`carteira_info`: entrada/saída/segmento/sistemas/contato/ramo/**inadimplente_desde**), marcador 💰/⚠ com destaque vermelho, filtro só-inadimplentes, aba Análise.
 - `comercial-reunioes.html` — pautas por setor, **modo ata ao vivo** (`reuniao_pautas.discussao`, autosave 800ms), PDF que vira ata, sincronia com tarefa (`reunioes.tarefa_id`, `hora`). Módulo aprovado — não mexer sem pedido explícito.
@@ -49,7 +49,7 @@ Thalia, Vitória, Adaini, Samuel, Diego, Edna.
 
 ## Decisões vigentes (não reabrir sem pedir ao Samuel)
 - **Drive é manual** — sem upload automático além do "Registrar processo" existente.
-- **Dois editores de cliente coexistem** até a obra de unificação (o oficial é `clientes/editar.html`).
+- **Editor de clientes é um só**: `clientes/editar.html` (a raiz redireciona). Sócios editam ali os dados documentais completos (RG, endereço etc.) que o kit consome.
 - **Kit de boas-vindas sai em PDF** (jsPDF); os `.docx` em `assets/modelos/` são acervo, fora do fluxo.
 - **Prioridade das tarefas é soberana**; drag reordena só dentro da mesma faixa.
 - Conteúdo interno (`_obs_interna`, anotações) **nunca** vai pra PDF nenhum.
