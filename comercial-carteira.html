@@ -282,7 +282,7 @@
         const inad = !!r.inadimplente_desde;
         const estilo = r.saida ? ' style="opacity:.55;"' : (inad ? ' style="background:rgba(208,113,90,.07); box-shadow:inset 3px 0 0 #D0715A;"' : '');
         return `<tr${estilo}>
-          <td class="ct-emp"><span data-inad="${r.cliente_id}" title="${inad ? 'Marcar como em dia' : 'Marcar como inadimplente'}" style="cursor:pointer; margin-right:6px; opacity:${inad ? '1' : '.35'};">${inad ? '⚠' : '💰'}</span><a href="editar.html?id=${c.id}" target="_blank" rel="noopener">${c.nome_principal}</a>
+          <td class="ct-emp"><span data-inad="${r.cliente_id}" title="${inad ? 'Marcar como em dia' : 'Marcar como inadimplente'}" style="cursor:pointer; margin-right:6px; opacity:${inad ? '1' : '.35'};">${inad ? '⚠' : '💰'}</span><a href="clientes/editar.html?id=${c.id}" target="_blank" rel="noopener">${c.nome_principal}</a>
             ${c.nome_fantasia ? `<small>${c.nome_fantasia}</small>` : ''}${inativo ? ' <span class="chip c-ama">inativo no cadastro</span>' : ''}${inad ? ` <span class="chip c-verm">⚠ inadimplente desde ${dBR(r.inadimplente_desde)}</span>` : ''}</td>
           <td><span class="chip" data-reg="${r.cliente_id}" style="cursor:pointer;" title="Clique para definir o regime — grava direto no cadastro">${c.regime_tributario || '—'}</span></td>
           <td>${c.cidade ? c.cidade : '<span class="chip c-ama" title="Preencha a cidade no cadastro do cliente">sem cidade</span>'}</td>
@@ -457,7 +457,7 @@
         const c = r.clientes;
         const dia = String(sai ? r.saida : r.entrada).slice(8, 10);
         return `<div class="mov-item${sai ? ' sai' : ''}">
-          <a href="editar.html?id=${c.id}" target="_blank" rel="noopener">${c.nome_principal}</a>
+          <a href="clientes/editar.html?id=${c.id}" target="_blank" rel="noopener">${c.nome_principal}</a>
           ${c.nome_fantasia ? `<small>${c.nome_fantasia}</small>` : ''}
           <span class="mt">dia ${dia}${sai ? ' · ' + (r.motivo_saida || 'sem motivo') : ''}</span>
         </div>`;
