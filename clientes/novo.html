@@ -603,11 +603,12 @@
           cliente_id: novo.id,
           nome: s.nome,
           cpf: s.cpf ? onlyDigits(String(s.cpf)) : null,
-          participacao: (s.participacao_percentual != null ? s.participacao_percentual : null),
+          participacao_percentual: (s.participacao_percentual != null ? s.participacao_percentual : null),
           qualificacao: s.qualificacao || null,
-          admin: !!s.eh_administrador
+          eh_administrador: !!s.eh_administrador
         }));
-        await supabase.from('socios').insert(sociosPayload);
+        const { error: socErr } = await supabase.from('socios').insert(sociosPayload);
+        if (socErr) alert('Cliente criado, mas os sócios não foram salvos: ' + socErr.message + '\nCadastre-os na tela de edição do cliente.');
       }
 
       // cliente criado → passo opcional de obrigações fiscais, depois edição

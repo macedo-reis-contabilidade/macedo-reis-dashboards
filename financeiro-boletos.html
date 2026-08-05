@@ -93,7 +93,7 @@
       <div class="bo-toolbar">
         <div class="bo-left">
           <label class="bo-comp">Competência
-            <input type="month" id="comp" class="input" value="2026-05" style="max-width:170px;">
+            <input type="month" id="comp" class="input" style="max-width:170px;">
           </label>
           <button class="btn btn-primary" id="btnGerar">Gerar mês a partir da base</button>
           <button class="btn btn-ghost" id="btnAdd">+ Adicionar empresa</button>
@@ -188,6 +188,8 @@ async function init(){
   }catch(e){}
   $('btnLogout').addEventListener('click', signOut);
   await carregarClientesEConfig();
+  const hj = new Date();
+  $('comp').value = hj.getFullYear() + '-' + String(hj.getMonth() + 1).padStart(2, '0');
   await carregarMes();
   $('comp').addEventListener('change', carregarMes);
   $('btnGerar').addEventListener('click', gerarMes);

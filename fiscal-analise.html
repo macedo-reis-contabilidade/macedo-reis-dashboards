@@ -181,9 +181,9 @@
         uf: cliente.uf || null,
         tipo_pessoa: cliente.tipo_pessoa || null,
         regime_tributario: cliente.regime_tributario ?? null,
-        cnaes: cliente.cnaes ?? null,
-        porte: cliente.porte ?? null,
-        faturamento_12m: cliente.faturamento_12m ?? null,
+        cnae_principal: cliente.cnae_principal ?? null,
+        cnaes_secundarios: cliente.cnaes_secundarios ?? null,
+        porte: cliente.porte_empresa ?? null,
         operacoes: cliente.observacoes ?? null,
         dados_cadastrais_completos: cliente
       };
