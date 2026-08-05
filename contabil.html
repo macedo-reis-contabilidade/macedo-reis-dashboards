@@ -12,7 +12,6 @@
 
     /* Cor de identidade por setor (no ícone) */
     a[href="contabil-tarefas.html"] .dashboard-card-icon { background: rgba(138,174,200,.16); color:#8AAEC8; }
-    a[href="contabil-regras.html"] .dashboard-card-icon { background: rgba(63,176,122,.16); color:#3FB07A; }
     a[href="contabil-relatorios.html"] .dashboard-card-icon { background: rgba(133,151,224,.16); color:#8597E0; }
     a[href="contabil-sugestoes.html"] .dashboard-card-icon { background: rgba(164,143,224,.16); color:#A48FE0; }
 
@@ -89,7 +88,7 @@
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     const user = await getCurrentUser();
-    if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; }
+    if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; const av = document.getElementById('userAvatar'); if (av) av.textContent = (user.email || '?').charAt(0).toUpperCase(); }
     const btnOut = document.getElementById('btnLogout');
     if (btnOut) btnOut.addEventListener('click', signOut);
     function setBadge(href, texto){
@@ -109,7 +108,7 @@
           pill.className = 'badge-hoje'; pill.textContent = hoje + ' hoje';
           card.appendChild(pill);
         }
-        ["contabil-regras.html", "contabil-relatorios.html", "contabil-sugestoes.html"].forEach(h => setBadge(h, '—'));
+        ["contabil-relatorios.html", "contabil-sugestoes.html"].forEach(h => setBadge(h, '—'));
       } catch (e) { console.error(e); }
     }
     pintar();

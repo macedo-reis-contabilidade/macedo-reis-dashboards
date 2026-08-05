@@ -108,9 +108,6 @@
     .input-inline { font:inherit; font-size:12.5px; padding:3px 8px; background:rgba(255,255,255,.07); border:1px solid rgba(91,130,166,.55); border-radius:6px; color:#E6EBF2; width:90px; }
     .pr-vazio { color:#8A93A6; padding:24px; text-align:center; }
 
-    /* Selo "hoje" (urgência do dia) — canto superior direito */
-    .badge-hoje { position:absolute; top:14px; right:14px; background:rgba(227,179,65,.18); border:1px solid rgba(227,179,65,.5); color:#E3B341; font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.04em; text-transform:uppercase; box-shadow:0 0 0 3px rgba(227,179,65,.06); }
-
     /* Status no rodapé: backlog de tarefas abertas (ou "em dia") */
     .badge.card-status { font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.03em; }
     .card-status.st-open  { background:rgba(138,174,200,.14); border:1px solid rgba(138,174,200,.38); color:#B6C7DA; }
@@ -265,7 +262,7 @@
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     const user = await getCurrentUser();
-    if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; }
+    if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; const av = document.getElementById('userAvatar'); if (av) av.textContent = (user.email || '?').charAt(0).toUpperCase(); }
     const btnOut = document.getElementById('btnLogout');
     if (btnOut) btnOut.addEventListener('click', signOut);
 
@@ -384,11 +381,8 @@
       const subGeral = sub1 + sub2 + sub3 + sub4;
       const ajQual = pv('p13', R('E2')) || 0;
       const aposQual = subGeral * (1 + ajQual);
-      const multNivel = pv('p14', R('E3')) || 1;
-      const aposNivel = aposQual * multNivel;
       const seguro = sim('E4') ? pv('p15', 'Adicional - seguro de responsabilidade civil profissional') : 0;
       if (ajQual) L('Ajuste qualidade docs (' + (ajQual > 0 ? '+' : '') + (ajQual * 100) + '%)', aposQual - subGeral);
-      if (multNivel !== 1) L('× nível de serviço ' + multNivel + '×', aposNivel - aposQual);
       if (seguro) L('Seguro RC profissional', seguro);
       const terce = R('D20') === 'Sim' ? num('D21') : 0;
       if (terce) L('Terceirização de serviço (informado)', terce);
@@ -397,7 +391,7 @@
       const semFin = R('E1') === 'Não possui' ? pv('p15', 'Adicional - cliente sem responsável financeiro') : 0;
       if (semFin) L('Cliente sem responsável financeiro', semFin);
 
-      const bruto = aposNivel + seguro + terce + emiteNF + semFin;
+      const bruto = aposQual + seguro + terce + emiteNF + semFin;
       const passo = pv('p16', 'Arredondar honorário final para múltiplo de (R$)') || 10;
       let honorario = Math.round(bruto / passo) * passo;
       const ajusteHon = Number(respostas['ajuste_honorario'] || 0);
@@ -1042,7 +1036,6 @@
     let meiPlanos = [], meiServicos = [], meiComp = {};
     const mei = { bases: new Set(), marcados: new Set(), qtd: {}, nfsInclusas: '', cliente: '', msg: '', venc: '', ajuste: '', cnpj: '', endereco: '', telefone: '' };
     const GRUPOS_MEI = [['mensal','Mensais'],['semestral','Semestrais'],['anual','Anuais'],['demanda','Conforme demanda']];
-    function meiPreset(pid){ return new Set([...(meiComp[pid] || [])]); }
     function presetUniao(){
       const u = new Set();
       mei.bases.forEach(pid => (meiComp[pid] || new Set()).forEach(id => u.add(id)));

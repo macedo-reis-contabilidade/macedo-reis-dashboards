@@ -76,7 +76,6 @@
     .add-res small { color:#6E7787; display:block; font-size:11px; }
 
     /* Selo "hoje" (urgência do dia) — canto superior direito */
-    .badge-hoje { position:absolute; top:14px; right:14px; background:rgba(227,179,65,.18); border:1px solid rgba(227,179,65,.5); color:#E3B341; font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.04em; text-transform:uppercase; box-shadow:0 0 0 3px rgba(227,179,65,.06); }
 
     /* Status no rodapé: backlog de tarefas abertas (ou "em dia") */
     .badge.card-status { font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.03em; }
@@ -213,7 +212,7 @@
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     const user = await getCurrentUser();
-    if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; }
+    if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; const av = document.getElementById('userAvatar'); if (av) av.textContent = (user.email || '?').charAt(0).toUpperCase(); }
     document.getElementById('btnLogout')?.addEventListener('click', signOut);
 
     const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/&/g, 'e').toLowerCase();
@@ -475,7 +474,7 @@
       cS.textContent = (saldo > 0 ? '+' : '') + saldo;
       cS.className = 'num ' + (saldo > 0 ? 'pos' : saldo < 0 ? 'neg' : '');
 
-      const barras = (el, mapa, total) => {
+      const barras = (el, mapa) => {
         const itens = Object.entries(mapa).sort((a, b) => b[1] - a[1]).slice(0, 8);
         const max = itens[0]?.[1] || 1;
         document.getElementById(el).innerHTML = itens.map(([k, v]) =>
@@ -611,7 +610,6 @@
         doc.text(clip(c.cidade || '—', 92), MX + 292, y);
         doc.text(r.entrada ? String(r.entrada).slice(0, 10).split('-').reverse().join('/').slice(0, 8) + String(r.entrada).slice(2, 4) : '—', MX + 390, y);
         doc.text(clip(r.segmento || '—', 112), MX + 442, y);
-        if (i % 2) { doc.setDrawColor(240, 243, 246); }
         doc.setDrawColor(...LN).setLineWidth(.25).line(MX, y + 3, MR, y + 3);
         y += 10.5;
       });

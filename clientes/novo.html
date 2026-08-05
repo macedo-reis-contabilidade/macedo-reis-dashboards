@@ -46,7 +46,6 @@
       </div>
 
       <div id="formError" class="form-error"></div>
-      <div id="formSuccess" class="form-success"></div>
 
       <section class="form-section" id="sectionExtrai">
         <div class="form-section-head">
@@ -510,10 +509,8 @@
 
     // Mensagens
     const formError = document.getElementById('formError');
-    const formSuccess = document.getElementById('formSuccess');
     function showError(msg) {
       formError.textContent = msg; formError.classList.add('is-visible');
-      formSuccess.classList.remove('is-visible');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 

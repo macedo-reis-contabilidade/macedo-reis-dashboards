@@ -292,7 +292,6 @@
     }
 
     function menorPrazo(itens){ const ps = itens.map(t=>t.prazo).filter(Boolean).sort(); return ps[0] || ''; }
-    function statusCls(s){ return s==='pendente'?'st-pend':(s==='em_andamento'?'st-and':'st-ok'); }
     function statusPill(s){
       if (s==='concluida') return '<span class="pill pill-ok">Concluído</span>';
       if (s==='em_andamento') return '<span class="pill pill-and">Em andamento</span>';
@@ -442,10 +441,6 @@
 
     .fa-atrasada { color:#E06C6C; font-weight:600; }
     .fa-row-done { opacity:.5; }
-    .fa-status-sel { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.14); color:#D7DEE8; border-radius:8px; padding:5px 10px; font-size:13px; cursor:pointer; }
-    .fa-status-sel.st-pend { color:#E3B341; border-color:rgba(227,179,65,.4); }
-    .fa-status-sel.st-and { color:#8AAEC8; border-color:rgba(91,130,166,.45); }
-    .fa-status-sel.st-ok { color:#3FB07A; border-color:rgba(63,176,122,.45); }
 
     .fa-modal-overlay { position:fixed; inset:0; background:rgba(8,12,18,.72); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
     .fa-modal-overlay.is-open { display:flex; }

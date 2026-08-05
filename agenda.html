@@ -31,29 +31,6 @@
     .ag-dia-col { min-width:0; }
     .ag-resumo-wrap { position:sticky; top:16px; min-width:0; }
     .ag-resumo { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:16px; }
-    .ag-resumo-titulo { font-size:14px; font-weight:600; color:#E6EBF2; margin-bottom:14px; display:flex; align-items:center; gap:8px; }
-    .ag-resumo-titulo svg { color:#8FC0F0; }
-    .ag-resumo-slide { min-height:150px; }
-    .rs-label { font-size:11px; font-weight:600; letter-spacing:.05em; color:#8AAEC8; text-transform:uppercase; margin-bottom:12px; }
-    .rs-big { display:flex; align-items:baseline; gap:6px; margin-bottom:8px; }
-    .rs-big .n { font-size:30px; font-weight:700; color:#E6EBF2; line-height:1; }
-    .rs-big .sub { font-size:14px; color:#8A93A6; }
-    .rs-bar { height:7px; background:rgba(255,255,255,.06); border-radius:999px; overflow:hidden; margin-bottom:10px; }
-    .rs-bar > div { height:100%; background:#3FB07A; border-radius:999px; transition:width .4s; }
-    .rs-foot { font-size:12px; color:#8A93A6; }
-    .rs-rows { display:flex; flex-direction:column; gap:9px; }
-    .rs-row { display:flex; align-items:center; justify-content:space-between; font-size:13px; color:#D7DEE8; }
-    .rs-row .lab { display:flex; align-items:center; gap:8px; }
-    .rs-row .val { font-weight:700; color:#E6EBF2; }
-    .rs-prox { display:flex; flex-direction:column; gap:10px; }
-    .rs-prox-item { display:flex; gap:9px; align-items:flex-start; font-size:12.5px; }
-    .rs-prox-data { color:#8FC0F0; font-weight:600; white-space:nowrap; min-width:42px; }
-    .rs-prox-txt { color:#D7DEE8; min-width:0; }
-    .rs-prox-txt .cli { color:#8A93A6; font-size:11.5px; }
-    .rs-empty { font-size:12.5px; color:#8A93A6; padding:8px 0; }
-    .ag-resumo-dots { display:flex; gap:6px; justify-content:center; margin-top:16px; }
-    .ag-resumo-dots button { width:7px; height:7px; padding:0; border-radius:50%; border:none; background:rgba(255,255,255,.18); cursor:pointer; transition:background .2s,width .2s; }
-    .ag-resumo-dots button.on { background:#8FC0F0; width:18px; border-radius:999px; }
 
     @media (max-width:860px){
       .ag-dia-layout { grid-template-columns:1fr; }
@@ -367,7 +344,6 @@
     const SOCIOS = ['financeiro@macedoereis.com.br','diego@macedoereis.com.br'];
 
     const PRIO_ORDEM = { alta:0, media:1, média:1, baixa:2 };
-    const PRIO_LABEL = { alta:'Alta', media:'Média', baixa:'Baixa' };
 
     // ---- estado ----
     const estado = { view:'dia', cursor:hojeMeiaNoite(), setor:'', resp:'' };
@@ -444,7 +420,6 @@
     let cacheRotinas = [];
     let cacheProximos = [];
     let cacheSemPrazo = [];
-    let resumoTimer = null;
     async function carregarDados(ini, fim){
       const iniS = ymd(ini), fimS = ymd(fim);
       const { data: ts } = await supabase.from('tarefas')
@@ -587,13 +562,11 @@
       else c.innerHTML = renderMes();
       ligarInteracoes();
       if (estado.view==='dia') montarResumo();
-      else if (resumoTimer){ clearInterval(resumoTimer); resumoTimer = null; }
     }
 
     // ===================== RESUMO DO DIA (rotativo) =====================
     const fmtISO = dt => dt.toISOString().slice(0, 10);
     function montarResumo(){
-      if (resumoTimer){ clearInterval(resumoTimer); resumoTimer = null; }
       const painel = document.getElementById('resumoPainel');
       if (!painel) return;
 
@@ -889,7 +862,7 @@
     }
 
     // ===================== MODAL DE DETALHE DA TAREFA =====================
-    const STATUS_LBL = { pendente:'Pendente', em_andamento:'Em andamento', concluida:'Concluído' };
+    const STATUS_LBL = { pendente:'Pendente', em_andamento:'Em andamento', aguardando:'Aguardando terceiro', bloqueada:'Bloqueada', concluida:'Concluído' };
     function fmtDataHora(iso){ try { return new Date(iso).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); } catch(e){ return ''; } }
     function escHtml(t){ return String(t==null?'':t).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
     const detOverlay = document.getElementById('detOverlay');
@@ -1219,8 +1192,6 @@
           el.style.display = 'none';
         }));
       }, 300);
-    });
-    document.getElementById('avSetor').addEventListener('change', e => {
     });
     document.getElementById('avCliTira').addEventListener('click', e => {
       e.preventDefault(); avCli = null;
