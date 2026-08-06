@@ -446,6 +446,7 @@
             <div class="fg-col-12">
               <div class="field-help" id="procHelp" style="margin-bottom:12px;">Anexe o contrato social consolidado e o cartão CNPJ atualizados. Ao registrar, o sistema cria a subpasta do processo dentro de <b>PROCESSOS</b> no Drive, guarda os arquivos e abre as tarefas de atualização nos setores.</div>
               <button id="btnKitBoasVindas" class="btn" type="button" style="margin-right:8px;">🤝 Gerar kit de boas-vindas</button>
+              <button id="btnAtualizarDoc" class="btn" type="button" style="margin-right:8px;">📄 Atualizar por documento</button>
               <button id="btnRegistrarProcesso" class="btn btn-primary" type="button">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
                 Registrar processo
@@ -614,6 +615,26 @@
       <div class="fa-modal-foot">
         <button class="btn btn-ghost" id="procCancelar">Cancelar</button>
         <button class="btn btn-primary" id="procConfirmar">Registrar e abrir tarefas</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- atualizar por documento (Etapa A: somente leitura e comparação) -->
+  <div class="fa-modal-overlay" id="atzOverlay">
+    <div class="fa-modal" style="max-width:760px;">
+      <div class="fa-modal-head"><h3>📄 Atualizar por documento</h3><button class="fa-modal-close" id="atzClose">&times;</button></div>
+      <div class="fa-modal-body">
+        <div class="field-help">Anexe a <b>alteração contratual consolidada</b> ou o <b>cartão CNPJ</b> (PDF ou imagem). O sistema lê o documento e mostra o que difere do cadastro, seção por seção. <b>Nesta etapa nada é gravado</b> — é só comparação.</div>
+        <label class="fa-field"><span>Documento (PDF ou imagem)</span>
+          <input type="file" id="atzArquivo" class="input" accept=".pdf,image/*">
+        </label>
+        <button type="button" class="btn btn-primary btn-sm" id="atzLer" disabled>Ler e comparar</button>
+        <div class="proc-status" id="atzStatus"></div>
+        <div id="atzDiff"></div>
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-ghost" id="atzFechar">Fechar</button>
+        <button class="btn btn-primary" id="atzAplicar" disabled title="Nesta etapa nada é gravado — a aplicação chega na Etapa B.">Aplicar chega na Etapa B</button>
       </div>
     </div>
   </div>
@@ -1784,6 +1805,151 @@
         if (String(ca[i][1]) !== String(cn[i][1])) out.push(`${ca[i][0]}: "${ca[i][1]}" → "${cn[i][1]}"`);
       }
       return out;
+    }
+
+    // ===================== ATUALIZAR POR DOCUMENTO (Etapa A: só leitura e comparação) =====================
+    const atzOverlay = document.getElementById('atzOverlay');
+    function atzStatus(t, cor){ const el = document.getElementById('atzStatus'); el.textContent = t || ''; el.style.color = cor || ''; }
+    function fecharAtz(){ atzOverlay.classList.remove('is-open'); }
+    document.getElementById('btnAtualizarDoc').addEventListener('click', () => {
+      document.getElementById('atzArquivo').value = '';
+      document.getElementById('atzLer').disabled = true;
+      document.getElementById('atzDiff').innerHTML = '';
+      atzStatus('');
+      atzOverlay.classList.add('is-open');
+    });
+    document.getElementById('atzClose').addEventListener('click', fecharAtz);
+    document.getElementById('atzFechar').addEventListener('click', fecharAtz);
+    atzOverlay.addEventListener('click', e => { if (e.target === atzOverlay) fecharAtz(); });
+    document.getElementById('atzArquivo').addEventListener('change', e => {
+      document.getElementById('atzLer').disabled = !e.target.files[0];
+    });
+
+    document.getElementById('atzLer').addEventListener('click', async () => {
+      const f = document.getElementById('atzArquivo').files[0];
+      if (!f) return;
+      const tipoOk = f.type === 'application/pdf' || /^image\/(jpe?g|png|gif|webp)$/.test(f.type) || (!f.type && /\.pdf$/i.test(f.name));
+      if (!tipoOk) {
+        atzStatus('Formato não suportado — anexe um PDF ou uma imagem JPG, PNG ou WebP.', 'var(--warning)');
+        return;
+      }
+      const btn = document.getElementById('atzLer'); btn.disabled = true;
+      atzStatus('Lendo o documento… (pode levar alguns segundos)');
+      document.getElementById('atzDiff').innerHTML = '';
+      try {
+        const base64 = await fileToBase64(f);
+        const { data: resp, error } = await supabase.functions.invoke('extract-document', {
+          body: { modo: 'cadastro', documents: [{ media_type: f.type || 'application/pdf', data: base64, filename: f.name }] }
+        });
+        if (error) throw error;
+        if (resp?.error) throw new Error(resp.error);
+        const d = resp?.data;
+        if (!d) throw new Error('A extração não retornou dados.');
+        const difs = montarDiffDocumento(d);
+        const cnpjDoc = atzDig(d.documento), cnpjCli = atzDig(cliente?.documento);
+        const avisoCnpj = (cnpjDoc && cnpjCli && cnpjDoc !== cnpjCli)
+          ? `<div class="proc-warn" style="margin-top:10px;">⚠ O CNPJ do documento (${atzEsc(d.documento)}) não bate com o deste cliente (${atzEsc(cliente.documento)}). Confira se anexou o arquivo da empresa certa — as diferenças abaixo provavelmente não valem.</div>`
+          : '';
+        document.getElementById('atzDiff').innerHTML = avisoCnpj + renderDiffDocumento(difs, d);
+        const conf = d.confianca ? ' Confiança da leitura: ' + d.confianca + '.' : '';
+        if (difs.total) atzStatus(difs.total + ' diferença(s) entre o documento e o cadastro — confira abaixo.' + conf);
+        else atzStatus('O documento confere com o cadastro — nenhuma diferença encontrada.' + conf, 'var(--success)');
+      } catch (err) {
+        atzStatus('Não consegui ler o documento: ' + (err.message || err), 'var(--warning)');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    const atzNorm = v => String(v ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const atzDig = v => String(v ?? '').replace(/\D/g, '');
+    const atzEsc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const atzVal = v => (v == null || String(v).trim() === '') ? '—' : String(v);
+
+    function montarDiffDocumento(d){
+      const rows = { endereco: [], fiscal: [], socios: [] };
+
+      // Endereço — compara só o que o documento trouxe
+      [['cep', 'CEP', atzDig], ['logradouro', 'Logradouro', atzNorm], ['numero', 'Número', atzNorm],
+       ['complemento', 'Complemento', atzNorm], ['bairro', 'Bairro', atzNorm], ['cidade', 'Cidade', atzNorm], ['uf', 'UF', atzNorm]]
+        .forEach(([k, rotulo, nrm]) => {
+          const doc = d[k];
+          if (doc == null || String(doc).trim() === '') return;
+          if (nrm(doc) !== nrm(cliente?.[k])) rows.endereco.push({ campo: rotulo, antes: atzVal(cliente?.[k]), depois: atzVal(doc) });
+        });
+
+      // Regime / porte / CNAEs
+      if (d.regime_tributario && atzNorm(d.regime_tributario) !== atzNorm(cliente?.regime_tributario))
+        rows.fiscal.push({ campo: 'Regime tributário', antes: atzVal(cliente?.regime_tributario), depois: atzVal(d.regime_tributario) });
+      if (d.porte_empresa && atzNorm(d.porte_empresa) !== atzNorm(cliente?.porte_empresa))
+        rows.fiscal.push({ campo: 'Porte', antes: atzVal(cliente?.porte_empresa), depois: atzVal(d.porte_empresa) });
+      if (d.cnae_principal && atzDig(d.cnae_principal) !== atzDig(cliente?.cnae_principal))
+        rows.fiscal.push({ campo: 'CNAE principal', antes: atzVal(cliente?.cnae_principal), depois: atzVal(d.cnae_principal) });
+      const secDoc = Array.isArray(d.cnaes_secundarios) ? d.cnaes_secundarios : (d.cnaes_secundarios ? [d.cnaes_secundarios] : []);
+      if (secDoc.length) {
+        const secAtual = Array.isArray(cliente?.cnaes_secundarios) ? cliente.cnaes_secundarios
+          : (cliente?.cnaes_secundarios ? String(cliente.cnaes_secundarios).split(/[\n,;]+/).map(s => s.trim()).filter(Boolean) : []);
+        const chave = arr => arr.map(atzDig).filter(Boolean).sort().join(',');
+        if (chave(secDoc) !== chave(secAtual))
+          rows.fiscal.push({ campo: 'CNAEs secundários', antes: secAtual.length ? secAtual.join(', ') : '—', depois: secDoc.join(', ') });
+      }
+
+      // Sócios — só quando o documento traz quadro societário (cartão CNPJ não lista sócios)
+      const sDoc = Array.isArray(d.socios) ? d.socios.filter(s => s && s.nome) : [];
+      if (sDoc.length) {
+        const usados = new Set();
+        sDoc.forEach(sd => {
+          const cpf = atzDig(sd.cpf);
+          let i = socios.findIndex((s, ix) => !usados.has(ix) && cpf && atzDig(s.cpf) === cpf);
+          if (i < 0) i = socios.findIndex((s, ix) => !usados.has(ix) && atzNorm(s.nome) === atzNorm(sd.nome));
+          if (i < 0) { rows.socios.push({ campo: 'Sócio incluído', antes: '—', depois: resumoSocioAtz(sd) }); return; }
+          usados.add(i);
+          const sb = socios[i];
+          [['nome', 'Nome', atzNorm], ['cpf', 'CPF', atzDig],
+           ['participacao_percentual', 'Participação (%)', v => String(Number(String(v ?? 0).replace(',', '.')))], ['qualificacao', 'Qualificação', atzNorm]]
+            .forEach(([k, rotulo, nrm]) => {
+              const doc = sd[k];
+              if (doc == null || String(doc).trim() === '') return;
+              if (nrm(doc) !== nrm(sb[k])) rows.socios.push({ campo: (sb.nome || 'Sócio') + ' — ' + rotulo, antes: atzVal(sb[k]), depois: atzVal(doc) });
+            });
+          if (typeof sd.eh_administrador === 'boolean' && sd.eh_administrador !== !!sb.eh_administrador)
+            rows.socios.push({ campo: (sb.nome || 'Sócio') + ' — Administrador', antes: sb.eh_administrador ? 'Sim' : 'Não', depois: sd.eh_administrador ? 'Sim' : 'Não' });
+        });
+        socios.forEach((s, ix) => {
+          if (!usados.has(ix)) rows.socios.push({ campo: 'Sócio removido', antes: resumoSocioAtz(s), depois: '—' });
+        });
+      }
+
+      rows.total = rows.endereco.length + rows.fiscal.length + rows.socios.length;
+      rows.temQuadro = sDoc.length > 0;
+      return rows;
+    }
+
+    function resumoSocioAtz(s){
+      const part = s.participacao_percentual != null ? ` (${s.participacao_percentual}%)` : '';
+      return (s.nome || '?') + part + (s.eh_administrador ? ' — administrador' : '') + (s.cpf ? ' · CPF ' + s.cpf : '');
+    }
+
+    function renderDiffDocumento(difs, d){
+      const secao = (titulo, lista, vazio) => {
+        const corpo = lista.length
+          ? lista.map(r => `<tr class="mudou">
+              <td style="width:28px; text-align:center;"><input type="checkbox"></td>
+              <td class="cmp-campo">${atzEsc(r.campo)}</td>
+              <td>${atzEsc(r.antes)}</td>
+              <td>${atzEsc(r.depois)}</td></tr>`).join('')
+          : `<tr><td colspan="4" style="color:#8A93A6;">${vazio}</td></tr>`;
+        return `<div class="alv-tl-head" style="font-size:14px; margin-top:14px;">${titulo}</div>
+          <table class="cmp-tbl"><thead><tr><th></th><th>Campo</th><th>Antes (cadastro)</th><th>Depois (documento)</th></tr></thead><tbody>${corpo}</tbody></table>`;
+      };
+      let html = secao('Endereço', difs.endereco, 'Sem diferenças de endereço.')
+        + secao('Regime / porte / CNAEs', difs.fiscal, 'Sem diferenças de regime, porte ou CNAEs.')
+        + secao('Sócios', difs.socios, difs.temQuadro ? 'Quadro societário confere.' : 'O documento não traz quadro societário (cartão CNPJ não lista sócios).');
+      if (difs.socios.some(r => r.campo === 'Sócio removido'))
+        html += `<div class="field-help" style="margin-top:8px;">⚠ "Sócio removido" pressupõe que o documento traz o quadro societário <b>completo</b> (consolidação). Se anexou uma alteração parcial, desconsidere essas linhas.</div>`;
+      if (d.observacoes_extracao) html += `<div class="field-help" style="margin-top:8px;">Obs. da leitura: ${atzEsc(d.observacoes_extracao)}</div>`;
+      html += `<div class="field-help" style="margin-top:8px;">Marque os itens que pretende aplicar — <b>a gravação chega na Etapa B</b>; por enquanto nada é alterado no cadastro.</div>`;
+      return html;
     }
 
     document.getElementById('procConfirmar').addEventListener('click', async () => {
