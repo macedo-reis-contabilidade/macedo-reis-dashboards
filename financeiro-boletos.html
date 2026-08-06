@@ -118,7 +118,7 @@
           <thead>
             <tr>
               <th>#</th><th>Empresa</th><th>Valor</th><th>Vencimento</th><th>Canal</th>
-              <th>Envio</th><th>Responsável</th><th>Números / E-mails</th><th>Observações</th><th>Status</th><th></th>
+              <th>Números / E-mails</th><th>Observações</th><th>Status</th><th></th>
             </tr>
           </thead>
           <tbody id="tbody"></tbody>
@@ -312,8 +312,6 @@ function render(){
             <option value="email"${r.canal==='email'?' selected':''}>E-mail</option>
             <option value="outro"${r.canal==='outro'?' selected':''}>Outro</option>
           </select></td>
-      <td class="w-envio"><input class="ci" value="${esc(r.contato_envio||'')}" data-f="contato_envio" placeholder="ex: WHATS - Amanda"></td>
-      <td class="w-resp"><input class="ci" value="${esc(r.responsavel||'')}" data-f="responsavel"></td>
       <td class="w-dest"><input class="ci" value="${esc(r.destino||'')}" data-f="destino" placeholder="número / e-mail"></td>
       <td class="w-obs"><input class="ci" value="${esc(r.observacao||'')}" data-f="observacao"></td>
       <td><select class="st st-${r.status}" data-f="status">
