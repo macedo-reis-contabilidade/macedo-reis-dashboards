@@ -14,6 +14,7 @@
     .fa-modal-head h3 { margin:0; color:#E6EBF2; font-size:18px; }
     .fa-modal-close { background:none; border:none; color:#8A93A6; font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }
     .fa-modal-close:hover { color:#E6EBF2; }
+    .btn[hidden] { display:none; } /* [hidden] perde do display:inline-flex do .btn — sem isso, esconder botão por atributo não funciona */
     .fa-modal-body { padding:22px; display:flex; flex-direction:column; gap:14px; }
     .fa-field { display:flex; flex-direction:column; gap:6px; }
     .fa-field > span { font-size:13px; color:#8AAEC8; }
@@ -619,12 +620,12 @@
     </div>
   </div>
 
-  <!-- atualizar por documento (Etapa A: somente leitura e comparação) -->
+  <!-- atualizar por documento (Etapa B: comparação + aplicação seletiva) -->
   <div class="fa-modal-overlay" id="atzOverlay">
     <div class="fa-modal" style="max-width:760px;">
       <div class="fa-modal-head"><h3>📄 Atualizar por documento</h3><button class="fa-modal-close" id="atzClose">&times;</button></div>
       <div class="fa-modal-body">
-        <div class="field-help">Anexe a <b>alteração contratual consolidada</b> ou o <b>cartão CNPJ</b> (PDF ou imagem). O sistema lê o documento e mostra o que difere do cadastro, seção por seção. <b>Nesta etapa nada é gravado</b> — é só comparação.</div>
+        <div class="field-help">Anexe a <b>alteração contratual consolidada</b> ou o <b>cartão CNPJ</b> (PDF ou imagem). O sistema lê o documento, mostra o que difere do cadastro, e grava <b>somente as linhas que você marcar</b>.</div>
         <label class="fa-field"><span>Documento (PDF ou imagem)</span>
           <input type="file" id="atzArquivo" class="input" accept=".pdf,image/*">
         </label>
@@ -634,7 +635,7 @@
       </div>
       <div class="fa-modal-foot">
         <button class="btn btn-ghost" id="atzFechar">Fechar</button>
-        <button class="btn btn-primary" id="atzAplicar" disabled title="Nesta etapa nada é gravado — a aplicação chega na Etapa B.">Aplicar chega na Etapa B</button>
+        <button class="btn btn-primary" id="atzAplicar" disabled title="Grava somente as linhas marcadas e registra o processo 'Atualização cadastral'.">Aplicar marcados</button>
       </div>
     </div>
   </div>
@@ -1169,6 +1170,7 @@
         document.getElementById('sectionPF').hidden = true;
         document.getElementById('sectionSocios').hidden = false;
         document.getElementById('sectionDrive').hidden = false;
+        document.getElementById('btnAtualizarDoc').hidden = false;
         document.getElementById('nome_fantasia').value = cliente.nome_fantasia || '';
         document.getElementById('inscricao_estadual').value = cliente.inscricao_estadual || '';
         document.getElementById('inscricao_municipal').value = cliente.inscricao_municipal || '';
@@ -1184,6 +1186,7 @@
         document.getElementById('sectionPF').hidden = false;
         document.getElementById('sectionSocios').hidden = true;
         document.getElementById('sectionDrive').hidden = true;
+        document.getElementById('btnAtualizarDoc').hidden = true;
         document.getElementById('rg').value = cliente.rg || '';
         document.getElementById('data_nascimento').value = cliente.data_nascimento || '';
         document.getElementById('profissao').value = cliente.profissao || '';
@@ -1807,14 +1810,19 @@
       return out;
     }
 
-    // ===================== ATUALIZAR POR DOCUMENTO (Etapa A: só leitura e comparação) =====================
+    // ===================== ATUALIZAR POR DOCUMENTO (Etapa B: comparação + aplicação seletiva) =====================
     const atzOverlay = document.getElementById('atzOverlay');
+    let atzGen = 0;            // fechar o modal (ou nova leitura) invalida leituras em voo
+    let atzArquivoLido = null; // arquivo do último diff — vai pro Drive no registro do processo
     function atzStatus(t, cor){ const el = document.getElementById('atzStatus'); el.textContent = t || ''; el.style.color = cor || ''; }
-    function fecharAtz(){ atzOverlay.classList.remove('is-open'); }
+    function fecharAtz(){ atzGen++; atzOverlay.classList.remove('is-open'); }
     document.getElementById('btnAtualizarDoc').addEventListener('click', () => {
+      if (cliente?.tipo_pessoa !== 'PJ') return; // o diff compara dados de PJ; pra PF o botão nem aparece
       document.getElementById('atzArquivo').value = '';
       document.getElementById('atzLer').disabled = true;
+      document.getElementById('atzAplicar').disabled = true;
       document.getElementById('atzDiff').innerHTML = '';
+      atzArquivoLido = null;
       atzStatus('');
       atzOverlay.classList.add('is-open');
     });
@@ -1833,14 +1841,18 @@
         atzStatus('Formato não suportado — anexe um PDF ou uma imagem JPG, PNG ou WebP.', 'var(--warning)');
         return;
       }
+      const gen = ++atzGen;
       const btn = document.getElementById('atzLer'); btn.disabled = true;
+      document.getElementById('atzAplicar').disabled = true;
       atzStatus('Lendo o documento… (pode levar alguns segundos)');
       document.getElementById('atzDiff').innerHTML = '';
       try {
         const base64 = await fileToBase64(f);
+        if (gen !== atzGen) return; // modal fechado (ou nova leitura) — descarta
         const { data: resp, error } = await supabase.functions.invoke('extract-document', {
           body: { modo: 'cadastro', documents: [{ media_type: f.type || 'application/pdf', data: base64, filename: f.name }] }
         });
+        if (gen !== atzGen) return; // modal fechado (ou nova leitura) — descarta
         if (error) throw error;
         if (resp?.error) throw new Error(resp.error);
         const d = resp?.data;
@@ -1851,18 +1863,35 @@
           ? `<div class="proc-warn" style="margin-top:10px;">⚠ O CNPJ do documento (${atzEsc(d.documento)}) não bate com o deste cliente (${atzEsc(cliente.documento)}). Confira se anexou o arquivo da empresa certa — as diferenças abaixo provavelmente não valem.</div>`
           : '';
         document.getElementById('atzDiff').innerHTML = avisoCnpj + renderDiffDocumento(difs, d);
+        atzArquivoLido = f;
+        document.getElementById('atzAplicar').disabled = !difs.total || !!avisoCnpj;
         const conf = d.confianca ? ' Confiança da leitura: ' + d.confianca + '.' : '';
-        if (difs.total) atzStatus(difs.total + ' diferença(s) entre o documento e o cadastro — confira abaixo.' + conf);
+        if (avisoCnpj) atzStatus('O CNPJ do documento não confere com o deste cliente — aplicação bloqueada por segurança.' + conf, 'var(--warning)');
+        else if (difs.total) atzStatus(difs.total + ' diferença(s) entre o documento e o cadastro — marque o que quer aplicar.' + conf);
         else atzStatus('O documento confere com o cadastro — nenhuma diferença encontrada.' + conf, 'var(--success)');
       } catch (err) {
+        if (gen !== atzGen) return;
         atzStatus('Não consegui ler o documento: ' + (err.message || err), 'var(--warning)');
       } finally {
-        btn.disabled = false;
+        if (gen === atzGen) btn.disabled = false;
       }
     });
 
     const atzNorm = v => String(v ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
     const atzDig = v => String(v ?? '').replace(/\D/g, '');
+    const atzNum = v => {
+      let s = String(v ?? '').trim(); if (!s) return null;
+      if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+      else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, ''); // "100.000" = milhar pt-BR, não decimal
+      const n = Number(s); return isNaN(n) ? null : n;
+    };
+    // devolve o valor canônico do select (mesmo domínio do enum no banco) ou null se não casar
+    const atzCanonSelect = (selectId, valor) => {
+      const el = document.getElementById(selectId);
+      if (!el || !el.options) return null;
+      const opt = Array.from(el.options).find(o => o.value && atzNorm(o.value) === atzNorm(valor));
+      return opt ? opt.value : null;
+    };
     const atzEsc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const atzVal = v => (v == null || String(v).trim() === '') ? '—' : String(v);
 
@@ -1875,23 +1904,35 @@
         .forEach(([k, rotulo, nrm]) => {
           const doc = d[k];
           if (doc == null || String(doc).trim() === '') return;
-          if (nrm(doc) !== nrm(cliente?.[k])) rows.endereco.push({ campo: rotulo, antes: atzVal(cliente?.[k]), depois: atzVal(doc) });
+          if (nrm(doc) !== nrm(cliente?.[k])) {
+            const valor = k === 'cep' ? atzDig(doc) : (k === 'uf' ? String(doc).trim().toUpperCase() : String(doc).trim());
+            rows.endereco.push({ campo: rotulo, antes: atzVal(cliente?.[k]), depois: atzVal(doc), aplicar: { col: k, valor } });
+          }
         });
 
-      // Regime / porte / CNAEs
+      // Empresa · regime / porte / CNAEs
+      if (d.nome_principal && atzNorm(d.nome_principal) !== atzNorm(cliente?.nome_principal))
+        rows.fiscal.push({ campo: 'Razão social', antes: atzVal(cliente?.nome_principal), depois: atzVal(d.nome_principal), aplicar: { col: 'nome_principal', valor: String(d.nome_principal).trim() } });
+      const capDoc = atzNum(d.capital_social);
+      if (capDoc != null && capDoc !== atzNum(cliente?.capital_social))
+        rows.fiscal.push({ campo: 'Capital social', antes: atzVal(cliente?.capital_social), depois: atzVal(d.capital_social), aplicar: { col: 'capital_social', valor: capDoc } });
+      if (d.natureza_juridica && atzNorm(d.natureza_juridica) !== atzNorm(cliente?.natureza_juridica))
+        rows.fiscal.push({ campo: 'Natureza jurídica', antes: atzVal(cliente?.natureza_juridica), depois: atzVal(d.natureza_juridica), aplicar: { col: 'natureza_juridica', valor: String(d.natureza_juridica).trim() } });
       if (d.regime_tributario && atzNorm(d.regime_tributario) !== atzNorm(cliente?.regime_tributario))
-        rows.fiscal.push({ campo: 'Regime tributário', antes: atzVal(cliente?.regime_tributario), depois: atzVal(d.regime_tributario) });
+        rows.fiscal.push({ campo: 'Regime tributário', antes: atzVal(cliente?.regime_tributario), depois: atzVal(d.regime_tributario),
+          aplicar: { col: 'regime_tributario', valor: atzCanonSelect('regime_tributario', d.regime_tributario) || String(d.regime_tributario).trim() } });
       if (d.porte_empresa && atzNorm(d.porte_empresa) !== atzNorm(cliente?.porte_empresa))
-        rows.fiscal.push({ campo: 'Porte', antes: atzVal(cliente?.porte_empresa), depois: atzVal(d.porte_empresa) });
+        rows.fiscal.push({ campo: 'Porte', antes: atzVal(cliente?.porte_empresa), depois: atzVal(d.porte_empresa),
+          aplicar: { col: 'porte_empresa', valor: atzCanonSelect('porte_empresa', d.porte_empresa) || String(d.porte_empresa).trim() } });
       if (d.cnae_principal && atzDig(d.cnae_principal) !== atzDig(cliente?.cnae_principal))
-        rows.fiscal.push({ campo: 'CNAE principal', antes: atzVal(cliente?.cnae_principal), depois: atzVal(d.cnae_principal) });
+        rows.fiscal.push({ campo: 'CNAE principal', antes: atzVal(cliente?.cnae_principal), depois: atzVal(d.cnae_principal), aplicar: { col: 'cnae_principal', valor: String(d.cnae_principal).trim() } });
       const secDoc = Array.isArray(d.cnaes_secundarios) ? d.cnaes_secundarios : (d.cnaes_secundarios ? [d.cnaes_secundarios] : []);
       if (secDoc.length) {
         const secAtual = Array.isArray(cliente?.cnaes_secundarios) ? cliente.cnaes_secundarios
           : (cliente?.cnaes_secundarios ? String(cliente.cnaes_secundarios).split(/[\n,;]+/).map(s => s.trim()).filter(Boolean) : []);
         const chave = arr => arr.map(atzDig).filter(Boolean).sort().join(',');
         if (chave(secDoc) !== chave(secAtual))
-          rows.fiscal.push({ campo: 'CNAEs secundários', antes: secAtual.length ? secAtual.join(', ') : '—', depois: secDoc.join(', ') });
+          rows.fiscal.push({ campo: 'CNAEs secundários', antes: secAtual.length ? secAtual.join(', ') : '—', depois: secDoc.join(', '), aplicar: { col: 'cnaes_secundarios', valor: secDoc.map(s => String(s).trim()).filter(Boolean) } });
       }
 
       // Sócios — só quando o documento traz quadro societário (cartão CNPJ não lista sócios)
@@ -1902,21 +1943,30 @@
           const cpf = atzDig(sd.cpf);
           let i = socios.findIndex((s, ix) => !usados.has(ix) && cpf && atzDig(s.cpf) === cpf);
           if (i < 0) i = socios.findIndex((s, ix) => !usados.has(ix) && atzNorm(s.nome) === atzNorm(sd.nome));
-          if (i < 0) { rows.socios.push({ campo: 'Sócio incluído', antes: '—', depois: resumoSocioAtz(sd) }); return; }
+          if (i < 0) {
+            rows.socios.push({ campo: 'Sócio incluído', antes: '—', depois: resumoSocioAtz(sd), aplicar: { tipo: 'incluido', valor: {
+              nome: String(sd.nome).trim(), cpf: cpf || null, participacao_percentual: atzNum(sd.participacao_percentual),
+              qualificacao: String(sd.qualificacao ?? '').trim() || null, eh_administrador: !!sd.eh_administrador } } });
+            return;
+          }
           usados.add(i);
           const sb = socios[i];
-          [['nome', 'Nome', atzNorm], ['cpf', 'CPF', atzDig],
-           ['participacao_percentual', 'Participação (%)', v => String(Number(String(v ?? 0).replace(',', '.')))], ['qualificacao', 'Qualificação', atzNorm]]
-            .forEach(([k, rotulo, nrm]) => {
+          [['nome', 'Nome', atzNorm, v => String(v).trim()], ['cpf', 'CPF', atzDig, v => atzDig(v) || null],
+           ['participacao_percentual', 'Participação (%)', v => String(atzNum(v)), v => atzNum(v)], ['qualificacao', 'Qualificação', atzNorm, v => String(v).trim()]]
+            .forEach(([k, rotulo, nrm, prep]) => {
               const doc = sd[k];
               if (doc == null || String(doc).trim() === '') return;
-              if (nrm(doc) !== nrm(sb[k])) rows.socios.push({ campo: (sb.nome || 'Sócio') + ' — ' + rotulo, antes: atzVal(sb[k]), depois: atzVal(doc) });
+              if (k === 'participacao_percentual' && atzNum(doc) == null) return; // valor ilegível (ex.: "50%") — não vira linha
+              if (nrm(doc) !== nrm(sb[k])) rows.socios.push({ campo: (sb.nome || 'Sócio') + ' — ' + rotulo, antes: atzVal(sb[k]), depois: atzVal(doc),
+                aplicar: { tipo: 'alterado', socioId: sb.id, col: k, valor: prep(doc) } });
             });
           if (typeof sd.eh_administrador === 'boolean' && sd.eh_administrador !== !!sb.eh_administrador)
-            rows.socios.push({ campo: (sb.nome || 'Sócio') + ' — Administrador', antes: sb.eh_administrador ? 'Sim' : 'Não', depois: sd.eh_administrador ? 'Sim' : 'Não' });
+            rows.socios.push({ campo: (sb.nome || 'Sócio') + ' — Administrador', antes: sb.eh_administrador ? 'Sim' : 'Não', depois: sd.eh_administrador ? 'Sim' : 'Não',
+              aplicar: { tipo: 'alterado', socioId: sb.id, col: 'eh_administrador', valor: sd.eh_administrador } });
         });
         socios.forEach((s, ix) => {
-          if (!usados.has(ix)) rows.socios.push({ campo: 'Sócio removido', antes: resumoSocioAtz(s), depois: '—' });
+          if (!usados.has(ix)) rows.socios.push({ campo: 'Sócio removido', antes: resumoSocioAtz(s), depois: '—',
+            aplicar: { tipo: 'removido', socioId: s.id, valor: resumoSocioAtz(s) } });
         });
       }
 
@@ -1931,26 +1981,153 @@
     }
 
     function renderDiffDocumento(difs, d){
-      const secao = (titulo, lista, vazio) => {
+      const secao = (titulo, lista, vazio, secKey) => {
         const corpo = lista.length
-          ? lista.map(r => `<tr class="mudou">
-              <td style="width:28px; text-align:center;"><input type="checkbox"></td>
+          ? lista.map(r => {
+              const a = r.aplicar || {};
+              const attrs = `data-secao="${secKey}" data-campo="${atzEsc(a.col || r.campo)}" data-valor="${atzEsc(JSON.stringify(a.valor ?? null))}"`
+                + (a.tipo ? ` data-tipo="${a.tipo}"` : '') + (a.socioId ? ` data-socio-id="${atzEsc(a.socioId)}"` : '');
+              return `<tr class="mudou">
+              <td style="width:28px; text-align:center;"><input type="checkbox" ${attrs}></td>
               <td class="cmp-campo">${atzEsc(r.campo)}</td>
               <td>${atzEsc(r.antes)}</td>
-              <td>${atzEsc(r.depois)}</td></tr>`).join('')
+              <td>${atzEsc(r.depois)}</td></tr>`;
+            }).join('')
           : `<tr><td colspan="4" style="color:#8A93A6;">${vazio}</td></tr>`;
         return `<div class="alv-tl-head" style="font-size:14px; margin-top:14px;">${titulo}</div>
           <table class="cmp-tbl"><thead><tr><th></th><th>Campo</th><th>Antes (cadastro)</th><th>Depois (documento)</th></tr></thead><tbody>${corpo}</tbody></table>`;
       };
-      let html = secao('Endereço', difs.endereco, 'Sem diferenças de endereço.')
-        + secao('Regime / porte / CNAEs', difs.fiscal, 'Sem diferenças de regime, porte ou CNAEs.')
-        + secao('Sócios', difs.socios, difs.temQuadro ? 'Quadro societário confere.' : 'O documento não traz quadro societário (cartão CNPJ não lista sócios).');
+      let html = secao('Endereço', difs.endereco, 'Sem diferenças de endereço.', 'endereco')
+        + secao('Empresa · regime / porte / CNAEs', difs.fiscal, 'Sem diferenças de razão social, capital, natureza, regime, porte ou CNAEs.', 'fiscal')
+        + secao('Sócios', difs.socios, difs.temQuadro ? 'Quadro societário confere.' : 'O documento não traz quadro societário (cartão CNPJ não lista sócios).', 'socios');
       if (difs.socios.some(r => r.campo === 'Sócio removido'))
         html += `<div class="field-help" style="margin-top:8px;">⚠ "Sócio removido" pressupõe que o documento traz o quadro societário <b>completo</b> (consolidação). Se anexou uma alteração parcial, desconsidere essas linhas.</div>`;
       if (d.observacoes_extracao) html += `<div class="field-help" style="margin-top:8px;">Obs. da leitura: ${atzEsc(d.observacoes_extracao)}</div>`;
-      html += `<div class="field-help" style="margin-top:8px;">Marque os itens que pretende aplicar — <b>a gravação chega na Etapa B</b>; por enquanto nada é alterado no cadastro.</div>`;
+      html += `<div class="field-help" style="margin-top:8px;">Marque as linhas que quer gravar e clique em <b>Aplicar marcados</b> — só as marcadas serão aplicadas; o resto do cadastro fica como está.</div>`;
       return html;
     }
+
+    function atzRefletirNoForm(payload){
+      Object.entries(payload).forEach(([k, v]) => {
+        const el = document.getElementById(k);
+        if (!el) return;
+        el.value = (k === 'cnaes_secundarios' && Array.isArray(v)) ? v.join('\n') : (v ?? '');
+      });
+    }
+
+    async function registrarProcessoAtz(f, resumoTxt){
+      const nomeCliente = cliente?.nome_principal || 'Cliente';
+      const pastaNome = 'Atualização cadastral';
+      let driveMsg = 'sem arquivo no Drive';
+      if (f) {
+        try {
+          const ext = (!f.type || f.type === 'application/pdf') ? 'pdf' : (f.type.split('/')[1] || 'bin');
+          const arquivos = [{ nome: `Documento - ${pastaNome} - ${nomeCliente}.${ext}`, mime: f.type || 'application/pdf', base64: await fileToBase64(f) }];
+          const { data: dr, error: derr } = await supabase.functions.invoke('registrar-processo-drive', {
+            body: { drive_folder_url: cliente?.drive_folder_url || null, nome_processo: pastaNome, arquivos, cliente_id: clienteId, nome_cliente: nomeCliente }
+          });
+          if (derr) driveMsg = 'arquivo não subiu no Drive (' + (derr.message || derr) + ')';
+          else if (dr?.error) driveMsg = 'arquivo não subiu no Drive (' + (dr.error === 'NAO_ACHEI_PASTA' ? 'pasta do cliente não vinculada' : dr.error) + ')';
+          else {
+            if (dr?.cliente_folder_url && cliente) cliente.drive_folder_url = dr.cliente_folder_url;
+            driveMsg = `${(dr?.enviados || []).length} arquivo(s) em PROCESSOS/${pastaNome}`;
+          }
+        } catch (e) { driveMsg = 'arquivo não subiu no Drive (' + (e.message || e) + ')'; }
+      }
+      const regSoc = {
+        setor: 'societario', titulo: 'Atualização cadastral', cliente_id: clienteId, responsavel: 'Samuel', prioridade: 'media',
+        descricao: resumoTxt + '\nProcesso: ' + pastaNome + ' · ' + driveMsg + '.', origem: 'processo', status: 'pendente'
+      };
+      const { data: insSoc, error: eSoc } = await supabase.from('tarefas').insert(regSoc).select('id').single();
+      if (eSoc) return driveMsg + ' · registro no Societário falhou: ' + eSoc.message;
+      await supabase.from('tarefa_historico').insert({ tarefa_id: insSoc.id, descricao: 'Atualização cadastral aplicada a partir de documento (📄 comparativo).\n' + resumoTxt, autor: usuarioEmail });
+      return driveMsg + ' · registro aberto no Societário';
+    }
+
+    document.getElementById('atzAplicar').addEventListener('click', async () => {
+      const marcados = Array.from(document.querySelectorAll('#atzDiff input[type="checkbox"][data-secao]:checked')).filter(cb => !cb.disabled);
+      if (!marcados.length) { atzStatus('Marque ao menos uma linha pra aplicar.', 'var(--warning)'); return; }
+      const fDoc = atzArquivoLido; // captura já: reabrir o modal no meio não pode perder o arquivo do processo
+      const resumoDe = cb => { const tds = cb.closest('tr').querySelectorAll('td'); return tds[1].textContent + ': ' + tds[2].textContent + ' → ' + tds[3].textContent; };
+      const cliPayload = {}; const socInserir = []; const socAtualizar = {}; const socRemover = [];
+      marcados.forEach(cb => {
+        const valor = JSON.parse(cb.dataset.valor);
+        if (cb.dataset.secao === 'socios') {
+          if (cb.dataset.tipo === 'incluido') socInserir.push({ payload: { cliente_id: clienteId, ...valor }, cb });
+          else if (cb.dataset.tipo === 'removido') socRemover.push({ id: cb.dataset.socioId, resumo: valor, cb });
+          else {
+            if (!socAtualizar[cb.dataset.socioId]) socAtualizar[cb.dataset.socioId] = { campos: {}, cbs: [] };
+            socAtualizar[cb.dataset.socioId].campos[cb.dataset.campo] = valor;
+            socAtualizar[cb.dataset.socioId].cbs.push(cb);
+          }
+        } else {
+          cliPayload[cb.dataset.campo] = valor;
+        }
+      });
+      if (socRemover.length && !confirm('Remover DEFINITIVAMENTE do cadastro ' + socRemover.length + ' sócio(s)?\n\n'
+        + socRemover.map(r => '• ' + r.resumo).join('\n') + '\n\nEssa exclusão não tem desfazer.')) {
+        atzStatus('Aplicação cancelada — nada foi gravado. Se quiser aplicar só o resto, desmarque as linhas de remoção e clique de novo.', 'var(--warning)');
+        return;
+      }
+
+      const btn = document.getElementById('atzAplicar');
+      btn.disabled = true; document.getElementById('atzLer').disabled = true;
+      atzStatus('Aplicando as linhas marcadas…');
+      const erros = []; const okCbs = []; let aplicadas = 0;
+
+      if (Object.keys(cliPayload).length) {
+        const { error } = await supabase.from('clientes').update(cliPayload).eq('id', clienteId);
+        if (error) erros.push('Cliente: ' + error.message);
+        else {
+          Object.assign(cliente, cliPayload);
+          atzRefletirNoForm(cliPayload);
+          aplicadas += Object.keys(cliPayload).length;
+          marcados.filter(cb => cb.dataset.secao !== 'socios').forEach(cb => okCbs.push(cb));
+        }
+      }
+      for (const item of socInserir) {
+        const { data, error } = await supabase.from('socios').insert(item.payload).select().single();
+        if (error) erros.push('Incluir sócio ' + (item.payload.nome || '') + ': ' + error.message);
+        else { socios.push(data); aplicadas++; okCbs.push(item.cb); }
+      }
+      for (const [id, info] of Object.entries(socAtualizar)) {
+        const { data, error } = await supabase.from('socios').update(info.campos).eq('id', id).select().single();
+        if (error) erros.push('Alterar sócio: ' + error.message);
+        else { socios = socios.map(s => s.id === id ? data : s); aplicadas += Object.keys(info.campos).length; info.cbs.forEach(cb => okCbs.push(cb)); }
+      }
+      for (const item of socRemover) {
+        const { error } = await supabase.from('socios').delete().eq('id', item.id);
+        if (error) erros.push('Remover sócio: ' + error.message);
+        else { socios = socios.filter(s => s.id !== item.id); aplicadas++; okCbs.push(item.cb); }
+      }
+      renderSocios();
+      okCbs.forEach(cb => { cb.disabled = true; const tr = cb.closest('tr'); if (tr) tr.style.opacity = '.45'; });
+
+      if (!aplicadas) {
+        atzStatus('Nada foi aplicado — ' + erros.join(' · '), 'var(--danger)');
+        btn.disabled = false; document.getElementById('atzLer').disabled = false;
+        return;
+      }
+
+      // carimbo do documento — a coluna pode ainda não existir; erro é ignorado de propósito (sem DDL por aqui)
+      const { error: eStamp } = await supabase.from('clientes').update({ atualizado_por_documento_em: new Date().toISOString() }).eq('id', clienteId);
+      if (!eStamp && cliente) cliente.atualizado_por_documento_em = new Date().toISOString();
+
+      atzStatus('Aplicado. Registrando o processo "Atualização cadastral"…');
+      let msgProc = '';
+      try {
+        // o resumo registra SÓ o que de fato gravou (falhas não entram na trilha)
+        const linhasAplicadas = okCbs.map(resumoDe);
+        msgProc = await registrarProcessoAtz(fDoc, 'Atualização cadastral aplicada por documento (📄):\n' + linhasAplicadas.map(l => '• ' + l).join('\n'));
+      } catch (e) { msgProc = 'registro do processo falhou: ' + (e.message || e); }
+
+      atzStatus(aplicadas + ' alteração(ões) aplicada(s)'
+        + (erros.length ? ' · ' + erros.length + ' falha(s): ' + erros.join(' · ') : '')
+        + (msgProc ? ' · ' + msgProc : '') + '.',
+        erros.length ? 'var(--warning)' : 'var(--success)');
+      btn.disabled = false;
+      document.getElementById('atzLer').disabled = false;
+    });
 
     document.getElementById('procConfirmar').addEventListener('click', async () => {
       const tipo = document.getElementById('procTipo').value;
