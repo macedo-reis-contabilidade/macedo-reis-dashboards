@@ -14,7 +14,6 @@
     a[href="agenda.html"]         .dashboard-card-icon { background: rgba(120,170,230,.16); color:#8FC0F0; }
     a[href="clientes/index.html"] .dashboard-card-icon { background: rgba(91,192,190,.15);  color:#7FD4D2; }
     a[href="setores.html"]        .dashboard-card-icon { background: rgba(133,151,224,.15); color:#8597E0; }
-    a[href="administracao.html"]  .dashboard-card-icon { background: rgba(227,179,65,.15);  color:#E3B341; }
     a[href="ajuda.html"]          .dashboard-card-icon { background: rgba(224,143,168,.15); color:#E08FA8; }
 
     /* Selo "hoje" (urgência do dia) — canto superior direito */
@@ -107,20 +106,6 @@
           <p>Como usar cada parte do sistema — perguntas, respostas e tours guiados.</p>
           <div class="dashboard-card-footer"><span>Abrir →</span></div>
         </a>
-
-        <a href="administracao.html" class="dashboard-card">
-          <div class="dashboard-card-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 21h18"/><path d="M5 21V8l7-5 7 5v13"/><path d="M9 21v-6h6v6"/>
-            </svg>
-          </div>
-          <h3>Administração</h3>
-          <p>Gestão dos sócios e Financeiro do escritório.</p>
-          <div class="dashboard-card-footer">
-            <span>Acessar →</span>
-            <span class="badge card-status st-load">·</span>
-          </div>
-        </a>
       </div>
     </main>
   </div>
@@ -174,7 +159,6 @@
       const GRUPOS = {
         'clientes/index.html': ['clientes'],
         'setores.html':        ['dp','fiscal','contabil','societario','comercial','irpf'],
-        'administracao.html':  ['gestao','financeiro'],
       };
       const cards = {};
       document.querySelectorAll('a.dashboard-card').forEach(c => {

@@ -114,10 +114,11 @@
         document.getElementById('userName').textContent = displayName;
         document.getElementById('userAvatar').textContent = displayName.charAt(0).toUpperCase();
       }
-      // Gestão é só para sócios; Financeiro fica para todos
+      // Administração é restrita aos sócios — quem não for volta pros Setores
       const SOCIOS = ['financeiro@macedoereis.com.br','diego@macedoereis.com.br'];
       if (!SOCIOS.includes((user?.email||'').toLowerCase())) {
-        const g = document.querySelector('a[href="gestao.html"]'); if (g) g.remove();
+        location.replace('setores.html');
+        return;
       }
       await pintarSelosDoDia(user);
     })();

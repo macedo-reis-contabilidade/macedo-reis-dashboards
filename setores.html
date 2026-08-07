@@ -17,6 +17,7 @@
     a[href="societario.html"] .dashboard-card-icon { background: rgba(227,179,65,.15);  color:#E3B341; }
     a[href="comercial.html"]  .dashboard-card-icon { background: rgba(224,160,95,.15);  color:#E0A05F; }
     a[href="irpf.html"]       .dashboard-card-icon { background: rgba(224,143,168,.15); color:#E08FA8; }
+    a[href="administracao.html"] .dashboard-card-icon { background: rgba(227,179,65,.15);  color:#E3B341; }
 
     /* Selo "hoje" (urgência do dia) — canto superior direito */
     .badge-hoje { position:absolute; top:14px; right:14px; background:rgba(227,179,65,.18); border:1px solid rgba(227,179,65,.5); color:#E3B341; font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.04em; text-transform:uppercase; box-shadow:0 0 0 3px rgba(227,179,65,.06); }
@@ -111,6 +112,15 @@
           <p>Campanha do Imposto de Renda PF: coleta, elaboração e entregas.</p>
           <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load">·</span></div>
         </a>
+
+        <a href="administracao.html" class="dashboard-card" id="cardAdministracao" style="display:none">
+          <div class="dashboard-card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V8l7-5 7 5v13"/><path d="M9 21v-6h6v6"/></svg>
+          </div>
+          <h3>Administração</h3>
+          <p>Gestão dos sócios e Financeiro do escritório.</p>
+          <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load">·</span></div>
+        </a>
             </div>
     </main>
   </div>
@@ -154,6 +164,15 @@
         document.getElementById('userName').textContent = displayName;
         document.getElementById('userAvatar').textContent = displayName.charAt(0).toUpperCase();
       }
+
+      // Administração: card visível só pros sócios; pros demais, sai do DOM (nem entra na contagem)
+      const SOCIOS = ['financeiro@macedoereis.com.br','diego@macedoereis.com.br'];
+      const cardAdm = document.getElementById('cardAdministracao');
+      if (cardAdm) {
+        if (SOCIOS.includes((user?.email||'').toLowerCase())) cardAdm.style.display = '';
+        else cardAdm.remove();
+      }
+
       await pintarSelosDoDia(user);
     })();
 
@@ -164,6 +183,7 @@
       const GRUPOS = {
         'dp.html':['dp'], 'fiscal.html':['fiscal'], 'contabil.html':['contabil'],
         'societario.html':['societario'], 'comercial.html':['comercial'], 'irpf.html':['irpf'],
+        'administracao.html':['gestao','financeiro'],
       };
       const cards = {};
       document.querySelectorAll('a.dashboard-card').forEach(c => {
