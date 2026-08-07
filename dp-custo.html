@@ -7,14 +7,6 @@
   <link rel="stylesheet" href="assets/css/style.css">
   <script type="module" src="assets/js/auth-guard.js"></script>
   <style>
-    /* relatório para o cliente (impressão) */
-    #reportArea { display:none; }
-    @media print {
-      html, body { background:#fff !important; }
-      .app-shell { display:none !important; }
-      #reportArea { display:block; }
-      @page { margin:14mm; }
-    }
     /* subnav (faltava nesta página) */
     .fa-subnav { display:flex; gap:6px; margin-bottom:22px; border-bottom:1px solid rgba(255,255,255,.08); flex-wrap:wrap; }
     .fa-tab { padding:9px 16px; font-size:14px; color:#8A93A6; text-decoration:none; border-bottom:2px solid transparent; margin-bottom:-1px; }
@@ -316,8 +308,6 @@
       </div>
     </main>
   </div>
-
-  <div id="reportArea"></div>
 
   <script type="module">
     import { getCurrentUser, signOut } from './assets/js/supabase.js';
@@ -675,6 +665,10 @@
       win.document.close();
     }
     document.getElementById('btnReport').addEventListener('click', buildReport);
+    // Ctrl+P (ou Cmd+P) gera o relatório oficial em vez de imprimir a tela
+    document.addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') { e.preventDefault(); buildReport(); }
+    });
 
     // recalcular em qualquer mudança dos campos estáticos
     document.querySelectorAll('.cc-left input, .cc-left select').forEach(el => {
