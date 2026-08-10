@@ -149,6 +149,7 @@
             <label style="font-size:12.5px;color:#8A93A6;">Movimentação do mês:</label>
             <input type="month" id="anaMes" class="input" style="max-width:170px;">
             <button class="btn-mini" id="btnPdfCart" style="margin-left:auto;">🖨 PDF pra impressão</button>
+            <button class="btn-mini" id="btnXlsCart">📊 Excel</button>
           </div>
           <div class="ana-cards">
             <div class="ana-card"><div class="num" id="cAtivos">—</div><div class="lbl">ativos na carteira</div></div>
@@ -208,6 +209,7 @@
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="assets/js/tour.js"></script>
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
@@ -224,7 +226,7 @@
 
     async function carregar(){
       const { data, error } = await supabase.from('carteira_info')
-        .select('*, clientes(id, nome_principal, nome_fantasia, regime_tributario, cidade, uf, status)')
+        .select('*, clientes(id, nome_principal, nome_fantasia, regime_tributario, cidade, uf, status, documento)')
         .order('cliente_id');
       if (error) { alert('Erro ao carregar: ' + error.message); return; }
       rows = (data || []).filter(r => r.clientes);
@@ -539,7 +541,8 @@
         { el: '#dRegime', titulo: 'Distribuições', texto: 'Regime, município e segmento do retrato atual da carteira, mais as saídas por motivo acumuladas — as antigas laterais da planilha, calculadas sozinhas.' },
         { el: '#movBody', titulo: 'Mês a mês', texto: 'Treze meses de movimentação com o tamanho da carteira ao fim de cada um. A história inteira numa tabela.' },
         { el: '#dInsights', titulo: 'Leituras automáticas', texto: 'Concentração por cidade, regime dominante, tendência do trimestre, tempo médio de casa e o placar do ano — insights prontos pra reunião.' },
-        { el: '#btnPdfCart', titulo: 'Pro papel', texto: 'Gera o PDF do mês selecionado: lista compacta dos ativos + esta página de resumo. Baixa pronto pra impressora do Diego.' }
+        { el: '#btnPdfCart', titulo: 'Pro papel', texto: 'Gera o PDF do mês selecionado: lista compacta dos ativos + esta página de resumo. Baixa pronto pra impressora do Diego.' },
+        { el: '#btnXlsCart', titulo: 'Pra planilha', texto: 'A mesma carteira do PDF em Excel: relação completa com CNPJ numa aba, resumo do mês na outra. Feito pra cruzar dados à vontade.' }
       ], 'carteira_analise_v1', new URLSearchParams(location.search).has('tour'), user ? (user.id || user.email) : '');
     }));
     document.getElementById('fBusca').addEventListener('input', e => { filtro.busca = norm(e.target.value); render(); });
@@ -720,6 +723,84 @@
       linhaTxt('• Em ' + anoA + ': ' + rows.filter(r => String(r.entrada || '').startsWith(anoA)).length + ' entradas × ' + rows.filter(r => String(r.saida || '').startsWith(anoA)).length + ' saídas.');
 
       doc.save('Carteira de clientes - ' + mesM + '-' + anoM + '.pdf');
+    });
+
+    document.getElementById('btnXlsCart').addEventListener('click', () => {
+      if (!window.XLSX) { alert('Gerador de Excel carregando — tenta de novo em 2 segundos.'); return; }
+      const mes = document.getElementById('anaMes').value || ymNow;
+      const fimDe = ym => { const [a, m] = ym.split('-').map(Number); return new Date(a, m, 0).toISOString().slice(0, 10); };
+      const presenteEm = fim => rows.filter(r =>
+        (!r.entrada || String(r.entrada).slice(0, 10) <= fim) &&
+        (!r.saida || String(r.saida).slice(0, 10) > fim));
+      const [anoM, mesM] = mes.split('-');
+      const rot = mesM + '/' + anoM;
+      const lista = presenteEm(fimDe(mes))
+        .sort((a, b) => (a.clientes.nome_principal || '').localeCompare(b.clientes.nome_principal || ''));
+
+      const wb = XLSX.utils.book_new();
+
+      // ---------- aba 1: a relação ----------
+      const linhas = lista.map((r, i) => ({
+        'Nº': i + 1,
+        'Empresa': r.clientes.nome_principal || '',
+        'CNPJ/CPF': r.clientes.documento || '',
+        'Regime': r.clientes.regime_tributario || '',
+        'Município': r.clientes.cidade || '',
+        'Entrada': r.entrada ? new Date(String(r.entrada).slice(0, 10) + 'T12:00:00') : '',
+        'Segmento': r.segmento || ''
+      }));
+      const ws1 = XLSX.utils.json_to_sheet(linhas, { cellDates: true });
+      ws1['!cols'] = [{ wch: 4 }, { wch: 44 }, { wch: 20 }, { wch: 18 }, { wch: 18 }, { wch: 11 }, { wch: 24 }];
+      for (let i = 2; i <= linhas.length + 1; i++) { const cel = ws1['F' + i]; if (cel && cel.v instanceof Date) cel.z = 'dd/mm/yyyy'; }
+      XLSX.utils.book_append_sheet(wb, ws1, 'Carteira ' + mesM + '-' + anoM);
+
+      // ---------- aba 2: o resumo (espelho do PDF) ----------
+      const entrou = rows.filter(r => String(r.entrada || '').slice(0, 7) === mes)
+        .sort((a, b) => (a.clientes.nome_principal || '').localeCompare(b.clientes.nome_principal || ''));
+      const saiu = rows.filter(r => String(r.saida || '').slice(0, 7) === mes)
+        .sort((a, b) => (a.clientes.nome_principal || '').localeCompare(b.clientes.nome_principal || ''));
+      const ativosAtu = rows.filter(r => !r.saida);
+      const conta = (arr, fn) => arr.reduce((m, r) => { const k = fn(r); if (k) m[k] = (m[k] || 0) + 1; return m; }, {});
+      const aoa = [];
+      aoa.push(['Resumo da carteira — ' + rot]);
+      aoa.push([]);
+      aoa.push(['Ativos ao fim do mês', lista.length]);
+      aoa.push(['Entradas no mês', entrou.length]);
+      aoa.push(['Saídas no mês', saiu.length]);
+      aoa.push(['Saldo do mês', entrou.length - saiu.length]);
+      aoa.push([]);
+      aoa.push(['Entraram em ' + rot + ' (' + entrou.length + ')']);
+      if (!entrou.length) aoa.push(['— ninguém']);
+      entrou.forEach(r => aoa.push([r.clientes.nome_principal, 'dia ' + String(r.entrada).slice(8, 10)]));
+      aoa.push([]);
+      aoa.push(['Saíram em ' + rot + ' (' + saiu.length + ')']);
+      if (!saiu.length) aoa.push(['— ninguém']);
+      saiu.forEach(r => aoa.push([r.clientes.nome_principal, 'dia ' + String(r.saida).slice(8, 10), r.motivo_saida || 'sem motivo']));
+      aoa.push([]);
+      const despeja = (titulo, mapa) => {
+        aoa.push([titulo]);
+        Object.entries(mapa).sort((a, b) => b[1] - a[1]).forEach(([k, v]) => aoa.push([k, v]));
+        aoa.push([]);
+      };
+      despeja('Por regime (carteira atual)', conta(ativosAtu, r => r.clientes.regime_tributario));
+      despeja('Por município (carteira atual)', conta(ativosAtu, r => r.clientes.cidade));
+      despeja('Por segmento (carteira atual)', conta(ativosAtu, r => r.segmento));
+      const motivos = conta(rows.filter(r => r.saida), r => r.motivo_saida || '(sem motivo)');
+      if (Object.keys(motivos).length) despeja('Saídas por motivo (acumulado)', motivos);
+      aoa.push(['Mês a mês (últimos 13)']);
+      aoa.push(['Mês', 'Entradas', 'Saídas', 'Saldo', 'Carteira']);
+      for (let i = 12; i >= 0; i--) {
+        const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
+        const ym = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+        const e = rows.filter(r => String(r.entrada || '').slice(0, 7) === ym).length;
+        const s2 = rows.filter(r => String(r.saida || '').slice(0, 7) === ym).length;
+        aoa.push([ym.split('-')[1] + '/' + ym.split('-')[0], e, s2, e - s2, presenteEm(fimDe(ym)).length]);
+      }
+      const ws2 = XLSX.utils.aoa_to_sheet(aoa);
+      ws2['!cols'] = [{ wch: 44 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }];
+      XLSX.utils.book_append_sheet(wb, ws2, 'Resumo ' + mesM + '-' + anoM);
+
+      XLSX.writeFile(wb, 'Carteira de clientes - ' + mesM + '-' + anoM + '.xlsx');
     });
 
     carregar().then(() => {
