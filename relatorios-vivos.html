@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Relatórios Vivos — Macedo & Reis</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+  <style>
+    .saude-pill { display:inline-flex; align-items:center; gap:8px; font-size:12px; font-weight:600; padding:6px 14px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.04); color:#B6C7DA; }
+    .saude-dot { width:8px; height:8px; border-radius:50%; background:#8A93A6; }
+    .saude-ok .saude-dot { background:#5FC698; box-shadow:0 0 8px rgba(95,198,152,.6); }
+    .saude-alerta .saude-dot { background:#E3B341; box-shadow:0 0 8px rgba(227,179,65,.6); }
+    .saude-erro .saude-dot { background:#E08FA8; box-shadow:0 0 8px rgba(224,143,168,.6); }
+
+    .resumo-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:14px; margin:18px 0 26px; }
+    .resumo-card { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.09); border-radius:12px; padding:18px 20px; }
+    .resumo-card .rotulo { font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:#8A93A6; margin-bottom:8px; }
+    .resumo-card .valor { font-size:22px; font-weight:700; color:#E8EEF5; font-variant-numeric:tabular-nums; }
+    .resumo-card.positivo .valor { color:#5FC698; }
+    .resumo-card.negativo .valor { color:#E08FA8; }
+
+    .seletor-ano { display:inline-flex; gap:6px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); border-radius:10px; padding:4px; margin-bottom:16px; }
+    .seletor-ano button { border:0; background:transparent; color:#8A93A6; font-weight:700; font-size:13px; padding:7px 18px; border-radius:8px; cursor:pointer; }
+    .seletor-ano button.is-on { background:rgba(91,130,166,.28); color:#C5D8E8; }
+
+    .pr-wrap { overflow-x:auto; border:1px solid rgba(255,255,255,.09); border-radius:12px; }
+    table.pr { width:100%; border-collapse:collapse; font-size:13px; min-width:860px; }
+    .pr th { font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:#8AAEC8; text-align:right; padding:12px 14px; border-bottom:1px solid rgba(138,174,200,.25); background:rgba(91,130,166,.08); white-space:nowrap; }
+    .pr th:first-child { text-align:left; }
+    .pr td { padding:10px 14px; text-align:right; color:#C5D8E8; border-bottom:1px solid rgba(255,255,255,.05); font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .pr td:first-child { text-align:left; font-weight:600; color:#E8EEF5; }
+    .pr tr.mes-atual td { background:rgba(227,179,65,.06); }
+    .pr tr.mes-atual td:first-child::after { content:" ●"; color:#E3B341; font-size:10px; }
+    .pr td.pos { color:#5FC698; }
+    .pr td.neg { color:#E08FA8; }
+    .pr td.dim { color:#5d6675; }
+    .pr tfoot td { font-weight:700; color:#E8EEF5; border-top:2px solid rgba(138,174,200,.3); background:rgba(91,130,166,.06); }
+    .pr .pct { font-size:11px; color:#8A93A6; }
+
+    .nota-semantica { margin-top:16px; font-size:12px; line-height:1.6; color:#8A93A6; max-width:900px; }
+    .nota-semantica b { color:#B6C7DA; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+
+      <div class="topbar-actions">
+        <div class="user-chip">
+          <div class="user-avatar" id="userAvatar">—</div>
+          <span id="userName">Carregando…</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <a href="administracao.html">Administração</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Relatórios Vivos</span>
+        </div>
+        <div class="eyebrow">Finanças do escritório</div>
+        <h1>Relatórios Vivos</h1>
+        <p>Previsto × Realizado alimentado direto do Conta Azul — sem exportar nada, nunca mais.</p>
+        <div class="saude-pill" id="saudePill"><span class="saude-dot"></span><span id="saudeTxt">Verificando sincronização…</span></div>
+      </div>
+
+      <div class="resumo-grid" id="resumoGrid">
+        <div class="resumo-card"><div class="rotulo" id="rotMes">Recebido no mês</div><div class="valor" id="cardRecebido">—</div></div>
+        <div class="resumo-card"><div class="rotulo">Pago no mês</div><div class="valor" id="cardPago">—</div></div>
+        <div class="resumo-card" id="cardSaldoBox"><div class="rotulo">Saldo do mês (caixa)</div><div class="valor" id="cardSaldo">—</div></div>
+      </div>
+
+      <div class="seletor-ano" id="seletorAno"></div>
+
+      <div class="pr-wrap">
+        <table class="pr">
+          <thead>
+            <tr>
+              <th>Mês</th>
+              <th>Receita prevista</th>
+              <th>Receita realizada</th>
+              <th>Despesa prevista</th>
+              <th>Despesa realizada</th>
+              <th>Saldo previsto</th>
+              <th>Saldo realizado</th>
+            </tr>
+          </thead>
+          <tbody id="prCorpo">
+            <tr><td colspan="7" style="text-align:center;color:#8A93A6;padding:28px;">Carregando dados do espelho…</td></tr>
+          </tbody>
+          <tfoot id="prRodape"></tfoot>
+        </table>
+      </div>
+
+      <p class="nota-semantica">
+        <b>Como ler:</b> <b>Previsto</b> soma todas as parcelas pelo <b>vencimento</b> — tudo que estava programado para o mês, pago ou não.
+        <b>Realizado</b> soma o que foi <b>efetivamente pago</b>, posicionado no mês do pagamento (regime de caixa).
+        Por isso o realizado de um mês pode incluir parcelas vencidas em meses anteriores.
+        Percentuais mostram a realização sobre o previsto do próprio mês.
+        Fonte: Conta Azul Pro, sincronização automática a cada 10 minutos.
+      </p>
+    </main>
+  </div>
+
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+
+    const fmt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+    const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+    const hoje = new Date();
+    const mesAtualIso = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0') + '-01';
+    let anoSel = hoje.getFullYear();
+    let dados = [];
+
+    document.getElementById('btnLogout').addEventListener('click', () => signOut());
+
+    function brl(v) { return fmt.format(Number(v || 0)); }
+
+    function pintarSaude(s) {
+      const pill = document.getElementById('saudePill');
+      const txt = document.getElementById('saudeTxt');
+      if (!s || !s.ultimo_sync) { pill.classList.add('saude-erro'); txt.textContent = 'Sem sincronização registrada'; return; }
+      const min = Math.round((Date.now() - new Date(s.ultimo_sync).getTime()) / 60000);
+      const rot = min < 1 ? 'agora mesmo' : min === 1 ? 'há 1 minuto' : 'há ' + min + ' minutos';
+      txt.textContent = 'Sincronizado ' + rot + ' · ' + Number(s.parcelas_espelhadas).toLocaleString('pt-BR') + ' parcelas';
+      pill.classList.add(min <= 20 ? 'saude-ok' : min <= 60 ? 'saude-alerta' : 'saude-erro');
+    }
+
+    function celValor(v, classe) {
+      const n = Number(v || 0);
+      const cls = classe ? ' class="' + classe + '"' : (n === 0 ? ' class="dim"' : '');
+      return '<td' + cls + '>' + brl(n) + '</td>';
+    }
+
+    function renderAno() {
+      const doAno = m => dados.filter(d => d.mes && d.mes.startsWith(String(anoSel)) && d.natureza === m);
+      const rec = doAno('receita'), desp = doAno('despesa');
+      const porMes = iso => ({
+        rp: Number((rec.find(d => d.mes === iso) || {}).previsto || 0),
+        rr: Number((rec.find(d => d.mes === iso) || {}).realizado || 0),
+        dp: Number((desp.find(d => d.mes === iso) || {}).previsto || 0),
+        dr: Number((desp.find(d => d.mes === iso) || {}).realizado || 0)
+      });
+
+      let html = '';
+      const tot = { rp: 0, rr: 0, dp: 0, dr: 0 };
+      for (let m = 0; m < 12; m++) {
+        const iso = anoSel + '-' + String(m + 1).padStart(2, '0') + '-01';
+        const v = porMes(iso);
+        tot.rp += v.rp; tot.rr += v.rr; tot.dp += v.dp; tot.dr += v.dr;
+        const pctR = v.rp > 0 ? Math.round(v.rr / v.rp * 100) : null;
+        const pctD = v.dp > 0 ? Math.round(v.dr / v.dp * 100) : null;
+        const sp = v.rp - v.dp, sr = v.rr - v.dr;
+        const futuro = iso > mesAtualIso;
+        html += '<tr' + (iso === mesAtualIso ? ' class="mes-atual"' : '') + '>' +
+          '<td>' + MESES[m] + '</td>' +
+          celValor(v.rp) +
+          '<td' + (futuro && v.rr === 0 ? ' class="dim"' : '') + '>' + brl(v.rr) + (pctR !== null ? ' <span class="pct">(' + pctR + '%)</span>' : '') + '</td>' +
+          celValor(v.dp) +
+          '<td' + (futuro && v.dr === 0 ? ' class="dim"' : '') + '>' + brl(v.dr) + (pctD !== null ? ' <span class="pct">(' + pctD + '%)</span>' : '') + '</td>' +
+          '<td class="' + (sp >= 0 ? 'pos' : 'neg') + '">' + brl(sp) + '</td>' +
+          '<td class="' + (sr >= 0 ? 'pos' : 'neg') + '">' + brl(sr) + '</td>' +
+        '</tr>';
+      }
+      document.getElementById('prCorpo').innerHTML = html;
+
+      const sp = tot.rp - tot.dp, sr = tot.rr - tot.dr;
+      document.getElementById('prRodape').innerHTML = '<tr>' +
+        '<td>Total ' + anoSel + '</td>' +
+        '<td>' + brl(tot.rp) + '</td><td>' + brl(tot.rr) + '</td>' +
+        '<td>' + brl(tot.dp) + '</td><td>' + brl(tot.dr) + '</td>' +
+        '<td class="' + (sp >= 0 ? 'pos' : 'neg') + '">' + brl(sp) + '</td>' +
+        '<td class="' + (sr >= 0 ? 'pos' : 'neg') + '">' + brl(sr) + '</td>' +
+      '</tr>';
+    }
+
+    function montarSeletor() {
+      const anos = [...new Set(dados.filter(d => d.mes).map(d => Number(d.mes.slice(0, 4))))].sort();
+      if (!anos.length) anos.push(hoje.getFullYear());
+      if (!anos.includes(anoSel)) anoSel = anos[anos.length - 1];
+      const box = document.getElementById('seletorAno');
+      box.innerHTML = anos.map(a => '<button data-ano="' + a + '" class="' + (a === anoSel ? 'is-on' : '') + '">' + a + '</button>').join('');
+      box.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+        anoSel = Number(b.dataset.ano);
+        box.querySelectorAll('button').forEach(x => x.classList.toggle('is-on', x === b));
+        renderAno();
+      }));
+    }
+
+    function pintarResumo() {
+      const doMes = n => dados.find(d => d.mes === mesAtualIso && d.natureza === n) || {};
+      const rec = Number(doMes('receita').realizado || 0);
+      const pag = Number(doMes('despesa').realizado || 0);
+      const saldo = rec - pag;
+      document.getElementById('rotMes').textContent = 'Recebido em ' + MESES[hoje.getMonth()].toLowerCase();
+      document.getElementById('cardRecebido').textContent = brl(rec);
+      document.getElementById('cardPago').textContent = brl(pag);
+      document.getElementById('cardSaldo').textContent = brl(saldo);
+      document.getElementById('cardSaldoBox').classList.add(saldo >= 0 ? 'positivo' : 'negativo');
+    }
+
+    (async () => {
+      const user = await getCurrentUser();
+      if (user) {
+        const displayName = (user.user_metadata && user.user_metadata.nome) || (user.email || '').split('@')[0];
+        document.getElementById('userName').textContent = displayName;
+        document.getElementById('userAvatar').textContent = displayName.charAt(0).toUpperCase();
+      }
+
+      // Relatórios Vivos são restritos aos sócios — quem não for volta pros Setores
+      const SOCIOS = ['financeiro@macedoereis.com.br','diego@macedoereis.com.br'];
+      if (!SOCIOS.includes((user?.email||'').toLowerCase())) {
+        location.replace('setores.html');
+        return;
+      }
+
+      const [{ data: saude }, { data: pr, error }] = await Promise.all([
+        supabase.from('vw_ca_saude').select('*').single(),
+        supabase.from('vw_ca_pr_mensal').select('*')
+      ]);
+
+      pintarSaude(saude);
+      if (error) {
+        document.getElementById('prCorpo').innerHTML = '<tr><td colspan="7" style="text-align:center;color:#E08FA8;padding:28px;">Erro ao carregar o espelho: ' + error.message + '</td></tr>';
+        return;
+      }
+      dados = pr || [];
+      montarSeletor();
+      pintarResumo();
+      renderAno();
+    })();
+  </script>
+</body>
+</html>
