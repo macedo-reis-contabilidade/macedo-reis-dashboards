@@ -166,6 +166,8 @@
         <div class="rel-topo">
           <button class="btn-voltar" id="btnVoltarRelatorio">← Voltar</button>
           <span class="rel-titulo" id="mesTitulo"></span>
+          <span style="flex:1"></span>
+          <button class="btn-voltar" id="btnPDFMes">Baixar PDF</button>
         </div>
         <div id="mesConteudo"></div>
       </div>
@@ -182,6 +184,7 @@
     let anoSel = hoje.getFullYear();
     let pr = [], blocos = [];
     const cacheMes = new Map();
+    let drillAtual = null;
 
     document.getElementById('btnLogout').addEventListener('click', () => signOut());
     const brl = v => fmt.format(Number(v || 0));
@@ -492,8 +495,7 @@
       h += '</tbody><tfoot><tr><td>Total</td><td>' + brl(tp) + '</td><td>' + brl(tr) + '</td><td>' + tn + '</td></tr></tfoot></table></div>';
       return h;
     }
-    function tabelaDescricoes(titulo, linhas, colValor) {
-      if (!linhas.length) return '';
+    function agruparDesc(linhas, colValor) {
       const mapa = new Map();
       for (const l of linhas) {
         const k = (l.descricao || '(sem descrição)').trim();
@@ -501,7 +503,11 @@
         mapa.get(k).v += Number(l[colValor] || 0);
         mapa.get(k).n++;
       }
-      const grupos = [...mapa.entries()].sort((x, y) => y[1].v - x[1].v);
+      return [...mapa.entries()].sort((x, y) => y[1].v - x[1].v);
+    }
+    function tabelaDescricoes(titulo, linhas, colValor) {
+      if (!linhas.length) return '';
+      const grupos = agruparDesc(linhas, colValor);
       let h = '<div class="mes-secao">' + titulo + '</div><div class="pr-wrap"><table class="pr" style="min-width:520px;"><thead><tr><th>Descrição</th><th>Valor</th><th>Lançamentos</th></tr></thead><tbody>';
       let tv = 0, tn = 0;
       for (const [desc, g] of grupos) {
@@ -524,6 +530,7 @@
         l._prevNoMes = l.data_vencimento && l.data_vencimento >= iso && l.data_vencimento <= fim;
         l._pagoNoMes = l.mes_pagamento === iso;
       }
+      drillAtual = { rel, iso, linhas };
       if (rel === 'operacao' || rel === 'geral') {
         const rec = linhas.filter(l => l.classe === 'operacional_receita');
         const ded = linhas.filter(l => l.classe === 'deducao_receita');
@@ -554,6 +561,134 @@
         el('mesConteudo').innerHTML = h || '<p style="color:#8A93A6;padding:20px 4px;">Sem movimentações neste mês.</p>';
       }
     }
+
+    // ---------- PDF do mês ----------
+    function gerarPDFMes() {
+      if (!drillAtual) { alert('Abre um mes primeiro.'); return; }
+      if (!window.jspdf) { alert('Gerador de PDF carregando. Tenta de novo em 2 segundos.'); return; }
+      const { rel, iso, linhas } = drillAtual;
+      const [ano, mesN] = iso.split('-').map(Number);
+      const nomeMes = MESES[mesN - 1];
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+      const W = doc.internal.pageSize.getWidth();
+      const H = doc.internal.pageSize.getHeight();
+      const M = 40;
+      let y = 44;
+      const num = v => fmt.format(Number(v || 0)).replace('R$\u00a0', 'R$ ');
+      const trunca = (t, n) => (t || '').length > n ? (t || '').slice(0, n - 1) + '…' : (t || '');
+
+      function cabecalhoPagina() {
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(110);
+        doc.text('Macedo & Reis Contabilidade  ·  CRC/RS 006418/O  ·  Tres Coroas - RS  ·  Uso Interno', M, 44);
+      }
+      function quebraSePreciso(alturaProxima) {
+        if (y + alturaProxima > H - 50) { doc.addPage(); cabecalhoPagina(); y = 66; }
+      }
+      function tabelaPDF(titulo, cols, dados, totalRow) {
+        if (!dados.length) return;
+        quebraSePreciso(46);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(50);
+        doc.text(titulo.toUpperCase(), M, y); y += 13;
+        function headerTabela() {
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(80);
+          cols.forEach(c => doc.text(c.label, c.x, y, { align: c.align || 'left' }));
+          y += 4; doc.setDrawColor(120); doc.setLineWidth(0.7); doc.line(M, y, W - M, y); y += 11;
+          doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(30);
+        }
+        headerTabela();
+        for (const linha of dados) {
+          quebraSePreciso(14);
+          if (y === 66) { headerTabela(); }
+          linha.forEach((cel, i) => doc.text(String(cel), cols[i].x, y, { align: cols[i].align || 'left' }));
+          doc.setDrawColor(215); doc.setLineWidth(0.3); doc.line(M, y + 4, W - M, y + 4);
+          y += 14;
+        }
+        if (totalRow) {
+          doc.setDrawColor(120); doc.setLineWidth(0.7); doc.line(M, y - 10, W - M, y - 10);
+          doc.setFont('helvetica', 'bold');
+          totalRow.forEach((cel, i) => doc.text(String(cel), cols[i].x, y + 1, { align: cols[i].align || 'left' }));
+          y += 20;
+        } else { y += 8; }
+      }
+
+      cabecalhoPagina();
+      y = 66;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(20);
+      const tituloRel = rel === 'operacao' ? 'OPERACAO' : rel === 'geral' ? 'GERAL COM EMPRESTIMOS' : 'EMPRESTIMOS E REPASSES';
+      doc.text(tituloRel + '  ·  ' + nomeMes.toUpperCase() + ' ' + ano, M, y);
+      y += 16;
+
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(70);
+      if (rel === 'operacao' || rel === 'geral') {
+        const v = rel === 'geral' ? geralDoMes(iso) : opDoMes(iso);
+        doc.text('Previsto: receita ' + num(v.rp) + '  ·  despesa ' + num(v.dp) + '  ·  resultado ' + num(v.rp - v.dp), M, y); y += 12;
+        doc.text('Realizado: receita ' + num(v.rr) + '  ·  despesa ' + num(v.dr) + '  ·  resultado ' + num(v.rr - v.dr), M, y); y += 20;
+      } else {
+        const b = blocoDoMes(iso);
+        doc.text('Emprestimos: captado ' + num(b.captado) + '  ·  pago (liq.) ' + num(b.pagoLiq) + '  ·  fluxo ' + num(b.fluxo), M, y); y += 12;
+        doc.text('Repasses: recebido ' + num(b.repIn) + '  ·  pago ' + num(b.repOut), M, y); y += 20;
+      }
+
+      const colsCat = [
+        { label: 'Categoria', x: M },
+        { label: 'Previsto', x: 330, align: 'right' },
+        { label: 'Realizado', x: 435, align: 'right' },
+        { label: 'Parc.', x: W - M, align: 'right' }
+      ];
+      const colsDesc = [
+        { label: 'Descricao', x: M },
+        { label: 'Valor', x: 440, align: 'right' },
+        { label: 'Lanc.', x: W - M, align: 'right' }
+      ];
+      function dadosCat(grupos) {
+        let tp = 0, tr = 0, tn = 0;
+        const dados = grupos.map(([cat, g]) => { tp += g.prev; tr += g.real; tn += g.n; return [trunca(cat, 52), num(g.prev), num(g.real), g.n]; });
+        return { dados, total: ['Total', num(tp), num(tr), tn] };
+      }
+      function dadosDesc(grupos) {
+        let tv = 0, tn = 0;
+        const dados = grupos.map(([d, g]) => { tv += g.v; tn += g.n; return [trunca(d, 68), num(g.v), g.n]; });
+        return { dados, total: ['Total', num(tv), tn] };
+      }
+
+      if (rel === 'operacao' || rel === 'geral') {
+        const rec = dadosCat(agrupar(linhas.filter(l => l.classe === 'operacional_receita'), 'cat'));
+        tabelaPDF('Receitas por categoria', colsCat, rec.dados, rec.total);
+        const dedL = linhas.filter(l => l.classe === 'deducao_receita');
+        if (dedL.length) { const d = dadosCat(agrupar(dedL, 'cat')); tabelaPDF('Deducoes de receita', colsCat, d.dados, d.total); }
+        const desp = dadosCat(agrupar(linhas.filter(l => l.classe === 'operacional_despesa' || l.classe === 'prolabore'), 'cat'));
+        tabelaPDF('Despesas por categoria', colsCat, desp.dados, desp.total);
+        if (rel === 'geral') {
+          const c = dadosDesc(agruparDesc(linhas.filter(l => l.classe === 'emprestimo_captacao' && l._pagoNoMes), 'pago'));
+          tabelaPDF('Emprestimos captados no mes', colsDesc, c.dados, c.total);
+          const pg = dadosDesc(agruparDesc(linhas.filter(l => ['emprestimo_parcelas','emprestimo_giros','emprestimo_parc_cartao'].includes(l.classe) && l._pagoNoMes), 'pago'));
+          tabelaPDF('Parcelas de emprestimos pagas', colsDesc, pg.dados, pg.total);
+          const e = dadosDesc(agruparDesc(linhas.filter(l => l.classe === 'emprestimo_estorno' && l._pagoNoMes), 'pago'));
+          tabelaPDF('Estornos (abatem as parcelas)', colsDesc, e.dados, e.total);
+        }
+      } else {
+        const c = dadosDesc(agruparDesc(linhas.filter(l => l.classe === 'emprestimo_captacao' && l._pagoNoMes), 'pago'));
+        tabelaPDF('Captacoes do mes', colsDesc, c.dados, c.total);
+        const pg = dadosDesc(agruparDesc(linhas.filter(l => ['emprestimo_parcelas','emprestimo_giros','emprestimo_parc_cartao'].includes(l.classe) && l._pagoNoMes), 'pago'));
+        tabelaPDF('Pagamentos de emprestimos', colsDesc, pg.dados, pg.total);
+        const e = dadosDesc(agruparDesc(linhas.filter(l => l.classe === 'emprestimo_estorno' && l._pagoNoMes), 'pago'));
+        tabelaPDF('Estornos (abatem os pagamentos)', colsDesc, e.dados, e.total);
+        const ri = dadosDesc(agruparDesc(linhas.filter(l => l.classe === 'repasse_entrada' && l._pagoNoMes), 'pago'));
+        tabelaPDF('Repasses recebidos', colsDesc, ri.dados, ri.total);
+        const ro = dadosDesc(agruparDesc(linhas.filter(l => l.classe === 'repasse_saida' && l._pagoNoMes), 'pago'));
+        tabelaPDF('Repasses pagos', colsDesc, ro.dados, ro.total);
+      }
+
+      quebraSePreciso(24);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(130);
+      const agora = new Date();
+      doc.text('Gerado em ' + agora.toLocaleDateString('pt-BR') + ' as ' + agora.toLocaleTimeString('pt-BR').slice(0,5) + '  ·  Relatorios Vivos  ·  Fonte: Conta Azul Pro (sincronizacao automatica)', M, Math.min(y + 6, H - 30));
+
+      const nomeRel = rel === 'operacao' ? 'Operacao' : rel === 'geral' ? 'Geral com Emprestimos' : 'Emprestimos e Repasses';
+      doc.save(nomeRel + ' - ' + nomeMes + ' ' + ano + '.pdf');
+    }
+    el('btnPDFMes').addEventListener('click', gerarPDFMes);
 
     // ---------- boot ----------
     (async () => {
