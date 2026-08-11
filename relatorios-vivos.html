@@ -6,6 +6,7 @@
   <title>Relatórios Vivos — Macedo & Reis</title>
   <link rel="stylesheet" href="assets/css/style.css">
   <script type="module" src="assets/js/auth-guard.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
     .saude-pill { display:inline-flex; align-items:center; gap:8px; font-size:12px; font-weight:600; padding:6px 14px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.04); color:#B6C7DA; }
     .saude-dot { width:8px; height:8px; border-radius:50%; background:#8A93A6; }
@@ -142,6 +143,7 @@
           <button class="btn-voltar" id="btnVoltarEstante">← Relatórios</button>
           <span class="rel-titulo" id="relTitulo"></span>
           <span style="flex:1"></span>
+          <button class="btn-voltar" id="btnPDF">Baixar PDF</button>
           <div class="seletor-ano" id="seletorAno"></div>
         </div>
         <div class="pr-wrap">
@@ -151,6 +153,7 @@
             <tfoot id="relRodape"></tfoot>
           </table>
         </div>
+        <div class="nota-semantica" id="relNota"></div>
       </div>
 
       <!-- MÊS (drill) -->
@@ -239,6 +242,63 @@
 
     // ---------- relatório anual ----------
     let relAtual = 'operacao';
+    const NOTAS = {
+      operacao: {
+        considera: 'Receitas de servicos do escritorio (honorarios, servicos extras, MEI, IRPF, consultorias), liquidas de devolucoes e descontos, contra as despesas de funcionamento: pessoal, pro-labore, infraestrutura, sistemas, impostos e taxas, assessorias e outras.',
+        fora: 'Ficam FORA: repasses de clientes (dinheiro de terceiros em transito) e emprestimos (captacoes e amortizacoes, que tem relatorio proprio). Faturas de cartao de credito e seus estornos tambem ficam fora, para nao duplicar despesas ja lancadas.',
+        leitura: 'Previsto soma as parcelas pelo vencimento do mes, pagas ou nao. Realizado soma o efetivamente pago, posicionado no mes do pagamento (regime de caixa) — por isso pode incluir parcelas vencidas em meses anteriores. O percentual compara o realizado com o previsto do proprio mes.'
+      },
+      emprestimos: {
+        considera: 'O movimento financeiro que fica fora do resultado operacional. Emprestimos: captacoes (dinheiro novo entrando) e amortizacoes liquidas — parcelas bancarias, giros e parcelamento de cartao, ja abatidos os estornos de repactuacao (o ciclo diario do Sicoob gera pares de pagamento e estorno que se anulam). Repasses: valores de clientes que atravessam o caixa para pagar guias e impostos deles.',
+        fora: 'Nada aqui e receita ou despesa do escritorio: emprestimo e divida que se move, repasse e dinheiro de terceiros em transito.',
+        leitura: 'Fluxo de emprestimos positivo = a divida cresceu no mes (captou mais do que pagou); negativo = desalavancagem. Repasses recebidos e pagos devem andar proximos; defasagens refletem o intervalo entre o cliente depositar e a guia vencer. Residuos de virada de mes do ciclo Sicoob (na casa de 1%) se compensam entre os meses.'
+      }
+    };
+    function leituraDoAno(rel) {
+      const fechados = [];
+      for (let m = 0; m < 12; m++) {
+        const iso = anoSel + '-' + String(m+1).padStart(2,'0') + '-01';
+        if (iso < mesAtualIso) fechados.push(iso);
+      }
+      if (rel === 'operacao') {
+        let rp=0, rr=0, dp=0, dr=0, melhor=null;
+        for (const iso of fechados) {
+          const v = opDoMes(iso);
+          if (v.rr === 0 && v.dr === 0) continue;
+          rp+=v.rp; rr+=v.rr; dp+=v.dp; dr+=v.dr;
+          const res = v.rr - v.dr;
+          if (!melhor || res > melhor.res) melhor = { iso, res };
+        }
+        if (!rr && !dr) return [];
+        const out = [
+          'Realizacao media dos meses fechados: receitas ' + (rp>0?Math.round(rr/rp*100):0) + '%, despesas ' + (dp>0?Math.round(dr/dp*100):0) + '%.',
+          'Resultado operacional acumulado (realizado, meses fechados): ' + brl(rr - dr) + '.'
+        ];
+        if (melhor) out.push('Melhor mes realizado: ' + MESES[Number(melhor.iso.slice(5,7))-1] + ' (' + brl(melhor.res) + ').');
+        return out;
+      } else {
+        let c=0, p=0, ri=0, ro=0;
+        for (const iso of fechados) {
+          const b = blocoDoMes(iso);
+          c+=b.captado; p+=b.pagoLiq; ri+=b.repIn; ro+=b.repOut;
+        }
+        if (!c && !p && !ri && !ro) return [];
+        const varr = c - p;
+        return [
+          'Emprestimos nos meses fechados: captado ' + brl(c) + ', pago ' + brl(p) + ' — ' + (varr >= 0 ? 'divida cresceu ' : 'divida reduziu ') + brl(Math.abs(varr)) + '.',
+          'Repasses nos meses fechados: recebido ' + brl(ri) + ', pago ' + brl(ro) + '.'
+        ];
+      }
+    }
+    function pintarNota(rel) {
+      const n = NOTAS[rel];
+      const bullets = leituraDoAno(rel);
+      let h = '<b>O que este relatorio considera:</b> ' + n.considera + ' ' + n.fora +
+              '<br><b>Como ler:</b> ' + n.leitura;
+      if (bullets.length) h += '<br><b>Leitura de ' + anoSel + ':</b> ' + bullets.join(' ');
+      h += '<br>Fonte: Conta Azul Pro, sincronizacao automatica a cada 10 minutos.';
+      el('relNota').innerHTML = h;
+    }
     function renderRelatorio(rel) {
       relAtual = rel;
       montarSeletor();
@@ -282,6 +342,7 @@
         el('relCorpo').innerHTML = html;
         el('relRodape').innerHTML = '<tr><td>Total ' + anoSel + '</td><td>' + brl(t.c) + '</td><td>' + brl(t.p) + '</td><td class="' + (t.f>=0?'pos':'neg') + '">' + brl(t.f) + '</td><td>' + brl(t.ri) + '</td><td>' + brl(t.ro) + '</td></tr>';
       }
+      pintarNota(rel);
       el('relCorpo').querySelectorAll('tr.clicavel').forEach(tr => tr.addEventListener('click', () => irPara(relAtual + '/' + tr.dataset.mes)));
     }
     function montarSeletor() {
@@ -296,6 +357,81 @@
         renderRelatorio(relAtual);
       }));
     }
+
+    // ---------- PDF ----------
+    function gerarPDF() {
+      if (!window.jspdf) { alert('Gerador de PDF carregando. Tenta de novo em 2 segundos.'); return; }
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'landscape' });
+      const W = doc.internal.pageSize.getWidth();
+      const M = 40;
+      let y = 44;
+      const num = v => fmt.format(Number(v || 0)).replace('R$\u00a0', 'R$ ');
+
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(110);
+      doc.text('Macedo & Reis Contabilidade  ·  CRC/RS 006418/O  ·  Tres Coroas - RS  ·  Uso Interno', M, y);
+      y += 22;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(20);
+      const titulo = (relAtual === 'operacao' ? 'OPERACAO — PREVISTO x REALIZADO' : 'EMPRESTIMOS E REPASSES — REGIME DE CAIXA') + '  ·  ' + anoSel;
+      doc.text(titulo, M, y);
+      y += 24;
+
+      const cab = relAtual === 'operacao'
+        ? ['Mes','Receita prevista','Receita realizada','Despesa prevista','Despesa realizada','Resultado previsto','Resultado realizado']
+        : ['Mes','Emprest. captados','Emprest. pagos (liq.)','Fluxo emprestimos','Repasses recebidos','Repasses pagos'];
+      const cols = relAtual === 'operacao'
+        ? [M, M+92, M+204, M+316, M+428, M+540, M+652]
+        : [M, M+110, M+245, M+380, M+515, M+650];
+      const linhaAlt = 17;
+
+      doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(60);
+      cab.forEach((c, i) => doc.text(c, cols[i], y, { align: i === 0 ? 'left' : 'left' }));
+      y += 6; doc.setDrawColor(120); doc.setLineWidth(0.8); doc.line(M, y, W - M, y); y += 13;
+
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(30);
+      const tot = relAtual === 'operacao' ? { a:0,b:0,c:0,d:0,e:0,f:0 } : { a:0,b:0,c:0,d:0,e:0 };
+      for (let m = 0; m < 12; m++) {
+        const iso = anoSel + '-' + String(m+1).padStart(2,'0') + '-01';
+        let vals;
+        if (relAtual === 'operacao') {
+          const v = opDoMes(iso);
+          vals = [v.rp, v.rr, v.dp, v.dr, v.rp - v.dp, v.rr - v.dr];
+          tot.a+=vals[0]; tot.b+=vals[1]; tot.c+=vals[2]; tot.d+=vals[3]; tot.e+=vals[4]; tot.f+=vals[5];
+        } else {
+          const b = blocoDoMes(iso);
+          vals = [b.captado, b.pagoLiq, b.fluxo, b.repIn, b.repOut];
+          tot.a+=vals[0]; tot.b+=vals[1]; tot.c+=vals[2]; tot.d+=vals[3]; tot.e+=vals[4];
+        }
+        doc.text(MESES[m], cols[0], y);
+        vals.forEach((v, i) => doc.text(num(v), cols[i+1], y));
+        doc.setDrawColor(210); doc.setLineWidth(0.3); doc.line(M, y + 5, W - M, y + 5);
+        y += linhaAlt;
+      }
+      doc.setDrawColor(120); doc.setLineWidth(0.8); doc.line(M, y - 11, W - M, y - 11);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Total ' + anoSel, cols[0], y + 2);
+      Object.values(tot).forEach((v, i) => doc.text(num(v), cols[i+1], y + 2));
+      y += 26;
+
+      const n = NOTAS[relAtual];
+      const bullets = leituraDoAno(relAtual);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(60);
+      doc.text('O QUE ESTE RELATORIO CONSIDERA', M, y); y += 11;
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(80);
+      let corpo = n.considera + ' ' + n.fora + '\n\nComo ler: ' + n.leitura;
+      if (bullets.length) corpo += '\n\nLeitura de ' + anoSel + ': ' + bullets.join(' ');
+      const linhas = doc.splitTextToSize(corpo, W - 2 * M);
+      doc.text(linhas, M, y);
+      y += linhas.length * 9.5 + 14;
+
+      doc.setFontSize(7.5); doc.setTextColor(130);
+      const agora = new Date();
+      doc.text('Gerado em ' + agora.toLocaleDateString('pt-BR') + ' as ' + agora.toLocaleTimeString('pt-BR').slice(0,5) + '  ·  Relatorios Vivos  ·  Fonte: Conta Azul Pro (sincronizacao automatica)', M, Math.max(y, doc.internal.pageSize.getHeight() - 30));
+
+      const nome = (relAtual === 'operacao' ? 'Operacao Previsto x Realizado' : 'Emprestimos e Repasses') + ' - ' + anoSel + '.pdf';
+      doc.save(nome);
+    }
+    el('btnPDF').addEventListener('click', gerarPDF);
 
     // ---------- drill do mês ----------
     async function parcelasDoMes(iso) {
