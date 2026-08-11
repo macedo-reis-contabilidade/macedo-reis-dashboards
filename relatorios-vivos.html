@@ -270,7 +270,7 @@
         leitura: 'Previsto soma as parcelas pelo vencimento do mes, pagas ou nao. Realizado soma o efetivamente pago, posicionado no mes do pagamento (regime de caixa) — por isso pode incluir parcelas vencidas em meses anteriores. O percentual compara o realizado com o previsto do proprio mes.'
       },
       geral: {
-        considera: 'A visao completa do caixa da firma: toda a operacao (receitas de servicos liquidas de deducoes e despesas de funcionamento, incluindo pro-labore) MAIS os emprestimos — captacoes entram como entrada e as parcelas pagas (bancarias, giros e parcelamento de cartao, com estornos de repactuacao abatidos) entram como saida, tanto no previsto quanto no realizado.',
+        considera: 'A visao completa do caixa da firma: toda a operacao (receitas de servicos liquidas de deducoes e despesas de funcionamento, incluindo pro-labore) MAIS os emprestimos — captacoes entram como entrada e as parcelas pagas (bancarias, giros e parcelamento de cartao, com estornos de repactuacao abatidos) entram como saida, tanto no previsto quanto no realizado. No detalhe do mes, o ciclo de repactuacao do Sicoob (parcela debitada sem saldo na conta, estornada pelo banco e cobrada de novo no dia seguinte, ate haver saldo) ja aparece liquido — uma linha por contrato, com a contagem de debitos e estornos ao lado. O vai-e-vem bruto continua visivel no relatorio Emprestimos e Repasses.',
         fora: 'Ficam FORA apenas os repasses de clientes (dinheiro de terceiros em transito, que nao e previsto nem resultado da firma) e o par fatura de cartao / estorno (que duplicaria despesas ja lancadas).',
         leitura: 'Previsto soma pelo vencimento; Realizado pelo mes do pagamento (caixa). O Resultado daqui equivale ao Resultado Final do DRE: operacional + fluxo de emprestimos. Positivo = o caixa do mes fechou com sobra (mesmo que via captacao); compare com o relatorio Operacao para separar o que e negocio do que e divida.'
       },
@@ -517,6 +517,34 @@
       h += '</tbody><tfoot><tr><td>Total</td><td>' + brl(tv) + '</td><td>' + tn + '</td></tr></tfoot></table></div>';
       return h;
     }
+    function liquidoEmp(linhas) {
+      const pagos = linhas.filter(l => ['emprestimo_parcelas','emprestimo_giros','emprestimo_parc_cartao'].includes(l.classe) && l._pagoNoMes);
+      const est = linhas.filter(l => l.classe === 'emprestimo_estorno' && l._pagoNoMes);
+      const mapa = new Map();
+      const put = (l, sinal) => {
+        const d = (l.descricao || '(sem descrição)').trim();
+        const m = d.match(/\d{5,}/);
+        const k = m ? 'ct-' + m[0] : d.toUpperCase();
+        if (!mapa.has(k)) mapa.set(k, { desc: d, liq: 0, nPag: 0, nEst: 0 });
+        const g = mapa.get(k);
+        g.liq += sinal * Number(l.pago || 0);
+        if (sinal > 0) { g.nPag++; g.desc = d; } else { g.nEst++; }
+      };
+      pagos.forEach(l => put(l, 1));
+      est.forEach(l => put(l, -1));
+      return [...mapa.values()].sort((x, y) => y.liq - x.liq);
+    }
+    function tabelaLiquida(titulo, grupos) {
+      if (!grupos.length) return '';
+      let h = '<div class="mes-secao">' + titulo + '</div><div class="pr-wrap"><table class="pr" style="min-width:520px;"><thead><tr><th>Descrição</th><th>Líquido</th><th>Débitos</th><th>Estornos</th></tr></thead><tbody>';
+      let tv = 0, tp = 0, te = 0;
+      for (const g of grupos) {
+        tv += g.liq; tp += g.nPag; te += g.nEst;
+        h += '<tr><td style="white-space:normal;">' + g.desc + '</td><td>' + brl(g.liq) + '</td><td>' + g.nPag + '</td><td>' + (g.nEst || '—') + '</td></tr>';
+      }
+      h += '</tbody><tfoot><tr><td>Total</td><td>' + brl(tv) + '</td><td>' + tp + '</td><td>' + te + '</td></tr></tfoot></table></div>';
+      return h;
+    }
     async function renderMes(rel, iso) {
       const [a, m] = iso.split('-').map(Number);
       el('mesTitulo').textContent = (rel === 'operacao' ? 'Operação · ' : rel === 'geral' ? 'Geral com Empréstimos · ' : 'Empréstimos e Repasses · ') + MESES[m-1] + ' de ' + a;
@@ -540,11 +568,8 @@
         h += tabelaCategorias('Despesas por categoria', agrupar(desp, 'cat'));
         if (rel === 'geral') {
           const capt = linhas.filter(l => l.classe === 'emprestimo_captacao' && l._pagoNoMes);
-          const pagosEmp = linhas.filter(l => ['emprestimo_parcelas','emprestimo_giros','emprestimo_parc_cartao'].includes(l.classe) && l._pagoNoMes);
-          const est = linhas.filter(l => l.classe === 'emprestimo_estorno' && l._pagoNoMes);
           h += tabelaDescricoes('Empréstimos captados no mês', capt, 'pago');
-          h += tabelaDescricoes('Parcelas de empréstimos pagas', pagosEmp, 'pago');
-          h += tabelaDescricoes('Estornos (abatem as parcelas)', est, 'pago');
+          h += tabelaLiquida('Empréstimos pagos (líquido de estornos)', liquidoEmp(linhas));
         }
         el('mesConteudo').innerHTML = h || '<p style="color:#8A93A6;padding:20px 4px;">Sem lançamentos neste mês.</p>';
       } else {
@@ -662,10 +687,16 @@
         if (rel === 'geral') {
           const c = dadosDesc(agruparDesc(linhas.filter(l => l.classe === 'emprestimo_captacao' && l._pagoNoMes), 'pago'));
           tabelaPDF('Emprestimos captados no mes', colsDesc, c.dados, c.total);
-          const pg = dadosDesc(agruparDesc(linhas.filter(l => ['emprestimo_parcelas','emprestimo_giros','emprestimo_parc_cartao'].includes(l.classe) && l._pagoNoMes), 'pago'));
-          tabelaPDF('Parcelas de emprestimos pagas', colsDesc, pg.dados, pg.total);
-          const e = dadosDesc(agruparDesc(linhas.filter(l => l.classe === 'emprestimo_estorno' && l._pagoNoMes), 'pago'));
-          tabelaPDF('Estornos (abatem as parcelas)', colsDesc, e.dados, e.total);
+          const colsLiq = [
+            { label: 'Descricao', x: M },
+            { label: 'Liquido', x: 400, align: 'right' },
+            { label: 'Deb.', x: 468, align: 'right' },
+            { label: 'Est.', x: W - M, align: 'right' }
+          ];
+          const gl = liquidoEmp(linhas);
+          let lv = 0, lp = 0, le = 0;
+          const dadosLiq = gl.map(g => { lv += g.liq; lp += g.nPag; le += g.nEst; return [trunca(g.desc, 56), num(g.liq), g.nPag, g.nEst || '-']; });
+          tabelaPDF('Emprestimos pagos (liquido de estornos)', colsLiq, dadosLiq, ['Total', num(lv), lp, le]);
         }
       } else {
         const c = dadosDesc(agruparDesc(linhas.filter(l => l.classe === 'emprestimo_captacao' && l._pagoNoMes), 'pago'));
