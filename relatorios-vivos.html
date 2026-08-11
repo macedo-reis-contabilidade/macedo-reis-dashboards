@@ -17,6 +17,7 @@
     .resumo-card { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.09); border-radius:12px; padding:18px 20px; }
     .resumo-card .rotulo { font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:#8A93A6; margin-bottom:8px; }
     .resumo-card .valor { font-size:22px; font-weight:700; color:#E8EEF5; font-variant-numeric:tabular-nums; }
+    .resumo-card .sub { font-size:11px; color:#8A93A6; margin-top:6px; }
     .resumo-card.positivo .valor { color:#5FC698; }
     .resumo-card.negativo .valor { color:#E08FA8; }
 
@@ -24,8 +25,9 @@
     .seletor-ano button { border:0; background:transparent; color:#8A93A6; font-weight:700; font-size:13px; padding:7px 18px; border-radius:8px; cursor:pointer; }
     .seletor-ano button.is-on { background:rgba(91,130,166,.28); color:#C5D8E8; }
 
+    .bloco-titulo { font-size:13px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:#8AAEC8; margin:30px 0 10px; }
     .pr-wrap { overflow-x:auto; border:1px solid rgba(255,255,255,.09); border-radius:12px; }
-    table.pr { width:100%; border-collapse:collapse; font-size:13px; min-width:860px; }
+    table.pr { width:100%; border-collapse:collapse; font-size:13px; min-width:820px; }
     .pr th { font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:#8AAEC8; text-align:right; padding:12px 14px; border-bottom:1px solid rgba(138,174,200,.25); background:rgba(91,130,166,.08); white-space:nowrap; }
     .pr th:first-child { text-align:left; }
     .pr td { padding:10px 14px; text-align:right; color:#C5D8E8; border-bottom:1px solid rgba(255,255,255,.05); font-variant-numeric:tabular-nums; white-space:nowrap; }
@@ -38,7 +40,7 @@
     .pr tfoot td { font-weight:700; color:#E8EEF5; border-top:2px solid rgba(138,174,200,.3); background:rgba(91,130,166,.06); }
     .pr .pct { font-size:11px; color:#8A93A6; }
 
-    .nota-semantica { margin-top:16px; font-size:12px; line-height:1.6; color:#8A93A6; max-width:900px; }
+    .nota-semantica { margin-top:16px; font-size:12px; line-height:1.6; color:#8A93A6; max-width:940px; }
     .nota-semantica b { color:#B6C7DA; }
   </style>
 </head>
@@ -70,18 +72,20 @@
         </div>
         <div class="eyebrow">Finanças do escritório</div>
         <h1>Relatórios Vivos</h1>
-        <p>Previsto × Realizado alimentado direto do Conta Azul — sem exportar nada, nunca mais.</p>
+        <p>A operação de verdade, alimentada direto do Conta Azul — repasses e empréstimos separados nos seus devidos lugares.</p>
         <div class="saude-pill" id="saudePill"><span class="saude-dot"></span><span id="saudeTxt">Verificando sincronização…</span></div>
       </div>
 
       <div class="resumo-grid" id="resumoGrid">
-        <div class="resumo-card"><div class="rotulo" id="rotMes">Recebido no mês</div><div class="valor" id="cardRecebido">—</div></div>
-        <div class="resumo-card"><div class="rotulo">Pago no mês</div><div class="valor" id="cardPago">—</div></div>
-        <div class="resumo-card" id="cardSaldoBox"><div class="rotulo">Saldo do mês (caixa)</div><div class="valor" id="cardSaldo">—</div></div>
+        <div class="resumo-card"><div class="rotulo" id="rotMes">Receita operacional</div><div class="valor" id="cardReceita">—</div><div class="sub">líquida de deduções · caixa</div></div>
+        <div class="resumo-card"><div class="rotulo">Despesa operacional</div><div class="valor" id="cardDespesa">—</div><div class="sub" id="subPL">inclui pró-labore</div></div>
+        <div class="resumo-card" id="cardResBox"><div class="rotulo">Resultado operacional</div><div class="valor" id="cardResultado">—</div><div class="sub">receita − despesa do mês</div></div>
+        <div class="resumo-card" id="cardEmpBox"><div class="rotulo">Fluxo de empréstimos</div><div class="valor" id="cardEmp">—</div><div class="sub" id="subEmp">captado − pago no mês</div></div>
       </div>
 
       <div class="seletor-ano" id="seletorAno"></div>
 
+      <div class="bloco-titulo">Operação — Previsto × Realizado</div>
       <div class="pr-wrap">
         <table class="pr">
           <thead>
@@ -91,8 +95,8 @@
               <th>Receita realizada</th>
               <th>Despesa prevista</th>
               <th>Despesa realizada</th>
-              <th>Saldo previsto</th>
-              <th>Saldo realizado</th>
+              <th>Resultado previsto</th>
+              <th>Resultado realizado</th>
             </tr>
           </thead>
           <tbody id="prCorpo">
@@ -102,12 +106,32 @@
         </table>
       </div>
 
+      <div class="bloco-titulo">Empréstimos e repasses — regime de caixa</div>
+      <div class="pr-wrap">
+        <table class="pr">
+          <thead>
+            <tr>
+              <th>Mês</th>
+              <th>Empréstimos captados</th>
+              <th>Empréstimos pagos (líq.)</th>
+              <th>Fluxo de empréstimos</th>
+              <th>Repasses recebidos</th>
+              <th>Repasses pagos</th>
+            </tr>
+          </thead>
+          <tbody id="blCorpo">
+            <tr><td colspan="6" style="text-align:center;color:#8A93A6;padding:28px;">Carregando…</td></tr>
+          </tbody>
+          <tfoot id="blRodape"></tfoot>
+        </table>
+      </div>
+
       <p class="nota-semantica">
-        <b>Como ler:</b> <b>Previsto</b> soma todas as parcelas pelo <b>vencimento</b> — tudo que estava programado para o mês, pago ou não.
-        <b>Realizado</b> soma o que foi <b>efetivamente pago</b>, posicionado no mês do pagamento (regime de caixa).
-        Por isso o realizado de um mês pode incluir parcelas vencidas em meses anteriores.
-        Percentuais mostram a realização sobre o previsto do próprio mês.
-        Fonte: Conta Azul Pro, sincronização automática a cada 10 minutos.
+        <b>A régua desta página:</b> a operação exclui <b>repasses de clientes</b> (dinheiro de terceiros em trânsito) e <b>empréstimos</b>
+        (movimentação financeira — mostrados no bloco próprio, com estornos abatidos). Deduções (devoluções e descontos incondicionais)
+        abatem a receita; faturas de cartão e seus estornos ficam de fora para não duplicar despesas já lançadas.
+        <b>Previsto</b> = parcelas pelo vencimento; <b>Realizado</b> = efetivamente pago, no mês do pagamento (caixa).
+        Fonte: Conta Azul Pro, sincronização a cada 10 minutos; correções retroativas de datas antigas se acomodam na faxina automática de domingo.
       </p>
     </main>
   </div>
@@ -120,11 +144,10 @@
     const hoje = new Date();
     const mesAtualIso = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0') + '-01';
     let anoSel = hoje.getFullYear();
-    let dados = [];
+    let pr = [], blocos = [];
 
     document.getElementById('btnLogout').addEventListener('click', () => signOut());
-
-    function brl(v) { return fmt.format(Number(v || 0)); }
+    const brl = v => fmt.format(Number(v || 0));
 
     function pintarSaude(s) {
       const pill = document.getElementById('saudePill');
@@ -136,56 +159,76 @@
       pill.classList.add(min <= 20 ? 'saude-ok' : min <= 60 ? 'saude-alerta' : 'saude-erro');
     }
 
-    function celValor(v, classe) {
-      const n = Number(v || 0);
-      const cls = classe ? ' class="' + classe + '"' : (n === 0 ? ' class="dim"' : '');
-      return '<td' + cls + '>' + brl(n) + '</td>';
+    // Agregadores da operação: receita líquida = operacional_receita − deducao_receita; despesa = operacional_despesa + prolabore
+    function opDoMes(iso) {
+      const g = (classe, campo) => Number((pr.find(d => d.mes === iso && d.classe === classe) || {})[campo] || 0);
+      return {
+        rp: g('operacional_receita', 'previsto') - g('deducao_receita', 'previsto'),
+        rr: g('operacional_receita', 'realizado') - g('deducao_receita', 'realizado'),
+        dp: g('operacional_despesa', 'previsto') + g('prolabore', 'previsto'),
+        dr: g('operacional_despesa', 'realizado') + g('prolabore', 'realizado'),
+        plr: g('prolabore', 'realizado')
+      };
+    }
+    function blocoDoMes(iso) {
+      const b = blocos.find(d => d.mes === iso) || {};
+      const pagoLiq = Number(b.emp_parcelas || 0) + Number(b.emp_giros || 0) + Number(b.emp_parc_cartao || 0) - Number(b.emp_estornos || 0);
+      return {
+        captado: Number(b.emp_captado || 0),
+        pagoLiq,
+        fluxo: Number(b.emp_captado || 0) - pagoLiq,
+        repIn: Number(b.repasse_entrada || 0),
+        repOut: Number(b.repasse_saida || 0)
+      };
     }
 
     function renderAno() {
-      const doAno = m => dados.filter(d => d.mes && d.mes.startsWith(String(anoSel)) && d.natureza === m);
-      const rec = doAno('receita'), desp = doAno('despesa');
-      const porMes = iso => ({
-        rp: Number((rec.find(d => d.mes === iso) || {}).previsto || 0),
-        rr: Number((rec.find(d => d.mes === iso) || {}).realizado || 0),
-        dp: Number((desp.find(d => d.mes === iso) || {}).previsto || 0),
-        dr: Number((desp.find(d => d.mes === iso) || {}).realizado || 0)
-      });
-
-      let html = '';
-      const tot = { rp: 0, rr: 0, dp: 0, dr: 0 };
+      let html = '', htmlB = '';
+      const tot = { rp:0, rr:0, dp:0, dr:0, sp:0, sr:0 };
+      const totB = { c:0, p:0, f:0, ri:0, ro:0 };
       for (let m = 0; m < 12; m++) {
         const iso = anoSel + '-' + String(m + 1).padStart(2, '0') + '-01';
-        const v = porMes(iso);
-        tot.rp += v.rp; tot.rr += v.rr; tot.dp += v.dp; tot.dr += v.dr;
+        const v = opDoMes(iso);
+        const sp = v.rp - v.dp, sr = v.rr - v.dr;
+        tot.rp += v.rp; tot.rr += v.rr; tot.dp += v.dp; tot.dr += v.dr; tot.sp += sp; tot.sr += sr;
         const pctR = v.rp > 0 ? Math.round(v.rr / v.rp * 100) : null;
         const pctD = v.dp > 0 ? Math.round(v.dr / v.dp * 100) : null;
-        const sp = v.rp - v.dp, sr = v.rr - v.dr;
         const futuro = iso > mesAtualIso;
         html += '<tr' + (iso === mesAtualIso ? ' class="mes-atual"' : '') + '>' +
           '<td>' + MESES[m] + '</td>' +
-          celValor(v.rp) +
+          '<td' + (v.rp === 0 ? ' class="dim"' : '') + '>' + brl(v.rp) + '</td>' +
           '<td' + (futuro && v.rr === 0 ? ' class="dim"' : '') + '>' + brl(v.rr) + (pctR !== null ? ' <span class="pct">(' + pctR + '%)</span>' : '') + '</td>' +
-          celValor(v.dp) +
+          '<td' + (v.dp === 0 ? ' class="dim"' : '') + '>' + brl(v.dp) + '</td>' +
           '<td' + (futuro && v.dr === 0 ? ' class="dim"' : '') + '>' + brl(v.dr) + (pctD !== null ? ' <span class="pct">(' + pctD + '%)</span>' : '') + '</td>' +
           '<td class="' + (sp >= 0 ? 'pos' : 'neg') + '">' + brl(sp) + '</td>' +
           '<td class="' + (sr >= 0 ? 'pos' : 'neg') + '">' + brl(sr) + '</td>' +
         '</tr>';
+
+        const b = blocoDoMes(iso);
+        totB.c += b.captado; totB.p += b.pagoLiq; totB.f += b.fluxo; totB.ri += b.repIn; totB.ro += b.repOut;
+        htmlB += '<tr' + (iso === mesAtualIso ? ' class="mes-atual"' : '') + '>' +
+          '<td>' + MESES[m] + '</td>' +
+          '<td' + (b.captado === 0 ? ' class="dim"' : '') + '>' + brl(b.captado) + '</td>' +
+          '<td' + (b.pagoLiq === 0 ? ' class="dim"' : '') + '>' + brl(b.pagoLiq) + '</td>' +
+          '<td class="' + (b.fluxo >= 0 ? 'pos' : 'neg') + '">' + brl(b.fluxo) + '</td>' +
+          '<td' + (b.repIn === 0 ? ' class="dim"' : '') + '>' + brl(b.repIn) + '</td>' +
+          '<td' + (b.repOut === 0 ? ' class="dim"' : '') + '>' + brl(b.repOut) + '</td>' +
+        '</tr>';
       }
       document.getElementById('prCorpo').innerHTML = html;
-
-      const sp = tot.rp - tot.dp, sr = tot.rr - tot.dr;
-      document.getElementById('prRodape').innerHTML = '<tr>' +
-        '<td>Total ' + anoSel + '</td>' +
-        '<td>' + brl(tot.rp) + '</td><td>' + brl(tot.rr) + '</td>' +
-        '<td>' + brl(tot.dp) + '</td><td>' + brl(tot.dr) + '</td>' +
-        '<td class="' + (sp >= 0 ? 'pos' : 'neg') + '">' + brl(sp) + '</td>' +
-        '<td class="' + (sr >= 0 ? 'pos' : 'neg') + '">' + brl(sr) + '</td>' +
-      '</tr>';
+      document.getElementById('prRodape').innerHTML = '<tr><td>Total ' + anoSel + '</td>' +
+        '<td>' + brl(tot.rp) + '</td><td>' + brl(tot.rr) + '</td><td>' + brl(tot.dp) + '</td><td>' + brl(tot.dr) + '</td>' +
+        '<td class="' + (tot.sp >= 0 ? 'pos' : 'neg') + '">' + brl(tot.sp) + '</td>' +
+        '<td class="' + (tot.sr >= 0 ? 'pos' : 'neg') + '">' + brl(tot.sr) + '</td></tr>';
+      document.getElementById('blCorpo').innerHTML = htmlB;
+      document.getElementById('blRodape').innerHTML = '<tr><td>Total ' + anoSel + '</td>' +
+        '<td>' + brl(totB.c) + '</td><td>' + brl(totB.p) + '</td>' +
+        '<td class="' + (totB.f >= 0 ? 'pos' : 'neg') + '">' + brl(totB.f) + '</td>' +
+        '<td>' + brl(totB.ri) + '</td><td>' + brl(totB.ro) + '</td></tr>';
     }
 
     function montarSeletor() {
-      const anos = [...new Set(dados.filter(d => d.mes).map(d => Number(d.mes.slice(0, 4))))].sort();
+      const anos = [...new Set(pr.filter(d => d.mes).map(d => Number(d.mes.slice(0, 4))))].sort();
       if (!anos.length) anos.push(hoje.getFullYear());
       if (!anos.includes(anoSel)) anoSel = anos[anos.length - 1];
       const box = document.getElementById('seletorAno');
@@ -198,15 +241,19 @@
     }
 
     function pintarResumo() {
-      const doMes = n => dados.find(d => d.mes === mesAtualIso && d.natureza === n) || {};
-      const rec = Number(doMes('receita').realizado || 0);
-      const pag = Number(doMes('despesa').realizado || 0);
-      const saldo = rec - pag;
-      document.getElementById('rotMes').textContent = 'Recebido em ' + MESES[hoje.getMonth()].toLowerCase();
-      document.getElementById('cardRecebido').textContent = brl(rec);
-      document.getElementById('cardPago').textContent = brl(pag);
-      document.getElementById('cardSaldo').textContent = brl(saldo);
-      document.getElementById('cardSaldoBox').classList.add(saldo >= 0 ? 'positivo' : 'negativo');
+      const v = opDoMes(mesAtualIso);
+      const b = blocoDoMes(mesAtualIso);
+      const res = v.rr - v.dr;
+      document.getElementById('rotMes').textContent = 'Receita operacional · ' + MESES[hoje.getMonth()].toLowerCase();
+      document.getElementById('cardReceita').textContent = brl(v.rr);
+      document.getElementById('cardDespesa').textContent = brl(v.dr);
+      const plPct = v.rr > 0 ? Math.round(v.plr / v.rr * 100) : 0;
+      document.getElementById('subPL').textContent = 'pró-labore: ' + brl(v.plr) + ' (' + plPct + '% da receita)';
+      document.getElementById('cardResultado').textContent = brl(res);
+      document.getElementById('cardResBox').classList.add(res >= 0 ? 'positivo' : 'negativo');
+      document.getElementById('cardEmp').textContent = brl(b.fluxo);
+      document.getElementById('cardEmpBox').classList.add(b.fluxo >= 0 ? 'positivo' : 'negativo');
+      document.getElementById('subEmp').textContent = 'captado ' + brl(b.captado) + ' · pago ' + brl(b.pagoLiq);
     }
 
     (async () => {
@@ -224,17 +271,19 @@
         return;
       }
 
-      const [{ data: saude }, { data: pr, error }] = await Promise.all([
+      const [{ data: saude }, { data: prData, error: e1 }, { data: blData, error: e2 }] = await Promise.all([
         supabase.from('vw_ca_saude').select('*').single(),
-        supabase.from('vw_ca_pr_mensal').select('*')
+        supabase.from('vw_ca_pr_operacional').select('*'),
+        supabase.from('vw_ca_blocos_mensal').select('*')
       ]);
 
       pintarSaude(saude);
-      if (error) {
-        document.getElementById('prCorpo').innerHTML = '<tr><td colspan="7" style="text-align:center;color:#E08FA8;padding:28px;">Erro ao carregar o espelho: ' + error.message + '</td></tr>';
+      if (e1 || e2) {
+        document.getElementById('prCorpo').innerHTML = '<tr><td colspan="7" style="text-align:center;color:#E08FA8;padding:28px;">Erro ao carregar: ' + ((e1 || e2).message) + '</td></tr>';
         return;
       }
-      dados = pr || [];
+      pr = prData || [];
+      blocos = blData || [];
       montarSeletor();
       pintarResumo();
       renderAno();
