@@ -682,8 +682,10 @@
               else if (g.tipo === 'parc_cartao') sufixo = ' · parcelamento de cartão';
               else {
                 const c = contratos.find(x => x.contrato === g.k);
-                const ano = c && c.ultima_parcela ? String(c.ultima_parcela).slice(0, 4) : null;
-                if (ano) sufixo = ' · termina em ' + ano;
+                if (c && c.ultima_parcela) {
+                  const up = String(c.ultima_parcela);
+                  sufixo = ' · termina em ' + MESES[Number(up.slice(5, 7)) - 1].slice(0, 3).toLowerCase() + '/' + up.slice(0, 4);
+                }
               }
               itens.push({ t: 'cat', rot: g.desc + sufixo, prev: g.prev, real: g.real });
               tp += g.prev; tr += g.real;
