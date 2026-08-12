@@ -633,6 +633,7 @@
       const recRows = porGrupo('receita');
       const somaRec = campo => recRows.reduce((t, d) => t + sinalNat(d.grupo, d.natureza) * Number(d[campo] || 0), 0);
       const spPrev = somaRec('previsto'), spReal = somaRec('realizado');
+      const ABRE_POR_DESC = { custo_servicos: ['Licença ou Aluguel de Softwares'], prolabore: ['PRÓ-LABORE', 'INSS - Pró-Labore'] };
       const itens = [];
       let acPrev = 0, acReal = 0;
       for (const def of DREG) {
@@ -690,10 +691,28 @@
         if (!rows.length) continue;
         itens.push({ t: 'grupo', rot: def.rot, alerta: def.alerta });
         let tp = 0, tr = 0;
+        const abre = ABRE_POR_DESC[def.grupo] || [];
         for (const d of rows) {
           const sg = sinalNat(d.grupo, d.natureza);
-          itens.push({ t: 'cat', rot: d.categoria + (sg < 0 ? ' (abate)' : ''), prev: sg * Number(d.previsto || 0), real: sg * Number(d.realizado || 0) });
           tp += sg * Number(d.previsto || 0); tr += sg * Number(d.realizado || 0);
+          if (abre.includes(d.categoria)) {
+            const mapa = new Map();
+            for (const l of parcelas) {
+              if (l.cat !== d.categoria || l.natureza !== d.natureza) continue;
+              const d0 = (l.descricao || '(sem descrição)').trim();
+              if (!mapa.has(d0)) mapa.set(d0, { prev: 0, real: 0 });
+              const g = mapa.get(d0);
+              if (l._prevNoMes) g.prev += Number(l.total || 0);
+              if (l._pagoNoMes) g.real += Number(l.pago || 0);
+            }
+            const arr = [...mapa.entries()].filter(([, g]) => Math.abs(g.prev) > 0.004 || Math.abs(g.real) > 0.004).sort((a, b) => (b[1].real - a[1].real) || (b[1].prev - a[1].prev));
+            if (arr.length) {
+              itens.push({ t: 'subcab', rot: d.categoria + (sg < 0 ? ' (abate)' : '') });
+              for (const [d0, g] of arr) itens.push({ t: 'cat', rot: d0, prev: sg * g.prev, real: sg * g.real, sub2: true });
+              continue;
+            }
+          }
+          itens.push({ t: 'cat', rot: d.categoria + (sg < 0 ? ' (abate)' : ''), prev: sg * Number(d.previsto || 0), real: sg * Number(d.realizado || 0) });
         }
         itens.push({ t: 'sub', rot: 'Total do grupo', prev: tp, real: tr, alerta: def.alerta });
         if (def.op === '-') { acPrev -= tp; acReal -= tr; } else { acPrev += tp; acReal += tr; }
@@ -731,7 +750,8 @@
       let h = '';
       for (const it of d.itens) {
         if (it.t === 'grupo') h += '<tr><td colspan="6" style="padding:14px 4px 6px;font-weight:700;' + (it.alerta ? 'color:#E08FA8;' : 'color:#C5D8E8;') + '">' + it.rot + '</td></tr>';
-        else if (it.t === 'cat') h += '<tr><td style="white-space:normal;padding-left:14px;color:#8A93A6;">' + it.rot + '</td><td>' + brl(it.prev) + '</td><td style="color:#8A93A6;">' + pct(it.prev, d.spPrev) + '</td><td>' + brl(it.real) + '</td><td style="color:#8A93A6;">' + pct(it.real, d.spReal) + '</td><td>' + brl(it.prev - it.real) + '</td></tr>';
+        else if (it.t === 'subcab') h += '<tr><td colspan="6" style="padding:8px 4px 2px 14px;font-weight:600;color:#8AAEC8;">' + it.rot + '</td></tr>';
+        else if (it.t === 'cat') h += '<tr><td style="white-space:normal;padding-left:' + (it.sub2 ? '28px' : '14px') + ';color:#8A93A6;">' + it.rot + '</td><td>' + brl(it.prev) + '</td><td style="color:#8A93A6;">' + pct(it.prev, d.spPrev) + '</td><td>' + brl(it.real) + '</td><td style="color:#8A93A6;">' + pct(it.real, d.spReal) + '</td><td>' + brl(it.prev - it.real) + '</td></tr>';
         else if (it.t === 'sub') h += '<tr><td style="padding-left:14px;font-weight:600;">' + it.rot + '</td><td style="font-weight:600;">' + brl(it.prev) + '</td><td>' + pct(it.prev, d.spPrev) + '</td><td style="font-weight:600;">' + brl(it.real) + '</td><td>' + pct(it.real, d.spReal) + '</td><td style="font-weight:600;">' + brl(it.prev - it.real) + '</td></tr>';
         else if (it.t === 'calc') h += '<tr><td style="font-weight:700;border-top:1px solid #3A5878;padding-top:10px;">' + it.rot + '</td><td style="font-weight:700;border-top:1px solid #3A5878;">' + brl(it.prev) + '</td><td style="border-top:1px solid #3A5878;">' + pct(it.prev, d.spPrev) + '</td><td style="font-weight:700;border-top:1px solid #3A5878;">' + brl(it.real) + '</td><td style="border-top:1px solid #3A5878;">' + pct(it.real, d.spReal) + '</td><td style="font-weight:700;border-top:1px solid #3A5878;">' + brl(it.prev - it.real) + '</td></tr>';
         else if (it.t === 'info') h += '<tr><td colspan="3" style="white-space:normal;padding-left:14px;font-style:italic;color:#8A93A6;">' + it.rot + '</td><td style="font-style:italic;color:#8A93A6;">' + brl(it.real) + '</td><td colspan="2"></td></tr>';
@@ -771,9 +791,12 @@
         if (it.t === 'grupo') {
           y += 4; doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(it.alerta ? 160 : 50);
           doc.text(trunca(it.rot, 78), X.rot, y); y += 14;
+        } else if (it.t === 'subcab') {
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(90);
+          doc.text('  ' + trunca(it.rot, 70), X.rot, y); y += 13;
         } else if (it.t === 'cat' || it.t === 'sub') {
           doc.setFont('helvetica', it.t === 'sub' ? 'bold' : 'normal'); doc.setFontSize(8); doc.setTextColor(30);
-          doc.text('  ' + trunca(it.rot, 52), X.rot, y);
+          doc.text((it.sub2 ? '      ' : '  ') + trunca(it.rot, it.sub2 ? 48 : 52), X.rot, y);
           doc.text(num(it.prev), X.prev, y, { align: 'right' }); doc.text(pct(it.prev, d.spPrev), X.p1, y, { align: 'right' });
           doc.text(num(it.real), X.real, y, { align: 'right' }); doc.text(pct(it.real, d.spReal), X.p2, y, { align: 'right' });
           doc.text(num(it.prev - it.real), X.dif, y, { align: 'right' });
