@@ -182,7 +182,8 @@
     const hoje = new Date();
     const mesAtualIso = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0') + '-01';
     let anoSel = hoje.getFullYear();
-    let pr = [], blocos = [], dreRows = [], inad = [], contratos = [];
+    let pr = [], blocos = [], inad = [], contratos = [];
+    const dreAnos = new Map();
     let dreMesSel = null, dreCache = null;
     const cacheMes = new Map();
     let drillAtual = null;
@@ -631,7 +632,16 @@
       if (grupo === 'receita') return natureza === 'despesa' ? -1 : 1;
       return natureza === 'receita' ? -1 : 1;
     }
+    async function carregarDREano(ano) {
+      if (dreAnos.has(ano)) return dreAnos.get(ano);
+      const { data, error } = await supabase.from('vw_ca_dre_mensal').select('*')
+        .gte('mes', ano + '-01-01').lte('mes', ano + '-12-31');
+      if (error) throw error;
+      dreAnos.set(ano, data || []);
+      return data || [];
+    }
     async function montarDRE(iso) {
+      const dreRows = await carregarDREano(Number(iso.slice(0, 4)));
       const linhas = dreRows.filter(d => d.mes === iso);
       const parcelas = await parcelasDoMes(iso);
       const porGrupo = g => linhas.filter(d => d.grupo === g).sort((a, b) => (a.ordem - b.ordem) || a.categoria.localeCompare(b.categoria));
@@ -970,11 +980,10 @@
       const SOCIOS = ['financeiro@macedoereis.com.br','diego@macedoereis.com.br'];
       if (!SOCIOS.includes((user?.email||'').toLowerCase())) { location.replace('setores.html'); return; }
 
-      const [{ data: saude }, { data: prData, error: e1 }, { data: blData, error: e2 }, { data: dreData }, { data: inadData }, { data: ctData }] = await Promise.all([
+      const [{ data: saude }, { data: prData, error: e1 }, { data: blData, error: e2 }, { data: inadData }, { data: ctData }] = await Promise.all([
         supabase.from('vw_ca_saude').select('*').single(),
         supabase.from('vw_ca_pr_classes').select('*'),
         supabase.from('vw_ca_blocos_mensal').select('*'),
-        supabase.from('vw_ca_dre_mensal').select('*'),
         supabase.from('vw_ca_inadimplencia_mensal').select('*'),
         supabase.from('vw_ca_emprestimos_contratos').select('*')
       ]);
@@ -985,7 +994,6 @@
       }
       pr = prData || [];
       blocos = blData || [];
-      dreRows = dreData || [];
       inad = inadData || [];
       contratos = ctData || [];
       pintarResumo();
