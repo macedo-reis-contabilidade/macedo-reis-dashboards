@@ -481,8 +481,13 @@
         .select('natureza, descricao, total, pago, data_vencimento, mes_pagamento, cat, classe')
         .or('and(data_vencimento.gte.' + iso + ',data_vencimento.lte.' + fim + '),mes_pagamento.eq.' + iso);
       if (error) throw error;
-      cacheMes.set(iso, data || []);
-      return data || [];
+      const linhas = data || [];
+      for (const l of linhas) {
+        l._prevNoMes = l.data_vencimento && l.data_vencimento >= iso && l.data_vencimento <= fim;
+        l._pagoNoMes = l.mes_pagamento === iso;
+      }
+      cacheMes.set(iso, linhas);
+      return linhas;
     }
     function agrupar(linhas, chave) {
       const mapa = new Map();
