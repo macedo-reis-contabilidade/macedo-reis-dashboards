@@ -123,11 +123,11 @@
             <div class="estante-info"><h3>Empréstimos e Repasses — Caixa</h3><p>Captações, amortizações líquidas e dinheiro de clientes em trânsito. Clique num mês para ver os lançamentos.</p></div>
             <span class="badge-vivo">● AO VIVO</span>
           </button>
-          <div class="estante-item breve">
+          <button class="estante-item" data-rel="dre">
             <div class="estante-icone"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
-            <div class="estante-info"><h3>DRE Mensal</h3><p>Demonstração do resultado na estrutura aprovada da casa.</p></div>
-            <span class="badge-breve">EM BREVE</span>
-          </div>
+            <div class="estante-info"><h3>DRE Gerencial — Previsto × Realizado</h3><p>A cascata completa no layout do Diego: receitas, deduções, EBITDA, empréstimos contrato a contrato e resultado final, mês a mês.</p></div>
+            <span class="badge-vivo">● AO VIVO</span>
+          </button>
           <div class="estante-item breve">
             <div class="estante-icone"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg></div>
             <div class="estante-info"><h3>Planilha de Empréstimos</h3><p>Contratos ativos, parcelas, términos e cronograma de alívio.</p></div>
@@ -182,7 +182,8 @@
     const hoje = new Date();
     const mesAtualIso = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0') + '-01';
     let anoSel = hoje.getFullYear();
-    let pr = [], blocos = [];
+    let pr = [], blocos = [], dreRows = [], inad = [], contratos = [];
+    let dreMesSel = null, dreCache = null;
     const cacheMes = new Map();
     let drillAtual = null;
 
@@ -253,6 +254,8 @@
       if (rel === 'operacao' || rel === 'geral' || rel === 'emprestimos') {
         if (mes) { renderMes(rel, mes); el('vistaMes').classList.remove('hidden'); }
         else { renderRelatorio(rel); el('vistaRelatorio').classList.remove('hidden'); }
+      } else if (rel === 'dre') {
+        renderRelatorio('dre', mes || null); el('vistaRelatorio').classList.remove('hidden');
       } else {
         el('vistaEstante').classList.remove('hidden');
       }
@@ -278,9 +281,15 @@
         considera: 'O movimento financeiro que fica fora do resultado operacional. Emprestimos: captacoes (dinheiro novo entrando) e amortizacoes liquidas — parcelas bancarias, giros e parcelamento de cartao, ja abatidos os estornos de repactuacao (o ciclo diario do Sicoob gera pares de pagamento e estorno que se anulam). Repasses: valores de clientes que atravessam o caixa para pagar guias e impostos deles.',
         fora: 'Nada aqui e receita ou despesa do escritorio: emprestimo e divida que se move, repasse e dinheiro de terceiros em transito.',
         leitura: 'Fluxo de emprestimos positivo = a divida cresceu no mes (captou mais do que pagou); negativo = desalavancagem. Repasses recebidos e pagos devem andar proximos; defasagens refletem o intervalo entre o cliente depositar e a guia vencer. Residuos de virada de mes do ciclo Sicoob (na casa de 1%) se compensam entre os meses.'
+      },
+      dre: {
+        considera: 'A cascata gerencial completa no layout do Diego: servicos prestados por categoria, deducoes e impostos sobre servicos (Simples, ISS, CRC, multas e devolucoes), custo dos servicos (softwares e assessorias), custos variaveis, administrativos, pessoal, mao de obra de processos, pro-labore, despesas financeiras (juros, IOF, tarifas e parcelamentos de impostos), investimentos e o bloco de emprestimos: parcelas pagas liquidas de estornos, contrato a contrato com o ano de termino, e captacoes por origem. Linhas de receita dentro de grupos de despesa (ex.: reembolso de pro-labore) entram abatendo, marcadas com (abate).',
+        fora: 'Repasses de clientes e o par fatura/estorno de cartao ficam fora (dinheiro de terceiros e duplicidade). A linha de inadimplencia e informativa (honorarios vencidos e nao pagos no mes) e nao soma na cascata, porque o realizado ja reflete o que nao entrou. Categoria nova do Conta Azul sem classificacao aparece no grupo NAO MAPEADO ate ser mapeada.',
+        leitura: 'Previsto soma pelo vencimento, Realizado pelo mes do pagamento (caixa), Diferenca = previsto menos realizado. Os percentuais sao analise vertical: cada linha sobre o total de servicos prestados da mesma coluna. O RESULTADO FINAL fecha com o relatorio Geral com Emprestimos; a linha do EBITDA conta a historia da operacao antes do peso da divida.'
       }
     };
     function leituraDoAno(rel) {
+      if (rel === 'dre') return [];
       const fechados = [];
       for (let m = 0; m < 12; m++) {
         const iso = anoSel + '-' + String(m+1).padStart(2,'0') + '-01';
@@ -326,9 +335,11 @@
       h += '<br>Fonte: Conta Azul Pro, sincronizacao automatica a cada 10 minutos.';
       el('relNota').innerHTML = h;
     }
-    function renderRelatorio(rel) {
+    function renderRelatorio(rel, mesDre) {
       relAtual = rel;
       montarSeletor();
+      const bxDre = document.getElementById('dreChips'); if (bxDre) bxDre.style.display = 'none';
+      if (rel === 'dre') { renderDRE(mesDre); return; }
       el('relTitulo').textContent = rel === 'operacao' ? 'Operação — Previsto × Realizado' : rel === 'geral' ? 'Geral com Empréstimos — Previsto × Realizado' : 'Empréstimos e Repasses — Caixa';
       if (rel !== 'emprestimos') {
         el('relCabecalho').innerHTML = '<tr><th>Mês</th><th>Receita prevista</th><th>Receita realizada</th><th>Despesa prevista</th><th>Despesa realizada</th><th>Resultado previsto</th><th>Resultado realizado</th></tr>';
@@ -387,6 +398,7 @@
 
     // ---------- PDF ----------
     function gerarPDF() {
+      if (relAtual === 'dre') { gerarPDFDRE(); return; }
       if (!window.jspdf) { alert('Gerador de PDF carregando. Tenta de novo em 2 segundos.'); return; }
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'landscape' });
@@ -587,6 +599,204 @@
       }
     }
 
+    // ---------- DRE Gerencial (layout Diego) ----------
+    const DREG = [
+      { grupo: 'receita',            rot: '(=) SERVIÇOS PRESTADOS', op: '+' },
+      { grupo: 'deducao',            rot: '(−) DEDUÇÕES E IMPOSTOS SOBRE SERVIÇOS', op: '-' },
+      { calc: 'RECEITA LÍQUIDA' },
+      { grupo: 'custo_servicos',     rot: '(−) CUSTO DOS SERVIÇOS PRESTADOS', op: '-' },
+      { grupo: 'custo_variavel',     rot: '(−) CUSTOS VARIÁVEIS', op: '-' },
+      { calc: 'LUCRO BRUTO (MARGEM DE CONTRIBUIÇÃO)' },
+      { grupo: 'administrativo',     rot: '(−) ADMINISTRATIVOS', op: '-' },
+      { grupo: 'pessoal',            rot: '(−) PESSOAL', op: '-' },
+      { grupo: 'mao_obra_processos', rot: '(−) MÃO DE OBRA — PROCESSOS', op: '-' },
+      { grupo: 'prolabore',          rot: '(−) PRÓ-LABORE', op: '-' },
+      { grupo: 'nao_mapeado',        rot: '(−) NÃO MAPEADO — categorias novas do Conta Azul', op: '-', alerta: true },
+      { calc: 'EBITDA' },
+      { grupo: 'financeira',         rot: '(−) DESPESAS FINANCEIRAS', op: '-' },
+      { calc: 'LUCRO ANTES DE INVESTIMENTOS' },
+      { grupo: 'investimento',       rot: '(−) INVESTIMENTOS', op: '-' },
+      { calc: 'LUCRO ANTES DOS EMPRÉSTIMOS' },
+      { emp: 'pagos',                rot: '(−) EMPRÉSTIMOS — PARCELAS PAGAS (líquido de estornos)' },
+      { calc: 'LUCRO LÍQUIDO' },
+      { emp: 'captacoes',            rot: '(+) EMPRÉSTIMOS CAPTADOS' },
+      { calc: 'RESULTADO FINAL' }
+    ];
+    function sinalNat(grupo, natureza) {
+      if (grupo === 'receita') return natureza === 'despesa' ? -1 : 1;
+      return natureza === 'receita' ? -1 : 1;
+    }
+    async function montarDRE(iso) {
+      const linhas = dreRows.filter(d => d.mes === iso);
+      const parcelas = await parcelasDoMes(iso);
+      const porGrupo = g => linhas.filter(d => d.grupo === g).sort((a, b) => (a.ordem - b.ordem) || a.categoria.localeCompare(b.categoria));
+      const recRows = porGrupo('receita');
+      const somaRec = campo => recRows.reduce((t, d) => t + sinalNat(d.grupo, d.natureza) * Number(d[campo] || 0), 0);
+      const spPrev = somaRec('previsto'), spReal = somaRec('realizado');
+      const itens = [];
+      let acPrev = 0, acReal = 0;
+      for (const def of DREG) {
+        if (def.calc) { itens.push({ t: 'calc', rot: '(=) ' + def.calc, prev: acPrev, real: acReal }); continue; }
+        if (def.emp === 'pagos') {
+          const mapC = new Map();
+          for (const l of parcelas) {
+            const ehPago = ['emprestimo_parcelas','emprestimo_giros','emprestimo_parc_cartao'].includes(l.classe);
+            const ehEst = l.classe === 'emprestimo_estorno';
+            if (!ehPago && !ehEst) continue;
+            const d0 = (l.descricao || '(sem descrição)').trim();
+            const m = d0.match(/\d{5,}/);
+            const k = m ? 'ct-' + m[0] : d0.toUpperCase();
+            if (!mapC.has(k)) mapC.set(k, { k, desc: d0, prev: 0, real: 0 });
+            const g = mapC.get(k); const sg = ehEst ? -1 : 1;
+            if (l._prevNoMes) g.prev += sg * Number(l.total || 0);
+            if (l._pagoNoMes) g.real += sg * Number(l.pago || 0);
+            if (ehPago) g.desc = d0;
+          }
+          const arr = [...mapC.values()].filter(g => Math.abs(g.prev) > 0.004 || Math.abs(g.real) > 0.004).sort((a, b) => (b.real - a.real) || (b.prev - a.prev));
+          if (arr.length) {
+            itens.push({ t: 'grupo', rot: def.rot });
+            let tp = 0, tr = 0;
+            for (const g of arr) {
+              const c = contratos.find(x => x.contrato === g.k);
+              const ano = c && c.ultima_parcela ? String(c.ultima_parcela).slice(0, 4) : null;
+              itens.push({ t: 'cat', rot: g.desc + (ano ? ' · termina em ' + ano : ''), prev: g.prev, real: g.real });
+              tp += g.prev; tr += g.real;
+            }
+            itens.push({ t: 'sub', rot: 'Total de empréstimos pagos', prev: tp, real: tr });
+            acPrev -= tp; acReal -= tr;
+          }
+          continue;
+        }
+        if (def.emp === 'captacoes') {
+          const mapa = new Map();
+          for (const l of parcelas.filter(x => x.classe === 'emprestimo_captacao')) {
+            const d0 = (l.descricao || '(sem descrição)').trim();
+            if (!mapa.has(d0)) mapa.set(d0, { prev: 0, real: 0 });
+            const g = mapa.get(d0);
+            if (l._prevNoMes) g.prev += Number(l.total || 0);
+            if (l._pagoNoMes) g.real += Number(l.pago || 0);
+          }
+          const arr = [...mapa.entries()].filter(([, g]) => g.prev > 0.004 || g.real > 0.004).sort((a, b) => b[1].real - a[1].real);
+          if (arr.length) {
+            itens.push({ t: 'grupo', rot: def.rot });
+            let tp = 0, tr = 0;
+            for (const [d0, g] of arr) { itens.push({ t: 'cat', rot: d0, prev: g.prev, real: g.real }); tp += g.prev; tr += g.real; }
+            itens.push({ t: 'sub', rot: 'Total captado', prev: tp, real: tr });
+            acPrev += tp; acReal += tr;
+          }
+          continue;
+        }
+        const rows = porGrupo(def.grupo);
+        if (!rows.length) continue;
+        itens.push({ t: 'grupo', rot: def.rot, alerta: def.alerta });
+        let tp = 0, tr = 0;
+        for (const d of rows) {
+          const sg = sinalNat(d.grupo, d.natureza);
+          itens.push({ t: 'cat', rot: d.categoria + (sg < 0 ? ' (abate)' : ''), prev: sg * Number(d.previsto || 0), real: sg * Number(d.realizado || 0) });
+          tp += sg * Number(d.previsto || 0); tr += sg * Number(d.realizado || 0);
+        }
+        itens.push({ t: 'sub', rot: 'Total do grupo', prev: tp, real: tr, alerta: def.alerta });
+        if (def.op === '-') { acPrev -= tp; acReal -= tr; } else { acPrev += tp; acReal += tr; }
+        if (def.grupo === 'deducao') {
+          const iv = inad.find(x => x.mes === iso);
+          if (iv && Number(iv.inadimplente) > 0.004) itens.push({ t: 'info', rot: 'Inadimplência real do mês (honorários vencidos não pagos) — informativa, não soma na cascata', real: Number(iv.inadimplente) });
+        }
+      }
+      return { itens, spPrev, spReal };
+    }
+    async function renderDRE(mesDre) {
+      const mesCorrente = anoSel === hoje.getFullYear() ? hoje.getMonth() + 1 : 12;
+      const iso = mesDre || (anoSel + '-' + String(mesCorrente).padStart(2, '0') + '-01');
+      dreMesSel = iso;
+      const mIdx = Number(iso.slice(5, 7)) - 1;
+      el('relTitulo').textContent = 'DRE Gerencial · ' + MESES[mIdx] + ' de ' + iso.slice(0, 4);
+      let box = document.getElementById('dreChips');
+      if (!box) {
+        box = document.createElement('div'); box.id = 'dreChips'; box.className = 'seletor-ano'; box.style.margin = '0 0 14px';
+        const tb = el('relCabecalho').closest('table');
+        tb.parentNode.insertBefore(box, tb);
+      }
+      box.style.display = '';
+      box.innerHTML = Array.from({ length: 12 }, (_, m) => {
+        const mi = anoSel + '-' + String(m + 1).padStart(2, '0') + '-01';
+        return '<button data-mes="' + mi + '" class="' + (mi === iso ? 'is-on' : '') + '">' + MESES[m].slice(0, 3) + '</button>';
+      }).join('');
+      box.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { location.hash = 'dre/' + b.dataset.mes; }));
+      el('relCabecalho').innerHTML = '<tr><th>Linha</th><th>Previsto</th><th>%</th><th>Realizado</th><th>%</th><th>Diferença</th></tr>';
+      el('relCorpo').innerHTML = '<tr><td colspan="6" style="color:#8A93A6;padding:16px 4px;">Montando o mês…</td></tr>';
+      const d = await montarDRE(iso);
+      if (dreMesSel !== iso) return;
+      dreCache = d;
+      const pct = (v, b) => b > 0.004 ? (100 * v / b).toFixed(1).replace('.', ',') + '%' : '—';
+      let h = '';
+      for (const it of d.itens) {
+        if (it.t === 'grupo') h += '<tr><td colspan="6" style="padding:14px 4px 6px;font-weight:700;' + (it.alerta ? 'color:#E08FA8;' : 'color:#C5D8E8;') + '">' + it.rot + '</td></tr>';
+        else if (it.t === 'cat') h += '<tr><td style="white-space:normal;padding-left:14px;color:#8A93A6;">' + it.rot + '</td><td>' + brl(it.prev) + '</td><td style="color:#8A93A6;">' + pct(it.prev, d.spPrev) + '</td><td>' + brl(it.real) + '</td><td style="color:#8A93A6;">' + pct(it.real, d.spReal) + '</td><td>' + brl(it.prev - it.real) + '</td></tr>';
+        else if (it.t === 'sub') h += '<tr><td style="padding-left:14px;font-weight:600;">' + it.rot + '</td><td style="font-weight:600;">' + brl(it.prev) + '</td><td>' + pct(it.prev, d.spPrev) + '</td><td style="font-weight:600;">' + brl(it.real) + '</td><td>' + pct(it.real, d.spReal) + '</td><td style="font-weight:600;">' + brl(it.prev - it.real) + '</td></tr>';
+        else if (it.t === 'calc') h += '<tr><td style="font-weight:700;border-top:1px solid #3A5878;padding-top:10px;">' + it.rot + '</td><td style="font-weight:700;border-top:1px solid #3A5878;">' + brl(it.prev) + '</td><td style="border-top:1px solid #3A5878;">' + pct(it.prev, d.spPrev) + '</td><td style="font-weight:700;border-top:1px solid #3A5878;">' + brl(it.real) + '</td><td style="border-top:1px solid #3A5878;">' + pct(it.real, d.spReal) + '</td><td style="font-weight:700;border-top:1px solid #3A5878;">' + brl(it.prev - it.real) + '</td></tr>';
+        else if (it.t === 'info') h += '<tr><td colspan="3" style="white-space:normal;padding-left:14px;font-style:italic;color:#8A93A6;">' + it.rot + '</td><td style="font-style:italic;color:#8A93A6;">' + brl(it.real) + '</td><td colspan="2"></td></tr>';
+      }
+      el('relCorpo').innerHTML = h || '<tr><td colspan="6" style="color:#8A93A6;">Sem lançamentos neste mês.</td></tr>';
+      pintarNota('dre');
+    }
+    function gerarPDFDRE() {
+      if (!dreCache || !dreMesSel) { alert('Abre um mes primeiro.'); return; }
+      if (!window.jspdf) { alert('Gerador de PDF carregando. Tenta de novo em 2 segundos.'); return; }
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+      const W = doc.internal.pageSize.getWidth();
+      const H = doc.internal.pageSize.getHeight();
+      const M = 40;
+      let y = 44;
+      const num = v => fmt.format(Number(v || 0)).replace('R$\u00a0', 'R$ ');
+      const trunca = (t, n) => (t || '').length > n ? (t || '').slice(0, n - 1) + '…' : (t || '');
+      const pct = (v, b) => b > 0.004 ? (100 * v / b).toFixed(1).replace('.', ',') + '%' : '-';
+      function cab() {
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(110);
+        doc.text('Macedo & Reis Contabilidade  ·  CRC/RS 006418/O  ·  Tres Coroas - RS  ·  Uso Interno', M, 44);
+      }
+      function quebra(prox) { if (y + prox > H - 50) { doc.addPage(); cab(); y = 66; } }
+      const X = { rot: M, prev: 330, p1: 368, real: 440, p2: 478, dif: W - M };
+      cab(); y = 66;
+      const mIdx = Number(dreMesSel.slice(5, 7)) - 1;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(20);
+      doc.text('DRE GERENCIAL — PREVISTO x REALIZADO  ·  ' + MESES[mIdx].toUpperCase() + ' ' + dreMesSel.slice(0, 4), M, y); y += 18;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(80);
+      doc.text('Linha', X.rot, y); doc.text('Previsto', X.prev, y, { align: 'right' }); doc.text('%', X.p1, y, { align: 'right' });
+      doc.text('Realizado', X.real, y, { align: 'right' }); doc.text('%', X.p2, y, { align: 'right' }); doc.text('Diferenca', X.dif, y, { align: 'right' });
+      y += 4; doc.setDrawColor(120); doc.setLineWidth(0.7); doc.line(M, y, W - M, y); y += 12;
+      const d = dreCache;
+      for (const it of d.itens) {
+        quebra(16);
+        if (it.t === 'grupo') {
+          y += 4; doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(it.alerta ? 160 : 50);
+          doc.text(trunca(it.rot, 78), X.rot, y); y += 14;
+        } else if (it.t === 'cat' || it.t === 'sub') {
+          doc.setFont('helvetica', it.t === 'sub' ? 'bold' : 'normal'); doc.setFontSize(8); doc.setTextColor(30);
+          doc.text('  ' + trunca(it.rot, 52), X.rot, y);
+          doc.text(num(it.prev), X.prev, y, { align: 'right' }); doc.text(pct(it.prev, d.spPrev), X.p1, y, { align: 'right' });
+          doc.text(num(it.real), X.real, y, { align: 'right' }); doc.text(pct(it.real, d.spReal), X.p2, y, { align: 'right' });
+          doc.text(num(it.prev - it.real), X.dif, y, { align: 'right' });
+          doc.setDrawColor(220); doc.setLineWidth(0.3); doc.line(M, y + 4, W - M, y + 4); y += 14;
+        } else if (it.t === 'calc') {
+          doc.setDrawColor(120); doc.setLineWidth(0.7); doc.line(M, y - 8, W - M, y - 8);
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(10);
+          doc.text(trunca(it.rot, 50), X.rot, y);
+          doc.text(num(it.prev), X.prev, y, { align: 'right' }); doc.text(pct(it.prev, d.spPrev), X.p1, y, { align: 'right' });
+          doc.text(num(it.real), X.real, y, { align: 'right' }); doc.text(pct(it.real, d.spReal), X.p2, y, { align: 'right' });
+          doc.text(num(it.prev - it.real), X.dif, y, { align: 'right' }); y += 18;
+        } else if (it.t === 'info') {
+          doc.setFont('helvetica', 'italic'); doc.setFontSize(7.5); doc.setTextColor(120);
+          doc.text('  ' + trunca(it.rot, 80) + ': ' + num(it.real), X.rot, y); y += 13;
+        }
+      }
+      quebra(24);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(130);
+      const agora = new Date();
+      doc.text('Gerado em ' + agora.toLocaleDateString('pt-BR') + ' as ' + agora.toLocaleTimeString('pt-BR').slice(0, 5) + '  ·  Relatorios Vivos  ·  Fonte: Conta Azul Pro (sincronizacao automatica)', M, Math.min(y + 6, H - 30));
+      doc.save('DRE Gerencial - ' + MESES[mIdx] + ' ' + dreMesSel.slice(0, 4) + '.pdf');
+    }
+
     // ---------- PDF do mês ----------
     function gerarPDFMes() {
       if (!drillAtual) { alert('Abre um mes primeiro.'); return; }
@@ -732,10 +942,13 @@
       const SOCIOS = ['financeiro@macedoereis.com.br','diego@macedoereis.com.br'];
       if (!SOCIOS.includes((user?.email||'').toLowerCase())) { location.replace('setores.html'); return; }
 
-      const [{ data: saude }, { data: prData, error: e1 }, { data: blData, error: e2 }] = await Promise.all([
+      const [{ data: saude }, { data: prData, error: e1 }, { data: blData, error: e2 }, { data: dreData }, { data: inadData }, { data: ctData }] = await Promise.all([
         supabase.from('vw_ca_saude').select('*').single(),
         supabase.from('vw_ca_pr_classes').select('*'),
-        supabase.from('vw_ca_blocos_mensal').select('*')
+        supabase.from('vw_ca_blocos_mensal').select('*'),
+        supabase.from('vw_ca_dre_mensal').select('*'),
+        supabase.from('vw_ca_inadimplencia_mensal').select('*'),
+        supabase.from('vw_ca_emprestimos_contratos').select('*')
       ]);
       pintarSaude(saude);
       if (e1 || e2) {
@@ -744,6 +957,9 @@
       }
       pr = prData || [];
       blocos = blData || [];
+      dreRows = dreData || [];
+      inad = inadData || [];
+      contratos = ctData || [];
       pintarResumo();
       rotear();
     })();
