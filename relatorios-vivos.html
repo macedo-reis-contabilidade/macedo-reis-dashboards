@@ -479,7 +479,7 @@
       const [a, m] = iso.split('-').map(Number);
       const fim = new Date(Date.UTC(a, m, 0)).toISOString().slice(0, 10);
       const { data, error } = await supabase.from('vw_ca_classificada')
-        .select('natureza, descricao, total, pago, data_vencimento, mes_pagamento, cat, classe')
+        .select('natureza, descricao, total, pago, data_vencimento, mes_pagamento, cat, classe, data_criacao')
         .or('and(data_vencimento.gte.' + iso + ',data_vencimento.lte.' + fim + '),mes_pagamento.eq.' + iso);
       if (error) throw error;
       const linhas = data || [];
@@ -542,7 +542,7 @@
       const put = (l, sinal) => {
         const d = (l.descricao || '(sem descrição)').trim();
         const m = d.match(/\d{5,}/);
-        const k = m ? 'ct-' + m[0] : d.replace(/^\s*\d{1,3}\s*\/\s*\d{1,3}\s*-\s*/, '').toUpperCase();
+        const k = m ? 'ct-' + m[0] : 'op-' + String(l.data_criacao || '').slice(0, 16);
         if (!mapa.has(k)) mapa.set(k, { desc: d, liq: 0, nPag: 0, nEst: 0 });
         const g = mapa.get(k);
         g.liq += sinal * Number(l.pago || 0);
@@ -661,7 +661,7 @@
             if (!ehPago && !ehEst) continue;
             const d0 = (l.descricao || '(sem descrição)').trim();
             const m = d0.match(/\d{5,}/);
-            const k = m ? 'ct-' + m[0] : d0.replace(/^\s*\d{1,3}\s*\/\s*\d{1,3}\s*-\s*/, '').toUpperCase();
+            const k = m ? 'ct-' + m[0] : 'op-' + String(l.data_criacao || '').slice(0, 16);
             if (!mapC.has(k)) mapC.set(k, { k, desc: d0, prev: 0, real: 0, tipo: null });
             const g = mapC.get(k); const sg = ehEst ? -1 : 1;
             if (l._prevNoMes) g.prev += sg * Number(l.total || 0);
@@ -683,8 +683,8 @@
               else {
                 const c = contratos.find(x => x.contrato === g.k);
                 if (c && c.ultima_parcela) {
-                  const up = String(c.ultima_parcela);
-                  sufixo = ' · termina em ' + MESES[Number(up.slice(5, 7)) - 1].slice(0, 3).toLowerCase() + '/' + up.slice(0, 4);
+                  const fmt = dt => MESES[Number(String(dt).slice(5, 7)) - 1].slice(0, 3).toLowerCase() + '/' + String(dt).slice(2, 4);
+                  sufixo = ' · ' + (c.primeira_parcela ? fmt(c.primeira_parcela) + ' a ' : 'termina em ') + fmt(c.ultima_parcela);
                 }
               }
               itens.push({ t: 'cat', rot: g.desc + sufixo, prev: g.prev, real: g.real });
