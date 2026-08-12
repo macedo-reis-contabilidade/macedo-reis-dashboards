@@ -662,20 +662,30 @@
             const d0 = (l.descricao || '(sem descrição)').trim();
             const m = d0.match(/\d{5,}/);
             const k = m ? 'ct-' + m[0] : d0.toUpperCase();
-            if (!mapC.has(k)) mapC.set(k, { k, desc: d0, prev: 0, real: 0 });
+            if (!mapC.has(k)) mapC.set(k, { k, desc: d0, prev: 0, real: 0, tipo: null });
             const g = mapC.get(k); const sg = ehEst ? -1 : 1;
             if (l._prevNoMes) g.prev += sg * Number(l.total || 0);
             if (l._pagoNoMes) g.real += sg * Number(l.pago || 0);
-            if (ehPago) g.desc = d0;
+            if (ehPago) {
+              g.desc = d0;
+              if (l.classe === 'emprestimo_parcelas') g.tipo = 'bancario';
+              else if (g.tipo !== 'bancario') g.tipo = (l.classe === 'emprestimo_giros' ? 'giro' : 'parc_cartao');
+            }
           }
           const arr = [...mapC.values()].filter(g => Math.abs(g.prev) > 0.004 || Math.abs(g.real) > 0.004).sort((a, b) => (b.real - a.real) || (b.prev - a.prev));
           if (arr.length) {
             itens.push({ t: 'grupo', rot: def.rot });
             let tp = 0, tr = 0;
             for (const g of arr) {
-              const c = contratos.find(x => x.contrato === g.k);
-              const ano = c && c.ultima_parcela ? String(c.ultima_parcela).slice(0, 4) : null;
-              itens.push({ t: 'cat', rot: g.desc + (ano ? ' · termina em ' + ano : ''), prev: g.prev, real: g.real });
+              let sufixo = '';
+              if (g.tipo === 'giro') sufixo = ' · giro rápido';
+              else if (g.tipo === 'parc_cartao') sufixo = ' · parcelamento de cartão';
+              else {
+                const c = contratos.find(x => x.contrato === g.k);
+                const ano = c && c.ultima_parcela ? String(c.ultima_parcela).slice(0, 4) : null;
+                if (ano) sufixo = ' · termina em ' + ano;
+              }
+              itens.push({ t: 'cat', rot: g.desc + sufixo, prev: g.prev, real: g.real });
               tp += g.prev; tr += g.real;
             }
             itens.push({ t: 'sub', rot: 'Total de empréstimos pagos', prev: tp, real: tr });
