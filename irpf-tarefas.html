@@ -55,7 +55,6 @@
           </select>
         </div>
         <div class="fa-toolbar-actions">
-          <button class="btn btn-ghost" id="btnGerarMes">Gerar tarefas do mês</button>
           <button class="btn btn-primary" id="btnNova">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Nova tarefa
@@ -191,25 +190,6 @@
       await carregarTarefas();
     });
 
-    document.getElementById('btnGerarMes').addEventListener('click', gerarTarefasDoMes);
-    async function gerarTarefasDoMes() {
-      const { data: regras } = await supabase.from('tarefas_recorrentes').select('*').eq('setor', SETOR).eq('ativo', true).eq('periodicidade', 'mensal');
-      if (!regras || !regras.length) { alert('Não há regras mensais cadastradas. Crie regras na aba Tarefas recorrentes.'); return; }
-      const { data: existentes } = await supabase.from('tarefas').select('regra_id').eq('setor', SETOR).eq('competencia', anoMes).not('regra_id', 'is', null);
-      const jaTem = new Set((existentes || []).map(t => t.regra_id));
-      const novas = [];
-      for (const r of regras) {
-        if (jaTem.has(r.id)) continue;
-        let prazo = r.dia_vencimento ? (anoMes + '-' + pad(r.dia_vencimento)) : null;
-        novas.push({ cliente_id: r.cliente_id, setor: SETOR, titulo: r.titulo, responsavel: r.responsavel, prazo, status: 'pendente', prioridade: 'media', origem: 'recorrente', regra_id: r.id, competencia: anoMes });
-      }
-      if (!novas.length) { alert('As tarefas mensais deste mês já foram geradas.'); return; }
-      const { error } = await supabase.from('tarefas').insert(novas);
-      if (error) { alert('Erro ao gerar: ' + error.message); return; }
-      alert(novas.length + ' tarefa(s) gerada(s) para ' + anoMes + '.');
-      await carregarTarefas();
-    }
-
     async function carregarTarefas() {
       const { data, error } = await supabase.from('tarefas').select('*, clientes(nome_principal)').eq('setor', SETOR).order('prazo', { ascending: true, nullsFirst: false });
       if (error) { elGrupos.innerHTML = '<div style="text-align:center;color:var(--danger);padding:40px;">Erro ao carregar: ' + error.message + '</div>'; return; }
@@ -256,7 +236,7 @@
         elGrupos.innerHTML = '<div class="empty-state" style="padding:48px 24px;">'+
           '<svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>'+
           '<h3>'+(tarefas.length===0?'Nenhuma tarefa ainda':'Nada neste recorte')+'</h3>'+
-          '<p>'+(tarefas.length===0?'Crie uma tarefa avulsa ou gere as recorrentes do mês.':'Ajuste a faixa de foco, o filtro ou a busca.')+'</p></div>';
+          '<p>'+(tarefas.length===0?'Crie uma tarefa avulsa no botão Nova tarefa.':'Ajuste a faixa de foco, o filtro ou a busca.')+'</p></div>';
         return;
       }
 

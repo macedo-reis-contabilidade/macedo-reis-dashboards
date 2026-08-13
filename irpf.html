@@ -13,7 +13,6 @@
     /* Cor de identidade por setor (no ícone) */
     a[href="irpf-tarefas.html"] .dashboard-card-icon { background: rgba(138,174,200,.16); color:#8AAEC8; }
     a[href="irpf-declaracoes.html"] .dashboard-card-icon { background: rgba(63,176,122,.16); color:#3FB07A; }
-    a[href="irpf-regras.html"] .dashboard-card-icon { background: rgba(133,151,224,.16); color:#8597E0; }
     a[href="irpf-relatorios.html"] .dashboard-card-icon { background: rgba(164,143,224,.16); color:#A48FE0; }
 
     /* Selo "hoje" (urgência do dia) — canto superior direito */
@@ -52,7 +51,7 @@
         </div>
         <div class="eyebrow">Setor</div>
         <h1>IRPF</h1>
-        <p>Módulos do setor: tarefas, declarações, tarefas recorrentes, relatórios.</p>
+        <p>Módulos do setor: tarefas, declarações, relatórios.</p>
       </div>
 
       <div class="dashboard-grid">
@@ -72,15 +71,6 @@
           <h3>Declarações</h3>
           <p>Controle das declarações de IRPF por cliente e status.</p>
           <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="irpf-declaracoes.html">·</span></div>
-        </a>
-
-        <a href="irpf-regras.html" class="dashboard-card">
-          <div class="dashboard-card-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-          </div>
-          <h3>Tarefas recorrentes</h3>
-          <p>Regras de repetição que geram as tarefas recorrentes do setor.</p>
-          <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="irpf-regras.html">·</span></div>
         </a>
 
         <a href="irpf-relatorios.html" class="dashboard-card">
@@ -118,7 +108,7 @@
           pill.className = 'badge-hoje'; pill.textContent = hoje + ' hoje';
           card.appendChild(pill);
         }
-        ["irpf-declaracoes.html", "irpf-regras.html", "irpf-relatorios.html"].forEach(h => setBadge(h, '—'));
+        ["irpf-declaracoes.html", "irpf-relatorios.html"].forEach(h => setBadge(h, '—'));
       } catch (e) { console.error(e); }
     }
     pintar();
