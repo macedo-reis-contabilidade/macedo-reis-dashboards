@@ -66,6 +66,20 @@
     .nota-semantica b { color:#B6C7DA; }
     .hidden { display:none !important; }
   </style>
+  <style>
+    .fim-tag { padding: 1px 8px; border-radius: 8px; font-size: 12px; font-weight: 600; }
+    .fim-tag.pl26 { background: rgba(74,222,128,.15); color: #4ADE80; }
+    .fim-tag.pl27 { background: rgba(138,174,200,.18); color: #8AAEC8; }
+    .fim-tag.pl28 { background: rgba(250,204,21,.13); color: #FACC15; }
+    .fim-tag.pl29 { background: rgba(244,114,182,.13); color: #F472B6; }
+    tr.pl26 > td:first-child { box-shadow: inset 3px 0 0 rgba(74,222,128,.7); }
+    tr.pl27 > td:first-child { box-shadow: inset 3px 0 0 rgba(138,174,200,.7); }
+    tr.pl28 > td:first-child { box-shadow: inset 3px 0 0 rgba(250,204,21,.7); }
+    tr.pl29 > td:first-child { box-shadow: inset 3px 0 0 rgba(244,114,182,.7); }
+    .pl-secao td { padding-top: 20px !important; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; font-size: 12px; color: #8AAEC8; }
+    .alv-barra { background: rgba(138,174,200,.10); border-radius: 6px; height: 14px; overflow: hidden; }
+    .alv-barra > div { height: 100%; background: linear-gradient(90deg, #3A5878, #5B82A6); border-radius: 6px; }
+  </style>
 </head>
 <body>
   <div class="app-shell">
@@ -129,11 +143,11 @@
             <div class="estante-info"><h3>DRE Gerencial — Previsto × Realizado</h3><p>A cascata completa no layout do Diego: receitas, deduções, EBITDA, empréstimos contrato a contrato e resultado final, mês a mês.</p></div>
             <span class="badge-vivo">● AO VIVO</span>
           </button>
-          <div class="estante-item breve">
+          <button class="estante-item" data-rel="planilha">
             <div class="estante-icone"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg></div>
-            <div class="estante-info"><h3>Planilha de Empréstimos</h3><p>Contratos ativos, parcelas, términos e cronograma de alívio.</p></div>
-            <span class="badge-breve">EM BREVE</span>
-          </div>
+            <div class="estante-info"><h3>Empréstimos — Contratos e Alívio</h3><p>Um contrato por linha, do término mais próximo ao mais distante: parcela, atrasos, restante e o cronograma de alívio.</p></div>
+            <span class="badge-vivo">● AO VIVO</span>
+          </button>
         </div>
         <p class="nota-semantica">
           <b>A régua da casa:</b> a operação exclui <b>repasses de clientes</b> (dinheiro de terceiros em trânsito) e <b>empréstimos</b>
@@ -259,6 +273,8 @@
         else { renderRelatorio(rel); el('vistaRelatorio').classList.remove('hidden'); }
       } else if (rel === 'dre') {
         renderRelatorio('dre', mes || null); el('vistaRelatorio').classList.remove('hidden');
+      } else if (rel === 'planilha') {
+        renderRelatorio('planilha'); el('vistaRelatorio').classList.remove('hidden');
       } else {
         el('vistaEstante').classList.remove('hidden');
       }
@@ -270,6 +286,11 @@
     // ---------- relatório anual ----------
     let relAtual = 'operacao';
     const NOTAS = {
+      planilha: {
+        considera: 'Os contratos bancarios de emprestimo do espelho, um por linha, ordenados pelo termino (o alivio mais proximo em cima). Parcela = valor liquido do proximo mes em aberto; atrasos = parcelas vencidas e nao pagas, calculadas automaticamente; Restante = tudo que ainda falta pagar do contrato (liquido de estornos). O cronograma de alivio soma, mes a mes, o compromisso total em aberto dai pra frente — e como a divida vai soltando o caixa.',
+        fora: 'Giros rapidos e parcelamentos de fatura de cartao ficam fora desta lista (sao movimentos curtos, visiveis no DRE e no caixa). Contrato quitado sai sozinho. Banco e titular sao lidos da descricao do lancamento no Conta Azul.',
+        leitura: 'A cor da faixa indica o ano do termino: verde encerra em 2026, azul em 2027, ambar em 2028, rosa em 2029 ou depois. Quanto mais linhas verdes, mais alivio vem vindo. No resumo por titular, a coluna da parcela mostra o compromisso mensal de cada um e a do restante, o tamanho total da divida.'
+      },
       operacao: {
         considera: 'Receitas de servicos do escritorio (honorarios, servicos extras, MEI, IRPF, consultorias), liquidas de devolucoes e descontos, contra as despesas de funcionamento: pessoal, pro-labore, infraestrutura, sistemas, impostos e taxas, assessorias e outras.',
         fora: 'Ficam FORA: repasses de clientes (dinheiro de terceiros em transito) e emprestimos (captacoes e amortizacoes, que tem relatorio proprio). Faturas de cartao de credito e seus estornos tambem ficam fora, para nao duplicar despesas ja lancadas.',
@@ -292,7 +313,7 @@
       }
     };
     function leituraDoAno(rel) {
-      if (rel === 'dre') return [];
+      if (rel === 'dre' || rel === 'planilha') return [];
       const fechados = [];
       for (let m = 0; m < 12; m++) {
         const iso = anoSel + '-' + String(m+1).padStart(2,'0') + '-01';
@@ -344,7 +365,9 @@
       const bxDre = document.getElementById('dreChips'); if (bxDre) bxDre.style.display = 'none';
       const bxXls = document.getElementById('btnExcel'); if (bxXls) bxXls.style.display = 'none';
       el('seletorAno').style.display = '';
+      el('btnPDF').style.display = '';
       if (rel === 'dre') { renderDRE(mesDre); return; }
+      if (rel === 'planilha') { renderPlanilha(); return; }
       el('relTitulo').textContent = rel === 'operacao' ? 'Operação — Previsto × Realizado' : rel === 'geral' ? 'Geral com Empréstimos — Previsto × Realizado' : 'Empréstimos e Repasses — Caixa';
       if (rel !== 'emprestimos') {
         el('relCabecalho').innerHTML = '<tr><th>Mês</th><th>Receita prevista</th><th>Receita realizada</th><th>Despesa prevista</th><th>Despesa realizada</th><th>Resultado previsto</th><th>Resultado realizado</th></tr>';
@@ -387,6 +410,95 @@
       }
       pintarNota(rel);
       el('relCorpo').querySelectorAll('tr.clicavel').forEach(tr => tr.addEventListener('click', () => irPara(relAtual + '/' + tr.dataset.mes)));
+    }
+    // ---------- Relatório de Empréstimos (modelo da direção) ----------
+    let planCache = null;
+    function bancoDe(d) {
+      const s = (d || '').toUpperCase();
+      if (s.includes('CRESOL')) return 'Cresol';
+      if (s.includes('SICOOB')) return 'Sicoob';
+      if (s.includes('PRC RENEGOCIA')) return 'Sicredi (renegociação)';
+      if (s.includes('PRONAMPE')) return 'Sicredi (Pronampe)';
+      if (s.includes('SICREDI')) return 'Sicredi';
+      if (s.includes('PICPAY')) return 'PicPay';
+      if (s.includes('MERCADO PAGO')) return 'Mercado Pago';
+      if (s.includes('CAIXA FEDERAL')) return 'Caixa Federal';
+      if (s.includes('BANRISUL')) return 'Banrisul';
+      if (s.includes('BB ') || s.includes('BANCO DO BRASIL')) return 'Banco do Brasil';
+      if (s.includes('ITI')) return 'Iti (Itaú)';
+      if (s.includes('NUBANK')) return 'Nubank';
+      return '—';
+    }
+    function titularDe(d) {
+      const s = (d || '').toUpperCase();
+      if (s.includes('SAMUEL PJ')) return 'Samuel PJ';
+      if (s.includes('SAMUEL')) return 'Samuel PF';
+      if (s.includes('JORGE')) return 'Jorge';
+      if (s.includes('DANI')) return 'Dani';
+      return 'Macedo e Reis';
+    }
+    function mmaa(iso) { return iso ? iso.slice(5, 7) + '/' + iso.slice(2, 4) : '—'; }
+    function classeFim(iso) { const a = Number(iso.slice(0, 4)); return a <= 2026 ? 'pl26' : a === 2027 ? 'pl27' : a === 2028 ? 'pl28' : 'pl29'; }
+    async function renderPlanilha() {
+      el('relTitulo').textContent = 'Empréstimos — Contratos e Alívio';
+      el('btnPDF').style.display = 'none';
+      el('seletorAno').style.display = 'none';
+      if (!planCache) {
+        el('relCabecalho').innerHTML = '';
+        el('relCorpo').innerHTML = '<tr><td style="text-align:center;padding:30px;" class="dim">Carregando contratos…</td></tr>';
+        el('relRodape').innerHTML = '';
+        const [r1, r2] = await Promise.all([
+          supabase.from('vw_ca_emprestimos_relatorio').select('*').gt('restante_valor', 0.004).order('ultima_parcela'),
+          supabase.from('vw_ca_emprestimos_alivio').select('*').order('mes')
+        ]);
+        if (r1.error || r2.error) { el('relCorpo').innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--danger);padding:30px;">Erro ao carregar: ' + (r1.error || r2.error).message + '</td></tr>'; return; }
+        planCache = { ops: r1.data || [], alv: r2.data || [] };
+      }
+      const { ops, alv } = planCache;
+      const hojeStr = hoje.toISOString().slice(0, 10);
+      el('relCabecalho').innerHTML = '<tr><th>#</th><th>Banco</th><th>Titular</th><th style="text-align:right;">Parcela (R$)</th><th>Início</th><th>Última parcela</th><th style="text-align:right;">Restante (R$)</th><th>Obs.</th></tr>';
+      let html = ''; let totMensal = 0, totRestante = 0;
+      const porTitular = new Map();
+      ops.forEach((o, i) => {
+        const banco = bancoDe(o.descricao), tit = titularDe(o.descricao);
+        const pm = Number(o.parcela_mensal || 0), rest = Number(o.restante_valor);
+        totMensal += pm; totRestante += rest;
+        const t = porTitular.get(tit) || { pm: 0, rest: 0, n: 0 };
+        t.pm += pm; t.rest += rest; t.n++; porTitular.set(tit, t);
+        const obs = [];
+        if (Number(o.atraso_qtd) > 0) obs.push('<span class="neg">' + o.atraso_qtd + ' parcela(s) em atraso (' + brl(Number(o.atraso_valor)) + ')</span>');
+        if (o.primeira_parcela > hojeStr) obs.push('inicia em ' + mmaa(o.primeira_parcela));
+        if (Number(o.parcelas_total) === 1) obs.push('parcela única');
+        html += '<tr class="' + classeFim(o.ultima_parcela) + '" title="' + (o.descricao || '').replace(/"/g, '&quot;') + '">' +
+          '<td>' + (i + 1) + '</td><td>' + banco + '</td><td>' + tit + '</td>' +
+          '<td style="text-align:right;">' + (pm > 0 ? brl(pm) : '<span class="dim">—</span>') + '</td>' +
+          '<td>' + mmaa(o.primeira_parcela) + '</td>' +
+          '<td><span class="fim-tag ' + classeFim(o.ultima_parcela) + '">' + mmaa(o.ultima_parcela) + '</span></td>' +
+          '<td style="text-align:right;">' + brl(rest) + '</td>' +
+          '<td>' + (obs.join(' · ') || '<span class="dim">—</span>') + '</td></tr>';
+      });
+      html += '<tr class="pl-secao"><td colspan="8">Resumo por titular</td></tr>';
+      [...porTitular.entries()].sort((a, b) => b[1].pm - a[1].pm).forEach(([tit, t]) => {
+        html += '<tr><td></td><td colspan="2">' + tit + ' <span class="dim">(' + t.n + ' contrato' + (t.n > 1 ? 's' : '') + ')</span></td>' +
+          '<td style="text-align:right;">' + brl(t.pm) + '</td><td></td><td></td><td style="text-align:right;">' + brl(t.rest) + '</td><td></td></tr>';
+      });
+      html += '<tr class="pl-secao"><td colspan="8">Cronograma de alívio — compromisso mensal em aberto daqui pra frente</td></tr>';
+      const maxAlv = Math.max(1, ...alv.map(a => Number(a.previsto_aberto)));
+      alv.slice(0, 12).forEach(a => {
+        const v = Number(a.previsto_aberto);
+        html += '<tr><td></td><td colspan="2">' + mmaa(a.mes) + ' <span class="dim">(' + a.operacoes + ' op.)</span></td>' +
+          '<td colspan="4"><div class="alv-barra"><div style="width:' + Math.max(1, Math.round(v / maxAlv * 100)) + '%"></div></div></td>' +
+          '<td style="text-align:right;">' + brl(v) + '</td></tr>';
+      });
+      const porAno = new Map();
+      alv.slice(12).forEach(a => { const y = a.mes.slice(0, 4); porAno.set(y, (porAno.get(y) || 0) + Number(a.previsto_aberto)); });
+      [...porAno.entries()].forEach(([y, v]) => {
+        if (v <= 0.004) return;
+        html += '<tr><td></td><td colspan="2">' + y + ' <span class="dim">(total do ano)</span></td><td colspan="4"></td><td style="text-align:right;">' + brl(v) + '</td></tr>';
+      });
+      el('relCorpo').innerHTML = html;
+      el('relRodape').innerHTML = '<tr><td colspan="3">Total — ' + ops.length + ' contratos ativos</td><td style="text-align:right;">' + brl(totMensal) + '/mês</td><td></td><td></td><td style="text-align:right;">' + brl(totRestante) + '</td><td></td></tr>';
+      pintarNota('planilha');
     }
     function montarSeletor() {
       const anos = [...new Set(pr.filter(d => d.mes).map(d => Number(d.mes.slice(0,4))))].filter(a => a <= hoje.getFullYear() + 1).sort();
