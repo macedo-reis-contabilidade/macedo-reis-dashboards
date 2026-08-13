@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="assets/css/style.css">
   <script type="module" src="assets/js/auth-guard.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
     .saude-pill { display:inline-flex; align-items:center; gap:8px; font-size:12px; font-weight:600; padding:6px 14px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.04); color:#B6C7DA; }
     .saude-dot { width:8px; height:8px; border-radius:50%; background:#8A93A6; }
@@ -149,6 +150,7 @@
           <span class="rel-titulo" id="relTitulo"></span>
           <span style="flex:1"></span>
           <button class="btn-voltar" id="btnPDF">Baixar PDF</button>
+          <button class="btn-voltar" id="btnExcel" style="display:none;">Baixar Excel</button>
           <div class="seletor-ano" id="seletorAno"></div>
         </div>
         <div class="pr-wrap">
@@ -340,6 +342,7 @@
       relAtual = rel;
       montarSeletor();
       const bxDre = document.getElementById('dreChips'); if (bxDre) bxDre.style.display = 'none';
+      const bxXls = document.getElementById('btnExcel'); if (bxXls) bxXls.style.display = 'none';
       if (rel === 'dre') { renderDRE(mesDre); return; }
       el('relTitulo').textContent = rel === 'operacao' ? 'Operação — Previsto × Realizado' : rel === 'geral' ? 'Geral com Empréstimos — Previsto × Realizado' : 'Empréstimos e Repasses — Caixa';
       if (rel !== 'emprestimos') {
@@ -652,7 +655,7 @@
       const itens = [];
       let acPrev = 0, acReal = 0;
       for (const def of DREG) {
-        if (def.calc) { itens.push({ t: 'calc', rot: '(=) ' + def.calc, prev: acPrev, real: acReal }); continue; }
+        if (def.calc) { itens.push({ t: 'calc', key: 'calc|' + def.calc, rot: '(=) ' + def.calc, prev: acPrev, real: acReal }); continue; }
         if (def.emp === 'pagos') {
           const mapC = new Map();
           for (const l of parcelas) {
@@ -674,7 +677,7 @@
           }
           const arr = [...mapC.values()].filter(g => Math.abs(g.prev) > 0.004 || Math.abs(g.real) > 0.004).sort((a, b) => (b.real - a.real) || (b.prev - a.prev));
           if (arr.length) {
-            itens.push({ t: 'grupo', rot: def.rot });
+            itens.push({ t: 'grupo', key: 'g|emp', rot: def.rot });
             let tp = 0, tr = 0;
             for (const g of arr) {
               let sufixo = '';
@@ -687,10 +690,10 @@
                   sufixo = ' · ' + (c.primeira_parcela ? fmt(c.primeira_parcela) + ' a ' : 'termina em ') + fmt(c.ultima_parcela);
                 }
               }
-              itens.push({ t: 'cat', rot: g.desc + sufixo, prev: g.prev, real: g.real });
+              itens.push({ t: 'cat', key: 'emp|' + g.k, rot: g.desc + sufixo, prev: g.prev, real: g.real });
               tp += g.prev; tr += g.real;
             }
-            itens.push({ t: 'sub', rot: 'Total de empréstimos pagos', prev: tp, real: tr });
+            itens.push({ t: 'sub', key: 'sub|emp', rot: 'Total de empréstimos pagos', prev: tp, real: tr });
             acPrev -= tp; acReal -= tr;
           }
           continue;
@@ -706,17 +709,17 @@
           }
           const arr = [...mapa.entries()].filter(([, g]) => g.prev > 0.004 || g.real > 0.004).sort((a, b) => b[1].real - a[1].real);
           if (arr.length) {
-            itens.push({ t: 'grupo', rot: def.rot });
+            itens.push({ t: 'grupo', key: 'g|cap', rot: def.rot });
             let tp = 0, tr = 0;
-            for (const [d0, g] of arr) { itens.push({ t: 'cat', rot: d0, prev: g.prev, real: g.real }); tp += g.prev; tr += g.real; }
-            itens.push({ t: 'sub', rot: 'Total captado', prev: tp, real: tr });
+            for (const [d0, g] of arr) { itens.push({ t: 'cat', key: 'cap|' + d0.replace(/^\s*\d{1,3}\s*\/\s*\d{1,3}\s*-\s*/, '').toUpperCase(), rot: d0, prev: g.prev, real: g.real }); tp += g.prev; tr += g.real; }
+            itens.push({ t: 'sub', key: 'sub|cap', rot: 'Total captado', prev: tp, real: tr });
             acPrev += tp; acReal += tr;
           }
           continue;
         }
         const rows = porGrupo(def.grupo);
         if (!rows.length) continue;
-        itens.push({ t: 'grupo', rot: def.rot, alerta: def.alerta });
+        itens.push({ t: 'grupo', key: 'g|' + def.grupo, rot: def.rot, alerta: def.alerta });
         let tp = 0, tr = 0;
         const abre = ABRE_POR_DESC[def.grupo] || [];
         for (const d of rows) {
@@ -734,18 +737,18 @@
             }
             const arr = [...mapa.entries()].filter(([, g]) => Math.abs(g.prev) > 0.004 || Math.abs(g.real) > 0.004).sort((a, b) => (b[1].real - a[1].real) || (b[1].prev - a[1].prev));
             if (arr.length) {
-              itens.push({ t: 'subcab', rot: d.categoria + (sg < 0 ? ' (abate)' : '') });
-              for (const [d0, g] of arr) itens.push({ t: 'cat', rot: d0, prev: sg * g.prev, real: sg * g.real, sub2: true });
+              itens.push({ t: 'subcab', key: 'cab|' + def.grupo + '|' + d.categoria, rot: d.categoria + (sg < 0 ? ' (abate)' : '') });
+              for (const [d0, g] of arr) itens.push({ t: 'cat', key: 'd|' + def.grupo + '|' + d.categoria + '|' + d0.replace(/^\s*\d{1,3}\s*\/\s*\d{1,3}\s*-\s*/, '').toUpperCase(), rot: d0, prev: sg * g.prev, real: sg * g.real, sub2: true });
               continue;
             }
           }
-          itens.push({ t: 'cat', rot: d.categoria + (sg < 0 ? ' (abate)' : ''), prev: sg * Number(d.previsto || 0), real: sg * Number(d.realizado || 0) });
+          itens.push({ t: 'cat', key: 'c|' + def.grupo + '|' + d.categoria + '|' + d.natureza, rot: d.categoria + (sg < 0 ? ' (abate)' : ''), prev: sg * Number(d.previsto || 0), real: sg * Number(d.realizado || 0) });
         }
-        itens.push({ t: 'sub', rot: 'Total do grupo', prev: tp, real: tr, alerta: def.alerta });
+        itens.push({ t: 'sub', key: 'sub|' + def.grupo, rot: 'Total do grupo', prev: tp, real: tr, alerta: def.alerta });
         if (def.op === '-') { acPrev -= tp; acReal -= tr; } else { acPrev += tp; acReal += tr; }
         if (def.grupo === 'deducao') {
           const iv = inad.find(x => x.mes === iso);
-          if (iv && Number(iv.inadimplente) > 0.004) itens.push({ t: 'info', rot: 'Inadimplência real do mês (honorários vencidos não pagos) — informativa, não soma na cascata', real: Number(iv.inadimplente) });
+          if (iv && Number(iv.inadimplente) > 0.004) itens.push({ t: 'info', key: 'info|inad', rot: 'Inadimplência real do mês (honorários vencidos não pagos) — informativa, não soma na cascata', real: Number(iv.inadimplente) });
         }
       }
       return { itens, spPrev, spReal };
@@ -763,6 +766,7 @@
         tb.parentNode.insertBefore(box, tb);
       }
       box.style.display = '';
+      el('btnExcel').style.display = '';
       box.innerHTML = Array.from({ length: 12 }, (_, m) => {
         const mi = anoSel + '-' + String(m + 1).padStart(2, '0') + '-01';
         return '<button data-mes="' + mi + '" class="' + (mi === iso ? 'is-on' : '') + '">' + MESES[m].slice(0, 3) + '</button>';
@@ -786,6 +790,63 @@
       el('relCorpo').innerHTML = h || '<tr><td colspan="6" style="color:#8A93A6;">Sem lançamentos neste mês.</td></tr>';
       pintarNota('dre');
     }
+    async function gerarExcelDRE() {
+      if (!window.XLSX) { alert('Gerador de Excel carregando. Tenta de novo em 2 segundos.'); return; }
+      const btn = el('btnExcel');
+      btn.textContent = 'Montando…'; btn.disabled = true;
+      try {
+        const meses = Array.from({ length: 12 }, (_, m) => anoSel + '-' + String(m + 1).padStart(2, '0') + '-01');
+        const dados = new Map();
+        for (const iso of meses) dados.set(iso, await montarDRE(iso));
+        const mestre = []; const pos = new Map();
+        const reindex = () => { pos.clear(); mestre.forEach((x, i) => pos.set(x.key, i)); };
+        for (const iso of meses) {
+          let ant = -1;
+          for (const it of dados.get(iso).itens) {
+            if (pos.has(it.key)) { ant = pos.get(it.key); mestre[ant].rot = it.rot; }
+            else { mestre.splice(ant + 1, 0, { key: it.key, rot: it.rot, t: it.t }); reindex(); ant = pos.get(it.key); }
+          }
+        }
+        const aoa = [];
+        aoa.push(['MACEDO & REIS CONTABILIDADE — DRE GERENCIAL ' + anoSel + ' (PREVISTO × REALIZADO)']);
+        aoa.push(['Fonte: Conta Azul Pro (espelho vivo, sincronização automática) · gerado em ' + new Date().toLocaleString('pt-BR')]);
+        aoa.push([]);
+        const cab1 = ['']; const cab2 = ['Linha'];
+        for (let m = 0; m < 12; m++) { cab1.push(MESES[m].toUpperCase(), '', '', '', '', ''); cab2.push('Previsto', '%', 'Realizado', '%', 'Diferença', '%'); }
+        aoa.push(cab1); aoa.push(cab2);
+        const porMes = meses.map(iso => { const d = dados.get(iso); const mp = new Map(); d.itens.forEach(it => mp.set(it.key, it)); return { mp, spPrev: d.spPrev, spReal: d.spReal }; });
+        for (const L of mestre) {
+          const row = [L.rot];
+          if (L.t === 'grupo' || L.t === 'subcab') { aoa.push(row); continue; }
+          for (const pm of porMes) {
+            const it = pm.mp.get(L.key);
+            if (!it) { row.push('', '', '', '', '', ''); continue; }
+            if (L.t === 'info') { row.push('', '', it.real, '', '', ''); continue; }
+            const dif = it.prev - it.real;
+            row.push(it.prev, pm.spPrev > 0.004 ? it.prev / pm.spPrev : '', it.real, pm.spReal > 0.004 ? it.real / pm.spReal : '', dif, pm.spPrev > 0.004 ? dif / pm.spPrev : '');
+          }
+          aoa.push(row);
+        }
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 24 } }];
+        for (let m = 0; m < 12; m++) { const c0 = 1 + m * 6; ws['!merges'].push({ s: { r: 3, c: c0 }, e: { r: 3, c: c0 + 5 } }); }
+        const cols = [{ wch: 52 }];
+        for (let m = 0; m < 12; m++) cols.push({ wch: 13 }, { wch: 7 }, { wch: 13 }, { wch: 7 }, { wch: 13 }, { wch: 7 });
+        ws['!cols'] = cols;
+        const range = XLSX.utils.decode_range(ws['!ref']);
+        for (let R = 5; R <= range.e.r; R++) for (let C = 1; C <= range.e.c; C++) {
+          const cell = ws[XLSX.utils.encode_cell({ r: R, c: C })];
+          if (!cell || typeof cell.v !== 'number') continue;
+          cell.z = ((C - 1) % 2 === 1) ? '0.0%' : '#,##0.00';
+        }
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'DRE ' + anoSel);
+        XLSX.writeFile(wb, 'DRE Gerencial - ' + anoSel + '.xlsx');
+      } finally {
+        btn.textContent = 'Baixar Excel'; btn.disabled = false;
+      }
+    }
+    el('btnExcel').addEventListener('click', gerarExcelDRE);
     function gerarPDFDRE() {
       if (!dreCache || !dreMesSel) { alert('Abre um mes primeiro.'); return; }
       if (!window.jspdf) { alert('Gerador de PDF carregando. Tenta de novo em 2 segundos.'); return; }
