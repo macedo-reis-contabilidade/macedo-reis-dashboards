@@ -128,6 +128,11 @@
             <div class="estante-info"><h3>DRE Gerencial — Previsto × Realizado</h3><p>A cascata completa no layout do Diego: receitas, deduções, EBITDA, empréstimos contrato a contrato e resultado final, mês a mês.</p></div>
             <span class="badge-vivo">● AO VIVO</span>
           </button>
+          <button class="estante-item" data-rel="caixa">
+            <div class="estante-icone"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+            <div class="estante-info"><h3>Caixa — Tudo que Entra e Sai</h3><p>O caixa completo, repasses inclusos: 12 meses de entradas e saídas, e o dia a dia de cada mês pra ver onde aperta e onde sobra.</p></div>
+            <span class="badge-vivo">● AO VIVO</span>
+          </button>
           <button class="estante-item" data-rel="planilha">
             <div class="estante-icone"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg></div>
             <div class="estante-info"><h3>Empréstimos — Contratos e Alívio</h3><p>Um contrato por linha, do término mais próximo ao mais distante: parcela, atrasos, restante e o cronograma de alívio.</p></div>
@@ -257,6 +262,8 @@
         renderRelatorio('dre', mes || null); el('vistaRelatorio').classList.remove('hidden');
       } else if (rel === 'planilha') {
         renderRelatorio('planilha'); el('vistaRelatorio').classList.remove('hidden');
+      } else if (rel === 'caixa') {
+        renderRelatorio('caixa', mes || null); el('vistaRelatorio').classList.remove('hidden');
       } else {
         el('vistaEstante').classList.remove('hidden');
       }
@@ -268,6 +275,11 @@
     // ---------- relatório anual ----------
     let relAtual = 'operacao';
     const NOTAS = {
+      caixa: {
+        considera: 'TUDO que entra e sai da conta: operacao, repasses de clientes (guias e impostos deles atravessando o caixa), emprestimos (captacoes e parcelas) e pro-labore — dinheiro real, sem filtro de regua. Previsto pelo vencimento; Realizado pelo mes do pagamento (caixa).',
+        fora: 'Unica exclusao tecnica: o par fatura de cartao de credito / estorno, porque as compras que compoem a fatura ja estao lancadas uma a uma — somar a fatura duplicaria a despesa.',
+        leitura: 'Na visao do ano, cada mes mostra entradas, saidas e o liquido, previsto e realizado. Clique num mes para abrir o dia a dia: o previsto de cada dia e o acumulado do mes ate ali — onde o acumulado afunda e o dinheiro aperta, onde sobe e o dinheiro sobra; o ponto mais fundo do mes vem marcado. A curva realizada dia a dia chega na proxima etapa (depende de gravar o dia exato de cada pagamento no espelho).'
+      },
       planilha: {
         considera: 'Os contratos bancarios de emprestimo do espelho, um por linha, ordenados pelo termino (o alivio mais proximo em cima). Parcela = valor liquido do proximo mes em aberto; atrasos = parcelas vencidas e nao pagas, calculadas automaticamente; Restante = tudo que ainda falta pagar do contrato (liquido de estornos). O cronograma de alivio soma, mes a mes, o compromisso total em aberto dai pra frente — e como a divida vai soltando o caixa.',
         fora: 'Giros rapidos e parcelamentos de fatura de cartao ficam fora desta lista (sao movimentos curtos, visiveis no DRE e no caixa). Contrato quitado sai sozinho. Banco e titular sao lidos da descricao do lancamento no Conta Azul.',
@@ -295,7 +307,7 @@
       }
     };
     function leituraDoAno(rel) {
-      if (rel === 'dre' || rel === 'planilha') return [];
+      if (rel === 'dre' || rel === 'planilha' || rel === 'caixa') return [];
       const fechados = [];
       for (let m = 0; m < 12; m++) {
         const iso = anoSel + '-' + String(m+1).padStart(2,'0') + '-01';
@@ -350,6 +362,7 @@
       el('btnPDF').style.display = '';
       if (rel === 'dre') { renderDRE(mesDre); return; }
       if (rel === 'planilha') { renderPlanilha(); return; }
+      if (rel === 'caixa') { renderCaixa(mesDre); return; }
       el('relTitulo').textContent = rel === 'operacao' ? 'Operação — Previsto × Realizado' : rel === 'geral' ? 'Geral com Empréstimos — Previsto × Realizado' : 'Empréstimos e Repasses — Caixa';
       if (rel !== 'emprestimos') {
         el('relCabecalho').innerHTML = '<tr><th>Mês</th><th>Receita prevista</th><th>Receita realizada</th><th>Despesa prevista</th><th>Despesa realizada</th><th>Resultado previsto</th><th>Resultado realizado</th></tr>';
@@ -392,6 +405,87 @@
       }
       pintarNota(rel);
       el('relCorpo').querySelectorAll('tr.clicavel').forEach(tr => tr.addEventListener('click', () => irPara(relAtual + '/' + tr.dataset.mes)));
+    }
+    // ---------- Caixa completo (tudo que entra e sai) ----------
+    let cxMensal = null; const cxDias = new Map();
+    async function renderCaixa(mesIso) {
+      el('btnPDF').style.display = 'none';
+      if (!cxMensal) {
+        const { data, error } = await supabase.from('vw_ca_caixa_mensal').select('*');
+        if (error) { el('relCorpo').innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--danger);padding:30px;">Erro ao carregar: ' + error.message + '</td></tr>'; return; }
+        cxMensal = new Map((data || []).map(r => [r.mes, r]));
+      }
+      if (mesIso) { renderCaixaDia(mesIso); return; }
+      el('relTitulo').textContent = 'Caixa — Tudo que Entra e Sai';
+      el('relCabecalho').innerHTML = '<tr><th>Mês</th><th>Entradas previstas</th><th>Saídas previstas</th><th>Líquido previsto</th><th>Entradas realizadas</th><th>Saídas realizadas</th><th>Líquido realizado</th></tr>';
+      let html = ''; const t = { pi: 0, po: 0, ri: 0, ro: 0 };
+      for (let m = 0; m < 12; m++) {
+        const iso = anoSel + '-' + String(m + 1).padStart(2, '0') + '-01';
+        const r = cxMensal.get(iso) || { prev_in: 0, prev_out: 0, real_in: 0, real_out: 0 };
+        const pi = Number(r.prev_in), po = Number(r.prev_out), ri = Number(r.real_in), ro = Number(r.real_out);
+        t.pi += pi; t.po += po; t.ri += ri; t.ro += ro;
+        const lp = pi - po, lr = ri - ro; const fut = iso > mesAtualIso;
+        html += '<tr class="clicavel' + (iso === mesAtualIso ? ' mes-atual' : '') + '" data-mes="' + iso + '">' +
+          '<td>' + MESES[m] + '</td>' +
+          '<td' + (pi === 0 ? ' class="dim"' : '') + '>' + brl(pi) + '</td>' +
+          '<td' + (po === 0 ? ' class="dim"' : '') + '>' + brl(po) + '</td>' +
+          '<td class="' + (lp >= 0 ? 'pos' : 'neg') + '">' + brl(lp) + '</td>' +
+          '<td' + (fut && ri === 0 ? ' class="dim"' : '') + '>' + brl(ri) + '</td>' +
+          '<td' + (fut && ro === 0 ? ' class="dim"' : '') + '>' + brl(ro) + '</td>' +
+          '<td class="' + (lr >= 0 ? 'pos' : 'neg') + '">' + brl(lr) + '</td></tr>';
+      }
+      el('relCorpo').innerHTML = html;
+      el('relRodape').innerHTML = '<tr><td>Total ' + anoSel + '</td><td>' + brl(t.pi) + '</td><td>' + brl(t.po) + '</td><td class="' + (t.pi - t.po >= 0 ? 'pos' : 'neg') + '">' + brl(t.pi - t.po) + '</td><td>' + brl(t.ri) + '</td><td>' + brl(t.ro) + '</td><td class="' + (t.ri - t.ro >= 0 ? 'pos' : 'neg') + '">' + brl(t.ri - t.ro) + '</td></tr>';
+      pintarNota('caixa');
+      el('relCorpo').querySelectorAll('tr.clicavel').forEach(tr => tr.addEventListener('click', () => { location.hash = 'caixa/' + tr.dataset.mes; }));
+    }
+    async function renderCaixaDia(iso) {
+      const a = Number(iso.slice(0, 4)), m = Number(iso.slice(5, 7));
+      anoSel = a;
+      el('relTitulo').textContent = 'Caixa · ' + MESES[m - 1] + ' de ' + a;
+      el('seletorAno').style.display = 'none';
+      const box = document.getElementById('dreChips');
+      box.style.display = '';
+      const anoMin = 2025, anoMax = hoje.getFullYear() + 1;
+      let h0 = '<button data-nav="-1"' + (a <= anoMin ? ' disabled style="opacity:.35;cursor:default;"' : '') + '>‹</button>';
+      h0 += '<button class="is-on" style="pointer-events:none;">' + a + '</button>';
+      h0 += '<button data-nav="1"' + (a >= anoMax ? ' disabled style="opacity:.35;cursor:default;"' : '') + '>›</button>';
+      h0 += '<span style="display:inline-block;width:14px;"></span>';
+      box.innerHTML = h0 + Array.from({ length: 12 }, (_, i) => {
+        const mi = a + '-' + String(i + 1).padStart(2, '0') + '-01';
+        return '<button data-mes="' + mi + '" class="' + (mi === iso ? 'is-on' : '') + '">' + MESES[i].slice(0, 3) + '</button>';
+      }).join('');
+      box.querySelectorAll('button[data-mes]').forEach(b => b.addEventListener('click', () => { location.hash = 'caixa/' + b.dataset.mes; }));
+      box.querySelectorAll('button[data-nav]').forEach(b => b.addEventListener('click', () => { location.hash = 'caixa/' + (a + Number(b.dataset.nav)) + iso.slice(4); }));
+      if (!cxDias.has(iso)) {
+        el('relCabecalho').innerHTML = '';
+        el('relCorpo').innerHTML = '<tr><td style="text-align:center;padding:30px;" class="dim">Carregando o mês…</td></tr>';
+        el('relRodape').innerHTML = '';
+        const prox = m === 12 ? (a + 1) + '-01-01' : a + '-' + String(m + 1).padStart(2, '0') + '-01';
+        const { data, error } = await supabase.from('vw_ca_caixa_diario').select('*').gte('dia', iso).lt('dia', prox).order('dia');
+        if (error) { el('relCorpo').innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--danger);padding:30px;">Erro ao carregar: ' + error.message + '</td></tr>'; return; }
+        cxDias.set(iso, data || []);
+      }
+      const dias = cxDias.get(iso);
+      el('relCabecalho').innerHTML = '<tr><th>Dia</th><th>Entradas previstas</th><th>Saídas previstas</th><th>Líquido do dia</th><th>Acumulado no mês</th><th style="text-align:right;">Lançamentos</th></tr>';
+      let acMin = Infinity, diaMin = null, tmp = 0;
+      dias.forEach(d => { tmp += Number(d.prev_in) - Number(d.prev_out); if (tmp < acMin) { acMin = tmp; diaMin = d.dia; } });
+      let html = '', ac = 0, ti = 0, to = 0;
+      dias.forEach(d => {
+        const pi = Number(d.prev_in), po = Number(d.prev_out), lq = pi - po; ac += lq; ti += pi; to += po;
+        const aperto = d.dia === diaMin && ac < 0;
+        html += '<tr' + (aperto ? ' style="background:rgba(244,114,182,.07);"' : '') + '>' +
+          '<td>' + d.dia.slice(8, 10) + '/' + d.dia.slice(5, 7) + (aperto ? ' <span class="neg" style="font-size:11px;">◂ fundo do mês</span>' : '') + '</td>' +
+          '<td' + (pi === 0 ? ' class="dim"' : '') + '>' + brl(pi) + '</td>' +
+          '<td' + (po === 0 ? ' class="dim"' : '') + '>' + brl(po) + '</td>' +
+          '<td class="' + (lq >= 0 ? 'pos' : 'neg') + '">' + brl(lq) + '</td>' +
+          '<td class="' + (ac >= 0 ? 'pos' : 'neg') + '"><b>' + brl(ac) + '</b></td>' +
+          '<td style="text-align:right;" class="dim">' + d.lancamentos + '</td></tr>';
+      });
+      if (!dias.length) html = '<tr><td colspan="6" style="text-align:center;padding:30px;" class="dim">Sem lançamentos previstos neste mês.</td></tr>';
+      el('relCorpo').innerHTML = html;
+      el('relRodape').innerHTML = '<tr><td>Total do mês</td><td>' + brl(ti) + '</td><td>' + brl(to) + '</td><td class="' + (ti - to >= 0 ? 'pos' : 'neg') + '">' + brl(ti - to) + '</td><td></td><td></td></tr>';
+      pintarNota('caixa');
     }
     // ---------- Relatório de Empréstimos (modelo da direção) ----------
     let planCache = null;
