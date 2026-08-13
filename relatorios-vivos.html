@@ -123,21 +123,6 @@
       <div id="vistaEstante">
         <div class="mes-secao" style="margin-top:6px;">Relatórios</div>
         <div class="estante">
-          <button class="estante-item" data-rel="operacao">
-            <div class="estante-icone"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg></div>
-            <div class="estante-info"><h3>Operação — Previsto × Realizado</h3><p>Receitas e despesas operacionais mês a mês, com percentual de realização. Clique num mês para analisá-lo por categoria.</p></div>
-            <span class="badge-vivo">● AO VIVO</span>
-          </button>
-          <button class="estante-item" data-rel="geral">
-            <div class="estante-icone"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg></div>
-            <div class="estante-info"><h3>Geral com Empréstimos — Previsto × Realizado</h3><p>O caixa completo: operação + captações e parcelas de empréstimos. O que realmente está previsto pra entrar e sair.</p></div>
-            <span class="badge-vivo">● AO VIVO</span>
-          </button>
-          <button class="estante-item" data-rel="emprestimos">
-            <div class="estante-icone"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
-            <div class="estante-info"><h3>Empréstimos e Repasses — Caixa</h3><p>Captações, amortizações líquidas e dinheiro de clientes em trânsito. Clique num mês para ver os lançamentos.</p></div>
-            <span class="badge-vivo">● AO VIVO</span>
-          </button>
           <button class="estante-item" data-rel="dre">
             <div class="estante-icone"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
             <div class="estante-info"><h3>DRE Gerencial — Previsto × Realizado</h3><p>A cascata completa no layout do Diego: receitas, deduções, EBITDA, empréstimos contrato a contrato e resultado final, mês a mês.</p></div>
@@ -268,10 +253,7 @@
       el('vistaEstante').classList.add('hidden');
       el('vistaRelatorio').classList.add('hidden');
       el('vistaMes').classList.add('hidden');
-      if (rel === 'operacao' || rel === 'geral' || rel === 'emprestimos') {
-        if (mes) { renderMes(rel, mes); el('vistaMes').classList.remove('hidden'); }
-        else { renderRelatorio(rel); el('vistaRelatorio').classList.remove('hidden'); }
-      } else if (rel === 'dre') {
+      if (rel === 'dre') {
         renderRelatorio('dre', mes || null); el('vistaRelatorio').classList.remove('hidden');
       } else if (rel === 'planilha') {
         renderRelatorio('planilha'); el('vistaRelatorio').classList.remove('hidden');
