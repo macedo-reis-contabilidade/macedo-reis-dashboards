@@ -343,6 +343,7 @@
       montarSeletor();
       const bxDre = document.getElementById('dreChips'); if (bxDre) bxDre.style.display = 'none';
       const bxXls = document.getElementById('btnExcel'); if (bxXls) bxXls.style.display = 'none';
+      el('seletorAno').style.display = '';
       if (rel === 'dre') { renderDRE(mesDre); return; }
       el('relTitulo').textContent = rel === 'operacao' ? 'Operação — Previsto × Realizado' : rel === 'geral' ? 'Geral com Empréstimos — Previsto × Realizado' : 'Empréstimos e Repasses — Caixa';
       if (rel !== 'emprestimos') {
@@ -388,7 +389,7 @@
       el('relCorpo').querySelectorAll('tr.clicavel').forEach(tr => tr.addEventListener('click', () => irPara(relAtual + '/' + tr.dataset.mes)));
     }
     function montarSeletor() {
-      const anos = [...new Set(pr.filter(d => d.mes).map(d => Number(d.mes.slice(0,4))))].sort();
+      const anos = [...new Set(pr.filter(d => d.mes).map(d => Number(d.mes.slice(0,4))))].filter(a => a <= hoje.getFullYear() + 1).sort();
       if (!anos.length) anos.push(hoje.getFullYear());
       if (!anos.includes(anoSel)) anoSel = anos[anos.length - 1];
       const box = el('seletorAno');
@@ -767,11 +768,21 @@
       }
       box.style.display = '';
       el('btnExcel').style.display = '';
-      box.innerHTML = Array.from({ length: 12 }, (_, m) => {
+      el('seletorAno').style.display = 'none';
+      const anoMin = 2025, anoMax = hoje.getFullYear() + 1;
+      let h0 = '<button data-nav="-1"' + (anoSel <= anoMin ? ' disabled style="opacity:.35;cursor:default;"' : '') + '>‹</button>';
+      h0 += '<button class="is-on" style="pointer-events:none;">' + anoSel + '</button>';
+      h0 += '<button data-nav="1"' + (anoSel >= anoMax ? ' disabled style="opacity:.35;cursor:default;"' : '') + '>›</button>';
+      h0 += '<span style="display:inline-block;width:14px;"></span>';
+      box.innerHTML = h0 + Array.from({ length: 12 }, (_, m) => {
         const mi = anoSel + '-' + String(m + 1).padStart(2, '0') + '-01';
         return '<button data-mes="' + mi + '" class="' + (mi === iso ? 'is-on' : '') + '">' + MESES[m].slice(0, 3) + '</button>';
       }).join('');
-      box.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { location.hash = 'dre/' + b.dataset.mes; }));
+      box.querySelectorAll('button[data-mes]').forEach(b => b.addEventListener('click', () => { location.hash = 'dre/' + b.dataset.mes; }));
+      box.querySelectorAll('button[data-nav]').forEach(b => b.addEventListener('click', () => {
+        anoSel = anoSel + Number(b.dataset.nav);
+        location.hash = 'dre/' + anoSel + iso.slice(4);
+      }));
       el('relCabecalho').innerHTML = '<tr><th>Linha</th><th>Previsto</th><th>%</th><th>Realizado</th><th>%</th><th>Diferença</th></tr>';
       el('relCorpo').innerHTML = '<tr><td colspan="6" style="color:#8A93A6;padding:16px 4px;">Montando o mês…</td></tr>';
       const d = await montarDRE(iso);
