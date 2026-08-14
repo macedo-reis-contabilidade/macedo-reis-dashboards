@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fator R — Macedo & Reis</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+  <style>
+    .fr-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 22px; }
+    .fr-card { background: var(--surface, rgba(255,255,255,.03)); border: 1px solid rgba(138,174,200,.16); border-radius: 12px; padding: 14px 16px; }
+    .fr-card .num { font-size: 26px; font-weight: 700; }
+    .fr-card .lbl { font-size: 12px; color: #8AAEC8; margin-top: 2px; }
+    .fr-tab { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .fr-tab th { text-align: left; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: #8AAEC8; padding: 10px 10px; border-bottom: 1px solid rgba(138,174,200,.25); }
+    .fr-tab td { padding: 10px 10px; border-bottom: 1px solid rgba(138,174,200,.08); }
+    .fr-tab tr.clicavel { cursor: pointer; }
+    .fr-tab tr.clicavel:hover td { background: rgba(91,130,166,.08); }
+    .fr-num { text-align: right; font-variant-numeric: tabular-nums; }
+    .fr-badge { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: 700; }
+    .fr-ok    { background: rgba(74,222,128,.15); color: #4ADE80; }
+    .fr-fio   { background: rgba(250,204,21,.15); color: #FACC15; }
+    .fr-perto { background: rgba(251,146,60,.15); color: #FB923C; }
+    .fr-longe { background: rgba(244,114,182,.14); color: #F472B6; }
+    .fr-nd    { background: rgba(138,174,200,.14); color: #8AAEC8; }
+    .fr-mini { display: inline-block; min-width: 46px; text-align: center; padding: 1px 6px; border-radius: 8px; font-size: 11px; font-weight: 600; margin-right: 4px; }
+    .fr-alerta { color: #FACC15; font-size: 12px; }
+    .fr-dim { color: #8AAEC8; opacity: .75; }
+    .fr-secao { margin: 26px 0 12px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: #8AAEC8; font-weight: 700; }
+    .fr-hero { display: flex; flex-wrap: wrap; gap: 18px; align-items: stretch; margin-bottom: 8px; }
+    .fr-hero-fator { background: var(--surface, rgba(255,255,255,.03)); border: 1px solid rgba(138,174,200,.16); border-radius: 14px; padding: 18px 26px; text-align: center; min-width: 200px; }
+    .fr-hero-fator .r { font-size: 42px; font-weight: 800; line-height: 1.1; }
+    .fr-hero-info { flex: 1 1 300px; background: var(--surface, rgba(255,255,255,.03)); border: 1px solid rgba(138,174,200,.16); border-radius: 14px; padding: 16px 20px; font-size: 14px; line-height: 1.7; }
+    .fr-sim { background: linear-gradient(135deg, rgba(58,88,120,.25), rgba(91,130,166,.12)); border: 1px solid rgba(91,130,166,.35); border-radius: 14px; padding: 18px 22px; margin: 18px 0 24px; }
+    .fr-sim h3 { margin: 0 0 10px; font-size: 15px; }
+    .fr-sim .res { font-size: 15px; line-height: 1.8; }
+    .fr-sim .destaque { font-size: 20px; font-weight: 800; }
+    .fr-grade input { width: 110px; }
+    .fr-grade td { padding: 6px 6px; }
+    .fr-nav { display: inline-flex; gap: 6px; align-items: center; margin: 0 0 16px; }
+    .fr-nav button { min-width: 34px; }
+    .fr-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 14px 0 8px; }
+    .fr-form label { display: block; font-size: 12px; color: #8AAEC8; margin-bottom: 4px; }
+    .fr-nota { margin-top: 30px; padding: 14px 18px; border-left: 3px solid rgba(91,130,166,.5); background: rgba(91,130,166,.06); border-radius: 0 10px 10px 0; font-size: 12.5px; line-height: 1.7; color: #C5D8E8; }
+    .fr-vista { display: none; }
+    .fr-vista.ativa { display: block; }
+    .fr-acoes-topo { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+    .fr-salvo { color: #4ADE80; font-size: 12px; }
+    .fr-erro { color: #F472B6; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip"><div class="user-avatar" id="userAvatar">—</div><span id="userName">Carregando…</span></div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Fator R</span>
+        </div>
+        <div class="eyebrow">Fiscal + Departamento Pessoal</div>
+        <h1>Fator R</h1>
+        <p>Acompanhamento das empresas sujeitas ao fator "r" (LC 123/2006, art. 18 §5º-J e §24; Res. CGSN 140/2018, art. 26): folha paga ÷ receita dos últimos 12 meses. Fiscal lança a receita, DP lança a folha — o anexo sai daqui.</p>
+      </div>
+
+      <!-- PAINEL -->
+      <section class="fr-vista" id="vPainel">
+        <div class="fr-cards" id="painelCards"></div>
+        <div class="fr-acoes-topo">
+          <button class="btn btn-primary btn-sm" id="btnIrLancar">Lançar competência</button>
+          <button class="btn btn-ghost btn-sm" id="btnIrCadastro">Gerenciar empresas</button>
+        </div>
+        <table class="fr-tab">
+          <thead id="painelCab"></thead>
+          <tbody id="painelCorpo"></tbody>
+        </table>
+        <div class="fr-nota" id="notaMetodo"></div>
+      </section>
+
+      <!-- FICHA DA EMPRESA -->
+      <section class="fr-vista" id="vEmpresa">
+        <div class="fr-acoes-topo">
+          <button class="btn btn-ghost btn-sm" id="btnVoltarPainel">← Painel</button>
+          <button class="btn btn-ghost btn-sm" id="btnFichaLancar">Lançar/editar competências</button>
+        </div>
+        <div class="fr-hero" id="fichaHero"></div>
+        <div class="fr-sim" id="fichaSim"></div>
+        <div class="fr-secao">Histórico de apurações</div>
+        <table class="fr-tab">
+          <thead><tr><th>PA</th><th class="fr-num">Receita do mês</th><th class="fr-num">Folha paga no mês</th><th class="fr-num">RBT12</th><th class="fr-num">FS12</th><th class="fr-num">Fator r</th><th>Anexo</th><th>Dados</th></tr></thead>
+          <tbody id="fichaCorpo"></tbody>
+        </table>
+      </section>
+
+      <!-- GRADE DE LANÇAMENTO -->
+      <section class="fr-vista" id="vLancar">
+        <div class="fr-acoes-topo">
+          <button class="btn btn-ghost btn-sm" id="btnVoltarPainel2">← Painel</button>
+        </div>
+        <div class="fr-nav" id="lancarNav"></div>
+        <p class="fr-dim" style="margin-top:-6px;">Receita pelo regime de <b>competência</b> (auferida no mês). Folha pelo regime de <b>caixa</b> — só o que foi <b>efetivamente pago/recolhido</b> dentro do mês. Campo vazio = ainda não informado; zero = informado como zero.</p>
+        <table class="fr-tab fr-grade">
+          <thead><tr><th>Empresa</th><th>Receita (R$)</th><th>Salários</th><th>Pró-labore</th><th>CPP recolhida</th><th>FGTS</th><th>Outros (RPA/13º)</th><th class="fr-num">Folha total</th><th></th></tr></thead>
+          <tbody id="lancarCorpo"></tbody>
+        </table>
+      </section>
+
+      <!-- CADASTRO -->
+      <section class="fr-vista" id="vCadastro">
+        <div class="fr-acoes-topo">
+          <button class="btn btn-ghost btn-sm" id="btnVoltarPainel3">← Painel</button>
+        </div>
+        <div class="fr-secao">Empresas acompanhadas</div>
+        <table class="fr-tab">
+          <thead><tr><th>Empresa</th><th>CNPJ</th><th>Início de atividade</th><th>Situação</th><th></th></tr></thead>
+          <tbody id="cadCorpo"></tbody>
+        </table>
+        <div class="fr-secao">Adicionar empresa</div>
+        <div class="fr-form">
+          <div><label>Cliente do cadastro (busca por nome)</label><input class="input" id="cadBusca" list="cadLista" placeholder="Digite pra buscar… (opcional)"><datalist id="cadLista"></datalist></div>
+          <div><label>Nome da empresa</label><input class="input" id="cadNome" placeholder="Razão social"></div>
+          <div><label>CNPJ</label><input class="input" id="cadDoc" placeholder="00.000.000/0000-00"></div>
+          <div><label>Início de atividade (Simples)</label><input class="input" id="cadInicio" type="date"></div>
+        </div>
+        <button class="btn btn-primary btn-sm" id="btnCadSalvar">Adicionar</button>
+        <span id="cadMsg" style="margin-left:10px;"></span>
+      </section>
+    </main>
+  </div>
+
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+
+    const el = (id) => document.getElementById(id);
+    const brl = (v) => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const pct = (v) => v == null ? '—' : (v * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%';
+    const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+    const mesRot = (iso) => MESES[Number(iso.slice(5, 7)) - 1].slice(0, 3) + '/' + iso.slice(2, 4);
+    const hoje = new Date();
+    const paAtual = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0') + '-01';
+    const mesIso = (d) => d.slice(0, 7) + '-01';
+    function addMeses(iso, n) {
+      const d = new Date(Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1 + n, 1));
+      return d.toISOString().slice(0, 10);
+    }
+
+    (async () => {
+      const user = await getCurrentUser();
+      if (user) {
+        const n = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário';
+        el('userName').textContent = n;
+        el('userAvatar').textContent = n.charAt(0).toUpperCase();
+      }
+    })();
+    el('btnLogout').addEventListener('click', signOut);
+
+    // ---------------- dados ----------------
+    let empresas = [];                 // fr_empresas ativas + inativas
+    const lancPorEmpresa = new Map();  // empresa_id -> Map(competencia -> lancamento)
+    let clientesCache = null;
+
+    async function carregarTudo() {
+      const [e, l] = await Promise.all([
+        supabase.from('fr_empresas').select('*').order('nome'),
+        supabase.from('fr_lancamentos').select('*')
+      ]);
+      if (e.error || l.error) { alert('Erro ao carregar: ' + (e.error || l.error).message); return; }
+      empresas = e.data || [];
+      lancPorEmpresa.clear();
+      (l.data || []).forEach(x => {
+        if (!lancPorEmpresa.has(x.empresa_id)) lancPorEmpresa.set(x.empresa_id, new Map());
+        lancPorEmpresa.get(x.empresa_id).set(x.competencia, x);
+      });
+    }
+
+    // ---------------- motor legal ----------------
+    const num = (v) => v == null ? null : Number(v);
+    function folhaTotal(l) {
+      if (!l) return null;
+      const campos = [l.folha_salarios, l.prolabore, l.inss_patronal, l.fgts, l.folha_outros];
+      if (campos.every(c => c == null)) return null;
+      return campos.reduce((s, c) => s + (Number(c) || 0), 0);
+    }
+    // Res. CGSN 140/2018, art. 26 (§§ 1º a 7º) c/c art. 22 (proporcionalização)
+    function calcPA(empId, inicioIso, paIso) {
+      const serie = lancPorEmpresa.get(empId) || new Map();
+      const ini = mesIso(inicioIso);
+      if (paIso < ini) return null;
+      const res = { pa: paIso, faltantes: [], proporcional: false, mesInicio: false };
+
+      if (paIso === ini) {                       // §6º — PA do mês de início
+        res.mesInicio = true;
+        const m = serie.get(paIso);
+        const f = folhaTotal(m), rec = m ? num(m.receita) : null;
+        res.fs12 = f == null ? null : f * 12;
+        res.rbt12 = rec == null ? null : (Number(rec) || 0) * 12;
+        if (m == null || (f == null && rec == null)) { res.r = null; res.anexo = '—'; res.faltantes.push(paIso); return res; }
+        const fv = Number(f) || 0, rv = Number(rec) || 0;
+        if (fv > 0 && rv <= 0) res.r = 0.28;
+        else if (fv <= 0 && rv > 0) res.r = 0.01;
+        else if (fv <= 0 && rv <= 0) { res.r = null; res.anexo = '—'; return res; }
+        else res.r = fv / rv;
+        res.anexo = res.r >= 0.28 ? 'III' : 'V';
+        return res;
+      }
+
+      const j0 = addMeses(paIso, -12) > ini ? addMeses(paIso, -12) : ini;  // início da janela
+      const meses = [];
+      for (let m = j0; m < paIso; m = addMeses(m, 1)) meses.push(m);
+      res.janela = meses;
+      res.proporcional = meses.length < 12;      // §4º c/c art. 22
+      let somaR = 0, somaF = 0;
+      meses.forEach(m => {
+        const l = serie.get(m);
+        const rec = l ? num(l.receita) : null;
+        const f = folhaTotal(l);
+        if (rec == null || f == null) res.faltantes.push(m);
+        somaR += Number(rec) || 0;
+        somaF += Number(f) || 0;
+      });
+      if (res.proporcional) {                     // média × 12
+        res.rbt12 = meses.length ? (somaR / meses.length) * 12 : 0;
+        res.fs12 = meses.length ? (somaF / meses.length) * 12 : 0;
+      } else { res.rbt12 = somaR; res.fs12 = somaF; }
+      // §7º
+      if (res.fs12 <= 0 && res.rbt12 <= 0) res.r = 0.01;
+      else if (res.fs12 > 0 && res.rbt12 <= 0) res.r = 0.28;
+      else res.r = res.fs12 / res.rbt12;
+      res.anexo = res.r >= 0.28 ? 'III' : 'V';
+      return res;
+    }
+    function faixaDe(c) {
+      if (!c || c.r == null) return { cls: 'fr-nd', rot: 'sem dados' };
+      if (c.r >= 0.29) return { cls: 'fr-ok', rot: 'Anexo III' };
+      if (c.r >= 0.28) return { cls: 'fr-fio', rot: 'III no fio' };
+      if (c.r >= 0.25) return { cls: 'fr-perto', rot: 'V — quase III' };
+      return { cls: 'fr-longe', rot: 'Anexo V' };
+    }
+
+    // ---------------- vistas ----------------
+    const vistas = ['vPainel', 'vEmpresa', 'vLancar', 'vCadastro'];
+    function mostrar(v) { vistas.forEach(x => el(x).classList.toggle('ativa', x === v)); }
+
+    function renderPainel() {
+      mostrar('vPainel');
+      const ativas = empresas.filter(e => e.ativo);
+      const calcs = ativas.map(e => ({ e, c: calcPA(e.id, e.inicio_atividade, paAtual) }));
+      const iii = calcs.filter(x => x.c && x.c.anexo === 'III').length;
+      const v5 = calcs.filter(x => x.c && x.c.anexo === 'V').length;
+      const fio = calcs.filter(x => x.c && x.c.r != null && ((x.c.r >= 0.28 && x.c.r < 0.29) || (x.c.r >= 0.25 && x.c.r < 0.28))).length;
+      const pend = calcs.filter(x => x.c && x.c.faltantes.length).length;
+      el('painelCards').innerHTML =
+        '<div class="fr-card"><div class="num">' + ativas.length + '</div><div class="lbl">Empresas acompanhadas</div></div>' +
+        '<div class="fr-card"><div class="num" style="color:#4ADE80;">' + iii + '</div><div class="lbl">No Anexo III (' + mesRot(paAtual) + ')</div></div>' +
+        '<div class="fr-card"><div class="num" style="color:#F472B6;">' + v5 + '</div><div class="lbl">No Anexo V</div></div>' +
+        '<div class="fr-card"><div class="num" style="color:#FACC15;">' + fio + '</div><div class="lbl">Na zona de atenção</div></div>' +
+        '<div class="fr-card"><div class="num" style="color:' + (pend ? '#FACC15' : '#4ADE80') + ';">' + pend + '</div><div class="lbl">Com dados faltando</div></div>';
+      el('painelCab').innerHTML = '<tr><th>Empresa</th><th>Início</th><th class="fr-num">Fator r · ' + mesRot(paAtual) + '</th><th>Situação</th><th class="fr-num">Margem</th><th>Últimos PAs</th><th>Dados</th></tr>';
+      if (!ativas.length) {
+        el('painelCorpo').innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;" class="fr-dim">Nenhuma empresa cadastrada ainda. Comece em "Gerenciar empresas".</td></tr>';
+        return;
+      }
+      el('painelCorpo').innerHTML = calcs.map(({ e, c }) => {
+        const fx = faixaDe(c);
+        const minis = [-2, -1, 0].map(k => {
+          const ci = calcPA(e.id, e.inicio_atividade, addMeses(paAtual, k));
+          const fi = faixaDe(ci);
+          return '<span class="fr-mini ' + fi.cls + '" title="' + mesRot(addMeses(paAtual, k)) + '">' + (ci && ci.r != null ? pct(ci.r).replace('%', '') : '—') + '</span>';
+        }).join('');
+        const margem = c && c.r != null ? c.r - 0.28 : null;
+        return '<tr class="clicavel" data-id="' + e.id + '">' +
+          '<td><b>' + e.nome + '</b>' + (c && c.proporcional ? ' <span class="fr-dim" title="Empresa com menos de 13 meses — cálculo proporcionalizado (art. 26 §4º)">· proporcional</span>' : '') + '</td>' +
+          '<td>' + mesRot(mesIso(e.inicio_atividade)) + '</td>' +
+          '<td class="fr-num"><b>' + (c && c.r != null ? pct(c.r) : '—') + '</b></td>' +
+          '<td><span class="fr-badge ' + fx.cls + '">' + fx.rot + '</span></td>' +
+          '<td class="fr-num ' + (margem == null ? 'fr-dim' : margem >= 0 ? '' : '') + '">' + (margem == null ? '—' : (margem >= 0 ? '+' : '') + pct(margem)) + '</td>' +
+          '<td>' + minis + '</td>' +
+          '<td>' + (c && c.faltantes.length ? '<span class="fr-alerta">⚠ faltam ' + c.faltantes.length + ' mês(es)</span>' : '<span class="fr-salvo">✓ completo</span>') + '</td></tr>';
+      }).join('');
+      el('painelCorpo').querySelectorAll('tr.clicavel').forEach(tr =>
+        tr.addEventListener('click', () => { location.hash = 'empresa/' + tr.dataset.id; }));
+      el('notaMetodo').innerHTML = '<b>Método (conferível):</b> fator r = FS12 ÷ RBT12 do período de apuração — receita pelo regime de competência, folha pelo montante <b>efetivamente pago no mês</b> (regime de caixa; Res. CGSN 140/2018, art. 18, parágrafo único; SC Cosit 17/2021). Folha inclui salários e remunerações de pessoas físicas, pró-labore, autônomos, 13º, e os encargos efetivamente recolhidos de CPP (inclusive a de dentro do DAS) e FGTS; não entram aluguéis nem distribuição de lucros (art. 26 §1º). r ≥ 28% → Anexo III; abaixo → Anexo V. Empresa com menos de 13 meses: valores anualizados pela média (art. 26 §4º c/c art. 22); mês de início e casos com folha ou receita zeradas seguem os §§ 6º e 7º. Campo vazio = não informado (entra como pendência, não como zero declarado).';
+    }
+
+    function renderEmpresa(id) {
+      const e = empresas.find(x => x.id === id);
+      if (!e) { location.hash = ''; return; }
+      mostrar('vEmpresa');
+      const c = calcPA(e.id, e.inicio_atividade, paAtual);
+      const fx = faixaDe(c);
+      const idadeMeses = Math.max(0, Math.round((new Date(paAtual) - new Date(mesIso(e.inicio_atividade))) / (30.44 * 24 * 3600 * 1000)));
+      el('fichaHero').innerHTML =
+        '<div class="fr-hero-fator"><div class="fr-dim" style="font-size:12px;">Fator r · ' + mesRot(paAtual) + '</div>' +
+        '<div class="r">' + (c && c.r != null ? pct(c.r) : '—') + '</div>' +
+        '<span class="fr-badge ' + fx.cls + '">' + fx.rot + '</span></div>' +
+        '<div class="fr-hero-info"><b>' + e.nome + '</b>' + (e.documento ? ' · ' + e.documento : '') + '<br>' +
+        'Início de atividade: <b>' + mesRot(mesIso(e.inicio_atividade)) + '</b> (' + idadeMeses + ' meses)' +
+        (c && c.proporcional ? ' · <span class="fr-alerta">cálculo proporcionalizado (menos de 13 meses — art. 26 §4º)</span>' : '') + '<br>' +
+        (c ? 'RBT12: <b>' + brl(c.rbt12) + '</b> · FS12: <b>' + brl(c.fs12) + '</b> · Alvo 28%: <b>' + brl(0.28 * c.rbt12) + '</b>' : '') +
+        (c && c.faltantes.length ? '<br><span class="fr-alerta">⚠ Janela com ' + c.faltantes.length + ' mês(es) sem lançamento: ' + c.faltantes.map(mesRot).join(', ') + ' — o cálculo considera esses meses como zero até serem lançados.</span>' : '') +
+        '</div>';
+      montarSimulador(e);
+      // histórico: do PA atual pra trás, até 18 PAs ou o início
+      const linhas = [];
+      let pa = paAtual;
+      for (let i = 0; i < 18; i++) {
+        if (pa < mesIso(e.inicio_atividade)) break;
+        const ci = calcPA(e.id, e.inicio_atividade, pa);
+        const serie = lancPorEmpresa.get(e.id) || new Map();
+        const l = serie.get(pa);
+        const fT = folhaTotal(l);
+        const fxi = faixaDe(ci);
+        const tt = l ? ['Salários ' + brl(l.folha_salarios || 0), 'Pró-labore ' + brl(l.prolabore || 0), 'CPP ' + brl(l.inss_patronal || 0), 'FGTS ' + brl(l.fgts || 0), 'Outros ' + brl(l.folha_outros || 0)].join(' · ') : '';
+        linhas.push('<tr><td>' + mesRot(pa) + (ci && ci.mesInicio ? ' <span class="fr-dim">(início)</span>' : '') + '</td>' +
+          '<td class="fr-num">' + (l && l.receita != null ? brl(l.receita) : '<span class="fr-dim">—</span>') + '</td>' +
+          '<td class="fr-num" title="' + tt + '">' + (fT != null ? brl(fT) : '<span class="fr-dim">—</span>') + '</td>' +
+          '<td class="fr-num">' + (ci ? brl(ci.rbt12) : '—') + '</td>' +
+          '<td class="fr-num">' + (ci ? brl(ci.fs12) : '—') + '</td>' +
+          '<td class="fr-num"><b>' + (ci && ci.r != null ? pct(ci.r) : '—') + '</b></td>' +
+          '<td><span class="fr-badge ' + fxi.cls + '">' + (ci ? ci.anexo : '—') + '</span></td>' +
+          '<td>' + (ci && ci.faltantes.length ? '<span class="fr-alerta">⚠ ' + ci.faltantes.length + '</span>' : '✓') + '</td></tr>');
+        pa = addMeses(pa, -1);
+      }
+      el('fichaCorpo').innerHTML = linhas.join('');
+      el('btnFichaLancar').onclick = () => { location.hash = 'lancar/' + addMeses(paAtual, -1); };
+    }
+
+    function montarSimulador(e) {
+      const paProx = addMeses(paAtual, 1);
+      const serie = lancPorEmpresa.get(e.id) || new Map();
+      // receita estimada do mês corrente: lançada, senão média das últimas 3 lançadas
+      const lAtual = serie.get(paAtual);
+      let estimada = lAtual && lAtual.receita != null ? Number(lAtual.receita) : null;
+      if (estimada == null) {
+        const ult = []; let m = addMeses(paAtual, -1);
+        for (let i = 0; i < 6 && ult.length < 3; i++) { const l = serie.get(m); if (l && l.receita != null) ult.push(Number(l.receita)); m = addMeses(m, -1); }
+        estimada = ult.length ? ult.reduce((a, b) => a + b, 0) / ult.length : 0;
+      }
+      el('fichaSim').innerHTML = '<h3>Simulador: segurar o Anexo III em ' + mesRot(paProx) + '</h3>' +
+        '<div style="margin-bottom:10px;"><label class="fr-dim" style="font-size:12px;">Receita estimada de ' + mesRot(paAtual) + ' (competência): </label> ' +
+        '<input class="input" id="simReceita" style="width:150px;display:inline-block;" type="number" step="0.01" value="' + estimada.toFixed(2) + '"></div>' +
+        '<div class="res" id="simRes"></div>';
+      const calcular = () => {
+        const recAtu = Number(el('simReceita').value) || 0;
+        const ini = mesIso(e.inicio_atividade);
+        const j0 = addMeses(paProx, -12) > ini ? addMeses(paProx, -12) : ini;
+        let somaR = 0, somaFOutros = 0;
+        for (let m = j0; m < paProx; m = addMeses(m, 1)) {
+          const l = serie.get(m);
+          somaR += (m === paAtual) ? recAtu : (l && l.receita != null ? Number(l.receita) : 0);
+          if (m !== paAtual) somaFOutros += Number(folhaTotal(l)) || 0;
+        }
+        const jaMes = Number(folhaTotal(serie.get(paAtual))) || 0;
+        const alvoMes = 0.28 * somaR - somaFOutros;   // proporcional: o ×12 cancela (mesma qtde de meses)
+        const falta = alvoMes - jaMes;
+        let html = 'Janela de ' + mesRot(paProx) + ': ' + mesRot(j0) + ' → ' + mesRot(paAtual) + ' · Receita da janela (com a estimativa): <b>' + brl(somaR) + '</b><br>';
+        html += 'Pra fechar r ≥ 28%, a folha paga em <b>' + mesRot(paAtual) + '</b> precisa somar <b>' + brl(Math.max(0, alvoMes)) + '</b>. Já lançado no mês: <b>' + brl(jaMes) + '</b>.<br>';
+        if (alvoMes <= 0) html += '<span class="destaque" style="color:#4ADE80;">Anexo III já garantido pelos meses anteriores — folga de ' + brl(-alvoMes + jaMes) + '.</span>';
+        else if (falta <= 0) html += '<span class="destaque" style="color:#4ADE80;">Garantido: sobra ' + brl(-falta) + ' de folga.</span>';
+        else html += '<span class="destaque" style="color:#FACC15;">Faltam ' + brl(falta) + ' de folha (pró-labore + encargos pagos) até o fim do mês.</span>';
+        html += '<br><span class="fr-dim" style="font-size:12px;">Lembrete de caixa: conta o que for pago/recolhido dentro de ' + mesRot(paAtual) + ' — pró-labore de ' + mesRot(paAtual) + ' pago no 5º dia útil de ' + mesRot(paProx) + ' cai na janela seguinte.</span>';
+        el('simRes').innerHTML = html;
+      };
+      el('simReceita').addEventListener('input', calcular);
+      calcular();
+    }
+
+    function renderLancar(compIso) {
+      mostrar('vLancar');
+      const ativas = empresas.filter(x => x.ativo && mesIso(x.inicio_atividade) <= compIso);
+      el('lancarNav').innerHTML =
+        '<button class="btn btn-ghost btn-sm" id="lNavAnt">‹</button>' +
+        '<b style="min-width:150px;text-align:center;display:inline-block;">' + MESES[Number(compIso.slice(5, 7)) - 1] + ' de ' + compIso.slice(0, 4) + '</b>' +
+        '<button class="btn btn-ghost btn-sm" id="lNavProx">›</button>';
+      el('lNavAnt').onclick = () => { location.hash = 'lancar/' + addMeses(compIso, -1); };
+      el('lNavProx').onclick = () => { location.hash = 'lancar/' + addMeses(compIso, 1); };
+      if (!ativas.length) {
+        el('lancarCorpo').innerHTML = '<tr><td colspan="9" style="text-align:center;padding:30px;" class="fr-dim">Nenhuma empresa ativa nesta competência.</td></tr>';
+        return;
+      }
+      const campos = ['receita', 'folha_salarios', 'prolabore', 'inss_patronal', 'fgts', 'folha_outros'];
+      el('lancarCorpo').innerHTML = ativas.map(e => {
+        const l = (lancPorEmpresa.get(e.id) || new Map()).get(compIso) || {};
+        const tds = campos.map(c => '<td><input class="input" type="number" step="0.01" data-emp="' + e.id + '" data-campo="' + c + '" value="' + (l[c] != null ? Number(l[c]) : '') + '"></td>').join('');
+        const fT = folhaTotal(l);
+        return '<tr data-emp="' + e.id + '"><td><b>' + e.nome + '</b></td>' + tds +
+          '<td class="fr-num" id="tot-' + e.id + '">' + (fT != null ? brl(fT) : '—') + '</td>' +
+          '<td><button class="btn btn-primary btn-sm" data-salvar="' + e.id + '">Salvar</button> <span id="msg-' + e.id + '"></span></td></tr>';
+      }).join('');
+      el('lancarCorpo').querySelectorAll('input').forEach(inp => inp.addEventListener('input', () => {
+        const emp = inp.dataset.emp;
+        let s = 0, algum = false;
+        el('lancarCorpo').querySelectorAll('input[data-emp="' + emp + '"]').forEach(i => {
+          if (i.dataset.campo !== 'receita' && i.value !== '') { s += Number(i.value) || 0; algum = true; }
+        });
+        el('tot-' + emp).textContent = algum ? brl(s) : '—';
+      }));
+      el('lancarCorpo').querySelectorAll('button[data-salvar]').forEach(b => b.addEventListener('click', async () => {
+        const emp = b.dataset.salvar;
+        const reg = { empresa_id: emp, competencia: compIso, atualizado_em: new Date().toISOString() };
+        el('lancarCorpo').querySelectorAll('input[data-emp="' + emp + '"]').forEach(i => {
+          reg[i.dataset.campo] = i.value === '' ? null : Number(i.value);
+        });
+        const { error } = await supabase.from('fr_lancamentos').upsert(reg, { onConflict: 'empresa_id,competencia' });
+        const msg = el('msg-' + emp);
+        if (error) { msg.className = 'fr-erro'; msg.textContent = 'erro: ' + error.message; return; }
+        msg.className = 'fr-salvo'; msg.textContent = '✓ salvo';
+        setTimeout(() => { msg.textContent = ''; }, 2500);
+        await carregarTudo();
+      }));
+    }
+
+    async function renderCadastro() {
+      mostrar('vCadastro');
+      el('cadCorpo').innerHTML = empresas.map(e =>
+        '<tr><td><b>' + e.nome + '</b></td><td>' + (e.documento || '—') + '</td><td>' + mesRot(mesIso(e.inicio_atividade)) + '</td>' +
+        '<td>' + (e.ativo ? '<span class="fr-badge fr-ok">ativa</span>' : '<span class="fr-badge fr-nd">inativa</span>') + '</td>' +
+        '<td><button class="btn btn-ghost btn-sm" data-toggle="' + e.id + '">' + (e.ativo ? 'Desativar' : 'Reativar') + '</button></td></tr>'
+      ).join('') || '<tr><td colspan="5" class="fr-dim" style="text-align:center;padding:20px;">Nenhuma empresa ainda.</td></tr>';
+      el('cadCorpo').querySelectorAll('button[data-toggle]').forEach(b => b.addEventListener('click', async () => {
+        const e = empresas.find(x => x.id === b.dataset.toggle);
+        const { error } = await supabase.from('fr_empresas').update({ ativo: !e.ativo, atualizado_em: new Date().toISOString() }).eq('id', e.id);
+        if (error) { alert('Erro: ' + error.message); return; }
+        await carregarTudo(); renderCadastro();
+      }));
+      if (!clientesCache) {
+        const { data } = await supabase.from('clientes').select('id, nome_principal, documento, data_abertura').order('nome_principal');
+        clientesCache = data || [];
+        el('cadLista').innerHTML = clientesCache.map(c => '<option value="' + (c.nome_principal || '').replace(/"/g, '&quot;') + '">' + (c.documento || '') + '</option>').join('');
+      }
+      el('cadBusca').oninput = () => {
+        const c = clientesCache.find(x => x.nome_principal === el('cadBusca').value);
+        if (c) {
+          el('cadNome').value = c.nome_principal || '';
+          el('cadDoc').value = c.documento || '';
+          if (c.data_abertura) el('cadInicio').value = c.data_abertura;
+          el('cadBusca').dataset.clienteId = c.id;
+        } else delete el('cadBusca').dataset.clienteId;
+      };
+      el('btnCadSalvar').onclick = async () => {
+        const nome = el('cadNome').value.trim(), inicio = el('cadInicio').value;
+        const msg = el('cadMsg');
+        if (!nome || !inicio) { msg.className = 'fr-erro'; msg.textContent = 'Nome e início de atividade são obrigatórios.'; return; }
+        const { error } = await supabase.from('fr_empresas').insert({
+          nome, documento: el('cadDoc').value.trim() || null, inicio_atividade: inicio,
+          cliente_id: el('cadBusca').dataset.clienteId || null
+        });
+        if (error) { msg.className = 'fr-erro'; msg.textContent = 'Erro: ' + error.message; return; }
+        msg.className = 'fr-salvo'; msg.textContent = '✓ adicionada';
+        el('cadNome').value = ''; el('cadDoc').value = ''; el('cadInicio').value = ''; el('cadBusca').value = '';
+        await carregarTudo(); renderCadastro();
+        setTimeout(() => { msg.textContent = ''; }, 2500);
+      };
+    }
+
+    // ---------------- roteador ----------------
+    function rotear() {
+      const h = location.hash.replace(/^#/, '');
+      const [v, arg] = h.split('/');
+      if (v === 'empresa' && arg) renderEmpresa(arg);
+      else if (v === 'lancar') renderLancar(arg && /^\d{4}-\d{2}-\d{2}$/.test(arg) ? arg : addMeses(paAtual, -1));
+      else if (v === 'cadastro') renderCadastro();
+      else renderPainel();
+    }
+    window.addEventListener('hashchange', rotear);
+    el('btnIrLancar').addEventListener('click', () => { location.hash = 'lancar/' + addMeses(paAtual, -1); });
+    el('btnIrCadastro').addEventListener('click', () => { location.hash = 'cadastro'; });
+    ['btnVoltarPainel', 'btnVoltarPainel2', 'btnVoltarPainel3'].forEach(b => el(b).addEventListener('click', () => { location.hash = ''; }));
+
+    await carregarTudo();
+    rotear();
+  </script>
+</body>
+</html>
