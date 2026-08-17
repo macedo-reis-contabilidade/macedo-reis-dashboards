@@ -46,6 +46,12 @@
     .fr-vista.ativa { display: block; }
     .fr-acoes-topo { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
     .fr-salvo { color: #4ADE80; font-size: 12px; }
+    .fr-import { background: var(--surface, rgba(255,255,255,.03)); border: 1px solid rgba(138,174,200,.2); border-radius: 14px; padding: 16px 20px; margin: 0 0 24px; }
+    .fr-import input[type="number"] { width: 96px; }
+    .fr-conflito { outline: 1px solid rgba(250,204,21,.55); }
+    .fr-atual { display: block; font-size: 10.5px; color: #FACC15; margin-top: 2px; }
+    .fr-vira { animation: frPulse 1.6s ease-in-out infinite; }
+    @keyframes frPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(244,114,182,0); } 50% { box-shadow: 0 0 0 4px rgba(244,114,182,.18); } }
     .fr-erro { color: #F472B6; font-size: 12px; }
   </style>
 </head>
@@ -93,9 +99,13 @@
         <div class="fr-acoes-topo">
           <button class="btn btn-ghost btn-sm" id="btnVoltarPainel">← Painel</button>
           <button class="btn btn-ghost btn-sm" id="btnFichaLancar">Lançar/editar competências</button>
+          <button class="btn btn-primary btn-sm" id="btnFichaImportar">Importar PDF (Domínio)</button>
+          <input type="file" id="fichaArquivo" accept="application/pdf,image/*" style="display:none;">
         </div>
         <div class="fr-hero" id="fichaHero"></div>
+        <div class="fr-import" id="fichaImport" style="display:none;"></div>
         <div class="fr-sim" id="fichaSim"></div>
+        <div class="fr-sim" id="fichaPlan"></div>
         <div class="fr-secao">Histórico de apurações</div>
         <table class="fr-tab">
           <thead><tr><th>PA</th><th class="fr-num">Receita do mês</th><th class="fr-num">Folha paga no mês</th><th class="fr-num">RBT12</th><th class="fr-num">FS12</th><th class="fr-num">Fator r</th><th>Anexo</th><th>Dados</th></tr></thead>
@@ -194,7 +204,9 @@
     }
     // Res. CGSN 140/2018, art. 26 (§§ 1º a 7º) c/c art. 22 (proporcionalização)
     function calcPA(empId, inicioIso, paIso) {
-      const serie = lancPorEmpresa.get(empId) || new Map();
+      return calcPAserie(lancPorEmpresa.get(empId) || new Map(), inicioIso, paIso);
+    }
+    function calcPAserie(serie, inicioIso, paIso) {
       const ini = mesIso(inicioIso);
       if (paIso < ini) return null;
       const res = { pa: paIso, faltantes: [], proporcional: false, mesInicio: false };
@@ -260,15 +272,19 @@
       const v5 = calcs.filter(x => x.c && x.c.anexo === 'V').length;
       const fio = calcs.filter(x => x.c && x.c.r != null && ((x.c.r >= 0.28 && x.c.r < 0.29) || (x.c.r >= 0.25 && x.c.r < 0.28))).length;
       const pend = calcs.filter(x => x.c && x.c.faltantes.length).length;
+      const paProx = addMeses(paAtual, 1);
+      const radar = new Map(ativas.map(e => [e.id, calcPA(e.id, e.inicio_atividade, paProx)]));
+      const viram = calcs.filter(x => { const r = radar.get(x.e.id); return x.c && r && x.c.anexo !== '—' && r.anexo !== '—' && x.c.anexo !== r.anexo; }).length;
       el('painelCards').innerHTML =
         '<div class="fr-card"><div class="num">' + ativas.length + '</div><div class="lbl">Empresas acompanhadas</div></div>' +
         '<div class="fr-card"><div class="num" style="color:#4ADE80;">' + iii + '</div><div class="lbl">No Anexo III (' + mesRot(paAtual) + ')</div></div>' +
         '<div class="fr-card"><div class="num" style="color:#F472B6;">' + v5 + '</div><div class="lbl">No Anexo V</div></div>' +
         '<div class="fr-card"><div class="num" style="color:#FACC15;">' + fio + '</div><div class="lbl">Na zona de atenção</div></div>' +
-        '<div class="fr-card"><div class="num" style="color:' + (pend ? '#FACC15' : '#4ADE80') + ';">' + pend + '</div><div class="lbl">Com dados faltando</div></div>';
-      el('painelCab').innerHTML = '<tr><th>Empresa</th><th>Início</th><th class="fr-num">Fator r · ' + mesRot(paAtual) + '</th><th>Situação</th><th class="fr-num">Margem</th><th>Últimos PAs</th><th>Dados</th></tr>';
+        '<div class="fr-card"><div class="num" style="color:' + (pend ? '#FACC15' : '#4ADE80') + ';">' + pend + '</div><div class="lbl">Com dados faltando</div></div>' +
+        '<div class="fr-card"><div class="num" style="color:' + (viram ? '#F472B6' : '#4ADE80') + ';">' + viram + '</div><div class="lbl">Viram de anexo em ' + mesRot(paProx) + '</div></div>';
+      el('painelCab').innerHTML = '<tr><th>Empresa</th><th>Início</th><th class="fr-num">Fator r · ' + mesRot(paAtual) + '</th><th>Situação</th><th class="fr-num">Margem</th><th>Últimos PAs</th><th>Radar ' + mesRot(paProx) + '</th><th>Dados</th></tr>';
       if (!ativas.length) {
-        el('painelCorpo').innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;" class="fr-dim">Nenhuma empresa cadastrada ainda. Comece em "Gerenciar empresas".</td></tr>';
+        el('painelCorpo').innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;" class="fr-dim">Nenhuma empresa cadastrada ainda. Comece em "Gerenciar empresas".</td></tr>';
         return;
       }
       el('painelCorpo').innerHTML = calcs.map(({ e, c }) => {
@@ -286,11 +302,19 @@
           '<td><span class="fr-badge ' + fx.cls + '">' + fx.rot + '</span></td>' +
           '<td class="fr-num ' + (margem == null ? 'fr-dim' : margem >= 0 ? '' : '') + '">' + (margem == null ? '—' : (margem >= 0 ? '+' : '') + pct(margem)) + '</td>' +
           '<td>' + minis + '</td>' +
+          (() => { const r = radar.get(e.id); if (!r || r.r == null || !c || c.anexo === '—') return '<td class="fr-dim">—</td>';
+            const fr2 = faixaDe(r);
+            if (r.anexo !== c.anexo) {
+              const pior = r.anexo === 'V';
+              return '<td><span class="fr-badge fr-vira ' + (pior ? 'fr-longe' : 'fr-ok') + '" title="Com o que está lançado até aqui, ' + mesRot(paProx) + ' abre no Anexo ' + r.anexo + '">' + c.anexo + ' → ' + r.anexo + ' ' + (pior ? '⚠' : '✓') + '</span></td>';
+            }
+            return '<td><span class="fr-mini ' + fr2.cls + '" title="Projeção com o já lançado">' + pct(r.r).replace('%', '') + '</span></td>'; })() +
           '<td>' + (c && c.faltantes.length ? '<span class="fr-alerta">⚠ faltam ' + c.faltantes.length + ' mês(es)</span>' : '<span class="fr-salvo">✓ completo</span>') + '</td></tr>';
+      // colunas: 8
       }).join('');
       el('painelCorpo').querySelectorAll('tr.clicavel').forEach(tr =>
         tr.addEventListener('click', () => { location.hash = 'empresa/' + tr.dataset.id; }));
-      el('notaMetodo').innerHTML = '<b>Método (conferível):</b> fator r = FS12 ÷ RBT12 do período de apuração — receita pelo regime de competência, folha pelo montante <b>efetivamente pago no mês</b> (regime de caixa; Res. CGSN 140/2018, art. 18, parágrafo único; SC Cosit 17/2021). Folha inclui salários e remunerações de pessoas físicas, pró-labore, autônomos, 13º, e os encargos efetivamente recolhidos de CPP (inclusive a de dentro do DAS) e FGTS; não entram aluguéis nem distribuição de lucros (art. 26 §1º). r ≥ 28% → Anexo III; abaixo → Anexo V. Empresa com menos de 13 meses: valores anualizados pela média (art. 26 §4º c/c art. 22); mês de início e casos com folha ou receita zeradas seguem os §§ 6º e 7º. Campo vazio = não informado (entra como pendência, não como zero declarado).';
+      el('notaMetodo').innerHTML = '<b>Método (conferível):</b> fator r = FS12 ÷ RBT12 do período de apuração — receita pelo regime de competência, folha pelo montante <b>efetivamente pago no mês</b> (regime de caixa; Res. CGSN 140/2018, art. 18, parágrafo único; SC Cosit 17/2021). Folha inclui salários e remunerações de pessoas físicas, pró-labore, autônomos, 13º, e os encargos efetivamente recolhidos de CPP (inclusive a de dentro do DAS) e FGTS; não entram aluguéis nem distribuição de lucros (art. 26 §1º). r ≥ 28% → Anexo III; abaixo → Anexo V. Empresa com menos de 13 meses: valores anualizados pela média (art. 26 §4º c/c art. 22); mês de início e casos com folha ou receita zeradas seguem os §§ 6º e 7º. Campo vazio = não informado (entra como pendência, não como zero declarado). A coluna <b>Radar</b> antecipa o próximo PA usando somente o que já está lançado do mês corrente — se a folha do mês ainda não foi paga/lançada, o radar mostra o risco real de virada de anexo, a tempo de agir. O <b>Planejador</b> da ficha projeta cenários com faturamento e folha estimados, inclusive para empresas novas ou ainda sem histórico.';
     }
 
     function renderEmpresa(id) {
@@ -311,6 +335,8 @@
         (c && c.faltantes.length ? '<br><span class="fr-alerta">⚠ Janela com ' + c.faltantes.length + ' mês(es) sem lançamento: ' + c.faltantes.map(mesRot).join(', ') + ' — o cálculo considera esses meses como zero até serem lançados.</span>' : '') +
         '</div>';
       montarSimulador(e);
+      montarPlanejador(e);
+      ligarImportacao(e);
       // histórico: do PA atual pra trás, até 18 PAs ou o início
       const linhas = [];
       let pa = paAtual;
@@ -374,6 +400,113 @@
       };
       el('simReceita').addEventListener('input', calcular);
       calcular();
+    }
+
+    function montarPlanejador(e) {
+      const serie = lancPorEmpresa.get(e.id) || new Map();
+      const med = (campo) => {
+        const v = []; let m = addMeses(paAtual, -1);
+        for (let i = 0; i < 6 && v.length < 3; i++) { const l = serie.get(m); const x = campo === 'receita' ? (l && l.receita != null ? Number(l.receita) : null) : folhaTotal(l); if (x != null) v.push(Number(x)); m = addMeses(m, -1); }
+        return v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0;
+      };
+      el('fichaPlan').innerHTML = '<h3>Planejador: cenário dos próximos 12 meses</h3>' +
+        '<div style="margin-bottom:10px;display:flex;gap:16px;flex-wrap:wrap;">' +
+        '<span><label class="fr-dim" style="font-size:12px;">Faturamento mensal projetado: </label> <input class="input" id="planRec" style="width:140px;display:inline-block;" type="number" step="0.01" value="' + med('receita').toFixed(2) + '"></span>' +
+        '<span><label class="fr-dim" style="font-size:12px;">Folha mensal projetada (total pago): </label> <input class="input" id="planFol" style="width:140px;display:inline-block;" type="number" step="0.01" value="' + med('folha').toFixed(2) + '"></span></div>' +
+        '<div id="planRes"></div>';
+      const rodar = () => {
+        const rec = Number(el('planRec').value) || 0, fol = Number(el('planFol').value) || 0;
+        const ini = mesIso(e.inicio_atividade);
+        const start = addMeses(paAtual, 1) > ini ? addMeses(paAtual, 1) : ini;
+        const fim = addMeses(start, 12);
+        const virt = new Map(serie);
+        for (let m = paAtual > ini ? paAtual : ini; m < fim; m = addMeses(m, 1)) virt.set(m, { receita: rec, folha_salarios: fol });
+        let html = '<table class="fr-tab" style="font-size:13px;"><thead><tr><th>PA</th><th class="fr-num">RBT12</th><th class="fr-num">FS12</th><th class="fr-num">Fator r</th><th>Anexo</th></tr></thead><tbody>';
+        let viradaEm = null, anexoAnt = null;
+        for (let pa = start, i = 0; i < 12; pa = addMeses(pa, 1), i++) {
+          const c = calcPAserie(virt, e.inicio_atividade, pa);
+          if (!c) continue;
+          const fx = faixaDe(c);
+          if (anexoAnt && c.anexo !== '—' && anexoAnt !== '—' && c.anexo !== anexoAnt && !viradaEm) viradaEm = { pa, de: anexoAnt, para: c.anexo };
+          anexoAnt = c.anexo;
+          html += '<tr><td>' + mesRot(pa) + (c.mesInicio ? ' <span class="fr-dim">(início)</span>' : '') + '</td><td class="fr-num">' + brl(c.rbt12) + '</td><td class="fr-num">' + brl(c.fs12) + '</td><td class="fr-num"><b>' + (c.r != null ? pct(c.r) : '—') + '</b></td><td><span class="fr-badge ' + fx.cls + '">' + c.anexo + '</span></td></tr>';
+        }
+        html += '</tbody></table>';
+        const alvoMensal = 0.28 * rec;
+        let sintese = '<p style="margin:10px 0 0;">Regra de bolso do regime cheio: com faturamento de <b>' + brl(rec) + '</b>/mês, a folha paga precisa de <b>' + brl(alvoMensal) + '</b>/mês (28%) pra sustentar o Anexo III. Cenário informado: <b>' + brl(fol) + '</b>/mês' + (fol >= alvoMensal ? ' <span style="color:#4ADE80;">— sustenta ✓</span>' : ' <span style="color:#FACC15;">— faltam ' + brl(alvoMensal - fol) + '/mês</span>') + '.</p>';
+        if (viradaEm) sintese += '<p style="margin:6px 0 0;"><span class="fr-badge ' + (viradaEm.para === 'V' ? 'fr-longe' : 'fr-ok') + '">Nesse cenário, o anexo vira de ' + viradaEm.de + ' pra ' + viradaEm.para + ' em <b>' + mesRot(viradaEm.pa) + '</b></span></p>';
+        sintese += '<p class="fr-dim" style="font-size:12px;margin:8px 0 0;">O cenário substitui o mês corrente e os futuros pelos valores projetados; o passado lançado permanece real. Serve também pra empresa ainda sem nenhum histórico (projeção pura com a regra de proporcionalização).</p>';
+        el('planRes').innerHTML = html + sintese;
+      };
+      el('planRec').addEventListener('input', rodar);
+      el('planFol').addEventListener('input', rodar);
+      rodar();
+    }
+
+    function ligarImportacao(e) {
+      const box = el('fichaImport');
+      box.style.display = 'none'; box.innerHTML = '';
+      el('btnFichaImportar').onclick = () => el('fichaArquivo').click();
+      el('fichaArquivo').onchange = async () => {
+        const f = el('fichaArquivo').files[0];
+        el('fichaArquivo').value = '';
+        if (!f) return;
+        if (f.size > 9 * 1024 * 1024) { alert('Arquivo acima de 9 MB — exporte um relatório menor (menos meses por PDF).'); return; }
+        box.style.display = ''; box.innerHTML = '<span class="fr-dim">Lendo o relatório com IA… (10–30 segundos)</span>';
+        const b64 = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result.split(',')[1]); r.onerror = () => rej(new Error('leitura falhou')); r.readAsDataURL(f); });
+        const { data, error } = await supabase.functions.invoke('extract-document', {
+          body: { modo: 'fator_r', documents: [{ media_type: f.type || 'application/pdf', data: b64, filename: f.name }] }
+        });
+        if (error || !data || data.error) { box.innerHTML = '<span class="fr-erro">Extração falhou: ' + (error?.message || data?.error || 'erro desconhecido') + '</span>'; return; }
+        const d = data.data || {};
+        const meses = Array.isArray(d.meses) ? d.meses.filter(m => /^\d{4}-\d{2}$/.test(m.competencia || '')) : [];
+        if (!meses.length) { box.innerHTML = '<span class="fr-erro">Nenhuma competência reconhecida no arquivo.' + (d.avisos ? ' Avisos: ' + [].concat(d.avisos).join(' · ') : '') + '</span>'; return; }
+        const serie = lancPorEmpresa.get(e.id) || new Map();
+        const campos = ['receita', 'folha_salarios', 'prolabore', 'inss_patronal', 'fgts', 'folha_outros'];
+        const rots = ['Receita', 'Salários', 'Pró-labore', 'CPP', 'FGTS', 'Outros'];
+        let html = '<b>Prévia da importação</b> — tipo: <b>' + (d.tipo || '?') + '</b>' + (d.empresa ? ' · empresa no PDF: <b>' + d.empresa + '</b>' : '') + ' · confiança: ' + (d.confianca || '?') +
+          (d.avisos && d.avisos.length ? '<br><span class="fr-alerta">Avisos: ' + [].concat(d.avisos).join(' · ') + '</span>' : '') +
+          '<p class="fr-dim" style="font-size:12px;margin:8px 0;">Confira e ajuste os valores. Campo <b>vazio preserva</b> o que já está gravado; campo preenchido sobrescreve. Valor atual divergente aparece em amarelo, com o gravado indicado embaixo.</p>' +
+          '<table class="fr-tab" style="font-size:13px;"><thead><tr><th></th><th>Competência</th>' + rots.map(r => '<th>' + r + '</th>').join('') + '</tr></thead><tbody>';
+        meses.sort((a, b) => a.competencia < b.competencia ? -1 : 1).forEach((m, i) => {
+          const comp = m.competencia + '-01';
+          const atual = serie.get(comp) || {};
+          html += '<tr><td><input type="checkbox" class="imp-ck" data-i="' + i + '" checked></td><td>' + mesRot(comp) + '</td>';
+          campos.forEach(cp => {
+            const novo = m[cp] != null ? Number(m[cp]) : null;
+            const velho = atual[cp] != null ? Number(atual[cp]) : null;
+            const conflito = novo != null && velho != null && Math.abs(novo - velho) > 0.004;
+            html += '<td><input class="input' + (conflito ? ' fr-conflito' : '') + '" type="number" step="0.01" data-i="' + i + '" data-campo="' + cp + '" value="' + (novo != null ? novo : '') + '">' +
+              (conflito ? '<span class="fr-atual">gravado: ' + brl(velho) + '</span>' : '') + '</td>';
+          });
+          html += '</tr>';
+        });
+        html += '</tbody></table><div style="margin-top:12px;"><button class="btn btn-primary btn-sm" id="impGravar">Gravar marcadas</button> <button class="btn btn-ghost btn-sm" id="impCancelar">Cancelar</button> <span id="impMsg" style="margin-left:8px;"></span></div>';
+        box.innerHTML = html;
+        el('impCancelar').onclick = () => { box.style.display = 'none'; box.innerHTML = ''; };
+        el('impGravar').onclick = async () => {
+          const regs = [];
+          meses.forEach((m, i) => {
+            const ck = box.querySelector('.imp-ck[data-i="' + i + '"]');
+            if (!ck || !ck.checked) return;
+            const comp = m.competencia + '-01';
+            const base = Object.assign({}, serie.get(comp) || {});
+            delete base.id;
+            const reg = Object.assign(base, { empresa_id: e.id, competencia: comp, atualizado_em: new Date().toISOString() });
+            box.querySelectorAll('input[data-i="' + i + '"][data-campo]').forEach(inp => {
+              if (inp.value !== '') reg[inp.dataset.campo] = Number(inp.value);
+            });
+            regs.push(reg);
+          });
+          if (!regs.length) { el('impMsg').className = 'fr-erro'; el('impMsg').textContent = 'Nenhuma linha marcada.'; return; }
+          el('impMsg').className = 'fr-dim'; el('impMsg').textContent = 'Gravando…';
+          const { error: eG } = await supabase.from('fr_lancamentos').upsert(regs, { onConflict: 'empresa_id,competencia' });
+          if (eG) { el('impMsg').className = 'fr-erro'; el('impMsg').textContent = 'Erro: ' + eG.message; return; }
+          await carregarTudo();
+          box.style.display = 'none'; box.innerHTML = '';
+          renderEmpresa(e.id);
+        };
+      };
     }
 
     function renderLancar(compIso) {
