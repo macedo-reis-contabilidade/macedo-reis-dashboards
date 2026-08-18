@@ -512,7 +512,7 @@
           const linhas = Array.from(dest.entries()).sort((a, b) => a[0] < b[0] ? -1 : 1);
           let html = '<b>Prévia da importação</b> — tipo: <b>' + (d.tipo || '?') + '</b>' + (d.empresa ? ' · empresa no PDF: <b>' + d.empresa + '</b>' : '') + ' · confiança: ' + (d.confianca || '?') +
             (d.avisos && d.avisos.length ? '<br><span class="fr-alerta">Avisos: ' + [].concat(d.avisos).join(' · ') + '</span>' : '');
-          if (temFolha) html += '<p style="margin:10px 0 4px;"><label style="cursor:pointer;"><input type="checkbox" id="impDesloca"' + (deslocar ? ' checked' : '') + '> <b>Regime de caixa:</b> lançar a folha no mês seguinte à competência do extrato (folha 06/26 → paga em jul/26, lado a lado com o faturamento de jul/26)</label></p>';
+          if (temFolha) html += '<p style="margin:10px 0 4px;"><label style="cursor:pointer;"><input type="checkbox" id="impDesloca"' + (deslocar ? ' checked' : '') + '> <b>Regime de caixa:</b> lançar folha e CPP do DAS no mês seguinte à competência (folha e DAS de 06/26 → pagos em jul/26, lado a lado com o faturamento de jul/26)</label></p>';
           html += '<p class="fr-dim" style="font-size:12px;margin:6px 0 8px;">A coluna <b>Lançar em</b> é o mês que entra no cálculo do fator. Campo <b>vazio preserva</b> o que já está gravado; preenchido sobrescreve. Divergência com valor já gravado fica em amarelo, com o gravado indicado embaixo.</p>' +
             '<table class="fr-tab" style="font-size:13px;"><thead><tr><th></th><th>Lançar em</th>' + rots.map(r => '<th>' + r + '</th>').join('') + '</tr></thead><tbody>';
           linhas.forEach(([comp, vals]) => {
