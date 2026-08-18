@@ -101,7 +101,7 @@
           <button class="btn btn-ghost btn-sm" id="btnVoltarPainel">← Painel</button>
           <button class="btn btn-ghost btn-sm" id="btnFichaLancar">Lançar/editar competências</button>
           <button class="btn btn-primary btn-sm" id="btnFichaImportar">Importar PDF (Domínio)</button>
-          <input type="file" id="fichaArquivo" accept="application/pdf,image/*" style="display:none;">
+          <input type="file" id="fichaArquivo" accept="application/pdf,image/*" multiple style="display:none;">
         </div>
         <div class="fr-hero" id="fichaHero"></div>
         <details class="fr-sim" style="margin-bottom:24px;">
@@ -462,64 +462,99 @@
       box.style.display = 'none'; box.innerHTML = '';
       el('btnFichaImportar').onclick = () => el('fichaArquivo').click();
       el('fichaArquivo').onchange = async () => {
-        const f = el('fichaArquivo').files[0];
+        const fs = Array.from(el('fichaArquivo').files || []);
         el('fichaArquivo').value = '';
-        if (!f) return;
-        if (f.size > 9 * 1024 * 1024) { alert('Arquivo acima de 9 MB — exporte um relatório menor (menos meses por PDF).'); return; }
-        box.style.display = ''; box.innerHTML = '<span class="fr-dim">Lendo o relatório com IA… (10–30 segundos)</span>';
-        const b64 = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result.split(',')[1]); r.onerror = () => rej(new Error('leitura falhou')); r.readAsDataURL(f); });
+        if (!fs.length) return;
+        if (fs.reduce((a, f) => a + f.size, 0) > 9 * 1024 * 1024) { alert('Os arquivos somam mais de 9 MB — envie menos arquivos por vez (ou relatórios com menos meses).'); return; }
+        box.style.display = ''; box.innerHTML = '<span class="fr-dim">Lendo ' + fs.length + ' arquivo(s) com IA… (10–40 segundos)</span>';
+        const docs = [];
+        try {
+          for (const f of fs) {
+            const b64 = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result.split(',')[1]); r.onerror = () => rej(new Error('leitura do arquivo falhou')); r.readAsDataURL(f); });
+            docs.push({ media_type: f.type || 'application/pdf', data: b64, filename: f.name });
+          }
+        } catch (ex) { box.innerHTML = '<span class="fr-erro">Falha ao ler arquivo: ' + ex.message + '</span>'; return; }
         const { data, error } = await supabase.functions.invoke('extract-document', {
-          body: { modo: 'fator_r', documents: [{ media_type: f.type || 'application/pdf', data: b64, filename: f.name }] }
+          body: { modo: 'fator_r', documents: docs }
         });
         if (error || !data || data.error) { box.innerHTML = '<span class="fr-erro">Extração falhou: ' + (error?.message || data?.error || 'erro desconhecido') + '</span>'; return; }
         const d = data.data || {};
-        const meses = Array.isArray(d.meses) ? d.meses.filter(m => /^\d{4}-\d{2}$/.test(m.competencia || '')) : [];
-        if (!meses.length) { box.innerHTML = '<span class="fr-erro">Nenhuma competência reconhecida no arquivo.' + (d.avisos ? ' Avisos: ' + [].concat(d.avisos).join(' · ') : '') + '</span>'; return; }
+        const brutos = Array.isArray(d.meses) ? d.meses.filter(m => /^\d{4}-\d{2}$/.test(m.competencia || '')) : [];
+        if (!brutos.length) { box.innerHTML = '<span class="fr-erro">Nenhuma competência reconhecida.' + (d.avisos && d.avisos.length ? ' Avisos: ' + [].concat(d.avisos).join(' · ') : '') + '</span>'; return; }
         const serie = lancPorEmpresa.get(e.id) || new Map();
-        const campos = ['receita', 'folha_salarios', 'prolabore', 'inss_patronal', 'fgts', 'folha_outros'];
+        const camposFolha = ['folha_salarios', 'prolabore', 'inss_patronal', 'fgts', 'folha_outros'];
+        const campos = ['receita'].concat(camposFolha);
         const rots = ['Receita', 'Salários', 'Pró-labore', 'CPP', 'FGTS', 'Outros'];
-        let html = '<b>Prévia da importação</b> — tipo: <b>' + (d.tipo || '?') + '</b>' + (d.empresa ? ' · empresa no PDF: <b>' + d.empresa + '</b>' : '') + ' · confiança: ' + (d.confianca || '?') +
-          (d.avisos && d.avisos.length ? '<br><span class="fr-alerta">Avisos: ' + [].concat(d.avisos).join(' · ') + '</span>' : '') +
-          '<p class="fr-dim" style="font-size:12px;margin:8px 0;">Confira e ajuste os valores. Campo <b>vazio preserva</b> o que já está gravado; campo preenchido sobrescreve. Valor atual divergente aparece em amarelo, com o gravado indicado embaixo.</p>' +
-          '<table class="fr-tab" style="font-size:13px;"><thead><tr><th></th><th>Competência</th>' + rots.map(r => '<th>' + r + '</th>').join('') + '</tr></thead><tbody>';
-        meses.sort((a, b) => a.competencia < b.competencia ? -1 : 1).forEach((m, i) => {
-          const comp = m.competencia + '-01';
-          const atual = serie.get(comp) || {};
-          html += '<tr><td><input type="checkbox" class="imp-ck" data-i="' + i + '" checked></td><td>' + mesRot(comp) + '</td>';
-          campos.forEach(cp => {
-            const novo = m[cp] != null ? Number(m[cp]) : null;
-            const velho = atual[cp] != null ? Number(atual[cp]) : null;
-            const conflito = novo != null && velho != null && Math.abs(novo - velho) > 0.004;
-            html += '<td><input class="input' + (conflito ? ' fr-conflito' : '') + '" type="number" step="0.01" data-i="' + i + '" data-campo="' + cp + '" value="' + (novo != null ? novo : '') + '">' +
-              (conflito ? '<span class="fr-atual">gravado: ' + brl(velho) + '</span>' : '') + '</td>';
-          });
-          html += '</tr>';
-        });
-        html += '</tbody></table><div style="margin-top:12px;"><button class="btn btn-primary btn-sm" id="impGravar">Gravar marcadas</button> <button class="btn btn-ghost btn-sm" id="impCancelar">Cancelar</button> <span id="impMsg" style="margin-left:8px;"></span></div>';
-        box.innerHTML = html;
-        el('impCancelar').onclick = () => { box.style.display = 'none'; box.innerHTML = ''; };
-        el('impGravar').onclick = async () => {
-          const regs = [];
-          meses.forEach((m, i) => {
-            const ck = box.querySelector('.imp-ck[data-i="' + i + '"]');
-            if (!ck || !ck.checked) return;
-            const comp = m.competencia + '-01';
-            const base = Object.assign({}, serie.get(comp) || {});
-            delete base.id;
-            const reg = Object.assign(base, { empresa_id: e.id, competencia: comp, atualizado_em: new Date().toISOString() });
-            box.querySelectorAll('input[data-i="' + i + '"][data-campo]').forEach(inp => {
-              if (inp.value !== '') reg[inp.dataset.campo] = Number(inp.value);
+        const temFolha = brutos.some(m => camposFolha.some(cp => m[cp] != null));
+        const montar = () => {
+          const deslocar = temFolha ? (el('impDesloca') ? el('impDesloca').checked : true) : false;
+          // consolida por mês de LANÇAMENTO: receita fica na própria competência; folha desloca +1 (regime de caixa)
+          const dest = new Map();
+          brutos.forEach(m => {
+            const compDoc = m.competencia + '-01';
+            if (m.receita != null) {
+              const o = dest.get(compDoc) || { origens: [] };
+              o.receita = (o.receita || 0) + Number(m.receita);
+              dest.set(compDoc, o);
+            }
+            const alvo = deslocar ? addMeses(compDoc, 1) : compDoc;
+            let temF = false;
+            camposFolha.forEach(cp => {
+              if (m[cp] != null) {
+                temF = true;
+                const o = dest.get(alvo) || { origens: [] };
+                o[cp] = (o[cp] || 0) + Number(m[cp]);
+                dest.set(alvo, o);
+              }
             });
-            regs.push(reg);
+            if (temF && deslocar) { const o = dest.get(alvo); if (!o.origens.includes(m.competencia)) o.origens.push(m.competencia); }
           });
-          if (!regs.length) { el('impMsg').className = 'fr-erro'; el('impMsg').textContent = 'Nenhuma linha marcada.'; return; }
-          el('impMsg').className = 'fr-dim'; el('impMsg').textContent = 'Gravando…';
-          const { error: eG } = await supabase.from('fr_lancamentos').upsert(regs, { onConflict: 'empresa_id,competencia' });
-          if (eG) { el('impMsg').className = 'fr-erro'; el('impMsg').textContent = 'Erro: ' + eG.message; return; }
-          await carregarTudo();
-          box.style.display = 'none'; box.innerHTML = '';
-          renderEmpresa(e.id);
+          const linhas = Array.from(dest.entries()).sort((a, b) => a[0] < b[0] ? -1 : 1);
+          let html = '<b>Prévia da importação</b> — tipo: <b>' + (d.tipo || '?') + '</b>' + (d.empresa ? ' · empresa no PDF: <b>' + d.empresa + '</b>' : '') + ' · confiança: ' + (d.confianca || '?') +
+            (d.avisos && d.avisos.length ? '<br><span class="fr-alerta">Avisos: ' + [].concat(d.avisos).join(' · ') + '</span>' : '');
+          if (temFolha) html += '<p style="margin:10px 0 4px;"><label style="cursor:pointer;"><input type="checkbox" id="impDesloca"' + (deslocar ? ' checked' : '') + '> <b>Regime de caixa:</b> lançar a folha no mês seguinte à competência do extrato (folha 06/26 → paga em jul/26, lado a lado com o faturamento de jul/26)</label></p>';
+          html += '<p class="fr-dim" style="font-size:12px;margin:6px 0 8px;">A coluna <b>Lançar em</b> é o mês que entra no cálculo do fator. Campo <b>vazio preserva</b> o que já está gravado; preenchido sobrescreve. Divergência com valor já gravado fica em amarelo, com o gravado indicado embaixo.</p>' +
+            '<table class="fr-tab" style="font-size:13px;"><thead><tr><th></th><th>Lançar em</th>' + rots.map(r => '<th>' + r + '</th>').join('') + '</tr></thead><tbody>';
+          linhas.forEach(([comp, vals]) => {
+            const atual = serie.get(comp) || {};
+            html += '<tr><td><input type="checkbox" class="imp-ck" data-comp="' + comp + '" checked></td><td>' + mesRot(comp) +
+              (vals.origens && vals.origens.length ? '<span class="fr-atual" style="color:#8AAEC8;">folha comp. ' + vals.origens.map(x => mesRot(x + '-01')).join(', ') + '</span>' : '') + '</td>';
+            campos.forEach(cp => {
+              const novo = vals[cp] != null ? Number(vals[cp]) : null;
+              const velho = atual[cp] != null ? Number(atual[cp]) : null;
+              const conflito = novo != null && velho != null && Math.abs(novo - velho) > 0.004;
+              html += '<td><input class="input' + (conflito ? ' fr-conflito' : '') + '" type="number" step="0.01" data-comp="' + comp + '" data-campo="' + cp + '" value="' + (novo != null ? novo.toFixed(2) : '') + '">' +
+                (conflito ? '<span class="fr-atual">gravado: ' + brl(velho) + '</span>' : '') + '</td>';
+            });
+            html += '</tr>';
+          });
+          html += '</tbody></table><div style="margin-top:12px;"><button class="btn btn-primary btn-sm" id="impGravar">Gravar marcadas</button> <button class="btn btn-ghost btn-sm" id="impCancelar">Cancelar</button> <span id="impMsg" style="margin-left:8px;"></span></div>';
+          box.innerHTML = html;
+          if (temFolha) el('impDesloca').onchange = montar;
+          el('impCancelar').onclick = () => { box.style.display = 'none'; box.innerHTML = ''; };
+          el('impGravar').onclick = async () => {
+            const regs = [];
+            linhas.forEach(([comp]) => {
+              const ck = box.querySelector('.imp-ck[data-comp="' + comp + '"]');
+              if (!ck || !ck.checked) return;
+              const base = Object.assign({}, serie.get(comp) || {});
+              delete base.id;
+              const reg = Object.assign(base, { empresa_id: e.id, competencia: comp, atualizado_em: new Date().toISOString() });
+              box.querySelectorAll('input[data-comp="' + comp + '"][data-campo]').forEach(inp => {
+                if (inp.value !== '') reg[inp.dataset.campo] = Number(inp.value);
+              });
+              regs.push(reg);
+            });
+            if (!regs.length) { el('impMsg').className = 'fr-erro'; el('impMsg').textContent = 'Nenhuma linha marcada.'; return; }
+            el('impMsg').className = 'fr-dim'; el('impMsg').textContent = 'Gravando…';
+            const { error: eG } = await supabase.from('fr_lancamentos').upsert(regs, { onConflict: 'empresa_id,competencia' });
+            if (eG) { el('impMsg').className = 'fr-erro'; el('impMsg').textContent = 'Erro: ' + eG.message; return; }
+            await carregarTudo();
+            box.style.display = 'none'; box.innerHTML = '';
+            renderEmpresa(e.id);
+          };
         };
+        montar();
       };
     }
 
