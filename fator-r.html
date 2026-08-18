@@ -480,7 +480,8 @@
         if (error || !data || data.error) { box.innerHTML = '<span class="fr-erro">Extração falhou: ' + (error?.message || data?.error || 'erro desconhecido') + '</span>'; return; }
         const d = data.data || {};
         const brutos = Array.isArray(d.meses) ? d.meses.filter(m => /^\d{4}-\d{2}$/.test(m.competencia || '')) : [];
-        if (!brutos.length) { box.innerHTML = '<span class="fr-erro">Nenhuma competência reconhecida.' + (d.avisos && d.avisos.length ? ' Avisos: ' + [].concat(d.avisos).join(' · ') : '') + '</span>'; return; }
+        const brutosCaixa = Array.isArray(d.meses_caixa) ? d.meses_caixa.filter(m => /^\d{4}-\d{2}$/.test(m.competencia || '')) : [];
+        if (!brutos.length && !brutosCaixa.length) { box.innerHTML = '<span class="fr-erro">Nenhuma competência reconhecida.' + (d.avisos && d.avisos.length ? ' Avisos: ' + [].concat(d.avisos).join(' · ') : '') + '</span>'; return; }
         const serie = lancPorEmpresa.get(e.id) || new Map();
         const camposFolha = ['folha_salarios', 'prolabore', 'inss_patronal', 'fgts', 'folha_outros'];
         const campos = ['receita'].concat(camposFolha);
@@ -509,16 +510,28 @@
             });
             if (temF && deslocar) { const o = dest.get(alvo); if (!o.origens.includes(m.competencia)) o.origens.push(m.competencia); }
           });
+          brutosCaixa.forEach(m => {
+            const compDoc = m.competencia + '-01';
+            camposFolha.forEach(cp => {
+              if (m[cp] != null) {
+                const o = dest.get(compDoc) || { origens: [] };
+                o[cp] = (o[cp] || 0) + Number(m[cp]);
+                o.jaCaixa = true;
+                dest.set(compDoc, o);
+              }
+            });
+          });
           const linhas = Array.from(dest.entries()).sort((a, b) => a[0] < b[0] ? -1 : 1);
           let html = '<b>Prévia da importação</b> — tipo: <b>' + (d.tipo || '?') + '</b>' + (d.empresa ? ' · empresa no PDF: <b>' + d.empresa + '</b>' : '') + ' · confiança: ' + (d.confianca || '?') +
             (d.avisos && d.avisos.length ? '<br><span class="fr-alerta">Avisos: ' + [].concat(d.avisos).join(' · ') + '</span>' : '');
           if (temFolha) html += '<p style="margin:10px 0 4px;"><label style="cursor:pointer;"><input type="checkbox" id="impDesloca"' + (deslocar ? ' checked' : '') + '> <b>Regime de caixa:</b> lançar folha e CPP do DAS no mês seguinte à competência (folha e DAS de 06/26 → pagos em jul/26, lado a lado com o faturamento de jul/26)</label></p>';
-          html += '<p class="fr-dim" style="font-size:12px;margin:6px 0 8px;">A coluna <b>Lançar em</b> é o mês que entra no cálculo do fator. Campo <b>vazio preserva</b> o que já está gravado; preenchido sobrescreve. Divergência com valor já gravado fica em amarelo, com o gravado indicado embaixo.</p>' +
+          html += '<p class="fr-dim" style="font-size:12px;margin:6px 0 8px;">A coluna <b>Lançar em</b> é o mês que entra no cálculo do fator. Valores marcados <b>já em caixa (PGDAS)</b> vêm da folha oficial da apuração e entram direto no mês indicado, sem deslocar. Campo <b>vazio preserva</b> o que já está gravado; preenchido sobrescreve. Divergência com valor já gravado fica em amarelo, com o gravado indicado embaixo.</p>' +
             '<table class="fr-tab" style="font-size:13px;"><thead><tr><th></th><th>Lançar em</th>' + rots.map(r => '<th>' + r + '</th>').join('') + '</tr></thead><tbody>';
           linhas.forEach(([comp, vals]) => {
             const atual = serie.get(comp) || {};
             html += '<tr><td><input type="checkbox" class="imp-ck" data-comp="' + comp + '" checked></td><td>' + mesRot(comp) +
-              (vals.origens && vals.origens.length ? '<span class="fr-atual" style="color:#8AAEC8;">folha comp. ' + vals.origens.map(x => mesRot(x + '-01')).join(', ') + '</span>' : '') + '</td>';
+              (vals.origens && vals.origens.length ? '<span class="fr-atual" style="color:#8AAEC8;">folha comp. ' + vals.origens.map(x => mesRot(x + '-01')).join(', ') + '</span>' : '') +
+              (vals.jaCaixa ? '<span class="fr-atual" style="color:#4ADE80;">já em caixa (PGDAS)</span>' : '') + '</td>';
             campos.forEach(cp => {
               const novo = vals[cp] != null ? Number(vals[cp]) : null;
               const velho = atual[cp] != null ? Number(atual[cp]) : null;
