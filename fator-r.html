@@ -117,13 +117,13 @@
           </div>
         </details>
         <div class="fr-import" id="fichaImport" style="display:none;"></div>
-        <div class="fr-sim" id="fichaSim"></div>
-        <div class="fr-sim" id="fichaPlan"></div>
         <div class="fr-secao">Histórico de apurações</div>
         <table class="fr-tab" id="fichaHistTab">
-          <thead><tr><th>PA</th><th class="fr-num">Receita do mês</th><th class="fr-num">Folha paga no mês</th><th class="fr-num">RBT12</th><th class="fr-num">FS12</th><th class="fr-num">Fator r</th><th>Anexo</th><th>Dados</th></tr></thead>
+          <thead><tr><th>PA</th><th class="fr-num">Receita do mês</th><th class="fr-num">Folha s/ CPP</th><th class="fr-num">CPP</th><th class="fr-num">RBT12</th><th class="fr-num">FS12</th><th class="fr-num">Fator r</th><th>Anexo</th><th>Dados</th></tr></thead>
           <tbody id="fichaCorpo"></tbody>
         </table>
+        <div class="fr-sim" id="fichaSim"></div>
+        <div class="fr-sim" id="fichaPlan"></div>
       </section>
 
       <!-- GRADE DE LANÇAMENTO -->
@@ -362,11 +362,14 @@
         const serie = lancPorEmpresa.get(e.id) || new Map();
         const l = serie.get(pa);
         const fT = folhaTotal(l);
+        const cpp = l && l.inss_patronal != null ? Number(l.inss_patronal) : null;
+        const fSem = fT != null ? fT - (cpp || 0) : null;
         const fxi = faixaDe(ci);
         const tt = l ? ['Salários ' + brl(l.folha_salarios || 0), 'Pró-labore ' + brl(l.prolabore || 0), 'CPP ' + brl(l.inss_patronal || 0), 'FGTS ' + brl(l.fgts || 0), 'Outros ' + brl(l.folha_outros || 0)].join(' · ') : '';
         linhas.push('<tr><td>' + mesRot(pa) + (ci && ci.mesInicio ? ' <span class="fr-dim">(início)</span>' : '') + '</td>' +
           '<td class="fr-num">' + (l && l.receita != null ? brl(l.receita) : '<span class="fr-dim">—</span>') + '</td>' +
-          '<td class="fr-num" title="' + tt + '">' + (fT != null ? brl(fT) : '<span class="fr-dim">—</span>') + '</td>' +
+          '<td class="fr-num" title="' + tt + '">' + (fSem != null ? brl(fSem) : '<span class="fr-dim">—</span>') + '</td>' +
+          '<td class="fr-num">' + (cpp != null ? brl(cpp) : '<span class="fr-dim">—</span>') + '</td>' +
           '<td class="fr-num">' + (ci ? brl(ci.rbt12) : '—') + '</td>' +
           '<td class="fr-num">' + (ci ? brl(ci.fs12) : '—') + '</td>' +
           '<td class="fr-num"><b>' + (ci && ci.r != null ? pct(ci.r) : '—') + '</b></td>' +
@@ -384,7 +387,7 @@
         { sel: 'btnFichaImportar', t: '1 · Importar — o começo de tudo', d: 'Suba de uma vez os 3 PDFs da Domínio: <b>extrato/resumo da folha</b>, <b>relatório de faturamento</b> e o <b>"Simples Nacional – Anexo"</b> (o que traz a coluna INSS/CPP). O leitor dá um papel a cada um: folha do extrato, receita do faturamento, CPP do terceiro — sem contar nada em dobro.' },
         { sel: null, t: '2 · Conferir a prévia e gravar', d: 'Depois de importar, a prévia aparece logo abaixo: coluna <b>Lançar em</b> (o mês que entra no cálculo), etiquetas de origem ("folha comp. X", "já em caixa") e divergências em amarelo com o valor gravado embaixo. Desmarque linhas, ajuste valores e clique em <b>Gravar</b> — nada entra no banco antes disso.' },
         { sel: 'fichaHero', t: '3 · Ler o resultado', d: 'Fator do próximo PA, RBT12, FS12 e o alvo de 28%. Os avisos amarelos são a lista de pendências: mês sem folha ou sem receita entra como R$ 0 e distorce o fator até ser lançado.' },
-        { sel: 'fichaHistTab', t: '4 · Histórico de apurações', d: 'A régua mês a mês: receita, folha paga, RBT12, FS12, fator e anexo de cada PA. É aqui que se confere o cálculo contra o extrato oficial do Simples.' },
+        { sel: 'fichaHistTab', t: '4 · Histórico de apurações', d: 'A régua mês a mês: receita, folha paga (sem CPP), a <b>CPP do DAS em coluna própria</b>, RBT12, FS12, fator e anexo. Folha s/ CPP confere com o extrato da folha; CPP confere com a coluna INSS/CPP do relatório da Domínio; FS12 é o total acumulado.' },
         { sel: 'btnFichaLancar', t: '5 · Ajuste manual, quando precisar', d: 'A grade de competências: o <b>Fiscal</b> lança a receita, o <b>DP</b> lança os 5 campos da folha. Campo vazio = pendente (diferente de zero — não digite 0 pra "limpar"). Serve pra corrigir um mês pontual sem reimportar.' },
         { sel: 'fichaSim', t: '6 · Simulador do mês', d: 'Quanto de folha ainda pagar <b>dentro do mês corrente</b> pra segurar o Anexo III no próximo PA. O campo de receita é uma <b>sugestão automática</b> (o lançado do mês ou a média dos últimos 3) — editar aqui só recalcula a simulação, não grava nada.' },
         { sel: 'fichaPlan', t: '7 · Planejador de 12 meses', d: 'Cenário livre com faturamento e folha projetados, pra enxergar viradas de anexo lá na frente. Também não grava nada.' },
