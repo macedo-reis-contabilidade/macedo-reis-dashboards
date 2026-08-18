@@ -113,7 +113,7 @@
             <b>RBT12</b> = receita bruta acumulada dos 12 meses anteriores ao PA. <b>FS12</b> = folha paga acumulada (salários brutos + pró-labore + CPP recolhida + FGTS + autônomos/13º) no mesmo período, pelo <b>regime de caixa</b> (conta o mês em que foi pago).<br>
             <b>Fator r = FS12 ÷ RBT12.</b> Com r ≥ 28%, os serviços tributam no <b>Anexo III</b> (alíquotas menores); abaixo disso, <b>Anexo V</b>. O "Alvo 28%" do topo é quanto de FS12 seria necessário pra virar com a receita atual.<br>
             <b>Mês sem lançamento entra como R$ 0</b> — provisoriamente. Folha faltando derruba o fator; receita faltando derruba a base. Os avisos amarelos dizem exatamente o que falta.<br>
-            <b>Simulador</b> = quanto de folha ainda pagar <i>dentro do mês corrente</i> pra segurar o Anexo III no próximo PA. <b>Planejador</b> = cenário livre dos próximos 12 PAs com faturamento e folha projetados. <b>Empresa com menos de 13 meses</b> tem RBT12 e FS12 proporcionalizados (média × 12), conforme a regra do Simples.
+            <b>Simulador do mês</b> = a primeira linha do histórico (mês corrente), com receita, folha e CPP editáveis e o veredito de quanto ainda falta pagar dentro do mês pra segurar o Anexo III no próximo PA. <b>Planejador</b> = cenário livre dos próximos 12 PAs com faturamento e folha projetados. <b>Empresa com menos de 13 meses</b> tem RBT12 e FS12 proporcionalizados (média × 12), conforme a regra do Simples.
           </div>
         </details>
         <div class="fr-import" id="fichaImport" style="display:none;"></div>
@@ -122,7 +122,6 @@
           <thead><tr><th>PA</th><th class="fr-num">Receita do mês</th><th class="fr-num">Folha s/ CPP</th><th class="fr-num">CPP</th><th class="fr-num">RBT12</th><th class="fr-num">FS12</th><th class="fr-num">Fator r</th><th>Anexo</th><th>Dados</th></tr></thead>
           <tbody id="fichaCorpo"></tbody>
         </table>
-        <div class="fr-sim" id="fichaSim"></div>
         <div class="fr-sim" id="fichaPlan"></div>
       </section>
 
@@ -350,13 +349,12 @@
         (c && c.faltaFolha && c.faltaFolha.length ? '<br><span class="fr-alerta">⚠ Folha não lançada em: ' + c.faltaFolha.map(mesRot).join(', ') + ' — entra como R$ 0 no FS12 e <b>derruba o fator</b> até o DP lançar (ou importar).</span>' : '') +
         (c && c.faltaReceita && c.faltaReceita.length ? '<br><span class="fr-alerta">⚠ Receita não lançada em: ' + c.faltaReceita.map(mesRot).join(', ') + ' — entra como R$ 0 no RBT12.</span>' : '') +
         '</div>';
-      montarSimulador(e);
       montarPlanejador(e);
       ligarImportacao(e);
-      // histórico: do PA atual pra trás, até 18 PAs ou o início
+      // histórico: do PA atual pra trás, até o início de atividade (teto de segurança: 48 PAs)
       const linhas = [];
       let pa = paAtual;
-      for (let i = 0; i < 18; i++) {
+      for (let i = 0; i < 48; i++) {
         if (pa < mesIso(e.inicio_atividade)) break;
         const ci = calcPA(e.id, e.inicio_atividade, pa);
         const serie = lancPorEmpresa.get(e.id) || new Map();
@@ -366,6 +364,21 @@
         const fSem = fT != null ? fT - (cpp || 0) : null;
         const fxi = faixaDe(ci);
         const tt = l ? ['Salários ' + brl(l.folha_salarios || 0), 'Pró-labore ' + brl(l.prolabore || 0), 'CPP ' + brl(l.inss_patronal || 0), 'FGTS ' + brl(l.fgts || 0), 'Outros ' + brl(l.folha_outros || 0)].join(' · ') : '';
+        if (pa === paAtual) {
+          linhas.push('<tr><td>' + mesRot(pa) + ' <span class="fr-dim">(corrente)</span></td>' +
+            '<td class="fr-num"><input class="input" id="histRec" type="number" step="0.01" style="width:112px;" value="' + (l && l.receita != null ? Number(l.receita).toFixed(2) : '') + '"></td>' +
+            '<td class="fr-num" title="' + tt + '"><input class="input" id="histFolha" type="number" step="0.01" style="width:104px;" value="' + (fSem != null ? fSem.toFixed(2) : '') + '"></td>' +
+            '<td class="fr-num"><input class="input" id="histCpp" type="number" step="0.01" style="width:96px;" value="' + (cpp != null ? cpp.toFixed(2) : '') + '"></td>' +
+            '<td class="fr-num">' + (ci ? brl(ci.rbt12) : '—') + '</td>' +
+            '<td class="fr-num">' + (ci ? brl(ci.fs12) : '—') + '</td>' +
+            '<td class="fr-num"><b>' + (ci && ci.r != null ? pct(ci.r) : '—') + '</b></td>' +
+            '<td><span class="fr-badge ' + fxi.cls + '">' + (ci ? ci.anexo : '—') + '</span></td>' +
+            '<td>' + (ci && ci.faltantes.length ? '<span class="fr-alerta">⚠ ' + ci.faltantes.length + '</span>' : '✓') + '</td></tr>');
+          linhas.push('<tr><td colspan="9" style="background:rgba(91,130,166,.08);padding:10px 14px;"><div id="histSimRes"></div>' +
+            '<div style="margin-top:8px;"><button class="btn btn-primary btn-sm" id="histGravar">Gravar valores de ' + mesRot(paAtual) + '</button> <span id="histGravarMsg" style="margin-left:8px;font-size:12px;"></span></div></td></tr>');
+          pa = addMeses(pa, -1);
+          continue;
+        }
         linhas.push('<tr><td>' + mesRot(pa) + (ci && ci.mesInicio ? ' <span class="fr-dim">(início)</span>' : '') + '</td>' +
           '<td class="fr-num">' + (l && l.receita != null ? brl(l.receita) : '<span class="fr-dim">—</span>') + '</td>' +
           '<td class="fr-num" title="' + tt + '">' + (fSem != null ? brl(fSem) : '<span class="fr-dim">—</span>') + '</td>' +
@@ -378,6 +391,56 @@
         pa = addMeses(pa, -1);
       }
       el('fichaCorpo').innerHTML = linhas.join('');
+      const serieH = lancPorEmpresa.get(e.id) || new Map();
+      const simularMes = () => {
+        if (!el('histSimRes')) return;
+        const rec = Number(el('histRec').value) || 0;
+        const jaMes = (Number(el('histFolha').value) || 0) + (Number(el('histCpp').value) || 0);
+        const paProx = addMeses(paAtual, 1);
+        const ini = mesIso(e.inicio_atividade);
+        const j0 = addMeses(paProx, -12) > ini ? addMeses(paProx, -12) : ini;
+        let somaR = 0, somaFOutros = 0;
+        for (let m = j0; m < paProx; m = addMeses(m, 1)) {
+          const lx = serieH.get(m);
+          somaR += (m === paAtual) ? rec : (lx && lx.receita != null ? Number(lx.receita) : 0);
+          if (m !== paAtual) somaFOutros += Number(folhaTotal(lx)) || 0;
+        }
+        const alvoMes = 0.28 * somaR - somaFOutros;
+        const falta = alvoMes - jaMes;
+        let h = '<b>Simulador do mês</b> <span class="fr-dim" style="font-size:12px;">— edite receita, folha e CPP na linha acima · janela de ' + mesRot(paProx) + ' (' + mesRot(j0) + ' → ' + mesRot(paAtual) + ') · receita da janela: <b>' + brl(somaR) + '</b></span><br>';
+        h += 'Pra ' + mesRot(paProx) + ' fechar r ≥ 28%: folha + CPP pagos em <b>' + mesRot(paAtual) + '</b> precisam somar <b>' + brl(Math.max(0, alvoMes)) + '</b> · informado: <b>' + brl(jaMes) + '</b> — ';
+        if (alvoMes <= 0) h += '<span style="color:#4ADE80;font-weight:600;">Anexo III garantido pelos meses anteriores.</span>';
+        else if (falta <= 0) h += '<span style="color:#4ADE80;font-weight:600;">garantido, com folga de ' + brl(-falta) + '.</span>';
+        else h += '<span style="color:#FACC15;font-weight:600;">faltam ' + brl(falta) + ' até o fim do mês.</span>';
+        h += '<br><span class="fr-dim" style="font-size:11px;">Regime de caixa: vale o que for pago dentro de ' + mesRot(paAtual) + '. Editar simula na hora; só o botão abaixo grava.</span>';
+        el('histSimRes').innerHTML = h;
+      };
+      if (el('histRec')) {
+        ['histRec', 'histFolha', 'histCpp'].forEach(id => el(id).addEventListener('input', simularMes));
+        simularMes();
+        el('histGravar').onclick = async () => {
+          const msg = el('histGravarMsg');
+          const atual = serieH.get(paAtual) || {};
+          const reg = Object.assign({}, atual);
+          delete reg.id;
+          reg.empresa_id = e.id; reg.competencia = paAtual; reg.atualizado_em = new Date().toISOString();
+          if (el('histRec').value !== '') reg.receita = Number(el('histRec').value);
+          if (el('histCpp').value !== '') reg.inss_patronal = Number(el('histCpp').value);
+          let folhaObs = '';
+          if (el('histFolha').value !== '') {
+            const camposF = ['folha_salarios', 'prolabore', 'fgts', 'folha_outros'];
+            const preench = camposF.filter(c => atual[c] != null && Number(atual[c]) !== 0);
+            if (preench.length > 1) folhaObs = ' Folha do mês tem várias rubricas — ajuste o valor da folha pela grade de competências.';
+            else reg[preench[0] || 'prolabore'] = Number(el('histFolha').value);
+          }
+          msg.style.color = ''; msg.textContent = 'Gravando…';
+          const { error: eS } = await supabase.from('fr_lancamentos').upsert(reg, { onConflict: 'empresa_id,competencia' });
+          if (eS) { msg.style.color = '#F87171'; msg.textContent = 'Erro: ' + eS.message; return; }
+          if (folhaObs) alert('Receita e CPP gravadas.' + folhaObs);
+          await carregarTudo();
+          renderEmpresa(e.id);
+        };
+      }
       el('btnFichaLancar').onclick = () => { location.hash = 'lancar/' + addMeses(paAtual, -1); };
       el('btnFichaTour').onclick = tourFicha;
     }
@@ -387,11 +450,10 @@
         { sel: 'btnFichaImportar', t: '1 · Importar — o começo de tudo', d: 'Suba de uma vez os 3 PDFs da Domínio: <b>extrato/resumo da folha</b>, <b>relatório de faturamento</b> e o <b>"Simples Nacional – Anexo"</b> (o que traz a coluna INSS/CPP). O leitor dá um papel a cada um: folha do extrato, receita do faturamento, CPP do terceiro — sem contar nada em dobro.' },
         { sel: null, t: '2 · Conferir a prévia e gravar', d: 'Depois de importar, a prévia aparece logo abaixo: coluna <b>Lançar em</b> (o mês que entra no cálculo — <b>ajustável linha a linha</b>), etiquetas de origem ("folha comp. X", "já em caixa") e divergências em amarelo com o gravado embaixo. Atenção: <b>a prévia é local</b> — enquanto ninguém clicar em <b>Gravar</b>, nada entra no banco e ninguém mais vê. A confirmação verde "✓ Gravadas" é o sinal de que salvou.' },
         { sel: 'fichaHero', t: '3 · Ler o resultado', d: 'Fator do próximo PA, RBT12, FS12 e o alvo de 28%. Os avisos amarelos são a lista de pendências: mês sem folha ou sem receita entra como R$ 0 e distorce o fator até ser lançado.' },
-        { sel: 'fichaHistTab', t: '4 · Histórico de apurações', d: 'A régua mês a mês: receita, folha paga (sem CPP), a <b>CPP do DAS em coluna própria</b>, RBT12, FS12, fator e anexo. Folha s/ CPP confere com o extrato da folha; CPP confere com a coluna INSS/CPP do relatório da Domínio; FS12 é o total acumulado.' },
+        { sel: 'fichaHistTab', t: '4 · Histórico de apurações', d: 'A régua mês a mês: receita, folha (sem CPP), CPP em coluna própria, RBT12, FS12, fator e anexo. Na primeira linha — o <b>mês corrente</b> — receita, folha e CPP são <b>editáveis</b>: informe o faturamento do mês e o veredito logo abaixo mostra quanto de folha + CPP ainda pagar dentro do mês pro próximo PA fechar ≥ 28%. O simulador mora aqui; o botão grava os valores no banco.' },
         { sel: 'btnFichaLancar', t: '5 · Ajuste manual, quando precisar', d: 'A grade de competências: o <b>Fiscal</b> lança a receita, o <b>DP</b> lança os 5 campos da folha. Campo vazio = pendente (diferente de zero — não digite 0 pra "limpar"). Serve pra corrigir um mês pontual sem reimportar.' },
-        { sel: 'fichaSim', t: '6 · Simulador do mês', d: 'Quanto de folha ainda pagar <b>dentro do mês corrente</b> pra segurar o Anexo III no próximo PA. O campo de receita é uma <b>sugestão automática</b> (o lançado do mês ou a média dos últimos 3) — editar aqui só recalcula a simulação, não grava nada.' },
-        { sel: 'fichaPlan', t: '7 · Planejador de 12 meses', d: 'Cenário livre com faturamento e folha projetados, pra enxergar viradas de anexo lá na frente. Também não grava nada.' },
-        { sel: 'btnVoltarPainel', t: '8 · Radar, lá no Painel', d: 'De volta ao Painel, a coluna <b>Radar</b> mostra o fator do próximo PA de todas as empresas com o que já foi lançado — badge pulsando é virada de anexo à vista. Fim do tour!' }
+        { sel: 'fichaPlan', t: '6 · Planejador de 12 meses', d: 'Cenário livre com faturamento e folha projetados, pra enxergar viradas de anexo lá na frente. Também não grava nada.' },
+        { sel: 'btnVoltarPainel', t: '7 · Radar, lá no Painel', d: 'De volta ao Painel, a coluna <b>Radar</b> mostra o fator do próximo PA de todas as empresas com o que já foi lançado — badge pulsando é virada de anexo à vista. Fim do tour!' }
       ];
       let i = 0, alvoAtual = null;
       const balao = document.createElement('div');
@@ -420,46 +482,6 @@
         document.getElementById('tourSair').onclick = sair;
       };
       render();
-    }
-
-    function montarSimulador(e) {
-      const paProx = addMeses(paAtual, 1);
-      const serie = lancPorEmpresa.get(e.id) || new Map();
-      // receita estimada do mês corrente: lançada, senão média das últimas 3 lançadas
-      const lAtual = serie.get(paAtual);
-      let estimada = lAtual && lAtual.receita != null ? Number(lAtual.receita) : null;
-      if (estimada == null) {
-        const ult = []; let m = addMeses(paAtual, -1);
-        for (let i = 0; i < 6 && ult.length < 3; i++) { const l = serie.get(m); if (l && l.receita != null) ult.push(Number(l.receita)); m = addMeses(m, -1); }
-        estimada = ult.length ? ult.reduce((a, b) => a + b, 0) / ult.length : 0;
-      }
-      el('fichaSim').innerHTML = '<h3>Simulador: segurar o Anexo III em ' + mesRot(paProx) + '</h3>' +
-        '<div style="margin-bottom:10px;"><label class="fr-dim" style="font-size:12px;">Receita estimada de ' + mesRot(paAtual) + ' (competência): </label> ' +
-        '<input class="input" id="simReceita" style="width:150px;display:inline-block;" type="number" step="0.01" value="' + estimada.toFixed(2) + '"> <span class="fr-dim" style="font-size:11px;">sugestão automática — simulação, não grava</span></div>' +
-        '<div class="res" id="simRes"></div>';
-      const calcular = () => {
-        const recAtu = Number(el('simReceita').value) || 0;
-        const ini = mesIso(e.inicio_atividade);
-        const j0 = addMeses(paProx, -12) > ini ? addMeses(paProx, -12) : ini;
-        let somaR = 0, somaFOutros = 0;
-        for (let m = j0; m < paProx; m = addMeses(m, 1)) {
-          const l = serie.get(m);
-          somaR += (m === paAtual) ? recAtu : (l && l.receita != null ? Number(l.receita) : 0);
-          if (m !== paAtual) somaFOutros += Number(folhaTotal(l)) || 0;
-        }
-        const jaMes = Number(folhaTotal(serie.get(paAtual))) || 0;
-        const alvoMes = 0.28 * somaR - somaFOutros;   // proporcional: o ×12 cancela (mesma qtde de meses)
-        const falta = alvoMes - jaMes;
-        let html = 'Janela de ' + mesRot(paProx) + ': ' + mesRot(j0) + ' → ' + mesRot(paAtual) + ' · Receita da janela (com a estimativa): <b>' + brl(somaR) + '</b><br>';
-        html += 'Pra fechar r ≥ 28%, a folha paga em <b>' + mesRot(paAtual) + '</b> precisa somar <b>' + brl(Math.max(0, alvoMes)) + '</b>. Já lançado no mês: <b>' + brl(jaMes) + '</b>.<br>';
-        if (alvoMes <= 0) html += '<span class="destaque" style="color:#4ADE80;">Anexo III já garantido pelos meses anteriores — folga de ' + brl(-alvoMes + jaMes) + '.</span>';
-        else if (falta <= 0) html += '<span class="destaque" style="color:#4ADE80;">Garantido: sobra ' + brl(-falta) + ' de folga.</span>';
-        else html += '<span class="destaque" style="color:#FACC15;">Faltam ' + brl(falta) + ' de folha (pró-labore + encargos pagos) até o fim do mês.</span>';
-        html += '<br><span class="fr-dim" style="font-size:12px;">Lembrete de caixa: conta o que for pago/recolhido dentro de ' + mesRot(paAtual) + ' — pró-labore de ' + mesRot(paAtual) + ' pago no 5º dia útil de ' + mesRot(paProx) + ' cai na janela seguinte.</span>';
-        el('simRes').innerHTML = html;
-      };
-      el('simReceita').addEventListener('input', calcular);
-      calcular();
     }
 
     function montarPlanejador(e) {
