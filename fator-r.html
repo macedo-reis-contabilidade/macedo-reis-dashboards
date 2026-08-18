@@ -103,6 +103,15 @@
           <input type="file" id="fichaArquivo" accept="application/pdf,image/*" style="display:none;">
         </div>
         <div class="fr-hero" id="fichaHero"></div>
+        <details class="fr-sim" style="margin-bottom:24px;">
+          <summary style="cursor:pointer;font-weight:600;">📖 Como ler esta ficha</summary>
+          <div class="fr-dim" style="font-size:13px;line-height:1.7;margin-top:10px;">
+            <b>RBT12</b> = receita bruta acumulada dos 12 meses anteriores ao PA. <b>FS12</b> = folha paga acumulada (salários brutos + pró-labore + CPP recolhida + FGTS + autônomos/13º) no mesmo período, pelo <b>regime de caixa</b> (conta o mês em que foi pago).<br>
+            <b>Fator r = FS12 ÷ RBT12.</b> Com r ≥ 28%, os serviços tributam no <b>Anexo III</b> (alíquotas menores); abaixo disso, <b>Anexo V</b>. O "Alvo 28%" do topo é quanto de FS12 seria necessário pra virar com a receita atual.<br>
+            <b>Mês sem lançamento entra como R$ 0</b> — provisoriamente. Folha faltando derruba o fator; receita faltando derruba a base. Os avisos amarelos dizem exatamente o que falta.<br>
+            <b>Simulador</b> = quanto de folha ainda pagar <i>dentro do mês corrente</i> pra segurar o Anexo III no próximo PA. <b>Planejador</b> = cenário livre dos próximos 12 PAs com faturamento e folha projetados. <b>Empresa com menos de 13 meses</b> tem RBT12 e FS12 proporcionalizados (média × 12), conforme a regra do Simples.
+          </div>
+        </details>
         <div class="fr-import" id="fichaImport" style="display:none;"></div>
         <div class="fr-sim" id="fichaSim"></div>
         <div class="fr-sim" id="fichaPlan"></div>
@@ -209,7 +218,7 @@
     function calcPAserie(serie, inicioIso, paIso) {
       const ini = mesIso(inicioIso);
       if (paIso < ini) return null;
-      const res = { pa: paIso, faltantes: [], proporcional: false, mesInicio: false };
+      const res = { pa: paIso, faltantes: [], faltaReceita: [], faltaFolha: [], proporcional: false, mesInicio: false };
 
       if (paIso === ini) {                       // §6º — PA do mês de início
         res.mesInicio = true;
@@ -217,7 +226,7 @@
         const f = folhaTotal(m), rec = m ? num(m.receita) : null;
         res.fs12 = f == null ? null : f * 12;
         res.rbt12 = rec == null ? null : (Number(rec) || 0) * 12;
-        if (m == null || (f == null && rec == null)) { res.r = null; res.anexo = '—'; res.faltantes.push(paIso); return res; }
+        if (m == null || (f == null && rec == null)) { res.r = null; res.anexo = '—'; res.faltantes.push(paIso); res.faltaReceita.push(paIso); res.faltaFolha.push(paIso); return res; }
         const fv = Number(f) || 0, rv = Number(rec) || 0;
         if (fv > 0 && rv <= 0) res.r = 0.28;
         else if (fv <= 0 && rv > 0) res.r = 0.01;
@@ -238,6 +247,8 @@
         const rec = l ? num(l.receita) : null;
         const f = folhaTotal(l);
         if (rec == null || f == null) res.faltantes.push(m);
+        if (rec == null) res.faltaReceita.push(m);
+        if (f == null) res.faltaFolha.push(m);
         somaR += Number(rec) || 0;
         somaF += Number(f) || 0;
       });
@@ -332,7 +343,8 @@
         'Início de atividade: <b>' + mesRot(mesIso(e.inicio_atividade)) + '</b> (' + idadeMeses + ' meses)' +
         (c && c.proporcional ? ' · <span class="fr-alerta">cálculo proporcionalizado (menos de 13 meses — art. 26 §4º)</span>' : '') + '<br>' +
         (c ? 'RBT12: <b>' + brl(c.rbt12) + '</b> · FS12: <b>' + brl(c.fs12) + '</b> · Alvo 28%: <b>' + brl(0.28 * c.rbt12) + '</b>' : '') +
-        (c && c.faltantes.length ? '<br><span class="fr-alerta">⚠ Janela com ' + c.faltantes.length + ' mês(es) sem lançamento: ' + c.faltantes.map(mesRot).join(', ') + ' — o cálculo considera esses meses como zero até serem lançados.</span>' : '') +
+        (c && c.faltaFolha && c.faltaFolha.length ? '<br><span class="fr-alerta">⚠ Folha não lançada em: ' + c.faltaFolha.map(mesRot).join(', ') + ' — entra como R$ 0 no FS12 e <b>derruba o fator</b> até o DP lançar (ou importar).</span>' : '') +
+        (c && c.faltaReceita && c.faltaReceita.length ? '<br><span class="fr-alerta">⚠ Receita não lançada em: ' + c.faltaReceita.map(mesRot).join(', ') + ' — entra como R$ 0 no RBT12.</span>' : '') +
         '</div>';
       montarSimulador(e);
       montarPlanejador(e);
@@ -421,7 +433,8 @@
         const fim = addMeses(start, 12);
         const virt = new Map(serie);
         for (let m = paAtual > ini ? paAtual : ini; m < fim; m = addMeses(m, 1)) virt.set(m, { receita: rec, folha_salarios: fol });
-        let html = '<table class="fr-tab" style="font-size:13px;"><thead><tr><th>PA</th><th class="fr-num">RBT12</th><th class="fr-num">FS12</th><th class="fr-num">Fator r</th><th>Anexo</th></tr></thead><tbody>';
+        let html = '<p class="fr-dim" style="font-size:12px;margin:0 0 8px;">RBT12 e FS12 são <b>somas móveis dos 12 meses anteriores</b> a cada PA — não o valor do mês. A cada linha, entra um mês projetado e sai o mês real mais antigo; por isso o acumulado muda mesmo com faturamento projetado constante.</p>' +
+          '<table class="fr-tab" style="font-size:13px;"><thead><tr><th>PA</th><th class="fr-num">Fat. do mês</th><th class="fr-num">RBT12 (acum. 12m)</th><th class="fr-num">FS12 (acum. 12m)</th><th class="fr-num">Fator r</th><th>Anexo</th></tr></thead><tbody>';
         let viradaEm = null, anexoAnt = null;
         for (let pa = start, i = 0; i < 12; pa = addMeses(pa, 1), i++) {
           const c = calcPAserie(virt, e.inicio_atividade, pa);
@@ -429,7 +442,7 @@
           const fx = faixaDe(c);
           if (anexoAnt && c.anexo !== '—' && anexoAnt !== '—' && c.anexo !== anexoAnt && !viradaEm) viradaEm = { pa, de: anexoAnt, para: c.anexo };
           anexoAnt = c.anexo;
-          html += '<tr><td>' + mesRot(pa) + (c.mesInicio ? ' <span class="fr-dim">(início)</span>' : '') + '</td><td class="fr-num">' + brl(c.rbt12) + '</td><td class="fr-num">' + brl(c.fs12) + '</td><td class="fr-num"><b>' + (c.r != null ? pct(c.r) : '—') + '</b></td><td><span class="fr-badge ' + fx.cls + '">' + c.anexo + '</span></td></tr>';
+          html += '<tr><td>' + mesRot(pa) + (c.mesInicio ? ' <span class="fr-dim">(início)</span>' : '') + '</td><td class="fr-num fr-dim">' + brl(rec) + '</td><td class="fr-num">' + brl(c.rbt12) + '</td><td class="fr-num">' + brl(c.fs12) + '</td><td class="fr-num"><b>' + (c.r != null ? pct(c.r) : '—') + '</b></td><td><span class="fr-badge ' + fx.cls + '">' + c.anexo + '</span></td></tr>';
         }
         html += '</tbody></table>';
         const alvoMensal = 0.28 * rec;
