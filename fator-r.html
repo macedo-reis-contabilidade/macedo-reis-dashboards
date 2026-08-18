@@ -18,6 +18,8 @@
     .fr-tab tr.clicavel:hover td { background: rgba(91,130,166,.08); }
     .fr-num { text-align: right; font-variant-numeric: tabular-nums; }
     .fr-tab th.fr-num { text-align: right; }
+    .fr-tour-hi { outline: 3px solid #5B82A6; outline-offset: 4px; border-radius: 8px; box-shadow: 0 0 0 9999px rgba(0,0,0,.55); position: relative; z-index: 61; }
+    .fr-tour-balao { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 62; background: #16202b; border: 1px solid #3A5878; border-radius: 12px; padding: 14px 16px; max-width: 540px; width: calc(100% - 32px); box-shadow: 0 8px 30px rgba(0,0,0,.5); }
     .fr-badge { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: 700; }
     .fr-ok    { background: rgba(74,222,128,.15); color: #4ADE80; }
     .fr-fio   { background: rgba(250,204,21,.15); color: #FACC15; }
@@ -100,6 +102,7 @@
         <div class="fr-acoes-topo">
           <button class="btn btn-ghost btn-sm" id="btnVoltarPainel">← Painel</button>
           <button class="btn btn-ghost btn-sm" id="btnFichaLancar">Lançar/editar competências</button>
+          <button class="btn btn-ghost btn-sm" id="btnFichaTour">🧭 Tour</button>
           <button class="btn btn-primary btn-sm" id="btnFichaImportar">Importar PDF (Domínio)</button>
           <input type="file" id="fichaArquivo" accept="application/pdf,image/*" multiple style="display:none;">
         </div>
@@ -117,7 +120,7 @@
         <div class="fr-sim" id="fichaSim"></div>
         <div class="fr-sim" id="fichaPlan"></div>
         <div class="fr-secao">Histórico de apurações</div>
-        <table class="fr-tab">
+        <table class="fr-tab" id="fichaHistTab">
           <thead><tr><th>PA</th><th class="fr-num">Receita do mês</th><th class="fr-num">Folha paga no mês</th><th class="fr-num">RBT12</th><th class="fr-num">FS12</th><th class="fr-num">Fator r</th><th>Anexo</th><th>Dados</th></tr></thead>
           <tbody id="fichaCorpo"></tbody>
         </table>
@@ -373,6 +376,47 @@
       }
       el('fichaCorpo').innerHTML = linhas.join('');
       el('btnFichaLancar').onclick = () => { location.hash = 'lancar/' + addMeses(paAtual, -1); };
+      el('btnFichaTour').onclick = tourFicha;
+    }
+
+    function tourFicha() {
+      const passos = [
+        { sel: 'btnFichaImportar', t: '1 · Importar — o começo de tudo', d: 'Suba de uma vez os 3 PDFs da Domínio: <b>extrato/resumo da folha</b>, <b>relatório de faturamento</b> e o <b>"Simples Nacional – Anexo"</b> (o que traz a coluna INSS/CPP). O leitor dá um papel a cada um: folha do extrato, receita do faturamento, CPP do terceiro — sem contar nada em dobro.' },
+        { sel: null, t: '2 · Conferir a prévia e gravar', d: 'Depois de importar, a prévia aparece logo abaixo: coluna <b>Lançar em</b> (o mês que entra no cálculo), etiquetas de origem ("folha comp. X", "já em caixa") e divergências em amarelo com o valor gravado embaixo. Desmarque linhas, ajuste valores e clique em <b>Gravar</b> — nada entra no banco antes disso.' },
+        { sel: 'fichaHero', t: '3 · Ler o resultado', d: 'Fator do próximo PA, RBT12, FS12 e o alvo de 28%. Os avisos amarelos são a lista de pendências: mês sem folha ou sem receita entra como R$ 0 e distorce o fator até ser lançado.' },
+        { sel: 'fichaHistTab', t: '4 · Histórico de apurações', d: 'A régua mês a mês: receita, folha paga, RBT12, FS12, fator e anexo de cada PA. É aqui que se confere o cálculo contra o extrato oficial do Simples.' },
+        { sel: 'btnFichaLancar', t: '5 · Ajuste manual, quando precisar', d: 'A grade de competências: o <b>Fiscal</b> lança a receita, o <b>DP</b> lança os 5 campos da folha. Campo vazio = pendente (diferente de zero — não digite 0 pra "limpar"). Serve pra corrigir um mês pontual sem reimportar.' },
+        { sel: 'fichaSim', t: '6 · Simulador do mês', d: 'Quanto de folha ainda pagar <b>dentro do mês corrente</b> pra segurar o Anexo III no próximo PA. O campo de receita é uma <b>sugestão automática</b> (o lançado do mês ou a média dos últimos 3) — editar aqui só recalcula a simulação, não grava nada.' },
+        { sel: 'fichaPlan', t: '7 · Planejador de 12 meses', d: 'Cenário livre com faturamento e folha projetados, pra enxergar viradas de anexo lá na frente. Também não grava nada.' },
+        { sel: 'btnVoltarPainel', t: '8 · Radar, lá no Painel', d: 'De volta ao Painel, a coluna <b>Radar</b> mostra o fator do próximo PA de todas as empresas com o que já foi lançado — badge pulsando é virada de anexo à vista. Fim do tour!' }
+      ];
+      let i = 0, alvoAtual = null;
+      const balao = document.createElement('div');
+      balao.className = 'fr-tour-balao';
+      document.body.appendChild(balao);
+      const limpar = () => { if (alvoAtual) alvoAtual.classList.remove('fr-tour-hi'); alvoAtual = null; };
+      const sair = () => { limpar(); balao.remove(); };
+      const render = () => {
+        limpar();
+        const p = passos[i];
+        const alvo = p.sel ? el(p.sel) : null;
+        if (alvo && alvo.offsetParent !== null) {
+          alvo.classList.add('fr-tour-hi'); alvoAtual = alvo;
+          alvo.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        }
+        balao.innerHTML = '<div style="font-weight:700;margin-bottom:4px;">' + p.t + '</div>' +
+          '<div class="fr-dim" style="font-size:13px;line-height:1.6;">' + p.d + '</div>' +
+          '<div style="display:flex;gap:8px;justify-content:space-between;align-items:center;margin-top:10px;">' +
+          '<span class="fr-dim" style="font-size:11px;">' + (i + 1) + ' de ' + passos.length + '</span><span style="display:flex;gap:8px;">' +
+          (i > 0 ? '<button class="btn btn-ghost btn-sm" id="tourAnt">← Anterior</button>' : '') +
+          (i < passos.length - 1 ? '<button class="btn btn-primary btn-sm" id="tourProx">Próximo →</button>' : '<button class="btn btn-primary btn-sm" id="tourFim">Concluir ✓</button>') +
+          '<button class="btn btn-ghost btn-sm" id="tourSair">✕</button></span></div>';
+        const a = document.getElementById('tourAnt'); if (a) a.onclick = () => { i--; render(); };
+        const x = document.getElementById('tourProx'); if (x) x.onclick = () => { i++; render(); };
+        const f = document.getElementById('tourFim'); if (f) f.onclick = sair;
+        document.getElementById('tourSair').onclick = sair;
+      };
+      render();
     }
 
     function montarSimulador(e) {
@@ -388,7 +432,7 @@
       }
       el('fichaSim').innerHTML = '<h3>Simulador: segurar o Anexo III em ' + mesRot(paProx) + '</h3>' +
         '<div style="margin-bottom:10px;"><label class="fr-dim" style="font-size:12px;">Receita estimada de ' + mesRot(paAtual) + ' (competência): </label> ' +
-        '<input class="input" id="simReceita" style="width:150px;display:inline-block;" type="number" step="0.01" value="' + estimada.toFixed(2) + '"></div>' +
+        '<input class="input" id="simReceita" style="width:150px;display:inline-block;" type="number" step="0.01" value="' + estimada.toFixed(2) + '"> <span class="fr-dim" style="font-size:11px;">sugestão automática — simulação, não grava</span></div>' +
         '<div class="res" id="simRes"></div>';
       const calcular = () => {
         const recAtu = Number(el('simReceita').value) || 0;
@@ -425,7 +469,7 @@
       el('fichaPlan').innerHTML = '<h3>Planejador: cenário dos próximos 12 meses</h3>' +
         '<div style="margin-bottom:10px;display:flex;gap:16px;flex-wrap:wrap;">' +
         '<span><label class="fr-dim" style="font-size:12px;">Faturamento mensal projetado: </label> <input class="input" id="planRec" style="width:140px;display:inline-block;" type="number" step="0.01" value="' + med('receita').toFixed(2) + '"></span>' +
-        '<span><label class="fr-dim" style="font-size:12px;">Folha mensal projetada (total pago): </label> <input class="input" id="planFol" style="width:140px;display:inline-block;" type="number" step="0.01" value="' + med('folha').toFixed(2) + '"></span></div>' +
+        '<span><label class="fr-dim" style="font-size:12px;">Folha mensal projetada (total pago): </label> <input class="input" id="planFol" style="width:140px;display:inline-block;" type="number" step="0.01" value="' + med('folha').toFixed(2) + '"></span><span class="fr-dim" style="font-size:11px;align-self:center;">projeções — não gravam nada</span></div>' +
         '<div id="planRes"></div>';
       const rodar = () => {
         const rec = Number(el('planRec').value) || 0, fol = Number(el('planFol').value) || 0;
