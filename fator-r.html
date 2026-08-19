@@ -399,6 +399,8 @@
       }
       el('fichaCorpo').innerHTML = linhas.join('');
       const serieH = lancPorEmpresa.get(e.id) || new Map();
+      el('histBarra').style.display = 'none';
+      el('histBarra').innerHTML = '';
       const getIn = (pa2, col) => { const n = document.querySelector('.fr-hcell[data-pa="' + pa2 + '"][data-col="' + col + '"]'); return n ? n.value : ''; };
       const simularMes = () => {
         if (!el('histSimRes')) return;
@@ -449,11 +451,20 @@
         });
         if (!regs.length) return;
         msg.textContent = 'Gravando…'; msg.style.color = '';
-        const { error: eH } = await supabase.from('fr_lancamentos').upsert(regs, { onConflict: 'empresa_id,competencia' });
-        if (eH) { msg.style.color = '#F87171'; msg.textContent = 'Erro: ' + eH.message; return; }
-        if (consolidadas) alert(consolidadas + ' mês(es) tinham a folha em várias rubricas — o novo total foi consolidado na rubrica principal e as demais foram zeradas. Pro detalhe por rubrica, use a grade de competências.');
-        await carregarTudo();
-        renderEmpresa(e.id);
+        try {
+          const { error: eH } = await supabase.from('fr_lancamentos').upsert(regs, { onConflict: 'empresa_id,competencia' });
+          if (eH) { msg.style.color = '#F87171'; msg.textContent = 'Erro: ' + eH.message; return; }
+          if (consolidadas) alert(consolidadas + ' mês(es) tinham a folha em várias rubricas — o novo total foi consolidado na rubrica principal e as demais foram zeradas. Pro detalhe por rubrica, use a grade de competências.');
+          await carregarTudo();
+          renderEmpresa(e.id);
+          const b2 = el('histBarra');
+          b2.style.display = '';
+          b2.innerHTML = '<span style="color:#4ADE80;font-weight:600;">✓ ' + regs.length + ' mês(es) gravado(s) — histórico recalculado.</span>';
+          setTimeout(() => { if (b2.innerHTML.includes('gravado(s)')) { b2.style.display = 'none'; b2.innerHTML = ''; } }, 4000);
+        } catch (ex) {
+          msg.style.color = '#F87171';
+          msg.textContent = 'Erro inesperado: ' + (ex && ex.message ? ex.message : ex) + ' — recarregue a página e confira se salvou.';
+        }
       };
       const atualizarBarra = () => {
         const b = el('histBarra');
@@ -680,14 +691,19 @@
               el('impMsg').className = 'fr-dim'; el('impMsg').textContent = 'Gravação cancelada — confira as linhas suspeitas.'; return;
             }
             el('impMsg').className = 'fr-dim'; el('impMsg').textContent = 'Gravando…';
-            const { error: eG } = await supabase.from('fr_lancamentos').upsert(regs, { onConflict: 'empresa_id,competencia' });
-            if (eG) { el('impMsg').className = 'fr-erro'; el('impMsg').textContent = 'Erro ao gravar: ' + eG.message + ' — nada foi salvo, tente de novo ou chame o Samuel.'; return; }
-            await carregarTudo();
-            renderEmpresa(e.id);
-            const bx = el('fichaImport');
-            bx.style.display = '';
-            bx.innerHTML = '<span style="color:#4ADE80;font-weight:600;">✓ Gravadas ' + regs.length + ' competência(s) — histórico atualizado abaixo.</span>';
-            setTimeout(() => { bx.style.display = 'none'; bx.innerHTML = ''; }, 5000);
+            try {
+              const { error: eG } = await supabase.from('fr_lancamentos').upsert(regs, { onConflict: 'empresa_id,competencia' });
+              if (eG) { el('impMsg').className = 'fr-erro'; el('impMsg').textContent = 'Erro ao gravar: ' + eG.message + ' — nada foi salvo, tente de novo ou chame o Samuel.'; return; }
+              await carregarTudo();
+              renderEmpresa(e.id);
+              const bx = el('fichaImport');
+              bx.style.display = '';
+              bx.innerHTML = '<span style="color:#4ADE80;font-weight:600;">✓ Gravadas ' + regs.length + ' competência(s) — histórico atualizado abaixo.</span>';
+              setTimeout(() => { bx.style.display = 'none'; bx.innerHTML = ''; }, 5000);
+            } catch (ex) {
+              el('impMsg').className = 'fr-erro';
+              el('impMsg').textContent = 'Erro inesperado ao gravar: ' + (ex && ex.message ? ex.message : ex) + ' — recarregue a página e confira se salvou antes de repetir.';
+            }
           };
         };
         montar();
