@@ -18,6 +18,8 @@
     .fr-tab tr.clicavel:hover td { background: rgba(91,130,166,.08); }
     .fr-num { text-align: right; font-variant-numeric: tabular-nums; }
     .fr-tab th.fr-num { text-align: right; }
+    .fr-hcell { background: transparent; border-color: rgba(91,130,166,.25); text-align: right; padding: 4px 8px; font-size: 13px; }
+    .fr-hcell:focus { border-color: #5B82A6; }
     .fr-tour-hi { outline: 3px solid #5B82A6; outline-offset: 4px; border-radius: 8px; box-shadow: 0 0 0 9999px rgba(0,0,0,.55); position: relative; z-index: 61; }
     .fr-tour-balao { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 62; background: #16202b; border: 1px solid #3A5878; border-radius: 12px; padding: 14px 16px; max-width: 540px; width: calc(100% - 32px); box-shadow: 0 8px 30px rgba(0,0,0,.5); }
     .fr-badge { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: 700; }
@@ -118,6 +120,7 @@
         </details>
         <div class="fr-import" id="fichaImport" style="display:none;"></div>
         <div class="fr-secao">Histórico de apurações</div>
+        <div id="histBarra" style="display:none;margin:0 0 10px;padding:8px 12px;background:rgba(250,204,21,.08);border:1px solid rgba(250,204,21,.35);border-radius:8px;font-size:13px;"></div>
         <table class="fr-tab" id="fichaHistTab">
           <thead><tr><th>PA</th><th class="fr-num">Receita do mês</th><th class="fr-num">Folha s/ CPP</th><th class="fr-num">CPP</th><th class="fr-num">RBT12</th><th class="fr-num">FS12</th><th class="fr-num">Fator r</th><th>Anexo</th><th>Dados</th></tr></thead>
           <tbody id="fichaCorpo"></tbody>
@@ -364,38 +367,28 @@
         const fSem = fT != null ? fT - (cpp || 0) : null;
         const fxi = faixaDe(ci);
         const tt = l ? ['Salários ' + brl(l.folha_salarios || 0), 'Pró-labore ' + brl(l.prolabore || 0), 'CPP ' + brl(l.inss_patronal || 0), 'FGTS ' + brl(l.fgts || 0), 'Outros ' + brl(l.folha_outros || 0)].join(' · ') : '';
-        if (pa === paAtual) {
-          linhas.push('<tr><td>' + mesRot(pa) + ' <span class="fr-dim">(corrente)</span></td>' +
-            '<td class="fr-num"><input class="input" id="histRec" type="number" step="0.01" style="width:112px;" value="' + (l && l.receita != null ? Number(l.receita).toFixed(2) : '') + '"></td>' +
-            '<td class="fr-num" title="' + tt + '"><input class="input" id="histFolha" type="number" step="0.01" style="width:104px;" value="' + (fSem != null ? fSem.toFixed(2) : '') + '"></td>' +
-            '<td class="fr-num"><input class="input" id="histCpp" type="number" step="0.01" style="width:96px;" value="' + (cpp != null ? cpp.toFixed(2) : '') + '"></td>' +
-            '<td class="fr-num">' + (ci ? brl(ci.rbt12) : '—') + '</td>' +
-            '<td class="fr-num">' + (ci ? brl(ci.fs12) : '—') + '</td>' +
-            '<td class="fr-num"><b>' + (ci && ci.r != null ? pct(ci.r) : '—') + '</b></td>' +
-            '<td><span class="fr-badge ' + fxi.cls + '">' + (ci ? ci.anexo : '—') + '</span></td>' +
-            '<td>' + (ci && ci.faltantes.length ? '<span class="fr-alerta">⚠ ' + ci.faltantes.length + '</span>' : '✓') + '</td></tr>');
-          linhas.push('<tr><td colspan="9" style="background:rgba(91,130,166,.08);padding:10px 14px;"><div id="histSimRes"></div>' +
-            '<div style="margin-top:8px;"><button class="btn btn-primary btn-sm" id="histGravar">Gravar valores de ' + mesRot(paAtual) + '</button> <span id="histGravarMsg" style="margin-left:8px;font-size:12px;"></span></div></td></tr>');
-          pa = addMeses(pa, -1);
-          continue;
-        }
-        linhas.push('<tr><td>' + mesRot(pa) + (ci && ci.mesInicio ? ' <span class="fr-dim">(início)</span>' : '') + '</td>' +
-          '<td class="fr-num">' + (l && l.receita != null ? brl(l.receita) : '<span class="fr-dim">—</span>') + '</td>' +
-          '<td class="fr-num" title="' + tt + '">' + (fSem != null ? brl(fSem) : '<span class="fr-dim">—</span>') + '</td>' +
-          '<td class="fr-num">' + (cpp != null ? brl(cpp) : '<span class="fr-dim">—</span>') + '</td>' +
+        const vIn = (col, val, w) => '<input class="input fr-hcell" data-pa="' + pa + '" data-col="' + col + '" type="number" step="0.01" style="width:' + w + 'px;display:inline-block;" value="' + (val != null ? Number(val).toFixed(2) : '') + '">';
+        linhas.push('<tr><td>' + mesRot(pa) + (pa === paAtual ? ' <span class="fr-dim">(corrente)</span>' : (ci && ci.mesInicio ? ' <span class="fr-dim">(início)</span>' : '')) + '</td>' +
+          '<td class="fr-num">' + vIn('rec', l && l.receita, 112) + '</td>' +
+          '<td class="fr-num" title="' + tt + '">' + vIn('folha', fSem, 104) + '</td>' +
+          '<td class="fr-num">' + vIn('cpp', cpp, 96) + '</td>' +
           '<td class="fr-num">' + (ci ? brl(ci.rbt12) : '—') + '</td>' +
           '<td class="fr-num">' + (ci ? brl(ci.fs12) : '—') + '</td>' +
           '<td class="fr-num"><b>' + (ci && ci.r != null ? pct(ci.r) : '—') + '</b></td>' +
           '<td><span class="fr-badge ' + fxi.cls + '">' + (ci ? ci.anexo : '—') + '</span></td>' +
           '<td>' + (ci && ci.faltantes.length ? '<span class="fr-alerta">⚠ ' + ci.faltantes.length + '</span>' : '✓') + '</td></tr>');
+        if (pa === paAtual) {
+          linhas.push('<tr><td colspan="9" style="background:rgba(91,130,166,.08);padding:10px 14px;"><div id="histSimRes"></div></td></tr>');
+        }
         pa = addMeses(pa, -1);
       }
       el('fichaCorpo').innerHTML = linhas.join('');
       const serieH = lancPorEmpresa.get(e.id) || new Map();
+      const getIn = (pa2, col) => { const n = document.querySelector('.fr-hcell[data-pa="' + pa2 + '"][data-col="' + col + '"]'); return n ? n.value : ''; };
       const simularMes = () => {
         if (!el('histSimRes')) return;
-        const rec = Number(el('histRec').value) || 0;
-        const jaMes = (Number(el('histFolha').value) || 0) + (Number(el('histCpp').value) || 0);
+        const rec = Number(getIn(paAtual, 'rec')) || 0;
+        const jaMes = (Number(getIn(paAtual, 'folha')) || 0) + (Number(getIn(paAtual, 'cpp')) || 0);
         const paProx = addMeses(paAtual, 1);
         const ini = mesIso(e.inicio_atividade);
         const j0 = addMeses(paProx, -12) > ini ? addMeses(paProx, -12) : ini;
@@ -412,35 +405,60 @@
         if (alvoMes <= 0) h += '<span style="color:#4ADE80;font-weight:600;">Anexo III garantido pelos meses anteriores.</span>';
         else if (falta <= 0) h += '<span style="color:#4ADE80;font-weight:600;">garantido, com folga de ' + brl(-falta) + '.</span>';
         else h += '<span style="color:#FACC15;font-weight:600;">faltam ' + brl(falta) + ' até o fim do mês.</span>';
-        h += '<br><span class="fr-dim" style="font-size:11px;">Regime de caixa: vale o que for pago dentro de ' + mesRot(paAtual) + '. Editar simula na hora; só o botão abaixo grava.</span>';
+        h += '<br><span class="fr-dim" style="font-size:11px;">Regime de caixa: vale o que for pago dentro de ' + mesRot(paAtual) + '. Edições em qualquer linha só entram no cálculo depois de gravadas pela barra acima da tabela.</span>';
         el('histSimRes').innerHTML = h;
       };
-      if (el('histRec')) {
-        ['histRec', 'histFolha', 'histCpp'].forEach(id => el(id).addEventListener('input', simularMes));
-        simularMes();
-        el('histGravar').onclick = async () => {
-          const msg = el('histGravarMsg');
-          const atual = serieH.get(paAtual) || {};
-          const reg = Object.assign({}, atual);
-          delete reg.id;
-          reg.empresa_id = e.id; reg.competencia = paAtual; reg.atualizado_em = new Date().toISOString();
-          if (el('histRec').value !== '') reg.receita = Number(el('histRec').value);
-          if (el('histCpp').value !== '') reg.inss_patronal = Number(el('histCpp').value);
-          let folhaObs = '';
-          if (el('histFolha').value !== '') {
-            const camposF = ['folha_salarios', 'prolabore', 'fgts', 'folha_outros'];
+      const dirty = new Set();
+      const salvarHist = async () => {
+        const msg = el('histBarraMsg');
+        const regs = []; let consolidadas = 0;
+        dirty.forEach(pa2 => {
+          const atual = serieH.get(pa2) || {};
+          const reg = Object.assign({}, atual); delete reg.id;
+          reg.empresa_id = e.id; reg.competencia = pa2; reg.atualizado_em = new Date().toISOString();
+          const vR = getIn(pa2, 'rec'), vC = getIn(pa2, 'cpp'), vF = getIn(pa2, 'folha');
+          reg.receita = vR === '' ? null : Number(vR);
+          reg.inss_patronal = vC === '' ? null : Number(vC);
+          const camposF = ['folha_salarios', 'prolabore', 'fgts', 'folha_outros'];
+          const fAtualSem = camposF.reduce((sx, c) => sx + (Number(atual[c]) || 0), 0);
+          const alvoF = vF === '' ? null : Number(vF);
+          if (alvoF == null) { camposF.forEach(c => { reg[c] = null; }); }
+          else if (Math.abs(alvoF - fAtualSem) > 0.005) {
             const preench = camposF.filter(c => atual[c] != null && Number(atual[c]) !== 0);
-            if (preench.length > 1) folhaObs = ' Folha do mês tem várias rubricas — ajuste o valor da folha pela grade de competências.';
-            else reg[preench[0] || 'prolabore'] = Number(el('histFolha').value);
+            let destino = 'prolabore';
+            if (preench.length === 1) destino = preench[0];
+            else if (preench.length > 1) { destino = preench.reduce((a, b) => (Number(atual[a]) >= Number(atual[b]) ? a : b)); consolidadas++; }
+            camposF.forEach(c => { reg[c] = (c === destino ? alvoF : null); });
           }
-          msg.style.color = ''; msg.textContent = 'Gravando…';
-          const { error: eS } = await supabase.from('fr_lancamentos').upsert(reg, { onConflict: 'empresa_id,competencia' });
-          if (eS) { msg.style.color = '#F87171'; msg.textContent = 'Erro: ' + eS.message; return; }
-          if (folhaObs) alert('Receita e CPP gravadas.' + folhaObs);
-          await carregarTudo();
-          renderEmpresa(e.id);
-        };
-      }
+          regs.push(reg);
+        });
+        if (!regs.length) return;
+        msg.textContent = 'Gravando…'; msg.style.color = '';
+        const { error: eH } = await supabase.from('fr_lancamentos').upsert(regs, { onConflict: 'empresa_id,competencia' });
+        if (eH) { msg.style.color = '#F87171'; msg.textContent = 'Erro: ' + eH.message; return; }
+        if (consolidadas) alert(consolidadas + ' mês(es) tinham a folha em várias rubricas — o novo total foi consolidado na rubrica principal e as demais foram zeradas. Pro detalhe por rubrica, use a grade de competências.');
+        await carregarTudo();
+        renderEmpresa(e.id);
+      };
+      const atualizarBarra = () => {
+        const b = el('histBarra');
+        if (!dirty.size) { b.style.display = 'none'; b.innerHTML = ''; return; }
+        if (!el('histSalvar')) {
+          b.style.display = '';
+          b.innerHTML = '<b><span id="histBarraN"></span> mês(es) alterado(s)</b> — as mudanças ainda não foram salvas. ' +
+            '<button class="btn btn-primary btn-sm" id="histSalvar">Gravar alterações</button> ' +
+            '<button class="btn btn-ghost btn-sm" id="histDescartar">Descartar</button> <span id="histBarraMsg" style="margin-left:6px;"></span>';
+          el('histSalvar').onclick = salvarHist;
+          el('histDescartar').onclick = () => { renderEmpresa(e.id); };
+        }
+        el('histBarraN').textContent = dirty.size;
+      };
+      document.querySelectorAll('#fichaCorpo .fr-hcell').forEach(n => n.addEventListener('input', () => {
+        dirty.add(n.dataset.pa);
+        atualizarBarra();
+        if (n.dataset.pa === paAtual) simularMes();
+      }));
+      simularMes();
       el('btnFichaLancar').onclick = () => { location.hash = 'lancar/' + addMeses(paAtual, -1); };
       el('btnFichaTour').onclick = tourFicha;
     }
@@ -450,7 +468,7 @@
         { sel: 'btnFichaImportar', t: '1 · Importar — o começo de tudo', d: 'Suba de uma vez os 3 PDFs da Domínio: <b>extrato/resumo da folha</b>, <b>relatório de faturamento</b> e o <b>"Simples Nacional – Anexo"</b> (o que traz a coluna INSS/CPP). O leitor dá um papel a cada um: folha do extrato, receita do faturamento, CPP do terceiro — sem contar nada em dobro.' },
         { sel: null, t: '2 · Conferir a prévia e gravar', d: 'Depois de importar, a prévia aparece logo abaixo: coluna <b>Lançar em</b> (o mês que entra no cálculo — <b>ajustável linha a linha</b>), etiquetas de origem ("folha comp. X", "já em caixa") e divergências em amarelo com o gravado embaixo. Atenção: <b>a prévia é local</b> — enquanto ninguém clicar em <b>Gravar</b>, nada entra no banco e ninguém mais vê. A confirmação verde "✓ Gravadas" é o sinal de que salvou.' },
         { sel: 'fichaHero', t: '3 · Ler o resultado', d: 'Fator do próximo PA, RBT12, FS12 e o alvo de 28%. Os avisos amarelos são a lista de pendências: mês sem folha ou sem receita entra como R$ 0 e distorce o fator até ser lançado.' },
-        { sel: 'fichaHistTab', t: '4 · Histórico de apurações', d: 'A régua mês a mês: receita, folha (sem CPP), CPP em coluna própria, RBT12, FS12, fator e anexo. Na primeira linha — o <b>mês corrente</b> — receita, folha e CPP são <b>editáveis</b>: informe o faturamento do mês e o veredito logo abaixo mostra quanto de folha + CPP ainda pagar dentro do mês pro próximo PA fechar ≥ 28%. O simulador mora aqui; o botão grava os valores no banco.' },
+        { sel: 'fichaHistTab', t: '4 · Histórico de apurações', d: 'A régua mês a mês: receita, folha (sem CPP), CPP em coluna própria, RBT12, FS12, fator e anexo. Receita, folha e CPP são <b>editáveis em qualquer linha</b> — corrigiu um valor, aparece a barra amarela acima da tabela pra gravar tudo de uma vez (ou descartar). Na linha do <b>mês corrente</b>, o veredito logo abaixo mostra quanto de folha + CPP ainda pagar dentro do mês pro próximo PA fechar ≥ 28% — o simulador mora aqui.' },
         { sel: 'btnFichaLancar', t: '5 · Ajuste manual, quando precisar', d: 'A grade de competências: o <b>Fiscal</b> lança a receita, o <b>DP</b> lança os 5 campos da folha. Campo vazio = pendente (diferente de zero — não digite 0 pra "limpar"). Serve pra corrigir um mês pontual sem reimportar.' },
         { sel: 'fichaPlan', t: '6 · Planejador de 12 meses', d: 'Cenário livre com faturamento e folha projetados, pra enxergar viradas de anexo lá na frente. Também não grava nada.' },
         { sel: 'btnVoltarPainel', t: '7 · Radar, lá no Painel', d: 'De volta ao Painel, a coluna <b>Radar</b> mostra o fator do próximo PA de todas as empresas com o que já foi lançado — badge pulsando é virada de anexo à vista. Fim do tour!' }
@@ -594,7 +612,7 @@
           let html = '<b>Prévia da importação</b> — tipo: <b>' + (d.tipo || '?') + '</b>' + (d.empresa ? ' · empresa no PDF: <b>' + d.empresa + '</b>' : '') + ' · confiança: ' + (d.confianca || '?') +
             (d.avisos && d.avisos.length ? '<br><span class="fr-alerta">Avisos: ' + [].concat(d.avisos).join(' · ') + '</span>' : '');
           if (temFolha) html += '<p style="margin:10px 0 4px;"><label style="cursor:pointer;"><input type="checkbox" id="impDesloca"' + (deslocar ? ' checked' : '') + '> <b>Regime de caixa:</b> lançar folha e CPP do DAS no mês seguinte à competência (folha e DAS de 06/26 → pagos em jul/26, lado a lado com o faturamento de jul/26)</label></p>';
-          html += '<p class="fr-dim" style="font-size:12px;margin:6px 0 8px;">A coluna <b>Lançar em</b> é o mês que entra no cálculo do fator — e é <b>ajustável linha a linha</b>: se algum valor cair no mês errado, corrija no seletor antes de gravar. Valores marcados <b>já em caixa (PGDAS)</b> vêm da folha oficial da apuração e entram direto no mês indicado, sem deslocar. Campo <b>vazio preserva</b> o que já está gravado; preenchido sobrescreve. Divergência com valor já gravado fica em amarelo, com o gravado indicado embaixo.</p>' +
+          html += '<p class="fr-dim" style="font-size:12px;margin:6px 0 8px;">A coluna <b>Lançar em</b> é o mês que entra no cálculo do fator — e é <b>ajustável linha a linha</b>: se algum valor cair no mês errado, corrija no seletor antes de gravar. Valores marcados <b>já em caixa (PGDAS)</b> vêm da folha oficial da apuração e entram direto no mês indicado, sem deslocar. Campo <b>vazio preserva</b> o que já está gravado; preenchido sobrescreve. Divergência com valor já gravado fica em amarelo, com o gravado indicado embaixo. E se a importação for <b>dobrar a folha</b> de um mês já lançado (mesma verba entrando por outra rubrica), o sistema pede confirmação antes de gravar.</p>' +
             '<table class="fr-tab" style="font-size:13px;"><thead><tr><th></th><th>Lançar em</th>' + rots.map(r => '<th>' + r + '</th>').join('') + '</tr></thead><tbody>';
           linhas.forEach(([comp, vals]) => {
             const atual = serie.get(comp) || {};
@@ -636,6 +654,16 @@
               regs.push(reg);
             }
             if (!regs.length) { el('impMsg').className = 'fr-erro'; el('impMsg').textContent = 'Nenhuma linha marcada.'; return; }
+            const somaFolhaSem = c => ['folha_salarios', 'prolabore', 'fgts', 'folha_outros'].reduce((sx, k) => sx + (Number(c && c[k]) || 0), 0);
+            const suspeitas = [];
+            regs.forEach(r => {
+              const fa = somaFolhaSem(serie.get(r.competencia));
+              const fn = somaFolhaSem(r);
+              if (fa > 0.005 && fn >= fa * 1.5 - 0.005) suspeitas.push(mesRot(r.competencia) + ': ' + brl(fa) + ' → ' + brl(fn));
+            });
+            if (suspeitas.length && !window.confirm('⚠ PROVÁVEL DUPLICAÇÃO DE FOLHA em ' + suspeitas.length + ' mês(es):\n\n' + suspeitas.join('\n') + '\n\nIsso costuma acontecer quando a mesma folha é importada de novo e entra por outra rubrica. Gravar mesmo assim?\n\nDica: cancele e desmarque as linhas repetidas, ou zere os campos duplicados na prévia.')) {
+              el('impMsg').className = 'fr-dim'; el('impMsg').textContent = 'Gravação cancelada — confira as linhas suspeitas.'; return;
+            }
             el('impMsg').className = 'fr-dim'; el('impMsg').textContent = 'Gravando…';
             const { error: eG } = await supabase.from('fr_lancamentos').upsert(regs, { onConflict: 'empresa_id,competencia' });
             if (eG) { el('impMsg').className = 'fr-erro'; el('impMsg').textContent = 'Erro ao gravar: ' + eG.message + ' — nada foi salvo, tente de novo ou chame o Samuel.'; return; }
