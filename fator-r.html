@@ -122,7 +122,7 @@
         <div class="fr-secao">Histórico de apurações</div>
         <div id="histBarra" style="display:none;margin:0 0 10px;padding:8px 12px;background:rgba(250,204,21,.08);border:1px solid rgba(250,204,21,.35);border-radius:8px;font-size:13px;"></div>
         <table class="fr-tab" id="fichaHistTab">
-          <thead><tr><th>PA</th><th class="fr-num">Receita do mês</th><th class="fr-num">Folha s/ CPP</th><th class="fr-num">CPP</th><th class="fr-num">RBT12</th><th class="fr-num">FS12</th><th class="fr-num">Fator r</th><th>Anexo</th><th>Dados</th></tr></thead>
+          <thead><tr><th>PA</th><th class="fr-num">Receita do mês</th><th class="fr-num">Folha s/ CPP</th><th class="fr-num">CPP</th><th class="fr-num">RBT12</th><th class="fr-num">FS12</th><th class="fr-num">Fator r</th><th>Anexo</th><th class="fr-num">Alíq. efetiva</th><th>Dados</th></tr></thead>
           <tbody id="fichaCorpo"></tbody>
         </table>
         <div class="fr-sim" id="fichaPlan"></div>
@@ -211,6 +211,20 @@
 
     // ---------------- motor legal ----------------
     const num = (v) => v == null ? null : Number(v);
+    // LC 123/2006 — Anexos III e V (faixas por RBT12, alíquota nominal e parcela a deduzir)
+    const TAB_ANEXOS = {
+      'III': { lim: [180000, 360000, 720000, 1800000, 3600000, 4800000], aliq: [0.06, 0.112, 0.135, 0.16, 0.21, 0.33], pd: [0, 9360, 17640, 35640, 125640, 648000] },
+      'V':   { lim: [180000, 360000, 720000, 1800000, 3600000, 4800000], aliq: [0.155, 0.18, 0.195, 0.205, 0.23, 0.305], pd: [0, 4500, 9900, 17100, 62100, 540000] }
+    };
+    // alíquota efetiva do PA: (RBT12 × alíq. nominal − parcela a deduzir) ÷ RBT12 (art. 18, §1º-A; RBT12 proporcionalizado em início de atividade, §2º)
+    function aliqEfetiva(anexo, rbt12) {
+      const t = TAB_ANEXOS[anexo];
+      if (!t || !(rbt12 > 0)) return null;
+      const f = t.lim.findIndex(L => rbt12 <= L);
+      if (f === -1) return null;
+      return (rbt12 * t.aliq[f] - t.pd[f]) / rbt12;
+    }
+
     function folhaTotal(l) {
       if (!l) return null;
       const campos = [l.folha_salarios, l.prolabore, l.inss_patronal, l.fgts, l.folha_outros];
@@ -376,9 +390,10 @@
           '<td class="fr-num">' + (ci ? brl(ci.fs12) : '—') + '</td>' +
           '<td class="fr-num"><b>' + (ci && ci.r != null ? pct(ci.r) : '—') + '</b></td>' +
           '<td><span class="fr-badge ' + fxi.cls + '">' + (ci ? ci.anexo : '—') + '</span></td>' +
+          '<td class="fr-num">' + (function () { const ae = ci ? aliqEfetiva(ci.anexo, ci.rbt12) : null; return ae != null ? pct(ae) : '<span class="fr-dim">—</span>'; })() + '</td>' +
           '<td>' + (ci && ci.faltantes.length ? '<span class="fr-alerta">⚠ ' + ci.faltantes.length + '</span>' : '✓') + '</td></tr>');
         if (pa === paAtual) {
-          linhas.push('<tr><td colspan="9" style="background:rgba(91,130,166,.08);padding:10px 14px;"><div id="histSimRes"></div></td></tr>');
+          linhas.push('<tr><td colspan="10" style="background:rgba(91,130,166,.08);padding:10px 14px;"><div id="histSimRes"></div></td></tr>');
         }
         pa = addMeses(pa, -1);
       }
@@ -468,7 +483,7 @@
         { sel: 'btnFichaImportar', t: '1 · Importar — o começo de tudo', d: 'Suba de uma vez os 3 PDFs da Domínio: <b>extrato/resumo da folha</b>, <b>relatório de faturamento</b> e o <b>"Simples Nacional – Anexo"</b> (o que traz a coluna INSS/CPP). O leitor dá um papel a cada um: folha do extrato, receita do faturamento, CPP do terceiro — sem contar nada em dobro.' },
         { sel: null, t: '2 · Conferir a prévia e gravar', d: 'Depois de importar, a prévia aparece logo abaixo: coluna <b>Lançar em</b> (o mês que entra no cálculo — <b>ajustável linha a linha</b>), etiquetas de origem ("folha comp. X", "já em caixa") e divergências em amarelo com o gravado embaixo. Atenção: <b>a prévia é local</b> — enquanto ninguém clicar em <b>Gravar</b>, nada entra no banco e ninguém mais vê. A confirmação verde "✓ Gravadas" é o sinal de que salvou.' },
         { sel: 'fichaHero', t: '3 · Ler o resultado', d: 'Fator do próximo PA, RBT12, FS12 e o alvo de 28%. Os avisos amarelos são a lista de pendências: mês sem folha ou sem receita entra como R$ 0 e distorce o fator até ser lançado.' },
-        { sel: 'fichaHistTab', t: '4 · Histórico de apurações', d: 'A régua mês a mês: receita, folha (sem CPP), CPP em coluna própria, RBT12, FS12, fator e anexo. Receita, folha e CPP são <b>editáveis em qualquer linha</b> — corrigiu um valor, aparece a barra amarela acima da tabela pra gravar tudo de uma vez (ou descartar). Na linha do <b>mês corrente</b>, o veredito logo abaixo mostra quanto de folha + CPP ainda pagar dentro do mês pro próximo PA fechar ≥ 28% — o simulador mora aqui.' },
+        { sel: 'fichaHistTab', t: '4 · Histórico de apurações', d: 'A régua mês a mês: receita, folha (sem CPP), CPP em coluna própria, RBT12, FS12, fator, anexo e a <b>alíquota efetiva</b> do Simples na faixa — dá pra ver o custo da virada de anexo em percentual. Receita, folha e CPP são <b>editáveis em qualquer linha</b> — corrigiu um valor, aparece a barra amarela acima da tabela pra gravar tudo de uma vez (ou descartar). Na linha do <b>mês corrente</b>, o veredito logo abaixo mostra quanto de folha + CPP ainda pagar dentro do mês pro próximo PA fechar ≥ 28% — o simulador mora aqui.' },
         { sel: 'btnFichaLancar', t: '5 · Ajuste manual, quando precisar', d: 'A grade de competências: o <b>Fiscal</b> lança a receita, o <b>DP</b> lança os 5 campos da folha. Campo vazio = pendente (diferente de zero — não digite 0 pra "limpar"). Serve pra corrigir um mês pontual sem reimportar.' },
         { sel: 'fichaPlan', t: '6 · Planejador de 12 meses', d: 'Cenário livre com faturamento e folha projetados, pra enxergar viradas de anexo lá na frente. Também não grava nada.' },
         { sel: 'btnVoltarPainel', t: '7 · Radar, lá no Painel', d: 'De volta ao Painel, a coluna <b>Radar</b> mostra o fator do próximo PA de todas as empresas com o que já foi lançado — badge pulsando é virada de anexo à vista. Fim do tour!' }
