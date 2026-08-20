@@ -1,0 +1,6 @@
+# artefatos locais do garimpo — dados de clientes, NUNCA commitar
+revisao.csv
+inserts.sql
+resumo.txt
+cache.json
+garimpo.log
