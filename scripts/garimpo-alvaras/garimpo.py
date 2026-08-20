@@ -35,9 +35,11 @@ from pathlib import Path
 # ---------------------------------------------------------------- constantes
 
 HOJE = date.today()
-MODELO = "claude-sonnet-4-20250514"
-PRECO_IN_USD_M = 3.0    # US$ por milhão de tokens de entrada (Sonnet)
-PRECO_OUT_USD_M = 15.0  # US$ por milhão de tokens de saída
+# O modelo do briefing (claude-sonnet-4-20250514) retornou 404 na API — substituído
+# pelo Sonnet atual em 20/08/2026, conforme catálogo oficial de modelos.
+MODELO = "claude-sonnet-5"
+PRECO_IN_USD_M = 3.0    # US$/M tokens entrada (Sonnet 5 — preço cheio; intro US$2 até 31/08/2026)
+PRECO_OUT_USD_M = 15.0  # US$/M tokens saída (intro US$10 até 31/08/2026)
 DIR_LOCAL = Path(__file__).resolve().parent
 ARQ_CSV = DIR_LOCAL / "revisao.csv"
 ARQ_SQL = DIR_LOCAL / "inserts.sql"
@@ -463,7 +465,9 @@ class ApiAnthropic:
                                         cidade=empresa["cidade"], arquivo=doc.name)
         corpo = json.dumps({
             "model": MODELO,
-            "max_tokens": 1000,
+            "max_tokens": 2000,
+            # extração em lote: thinking desligado pra resposta enxuta e custo previsível
+            "thinking": {"type": "disabled"},
             "messages": [{"role": "user", "content": [bloco, {"type": "text", "text": prompt}]}],
         }).encode()
 
