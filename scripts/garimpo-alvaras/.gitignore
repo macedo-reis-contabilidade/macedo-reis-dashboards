@@ -4,3 +4,4 @@ inserts.sql
 resumo.txt
 cache.json
 garimpo.log
+__pycache__/
