@@ -237,7 +237,7 @@
     searchInput.addEventListener('input', render);
 
     async function carregarClientes(){
-      const { data } = await supabase.from('clientes').select('id, nome_principal, cidade').order('nome_principal');
+      const { data } = await supabase.todosClientes('id, nome_principal, cidade');
       const sel = document.getElementById('nCliente');
       (data || []).forEach(c => {
         clientesNome[c.id] = c.nome_principal;

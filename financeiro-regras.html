@@ -121,7 +121,7 @@
     document.getElementById('btnLogout').addEventListener('click', signOut);
 
     async function carregarClientes() {
-      const { data } = await supabase.from('clientes').select('id, nome_principal').order('nome_principal');
+      const { data } = await supabase.todosClientes('id, nome_principal');
       clientes = data || [];
       const opts = clientes.map(c => '<option value="'+c.id+'">'+escapeHtml(c.nome_principal)+'</option>').join('');
       filterCliente.innerHTML = '<option value="">Todos os clientes</option>' + opts;

@@ -94,10 +94,7 @@
 
     async function loadDados() {
       // 1) Clientes
-      const { data: clientes, error: errC } = await supabase
-        .from('clientes')
-        .select('id, tipo_pessoa, nome_principal, nome_fantasia, documento, status, cidade, uf')
-        .order('nome_principal');
+      const { data: clientes, error: errC } = await supabase.todosClientes('id, tipo_pessoa, nome_principal, nome_fantasia, documento, status, cidade, uf');
 
       if (errC) {
         tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color: var(--danger); padding:40px;">Erro ao carregar clientes: ${errC.message}</td></tr>`;

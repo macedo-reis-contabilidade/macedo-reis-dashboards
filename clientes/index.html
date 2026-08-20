@@ -213,10 +213,7 @@
     document.getElementById('btnLogout').addEventListener('click', signOut);
 
     async function loadClientes() {
-      const { data, error } = await supabase
-        .from('clientes')
-        .select('id, tipo_pessoa, nome_principal, nome_fantasia, documento, status, cidade, uf, created_at, cnae_principal, cnaes_secundarios')
-        .order('nome_principal');
+      const { data, error } = await supabase.todosClientes('id, tipo_pessoa, nome_principal, nome_fantasia, documento, status, cidade, uf, created_at, cnae_principal, cnaes_secundarios');
 
       if (error) {
         tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--danger); padding: 40px;">Erro ao carregar clientes: ${error.message}</td></tr>`;
@@ -458,11 +455,7 @@
       rcvRodando = true; btn.disabled = true; btn.textContent = 'Consultando…';
       rcvProg.hidden = false; rcvLog.innerHTML = ''; rcvLog.classList.remove('is-on');
 
-      const { data: pjs, error } = await supabase
-        .from('clientes')
-        .select('id, nome_principal, documento, cnae_principal, cnaes_secundarios, natureza_juridica, capital_social, porte_empresa')
-        .eq('tipo_pessoa', 'PJ')
-        .order('nome_principal');
+      const { data: pjs, error } = await supabase.todosClientes('id, nome_principal, documento, cnae_principal, cnaes_secundarios, natureza_juridica, capital_social, porte_empresa', q => q.eq('tipo_pessoa', 'PJ'));
 
       if (error) { logLinha(`<span class="rcv-err">Erro ao listar clientes: ${error.message}</span>`); rcvRodando = false; btn.disabled = false; btn.textContent = 'Iniciar'; return; }
 

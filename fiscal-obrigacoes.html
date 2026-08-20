@@ -519,8 +519,7 @@
 
     async function garantirClientes(){
       if (clientesTodos) return;
-      const { data, error } = await supabase.from('clientes')
-        .select('id, nome_principal, tipo_pessoa').eq('status', 'ativo').order('nome_principal');
+      const { data, error } = await supabase.todosClientes('id, nome_principal, tipo_pessoa', q => q.eq('status', 'ativo'));
       if (!error) clientesTodos = data || [];
     }
 

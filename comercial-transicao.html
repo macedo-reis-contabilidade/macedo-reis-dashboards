@@ -238,7 +238,7 @@
         document.getElementById('userName').textContent = nome;
         document.getElementById('userAvatar').textContent = nome.charAt(0).toUpperCase();
       }
-      const { data: cl } = await supabase.from('clientes').select('id, nome_principal, cidade').order('nome_principal');
+      const { data: cl } = await supabase.todosClientes('id, nome_principal, cidade');
       clientes = cl || [];
       await carregarLista();
       const tid = new URLSearchParams(location.search).get('transicao');

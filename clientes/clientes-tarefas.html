@@ -171,7 +171,7 @@
     function fecharModal(){ overlay.classList.remove('is-open'); ['fTitulo','fCliente','fResponsavel','fPrazo','fDescricao'].forEach(id=>document.getElementById(id).value=''); document.getElementById('fPrioridade').value='media'; }
 
     async function carregarClientesSelect() {
-      const { data } = await supabase.from('clientes').select('id, nome_principal').order('nome_principal');
+      const { data } = await supabase.todosClientes('id, nome_principal');
       const sel = document.getElementById('fCliente');
       (data || []).forEach(c => { const o=document.createElement('option'); o.value=c.id; o.textContent=c.nome_principal; sel.appendChild(o); });
     }

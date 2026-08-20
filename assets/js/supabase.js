@@ -19,3 +19,19 @@ export async function signOut() {
   await supabase.auth.signOut();
   window.location.href = '/macedo-reis-dashboards/login.html';
 }
+
+
+// Busca paginada da tabela clientes: o PostgREST devolve no máximo 1000 linhas
+// por chamada, e a base passou de 1000 registros — sem isso, o fim do alfabeto
+// some silenciosamente das telas. Busca em lotes até o fim, preservando o shape { data, error }.
+supabase.todosClientes = async function (cols, filtro) {
+  const tudo = [];
+  for (let i = 0; ; i += 1000) {
+    let q = supabase.from('clientes').select(cols).order('nome_principal').range(i, i + 999);
+    if (filtro) q = filtro(q);
+    const { data, error } = await q;
+    if (error) return { data: tudo, error };
+    tudo.push(...(data || []));
+    if (!data || data.length < 1000) return { data: tudo, error: null };
+  }
+};

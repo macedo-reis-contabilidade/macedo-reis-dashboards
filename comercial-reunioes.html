@@ -193,7 +193,7 @@
 
     // ---- clientes ----
     async function carregarClientes() {
-      const { data } = await supabase.from('clientes').select('id, nome_principal').order('nome_principal');
+      const { data } = await supabase.todosClientes('id, nome_principal');
       clientes = data || [];
       const sel = document.getElementById('rCliente');
       clientes.forEach(c => { const o = document.createElement('option'); o.value = c.id; o.textContent = c.nome_principal; sel.appendChild(o); });
