@@ -453,9 +453,36 @@
       btn.disabled = false; btn.textContent = 'Cadastrar alvará';
       if (error) { alert('Erro ao salvar: ' + error.message); return; }
       await supabase.from('alvara_historico').insert({ alvara_id: ins.id, descricao: 'Alvará cadastrado.', autor: usuarioEmail });
+      const selCli = document.getElementById('nCliente');
+      const nomeCli = selCli.selectedOptions && selCli.selectedOptions[0] ? selCli.selectedOptions[0].textContent : '';
+      await sincronizarTarefaRenovacao(Object.assign({ id: ins.id }, novo), nomeCli);
       fecharNovo();
       await carregar();
     });
+
+    /* ---------- PONTE COM A AGENDA: tarefa de renovação 60 dias antes ---------- */
+    const addDias = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+    async function sincronizarTarefaRenovacao(alv, nomeCliente) {
+      try {
+        const { data: pend } = await supabase.from('tarefas').select('id').eq('alvara_id', alv.id).eq('status', 'pendente').limit(1);
+        const temTarefa = pend && pend.length;
+        if (!alv.vencimento || !alv.responsavel) {
+          if (temTarefa) await supabase.from('tarefas').delete().eq('id', pend[0].id);
+          return;
+        }
+        let prazo = addDias(String(alv.vencimento).slice(0, 10), -60);
+        if (prazo < hojeStr) prazo = hojeStr;
+        const payload = {
+          setor: 'societario', origem: 'alvara', status: 'pendente', prioridade: 'alta',
+          alvara_id: alv.id, cliente_id: alv.cliente_id || null,
+          titulo: 'Renovar alvará: ' + (alv.tipo || 'alvará') + (nomeCliente ? ' — ' + nomeCliente : ''),
+          descricao: 'Alvará vence em ' + fmtData(alv.vencimento) + '.' + (alv.numero ? ' Nº ' + alv.numero + '.' : '') + (alv.orgao ? ' Órgão emissor: ' + alv.orgao + '.' : '') + (alv.link_drive ? ' Documento: ' + alv.link_drive : ''),
+          responsavel: alv.responsavel, prazo
+        };
+        if (temTarefa) await supabase.from('tarefas').update(payload).eq('id', pend[0].id);
+        else await supabase.from('tarefas').insert(payload);
+      } catch (ex) { console.warn('Sincronização com a agenda falhou:', ex); }
+    }
 
     /* ---------- MODAL DETALHE ---------- */
     const ovDet = document.getElementById('ovDet');
@@ -539,6 +566,7 @@
       btn.disabled = false; btn.textContent = 'Salvar alterações';
       if (error) { alert('Erro ao salvar: ' + error.message); return; }
       Object.assign(alvAtual, patch);
+      await sincronizarTarefaRenovacao(alvAtual, alvAtual.clientes && alvAtual.clientes.nome_principal ? alvAtual.clientes.nome_principal : '');
       await carregar();
       if (statusMudou) await carregarTimeline(alvAtual.id);
     });
@@ -570,6 +598,7 @@
       btn.disabled = false; btn.textContent = 'Renovar';
       if (error) { alert('Erro ao renovar: ' + error.message); return; }
       Object.assign(alvAtual, patch);
+      await sincronizarTarefaRenovacao(alvAtual, alvAtual.clientes && alvAtual.clientes.nome_principal ? alvAtual.clientes.nome_principal : '');
       await carregar();
       await carregarTimeline(alvAtual.id);
     });
