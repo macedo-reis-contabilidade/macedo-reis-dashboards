@@ -55,6 +55,11 @@ TIPOS_CANONICOS = [
     "Inscrição Municipal",
 ]
 
+# Pastas confirmadas manualmente pelo Samuel (dry-run de 20/08/2026)
+PASTAS_CONFIRMADAS = {
+    "J. HEHN TREIN": "J. HEHN (CONSTRUÇÃO)",
+}
+
 # Pares (empresa, tipo) que JÁ existem no sistema — não duplicar
 JA_NO_SISTEMA = {
     ("CAMILA VARGAS DE BASTOS LTDA", "Alvará de Localização"),
@@ -533,6 +538,11 @@ def main():
         if e["feita"]:
             matches[e["cliente_id"]] = ("FEITA", None, [])
             continue
+        confirmada = PASTAS_CONFIRMADAS.get(e["empresa"])
+        if confirmada:
+            p = next((p for p in pastas if norm(p.name) == norm(confirmada)), None)
+            matches[e["cliente_id"]] = ("OK_MANUAL", p, [p]) if p else ("NAO_ACHEI", None, [])
+            continue
         matches[e["cliente_id"]] = match_pasta(e["empresa"], pastas, e["cidade"])
 
     print("\n=== MATCHING EMPRESA → PASTA ===")
@@ -545,17 +555,20 @@ def main():
         elif st == "OK_DESEMPATE":
             print(f"[ok/desem] {e['empresa']}  →  {pasta.name}  (desempate por cidade/tokens entre: "
                   + " | ".join(p.name for p in cands) + ")")
+        elif st == "OK_MANUAL":
+            print(f"[ok/manual] {e['empresa']}  →  {pasta.name}  (pasta confirmada pelo Samuel)")
         elif st == "AMBIGUA":
             print(f"[AMBIGUA ] {e['empresa']}  →  {len(cands)} candidatas: " + " | ".join(p.name for p in cands))
         elif st == "INCERTA":
             print(f"[INCERTA ] {e['empresa']}  →  casamento fraco: " + " | ".join(p.name for p in cands))
         else:
             print(f"[NAO ACHEI] {e['empresa']}")
-    tot = {"FEITA": 0, "OK": 0, "OK_DESEMPATE": 0, "AMBIGUA": 0, "INCERTA": 0, "NAO_ACHEI": 0}
+    tot = {"FEITA": 0, "OK": 0, "OK_DESEMPATE": 0, "OK_MANUAL": 0, "AMBIGUA": 0, "INCERTA": 0, "NAO_ACHEI": 0}
     for st, _, _ in matches.values():
         tot[st] += 1
-    print(f"\nTotais: {tot['OK']} casadas · {tot['OK_DESEMPATE']} por desempate · {tot['AMBIGUA']} ambíguas · "
-          f"{tot['INCERTA']} incertas · {tot['NAO_ACHEI']} não achadas · {tot['FEITA']} já feitas\n")
+    print(f"\nTotais: {tot['OK']} casadas · {tot['OK_DESEMPATE']} por desempate · {tot['OK_MANUAL']} confirmadas · "
+          f"{tot['AMBIGUA']} ambíguas · {tot['INCERTA']} incertas · {tot['NAO_ACHEI']} não achadas · "
+          f"{tot['FEITA']} já feitas\n")
 
     if args.dry_run:
         log.info("Dry-run concluído em %.1fs", time.time() - inicio)
@@ -593,7 +606,7 @@ def main():
 
     for e in empresas:
         st, pasta, cands = matches[e["cliente_id"]]
-        flags_base = ["pasta_por_desempate"] if st == "OK_DESEMPATE" else []
+        flags_base = {"OK_DESEMPATE": ["pasta_por_desempate"], "OK_MANUAL": ["pasta_confirmada_manual"]}.get(st, [])
         if st == "FEITA":
             continue
         if st == "NAO_ACHEI":
