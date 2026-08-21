@@ -1004,11 +1004,36 @@
     }
 
     // ---------- proposta fechada -> transição ----------
+    const validaDV = (d) => {
+      if (d.length === 11) {
+        if (/^(\d)\1+$/.test(d)) return false;
+        let s = 0; for (let i = 0; i < 9; i++) s += +d[i] * (10 - i);
+        if (((s * 10) % 11 % 10) !== +d[9]) return false;
+        s = 0; for (let i = 0; i < 10; i++) s += +d[i] * (11 - i);
+        return ((s * 10) % 11 % 10) === +d[10];
+      }
+      if (d.length === 14) {
+        if (/^(\d)\1+$/.test(d)) return false;
+        const calc = (n) => { const pe = n === 12 ? [5,4,3,2,9,8,7,6,5,4,3,2] : [6,5,4,3,2,9,8,7,6,5,4,3,2]; let s2 = 0; for (let i = 0; i < n; i++) s2 += +d[i] * pe[i]; const r = s2 % 11; return r < 2 ? 0 : 11 - r; };
+        return calc(12) === +d[12] && calc(13) === +d[13];
+      }
+      return false;
+    };
     let propTransAtual = null;
     function abrirModalTransicao(p) {
       propTransAtual = p;
       document.getElementById('tpNome').textContent = p.cliente_nome + (p.honorario != null ? ' · honorário fechado: ' + fmt(p.honorario) + '/mês' : '');
-      const docResp = String((p.respostas && (p.respostas.cnpj || p.respostas.documento || p.respostas.A2)) || '').replace(/\D/g, '');
+      let docResp = '';
+      const candChaves = [p.respostas && p.respostas.A1B, p.respostas && p.respostas.cnpj, p.respostas && p.respostas.documento];
+      for (const c of candChaves) { const d = String(c || '').replace(/\D/g, ''); if ((d.length === 11 || d.length === 14) && validaDV(d)) { docResp = d; break; } }
+      if (!docResp && p.respostas) {
+        const contatoDig = String(p.contato || '').replace(/\D/g, '');
+        for (const v of Object.values(p.respostas)) {
+          const d = String(v == null ? '' : v).replace(/\D/g, '');
+          if (d.length === 14 && validaDV(d)) { docResp = d; break; }
+          if (!docResp && d.length === 11 && d !== contatoDig && validaDV(d)) docResp = d;
+        }
+      }
       document.getElementById('tpDoc').value = (docResp.length === 11 || docResp.length === 14) ? docResp : '';
       document.getElementById('tpMsg').textContent = '';
       document.getElementById('tpConfirmar').disabled = false;
@@ -1021,7 +1046,7 @@
       const btn = document.getElementById('tpConfirmar');
       const tipo = document.getElementById('tpTipo').value;
       const doc = document.getElementById('tpDoc').value.replace(/\D/g, '');
-      if (doc && doc.length !== 11 && doc.length !== 14) { msg.style.color = '#E06C6C'; msg.textContent = 'Documento inválido: 11 dígitos (CPF) ou 14 (CNPJ) — ou deixe vazio pra vincular depois.'; return; }
+      if (doc && !validaDV(doc)) { msg.style.color = '#E06C6C'; msg.textContent = 'Documento inválido (dígito verificador não confere): use CPF de 11 ou CNPJ de 14 dígitos — ou deixe vazio pra vincular depois.'; return; }
       btn.disabled = true; msg.style.color = '#8A93A6'; msg.textContent = 'Criando…';
       try {
         let clienteId = p.cliente_id || null;
