@@ -949,10 +949,10 @@
           <td><select class="st-sel" data-st="${p.id}">${ST_PROP.map(s => `<option${s === p.status ? ' selected' : ''}>${s}</option>`).join('')}</select></td>
           <td style="color:#8A93A6;">${new Date(p.criado_em).toLocaleDateString('pt-BR')}</td>
           <td style="color:#8A93A6;">${p.criado_por ? p.criado_por.split('@')[0] : '—'}</td>
-          <td style="white-space:nowrap;"><button class="btn-x" data-dup="${p.id}" title="Duplicar como nova" style="background:none;border:none;color:#8A93A6;cursor:pointer;">⧉</button> <button class="btn-x" data-del="${p.id}" title="Excluir" style="background:none;border:none;color:#8A93A6;cursor:pointer;">✕</button></td>
+          <td style="white-space:nowrap;">${p.status === 'fechada' ? `<button class="btn-x" data-trans="${p.id}" title="Iniciar transição da proposta fechada" style="background:none;border:none;color:#7FBF8E;cursor:pointer;">🚀</button> ` : ''}<button class="btn-x" data-dup="${p.id}" title="Duplicar como nova" style="background:none;border:none;color:#8A93A6;cursor:pointer;">⧉</button> <button class="btn-x" data-del="${p.id}" title="Excluir" style="background:none;border:none;color:#8A93A6;cursor:pointer;">✕</button></td>
         </tr>`).join('');
       tb.querySelectorAll('tr.prop').forEach(tr => tr.addEventListener('click', e => {
-        if (e.target.closest('.st-sel') || e.target.closest('[data-del]') || e.target.closest('[data-dup]')) return;
+        if (e.target.closest('.st-sel') || e.target.closest('[data-del]') || e.target.closest('[data-dup]') || e.target.closest('[data-trans]')) return;
         const p = lista.find(x => x.id === tr.dataset.pid);
         if (p.respostas && p.respostas._tipo === 'mei') { carregarPropostaMei(p); return; }
         respostas = p.respostas || {}; editandoId = p.id;
@@ -990,7 +990,87 @@
           trocarVisao('form'); renderForm();
         }
       }));
+      tb.querySelectorAll('[data-trans]').forEach(b => b.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const p = lista.find(x => x.id === b.dataset.trans);
+        if (!p) return;
+        const { data: jaTem } = await supabase.from('transicoes').select('id').eq('proposta_id', p.id).limit(1);
+        if (jaTem && jaTem.length) {
+          if (confirm('Esta proposta já tem uma transição aberta. Ir pra tela de transições?')) location.href = 'comercial-transicao.html';
+          return;
+        }
+        abrirModalTransicao(p);
+      }));
     }
+
+    // ---------- proposta fechada -> transição ----------
+    let propTransAtual = null;
+    function abrirModalTransicao(p) {
+      propTransAtual = p;
+      document.getElementById('tpNome').textContent = p.cliente_nome + (p.honorario != null ? ' · honorário fechado: ' + fmt(p.honorario) + '/mês' : '');
+      const docResp = String((p.respostas && (p.respostas.cnpj || p.respostas.documento || p.respostas.A2)) || '').replace(/\D/g, '');
+      document.getElementById('tpDoc').value = (docResp.length === 11 || docResp.length === 14) ? docResp : '';
+      document.getElementById('tpMsg').textContent = '';
+      document.getElementById('tpConfirmar').disabled = false;
+      document.getElementById('ovTransProp').style.display = 'flex';
+    }
+    document.getElementById('tpCancelar').addEventListener('click', () => { document.getElementById('ovTransProp').style.display = 'none'; });
+    document.getElementById('tpConfirmar').addEventListener('click', async () => {
+      const p = propTransAtual; if (!p) return;
+      const msg = document.getElementById('tpMsg');
+      const btn = document.getElementById('tpConfirmar');
+      const tipo = document.getElementById('tpTipo').value;
+      const doc = document.getElementById('tpDoc').value.replace(/\D/g, '');
+      if (doc && doc.length !== 11 && doc.length !== 14) { msg.style.color = '#E06C6C'; msg.textContent = 'Documento inválido: 11 dígitos (CPF) ou 14 (CNPJ) — ou deixe vazio pra vincular depois.'; return; }
+      btn.disabled = true; msg.style.color = '#8A93A6'; msg.textContent = 'Criando…';
+      try {
+        let clienteId = p.cliente_id || null;
+        if (!clienteId && doc) {
+          const { data: dup } = await supabase.from('clientes').select('id, nome_principal').eq('documento', doc).limit(1);
+          if (dup && dup.length) {
+            clienteId = dup[0].id;
+          } else {
+            const { data: novoCli, error: eCli } = await supabase.from('clientes').insert({
+              tipo_pessoa: doc.length === 14 ? 'PJ' : 'PF',
+              nome_principal: p.cliente_nome,
+              documento: doc,
+              telefone_principal: (p.contato || '').replace(/\D/g, '') || null,
+              status: 'em_transicao'
+            }).select('id').single();
+            if (eCli) throw eCli;
+            clienteId = novoCli.id;
+          }
+        }
+        if (clienteId && !p.cliente_id) await supabase.from('precificacoes').update({ cliente_id: clienteId, atualizado_em: new Date().toISOString() }).eq('id', p.id);
+        const hoje = new Date().toISOString().slice(0, 10);
+        const prev = new Date(Date.now() + 90 * 864e5).toISOString().slice(0, 10);
+        const { data: tr, error: eTr } = await supabase.from('transicoes').insert({
+          titulo: p.cliente_nome, tipo, inicio: hoje, previsao_fim: prev,
+          contato: p.contato || null, proposta_id: p.id,
+          observacao: 'Aberta a partir da proposta fechada' + (p.honorario != null ? ' (honorário ' + fmt(p.honorario) + '/mês)' : '') + '.' + (clienteId ? '' : ' Cliente ainda sem cadastro — vincule a empresa na tela de transição quando o contrato social chegar.')
+        }).select('id').single();
+        if (eTr) throw eTr;
+        if (clienteId) await supabase.from('transicao_empresas').insert({ transicao_id: tr.id, cliente_id: clienteId });
+        const { data: kit } = await supabase.from('transicao_kit').select('*').eq('tipo', tipo).eq('ativo', true).order('ordem');
+        if (kit && kit.length) {
+          const base = new Date(hoje + 'T12:00:00').getTime();
+          await supabase.from('tarefas').insert(kit.map(k => ({
+            setor: k.setor, tipo: 'tarefa', titulo: k.titulo,
+            responsavel: k.responsavel_padrao || null,
+            prazo: new Date(base + (k.prazo_dias || 0) * 864e5).toISOString().slice(0, 10),
+            status: 'pendente', origem: 'transicao',
+            transicao_id: tr.id, fase: k.fase || null, cliente_id: clienteId
+          })));
+        }
+        msg.style.color = '#7FBF8E';
+        msg.textContent = '✓ Transição criada' + (kit && kit.length ? ' com ' + kit.length + ' tarefa(s) do kit' : '') + (clienteId ? ' e cliente vinculado' : '') + '. Abrindo a tela de transições…';
+        setTimeout(() => { location.href = 'comercial-transicao.html'; }, 1400);
+      } catch (ex) {
+        msg.style.color = '#E06C6C';
+        msg.textContent = 'Erro: ' + (ex && ex.message ? ex.message : ex);
+        btn.disabled = false;
+      }
+    });
 
     // ---------- parâmetros ----------
     function renderParams(){
@@ -1427,5 +1507,24 @@
       trocarVisao('form'); renderForm();
     })();
   </script>
+<div id="ovTransProp" style="display:none;position:fixed;inset:0;background:rgba(10,14,20,.78);z-index:80;align-items:center;justify-content:center;">
+  <div style="background:#141A24;border:1px solid rgba(91,130,166,.35);border-radius:12px;padding:22px;max-width:470px;width:92%;">
+    <h3 style="margin:0 0 6px;">🚀 Iniciar transição</h3>
+    <p id="tpNome" style="margin:0 0 14px;color:#8A93A6;font-size:14px;"></p>
+    <label style="display:block;margin-bottom:10px;font-size:13px;">Tipo da transição<br>
+      <select id="tpTipo" class="input" style="width:100%;margin-top:4px;">
+        <option value="entrada">Entrada (vem de outro escritório)</option>
+        <option value="cnpj_novo">CNPJ novo (empresa sendo aberta)</option>
+      </select></label>
+    <label style="display:block;margin-bottom:6px;font-size:13px;">CNPJ ou CPF do cliente — se já tiver<br>
+      <input id="tpDoc" class="input" style="width:100%;margin-top:4px;" placeholder="só números · vazio = vincular depois"></label>
+    <p style="margin:6px 0 14px;font-size:12px;color:#8A93A6;">Com documento: o pré-cadastro nasce agora como cliente <b>em transição</b> (complete pelo recadastro quando chegar o contrato social). Sem documento: a transição abre pelo nome e o vínculo é feito na tela de transição depois do cadastro.</p>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button id="tpCancelar" style="background:none;border:1px solid rgba(138,147,166,.4);color:#8A93A6;border-radius:8px;padding:8px 14px;cursor:pointer;">Cancelar</button>
+      <button id="tpConfirmar" style="background:#7FBF8E;color:#0B1017;border:none;border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer;">Criar transição</button>
+    </div>
+    <p id="tpMsg" style="margin:10px 0 0;font-size:13px;"></p>
+  </div>
+</div>
 </body>
 </html>
