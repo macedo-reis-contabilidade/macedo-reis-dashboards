@@ -40,7 +40,8 @@
     .page-header p { display: none; }
     @media (min-width:1150px){
       .ag-topo-flex { display:flex; align-items:flex-start; gap:28px; }
-      .ag-topo-flex .page-header { margin-bottom:0; flex:0 0 auto; padding-top:2px; }
+      .ag-topo-flex .page-header { margin-bottom:0; flex:0 0 auto; padding-top:10px; }
+      .ag-topo-flex .eyebrow { display:none; }
       .ag-topo-flex .ag-toolbar { flex:1; min-width:0; }
     }
     .ag-lateral { display:none; }
@@ -49,12 +50,14 @@
       .ag-lateral.esq { left:24px; }
       .ag-lateral.dir { right:24px; }
       .ag-lat-tit { font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:#6E7787; margin:0 0 10px; }
-      .ag-atalho { display:block; padding:9px 12px; margin-bottom:6px; background:#10161F; border:1px solid rgba(255,255,255,.08); border-radius:10px; color:#C9D3E0; text-decoration:none; font-size:13px; }
-      .ag-atalho:hover { border-color:rgba(91,130,166,.5); }
+      .ag-atalho { display:block; padding:7px 10px 7px 12px; margin-bottom:2px; color:#8A93A6; text-decoration:none; font-size:13px; border-left:2px solid transparent; border-radius:0 8px 8px 0; }
+      .ag-atalho:hover { color:#E6ECF4; border-left-color:rgba(91,130,166,.7); background:rgba(255,255,255,.03); }
       .ag-atalho-ck { display:block; font-size:12px; color:#8A93A6; padding:4px 2px; cursor:pointer; }
-      .ag-lat-btn { background:none; border:1px solid rgba(138,147,166,.35); color:#8A93A6; border-radius:8px; padding:5px 10px; font-size:11px; cursor:pointer; margin-top:4px; }
-      .ag-radar-card { display:block; padding:10px 12px; margin-bottom:8px; background:#10161F; border:1px solid rgba(255,255,255,.08); border-left:3px solid rgba(91,130,166,.6); border-radius:10px; color:#C9D3E0; font-size:12.5px; text-decoration:none; }
-      .ag-radar-card:hover { border-color:rgba(91,130,166,.5); }
+      .ag-lat-btn { background:none; border:none; color:#6E7787; font-size:11px; cursor:pointer; padding:6px 12px; margin-top:2px; text-decoration:underline dotted; }
+      .ag-lat-btn:hover { color:#C9D3E0; }
+      .ag-radar-card { display:block; padding:8px 10px 8px 12px; margin-bottom:6px; border-left:3px solid rgba(91,130,166,.55); color:#9AA4B5; font-size:12.5px; line-height:1.45; text-decoration:none; border-radius:0 8px 8px 0; }
+      .ag-radar-card b { color:#E6ECF4; }
+      .ag-radar-card:hover { background:rgba(255,255,255,.03); color:#C9D3E0; }
       .ag-radar-card.rc-alerta { border-left-color:#E06C6C; }
       .ag-radar-card.rc-verde { border-left-color:#7FBF8E; }
       .ag-lat-vazio { color:#6E7787; font-size:12px; }
