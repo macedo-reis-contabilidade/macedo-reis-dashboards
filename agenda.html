@@ -32,6 +32,22 @@
     .ag-resumo-wrap { position:sticky; top:16px; min-width:0; }
     .ag-resumo { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:16px; }
 
+    .ag-lateral { display:none; }
+    @media (min-width:1640px){
+      .ag-lateral { display:block; position:fixed; top:96px; width:248px; max-height:calc(100vh - 120px); overflow:auto; z-index:5; }
+      .ag-lateral.esq { left:24px; }
+      .ag-lateral.dir { right:24px; }
+      .ag-lat-tit { font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:#6E7787; margin:0 0 10px; }
+      .ag-atalho { display:block; padding:9px 12px; margin-bottom:6px; background:#10161F; border:1px solid rgba(255,255,255,.08); border-radius:10px; color:#C9D3E0; text-decoration:none; font-size:13px; }
+      .ag-atalho:hover { border-color:rgba(91,130,166,.5); }
+      .ag-atalho-ck { display:block; font-size:12px; color:#8A93A6; padding:4px 2px; cursor:pointer; }
+      .ag-lat-btn { background:none; border:1px solid rgba(138,147,166,.35); color:#8A93A6; border-radius:8px; padding:5px 10px; font-size:11px; cursor:pointer; margin-top:4px; }
+      .ag-radar-card { display:block; padding:10px 12px; margin-bottom:8px; background:#10161F; border:1px solid rgba(255,255,255,.08); border-left:3px solid rgba(91,130,166,.6); border-radius:10px; color:#C9D3E0; font-size:12.5px; text-decoration:none; }
+      .ag-radar-card:hover { border-color:rgba(91,130,166,.5); }
+      .ag-radar-card.rc-alerta { border-left-color:#E06C6C; }
+      .ag-radar-card.rc-verde { border-left-color:#7FBF8E; }
+      .ag-lat-vazio { color:#6E7787; font-size:12px; }
+    }
     @media (max-width:860px){
       .ag-dia-layout { grid-template-columns:1fr; }
       .ag-resumo { position:static; order:-1; }
@@ -1328,6 +1344,72 @@
         { el: '#agResumo', titulo: 'Resumo do dia', texto: 'O termômetro: concluídas, em aberto e o percentual do dia vencido.' }
       ], 'agenda_v1', new URLSearchParams(location.search).has('tour'), au2?.data?.user?.email || '');
     }
-  </script>
+  
+    // ---------- laterais (telas largas): atalhos + radar da firma ----------
+    const ATALHO_CATALOGO = [
+      ['clientes/index.html', '👥 Clientes'],
+      ['fator-r.html', '📈 Fator R'],
+      ['societario-alvaras.html', '📜 Alvarás'],
+      ['comercial-precificacao.html', '💰 Precificação'],
+      ['comercial-transicao.html', '🔄 Transições'],
+      ['relatorios-vivos.html', '📊 Relatórios Vivos'],
+      ['comercial-carteira.html', '💼 Carteira'],
+      ['fiscal-obrigacoes.html', '🧾 Obrigações fiscais'],
+      ['financeiro-boletos.html', '💳 Boletos'],
+      ['irpf-declaracoes.html', '🧮 IRPF'],
+      ['dp.html', '🧑‍🏭 DP'],
+      ['contabil.html', '📚 Contábil']
+    ];
+    function atalhosSalvos() {
+      try { const v = JSON.parse(localStorage.getItem('ag_atalhos_' + (usuarioEmail || '')) || 'null'); if (Array.isArray(v) && v.length) return v; } catch (e) {}
+      return ['clientes/index.html', 'fator-r.html', 'societario-alvaras.html', 'comercial-precificacao.html', 'relatorios-vivos.html'];
+    }
+    function montarAtalhos(editando) {
+      const box = document.getElementById('agAtalhosBox'); if (!box) return;
+      const sel = atalhosSalvos();
+      if (!editando) {
+        box.innerHTML = sel.map(h => { const it = ATALHO_CATALOGO.find(a => a[0] === h); return it ? '<a class="ag-atalho" href="' + it[0] + '">' + it[1] + '</a>' : ''; }).join('') +
+          '<button id="agAtEd" class="ag-lat-btn">✎ editar</button>';
+        document.getElementById('agAtEd').onclick = () => montarAtalhos(true);
+      } else {
+        box.innerHTML = ATALHO_CATALOGO.map(a => '<label class="ag-atalho-ck"><input type="checkbox" value="' + a[0] + '"' + (sel.includes(a[0]) ? ' checked' : '') + '> ' + a[1] + '</label>').join('') +
+          '<button id="agAtOk" class="ag-lat-btn">salvar</button>';
+        document.getElementById('agAtOk').onclick = () => {
+          const marcados = Array.from(box.querySelectorAll('input:checked')).map(i => i.value);
+          localStorage.setItem('ag_atalhos_' + (usuarioEmail || ''), JSON.stringify(marcados));
+          montarAtalhos(false);
+        };
+      }
+    }
+    async function montarRadar() {
+      const box = document.getElementById('agRadarBox'); if (!box) return;
+      try {
+        const hj = new Date().toISOString().slice(0, 10);
+        const em60 = new Date(Date.now() + 60 * 864e5).toISOString().slice(0, 10);
+        const [alv, trs, propF, trProp, tVenc] = await Promise.all([
+          supabase.from('alvaras').select('vencimento').not('vencimento', 'is', null),
+          supabase.from('transicoes').select('id, status'),
+          supabase.from('precificacoes').select('id').eq('status', 'fechada'),
+          supabase.from('transicoes').select('proposta_id').not('proposta_id', 'is', null),
+          supabase.from('tarefas').select('id', { count: 'exact', head: true }).eq('status', 'pendente').lt('prazo', hj)
+        ]);
+        const alvVencidos = (alv.data || []).filter(a => a.vencimento < hj).length;
+        const alvBreve = (alv.data || []).filter(a => a.vencimento >= hj && a.vencimento <= em60).length;
+        const trAbertas = (trs.data || []).filter(t => t.status !== 'concluida').length;
+        const comTrans = new Set((trProp.data || []).map(t => t.proposta_id));
+        const propSem = (propF.data || []).filter(p => !comTrans.has(p.id)).length;
+        const cards = [];
+        if (alvVencidos || alvBreve) cards.push('<a class="ag-radar-card' + (alvVencidos ? ' rc-alerta' : '') + '" href="societario-alvaras.html">' + (alvVencidos ? '<b>' + alvVencidos + '</b> alvará(s) vencido(s)' : '') + (alvVencidos && alvBreve ? ' · ' : '') + (alvBreve ? '<b>' + alvBreve + '</b> vence(m) em 60 dias' : '') + '</a>');
+        if (trAbertas) cards.push('<a class="ag-radar-card" href="comercial-transicao.html"><b>' + trAbertas + '</b> transição(ões) em curso</a>');
+        if (propSem) cards.push('<a class="ag-radar-card rc-verde" href="comercial-precificacao.html"><b>' + propSem + '</b> proposta(s) fechada(s) sem transição 🚀</a>');
+        if (tVenc.count) cards.push('<span class="ag-radar-card rc-alerta"><b>' + tVenc.count + '</b> tarefa(s) vencida(s) na firma</span>');
+        box.innerHTML = cards.length ? cards.join('') : '<span class="ag-lat-vazio">tudo em dia por aqui 🎉</span>';
+      } catch (e) { box.innerHTML = ''; }
+    }
+    montarAtalhos(false);
+    montarRadar();
+</script>
+<aside class="ag-lateral esq"><p class="ag-lat-tit">Atalhos</p><div id="agAtalhosBox"></div></aside>
+<aside class="ag-lateral dir"><p class="ag-lat-tit">Radar da firma</p><div id="agRadarBox"></div></aside>
 </body>
 </html>
