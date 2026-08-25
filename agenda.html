@@ -32,6 +32,12 @@
     .ag-resumo-wrap { position:sticky; top:16px; min-width:0; }
     .ag-resumo { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:16px; }
 
+    /* header compacto: a agenda abre 20x por dia, cerimônia mínima */
+    .app-shell .content { padding-top: 16px; }
+    .page-header { margin-bottom: 16px; }
+    .page-header .eyebrow { margin-bottom: 3px; }
+    .page-header h1 { font-size: 1.5rem; margin-bottom: 0; }
+    .page-header p { display: none; }
     .ag-lateral { display:none; }
     @media (min-width:1640px){
       .ag-lateral { display:block; position:fixed; top:96px; width:248px; max-height:calc(100vh - 120px); overflow:auto; z-index:5; }
@@ -1345,7 +1351,7 @@
       ], 'agenda_v1', new URLSearchParams(location.search).has('tour'), au2?.data?.user?.email || '');
     }
   
-    // ---------- laterais (telas largas): atalhos + radar da firma ----------
+    // ---------- laterais (telas largas): atalhos + radar do escritório ----------
     const ATALHO_CATALOGO = [
       ['clientes/index.html', '👥 Clientes'],
       ['fator-r.html', '📈 Fator R'],
@@ -1386,23 +1392,32 @@
       try {
         const hj = new Date().toISOString().slice(0, 10);
         const em60 = new Date(Date.now() + 60 * 864e5).toISOString().slice(0, 10);
-        const [alv, trs, propF, trProp, tVenc] = await Promise.all([
+        const seteDias = new Date(Date.now() - 7 * 864e5).toISOString();
+        const [alv, alvSemResp, trs, propF, trProp, propPar, inad, tVenc, tMinhas] = await Promise.all([
           supabase.from('alvaras').select('vencimento').not('vencimento', 'is', null),
-          supabase.from('transicoes').select('id, status'),
+          supabase.from('alvaras').select('id', { count: 'exact', head: true }).is('responsavel', null),
+          supabase.from('transicoes').select('id, status, previsao_fim'),
           supabase.from('precificacoes').select('id').eq('status', 'fechada'),
           supabase.from('transicoes').select('proposta_id').not('proposta_id', 'is', null),
-          supabase.from('tarefas').select('id', { count: 'exact', head: true }).eq('status', 'pendente').lt('prazo', hj)
+          supabase.from('precificacoes').select('id', { count: 'exact', head: true }).eq('status', 'apresentada').lt('atualizado_em', seteDias),
+          supabase.from('carteira_info').select('cliente_id', { count: 'exact', head: true }).eq('inadimplente', true).is('saida', null),
+          supabase.from('tarefas').select('id', { count: 'exact', head: true }).eq('status', 'pendente').lt('prazo', hj),
+          supabase.from('tarefas').select('id', { count: 'exact', head: true }).eq('status', 'pendente').lt('prazo', hj).ilike('responsavel', nomePorEmail(usuarioEmail) || '~nada~')
         ]);
         const alvVencidos = (alv.data || []).filter(a => a.vencimento < hj).length;
         const alvBreve = (alv.data || []).filter(a => a.vencimento >= hj && a.vencimento <= em60).length;
-        const trAbertas = (trs.data || []).filter(t => t.status !== 'concluida').length;
+        const trLista = (trs.data || []).filter(t => t.status !== 'concluida');
+        const trAtrasadas = trLista.filter(t => t.previsao_fim && t.previsao_fim < hj).length;
         const comTrans = new Set((trProp.data || []).map(t => t.proposta_id));
         const propSem = (propF.data || []).filter(p => !comTrans.has(p.id)).length;
         const cards = [];
         if (alvVencidos || alvBreve) cards.push('<a class="ag-radar-card' + (alvVencidos ? ' rc-alerta' : '') + '" href="societario-alvaras.html">' + (alvVencidos ? '<b>' + alvVencidos + '</b> alvará(s) vencido(s)' : '') + (alvVencidos && alvBreve ? ' · ' : '') + (alvBreve ? '<b>' + alvBreve + '</b> vence(m) em 60 dias' : '') + '</a>');
-        if (trAbertas) cards.push('<a class="ag-radar-card" href="comercial-transicao.html"><b>' + trAbertas + '</b> transição(ões) em curso</a>');
+        if (alvSemResp.count) cards.push('<a class="ag-radar-card" href="societario-alvaras.html"><b>' + alvSemResp.count + '</b> alvará(s) sem responsável — sem tarefa de renovação</a>');
+        if (trLista.length) cards.push('<a class="ag-radar-card' + (trAtrasadas ? ' rc-alerta' : '') + '" href="comercial-transicao.html"><b>' + trLista.length + '</b> transição(ões) em curso' + (trAtrasadas ? ' · <b>' + trAtrasadas + '</b> além dos 90 dias' : '') + '</a>');
         if (propSem) cards.push('<a class="ag-radar-card rc-verde" href="comercial-precificacao.html"><b>' + propSem + '</b> proposta(s) fechada(s) sem transição 🚀</a>');
-        if (tVenc.count) cards.push('<span class="ag-radar-card rc-alerta"><b>' + tVenc.count + '</b> tarefa(s) vencida(s) na firma</span>');
+        if (propPar.count) cards.push('<a class="ag-radar-card" href="comercial-precificacao.html"><b>' + propPar.count + '</b> proposta(s) apresentada(s) sem retorno há 7+ dias</a>');
+        if (inad.count) cards.push('<a class="ag-radar-card rc-alerta" href="comercial-carteira.html"><b>' + inad.count + '</b> cliente(s) inadimplente(s) na carteira</a>');
+        if (tVenc.count) cards.push('<span class="ag-radar-card' + (tMinhas.count ? ' rc-alerta' : '') + '">' + (tMinhas.count ? '<b>' + tMinhas.count + '</b> tarefa(s) sua(s) vencida(s) · ' : '') + '<b>' + tVenc.count + '</b> no escritório</span>');
         box.innerHTML = cards.length ? cards.join('') : '<span class="ag-lat-vazio">tudo em dia por aqui 🎉</span>';
       } catch (e) { box.innerHTML = ''; }
     }
@@ -1410,6 +1425,6 @@
     montarRadar();
 </script>
 <aside class="ag-lateral esq"><p class="ag-lat-tit">Atalhos</p><div id="agAtalhosBox"></div></aside>
-<aside class="ag-lateral dir"><p class="ag-lat-tit">Radar da firma</p><div id="agRadarBox"></div></aside>
+<aside class="ag-lateral dir"><p class="ag-lat-tit">Radar do escritório</p><div id="agRadarBox"></div></aside>
 </body>
 </html>
