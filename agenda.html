@@ -7,12 +7,12 @@
   <link rel="stylesheet" href="assets/css/style.css">
   <script type="module" src="assets/js/auth-guard.js"></script>
   <style>
-    .ag-toolbar { display:flex; flex-direction:column; gap:10px; margin-bottom:18px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07); border-radius:12px; padding:10px 12px; }
+    .ag-toolbar { display:flex; flex-direction:column; gap:10px; margin-bottom:18px; background:rgba(255,255,255,.04); border-radius:12px; padding:10px 12px; }
     .ag-tb-row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
     .ag-tb-topo { justify-content:space-between; }
     #agBusca { flex:1; min-width:220px; font-size:13px; }
     .ag-tb-group { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-    .ag-views { display:flex; gap:4px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:3px; }
+    .ag-views { display:flex; gap:4px; background:rgba(255,255,255,.055); border-radius:10px; padding:3px; }
     .ag-view-btn { padding:7px 16px; font-size:13px; font-weight:600; color:#8A93A6; background:none; border:none; border-radius:8px; cursor:pointer; font-family:inherit; }
     .ag-view-btn:hover { color:#C5D8E8; }
     .ag-view-btn.is-active { background:rgba(91,130,166,.25); color:#E6EBF2; }
@@ -30,7 +30,7 @@
     .ag-dia-layout { display:grid; grid-template-columns:minmax(0,1.7fr) minmax(260px,1fr); gap:16px; align-items:start; }
     .ag-dia-col { min-width:0; }
     .ag-resumo-wrap { position:sticky; top:16px; min-width:0; }
-    .ag-resumo { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:16px; }
+    .ag-resumo { background:rgba(255,255,255,.04); border-radius:14px; padding:16px; }
 
     /* header compacto: a agenda abre 20x por dia, cerimônia mínima */
     .app-shell .content { padding-top: 16px; }
@@ -71,7 +71,8 @@
     .ag-dia-secao { font-size:13px; font-weight:600; color:#8AAEC8; margin:16px 0 9px; display:flex; align-items:center; gap:8px; }
     .ag-dia-secao:first-child { margin-top:2px; }
     .ag-dia-secao .cont { background:rgba(255,255,255,.06); color:#C5D8E8; border-radius:999px; padding:1px 9px; font-size:12px; }
-    .ag-card { display:flex; align-items:center; gap:12px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-left:3px solid #8A93A6; border-radius:10px; padding:10px 13px; margin-bottom:7px; }
+    .ag-card { display:flex; align-items:center; gap:12px; background:rgba(255,255,255,.04); border-left:3px solid #8A93A6; border-radius:10px; padding:10px 13px; margin-bottom:7px; transition:background .12s; }
+    .ag-card:hover { background:rgba(255,255,255,.06); }
     .ag-card.prio-alta  { border-left-color:#E06C6C; }
     .ag-card.prio-media { border-left-color:#E3B341; }
     .ag-card.prio-baixa { border-left-color:#5B82A6; }
@@ -115,8 +116,8 @@
 
     /* ---------- SEMANA ---------- */
     .ag-semana { display:grid; grid-template-columns:repeat(7,1fr); gap:8px; }
-    .ag-wk-col { background:rgba(255,255,255,.02); border:1px solid rgba(255,255,255,.07); border-radius:10px; min-height:120px; padding:8px; }
-    .ag-wk-col.hoje { border-color:rgba(91,130,166,.5); background:rgba(91,130,166,.08); }
+    .ag-wk-col { background:rgba(255,255,255,.03); border-radius:10px; min-height:120px; padding:8px; }
+    .ag-wk-col.hoje { background:rgba(91,130,166,.12); }
     .ag-wk-head { font-size:11px; color:#8A93A6; text-align:center; margin-bottom:8px; font-weight:600; }
     .ag-wk-head .dnum { display:block; font-size:18px; color:#E6EBF2; }
     .ag-wk-item { display:flex; align-items:center; gap:5px; font-size:11.5px; color:#D7DEE8; padding:4px 6px; border-radius:6px; background:rgba(255,255,255,.04); margin-bottom:4px; border-left:2px solid #8A93A6; }
@@ -127,10 +128,10 @@
     /* ---------- MÊS ---------- */
     .ag-mes { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
     .ag-mes-dow { text-align:center; font-size:11px; color:#8A93A6; font-weight:600; text-transform:uppercase; letter-spacing:.04em; padding-bottom:4px; }
-    .ag-mo-cell { background:rgba(255,255,255,.02); border:1px solid rgba(255,255,255,.07); border-radius:8px; min-height:92px; padding:6px; cursor:pointer; transition:background .12s; }
+    .ag-mo-cell { background:rgba(255,255,255,.03); border-radius:8px; min-height:92px; padding:6px; cursor:pointer; transition:background .12s; }
     .ag-mo-cell:hover { background:rgba(255,255,255,.05); }
     .ag-mo-cell.fora { opacity:.4; }
-    .ag-mo-cell.hoje { border-color:rgba(91,130,166,.6); }
+    .ag-mo-cell.hoje { background:rgba(91,130,166,.14); }
     .ag-mo-day { font-size:13px; color:#C5D8E8; font-weight:600; margin-bottom:4px; }
     .ag-mo-cell.hoje .ag-mo-day { color:#fff; }
     .ag-mo-chip { display:flex; align-items:center; gap:4px; font-size:10.5px; color:#D7DEE8; margin-bottom:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
