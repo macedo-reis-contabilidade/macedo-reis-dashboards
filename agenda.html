@@ -38,6 +38,11 @@
     .page-header .eyebrow { margin-bottom: 3px; }
     .page-header h1 { font-size: 1.5rem; margin-bottom: 0; }
     .page-header p { display: none; }
+    @media (min-width:1150px){
+      .ag-topo-flex { display:flex; align-items:flex-start; gap:28px; }
+      .ag-topo-flex .page-header { margin-bottom:0; flex:0 0 auto; padding-top:2px; }
+      .ag-topo-flex .ag-toolbar { flex:1; min-width:0; }
+    }
     .ag-lateral { display:none; }
     @media (min-width:1640px){
       .ag-lateral { display:block; position:fixed; top:96px; width:248px; max-height:calc(100vh - 120px); overflow:auto; z-index:5; }
@@ -195,6 +200,7 @@
     </header>
 
     <main class="content">
+      <div class="ag-topo-flex">
       <div class="page-header">
         <div class="breadcrumb">
           <a href="index.html">Painel central</a>
@@ -228,6 +234,7 @@
           <select id="fResp" class="select"><option value="">Todos os responsáveis</option></select>
           <button class="btn btn-primary btn-sm" id="btnNovaAv">+ Tarefa</button>
         </div>
+      </div>
       </div>
 
       <div class="ag-semprazo" id="agSemPrazo"></div>
