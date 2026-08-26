@@ -7,7 +7,15 @@
   <link rel="stylesheet" href="assets/css/style.css">
   <script type="module" src="assets/js/auth-guard.js"></script>
   <style>
-    .rg-resumo { display:flex; gap:26px; flex-wrap:wrap; margin-bottom:18px; }
+    .rg-resumo { display:flex; gap:34px; flex-wrap:wrap; margin-bottom:14px; background:rgba(255,255,255,.04); border-radius:14px; padding:14px 20px; }
+    .fa-focus { display:grid; grid-template-columns:repeat(6,1fr); gap:10px; margin-bottom:18px; }
+    .fa-focus-card { background:rgba(255,255,255,.03); border:none; border-radius:12px; padding:12px 14px; cursor:pointer; text-align:left; transition:background .15s; display:flex; flex-direction:column; gap:4px; font-family:inherit; }
+    .fa-focus-card:hover { background:rgba(255,255,255,.055); }
+    .fa-focus-card.is-active { background:rgba(91,130,166,.14); }
+    .fc-num { font-size:22px; font-weight:700; color:#E6EBF2; line-height:1; }
+    .fc-lbl { font-size:11.5px; color:#8A93A6; }
+    @media (max-width:900px){ .fa-focus { grid-template-columns:repeat(3,1fr); } }
+    @media (max-width:560px){ .fa-focus { grid-template-columns:repeat(2,1fr); } }
     .rg-kpi { display:flex; flex-direction:column; gap:2px; }
     .rg-kpi .n { font-size:1.35rem; font-weight:700; color:#E6ECF4; }
     .rg-kpi .l { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:#8A93A6; }
