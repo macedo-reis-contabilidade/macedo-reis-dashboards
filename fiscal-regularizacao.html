@@ -128,7 +128,7 @@
       <button class="rg-add" id="fiAddDeb">+ adicionar débito</button>
 
       <div class="rg-sec">Serviços do escritório (honorários)</div>
-      <table class="rg-ed"><thead><tr><th>Serviço</th><th style="width:110px">Valor (R$)</th><th style="width:300px">Condições</th><th style="width:30px"></th></tr></thead><tbody id="fiServicos"></tbody></table>
+      <table class="rg-ed"><thead><tr><th>Serviço</th><th style="width:110px">Valor (R$)</th><th style="width:300px">Condições</th><th style="width:46px" title="Serviço alternativo — o cliente contrata um OU outro; não soma no total">Alt.</th><th style="width:30px"></th></tr></thead><tbody id="fiServicos"></tbody></table>
       <div class="rg-tot-srv" id="fiTotSrv"></div>
       <button class="rg-add" id="fiAddSrv">+ adicionar serviço</button>
 
@@ -270,11 +270,17 @@
         '<td><input class="s-desc" value="' + escapeHtml(s.descricao || '') + '"></td>' +
         '<td class="c-num"><input class="s-valor" value="' + brNum(s.valor) + '"></td>' +
         '<td><textarea class="s-cond">' + escapeHtml(s.condicao || '') + '</textarea></td>' +
+        '<td style="text-align:center;padding-top:9px"><input type="checkbox" class="s-alt" title="Alternativo — não soma no total"' + (s.alternativo ? ' checked' : '') + '></td>' +
         '<td><button class="rg-del" title="Remover">×</button></td></tr>';
     }
     function totalServicos() {
-      let t = 0; document.querySelectorAll('#fiServicos .s-valor').forEach(i => { const v = parseNum(i.value); if (v) t += v; });
-      $('fiTotSrv').textContent = t ? 'Total dos honorários: ' + brl(t) : '';
+      let t = 0, alts = 0;
+      document.querySelectorAll('#fiServicos tr').forEach(tr => {
+        const v = parseNum(tr.querySelector('.s-valor').value);
+        if (tr.querySelector('.s-alt').checked) { if (v != null) alts++; }
+        else if (v) t += v;
+      });
+      $('fiTotSrv').textContent = (t ? 'Total dos honorários fixos: ' + brl(t) : '') + (alts ? (t ? ' · ' : '') + alts + ' opção(ões) alternativa(s) à parte' : '');
     }
     function abrirFicha(id) {
       fichaId = id;
@@ -296,6 +302,7 @@
     function ligarRemocoes() {
       document.querySelectorAll('#fiDebitos .rg-del, #fiServicos .rg-del').forEach(b => b.onclick = e => { e.target.closest('tr').remove(); totalServicos(); });
       document.querySelectorAll('#fiServicos .s-valor').forEach(i => i.oninput = totalServicos);
+      document.querySelectorAll('#fiServicos .s-alt').forEach(i => i.onchange = totalServicos);
     }
     $('fiAddDeb').onclick = () => { $('fiDebitos').insertAdjacentHTML('beforeend', linhaDeb({ status: 'pendente' })); ligarRemocoes(); };
     $('fiAddSrv').onclick = () => { $('fiServicos').insertAdjacentHTML('beforeend', linhaSrv({})); ligarRemocoes(); };
@@ -325,7 +332,8 @@
           const o = { regularizacao_id: fichaId, ordem: i + 1,
             descricao: tr.querySelector('.s-desc').value.trim(),
             valor: parseNum(tr.querySelector('.s-valor').value),
-            condicao: tr.querySelector('.s-cond').value.trim() || null };
+            condicao: tr.querySelector('.s-cond').value.trim() || null,
+            alternativo: tr.querySelector('.s-alt').checked };
           if (!o.descricao) return;
           if (tr.dataset.id) { srvIds.push(tr.dataset.id); srvUpd.push({ id: tr.dataset.id, ...o }); }
           else srvNovos.push(o);
@@ -359,8 +367,10 @@
       const c = casos.find(x => x.id === id); if (!c) return;
       const cli = clientesMap[c.cliente_id] || {};
       const debs = debitosPor[id] || [];
-      const srvs = (servicosPor[id] || []).filter(s => s.valor != null || (s.condicao || '').trim());
-      const totSrv = srvs.reduce((a, s) => a + (+s.valor || 0), 0);
+      const srvsAll = (servicosPor[id] || []).filter(s => s.valor != null || (s.condicao || '').trim());
+      const srvFix = srvsAll.filter(s => !s.alternativo);
+      const srvAlt = srvsAll.filter(s => s.alternativo);
+      const totSrv = srvFix.reduce((a, s) => a + (+s.valor || 0), 0);
       const logoUrl = new URL('assets/logo-mr.png', location.href).href;
       const hojeStr = new Date().toLocaleDateString('pt-BR');
       const linhas = debs.map(d =>
@@ -368,8 +378,10 @@
         '<td>' + escapeHtml(d.descricao) + '</td>' +
         '<td class="num">' + (d.valor == null ? '<i>a apurar</i>' : brl(d.valor)) + '</td>' +
         '<td>' + escapeHtml(d.condicao || '—') + '</td></tr>').join('');
-      const linhasSrv = srvs.map(s =>
-        '<tr><td>' + escapeHtml(s.descricao) + '</td><td class="num">' + (s.valor == null ? '—' : brl(s.valor)) + '</td><td>' + escapeHtml(s.condicao || '—') + '</td></tr>').join('');
+      const linhaS = s =>
+        '<tr><td>' + escapeHtml(s.descricao) + '</td><td class="num">' + (s.valor == null ? '—' : brl(s.valor)) + '</td><td>' + escapeHtml(s.condicao || '—') + '</td></tr>';
+      const linhasSrv = srvFix.map(linhaS).join('');
+      const linhasAlt = srvAlt.map(linhaS).join('<tr class="ou"><td colspan="3">— ou —</td></tr>');
       const html = '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Plano de Regularização — ' + escapeHtml(cli.nome_principal || '') + '</title><style>'
         + 'body{font-family:"Segoe UI",Arial,sans-serif;color:#23272E;margin:0;padding:28px;background:#fff;font-size:13px;line-height:1.5;}'
         + '.folha{max-width:830px;margin:0 auto;}'
@@ -386,6 +398,8 @@
         + '.entrada{background:#5B82A6;color:#fff;border-radius:10px;padding:10px 18px;font-size:13px;} .entrada b{font-size:17px;display:block;}'
         + '.atencao{background:#FBF3E6;border-left:4px solid #E8A15C;border-radius:6px;padding:11px 14px;margin:0 0 20px;font-size:12.5px;}'
         + '.atencao b{color:#8A5A22;display:block;margin-bottom:3px;}'
+        + '.ou td{text-align:center;color:#8A93A6;font-size:11px;font-style:italic;border-bottom:none;padding:3px;}'
+        + '.alt-tit{font-size:12px;color:#3A5878;font-weight:600;margin:12px 0 4px;}'
         + 'h2{font-size:14px;color:#3A5878;margin:22px 0 8px;}'
         + '.passos{margin:6px 0 22px;padding-left:20px;} .passos li{margin-bottom:5px;}'
         + '.rodape{margin-top:26px;padding-top:10px;border-top:1px solid #E1E6EC;font-size:10.5px;color:#8A93A6;}'
@@ -403,7 +417,10 @@
         + '<table><thead><tr><th style="width:120px">Órgão</th><th>Débito / referências</th><th style="width:110px">Valor</th><th style="width:250px">Condição simulada</th></tr></thead><tbody>' + linhas + '</tbody></table>'
         + '<div class="tot"><span class="t1">Total dos débitos: <b>' + brl(c.total_debitos) + '</b></span><span class="entrada">Entrada prevista para regularizar<b>' + brl(c.entrada_prevista) + '</b></span></div>'
         + (c.obs_geral ? '<div class="atencao"><b>Atenção</b>' + escapeHtml(c.obs_geral) + '</div>' : '')
-        + (linhasSrv ? '<h2>Investimento — honorários do escritório</h2><table><thead><tr><th>Serviço</th><th style="width:110px">Valor</th><th style="width:300px">Condições</th></tr></thead><tbody>' + linhasSrv + '</tbody></table>' + (totSrv ? '<div class="tot"><span class="t1">Total dos honorários: <b>' + brl(totSrv) + '</b></span></div>' : '') : '')
+        + (linhasSrv || linhasAlt ? '<h2>Investimento — honorários do escritório</h2>' : '')
+        + (linhasSrv ? '<table><thead><tr><th>Serviço</th><th style="width:110px">Valor</th><th style="width:300px">Condições</th></tr></thead><tbody>' + linhasSrv + '</tbody></table>' : '')
+        + (linhasAlt ? '<p class="alt-tit">Opções — contrata-se apenas uma das alternativas abaixo:</p><table><thead><tr><th>Serviço</th><th style="width:110px">Valor</th><th style="width:300px">Condições</th></tr></thead><tbody>' + linhasAlt + '</tbody></table>' : '')
+        + (totSrv ? '<div class="tot"><span class="t1">Total dos honorários' + (linhasAlt ? ' fixos' : '') + ': <b>' + brl(totSrv) + '</b>' + (linhasAlt ? ' <span style="font-weight:400;color:#66707E">+ a opção escolhida</span>' : '') + '</span></div>' : (linhasAlt ? '<div class="tot"><span class="t1">Total conforme a opção escolhida</span></div>' : ''))
         + '<h2>Próximos passos</h2><ol class="passos">'
         + '<li>Confirmar com o escritório a adesão ao plano de regularização;</li>'
         + '<li>Efetuar o pagamento das entradas previstas;</li>'
