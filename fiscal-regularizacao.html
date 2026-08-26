@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fiscal — Regularizações — Macedo & Reis</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+  <style>
+    .rg-resumo { display:flex; gap:26px; flex-wrap:wrap; margin-bottom:18px; }
+    .rg-kpi { display:flex; flex-direction:column; gap:2px; }
+    .rg-kpi .n { font-size:1.35rem; font-weight:700; color:#E6ECF4; }
+    .rg-kpi .l { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:#8A93A6; }
+    .rg-kpi.alerta .n { color:#E8A15C; }
+    .rg-tabela { width:100%; border-collapse:collapse; }
+    .rg-tabela th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:#8A93A6; padding:8px 10px; }
+    .rg-tabela td { padding:10px; font-size:13.5px; color:#C9D3E0; background:rgba(255,255,255,.03); }
+    .rg-tabela tr td:first-child { border-radius:10px 0 0 10px; }
+    .rg-tabela tr td:last-child { border-radius:0 10px 10px 0; }
+    .rg-tabela tbody tr { cursor:pointer; }
+    .rg-tabela tbody tr:hover td { background:rgba(255,255,255,.055); }
+    .rg-tabela .num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .rg-tabela .tot { font-weight:700; color:#E6ECF4; }
+    .rg-sp { border-collapse:separate; border-spacing:0 6px; }
+    .rg-status { padding:5px 8px; font-size:12px; border-radius:8px; background:#141A22; color:#C5D8E8; border:1px solid rgba(255,255,255,.12); cursor:pointer; font-family:inherit; }
+    .rg-mini { display:inline-block; padding:1px 8px; border-radius:999px; font-size:10.5px; font-weight:600; margin-right:4px; }
+    .rg-mini.p { background:rgba(232,161,92,.15); color:#E8A15C; }
+    .rg-mini.ok { background:rgba(63,176,122,.15); color:#3FB07A; }
+    .rg-ov { position:fixed; inset:0; background:rgba(5,8,12,.72); display:none; align-items:flex-start; justify-content:center; overflow:auto; padding:34px 16px; z-index:60; }
+    .rg-ov.on { display:flex; }
+    .rg-card { background:#10161F; border-radius:16px; max-width:1060px; width:100%; padding:22px 24px 26px; }
+    .rg-card h2 { margin:0 0 2px; font-size:1.25rem; color:#E6ECF4; }
+    .rg-meta { display:flex; gap:18px; flex-wrap:wrap; align-items:center; margin:10px 0 16px; font-size:13px; color:#8A93A6; }
+    .rg-sec { font-size:11px; text-transform:uppercase; letter-spacing:.09em; color:#6E7787; margin:20px 0 8px; }
+    .rg-ed { width:100%; border-collapse:separate; border-spacing:0 5px; }
+    .rg-ed th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:#6E7787; padding:2px 8px; }
+    .rg-ed td { padding:3px 4px; vertical-align:top; }
+    .rg-ed input, .rg-ed textarea, .rg-ed select { width:100%; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); border-radius:8px; color:#DDE5EF; padding:7px 9px; font:inherit; font-size:12.8px; }
+    .rg-ed textarea { resize:vertical; min-height:36px; }
+    .rg-ed .c-num input { text-align:right; font-variant-numeric:tabular-nums; }
+    .rg-del { background:none; border:none; color:#6E7787; cursor:pointer; font-size:15px; padding:6px 4px; }
+    .rg-del:hover { color:#E06C6C; }
+    .rg-add { background:none; border:1px dashed rgba(255,255,255,.18); color:#8A93A6; border-radius:8px; padding:6px 12px; font-size:12px; cursor:pointer; margin-top:2px; }
+    .rg-add:hover { color:#C9D3E0; border-color:rgba(91,130,166,.5); }
+    .rg-acoes { display:flex; gap:10px; justify-content:flex-end; margin-top:20px; flex-wrap:wrap; }
+    .rg-obs { width:100%; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); border-radius:10px; color:#DDE5EF; padding:9px 11px; font:inherit; font-size:13px; min-height:56px; resize:vertical; }
+    .rg-msg { font-size:12.5px; margin-right:auto; align-self:center; color:#3FB07A; }
+    .rg-tot-srv { text-align:right; font-size:13px; color:#E6ECF4; font-weight:600; padding:6px 8px 0; }
+    @media (max-width:820px){ .rg-tabela .oculta-m { display:none; } }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip"><div class="user-avatar" id="userAvatar">—</div><span id="userName">Carregando…</span></div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <a href="fiscal.html">Fiscal</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Regularizações</span>
+        </div>
+        <div class="eyebrow">Exclusão do Simples Nacional</div>
+        <h1>Regularizações</h1>
+        <p>Levantamento, plano e acompanhamento da regularização de cada cliente excluído — do número à apresentação.</p>
+      </div>
+
+      <div class="rg-resumo" id="rgResumo"></div>
+
+      <div class="fa-focus" id="rgFunil">
+        <button class="fa-focus-card" data-f="levantamento"><span class="fc-num" id="fLev">0</span><span class="fc-lbl">Levantamento</span></button>
+        <button class="fa-focus-card" data-f="apresentado"><span class="fc-num" id="fApr">0</span><span class="fc-lbl">Apresentado</span></button>
+        <button class="fa-focus-card" data-f="aprovado_cliente"><span class="fc-num" id="fAcl">0</span><span class="fc-lbl">Aprovado pelo cliente</span></button>
+        <button class="fa-focus-card" data-f="parcelado"><span class="fc-num" id="fPar">0</span><span class="fc-lbl">Parcelado</span></button>
+        <button class="fa-focus-card" data-f="regularizado"><span class="fc-num" id="fReg">0</span><span class="fc-lbl">Regularizado</span></button>
+        <button class="fa-focus-card is-active" data-f="todos"><span class="fc-num" id="fTod">0</span><span class="fc-lbl">Todos</span></button>
+      </div>
+
+      <div class="toolbar">
+        <div class="toolbar-filters">
+          <input type="text" id="searchInput" class="input input-search" placeholder="Buscar cliente…">
+        </div>
+        <div class="fa-toolbar-actions">
+          <button class="btn btn-primary" id="btnNovo">+ Novo caso</button>
+        </div>
+      </div>
+
+      <table class="rg-tabela rg-sp">
+        <thead><tr><th>Cliente</th><th class="num">Total de débitos</th><th class="num">Entrada prevista</th><th class="oculta-m">Débitos</th><th>Status</th></tr></thead>
+        <tbody id="rgLista"></tbody>
+      </table>
+      <div id="rgVazio" class="empty-state" hidden>Nenhum caso neste filtro.</div>
+    </main>
+  </div>
+
+  <!-- FICHA -->
+  <div class="rg-ov" id="ovFicha">
+    <div class="rg-card">
+      <h2 id="fiTitulo">—</h2>
+      <div class="rg-meta">
+        <span id="fiCnpj"></span>
+        <span>Data-base: <b id="fiBase" style="color:#C9D3E0"></b></span>
+        <span>Prazo: <b id="fiPrazo" style="color:#E8A15C"></b></span>
+        <label>Status: <select class="rg-status" id="fiStatus"></select></label>
+      </div>
+
+      <div class="rg-sec">Débitos levantados</div>
+      <table class="rg-ed"><thead><tr><th style="width:110px">Órgão</th><th>Descrição / referências</th><th style="width:110px">Valor (R$)</th><th style="width:230px">Condição de parcelamento</th><th style="width:120px">Situação</th><th style="width:110px">Andamento</th><th style="width:30px"></th></tr></thead><tbody id="fiDebitos"></tbody></table>
+      <button class="rg-add" id="fiAddDeb">+ adicionar débito</button>
+
+      <div class="rg-sec">Serviços do escritório (honorários)</div>
+      <table class="rg-ed"><thead><tr><th>Serviço</th><th style="width:110px">Valor (R$)</th><th style="width:300px">Condições</th><th style="width:30px"></th></tr></thead><tbody id="fiServicos"></tbody></table>
+      <div class="rg-tot-srv" id="fiTotSrv"></div>
+      <button class="rg-add" id="fiAddSrv">+ adicionar serviço</button>
+
+      <div class="rg-sec">Observação geral (entra na apresentação como caixa de atenção)</div>
+      <textarea class="rg-obs" id="fiObs"></textarea>
+
+      <div class="rg-acoes">
+        <span class="rg-msg" id="fiMsg"></span>
+        <button class="btn btn-ghost" id="fiFechar">Fechar</button>
+        <button class="btn btn-ghost" id="fiSalvar">Salvar</button>
+        <button class="btn btn-primary" id="fiApresentar">Gerar apresentação</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- NOVO CASO -->
+  <div class="rg-ov" id="ovNovo">
+    <div class="rg-card" style="max-width:520px">
+      <h2>Novo caso de regularização</h2>
+      <div class="rg-sec">Cliente</div>
+      <select class="rg-status" id="nvCliente" style="width:100%"></select>
+      <div class="rg-sec">Campanha</div>
+      <input class="rg-obs" style="min-height:auto" id="nvCampanha" value="Exclusão Simples 2026">
+      <div class="rg-sec">Data-base / Prazo final</div>
+      <div style="display:flex;gap:10px">
+        <input type="date" class="rg-status" id="nvBase" style="flex:1">
+        <input type="date" class="rg-status" id="nvPrazo" style="flex:1">
+      </div>
+      <div class="rg-acoes">
+        <span class="rg-msg" id="nvMsg" style="color:#E06C6C"></span>
+        <button class="btn btn-ghost" id="nvFechar">Cancelar</button>
+        <button class="btn btn-primary" id="nvCriar">Criar</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+
+    const $ = id => document.getElementById(id);
+    const escapeHtml = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const brl = v => v == null || v === '' ? '—' : Number(v).toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
+    const brNum = v => v == null || v === '' ? '' : Number(v).toLocaleString('pt-BR', { minimumFractionDigits:2, maximumFractionDigits:2 });
+    const parseNum = s => { const t = String(s || '').trim().replace(/\./g, '').replace(',', '.'); return t === '' ? null : (isNaN(+t) ? null : +t); };
+    const fmtData = d => d ? d.split('-').reverse().join('/') : '—';
+    const fmtCnpj = d => { const x = String(d || '').replace(/\D/g, ''); return x.length === 14 ? x.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5') : (x.length === 11 ? x.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : (d || '')); };
+    const STATUS = [['levantamento','Levantamento'],['apresentado','Apresentado ao cliente'],['aprovado_cliente','Aprovado pelo cliente'],['parcelado','Parcelamentos efetuados'],['regularizado','Regularizado'],['sem_acordo','Sem acordo']];
+    const ST_DEB = [['pendente','Pendente'],['parcelado','Parcelado'],['pago','Pago'],['dispensado','Dispensado']];
+
+    let casos = [], clientesMap = {}, debitosPor = {}, servicosPor = {}, filtroStatus = 'todos', busca = '', fichaId = null;
+
+    getCurrentUser().then(u => { if (!u) return; $('userName').textContent = u.email; $('userAvatar').textContent = (u.email || '?')[0].toUpperCase(); });
+    $('btnLogout').onclick = () => signOut();
+
+    async function load() {
+      const { data: regs } = await supabase.from('regularizacoes').select('*').order('total_debitos', { ascending: false });
+      casos = regs || [];
+      const ids = casos.map(c => c.cliente_id);
+      if (ids.length) {
+        const { data: clis } = await supabase.from('clientes').select('id, nome_principal, documento').in('id', ids);
+        clientesMap = Object.fromEntries((clis || []).map(c => [c.id, c]));
+        const regIds = casos.map(c => c.id);
+        const [{ data: debs }, { data: srvs }] = await Promise.all([
+          supabase.from('regularizacao_debitos').select('*').in('regularizacao_id', regIds).order('ordem'),
+          supabase.from('regularizacao_servicos').select('*').in('regularizacao_id', regIds).order('ordem')
+        ]);
+        debitosPor = {}; (debs || []).forEach(d => (debitosPor[d.regularizacao_id] = debitosPor[d.regularizacao_id] || []).push(d));
+        servicosPor = {}; (srvs || []).forEach(s => (servicosPor[s.regularizacao_id] = servicosPor[s.regularizacao_id] || []).push(s));
+      }
+      render();
+    }
+
+    function render() {
+      const hoje = new Date().toISOString().slice(0, 10);
+      const totD = casos.reduce((a, c) => a + (+c.total_debitos || 0), 0);
+      const totE = casos.reduce((a, c) => a + (+c.entrada_prevista || 0), 0);
+      const prazoMin = casos.map(c => c.prazo_final).filter(Boolean).sort()[0];
+      const dias = prazoMin ? Math.ceil((new Date(prazoMin) - new Date(hoje)) / 864e5) : null;
+      $('rgResumo').innerHTML =
+        '<div class="rg-kpi"><span class="n">' + casos.length + '</span><span class="l">clientes na campanha</span></div>' +
+        '<div class="rg-kpi"><span class="n">' + brl(totD) + '</span><span class="l">débitos levantados</span></div>' +
+        '<div class="rg-kpi"><span class="n">' + brl(totE) + '</span><span class="l">entradas previstas</span></div>' +
+        (dias != null ? '<div class="rg-kpi alerta"><span class="n">' + dias + ' dias</span><span class="l">até o prazo (' + fmtData(prazoMin) + ')</span></div>' : '');
+      const cont = { levantamento:0, apresentado:0, aprovado_cliente:0, parcelado:0, regularizado:0 };
+      casos.forEach(c => { if (cont[c.status] != null) cont[c.status]++; });
+      $('fLev').textContent = cont.levantamento; $('fApr').textContent = cont.apresentado; $('fAcl').textContent = cont.aprovado_cliente;
+      $('fPar').textContent = cont.parcelado; $('fReg').textContent = cont.regularizado; $('fTod').textContent = casos.length;
+
+      const vis = casos.filter(c => {
+        if (filtroStatus !== 'todos' && c.status !== filtroStatus) return false;
+        if (busca) { const cli = clientesMap[c.cliente_id]; if (!cli || !cli.nome_principal.toLowerCase().includes(busca)) return false; }
+        return true;
+      });
+      $('rgLista').innerHTML = vis.map(c => {
+        const cli = clientesMap[c.cliente_id] || {};
+        const debs = debitosPor[c.id] || [];
+        const pend = debs.filter(d => d.status === 'pendente').length;
+        const feitos = debs.length - pend;
+        return '<tr data-id="' + c.id + '">' +
+          '<td><b style="color:#E6ECF4">' + escapeHtml(cli.nome_principal || '?') + '</b><br><span style="font-size:11.5px;color:#6E7787">' + escapeHtml(fmtCnpj(cli.documento)) + '</span></td>' +
+          '<td class="num tot">' + brl(c.total_debitos) + '</td>' +
+          '<td class="num">' + brl(c.entrada_prevista) + '</td>' +
+          '<td class="oculta-m">' + (pend ? '<span class="rg-mini p">' + pend + ' pendente(s)</span>' : '') + (feitos ? '<span class="rg-mini ok">' + feitos + ' encaminhado(s)</span>' : '') + '</td>' +
+          '<td><select class="rg-status st-caso" data-id="' + c.id + '">' + STATUS.map(s => '<option value="' + s[0] + '"' + (c.status === s[0] ? ' selected' : '') + '>' + s[1] + '</option>').join('') + '</select></td></tr>';
+      }).join('');
+      $('rgVazio').hidden = vis.length > 0;
+
+      document.querySelectorAll('.st-caso').forEach(sel => {
+        sel.onclick = e => e.stopPropagation();
+        sel.onchange = async e => {
+          await supabase.from('regularizacoes').update({ status: e.target.value, atualizado_em: new Date().toISOString() }).eq('id', e.target.dataset.id);
+          const c = casos.find(x => x.id === e.target.dataset.id); if (c) c.status = e.target.value;
+          render();
+        };
+      });
+      document.querySelectorAll('#rgLista tr').forEach(tr => tr.onclick = () => abrirFicha(tr.dataset.id));
+    }
+
+    $('rgFunil').querySelectorAll('.fa-focus-card').forEach(b => b.onclick = () => {
+      filtroStatus = b.dataset.f;
+      $('rgFunil').querySelectorAll('.fa-focus-card').forEach(x => x.classList.toggle('is-active', x === b));
+      render();
+    });
+    $('searchInput').oninput = e => { busca = e.target.value.trim().toLowerCase(); render(); };
+
+    // ---------- ficha ----------
+    function linhaDeb(d) {
+      return '<tr data-id="' + (d.id || '') + '">' +
+        '<td><input class="d-orgao" value="' + escapeHtml(d.orgao || '') + '"></td>' +
+        '<td><textarea class="d-desc">' + escapeHtml(d.descricao || '') + '</textarea></td>' +
+        '<td class="c-num"><input class="d-valor" value="' + brNum(d.valor) + '" placeholder="a apurar"></td>' +
+        '<td><textarea class="d-cond">' + escapeHtml(d.condicao || '') + '</textarea></td>' +
+        '<td><input class="d-sit" value="' + escapeHtml(d.situacao || '') + '"></td>' +
+        '<td><select class="d-st">' + ST_DEB.map(s => '<option value="' + s[0] + '"' + ((d.status || 'pendente') === s[0] ? ' selected' : '') + '>' + s[1] + '</option>').join('') + '</select></td>' +
+        '<td><button class="rg-del" title="Remover">×</button></td></tr>';
+    }
+    function linhaSrv(s) {
+      return '<tr data-id="' + (s.id || '') + '">' +
+        '<td><input class="s-desc" value="' + escapeHtml(s.descricao || '') + '"></td>' +
+        '<td class="c-num"><input class="s-valor" value="' + brNum(s.valor) + '"></td>' +
+        '<td><textarea class="s-cond">' + escapeHtml(s.condicao || '') + '</textarea></td>' +
+        '<td><button class="rg-del" title="Remover">×</button></td></tr>';
+    }
+    function totalServicos() {
+      let t = 0; document.querySelectorAll('#fiServicos .s-valor').forEach(i => { const v = parseNum(i.value); if (v) t += v; });
+      $('fiTotSrv').textContent = t ? 'Total dos honorários: ' + brl(t) : '';
+    }
+    function abrirFicha(id) {
+      fichaId = id;
+      const c = casos.find(x => x.id === id); if (!c) return;
+      const cli = clientesMap[c.cliente_id] || {};
+      $('fiTitulo').textContent = cli.nome_principal || '?';
+      $('fiCnpj').textContent = fmtCnpj(cli.documento);
+      $('fiBase').textContent = fmtData(c.data_base);
+      $('fiPrazo').textContent = fmtData(c.prazo_final);
+      $('fiStatus').innerHTML = STATUS.map(s => '<option value="' + s[0] + '"' + (c.status === s[0] ? ' selected' : '') + '>' + s[1] + '</option>').join('');
+      $('fiDebitos').innerHTML = (debitosPor[id] || []).map(linhaDeb).join('');
+      $('fiServicos').innerHTML = (servicosPor[id] || []).map(linhaSrv).join('');
+      $('fiObs').value = c.obs_geral || '';
+      $('fiMsg').textContent = '';
+      totalServicos();
+      ligarRemocoes();
+      $('ovFicha').classList.add('on');
+    }
+    function ligarRemocoes() {
+      document.querySelectorAll('#fiDebitos .rg-del, #fiServicos .rg-del').forEach(b => b.onclick = e => { e.target.closest('tr').remove(); totalServicos(); });
+      document.querySelectorAll('#fiServicos .s-valor').forEach(i => i.oninput = totalServicos);
+    }
+    $('fiAddDeb').onclick = () => { $('fiDebitos').insertAdjacentHTML('beforeend', linhaDeb({ status: 'pendente' })); ligarRemocoes(); };
+    $('fiAddSrv').onclick = () => { $('fiServicos').insertAdjacentHTML('beforeend', linhaSrv({})); ligarRemocoes(); };
+    $('fiFechar').onclick = () => $('ovFicha').classList.remove('on');
+
+    $('fiSalvar').onclick = async () => {
+      const c = casos.find(x => x.id === fichaId); if (!c) return;
+      $('fiMsg').style.color = '#8A93A6'; $('fiMsg').textContent = 'Gravando…';
+      try {
+        const debRows = Array.from(document.querySelectorAll('#fiDebitos tr'));
+        const srvRows = Array.from(document.querySelectorAll('#fiServicos tr'));
+        const debNovos = [], debUpd = [], debIds = [];
+        debRows.forEach((tr, i) => {
+          const o = { regularizacao_id: fichaId, ordem: i + 1,
+            orgao: tr.querySelector('.d-orgao').value.trim() || null,
+            descricao: tr.querySelector('.d-desc').value.trim(),
+            valor: parseNum(tr.querySelector('.d-valor').value),
+            condicao: tr.querySelector('.d-cond').value.trim() || null,
+            situacao: tr.querySelector('.d-sit').value.trim() || null,
+            status: tr.querySelector('.d-st').value };
+          if (!o.descricao) return;
+          if (tr.dataset.id) { debIds.push(tr.dataset.id); debUpd.push({ id: tr.dataset.id, ...o }); }
+          else debNovos.push(o);
+        });
+        const srvNovos = [], srvUpd = [], srvIds = [];
+        srvRows.forEach((tr, i) => {
+          const o = { regularizacao_id: fichaId, ordem: i + 1,
+            descricao: tr.querySelector('.s-desc').value.trim(),
+            valor: parseNum(tr.querySelector('.s-valor').value),
+            condicao: tr.querySelector('.s-cond').value.trim() || null };
+          if (!o.descricao) return;
+          if (tr.dataset.id) { srvIds.push(tr.dataset.id); srvUpd.push({ id: tr.dataset.id, ...o }); }
+          else srvNovos.push(o);
+        });
+        const totalDeb = debUpd.concat(debNovos).reduce((a, d) => a + (d.valor || 0), 0);
+        const antigosD = (debitosPor[fichaId] || []).map(d => d.id).filter(x => !debIds.includes(x));
+        const antigosS = (servicosPor[fichaId] || []).map(s => s.id).filter(x => !srvIds.includes(x));
+        for (const d of debUpd) { const { id, ...rest } = d; const { error } = await supabase.from('regularizacao_debitos').update(rest).eq('id', id); if (error) throw error; }
+        if (debNovos.length) { const { error } = await supabase.from('regularizacao_debitos').insert(debNovos); if (error) throw error; }
+        if (antigosD.length) { const { error } = await supabase.from('regularizacao_debitos').delete().in('id', antigosD); if (error) throw error; }
+        for (const s of srvUpd) { const { id, ...rest } = s; const { error } = await supabase.from('regularizacao_servicos').update(rest).eq('id', id); if (error) throw error; }
+        if (srvNovos.length) { const { error } = await supabase.from('regularizacao_servicos').insert(srvNovos); if (error) throw error; }
+        if (antigosS.length) { const { error } = await supabase.from('regularizacao_servicos').delete().in('id', antigosS); if (error) throw error; }
+        const { error: e2 } = await supabase.from('regularizacoes').update({
+          status: $('fiStatus').value, obs_geral: $('fiObs').value.trim() || null,
+          total_debitos: totalDeb || null, atualizado_em: new Date().toISOString()
+        }).eq('id', fichaId);
+        if (e2) throw e2;
+        $('fiMsg').style.color = '#3FB07A'; $('fiMsg').textContent = '✓ Gravado';
+        await load();
+        abrirFicha(fichaId);
+        $('fiMsg').style.color = '#3FB07A'; $('fiMsg').textContent = '✓ Gravado';
+      } catch (err) {
+        $('fiMsg').style.color = '#E06C6C'; $('fiMsg').textContent = 'Erro ao gravar: ' + (err.message || err);
+      }
+    };
+
+    // ---------- apresentação ----------
+    $('fiApresentar').onclick = () => gerarApresentacao(fichaId);
+    function gerarApresentacao(id) {
+      const c = casos.find(x => x.id === id); if (!c) return;
+      const cli = clientesMap[c.cliente_id] || {};
+      const debs = debitosPor[id] || [];
+      const srvs = (servicosPor[id] || []).filter(s => s.valor != null || (s.condicao || '').trim());
+      const totSrv = srvs.reduce((a, s) => a + (+s.valor || 0), 0);
+      const logoUrl = new URL('assets/logo-mr.png', location.href).href;
+      const hojeStr = new Date().toLocaleDateString('pt-BR');
+      const linhas = debs.map(d =>
+        '<tr><td>' + escapeHtml(d.orgao || '—') + (d.situacao ? '<br><span class="sit">' + escapeHtml(d.situacao) + '</span>' : '') + '</td>' +
+        '<td>' + escapeHtml(d.descricao) + '</td>' +
+        '<td class="num">' + (d.valor == null ? '<i>a apurar</i>' : brl(d.valor)) + '</td>' +
+        '<td>' + escapeHtml(d.condicao || '—') + '</td></tr>').join('');
+      const linhasSrv = srvs.map(s =>
+        '<tr><td>' + escapeHtml(s.descricao) + '</td><td class="num">' + (s.valor == null ? '—' : brl(s.valor)) + '</td><td>' + escapeHtml(s.condicao || '—') + '</td></tr>').join('');
+      const html = '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Plano de Regularização — ' + escapeHtml(cli.nome_principal || '') + '</title><style>'
+        + 'body{font-family:"Segoe UI",Arial,sans-serif;color:#23272E;margin:0;padding:28px;background:#fff;font-size:13px;line-height:1.5;}'
+        + '.folha{max-width:830px;margin:0 auto;}'
+        + '.cab{display:flex;align-items:center;gap:14px;} .cab img{width:52px;height:52px;object-fit:contain;}'
+        + '.firma{display:flex;flex-direction:column;line-height:1.35;} .firma strong{font-size:15px;color:#3A5878;} .firma span{font-size:11px;color:#66707E;}'
+        + 'hr.reg{border:none;border-top:2px solid #5B82A6;margin:14px 0 20px;}'
+        + 'h1{font-size:19px;color:#3A5878;margin:0 0 2px;} .sub{color:#66707E;font-size:12.5px;margin:0 0 16px;}'
+        + '.dados{margin:0 0 18px;font-size:13px;} .dados b{color:#3A5878;}'
+        + 'p.ctx{margin:0 0 18px;text-align:justify;}'
+        + 'table{width:100%;border-collapse:collapse;margin:0 0 6px;} th{background:#3A5878;color:#fff;text-align:left;padding:7px 9px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;} td{padding:7px 9px;border-bottom:1px solid #E1E6EC;vertical-align:top;} .num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;}'
+        + '.sit{font-size:10.5px;color:#A65B5B;font-weight:600;}'
+        + '.tot{display:flex;justify-content:flex-end;gap:26px;margin:10px 0 20px;align-items:center;flex-wrap:wrap;}'
+        + '.tot .t1{font-size:13px;color:#66707E;} .tot .t1 b{color:#23272E;font-size:15px;}'
+        + '.entrada{background:#5B82A6;color:#fff;border-radius:10px;padding:10px 18px;font-size:13px;} .entrada b{font-size:17px;display:block;}'
+        + '.atencao{background:#FBF3E6;border-left:4px solid #E8A15C;border-radius:6px;padding:11px 14px;margin:0 0 20px;font-size:12.5px;}'
+        + '.atencao b{color:#8A5A22;display:block;margin-bottom:3px;}'
+        + 'h2{font-size:14px;color:#3A5878;margin:22px 0 8px;}'
+        + '.passos{margin:6px 0 22px;padding-left:20px;} .passos li{margin-bottom:5px;}'
+        + '.rodape{margin-top:26px;padding-top:10px;border-top:1px solid #E1E6EC;font-size:10.5px;color:#8A93A6;}'
+        + '.toolbar-print{position:fixed;top:10px;right:10px;} .toolbar-print button{padding:8px 14px;cursor:pointer;}'
+        + '@page{margin:1.4cm;} @media print{ body{padding:0;} .toolbar-print{display:none;} }'
+        + '</style></head><body>'
+        + '<div class="toolbar-print"><button onclick="window.print()">Imprimir / Salvar PDF</button></div>'
+        + '<div class="folha">'
+        + '<header class="cab"><img src="' + logoUrl + '" alt="Macedo & Reis"><div class="firma"><strong>Macedo &amp; Reis Contabilidade</strong><span>CRC/RS 006418/O</span><span>Três Coroas – RS</span></div></header>'
+        + '<hr class="reg">'
+        + '<h1>Plano de Regularização Fiscal</h1>'
+        + '<p class="sub">' + escapeHtml(c.campanha || 'Retorno ao Simples Nacional') + '</p>'
+        + '<div class="dados"><b>' + escapeHtml(cli.nome_principal || '') + '</b>' + (cli.documento ? ' · CNPJ ' + escapeHtml(fmtCnpj(cli.documento)) : '') + '</div>'
+        + '<p class="ctx">A empresa recebeu o Termo de Exclusão do Simples Nacional em razão de débitos junto aos órgãos federais. Para permanecer no regime, é necessário regularizar as pendências abaixo <b>até ' + fmtData(c.prazo_final) + '</b> — por pagamento ou parcelamento. O quadro a seguir consolida o levantamento completo feito pelo escritório e as condições simuladas para cada débito.</p>'
+        + '<table><thead><tr><th style="width:120px">Órgão</th><th>Débito / referências</th><th style="width:110px">Valor</th><th style="width:250px">Condição simulada</th></tr></thead><tbody>' + linhas + '</tbody></table>'
+        + '<div class="tot"><span class="t1">Total dos débitos: <b>' + brl(c.total_debitos) + '</b></span><span class="entrada">Entrada prevista para regularizar<b>' + brl(c.entrada_prevista) + '</b></span></div>'
+        + (c.obs_geral ? '<div class="atencao"><b>Atenção</b>' + escapeHtml(c.obs_geral) + '</div>' : '')
+        + (linhasSrv ? '<h2>Investimento — honorários do escritório</h2><table><thead><tr><th>Serviço</th><th style="width:110px">Valor</th><th style="width:300px">Condições</th></tr></thead><tbody>' + linhasSrv + '</tbody></table>' + (totSrv ? '<div class="tot"><span class="t1">Total dos honorários: <b>' + brl(totSrv) + '</b></span></div>' : '') : '')
+        + '<h2>Próximos passos</h2><ol class="passos">'
+        + '<li>Confirmar com o escritório a adesão ao plano de regularização;</li>'
+        + '<li>Efetuar o pagamento das entradas previstas;</li>'
+        + '<li>O escritório efetua os parcelamentos junto aos órgãos e envia as guias;</li>'
+        + '<li>Manter em dia as parcelas e os tributos correntes — o descumprimento cancela os parcelamentos e reativa a exclusão.</li></ol>'
+        + '<div class="rodape">Simulações e valores conforme situação fiscal em ' + fmtData(c.data_base) + '. Os valores são atualizados diariamente pelos órgãos e podem sofrer pequenas variações na data da efetivação. Emitido em ' + hojeStr + ' · Macedo &amp; Reis Contabilidade · CRC/RS 006418/O</div>'
+        + '</div></body></html>';
+      const w = window.open('', '_blank');
+      w.document.write(html);
+      w.document.close();
+    }
+
+    // ---------- novo caso ----------
+    $('btnNovo').onclick = async () => {
+      $('nvMsg').textContent = '';
+      const cls = await supabase.todosClientes('id, nome_principal', q => q.eq('status', 'ativo').eq('tipo_pessoa', 'PJ'));
+      $('nvCliente').innerHTML = '<option value="">— selecionar —</option>' + (cls || []).sort((a, b) => a.nome_principal.localeCompare(b.nome_principal)).map(c => '<option value="' + c.id + '">' + escapeHtml(c.nome_principal) + '</option>').join('');
+      const hj = new Date().toISOString().slice(0, 10);
+      $('nvBase').value = hj;
+      $('ovNovo').classList.add('on');
+    };
+    $('nvFechar').onclick = () => $('ovNovo').classList.remove('on');
+    $('nvCriar').onclick = async () => {
+      const cid = $('nvCliente').value;
+      if (!cid) { $('nvMsg').textContent = 'Selecione o cliente.'; return; }
+      const { data, error } = await supabase.from('regularizacoes').insert({
+        cliente_id: cid, campanha: $('nvCampanha').value.trim() || 'Regularização',
+        data_base: $('nvBase').value || null, prazo_final: $('nvPrazo').value || null
+      }).select('id').single();
+      if (error) { $('nvMsg').textContent = 'Erro: ' + error.message; return; }
+      await supabase.from('regularizacao_servicos').insert([
+        { regularizacao_id: data.id, ordem: 1, descricao: 'Levantamento de débitos e resumo de informações' },
+        { regularizacao_id: data.id, ordem: 2, descricao: 'Serviço de parcelamento' },
+        { regularizacao_id: data.id, ordem: 3, descricao: 'Reemissão das guias' }
+      ]);
+      $('ovNovo').classList.remove('on');
+      await load();
+      abrirFicha(data.id);
+    };
+
+    load();
+  </script>
+</body>
+</html>
