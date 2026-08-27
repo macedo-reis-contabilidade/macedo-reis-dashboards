@@ -406,14 +406,41 @@
 
     document.getElementById('btnConcluir').addEventListener('click', async () => {
       const fechar = atual.status !== 'concluida';
-      if (fechar && !confirm('Concluir esta transição? O cliente vira "regular" e a sala sai da lista ativa.')) return;
+      if (fechar && !confirm('Concluir esta transição? O cliente vira ativo no cadastro e entra na carteira de clientes.')) return;
       const { error } = await supabase.from('transicoes').update({
         status: fechar ? 'concluida' : 'em_andamento',
         concluida_em: fechar ? new Date().toISOString() : null
       }).eq('id', atual.id);
       const m = document.getElementById('detMsg');
       if (error) { m.style.color = '#D08770'; m.textContent = 'Erro: ' + error.message; return; }
-      m.style.color = '#7FBF8E'; m.textContent = fechar ? '🏁 Transição concluída — bem-vindo, cliente regular!' : 'Transição reaberta.';
+      if (fechar) {
+        try {
+          const ids = (empresasAtual || []).map(e => e.cliente_id).filter(Boolean);
+          if (ids.length) {
+            await supabase.from('clientes').update({ status: 'ativo' }).in('id', ids).eq('status', 'em_transicao');
+            if (atual.tipo !== 'saida') {
+              const { data: cls } = await supabase.from('clientes').select('id, tipo_pessoa').in('id', ids);
+              const pjs = (cls || []).filter(c => c.tipo_pessoa === 'PJ').map(c => c.id);
+              if (pjs.length) {
+                let dEnt = prompt('Data de entrada na carteira de clientes (AAAA-MM-DD) — ajuste se o contrato começa em outra data:', new Date().toISOString().slice(0, 10));
+                if (dEnt) {
+                  dEnt = dEnt.trim();
+                  if (!/^\d{4}-\d{2}-\d{2}$/.test(dEnt)) { alert('Data inválida — a entrada na carteira não foi registrada; preencha depois na tela da Carteira.'); dEnt = null; }
+                }
+                if (dEnt) {
+                  const { data: jaTem } = await supabase.from('carteira_info').select('cliente_id, entrada').in('cliente_id', pjs);
+                  const mapa = Object.fromEntries((jaTem || []).map(x => [x.cliente_id, x]));
+                  for (const id of pjs) {
+                    if (!mapa[id]) await supabase.from('carteira_info').insert({ cliente_id: id, entrada: dEnt });
+                    else if (!mapa[id].entrada) await supabase.from('carteira_info').update({ entrada: dEnt }).eq('cliente_id', id);
+                  }
+                }
+              }
+            }
+          }
+        } catch (e) { console.warn('Ponte carteira falhou (conclusão mantida):', e); }
+      }
+      m.style.color = '#7FBF8E'; m.textContent = fechar ? '🏁 Transição concluída — cliente ativo e na carteira!' : 'Transição reaberta.';
       atual.status = fechar ? 'concluida' : 'em_andamento';
       atual.concluida_em = fechar ? new Date().toISOString() : null;
       renderDetalhe();
