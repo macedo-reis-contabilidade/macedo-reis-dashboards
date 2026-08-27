@@ -400,6 +400,8 @@
         + '.atencao b{color:#8A5A22;display:block;margin-bottom:3px;}'
         + '.ou td{text-align:center;color:#8A93A6;font-size:11px;font-style:italic;border-bottom:none;padding:3px;}'
         + '.alt-tit{font-size:12px;color:#3A5878;font-weight:600;margin:12px 0 4px;}'
+        + 'th.num{text-align:right;}'
+        + '.srv th{background:none;color:#3A5878;border-bottom:2px solid #5B82A6;}'
         + 'h2{font-size:14px;color:#3A5878;margin:22px 0 8px;}'
         + '.passos{margin:6px 0 22px;padding-left:20px;} .passos li{margin-bottom:5px;}'
         + '.rodape{margin-top:26px;padding-top:10px;border-top:1px solid #E1E6EC;font-size:10.5px;color:#8A93A6;}'
@@ -414,17 +416,17 @@
         + '<p class="sub">' + escapeHtml(c.campanha || 'Retorno ao Simples Nacional') + '</p>'
         + '<div class="dados"><b>' + escapeHtml(cli.nome_principal || '') + '</b>' + (cli.documento ? ' · CNPJ ' + escapeHtml(fmtCnpj(cli.documento)) : '') + '</div>'
         + '<p class="ctx">A empresa recebeu o Termo de Exclusão do Simples Nacional em razão de débitos junto aos órgãos federais. Para permanecer no regime, é necessário regularizar as pendências abaixo <b>até ' + fmtData(c.prazo_final) + '</b> — por pagamento ou parcelamento. O quadro a seguir consolida o levantamento completo feito pelo escritório e as condições simuladas para cada débito.</p>'
-        + '<table><thead><tr><th style="width:120px">Órgão</th><th>Débito / referências</th><th style="width:110px">Valor</th><th style="width:250px">Condição simulada</th></tr></thead><tbody>' + linhas + '</tbody></table>'
+        + '<table><thead><tr><th style="width:120px">Órgão</th><th>Débito / referências</th><th class="num" style="width:110px">Valor</th><th style="width:250px">Condição simulada</th></tr></thead><tbody>' + linhas + '</tbody></table>'
         + '<div class="tot"><span class="t1">Total dos débitos: <b>' + brl(c.total_debitos) + '</b></span><span class="entrada">Entrada prevista para regularizar<b>' + brl(c.entrada_prevista) + '</b></span></div>'
         + (c.obs_geral ? '<div class="atencao"><b>Atenção</b>' + escapeHtml(c.obs_geral) + '</div>' : '')
-        + (linhasSrv || linhasAlt ? '<h2>Investimento — honorários do escritório</h2>' : '')
-        + (linhasSrv ? '<table><thead><tr><th>Serviço</th><th style="width:110px">Valor</th><th style="width:300px">Condições</th></tr></thead><tbody>' + linhasSrv + '</tbody></table>' : '')
-        + (linhasAlt ? '<p class="alt-tit">Opções — contrata-se apenas uma das alternativas abaixo:</p><table><thead><tr><th>Serviço</th><th style="width:110px">Valor</th><th style="width:300px">Condições</th></tr></thead><tbody>' + linhasAlt + '</tbody></table>' : '')
+        + (linhasSrv || linhasAlt ? '<hr class="reg" style="margin:26px 0 16px"><h2 style="margin-top:0">Investimento — honorários do escritório</h2>' : '')
+        + (linhasSrv ? '<table class="srv"><thead><tr><th>Serviço</th><th class="num" style="width:110px">Valor</th><th style="width:300px">Condições</th></tr></thead><tbody>' + linhasSrv + '</tbody></table>' : '')
+        + (linhasAlt ? '<p class="alt-tit">Opções — contrata-se apenas uma das alternativas abaixo:</p><table class="srv"><thead><tr><th>Serviço</th><th class="num" style="width:110px">Valor</th><th style="width:300px">Condições</th></tr></thead><tbody>' + linhasAlt + '</tbody></table>' : '')
         + (totSrv ? '<div class="tot"><span class="t1">Total dos honorários' + (linhasAlt ? ' fixos' : '') + ': <b>' + brl(totSrv) + '</b>' + (linhasAlt ? ' <span style="font-weight:400;color:#66707E">+ a opção escolhida</span>' : '') + '</span></div>' : (linhasAlt ? '<div class="tot"><span class="t1">Total conforme a opção escolhida</span></div>' : ''))
         + '<h2>Próximos passos</h2><ol class="passos">'
         + '<li>Confirmar com o escritório a adesão ao plano de regularização;</li>'
-        + '<li>Efetuar o pagamento das entradas previstas;</li>'
         + '<li>O escritório efetua os parcelamentos junto aos órgãos e envia as guias;</li>'
+        + '<li>Efetuar o pagamento das entradas previstas;</li>'
         + '<li>Manter em dia as parcelas e os tributos correntes — o descumprimento cancela os parcelamentos e reativa a exclusão.</li></ol>'
         + '<div class="rodape">Simulações e valores conforme situação fiscal em ' + fmtData(c.data_base) + '. Os valores são atualizados diariamente pelos órgãos e podem sofrer pequenas variações na data da efetivação. Emitido em ' + hojeStr + ' · Macedo &amp; Reis Contabilidade · CRC/RS 006418/O</div>'
         + '</div></body></html>';
