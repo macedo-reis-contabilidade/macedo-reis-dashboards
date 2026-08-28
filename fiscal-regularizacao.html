@@ -126,7 +126,7 @@
       </div>
 
       <div class="rg-sec">Débitos levantados</div>
-      <table class="rg-ed"><thead><tr><th style="width:110px">Órgão</th><th>Descrição / referências</th><th style="width:110px">Valor (R$)</th><th style="width:230px">Condição de parcelamento</th><th style="width:120px">Situação</th><th style="width:110px">Andamento</th><th style="width:72px"></th></tr></thead><tbody id="fiDebitos"></tbody></table>
+      <table class="rg-ed"><thead><tr><th style="width:110px">Órgão</th><th>Descrição / referências</th><th style="width:110px">Valor (R$)</th><th style="width:230px">Condição de parcelamento</th><th style="width:120px">Situação</th><th style="width:110px">Andamento</th><th style="width:44px" title="Linha que não soma no total — ex.: consolidação, outra forma de quitar itens já listados">Ñ soma</th><th style="width:72px"></th></tr></thead><tbody id="fiDebitos"></tbody></table>
       <button class="rg-add" id="fiAddDeb">+ adicionar débito</button>
 
       <div class="rg-sec">Serviços do escritório (honorários)</div>
@@ -265,6 +265,7 @@
         '<td><textarea class="d-cond">' + escapeHtml(d.condicao || '') + '</textarea></td>' +
         '<td><input class="d-sit" value="' + escapeHtml(d.situacao || '') + '"></td>' +
         '<td><select class="d-st">' + ST_DEB.map(s => '<option value="' + s[0] + '"' + ((d.status || 'pendente') === s[0] ? ' selected' : '') + '>' + s[1] + '</option>').join('') + '</select></td>' +
+        '<td style="text-align:center;padding-top:9px"><input type="checkbox" class="d-ns" title="Não soma no total"' + (d.nao_soma ? ' checked' : '') + '></td>' +
         '<td style="white-space:nowrap"><button class="rg-mv" data-dir="-1" title="Subir">↑</button><button class="rg-mv" data-dir="1" title="Descer">↓</button><button class="rg-del" title="Remover">×</button></td></tr>';
     }
     function linhaSrv(s) {
@@ -329,7 +330,8 @@
             valor: parseNum(tr.querySelector('.d-valor').value),
             condicao: tr.querySelector('.d-cond').value.trim() || null,
             situacao: tr.querySelector('.d-sit').value.trim() || null,
-            status: tr.querySelector('.d-st').value };
+            status: tr.querySelector('.d-st').value,
+            nao_soma: tr.querySelector('.d-ns').checked };
           if (!o.descricao) return;
           if (tr.dataset.id) { debIds.push(tr.dataset.id); debUpd.push({ id: tr.dataset.id, ...o }); }
           else debNovos.push(o);
@@ -345,7 +347,7 @@
           if (tr.dataset.id) { srvIds.push(tr.dataset.id); srvUpd.push({ id: tr.dataset.id, ...o }); }
           else srvNovos.push(o);
         });
-        const totalDeb = debUpd.concat(debNovos).reduce((a, d) => a + (d.valor || 0), 0);
+        const totalDeb = debUpd.concat(debNovos).reduce((a, d) => a + ((d.nao_soma ? 0 : d.valor) || 0), 0);
         const antigosD = (debitosPor[fichaId] || []).map(d => d.id).filter(x => !debIds.includes(x));
         const antigosS = (servicosPor[fichaId] || []).map(s => s.id).filter(x => !srvIds.includes(x));
         for (const d of debUpd) { const { id, ...rest } = d; const { error } = await supabase.from('regularizacao_debitos').update(rest).eq('id', id); if (error) throw error; }
@@ -383,7 +385,7 @@
       const linhas = debs.map(d =>
         '<tr><td>' + escapeHtml(d.orgao || '—') + (d.situacao ? '<br><span class="sit">' + escapeHtml(d.situacao) + '</span>' : '') + '</td>' +
         '<td>' + escapeHtml(d.descricao) + '</td>' +
-        '<td class="num">' + (d.valor == null ? '<i>a apurar</i>' : brl(d.valor)) + '</td>' +
+        '<td class="num">' + (d.valor == null ? '<i>a apurar</i>' : brl(d.valor) + (d.nao_soma ? ' <span style="color:#8A93A6">*</span>' : '')) + '</td>' +
         '<td>' + escapeHtml(d.condicao || '—') + '</td></tr>').join('');
       const linhaS = s =>
         '<tr><td>' + escapeHtml(s.descricao) + '</td><td class="num">' + (s.valor == null ? '—' : brl(s.valor)) + '</td><td>' + escapeHtml(s.condicao || '—') + '</td></tr>';
@@ -425,6 +427,7 @@
         + '<p class="ctx">A empresa recebeu o Termo de Exclusão do Simples Nacional em razão de débitos junto aos órgãos federais. Para permanecer no regime, é necessário regularizar as pendências abaixo <b>até ' + fmtData(c.prazo_final) + '</b> — por pagamento ou parcelamento. O quadro a seguir consolida o levantamento completo feito pelo escritório e as condições simuladas para cada débito.</p>'
         + '<table><thead><tr><th style="width:120px">Órgão</th><th>Débito / referências</th><th class="num" style="width:110px">Valor</th><th style="width:250px">Condição simulada</th></tr></thead><tbody>' + linhas + '</tbody></table>'
         + '<div class="tot"><span class="t1">Total dos débitos: <b>' + brl(c.total_debitos) + '</b></span><span class="entrada">Entrada prevista para regularizar<b>' + brl(c.entrada_prevista) + '</b></span></div>'
+        + (debs.some(d => d.nao_soma) ? '<p style="font-size:10.5px;color:#66707E;margin:-12px 0 18px">* Não somado no total — representa a consolidação (forma alternativa de quitação) de itens já listados acima.</p>' : '')
         + (c.obs_geral ? '<div class="atencao"><b>Atenção</b>' + escapeHtml(c.obs_geral) + '</div>' : '')
         + (linhasSrv || linhasAlt ? '<hr class="reg" style="margin:26px 0 16px"><h2 style="margin-top:0">Investimento — honorários do escritório</h2>' : '')
         + (linhasSrv ? '<table class="srv"><thead><tr><th>Serviço</th><th class="num" style="width:110px">Valor</th><th style="width:300px">Condições</th></tr></thead><tbody>' + linhasSrv + '</tbody></table>' : '')
