@@ -48,6 +48,8 @@
     .rg-ed .c-num input { text-align:right; font-variant-numeric:tabular-nums; }
     .rg-del { background:none; border:none; color:#6E7787; cursor:pointer; font-size:15px; padding:6px 4px; }
     .rg-del:hover { color:#E06C6C; }
+    .rg-mv { background:none; border:none; color:#6E7787; cursor:pointer; font-size:12px; padding:4px 3px; }
+    .rg-mv:hover { color:#C9D3E0; }
     .rg-add { background:none; border:1px dashed rgba(255,255,255,.18); color:#8A93A6; border-radius:8px; padding:6px 12px; font-size:12px; cursor:pointer; margin-top:2px; }
     .rg-add:hover { color:#C9D3E0; border-color:rgba(91,130,166,.5); }
     .rg-acoes { display:flex; gap:10px; justify-content:flex-end; margin-top:20px; flex-wrap:wrap; }
@@ -124,11 +126,11 @@
       </div>
 
       <div class="rg-sec">Débitos levantados</div>
-      <table class="rg-ed"><thead><tr><th style="width:110px">Órgão</th><th>Descrição / referências</th><th style="width:110px">Valor (R$)</th><th style="width:230px">Condição de parcelamento</th><th style="width:120px">Situação</th><th style="width:110px">Andamento</th><th style="width:30px"></th></tr></thead><tbody id="fiDebitos"></tbody></table>
+      <table class="rg-ed"><thead><tr><th style="width:110px">Órgão</th><th>Descrição / referências</th><th style="width:110px">Valor (R$)</th><th style="width:230px">Condição de parcelamento</th><th style="width:120px">Situação</th><th style="width:110px">Andamento</th><th style="width:72px"></th></tr></thead><tbody id="fiDebitos"></tbody></table>
       <button class="rg-add" id="fiAddDeb">+ adicionar débito</button>
 
       <div class="rg-sec">Serviços do escritório (honorários)</div>
-      <table class="rg-ed"><thead><tr><th>Serviço</th><th style="width:110px">Valor (R$)</th><th style="width:300px">Condições</th><th style="width:46px" title="Serviço alternativo — o cliente contrata um OU outro; não soma no total">Alt.</th><th style="width:30px"></th></tr></thead><tbody id="fiServicos"></tbody></table>
+      <table class="rg-ed"><thead><tr><th>Serviço</th><th style="width:110px">Valor (R$)</th><th style="width:300px">Condições</th><th style="width:46px" title="Serviço alternativo — o cliente contrata um OU outro; não soma no total">Alt.</th><th style="width:72px"></th></tr></thead><tbody id="fiServicos"></tbody></table>
       <div class="rg-tot-srv" id="fiTotSrv"></div>
       <button class="rg-add" id="fiAddSrv">+ adicionar serviço</button>
 
@@ -263,7 +265,7 @@
         '<td><textarea class="d-cond">' + escapeHtml(d.condicao || '') + '</textarea></td>' +
         '<td><input class="d-sit" value="' + escapeHtml(d.situacao || '') + '"></td>' +
         '<td><select class="d-st">' + ST_DEB.map(s => '<option value="' + s[0] + '"' + ((d.status || 'pendente') === s[0] ? ' selected' : '') + '>' + s[1] + '</option>').join('') + '</select></td>' +
-        '<td><button class="rg-del" title="Remover">×</button></td></tr>';
+        '<td style="white-space:nowrap"><button class="rg-mv" data-dir="-1" title="Subir">↑</button><button class="rg-mv" data-dir="1" title="Descer">↓</button><button class="rg-del" title="Remover">×</button></td></tr>';
     }
     function linhaSrv(s) {
       return '<tr data-id="' + (s.id || '') + '">' +
@@ -271,7 +273,7 @@
         '<td class="c-num"><input class="s-valor" value="' + brNum(s.valor) + '"></td>' +
         '<td><textarea class="s-cond">' + escapeHtml(s.condicao || '') + '</textarea></td>' +
         '<td style="text-align:center;padding-top:9px"><input type="checkbox" class="s-alt" title="Alternativo — não soma no total"' + (s.alternativo ? ' checked' : '') + '></td>' +
-        '<td><button class="rg-del" title="Remover">×</button></td></tr>';
+        '<td style="white-space:nowrap"><button class="rg-mv" data-dir="-1" title="Subir">↑</button><button class="rg-mv" data-dir="1" title="Descer">↓</button><button class="rg-del" title="Remover">×</button></td></tr>';
     }
     function totalServicos() {
       let t = 0, alts = 0;
@@ -303,6 +305,11 @@
       document.querySelectorAll('#fiDebitos .rg-del, #fiServicos .rg-del').forEach(b => b.onclick = e => { e.target.closest('tr').remove(); totalServicos(); });
       document.querySelectorAll('#fiServicos .s-valor').forEach(i => i.oninput = totalServicos);
       document.querySelectorAll('#fiServicos .s-alt').forEach(i => i.onchange = totalServicos);
+      document.querySelectorAll('#fiDebitos .rg-mv, #fiServicos .rg-mv').forEach(b => b.onclick = e => {
+        const tr = e.target.closest('tr'); const dir = +e.target.dataset.dir;
+        if (dir < 0 && tr.previousElementSibling) tr.parentNode.insertBefore(tr, tr.previousElementSibling);
+        else if (dir > 0 && tr.nextElementSibling) tr.parentNode.insertBefore(tr.nextElementSibling, tr);
+      });
     }
     $('fiAddDeb').onclick = () => { $('fiDebitos').insertAdjacentHTML('beforeend', linhaDeb({ status: 'pendente' })); ligarRemocoes(); };
     $('fiAddSrv').onclick = () => { $('fiServicos').insertAdjacentHTML('beforeend', linhaSrv({})); ligarRemocoes(); };
