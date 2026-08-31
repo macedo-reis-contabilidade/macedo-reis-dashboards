@@ -15,6 +15,7 @@ Sistema interno de gestão do escritório **Macedo & Reis Contabilidade** (Três
 7. **Mudança visível ao usuário = card novo em `ajuda.html`** (seção de novidades, padrão `<div class="hp-item">` com `hp-q` "dd/mm · Título" e `hp-a` corpo; entra no topo da lista).
 8. Commits em pt-BR, descrevendo o efeito pro usuário, não o mecanismo.
 9. **Nunca commitar tokens/segredos.** O push usa a autenticação git do próprio Samuel.
+10. **SEGURANÇA (incidente de 31/08/2026 — lei permanente):** toda tabela nova nasce com `ENABLE ROW LEVEL SECURITY` + policy `TO authenticated` (listar o SQL pro Samuel, regra 6). NUNCA policy para `anon`/`public` além do INSERT do forms público e do SELECT de `precificacao_questoes`. Toda Edge Function nova com `verify_jwt = true`. O cadastro de usuários é bloqueado por gatilho no banco (só `@macedoereis.com.br`) — não criar telas de cadastro/signup.
 
 ## Mapa das páginas
 - `index.html` — painel central por setor.
