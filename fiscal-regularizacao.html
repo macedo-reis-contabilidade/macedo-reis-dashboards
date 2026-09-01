@@ -100,6 +100,7 @@
       <div class="toolbar">
         <div class="toolbar-filters">
           <input type="text" id="searchInput" class="input input-search" placeholder="Buscar cliente…">
+          <select class="rg-status" id="selCampanha" title="Campanha"></select>
         </div>
         <div class="fa-toolbar-actions">
           <button class="btn btn-primary" id="btnNovo">+ Novo caso</button>
@@ -120,8 +121,8 @@
       <h2 id="fiTitulo">—</h2>
       <div class="rg-meta">
         <span id="fiCnpj"></span>
-        <span>Data-base: <b id="fiBase" style="color:#C9D3E0"></b></span>
-        <span>Prazo: <b id="fiPrazo" style="color:#E8A15C"></b></span>
+        <label>Data-base: <input type="date" class="rg-status" id="fiBase"></label>
+        <label>Prazo: <input type="date" class="rg-status" id="fiPrazo" style="color:#E8A15C"></label>
         <label>Status: <select class="rg-status" id="fiStatus"></select></label>
       </div>
 
@@ -136,6 +137,12 @@
 
       <div class="rg-sec">Observação geral (entra na apresentação como caixa de atenção)</div>
       <textarea class="rg-obs" id="fiObs"></textarea>
+
+      <div class="rg-sec">Texto de abertura da apresentação (pré-preenchido conforme a campanha — edite à vontade)</div>
+      <textarea class="rg-obs" id="fiContexto" style="min-height:74px"></textarea>
+
+      <div class="rg-sec">Próximos passos da apresentação (um por linha)</div>
+      <textarea class="rg-obs" id="fiPassos" style="min-height:90px"></textarea>
 
       <div class="rg-acoes">
         <span class="rg-msg" id="fiMsg"></span>
@@ -180,7 +187,7 @@
     const STATUS = [['levantamento','Levantamento'],['apresentado','Apresentado ao cliente'],['aprovado_cliente','Aprovado pelo cliente'],['parcelado','Parcelamentos efetuados'],['regularizado','Regularizado'],['sem_acordo','Sem acordo']];
     const ST_DEB = [['pendente','Pendente'],['parcelado','Parcelado'],['pago','Pago'],['dispensado','Dispensado']];
 
-    let casos = [], clientesMap = {}, debitosPor = {}, servicosPor = {}, filtroStatus = 'todos', busca = '', fichaId = null;
+    let casos = [], clientesMap = {}, debitosPor = {}, servicosPor = {}, filtroStatus = 'todos', busca = '', fichaId = null, filtroCampanha = null;
 
     getCurrentUser().then(u => { if (!u) return; $('userName').textContent = u.email; $('userAvatar').textContent = (u.email || '?')[0].toUpperCase(); });
     $('btnLogout').onclick = () => signOut();
@@ -200,26 +207,33 @@
         debitosPor = {}; (debs || []).forEach(d => (debitosPor[d.regularizacao_id] = debitosPor[d.regularizacao_id] || []).push(d));
         servicosPor = {}; (srvs || []).forEach(s => (servicosPor[s.regularizacao_id] = servicosPor[s.regularizacao_id] || []).push(s));
       }
+      const camps = [...new Set(casos.map(c => c.campanha || 'Sem campanha'))].sort();
+      if (!filtroCampanha || (filtroCampanha !== 'todas' && !camps.includes(filtroCampanha))) {
+        const contagem = {}; casos.forEach(c => { const k = c.campanha || 'Sem campanha'; contagem[k] = (contagem[k] || 0) + 1; });
+        filtroCampanha = camps.sort((a, b) => contagem[b] - contagem[a])[0] || 'todas';
+      }
+      $('selCampanha').innerHTML = '<option value="todas">Todas as campanhas</option>' + camps.map(k => '<option value="' + escapeHtml(k) + '"' + (k === filtroCampanha ? ' selected' : '') + '>' + escapeHtml(k) + '</option>').join('');
       render();
     }
 
     function render() {
       const hoje = new Date().toISOString().slice(0, 10);
-      const totD = casos.reduce((a, c) => a + (+c.total_debitos || 0), 0);
-      const totE = casos.reduce((a, c) => a + (+c.entrada_prevista || 0), 0);
-      const prazoMin = casos.map(c => c.prazo_final).filter(Boolean).sort()[0];
+      const base = filtroCampanha === 'todas' ? casos : casos.filter(c => (c.campanha || 'Sem campanha') === filtroCampanha);
+      const totD = base.reduce((a, c) => a + (+c.total_debitos || 0), 0);
+      const totE = base.reduce((a, c) => a + (+c.entrada_prevista || 0), 0);
+      const prazoMin = base.map(c => c.prazo_final).filter(Boolean).sort()[0];
       const dias = prazoMin ? Math.ceil((new Date(prazoMin) - new Date(hoje)) / 864e5) : null;
       $('rgResumo').innerHTML =
-        '<div class="rg-kpi"><span class="n">' + casos.length + '</span><span class="l">clientes na campanha</span></div>' +
+        '<div class="rg-kpi"><span class="n">' + base.length + '</span><span class="l">' + (filtroCampanha === 'todas' ? 'clientes em regularização' : 'clientes na campanha') + '</span></div>' +
         '<div class="rg-kpi"><span class="n">' + brl(totD) + '</span><span class="l">débitos levantados</span></div>' +
         '<div class="rg-kpi"><span class="n">' + brl(totE) + '</span><span class="l">entradas previstas</span></div>' +
         (dias != null ? '<div class="rg-kpi alerta"><span class="n">' + dias + ' dias</span><span class="l">até o prazo (' + fmtData(prazoMin) + ')</span></div>' : '');
       const cont = { levantamento:0, apresentado:0, aprovado_cliente:0, parcelado:0, regularizado:0 };
-      casos.forEach(c => { if (cont[c.status] != null) cont[c.status]++; });
+      base.forEach(c => { if (cont[c.status] != null) cont[c.status]++; });
       $('fLev').textContent = cont.levantamento; $('fApr').textContent = cont.apresentado; $('fAcl').textContent = cont.aprovado_cliente;
-      $('fPar').textContent = cont.parcelado; $('fReg').textContent = cont.regularizado; $('fTod').textContent = casos.length;
+      $('fPar').textContent = cont.parcelado; $('fReg').textContent = cont.regularizado; $('fTod').textContent = base.length;
 
-      const vis = casos.filter(c => {
+      const vis = base.filter(c => {
         if (filtroStatus !== 'todos' && c.status !== filtroStatus) return false;
         if (busca) { const cli = clientesMap[c.cliente_id]; if (!cli || !cli.nome_principal.toLowerCase().includes(busca)) return false; }
         return true;
@@ -255,6 +269,7 @@
       render();
     });
     $('searchInput').oninput = e => { busca = e.target.value.trim().toLowerCase(); render(); };
+    $('selCampanha').onchange = e => { filtroCampanha = e.target.value; render(); };
 
     // ---------- ficha ----------
     function linhaDeb(d) {
@@ -285,18 +300,29 @@
       });
       $('fiTotSrv').textContent = (t ? 'Total dos honorários fixos: ' + brl(t) : '') + (alts ? (t ? ' · ' : '') + alts + ' opção(ões) alternativa(s) à parte' : '');
     }
+    const ehExclusao = c => /exclus/i.test(c.campanha || '');
+    function contextoPadrao(c) {
+      const prazo = c.prazo_final ? ' até ' + fmtData(c.prazo_final) : '';
+      if (ehExclusao(c)) return 'A empresa recebeu o Termo de Exclusão do Simples Nacional em razão de débitos junto aos órgãos federais. Para permanecer no regime, é necessário regularizar as pendências abaixo' + prazo + ' — por pagamento ou parcelamento. O quadro a seguir consolida o levantamento completo feito pelo escritório e as condições simuladas para cada débito.';
+      return 'A empresa possui débitos junto aos órgãos fiscais que precisam ser regularizados' + prazo + ', por pagamento ou parcelamento, para restabelecer a regularidade fiscal e evitar a evolução de encargos, protestos e restrições. O quadro a seguir consolida o levantamento completo feito pelo escritório e as condições simuladas para cada débito.';
+    }
+    function passosPadrao(c) {
+      return ['Confirmar com o escritório a adesão ao plano de regularização;', 'O escritório efetua os parcelamentos junto aos órgãos e envia as guias;', 'Efetuar o pagamento das entradas previstas;', 'Manter em dia as parcelas e os tributos correntes — o descumprimento cancela os parcelamentos' + (ehExclusao(c) ? ' e reativa a exclusão.' : '.')].join('\n');
+    }
     function abrirFicha(id) {
       fichaId = id;
       const c = casos.find(x => x.id === id); if (!c) return;
       const cli = clientesMap[c.cliente_id] || {};
       $('fiTitulo').textContent = cli.nome_principal || '?';
       $('fiCnpj').textContent = fmtCnpj(cli.documento);
-      $('fiBase').textContent = fmtData(c.data_base);
-      $('fiPrazo').textContent = fmtData(c.prazo_final);
+      $('fiBase').value = c.data_base || '';
+      $('fiPrazo').value = c.prazo_final || '';
       $('fiStatus').innerHTML = STATUS.map(s => '<option value="' + s[0] + '"' + (c.status === s[0] ? ' selected' : '') + '>' + s[1] + '</option>').join('');
       $('fiDebitos').innerHTML = (debitosPor[id] || []).map(linhaDeb).join('');
       $('fiServicos').innerHTML = (servicosPor[id] || []).map(linhaSrv).join('');
       $('fiObs').value = c.obs_geral || '';
+      $('fiContexto').value = c.contexto || contextoPadrao(c);
+      $('fiPassos').value = c.proximos_passos || passosPadrao(c);
       $('fiMsg').textContent = '';
       totalServicos();
       ligarRemocoes();
@@ -358,6 +384,8 @@
         if (antigosS.length) { const { error } = await supabase.from('regularizacao_servicos').delete().in('id', antigosS); if (error) throw error; }
         const { error: e2 } = await supabase.from('regularizacoes').update({
           status: $('fiStatus').value, obs_geral: $('fiObs').value.trim() || null,
+          data_base: $('fiBase').value || null, prazo_final: $('fiPrazo').value || null,
+          contexto: $('fiContexto').value.trim() || null, proximos_passos: $('fiPassos').value.trim() || null,
           total_debitos: totalDeb || null, atualizado_em: new Date().toISOString()
         }).eq('id', fichaId);
         if (e2) throw e2;
@@ -424,7 +452,7 @@
         + '<h1>Plano de Regularização Fiscal</h1>'
         + '<p class="sub">' + escapeHtml(c.campanha || 'Retorno ao Simples Nacional') + '</p>'
         + '<div class="dados"><b>' + escapeHtml(cli.nome_principal || '') + '</b>' + (cli.documento ? ' · CNPJ ' + escapeHtml(fmtCnpj(cli.documento)) : '') + '</div>'
-        + '<p class="ctx">A empresa recebeu o Termo de Exclusão do Simples Nacional em razão de débitos junto aos órgãos federais. Para permanecer no regime, é necessário regularizar as pendências abaixo <b>até ' + fmtData(c.prazo_final) + '</b> — por pagamento ou parcelamento. O quadro a seguir consolida o levantamento completo feito pelo escritório e as condições simuladas para cada débito.</p>'
+        + '<p class="ctx">' + escapeHtml(c.contexto || contextoPadrao(c)).replace(/(até \d{2}\/\d{2}\/\d{4})/, '<b>$1</b>') + '</p>'
         + '<table><thead><tr><th style="width:120px">Órgão</th><th>Débito / referências</th><th class="num" style="width:110px">Valor</th><th style="width:250px">Condição simulada</th></tr></thead><tbody>' + linhas + '</tbody></table>'
         + '<div class="tot"><span class="t1">Total dos débitos: <b>' + brl(c.total_debitos) + '</b></span><span class="entrada">Entrada prevista para regularizar<b>' + brl(c.entrada_prevista) + '</b></span></div>'
         + (debs.some(d => d.nao_soma) ? '<p style="font-size:10.5px;color:#66707E;margin:-12px 0 18px">* Não somado no total — representa a consolidação (forma alternativa de quitação) de itens já listados acima.</p>' : '')
@@ -434,10 +462,8 @@
         + (linhasAlt ? '<p class="alt-tit">Opções — contrata-se apenas uma das alternativas abaixo:</p><table class="srv"><thead><tr><th>Serviço</th><th class="num" style="width:110px">Valor</th><th style="width:300px">Condições</th></tr></thead><tbody>' + linhasAlt + '</tbody></table>' : '')
         + (totSrv ? '<div class="tot"><span class="t1">Total dos honorários' + (linhasAlt ? ' fixos' : '') + ': <b>' + brl(totSrv) + '</b>' + (linhasAlt ? ' <span style="font-weight:400;color:#66707E">+ a opção escolhida</span>' : '') + '</span></div>' : (linhasAlt ? '<div class="tot"><span class="t1">Total conforme a opção escolhida</span></div>' : ''))
         + '<h2>Próximos passos</h2><ol class="passos">'
-        + '<li>Confirmar com o escritório a adesão ao plano de regularização;</li>'
-        + '<li>O escritório efetua os parcelamentos junto aos órgãos e envia as guias;</li>'
-        + '<li>Efetuar o pagamento das entradas previstas;</li>'
-        + '<li>Manter em dia as parcelas e os tributos correntes — o descumprimento cancela os parcelamentos e reativa a exclusão.</li></ol>'
+        + (c.proximos_passos || passosPadrao(c)).split('\n').map(l => l.trim()).filter(Boolean).map(l => '<li>' + escapeHtml(l) + '</li>').join('')
+        + '</ol>'
         + '<div class="rodape">Simulações e valores conforme situação fiscal em ' + fmtData(c.data_base) + '. Os valores são atualizados diariamente pelos órgãos e podem sofrer pequenas variações na data da efetivação. Emitido em ' + hojeStr + ' · Macedo &amp; Reis Contabilidade · CRC/RS 006418/O</div>'
         + '</div></body></html>';
       const w = window.open('', '_blank');
