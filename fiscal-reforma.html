@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fiscal — Reforma Tributária — Macedo & Reis</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+  <style>
+    .rg-resumo { display:flex; gap:34px; flex-wrap:wrap; margin-bottom:14px; background:rgba(255,255,255,.04); border-radius:14px; padding:14px 20px; }
+    .rg-kpi { display:flex; flex-direction:column; gap:2px; }
+    .rg-kpi .n { font-size:1.35rem; font-weight:700; color:#E6ECF4; }
+    .rg-kpi .l { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:#8A93A6; }
+    .rg-kpi.alerta .n { color:#E8A15C; }
+    .fa-focus { display:grid; grid-template-columns:repeat(7,1fr); gap:10px; margin-bottom:18px; }
+    .fa-focus-card { background:rgba(255,255,255,.03); border:none; border-radius:12px; padding:12px 14px; cursor:pointer; text-align:left; transition:background .15s; display:flex; flex-direction:column; gap:4px; font-family:inherit; }
+    .fa-focus-card:hover { background:rgba(255,255,255,.055); }
+    .fa-focus-card.is-active { background:rgba(91,130,166,.14); }
+    .fc-num { font-size:22px; font-weight:700; color:#E6EBF2; line-height:1; }
+    .fc-lbl { font-size:11.5px; color:#8A93A6; }
+    @media (max-width:900px){ .fa-focus { grid-template-columns:repeat(4,1fr); } }
+    @media (max-width:560px){ .fa-focus { grid-template-columns:repeat(2,1fr); } }
+    .rt-filtros { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:14px; }
+    .rt-filtros .input-search { max-width:260px; }
+    .rt-filtros .apoio { margin-left:auto; display:flex; gap:8px; }
+    .rg-status { padding:5px 8px; font-size:12px; border-radius:8px; background:#141A22; color:#C5D8E8; border:1px solid rgba(255,255,255,.12); cursor:pointer; font-family:inherit; }
+    .rg-tabela { width:100%; border-collapse:separate; border-spacing:0 6px; }
+    .rg-tabela th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:#8A93A6; padding:8px 10px; }
+    .rg-tabela td { padding:10px; font-size:13.5px; color:#C9D3E0; background:rgba(255,255,255,.03); }
+    .rg-tabela tr td:first-child { border-radius:10px 0 0 10px; }
+    .rg-tabela tr td:last-child { border-radius:0 10px 10px 0; }
+    .rg-tabela tbody tr { cursor:pointer; }
+    .rg-tabela tbody tr:hover td { background:rgba(255,255,255,.055); }
+    .rg-tabela .num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    @media (max-width:820px){ .rg-tabela .oculta-m { display:none; } }
+    .rt-pill { display:inline-block; padding:1px 7px; border-radius:999px; font-size:10.5px; font-weight:600; margin-right:3px; white-space:nowrap; }
+    .rt-pill.p0 { background:rgba(127,191,142,.06); color:#66707E; }
+    .rt-pill.p1 { background:rgba(127,191,142,.16); color:#7FBF8E; }
+    .rt-pill.p2 { background:rgba(63,176,122,.30); color:#C9F0D9; }
+    .rt-chip { display:inline-block; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:600; white-space:nowrap; }
+    .rt-chip.t-fora { background:rgba(63,176,122,.15); color:#3FB07A; }
+    .rt-chip.t-sim { background:rgba(232,161,92,.15); color:#E8A15C; }
+    .rt-chip.t-dentro { background:rgba(255,255,255,.06); color:#8A93A6; }
+    .rt-st { font-size:11.5px; color:#8A93A6; white-space:nowrap; }
+    .rt-massa { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:#151C27; border-radius:14px; padding:10px 16px; display:none; gap:10px; align-items:center; z-index:70; box-shadow:0 10px 30px rgba(0,0,0,.5); flex-wrap:wrap; justify-content:center; }
+    .rt-massa.on { display:flex; }
+    .rt-massa .qtd { font-size:12.5px; color:#8A93A6; margin-right:4px; }
+    .rg-ov { position:fixed; inset:0; background:rgba(5,8,12,.72); display:none; align-items:flex-start; justify-content:center; overflow:auto; padding:34px 16px; z-index:60; }
+    .rg-ov.on { display:flex; }
+    .rg-card { background:#10161F; border-radius:16px; max-width:1060px; width:100%; padding:22px 24px 26px; }
+    .rg-card h2 { margin:0 0 2px; font-size:1.25rem; color:#E6ECF4; }
+    .rg-meta { display:flex; gap:16px; flex-wrap:wrap; align-items:center; margin:10px 0 16px; font-size:13px; color:#8A93A6; }
+    .rg-sec { font-size:11px; text-transform:uppercase; letter-spacing:.09em; color:#6E7787; margin:20px 0 8px; }
+    .rg-acoes { display:flex; gap:10px; justify-content:flex-end; margin-top:14px; flex-wrap:wrap; }
+    .rg-msg { font-size:12.5px; margin-right:auto; align-self:center; color:#3FB07A; }
+    .rt-bloco { background:rgba(255,255,255,.03); border-radius:12px; padding:14px 16px 16px; margin-bottom:14px; }
+    .rt-bloco > h3 { margin:0 0 12px; font-size:13px; color:#C9D3E0; }
+    .rt-bloco > h3 small { color:#6E7787; font-weight:400; }
+    .rt-sinais { display:flex; flex-direction:column; gap:10px; }
+    .rt-sinal { display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+    .rt-sinal .lbl { font-size:12.5px; color:#8A93A6; min-width:290px; }
+    .rt-seg { display:flex; gap:6px; }
+    .rt-seg button { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); border-radius:8px; color:#8A93A6; padding:6px 12px; font-size:12.5px; cursor:pointer; font-family:inherit; }
+    .rt-seg button.on { background:rgba(91,130,166,.25); color:#E6ECF4; border-color:rgba(91,130,166,.6); }
+    .rt-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px 12px; }
+    @media (max-width:820px){ .rt-grid { grid-template-columns:repeat(2,1fr); } }
+    .rt-grid label { display:flex; flex-direction:column; gap:3px; font-size:11px; color:#8A93A6; }
+    .rt-grid input, .rt-grid select { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); border-radius:8px; color:#DDE5EF; padding:7px 9px; font:inherit; font-size:12.8px; width:100%; }
+    .rt-grid .hint { font-size:10px; color:#5C6575; }
+    .rt-retratos { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:14px; }
+    @media (max-width:700px){ .rt-retratos { grid-template-columns:1fr; } }
+    .rt-ret { background:rgba(255,255,255,.04); border-radius:12px; padding:12px 14px; }
+    .rt-ret.win { outline:2px solid rgba(63,176,122,.4); }
+    .rt-ret h4 { margin:0 0 8px; font-size:12px; color:#C9D3E0; text-transform:uppercase; letter-spacing:.06em; }
+    .rt-ret .rw { display:flex; justify-content:space-between; font-size:12.8px; color:#8A93A6; padding:2px 0; }
+    .rt-ret .rw b { color:#E6ECF4; font-variant-numeric:tabular-nums; }
+    .rt-ret .rw.tot { border-top:1px solid rgba(255,255,255,.08); margin-top:6px; padding-top:6px; }
+    .rt-verd { border-radius:12px; padding:12px 14px; margin-top:12px; font-size:13px; line-height:1.5; }
+    .rt-verd.opte { background:rgba(63,176,122,.12); color:#C9F0D9; }
+    .rt-verd.mantenha { background:rgba(232,161,92,.12); color:#F0DFC9; }
+    .rt-verd b { font-size:13.5px; }
+    .rt-tm { width:100%; border-collapse:collapse; margin-top:12px; }
+    .rt-tm th { text-align:right; font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:#6E7787; padding:5px 8px; }
+    .rt-tm th:first-child { text-align:left; }
+    .rt-tm td { padding:5px 8px; font-size:12.5px; color:#C9D3E0; text-align:right; font-variant-numeric:tabular-nums; border-top:1px solid rgba(255,255,255,.05); }
+    .rt-tm td:first-child { text-align:left; color:#8A93A6; }
+    .rt-tm tr.tot td { font-weight:700; color:#E6ECF4; }
+    .rt-nota { font-size:11px; color:#6E7787; margin-top:10px; line-height:1.45; }
+    .rt-refs { font-size:10.5px; color:#5C6575; margin-top:4px; }
+    .rt-dec { display:flex; gap:18px; align-items:center; margin-bottom:10px; font-size:13px; color:#C9D3E0; flex-wrap:wrap; }
+    .rt-dec label { display:flex; gap:6px; align-items:center; cursor:pointer; }
+    .rg-obs { width:100%; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); border-radius:10px; color:#DDE5EF; padding:9px 11px; font:inherit; font-size:13px; min-height:56px; resize:vertical; }
+    .rt-imp-rel { font-size:12.5px; line-height:1.6; margin-top:12px; max-height:300px; overflow:auto; color:#C9D3E0; }
+    .rt-regra { background:rgba(255,255,255,.03); border-radius:10px; padding:10px 12px; margin-bottom:8px; font-size:12.5px; color:#C9D3E0; line-height:1.5; }
+    .rt-regra .cod { display:inline-block; background:rgba(91,130,166,.2); color:#9FC0DC; border-radius:6px; padding:1px 7px; font-size:10.5px; font-weight:700; margin-right:6px; }
+    .rt-regra .disp { color:#8A93A6; font-size:11px; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip"><div class="user-avatar" id="userAvatar">—</div><span id="userName">Carregando…</span></div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <a href="fiscal.html">Fiscal</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Reforma Tributária</span>
+        </div>
+        <div class="eyebrow">Opção IBS/CBS 2027</div>
+        <h1>Reforma Tributária</h1>
+        <p>Clientes do Simples com decisão até 30/09: validar o perfil, simular por dentro × por fora, decidir e comunicar.</p>
+      </div>
+
+      <div class="rg-resumo" id="rtResumo"></div>
+
+      <div class="fa-focus" id="rtFunil">
+        <button class="fa-focus-card" data-f="triado"><span class="fc-num" id="fTri">0</span><span class="fc-lbl">Triado</span></button>
+        <button class="fa-focus-card" data-f="validado"><span class="fc-num" id="fVal">0</span><span class="fc-lbl">Perfil validado</span></button>
+        <button class="fa-focus-card" data-f="simulado"><span class="fc-num" id="fSim">0</span><span class="fc-lbl">Simulado</span></button>
+        <button class="fa-focus-card" data-f="decidido"><span class="fc-num" id="fDec">0</span><span class="fc-lbl">Decidido</span></button>
+        <button class="fa-focus-card" data-f="comunicado"><span class="fc-num" id="fCom">0</span><span class="fc-lbl">Comunicado</span></button>
+        <button class="fa-focus-card" data-f="opcao_registrada"><span class="fc-num" id="fOpc">0</span><span class="fc-lbl">Opção registrada</span></button>
+        <button class="fa-focus-card is-active" data-f="todos"><span class="fc-num" id="fTod">0</span><span class="fc-lbl">Todos</span></button>
+      </div>
+
+      <div class="rt-filtros">
+        <input type="text" id="rtBusca" class="input input-search" placeholder="Buscar cliente ou CNAE…">
+        <select class="rg-status" id="rtFtri">
+          <option value="">Triagem: todas</option>
+          <option value="candidato_por_fora">Candidato por fora</option>
+          <option value="simular">Simular</option>
+          <option value="tende_por_dentro">Tende por dentro</option>
+        </select>
+        <select class="rg-status" id="rtFseg"><option value="">Segmento: todos</option></select>
+        <select class="rg-status" id="rtFdec">
+          <option value="">Decisão: todas</option>
+          <option value="pendente">Pendente</option>
+          <option value="por_dentro">Por dentro</option>
+          <option value="por_fora">Por fora</option>
+        </select>
+        <div class="apoio">
+          <button class="btn btn-ghost" id="btnBase">Base legal</button>
+          <button class="btn btn-primary" id="btnImportar">Importar dados</button>
+        </div>
+      </div>
+
+      <table class="rg-tabela">
+        <thead><tr>
+          <th style="width:30px"><input type="checkbox" id="rtCkAll" title="Selecionar visíveis"></th>
+          <th>Cliente</th>
+          <th class="oculta-m">CNAE · segmento</th>
+          <th>Sinais</th>
+          <th class="num oculta-m">Score</th>
+          <th>Triagem</th>
+          <th>Decisão</th>
+          <th>Status</th>
+        </tr></thead>
+        <tbody id="rtLista"></tbody>
+      </table>
+      <div id="rtVazio" class="empty-state" hidden>Nenhum cliente neste filtro.</div>
+    </main>
+  </div>
+
+  <div class="rt-massa" id="rtMassa">
+    <span class="qtd" id="rtMassaQtd"></span>
+    <button class="btn btn-ghost btn-sm" id="maDentro">Definir decisão: por dentro</button>
+    <button class="btn btn-ghost btn-sm" id="maComGerar">Gerar comunicados</button>
+    <button class="btn btn-ghost btn-sm" id="maComMarcar">Marcar como comunicados</button>
+    <button class="btn btn-ghost btn-sm" id="maLimpar">✕ limpar</button>
+  </div>
+
+  <!-- FICHA -->
+  <div class="rg-ov" id="ovFicha">
+    <div class="rg-card">
+      <h2 id="fiNome">—</h2>
+      <div class="rg-meta">
+        <span id="fiCnpj"></span>
+        <span id="fiCnae"></span>
+        <span id="fiTriagem"></span>
+        <span id="fiStatus"></span>
+        <span>Prazo da opção: <b id="fiPrazo" style="color:#E8A15C"></b></span>
+      </div>
+
+      <div class="rt-bloco">
+        <h3>A · Perfil <small>— confirme os quatro sinais e valide</small></h3>
+        <div class="rt-sinais">
+          <div class="rt-sinal"><span class="lbl">Vende para:</span>
+            <div class="rt-seg" data-s="sinal_b2b"><button data-v="0">consumidor final</button><button data-v="1">misto</button><button data-v="2">empresas/PJ</button></div></div>
+          <div class="rt-sinal"><span class="lbl">Compras com IBS/CBS destacado por fornecedores:</span>
+            <div class="rt-seg" data-s="sinal_entradas"><button data-v="0">poucas</button><button data-v="1">médias</button><button data-v="2">muitas</button></div></div>
+          <div class="rt-sinal"><span class="lbl">Setor com redução por fora:</span>
+            <div class="rt-seg" data-s="sinal_reducao"><button data-v="0">não</button><button data-v="1">parcial</button><button data-v="2">sim</button></div></div>
+          <div class="rt-sinal"><span class="lbl">Parcela CBS/IBS no DAS:</span>
+            <div class="rt-seg" data-s="sinal_aliquota"><button data-v="0">baixa</button><button data-v="1">média</button><button data-v="2">alta</button></div></div>
+        </div>
+        <div class="rg-acoes">
+          <span class="rg-msg" id="aMsg"></span>
+          <span class="rt-st" id="aScore" style="align-self:center"></span>
+          <button class="btn btn-primary" id="aValidar">Perfil validado</button>
+        </div>
+      </div>
+
+      <div class="rt-bloco">
+        <h3>B · Simulador <small>— dois regimes, semestre jan–jun/2027</small></h3>
+        <div class="rt-grid">
+          <label>Anexo do Simples
+            <select id="sAnexo"><option>I</option><option>II</option><option>III</option><option>IV</option><option>V</option></select></label>
+          <label>RBT12 (R$)<input id="sRbt12" placeholder="ex.: 1.800.000,00"></label>
+          <label>Receita mensal (R$)<input id="sReceita"></label>
+          <label>% clientes PJ (regime regular)<input id="sPctPJ" placeholder="0"></label>
+          <label>% compras de mercadorias/insumos <span class="hint">seguem o mix de vendas</span><input id="sPctMerc" placeholder="ex.: 60"></label>
+          <label>% compras de despesas <span class="hint">crédito à alíquota cheia</span><input id="sPctDesp" placeholder="0"></label>
+          <label>% imposto embutido nas compras<input id="sPctEmb" placeholder="0 (ex.: 18 p/ ICMS)"></label>
+          <label>% do DAS já excluído (ICMS-ST/ISS retido)<input id="sPctST" placeholder="0"></label>
+          <label>Mix: % alíquota cheia<input id="sMixCheia" placeholder="100"></label>
+          <label>Mix: % redução 60%<input id="sMixRed60" placeholder="0"></label>
+          <label>Mix: % redução 30%<input id="sMixRed30" placeholder="0"></label>
+          <label>Mix: % alíquota zero<input id="sMixZero" placeholder="0"></label>
+          <label>CBS referência (%)<input id="sCbs"></label>
+          <label>IBS referência (%)<input id="sIbs"></label>
+          <label>Partilha CBS/IBS no DAS (%) <span class="hint" id="sPartilhaHint">manual — ler no PGDAS</span><input id="sPartilha"></label>
+          <label>Crédito de estoque mensal (R$) <span class="hint">entra a partir de fevereiro</span><input id="sEstoque" placeholder="0"></label>
+        </div>
+        <div class="rg-acoes">
+          <span class="rg-msg" id="bMsg"></span>
+          <button class="btn btn-ghost" id="bCalcular">Calcular</button>
+          <button class="btn btn-primary" id="bGravar" disabled>Gravar simulação</button>
+        </div>
+        <div id="bSaida" hidden>
+          <div class="rt-retratos" id="bRetratos"></div>
+          <div class="rt-verd" id="bVeredito"></div>
+          <table class="rt-tm" id="bMeses"></table>
+          <p class="rt-nota">Simulação com alíquotas de referência de 2027 (CBS pendente de Resolução do Senado). Valores estimativos, calculados com os dados informados; a decisão é do cliente.</p>
+          <p class="rt-refs">Base legal: [CRED-ENTRADAS] [CRED-CLIENTE] [RED-SO-POR-FORA] [ALIQ-REF-2027] — consulte no botão Base legal.</p>
+        </div>
+      </div>
+
+      <div class="rt-bloco">
+        <h3>C · Decisão</h3>
+        <div class="rt-dec">
+          <label><input type="radio" name="cDec" value="por_dentro"> Por dentro (permanece no Simples)</label>
+          <label><input type="radio" name="cDec" value="por_fora"> Por fora (regime regular de IBS/CBS)</label>
+        </div>
+        <div class="rg-sec">Fundamento (pré-preenchido pela frase do veredito — edite à vontade)</div>
+        <textarea class="rg-obs" id="cFund"></textarea>
+        <div class="rg-sec">Manifestação do cliente</div>
+        <input class="rg-obs" style="min-height:auto" id="cCiencia" placeholder="ex.: de acordo em 05/09, por telefone">
+        <div class="rg-acoes">
+          <span class="rg-msg" id="cMsg"></span>
+          <button class="btn btn-primary" id="cGravar">Gravar decisão</button>
+        </div>
+      </div>
+
+      <div class="rt-bloco">
+        <h3>D · Comunicado</h3>
+        <div class="rg-acoes" style="justify-content:flex-start; margin-top:0">
+          <button class="btn btn-ghost" id="dGerar">Gerar comunicado</button>
+          <button class="btn btn-ghost" id="dMarcar">Marcar como comunicado</button>
+          <button class="btn btn-ghost" id="dOpcao" hidden>Opção registrada no portal</button>
+          <span class="rg-msg" id="dMsg" style="margin-right:0"></span>
+        </div>
+      </div>
+
+      <div class="rg-acoes">
+        <button class="btn btn-ghost" id="fiFechar">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- BASE LEGAL -->
+  <div class="rg-ov" id="ovBase">
+    <div class="rg-card" style="max-width:760px">
+      <h2>Base legal da campanha</h2>
+      <p style="font-size:12.5px;color:#8A93A6;margin:6px 0 14px">Regras verificadas que sustentam a triagem, o simulador e os comunicados. Conteúdo de leitura — a manutenção é feita fora desta tela.</p>
+      <div id="baseLista">Carregando…</div>
+      <div class="rg-acoes"><button class="btn btn-ghost" id="baseFechar">Fechar</button></div>
+    </div>
+  </div>
+
+  <!-- IMPORTAR -->
+  <div class="rg-ov" id="ovImp">
+    <div class="rg-card" style="max-width:760px">
+      <h2>Importar dados do Domínio</h2>
+      <p style="font-size:12.5px;color:#8A93A6;margin:6px 0 10px">Cole uma linha por cliente no formato <b>CNPJ;anexo;RBT12;receita mensal;% compras</b> (separador <b>;</b> · decimais com vírgula · anexo I–V ou 1–5). O casamento é pelo CNPJ com os clientes desta campanha.</p>
+      <textarea class="rg-obs" id="impTexto" style="min-height:140px" placeholder="12.345.678/0001-90;I;1.800.000,00;150.000,00;60&#10;98765432000110;III;720000;35000;12,5"></textarea>
+      <div class="rt-imp-rel" id="impRel"></div>
+      <div class="rg-acoes">
+        <span class="rg-msg" id="impMsg"></span>
+        <button class="btn btn-ghost" id="impFechar">Fechar</button>
+        <button class="btn btn-primary" id="impProcessar">Processar</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { simular } from './assets/js/rt-motor.js';
+
+    const $ = id => document.getElementById(id);
+    const escapeHtml = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const brl = v => v == null || v === '' ? '—' : Number(v).toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
+    const brNum = v => v == null || v === '' ? '' : Number(v).toLocaleString('pt-BR', { minimumFractionDigits:2, maximumFractionDigits:2 });
+    const brPct = v => v == null || v === '' ? '' : Number(v).toLocaleString('pt-BR', { maximumFractionDigits:4 });
+    const parseNum = s => { const t = String(s || '').trim().replace(/\./g, '').replace(',', '.'); return t === '' ? null : (isNaN(+t) ? null : +t); };
+    const fmtData = d => d ? d.split('-').reverse().join('/') : '—';
+    const fmtCnpj = d => { const x = String(d || '').replace(/\D/g, ''); return x.length === 14 ? x.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5') : (x.length === 11 ? x.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : (d || '')); };
+    const hojeISO = () => new Date().toISOString().slice(0, 10);
+    const agoraISO = () => new Date().toISOString();
+    const nomePorEmail = e => { if (!e) return ''; const inv = {'fiscal@macedoereis.com.br':'Thalia','rh@macedoereis.com.br':'Vitória','contabil@macedoereis.com.br':'Adaini','financeiro@macedoereis.com.br':'Samuel','diego@macedoereis.com.br':'Diego'}; return inv[String(e).toLowerCase()] || String(e).split('@')[0]; };
+
+    const ST_LBL = { triado:'Triado', validado:'Perfil validado', simulado:'Simulado', decidido:'Decidido', comunicado:'Comunicado', opcao_registrada:'Opção registrada' };
+    const TRI_LBL = { candidato_por_fora:['Candidato por fora','t-fora'], simular:['Simular','t-sim'], tende_por_dentro:['Tende por dentro','t-dentro'] };
+    const SEG_LBL = { agropecuaria:'Agropecuária', industria:'Indústria', construcao:'Construção', comercio:'Comércio', servicos:'Serviços' };
+    const SINAIS = ['sinal_b2b','sinal_entradas','sinal_reducao','sinal_aliquota'];
+    const SINAL_TAG = { sinal_b2b:'B2B', sinal_entradas:'Entr', sinal_reducao:'Red', sinal_aliquota:'Alíq' };
+    const SINAL_TIT = { sinal_b2b:'Perfil B2B das vendas', sinal_entradas:'Entradas com IBS/CBS destacado', sinal_reducao:'Redução setorial por fora', sinal_aliquota:'Parcela CBS/IBS no DAS' };
+    const FUND_PADRAO_DENTRO = 'Perfil de vendas ao consumidor final, baixo volume de compras com IBS/CBS destacado e sem redução setorial aplicável — a permanência no Simples é a alternativa mais simples e sem custo adicional.';
+    const FUND_PADRAO_FORA = 'A recuperação do imposto pago nas compras e o crédito integral repassado aos clientes tornam o regime regular mais vantajoso para a empresa.';
+
+    let casos = [], clientesMap = {}, params = { cbs: 9.30, ibs: 0.10, partilha: null };
+    let filtroStatus = 'todos', busca = '', fTri = '', fSeg = '', fDec = '';
+    let sel = new Set(), fichaId = null, simAtual = null, usuarioEmail = '';
+
+    getCurrentUser().then(u => { if (!u) return; usuarioEmail = u.email || ''; $('userName').textContent = u.email; $('userAvatar').textContent = (u.email || '?')[0].toUpperCase(); });
+    $('btnLogout').onclick = () => signOut();
+
+    async function load() {
+      const [{ data: rows }, { data: prm }] = await Promise.all([
+        supabase.from('rt_casos').select('*'),
+        supabase.from('rt_parametros').select('chave, valor')
+      ]);
+      casos = rows || [];
+      (prm || []).forEach(p => {
+        if (p.chave === 'aliq_ref_2027' && p.valor) { params.cbs = +p.valor.cbs || 9.30; params.ibs = +p.valor.ibs || 0; }
+        if (p.chave === 'partilha_cbs_ibs' && p.valor && p.valor.anexos && Object.keys(p.valor.anexos).length) params.partilha = p.valor.anexos;
+      });
+      const ids = casos.map(c => c.cliente_id);
+      if (ids.length) {
+        const { data: clis } = await supabase.from('clientes').select('id, nome_principal, documento, cnae_principal, cidade').in('id', ids);
+        clientesMap = Object.fromEntries((clis || []).map(c => [c.id, c]));
+      }
+      casos.sort((a, b) => (clientesMap[a.cliente_id]?.nome_principal || '').localeCompare(clientesMap[b.cliente_id]?.nome_principal || ''));
+      const segs = [...new Set(casos.map(c => c.segmento).filter(Boolean))].sort();
+      $('rtFseg').innerHTML = '<option value="">Segmento: todos</option>' + segs.map(s => '<option value="' + escapeHtml(s) + '">' + escapeHtml(SEG_LBL[s] || s) + '</option>').join('');
+      render();
+    }
+
+    function scoreDe(c) { return SINAIS.reduce((a, s) => a + (+c[s] || 0), 0); }
+    function triagemDoScore(sc) { return sc <= 2 ? 'tende_por_dentro' : (sc <= 4 ? 'simular' : 'candidato_por_fora'); }
+
+    function render() {
+      const hj = hojeISO();
+      const prazo = casos.map(c => c.prazo_opcao).filter(Boolean).sort()[0] || '2026-09-30';
+      const dias = Math.ceil((new Date(prazo) - new Date(hj)) / 864e5);
+      const decididos = casos.filter(c => c.decisao && c.decisao !== 'pendente').length;
+      const comunicados = casos.filter(c => c.comunicado_em).length;
+      const porFora = casos.filter(c => c.decisao === 'por_fora').length;
+      $('rtResumo').innerHTML =
+        '<div class="rg-kpi"><span class="n">' + casos.length + '</span><span class="l">clientes na campanha</span></div>' +
+        '<div class="rg-kpi alerta"><span class="n">' + dias + ' dias</span><span class="l">até o prazo (' + fmtData(prazo) + ')</span></div>' +
+        '<div class="rg-kpi"><span class="n">' + decididos + '</span><span class="l">decididos</span></div>' +
+        '<div class="rg-kpi"><span class="n">' + comunicados + '</span><span class="l">comunicados</span></div>' +
+        '<div class="rg-kpi"><span class="n">' + porFora + '</span><span class="l">por fora</span></div>';
+
+      const cont = { triado:0, validado:0, simulado:0, decidido:0, comunicado:0, opcao_registrada:0 };
+      casos.forEach(c => { if (cont[c.status] != null) cont[c.status]++; });
+      $('fTri').textContent = cont.triado; $('fVal').textContent = cont.validado; $('fSim').textContent = cont.simulado;
+      $('fDec').textContent = cont.decidido; $('fCom').textContent = cont.comunicado; $('fOpc').textContent = cont.opcao_registrada;
+      $('fTod').textContent = casos.length;
+
+      const vis = casos.filter(c => {
+        if (filtroStatus !== 'todos' && c.status !== filtroStatus) return false;
+        if (fTri && c.triagem !== fTri) return false;
+        if (fSeg && c.segmento !== fSeg) return false;
+        if (fDec && (c.decisao || 'pendente') !== fDec) return false;
+        if (busca) {
+          const cli = clientesMap[c.cliente_id] || {};
+          const alvo = ((cli.nome_principal || '') + ' ' + String(cli.documento || '').replace(/\D/g, '') + ' ' + (c.cnae_base || '')).toLowerCase();
+          if (!alvo.includes(busca)) return false;
+        }
+        return true;
+      });
+
+      $('rtLista').innerHTML = vis.map(c => {
+        const cli = clientesMap[c.cliente_id] || {};
+        const tri = TRI_LBL[c.triagem] || ['—', 't-dentro'];
+        const pills = SINAIS.map(s => '<span class="rt-pill p' + (+c[s] || 0) + '" title="' + SINAL_TIT[s] + ': ' + (+c[s] || 0) + '">' + SINAL_TAG[s] + ' ' + (+c[s] || 0) + '</span>').join('');
+        return '<tr data-id="' + c.id + '">' +
+          '<td><input type="checkbox" class="rt-ck" data-id="' + c.id + '"' + (sel.has(c.id) ? ' checked' : '') + '></td>' +
+          '<td><b style="color:#E6ECF4">' + escapeHtml(cli.nome_principal || '?') + '</b><br><span style="font-size:11.5px;color:#6E7787">' + escapeHtml(fmtCnpj(cli.documento)) + '</span></td>' +
+          '<td class="oculta-m"><span style="font-size:12px">' + escapeHtml(c.cnae_base || cli.cnae_principal || '—') + '</span><br><span style="font-size:11px;color:#6E7787">' + escapeHtml(SEG_LBL[c.segmento] || c.segmento || '') + '</span></td>' +
+          '<td>' + pills + '</td>' +
+          '<td class="num oculta-m"><b>' + scoreDe(c) + '</b></td>' +
+          '<td><span class="rt-chip ' + tri[1] + '">' + tri[0] + '</span></td>' +
+          '<td><select class="rg-status rt-dec-sel" data-id="' + c.id + '">' +
+            '<option value="pendente"' + ((c.decisao || 'pendente') === 'pendente' ? ' selected' : '') + '>Pendente</option>' +
+            '<option value="por_dentro"' + (c.decisao === 'por_dentro' ? ' selected' : '') + '>Por dentro</option>' +
+            '<option value="por_fora"' + (c.decisao === 'por_fora' ? ' selected' : '') + '>Por fora</option></select></td>' +
+          '<td><span class="rt-st">' + (ST_LBL[c.status] || c.status || '—') + '</span></td></tr>';
+      }).join('');
+      $('rtVazio').hidden = vis.length > 0;
+      $('rtCkAll').checked = vis.length > 0 && vis.every(c => sel.has(c.id));
+
+      document.querySelectorAll('#rtLista tr').forEach(tr => tr.onclick = () => abrirFicha(tr.dataset.id));
+      document.querySelectorAll('.rt-ck').forEach(ck => {
+        ck.onclick = e => e.stopPropagation();
+        ck.onchange = e => { if (e.target.checked) sel.add(e.target.dataset.id); else sel.delete(e.target.dataset.id); atualizarMassa(); };
+      });
+      document.querySelectorAll('.rt-dec-sel').forEach(s => {
+        s.onclick = e => e.stopPropagation();
+        s.onchange = async e => {
+          const c = casos.find(x => x.id === e.target.dataset.id); if (!c) return;
+          const v = e.target.value;
+          const upd = { decisao: v, atualizado_em: agoraISO() };
+          upd.status = v !== 'pendente' ? 'decidido' : (c.sim_custo_dentro != null ? 'simulado' : (c.perfil_validado ? 'validado' : 'triado'));
+          const { error } = await supabase.from('rt_casos').update(upd).eq('id', c.id);
+          if (error) { alert('Erro ao gravar decisão: ' + error.message); render(); return; }
+          Object.assign(c, upd);
+          render();
+        };
+      });
+      atualizarMassa();
+    }
+
+    $('rtFunil').querySelectorAll('.fa-focus-card').forEach(b => b.onclick = () => {
+      filtroStatus = b.dataset.f;
+      $('rtFunil').querySelectorAll('.fa-focus-card').forEach(x => x.classList.toggle('is-active', x === b));
+      render();
+    });
+    $('rtBusca').oninput = e => { busca = e.target.value.trim().toLowerCase(); render(); };
+    $('rtFtri').onchange = e => { fTri = e.target.value; render(); };
+    $('rtFseg').onchange = e => { fSeg = e.target.value; render(); };
+    $('rtFdec').onchange = e => { fDec = e.target.value; render(); };
+    $('rtCkAll').onchange = e => {
+      const marcados = document.querySelectorAll('.rt-ck');
+      marcados.forEach(ck => { if (e.target.checked) sel.add(ck.dataset.id); else sel.delete(ck.dataset.id); });
+      render();
+    };
+
+    // ---------- ações em massa ----------
+    function atualizarMassa() {
+      $('rtMassa').classList.toggle('on', sel.size > 0);
+      $('rtMassaQtd').textContent = sel.size + ' selecionado(s)';
+    }
+    $('maLimpar').onclick = () => { sel.clear(); render(); };
+
+    $('maDentro').onclick = async () => {
+      const ids = [...sel]; if (!ids.length) return;
+      if (!confirm('Definir decisão POR DENTRO para ' + ids.length + ' cliente(s)? O fundamento padrão será gravado e o status vai para Decidido.')) return;
+      const upd = { decisao: 'por_dentro', fundamento: FUND_PADRAO_DENTRO, status: 'decidido', atualizado_em: agoraISO() };
+      const { error } = await supabase.from('rt_casos').update(upd).in('id', ids);
+      if (error) { alert('Erro: ' + error.message); return; }
+      casos.forEach(c => { if (sel.has(c.id)) Object.assign(c, upd); });
+      sel.clear();
+      render();
+    };
+
+    $('maComGerar').onclick = () => {
+      const escolhidos = casos.filter(c => sel.has(c.id));
+      const aptos = escolhidos.filter(c => c.decisao === 'por_dentro' || (c.decisao === 'por_fora' && c.sim_custo_fora != null));
+      const pulados = escolhidos.length - aptos.length;
+      if (!aptos.length) { alert('Nenhum selecionado apto: o comunicado exige decisão definida (e simulação gravada, no caso por fora).'); return; }
+      if (pulados && !confirm(aptos.length + ' comunicado(s) serão gerados; ' + pulados + ' selecionado(s) ficam de fora (sem decisão, ou por fora sem simulação gravada). Continuar?')) return;
+      abrirJanelaComunicados(aptos);
+    };
+
+    $('maComMarcar').onclick = async () => {
+      const ids = [...sel].filter(id => { const c = casos.find(x => x.id === id); return c && c.decisao && c.decisao !== 'pendente'; });
+      const pulados = sel.size - ids.length;
+      if (!ids.length) { alert('Nenhum selecionado com decisão definida.'); return; }
+      if (!confirm('Marcar ' + ids.length + ' cliente(s) como comunicado(s) hoje?' + (pulados ? ' (' + pulados + ' sem decisão ficam de fora.)' : ''))) return;
+      const upd = { comunicado_em: hojeISO(), status: 'comunicado', atualizado_em: agoraISO() };
+      const { error } = await supabase.from('rt_casos').update(upd).in('id', ids);
+      if (error) { alert('Erro: ' + error.message); return; }
+      casos.forEach(c => { if (ids.includes(c.id)) Object.assign(c, upd); });
+      sel.clear();
+      render();
+    };
+
+    // ---------- ficha ----------
+    function casoAtual() { return casos.find(x => x.id === fichaId); }
+
+    function abrirFicha(id) {
+      fichaId = id; simAtual = null;
+      const c = casoAtual(); if (!c) return;
+      const cli = clientesMap[c.cliente_id] || {};
+      $('fiNome').textContent = cli.nome_principal || '?';
+      $('fiCnpj').textContent = fmtCnpj(cli.documento);
+      $('fiCnae').textContent = 'CNAE ' + (c.cnae_base || cli.cnae_principal || '—') + (c.segmento ? ' · ' + (SEG_LBL[c.segmento] || c.segmento) : '');
+      atualizarChips();
+      $('fiPrazo').textContent = fmtData(c.prazo_opcao || '2026-09-30');
+
+      // A — sinais
+      document.querySelectorAll('.rt-seg').forEach(seg => {
+        const s = seg.dataset.s;
+        seg.querySelectorAll('button').forEach(b => {
+          b.classList.toggle('on', +b.dataset.v === (+c[s] || 0));
+          b.onclick = () => { seg.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); previewScore(); };
+        });
+      });
+      $('aMsg').textContent = '';
+      previewScore();
+
+      // B — simulador (restaura da última simulação gravada, senão das colunas)
+      let ent = null;
+      try { const j = JSON.parse(c.sim_obs || 'null'); if (j && j.input) ent = j.input; } catch (e) {}
+      $('sAnexo').value = (ent && ent.anexo) || c.anexo || 'I';
+      $('sRbt12').value = brNum(ent ? ent.rbt12 : c.rbt12);
+      $('sReceita').value = brNum(ent ? ent.receita : c.receita_mensal);
+      $('sPctPJ').value = brPct(ent ? ent.pctPJ : c.pct_clientes_pj);
+      $('sPctMerc').value = brPct(ent ? ent.pctComprasMercadorias : c.pct_compras_creditaveis);
+      $('sPctDesp').value = brPct(ent ? ent.pctComprasDespesas : null);
+      $('sPctEmb').value = brPct(ent ? ent.pctImpostoEmbutido : null);
+      $('sPctST').value = brPct(ent ? ent.pctExcluidoST : null);
+      $('sMixCheia').value = brPct(ent ? ent.mixCheia : (c.pct_receita_reduzida != null ? 100 - c.pct_receita_reduzida : null));
+      $('sMixRed60').value = brPct(ent ? ent.mixRed60 : c.pct_receita_reduzida);
+      $('sMixRed30').value = brPct(ent ? ent.mixRed30 : null);
+      $('sMixZero').value = brPct(ent ? ent.mixZero : null);
+      $('sCbs').value = brPct(ent ? ent.cbs : params.cbs);
+      $('sIbs').value = brPct(ent ? ent.ibs : params.ibs);
+      $('sPartilha').value = brPct(ent ? ent.partilha : null);
+      $('sPartilha').dataset.auto = '';
+      $('sEstoque').value = brNum(ent ? ent.creditoEstoqueMes : null);
+      if (!$('sPartilha').value) preencherPartilhaAuto();
+      $('bMsg').textContent = '';
+      $('bSaida').hidden = true;
+      $('bGravar').disabled = true;
+
+      // C — decisão
+      document.querySelectorAll('input[name="cDec"]').forEach(r => r.checked = r.value === c.decisao);
+      $('cFund').value = c.fundamento || '';
+      $('cCiencia').value = c.ciencia_cliente || '';
+      $('cMsg').textContent = '';
+
+      // D
+      $('dOpcao').hidden = c.decisao !== 'por_fora';
+      $('dMsg').textContent = c.comunicado_em ? 'Comunicado em ' + fmtData(c.comunicado_em) : '';
+
+      $('ovFicha').classList.add('on');
+    }
+    $('fiFechar').onclick = () => { $('ovFicha').classList.remove('on'); render(); };
+
+    function atualizarChips() {
+      const c = casoAtual(); if (!c) return;
+      const tri = TRI_LBL[c.triagem] || ['—', 't-dentro'];
+      $('fiTriagem').innerHTML = '<span class="rt-chip ' + tri[1] + '">' + tri[0] + '</span>';
+      $('fiStatus').innerHTML = 'Status: <b style="color:#C9D3E0">' + (ST_LBL[c.status] || c.status || '—') + '</b>';
+      $('dOpcao').hidden = c.decisao !== 'por_fora';
+    }
+
+    function sinaisDaTela() {
+      const o = {};
+      document.querySelectorAll('.rt-seg').forEach(seg => {
+        const on = seg.querySelector('button.on');
+        o[seg.dataset.s] = on ? +on.dataset.v : 0;
+      });
+      return o;
+    }
+    function previewScore() {
+      const s = sinaisDaTela();
+      const sc = SINAIS.reduce((a, k) => a + s[k], 0);
+      const tri = TRI_LBL[triagemDoScore(sc)];
+      $('aScore').textContent = 'Score ' + sc + ' → ' + tri[0];
+    }
+
+    $('aValidar').onclick = async () => {
+      const c = casoAtual(); if (!c) return;
+      const s = sinaisDaTela();
+      const sc = SINAIS.reduce((a, k) => a + s[k], 0);
+      const upd = { ...s, triagem: triagemDoScore(sc), perfil_validado: true, validado_por: nomePorEmail(usuarioEmail), atualizado_em: agoraISO() };
+      if (c.status === 'triado') upd.status = 'validado';
+      $('aMsg').style.color = '#8A93A6'; $('aMsg').textContent = 'Gravando…';
+      const { error } = await supabase.from('rt_casos').update(upd).eq('id', c.id);
+      if (error) { $('aMsg').style.color = '#E06C6C'; $('aMsg').textContent = 'Erro: ' + error.message; return; }
+      Object.assign(c, upd);
+      $('aMsg').style.color = '#3FB07A'; $('aMsg').textContent = '✓ Perfil validado';
+      atualizarChips();
+    };
+
+    // ---------- simulador ----------
+    function preencherPartilhaAuto() {
+      const anexo = $('sAnexo').value, rbt12 = parseNum($('sRbt12').value);
+      if (!params.partilha || !params.partilha[anexo] || !(rbt12 > 0)) { $('sPartilhaHint').textContent = 'manual — ler no PGDAS'; return; }
+      const fx = params.partilha[anexo].find(f => rbt12 <= +f.ate);
+      if (fx) { $('sPartilha').value = brPct(fx.pct); $('sPartilha').dataset.auto = '1'; $('sPartilhaHint').textContent = 'auto — tabela oficial'; }
+    }
+    $('sAnexo').onchange = () => { if ($('sPartilha').dataset.auto || !$('sPartilha').value) preencherPartilhaAuto(); };
+    $('sRbt12').oninput = () => { if ($('sPartilha').dataset.auto || !$('sPartilha').value) preencherPartilhaAuto(); };
+    $('sPartilha').oninput = () => { $('sPartilha').dataset.auto = ''; $('sPartilhaHint').textContent = 'manual — ler no PGDAS'; };
+
+    function entradaDaTela() {
+      return {
+        anexo: $('sAnexo').value,
+        rbt12: parseNum($('sRbt12').value),
+        receita: parseNum($('sReceita').value),
+        mixCheia: parseNum($('sMixCheia').value) ?? 0,
+        mixRed60: parseNum($('sMixRed60').value) ?? 0,
+        mixRed30: parseNum($('sMixRed30').value) ?? 0,
+        mixZero: parseNum($('sMixZero').value) ?? 0,
+        pctComprasMercadorias: parseNum($('sPctMerc').value) ?? 0,
+        pctComprasDespesas: parseNum($('sPctDesp').value) ?? 0,
+        pctImpostoEmbutido: parseNum($('sPctEmb').value) ?? 0,
+        pctExcluidoST: parseNum($('sPctST').value) ?? 0,
+        partilha: parseNum($('sPartilha').value),
+        cbs: parseNum($('sCbs').value) ?? params.cbs,
+        ibs: parseNum($('sIbs').value) ?? params.ibs,
+        pctPJ: parseNum($('sPctPJ').value) ?? 0,
+        creditoEstoqueMes: parseNum($('sEstoque').value) ?? 0
+      };
+    }
+
+    function calcular() {
+      const ent = entradaDaTela();
+      const r = simular(ent);
+      simAtual = { input: ent, r };
+      const s = r.semestre;
+      const venceu = r.veredito.tipo === 'OPTE';
+      $('bRetratos').innerHTML =
+        '<div class="rt-ret' + (venceu ? '' : ' win') + '"><h4>Por dentro (Simples)</h4>' +
+          '<div class="rw"><span>Custo tributário do semestre</span><b>' + brl(s.custoDentro) + '</b></div>' +
+          '<div class="rw"><span>Caixa pago ao fisco</span><b>' + brl(s.caixaDentro) + '</b></div>' +
+          '<div class="rw"><span>Crédito que o cliente leva</span><b>' + brl(s.creditoClienteDentro) + '</b></div>' +
+          '<div class="rw"><span>Aproveitado pela carteira PJ</span><b>' + brl(s.aproveitadoDentro) + '</b></div></div>' +
+        '<div class="rt-ret' + (venceu ? ' win' : '') + '"><h4>Por fora (regime regular)</h4>' +
+          '<div class="rw"><span>Custo tributário do semestre</span><b>' + brl(s.custoFora) + '</b></div>' +
+          '<div class="rw"><span>Caixa pago ao fisco</span><b>' + brl(s.caixaFora) + '</b></div>' +
+          '<div class="rw"><span>Crédito que o cliente leva</span><b>' + brl(s.creditoClienteFora) + '</b></div>' +
+          '<div class="rw"><span>Aproveitado pela carteira PJ</span><b>' + brl(s.aproveitadoFora) + '</b></div>' +
+          '<div class="rw tot"><span>Diferença (fora − dentro)</span><b>' + brl(s.diferenca) + '</b></div></div>';
+      $('bVeredito').className = 'rt-verd ' + (venceu ? 'opte' : 'mantenha');
+      $('bVeredito').innerHTML = '<b>' + (venceu ? 'OPTE pelo regime regular.' : 'MANTENHA a apuração no Simples.') + '</b> ' + escapeHtml(r.veredito.frase) +
+        (r.avisos.length ? '<br><span style="font-size:11.5px">⚠ ' + r.avisos.map(escapeHtml).join(' · ') + '</span>' : '');
+      const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho'];
+      $('bMeses').innerHTML = '<thead><tr><th>Mês</th><th>DAS por dentro</th><th>DAS sobra (fora)</th><th>IBS/CBS a recolher</th><th>Crédito estoque</th><th>Custo dentro</th><th>Custo fora</th></tr></thead><tbody>' +
+        r.meses.map((m, i) => '<tr><td>' + MESES[i] + '</td><td>' + brl(m.caixaDentro) + '</td><td>' + brl(r.mes.dasSobra) + '</td><td>' + brl(m.aRecolher) + '</td><td>' + brl(m.estoque) + '</td><td>' + brl(m.custoDentro) + '</td><td>' + brl(m.custoFora) + '</td></tr>').join('') +
+        '<tr class="tot"><td>Semestre</td><td>' + brl(s.caixaDentro) + '</td><td>' + brl(r.mes.dasSobra * 6) + '</td><td>' + brl(r.meses.reduce((a, m) => a + m.aRecolher, 0)) + '</td><td>' + brl(r.meses.reduce((a, m) => a + m.estoque, 0)) + '</td><td>' + brl(s.custoDentro) + '</td><td>' + brl(s.custoFora) + '</td></tr></tbody>';
+      $('bSaida').hidden = false;
+      $('bGravar').disabled = false;
+      return r;
+    }
+
+    $('bCalcular').onclick = () => {
+      try { $('bMsg').textContent = ''; calcular(); }
+      catch (err) { simAtual = null; $('bGravar').disabled = true; $('bSaida').hidden = true; $('bMsg').style.color = '#E06C6C'; $('bMsg').textContent = err.message; }
+    };
+
+    $('bGravar').onclick = async () => {
+      const c = casoAtual(); if (!c) return;
+      let r;
+      try { $('bMsg').textContent = ''; r = calcular(); }
+      catch (err) { $('bMsg').style.color = '#E06C6C'; $('bMsg').textContent = err.message; return; }
+      const ent = simAtual.input;
+      const upd = {
+        anexo: ent.anexo, rbt12: ent.rbt12, receita_mensal: ent.receita,
+        pct_clientes_pj: ent.pctPJ,
+        pct_compras_creditaveis: ent.pctComprasMercadorias + ent.pctComprasDespesas,
+        pct_receita_reduzida: ent.mixRed60 + ent.mixRed30 + ent.mixZero,
+        sim_custo_dentro: +r.semestre.custoDentro.toFixed(2),
+        sim_custo_fora: +r.semestre.custoFora.toFixed(2),
+        sim_credito_cliente_dentro: +r.semestre.creditoClienteDentro.toFixed(2),
+        sim_credito_cliente_fora: +r.semestre.creditoClienteFora.toFixed(2),
+        sim_obs: JSON.stringify({ v: 1, input: ent, veredito: r.veredito.tipo, frase: r.veredito.frase, calculado_em: hojeISO() }),
+        atualizado_em: agoraISO()
+      };
+      if (c.status === 'triado' || c.status === 'validado') upd.status = 'simulado';
+      $('bMsg').style.color = '#8A93A6'; $('bMsg').textContent = 'Gravando…';
+      const { error } = await supabase.from('rt_casos').update(upd).eq('id', c.id);
+      if (error) { $('bMsg').style.color = '#E06C6C'; $('bMsg').textContent = 'Erro: ' + error.message; return; }
+      Object.assign(c, upd);
+      $('bMsg').style.color = '#3FB07A'; $('bMsg').textContent = '✓ Simulação gravada';
+      if (!$('cFund').value.trim()) $('cFund').value = r.veredito.frase;
+      atualizarChips();
+    };
+
+    // ---------- decisão ----------
+    document.querySelectorAll('input[name="cDec"]').forEach(r => r.onchange = () => {
+      if ($('cFund').value.trim()) return;
+      const c = casoAtual();
+      let frase = '';
+      try { const j = JSON.parse(c && c.sim_obs || 'null'); if (j && j.frase) frase = j.frase; } catch (e) {}
+      $('cFund').value = frase || (r.value === 'por_dentro' ? FUND_PADRAO_DENTRO : FUND_PADRAO_FORA);
+    });
+
+    $('cGravar').onclick = async () => {
+      const c = casoAtual(); if (!c) return;
+      const dec = document.querySelector('input[name="cDec"]:checked');
+      if (!dec) { $('cMsg').style.color = '#E06C6C'; $('cMsg').textContent = 'Escolha por dentro ou por fora.'; return; }
+      const upd = { decisao: dec.value, fundamento: $('cFund').value.trim() || null, ciencia_cliente: $('cCiencia').value.trim() || null, status: 'decidido', atualizado_em: agoraISO() };
+      $('cMsg').style.color = '#8A93A6'; $('cMsg').textContent = 'Gravando…';
+      const { error } = await supabase.from('rt_casos').update(upd).eq('id', c.id);
+      if (error) { $('cMsg').style.color = '#E06C6C'; $('cMsg').textContent = 'Erro: ' + error.message; return; }
+      Object.assign(c, upd);
+      $('cMsg').style.color = '#3FB07A'; $('cMsg').textContent = '✓ Decisão gravada';
+      atualizarChips();
+    };
+
+    // ---------- comunicado ----------
+    const PERFIL_CLI = ['o consumidor final', 'um público misto (consumidor final e empresas)', 'empresas (PJ)'];
+    const PERFIL_COMPRAS = ['poucas compras com IBS/CBS destacado', 'volume médio de compras com IBS/CBS destacado', 'volume alto de compras com IBS/CBS destacado'];
+
+    function atividadeDe(c) {
+      const seg = { agropecuaria:'atividade agropecuária', industria:'atividade industrial', construcao:'atividade de construção', comercio:'atividade de comércio', servicos:'atividade de serviços' }[c.segmento];
+      return seg || ('atividade registrada no CNAE ' + (c.cnae_base || '—'));
+    }
+
+    function comunicadoFolha(c) {
+      const cli = clientesMap[c.cliente_id] || {};
+      const contexto = 'A partir de janeiro de 2027 começam a valer a CBS e o IBS, os novos tributos criados pela reforma tributária. Para empresas do Simples Nacional, eles passam a compor o DAS junto dos demais tributos — e existe a possibilidade de optar por apurá-los separadamente, no chamado regime regular.';
+      const perfilCli = PERFIL_CLI[+c.sinal_b2b || 0], perfilCompras = PERFIL_COMPRAS[+c.sinal_entradas || 0];
+      let miolo;
+      if (c.decisao === 'por_fora') {
+        const prazoConf = (() => { const d = new Date((c.prazo_opcao || '2026-09-30') + 'T12:00:00'); d.setDate(d.getDate() - 7); return d.toLocaleDateString('pt-BR'); })();
+        miolo =
+          '<h1>Reforma Tributária — recomendação de opção pelo regime regular de IBS/CBS</h1>' +
+          '<div class="dados"><b>' + escapeHtml(cli.nome_principal || '') + '</b>' + (cli.documento ? ' · CNPJ ' + escapeHtml(fmtCnpj(cli.documento)) : '') + '</div>' +
+          '<p class="ctx">' + contexto + '</p>' +
+          '<p class="ctx">Simulamos os dois cenários com os números da sua empresa para o primeiro semestre de 2027:</p>' +
+          '<table><thead><tr><th>Indicador (semestre)</th><th class="num">Dentro do Simples</th><th class="num">Regime regular</th></tr></thead><tbody>' +
+          '<tr><td>Custo tributário estimado</td><td class="num">' + brl(c.sim_custo_dentro) + '</td><td class="num">' + brl(c.sim_custo_fora) + '</td></tr>' +
+          '<tr><td>Crédito que seus clientes aproveitam</td><td class="num">' + brl(c.sim_credito_cliente_dentro) + '</td><td class="num">' + brl(c.sim_credito_cliente_fora) + '</td></tr>' +
+          '<tr><td><b>Diferença de custo (regular − Simples)</b></td><td class="num" colspan="2"><b>' + brl((c.sim_custo_fora || 0) - (c.sim_custo_dentro || 0)) + '</b></td></tr>' +
+          '</tbody></table>' +
+          '<p class="ctx" style="margin-top:14px"><b>Nossa recomendação é optar pelo regime regular de IBS/CBS.</b> ' + escapeHtml(c.fundamento || FUND_PADRAO_FORA) + '</p>' +
+          '<p class="ctx">A opção deve ser formalizada até <b>' + fmtData(c.prazo_opcao || '2026-09-30') + '</b> e produz efeitos a partir de <b>01/01/2027</b>, valendo por semestre — pode ser revista em março/2027. O que muda no dia a dia: apuração mensal do IBS/CBS separada do DAS, destaque dos tributos nas notas fiscais e recebimentos sujeitos ao split payment conforme a regulamentação. Ponto de atenção: empresas que recebem ressarcimento de créditos ficam vinculadas ao regime regular.</p>' +
+          '<h2>Próximos passos</h2><ol class="passos">' +
+          '<li>Sua confirmação até ' + prazoConf + ';</li>' +
+          '<li>O escritório registra a opção no Portal do Simples Nacional;</li>' +
+          '<li>Ajustes na emissão de notas e nos cadastros;</li>' +
+          '<li>Apuração mensal a partir de janeiro.</li></ol>' +
+          '<div class="assina"><b>Recomendação técnica do escritório: optar pelo regime regular.</b><br>Decisão do cliente: (&nbsp;&nbsp;) acompanho a recomendação &nbsp;&nbsp; (&nbsp;&nbsp;) prefiro manter no Simples<br><br>Data: ____/____/______ &nbsp;&nbsp;&nbsp; Assinatura: ___________________________________</div>';
+      } else {
+        miolo =
+          '<h1>Reforma Tributária — o que muda para a sua empresa em 2027</h1>' +
+          '<div class="dados"><b>' + escapeHtml(cli.nome_principal || '') + '</b>' + (cli.documento ? ' · CNPJ ' + escapeHtml(fmtCnpj(cli.documento)) : '') + '</div>' +
+          '<p class="ctx">' + contexto + '</p>' +
+          '<p class="ctx">Analisamos o perfil da ' + escapeHtml(cli.nome_principal || 'empresa') + ': ' + atividadeDe(c) + ', com vendas voltadas para ' + perfilCli + ' e ' + perfilCompras + '. <b>Nossa recomendação é manter a apuração dentro do Simples Nacional.</b> ' + escapeHtml(c.fundamento || FUND_PADRAO_DENTRO) + '</p>' +
+          '<p class="ctx">Nesse caso não há providência a tomar: a permanência é automática. A opção pelo regime separado pode ser reavaliada a cada semestre (março e setembro), e o escritório seguirá acompanhando o seu caso conforme a regulamentação avançar.</p>' +
+          '<div class="assina"><b>Recomendação técnica do escritório: manter no Simples.</b><br>Manifestação do cliente: (&nbsp;&nbsp;) de acordo &nbsp;&nbsp; (&nbsp;&nbsp;) desejo avaliar a opção<br><br>Data: ____/____/______ &nbsp;&nbsp;&nbsp; Assinatura: ___________________________________</div>';
+      }
+      const logoUrl = new URL('assets/logo-mr.png', location.href).href;
+      const cbsTxt = Number(params.cbs).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) + '%';
+      return '<div class="folha">' +
+        '<header class="cab"><img src="' + logoUrl + '" alt="Macedo & Reis"><div class="firma"><strong>Macedo &amp; Reis Contabilidade</strong><span>CRC/RS 006418/O</span><span>Três Coroas – RS</span></div></header>' +
+        '<hr class="reg">' + miolo +
+        '<div class="rodape">Simulações com alíquotas de referência de 2027 (CBS ' + cbsTxt + ', pendente de Resolução do Senado). Valores estimativos. Emitido em ' + new Date().toLocaleDateString('pt-BR') + ' · Macedo &amp; Reis Contabilidade · CRC/RS 006418/O</div>' +
+        '</div>';
+    }
+
+    function abrirJanelaComunicados(lista) {
+      const html = '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Comunicado — Reforma Tributária</title><style>'
+        + 'body{font-family:"Segoe UI",Arial,sans-serif;color:#23272E;margin:0;padding:28px;background:#fff;font-size:13px;line-height:1.5;}'
+        + '.folha{max-width:830px;margin:0 auto 40px;page-break-after:always;}'
+        + '.folha:last-child{page-break-after:auto;}'
+        + '.cab{display:flex;align-items:center;gap:14px;} .cab img{width:52px;height:52px;object-fit:contain;}'
+        + '.firma{display:flex;flex-direction:column;line-height:1.35;} .firma strong{font-size:15px;color:#3A5878;} .firma span{font-size:11px;color:#66707E;}'
+        + 'hr.reg{border:none;border-top:2px solid #5B82A6;margin:14px 0 20px;}'
+        + 'h1{font-size:18px;color:#3A5878;margin:0 0 14px;}'
+        + 'h2{font-size:14px;color:#3A5878;margin:18px 0 8px;}'
+        + '.dados{margin:0 0 14px;font-size:13px;} .dados b{color:#3A5878;}'
+        + 'p.ctx{margin:0 0 14px;text-align:justify;}'
+        + 'table{width:100%;border-collapse:collapse;margin:0 0 6px;} th{background:#3A5878;color:#fff;text-align:left;padding:7px 9px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;} td{padding:7px 9px;border-bottom:1px solid #E1E6EC;vertical-align:top;} .num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;} th.num{text-align:right;}'
+        + '.passos{margin:6px 0 18px;padding-left:20px;} .passos li{margin-bottom:5px;}'
+        + '.assina{margin-top:24px;padding:14px 16px;background:#F4F6F9;border-radius:10px;font-size:12.5px;line-height:1.7;}'
+        + '.rodape{margin-top:22px;padding-top:10px;border-top:1px solid #E1E6EC;font-size:10.5px;color:#8A93A6;}'
+        + '.toolbar-print{position:fixed;top:10px;right:10px;} .toolbar-print button{padding:8px 14px;cursor:pointer;}'
+        + '@page{margin:1.4cm;} @media print{ body{padding:0;} .toolbar-print{display:none;} .folha{margin-bottom:0;} }'
+        + '</style></head><body>'
+        + '<div class="toolbar-print"><button onclick="window.print()">Imprimir / Salvar PDF</button></div>'
+        + lista.map(comunicadoFolha).join('')
+        + '</body></html>';
+      const w = window.open('', '_blank');
+      w.document.write(html);
+      w.document.close();
+    }
+
+    $('dGerar').onclick = () => {
+      const c = casoAtual(); if (!c) return;
+      if (!c.decisao || c.decisao === 'pendente') { alert('Grave a decisão antes de gerar o comunicado.'); return; }
+      if (c.decisao === 'por_fora' && c.sim_custo_fora == null) { alert('O comunicado por fora usa os números da simulação — grave a simulação antes.'); return; }
+      abrirJanelaComunicados([c]);
+    };
+
+    $('dMarcar').onclick = async () => {
+      const c = casoAtual(); if (!c) return;
+      if (!c.decisao || c.decisao === 'pendente') { alert('Grave a decisão antes de marcar como comunicado.'); return; }
+      const upd = { comunicado_em: hojeISO(), status: 'comunicado', atualizado_em: agoraISO() };
+      const { error } = await supabase.from('rt_casos').update(upd).eq('id', c.id);
+      if (error) { $('dMsg').style.color = '#E06C6C'; $('dMsg').textContent = 'Erro: ' + error.message; return; }
+      Object.assign(c, upd);
+      $('dMsg').style.color = '#3FB07A'; $('dMsg').textContent = '✓ Comunicado em ' + fmtData(upd.comunicado_em);
+      atualizarChips();
+    };
+
+    $('dOpcao').onclick = async () => {
+      const c = casoAtual(); if (!c || c.decisao !== 'por_fora') return;
+      if (!confirm('Confirmar que a opção pelo regime regular foi registrada no Portal do Simples Nacional?')) return;
+      const upd = { status: 'opcao_registrada', atualizado_em: agoraISO() };
+      const { error } = await supabase.from('rt_casos').update(upd).eq('id', c.id);
+      if (error) { $('dMsg').style.color = '#E06C6C'; $('dMsg').textContent = 'Erro: ' + error.message; return; }
+      Object.assign(c, upd);
+      $('dMsg').style.color = '#3FB07A'; $('dMsg').textContent = '✓ Opção registrada';
+      atualizarChips();
+    };
+
+    // ---------- base legal ----------
+    let regrasCarregadas = false;
+    $('btnBase').onclick = async () => {
+      $('ovBase').classList.add('on');
+      if (regrasCarregadas) return;
+      const { data, error } = await supabase.from('rt_regras').select('codigo, titulo, dispositivo, regra, aplica_a, efeito, fonte, verificado_em').eq('ativo', true).order('codigo');
+      if (error) { $('baseLista').textContent = 'Erro ao carregar: ' + error.message; return; }
+      regrasCarregadas = true;
+      $('baseLista').innerHTML = (data || []).map(r =>
+        '<div class="rt-regra"><span class="cod">' + escapeHtml(r.codigo) + '</span><b>' + escapeHtml(r.titulo) + '</b>' +
+        (r.dispositivo ? ' <span class="disp">· ' + escapeHtml(r.dispositivo) + '</span>' : '') +
+        '<br>' + escapeHtml(r.regra || '') +
+        '<br><span class="disp">Aplica-se a: ' + escapeHtml(r.aplica_a || '—') + ' · Efeito: ' + escapeHtml(r.efeito || '—') +
+        (r.fonte ? ' · Fonte: ' + escapeHtml(r.fonte) : '') + (r.verificado_em ? ' · verificado em ' + fmtData(r.verificado_em) : '') + '</span></div>').join('');
+    };
+    $('baseFechar').onclick = () => $('ovBase').classList.remove('on');
+
+    // ---------- importação Domínio ----------
+    $('btnImportar').onclick = () => { $('impRel').innerHTML = ''; $('impMsg').textContent = ''; $('ovImp').classList.add('on'); };
+    $('impFechar').onclick = () => $('ovImp').classList.remove('on');
+
+    $('impProcessar').onclick = async () => {
+      const linhas = $('impTexto').value.split('\n').map(l => l.trim()).filter(Boolean);
+      if (!linhas.length) { $('impMsg').style.color = '#E06C6C'; $('impMsg').textContent = 'Cole ao menos uma linha.'; return; }
+      const porCnpj = {};
+      casos.forEach(c => { const cli = clientesMap[c.cliente_id]; if (cli && cli.documento) porCnpj[String(cli.documento).replace(/\D/g, '')] = c; });
+      const ANEXOS_MAP = { '1':'I', '2':'II', '3':'III', '4':'IV', '5':'V', 'I':'I', 'II':'II', 'III':'III', 'IV':'IV', 'V':'V' };
+      const ok = [], naoAchados = [], invalidas = [];
+      $('impMsg').style.color = '#8A93A6'; $('impMsg').textContent = 'Processando…';
+      for (const linha of linhas) {
+        const p = linha.split(';').map(x => x.trim());
+        if (p.length < 5) { invalidas.push(linha); continue; }
+        const cnpj = p[0].replace(/\D/g, '');
+        const anexo = ANEXOS_MAP[p[1].toUpperCase()];
+        const rbt12 = parseNum(p[2]), receita = parseNum(p[3]), pctCompras = parseNum(p[4]);
+        if (!cnpj || !anexo || rbt12 == null || receita == null || pctCompras == null) { invalidas.push(linha); continue; }
+        const c = porCnpj[cnpj];
+        if (!c) { naoAchados.push(p[0]); continue; }
+        const upd = { anexo, rbt12, receita_mensal: receita, pct_compras_creditaveis: pctCompras, atualizado_em: agoraISO() };
+        const { error } = await supabase.from('rt_casos').update(upd).eq('id', c.id);
+        if (error) { invalidas.push(linha + ' (erro: ' + error.message + ')'); continue; }
+        Object.assign(c, upd);
+        ok.push(clientesMap[c.cliente_id]?.nome_principal || cnpj);
+      }
+      $('impMsg').style.color = '#3FB07A'; $('impMsg').textContent = '✓ ' + ok.length + ' atualizado(s)';
+      $('impRel').innerHTML =
+        (ok.length ? '<b style="color:#3FB07A">✓ Atualizados (' + ok.length + '):</b> ' + ok.map(escapeHtml).join(' · ') + '<br>' : '') +
+        (naoAchados.length ? '<b style="color:#E8A15C">Não encontrados na campanha (' + naoAchados.length + '):</b> ' + naoAchados.map(escapeHtml).join(' · ') + '<br>' : '') +
+        (invalidas.length ? '<b style="color:#E06C6C">Linhas inválidas (' + invalidas.length + '):</b><br>' + invalidas.map(escapeHtml).join('<br>') : '');
+      render();
+    };
+
+    load();
+  </script>
+</body>
+</html>
