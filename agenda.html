@@ -1404,7 +1404,7 @@
         const hj = new Date().toISOString().slice(0, 10);
         const em60 = new Date(Date.now() + 60 * 864e5).toISOString().slice(0, 10);
         const seteDias = new Date(Date.now() - 7 * 864e5).toISOString();
-        const [alv, alvSemResp, trs, propF, trProp, propPar, inad, tVenc, tMinhas] = await Promise.all([
+        const [alv, alvSemResp, trs, propF, trProp, propPar, inad, tVenc, tMinhas, rtPend] = await Promise.all([
           supabase.from('alvaras').select('vencimento').not('vencimento', 'is', null),
           supabase.from('alvaras').select('id', { count: 'exact', head: true }).is('responsavel', null),
           supabase.from('transicoes').select('id, status, previsao_fim'),
@@ -1413,7 +1413,8 @@
           supabase.from('precificacoes').select('id', { count: 'exact', head: true }).eq('status', 'apresentada').lt('atualizado_em', seteDias),
           supabase.from('carteira_info').select('cliente_id', { count: 'exact', head: true }).eq('inadimplente', true).is('saida', null),
           supabase.from('tarefas').select('id', { count: 'exact', head: true }).eq('status', 'pendente').lt('prazo', hj),
-          supabase.from('tarefas').select('id', { count: 'exact', head: true }).eq('status', 'pendente').lt('prazo', hj).ilike('responsavel', nomePorEmail(usuarioEmail) || '~nada~')
+          supabase.from('tarefas').select('id', { count: 'exact', head: true }).eq('status', 'pendente').lt('prazo', hj).ilike('responsavel', nomePorEmail(usuarioEmail) || '~nada~'),
+          supabase.from('rt_casos').select('prazo_opcao').eq('decisao', 'pendente')
         ]);
         const alvVencidos = (alv.data || []).filter(a => a.vencimento < hj).length;
         const alvBreve = (alv.data || []).filter(a => a.vencimento >= hj && a.vencimento <= em60).length;
@@ -1421,7 +1422,11 @@
         const trAtrasadas = trLista.filter(t => t.previsao_fim && t.previsao_fim < hj).length;
         const comTrans = new Set((trProp.data || []).map(t => t.proposta_id));
         const propSem = (propF.data || []).filter(p => !comTrans.has(p.id)).length;
+        const rtLista = rtPend.data || [];
+        const rtPrazo = rtLista.map(x => x.prazo_opcao).filter(Boolean).sort()[0];
+        const rtDias = rtPrazo ? Math.ceil((new Date(rtPrazo) - new Date(hj)) / 864e5) : null;
         const cards = [];
+        if (rtLista.length) cards.push('<a class="ag-radar-card' + (rtDias != null && rtDias <= 10 ? ' rc-alerta' : '') + '" href="fiscal-reforma.html"><b>' + rtLista.length + '</b> cliente(s) do Simples sem decisão IBS/CBS · prazo ' + (rtPrazo ? rtPrazo.slice(5).split('-').reverse().join('/') : '30/09') + '</a>');
         if (alvVencidos || alvBreve) cards.push('<a class="ag-radar-card' + (alvVencidos ? ' rc-alerta' : '') + '" href="societario-alvaras.html">' + (alvVencidos ? '<b>' + alvVencidos + '</b> alvará(s) vencido(s)' : '') + (alvVencidos && alvBreve ? ' · ' : '') + (alvBreve ? '<b>' + alvBreve + '</b> vence(m) em 60 dias' : '') + '</a>');
         if (alvSemResp.count) cards.push('<a class="ag-radar-card" href="societario-alvaras.html"><b>' + alvSemResp.count + '</b> alvará(s) sem responsável — sem tarefa de renovação</a>');
         if (trLista.length) cards.push('<a class="ag-radar-card' + (trAtrasadas ? ' rc-alerta' : '') + '" href="comercial-transicao.html"><b>' + trLista.length + '</b> transição(ões) em curso' + (trAtrasadas ? ' · <b>' + trAtrasadas + '</b> além dos 90 dias' : '') + '</a>');

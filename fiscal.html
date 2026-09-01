@@ -15,6 +15,7 @@
     a[href="fiscal-obrigacoes.html"] .dashboard-card-icon { background: rgba(63,176,122,.15);  color:#3FB07A; }
     a[href="fiscal-clientes.html"]   .dashboard-card-icon { background: rgba(133,151,224,.15); color:#8597E0; }
     a[href="fiscal-regularizacao.html"] .dashboard-card-icon { background: rgba(232,161,92,.15); color:#E8A15C; }
+    a[href="fiscal-reforma.html"]    .dashboard-card-icon { background: rgba(169,143,224,.15); color:#A98FE0; }
     a[href="fiscal-relatorios.html"] .dashboard-card-icon { background: rgba(227,179,65,.15);  color:#E3B341; }
     a[href="fiscal-sugestoes.html"]  .dashboard-card-icon { background: rgba(224,143,168,.15); color:#E08FA8; }
     a[href="fator-r.html"]           .dashboard-card-icon { background: rgba(82,208,165,.16);  color:#52D0A5; }
@@ -75,6 +76,14 @@
           <h3>Fator R</h3>
           <p>Folha ÷ receita dos últimos 12 meses: o anexo de cada empresa, simulador do pró-labore e lançamentos por competência.</p>
           <div class="dashboard-card-footer"><span>Acessar →</span></div>
+        </a>
+        <a href="fiscal-reforma.html" class="dashboard-card">
+          <div class="dashboard-card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v6a6 6 0 0 0 6 6"/><path d="M18 3v6a6 6 0 0 1-6 6"/><line x1="12" y1="15" x2="12" y2="21"/></svg>
+          </div>
+          <h3>Reforma Tributária</h3>
+          <p>Opção IBS/CBS 2027: triagem dos clientes do Simples, simulador por dentro × por fora, decisão e comunicados — prazo 30/09.</p>
+          <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="fiscal-reforma.html">·</span></div>
         </a>
         <a href="fiscal-regularizacao.html" class="dashboard-card">
           <div class="dashboard-card-icon">&#9878;&#65039;</div>
@@ -149,6 +158,10 @@
         const { count: vinc } = await supabase.from('cliente_obrigacoes')
           .select('id', { count: 'exact', head: true }).eq('ativo', true);
         setBadge('fiscal-obrigacoes.html', (vinc ?? 0) + ' vínculos');
+
+        const { count: rtPend } = await supabase.from('rt_casos')
+          .select('id', { count: 'exact', head: true }).eq('decisao', 'pendente');
+        setBadge('fiscal-reforma.html', (rtPend ?? 0) + ' sem decisão');
 
         const { count: hoje } = await supabase.from('tarefas')
           .select('id', { count: 'exact', head: true })
