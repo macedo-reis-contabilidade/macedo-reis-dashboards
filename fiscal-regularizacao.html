@@ -448,7 +448,7 @@
     // ---------- novo caso ----------
     $('btnNovo').onclick = async () => {
       $('nvMsg').textContent = '';
-      const cls = await supabase.todosClientes('id, nome_principal', q => q.eq('status', 'ativo').eq('tipo_pessoa', 'PJ'));
+      const { data: cls } = await supabase.todosClientes('id, nome_principal', q => q.eq('status', 'ativo').eq('tipo_pessoa', 'PJ'));
       $('nvCliente').innerHTML = '<option value="">— selecionar —</option>' + (cls || []).sort((a, b) => a.nome_principal.localeCompare(b.nome_principal)).map(c => '<option value="' + c.id + '">' + escapeHtml(c.nome_principal) + '</option>').join('');
       const hj = new Date().toISOString().slice(0, 10);
       $('nvBase').value = hj;
