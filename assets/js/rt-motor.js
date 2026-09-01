@@ -64,6 +64,10 @@ export function simular(input) {
   if (!(cbs + ibs > 0)) throw new Error('Informe as alíquotas de referência (CBS/IBS).');
   const pctPJ = num(input.pctPJ, 0);
   const estoqueMes = num(input.creditoEstoqueMes, 0);
+  for (const [rotulo, v] of [['% compras de mercadorias', pctMerc], ['% compras de despesas', pctDesp], ['% imposto embutido nas compras', pctEmb], ['% do DAS excluído por ST/ISS', pctST], ['% clientes PJ', pctPJ]]) {
+    if (v < 0 || v > 100) throw new Error(rotulo + ' precisa estar entre 0 e 100 (informado: ' + v + ').');
+  }
+  if (estoqueMes < 0) throw new Error('O crédito de estoque mensal não pode ser negativo.');
 
   const avisos = [];
   const ae = aliqEfetiva(anexo, rbt12);
@@ -130,20 +134,24 @@ export function simular(input) {
         brl(semestre.creditoClienteFora) + ' de crédito (contra ' + brl(semestre.creditoClienteDentro) + ' por dentro).'
     };
   } else {
-    const ganhoCarteiraPorPct = (semestre.creditoClienteFora - semestre.creditoClienteDentro) / 100;
+    const ganhoCarteira = semestre.creditoClienteFora - semestre.creditoClienteDentro;
     let pe = null;
-    if (ganhoCarteiraPorPct > 0) pe = semestre.diferenca / ganhoCarteiraPorPct;
+    if (ganhoCarteira > 0) pe = semestre.diferenca / (ganhoCarteira / 100);
+    const pct = v => v.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+    let complemento = '';
+    if (pe != null && pe <= 100) {
+      complemento = pe > pctPJ
+        ? ' A carteira PJ levaria ' + brl(ganhoCarteira) + ' a mais de crédito por fora; a opção passaria a compensar se ao menos ' +
+          pct(pe) + '% da receita viesse de clientes PJ que aproveitam o crédito (informado hoje: ' + pct(pctPJ) + '%).'
+        : ' A carteira PJ levaria ' + brl(ganhoCarteira) + ' a mais de crédito por fora — com os ' + pct(pctPJ) +
+          '% de clientes PJ informados, esse ganho já supera a diferença de custo; pesar o custo próprio contra o ganho dos clientes antes de decidir.';
+    }
     veredito = {
       tipo: 'MANTENHA',
       pontoEquilibrioPJ: pe != null && pe <= 100 ? pe : null,
       frase: 'A simulação do primeiro semestre de 2027 indica custo tributário de ' + brl(semestre.custoDentro) +
         ' dentro do Simples contra ' + brl(semestre.custoFora) + ' pelo regime regular — a permanência é ' +
-        brl(semestre.diferenca) + ' mais econômica no semestre.' +
-        (pe != null && pe <= 100
-          ? ' A carteira PJ levaria ' + brl(semestre.creditoClienteFora - semestre.creditoClienteDentro) +
-            ' a mais de crédito por fora; a opção passaria a compensar se ao menos ' + pe.toFixed(0) +
-            '% da receita viesse de clientes PJ que aproveitam o crédito.'
-          : '')
+        brl(semestre.diferenca) + ' mais econômica no semestre.' + complemento
     };
   }
 

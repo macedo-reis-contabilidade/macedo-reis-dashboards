@@ -293,7 +293,7 @@
   <div class="rg-ov" id="ovImp">
     <div class="rg-card" style="max-width:760px">
       <h2>Importar dados do Domínio</h2>
-      <p style="font-size:12.5px;color:#8A93A6;margin:6px 0 10px">Cole uma linha por cliente no formato <b>CNPJ;anexo;RBT12;receita mensal;% compras</b> (separador <b>;</b> · decimais com vírgula · anexo I–V ou 1–5). O casamento é pelo CNPJ com os clientes desta campanha.</p>
+      <p style="font-size:12.5px;color:#8A93A6;margin:6px 0 10px">Cole uma linha por cliente no formato <b>CNPJ;anexo;RBT12;receita mensal;% compras</b> (separador <b>;</b> · decimais com vírgula · anexo I–V ou 1–5). O casamento é pelo CNPJ com os clientes desta campanha. O % de compras importado entra na ficha como <b>compras de mercadorias</b> (que seguem o mix de vendas); compras de despesas, se houver, ajustam-se na própria ficha antes de simular.</p>
       <textarea class="rg-obs" id="impTexto" style="min-height:140px" placeholder="12.345.678/0001-90;I;1.800.000,00;150.000,00;60&#10;98765432000110;III;720000;35000;12,5"></textarea>
       <div class="rt-imp-rel" id="impRel"></div>
       <div class="rg-acoes">
@@ -369,7 +369,7 @@
       const porFora = casos.filter(c => c.decisao === 'por_fora').length;
       $('rtResumo').innerHTML =
         '<div class="rg-kpi"><span class="n">' + casos.length + '</span><span class="l">clientes na campanha</span></div>' +
-        '<div class="rg-kpi alerta"><span class="n">' + dias + ' dias</span><span class="l">até o prazo (' + fmtData(prazo) + ')</span></div>' +
+        '<div class="rg-kpi alerta"><span class="n">' + dias + (dias === 1 ? ' dia' : ' dias') + '</span><span class="l">até o prazo (' + fmtData(prazo) + ')</span></div>' +
         '<div class="rg-kpi"><span class="n">' + decididos + '</span><span class="l">decididos</span></div>' +
         '<div class="rg-kpi"><span class="n">' + comunicados + '</span><span class="l">comunicados</span></div>' +
         '<div class="rg-kpi"><span class="n">' + porFora + '</span><span class="l">por fora</span></div>';
@@ -408,7 +408,7 @@
             '<option value="pendente"' + ((c.decisao || 'pendente') === 'pendente' ? ' selected' : '') + '>Pendente</option>' +
             '<option value="por_dentro"' + (c.decisao === 'por_dentro' ? ' selected' : '') + '>Por dentro</option>' +
             '<option value="por_fora"' + (c.decisao === 'por_fora' ? ' selected' : '') + '>Por fora</option></select></td>' +
-          '<td><span class="rt-st">' + (ST_LBL[c.status] || c.status || '—') + '</span></td></tr>';
+          '<td><span class="rt-st">' + escapeHtml(ST_LBL[c.status] || c.status || '—') + '</span></td></tr>';
       }).join('');
       $('rtVazio').hidden = vis.length > 0;
       $('rtCkAll').checked = vis.length > 0 && vis.every(c => sel.has(c.id));
@@ -477,10 +477,10 @@
     };
 
     $('maComMarcar').onclick = async () => {
-      const ids = [...sel].filter(id => { const c = casos.find(x => x.id === id); return c && c.decisao && c.decisao !== 'pendente'; });
+      const ids = [...sel].filter(id => { const c = casos.find(x => x.id === id); return c && c.decisao && c.decisao !== 'pendente' && c.status !== 'opcao_registrada'; });
       const pulados = sel.size - ids.length;
-      if (!ids.length) { alert('Nenhum selecionado com decisão definida.'); return; }
-      if (!confirm('Marcar ' + ids.length + ' cliente(s) como comunicado(s) hoje?' + (pulados ? ' (' + pulados + ' sem decisão ficam de fora.)' : ''))) return;
+      if (!ids.length) { alert('Nenhum selecionado apto: é preciso ter decisão definida (quem já tem a opção registrada não regride).'); return; }
+      if (!confirm('Marcar ' + ids.length + ' cliente(s) como comunicado(s) hoje?' + (pulados ? ' (' + pulados + ' ficam de fora: sem decisão ou com opção já registrada.)' : ''))) return;
       const upd = { comunicado_em: hojeISO(), status: 'comunicado', atualizado_em: agoraISO() };
       const { error } = await supabase.from('rt_casos').update(upd).in('id', ids);
       if (error) { alert('Erro: ' + error.message); return; }
@@ -546,6 +546,7 @@
 
       // D
       $('dOpcao').hidden = c.decisao !== 'por_fora';
+      $('dMsg').style.color = '';
       $('dMsg').textContent = c.comunicado_em ? 'Comunicado em ' + fmtData(c.comunicado_em) : '';
 
       $('ovFicha').classList.add('on');
@@ -556,7 +557,7 @@
       const c = casoAtual(); if (!c) return;
       const tri = TRI_LBL[c.triagem] || ['—', 't-dentro'];
       $('fiTriagem').innerHTML = '<span class="rt-chip ' + tri[1] + '">' + tri[0] + '</span>';
-      $('fiStatus').innerHTML = 'Status: <b style="color:#C9D3E0">' + (ST_LBL[c.status] || c.status || '—') + '</b>';
+      $('fiStatus').innerHTML = 'Status: <b style="color:#C9D3E0">' + escapeHtml(ST_LBL[c.status] || c.status || '—') + '</b>';
       $('dOpcao').hidden = c.decisao !== 'por_fora';
     }
 
@@ -712,7 +713,7 @@
 
     function atividadeDe(c) {
       const seg = { agropecuaria:'atividade agropecuária', industria:'atividade industrial', construcao:'atividade de construção', comercio:'atividade de comércio', servicos:'atividade de serviços' }[c.segmento];
-      return seg || ('atividade registrada no CNAE ' + (c.cnae_base || '—'));
+      return seg || ('atividade registrada no CNAE ' + escapeHtml(c.cnae_base || '—'));
     }
 
     function comunicadoFolha(c) {
@@ -795,7 +796,8 @@
     $('dMarcar').onclick = async () => {
       const c = casoAtual(); if (!c) return;
       if (!c.decisao || c.decisao === 'pendente') { alert('Grave a decisão antes de marcar como comunicado.'); return; }
-      const upd = { comunicado_em: hojeISO(), status: 'comunicado', atualizado_em: agoraISO() };
+      const upd = { comunicado_em: hojeISO(), atualizado_em: agoraISO() };
+      if (c.status !== 'opcao_registrada') upd.status = 'comunicado';
       const { error } = await supabase.from('rt_casos').update(upd).eq('id', c.id);
       if (error) { $('dMsg').style.color = '#E06C6C'; $('dMsg').textContent = 'Erro: ' + error.message; return; }
       Object.assign(c, upd);
