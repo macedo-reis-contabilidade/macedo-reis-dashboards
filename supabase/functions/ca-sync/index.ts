@@ -1,8 +1,8 @@
 // ============================================================
 // ca-sync — espelho do Conta Azul (ca_parcelas / ca_categorias)
-// ATENÇÃO: este arquivo é a VERSÃO PROPOSTA (obra relatorios-vivos-acabamento).
-// Ele NÃO foi implantado por aqui — o deploy é feito pelo Claude web via MCP.
-// Base: código implantado v4 (lido do projeto em 02/09/2026) + realizado diário.
+// v5 — IMPLANTADA em 02/09/2026 pelo Claude web via MCP (código do Code na obra
+// relatorios-vivos-acabamento). Este arquivo espelha a função em produção.
+// Base: v4 + realizado diário (passada diária 1x/hora + modo backfill_dias).
 //
 // O que mudou em relação à v4 implantada:
 //   1. Passada de pagamentos POR DIA (marcarPagamentosDoDia/marcarDiasDePagamento):
