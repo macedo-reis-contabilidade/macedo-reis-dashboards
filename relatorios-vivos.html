@@ -265,7 +265,7 @@
       caixa: {
         considera: 'TUDO que entra e sai da conta: operacao, repasses de clientes (guias e impostos deles atravessando o caixa), emprestimos (captacoes e parcelas) e pro-labore — dinheiro real, sem filtro de regua. Previsto pelo vencimento; Realizado pelo mes do pagamento (caixa).',
         fora: 'Unica exclusao tecnica: o par fatura de cartao de credito / estorno, porque as compras que compoem a fatura ja estao lancadas uma a uma — somar a fatura duplicaria a despesa.',
-        leitura: 'Na visao do ano, cada mes mostra entradas, saidas e o liquido, previsto e realizado. Clique num mes para abrir o dia a dia: o previsto de cada dia e o acumulado do mes ate ali — onde o acumulado afunda e o dinheiro aperta, onde sobe e o dinheiro sobra; o ponto mais fundo do mes vem marcado. A curva realizada dia a dia chega na proxima etapa (depende de gravar o dia exato de cada pagamento no espelho).'
+        leitura: 'Na visao do ano, cada mes mostra entradas, saidas e o liquido, previsto e realizado. Clique num mes para abrir o dia a dia: o previsto de cada dia e o acumulado do mes ate ali — onde o acumulado afunda e o dinheiro aperta, onde sobe e o dinheiro sobra; o ponto mais fundo do mes vem marcado. Quando o espelho tem o dia exato de cada pagamento, o drill mostra tambem as colunas realizadas dia a dia; sem o dado, mostra o previsto e avisa.'
       },
       planilha: {
         considera: 'Os contratos bancarios de emprestimo do espelho, um por linha, ordenados pelo termino (o alivio mais proximo em cima). Parcela = valor liquido do proximo mes em aberto; atrasos = parcelas vencidas e nao pagas, calculadas automaticamente; Restante = tudo que ainda falta pagar do contrato (liquido de estornos). O cronograma de alivio soma, mes a mes, o compromisso total em aberto dai pra frente — e como a divida vai soltando o caixa.',
@@ -365,12 +365,16 @@
       }
       const { dias, error: errDia } = await carregarDiasDoMes(iso);
       if (errDia) { el('relCorpo').innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--danger);padding:30px;">Erro ao carregar: ' + errDia.message + '</td></tr>'; return; }
-      el('relCabecalho').innerHTML = '<tr><th>Dia</th><th>Entradas previstas</th><th>Saídas previstas</th><th>Líquido do dia</th><th>Acumulado no mês</th><th style="text-align:right;">Lançamentos</th></tr>';
+      // A coluna realizada por dia depende de a view expor real_in/real_out (dia
+      // exato de cada pagamento, gravado pelo sync). Sem o dado, a tela mostra o
+      // previsto e avisa — fallback gracioso enquanto o deploy não acontece.
+      const comReal = dias.length > 0 && ('real_in' in dias[0]) && dias.some(d => Number(d.real_in) || Number(d.real_out));
       let acMin = Infinity, diaMin = null, tmp = 0;
       dias.forEach(d => { tmp += Number(d.prev_in) - Number(d.prev_out); if (tmp < acMin) { acMin = tmp; diaMin = d.dia; } });
-      let html = '', ac = 0, ti = 0, to = 0;
+      let html = '', ac = 0, acR = 0, ti = 0, to = 0, tri = 0, tro = 0;
       dias.forEach(d => {
         const pi = Number(d.prev_in), po = Number(d.prev_out), lq = pi - po; ac += lq; ti += pi; to += po;
+        const rin = Number(d.real_in || 0), rou = Number(d.real_out || 0), lqR = rin - rou; acR += lqR; tri += rin; tro += rou;
         const aperto = d.dia === diaMin && ac < 0;
         html += '<tr' + (aperto ? ' style="background:rgba(244,114,182,.07);"' : '') + '>' +
           '<td>' + d.dia.slice(8, 10) + '/' + d.dia.slice(5, 7) + (aperto ? ' <span class="neg" style="font-size:11px;">◂ fundo do mês</span>' : '') + '</td>' +
@@ -378,12 +382,25 @@
           '<td' + (po === 0 ? ' class="dim"' : '') + '>' + brl(po) + '</td>' +
           '<td class="' + (lq >= 0 ? 'pos' : 'neg') + '">' + brl(lq) + '</td>' +
           '<td class="' + (ac >= 0 ? 'pos' : 'neg') + '"><b>' + brl(ac) + '</b></td>' +
+          (comReal ?
+            '<td' + (rin === 0 ? ' class="dim"' : '') + '>' + brl(rin) + '</td>' +
+            '<td' + (rou === 0 ? ' class="dim"' : '') + '>' + brl(rou) + '</td>' +
+            '<td class="' + (lqR >= 0 ? 'pos' : 'neg') + '">' + brl(lqR) + '</td>' +
+            '<td class="' + (acR >= 0 ? 'pos' : 'neg') + '"><b>' + brl(acR) + '</b></td>'
+          : '') +
           '<td style="text-align:right;" class="dim">' + d.lancamentos + '</td></tr>';
       });
-      if (!dias.length) html = '<tr><td colspan="6" style="text-align:center;padding:30px;" class="dim">Sem lançamentos previstos neste mês.</td></tr>';
+      const nCols = comReal ? 10 : 6;
+      el('relCabecalho').innerHTML = '<tr><th>Dia</th><th>Entradas previstas</th><th>Saídas previstas</th><th>Líquido previsto</th><th>Acumulado previsto</th>' +
+        (comReal ? '<th>Entradas realizadas</th><th>Saídas realizadas</th><th>Líquido realizado</th><th>Acumulado realizado</th>' : '') +
+        '<th style="text-align:right;">Lançamentos</th></tr>';
+      if (!dias.length) html = '<tr><td colspan="' + nCols + '" style="text-align:center;padding:30px;" class="dim">Sem lançamentos previstos neste mês.</td></tr>';
       el('relCorpo').innerHTML = html;
-      el('relRodape').innerHTML = '<tr><td>Total do mês</td><td>' + brl(ti) + '</td><td>' + brl(to) + '</td><td class="' + (ti - to >= 0 ? 'pos' : 'neg') + '">' + brl(ti - to) + '</td><td></td><td></td></tr>';
+      el('relRodape').innerHTML = '<tr><td>Total do mês</td><td>' + brl(ti) + '</td><td>' + brl(to) + '</td><td class="' + (ti - to >= 0 ? 'pos' : 'neg') + '">' + brl(ti - to) + '</td><td></td>' +
+        (comReal ? '<td>' + brl(tri) + '</td><td>' + brl(tro) + '</td><td class="' + (tri - tro >= 0 ? 'pos' : 'neg') + '">' + brl(tri - tro) + '</td><td></td>' : '') +
+        '<td></td></tr>';
       pintarNota('caixa');
+      if (!comReal) el('relNota').innerHTML = '<b>Realizado por dia:</b> aguardando dados do sync — assim que o espelho passar a gravar o dia exato de cada pagamento, este drill mostra previsto × realizado dia a dia.<br>' + el('relNota').innerHTML;
     }
     // ---------- Relatório de Empréstimos (modelo da direção) ----------
     let planCache = null;
