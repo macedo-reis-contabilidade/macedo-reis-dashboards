@@ -178,6 +178,7 @@
     const mesAtualIso = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0') + '-01';
     let anoSel = hoje.getFullYear();
     let pr = [], blocos = [], inad = [], contratos = [];
+    let saudeInfo = null;
     const dreAnos = new Map();
     let dreMesSel = null, dreCache = null;
     const cacheMes = new Map();
@@ -296,13 +297,25 @@
     }
     // ---------- Caixa completo (tudo que entra e sai) ----------
     let cxMensal = null; const cxDias = new Map();
+    async function carregarCaixaMensal() {
+      if (cxMensal) return null;
+      const { data, error } = await todasLinhas(() => supabase.from('vw_ca_caixa_mensal').select('*').order('mes'));
+      if (error) return error;
+      cxMensal = new Map((data || []).map(r => [r.mes, r]));
+      return null;
+    }
+    async function carregarDiasDoMes(iso) {
+      if (cxDias.has(iso)) return { dias: cxDias.get(iso), error: null };
+      const a = Number(iso.slice(0, 4)), m = Number(iso.slice(5, 7));
+      const prox = m === 12 ? (a + 1) + '-01-01' : a + '-' + String(m + 1).padStart(2, '0') + '-01';
+      const { data, error } = await supabase.from('vw_ca_caixa_diario').select('*').gte('dia', iso).lt('dia', prox).order('dia');
+      if (error) return { dias: [], error };
+      cxDias.set(iso, data || []);
+      return { dias: data || [], error: null };
+    }
     async function renderCaixa(mesIso) {
-      el('btnPDF').style.display = 'none';
-      if (!cxMensal) {
-        const { data, error } = await todasLinhas(() => supabase.from('vw_ca_caixa_mensal').select('*').order('mes'));
-        if (error) { el('relCorpo').innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--danger);padding:30px;">Erro ao carregar: ' + error.message + '</td></tr>'; return; }
-        cxMensal = new Map((data || []).map(r => [r.mes, r]));
-      }
+      const errCx = await carregarCaixaMensal();
+      if (errCx) { el('relCorpo').innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--danger);padding:30px;">Erro ao carregar: ' + errCx.message + '</td></tr>'; return; }
       if (mesIso) { renderCaixaDia(mesIso); return; }
       el('relTitulo').textContent = 'Caixa — Tudo que Entra e Sai';
       el('relCabecalho').innerHTML = '<tr><th>Mês</th><th>Entradas previstas</th><th>Saídas previstas</th><th>Líquido previsto</th><th>Entradas realizadas</th><th>Saídas realizadas</th><th>Líquido realizado</th></tr>';
@@ -349,12 +362,9 @@
         el('relCabecalho').innerHTML = '';
         el('relCorpo').innerHTML = '<tr><td style="text-align:center;padding:30px;" class="dim">Carregando o mês…</td></tr>';
         el('relRodape').innerHTML = '';
-        const prox = m === 12 ? (a + 1) + '-01-01' : a + '-' + String(m + 1).padStart(2, '0') + '-01';
-        const { data, error } = await supabase.from('vw_ca_caixa_diario').select('*').gte('dia', iso).lt('dia', prox).order('dia');
-        if (error) { el('relCorpo').innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--danger);padding:30px;">Erro ao carregar: ' + error.message + '</td></tr>'; return; }
-        cxDias.set(iso, data || []);
       }
-      const dias = cxDias.get(iso);
+      const { dias, error: errDia } = await carregarDiasDoMes(iso);
+      if (errDia) { el('relCorpo').innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--danger);padding:30px;">Erro ao carregar: ' + errDia.message + '</td></tr>'; return; }
       el('relCabecalho').innerHTML = '<tr><th>Dia</th><th>Entradas previstas</th><th>Saídas previstas</th><th>Líquido do dia</th><th>Acumulado no mês</th><th style="text-align:right;">Lançamentos</th></tr>';
       let acMin = Infinity, diaMin = null, tmp = 0;
       dias.forEach(d => { tmp += Number(d.prev_in) - Number(d.prev_out); if (tmp < acMin) { acMin = tmp; diaMin = d.dia; } });
@@ -403,21 +413,26 @@
     }
     function mmaa(iso) { return iso ? iso.slice(5, 7) + '/' + iso.slice(2, 4) : '—'; }
     function classeFim(iso) { const a = Number(iso.slice(0, 4)); return a <= 2026 ? 'pl26' : a === 2027 ? 'pl27' : a === 2028 ? 'pl28' : 'pl29'; }
+    async function carregarPlanilha() {
+      if (planCache) return null;
+      const [r1, r2] = await Promise.all([
+        todasLinhas(() => supabase.from('vw_ca_emprestimos_relatorio').select('*').gt('restante_valor', 0.004).order('ultima_parcela').order('descricao')),
+        todasLinhas(() => supabase.from('vw_ca_emprestimos_alivio').select('*').order('mes'))
+      ]);
+      if (r1.error || r2.error) return (r1.error || r2.error);
+      planCache = { ops: r1.data || [], alv: r2.data || [] };
+      return null;
+    }
     async function renderPlanilha() {
       el('relTitulo').textContent = 'Empréstimos — Contratos e Alívio';
-      el('btnPDF').style.display = 'none';
       el('seletorAno').style.display = 'none';
       if (!planCache) {
         el('relCabecalho').innerHTML = '';
         el('relCorpo').innerHTML = '<tr><td style="text-align:center;padding:30px;" class="dim">Carregando contratos…</td></tr>';
         el('relRodape').innerHTML = '';
-        const [r1, r2] = await Promise.all([
-          todasLinhas(() => supabase.from('vw_ca_emprestimos_relatorio').select('*').gt('restante_valor', 0.004).order('ultima_parcela').order('descricao')),
-          todasLinhas(() => supabase.from('vw_ca_emprestimos_alivio').select('*').order('mes'))
-        ]);
-        if (r1.error || r2.error) { el('relCorpo').innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--danger);padding:30px;">Erro ao carregar: ' + (r1.error || r2.error).message + '</td></tr>'; return; }
-        planCache = { ops: r1.data || [], alv: r2.data || [] };
       }
+      const errPl = await carregarPlanilha();
+      if (errPl) { el('relCorpo').innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--danger);padding:30px;">Erro ao carregar: ' + errPl.message + '</td></tr>'; return; }
       const { ops, alv } = planCache;
       const hojeStr = hoje.toISOString().slice(0, 10);
       el('relCabecalho').innerHTML = '<tr><th>#</th><th>Banco</th><th>Titular</th><th style="text-align:right;">Parcela (R$)</th><th>Início</th><th>Última parcela</th><th style="text-align:right;">Restante (R$)</th><th>Obs.</th></tr>';
@@ -477,11 +492,238 @@
       }));
     }
 
-    // ---------- PDF ----------
+    // ---------- PDF (o botão despacha pro gerador do relatório aberto) ----------
     function gerarPDF() {
       if (relAtual === 'dre') { gerarPDFDRE(); return; }
+      if (relAtual === 'caixa') { gerarPDFCaixa(); return; }
+      if (relAtual === 'planilha') { gerarPDFEmprestimos(); }
     }
     el('btnPDF').addEventListener('click', gerarPDF);
+
+    // Timbre e rodapé compartilhados dos PDFs novos (clonados do padrão do DRE,
+    // com o logo e a data da última sincronização do espelho).
+    let logoPng = null;
+    async function logoParaPDF() {
+      if (logoPng !== null) return logoPng || null;
+      try {
+        const img = new Image();
+        img.src = 'assets/logo-mr.png';
+        await img.decode();
+        const cv = document.createElement('canvas');
+        cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+        cv.getContext('2d').drawImage(img, 0, 0);
+        logoPng = cv.toDataURL('image/png');
+      } catch (e) { logoPng = ''; }
+      return logoPng || null;
+    }
+    function timbrePDF(doc, M, logo) {
+      if (logo) doc.addImage(logo, 'PNG', M, 24, 26, 26);
+      const x = logo ? M + 34 : M;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(58, 88, 120);
+      doc.text('Macedo & Reis Contabilidade', x, 36);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(110);
+      doc.text('CRC/RS 006418/O  ·  Tres Coroas - RS  ·  Uso Interno', x, 46);
+    }
+    function rodapePDF(doc, M, y, H) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(130);
+      const agora = new Date();
+      const sync = saudeInfo && saudeInfo.ultimo_sync ? new Date(saudeInfo.ultimo_sync) : null;
+      doc.text('Emitido em ' + agora.toLocaleDateString('pt-BR') + ' as ' + agora.toLocaleTimeString('pt-BR').slice(0, 5)
+        + (sync ? '  ·  Valores sincronizados do Conta Azul em ' + sync.toLocaleDateString('pt-BR') + ' as ' + sync.toLocaleTimeString('pt-BR').slice(0, 5) : '')
+        + '  ·  Relatorios Vivos', M, Math.min(y, H - 28));
+    }
+
+    // ---------- PDF do Caixa: capa anual P×R + detalhamento do mês corrente ----------
+    async function gerarPDFCaixa() {
+      if (!window.jspdf) { alert('Gerador de PDF carregando. Tenta de novo em 2 segundos.'); return; }
+      const errCx = await carregarCaixaMensal();
+      if (errCx) { alert('Erro ao carregar o caixa: ' + errCx.message); return; }
+      const { dias } = await carregarDiasDoMes(mesAtualIso);
+      const logo = await logoParaPDF();
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'landscape' });
+      const W = doc.internal.pageSize.getWidth();
+      const H = doc.internal.pageSize.getHeight();
+      const M = 40;
+      const num = v => fmt.format(Number(v || 0)).replace('R$ ', 'R$ ');
+      let y;
+
+      // página 1 — capa do ano
+      timbrePDF(doc, M, logo);
+      y = 74;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(20);
+      doc.text('CAIXA — TUDO QUE ENTRA E SAI  ·  ' + anoSel, M, y);
+      y += 24;
+      const cols = [M, M + 210, M + 320, M + 430, M + 540, M + 650, W - M];
+      const cab = ['Mes', 'Entradas previstas', 'Saidas previstas', 'Liquido previsto', 'Entradas realizadas', 'Saidas realizadas', 'Liquido realizado'];
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(60);
+      cab.forEach((c, i) => doc.text(c, cols[i], y, { align: i === 0 ? 'left' : 'right' }));
+      y += 6; doc.setDrawColor(120); doc.setLineWidth(0.8); doc.line(M, y, W - M, y); y += 13;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(30);
+      const t = { pi: 0, po: 0, ri: 0, ro: 0 };
+      for (let m = 0; m < 12; m++) {
+        const iso = anoSel + '-' + String(m + 1).padStart(2, '0') + '-01';
+        const r = cxMensal.get(iso) || { prev_in: 0, prev_out: 0, real_in: 0, real_out: 0 };
+        const pi = Number(r.prev_in), po = Number(r.prev_out), ri = Number(r.real_in), ro = Number(r.real_out);
+        t.pi += pi; t.po += po; t.ri += ri; t.ro += ro;
+        const vals = [pi, po, pi - po, ri, ro, ri - ro];
+        doc.text(MESES[m], cols[0], y);
+        vals.forEach((v, i) => doc.text(num(v), cols[i + 1], y, { align: 'right' }));
+        doc.setDrawColor(210); doc.setLineWidth(0.3); doc.line(M, y + 5, W - M, y + 5);
+        y += 17;
+      }
+      doc.setDrawColor(120); doc.setLineWidth(0.8); doc.line(M, y - 11, W - M, y - 11);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Total ' + anoSel, cols[0], y + 2);
+      [t.pi, t.po, t.pi - t.po, t.ri, t.ro, t.ri - t.ro].forEach((v, i) => doc.text(num(v), cols[i + 1], y + 2, { align: 'right' }));
+      y += 26;
+      const n = NOTAS.caixa;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(60);
+      doc.text('O QUE ESTE RELATORIO CONSIDERA', M, y); y += 11;
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(80);
+      const linhasNota = doc.splitTextToSize(n.considera + ' ' + n.fora, W - 2 * M);
+      doc.text(linhasNota, M, y);
+      y += linhasNota.length * 9.5 + 12;
+      rodapePDF(doc, M, Math.max(y, H - 28), H);
+
+      // página 2 — detalhamento do mês corrente (sem o drill diário: é ferramenta de tela)
+      doc.addPage();
+      timbrePDF(doc, M, logo);
+      y = 74;
+      const mesR = cxMensal.get(mesAtualIso) || { prev_in: 0, prev_out: 0, real_in: 0, real_out: 0 };
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(20);
+      doc.text('DETALHAMENTO DO MES CORRENTE  ·  ' + MESES[hoje.getMonth()].toUpperCase() + ' ' + hoje.getFullYear(), M, y);
+      y += 22;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(40);
+      const pi = Number(mesR.prev_in), po = Number(mesR.prev_out), ri = Number(mesR.real_in), ro = Number(mesR.real_out);
+      doc.text('Previsto:   entradas ' + num(pi) + '   ·   saidas ' + num(po) + '   ·   liquido ' + num(pi - po), M, y); y += 15;
+      doc.text('Realizado:  entradas ' + num(ri) + '   ·   saidas ' + num(ro) + '   ·   liquido ' + num(ri - ro), M, y); y += 22;
+      let ac = 0, acMin = Infinity, diaMin = null, comMov = 0, lanc = 0;
+      (dias || []).forEach(d => {
+        const lq = Number(d.prev_in) - Number(d.prev_out);
+        ac += lq;
+        if (ac < acMin) { acMin = ac; diaMin = d.dia; }
+        if (Number(d.prev_in) || Number(d.prev_out)) comMov++;
+        lanc += Number(d.lancamentos || 0);
+      });
+      doc.setFontSize(9); doc.setTextColor(70);
+      doc.text('Dias com movimento previsto: ' + comMov + '   ·   lancamentos no mes: ' + lanc, M, y); y += 14;
+      if (diaMin) {
+        doc.text('Fundo do mes (acumulado previsto mais baixo): ' + diaMin.slice(8, 10) + '/' + diaMin.slice(5, 7) + '  ·  ' + num(acMin), M, y);
+        y += 14;
+      }
+      y += 8;
+      doc.setFont('helvetica', 'italic'); doc.setFontSize(8.5); doc.setTextColor(110);
+      doc.text('O dia a dia completo do mes (previsto e acumulado dia a dia, com o fundo do mes marcado) vive no painel Relatorios Vivos — e ferramenta de tela.', M, y);
+      rodapePDF(doc, M, H - 28, H);
+      doc.save('Caixa - Tudo que Entra e Sai - ' + anoSel + '.pdf');
+    }
+
+    // ---------- PDF dos Empréstimos: contratos, resumo por titular e alívio ----------
+    async function gerarPDFEmprestimos() {
+      if (!window.jspdf) { alert('Gerador de PDF carregando. Tenta de novo em 2 segundos.'); return; }
+      const errPl = await carregarPlanilha();
+      if (errPl) { alert('Erro ao carregar os contratos: ' + errPl.message); return; }
+      const logo = await logoParaPDF();
+      const { ops, alv } = planCache;
+      const hojeStr = hoje.toISOString().slice(0, 10);
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'landscape' });
+      const W = doc.internal.pageSize.getWidth();
+      const H = doc.internal.pageSize.getHeight();
+      const M = 40;
+      const num = v => fmt.format(Number(v || 0)).replace('R$ ', 'R$ ');
+      const trunca = (t, nn) => (t || '').length > nn ? (t || '').slice(0, nn - 1) + '…' : (t || '');
+      let y;
+      function novaPagina() { doc.addPage(); timbrePDF(doc, M, logo); y = 74; }
+      function quebra(prox) { if (y + prox > H - 44) novaPagina(); }
+
+      timbrePDF(doc, M, logo);
+      y = 74;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(20);
+      doc.text('EMPRESTIMOS — CONTRATOS E ALIVIO', M, y);
+      y += 24;
+      const X = { n: M, banco: M + 24, tit: M + 150, parc: M + 330, ini: M + 350, fim: M + 405, rest: M + 560, obs: M + 580 };
+      function cabTabela() {
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(60);
+        doc.text('#', X.n, y); doc.text('Banco', X.banco, y); doc.text('Titular', X.tit, y);
+        doc.text('Parcela (R$)', X.parc, y, { align: 'right' }); doc.text('Inicio', X.ini, y); doc.text('Ultima parcela', X.fim, y);
+        doc.text('Restante (R$)', X.rest, y, { align: 'right' }); doc.text('Obs.', X.obs, y);
+        y += 5; doc.setDrawColor(120); doc.setLineWidth(0.8); doc.line(M, y, W - M, y); y += 12;
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(30);
+      }
+      cabTabela();
+      let totMensal = 0, totRestante = 0;
+      const porTitular = new Map();
+      ops.forEach((o, i) => {
+        quebra(15);
+        if (y === 74) cabTabela();
+        const banco = bancoDe(o.descricao), tit = titularDe(o.descricao);
+        const pm = Number(o.parcela_mensal || 0), rest = Number(o.restante_valor);
+        totMensal += pm; totRestante += rest;
+        const tt = porTitular.get(tit) || { pm: 0, rest: 0, n: 0 };
+        tt.pm += pm; tt.rest += rest; tt.n++; porTitular.set(tit, tt);
+        doc.setTextColor(30);
+        doc.text(String(i + 1), X.n, y);
+        doc.text(trunca(banco, 24), X.banco, y);
+        doc.text(trunca(tit, 20), X.tit, y);
+        doc.text(pm > 0 ? num(pm) : '—', X.parc, y, { align: 'right' });
+        doc.text(mmaa(o.primeira_parcela), X.ini, y);
+        doc.text(mmaa(o.ultima_parcela), X.fim, y);
+        doc.text(num(rest), X.rest, y, { align: 'right' });
+        const obs = [];
+        if (Number(o.atraso_qtd) > 0) obs.push(o.atraso_qtd + ' parc. em atraso (' + num(Number(o.atraso_valor)) + ')');
+        if (o.primeira_parcela > hojeStr) obs.push('inicia em ' + mmaa(o.primeira_parcela));
+        if (Number(o.parcelas_total) === 1) obs.push('parcela unica');
+        if (Number(o.atraso_qtd) > 0) doc.setTextColor(190, 60, 90);
+        doc.text(trunca(obs.join(' · ') || '—', 42), X.obs, y);
+        doc.setTextColor(30);
+        doc.setDrawColor(215); doc.setLineWidth(0.3); doc.line(M, y + 4, W - M, y + 4);
+        y += 15;
+      });
+      doc.setDrawColor(120); doc.setLineWidth(0.8); doc.line(M, y - 11, W - M, y - 11);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Total — ' + ops.length + ' contratos ativos', X.n, y + 2);
+      doc.text(num(totMensal) + '/mes', X.parc, y + 2, { align: 'right' });
+      doc.text(num(totRestante), X.rest, y + 2, { align: 'right' });
+      y += 26;
+
+      quebra(60);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(50);
+      doc.text('RESUMO POR TITULAR', M, y); y += 13;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(30);
+      [...porTitular.entries()].sort((a, b) => b[1].pm - a[1].pm).forEach(([tit, tt]) => {
+        quebra(14);
+        doc.text(tit + '  (' + tt.n + ' contrato' + (tt.n > 1 ? 's' : '') + ')', M, y);
+        doc.text(num(tt.pm) + '/mes', X.parc, y, { align: 'right' });
+        doc.text(num(tt.rest), X.rest, y, { align: 'right' });
+        doc.setDrawColor(215); doc.setLineWidth(0.3); doc.line(M, y + 4, W - M, y + 4);
+        y += 14;
+      });
+      y += 12;
+
+      quebra(60);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(50);
+      doc.text('CRONOGRAMA DE ALIVIO — compromisso mensal em aberto daqui pra frente', M, y); y += 13;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(30);
+      alv.slice(0, 12).forEach(a => {
+        quebra(13);
+        doc.text(mmaa(a.mes) + '  (' + a.operacoes + ' op.)', M, y);
+        doc.text(num(Number(a.previsto_aberto)), X.parc, y, { align: 'right' });
+        y += 13;
+      });
+      const porAno = new Map();
+      alv.slice(12).forEach(a => { const yy = a.mes.slice(0, 4); porAno.set(yy, (porAno.get(yy) || 0) + Number(a.previsto_aberto)); });
+      [...porAno.entries()].forEach(([yy, v]) => {
+        if (v <= 0.004) return;
+        quebra(13);
+        doc.text(yy + '  (total do ano)', M, y);
+        doc.text(num(v), X.parc, y, { align: 'right' });
+        y += 13;
+      });
+      rodapePDF(doc, M, H - 28, H);
+      doc.save('Emprestimos - Contratos e Alivio.pdf');
+    }
 
     // ---------- drill do mês ----------
     async function parcelasDoMes(iso) {
@@ -831,6 +1073,7 @@
         todasLinhas(() => supabase.from('vw_ca_inadimplencia_mensal').select('*').order('mes')),
         todasLinhas(() => supabase.from('vw_ca_emprestimos_contratos').select('*').order('contrato'))
       ]);
+      saudeInfo = saude || null;
       pintarSaude(saude);
       if (e1 || e2) {
         el('vistaEstante').insertAdjacentHTML('afterbegin', '<p style="color:#E08FA8;">Erro ao carregar o espelho: ' + ((e1||e2).message) + '</p>');
