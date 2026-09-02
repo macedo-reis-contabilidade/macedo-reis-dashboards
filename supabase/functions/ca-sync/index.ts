@@ -330,7 +330,11 @@ Deno.serve(async (req) => {
     // dias (datas no fuso de SP, como o resto do arquivo). O modo backfill mensal
     // NÃO roda esta passada — histórico de data_pagamento é papel do backfill_dias.
     let pagamentosDia = 0;
-    if (modo === 'incremental') {
+    // Calibração (Claude web, 02/09/2026): a passada diária roda UMA vez por hora
+    // (na rodada do cron que cai no minuto < 10), não a cada 10 min — mesma janela
+    // de DIAS_REALIZADO dias, custo de API ~480 chamadas/dia em vez de ~2.880.
+    const rodaDiario = new Date().getUTCMinutes() < 10;
+    if (modo === 'incremental' && rodaDiario) {
       const hojeSp = spIso(new Date()).slice(0, 10);
       const deSp = new Date(new Date(hojeSp + 'T00:00:00Z').getTime() - (DIAS_REALIZADO - 1) * 86400000).toISOString().slice(0, 10);
       pagamentosDia = await marcarDiasDePagamento(token, deSp, hojeSp);
