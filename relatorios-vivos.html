@@ -371,9 +371,13 @@
       const { dias, error: errDia } = await carregarDiasDoMes(iso);
       if (errDia) { el('relCorpo').innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--danger);padding:30px;">Erro ao carregar: ' + errDia.message + '</td></tr>'; return; }
       // A coluna realizada por dia depende de a view expor real_in/real_out (dia
-      // exato de cada pagamento, gravado pelo sync). Sem o dado, a tela mostra o
-      // previsto e avisa — fallback gracioso enquanto o deploy não acontece.
-      const comReal = dias.length > 0 && ('real_in' in dias[0]) && dias.some(d => Number(d.real_in) || Number(d.real_out));
+      // exato de cada pagamento, gravado pelo sync). Sem as COLUNAS, a tela mostra
+      // o previsto e avisa — fallback gracioso enquanto o deploy não acontece.
+      // Com as colunas mas sem valores (mês futuro, ou histórico sem backfill),
+      // as colunas aparecem zeradas e a nota diz o porquê.
+      const temColunas = dias.length > 0 && ('real_in' in dias[0]);
+      const temValores = temColunas && dias.some(d => Number(d.real_in) || Number(d.real_out));
+      const comReal = temColunas;
       let acMin = Infinity, diaMin = null, tmp = 0;
       dias.forEach(d => { tmp += Number(d.prev_in) - Number(d.prev_out); if (tmp < acMin) { acMin = tmp; diaMin = d.dia; } });
       let html = '', ac = 0, acR = 0, ti = 0, to = 0, tri = 0, tro = 0;
@@ -405,7 +409,8 @@
         (comReal ? '<td>' + brl(tri) + '</td><td>' + brl(tro) + '</td><td class="' + (tri - tro >= 0 ? 'pos' : 'neg') + '">' + brl(tri - tro) + '</td><td></td>' : '') +
         '<td></td></tr>';
       pintarNota('caixa');
-      if (!comReal) el('relNota').innerHTML = '<b>Realizado por dia:</b> aguardando dados do sync — assim que o espelho passar a gravar o dia exato de cada pagamento, este drill mostra previsto × realizado dia a dia.<br>' + el('relNota').innerHTML;
+      if (!temColunas) el('relNota').innerHTML = '<b>Realizado por dia:</b> aguardando dados do sync — assim que o espelho passar a gravar o dia exato de cada pagamento, este drill mostra previsto × realizado dia a dia.<br>' + el('relNota').innerHTML;
+      else if (!temValores && iso <= mesAtualIso) el('relNota').innerHTML = '<b>Realizado por dia:</b> nenhum pagamento com o dia gravado neste mês ainda — se o mês deveria ter realizado, o backfill do sync ainda não cobriu este período.<br>' + el('relNota').innerHTML;
     }
     // ---------- Relatório de Empréstimos (modelo da direção) ----------
     let planCache = null;
@@ -527,14 +532,20 @@
     let logoPng = null;
     async function logoParaPDF() {
       if (logoPng !== null) return logoPng || null;
+      logoPng = '';
       try {
+        // onload + timeout: o logo nunca pode segurar o PDF — sem ele, o timbre
+        // sai só com o texto (como o PDF do DRE sempre foi).
         const img = new Image();
+        const carregou = new Promise(res => { img.onload = () => res(true); img.onerror = () => res(false); });
         img.src = 'assets/logo-mr.png';
-        await img.decode();
-        const cv = document.createElement('canvas');
-        cv.width = img.naturalWidth; cv.height = img.naturalHeight;
-        cv.getContext('2d').drawImage(img, 0, 0);
-        logoPng = cv.toDataURL('image/png');
+        const ok = await Promise.race([carregou, new Promise(r => setTimeout(() => r(false), 3000))]);
+        if (ok && img.naturalWidth > 0) {
+          const cv = document.createElement('canvas');
+          cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+          cv.getContext('2d').drawImage(img, 0, 0);
+          logoPng = cv.toDataURL('image/png');
+        }
       } catch (e) { logoPng = ''; }
       return logoPng || null;
     }
@@ -560,7 +571,8 @@
       if (!window.jspdf) { alert('Gerador de PDF carregando. Tenta de novo em 2 segundos.'); return; }
       const errCx = await carregarCaixaMensal();
       if (errCx) { alert('Erro ao carregar o caixa: ' + errCx.message); return; }
-      const { dias } = await carregarDiasDoMes(mesAtualIso);
+      const { dias, error: errDias } = await carregarDiasDoMes(mesAtualIso);
+      if (errDias) { alert('Erro ao carregar o mês corrente: ' + errDias.message); return; }
       const logo = await logoParaPDF();
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'landscape' });
@@ -657,7 +669,11 @@
       const num = v => fmt.format(Number(v || 0)).replace('R$ ', 'R$ ');
       const trunca = (t, nn) => (t || '').length > nn ? (t || '').slice(0, nn - 1) + '…' : (t || '');
       let y;
-      function novaPagina() { doc.addPage(); timbrePDF(doc, M, logo); y = 74; }
+      function novaPagina() {
+        doc.addPage(); timbrePDF(doc, M, logo); y = 74;
+        // o timbre deixa a fonte em 7.5pt cinza — volta pro corpo padrão
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(30);
+      }
       function quebra(prox) { if (y + prox > H - 44) novaPagina(); }
 
       timbrePDF(doc, M, logo);

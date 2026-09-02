@@ -12,7 +12,8 @@
 //   2. No incremental, a janela diária cobre os últimos DIAS_REALIZADO dias
 //      (pagamentos registrados com atraso maior entram pelo backfill).
 //   3. Modo novo 'backfill_dias' (body: { modo: 'backfill_dias', dias_de, dias_ate,
-//      máx. 92 dias por chamada }) para preencher o histórico em fatias.
+//      máx. 31 dias por chamada — fatiar por mês }) para preencher o histórico.
+//      O modo 'backfill' mensal NÃO preenche data_pagamento; só o backfill_dias.
 // ============================================================
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
@@ -150,9 +151,9 @@ async function marcarPagamentosDoMes(token: string, natureza: 'receita' | 'despe
   return ids.length;
 }
 
-// Passada DIÁRIA de pagamentos: mesma mecânica da mensal, no grão dia — a API
-// filtra por data_pagamento mas não devolve o campo, então perguntamos dia a dia.
-async function marcarPagamentosDoDia(token: string, natureza: 'receita' | 'despesa', diaIso: string): Promise<number> {
+// Passada DIÁRIA de pagamentos — a API filtra por data_pagamento mas não devolve
+// o campo, então perguntamos dia a dia. Coleta os ids pagos num dia:
+async function coletarIdsPagosNoDia(token: string, natureza: 'receita' | 'despesa', diaIso: string): Promise<string[]> {
   const ids: string[] = [];
   let pagina = 1;
   while (true) {
@@ -167,28 +168,35 @@ async function marcarPagamentosDoDia(token: string, natureza: 'receita' | 'despe
     pagina++;
     if (pagina > 100) throw new Error('Passada diária de pagamentos estourou 100 páginas');
   }
-  for (let i = 0; i < ids.length; i += 300) {
-    const { error } = await sb.from('ca_parcelas').update({ data_pagamento: diaIso }).in('id', ids.slice(i, i + 300));
-    if (error) throw new Error('Marcar data_pagamento falhou: ' + error.message);
-  }
-  return ids.length;
+  return ids;
 }
 
-// Janela [deIso, ateIso] (inclusive): zera data_pagamento na janela e remarca dia a dia.
+// Janela [deIso, ateIso] (inclusive): COLETA tudo primeiro (nenhuma escrita antes
+// de a API responder por inteiro — a mesma ordem segura da passada mensal), e só
+// então zera a janela e remarca; falha de API no meio não deixa a janela vazia.
 async function marcarDiasDePagamento(token: string, deIso: string, ateIso: string): Promise<number> {
+  const lotes: { dia: string; ids: string[] }[] = [];
+  const d = new Date(deIso + 'T00:00:00Z');
+  const ate = new Date(ateIso + 'T00:00:00Z');
+  while (d <= ate) {
+    const dia = d.toISOString().slice(0, 10);
+    for (const natureza of ['receita', 'despesa'] as const) {
+      lotes.push({ dia, ids: await coletarIdsPagosNoDia(token, natureza, dia) });
+    }
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
   for (const natureza of ['receita', 'despesa'] as const) {
     const { error } = await sb.from('ca_parcelas').update({ data_pagamento: null })
       .eq('natureza', natureza).gte('data_pagamento', deIso).lte('data_pagamento', ateIso);
     if (error) throw new Error('Zerar data_pagamento falhou: ' + error.message);
   }
   let marcados = 0;
-  const d = new Date(deIso + 'T00:00:00Z');
-  const ate = new Date(ateIso + 'T00:00:00Z');
-  while (d <= ate) {
-    const dia = d.toISOString().slice(0, 10);
-    marcados += await marcarPagamentosDoDia(token, 'receita', dia);
-    marcados += await marcarPagamentosDoDia(token, 'despesa', dia);
-    d.setUTCDate(d.getUTCDate() + 1);
+  for (const { dia, ids } of lotes) {
+    for (let i = 0; i < ids.length; i += 300) {
+      const { error } = await sb.from('ca_parcelas').update({ data_pagamento: dia }).in('id', ids.slice(i, i + 300));
+      if (error) throw new Error('Marcar data_pagamento falhou: ' + error.message);
+    }
+    marcados += ids.length;
   }
   return marcados;
 }
@@ -271,7 +279,9 @@ Deno.serve(async (req) => {
         throw new Error('backfill_dias exige dias_de e dias_ate (YYYY-MM-DD, de <= ate)');
       }
       const nDias = Math.round((new Date(ate + 'T00:00:00Z').getTime() - new Date(de + 'T00:00:00Z').getTime()) / 86400000) + 1;
-      if (nDias > 92) throw new Error('backfill_dias limitado a 92 dias por chamada — fatie a janela');
+      // 31 dias por chamada: mantém a execução dentro dos 3 minutos da tranca
+      // anti-concorrência (o cron incremental de 10 em 10 min não entra junto).
+      if (nDias > 31) throw new Error('backfill_dias limitado a 31 dias por chamada — fatie por mês');
       const pagamentosDia = await marcarDiasDePagamento(token, de, ate);
       await sb.from('ca_sync_log').update({
         concluido_em: new Date().toISOString(),
@@ -316,13 +326,22 @@ Deno.serve(async (req) => {
       pagamentosMarcados += await marcarPagamentosDoMes(token, 'despesa', mes);
     }
 
-    // Realizado diário: no incremental, remarca os últimos DIAS_REALIZADO dias;
-    // no backfill mensal, cobre a janela inteira (respeitando o teto de dias).
+    // Realizado diário: SÓ no incremental, remarcando os últimos DIAS_REALIZADO
+    // dias (datas no fuso de SP, como o resto do arquivo). O modo backfill mensal
+    // NÃO roda esta passada — histórico de data_pagamento é papel do backfill_dias.
     let pagamentosDia = 0;
     if (modo === 'incremental') {
-      const hoje = new Date();
-      const de = new Date(hoje.getTime() - (DIAS_REALIZADO - 1) * 86400000).toISOString().slice(0, 10);
-      pagamentosDia = await marcarDiasDePagamento(token, de, hoje.toISOString().slice(0, 10));
+      const hojeSp = spIso(new Date()).slice(0, 10);
+      const deSp = new Date(new Date(hojeSp + 'T00:00:00Z').getTime() - (DIAS_REALIZADO - 1) * 86400000).toISOString().slice(0, 10);
+      pagamentosDia = await marcarDiasDePagamento(token, deSp, hojeSp);
+      // Reconciliação grão dia × grão mês: se a passada mensal desmarcou o mês de
+      // um pagamento antigo (estorno/mudança fora da janela diária), o dia órfão
+      // não pode sobreviver contradizendo o mês.
+      for (const natureza of ['receita', 'despesa'] as const) {
+        const { error } = await sb.from('ca_parcelas').update({ data_pagamento: null })
+          .eq('natureza', natureza).is('mes_pagamento', null).not('data_pagamento', 'is', null);
+        if (error) throw new Error('Reconciliar data_pagamento falhou: ' + error.message);
+      }
     }
 
     const categorias = modo === 'backfill' || Math.random() < 0.1 ? await sincronizarCategorias(token) : 0;
