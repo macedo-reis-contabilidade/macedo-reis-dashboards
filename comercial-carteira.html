@@ -429,10 +429,10 @@
         ? livres.map(c => `<button data-add="${c.id}">${c.nome_principal}
             <small>${[c.nome_fantasia, c.regime_tributario, c.cidade].filter(Boolean).join(' · ') || '&nbsp;'}</small></button>`).join('')
         : '<button disabled style="color:#6E7787;cursor:default;">Nada livre encontrado com esse termo.</button>')
-        + `<button data-criar style="color:#8FC0F0;">➕ Criar pré-cadastro "${t.toUpperCase()}" — empresa em constituição (sem CNPJ) — e adicionar à carteira</button>`;
+        + `<button data-criar style="color:#8FC0F0;">➕ Criar pré-cadastro "${t.toUpperCase()}" — dados a completar — e adicionar à carteira</button>`;
       const btnCriar = el.querySelector('[data-criar]');
       if (btnCriar) btnCriar.addEventListener('click', async () => {
-        if (!confirm('Criar o pré-cadastro "' + t.toUpperCase() + '" em transição, sem CNPJ, e adicionar à carteira?\n\nQuando o CNPJ sair, preencha no cadastro do cliente.')) return;
+        if (!confirm('Criar o pré-cadastro "' + t.toUpperCase() + '" em transição, ainda sem CNPJ informado, e adicionar à carteira?\n\nQuando os dados chegarem (empresa vinda de outro escritório ou CNPJ recém-emitido), complete no cadastro do cliente.')) return;
         const { data: novo, error: e1 } = await supabase.from('clientes')
           .insert({ nome_principal: t.toUpperCase(), tipo_pessoa: 'PJ', status: 'em_transicao' })
           .select('id').single();
