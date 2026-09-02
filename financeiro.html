@@ -13,7 +13,6 @@
     /* Cor de identidade por setor (no ícone) */
     a[href="financeiro-tarefas.html"]    .dashboard-card-icon { background: rgba(138,174,200,.16); color:#8AAEC8; }
     a[href="financeiro-boletos.html"]    .dashboard-card-icon { background: rgba(63,176,122,.15);  color:#3FB07A; }
-    a[href="financeiro-rotinas.html"]    .dashboard-card-icon { background: rgba(164,143,224,.15); color:#A48FE0; }
     a[href="financeiro-relatorios.html"] .dashboard-card-icon { background: rgba(227,179,65,.15);  color:#E3B341; }
 
     /* Selo "hoje" (urgência do dia) — canto superior direito */
@@ -54,7 +53,7 @@
         </div>
         <div class="eyebrow">Setor</div>
         <h1>Financeiro</h1>
-        <p>Módulos do setor financeiro: tarefas, honorários e boletos, rotinas e relatórios.</p>
+        <p>Módulos do setor financeiro: tarefas e rotinas, honorários e boletos, e relatórios.</p>
       </div>
 
       <div class="dashboard-grid">
@@ -63,7 +62,7 @@
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
           </div>
           <h3>Tarefas</h3>
-          <p>Tarefas do dia a dia do setor, com faixa de foco por vencimento.</p>
+          <p>Tarefas do dia a dia do setor, com faixa de foco por vencimento — e as rotinas do dia no topo.</p>
           <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="financeiro-tarefas.html">·</span></div>
         </a>
 
@@ -74,15 +73,6 @@
           <h3>Boletos</h3>
           <p>Honorários do mês: geração, emissão, envio e acompanhamento por status.</p>
           <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="financeiro-boletos.html">·</span></div>
-        </a>
-
-        <a href="financeiro-rotinas.html" class="dashboard-card">
-          <div class="dashboard-card-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-          </div>
-          <h3>Rotinas</h3>
-          <p>Rotinas recorrentes do financeiro, geradas mês a mês.</p>
-          <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="financeiro-rotinas.html">·</span></div>
         </a>
 
         <a href="financeiro-relatorios.html" class="dashboard-card">
@@ -146,7 +136,7 @@
           pill.className = 'badge-hoje'; pill.textContent = vencemHoje + ' hoje';
           card.appendChild(pill);
         }
-        ['financeiro-rotinas.html','financeiro-relatorios.html'].forEach(h => setBadge(h, '—'));
+        ['financeiro-relatorios.html'].forEach(h => setBadge(h, '—'));
       } catch (e) { console.error(e); }
     }
     pintar();
