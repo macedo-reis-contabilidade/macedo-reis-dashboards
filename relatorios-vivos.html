@@ -59,7 +59,6 @@
     .pr td.neg { color:#E08FA8; }
     .pr td.dim { color:#5d6675; }
     .pr tfoot td { font-weight:700; color:#E8EEF5; border-top:2px solid rgba(138,174,200,.3); background:rgba(91,130,166,.06); }
-    .pr .pct { font-size:11px; color:#8A93A6; }
 
     .mes-secao { font-size:13px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:#8AAEC8; margin:24px 0 10px; }
     .nota-semantica { margin-top:16px; font-size:12px; line-height:1.6; color:#8A93A6; max-width:940px; }
@@ -167,16 +166,6 @@
         <div class="nota-semantica" id="relNota"></div>
       </div>
 
-      <!-- MÊS (drill) -->
-      <div id="vistaMes" class="hidden">
-        <div class="rel-topo">
-          <button class="btn-voltar" id="btnVoltarRelatorio">← Voltar</button>
-          <span class="rel-titulo" id="mesTitulo"></span>
-          <span style="flex:1"></span>
-          <button class="btn-voltar" id="btnPDFMes">Baixar PDF</button>
-        </div>
-        <div id="mesConteudo"></div>
-      </div>
     </main>
   </div>
 
@@ -192,7 +181,6 @@
     const dreAnos = new Map();
     let dreMesSel = null, dreCache = null;
     const cacheMes = new Map();
-    let drillAtual = null;
 
     document.getElementById('btnLogout').addEventListener('click', () => signOut());
     const brl = v => fmt.format(Number(v || 0));
@@ -222,19 +210,6 @@
       const pagoLiq = Number(b.emp_parcelas||0) + Number(b.emp_giros||0) + Number(b.emp_parc_cartao||0) - Number(b.emp_estornos||0);
       return { captado:Number(b.emp_captado||0), pagoLiq, fluxo:Number(b.emp_captado||0)-pagoLiq, repIn:Number(b.repasse_entrada||0), repOut:Number(b.repasse_saida||0) };
     }
-    function geralDoMes(iso) {
-      const g = (classe, campo) => Number((pr.find(d => d.mes === iso && d.classe === classe) || {})[campo] || 0);
-      const v = opDoMes(iso);
-      const empPagoPrev = g('emprestimo_parcelas','previsto') + g('emprestimo_giros','previsto') + g('emprestimo_parc_cartao','previsto') - g('emprestimo_estorno','previsto');
-      const empPagoReal = g('emprestimo_parcelas','realizado') + g('emprestimo_giros','realizado') + g('emprestimo_parc_cartao','realizado') - g('emprestimo_estorno','realizado');
-      return {
-        rp: v.rp + g('emprestimo_captacao','previsto'),
-        rr: v.rr + g('emprestimo_captacao','realizado'),
-        dp: v.dp + empPagoPrev,
-        dr: v.dr + empPagoReal,
-        plr: v.plr
-      };
-    }
     function pintarResumo() {
       const v = opDoMes(mesAtualIso), b = blocoDoMes(mesAtualIso);
       const res = v.rr - v.dr;
@@ -257,7 +232,6 @@
       const [rel, mes] = h.split('/');
       el('vistaEstante').classList.add('hidden');
       el('vistaRelatorio').classList.add('hidden');
-      el('vistaMes').classList.add('hidden');
       if (rel === 'dre') {
         renderRelatorio('dre', mes || null); el('vistaRelatorio').classList.remove('hidden');
       } else if (rel === 'planilha') {
@@ -270,10 +244,9 @@
     }
     document.querySelectorAll('.estante-item[data-rel]').forEach(b => b.addEventListener('click', () => irPara(b.dataset.rel)));
     el('btnVoltarEstante').addEventListener('click', () => irPara(''));
-    el('btnVoltarRelatorio').addEventListener('click', () => { const rel = location.hash.replace('#','').split('/')[0]; irPara(rel); });
 
     // ---------- relatório anual ----------
-    let relAtual = 'operacao';
+    let relAtual = 'dre';
     const NOTAS = {
       caixa: {
         considera: 'TUDO que entra e sai da conta: operacao, repasses de clientes (guias e impostos deles atravessando o caixa), emprestimos (captacoes e parcelas) e pro-labore — dinheiro real, sem filtro de regua. Previsto pelo vencimento; Realizado pelo mes do pagamento (caixa).',
@@ -285,73 +258,17 @@
         fora: 'Giros rapidos e parcelamentos de fatura de cartao ficam fora desta lista (sao movimentos curtos, visiveis no DRE e no caixa). Contrato quitado sai sozinho. Banco e titular sao lidos da descricao do lancamento no Conta Azul.',
         leitura: 'A cor da faixa indica o ano do termino: verde encerra em 2026, azul em 2027, ambar em 2028, rosa em 2029 ou depois. Quanto mais linhas verdes, mais alivio vem vindo. No resumo por titular, a coluna da parcela mostra o compromisso mensal de cada um e a do restante, o tamanho total da divida.'
       },
-      operacao: {
-        considera: 'Receitas de servicos do escritorio (honorarios, servicos extras, MEI, IRPF, consultorias), liquidas de devolucoes e descontos, contra as despesas de funcionamento: pessoal, pro-labore, infraestrutura, sistemas, impostos e taxas, assessorias e outras.',
-        fora: 'Ficam FORA: repasses de clientes (dinheiro de terceiros em transito) e emprestimos (captacoes e amortizacoes, que tem relatorio proprio). Faturas de cartao de credito e seus estornos tambem ficam fora, para nao duplicar despesas ja lancadas.',
-        leitura: 'Previsto soma as parcelas pelo vencimento do mes, pagas ou nao. Realizado soma o efetivamente pago, posicionado no mes do pagamento (regime de caixa) — por isso pode incluir parcelas vencidas em meses anteriores. O percentual compara o realizado com o previsto do proprio mes.'
-      },
-      geral: {
-        considera: 'A visao completa do caixa do escritório: toda a operacao (receitas de servicos liquidas de deducoes e despesas de funcionamento, incluindo pro-labore) MAIS os emprestimos — captacoes entram como entrada e as parcelas pagas (bancarias, giros e parcelamento de cartao, com estornos de repactuacao abatidos) entram como saida, tanto no previsto quanto no realizado. No detalhe do mes, o ciclo de repactuacao do Sicoob (parcela debitada sem saldo na conta, estornada pelo banco e cobrada de novo no dia seguinte, ate haver saldo) ja aparece liquido — uma linha por contrato, com a contagem de debitos e estornos ao lado. O vai-e-vem bruto continua visivel no relatorio Emprestimos e Repasses.',
-        fora: 'Ficam FORA apenas os repasses de clientes (dinheiro de terceiros em transito, que nao e previsto nem resultado do escritório) e o par fatura de cartao / estorno (que duplicaria despesas ja lancadas).',
-        leitura: 'Previsto soma pelo vencimento; Realizado pelo mes do pagamento (caixa). O Resultado daqui equivale ao Resultado Final do DRE: operacional + fluxo de emprestimos. Positivo = o caixa do mes fechou com sobra (mesmo que via captacao); compare com o relatorio Operacao para separar o que e negocio do que e divida.'
-      },
-      emprestimos: {
-        considera: 'O movimento financeiro que fica fora do resultado operacional. Emprestimos: captacoes (dinheiro novo entrando) e amortizacoes liquidas — parcelas bancarias, giros e parcelamento de cartao, ja abatidos os estornos de repactuacao (o ciclo diario do Sicoob gera pares de pagamento e estorno que se anulam). Repasses: valores de clientes que atravessam o caixa para pagar guias e impostos deles.',
-        fora: 'Nada aqui e receita ou despesa do escritorio: emprestimo e divida que se move, repasse e dinheiro de terceiros em transito.',
-        leitura: 'Fluxo de emprestimos positivo = a divida cresceu no mes (captou mais do que pagou); negativo = desalavancagem. Repasses recebidos e pagos devem andar proximos; defasagens refletem o intervalo entre o cliente depositar e a guia vencer. Residuos de virada de mes do ciclo Sicoob (na casa de 1%) se compensam entre os meses.'
-      },
       dre: {
         considera: 'A cascata gerencial completa no layout do Diego: servicos prestados por categoria, deducoes e impostos sobre servicos (Simples, ISS, CRC, multas e devolucoes), custo dos servicos (softwares e assessorias), custos variaveis, administrativos, pessoal, mao de obra de processos, pro-labore, despesas financeiras (juros, IOF, tarifas e parcelamentos de impostos), investimentos e o bloco de emprestimos: parcelas pagas liquidas de estornos, contrato a contrato com o ano de termino, e captacoes por origem. Linhas de receita dentro de grupos de despesa (ex.: reembolso de pro-labore) entram abatendo, marcadas com (abate).',
         fora: 'Repasses de clientes e o par fatura/estorno de cartao ficam fora (dinheiro de terceiros e duplicidade). A linha de inadimplencia e informativa (honorarios vencidos e nao pagos no mes) e nao soma na cascata, porque o realizado ja reflete o que nao entrou. Categoria nova do Conta Azul sem classificacao aparece no grupo NAO MAPEADO ate ser mapeada.',
         leitura: 'Previsto soma pelo vencimento, Realizado pelo mes do pagamento (caixa), Diferenca = previsto menos realizado. Os percentuais sao analise vertical: cada linha sobre o total de servicos prestados da mesma coluna. O RESULTADO FINAL fecha com o relatorio Geral com Emprestimos; a linha do EBITDA conta a historia da operacao antes do peso da divida.'
       }
     };
-    function leituraDoAno(rel) {
-      if (rel === 'dre' || rel === 'planilha' || rel === 'caixa') return [];
-      const fechados = [];
-      for (let m = 0; m < 12; m++) {
-        const iso = anoSel + '-' + String(m+1).padStart(2,'0') + '-01';
-        if (iso < mesAtualIso) fechados.push(iso);
-      }
-      if (rel === 'operacao' || rel === 'geral') {
-        const fonte = rel === 'geral' ? geralDoMes : opDoMes;
-        let rp=0, rr=0, dp=0, dr=0, melhor=null;
-        for (const iso of fechados) {
-          const v = fonte(iso);
-          if (v.rr === 0 && v.dr === 0) continue;
-          rp+=v.rp; rr+=v.rr; dp+=v.dp; dr+=v.dr;
-          const res = v.rr - v.dr;
-          if (!melhor || res > melhor.res) melhor = { iso, res };
-        }
-        if (!rr && !dr) return [];
-        const out = [
-          'Realizacao media dos meses fechados: receitas ' + (rp>0?Math.round(rr/rp*100):0) + '%, despesas ' + (dp>0?Math.round(dr/dp*100):0) + '%.',
-          (rel === 'geral' ? 'Resultado final acumulado (realizado, meses fechados): ' : 'Resultado operacional acumulado (realizado, meses fechados): ') + brl(rr - dr) + '.'
-        ];
-        if (melhor) out.push('Melhor mes realizado: ' + MESES[Number(melhor.iso.slice(5,7))-1] + ' (' + brl(melhor.res) + ').');
-        return out;
-      } else {
-        let c=0, p=0, ri=0, ro=0;
-        for (const iso of fechados) {
-          const b = blocoDoMes(iso);
-          c+=b.captado; p+=b.pagoLiq; ri+=b.repIn; ro+=b.repOut;
-        }
-        if (!c && !p && !ri && !ro) return [];
-        const varr = c - p;
-        return [
-          'Emprestimos nos meses fechados: captado ' + brl(c) + ', pago ' + brl(p) + ' — ' + (varr >= 0 ? 'divida cresceu ' : 'divida reduziu ') + brl(Math.abs(varr)) + '.',
-          'Repasses nos meses fechados: recebido ' + brl(ri) + ', pago ' + brl(ro) + '.'
-        ];
-      }
-    }
     function pintarNota(rel) {
       const n = NOTAS[rel];
-      const bullets = leituraDoAno(rel);
-      let h = '<b>O que este relatorio considera:</b> ' + n.considera + ' ' + n.fora +
-              '<br><b>Como ler:</b> ' + n.leitura;
-      if (bullets.length) h += '<br><b>Leitura de ' + anoSel + ':</b> ' + bullets.join(' ');
-      h += '<br>Fonte: Conta Azul Pro, sincronizacao automatica a cada 10 minutos.';
-      el('relNota').innerHTML = h;
+      el('relNota').innerHTML = '<b>O que este relatorio considera:</b> ' + n.considera + ' ' + n.fora +
+        '<br><b>Como ler:</b> ' + n.leitura +
+        '<br>Fonte: Conta Azul Pro, sincronizacao automatica a cada 10 minutos.';
     }
     function renderRelatorio(rel, mesDre) {
       relAtual = rel;
@@ -363,48 +280,6 @@
       if (rel === 'dre') { renderDRE(mesDre); return; }
       if (rel === 'planilha') { renderPlanilha(); return; }
       if (rel === 'caixa') { renderCaixa(mesDre); return; }
-      el('relTitulo').textContent = rel === 'operacao' ? 'Operação — Previsto × Realizado' : rel === 'geral' ? 'Geral com Empréstimos — Previsto × Realizado' : 'Empréstimos e Repasses — Caixa';
-      if (rel !== 'emprestimos') {
-        el('relCabecalho').innerHTML = '<tr><th>Mês</th><th>Receita prevista</th><th>Receita realizada</th><th>Despesa prevista</th><th>Despesa realizada</th><th>Resultado previsto</th><th>Resultado realizado</th></tr>';
-        let html = ''; const t = { rp:0,rr:0,dp:0,dr:0,sp:0,sr:0 };
-        for (let m = 0; m < 12; m++) {
-          const iso = anoSel + '-' + String(m+1).padStart(2,'0') + '-01';
-          const v = rel === 'geral' ? geralDoMes(iso) : opDoMes(iso); const sp = v.rp-v.dp, sr = v.rr-v.dr;
-          t.rp+=v.rp; t.rr+=v.rr; t.dp+=v.dp; t.dr+=v.dr; t.sp+=sp; t.sr+=sr;
-          const pctR = v.rp>0 ? Math.round(v.rr/v.rp*100) : null;
-          const pctD = v.dp>0 ? Math.round(v.dr/v.dp*100) : null;
-          const fut = iso > mesAtualIso;
-          html += '<tr class="clicavel' + (iso===mesAtualIso?' mes-atual':'') + '" data-mes="' + iso + '">' +
-            '<td>' + MESES[m] + '</td>' +
-            '<td' + (v.rp===0?' class="dim"':'') + '>' + brl(v.rp) + '</td>' +
-            '<td' + (fut&&v.rr===0?' class="dim"':'') + '>' + brl(v.rr) + (pctR!==null?' <span class="pct">('+pctR+'%)</span>':'') + '</td>' +
-            '<td' + (v.dp===0?' class="dim"':'') + '>' + brl(v.dp) + '</td>' +
-            '<td' + (fut&&v.dr===0?' class="dim"':'') + '>' + brl(v.dr) + (pctD!==null?' <span class="pct">('+pctD+'%)</span>':'') + '</td>' +
-            '<td class="' + (sp>=0?'pos':'neg') + '">' + brl(sp) + '</td>' +
-            '<td class="' + (sr>=0?'pos':'neg') + '">' + brl(sr) + '</td></tr>';
-        }
-        el('relCorpo').innerHTML = html;
-        el('relRodape').innerHTML = '<tr><td>Total ' + anoSel + '</td><td>' + brl(t.rp) + '</td><td>' + brl(t.rr) + '</td><td>' + brl(t.dp) + '</td><td>' + brl(t.dr) + '</td><td class="' + (t.sp>=0?'pos':'neg') + '">' + brl(t.sp) + '</td><td class="' + (t.sr>=0?'pos':'neg') + '">' + brl(t.sr) + '</td></tr>';
-      } else {
-        el('relCabecalho').innerHTML = '<tr><th>Mês</th><th>Empréstimos captados</th><th>Empréstimos pagos (líq.)</th><th>Fluxo de empréstimos</th><th>Repasses recebidos</th><th>Repasses pagos</th></tr>';
-        let html = ''; const t = { c:0,p:0,f:0,ri:0,ro:0 };
-        for (let m = 0; m < 12; m++) {
-          const iso = anoSel + '-' + String(m+1).padStart(2,'0') + '-01';
-          const b = blocoDoMes(iso);
-          t.c+=b.captado; t.p+=b.pagoLiq; t.f+=b.fluxo; t.ri+=b.repIn; t.ro+=b.repOut;
-          html += '<tr class="clicavel' + (iso===mesAtualIso?' mes-atual':'') + '" data-mes="' + iso + '">' +
-            '<td>' + MESES[m] + '</td>' +
-            '<td' + (b.captado===0?' class="dim"':'') + '>' + brl(b.captado) + '</td>' +
-            '<td' + (b.pagoLiq===0?' class="dim"':'') + '>' + brl(b.pagoLiq) + '</td>' +
-            '<td class="' + (b.fluxo>=0?'pos':'neg') + '">' + brl(b.fluxo) + '</td>' +
-            '<td' + (b.repIn===0?' class="dim"':'') + '>' + brl(b.repIn) + '</td>' +
-            '<td' + (b.repOut===0?' class="dim"':'') + '>' + brl(b.repOut) + '</td></tr>';
-        }
-        el('relCorpo').innerHTML = html;
-        el('relRodape').innerHTML = '<tr><td>Total ' + anoSel + '</td><td>' + brl(t.c) + '</td><td>' + brl(t.p) + '</td><td class="' + (t.f>=0?'pos':'neg') + '">' + brl(t.f) + '</td><td>' + brl(t.ri) + '</td><td>' + brl(t.ro) + '</td></tr>';
-      }
-      pintarNota(rel);
-      el('relCorpo').querySelectorAll('tr.clicavel').forEach(tr => tr.addEventListener('click', () => irPara(relAtual + '/' + tr.dataset.mes)));
     }
     // ---------- Caixa completo (tudo que entra e sai) ----------
     let cxMensal = null; const cxDias = new Map();
@@ -592,76 +467,6 @@
     // ---------- PDF ----------
     function gerarPDF() {
       if (relAtual === 'dre') { gerarPDFDRE(); return; }
-      if (!window.jspdf) { alert('Gerador de PDF carregando. Tenta de novo em 2 segundos.'); return; }
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'landscape' });
-      const W = doc.internal.pageSize.getWidth();
-      const M = 40;
-      let y = 44;
-      const num = v => fmt.format(Number(v || 0)).replace('R$\u00a0', 'R$ ');
-
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(110);
-      doc.text('Macedo & Reis Contabilidade  ·  CRC/RS 006418/O  ·  Tres Coroas - RS  ·  Uso Interno', M, y);
-      y += 22;
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(20);
-      const titulo = (relAtual === 'operacao' ? 'OPERACAO — PREVISTO x REALIZADO' : relAtual === 'geral' ? 'GERAL COM EMPRESTIMOS — PREVISTO x REALIZADO' : 'EMPRESTIMOS E REPASSES — REGIME DE CAIXA') + '  ·  ' + anoSel;
-      doc.text(titulo, M, y);
-      y += 24;
-
-      const cab = relAtual !== 'emprestimos'
-        ? ['Mes','Receita prevista','Receita realizada','Despesa prevista','Despesa realizada','Resultado previsto','Resultado realizado']
-        : ['Mes','Emprest. captados','Emprest. pagos (liq.)','Fluxo emprestimos','Repasses recebidos','Repasses pagos'];
-      const cols = relAtual !== 'emprestimos'
-        ? [M, M+92, M+204, M+316, M+428, M+540, M+652]
-        : [M, M+110, M+245, M+380, M+515, M+650];
-      const linhaAlt = 17;
-
-      doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(60);
-      cab.forEach((c, i) => doc.text(c, cols[i], y, { align: i === 0 ? 'left' : 'left' }));
-      y += 6; doc.setDrawColor(120); doc.setLineWidth(0.8); doc.line(M, y, W - M, y); y += 13;
-
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(30);
-      const tot = relAtual !== 'emprestimos' ? { a:0,b:0,c:0,d:0,e:0,f:0 } : { a:0,b:0,c:0,d:0,e:0 };
-      for (let m = 0; m < 12; m++) {
-        const iso = anoSel + '-' + String(m+1).padStart(2,'0') + '-01';
-        let vals;
-        if (relAtual !== 'emprestimos') {
-          const v = relAtual === 'geral' ? geralDoMes(iso) : opDoMes(iso);
-          vals = [v.rp, v.rr, v.dp, v.dr, v.rp - v.dp, v.rr - v.dr];
-          tot.a+=vals[0]; tot.b+=vals[1]; tot.c+=vals[2]; tot.d+=vals[3]; tot.e+=vals[4]; tot.f+=vals[5];
-        } else {
-          const b = blocoDoMes(iso);
-          vals = [b.captado, b.pagoLiq, b.fluxo, b.repIn, b.repOut];
-          tot.a+=vals[0]; tot.b+=vals[1]; tot.c+=vals[2]; tot.d+=vals[3]; tot.e+=vals[4];
-        }
-        doc.text(MESES[m], cols[0], y);
-        vals.forEach((v, i) => doc.text(num(v), cols[i+1], y));
-        doc.setDrawColor(210); doc.setLineWidth(0.3); doc.line(M, y + 5, W - M, y + 5);
-        y += linhaAlt;
-      }
-      doc.setDrawColor(120); doc.setLineWidth(0.8); doc.line(M, y - 11, W - M, y - 11);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Total ' + anoSel, cols[0], y + 2);
-      Object.values(tot).forEach((v, i) => doc.text(num(v), cols[i+1], y + 2));
-      y += 26;
-
-      const n = NOTAS[relAtual];
-      const bullets = leituraDoAno(relAtual);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(60);
-      doc.text('O QUE ESTE RELATORIO CONSIDERA', M, y); y += 11;
-      doc.setFont('helvetica', 'normal'); doc.setTextColor(80);
-      let corpo = n.considera + ' ' + n.fora + '\n\nComo ler: ' + n.leitura;
-      if (bullets.length) corpo += '\n\nLeitura de ' + anoSel + ': ' + bullets.join(' ');
-      const linhas = doc.splitTextToSize(corpo, W - 2 * M);
-      doc.text(linhas, M, y);
-      y += linhas.length * 9.5 + 14;
-
-      doc.setFontSize(7.5); doc.setTextColor(130);
-      const agora = new Date();
-      doc.text('Gerado em ' + agora.toLocaleDateString('pt-BR') + ' as ' + agora.toLocaleTimeString('pt-BR').slice(0,5) + '  ·  Relatorios Vivos  ·  Fonte: Conta Azul Pro (sincronizacao automatica)', M, Math.max(y, doc.internal.pageSize.getHeight() - 30));
-
-      const nome = (relAtual === 'operacao' ? 'Operacao Previsto x Realizado' : relAtual === 'geral' ? 'Geral com Emprestimos Previsto x Realizado' : 'Emprestimos e Repasses') + ' - ' + anoSel + '.pdf';
-      doc.save(nome);
     }
     el('btnPDF').addEventListener('click', gerarPDF);
 
@@ -681,120 +486,6 @@
       }
       cacheMes.set(iso, linhas);
       return linhas;
-    }
-    function agrupar(linhas, chave) {
-      const mapa = new Map();
-      for (const l of linhas) {
-        const k = l[chave] || '(sem)';
-        if (!mapa.has(k)) mapa.set(k, { prev: 0, real: 0, n: 0 });
-        const g = mapa.get(k);
-        g.n++;
-        if (l._prevNoMes) g.prev += Number(l.total || 0);
-        if (l._pagoNoMes) g.real += Number(l.pago || 0);
-      }
-      return [...mapa.entries()].sort((x, y) => (y[1].real || y[1].prev) - (x[1].real || x[1].prev));
-    }
-    function tabelaCategorias(titulo, grupos) {
-      if (!grupos.length) return '';
-      let h = '<div class="mes-secao">' + titulo + '</div><div class="pr-wrap"><table class="pr" style="min-width:520px;"><thead><tr><th>Categoria</th><th>Previsto</th><th>Realizado</th><th>Parcelas</th></tr></thead><tbody>';
-      let tp = 0, tr = 0, tn = 0;
-      for (const [cat, g] of grupos) {
-        tp += g.prev; tr += g.real; tn += g.n;
-        h += '<tr><td>' + cat + '</td><td' + (g.prev===0?' class="dim"':'') + '>' + brl(g.prev) + '</td><td' + (g.real===0?' class="dim"':'') + '>' + brl(g.real) + '</td><td>' + g.n + '</td></tr>';
-      }
-      h += '</tbody><tfoot><tr><td>Total</td><td>' + brl(tp) + '</td><td>' + brl(tr) + '</td><td>' + tn + '</td></tr></tfoot></table></div>';
-      return h;
-    }
-    function agruparDesc(linhas, colValor) {
-      const mapa = new Map();
-      for (const l of linhas) {
-        const k = (l.descricao || '(sem descrição)').trim();
-        if (!mapa.has(k)) mapa.set(k, { v: 0, n: 0 });
-        mapa.get(k).v += Number(l[colValor] || 0);
-        mapa.get(k).n++;
-      }
-      return [...mapa.entries()].sort((x, y) => y[1].v - x[1].v);
-    }
-    function tabelaDescricoes(titulo, linhas, colValor) {
-      if (!linhas.length) return '';
-      const grupos = agruparDesc(linhas, colValor);
-      let h = '<div class="mes-secao">' + titulo + '</div><div class="pr-wrap"><table class="pr" style="min-width:520px;"><thead><tr><th>Descrição</th><th>Valor</th><th>Lançamentos</th></tr></thead><tbody>';
-      let tv = 0, tn = 0;
-      for (const [desc, g] of grupos) {
-        tv += g.v; tn += g.n;
-        h += '<tr><td style="white-space:normal;">' + desc + '</td><td>' + brl(g.v) + '</td><td>' + g.n + '</td></tr>';
-      }
-      h += '</tbody><tfoot><tr><td>Total</td><td>' + brl(tv) + '</td><td>' + tn + '</td></tr></tfoot></table></div>';
-      return h;
-    }
-    function liquidoEmp(linhas) {
-      const pagos = linhas.filter(l => ['emprestimo_parcelas','emprestimo_giros','emprestimo_parc_cartao'].includes(l.classe) && l._pagoNoMes);
-      const est = linhas.filter(l => l.classe === 'emprestimo_estorno' && l._pagoNoMes);
-      const mapa = new Map();
-      const put = (l, sinal) => {
-        const d = (l.descricao || '(sem descrição)').trim();
-        const m = d.match(/\d{5,}/);
-        const k = m ? 'ct-' + m[0] : 'op-' + String(l.data_criacao || '').slice(0, 16);
-        if (!mapa.has(k)) mapa.set(k, { desc: d, liq: 0, nPag: 0, nEst: 0 });
-        const g = mapa.get(k);
-        g.liq += sinal * Number(l.pago || 0);
-        if (sinal > 0) { g.nPag++; g.desc = d; } else { g.nEst++; }
-      };
-      pagos.forEach(l => put(l, 1));
-      est.forEach(l => put(l, -1));
-      return [...mapa.values()].sort((x, y) => y.liq - x.liq);
-    }
-    function tabelaLiquida(titulo, grupos) {
-      if (!grupos.length) return '';
-      let h = '<div class="mes-secao">' + titulo + '</div><div class="pr-wrap"><table class="pr" style="min-width:520px;"><thead><tr><th>Descrição</th><th>Líquido</th><th>Débitos</th><th>Estornos</th></tr></thead><tbody>';
-      let tv = 0, tp = 0, te = 0;
-      for (const g of grupos) {
-        tv += g.liq; tp += g.nPag; te += g.nEst;
-        h += '<tr><td style="white-space:normal;">' + g.desc + '</td><td>' + brl(g.liq) + '</td><td>' + g.nPag + '</td><td>' + (g.nEst || '—') + '</td></tr>';
-      }
-      h += '</tbody><tfoot><tr><td>Total</td><td>' + brl(tv) + '</td><td>' + tp + '</td><td>' + te + '</td></tr></tfoot></table></div>';
-      return h;
-    }
-    async function renderMes(rel, iso) {
-      const [a, m] = iso.split('-').map(Number);
-      el('mesTitulo').textContent = (rel === 'operacao' ? 'Operação · ' : rel === 'geral' ? 'Geral com Empréstimos · ' : 'Empréstimos e Repasses · ') + MESES[m-1] + ' de ' + a;
-      el('mesConteudo').innerHTML = '<p style="color:#8A93A6;padding:20px 4px;">Carregando o mês…</p>';
-      let linhas;
-      try { linhas = await parcelasDoMes(iso); }
-      catch (e) { el('mesConteudo').innerHTML = '<p style="color:#E08FA8;padding:20px 4px;">Erro ao carregar: ' + e.message + '</p>'; return; }
-      const [aa, mm] = iso.split('-').map(Number);
-      const fim = new Date(Date.UTC(aa, mm, 0)).toISOString().slice(0, 10);
-      for (const l of linhas) {
-        l._prevNoMes = l.data_vencimento && l.data_vencimento >= iso && l.data_vencimento <= fim;
-        l._pagoNoMes = l.mes_pagamento === iso;
-      }
-      drillAtual = { rel, iso, linhas };
-      if (rel === 'operacao' || rel === 'geral') {
-        const rec = linhas.filter(l => l.classe === 'operacional_receita');
-        const ded = linhas.filter(l => l.classe === 'deducao_receita');
-        const desp = linhas.filter(l => l.classe === 'operacional_despesa' || l.classe === 'prolabore');
-        let h = tabelaCategorias('Receitas por categoria', agrupar(rec, 'cat'));
-        if (ded.length) h += tabelaCategorias('Deduções de receita', agrupar(ded, 'cat'));
-        h += tabelaCategorias('Despesas por categoria', agrupar(desp, 'cat'));
-        if (rel === 'geral') {
-          const capt = linhas.filter(l => l.classe === 'emprestimo_captacao' && l._pagoNoMes);
-          h += tabelaDescricoes('Empréstimos captados no mês', capt, 'pago');
-          h += tabelaLiquida('Empréstimos pagos (líquido de estornos)', liquidoEmp(linhas));
-        }
-        el('mesConteudo').innerHTML = h || '<p style="color:#8A93A6;padding:20px 4px;">Sem lançamentos neste mês.</p>';
-      } else {
-        const capt = linhas.filter(l => l.classe === 'emprestimo_captacao' && l._pagoNoMes);
-        const pagos = linhas.filter(l => ['emprestimo_parcelas','emprestimo_giros','emprestimo_parc_cartao'].includes(l.classe) && l._pagoNoMes);
-        const estornos = linhas.filter(l => l.classe === 'emprestimo_estorno' && l._pagoNoMes);
-        const repIn = linhas.filter(l => l.classe === 'repasse_entrada' && l._pagoNoMes);
-        const repOut = linhas.filter(l => l.classe === 'repasse_saida' && l._pagoNoMes);
-        let h = tabelaDescricoes('Captações do mês', capt, 'pago');
-        h += tabelaDescricoes('Pagamentos de empréstimos', pagos, 'pago');
-        h += tabelaDescricoes('Estornos (abatem os pagamentos)', estornos, 'pago');
-        h += tabelaDescricoes('Repasses recebidos', repIn, 'pago');
-        h += tabelaDescricoes('Repasses pagos', repOut, 'pago');
-        el('mesConteudo').innerHTML = h || '<p style="color:#8A93A6;padding:20px 4px;">Sem movimentações neste mês.</p>';
-      }
     }
 
     // ---------- DRE Gerencial (layout Diego) ----------
@@ -1106,140 +797,6 @@
       doc.text('Gerado em ' + agora.toLocaleDateString('pt-BR') + ' as ' + agora.toLocaleTimeString('pt-BR').slice(0, 5) + '  ·  Relatorios Vivos  ·  Fonte: Conta Azul Pro (sincronizacao automatica)', M, Math.min(y + 6, H - 30));
       doc.save('DRE Gerencial - ' + MESES[mIdx] + ' ' + dreMesSel.slice(0, 4) + '.pdf');
     }
-
-    // ---------- PDF do mês ----------
-    function gerarPDFMes() {
-      if (!drillAtual) { alert('Abre um mes primeiro.'); return; }
-      if (!window.jspdf) { alert('Gerador de PDF carregando. Tenta de novo em 2 segundos.'); return; }
-      const { rel, iso, linhas } = drillAtual;
-      const [ano, mesN] = iso.split('-').map(Number);
-      const nomeMes = MESES[mesN - 1];
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-      const W = doc.internal.pageSize.getWidth();
-      const H = doc.internal.pageSize.getHeight();
-      const M = 40;
-      let y = 44;
-      const num = v => fmt.format(Number(v || 0)).replace('R$\u00a0', 'R$ ');
-      const trunca = (t, n) => (t || '').length > n ? (t || '').slice(0, n - 1) + '…' : (t || '');
-
-      function cabecalhoPagina() {
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(110);
-        doc.text('Macedo & Reis Contabilidade  ·  CRC/RS 006418/O  ·  Tres Coroas - RS  ·  Uso Interno', M, 44);
-      }
-      function quebraSePreciso(alturaProxima) {
-        if (y + alturaProxima > H - 50) { doc.addPage(); cabecalhoPagina(); y = 66; }
-      }
-      function tabelaPDF(titulo, cols, dados, totalRow) {
-        if (!dados.length) return;
-        quebraSePreciso(46);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(50);
-        doc.text(titulo.toUpperCase(), M, y); y += 13;
-        function headerTabela() {
-          doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(80);
-          cols.forEach(c => doc.text(c.label, c.x, y, { align: c.align || 'left' }));
-          y += 4; doc.setDrawColor(120); doc.setLineWidth(0.7); doc.line(M, y, W - M, y); y += 11;
-          doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(30);
-        }
-        headerTabela();
-        for (const linha of dados) {
-          quebraSePreciso(14);
-          if (y === 66) { headerTabela(); }
-          linha.forEach((cel, i) => doc.text(String(cel), cols[i].x, y, { align: cols[i].align || 'left' }));
-          doc.setDrawColor(215); doc.setLineWidth(0.3); doc.line(M, y + 4, W - M, y + 4);
-          y += 14;
-        }
-        if (totalRow) {
-          doc.setDrawColor(120); doc.setLineWidth(0.7); doc.line(M, y - 10, W - M, y - 10);
-          doc.setFont('helvetica', 'bold');
-          totalRow.forEach((cel, i) => doc.text(String(cel), cols[i].x, y + 1, { align: cols[i].align || 'left' }));
-          y += 20;
-        } else { y += 8; }
-      }
-
-      cabecalhoPagina();
-      y = 66;
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(20);
-      const tituloRel = rel === 'operacao' ? 'OPERACAO' : rel === 'geral' ? 'GERAL COM EMPRESTIMOS' : 'EMPRESTIMOS E REPASSES';
-      doc.text(tituloRel + '  ·  ' + nomeMes.toUpperCase() + ' ' + ano, M, y);
-      y += 16;
-
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(70);
-      if (rel === 'operacao' || rel === 'geral') {
-        const v = rel === 'geral' ? geralDoMes(iso) : opDoMes(iso);
-        doc.text('Previsto: receita ' + num(v.rp) + '  ·  despesa ' + num(v.dp) + '  ·  resultado ' + num(v.rp - v.dp), M, y); y += 12;
-        doc.text('Realizado: receita ' + num(v.rr) + '  ·  despesa ' + num(v.dr) + '  ·  resultado ' + num(v.rr - v.dr), M, y); y += 20;
-      } else {
-        const b = blocoDoMes(iso);
-        doc.text('Emprestimos: captado ' + num(b.captado) + '  ·  pago (liq.) ' + num(b.pagoLiq) + '  ·  fluxo ' + num(b.fluxo), M, y); y += 12;
-        doc.text('Repasses: recebido ' + num(b.repIn) + '  ·  pago ' + num(b.repOut), M, y); y += 20;
-      }
-
-      const colsCat = [
-        { label: 'Categoria', x: M },
-        { label: 'Previsto', x: 330, align: 'right' },
-        { label: 'Realizado', x: 435, align: 'right' },
-        { label: 'Parc.', x: W - M, align: 'right' }
-      ];
-      const colsDesc = [
-        { label: 'Descricao', x: M },
-        { label: 'Valor', x: 440, align: 'right' },
-        { label: 'Lanc.', x: W - M, align: 'right' }
-      ];
-      function dadosCat(grupos) {
-        let tp = 0, tr = 0, tn = 0;
-        const dados = grupos.map(([cat, g]) => { tp += g.prev; tr += g.real; tn += g.n; return [trunca(cat, 52), num(g.prev), num(g.real), g.n]; });
-        return { dados, total: ['Total', num(tp), num(tr), tn] };
-      }
-      function dadosDesc(grupos) {
-        let tv = 0, tn = 0;
-        const dados = grupos.map(([d, g]) => { tv += g.v; tn += g.n; return [trunca(d, 68), num(g.v), g.n]; });
-        return { dados, total: ['Total', num(tv), tn] };
-      }
-
-      if (rel === 'operacao' || rel === 'geral') {
-        const rec = dadosCat(agrupar(linhas.filter(l => l.classe === 'operacional_receita'), 'cat'));
-        tabelaPDF('Receitas por categoria', colsCat, rec.dados, rec.total);
-        const dedL = linhas.filter(l => l.classe === 'deducao_receita');
-        if (dedL.length) { const d = dadosCat(agrupar(dedL, 'cat')); tabelaPDF('Deducoes de receita', colsCat, d.dados, d.total); }
-        const desp = dadosCat(agrupar(linhas.filter(l => l.classe === 'operacional_despesa' || l.classe === 'prolabore'), 'cat'));
-        tabelaPDF('Despesas por categoria', colsCat, desp.dados, desp.total);
-        if (rel === 'geral') {
-          const c = dadosDesc(agruparDesc(linhas.filter(l => l.classe === 'emprestimo_captacao' && l._pagoNoMes), 'pago'));
-          tabelaPDF('Emprestimos captados no mes', colsDesc, c.dados, c.total);
-          const colsLiq = [
-            { label: 'Descricao', x: M },
-            { label: 'Liquido', x: 400, align: 'right' },
-            { label: 'Deb.', x: 468, align: 'right' },
-            { label: 'Est.', x: W - M, align: 'right' }
-          ];
-          const gl = liquidoEmp(linhas);
-          let lv = 0, lp = 0, le = 0;
-          const dadosLiq = gl.map(g => { lv += g.liq; lp += g.nPag; le += g.nEst; return [trunca(g.desc, 56), num(g.liq), g.nPag, g.nEst || '-']; });
-          tabelaPDF('Emprestimos pagos (liquido de estornos)', colsLiq, dadosLiq, ['Total', num(lv), lp, le]);
-        }
-      } else {
-        const c = dadosDesc(agruparDesc(linhas.filter(l => l.classe === 'emprestimo_captacao' && l._pagoNoMes), 'pago'));
-        tabelaPDF('Captacoes do mes', colsDesc, c.dados, c.total);
-        const pg = dadosDesc(agruparDesc(linhas.filter(l => ['emprestimo_parcelas','emprestimo_giros','emprestimo_parc_cartao'].includes(l.classe) && l._pagoNoMes), 'pago'));
-        tabelaPDF('Pagamentos de emprestimos', colsDesc, pg.dados, pg.total);
-        const e = dadosDesc(agruparDesc(linhas.filter(l => l.classe === 'emprestimo_estorno' && l._pagoNoMes), 'pago'));
-        tabelaPDF('Estornos (abatem os pagamentos)', colsDesc, e.dados, e.total);
-        const ri = dadosDesc(agruparDesc(linhas.filter(l => l.classe === 'repasse_entrada' && l._pagoNoMes), 'pago'));
-        tabelaPDF('Repasses recebidos', colsDesc, ri.dados, ri.total);
-        const ro = dadosDesc(agruparDesc(linhas.filter(l => l.classe === 'repasse_saida' && l._pagoNoMes), 'pago'));
-        tabelaPDF('Repasses pagos', colsDesc, ro.dados, ro.total);
-      }
-
-      quebraSePreciso(24);
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(130);
-      const agora = new Date();
-      doc.text('Gerado em ' + agora.toLocaleDateString('pt-BR') + ' as ' + agora.toLocaleTimeString('pt-BR').slice(0,5) + '  ·  Relatorios Vivos  ·  Fonte: Conta Azul Pro (sincronizacao automatica)', M, Math.min(y + 6, H - 30));
-
-      const nomeRel = rel === 'operacao' ? 'Operacao' : rel === 'geral' ? 'Geral com Emprestimos' : 'Emprestimos e Repasses';
-      doc.save(nomeRel + ' - ' + nomeMes + ' ' + ano + '.pdf');
-    }
-    el('btnPDFMes').addEventListener('click', gerarPDFMes);
 
     // ---------- boot ----------
     (async () => {
