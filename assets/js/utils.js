@@ -41,6 +41,11 @@ export function onlyDigits(str) {
 
 export function formatDate(iso) {
   if (!iso) return '';
+  // Data pura (YYYY-MM-DD): new Date() a interpreta como meia-noite UTC e a exibição
+  // em America/Sao_Paulo caía no dia ANTERIOR em todas as telas. Montar como data
+  // local resolve; timestamps completos seguem exibidos no fuso de São Paulo.
+  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('pt-BR');
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
   return d.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
