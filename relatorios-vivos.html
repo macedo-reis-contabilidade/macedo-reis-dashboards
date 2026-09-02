@@ -345,7 +345,12 @@
       anoSel = a;
       el('relTitulo').textContent = 'Caixa · ' + MESES[m - 1] + ' de ' + a;
       el('seletorAno').style.display = 'none';
-      const box = document.getElementById('dreChips');
+      let box = document.getElementById('dreChips');
+      if (!box) {
+        box = document.createElement('div'); box.id = 'dreChips'; box.className = 'seletor-ano'; box.style.margin = '0 0 14px';
+        const tb = el('relCabecalho').closest('table');
+        tb.parentNode.insertBefore(box, tb);
+      }
       box.style.display = '';
       const anoMin = 2025, anoMax = hoje.getFullYear() + 1;
       let h0 = '<button data-nav="-1"' + (a <= anoMin ? ' disabled style="opacity:.35;cursor:default;"' : '') + '>‹</button>';
