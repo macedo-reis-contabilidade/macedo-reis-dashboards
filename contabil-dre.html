@@ -44,6 +44,20 @@
     .dre-add { background:none; border:none; color:#6E8FB0; cursor:pointer; font-size:12px; padding:3px 0; }
     .dre-add:hover { color:#8FC0F0; }
     table.dre th.acao, table.dre td.acao { width:32px; padding-left:0; padding-right:8px; }
+    .dre-ins { max-width:900px; margin-top:22px; display:none; }
+    .dre-ins.on { display:block; }
+    .dre-ins-head { display:flex; align-items:center; gap:12px; margin-bottom:10px; }
+    .dre-ins-head h3 { margin:0; font-size:15px; color:#E6EAF0; font-weight:600; }
+    .dre-ins-head small { color:#8A93A6; font-size:12px; }
+    .dre-ins-head .dre-btn { margin-left:auto; padding:7px 12px; font-size:12px; }
+    .dre-ins-resumo { background:rgba(91,130,166,.14); border-radius:10px; padding:12px 16px; color:#C5D8E8; font-size:14px; margin-bottom:12px; }
+    .ins { background:rgba(255,255,255,.035); border-left:3px solid #5B82A6; border-radius:8px; padding:10px 14px; margin-bottom:8px; }
+    .ins.atencao { border-left-color:#E8A15C; } .ins.positivo { border-left-color:#5FC698; }
+    .ins b { display:block; color:#E6EAF0; font-size:13.5px; margin-bottom:3px; } .ins span { color:#C9D3E0; font-size:13.5px; }
+    .ins-perg { margin:14px 0 0; padding:0 0 0 18px; color:#C9D3E0; font-size:13.5px; } .ins-perg li { margin-bottom:5px; }
+    .dre-ins-sec { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:#8A93A6; margin:14px 0 6px; }
+    .dre-ins-chk { display:flex; align-items:center; gap:8px; color:#8A93A6; font-size:12.5px; margin-top:12px; }
+    .dre-carregando { color:#8A93A6; font-size:13px; padding:10px 0; }
   </style>
 </head>
 <body>
@@ -79,6 +93,7 @@
         <div class="dre-acoes">
           <button class="dre-btn sec" id="btnNovo">Novo</button>
           <button class="dre-btn" id="btnSalvar">Salvar</button>
+          <button class="dre-btn sec" id="btnInsights">Insights</button>
           <button class="dre-btn sec" id="btnRelatorio">Relatório</button>
         </div>
       </div>
@@ -94,6 +109,12 @@
 
       <div class="dre-sec">Observação (entra no relatório)</div>
       <textarea class="dre-obs" id="inObs" placeholder="Anotações da reunião, premissas, ajustes combinados…"></textarea>
+      <div class="dre-ins" id="insPainel">
+        <div class="dre-ins-head"><h3>Leitura dos números</h3><small id="insQuando"></small><button class="dre-btn sec" id="btnInsRegerar">Regerar</button></div>
+        <div id="insCorpo"></div>
+        <label class="dre-ins-chk"><input type="checkbox" id="insNoRelatorio" checked> Incluir a leitura no relatório impresso</label>
+      </div>
+
       <p class="dre-aviso">Demonstrativo gerencial simplificado, montado a partir de valores informados pelo cliente — não substitui as demonstrações contábeis oficiais.</p>
     </main>
   </div>
@@ -140,7 +161,7 @@
       return t;
     }
 
-    let clientes = [], dreId = null, grupos = modeloVazio();
+    let clientes = [], dreId = null, grupos = modeloVazio(), insights = null;
 
     function montar() {
       $('dreBody').innerHTML = GRUPOS.map(x => {
@@ -176,7 +197,7 @@
     }
 
     async function carregarClientes() {
-      const { data, error } = await supabase.todosClientes('id, nome_principal, documento', q => q.in('status', ['ativo', 'em_transicao']));
+      const { data, error } = await supabase.todosClientes('id, nome_principal, documento, cnae_principal, regime_tributario, cidade', q => q.in('status', ['ativo', 'em_transicao']));
       if (error) { alert('Erro ao carregar clientes: ' + error.message); return; }
       clientes = (data || []).sort((a, b) => a.nome_principal.localeCompare(b.nome_principal));
       $('selCliente').innerHTML = '<option value="">— selecionar —</option>' + clientes.map(c => `<option value="${c.id}">${escapeHtml(c.nome_principal)}</option>`).join('');
@@ -184,7 +205,7 @@
 
     async function carregarSalvos() {
       const cid = $('selCliente').value; const el = $('salvos'); el.innerHTML = '';
-      let q = supabase.from('dre_simples').select('id, cliente_id, periodo, valores, criado_em').order('criado_em', { ascending: false });
+      let q = supabase.from('dre_simples').select('id, cliente_id, periodo, valores, insights, criado_em').order('criado_em', { ascending: false });
       q = cid ? q.eq('cliente_id', cid) : q.limit(20);
       const { data } = await q;
       const nome = id => { const c = clientes.find(x => x.id === id); return c ? c.nome_principal : ''; };
@@ -200,13 +221,14 @@
       if (d.cliente_id && $('selCliente').value !== d.cliente_id) $('selCliente').value = d.cliente_id;
       dreId = d.id; $('inPeriodo').value = d.periodo || '';
       grupos = normalizar(d.valores); montar();
+      insights = d.insights || null; renderInsights();
       supabase.from('dre_simples').select('observacao').eq('id', id).single().then(({ data }) => { $('inObs').value = (data && data.observacao) || ''; });
       carregarSalvos();
     }
 
     function novo() {
       dreId = null; $('inPeriodo').value = ''; $('inObs').value = '';
-      grupos = modeloVazio(); montar(); carregarSalvos();
+      grupos = modeloVazio(); insights = null; renderInsights(); montar(); carregarSalvos();
     }
 
     async function salvar() {
@@ -214,7 +236,7 @@
       if (!cid) { alert('Selecione o cliente.'); return; }
       if (!periodo) { alert('Informe o período (ex.: Agosto/2026).'); $('inPeriodo').focus(); return; }
       const { data: { user } } = await supabase.auth.getUser();
-      const reg = { cliente_id: cid, periodo, valores: { grupos }, observacao: $('inObs').value.trim() || null, atualizado_em: new Date().toISOString() };
+      const reg = { cliente_id: cid, periodo, valores: { grupos }, insights: insights || null, observacao: $('inObs').value.trim() || null, atualizado_em: new Date().toISOString() };
       $('btnSalvar').disabled = true;
       const r = dreId
         ? await supabase.from('dre_simples').update(reg).eq('id', dreId).select('id').single()
@@ -222,6 +244,40 @@
       $('btnSalvar').disabled = false;
       if (r.error) { alert('Erro ao salvar: ' + r.error.message); return; }
       dreId = r.data.id; carregarSalvos();
+    }
+
+    function renderInsights() {
+      const painel = $('insPainel'), corpo = $('insCorpo');
+      if (!insights) { painel.classList.remove('on'); corpo.innerHTML = ''; return; }
+      painel.classList.add('on');
+      $('insQuando').textContent = insights.gerado_em ? 'gerada em ' + new Date(insights.gerado_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
+      if (insights.base_suficiente === false) {
+        corpo.innerHTML = '<div class="dre-ins-resumo">' + escapeHtml(insights.resumo || 'Ainda não há base para leitura.') + '</div>'
+          + ((insights.perguntas || []).length ? '<div class="dre-ins-sec">O que falta</div><ul class="ins-perg">' + insights.perguntas.map(p => '<li>' + escapeHtml(p) + '</li>').join('') + '</ul>' : '');
+        return;
+      }
+      corpo.innerHTML = '<div class="dre-ins-resumo">' + escapeHtml(insights.resumo || '') + '</div>'
+        + (insights.insights || []).map(i => '<div class="ins ' + escapeHtml(i.tipo || 'neutro') + '"><b>' + escapeHtml(i.titulo || '') + '</b><span>' + escapeHtml(i.texto || '') + '</span></div>').join('')
+        + ((insights.perguntas || []).length ? '<div class="dre-ins-sec">Perguntas para fazer ao cliente agora</div><ul class="ins-perg">' + insights.perguntas.map(p => '<li>' + escapeHtml(p) + '</li>').join('') + '</ul>' : '');
+    }
+
+    async function gerarInsights() {
+      const cid = $('selCliente').value; const cli = clientes.find(c => c.id === cid);
+      if (!cli) { alert('Selecione o cliente.'); return; }
+      const t = totais(grupos);
+      $('insPainel').classList.add('on'); $('insCorpo').innerHTML = '<div class="dre-carregando">Lendo os números…</div>'; $('insQuando').textContent = '';
+      $('btnInsights').disabled = true; $('btnInsRegerar').disabled = true;
+      const { data, error } = await supabase.functions.invoke('dre-insights', { body: {
+        cliente: { nome: cli.nome_principal, atividade: cli.cnae_principal || null, regime: cli.regime_tributario || null, cidade: cli.cidade || null },
+        periodo: $('inPeriodo').value.trim() || null,
+        dre: { grupos, totais: t },
+        observacao: $('inObs').value.trim() || null
+      } });
+      $('btnInsights').disabled = false; $('btnInsRegerar').disabled = false;
+      if (error || !data || !data.data) { $('insCorpo').innerHTML = '<div class="dre-carregando">Não foi possível gerar a leitura agora' + (error ? ': ' + escapeHtml(error.message || String(error)) : '') + '.</div>'; return; }
+      insights = { ...data.data, gerado_em: data.gerado_em || new Date().toISOString() };
+      renderInsights();
+      if (dreId) await supabase.from('dre_simples').update({ insights, atualizado_em: new Date().toISOString() }).eq('id', dreId);
     }
 
     function relatorio() {
@@ -265,6 +321,10 @@
         + '<div class="dados"><b>' + escapeHtml(cli.nome_principal) + '</b>' + (cli.documento ? ' · CNPJ ' + escapeHtml(fmtCnpj(cli.documento)) : '') + '</div>'
         + '<table><thead><tr><th>Conta</th><th class="num" style="width:130px">Valor</th><th class="num" style="width:80px">% da receita</th></tr></thead><tbody>' + linhas + '</tbody></table>'
         + (obs ? '<div class="obs">' + escapeHtml(obs) + '</div>' : '')
+        + (insights && insights.base_suficiente !== false && $('insNoRelatorio').checked
+            ? '<h2 style="font-size:14px;color:#3A5878;margin:22px 0 8px">Leitura dos números</h2><p style="margin:0 0 10px">' + escapeHtml(insights.resumo || '') + '</p><ul style="margin:0;padding-left:18px">'
+              + (insights.insights || []).map(i => '<li style="margin-bottom:5px"><b>' + escapeHtml(i.titulo || '') + '.</b> ' + escapeHtml(i.texto || '') + '</li>').join('') + '</ul>'
+            : '')
         + '<div class="rodape">Demonstrativo gerencial simplificado, elaborado em reunião com o cliente a partir de valores por ele informados — não substitui as demonstrações contábeis oficiais. Emitido em ' + hoje + ' · Macedo &amp; Reis Contabilidade · CRC/RS 006418/O</div>'
         + '</div></body></html>';
       const w = window.open('', '_blank'); w.document.write(html); w.document.close();
@@ -274,6 +334,8 @@
     $('btnNovo').onclick = novo;
     $('btnSalvar').onclick = salvar;
     $('btnRelatorio').onclick = relatorio;
+    $('btnInsights').onclick = gerarInsights;
+    $('btnInsRegerar').onclick = gerarInsights;
 
     montar(); carregarClientes().then(carregarSalvos);
   </script>
