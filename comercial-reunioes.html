@@ -74,8 +74,13 @@
           </div>
         </div>
 
+        <div class="rn-intro">
+          <div class="rn-intro-head"><span>Introdução da reunião</span><small id="introStatus"></small></div>
+          <textarea id="dIntro" class="input" rows="3" placeholder="Abertura, contexto e objetivo do encontro — aparece no topo do documento. Salva sozinho ao sair do campo."></textarea>
+        </div>
+
         <div class="rn-pauta-bar">
-          <h3 class="rn-pautas-titulo">Pauta</h3>
+          <h3 class="rn-pautas-titulo">Pauta<span class="rn-total-min" id="pautaTotalMin"></span></h3>
           <button class="btn btn-primary btn-sm" id="btnNovaPauta">+ Adicionar pauta</button>
         </div>
         <div id="pautas">
@@ -125,6 +130,11 @@
         </label>
         <label class="fa-field"><span>Assunto *</span><input type="text" id="pTitulo" class="input" placeholder="Ex.: Revisar enquadramento tributário"></label>
         <label class="fa-field"><span>Detalhe</span><textarea id="pDescricao" class="input" rows="3" placeholder="O que precisa ser discutido / contexto (opcional)"></textarea></label>
+        <div class="fa-row2">
+          <label class="fa-field"><span>Tempo previsto (min)</span><input type="number" id="pMinutos" class="input" min="0" step="5" placeholder="Ex.: 15"></label>
+          <label class="fa-field"><span>Quem apresenta</span><input type="text" id="pApres" class="input" placeholder="Ex.: Thalia, Diego"></label>
+        </div>
+        <label class="fa-check"><input type="checkbox" id="pImpresc"> <span>Não pode deixar de ser tratado</span></label>
         <div class="fa-field"><span>Imagens (prints, comparativos)</span>
           <div class="pimg-lista" id="pImgs"></div>
           <div class="pimg-acoes">
@@ -259,6 +269,8 @@
     // ---- detalhe ----
     async function abrirReuniao(id) {
       reuniaoAtual = reunioes.find(r => r.id === id);
+      document.getElementById('dIntro').value = (reuniaoAtual && reuniaoAtual.introducao) || '';
+      document.getElementById('introStatus').textContent = '';
       if (!reuniaoAtual) return;
       document.getElementById('dCliente').textContent = clienteNome(reuniaoAtual.cliente_id);
       document.getElementById('dData').textContent = fmtData(reuniaoAtual.data_reuniao) + (reuniaoAtual.hora ? ' · 🕐 ' + fmtHora(reuniaoAtual.hora) : '');
@@ -284,7 +296,12 @@
       renderPautas();
     }
 
+    const fmtMin = m => { m = +m || 0; if (!m) return ''; const h = Math.floor(m / 60), r = m % 60; return h ? (h + 'h' + (r ? String(r).padStart(2, '0') : '')) : (m + ' min'); };
+    const somaMin = arr => arr.reduce((a, p) => a + (+p.minutos || 0), 0);
+
     function renderPautas() {
+      const totalGeral = somaMin(pautas);
+      document.getElementById('pautaTotalMin').textContent = totalGeral ? '· ' + fmtMin(totalGeral) + ' previstos' : '';
       if (!pautas.length) {
         elPautas.innerHTML = '<div class="empty-state" style="padding:40px 24px;"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><h3>Pauta vazia</h3><p>Cada setor adiciona seus pontos no botão “Adicionar pauta”.</p></div>';
         return;
@@ -293,9 +310,14 @@
       SETORES_PAUTA.forEach(([s, lbl]) => {
         const itens = pautas.filter(p => p.setor === s);
         if (!itens.length) return;
-        html += '<div class="pauta-grupo"><div class="pauta-grupo-head">' + lbl + ' <span class="pauta-grupo-n">' + itens.length + '</span></div>';
-        html += itens.map(p => '<div class="pauta-item" data-id="' + p.id + '" style="cursor:pointer;" title="Clique pra abrir as anotações da reunião">'
-          + '<div class="pauta-item-body"><div class="pauta-item-tit">' + escapeHtml(p.titulo) + (p.discussao ? ' <span style="font-size:11px; color:#7FBF8E;">📝 anotações</span>' : '') + '</div>'
+        const minSetor = somaMin(itens);
+        html += '<div class="pauta-grupo"><div class="pauta-grupo-head">' + lbl + ' <span class="pauta-grupo-n">' + itens.length + '</span>' + (minSetor ? '<span class="pauta-grupo-min">' + fmtMin(minSetor) + '</span>' : '') + '</div>';
+        html += itens.map(p => '<div class="pauta-item' + (p.imprescindivel ? ' impresc' : '') + '" data-id="' + p.id + '" style="cursor:pointer;" title="Clique pra abrir as anotações da reunião">'
+          + '<div class="pauta-item-body"><div class="pauta-item-tit">' + escapeHtml(p.titulo)
+            + (p.apresentadores ? ' <span class="pauta-apres">(' + escapeHtml(p.apresentadores) + ')</span>' : '')
+            + (p.imprescindivel ? '<span class="pauta-chip imp">não pode faltar</span>' : '')
+            + (p.minutos ? '<span class="pauta-chip">' + fmtMin(p.minutos) + '</span>' : '')
+            + (p.discussao ? ' <span style="font-size:11px; color:#7FBF8E;">📝 anotações</span>' : '') + '</div>'
           + (p.descricao ? '<div class="pauta-item-desc">' + escapeHtml(p.descricao) + '</div>' : '')
           + (Array.isArray(p.imagens) && p.imagens.length ? '<div class="pauta-item-imgs" data-pid="' + p.id + '">' + p.imagens.map(() => '<img alt="">').join('') + '</div>' : '') + '</div>'
           + '<div class="pauta-item-acoes"><button class="rn-link" data-edit="' + p.id + '">Editar</button></div>'
@@ -492,6 +514,9 @@
       document.getElementById('pSetor').value = p ? p.setor : 'fiscal';
       document.getElementById('pTitulo').value = p ? p.titulo : '';
       document.getElementById('pDescricao').value = p ? (p.descricao || '') : '';
+      document.getElementById('pMinutos').value = p && p.minutos ? p.minutos : '';
+      document.getElementById('pApres').value = p ? (p.apresentadores || '') : '';
+      document.getElementById('pImpresc').checked = !!(p && p.imprescindivel);
       imagensPauta = p && Array.isArray(p.imagens) ? p.imagens.slice() : []; imagensNovas = []; renderImgsPauta();
       document.getElementById('mpExcluir').style.display = editPautaId ? 'inline-flex' : 'none';
       ovPauta.classList.add('is-open');
@@ -502,6 +527,17 @@
     ovPauta.addEventListener('click', e => { if (e.target === ovPauta) fecharModalPauta(); });
     document.getElementById('btnNovaPauta').addEventListener('click', () => abrirModalPauta());
 
+    document.getElementById('dIntro').addEventListener('blur', async e => {
+      if (!reuniaoAtual) return;
+      const txt = e.target.value.trim() || null;
+      if ((reuniaoAtual.introducao || null) === txt) return;
+      const st = document.getElementById('introStatus'); st.textContent = 'salvando…';
+      const { error } = await supabase.from('reunioes').update({ introducao: txt }).eq('id', reuniaoAtual.id);
+      if (error) { st.textContent = 'erro ao salvar'; st.style.color = '#F0A0A0'; return; }
+      reuniaoAtual.introducao = txt; st.style.color = ''; st.textContent = 'salvo ✓';
+      setTimeout(() => { if (st.textContent === 'salvo ✓') st.textContent = ''; }, 2500);
+    });
+
     document.getElementById('mpSalvar').addEventListener('click', async () => {
       const titulo = document.getElementById('pTitulo').value.trim();
       if (!titulo) { alert('Informe o assunto da pauta.'); return; }
@@ -510,10 +546,13 @@
         setor: document.getElementById('pSetor').value,
         titulo,
         descricao: document.getElementById('pDescricao').value.trim() || null,
-        imagens: imagensPauta
+        imagens: imagensPauta,
+        minutos: document.getElementById('pMinutos').value !== '' ? Math.max(0, parseInt(document.getElementById('pMinutos').value, 10) || 0) || null : null,
+        apresentadores: document.getElementById('pApres').value.trim() || null,
+        imprescindivel: document.getElementById('pImpresc').checked
       };
       let error;
-      if (editPautaId) ({ error } = await supabase.from('reuniao_pautas').update({ setor: campos.setor, titulo: campos.titulo, descricao: campos.descricao, imagens: campos.imagens }).eq('id', editPautaId));
+      if (editPautaId) ({ error } = await supabase.from('reuniao_pautas').update({ setor: campos.setor, titulo: campos.titulo, descricao: campos.descricao, imagens: campos.imagens, minutos: campos.minutos, apresentadores: campos.apresentadores, imprescindivel: campos.imprescindivel }).eq('id', editPautaId));
       else ({ error } = await supabase.from('reuniao_pautas').insert(campos));
       if (error) { alert('Erro ao salvar: ' + error.message); return; }
       imagensNovas = [];
@@ -551,8 +590,12 @@
       SETORES_PAUTA.forEach(([s, lbl]) => {
         const itens = pautas.filter(p => p.setor === s);
         if (!itens.length) return;
-        blocos += '<div class="bloco"><div class="bloco-setor">' + lbl + '</div>'
-          + itens.map(p => '<div class="pauta"><div class="pauta-tit">' + escapeHtml(p.titulo) + '</div>'
+        const minSetor = somaMin(itens);
+        blocos += '<div class="bloco"><div class="bloco-setor">' + lbl + (minSetor ? '<span class="bloco-min">' + fmtMin(minSetor) + '</span>' : '') + '</div>'
+          + itens.map(p => '<div class="pauta' + (p.imprescindivel ? ' impresc' : '') + '"><div class="pauta-tit">' + escapeHtml(p.titulo)
+            + (p.apresentadores ? ' <span class="apres">(' + escapeHtml(p.apresentadores) + ')</span>' : '')
+            + (p.imprescindivel ? '<span class="tag-imp">não pode faltar</span>' : '')
+            + (p.minutos ? '<span class="tag-min">' + fmtMin(p.minutos) + '</span>' : '') + '</div>'
             + (p.descricao ? '<div class="pauta-desc">' + escapeHtml(p.descricao).replace(/\n/g, '<br>') + '</div>' : '')
             + ((urlsPorPauta[p.id] || []).filter(Boolean).map(u => '<img class="pauta-img" src="' + u + '" alt="">').join(''))
             + (p.discussao ? '<div class="pauta-desc" style="margin-top:6px; padding:8px 10px; background:#F2F5F8; border-left:3px solid #5B82A6;"><b>Anotações da reunião:</b><br>' + escapeHtml(p.discussao).replace(/\n/g, '<br>') + '</div>' : '') + '</div>').join('')
@@ -577,6 +620,12 @@
         + '.pauta{border:1px solid #E3E8EF;border-top:none;border-left:3px solid #8AAEC8;padding:10px 14px;}'
         + '.pauta:last-child{border-radius:0 0 8px 8px;}'
         + '.pauta-tit{font-weight:600;font-size:14px;color:#2A2F37;} .pauta-desc{font-size:13px;color:#555B66;margin-top:4px;line-height:1.5;}'
+        + '.bloco-setor{display:flex;align-items:center;} .bloco-min{margin-left:auto;font-weight:500;font-size:12px;opacity:.9;}'
+        + '.pauta.impresc{border-left:4px solid #D97A2B;background:#FFF7EE;}'
+        + '.apres{color:#3A5878;font-weight:500;} .tag-imp,.tag-min{display:inline-block;font-size:11px;padding:1px 8px;border-radius:999px;margin-left:6px;vertical-align:middle;font-weight:600;}'
+        + '.tag-imp{background:#FBE3CC;color:#9A4E10;} .tag-min{background:#EEF2F6;color:#3A5878;font-weight:500;}'
+        + '.intro{font-size:13.5px;line-height:1.6;color:#2A2F37;margin:0 0 22px;padding:12px 16px;background:#F7F9FB;border-left:4px solid #5B82A6;border-radius:6px;white-space:pre-wrap;}'
+        + '.total-geral{font-size:12.5px;color:#3A5878;margin:-12px 0 18px;text-align:right;}'
         + '.pauta-img{display:block;max-width:100%;max-height:520px;margin-top:8px;border:1px solid #E3E8EF;border-radius:6px;break-inside:avoid;}'
         + '.vazio{color:#888;font-size:14px;font-style:italic;}'
         + '.notas{margin-top:30px;break-inside:avoid;} .notas-tit{color:#3A5878;font-weight:600;font-size:14px;margin-bottom:10px;}'
@@ -589,7 +638,9 @@
         + '<header class="cab"><img src="' + logoUrl + '" alt="Macedo & Reis"><div class="firma"><strong>Macedo &amp; Reis Contabilidade</strong><span>CRC/RS 006418/O</span><span>Três Coroas – RS</span></div></header>'
         + '<hr class="reg"><h1>Pauta de Reunião</h1>'
         + '<div class="dados"><div><b>Cliente:</b> ' + escapeHtml(cli) + '</div><div><b>Data:</b> ' + fmtData(reuniaoAtual.data_reuniao) + (reuniaoAtual.hora ? ' às ' + fmtHora(reuniaoAtual.hora) : '') + '</div>'
-        + (reuniaoAtual.titulo ? '<div><b>Assunto:</b> ' + escapeHtml(reuniaoAtual.titulo) + '</div>' : '') + '</div>'
+        + (reuniaoAtual.titulo ? '<div><b>Assunto:</b> ' + escapeHtml(reuniaoAtual.titulo) + '</div>' : '')
+        + (somaMin(pautas) ? '<div><b>Tempo previsto:</b> ' + fmtMin(somaMin(pautas)) + '</div>' : '') + '</div>'
+        + (reuniaoAtual.introducao ? '<div class="intro">' + escapeHtml(reuniaoAtual.introducao) + '</div>' : '')
         + blocos
         + '<div class="notas"><div class="notas-tit">Encaminhamentos / anotações</div><div class="linhas"></div><div class="linhas"></div><div class="linhas"></div><div class="linhas"></div></div>'
         + '<div class="rodape">Emitido em ' + hojeStr + ' · Macedo &amp; Reis Contabilidade · CRC/RS 006418/O</div>'
@@ -612,6 +663,19 @@
   </script>
 
   <style>
+    .rn-intro { background:rgba(255,255,255,.03); border-radius:12px; padding:12px 16px 14px; margin:0 0 18px; }
+    .rn-intro-head { display:flex; align-items:center; gap:10px; margin-bottom:8px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:#8A93A6; }
+    .rn-intro-head small { color:#5FC698; text-transform:none; letter-spacing:0; font-size:11px; }
+    .rn-intro textarea { width:100%; resize:vertical; }
+    .rn-total-min { font-size:12px; font-weight:500; color:#8A93A6; margin-left:8px; }
+    .pauta-grupo-min { float:right; font-size:12px; font-weight:500; color:#C5D8E8; opacity:.85; }
+    .pauta-item.impresc { border-left:3px solid #E8A15C; background:rgba(232,161,92,.07); }
+    .pauta-chip { display:inline-block; font-size:11px; padding:2px 8px; border-radius:999px; background:rgba(255,255,255,.07); color:#C9D3E0; margin-left:6px; vertical-align:middle; }
+    .pauta-chip.imp { background:rgba(232,161,92,.18); color:#F0C08A; font-weight:600; }
+    .pauta-apres { color:#8AAEC8; font-weight:500; }
+    .fa-row2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .fa-check { display:flex; align-items:center; gap:8px; margin-top:8px; font-size:13.5px; color:#E6EAF0; cursor:pointer; }
+    .fa-check input { width:16px; height:16px; }
     .fa-subnav { display:flex; gap:6px; margin-bottom:22px; border-bottom:1px solid rgba(255,255,255,.08); }
     .fa-tab { padding:9px 16px; font-size:14px; color:#8A93A6; text-decoration:none; border-bottom:2px solid transparent; margin-bottom:-1px; }
     .fa-tab:hover { color:#C5D8E8; }
