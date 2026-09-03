@@ -127,7 +127,7 @@
       </div>
 
       <div class="rg-sec">Débitos levantados</div>
-      <table class="rg-ed"><thead><tr><th style="width:110px">Órgão</th><th>Descrição / referências</th><th style="width:110px">Valor (R$)</th><th style="width:230px">Condição de parcelamento</th><th style="width:120px">Situação</th><th style="width:110px">Andamento</th><th style="width:44px" title="Linha que não soma no total — ex.: consolidação, outra forma de quitar itens já listados">Ñ soma</th><th style="width:72px"></th></tr></thead><tbody id="fiDebitos"></tbody></table>
+      <table class="rg-ed"><thead><tr><th style="width:110px">Órgão</th><th>Descrição / referências</th><th style="width:110px">Valor (R$)</th><th style="width:230px">Condição de parcelamento</th><th style="width:120px">Situação</th><th style="width:110px">Andamento</th><th style="width:48px" title="Faz parte do MESMO parcelamento do débito de cima: valor e condição ficam na linha de cima e saem mesclados na apresentação">↳ Junto</th><th style="width:44px" title="Linha que não soma no total — ex.: consolidação, outra forma de quitar itens já listados">Ñ soma</th><th style="width:72px"></th></tr></thead><tbody id="fiDebitos"></tbody></table>
       <button class="rg-add" id="fiAddDeb">+ adicionar débito</button>
 
       <div class="rg-sec">Serviços do escritório (honorários)</div>
@@ -276,13 +276,20 @@
       return '<tr data-id="' + (d.id || '') + '">' +
         '<td><input class="d-orgao" value="' + escapeHtml(d.orgao || '') + '"></td>' +
         '<td><textarea class="d-desc">' + escapeHtml(d.descricao || '') + '</textarea></td>' +
-        '<td class="c-num"><input class="d-valor" value="' + brNum(d.valor) + '" placeholder="a apurar"></td>' +
-        '<td><textarea class="d-cond">' + escapeHtml(d.condicao || '') + '</textarea></td>' +
+        '<td class="c-num"><input class="d-valor" value="' + (d.junto_anterior ? '' : brNum(d.valor)) + '" placeholder="' + (d.junto_anterior ? '↑ na linha de cima' : 'a apurar') + '"' + (d.junto_anterior ? ' disabled' : '') + '></td>' +
+        '<td><textarea class="d-cond"' + (d.junto_anterior ? ' disabled placeholder="↑ na linha de cima"' : '') + '>' + (d.junto_anterior ? '' : escapeHtml(d.condicao || '')) + '</textarea></td>' +
         '<td><input class="d-sit" value="' + escapeHtml(d.situacao || '') + '"></td>' +
         '<td><select class="d-st">' + ST_DEB.map(s => '<option value="' + s[0] + '"' + ((d.status || 'pendente') === s[0] ? ' selected' : '') + '>' + s[1] + '</option>').join('') + '</select></td>' +
+        '<td style="text-align:center;padding-top:9px"><input type="checkbox" class="d-jt" title="Mesmo parcelamento do débito de cima"' + (d.junto_anterior ? ' checked' : '') + '></td>' +
         '<td style="text-align:center;padding-top:9px"><input type="checkbox" class="d-ns" title="Não soma no total"' + (d.nao_soma ? ' checked' : '') + '></td>' +
         '<td style="white-space:nowrap"><button class="rg-mv" data-dir="-1" title="Subir">↑</button><button class="rg-mv" data-dir="1" title="Descer">↓</button><button class="rg-del" title="Remover">×</button></td></tr>';
     }
+    document.getElementById('fiDebitos').addEventListener('change', e => {
+      if (!e.target.classList.contains('d-jt')) return;
+      const tr = e.target.closest('tr'), v = tr.querySelector('.d-valor'), c = tr.querySelector('.d-cond');
+      if (e.target.checked) { v.value = ''; v.disabled = true; v.placeholder = '↑ na linha de cima'; c.value = ''; c.disabled = true; c.placeholder = '↑ na linha de cima'; }
+      else { v.disabled = false; v.placeholder = 'a apurar'; c.disabled = false; c.placeholder = ''; }
+    });
     function linhaSrv(s) {
       return '<tr data-id="' + (s.id || '') + '">' +
         '<td><input class="s-desc" value="' + escapeHtml(s.descricao || '') + '"></td>' +
@@ -357,7 +364,9 @@
             condicao: tr.querySelector('.d-cond').value.trim() || null,
             situacao: tr.querySelector('.d-sit').value.trim() || null,
             status: tr.querySelector('.d-st').value,
-            nao_soma: tr.querySelector('.d-ns').checked };
+            nao_soma: tr.querySelector('.d-ns').checked,
+            junto_anterior: tr.querySelector('.d-jt').checked };
+          if (o.junto_anterior) { o.valor = null; o.condicao = null; }
           if (!o.descricao) return;
           if (tr.dataset.id) { debIds.push(tr.dataset.id); debUpd.push({ id: tr.dataset.id, ...o }); }
           else debNovos.push(o);
@@ -410,11 +419,15 @@
       const totSrv = srvFix.reduce((a, s) => a + (+s.valor || 0), 0);
       const logoUrl = new URL('assets/logo-mr.png', location.href).href;
       const hojeStr = new Date().toLocaleDateString('pt-BR');
-      const linhas = debs.map(d =>
-        '<tr><td>' + escapeHtml(d.orgao || '—') + (d.situacao ? '<br><span class="sit">' + escapeHtml(d.situacao) + '</span>' : '') + '</td>' +
-        '<td>' + escapeHtml(d.descricao) + '</td>' +
-        '<td class="num">' + (d.valor == null ? '<i>a apurar</i>' : brl(d.valor) + (d.nao_soma ? ' <span style="color:#8A93A6">*</span>' : '')) + '</td>' +
-        '<td>' + escapeHtml(d.condicao || '—') + '</td></tr>').join('');
+      // grupos: um débito "junto" entra no parcelamento do débito não-junto imediatamente anterior
+      const grupos = []; debs.forEach(d => { if (d.junto_anterior && grupos.length) grupos[grupos.length - 1].push(d); else grupos.push([d]); });
+      const linhas = grupos.map(g => g.map((d, i) => {
+        const cab = g[0], n = g.length;
+        return '<tr' + (n > 1 ? ' class="grp' + (i === n - 1 ? ' grp-fim' : '') + '"' : '') + '><td>' + escapeHtml(d.orgao || '—') + (d.situacao ? '<br><span class="sit">' + escapeHtml(d.situacao) + '</span>' : '') + '</td>' +
+          '<td>' + escapeHtml(d.descricao) + '</td>' +
+          (i === 0 ? '<td class="num mesc" rowspan="' + n + '">' + (cab.valor == null ? '<i>a apurar</i>' : brl(cab.valor) + (cab.nao_soma ? ' <span style="color:#8A93A6">*</span>' : '')) + '</td>' +
+                     '<td class="mesc" rowspan="' + n + '">' + escapeHtml(cab.condicao || '—') + '</td>' : '') + '</tr>';
+      }).join('')).join('');
       const linhaS = s =>
         '<tr><td>' + escapeHtml(s.descricao) + '</td><td class="num">' + (s.valor == null ? '—' : brl(s.valor)) + '</td><td>' + escapeHtml(s.condicao || '—') + '</td></tr>';
       const linhasSrv = srvFix.map(linhaS).join('');
@@ -453,6 +466,7 @@
         + '<p class="sub">' + escapeHtml(c.campanha || 'Retorno ao Simples Nacional') + '</p>'
         + '<div class="dados"><b>' + escapeHtml(cli.nome_principal || '') + '</b>' + (cli.documento ? ' · CNPJ ' + escapeHtml(fmtCnpj(cli.documento)) : '') + '</div>'
         + '<p class="ctx">' + escapeHtml(c.contexto || contextoPadrao(c)).replace(/(até \d{2}\/\d{2}\/\d{4})/, '<b>$1</b>') + '</p>'
+        + '<style>td.mesc{vertical-align:middle;} tr.grp:not(.grp-fim) td:not(.mesc){border-bottom:1px dotted #D5DCE4;}</style>'
         + '<table><thead><tr><th style="width:120px">Órgão</th><th>Débito / referências</th><th class="num" style="width:110px">Valor</th><th style="width:250px">Condição simulada</th></tr></thead><tbody>' + linhas + '</tbody></table>'
         + '<div class="tot"><span class="t1">Total dos débitos: <b>' + brl(c.total_debitos) + '</b></span><span class="entrada">Entrada prevista para regularizar<b>' + brl(c.entrada_prevista) + '</b></span></div>'
         + (debs.some(d => d.nao_soma) ? '<p style="font-size:10.5px;color:#66707E;margin:-12px 0 18px">* Não somado no total — representa a consolidação (forma alternativa de quitação) de itens já listados acima.</p>' : '')
