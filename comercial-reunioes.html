@@ -75,7 +75,7 @@
         </div>
 
         <div class="rn-intro">
-          <div class="rn-intro-head"><span>Introdução da reunião</span><small id="introStatus"></small><label class="rn-intro-min">Tempo (min) <input type="number" id="dIntroMin" class="input" min="0" step="5" placeholder="0"></label></div>
+          <div class="rn-intro-head"><span>Introdução da reunião</span><small id="introStatus"></small><span class="pauta-chip hora" id="introFaixa" style="margin-left:auto"></span><label class="rn-intro-min" style="margin-left:10px">Tempo (min) <input type="number" id="dIntroMin" class="input" min="0" step="5" placeholder="0"></label></div>
           <textarea id="dIntro" class="input" rows="3" placeholder="Abertura, contexto e objetivo do encontro — aparece no topo do documento. Salva sozinho ao sair do campo."></textarea>
         </div>
 
@@ -135,6 +135,7 @@
           <label class="fa-field"><span>Quem apresenta</span><input type="text" id="pApres" class="input" placeholder="Ex.: Thalia, Diego"></label>
         </div>
         <label class="fa-check"><input type="checkbox" id="pImpresc"> <span>Não pode deixar de ser tratado</span></label>
+        <label class="fa-check"><input type="checkbox" id="pVisivel" checked> <span>Aparece no documento do cliente</span> <small style="color:#8A93A6;font-weight:400;">(desmarque para pauta interna)</small></label>
         <div class="fa-field"><span>Imagens (prints, comparativos)</span>
           <div class="pimg-lista" id="pImgs"></div>
           <div class="pimg-acoes">
@@ -164,6 +165,20 @@
       <label class="fa-field"><span>Anotações da reunião (salva sozinho enquanto digita)</span>
         <textarea id="dscTexto" class="input" rows="10" placeholder="Vá registrando aqui o que está sendo conversado…"></textarea></label>
       <div id="dscStatus" style="font-size:11.5px; color:#6E7787; min-height:14px; text-align:right;"></div>
+      <div class="enc-sec">
+        <h4>Encaminhamentos internos</h4>
+        <div class="enc-dica">Não vão para o cliente. Cada um vira uma tarefa na agenda do responsável e no painel do setor.</div>
+        <div id="encLista"></div>
+        <div class="enc-form">
+          <label>O que precisa ser feito <input type="text" id="encTitulo" class="input" placeholder="Ex.: Enviar simulação do Simples com os números conversados"></label>
+          <div class="linha2">
+            <label>Setor <select id="encSetor" class="select"></select></label>
+            <label>Responsável <input type="text" id="encResp" class="input" list="encRespLista" placeholder="Nome"><datalist id="encRespLista"><option value="Thalia"><option value="Vitória"><option value="Edna"><option value="Adaini"><option value="Luana"><option value="Fernanda"><option value="Samuel"><option value="Diego"></datalist></label>
+            <label>Prazo <input type="date" id="encPrazo" class="input"></label>
+            <button class="btn btn-primary btn-sm" id="encCriar" type="button">Criar tarefa</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -297,12 +312,36 @@
       renderPautas();
     }
 
+    // Cronograma: horários a partir da hora da reunião (introdução → setores → pautas, na ordem da tela).
+    const hhmm = mins => { mins = ((mins % 1440) + 1440) % 1440; return String(Math.floor(mins / 60)).padStart(2, '0') + 'h' + String(mins % 60).padStart(2, '0'); };
+    function cronograma() {
+      const c = { intro: null, pauta: {}, setor: {}, total: null };
+      if (!reuniaoAtual || !reuniaoAtual.hora) return c;
+      const [h, m] = String(reuniaoAtual.hora).slice(0, 5).split(':').map(Number);
+      let cur = h * 60 + m; const ini = cur;
+      const im = +reuniaoAtual.introducao_minutos || 0;
+      if (im) { c.intro = [cur, cur + im]; cur += im; }
+      SETORES_PAUTA.forEach(([s]) => {
+        let sIni = null, sFim = null;
+        pautas.filter(p => p.setor === s).forEach(p => {
+          const pm = +p.minutos || 0; if (!pm) return;
+          c.pauta[p.id] = [cur, cur + pm]; if (sIni === null) sIni = cur; cur += pm; sFim = cur;
+        });
+        if (sIni !== null) c.setor[s] = [sIni, sFim];
+      });
+      if (cur > ini) c.total = [ini, cur];
+      return c;
+    }
+    const faixa = f => f ? hhmm(f[0]) + ' – ' + hhmm(f[1]) : '';
+
     const fmtMin = m => { m = +m || 0; if (!m) return ''; const h = Math.floor(m / 60), r = m % 60; return h ? (h + 'h' + (r ? String(r).padStart(2, '0') : '')) : (m + ' min'); };
     const somaMin = arr => arr.reduce((a, p) => a + (+p.minutos || 0), 0);
 
     function renderPautas() {
       const totalGeral = somaMin(pautas) + (reuniaoAtual && +reuniaoAtual.introducao_minutos || 0);
-      document.getElementById('pautaTotalMin').textContent = totalGeral ? '· ' + fmtMin(totalGeral) + ' previstos no total' : '';
+      const cr = cronograma();
+      document.getElementById('pautaTotalMin').textContent = totalGeral ? '· ' + (cr.total ? faixa(cr.total) + ' · ' : '') + fmtMin(totalGeral) + ' no total' : '';
+      document.getElementById('introFaixa').textContent = cr.intro ? faixa(cr.intro) : '';
       if (!pautas.length) {
         elPautas.innerHTML = '<div class="empty-state" style="padding:40px 24px;"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><h3>Pauta vazia</h3><p>Cada setor adiciona seus pontos no botão “Adicionar pauta”.</p></div>';
         return;
@@ -312,12 +351,13 @@
         const itens = pautas.filter(p => p.setor === s);
         if (!itens.length) return;
         const minSetor = somaMin(itens);
-        html += '<div class="pauta-grupo"><div class="pauta-grupo-head">' + lbl + ' <span class="pauta-grupo-n">' + itens.length + '</span>' + (minSetor ? '<span class="pauta-grupo-min">' + fmtMin(minSetor) + '</span>' : '') + '</div>';
+        html += '<div class="pauta-grupo"><div class="pauta-grupo-head">' + lbl + ' <span class="pauta-grupo-n">' + itens.length + '</span>' + (minSetor ? '<span class="pauta-grupo-min">' + (cr.setor[s] ? faixa(cr.setor[s]) + ' · ' : '') + fmtMin(minSetor) + '</span>' : '') + '</div>';
         html += itens.map(p => '<div class="pauta-item' + (p.imprescindivel ? ' impresc' : '') + '" data-id="' + p.id + '" style="cursor:pointer;" title="Clique pra abrir as anotações da reunião">'
           + '<div class="pauta-item-body"><div class="pauta-item-tit">' + escapeHtml(p.titulo)
             + (p.apresentadores ? ' <span class="pauta-apres">(' + escapeHtml(p.apresentadores) + ')</span>' : '')
             + (p.imprescindivel ? '<span class="pauta-chip imp">não pode faltar</span>' : '')
-            + (p.minutos ? '<span class="pauta-chip">' + fmtMin(p.minutos) + '</span>' : '')
+            + (p.visivel_cliente === false ? '<span class="pauta-chip interna">interna</span>' : '')
+            + (p.minutos ? '<span class="pauta-chip' + (cr.pauta[p.id] ? ' hora' : '') + '">' + (cr.pauta[p.id] ? faixa(cr.pauta[p.id]) : fmtMin(p.minutos)) + '</span>' : '')
             + (p.discussao ? ' <span style="font-size:11px; color:#7FBF8E;">📝 anotações</span>' : '') + '</div>'
           + (p.descricao ? '<div class="pauta-item-desc">' + escapeHtml(p.descricao) + '</div>' : '')
           + (Array.isArray(p.imagens) && p.imagens.length ? '<div class="pauta-item-imgs" data-pid="' + p.id + '">' + p.imagens.map(() => '<img alt="">').join('') + '</div>' : '') + '</div>'
@@ -428,8 +468,40 @@
 
     // ---------- modo reunião: anotações ao vivo ----------
     let dscPauta = null, dscTimer = null;
+    const SETOR_TAREFA = { fiscal: 'fiscal', dp: 'dp', contabil: 'contabil', societario: 'societario', financeiro: 'financeiro', comercial: 'comercial', direcao: 'gestao' };
+    async function carregarEncaminhamentos() {
+      const el = document.getElementById('encLista'); if (!dscPauta) { el.innerHTML = ''; return; }
+      const { data } = await supabase.from('tarefas').select('id, titulo, responsavel, prazo, status, setor').eq('reuniao_pauta_id', dscPauta.id).order('created_at', { ascending: true });
+      el.innerHTML = (data || []).map(t => '<div class="enc-item"><b>' + escapeHtml(t.titulo) + '</b><small>' + escapeHtml(t.responsavel || '—') + (t.prazo ? ' · ' + fmtData(t.prazo) : '') + '</small><span class="st' + (t.status === 'concluida' ? ' ok' : '') + '">' + (t.status === 'concluida' ? 'concluída' : 'pendente') + '</span></div>').join('');
+    }
+    async function criarEncaminhamento() {
+      if (!dscPauta || !reuniaoAtual) return;
+      const titulo = document.getElementById('encTitulo').value.trim();
+      if (!titulo) { alert('Descreva o que precisa ser feito.'); return; }
+      const setor = document.getElementById('encSetor').value;
+      const { data: { user } } = await supabase.auth.getUser();
+      const novo = {
+        setor, titulo, cliente_id: reuniaoAtual.cliente_id || null,
+        responsavel: document.getElementById('encResp').value.trim() || null,
+        prazo: document.getElementById('encPrazo').value || null,
+        prioridade: 'normal', origem: 'reuniao', status: 'pendente', reuniao_pauta_id: dscPauta.id,
+        descricao: 'Encaminhamento da reunião com ' + clienteNome(reuniaoAtual.cliente_id) + ' em ' + fmtData(reuniaoAtual.data_reuniao) + ' · pauta: ' + (dscPauta.titulo || '')
+      };
+      const btn = document.getElementById('encCriar'); btn.disabled = true;
+      const { data: ins, error } = await supabase.from('tarefas').insert(novo).select('id').single();
+      btn.disabled = false;
+      if (error) { alert('Erro ao criar a tarefa: ' + error.message); return; }
+      if (ins) await supabase.from('tarefa_historico').insert({ tarefa_id: ins.id, descricao: 'Criada como encaminhamento de reunião', autor: user ? user.email : null });
+      document.getElementById('encTitulo').value = ''; document.getElementById('encPrazo').value = '';
+      await carregarEncaminhamentos();
+    }
+    document.getElementById('encSetor').innerHTML = SETORES_PAUTA.map(([s, l]) => '<option value="' + SETOR_TAREFA[s] + '">' + l + '</option>').join('');
+    document.getElementById('encCriar').addEventListener('click', criarEncaminhamento);
+
     function abrirDiscussao(p){
       dscPauta = p;
+      document.getElementById('encSetor').value = SETOR_TAREFA[p.setor] || 'comercial';
+      document.getElementById('encLista').innerHTML = ''; carregarEncaminhamentos();
       document.getElementById('dscTitulo').textContent = p.titulo || 'Pauta';
       document.getElementById('dscDesc').textContent = p.descricao || '';
       document.getElementById('dscTexto').value = p.discussao || '';
@@ -518,6 +590,7 @@
       document.getElementById('pMinutos').value = p && p.minutos ? p.minutos : '';
       document.getElementById('pApres').value = p ? (p.apresentadores || '') : '';
       document.getElementById('pImpresc').checked = !!(p && p.imprescindivel);
+      document.getElementById('pVisivel').checked = p ? p.visivel_cliente !== false : true;
       imagensPauta = p && Array.isArray(p.imagens) ? p.imagens.slice() : []; imagensNovas = []; renderImgsPauta();
       document.getElementById('mpExcluir').style.display = editPautaId ? 'inline-flex' : 'none';
       ovPauta.classList.add('is-open');
@@ -561,10 +634,11 @@
         imagens: imagensPauta,
         minutos: document.getElementById('pMinutos').value !== '' ? Math.max(0, parseInt(document.getElementById('pMinutos').value, 10) || 0) || null : null,
         apresentadores: document.getElementById('pApres').value.trim() || null,
-        imprescindivel: document.getElementById('pImpresc').checked
+        imprescindivel: document.getElementById('pImpresc').checked,
+        visivel_cliente: document.getElementById('pVisivel').checked
       };
       let error;
-      if (editPautaId) ({ error } = await supabase.from('reuniao_pautas').update({ setor: campos.setor, titulo: campos.titulo, descricao: campos.descricao, imagens: campos.imagens, minutos: campos.minutos, apresentadores: campos.apresentadores, imprescindivel: campos.imprescindivel }).eq('id', editPautaId));
+      if (editPautaId) ({ error } = await supabase.from('reuniao_pautas').update({ setor: campos.setor, titulo: campos.titulo, descricao: campos.descricao, imagens: campos.imagens, minutos: campos.minutos, apresentadores: campos.apresentadores, imprescindivel: campos.imprescindivel, visivel_cliente: campos.visivel_cliente }).eq('id', editPautaId));
       else ({ error } = await supabase.from('reuniao_pautas').insert(campos));
       if (error) { alert('Erro ao salvar: ' + error.message); return; }
       imagensNovas = [];
@@ -599,21 +673,22 @@
       for (const p of pautas) if (Array.isArray(p.imagens) && p.imagens.length) urlsPorPauta[p.id] = await Promise.all(p.imagens.map(im => urlAssinada(im.path)));
       const logoUrl = new URL('assets/logo-mr.png', location.href).href;
       let blocos = '';
+      const cr = cronograma();
       SETORES_PAUTA.forEach(([s, lbl]) => {
-        const itens = pautas.filter(p => p.setor === s);
+        const itens = pautas.filter(p => p.setor === s && p.visivel_cliente !== false);
         if (!itens.length) return;
         const minSetor = somaMin(itens);
-        blocos += '<div class="bloco"><div class="bloco-setor">' + lbl + (minSetor ? '<span class="bloco-min">' + fmtMin(minSetor) + '</span>' : '') + '</div>'
+        blocos += '<div class="bloco"><div class="bloco-setor">' + lbl + (minSetor ? '<span class="bloco-min">' + (cr.setor[s] ? faixa(cr.setor[s]) : fmtMin(minSetor)) + '</span>' : '') + '</div>'
           + itens.map(p => '<div class="pauta' + (p.imprescindivel ? ' impresc' : '') + '"><div class="pauta-tit">' + escapeHtml(p.titulo)
             + (p.apresentadores ? ' <span class="apres">(' + escapeHtml(p.apresentadores) + ')</span>' : '')
             + (p.imprescindivel ? '<span class="tag-imp">não pode faltar</span>' : '')
-            + (p.minutos ? '<span class="tag-min">' + fmtMin(p.minutos) + '</span>' : '') + '</div>'
+            + (p.minutos ? '<span class="tag-min">' + (cr.pauta[p.id] ? faixa(cr.pauta[p.id]) : fmtMin(p.minutos)) + '</span>' : '') + '</div>'
             + (p.descricao ? '<div class="pauta-desc">' + escapeHtml(p.descricao).replace(/\n/g, '<br>') + '</div>' : '')
             + ((urlsPorPauta[p.id] || []).filter(Boolean).map(u => '<img class="pauta-img" src="' + u + '" alt="">').join(''))
             + (p.discussao ? '<div class="pauta-desc" style="margin-top:6px; padding:8px 10px; background:#F2F5F8; border-left:3px solid #5B82A6;"><b>Anotações da reunião:</b><br>' + escapeHtml(p.discussao).replace(/\n/g, '<br>') + '</div>' : '') + '</div>').join('')
           + '</div>';
       });
-      if (!blocos) blocos = '<p class="vazio">Nenhuma pauta cadastrada para esta reunião.</p>';
+      if (!blocos) blocos = '<p class="vazio">Nenhuma pauta para o cliente nesta reunião.</p>';
       const hojeStr = new Date().toLocaleDateString('pt-BR');
       const html = '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">'
         + '<title>Pauta de Reunião — ' + escapeHtml(cli) + '</title><style>'
@@ -652,10 +727,9 @@
         + '<hr class="reg"><h1>Pauta de Reunião</h1>'
         + '<div class="dados"><div><b>Cliente:</b> ' + escapeHtml(cli) + '</div><div><b>Data:</b> ' + fmtData(reuniaoAtual.data_reuniao) + (reuniaoAtual.hora ? ' às ' + fmtHora(reuniaoAtual.hora) : '') + '</div>'
         + (reuniaoAtual.titulo ? '<div><b>Assunto:</b> ' + escapeHtml(reuniaoAtual.titulo) + '</div>' : '')
-        + ((somaMin(pautas) + (+reuniaoAtual.introducao_minutos || 0)) ? '<div><b>Tempo previsto:</b> ' + fmtMin(somaMin(pautas) + (+reuniaoAtual.introducao_minutos || 0)) + '</div>' : '') + '</div>'
-        + (reuniaoAtual.introducao || reuniaoAtual.introducao_minutos ? '<div class="intro">' + (reuniaoAtual.introducao_minutos ? '<div class="intro-min">Introdução · ' + fmtMin(reuniaoAtual.introducao_minutos) + '</div>' : '') + escapeHtml(reuniaoAtual.introducao || '') + '</div>' : '')
+        + ((somaMin(pautas) + (+reuniaoAtual.introducao_minutos || 0)) ? '<div><b>Tempo previsto:</b> ' + (cr.total ? faixa(cr.total) + ' · ' : '') + fmtMin(somaMin(pautas) + (+reuniaoAtual.introducao_minutos || 0)) + '</div>' : '') + '</div>'
+        + (reuniaoAtual.introducao || reuniaoAtual.introducao_minutos ? '<div class="intro">' + (reuniaoAtual.introducao_minutos ? '<div class="intro-min">Introdução · ' + (cr.intro ? faixa(cr.intro) : fmtMin(reuniaoAtual.introducao_minutos)) + '</div>' : '') + escapeHtml(reuniaoAtual.introducao || '') + '</div>' : '')
         + blocos
-        + '<div class="notas"><div class="notas-tit">Encaminhamentos / anotações</div><div class="linhas"></div><div class="linhas"></div><div class="linhas"></div><div class="linhas"></div></div>'
         + '<div class="rodape">Emitido em ' + hojeStr + ' · Macedo &amp; Reis Contabilidade · CRC/RS 006418/O</div>'
         + '</div></body></html>';
       const w = window.open('', '_blank');
@@ -691,6 +765,19 @@
     .fa-row2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
     .fa-check { display:flex; align-items:center; gap:8px; margin-top:8px; font-size:13.5px; color:#E6EAF0; cursor:pointer; }
     .fa-check input { width:16px; height:16px; }
+    .pauta-chip.interna { background:rgba(138,147,166,.18); color:#AEB6C4; }
+    .pauta-chip.hora { background:rgba(91,130,166,.18); color:#C5D8E8; font-variant-numeric:tabular-nums; }
+    .enc-sec { margin-top:16px; padding-top:12px; border-top:1px solid rgba(255,255,255,.08); }
+    .enc-sec h4 { margin:0 0 4px; font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:#8A93A6; }
+    .enc-sec .enc-dica { font-size:11.5px; color:#6E7787; margin-bottom:10px; }
+    .enc-item { display:flex; align-items:center; gap:10px; padding:7px 10px; border-radius:8px; background:rgba(255,255,255,.04); margin-bottom:6px; font-size:13px; color:#C9D3E0; }
+    .enc-item b { color:#E6EAF0; font-weight:500; flex:1; }
+    .enc-item small { color:#8A93A6; white-space:nowrap; }
+    .enc-item .st { font-size:11px; padding:2px 8px; border-radius:999px; background:rgba(232,161,92,.18); color:#F0C08A; }
+    .enc-item .st.ok { background:rgba(95,198,152,.16); color:#7FDBA8; }
+    .enc-form { display:grid; grid-template-columns:1fr; gap:8px; margin-top:8px; }
+    .enc-form .linha2 { display:grid; grid-template-columns:1.2fr 1.2fr 1fr auto; gap:8px; align-items:end; }
+    .enc-form label { display:flex; flex-direction:column; gap:4px; font-size:11px; color:#8A93A6; text-transform:uppercase; letter-spacing:.05em; }
     .fa-subnav { display:flex; gap:6px; margin-bottom:22px; border-bottom:1px solid rgba(255,255,255,.08); }
     .fa-tab { padding:9px 16px; font-size:14px; color:#8A93A6; text-decoration:none; border-bottom:2px solid transparent; margin-bottom:-1px; }
     .fa-tab:hover { color:#C5D8E8; }
