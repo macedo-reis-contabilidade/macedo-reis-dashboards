@@ -36,6 +36,14 @@
     .dre-obs { width:100%; max-width:900px; min-height:70px; background:#161A21; border:1px solid #2A313C; color:#E6EAF0; border-radius:8px; padding:10px 12px; font-size:13.5px; margin-top:14px; font-family:inherit; }
     .dre-sec { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:#8A93A6; margin:18px 0 6px; }
     .dre-aviso { font-size:12px; color:#8A93A6; margin: 10px 0 0; max-width:900px; }
+    .dre-nome { width:100%; background:transparent; border:1px solid transparent; color:#C9D3E0; border-radius:6px; padding:5px 8px; font-size:14px; font-family:inherit; }
+    .dre-nome:hover { border-color:#2A313C; } .dre-nome:focus { outline:none; border-color:#5B82A6; background:#161A21; }
+    .dre-x { background:none; border:none; color:#5A6472; cursor:pointer; font-size:15px; padding:2px 6px; border-radius:6px; line-height:1; }
+    .dre-x:hover { color:#F0A0A0; background:rgba(240,160,160,.08); }
+    tr.add td { padding:2px 16px 8px 34px; }
+    .dre-add { background:none; border:none; color:#6E8FB0; cursor:pointer; font-size:12px; padding:3px 0; }
+    .dre-add:hover { color:#8FC0F0; }
+    table.dre th.acao, table.dre td.acao { width:32px; padding-left:0; padding-right:8px; }
   </style>
 </head>
 <body>
@@ -79,7 +87,7 @@
 
       <div class="dre-wrap">
         <table class="dre">
-          <thead><tr><th>Conta</th><th class="num" style="width:170px">Valor (R$)</th><th class="num" style="width:100px">% da receita</th></tr></thead>
+          <thead><tr><th>Conta</th><th class="num" style="width:170px">Valor (R$)</th><th class="num" style="width:100px">% da receita</th><th class="acao"></th></tr></thead>
           <tbody id="dreBody"></tbody>
         </table>
       </div>
@@ -98,67 +106,72 @@
     const pct = (v, base) => base ? (v / base * 100).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%' : '—';
     const escapeHtml = s => String(s ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
     const fmtCnpj = d => (d || '').replace(/\D/g, '').replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5') || d;
+    const soma = arr => arr.reduce((a, l) => a + (+l.valor || 0), 0);
 
-    // Estrutura fiel à planilha: linhas de entrada e totais calculados.
-    const LINHAS = [
-      { k: 'receita_bruta',  t: '(=) RECEITA BRUTA',            tipo: 'tot', calc: (v, t) => v.receita_cn + v.receita_sn },
-      { k: 'receita_cn',     t: 'C/ NOTAS',                     tipo: 'in' },
-      { k: 'receita_sn',     t: 'S/ NOTAS',                     tipo: 'in' },
-      { k: 'deducoes',       t: '(-) DEDUÇÕES DAS RECEITAS',    tipo: 'tot', calc: (v, t) => v.devolucoes + v.icms + v.pis + v.cofins },
-      { k: 'devolucoes',     t: 'DEVOLUÇÕES',                   tipo: 'in' },
-      { k: 'icms',           t: 'ICMS',                         tipo: 'in' },
-      { k: 'pis',            t: 'PIS',                          tipo: 'in' },
-      { k: 'cofins',         t: 'COFINS',                       tipo: 'in' },
-      { k: 'receita_liquida',t: '(=) RECEITA LÍQUIDA',          tipo: 'tot', calc: (v, t) => t.receita_bruta - t.deducoes },
-      { k: 'cmv',            t: '(-) C.M.V',                    tipo: 'in', raiz: true },
-      { k: 'lucro_bruto',    t: '(=) LUCRO BRUTO',              tipo: 'tot', calc: (v, t) => t.receita_liquida - v.cmv },
-      { k: 'desp_op',        t: '(-) DESPESAS OPERACIONAIS',    tipo: 'tot', calc: (v, t) => v.salarios + v.fgts + v.inss + v.energia + v.agua + v.telefone + v.internet + v.softwares + v.veiculos + v.honorarios + v.seguros + v.material + v.monitoramento + v.assinaturas },
-      { k: 'salarios',       t: 'SALÁRIOS',                     tipo: 'in' },
-      { k: 'fgts',           t: 'FGTS',                         tipo: 'in' },
-      { k: 'inss',           t: 'INSS',                         tipo: 'in' },
-      { k: 'energia',        t: 'ENERGIA',                      tipo: 'in' },
-      { k: 'agua',           t: 'ÁGUA',                         tipo: 'in' },
-      { k: 'telefone',       t: 'TELEFONE',                     tipo: 'in' },
-      { k: 'internet',       t: 'INTERNET',                     tipo: 'in' },
-      { k: 'softwares',      t: 'SOFTWARES',                    tipo: 'in' },
-      { k: 'veiculos',       t: 'DESPESAS C/ VEÍCULOS (IPVA, COMBUSTÍVEL, PEDÁGIOS)', tipo: 'in' },
-      { k: 'honorarios',     t: 'HONORÁRIOS',                   tipo: 'in' },
-      { k: 'seguros',        t: 'SEGUROS',                      tipo: 'in' },
-      { k: 'material',       t: 'MATERIAL DE ESCRITÓRIO',       tipo: 'in' },
-      { k: 'monitoramento',  t: 'MONITORAMENTO E SEGURANÇA',    tipo: 'in' },
-      { k: 'assinaturas',    t: 'ASSINATURAS E MENSALIDADES',   tipo: 'in' },
-      { k: 'desp_fin',       t: '(-) DESPESAS FINANCEIRAS',     tipo: 'tot', calc: (v, t) => v.juros },
-      { k: 'juros',          t: 'JUROS E TAXAS BANCÁRIAS',      tipo: 'in' },
-      { k: 'lucro_liquido',  t: '(=) LUCRO LÍQUIDO',            tipo: 'tot', final: true, calc: (v, t) => t.lucro_bruto - t.desp_op - t.desp_fin }
+    // Grupos fiéis à planilha. Cada grupo soma as linhas que estiverem dentro dele —
+    // remover ou incluir linha nunca quebra a conta.
+    const GRUPOS = [
+      { k: 'receita',  t: '(=) RECEITA BRUTA',          linhas: ['C/ NOTAS', 'S/ NOTAS'] },
+      { k: 'deducoes', t: '(-) DEDUÇÕES DAS RECEITAS',  linhas: ['DEVOLUÇÕES', 'ICMS', 'PIS', 'COFINS'] },
+      { k: 'receita_liquida', t: '(=) RECEITA LÍQUIDA', calc: t => t.receita - t.deducoes },
+      { k: 'cmv',      t: '(-) C.M.V',                  linhas: ['C.M.V'] },
+      { k: 'lucro_bruto', t: '(=) LUCRO BRUTO',         calc: t => t.receita_liquida - t.cmv },
+      { k: 'desp_op',  t: '(-) DESPESAS OPERACIONAIS',  linhas: ['SALÁRIOS', 'FGTS', 'INSS', 'ENERGIA', 'ÁGUA', 'TELEFONE', 'INTERNET', 'SOFTWARES', 'DESPESAS C/ VEÍCULOS (IPVA, COMBUSTÍVEL, PEDÁGIOS)', 'HONORÁRIOS', 'SEGUROS', 'MATERIAL DE ESCRITÓRIO', 'MONITORAMENTO E SEGURANÇA', 'ASSINATURAS E MENSALIDADES'] },
+      { k: 'desp_fin', t: '(-) DESPESAS FINANCEIRAS',   linhas: ['JUROS E TAXAS BANCÁRIAS'] },
+      { k: 'lucro_liquido', t: '(=) LUCRO LÍQUIDO', final: true, calc: t => t.lucro_bruto - t.desp_op - t.desp_fin }
     ];
-    const ENTRADAS = LINHAS.filter(l => l.tipo === 'in').map(l => l.k);
+    // Conversão do formato antigo (chaves fixas) para grupos
+    const LEGADO = { receita: [['receita_cn', 'C/ NOTAS'], ['receita_sn', 'S/ NOTAS']], deducoes: [['devolucoes', 'DEVOLUÇÕES'], ['icms', 'ICMS'], ['pis', 'PIS'], ['cofins', 'COFINS']], cmv: [['cmv', 'C.M.V']],
+      desp_op: [['salarios', 'SALÁRIOS'], ['fgts', 'FGTS'], ['inss', 'INSS'], ['energia', 'ENERGIA'], ['agua', 'ÁGUA'], ['telefone', 'TELEFONE'], ['internet', 'INTERNET'], ['softwares', 'SOFTWARES'], ['veiculos', 'DESPESAS C/ VEÍCULOS (IPVA, COMBUSTÍVEL, PEDÁGIOS)'], ['honorarios', 'HONORÁRIOS'], ['seguros', 'SEGUROS'], ['material', 'MATERIAL DE ESCRITÓRIO'], ['monitoramento', 'MONITORAMENTO E SEGURANÇA'], ['assinaturas', 'ASSINATURAS E MENSALIDADES']],
+      desp_fin: [['juros', 'JUROS E TAXAS BANCÁRIAS']] };
 
-    let clientes = [], dreId = null;
-
-    function montar() {
-      $('dreBody').innerHTML = LINHAS.map(l => l.tipo === 'in'
-        ? `<tr class="in${l.raiz ? ' raiz' : ''}"><td class="conta">${escapeHtml(l.t)}</td><td class="num"><input class="dre-in" type="number" step="0.01" min="0" data-k="${l.k}" placeholder="0,00"></td><td class="num dre-pct" id="p_${l.k}">—</td></tr>`
-        : `<tr class="tot${l.final ? ' final' : ''}"><td class="conta">${escapeHtml(l.t)}</td><td class="num" id="v_${l.k}">R$ 0,00</td><td class="num dre-pct" id="p_${l.k}">—</td></tr>`
-      ).join('');
-      document.querySelectorAll('.dre-in').forEach(i => i.addEventListener('input', calcular));
+    function modeloVazio() {
+      const g = {}; GRUPOS.filter(x => x.linhas).forEach(x => { g[x.k] = x.linhas.map(n => ({ nome: n, valor: null })); }); return g;
     }
-
-    function lerValores() {
-      const v = {};
-      ENTRADAS.forEach(k => { const el = document.querySelector(`[data-k="${k}"]`); v[k] = el && el.value !== '' ? +el.value : 0; });
-      return v;
+    function normalizar(valores) {
+      if (valores && valores.grupos) return valores.grupos;
+      const g = modeloVazio();
+      if (valores) Object.keys(LEGADO).forEach(k => { g[k] = LEGADO[k].map(([chave, nome]) => ({ nome, valor: valores[chave] != null ? +valores[chave] : null })); });
+      return g;
     }
-    function totais(v) {
+    function totais(g) {
       const t = {};
-      LINHAS.filter(l => l.tipo === 'tot').forEach(l => { t[l.k] = l.calc(v, t); });
+      GRUPOS.forEach(x => { t[x.k] = x.linhas ? soma(g[x.k] || []) : x.calc(t); });
       return t;
     }
+
+    let clientes = [], dreId = null, grupos = modeloVazio();
+
+    function montar() {
+      $('dreBody').innerHTML = GRUPOS.map(x => {
+        const tot = `<tr class="tot${x.final ? ' final' : ''}"><td class="conta">${escapeHtml(x.t)}</td><td class="num" id="v_${x.k}">R$ 0,00</td><td class="num dre-pct" id="p_${x.k}">—</td><td class="acao"></td></tr>`;
+        if (!x.linhas) return tot;
+        const subs = (grupos[x.k] || []).map((l, i) =>
+          `<tr class="in"><td class="conta"><input class="dre-nome" type="text" value="${escapeHtml(l.nome)}" placeholder="Nome da conta" data-g="${x.k}" data-i="${i}" data-campo="nome"></td>` +
+          `<td class="num"><input class="dre-in" type="number" step="0.01" min="0" value="${l.valor == null ? '' : l.valor}" placeholder="0,00" data-g="${x.k}" data-i="${i}" data-campo="valor"></td>` +
+          `<td class="num dre-pct" id="p_${x.k}_${i}">—</td><td class="acao"><button class="dre-x" title="Remover linha" data-rm="${x.k}" data-i="${i}">×</button></td></tr>`).join('');
+        const add = `<tr class="add"><td colspan="4"><button class="dre-add" data-add="${x.k}">+ adicionar linha</button></td></tr>`;
+        return tot + subs + add;
+      }).join('');
+      document.querySelectorAll('.dre-in, .dre-nome').forEach(i => i.addEventListener('input', e => {
+        const { g, i: idx, campo } = e.target.dataset;
+        grupos[g][+idx][campo] = campo === 'valor' ? (e.target.value === '' ? null : +e.target.value) : e.target.value;
+        if (campo === 'valor') calcular();
+      }));
+      document.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { grupos[b.dataset.rm].splice(+b.dataset.i, 1); montar(); calcular(); });
+      document.querySelectorAll('[data-add]').forEach(b => b.onclick = () => {
+        grupos[b.dataset.add].push({ nome: '', valor: null }); montar(); calcular();
+        const inputs = document.querySelectorAll(`.dre-nome[data-g="${b.dataset.add}"]`); if (inputs.length) inputs[inputs.length - 1].focus();
+      });
+      calcular();
+    }
+
     function calcular() {
-      const v = lerValores(), t = totais(v), base = t.receita_bruta;
-      LINHAS.forEach(l => {
-        const val = l.tipo === 'in' ? v[l.k] : t[l.k];
-        if (l.tipo === 'tot') { const el = $('v_' + l.k); el.textContent = brl(val); el.classList.toggle('neg', l.final && val < 0); }
-        $('p_' + l.k).textContent = pct(val, base);
+      const t = totais(grupos), base = t.receita;
+      GRUPOS.forEach(x => {
+        const el = $('v_' + x.k); el.textContent = brl(t[x.k]); el.classList.toggle('neg', !!x.final && t[x.k] < 0);
+        $('p_' + x.k).textContent = pct(t[x.k], base);
+        if (x.linhas) (grupos[x.k] || []).forEach((l, i) => { const p = $(`p_${x.k}_${i}`); if (p) p.textContent = pct(+l.valor || 0, base); });
       });
     }
 
@@ -171,13 +184,12 @@
 
     async function carregarSalvos() {
       const cid = $('selCliente').value; const el = $('salvos'); el.innerHTML = '';
-      // Com cliente escolhido: só os dele. Sem cliente: os últimos salvos de todos (pra reencontrar ao voltar).
       let q = supabase.from('dre_simples').select('id, cliente_id, periodo, valores, criado_em').order('criado_em', { ascending: false });
       q = cid ? q.eq('cliente_id', cid) : q.limit(20);
       const { data } = await q;
       const nome = id => { const c = clientes.find(x => x.id === id); return c ? c.nome_principal : ''; };
       el.innerHTML = (data || []).map(d => {
-        const t = totais(Object.assign(Object.fromEntries(ENTRADAS.map(k => [k, 0])), d.valores || {}));
+        const t = totais(normalizar(d.valores));
         return `<button data-id="${d.id}" class="${d.id === dreId ? 'on' : ''}">${cid ? '' : escapeHtml(nome(d.cliente_id)) + ' · '}${escapeHtml(d.periodo)} · <b>${brl(t.lucro_liquido)}</b> · ${new Date(d.criado_em).toLocaleDateString('pt-BR')}</button>`;
       }).join('');
       el.querySelectorAll('button').forEach(b => b.onclick = () => abrir(b.dataset.id, data));
@@ -187,15 +199,14 @@
       const d = (lista || []).find(x => x.id === id); if (!d) return;
       if (d.cliente_id && $('selCliente').value !== d.cliente_id) $('selCliente').value = d.cliente_id;
       dreId = d.id; $('inPeriodo').value = d.periodo || '';
-      ENTRADAS.forEach(k => { const el = document.querySelector(`[data-k="${k}"]`); el.value = d.valores && d.valores[k] != null ? d.valores[k] : ''; });
+      grupos = normalizar(d.valores); montar();
       supabase.from('dre_simples').select('observacao').eq('id', id).single().then(({ data }) => { $('inObs').value = (data && data.observacao) || ''; });
-      calcular(); carregarSalvos();
+      carregarSalvos();
     }
 
     function novo() {
       dreId = null; $('inPeriodo').value = ''; $('inObs').value = '';
-      document.querySelectorAll('.dre-in').forEach(i => i.value = '');
-      calcular(); carregarSalvos();
+      grupos = modeloVazio(); montar(); carregarSalvos();
     }
 
     async function salvar() {
@@ -203,7 +214,7 @@
       if (!cid) { alert('Selecione o cliente.'); return; }
       if (!periodo) { alert('Informe o período (ex.: Agosto/2026).'); $('inPeriodo').focus(); return; }
       const { data: { user } } = await supabase.auth.getUser();
-      const reg = { cliente_id: cid, periodo, valores: lerValores(), observacao: $('inObs').value.trim() || null, atualizado_em: new Date().toISOString() };
+      const reg = { cliente_id: cid, periodo, valores: { grupos }, observacao: $('inObs').value.trim() || null, atualizado_em: new Date().toISOString() };
       $('btnSalvar').disabled = true;
       const r = dreId
         ? await supabase.from('dre_simples').update(reg).eq('id', dreId).select('id').single()
@@ -216,12 +227,16 @@
     function relatorio() {
       const cid = $('selCliente').value; const cli = clientes.find(c => c.id === cid);
       if (!cli) { alert('Selecione o cliente.'); return; }
-      const v = lerValores(), t = totais(v), base = t.receita_bruta;
+      const t = totais(grupos), base = t.receita;
       const logoUrl = new URL('assets/logo-mr.png', location.href).href;
       const hoje = new Date().toLocaleDateString('pt-BR');
-      const linhas = LINHAS.map(l => {
-        const val = l.tipo === 'in' ? v[l.k] : t[l.k];
-        return `<tr class="${l.tipo === 'tot' ? (l.final ? 'tot final' : 'tot') : (l.raiz ? 'in raiz' : 'in')}"><td>${escapeHtml(l.t)}</td><td class="num${l.final && val < 0 ? ' neg' : ''}">${brl(val)}</td><td class="num pct">${pct(val, base)}</td></tr>`;
+      const linhas = GRUPOS.map(x => {
+        let h = `<tr class="tot${x.final ? ' final' : ''}"><td>${escapeHtml(x.t)}</td><td class="num${x.final && t[x.k] < 0 ? ' neg' : ''}">${brl(t[x.k])}</td><td class="num pct">${pct(t[x.k], base)}</td></tr>`;
+        if (!x.linhas) return h;
+        const subs = (grupos[x.k] || []).filter(l => (l.nome || '').trim() || l.valor);
+        // grupo com uma única linha de mesmo nome do título: imprime só o total (fiel à planilha)
+        if (subs.length === 1 && subs[0].nome.trim().toUpperCase() === x.t.replace(/^\([-=]\)\s*/, '').trim().toUpperCase()) return h;
+        return h + subs.map(l => `<tr class="in"><td>${escapeHtml(l.nome || '—')}</td><td class="num">${brl(+l.valor || 0)}</td><td class="num pct">${pct(+l.valor || 0, base)}</td></tr>`).join('');
       }).join('');
       const obs = $('inObs').value.trim();
       const html = '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>DRE — ' + escapeHtml(cli.nome_principal) + '</title><style>'
@@ -234,7 +249,7 @@
         + '.dados{margin:0 0 18px;font-size:13px;} .dados b{color:#3A5878;}'
         + 'table{width:100%;border-collapse:collapse;margin:0 0 6px;} th{background:#3A5878;color:#fff;text-align:left;padding:7px 9px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;} th.num{text-align:right;}'
         + 'td{padding:6px 9px;border-bottom:1px solid #E1E6EC;} .num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;} .pct{color:#66707E;width:80px;}'
-        + 'tr.in td:first-child{padding-left:26px;} tr.in.raiz td:first-child{padding-left:9px;}'
+        + 'tr.in td:first-child{padding-left:26px;}'
         + 'tr.tot td{font-weight:700;background:#F3F6F9;} tr.tot.final td{background:#E4ECF4;color:#3A5878;font-size:14px;} td.neg{color:#A65B5B;}'
         + '.obs{background:#F7F8FA;border-left:4px solid #5B82A6;border-radius:6px;padding:11px 14px;margin:18px 0 0;font-size:12.5px;white-space:pre-wrap;}'
         + '.rodape{margin-top:26px;padding-top:10px;border-top:1px solid #E1E6EC;font-size:10.5px;color:#8A93A6;}'
@@ -260,7 +275,7 @@
     $('btnSalvar').onclick = salvar;
     $('btnRelatorio').onclick = relatorio;
 
-    montar(); calcular(); carregarClientes().then(carregarSalvos);
+    montar(); carregarClientes().then(carregarSalvos);
   </script>
 </body>
 </html>
