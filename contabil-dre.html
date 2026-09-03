@@ -44,6 +44,10 @@
     .dre-add { background:none; border:none; color:#6E8FB0; cursor:pointer; font-size:12px; padding:3px 0; }
     .dre-add:hover { color:#8FC0F0; }
     table.dre th.acao, table.dre td.acao { width:32px; padding-left:0; padding-right:8px; }
+    table.dre tr.tot.n1 td { background:rgba(255,255,255,.025); font-weight:600; color:#C9D3E0; }
+    table.dre tr.tot.n1 td.conta { padding-left:34px; }
+    table.dre tr.in.n2 td.conta { padding-left:52px; }
+    table.dre tr.add.n2 td { padding-left:52px; }
     .dre-ins { max-width:900px; margin-top:22px; display:none; }
     .dre-ins.on { display:block; }
     .dre-ins-head { display:flex; align-items:center; gap:12px; margin-bottom:10px; }
@@ -129,49 +133,75 @@
     const fmtCnpj = d => (d || '').replace(/\D/g, '').replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5') || d;
     const soma = arr => arr.reduce((a, l) => a + (+l.valor || 0), 0);
 
-    // Grupos fiéis à planilha. Cada grupo soma as linhas que estiverem dentro dele —
-    // remover ou incluir linha nunca quebra a conta.
+    // Modelo padrão (planilha do Diego, set/2026). Cada grupo soma as linhas que estiverem
+    // dentro dele; totais calculados nascem dos grupos — remover/incluir linha nunca quebra a conta.
+    // nivel 1 = subgrupo (dentro de CUSTOS FIXOS); base = 'receita_liquida' para o % da margem.
     const GRUPOS = [
-      { k: 'receita',  t: '(=) RECEITA BRUTA',          linhas: ['C/ NOTAS', 'S/ NOTAS'] },
-      { k: 'deducoes', t: '(-) DEDUÇÕES DAS RECEITAS',  linhas: ['DEVOLUÇÕES', 'ICMS', 'PIS', 'COFINS'] },
-      { k: 'receita_liquida', t: '(=) RECEITA LÍQUIDA', calc: t => t.receita - t.deducoes },
-      { k: 'cmv',      t: '(-) C.M.V',                  linhas: ['C.M.V'] },
-      { k: 'lucro_bruto', t: '(=) LUCRO BRUTO',         calc: t => t.receita_liquida - t.cmv },
-      { k: 'desp_op',  t: '(-) DESPESAS OPERACIONAIS',  linhas: ['SALÁRIOS', 'FGTS', 'INSS', 'ENERGIA', 'ÁGUA', 'TELEFONE', 'INTERNET', 'SOFTWARES', 'DESPESAS C/ VEÍCULOS (IPVA, COMBUSTÍVEL, PEDÁGIOS)', 'HONORÁRIOS', 'SEGUROS', 'MATERIAL DE ESCRITÓRIO', 'MONITORAMENTO E SEGURANÇA', 'ASSINATURAS E MENSALIDADES'] },
-      { k: 'desp_fin', t: '(-) DESPESAS FINANCEIRAS',   linhas: ['JUROS E TAXAS BANCÁRIAS'] },
-      { k: 'lucro_liquido', t: '(=) LUCRO LÍQUIDO', final: true, calc: t => t.lucro_bruto - t.desp_op - t.desp_fin }
+      { k: 'receita',        t: '(=) RECEITA BRUTA',                                   linhas: ['C/ NOTAS', 'S/ NOTAS'] },
+      { k: 'deducoes',       t: '(-) DEDUÇÕES DAS RECEITAS',                           linhas: ['DEVOLUÇÕES'] },
+      { k: 'receita_liquida',t: '(=) RECEITA LÍQUIDA (RECEITA BRUTA - DEDUÇÕES)',      calc: t => t.receita - t.deducoes },
+      { k: 'cmv',            t: '(=) CUSTO DA MERCADORIA VENDIDA',                     linhas: ['C.M.V'] },
+      { k: 'lucro_bruto',    t: '(=) LUCRO BRUTO',                                     calc: t => t.receita_liquida - t.cmv },
+      { k: 'desp_var',       t: '(-) DESPESAS VARIÁVEIS',                              linhas: ['ICMS', 'PIS', 'COFINS'] },
+      { k: 'margem',         t: '(=) MARGEM DE CONTRIBUIÇÃO',                          calc: t => t.lucro_bruto - t.desp_var, base: 'receita_liquida' },
+      { k: 'custos_fixos',   t: '(-) CUSTOS FIXOS',                                    calc: t => t.desp_adm + t.equipe + t.prolabore + t.desp_fin },
+      { k: 'desp_adm',       t: '(-) DESPESAS ADMINISTRATIVAS', nivel: 1,              linhas: ['ENERGIA', 'ÁGUA', 'TELEFONE', 'INTERNET', 'SOFTWARES', 'DESPESAS C/ VEÍCULOS (IPVA, COMBUSTÍVEL, PEDÁGIOS)', 'HONORÁRIOS', 'SEGUROS', 'MATERIAL DE ESCRITÓRIO', 'MONITORAMENTO E SEGURANÇA', 'ASSINATURAS E MENSALIDADES'] },
+      { k: 'equipe',         t: '(-) INVESTIMENTO EM EQUIPE', nivel: 1,                linhas: ['SALÁRIOS', 'FGTS', 'INSS'] },
+      { k: 'prolabore',      t: '(-) PRÓ-LABORE', nivel: 1,                            linhas: ['PRÓ-LABORE', 'INSS S/ PRÓ-LABORE', 'DISTRIBUIÇÃO DE LUCROS'] },
+      { k: 'desp_fin',       t: '(-) DESPESAS FINANCEIRAS', nivel: 1,                  linhas: ['JUROS E TAXAS BANCÁRIAS'] },
+      { k: 'lucro_op',       t: '(=) LUCRO OPERACIONAL',                               calc: t => t.margem - t.custos_fixos },
+      { k: 'dividas',        t: '(-) EBITDA',                                          linhas: ['EMPRÉSTIMOS/FINANCIAMENTOS', 'PARCELAMENTOS'] },
+      { k: 'resultado',      t: '(=) LUCRO OPERACIONAL', final: true,                  calc: t => t.lucro_op - t.dividas }
     ];
-    // Conversão do formato antigo (chaves fixas) para grupos
-    const LEGADO = { receita: [['receita_cn', 'C/ NOTAS'], ['receita_sn', 'S/ NOTAS']], deducoes: [['devolucoes', 'DEVOLUÇÕES'], ['icms', 'ICMS'], ['pis', 'PIS'], ['cofins', 'COFINS']], cmv: [['cmv', 'C.M.V']],
-      desp_op: [['salarios', 'SALÁRIOS'], ['fgts', 'FGTS'], ['inss', 'INSS'], ['energia', 'ENERGIA'], ['agua', 'ÁGUA'], ['telefone', 'TELEFONE'], ['internet', 'INTERNET'], ['softwares', 'SOFTWARES'], ['veiculos', 'DESPESAS C/ VEÍCULOS (IPVA, COMBUSTÍVEL, PEDÁGIOS)'], ['honorarios', 'HONORÁRIOS'], ['seguros', 'SEGUROS'], ['material', 'MATERIAL DE ESCRITÓRIO'], ['monitoramento', 'MONITORAMENTO E SEGURANÇA'], ['assinaturas', 'ASSINATURAS E MENSALIDADES']],
-      desp_fin: [['juros', 'JUROS E TAXAS BANCÁRIAS']] };
+    const VERSAO = 2;
+    // Formatos antigos → v2
+    const LEGADO_CHAVES = { receita: [['receita_cn', 'C/ NOTAS'], ['receita_sn', 'S/ NOTAS']], deducoes: [['devolucoes', 'DEVOLUÇÕES']], desp_var: [['icms', 'ICMS'], ['pis', 'PIS'], ['cofins', 'COFINS']], cmv: [['cmv', 'C.M.V']],
+      desp_adm: [['energia', 'ENERGIA'], ['agua', 'ÁGUA'], ['telefone', 'TELEFONE'], ['internet', 'INTERNET'], ['softwares', 'SOFTWARES'], ['veiculos', 'DESPESAS C/ VEÍCULOS (IPVA, COMBUSTÍVEL, PEDÁGIOS)'], ['honorarios', 'HONORÁRIOS'], ['seguros', 'SEGUROS'], ['material', 'MATERIAL DE ESCRITÓRIO'], ['monitoramento', 'MONITORAMENTO E SEGURANÇA'], ['assinaturas', 'ASSINATURAS E MENSALIDADES']],
+      equipe: [['salarios', 'SALÁRIOS'], ['fgts', 'FGTS'], ['inss', 'INSS']], desp_fin: [['juros', 'JUROS E TAXAS BANCÁRIAS']] };
+    const EQUIPE_NOMES = ['SALÁRIOS', 'FGTS', 'INSS'];
+    const TRIB_NOMES = ['ICMS', 'PIS', 'COFINS'];
 
     function modeloVazio() {
       const g = {}; GRUPOS.filter(x => x.linhas).forEach(x => { g[x.k] = x.linhas.map(n => ({ nome: n, valor: null })); }); return g;
     }
     function normalizar(valores) {
-      if (valores && valores.grupos) return valores.grupos;
       const g = modeloVazio();
-      if (valores) Object.keys(LEGADO).forEach(k => { g[k] = LEGADO[k].map(([chave, nome]) => ({ nome, valor: valores[chave] != null ? +valores[chave] : null })); });
+      if (!valores) return g;
+      if (valores.grupos && valores.versao >= 2) { Object.keys(g).forEach(k => { if (Array.isArray(valores.grupos[k])) g[k] = valores.grupos[k].map(l => ({ nome: l.nome || '', valor: l.valor == null ? null : +l.valor })); }); return g; }
+      if (valores.grupos) { // v1: receita, deducoes(c/ tributos), cmv, desp_op(14), desp_fin
+        const v1 = valores.grupos, up = n => String(n || '').trim().toUpperCase();
+        g.receita = (v1.receita || []).map(l => ({ nome: l.nome, valor: l.valor }));
+        g.deducoes = (v1.deducoes || []).filter(l => !TRIB_NOMES.includes(up(l.nome))).map(l => ({ nome: l.nome, valor: l.valor }));
+        g.desp_var = (v1.deducoes || []).filter(l => TRIB_NOMES.includes(up(l.nome))).map(l => ({ nome: l.nome, valor: l.valor }));
+        g.cmv = (v1.cmv || []).map(l => ({ nome: l.nome, valor: l.valor }));
+        g.equipe = (v1.desp_op || []).filter(l => EQUIPE_NOMES.includes(up(l.nome))).map(l => ({ nome: l.nome, valor: l.valor }));
+        g.desp_adm = (v1.desp_op || []).filter(l => !EQUIPE_NOMES.includes(up(l.nome))).map(l => ({ nome: l.nome, valor: l.valor }));
+        g.desp_fin = (v1.desp_fin || []).map(l => ({ nome: l.nome, valor: l.valor }));
+        return g;
+      }
+      Object.keys(LEGADO_CHAVES).forEach(k => { g[k] = LEGADO_CHAVES[k].map(([chave, nome]) => ({ nome, valor: valores[chave] != null ? +valores[chave] : null })); });
       return g;
     }
     function totais(g) {
       const t = {};
-      GRUPOS.forEach(x => { t[x.k] = x.linhas ? soma(g[x.k] || []) : x.calc(t); });
+      GRUPOS.filter(x => x.linhas).forEach(x => { t[x.k] = soma(g[x.k] || []); });   // 1ª passada: somas
+      GRUPOS.filter(x => x.calc).forEach(x => { t[x.k] = x.calc(t); });             // 2ª passada: calculados, em ordem
       return t;
     }
+    const baseDe = (x, t) => x.base ? t[x.base] : t.receita;
 
     let clientes = [], dreId = null, grupos = modeloVazio(), insights = null;
 
     function montar() {
       $('dreBody').innerHTML = GRUPOS.map(x => {
-        const tot = `<tr class="tot${x.final ? ' final' : ''}"><td class="conta">${escapeHtml(x.t)}</td><td class="num" id="v_${x.k}">R$ 0,00</td><td class="num dre-pct" id="p_${x.k}">—</td><td class="acao"></td></tr>`;
+        const n1 = x.nivel === 1;
+        const tot = `<tr class="tot${x.final ? ' final' : ''}${n1 ? ' n1' : ''}"><td class="conta">${escapeHtml(x.t)}</td><td class="num" id="v_${x.k}">R$ 0,00</td><td class="num dre-pct" id="p_${x.k}">—</td><td class="acao"></td></tr>`;
         if (!x.linhas) return tot;
         const subs = (grupos[x.k] || []).map((l, i) =>
-          `<tr class="in"><td class="conta"><input class="dre-nome" type="text" value="${escapeHtml(l.nome)}" placeholder="Nome da conta" data-g="${x.k}" data-i="${i}" data-campo="nome"></td>` +
+          `<tr class="in${n1 ? ' n2' : ''}"><td class="conta"><input class="dre-nome" type="text" value="${escapeHtml(l.nome)}" placeholder="Nome da conta" data-g="${x.k}" data-i="${i}" data-campo="nome"></td>` +
           `<td class="num"><input class="dre-in" type="number" step="0.01" min="0" value="${l.valor == null ? '' : l.valor}" placeholder="0,00" data-g="${x.k}" data-i="${i}" data-campo="valor"></td>` +
           `<td class="num dre-pct" id="p_${x.k}_${i}">—</td><td class="acao"><button class="dre-x" title="Remover linha" data-rm="${x.k}" data-i="${i}">×</button></td></tr>`).join('');
-        const add = `<tr class="add"><td colspan="4"><button class="dre-add" data-add="${x.k}">+ adicionar linha</button></td></tr>`;
+        const add = `<tr class="add${n1 ? ' n2' : ''}"><td colspan="4"><button class="dre-add" data-add="${x.k}">+ adicionar linha</button></td></tr>`;
         return tot + subs + add;
       }).join('');
       document.querySelectorAll('.dre-in, .dre-nome').forEach(i => i.addEventListener('input', e => {
@@ -191,7 +221,7 @@
       const t = totais(grupos), base = t.receita;
       GRUPOS.forEach(x => {
         const el = $('v_' + x.k); el.textContent = brl(t[x.k]); el.classList.toggle('neg', !!x.final && t[x.k] < 0);
-        $('p_' + x.k).textContent = pct(t[x.k], base);
+        $('p_' + x.k).textContent = pct(t[x.k], baseDe(x, t));
         if (x.linhas) (grupos[x.k] || []).forEach((l, i) => { const p = $(`p_${x.k}_${i}`); if (p) p.textContent = pct(+l.valor || 0, base); });
       });
     }
@@ -236,7 +266,7 @@
       if (!cid) { alert('Selecione o cliente.'); return; }
       if (!periodo) { alert('Informe o período (ex.: Agosto/2026).'); $('inPeriodo').focus(); return; }
       const { data: { user } } = await supabase.auth.getUser();
-      const reg = { cliente_id: cid, periodo, valores: { grupos }, insights: insights || null, observacao: $('inObs').value.trim() || null, atualizado_em: new Date().toISOString() };
+      const reg = { cliente_id: cid, periodo, valores: { versao: VERSAO, grupos }, insights: insights || null, observacao: $('inObs').value.trim() || null, atualizado_em: new Date().toISOString() };
       $('btnSalvar').disabled = true;
       const r = dreId
         ? await supabase.from('dre_simples').update(reg).eq('id', dreId).select('id').single()
@@ -287,12 +317,13 @@
       const logoUrl = new URL('assets/logo-mr.png', location.href).href;
       const hoje = new Date().toLocaleDateString('pt-BR');
       const linhas = GRUPOS.map(x => {
-        let h = `<tr class="tot${x.final ? ' final' : ''}"><td>${escapeHtml(x.t)}</td><td class="num${x.final && t[x.k] < 0 ? ' neg' : ''}">${brl(t[x.k])}</td><td class="num pct">${pct(t[x.k], base)}</td></tr>`;
+        const n1 = x.nivel === 1;
+        let h = `<tr class="tot${x.final ? ' final' : ''}${n1 ? ' n1' : ''}"><td>${escapeHtml(x.t)}</td><td class="num${x.final && t[x.k] < 0 ? ' neg' : ''}">${brl(t[x.k])}</td><td class="num pct">${pct(t[x.k], baseDe(x, t))}</td></tr>`;
         if (!x.linhas) return h;
         const subs = (grupos[x.k] || []).filter(l => (l.nome || '').trim() || l.valor);
-        // grupo com uma única linha de mesmo nome do título: imprime só o total (fiel à planilha)
+        // grupo com uma única linha de mesmo nome do título: imprime só o total
         if (subs.length === 1 && subs[0].nome.trim().toUpperCase() === x.t.replace(/^\([-=]\)\s*/, '').trim().toUpperCase()) return h;
-        return h + subs.map(l => `<tr class="in"><td>${escapeHtml(l.nome || '—')}</td><td class="num">${brl(+l.valor || 0)}</td><td class="num pct">${pct(+l.valor || 0, base)}</td></tr>`).join('');
+        return h + subs.map(l => `<tr class="in${n1 ? ' n2' : ''}"><td>${escapeHtml(l.nome || '—')}</td><td class="num">${brl(+l.valor || 0)}</td><td class="num pct">${pct(+l.valor || 0, base)}</td></tr>`).join('');
       }).join('');
       const obs = $('inObs').value.trim();
       const html = '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>DRE — ' + escapeHtml(cli.nome_principal) + '</title><style>'
@@ -305,7 +336,7 @@
         + '.dados{margin:0 0 18px;font-size:13px;} .dados b{color:#3A5878;}'
         + 'table{width:100%;border-collapse:collapse;margin:0 0 6px;} th{background:#3A5878;color:#fff;text-align:left;padding:7px 9px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;} th.num{text-align:right;}'
         + 'td{padding:6px 9px;border-bottom:1px solid #E1E6EC;} .num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;} .pct{color:#66707E;width:80px;}'
-        + 'tr.in td:first-child{padding-left:26px;}'
+        + 'tr.in td:first-child{padding-left:26px;} tr.in.n2 td:first-child{padding-left:44px;} tr.tot.n1 td{background:#F8FAFC;font-weight:600;color:#3A5878;} tr.tot.n1 td:first-child{padding-left:26px;}'
         + 'tr.tot td{font-weight:700;background:#F3F6F9;} tr.tot.final td{background:#E4ECF4;color:#3A5878;font-size:14px;} td.neg{color:#A65B5B;}'
         + '.obs{background:#F7F8FA;border-left:4px solid #5B82A6;border-radius:6px;padding:11px 14px;margin:18px 0 0;font-size:12.5px;white-space:pre-wrap;}'
         + '.rodape{margin-top:26px;padding-top:10px;border-top:1px solid #E1E6EC;font-size:10.5px;color:#8A93A6;}'
