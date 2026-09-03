@@ -170,17 +170,21 @@
 
     async function carregarSalvos() {
       const cid = $('selCliente').value; const el = $('salvos'); el.innerHTML = '';
-      if (!cid) return;
-      const { data } = await supabase.from('dre_simples').select('id, periodo, valores, criado_em').eq('cliente_id', cid).order('criado_em', { ascending: false });
+      // Com cliente escolhido: só os dele. Sem cliente: os últimos salvos de todos (pra reencontrar ao voltar).
+      let q = supabase.from('dre_simples').select('id, cliente_id, periodo, valores, criado_em').order('criado_em', { ascending: false });
+      q = cid ? q.eq('cliente_id', cid) : q.limit(20);
+      const { data } = await q;
+      const nome = id => { const c = clientes.find(x => x.id === id); return c ? c.nome_principal : ''; };
       el.innerHTML = (data || []).map(d => {
         const t = totais(Object.assign(Object.fromEntries(ENTRADAS.map(k => [k, 0])), d.valores || {}));
-        return `<button data-id="${d.id}" class="${d.id === dreId ? 'on' : ''}">${escapeHtml(d.periodo)} · <b>${brl(t.lucro_liquido)}</b> · ${new Date(d.criado_em).toLocaleDateString('pt-BR')}</button>`;
+        return `<button data-id="${d.id}" class="${d.id === dreId ? 'on' : ''}">${cid ? '' : escapeHtml(nome(d.cliente_id)) + ' · '}${escapeHtml(d.periodo)} · <b>${brl(t.lucro_liquido)}</b> · ${new Date(d.criado_em).toLocaleDateString('pt-BR')}</button>`;
       }).join('');
       el.querySelectorAll('button').forEach(b => b.onclick = () => abrir(b.dataset.id, data));
     }
 
     function abrir(id, lista) {
       const d = (lista || []).find(x => x.id === id); if (!d) return;
+      if (d.cliente_id && $('selCliente').value !== d.cliente_id) $('selCliente').value = d.cliente_id;
       dreId = d.id; $('inPeriodo').value = d.periodo || '';
       ENTRADAS.forEach(k => { const el = document.querySelector(`[data-k="${k}"]`); el.value = d.valores && d.valores[k] != null ? d.valores[k] : ''; });
       supabase.from('dre_simples').select('observacao').eq('id', id).single().then(({ data }) => { $('inObs').value = (data && data.observacao) || ''; });
@@ -255,7 +259,7 @@
     $('btnSalvar').onclick = salvar;
     $('btnRelatorio').onclick = relatorio;
 
-    montar(); calcular(); carregarClientes();
+    montar(); calcular(); carregarClientes().then(carregarSalvos);
   </script>
 </body>
 </html>
