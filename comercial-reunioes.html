@@ -76,7 +76,7 @@
 
         <div class="rn-intro">
           <div class="rn-intro-head"><span>Introdução da reunião</span><small id="introStatus"></small><span class="pauta-chip hora" id="introFaixa" style="margin-left:auto"></span><label class="rn-intro-min" style="margin-left:10px">Tempo (min) <input type="number" id="dIntroMin" class="input" min="0" step="5" placeholder="0"></label></div>
-          <textarea id="dIntro" class="input" rows="3" placeholder="Abertura, contexto e objetivo do encontro — aparece no topo do documento. Salva sozinho ao sair do campo."></textarea>
+          <textarea id="dIntro" class="input" rows="6" placeholder="Abertura, contexto e objetivo do encontro — aparece no topo do documento. Salva sozinho ao sair do campo."></textarea>
         </div>
 
         <div class="rn-pauta-bar">
@@ -285,6 +285,7 @@
     async function abrirReuniao(id) {
       reuniaoAtual = reunioes.find(r => r.id === id);
       document.getElementById('dIntro').value = (reuniaoAtual && reuniaoAtual.introducao) || '';
+      ajustarAlturaIntro();
       document.getElementById('dIntroMin').value = (reuniaoAtual && reuniaoAtual.introducao_minutos) || '';
       document.getElementById('introStatus').textContent = '';
       if (!reuniaoAtual) return;
@@ -601,6 +602,8 @@
     ovPauta.addEventListener('click', e => { if (e.target === ovPauta) fecharModalPauta(); });
     document.getElementById('btnNovaPauta').addEventListener('click', () => abrirModalPauta());
 
+    function ajustarAlturaIntro() { const ta = document.getElementById('dIntro'); ta.style.height = 'auto'; ta.style.height = Math.max(150, ta.scrollHeight + 4) + 'px'; }
+    document.getElementById('dIntro').addEventListener('input', ajustarAlturaIntro);
     document.getElementById('dIntro').addEventListener('blur', async e => {
       if (!reuniaoAtual) return;
       const txt = e.target.value.trim() || null;
@@ -755,7 +758,7 @@
     .rn-intro-head small { color:#5FC698; text-transform:none; letter-spacing:0; font-size:11px; }
     .rn-intro-min { margin-left:auto; display:flex; align-items:center; gap:6px; text-transform:none; letter-spacing:0; font-size:12px; color:#8A93A6; }
     .rn-intro-min input { width:72px; text-align:right; padding:4px 8px; font-size:13px; }
-    .rn-intro textarea { width:100%; resize:vertical; }
+    .rn-intro textarea { width:100%; resize:vertical; min-height:150px; line-height:1.55; overflow:hidden; }
     .rn-total-min { font-size:12px; font-weight:500; color:#8A93A6; margin-left:8px; }
     .pauta-grupo-min { float:right; font-size:12px; font-weight:500; color:#C5D8E8; opacity:.85; }
     .pauta-item.impresc { border-left:3px solid #E8A15C; background:rgba(232,161,92,.07); }
