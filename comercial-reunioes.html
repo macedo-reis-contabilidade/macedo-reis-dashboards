@@ -125,6 +125,14 @@
         </label>
         <label class="fa-field"><span>Assunto *</span><input type="text" id="pTitulo" class="input" placeholder="Ex.: Revisar enquadramento tributário"></label>
         <label class="fa-field"><span>Detalhe</span><textarea id="pDescricao" class="input" rows="3" placeholder="O que precisa ser discutido / contexto (opcional)"></textarea></label>
+        <div class="fa-field"><span>Imagens (prints, comparativos)</span>
+          <div class="pimg-lista" id="pImgs"></div>
+          <div class="pimg-acoes">
+            <button type="button" class="btn btn-ghost btn-sm" id="pImgAdd">+ Adicionar imagem</button>
+            <span class="pimg-dica">ou cole um print aqui com Ctrl+V</span>
+            <input type="file" id="pImgFile" accept="image/*" multiple hidden>
+          </div>
+        </div>
       </div>
       <div class="fa-modal-foot">
         <button class="btn btn-danger" id="mpExcluir" style="display:none;margin-right:auto;">Excluir</button>
@@ -288,12 +296,18 @@
         html += '<div class="pauta-grupo"><div class="pauta-grupo-head">' + lbl + ' <span class="pauta-grupo-n">' + itens.length + '</span></div>';
         html += itens.map(p => '<div class="pauta-item" data-id="' + p.id + '" style="cursor:pointer;" title="Clique pra abrir as anotações da reunião">'
           + '<div class="pauta-item-body"><div class="pauta-item-tit">' + escapeHtml(p.titulo) + (p.discussao ? ' <span style="font-size:11px; color:#7FBF8E;">📝 anotações</span>' : '') + '</div>'
-          + (p.descricao ? '<div class="pauta-item-desc">' + escapeHtml(p.descricao) + '</div>' : '') + '</div>'
+          + (p.descricao ? '<div class="pauta-item-desc">' + escapeHtml(p.descricao) + '</div>' : '')
+          + (Array.isArray(p.imagens) && p.imagens.length ? '<div class="pauta-item-imgs" data-pid="' + p.id + '">' + p.imagens.map(() => '<img alt="">').join('') + '</div>' : '') + '</div>'
           + '<div class="pauta-item-acoes"><button class="rn-link" data-edit="' + p.id + '">Editar</button></div>'
         + '</div>').join('');
         html += '</div>';
       });
       elPautas.innerHTML = html;
+      elPautas.querySelectorAll('.pauta-item-imgs').forEach(async box => {
+        const p = pautas.find(x => x.id === box.dataset.pid); if (!p) return;
+        const imgs = box.querySelectorAll('img');
+        await Promise.all(p.imagens.map(async (im, i) => { if (imgs[i]) imgs[i].src = await urlAssinada(im.path); }));
+      });
       elPautas.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); abrirModalPauta(pautas.find(p => p.id === b.dataset.edit)); }));
       elPautas.querySelectorAll('.pauta-item').forEach(card => card.addEventListener('click', () => {
         const p = pautas.find(x => x.id === card.dataset.id);
@@ -425,16 +439,64 @@
       renderPautas();
     });
 
+    // ---- imagens da pauta (bucket privado 'reunioes') ----
+    let imagensPauta = [], imagensNovas = [];
+    const urlCache = {};
+    async function urlAssinada(path) {
+      if (urlCache[path]) return urlCache[path];
+      const { data } = await supabase.storage.from('reunioes').createSignedUrl(path, 3600);
+      urlCache[path] = data ? data.signedUrl : '';
+      return urlCache[path];
+    }
+    async function renderImgsPauta() {
+      const el = document.getElementById('pImgs');
+      el.innerHTML = imagensPauta.map((im, i) => '<div class="pimg" data-i="' + i + '"><img alt=""><button type="button" title="Remover" data-rm="' + i + '">×</button></div>').join('');
+      await Promise.all(imagensPauta.map(async (im, i) => { const img = el.querySelector('[data-i="' + i + '"] img'); if (img) img.src = await urlAssinada(im.path); }));
+      el.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => {
+        const im = imagensPauta[+b.dataset.rm];
+        if (!confirm('Remover esta imagem da pauta?')) return;
+        try { await supabase.storage.from('reunioes').remove([im.path]); } catch (e) {}
+        imagensPauta.splice(+b.dataset.rm, 1); imagensNovas = imagensNovas.filter(pth => pth !== im.path);
+        renderImgsPauta();
+      });
+    }
+    async function enviarImagem(file) {
+      if (!file || !file.type.startsWith('image/')) return;
+      if (file.size > 10 * 1024 * 1024) { alert('Imagem acima de 10 MB: ' + file.name); return; }
+      const el = document.getElementById('pImgs');
+      const ph = document.createElement('div'); ph.className = 'pimg env'; ph.textContent = 'enviando…'; el.appendChild(ph);
+      const ext = (file.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+      const path = reuniaoAtual.id + '/' + crypto.randomUUID() + '.' + ext;
+      const { error } = await supabase.storage.from('reunioes').upload(path, file, { contentType: file.type, upsert: false });
+      if (error) { ph.remove(); alert('Falha ao enviar a imagem: ' + error.message); return; }
+      imagensPauta.push({ path, nome: file.name || ('print-' + new Date().toISOString().slice(0, 16)) }); imagensNovas.push(path);
+      renderImgsPauta();
+    }
+    document.getElementById('pImgAdd').addEventListener('click', () => document.getElementById('pImgFile').click());
+    document.getElementById('pImgFile').addEventListener('change', async e => { for (const f of e.target.files) await enviarImagem(f); e.target.value = ''; });
+    document.addEventListener('paste', async e => {
+      if (!ovPauta.classList.contains('is-open')) return;
+      const itens = [...(e.clipboardData && e.clipboardData.items || [])].filter(it => it.type.startsWith('image/'));
+      if (!itens.length) return;
+      e.preventDefault();
+      for (const it of itens) await enviarImagem(it.getAsFile());
+    });
+    async function descartarNovas() {
+      if (imagensNovas.length) { try { await supabase.storage.from('reunioes').remove(imagensNovas); } catch (e) {} }
+      imagensNovas = [];
+    }
+
     function abrirModalPauta(p) {
       editPautaId = p ? p.id : null;
       document.getElementById('mpTitulo').textContent = editPautaId ? 'Editar pauta' : 'Adicionar pauta';
       document.getElementById('pSetor').value = p ? p.setor : 'fiscal';
       document.getElementById('pTitulo').value = p ? p.titulo : '';
       document.getElementById('pDescricao').value = p ? (p.descricao || '') : '';
+      imagensPauta = p && Array.isArray(p.imagens) ? p.imagens.slice() : []; imagensNovas = []; renderImgsPauta();
       document.getElementById('mpExcluir').style.display = editPautaId ? 'inline-flex' : 'none';
       ovPauta.classList.add('is-open');
     }
-    function fecharModalPauta() { ovPauta.classList.remove('is-open'); editPautaId = null; }
+    function fecharModalPauta(salvou) { if (!salvou) descartarNovas(); ovPauta.classList.remove('is-open'); editPautaId = null; }
     document.getElementById('mpClose').addEventListener('click', fecharModalPauta);
     document.getElementById('mpCancelar').addEventListener('click', fecharModalPauta);
     ovPauta.addEventListener('click', e => { if (e.target === ovPauta) fecharModalPauta(); });
@@ -447,13 +509,15 @@
         reuniao_id: reuniaoAtual.id,
         setor: document.getElementById('pSetor').value,
         titulo,
-        descricao: document.getElementById('pDescricao').value.trim() || null
+        descricao: document.getElementById('pDescricao').value.trim() || null,
+        imagens: imagensPauta
       };
       let error;
-      if (editPautaId) ({ error } = await supabase.from('reuniao_pautas').update({ setor: campos.setor, titulo: campos.titulo, descricao: campos.descricao }).eq('id', editPautaId));
+      if (editPautaId) ({ error } = await supabase.from('reuniao_pautas').update({ setor: campos.setor, titulo: campos.titulo, descricao: campos.descricao, imagens: campos.imagens }).eq('id', editPautaId));
       else ({ error } = await supabase.from('reuniao_pautas').insert(campos));
       if (error) { alert('Erro ao salvar: ' + error.message); return; }
-      fecharModalPauta();
+      imagensNovas = [];
+      fecharModalPauta(true);
       await carregarPautas();
       await atualizarContagemLista();
     });
@@ -463,7 +527,9 @@
       if (!confirm('Excluir esta pauta?')) return;
       const { error } = await supabase.from('reuniao_pautas').delete().eq('id', editPautaId);
       if (error) { alert('Erro: ' + error.message); return; }
-      fecharModalPauta();
+      if (imagensPauta.length) { try { await supabase.storage.from('reunioes').remove(imagensPauta.map(im => im.path)); } catch (e) {} }
+      imagensNovas = [];
+      fecharModalPauta(true);
       await carregarPautas();
       await atualizarContagemLista();
     });
@@ -475,9 +541,11 @@
 
     // ---- gerar PDF (folha de impressão Macedo & Reis) ----
     document.getElementById('btnPDF').addEventListener('click', gerarPDF);
-    function gerarPDF() {
+    async function gerarPDF() {
       if (!reuniaoAtual) return;
       const cli = clienteNome(reuniaoAtual.cliente_id);
+      const urlsPorPauta = {};
+      for (const p of pautas) if (Array.isArray(p.imagens) && p.imagens.length) urlsPorPauta[p.id] = await Promise.all(p.imagens.map(im => urlAssinada(im.path)));
       const logoUrl = new URL('assets/logo-mr.png', location.href).href;
       let blocos = '';
       SETORES_PAUTA.forEach(([s, lbl]) => {
@@ -486,6 +554,7 @@
         blocos += '<div class="bloco"><div class="bloco-setor">' + lbl + '</div>'
           + itens.map(p => '<div class="pauta"><div class="pauta-tit">' + escapeHtml(p.titulo) + '</div>'
             + (p.descricao ? '<div class="pauta-desc">' + escapeHtml(p.descricao).replace(/\n/g, '<br>') + '</div>' : '')
+            + ((urlsPorPauta[p.id] || []).filter(Boolean).map(u => '<img class="pauta-img" src="' + u + '" alt="">').join(''))
             + (p.discussao ? '<div class="pauta-desc" style="margin-top:6px; padding:8px 10px; background:#F2F5F8; border-left:3px solid #5B82A6;"><b>Anotações da reunião:</b><br>' + escapeHtml(p.discussao).replace(/\n/g, '<br>') + '</div>' : '') + '</div>').join('')
           + '</div>';
       });
@@ -508,6 +577,7 @@
         + '.pauta{border:1px solid #E3E8EF;border-top:none;border-left:3px solid #8AAEC8;padding:10px 14px;}'
         + '.pauta:last-child{border-radius:0 0 8px 8px;}'
         + '.pauta-tit{font-weight:600;font-size:14px;color:#2A2F37;} .pauta-desc{font-size:13px;color:#555B66;margin-top:4px;line-height:1.5;}'
+        + '.pauta-img{display:block;max-width:100%;max-height:520px;margin-top:8px;border:1px solid #E3E8EF;border-radius:6px;break-inside:avoid;}'
         + '.vazio{color:#888;font-size:14px;font-style:italic;}'
         + '.notas{margin-top:30px;break-inside:avoid;} .notas-tit{color:#3A5878;font-weight:600;font-size:14px;margin-bottom:10px;}'
         + '.linhas{border-bottom:1px solid #C9D2DD;height:26px;} .linhas+.linhas{margin-top:0;}'
@@ -576,6 +646,14 @@
     .pauta-item { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; background:rgba(255,255,255,.025); border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:12px 16px; margin-bottom:8px; }
     .pauta-item-tit { color:#E6EBF2; font-size:14.5px; font-weight:500; }
     .pauta-item-desc { color:#A9B2C2; font-size:13px; margin-top:4px; line-height:1.5; white-space:pre-wrap; }
+    .pimg-lista { display:flex; flex-wrap:wrap; gap:8px; margin:6px 0 8px; }
+    .pimg { position:relative; width:96px; height:72px; border-radius:8px; overflow:hidden; background:#161A21; }
+    .pimg img { width:100%; height:100%; object-fit:cover; display:block; }
+    .pimg button { position:absolute; top:3px; right:3px; background:rgba(0,0,0,.65); color:#fff; border:none; border-radius:50%; width:20px; height:20px; cursor:pointer; font-size:12px; line-height:1; }
+    .pimg.env { display:flex; align-items:center; justify-content:center; color:#8A93A6; font-size:11px; }
+    .pimg-acoes { display:flex; align-items:center; gap:10px; }
+    .pimg-dica { color:#8A93A6; font-size:12px; }
+    .pauta-item-imgs { display:flex; gap:6px; margin-top:6px; } .pauta-item-imgs img { height:44px; border-radius:5px; }
     .pauta-item-acoes { flex:none; }
     .rn-link { background:none; border:none; color:#8AAEC8; cursor:pointer; font-size:13px; padding:3px 6px; }
     .rn-link:hover { color:#C5D8E8; text-decoration:underline; }
