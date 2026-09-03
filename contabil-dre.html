@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DRE do cliente · Contábil — Macedo & Reis</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+  <style>
+    .dre-top { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin: 0 0 18px; }
+    .dre-top label { display:flex; flex-direction:column; gap:5px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:#8A93A6; }
+    .dre-sel, .dre-txt { background:#161A21; border:1px solid #2A313C; color:#E6EAF0; border-radius:8px; padding:9px 11px; font-size:14px; min-width:260px; }
+    .dre-txt { min-width:180px; }
+    .dre-acoes { display:flex; gap:8px; margin-left:auto; }
+    .dre-btn { background:#5B82A6; border:none; color:#fff; border-radius:8px; padding:10px 16px; font-weight:600; cursor:pointer; font-size:13px; }
+    .dre-btn.sec { background:rgba(255,255,255,.06); color:#C9D3E0; }
+    .dre-btn:disabled { opacity:.45; cursor:default; }
+    .dre-salvos { display:flex; flex-wrap:wrap; gap:8px; margin: 0 0 18px; }
+    .dre-salvos button { background:rgba(255,255,255,.05); border:none; color:#C9D3E0; border-radius:999px; padding:6px 12px; font-size:12px; cursor:pointer; }
+    .dre-salvos button.on { background:rgba(91,130,166,.22); color:#C5D8E8; }
+    .dre-salvos button b { color:#8FC0F0; font-weight:600; }
+    .dre-wrap { background:rgba(255,255,255,.03); border-radius:14px; padding:6px 0; max-width:900px; }
+    table.dre { width:100%; border-collapse:collapse; font-size:14px; }
+    table.dre th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:#8A93A6; padding:10px 16px 8px; font-weight:600; }
+    table.dre th.num, table.dre td.num { text-align:right; font-variant-numeric:tabular-nums; }
+    table.dre td { padding:6px 16px; }
+    table.dre tr.in td.conta { padding-left:34px; color:#C9D3E0; }
+    table.dre tr.in.raiz td.conta { padding-left:16px; }
+    table.dre tr.tot td { font-weight:700; color:#E6EAF0; background:rgba(255,255,255,.045); padding-top:10px; padding-bottom:10px; }
+    table.dre tr.tot.final td { background:rgba(91,130,166,.16); color:#C5D8E8; font-size:15px; }
+    table.dre tr.tot.final td.neg { color:#F0A0A0; }
+    .dre-in { width:150px; background:#161A21; border:1px solid #2A313C; color:#E6EAF0; border-radius:7px; padding:7px 10px; font-size:14px; text-align:right; font-variant-numeric:tabular-nums; }
+    .dre-in:focus { outline:none; border-color:#5B82A6; }
+    .dre-pct { color:#8A93A6; font-size:13px; width:80px; }
+    .dre-obs { width:100%; max-width:900px; min-height:70px; background:#161A21; border:1px solid #2A313C; color:#E6EAF0; border-radius:8px; padding:10px 12px; font-size:13.5px; margin-top:14px; font-family:inherit; }
+    .dre-sec { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:#8A93A6; margin:18px 0 6px; }
+    .dre-aviso { font-size:12px; color:#8A93A6; margin: 10px 0 0; max-width:900px; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip"><div class="user-avatar" id="userAvatar">—</div><span id="userName">Carregando…</span></div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <a href="contabil.html">Contábil</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>DRE do cliente</span>
+        </div>
+        <div class="eyebrow">Reunião com o cliente</div>
+        <h1>DRE do cliente</h1>
+        <p>Demonstrativo de resultado simplificado, preenchido na hora com o cliente. Os totais e o percentual sobre a receita bruta se calculam sozinhos; salve para reabrir depois e gere o relatório ao final.</p>
+      </div>
+
+      <div class="dre-top">
+        <label>Cliente <select class="dre-sel" id="selCliente"><option value="">— selecionar —</option></select></label>
+        <label>Período <input class="dre-txt" id="inPeriodo" type="text" placeholder="Ex.: Agosto/2026"></label>
+        <div class="dre-acoes">
+          <button class="dre-btn sec" id="btnNovo">Novo</button>
+          <button class="dre-btn" id="btnSalvar">Salvar</button>
+          <button class="dre-btn sec" id="btnRelatorio">Relatório</button>
+        </div>
+      </div>
+
+      <div class="dre-salvos" id="salvos"></div>
+
+      <div class="dre-wrap">
+        <table class="dre">
+          <thead><tr><th>Conta</th><th class="num" style="width:170px">Valor (R$)</th><th class="num" style="width:100px">% da receita</th></tr></thead>
+          <tbody id="dreBody"></tbody>
+        </table>
+      </div>
+
+      <div class="dre-sec">Observação (entra no relatório)</div>
+      <textarea class="dre-obs" id="inObs" placeholder="Anotações da reunião, premissas, ajustes combinados…"></textarea>
+      <p class="dre-aviso">Demonstrativo gerencial simplificado, montado a partir de valores informados pelo cliente — não substitui as demonstrações contábeis oficiais.</p>
+    </main>
+  </div>
+
+  <script type="module">
+    import { supabase } from './assets/js/supabase.js';
+
+    const $ = id => document.getElementById(id);
+    const brl = v => (v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const pct = (v, base) => base ? (v / base * 100).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%' : '—';
+    const escapeHtml = s => String(s ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    const fmtCnpj = d => (d || '').replace(/\D/g, '').replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5') || d;
+
+    // Estrutura fiel à planilha: linhas de entrada e totais calculados.
+    const LINHAS = [
+      { k: 'receita_bruta',  t: '(=) RECEITA BRUTA',            tipo: 'tot', calc: (v, t) => v.receita_cn + v.receita_sn },
+      { k: 'receita_cn',     t: 'C/ NOTAS',                     tipo: 'in' },
+      { k: 'receita_sn',     t: 'S/ NOTAS',                     tipo: 'in' },
+      { k: 'deducoes',       t: '(-) DEDUÇÕES DAS RECEITAS',    tipo: 'tot', calc: (v, t) => v.devolucoes + v.icms + v.pis + v.cofins },
+      { k: 'devolucoes',     t: 'DEVOLUÇÕES',                   tipo: 'in' },
+      { k: 'icms',           t: 'ICMS',                         tipo: 'in' },
+      { k: 'pis',            t: 'PIS',                          tipo: 'in' },
+      { k: 'cofins',         t: 'COFINS',                       tipo: 'in' },
+      { k: 'receita_liquida',t: '(=) RECEITA LÍQUIDA',          tipo: 'tot', calc: (v, t) => t.receita_bruta - t.deducoes },
+      { k: 'cmv',            t: '(-) C.M.V',                    tipo: 'in', raiz: true },
+      { k: 'lucro_bruto',    t: '(=) LUCRO BRUTO',              tipo: 'tot', calc: (v, t) => t.receita_liquida - v.cmv },
+      { k: 'desp_op',        t: '(-) DESPESAS OPERACIONAIS',    tipo: 'tot', calc: (v, t) => v.salarios + v.fgts + v.inss + v.energia + v.agua + v.telefone + v.internet + v.softwares + v.veiculos + v.honorarios + v.seguros + v.material + v.monitoramento + v.assinaturas },
+      { k: 'salarios',       t: 'SALÁRIOS',                     tipo: 'in' },
+      { k: 'fgts',           t: 'FGTS',                         tipo: 'in' },
+      { k: 'inss',           t: 'INSS',                         tipo: 'in' },
+      { k: 'energia',        t: 'ENERGIA',                      tipo: 'in' },
+      { k: 'agua',           t: 'ÁGUA',                         tipo: 'in' },
+      { k: 'telefone',       t: 'TELEFONE',                     tipo: 'in' },
+      { k: 'internet',       t: 'INTERNET',                     tipo: 'in' },
+      { k: 'softwares',      t: 'SOFTWARES',                    tipo: 'in' },
+      { k: 'veiculos',       t: 'DESPESAS C/ VEÍCULOS (IPVA, COMBUSTÍVEL, PEDÁGIOS)', tipo: 'in' },
+      { k: 'honorarios',     t: 'HONORÁRIOS',                   tipo: 'in' },
+      { k: 'seguros',        t: 'SEGUROS',                      tipo: 'in' },
+      { k: 'material',       t: 'MATERIAL DE ESCRITÓRIO',       tipo: 'in' },
+      { k: 'monitoramento',  t: 'MONITORAMENTO E SEGURANÇA',    tipo: 'in' },
+      { k: 'assinaturas',    t: 'ASSINATURAS E MENSALIDADES',   tipo: 'in' },
+      { k: 'desp_fin',       t: '(-) DESPESAS FINANCEIRAS',     tipo: 'tot', calc: (v, t) => v.juros },
+      { k: 'juros',          t: 'JUROS E TAXAS BANCÁRIAS',      tipo: 'in' },
+      { k: 'lucro_liquido',  t: '(=) LUCRO LÍQUIDO',            tipo: 'tot', final: true, calc: (v, t) => t.lucro_bruto - t.desp_op - t.desp_fin }
+    ];
+    const ENTRADAS = LINHAS.filter(l => l.tipo === 'in').map(l => l.k);
+
+    let clientes = [], dreId = null;
+
+    function montar() {
+      $('dreBody').innerHTML = LINHAS.map(l => l.tipo === 'in'
+        ? `<tr class="in${l.raiz ? ' raiz' : ''}"><td class="conta">${escapeHtml(l.t)}</td><td class="num"><input class="dre-in" type="number" step="0.01" min="0" data-k="${l.k}" placeholder="0,00"></td><td class="num dre-pct" id="p_${l.k}">—</td></tr>`
+        : `<tr class="tot${l.final ? ' final' : ''}"><td class="conta">${escapeHtml(l.t)}</td><td class="num" id="v_${l.k}">R$ 0,00</td><td class="num dre-pct" id="p_${l.k}">—</td></tr>`
+      ).join('');
+      document.querySelectorAll('.dre-in').forEach(i => i.addEventListener('input', calcular));
+    }
+
+    function lerValores() {
+      const v = {};
+      ENTRADAS.forEach(k => { const el = document.querySelector(`[data-k="${k}"]`); v[k] = el && el.value !== '' ? +el.value : 0; });
+      return v;
+    }
+    function totais(v) {
+      const t = {};
+      LINHAS.filter(l => l.tipo === 'tot').forEach(l => { t[l.k] = l.calc(v, t); });
+      return t;
+    }
+    function calcular() {
+      const v = lerValores(), t = totais(v), base = t.receita_bruta;
+      LINHAS.forEach(l => {
+        const val = l.tipo === 'in' ? v[l.k] : t[l.k];
+        if (l.tipo === 'tot') { const el = $('v_' + l.k); el.textContent = brl(val); el.classList.toggle('neg', l.final && val < 0); }
+        $('p_' + l.k).textContent = pct(val, base);
+      });
+    }
+
+    async function carregarClientes() {
+      const { data, error } = await supabase.todosClientes('id, nome_principal, documento', q => q.in('status', ['ativo', 'em_transicao']));
+      if (error) { alert('Erro ao carregar clientes: ' + error.message); return; }
+      clientes = (data || []).sort((a, b) => a.nome_principal.localeCompare(b.nome_principal));
+      $('selCliente').innerHTML = '<option value="">— selecionar —</option>' + clientes.map(c => `<option value="${c.id}">${escapeHtml(c.nome_principal)}</option>`).join('');
+    }
+
+    async function carregarSalvos() {
+      const cid = $('selCliente').value; const el = $('salvos'); el.innerHTML = '';
+      if (!cid) return;
+      const { data } = await supabase.from('dre_simples').select('id, periodo, valores, criado_em').eq('cliente_id', cid).order('criado_em', { ascending: false });
+      el.innerHTML = (data || []).map(d => {
+        const t = totais(Object.assign(Object.fromEntries(ENTRADAS.map(k => [k, 0])), d.valores || {}));
+        return `<button data-id="${d.id}" class="${d.id === dreId ? 'on' : ''}">${escapeHtml(d.periodo)} · <b>${brl(t.lucro_liquido)}</b> · ${new Date(d.criado_em).toLocaleDateString('pt-BR')}</button>`;
+      }).join('');
+      el.querySelectorAll('button').forEach(b => b.onclick = () => abrir(b.dataset.id, data));
+    }
+
+    function abrir(id, lista) {
+      const d = (lista || []).find(x => x.id === id); if (!d) return;
+      dreId = d.id; $('inPeriodo').value = d.periodo || '';
+      ENTRADAS.forEach(k => { const el = document.querySelector(`[data-k="${k}"]`); el.value = d.valores && d.valores[k] != null ? d.valores[k] : ''; });
+      supabase.from('dre_simples').select('observacao').eq('id', id).single().then(({ data }) => { $('inObs').value = (data && data.observacao) || ''; });
+      calcular(); carregarSalvos();
+    }
+
+    function novo() {
+      dreId = null; $('inPeriodo').value = ''; $('inObs').value = '';
+      document.querySelectorAll('.dre-in').forEach(i => i.value = '');
+      calcular(); carregarSalvos();
+    }
+
+    async function salvar() {
+      const cid = $('selCliente').value, periodo = $('inPeriodo').value.trim();
+      if (!cid) { alert('Selecione o cliente.'); return; }
+      if (!periodo) { alert('Informe o período (ex.: Agosto/2026).'); $('inPeriodo').focus(); return; }
+      const { data: { user } } = await supabase.auth.getUser();
+      const reg = { cliente_id: cid, periodo, valores: lerValores(), observacao: $('inObs').value.trim() || null, atualizado_em: new Date().toISOString() };
+      $('btnSalvar').disabled = true;
+      const r = dreId
+        ? await supabase.from('dre_simples').update(reg).eq('id', dreId).select('id').single()
+        : await supabase.from('dre_simples').insert({ ...reg, criado_por: user ? user.email : null }).select('id').single();
+      $('btnSalvar').disabled = false;
+      if (r.error) { alert('Erro ao salvar: ' + r.error.message); return; }
+      dreId = r.data.id; carregarSalvos();
+    }
+
+    function relatorio() {
+      const cid = $('selCliente').value; const cli = clientes.find(c => c.id === cid);
+      if (!cli) { alert('Selecione o cliente.'); return; }
+      const v = lerValores(), t = totais(v), base = t.receita_bruta;
+      const logoUrl = new URL('assets/logo-mr.png', location.href).href;
+      const hoje = new Date().toLocaleDateString('pt-BR');
+      const linhas = LINHAS.map(l => {
+        const val = l.tipo === 'in' ? v[l.k] : t[l.k];
+        return `<tr class="${l.tipo === 'tot' ? (l.final ? 'tot final' : 'tot') : (l.raiz ? 'in raiz' : 'in')}"><td>${escapeHtml(l.t)}</td><td class="num${l.final && val < 0 ? ' neg' : ''}">${brl(val)}</td><td class="num pct">${pct(val, base)}</td></tr>`;
+      }).join('');
+      const obs = $('inObs').value.trim();
+      const html = '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>DRE — ' + escapeHtml(cli.nome_principal) + '</title><style>'
+        + 'body{font-family:"Segoe UI",Arial,sans-serif;color:#23272E;margin:0;padding:28px;background:#fff;font-size:13px;line-height:1.5;}'
+        + '.folha{max-width:760px;margin:0 auto;}'
+        + '.cab{display:flex;align-items:center;gap:14px;} .cab img{width:52px;height:52px;object-fit:contain;}'
+        + '.esc{display:flex;flex-direction:column;line-height:1.35;} .esc strong{font-size:15px;color:#3A5878;} .esc span{font-size:11px;color:#66707E;}'
+        + 'hr.reg{border:none;border-top:2px solid #5B82A6;margin:14px 0 20px;}'
+        + 'h1{font-size:19px;color:#3A5878;margin:0 0 2px;} .sub{color:#66707E;font-size:12.5px;margin:0 0 16px;}'
+        + '.dados{margin:0 0 18px;font-size:13px;} .dados b{color:#3A5878;}'
+        + 'table{width:100%;border-collapse:collapse;margin:0 0 6px;} th{background:#3A5878;color:#fff;text-align:left;padding:7px 9px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;} th.num{text-align:right;}'
+        + 'td{padding:6px 9px;border-bottom:1px solid #E1E6EC;} .num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;} .pct{color:#66707E;width:80px;}'
+        + 'tr.in td:first-child{padding-left:26px;} tr.in.raiz td:first-child{padding-left:9px;}'
+        + 'tr.tot td{font-weight:700;background:#F3F6F9;} tr.tot.final td{background:#E4ECF4;color:#3A5878;font-size:14px;} td.neg{color:#A65B5B;}'
+        + '.obs{background:#F7F8FA;border-left:4px solid #5B82A6;border-radius:6px;padding:11px 14px;margin:18px 0 0;font-size:12.5px;white-space:pre-wrap;}'
+        + '.rodape{margin-top:26px;padding-top:10px;border-top:1px solid #E1E6EC;font-size:10.5px;color:#8A93A6;}'
+        + '.toolbar-print{position:fixed;top:10px;right:10px;} .toolbar-print button{padding:8px 14px;cursor:pointer;}'
+        + '@page{margin:1.4cm;} @media print{ body{padding:0;} .toolbar-print{display:none;} }'
+        + '</style></head><body>'
+        + '<div class="toolbar-print"><button onclick="window.print()">Imprimir / Salvar PDF</button></div>'
+        + '<div class="folha">'
+        + '<header class="cab"><img src="' + logoUrl + '" alt="Macedo & Reis"><div class="esc"><strong>Macedo &amp; Reis Contabilidade</strong><span>CRC/RS 006418/O</span><span>Três Coroas – RS</span></div></header>'
+        + '<hr class="reg">'
+        + '<h1>Demonstração do Resultado — Simplificada</h1>'
+        + '<p class="sub">Período: ' + escapeHtml($('inPeriodo').value.trim() || '—') + '</p>'
+        + '<div class="dados"><b>' + escapeHtml(cli.nome_principal) + '</b>' + (cli.documento ? ' · CNPJ ' + escapeHtml(fmtCnpj(cli.documento)) : '') + '</div>'
+        + '<table><thead><tr><th>Conta</th><th class="num" style="width:130px">Valor</th><th class="num" style="width:80px">% da receita</th></tr></thead><tbody>' + linhas + '</tbody></table>'
+        + (obs ? '<div class="obs">' + escapeHtml(obs) + '</div>' : '')
+        + '<div class="rodape">Demonstrativo gerencial simplificado, elaborado em reunião com o cliente a partir de valores por ele informados — não substitui as demonstrações contábeis oficiais. Emitido em ' + hoje + ' · Macedo &amp; Reis Contabilidade · CRC/RS 006418/O</div>'
+        + '</div></body></html>';
+      const w = window.open('', '_blank'); w.document.write(html); w.document.close();
+    }
+
+    $('selCliente').onchange = () => { dreId = null; carregarSalvos(); };
+    $('btnNovo').onclick = novo;
+    $('btnSalvar').onclick = salvar;
+    $('btnRelatorio').onclick = relatorio;
+
+    montar(); calcular(); carregarClientes();
+  </script>
+</body>
+</html>
