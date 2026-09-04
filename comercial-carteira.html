@@ -240,7 +240,7 @@
       const todas = [];
       for (let i = 0; ; i += 1000) {
         const { data, error } = await supabase.from('carteira_info')
-          .select('*, clientes(id, nome_principal, nome_fantasia, regime_tributario, cidade, uf, status, documento)')
+          .select('*, clientes(id, nome_principal, nome_fantasia, regime_tributario, cidade, uf, status, documento, drive_folder_url)')
           .order('cliente_id').range(i, i + 999);
         if (error) { alert('Erro ao carregar: ' + error.message); return; }
         todas.push(...(data || []));
@@ -315,7 +315,7 @@
         const inad = !!r.inadimplente_desde;
         const estilo = r.saida ? ' style="opacity:.55;"' : (inad ? ' style="background:rgba(208,113,90,.07); box-shadow:inset 3px 0 0 #D0715A;"' : '');
         return `<tr${estilo}>
-          <td class="ct-emp"><span data-inad="${r.cliente_id}" title="${inad ? 'Marcar como em dia' : 'Marcar como inadimplente'}" style="cursor:pointer; margin-right:6px; opacity:${inad ? '1' : '.35'};">${inad ? '⚠' : '💰'}</span><a href="clientes/editar.html?id=${c.id}" target="_blank" rel="noopener">${c.nome_principal}</a>
+          <td class="ct-emp"><span data-inad="${r.cliente_id}" title="${inad ? 'Marcar como em dia' : 'Marcar como inadimplente'}" style="cursor:pointer; margin-right:6px; opacity:${inad ? '1' : '.35'};">${inad ? '⚠' : '💰'}</span><a href="clientes/editar.html?id=${c.id}" target="_blank" rel="noopener">${c.nome_principal}</a>${/^https?:\/\//i.test(c.drive_folder_url || '') ? ` <a href="${String(c.drive_folder_url).replace(/"/g, '&quot;')}" target="_blank" rel="noopener" title="Abrir a pasta do cliente no Drive" style="text-decoration:none;">📁</a>` : ''}
             ${c.nome_fantasia ? `<small>${c.nome_fantasia}</small>` : ''}${emTransicao ? ' <span class="chip" style="background:rgba(91,130,166,.16); color:#8FC0F0;">em transição</span>' : ''}${inativo ? ' <span class="chip c-ama">inativo no cadastro</span>' : ''}${inad ? ` <span class="chip c-verm">⚠ inadimplente desde ${dBR(r.inadimplente_desde)}</span>` : ''}</td>
           <td><span class="chip" data-reg="${r.cliente_id}" style="cursor:pointer;" title="Clique para definir o regime — grava direto no cadastro">${c.regime_tributario || '—'}</span></td>
           <td>${c.cidade ? c.cidade : '<span class="chip c-ama" title="Preencha a cidade no cadastro do cliente">sem cidade</span>'}</td>
