@@ -58,6 +58,9 @@
     .fr-vira { animation: frPulse 1.6s ease-in-out infinite; }
     @keyframes frPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(244,114,182,0); } 50% { box-shadow: 0 0 0 4px rgba(244,114,182,.18); } }
     .fr-erro { color: #F472B6; font-size: 12px; }
+    .fr-avisos { display: none; margin: 0 0 16px; padding: 10px 14px; border: 1px solid rgba(250,204,21,.4); background: rgba(250,204,21,.07); border-radius: 10px; font-size: 13px; color: #E3B341; line-height: 1.7; }
+    .fr-avisos a { color: #FACC15; font-weight: 600; }
+    .fr-avisos .fr-chip-emp { display: inline-block; margin: 2px 6px 2px 0; padding: 2px 10px; border-radius: 999px; background: rgba(250,204,21,.12); border: 1px solid rgba(250,204,21,.35); white-space: nowrap; }
   </style>
 </head>
 <body>
@@ -92,6 +95,7 @@
           <button class="btn btn-primary btn-sm" id="btnIrLancar">Lançar competência</button>
           <button class="btn btn-ghost btn-sm" id="btnIrCadastro">Gerenciar empresas</button>
         </div>
+        <div class="fr-avisos" id="frAlertas"></div>
         <table class="fr-tab">
           <thead id="painelCab"></thead>
           <tbody id="painelCorpo"></tbody>
@@ -180,9 +184,11 @@
       return d.toISOString().slice(0, 10);
     }
 
+    let usuarioEmail = null;
     (async () => {
       const user = await getCurrentUser();
       if (user) {
+        usuarioEmail = user.email || null;
         const n = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário';
         el('userName').textContent = n;
         el('userAvatar').textContent = n.charAt(0).toUpperCase();
@@ -798,6 +804,74 @@
       };
     }
 
+    // ---------------- alertas ativos (v3): o radar vira tarefa ----------------
+    // Roda no carregamento da página (client-side, sem cron): virada de anexo no
+    // próximo PA ou fator projetado na zona de risco (28% a 30%) cria UMA tarefa
+    // no setor fiscal — sem responsável (quem pega, pega) e sem duplicar por PA.
+    async function gerarAlertasFatorR() {
+      try {
+        const paProx = addMeses(paAtual, 1);
+        const paRot = paProx.slice(5, 7) + '/' + paProx.slice(0, 4);
+        const alvos = [];
+        empresas.filter(e => e.ativo).forEach(e => {
+          const c = calcPA(e.id, e.inicio_atividade, paAtual);
+          const r = calcPA(e.id, e.inicio_atividade, paProx);
+          if (!c || !r || r.r == null || c.anexo === '—' || r.anexo === '—') return;
+          const virada = c.anexo !== r.anexo;
+          const zona = r.r >= 0.28 && r.r < 0.30;
+          if (virada || zona) alvos.push({ e, c, r, virada });
+        });
+        // Tarefa concluída do MESMO PA também conta como tratada — sem isso ela
+        // renasceria a cada abertura da página depois de concluída (o radar não
+        // muda dentro do mês). O PA no título delimita o mês, então o próximo
+        // ciclo gera alerta novo normalmente.
+        const { data: existentes, error: eEx } = await supabase.from('tarefas')
+          .select('id, titulo, cliente_id, status').eq('origem', 'fator_r');
+        if (eEx) { console.warn('Fator R: não deu pra conferir as tarefas existentes — alertas não gerados agora.', eEx.message); return; }
+        const doPA = (existentes || []).filter(t => (t.titulo || '').includes('PA ' + paRot));
+        // matching ancorado no formato exato do título ('Fator R · NOME · PA mm/aaaa')
+        // pra nome contido em outro (matriz × filial) não suprimir alerta legítimo
+        const marcaDe = nome => 'Fator R · ' + nome + ' · PA ' + paRot;
+        const jaTem = alvo => doPA.some(t =>
+          alvo.e.cliente_id ? t.cliente_id === alvo.e.cliente_id : (t.titulo || '').includes(marcaDe(alvo.e.nome)));
+        // situação que sumiu do radar não cancela tarefa — só registra no console
+        doPA.forEach(t => {
+          if (t.status === 'concluida') return;
+          const aindaVale = alvos.some(a => (a.e.cliente_id && t.cliente_id === a.e.cliente_id) || (t.titulo || '').includes(marcaDe(a.e.nome)));
+          if (!aindaVale) console.info('Fator R: a situação de "' + t.titulo + '" não aparece mais no radar — a tarefa segue aberta (cancelar é decisão humana).');
+        });
+        const criadas = [];
+        for (const { e, c, r, virada } of alvos) {
+          if (jaTem({ e })) continue;
+          const rotulo = virada ? 'Virada de anexo prevista' : 'Fator R em zona de risco';
+          const titulo = 'Fator R · ' + e.nome + ' · PA ' + paRot + ' — ' + rotulo;
+          const descricao = 'Alerta automático do Fator R.\n' +
+            'Fator projetado pra ' + paRot + ': ' + pct(r.r) + ' — anexo atual ' + c.anexo + ' → projetado ' + r.anexo +
+            (virada ? ' (virada de anexo).' : ' (no Anexo III, mas com folga menor que 2 pontos do limite de 28%).') + '\n' +
+            'Janela dos 12 meses da projeção: receita (RBT12) ' + brl(r.rbt12) + ' · folha (FS12) ' + brl(r.fs12) + '.\n' +
+            'Projeção com o que está lançado até agora — a folha do mês corrente ainda pode mudar o quadro. Confira a ficha da empresa no Fator R antes da apuração.';
+          const { data: ins, error } = await supabase.from('tarefas').insert({
+            setor: 'fiscal', titulo, descricao,
+            cliente_id: e.cliente_id || null, responsavel: null,
+            prazo: paProx.slice(0, 8) + '15', prioridade: 'alta',
+            origem: 'fator_r', status: 'pendente'
+          }).select('id').single();
+          if (error) { console.warn('Fator R: falhou ao criar a tarefa de ' + e.nome + ': ' + error.message); continue; }
+          if (ins) await supabase.from('tarefa_historico').insert({ tarefa_id: ins.id, descricao: 'Criada automaticamente pelo Fator R', autor: usuarioEmail });
+          criadas.push({ nome: e.nome, rotulo });
+        }
+        if (criadas.length) {
+          const faixa = el('frAlertas');
+          faixa.innerHTML = '⚡ <b>' + criadas.length + ' alerta(s) do radar virou(aram) tarefa agora</b> — sem responsável definido; quem pega, pega: ' +
+            criadas.map(x => '<span class="fr-chip-emp">' + x.nome + ' · ' + x.rotulo + '</span>').join('') +
+            ' <a href="fiscal-tarefas.html">abrir as Tarefas do Fiscal →</a>';
+          faixa.style.display = 'block';
+        }
+      } catch (ex) {
+        console.warn('Fator R: geração de alertas falhou —', ex);
+      }
+    }
+
     // ---------------- roteador ----------------
     function rotear() {
       const h = location.hash.replace(/^#/, '');
@@ -814,6 +888,7 @@
 
     await carregarTudo();
     rotear();
+    gerarAlertasFatorR();
   </script>
 </body>
 </html>
