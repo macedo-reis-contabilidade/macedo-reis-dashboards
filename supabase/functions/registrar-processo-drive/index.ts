@@ -6,7 +6,7 @@
 // A ação padrão também passa a gravar o drive_folder_id (antes só a URL).
 // v10: salvar_societario acha a pasta SOCIETARIO por aproximação
 // (acentos/variações) e o erro lista as candidatas vistas.
-// PROPOSTA — aguardando deploy (feito pelo Claude web via MCP);
+// IMPLANTADA em 04/09/2026 pelo Claude web via MCP (versão 13 no Supabase);
 // este arquivo é a fonte de edição.
 // ============================================================
 
