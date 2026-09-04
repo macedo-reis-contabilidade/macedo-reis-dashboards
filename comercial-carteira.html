@@ -452,6 +452,30 @@
       clearTimeout(addTimer);
       addTimer = setTimeout(buscarCadastro, 300);
     });
+    // aviso discreto pro nascimento de pasta no Drive (a página não navega — dá pra rodar em segundo plano)
+    function toastDrive(txt){
+      const el = document.createElement('div');
+      el.textContent = txt;
+      el.style.cssText = 'position:fixed;right:18px;bottom:18px;z-index:1200;background:#111A26;border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:10px 14px;color:#E6EBF2;font-size:13px;box-shadow:0 6px 24px rgba(0,0,0,.4);max-width:340px;';
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 6000);
+    }
+    async function criarPastaDriveBg(clienteId, nome){
+      try {
+        const { data: drv, error } = await supabase.functions.invoke('registrar-processo-drive', {
+          body: { acao: 'criar_pasta_cliente', cliente_id: clienteId, nome_cliente: nome }
+        });
+        if (error) throw new Error(error.message || 'falha na chamada');
+        // 'nome_processo é obrigatório' = edge implantada ainda é a v12, sem a ação nova
+        if (drv?.error) throw new Error(drv.error === 'nome_processo é obrigatório' ? 'a função do Drive ainda não foi atualizada (deploy pendente)' : drv.error);
+        const r = rows.find(x => x.cliente_id === clienteId);
+        if (r && r.clientes) { r.clientes.drive_folder_url = drv.folder_url; render(); }
+        toastDrive(drv.origem === 'criada' ? '📁 Pasta criada no Drive: ' + nome : '📁 Pasta localizada no Drive: ' + nome);
+      } catch (e) {
+        toastDrive('Não foi possível criar a pasta no Drive de ' + nome + ' agora — use "Localizar ou criar pasta" na ficha do cliente.');
+      }
+    }
+
     async function buscarCadastro(){
       const t = document.getElementById('addBusca').value.trim();
       const el = document.getElementById('addRes');
@@ -476,6 +500,7 @@
         if (e1) { alert('Erro ao criar o cadastro: ' + e1.message); return; }
         const { error: e2 } = await supabase.from('carteira_info').insert({ cliente_id: novo.id, entrada: document.getElementById('addEntrada').value || null });
         if (e2) { alert('Cadastro criado, mas falhou ao pôr na carteira: ' + e2.message); return; }
+        criarPastaDriveBg(novo.id, t.toUpperCase()); // em segundo plano — nunca segura o fluxo
         addOverlay.classList.remove('is-open');
         await carregar();
       });

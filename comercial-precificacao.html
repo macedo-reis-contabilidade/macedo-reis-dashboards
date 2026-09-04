@@ -1048,6 +1048,7 @@
       const doc = document.getElementById('tpDoc').value.replace(/\D/g, '');
       if (doc && !validaDV(doc)) { msg.style.color = '#E06C6C'; msg.textContent = 'Documento inválido (dígito verificador não confere): use CPF de 11 ou CNPJ de 14 dígitos — ou deixe vazio pra vincular depois.'; return; }
       btn.disabled = true; msg.style.color = '#8A93A6'; msg.textContent = 'Criando…';
+      let pastaInfo = '';
       try {
         let clienteId = p.cliente_id || null;
         if (!clienteId && doc) {
@@ -1064,6 +1065,24 @@
             }).select('id').single();
             if (eCli) throw eCli;
             clienteId = novoCli.id;
+            // pasta no Drive nasce junto com o pré-cadastro — aguardada aqui porque a
+            // página redireciona logo depois; falha do Drive nunca trava a transição
+            msg.textContent = 'Criando pasta no Drive…';
+            try {
+              // timeout de 15s: Drive lento não pode segurar a transição — o cadastro já foi
+              const { data: drv, error: eDrv } = await Promise.race([
+                supabase.functions.invoke('registrar-processo-drive', {
+                  body: { acao: 'criar_pasta_cliente', cliente_id: clienteId, nome_cliente: p.cliente_nome }
+                }),
+                new Promise((_, rej) => setTimeout(() => rej(new Error('demorou demais')), 15000))
+              ]);
+              if (eDrv) throw new Error(eDrv.message || 'falha na chamada');
+              if (drv?.error) throw new Error(drv.error);
+              pastaInfo = drv.origem === 'criada' ? ' Pasta criada no Drive.' : ' Pasta localizada no Drive.';
+            } catch (eDrv2) {
+              pastaInfo = ' Não foi possível criar a pasta no Drive agora — use "Localizar ou criar pasta" na ficha do cliente.';
+            }
+            msg.textContent = 'Criando…';
           }
         }
         if (clienteId && !p.cliente_id) await supabase.from('precificacoes').update({ cliente_id: clienteId, atualizado_em: new Date().toISOString() }).eq('id', p.id);
@@ -1088,7 +1107,7 @@
           })));
         }
         msg.style.color = '#7FBF8E';
-        msg.textContent = '✓ Transição criada' + (kit && kit.length ? ' com ' + kit.length + ' tarefa(s) do kit' : '') + (clienteId ? ' e cliente vinculado' : '') + '. Abrindo a tela de transições…';
+        msg.textContent = '✓ Transição criada' + (kit && kit.length ? ' com ' + kit.length + ' tarefa(s) do kit' : '') + (clienteId ? ' e cliente vinculado' : '') + '.' + pastaInfo + ' Abrindo a tela de transições…';
         setTimeout(() => { location.href = 'comercial-transicao.html'; }, 1400);
       } catch (ex) {
         msg.style.color = '#E06C6C';
