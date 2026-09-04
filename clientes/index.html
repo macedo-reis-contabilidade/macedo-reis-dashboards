@@ -44,6 +44,9 @@
     .rcv-log { margin-top:12px; max-height:180px; overflow:auto; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:10px 14px; font-size:12.5px; line-height:1.7; display:none; }
     .rcv-log.is-on { display:block; }
     .rcv-atual { margin-top:8px; font-size:12.5px; color:#8A93A6; min-height:18px; }
+    .chk-pasta { display:flex; align-items:center; gap:7px; font-size:13.5px; color:#8A93A6; cursor:pointer; white-space:nowrap; user-select:none; }
+    .chk-pasta input { accent-color:#5B82A6; }
+    .lnk-pasta { margin-right:10px; text-decoration:none; font-size:15px; }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script type="module" src="../assets/js/auth-guard.js"></script>
@@ -97,8 +100,10 @@
             <option value="em_transicao">Em transição</option>
             <option value="prospect">Prospect</option>
           </select>
+          <label class="chk-pasta"><input type="checkbox" id="filterSemPasta"> Sem pasta no Drive</label>
         </div>
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <button class="btn btn-ghost" id="btnPastas" type="button" style="display:none;">📁 Localizar/criar pastas dos listados</button>
           <button class="btn btn-ghost" id="btnReceita" type="button">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 12a9 9 0 1 1-9-9"/><polyline points="21 3 21 9 15 9"/>
@@ -153,6 +158,30 @@
       <div class="imp-foot">
         <button class="btn btn-ghost" id="impCancelar" type="button">Cancelar</button>
         <button class="btn btn-primary" id="impAcao" type="button" disabled>Analisar arquivo</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="imp-overlay" id="drvOverlay">
+    <div class="imp-modal">
+      <div class="imp-head"><h3>Localizar/criar pastas no Drive</h3><button class="imp-close" id="drvClose" type="button">&times;</button></div>
+      <div class="imp-body">
+        <p>Para cada cliente listado <b>sem pasta no Drive</b>, procura a pasta pelo nome em <b>Clientes Ativos</b> e vincula; se não existir, cria com a estrutura padrão de subpastas. Uma por vez, na ordem da lista. Só clientes <b>ativos</b> ou <b>em transição</b> entram.</p>
+        <div class="rcv-prog" id="drvProg" hidden>
+          <div class="rcv-bar"><div class="rcv-fill" id="drvFill"></div></div>
+          <div class="rcv-stats">
+            <span>Processados: <b id="drvCont">0/0</b></span>
+            <span class="rcv-ok">Criadas: <b id="drvCriadas">0</b></span>
+            <span class="rcv-skip">Localizadas: <b id="drvLoc">0</b></span>
+            <span class="rcv-err">Erros: <b id="drvErr">0</b></span>
+          </div>
+          <div class="rcv-atual" id="drvAtual"></div>
+        </div>
+        <div class="rcv-log" id="drvLog"></div>
+      </div>
+      <div class="imp-foot">
+        <button class="btn btn-ghost" id="drvFechar" type="button">Fechar</button>
+        <button class="btn btn-primary" id="drvAcao" type="button">Iniciar</button>
       </div>
     </div>
   </div>
@@ -213,7 +242,7 @@
     document.getElementById('btnLogout').addEventListener('click', signOut);
 
     async function loadClientes() {
-      const { data, error } = await supabase.todosClientes('id, tipo_pessoa, nome_principal, nome_fantasia, documento, status, cidade, uf, created_at, cnae_principal, cnaes_secundarios');
+      const { data, error } = await supabase.todosClientes('id, tipo_pessoa, nome_principal, nome_fantasia, documento, status, cidade, uf, created_at, cnae_principal, cnaes_secundarios, drive_folder_id, drive_folder_url');
 
       if (error) {
         tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--danger); padding: 40px;">Erro ao carregar clientes: ${error.message}</td></tr>`;
@@ -224,14 +253,24 @@
       render();
     }
 
+    // só URL http(s) de verdade conta como pasta: texto solto gravado no campo não pode
+    // nem virar link nem esconder o cliente do filtro "Sem pasta" (o lote conserta ele)
+    const urlOk = u => /^https?:\/\//i.test(u || '');
+    const temPasta = c => urlOk(c.drive_folder_url) || !!c.drive_folder_id;
+    const urlPasta = c => (urlOk(c.drive_folder_url) ? c.drive_folder_url : 'https://drive.google.com/drive/folders/' + c.drive_folder_id);
+    const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    let listadosSemPasta = [];
+
     function render() {
       const search = norm(searchInput.value.trim());
       const tipo = filterTipo.value;
       const status = filterStatus.value;
+      const soSemPasta = document.getElementById('filterSemPasta').checked;
 
       const filtered = allClientes.filter(c => {
         if (tipo && c.tipo_pessoa !== tipo) return false;
         if (status && c.status !== status) return false;
+        if (soSemPasta && temPasta(c)) return false;
         if (search) {
           const cnaes = `${c.cnae_principal || ''} ${Array.isArray(c.cnaes_secundarios) ? c.cnaes_secundarios.join(' ') : ''}`;
           const haystack = norm(`${c.nome_principal} ${c.nome_fantasia || ''} ${c.documento} ${cnaes}`);
@@ -239,6 +278,10 @@
         }
         return true;
       });
+
+      // o lote de pastas age sobre o que está listado agora, com o filtro ativo
+      listadosSemPasta = soSemPasta ? filtered : [];
+      document.getElementById('btnPastas').style.display = soSemPasta && filtered.length ? 'inline-flex' : 'none';
 
       if (filtered.length === 0) {
         tbody.innerHTML = `
@@ -270,7 +313,8 @@
           <td data-label="Status"><span class="status-pill status-${c.status}">${STATUS_LABELS[c.status] || c.status}</span></td>
           <td data-label="Localização">${c.cidade ? `${c.cidade}${c.uf ? '/' + c.uf : ''}` : '—'}</td>
           <td data-label="Cadastrado">${formatDate(c.created_at)}</td>
-          <td data-label="" style="text-align: right;">
+          <td data-label="" style="text-align: right; white-space:nowrap;">
+            ${temPasta(c) ? `<a class="lnk-pasta" href="${esc(urlPasta(c))}" target="_blank" rel="noopener" data-pasta title="Abrir a pasta do cliente no Drive">📁</a>` : ''}
             <svg class="chevron-right" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="9 18 15 12 9 6"/>
             </svg>
@@ -283,11 +327,88 @@
           window.location.href = `editar.html?id=${tr.dataset.id}`;
         });
       });
+      // a linha inteira navega — o clique no 📁 não pode borbulhar
+      tbody.querySelectorAll('[data-pasta]').forEach(a => a.addEventListener('click', e => e.stopPropagation()));
     }
 
     searchInput.addEventListener('input', render);
     filterTipo.addEventListener('change', render);
     filterStatus.addEventListener('change', render);
+    document.getElementById('filterSemPasta').addEventListener('change', render);
+
+    // ===== Localizar/criar pastas no Drive dos listados (em série, uma por vez) =====
+    const drvOverlay = document.getElementById('drvOverlay');
+    const drvLog = document.getElementById('drvLog');
+    let drvRodando = false;
+
+    document.getElementById('btnPastas').addEventListener('click', () => {
+      if (drvRodando) { drvOverlay.classList.add('is-open'); return; }
+      document.getElementById('drvProg').hidden = true;
+      drvLog.innerHTML = ''; drvLog.classList.remove('is-on');
+      document.getElementById('drvAcao').disabled = false;
+      document.getElementById('drvAcao').textContent = 'Iniciar';
+      drvOverlay.classList.add('is-open');
+    });
+    function fecharDrv(){ if (drvRodando) return; drvOverlay.classList.remove('is-open'); }
+    document.getElementById('drvClose').addEventListener('click', fecharDrv);
+    document.getElementById('drvFechar').addEventListener('click', fecharDrv);
+    drvOverlay.addEventListener('click', e => { if (e.target === drvOverlay) fecharDrv(); });
+
+    function drvPainel(f, t, cr, lo, er){
+      document.getElementById('drvCont').textContent = `${f} de ${t}`;
+      document.getElementById('drvCriadas').textContent = cr;
+      document.getElementById('drvLoc').textContent = lo;
+      document.getElementById('drvErr').textContent = er;
+      document.getElementById('drvFill').style.width = t ? `${Math.round(f/t*100)}%` : '100%';
+    }
+    function drvLinha(html){ drvLog.classList.add('is-on'); drvLog.insertAdjacentHTML('beforeend', `<div>${html}</div>`); drvLog.scrollTop = drvLog.scrollHeight; }
+
+    // enquanto a edge implantada for a v12 (sem a ação nova), ela responde este erro cru
+    const msgDrive = m => m === 'nome_processo é obrigatório'
+      ? 'a função do Drive ainda não foi atualizada (deploy pendente)' : m;
+
+    document.getElementById('drvAcao').addEventListener('click', async () => {
+      if (drvRodando) return;
+      if (rcvRodando) { drvLinha('O fluxo "Puxar dados da Receita" está rodando — espere ele terminar.'); return; }
+      const btn = document.getElementById('drvAcao');
+      // em série de propósito: cada chamada lista as ~450 pastas da raiz por nome —
+      // paralelizar multiplicaria essas listagens e arriscaria o limite da API
+      const alvo = listadosSemPasta.filter(c =>
+        ['ativo', 'em_transicao'].includes(c.status) && (c.nome_principal || '').trim());
+      const pulados = listadosSemPasta.length - alvo.length;
+      if (!alvo.length) { drvLinha('Nada a fazer: nenhum listado é ativo/em transição com nome preenchido.'); return; }
+      drvRodando = true; btn.disabled = true; btn.textContent = 'Rodando…';
+      document.getElementById('drvProg').hidden = false;
+      if (pulados) drvLinha(`<span class="rcv-skip">${pulados} listado(s) fora do lote (inativo/prospect ou sem nome).</span>`);
+      let feitos = 0, criadas = 0, localizadas = 0, erros = 0;
+      drvPainel(feitos, alvo.length, criadas, localizadas, erros);
+      for (const c of alvo){
+        document.getElementById('drvAtual').textContent = `Agora: ${c.nome_principal}`;
+        try {
+          const { data: resp, error } = await supabase.functions.invoke('registrar-processo-drive', {
+            body: { acao: 'criar_pasta_cliente', cliente_id: c.id, nome_cliente: c.nome_principal }
+          });
+          if (error) throw new Error(error.message || 'falha na chamada');
+          if (resp?.error) throw new Error(msgDrive(resp.error));
+          if (!resp?.folder_url) throw new Error('resposta sem pasta');
+          c.drive_folder_id = resp.folder_id || null;
+          c.drive_folder_url = resp.folder_url;
+          // ao localizar, mostrar TAMBÉM o nome da pasta casada (com link): é a chance
+          // de o operador flagrar um casamento errado antes de documentos irem parar lá
+          const lnk = `<a href="${esc(resp.folder_url)}" target="_blank" rel="noopener">${esc(resp.folder_name || 'abrir')}</a>`;
+          if (resp.origem === 'criada') { criadas++; drvLinha(`<span class="rcv-ok">✓ ${esc(c.nome_principal)}: pasta criada → ${lnk}</span>`); }
+          else { localizadas++; drvLinha(`<span class="rcv-skip">✓ ${esc(c.nome_principal)}: pasta ${resp.origem === 'existente' ? 'já vinculada' : 'localizada e vinculada'} → ${lnk}</span>`); }
+        } catch (e) {
+          erros++; drvLinha(`<span class="rcv-err">✗ ${esc(c.nome_principal)}: ${esc(e.message || e)}</span>`);
+        }
+        feitos++;
+        drvPainel(feitos, alvo.length, criadas, localizadas, erros);
+      }
+      document.getElementById('drvAtual').textContent = '';
+      drvLinha(`<b>Concluído:</b> <span class="rcv-ok">${criadas} criada(s)</span> · <span class="rcv-skip">${localizadas} localizada(s)</span> · <span class="rcv-err">${erros} erro(s)</span>${erros ? ' — quem falhou continua sem pasta: é só rodar de novo que o lote tenta só esses.' : ''}`);
+      drvRodando = false; btn.disabled = false; btn.textContent = 'Rodar de novo';
+      render();
+    });
 
     // ===== Importação de clientes do Taskdo (.xls) =====
     const REG_MAP = { 'MEI':'MEI', 'SIMPLES NACIONAL':'Simples Nacional', 'LUCRO PRESUMIDO':'Lucro Presumido', 'LUCRO REAL':'Lucro Real', 'IMUNE - ISENTA':'Imune' };
@@ -451,6 +572,7 @@
 
     document.getElementById('rcvAcao').addEventListener('click', async () => {
       if (rcvRodando) return;
+      if (drvRodando) { logLinha('O lote de pastas do Drive está rodando — espere ele terminar.'); return; }
       const btn = document.getElementById('rcvAcao');
       rcvRodando = true; btn.disabled = true; btn.textContent = 'Consultando…';
       rcvProg.hidden = false; rcvLog.innerHTML = ''; rcvLog.classList.remove('is-on');

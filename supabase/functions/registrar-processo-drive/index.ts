@@ -1,9 +1,13 @@
 // ============================================================
-// MACEDO & REIS - Edge Function: registrar-processo-drive (v10)
+// MACEDO & REIS - Edge Function: registrar-processo-drive (v13)
+// v13: ação criar_pasta_cliente — idempotente: confirma a pasta já
+// vinculada, localiza por nome na raiz de clientes ou cria com as
+// subpastas padrão, e grava drive_folder_id + drive_folder_url.
+// A ação padrão também passa a gravar o drive_folder_id (antes só a URL).
 // v10: salvar_societario acha a pasta SOCIETARIO por aproximação
 // (acentos/variações) e o erro lista as candidatas vistas.
-// ESPELHO do código IMPLANTADO (versão 12 no Supabase) — 04/09/2026.
-// Deploy é feito pelo Claude web via MCP; este arquivo é a fonte de edição.
+// PROPOSTA — aguardando deploy (feito pelo Claude web via MCP);
+// este arquivo é a fonte de edição.
 // ============================================================
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
@@ -57,10 +61,14 @@ function folderIdFromUrl(url: string): string | null {
 }
 
 async function pastaValida(token: string, id: string): Promise<boolean> {
-  const r = await fetch(`${DRIVE_API_URL}/${id}?fields=id`, {
+  // fields=id,trashed: pasta na lixeira responde 200 no GET — sem checar trashed,
+  // um vínculo pra pasta jogada fora seria confirmado como "existente" pra sempre
+  const r = await fetch(`${DRIVE_API_URL}/${id}?fields=id,trashed`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  return r.ok;
+  if (!r.ok) return false;
+  const meta = await r.json();
+  return !meta.trashed;
 }
 
 async function findChildFolder(token: string, parentId: string, nome: string): Promise<string | null> {
@@ -95,7 +103,7 @@ function normNome(s: string): string {
     .trim();
 }
 
-async function findClienteFolder(token: string, parentId: string, nomeCliente: string): Promise<string | null> {
+async function findClienteFolder(token: string, parentId: string, nomeCliente: string, estrito = false): Promise<{ id: string; name: string } | null> {
   const q = encodeURIComponent(
     `'${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
   );
@@ -107,10 +115,14 @@ async function findClienteFolder(token: string, parentId: string, nomeCliente: s
   const alvo = normNome(nomeCliente);
   if (!alvo) return null;
   let hit = files.find((f: any) => normNome(f.name) === alvo);
-  if (hit) return hit.id;
+  if (hit) return { id: hit.id, name: hit.name };
+  // modo estrito (criar_pasta_cliente): só o match exato normalizado vale — o fuzzy
+  // por substring pode casar com a pasta de OUTRO cliente e o vínculo fica gravado;
+  // pasta duplicada se conserta à mão, vínculo errado vaza documento de cliente
+  if (estrito) return null;
   if (alvo.length >= 6) {
     hit = files.find((f: any) => { const n = normNome(f.name); return n.includes(alvo) || alvo.includes(n); });
-    if (hit) return hit.id;
+    if (hit) return { id: hit.id, name: hit.name };
   }
   return null;
 }
@@ -209,8 +221,8 @@ Deno.serve(async (req: Request) => {
       const { data: cfg } = await supa().from("configuracoes_escritorio").select("valor").eq("chave", "drive_pasta_clientes_id").single();
       if (!cfg?.valor) return null;
       const achada = await findClienteFolder(token, cfg.valor as string, nome_cliente);
-      console.log("[rpd] pasta cliente via nome:", achada);
-      return achada;
+      console.log("[rpd] pasta cliente via nome:", achada?.id);
+      return achada ? achada.id : null;
     }
 
     if (acao === "listar_processos") {
@@ -270,6 +282,64 @@ Deno.serve(async (req: Request) => {
       return ok(origin, { success: true, folder_id: subId, folder_url: url, arquivo: up.name });
     }
 
+    if (acao === "criar_pasta_cliente") {
+      if (!cliente_id) return ok(origin, { error: "cliente_id é obrigatório" });
+      const nome = String(nome_cliente || "").trim();
+      // normNome vazio (nome só de pontuação) nunca casaria na busca — cada chamada
+      // criaria mais uma pasta duplicada; melhor recusar e mandar arrumar o cadastro
+      if (!nome || !normNome(nome)) return ok(origin, { error: "Cliente sem nome utilizável — arrume o nome no cadastro antes de criar a pasta." });
+      const supabase = supa();
+      const { data: cli, error: eCli } = await supabase.from("clientes")
+        .select("drive_folder_id, drive_folder_url").eq("id", cliente_id).single();
+      if (eCli) return ok(origin, { error: `Cliente não encontrado: ${eCli.message}` });
+
+      // 1) já vinculado (id direto ou só a URL legada) e a pasta ainda existe → só confirma
+      const idSalvo = cli?.drive_folder_id || folderIdFromUrl(cli?.drive_folder_url || "");
+      if (idSalvo && await pastaValida(token, idSalvo)) {
+        const url = `https://drive.google.com/drive/folders/${idSalvo}`;
+        await supabase.from("clientes").update({ drive_folder_id: idSalvo, drive_folder_url: url }).eq("id", cliente_id);
+        console.log("[rpd] criar_pasta_cliente: já vinculada", idSalvo);
+        return ok(origin, { success: true, folder_id: idSalvo, folder_url: url, origem: "existente" });
+      }
+
+      const { data: cfg } = await supabase.from("configuracoes_escritorio")
+        .select("valor").eq("chave", "drive_pasta_clientes_id").single();
+      if (!cfg?.valor) {
+        return ok(origin, { error: "drive_pasta_clientes_id não configurado em configuracoes_escritorio" });
+      }
+      const raiz = cfg.valor as string;
+
+      // 2) procurar por nome na raiz (modo ESTRITO: só match exato normalizado —
+      // sem fuzzy, pra nunca vincular a pasta de outro cliente); 3) não achou → criar
+      const achadaEstrita = await findClienteFolder(token, raiz, nome, true);
+      let folderId = achadaEstrita ? achadaEstrita.id : null;
+      let folderName = achadaEstrita ? achadaEstrita.name : nome;
+      let origem: "localizada" | "criada" = "localizada";
+      let subFalhas = 0;
+      if (!folderId) {
+        folderId = await createFolder(token, nome, raiz);
+        const subs = await Promise.allSettled(SUBPASTAS.map((n) => createFolder(token, n, folderId!)));
+        subFalhas = subs.filter((s) => s.status === "rejected").length;
+        folderName = nome;
+        origem = "criada";
+        // corrida: outro usuário pode ter vinculado o mesmo cliente enquanto criávamos —
+        // se apareceu um id no banco nesse meio-tempo, o dele vale e a nossa vira órfã
+        const { data: recheca } = await supabase.from("clientes")
+          .select("drive_folder_id").eq("id", cliente_id).single();
+        if (recheca?.drive_folder_id && recheca.drive_folder_id !== folderId) {
+          console.log("[rpd] criar_pasta_cliente: corrida — mantendo", recheca.drive_folder_id, "e deixando órfã", folderId);
+          const url0 = `https://drive.google.com/drive/folders/${recheca.drive_folder_id}`;
+          return ok(origin, { success: true, folder_id: recheca.drive_folder_id, folder_url: url0, origem: "existente" });
+        }
+      }
+      const url = `https://drive.google.com/drive/folders/${folderId}`;
+      const { error: eUp } = await supabase.from("clientes")
+        .update({ drive_folder_id: folderId, drive_folder_url: url }).eq("id", cliente_id);
+      if (eUp) return ok(origin, { error: `Pasta ${origem}, mas falhou ao gravar no cliente: ${eUp.message}` });
+      console.log("[rpd] criar_pasta_cliente:", origem, folderId, "subFalhas:", subFalhas);
+      return ok(origin, { success: true, folder_id: folderId, folder_url: url, origem, folder_name: folderName, subpastas_falharam: subFalhas });
+    }
+
     // ===== Ação padrão: registrar processo (subir arquivos) =====
     if (!nome_processo) {
       return ok(origin, { error: "nome_processo é obrigatório" });
@@ -294,7 +364,8 @@ Deno.serve(async (req: Request) => {
       if (!cfg?.valor) {
         return ok(origin, { error: "drive_pasta_clientes_id não configurado em configuracoes_escritorio" });
       }
-      clienteFolderId = await findClienteFolder(token, cfg.valor as string, nome_cliente);
+      const achadaPadrao = await findClienteFolder(token, cfg.valor as string, nome_cliente);
+      clienteFolderId = achadaPadrao ? achadaPadrao.id : null;
       if (!clienteFolderId) {
         console.log("[rpd] pasta do cliente inexistente — criando nova (OAuth) com subpastas padrão");
         clienteFolderId = await createFolder(token, nome_cliente, cfg.valor as string);
@@ -304,7 +375,7 @@ Deno.serve(async (req: Request) => {
       achadaPorNome = true;
       if (cliente_id) {
         const url = `https://drive.google.com/drive/folders/${clienteFolderId}`;
-        await supabase.from("clientes").update({ drive_folder_url: url }).eq("id", cliente_id);
+        await supabase.from("clientes").update({ drive_folder_id: clienteFolderId, drive_folder_url: url }).eq("id", cliente_id);
       }
     }
     console.log("[rpd] cliente folder:", clienteFolderId, "porNome:", achadaPorNome, "criada:", pastaCriada);

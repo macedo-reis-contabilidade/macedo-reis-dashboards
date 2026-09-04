@@ -611,6 +611,26 @@
         if (socErr) alert('Cliente criado, mas os sócios não foram salvos: ' + socErr.message + '\nCadastre-os na tela de edição do cliente.');
       }
 
+      // pasta no Drive nasce junto com o cliente (PJ e PF): localiza pelo nome em
+      // Clientes Ativos ou cria com as subpastas padrão. Aguardamos aqui porque a
+      // página vai navegar (navegação abortaria a chamada) — mas falha do Drive
+      // NUNCA desfaz nem trava o cadastro.
+      btns.forEach(b => { b.innerHTML = '<span class="spinner spinner-sm"></span>Criando pasta no Drive...'; });
+      try {
+        // timeout de 15s: Drive lento não pode prender o usuário aqui — o cadastro já foi
+        const { data: dr, error: drErr } = await Promise.race([
+          supabase.functions.invoke('registrar-processo-drive', {
+            body: { acao: 'criar_pasta_cliente', cliente_id: novo.id, nome_cliente: nome }
+          }),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('o Drive demorou demais')), 15000))
+        ]);
+        if (drErr) throw new Error(drErr.message || 'falha na chamada');
+        // 'nome_processo é obrigatório' = edge implantada ainda é a v12, sem a ação nova
+        if (dr?.error) throw new Error(dr.error === 'nome_processo é obrigatório' ? 'a função do Drive ainda não foi atualizada' : dr.error);
+      } catch (eDrv) {
+        alert('Cliente cadastrado! Só não foi possível criar a pasta no Drive agora (' + (eDrv.message || eDrv) + ') — use "Localizar ou criar pasta" na ficha do cliente.');
+      }
+
       // cliente criado → passo opcional de obrigações fiscais, depois edição
       await sugerirObrigacoes(novo.id);
     }

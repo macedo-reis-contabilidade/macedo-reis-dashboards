@@ -124,6 +124,14 @@
 
         <div id="paneDados">
 
+        <div id="driveTopo" style="display:none; align-items:center; gap:10px; flex-wrap:wrap; margin:0 0 16px; padding:10px 14px; border:1px solid rgba(138,147,166,.25); border-radius:10px; font-size:13px;">
+          <span aria-hidden="true">📁</span>
+          <span id="driveTopoCaminho" style="opacity:.75;"></span>
+          <a id="btnDriveTopoAbrir" href="#" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" hidden>Abrir pasta no Drive</a>
+          <button id="btnDriveTopoLocalizar" type="button" class="btn btn-ghost btn-sm" hidden>Localizar ou criar pasta</button>
+          <span id="driveTopoStatus"></span>
+        </div>
+
         <section class="form-section">
           <div class="form-section-head">
             <h2>Identificação</h2>
@@ -1164,6 +1172,7 @@
       document.getElementById('credenciais').value = cliente.credenciais || '';
 
       atualizaBotoesDrive();
+      atualizaDriveTopo();
 
       if (cliente.tipo_pessoa === 'PJ') {
         document.getElementById('sectionPJ').hidden = false;
@@ -1223,37 +1232,106 @@
       }
     }
 
-    document.getElementById('drive_folder_url').addEventListener('input', atualizaBotoesDrive);
+    document.getElementById('drive_folder_url').addEventListener('input', () => { atualizaBotoesDrive(); atualizaDriveTopo(); });
+
+    // Bloco discreto no topo da ficha: mostra a pasta (ou a falta dela) pra PJ e PF.
+    // Lê o MESMO input da seção Drive, pros dois blocos nunca se contradizerem
+    // (URL colada à mão aparece no topo na hora; apagou o campo, o Localizar volta).
+    function atualizaDriveTopo() {
+      const box = document.getElementById('driveTopo');
+      const abrir = document.getElementById('btnDriveTopoAbrir');
+      const loc = document.getElementById('btnDriveTopoLocalizar');
+      const caminho = document.getElementById('driveTopoCaminho');
+      box.style.display = 'flex';
+      const url = document.getElementById('drive_folder_url').value.trim() || (cliente.drive_folder_url || '').trim();
+      if (url) {
+        caminho.textContent = 'Clientes Ativos › ' + (cliente.nome_principal || '');
+        abrir.href = url;
+        abrir.hidden = false;
+        loc.hidden = true;
+      } else {
+        caminho.textContent = 'Este cliente ainda não tem pasta vinculada no Drive.';
+        abrir.hidden = true;
+        loc.hidden = false;
+      }
+    }
+
+    const ORIGEM_PASTA_MSG = {
+      existente: 'A pasta já estava vinculada — nada foi criado.',
+      localizada: 'Pasta localizada no Drive e vinculada ao cadastro.',
+      criada: 'Pasta criada no Drive com a estrutura padrão de subpastas.'
+    };
+    // enquanto a edge implantada for a v12 (sem a ação nova), ela responde este erro cru
+    const msgDrive = m => m === 'nome_processo é obrigatório'
+      ? 'a função do Drive ainda não foi atualizada (deploy pendente) — tente mais tarde' : m;
+
+    // Um caminho só pra ficha inteira: a ação criar_pasta_cliente é idempotente —
+    // confirma a pasta já vinculada, localiza por nome ou cria com as subpastas.
+    // (A edge antiga create-drive-folder criava SEM procurar antes: duplicava
+    // pasta de cliente que já tinha uma no Drive, e não gravava o id.)
+    let pastaDriveOcupada = false; // trava compartilhada: os dois botões disparam a mesma ação
+    async function localizarOuCriarPasta() {
+      // sempre o nome SALVO: pasta criada com nome digitado e não salvo vira órfã do cadastro
+      const nome = cliente.nome_principal;
+      const { data: resp, error } = await supabase.functions.invoke('registrar-processo-drive', {
+        body: { acao: 'criar_pasta_cliente', cliente_id: clienteId, nome_cliente: nome }
+      });
+      if (error) throw new Error(error.message || 'Falha ao chamar a função do Drive.');
+      if (resp?.error) throw new Error(msgDrive(resp.error));
+      if (!resp?.folder_url) throw new Error('A função do Drive não devolveu a pasta.');
+      cliente.drive_folder_id = resp.folder_id || null;
+      cliente.drive_folder_url = resp.folder_url;
+      document.getElementById('drive_folder_url').value = resp.folder_url;
+      atualizaBotoesDrive();
+      atualizaDriveTopo();
+      return resp;
+    }
+
+    document.getElementById('btnDriveTopoLocalizar').addEventListener('click', async () => {
+      if (pastaDriveOcupada) return;
+      pastaDriveOcupada = true;
+      const btn = document.getElementById('btnDriveTopoLocalizar');
+      const status = document.getElementById('driveTopoStatus');
+      btn.disabled = true;
+      document.getElementById('btnCriarPastaDrive').disabled = true;
+      status.textContent = 'Localizando ou criando a pasta…';
+      status.style.color = '';
+      try {
+        const resp = await localizarOuCriarPasta();
+        status.textContent = (ORIGEM_PASTA_MSG[resp.origem] || 'Pasta vinculada.') +
+          (resp.subpastas_falharam > 0 ? ` (${resp.subpastas_falharam} subpasta(s) não criada(s))` : '');
+        status.style.color = 'var(--success)';
+      } catch (e) {
+        status.textContent = 'Não deu: ' + (e.message || e);
+        status.style.color = 'var(--danger)';
+      }
+      btn.disabled = false;
+      document.getElementById('btnCriarPastaDrive').disabled = false;
+      pastaDriveOcupada = false;
+    });
 
     document.getElementById('btnCriarPastaDrive').addEventListener('click', async () => {
+      if (pastaDriveOcupada) return;
+      pastaDriveOcupada = true;
       const btn = document.getElementById('btnCriarPastaDrive');
       const status = document.getElementById('drivePastaStatus');
-      const nome = document.getElementById('nome_principal').value.trim() || cliente.nome_principal;
-
       btn.disabled = true;
-      btn.innerHTML = '<span class="spinner spinner-sm"></span>Criando...';
-      status.textContent = 'Criando pasta e subpastas no Drive...';
+      document.getElementById('btnDriveTopoLocalizar').disabled = true;
+      btn.innerHTML = '<span class="spinner spinner-sm"></span>Localizando ou criando...';
+      status.textContent = 'Procurando a pasta no Drive — se não existir, ela é criada com as subpastas padrão...';
       status.style.color = '';
-
-      const { data: response, error } = await supabase.functions.invoke('create-drive-folder', {
-        body: { cliente_id: clienteId, nome_cliente: nome }
-      });
-
-      if (error || response?.error) {
-        const msg = error?.message || response?.error || 'erro desconhecido';
-        status.textContent = `Erro ao criar pasta: ${msg}`;
+      try {
+        const resp = await localizarOuCriarPasta();
+        status.textContent = (ORIGEM_PASTA_MSG[resp.origem] || 'Pasta vinculada.') +
+          (resp.subpastas_falharam > 0 ? ` (${resp.subpastas_falharam} subpasta(s) não criada(s))` : '');
+        status.style.color = 'var(--success)';
+      } catch (e) {
+        status.textContent = 'Erro ao localizar/criar a pasta: ' + (e.message || e);
         status.style.color = 'var(--danger)';
-        btn.disabled = false;
-        btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>Tentar novamente';
-        return;
       }
-
-      document.getElementById('drive_folder_url').value = response.folder_url;
-      cliente.drive_folder_url = response.folder_url;
-      atualizaBotoesDrive();
-      status.textContent = `Pasta criada${response.subpastas_falharam > 0 ? ` (${response.subpastas_falharam} subpasta(s) não criada(s))` : ' com 6 subpastas'}.`;
-      status.style.color = 'var(--success)';
       btn.disabled = false;
+      document.getElementById('btnDriveTopoLocalizar').disabled = false;
+      pastaDriveOcupada = false;
       btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>Criar pasta no Drive';
     });
 
@@ -1458,6 +1536,8 @@
         data_inicio_cliente: document.getElementById('data_inicio_cliente').value || null,
         data_fim_cliente: document.getElementById('data_fim_cliente').value || null,
         drive_folder_url: document.getElementById('drive_folder_url').value.trim() || null,
+        // o id acompanha a URL digitada — URL trocada à mão não pode deixar id órfão
+        drive_folder_id: (document.getElementById('drive_folder_url').value.match(/folders\/([a-zA-Z0-9_-]+)/) || [])[1] || null,
         observacoes: document.getElementById('observacoes').value.trim() || null,
         credenciais: document.getElementById('credenciais').value.trim() || null
       };
@@ -1506,6 +1586,7 @@
       Object.assign(cliente, payload);
       document.getElementById('bcNome').textContent = nome;
       document.getElementById('pageTitle').textContent = nome;
+      atualizaDriveTopo();
 
       btns.forEach(b => { b.disabled = false; b.textContent = 'Salvar alterações'; });
       showSuccess('Alterações salvas com sucesso.');
@@ -2029,7 +2110,13 @@
           if (derr) driveMsg = 'arquivo não subiu no Drive (' + (derr.message || derr) + ')';
           else if (dr?.error) driveMsg = 'arquivo não subiu no Drive (' + (dr.error === 'NAO_ACHEI_PASTA' ? 'pasta do cliente não vinculada' : dr.error) + ')';
           else {
-            if (dr?.cliente_folder_url && cliente) cliente.drive_folder_url = dr.cliente_folder_url;
+            if (dr?.cliente_folder_url && cliente) {
+              cliente.drive_folder_url = dr.cliente_folder_url;
+              // sincroniza o input também: sem isso, um "Salvar alterações" depois
+              // regravaria a URL velha (vazia) por cima do vínculo recém-feito
+              document.getElementById('drive_folder_url').value = dr.cliente_folder_url;
+              atualizaBotoesDrive(); atualizaDriveTopo();
+            }
             driveMsg = `${(dr?.enviados || []).length} arquivo(s) em PROCESSOS/${pastaNome}`;
           }
         } catch (e) { driveMsg = 'arquivo não subiu no Drive (' + (e.message || e) + ')'; }
@@ -2164,8 +2251,13 @@
           btn.disabled = false; return;
         }
         if (dr?.error) throw new Error('Drive: ' + dr.error);
-        // se a função achou a pasta por nome, guarda a URL no objeto local
-        if (dr?.cliente_folder_url && cliente) cliente.drive_folder_url = dr.cliente_folder_url;
+        // se a função achou a pasta por nome, guarda a URL no objeto local E no input —
+        // senão um "Salvar alterações" depois regravaria a URL velha por cima do vínculo
+        if (dr?.cliente_folder_url && cliente) {
+          cliente.drive_folder_url = dr.cliente_folder_url;
+          document.getElementById('drive_folder_url').value = dr.cliente_folder_url;
+          atualizaBotoesDrive(); atualizaDriveTopo();
+        }
         driveMsg = `${(dr?.enviados||[]).length} arquivo(s) em PROCESSOS/${pastaNome}` + (dr?.achada_por_nome ? ' (pasta localizada e vinculada)' : '');
         if (dr?.falhas?.length) driveMsg += ` · ${dr.falhas.length} falha(s)`;
 
