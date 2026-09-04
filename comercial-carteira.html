@@ -189,6 +189,13 @@
     </div>
   </div>
 
+  <div class="fa-modal-overlay" id="foraOverlay">
+    <div class="fa-modal" style="width:min(720px,94vw);">
+      <div class="fa-modal-head"><h3 id="foraTitulo">Ativos no cadastro sem carteira</h3><button class="fa-modal-close" id="foraClose">&times;</button></div>
+      <div class="fa-modal-body" id="foraBody"></div>
+    </div>
+  </div>
+
   <div class="fa-modal-overlay" id="saiOverlay">
     <div class="fa-modal">
       <div class="fa-modal-head"><h3 id="saiTitulo">Registrar saída</h3><button class="fa-modal-close" id="saiClose">&times;</button></div>
@@ -224,18 +231,40 @@
     const ymNow = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0');
 
     let rows = [], filtro = { busca: '', regime: '', mun: '', seg: '', saidas: false, soPend: false };
+    let foraCarteira = [];
 
     async function carregar(){
-      const { data, error } = await supabase.from('carteira_info')
-        .select('*, clientes(id, nome_principal, nome_fantasia, regime_tributario, cidade, uf, status, documento)')
-        .order('cliente_id');
-      if (error) { alert('Erro ao carregar: ' + error.message); return; }
-      rows = (data || []).filter(r => r.clientes);
+      // em lotes até o fim: a carteira acumula saídas históricas e a sentinela
+      // compara com a base inteira de clientes — lista cortada em 1000 geraria
+      // falso "ativo sem carteira" (e sugeriria inativar cliente legítimo)
+      const todas = [];
+      for (let i = 0; ; i += 1000) {
+        const { data, error } = await supabase.from('carteira_info')
+          .select('*, clientes(id, nome_principal, nome_fantasia, regime_tributario, cidade, uf, status, documento)')
+          .order('cliente_id').range(i, i + 999);
+        if (error) { alert('Erro ao carregar: ' + error.message); return; }
+        todas.push(...(data || []));
+        if (!data || data.length < 1000) break;
+      }
+      rows = todas.filter(r => r.clientes);
       rows.sort((a, b) => (a.clientes.nome_principal || '').localeCompare(b.clientes.nome_principal || ''));
       rows.forEach(r => { r._busca = norm(r.clientes.nome_principal + ' ' + (r.clientes.nome_fantasia || '')); });
+      await carregarForaCarteira();
       preencherFiltros();
       render();
       renderAnalise();
+    }
+
+    // sentinela: PJ ativos no cadastro que não têm registro na carteira
+    // (em_transicao fica de fora — é cliente entrando; PF idem — a carteira mensal é PJ)
+    async function carregarForaCarteira(){
+      const { data, error } = await supabase.todosClientes(
+        'id, nome_principal, nome_fantasia, documento, cidade, status',
+        q => q.eq('status', 'ativo').eq('tipo_pessoa', 'PJ'));
+      if (error) { console.warn('Sentinela "ativos sem carteira" indisponível: ' + error.message); foraCarteira = []; return; }
+      const naCarteira = new Set(rows.map(r => r.cliente_id));
+      foraCarteira = (data || []).filter(c => !naCarteira.has(c.id))
+        .sort((a, b) => (a.nome_principal || '').localeCompare(b.nome_principal || ''));
     }
 
     function preencherFiltros(){
@@ -389,7 +418,15 @@
         motivo_saida: document.getElementById('saiMotivo').value, atualizado_em: new Date().toISOString() };
       const { error } = await supabase.from('carteira_info').update(patch).eq('cliente_id', saiCid);
       if (error) { alert('Erro: ' + error.message); return; }
-      Object.assign(r, patch); fecharSaida(); render(); renderAnalise();
+      Object.assign(r, patch); fecharSaida();
+      // ponte inversa: saiu da carteira → oferecer a inativação no cadastro
+      if (patch.saida && r.clientes.status === 'ativo' &&
+          confirm('Inativar ' + r.clientes.nome_principal + ' também no cadastro? (deixa de aparecer em tarefas, alvarás e campanhas)')) {
+        const { error: eInat } = await supabase.from('clientes').update({ status: 'inativo' }).eq('id', r.cliente_id);
+        if (eInat) alert('A saída foi registrada, mas a inativação no cadastro falhou: ' + eInat.message);
+        else r.clientes.status = 'inativo';
+      }
+      render(); renderAnalise();
     });
     document.getElementById('saiLimpar').addEventListener('click', async () => {
       const r = rows.find(x => x.cliente_id === saiCid);
@@ -545,7 +582,65 @@
       ins.push(`Em ${anoAtual}: <b>${eYtd} entradas</b> × <b>${sYtd} saídas</b>.`);
       const semEntrada = ativos.filter(r => !r.entrada).length;
       if (semEntrada) ins.push(`⚠ <b>${semEntrada} ativo(s) sem data de entrada</b> — contam como presentes desde sempre e nunca aparecem na movimentação. Preencha a coluna Entrada na carteira.`);
+      if (foraCarteira.length) ins.push(`⚠ <b>${foraCarteira.length} cliente(s) ativos no cadastro sem registro na carteira</b> — poluem as telas que filtram por ativo. <button class="btn-mini" id="btnForaRevisar">Revisar</button>`);
       document.getElementById('dInsights').innerHTML = ins.map(t => `<div class="ins-item">${t}</div>`).join('');
+      const bf = document.getElementById('btnForaRevisar');
+      if (bf) bf.addEventListener('click', abrirFora);
+    }
+
+    // ---------- sentinela "ativos sem carteira": revisão ----------
+    const foraOverlay = document.getElementById('foraOverlay');
+    document.getElementById('foraClose').addEventListener('click', () => foraOverlay.classList.remove('is-open'));
+    foraOverlay.addEventListener('click', e => { if (e.target === foraOverlay) foraOverlay.classList.remove('is-open'); });
+
+    function abrirFora(){
+      renderFora();
+      foraOverlay.classList.add('is-open');
+    }
+    function renderFora(){
+      document.getElementById('foraTitulo').textContent =
+        foraCarteira.length + ' cliente(s) ativos no cadastro sem carteira';
+      document.getElementById('foraBody').innerHTML = foraCarteira.length
+        ? `<p style="font-size:12.5px;color:#8A93A6;margin:0 0 10px;">Quem não é cliente mensal, inative no cadastro; quem é, adicione à carteira com a data de entrada.</p>
+          <table class="pr-tab"><thead><tr><th>Empresa</th><th>CNPJ</th><th>Cidade</th><th>Status</th><th></th></tr></thead><tbody>` +
+          foraCarteira.map(c => `<tr>
+            <td class="ct-emp"><a href="clientes/editar.html?id=${c.id}" target="_blank" rel="noopener">${c.nome_principal || '?'}</a>${c.nome_fantasia ? `<small>${c.nome_fantasia}</small>` : ''}</td>
+            <td style="white-space:nowrap;">${c.documento || '—'}</td>
+            <td>${c.cidade || '—'}</td>
+            <td><span class="chip">${c.status}</span></td>
+            <td style="white-space:nowrap;"><button class="btn-mini" data-fora-inativar="${c.id}">Inativar no cadastro</button>
+              <button class="btn-mini" data-fora-add="${c.id}" style="margin-left:6px;">Adicionar à carteira</button></td>
+          </tr>`).join('') + '</tbody></table>'
+        : '<p style="color:#3FB07A;font-size:13px;">Tudo certo — nenhum ativo fora da carteira. 🎉</p>';
+      document.getElementById('foraBody').querySelectorAll('[data-fora-inativar]').forEach(b => b.addEventListener('click', async () => {
+        const c = foraCarteira.find(x => x.id === b.dataset.foraInativar);
+        if (!c) return;
+        if (!confirm('Inativar ' + c.nome_principal + ' no cadastro?\n\nDeixa de aparecer em tarefas, alvarás e campanhas. Se voltar a ser cliente, reative no cadastro.')) return;
+        const { error } = await supabase.from('clientes').update({ status: 'inativo' }).eq('id', c.id);
+        if (error) { alert('Erro ao inativar: ' + error.message); return; }
+        foraCarteira = foraCarteira.filter(x => x.id !== c.id);
+        renderFora();
+        renderAnalise();
+      }));
+      document.getElementById('foraBody').querySelectorAll('[data-fora-add]').forEach(b => b.addEventListener('click', () => {
+        const c = foraCarteira.find(x => x.id === b.dataset.foraAdd);
+        if (!c) return;
+        foraOverlay.classList.remove('is-open');
+        // o cliente já é conhecido — nada de re-buscar por nome (busca que falha
+        // convidaria a criar um pré-cadastro duplicado); só a data de entrada é pedida
+        document.getElementById('addBusca').value = c.nome_principal || '';
+        document.getElementById('addEntrada').value = new Date().toISOString().slice(0, 10);
+        const res = document.getElementById('addRes');
+        res.innerHTML = `<button data-add="${c.id}">${c.nome_principal}
+          <small>${[c.nome_fantasia, c.cidade].filter(Boolean).join(' · ') || 'confirme a data de entrada e clique pra adicionar'}</small></button>`;
+        res.querySelector('[data-add]').addEventListener('click', async () => {
+          const { error } = await supabase.from('carteira_info').insert({ cliente_id: c.id, entrada: document.getElementById('addEntrada').value || null });
+          if (error) { alert('Erro: ' + error.message); return; }
+          addOverlay.classList.remove('is-open');
+          await carregar();
+        });
+        addOverlay.classList.add('is-open');
+      }));
     }
 
     // ---------- visões, filtros e partida ----------
