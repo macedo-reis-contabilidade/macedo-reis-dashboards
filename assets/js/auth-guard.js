@@ -4,6 +4,7 @@
 // ============================================================
 
 import { supabase } from './supabase.js';
+import './autogrow.js'; // textareas crescem com o texto em todo o sistema
 
 document.documentElement.style.visibility = 'hidden';
 
