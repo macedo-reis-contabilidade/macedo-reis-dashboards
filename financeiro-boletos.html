@@ -379,6 +379,11 @@ function saveState(s){
 }
 function agendarSalvar(r){ clearTimeout(r._t); r._t=setTimeout(()=>salvarLinha(r), SAVE_DELAY); }
 async function salvarLinha(r){
+  const cfgL = configMap[r.cliente_id];
+  if (cfgL && !(Number(cfgL.valor_base) > 0) && Number(r.valor) > 0) {
+    supabase.from('cobrancas_config').update({ valor_base: Number(r.valor) }).eq('cliente_id', r.cliente_id)
+      .then(({ error }) => { if (!error) cfgL.valor_base = Number(r.valor); });
+  }
   clearTimeout(r._t);
   if(r._saving){ r._pend=true; return; }   // já tem gravação em curso: agenda nova ao terminar
   r._saving=true; saveState('saving');
@@ -417,9 +422,18 @@ function renderAddList(){
   $('ovList').innerHTML = l.map(c=>`<li data-id="${c.id}">${esc(c.nome)} <small>${fmtDoc(c.doc)}</small></li>`).join('') || '<li style="cursor:default;color:#8A93A6">Nenhum cliente encontrado</li>';
   $('ovList').querySelectorAll('li[data-id]').forEach(li=>{ li.addEventListener('click', ()=>addEmpresa(li.dataset.id)); });
 }
-function addEmpresa(id){
+async function addEmpresa(id){
   const comp=$('comp').value;
-  const cfg=configMap[id];
+  let cfg=configMap[id];
+  // empresa sem configuração de cobrança: registrar na base agora — senão o
+  // "Gerar mês" seguinte a ignora (foi o que aconteceu com Arsenal, Massa e Mirelle em ago/2026)
+  if(!cfg){
+    const { data: c, error } = await supabase.from('cobrancas_config')
+      .insert({ cliente_id:id, valor_base:0, dia_vencimento:10, canal:'whatsapp', contato_envio:'', destino:'', responsavel:'', ativo:true })
+      .select('*').single();
+    if(error){ msg('Não consegui registrar a empresa na base de cobrança: '+error.message); }
+    else { cfg=c; configMap[id]=c; }
+  }
   const nova={
     cliente_id:id, competencia:comp,
     valor: cfg? (Number(cfg.valor_base)||0):0,
