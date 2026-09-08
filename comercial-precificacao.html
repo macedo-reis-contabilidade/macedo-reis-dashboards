@@ -156,7 +156,9 @@
           </div>
           <button type="button" class="btn-mini" id="btnObrigRegimes" style="margin-left:auto;">📋 Obrigações por regime</button>
           <button type="button" class="btn-mini" id="btnConvite">💬 Convite p/ cliente</button>
-          <button type="button" class="btn-mini" id="btnLink" title="Copiar só o link do questionário">🔗</button>
+          <button type="button" class="btn-mini" id="btnLink" title="Copiar só o link do questionário (empresa já constituída)">🔗</button>
+          <button type="button" class="btn-mini" id="btnConviteNova" title="Questionário reduzido, no tom de quem ainda vai abrir a empresa">💬 Convite · em constituição</button>
+          <button type="button" class="btn-mini" id="btnLinkNova" title="Copiar só o link do questionário de empresa em constituição">🔗</button>
           <span id="lnkFeed"></span>
         </div>
 
@@ -315,6 +317,7 @@
       return base;
     }
     const num = id => Number(respostas[id]) || 0;
+    const fatAnual = () => num('A2') || num('A2N') * 12; // empresa em constituição responde a projeção mensal (A2N)
     const sim = id => respostas[id] === 'Sim';
     const R = id => respostas[id] ?? '';
 
@@ -322,7 +325,7 @@
       const linhas = [];
       const L = (label, valor, sub) => linhas.push({ label, valor, sub: !!sub });
 
-      const base = baseFaturamento(num('A2'));
+      const base = baseFaturamento(fatAnual());
       const multReg = pv('p02', R('A10')) || 1;
       const baseAj = base * multReg;
       const socios = Math.max(0, num('A5') - 1) * pv('p03', 'Valor por sócio adicional (além do 1º)');
@@ -504,7 +507,7 @@
       tx.textContent = c.taxaUnica ? '+ taxa única de organização inicial: ' + fmt(c.taxaUnica) : '';
       renderRef();
       const a3 = document.getElementById('auto_A3');
-      if (a3) a3.textContent = fmt(num('A2') / 12) + ' / mês';
+      if (a3) a3.textContent = fmt(fatAnual() / 12) + ' / mês';
       const oo = document.getElementById('prObsOrc');
       if (oo && document.activeElement !== oo && oo.value !== (respostas['obs_orcamento'] || '')) oo.value = respostas['obs_orcamento'] || '';
       const mm = document.getElementById('prMsgOrc');
@@ -558,6 +561,8 @@
 
     // ---------- convite pro cliente ----------
     const LINK_FORM = new URL('proposta.html', location.href).href;
+    const LINK_FORM_NOVA = LINK_FORM + '?perfil=nova';
+    const CONVITE_NOVA = 'Olá! Pra montarmos a proposta de honorários da sua futura empresa, preparamos um questionário rápido (uns 4 minutos, direto pelo celular): ' + LINK_FORM_NOVA + ' — responda com a previsão do início da operação; o que ainda não estiver definido, pode deixar em branco. Assim que enviar, nossa equipe já recebe aqui e retornamos com a proposta. 😊';
     const CONVITE = 'Olá! Pra montarmos sua proposta de honorários sob medida, preparamos um questionário rápido (uns 5 minutos, direto pelo celular): ' + LINK_FORM + ' — responda o que souber, pode pular o que não se aplicar. Assim que enviar, nossa equipe já recebe aqui e retornamos com a proposta. 😊';
     let lnkTimer = null;
     async function copiar(texto, aviso){
@@ -569,6 +574,8 @@
     }
     document.getElementById('btnConvite').addEventListener('click', () => copiar(CONVITE, 'convite copiado'));
     document.getElementById('btnLink').addEventListener('click', () => copiar(LINK_FORM, 'link copiado'));
+    document.getElementById('btnConviteNova').addEventListener('click', () => copiar(CONVITE_NOVA, 'convite (em constituição) copiado'));
+    document.getElementById('btnLinkNova').addEventListener('click', () => copiar(LINK_FORM_NOVA, 'link (em constituição) copiado'));
 
     // ---------- propostas ----------
     function atualizarBotoesSalvar(){

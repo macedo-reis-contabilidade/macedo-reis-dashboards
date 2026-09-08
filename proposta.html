@@ -66,6 +66,7 @@
   import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
   const supabase = createClient('https://ltsujjgzlhaxosbeudgg.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx0c3Vqamd6bGhheG9zYmV1ZGdnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4NTk1NDksImV4cCI6MjA5NDQzNTU0OX0.vShdPB7s30hsD6609909UrzjyQzFargV9R9BAk2rPhI');
 
+  const PERFIL = new URLSearchParams(location.search).get('perfil') === 'nova' ? 'nova' : 'constituida';
   let questoes = [];
   const respostas = {};
 
@@ -81,8 +82,8 @@
 
   async function iniciar(){
     const { data, error } = await supabase.from('precificacao_questoes')
-      .select('id, bloco, ordem, pergunta, ajuda, tipo, opcoes')
-      .eq('externa', true).eq('ativo', true).order('ordem');
+      .select('id, bloco, ordem, pergunta, ajuda, tipo, opcoes, perfil, pergunta_nova, ajuda_nova')
+      .eq('externa', true).eq('ativo', true).in('perfil', ['ambos', PERFIL]).order('ordem');
     const el = document.getElementById('blocos');
     if (error || !data || !data.length) {
       el.innerHTML = '<div class="card"><p style="color:#C0564F;font-size:13.5px;">Não conseguimos carregar o questionário agora. Tente de novo em instantes.</p></div>';
@@ -97,10 +98,12 @@
         html += `<div class="card"><h3 class="bloco">${bloco.replace(/^[A-E]\.\s*/, '')}</h3>`;
       }
       const obr = qd.id === 'A1' ? ' class="obr"' : '';
-      html += `<div class="campo"><label${obr}>${qd.pergunta}${qd.ajuda ? `<small>${qd.ajuda}</small>` : ''}</label>${campoDe(qd)}</div>`;
+      const perg = (PERFIL === 'nova' && qd.pergunta_nova) ? qd.pergunta_nova : qd.pergunta;
+      const ajuda = (PERFIL === 'nova' && qd.pergunta_nova) ? (qd.ajuda_nova || '') : (qd.ajuda || '');
+      html += `<div class="campo"><label${obr}>${perg}${ajuda ? `<small>${ajuda}</small>` : ''}</label>${campoDe(qd)}</div>`;
     });
     html += '</div>';
-    el.innerHTML = html;
+    el.innerHTML = (PERFIL === 'nova' ? '<div class="card"><p style="margin:0;font-size:13.5px;">Questionário para <b>empresa em constituição</b>: responda com a previsão do início da operação — não precisa ter nada definido em detalhe.</p></div>' : '') + html;
     el.querySelectorAll('[data-q]').forEach(inp =>
       inp.addEventListener('input', () => { respostas[inp.dataset.q] = inp.value; }));
   }
@@ -108,13 +111,14 @@
   document.getElementById('btnEnviar').addEventListener('click', async () => {
     const nome = document.getElementById('mNome').value.trim();
     const contato = document.getElementById('mContato').value.trim();
-    const empresa = String(respostas['A1'] || '').trim();
+    const empresa = PERFIL === 'nova' ? (nome + ' (empresa em constituição)') : String(respostas['A1'] || '').trim();
     const erro = document.getElementById('msgErro');
     if (!nome || !contato) { erro.textContent = 'Preencha seu nome e seu WhatsApp, por favor.'; return; }
     if (!empresa) { erro.textContent = 'Preencha o nome da empresa (primeira pergunta do questionário).'; return; }
     erro.textContent = '';
     const btn = document.getElementById('btnEnviar');
     btn.disabled = true; btn.textContent = 'Enviando…';
+    respostas['PERFIL'] = PERFIL;
     const { error: e } = await supabase.from('precificacoes').insert({
       cliente_nome: empresa,
       contato,
