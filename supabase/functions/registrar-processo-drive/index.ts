@@ -1,5 +1,8 @@
 // ============================================================
-// MACEDO & REIS - Edge Function: registrar-processo-drive (v14)
+// MACEDO & REIS - Edge Function: registrar-processo-drive (v15)
+// v15: subpastas padrão alinhadas ao núcleo real das pastas do escritório
+// (FISCAL, CONTÁBIL, DEPARTAMENTO PESSOAL, PROCESSOS, ALVARÁS, CERTIFICADO
+// DIGITAL, DOC SÓCIO); SOCIETÁRIO e FINANCEIRO saem — nenhuma pasta manual usava.
 // v14: TUDO que o sistema cria no Drive sai em MAIÚSCULAS (padrão do escritório):
 // pasta do cliente, subpastas padrão e subpasta do processo.
 // v13: ação criar_pasta_cliente — idempotente: confirma a pasta já
@@ -8,7 +11,7 @@
 // A ação padrão também passa a gravar o drive_folder_id (antes só a URL).
 // v10: salvar_societario acha a pasta SOCIETARIO por aproximação
 // (acentos/variações) e o erro lista as candidatas vistas.
-// IMPLANTADA em 09/09/2026 pelo Claude web via MCP (versão 14 no Supabase);
+// IMPLANTADA em 09/09/2026 pelo Claude web via MCP (versão 15 no Supabase);
 // este arquivo é a fonte de edição.
 // ============================================================
 
@@ -20,12 +23,13 @@ const DRIVE_UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 
 const SUBPASTAS = [
-  "DOCUMENTOS CONSTITUTIVOS",
   "FISCAL",
-  "DEPARTAMENTO PESSOAL",
   "CONTÁBIL",
-  "SOCIETÁRIO",
-  "FINANCEIRO",
+  "DEPARTAMENTO PESSOAL",
+  "PROCESSOS",
+  "ALVARÁS",
+  "CERTIFICADO DIGITAL",
+  "DOC SÓCIO",
 ];
 
 function cors(origin: string | null) {
