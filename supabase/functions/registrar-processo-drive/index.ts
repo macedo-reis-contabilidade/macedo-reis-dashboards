@@ -1,12 +1,14 @@
 // ============================================================
-// MACEDO & REIS - Edge Function: registrar-processo-drive (v13)
+// MACEDO & REIS - Edge Function: registrar-processo-drive (v14)
+// v14: TUDO que o sistema cria no Drive sai em MAIÚSCULAS (padrão do escritório):
+// pasta do cliente, subpastas padrão e subpasta do processo.
 // v13: ação criar_pasta_cliente — idempotente: confirma a pasta já
 // vinculada, localiza por nome na raiz de clientes ou cria com as
 // subpastas padrão, e grava drive_folder_id + drive_folder_url.
 // A ação padrão também passa a gravar o drive_folder_id (antes só a URL).
 // v10: salvar_societario acha a pasta SOCIETARIO por aproximação
 // (acentos/variações) e o erro lista as candidatas vistas.
-// IMPLANTADA em 04/09/2026 pelo Claude web via MCP (versão 13 no Supabase);
+// IMPLANTADA em 09/09/2026 pelo Claude web via MCP (versão 14 no Supabase);
 // este arquivo é a fonte de edição.
 // ============================================================
 
@@ -18,12 +20,12 @@ const DRIVE_UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 
 const SUBPASTAS = [
-  "Documentos Constitutivos",
-  "Fiscal",
-  "Departamento Pessoal",
-  "Contábil",
-  "Societário",
-  "Financeiro",
+  "DOCUMENTOS CONSTITUTIVOS",
+  "FISCAL",
+  "DEPARTAMENTO PESSOAL",
+  "CONTÁBIL",
+  "SOCIETÁRIO",
+  "FINANCEIRO",
 ];
 
 function cors(origin: string | null) {
@@ -284,7 +286,7 @@ Deno.serve(async (req: Request) => {
 
     if (acao === "criar_pasta_cliente") {
       if (!cliente_id) return ok(origin, { error: "cliente_id é obrigatório" });
-      const nome = String(nome_cliente || "").trim();
+      const nome = String(nome_cliente || "").trim().toUpperCase();
       // normNome vazio (nome só de pontuação) nunca casaria na busca — cada chamada
       // criaria mais uma pasta duplicada; melhor recusar e mandar arrumar o cadastro
       if (!nome || !normNome(nome)) return ok(origin, { error: "Cliente sem nome utilizável — arrume o nome no cadastro antes de criar a pasta." });
@@ -368,7 +370,7 @@ Deno.serve(async (req: Request) => {
       clienteFolderId = achadaPadrao ? achadaPadrao.id : null;
       if (!clienteFolderId) {
         console.log("[rpd] pasta do cliente inexistente — criando nova (OAuth) com subpastas padrão");
-        clienteFolderId = await createFolder(token, nome_cliente, cfg.valor as string);
+        clienteFolderId = await createFolder(token, String(nome_cliente).trim().toUpperCase(), cfg.valor as string);
         await Promise.allSettled(SUBPASTAS.map((n) => createFolder(token, n, clienteFolderId!)));
         pastaCriada = true;
       }
@@ -386,9 +388,10 @@ Deno.serve(async (req: Request) => {
       console.log("[rpd] PROCESSOS criada:", processosId);
     } else console.log("[rpd] PROCESSOS existente:", processosId);
 
-    let processoId = await findChildFolder(token, processosId, nome_processo);
+    const nomeProcesso = String(nome_processo).trim().toUpperCase();
+    let processoId = await findChildFolder(token, processosId, nomeProcesso);
     if (!processoId) {
-      processoId = await createFolder(token, nome_processo, processosId);
+      processoId = await createFolder(token, nomeProcesso, processosId);
       console.log("[rpd] subpasta do processo criada:", processoId);
     } else console.log("[rpd] subpasta do processo existente:", processoId);
     const processoUrl = `https://drive.google.com/drive/folders/${processoId}`;
