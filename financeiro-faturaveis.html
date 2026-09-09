@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Financeiro — Faturáveis — Macedo & Reis</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+  <style>
+    .content { max-width:none; }
+    .page-header { max-width:880px; }
+
+    .fa-focus { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:20px; }
+    .fa-focus-card { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:14px 16px; display:flex; flex-direction:column; gap:4px; }
+    .fc-num { font-size:24px; font-weight:700; color:#E6EBF2; line-height:1; }
+    .fc-num small { font-size:14px; font-weight:600; color:#8AAEC8; margin-left:8px; }
+    .fc-lbl { font-size:12px; color:#8A93A6; }
+    .fc-pend .fc-num { color:#E3B341; }
+    @media (max-width:760px){ .fa-focus { grid-template-columns:1fr; } }
+
+    .ft-toolbar { display:flex; flex-wrap:wrap; gap:10px 12px; align-items:center; justify-content:space-between; margin-bottom:16px; }
+    .ft-funil { display:flex; gap:6px; flex-wrap:wrap; }
+    .ft-chip { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.12); color:#8A93A6; border-radius:999px; padding:6px 13px; font-size:13px; cursor:pointer; font-family:inherit; }
+    .ft-chip b { color:#C5D8E8; font-weight:600; margin-left:4px; }
+    .ft-chip.is-on { background:rgba(91,130,166,.18); border-color:rgba(91,130,166,.6); color:#E6EBF2; }
+    .ft-right { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .ft-right .input-search { width:220px; min-width:0; }
+
+    .ft-tablewrap { background:rgba(255,255,255,.025); border:1px solid rgba(255,255,255,.08); border-radius:14px; overflow-x:auto; }
+    table.ft { border-collapse:collapse; width:100%; min-width:960px; font-size:13px; }
+    table.ft th { position:sticky; top:0; background:#11171f; color:#8AAEC8; font-weight:600; text-align:left; padding:9px 10px; border-bottom:1px solid rgba(255,255,255,.08); font-size:11px; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; z-index:1; }
+    table.ft td { padding:9px 10px; border-bottom:1px solid rgba(255,255,255,.05); vertical-align:top; }
+    table.ft tr:hover td { background:rgba(255,255,255,.02); }
+    .ft-cli { font-weight:600; color:#E6EBF2; }
+    .ft-cli a { color:inherit; text-decoration:none; }
+    .ft-cli a:hover { text-decoration:underline; }
+    .ft-sub { display:block; color:#8A93A6; font-weight:400; font-size:11.5px; margin-top:2px; }
+    .pill { display:inline-block; font-size:11px; font-weight:600; border-radius:999px; padding:2px 9px; border:1px solid transparent; white-space:nowrap; }
+    .pill-setor { color:#8AAEC8; background:rgba(91,130,166,.14); border-color:rgba(91,130,166,.3); }
+    .pill-a_faturar { color:#E3B341; background:rgba(227,179,65,.14); border-color:rgba(227,179,65,.3); }
+    .pill-no_boleto { color:#8AAEC8; background:rgba(91,130,166,.14); border-color:rgba(91,130,166,.3); }
+    .pill-lancado { color:#3FB07A; background:rgba(63,176,122,.14); border-color:rgba(63,176,122,.3); }
+    .pill-descartado { color:#8A93A6; background:rgba(138,147,166,.12); border-color:rgba(138,147,166,.3); }
+    .ci { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.14); color:#E6EBF2; border-radius:7px; padding:5px 6px; font-size:12.5px; outline:none; font-family:inherit; }
+    .ci:focus { border-color:#5B82A6; }
+    .ci.val { width:92px; text-align:right; }
+    .ci.comp { width:132px; }
+    .ft-valor { font-weight:600; color:#E6EBF2; white-space:nowrap; }
+    .ft-acoes { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+    .btn-mini { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.14); color:#C5D8E8; border-radius:7px; padding:5px 10px; font-size:12px; cursor:pointer; font-family:inherit; white-space:nowrap; }
+    .btn-mini:hover { border-color:#5B82A6; color:#E6EBF2; }
+    .btn-mini.ok { color:#7FBF8E; border-color:rgba(63,176,122,.4); }
+    .btn-mini.mute { color:#8A93A6; }
+    .btn-mini:disabled { opacity:.5; cursor:default; }
+    .ft-empty { text-align:center; padding:46px 20px; color:#8A93A6; }
+    .ft-foot { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-top:12px; font-size:13px; color:#8A93A6; min-height:18px; }
+
+    .fa-modal-overlay { position:fixed; inset:0; background:rgba(8,12,18,.72); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
+    .fa-modal-overlay.is-open { display:flex; }
+    .fa-modal { width:100%; max-width:520px; background:#141A22; border:1px solid rgba(255,255,255,.10); border-radius:16px; overflow:hidden; max-height:92vh; display:flex; flex-direction:column; }
+    .fa-modal.wide { max-width:680px; }
+    .fa-modal-head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid rgba(255,255,255,.08); }
+    .fa-modal-head h3 { margin:0; color:#E6EBF2; font-size:18px; }
+    .fa-modal-close { background:none; border:none; color:#8A93A6; font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }
+    .fa-modal-close:hover { color:#E6EBF2; }
+    .fa-modal-body { padding:22px; display:flex; flex-direction:column; gap:14px; overflow:auto; }
+    .fa-field { display:flex; flex-direction:column; gap:6px; }
+    .fa-field > span { font-size:13px; color:#8AAEC8; }
+    .fa-field-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .fa-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid rgba(255,255,255,.08); }
+    .add-res { border:1px solid rgba(255,255,255,.08); border-radius:10px; overflow:hidden; max-height:220px; overflow-y:auto; }
+    .add-res:empty { display:none; }
+    .add-res button { display:block; width:100%; text-align:left; background:transparent; border:none; border-bottom:1px solid rgba(255,255,255,.06); color:#E6EBF2; font:inherit; font-size:13px; padding:9px 12px; cursor:pointer; }
+    .add-res button:hover, .add-res button.is-sel { background:rgba(138,174,200,.12); }
+    .cat-item { display:grid; grid-template-columns:1fr 110px 110px auto; gap:10px; align-items:center; padding:9px 4px; border-bottom:1px solid rgba(255,255,255,.06); font-size:13px; }
+    .cat-item.off { opacity:.5; }
+    .cat-item b { color:#E6EBF2; font-weight:600; }
+    .cat-form { display:grid; grid-template-columns:2fr 1fr 1fr; gap:10px; align-items:end; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:12px; }
+    .cat-form .fa-field > span { font-size:12px; }
+    .msg-ok { color:#3FB07A; } .msg-err { color:#E06C6C; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip"><div class="user-avatar" id="userAvatar">—</div><span id="userName">Carregando…</span></div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <a href="financeiro.html">Financeiro</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Faturáveis</span>
+        </div>
+        <div class="eyebrow">Faturamento</div>
+        <h1>Faturáveis</h1>
+        <p>Serviços extras concluídos pelos setores (alteração contratual, certidão, 2ª via, parcelamento, declaração avulsa…) chegam aqui marcados na tarefa. Daqui, cada um entra como <b>item extra no boleto de honorários</b> de um mês ou é marcado como <b>lançado no Conta Azul</b>. Nada é cobrado sem passar por esta fila.</p>
+      </div>
+
+      <div class="ft-toolbar">
+        <div class="ft-funil" id="funil">
+          <button class="ft-chip is-on" data-st="a_faturar">A faturar<b id="nAf">0</b></button>
+          <button class="ft-chip" data-st="no_boleto">No boleto<b id="nNb">0</b></button>
+          <button class="ft-chip" data-st="lancado">Lançados<b id="nLa">0</b></button>
+          <button class="ft-chip" data-st="descartado">Descartados<b id="nDe">0</b></button>
+          <button class="ft-chip" data-st="">Todos<b id="nTo">0</b></button>
+        </div>
+        <div class="ft-right">
+          <input type="text" id="busca" class="input input-search" placeholder="Buscar cliente ou serviço…">
+          <button class="btn btn-ghost" id="btnCatalogo">Serviços avulsos</button>
+          <button class="btn btn-primary" id="btnManual">+ Faturável manual</button>
+        </div>
+      </div>
+
+      <div class="fa-focus" id="cards"></div>
+
+      <div class="ft-tablewrap">
+        <table class="ft" id="tbl">
+          <thead>
+            <tr><th>Cliente</th><th>Descrição</th><th>Valor</th><th>Executado</th><th>Destino</th><th>Status</th><th>Ações</th></tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+        <div class="ft-empty" id="empty" style="display:none;"></div>
+      </div>
+      <div class="ft-foot"><div id="msg"></div><div id="rodape"></div></div>
+    </main>
+  </div>
+
+  <!-- faturável manual -->
+  <div class="fa-modal-overlay" id="manOverlay">
+    <div class="fa-modal">
+      <div class="fa-modal-head"><h3>Faturável manual</h3><button class="fa-modal-close" id="manClose">&times;</button></div>
+      <div class="fa-modal-body">
+        <label class="fa-field"><span>Cliente</span><input type="text" id="manBusca" class="input" placeholder="Digite pelo menos 3 letras…" autocomplete="off"></label>
+        <div class="add-res" id="manRes"></div>
+        <div id="manCliSel" style="font-size:13px;color:#7FBF8E;min-height:18px;"></div>
+        <label class="fa-field"><span>Serviço</span><select id="manServ" class="select"></select></label>
+        <label class="fa-field"><span>Descrição (vai pro boleto / lançamento)</span><input type="text" id="manDesc" class="input" maxlength="160"></label>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Valor (R$)</span><input type="number" id="manValor" class="input" step="0.01" min="0" placeholder="0,00"></label>
+          <label class="fa-field"><span>Setor que executou</span><select id="manSetor" class="select"></select></label>
+        </div>
+        <label class="fa-field"><span>Destino</span><select id="manDest" class="select"><option value="boleto">No boleto de honorários do mês</option><option value="avulso">Cobrança avulsa (Conta Azul)</option></select></label>
+        <div id="manMsg" style="font-size:13px;min-height:18px;"></div>
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-ghost" id="manCancelar">Cancelar</button>
+        <button class="btn btn-primary" id="manSalvar">Adicionar à fila</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- catálogo de serviços avulsos -->
+  <div class="fa-modal-overlay" id="catOverlay">
+    <div class="fa-modal wide">
+      <div class="fa-modal-head"><h3>Serviços avulsos (catálogo)</h3><button class="fa-modal-close" id="catClose">&times;</button></div>
+      <div class="fa-modal-body">
+        <div class="cat-form">
+          <label class="fa-field"><span>Nome do serviço</span><input type="text" id="catNome" class="input" placeholder="Ex.: Alteração contratual"></label>
+          <label class="fa-field"><span>Valor padrão (R$)</span><input type="number" id="catValor" class="input" step="0.01" min="0"></label>
+          <label class="fa-field"><span>Setor</span><select id="catSetor" class="select"></select></label>
+          <div style="grid-column:1 / -1; display:flex; gap:8px; justify-content:flex-end; align-items:center;">
+            <span id="catMsg" style="font-size:12.5px;margin-right:auto;"></span>
+            <button class="btn btn-ghost btn-sm" id="catLimpar" style="display:none;">Cancelar edição</button>
+            <button class="btn btn-primary btn-sm" id="catSalvar">Adicionar serviço</button>
+          </div>
+        </div>
+        <div id="catLista"></div>
+      </div>
+      <div class="fa-modal-foot"><button class="btn btn-ghost" id="catFechar">Fechar</button></div>
+    </div>
+  </div>
+
+<script type="module">
+import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+import { formatDate } from './assets/js/utils.js';
+
+const $ = id => document.getElementById(id);
+const BRL = n => 'R$ ' + (Number(n) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const SETORES = [['clientes','Clientes'],['dp','DP'],['fiscal','Fiscal'],['contabil','Contábil'],['societario','Societário'],['financeiro','Financeiro'],['comercial','Comercial'],['irpf','IRPF'],['gestao','Gestão']];
+const SETOR_LBL = Object.fromEntries(SETORES);
+const STATUS_LBL = { a_faturar:'A faturar', no_boleto:'No boleto', lancado:'Lançado', descartado:'Descartado' };
+const pad = n => String(n).padStart(2, '0');
+const hoje = new Date();
+const hojeStr = hoje.getFullYear() + '-' + pad(hoje.getMonth() + 1) + '-' + pad(hoje.getDate());
+const mesAtual = hojeStr.slice(0, 7);
+const nomeMes = ym => { const [a, m] = String(ym || '').split('-'); return a && m ? pad(m) + '/' + a : '—'; };
+
+let itens = [];
+let filtro = 'a_faturar';
+let usuarioNome = 'Usuário';
+let catalogo = null;          // servicos_avulsos (todos, ativos e inativos) pro catálogo
+let clientesList = null;      // carregado sob demanda pro faturável manual
+
+// ---------- boot ----------
+async function init(){
+  try {
+    const u = await getCurrentUser();
+    if (u) {
+      const n = u.user_metadata?.full_name || u.email?.split('@')[0] || 'Usuário';
+      // as contas são de setor (rh@, fiscal@…) sem full_name — o nome da equipe vem do mapa
+      const NOME_POR_EMAIL = { 'fiscal@macedoereis.com.br':'Thalia', 'rh@macedoereis.com.br':'Vitória', 'contabil@macedoereis.com.br':'Adaini', 'financeiro@macedoereis.com.br':'Samuel', 'diego@macedoereis.com.br':'Diego' };
+      usuarioNome = NOME_POR_EMAIL[String(u.email || '').toLowerCase()] || (n.charAt(0).toUpperCase() + n.slice(1));
+      $('userName').textContent = n; $('userAvatar').textContent = n.charAt(0).toUpperCase();
+    }
+  } catch (e) {}
+  $('btnLogout').addEventListener('click', signOut);
+  SETORES.forEach(([v, l]) => { ['manSetor', 'catSetor'].forEach(id => { const o = document.createElement('option'); o.value = v; o.textContent = l; $(id).appendChild(o); }); });
+  $('manSetor').value = 'financeiro';
+  $('funil').querySelectorAll('.ft-chip').forEach(b => b.addEventListener('click', () => {
+    filtro = b.dataset.st;
+    $('funil').querySelectorAll('.ft-chip').forEach(x => x.classList.toggle('is-on', x === b));
+    render();
+  }));
+  $('busca').addEventListener('input', render);
+  $('tbody').addEventListener('click', onAcao);
+  $('tbody').addEventListener('change', onChange);
+  wireManual(); wireCatalogo();
+  await carregar();
+}
+
+// ---------- carga (em lotes: a fila acumula histórico) ----------
+async function carregar(){
+  msg('Carregando…');
+  const todos = [];
+  for (let i = 0; ; i += 1000) {
+    const { data, error } = await supabase.from('faturaveis')
+      .select('*, clientes(nome_principal), servicos_avulsos(nome)')
+      .order('criado_em', { ascending: false }).range(i, i + 999);
+    if (error) { msg('Erro ao carregar: ' + error.message, 'err'); return; }
+    todos.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  itens = todos;
+  render(); msg('');
+}
+
+function passaBusca(f){
+  const q = ($('busca').value || '').toLowerCase().trim();
+  if (!q) return true;
+  return ((f.clientes?.nome_principal || '') + ' ' + (f.descricao || '') + ' ' + (f.servicos_avulsos?.nome || '')).toLowerCase().includes(q);
+}
+
+function render(){
+  const soma = arr => arr.reduce((s, f) => s + (Number(f.valor) || 0), 0);
+  const por = st => itens.filter(f => f.status === st);
+  $('nAf').textContent = por('a_faturar').length; $('nNb').textContent = por('no_boleto').length;
+  $('nLa').textContent = por('lancado').length; $('nDe').textContent = por('descartado').length; $('nTo').textContent = itens.length;
+
+  const fila = por('a_faturar');
+  const noMes = por('no_boleto').filter(f => f.competencia_boleto === mesAtual);
+  const lancMes = por('lancado').filter(f => String(f.atualizado_em || '').slice(0, 7) === mesAtual);
+  $('cards').innerHTML = `
+    <div class="fa-focus-card fc-pend"><span class="fc-num">${fila.length}<small>${BRL(soma(fila))}</small></span><span class="fc-lbl">A faturar (na fila)</span></div>
+    <div class="fa-focus-card"><span class="fc-num">${noMes.length}<small>${BRL(soma(noMes))}</small></span><span class="fc-lbl">Incluídos no boleto de ${nomeMes(mesAtual)}</span></div>
+    <div class="fa-focus-card"><span class="fc-num">${lancMes.length}<small>${BRL(soma(lancMes))}</small></span><span class="fc-lbl">Lançados no Conta Azul em ${nomeMes(mesAtual)}</span></div>`;
+
+  const vis = itens.filter(f => (!filtro || f.status === filtro) && passaBusca(f));
+  const tb = $('tbody'); tb.innerHTML = '';
+  $('empty').style.display = vis.length ? 'none' : 'block';
+  $('empty').innerHTML = itens.length
+    ? 'Nada neste recorte.'
+    : 'A fila está vazia. Ela é alimentada quando alguém conclui uma tarefa marcando <b>Cobrar este serviço à parte</b> — ou pelo <b>+ Faturável manual</b>.';
+  vis.forEach(f => {
+    const tr = document.createElement('tr');
+    tr.dataset.id = f.id;
+    const aberto = f.status === 'a_faturar';
+    let statusHtml = `<span class="pill pill-${esc(f.status)}">${STATUS_LBL[f.status] || esc(f.status)}</span>`;
+    if (f.status === 'no_boleto') statusHtml += `<span class="ft-sub">boleto de ${nomeMes(f.competencia_boleto)}</span>`;
+    if (f.status === 'lancado' && f.referencia) statusHtml += `<span class="ft-sub">ref.: ${esc(f.referencia)}</span>`;
+    if (f.status === 'descartado' && f.obs) statusHtml += `<span class="ft-sub">${esc(f.obs)}</span>`;
+    let acoes = '';
+    const comp = f._comp || mesAtual;   // competência escolhida sobrevive ao re-render
+    if (aberto) acoes = `
+        <input type="month" class="ci comp" value="${comp}" data-comp>
+        <button class="btn-mini ok" data-act="boleto">Incluir no boleto de ${nomeMes(comp)}</button>
+        <button class="btn-mini" data-act="lancar">Lançado no Conta Azul</button>
+        <button class="btn-mini mute" data-act="descartar">Descartar</button>`;
+    else if (f.status === 'no_boleto') acoes = `<button class="btn-mini" data-act="desfazer">Desfazer (volta pra fila)</button>`;
+    else acoes = '<span style="color:#6E7787;">—</span>';
+    tr.innerHTML = `
+      <td class="ft-cli"><a href="clientes/editar.html?id=${esc(f.cliente_id)}" target="_blank" rel="noopener">${esc(f.clientes?.nome_principal || '(cliente removido)')}</a>
+        <span class="ft-sub"><span class="pill pill-setor">${esc(SETOR_LBL[f.setor] || f.setor || '—')}</span></span></td>
+      <td>${esc(f.descricao)}${f.servicos_avulsos?.nome && f.servicos_avulsos.nome !== f.descricao ? `<span class="ft-sub">${esc(f.servicos_avulsos.nome)}</span>` : ''}${f.tarefa_id ? '' : '<span class="ft-sub">manual (sem tarefa)</span>'}</td>
+      <td>${aberto ? `<input class="ci val" type="number" step="0.01" min="0" value="${(Number(f.valor) || 0).toFixed(2)}" data-valor>` : `<span class="ft-valor">${BRL(f.valor)}</span>`}</td>
+      <td>${esc(f.executado_por || '—')}<span class="ft-sub">${f.executado_em ? formatDate(f.executado_em) : ''}</span></td>
+      <td>${f.destino === 'avulso' ? 'Avulsa (Conta Azul)' : 'Boleto do mês'}</td>
+      <td>${statusHtml}</td>
+      <td><div class="ft-acoes">${acoes}</div></td>`;
+    tb.appendChild(tr);
+  });
+  $('rodape').textContent = vis.length ? vis.length + ' item(ns) · ' + BRL(soma(vis)) : '';
+}
+
+// ---------- ações por linha ----------
+const porId = id => itens.find(x => x.id === id);
+const carimbo = () => new Date().toISOString();
+const setBusy = (btn, on, txt) => { if (!btn) return; btn.disabled = on; if (txt) btn.textContent = txt; };
+
+async function onChange(e){
+  const tr = e.target.closest('tr'); if (!tr) return;
+  const f = porId(tr.dataset.id); if (!f) return;
+  if (e.target.matches('[data-comp]')) {
+    f._comp = e.target.value;
+    const b = tr.querySelector('[data-act="boleto"]');
+    if (b) b.textContent = 'Incluir no boleto de ' + nomeMes(e.target.value);
+  }
+  if (e.target.matches('[data-valor]')) {
+    const v = Number(e.target.value);
+    if (!(v > 0)) { e.target.value = (Number(f.valor) || 0).toFixed(2); msg('O valor precisa ser maior que zero.', 'err'); return; }
+    const { data: ok, error } = await supabase.from('faturaveis').update({ valor: v, atualizado_em: carimbo() }).eq('id', f.id).eq('status', 'a_faturar').select('id');
+    if (error) { msg('Erro ao salvar o valor: ' + error.message, 'err'); return; }
+    if (!ok || !ok.length) { msg('Este item já saiu da fila em outra tela — recarregando.', 'err'); await carregar(); return; }
+    f.valor = v; msg('Valor salvo ✓', 'ok'); render();
+  }
+}
+
+// item tratado em outra aba/pessoa: o update condicional não pega linha nenhuma → recarrega
+async function jaTratado(){ await carregar(); msg('Este item já foi tratado em outra tela — atualizei a fila.', 'err'); }
+
+async function onAcao(e){
+  const btn = e.target.closest('[data-act]'); if (!btn) return;
+  const tr = btn.closest('tr'); const f = porId(tr.dataset.id); if (!f) return;
+  const act = btn.dataset.act;
+  if (act === 'boleto') return incluirNoBoleto(f, tr.querySelector('[data-comp]').value, btn);
+  if (act === 'desfazer') return desfazer(f, btn);
+  if (act === 'lancar') return lancar(f, btn);
+  if (act === 'descartar') return descartar(f, btn);
+}
+
+const COB_STATUS_LBL = { a_emitir: 'a emitir', emitido: 'já emitido', enviado: 'já enviado', pago: 'já pago', cancelado: 'cancelado' };
+
+async function incluirNoBoleto(f, comp, btn){
+  if (!/^\d{4}-\d{2}$/.test(comp || '')) { msg('Escolha a competência do boleto.', 'err'); return; }
+  const nome = f.clientes?.nome_principal || 'Cliente';
+  setBusy(btn, true, 'Incluindo…');
+  try {
+    const { data: cob, error } = await supabase.from('cobrancas_mensais')
+      .select('id, itens_extras, status').eq('cliente_id', f.cliente_id).eq('competencia', comp).maybeSingle();
+    if (error) throw error;
+    if (!cob) {
+      alert(nome + ' não tem boleto em ' + nomeMes(comp) + ' — gere o mês em Boletos primeiro, ou marque como cobrança avulsa (Lançado no Conta Azul).');
+      return;
+    }
+    // boleto pago ou cancelado não recebe extra; emitido/enviado só com confirmação (vai precisar reemitir)
+    if (cob.status === 'pago' || cob.status === 'cancelado') {
+      alert('O boleto de ' + nomeMes(comp) + ' de ' + nome + ' está ' + COB_STATUS_LBL[cob.status] + ' — escolha outra competência ou marque como cobrança avulsa (Lançado no Conta Azul).');
+      return;
+    }
+    if (cob.status && cob.status !== 'a_emitir' &&
+        !confirm('O boleto de ' + nomeMes(comp) + ' de ' + nome + ' está ' + COB_STATUS_LBL[cob.status] + '. Incluir o extra mesmo assim? (o boleto vai precisar ser reemitido e reenviado)')) return;
+    // 1) reivindica o faturável primeiro: só quem ainda está na fila pode entrar num boleto
+    //    (duas abas ao mesmo tempo → uma delas cai aqui e recarrega, sem cobrança dupla)
+    const { data: meu, error: e0 } = await supabase.from('faturaveis')
+      .update({ status: 'no_boleto', competencia_boleto: comp, atualizado_em: carimbo() })
+      .eq('id', f.id).eq('status', 'a_faturar').select('id, descricao, valor');
+    if (e0) throw e0;
+    if (!meu || !meu.length) { await jaTratado(); return; }
+    // 2) grava o item na cobrança com os valores do banco (não da cópia local da tela)
+    const extras = (Array.isArray(cob.itens_extras) ? cob.itens_extras : []).filter(x => x && x.faturavel_id !== f.id);
+    extras.push({ faturavel_id: f.id, descricao: meu[0].descricao, valor: Number(meu[0].valor) || 0 });
+    const { error: e1 } = await supabase.from('cobrancas_mensais').update({ itens_extras: extras }).eq('id', cob.id);
+    if (e1) {
+      await supabase.from('faturaveis').update({ status: 'a_faturar', competencia_boleto: null, atualizado_em: carimbo() }).eq('id', f.id).eq('status', 'no_boleto');
+      throw new Error('não consegui gravar o item no boleto (' + e1.message + ') — o faturável voltou pra fila');
+    }
+    f.status = 'no_boleto'; f.competencia_boleto = comp; f.atualizado_em = carimbo(); f.valor = meu[0].valor; f.descricao = meu[0].descricao;
+    msg('Incluído no boleto de ' + nomeMes(comp) + ' ✓', 'ok'); render();
+  } catch (ex) { msg('Erro: ' + (ex.message || ex), 'err'); }
+  finally { setBusy(btn, false, 'Incluir no boleto de ' + nomeMes(comp)); }
+}
+
+async function desfazer(f, btn){
+  if (!confirm('Tirar "' + f.descricao + '" do boleto de ' + nomeMes(f.competencia_boleto) + ' e devolver à fila?')) return;
+  setBusy(btn, true, 'Desfazendo…');
+  try {
+    const { data: cob, error } = await supabase.from('cobrancas_mensais')
+      .select('id, itens_extras').eq('cliente_id', f.cliente_id).eq('competencia', f.competencia_boleto).maybeSingle();
+    if (error) throw error;
+    if (cob) {
+      const extras = (Array.isArray(cob.itens_extras) ? cob.itens_extras : []).filter(x => x && x.faturavel_id !== f.id);
+      const { error: e1 } = await supabase.from('cobrancas_mensais').update({ itens_extras: extras }).eq('id', cob.id);
+      if (e1) throw e1;
+    }
+    const { data: ok, error: e2 } = await supabase.from('faturaveis').update({ status: 'a_faturar', competencia_boleto: null, atualizado_em: carimbo() }).eq('id', f.id).eq('status', 'no_boleto').select('id');
+    if (e2) throw e2;
+    if (!ok || !ok.length) { await jaTratado(); return; }
+    f.status = 'a_faturar'; f.competencia_boleto = null;
+    msg('De volta à fila ✓', 'ok'); render();
+  } catch (ex) { msg('Erro: ' + (ex.message || ex), 'err'); setBusy(btn, false, 'Desfazer (volta pra fila)'); }
+}
+
+async function lancar(f, btn){
+  const ref = prompt('Lançado no Conta Azul — referência (nº do lançamento / observação), opcional:', f.referencia || '');
+  if (ref === null) return;
+  setBusy(btn, true, 'Marcando…');
+  const { data: ok, error } = await supabase.from('faturaveis').update({ status: 'lancado', referencia: ref.trim() || null, atualizado_em: carimbo() }).eq('id', f.id).eq('status', 'a_faturar').select('id');
+  if (error) { msg('Erro: ' + error.message, 'err'); setBusy(btn, false, 'Lançado no Conta Azul'); return; }
+  if (!ok || !ok.length) { await jaTratado(); return; }
+  f.status = 'lancado'; f.referencia = ref.trim() || null; f.atualizado_em = carimbo();
+  msg('Marcado como lançado ✓', 'ok'); render();
+}
+
+async function descartar(f, btn){
+  if (!confirm('Descartar "' + f.descricao + '" (' + BRL(f.valor) + ')? Ele sai da fila e não será cobrado.')) return;
+  const motivo = prompt('Motivo do descarte:', '');
+  if (motivo === null) return;
+  setBusy(btn, true, 'Descartando…');
+  const { data: ok, error } = await supabase.from('faturaveis').update({ status: 'descartado', obs: motivo.trim() || null, atualizado_em: carimbo() }).eq('id', f.id).eq('status', 'a_faturar').select('id');
+  if (error) { msg('Erro: ' + error.message, 'err'); setBusy(btn, false, 'Descartar'); return; }
+  if (!ok || !ok.length) { await jaTratado(); return; }
+  f.status = 'descartado'; f.obs = motivo.trim() || null;
+  msg('Descartado.', 'ok'); render();
+}
+
+// ---------- catálogo ----------
+async function carregarCatalogo(force){
+  if (catalogo && !force) return catalogo;
+  const { data, error } = await supabase.from('servicos_avulsos').select('*').order('nome');
+  if (error) { msg('Catálogo indisponível: ' + error.message, 'err'); return catalogo || []; }
+  catalogo = data || [];
+  return catalogo;
+}
+function preencherSelectServ(sel, setorPref){
+  const at = (catalogo || []).filter(s => s.ativo);
+  const opt = s => `<option value="${esc(s.id)}" data-valor="${esc(s.valor_padrao ?? '')}" data-nome="${esc(s.nome)}" data-setor="${esc(s.setor || '')}">${esc(s.nome)}${s.valor_padrao != null ? ' — ' + BRL(s.valor_padrao) : ''}</option>`;
+  const doSetor = at.filter(s => s.setor === setorPref), outros = at.filter(s => s.setor !== setorPref);
+  sel.innerHTML = (doSetor.length ? `<optgroup label="${esc(SETOR_LBL[setorPref] || setorPref)}">${doSetor.map(opt).join('')}</optgroup>` : '')
+    + (outros.length ? `<optgroup label="${doSetor.length ? 'Outros setores' : 'Catálogo'}">${outros.map(opt).join('')}</optgroup>` : '')
+    + '<option value="">Outro (descrever)</option>';
+  sel.value = '';
+}
+let catEditId = null;
+function wireCatalogo(){
+  const ov = $('catOverlay');
+  const fechar = () => ov.classList.remove('is-open');
+  $('btnCatalogo').addEventListener('click', async () => { await carregarCatalogo(true); renderCatalogo(); limparCatForm(); ov.classList.add('is-open'); $('catNome').focus(); });
+  $('catClose').addEventListener('click', fechar); $('catFechar').addEventListener('click', fechar);
+  ov.addEventListener('click', e => { if (e.target === ov) fechar(); });
+  $('catLimpar').addEventListener('click', limparCatForm);
+  $('catSalvar').addEventListener('click', salvarCat);
+  $('catLista').addEventListener('click', async e => {
+    const b = e.target.closest('[data-cat]'); if (!b) return;
+    const s = (catalogo || []).find(x => x.id === b.dataset.id); if (!s) return;
+    if (b.dataset.cat === 'editar') {
+      catEditId = s.id; $('catNome').value = s.nome; $('catValor').value = s.valor_padrao != null ? Number(s.valor_padrao).toFixed(2) : ''; $('catSetor').value = s.setor || 'financeiro';
+      $('catSalvar').textContent = 'Salvar alterações'; $('catLimpar').style.display = 'inline-flex'; $('catNome').focus();
+    }
+    if (b.dataset.cat === 'toggle') {
+      const { error } = await supabase.from('servicos_avulsos').update({ ativo: !s.ativo }).eq('id', s.id);
+      if (error) { $('catMsg').textContent = 'Erro: ' + error.message; $('catMsg').className = 'msg-err'; return; }
+      s.ativo = !s.ativo; renderCatalogo();
+    }
+  });
+}
+function limparCatForm(){ catEditId = null; $('catNome').value = ''; $('catValor').value = ''; $('catSetor').value = 'financeiro'; $('catSalvar').textContent = 'Adicionar serviço'; $('catLimpar').style.display = 'none'; $('catMsg').textContent = ''; }
+function renderCatalogo(){
+  const l = catalogo || [];
+  $('catLista').innerHTML = l.length ? l.map(s => `
+    <div class="cat-item${s.ativo ? '' : ' off'}">
+      <div><b>${esc(s.nome)}</b>${s.ativo ? '' : ' <span class="pill pill-descartado">inativo</span>'}</div>
+      <div>${s.valor_padrao != null ? BRL(s.valor_padrao) : '<span style="color:#6E7787">sem valor</span>'}</div>
+      <div><span class="pill pill-setor">${esc(SETOR_LBL[s.setor] || s.setor || '—')}</span></div>
+      <div style="display:flex;gap:6px;"><button class="btn-mini" data-cat="editar" data-id="${esc(s.id)}">Editar</button><button class="btn-mini mute" data-cat="toggle" data-id="${esc(s.id)}">${s.ativo ? 'Inativar' : 'Reativar'}</button></div>
+    </div>`).join('') : '<div class="ft-empty">Nenhum serviço no catálogo ainda. Cadastre os primeiros acima — eles aparecem no "Cobrar à parte" das tarefas.</div>';
+}
+async function salvarCat(){
+  const nome = $('catNome').value.trim();
+  const valor = $('catValor').value === '' ? null : Number($('catValor').value);
+  const setor = $('catSetor').value;
+  const m = $('catMsg');
+  if (!nome) { m.textContent = 'Informe o nome do serviço.'; m.className = 'msg-err'; return; }
+  if (valor != null && !(valor >= 0)) { m.textContent = 'Valor inválido.'; m.className = 'msg-err'; return; }
+  const payload = { nome, valor_padrao: valor, setor };
+  const q = catEditId
+    ? supabase.from('servicos_avulsos').update(payload).eq('id', catEditId)
+    : supabase.from('servicos_avulsos').insert({ ...payload, ativo: true });
+  const { error } = await q;
+  if (error) { m.textContent = 'Erro: ' + error.message; m.className = 'msg-err'; return; }
+  await carregarCatalogo(true); renderCatalogo();
+  m.textContent = catEditId ? 'Serviço atualizado ✓' : 'Serviço adicionado ✓'; m.className = 'msg-ok';
+  const keep = m.textContent; limparCatForm(); m.textContent = keep; m.className = 'msg-ok';
+}
+
+// ---------- faturável manual ----------
+let manCliente = null;
+function wireManual(){
+  const ov = $('manOverlay');
+  const fechar = () => ov.classList.remove('is-open');
+  $('btnManual').addEventListener('click', async () => {
+    manCliente = null; $('manBusca').value = ''; $('manRes').innerHTML = ''; $('manCliSel').textContent = '';
+    $('manDesc').value = ''; $('manValor').value = ''; $('manDest').value = 'boleto'; $('manSetor').value = 'financeiro'; $('manMsg').textContent = '';
+    await carregarCatalogo(); preencherSelectServ($('manServ'), $('manSetor').value);
+    ov.classList.add('is-open'); $('manBusca').focus();
+    if (!clientesList) {
+      $('manMsg').textContent = 'Carregando clientes…';
+      const { data, error } = await supabase.todosClientes('id, nome_principal, nome_fantasia', q => q.neq('status', 'inativo'));
+      if (error) { $('manMsg').textContent = 'Não consegui carregar os clientes: ' + error.message; return; }
+      clientesList = data || [];
+      $('manMsg').textContent = '';
+      $('manBusca').dispatchEvent(new Event('input'));   // reexecuta a busca com o que já foi digitado
+    }
+  });
+  $('manClose').addEventListener('click', fechar); $('manCancelar').addEventListener('click', fechar);
+  ov.addEventListener('click', e => { if (e.target === ov) fechar(); });
+  $('manBusca').addEventListener('input', () => {
+    const t = $('manBusca').value.trim().toLowerCase();
+    const res = $('manRes');
+    if (t.length < 3 || !clientesList) { res.innerHTML = ''; return; }
+    const hits = clientesList.filter(c => ((c.nome_principal || '') + ' ' + (c.nome_fantasia || '')).toLowerCase().includes(t)).slice(0, 8);
+    res.innerHTML = hits.map(c => `<button type="button" data-cli="${esc(c.id)}">${esc(c.nome_principal)}${c.nome_fantasia ? ' <span style="color:#8A93A6">· ' + esc(c.nome_fantasia) + '</span>' : ''}</button>`).join('')
+      || '<button type="button" disabled style="color:#6E7787;cursor:default;">Nenhum cliente com esse termo.</button>';
+  });
+  $('manRes').addEventListener('click', e => {
+    const b = e.target.closest('[data-cli]'); if (!b) return;
+    manCliente = clientesList.find(c => c.id === b.dataset.cli) || null;
+    $('manCliSel').textContent = manCliente ? '✓ ' + manCliente.nome_principal : '';
+    $('manRes').innerHTML = ''; $('manBusca').value = manCliente ? manCliente.nome_principal : '';
+  });
+  $('manSetor').addEventListener('change', () => preencherSelectServ($('manServ'), $('manSetor').value));
+  $('manServ').addEventListener('change', () => {
+    const o = $('manServ').selectedOptions[0]; if (!o || !o.value) return;
+    $('manDesc').value = o.dataset.nome || $('manDesc').value;
+    if (o.dataset.valor !== '') $('manValor').value = Number(o.dataset.valor).toFixed(2);
+  });
+  $('manSalvar').addEventListener('click', async () => {
+    const m = $('manMsg'); m.className = 'msg-err';
+    const valor = Number($('manValor').value), descricao = $('manDesc').value.trim();
+    if (!manCliente) { m.textContent = 'Escolha o cliente na busca.'; return; }
+    if (!descricao) { m.textContent = 'Descreva o serviço.'; return; }
+    if (!(valor > 0)) { m.textContent = 'Informe um valor maior que zero.'; return; }
+    const btn = $('manSalvar'); btn.disabled = true;
+    const { error } = await supabase.from('faturaveis').insert({
+      cliente_id: manCliente.id, tarefa_id: null, servico_id: $('manServ').value || null,
+      setor: $('manSetor').value, descricao, valor, executado_por: usuarioNome, executado_em: hojeStr,
+      destino: $('manDest').value === 'avulso' ? 'avulso' : 'boleto', status: 'a_faturar'
+    });
+    btn.disabled = false;
+    if (error) { m.textContent = 'Erro: ' + error.message; return; }
+    fechar();
+    await carregar();
+    msg('Faturável adicionado à fila ✓', 'ok');
+  });
+}
+
+function msg(t, tipo){ const el = $('msg'); el.textContent = t || ''; el.className = tipo === 'ok' ? 'msg-ok' : tipo === 'err' ? 'msg-err' : ''; }
+
+init();
+</script>
+</body>
+</html>

@@ -114,9 +114,20 @@ const CSS = `
   .rt-mv { background:none; border:none; color:#6E7787; cursor:pointer; font-size:13px; padding:3px 4px; }
   .rt-mv:hover { color:#C9D3E0; }
 
+  /* cobrar à parte (no detalhe, antes de concluir) */
+  .te-cob { background:rgba(227,179,65,.06); border:1px solid rgba(227,179,65,.22); border-radius:12px; padding:10px 14px; }
+  .te-cob .fa-checkline { font-weight:600; color:#E6EBF2; }
+  .te-cob-aviso { font-size:12.5px; color:#8A93A6; margin-top:4px; }
+  .te-cob-box { display:none; flex-direction:column; gap:10px; margin-top:10px; }
+  .te-cob-box.is-open { display:flex; }
+  .te-cob-box .fa-field > span { font-size:12.5px; }
+
   @media (max-width:720px){ .fa-focus { grid-template-columns:repeat(2,1fr); } }
   @media (max-width:560px){ .rt-item { flex-wrap:wrap; } .rt-acoes { width:100%; justify-content:flex-end; margin-top:4px; } }
 `;
+
+const SETOR_LBL = { clientes:'Clientes', dp:'DP', fiscal:'Fiscal', contabil:'Contábil', societario:'Societário', financeiro:'Financeiro', comercial:'Comercial', irpf:'IRPF', gestao:'Gestão', geral:'Geral' };
+const fmtBRL = n => 'R$ ' + (Number(n) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const SEM_NOME = { 1:'segunda', 2:'terça', 3:'quarta', 4:'quinta', 5:'sexta', 6:'sábado', 7:'domingo' };
 const SEM_ABREV = { 1:'seg', 2:'ter', 3:'qua', 4:'qui', 5:'sex', 6:'sáb', 7:'dom' };
@@ -296,6 +307,18 @@ export function initTarefas(userCfg) {
           </div>
           <label class="fa-field"><span>Descrição</span><textarea id="dDescricao" class="input" rows="2"></textarea></label>
           <div><button class="btn btn-primary btn-sm" id="dSalvar">Salvar alterações</button></div>
+          <div class="te-cob" id="dCob" style="display:none;">
+            <label class="fa-checkline"><input type="checkbox" id="dCobChk"> Cobrar este serviço à parte</label>
+            <div class="te-cob-aviso" id="dCobAviso">Serviço extra (alteração, certidão, 2ª via, parcelamento…): marque e, ao concluir, ele entra na fila de Faturáveis do Financeiro.</div>
+            <div class="te-cob-box" id="dCobBox">
+              <label class="fa-field"><span>Serviço</span><select id="dCobServ" class="select"></select></label>
+              <label class="fa-field"><span>Descrição (vai pro boleto / lançamento)</span><input type="text" id="dCobDesc" class="input" maxlength="160"></label>
+              <div class="fa-field-row">
+                <label class="fa-field"><span>Valor (R$)</span><input type="number" id="dCobValor" class="input" step="0.01" min="0" placeholder="0,00"></label>
+                <label class="fa-field"><span>Destino</span><select id="dCobDest" class="select"><option value="boleto">No boleto de honorários do mês</option><option value="avulso">Cobrança avulsa (Conta Azul)</option></select></label>
+              </div>
+            </div>
+          </div>
           <hr class="alv-hr">
           <div class="alv-tl-head">Linha do tempo</div>
           <label class="fa-field"><span>Registrar andamento</span><textarea id="dNovoAnd" class="input" rows="2" placeholder="${escA(C.andamentoPlaceholder)}"></textarea></label>
@@ -351,6 +374,9 @@ export function initTarefas(userCfg) {
   let rotinas = [];
   let usuarioEmail = null;
   let usuarioNome = 'Usuário';
+  // as contas são de setor (rh@, fiscal@…) sem full_name — o nome da equipe vem daqui
+  const NOME_POR_EMAIL = { 'fiscal@macedoereis.com.br':'Thalia', 'rh@macedoereis.com.br':'Vitória', 'contabil@macedoereis.com.br':'Adaini', 'financeiro@macedoereis.com.br':'Samuel', 'diego@macedoereis.com.br':'Diego' };
+  const nomePorEmail = e => NOME_POR_EMAIL[String(e || '').toLowerCase()] || null;
   let periodo = 'mes';
   let gruposAbertos = new Set();
 
@@ -680,7 +706,83 @@ export function initTarefas(userCfg) {
   $('dBtnReabrir').addEventListener('click', reabrirProc);
   $('dExcluir').addEventListener('click', excluirProc);
 
-  function fecharDetalhe(){ detOverlay.classList.remove('is-open'); procAtual = null; $('dNovoAnd').value = ''; }
+  // ---------- cobrar à parte (serviço extra → fila de Faturáveis) ----------
+  let catalogoServ = null;   // servicos_avulsos ativos, carregado uma vez por sessão
+  async function carregarCatalogo(){
+    if (catalogoServ) return catalogoServ;
+    const { data, error } = await supabase.from('servicos_avulsos').select('id, nome, valor_padrao, setor').eq('ativo', true).order('nome');
+    if (error) { console.warn('Catálogo de serviços avulsos indisponível: ' + error.message); return []; }
+    catalogoServ = data || [];
+    return catalogoServ;
+  }
+  function montarSelectServ(lista){
+    const sel = $('dCobServ');
+    const doSetor = lista.filter(s => s.setor === SETOR);
+    const outros = lista.filter(s => s.setor !== SETOR);
+    const opt = s => '<option value="'+escA(s.id)+'" data-valor="'+escA(s.valor_padrao ?? '')+'" data-nome="'+escA(s.nome)+'">'+esc(s.nome)+(s.valor_padrao != null ? ' — '+fmtBRL(s.valor_padrao) : '')+'</option>';
+    sel.innerHTML =
+      (doSetor.length ? '<optgroup label="'+escA(SETOR_LBL[SETOR] || SETOR)+'">'+doSetor.map(opt).join('')+'</optgroup>' : '') +
+      (outros.length ? '<optgroup label="Outros setores">'+outros.map(opt).join('')+'</optgroup>' : '') +
+      '<option value="">Outro (descrever)</option>';
+    sel.value = '';
+  }
+  // faturável vivo (não descartado) já ligado à tarefa — evita cobrar duas vezes o mesmo serviço
+  async function faturavelDaTarefa(id){
+    const { data } = await supabase.from('faturaveis').select('id, descricao, valor, status, competencia_boleto')
+      .eq('tarefa_id', id).neq('status', 'descartado').order('criado_em', { ascending: false }).limit(1).maybeSingle();
+    return data || null;
+  }
+  const FAT_STATUS_LBL = f => f.status === 'no_boleto' ? 'no boleto de ' + String(f.competencia_boleto || '').split('-').reverse().join('/')
+    : f.status === 'lancado' ? 'lançado no Conta Azul' : 'na fila de Faturáveis';
+  function prepararCobranca(t, fatExist){
+    const bloco = $('dCob'), chk = $('dCobChk'), aviso = $('dCobAviso'), box = $('dCobBox');
+    chk.checked = false; box.classList.remove('is-open');
+    $('dCobDesc').value = ''; $('dCobValor').value = ''; $('dCobDest').value = 'boleto';
+    if ($('dCobServ').options.length) $('dCobServ').value = '';
+    if (t.status === 'concluida') { bloco.style.display = 'none'; return; }
+    bloco.style.display = 'block';
+    if (!t.cliente_id) {
+      chk.disabled = true;
+      aviso.textContent = 'Tarefa sem cliente — vincule um cliente pra poder cobrar à parte.';
+    } else if (fatExist) {
+      chk.disabled = true;
+      aviso.textContent = 'Já cobrado à parte: ' + fatExist.descricao + ' · ' + fmtBRL(fatExist.valor) + ' (' + FAT_STATUS_LBL(fatExist) + '). Outro serviço nesta tarefa? Use o + Faturável manual em Financeiro → Faturáveis.';
+    } else {
+      chk.disabled = false;
+      aviso.textContent = 'Serviço extra (alteração, certidão, 2ª via, parcelamento…): marque e, ao concluir, ele entra na fila de Faturáveis do Financeiro.';
+    }
+  }
+  $('dCobChk').addEventListener('change', async () => {
+    const on = $('dCobChk').checked;
+    $('dCobBox').classList.toggle('is-open', on);
+    if (!on) return;
+    // monta o select uma vez só: remarcar a caixa não pode descartar o serviço escolhido
+    if (!$('dCobServ').options.length) montarSelectServ(await carregarCatalogo());
+    if (!$('dCobDesc').value.trim()) $('dCobDesc').value = (procAtual && procAtual.titulo) || '';
+    $('dCobValor').focus();
+  });
+  $('dCobServ').addEventListener('change', () => {
+    const o = $('dCobServ').selectedOptions[0];
+    if (!o || !o.value) return;
+    $('dCobDesc').value = o.dataset.nome || $('dCobDesc').value;
+    if (o.dataset.valor !== '') $('dCobValor').value = Number(o.dataset.valor).toFixed(2);
+  });
+  // devolve null (não cobrar), um objeto (cobrar) ou false (inválido — já avisou)
+  function lerCobranca(t){
+    if (!$('dCobChk').checked) return null;
+    if (!t.cliente_id) { alert('Esta tarefa não tem cliente — não dá pra cobrar à parte.'); return false; }
+    const valor = Number($('dCobValor').value);
+    const descricao = $('dCobDesc').value.trim();
+    if (!(valor > 0)) { alert('Informe o valor do serviço cobrado à parte (maior que zero).'); $('dCobValor').focus(); return false; }
+    if (!descricao) { alert('Descreva o serviço cobrado à parte.'); $('dCobDesc').focus(); return false; }
+    return {
+      cliente_id: t.cliente_id, tarefa_id: t.id, servico_id: $('dCobServ').value || null,
+      setor: SETOR, descricao, valor, executado_por: nomePorEmail(usuarioEmail) || usuarioNome, executado_em: hojeStr,
+      destino: $('dCobDest').value === 'avulso' ? 'avulso' : 'boleto', status: 'a_faturar'
+    };
+  }
+
+  function fecharDetalhe(){ detOverlay.classList.remove('is-open'); procAtual = null; $('dNovoAnd').value = ''; $('dCobChk').checked = false; $('dCobBox').classList.remove('is-open'); }
 
   async function abrirDetalhe(id){
     const t = tarefas.find(x => x.id === id);
@@ -700,7 +802,10 @@ export function initTarefas(userCfg) {
     $('dStatusWrap').style.display = concl ? 'none' : 'flex';
     $('dBtnConcluir').style.display = concl ? 'none' : 'inline-flex';
     $('dBtnReabrir').style.display = concl ? 'inline-flex' : 'none';
+    prepararCobranca(t, null);
     detOverlay.classList.add('is-open');
+    // tarefa reaberta que já tem cobrança: trava a caixa assim que a consulta voltar
+    if (!concl && t.cliente_id) faturavelDaTarefa(id).then(f => { if (f && procAtual && procAtual.id === id) prepararCobranca(t, f); });
     await renderTimeline(id);
   }
 
@@ -742,19 +847,60 @@ export function initTarefas(userCfg) {
     const { error } = await supabase.from('tarefas').update(patch).eq('id', id);
     if (error) { alert('Erro ao salvar: ' + error.message); return; }
     if (statusMudou) await supabase.from('tarefa_historico').insert({ tarefa_id: id, descricao: 'Status alterado para: ' + STATUS_LBL[novoStatus] + '.', autor: usuarioEmail });
+    if (!concl && $('dCobChk').checked) {
+      // a cobrança à parte só vira faturável no Concluir — não fechar nem zerar o que foi preenchido
+      Object.assign(procAtual, patch);
+      await carregarTarefas();
+      alert('Alterações salvas. A cobrança à parte só entra na fila quando você clicar em Concluir.');
+      return;
+    }
     fecharDetalhe();
     await carregarTarefas();
   }
 
   async function concluirProc(){
     if (!procAtual) return;
-    const id = procAtual.id;
-    if (!confirm(C.confirmConcluir)) return;
-    const { error } = await supabase.from('tarefas').update({ status:'concluida', concluida_em:new Date().toISOString(), concluida_por:usuarioEmail }).eq('id', id);
-    if (error){ alert('Erro: '+error.message); return; }
-    await supabase.from('tarefa_historico').insert({ tarefa_id:id, descricao:C.historicoConcluida, autor:usuarioEmail });
-    fecharDetalhe();
-    await carregarTarefas();
+    const btn = $('dBtnConcluir');
+    if (btn.disabled) return;      // reentrada: já está concluindo
+    const t = procAtual;           // fecharDetalhe() zera procAtual — segurar a referência
+    const id = t.id;
+    const cob = lerCobranca(t);    // valida ANTES do confirm: valor zerado não conclui
+    if (cob === false) return;
+    if (!confirm(cob ? C.confirmConcluir + '\n\nO serviço vai pra fila de Faturáveis: ' + cob.descricao + ' · ' + fmtBRL(cob.valor) + '.' : C.confirmConcluir)) return;
+    btn.disabled = true;           // travado até o FIM da cadeia — reclique gerava faturável em dobro
+    try {
+      const { error } = await supabase.from('tarefas').update({ status:'concluida', concluida_em:new Date().toISOString(), concluida_por:usuarioEmail }).eq('id', id);
+      if (error){ alert('Erro: '+error.message); return; }
+      await supabase.from('tarefa_historico').insert({ tarefa_id:id, descricao:C.historicoConcluida, autor:usuarioEmail });
+      if (cob) {
+        const ja = await faturavelDaTarefa(id);
+        if (ja) {
+          alert('Esta tarefa já tem cobrança à parte (' + ja.descricao + ' · ' + fmtBRL(ja.valor) + ', ' + FAT_STATUS_LBL(ja) + ') — não criei outra.');
+        } else {
+          // a conclusão já valeu; se a fila falhar, o caminho de recuperação é o + Faturável manual
+          const { error: eFat } = await supabase.from('faturaveis').insert(cob);
+          if (eFat) alert('Tarefa concluída, mas a cobrança à parte NÃO entrou na fila: ' + eFat.message + '\nRegistre pelo "+ Faturável manual" em Financeiro → Faturáveis.');
+          else await supabase.from('tarefa_historico').insert({ tarefa_id:id, descricao:'Marcada como cobrável: ' + cob.descricao + ' · ' + fmtBRL(cob.valor), autor:usuarioEmail });
+        }
+      }
+      fecharDetalhe();
+      await carregarTarefas();
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // tarefa reaberta/excluída: cobrança ainda na fila é cancelada (o serviço "executado" deixou de valer);
+  // cobrança que já foi pro boleto ou pro Conta Azul fica — e a pessoa é avisada pra conferir no Financeiro
+  async function tratarFaturavelAoDesfazer(id, motivo){
+    const f = await faturavelDaTarefa(id);
+    if (!f) return;
+    if (f.status === 'a_faturar') {
+      const { error } = await supabase.from('faturaveis').update({ status:'descartado', obs: motivo, atualizado_em: new Date().toISOString() }).eq('id', f.id).eq('status', 'a_faturar');
+      if (!error) await supabase.from('tarefa_historico').insert({ tarefa_id:id, descricao:'Cobrança à parte cancelada (' + motivo.toLowerCase() + '): ' + f.descricao + ' · ' + fmtBRL(f.valor), autor:usuarioEmail });
+    } else {
+      alert('Atenção: a cobrança à parte desta tarefa (' + f.descricao + ' · ' + fmtBRL(f.valor) + ') já está ' + FAT_STATUS_LBL(f) + ' — confira em Financeiro → Faturáveis.');
+    }
   }
 
   async function reabrirProc(){
@@ -763,6 +909,7 @@ export function initTarefas(userCfg) {
     const { error } = await supabase.from('tarefas').update({ status:'em_andamento', concluida_em:null, concluida_por:null }).eq('id', id);
     if (error){ alert('Erro: '+error.message); return; }
     await supabase.from('tarefa_historico').insert({ tarefa_id:id, descricao:C.historicoReaberta, autor:usuarioEmail });
+    await tratarFaturavelAoDesfazer(id, 'Tarefa reaberta');
     fecharDetalhe();
     await carregarTarefas();
   }
@@ -770,7 +917,10 @@ export function initTarefas(userCfg) {
   async function excluirProc(){
     if (!procAtual) return;
     const id = procAtual.id;
-    if (!confirm(C.confirmExcluir)) return;
+    const f = procAtual.cliente_id ? await faturavelDaTarefa(id) : null;
+    const extra = f ? '\n\nAtenção: esta tarefa tem cobrança à parte (' + f.descricao + ' · ' + fmtBRL(f.valor) + ', ' + FAT_STATUS_LBL(f) + ').' + (f.status === 'a_faturar' ? ' Ela será cancelada junto.' : ' Ela continua no Financeiro.') : '';
+    if (!confirm(C.confirmExcluir + extra)) return;
+    if (f && f.status === 'a_faturar') await tratarFaturavelAoDesfazer(id, 'Tarefa excluída');
     const { error } = await supabase.from('tarefas').delete().eq('id', id);
     if (error){ alert('Erro: '+error.message); return; }
     fecharDetalhe();
