@@ -734,7 +734,7 @@
           '<tr><td><b>Diferença de custo (regular − Simples)</b></td><td class="num" colspan="2"><b>' + brl((c.sim_custo_fora || 0) - (c.sim_custo_dentro || 0)) + '</b></td></tr>' +
           '</tbody></table>' +
           '<p class="ctx" style="margin-top:14px"><b>Nossa recomendação é optar pelo regime regular de IBS/CBS.</b> ' + escapeHtml(c.fundamento || FUND_PADRAO_FORA) + '</p>' +
-          '<p class="ctx">A opção deve ser formalizada até <b>' + fmtData(c.prazo_opcao || '2026-09-30') + '</b> e produz efeitos a partir de <b>01/01/2027</b>, valendo por semestre — pode ser revista em março/2027. O que muda no dia a dia: apuração mensal do IBS/CBS separada do DAS, destaque dos tributos nas notas fiscais e recebimentos sujeitos ao split payment conforme a regulamentação. Ponto de atenção: empresas que recebem ressarcimento de créditos ficam vinculadas ao regime regular.</p>' +
+          '<p class="ctx">A opção deve ser formalizada até <b>' + fmtData(c.prazo_opcao || '2026-09-30') + '</b> e produz efeitos a partir de <b>01/01/2027</b>, valendo por semestre. <b>A decisão não é sem volta:</b> quem opta em setembro pode <b>cancelar a opção até 30/11/2026</b>, sem nenhum efeito, caso a análise até lá mostre que não compensa (Resolução CGSN nº 186/2026) — o cancelamento, esse sim, é definitivo. O caminho inverso não existe: quem deixa setembro passar sem optar só terá nova chance em março/2027, com efeito a partir de julho. Por isso, na dúvida, optar agora preserva as duas portas abertas. O que muda no dia a dia: apuração mensal do IBS/CBS separada do DAS, destaque dos tributos nas notas fiscais e recebimentos sujeitos ao split payment conforme a regulamentação. Ponto de atenção: empresas que recebem ressarcimento de créditos ficam vinculadas ao regime regular.</p>' +
           '<h2>Próximos passos</h2><ol class="passos">' +
           '<li>Sua confirmação até ' + prazoConf + ';</li>' +
           '<li>O escritório registra a opção no Portal do Simples Nacional;</li>' +
@@ -747,7 +747,7 @@
           '<div class="dados"><b>' + escapeHtml(cli.nome_principal || '') + '</b>' + (cli.documento ? ' · CNPJ ' + escapeHtml(fmtCnpj(cli.documento)) : '') + '</div>' +
           '<p class="ctx">' + contexto + '</p>' +
           '<p class="ctx">Analisamos o perfil da ' + escapeHtml(cli.nome_principal || 'empresa') + ': ' + atividadeDe(c) + ', com vendas voltadas para ' + perfilCli + ' e ' + perfilCompras + '. <b>Nossa recomendação é manter a apuração dentro do Simples Nacional.</b> ' + escapeHtml(c.fundamento || FUND_PADRAO_DENTRO) + '</p>' +
-          '<p class="ctx">Nesse caso não há providência a tomar: a permanência é automática. A opção pelo regime separado pode ser reavaliada a cada semestre (março e setembro), e o escritório seguirá acompanhando o seu caso conforme a regulamentação avançar.</p>' +
+          '<p class="ctx">Nesse caso não há providência a tomar: a permanência é automática. A opção pelo regime separado pode ser reavaliada a cada semestre — a próxima janela é março/2027, com efeito a partir de julho — e o escritório seguirá acompanhando o seu caso conforme a regulamentação avançar.</p>' +
           '<div class="assina"><b>Recomendação técnica do escritório: manter no Simples.</b><br>Manifestação do cliente: (&nbsp;&nbsp;) de acordo &nbsp;&nbsp; (&nbsp;&nbsp;) desejo avaliar a opção<br><br>Data: ____/____/______ &nbsp;&nbsp;&nbsp; Assinatura: ___________________________________</div>';
       }
       const logoUrl = new URL('assets/logo-mr.png', location.href).href;
