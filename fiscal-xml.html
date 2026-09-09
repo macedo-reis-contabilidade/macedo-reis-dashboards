@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fiscal — Notas fiscais (XML) — Macedo & Reis</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <style>
+    .content { max-width:none; }
+    .page-header { max-width:880px; }
+    .xm-sec { background:rgba(255,255,255,.025); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:18px 20px; margin-bottom:18px; }
+    .xm-sec h2 { margin:0 0 12px; font-size:16px; color:#E6EBF2; }
+    .xm-sec h2 small { color:#8A93A6; font-weight:400; font-size:13px; margin-left:8px; }
+    .xm-row { display:flex; gap:14px; flex-wrap:wrap; align-items:flex-start; }
+    .xm-cli { flex:1 1 360px; position:relative; }
+    .xm-res { position:absolute; left:0; right:0; top:100%; z-index:20; background:#141A22; border:1px solid rgba(255,255,255,.12); border-radius:10px; overflow:hidden; max-height:260px; overflow-y:auto; }
+    .xm-res:empty { display:none; }
+    .xm-res button { display:block; width:100%; text-align:left; background:transparent; border:none; border-bottom:1px solid rgba(255,255,255,.06); color:#E6EBF2; font:inherit; font-size:13px; padding:9px 12px; cursor:pointer; }
+    .xm-res button:hover { background:rgba(138,174,200,.12); }
+    .xm-res small { color:#8A93A6; margin-left:6px; }
+    .xm-sel { margin-top:8px; font-size:13px; color:#8AAEC8; min-height:18px; }
+    .xm-sel b { color:#E6EBF2; }
+    .xm-sel .warn { color:#E3B341; }
+    .xm-drop { border:2px dashed rgba(255,255,255,.18); border-radius:12px; padding:26px 20px; text-align:center; color:#8A93A6; cursor:pointer; transition:border-color .15s, background .15s; flex:1 1 360px; }
+    .xm-drop:hover, .xm-drop.is-over { border-color:#5B82A6; background:rgba(91,130,166,.08); color:#C5D8E8; }
+    .xm-drop b { color:#E6EBF2; }
+    .xm-files { margin-top:10px; font-size:13px; color:#8A93A6; }
+    .xm-files b { color:#E6EBF2; }
+    .xm-prog { margin-top:14px; display:none; }
+    .xm-prog.is-on { display:block; }
+    .xm-bar { height:10px; background:rgba(255,255,255,.07); border-radius:6px; overflow:hidden; }
+    .xm-fill { height:100%; width:0%; background:#5B82A6; border-radius:6px; transition:width .2s; }
+    .xm-prog-txt { margin-top:6px; font-size:12.5px; color:#8A93A6; }
+    .xm-rel { margin-top:14px; display:none; }
+    .xm-rel.is-on { display:block; }
+    .xm-kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:12px; }
+    .xm-kpi { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:12px 14px; }
+    .xm-kpi .n { font-size:22px; font-weight:700; color:#E6EBF2; line-height:1; }
+    .xm-kpi .l { font-size:12px; color:#8A93A6; margin-top:4px; }
+    .xm-kpi.ok .n { color:#3FB07A; } .xm-kpi.dup .n { color:#8AAEC8; } .xm-kpi.ign .n { color:#E3B341; } .xm-kpi.err .n { color:#E06C6C; }
+    .xm-det { font-size:13px; color:#C5D8E8; }
+    .xm-det details { margin-top:6px; }
+    .xm-det summary { cursor:pointer; color:#8AAEC8; }
+    .xm-det ul { margin:6px 0 0 18px; padding:0; color:#8A93A6; font-size:12.5px; max-height:180px; overflow:auto; }
+    table.xm { border-collapse:collapse; width:100%; font-size:13px; }
+    table.xm th { text-align:left; color:#8AAEC8; font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.04em; padding:8px 10px; border-bottom:1px solid rgba(255,255,255,.08); }
+    table.xm td { padding:8px 10px; border-bottom:1px solid rgba(255,255,255,.05); color:#E6EBF2; vertical-align:middle; }
+    table.xm td.num, table.xm th.num { text-align:right; font-variant-numeric:tabular-nums; }
+    table.xm td small { color:#8A93A6; }
+    .btn-mini { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.14); color:#C5D8E8; border-radius:7px; padding:5px 10px; font-size:12px; cursor:pointer; font-family:inherit; white-space:nowrap; }
+    .btn-mini:hover { border-color:#E06C6C; color:#E06C6C; }
+    .btn-mini:disabled { opacity:.5; cursor:default; }
+    .xm-vazio { color:#8A93A6; font-size:13px; padding:8px 0; }
+    .xm-msg { font-size:13px; min-height:18px; margin-top:8px; }
+    .msg-ok { color:#3FB07A; } .msg-err { color:#E06C6C; }
+    .pill { display:inline-block; font-size:11px; font-weight:600; border-radius:999px; padding:2px 9px; border:1px solid transparent; white-space:nowrap; }
+    .pill-saida { color:#3FB07A; background:rgba(63,176,122,.14); border-color:rgba(63,176,122,.3); }
+    .pill-entrada { color:#8AAEC8; background:rgba(91,130,166,.14); border-color:rgba(91,130,166,.3); }
+    @media (max-width:760px){ .xm-kpis { grid-template-columns:repeat(2,1fr); } }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip"><div class="user-avatar" id="userAvatar">—</div><span id="userName">Carregando…</span></div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <a href="fiscal.html">Fiscal</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>XML</span>
+        </div>
+        <div class="eyebrow">Notas fiscais</div>
+        <h1>Notas fiscais (XML)</h1>
+        <p>Importe os XMLs de NF-e e NFC-e do cliente (arquivos soltos ou ZIP). Tudo é lido aqui no navegador: a nota vira documento com itens, o tipo (venda ou compra) sai do CNPJ do cliente, nota repetida não entra duas vezes e o cancelamento por evento marca a nota. O painel de operação e a ficha da Reforma bebem daqui.</p>
+      </div>
+
+      <div class="xm-sec">
+        <h2>Importar</h2>
+        <div class="xm-row">
+          <div class="xm-cli">
+            <div class="form-group" style="margin:0;"><label for="cliBusca">Cliente</label>
+              <input type="text" id="cliBusca" class="input" placeholder="Digite pelo menos 2 letras do nome…" autocomplete="off"></div>
+            <div class="xm-res" id="cliRes"></div>
+            <div class="xm-sel" id="cliSel">Nenhum cliente escolhido.</div>
+          </div>
+          <div class="xm-drop" id="drop">
+            <b>Arraste os XMLs ou ZIPs aqui</b><br>ou clique pra escolher — vários arquivos de uma vez; ZIP pode ter subpastas
+            <input type="file" id="fileInput" multiple accept=".xml,.zip,text/xml,application/xml,application/zip" style="display:none;">
+            <div class="xm-files" id="filesInfo"></div>
+          </div>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center; margin-top:14px; flex-wrap:wrap;">
+          <button class="btn btn-primary" id="btnImportar" disabled>Importar</button>
+          <button class="btn btn-ghost btn-sm" id="btnLimpar" style="display:none;">Limpar seleção</button>
+          <span class="xm-msg" id="msg"></span>
+        </div>
+        <div class="xm-prog" id="prog">
+          <div class="xm-bar"><div class="xm-fill" id="progFill"></div></div>
+          <div class="xm-prog-txt" id="progTxt"></div>
+        </div>
+        <div class="xm-rel" id="rel"></div>
+      </div>
+
+      <div class="xm-sec" id="secExiste" style="display:none;">
+        <h2>O que já existe <small id="existeCli"></small></h2>
+        <div id="existeAnos"></div>
+        <h2 style="margin-top:18px;">Últimas importações</h2>
+        <div id="existeLotes"></div>
+      </div>
+    </main>
+  </div>
+
+<script type="module">
+import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+import { formatDocumento } from './assets/js/utils.js';
+
+const $ = id => document.getElementById(id);
+const BRL = n => 'R$ ' + (Number(n) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const dig = s => String(s == null ? '' : s).replace(/\D/g, '');
+const num = v => { const n = Number(String(v == null ? '' : v).trim()); return isFinite(n) ? n : 0; };
+const NOME_POR_EMAIL = { 'fiscal@macedoereis.com.br':'Thalia', 'rh@macedoereis.com.br':'Vitória', 'contabil@macedoereis.com.br':'Adaini', 'financeiro@macedoereis.com.br':'Samuel', 'diego@macedoereis.com.br':'Diego' };
+const fmtDataHora = iso => { try { return new Date(iso).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }); } catch (e) { return ''; } };
+
+let usuario = 'Usuário';
+let clientesList = null;
+let cliente = null;          // { id, nome_principal, documento }
+let arquivos = [];           // File[] escolhidos
+let rodando = false;
+
+// ---------- boot ----------
+(async () => {
+  try {
+    const u = await getCurrentUser();
+    if (u) {
+      const n = u.user_metadata?.full_name || u.email?.split('@')[0] || 'Usuário';
+      usuario = NOME_POR_EMAIL[String(u.email || '').toLowerCase()] || (n.charAt(0).toUpperCase() + n.slice(1));
+      $('userName').textContent = n; $('userAvatar').textContent = n.charAt(0).toUpperCase();
+    }
+  } catch (e) {}
+  $('btnLogout').addEventListener('click', signOut);
+  const { data, error } = await supabase.todosClientes('id, nome_principal, nome_fantasia, documento, status');
+  if (error) { msg('Não consegui carregar os clientes: ' + error.message, 'err'); return; }
+  clientesList = data || [];
+  const pre = new URLSearchParams(location.search).get('cliente');
+  if (pre) { const c = clientesList.find(x => x.id === pre); if (c) escolherCliente(c); }
+})();
+
+// ---------- cliente ----------
+$('cliBusca').addEventListener('input', () => {
+  const t = $('cliBusca').value.trim().toLowerCase();
+  const res = $('cliRes');
+  if (t.length < 2 || !clientesList) { res.innerHTML = ''; return; }
+  const hits = clientesList.filter(c => ((c.nome_principal || '') + ' ' + (c.nome_fantasia || '') + ' ' + (c.documento || '')).toLowerCase().includes(t)).slice(0, 10);
+  res.innerHTML = hits.map(c => `<button type="button" data-cli="${esc(c.id)}">${esc(c.nome_principal)}<small>${c.documento ? formatDocumento(c.documento) : 'sem documento'}${c.status && c.status !== 'ativo' ? ' · ' + esc(c.status) : ''}</small></button>`).join('')
+    || '<button type="button" disabled style="color:#6E7787;cursor:default;">Nenhum cliente com esse termo.</button>';
+});
+$('cliRes').addEventListener('click', e => {
+  const b = e.target.closest('[data-cli]'); if (!b) return;
+  escolherCliente(clientesList.find(c => c.id === b.dataset.cli));
+});
+document.addEventListener('click', e => { if (!e.target.closest('.xm-cli')) $('cliRes').innerHTML = ''; });
+
+function escolherCliente(c){
+  cliente = c || null;
+  $('cliRes').innerHTML = '';
+  if (!cliente) { $('cliSel').textContent = 'Nenhum cliente escolhido.'; $('secExiste').style.display = 'none'; atualizarBotao(); return; }
+  $('cliBusca').value = cliente.nome_principal;
+  const d = dig(cliente.documento);
+  if (d.length !== 14 && d.length !== 11) {
+    $('cliSel').innerHTML = '<b>' + esc(cliente.nome_principal) + '</b> · <span class="warn">sem CNPJ/CPF no cadastro — a importação precisa do documento pra saber o que é venda e o que é compra. Complete o cadastro primeiro.</span>';
+  } else {
+    $('cliSel').innerHTML = '<b>' + esc(cliente.nome_principal) + '</b> · ' + formatDocumento(d);
+  }
+  atualizarBotao();
+  carregarExistente();
+}
+const clienteTemDoc = () => { const d = dig(cliente?.documento); return d.length === 14 || d.length === 11; };
+
+// ---------- arquivos ----------
+const drop = $('drop');
+drop.addEventListener('click', () => $('fileInput').click());
+$('fileInput').addEventListener('change', () => { adicionarArquivos([...$('fileInput').files]); $('fileInput').value = ''; });
+['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('is-over'); }));
+['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('is-over'); }));
+drop.addEventListener('drop', e => adicionarArquivos([...(e.dataTransfer?.files || [])]));
+$('btnLimpar').addEventListener('click', () => { arquivos = []; renderArquivos(); });
+
+function adicionarArquivos(lista){
+  const aceitos = lista.filter(f => /\.(xml|zip)$/i.test(f.name));
+  const recusados = lista.length - aceitos.length;
+  arquivos.push(...aceitos);
+  renderArquivos();
+  if (recusados) msg(recusados + ' arquivo(s) fora do padrão (.xml ou .zip) não entraram.', 'err');
+}
+function renderArquivos(){
+  const xml = arquivos.filter(f => /\.xml$/i.test(f.name)).length, zip = arquivos.length - xml;
+  $('filesInfo').innerHTML = arquivos.length ? '<b>' + arquivos.length + '</b> arquivo(s) na fila: ' + xml + ' XML' + (zip ? ' · ' + zip + ' ZIP' : '') : '';
+  $('btnLimpar').style.display = arquivos.length ? 'inline-flex' : 'none';
+  atualizarBotao();
+}
+function atualizarBotao(){ $('btnImportar').disabled = rodando || !cliente || !clienteTemDoc() || !arquivos.length; }
+
+// ---------- parse ----------
+const byName = (el, name) => el ? el.getElementsByTagNameNS('*', name) : [];
+const first = (el, name) => byName(el, name)[0] || null;
+const txt = (el, name) => { const n = first(el, name); return n ? (n.textContent || '').trim() : null; };
+const childByLocal = (el, name) => el ? [...el.children].find(c => c.localName === name) || null : null;
+
+// devolve { kind:'nfe', doc, itens } | { kind:'evento', chave, tpEvento } | { kind:'ignorado', motivo }
+function parseXml(texto, nome){
+  const dom = new DOMParser().parseFromString(texto, 'application/xml');
+  if (dom.getElementsByTagName('parsererror').length) throw new Error('XML mal formado');
+  const root = dom.documentElement; const rl = root.localName;
+  if (rl === 'procEventoNFe' || rl === 'evento' || rl === 'retEnvEvento') {
+    const inf = first(dom, 'infEvento');
+    return { kind: 'evento', chave: txt(inf, 'chNFe'), tpEvento: txt(inf, 'tpEvento') };
+  }
+  const infNFe = first(dom, 'infNFe');
+  if (!infNFe) {
+    if (/nfse|Nfse|NFS-e|ConsultarNfse|CompNfse/i.test(rl) || first(dom, 'InfNfse') || first(dom, 'infNfse')) return { kind: 'ignorado', motivo: 'NFS-e municipal' };
+    if (/^cte|CTe/i.test(rl) || first(dom, 'infCte')) return { kind: 'ignorado', motivo: 'CT-e' };
+    if (/^mdfe|MDFe/i.test(rl) || first(dom, 'infMDFe')) return { kind: 'ignorado', motivo: 'MDF-e' };
+    return { kind: 'ignorado', motivo: 'XML não reconhecido (' + rl + ')' };
+  }
+  const chave = String(infNFe.getAttribute('Id') || '').replace(/^NFe/i, '').trim();
+  if (!/^\d{44}$/.test(chave)) throw new Error('chave de acesso inválida');
+  const ide = childByLocal(infNFe, 'ide'), emit = childByLocal(infNFe, 'emit'), dest = childByLocal(infNFe, 'dest');
+  const tot = first(childByLocal(infNFe, 'total'), 'ICMSTot');
+  const dh = txt(ide, 'dhEmi') || txt(ide, 'dEmi') || '';
+  const data = dh.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) throw new Error('data de emissão ausente');
+  const cStat = txt(first(dom, 'protNFe'), 'cStat');
+  let status = 'autorizada';
+  if (['101', '135', '151'].includes(cStat)) status = 'cancelada';
+  else if (['110', '301', '302'].includes(cStat)) status = 'denegada';
+  const enderEmit = childByLocal(emit, 'enderEmit'), enderDest = childByLocal(dest, 'enderDest');
+  let dest_tipo = 'PF', dest_doc = null;
+  if (dest) {
+    if (txt(dest, 'CNPJ')) { dest_tipo = 'PJ'; dest_doc = dig(txt(dest, 'CNPJ')); }
+    else if (txt(dest, 'CPF')) { dest_tipo = 'PF'; dest_doc = dig(txt(dest, 'CPF')); }
+    else if (txt(dest, 'idEstrangeiro') != null) { dest_tipo = 'EX'; dest_doc = txt(dest, 'idEstrangeiro') || null; }
+  }
+  const itens = [];
+  [...byName(infNFe, 'det')].forEach(det => {
+    const prod = childByLocal(det, 'prod'), imp = childByLocal(det, 'imposto');
+    const icms = first(imp, 'ICMS'), pis = first(imp, 'PIS'), cofins = first(imp, 'COFINS'), ipi = first(imp, 'IPI');
+    itens.push({
+      n_item: Number(det.getAttribute('nItem')) || itens.length + 1,
+      codigo: txt(prod, 'cProd'), descricao: txt(prod, 'xProd'), ncm: dig(txt(prod, 'NCM')) || null, cest: dig(txt(prod, 'CEST')) || null,
+      cfop: dig(txt(prod, 'CFOP')) || null, unidade: txt(prod, 'uCom'), quantidade: num(txt(prod, 'qCom')), valor_unitario: num(txt(prod, 'vUnCom')),
+      valor_total: num(txt(prod, 'vProd')), desconto: num(txt(prod, 'vDesc')),
+      icms_origem: txt(icms, 'orig'), icms_cst: txt(icms, 'CST'), csosn: txt(icms, 'CSOSN'),
+      pis_cst: txt(pis, 'CST'), cofins_cst: txt(cofins, 'CST'),
+      icms_valor: num(txt(icms, 'vICMS')), icms_st_valor: num(txt(icms, 'vICMSST')), ipi_valor: num(txt(ipi, 'vIPI')),
+      pis_valor: num(txt(pis, 'vPIS')), cofins_valor: num(txt(cofins, 'vCOFINS'))
+    });
+  });
+  const principal = itens.reduce((m, i) => (!m || i.valor_total > m.valor_total) ? i : m, null);
+  const doc = {
+    chave, modelo: txt(ide, 'mod') || '55', serie: txt(ide, 'serie'), numero: txt(ide, 'nNF'), data_emissao: data,
+    tp_nf: txt(ide, 'tpNF') != null ? Number(txt(ide, 'tpNF')) : null, finalidade: txt(ide, 'finNFe') != null ? Number(txt(ide, 'finNFe')) : null,
+    natureza_operacao: txt(ide, 'natOp'),
+    emit_doc: dig(txt(emit, 'CNPJ') || txt(emit, 'CPF')) || null, emit_nome: txt(emit, 'xNome'), emit_uf: txt(enderEmit, 'UF'), emit_municipio: txt(enderEmit, 'xMun'),
+    emit_ie: txt(emit, 'IE'), emit_crt: txt(emit, 'CRT') != null ? Number(txt(emit, 'CRT')) : null,
+    dest_doc, dest_tipo, dest_nome: txt(dest, 'xNome'), dest_uf: txt(enderDest, 'UF'), dest_municipio: txt(enderDest, 'xMun'),
+    dest_ie: txt(dest, 'IE'), dest_ind_ie: txt(dest, 'indIEDest') != null ? Number(txt(dest, 'indIEDest')) : null,
+    valor_total: num(txt(tot, 'vNF')), valor_produtos: num(txt(tot, 'vProd')), valor_desconto: num(txt(tot, 'vDesc')), valor_frete: num(txt(tot, 'vFrete')),
+    icms: num(txt(tot, 'vICMS')), icms_st: num(txt(tot, 'vST')), ipi: num(txt(tot, 'vIPI')), pis: num(txt(tot, 'vPIS')), cofins: num(txt(tot, 'vCOFINS')),
+    cfop_principal: principal ? principal.cfop : null, status, xml_nome: nome
+  };
+  return { kind: 'nfe', doc, itens };
+}
+
+// abre ZIPs (com subpastas) e devolve [{ nome, texto }] só dos .xml
+async function expandirArquivos(files){
+  const out = [];
+  for (const f of files) {
+    if (/\.zip$/i.test(f.name)) {
+      const zip = await JSZip.loadAsync(f);
+      const entradas = Object.values(zip.files).filter(e => !e.dir && /\.xml$/i.test(e.name));
+      for (const e of entradas) out.push({ nome: f.name + ' › ' + e.name, texto: await e.async('string') });
+    } else {
+      out.push({ nome: f.name, texto: await f.text() });
+    }
+  }
+  return out;
+}
+
+// ---------- importar ----------
+$('btnImportar').addEventListener('click', importar);
+async function importar(){
+  if (rodando || !cliente || !clienteTemDoc() || !arquivos.length) return;
+  rodando = true; atualizarBotao(); $('btnImportar').textContent = 'Importando…';
+  $('rel').classList.remove('is-on'); $('prog').classList.add('is-on'); msg('');
+  const docCli = dig(cliente.documento);
+  const ignorados = [], erros = [];
+  const porChave = new Map();           // chave → { doc, itens } (dedupe dentro do lote)
+  const cancelamentos = new Set();
+  let duplicadasNoLote = 0;
+  let lidos = 0, total = 0;
+  try {
+    progresso(0, 0, 'Abrindo arquivos…');
+    const xmls = await expandirArquivos(arquivos);
+    total = xmls.length;
+    if (!total) throw new Error('Nenhum .xml encontrado nos arquivos escolhidos.');
+    for (const x of xmls) {
+      lidos++; progresso(lidos, total, lidos + ' de ' + total + ' arquivos lidos');
+      try {
+        const r = parseXml(x.texto, x.nome);
+        if (r.kind === 'ignorado') { ignorados.push({ arquivo: x.nome, motivo: r.motivo }); continue; }
+        if (r.kind === 'evento') {
+          if (r.tpEvento === '110111' && r.chave) cancelamentos.add(r.chave);
+          else ignorados.push({ arquivo: x.nome, motivo: 'evento NF-e (' + (r.tpEvento || '?') + ') que não é cancelamento' });
+          continue;
+        }
+        const d = r.doc;
+        if (d.emit_doc === docCli) d.tipo = 'saida';
+        else if (d.dest_doc === docCli) d.tipo = 'entrada';
+        else { ignorados.push({ arquivo: x.nome, motivo: 'XML de terceiro (nem emitente nem destinatário é o cliente)' }); continue; }
+        if (porChave.has(d.chave)) { duplicadasNoLote++; continue; }
+        porChave.set(d.chave, r);
+      } catch (e) { erros.push({ arquivo: x.nome, motivo: e.message || String(e) }); }
+      if (lidos % 25 === 0) await new Promise(r => setTimeout(r, 0));   // deixa a tela respirar em lotes grandes
+    }
+    // cancelamento por evento no mesmo lote
+    porChave.forEach(r => { if (cancelamentos.has(r.doc.chave)) r.doc.status = 'cancelada'; });
+
+    // lote registrado primeiro (os documentos apontam pra ele)
+    const { data: imp, error: eImp } = await supabase.from('nf_importacoes')
+      .insert({ cliente_id: cliente.id, usuario, arquivos: total, notas_novas: 0, notas_duplicadas: 0, ignorados: 0, erros: [] }).select('id').single();
+    if (eImp) throw new Error('não consegui registrar o lote: ' + eImp.message);
+
+    const docs = [...porChave.values()];
+    let novas = 0, duplicadas = duplicadasNoLote, itensGravados = 0;
+    const idPorChave = new Map();
+    for (let i = 0; i < docs.length; i += 200) {
+      const fatia = docs.slice(i, i + 200).map(r => ({ ...r.doc, cliente_id: cliente.id, importacao_id: imp.id }));
+      progresso(lidos, total, 'Gravando notas ' + Math.min(i + 200, docs.length) + ' de ' + docs.length + '…');
+      const { data: ins, error } = await supabase.from('nf_documentos')
+        .upsert(fatia, { onConflict: 'cliente_id,chave', ignoreDuplicates: true }).select('id, chave');
+      if (error) throw new Error('falha ao gravar notas: ' + error.message);
+      (ins || []).forEach(x => idPorChave.set(x.chave, x.id));
+      novas += (ins || []).length; duplicadas += fatia.length - (ins || []).length;
+    }
+    // itens só das notas que entraram agora (duplicada não regrava itens)
+    const itens = [];
+    docs.forEach(r => { const id = idPorChave.get(r.doc.chave); if (id) r.itens.forEach(it => itens.push({ ...it, documento_id: id })); });
+    for (let i = 0; i < itens.length; i += 500) {
+      progresso(lidos, total, 'Gravando itens ' + Math.min(i + 500, itens.length) + ' de ' + itens.length + '…');
+      const { error } = await supabase.from('nf_itens').upsert(itens.slice(i, i + 500), { onConflict: 'documento_id,n_item', ignoreDuplicates: true });
+      if (error) throw new Error('falha ao gravar itens: ' + error.message);
+      itensGravados += Math.min(500, itens.length - i);
+    }
+    // cancelamentos de chaves que já estavam na base (as que entraram agora já vieram canceladas;
+    // as duplicadas do lote também caem aqui, porque a linha que vale é a da base)
+    let canceladas = 0, naoAchadas = 0;
+    const chavesCancel = [...cancelamentos].filter(ch => !idPorChave.has(ch));
+    for (let i = 0; i < chavesCancel.length; i += 200) {
+      const fatia = chavesCancel.slice(i, i + 200);
+      const { data: ex, error: eEx } = await supabase.from('nf_documentos').select('chave, status').eq('cliente_id', cliente.id).in('chave', fatia);
+      if (eEx) throw new Error('falha ao conferir cancelamentos: ' + eEx.message);
+      const achadas = (ex || []).map(x => x.chave);
+      naoAchadas += fatia.length - achadas.length;
+      const pendentes = (ex || []).filter(x => x.status !== 'cancelada').map(x => x.chave);
+      if (!pendentes.length) continue;
+      const { data: up, error } = await supabase.from('nf_documentos').update({ status: 'cancelada' })
+        .eq('cliente_id', cliente.id).in('chave', pendentes).select('id');
+      if (error) throw new Error('falha ao aplicar cancelamentos: ' + error.message);
+      canceladas += (up || []).length;
+    }
+    const cancelNoLote = docs.filter(r => cancelamentos.has(r.doc.chave) && idPorChave.has(r.doc.chave)).length;
+
+    const detalhe = [...erros.map(e => ({ tipo: 'erro', ...e })), ...ignorados.map(e => ({ tipo: 'ignorado', ...e }))];
+    await supabase.from('nf_importacoes').update({ notas_novas: novas, notas_duplicadas: duplicadas, ignorados: ignorados.length, erros: detalhe }).eq('id', imp.id);
+
+    progresso(total, total, 'Concluído.');
+    relatorio({ total, novas, duplicadas, ignorados, erros, itens: itensGravados, canceladas: canceladas + cancelNoLote, naoAchadas, saidas: docs.filter(r => r.doc.tipo === 'saida').length, entradas: docs.filter(r => r.doc.tipo === 'entrada').length });
+    arquivos = []; renderArquivos();
+    await carregarExistente();
+  } catch (e) {
+    msg('Importação interrompida: ' + (e.message || e), 'err');
+    $('progTxt').textContent = 'Interrompida — ' + lidos + ' de ' + total + ' arquivos lidos.';
+  } finally {
+    rodando = false; $('btnImportar').textContent = 'Importar'; atualizarBotao();
+  }
+}
+function progresso(n, m, t){ $('progFill').style.width = m ? Math.round(n / m * 100) + '%' : '0%'; $('progTxt').textContent = t; }
+
+function relatorio(r){
+  const porMotivo = {};
+  r.ignorados.forEach(i => { (porMotivo[i.motivo] = porMotivo[i.motivo] || []).push(i.arquivo); });
+  const lista = arr => '<ul>' + arr.map(a => '<li>' + esc(a) + '</li>').join('') + '</ul>';
+  $('rel').innerHTML = `
+    <div class="xm-kpis">
+      <div class="xm-kpi ok"><div class="n">${r.novas}</div><div class="l">notas novas · ${r.saidas} saída(s), ${r.entradas} entrada(s) · ${r.itens} itens</div></div>
+      <div class="xm-kpi dup"><div class="n">${r.duplicadas}</div><div class="l">duplicadas (já estavam na base — itens intactos)</div></div>
+      <div class="xm-kpi ign"><div class="n">${r.ignorados.length}</div><div class="l">ignorados</div></div>
+      <div class="xm-kpi err"><div class="n">${r.erros.length}</div><div class="l">erros de leitura</div></div>
+    </div>
+    <div class="xm-det">
+      ${r.canceladas ? `<div>✓ ${r.canceladas} nota(s) marcada(s) como <b>cancelada(s)</b> por evento.</div>` : ''}
+      ${r.naoAchadas ? `<div>⚠ ${r.naoAchadas} evento(s) de cancelamento sem a nota correspondente na base — importe o XML da nota e depois o evento.</div>` : ''}
+      ${Object.keys(porMotivo).map(m => `<details><summary>${porMotivo[m].length} ignorado(s): ${esc(m)}</summary>${lista(porMotivo[m])}</details>`).join('')}
+      ${r.erros.length ? `<details open><summary style="color:#E06C6C;">${r.erros.length} erro(s) de leitura</summary>${lista(r.erros.map(e => e.arquivo + ' — ' + e.motivo))}</details>` : ''}
+    </div>`;
+  $('rel').classList.add('is-on');
+}
+
+// ---------- o que já existe ----------
+async function carregarExistente(){
+  if (!cliente) return;
+  $('secExiste').style.display = 'block';
+  $('existeCli').textContent = cliente.nome_principal;
+  $('existeAnos').innerHTML = '<div class="xm-vazio"><span class="spinner spinner-sm"></span>Carregando…</div>';
+  const [{ data: docs, error: e1 }, { data: lotes, error: e2 }] = await Promise.all([
+    supabase.todasLinhas(() => supabase.from('nf_documentos').select('id, data_emissao, tipo, valor_total, status').eq('cliente_id', cliente.id).order('data_emissao').order('id')),
+    supabase.from('nf_importacoes').select('*').eq('cliente_id', cliente.id).order('criado_em', { ascending: false }).limit(5)
+  ]);
+  if (e1) { $('existeAnos').innerHTML = '<div class="xm-vazio msg-err">Erro: ' + esc(e1.message) + '</div>'; return; }
+  const grp = {};
+  (docs || []).forEach(d => {
+    const k = String(d.data_emissao).slice(0, 4) + '|' + d.tipo;
+    const g = grp[k] = grp[k] || { ano: k.slice(0, 4), tipo: d.tipo, n: 0, valor: 0, canc: 0 };
+    if (d.status === 'autorizada') { g.n++; g.valor += Number(d.valor_total) || 0; } else g.canc++;
+  });
+  const linhas = Object.values(grp).sort((a, b) => b.ano.localeCompare(a.ano) || a.tipo.localeCompare(b.tipo));
+  $('existeAnos').innerHTML = linhas.length
+    ? `<table class="xm"><thead><tr><th>Ano</th><th>Tipo</th><th class="num">Notas autorizadas</th><th class="num">Valor</th><th class="num">Canceladas / denegadas</th></tr></thead><tbody>`
+      + linhas.map(g => `<tr><td>${g.ano}</td><td><span class="pill pill-${g.tipo}">${g.tipo === 'saida' ? 'Saída (vendas)' : 'Entrada (compras)'}</span></td><td class="num">${g.n}</td><td class="num">${BRL(g.valor)}</td><td class="num">${g.canc || '—'}</td></tr>`).join('')
+      + `</tbody></table>`
+    : '<div class="xm-vazio">Nenhuma nota importada pra este cliente ainda.</div>';
+  if (e2) { $('existeLotes').innerHTML = '<div class="xm-vazio msg-err">Erro: ' + esc(e2.message) + '</div>'; return; }
+  $('existeLotes').innerHTML = (lotes || []).length
+    ? `<table class="xm"><thead><tr><th>Quando</th><th>Quem</th><th class="num">Arquivos</th><th class="num">Novas</th><th class="num">Duplicadas</th><th class="num">Ignorados</th><th class="num">Erros</th><th></th></tr></thead><tbody>`
+      + lotes.map(l => `<tr><td>${fmtDataHora(l.criado_em)}</td><td>${esc(l.usuario || '—')}</td><td class="num">${l.arquivos ?? 0}</td><td class="num">${l.notas_novas ?? 0}</td><td class="num">${l.notas_duplicadas ?? 0}</td><td class="num">${l.ignorados ?? 0}</td><td class="num">${(Array.isArray(l.erros) ? l.erros.filter(x => x.tipo === 'erro').length : 0)}</td><td><button class="btn-mini" data-desfazer="${esc(l.id)}" data-n="${l.notas_novas ?? 0}">Desfazer lote</button></td></tr>`).join('')
+      + `</tbody></table>`
+    : '<div class="xm-vazio">Nenhuma importação registrada.</div>';
+  $('existeLotes').querySelectorAll('[data-desfazer]').forEach(b => b.addEventListener('click', () => desfazerLote(b.dataset.desfazer, Number(b.dataset.n), b)));
+}
+
+async function desfazerLote(id, n, btn){
+  if (!confirm('Desfazer este lote? As ' + n + ' nota(s) que entraram por ele (e os itens) serão apagadas. Notas que já existiam antes não são tocadas.')) return;
+  btn.disabled = true; btn.textContent = 'Desfazendo…';
+  const { error } = await supabase.from('nf_documentos').delete().eq('importacao_id', id).eq('cliente_id', cliente.id);
+  if (error) { msg('Erro ao desfazer: ' + error.message, 'err'); btn.disabled = false; btn.textContent = 'Desfazer lote'; return; }
+  await supabase.from('nf_importacoes').delete().eq('id', id);
+  msg('Lote desfeito.', 'ok');
+  await carregarExistente();
+}
+
+function msg(t, tipo){ const el = $('msg'); el.textContent = t || ''; el.className = 'xm-msg ' + (tipo === 'ok' ? 'msg-ok' : tipo === 'err' ? 'msg-err' : ''); }
+</script>
+</body>
+</html>

@@ -35,3 +35,16 @@ supabase.todosClientes = async function (cols, filtro) {
     if (!data || data.length < 1000) return { data: tudo, error: null };
   }
 };
+
+// Versão genérica pra qualquer tabela que cresce (itens de nota, documentos…): recebe
+// uma função que monta a query (from + select + filtros + ORDER estável) e busca em
+// lotes de 1000 até o fim. Ex.: supabase.todasLinhas(() => supabase.from('nf_itens').select('*').eq('documento_id', id).order('n_item'))
+supabase.todasLinhas = async function (montar) {
+  const tudo = [];
+  for (let i = 0; ; i += 1000) {
+    const { data, error } = await montar().range(i, i + 999);
+    if (error) return { data: tudo, error };
+    tudo.push(...(data || []));
+    if (!data || data.length < 1000) return { data: tudo, error: null };
+  }
+};
