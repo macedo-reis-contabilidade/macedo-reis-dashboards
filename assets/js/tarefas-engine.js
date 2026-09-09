@@ -159,9 +159,14 @@ export function initTarefas(userCfg) {
     confirmExcluir: 'Excluir esta tarefa e toda a sua linha do tempo? Esta ação não pode ser desfeita.',
     emptyTitulo: 'Nenhuma tarefa ainda',
     emptyDica: 'Crie uma tarefa avulsa no botão Nova tarefa.',
-    grupoUnidade: ['tarefa', 'empresas']  // [singular, plural] do meta do grupo
+    grupoUnidade: ['tarefa', 'empresas'],  // [singular, plural] do meta do grupo
+    modo: null,                       // 'rotinas': só a faixa de hoje + gerenciar rotinas (sem tarefas)
+    restritoA: null,                  // [e-mails]: fora da lista, renderiza "Acesso restrito"
+    responsaveis: null                // ['Samuel','Diego','Ambos']: select fixo no lugar do texto livre
   }, userCfg);
   if (!C.setor) throw new Error('initTarefas: informe o setor.');
+  const MODO_ROTINAS = C.modo === 'rotinas';
+  if (MODO_ROTINAS && !userCfg.btnNova) C.btnNova = 'Nova rotina';
 
   // ---------- CSS (uma fonte só, injetada) ----------
   if (!document.getElementById('tarefas-engine-css')) {
@@ -177,21 +182,29 @@ export function initTarefas(userCfg) {
   const $ = id => document.getElementById(id);
   const fem = C.itemPluralFem;
 
+  // campo de responsável: texto livre (padrão) ou select fixo quando a casca informa C.responsaveis
+  const campoResp = (id, placeholder) => C.responsaveis
+    ? '<select id="' + id + '" class="select"><option value="">—</option>' + C.responsaveis.map(n => '<option value="' + escA(n) + '">' + esc(n) + '</option>').join('') + '</select>'
+    : '<input type="text" id="' + id + '" class="input" placeholder="' + escA(placeholder) + '">';
+
   // ---------- esqueleto ----------
+  // No modo rotinas o esqueleto é o mesmo (todos os ids continuam existindo — nada de
+  // guard em cada listener); só somem a faixa de foco, os filtros, a lista de tarefas
+  // e o botão Gerenciar, e a lista de rotinas passa a ser renderizada inline em #grupos.
   const raiz = $(C.containerId);
   raiz.innerHTML = `
     <div id="teRotFaixa"></div>
 
-    <div class="fa-focus">
+    ${MODO_ROTINAS ? '' : `<div class="fa-focus">
       <button class="fa-focus-card fc-danger" data-periodo="atrasadas"><span class="fc-num" id="cAtras">0</span><span class="fc-lbl">Atrasadas</span></button>
       <button class="fa-focus-card" data-periodo="hoje"><span class="fc-num" id="cHoje">0</span><span class="fc-lbl">Vencem hoje</span></button>
       <button class="fa-focus-card" data-periodo="7dias"><span class="fc-num" id="c7">0</span><span class="fc-lbl">Próximos 7 dias</span></button>
       <button class="fa-focus-card is-active" data-periodo="mes"><span class="fc-num" id="cMes">0</span><span class="fc-lbl">Este mês</span></button>
       <button class="fa-focus-card" data-periodo="todas"><span class="fc-num" id="cTodas">0</span><span class="fc-lbl">Todas</span></button>
-    </div>
+    </div>`}
 
-    <div class="toolbar">
-      <div class="toolbar-filters">
+    <div class="toolbar"${MODO_ROTINAS ? ' style="justify-content:flex-end;"' : ''}>
+      <div class="toolbar-filters"${MODO_ROTINAS ? ' style="display:none;"' : ''}>
         <input type="text" id="searchInput" class="input input-search" placeholder="${escA(C.buscaPlaceholder)}">
         <select id="filterStatus" class="select fa-sel">
           <option value="afazer">A fazer</option>
@@ -203,7 +216,7 @@ export function initTarefas(userCfg) {
         </select>
       </div>
       <div class="fa-toolbar-actions">
-        <button class="btn btn-ghost btn-sm" id="btnRotinas">Gerenciar rotinas</button>
+        <button class="btn btn-ghost btn-sm" id="btnRotinas"${MODO_ROTINAS ? ' style="display:none;"' : ''}>Gerenciar rotinas</button>
         ${C.gerarMes ? '<button class="btn btn-ghost" id="btnGerarMes">Gerar tarefas do mês</button>' : ''}
         <button class="btn btn-primary" id="btnNova">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -213,7 +226,7 @@ export function initTarefas(userCfg) {
     </div>
 
     <div id="grupos">
-      <div class="loading-row" style="padding:40px;text-align:center;"><span class="spinner"></span>Carregando tarefas…</div>
+      <div class="loading-row" style="padding:40px;text-align:center;"><span class="spinner"></span>Carregando ${MODO_ROTINAS ? 'rotinas' : 'tarefas'}…</div>
     </div>
 
     <!-- modal Nova (tarefa / recorrente / rotina) — z-index acima do Gerenciar,
@@ -230,7 +243,7 @@ export function initTarefas(userCfg) {
           <label class="fa-field"><span>${esc(C.tituloLabel)}</span><input type="text" id="fTitulo" class="input" placeholder="${escA(C.tituloPlaceholder)}"></label>
           <label class="fa-field"><span>${esc(C.clienteLabel)}</span><select id="fCliente" class="select"><option value="">${esc(C.semClienteOption)}</option></select></label>
           <div class="fa-field-row">
-            <label class="fa-field"><span>Responsável</span><input type="text" id="fResponsavel" class="input" placeholder="Ex.: Thalia"></label>
+            <label class="fa-field"><span>Responsável</span>${campoResp('fResponsavel', 'Ex.: Thalia')}</label>
             <label class="fa-field"><span>Prazo</span><input type="date" id="fPrazo" class="input"></label>
           </div>
           <label class="fa-field"><span>Prioridade</span><select id="fPrioridade" class="select"><option value="media">Média</option><option value="alta">Alta</option><option value="baixa">Baixa</option></select></label>
@@ -248,13 +261,13 @@ export function initTarefas(userCfg) {
           <label class="fa-field" id="qMesWrap" style="display:none;"><span>Mês de vencimento</span>
             <select id="qMes" class="select">${MESES_NOME.map((m, i) => '<option value="' + (i + 1) + '">' + m + '</option>').join('')}</select>
           </label>
-          <label class="fa-field"><span>Responsável</span><input type="text" id="qResp" class="input" placeholder="Ex.: Thalia"></label>
+          <label class="fa-field"><span>Responsável</span>${campoResp('qResp', 'Ex.: Thalia')}</label>
           <label class="fa-field"><span>Descrição</span><textarea id="qDesc" class="input" rows="2" placeholder="Detalhes (opcional)"></textarea></label>
           <p style="font-size:12px;color:#8A93A6;margin:0;">A regra entra na base de recorrentes do setor; as tarefas do mês nascem pelo botão “Gerar tarefas do mês”.</p>
         </div>
         <div class="fa-modal-body" id="formRotina" style="display:none;">
           <label class="fa-field"><span>Título *</span><input type="text" id="rTitulo" class="input" placeholder="Ex.: Conferir e-mails"></label>
-          <label class="fa-field"><span>Responsável</span><input type="text" id="rResp" class="input" placeholder="Ex.: Thalia"></label>
+          <label class="fa-field"><span>Responsável</span>${campoResp('rResp', 'Ex.: Thalia')}</label>
           <label class="fa-field"><span>Periodicidade</span>
             <select id="rPeri" class="select">
               <option value="diaria">Diária — todo dia</option>
@@ -363,6 +376,9 @@ export function initTarefas(userCfg) {
     </div>
   `;
 
+  // com trava por e-mail, nada fica clicável antes do usuário ser conferido
+  if (Array.isArray(C.restritoA)) raiz.style.display = 'none';
+
   // ---------- estado ----------
   const SETOR = C.setor;
   const elGrupos = $('grupos');
@@ -398,6 +414,19 @@ export function initTarefas(userCfg) {
       if (un) un.textContent = n;
       if (ua) ua.textContent = n.charAt(0).toUpperCase();
     }
+    // trava por e-mail (painel da direção): fora da lista, a tela vira "Acesso restrito" — mesma
+    // tela de gestao.html — e nada é carregado; dentro da lista, o esqueleto (escondido até aqui) aparece
+    if (Array.isArray(C.restritoA) && C.restritoA.map(e => String(e).toLowerCase()).includes(String(user?.email || '').toLowerCase())) raiz.style.display = '';
+    if (Array.isArray(C.restritoA) && !C.restritoA.map(e => String(e).toLowerCase()).includes(String(user?.email || '').toLowerCase())) {
+      (document.querySelector('.content') || raiz).innerHTML = '<div class="empty-state" style="padding:64px 24px;text-align:center;">'
+        + '<svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#8AAEC8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
+        + '<h3 style="margin-top:14px;">Acesso restrito</h3>'
+        + '<p>Este painel é exclusivo da direção. Se precisar de algo aqui, fale com o Samuel.</p>'
+        + '<a class="btn btn-primary" href="index.html" style="margin-top:18px;display:inline-flex;">Voltar ao painel</a>'
+        + '</div>';
+      return;
+    }
+    if (MODO_ROTINAS) { await carregarRotinas(); return; }
     await carregarClientesSelect();
     await Promise.all([carregarTarefas(), carregarRotinas()]);
   })();
@@ -436,7 +465,13 @@ export function initTarefas(userCfg) {
   }
   document.querySelectorAll('#nvTipos .te-tipo').forEach(b => b.addEventListener('click', () => { if (!rotinaEditando) mostrarTipo(b.dataset.tipo); }));
 
-  $('btnNova').addEventListener('click', () => { rotinaEditando = null; $('nvTipos').style.display = 'flex'; $('rExcluir').style.display = 'none'; mostrarTipo('tarefa'); overlay.classList.add('is-open'); });
+  $('btnNova').addEventListener('click', () => {
+    rotinaEditando = null;
+    $('rExcluir').style.display = 'none';
+    if (MODO_ROTINAS) { $('nvTipos').style.display = 'none'; mostrarTipo('rotina'); }   // "Nova" cria só rotina
+    else { $('nvTipos').style.display = 'flex'; mostrarTipo('tarefa'); }
+    overlay.classList.add('is-open');
+  });
   $('modalClose').addEventListener('click', fecharModal);
   $('btnCancelar').addEventListener('click', fecharModal);
   overlay.addEventListener('click', e => { if (e.target === overlay) fecharModal(); });
@@ -444,6 +479,7 @@ export function initTarefas(userCfg) {
   function fecharModal(){
     overlay.classList.remove('is-open');
     rotinaEditando = null;
+    document.querySelectorAll('#rResp option[data-legado]').forEach(o => o.remove());   // opção só valia pra aquela edição
     ['fTitulo','fCliente','fResponsavel','fPrazo','fDescricao','qTitulo','qCliente','qDia','qResp','qDesc','rTitulo','rResp','rDiaMes','rDiaAnualD','rDesc'].forEach(id => { const el = $(id); if (el) el.value = ''; });
     $('fPrioridade').value = 'media';
     const qp = $('qPeri'); if (qp) { qp.value = 'mensal'; camposRecorrente(); }
@@ -554,7 +590,7 @@ export function initTarefas(userCfg) {
     if (error) { alert('Erro ao salvar: ' + error.message); return; }
     fecharModal();
     await carregarRotinas();
-    if ($('rotOverlay').classList.contains('is-open')) renderRotinasGerenciar();
+    refreshGerenciar();
   }
 
   $('rExcluir').addEventListener('click', async () => {
@@ -564,7 +600,7 @@ export function initTarefas(userCfg) {
     if (error) { alert('Erro: ' + error.message); return; }
     fecharModal();
     await carregarRotinas();
-    if ($('rotOverlay').classList.contains('is-open')) renderRotinasGerenciar();
+    refreshGerenciar();
   });
 
   // ==================== GERAR TAREFAS DO MÊS ====================
@@ -1003,10 +1039,17 @@ export function initTarefas(userCfg) {
     const { data, error } = await supabase.from('rotinas').select('*').eq('setor', SETOR)
       .order('ordem', { ascending: true }).order('titulo', { ascending: true });
     rotinasErro = error ? error.message : null;
-    if (error) { $('teRotFaixa').innerHTML = '<div class="te-rot-faixa" style="color:#E06C6C;">Erro ao carregar as rotinas: ' + esc(error.message) + '</div>'; return; }
+    if (error) {
+      $('teRotFaixa').innerHTML = '<div class="te-rot-faixa" style="color:#E06C6C;">Erro ao carregar as rotinas: ' + esc(error.message) + '</div>';
+      if (MODO_ROTINAS) $('grupos').innerHTML = '';
+      return;
+    }
     rotinas = data || [];
     renderRotinasFaixa();
+    if (MODO_ROTINAS) renderRotinasGerenciar();
   }
+  // a lista de gerenciar re-renderiza quando está visível: modal aberto (setores) ou inline (modo rotinas)
+  function refreshGerenciar(){ if (MODO_ROTINAS || $('rotOverlay').classList.contains('is-open')) renderRotinasGerenciar(); }
 
   function renderRotinasFaixa(){
     const box = $('teRotFaixa');
@@ -1034,9 +1077,10 @@ export function initTarefas(userCfg) {
     const patch = { ultima_execucao: hojeStr, ultima_por: usuarioNome, adiada_para: null };
     Object.assign(r, patch);   // atualização otimista
     renderRotinasFaixa();
+    refreshGerenciar();        // a lista (inline ou modal aberto) acompanha na hora — antes só depois do round-trip
     const { error } = await supabase.from('rotinas').update(patch).eq('id', r.id);
     if (error) { alert('Erro ao salvar: ' + error.message); await carregarRotinas(); }
-    if ($('rotOverlay').classList.contains('is-open')) renderRotinasGerenciar();
+    refreshGerenciar();
   }
 
   // --- adiar ---
@@ -1061,7 +1105,7 @@ export function initTarefas(userCfg) {
     adiOverlay.classList.remove('is-open');
     rotAdiando = null;
     renderRotinasFaixa();
-    if ($('rotOverlay').classList.contains('is-open')) renderRotinasGerenciar();
+    refreshGerenciar();
   }
   $('adiConfirmar').addEventListener('click', () => {
     const v = $('adiData').value;
@@ -1096,7 +1140,8 @@ export function initTarefas(userCfg) {
       const u = r.ultima_execucao ? new Date(String(r.ultima_execucao).slice(0,10) + 'T00:00:00') : null;
       partes.push('feito' + (u ? ' em ' + fmtDia(u) : '') + (r.ultima_por ? ' por ' + escF(r.ultima_por) : ''));
     } else if (agendada) {
-      partes.push('abre ' + (periDe(r) === 'semanal' ? (SEM_NOME[r.dia_semana] || 'segunda') : fmtDia(dataGatilho(r))));
+      if (r.adiada_para && r.adiada_para > hojeStr) partes.push('adiada pra ' + r.adiada_para.split('-').reverse().join('/'));
+      else partes.push('abre ' + (periDe(r) === 'semanal' ? (SEM_NOME[r.dia_semana] || 'segunda') : fmtDia(dataGatilho(r))));
     } else {
       const g = dataGatilho(r);
       if (periDe(r) !== 'diaria' && g < hojeD) partes.push('desde ' + fmtDia(g));
@@ -1131,7 +1176,7 @@ export function initTarefas(userCfg) {
   }
 
   function renderRotinasGerenciar(){
-    const box = $('rotLista');
+    const box = MODO_ROTINAS ? $('grupos') : $('rotLista');   // inline no modo rotinas, modal nos setores
     if (rotinasErro) {
       box.innerHTML = '<div class="tl-empty" style="padding:16px 4px;color:#E06C6C;">Erro ao carregar as rotinas: ' + esc(rotinasErro) + '</div>';
       return;
@@ -1139,12 +1184,16 @@ export function initTarefas(userCfg) {
     const ativas = rotinas.filter(r => r.ativo);
     const inativas = rotinas.filter(r => !r.ativo);
     if (!ativas.length && !inativas.length) {
-      box.innerHTML = '<div class="tl-empty" style="padding:16px 4px;">Nenhuma rotina no setor ainda — crie a primeira no botão abaixo.</div>';
+      box.innerHTML = MODO_ROTINAS
+        ? '<div class="empty-state" style="padding:48px 24px;"><h3>Nenhuma rotina ainda</h3><p>Crie a primeira no botão ' + esc(C.btnNova) + '.</p></div>'
+        : '<div class="tl-empty" style="padding:16px 4px;">Nenhuma rotina no setor ainda — crie a primeira no botão abaixo.</div>';
       return;
     }
     const feitas = [], aFazer = [], agendadas = [];
     ativas.forEach(r => {
       if (feitaNoPeriodo(r)) feitas.push(r);
+      // adiada pra depois de hoje: some da faixa, então aqui também sai de "A fazer" (vira agendada)
+      else if (r.adiada_para && r.adiada_para > hojeStr) agendadas.push(r);
       else if (gatilhoChegou(r) || r.adiada_para === hojeStr) aFazer.push(r);
       else agendadas.push(r);
     });
@@ -1205,6 +1254,10 @@ export function initTarefas(userCfg) {
       $('nvTipos').style.display = 'none';
       mostrarTipo('rotina');
       $('rTitulo').value = r.titulo || '';
+      // com select fixo, um responsável antigo fora da lista ganha a própria opção — editar não pode apagá-lo em silêncio
+      if (C.responsaveis && r.responsavel && ![...$('rResp').options].some(o => o.value === r.responsavel)) {
+        const o = document.createElement('option'); o.value = r.responsavel; o.textContent = r.responsavel; o.dataset.legado = '1'; $('rResp').appendChild(o);
+      }
       $('rResp').value = r.responsavel || '';
       $('rDesc').value = r.descricao || '';
       $('rAtivo').checked = !!r.ativo;
