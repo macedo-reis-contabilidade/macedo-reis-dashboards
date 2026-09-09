@@ -204,6 +204,7 @@ function render(){
       <div class="resumo-card ouro"><div class="rotulo">Vendas para PJ</div><div class="valor">${PCT(k.pctPJ)}</div><div class="sub">por valor · o resto é PF / consumidor final</div></div>
       <div class="resumo-card ouro"><div class="rotulo">Compras de fornecedor do regime normal</div><div class="valor">${PCT(k.pctComprasNormal)}</div><div class="sub">Simples ${PCT(k.pctComprasSimples)} · crédito na entrada é aqui</div></div>
       ${k.nDevolucoes ? `<div class="resumo-card"><div class="rotulo">Devoluções (à parte)</div><div class="valor">${BRL(k.devolucoes)}</div><div class="sub">${k.nDevolucoes} nota(s) com finalidade 4 — fora dos rankings</div></div>` : ''}
+      ${k.nOutrasSaidas || k.nOutrasEntradas ? `<div class="resumo-card"><div class="rotulo">Outras operações (à parte)</div><div class="valor">${BRL(k.outrasSaidas + k.outrasEntradas)}</div><div class="sub">${k.nOutrasSaidas} saída(s) e ${k.nOutrasEntradas} entrada(s) de remessa, transferência, bonificação, demonstração… — não são venda nem compra</div></div>` : ''}
     </div>
 
     <div class="op-duas">
@@ -272,11 +273,11 @@ function tabelaPDF(doc, x, y, larguras, cab, linhas, W){
   cab.forEach((c, i) => doc.text(c, alinh(i) === 'left' ? xs[i] : xs[i] + larguras[i] - 2, y, { align: alinh(i) }));
   y += 4; doc.setDrawColor(120); doc.setLineWidth(0.6); doc.line(x, y, x + larguras.reduce((a, b) => a + b, 0), y); y += 10;
   doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(30);
+  // corta pela largura REAL do texto na fonte (não por contagem de caracteres)
+  const caber = (t, larg) => { const lim = larg - 4; if (doc.getTextWidth(t) <= lim) return t; let s = t; while (s.length > 1 && doc.getTextWidth(s + '…') > lim) s = s.slice(0, -1); return s + '…'; };
   linhas.forEach(l => {
     l.forEach((c, i) => {
-      let t = semAcento(c);
-      const max = Math.floor(larguras[i] / 3.6);
-      if (t.length > max) t = t.slice(0, max - 1) + '…';
+      const t = caber(semAcento(c), larguras[i]);
       doc.text(t, alinh(i) === 'left' ? xs[i] : xs[i] + larguras[i] - 2, y, { align: alinh(i) });
     });
     y += 10.5;
@@ -318,37 +319,35 @@ async function gerarPDF(){
   const y2 = tabelaPDF(doc, M + colW + 20, y, larg, ['Fornecedor', 'Regime', 'UF', 'Valor', '%', 'Acum.', 'N'], lf, W);
   rodape();
 
-  // página 2 — produtos + regime + operações
+  // página 2 — duas colunas: produtos (esquerda) e operações (direita, do topo), pra nada passar do rodapé
   doc.addPage(); timbrePDF(doc, M, logo); titulo('O QUE VENDE E COMPRA — E COMO CAI NA REFORMA TRIBUTARIA');
   y = 106;
+  const colO = (W - 2 * M) * 0.62;
   const mx = m.vendidos.mix;
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(58, 88, 120); doc.text('O QUE VENDE — top 20 produtos', M, y);
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(60);
-  doc.text('Mix das vendas pelo NCM:  aliquota zero ' + PCT(mx.zero) + '   ·   reducao 60% ' + PCT(mx.reducao_60) + '   ·   reducao 30% ' + PCT(mx.reducao_30) + '   ·   aliquota cheia ' + PCT(mx.cheia), M + 200, y);
-  y += 12;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(58, 88, 120); doc.text('O QUE VENDE — top 20 produtos', M, y); y += 10;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(60);
+  doc.text('Mix das vendas pelo NCM:  zero ' + PCT(mx.zero) + '  ·  red. 60% ' + PCT(mx.reducao_60) + '  ·  red. 30% ' + PCT(mx.reducao_30) + '  ·  cheia ' + PCT(mx.cheia), M, y); y += 11;
   const lp = m.vendidos.topo.map(p => [p.descricao + '  (NCM ' + (p.ncm || '—') + ')', QTD(p.qtd) + ' ' + p.unidade, BRL(p.valor), PCT(p.pct), PCT(p.acum), REGIME_LBL[p.regime.regime]]);
-  const largP = [W - 2 * M - 300, 70, 70, 40, 40, 80];
+  const largP = [colO - 262, 56, 66, 36, 36, 68];
   y = tabelaPDF(doc, M, y, largP, ['Produto', 'Qtd.', 'Valor', '%', 'Acum.', 'Reforma'], lp, W) + 8;
   const mc = m.comprados.mix;
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(58, 88, 120); doc.text('O QUE COMPRA — top 10', M, y);
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(60);
-  doc.text('Mix das compras:  zero ' + PCT(mc.zero) + '  ·  red. 60% ' + PCT(mc.reducao_60) + '  ·  red. 30% ' + PCT(mc.reducao_30) + '  ·  cheia ' + PCT(mc.cheia), M + 200, y);
-  y += 12;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(58, 88, 120); doc.text('O QUE COMPRA — top 10', M, y); y += 10;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(60);
+  doc.text('Mix das compras:  zero ' + PCT(mc.zero) + '  ·  red. 60% ' + PCT(mc.reducao_60) + '  ·  red. 30% ' + PCT(mc.reducao_30) + '  ·  cheia ' + PCT(mc.cheia), M, y); y += 11;
   const lcp = m.comprados.topo.map(p => [p.descricao + '  (NCM ' + (p.ncm || '—') + ')', QTD(p.qtd) + ' ' + p.unidade, BRL(p.valor), PCT(p.pct), PCT(p.acum), REGIME_LBL[p.regime.regime]]);
-  const colO = (W - 2 * M) * 0.6;
-  y = tabelaPDF(doc, M, y, [colO - 300, 70, 70, 40, 40, 80], ['Produto', 'Qtd.', 'Valor', '%', 'Acum.', 'Reforma'], lcp, W);
-  // operações à direita, a partir da altura do bloco de compras
-  const xO = M + colO + 14; let yo = y - lcp.length * 10.5 - 14;
-  if (yo < 106) yo = 106;
+  y = tabelaPDF(doc, M, y, largP, ['Produto', 'Qtd.', 'Valor', '%', 'Acum.', 'Reforma'], lcp, W);
+  const xO = M + colO + 16; let yo = 106;
   const g = m.cfops.grupos, tc = m.cfops.total || 1;
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(58, 88, 120); doc.text('OPERACOES DE SAIDA', xO, yo); yo += 12;
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(40);
-  doc.text('Internas (5xxx) ' + PCT(g.internas / tc * 100) + '   ·   Interestaduais (6xxx) ' + PCT(g.interestaduais / tc * 100) + '   ·   Exportacao (7xxx) ' + PCT(g.exportacao / tc * 100), xO, yo); yo += 12;
-  yo = tabelaPDF(doc, xO, yo, [60, 90, 40], ['CFOP', 'Valor', '%'], m.cfops.lista.slice(0, 6).map(c => [c.cfop, BRL(c.valor), PCT(c.valor / tc * 100)]), W) + 6;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(40);
+  doc.text('Internas 5xxx ' + PCT(g.internas / tc * 100) + '  ·  Interestaduais 6xxx ' + PCT(g.interestaduais / tc * 100) + '  ·  Exportacao 7xxx ' + PCT(g.exportacao / tc * 100), xO, yo); yo += 12;
+  const largO = [54, 86, 40];
+  yo = tabelaPDF(doc, xO, yo, largO, ['CFOP', 'Valor', '%'], m.cfops.lista.slice(0, 6).map(c => [c.cfop, BRL(c.valor), PCT(c.valor / tc * 100)]), W) + 6;
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(58, 88, 120); doc.text('UFs DE DESTINO (top 5)', xO, yo); yo += 12;
-  yo = tabelaPDF(doc, xO, yo, [60, 90, 40], ['UF', 'Valor', '%'], m.ufs.map(u => [u.uf, BRL(u.valor), PCT(u.pct)]), W) + 6;
+  yo = tabelaPDF(doc, xO, yo, largO, ['UF', 'Valor', '%'], m.ufs.map(u => [u.uf, BRL(u.valor), PCT(u.pct)]), W) + 6;
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(58, 88, 120); doc.text('EVOLUCAO MENSAL ' + m.periodo.ano, xO, yo); yo += 12;
-  tabelaPDF(doc, xO, yo, [40, 90, 90], ['Mes', 'Vendas', 'Compras'], m.meses.filter(x => x.vendas || x.compras).map(x => [x.rotulo, BRL(x.vendas), BRL(x.compras)]), W);
+  // 12 meses no máximo: cabe até o rodapé com folga (yo ≤ ~440 de 595)
+  tabelaPDF(doc, xO, yo, [40, 86, 86], ['Mes', 'Vendas', 'Compras'], m.meses.map(x => [x.rotulo, BRL(x.vendas), BRL(x.compras)]), W);
   rodape();
   doc.save('Operacao por XML - ' + semAcento(cliente.nome_principal).replace(/[^\w ]+/g, '').trim() + ' - ' + semAcento(periodoTxt()).replace('/', '-') + '.pdf');
 }

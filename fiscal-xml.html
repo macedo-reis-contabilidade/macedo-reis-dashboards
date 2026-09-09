@@ -176,6 +176,7 @@ $('cliRes').addEventListener('click', e => {
 document.addEventListener('click', e => { if (!e.target.closest('.xm-cli')) $('cliRes').innerHTML = ''; });
 
 function escolherCliente(c){
+  if (rodando) { msg('Espere a importação terminar pra trocar de cliente.', 'err'); return; }
   cliente = c || null;
   $('cliRes').innerHTML = '';
   if (!cliente) { $('cliSel').textContent = 'Nenhum cliente escolhido.'; $('secExiste').style.display = 'none'; atualizarBotao(); return; }
@@ -201,9 +202,10 @@ drop.addEventListener('drop', e => adicionarArquivos([...(e.dataTransfer?.files 
 $('btnLimpar').addEventListener('click', () => { arquivos = []; renderArquivos(); });
 
 function adicionarArquivos(lista){
+  if (rodando) { msg('Espere a importação terminar pra adicionar arquivos.', 'err'); return; }
   const aceitos = lista.filter(f => /\.(xml|zip)$/i.test(f.name));
   const recusados = lista.length - aceitos.length;
-  arquivos.push(...aceitos);
+  arquivos.push(...aceitos.filter(f => !arquivos.some(a => a.name === f.name && a.size === f.size)));
   renderArquivos();
   if (recusados) msg(recusados + ' arquivo(s) fora do padrão (.xml ou .zip) não entraram.', 'err');
 }
@@ -227,8 +229,11 @@ function parseXml(texto, nome){
   if (dom.getElementsByTagName('parsererror').length) throw new Error('XML mal formado');
   const root = dom.documentElement; const rl = root.localName;
   if (rl === 'procEventoNFe' || rl === 'evento' || rl === 'retEnvEvento') {
-    const inf = first(dom, 'infEvento');
-    return { kind: 'evento', chave: txt(inf, 'chNFe'), tpEvento: txt(inf, 'tpEvento') };
+    // o pedido (<evento>) não prova nada: só vale com o retorno da SEFAZ homologando (135/136/155)
+    const ev = first(dom, 'evento'), ret = first(dom, 'retEvento');
+    const inf = first(ev || dom, 'infEvento');
+    const cStatEv = txt(first(ret || (rl === 'retEnvEvento' ? dom : null), 'infEvento'), 'cStat');
+    return { kind: 'evento', chave: txt(inf, 'chNFe'), tpEvento: txt(inf, 'tpEvento'), cStat: cStatEv, homologado: ['135', '136', '155'].includes(cStatEv) };
   }
   const infNFe = first(dom, 'infNFe');
   if (!infNFe) {
@@ -244,10 +249,16 @@ function parseXml(texto, nome){
   const dh = txt(ide, 'dhEmi') || txt(ide, 'dEmi') || '';
   const data = dh.slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) throw new Error('data de emissão ausente');
-  const cStat = txt(first(dom, 'protNFe'), 'cStat');
+  // protocolo: 100/150 autorizada; 101/135/151 cancelada; 110/301/302/303 denegada; qualquer outro
+  // cStat é rejeição (a nota não existe na SEFAZ) → ignorada. Sem protNFe: aceita como autorizada (XML sem protocolo).
+  const prot = first(dom, 'protNFe');
+  const cStat = txt(prot, 'cStat');
   let status = 'autorizada';
-  if (['101', '135', '151'].includes(cStat)) status = 'cancelada';
-  else if (['110', '301', '302'].includes(cStat)) status = 'denegada';
+  if (prot && cStat) {
+    if (['101', '135', '151'].includes(cStat)) status = 'cancelada';
+    else if (['110', '301', '302', '303'].includes(cStat)) status = 'denegada';
+    else if (!['100', '150'].includes(cStat)) return { kind: 'ignorado', motivo: 'NF-e não autorizada pela SEFAZ (cStat ' + cStat + ')' };
+  }
   const enderEmit = childByLocal(emit, 'enderEmit'), enderDest = childByLocal(dest, 'enderDest');
   let dest_tipo = 'PF', dest_doc = null;
   if (dest) {
@@ -286,14 +297,28 @@ function parseXml(texto, nome){
   return { kind: 'nfe', doc, itens };
 }
 
-// abre ZIPs (com subpastas) e devolve [{ nome, texto }] só dos .xml
-async function expandirArquivos(files){
+// abre ZIPs (com subpastas e até 2 níveis de ZIP dentro de ZIP) e devolve [{ nome, texto }] só dos .xml;
+// ZIP que não abre vira erro do lote (não derruba a importação); lixo do macOS (__MACOSX, ._x) é pulado
+async function expandirArquivos(files, erros, nivel = 0){
   const out = [];
   for (const f of files) {
     if (/\.zip$/i.test(f.name)) {
-      const zip = await JSZip.loadAsync(f);
-      const entradas = Object.values(zip.files).filter(e => !e.dir && /\.xml$/i.test(e.name));
-      for (const e of entradas) out.push({ nome: f.name + ' › ' + e.name, texto: await e.async('string') });
+      let zip;
+      try { zip = await JSZip.loadAsync(f); }
+      catch (e) { erros.push({ arquivo: f.name, motivo: 'ZIP não abriu (corrompido, com senha ou não é ZIP)' }); continue; }
+      for (const e of Object.values(zip.files)) {
+        if (e.dir) continue;
+        const base = e.name.split('/').pop();
+        if (/(^|\/)__MACOSX\//.test(e.name) || base.startsWith('._')) continue;
+        if (/\.zip$/i.test(e.name)) {
+          if (nivel >= 1) { erros.push({ arquivo: f.name + ' › ' + e.name, motivo: 'ZIP aninhado demais (só 2 níveis)' }); continue; }
+          const sub = await expandirArquivos([new File([await e.async('blob')], e.name)], erros, nivel + 1);
+          sub.forEach(s => out.push({ nome: f.name + ' › ' + s.nome, texto: s.texto }));
+          continue;
+        }
+        if (!/\.xml$/i.test(e.name)) continue;
+        out.push({ nome: f.name + ' › ' + e.name, texto: await e.async('string') });
+      }
     } else {
       out.push({ nome: f.name, texto: await f.text() });
     }
@@ -307,29 +332,33 @@ async function importar(){
   if (rodando || !cliente || !clienteTemDoc() || !arquivos.length) return;
   rodando = true; atualizarBotao(); $('btnImportar').textContent = 'Importando…';
   $('rel').classList.remove('is-on'); $('prog').classList.add('is-on'); msg('');
-  const docCli = dig(cliente.documento);
+  const cli = cliente;                  // o lote é deste cliente até o fim, aconteça o que acontecer na tela
+  const docCli = dig(cli.documento);
   const ignorados = [], erros = [];
   const porChave = new Map();           // chave → { doc, itens } (dedupe dentro do lote)
   const cancelamentos = new Set();
   let duplicadasNoLote = 0;
   let lidos = 0, total = 0;
+  let impId = null;
   try {
     progresso(0, 0, 'Abrindo arquivos…');
-    const xmls = await expandirArquivos(arquivos);
+    const xmls = await expandirArquivos(arquivos, erros);
     total = xmls.length;
-    if (!total) throw new Error('Nenhum .xml encontrado nos arquivos escolhidos.');
+    if (!total) throw new Error('Nenhum .xml encontrado nos arquivos escolhidos.' + (erros.length ? ' ' + erros.map(e => e.arquivo + ': ' + e.motivo).join('; ') : ''));
     for (const x of xmls) {
       lidos++; progresso(lidos, total, lidos + ' de ' + total + ' arquivos lidos');
       try {
         const r = parseXml(x.texto, x.nome);
         if (r.kind === 'ignorado') { ignorados.push({ arquivo: x.nome, motivo: r.motivo }); continue; }
         if (r.kind === 'evento') {
-          if (r.tpEvento === '110111' && r.chave) cancelamentos.add(r.chave);
-          else ignorados.push({ arquivo: x.nome, motivo: 'evento NF-e (' + (r.tpEvento || '?') + ') que não é cancelamento' });
+          if (r.tpEvento !== '110111') ignorados.push({ arquivo: x.nome, motivo: 'evento NF-e (' + (r.tpEvento || '?') + ') que não é cancelamento' });
+          else if (!r.chave || !r.homologado) ignorados.push({ arquivo: x.nome, motivo: 'cancelamento sem homologação da SEFAZ (cStat ' + (r.cStat || 'ausente') + ')' });
+          else cancelamentos.add(r.chave);
           continue;
         }
         const d = r.doc;
-        if (d.emit_doc === docCli) d.tipo = 'saida';
+        // emitida pelo cliente com tpNF 0 é nota de ENTRADA emitida por ele (importação, produtor rural, devolução recebida)
+        if (d.emit_doc === docCli) d.tipo = d.tp_nf === 0 ? 'entrada' : 'saida';
         else if (d.dest_doc === docCli) d.tipo = 'entrada';
         else { ignorados.push({ arquivo: x.nome, motivo: 'XML de terceiro (nem emitente nem destinatário é o cliente)' }); continue; }
         if (porChave.has(d.chave)) { duplicadasNoLote++; continue; }
@@ -342,14 +371,15 @@ async function importar(){
 
     // lote registrado primeiro (os documentos apontam pra ele)
     const { data: imp, error: eImp } = await supabase.from('nf_importacoes')
-      .insert({ cliente_id: cliente.id, usuario, arquivos: total, notas_novas: 0, notas_duplicadas: 0, ignorados: 0, erros: [] }).select('id').single();
+      .insert({ cliente_id: cli.id, usuario, arquivos: total, notas_novas: 0, notas_duplicadas: 0, ignorados: 0, erros: [] }).select('id').single();
     if (eImp) throw new Error('não consegui registrar o lote: ' + eImp.message);
+    impId = imp.id;
 
     const docs = [...porChave.values()];
     let novas = 0, duplicadas = duplicadasNoLote, itensGravados = 0;
     const idPorChave = new Map();
     for (let i = 0; i < docs.length; i += 200) {
-      const fatia = docs.slice(i, i + 200).map(r => ({ ...r.doc, cliente_id: cliente.id, importacao_id: imp.id }));
+      const fatia = docs.slice(i, i + 200).map(r => ({ ...r.doc, cliente_id: cli.id, importacao_id: imp.id }));
       progresso(lidos, total, 'Gravando notas ' + Math.min(i + 200, docs.length) + ' de ' + docs.length + '…');
       const { data: ins, error } = await supabase.from('nf_documentos')
         .upsert(fatia, { onConflict: 'cliente_id,chave', ignoreDuplicates: true }).select('id, chave');
@@ -372,14 +402,14 @@ async function importar(){
     const chavesCancel = [...cancelamentos].filter(ch => !idPorChave.has(ch));
     for (let i = 0; i < chavesCancel.length; i += 200) {
       const fatia = chavesCancel.slice(i, i + 200);
-      const { data: ex, error: eEx } = await supabase.from('nf_documentos').select('chave, status').eq('cliente_id', cliente.id).in('chave', fatia);
+      const { data: ex, error: eEx } = await supabase.from('nf_documentos').select('chave, status').eq('cliente_id', cli.id).in('chave', fatia);
       if (eEx) throw new Error('falha ao conferir cancelamentos: ' + eEx.message);
       const achadas = (ex || []).map(x => x.chave);
       naoAchadas += fatia.length - achadas.length;
       const pendentes = (ex || []).filter(x => x.status !== 'cancelada').map(x => x.chave);
       if (!pendentes.length) continue;
       const { data: up, error } = await supabase.from('nf_documentos').update({ status: 'cancelada' })
-        .eq('cliente_id', cliente.id).in('chave', pendentes).select('id');
+        .eq('cliente_id', cli.id).in('chave', pendentes).select('id');
       if (error) throw new Error('falha ao aplicar cancelamentos: ' + error.message);
       canceladas += (up || []).length;
     }
@@ -393,7 +423,12 @@ async function importar(){
     arquivos = []; renderArquivos();
     await carregarExistente();
   } catch (e) {
-    msg('Importação interrompida: ' + (e.message || e), 'err');
+    // lote atômico: falhou no meio, nada fica pela metade (nota sem itens seria "duplicada" pra sempre)
+    if (impId) {
+      await supabase.from('nf_documentos').delete().eq('importacao_id', impId).eq('cliente_id', cli.id);
+      await supabase.from('nf_importacoes').delete().eq('id', impId);
+    }
+    msg('Importação interrompida: ' + (e.message || e) + (impId ? ' — o lote foi desfeito, nada ficou pela metade; tente de novo.' : ''), 'err');
     $('progTxt').textContent = 'Interrompida — ' + lidos + ' de ' + total + ' arquivos lidos.';
   } finally {
     rodando = false; $('btnImportar').textContent = 'Importar'; atualizarBotao();

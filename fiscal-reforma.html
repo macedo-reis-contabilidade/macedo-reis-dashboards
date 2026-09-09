@@ -606,6 +606,8 @@
       const s = document.createElement('span'); s.className = 'hint xml-origem'; s.textContent = texto;
       inp.insertAdjacentElement('afterend', s);
     }
+    // editou o campo à mão: a etiqueta "da operação" deixa de valer
+    XML_CAMPOS.forEach(id => { const inp = $(id); if (inp) inp.addEventListener('input', () => { const s = inp.nextElementSibling; if (s && s.classList.contains('xml-origem')) s.remove(); }); });
     // botão só aparece se o cliente tem nota autorizada no ano — sem XML importado, nada muda na ficha
     async function prepararPuxarXml(clienteId) {
       limparOrigemXml();
@@ -642,7 +644,8 @@
         $('bXmlInfo').innerHTML = 'Fonte: ' + p.nSaidas + ' nota(s) de saída e ' + p.nEntradas + ' de entrada autorizadas, ' + periodo + '. Nada foi gravado — confira os campos, clique em Calcular e depois em Gravar simulação. <a href="fiscal-operacao.html?cliente=' + encodeURIComponent(c.cliente_id) + '&ano=' + ANO_XML + '" target="_blank" rel="noopener" style="color:#8AAEC8;">Ver painel de operação</a>';
         $('bXmlInfo').hidden = false;
         $('bSaida').hidden = true; $('bGravar').disabled = true;
-        $('bMsg').style.color = '#3FB07A'; $('bMsg').textContent = '✓ Campos preenchidos pela operação — confira e calcule';
+        if (p.comprasSuperamVendas) { $('bMsg').style.color = '#E3B341'; $('bMsg').textContent = '⚠ No período as compras superam as vendas (estoque sendo montado?) — % de compras limitado a 100; confira antes de calcular'; }
+        else { $('bMsg').style.color = '#3FB07A'; $('bMsg').textContent = '✓ Campos preenchidos pela operação — confira e calcule'; }
       } catch (e) {
         $('bMsg').style.color = '#E06C6C'; $('bMsg').textContent = 'Não consegui ler as notas: ' + (e.message || e);
       } finally { btn.disabled = false; btn.textContent = 'Puxar da operação (XML ' + ANO_XML + ')'; }

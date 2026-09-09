@@ -6,6 +6,16 @@
 // ============================================================
 
 export const CFOP_COMPRA_MERCADORIA = new Set(['1101','1102','1111','1113','1116','1117','1118','1120','1121','1122','1401','1403','2101','2102','2111','2113','2116','2117','2118','2120','2121','2122','2401','2403','3101','3102','3127']);
+// saídas/entradas que não são venda nem compra: transferência, remessas, retornos, bonificação, demonstração…
+const SUFIXOS_NAO_OPERACIONAIS = ['151','152','153','155','156','901','902','903','904','905','906','907','908','909','910','911','912','913','914','915','916','917','918','919','920','921','922','923','924','925','926','927','928','929','931','932','933','934'];
+export const CFOP_NAO_OPERACIONAL = new Set(['1','2','5','6'].flatMap(p => SUFIXOS_NAO_OPERACIONAIS.map(s => p + s)));
+// o CFOP do XML é sempre o do EMITENTE: numa nota de entrada (emitida pelo fornecedor) espelha 5→1 e 6→2
+// pra enxergar pelo lado do comprador; nota de entrada emitida pelo próprio cliente já vem 1xxx/2xxx/3xxx
+export function cfopOperacao(d) {
+  const c = String(d.cfop_principal || '').replace(/\D/g, '');
+  if (d.tipo === 'entrada' && /^[56]\d{3}$/.test(c)) return (c[0] === '5' ? '1' : '2') + c.slice(1);
+  return c;
+}
 export const REGIME_LBL = { zero: 'Alíquota zero', reducao_60: 'Redução 60%', reducao_30: 'Redução 30%', cheia: 'Alíquota cheia' };
 export const MESES_ABREV = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
 
@@ -61,16 +71,22 @@ export async function carregarOperacao(supabase, clienteId, ano, mesIni = 1, mes
 
 export function agregar(docs, itens, regras, periodo) {
   const docPorId = new Map(docs.map(d => [d.id, d]));
-  const vendas = docs.filter(d => d.tipo === 'saida' && d.finalidade !== 4);
-  const compras = docs.filter(d => d.tipo === 'entrada' && d.finalidade !== 4);
+  const naoOperacional = d => CFOP_NAO_OPERACIONAL.has(cfopOperacao(d));
   const devolucoes = docs.filter(d => d.finalidade === 4);
+  const outrasSaidas = docs.filter(d => d.tipo === 'saida' && d.finalidade !== 4 && naoOperacional(d));
+  const outrasEntradas = docs.filter(d => d.tipo === 'entrada' && d.finalidade !== 4 && naoOperacional(d));
+  const vendas = docs.filter(d => d.tipo === 'saida' && d.finalidade !== 4 && !naoOperacional(d));
+  const compras = docs.filter(d => d.tipo === 'entrada' && d.finalidade !== 4 && !naoOperacional(d));
   const soma = arr => arr.reduce((s, d) => s + n(d.valor_total), 0);
   const totV = soma(vendas), totC = soma(compras);
+  const ehSimples = d => d.emit_crt === 1 || d.emit_crt === 2 || d.emit_crt === 4;   // 4 = MEI (NT 2023.001)
+  // NFC-e sem destinatário: o consumidor está no balcão — a UF é a do emitente
+  const ufVenda = d => d.dest_uf || d.emit_uf || '—';
 
   // KPIs
   const vendasPJ = soma(vendas.filter(d => d.dest_tipo === 'PJ'));
   const comprasNormal = soma(compras.filter(d => d.emit_crt === 3));
-  const comprasSimples = soma(compras.filter(d => d.emit_crt === 1 || d.emit_crt === 2));
+  const comprasSimples = soma(compras.filter(ehSimples));
   const kpis = {
     vendas: totV, nVendas: vendas.length, compras: totC, nCompras: compras.length,
     ticket: vendas.length ? totV / vendas.length : 0,
@@ -78,6 +94,8 @@ export function agregar(docs, itens, regras, periodo) {
     pctComprasNormal: totC ? comprasNormal / totC * 100 : 0,
     pctComprasSimples: totC ? comprasSimples / totC * 100 : 0,
     devolucoes: soma(devolucoes), nDevolucoes: devolucoes.length,
+    outrasSaidas: soma(outrasSaidas), nOutrasSaidas: outrasSaidas.length,
+    outrasEntradas: soma(outrasEntradas), nOutrasEntradas: outrasEntradas.length,
     nfce: vendas.filter(d => d.modelo === '65').length
   };
 
@@ -101,17 +119,17 @@ export function agregar(docs, itens, regras, periodo) {
   };
   const clientes = ranking(vendas,
     d => d.dest_doc || (d.modelo === '65' ? '__nfce' : ('__' + (d.dest_nome || 'sem nome'))),
-    d => ({ nome: d.dest_doc ? (d.dest_nome || '—') : (d.modelo === '65' ? 'Consumidor final (NFC-e)' : (d.dest_nome || 'Sem identificação')), doc: d.dest_doc, tipo: d.dest_tipo || 'PF', uf: d.dest_uf || '—', valor: 0, notas: 0 }), 15);
+    d => ({ nome: d.dest_doc ? (d.dest_nome || '—') : (d.modelo === '65' ? 'Consumidor final (NFC-e)' : (d.dest_nome || 'Sem identificação')), doc: d.dest_doc, tipo: d.dest_tipo || 'PF', uf: ufVenda(d), valor: 0, notas: 0 }), 15);
   const fornecedores = ranking(compras,
     d => d.emit_doc || ('__' + (d.emit_nome || 'sem nome')),
-    d => ({ nome: d.emit_nome || '—', doc: d.emit_doc, regime: d.emit_crt === 3 ? 'normal' : (d.emit_crt === 1 || d.emit_crt === 2) ? 'simples' : 'ni', uf: d.emit_uf || '—', valor: 0, notas: 0 }), 15);
+    d => ({ nome: d.emit_nome || '—', doc: d.emit_doc, regime: d.emit_crt === 3 ? 'normal' : ehSimples(d) ? 'simples' : 'ni', uf: d.emit_uf || '—', valor: 0, notas: 0 }), 15);
 
   // produtos (por NCM + descrição normalizada), com regime da Reforma pelo NCM
   const produtos = (tipo, top) => {
     const g = new Map();
     itens.forEach(it => {
-      const d = docPorId.get(it.documento_id) || it.nf_documentos;
-      if (!d || d.tipo !== tipo || d.finalidade === 4) return;
+      const d = docPorId.get(it.documento_id);
+      if (!d || d.tipo !== tipo || d.finalidade === 4 || naoOperacional(d)) return;
       const ncm = String(it.ncm || '').replace(/\D/g, '');
       const k = ncm + '|' + normDesc(it.descricao);
       const p = g.get(k) || { ncm, descricao: String(it.descricao || '').trim(), qtd: 0, valor: 0, unidades: {}, regime: regimeDoNcm(ncm, regras) };
@@ -135,8 +153,8 @@ export function agregar(docs, itens, regras, periodo) {
   // operações: CFOP de saída por valor (nível de item), UFs de destino, evolução mensal
   const cfops = new Map();
   itens.forEach(it => {
-    const d = docPorId.get(it.documento_id) || it.nf_documentos;
-    if (!d || d.tipo !== 'saida' || d.finalidade === 4) return;
+    const d = docPorId.get(it.documento_id);
+    if (!d || d.tipo !== 'saida' || d.finalidade === 4 || naoOperacional(d)) return;
     const c = String(it.cfop || '').replace(/\D/g, '') || '—';
     cfops.set(c, (cfops.get(c) || 0) + n(it.valor_total));
   });
@@ -145,10 +163,10 @@ export function agregar(docs, itens, regras, periodo) {
   const cfopGrupos = { internas: 0, interestaduais: 0, exportacao: 0, outros: 0 };
   cfopLista.forEach(c => { cfopGrupos[c.grupo] += c.valor; });
   const ufs = new Map();
-  vendas.forEach(d => { const u = d.dest_uf || '—'; ufs.set(u, (ufs.get(u) || 0) + n(d.valor_total)); });
+  vendas.forEach(d => { const u = ufVenda(d); ufs.set(u, (ufs.get(u) || 0) + n(d.valor_total)); });
   const ufLista = [...ufs.entries()].map(([uf, valor]) => ({ uf, valor, pct: totV ? valor / totV * 100 : 0 })).sort((a, b) => b.valor - a.valor).slice(0, 5);
   const meses = [];
-  for (let m = 1; m <= 12; m++) {
+  for (let m = Number(periodo.mesIni) || 1; m <= (Number(periodo.mesFim) || 12); m++) {
     const pref = periodo.ano + '-' + String(m).padStart(2, '0');
     const v = soma(vendas.filter(d => String(d.data_emissao).startsWith(pref)));
     const c = soma(compras.filter(d => String(d.data_emissao).startsWith(pref)));
@@ -157,13 +175,17 @@ export function agregar(docs, itens, regras, periodo) {
   const mesesComVenda = meses.filter(m => m.nV > 0);
 
   // ponte com a ficha da Reforma
-  const comprasMerc = soma(compras.filter(d => CFOP_COMPRA_MERCADORIA.has(String(d.cfop_principal || '').replace(/\D/g, ''))));
+  const comprasMerc = soma(compras.filter(d => CFOP_COMPRA_MERCADORIA.has(cfopOperacao(d))));
+  const pctMercBruto = totV ? comprasMerc / totV * 100 : 0;
+  const pctDespBruto = totV ? (totC - comprasMerc) / totV * 100 : 0;
   const ponte = {
     receitaMensal: mesesComVenda.length ? totV / mesesComVenda.length : 0,
     mesesComVenda: mesesComVenda.map(m => m.mes),
     pctPJ: kpis.pctPJ,
-    pctMerc: totV ? comprasMerc / totV * 100 : 0,
-    pctDesp: totV ? (totC - comprasMerc) / totV * 100 : 0,
+    // razões sobre as vendas; acima de 100% (estoque montado, empresa nova) vira teto — a ficha avisa
+    pctMerc: Math.min(100, pctMercBruto),
+    pctDesp: Math.min(100, pctDespBruto),
+    comprasSuperamVendas: totC > totV,
     mixZero: vendidos.mix.zero, mixRed60: vendidos.mix.reducao_60, mixRed30: vendidos.mix.reducao_30,
     mixCheia: Math.max(0, 100 - vendidos.mix.zero - vendidos.mix.reducao_60 - vendidos.mix.reducao_30),
     nSaidas: vendas.length, nEntradas: compras.length
