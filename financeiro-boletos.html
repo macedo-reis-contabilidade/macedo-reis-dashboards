@@ -46,6 +46,16 @@
     .rm { color:#8A93A6; cursor:pointer; border:none; background:none; font-size:16px; padding:2px 6px; border-radius:6px; }
     .rm:hover { color:#E06C6C; background:rgba(224,108,108,.1); }
 
+    /* itens extras (faturáveis incluídos no boleto) */
+    .bo-extra { display:block; margin-top:4px; background:rgba(227,179,65,.14); border:1px solid rgba(227,179,65,.4); color:#E3B341; border-radius:999px; padding:2px 8px; font-size:11px; font-weight:600; cursor:pointer; font-family:inherit; white-space:nowrap; }
+    .bo-extra:hover { background:rgba(227,179,65,.24); }
+    .bo-tot { display:block; color:#8AAEC8; font-size:11px; margin-top:3px; white-space:nowrap; }
+    .bo-extras-row td { background:rgba(227,179,65,.04) !important; padding:6px 10px 10px; }
+    .bo-extras { display:flex; flex-wrap:wrap; gap:6px 18px; font-size:12px; color:#C5D8E8; align-items:center; }
+    .bo-extras span b { color:#E6EBF2; margin-left:6px; }
+    .bo-extras-tot { margin-left:auto; color:#8AAEC8; }
+    .bo-total small { font-size:13px; color:#8A93A6; font-weight:400; }
+
     .bo-foot { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-top:14px; }
     .bo-total { font-size:15px; color:#C5D8E8; } .bo-total b { font-size:20px; color:#E6EBF2; }
     .bo-msg { font-size:13px; color:#8A93A6; min-height:18px; }
@@ -307,7 +317,7 @@ function render(){
     tr.innerHTML=`
       <td class="num">${i}</td>
       <td class="bo-emp">${esc(c.nome)}<small>${fmtDoc(c.doc)}</small></td>
-      <td><input class="ci val" type="number" step="0.01" value="${r.valor??0}" data-f="valor"></td>
+      <td><input class="ci val" type="number" step="0.01" value="${r.valor??0}" data-f="valor">${extrasDe(r).length ? `<button type="button" class="bo-extra" data-extras title="ver os itens extras">+${extrasDe(r).length} extra(s) · ${BRL(somaExtras(r))}</button><span class="bo-tot">= ${BRL(totalLinha(r))}</span>` : ''}</td>
       <td><input class="ci dt" type="date" value="${r.vencimento||''}" data-f="vencimento"></td>
       <td><select class="ci sel" data-f="canal">
             <option value="whatsapp"${r.canal==='whatsapp'?' selected':''}>WhatsApp</option>
@@ -326,7 +336,13 @@ function render(){
         r[f] = (f==='valor') ? (parseFloat(el.value)||0) : el.value;
         r._dirty=true;
         if(f==='status'){ el.className='st st-'+r.status; updateCards(); render(); }
-        if(f==='valor'){ updateCards(); }
+        if(f==='valor'){
+          updateCards();
+          // total da linha e sub-linha acompanham o honorário digitado (sem re-render)
+          const tot=tr.querySelector('.bo-tot'); if(tot) tot.textContent='= '+BRL(totalLinha(r));
+          const sub=tr.nextElementSibling;
+          if(sub && sub.classList.contains('bo-extras-row')){ const st=sub.querySelector('.bo-extras-tot'); if(st) st.innerHTML=`honorário ${BRL(r.valor)} + extras ${BRL(somaExtras(r))} = <b>${BRL(totalLinha(r))}</b>`; }
+        }
       };
       const isTexto = (el.tagName==='INPUT' && el.type!=='date');
       if(isTexto){
@@ -338,17 +354,32 @@ function render(){
     });
     tr.querySelector('.rm').addEventListener('click', ()=>removerRow(r));
     tb.appendChild(tr);
+    // itens extras: chip abre/fecha a sub-linha (estado vive em r._open — o render é destrutivo)
+    const chip=tr.querySelector('[data-extras]');
+    if(chip) chip.addEventListener('click', ()=>{ r._open=!r._open; render(); });
+    if(r._open && extrasDe(r).length){
+      const sub=document.createElement('tr'); sub.className='bo-extras-row';
+      sub.innerHTML=`<td></td><td colspan="8"><div class="bo-extras">${extrasDe(r).map(x=>`<span>${esc(x.descricao||'item extra')}<b>${BRL(x.valor)}</b></span>`).join('')}<span class="bo-extras-tot">honorário ${BRL(r.valor)} + extras ${BRL(somaExtras(r))} = <b>${BRL(totalLinha(r))}</b></span></div></td>`;
+      tb.appendChild(sub);
+    }
   }
   updateCards();
 }
 
+// itens_extras = [{ faturavel_id, descricao, valor }] — gravado pela tela Faturáveis
+const extrasDe = r => Array.isArray(r.itens_extras) ? r.itens_extras.filter(Boolean) : [];
+const somaExtras = r => extrasDe(r).reduce((s,x)=>s+(Number(x.valor)||0),0);
+const totalLinha = r => (Number(r.valor)||0) + somaExtras(r);
+
 function updateCards(){
-  const total=rows.reduce((s,r)=>s+(Number(r.valor)||0),0);
+  const honor=rows.reduce((s,r)=>s+(Number(r.valor)||0),0);
+  const extras=rows.reduce((s,r)=>s+somaExtras(r),0);
+  const total=honor+extras;
   const by=k=>rows.filter(r=>r.status===k).length;
-  $('total').textContent=BRL(total);
+  $('total').innerHTML = extras ? `<small>honorários ${BRL(honor)} + extras ${BRL(extras)} =</small> ${BRL(total)}` : BRL(total);
   $('cards').innerHTML=`
     <div class="fa-focus-card"><span class="fc-num">${rows.length}</span><span class="fc-lbl">Empresas</span></div>
-    <div class="fa-focus-card"><span class="fc-num money">${BRL(total)}</span><span class="fc-lbl">Total do mês</span></div>
+    <div class="fa-focus-card"><span class="fc-num money">${BRL(total)}</span><span class="fc-lbl">Total do mês${extras ? ' · honorários ' + BRL(honor) + ' + extras ' + BRL(extras) : ''}</span></div>
     <div class="fa-focus-card"><span class="fc-num" style="color:#8A93A6">${by('a_emitir')}</span><span class="fc-lbl">A emitir</span></div>
     <div class="fa-focus-card"><span class="fc-num" style="color:#E3B341">${by('emitido')}</span><span class="fc-lbl">Emitido</span></div>
     <div class="fa-focus-card"><span class="fc-num" style="color:#3FB07A">${by('enviado')}</span><span class="fc-lbl">Enviado</span></div>
@@ -357,11 +388,20 @@ function updateCards(){
 
 async function removerRow(r){
   const nome = clientesMap[r.cliente_id]?.nome || '';
-  if(!confirm('Remover '+nome+' deste mês?')) return;
+  // extras vivos: reler do banco — a tela Faturáveis pode ter incluído itens depois desta carga
+  let extras = extrasDe(r);
+  if(r.id){ const { data: viva } = await supabase.from('cobrancas_mensais').select('itens_extras').eq('id', r.id).maybeSingle(); if(viva && Array.isArray(viva.itens_extras)) extras = viva.itens_extras.filter(Boolean); }
+  const aviso = extras.length ? '\n\nAtenção: esta cobrança tem '+extras.length+' item(ns) extra(s) · '+BRL(extras.reduce((s,x)=>s+(Number(x.valor)||0),0))+' — eles voltam pra fila de Faturáveis.' : '';
+  if(!confirm('Remover '+nome+' deste mês?'+aviso)) return;
   const deVez = confirm('Também PARAR DE COBRAR de vez?\n\nOK = não entra mais em nenhuma geração futura (sai da base de cobrança)\nCancelar = remove só deste mês');
   if(r.id){
     const { error } = await supabase.from('cobrancas_mensais').delete().eq('id',r.id);
     if(error){ msg('Erro ao remover: '+error.message); return; }
+    const ids = extras.map(x=>x.faturavel_id).filter(Boolean);
+    if(ids.length){
+      const { error: eF } = await supabase.from('faturaveis').update({ status:'a_faturar', competencia_boleto:null, atualizado_em:new Date().toISOString() }).in('id', ids).eq('status','no_boleto');
+      if(eF) msg('Cobrança removida, mas os extras não voltaram pra fila: '+eF.message);
+    }
   }
   if(deVez){
     const { error: e2 } = await supabase.from('cobrancas_config').update({ ativo:false }).eq('cliente_id', r.cliente_id);
@@ -390,18 +430,23 @@ async function salvarLinha(r){
   if(r._saving){ r._pend=true; return; }   // já tem gravação em curso: agenda nova ao terminar
   r._saving=true; saveState('saving');
   const comp=$('comp').value;
+  // itens_extras fica FORA do autosave: quem escreve é a tela Faturáveis. Regravar a cópia
+  // em memória apagava um extra incluído depois desta carga (a grade fica aberta o mês todo).
+  // Linha nova nasce com o default '[]' do banco; no conflito, coluna ausente não é tocada.
   const payload={
     ...(r.id?{id:r.id}:{}),
     cliente_id:r.cliente_id, competencia:comp, valor:Number(r.valor)||0,
     vencimento:r.vencimento||null, canal:r.canal||'outro', contato_envio:r.contato_envio||null,
     destino:r.destino||null, responsavel:r.responsavel||null, observacao:r.observacao||null,
-    status:r.status||'a_emitir', itens_extras:r.itens_extras||[]
+    status:r.status||'a_emitir'
   };
   try{
     const { data, error } = await supabase.from('cobrancas_mensais')
-      .upsert(payload,{onConflict:'cliente_id,competencia'}).select('id').single();
+      .upsert(payload,{onConflict:'cliente_id,competencia'}).select('id, itens_extras').single();
     if(error) throw error;
     if(data && data.id) r.id=data.id;
+    // reidrata os extras com o que está no banco — o chip fica honesto sem recarregar a grade
+    if(data && JSON.stringify(data.itens_extras||[])!==JSON.stringify(r.itens_extras||[])){ r.itens_extras=data.itens_extras||[]; render(); }
     r._dirty=false; r._retries=0;
     saveState('saved');
   }catch(e){
