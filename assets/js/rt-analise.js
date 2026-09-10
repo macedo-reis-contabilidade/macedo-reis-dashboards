@@ -17,6 +17,8 @@
 const brl = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const brl0 = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 const pct1 = v => (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+// nunca arredondar cobertura/alíquota para cima a ponto de virar outra afirmação
+const pct2 = v => (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const dataBR = iso => { try { return new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR'); } catch (e) { return iso; } };
 const MES_ABREV = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
@@ -121,24 +123,29 @@ export function gerarAnalise(d) {
       + '<tr><td>— mercadorias</td><td class="num">' + brl(dominio.faturamento.saidas) + ' · ' + pct1(100 - pctServ) + '%</td><td>idem</td></tr>' : '')
     + '<tr><td>Receita mensal usada na simulação</td><td class="num">' + brl(receita) + '</td><td>' + esc(d.origemReceita || 'informado na ficha') + '</td></tr>'
     + '<tr><td>RBT12</td><td class="num">' + brl(e.rbt12) + '</td><td>' + (dominio && dominio.pgdas ? 'PGDAS ' + esc(dominio.pgdas.competencia) : 'ficha') + '</td></tr>'
-    + '<tr><td>Anexo e alíquota efetiva do Simples</td><td class="num">Anexo ' + esc(e.anexo) + ' · ' + pct1(sim.aliqEfetiva * 100) + '%</td><td>' + (dominio && dominio.pgdas ? 'PGDAS ' + esc(dominio.pgdas.competencia) : 'LC 123, art. 18') + '</td></tr>'
-    + '<tr><td>DAS médio</td><td class="num">' + brl(m.dasHoje) + '/mês</td><td>calculado</td></tr>'
+    + '<tr><td>Anexo predominante e sua alíquota efetiva</td><td class="num">Anexo ' + esc(e.anexo) + ' · ' + pct2(sim.aliqEfetiva * 100) + '%</td><td>' + (dominio && dominio.pgdas ? 'PGDAS ' + esc(dominio.pgdas.competencia) : 'LC 123, art. 18') + '</td></tr>'
+    + (dominio && dominio.dasMedio ? '<tr><td>DAS médio pago</td><td class="num">' + brl(dominio.dasMedio) + '/mês</td><td>média das ' + dominio.nPgdas + ' apurações do Simples</td></tr>'
+        : '<tr><td>DAS na simulação</td><td class="num">' + brl(m.dasHoje) + '/mês</td><td>calculado sobre o Anexo ' + esc(e.anexo) + '</td></tr>')
     + (xml && xml.pctPJ != null ? '<tr><td>Vendas para CNPJ</td><td class="num">' + pct1(xml.pctPJ) + '%</td><td>XML das notas emitidas</td></tr>' : '')
-    + '<tr class="tot"><td>Entradas que geram crédito</td><td class="num">' + brl(receita * (e.pctComprasMercadorias + e.pctComprasDespesas) / 100) + '/mês · ' + pct1(e.pctComprasMercadorias + e.pctComprasDespesas) + '% da receita</td><td>' + (dominio && dominio.entradas ? 'Acompanhamento de entradas' : 'ficha') + '</td></tr>'
+    + '<tr class="tot"><td>Entradas que geram crédito</td><td class="num">' + (dominio && dominio.entradas ? brl(dominio.entradas.grupos.filter(g => g.incluido).reduce((a, g) => a + g.valor, 0)) + ' no período' : brl(receita * (e.pctComprasMercadorias + e.pctComprasDespesas) / 100) + '/mês') + ' · ' + pct1(e.pctComprasMercadorias + e.pctComprasDespesas) + '% da receita</td><td>' + (dominio && dominio.entradas ? 'Acompanhamento de entradas' : 'ficha') + '</td></tr>'
     + '</tbody></table>');
 
   // ---------- 2. clientes ----------
   if (xml && xml.clientes && xml.clientes.length) {
     P('<h2>2. Para quem a empresa vende — e por que isso decide a conta</h2>');
-    P('<p>A empresa atendeu <b>' + xml.nClientes + ' grupos econômicos</b> no período. Os dez maiores concentram <b>' + pct1(xml.top10) + '% da receita</b>'
-      + (xml.top20 != null ? '; os vinte maiores, <b>' + pct1(xml.top20) + '%</b>' : '') + '.</p>');
+    P('<p>Medido em <b>' + esc(xml.periodoRotulo) + '</b>' + (xml.cobertura != null ? ', período em que as notas eletrônicas cobrem <b>' + (xml.cobertura >= 99.995 ? '100%' : pct2(xml.cobertura) + '%') + '</b> do faturamento declarado' : '') + '. A empresa atendeu <b>' + xml.nClientes + ' grupos econômicos</b>; os dez maiores concentram <b>' + pct1(xml.top10) + '% da receita</b>'
+      + (xml.top20 != null ? ' e os vinte maiores, <b>' + pct1(xml.top20) + '%</b>' : '') + '.</p>'
+      + (xml.avisoCobertura ? '<p class="fonte">' + esc(xml.avisoCobertura) + '</p>' : ''));
     P('<table><thead><tr><th>Cliente</th><th>UF</th><th class="num">Faturado</th><th class="num">% da receita</th><th class="num">Acumulado</th></tr></thead><tbody>'
       + xml.clientes.slice(0, 10).map(c => '<tr><td>' + esc(c.nome) + (c.cnpjs > 1 ? ' <span class="fonte">(' + c.cnpjs + ' CNPJs)</span>' : '') + '</td><td>' + esc(c.uf || '—') + '</td><td class="num">' + brl(c.valor) + '</td><td class="num">' + pct1(c.pct) + '%</td><td class="num">' + pct1(c.acum) + '%</td></tr>').join('')
       + (xml.nClientes > 10 ? '<tr class="tot"><td colspan="2">Demais ' + (xml.nClientes - 10) + ' grupos econômicos</td><td class="num">' + brl(xml.totalVendas - xml.clientes.slice(0, 10).reduce((a, c) => a + c.valor, 0)) + '</td><td class="num">' + pct1(100 - xml.top10) + '%</td><td class="num">100%</td></tr>' : '')
       + '</tbody></table>');
-    P('<p class="fonte">Fonte: XML das notas fiscais emitidas, agrupadas por raiz de CNPJ. Total de vendas identificadas: ' + brl(xml.totalVendas) + '.</p>');
+    P('<p class="fonte">Fonte: XML das notas fiscais emitidas em ' + esc(xml.periodoRotulo) + ', agrupadas por raiz de CNPJ (filial não conta como cliente novo). Total de vendas identificadas: ' + brl(xml.totalVendas) + '.</p>');
+    // 1,65% de PIS + 7,6% de COFINS no regime não cumulativo
     const creditoHojePct = 9.25, creditoDentroPct = m.debitoFora > 0 ? m.parcelaCbsIbs / receita * 100 : 0;
-    P('<div class="cx chave"><h4>O ponto central</h4><p style="margin:0">Hoje esses clientes creditam <b>PIS/COFINS de ' + pct1(creditoHojePct) + '%</b> sobre o que compram desta empresa. Em 2027, se a apuração ficar <b>por dentro</b>, o crédito que eles levam cai para <b>' + pct1(creditoDentroPct) + '%</b> — só a parcela de CBS embutida no DAS. É uma perda de cerca de <b>' + Math.round(creditoHojePct - creditoDentroPct) + ' pontos de crédito para o cliente</b>, sem que a empresa mude nada e sem que ela ganhe nada com isso.</p></div>');
+    P('<div class="cx chave"><h4>O ponto central</h4>'
+      + '<p>O cliente que apura PIS/COFINS pelo <b>regime não cumulativo</b> (lucro real) credita hoje <b>' + pct2(creditoHojePct) + '%</b> (1,65% de PIS + 7,6% de COFINS) sobre o que compra desta empresa, ainda que ela seja do Simples — é o que declara o Ato Declaratório Interpretativo RFB nº 15/2007. Em 2027, se a apuração ficar <b>por dentro</b>, o crédito cai para <b>' + pct1(creditoDentroPct) + '%</b>: só a parcela de CBS embutida no DAS.</p>'
+      + '<p style="margin-bottom:0">Para esses clientes é uma perda de cerca de <b>' + Math.round(creditoHojePct - creditoDentroPct) + ' pontos de crédito</b>, sem que a empresa mude nada e sem que ela ganhe nada com isso. <span class="fonte">Cliente no lucro presumido apura PIS/COFINS pelo regime cumulativo e não credita nem hoje — para ele a mudança é indiferente. Quantos clientes estão em cada situação é o levantamento nº 2 do item 10.</span></p></div>');
   }
 
   // ---------- 3. entradas ----------
@@ -154,7 +161,7 @@ export function gerarAnalise(d) {
     P('<table><thead><tr><th>Natureza da operação</th><th class="num">Lanç.</th><th class="num">Valor</th><th class="num">% do relatório</th><th>Gera crédito?</th></tr></thead><tbody>'
       + g.map(x => '<tr><td><b>' + esc(x.rotulo) + '</b>' + (x.detalhe ? '<br><span class="fonte">' + esc(x.detalhe) + '</span>' : '') + '</td>'
         + '<td class="num">' + x.notas + '</td><td class="num">' + brl(x.valor) + '</td><td class="num">' + pct1(x.valor / totalRel * 100) + '%</td>'
-        + '<td>' + (x.incluido ? 'Sim' : x.credita ? 'Sim — não considerado' : 'Não — não é compra') + '</td></tr>').join('')
+        + '<td>' + (x.grupo === 'outras' ? 'A conferir — não considerado' : x.incluido ? 'Sim' : x.credita ? 'Sim — não considerado' : 'Não — não é compra') + '</td></tr>').join('')
       + '<tr class="tot"><td colspan="2">Base creditável considerada</td><td class="num">' + brl(dentro.filter(x => x.incluido).reduce((a, x) => a + x.valor, 0)) + '</td><td class="num">' + pct1(e.pctComprasMercadorias + e.pctComprasDespesas) + '% da receita</td><td>—</td></tr>'
       + '</tbody></table>');
     const duvida = g.find(x => x.grupo === 'outras' && x.valor > 0 && !x.incluido);
@@ -181,6 +188,12 @@ export function gerarAnalise(d) {
       + '<div class="rw"><span>Aproveitado pela carteira PJ</span><b>' + brl(s.aproveitadoFora) + '</b></div>'
       + '<div class="rw tot"><span>Diferença (fora − dentro)</span><b>' + brl(s.diferenca) + '</b></div></div></div>');
 
+  if (dominio && dominio.anexosOutros && dominio.dasMedio) {
+    const desvio = (m.dasHoje - dominio.dasMedio) * 6;
+    P('<p class="fonte">Ressalva de método: a simulação aplica o Anexo ' + esc(e.anexo) + ' a toda a receita, mas parte dela é tributada em outro anexo ('
+      + esc(dominio.anexosOutros) + '). Isso ' + (desvio >= 0 ? 'superestima' : 'subestima') + ' o DAS por dentro em cerca de ' + brl0(Math.abs(desvio))
+      + ' no semestre — ' + pct1(Math.abs(desvio) / Math.abs(s.diferenca) * 100) + '% da diferença apurada, sem alterar a conclusão.</p>');
+  }
   P('<h3>De onde vem a diferença, mês a mês</h3>');
   P(graficoCaixa(m, s.caixaDentro / 6, s.caixaFora / 6));
   P('<table><thead><tr><th>Componente</th><th class="num">Por dentro</th><th class="num">Por fora</th></tr></thead><tbody>'

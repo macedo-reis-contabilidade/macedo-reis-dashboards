@@ -873,6 +873,18 @@
         faturamento: cons.fat ? { total: cons.fat.totais.total, servicos: cons.fat.totais.servicos, saidas: cons.fat.totais.saidas } : null,
         meses: cons.fat ? cons.fat.meses : null,
         pgdas: cons.sim ? { competencia: cons.sim.competencia, dasTotal: cons.sim.dasTotal, cbsNoDas: cons.sim.cbsNoDas, aliquotaEfetiva: cons.sim.aliquotaEfetiva } : null,
+        // DAS realmente pago: média das apurações enviadas (não o simulado)
+        dasMedio: (() => { const ps = domEstado.rels.filter(r => r.tipo === 'simples'); return ps.length ? ps.reduce((a, r) => a + (r.dasTotal || 0), 0) / ps.length : null; })(),
+        nPgdas: domEstado.rels.filter(r => r.tipo === 'simples').length,
+        // soma TODAS as apurações enviadas: um mês só distorce o peso de cada anexo
+        anexosOutros: (() => {
+          const ps = domEstado.rels.filter(r => r.tipo === 'simples');
+          if (!ps.length || !cons.sim) return null;
+          const por = {}; let tot = 0;
+          ps.forEach(r => r.anexos.forEach(a => { por[a.anexo] = (por[a.anexo] || 0) + (a.receita || 0); tot += a.receita || 0; }));
+          return Object.entries(por).filter(([k, v]) => k !== cons.sim.anexoPredominante && v > 0)
+            .map(([k, v]) => 'Anexo ' + k + ', ' + brPct(Math.round(v / tot * 1000) / 10) + '% da receita apurada').join(' · ') || null;
+        })(),
         entradas: res2 ? { grupos: res2.map(g => ({
           grupo: g.grupo, rotulo: g.rotulo, notas: g.notas, valor: g.valor,
           credita: !!g.credita, incluido: !!domEstado.incluir[g.grupo],
@@ -1102,8 +1114,34 @@
         const sim = simular(ent);
         // carteira de clientes pelas notas, agrupada por raiz de CNPJ (filial não é cliente novo)
         let xml = null;
+        const dom = domRes;
         try {
-          const { error, modelo } = await carregarOperacao(supabase, c.cliente_id, ANO_XML);
+          let { error, modelo } = await carregarOperacao(supabase, c.cliente_id, ANO_XML);
+          // as notas de um período podem cobrir só parte do faturamento (ex.: NFS-e que
+          // só passou a ter XML no meio do ano). Medir a carteira sobre base incompleta
+          // distorce o peso de cada cliente — então restringe aos meses bem cobertos.
+          let periodoRotulo = 'ano de ' + ANO_XML, cobertura = null, avisoCobertura = null;
+          if (!error && modelo && dom && dom.meses && dom.meses.length) {
+            const domPorMes = new Map(dom.meses.map(x => [Number(x.competencia.slice(5, 7)), x.total || 0]));
+            const cob = modelo.meses.map(x => ({ mes: x.mes, xml: x.vendas, dom: domPorMes.get(x.mes) || 0 }))
+              .filter(x => x.dom > 0).map(x => ({ ...x, pct: x.xml / x.dom * 100 }));
+            let ini = null;
+            for (let i = cob.length - 1; i >= 0; i--) { if (cob[i].pct >= 90) ini = i; else break; }
+            if (ini != null && ini > 0) {
+              const jan = cob[ini].mes, fim = cob[cob.length - 1].mes;
+              const r2 = await carregarOperacao(supabase, c.cliente_id, ANO_XML, jan, fim);
+              if (!r2.error && r2.modelo && r2.modelo.kpis.vendas > 0) {
+                modelo = r2.modelo;
+                periodoRotulo = (jan === fim ? MESES_ABREV[jan - 1] : MESES_ABREV[jan - 1] + '–' + MESES_ABREV[fim - 1]) + '/' + ANO_XML;
+                const somaX = cob.slice(ini).reduce((a, x) => a + x.xml, 0), somaD = cob.slice(ini).reduce((a, x) => a + x.dom, 0);
+                cobertura = somaD ? somaX / somaD * 100 : null;
+                avisoCobertura = 'Nos meses anteriores as notas eletrônicas cobrem apenas parte do faturamento, o que distorceria o peso de cada cliente — por isso a carteira foi medida só no período acima.';
+              }
+            } else if (ini === 0) {
+              const somaX = cob.reduce((a, x) => a + x.xml, 0), somaD = cob.reduce((a, x) => a + x.dom, 0);
+              cobertura = somaD ? somaX / somaD * 100 : null;
+            }
+          }
           if (!error && modelo && modelo.kpis.vendas > 0) {
             const porRaiz = new Map();
             modelo.clientes.topo.concat(modelo.clientes.outros ? [] : []).forEach(() => {});
@@ -1124,12 +1162,13 @@
               clientes: lista, nClientes: modelo.clientes.distintos, totalVendas: total,
               top10: lista.slice(0, 10).reduce((a, g) => a + g.valor, 0) / total * 100,
               top20: lista.length >= 20 ? lista.slice(0, 20).reduce((a, g) => a + g.valor, 0) / total * 100 : null,
-              pctPJ: modelo.kpis.pctPJ, nNotas: modelo.kpis.nVendas + modelo.kpis.nCompras
+              pctPJ: modelo.kpis.pctPJ, nNotas: modelo.kpis.nVendas + modelo.kpis.nCompras,
+              periodoRotulo, cobertura, avisoCobertura
             };
           }
         } catch (e) { /* sem notas importadas o documento sai sem a seção de clientes */ }
 
-        const html = gerarAnalise(montarDadosAnalise(c, cli, ent, sim, domRes, xml));
+        const html = gerarAnalise(montarDadosAnalise(c, cli, ent, sim, dom, xml));
         const w = window.open('', '_blank');
         w.document.write(html); w.document.close();
       } catch (err) {
@@ -1157,8 +1196,8 @@
         { nome: 'Repasse da CBS ao cliente', hoje: 'não levantado',
           efeito: 'de ' + brl0(-s.diferenca) + ' (0% de repasse) a ' + brl0(m.debitoFora * 6 - s.diferenca) + ' (100%)',
           muda: viraEm != null && viraEm >= 0 && viraEm <= 100 ? 'Sim — inverte a partir de ' + Math.round(viraEm) + '%' : 'Sim' },
-        { nome: 'Alíquota final da CBS', hoje: p1(ent.cbs) + '% estimado',
-          efeito: '8,0% → ' + sinal(dif({ cbs: 8 })) + ' · 11,0% → ' + sinal(dif({ cbs: 11 })), muda: 'Não' },
+        { nome: 'Alíquota final da CBS', hoje: p1(ent.cbs) + '% (não fixada)',
+          efeito: '8,8% (Fazenda) → ' + sinal(dif({ cbs: 8.8 })) + ' · 9,21% (CGIBS) → ' + sinal(dif({ cbs: 9.21 })), muda: 'Não — nas três estimativas a conclusão é a mesma' },
         { nome: 'Base creditável de entradas', hoje: p1(ent.pctComprasMercadorias + ent.pctComprasDespesas) + '% da receita',
           efeito: '25% → ' + sinal(dif({ pctComprasMercadorias: 25 })) + ' · 60% → ' + sinal(dif({ pctComprasMercadorias: 60 })),
           muda: empataCompras ? 'Não (empataria só a ~' + Math.round(empataCompras) + '%)' : 'Não' },
@@ -1178,7 +1217,9 @@
       if (dom && dom.entradas) fontes.push({ o_que: 'Base creditável de entradas', origem: 'Acompanhamento de entradas, classificado por CFOP', nivel: 'media', rotulo: 'média', ressalva: '— regime dos fornecedores não verificado' });
       if (ent.mixCheia >= 99) fontes.push({ o_que: 'Mix de alíquotas (integralmente cheia)', origem: 'Serviço não consta dos anexos de redução da LC 214', nivel: 'alta', rotulo: 'alta (norma)' });
       if (xml) fontes.push({ o_que: 'Clientes serem do regime regular', origem: 'Porte das empresas atendidas', nivel: 'media', rotulo: 'média', ressalva: '— presunção, não consulta' });
-      fontes.push({ o_que: 'Alíquota de referência da CBS', origem: 'Estimativa de ' + p1(ent.cbs) + '%; Resolução do Senado ainda não publicada', nivel: 'baixa', rotulo: 'baixa' });
+      fontes.push({ o_que: 'Alíquota de referência da CBS', origem: 'Não fixada: cabe ao Senado defini-la para 2027. A simulação usa ' + p1(ent.cbs) + '%; em circulação há 8,8% (projeção do Ministério da Fazenda, dentro do teto de 26,5% da LC 214) e 9,21% (CGIBS, jul/2026, para fins orçamentários)', nivel: 'baixa', rotulo: 'estimativa' });
+      fontes.push({ o_que: 'Alíquota do IBS em 2027', origem: 'LC 214/2025: 0,05% estadual + 0,05% municipal', nivel: 'alta', rotulo: 'alta (norma)' });
+      fontes.push({ o_que: 'Crédito de PIS/COFINS que o cliente toma hoje', origem: 'ADI RFB nº 15/2007 — vale para o cliente no regime não cumulativo', nivel: 'media', rotulo: 'média', ressalva: '— depende do regime de cada cliente' });
       fontes.push({ o_que: 'Capacidade de repasse do preço', origem: 'Não levantado — depende dos contratos e da conversa com os clientes', nivel: 'baixa', rotulo: 'a levantar' });
 
       // recomendação: a assimetria das janelas manda mais que a diferença de custo
