@@ -635,17 +635,26 @@
     // ---------- ponte com as notas importadas (XML) ----------
     const ANO_XML = 2026;
     const XML_CAMPOS = ['sReceita', 'sPctPJ', 'sPctMerc', 'sPctDesp', 'sMixZero', 'sMixRed60', 'sMixRed30', 'sMixCheia'];
-    function limparOrigemXml() {
-      document.querySelectorAll('.xml-origem').forEach(e => e.remove());
+    // manterDominio: o que veio dos relatórios do Domínio sobrevive ao "Puxar das notas"
+    function limparOrigemXml(manterDominio) {
+      document.querySelectorAll('.xml-origem').forEach(e => { if (!(manterDominio && e.dataset.fonte === 'dominio')) e.remove(); });
+      if (!manterDominio) document.querySelectorAll('[data-fonte]').forEach(e => { delete e.dataset.fonte; });
       $('bXmlInfo').hidden = true; $('bXmlInfo').textContent = '';
     }
-    function origemXml(id, texto) {
+    function origemXml(id, texto, fonte) {
       const inp = $(id); if (!inp) return;
+      const antiga = inp.nextElementSibling;
+      if (antiga && antiga.classList.contains('xml-origem')) antiga.remove();
       const s = document.createElement('span'); s.className = 'hint xml-origem'; s.textContent = texto;
+      if (fonte) { s.dataset.fonte = fonte; inp.dataset.fonte = fonte; } else { delete inp.dataset.fonte; }
       inp.insertAdjacentElement('afterend', s);
     }
-    // editou o campo à mão: a etiqueta "da operação" deixa de valer
-    XML_CAMPOS.forEach(id => { const inp = $(id); if (inp) inp.addEventListener('input', () => { const s = inp.nextElementSibling; if (s && s.classList.contains('xml-origem')) s.remove(); }); });
+    const veioDoDominio = id => $(id) && $(id).dataset.fonte === 'dominio';
+    // editou o campo à mão: a etiqueta de origem deixa de valer
+    XML_CAMPOS.concat(['sRbt12', 'sPartilha']).forEach(id => { const inp = $(id); if (inp) inp.addEventListener('input', () => {
+      delete inp.dataset.fonte;
+      const s = inp.nextElementSibling; if (s && s.classList.contains('xml-origem')) s.remove();
+    }); });
     // botão só aparece se o cliente tem nota autorizada no ano — sem XML importado, nada muda na ficha
     async function prepararPuxarXml(clienteId) {
       limparOrigemXml();
@@ -674,20 +683,29 @@
         const p = modelo.ponte;
         if (!p.nSaidas) { $('bMsg').style.color = '#E06C6C'; $('bMsg').textContent = 'Há notas importadas, mas nenhuma de saída autorizada em ' + ANO_XML + ' — sem venda não dá pra puxar receita e mix.'; return; }
         const r1 = v => Math.round(v * 10) / 10;
-        limparOrigemXml();
+        limparOrigemXml(true);
+        // o Domínio manda no que os dois sabem (receita e compras): o XML só tem o que a empresa
+        // EMITIU, então nunca conhece as compras e perde o serviço sem XML. Preserva e avisa.
+        const preservados = [];
+        const seLivre = (id, valor, texto, rotulo) => {
+          if (veioDoDominio(id)) { preservados.push(rotulo); return; }
+          $(id).value = valor; origemXml(id, texto);
+        };
         // preenche SEM gravar: o usuário confere, calcula e grava
-        $('sReceita').value = brNum(Math.round(p.receitaMensal * 100) / 100);
-        origemXml('sReceita', 'da operação: média de ' + p.mesesComVenda.length + ' mês(es) com venda');
+        seLivre('sReceita', brNum(Math.round(p.receitaMensal * 100) / 100), 'da operação: média de ' + p.mesesComVenda.length + ' mês(es) com venda', 'receita');
         $('sPctPJ').value = brPct(r1(p.pctPJ)); origemXml('sPctPJ', 'da operação: ' + brPct(r1(p.pctPJ)) + '% das vendas para PJ');
-        $('sPctMerc').value = brPct(r1(p.pctMerc)); origemXml('sPctMerc', 'da operação: compras de mercadoria ÷ vendas');
-        $('sPctDesp').value = brPct(r1(p.pctDesp)); origemXml('sPctDesp', 'da operação: demais entradas ÷ vendas');
+        seLivre('sPctMerc', brPct(r1(p.pctMerc)), 'da operação: compras de mercadoria ÷ vendas', '% compras de mercadorias');
+        seLivre('sPctDesp', brPct(r1(p.pctDesp)), 'da operação: demais entradas ÷ vendas', '% compras de despesas');
         $('sMixZero').value = brPct(r1(p.mixZero)); origemXml('sMixZero', 'da operação: NCM em alíquota zero');
         $('sMixRed60').value = brPct(r1(p.mixRed60)); origemXml('sMixRed60', 'da operação: NCM com redução 60%');
         $('sMixRed30').value = brPct(r1(p.mixRed30)); origemXml('sMixRed30', 'da operação: NCM com redução 30%');
         $('sMixCheia').value = brPct(r1(Math.max(0, 100 - r1(p.mixZero) - r1(p.mixRed60) - r1(p.mixRed30)))); origemXml('sMixCheia', 'da operação: 100 − zero − reduções' + (p.nServicos ? ' (serviços contam na cheia)' : ''));
         const mi = p.mesesComVenda[0], mf = p.mesesComVenda[p.mesesComVenda.length - 1];
         const periodo = (mi === mf ? MESES_ABREV[mi - 1] : MESES_ABREV[mi - 1] + '–' + MESES_ABREV[mf - 1]) + '/' + ANO_XML;
-        $('bXmlInfo').innerHTML = 'Fonte: ' + p.nSaidas + ' nota(s) de saída' + (p.nServicos ? ' (' + p.nServicos + ' NFS-e de serviço = ' + brPct(r1(p.pctServicos)) + '% da receita)' : '') + ' e ' + p.nEntradas + ' de entrada' + (p.nServTomados ? ' (' + p.nServTomados + ' NFS-e de serviço tomado)' : '') + ' autorizadas, ' + periodo + '. Nada foi gravado — confira os campos, clique em Calcular e depois em Gravar simulação.';
+        const notaPreservados = preservados.length
+          ? ' <b>Mantido do Domínio</b> (o XML não enxerga isso): ' + preservados.join(', ') + '.'
+          : '';
+        $('bXmlInfo').innerHTML = notaPreservados + (notaPreservados ? '<br>' : '') + 'Fonte: ' + p.nSaidas + ' nota(s) de saída' + (p.nServicos ? ' (' + p.nServicos + ' NFS-e de serviço = ' + brPct(r1(p.pctServicos)) + '% da receita)' : '') + ' e ' + p.nEntradas + ' de entrada' + (p.nServTomados ? ' (' + p.nServTomados + ' NFS-e de serviço tomado)' : '') + ' autorizadas, ' + periodo + '. Nada foi gravado — confira os campos, clique em Calcular e depois em Gravar simulação.';
         $('bXmlInfo').hidden = false;
         $('bSaida').hidden = true; $('bGravar').disabled = true;
         if (p.comprasSuperamVendas) { $('bMsg').style.color = '#E3B341'; $('bMsg').textContent = '⚠ No período as compras superam as vendas (estoque sendo montado?) — % de compras limitado a 100; confira antes de calcular'; }
@@ -826,7 +844,7 @@
       const cons = domEstado.cons; if (!cons) return;
       const k = cons.campos, r1 = v => Math.round(v * 10) / 10;
       limparOrigemXml();
-      const por = (id, valor, texto) => { if (valor == null) return; $(id).value = valor; origemXml(id, texto); };
+      const por = (id, valor, texto) => { if (valor == null) return; $(id).value = valor; origemXml(id, texto, 'dominio'); };
       if (k.anexo) { $('sAnexo').value = k.anexo; }
       por('sRbt12', k.rbt12 != null ? brNum(k.rbt12) : null, cons.origem.rbt12 ? 'do Domínio: ' + cons.origem.rbt12 : null);
       por('sReceita', k.receita != null ? brNum(Math.round(k.receita * 100) / 100) : null, cons.origem.receita ? 'do Domínio: ' + cons.origem.receita : null);
@@ -836,14 +854,14 @@
         $('sPartilha').value = brPct(r1(k.partilha));
         $('sPartilha').dataset.auto = '';
         $('sPartilhaHint').textContent = 'do PGDAS';
-        origemXml('sPartilha', 'do Domínio: ' + (cons.origem.partilha || ''));
+        origemXml('sPartilha', 'do Domínio: ' + (cons.origem.partilha || ''), 'dominio');
       }
       $('ovDom').classList.remove('on');
       $('bSaida').hidden = true; $('bGravar').disabled = true;
       $('bXmlInfo').innerHTML = 'Campos preenchidos pelos relatórios do Domínio (' + domEstado.rels.map(rotuloRel).join(' · ') + '). Nada foi gravado — confira, clique em Calcular e depois em Gravar simulação.';
       $('bXmlInfo').hidden = false;
       $('bMsg').style.color = '#3FB07A';
-      $('bMsg').textContent = '✓ Campos preenchidos pelo Domínio — falta % PJ e mix (Puxar das notas), depois calcule';
+      $('bMsg').textContent = '✓ Campos preenchidos pelo Domínio — falta % PJ e mix (Puxar das notas não sobrescreve o que veio daqui), depois calcule';
     };
 
     // ---------- simulador ----------
