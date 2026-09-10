@@ -7,7 +7,8 @@
 
 export const CFOP_COMPRA_MERCADORIA = new Set(['1101','1102','1111','1113','1116','1117','1118','1120','1121','1122','1401','1403','2101','2102','2111','2113','2116','2117','2118','2120','2121','2122','2401','2403','3101','3102','3127']);
 // saídas/entradas que não são venda nem compra: transferência, remessas, retornos, bonificação, demonstração…
-const SUFIXOS_NAO_OPERACIONAIS = ['151','152','153','155','156','901','902','903','904','905','906','907','908','909','910','911','912','913','914','915','916','917','918','919','920','921','922','923','924','925','926','927','928','929','931','932','933','934'];
+// 949 (outra saída/entrada não especificada) fica fora do faturamento, como no relatório da Domínio
+const SUFIXOS_NAO_OPERACIONAIS = ['151','152','153','155','156','949','901','902','903','904','905','906','907','908','909','910','911','912','913','914','915','916','917','918','919','920','921','922','923','924','925','926','927','928','929','931','932','933','934'];
 export const CFOP_NAO_OPERACIONAL = new Set(['1','2','5','6'].flatMap(p => SUFIXOS_NAO_OPERACIONAIS.map(s => p + s)));
 // o CFOP do XML é sempre o do EMITENTE: numa nota de entrada (emitida pelo fornecedor) espelha 5→1 e 6→2
 // pra enxergar pelo lado do comprador; nota de entrada emitida pelo próprio cliente já vem 1xxx/2xxx/3xxx
