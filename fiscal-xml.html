@@ -85,7 +85,7 @@
         </div>
         <div class="eyebrow">Notas fiscais</div>
         <h1>Notas fiscais (XML)</h1>
-        <p>Importe os XMLs de NF-e e NFC-e do cliente (arquivos soltos ou ZIP). Tudo é lido aqui no navegador: a nota vira documento com itens, o tipo (venda ou compra) sai do CNPJ do cliente, nota repetida não entra duas vezes e o cancelamento por evento marca a nota. O painel de operação e a ficha da Reforma bebem daqui.</p>
+        <p>Importe os XMLs de NF-e e NFC-e da empresa (arquivos soltos ou ZIP). Tudo é lido aqui no navegador: a nota vira documento com itens, o tipo (venda ou compra) sai do CNPJ da empresa — XML de outra empresa é ignorado e contado —, nota repetida não entra duas vezes e o cancelamento por evento marca a nota. A ficha da Reforma bebe daqui.</p>
       </div>
 
       <div class="xm-sec">
@@ -157,7 +157,19 @@ let rodando = false;
   if (error) { msg('Não consegui carregar os clientes: ' + error.message, 'err'); return; }
   clientesList = data || [];
   const pre = new URLSearchParams(location.search).get('cliente');
-  if (pre) { const c = clientesList.find(x => x.id === pre); if (c) escolherCliente(c); }
+  if (pre) {
+    // empresa fixada pela ficha da Reforma: sem campo de escolha, não dá pra importar pra outra
+    $('cliBusca').closest('.form-group').style.display = 'none';
+    $('cliRes').style.display = 'none';
+    const c = clientesList.find(x => x.id === pre);
+    if (!c) { msg('Empresa não encontrada no cadastro.', 'err'); $('drop').style.display = 'none'; return; }
+    escolherCliente(c);
+    $('cliSel').insertAdjacentHTML('beforeend', ' <span style="color:#8A93A6;">· fixada pela ficha da Reforma</span>');
+  } else {
+    msg('A importação de notas é feita a partir da ficha da empresa em Reforma Tributária (aba Simular → Importar notas).', 'err');
+    $('cliBusca').closest('.form-group').style.display = 'none';
+    $('drop').style.display = 'none';
+  }
 })();
 
 // ---------- cliente ----------

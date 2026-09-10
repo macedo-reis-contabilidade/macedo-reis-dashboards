@@ -235,7 +235,8 @@
         </div>
         <div class="rg-acoes">
           <span class="rg-msg" id="bMsg"></span>
-          <button class="btn btn-ghost" id="bPuxarXml" hidden title="Preenche receita, % PJ, % compras e mix com as notas importadas — você confere e grava">Puxar da operação (XML 2026)</button>
+          <button class="btn btn-ghost" id="bImportarXml" title="Abre a importação de XML/ZIP já fixada nesta empresa — nota de outra empresa é ignorada">Importar notas (XML/ZIP)</button>
+          <button class="btn btn-ghost" id="bPuxarXml" hidden title="Preenche receita, % PJ, % compras e mix com as notas importadas — você confere e grava">Puxar das notas (2026)</button>
           <button class="btn btn-ghost" id="bCalcular">Calcular</button>
           <button class="btn btn-primary" id="bGravar" disabled>Gravar simulação</button>
         </div>
@@ -613,11 +614,19 @@
       limparOrigemXml();
       $('bPuxarXml').hidden = true;
       $('bPuxarXml').dataset.cliente = clienteId || '';
+      $('bImportarXml').dataset.cliente = clienteId || '';
+      $('bImportarXml').disabled = !clienteId;
       if (!clienteId) return;
       const { count } = await supabase.from('nf_documentos').select('id', { count: 'exact', head: true })
         .eq('cliente_id', clienteId).eq('status', 'autorizada').gte('data_emissao', ANO_XML + '-01-01').lte('data_emissao', ANO_XML + '-12-31');
       if (count && $('bPuxarXml').dataset.cliente === clienteId) $('bPuxarXml').hidden = false;
     }
+    // importação já fixada nesta empresa (a página de XML não deixa escolher outra)
+    $('bImportarXml').onclick = () => {
+      const id = $('bImportarXml').dataset.cliente;
+      if (!id) { alert('Esta ficha não está vinculada a um cliente do cadastro.'); return; }
+      window.open('fiscal-xml.html?cliente=' + encodeURIComponent(id), '_blank', 'noopener');
+    };
     $('bPuxarXml').onclick = async () => {
       const c = casoAtual(); if (!c) return;
       const btn = $('bPuxarXml'); btn.disabled = true; btn.textContent = 'Lendo as notas…';
