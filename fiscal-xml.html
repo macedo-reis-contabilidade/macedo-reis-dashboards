@@ -85,7 +85,7 @@
         </div>
         <div class="eyebrow">Notas fiscais</div>
         <h1>Notas fiscais (XML)</h1>
-        <p>Importe os XMLs de NF-e e NFC-e da empresa (arquivos soltos ou ZIP). Tudo é lido aqui no navegador: a nota vira documento com itens, o tipo (venda ou compra) sai do CNPJ da empresa — XML de outra empresa é ignorado e contado —, nota repetida não entra duas vezes e o cancelamento por evento marca a nota. A ficha da Reforma bebe daqui.</p>
+        <p>Importe os XMLs de <b>NF-e, NFC-e e NFS-e</b> da empresa (arquivos soltos ou ZIP). NFS-e entra tanto no padrão nacional (Sistema Nacional NFS-e) quanto no municipal ABRASF — a nota de serviço vira documento com um item "serviço". Tudo é lido aqui no navegador: a nota vira documento com itens, o tipo (venda ou compra) sai do CNPJ da empresa — XML de outra empresa é ignorado e contado —, nota repetida não entra duas vezes e o cancelamento por evento marca a nota. A ficha da Reforma bebe daqui.</p>
       </div>
 
       <div class="xm-sec">
@@ -235,21 +235,29 @@ const first = (el, name) => byName(el, name)[0] || null;
 const txt = (el, name) => { const n = first(el, name); return n ? (n.textContent || '').trim() : null; };
 const childByLocal = (el, name) => el ? [...el.children].find(c => c.localName === name) || null : null;
 
-// devolve { kind:'nfe', doc, itens } | { kind:'evento', chave, tpEvento } | { kind:'ignorado', motivo }
+// devolve { kind:'nfe', doc, itens } | { kind:'nfse', lista:[{ doc, itens }] } | { kind:'evento', modelo, chave, cancel, homologado, tpEvento, cStat } | { kind:'ignorado', motivo }
 function parseXml(texto, nome){
   const dom = new DOMParser().parseFromString(texto, 'application/xml');
   if (dom.getElementsByTagName('parsererror').length) throw new Error('XML mal formado');
   const root = dom.documentElement; const rl = root.localName;
   if (rl === 'procEventoNFe' || rl === 'evento' || rl === 'retEnvEvento') {
+    // evento da NFS-e nacional (cancelamento etc.) identifica a nota por chNFSe
+    if (first(dom, 'chNFSe')) return parseEventoNfseNacional(dom);
     // o pedido (<evento>) não prova nada: só vale com o retorno da SEFAZ homologando (135/136/155)
     const ev = first(dom, 'evento'), ret = first(dom, 'retEvento');
     const inf = first(ev || dom, 'infEvento');
     const cStatEv = txt(first(ret || (rl === 'retEnvEvento' ? dom : null), 'infEvento'), 'cStat');
-    return { kind: 'evento', chave: txt(inf, 'chNFe'), tpEvento: txt(inf, 'tpEvento'), cStat: cStatEv, homologado: ['135', '136', '155'].includes(cStatEv) };
+    const tpEvento = txt(inf, 'tpEvento');
+    return { kind: 'evento', modelo: 'nfe', chave: txt(inf, 'chNFe'), tpEvento, cancel: tpEvento === '110111', cStat: cStatEv, homologado: ['135', '136', '155'].includes(cStatEv) };
   }
+  if (rl === 'pedRegEvento') return { kind: 'ignorado', motivo: 'pedido de evento de NFS-e ainda sem processamento (baixe o evento processado)' };
+  if (first(dom, 'infNFSe')) return parseNfseNacional(dom, nome);
+  if (rl === 'DPS' || first(dom, 'infDPS')) return { kind: 'ignorado', motivo: 'DPS (declaração de serviço) sem a NFS-e gerada — baixe o XML da NFS-e no portal' };
+  if (/^(NfseCancelamento|CancelarNfseResposta|CancelarNfseResultado|CancelamentoNfse)$/i.test(rl)) return parseCancelAbrasf(dom);
+  if (first(dom, 'InfNfse') || first(dom, 'infNfse')) return parseNfseAbrasf(dom, nome);
   const infNFe = first(dom, 'infNFe');
   if (!infNFe) {
-    if (/nfse|Nfse|NFS-e|ConsultarNfse|CompNfse/i.test(rl) || first(dom, 'InfNfse') || first(dom, 'infNfse')) return { kind: 'ignorado', motivo: 'NFS-e municipal' };
+    if (/nfse|Nfse|NFS-e|ConsultarNfse|CompNfse/i.test(rl)) return { kind: 'ignorado', motivo: 'NFS-e em layout que não reconheço (' + rl + ')' };
     if (/^cte|CTe/i.test(rl) || first(dom, 'infCte')) return { kind: 'ignorado', motivo: 'CT-e' };
     if (/^mdfe|MDFe/i.test(rl) || first(dom, 'infMDFe')) return { kind: 'ignorado', motivo: 'MDF-e' };
     return { kind: 'ignorado', motivo: 'XML não reconhecido (' + rl + ')' };
@@ -309,6 +317,133 @@ function parseXml(texto, nome){
   return { kind: 'nfe', doc, itens };
 }
 
+// ---------- NFS-e ----------
+const UF_IBGE = { 11:'RO',12:'AC',13:'AM',14:'RR',15:'PA',16:'AP',17:'TO',21:'MA',22:'PI',23:'CE',24:'RN',25:'PB',26:'PE',27:'AL',28:'SE',29:'BA',31:'MG',32:'ES',33:'RJ',35:'SP',41:'PR',42:'SC',43:'RS',50:'MS',51:'MT',52:'GO',53:'DF' };
+const ufDoIbge = c => UF_IBGE[dig(c).slice(0, 2)] || null;
+const dataDe = s => { const d = String(s || '').trim().slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null; };
+const txtChild = (el, name) => { const n = childByLocal(el, name); return n ? (n.textContent || '').trim() : null; };
+const ancestorByLocal = (el, name) => { let p = el ? el.parentNode : null; while (p && p.nodeType === 1) { if (p.localName === name) return p; p = p.parentNode; } return null; };
+// CRT equivalente pro ranking de fornecedores (operacao-xml): 1 Simples · 3 normal · 4 MEI · null desconhecido
+const crtDe = (simples, mei) => mei ? 4 : simples === true ? 1 : simples === false ? 3 : null;
+const semNumeroZero = n => String(n || '').trim().replace(/^0+(?=\d)/, '');
+// item único "serviço": a Reforma lê o mix por NCM (serviço não tem NCM → conta como alíquota cheia) e a receita pelo documento
+const itemServico = (codigo, descricao, vServ, desconto, pisCst, vPis, vCofins) => ({
+  n_item: 1, codigo: codigo || null, descricao: descricao || 'Serviço', ncm: null, cest: null, cfop: null,
+  unidade: 'SV', quantidade: 1, valor_unitario: vServ, valor_total: vServ, desconto,
+  icms_origem: null, icms_cst: null, csosn: null, pis_cst: pisCst || null, cofins_cst: pisCst || null,
+  icms_valor: 0, icms_st_valor: 0, ipi_valor: 0, pis_valor: vPis, cofins_valor: vCofins
+});
+
+// NFS-e padrão nacional (Sistema Nacional NFS-e): <NFSe><infNFSe Id="NFS + 50 dígitos"> … <DPS><infDPS> prestador/tomador/serviço/valores
+// valor_total = valor do serviço − desconto incondicional (receita bruta, como o vNF da NF-e); data = emissão da DPS
+function parseNfseNacional(dom, nome){
+  const lista = [];
+  [...byName(dom, 'infNFSe')].forEach(inf => {
+    const chave = String(inf.getAttribute('Id') || '').replace(/^NFS/i, '').trim();
+    if (!/^\d{50}$/.test(chave)) throw new Error('chave da NFS-e inválida');
+    const emit = childByLocal(inf, 'emit');
+    const dps = first(inf, 'infDPS');
+    const prest = childByLocal(dps, 'prest'), toma = childByLocal(dps, 'toma'), serv = childByLocal(dps, 'serv'), vDps = childByLocal(dps, 'valores');
+    const data = dataDe(txt(dps, 'dhEmi')) || dataDe(txt(dps, 'dCompet')) || dataDe(txt(inf, 'dhProc'));
+    if (!data) throw new Error('data de emissão ausente');
+    const enderEmit = first(emit, 'enderNac');
+    // tomador: CNPJ, CPF ou NIF (exterior); sem <toma> = não identificado (fica como PF, sem documento)
+    let dest_tipo = 'PF', dest_doc = null, dest_uf = null;
+    if (toma) {
+      if (txt(toma, 'CNPJ')) { dest_tipo = 'PJ'; dest_doc = dig(txt(toma, 'CNPJ')); }
+      else if (txt(toma, 'CPF')) { dest_tipo = 'PF'; dest_doc = dig(txt(toma, 'CPF')); }
+      else if (txt(toma, 'NIF') != null || first(toma, 'cNaoNIF')) { dest_tipo = 'EX'; dest_doc = txt(toma, 'NIF') || null; }
+      const endNac = first(toma, 'endNac');
+      dest_uf = endNac ? ufDoIbge(txt(endNac, 'cMun')) : (first(toma, 'endExt') ? 'EX' : null);
+    }
+    const opSN = txt(first(prest, 'regTrib'), 'opSimpNac');   // 1 não optante · 2 MEI · 3 ME/EPP do Simples
+    const vServ = num(txt(first(vDps, 'vServPrest'), 'vServ'));
+    const descInc = num(txt(vDps, 'vDescIncond')), descCond = num(txt(vDps, 'vDescCond'));
+    const pc = first(vDps, 'piscofins');
+    const cServ = first(serv, 'cServ');
+    const itens = [itemServico(txt(cServ, 'cTribNac'), txt(cServ, 'xDescServ'), vServ, descInc + descCond, txt(pc, 'CST'), num(txt(pc, 'vPis')), num(txt(pc, 'vCofins')))];
+    const doc = {
+      chave, modelo: 'nfse', serie: txt(dps, 'serie'), numero: txt(inf, 'nNFSe'), data_emissao: data,
+      tp_nf: null, finalidade: null, natureza_operacao: txt(inf, 'xTribNac') || 'Serviço',
+      emit_doc: dig(txt(emit, 'CNPJ') || txt(emit, 'CPF')) || null, emit_nome: txt(emit, 'xNome'),
+      emit_uf: txt(enderEmit, 'UF') || ufDoIbge(txt(enderEmit, 'cMun')), emit_municipio: txt(inf, 'xLocEmi'),
+      emit_ie: null, emit_crt: opSN ? crtDe(opSN === '3', opSN === '2') : null,
+      dest_doc, dest_tipo, dest_nome: txt(toma, 'xNome'), dest_uf, dest_municipio: null, dest_ie: null, dest_ind_ie: null,
+      valor_total: Math.max(0, vServ - descInc), valor_produtos: vServ, valor_desconto: descInc + descCond, valor_frete: 0,
+      icms: 0, icms_st: 0, ipi: 0, pis: num(txt(pc, 'vPis')), cofins: num(txt(pc, 'vCofins')),
+      cfop_principal: null, status: 'autorizada', xml_nome: nome
+    };
+    lista.push({ doc, itens });
+  });
+  if (!lista.length) throw new Error('NFS-e sem infNFSe');
+  return { kind: 'nfse', lista };
+}
+
+// evento processado da NFS-e nacional: <evento><infEvento> dhProc … <pedRegEvento><infPedReg> chNFSe + <e101101/> (tipo)
+const NFSE_EVT_CANCEL = new Set(['101101', '105102', '105105', '305101']);   // cancelamento · por substituição · deferido por análise fiscal · de ofício
+function parseEventoNfseNacional(dom){
+  const tipoEl = [...byName(dom, '*')].find(e => /^e\d{6}$/.test(e.localName));
+  const tpEvento = tipoEl ? tipoEl.localName.slice(1) : null;
+  const chave = dig(txt(dom, 'chNFSe'));
+  const infEv = first(dom, 'infEvento');
+  return { kind: 'evento', modelo: 'nfse', chave: /^\d{50}$/.test(chave) ? chave : null, tpEvento, cancel: NFSE_EVT_CANCEL.has(tpEvento), homologado: !!(txt(infEv, 'dhProc') || txt(infEv, 'nSeqEvento')), cStat: null };
+}
+
+// NFS-e municipal padrão ABRASF (1.0 e 2.x — Betha, GINFES, ISSNet e afins): <CompNfse><Nfse><InfNfse>…; pode vir uma lista
+// (ConsultarNfseResposta) e o cancelamento ao lado da nota (NfseCancelamento). Chave = NFSE-<CNPJ do prestador>-<número>
+function parseNfseAbrasf(dom, nome){
+  const lista = [];
+  const infs = [...byName(dom, 'InfNfse'), ...byName(dom, 'infNfse')];
+  infs.forEach(inf => {
+    const numero = semNumeroZero(txtChild(inf, 'Numero') || txt(inf, 'Numero'));
+    const prest = first(inf, 'PrestadorServico') || first(inf, 'Prestador');
+    const idPrest = first(prest, 'IdentificacaoPrestador') || prest;
+    const emitDoc = dig(txt(idPrest, 'Cnpj') || txt(idPrest, 'Cpf') || txt(idPrest, 'CpfCnpj'));
+    if (!numero || !(emitDoc.length === 14 || emitDoc.length === 11)) throw new Error('NFS-e sem número ou sem CNPJ/CPF do prestador');
+    const data = dataDe(txtChild(inf, 'DataEmissao')) || dataDe(txt(inf, 'DataEmissao')) || dataDe(txt(inf, 'Competencia'));
+    if (!data) throw new Error('data de emissão ausente');
+    const toma = first(inf, 'TomadorServico') || first(inf, 'Tomador');
+    const idToma = first(toma, 'IdentificacaoTomador') || toma;
+    let dest_tipo = 'PF', dest_doc = null;
+    if (idToma) {
+      if (txt(idToma, 'Cnpj')) { dest_tipo = 'PJ'; dest_doc = dig(txt(idToma, 'Cnpj')); }
+      else if (txt(idToma, 'Cpf')) { dest_tipo = 'PF'; dest_doc = dig(txt(idToma, 'Cpf')); }
+    }
+    const serv = first(inf, 'Servico');
+    const val = first(serv, 'Valores') || first(inf, 'Valores');
+    const vServ = num(txt(val, 'ValorServicos'));
+    const descInc = num(txt(val, 'DescontoIncondicionado')), descCond = num(txt(val, 'DescontoCondicionado'));
+    const comp = ancestorByLocal(inf, 'CompNfse');
+    const cancelado = comp ? !!(first(comp, 'NfseCancelamento') || first(comp, 'CancelamentoNfse')) : (infs.length === 1 && !!(first(dom, 'NfseCancelamento') || first(dom, 'CancelamentoNfse')));
+    const optSN = txt(inf, 'OptanteSimplesNacional');   // 1 sim · 2 não
+    const enderPrest = first(prest, 'Endereco'), enderToma = first(toma, 'Endereco');
+    const item = txt(serv, 'ItemListaServico');
+    const itens = [itemServico(item, txt(serv, 'Discriminacao'), vServ, descInc + descCond, null, num(txt(val, 'ValorPis')), num(txt(val, 'ValorCofins')))];
+    const doc = {
+      chave: 'NFSE-' + emitDoc + '-' + numero, modelo: 'nfse', serie: null, numero, data_emissao: data,
+      tp_nf: null, finalidade: null, natureza_operacao: item ? 'Serviço (item ' + item + ')' : 'Serviço',
+      emit_doc: emitDoc, emit_nome: txt(prest, 'RazaoSocial'), emit_uf: txt(enderPrest, 'Uf') || ufDoIbge(txt(enderPrest, 'CodigoMunicipio')), emit_municipio: null,
+      emit_ie: null, emit_crt: optSN ? crtDe(optSN === '1', false) : null,
+      dest_doc, dest_tipo, dest_nome: txt(toma, 'RazaoSocial'), dest_uf: txt(enderToma, 'Uf') || ufDoIbge(txt(enderToma, 'CodigoMunicipio')), dest_municipio: null, dest_ie: null, dest_ind_ie: null,
+      valor_total: Math.max(0, vServ - descInc), valor_produtos: vServ, valor_desconto: descInc + descCond, valor_frete: 0,
+      icms: 0, icms_st: 0, ipi: 0, pis: num(txt(val, 'ValorPis')), cofins: num(txt(val, 'ValorCofins')),
+      cfop_principal: null, status: cancelado ? 'cancelada' : 'autorizada', xml_nome: nome
+    };
+    lista.push({ doc, itens });
+  });
+  if (!lista.length) throw new Error('NFS-e sem InfNfse');
+  return { kind: 'nfse', lista };
+}
+
+// cancelamento ABRASF avulso (NfseCancelamento / CancelarNfseResposta): identifica a nota por CNPJ do prestador + número
+function parseCancelAbrasf(dom){
+  const idn = first(dom, 'IdentificacaoNfse');
+  const numero = semNumeroZero(txt(idn, 'Numero'));
+  const cnpj = dig(txt(idn, 'Cnpj') || txt(idn, 'Cpf'));
+  const ok = !!(first(dom, 'Confirmacao') || first(dom, 'DataHora') || first(dom, 'DataHoraCancelamento') || first(dom, 'Sucesso'));
+  return { kind: 'evento', modelo: 'nfse', chave: numero && cnpj ? 'NFSE-' + cnpj + '-' + numero : null, tpEvento: 'cancelamento', cancel: true, homologado: ok, cStat: null };
+}
+
 // abre ZIPs (com subpastas e até 2 níveis de ZIP dentro de ZIP) e devolve [{ nome, texto }] só dos .xml;
 // ZIP que não abre vira erro do lote (não derruba a importação); lixo do macOS (__MACOSX, ._x) é pulado
 async function expandirArquivos(files, erros, nivel = 0){
@@ -363,18 +498,24 @@ async function importar(){
         const r = parseXml(x.texto, x.nome);
         if (r.kind === 'ignorado') { ignorados.push({ arquivo: x.nome, motivo: r.motivo }); continue; }
         if (r.kind === 'evento') {
-          if (r.tpEvento !== '110111') ignorados.push({ arquivo: x.nome, motivo: 'evento NF-e (' + (r.tpEvento || '?') + ') que não é cancelamento' });
-          else if (!r.chave || !r.homologado) ignorados.push({ arquivo: x.nome, motivo: 'cancelamento sem homologação da SEFAZ (cStat ' + (r.cStat || 'ausente') + ')' });
+          if (!r.cancel) ignorados.push({ arquivo: x.nome, motivo: 'evento (' + (r.tpEvento || '?') + ') que não é cancelamento' });
+          else if (!r.chave || !r.homologado) ignorados.push({ arquivo: x.nome, motivo: r.modelo === 'nfse' ? 'cancelamento de NFS-e sem processamento ou sem identificação da nota' : 'cancelamento sem homologação da SEFAZ (cStat ' + (r.cStat || 'ausente') + ')' });
           else cancelamentos.add(r.chave);
           continue;
         }
-        const d = r.doc;
-        // emitida pelo cliente com tpNF 0 é nota de ENTRADA emitida por ele (importação, produtor rural, devolução recebida)
-        if (d.emit_doc === docCli) d.tipo = d.tp_nf === 0 ? 'entrada' : 'saida';
-        else if (d.dest_doc === docCli) d.tipo = 'entrada';
-        else { ignorados.push({ arquivo: x.nome, motivo: 'XML de terceiro (nem emitente nem destinatário é o cliente)' }); continue; }
-        if (porChave.has(d.chave)) { duplicadasNoLote++; continue; }
-        porChave.set(d.chave, r);
+        // NFS-e pode vir várias num arquivo só (lista da prefeitura); NF-e é sempre uma
+        const lista = r.kind === 'nfse' ? r.lista : [r];
+        for (const item of lista) {
+          const d = item.doc;
+          const rot = x.nome + (lista.length > 1 ? ' (nota ' + (d.numero || '?') + ')' : '');
+          // emitida pelo cliente com tpNF 0 é nota de ENTRADA emitida por ele (importação, produtor rural, devolução recebida);
+          // NFS-e: prestador = cliente → serviço prestado (saída); tomador = cliente → serviço tomado (entrada)
+          if (d.emit_doc === docCli) d.tipo = d.tp_nf === 0 ? 'entrada' : 'saida';
+          else if (d.dest_doc === docCli) d.tipo = 'entrada';
+          else { ignorados.push({ arquivo: rot, motivo: 'XML de terceiro (nem emitente nem destinatário é o cliente)' }); continue; }
+          if (porChave.has(d.chave)) { duplicadasNoLote++; continue; }
+          porChave.set(d.chave, item);
+        }
       } catch (e) { erros.push({ arquivo: x.nome, motivo: e.message || String(e) }); }
       if (lidos % 25 === 0) await new Promise(r => setTimeout(r, 0));   // deixa a tela respirar em lotes grandes
     }
@@ -431,7 +572,7 @@ async function importar(){
     await supabase.from('nf_importacoes').update({ notas_novas: novas, notas_duplicadas: duplicadas, ignorados: ignorados.length, erros: detalhe }).eq('id', imp.id);
 
     progresso(total, total, 'Concluído.');
-    relatorio({ total, novas, duplicadas, ignorados, erros, itens: itensGravados, canceladas: canceladas + cancelNoLote, naoAchadas, saidas: docs.filter(r => r.doc.tipo === 'saida').length, entradas: docs.filter(r => r.doc.tipo === 'entrada').length });
+    relatorio({ total, novas, duplicadas, ignorados, erros, itens: itensGravados, canceladas: canceladas + cancelNoLote, naoAchadas, saidas: docs.filter(r => r.doc.tipo === 'saida').length, entradas: docs.filter(r => r.doc.tipo === 'entrada').length, nfse: docs.filter(r => r.doc.modelo === 'nfse').length });
     arquivos = []; renderArquivos();
     await carregarExistente();
   } catch (e) {
@@ -454,7 +595,7 @@ function relatorio(r){
   const lista = arr => '<ul>' + arr.map(a => '<li>' + esc(a) + '</li>').join('') + '</ul>';
   $('rel').innerHTML = `
     <div class="xm-kpis">
-      <div class="xm-kpi ok"><div class="n">${r.novas}</div><div class="l">notas novas · ${r.saidas} saída(s), ${r.entradas} entrada(s) · ${r.itens} itens</div></div>
+      <div class="xm-kpi ok"><div class="n">${r.novas}</div><div class="l">notas novas · ${r.saidas} saída(s), ${r.entradas} entrada(s)${r.nfse ? ' · ' + r.nfse + ' NFS-e de serviço' : ''} · ${r.itens} itens</div></div>
       <div class="xm-kpi dup"><div class="n">${r.duplicadas}</div><div class="l">duplicadas (já estavam na base — itens intactos)</div></div>
       <div class="xm-kpi ign"><div class="n">${r.ignorados.length}</div><div class="l">ignorados</div></div>
       <div class="xm-kpi err"><div class="n">${r.erros.length}</div><div class="l">erros de leitura</div></div>
@@ -475,20 +616,20 @@ async function carregarExistente(){
   $('existeCli').textContent = cliente.nome_principal;
   $('existeAnos').innerHTML = '<div class="xm-vazio"><span class="spinner spinner-sm"></span>Carregando…</div>';
   const [{ data: docs, error: e1 }, { data: lotes, error: e2 }] = await Promise.all([
-    supabase.todasLinhas(() => supabase.from('nf_documentos').select('id, data_emissao, tipo, valor_total, status').eq('cliente_id', cliente.id).order('data_emissao').order('id')),
+    supabase.todasLinhas(() => supabase.from('nf_documentos').select('id, data_emissao, tipo, modelo, valor_total, status').eq('cliente_id', cliente.id).order('data_emissao').order('id')),
     supabase.from('nf_importacoes').select('*').eq('cliente_id', cliente.id).order('criado_em', { ascending: false }).limit(5)
   ]);
   if (e1) { $('existeAnos').innerHTML = '<div class="xm-vazio msg-err">Erro: ' + esc(e1.message) + '</div>'; return; }
   const grp = {};
   (docs || []).forEach(d => {
     const k = String(d.data_emissao).slice(0, 4) + '|' + d.tipo;
-    const g = grp[k] = grp[k] || { ano: k.slice(0, 4), tipo: d.tipo, n: 0, valor: 0, canc: 0 };
-    if (d.status === 'autorizada') { g.n++; g.valor += Number(d.valor_total) || 0; } else g.canc++;
+    const g = grp[k] = grp[k] || { ano: k.slice(0, 4), tipo: d.tipo, n: 0, valor: 0, canc: 0, serv: 0 };
+    if (d.status === 'autorizada') { g.n++; g.valor += Number(d.valor_total) || 0; if (d.modelo === 'nfse') g.serv++; } else g.canc++;
   });
   const linhas = Object.values(grp).sort((a, b) => b.ano.localeCompare(a.ano) || a.tipo.localeCompare(b.tipo));
   $('existeAnos').innerHTML = linhas.length
     ? `<table class="xm"><thead><tr><th>Ano</th><th>Tipo</th><th class="num">Notas autorizadas</th><th class="num">Valor</th><th class="num">Canceladas / denegadas</th></tr></thead><tbody>`
-      + linhas.map(g => `<tr><td>${g.ano}</td><td><span class="pill pill-${g.tipo}">${g.tipo === 'saida' ? 'Saída (vendas)' : 'Entrada (compras)'}</span></td><td class="num">${g.n}</td><td class="num">${BRL(g.valor)}</td><td class="num">${g.canc || '—'}</td></tr>`).join('')
+      + linhas.map(g => `<tr><td>${g.ano}</td><td><span class="pill pill-${g.tipo}">${g.tipo === 'saida' ? 'Saída (vendas)' : 'Entrada (compras)'}</span></td><td class="num">${g.n}${g.serv ? ' <small style="color:#8A93A6;">(' + g.serv + ' NFS-e)</small>' : ''}</td><td class="num">${BRL(g.valor)}</td><td class="num">${g.canc || '—'}</td></tr>`).join('')
       + `</tbody></table>`
     : '<div class="xm-vazio">Nenhuma nota importada pra este cliente ainda.</div>';
   if (e2) { $('existeLotes').innerHTML = '<div class="xm-vazio msg-err">Erro: ' + esc(e2.message) + '</div>'; return; }

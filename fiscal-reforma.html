@@ -647,10 +647,10 @@
         $('sMixZero').value = brPct(r1(p.mixZero)); origemXml('sMixZero', 'da operação: NCM em alíquota zero');
         $('sMixRed60').value = brPct(r1(p.mixRed60)); origemXml('sMixRed60', 'da operação: NCM com redução 60%');
         $('sMixRed30').value = brPct(r1(p.mixRed30)); origemXml('sMixRed30', 'da operação: NCM com redução 30%');
-        $('sMixCheia').value = brPct(r1(Math.max(0, 100 - r1(p.mixZero) - r1(p.mixRed60) - r1(p.mixRed30)))); origemXml('sMixCheia', 'da operação: 100 − zero − reduções');
+        $('sMixCheia').value = brPct(r1(Math.max(0, 100 - r1(p.mixZero) - r1(p.mixRed60) - r1(p.mixRed30)))); origemXml('sMixCheia', 'da operação: 100 − zero − reduções' + (p.nServicos ? ' (serviços contam na cheia)' : ''));
         const mi = p.mesesComVenda[0], mf = p.mesesComVenda[p.mesesComVenda.length - 1];
         const periodo = (mi === mf ? MESES_ABREV[mi - 1] : MESES_ABREV[mi - 1] + '–' + MESES_ABREV[mf - 1]) + '/' + ANO_XML;
-        $('bXmlInfo').innerHTML = 'Fonte: ' + p.nSaidas + ' nota(s) de saída e ' + p.nEntradas + ' de entrada autorizadas, ' + periodo + '. Nada foi gravado — confira os campos, clique em Calcular e depois em Gravar simulação.';
+        $('bXmlInfo').innerHTML = 'Fonte: ' + p.nSaidas + ' nota(s) de saída' + (p.nServicos ? ' (' + p.nServicos + ' NFS-e de serviço = ' + brPct(r1(p.pctServicos)) + '% da receita)' : '') + ' e ' + p.nEntradas + ' de entrada' + (p.nServTomados ? ' (' + p.nServTomados + ' NFS-e de serviço tomado)' : '') + ' autorizadas, ' + periodo + '. Nada foi gravado — confira os campos, clique em Calcular e depois em Gravar simulação.';
         $('bXmlInfo').hidden = false;
         $('bSaida').hidden = true; $('bGravar').disabled = true;
         if (p.comprasSuperamVendas) { $('bMsg').style.color = '#E3B341'; $('bMsg').textContent = '⚠ No período as compras superam as vendas (estoque sendo montado?) — % de compras limitado a 100; confira antes de calcular'; }

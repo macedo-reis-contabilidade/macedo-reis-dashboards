@@ -1,5 +1,5 @@
 // ============================================================
-// MACEDO & REIS — Operação por XML (NF-e): carga + agregações
+// MACEDO & REIS — Operação por XML (NF-e, NFC-e e NFS-e): carga + agregações
 // Uma fonte só pro painel fiscal-operacao.html e pra ponte da
 // ficha da Reforma. Só notas autorizadas; devoluções (finNFe 4)
 // ficam fora de vendas/compras e são devolvidas à parte.
@@ -96,7 +96,8 @@ export function agregar(docs, itens, regras, periodo) {
     devolucoes: soma(devolucoes), nDevolucoes: devolucoes.length,
     outrasSaidas: soma(outrasSaidas), nOutrasSaidas: outrasSaidas.length,
     outrasEntradas: soma(outrasEntradas), nOutrasEntradas: outrasEntradas.length,
-    nfce: vendas.filter(d => d.modelo === '65').length
+    nfce: vendas.filter(d => d.modelo === '65').length,
+    nfse: vendas.filter(d => d.modelo === 'nfse').length
   };
 
   // rankings (clientes por destinatário, fornecedores por emitente)
@@ -178,8 +179,12 @@ export function agregar(docs, itens, regras, periodo) {
   const comprasMerc = soma(compras.filter(d => CFOP_COMPRA_MERCADORIA.has(cfopOperacao(d))));
   const pctMercBruto = totV ? comprasMerc / totV * 100 : 0;
   const pctDespBruto = totV ? (totC - comprasMerc) / totV * 100 : 0;
+  // NFS-e de saída entra na receita (serviço prestado); NFS-e de entrada entra como despesa (serviço tomado, sem CFOP → não é mercadoria)
+  const servPrestados = vendas.filter(d => d.modelo === 'nfse');
   const ponte = {
     receitaMensal: mesesComVenda.length ? totV / mesesComVenda.length : 0,
+    nServicos: servPrestados.length, pctServicos: totV ? soma(servPrestados) / totV * 100 : 0,
+    nServTomados: compras.filter(d => d.modelo === 'nfse').length,
     mesesComVenda: mesesComVenda.map(m => m.mes),
     pctPJ: kpis.pctPJ,
     // razões sobre as vendas; acima de 100% (estoque montado, empresa nova) vira teto — a ficha avisa
