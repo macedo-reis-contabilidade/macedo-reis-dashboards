@@ -594,7 +594,7 @@
       atualizarChips();
     };
 
-    // ---------- ponte com a operação por XML (fiscal-xml.html / fiscal-operacao.html) ----------
+    // ---------- ponte com as notas importadas (XML) ----------
     const ANO_XML = 2026;
     const XML_CAMPOS = ['sReceita', 'sPctPJ', 'sPctMerc', 'sPctDesp', 'sMixZero', 'sMixRed60', 'sMixRed30', 'sMixCheia'];
     function limparOrigemXml() {
@@ -641,7 +641,7 @@
         $('sMixCheia').value = brPct(r1(Math.max(0, 100 - r1(p.mixZero) - r1(p.mixRed60) - r1(p.mixRed30)))); origemXml('sMixCheia', 'da operação: 100 − zero − reduções');
         const mi = p.mesesComVenda[0], mf = p.mesesComVenda[p.mesesComVenda.length - 1];
         const periodo = (mi === mf ? MESES_ABREV[mi - 1] : MESES_ABREV[mi - 1] + '–' + MESES_ABREV[mf - 1]) + '/' + ANO_XML;
-        $('bXmlInfo').innerHTML = 'Fonte: ' + p.nSaidas + ' nota(s) de saída e ' + p.nEntradas + ' de entrada autorizadas, ' + periodo + '. Nada foi gravado — confira os campos, clique em Calcular e depois em Gravar simulação. <a href="fiscal-operacao.html?cliente=' + encodeURIComponent(c.cliente_id) + '&ano=' + ANO_XML + '" target="_blank" rel="noopener" style="color:#8AAEC8;">Ver painel de operação</a>';
+        $('bXmlInfo').innerHTML = 'Fonte: ' + p.nSaidas + ' nota(s) de saída e ' + p.nEntradas + ' de entrada autorizadas, ' + periodo + '. Nada foi gravado — confira os campos, clique em Calcular e depois em Gravar simulação.';
         $('bXmlInfo').hidden = false;
         $('bSaida').hidden = true; $('bGravar').disabled = true;
         if (p.comprasSuperamVendas) { $('bMsg').style.color = '#E3B341'; $('bMsg').textContent = '⚠ No período as compras superam as vendas (estoque sendo montado?) — % de compras limitado a 100; confira antes de calcular'; }
