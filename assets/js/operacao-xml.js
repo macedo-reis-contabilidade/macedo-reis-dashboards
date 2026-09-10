@@ -139,10 +139,11 @@ export function agregar(docs, itens, regras, periodo) {
     const set = docsPorRaiz.get(g.raiz || ('__' + g.nome));
     g.cnpjs = set ? set.size : 1;
     delete g.docs;
-    // grupo com várias filiais: mostra a UF de cada uma
+    // grupo com várias filiais: UF de cada uma, e o nome mais curto (a matriz não carrega "FL 09")
     if (g.cnpjs > 1) {
-      const ufs = [...new Set(vendas.filter(d => String(d.dest_doc || '').replace(/\D/g, '').slice(0, 8) === g.raiz).map(ufVenda))].sort();
-      g.uf = ufs.join('/');
+      const doGrupo = vendas.filter(d => String(d.dest_doc || '').replace(/\D/g, '').slice(0, 8) === g.raiz);
+      g.uf = [...new Set(doGrupo.map(ufVenda))].sort().join('/');
+      g.nome = doGrupo.map(d => String(d.dest_nome || '').trim()).filter(Boolean).sort((a, b) => a.length - b.length)[0] || g.nome;
     }
   });
 

@@ -1202,7 +1202,7 @@
       else fontes.push({ o_que: 'Receita mensal', origem: 'Informada na ficha — o relatório de faturamento não está anexado a este caso', nivel: 'media', rotulo: 'a anexar' });
       if (dom && dom.pgdas) fontes.push({ o_que: 'RBT12, anexo, alíquota efetiva e partilha do DAS', origem: 'PGDAS ' + dom.pgdas.competencia + ' (partilha = PIS + COFINS ÷ DAS total)', nivel: 'alta', rotulo: 'alta' });
       else fontes.push({ o_que: 'RBT12, anexo e partilha do DAS', origem: 'Informados na ficha — a apuração do Simples não está anexada a este caso', nivel: 'media', rotulo: 'a anexar' });
-      if (xml) fontes.push({ o_que: '% de vendas para CNPJ e concentração de clientes', origem: 'XML das notas fiscais emitidas em ' + ANO_XML, nivel: 'alta', rotulo: 'alta' });
+      if (xml) fontes.push({ o_que: '% de vendas para CNPJ e concentração de clientes', origem: 'XML das notas fiscais emitidas em ' + (xml.periodoRotulo || ANO_XML), nivel: 'alta', rotulo: 'alta' });
       if (dom && dom.entradas) fontes.push({ o_que: 'Base creditável de entradas', origem: 'Acompanhamento de entradas, classificado por CFOP', nivel: 'media', rotulo: 'média', ressalva: '— regime dos fornecedores não verificado' });
       if (ent.mixCheia >= 99) fontes.push({ o_que: 'Mix de alíquotas (integralmente cheia)', origem: 'Serviço não consta dos anexos de redução da LC 214', nivel: 'alta', rotulo: 'alta (norma)' });
       if (xml) fontes.push({ o_que: 'Clientes serem do regime regular', origem: 'Porte das empresas atendidas', nivel: 'media', rotulo: 'média', ressalva: '— presunção, não consulta' });

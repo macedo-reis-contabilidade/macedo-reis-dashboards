@@ -39,16 +39,17 @@ function graficoRepasse(pontos, viraEm) {
     return '<rect x="' + x.toFixed(0) + '" y="' + (ganha ? zero - altura : zero).toFixed(1) + '" width="' + bw.toFixed(0) + '" height="' + altura.toFixed(1) + '" fill="' + (ganha ? '#6FA987' : '#C97B7B') + '"/>'
       + '<text x="' + (x + bw / 2).toFixed(0) + '" y="' + (ganha ? zero - altura - 6 : zero + altura + 14).toFixed(1) + '" text-anchor="middle" font-size="10.5" font-weight="600" fill="' + (ganha ? '#2E6B47' : '#8A3A3A') + '">'
       + (ganha ? '+' : '−') + Math.round(Math.abs(p.liquido) / 1000) + 'k</text>'
-      + '<text x="' + (x + bw / 2).toFixed(0) + '" y="176" text-anchor="middle" font-size="10.5" fill="#4A525E">' + p.repasse + '%</text>';
+      + '<text x="' + (x + bw / 2).toFixed(0) + '" y="192" text-anchor="middle" font-size="10.5" fill="#4A525E">' + p.repasse + '%</text>';
   }).join('');
   const xVira = viraEm != null && viraEm >= 0 && viraEm <= 100 ? 90 + (viraEm / 100) * (larg - 120) : null;
-  return '<svg viewBox="0 0 ' + larg + ' 190" role="img" aria-label="Resultado no semestre conforme o percentual da CBS repassado ao cliente">'
+  // barras: até 62px acima ou abaixo do zero (y=100); rótulo da barra negativa chega a y≈176, o eixo fica em 192
+  return '<svg viewBox="0 0 ' + larg + ' 212" role="img" aria-label="Resultado no semestre conforme o percentual da CBS repassado ao cliente">'
     + '<line x1="60" y1="' + zero + '" x2="' + (larg - 20) + '" y2="' + zero + '" stroke="#8A93A6"/>'
     + '<text x="54" y="' + (zero + 4) + '" text-anchor="end" font-size="10" fill="#66707E">0</text>'
     + barras
-    + (xVira != null ? '<line x1="' + xVira.toFixed(0) + '" y1="20" x2="' + xVira.toFixed(0) + '" y2="165" stroke="#D69A3C" stroke-dasharray="4 3"/>'
+    + (xVira != null ? '<line x1="' + xVira.toFixed(0) + '" y1="20" x2="' + xVira.toFixed(0) + '" y2="180" stroke="#D69A3C" stroke-dasharray="4 3"/>'
         + '<text x="' + (xVira + 6).toFixed(0) + '" y="28" font-size="10.5" fill="#8A5A18" font-weight="600">vira em ' + Math.round(viraEm) + '%</text>' : '')
-    + '<text x="60" y="186" font-size="10" fill="#8A93A6">quanto da CBS é cobrada por fora do preço atual</text>'
+    + '<text x="60" y="207" font-size="10" fill="#8A93A6">quanto da CBS é cobrada por fora do preço atual</text>'
     + '</svg>';
 }
 
@@ -108,7 +109,7 @@ export function gerarAnalise(d) {
         dominio && dominio.faturamento ? 'relatório de faturamento ' + dominio.periodoRotulo : null,
         dominio && dominio.pgdas ? 'apuração do Simples (PGDAS ' + esc(dominio.pgdas.competencia) + ')' : null,
         dominio && dominio.entradas ? 'acompanhamento de entradas' : null,
-        xml && xml.nNotas ? xml.nNotas + ' notas fiscais eletrônicas emitidas' : null
+        xml && xml.nNotas ? xml.nNotas + ' notas fiscais eletrônicas emitidas em ' + esc(xml.periodoRotulo || '') : null
       ].filter(Boolean).join(', ') + '.' : '') + '</div>');
 
   // ---------- 1. retrato ----------
