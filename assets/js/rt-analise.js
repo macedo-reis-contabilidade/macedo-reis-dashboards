@@ -25,35 +25,6 @@ const fmtCnpj = d => { const s = String(d || '').replace(/\D/g, ''); return s.le
 const SELO = { alta: 's-forte', media: 's-media', baixa: 's-fraca' };
 const selo = (nivel, texto) => '<span class="selo ' + SELO[nivel] + '">' + esc(texto || nivel) + '</span>';
 
-// ---------- gráfico de barras empilhadas: faturamento mês a mês ----------
-function graficoFaturamento(meses) {
-  if (!meses || !meses.length) return '';
-  const larg = 800, alt = 250, base = 200, topo = 20;
-  const max = Math.max(...meses.map(m => m.total || 0));
-  const teto = Math.ceil(max / 50000) * 50000 || 1;
-  const y = v => base - (v / teto) * (base - topo);
-  const passo = (larg - 70) / meses.length;
-  const bw = Math.min(58, passo * 0.6);
-  const barras = meses.map((m, i) => {
-    const x = 60 + i * passo + (passo - bw) / 2;
-    const ys = y(m.servicos || 0), ym = y((m.servicos || 0) + (m.saidas || 0));
-    return '<rect x="' + x.toFixed(1) + '" y="' + ys.toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + (base - ys).toFixed(1) + '" fill="#5B82A6"/>'
-      + '<rect x="' + x.toFixed(1) + '" y="' + ym.toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + (ys - ym).toFixed(1) + '" fill="#A9C4DA"/>'
-      + '<text x="' + (x + bw / 2).toFixed(1) + '" y="' + (ym - 5).toFixed(1) + '" text-anchor="middle" font-size="9.5" fill="#66707E">' + Math.round((m.total || 0) / 1000) + 'k</text>'
-      + '<text x="' + (x + bw / 2).toFixed(1) + '" y="215" text-anchor="middle" font-size="10" fill="#4A525E">' + MES_ABREV[Number(String(m.competencia).slice(5, 7)) - 1] + '</text>';
-  }).join('');
-  const guias = [0, 0.5, 1].map(f => {
-    const v = teto * f;
-    return '<line x1="60" y1="' + y(v).toFixed(1) + '" x2="' + (larg - 20) + '" y2="' + y(v).toFixed(1) + '" stroke="' + (f ? '#EDF1F5' : '#C9D2DC') + '"/>'
-      + '<text x="54" y="' + (y(v) + 4).toFixed(1) + '" text-anchor="end" font-size="10" fill="#66707E">' + (v ? Math.round(v / 1000) + ' mil' : '0') + '</text>';
-  }).join('');
-  return '<svg viewBox="0 0 ' + larg + ' ' + alt + '" role="img" aria-label="Faturamento mensal separado entre serviços e mercadorias">'
-    + guias + '<line x1="60" y1="' + topo + '" x2="60" y2="' + base + '" stroke="#C9D2DC"/>' + barras
-    + '<rect x="' + (larg - 200) + '" y="232" width="11" height="11" fill="#5B82A6"/><text x="' + (larg - 183) + '" y="241" font-size="10" fill="#4A525E">serviços</text>'
-    + '<rect x="' + (larg - 118) + '" y="232" width="11" height="11" fill="#A9C4DA"/><text x="' + (larg - 101) + '" y="241" font-size="10" fill="#4A525E">mercadorias</text>'
-    + '</svg>';
-}
-
 // ---------- gráfico do repasse: onde o resultado vira ----------
 function graficoRepasse(pontos, viraEm) {
   const larg = 800, zero = 100;
@@ -77,6 +48,32 @@ function graficoRepasse(pontos, viraEm) {
         + '<text x="' + (xVira + 6).toFixed(0) + '" y="28" font-size="10.5" fill="#8A5A18" font-weight="600">vira em ' + Math.round(viraEm) + '%</text>' : '')
     + '<text x="60" y="186" font-size="10" fill="#8A93A6">quanto da CBS é cobrada por fora do preço atual</text>'
     + '</svg>';
+}
+
+// ---------- caixa mensal pago ao fisco nos dois caminhos ----------
+// Usa CAIXA (não o custo econômico): assim os blocos somam exatamente o total
+// mostrado ao lado. A diferença entre os dois é a mesma dos dois critérios.
+function graficoCaixa(m, dentroMes, foraMes) {
+  const larg = 800, x0 = 150, larguraMax = larg - x0 - 130;
+  const teto = Math.max(dentroMes, foraMes) || 1;
+  const w = v => v / teto * larguraMax;
+  const barra = (y, rotulo, segs, total, destaque) =>
+    '<text x="' + (x0 - 12) + '" y="' + (y + 21) + '" text-anchor="end" font-size="11.5" fill="#4A525E" font-weight="600">' + rotulo + '</text>'
+    + segs.reduce((acc, sg) => {
+        const x = x0 + w(acc.off), largura = w(sg.valor);
+        acc.html += '<rect x="' + x.toFixed(1) + '" y="' + y + '" width="' + largura.toFixed(1) + '" height="30" fill="' + sg.cor + '"/>'
+          + (largura > 58 ? '<text x="' + (x + largura / 2).toFixed(1) + '" y="' + (y + 20) + '" text-anchor="middle" font-size="10.5" fill="#fff" font-weight="600">' + brl0(sg.valor) + '</text>' : '');
+        acc.off += sg.valor; return acc;
+      }, { html: '', off: 0 }).html
+    + '<text x="' + (x0 + w(total) + 10).toFixed(1) + '" y="' + (y + 20) + '" font-size="12" fill="' + (destaque ? '#8A3A3A' : '#2E6B47') + '" font-weight="700">' + brl0(total) + '</text>';
+  return '<svg viewBox="0 0 ' + larg + ' 130" role="img" aria-label="Composição do custo tributário mensal nos dois caminhos">'
+    + barra(14, 'Por dentro', [{ valor: dentroMes, cor: '#5B82A6' }], dentroMes, false)
+    + barra(62, 'Por fora', [{ valor: m.dasSobra, cor: '#5B82A6' }, { valor: Math.max(0, foraMes - m.dasSobra), cor: '#C97B7B' }], foraMes, true)
+    + '<g font-size="10" fill="#4A525E">'
+    + '<rect x="' + x0 + '" y="106" width="11" height="11" fill="#5B82A6"/><text x="' + (x0 + 17) + '" y="115">DAS do Simples</text>'
+    + '<rect x="' + (x0 + 150) + '" y="106" width="11" height="11" fill="#C97B7B"/><text x="' + (x0 + 167) + '" y="115">IBS/CBS a recolher, já descontado o crédito das entradas</text>'
+    + '<text x="' + x0 + '" y="128" font-size="10" fill="#8A93A6">caixa pago ao fisco por mês</text>'
+    + '</g></svg>';
 }
 
 // ============================================================
@@ -104,12 +101,6 @@ export function gerarAnalise(d) {
     + (cliente.cidade ? ' · ' + esc(cliente.cidade) : '') + (caso.cnae_base ? ' · CNAE ' + esc(caso.cnae_base) : '')
     + ' · Documento interno, ' + hoje + '</p>');
 
-  P('<div class="cx"><h4>O que está em jogo — e o que não está</h4>'
-    + '<p>A empresa <b>permanece no Simples Nacional</b> nas duas hipóteses. Não se discute aqui troca de regime tributário: IRPJ, CSLL, CPP e o que restar de ICMS/ISS continuam sendo recolhidos no DAS de qualquer forma.</p>'
-    + '<p style="margin-bottom:0">A única escolha é <b>por onde o IBS e a CBS serão recolhidos em 2027</b>:</p>'
-    + '<ul style="margin-top:6px;margin-bottom:0"><li><b>Por dentro</b> — embutidos no DAS, como hoje. O cliente da empresa credita apenas a parcela de CBS contida no DAS.</li>'
-    + '<li><b>Por fora</b> — apurados pelo regime regular, fora do DAS, com direito a crédito nas entradas e crédito integral para o cliente. O DAS diminui na mesma proporção.</li></ul></div>');
-
   P('<div class="dados"><b>Prazo:</b> a opção deve ser formalizada até <b>30/09/2026</b> e pode ser <b>cancelada até 30/11/2026</b> sem produzir efeito (Resolução CGSN 186/2026). Quem não opta em setembro só tem nova janela em <b>março/2027</b>, com efeito a partir de <b>julho/2027</b>.'
     + (dominio || xml ? '<br><b>Base desta análise:</b> ' + [
         dominio && dominio.faturamento ? 'relatório de faturamento ' + dominio.periodoRotulo : null,
@@ -135,12 +126,6 @@ export function gerarAnalise(d) {
     + (xml && xml.pctPJ != null ? '<tr><td>Vendas para CNPJ</td><td class="num">' + pct1(xml.pctPJ) + '%</td><td>XML das notas emitidas</td></tr>' : '')
     + '<tr class="tot"><td>Entradas que geram crédito</td><td class="num">' + brl(receita * (e.pctComprasMercadorias + e.pctComprasDespesas) / 100) + '/mês · ' + pct1(e.pctComprasMercadorias + e.pctComprasDespesas) + '% da receita</td><td>' + (dominio && dominio.entradas ? 'Acompanhamento de entradas' : 'ficha') + '</td></tr>'
     + '</tbody></table>');
-
-  if (dominio && dominio.faturamento && dominio.meses && dominio.meses.length > 1) {
-    P('<h3>Faturamento mês a mês — serviço e mercadoria</h3>');
-    P(graficoFaturamento(dominio.meses));
-    P('<p class="fonte">Fonte: Relatório de Faturamento (Domínio), ' + dominio.periodoRotulo + '. Cada mês confere com a receita declarada no PGDAS do mesmo período.</p>');
-  }
 
   // ---------- 2. clientes ----------
   if (xml && xml.clientes && xml.clientes.length) {
@@ -197,6 +182,7 @@ export function gerarAnalise(d) {
       + '<div class="rw tot"><span>Diferença (fora − dentro)</span><b>' + brl(s.diferenca) + '</b></div></div></div>');
 
   P('<h3>De onde vem a diferença, mês a mês</h3>');
+  P(graficoCaixa(m, s.caixaDentro / 6, s.caixaFora / 6));
   P('<table><thead><tr><th>Componente</th><th class="num">Por dentro</th><th class="num">Por fora</th></tr></thead><tbody>'
     + '<tr><td>DAS do Simples</td><td class="num">' + brl(m.dasHoje) + '</td><td class="num">' + brl(m.dasSobra) + ' <span class="fonte">(sai a fatia de CBS)</span></td></tr>'
     + '<tr><td>IBS/CBS sobre as vendas</td><td class="num">—</td><td class="num">' + brl(m.debitoFora) + '</td></tr>'
@@ -231,16 +217,6 @@ export function gerarAnalise(d) {
   P('<table><thead><tr><th>Informação</th><th>Origem</th><th>Confiabilidade</th></tr></thead><tbody>'
     + (d.fontes || []).map(f => '<tr><td>' + esc(f.o_que) + '</td><td>' + esc(f.origem) + '</td><td>' + selo(f.nivel, f.rotulo) + (f.ressalva ? ' <span class="fonte">' + esc(f.ressalva) + '</span>' : '') + '</td></tr>').join('')
     + '</tbody></table>');
-
-  if (d.sinais && d.sinais.length) {
-    P('<h3>Conferência da triagem inicial</h3>');
-    P('<p>A triagem automática classificou a empresa a partir <b>apenas do CNAE</b>, antes de existir qualquer dado próprio. Confrontados os quatro sinais com os números medidos:</p>');
-    P('<table><thead><tr><th>Sinal</th><th>Triagem por CNAE</th><th>Medido</th><th></th></tr></thead><tbody>'
-      + d.sinais.map(x => '<tr><td>' + esc(x.nome) + '</td><td>' + (x.ok ? esc(x.cnae) : '<b>' + esc(x.cnae) + '</b>') + '</td><td>' + (x.ok ? esc(x.medido) : '<b>' + esc(x.medido) + '</b>') + '</td><td>'
-        + '<span class="selo ' + (x.ok ? 's-conf">confirma' : 's-err">corrigir → ' + esc(x.correto)) + '</span></td></tr>').join('')
-      + '</tbody></table>');
-    if (d.scoreNota) P('<p>' + d.scoreNota + '</p>');
-  }
 
   // ---------- 8. recomendação ----------
   P('<h2>8. Recomendação</h2>');

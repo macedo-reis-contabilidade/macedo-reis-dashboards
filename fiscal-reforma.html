@@ -1092,8 +1092,10 @@
     $('dAnalise').onclick = async () => {
       const c = casoAtual(); if (!c) return;
       const cli = clientesMap[c.cliente_id];
-      let ent = null;
-      try { const j = JSON.parse(c.sim_obs || 'null'); if (j && j.input) { ent = j.input; var domRes = j.dominio || null; } } catch (e) {}
+      let ent = null, domRes = null;
+      try { const j = JSON.parse(c.sim_obs || 'null'); if (j && j.input) { ent = j.input; domRes = j.dominio || null; } } catch (e) {}
+      // o que foi importado nesta sessão vale mais que o que está gravado
+      if (domEstado.resumo) domRes = domEstado.resumo;
       if (!ent) { alert('Grave a simulação antes de gerar a análise — é dela que saem os números do documento.'); return; }
       const btn = $('dAnalise'); btn.disabled = true; btn.textContent = 'Montando…';
       try {
@@ -1135,7 +1137,7 @@
       } finally { btn.disabled = false; btn.textContent = 'Gerar análise técnica'; }
     };
 
-    // sensibilidade, fontes, sinais, recomendação e pendências: tudo derivado do caso
+    // sensibilidade, fontes, recomendação e pendências: tudo derivado do caso
     function montarDadosAnalise(c, cli, ent, sim, dom, xml) {
       const s = sim.semestre, m = sim.mes, optar = s.custoFora < s.custoDentro;
       const brl0 = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
@@ -1169,46 +1171,15 @@
 
       const fontes = [];
       if (dom && dom.faturamento) fontes.push({ o_que: 'Receita mensal e divisão serviço/mercadoria', origem: 'Relatório de faturamento (Domínio)' + (dom.pgdas ? ', conferido contra as apurações do Simples' : ''), nivel: 'alta', rotulo: 'alta' });
-      else fontes.push({ o_que: 'Receita mensal', origem: 'Informada na ficha', nivel: 'media', rotulo: 'média', ressalva: '— sem o relatório de faturamento' });
+      else fontes.push({ o_que: 'Receita mensal', origem: 'Informada na ficha — o relatório de faturamento não está anexado a este caso', nivel: 'media', rotulo: 'a anexar' });
       if (dom && dom.pgdas) fontes.push({ o_que: 'RBT12, anexo, alíquota efetiva e partilha do DAS', origem: 'PGDAS ' + dom.pgdas.competencia + ' (partilha = PIS + COFINS ÷ DAS total)', nivel: 'alta', rotulo: 'alta' });
-      else fontes.push({ o_que: 'RBT12, anexo e partilha do DAS', origem: 'Informados na ficha', nivel: 'media', rotulo: 'média', ressalva: '— sem o PGDAS' });
+      else fontes.push({ o_que: 'RBT12, anexo e partilha do DAS', origem: 'Informados na ficha — a apuração do Simples não está anexada a este caso', nivel: 'media', rotulo: 'a anexar' });
       if (xml) fontes.push({ o_que: '% de vendas para CNPJ e concentração de clientes', origem: 'XML das notas fiscais emitidas em ' + ANO_XML, nivel: 'alta', rotulo: 'alta' });
       if (dom && dom.entradas) fontes.push({ o_que: 'Base creditável de entradas', origem: 'Acompanhamento de entradas, classificado por CFOP', nivel: 'media', rotulo: 'média', ressalva: '— regime dos fornecedores não verificado' });
       if (ent.mixCheia >= 99) fontes.push({ o_que: 'Mix de alíquotas (integralmente cheia)', origem: 'Serviço não consta dos anexos de redução da LC 214', nivel: 'alta', rotulo: 'alta (norma)' });
       if (xml) fontes.push({ o_que: 'Clientes serem do regime regular', origem: 'Porte das empresas atendidas', nivel: 'media', rotulo: 'média', ressalva: '— presunção, não consulta' });
       fontes.push({ o_que: 'Alíquota de referência da CBS', origem: 'Estimativa de ' + p1(ent.cbs) + '%; Resolução do Senado ainda não publicada', nivel: 'baixa', rotulo: 'baixa' });
       fontes.push({ o_que: 'Capacidade de repasse do preço', origem: 'Não levantado — depende dos contratos e da conversa com os clientes', nivel: 'baixa', rotulo: 'a levantar' });
-
-      // os quatro sinais: o que o CNAE chutou × o que os dados dizem
-      const SEG = [['consumidor final', 'misto', 'empresas/PJ'], ['poucas', 'médias', 'muitas'], ['não', 'parcial', 'sim'], ['baixa', 'média', 'alta']];
-      const sinais = [];
-      if (xml && xml.pctPJ != null) {
-        const medido = xml.pctPJ >= 70 ? 2 : xml.pctPJ >= 30 ? 1 : 0;
-        sinais.push({ nome: 'Vende para', cnae: SEG[0][+c.sinal_b2b || 0], medido: p1(xml.pctPJ) + '% das vendas para CNPJ', ok: medido === (+c.sinal_b2b || 0), correto: SEG[0][medido] });
-      }
-      const baseCred = ent.pctComprasMercadorias + ent.pctComprasDespesas;
-      if (dom && dom.entradas) {
-        const medido = baseCred >= 40 ? 2 : baseCred >= 20 ? 1 : 0;
-        sinais.push({ nome: 'Compras com IBS/CBS destacado', cnae: SEG[1][+c.sinal_entradas || 0], medido: p1(baseCred) + '% da receita', ok: medido === (+c.sinal_entradas || 0), correto: SEG[1][medido] });
-      }
-      if (ent.mixCheia >= 99) sinais.push({ nome: 'Setor com redução por fora', cnae: SEG[2][+c.sinal_reducao || 0], medido: 'atividade fora dos anexos de redução', ok: (+c.sinal_reducao || 0) === 0, correto: SEG[2][0] });
-      if (dom && dom.pgdas) {
-        const medido = ent.partilha >= 22 ? 2 : ent.partilha >= 12 ? 1 : 0;
-        sinais.push({ nome: 'Parcela CBS/IBS no DAS', cnae: SEG[3][+c.sinal_aliquota || 0], medido: p1(ent.partilha) + '% do DAS', ok: medido === (+c.sinal_aliquota || 0), correto: SEG[3][medido] });
-      }
-      let scoreNota = '';
-      const errados = sinais.filter(x => !x.ok);
-      if (errados.length) {
-        const novo = SINAIS.reduce((a, k, i) => {
-          const achado = sinais.find(x => x.nome === ['Vende para', 'Compras com IBS/CBS destacado', 'Setor com redução por fora', 'Parcela CBS/IBS no DAS'][i]);
-          return a + (achado && !achado.ok ? SEG[i].indexOf(achado.correto) : (+c[k] || 0));
-        }, 0);
-        const antes = SINAIS.reduce((a, k) => a + (+c[k] || 0), 0);
-        scoreNota = 'Com a correção, o score passa de <b>' + antes + '</b> para <b>' + novo + '</b> e a triagem deixa de ser "' + TRI_LBL[triagemDoScore(antes)][0].toLowerCase()
-          + '" para ser <b>"' + TRI_LBL[triagemDoScore(novo)][0].toLowerCase() + '"</b> — coerente com o resultado da simulação. <span class="fonte">A etiqueta no cadastro deve ser atualizada.</span>';
-      } else {
-        scoreNota = 'Os quatro sinais da triagem se confirmam nos dados medidos.';
-      }
 
       // recomendação: a assimetria das janelas manda mais que a diferença de custo
       const recomendacao = optar
@@ -1254,7 +1225,7 @@
         hoje: new Date().toLocaleDateString('pt-BR'),
         origemReceita: dom && dom.faturamento ? 'média do faturamento ' + dom.periodoRotulo : 'informada na ficha',
         sensibilidade, sensibilidadeNota: 'Nenhuma incerteza técnica isolada derruba a diferença de ' + brl0(Math.abs(s.diferenca)) + ' do semestre. Só o repasse derruba — por isso a decisão é comercial, não fiscal.',
-        fontes, sinais, scoreNota, recomendacao, perguntas, pendencias
+        fontes, recomendacao, perguntas, pendencias
       };
     }
 
