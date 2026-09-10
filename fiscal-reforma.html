@@ -1143,25 +1143,14 @@
             }
           }
           if (!error && modelo && modelo.kpis.vendas > 0) {
-            const porRaiz = new Map();
-            modelo.clientes.topo.concat(modelo.clientes.outros ? [] : []).forEach(() => {});
-            // o ranking da operação vem por documento: reagrupa por raiz
-            const raiz = d => String(d || '').replace(/\D/g, '').slice(0, 8) || '?';
-            modelo.clientes.topo.forEach(cl => {
-              const k = raiz(cl.doc) || cl.nome;
-              const g = porRaiz.get(k) || { nome: cl.nome, uf: cl.uf, valor: 0, notas: 0, cnpjs: 0 };
-              g.valor += cl.valor; g.notas += cl.notas; g.cnpjs++;
-              if (g.uf && cl.uf && g.uf !== cl.uf) g.uf = g.uf + '/' + cl.uf;
-              porRaiz.set(k, g);
-            });
-            const lista = [...porRaiz.values()].sort((a, b) => b.valor - a.valor);
+            // ranking já vem agrupado por raiz de CNPJ, calculado sobre todas as vendas
             const total = modelo.kpis.vendas;
             let acum = 0;
-            lista.forEach(g => { g.pct = total ? g.valor / total * 100 : 0; acum += g.valor; g.acum = total ? acum / total * 100 : 0; });
+            const lista = modelo.clientesRaiz.topo.map(g => { acum += g.valor; return { ...g, acum: total ? acum / total * 100 : 0 }; });
             xml = {
-              clientes: lista, nClientes: modelo.clientes.distintos, totalVendas: total,
+              clientes: lista, nClientes: modelo.clientesRaiz.distintos, totalVendas: total,
               top10: lista.slice(0, 10).reduce((a, g) => a + g.valor, 0) / total * 100,
-              top20: lista.length >= 20 ? lista.slice(0, 20).reduce((a, g) => a + g.valor, 0) / total * 100 : null,
+              top20: modelo.clientesRaiz.distintos >= 20 ? lista.slice(0, 20).reduce((a, g) => a + g.valor, 0) / total * 100 : null,
               pctPJ: modelo.kpis.pctPJ, nNotas: modelo.kpis.nVendas + modelo.kpis.nCompras,
               periodoRotulo, cobertura, avisoCobertura
             };

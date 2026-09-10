@@ -122,6 +122,30 @@ export function agregar(docs, itens, regras, periodo) {
   const clientes = ranking(vendas,
     d => d.dest_doc || (d.modelo === '65' ? '__nfce' : ('__' + (d.dest_nome || 'sem nome'))),
     d => ({ nome: d.dest_doc ? (d.dest_nome || '—') : (d.modelo === '65' ? 'Consumidor final (NFC-e)' : (d.dest_nome || 'Sem identificação')), doc: d.dest_doc, tipo: d.dest_tipo || 'PF', uf: ufVenda(d), valor: 0, notas: 0 }), 15);
+  // por raiz de CNPJ: filial não é cliente novo. Calculado sobre TODAS as vendas —
+  // reagrupar só o topo por documento perderia o grupo cujos CNPJs, sozinhos, não
+  // entram na lista (o caso clássico da indústria com várias filiais comprando).
+  const clientesRaiz = ranking(vendas,
+    d => (String(d.dest_doc || '').replace(/\D/g, '').slice(0, 8)) || ('__' + (d.dest_nome || 'sem nome')),
+    d => ({ nome: d.dest_nome || '—', raiz: String(d.dest_doc || '').replace(/\D/g, '').slice(0, 8) || null, uf: ufVenda(d), tipo: d.dest_tipo || 'PF', docs: new Set(), valor: 0, notas: 0 }), 20);
+  // conta os CNPJs de cada grupo (a ranking não sabe fazer isso sozinha)
+  const docsPorRaiz = new Map();
+  vendas.forEach(d => {
+    const r = String(d.dest_doc || '').replace(/\D/g, '').slice(0, 8) || ('__' + (d.dest_nome || 'sem nome'));
+    if (!docsPorRaiz.has(r)) docsPorRaiz.set(r, new Set());
+    if (d.dest_doc) docsPorRaiz.get(r).add(d.dest_doc);
+  });
+  clientesRaiz.topo.forEach(g => {
+    const set = docsPorRaiz.get(g.raiz || ('__' + g.nome));
+    g.cnpjs = set ? set.size : 1;
+    delete g.docs;
+    // grupo com várias filiais: mostra a UF de cada uma
+    if (g.cnpjs > 1) {
+      const ufs = [...new Set(vendas.filter(d => String(d.dest_doc || '').replace(/\D/g, '').slice(0, 8) === g.raiz).map(ufVenda))].sort();
+      g.uf = ufs.join('/');
+    }
+  });
+
   const fornecedores = ranking(compras,
     d => d.emit_doc || ('__' + (d.emit_nome || 'sem nome')),
     d => ({ nome: d.emit_nome || '—', doc: d.emit_doc, regime: d.emit_crt === 3 ? 'normal' : ehSimples(d) ? 'simples' : 'ni', uf: d.emit_uf || '—', valor: 0, notas: 0 }), 15);
@@ -197,5 +221,5 @@ export function agregar(docs, itens, regras, periodo) {
     nSaidas: vendas.length, nEntradas: compras.length
   };
 
-  return { periodo, kpis, clientes, fornecedores, vendidos, comprados, cfops: { lista: cfopLista, total: cfopTotal, grupos: cfopGrupos }, ufs: ufLista, meses, ponte, totalDocs: docs.length };
+  return { periodo, kpis, clientes, clientesRaiz, fornecedores, vendidos, comprados, cfops: { lista: cfopLista, total: cfopTotal, grupos: cfopGrupos }, ufs: ufLista, meses, ponte, totalDocs: docs.length };
 }
