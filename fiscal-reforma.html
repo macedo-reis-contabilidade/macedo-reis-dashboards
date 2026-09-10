@@ -271,8 +271,9 @@
       <div class="rt-bloco">
         <h3>C · Decisão</h3>
         <div class="rt-dec">
-          <label><input type="radio" name="cDec" value="por_dentro"> Por dentro (permanece no Simples)</label>
-          <label><input type="radio" name="cDec" value="por_fora"> Por fora (regime regular de IBS/CBS)</label>
+          <label><input type="radio" name="cDec" value="por_dentro"> Por dentro — IBS/CBS no DAS</label>
+          <label><input type="radio" name="cDec" value="por_fora"> Por fora — IBS/CBS pelo regime regular</label>
+          <span class="hint" style="flex-basis:100%;color:#6E7787;font-size:11px;">Nos dois casos a empresa <b>permanece no Simples Nacional</b>: muda só por onde o IBS e a CBS são recolhidos.</span>
         </div>
         <div class="rg-sec">Fundamento (pré-preenchido pela frase do veredito — edite à vontade)</div>
         <textarea class="rg-obs" id="cFund"></textarea>
@@ -287,6 +288,7 @@
       <div class="rt-bloco">
         <h3>D · Comunicado</h3>
         <div class="rg-acoes" style="justify-content:flex-start; margin-top:0">
+          <button class="btn btn-ghost" id="dAnalise" title="Documento interno de apoio à decisão: fontes, evidências, sensibilidade e o que ainda falta levantar">Gerar análise técnica</button>
           <button class="btn btn-ghost" id="dGerar">Gerar comunicado</button>
           <button class="btn btn-ghost" id="dMarcar">Marcar como comunicado</button>
           <button class="btn btn-ghost" id="dOpcao" hidden>Opção registrada no portal</button>
@@ -347,6 +349,7 @@
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { carregarOperacao, MESES_ABREV } from './assets/js/operacao-xml.js';
     import { lerRelatorio, consolidar, resumirEntradas, GRUPOS } from './assets/js/dominio-relatorios.js';
+    import { gerarAnalise } from './assets/js/rt-analise.js';
     import { simular } from './assets/js/rt-motor.js';
 
     const $ = id => document.getElementById(id);
@@ -718,7 +721,14 @@
     // ---------- relatórios do Domínio ----------
     // Layout da Domínio é fixo: a leitura é determinística (texto do PDF), sem IA e sem
     // sair do navegador. Nada é gravado — preenche os campos e o usuário confere.
-    const domEstado = { rels: [], incluir: null, cons: null };
+    const domEstado = { rels: [], incluir: null, cons: null, resumo: null };
+    const MES_CURTO = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+    function rotuloPeriodo(comps) {
+      if (!comps || !comps.length) return '';
+      const a = comps[0], b = comps[comps.length - 1];
+      const r = c => MES_CURTO[Number(c.slice(5, 7)) - 1] + '/' + c.slice(2, 4);
+      return a === b ? r(a) : r(a) + '–' + r(b);
+    }
 
     async function paginasDoPdf(file) {
       if (!window.pdfjsLib) throw new Error('o leitor de PDF não carregou — verifique a conexão e recarregue a página (Ctrl+F5)');
@@ -856,6 +866,20 @@
         $('sPartilhaHint').textContent = 'do PGDAS';
         origemXml('sPartilha', 'do Domínio: ' + (cons.origem.partilha || ''), 'dominio');
       }
+      // resumo compacto para a análise técnica; vai junto da simulação ao gravar
+      const ent2 = cons.ent, res2 = ent2 ? resumirEntradas(ent2, cons.competencias) : null;
+      domEstado.resumo = {
+        periodoRotulo: cons.fat ? rotuloPeriodo(cons.competencias) : null,
+        faturamento: cons.fat ? { total: cons.fat.totais.total, servicos: cons.fat.totais.servicos, saidas: cons.fat.totais.saidas } : null,
+        meses: cons.fat ? cons.fat.meses : null,
+        pgdas: cons.sim ? { competencia: cons.sim.competencia, dasTotal: cons.sim.dasTotal, cbsNoDas: cons.sim.cbsNoDas, aliquotaEfetiva: cons.sim.aliquotaEfetiva } : null,
+        entradas: res2 ? { grupos: res2.map(g => ({
+          grupo: g.grupo, rotulo: g.rotulo, notas: g.notas, valor: g.valor,
+          credita: !!g.credita, incluido: !!domEstado.incluir[g.grupo],
+          detalhe: g.grupo === 'outras' ? (g.fornecedores || []).slice(0, 4).map(f => f.nome.split(/\s+/).slice(0, 2).join(' ') + ' ' + brl(f.valor)).join(' · ')
+                 : Object.entries(g.cfops).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([cf]) => 'CFOP ' + cf).join(' · ')
+        })) } : null
+      };
       $('ovDom').classList.remove('on');
       $('bSaida').hidden = true; $('bGravar').disabled = true;
       $('bXmlInfo').innerHTML = 'Campos preenchidos pelos relatórios do Domínio (' + domEstado.rels.map(rotuloRel).join(' · ') + '). Nada foi gravado — confira, clique em Calcular e depois em Gravar simulação.';
@@ -946,7 +970,8 @@
         sim_custo_fora: +r.semestre.custoFora.toFixed(2),
         sim_credito_cliente_dentro: +r.semestre.creditoClienteDentro.toFixed(2),
         sim_credito_cliente_fora: +r.semestre.creditoClienteFora.toFixed(2),
-        sim_obs: JSON.stringify({ v: 1, input: ent, veredito: r.veredito.tipo, frase: r.veredito.frase, calculado_em: hojeISO() }),
+        sim_obs: JSON.stringify({ v: 1, input: ent, veredito: r.veredito.tipo, frase: r.veredito.frase, calculado_em: hojeISO(),
+          dominio: domEstado.resumo || (() => { try { return JSON.parse(c.sim_obs || 'null')?.dominio || null; } catch (e) { return null; } })() }),
         atualizado_em: agoraISO()
       };
       if (c.status === 'triado' || c.status === 'validado') upd.status = 'simulado';
@@ -1058,6 +1083,179 @@
       const w = window.open('', '_blank');
       w.document.write(html);
       w.document.close();
+    }
+
+    // ---------- análise técnica (documento da reunião) ----------
+    // Junta o que está gravado no caso, o que as notas dizem e o resumo dos
+    // relatórios do Domínio guardado na simulação. Nada é inventado: o que
+    // não foi medido aparece como pendência no fim do documento.
+    $('dAnalise').onclick = async () => {
+      const c = casoAtual(); if (!c) return;
+      const cli = clientesMap[c.cliente_id];
+      let ent = null;
+      try { const j = JSON.parse(c.sim_obs || 'null'); if (j && j.input) { ent = j.input; var domRes = j.dominio || null; } } catch (e) {}
+      if (!ent) { alert('Grave a simulação antes de gerar a análise — é dela que saem os números do documento.'); return; }
+      const btn = $('dAnalise'); btn.disabled = true; btn.textContent = 'Montando…';
+      try {
+        const sim = simular(ent);
+        // carteira de clientes pelas notas, agrupada por raiz de CNPJ (filial não é cliente novo)
+        let xml = null;
+        try {
+          const { error, modelo } = await carregarOperacao(supabase, c.cliente_id, ANO_XML);
+          if (!error && modelo && modelo.kpis.vendas > 0) {
+            const porRaiz = new Map();
+            modelo.clientes.topo.concat(modelo.clientes.outros ? [] : []).forEach(() => {});
+            // o ranking da operação vem por documento: reagrupa por raiz
+            const raiz = d => String(d || '').replace(/\D/g, '').slice(0, 8) || '?';
+            modelo.clientes.topo.forEach(cl => {
+              const k = raiz(cl.doc) || cl.nome;
+              const g = porRaiz.get(k) || { nome: cl.nome, uf: cl.uf, valor: 0, notas: 0, cnpjs: 0 };
+              g.valor += cl.valor; g.notas += cl.notas; g.cnpjs++;
+              if (g.uf && cl.uf && g.uf !== cl.uf) g.uf = g.uf + '/' + cl.uf;
+              porRaiz.set(k, g);
+            });
+            const lista = [...porRaiz.values()].sort((a, b) => b.valor - a.valor);
+            const total = modelo.kpis.vendas;
+            let acum = 0;
+            lista.forEach(g => { g.pct = total ? g.valor / total * 100 : 0; acum += g.valor; g.acum = total ? acum / total * 100 : 0; });
+            xml = {
+              clientes: lista, nClientes: modelo.clientes.distintos, totalVendas: total,
+              top10: lista.slice(0, 10).reduce((a, g) => a + g.valor, 0) / total * 100,
+              top20: lista.length >= 20 ? lista.slice(0, 20).reduce((a, g) => a + g.valor, 0) / total * 100 : null,
+              pctPJ: modelo.kpis.pctPJ, nNotas: modelo.kpis.nVendas + modelo.kpis.nCompras
+            };
+          }
+        } catch (e) { /* sem notas importadas o documento sai sem a seção de clientes */ }
+
+        const html = gerarAnalise(montarDadosAnalise(c, cli, ent, sim, domRes, xml));
+        const w = window.open('', '_blank');
+        w.document.write(html); w.document.close();
+      } catch (err) {
+        alert('Não consegui montar a análise: ' + (err.message || err));
+      } finally { btn.disabled = false; btn.textContent = 'Gerar análise técnica'; }
+    };
+
+    // sensibilidade, fontes, sinais, recomendação e pendências: tudo derivado do caso
+    function montarDadosAnalise(c, cli, ent, sim, dom, xml) {
+      const s = sim.semestre, m = sim.mes, optar = s.custoFora < s.custoDentro;
+      const brl0 = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+      const p1 = v => (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+      const viraEm = m.debitoFora > 0 ? (s.diferenca / 6) / m.debitoFora * 100 : null;
+      const dif = x => simular({ ...ent, ...x }).semestre.diferenca;
+      const sinal = v => (v < 0 ? 'economia de ' : 'custo de ') + brl0(Math.abs(v));
+
+      // ponto em que as compras empatariam a conta
+      let lo = ent.pctComprasMercadorias, hi = 100, empataCompras = null;
+      if (!optar) {
+        for (let i = 0; i < 40; i++) { const mid = (lo + hi) / 2; if (dif({ pctComprasMercadorias: mid }) > 0) lo = mid; else hi = mid; }
+        empataCompras = hi < 99.9 ? hi : null;
+      }
+
+      const sensibilidade = [
+        { nome: 'Repasse da CBS ao cliente', hoje: 'não levantado',
+          efeito: 'de ' + brl0(-s.diferenca) + ' (0% de repasse) a ' + brl0(m.debitoFora * 6 - s.diferenca) + ' (100%)',
+          muda: viraEm != null && viraEm >= 0 && viraEm <= 100 ? 'Sim — inverte a partir de ' + Math.round(viraEm) + '%' : 'Sim' },
+        { nome: 'Alíquota final da CBS', hoje: p1(ent.cbs) + '% estimado',
+          efeito: '8,0% → ' + sinal(dif({ cbs: 8 })) + ' · 11,0% → ' + sinal(dif({ cbs: 11 })), muda: 'Não' },
+        { nome: 'Base creditável de entradas', hoje: p1(ent.pctComprasMercadorias + ent.pctComprasDespesas) + '% da receita',
+          efeito: '25% → ' + sinal(dif({ pctComprasMercadorias: 25 })) + ' · 60% → ' + sinal(dif({ pctComprasMercadorias: 60 })),
+          muda: empataCompras ? 'Não (empataria só a ~' + Math.round(empataCompras) + '%)' : 'Não' },
+        { nome: 'Receita mensal', hoje: brl0(ent.receita),
+          efeito: '−30% → ' + sinal(dif({ receita: ent.receita * 0.7 })) + ' · +30% → ' + sinal(dif({ receita: ent.receita * 1.3 })),
+          muda: 'Não — a diferença acompanha a receita' },
+        { nome: 'Regime dos clientes', hoje: 'presumido regular',
+          efeito: 'cliente do Simples não aproveita o crédito gerado por fora', muda: optar ? 'Sim — enfraquece a opção' : 'Reforça manter no DAS' }
+      ];
+
+      const fontes = [];
+      if (dom && dom.faturamento) fontes.push({ o_que: 'Receita mensal e divisão serviço/mercadoria', origem: 'Relatório de faturamento (Domínio)' + (dom.pgdas ? ', conferido contra as apurações do Simples' : ''), nivel: 'alta', rotulo: 'alta' });
+      else fontes.push({ o_que: 'Receita mensal', origem: 'Informada na ficha', nivel: 'media', rotulo: 'média', ressalva: '— sem o relatório de faturamento' });
+      if (dom && dom.pgdas) fontes.push({ o_que: 'RBT12, anexo, alíquota efetiva e partilha do DAS', origem: 'PGDAS ' + dom.pgdas.competencia + ' (partilha = PIS + COFINS ÷ DAS total)', nivel: 'alta', rotulo: 'alta' });
+      else fontes.push({ o_que: 'RBT12, anexo e partilha do DAS', origem: 'Informados na ficha', nivel: 'media', rotulo: 'média', ressalva: '— sem o PGDAS' });
+      if (xml) fontes.push({ o_que: '% de vendas para CNPJ e concentração de clientes', origem: 'XML das notas fiscais emitidas em ' + ANO_XML, nivel: 'alta', rotulo: 'alta' });
+      if (dom && dom.entradas) fontes.push({ o_que: 'Base creditável de entradas', origem: 'Acompanhamento de entradas, classificado por CFOP', nivel: 'media', rotulo: 'média', ressalva: '— regime dos fornecedores não verificado' });
+      if (ent.mixCheia >= 99) fontes.push({ o_que: 'Mix de alíquotas (integralmente cheia)', origem: 'Serviço não consta dos anexos de redução da LC 214', nivel: 'alta', rotulo: 'alta (norma)' });
+      if (xml) fontes.push({ o_que: 'Clientes serem do regime regular', origem: 'Porte das empresas atendidas', nivel: 'media', rotulo: 'média', ressalva: '— presunção, não consulta' });
+      fontes.push({ o_que: 'Alíquota de referência da CBS', origem: 'Estimativa de ' + p1(ent.cbs) + '%; Resolução do Senado ainda não publicada', nivel: 'baixa', rotulo: 'baixa' });
+      fontes.push({ o_que: 'Capacidade de repasse do preço', origem: 'Não levantado — depende dos contratos e da conversa com os clientes', nivel: 'baixa', rotulo: 'a levantar' });
+
+      // os quatro sinais: o que o CNAE chutou × o que os dados dizem
+      const SEG = [['consumidor final', 'misto', 'empresas/PJ'], ['poucas', 'médias', 'muitas'], ['não', 'parcial', 'sim'], ['baixa', 'média', 'alta']];
+      const sinais = [];
+      if (xml && xml.pctPJ != null) {
+        const medido = xml.pctPJ >= 70 ? 2 : xml.pctPJ >= 30 ? 1 : 0;
+        sinais.push({ nome: 'Vende para', cnae: SEG[0][+c.sinal_b2b || 0], medido: p1(xml.pctPJ) + '% das vendas para CNPJ', ok: medido === (+c.sinal_b2b || 0), correto: SEG[0][medido] });
+      }
+      const baseCred = ent.pctComprasMercadorias + ent.pctComprasDespesas;
+      if (dom && dom.entradas) {
+        const medido = baseCred >= 40 ? 2 : baseCred >= 20 ? 1 : 0;
+        sinais.push({ nome: 'Compras com IBS/CBS destacado', cnae: SEG[1][+c.sinal_entradas || 0], medido: p1(baseCred) + '% da receita', ok: medido === (+c.sinal_entradas || 0), correto: SEG[1][medido] });
+      }
+      if (ent.mixCheia >= 99) sinais.push({ nome: 'Setor com redução por fora', cnae: SEG[2][+c.sinal_reducao || 0], medido: 'atividade fora dos anexos de redução', ok: (+c.sinal_reducao || 0) === 0, correto: SEG[2][0] });
+      if (dom && dom.pgdas) {
+        const medido = ent.partilha >= 22 ? 2 : ent.partilha >= 12 ? 1 : 0;
+        sinais.push({ nome: 'Parcela CBS/IBS no DAS', cnae: SEG[3][+c.sinal_aliquota || 0], medido: p1(ent.partilha) + '% do DAS', ok: medido === (+c.sinal_aliquota || 0), correto: SEG[3][medido] });
+      }
+      let scoreNota = '';
+      const errados = sinais.filter(x => !x.ok);
+      if (errados.length) {
+        const novo = SINAIS.reduce((a, k, i) => {
+          const achado = sinais.find(x => x.nome === ['Vende para', 'Compras com IBS/CBS destacado', 'Setor com redução por fora', 'Parcela CBS/IBS no DAS'][i]);
+          return a + (achado && !achado.ok ? SEG[i].indexOf(achado.correto) : (+c[k] || 0));
+        }, 0);
+        const antes = SINAIS.reduce((a, k) => a + (+c[k] || 0), 0);
+        scoreNota = 'Com a correção, o score passa de <b>' + antes + '</b> para <b>' + novo + '</b> e a triagem deixa de ser "' + TRI_LBL[triagemDoScore(antes)][0].toLowerCase()
+          + '" para ser <b>"' + TRI_LBL[triagemDoScore(novo)][0].toLowerCase() + '"</b> — coerente com o resultado da simulação. <span class="fonte">A etiqueta no cadastro deve ser atualizada.</span>';
+      } else {
+        scoreNota = 'Os quatro sinais da triagem se confirmam nos dados medidos.';
+      }
+
+      // recomendação: a assimetria das janelas manda mais que a diferença de custo
+      const recomendacao = optar
+        ? { titulo: 'Optar pelo recolhimento de IBS/CBS por fora do DAS',
+            corpo: '<p>A simulação aponta ' + brl0(Math.abs(s.diferenca)) + ' de economia no semestre apurando por fora, além de multiplicar o crédito que o cliente aproveita — de ' + brl0(s.creditoClienteDentro) + ' para ' + brl0(s.creditoClienteFora) + '.</p>'
+              + '<p style="margin-bottom:0">Vale confirmar antes da formalização os itens da seção seguinte, em especial o regime tributário dos maiores clientes: o crédito gerado por fora só tem valor para quem apura pelo regime regular.</p>' }
+        : { titulo: 'Formalizar a opção em setembro e decidir de fato até 30/11',
+            corpo: '<p>A recomendação <b>não</b> é simplesmente manter o IBS/CBS dentro do DAS, apesar de a conta apontar ' + brl0(Math.abs(s.diferenca)) + ' de economia no semestre com preço inalterado. É <b>formalizar a opção até 30/09 e usar a janela de cancelamento</b>, pelos motivos abaixo:</p><ol>'
+              + '<li><b>As portas não são simétricas.</b> Optar agora é reversível: o cancelamento até 30/11/2026 anula a opção sem qualquer efeito. Não optar tranca a apuração dentro do DAS até março/2027, com efeito só em julho — sete meses sem poder mudar de ideia.</li>'
+              + '<li><b>A variável que decide ainda não foi levantada.</b> ' + (viraEm != null && viraEm <= 100 ? 'A partir de ' + Math.round(viraEm) + '% de repasse da CBS o resultado inverte. ' : '') + 'Isso é conversa comercial com os maiores clientes — e setembro a novembro é exatamente o tempo de tê-la.</li>'
+              + '<li><b>O cliente vai perguntar antes.</b> A queda no crédito aparece na planilha de compras dele em janeiro de 2027. É melhor chegar com a proposta do que receber a cobrança.</li></ol>'
+              + '<p style="margin-bottom:0">Se até novembro ficar claro que os contratos não comportam o destaque da CBS, cancela-se a opção e tudo segue como está — com a economia preservada e nenhum custo pela tentativa.</p>' };
+
+      const perguntas = [
+        'Os contratos com os maiores clientes têm <b>preço fechado</b> ou permitem repasse de tributo? Há cláusula de revisão?',
+        'Como o preço é negociado hoje — por hora técnica, por serviço, por contrato mensal?',
+        'Algum cliente <b>já perguntou</b> sobre crédito de IBS/CBS em 2027?',
+        'Há previsão de <b>investimento em máquinas ou equipamentos</b>? Compra de ativo gera crédito integral no regime regular e melhora a conta.'
+      ];
+      if (xml && xml.clientes && xml.clientes.length) {
+        const maior = xml.clientes[0];
+        perguntas.splice(3, 0, '<b>' + maior.nome + ' representa ' + p1(maior.pct) + '% da receita.</b> O que acontece se pedir desconto equivalente ao crédito que deixará de tomar?');
+      }
+
+      const pendencias = [
+        { o_que: 'Capacidade de repasse da CBS', porque: 'É a única variável capaz de inverter a recomendação', onde: 'Contratos e conversa com os maiores clientes', quem: 'Direção / comercial', nivel: 'baixa', peso: 'decisivo' },
+        { o_que: 'Regime tributário dos maiores clientes', porque: 'O crédito gerado por fora só vale para quem apura pelo regime regular', onde: 'Consulta de CNPJ (optante pelo Simples)', quem: 'Fiscal', nivel: 'media', peso: 'alto' }
+      ];
+      if (dom && dom.entradas && dom.entradas.grupos) {
+        const duvida = dom.entradas.grupos.find(g => g.grupo === 'outras' && g.valor > 0 && !g.incluido);
+        if (duvida) pendencias.push({ o_que: 'Reclassificar ' + brl0(duvida.valor) + ' em CFOP x949', porque: 'Se for compra, aumenta a base creditável e reduz a diferença', onde: 'Notas no Domínio', quem: 'Fiscal', nivel: 'media', peso: 'médio' });
+      }
+      pendencias.push(
+        { o_que: 'Regime dos fornecedores creditáveis', porque: 'Fornecedor do Simples não gera crédito cheio na entrada', onde: 'Consulta de CNPJ', quem: 'Fiscal', nivel: 'media', peso: 'médio' },
+        { o_que: 'ISS retido e município de prestação', porque: 'Retenção reduz o DAS por dentro e muda a comparação', onde: 'NFS-e e apurações do Simples', quem: 'Fiscal', nivel: 'media', peso: 'médio' },
+        { o_que: 'Receita esperada para 2027', porque: 'A simulação usa a média do período apurado', onde: 'Contratos e expectativa do cliente', quem: 'Direção', nivel: 'media', peso: 'médio' },
+        { o_que: 'Alíquota oficial da CBS', porque: 'Hoje é estimativa; a variação testada não inverte a conclusão', onde: 'Resolução do Senado', quem: 'Acompanhar', nivel: 'alta', peso: 'baixo' }
+      );
+
+      return {
+        cliente: cli || { nome_principal: '—', documento: null }, caso: c, sim, entrada: ent, dominio: dom, xml,
+        logoUrl: new URL('assets/logo-mr.png', location.href).href,
+        hoje: new Date().toLocaleDateString('pt-BR'),
+        origemReceita: dom && dom.faturamento ? 'média do faturamento ' + dom.periodoRotulo : 'informada na ficha',
+        sensibilidade, sensibilidadeNota: 'Nenhuma incerteza técnica isolada derruba a diferença de ' + brl0(Math.abs(s.diferenca)) + ' do semestre. Só o repasse derruba — por isso a decisão é comercial, não fiscal.',
+        fontes, sinais, scoreNota, recomendacao, perguntas, pendencias
+      };
     }
 
     $('dGerar').onclick = () => {
