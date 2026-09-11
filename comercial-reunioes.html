@@ -97,7 +97,8 @@
     <div class="fa-modal">
       <div class="fa-modal-head"><h3 id="mrTitulo">Nova reunião</h3><button class="fa-modal-close" id="mrClose">&times;</button></div>
       <div class="fa-modal-body">
-        <label class="fa-field"><span>Cliente *</span><select id="rCliente" class="select"><option value="">— Selecione —</option></select></label>
+        <label class="fa-field"><span>Cliente</span><select id="rCliente" class="select"><option value="">— Não é cliente cadastrado —</option></select></label>
+        <label class="fa-field" id="rParticipanteWrap"><span>Com quem é a reunião</span><input type="text" id="rParticipante" class="input" placeholder="Ex.: João da Silva (prospect) · Fornecedor X · Contador da Empresa Y"></label>
         <div class="fa-field-row">
           <label class="fa-field"><span>Data</span><input type="date" id="rData" class="input"></label>
           <label class="fa-field"><span>Hora</span><input type="time" id="rHora" class="input"></label>
@@ -232,6 +233,8 @@
       clientes.forEach(c => { const o = document.createElement('option'); o.value = c.id; o.textContent = c.nome_principal; sel.appendChild(o); });
     }
     function clienteNome(id) { const c = clientes.find(x => x.id === id); return c ? c.nome_principal : 'Cliente removido'; }
+    // com quem é a reunião: cliente cadastrado ou o nome livre informado
+    function quemDaReuniao(r) { return r.cliente_id ? clienteNome(r.cliente_id) : ((r.participante || '').trim() || 'Sem participante'); }
 
     // ---- reuniões: lista ----
     async function carregarReunioes() {
@@ -261,7 +264,7 @@
       const fs = filterStatus.value;
       let vis = reunioes.filter(r => {
         if (fs !== 'todas' && (r.status || 'agendada') !== fs) return false;
-        if (q && !clienteNome(r.cliente_id).toLowerCase().includes(q)) return false;
+        if (q && !quemDaReuniao(r).toLowerCase().includes(q)) return false;
         return true;
       });
       if (!vis.length) {
@@ -272,7 +275,7 @@
         const concl = (r.status || 'agendada') === 'realizada';
         return '<div class="rn-card" data-id="' + r.id + '">'
           + '<div class="rn-card-main">'
-            + '<div class="rn-card-cliente">' + escapeHtml(clienteNome(r.cliente_id)) + '</div>'
+            + '<div class="rn-card-cliente">' + escapeHtml(quemDaReuniao(r)) + (r.cliente_id ? '' : ' <span style="font-size:11px;color:var(--text-muted)">· sem cadastro</span>') + '</div>'
             + '<div class="rn-card-meta">' + fmtData(r.data_reuniao) + (r.hora ? ' · 🕐 ' + fmtHora(r.hora) : '') + (r.titulo ? ' · ' + escapeHtml(r.titulo) : '') + ' · ' + (r._nPautas || 0) + ' pauta(s)</div>'
           + '</div>'
           + '<div class="rn-card-side">' + statusPill(r.status) + '<span class="rn-card-go">Abrir →</span></div>'
@@ -289,7 +292,7 @@
       document.getElementById('dIntroMin').value = (reuniaoAtual && reuniaoAtual.introducao_minutos) || '';
       document.getElementById('introStatus').textContent = '';
       if (!reuniaoAtual) return;
-      document.getElementById('dCliente').textContent = clienteNome(reuniaoAtual.cliente_id);
+      document.getElementById('dCliente').textContent = quemDaReuniao(reuniaoAtual) + (reuniaoAtual.cliente_id ? '' : ' (sem cadastro)');
       document.getElementById('dData').textContent = fmtData(reuniaoAtual.data_reuniao) + (reuniaoAtual.hora ? ' · 🕐 ' + fmtHora(reuniaoAtual.hora) : '');
       document.getElementById('dStatusPill').innerHTML = statusPill(reuniaoAtual.status);
       document.getElementById('dAssunto').textContent = reuniaoAtual.titulo || '';
@@ -384,6 +387,8 @@
       editReuniaoId = r ? r.id : null;
       document.getElementById('mrTitulo').textContent = editReuniaoId ? 'Editar reunião' : 'Nova reunião';
       document.getElementById('rCliente').value = r ? (r.cliente_id || '') : '';
+      document.getElementById('rParticipante').value = r ? (r.participante || '') : '';
+      sincronizarParticipante();
       document.getElementById('rData').value = r && r.data_reuniao ? String(r.data_reuniao).slice(0, 10) : '';
       document.getElementById('rHora').value = r && r.hora ? String(r.hora).slice(0, 5) : '';
       document.getElementById('rStatus').value = r ? (r.status || 'agendada') : 'em_preparacao';
@@ -394,13 +399,20 @@
     document.getElementById('mrClose').addEventListener('click', fecharModalReuniao);
     document.getElementById('mrCancelar').addEventListener('click', fecharModalReuniao);
     ovReuniao.addEventListener('click', e => { if (e.target === ovReuniao) fecharModalReuniao(); });
+    function sincronizarParticipante() {
+      const temCliente = !!document.getElementById('rCliente').value;
+      document.getElementById('rParticipanteWrap').hidden = temCliente;
+      if (temCliente) document.getElementById('rParticipante').value = '';
+    }
+    document.getElementById('rCliente').addEventListener('change', sincronizarParticipante);
     document.getElementById('btnEditarReuniao').addEventListener('click', () => abrirModalReuniao(reuniaoAtual));
 
     document.getElementById('mrSalvar').addEventListener('click', async () => {
-      const cliente_id = document.getElementById('rCliente').value;
-      if (!cliente_id) { alert('Selecione o cliente.'); return; }
+      const cliente_id = document.getElementById('rCliente').value || null;
+      const participante = cliente_id ? null : document.getElementById('rParticipante').value.trim();
+      if (!cliente_id && !participante) { alert('Selecione o cliente ou informe com quem é a reunião.'); return; }
       const campos = {
-        cliente_id,
+        cliente_id, participante: participante || null,
         data_reuniao: document.getElementById('rData').value || null,
         hora: document.getElementById('rHora').value || null,
         status: document.getElementById('rStatus').value,
@@ -416,8 +428,7 @@
       if (reabrirId) {
         const r = reunioes.find(x => x.id === reabrirId);
         if (r && r.tarefa_id && r.status === 'agendada') {
-          const cli = clientes.find(c => c.id === r.cliente_id);
-          const tituloT = 'Reunião' + (r.hora ? ' ' + fmtHora(r.hora) : '') + ' — ' + (cli ? cli.nome_principal : 'Cliente');
+          const tituloT = 'Reunião' + (r.hora ? ' ' + fmtHora(r.hora) : '') + ' — ' + quemDaReuniao(r);
           try { await supabase.from('tarefas').update({ titulo: tituloT, prazo: r.data_reuniao }).eq('id', r.tarefa_id); } catch (e) {}
         }
         if (r) abrirReuniao(reabrirId);
@@ -432,8 +443,7 @@
       if (error) { alert('Erro: ' + error.message); return; }
       reuniaoAtual.status = novo;
       try {
-        const cli = clientes.find(c => c.id === reuniaoAtual.cliente_id);
-        const nomeCli = cli ? cli.nome_principal : 'Cliente';
+        const nomeCli = quemDaReuniao(reuniaoAtual);
         const tituloT = 'Reunião' + (reuniaoAtual.hora ? ' ' + fmtHora(reuniaoAtual.hora) : '') + ' — ' + nomeCli;
         if (novo === 'agendada') {
           if (reuniaoAtual.tarefa_id) {
@@ -486,7 +496,7 @@
         responsavel: document.getElementById('encResp').value.trim() || null,
         prazo: document.getElementById('encPrazo').value || null,
         prioridade: 'normal', origem: 'reuniao', status: 'pendente', reuniao_pauta_id: dscPauta.id,
-        descricao: 'Encaminhamento da reunião com ' + clienteNome(reuniaoAtual.cliente_id) + ' em ' + fmtData(reuniaoAtual.data_reuniao) + ' · pauta: ' + (dscPauta.titulo || '')
+        descricao: 'Encaminhamento da reunião com ' + quemDaReuniao(reuniaoAtual) + ' em ' + fmtData(reuniaoAtual.data_reuniao) + ' · pauta: ' + (dscPauta.titulo || '')
       };
       const btn = document.getElementById('encCriar'); btn.disabled = true;
       const { data: ins, error } = await supabase.from('tarefas').insert(novo).select('id').single();
@@ -671,7 +681,7 @@
     document.getElementById('btnPDF').addEventListener('click', gerarPDF);
     async function gerarPDF() {
       if (!reuniaoAtual) return;
-      const cli = clienteNome(reuniaoAtual.cliente_id);
+      const cli = quemDaReuniao(reuniaoAtual);
       const urlsPorPauta = {};
       for (const p of pautas) if (Array.isArray(p.imagens) && p.imagens.length) urlsPorPauta[p.id] = await Promise.all(p.imagens.map(im => urlAssinada(im.path)));
       const logoUrl = new URL('assets/logo-mr.png', location.href).href;
