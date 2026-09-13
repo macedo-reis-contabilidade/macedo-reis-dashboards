@@ -90,11 +90,6 @@
     .rt-dec { display:flex; gap:18px; align-items:center; margin-bottom:10px; font-size:13px; color:#C9D3E0; flex-wrap:wrap; }
     .rt-dec label { display:flex; gap:6px; align-items:center; cursor:pointer; }
     .rg-obs { width:100%; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); border-radius:10px; color:#DDE5EF; padding:9px 11px; font:inherit; font-size:13px; min-height:56px; resize:vertical; }
-    .rt-imp-rel { font-size:12.5px; line-height:1.6; margin-top:12px; max-height:360px; overflow:auto; color:#C9D3E0; }
-    .rt-imp-tab { width:100%; border-collapse:collapse; font-size:12px; }
-    .rt-imp-tab th { text-align:left; color:#8A93A6; font-weight:600; padding:4px 8px; border-bottom:1px solid #2A3140; }
-    .rt-imp-tab td { padding:6px 8px; border-bottom:1px solid #1F2530; vertical-align:top; }
-    .rt-imp-av { color:#E3B341; }
     .rt-regra { background:rgba(255,255,255,.03); border-radius:10px; padding:10px 12px; margin-bottom:8px; font-size:12.5px; color:#C9D3E0; line-height:1.5; }
     .rt-regra .cod { display:inline-block; background:rgba(91,130,166,.2); color:#9FC0DC; border-radius:6px; padding:1px 7px; font-size:10.5px; font-weight:700; margin-right:6px; }
     .rt-regra .disp { color:#8A93A6; font-size:11px; }
@@ -175,7 +170,6 @@
         </select>
         <div class="apoio">
           <button class="btn btn-ghost" id="btnBase">Base legal</button>
-          <button class="btn btn-primary" id="btnImportar" title="Solte os relatórios do Domínio (PDF) e as notas (XML/ZIP) de vários clientes de uma vez — cada arquivo vai pro cliente do CNPJ que carrega">Importar relatórios e notas</button>
         </div>
       </div>
 
@@ -334,29 +328,13 @@
     </div>
   </div>
 
-  <!-- IMPORTAR -->
-  <div class="rg-ov" id="ovImp">
-    <div class="rg-card" style="max-width:760px">
-      <h2>Importar relatórios e notas — vários clientes</h2>
-      <p style="font-size:12.5px;color:#8A93A6;margin:6px 0 10px">Solte tudo de uma vez: <b>PDFs do Domínio</b> (faturamento, PGDAS, acompanhamento de entradas) e <b>notas em XML ou ZIP</b>. Cada arquivo vai pro cliente da campanha cujo CNPJ ele carrega — o PDF no cabeçalho, a nota no emitente ou destinatário. Os relatórios preenchem receita, anexo, RBT12, partilha e % de compras da ficha; as notas entram na base e dão % de clientes PJ e mix. <b>Ninguém é simulado aqui</b>: abra a ficha, confira de onde veio cada campo, calcule e grave.</p>
-      <div class="dom-drop" id="impDrop"><b>Arraste PDF, XML ou ZIP aqui</b><br>ou clique pra escolher — de quantos clientes quiser</div>
-      <input type="file" id="impFile" accept="application/pdf,.pdf,.xml,.zip,application/zip" multiple hidden>
-      <div class="rt-imp-rel" id="impRel"></div>
-      <div class="rg-acoes">
-        <span class="rg-msg" id="impMsg"></span>
-        <button class="btn btn-ghost" id="impFechar">Fechar</button>
-      </div>
-    </div>
-  </div>
-
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { carregarOperacao, MESES_ABREV } from './assets/js/operacao-xml.js';
     import { lerRelatorio, consolidar, resumirEntradas, GRUPOS } from './assets/js/dominio-relatorios.js';
-    import { importarLote, expandirArquivos, parseXml } from './assets/js/importar-xml.js';
-    import { formatDocumento } from './assets/js/utils.js';
+    import { importarLote } from './assets/js/importar-xml.js';
     import { gerarAnalise } from './assets/js/rt-analise.js';
     import { simular } from './assets/js/rt-motor.js';
 
@@ -589,16 +567,7 @@
       $('bMsg').textContent = '';
       $('bSaida').hidden = true;
       $('bGravar').disabled = true;
-      prepararPuxarXml(c.cliente_id).then(() => {
-        // campos preenchidos pelo lote da campanha: mostra de onde veio cada um
-        let fontes = null; try { fontes = JSON.parse(c.sim_obs || 'null')?.fontes || null; } catch (e) {}
-        if (fontes && !c.sim_custo_dentro) {
-          const ids = { anexo: 'sAnexo', rbt12: 'sRbt12', receita: 'sReceita', pctMerc: 'sPctMerc', pctDesp: 'sPctDesp', partilha: 'sPartilha', pctPJ: 'sPctPJ', mixCheia: 'sMixCheia', mixRed60: 'sMixRed60', mixRed30: 'sMixRed30', mixZero: 'sMixZero' };
-          Object.entries(fontes).forEach(([k, txt]) => { if (ids[k] && txt) origemXml(ids[k], txt, /Domínio/.test(txt) ? 'dominio' : undefined); });
-          $('bXmlInfo').innerHTML = 'Campos preenchidos pelo lote da campanha' + (fontes._quando ? ' em ' + fmtData(fontes._quando) : '') + ' — nada foi simulado ainda: confira, clique em Calcular e depois em Gravar simulação.';
-          $('bXmlInfo').hidden = false;
-        }
-      });
+      prepararPuxarXml(c.cliente_id);
 
       // C — decisão
       document.querySelectorAll('input[name="cDec"]').forEach(r => r.checked = r.value === c.decisao);
@@ -1376,165 +1345,6 @@
     $('baseFechar').onclick = () => $('ovBase').classList.remove('on');
 
     // ---------- importação Domínio ----------
-    $('btnImportar').onclick = () => { $('impRel').innerHTML = ''; $('impMsg').textContent = ''; $('ovImp').classList.add('on'); };
-    $('impFechar').onclick = () => { if (!impRodando) $('ovImp').classList.remove('on'); };
-    $('ovImp').addEventListener('click', e => { if (e.target === $('ovImp') && !impRodando) $('ovImp').classList.remove('on'); });
-    $('impDrop').onclick = () => $('impFile').click();
-    $('impFile').onchange = () => { const f = [...$('impFile').files]; $('impFile').value = ''; importarLoteCampanha(f); };
-    ['dragenter', 'dragover'].forEach(ev => $('impDrop').addEventListener(ev, e => { e.preventDefault(); $('impDrop').classList.add('is-over'); }));
-    ['dragleave', 'drop'].forEach(ev => $('impDrop').addEventListener(ev, e => { e.preventDefault(); $('impDrop').classList.remove('is-over'); }));
-    $('impDrop').addEventListener('drop', e => importarLoteCampanha([...(e.dataTransfer?.files || [])]));
-    let impRodando = false;
-    const impMsg = (t, cor) => { $('impMsg').style.color = cor || '#8A93A6'; $('impMsg').textContent = t; };
-
-    // Lote da campanha: cada arquivo vai pro cliente do CNPJ que carrega. Relatórios preenchem a
-    // ficha (sim_obs.input + colunas + resumo do Domínio); notas entram na base pelo mesmo lote
-    // atômico do módulo de notas. Não simula ninguém — a ficha mostra a origem de cada campo.
-    async function importarLoteCampanha(files) {
-      if (impRodando) { impMsg('Espere o lote atual terminar.', '#E06C6C'); return; }
-      const pdfs = files.filter(f => /\.pdf$/i.test(f.name));
-      const notas = files.filter(f => /\.(xml|zip)$/i.test(f.name));
-      const fora = files.length - pdfs.length - notas.length;
-      if (!pdfs.length && !notas.length) { impMsg('Nenhum PDF, XML ou ZIP entre os arquivos.', '#E06C6C'); return; }
-      impRodando = true; $('impRel').innerHTML = '';
-      const porCnpj = {};
-      casos.forEach(c => { const cli = clientesMap[c.cliente_id]; if (cli && cli.documento) porCnpj[String(cli.documento).replace(/\D/g, '')] = c; });
-      const usuario = (document.getElementById('userName').textContent || '').trim() || null;
-      // por cliente: { caso, rels:[], notasFiles:[], avisos:[], resultado }
-      const porCaso = new Map();
-      const linhaDe = c => { if (!porCaso.has(c.id)) porCaso.set(c.id, { caso: c, rels: [], notasFiles: [], avisos: [], nomeRels: [], notasRel: null, campos: null }); return porCaso.get(c.id); };
-      const semDono = [];   // { arquivo, motivo }
-      try {
-        // 1) relatórios: o CNPJ está no cabeçalho
-        let n = 0;
-        for (const f of pdfs) {
-          n++; impMsg('Lendo relatório ' + n + ' de ' + pdfs.length + '…');
-          try {
-            const rel = lerRelatorio(await paginasDoPdf(f));
-            const c = rel.cnpj ? porCnpj[rel.cnpj] : null;
-            if (!c) { semDono.push({ arquivo: f.name, motivo: rel.cnpj ? 'CNPJ ' + formatDocumento(rel.cnpj) + ' não está na campanha' : 'não achei o CNPJ no cabeçalho' }); continue; }
-            const L = linhaDe(c); L.rels.push(rel); L.nomeRels.push(rotuloRel(rel));
-          } catch (e) { semDono.push({ arquivo: f.name, motivo: 'não lido — ' + (e.message || e) }); }
-        }
-        // 2) notas: o CNPJ está no emitente ou no destinatário — pode servir a mais de um cliente
-        if (notas.length) {
-          if (!window.JSZip && notas.some(f => /\.zip$/i.test(f.name))) throw new Error('o leitor de ZIP não carregou — recarregue a página (Ctrl+F5)');
-          impMsg('Abrindo ' + notas.length + ' arquivo(s) de notas…');
-          const errosZip = [];
-          const xmls = await expandirArquivos(notas, errosZip);
-          errosZip.forEach(e => semDono.push({ arquivo: e.arquivo, motivo: e.motivo }));
-          let k = 0, semCliente = 0;
-          const eventos = [];
-          for (const x of xmls) {
-            k++; if (k % 50 === 0) { impMsg('Separando notas: ' + k + ' de ' + xmls.length + '…'); await new Promise(r => setTimeout(r, 0)); }
-            let r; try { r = parseXml(x.texto, x.nome); } catch (e) { semDono.push({ arquivo: x.nome, motivo: e.message || String(e) }); continue; }
-            const docs = r.kind === 'nfe' ? [r.doc] : r.kind === 'nfse' ? r.lista.map(i => i.doc) : [];
-            const donos = new Set();
-            docs.forEach(d => { [d.emit_doc, d.dest_doc].forEach(doc => { const c = doc && porCnpj[String(doc).replace(/\D/g, '')]; if (c) donos.add(c); }); });
-            // evento/cancelamento não diz de quem é: guarda e roteia no fim, pra todo cliente que recebeu nota
-            if (r.kind === 'evento') { eventos.push(x); continue; }
-            if (!donos.size) { semCliente++; continue; }
-            donos.forEach(c => linhaDe(c).notasFiles.push(new File([x.texto], x.nome.split(' › ').pop(), { type: 'text/xml' })));
-          }
-          eventos.forEach(x => porCaso.forEach(L => { if (L.notasFiles.length) L.notasFiles.push(new File([x.texto], x.nome.split(' › ').pop(), { type: 'text/xml' })); }));
-          if (eventos.length && ![...porCaso.values()].some(L => L.notasFiles.length)) semDono.push({ arquivo: eventos.length + ' evento(s)', motivo: 'sem nota de cliente da campanha no mesmo lote' });
-          if (semCliente) semDono.push({ arquivo: semCliente + ' nota(s)', motivo: 'nem emitente nem destinatário estão na campanha' });
-        }
-        // 3) por cliente: importa notas, consolida relatórios, grava a ficha
-        let idx = 0;
-        for (const L of porCaso.values()) {
-          idx++; const cli = clientesMap[L.caso.cliente_id]; const nome = cli?.nome_principal || '?';
-          impMsg('Cliente ' + idx + ' de ' + porCaso.size + ': ' + nome + '…');
-          if (L.notasFiles.length) {
-            try { L.notasRel = await importarLote({ supabase, cliente: { id: cli.id, documento: cli.documento }, arquivos: L.notasFiles, usuario,
-              onProgresso: (a, b, t) => impMsg(nome + ' — ' + t) }); }
-            catch (e) { L.avisos.push('notas não importadas: ' + (e.message || e)); }
-          }
-          await gravarFichaDoLote(L, cli);
-        }
-        render();
-        relatorioLote(porCaso, semDono, fora);
-        impMsg(porCaso.size ? '✓ ' + porCaso.size + ' cliente(s) processado(s)' : 'Nenhum arquivo casou com um cliente da campanha.', porCaso.size ? '#3FB07A' : '#E06C6C');
-      } catch (e) {
-        impMsg('Lote interrompido: ' + (e.message || e), '#E06C6C');
-      } finally { impRodando = false; }
-    }
-
-    // preenche a ficha de um cliente a partir do que o lote trouxe (sem simular)
-    async function gravarFichaDoLote(L, cli) {
-      const c = L.caso;
-      let obs = {}; try { obs = JSON.parse(c.sim_obs || 'null') || {}; } catch (e) {}
-      const input = Object.assign({}, obs.input || {});
-      const fontes = Object.assign({}, obs.fontes || {});
-      const upd = { atualizado_em: agoraISO() };
-      const r1 = v => Math.round(v * 10) / 10;
-      let dominio = obs.dominio || null, preencheu = [];
-      if (L.rels.length) {
-        const incluir = {}; Object.entries(GRUPOS).forEach(([k, g]) => incluir[k] = g.padrao);
-        const cons = consolidar(L.rels, incluir);
-        const k = cons.campos;
-        cons.avisos.forEach(a => L.avisos.push(a));
-        if (k.anexo) { input.anexo = k.anexo; upd.anexo = k.anexo; fontes.anexo = 'do Domínio: ' + (cons.origem.anexo || 'PGDAS'); preencheu.push('anexo'); }
-        if (k.rbt12 != null) { input.rbt12 = k.rbt12; upd.rbt12 = k.rbt12; fontes.rbt12 = 'do Domínio: ' + (cons.origem.rbt12 || ''); preencheu.push('RBT12'); }
-        if (k.receita != null) { input.receita = Math.round(k.receita * 100) / 100; upd.receita_mensal = input.receita; fontes.receita = 'do Domínio: ' + (cons.origem.receita || ''); preencheu.push('receita'); }
-        if (k.pctMerc != null) { input.pctComprasMercadorias = r1(k.pctMerc); fontes.pctMerc = 'do Domínio: ' + (cons.origem.pctMerc || ''); preencheu.push('% compras'); }
-        if (k.pctDesp != null) { input.pctComprasDespesas = r1(k.pctDesp); fontes.pctDesp = 'do Domínio: ' + (cons.origem.pctDesp || ''); }
-        if (k.pctMerc != null || k.pctDesp != null) upd.pct_compras_creditaveis = (input.pctComprasMercadorias || 0) + (input.pctComprasDespesas || 0);
-        if (k.partilha != null) { input.partilha = r1(k.partilha); fontes.partilha = 'do Domínio: ' + (cons.origem.partilha || ''); preencheu.push('partilha'); }
-        dominio = resumoDominio(L.rels, cons, incluir);
-        L.campos = preencheu;
-      }
-      // notas na base (as de agora e as de antes): % PJ e mix; receita e compras só se o Domínio não deu
-      try {
-        const { error, modelo } = await carregarOperacao(supabase, cli.id, ANO_XML);
-        if (!error && modelo && modelo.ponte.nSaidas) {
-          const p = modelo.ponte;
-          input.pctPJ = r1(p.pctPJ); upd.pct_clientes_pj = input.pctPJ; fontes.pctPJ = 'das notas: ' + brPct(r1(p.pctPJ)) + '% das vendas para PJ';
-          input.mixZero = r1(p.mixZero); input.mixRed60 = r1(p.mixRed60); input.mixRed30 = r1(p.mixRed30);
-          input.mixCheia = r1(Math.max(0, 100 - input.mixZero - input.mixRed60 - input.mixRed30));
-          fontes.mixCheia = 'das notas: 100 − zero − reduções'; fontes.mixRed60 = 'das notas: NCM com redução 60%'; fontes.mixRed30 = 'das notas: NCM com redução 30%'; fontes.mixZero = 'das notas: NCM em alíquota zero';
-          upd.pct_receita_reduzida = input.mixRed60 + input.mixRed30 + input.mixZero;
-          if (!fontes.receita || !/Domínio/.test(fontes.receita)) { input.receita = Math.round(p.receitaMensal * 100) / 100; upd.receita_mensal = input.receita; fontes.receita = 'das notas: média de ' + p.mesesComVenda.length + ' mês(es) com venda'; }
-          if (!fontes.pctMerc || !/Domínio/.test(fontes.pctMerc)) { input.pctComprasMercadorias = r1(p.pctMerc); input.pctComprasDespesas = r1(p.pctDesp); fontes.pctMerc = 'das notas: compras de mercadoria ÷ vendas'; fontes.pctDesp = 'das notas: demais entradas ÷ vendas'; upd.pct_compras_creditaveis = input.pctComprasMercadorias + input.pctComprasDespesas; }
-          preencheu.push('% PJ', 'mix');
-        } else if (L.notasFiles.length && !L.notasRel) { /* importação falhou: aviso já registrado */ }
-      } catch (e) { L.avisos.push('não consegui ler as notas da base: ' + (e.message || e)); }
-      if (!preencheu.length && !L.notasRel) return;
-      // defaults que a ficha usaria de qualquer jeito — assim sim_obs.input fica completo
-      if (input.cbs == null) input.cbs = params.cbs;
-      if (input.ibs == null) input.ibs = params.ibs;
-      ['pctImpostoEmbutido', 'pctExcluidoST', 'creditoEstoqueMes'].forEach(k => { if (input[k] == null) input[k] = 0; });
-      if (input.mixCheia == null && input.mixRed60 == null && input.mixRed30 == null && input.mixZero == null) { input.mixCheia = 100; input.mixRed60 = 0; input.mixRed30 = 0; input.mixZero = 0; }
-      fontes._quando = hojeISO();
-      upd.sim_obs = JSON.stringify(Object.assign({}, obs, { v: 1, input, fontes, dominio, importado_em: hojeISO() }));
-      if (c.sim_custo_dentro != null) L.avisos.push('já tinha simulação gravada — os campos mudaram, recalcule na ficha');
-      const { error } = await supabase.from('rt_casos').update(upd).eq('id', c.id);
-      if (error) { L.avisos.push('erro ao gravar a ficha: ' + error.message); return; }
-      Object.assign(c, upd);
-      L.campos = preencheu;
-    }
-
-    function relatorioLote(porCaso, semDono, fora) {
-      const linhas = [...porCaso.values()].sort((a, b) => (clientesMap[a.caso.cliente_id]?.nome_principal || '').localeCompare(clientesMap[b.caso.cliente_id]?.nome_principal || ''));
-      let html = '';
-      if (linhas.length) {
-        html += '<table class="rt-imp-tab"><thead><tr><th>Cliente</th><th>Relatórios</th><th>Ficha</th><th>Notas</th><th>Avisos</th></tr></thead><tbody>';
-        linhas.forEach(L => {
-          const n = L.notasRel;
-          html += '<tr><td><b>' + escapeHtml(clientesMap[L.caso.cliente_id]?.nome_principal || '?') + '</b></td>'
-            + '<td>' + (L.nomeRels.length ? L.nomeRels.map(escapeHtml).join('<br>') : '—') + '</td>'
-            + '<td>' + (L.campos && L.campos.length ? escapeHtml([...new Set(L.campos)].join(', ')) : '—') + '</td>'
-            + '<td>' + (n ? n.novas + ' nova(s)' + (n.duplicadas ? ' · ' + n.duplicadas + ' já estavam' : '') + (n.ignorados.length ? ' · ' + n.ignorados.length + ' ignorada(s)' : '') + (n.erros.length ? ' · ' + n.erros.length + ' erro(s)' : '') : (L.notasFiles.length ? 'não importadas' : '—')) + '</td>'
-            + '<td class="rt-imp-av">' + (L.avisos.length ? L.avisos.map(a => '⚠ ' + escapeHtml(a)).join('<br>') : '') + '</td></tr>';
-        });
-        html += '</tbody></table>';
-      }
-      if (semDono.length) html += '<p class="rt-nota" style="margin-top:10px"><b style="color:#E8A15C">Sem cliente na campanha (' + semDono.length + '):</b> ' + semDono.map(x => escapeHtml(x.arquivo) + ' — ' + escapeHtml(x.motivo)).join(' · ') + '</p>';
-      if (fora) html += '<p class="rt-nota">' + fora + ' arquivo(s) fora do padrão (PDF, XML ou ZIP) não entraram.</p>';
-      html += '<p class="rt-nota" style="margin-top:10px">Ninguém foi simulado: abra cada ficha, confira a origem dos campos, clique em Calcular e depois em Gravar simulação.</p>';
-      $('impRel').innerHTML = html;
-    }
-
     load();
   </script>
 </body>
