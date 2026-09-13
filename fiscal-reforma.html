@@ -7,7 +7,9 @@
   <link rel="stylesheet" href="assets/css/style.css">
   <script type="module" src="assets/js/auth-guard.js"></script>
   <style>
-    .rg-resumo { display:flex; gap:34px; flex-wrap:wrap; margin-bottom:14px; background:rgba(255,255,255,.04); border-radius:14px; padding:14px 20px; }
+    /* mesma largura e o mesmo ritmo da linha de status logo abaixo: cinco colunas iguais */
+    .rg-resumo { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-bottom:10px; background:rgba(255,255,255,.04); border-radius:14px; padding:14px 20px; }
+    @media (max-width:900px) { .rg-resumo { grid-template-columns:repeat(3,1fr); row-gap:14px; } }
     .rg-kpi { display:flex; flex-direction:column; gap:2px; }
     .rg-kpi .n { font-size:1.35rem; font-weight:700; color:#E6ECF4; }
     .rg-kpi .l { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:#8A93A6; }
