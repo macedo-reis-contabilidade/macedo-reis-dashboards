@@ -945,7 +945,11 @@
       const anexo = $('sAnexo').value, rbt12 = parseNum($('sRbt12').value);
       if (!params.partilha || !params.partilha[anexo] || !(rbt12 > 0)) { $('sPartilhaHint').textContent = 'manual — ler no PGDAS'; return; }
       const fx = params.partilha[anexo].find(f => rbt12 <= +f.ate);
-      if (fx) { $('sPartilha').value = brPct(fx.pct); $('sPartilha').dataset.auto = '1'; $('sPartilhaHint').textContent = 'auto — tabela oficial'; }
+      if (fx) {
+        const i = params.partilha[anexo].indexOf(fx);
+        $('sPartilha').value = brPct(fx.pct); $('sPartilha').dataset.auto = '1';
+        $('sPartilhaHint').textContent = 'auto — Anexo ' + anexo + ', ' + (i + 1) + 'ª faixa: CBS ' + brPct(fx.cbs) + '% + IBS ' + brPct(fx.ibs) + '% (tabela 2027-2028)';
+      }
     }
     $('sAnexo').onchange = () => { if ($('sPartilha').dataset.auto || !$('sPartilha').value) preencherPartilhaAuto(); };
     $('sRbt12').oninput = () => { if ($('sPartilha').dataset.auto || !$('sPartilha').value) preencherPartilhaAuto(); };
