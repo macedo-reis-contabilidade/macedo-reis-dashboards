@@ -35,7 +35,10 @@ const num = (v, def) => {
 // simular(input) → resultado do semestre jan–jun/2027 nos dois regimes.
 // Percentuais entram como a equipe digita (20 = 20%). Campos:
 //   anexo 'I'..'V' · rbt12 · receita (mensal)
-//   mixCheia / mixRed60 / mixRed30 / mixZero  (% da receita — somam 100)
+//   mixCheia / mixRed60 / mixRed40 / mixRed30 / mixZero  (% da receita — somam 100)
+//     mixRed40: bares e restaurantes, alimentação preparada no local (LC 214 art. 275) — só vale por fora
+//   pctComprasComCredito (opcional, % 0–100): quanto das compras de mercadorias credita à alíquota cheia,
+//     medido pelo NCM das entradas (cesta básica = zero). Se ausente, as compras seguem o mix das vendas.
 //   pctComprasMercadorias  (% da receita: compras que seguem o mix de vendas)
 //   pctComprasDespesas     (% da receita: compras creditadas à alíquota cheia; default 0)
 //   pctImpostoEmbutido (default 0) · pctExcluidoST (default 0)
@@ -50,9 +53,9 @@ export function simular(input) {
   if (rbt12 > 4800000) throw new Error('RBT12 de ' + rbt12.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) + ' passa do limite do Simples (R$ 4.800.000) — confira o valor.');
   if (!(receita > 0)) throw new Error('Informe a receita mensal.');
 
-  const mixCheia = num(input.mixCheia, 0), mixRed60 = num(input.mixRed60, 0),
+  const mixCheia = num(input.mixCheia, 0), mixRed60 = num(input.mixRed60, 0), mixRed40 = num(input.mixRed40, 0),
         mixRed30 = num(input.mixRed30, 0), mixZero = num(input.mixZero, 0);
-  const somaMix = mixCheia + mixRed60 + mixRed30 + mixZero;
+  const somaMix = mixCheia + mixRed60 + mixRed40 + mixRed30 + mixZero;
   if (Math.abs(somaMix - 100) > 0.5) throw new Error('O mix de receita precisa somar 100% (soma atual: ' + somaMix.toFixed(1) + '%).');
 
   const pctMerc = num(input.pctComprasMercadorias, 0);
@@ -73,7 +76,11 @@ export function simular(input) {
   const avisos = [];
   const ae = aliqEfetiva(anexo, rbt12);
   const aliqRef = (cbs + ibs) / 100;
-  const fatorMix = (mixCheia + 0.40 * mixRed60 + 0.70 * mixRed30 + 0 * mixZero) / 100;
+  const fatorMix = (mixCheia + 0.40 * mixRed60 + 0.60 * mixRed40 + 0.70 * mixRed30 + 0 * mixZero) / 100;
+  // crédito das compras: pelo NCM das entradas quando medido; senão, o mix das vendas (revenda)
+  const pctCred = input.pctComprasComCredito == null || input.pctComprasComCredito === '' ? null : num(input.pctComprasComCredito, NaN);
+  if (pctCred != null && (!Number.isFinite(pctCred) || pctCred < 0 || pctCred > 100)) throw new Error('% das compras com crédito precisa estar entre 0 e 100.');
+  const fatorCompras = pctCred != null ? pctCred / 100 : fatorMix;
 
   // --- mês (os 6 meses são iguais; só o crédito de estoque varia) ---
   const dasCheio = receita * ae;
@@ -93,7 +100,7 @@ export function simular(input) {
   const baseDesp = comprasDesp * (1 - pctEmb / 100);
   // Mercadorias revendidas carregam o mesmo mix das vendas (o fornecedor
   // destaca a alíquota do produto); despesas creditam à alíquota cheia.
-  const creditoEntradas = baseMerc * aliqRef * fatorMix + baseDesp * aliqRef;
+  const creditoEntradas = baseMerc * aliqRef * fatorCompras + baseDesp * aliqRef;
 
   const meses = [];
   for (let m = 1; m <= 6; m++) {
@@ -111,6 +118,7 @@ export function simular(input) {
   }
 
   const soma = k => meses.reduce((a, x) => a + x[k], 0);
+  const fatores = { mix: fatorMix, compras: fatorCompras, comprasMedido: pctCred != null };
   const semestre = {
     custoDentro: soma('custoDentro'),
     custoFora: soma('custoFora'),
@@ -160,6 +168,7 @@ export function simular(input) {
     aliqEfetiva: ae,
     aliqRef,
     fatorMix,
+    fatores,
     mes: { dasCheio, dasHoje, parcelaCbsIbs, dasSobra, debitoFora, comprasMerc, comprasDesp, creditoEntradas, aRecolherSemEstoque: Math.max(0, debitoFora - creditoEntradas) },
     meses,
     semestre,

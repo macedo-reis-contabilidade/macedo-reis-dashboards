@@ -12,6 +12,7 @@
 // centavo e alíquota efetiva batendo com a do PGDAS na quarta casa.
 
 import { lerRelatorio, detectarTipo, grupoDoCfop, resumirEntradas, consolidar, numBR } from '../assets/js/dominio-relatorios.js';
+import { aliqEfetiva } from '../assets/js/rt-motor.js';
 
 let falhas = 0;
 const ok = (cond, msg) => { if (!cond) { falhas++; console.error('  ✗ ' + msg); } else console.log('  ✓ ' + msg); };
@@ -168,7 +169,11 @@ const c = consolidar([fat, sim, ent]);
 perto(c.campos.receita, 100000, 0.005, 'receita mensal = total ÷ meses com faturamento');
 ok(c.campos.anexo === 'III', 'anexo predominante vai para a ficha');
 perto(c.campos.rbt12, 1200000, 0.005, 'RBT12 vai para a ficha');
-perto(c.campos.partilha, 2041 / 11800 * 100, 0.005, 'partilha calculada, não digitada');
+// a partilha vai para o motor medida sobre o DAS PELA TABELA do anexo (é sobre ele que a parcela
+// CBS/IBS é aplicada); a proporção sobre o DAS apurado fica ao lado, para conferência
+perto(c.campos.partilhaSobreDasApurado, 2041 / 11800 * 100, 0.005, 'partilha sobre o DAS apurado, calculada e não digitada');
+perto(c.campos.partilha, 2041 / (100000 * aliqEfetiva('III', 1200000)) * 100, 0.005, 'partilha sobre o DAS pela tabela do anexo');
+perto(c.campos.pctExcluidoST, Math.max(0, 1 - 11800 / (100000 * aliqEfetiva('III', 1200000))) * 100, 0.005, '% do DAS excluído = 1 − DAS apurado ÷ DAS pela tabela');
 perto(c.campos.pctMerc, 12000 / 300000 * 100, 0.005, '% compras de mercadorias sobre a receita do período');
 perto(c.campos.pctDesp, 1000 / 300000 * 100, 0.005, '% despesas sem o x949 (desligado por padrão)');
 ok(c.avisos.some(a => /remessas e retornos/i.test(a)), 'avisa o que ficou fora por não ser compra');

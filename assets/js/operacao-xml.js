@@ -219,6 +219,10 @@ export function agregar(docs, itens, regras, periodo) {
     comprasSuperamVendas: totC > totV,
     mixZero: vendidos.mix.zero, mixRed60: vendidos.mix.reducao_60, mixRed30: vendidos.mix.reducao_30,
     mixCheia: Math.max(0, 100 - vendidos.mix.zero - vendidos.mix.reducao_60 - vendidos.mix.reducao_30),
+    // crédito das compras pelo NCM: cesta básica não credita; redução 60% credita 40% etc.
+    mixCompras: { zero: comprados.mix.zero, reducao_60: comprados.mix.reducao_60, reducao_30: comprados.mix.reducao_30, cheia: comprados.mix.cheia },
+    pctComprasComCredito: comprados.total > 0 ? Math.max(0, Math.min(100, comprados.mix.cheia + 0.40 * comprados.mix.reducao_60 + 0.70 * comprados.mix.reducao_30)) : null,
+    comprasSemNcm: comprados.semNcm,
     nSaidas: vendas.length, nEntradas: compras.length
   };
 

@@ -55,10 +55,13 @@ export function grupoDoCfop(cfop) {
   return 'indefinido';
 }
 
+import { aliqEfetiva } from './rt-motor.js';
+
 // ---------- identificação ----------
 export function detectarTipo(paginas) {
   const cabeca = norm((paginas[0] || []).slice(0, 14).join(' | '));
   if (cabeca.includes('RELATORIO DE FATURAMENTO')) return 'faturamento';
+  if (cabeca.includes('DEMONSTRATIVO MENSAL')) return 'demonstrativo';
   if (cabeca.includes('ACOMPANHAMENTO DE ENTRADAS')) return 'entradas';
   if (cabeca.includes('SIMPLES NACIONAL')) return 'simples';
   return null;
@@ -80,27 +83,39 @@ function cabecalho(paginas) {
 
 // ---------- 1) RELATÓRIO DE FATURAMENTO ----------
 // "Janeiro  2026  13.960,00  88.374,29  0,00  102.334,29"
-export function lerFaturamento(paginas) {
+// `layout`: 'faturamento' (Saídas · Serviços · Outros · Total) ou 'demonstrativo'
+// (Demonstrativo Mensal: Entradas · Saídas · Serviços · colunas em UFIR). Os dois viram o
+// mesmo objeto: um mês por linha com saídas, serviços e total — o resto do sistema não distingue.
+export function lerFaturamento(paginas, layout = 'faturamento') {
   const base = cabecalho(paginas);
   const meses = [];
   let totais = null;
+  const demo = layout === 'demonstrativo';
   for (const linha of paginas.flat()) {
     const m = linha.match(/^\s*([A-Za-zçÇÃãÂâÉé]+)\s+(\d{4})\s+(.+)$/);
     if (m) {
       const idx = MESES.findIndex(x => semAcento(x) === semAcento(m[1]).toLowerCase());
       const v = valores(m[3]);
-      if (idx >= 0 && v.length >= 4) {
+      if (idx >= 0 && !demo && v.length >= 4) {
         meses.push({ competencia: m[2] + '-' + String(idx + 1).padStart(2, '0'), saidas: v[0], servicos: v[1], outros: v[2], total: v[3] });
         continue;
       }
+      if (idx >= 0 && demo && v.length >= 3) {
+        meses.push({ competencia: m[2] + '-' + String(idx + 1).padStart(2, '0'), saidas: v[1], servicos: v[2], outros: 0, total: v[1] + v[2], entradas: v[0] });
+        continue;
+      }
     }
-    if (/^\s*Totais\b/i.test(linha)) { const v = valores(linha); if (v.length >= 4) totais = { saidas: v[0], servicos: v[1], outros: v[2], total: v[3] }; }
+    if (/^\s*Totais\b/i.test(linha)) {
+      const v = valores(linha);
+      if (!demo && v.length >= 4) totais = { saidas: v[0], servicos: v[1], outros: v[2], total: v[3] };
+      if (demo && v.length >= 3) totais = { saidas: v[1], servicos: v[2], outros: 0, total: v[1] + v[2], entradas: v[0] };
+    }
   }
   if (!meses.length) throw new Error('não encontrei os meses no relatório de faturamento');
   meses.sort((a, b) => a.competencia < b.competencia ? -1 : 1);
   const soma = k => meses.reduce((a, x) => a + (x[k] || 0), 0);
   const conferido = totais ? Math.abs(soma('total') - totais.total) <= 0.05 : null;
-  return { tipo: 'faturamento', ...base, meses, totais: totais || { saidas: soma('saidas'), servicos: soma('servicos'), outros: soma('outros'), total: soma('total') }, conferido };
+  return { tipo: 'faturamento', layout, ...base, meses, totais: totais || { saidas: soma('saidas'), servicos: soma('servicos'), outros: soma('outros'), total: soma('total') }, conferido };
 }
 
 // ---------- 2) SIMPLES NACIONAL (PGDAS) ----------
@@ -126,6 +141,8 @@ export function lerSimples(paginas) {
     if (!atual) continue;
     m = l.match(/Receita Tributada Total:\s*([\d.]+,\d{2})\s*Al[íi]quota:\s*([\d.,]+)\s+Simples Nacional Total:\s*([\d.]+,\d{2})/);
     if (m) { atual.receita = numBR(m[1]); atual.aliquota = numBR(m[2]); atual.das = numBR(m[3]); continue; }
+    m = l.match(/^\s*Percentual de Redu[çc][aã]o:\s*([\d.,]+)/);
+    if (m) { atual.reducao = numBR(m[1]); continue; }
     m = l.match(/^\s*Partilha:\s*(.+)$/);
     if (m) { tributos = m[1].trim().split(/\s{2,}/).map(t => t.trim()).filter(Boolean); continue; }
     m = l.match(/^\s*Valor:\s*(.+)$/);
@@ -136,6 +153,19 @@ export function lerSimples(paginas) {
     }
   }
   if (!anexos.length) throw new Error('não encontrei os anexos na apuração do Simples');
+  // o mesmo anexo pode vir em mais de uma seção (ex.: revenda sem ST e revenda com ST/monofásico);
+  // para o simulador o anexo é um só — soma as seções e guarda cada uma em `secoes`
+  const porAnexo = new Map();
+  anexos.forEach(a => {
+    const g = porAnexo.get(a.anexo) || { anexo: a.anexo, descricao: a.descricao, receita: 0, das: 0, aliquota: null, partilha: {}, secoes: [] };
+    g.receita += a.receita || 0; g.das += a.das || 0;
+    Object.entries(a.partilha).forEach(([t, v]) => { g.partilha[t] = (g.partilha[t] || 0) + v; });
+    g.secoes.push({ receita: a.receita, aliquota: a.aliquota, das: a.das, partilha: a.partilha, reducao: a.reducao || null });
+    if (a.reducao) g.reducao = a.reducao;
+    porAnexo.set(a.anexo, g);
+  });
+  const anexosAgregados = [...porAnexo.values()].map(g => ({ ...g, aliquota: g.receita ? g.das / g.receita * 100 : null }));
+  anexos.length = 0; anexosAgregados.forEach(g => anexos.push(g));
 
   const dasTotal = anexos.reduce((a, x) => a + (x.das || 0), 0);
   const porTributo = {};
@@ -155,6 +185,7 @@ export function lerSimples(paginas) {
   const predominante = anexos.slice().sort((a, b) => (b.receita || 0) - (a.receita || 0))[0];
   return {
     tipo: 'simples', ...base, competencia, rpa, rbt12, rbaCorrente, faixa, anexos, dasTotal, receitaTributada,
+    reducaoIcms: (anexos.find(a => a.reducao) || {}).reducao || null,
     porTributo, cbsNoDas, ibsNoDas,
     partilhaCbsPct: dasTotal > 0 ? cbsNoDas / dasTotal * 100 : null,
     partilhaIbsPct: dasTotal > 0 ? ibsNoDas / dasTotal * 100 : null,
@@ -206,10 +237,11 @@ export function lerEntradas(paginas) {
 
 export function lerRelatorio(paginas) {
   const tipo = detectarTipo(paginas);
-  if (tipo === 'faturamento') return lerFaturamento(paginas);
+  if (tipo === 'faturamento') return lerFaturamento(paginas, 'faturamento');
+  if (tipo === 'demonstrativo') return lerFaturamento(paginas, 'demonstrativo');
   if (tipo === 'simples') return lerSimples(paginas);
   if (tipo === 'entradas') return lerEntradas(paginas);
-  throw new Error('não reconheci o relatório (esperado: Faturamento, Simples Nacional ou Acompanhamento de Entradas da Domínio)');
+  throw new Error('não reconheci o relatório (esperado: Relatório de Faturamento, Demonstrativo Mensal, Simples Nacional ou Acompanhamento de Entradas da Domínio)');
 }
 
 // ---------- resumo das entradas por grupo de CFOP ----------
@@ -237,10 +269,26 @@ export function resumirEntradas(ent, competencias) {
 // ---------- consolidação para a ficha da Reforma ----------
 // rels: relatórios lidos · incluir: { grupo: bool } vindo dos checkboxes da prévia
 export function consolidar(rels, incluir) {
-  const fat = rels.filter(r => r.tipo === 'faturamento').pop() || null;
+  // vários relatórios de faturamento (12 meses + mês corrente): junta por competência, o mais recente vence
+  const fats = rels.filter(r => r.tipo === 'faturamento');
+  let fat = null;
+  if (fats.length) {
+    const porComp = new Map();
+    fats.forEach(f => f.meses.forEach(m => porComp.set(m.competencia, m)));
+    const meses = [...porComp.values()].sort((a, b) => a.competencia < b.competencia ? -1 : 1);
+    const soma = k => meses.reduce((a, x) => a + (x[k] || 0), 0);
+    fat = { ...fats[fats.length - 1], meses, totais: { saidas: soma('saidas'), servicos: soma('servicos'), outros: soma('outros'), total: soma('total') }, combinados: fats.length };
+  }
   const sims = rels.filter(r => r.tipo === 'simples').sort((a, b) => (a.competencia || '') < (b.competencia || '') ? -1 : 1);
   const sim = sims[sims.length - 1] || null;
-  const ent = rels.filter(r => r.tipo === 'entradas').pop() || null;
+  // idem para entradas: junta os lançamentos por competência, o relatório mais recente vence no mês repetido
+  const ents = rels.filter(r => r.tipo === 'entradas');
+  let ent = null;
+  if (ents.length) {
+    const porComp = new Map();
+    ents.forEach(e => { const comps = [...new Set(e.lancamentos.map(l => l.competencia))]; comps.forEach(c => porComp.set(c, e.lancamentos.filter(l => l.competencia === c))); });
+    ent = { ...ents[ents.length - 1], lancamentos: [...porComp.values()].flat(), combinados: ents.length };
+  }
   const campos = {}, origem = {}, avisos = [];
 
   // empresas diferentes no mesmo lote é erro de operação, não de leitura
@@ -250,12 +298,15 @@ export function consolidar(rels, incluir) {
   // receita mensal: média dos meses com faturamento
   let competencias = [];
   if (fat) {
-    const comFat = fat.meses.filter(m => (m.total || 0) > 0);
+    // últimos 12 meses com faturamento: mais que isso é história, menos é o que há
+    const comFat = fat.meses.filter(m => (m.total || 0) > 0).slice(-12);
     competencias = comFat.map(m => m.competencia);
     if (comFat.length) {
-      campos.receita = fat.totais.total / comFat.length;
-      const pctServ = fat.totais.total ? fat.totais.servicos / fat.totais.total * 100 : 0;
-      origem.receita = 'faturamento Domínio: ' + brl(fat.totais.total) + ' ÷ ' + comFat.length + ' mês(es)'
+      const totalBase = comFat.reduce((a, m) => a + m.total, 0);
+      const servBase = comFat.reduce((a, m) => a + (m.servicos || 0), 0);
+      campos.receita = totalBase / comFat.length;
+      const pctServ = totalBase ? servBase / totalBase * 100 : 0;
+      origem.receita = 'faturamento Domínio: ' + brl(totalBase) + ' ÷ ' + comFat.length + ' mês(es) (' + comFat[0].competencia.slice(5) + '/' + comFat[0].competencia.slice(2, 4) + ' a ' + comFat[comFat.length - 1].competencia.slice(5) + '/' + comFat[comFat.length - 1].competencia.slice(2, 4) + ')'
         + (pctServ > 0 ? ' · ' + pct(pctServ) + '% serviço' : '');
     }
   } else if (sim) {
@@ -273,9 +324,28 @@ export function consolidar(rels, incluir) {
     if (outros.length) avisos.push('A empresa tem receita em mais de um anexo — o simulador trabalha com um só; foi usado o predominante (Anexo ' + sim.anexoPredominante + ').');
     campos.rbt12 = sim.rbt12;
     origem.rbt12 = 'PGDAS ' + sim.competencia;
+    // DAS pela tabela do anexo × DAS realmente apurado: a diferença é ICMS-ST, monofásico,
+    // ISS retido ou redução de base — o que a ficha chama de "% do DAS já excluído"
+    let dasTabela = null;
+    try { if (sim.rbt12 > 0 && sim.receitaTributada > 0) dasTabela = sim.receitaTributada * aliqEfetiva(sim.anexoPredominante, sim.rbt12); } catch (e) { dasTabela = null; }
+    if (dasTabela > 0 && sim.dasTotal >= 0) {
+      const excl = Math.max(0, 1 - sim.dasTotal / dasTabela) * 100;
+      campos.pctExcluidoST = excl;
+      const motivos = [];
+      if (sim.anexos.some(a => (a.secoes || []).length > 1)) motivos.push('receita com ST/monofásico');
+      if (sim.reducaoIcms) motivos.push('redução de ' + pct(sim.reducaoIcms) + '% na base do ICMS');
+      origem.pctExcluidoST = 'PGDAS ' + sim.competencia + ': DAS apurado ' + brl(sim.dasTotal) + ' contra ' + brl(dasTabela) + ' pela tabela do Anexo ' + sim.anexoPredominante
+        + (excl > 0.05 ? ' — ' + pct(excl) + '% a menos' + (motivos.length ? ' (' + motivos.join(' e ') + ')' : '') : ' — sem exclusão');
+    }
     if (sim.partilhaCbsPct != null) {
-      campos.partilha = sim.partilhaCbsPct;
-      origem.partilha = 'PGDAS ' + sim.competencia + ': PIS + COFINS = ' + brl(sim.cbsNoDas) + ' de ' + brl(sim.dasTotal) + ' do DAS';
+      // partilha medida sobre o DAS PELA TABELA (é sobre ele que o motor aplica a parcela CBS/IBS).
+      // Difere da proporção sobre o DAS apurado quando há exclusão de ST/ISS.
+      const partilhaNominal = dasTabela > 0 ? sim.cbsNoDas / dasTabela * 100 : sim.partilhaCbsPct;
+      campos.partilha = partilhaNominal;
+      campos.partilhaSobreDasApurado = sim.partilhaCbsPct;
+      origem.partilha = 'PGDAS ' + sim.competencia + ': PIS + COFINS = ' + brl(sim.cbsNoDas)
+        + (dasTabela > 0 ? ' = ' + pct(partilhaNominal) + '% do DAS pela tabela (' + pct(sim.partilhaCbsPct) + '% do DAS apurado)' : ' de ' + brl(sim.dasTotal) + ' do DAS');
+      if (sim.anexos.some(a => (a.secoes || []).length > 1)) avisos.push('Parte da receita é monofásica de PIS/COFINS hoje (sem PIS/COFINS no DAS). Em 2027 a CBS alcança essa parcela também: a partilha da tabela oficial de 2027 é a referência; o PGDAS serve de conferência.');
     }
     if (sim.aliquotaEfetiva != null) origem.aliquotaEfetiva = pct(sim.aliquotaEfetiva) + '% no PGDAS ' + sim.competencia;
   }

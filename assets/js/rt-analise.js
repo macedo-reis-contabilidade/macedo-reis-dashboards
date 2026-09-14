@@ -132,7 +132,18 @@ export function gerarAnalise(d) {
     + '</tbody></table>');
 
   // ---------- 2. clientes ----------
-  if (xml && xml.clientes && xml.clientes.length) {
+  const barRestaurante = (e.mixRed40 || 0) > 0;
+  const vendeAConsumidor = xml && xml.pctPJ != null && xml.pctPJ < 10;
+  if (xml && (vendeAConsumidor || barRestaurante)) {
+    // empresa que vende a consumidor final (ou bar/restaurante): ninguém credita — a decisão é só a conta própria
+    P('<h2>2. Para quem a empresa vende — e por que isso simplifica a conta</h2>');
+    P('<p>Medido em <b>' + esc(xml.periodoRotulo) + '</b>' + (xml.cobertura != null ? ', período em que as notas eletrônicas cobrem <b>' + (xml.cobertura >= 99.995 ? '100%' : pct2(xml.cobertura) + '%') + '</b> do faturamento declarado' : '') + ': <b>' + pct1(100 - (xml.pctPJ || 0)) + '% das vendas vão para consumidor final</b>'
+      + (xml.pctPJ > 0 ? ' e ' + pct1(xml.pctPJ) + '% para CNPJ' : '') + '.</p>');
+    P('<div class="cx chave"><h4>O ponto central</h4>'
+      + '<p>Consumidor final não credita imposto — hoje nem em 2027. ' + (barRestaurante ? 'E para bar e restaurante a lei fecha a porta também para o cliente pessoa jurídica: <b>o adquirente de alimentação e bebidas não pode se apropriar de crédito de IBS/CBS</b> (LC 214/2025, art. 276). ' : '')
+      + 'Logo, apurar <b>por fora</b> não devolve crédito a ninguém — a única coisa que a opção muda é a conta da própria empresa.</p>'
+      + '<p style="margin-bottom:0">Isso tira da mesa a variável que costuma decidir esse tipo de caso (o quanto o cliente pressiona por crédito). Aqui a decisão é aritmética: o que a empresa paga por dentro contra o que pagaria por fora, e só.</p></div>');
+  } else if (xml && xml.clientes && xml.clientes.length) {
     P('<h2>2. Para quem a empresa vende — e por que isso decide a conta</h2>');
     P('<p>Medido em <b>' + esc(xml.periodoRotulo) + '</b>' + (xml.cobertura != null ? ', período em que as notas eletrônicas cobrem <b>' + (xml.cobertura >= 99.995 ? '100%' : pct2(xml.cobertura) + '%') + '</b> do faturamento declarado' : '') + '. A empresa atendeu <b>' + xml.nClientes + ' grupos econômicos</b>; os dez maiores concentram <b>' + pct1(xml.top10) + '% da receita</b>'
       + (xml.top20 != null ? ' e os vinte maiores, <b>' + pct1(xml.top20) + '%</b>' : '') + '.</p>'
@@ -204,17 +215,32 @@ export function gerarAnalise(d) {
     + '<tr class="tot"><td>Custo do mês</td><td class="num">' + brl(s.custoDentro / 6) + '</td><td class="num">' + brl(s.custoFora / 6) + '</td></tr>'
     + '<tr><td colspan="3" style="border:none;padding-top:10px;"><b>Diferença: ' + brl0(Math.abs(s.diferenca) / 6) + ' por mês — ' + pct1(Math.abs(s.diferenca) / 6 / receita * 100) + '% da receita mensal.</b></td></tr>'
     + '</tbody></table>');
+  const fat = sim.fatores || { mix: sim.fatorMix, compras: sim.fatorMix, comprasMedido: false };
+  const aliqVendas = (e.cbs + e.ibs) * fat.mix, aliqCompras = (e.cbs + e.ibs) * fat.compras;
+  const mixTxt = [];
+  if ((e.mixRed40 || 0) > 0) mixTxt.push(pct1(e.mixRed40) + '% com redução de 40% (alimentação preparada por bar/restaurante, LC 214 art. 275)');
+  if ((e.mixRed60 || 0) > 0) mixTxt.push(pct1(e.mixRed60) + '% com redução de 60%');
+  if ((e.mixRed30 || 0) > 0) mixTxt.push(pct1(e.mixRed30) + '% com redução de 30%');
+  if ((e.mixZero || 0) > 0) mixTxt.push(pct1(e.mixZero) + '% em alíquota zero');
   if (!optar) {
-    P('<p>O motivo é aritmético: <b>por fora a empresa debita ' + pct1(e.cbs + e.ibs) + '% sobre tudo o que fatura e credita pouco na entrada</b>, porque compra só ' + pct1(e.pctComprasMercadorias + e.pctComprasDespesas) + '% do que fatura. O regime regular favorece quem compra muito.</p>');
+    P('<p>O motivo é aritmético: <b>por fora a empresa debita ' + pct1(aliqVendas) + '% sobre o que fatura' + (mixTxt.length ? ' (' + pct1(e.cbs + e.ibs) + '% de referência, com ' + mixTxt.join(', ') + ')' : '') + ' e credita ' + (fat.compras < 0.5 ? 'pouco' : 'menos') + ' na entrada</b>: compra ' + pct1(e.pctComprasMercadorias + e.pctComprasDespesas) + '% do que fatura'
+      + (fat.comprasMedido ? ', e só ' + pct1(fat.compras * 100) + '% dessas compras carregam IBS/CBS pra creditar — o resto é cesta básica, alíquota zero (medido pelo NCM das notas de entrada)' : '') + '. O regime regular favorece quem compra muito e compra tributado.</p>');
+  } else if (mixTxt.length || fat.comprasMedido) {
+    P('<p class="fonte">Por fora: ' + pct1(aliqVendas) + '% sobre as vendas (' + pct1(e.cbs + e.ibs) + '% de referência' + (mixTxt.length ? ', com ' + mixTxt.join(', ') : '') + ')' + (fat.comprasMedido ? '; crédito sobre ' + pct1(fat.compras * 100) + '% das compras de mercadorias, pelo NCM das entradas' : '') + '.</p>');
   }
 
   // ---------- 5. repasse ----------
+  if (d.consumidor) {
+    P('<h2>5. Repasse ao consumidor não muda a conta</h2>');
+    P('<p>Na Maintech e em qualquer empresa que vende a outras empresas, a variável decisiva é o repasse: o cliente credita a CBS destacada e fica neutro. Aqui não há isso. O consumidor não credita nada, então destacar CBS na nota é <b>reajuste de preço puro</b> — e o mesmo reajuste pode ser feito com a apuração por dentro, sem mudar de regime. Não existe percentual de repasse que inverta a conclusão.</p>');
+  } else {
   P('<h2>5. A variável que inverte a conclusão</h2>');
   P('<p>Tudo acima pressupõe preço inalterado. Mas a CBS é tributo <b>por fora</b>: a prática do mercado é destacá-la na nota, como faz qualquer empresa do regime regular. Se a empresa repassar a CBS ao cliente — que a credita integralmente e fica neutro —, o resultado se desloca:</p>');
   P(graficoRepasse(pontos, viraEm));
   P('<p class="fonte">Resultado no semestre jan–jun/2027 conforme a parcela da CBS cobrada por fora do preço atual. Cálculo sobre a simulação do item 4.</p>');
   if (viraEm != null && viraEm > 0 && viraEm < 100) {
     P('<div class="cx chave"><h4>Em uma frase</h4><p style="margin:0">A pergunta da reunião <b>não é</b> "por dentro ou por fora custa menos". É: <b>a empresa consegue faturar com a CBS destacada, como faz o regime regular?</b> Se conseguir repassar ao menos <b>' + Math.round(viraEm) + '%</b>, apurar por fora passa a ser mais barato <i>e</i> devolve ao cliente o crédito que ele vai perder. Se não conseguir, manter no DAS economiza ' + brl0(Math.abs(s.diferenca)) + ' no semestre.</p></div>');
+  }
   }
 
   // ---------- 6. sensibilidade ----------

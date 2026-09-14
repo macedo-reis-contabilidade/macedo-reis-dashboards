@@ -242,10 +242,12 @@
           <label>% clientes PJ (regime regular)<input id="sPctPJ" placeholder="0"></label>
           <label>% compras de mercadorias/insumos <span class="hint">seguem o mix de vendas</span><input id="sPctMerc" placeholder="ex.: 60"></label>
           <label>% compras de despesas <span class="hint">crédito à alíquota cheia</span><input id="sPctDesp" placeholder="0"></label>
+          <label>% das compras de mercadorias com crédito <span class="hint" id="sPctCredHint">pelo NCM das entradas (cesta básica = zero); vazio = segue o mix de vendas</span><input id="sPctCred" placeholder="vazio = mix das vendas"></label>
           <label>% imposto embutido nas compras<input id="sPctEmb" placeholder="0 (ex.: 18 p/ ICMS)"></label>
           <label>% do DAS já excluído (ICMS-ST/ISS retido)<input id="sPctST" placeholder="0"></label>
           <label>Mix: % alíquota cheia<input id="sMixCheia" placeholder="100"></label>
           <label>Mix: % redução 60%<input id="sMixRed60" placeholder="0"></label>
+          <label>Mix: % redução 40% <span class="hint">bares e restaurantes: alimentação preparada no local (LC 214 art. 275) — só por fora</span><input id="sMixRed40" placeholder="0"></label>
           <label>Mix: % redução 30%<input id="sMixRed30" placeholder="0"></label>
           <label>Mix: % alíquota zero<input id="sMixZero" placeholder="0"></label>
           <label>CBS referência (%)<input id="sCbs"></label>
@@ -560,6 +562,8 @@
       $('sPctST').value = brPct(ent ? ent.pctExcluidoST : null);
       $('sMixCheia').value = brPct(ent ? ent.mixCheia : (c.pct_receita_reduzida != null ? 100 - c.pct_receita_reduzida : null));
       $('sMixRed60').value = brPct(ent ? ent.mixRed60 : c.pct_receita_reduzida);
+      $('sMixRed40').value = brPct(ent ? ent.mixRed40 : null);
+      $('sPctCred').value = ent && ent.pctComprasComCredito != null ? brPct(ent.pctComprasComCredito) : '';
       $('sMixRed30').value = brPct(ent ? ent.mixRed30 : null);
       $('sMixZero').value = brPct(ent ? ent.mixZero : null);
       $('sCbs').value = brPct(ent ? ent.cbs : params.cbs);
@@ -627,7 +631,7 @@
 
     // ---------- ponte com as notas importadas (XML) ----------
     const ANO_XML = 2026;
-    const XML_CAMPOS = ['sReceita', 'sPctPJ', 'sPctMerc', 'sPctDesp', 'sMixZero', 'sMixRed60', 'sMixRed30', 'sMixCheia'];
+    const XML_CAMPOS = ['sReceita', 'sPctPJ', 'sPctMerc', 'sPctDesp', 'sMixZero', 'sMixRed60', 'sMixRed30', 'sMixCheia', 'sPctCred'];
     // manterDominio: o que veio dos relatórios do Domínio sobrevive ao "Puxar das notas"
     function limparOrigemXml(manterDominio) {
       document.querySelectorAll('.xml-origem').forEach(e => { if (!(manterDominio && e.dataset.fonte === 'dominio')) e.remove(); });
@@ -682,6 +686,10 @@
         $('sMixRed60').value = brPct(r1(p.mixRed60)); origemXml('sMixRed60', 'da operação: NCM com redução 60%');
         $('sMixRed30').value = brPct(r1(p.mixRed30)); origemXml('sMixRed30', 'da operação: NCM com redução 30%');
         $('sMixCheia').value = brPct(r1(Math.max(0, 100 - r1(p.mixZero) - r1(p.mixRed60) - r1(p.mixRed30)))); origemXml('sMixCheia', 'da operação: 100 − zero − reduções' + (p.nServicos ? ' (serviços contam na cheia)' : ''));
+        if (p.pctComprasComCredito != null) {
+          $('sPctCred').value = brPct(r1(p.pctComprasComCredito));
+          origemXml('sPctCred', 'da operação, pelo NCM das compras: ' + brPct(r1(p.mixCompras.cheia)) + '% à alíquota cheia · ' + brPct(r1(p.mixCompras.reducao_60)) + '% redução 60% · ' + brPct(r1(p.mixCompras.zero)) + '% alíquota zero' + (p.comprasSemNcm ? ' · ' + p.comprasSemNcm + ' item(ns) sem NCM' : ''));
+        }
         const mi = p.mesesComVenda[0], mf = p.mesesComVenda[p.mesesComVenda.length - 1];
         const periodo = (mi === mf ? MESES_ABREV[mi - 1] : MESES_ABREV[mi - 1] + '–' + MESES_ABREV[mf - 1]) + '/' + ANO_XML;
         const notaPreservados = preservados.length
@@ -917,11 +925,23 @@
       por('sReceita', k.receita != null ? brNum(Math.round(k.receita * 100) / 100) : null, cons.origem.receita ? 'do Domínio: ' + cons.origem.receita : null);
       por('sPctMerc', k.pctMerc != null ? brPct(r1(k.pctMerc)) : null, cons.origem.pctMerc ? 'do Domínio: ' + cons.origem.pctMerc : null);
       por('sPctDesp', k.pctDesp != null ? brPct(r1(k.pctDesp)) : null, cons.origem.pctDesp ? 'do Domínio: ' + cons.origem.pctDesp : null);
+      if (k.pctExcluidoST != null) {
+        $('sPctST').value = brPct(r1(k.pctExcluidoST));
+        origemXml('sPctST', 'do Domínio: ' + (cons.origem.pctExcluidoST || ''), 'dominio');
+      }
       if (k.partilha != null) {
-        $('sPartilha').value = brPct(r1(k.partilha));
-        $('sPartilha').dataset.auto = '';
-        $('sPartilhaHint').textContent = 'do PGDAS';
-        origemXml('sPartilha', 'do Domínio: ' + (cons.origem.partilha || ''), 'dominio');
+        // com exclusão de ST/monofásico, a tabela 2027 é a referência (a CBS alcança tudo em 2027);
+        // sem exclusão, tabela e PGDAS coincidem e o PGDAS confirma
+        preencherPartilhaAuto();
+        const daTabela = $('sPartilha').dataset.auto === '1' ? parseNum($('sPartilha').value) : null;
+        if (daTabela != null && Math.abs(daTabela - k.partilha) > 0.3) {
+          origemXml('sPartilha', 'tabela 2027 (' + brPct(daTabela) + '%); PGDAS: ' + (cons.origem.partilha || ''), 'dominio');
+        } else {
+          $('sPartilha').value = brPct(r1(daTabela != null ? daTabela : k.partilha));
+          $('sPartilha').dataset.auto = '';
+          $('sPartilhaHint').textContent = daTabela != null ? 'tabela 2027, confirmada pelo PGDAS' : 'do PGDAS';
+          origemXml('sPartilha', 'do Domínio: ' + (cons.origem.partilha || ''), 'dominio');
+        }
       }
       // resumo compacto para a análise técnica; vai junto da simulação ao gravar
       domEstado.resumo = resumoDominio(domEstado.rels, cons, domEstado.incluir);
@@ -977,6 +997,8 @@
         receita: parseNum($('sReceita').value),
         mixCheia: parseNum($('sMixCheia').value) ?? 0,
         mixRed60: parseNum($('sMixRed60').value) ?? 0,
+        mixRed40: parseNum($('sMixRed40').value) ?? 0,
+        pctComprasComCredito: $('sPctCred').value.trim() === '' ? null : parseNum($('sPctCred').value),
         mixRed30: parseNum($('sMixRed30').value) ?? 0,
         mixZero: parseNum($('sMixZero').value) ?? 0,
         pctComprasMercadorias: parseNum($('sPctMerc').value) ?? 0,
@@ -1240,10 +1262,15 @@
         empataCompras = hi < 99.9 ? hi : null;
       }
 
+      const b2c = (ent.mixRed40 || 0) > 0 || !!(xml && xml.pctPJ != null && xml.pctPJ < 10);
       const sensibilidade = [
-        { nome: 'Repasse da CBS ao cliente', hoje: 'não levantado',
-          efeito: 'de ' + brl0(-s.diferenca) + ' (0% de repasse) a ' + brl0(m.debitoFora * 6 - s.diferenca) + ' (100%)',
-          muda: viraEm != null && viraEm >= 0 && viraEm <= 100 ? 'Sim — inverte a partir de ' + Math.round(viraEm) + '%' : 'Sim' },
+        b2c
+          ? { nome: 'Crédito das compras', hoje: ent.pctComprasComCredito != null ? p1(ent.pctComprasComCredito) + '% das mercadorias (por NCM)' : 'segue o mix de vendas',
+              efeito: 'crédito cheio sobre todas as compras → ' + sinal(dif({ pctComprasComCredito: 100 })) + ' · nenhum crédito → ' + sinal(dif({ pctComprasComCredito: 0 })),
+              muda: dif({ pctComprasComCredito: 100 }) < 0 ? 'Sim — só se toda compra creditasse' : 'Não — nem creditando tudo' }
+          : { nome: 'Repasse da CBS ao cliente', hoje: 'não levantado',
+              efeito: 'de ' + brl0(-s.diferenca) + ' (0% de repasse) a ' + brl0(m.debitoFora * 6 - s.diferenca) + ' (100%)',
+              muda: viraEm != null && viraEm >= 0 && viraEm <= 100 ? 'Sim — inverte a partir de ' + Math.round(viraEm) + '%' : 'Sim' },
         { nome: 'Alíquota final da CBS', hoje: p1(ent.cbs) + '% (não fixada)',
           efeito: '8,8% (Fazenda) → ' + sinal(dif({ cbs: 8.8 })) + ' · 9,21% (CGIBS) → ' + sinal(dif({ cbs: 9.21 })), muda: 'Não — nas três estimativas a conclusão é a mesma' },
         { nome: 'Base creditável de entradas', hoje: p1(ent.pctComprasMercadorias + ent.pctComprasDespesas) + '% da receita',
@@ -1252,8 +1279,11 @@
         { nome: 'Receita mensal', hoje: brl0(ent.receita),
           efeito: '−30% → ' + sinal(dif({ receita: ent.receita * 0.7 })) + ' · +30% → ' + sinal(dif({ receita: ent.receita * 1.3 })),
           muda: 'Não — a diferença acompanha a receita' },
-        { nome: 'Regime dos clientes', hoje: 'presumido regular',
-          efeito: 'cliente do Simples não aproveita o crédito gerado por fora', muda: optar ? 'Sim — enfraquece a opção' : 'Reforça manter no DAS' }
+        b2c
+          ? { nome: 'Redução de 40% (bar/restaurante)', hoje: p1(ent.mixRed40 || 0) + '% da receita',
+              efeito: 'sem a redução (tudo à alíquota cheia) → ' + sinal(dif({ mixRed40: 0, mixCheia: (ent.mixCheia || 0) + (ent.mixRed40 || 0) })), muda: 'Não — sem ela, por fora fica ainda pior' }
+          : { nome: 'Regime dos clientes', hoje: 'presumido regular',
+              efeito: 'cliente do Simples não aproveita o crédito gerado por fora', muda: optar ? 'Sim — enfraquece a opção' : 'Reforça manter no DAS' }
       ];
 
       const fontes = [];
@@ -1264,14 +1294,25 @@
       if (xml) fontes.push({ o_que: '% de vendas para CNPJ e concentração de clientes', origem: 'XML das notas fiscais emitidas em ' + (xml.periodoRotulo || ANO_XML), nivel: 'alta', rotulo: 'alta' });
       if (dom && dom.entradas) fontes.push({ o_que: 'Base creditável de entradas', origem: 'Acompanhamento de entradas, classificado por CFOP', nivel: 'media', rotulo: 'média', ressalva: '— regime dos fornecedores não verificado' });
       if (ent.mixCheia >= 99) fontes.push({ o_que: 'Mix de alíquotas (integralmente cheia)', origem: 'Serviço não consta dos anexos de redução da LC 214', nivel: 'alta', rotulo: 'alta (norma)' });
+      else if ((ent.mixRed40 || 0) > 0) fontes.push({ o_que: 'Mix de alíquotas (' + p1(ent.mixRed40) + '% com redução de 40%)', origem: 'LC 214/2025 arts. 273-276: alimentação preparada por bar/restaurante; bebidas alcoólicas e industrializados revendidos ficam na alíquota cheia; o cliente não credita (art. 276)', nivel: 'alta', rotulo: 'alta (norma)', ressalva: '— divisão entre preparado e revendido estimada pelas seções do PGDAS' });
+      if (ent.pctComprasComCredito != null) fontes.push({ o_que: 'Crédito das compras (' + p1(ent.pctComprasComCredito) + '% das mercadorias)', origem: 'NCM das notas de entrada classificado pela tabela de regimes da Reforma (cesta básica = zero)', nivel: 'media', rotulo: 'média', ressalva: '— classificação por NCM, sujeita a revisão item a item' });
+      if ((ent.pctExcluidoST || 0) > 0) fontes.push({ o_que: 'DAS real abaixo da tabela (' + p1(ent.pctExcluidoST) + '% excluído)', origem: 'PGDAS: ICMS-ST, monofásico e/ou redução de base — DAS apurado ÷ DAS pela tabela do anexo', nivel: 'alta', rotulo: 'alta' });
       if (xml) fontes.push({ o_que: 'Clientes serem do regime regular', origem: 'Porte das empresas atendidas', nivel: 'media', rotulo: 'média', ressalva: '— presunção, não consulta' });
       fontes.push({ o_que: 'Alíquota de referência da CBS', origem: 'Não fixada: cabe ao Senado defini-la para 2027. A simulação usa ' + p1(ent.cbs) + '%; em circulação há 8,8% (projeção do Ministério da Fazenda, dentro do teto de 26,5% da LC 214) e 9,21% (CGIBS, jul/2026, para fins orçamentários)', nivel: 'baixa', rotulo: 'estimativa' });
       fontes.push({ o_que: 'Alíquota do IBS em 2027', origem: 'LC 214/2025: 0,05% estadual + 0,05% municipal', nivel: 'alta', rotulo: 'alta (norma)' });
       fontes.push({ o_que: 'Crédito de PIS/COFINS que o cliente toma hoje', origem: 'ADI RFB nº 15/2007 — vale para o cliente no regime não cumulativo', nivel: 'media', rotulo: 'média', ressalva: '— depende do regime de cada cliente' });
-      fontes.push({ o_que: 'Capacidade de repasse do preço', origem: 'Não levantado — depende dos contratos e da conversa com os clientes', nivel: 'baixa', rotulo: 'a levantar' });
+      const barRest = (ent.mixRed40 || 0) > 0;
+      const consumidor = !!(xml && xml.pctPJ != null && xml.pctPJ < 10) || barRest;
+      if (!consumidor) fontes.push({ o_que: 'Capacidade de repasse do preço', origem: 'Não levantado — depende dos contratos e da conversa com os clientes', nivel: 'baixa', rotulo: 'a levantar' });
+      else fontes.push({ o_que: 'Crédito do cliente', origem: consumidor && barRest ? 'Consumidor final não credita; cliente PJ de bar/restaurante também não (LC 214 art. 276)' : 'Consumidor final não credita', nivel: 'alta', rotulo: 'alta (norma)' });
 
       // recomendação: a assimetria das janelas manda mais que a diferença de custo
-      const recomendacao = optar
+      const recomendacao = consumidor && !optar
+        ? { titulo: 'Manter o IBS/CBS dentro do DAS — não formalizar a opção',
+            corpo: '<p>A simulação aponta ' + brl0(Math.abs(s.diferenca)) + ' de economia no semestre mantendo a apuração por dentro, e não há variável comercial capaz de inverter: a empresa vende a consumidor final' + (barRest ? ' e, sendo bar/restaurante, nem o cliente pessoa jurídica pode creditar (art. 276)' : '') + '. Apurar por fora não devolveria crédito a ninguém.</p>'
+              + '<p>Por fora a empresa passaria a destacar CBS e IBS na nota do consumidor' + (barRest ? ' — ' + p1((ent.cbs + ent.ibs) * 0.6) + '% sobre a alimentação preparada e ' + p1(ent.cbs + ent.ibs) + '% sobre bebidas revendidas —' : '') + ' e a apurar crédito só sobre a parte tributada das compras; a maior parte do que ela compra é cesta básica, alíquota zero, sem crédito. A conta não fecha em nenhum dos cenários testados na seção 6.</p>'
+              + '<p style="margin-bottom:0">Não formalizar a opção em setembro. A janela reabre em março/2027 (efeito em julho) se o quadro mudar — por exemplo, se a empresa passar a vender a pessoas jurídicas fora do regime de bar e restaurante, ou se o mix de compras mudar.</p>' }
+        : optar
         ? { titulo: 'Optar pelo recolhimento de IBS/CBS por fora do DAS',
             corpo: '<p>A simulação aponta ' + brl0(Math.abs(s.diferenca)) + ' de economia no semestre apurando por fora, além de multiplicar o crédito que o cliente aproveita — de ' + brl0(s.creditoClienteDentro) + ' para ' + brl0(s.creditoClienteFora) + '.</p>'
               + '<p style="margin-bottom:0">Vale confirmar antes da formalização os itens da seção seguinte, em especial o regime tributário dos maiores clientes: o crédito gerado por fora só tem valor para quem apura pelo regime regular.</p>' }
@@ -1282,18 +1323,26 @@
               + '<li><b>O cliente vai perguntar antes.</b> A queda no crédito aparece na planilha de compras dele em janeiro de 2027. É melhor chegar com a proposta do que receber a cobrança.</li></ol>'
               + '<p style="margin-bottom:0">Se até novembro ficar claro que os contratos não comportam o destaque da CBS, cancela-se a opção e tudo segue como está — com a economia preservada e nenhum custo pela tentativa.</p>' };
 
-      const perguntas = [
+      const perguntas = consumidor ? [
+        'A receita passa <b>toda</b> por NFC-e? Há venda por aplicativo (iFood etc.) que não esteja nas notas? A simulação usa o faturamento do Domínio' + (dom && dom.faturamento ? ', que fecha com as notas' : '') + '.',
+        'Há previsão de <b>investimento em máquinas, reforma ou equipamentos</b> em 2027? Compra de ativo gera crédito integral no regime regular e é o que mais mexe nessa conta.',
+        'Existe venda relevante a <b>pessoa jurídica fora do balcão</b> (refeições coletivas, eventos, contrato)? Isso fica fora do regime de bar e restaurante e muda o crédito do cliente.',
+        'Quanto da venda é <b>bebida alcoólica e industrializado revendido</b> (refrigerante, cerveja)? Ficam na alíquota cheia por fora; a divisão usada veio das seções do PGDAS.'
+      ] : [
         'Os contratos com os maiores clientes têm <b>preço fechado</b> ou permitem repasse de tributo? Há cláusula de revisão?',
         'Como o preço é negociado hoje — por hora técnica, por serviço, por contrato mensal?',
         'Algum cliente <b>já perguntou</b> sobre crédito de IBS/CBS em 2027?',
         'Há previsão de <b>investimento em máquinas ou equipamentos</b>? Compra de ativo gera crédito integral no regime regular e melhora a conta.'
       ];
-      if (xml && xml.clientes && xml.clientes.length) {
+      if (!consumidor && xml && xml.clientes && xml.clientes.length) {
         const maior = xml.clientes[0];
         perguntas.splice(3, 0, '<b>' + maior.nome + ' representa ' + p1(maior.pct) + '% da receita.</b> O que acontece se pedir desconto equivalente ao crédito que deixará de tomar?');
       }
 
-      const pendencias = [
+      const pendencias = consumidor ? [
+        { o_que: 'Classificação das compras por NCM', porque: 'Define quanto das compras credita por fora (cesta básica não credita); a tabela de NCM merece revisão item a item nos maiores fornecedores', onde: 'Itens das notas de entrada', quem: 'Fiscal', nivel: 'media', peso: 'médio' },
+        { o_que: 'Divisão entre alimentação preparada e revenda', porque: 'Preparado no local tem redução de 40% por fora; bebida alcoólica e industrializado revendido não', onde: 'Cardápio e seções do PGDAS', quem: 'Fiscal', nivel: 'media', peso: 'médio' }
+      ] : [
         { o_que: 'Capacidade de repasse da CBS', porque: 'É a única variável capaz de inverter a recomendação', onde: 'Contratos e conversa com os maiores clientes', quem: 'Direção / comercial', nivel: 'baixa', peso: 'decisivo' },
         { o_que: 'Regime tributário dos maiores clientes', porque: 'O crédito gerado por fora só vale para quem apura pelo regime regular', onde: 'Consulta de CNPJ (optante pelo Simples)', quem: 'Fiscal', nivel: 'media', peso: 'alto' }
       ];
@@ -1301,9 +1350,9 @@
         const duvida = dom.entradas.grupos.find(g => g.grupo === 'outras' && g.valor > 0 && !g.incluido);
         if (duvida) pendencias.push({ o_que: 'Reclassificar ' + brl0(duvida.valor) + ' em CFOP x949', porque: 'Se for compra, aumenta a base creditável e reduz a diferença', onde: 'Notas no Domínio', quem: 'Fiscal', nivel: 'media', peso: 'médio' });
       }
+      pendencias.push({ o_que: 'Regime dos fornecedores creditáveis', porque: 'Fornecedor do Simples não gera crédito cheio na entrada', onde: 'Consulta de CNPJ', quem: 'Fiscal', nivel: 'media', peso: 'médio' });
+      if (!consumidor) pendencias.push({ o_que: 'ISS retido e município de prestação', porque: 'Retenção reduz o DAS por dentro e muda a comparação', onde: 'NFS-e e apurações do Simples', quem: 'Fiscal', nivel: 'media', peso: 'médio' });
       pendencias.push(
-        { o_que: 'Regime dos fornecedores creditáveis', porque: 'Fornecedor do Simples não gera crédito cheio na entrada', onde: 'Consulta de CNPJ', quem: 'Fiscal', nivel: 'media', peso: 'médio' },
-        { o_que: 'ISS retido e município de prestação', porque: 'Retenção reduz o DAS por dentro e muda a comparação', onde: 'NFS-e e apurações do Simples', quem: 'Fiscal', nivel: 'media', peso: 'médio' },
         { o_que: 'Receita esperada para 2027', porque: 'A simulação usa a média do período apurado', onde: 'Contratos e expectativa do cliente', quem: 'Direção', nivel: 'media', peso: 'médio' },
         { o_que: 'Alíquota oficial da CBS', porque: 'Hoje é estimativa; a variação testada não inverte a conclusão', onde: 'Resolução do Senado', quem: 'Acompanhar', nivel: 'alta', peso: 'baixo' }
       );
@@ -1313,7 +1362,10 @@
         logoUrl: new URL('assets/logo-mr.png', location.href).href,
         hoje: new Date().toLocaleDateString('pt-BR'),
         origemReceita: dom && dom.faturamento ? 'média do faturamento ' + dom.periodoRotulo : 'informada na ficha',
-        sensibilidade, sensibilidadeNota: 'Nenhuma incerteza técnica isolada derruba a diferença de ' + brl0(Math.abs(s.diferenca)) + ' do semestre. Só o repasse derruba — por isso a decisão é comercial, não fiscal.',
+        sensibilidade, sensibilidadeNota: consumidor
+          ? 'Nenhuma incerteza técnica isolada derruba a diferença de ' + brl0(Math.abs(s.diferenca)) + ' do semestre, e não há variável comercial em jogo: ninguém credita o que compra desta empresa. A decisão é aritmética.'
+          : 'Nenhuma incerteza técnica isolada derruba a diferença de ' + brl0(Math.abs(s.diferenca)) + ' do semestre. Só o repasse derruba — por isso a decisão é comercial, não fiscal.',
+        consumidor,
         fontes, recomendacao, perguntas, pendencias
       };
     }
