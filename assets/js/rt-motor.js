@@ -148,7 +148,10 @@ export function simular(input) {
     if (ganhoCarteira > 0) pe = semestre.diferenca / (ganhoCarteira / 100);
     const pct = v => v.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
     let complemento = '';
-    if (pe != null && pe <= 100) {
+    if (mixRed40 > 0) {
+      // bar e restaurante: o adquirente não credita (LC 214 art. 276) — não existe carteira PJ capaz de inverter
+      complemento = ' Como o adquirente de alimentação em bar e restaurante não pode creditar IBS/CBS (LC 214, art. 276), não há carteira de clientes capaz de inverter esse resultado: a decisão é só de custo próprio.';
+    } else if (pe != null && pe <= 100) {
       complemento = pe > pctPJ
         ? ' A carteira PJ levaria ' + brl(ganhoCarteira) + ' a mais de crédito por fora; a opção passaria a compensar se ao menos ' +
           pct(pe) + '% da receita viesse de clientes PJ que aproveitam o crédito (informado hoje: ' + pct(pctPJ) + '%).'
