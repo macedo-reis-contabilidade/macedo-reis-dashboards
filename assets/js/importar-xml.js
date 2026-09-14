@@ -252,6 +252,28 @@ export async function expandirArquivos(files, erros, nivel = 0){
 }
 
 
+// Abre ZIPs e devolve o que NÃO é XML, para quem quiser tratar: PDFs (relatórios do Domínio
+// costumam vir no mesmo ZIP das notas) e uma lista do restante, para ninguém sumir em silêncio.
+// Os XML seguem pelo importarLote, que expande o ZIP de novo — custo pequeno, código único.
+export async function separarNaoXml(files) {
+  const pdfs = [], outros = [], erros = [];
+  for (const f of files) {
+    if (!/\.zip$/i.test(f.name)) continue;
+    let zip;
+    try { zip = await JSZip.loadAsync(f); }
+    catch (e) { erros.push({ arquivo: f.name, motivo: 'ZIP não abriu (corrompido, com senha ou não é ZIP)' }); continue; }
+    for (const e of Object.values(zip.files)) {
+      if (e.dir) continue;
+      const base = e.name.split('/').pop();
+      if (/(^|\/)__MACOSX\//.test(e.name) || base.startsWith('._')) continue;
+      if (/\.(xml|zip)$/i.test(e.name)) continue;
+      if (/\.pdf$/i.test(e.name)) { pdfs.push(new File([await e.async('blob')], base, { type: 'application/pdf' })); continue; }
+      outros.push(f.name + ' › ' + e.name);
+    }
+  }
+  return { pdfs, outros, erros };
+}
+
 // ---------- lote ----------
 // Importa `arquivos` (File[] de .xml/.zip) para o cliente e devolve o relatório.
 // Atômico: se falhar no meio, desfaz o que gravou e relança o erro (nada fica pela metade).

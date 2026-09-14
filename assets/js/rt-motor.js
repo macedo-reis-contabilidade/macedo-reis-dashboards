@@ -46,7 +46,8 @@ export function simular(input) {
   const rbt12 = num(input.rbt12, 0);
   const receita = num(input.receita, 0);
   if (!TAB_SIMPLES[anexo]) throw new Error('Anexo inválido: informe I a V.');
-  if (!(rbt12 > 0) || rbt12 > 4800000) throw new Error('RBT12 fora das faixas do Simples (até 4.800.000).');
+  if (!(rbt12 > 0)) throw new Error('RBT12 não informado — vem da apuração do Simples (PGDAS); importe o relatório do Domínio ou digite.');
+  if (rbt12 > 4800000) throw new Error('RBT12 de ' + rbt12.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) + ' passa do limite do Simples (R$ 4.800.000) — confira o valor.');
   if (!(receita > 0)) throw new Error('Informe a receita mensal.');
 
   const mixCheia = num(input.mixCheia, 0), mixRed60 = num(input.mixRed60, 0),

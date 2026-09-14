@@ -336,7 +336,7 @@
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { carregarOperacao, MESES_ABREV } from './assets/js/operacao-xml.js';
     import { lerRelatorio, consolidar, resumirEntradas, GRUPOS } from './assets/js/dominio-relatorios.js';
-    import { importarLote } from './assets/js/importar-xml.js';
+    import { importarLote, separarNaoXml } from './assets/js/importar-xml.js';
     import { gerarAnalise } from './assets/js/rt-analise.js';
     import { simular } from './assets/js/rt-motor.js';
 
@@ -758,12 +758,18 @@
 
     async function lerArquivosDom(files) {
       if (domEstado.lendo) { domMsgErro('Espere terminar a leitura anterior.'); return; }
-      const pdfs = files.filter(f => /\.pdf$/i.test(f.name));
+      let pdfs = files.filter(f => /\.pdf$/i.test(f.name));
       const notas = files.filter(f => /\.(xml|zip)$/i.test(f.name));
-      const fora = files.length - pdfs.length - notas.length;
+      let fora = files.length - pdfs.length - notas.length;
       if (!pdfs.length && !notas.length) { domMsgErro(fora ? fora + ' arquivo(s) fora do padrão (PDF, XML ou ZIP) não entraram.' : 'Escolha ao menos um arquivo.'); return; }
       domEstado.lendo = true; atualizarAplicar();
       try {
+        // o ZIP do Domínio costuma trazer notas e relatórios juntos: os PDFs de dentro vão pro leitor
+        if (notas.some(f => /\.zip$/i.test(f.name)) && window.JSZip) {
+          const sep = await separarNaoXml(notas);
+          pdfs = pdfs.concat(sep.pdfs);
+          if (sep.outros.length) $('domLidos').insertAdjacentHTML('beforeend', '<span class="dom-chip err" title="' + escapeHtml(sep.outros.slice(0, 30).join('\n')) + '">' + sep.outros.length + ' arquivo(s) dentro do ZIP que não são XML nem PDF — ignorados</span>');
+        }
         if (notas.length) await importarNotasDom(notas);
         if (pdfs.length) await lerPdfsDom(pdfs, fora);
         else if (fora) $('domLidos').insertAdjacentHTML('beforeend', '<span class="dom-chip err">' + fora + ' arquivo(s) fora do padrão</span>');
