@@ -324,4 +324,11 @@ ol,ul{margin:0 0 10px;padding-left:20px;} li{margin-bottom:5px;}
 .toolbar-print{position:fixed;top:10px;right:10px;} .toolbar-print button{padding:8px 14px;cursor:pointer;}
 svg{display:block;max-width:100%;}
 @page{margin:1.2cm;}
-@media print{ body{padding:0;background:#fff;} .folha{box-shadow:none;padding:0;max-width:none;} .toolbar-print{display:none;} h2{page-break-after:avoid;} table,.cx,.duas,svg{page-break-inside:avoid;} }`;
+@media print{ body{padding:0;background:#fff;} .folha{box-shadow:none;padding:0;max-width:none;} .toolbar-print{display:none;}
+  /* fluxo de livro: tabela pode quebrar entre páginas (cabeçalho repete), linha não; título fica com o que vem depois;
+     só o que é pequeno e visual (caixas, cards, gráfico) é indivisível — assim cada página enche parelho */
+  table{page-break-inside:auto;} thead{display:table-header-group;} tfoot{display:table-footer-group;}
+  tr,.duas,svg,figure{page-break-inside:avoid;}
+  .cx{page-break-inside:auto;} .cx h4{page-break-after:avoid;}
+  h2,h3{page-break-after:avoid;page-break-inside:avoid;}
+  p,li{orphans:3;widows:3;} }`;
