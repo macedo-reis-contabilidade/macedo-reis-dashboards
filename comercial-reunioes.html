@@ -145,6 +145,14 @@
             <input type="file" id="pImgFile" accept="image/*" multiple hidden>
           </div>
         </div>
+        <div class="fa-field"><span>Anexos (planilhas, PDFs, documentos — pra abrir ou baixar na hora da reunião)</span>
+          <div class="panx-lista" id="pAnx"></div>
+          <div class="pimg-acoes">
+            <button type="button" class="btn btn-ghost btn-sm" id="pAnxAdd">+ Adicionar arquivo</button>
+            <span class="pimg-dica">até 25 MB por arquivo</span>
+            <input type="file" id="pAnxFile" multiple hidden>
+          </div>
+        </div>
       </div>
       <div class="fa-modal-foot">
         <button class="btn btn-danger" id="mpExcluir" style="display:none;margin-right:auto;">Excluir</button>
@@ -163,6 +171,7 @@
         <button id="dscFechar" style="background:none; border:0; color:#8A93A6; font-size:22px; cursor:pointer; line-height:1;">&times;</button>
       </div>
       <div id="dscDesc" style="font-size:12.5px; color:#8A93A6; margin-bottom:10px; white-space:pre-wrap;"></div>
+      <div id="dscAnx" class="panx-lista" style="margin-bottom:12px;"></div>
       <label class="fa-field"><span>Anotações da reunião (salva sozinho enquanto digita)</span>
         <textarea id="dscTexto" class="input" rows="10" placeholder="Vá registrando aqui o que está sendo conversado…"></textarea></label>
       <div id="dscStatus" style="font-size:11.5px; color:#6E7787; min-height:14px; text-align:right;"></div>
@@ -364,7 +373,8 @@
             + (p.minutos ? '<span class="pauta-chip' + (cr.pauta[p.id] ? ' hora' : '') + '">' + (cr.pauta[p.id] ? faixa(cr.pauta[p.id]) : fmtMin(p.minutos)) + '</span>' : '')
             + (p.discussao ? ' <span style="font-size:11px; color:#7FBF8E;">📝 anotações</span>' : '') + '</div>'
           + (p.descricao ? '<div class="pauta-item-desc">' + escapeHtml(p.descricao) + '</div>' : '')
-          + (Array.isArray(p.imagens) && p.imagens.length ? '<div class="pauta-item-imgs" data-pid="' + p.id + '">' + p.imagens.map(() => '<img alt="">').join('') + '</div>' : '') + '</div>'
+          + (Array.isArray(p.imagens) && p.imagens.length ? '<div class="pauta-item-imgs" data-pid="' + p.id + '">' + p.imagens.map(() => '<img alt="">').join('') + '</div>' : '')
+          + (Array.isArray(p.anexos) && p.anexos.length ? '<div class="pauta-item-anx" data-anx="' + p.id + '"></div>' : '') + '</div>'
           + '<div class="pauta-item-acoes"><button class="rn-link" data-edit="' + p.id + '">Editar</button></div>'
         + '</div>').join('');
         html += '</div>';
@@ -374,6 +384,10 @@
         const p = pautas.find(x => x.id === box.dataset.pid); if (!p) return;
         const imgs = box.querySelectorAll('img');
         await Promise.all(p.imagens.map(async (im, i) => { if (imgs[i]) imgs[i].src = await urlAssinada(im.path); }));
+      });
+      elPautas.querySelectorAll('.pauta-item-anx').forEach(box => {
+        const p = pautas.find(x => x.id === box.dataset.anx); if (!p) return;
+        p.anexos.forEach(a => box.appendChild(chipAnexo(a, { link: true })));
       });
       elPautas.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); abrirModalPauta(pautas.find(p => p.id === b.dataset.edit)); }));
       elPautas.querySelectorAll('.pauta-item').forEach(card => card.addEventListener('click', () => {
@@ -515,6 +529,8 @@
       document.getElementById('encLista').innerHTML = ''; carregarEncaminhamentos();
       document.getElementById('dscTitulo').textContent = p.titulo || 'Pauta';
       document.getElementById('dscDesc').textContent = p.descricao || '';
+      const anx = document.getElementById('dscAnx'); anx.innerHTML = '';
+      (Array.isArray(p.anexos) ? p.anexos : []).forEach(a => anx.appendChild(chipAnexo(a, { link: true })));
       document.getElementById('dscTexto').value = p.discussao || '';
       document.getElementById('dscStatus').textContent = '';
       document.getElementById('ovDiscussao').style.display = 'flex';
@@ -588,9 +604,56 @@
       for (const it of itens) await enviarImagem(it.getAsFile());
     });
     async function descartarNovas() {
-      if (imagensNovas.length) { try { await supabase.storage.from('reunioes').remove(imagensNovas); } catch (e) {} }
-      imagensNovas = [];
+      const novas = imagensNovas.concat(anexosNovos);
+      if (novas.length) { try { await supabase.storage.from('reunioes').remove(novas); } catch (e) {} }
+      imagensNovas = []; anexosNovos = [];
     }
+
+    // ---- anexos da pauta (planilha, PDF, documento) — mesmo bucket, mesma regra das imagens ----
+    let anexosPauta = [], anexosNovos = [];
+    const fmtTam = b => b >= 1048576 ? (b / 1048576).toFixed(1).replace('.', ',') + ' MB' : b >= 1024 ? Math.round(b / 1024) + ' KB' : (b || 0) + ' B';
+    const extDe = nome => { const m = /\.([a-z0-9]{1,6})$/i.exec(nome || ''); return m ? m[1].toLowerCase() : ''; };
+    // chip de anexo: abre pela URL assinada (o bucket é privado)
+    function chipAnexo(a, opts) {
+      const el = document.createElement(opts && opts.link ? 'a' : 'span');
+      el.className = 'panx';
+      el.title = a.nome;
+      el.innerHTML = '📎 <span class="nm"></span><span class="tam"></span>';
+      el.querySelector('.nm').textContent = a.nome;
+      el.querySelector('.tam').textContent = a.tamanho ? fmtTam(a.tamanho) : '';
+      if (opts && opts.link) {
+        el.href = '#';
+        el.onclick = async e => { e.preventDefault(); e.stopPropagation(); const u = await urlAssinada(a.path); if (u) window.open(u, '_blank', 'noopener'); else alert('Não consegui gerar o link do arquivo.'); };
+      }
+      if (opts && opts.remover) {
+        const b = document.createElement('button'); b.type = 'button'; b.title = 'Remover'; b.textContent = '×'; b.onclick = opts.remover; el.appendChild(b);
+      }
+      return el;
+    }
+    function renderAnxPauta() {
+      const el = document.getElementById('pAnx'); el.innerHTML = '';
+      anexosPauta.forEach((a, i) => el.appendChild(chipAnexo(a, { link: true, remover: async e => {
+        e.preventDefault(); e.stopPropagation();
+        if (!confirm('Remover "' + a.nome + '" da pauta?')) return;
+        try { await supabase.storage.from('reunioes').remove([a.path]); } catch (err) {}
+        anexosPauta.splice(i, 1); anexosNovos = anexosNovos.filter(pth => pth !== a.path);
+        renderAnxPauta();
+      } })));
+    }
+    async function enviarAnexo(file) {
+      if (!file) return;
+      if (file.size > 25 * 1024 * 1024) { alert('Arquivo acima de 25 MB: ' + file.name); return; }
+      const el = document.getElementById('pAnx');
+      const ph = document.createElement('span'); ph.className = 'panx env'; ph.textContent = 'enviando ' + file.name + '…'; el.appendChild(ph);
+      const ext = extDe(file.name);
+      const path = reuniaoAtual.id + '/anexos/' + crypto.randomUUID() + (ext ? '.' + ext : '');
+      const { error } = await supabase.storage.from('reunioes').upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: false });
+      if (error) { ph.remove(); alert('Falha ao enviar ' + file.name + ': ' + error.message); return; }
+      anexosPauta.push({ path, nome: file.name, tamanho: file.size, tipo: file.type || null }); anexosNovos.push(path);
+      renderAnxPauta();
+    }
+    document.getElementById('pAnxAdd').addEventListener('click', () => document.getElementById('pAnxFile').click());
+    document.getElementById('pAnxFile').addEventListener('change', async e => { for (const f of e.target.files) await enviarAnexo(f); e.target.value = ''; });
 
     function abrirModalPauta(p) {
       editPautaId = p ? p.id : null;
@@ -603,6 +666,7 @@
       document.getElementById('pImpresc').checked = !!(p && p.imprescindivel);
       document.getElementById('pVisivel').checked = p ? p.visivel_cliente !== false : true;
       imagensPauta = p && Array.isArray(p.imagens) ? p.imagens.slice() : []; imagensNovas = []; renderImgsPauta();
+      anexosPauta = p && Array.isArray(p.anexos) ? p.anexos.slice() : []; anexosNovos = []; renderAnxPauta();
       document.getElementById('mpExcluir').style.display = editPautaId ? 'inline-flex' : 'none';
       ovPauta.classList.add('is-open');
     }
@@ -645,16 +709,17 @@
         titulo,
         descricao: document.getElementById('pDescricao').value.trim() || null,
         imagens: imagensPauta,
+        anexos: anexosPauta,
         minutos: document.getElementById('pMinutos').value !== '' ? Math.max(0, parseInt(document.getElementById('pMinutos').value, 10) || 0) || null : null,
         apresentadores: document.getElementById('pApres').value.trim() || null,
         imprescindivel: document.getElementById('pImpresc').checked,
         visivel_cliente: document.getElementById('pVisivel').checked
       };
       let error;
-      if (editPautaId) ({ error } = await supabase.from('reuniao_pautas').update({ setor: campos.setor, titulo: campos.titulo, descricao: campos.descricao, imagens: campos.imagens, minutos: campos.minutos, apresentadores: campos.apresentadores, imprescindivel: campos.imprescindivel, visivel_cliente: campos.visivel_cliente }).eq('id', editPautaId));
+      if (editPautaId) ({ error } = await supabase.from('reuniao_pautas').update({ setor: campos.setor, titulo: campos.titulo, descricao: campos.descricao, imagens: campos.imagens, anexos: campos.anexos, minutos: campos.minutos, apresentadores: campos.apresentadores, imprescindivel: campos.imprescindivel, visivel_cliente: campos.visivel_cliente }).eq('id', editPautaId));
       else ({ error } = await supabase.from('reuniao_pautas').insert(campos));
       if (error) { alert('Erro ao salvar: ' + error.message); return; }
-      imagensNovas = [];
+      imagensNovas = []; anexosNovos = [];
       fecharModalPauta(true);
       await carregarPautas();
       await atualizarContagemLista();
@@ -665,8 +730,9 @@
       if (!confirm('Excluir esta pauta?')) return;
       const { error } = await supabase.from('reuniao_pautas').delete().eq('id', editPautaId);
       if (error) { alert('Erro: ' + error.message); return; }
-      if (imagensPauta.length) { try { await supabase.storage.from('reunioes').remove(imagensPauta.map(im => im.path)); } catch (e) {} }
-      imagensNovas = [];
+      const paths = imagensPauta.map(im => im.path).concat(anexosPauta.map(a => a.path));
+      if (paths.length) { try { await supabase.storage.from('reunioes').remove(paths); } catch (e) {} }
+      imagensNovas = []; anexosNovos = [];
       fecharModalPauta(true);
       await carregarPautas();
       await atualizarContagemLista();
@@ -833,6 +899,16 @@
     .pimg-acoes { display:flex; align-items:center; gap:10px; }
     .pimg-dica { color:#8A93A6; font-size:12px; }
     .pauta-item-imgs { display:flex; gap:6px; margin-top:6px; } .pauta-item-imgs img { height:44px; border-radius:5px; }
+    .panx-lista { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 8px; }
+    .panx-lista:empty { display:none; }
+    .panx { display:inline-flex; align-items:center; gap:6px; padding:5px 9px; border-radius:8px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); font-size:12px; color:#C9D3E0; text-decoration:none; max-width:100%; }
+    .panx:hover { background:rgba(255,255,255,.09); color:#E6EBF2; }
+    .panx .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:260px; }
+    .panx .tam { color:#6E7787; font-size:11px; }
+    .panx button { background:none; border:0; color:#8A93A6; cursor:pointer; font-size:15px; line-height:1; padding:0 0 0 2px; }
+    .panx button:hover { color:#F0A0A0; }
+    .panx.env { color:#8A93A6; font-style:italic; }
+    .pauta-item-anx { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
     .pauta-item-acoes { flex:none; }
     .rn-link { background:none; border:none; color:#8AAEC8; cursor:pointer; font-size:13px; padding:3px 6px; }
     .rn-link:hover { color:#C5D8E8; text-decoration:underline; }
