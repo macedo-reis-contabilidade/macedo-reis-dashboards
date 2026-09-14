@@ -109,7 +109,7 @@ export function gerarAnalise(d) {
         dominio && dominio.faturamento ? 'relatório de faturamento ' + dominio.periodoRotulo : null,
         dominio && dominio.pgdas ? 'apuração do Simples (PGDAS ' + esc(dominio.pgdas.competencia) + ')' : null,
         dominio && dominio.entradas ? 'acompanhamento de entradas' : null,
-        xml && xml.nNotas ? xml.nNotas + ' notas fiscais eletrônicas emitidas em ' + esc(xml.periodoRotulo || '') : null
+        xml && xml.nNotas ? xml.nNotas + ' notas fiscais eletrônicas (emitidas e recebidas) de ' + esc(xml.periodoRotulo || '') : null
       ].filter(Boolean).join(', ') + '.' : '') + '</div>');
 
   // ---------- 1. retrato ----------
@@ -119,13 +119,15 @@ export function gerarAnalise(d) {
     P('<p>A empresa fatura <b>' + pct1(pctServ) + '% em serviço</b> e ' + pct1(100 - pctServ) + '% em mercadoria. O custo de uma prestadora de serviço é mão de obra, e <b>folha de pagamento não gera crédito de IBS/CBS</b> — é isso que define toda a conta adiante.</p>');
   }
   P('<table><thead><tr><th>Indicador</th><th class="num">Valor</th><th>Fonte</th></tr></thead><tbody>'
-    + (dominio && dominio.faturamento ? '<tr><td>Faturamento ' + dominio.periodoRotulo + '</td><td class="num">' + brl(dominio.faturamento.total) + '</td><td>Relatório de faturamento (Domínio)</td></tr>'
+    + (dominio && dominio.faturamento ? '<tr><td>Faturamento ' + dominio.periodoRotulo + '</td><td class="num">' + brl(dominio.faturamento.total) + '</td><td>' + esc(dominio.fonteFaturamento || 'Relatório de faturamento (Domínio)') + '</td></tr>'
       + '<tr><td>— serviços</td><td class="num">' + brl(dominio.faturamento.servicos) + ' · ' + pct1(pctServ) + '%</td><td>idem</td></tr>'
       + '<tr><td>— mercadorias</td><td class="num">' + brl(dominio.faturamento.saidas) + ' · ' + pct1(100 - pctServ) + '%</td><td>idem</td></tr>' : '')
     + '<tr><td>Receita mensal usada na simulação</td><td class="num">' + brl(receita) + '</td><td>' + esc(d.origemReceita || 'informado na ficha') + '</td></tr>'
     + '<tr><td>RBT12</td><td class="num">' + brl(e.rbt12) + '</td><td>' + (dominio && dominio.pgdas ? 'PGDAS ' + esc(dominio.pgdas.competencia) : 'ficha') + '</td></tr>'
     + '<tr><td>Anexo predominante e sua alíquota efetiva</td><td class="num">Anexo ' + esc(e.anexo) + ' · ' + pct2(sim.aliqEfetiva * 100) + '%</td><td>' + (dominio && dominio.pgdas ? 'PGDAS ' + esc(dominio.pgdas.competencia) : 'LC 123, art. 18') + '</td></tr>'
-    + (dominio && dominio.dasMedio ? '<tr><td>DAS médio pago</td><td class="num">' + brl(dominio.dasMedio) + '/mês</td><td>média das ' + dominio.nPgdas + ' apurações do Simples</td></tr>'
+    + (dominio && dominio.dasMedio ? (dominio.nPgdas > 1
+        ? '<tr><td>DAS médio pago</td><td class="num">' + brl(dominio.dasMedio) + '/mês</td><td>média das ' + dominio.nPgdas + ' apurações do Simples</td></tr>'
+        : '<tr><td>DAS apurado em ' + esc(String((dominio.pgdas && dominio.pgdas.competencia) || '').replace(/^(\d{4})-(\d{2})$/, '$2/$1')) + '</td><td class="num">' + brl(dominio.dasMedio) + '</td><td>PGDAS' + (dominio.pgdas && dominio.pgdas.rpa ? ' — sobre receita de ' + brl(dominio.pgdas.rpa) + ' naquele mês' : '') + '</td></tr>')
         : '<tr><td>DAS na simulação</td><td class="num">' + brl(m.dasHoje) + '/mês</td><td>calculado sobre o Anexo ' + esc(e.anexo) + '</td></tr>')
     + (xml && xml.pctPJ != null ? '<tr><td>Vendas para CNPJ</td><td class="num">' + pct1(xml.pctPJ) + '%</td><td>XML das notas emitidas</td></tr>' : '')
     + '<tr class="tot"><td>Entradas que geram crédito</td><td class="num">' + (dominio && dominio.entradas ? brl(dominio.entradas.grupos.filter(g => g.incluido).reduce((a, g) => a + g.valor, 0)) + ' no período' : brl(receita * (e.pctComprasMercadorias + e.pctComprasDespesas) / 100) + '/mês') + ' · ' + pct1(e.pctComprasMercadorias + e.pctComprasDespesas) + '% da receita</td><td>' + (dominio && dominio.entradas ? 'Acompanhamento de entradas' : 'ficha') + '</td></tr>'
@@ -138,7 +140,7 @@ export function gerarAnalise(d) {
     // empresa que vende a consumidor final (ou bar/restaurante): ninguém credita — a decisão é só a conta própria
     P('<h2>2. Para quem a empresa vende — e por que isso simplifica a conta</h2>');
     P('<p>Medido em <b>' + esc(xml.periodoRotulo) + '</b>' + (xml.cobertura != null ? ', período em que as notas eletrônicas cobrem <b>' + (xml.cobertura >= 99.995 ? '100%' : pct2(xml.cobertura) + '%') + '</b> do faturamento declarado' : '') + ': <b>' + pct1(100 - (xml.pctPJ || 0)) + '% das vendas vão para consumidor final</b>'
-      + (xml.pctPJ > 0 ? ' e ' + pct1(xml.pctPJ) + '% para CNPJ' : '') + '.</p>');
+      + (xml.pctPJ >= 0.05 ? ' e ' + pct1(xml.pctPJ) + '% para CNPJ' : '') + '.</p>');
     P('<div class="cx chave"><h4>O ponto central</h4>'
       + '<p>Consumidor final não credita imposto — hoje nem em 2027. ' + (barRestaurante ? 'E para bar e restaurante a lei fecha a porta também para o cliente pessoa jurídica: <b>o adquirente de alimentação e bebidas não pode se apropriar de crédito de IBS/CBS</b> (LC 214/2025, art. 276). ' : '')
       + 'Logo, apurar <b>por fora</b> não devolve crédito a ninguém — a única coisa que a opção muda é a conta da própria empresa.</p>'
@@ -232,7 +234,7 @@ export function gerarAnalise(d) {
   // ---------- 5. repasse ----------
   if (d.consumidor) {
     P('<h2>5. Repasse ao consumidor não muda a conta</h2>');
-    P('<p>Na Maintech e em qualquer empresa que vende a outras empresas, a variável decisiva é o repasse: o cliente credita a CBS destacada e fica neutro. Aqui não há isso. O consumidor não credita nada, então destacar CBS na nota é <b>reajuste de preço puro</b> — e o mesmo reajuste pode ser feito com a apuração por dentro, sem mudar de regime. Não existe percentual de repasse que inverta a conclusão.</p>');
+    P('<p>Numa empresa que vende a outras empresas, a variável decisiva é o repasse: o cliente credita a CBS destacada e fica neutro. Aqui não há isso. O consumidor não credita nada, então destacar CBS na nota é <b>reajuste de preço puro</b> — e o mesmo reajuste pode ser feito com a apuração por dentro, sem mudar de regime. Não existe percentual de repasse que inverta a conclusão.</p>');
   } else {
   P('<h2>5. A variável que inverte a conclusão</h2>');
   P('<p>Tudo acima pressupõe preço inalterado. Mas a CBS é tributo <b>por fora</b>: a prática do mercado é destacá-la na nota, como faz qualquer empresa do regime regular. Se a empresa repassar a CBS ao cliente — que a credita integralmente e fica neutro —, o resultado se desloca:</p>');
@@ -270,7 +272,7 @@ export function gerarAnalise(d) {
   // ---------- 10. pendências ----------
   if (d.pendencias && d.pendencias.length) {
     P('<h2>10. O que falta para fechar o caso</h2>');
-    P('<p>Em ordem de valor para a decisão — o item 1 é o único que pode inverter a recomendação.</p>');
+    P('<p>' + (d.consumidor ? 'Em ordem de valor — nenhum deles inverte a recomendação; servem para afinar o número.' : 'Em ordem de valor para a decisão — o item 1 é o único que pode inverter a recomendação.') + '</p>');
     P('<table><thead><tr><th style="width:26px">#</th><th>O que falta</th><th>Por que importa</th><th>Onde se obtém</th><th>Quem</th><th>Peso</th></tr></thead><tbody>'
       + d.pendencias.map((p, i) => '<tr><td class="num">' + (i + 1) + '</td><td><b>' + esc(p.o_que) + '</b></td><td>' + esc(p.porque) + '</td><td>' + esc(p.onde) + '</td><td>' + esc(p.quem) + '</td><td>' + selo(p.nivel, p.peso) + '</td></tr>').join('')
       + '</tbody></table>');

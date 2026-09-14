@@ -951,6 +951,7 @@
       const ent2 = cons.ent, res2 = ent2 ? resumirEntradas(ent2, cons.competencias) : null;
       return {
         periodoRotulo: cons.fat ? rotuloPeriodo(cons.competencias) : null,
+        fonteFaturamento: cons.fat ? (cons.fat.layout === 'demonstrativo' ? 'Demonstrativo Mensal (Domínio)' : 'Relatório de faturamento (Domínio)') : null,
         faturamento: cons.fat ? { total: cons.fat.totais.total, servicos: cons.fat.totais.servicos, saidas: cons.fat.totais.saidas } : null,
         meses: cons.fat ? cons.fat.meses : null,
         pgdas: cons.sim ? { competencia: cons.sim.competencia, dasTotal: cons.sim.dasTotal, cbsNoDas: cons.sim.cbsNoDas, aliquotaEfetiva: cons.sim.aliquotaEfetiva } : null,
@@ -1201,10 +1202,11 @@
           // as notas de um período podem cobrir só parte do faturamento (ex.: NFS-e que
           // só passou a ter XML no meio do ano). Medir a carteira sobre base incompleta
           // distorce o peso de cada cliente — então restringe aos meses bem cobertos.
-          let periodoRotulo = 'ano de ' + ANO_XML, cobertura = null, avisoCobertura = null;
+          let periodoRotulo = String(ANO_XML), cobertura = null, avisoCobertura = null;
           if (!error && modelo && dom && dom.meses && dom.meses.length) {
-            const domPorMes = new Map(dom.meses.map(x => [Number(x.competencia.slice(5, 7)), x.total || 0]));
-            const cob = modelo.meses.map(x => ({ mes: x.mes, xml: x.vendas, dom: domPorMes.get(x.mes) || 0 }))
+            // chave por competência completa (AAAA-MM): o Domínio pode trazer meses do ano anterior
+            const domPorComp = new Map(dom.meses.map(x => [x.competencia, x.total || 0]));
+            const cob = modelo.meses.map(x => ({ mes: x.mes, xml: x.vendas, dom: domPorComp.get(ANO_XML + '-' + String(x.mes).padStart(2, '0')) || 0 }))
               .filter(x => x.dom > 0).map(x => ({ ...x, pct: x.xml / x.dom * 100 }));
             let ini = null;
             for (let i = cob.length - 1; i >= 0; i--) { if (cob[i].pct >= 90) ini = i; else break; }
@@ -1265,9 +1267,15 @@
       const b2c = (ent.mixRed40 || 0) > 0 || !!(xml && xml.pctPJ != null && xml.pctPJ < 10);
       const sensibilidade = [
         b2c
-          ? { nome: 'Crédito das compras', hoje: ent.pctComprasComCredito != null ? p1(ent.pctComprasComCredito) + '% das mercadorias (por NCM)' : 'segue o mix de vendas',
-              efeito: 'crédito cheio sobre todas as compras → ' + sinal(dif({ pctComprasComCredito: 100 })) + ' · nenhum crédito → ' + sinal(dif({ pctComprasComCredito: 0 })),
-              muda: dif({ pctComprasComCredito: 100 }) < 0 ? 'Sim — só se toda compra creditasse' : 'Não — nem creditando tudo' }
+          ? (() => {
+              const c0 = ent.pctComprasComCredito != null ? ent.pctComprasComCredito : 100;
+              // a partir de que % das compras com crédito a conclusão inverteria (se inverter)
+              let vira = null;
+              if (dif({ pctComprasComCredito: 100 }) < 0) { let lo = c0, hi = 100; for (let i = 0; i < 30; i++) { const mid = (lo + hi) / 2; if (dif({ pctComprasComCredito: mid }) > 0) lo = mid; else hi = mid; } vira = lo; }
+              return { nome: 'Crédito das compras', hoje: ent.pctComprasComCredito != null ? p1(ent.pctComprasComCredito) + '% das mercadorias (por NCM)' : 'segue o mix de vendas',
+                efeito: '+15 pontos (revisão de NCM) → ' + sinal(dif({ pctComprasComCredito: Math.min(100, c0 + 15) })) + ' · +25 pontos → ' + sinal(dif({ pctComprasComCredito: Math.min(100, c0 + 25) })) + ' · nenhum crédito → ' + sinal(dif({ pctComprasComCredito: 0 })),
+                muda: vira != null ? 'Não em revisão plausível — inverteria só acima de ' + Math.round(vira) + '% das compras creditando (hoje ' + p1(c0) + '%); cesta básica é alíquota zero por lei' : 'Não — nem creditando todas as compras' };
+            })()
           : { nome: 'Repasse da CBS ao cliente', hoje: 'não levantado',
               efeito: 'de ' + brl0(-s.diferenca) + ' (0% de repasse) a ' + brl0(m.debitoFora * 6 - s.diferenca) + ' (100%)',
               muda: viraEm != null && viraEm >= 0 && viraEm <= 100 ? 'Sim — inverte a partir de ' + Math.round(viraEm) + '%' : 'Sim' },
@@ -1287,20 +1295,28 @@
       ];
 
       const fontes = [];
-      if (dom && dom.faturamento) fontes.push({ o_que: 'Receita mensal e divisão serviço/mercadoria', origem: 'Relatório de faturamento (Domínio)' + (dom.pgdas ? ', conferido contra as apurações do Simples' : ''), nivel: 'alta', rotulo: 'alta' });
+      if (dom && dom.faturamento) fontes.push({ o_que: 'Receita mensal e divisão serviço/mercadoria', origem: (dom.fonteFaturamento || 'Relatório de faturamento (Domínio)') + (dom.pgdas ? ', conferido contra a apuração do Simples' : ''), nivel: 'alta', rotulo: 'alta' });
       else fontes.push({ o_que: 'Receita mensal', origem: 'Informada na ficha — o relatório de faturamento não está anexado a este caso', nivel: 'media', rotulo: 'a anexar' });
-      if (dom && dom.pgdas) fontes.push({ o_que: 'RBT12, anexo, alíquota efetiva e partilha do DAS', origem: 'PGDAS ' + dom.pgdas.competencia + ' (partilha = PIS + COFINS ÷ DAS total)', nivel: 'alta', rotulo: 'alta' });
+      if (dom && dom.pgdas) {
+        // a partilha pode ter vindo da tabela 2027 (quando há ST/monofásico) ou do próprio PGDAS
+        const razaoPgdas = dom.pgdas.dasTotal > 0 ? dom.pgdas.cbsNoDas / dom.pgdas.dasTotal * 100 : null;
+        const daTabela = razaoPgdas != null && Math.abs(razaoPgdas - ent.partilha) > 0.3;
+        fontes.push({ o_que: 'RBT12, anexo e alíquota efetiva', origem: 'PGDAS ' + dom.pgdas.competencia, nivel: 'alta', rotulo: 'alta' });
+        fontes.push({ o_que: 'Partilha CBS/IBS no DAS (' + p1(ent.partilha) + '%)', origem: daTabela
+          ? 'Anexos de transição 2027-2028 da LC 123 (LC 214/2025 e LC 227/2026), por anexo e faixa; o PGDAS ' + dom.pgdas.competencia + ' mostra PIS+COFINS = ' + p1(razaoPgdas) + '% do DAS apurado porque parte da receita é monofásica hoje — em 2027 a CBS alcança essa parcela'
+          : 'PGDAS ' + dom.pgdas.competencia + ' (PIS + COFINS ÷ DAS), igual à tabela 2027 por anexo e faixa', nivel: 'alta', rotulo: 'alta (norma)' });
+      }
       else fontes.push({ o_que: 'RBT12, anexo e partilha do DAS', origem: 'Informados na ficha — a apuração do Simples não está anexada a este caso', nivel: 'media', rotulo: 'a anexar' });
-      if (xml) fontes.push({ o_que: '% de vendas para CNPJ e concentração de clientes', origem: 'XML das notas fiscais emitidas em ' + (xml.periodoRotulo || ANO_XML), nivel: 'alta', rotulo: 'alta' });
+      if (xml) fontes.push({ o_que: (xml.clientes && xml.clientes.length && !((ent.mixRed40 || 0) > 0 || (xml.pctPJ != null && xml.pctPJ < 10)) ? '% de vendas para CNPJ e concentração de clientes' : '% de vendas para CNPJ'), origem: 'XML das notas fiscais de ' + (xml.periodoRotulo || ANO_XML) + (xml.cobertura != null ? ' (cobrem ' + (xml.cobertura >= 99.995 ? '100%' : p1(xml.cobertura) + '%') + ' do faturamento do período)' : ''), nivel: 'alta', rotulo: 'alta' });
       if (dom && dom.entradas) fontes.push({ o_que: 'Base creditável de entradas', origem: 'Acompanhamento de entradas, classificado por CFOP', nivel: 'media', rotulo: 'média', ressalva: '— regime dos fornecedores não verificado' });
       if (ent.mixCheia >= 99) fontes.push({ o_que: 'Mix de alíquotas (integralmente cheia)', origem: 'Serviço não consta dos anexos de redução da LC 214', nivel: 'alta', rotulo: 'alta (norma)' });
-      else if ((ent.mixRed40 || 0) > 0) fontes.push({ o_que: 'Mix de alíquotas (' + p1(ent.mixRed40) + '% com redução de 40%)', origem: 'LC 214/2025 arts. 273-276: alimentação preparada por bar/restaurante; bebidas alcoólicas e industrializados revendidos ficam na alíquota cheia; o cliente não credita (art. 276)', nivel: 'alta', rotulo: 'alta (norma)', ressalva: '— divisão entre preparado e revendido estimada pelas seções do PGDAS' });
+      else if ((ent.mixRed40 || 0) > 0) fontes.push({ o_que: 'Mix de alíquotas (' + p1(ent.mixRed40) + '% com redução de 40%)', origem: 'LC 214/2025 arts. 273-276: alimentação preparada por bar/restaurante, inclusive com entrega por plataforma (art. 274, parágrafo único, II); bebidas alcoólicas e industrializados revendidos ficam na alíquota cheia (art. 273 §2º); o cliente não credita (art. 276)', nivel: 'alta', rotulo: 'alta (norma)', ressalva: '— divisão entre preparado e revendido estimada pelas seções do PGDAS' });
       if (ent.pctComprasComCredito != null) fontes.push({ o_que: 'Crédito das compras (' + p1(ent.pctComprasComCredito) + '% das mercadorias)', origem: 'NCM das notas de entrada classificado pela tabela de regimes da Reforma (cesta básica = zero)', nivel: 'media', rotulo: 'média', ressalva: '— classificação por NCM, sujeita a revisão item a item' });
       if ((ent.pctExcluidoST || 0) > 0) fontes.push({ o_que: 'DAS real abaixo da tabela (' + p1(ent.pctExcluidoST) + '% excluído)', origem: 'PGDAS: ICMS-ST, monofásico e/ou redução de base — DAS apurado ÷ DAS pela tabela do anexo', nivel: 'alta', rotulo: 'alta' });
-      if (xml) fontes.push({ o_que: 'Clientes serem do regime regular', origem: 'Porte das empresas atendidas', nivel: 'media', rotulo: 'média', ressalva: '— presunção, não consulta' });
+      if (xml && !((ent.mixRed40 || 0) > 0 || (xml.pctPJ != null && xml.pctPJ < 10))) fontes.push({ o_que: 'Clientes serem do regime regular', origem: 'Porte das empresas atendidas', nivel: 'media', rotulo: 'média', ressalva: '— presunção, não consulta' });
       fontes.push({ o_que: 'Alíquota de referência da CBS', origem: 'Não fixada: cabe ao Senado defini-la para 2027. A simulação usa ' + p1(ent.cbs) + '%; em circulação há 8,8% (projeção do Ministério da Fazenda, dentro do teto de 26,5% da LC 214) e 9,21% (CGIBS, jul/2026, para fins orçamentários)', nivel: 'baixa', rotulo: 'estimativa' });
       fontes.push({ o_que: 'Alíquota do IBS em 2027', origem: 'LC 214/2025: 0,05% estadual + 0,05% municipal', nivel: 'alta', rotulo: 'alta (norma)' });
-      fontes.push({ o_que: 'Crédito de PIS/COFINS que o cliente toma hoje', origem: 'ADI RFB nº 15/2007 — vale para o cliente no regime não cumulativo', nivel: 'media', rotulo: 'média', ressalva: '— depende do regime de cada cliente' });
+      if (!((ent.mixRed40 || 0) > 0 || (xml && xml.pctPJ != null && xml.pctPJ < 10))) fontes.push({ o_que: 'Crédito de PIS/COFINS que o cliente toma hoje', origem: 'ADI RFB nº 15/2007 — vale para o cliente no regime não cumulativo', nivel: 'media', rotulo: 'média', ressalva: '— depende do regime de cada cliente' });
       const barRest = (ent.mixRed40 || 0) > 0;
       const consumidor = !!(xml && xml.pctPJ != null && xml.pctPJ < 10) || barRest;
       if (!consumidor) fontes.push({ o_que: 'Capacidade de repasse do preço', origem: 'Não levantado — depende dos contratos e da conversa com os clientes', nivel: 'baixa', rotulo: 'a levantar' });
