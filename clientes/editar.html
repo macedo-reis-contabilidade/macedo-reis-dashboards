@@ -23,6 +23,16 @@
     .fa-modal textarea.input { resize:vertical; font-family:inherit; }
     .alv-hr { border:none; border-top:1px solid rgba(255,255,255,.08); margin:8px 0 2px; }
     .cmp-box { border:1px solid rgba(91,130,166,.25); background:rgba(91,130,166,.06); border-radius:10px; padding:10px 12px; }
+    .proc-drop { border:1.5px dashed rgba(138,147,166,.45); border-radius:10px; padding:16px; text-align:center; font-size:13px; color:#8A93A6; cursor:pointer; margin:-4px 0 8px; }
+    .proc-drop.is-over, .proc-drop:hover { border-color:#5B82A6; color:#C9D3E0; background:rgba(91,130,166,.06); }
+    .proc-lista { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+    .proc-lista:empty { display:none; }
+    .proc-chip { display:inline-flex; align-items:center; gap:6px; padding:5px 9px; border-radius:8px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); font-size:12px; color:#C9D3E0; max-width:100%; }
+    .proc-chip .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:260px; }
+    .proc-chip .tp { color:#8AAEC8; font-size:11px; }
+    .proc-chip.lido { border-color:rgba(91,130,166,.6); }
+    .proc-chip button { background:none; border:0; color:#8A93A6; cursor:pointer; font-size:15px; line-height:1; padding:0 0 0 2px; }
+    .proc-chip button:hover { color:#F0A0A0; }
     .cmp-step { display:flex; flex-direction:column; gap:10px; }
     .cmp-tbl { width:100%; border-collapse:collapse; font-size:12.5px; margin-top:4px; }
     .cmp-tbl th { text-align:left; color:#8AAEC8; font-size:11px; text-transform:uppercase; letter-spacing:.04em; padding:6px 8px; border-bottom:1px solid rgba(255,255,255,.1); }
@@ -619,12 +629,10 @@
           </label>
         </div>
 
-        <label class="fa-field"><span id="procLbl1">Contrato social consolidado (PDF)</span>
-          <input type="file" id="procContrato" class="input" accept="application/pdf">
-        </label>
-        <label class="fa-field"><span id="procLbl2">Cartão CNPJ atualizado (PDF)</span>
-          <input type="file" id="procCnpj" class="input" accept="application/pdf">
-        </label>
+        <label class="fa-field"><span id="procLbl1">Documentos do processo (PDF) — contrato, alterações, cartão CNPJ… vários de uma vez</span></label>
+        <div class="proc-drop" id="procDrop"><b>Arraste os PDFs aqui</b><br>ou clique pra escolher — o sistema diz o que cada um é e lê o mais recente</div>
+        <input type="file" id="procArquivos" accept="application/pdf,.pdf" multiple hidden>
+        <div class="proc-lista" id="procLista"></div>
 
         <div class="cmp-box" id="atzBox">
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
@@ -1696,13 +1704,12 @@
     function montarTarefas(tipo){
       const box = document.getElementById('procTarefas'); box.innerHTML='';
       const rot = ({
-        'EXTINÇÃO': ['Distrato social (PDF)', 'Certidão de baixa (PDF)', 'Registro da baixa (vai para o registro no Societário)'],
-        'ENTRADA': ['Contrato social ou requerimento de empresário — o mais recente (PDF)', 'Cartão CNPJ ou contrato anterior (PDF)', 'Observações da entrada (vai para o registro no Societário)']
-      })[tipo] || ['Contrato social consolidado (PDF)', 'Cartão CNPJ atualizado (PDF)', 'O que foi alterado (vai para o registro no Societário)'];
-      const l1 = document.getElementById('procLbl1'), l2 = document.getElementById('procLbl2'), l3 = document.getElementById('procLbl3');
+        'EXTINÇÃO': ['Documentos da baixa (PDF) — distrato, certidão de baixa… vários de uma vez', 'Registro da baixa (vai para o registro no Societário)'],
+        'ENTRADA': ['Documentos do cliente (PDF) — contratos, alterações, cartão CNPJ… vários de uma vez; o sistema lê o mais recente', 'Observações da entrada (vai para o registro no Societário)']
+      })[tipo] || ['Documentos do processo (PDF) — contrato consolidado, alterações, cartão CNPJ… vários de uma vez', 'O que foi alterado (vai para o registro no Societário)'];
+      const l1 = document.getElementById('procLbl1'), l3 = document.getElementById('procLbl3');
       if (l1) l1.textContent = rot[0];
-      if (l2) l2.textContent = rot[1];
-      if (l3) l3.textContent = rot[2];
+      if (l3) l3.textContent = rot[1];
       (SUGESTOES[tipo] || []).forEach(t => box.appendChild(linhaTarefa(t)));
     }
 
@@ -1720,6 +1727,7 @@
       document.getElementById('procPastaNome').value = tipo;
       montarTarefas(tipo);
       procStatus('');
+      procFiles = []; atzEscolha = null; procRenderLista();
       atzReset();
       procOverlay.classList.add('is-open');
     });
@@ -1729,7 +1737,39 @@
       atzAjustarVisibilidade();
     });
     // o comparativo lê o contrato; sem contrato, o cartão CNPJ
-    ['procContrato', 'procCnpj'].forEach(id => document.getElementById(id).addEventListener('change', () => { atzAjustarVisibilidade(); atzAoAnexar(); }));
+    // arquivos do processo: uma caixa, vários PDFs; cada um vira um chip dizendo o que é
+    let procFiles = [];
+    function procAddFiles(lista){
+      let novos = 0;
+      [...lista].forEach(f => {
+        if (!/\.pdf$/i.test(f.name)) return;
+        if (procFiles.some(x => x.name === f.name && x.size === f.size)) return;
+        procFiles.push(f); novos++;
+      });
+      if (!novos && lista.length) procStatus('Só PDF entra aqui (arquivo repetido também não).', 'var(--warning)');
+      procRenderLista(); atzAjustarVisibilidade(); atzAoAnexar();
+    }
+    async function procRenderLista(){
+      const box = document.getElementById('procLista'); box.innerHTML = '';
+      const infos = await Promise.all(procFiles.map(classificarPdf));
+      const escolhido = atzEscolha && atzEscolha.file;
+      procFiles.forEach((f, i) => {
+        const inf = infos[i] || {};
+        const tp = inf.tipo === 'contrato' ? 'contrato' + (inf.data ? ' · registro ' + fmtBr(inf.data) : '') : inf.tipo === 'cartao' ? 'cartão CNPJ' + (inf.data ? ' · ' + fmtBr(inf.data) : '') : 'PDF';
+        const el = document.createElement('span'); el.className = 'proc-chip' + (f === escolhido ? ' lido' : '');
+        el.innerHTML = '📄 <span class="nm"></span><span class="tp"></span>';
+        el.querySelector('.nm').textContent = f.name; el.title = f.name;
+        el.querySelector('.tp').textContent = tp + (f === escolhido ? ' · será lido' : '');
+        const b = document.createElement('button'); b.type = 'button'; b.title = 'Remover'; b.textContent = '×';
+        b.onclick = () => { procFiles = procFiles.filter(x => x !== f); procRenderLista(); atzAjustarVisibilidade(); atzAoAnexar(); };
+        el.appendChild(b); box.appendChild(el);
+      });
+    }
+    document.getElementById('procDrop').addEventListener('click', () => document.getElementById('procArquivos').click());
+    document.getElementById('procArquivos').addEventListener('change', e => { procAddFiles(e.target.files); e.target.value = ''; });
+    ['dragenter', 'dragover'].forEach(ev => document.getElementById('procDrop').addEventListener(ev, e => { e.preventDefault(); e.currentTarget.classList.add('is-over'); }));
+    ['dragleave', 'drop'].forEach(ev => document.getElementById('procDrop').addEventListener(ev, e => { e.preventDefault(); e.currentTarget.classList.remove('is-over'); }));
+    document.getElementById('procDrop').addEventListener('drop', e => procAddFiles(e.dataTransfer?.files || []));
     // ---- qual PDF é o mais recente? Lê a primeira página no navegador (pdf.js) e procura a data de
     // registro na Junta ("Certifico registro sob o nº X em DD/MM/AAAA"), o início dos efeitos ou a data
     // da assinatura; cartão CNPJ é reconhecido pelo cabeçalho da Receita. Sem IA, nada sai da máquina.
@@ -1782,7 +1822,7 @@
     let atzEscolha = null; // { file, motivo, outro }
     // entre os anexos, lê o contrato de registro mais recente; cartão CNPJ só se for o único anexo
     async function escolherArquivoLeitura(){
-      const fs = [document.getElementById('procContrato').files[0], document.getElementById('procCnpj').files[0]].filter(Boolean);
+      const fs = procFiles.slice();
       if (!fs.length) { atzEscolha = null; return null; }
       const infos = await Promise.all(fs.map(classificarPdf));
       const contratos = fs.map((f, i) => ({ f, i: infos[i] })).filter(x => x.i.tipo === 'contrato').sort((a, b) => String(b.i.data || '').localeCompare(String(a.i.data || '')));
@@ -1798,15 +1838,17 @@
       atzEscolha = { file: esc, motivo, outro, infos: fs.map((f, i) => ({ f, i: infos[i] })) };
       return esc;
     }
-    function atzArquivoParaLeitura(){ return document.getElementById('procContrato').files[0] || document.getElementById('procCnpj').files[0] || null; }
+    function atzArquivoParaLeitura(){ return (atzEscolha && atzEscolha.file && procFiles.includes(atzEscolha.file)) ? atzEscolha.file : (procFiles[0] || null); }
     // ao anexar: decide o mais recente, avisa, e sugere a trilha dos atos no resumo (se estiver vazio)
     async function atzAoAnexar(){
       const esc = await escolherArquivoLeitura();
-      if (!esc) return;
+      if (!esc) { atzStatus(''); return; }
       const e = atzEscolha;
       let txt = 'Vou ler: ' + esc.name + ' (' + e.motivo + ').';
-      if (e.outro) txt += ' ' + e.outro.f.name + (e.outro.i.data ? ' (registro de ' + fmtBr(e.outro.i.data) + ')' : '') + ' vai só pro Drive.';
+      const demais = e.infos.filter(x => x.f !== esc);
+      if (demais.length) txt += ' ' + demais.map(x => x.f.name + (x.i.data ? ' (' + (x.i.tipo === 'cartao' ? 'cartão CNPJ de ' : 'registro de ') + fmtBr(x.i.data) + ')' : '')).join(', ') + (demais.length > 1 ? ' vão' : ' vai') + ' só pro Drive.';
       atzStatus(txt);
+      procRenderLista();
       const resumo = document.getElementById('procResumo');
       if (!resumo.value.trim()) {
         const linhas = e.infos.filter(x => x.i.tipo === 'contrato' && (x.i.registro || x.i.eventos.length))
@@ -1848,50 +1890,6 @@
         r.onerror = () => rej(new Error('Falha ao ler ' + file.name));
         r.readAsDataURL(file);
       });
-    }
-
-    // ao anexar o contrato, tenta resumir as alterações automaticamente
-    document.getElementById('procContrato').addEventListener('change', async (e) => {
-      const f = e.target.files[0];
-      if (!f) return;
-      const campo = document.getElementById('procResumo');
-      if (campo.value.trim()) return; // não sobrescreve o que o usuário já escreveu
-      procStatus('Lendo o contrato para resumir as alterações…');
-      try {
-        const base64 = await fileToBase64(f);
-        const { data: resp, error } = await supabase.functions.invoke('extract-document', {
-          body: { modo: 'cadastro', documents: [{ media_type: 'application/pdf', data: base64 }] }
-        });
-        if (error) throw error;
-        const d = resp?.data;
-        if (!d) { procStatus(''); return; }
-        campo.value = montarResumoAlteracoes(d);
-        procStatus('Resumo preenchido a partir do contrato — confira e ajuste se precisar.', 'var(--success)');
-      } catch (err) {
-        procStatus('Não consegui ler o contrato automaticamente — preencha o resumo na mão. (' + (err.message || err) + ')', 'var(--warning)');
-      }
-    });
-
-    function montarResumoAlteracoes(d){
-      const L = [];
-      if (d.nome_principal) L.push('Razão social: ' + d.nome_principal);
-      if (d.documento) L.push('CNPJ: ' + d.documento);
-      if (d.capital_social != null) L.push('Capital social: R$ ' + Number(d.capital_social).toLocaleString('pt-BR', {minimumFractionDigits:2}));
-      if (d.natureza_juridica) L.push('Natureza jurídica: ' + d.natureza_juridica);
-      if (Array.isArray(d.socios) && d.socios.length){
-        const socs = d.socios.map(s => {
-          const part = s.participacao_percentual != null ? ` (${s.participacao_percentual}%)` : '';
-          const adm = s.eh_administrador ? ' — administrador' : '';
-          return '• ' + (s.nome || 'sócio') + part + adm;
-        }).join('\n');
-        L.push('Quadro societário (conforme contrato consolidado):\n' + socs);
-      }
-      const endereco = [d.logradouro, d.numero, d.bairro, d.cidade, d.uf].filter(Boolean).join(', ');
-      if (endereco) L.push('Endereço: ' + endereco);
-      if (d.cnae_principal) L.push('CNAE principal: ' + d.cnae_principal);
-      if (d.observacoes_extracao) L.push('Obs.: ' + d.observacoes_extracao);
-      L.push('\n(Resumo extraído automaticamente do contrato consolidado — revisar e destacar o que de fato mudou.)');
-      return L.join('\n');
     }
 
     // ===================== COMPARATIVO ANTES × DEPOIS =====================
@@ -1941,7 +1939,7 @@
 
     document.getElementById('btnRodarComparativo').addEventListener('click', async () => {
       const fileId = document.getElementById('cmpArquivo').value;
-      const fNovo = document.getElementById('procContrato').files[0];
+      const fNovo = (await escolherArquivoLeitura()) || atzArquivoParaLeitura();
       const res = document.getElementById('cmpResultado');
       if (!fileId) { res.innerHTML = '<div class="proc-warn">Escolha o contrato anterior.</div>'; return; }
       if (!fNovo) { res.innerHTML = '<div class="proc-warn">Anexe o contrato novo lá em cima primeiro.</div>'; return; }
@@ -2420,8 +2418,6 @@
       const tipo = document.getElementById('procTipo').value;
       const pastaNome = document.getElementById('procPastaNome').value.trim() || tipo;
       const resumo = document.getElementById('procResumo').value.trim();
-      const fC = document.getElementById('procContrato').files[0];
-      const fN = document.getElementById('procCnpj').files[0];
 
       // tarefas marcadas
       const tarefasSel = [];
@@ -2446,12 +2442,11 @@
         const arquivos = [];
         const nomeDrive = async (f, padrao) => {
           const i = await classificarPdf(f);
-          if (i && i.tipo === 'contrato') return `Contrato Social${i.data ? ' (registro ' + fmtBr(i.data).replace(/\//g, '-') + ')' : ''} - ${pastaNome} - ${nomeCliente}.pdf`;
+          if (i && i.tipo === 'contrato') return `Contrato Social${i.registro ? ' (registro ' + i.registro + (i.data ? ' de ' + fmtBr(i.data).replace(/\//g, '-') : '') + ')' : (i.data ? ' (' + fmtBr(i.data).replace(/\//g, '-') + ')' : ' - ' + padrao)} - ${pastaNome} - ${nomeCliente}.pdf`;
           if (i && i.tipo === 'cartao') return `Cartao CNPJ${i.data ? ' (' + fmtBr(i.data).replace(/\//g, '-') + ')' : ''} - ${pastaNome} - ${nomeCliente}.pdf`;
           return `${padrao} - ${pastaNome} - ${nomeCliente}.pdf`;
         };
-        if (fC) arquivos.push({ nome: await nomeDrive(fC, 'Contrato Social'), mime: 'application/pdf', base64: await fileToBase64(fC) });
-        if (fN) arquivos.push({ nome: await nomeDrive(fN, 'Cartao CNPJ'), mime: 'application/pdf', base64: await fileToBase64(fN) });
+        for (const f of procFiles) arquivos.push({ nome: await nomeDrive(f, f.name.replace(/\.pdf$/i, '')), mime: 'application/pdf', base64: await fileToBase64(f) });
 
         let driveMsg = 'sem arquivos';
         procStatus('Localizando a pasta no Drive e enviando arquivos…');
