@@ -704,6 +704,7 @@
     </div>
   </div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
   <script type="module">
     import { supabase, getCurrentUser, signOut } from '../assets/js/supabase.js';
@@ -1728,8 +1729,92 @@
       atzAjustarVisibilidade();
     });
     // o comparativo lê o contrato; sem contrato, o cartão CNPJ
-    ['procContrato', 'procCnpj'].forEach(id => document.getElementById(id).addEventListener('change', atzAjustarVisibilidade));
+    ['procContrato', 'procCnpj'].forEach(id => document.getElementById(id).addEventListener('change', () => { atzAjustarVisibilidade(); atzAoAnexar(); }));
+    // ---- qual PDF é o mais recente? Lê a primeira página no navegador (pdf.js) e procura a data de
+    // registro na Junta ("Certifico registro sob o nº X em DD/MM/AAAA"), o início dos efeitos ou a data
+    // da assinatura; cartão CNPJ é reconhecido pelo cabeçalho da Receita. Sem IA, nada sai da máquina.
+    const pdfInfoCache = new WeakMap();
+    async function classificarPdf(file){
+      if (!file) return null;
+      if (pdfInfoCache.has(file)) return pdfInfoCache.get(file);
+      const info = { tipo: 'outro', data: null, registro: null, eventos: [], nome: file.name };
+      try {
+        if (window.pdfjsLib && /\.pdf$/i.test(file.name)) {
+          pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+          const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+          let texto = '';
+          for (let i = 1; i <= Math.min(2, pdf.numPages); i++) {
+            const pg = await pdf.getPage(i); const tc = await pg.getTextContent();
+            texto += tc.items.map(it => it.str).join(' ') + '\n';
+          }
+          const T = texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+          const br = dt => { const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(dt || ''); return m ? m[3] + '-' + m[2] + '-' + m[1] : null; };
+          if (/COMPROVANTE DE INSCRICAO E DE SITUACAO CADASTRAL|CADASTRO NACIONAL DA PESSOA JURIDICA/.test(T)) {
+            info.tipo = 'cartao';
+            const m = /EMITIDO NO DIA (\d{2}\/\d{2}\/\d{4})/.exec(T); info.data = m ? br(m[1]) : null;
+          } else {
+            info.tipo = 'contrato';
+            const datas = [];
+            const r1 = /CERTIFICO REGISTRO SOB O N[ºO°]?\s*([\d.]+)\s+EM\s+(\d{2}\/\d{2}\/\d{4})/.exec(T);
+            if (r1) { info.registro = r1[1]; datas.push(br(r1[2])); }
+            const r2 = /INICIO DOS EFEITOS DO REGISTRO[^:]*:\s*(\d{2}\/\d{2}\/\d{4})/.exec(T); if (r2) datas.push(br(r2[1]));
+            const MES = { JANEIRO: '01', FEVEREIRO: '02', MARCO: '03', ABRIL: '04', MAIO: '05', JUNHO: '06', JULHO: '07', AGOSTO: '08', SETEMBRO: '09', OUTUBRO: '10', NOVEMBRO: '11', DEZEMBRO: '12' };
+            const r3 = /,\s*(\d{1,2})\s+DE\s+([A-Z]+)\s+DE\s+(\d{4})/.exec(T); if (r3 && MES[r3[2]]) datas.push(r3[3] + '-' + MES[r3[2]] + '-' + r3[1].padStart(2, '0'));
+            info.data = datas.filter(Boolean).sort().pop() || null;
+            // eventos do requerimento (capa da Junta): vocabulário fixo dos atos, do mais longo pro mais
+            // curto, marcando o trecho já usado — no texto extraído eles vêm um atrás do outro sem separador
+            const EVENTOS_JUNTA = ['REENQUADRAMENTO DE MICROEMPRESA COMO EMPRESA DE PEQUENO PORTE', 'REENQUADRAMENTO DE EMPRESA DE PEQUENO PORTE COMO MICROEMPRESA',
+              'ALTERACAO DE ATIVIDADES ECONOMICAS (PRINCIPAL E SECUNDARIAS)', 'ALTERACAO DE ENDERECO ENTRE MUNICIPIOS DENTRO DO MESMO ESTADO', 'TRANSFERENCIA DE SEDE OU DE FILIAL PARA OUTRA UF',
+              'ALTERACAO DE DADOS (EXCETO NOME EMPRESARIAL)', 'ALTERACAO DE ENDERECO DENTRO DO MESMO MUNICIPIO', 'DESENQUADRAMENTO DE EMPRESA DE PEQUENO PORTE', 'ENQUADRAMENTO DE EMPRESA DE PEQUENO PORTE',
+              'TRANSFORMACAO DE EMPRESARIO EM SOCIEDADE', 'CANCELAMENTO DE INSCRICAO DE EMPRESARIO', 'CONSOLIDACAO DE CONTRATO/ESTATUTO', 'ALTERACAO DE SOCIO/ADMINISTRADOR', 'DESENQUADRAMENTO DE MICROEMPRESA',
+              'ALTERACAO DE NOME EMPRESARIAL', 'ENQUADRAMENTO DE MICROEMPRESA', 'ALTERACAO DE NATUREZA JURIDICA', 'ALTERACAO DE PRAZO DE DURACAO', 'ALTERACAO DE CAPITAL SOCIAL', 'ALTERACAO DE OBJETO SOCIAL',
+              'ALTERACAO DE ADMINISTRADOR', 'ALTERACAO DE DADOS DO SOCIO', 'ABERTURA DE FILIAL', 'ENTRADA DE SOCIO', 'SAIDA DE SOCIO', 'DISTRATO SOCIAL', 'EXTINCAO'];
+            const achados = []; let U = T;
+            EVENTOS_JUNTA.forEach(evn => { const at = U.indexOf(evn); if (at >= 0) { achados.push({ at, evn }); U = U.slice(0, at) + ' '.repeat(evn.length) + U.slice(at + evn.length); } });
+            info.eventos = achados.sort((a, b) => a.at - b.at).map(x => x.evn).slice(0, 8);
+          }
+        }
+      } catch (e) { /* PDF ilegível: fica como 'outro', sem data */ }
+      pdfInfoCache.set(file, info);
+      return info;
+    }
+    const fmtBr = d => d ? d.slice(8, 10) + '/' + d.slice(5, 7) + '/' + d.slice(0, 4) : '?';
+    let atzEscolha = null; // { file, motivo, outro }
+    // entre os anexos, lê o contrato de registro mais recente; cartão CNPJ só se for o único anexo
+    async function escolherArquivoLeitura(){
+      const fs = [document.getElementById('procContrato').files[0], document.getElementById('procCnpj').files[0]].filter(Boolean);
+      if (!fs.length) { atzEscolha = null; return null; }
+      const infos = await Promise.all(fs.map(classificarPdf));
+      const contratos = fs.map((f, i) => ({ f, i: infos[i] })).filter(x => x.i.tipo === 'contrato').sort((a, b) => String(b.i.data || '').localeCompare(String(a.i.data || '')));
+      let esc, motivo, outro = null;
+      if (contratos.length) {
+        esc = contratos[0].f;
+        const d = contratos[0].i.data;
+        motivo = contratos.length > 1
+          ? (d ? 'registro de ' + fmtBr(d) + ' — o mais recente dos ' + contratos.length + ' anexados' : 'primeiro anexo (não achei data de registro nos PDFs)')
+          : (d ? 'registro de ' + fmtBr(d) : 'único contrato anexado');
+        if (contratos.length > 1) outro = contratos[1];
+      } else { esc = fs[0]; motivo = infos[0].tipo === 'cartao' ? 'cartão CNPJ' : 'único anexo'; }
+      atzEscolha = { file: esc, motivo, outro, infos: fs.map((f, i) => ({ f, i: infos[i] })) };
+      return esc;
+    }
     function atzArquivoParaLeitura(){ return document.getElementById('procContrato').files[0] || document.getElementById('procCnpj').files[0] || null; }
+    // ao anexar: decide o mais recente, avisa, e sugere a trilha dos atos no resumo (se estiver vazio)
+    async function atzAoAnexar(){
+      const esc = await escolherArquivoLeitura();
+      if (!esc) return;
+      const e = atzEscolha;
+      let txt = 'Vou ler: ' + esc.name + ' (' + e.motivo + ').';
+      if (e.outro) txt += ' ' + e.outro.f.name + (e.outro.i.data ? ' (registro de ' + fmtBr(e.outro.i.data) + ')' : '') + ' vai só pro Drive.';
+      atzStatus(txt);
+      const resumo = document.getElementById('procResumo');
+      if (!resumo.value.trim()) {
+        const linhas = e.infos.filter(x => x.i.tipo === 'contrato' && (x.i.registro || x.i.eventos.length))
+          .sort((a, b) => String(a.i.data || '').localeCompare(String(b.i.data || '')))
+          .map(x => (x.i.registro ? 'Registro ' + x.i.registro + (x.i.data ? ' (' + fmtBr(x.i.data) + ')' : '') : x.f.name) + (x.i.eventos.length ? ': ' + x.i.eventos.map(v => v.toLowerCase()).join('; ') : ''));
+        if (linhas.length) resumo.value = linhas.join('\n');
+      }
+    }
     function atzAjustarVisibilidade(){
       const box = document.getElementById('atzBox');
       const cabe = cliente?.tipo_pessoa === 'PJ' && document.getElementById('procTipo').value !== 'EXTINÇÃO';
@@ -1999,7 +2084,7 @@
     function atzStatus(t, cor){ const el = document.getElementById('atzStatus'); el.textContent = t || ''; el.style.color = cor || ''; }
 
     document.getElementById('atzLer').addEventListener('click', async () => {
-      const f = atzArquivoParaLeitura();
+      const f = (await escolherArquivoLeitura()) || atzArquivoParaLeitura();
       if (!f) return;
       const tipoOk = f.type === 'application/pdf' || /^image\/(jpe?g|png|gif|webp)$/.test(f.type) || (!f.type && /\.pdf$/i.test(f.name));
       if (!tipoOk) {
@@ -2008,7 +2093,7 @@
       }
       const gen = ++atzGen;
       const btn = document.getElementById('atzLer'); btn.disabled = true;
-      atzStatus('Lendo o documento… (pode levar alguns segundos)');
+      atzStatus('Lendo ' + f.name + (atzEscolha && atzEscolha.motivo ? ' (' + atzEscolha.motivo + ')' : '') + '… pode levar alguns segundos');
       document.getElementById('atzDiffDoc').innerHTML = '';
       try {
         const base64 = await fileToBase64(f);
@@ -2093,7 +2178,7 @@
       } finally { if (gen === atzGen) btn.disabled = false; }
     });
 
-    const atzNorm = v => String(v ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const atzNorm = v => String(v ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[()\[\].,;:'"\-\/]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
     const atzDig = v => String(v ?? '').replace(/\D/g, '');
     const atzNum = v => {
       let s = String(v ?? '').trim(); if (!s) return null;
@@ -2359,8 +2444,14 @@
         }
         // 1) Drive: subir arquivos na subpasta do processo (a função localiza a pasta, mesmo sem URL salva)
         const arquivos = [];
-        if (fC) arquivos.push({ nome: `Contrato Social - ${pastaNome} - ${nomeCliente}.pdf`, mime: 'application/pdf', base64: await fileToBase64(fC) });
-        if (fN) arquivos.push({ nome: `Cartao CNPJ - ${pastaNome} - ${nomeCliente}.pdf`, mime: 'application/pdf', base64: await fileToBase64(fN) });
+        const nomeDrive = async (f, padrao) => {
+          const i = await classificarPdf(f);
+          if (i && i.tipo === 'contrato') return `Contrato Social${i.data ? ' (registro ' + fmtBr(i.data).replace(/\//g, '-') + ')' : ''} - ${pastaNome} - ${nomeCliente}.pdf`;
+          if (i && i.tipo === 'cartao') return `Cartao CNPJ${i.data ? ' (' + fmtBr(i.data).replace(/\//g, '-') + ')' : ''} - ${pastaNome} - ${nomeCliente}.pdf`;
+          return `${padrao} - ${pastaNome} - ${nomeCliente}.pdf`;
+        };
+        if (fC) arquivos.push({ nome: await nomeDrive(fC, 'Contrato Social'), mime: 'application/pdf', base64: await fileToBase64(fC) });
+        if (fN) arquivos.push({ nome: await nomeDrive(fN, 'Cartao CNPJ'), mime: 'application/pdf', base64: await fileToBase64(fN) });
 
         let driveMsg = 'sem arquivos';
         procStatus('Localizando a pasta no Drive e enviando arquivos…');
