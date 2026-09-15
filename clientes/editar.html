@@ -2247,19 +2247,28 @@
           let i = socios.findIndex((s, ix) => !usados.has(ix) && cpf && atzDig(s.cpf) === cpf);
           if (i < 0) i = socios.findIndex((s, ix) => !usados.has(ix) && atzNorm(s.nome) === atzNorm(sd.nome));
           if (i < 0) {
+            // dados pessoais que o contrato traz na qualificação do sócio (o kit de boas-vindas precisa deles)
+            const pess = {};
+            [['rg', v => String(v).trim()], ['data_nascimento', v => (/^\d{4}-\d{2}-\d{2}$/.test(String(v).trim()) ? String(v).trim() : null)],
+             ['estado_civil', v => String(v).trim()], ['nacionalidade', v => String(v).trim()], ['profissao', v => String(v).trim()], ['endereco_residencial', v => String(v).trim()]]
+              .forEach(([k, prep]) => { const v = sd[k]; if (v != null && String(v).trim() !== '') { const pv = prep(v); if (pv) pess[k] = pv; } });
             rows.socios.push({ campo: 'Sócio incluído', antes: '—', depois: resumoSocioAtz(sd), aplicar: { tipo: 'incluido', valor: {
               nome: String(sd.nome).trim(), cpf: cpf || null, participacao_percentual: atzNum(sd.participacao_percentual),
-              qualificacao: String(sd.qualificacao ?? '').trim() || null, eh_administrador: !!sd.eh_administrador } } });
+              qualificacao: String(sd.qualificacao ?? '').trim() || null, eh_administrador: !!sd.eh_administrador, ...pess } } });
             return;
           }
           usados.add(i);
           const sb = socios[i];
           [['nome', 'Nome', atzNorm, v => String(v).trim()], ['cpf', 'CPF', atzDig, v => atzDig(v) || null],
-           ['participacao_percentual', 'Participação (%)', v => String(atzNum(v)), v => atzNum(v)], ['qualificacao', 'Qualificação', atzNorm, v => String(v).trim()]]
+           ['participacao_percentual', 'Participação (%)', v => String(atzNum(v)), v => atzNum(v)], ['qualificacao', 'Qualificação', atzNorm, v => String(v).trim()],
+           ['rg', 'RG', atzDig, v => String(v).trim()], ['data_nascimento', 'Nascimento', v => String(v || '').trim(), v => String(v).trim()],
+           ['estado_civil', 'Estado civil', atzNorm, v => String(v).trim()], ['nacionalidade', 'Nacionalidade', atzNorm, v => String(v).trim()],
+           ['profissao', 'Profissão', atzNorm, v => String(v).trim()], ['endereco_residencial', 'Endereço residencial', atzNorm, v => String(v).trim()]]
             .forEach(([k, rotulo, nrm, prep]) => {
               const doc = sd[k];
               if (doc == null || String(doc).trim() === '') return;
               if (k === 'participacao_percentual' && atzNum(doc) == null) return; // valor ilegível (ex.: "50%") — não vira linha
+              if (k === 'data_nascimento' && !/^\d{4}-\d{2}-\d{2}$/.test(String(doc).trim())) return; // data fora do ISO não entra
               if (nrm(doc) !== nrm(sb[k])) rows.socios.push({ campo: (sb.nome || 'Sócio') + ' — ' + rotulo, antes: atzVal(sb[k]), depois: atzVal(doc),
                 aplicar: { tipo: 'alterado', socioId: sb.id, col: k, valor: prep(doc) } });
             });
@@ -2280,7 +2289,8 @@
 
     function resumoSocioAtz(s){
       const part = s.participacao_percentual != null ? ` (${s.participacao_percentual}%)` : '';
-      return (s.nome || '?') + part + (s.eh_administrador ? ' — administrador' : '') + (s.cpf ? ' · CPF ' + s.cpf : '');
+      const extras = [s.rg ? 'RG ' + s.rg : null, s.data_nascimento ? 'nasc. ' + s.data_nascimento : null, s.estado_civil || null, s.endereco_residencial ? 'res. ' + s.endereco_residencial : null].filter(Boolean);
+      return (s.nome || '?') + part + (s.eh_administrador ? ' — administrador' : '') + (s.cpf ? ' · CPF ' + s.cpf : '') + (extras.length ? ' · ' + extras.join(' · ') : '');
     }
 
     function renderDiffDocumento(difs, d, fonte){
