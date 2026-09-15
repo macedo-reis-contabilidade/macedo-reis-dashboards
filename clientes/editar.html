@@ -453,9 +453,8 @@
           </div>
           <div class="form-grid">
             <div class="fg-col-12">
-              <div class="field-help" id="procHelp" style="margin-bottom:12px;">Anexe o contrato social consolidado e o cartão CNPJ atualizados. Ao registrar, o sistema cria a subpasta do processo dentro de <b>PROCESSOS</b> no Drive, guarda os arquivos e abre as tarefas de atualização nos setores.</div>
+              <div class="field-help" id="procHelp" style="margin-bottom:12px;">Anexe o contrato social consolidado e o cartão CNPJ atualizados. O sistema lê o contrato e mostra o que difere do cadastro (você marca o que aplicar), guarda os arquivos na subpasta do processo dentro de <b>PROCESSOS</b> no Drive, registra o processo no Societário e abre as tarefas nos setores — tudo num registro só.</div>
               <button id="btnKitBoasVindas" class="btn" type="button" style="margin-right:8px;">🤝 Gerar kit de boas-vindas</button>
-              <button id="btnAtualizarDoc" class="btn" type="button" style="margin-right:8px;">📄 Atualizar por documento</button>
               <button id="btnRegistrarProcesso" class="btn btn-primary" type="button">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
                 Registrar processo
@@ -593,6 +592,15 @@
           <input type="file" id="procCnpj" class="input" accept="application/pdf">
         </label>
 
+        <div class="cmp-box" id="atzBox">
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <button type="button" class="btn btn-primary btn-sm" id="atzLer" disabled>📄 Ler o documento e comparar com o cadastro</button>
+            <span class="field-help" style="margin:0;">Lê o contrato (ou o cartão CNPJ, se for o único anexo) e mostra o que difere. Marque o que aplicar — grava ao confirmar.</span>
+          </div>
+          <div class="proc-status" id="atzStatus"></div>
+          <div id="atzDiff"></div>
+        </div>
+
         <label class="fa-field"><span id="procLbl3">O que foi alterado (vai para o registro no Societário)</span>
           <textarea id="procResumo" class="input" rows="3" placeholder="Ex.: Alteração de cotas do capital social; entrada do sócio X…"></textarea>
         </label>
@@ -628,25 +636,6 @@
     </div>
   </div>
 
-  <!-- atualizar por documento (Etapa B: comparação + aplicação seletiva) -->
-  <div class="fa-modal-overlay" id="atzOverlay">
-    <div class="fa-modal" style="max-width:760px;">
-      <div class="fa-modal-head"><h3>📄 Atualizar por documento</h3><button class="fa-modal-close" id="atzClose">&times;</button></div>
-      <div class="fa-modal-body">
-        <div class="field-help">Anexe a <b>alteração contratual consolidada</b> ou o <b>cartão CNPJ</b> (PDF ou imagem). O sistema lê o documento, mostra o que difere do cadastro, e grava <b>somente as linhas que você marcar</b>.</div>
-        <label class="fa-field"><span>Documento (PDF ou imagem)</span>
-          <input type="file" id="atzArquivo" class="input" accept=".pdf,image/*">
-        </label>
-        <button type="button" class="btn btn-primary btn-sm" id="atzLer" disabled>Ler e comparar</button>
-        <div class="proc-status" id="atzStatus"></div>
-        <div id="atzDiff"></div>
-      </div>
-      <div class="fa-modal-foot">
-        <button class="btn btn-ghost" id="atzFechar">Fechar</button>
-        <button class="btn btn-primary" id="atzAplicar" disabled title="Grava somente as linhas marcadas e registra o processo 'Atualização cadastral'.">Aplicar marcados</button>
-      </div>
-    </div>
-  </div>
 
 
   <!-- kit de boas-vindas -->
@@ -1179,7 +1168,6 @@
         document.getElementById('sectionPF').hidden = true;
         document.getElementById('sectionSocios').hidden = false;
         document.getElementById('sectionDrive').hidden = false;
-        document.getElementById('btnAtualizarDoc').hidden = false;
         document.getElementById('nome_fantasia').value = cliente.nome_fantasia || '';
         document.getElementById('inscricao_estadual').value = cliente.inscricao_estadual || '';
         document.getElementById('inscricao_municipal').value = cliente.inscricao_municipal || '';
@@ -1195,7 +1183,6 @@
         document.getElementById('sectionPF').hidden = false;
         document.getElementById('sectionSocios').hidden = true;
         document.getElementById('sectionDrive').hidden = true;
-        document.getElementById('btnAtualizarDoc').hidden = true;
         document.getElementById('rg').value = cliente.rg || '';
         document.getElementById('data_nascimento').value = cliente.data_nascimento || '';
         document.getElementById('profissao').value = cliente.profissao || '';
@@ -1696,12 +1683,35 @@
       document.getElementById('procPastaNome').value = tipo;
       montarTarefas(tipo);
       procStatus('');
+      atzReset();
       procOverlay.classList.add('is-open');
     });
     document.getElementById('procTipo').addEventListener('change', e => {
       document.getElementById('procPastaNome').value = e.target.value;
       montarTarefas(e.target.value);
+      atzAjustarVisibilidade();
     });
+    // o comparativo lê o contrato; sem contrato, o cartão CNPJ
+    ['procContrato', 'procCnpj'].forEach(id => document.getElementById(id).addEventListener('change', atzAjustarVisibilidade));
+    function atzArquivoParaLeitura(){ return document.getElementById('procContrato').files[0] || document.getElementById('procCnpj').files[0] || null; }
+    function atzAjustarVisibilidade(){
+      const box = document.getElementById('atzBox');
+      const cabe = cliente?.tipo_pessoa === 'PJ' && document.getElementById('procTipo').value !== 'EXTINÇÃO';
+      box.style.display = cabe ? '' : 'none';
+      document.getElementById('atzLer').disabled = !cabe || !atzArquivoParaLeitura();
+    }
+    function atzReset(){
+      atzGen++;
+      document.getElementById('atzDiff').innerHTML = '';
+      atzStatus('');
+      atzAjustarVisibilidade();
+      atualizarRotuloConfirmar();
+    }
+    function atualizarRotuloConfirmar(){
+      const marcados = document.querySelectorAll('#atzDiff input[type="checkbox"][data-secao]:checked:not(:disabled)').length;
+      document.getElementById('procConfirmar').textContent = marcados ? 'Aplicar ' + marcados + ' no cadastro, registrar e abrir tarefas' : 'Registrar e abrir tarefas';
+    }
+    document.getElementById('atzDiff').addEventListener('change', atualizarRotuloConfirmar);
     document.getElementById('procAddTarefa').addEventListener('click', () => {
       document.getElementById('procTarefas').appendChild(linhaTarefa({ titulo:'', setor:'societario', responsavel:'' }));
     });
@@ -1892,30 +1902,12 @@
     }
 
     // ===================== ATUALIZAR POR DOCUMENTO (Etapa B: comparação + aplicação seletiva) =====================
-    const atzOverlay = document.getElementById('atzOverlay');
+    // ---- comparativo documento × cadastro (dentro do Registrar processo) ----
     let atzGen = 0;            // fechar o modal (ou nova leitura) invalida leituras em voo
-    let atzArquivoLido = null; // arquivo do último diff — vai pro Drive no registro do processo
     function atzStatus(t, cor){ const el = document.getElementById('atzStatus'); el.textContent = t || ''; el.style.color = cor || ''; }
-    function fecharAtz(){ atzGen++; atzOverlay.classList.remove('is-open'); }
-    document.getElementById('btnAtualizarDoc').addEventListener('click', () => {
-      if (cliente?.tipo_pessoa !== 'PJ') return; // o diff compara dados de PJ; pra PF o botão nem aparece
-      document.getElementById('atzArquivo').value = '';
-      document.getElementById('atzLer').disabled = true;
-      document.getElementById('atzAplicar').disabled = true;
-      document.getElementById('atzDiff').innerHTML = '';
-      atzArquivoLido = null;
-      atzStatus('');
-      atzOverlay.classList.add('is-open');
-    });
-    document.getElementById('atzClose').addEventListener('click', fecharAtz);
-    document.getElementById('atzFechar').addEventListener('click', fecharAtz);
-    atzOverlay.addEventListener('click', e => { if (e.target === atzOverlay) fecharAtz(); });
-    document.getElementById('atzArquivo').addEventListener('change', e => {
-      document.getElementById('atzLer').disabled = !e.target.files[0];
-    });
 
     document.getElementById('atzLer').addEventListener('click', async () => {
-      const f = document.getElementById('atzArquivo').files[0];
+      const f = atzArquivoParaLeitura();
       if (!f) return;
       const tipoOk = f.type === 'application/pdf' || /^image\/(jpe?g|png|gif|webp)$/.test(f.type) || (!f.type && /\.pdf$/i.test(f.name));
       if (!tipoOk) {
@@ -1924,7 +1916,6 @@
       }
       const gen = ++atzGen;
       const btn = document.getElementById('atzLer'); btn.disabled = true;
-      document.getElementById('atzAplicar').disabled = true;
       atzStatus('Lendo o documento… (pode levar alguns segundos)');
       document.getElementById('atzDiff').innerHTML = '';
       try {
@@ -1944,11 +1935,12 @@
           ? `<div class="proc-warn" style="margin-top:10px;">⚠ O CNPJ do documento (${atzEsc(d.documento)}) não bate com o deste cliente (${atzEsc(cliente.documento)}). Confira se anexou o arquivo da empresa certa — as diferenças abaixo provavelmente não valem.</div>`
           : '';
         document.getElementById('atzDiff').innerHTML = avisoCnpj + renderDiffDocumento(difs, d);
-        atzArquivoLido = f;
-        document.getElementById('atzAplicar').disabled = !difs.total || !!avisoCnpj;
+        // CNPJ de outra empresa: nada pode ser aplicado — trava todas as caixas
+        if (avisoCnpj) document.querySelectorAll('#atzDiff input[type="checkbox"]').forEach(cb => { cb.checked = false; cb.disabled = true; });
+        atualizarRotuloConfirmar();
         const conf = d.confianca ? ' Confiança da leitura: ' + d.confianca + '.' : '';
         if (avisoCnpj) atzStatus('O CNPJ do documento não confere com o deste cliente — aplicação bloqueada por segurança.' + conf, 'var(--warning)');
-        else if (difs.total) atzStatus(difs.total + ' diferença(s) entre o documento e o cadastro — marque o que quer aplicar.' + conf);
+        else if (difs.total) atzStatus(difs.total + ' diferença(s) entre o documento e o cadastro — marque o que quer aplicar; grava ao confirmar.' + conf);
         else atzStatus('O documento confere com o cadastro — nenhuma diferença encontrada.' + conf, 'var(--success)');
       } catch (err) {
         if (gen !== atzGen) return;
@@ -2084,7 +2076,7 @@
       if (difs.socios.some(r => r.campo === 'Sócio removido'))
         html += `<div class="field-help" style="margin-top:8px;">⚠ "Sócio removido" pressupõe que o documento traz o quadro societário <b>completo</b> (consolidação). Se anexou uma alteração parcial, desconsidere essas linhas.</div>`;
       if (d.observacoes_extracao) html += `<div class="field-help" style="margin-top:8px;">Obs. da leitura: ${atzEsc(d.observacoes_extracao)}</div>`;
-      html += `<div class="field-help" style="margin-top:8px;">Marque as linhas que quer gravar e clique em <b>Aplicar marcados</b> — só as marcadas serão aplicadas; o resto do cadastro fica como está.</div>`;
+      html += `<div class="field-help" style="margin-top:8px;">Marque as linhas que quer gravar — só as marcadas serão aplicadas ao confirmar o registro; o resto do cadastro fica como está.</div>`;
       return html;
     }
 
@@ -2096,45 +2088,11 @@
       });
     }
 
-    async function registrarProcessoAtz(f, resumoTxt){
-      const nomeCliente = cliente?.nome_principal || 'Cliente';
-      const pastaNome = 'Atualização cadastral';
-      let driveMsg = 'sem arquivo no Drive';
-      if (f) {
-        try {
-          const ext = (!f.type || f.type === 'application/pdf') ? 'pdf' : (f.type.split('/')[1] || 'bin');
-          const arquivos = [{ nome: `Documento - ${pastaNome} - ${nomeCliente}.${ext}`, mime: f.type || 'application/pdf', base64: await fileToBase64(f) }];
-          const { data: dr, error: derr } = await supabase.functions.invoke('registrar-processo-drive', {
-            body: { drive_folder_url: cliente?.drive_folder_url || null, nome_processo: pastaNome, arquivos, cliente_id: clienteId, nome_cliente: nomeCliente }
-          });
-          if (derr) driveMsg = 'arquivo não subiu no Drive (' + (derr.message || derr) + ')';
-          else if (dr?.error) driveMsg = 'arquivo não subiu no Drive (' + (dr.error === 'NAO_ACHEI_PASTA' ? 'pasta do cliente não vinculada' : dr.error) + ')';
-          else {
-            if (dr?.cliente_folder_url && cliente) {
-              cliente.drive_folder_url = dr.cliente_folder_url;
-              // sincroniza o input também: sem isso, um "Salvar alterações" depois
-              // regravaria a URL velha (vazia) por cima do vínculo recém-feito
-              document.getElementById('drive_folder_url').value = dr.cliente_folder_url;
-              atualizaBotoesDrive(); atualizaDriveTopo();
-            }
-            driveMsg = `${(dr?.enviados || []).length} arquivo(s) em PROCESSOS/${pastaNome}`;
-          }
-        } catch (e) { driveMsg = 'arquivo não subiu no Drive (' + (e.message || e) + ')'; }
-      }
-      const regSoc = {
-        setor: 'societario', titulo: 'Atualização cadastral', cliente_id: clienteId, responsavel: 'Samuel', prioridade: 'media',
-        descricao: resumoTxt + '\nProcesso: ' + pastaNome + ' · ' + driveMsg + '.', origem: 'processo', status: 'pendente'
-      };
-      const { data: insSoc, error: eSoc } = await supabase.from('tarefas').insert(regSoc).select('id').single();
-      if (eSoc) return driveMsg + ' · registro no Societário falhou: ' + eSoc.message;
-      await supabase.from('tarefa_historico').insert({ tarefa_id: insSoc.id, descricao: 'Atualização cadastral aplicada a partir de documento (📄 comparativo).\n' + resumoTxt, autor: usuarioEmail });
-      return driveMsg + ' · registro aberto no Societário';
-    }
-
-    document.getElementById('atzAplicar').addEventListener('click', async () => {
+    // aplica no cadastro as linhas marcadas do comparativo. Devolve o que gravou (pro registro do
+    // processo) ou { cancelado: true } se a pessoa desistiu na confirmação de remover sócio.
+    async function aplicarDiffMarcados(){
       const marcados = Array.from(document.querySelectorAll('#atzDiff input[type="checkbox"][data-secao]:checked')).filter(cb => !cb.disabled);
-      if (!marcados.length) { atzStatus('Marque ao menos uma linha pra aplicar.', 'var(--warning)'); return; }
-      const fDoc = atzArquivoLido; // captura já: reabrir o modal no meio não pode perder o arquivo do processo
+      if (!marcados.length) return { aplicadas: 0, erros: [], linhas: [] };
       const resumoDe = cb => { const tds = cb.closest('tr').querySelectorAll('td'); return tds[1].textContent + ': ' + tds[2].textContent + ' → ' + tds[3].textContent; };
       const cliPayload = {}; const socInserir = []; const socAtualizar = {}; const socRemover = [];
       marcados.forEach(cb => {
@@ -2153,13 +2111,10 @@
       });
       if (socRemover.length && !confirm('Remover DEFINITIVAMENTE do cadastro ' + socRemover.length + ' sócio(s)?\n\n'
         + socRemover.map(r => '• ' + r.resumo).join('\n') + '\n\nEssa exclusão não tem desfazer.')) {
-        atzStatus('Aplicação cancelada — nada foi gravado. Se quiser aplicar só o resto, desmarque as linhas de remoção e clique de novo.', 'var(--warning)');
-        return;
+        atzStatus('Registro cancelado — nada foi gravado. Se quiser aplicar só o resto, desmarque as linhas de remoção e confirme de novo.', 'var(--warning)');
+        return { cancelado: true };
       }
-
-      const btn = document.getElementById('atzAplicar');
-      btn.disabled = true; document.getElementById('atzLer').disabled = true;
-      atzStatus('Aplicando as linhas marcadas…');
+      atzStatus('Aplicando as linhas marcadas no cadastro…');
       const erros = []; const okCbs = []; let aplicadas = 0;
 
       if (Object.keys(cliPayload).length) {
@@ -2189,32 +2144,18 @@
       }
       renderSocios();
       okCbs.forEach(cb => { cb.disabled = true; const tr = cb.closest('tr'); if (tr) tr.style.opacity = '.45'; });
+      atualizarRotuloConfirmar();
 
-      if (!aplicadas) {
-        atzStatus('Nada foi aplicado — ' + erros.join(' · '), 'var(--danger)');
-        btn.disabled = false; document.getElementById('atzLer').disabled = false;
-        return;
+      if (aplicadas) {
+        // carimbo do documento — a coluna pode ainda não existir; erro é ignorado de propósito (sem DDL por aqui)
+        const { error: eStamp } = await supabase.from('clientes').update({ atualizado_por_documento_em: new Date().toISOString() }).eq('id', clienteId);
+        if (!eStamp && cliente) cliente.atualizado_por_documento_em = new Date().toISOString();
       }
-
-      // carimbo do documento — a coluna pode ainda não existir; erro é ignorado de propósito (sem DDL por aqui)
-      const { error: eStamp } = await supabase.from('clientes').update({ atualizado_por_documento_em: new Date().toISOString() }).eq('id', clienteId);
-      if (!eStamp && cliente) cliente.atualizado_por_documento_em = new Date().toISOString();
-
-      atzStatus('Aplicado. Registrando o processo "Atualização cadastral"…');
-      let msgProc = '';
-      try {
-        // o resumo registra SÓ o que de fato gravou (falhas não entram na trilha)
-        const linhasAplicadas = okCbs.map(resumoDe);
-        msgProc = await registrarProcessoAtz(fDoc, 'Atualização cadastral aplicada por documento (📄):\n' + linhasAplicadas.map(l => '• ' + l).join('\n'));
-      } catch (e) { msgProc = 'registro do processo falhou: ' + (e.message || e); }
-
-      atzStatus(aplicadas + ' alteração(ões) aplicada(s)'
-        + (erros.length ? ' · ' + erros.length + ' falha(s): ' + erros.join(' · ') : '')
-        + (msgProc ? ' · ' + msgProc : '') + '.',
-        erros.length ? 'var(--warning)' : 'var(--success)');
-      btn.disabled = false;
-      document.getElementById('atzLer').disabled = false;
-    });
+      atzStatus(aplicadas ? aplicadas + ' alteração(ões) aplicada(s) no cadastro' + (erros.length ? ' · ' + erros.length + ' falha(s): ' + erros.join(' · ') : '') + '.'
+                          : 'Nada foi aplicado — ' + erros.join(' · '), erros.length ? 'var(--warning)' : 'var(--success)');
+      // o resumo registra SÓ o que de fato gravou (falhas não entram na trilha)
+      return { aplicadas, erros, linhas: okCbs.map(resumoDe) };
+    }
 
     document.getElementById('procConfirmar').addEventListener('click', async () => {
       const tipo = document.getElementById('procTipo').value;
@@ -2235,6 +2176,13 @@
       const btn = document.getElementById('procConfirmar'); btn.disabled = true;
       const nomeCliente = cliente?.nome_principal || 'Cliente';
       try {
+        // 0) Cadastro: aplica as linhas marcadas do comparativo (se houve leitura)
+        let diffAplicado = { aplicadas: 0, erros: [], linhas: [] };
+        if (document.querySelector('#atzDiff input[type="checkbox"][data-secao]:checked:not(:disabled)')) {
+          procStatus('Aplicando o comparativo no cadastro…');
+          diffAplicado = await aplicarDiffMarcados();
+          if (diffAplicado.cancelado) { procStatus('Registro cancelado.', 'var(--warning)'); btn.disabled = false; return; }
+        }
         // 1) Drive: subir arquivos na subpasta do processo (a função localiza a pasta, mesmo sem URL salva)
         const arquivos = [];
         if (fC) arquivos.push({ nome: `Contrato Social - ${pastaNome} - ${nomeCliente}.pdf`, mime: 'application/pdf', base64: await fileToBase64(fC) });
@@ -2265,6 +2213,8 @@
         procStatus('Registrando no Societário…');
         const descParts = [];
         if (resumo) descParts.push(resumo);
+        if (diffAplicado.linhas.length) descParts.push('Cadastro atualizado pelo documento (📄):\n' + diffAplicado.linhas.map(l => '• ' + l).join('\n'));
+        if (diffAplicado.erros.length) descParts.push('Falhou ao aplicar: ' + diffAplicado.erros.join(' · '));
         descParts.push('Processo: ' + pastaNome + ' · Documentos salvos no Drive (' + driveMsg + ').');
         const regSoc = {
           setor: 'societario', titulo: tipo === 'ALTERAÇÃO' ? 'Alteração contratual' : tipo,
@@ -2272,7 +2222,7 @@
           descricao: descParts.join('\n'), origem: 'processo', status: 'pendente'
         };
         const { data: insSoc } = await supabase.from('tarefas').insert(regSoc).select('id').single();
-        if (insSoc) await supabase.from('tarefa_historico').insert({ tarefa_id: insSoc.id, descricao: 'Processo registrado a partir do cadastro do cliente.' + (resumo ? '\nAlterações: ' + resumo : ''), autor: usuarioEmail });
+        if (insSoc) await supabase.from('tarefa_historico').insert({ tarefa_id: insSoc.id, descricao: 'Processo registrado a partir do cadastro do cliente.' + (resumo ? '\nAlterações: ' + resumo : '') + (diffAplicado.linhas.length ? '\nCadastro atualizado pelo documento:\n' + diffAplicado.linhas.map(l => '• ' + l).join('\n') : ''), autor: usuarioEmail });
 
         // 3) Tarefas dos setores
         procStatus('Abrindo tarefas dos setores…');
@@ -2284,7 +2234,7 @@
           if (ins) { abertas++; await supabase.from('tarefa_historico').insert({ tarefa_id: ins.id, descricao: 'Tarefa criada automaticamente pelo processo.', autor: usuarioEmail }); }
         }
 
-        procStatus(`Pronto: ${driveMsg}; registro no Societário + ${abertas} tarefa(s) aberta(s).`, 'var(--success)');
+        procStatus(`Pronto: ${diffAplicado.aplicadas ? diffAplicado.aplicadas + ' alteração(ões) no cadastro; ' : ''}${driveMsg}; registro no Societário + ${abertas} tarefa(s) aberta(s).`, 'var(--success)');
         setTimeout(fecharProc, 2600);
       } catch (e) {
         procStatus('Erro: ' + (e.message || e), 'var(--danger)');
