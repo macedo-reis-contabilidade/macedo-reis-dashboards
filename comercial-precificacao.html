@@ -1042,11 +1042,14 @@
         }
       }
       document.getElementById('tpDoc').value = (docResp.length === 11 || docResp.length === 14) ? docResp : '';
+      // pasta é coisa de empresa: CPF nasce com a caixa desmarcada (dá pra marcar)
+      document.getElementById('tpDrive').checked = docResp.length !== 11;
       document.getElementById('tpMsg').textContent = '';
       document.getElementById('tpConfirmar').disabled = false;
       document.getElementById('ovTransProp').style.display = 'flex';
     }
     document.getElementById('tpCancelar').addEventListener('click', () => { document.getElementById('ovTransProp').style.display = 'none'; });
+    document.getElementById('tpDoc').addEventListener('input', e => { const d = e.target.value.replace(/\D/g, ''); if (d.length === 11 || d.length === 14) document.getElementById('tpDrive').checked = d.length === 14; });
     document.getElementById('tpConfirmar').addEventListener('click', async () => {
       const p = propTransAtual; if (!p) return;
       const msg = document.getElementById('tpMsg');
@@ -1072,10 +1075,11 @@
             }).select('id').single();
             if (eCli) throw eCli;
             clienteId = novoCli.id;
-            // pasta no Drive nasce junto com o pré-cadastro — aguardada aqui porque a
+            // pasta no Drive só com a caixa marcada — aguardada aqui porque a
             // página redireciona logo depois; falha do Drive nunca trava a transição
-            msg.textContent = 'Criando pasta no Drive…';
-            try {
+            if (!document.getElementById('tpDrive').checked) { pastaInfo = ''; }
+            else try {
+              msg.textContent = 'Criando pasta no Drive…';
               // timeout de 15s: Drive lento não pode segurar a transição — o cadastro já foi
               const { data: drv, error: eDrv } = await Promise.race([
                 supabase.functions.invoke('registrar-processo-drive', {
@@ -1569,7 +1573,8 @@
       </select></label>
     <label style="display:block;margin-bottom:6px;font-size:13px;">CNPJ ou CPF do cliente — se já tiver<br>
       <input id="tpDoc" class="input" style="width:100%;margin-top:4px;" placeholder="só números · vazio = vincular depois"></label>
-    <p style="margin:6px 0 14px;font-size:12px;color:#8A93A6;">Com documento: o pré-cadastro nasce agora como cliente <b>em transição</b> (complete pelo recadastro quando chegar o contrato social). Sem documento: a transição abre pelo nome e o vínculo é feito na tela de transição depois do cadastro.</p>
+    <p style="margin:6px 0 10px;font-size:12px;color:#8A93A6;">Com documento: o pré-cadastro nasce agora como cliente <b>em transição</b> (complete pelo recadastro quando chegar o contrato social). Sem documento: a transição abre pelo nome e o vínculo é feito na tela de transição depois do cadastro.</p>
+    <label style="display:flex;align-items:center;gap:8px;margin:0 0 14px;font-size:13px;cursor:pointer;"><input type="checkbox" id="tpDrive" checked> 📁 Criar a pasta do cliente no Drive junto com o pré-cadastro</label>
     <div style="display:flex;gap:10px;justify-content:flex-end;">
       <button id="tpCancelar" style="background:none;border:1px solid rgba(138,147,166,.4);color:#8A93A6;border-radius:8px;padding:8px 14px;cursor:pointer;">Cancelar</button>
       <button id="tpConfirmar" style="background:#7FBF8E;color:#0B1017;border:none;border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer;">Criar transição</button>

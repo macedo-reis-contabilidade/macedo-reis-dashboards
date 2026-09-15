@@ -270,7 +270,7 @@
       const filtered = allClientes.filter(c => {
         if (tipo && c.tipo_pessoa !== tipo) return false;
         if (status && c.status !== status) return false;
-        if (soSemPasta && temPasta(c)) return false;
+        if (soSemPasta && (temPasta(c) || c.tipo_pessoa !== 'PJ')) return false; // pasta no Drive é coisa de empresa
         if (search) {
           const cnaes = `${c.cnae_principal || ''} ${Array.isArray(c.cnaes_secundarios) ? c.cnaes_secundarios.join(' ') : ''}`;
           const haystack = norm(`${c.nome_principal} ${c.nome_fantasia || ''} ${c.documento} ${cnaes}`);
@@ -373,13 +373,14 @@
       const btn = document.getElementById('drvAcao');
       // em série de propósito: cada chamada lista as ~450 pastas da raiz por nome —
       // paralelizar multiplicaria essas listagens e arriscaria o limite da API
+      // pasta no Drive é coisa de empresa: pessoa física fica fora do lote
       const alvo = listadosSemPasta.filter(c =>
-        ['ativo', 'em_transicao'].includes(c.status) && (c.nome_principal || '').trim());
+        c.tipo_pessoa === 'PJ' && ['ativo', 'em_transicao'].includes(c.status) && (c.nome_principal || '').trim());
       const pulados = listadosSemPasta.length - alvo.length;
       if (!alvo.length) { drvLinha('Nada a fazer: nenhum listado é ativo/em transição com nome preenchido.'); return; }
       drvRodando = true; btn.disabled = true; btn.textContent = 'Rodando…';
       document.getElementById('drvProg').hidden = false;
-      if (pulados) drvLinha(`<span class="rcv-skip">${pulados} listado(s) fora do lote (inativo/prospect ou sem nome).</span>`);
+      if (pulados) drvLinha(`<span class="rcv-skip">${pulados} listado(s) fora do lote (pessoa física, inativo/prospect ou sem nome).</span>`);
       let feitos = 0, criadas = 0, localizadas = 0, erros = 0;
       drvPainel(feitos, alvo.length, criadas, localizadas, erros);
       for (const c of alvo){

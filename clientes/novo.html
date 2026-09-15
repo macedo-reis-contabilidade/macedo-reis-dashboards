@@ -356,7 +356,10 @@
         </div>
       </section>
 
-      <div class="form-actions">
+      <div class="form-actions" style="flex-wrap:wrap; gap:14px;">
+        <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:#B9C2D0; margin-right:auto; cursor:pointer;">
+          <input type="checkbox" id="chkDrive" checked> 📁 Criar a pasta do cliente no Drive (Clientes Ativos, com as subpastas padrão)
+        </label>
         <a href="index.html" class="btn btn-ghost">Cancelar</a>
         <button type="button" class="btn btn-primary" id="btnSalvarBottom">Cadastrar cliente</button>
       </div>
@@ -611,10 +614,11 @@
         if (socErr) alert('Cliente criado, mas os sócios não foram salvos: ' + socErr.message + '\nCadastre-os na tela de edição do cliente.');
       }
 
-      // pasta no Drive nasce junto com o cliente (PJ e PF): localiza pelo nome em
-      // Clientes Ativos ou cria com as subpastas padrão. Aguardamos aqui porque a
+      // pasta no Drive só se a caixa estiver marcada (padrão: PJ sim, PF não). Localiza pelo
+      // nome em Clientes Ativos ou cria com as subpastas padrão. Aguardamos aqui porque a
       // página vai navegar (navegação abortaria a chamada) — mas falha do Drive
       // NUNCA desfaz nem trava o cadastro.
+      if (!document.getElementById('chkDrive').checked) { await sugerirObrigacoes(novo.id); return; }
       btns.forEach(b => { b.innerHTML = '<span class="spinner spinner-sm"></span>Criando pasta no Drive...'; });
       try {
         // timeout de 15s: Drive lento não pode prender o usuário aqui — o cadastro já foi
@@ -637,6 +641,17 @@
 
     // ---------- Herança de obrigações por regime ----------
     const normV = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
+    // a caixa do Drive segue o tipo de pessoa (PJ marcada, PF desmarcada) até alguém mexer nela
+    (function () {
+      const chk = document.getElementById('chkDrive'), tipoSel = document.getElementById('tipo_pessoa');
+      if (!chk || !tipoSel) return;
+      let tocada = false;
+      chk.addEventListener('change', () => { tocada = true; });
+      const ajustar = () => { if (!tocada) chk.checked = tipoSel.value === 'PJ'; };
+      tipoSel.addEventListener('change', ajustar);
+      ajustar();
+    })();
 
     async function sugerirObrigacoes(clienteId){
       const irParaEdicao = () => { window.location.href = `editar.html?id=${clienteId}`; };

@@ -490,7 +490,8 @@
         ? livres.map(c => `<button data-add="${c.id}">${c.nome_principal}
             <small>${[c.nome_fantasia, c.regime_tributario, c.cidade].filter(Boolean).join(' · ') || '&nbsp;'}</small></button>`).join('')
         : '<button disabled style="color:#6E7787;cursor:default;">Nada livre encontrado com esse termo.</button>')
-        + `<button data-criar style="color:#8FC0F0;">➕ Criar pré-cadastro "${t.toUpperCase()}" — dados a completar — e adicionar à carteira</button>`;
+        + `<button data-criar style="color:#8FC0F0;">➕ Criar pré-cadastro "${t.toUpperCase()}" — dados a completar — e adicionar à carteira</button>`
+        + `<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;font-size:12.5px;color:#B9C2D0;cursor:pointer;"><input type="checkbox" data-pasta checked> 📁 criar a pasta no Drive junto com o pré-cadastro</label>`;
       const btnCriar = el.querySelector('[data-criar]');
       if (btnCriar) btnCriar.addEventListener('click', async () => {
         if (!confirm('Criar o pré-cadastro "' + t.toUpperCase() + '" em transição, ainda sem CNPJ informado, e adicionar à carteira?\n\nQuando os dados chegarem (empresa vinda de outro escritório ou CNPJ recém-emitido), complete no cadastro do cliente.')) return;
@@ -500,7 +501,7 @@
         if (e1) { alert('Erro ao criar o cadastro: ' + e1.message); return; }
         const { error: e2 } = await supabase.from('carteira_info').insert({ cliente_id: novo.id, entrada: document.getElementById('addEntrada').value || null });
         if (e2) { alert('Cadastro criado, mas falhou ao pôr na carteira: ' + e2.message); return; }
-        criarPastaDriveBg(novo.id, t.toUpperCase()); // em segundo plano — nunca segura o fluxo
+        if (el.querySelector('[data-pasta]')?.checked) criarPastaDriveBg(novo.id, t.toUpperCase()); // em segundo plano — nunca segura o fluxo
         addOverlay.classList.remove('is-open');
         await carregar();
       });
