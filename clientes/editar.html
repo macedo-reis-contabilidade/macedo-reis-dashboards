@@ -61,6 +61,20 @@
     .hist-tbl tr:hover td { background:rgba(255,255,255,.02); }
     .setor-chip { display:inline-block; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:600; border:1px solid; white-space:nowrap; }
     .hist-empty, .hist-loading { padding:30px; text-align:center; color:#8A93A6; font-size:14px; }
+    .vo-overlay { position:fixed; inset:0; background:rgba(6,10,16,.72); display:none; align-items:center; justify-content:center; z-index:60; padding:18px; }
+    .vo-overlay.is-open { display:flex; }
+    .vo-modal { background:#0F1620; border:1px solid rgba(255,255,255,.1); border-radius:14px; width:min(620px, 96vw); max-height:88vh; display:flex; flex-direction:column; }
+    .vo-head { padding:16px 22px; border-bottom:1px solid rgba(255,255,255,.08); }
+    .vo-head h3 { margin:0; font-size:17px; }
+    .vo-body { padding:16px 22px; overflow:hidden; display:flex; flex-direction:column; }
+    .vo-sub { margin:0 0 10px; font-size:13px; color:#8A93A6; }
+    .vo-lista { overflow:auto; max-height:44vh; border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:4px; }
+    .vo-item { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:8px; cursor:pointer; font-size:13.5px; }
+    .vo-item:hover { background:rgba(255,255,255,.05); }
+    .vo-item .vv-freq { margin-left:auto; color:#8A93A6; font-size:12px; white-space:nowrap; }
+    .vo-item .vv-dia { color:#8AAEC8; font-size:11.5px; border:1px solid rgba(91,130,166,.4); border-radius:999px; padding:2px 8px; white-space:nowrap; }
+    .vo-resp-l { display:block; font-size:12.5px; color:#8A93A6; margin:12px 0 5px; }
+    .vo-foot { display:flex; justify-content:flex-end; gap:10px; padding:14px 22px; border-top:1px solid rgba(255,255,255,.08); }
   </style>
 </head>
 <body>
@@ -285,6 +299,7 @@
                   <option value="Imune">Imune</option>
                   <option value="Isento">Isento</option>
                 </select>
+                <button type="button" class="btn btn-ghost btn-sm" id="btnObrigRegime" style="margin-top:8px;" title="Sugere as obrigações fiscais do regime (as mais usadas pelos clientes do mesmo regime já vêm marcadas) e vincula as escolhidas — só o que ainda não estiver vinculado">📋 Sugerir obrigações do regime</button>
               </div>
             </div>
             <div class="fg-col-6">
@@ -570,6 +585,25 @@
     </div>
   </dialog>
 
+  <!-- obrigações fiscais do regime (mesma sugestão do cadastro novo, pra quem entrou por pré-cadastro) -->
+  <div class="vo-overlay" id="voOverlay">
+    <div class="vo-modal">
+      <div class="vo-head"><h3>Vincular obrigações fiscais</h3></div>
+      <div class="vo-body">
+        <p class="vo-sub" id="voSub">Sugestões pro regime do cliente — marca/desmarca à vontade.</p>
+        <div class="vo-lista" id="voLista">Carregando…</div>
+        <label class="vo-resp-l" for="voResp">Responsável (aplicado a todas as selecionadas — opcional)</label>
+        <input type="text" id="voResp" class="input" list="voRespList" placeholder="Ex.: Thalia">
+        <datalist id="voRespList"></datalist>
+      </div>
+      <div class="vo-foot">
+        <span class="proc-status" id="voMsg" style="margin-right:auto;"></span>
+        <button type="button" class="btn btn-ghost" id="voPular">Fechar</button>
+        <button type="button" class="btn btn-primary" id="voVincular">Vincular selecionadas</button>
+      </div>
+    </div>
+  </div>
+
   <div class="fa-modal-overlay" id="procOverlay">
     <div class="fa-modal" style="max-width:600px;">
       <div class="fa-modal-head"><h3>Registrar processo</h3><button class="fa-modal-close" id="procClose">&times;</button></div>
@@ -578,7 +612,7 @@
 
         <div class="fa-field-row">
           <label class="fa-field"><span>Tipo de processo</span>
-            <select id="procTipo" class="select"><option value="ALTERAÇÃO" selected>Alteração</option><option value="TRANSFORMAÇÃO">Transformação (MEI → ME)</option><option value="EXTINÇÃO">Extinção (baixa de CNPJ)</option></select>
+            <select id="procTipo" class="select"><option value="ALTERAÇÃO" selected>Alteração</option><option value="ENTRADA">Entrada (cadastro inicial do cliente)</option><option value="TRANSFORMAÇÃO">Transformação (MEI → ME)</option><option value="EXTINÇÃO">Extinção (baixa de CNPJ)</option></select>
           </label>
           <label class="fa-field"><span>Nome da pasta no Drive</span>
             <input type="text" id="procPastaNome" class="input" value="ALTERAÇÃO" placeholder="Ex.: ALTERAÇÃO">
@@ -595,10 +629,11 @@
         <div class="cmp-box" id="atzBox">
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <button type="button" class="btn btn-primary btn-sm" id="atzLer" disabled>📄 Ler o documento e comparar com o cadastro</button>
-            <span class="field-help" style="margin:0;">Lê o contrato (ou o cartão CNPJ, se for o único anexo) e mostra o que difere. Marque o que aplicar — grava ao confirmar.</span>
+            <button type="button" class="btn btn-ghost btn-sm" id="atzRfb">🔎 Consultar CNPJ na Receita</button>
+            <span class="field-help" style="margin:0;">O contrato e a Receita (cartão CNPJ + quadro societário) entram no mesmo comparativo; quando os dois trazem o mesmo campo, a linha diz se conferem. Marque o que aplicar — grava ao confirmar.</span>
           </div>
           <div class="proc-status" id="atzStatus"></div>
-          <div id="atzDiff"></div>
+          <div id="atzDiff"><div id="atzDiffDoc"></div><div id="atzDiffRfb"></div></div>
         </div>
 
         <label class="fa-field"><span id="procLbl3">O que foi alterado (vai para o registro no Societário)</span>
@@ -1660,7 +1695,8 @@
     function montarTarefas(tipo){
       const box = document.getElementById('procTarefas'); box.innerHTML='';
       const rot = ({
-        'EXTINÇÃO': ['Distrato social (PDF)', 'Certidão de baixa (PDF)', 'Registro da baixa (vai para o registro no Societário)']
+        'EXTINÇÃO': ['Distrato social (PDF)', 'Certidão de baixa (PDF)', 'Registro da baixa (vai para o registro no Societário)'],
+        'ENTRADA': ['Contrato social ou requerimento de empresário — o mais recente (PDF)', 'Cartão CNPJ ou contrato anterior (PDF)', 'Observações da entrada (vai para o registro no Societário)']
       })[tipo] || ['Contrato social consolidado (PDF)', 'Cartão CNPJ atualizado (PDF)', 'O que foi alterado (vai para o registro no Societário)'];
       const l1 = document.getElementById('procLbl1'), l2 = document.getElementById('procLbl2'), l3 = document.getElementById('procLbl3');
       if (l1) l1.textContent = rot[0];
@@ -1702,7 +1738,7 @@
     }
     function atzReset(){
       atzGen++;
-      document.getElementById('atzDiff').innerHTML = '';
+      document.getElementById('atzDiffDoc').innerHTML = ''; document.getElementById('atzDiffRfb').innerHTML = '';
       atzStatus('');
       atzAjustarVisibilidade();
       atualizarRotuloConfirmar();
@@ -1902,6 +1938,62 @@
     }
 
     // ===================== ATUALIZAR POR DOCUMENTO (Etapa B: comparação + aplicação seletiva) =====================
+    // ---- obrigações fiscais pelo regime (quem entrou por pré-cadastro nunca passou por esta sugestão) ----
+    const normVo = v => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    document.getElementById('btnObrigRegime').addEventListener('click', async () => {
+      const regime = document.getElementById('regime_tributario').value;
+      const cidade = document.getElementById('cidade').value;
+      const msg = document.getElementById('voMsg'); msg.textContent = ''; msg.style.color = '';
+      if (cliente?.tipo_pessoa !== 'PJ' || !regime) { alert('Escolha o regime tributário (e salve) antes de sugerir obrigações.'); return; }
+      const [{ data: regras }, { data: vincs }] = await Promise.all([
+        supabase.from('obrigacoes_fiscais').select('id, nome, dia_prazo, regimes_aplicaveis').eq('ativo', true).order('nome'),
+        supabase.from('cliente_obrigacoes').select('obrigacao_id, cliente_id, responsavel, ativo, clientes(regime_tributario)')
+      ]);
+      if (!regras || !regras.length) { alert('Não há obrigações cadastradas em Fiscal → Obrigações.'); return; }
+      const jaTem = new Set((vincs || []).filter(v => v.cliente_id === clienteId && v.ativo).map(v => v.obrigacao_id));
+      const doRegime = (vincs || []).filter(v => v.ativo && normVo(v.clientes?.regime_tributario) === normVo(regime));
+      const baseClientes = new Set(doRegime.map(v => v.cliente_id)).size || 1;
+      const freq = {};
+      doRegime.forEach(v => { (freq[v.obrigacao_id] = freq[v.obrigacao_id] || new Set()).add(v.cliente_id); });
+      const aplicaveis = regras
+        .filter(r => (r.regimes_aplicaveis || []).some(x => normVo(x) === normVo(regime)) && !jaTem.has(r.id))
+        .map(r => {
+          const n = (freq[r.id] || new Set()).size;
+          const ehDeiss = /^DEISS - /i.test(r.nome);
+          const cidadeRegra = ehDeiss ? r.nome.replace(/^DEISS - /i, '') : null;
+          const marcada = ehDeiss ? (cidade && normVo(cidadeRegra) === normVo(cidade)) : (n / baseClientes >= 0.6);
+          return { r, n, marcada };
+        })
+        .sort((a, b) => b.n - a.n || a.r.nome.localeCompare(b.r.nome));
+      document.getElementById('voSub').textContent = aplicaveis.length
+        ? 'Sugestões pro regime ' + regime + ' — as mais comuns já vêm marcadas.' + (jaTem.size ? ' ' + jaTem.size + ' já vinculada(s) não aparecem.' : '')
+        : 'Este cliente já tem todas as obrigações do regime ' + regime + ' vinculadas.';
+      document.getElementById('voLista').innerHTML = aplicaveis.map(a => `
+        <label class="vo-item">
+          <input type="checkbox" data-oid="${a.r.id}" ${a.marcada ? 'checked' : ''}>
+          <span>${a.r.nome}</span>
+          <span class="vv-dia">dia ${a.r.dia_prazo}</span>
+          <span class="vv-freq">${a.n ? a.n + ' cliente(s) do regime usam' : 'nenhum ainda'}</span>
+        </label>`).join('') || '';
+      document.getElementById('voRespList').innerHTML =
+        [...new Set((vincs || []).map(v => v.responsavel).filter(Boolean))].sort().map(x => '<option value="' + x.replace(/"/g, '&quot;') + '">').join('');
+      document.getElementById('voVincular').disabled = !aplicaveis.length;
+      document.getElementById('voOverlay').classList.add('is-open');
+    });
+    document.getElementById('voPular').addEventListener('click', () => document.getElementById('voOverlay').classList.remove('is-open'));
+    document.getElementById('voVincular').addEventListener('click', async () => {
+      const marcadas = [...document.querySelectorAll('#voLista input:checked')].map(c => c.dataset.oid);
+      const msg = document.getElementById('voMsg');
+      if (!marcadas.length) { msg.textContent = 'Marque ao menos uma obrigação.'; msg.style.color = 'var(--warning)'; return; }
+      const resp = document.getElementById('voResp').value.trim() || null;
+      const btn = document.getElementById('voVincular'); btn.disabled = true; btn.textContent = 'Vinculando…';
+      const { error } = await supabase.from('cliente_obrigacoes').insert(marcadas.map(oid => ({ cliente_id: clienteId, obrigacao_id: oid, responsavel: resp, ativo: true })));
+      btn.disabled = false; btn.textContent = 'Vincular selecionadas';
+      if (error) { msg.textContent = 'Erro ao vincular: ' + error.message; msg.style.color = 'var(--danger)'; return; }
+      msg.textContent = '✓ ' + marcadas.length + ' obrigação(ões) vinculada(s).'; msg.style.color = 'var(--success)';
+      setTimeout(() => document.getElementById('voOverlay').classList.remove('is-open'), 1400);
+    });
+
     // ---- comparativo documento × cadastro (dentro do Registrar processo) ----
     let atzGen = 0;            // fechar o modal (ou nova leitura) invalida leituras em voo
     function atzStatus(t, cor){ const el = document.getElementById('atzStatus'); el.textContent = t || ''; el.style.color = cor || ''; }
@@ -1917,7 +2009,7 @@
       const gen = ++atzGen;
       const btn = document.getElementById('atzLer'); btn.disabled = true;
       atzStatus('Lendo o documento… (pode levar alguns segundos)');
-      document.getElementById('atzDiff').innerHTML = '';
+      document.getElementById('atzDiffDoc').innerHTML = '';
       try {
         const base64 = await fileToBase64(f);
         if (gen !== atzGen) return; // modal fechado (ou nova leitura) — descarta
@@ -1934,9 +2026,10 @@
         const avisoCnpj = (cnpjDoc && cnpjCli && cnpjDoc !== cnpjCli)
           ? `<div class="proc-warn" style="margin-top:10px;">⚠ O CNPJ do documento (${atzEsc(d.documento)}) não bate com o deste cliente (${atzEsc(cliente.documento)}). Confira se anexou o arquivo da empresa certa — as diferenças abaixo provavelmente não valem.</div>`
           : '';
-        document.getElementById('atzDiff').innerHTML = avisoCnpj + renderDiffDocumento(difs, d);
-        // CNPJ de outra empresa: nada pode ser aplicado — trava todas as caixas
-        if (avisoCnpj) document.querySelectorAll('#atzDiff input[type="checkbox"]').forEach(cb => { cb.checked = false; cb.disabled = true; });
+        document.getElementById('atzDiffDoc').innerHTML = avisoCnpj + renderDiffDocumento(difs, d, 'documento');
+        // CNPJ de outra empresa: nada pode ser aplicado — trava todas as caixas deste painel
+        if (avisoCnpj) document.querySelectorAll('#atzDiffDoc input[type="checkbox"]').forEach(cb => { cb.checked = false; cb.disabled = true; });
+        atzConfrontarPaineis();
         atualizarRotuloConfirmar();
         const conf = d.confianca ? ' Confiança da leitura: ' + d.confianca + '.' : '';
         if (avisoCnpj) atzStatus('O CNPJ do documento não confere com o deste cliente — aplicação bloqueada por segurança.' + conf, 'var(--warning)');
@@ -1948,6 +2041,56 @@
       } finally {
         if (gen === atzGen) btn.disabled = false;
       }
+    });
+
+    // Receita Federal via BrasilAPI: cartão CNPJ + QSA no mesmo formato que o leitor de documento devolve
+    document.getElementById('atzRfb').addEventListener('click', async () => {
+      const cnpj = atzDig(cliente?.documento);
+      if (cnpj.length !== 14) { atzStatus('Este cliente não tem CNPJ válido no cadastro — a consulta precisa dele.', 'var(--warning)'); return; }
+      const btn = document.getElementById('atzRfb'); btn.disabled = true;
+      const gen = ++atzGen;
+      atzStatus('Consultando a Receita Federal…');
+      document.getElementById('atzDiffRfb').innerHTML = '';
+      try {
+        let resp = null;
+        for (let tent = 1; tent <= 2; tent++) {
+          resp = await fetch('https://brasilapi.com.br/api/cnpj/v1/' + cnpj);
+          if (resp.status === 429 && tent === 1) { await new Promise(r => setTimeout(r, 4000)); continue; }
+          break;
+        }
+        if (gen !== atzGen) return;
+        if (resp.status === 404) throw new Error('CNPJ não encontrado na base da Receita');
+        if (!resp.ok) throw new Error('a consulta respondeu HTTP ' + resp.status + (resp.status === 429 ? ' (limite de consultas — tente em instantes)' : ''));
+        const j = await resp.json();
+        const fmtCnae = c => { const dg = String(c ?? '').replace(/\D/g, ''); return dg.length === 7 ? dg.slice(0, 4) + '-' + dg.slice(4, 5) + '/' + dg.slice(5) : String(c ?? ''); };
+        const porte = (() => { const t = String(j.porte || '').toUpperCase(); if (j.opcao_pelo_mei) return 'MEI'; if (t.includes('MICRO')) return 'ME'; if (t.includes('PEQUENO')) return 'EPP'; if (t.includes('DEMAIS')) return 'Demais'; return null; })();
+        const d = {
+          documento: j.cnpj, nome_principal: j.razao_social, nome_fantasia: j.nome_fantasia || null,
+          data_abertura: j.data_inicio_atividade || null,
+          natureza_juridica: j.natureza_juridica || null,
+          capital_social: j.capital_social != null ? j.capital_social : null,
+          porte_empresa: porte,
+          regime_tributario: j.opcao_pelo_mei ? 'MEI' : (j.opcao_pelo_simples ? 'Simples Nacional' : null),
+          cnae_principal: j.cnae_fiscal ? fmtCnae(j.cnae_fiscal) + (j.cnae_fiscal_descricao ? ' - ' + j.cnae_fiscal_descricao : '') : null,
+          cnaes_secundarios: Array.isArray(j.cnaes_secundarios) ? j.cnaes_secundarios.filter(x => x && x.codigo).map(x => fmtCnae(x.codigo) + (x.descricao ? ' - ' + x.descricao : '')) : [],
+          cep: j.cep || null, logradouro: [j.descricao_tipo_de_logradouro, j.logradouro].filter(Boolean).join(' ') || null, numero: j.numero || null,
+          complemento: j.complemento || null, bairro: j.bairro || null, cidade: j.municipio || null, uf: j.uf || null,
+          // QSA: a Receita mascara o CPF, então o casamento com o cadastro é pelo nome; participação ela não informa
+          socios: (Array.isArray(j.qsa) ? j.qsa : []).map(q => ({ nome: q.nome_socio, cpf: null, qualificacao: q.qualificacao_socio || null,
+            eh_administrador: /administrador|titular|empres[áa]rio/i.test(q.qualificacao_socio || ''), participacao_percentual: null })),
+          observacoes_extracao: 'Situação cadastral: ' + (j.descricao_situacao_cadastral || '—') + (j.data_situacao_cadastral ? ' desde ' + j.data_situacao_cadastral : '')
+            + ' · ' + (j.opcao_pelo_mei ? 'MEI' : j.opcao_pelo_simples ? 'optante pelo Simples' + (j.data_opcao_pelo_simples ? ' desde ' + j.data_opcao_pelo_simples : '') : 'não optante pelo Simples (a Receita não distingue Presumido de Real)')
+            + (j.qsa && j.qsa.length ? '' : ' · sem quadro societário na Receita (empresário individual: o titular não aparece no QSA)')
+        };
+        const difs = montarDiffDocumento(d);
+        document.getElementById('atzDiffRfb').innerHTML = renderDiffDocumento(difs, d, 'Receita');
+        atzConfrontarPaineis();
+        atualizarRotuloConfirmar();
+        atzStatus(difs.total ? difs.total + ' diferença(s) entre a Receita e o cadastro — marque o que quer aplicar.' : 'A Receita confere com o cadastro — nenhuma diferença.', difs.total ? '' : 'var(--success)');
+      } catch (err) {
+        if (gen !== atzGen) return;
+        atzStatus('Não consegui consultar a Receita: ' + (err.message || err), 'var(--warning)');
+      } finally { if (gen === atzGen) btn.disabled = false; }
     });
 
     const atzNorm = v => String(v ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -1984,6 +2127,10 @@
         });
 
       // Empresa · regime / porte / CNAEs
+      if (d.nome_fantasia && atzNorm(d.nome_fantasia) !== atzNorm(cliente?.nome_fantasia))
+        rows.fiscal.push({ campo: 'Nome fantasia', antes: atzVal(cliente?.nome_fantasia), depois: atzVal(d.nome_fantasia), aplicar: { col: 'nome_fantasia', valor: String(d.nome_fantasia).trim() } });
+      if (d.data_abertura && /^\d{4}-\d{2}-\d{2}$/.test(d.data_abertura) && d.data_abertura !== (cliente?.data_abertura || ''))
+        rows.fiscal.push({ campo: 'Data de abertura', antes: atzVal(cliente?.data_abertura), depois: atzVal(d.data_abertura), aplicar: { col: 'data_abertura', valor: d.data_abertura } });
       if (d.nome_principal && atzNorm(d.nome_principal) !== atzNorm(cliente?.nome_principal))
         rows.fiscal.push({ campo: 'Razão social', antes: atzVal(cliente?.nome_principal), depois: atzVal(d.nome_principal), aplicar: { col: 'nome_principal', valor: String(d.nome_principal).trim() } });
       const capDoc = atzNum(d.capital_social);
@@ -2053,7 +2200,8 @@
       return (s.nome || '?') + part + (s.eh_administrador ? ' — administrador' : '') + (s.cpf ? ' · CPF ' + s.cpf : '');
     }
 
-    function renderDiffDocumento(difs, d){
+    function renderDiffDocumento(difs, d, fonte){
+      fonte = fonte || 'documento';
       const secao = (titulo, lista, vazio, secKey) => {
         const corpo = lista.length
           ? lista.map(r => {
@@ -2068,17 +2216,43 @@
             }).join('')
           : `<tr><td colspan="4" style="color:#8A93A6;">${vazio}</td></tr>`;
         return `<div class="alv-tl-head" style="font-size:14px; margin-top:14px;">${titulo}</div>
-          <table class="cmp-tbl"><thead><tr><th></th><th>Campo</th><th>Antes (cadastro)</th><th>Depois (documento)</th></tr></thead><tbody>${corpo}</tbody></table>`;
+          <table class="cmp-tbl"><thead><tr><th></th><th>Campo</th><th>Antes (cadastro)</th><th>Depois (${atzEsc(fonte)})</th></tr></thead><tbody>${corpo}</tbody></table>`;
       };
-      let html = secao('Endereço', difs.endereco, 'Sem diferenças de endereço.', 'endereco')
+      let html = `<div class="alv-tl-head" style="font-size:13px; margin-top:16px; color:#52B4C6; text-transform:uppercase; letter-spacing:.05em;">${fonte === 'documento' ? '📄 Documento anexado' : '🔎 Receita Federal'} × cadastro</div>`
+        + secao('Endereço', difs.endereco, 'Sem diferenças de endereço.', 'endereco')
         + secao('Empresa · regime / porte / CNAEs', difs.fiscal, 'Sem diferenças de razão social, capital, natureza, regime, porte ou CNAEs.', 'fiscal')
         + secao('Sócios', difs.socios, difs.temQuadro ? 'Quadro societário confere.' : 'O documento não traz quadro societário (cartão CNPJ não lista sócios).', 'socios');
       if (difs.socios.some(r => r.campo === 'Sócio removido'))
         html += `<div class="field-help" style="margin-top:8px;">⚠ "Sócio removido" pressupõe que o documento traz o quadro societário <b>completo</b> (consolidação). Se anexou uma alteração parcial, desconsidere essas linhas.</div>`;
       if (d.observacoes_extracao) html += `<div class="field-help" style="margin-top:8px;">Obs. da leitura: ${atzEsc(d.observacoes_extracao)}</div>`;
-      html += `<div class="field-help" style="margin-top:8px;">Marque as linhas que quer gravar — só as marcadas serão aplicadas ao confirmar o registro; o resto do cadastro fica como está.</div>`;
+      if (fonte === 'documento') html += `<div class="field-help" style="margin-top:8px;">Marque as linhas que quer gravar — só as marcadas serão aplicadas ao confirmar o registro; o resto do cadastro fica como está.</div>`;
       return html;
     }
+
+    // dois painéis (documento e Receita): o mesmo campo marcado nos dois seria ambíguo — marcar num
+    // desmarca no outro; e cada linha da Receita diz se confere com o que o documento trouxe
+    function atzConfrontarPaineis(){
+      const doc = document.getElementById('atzDiffDoc'), rfb = document.getElementById('atzDiffRfb');
+      if (!doc || !rfb || !doc.innerHTML || !rfb.innerHTML) return;
+      const chave = cb => cb.dataset.secao + '|' + cb.dataset.campo + (cb.dataset.socioId ? '|' + cb.dataset.socioId : '');
+      const valorDe = cb => { const tds = cb.closest('tr').querySelectorAll('td'); return tds[3] ? tds[3].textContent.trim() : ''; };
+      const noDoc = new Map(); doc.querySelectorAll('input[type="checkbox"][data-secao]').forEach(cb => noDoc.set(chave(cb), cb));
+      rfb.querySelectorAll('input[type="checkbox"][data-secao]').forEach(cb => {
+        const par = noDoc.get(chave(cb)); const tds = cb.closest('tr').querySelectorAll('td');
+        if (!tds[3] || tds[3].querySelector('.atz-tag')) return;
+        if (par) {
+          const igual = atzNorm(valorDe(par)) === atzNorm(valorDe(cb));
+          tds[3].insertAdjacentHTML('beforeend', igual ? ' <span class="atz-tag" style="color:var(--success);font-size:11px;">✓ confere com o documento</span>'
+                                                          : ' <span class="atz-tag" style="color:var(--warning);font-size:11px;">≠ documento: ' + atzEsc(valorDe(par)) + '</span>');
+        } else tds[3].insertAdjacentHTML('beforeend', ' <span class="atz-tag" style="color:#8A93A6;font-size:11px;">só na Receita</span>');
+      });
+    }
+    document.getElementById('atzDiff').addEventListener('change', e => {
+      const cb = e.target; if (!cb.matches('input[type="checkbox"][data-secao]') || !cb.checked || cb.dataset.secao === 'socios') return;
+      const meuPainel = cb.closest('#atzDiffDoc, #atzDiffRfb'); if (!meuPainel) return;
+      const outro = meuPainel.id === 'atzDiffDoc' ? document.getElementById('atzDiffRfb') : document.getElementById('atzDiffDoc');
+      outro.querySelectorAll(`input[type="checkbox"][data-secao="${cb.dataset.secao}"][data-campo="${CSS.escape(cb.dataset.campo)}"]`).forEach(o => { o.checked = false; });
+    });
 
     function atzRefletirNoForm(payload){
       Object.entries(payload).forEach(([k, v]) => {
@@ -2217,7 +2391,7 @@
         if (diffAplicado.erros.length) descParts.push('Falhou ao aplicar: ' + diffAplicado.erros.join(' · '));
         descParts.push('Processo: ' + pastaNome + ' · Documentos salvos no Drive (' + driveMsg + ').');
         const regSoc = {
-          setor: 'societario', titulo: tipo === 'ALTERAÇÃO' ? 'Alteração contratual' : tipo,
+          setor: 'societario', titulo: tipo === 'ALTERAÇÃO' ? 'Alteração contratual' : (tipo === 'ENTRADA' ? 'Cadastro complementado (entrada)' : tipo),
           cliente_id: clienteId, responsavel: 'Samuel', prioridade: 'media',
           descricao: descParts.join('\n'), origem: 'processo', status: 'pendente'
         };

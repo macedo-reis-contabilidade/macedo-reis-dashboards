@@ -419,8 +419,19 @@
           if (ids.length) {
             await supabase.from('clientes').update({ status: 'ativo' }).in('id', ids).eq('status', 'em_transicao');
             if (atual.tipo !== 'saida') {
-              const { data: cls } = await supabase.from('clientes').select('id, tipo_pessoa').in('id', ids);
+              const { data: cls } = await supabase.from('clientes').select('id, tipo_pessoa, regime_tributario, cnae_principal').in('id', ids);
               const pjs = (cls || []).filter(c => c.tipo_pessoa === 'PJ').map(c => c.id);
+              // cliente do Simples entra na campanha da Reforma (a lista foi semeada em 01/09; quem chega depois
+              // precisa nascer aqui) — como caso triado, sem sinais, pra validar na ficha
+              try {
+                const simples = (cls || []).filter(c => c.tipo_pessoa === 'PJ' && /simples/i.test(c.regime_tributario || ''));
+                if (simples.length) {
+                  const { data: jaCaso } = await supabase.from('rt_casos').select('cliente_id').in('cliente_id', simples.map(c => c.id));
+                  const tem = new Set((jaCaso || []).map(x => x.cliente_id));
+                  const novos = simples.filter(c => !tem.has(c.id)).map(c => ({ cliente_id: c.id, cnae_base: (c.cnae_principal || '').slice(0, 9) || null, status: 'triado', decisao: 'pendente', obs: 'Entrou na campanha ao concluir a transição — validar o perfil na ficha.' }));
+                  if (novos.length) await supabase.from('rt_casos').insert(novos);
+                }
+              } catch (eRt) { console.warn('Reforma: não consegui incluir na campanha', eRt); }
               if (pjs.length) {
                 let dEnt = prompt('Data de entrada na carteira de clientes (AAAA-MM-DD) — ajuste se o contrato começa em outra data:', new Date().toISOString().slice(0, 10));
                 if (dEnt) {
