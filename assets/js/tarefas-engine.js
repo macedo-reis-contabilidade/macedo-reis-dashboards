@@ -37,6 +37,20 @@ const CSS = `
 
   .fa-atrasada { color:#E06C6C; font-weight:600; }
   .fa-row-done { opacity:.5; }
+  /* seleção em lote dentro do grupo (.fa-chk — .fa-sel já é a classe dos selects de filtro) */
+  .fa-chk-td { width:34px; padding-right:0 !important; }
+  .fa-chk { width:16px; height:16px; accent-color:#5B82A6; cursor:pointer; vertical-align:middle; margin:0; }
+  .fa-chk-head { margin-right:2px; }
+  .fa-lote { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:10px 14px; margin:6px 6px 2px; background:rgba(91,130,166,.10); border:1px solid rgba(91,130,166,.3); border-radius:10px; font-size:13px; color:#C5D8E8; }
+  .fa-lote[hidden] { display:none; } /* [hidden] perde do display:flex — mesmo pitfall do .btn[hidden] na ficha */
+  .fa-lote.is-rodando ~ table tr.fa-row-proc { pointer-events:none; }
+  @media (max-width:768px){ .fa-chk-td { display:none !important; } .fa-chk-td:has(input) { display:flex !important; } .fa-chk-td::before { content:"Selecionar" !important; } }
+  .fa-lote b { color:#E6EBF2; }
+  .fa-lote-aviso { flex-basis:100%; font-size:12px; color:#8A93A6; }
+  .fa-lote-resumo { margin:6px 6px 2px; padding:10px 14px; border-radius:10px; font-size:13px; line-height:1.5; }
+  .fa-lote-resumo.ok { background:rgba(63,176,122,.12); border:1px solid rgba(63,176,122,.35); color:#3FB07A; }
+  .fa-lote-resumo.erro { background:rgba(224,108,108,.10); border:1px solid rgba(224,108,108,.35); color:#E6EBF2; }
+  .fa-lote-resumo.erro b { color:#E06C6C; }
   .fa-row-proc { cursor:pointer; transition:background .12s; }
   .fa-row-proc:hover { background:rgba(255,255,255,.04); }
   .pill { display:inline-block; font-size:11px; font-weight:600; border-radius:999px; padding:3px 10px; }
@@ -694,10 +708,14 @@ export function initTarefas(userCfg) {
       if (prazos.length === 1) prazoLbl = '· vence ' + formatDate(prazos[0]);
       else if (prazos.length > 1) prazoLbl = '· vários prazos';
       const aberto = gruposAbertos.has(titulo) ? 'open' : '';
+      const abertas = itens.filter(t => t.status !== 'concluida').length;
       const linhas = itens.map(t => {
         const atrasada = t.prazo && t.prazo < hojeStr && t.status !== 'concluida';
         const cli = t.clientes?.nome_principal ? esc(t.clientes.nome_principal) : '<span style="color:#6B7385">Interna</span>';
+        // caixa só em linha aberta: concluída não entra no lote
+        const caixa = t.status === 'concluida' ? '' : '<input type="checkbox" class="fa-chk" data-sel="'+t.id+'" aria-label="Selecionar">';
         return '<tr class="fa-row-proc '+(t.status==='concluida'?'fa-row-done':'')+'" data-id="'+t.id+'">'+
+          '<td class="fa-chk-td" data-label="">'+caixa+'</td>'+
           '<td data-label="'+escA(C.clienteLabel)+'">'+cli+'</td>'+
           '<td data-label="Responsável">'+(t.responsavel?esc(t.responsavel):'—')+'</td>'+
           '<td data-label="Prazo">'+(t.prazo?'<span class="'+(atrasada?'fa-atrasada':'')+'">'+formatDate(t.prazo)+'</span>':'—')+'</td>'+
@@ -706,20 +724,111 @@ export function initTarefas(userCfg) {
       return '<details class="fa-grupo" '+aberto+' data-titulo="'+escA(titulo)+'">'+
         '<summary class="fa-grupo-head">'+
           '<svg class="fa-grupo-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>'+
+          (abertas ? '<input type="checkbox" class="fa-chk fa-chk-head" data-sel-todas aria-label="Selecionar tod'+(C.itemPluralFem?'as':'os')+' do grupo" title="Marcar/desmarcar tod'+(C.itemPluralFem?'as as':'os os')+' '+escA(C.item)+'s abert'+(C.itemPluralFem?'as':'os')+' do grupo">' : '')+
           '<span class="fa-grupo-nome">'+esc(titulo)+'</span>'+
           '<span class="fa-grupo-meta">'+total+(total>1?' '+esc(C.grupoUnidade[1])+' ':' '+esc(C.grupoUnidade[0])+' ')+prazoLbl+'</span>'+
           '<span class="fa-grupo-prog">'+concl+'/'+total+'</span>'+
         '</summary>'+
-        '<div class="fa-grupo-body"><table class="table"><tbody>'+linhas+'</tbody></table></div>'+
+        '<div class="fa-grupo-body"><div class="fa-lote" data-lote hidden></div><table class="table"><tbody>'+linhas+'</tbody></table></div>'+
       '</details>';
     }).join('');
 
     elGrupos.querySelectorAll('details.fa-grupo').forEach(d => {
       d.addEventListener('toggle', () => { if (d.open) gruposAbertos.add(d.dataset.titulo); else gruposAbertos.delete(d.dataset.titulo); });
+      ligarLote(d);
     });
     elGrupos.querySelectorAll('tr.fa-row-proc').forEach(tr => {
       tr.addEventListener('click', () => abrirDetalhe(tr.dataset.id));
     });
+  }
+
+  // ==================== CONCLUIR EM LOTE (seleção por grupo) ====================
+  // gênero acompanha o rótulo do setor: "tarefa" (fem.) × "processo" (masc.)
+  const rotuloItens = n => n + ' ' + (n === 1 ? esc(C.item) : esc(C.item) + 's');
+  const concl = n => (C.itemPluralFem ? 'concluída' : 'concluído') + (n === 1 ? '' : 's');
+  const fmtSel = n => n + ' selecionad' + (C.itemPluralFem ? 'a' : 'o') + (n === 1 ? '' : 's');
+  function ligarLote(det) {
+    const barra = det.querySelector('[data-lote]');
+    const caixaTodas = det.querySelector('[data-sel-todas]');
+    const caixas = () => [...det.querySelectorAll('input[data-sel]')];
+    const marcadas = () => caixas().filter(c => c.checked).map(c => c.dataset.sel);
+    const atualizar = () => {
+      const n = marcadas().length;
+      if (caixaTodas) { const tot = caixas().length; caixaTodas.checked = tot > 0 && n === tot; caixaTodas.indeterminate = n > 0 && n < tot; }
+      if (!n) { barra.hidden = true; barra.innerHTML = ''; return; }
+      barra.hidden = false;
+      barra.innerHTML = '<b data-lote-cont>' + fmtSel(n) + '</b>'
+        + '<button class="btn btn-primary btn-sm" data-lote-ok>Concluir ' + rotuloItens(n) + '</button>'
+        + '<button class="rt-link" data-lote-limpar>Limpar seleção</button>'
+        + '<span class="fa-lote-aviso">O lote não gera cobrança à parte — para isso, conclua ' + (C.itemPluralFem ? 'a ' : 'o ') + esc(C.item) + ' individualmente.</span>';
+      barra.querySelector('[data-lote-limpar]').addEventListener('click', () => { caixas().forEach(c => { c.checked = false; }); atualizar(); });
+      barra.querySelector('[data-lote-ok]').addEventListener('click', () => concluirLote(det, marcadas(), barra));
+    };
+    // a caixa fica dentro da linha clicável (abre o detalhe) e do <summary> (abre/fecha o grupo):
+    // o clique precisa parar nela
+    caixas().forEach(c => {
+      c.addEventListener('click', e => e.stopPropagation());
+      c.addEventListener('change', atualizar);
+    });
+    if (caixaTodas) {
+      caixaTodas.addEventListener('click', e => e.stopPropagation());
+      caixaTodas.addEventListener('change', () => { const on = caixaTodas.checked; caixas().forEach(c => { c.checked = on; }); atualizar(); });
+    }
+  }
+
+  // Conclusão simples, uma a uma, sem cobrança à parte (decisão do Samuel): update + histórico,
+  // erro checado em cada passo; falha numa não interrompe as outras; resumo honesto no fim.
+  let loteRodando = false;
+  async function concluirLote(det, ids, barra) {
+    if (!ids.length) return;
+    if (loteRodando) { alert('Já tem um lote em andamento — espere ele terminar.'); return; }
+    if (!confirm('Concluir ' + rotuloItens(ids.length) + '?')) return;
+    loteRodando = true;
+    const btn = barra.querySelector('[data-lote-ok]');
+    const limpar = barra.querySelector('[data-lote-limpar]');
+    btn.disabled = true; if (limpar) limpar.disabled = true;
+    barra.classList.add('is-rodando');
+    // enquanto roda, nada que re-renderize a lista (busca, filtros, faixa de foco, caixas de outros grupos):
+    // um render() no meio descartaria a barra de progresso e devolveria caixas em cima de dados velhos
+    const travados = [searchInput, filterStatus, filterResp, ...document.querySelectorAll('.fa-focus-card'), ...elGrupos.querySelectorAll('input.fa-chk'), ...elGrupos.querySelectorAll('[data-lote-ok],[data-lote-limpar]')];
+    travados.forEach(el => { if (el !== btn && el !== limpar) { el.dataset.loteTrava = el.disabled ? '1' : ''; el.disabled = true; } });
+    const nomeDe = id => { const t = tarefas.find(x => x.id === id); return t ? (t.clientes?.nome_principal || t.titulo || 'sem cliente') : id; };
+    let feitas = 0; const falhas = [], semHist = [], jaEstavam = [];
+    try {
+      for (let i = 0; i < ids.length; i++) {
+        const id = ids[i];
+        btn.innerHTML = '<span class="spinner spinner-sm"></span>Concluindo ' + (i + 1) + ' de ' + ids.length + '…';
+        // só conclui quem ainda está aberto: se outra pessoa concluiu (ou excluiu) entre a seleção e o
+        // clique, o update não pega linha nenhuma — e não sobrescreve a conclusão dela
+        const { data: up, error } = await supabase.from('tarefas').update({ status:'concluida', concluida_em:new Date().toISOString(), concluida_por:usuarioEmail })
+          .eq('id', id).neq('status', 'concluida').select('id');
+        if (error) { falhas.push(nomeDe(id) + ' (' + error.message + ')'); continue; }
+        if (!up || !up.length) { jaEstavam.push(nomeDe(id)); continue; }
+        const { error: eHist } = await supabase.from('tarefa_historico').insert({ tarefa_id:id, descricao:C.historicoConcluida, autor:usuarioEmail });
+        feitas++;   // a conclusão valeu mesmo sem o registro — o histórico é avisado à parte
+        if (eHist) semHist.push(nomeDe(id) + ' (' + eHist.message + ')');
+      }
+    } finally {
+      loteRodando = false;
+      travados.forEach(el => { if (el.isConnected && el !== btn && el !== limpar) { el.disabled = el.dataset.loteTrava === '1'; delete el.dataset.loteTrava; } });
+    }
+    const titulo = det.dataset.titulo;
+    await carregarTarefas();   // re-renderiza; o resumo entra no grupo pelo título
+    const grupo = [...elGrupos.querySelectorAll('details.fa-grupo')].find(d => d.dataset.titulo === titulo);
+    const alvo = grupo ? grupo.querySelector('.fa-grupo-body') : null;
+    const problemas = falhas.length || semHist.length;
+    const resumo = document.createElement('div');
+    resumo.className = 'fa-lote-resumo ' + (problemas ? 'erro' : 'ok');
+    let txt = (grupo ? '' : '<b>' + esc(titulo) + '</b> — ') + (problemas ? feitas + ' ' + concl(feitas) + '.' : '✓ ' + rotuloItens(feitas) + ' ' + concl(feitas) + '.');
+    if (falhas.length) txt += ' <b>' + falhas.length + ' não ' + (falhas.length === 1 ? 'foi ' : 'foram ') + concl(falhas.length) + ':</b> ' + falhas.map(esc).join('; ') + '.';
+    if (semHist.length) txt += ' <b>' + semHist.length + ' sem registro no histórico</b> (' + concl(semHist.length) + ' mesmo assim): ' + semHist.map(esc).join('; ') + '.';
+    if (jaEstavam.length) txt += ' ' + jaEstavam.length + ' já ' + (jaEstavam.length === 1 ? 'estava ' : 'estavam ') + concl(jaEstavam.length) + ' por outra pessoa: ' + jaEstavam.map(esc).join('; ') + '.';
+    resumo.innerHTML = txt;
+    if (alvo) { grupo.open = true; gruposAbertos.add(titulo); alvo.prepend(resumo); }
+    // grupo sumiu da lista (todas concluídas e a faixa "A fazer" as esconde): o resumo fica
+    // acima da lista, fora do #grupos — que o render() reescreve inteiro
+    else elGrupos.insertAdjacentElement('beforebegin', resumo);
+    if (!problemas && !jaEstavam.length) setTimeout(() => resumo.remove(), 6000);
   }
 
   function menorPrazo(itens){ const ps = itens.map(t=>t.prazo).filter(Boolean).sort(); return ps[0] || ''; }
