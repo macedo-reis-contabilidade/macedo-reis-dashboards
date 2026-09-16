@@ -596,8 +596,14 @@
 
       const setoresSel = Array.from(document.querySelectorAll('#setoresGroup input:checked')).map(c => c.value);
       if (setoresSel.length > 0) {
-        const setoresPayload = setoresSel.map(setor => ({ cliente_id: novo.id, setor, ativo: true, data_inicio: payload.data_inicio_cliente }));
-        await supabase.from('servicos_contratados').insert(setoresPayload);
+        // um a um, com o erro checado e o nome do setor na mensagem — um valor recusado
+        // pelo banco derrubava o lote inteiro em silêncio e o cliente nascia sem setor
+        const falhas = [];
+        for (const setor of setoresSel) {
+          const { error } = await supabase.from('servicos_contratados').insert({ cliente_id: novo.id, setor, ativo: true, data_inicio: payload.data_inicio_cliente });
+          if (error) falhas.push(setor + ' (' + error.message + ')');
+        }
+        if (falhas.length) alert('Cliente criado, mas os setores contratados não foram salvos: ' + falhas.join('; ') + '.\nMarque-os de novo na tela de edição do cliente.');
       }
 
       // sócios detectados na extração do documento → gravados já no cadastro
