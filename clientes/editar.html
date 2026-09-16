@@ -1601,26 +1601,54 @@
       const btns = [document.getElementById('btnSalvar'), document.getElementById('btnSalvarBottom')];
       btns.forEach(b => { b.disabled = true; b.innerHTML = '<span class="spinner spinner-sm"></span>Salvando...'; });
 
+      const restaurarBotoes = () => btns.forEach(b => { b.disabled = false; b.textContent = 'Salvar alterações'; });
+
       const { error: errUpdate } = await supabase.from('clientes').update(payload).eq('id', clienteId);
       if (errUpdate) {
-        btns.forEach(b => { b.disabled = false; b.textContent = 'Salvar alterações'; });
+        restaurarBotoes();
         showError('Erro ao salvar: ' + errUpdate.message);
         return;
       }
-
-      await supabase.from('servicos_contratados').delete().eq('cliente_id', clienteId);
-      if (setoresSel.length > 0) {
-        const setoresPayload = setoresSel.map(setor => ({ cliente_id: clienteId, setor, ativo: true, data_inicio: payload.data_inicio_cliente }));
-        await supabase.from('servicos_contratados').insert(setoresPayload);
-      }
-
       Object.assign(cliente, payload);
       document.getElementById('bcNome').textContent = nome;
       document.getElementById('pageTitle').textContent = nome;
       atualizaDriveTopo();
 
-      btns.forEach(b => { b.disabled = false; b.textContent = 'Salvar alterações'; });
+      // Setores: grava por diferença (insere os marcados que faltam, apaga os desmarcados),
+      // um a um e com o erro checado — nunca apagar tudo antes de inserir: se o insert
+      // falhar, o cliente fica sem setor nenhum e a tela ainda diz "salvo".
+      const erroSetores = await salvarSetores(setoresSel, payload.data_inicio_cliente);
+      restaurarBotoes();
+      if (erroSetores) {
+        // os checkboxes ficam como o usuário marcou: ele corrige e tenta de novo sem remarcar
+        showError('Os dados do cliente foram salvos, mas os setores contratados NÃO: ' + erroSetores + ' Confira a marcação e clique em Salvar de novo.');
+        return;
+      }
       showSuccess('Alterações salvas com sucesso.');
+    }
+
+    // Devolve null no sucesso ou o texto do que falhou (setor por setor).
+    async function salvarSetores(setoresSel, dataInicio) {
+      const { data: atuais, error: errLer } = await supabase.from('servicos_contratados').select('id, setor, ativo').eq('cliente_id', clienteId);
+      if (errLer) return 'não consegui ler os setores atuais (' + errLer.message + ').';
+      const porSetor = Object.fromEntries((atuais || []).map(s => [s.setor, s]));
+      const falhas = [];
+      const rotulo = v => { const cb = document.querySelector('#setoresGroup input[value="' + v + '"]'); const t = cb && cb.parentElement.querySelector('span:last-child'); return t ? t.textContent : v; };
+
+      for (const setor of setoresSel) {
+        const ex = porSetor[setor];
+        if (ex && ex.ativo) continue;
+        const { error } = ex
+          ? await supabase.from('servicos_contratados').update({ ativo: true, data_inicio: dataInicio, data_fim: null }).eq('id', ex.id)
+          : await supabase.from('servicos_contratados').insert({ cliente_id: clienteId, setor, ativo: true, data_inicio: dataInicio });
+        if (error) falhas.push(rotulo(setor) + ' (' + error.message + ')');
+      }
+      for (const s of (atuais || [])) {
+        if (setoresSel.includes(s.setor)) continue;
+        const { error } = await supabase.from('servicos_contratados').delete().eq('id', s.id);
+        if (error) falhas.push('remover ' + rotulo(s.setor) + ' (' + error.message + ')');
+      }
+      return falhas.length ? 'falhou em: ' + falhas.join('; ') + '.' : null;
     }
 
     document.getElementById('btnSalvar').addEventListener('click', salvar);
