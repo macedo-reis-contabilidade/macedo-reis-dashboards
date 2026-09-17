@@ -26,6 +26,21 @@
   --warning:       #F0B859;
   --danger:        #E55C5C;
 
+  /* tokens de página (17/09/2026): as telas usam estes em vez de cores fixas,
+     pra que o tema claro funcione. Nomes curtos de propósito. */
+  --text-2:        #B9C2D0;                 /* texto secundário, entre --text e --text-muted */
+  --ok:            #3FB07A;                 /* verde de estado (tarefa feita, positivo) */
+  --warn:          #E3B341;                 /* amarelo de estado */
+  --err:           #E06C6C;                 /* vermelho de estado (atraso, alta) */
+  --fill-1:        rgba(255,255,255,.035);  /* fundo de card sobre o bg */
+  --fill-2:        rgba(255,255,255,.06);   /* card em hover / segundo nível */
+  --fill-3:        rgba(255,255,255,.11);   /* controle ativo, chip */
+  --line:          rgba(255,255,255,.08);   /* borda fina */
+  --line-strong:   rgba(255,255,255,.22);   /* borda de controle (check, input vazio) */
+  --overlay:       rgba(6,10,16,.78);       /* fundo de modal */
+  --pop:           rgba(15,22,32,.94);      /* popover / tooltip */
+  --topbar-bg:     rgba(10,14,20,.85);
+
   --font-display:  'Fraunces', Georgia, serif;
   --font-body:     'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
 
@@ -35,6 +50,60 @@
   --shadow:        0 1px 3px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.2);
   --shadow-lg:     0 10px 40px rgba(0,0,0,0.5);
 }
+
+:root[data-theme="light"] {
+  --brand-pale:    #2F4F6E;
+  --brand-light:   #3E6A8E;
+  --brand-primary: #4A739A;
+  --brand-dark:    #2F4F6E;
+
+  --bg:            #F3F5F8;
+  --surface:       #FFFFFF;
+  --surface-2:     #F7F9FC;
+  --surface-hover: #EEF2F7;
+  --border:        #D5DBE5;
+  --border-soft:   #E3E8EF;
+
+  --text:          #1B2430;
+  --text-muted:    #5B6678;
+  --text-dim:      #8A94A6;
+
+  --success:       #1E8E5A;
+  --warning:       #B7791F;
+  --danger:        #C43C3C;
+
+  --text-2:        #3F4A5C;
+  --ok:            #1E8E5A;
+  --warn:          #A56E12;
+  --err:           #C43C3C;
+  --fill-1:        rgba(15,23,42,.035);
+  --fill-2:        rgba(15,23,42,.06);
+  --fill-3:        rgba(15,23,42,.10);
+  --line:          rgba(15,23,42,.10);
+  --line-strong:   rgba(15,23,42,.28);
+  --overlay:       rgba(15,23,42,.45);
+  --pop:           rgba(255,255,255,.97);
+  --topbar-bg:     rgba(255,255,255,.85);
+  --shadow:        0 1px 3px rgba(15,23,42,0.08), 0 8px 24px rgba(15,23,42,0.06);
+  --shadow-lg:     0 10px 40px rgba(15,23,42,0.18);
+}
+/* chips e selos de setor/prioridade trazem a cor no próprio elemento (pastéis feitos pro escuro);
+   no claro, escurecem em bloco pra manter o contraste sem reescrever cada cor */
+:root[data-theme="light"] .setor-chip,
+:root[data-theme="light"] .rp-prio,
+:root[data-theme="light"] .rp-selo,
+:root[data-theme="light"] .badge-setor,
+:root[data-theme="light"] .chip-setor,
+:root[data-theme="light"] .dashboard-card-icon,
+:root[data-theme="light"] .tour-selo { filter: brightness(.62) saturate(1.35); }
+
+.tema-btn {
+  width: 34px; height: 34px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--surface);
+  cursor: pointer; font-size: 15px; line-height: 1; display: inline-flex; align-items: center; justify-content: center;
+  transition: background .15s, border-color .15s;
+}
+.tema-btn:hover { background: var(--surface-hover); border-color: var(--brand-primary); }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -92,7 +161,7 @@ a:hover { color: var(--brand-pale); }
   justify-content: space-between;
   padding: 20px 40px;
   border-bottom: 1px solid var(--border-soft);
-  background: rgba(10, 14, 20, 0.85);
+  background: var(--topbar-bg);
   backdrop-filter: blur(12px);
   position: sticky;
   top: 0;

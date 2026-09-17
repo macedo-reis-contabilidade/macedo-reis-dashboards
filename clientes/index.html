@@ -7,10 +7,10 @@
   <link rel="stylesheet" href="../assets/css/style.css">
   <style>
     /* Subnav do setor Clientes */
-    .fa-subnav { display:flex; gap:6px; margin-bottom:22px; border-bottom:1px solid rgba(255,255,255,.08); flex-wrap:wrap; }
-    .fa-tab { padding:9px 16px; font-size:14px; color:#8A93A6; text-decoration:none; border-bottom:2px solid transparent; margin-bottom:-1px; }
-    .fa-tab:hover { color:#C5D8E8; }
-    .fa-tab.is-active { color:#C5D8E8; border-bottom-color:#5B82A6; font-weight:600; }
+    .fa-subnav { display:flex; gap:6px; margin-bottom:22px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    .fa-tab { padding:9px 16px; font-size:14px; color:var(--text-muted); text-decoration:none; border-bottom:2px solid transparent; margin-bottom:-1px; }
+    .fa-tab:hover { color:var(--brand-pale); }
+    .fa-tab.is-active { color:var(--brand-pale); border-bottom-color:var(--brand-primary); font-weight:600; }
     /* Filtros compactos: busca + tipo + status numa linha, selects estreitos */
     .toolbar { flex-wrap: wrap; gap: 16px; align-items: center; }
     .toolbar-filters { display: flex; flex-direction: row; flex-wrap: wrap; gap: 12px; align-items: center; flex: 1 1 auto; }
@@ -20,32 +20,32 @@
       .toolbar-filters .input-search,
       .toolbar-filters .select { flex: 1 1 100%; max-width: none; width: 100% !important; }
     }
-    .imp-overlay { position:fixed; inset:0; background:rgba(8,12,18,.72); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
+    .imp-overlay { position:fixed; inset:0; background:var(--overlay); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
     .imp-overlay.is-open { display:flex; }
-    .imp-modal { width:100%; max-width:520px; background:#141A22; border:1px solid rgba(255,255,255,.10); border-radius:16px; overflow:hidden; }
-    .imp-head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid rgba(255,255,255,.08); }
-    .imp-head h3 { margin:0; color:#E6EBF2; font-size:18px; }
-    .imp-close { background:none; border:none; color:#8A93A6; font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }
-    .imp-close:hover { color:#E6EBF2; }
-    .imp-body { padding:22px; color:#C5D8E8; font-size:14px; }
+    .imp-modal { width:100%; max-width:520px; background:var(--surface); border:1px solid var(--fill-3); border-radius:16px; overflow:hidden; }
+    .imp-head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid var(--line); }
+    .imp-head h3 { margin:0; color:var(--text); font-size:18px; }
+    .imp-close { background:none; border:none; color:var(--text-muted); font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }
+    .imp-close:hover { color:var(--text); }
+    .imp-body { padding:22px; color:var(--brand-pale); font-size:14px; }
     .imp-body p { margin-top:0; line-height:1.6; }
-    .imp-body input[type=file] { width:100%; padding:12px; background:rgba(255,255,255,.04); border:1px dashed rgba(255,255,255,.22); border-radius:10px; color:#C5D8E8; font-size:13px; box-sizing:border-box; }
-    .imp-resumo { margin-top:16px; padding:14px 16px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:10px; line-height:1.8; }
-    .imp-resumo b { color:#E6EBF2; }
-    .imp-num { color:#3FB07A; font-weight:700; }
-    .imp-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid rgba(255,255,255,.08); }
+    .imp-body input[type=file] { width:100%; padding:12px; background:var(--fill-1); border:1px dashed var(--line-strong); border-radius:10px; color:var(--brand-pale); font-size:13px; box-sizing:border-box; }
+    .imp-resumo { margin-top:16px; padding:14px 16px; background:var(--fill-1); border:1px solid var(--line); border-radius:10px; line-height:1.8; }
+    .imp-resumo b { color:var(--text); }
+    .imp-num { color:var(--ok); font-weight:700; }
+    .imp-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid var(--line); }
     /* Puxar dados da Receita */
     .rcv-prog { margin-top:16px; }
-    .rcv-bar { height:10px; background:rgba(255,255,255,.07); border-radius:6px; overflow:hidden; }
-    .rcv-fill { height:100%; width:0%; background:#5B82A6; border-radius:6px; transition:width .25s; }
+    .rcv-bar { height:10px; background:var(--line); border-radius:6px; overflow:hidden; }
+    .rcv-fill { height:100%; width:0%; background:var(--brand-primary); border-radius:6px; transition:width .25s; }
     .rcv-stats { display:flex; gap:14px; margin-top:10px; font-size:13px; flex-wrap:wrap; }
-    .rcv-stats b { color:#E6EBF2; }
-    .rcv-ok { color:#3FB07A; } .rcv-skip { color:#8A93A6; } .rcv-err { color:#E06C75; }
-    .rcv-log { margin-top:12px; max-height:180px; overflow:auto; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:10px 14px; font-size:12.5px; line-height:1.7; display:none; }
+    .rcv-stats b { color:var(--text); }
+    .rcv-ok { color:var(--ok); } .rcv-skip { color:var(--text-muted); } .rcv-err { color:var(--err); }
+    .rcv-log { margin-top:12px; max-height:180px; overflow:auto; background:var(--fill-1); border:1px solid var(--line); border-radius:10px; padding:10px 14px; font-size:12.5px; line-height:1.7; display:none; }
     .rcv-log.is-on { display:block; }
-    .rcv-atual { margin-top:8px; font-size:12.5px; color:#8A93A6; min-height:18px; }
-    .chk-pasta { display:flex; align-items:center; gap:7px; font-size:13.5px; color:#8A93A6; cursor:pointer; white-space:nowrap; user-select:none; }
-    .chk-pasta input { accent-color:#5B82A6; }
+    .rcv-atual { margin-top:8px; font-size:12.5px; color:var(--text-muted); min-height:18px; }
+    .chk-pasta { display:flex; align-items:center; gap:7px; font-size:13.5px; color:var(--text-muted); cursor:pointer; white-space:nowrap; user-select:none; }
+    .chk-pasta input { accent-color:var(--brand-primary); }
     .lnk-pasta { margin-right:10px; text-decoration:none; font-size:15px; }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -500,7 +500,7 @@
     impAcao.addEventListener('click', async () => {
       if (novosParaImportar === null) {
         if (!impFile.files.length) return;
-        if (typeof XLSX === 'undefined') { impResumo.hidden = false; impResumo.innerHTML = '<span style="color:#E06C6C;">A biblioteca de leitura não carregou. Verifique a conexão e recarregue a página.</span>'; return; }
+        if (typeof XLSX === 'undefined') { impResumo.hidden = false; impResumo.innerHTML = '<span style="color:var(--err);">A biblioteca de leitura não carregou. Verifique a conexão e recarregue a página.</span>'; return; }
         impAcao.disabled = true; impAcao.textContent = 'Analisando…';
         try {
           const rows = await lerArquivo(impFile.files[0]);
@@ -512,7 +512,7 @@
           if (novos.length > 0) { impAcao.textContent = `Importar ${novos.length} cliente${novos.length>1?'s':''}`; impAcao.disabled = false; }
           else { impAcao.textContent = 'Nada para importar'; impAcao.disabled = true; }
         } catch (err) {
-          impResumo.hidden = false; impResumo.innerHTML = `<span style="color:#E06C6C;">Erro ao ler o arquivo: ${err.message}</span>`;
+          impResumo.hidden = false; impResumo.innerHTML = `<span style="color:var(--err);">Erro ao ler o arquivo: ${err.message}</span>`;
           novosParaImportar = null; impAcao.textContent = 'Analisar arquivo'; impAcao.disabled = false;
         }
       } else {
@@ -524,7 +524,7 @@
           impAcao.textContent = 'Concluído';
           setTimeout(() => { fecharImp(); loadClientes(); }, 1300);
         } catch (err) {
-          impResumo.innerHTML = `<span style="color:#E06C6C;">Erro ao importar: ${err.message}</span>`;
+          impResumo.innerHTML = `<span style="color:var(--err);">Erro ao importar: ${err.message}</span>`;
           impAcao.textContent = 'Tentar de novo'; impAcao.disabled = false;
         }
       }

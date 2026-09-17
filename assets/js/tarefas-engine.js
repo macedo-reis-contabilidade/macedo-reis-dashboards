@@ -13,125 +13,125 @@ import { formatDate } from './utils.js';
 
 const CSS = `
   .fa-focus { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:22px; }
-  .fa-focus-card { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:14px 16px; cursor:pointer; text-align:left; transition:border-color .15s, background .15s; display:flex; flex-direction:column; gap:4px; }
+  .fa-focus-card { background:var(--fill-1); border:1px solid var(--line); border-radius:14px; padding:14px 16px; cursor:pointer; text-align:left; transition:border-color .15s, background .15s; display:flex; flex-direction:column; gap:4px; }
   .fa-focus-card:hover { border-color:rgba(138,174,200,.4); }
-  .fa-focus-card.is-active { border-color:#5B82A6; background:rgba(91,130,166,.10); }
-  .fc-num { font-size:24px; font-weight:700; color:#E6EBF2; line-height:1; }
-  .fc-lbl { font-size:12px; color:#8A93A6; }
-  .fa-focus-card.fc-danger .fc-num { color:#E06C6C; }
+  .fa-focus-card.is-active { border-color:var(--brand-primary); background:rgba(91,130,166,.10); }
+  .fc-num { font-size:24px; font-weight:700; color:var(--text); line-height:1; }
+  .fc-lbl { font-size:12px; color:var(--text-muted); }
+  .fa-focus-card.fc-danger .fc-num { color:var(--err); }
 
   .fa-sel { max-width:200px; }
   .fa-toolbar-actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
 
-  .fa-grupo { background:rgba(255,255,255,.025); border:1px solid rgba(255,255,255,.08); border-radius:14px; margin-bottom:10px; overflow:hidden; }
+  .fa-grupo { background:var(--fill-1); border:1px solid var(--line); border-radius:14px; margin-bottom:10px; overflow:hidden; }
   .fa-grupo-head { display:flex; align-items:center; gap:12px; padding:14px 18px; cursor:pointer; list-style:none; user-select:none; }
   .fa-grupo-head::-webkit-details-marker { display:none; }
-  .fa-grupo-chev { color:#8A93A6; transition:transform .15s; flex:none; }
+  .fa-grupo-chev { color:var(--text-muted); transition:transform .15s; flex:none; }
   .fa-grupo[open] .fa-grupo-chev { transform:rotate(90deg); }
-  .fa-grupo-nome { font-weight:600; color:#E6EBF2; font-size:15px; }
-  .fa-grupo-meta { color:#8A93A6; font-size:13px; flex:1; }
-  .fa-grupo-prog { color:#8AAEC8; font-size:13px; font-variant-numeric:tabular-nums; background:rgba(91,130,166,.12); border:1px solid rgba(91,130,166,.25); border-radius:999px; padding:2px 10px; }
-  .fa-grupo-body { border-top:1px solid rgba(255,255,255,.06); padding:4px 6px 8px; }
+  .fa-grupo-nome { font-weight:600; color:var(--text); font-size:15px; }
+  .fa-grupo-meta { color:var(--text-muted); font-size:13px; flex:1; }
+  .fa-grupo-prog { color:var(--brand-light); font-size:13px; font-variant-numeric:tabular-nums; background:rgba(91,130,166,.12); border:1px solid rgba(91,130,166,.25); border-radius:999px; padding:2px 10px; }
+  .fa-grupo-body { border-top:1px solid var(--line); padding:4px 6px 8px; }
   .fa-grupo-body .table { margin:0; }
   .fa-grupo-body .table td { padding:9px 12px; }
 
-  .fa-atrasada { color:#E06C6C; font-weight:600; }
+  .fa-atrasada { color:var(--err); font-weight:600; }
   .fa-row-done { opacity:.5; }
   /* seleção em lote dentro do grupo (.fa-chk — .fa-sel já é a classe dos selects de filtro) */
   .fa-chk-td { width:34px; padding-right:0 !important; }
-  .fa-chk { width:16px; height:16px; accent-color:#5B82A6; cursor:pointer; vertical-align:middle; margin:0; }
+  .fa-chk { width:16px; height:16px; accent-color:var(--brand-primary); cursor:pointer; vertical-align:middle; margin:0; }
   .fa-chk-head { margin-right:2px; }
-  .fa-lote { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:10px 14px; margin:6px 6px 2px; background:rgba(91,130,166,.10); border:1px solid rgba(91,130,166,.3); border-radius:10px; font-size:13px; color:#C5D8E8; }
+  .fa-lote { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:10px 14px; margin:6px 6px 2px; background:rgba(91,130,166,.10); border:1px solid rgba(91,130,166,.3); border-radius:10px; font-size:13px; color:var(--brand-pale); }
   .fa-lote[hidden] { display:none; } /* [hidden] perde do display:flex — mesmo pitfall do .btn[hidden] na ficha */
   .fa-lote.is-rodando ~ table tr.fa-row-proc { pointer-events:none; }
   @media (max-width:768px){ .fa-chk-td { display:none !important; } .fa-chk-td:has(input) { display:flex !important; } .fa-chk-td::before { content:"Selecionar" !important; } }
-  .fa-lote b { color:#E6EBF2; }
-  .fa-lote-aviso { flex-basis:100%; font-size:12px; color:#8A93A6; }
+  .fa-lote b { color:var(--text); }
+  .fa-lote-aviso { flex-basis:100%; font-size:12px; color:var(--text-muted); }
   .fa-lote-resumo { margin:6px 6px 2px; padding:10px 14px; border-radius:10px; font-size:13px; line-height:1.5; }
-  .fa-lote-resumo.ok { background:rgba(63,176,122,.12); border:1px solid rgba(63,176,122,.35); color:#3FB07A; }
-  .fa-lote-resumo.erro { background:rgba(224,108,108,.10); border:1px solid rgba(224,108,108,.35); color:#E6EBF2; }
-  .fa-lote-resumo.erro b { color:#E06C6C; }
+  .fa-lote-resumo.ok { background:rgba(63,176,122,.12); border:1px solid rgba(63,176,122,.35); color:var(--ok); }
+  .fa-lote-resumo.erro { background:rgba(224,108,108,.10); border:1px solid rgba(224,108,108,.35); color:var(--text); }
+  .fa-lote-resumo.erro b { color:var(--err); }
   .fa-row-proc { cursor:pointer; transition:background .12s; }
-  .fa-row-proc:hover { background:rgba(255,255,255,.04); }
+  .fa-row-proc:hover { background:var(--fill-1); }
   .pill { display:inline-block; font-size:11px; font-weight:600; border-radius:999px; padding:3px 10px; }
-  .pill-pend { color:#E3B341; background:rgba(227,179,65,.14); border:1px solid rgba(227,179,65,.3); }
-  .pill-and { color:#8AAEC8; background:rgba(91,130,166,.14); border:1px solid rgba(91,130,166,.3); }
-  .pill-ok { color:#3FB07A; background:rgba(63,176,122,.14); border:1px solid rgba(63,176,122,.3); }
+  .pill-pend { color:var(--warn); background:rgba(227,179,65,.14); border:1px solid rgba(227,179,65,.3); }
+  .pill-and { color:var(--brand-light); background:rgba(91,130,166,.14); border:1px solid rgba(91,130,166,.3); }
+  .pill-ok { color:var(--ok); background:rgba(63,176,122,.14); border:1px solid rgba(63,176,122,.3); }
   .det-empresa { display:flex; flex-direction:column; gap:2px; }
-  .det-empresa span { font-size:13px; color:#8AAEC8; }
-  .det-empresa strong { color:#E6EBF2; font-size:15px; }
-  .alv-conc-banner { background:rgba(63,176,122,.12); border:1px solid rgba(63,176,122,.35); color:#3FB07A; border-radius:10px; padding:8px 12px; font-size:13px; }
-  .alv-hr { border:none; border-top:1px solid rgba(255,255,255,.08); margin:8px 0 2px; }
-  .alv-tl-head { font-weight:600; color:#E6EBF2; font-size:15px; }
+  .det-empresa span { font-size:13px; color:var(--brand-light); }
+  .det-empresa strong { color:var(--text); font-size:15px; }
+  .alv-conc-banner { background:rgba(63,176,122,.12); border:1px solid rgba(63,176,122,.35); color:var(--ok); border-radius:10px; padding:8px 12px; font-size:13px; }
+  .alv-hr { border:none; border-top:1px solid var(--line); margin:8px 0 2px; }
+  .alv-tl-head { font-weight:600; color:var(--text); font-size:15px; }
   .tl { display:flex; flex-direction:column; gap:0; margin-top:8px; }
-  .tl-item { position:relative; padding:0 0 16px 22px; border-left:2px solid rgba(255,255,255,.10); }
+  .tl-item { position:relative; padding:0 0 16px 22px; border-left:2px solid var(--fill-3); }
   .tl-item:last-child { border-left-color:transparent; padding-bottom:2px; }
-  .tl-item::before { content:''; position:absolute; left:-6px; top:3px; width:10px; height:10px; border-radius:50%; background:#5B82A6; border:2px solid #141A22; }
-  .tl-when { font-size:12px; color:#8A93A6; }
-  .tl-desc { color:#E6EBF2; font-size:14px; margin-top:2px; white-space:pre-wrap; }
-  .tl-autor { font-size:12px; color:#8AAEC8; margin-top:2px; }
-  .tl-empty { color:#8A93A6; font-size:13px; }
+  .tl-item::before { content:''; position:absolute; left:-6px; top:3px; width:10px; height:10px; border-radius:50%; background:var(--brand-primary); border:2px solid var(--surface); }
+  .tl-when { font-size:12px; color:var(--text-muted); }
+  .tl-desc { color:var(--text); font-size:14px; margin-top:2px; white-space:pre-wrap; }
+  .tl-autor { font-size:12px; color:var(--brand-light); margin-top:2px; }
+  .tl-empty { color:var(--text-muted); font-size:13px; }
 
-  .fa-modal-overlay { position:fixed; inset:0; background:rgba(8,12,18,.72); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
+  .fa-modal-overlay { position:fixed; inset:0; background:var(--overlay); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
   .fa-modal-overlay.is-open { display:flex; }
   #modalOverlay { z-index:110; }  /* acima do Gerenciar rotinas, que segue aberto por trás */
-  .fa-modal { width:100%; max-width:520px; background:#141A22; border:1px solid rgba(255,255,255,.10); border-radius:16px; overflow:hidden; max-height:92vh; display:flex; flex-direction:column; }
-  .fa-modal-head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid rgba(255,255,255,.08); }
-  .fa-modal-head h3 { margin:0; color:#E6EBF2; font-size:18px; }
-  .fa-modal-close { background:none; border:none; color:#8A93A6; font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }
-  .fa-modal-close:hover { color:#E6EBF2; }
+  .fa-modal { width:100%; max-width:520px; background:var(--surface); border:1px solid var(--fill-3); border-radius:16px; overflow:hidden; max-height:92vh; display:flex; flex-direction:column; }
+  .fa-modal-head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid var(--line); }
+  .fa-modal-head h3 { margin:0; color:var(--text); font-size:18px; }
+  .fa-modal-close { background:none; border:none; color:var(--text-muted); font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }
+  .fa-modal-close:hover { color:var(--text); }
   .fa-modal-body { padding:22px; display:flex; flex-direction:column; gap:14px; overflow:auto; }
   .fa-field { display:flex; flex-direction:column; gap:6px; }
-  .fa-field > span { font-size:13px; color:#8AAEC8; }
+  .fa-field > span { font-size:13px; color:var(--brand-light); }
   .fa-field-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
-  .fa-checkline { display:flex; align-items:center; gap:8px; color:#C5D8E8; font-size:14px; cursor:pointer; }
-  .fa-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid rgba(255,255,255,.08); }
+  .fa-checkline { display:flex; align-items:center; gap:8px; color:var(--brand-pale); font-size:14px; cursor:pointer; }
+  .fa-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid var(--line); }
   .fa-modal textarea.input { resize:vertical; font-family:inherit; }
 
   /* seletor de tipo no modal Nova */
   .te-tipos { display:flex; gap:8px; padding:16px 22px 0; }
-  .te-tipo { flex:1; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); border-radius:10px; color:#8A93A6; padding:9px 6px; font-size:13px; cursor:pointer; font-family:inherit; text-align:center; }
-  .te-tipo.is-on { background:rgba(91,130,166,.22); color:#E6EBF2; border-color:rgba(91,130,166,.6); }
+  .te-tipo { flex:1; background:var(--fill-1); border:1px solid var(--fill-3); border-radius:10px; color:var(--text-muted); padding:9px 6px; font-size:13px; cursor:pointer; font-family:inherit; text-align:center; }
+  .te-tipo.is-on { background:rgba(91,130,166,.22); color:var(--text); border-color:rgba(91,130,166,.6); }
 
   /* faixa Rotinas de hoje */
   .te-rot-faixa { background:rgba(91,130,166,.08); border:1px solid rgba(91,130,166,.22); border-radius:14px; padding:12px 16px; margin-bottom:18px; }
   .te-rot-top { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px; }
-  .te-rot-tit { color:#E6EBF2; font-size:14px; font-weight:600; }
+  .te-rot-tit { color:var(--text); font-size:14px; font-weight:600; }
   .te-rot-item { display:flex; align-items:center; gap:12px; padding:7px 2px; }
-  .te-rot-item + .te-rot-item { border-top:1px solid rgba(255,255,255,.05); }
-  .rt-check { flex:0 0 auto; width:26px; height:26px; border-radius:50%; border:2px solid rgba(255,255,255,.25); background:none; color:transparent; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all .15s ease; }
-  .rt-check:hover { border-color:#3FB07A; }
-  .rt-check.is-done { background:#3FB07A; border-color:#3FB07A; color:#0B0F14; }
-  .te-rot-nome { color:#E6EBF2; font-size:14px; flex:1; min-width:0; }
-  .te-rot-nome small { color:#8A93A6; font-size:12px; margin-left:8px; }
-  .rt-pill { display:inline-block; font-size:11px; font-weight:600; color:#8AAEC8; background:rgba(91,130,166,.16); border:1px solid rgba(91,130,166,.3); border-radius:999px; padding:2px 8px; }
-  .rt-link { background:none; border:none; color:#8AAEC8; cursor:pointer; font-size:13px; padding:3px 6px; font-family:inherit; }
-  .rt-link:hover { color:#C5D8E8; text-decoration:underline; }
-  .rt-del:hover { color:#E06C6C; }
+  .te-rot-item + .te-rot-item { border-top:1px solid var(--line); }
+  .rt-check { flex:0 0 auto; width:26px; height:26px; border-radius:50%; border:2px solid var(--line-strong); background:none; color:transparent; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all .15s ease; }
+  .rt-check:hover { border-color:var(--ok); }
+  .rt-check.is-done { background:var(--ok); border-color:var(--ok); color:var(--bg); }
+  .te-rot-nome { color:var(--text); font-size:14px; flex:1; min-width:0; }
+  .te-rot-nome small { color:var(--text-muted); font-size:12px; margin-left:8px; }
+  .rt-pill { display:inline-block; font-size:11px; font-weight:600; color:var(--brand-light); background:rgba(91,130,166,.16); border:1px solid rgba(91,130,166,.3); border-radius:999px; padding:2px 8px; }
+  .rt-link { background:none; border:none; color:var(--brand-light); cursor:pointer; font-size:13px; padding:3px 6px; font-family:inherit; }
+  .rt-link:hover { color:var(--brand-pale); text-decoration:underline; }
+  .rt-del:hover { color:var(--err); }
 
   /* overlay Gerenciar rotinas */
   .te-rot-modal { max-width:640px; }
-  .rt-item { display:flex; align-items:center; gap:14px; background:rgba(255,255,255,.025); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:12px 14px; margin-bottom:8px; }
+  .rt-item { display:flex; align-items:center; gap:14px; background:var(--fill-1); border:1px solid var(--line); border-radius:14px; padding:12px 14px; margin-bottom:8px; }
   .rt-item.is-done { background:rgba(63,176,122,.06); border-color:rgba(63,176,122,.18); }
   .rt-body { flex:1 1 auto; min-width:0; }
-  .rt-titulo { color:#E6EBF2; font-size:14.5px; font-weight:500; }
-  .rt-item.is-done .rt-titulo { text-decoration:line-through; color:#8A93A6; }
-  .rt-meta { color:#8A93A6; font-size:12.5px; margin-top:3px; }
-  .rt-desc { color:#A9B2C2; font-size:13px; margin-top:5px; line-height:1.5; white-space:pre-wrap; }
+  .rt-titulo { color:var(--text); font-size:14.5px; font-weight:500; }
+  .rt-item.is-done .rt-titulo { text-decoration:line-through; color:var(--text-muted); }
+  .rt-meta { color:var(--text-muted); font-size:12.5px; margin-top:3px; }
+  .rt-desc { color:var(--text-2); font-size:13px; margin-top:5px; line-height:1.5; white-space:pre-wrap; }
   .rt-acoes { display:flex; align-items:center; gap:4px; flex:0 0 auto; }
   .rt-inativa { opacity:.5; }
-  .rt-sec-title { color:#8A93A6; font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; margin:18px 0 8px; }
-  .rt-item.is-done .rt-pill { color:#7FBF8E; border-color:rgba(63,176,122,.3); background:rgba(63,176,122,.12); }
+  .rt-sec-title { color:var(--text-muted); font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; margin:18px 0 8px; }
+  .rt-item.is-done .rt-pill { color:var(--ok); border-color:rgba(63,176,122,.3); background:rgba(63,176,122,.12); }
   .rt-agendada { opacity:.7; }
-  .rt-check-off { color:#8A93A6; cursor:default; }
-  .rt-check-off:hover { border-color:rgba(255,255,255,.25); }
-  .rt-mv { background:none; border:none; color:#6E7787; cursor:pointer; font-size:13px; padding:3px 4px; }
-  .rt-mv:hover { color:#C9D3E0; }
+  .rt-check-off { color:var(--text-muted); cursor:default; }
+  .rt-check-off:hover { border-color:var(--line-strong); }
+  .rt-mv { background:none; border:none; color:var(--text-dim); cursor:pointer; font-size:13px; padding:3px 4px; }
+  .rt-mv:hover { color:var(--text); }
 
   /* cobrar à parte (no detalhe, antes de concluir) */
   .te-cob { background:rgba(227,179,65,.06); border:1px solid rgba(227,179,65,.22); border-radius:12px; padding:10px 14px; }
-  .te-cob .fa-checkline { font-weight:600; color:#E6EBF2; }
-  .te-cob-aviso { font-size:12.5px; color:#8A93A6; margin-top:4px; }
+  .te-cob .fa-checkline { font-weight:600; color:var(--text); }
+  .te-cob-aviso { font-size:12.5px; color:var(--text-muted); margin-top:4px; }
   .te-cob-box { display:none; flex-direction:column; gap:10px; margin-top:10px; }
   .te-cob-box.is-open { display:flex; }
   .te-cob-box .fa-field > span { font-size:12.5px; }
@@ -277,7 +277,7 @@ export function initTarefas(userCfg) {
           </label>
           <label class="fa-field"><span>Responsável</span>${campoResp('qResp', 'Ex.: Thalia')}</label>
           <label class="fa-field"><span>Descrição</span><textarea id="qDesc" class="input" rows="2" placeholder="Detalhes (opcional)"></textarea></label>
-          <p style="font-size:12px;color:#8A93A6;margin:0;">A regra entra na base de recorrentes do setor; as tarefas do mês nascem pelo botão “Gerar tarefas do mês”.</p>
+          <p style="font-size:12px;color:var(--text-muted);margin:0;">A regra entra na base de recorrentes do setor; as tarefas do mês nascem pelo botão “Gerar tarefas do mês”.</p>
         </div>
         <div class="fa-modal-body" id="formRotina" style="display:none;">
           <label class="fa-field"><span>Título *</span><input type="text" id="rTitulo" class="input" placeholder="Ex.: Conferir e-mails"></label>
@@ -381,9 +381,9 @@ export function initTarefas(userCfg) {
       <div class="fa-modal" style="max-width:420px;">
         <div class="fa-modal-head"><h3>Adiar rotina</h3><button class="fa-modal-close" id="adiClose">&times;</button></div>
         <div class="fa-modal-body">
-          <div style="color:#C5D8E8;font-size:14px;" id="adiNome"></div>
+          <div style="color:var(--brand-pale);font-size:14px;" id="adiNome"></div>
           <label class="fa-field"><span>Adiar para</span><input type="date" id="adiData" class="input"></label>
-          <div style="font-size:12.5px;color:#8A93A6;" id="adiAtual"></div>
+          <div style="font-size:12.5px;color:var(--text-muted);" id="adiAtual"></div>
         </div>
         <div class="fa-modal-foot">
           <button class="btn btn-ghost" id="adiVoltar" style="display:none;margin-right:auto;">Voltar ao ciclo normal</button>
@@ -437,7 +437,7 @@ export function initTarefas(userCfg) {
     if (Array.isArray(C.restritoA) && C.restritoA.map(e => String(e).toLowerCase()).includes(String(user?.email || '').toLowerCase())) raiz.style.display = '';
     if (Array.isArray(C.restritoA) && !C.restritoA.map(e => String(e).toLowerCase()).includes(String(user?.email || '').toLowerCase())) {
       (document.querySelector('.content') || raiz).innerHTML = '<div class="empty-state" style="padding:64px 24px;text-align:center;">'
-        + '<svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#8AAEC8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
+        + '<svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="var(--brand-light)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
         + '<h3 style="margin-top:14px;">Acesso restrito</h3>'
         + '<p>Este painel é exclusivo da direção. Se precisar de algo aqui, fale com o Samuel.</p>'
         + '<a class="btn btn-primary" href="index.html" style="margin-top:18px;display:inline-flex;">Voltar ao painel</a>'
@@ -715,7 +715,7 @@ export function initTarefas(userCfg) {
       const abertas = itens.filter(t => t.status !== 'concluida').length;
       const linhas = itens.map(t => {
         const atrasada = t.prazo && t.prazo < hojeStr && t.status !== 'concluida';
-        const cli = t.clientes?.nome_principal ? esc(t.clientes.nome_principal) : '<span style="color:#6B7385">Interna</span>';
+        const cli = t.clientes?.nome_principal ? esc(t.clientes.nome_principal) : '<span style="color:var(--text-dim)">Interna</span>';
         // caixa só em linha aberta: concluída não entra no lote
         const caixa = t.status === 'concluida' ? '' : '<input type="checkbox" class="fa-chk" data-sel="'+t.id+'" aria-label="Selecionar">';
         return '<tr class="fa-row-proc '+(t.status==='concluida'?'fa-row-done':'')+'" data-id="'+t.id+'">'+
@@ -1161,7 +1161,7 @@ export function initTarefas(userCfg) {
       .order('ordem', { ascending: true }).order('titulo', { ascending: true });
     rotinasErro = error ? error.message : null;
     if (error) {
-      $('teRotFaixa').innerHTML = '<div class="te-rot-faixa" style="color:#E06C6C;">Erro ao carregar as rotinas: ' + esc(error.message) + '</div>';
+      $('teRotFaixa').innerHTML = '<div class="te-rot-faixa" style="color:var(--err);">Erro ao carregar as rotinas: ' + esc(error.message) + '</div>';
       if (MODO_ROTINAS) $('grupos').innerHTML = '';
       return;
     }
@@ -1177,7 +1177,7 @@ export function initTarefas(userCfg) {
     const pendentes = rotinasDevidasHoje().filter(r => !feitaNoPeriodo(r));
     if (!pendentes.length) { box.innerHTML = ''; return; }
     box.innerHTML = '<div class="te-rot-faixa">'
-      + '<div class="te-rot-top"><span class="te-rot-tit">Rotinas de hoje</span><span style="font-size:12.5px;color:#8AAEC8;">' + pendentes.length + ' pendente(s)</span></div>'
+      + '<div class="te-rot-top"><span class="te-rot-tit">Rotinas de hoje</span><span style="font-size:12.5px;color:var(--brand-light);">' + pendentes.length + ' pendente(s)</span></div>'
       + pendentes.map(r =>
         '<div class="te-rot-item">'
         + '<button class="rt-check" data-marca="' + r.id + '" title="Marcar feita"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></button>'
@@ -1299,7 +1299,7 @@ export function initTarefas(userCfg) {
   function renderRotinasGerenciar(){
     const box = MODO_ROTINAS ? $('grupos') : $('rotLista');   // inline no modo rotinas, modal nos setores
     if (rotinasErro) {
-      box.innerHTML = '<div class="tl-empty" style="padding:16px 4px;color:#E06C6C;">Erro ao carregar as rotinas: ' + esc(rotinasErro) + '</div>';
+      box.innerHTML = '<div class="tl-empty" style="padding:16px 4px;color:var(--err);">Erro ao carregar as rotinas: ' + esc(rotinasErro) + '</div>';
       return;
     }
     const ativas = rotinas.filter(r => r.ativo);

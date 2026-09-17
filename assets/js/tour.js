@@ -3,31 +3,31 @@
   const CSS = `
   .mrt-block { position:fixed; inset:0; z-index:9997; }
   .mrt-spot { position:absolute; z-index:9998; border-radius:10px; pointer-events:none;
-    box-shadow: 0 0 0 4px rgba(138,174,200,.6), 0 0 0 9999px rgba(4,8,14,.78); transition: all .25s ease; }
+    box-shadow: 0 0 0 4px rgba(138,174,200,.6), 0 0 0 9999px var(--overlay); transition: all .25s ease; }
   .mrt-box { position:fixed; z-index:9999; width:min(330px, calc(100vw - 24px));
-    background:#0F1620; border:1px solid rgba(138,174,200,.35); border-radius:12px;
-    padding:16px 18px; color:#E6EBF2; font-family:inherit; box-shadow:0 12px 40px rgba(0,0,0,.5); }
+    background:var(--surface); border:1px solid rgba(138,174,200,.35); border-radius:12px;
+    padding:16px 18px; color:var(--text); font-family:inherit; box-shadow:0 12px 40px rgba(0,0,0,.5); }
   .mrt-box h4 { margin:0 0 6px; font-size:15px; }
-  .mrt-box p { margin:0; font-size:13px; line-height:1.55; color:#B9C2D0; }
+  .mrt-box p { margin:0; font-size:13px; line-height:1.55; color:var(--text-2); }
   .mrt-foot { display:flex; align-items:center; gap:8px; margin-top:14px; }
-  .mrt-passo { font-size:11.5px; color:#8A93A6; margin-right:auto; }
+  .mrt-passo { font-size:11.5px; color:var(--text-muted); margin-right:auto; }
   .mrt-btn { font:inherit; font-size:12.5px; padding:6px 12px; border-radius:8px; cursor:pointer;
-    border:1px solid rgba(255,255,255,.14); background:transparent; color:#B9C2D0; }
-  .mrt-btn.pri { background:rgba(91,130,166,.35); border-color:rgba(138,174,200,.5); color:#E6EBF2; }
+    border:1px solid var(--fill-3); background:transparent; color:var(--text-2); }
+  .mrt-btn.pri { background:rgba(91,130,166,.35); border-color:rgba(138,174,200,.5); color:var(--text); }
   .mrt-btn:disabled { opacity:.35; cursor:default; }
   .mrt-help { position:fixed; right:18px; bottom:18px; z-index:9000; width:40px; height:40px;
     border-radius:50%; display:flex; align-items:center; justify-content:center;
-    background:rgba(15,22,32,.92); border:1px solid rgba(224,143,168,.45); color:#E08FA8;
+    background:var(--pop); border:1px solid rgba(224,143,168,.45); color:#E08FA8;
     font-size:19px; font-weight:700; text-decoration:none; box-shadow:0 4px 16px rgba(0,0,0,.4); transition:.15s; }
   .mrt-help:hover { background:rgba(224,143,168,.18); transform:scale(1.06); }
-  .mrt-menu { position:fixed; right:18px; bottom:66px; z-index:9001; background:#0F1620;
-    border:1px solid rgba(255,255,255,.12); border-radius:12px; padding:6px; min-width:220px;
+  .mrt-menu { position:fixed; right:18px; bottom:66px; z-index:9001; background:var(--surface);
+    border:1px solid var(--fill-3); border-radius:12px; padding:6px; min-width:220px;
     box-shadow:0 12px 40px rgba(0,0,0,.5); display:none; }
   .mrt-menu.is-open { display:block; }
   .mrt-menu a, .mrt-menu button { display:block; width:100%; text-align:left; background:transparent;
-    border:none; color:#E6EBF2; font:inherit; font-size:13.5px; padding:9px 12px; border-radius:8px;
+    border:none; color:var(--text); font:inherit; font-size:13.5px; padding:9px 12px; border-radius:8px;
     cursor:pointer; text-decoration:none; }
-  .mrt-menu a:hover, .mrt-menu button:hover { background:rgba(255,255,255,.06); }`;
+  .mrt-menu a:hover, .mrt-menu button:hover { background:var(--line); }`;
 
   let estado = null;
   let registrado = null; // { passos, chave } da página atual
