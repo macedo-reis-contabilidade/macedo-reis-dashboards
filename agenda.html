@@ -1004,7 +1004,7 @@
     function fecharDetalhe(){ detOverlay.classList.remove('is-open'); procAtual = null; document.getElementById('dNovoAnd').value = ''; }
 
     async function abrirDetalhe(id){
-      const t = cacheTarefas.find(x => String(x.id) === String(id)) || cacheSemPrazo.find(x => String(x.id) === String(id)) || cacheBusca.find(x => String(x.id) === String(id));
+      const t = [cacheTarefas, cacheSemPrazo, cacheBusca, cacheFoco].map(c => c.find(x => String(x.id) === String(id))).find(Boolean); // cacheFoco: lista de atrasadas/hoje/7 dias/mês
       if (!t) return;
       // relê a tarefa fresca do banco — o modal nunca abre com foto velha
       const { data: fresca } = await supabase.from('tarefas').select('*, clientes(nome_principal, documento)').eq('id', id).single();
