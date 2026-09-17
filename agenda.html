@@ -185,6 +185,14 @@
     .tl-empty { color:#8A93A6; font-size:13px; }
     .ag-semprazo { margin-bottom: 16px; }
     .ag-semprazo .ag-dia-secao { color:#E3B341; }
+    .ag-foco { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:16px; }
+    .ag-foco .fa-focus-card { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:14px 16px; cursor:pointer; text-align:left; transition:border-color .15s, background .15s; display:flex; flex-direction:column; gap:4px; font-family:inherit; color:inherit; }
+    .ag-foco .fa-focus-card:hover { border-color:rgba(138,174,200,.4); }
+    .ag-foco .fa-focus-card.is-active { border-color:#5B82A6; background:rgba(91,130,166,.10); }
+    .ag-foco .fc-num { font-size:24px; font-weight:700; color:#E6EBF2; line-height:1; }
+    .ag-foco .fc-lbl { font-size:12px; color:#8A93A6; }
+    .ag-foco .fa-focus-card.fc-danger .fc-num { color:#E06C6C; }
+    @media (max-width:720px) { .ag-foco { grid-template-columns:repeat(2,1fr); } }
   </style>
 </head>
 <body>
@@ -214,6 +222,14 @@
         <div class="eyebrow">Organização</div>
         <h1>Agenda</h1>
         <p>Suas tarefas e rotinas organizadas por dia. Na visão Dia, ordene pela prioridade de cada uma.</p>
+      </div>
+
+      <!-- faixa de foco (a mesma dos setores): clica pra ver a lista, clica de novo pra voltar ao calendário -->
+      <div class="ag-foco" id="agFoco">
+        <button class="fa-focus-card fc-danger" data-foco="atrasadas"><span class="fc-num" id="fcAtras">0</span><span class="fc-lbl">Atrasadas</span></button>
+        <button class="fa-focus-card" data-foco="hoje"><span class="fc-num" id="fcHoje">0</span><span class="fc-lbl">Vencem hoje</span></button>
+        <button class="fa-focus-card" data-foco="7dias"><span class="fc-num" id="fc7">0</span><span class="fc-lbl">Próximos 7 dias</span></button>
+        <button class="fa-focus-card" data-foco="mes"><span class="fc-num" id="fcMes">0</span><span class="fc-lbl">Este mês</span></button>
       </div>
 
       <div class="ag-toolbar">
@@ -379,7 +395,7 @@
     const PRIO_ORDEM = { alta:0, media:1, média:1, baixa:2 };
 
     // ---- estado ----
-    const estado = { view:'dia', cursor:hojeMeiaNoite(), setor:'', resp:'' };
+    const estado = { view:'dia', cursor:hojeMeiaNoite(), setor:'', resp:'', foco:null };
     let usuarioEmail = null;
     let procAtual = null;
 
@@ -467,6 +483,65 @@
       cacheSemPrazo = sp || [];
     }
     // próximos prazos (após hoje), para o slide do resumo — independe do dia exibido
+    // ---- faixa de foco: atrasadas / hoje / 7 dias / este mês, respeitando setor e responsável ----
+    let cacheFoco = [];
+    async function carregarFoco(){
+      const hoje = hojeMeiaNoite();
+      const fimMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
+      const lim = ymd(addDias(hoje, 7) > fimMes ? addDias(hoje, 7) : fimMes);
+      const { data } = await supabase.from('tarefas')
+        .select('id, titulo, descricao, setor, responsavel, prazo, status, prioridade, cliente_id, proposta_id, hora, transicao_id, posicao, clientes(nome_principal, documento)')
+        .neq('status', 'concluida').not('prazo', 'is', null).lte('prazo', lim)
+        .order('prazo', { ascending: true }).limit(2000);
+      cacheFoco = data || [];
+    }
+    function bucketsFoco(){
+      const hoje = hojeMeiaNoite(), hS = ymd(hoje), s7 = ymd(addDias(hoje, 7));
+      const fimMes = ymd(new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0));
+      const it = cacheFoco.filter(passaFiltro);
+      return {
+        atrasadas: it.filter(t => t.prazo < hS),
+        hoje:      it.filter(t => t.prazo === hS),
+        '7dias':   it.filter(t => t.prazo > hS && t.prazo <= s7),
+        mes:       it.filter(t => t.prazo >= hS && t.prazo <= fimMes)
+      };
+    }
+    function atualizarFoco(){
+      const b = bucketsFoco();
+      document.getElementById('fcAtras').textContent = b.atrasadas.length;
+      document.getElementById('fcHoje').textContent = b.hoje.length;
+      document.getElementById('fc7').textContent = b['7dias'].length;
+      document.getElementById('fcMes').textContent = b.mes.length;
+      document.querySelectorAll('#agFoco .fa-focus-card').forEach(c => c.classList.toggle('is-active', c.dataset.foco === estado.foco));
+    }
+    const FOCO_LBL = { atrasadas: '⚠ Atrasadas', hoje: 'Vencem hoje', '7dias': 'Próximos 7 dias', mes: 'Este mês' };
+    function renderFoco(){
+      const b = bucketsFoco(); const itens = b[estado.foco] || [];
+      const fData = p => p ? String(p).slice(0, 10).split('-').reverse().join('/') : 'Sem prazo';
+      const hS = ymd(hojeMeiaNoite());
+      let html = `<div class="ag-dia-secao">${FOCO_LBL[estado.foco]} <span class="cont">${itens.length}</span>
+        <button class="btn btn-ghost btn-sm" id="agFocoLimpar" style="margin-left:12px;">Voltar ao calendário</button>
+        <span style="font-weight:400; font-size:11.5px; color:#6E7787; margin-left:10px;">tarefas abertas, com os filtros de setor e responsável acima</span></div>`;
+      if (!itens.length) html += '<div style="color:#8A93A6; padding:20px 4px;">Nada aqui.</div>';
+      itens.forEach(t => {
+        const cli = t.clientes?.nome_principal ? `<span>${esc(t.clientes.nome_principal)}</span><span class="sep">·</span>` : '';
+        const resp = t.responsavel ? `<span>${esc(t.responsavel)}</span>` : '';
+        const atras = t.prazo < hS ? `<span class="t-hora" style="color:#E06C6C;">${Math.round((hojeMeiaNoite() - new Date(t.prazo + 'T00:00:00')) / 86400000)} dia(s) atrasada</span>` : '';
+        html += `<div class="ag-card ${classePrio(t.prioridade)}" data-bstask="${t.id}">
+          <div class="ag-card-main">
+            <div class="ag-card-titulo">${esc(t.titulo) || '(sem título)'}${horaDaTarefa(t) ? `<span class="t-hora">🕐 ${horaDaTarefa(t)}</span>` : ''}${atras}</div>
+            <div class="ag-card-meta"><b style="color:#8AAEC8;">${fData(t.prazo)}</b><span class="sep">·</span>${chip(t.setor)} ${cli} ${resp}</div>
+          </div>
+        </div>`;
+      });
+      return html;
+    }
+    document.querySelectorAll('#agFoco .fa-focus-card').forEach(c => c.addEventListener('click', () => {
+      estado.foco = estado.foco === c.dataset.foco ? null : c.dataset.foco;
+      if (estado.foco && modoBusca) limparBusca();
+      render();
+    }));
+
     async function carregarProximos(){
       const { data } = await supabase.from('tarefas')
         .select('id, titulo, descricao, setor, responsavel, prazo, status, proposta_id, hora, transicao_id, posicao, clientes(nome_principal, documento)')
@@ -589,7 +664,14 @@
       renderSemPrazo();
       atualizarPeriodo();
       const c = document.getElementById('agConteudo');
+      atualizarFoco();
       if (modoBusca) { c.innerHTML = renderBusca(); wireBusca(); return; }
+      if (estado.foco) {
+        c.innerHTML = renderFoco();
+        document.getElementById('agFocoLimpar')?.addEventListener('click', () => { estado.foco = null; render(); });
+        document.querySelectorAll('[data-bstask]').forEach(el => el.addEventListener('click', () => abrirDetalhe(el.dataset.bstask)));
+        return;
+      }
       if (estado.view==='dia') c.innerHTML = renderDia();
       else if (estado.view==='semana') c.innerHTML = renderSemana();
       else c.innerHTML = renderMes();
@@ -1137,6 +1219,7 @@
       const [ini,fim] = rangeAtual();
       await carregarDados(ini, fim);
       if (estado.view==='dia') await carregarProximos();
+      await carregarFoco();
       render();
     }
 
