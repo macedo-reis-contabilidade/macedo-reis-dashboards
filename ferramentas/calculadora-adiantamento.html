@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calculadora de salário por hora</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  :root{
+    --paper:#EFF2EE;
+    --card:#FFFFFF;
+    --ink:#16222C;
+    --muted:#65757F;
+    --line:#D6DDD6;
+    --accent:#1E6B57;
+    --accent-soft:#E4EFE8;
+    --shadow:0 1px 0 rgba(22,34,44,.06), 0 10px 30px -18px rgba(22,34,44,.5);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#101A20;
+      --card:#17242C;
+      --ink:#E8EEE9;
+      --muted:#96A5AC;
+      --line:#2A3A43;
+      --accent:#6FCCAB;
+      --accent-soft:#1B3A33;
+      --shadow:0 1px 0 rgba(0,0,0,.3), 0 10px 30px -18px rgba(0,0,0,.9);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#101A20;
+    --card:#17242C;
+    --ink:#E8EEE9;
+    --muted:#96A5AC;
+    --line:#2A3A43;
+    --accent:#6FCCAB;
+    --accent-soft:#1B3A33;
+    --shadow:0 1px 0 rgba(0,0,0,.3), 0 10px 30px -18px rgba(0,0,0,.9);
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:"Space Grotesk","Segoe UI",system-ui,-apple-system,sans-serif;
+    font-variant-numeric:tabular-nums;
+    line-height:1.45;
+    padding:24px 16px 40px;
+    display:flex;
+    justify-content:center;
+  }
+  .wrap{width:100%;max-width:560px}
+
+  h1{
+    font-size:clamp(22px,5.4vw,28px);
+    font-weight:700;
+    letter-spacing:-.02em;
+    margin:0 0 6px;
+  }
+  .lede{color:var(--muted);font-size:15px;margin:0 0 22px;max-width:46ch}
+
+  .card{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:14px;
+    box-shadow:var(--shadow);
+    padding:18px 18px 20px;
+    margin-bottom:14px;
+  }
+
+  label{display:block;font-size:14px;font-weight:500;margin-bottom:8px}
+  .hint{font-size:13px;color:var(--muted);margin-top:8px}
+
+  .linha{display:flex;gap:10px;flex-wrap:wrap}
+  .linha > *{flex:1 1 150px;min-width:0}
+
+  select,input{
+    width:100%;
+    font-family:inherit;
+    font-size:17px;
+    font-variant-numeric:tabular-nums;
+    color:var(--ink);
+    background:var(--card);
+    border:1.5px solid var(--line);
+    border-radius:10px;
+    padding:12px 12px;
+    appearance:none;
+  }
+  select{
+    background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);
+    background-position:calc(100% - 18px) 55%, calc(100% - 12px) 55%;
+    background-size:6px 6px, 6px 6px;
+    background-repeat:no-repeat;
+    padding-right:36px;
+  }
+  select:focus-visible,input:focus-visible{
+    outline:3px solid var(--accent);
+    outline-offset:1px;
+    border-color:var(--accent);
+  }
+
+  .dias{display:flex;flex-wrap:wrap;gap:4px;margin:16px 0 10px}
+  .dia{
+    width:14px;height:14px;border-radius:3px;
+    background:var(--accent-soft);
+    border:1px solid var(--line);
+  }
+  .dia.extra{background:var(--accent);border-color:var(--accent)}
+
+  .horas{font-size:15px;color:var(--muted)}
+  .horas b{color:var(--ink);font-weight:700;font-size:17px}
+
+  .saida{border-top:1px solid var(--line);margin-top:2px;padding-top:16px}
+  .saida:first-child{border-top:0;margin-top:0;padding-top:0}
+  .rotulo{font-size:14px;color:var(--muted);margin-bottom:2px}
+  .valor{font-size:clamp(26px,7vw,34px);font-weight:700;letter-spacing:-.02em}
+  .destaque .valor{color:var(--accent)}
+
+  .pct{display:flex;align-items:center;gap:10px;margin-top:4px}
+  .pct input{width:88px;flex:0 0 auto;font-size:16px;padding:9px 10px;text-align:center}
+  .pct span{font-size:14px;color:var(--muted)}
+
+  .btn-gerar,.btn-imprimir{
+    width:100%;font-family:inherit;font-size:17px;font-weight:700;
+    color:#fff;background:var(--accent);border:0;border-radius:12px;
+    padding:15px 16px;cursor:pointer;margin-bottom:14px;
+  }
+  .btn-imprimir{background:var(--ink)}
+  .btn-gerar:focus-visible,.btn-imprimir:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+  .aviso{margin:-6px 0 14px;font-size:14px;color:#B2531F;min-height:1px}
+
+  /* o recibo é documento: sempre preto no branco, inclusive no modo escuro */
+  .recibo{
+    background:#fff;color:#000;
+    font-family:Arial,Helvetica,sans-serif;
+    border:1px solid #000;border-radius:2px;
+    padding:14px 16px 18px;margin-bottom:14px;
+    max-width:100%;overflow-x:auto;
+  }
+  .rec-topo{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px}
+  .rec-emp{font-style:italic;font-weight:700;font-size:15px}
+  .rec-cnpj{font-style:italic;font-size:13px;margin-top:2px}
+  .rec-titulo{font-style:italic;font-size:17px;text-align:right;line-height:1.25;flex:0 0 auto}
+
+  .rec-quadro{border:1px solid #000}
+  .rec-ident{padding:10px 12px;border-bottom:1px solid #000}
+  .rec-ident > div{display:flex;align-items:baseline;gap:10px;margin-bottom:4px}
+  .rec-lab{font-size:12.5px;flex:0 0 118px}
+  .rec-dado{font-size:12px;font-weight:700}
+
+  .rec-tab{width:100%;border-collapse:collapse;font-size:12px}
+  .rec-tab td{border:1px solid #000;padding:4px 7px;height:19px}
+  .rec-tab .c1{width:22%;text-align:center}
+  .rec-tab .c2{width:34%}
+  .rec-tab .c3{width:21%;text-align:center}
+  .rec-tab .c4{width:23%}
+  .rec-tab .dir{text-align:right}
+  .cifra{float:left}
+  .rec-sal .c1{font-size:12.5px}
+  .rec-sal .c3,.rec-sal .c4{border:0}
+  .rec-cab td{text-align:center;font-size:11.5px}
+  .rec-folga td{height:34px}
+  .rec-total td{font-size:15px}
+  .rec-total .dir-total{text-align:center;font-size:15px}
+  .rec-total .c1{border:0}
+
+  .rec-pe{padding:12px 12px 6px;border-top:1px solid #000;font-size:13px}
+  .rec-linha1{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:12px}
+  .rec-linha1 .cifra{float:none}
+  .rec-data{white-space:nowrap}
+  .rec-linha2{margin-bottom:2px}
+  .rec-assina{margin:0 auto;max-width:330px;text-align:center}
+  .rec-risco{border-top:1px solid #000;margin-top:22px}
+  .rec-nome-baixo{font-size:12.5px;padding-top:3px}
+
+  @media print{
+    @page{size:A4;margin:14mm}
+    body{background:#fff;padding:0;display:block}
+    .wrap{max-width:none}
+    .nao-imprime,h1,.lede,.card{display:none !important}
+    #areaRecibo{display:block !important}
+    .recibo{border:1px solid #000;margin:0;padding:10px 12px}
+  }
+
+  footer{
+    text-align:center;
+    font-size:13px;
+    color:var(--muted);
+    margin-top:26px;
+    line-height:1.6;
+  }
+  footer b{color:var(--ink);font-weight:500}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Calculadora de salário por hora</h1>
+  <p class="lede">As horas do mês mudam conforme a quantidade de dias. Escolha o mês e informe quanto vale a hora — o resto é automático.</p>
+
+  <div class="card">
+    <div id="boxEmpresa" hidden style="margin-bottom:16px">
+      <label for="empresa">Empresa</label>
+      <input id="empresa" type="text" placeholder="Razão social" autocomplete="off" style="margin-bottom:10px">
+      <label for="cnpj">CNPJ</label>
+      <input id="cnpj" type="text" placeholder="00.000.000/0001-00" autocomplete="off">
+    </div>
+
+    <label for="nome">Funcionário</label>
+    <input id="nome" type="text" placeholder="Nome de quem vai receber" autocomplete="off" style="margin-bottom:16px">
+
+    <div class="linha">
+      <div>
+        <label for="mes">Mês</label>
+        <select id="mes"></select>
+      </div>
+      <div>
+        <label for="ano">Ano</label>
+        <select id="ano"></select>
+      </div>
+    </div>
+
+    <div class="dias" id="dias" aria-hidden="true"></div>
+    <p class="horas" id="resumoMes"></p>
+  </div>
+
+  <div class="card">
+    <label for="hora">Valor da hora</label>
+    <input id="hora" type="text" inputmode="decimal" placeholder="R$ 10,00" autocomplete="off">
+    <p class="hint">Pode digitar com vírgula, assim: 10,50</p>
+  </div>
+
+  <div class="card">
+    <div class="saida">
+      <p class="rotulo" id="rotuloSalario">Salário do mês</p>
+      <p class="valor" id="salario">R$ 0,00</p>
+    </div>
+
+    <div class="saida destaque">
+      <div class="pct">
+        <input id="pct" type="text" inputmode="decimal" value="40" aria-label="Percentual">
+        <span>% sobre o salário do mês</span>
+      </div>
+      <p class="valor" id="resultadoPct" style="margin-top:8px">R$ 0,00</p>
+    </div>
+  </div>
+
+  <button id="gerar" class="btn-gerar nao-imprime">Gerar recibo</button>
+  <p class="aviso nao-imprime" id="aviso"></p>
+
+  <div id="areaRecibo" hidden>
+    <div class="recibo" id="recibo">
+      <div class="rec-topo">
+        <div>
+          <div class="rec-emp" id="recEmpresa"></div>
+          <div class="rec-cnpj" id="recCnpj"></div>
+        </div>
+        <div class="rec-titulo">Adiantamento<br>Salarial</div>
+      </div>
+
+      <div class="rec-quadro">
+        <div class="rec-ident">
+          <div><span class="rec-lab">FUNCIONÁRIO</span><span class="rec-dado" id="recNome"></span></div>
+          <div><span class="rec-lab">COMPETÊNCIA:</span><span class="rec-dado" id="recComp"></span></div>
+        </div>
+
+        <table class="rec-tab">
+          <tr class="rec-sal">
+            <td class="c1">SALÁRIO</td>
+            <td class="c2 dir"><span class="cifra">R$</span><span id="recHora"></span></td>
+            <td class="c3"></td><td class="c4"></td>
+          </tr>
+          <tr class="rec-cab">
+            <td class="c1">EVENTO</td><td class="c2">DESCRIÇÃO</td>
+            <td class="c3">PERCENTUAL</td><td class="c4">VALOR</td>
+          </tr>
+          <tr>
+            <td class="c1">1</td><td class="c2">ADIANTAMENTO SALARIAL</td>
+            <td class="c3" id="recPct"></td>
+            <td class="c4 dir"><span class="cifra">R$</span><span id="recAdi"></span></td>
+          </tr>
+          <tr><td class="c1">&nbsp;</td><td class="c2"></td><td class="c3"></td><td class="c4"></td></tr>
+          <tr>
+            <td class="c1">7</td><td class="c2">ARREDONDAMENTO</td>
+            <td class="c3"></td>
+            <td class="c4 dir"><span class="cifra">R$</span><span id="recArr"></span></td>
+          </tr>
+          <tr class="rec-folga"><td class="c1">&nbsp;</td><td class="c2"></td><td class="c3"></td><td class="c4"></td></tr>
+          <tr class="rec-total">
+            <td class="c1"></td><td class="c2 dir-total">TOTAL</td>
+            <td class="c3"></td>
+            <td class="c4 dir"><span class="cifra">R$</span><span id="recTotal"></span></td>
+          </tr>
+        </table>
+
+        <div class="rec-pe">
+          <div class="rec-linha1">
+            <span>Recebemos a importância de&nbsp; <span class="cifra">R$</span> <b id="recImp"></b></span>
+            <span class="rec-data">______/______/______</span>
+          </div>
+          <div class="rec-linha2">Recebido por</div>
+          <div class="rec-assina">
+            <div class="rec-risco"></div>
+            <div class="rec-nome-baixo" id="recNome2"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <button id="imprimir" class="btn-imprimir nao-imprime">Salvar recibo em PDF</button>
+    <p class="aviso nao-imprime" id="avisoPdf"></p>
+  </div>
+
+  <footer class="nao-imprime">
+    A jornada mensal é o resultado de 44 horas semanais ÷ 6 × os dias do mês.<br>
+    <b>Macedo &amp; Reis Contabilidade</b>
+  </footer>
+
+</div>
+
+<script>
+  var MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+
+  var selMes = document.getElementById('mes');
+  var selAno = document.getElementById('ano');
+  var inHora = document.getElementById('hora');
+  var inPct  = document.getElementById('pct');
+
+  var hoje = new Date();
+  var anoAtual = hoje.getFullYear();
+
+  MESES.forEach(function(nome, i){
+    var o = document.createElement('option');
+    o.value = String(i + 1);
+    o.textContent = nome;
+    selMes.appendChild(o);
+  });
+  selMes.value = String(hoje.getMonth() + 1);
+
+  for (var a = anoAtual - 1; a <= anoAtual + 2; a++){
+    var oa = document.createElement('option');
+    oa.value = String(a);
+    oa.textContent = String(a);
+    selAno.appendChild(oa);
+  }
+  selAno.value = String(anoAtual);
+
+  function brl(n){
+    if (!isFinite(n)) n = 0;
+    return n.toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
+  }
+  function num(n, casas){
+    if (!isFinite(n)) n = 0;
+    return n.toLocaleString('pt-BR', { minimumFractionDigits:casas, maximumFractionDigits:casas });
+  }
+  function lerNumero(txt){
+    if (!txt) return NaN;
+    var s = String(txt).replace(/[^\d.,-]/g, '').trim();
+    if (!s) return NaN;
+    if (s.indexOf(',') > -1 && s.indexOf('.') > -1) s = s.replace(/\./g, '').replace(',', '.');
+    else s = s.replace(',', '.');
+    var v = parseFloat(s);
+    return isFinite(v) ? v : NaN;
+  }
+
+  function calcular(){
+    var mes = parseInt(selMes.value, 10);
+    var ano = parseInt(selAno.value, 10);
+    var dias = new Date(ano, mes, 0).getDate();
+    var horas = Math.round(dias * (44 / 6) * 100) / 100;
+
+    var quadros = document.getElementById('dias');
+    quadros.innerHTML = '';
+    for (var d = 1; d <= dias; d++){
+      var q = document.createElement('div');
+      q.className = 'dia' + (d > 30 ? ' extra' : '');
+      quadros.appendChild(q);
+    }
+
+    document.getElementById('resumoMes').innerHTML =
+      dias + ' dias no mês &nbsp;·&nbsp; <b>' + num(horas, 2) + ' horas</b>';
+
+    var valorHora = lerNumero(inHora.value);
+    var temHora = isFinite(valorHora) && valorHora > 0;
+    var salario = temHora ? valorHora * horas : 0;
+
+    document.getElementById('rotuloSalario').textContent = temHora
+      ? 'Salário do mês  ·  ' + brl(valorHora) + ' × ' + num(horas, 2) + ' h'
+      : 'Salário do mês';
+    document.getElementById('salario').textContent = brl(salario);
+
+    var pct = lerNumero(inPct.value);
+    if (!isFinite(pct)) pct = 0;
+    document.getElementById('resultadoPct').textContent = brl(salario * pct / 100);
+  }
+
+  ['change','input'].forEach(function(ev){
+    selMes.addEventListener(ev, calcular);
+    selAno.addEventListener(ev, calcular);
+    inHora.addEventListener(ev, calcular);
+    inPct.addEventListener(ev, calcular);
+  });
+
+  calcular();
+
+  // ---- recibo ----
+  function doisDig(n){ return n < 10 ? '0' + n : String(n); }
+
+  function gerarRecibo(){
+    var nome = document.getElementById('nome').value.trim();
+    var valorHora = lerNumero(inHora.value);
+    var aviso = document.getElementById('aviso');
+
+    if (!nome){
+      aviso.textContent = 'Escreva o nome do funcionário para gerar o recibo.';
+      document.getElementById('nome').focus();
+      return;
+    }
+    if (!isFinite(valorHora) || valorHora <= 0){
+      aviso.textContent = 'Informe o valor da hora para gerar o recibo.';
+      inHora.focus();
+      return;
+    }
+    if (!inEmpresa.value.trim()){
+      document.getElementById('boxEmpresa').hidden = false;
+      aviso.textContent = 'Preencha o nome da empresa.';
+      inEmpresa.focus();
+      return;
+    }
+    aviso.textContent = '';
+
+    var mes = parseInt(selMes.value, 10);
+    var ano = parseInt(selAno.value, 10);
+    var dias = new Date(ano, mes, 0).getDate();
+    var horas = Math.round(dias * (44 / 6) * 100) / 100;
+    var salario = Math.round(valorHora * horas * 100) / 100;
+
+    var pct = lerNumero(inPct.value);
+    if (!isFinite(pct)) pct = 0;
+
+    var adiantamento = Math.round(salario * pct / 100 * 100) / 100;
+    var total = Math.round(adiantamento);                       // fecha em real inteiro
+    var arredondamento = Math.round((total - adiantamento) * 100) / 100;
+
+    function contabil(v){
+      var t = num(Math.abs(v), 2);
+      return v < 0 ? '(' + t + ')' : t;
+    }
+
+    document.getElementById('recNome').textContent = nome.toUpperCase();
+    document.getElementById('recNome2').textContent = nome.toUpperCase();
+    document.getElementById('recComp').textContent = doisDig(mes) + '/' + ano;
+    document.getElementById('recHora').textContent = num(valorHora, 2);
+    document.getElementById('recPct').textContent = num(pct, 0) + '%';
+    document.getElementById('recAdi').textContent = contabil(adiantamento);
+    document.getElementById('recArr').textContent = contabil(arredondamento);
+    document.getElementById('recTotal').textContent = contabil(total);
+    document.getElementById('recImp').textContent = contabil(total);
+
+    var emp = dadosEmpresa();
+    document.getElementById('recEmpresa').textContent = emp.nome;
+    document.getElementById('recCnpj').textContent = emp.cnpj ? 'CNPJ: ' + emp.cnpj : '';
+
+    dadosRecibo = {
+      empresa: emp.nome,
+      cnpj: emp.cnpj,
+      nome: nome.toUpperCase(),
+      competencia: doisDig(mes) + '/' + ano,
+      hora: num(valorHora, 2),
+      percentual: num(pct, 0) + '%',
+      adiantamento: contabil(adiantamento),
+      arredondamento: contabil(arredondamento),
+      total: contabil(total)
+    };
+
+    var area = document.getElementById('areaRecibo');
+    area.hidden = false;
+    area.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  document.getElementById('gerar').addEventListener('click', gerarRecibo);
+  // ---- PDF do recibo ----
+  var dadosRecibo = null;   // preenchido por gerarRecibo()
+
+  var params = new URLSearchParams(location.search);
+  var guarda = {
+    get: function(k){ try { return localStorage.getItem(k) || ''; } catch(e){ return ''; } },
+    set: function(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
+  };
+  var inEmpresa = document.getElementById('empresa');
+  var inCnpj = document.getElementById('cnpj');
+  inEmpresa.value = params.get('empresa') || guarda.get('calc_empresa') || '';
+  inCnpj.value    = params.get('cnpj')    || guarda.get('calc_cnpj')    || '';
+  if (!inEmpresa.value) document.getElementById('boxEmpresa').hidden = false;
+
+  function dadosEmpresa(){
+    var e = (inEmpresa.value || '').trim();
+    var c = (inCnpj.value || '').trim();
+    if (e) guarda.set('calc_empresa', e);
+    if (c) guarda.set('calc_cnpj', c);
+    return { nome: e, cnpj: c };
+  }
+
+  function montarPdf(r){
+    var doc = new window.jspdf.jsPDF({ unit:'pt', format:'a4' });
+    var M = 40, W = 515, X = M;
+    var c1 = 113, c2 = 175, c3 = 108, c4 = 119;
+    var x1 = X, x2 = X + c1, x3 = x2 + c2, x4 = x3 + c3;
+
+    doc.setDrawColor(0); doc.setLineWidth(0.8);
+
+    doc.setFont('helvetica','bolditalic').setFontSize(12);
+    doc.text(r.empresa, X, 58);
+    doc.setFont('helvetica','italic').setFontSize(10);
+    doc.text(r.cnpj ? 'CNPJ: ' + r.cnpj : '', X, 72);
+    doc.setFont('helvetica','italic').setFontSize(15);
+    doc.text('Adiantamento', X + W, 58, { align:'right' });
+    doc.text('Salarial', X + W, 76, { align:'right' });
+
+    var topo = 104;
+    function celula(x, y, w, h){ doc.rect(x, y, w, h); }
+    function dir(txt, x, y){ doc.text(txt, x, y, { align:'right' }); }
+    function centro(txt, x, w, y){ doc.text(txt, x + w/2, y, { align:'center' }); }
+
+    // identificação
+    doc.setFont('helvetica','normal').setFontSize(10);
+    doc.text('FUNCIONÁRIO', X + 10, topo + 20);
+    doc.text('COMPETÊNCIA:', X + 10, topo + 37);
+    doc.setFont('helvetica','bold').setFontSize(9);
+    doc.text(r.nome, X + 118, topo + 20);
+    doc.text(r.competencia, X + 118, topo + 37);
+
+    var y = topo + 50;
+    doc.line(X, y, X + W, y);
+
+    // salário
+    var hSal = 21;
+    celula(x1, y, c1, hSal); celula(x2, y, c2, hSal);
+    doc.setFont('helvetica','normal').setFontSize(10);
+    centro('SALÁRIO', x1, c1, y + 14);
+    doc.setFontSize(10);
+    doc.text('R$', x2 + 6, y + 14);
+    dir(r.hora, x2 + c2 - 6, y + 14);
+    y += hSal;
+
+    // cabeçalho da tabela
+    var hCab = 19;
+    [[x1,c1,'EVENTO'],[x2,c2,'DESCRIÇÃO'],[x3,c3,'PERCENTUAL'],[x4,c4,'VALOR']].forEach(function(col){
+      celula(col[0], y, col[1], hCab);
+      doc.setFontSize(9.5);
+      centro(col[2], col[0], col[1], y + 13);
+    });
+    y += hCab;
+
+    function linha(h, evento, descricao, percentual, valor){
+      [[x1,c1],[x2,c2],[x3,c3],[x4,c4]].forEach(function(col){ celula(col[0], y, col[1], h); });
+      doc.setFont('helvetica','normal').setFontSize(9.5);
+      if (evento) centro(evento, x1, c1, y + 13);
+      if (descricao) doc.text(descricao, x2 + 6, y + 13);
+      if (percentual) centro(percentual, x3, c3, y + 13);
+      if (valor){ doc.text('R$', x4 + 6, y + 13); dir(valor, x4 + c4 - 6, y + 13); }
+      y += h;
+    }
+
+    linha(19, '1', 'ADIANTAMENTO SALARIAL', r.percentual, r.adiantamento);
+    linha(19, '', '', '', '');
+    linha(19, '7', 'ARREDONDAMENTO', '', r.arredondamento);
+    linha(40, '', '', '', '');
+
+    // total
+    var hTot = 23;
+    celula(x2, y, c2 + c3, hTot); celula(x4, y, c4, hTot);
+    doc.setFont('helvetica','normal').setFontSize(13);
+    centro('TOTAL', x2, c2 + c3, y + 16);
+    doc.setFontSize(12);
+    doc.text('R$', x4 + 6, y + 16);
+    dir(r.total, x4 + c4 - 6, y + 16);
+    y += hTot;
+
+    // rodapé do recibo
+    doc.line(X, y, X + W, y);
+    doc.setFontSize(11);
+    doc.text('Recebemos a importância de', X + 22, y + 26);
+    doc.text('R$', X + 175, y + 26);
+    doc.setFont('helvetica','bold');
+    doc.text(r.total, X + 196, y + 26);
+    doc.setFont('helvetica','normal');
+    doc.text('______/______/______', X + W - 22, y + 26, { align:'right' });
+    doc.text('Recebido por', X + 22, y + 48);
+
+    var meio = X + W/2;
+    doc.line(meio - 150, y + 84, meio + 150, y + 84);
+    doc.setFontSize(10);
+    doc.text(r.nome, meio, y + 97, { align:'center' });
+    y += 112;
+
+    doc.rect(X, topo, W, y - topo);          // moldura interna
+    doc.rect(X - 12, 40, W + 24, y - 28);    // moldura externa
+    return doc;
+  }
+
+  document.getElementById('imprimir').addEventListener('click', function(){
+    var av = document.getElementById('avisoPdf');
+    if (!dadosRecibo) return;
+    if (!window.jspdf){ av.textContent = 'Aguarde um instante e toque de novo.'; return; }
+    av.textContent = '';
+    var doc = montarPdf(dadosRecibo);
+    doc.save('Recibo adiantamento - ' + dadosRecibo.nome + ' - ' + dadosRecibo.competencia.replace('/', '-') + '.pdf');
+  });
+
+  ['nome','hora','pct','mes','ano','empresa','cnpj'].forEach(function(id){
+    document.getElementById(id).addEventListener('input', function(){
+      if (!document.getElementById('areaRecibo').hidden) gerarRecibo();
+    });
+    document.getElementById(id).addEventListener('change', function(){
+      if (!document.getElementById('areaRecibo').hidden) gerarRecibo();
+    });
+  });
+</script>
+</body>
+</html>
