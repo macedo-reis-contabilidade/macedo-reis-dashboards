@@ -22,7 +22,7 @@
     .page-header h1 { font-size:1.45rem; margin:0; line-height:1.15; }
 
     /* linha 1: título à esquerda, indicadores de foco à direita, na mesma linha de base */
-    .ag-topo { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:12px; }
+    .ag-topo { display:flex; align-items:flex-end; gap:20px; flex-wrap:wrap; margin-bottom:12px; }
     .ag-foco { display:inline-flex; align-items:stretch; height:var(--ag-h); border:1px solid var(--ag-line); border-radius:var(--ag-r); background:var(--ag-fill); overflow:hidden; }
     .ag-foco .fa-focus-card { display:inline-flex; align-items:center; gap:7px; padding:0 14px; background:none; border:none; border-right:1px solid var(--ag-line); color:var(--text-muted); font-family:inherit; font-size:12.5px; cursor:pointer; white-space:nowrap; transition:background .12s, color .12s; }
     .ag-foco .fa-focus-card:last-child { border-right:none; }
@@ -203,6 +203,7 @@
     .tl-autor { font-size:12px; color:#8AAEC8; margin-top:2px; }
     .tl-empty { color:#8A93A6; font-size:13px; }
     .ag-semprazo { margin-bottom:12px; }
+    .ag-dia-col > .ag-semprazo:empty { display:none; }
     .ag-semprazo .ag-dia-secao { color:#E3B341; }
     .ag-dia-secao .btn-sm { height:26px; padding:0 10px; font-size:11.5px; letter-spacing:0; text-transform:none; border-radius:var(--ag-r-sm); }
     @media (max-width:720px) { .ag-foco { width:100%; } .ag-foco .fa-focus-card { flex:1; justify-content:center; padding:0 6px; } }
@@ -668,9 +669,12 @@
     }
 
     function render(){
+      const c = document.getElementById('agConteudo');
+      // as sem-prazo moram fora do conteúdo (sobrevivem ao innerHTML); na visão Dia entram na coluna da lista
+      const sp = document.getElementById('agSemPrazo');
+      if (sp && sp.parentElement !== c.parentElement) c.before(sp);
       renderSemPrazo();
       atualizarPeriodo();
-      const c = document.getElementById('agConteudo');
       atualizarFoco();
       if (modoBusca) { c.innerHTML = renderBusca(); wireBusca(); return; }
       if (estado.foco) {
@@ -683,7 +687,7 @@
       else if (estado.view==='semana') c.innerHTML = renderSemana();
       else c.innerHTML = renderMes();
       ligarInteracoes();
-      if (estado.view==='dia') montarResumo();
+      if (estado.view==='dia') { c.querySelector('.ag-dia-col')?.prepend(sp); montarResumo(); }
     }
 
     // ===================== RESUMO DO DIA (rotativo) =====================
@@ -1222,6 +1226,7 @@
     }
     async function recarregarERenderizar(){
       const c = document.getElementById('agConteudo');
+      { const sp = document.getElementById('agSemPrazo'); if (sp && sp.parentElement !== c.parentElement) c.before(sp); } // tira as sem-prazo da coluna antes de limpar
       c.innerHTML = '<div class="ag-vazio"><span class="spinner"></span> Carregando…</div>';
       const [ini,fim] = rangeAtual();
       await carregarDados(ini, fim);
