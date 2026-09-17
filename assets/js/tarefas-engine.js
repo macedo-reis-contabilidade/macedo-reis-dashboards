@@ -332,6 +332,10 @@ export function initTarefas(userCfg) {
             <label class="fa-field"><span>Prioridade</span><select id="dPrioridade" class="select"><option value="media">Média</option><option value="alta">Alta</option><option value="baixa">Baixa</option></select></label>
             <label class="fa-field" id="dStatusWrap"><span>Status</span><select id="dStatus" class="select"><option value="pendente">Pendente</option><option value="em_andamento">Em andamento</option></select></label>
           </div>
+          <div class="fa-field-row">
+            <label class="fa-field"><span>Setor <i style="font-style:normal;color:var(--text-dim);">(mudar tira a tarefa desta tela)</i></span><select id="dSetor" class="select"></select></label>
+            <label class="fa-field"><span>&nbsp;</span><span></span></label>
+          </div>
           <label class="fa-field"><span>Descrição</span><textarea id="dDescricao" class="input" rows="2"></textarea></label>
           <div><button class="btn btn-primary btn-sm" id="dSalvar">Salvar alterações</button></div>
           <div class="te-cob" id="dCob" style="display:none;">
@@ -942,6 +946,7 @@ export function initTarefas(userCfg) {
     $('dResp').value = t.responsavel || '';
     $('dPrazo').value = t.prazo ? String(t.prazo).slice(0,10) : '';
     $('dPrioridade').value = t.prioridade || 'media';
+    { const ds = $('dSetor'); ds.innerHTML = Object.keys(SETOR_LBL).map(x => '<option value="'+x+'">'+SETOR_LBL[x]+'</option>').join(''); if (t.setor && !SETOR_LBL[t.setor]) ds.insertAdjacentHTML('beforeend', '<option value="'+escA(t.setor)+'">'+esc(t.setor)+'</option>'); ds.value = t.setor || 'geral'; }
     $('dStatus').value = concl ? 'em_andamento' : (t.status || 'pendente');
     $('dDescricao').value = t.descricao || '';
     const banner = $('dConcBanner');
@@ -988,13 +993,16 @@ export function initTarefas(userCfg) {
       responsavel: $('dResp').value.trim() || null,
       prazo: $('dPrazo').value || null,
       prioridade: $('dPrioridade').value,
+      setor: $('dSetor').value,
       descricao: $('dDescricao').value.trim() || null
     };
+    const setorMudou = patch.setor !== (procAtual.setor || 'geral');
     if (!concl) patch.status = novoStatus;
     const statusMudou = !concl && procAtual.status !== novoStatus;
     const { error } = await supabase.from('tarefas').update(patch).eq('id', id);
     if (error) { alert('Erro ao salvar: ' + error.message); return; }
     if (statusMudou) await supabase.from('tarefa_historico').insert({ tarefa_id: id, descricao: 'Status alterado para: ' + STATUS_LBL[novoStatus] + '.', autor: usuarioEmail });
+    if (setorMudou) await supabase.from('tarefa_historico').insert({ tarefa_id: id, descricao: 'Setor alterado de ' + (SETOR_LBL[procAtual.setor] || procAtual.setor || 'Geral') + ' para ' + SETOR_LBL[patch.setor] + '.', autor: usuarioEmail });
     if (!concl && $('dCobChk').checked) {
       // a cobrança à parte só vira faturável no Concluir — não fechar nem zerar o que foi preenchido
       Object.assign(procAtual, patch);
