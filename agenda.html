@@ -273,49 +273,6 @@
     </main>
   </div>
 
-  <div class="fa-modal-overlay" id="avOverlay">
-    <div class="fa-modal" style="width:min(520px,94vw);">
-      <div class="fa-modal-head"><h3>Tarefa rápida</h3><button class="fa-modal-close" id="avClose">&times;</button></div>
-      <div class="fa-modal-body">
-        <label class="fa-field"><span>O que precisa ser feito? *</span><input type="text" id="avTitulo" class="input" placeholder="Ex.: Juntar CNDs e declarações do cliente"></label>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-          <label class="fa-field"><span>Setor</span><select id="avSetor" class="select">
-            <option value="geral" selected>Geral</option><option value="fiscal">Fiscal</option><option value="dp">Depto. Pessoal</option>
-            <option value="contabil">Contábil</option><option value="societario">Societário</option><option value="financeiro">Financeiro</option>
-            <option value="comercial">Comercial</option><option value="irpf">IRPF</option><option value="clientes">Clientes</option>
-          </select></label>
-          <label class="fa-field"><span>Responsável</span><select id="avResp" class="select"><option value="">— ninguém ainda —</option></select></label>
-          <label class="fa-field"><span>Prazo</span><input type="date" id="avPrazo" class="input"></label>
-          <label class="fa-field"><span>Prioridade</span><select id="avPri" class="select"><option value="media">Média</option><option value="alta">Alta</option><option value="baixa">Baixa</option></select></label>
-        </div>
-        <label style="display:flex; align-items:center; gap:8px; margin:2px 0 10px; font-size:13px; color:var(--brand-light); cursor:pointer;"><input type="checkbox" id="avRec"> 🔁 Repetir (vira rotina do quadro "Rotinas do dia")</label>
-        <div id="avRecParams" style="display:none; background:var(--fill-1); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:12px;">
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-            <label class="fa-field"><span>Frequência</span><select id="avRecPer" class="select">
-              <option value="mensal" selected>Mensal</option><option value="diaria">Diária (dias úteis)</option>
-              <option value="semanal">Semanal</option><option value="anual">Anual</option>
-            </select></label>
-            <label class="fa-field" id="avRecWrapSemana" style="display:none;"><span>Dia da semana</span><select id="avRecSemana" class="select">
-              <option value="1">Segunda</option><option value="2">Terça</option><option value="3">Quarta</option>
-              <option value="4">Quinta</option><option value="5">Sexta</option>
-            </select></label>
-            <label class="fa-field" id="avRecWrapMes"><span>Dia do mês</span><input type="number" id="avRecDiaMes" class="input" min="1" max="31" value="1"></label>
-            <label class="fa-field" id="avRecWrapAnual" style="display:none;"><span>Data (MM-DD)</span><input type="text" id="avRecAnual" class="input" placeholder="ex.: 01-15"></label>
-          </div>
-          <label id="avRecWrapUtil" style="display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--text-2); margin-top:6px; cursor:pointer;"><input type="checkbox" id="avRecUtil" checked> Se cair no fim de semana, vale o próximo dia útil</label>
-          <div style="font-size:11.5px; color:var(--text-dim); margin-top:6px;">Ex.: dia 1 + dia útil = "primeiro dia útil do mês".</div>
-        </div>
-        <label class="fa-field"><span>Cliente(s) (opcional) <i style="font-style:normal;color:var(--text-dim);">— pode escolher vários; cada um vira uma tarefa própria</i></span><input type="text" id="avCliBusca" class="input" placeholder="Buscar por razão ou fantasia… (3+ letras)" autocomplete="off"></label>
-        <div id="avCliRes" class="add-res" style="display:none;"></div>
-        <div id="avCliChip" style="display:none; flex-wrap:wrap; gap:6px; margin:-6px 0 12px;"></div>
-        <label class="fa-field"><span>Descrição (opcional)</span><textarea id="avDesc" class="input" rows="3" style="resize:vertical;"></textarea></label>
-      </div>
-      <div class="fa-modal-foot">
-        <button class="btn btn-ghost" id="avCancelar">Cancelar</button>
-        <button class="btn btn-primary" id="avSalvar">Criar tarefa</button>
-      </div>
-    </div>
-  </div>
 
   <div class="fa-modal-overlay" id="detOverlay">
     <div class="fa-modal" style="max-width:560px;">
@@ -377,6 +334,7 @@
   <script src="assets/js/tour.js"></script>
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { abrirNovaTarefa } from './assets/js/nova-tarefa.js';
 
     // ---- identidade visual por setor ----
     const SETOR_INFO = {
@@ -1284,127 +1242,11 @@
       await recarregarERenderizar();
     })();
     document.getElementById('btnLogout').addEventListener('click', signOut);
-      // ---------- tarefa rápida ----------
-    const avOverlay = document.getElementById('avOverlay');
-    let avClis = [], avTimer = null;   // vários clientes: uma tarefa por cliente
-    function avRenderClis(){
-      const box = document.getElementById('avCliChip');
-      box.innerHTML = avClis.map(c => `<span class="chip">🏢 ${c.nome} <a href="#" data-tira="${c.id}" title="Tirar">✕</a></span>`).join('');
-      box.style.display = avClis.length ? 'flex' : 'none';
-      box.querySelectorAll('[data-tira]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); avClis = avClis.filter(c => c.id !== a.dataset.tira); avRenderClis(); }));
-      if (!document.getElementById('avRec').checked) document.getElementById('avSalvar').textContent = avClis.length > 1 ? 'Criar ' + avClis.length + ' tarefas' : 'Criar tarefa';
-    }
-    document.getElementById('avResp').innerHTML += EQUIPE.map(p => `<option>${p}</option>`).join('');
-    document.getElementById('btnNovaAv').addEventListener('click', () => {
-      avClis = []; avRenderClis();
-      ['avTitulo', 'avDesc', 'avCliBusca'].forEach(id => document.getElementById(id).value = '');
-      document.getElementById('avSetor').value = 'geral';
-      document.getElementById('avResp').value = '';
-      document.getElementById('avPrazo').value = new Date().toISOString().slice(0, 10);
-      document.getElementById('avCliChip').style.display = 'none';
-      document.getElementById('avCliRes').style.display = 'none';
-      avOverlay.classList.add('is-open');
-      document.getElementById('avTitulo').focus();
-    });
-    const avFechar = () => avOverlay.classList.remove('is-open');
-    document.getElementById('avClose').addEventListener('click', avFechar);
-    document.getElementById('avCancelar').addEventListener('click', avFechar);
-    avOverlay.addEventListener('click', e => { if (e.target === avOverlay) avFechar(); });
-
-    document.getElementById('avCliBusca').addEventListener('input', () => {
-      clearTimeout(avTimer);
-      avTimer = setTimeout(async () => {
-        const t = document.getElementById('avCliBusca').value.trim();
-        const el = document.getElementById('avCliRes');
-        if (t.length < 3) { el.style.display = 'none'; return; }
-        const { data } = await supabase.from('clientes')
-          .select('id, nome_principal, nome_fantasia, cidade')
-          .or(`nome_principal.ilike.*${t}*,nome_fantasia.ilike.*${t}*`).limit(8);
-        el.innerHTML = (data || []).map(c => `<button data-id="${c.id}" data-nome="${(c.nome_principal || '').replace(/"/g, '&quot;')}">${c.nome_principal}<small>${[c.nome_fantasia, c.cidade].filter(Boolean).join(' · ') || '&nbsp;'}</small></button>`).join('')
-          || '<button disabled style="color:var(--text-dim);cursor:default;">Nada encontrado.</button>';
-        el.style.display = 'block';
-        el.querySelectorAll('[data-id]').forEach(b => b.addEventListener('click', () => {
-          if (!avClis.some(c => c.id === b.dataset.id)) avClis.push({ id: b.dataset.id, nome: b.dataset.nome });
-          avRenderClis();
-          document.getElementById('avCliBusca').value = '';
-          el.style.display = 'none';
-        }));
-      }, 300);
-    });
-
-    function avRecToggle(){
-      const rec = document.getElementById('avRec').checked;
-      document.getElementById('avRecParams').style.display = rec ? 'block' : 'none';
-      ['avPrazo', 'avPri'].forEach(id => document.getElementById(id).closest('label').style.display = rec ? 'none' : '');
-      document.getElementById('avCliBusca').closest('label').style.display = rec ? 'none' : '';
-      if (rec) { document.getElementById('avCliRes').style.display = 'none'; }
-      document.getElementById('avSalvar').textContent = rec ? 'Criar rotina' : (avClis.length > 1 ? 'Criar ' + avClis.length + ' tarefas' : 'Criar tarefa');
-      const per = document.getElementById('avRecPer').value;
-      document.getElementById('avRecWrapSemana').style.display = per === 'semanal' ? '' : 'none';
-      document.getElementById('avRecWrapMes').style.display = per === 'mensal' ? '' : 'none';
-      document.getElementById('avRecWrapAnual').style.display = per === 'anual' ? '' : 'none';
-      document.getElementById('avRecWrapUtil').style.display = (per === 'mensal' || per === 'anual') ? 'flex' : 'none';
-    }
-    document.getElementById('avRec').addEventListener('change', avRecToggle);
-    document.getElementById('avRecPer').addEventListener('change', avRecToggle);
-    document.getElementById('avSalvar').addEventListener('click', async () => {
-      const titulo = document.getElementById('avTitulo').value.trim();
-      if (!titulo) { alert('Dá um nome pra tarefa, pelo menos isso kkk'); return; }
-      const btn = document.getElementById('avSalvar');
-      btn.disabled = true;
-      try {
-        if (document.getElementById('avRec').checked) {
-          const per = document.getElementById('avRecPer').value;
-          if (per === 'anual' && !/^\d{2}-\d{2}$/.test(document.getElementById('avRecAnual').value.trim())) {
-            alert('Data anual no formato MM-DD, ex.: 01-15'); return;
-          }
-          const rotina = {
-            titulo,
-            setor: document.getElementById('avSetor').value,
-            responsavel: document.getElementById('avResp').value || null,
-            descricao: document.getElementById('avDesc').value.trim() || null,
-            periodicidade: per,
-            dia_semana: per === 'semanal' ? parseInt(document.getElementById('avRecSemana').value, 10) : null,
-            dia_mes: per === 'mensal' ? Math.min(31, Math.max(1, parseInt(document.getElementById('avRecDiaMes').value || '1', 10))) : null,
-            dia_anual: per === 'anual' ? document.getElementById('avRecAnual').value.trim() : null,
-            dia_util: (per === 'mensal' || per === 'anual') ? document.getElementById('avRecUtil').checked : false,
-            ativo: true,
-            ordem: 999,
-          };
-          const { data: rIns, error: rErr } = await supabase.from('rotinas').insert(rotina).select('*').single();
-          if (rErr) { alert('Erro ao criar a rotina: ' + rErr.message); return; }
-          cacheRotinas.push(rIns);
-          avFechar();
-          render();
-          return;
-        }
-        const payload = {
-          titulo,
-          setor: document.getElementById('avSetor').value,
-          tipo: 'tarefa',
-          descricao: document.getElementById('avDesc').value.trim() || null,
-          responsavel: document.getElementById('avResp').value || null,
-          prazo: document.getElementById('avPrazo').value || null,
-          prioridade: document.getElementById('avPri').value,
-          status: 'pendente',
-          origem: 'avulsa'
-        };
-        const ids = avClis.length ? avClis.map(c => c.id) : [null];
-        const { data: ins, error } = await supabase.from('tarefas').insert(ids.map(cliente_id => ({ ...payload, cliente_id }))).select('id');
-        if (error) { alert('Erro ao criar (' + (error.code || '?') + '): ' + error.message); return; }
-        if (ins && ins.length) {
-          const { data: au } = await supabase.auth.getUser();
-          await supabase.from('tarefa_historico').insert(ins.map(t => ({
-            tarefa_id: t.id, descricao: 'Tarefa criada pela Agenda' + (ids.length > 1 ? ' (lote de ' + ids.length + ' clientes)' : '') + '.', autor: au?.user?.email || null
-          })));
-        }
-        avFechar();
-        location.reload();
-      } catch (e) {
-        alert('Falha inesperada: ' + e.message);
-      } finally {
-        btn.disabled = false;
-      }
+      // ---------- nova tarefa: formulário único (assets/js/nova-tarefa.js), o mesmo das telas de Tarefas ----------
+    document.getElementById('btnNovaAv').addEventListener('click', async () => {
+      const au = await supabase.auth.getUser();
+      abrirNovaTarefa({ setor: 'geral', responsaveis: EQUIPE, usuarioEmail: au?.data?.user?.email || null, historico: 'Tarefa criada pela Agenda.',
+        aoSalvar: async () => { location.reload(); } });
     });
       // ---------- filtros que lembram de você ----------
     {

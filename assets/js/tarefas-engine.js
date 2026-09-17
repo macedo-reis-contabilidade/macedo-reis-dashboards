@@ -10,6 +10,7 @@
 
 import { supabase, getCurrentUser, signOut } from './supabase.js';
 import { formatDate } from './utils.js';
+import { abrirNovaTarefa } from './nova-tarefa.js';
 
 const CSS = `
   .fa-focus { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:22px; }
@@ -502,9 +503,10 @@ export function initTarefas(userCfg) {
   $('btnNova').addEventListener('click', () => {
     rotinaEditando = null;
     $('rExcluir').style.display = 'none';
-    if (MODO_ROTINAS) { $('nvTipos').style.display = 'none'; mostrarTipo('rotina'); }   // "Nova" cria só rotina
-    else { $('nvTipos').style.display = 'flex'; mostrarTipo('tarefa'); }
-    overlay.classList.add('is-open');
+    if (MODO_ROTINAS) { $('nvTipos').style.display = 'none'; mostrarTipo('rotina'); overlay.classList.add('is-open'); return; }   // "Nova" cria só rotina
+    // 17/09/2026: formulário único (tarefa + campo Repetir); as abas tarefa/recorrente/rotina saíram daqui. O modal interno segue só pra editar rotina.
+    abrirNovaTarefa({ setor: SETOR, responsaveis: C.responsaveis || null, usuarioEmail, historico: C.historicoCadastro,
+      aoSalvar: async (tipo) => { if (tipo === 'rotina') await carregarRotinas(); await carregarTarefas(); } });
   });
   $('modalClose').addEventListener('click', fecharModal);
   $('btnCancelar').addEventListener('click', fecharModal);
