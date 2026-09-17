@@ -305,9 +305,9 @@
           <label id="avRecWrapUtil" style="display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--text-2); margin-top:6px; cursor:pointer;"><input type="checkbox" id="avRecUtil" checked> Se cair no fim de semana, vale o próximo dia útil</label>
           <div style="font-size:11.5px; color:var(--text-dim); margin-top:6px;">Ex.: dia 1 + dia útil = "primeiro dia útil do mês".</div>
         </div>
-        <label class="fa-field"><span>Cliente (opcional)</span><input type="text" id="avCliBusca" class="input" placeholder="Buscar por razão ou fantasia…" autocomplete="off"></label>
+        <label class="fa-field"><span>Cliente(s) (opcional) <i style="font-style:normal;color:var(--text-dim);">— pode escolher vários; cada um vira uma tarefa própria</i></span><input type="text" id="avCliBusca" class="input" placeholder="Buscar por razão ou fantasia… (3+ letras)" autocomplete="off"></label>
         <div id="avCliRes" class="add-res" style="display:none;"></div>
-        <div id="avCliChip" style="display:none; margin:-6px 0 12px;"><span class="chip">🏢 <span id="avCliNome"></span> <a href="#" id="avCliTira" style="color:inherit; text-decoration:none; margin-left:6px;">✕</a></span></div>
+        <div id="avCliChip" style="display:none; flex-wrap:wrap; gap:6px; margin:-6px 0 12px;"></div>
         <label class="fa-field"><span>Descrição (opcional)</span><textarea id="avDesc" class="input" rows="3" style="resize:vertical;"></textarea></label>
       </div>
       <div class="fa-modal-foot">
@@ -1286,10 +1286,17 @@
     document.getElementById('btnLogout').addEventListener('click', signOut);
       // ---------- tarefa rápida ----------
     const avOverlay = document.getElementById('avOverlay');
-    let avCli = null, avTimer = null;
+    let avClis = [], avTimer = null;   // vários clientes: uma tarefa por cliente
+    function avRenderClis(){
+      const box = document.getElementById('avCliChip');
+      box.innerHTML = avClis.map(c => `<span class="chip">🏢 ${c.nome} <a href="#" data-tira="${c.id}" title="Tirar">✕</a></span>`).join('');
+      box.style.display = avClis.length ? 'flex' : 'none';
+      box.querySelectorAll('[data-tira]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); avClis = avClis.filter(c => c.id !== a.dataset.tira); avRenderClis(); }));
+      if (!document.getElementById('avRec').checked) document.getElementById('avSalvar').textContent = avClis.length > 1 ? 'Criar ' + avClis.length + ' tarefas' : 'Criar tarefa';
+    }
     document.getElementById('avResp').innerHTML += EQUIPE.map(p => `<option>${p}</option>`).join('');
     document.getElementById('btnNovaAv').addEventListener('click', () => {
-      avCli = null;
+      avClis = []; avRenderClis();
       ['avTitulo', 'avDesc', 'avCliBusca'].forEach(id => document.getElementById(id).value = '');
       document.getElementById('avSetor').value = 'geral';
       document.getElementById('avResp').value = '';
@@ -1317,17 +1324,12 @@
           || '<button disabled style="color:var(--text-dim);cursor:default;">Nada encontrado.</button>';
         el.style.display = 'block';
         el.querySelectorAll('[data-id]').forEach(b => b.addEventListener('click', () => {
-          avCli = { id: b.dataset.id, nome: b.dataset.nome };
-          document.getElementById('avCliNome').textContent = avCli.nome;
-          document.getElementById('avCliChip').style.display = 'block';
+          if (!avClis.some(c => c.id === b.dataset.id)) avClis.push({ id: b.dataset.id, nome: b.dataset.nome });
+          avRenderClis();
           document.getElementById('avCliBusca').value = '';
           el.style.display = 'none';
         }));
       }, 300);
-    });
-    document.getElementById('avCliTira').addEventListener('click', e => {
-      e.preventDefault(); avCli = null;
-      document.getElementById('avCliChip').style.display = 'none';
     });
 
     function avRecToggle(){
@@ -1336,7 +1338,7 @@
       ['avPrazo', 'avPri'].forEach(id => document.getElementById(id).closest('label').style.display = rec ? 'none' : '');
       document.getElementById('avCliBusca').closest('label').style.display = rec ? 'none' : '';
       if (rec) { document.getElementById('avCliRes').style.display = 'none'; }
-      document.getElementById('avSalvar').textContent = rec ? 'Criar rotina' : 'Criar tarefa';
+      document.getElementById('avSalvar').textContent = rec ? 'Criar rotina' : (avClis.length > 1 ? 'Criar ' + avClis.length + ' tarefas' : 'Criar tarefa');
       const per = document.getElementById('avRecPer').value;
       document.getElementById('avRecWrapSemana').style.display = per === 'semanal' ? '' : 'none';
       document.getElementById('avRecWrapMes').style.display = per === 'mensal' ? '' : 'none';
@@ -1385,16 +1387,16 @@
           prazo: document.getElementById('avPrazo').value || null,
           prioridade: document.getElementById('avPri').value,
           status: 'pendente',
-          origem: 'avulsa',
-          cliente_id: avCli ? avCli.id : null
+          origem: 'avulsa'
         };
-        const { data: ins, error } = await supabase.from('tarefas').insert(payload).select('id').single();
+        const ids = avClis.length ? avClis.map(c => c.id) : [null];
+        const { data: ins, error } = await supabase.from('tarefas').insert(ids.map(cliente_id => ({ ...payload, cliente_id }))).select('id');
         if (error) { alert('Erro ao criar (' + (error.code || '?') + '): ' + error.message); return; }
-        if (ins) {
+        if (ins && ins.length) {
           const { data: au } = await supabase.auth.getUser();
-          await supabase.from('tarefa_historico').insert({
-            tarefa_id: ins.id, descricao: 'Tarefa criada pela Agenda.', autor: au?.user?.email || null
-          });
+          await supabase.from('tarefa_historico').insert(ins.map(t => ({
+            tarefa_id: t.id, descricao: 'Tarefa criada pela Agenda' + (ids.length > 1 ? ' (lote de ' + ids.length + ' clientes)' : '') + '.', autor: au?.user?.email || null
+          })));
         }
         avFechar();
         location.reload();

@@ -255,7 +255,8 @@ export function initTarefas(userCfg) {
         </div>
         <div class="fa-modal-body" id="formTarefa">
           <label class="fa-field"><span>${esc(C.tituloLabel)}</span><input type="text" id="fTitulo" class="input" placeholder="${escA(C.tituloPlaceholder)}"></label>
-          <label class="fa-field"><span>${esc(C.clienteLabel)}</span><select id="fCliente" class="select"><option value="">${esc(C.semClienteOption)}</option></select></label>
+          <label class="fa-field"><span>${esc(C.clienteLabel)}</span><select id="fCliente" class="select"><option value="">${esc(C.semClienteOption)}</option></select><small class="cli-dica">Escolha um por vez — pode ser mais de um; cada cliente vira uma tarefa própria.</small></label>
+          <div class="cli-chips" id="fClienteChips"></div>
           <div class="fa-field-row">
             <label class="fa-field"><span>Responsável</span>${campoResp('fResponsavel', 'Ex.: Thalia')}</label>
             <label class="fa-field"><span>Prazo</span><input type="date" id="fPrazo" class="input"></label>
@@ -265,7 +266,8 @@ export function initTarefas(userCfg) {
         </div>
         <div class="fa-modal-body" id="formRecorrente" style="display:none;">
           <label class="fa-field"><span>Título / obrigação *</span><input type="text" id="qTitulo" class="input" placeholder="Ex.: Emitir boletos de honorários"></label>
-          <label class="fa-field"><span>${esc(C.clienteLabel)}</span><select id="qCliente" class="select"><option value="">${esc(C.semClienteOption)}</option></select></label>
+          <label class="fa-field"><span>${esc(C.clienteLabel)}</span><select id="qCliente" class="select"><option value="">${esc(C.semClienteOption)}</option></select><small class="cli-dica">Escolha um por vez — pode ser mais de um; cada cliente vira uma regra própria.</small></label>
+          <div class="cli-chips" id="qClienteChips"></div>
           <div class="fa-field-row">
             <label class="fa-field"><span>Periodicidade</span>
               <select id="qPeri" class="select"><option value="mensal">Mensal</option><option value="diaria">Diária</option><option value="semanal">Semanal</option><option value="anual">Anual</option></select>
@@ -458,12 +460,26 @@ export function initTarefas(userCfg) {
     render();
   }));
 
+  // vários clientes por tarefa/regra (17/09/2026): o select só adiciona à lista de chips; ao salvar nasce uma linha por cliente
+  const cliSel = { fCliente: [], qCliente: [] };
+  function renderCliChips(idSel) {
+    const box = $(idSel + 'Chips'); if (!box) return;
+    box.innerHTML = cliSel[idSel].map(c => `<span class="chip">🏢 ${esc(c.nome)} <a href="#" data-tira="${escA(c.id)}" title="Tirar">✕</a></span>`).join('');
+    box.querySelectorAll('[data-tira]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); cliSel[idSel] = cliSel[idSel].filter(c => c.id !== a.dataset.tira); renderCliChips(idSel); }));
+    const btn = $('btnSalvar'); if (btn && idSel === 'fCliente' && tipoNova === 'tarefa') btn.textContent = cliSel.fCliente.length > 1 ? 'Criar ' + cliSel.fCliente.length + ' tarefas' : 'Salvar';
+  }
+  function limparCliSel() { cliSel.fCliente = []; cliSel.qCliente = []; renderCliChips('fCliente'); renderCliChips('qCliente'); }
   async function carregarClientesSelect() {
     const { data } = await supabase.todosClientes('id, nome_principal');
     ['fCliente', 'qCliente'].forEach(idSel => {
       const sel = $(idSel);
       if (!sel) return;
       (data || []).forEach(c => { const o = document.createElement('option'); o.value = c.id; o.textContent = c.nome_principal; sel.appendChild(o); });
+      sel.addEventListener('change', () => {
+        const id = sel.value; if (!id) return;
+        if (!cliSel[idSel].some(c => c.id === id)) cliSel[idSel].push({ id, nome: sel.options[sel.selectedIndex].textContent });
+        sel.value = ''; renderCliChips(idSel);
+      });
     });
   }
 
@@ -499,6 +515,7 @@ export function initTarefas(userCfg) {
     rotinaEditando = null;
     document.querySelectorAll('#rResp option[data-legado]').forEach(o => o.remove());   // opção só valia pra aquela edição
     ['fTitulo','fCliente','fResponsavel','fPrazo','fDescricao','qTitulo','qCliente','qDia','qResp','qDesc','rTitulo','rResp','rDiaMes','rDiaAnualD','rDesc'].forEach(id => { const el = $(id); if (el) el.value = ''; });
+    limparCliSel();
     $('fPrioridade').value = 'media';
     const qp = $('qPeri'); if (qp) { qp.value = 'mensal'; camposRecorrente(); }
     $('rPeri').value = 'diaria';
@@ -538,18 +555,18 @@ export function initTarefas(userCfg) {
   async function salvarTarefaNova() {
     const titulo = $('fTitulo').value.trim();
     if (!titulo) { alert(C.tituloAviso); return; }
-    const novo = {
+    const base = {
       setor: SETOR, titulo,
-      cliente_id: $('fCliente').value || null,
       responsavel: $('fResponsavel').value.trim() || null,
       prazo: $('fPrazo').value || null,
       prioridade: $('fPrioridade').value,
       descricao: $('fDescricao').value.trim() || null,
       origem: 'avulsa', status: 'pendente'
     };
-    const { data: ins, error } = await supabase.from('tarefas').insert(novo).select('id').single();
+    const ids = cliSel.fCliente.length ? cliSel.fCliente.map(c => c.id) : [null];   // sem cliente = uma tarefa interna
+    const { data: ins, error } = await supabase.from('tarefas').insert(ids.map(cliente_id => ({ ...base, cliente_id }))).select('id');
     if (error) { alert('Erro ao salvar: ' + error.message); return; }
-    if (ins) await supabase.from('tarefa_historico').insert({ tarefa_id: ins.id, descricao: C.historicoCadastro, autor: usuarioEmail });
+    if (ins && ins.length) await supabase.from('tarefa_historico').insert(ins.map(t => ({ tarefa_id: t.id, descricao: C.historicoCadastro + (ids.length > 1 ? ' (lote de ' + ids.length + ' clientes)' : ''), autor: usuarioEmail })));
     fecharModal();
     await carregarTarefas();
   }
@@ -560,7 +577,6 @@ export function initTarefas(userCfg) {
     const period = $('qPeri').value;
     const semDiaMes = (period === 'diaria' || period === 'semanal');
     const payload = {
-      cliente_id: $('qCliente').value || null,
       setor: SETOR, titulo, periodicidade: period,
       dia_vencimento: (!semDiaMes && $('qDia').value) ? parseInt($('qDia').value, 10) : null,
       mes_vencimento: (period === 'anual' && $('qMes').value) ? parseInt($('qMes').value, 10) : null,
@@ -568,10 +584,11 @@ export function initTarefas(userCfg) {
       responsavel: $('qResp').value.trim() || null,
       ativo: true, origem: 'manual'
     };
-    const { error } = await supabase.from('tarefas_recorrentes').insert(payload);
+    const idsQ = cliSel.qCliente.length ? cliSel.qCliente.map(c => c.id) : [null];
+    const { error } = await supabase.from('tarefas_recorrentes').insert(idsQ.map(cliente_id => ({ ...payload, cliente_id })));
     if (error) { alert('Erro ao salvar: ' + error.message); return; }
     fecharModal();
-    alert('Tarefa recorrente criada. As tarefas do mês nascem pelo botão “Gerar tarefas do mês”.');
+    alert((idsQ.length > 1 ? idsQ.length + ' regras recorrentes criadas (uma por cliente).' : 'Tarefa recorrente criada.') + ' As tarefas do mês nascem pelo botão “Gerar tarefas do mês”.');
   }
 
   async function salvarRotinaForm() {
