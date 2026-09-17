@@ -221,7 +221,7 @@
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
 
-    const SETORES = [['societario','Societário'],['fiscal','Fiscal'],['departamento_pessoal','Depto. Pessoal'],['contabil','Contábil'],['financeiro','Financeiro'],['comercial','Comercial']];
+    const SETORES = [['societario','Societário'],['fiscal','Fiscal'],['dp','DP'],['contabil','Contábil'],['financeiro','Financeiro'],['comercial','Comercial']];
     const TIPO_LABEL = { entrada:'Entrada', cnpj_novo:'CNPJ novo', saida:'Saída' };
     const fmtData = d => d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
     const hojeISO = () => new Date().toISOString().slice(0, 10);
@@ -381,7 +381,7 @@
       const raias = document.getElementById('raias');
       raias.innerHTML = SETORES.map(([chave, rotulo]) => {
         const doSetor = tarefasAtual.filter(x => x.setor === chave);
-        if (!doSetor.length && !['societario','fiscal','departamento_pessoal','contabil','comercial'].includes(chave)) return '';
+        if (!doSetor.length && !['societario','fiscal','dp','contabil','comercial'].includes(chave)) return '';
         const cards = doSetor.map(x => {
           const atrasada = x.status !== 'concluida' && x.prazo && x.prazo < hojeISO();
           const cls = x.status === 'concluida' ? 'concluida' : x.status === 'aguardando' ? 'aguardando' : x.status === 'bloqueada' ? 'bloqueada' : x.status === 'em_andamento' ? 'andamento' : '';
