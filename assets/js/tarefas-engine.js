@@ -793,6 +793,8 @@ export function initTarefas(userCfg) {
     const travados = [searchInput, filterStatus, filterResp, ...document.querySelectorAll('.fa-focus-card'), ...elGrupos.querySelectorAll('input.fa-chk'), ...elGrupos.querySelectorAll('[data-lote-ok],[data-lote-limpar]')];
     travados.forEach(el => { if (el !== btn && el !== limpar) { el.dataset.loteTrava = el.disabled ? '1' : ''; el.disabled = true; } });
     const nomeDe = id => { const t = tarefas.find(x => x.id === id); return t ? (t.clientes?.nome_principal || t.titulo || 'sem cliente') : id; };
+    // dependências entre tarefas do mesmo processo (best-effort: falha aqui não desfaz a conclusão)
+    const avisarDependentes = async (tarefa) => { try { await _avisarDependentes(tarefa); } catch (e) { console.warn('dependentes', e); } };
     let feitas = 0; const falhas = [], semHist = [], jaEstavam = [];
     try {
       for (let i = 0; i < ids.length; i++) {
@@ -806,6 +808,7 @@ export function initTarefas(userCfg) {
         if (!up || !up.length) { jaEstavam.push(nomeDe(id)); continue; }
         const { error: eHist } = await supabase.from('tarefa_historico').insert({ tarefa_id:id, descricao:C.historicoConcluida, autor:usuarioEmail });
         feitas++;   // a conclusão valeu mesmo sem o registro — o histórico é avisado à parte
+        await avisarDependentes(tarefas.find(x => x.id === id));
         if (eHist) semHist.push(nomeDe(id) + ' (' + eHist.message + ')');
       }
     } finally {
@@ -1017,6 +1020,7 @@ export function initTarefas(userCfg) {
       const { error } = await supabase.from('tarefas').update({ status:'concluida', concluida_em:new Date().toISOString(), concluida_por:usuarioEmail }).eq('id', id);
       if (error){ alert('Erro: '+error.message); return; }
       await supabase.from('tarefa_historico').insert({ tarefa_id:id, descricao:C.historicoConcluida, autor:usuarioEmail });
+      try { await _avisarDependentes(t); } catch (e) { console.warn('dependentes', e); }
       if (cob) {
         const ja = await faturavelDaTarefa(id);
         if (ja) {
@@ -1419,5 +1423,23 @@ export function initTarefas(userCfg) {
     await carregarRotinas();
     renderRotinasGerenciar();
     alert('Tarefa recorrente criada; a rotina foi pausada.');
+  }
+}
+
+// ---- dependências entre tarefas geradas pelo mesmo processo ----
+// Hoje só uma regra: no kit de Transformação, a escrituração contábil espera a precificação do
+// honorário do novo porte. Quando a tarefa comercial é concluída, a contábil irmã (mesmo cliente,
+// ainda aberta) recebe uma linha no histórico e um sufixo no título dizendo que pode iniciar.
+async function _avisarDependentes(t) {
+  if (!t || !t.cliente_id || !/^precificar honor[áa]rios do novo porte/i.test(String(t.titulo || ''))) return;
+  const { data: irmas } = await supabase.from('tarefas').select('id, titulo')
+    .eq('cliente_id', t.cliente_id).neq('status', 'concluida')
+    .or('titulo.ilike.Iniciar escrituração contábil do novo enquadramento%,titulo.ilike.Transformação registrada — escrituração aguarda%');
+  if (!irmas || !irmas.length) return;
+  const hoje = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  for (const s of irmas) {
+    const titulo = /honorário fechado em/i.test(s.titulo) ? s.titulo : ('Iniciar escrituração contábil do novo enquadramento (honorário fechado em ' + hoje + ')');
+    await supabase.from('tarefas').update({ titulo }).eq('id', s.id);
+    await supabase.from('tarefa_historico').insert({ tarefa_id: s.id, descricao: 'Honorário do novo porte precificado em ' + hoje + ' (tarefa comercial concluída) — a escrituração pode iniciar.', autor: 'sistema' });
   }
 }
