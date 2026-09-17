@@ -295,11 +295,6 @@
             <td class="c4 dir"><span class="cifra">R$</span><span id="recAdi"></span></td>
           </tr>
           <tr><td class="c1">&nbsp;</td><td class="c2"></td><td class="c3"></td><td class="c4"></td></tr>
-          <tr>
-            <td class="c1">7</td><td class="c2">ARREDONDAMENTO</td>
-            <td class="c3"></td>
-            <td class="c4 dir"><span class="cifra">R$</span><span id="recArr"></span></td>
-          </tr>
           <tr class="rec-folga"><td class="c1">&nbsp;</td><td class="c2"></td><td class="c3"></td><td class="c4"></td></tr>
           <tr class="rec-total">
             <td class="c1"></td><td class="c2 dir-total">TOTAL</td>
@@ -411,19 +406,15 @@
       : '';
   }
 
-  // valor digitado manda; sem ele, vale o percentual (com arredondamento em real inteiro)
+  // valor digitado manda; sem ele, vale o percentual sobre o salário do mês
   function adiantamentoDe(salario){
     var direto = lerNumero(document.getElementById('valorAdi').value);
     if (isFinite(direto) && direto > 0){
-      var v = Math.round(direto * 100) / 100;
-      return { direto:true, pct:null, bruto:v, total:v, arredondamento:0 };
+      return { direto:true, pct:null, total: Math.round(direto * 100) / 100 };
     }
     var pct = lerNumero(inPct.value);
     if (!isFinite(pct)) pct = 0;
-    var bruto = Math.round(salario * pct / 100 * 100) / 100;
-    var total = Math.round(bruto);
-    return { direto:false, pct:pct, bruto:bruto, total:total,
-             arredondamento: Math.round((total - bruto) * 100) / 100 };
+    return { direto:false, pct:pct, total: Math.round(salario * pct / 100 * 100) / 100 };
   }
 
   ['change','input'].forEach(function(ev){
@@ -481,8 +472,7 @@
     document.getElementById('recHora').textContent = num(salario, 2);
     document.getElementById('recHoraInfo').textContent = detalheHora;
     document.getElementById('recPct').textContent = ad.direto ? '' : num(ad.pct, 0) + '%';
-    document.getElementById('recAdi').textContent = contabil(ad.bruto);
-    document.getElementById('recArr').textContent = contabil(ad.arredondamento);
+    document.getElementById('recAdi').textContent = contabil(ad.total);
     document.getElementById('recTotal').textContent = contabil(ad.total);
     document.getElementById('recImp').textContent = contabil(ad.total);
 
@@ -498,8 +488,7 @@
       hora: num(salario, 2),
       detalheHora: detalheHora,
       percentual: ad.direto ? '' : num(ad.pct, 0) + '%',
-      adiantamento: contabil(ad.bruto),
-      arredondamento: contabil(ad.arredondamento),
+      adiantamento: contabil(ad.total),
       total: contabil(ad.total)
     };
 
@@ -597,7 +586,6 @@
 
     linha(19, '1', 'ADIANTAMENTO SALARIAL', r.percentual, r.adiantamento);
     linha(19, '', '', '', '');
-    linha(19, '7', 'ARREDONDAMENTO', '', r.arredondamento);
     linha(40, '', '', '', '');
 
     // total
