@@ -131,6 +131,14 @@
     .ag-rot-check:hover { border-color:var(--ok); }
     .ag-rot-check.on { background:var(--ok); border-color:var(--ok); }
     .ag-rot-check svg { width:13px; height:13px; }
+    .ag-lote-ck { width:16px; height:16px; margin:0; flex:none; accent-color:var(--ok); cursor:pointer; }
+    .ag-lote-vazio { width:16px; flex:none; }
+    .ag-lote-barra { display:flex; align-items:center; gap:14px; padding:6px 12px; margin:0 0 6px; background:var(--fill-1); border:1px solid var(--line); border-radius:var(--ag-r); font-size:12.5px; color:var(--text-muted); }
+    .ag-lote-barra label { display:inline-flex; align-items:center; gap:7px; cursor:pointer; color:var(--text); }
+    .ag-lote-barra input { accent-color:var(--ok); width:15px; height:15px; margin:0; }
+    .ag-lote-n { flex:1; }
+    .ag-lote-barra .btn-sm { height:28px; padding:0 12px; font-size:12px; border-radius:var(--ag-r-sm); }
+    .ag-lote-barra .btn-sm:disabled { opacity:.45; cursor:default; }
     .ag-vazio { padding:12px 14px; text-align:center; color:var(--text-muted); font-size:13px; background:var(--ag-fill); border:1px dashed var(--ag-line); border-radius:var(--ag-r); }
 
     /* ---------- SEMANA ---------- */
@@ -488,12 +496,14 @@
       let html = `<div class="ag-dia-secao">${FOCO_LBL[estado.foco]} <span class="cont">${itens.length}</span>
         <button class="btn btn-ghost btn-sm" id="agFocoLimpar" style="margin-left:12px;">Voltar ao calendário</button>
         <span style="font-weight:400; font-size:11.5px; color:var(--text-dim); margin-left:10px;">tarefas abertas, com os filtros de setor e responsável acima</span></div>`;
+      html += loteBarra(itens);
       if (!itens.length) html += '<div style="color:var(--text-muted); padding:20px 4px;">Nada aqui.</div>';
       itens.forEach(t => {
         const cli = t.clientes?.nome_principal ? `<span>${esc(t.clientes.nome_principal)}</span><span class="sep">·</span>` : '';
         const resp = t.responsavel ? `<span>${esc(t.responsavel)}</span>` : '';
         const atras = t.prazo < hS ? `<span class="t-hora" style="color:var(--err);">${Math.round((hojeMeiaNoite() - new Date(t.prazo + 'T00:00:00')) / 86400000)} dia(s) atrasada</span>` : '';
         html += `<div class="ag-card ${classePrio(t.prioridade)}" data-bstask="${t.id}">
+          ${loteCheck(t)}
           <div class="ag-card-main">
             <div class="ag-card-titulo">${esc(t.titulo) || '(sem título)'}${horaDaTarefa(t) ? `<span class="t-hora">🕐 ${horaDaTarefa(t)}</span>` : ''}${atras}</div>
             <div class="ag-card-meta"><b style="color:var(--brand-light);">${fData(t.prazo)}</b><span class="sep">·</span>${chip(t.setor)} ${cli} ${resp}</div>
@@ -538,7 +548,7 @@
       const t = termo.replace(/[,()]/g, ' ').trim();
       const [porTexto, cli] = await Promise.all([
         supabase.from('tarefas').select('*, clientes(nome_principal, nome_fantasia, documento)')
-          .or(`titulo.ilike.*${t}*,descricao.ilike.*${t}*,responsavel.ilike.*${t}*`).limit(50),
+          .or(`titulo.ilike.*${t}*,descricao.ilike.*${t}*,responsavel.ilike.*${t}*`).limit(200),
         supabase.from('clientes').select('id')
           .or(`nome_principal.ilike.*${t}*,nome_fantasia.ilike.*${t}*`).limit(20)
       ]);
@@ -547,7 +557,7 @@
       if (ids.length) {
         porCliente = await supabase.from('tarefas')
           .select('*, clientes(nome_principal, nome_fantasia, documento)')
-          .in('cliente_id', ids).limit(50);
+          .in('cliente_id', ids).limit(200);
       }
       const mapa = new Map();
       [...(porTexto.data || []), ...(porCliente.data || [])].forEach(x => mapa.set(x.id, x));
@@ -560,17 +570,69 @@
       render();
     }
 
+    // ---------- concluir em lote nas listas (foco e busca) — pedido da Adaini, 17/09 ----------
+    let loteSel = new Set();
+    const loteAbertas = itens => itens.filter(t => t.status !== 'concluida');
+    function loteCheck(t){
+      if (t.status === 'concluida') return '<span class="ag-lote-vazio"></span>';
+      return `<input type="checkbox" class="ag-lote-ck" data-lote="${t.id}" ${loteSel.has(String(t.id)) ? 'checked' : ''} title="Selecionar pra concluir em lote">`;
+    }
+    function loteBarra(itens){
+      const abertas = loteAbertas(itens);
+      if (!abertas.length) return '';
+      const n = [...loteSel].filter(id => abertas.some(t => String(t.id) === id)).length;
+      return `<div class="ag-lote-barra" id="agLoteBarra">
+        <label><input type="checkbox" id="agLoteTodas" ${n && n === abertas.length ? 'checked' : ''}> Selecionar todas (${abertas.length})</label>
+        <span class="ag-lote-n" id="agLoteN">${n ? n + ' selecionada(s)' : 'Marque as tarefas que quer concluir'}</span>
+        <button class="btn btn-primary btn-sm" id="agLoteConcluir" ${n ? '' : 'disabled'}>Concluir ${n || ''} selecionada${n === 1 ? '' : 's'}</button>
+      </div>`;
+    }
+    function loteAtualizar(itens){
+      const abertas = loteAbertas(itens);
+      const n = [...loteSel].filter(id => abertas.some(t => String(t.id) === id)).length;
+      const nEl = document.getElementById('agLoteN'), b = document.getElementById('agLoteConcluir'), todas = document.getElementById('agLoteTodas');
+      if (nEl) nEl.textContent = n ? n + ' selecionada(s)' : 'Marque as tarefas que quer concluir';
+      if (b) { b.disabled = !n; b.textContent = 'Concluir ' + (n || '') + ' selecionada' + (n === 1 ? '' : 's'); }
+      if (todas) todas.checked = !!n && n === abertas.length;
+    }
+    function wireLote(itens){
+      document.querySelectorAll('.ag-lote-ck').forEach(ck => {
+        ck.addEventListener('click', e => e.stopPropagation());   // o clique no card abre o detalhe; o do check só marca
+        ck.addEventListener('change', () => { ck.checked ? loteSel.add(ck.dataset.lote) : loteSel.delete(ck.dataset.lote); loteAtualizar(itens); });
+      });
+      document.getElementById('agLoteTodas')?.addEventListener('change', e => {
+        loteAbertas(itens).forEach(t => e.target.checked ? loteSel.add(String(t.id)) : loteSel.delete(String(t.id)));
+        document.querySelectorAll('.ag-lote-ck').forEach(ck => ck.checked = e.target.checked);
+        loteAtualizar(itens);
+      });
+      document.getElementById('agLoteConcluir')?.addEventListener('click', async () => {
+        const ids = [...loteSel].filter(id => loteAbertas(itens).some(t => String(t.id) === id));
+        if (!ids.length) return;
+        if (!confirm('Concluir ' + ids.length + ' tarefa(s) de uma vez?')) return;
+        const b = document.getElementById('agLoteConcluir'); b.disabled = true; b.textContent = 'Concluindo…';
+        const agora = new Date().toISOString();
+        const { error } = await supabase.from('tarefas').update({ status: 'concluida', concluida_em: agora, concluida_por: usuarioEmail }).in('id', ids);
+        if (error) { alert('Erro ao concluir: ' + error.message); b.disabled = false; return; }
+        await supabase.from('tarefa_historico').insert(ids.map(id => ({ tarefa_id: id, descricao: 'Tarefa concluída em lote pela Agenda (' + ids.length + ' tarefas).', autor: usuarioEmail })));
+        loteSel = new Set();
+        if (modoBusca) { await carregarDados(...rangeAtual()); await carregarFoco(); await executarBusca(termoBusca); }
+        else await recarregarERenderizar();
+      });
+    }
+
     function renderBusca(){
       const fData = p => p ? String(p).slice(0, 10).split('-').reverse().join('/') : 'Sem prazo';
       let html = `<div class="ag-dia-secao">🔎 Resultados para "${esc(termoBusca)}" <span class="cont">${cacheBusca.length}</span>
         <button class="btn btn-ghost btn-sm" id="agBuscaLimpar" style="margin-left:12px;">Limpar busca</button>
-        <span style="font-weight:400; font-size:11.5px; color:var(--text-dim); margin-left:10px;">busca em todas as datas e responsáveis</span></div>`;
+        <span style="font-weight:400; font-size:11.5px; color:var(--text-dim); margin-left:10px;">busca em todas as datas e responsáveis${cacheBusca.length >= 200 ? ' · mostrando as 200 primeiras, refine o termo' : ''}</span></div>`;
+      html += loteBarra(cacheBusca);
       if (!cacheBusca.length) html += '<div style="color:var(--text-muted); padding:20px 4px;">Nada encontrado com esse termo.</div>';
       cacheBusca.forEach(t => {
         const concl = t.status === 'concluida';
         const cli = t.clientes?.nome_principal ? `<span>${esc(t.clientes.nome_principal)}</span><span class="sep">·</span>` : '';
         const resp = t.responsavel ? `<span>${esc(t.responsavel)}</span>` : '';
         html += `<div class="ag-card ${classePrio(t.prioridade)}" data-bstask="${t.id}"${concl ? ' style="opacity:.55;"' : ''}>
+          ${loteCheck(t)}
           <div class="ag-card-main">
             <div class="ag-card-titulo">${concl ? '✓ ' : ''}${esc(t.titulo) || '(sem título)'}${horaDaTarefa(t) ? `<span class="t-hora">🕐 ${horaDaTarefa(t)}</span>` : ''}${t.transicao_id ? '<span class="t-hora" title="tarefa de transição">🔁</span>' : ''}</div>
             <div class="ag-card-meta"><b style="color:var(--brand-light);">${fData(t.prazo)}</b><span class="sep">·</span>${chip(t.setor)} ${cli} ${resp}</div>
@@ -584,6 +646,7 @@
       document.getElementById('agBuscaLimpar')?.addEventListener('click', limparBusca);
       document.querySelectorAll('[data-bstask]').forEach(el =>
         el.addEventListener('click', () => abrirDetalhe(el.dataset.bstask)));
+      wireLote(cacheBusca);
     }
 
     function limparBusca(){
@@ -639,6 +702,7 @@
         c.innerHTML = renderFoco();
         document.getElementById('agFocoLimpar')?.addEventListener('click', () => { estado.foco = null; render(); });
         document.querySelectorAll('[data-bstask]').forEach(el => el.addEventListener('click', () => abrirDetalhe(el.dataset.bstask)));
+        wireLote((bucketsFoco()[estado.foco] || []));
         return;
       }
       if (estado.view==='dia') c.innerHTML = renderDia();
