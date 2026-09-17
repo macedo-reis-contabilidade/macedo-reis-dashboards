@@ -163,6 +163,7 @@
   .cifra{float:left}
   .rec-sal .c1{font-size:12.5px}
   .rec-sal .c3,.rec-sal .c4{border:0}
+  .rec-info{font-size:10.5px;padding-left:10px !important;color:#333}
   .rec-cab td{text-align:center;font-size:11.5px}
   .rec-folga td{height:34px}
   .rec-total td{font-size:15px}
@@ -186,6 +187,10 @@
     #areaRecibo{display:block !important}
     .recibo{border:1px solid #000;margin:0;padding:10px 12px}
   }
+
+  .ou{margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)}
+  .ou label{font-size:13.5px;color:var(--muted);font-weight:400}
+  .nota{margin:8px 0 0;font-size:13px;color:var(--accent);min-height:1px}
 
   footer{
     text-align:center;
@@ -247,6 +252,11 @@
         <span>% sobre o salário do mês</span>
       </div>
       <p class="valor" id="resultadoPct" style="margin-top:8px">R$ 0,00</p>
+      <div class="ou">
+        <label for="valorAdi">ou informe outro valor de adiantamento</label>
+        <input id="valorAdi" type="text" inputmode="decimal" placeholder="deixe vazio para usar o percentual" autocomplete="off">
+      </div>
+      <p class="nota" id="notaAdi"></p>
     </div>
   </div>
 
@@ -273,7 +283,7 @@
           <tr class="rec-sal">
             <td class="c1">SALÁRIO</td>
             <td class="c2 dir"><span class="cifra">R$</span><span id="recHora"></span></td>
-            <td class="c3"></td><td class="c4"></td>
+            <td class="c3 rec-info" id="recHoraInfo" colspan="2"></td>
           </tr>
           <tr class="rec-cab">
             <td class="c1">EVENTO</td><td class="c2">DESCRIÇÃO</td>
@@ -394,9 +404,26 @@
       : 'Salário do mês';
     document.getElementById('salario').textContent = brl(salario);
 
+    var ad = adiantamentoDe(salario);
+    document.getElementById('resultadoPct').textContent = brl(ad.total);
+    document.getElementById('notaAdi').textContent = ad.direto
+      ? 'Usando o valor informado. O percentual foi ignorado.'
+      : '';
+  }
+
+  // valor digitado manda; sem ele, vale o percentual (com arredondamento em real inteiro)
+  function adiantamentoDe(salario){
+    var direto = lerNumero(document.getElementById('valorAdi').value);
+    if (isFinite(direto) && direto > 0){
+      var v = Math.round(direto * 100) / 100;
+      return { direto:true, pct:null, bruto:v, total:v, arredondamento:0 };
+    }
     var pct = lerNumero(inPct.value);
     if (!isFinite(pct)) pct = 0;
-    document.getElementById('resultadoPct').textContent = brl(salario * pct / 100);
+    var bruto = Math.round(salario * pct / 100 * 100) / 100;
+    var total = Math.round(bruto);
+    return { direto:false, pct:pct, bruto:bruto, total:total,
+             arredondamento: Math.round((total - bruto) * 100) / 100 };
   }
 
   ['change','input'].forEach(function(ev){
@@ -440,12 +467,7 @@
     var horas = Math.round(dias * (44 / 6) * 100) / 100;
     var salario = Math.round(valorHora * horas * 100) / 100;
 
-    var pct = lerNumero(inPct.value);
-    if (!isFinite(pct)) pct = 0;
-
-    var adiantamento = Math.round(salario * pct / 100 * 100) / 100;
-    var total = Math.round(adiantamento);                       // fecha em real inteiro
-    var arredondamento = Math.round((total - adiantamento) * 100) / 100;
+    var ad = adiantamentoDe(salario);
 
     function contabil(v){
       var t = num(Math.abs(v), 2);
@@ -455,12 +477,14 @@
     document.getElementById('recNome').textContent = nome.toUpperCase();
     document.getElementById('recNome2').textContent = nome.toUpperCase();
     document.getElementById('recComp').textContent = doisDig(mes) + '/' + ano;
-    document.getElementById('recHora').textContent = num(valorHora, 2);
-    document.getElementById('recPct').textContent = num(pct, 0) + '%';
-    document.getElementById('recAdi').textContent = contabil(adiantamento);
-    document.getElementById('recArr').textContent = contabil(arredondamento);
-    document.getElementById('recTotal').textContent = contabil(total);
-    document.getElementById('recImp').textContent = contabil(total);
+    var detalheHora = brl(valorHora) + ' por hora × ' + num(horas, 2) + ' h';
+    document.getElementById('recHora').textContent = num(salario, 2);
+    document.getElementById('recHoraInfo').textContent = detalheHora;
+    document.getElementById('recPct').textContent = ad.direto ? '' : num(ad.pct, 0) + '%';
+    document.getElementById('recAdi').textContent = contabil(ad.bruto);
+    document.getElementById('recArr').textContent = contabil(ad.arredondamento);
+    document.getElementById('recTotal').textContent = contabil(ad.total);
+    document.getElementById('recImp').textContent = contabil(ad.total);
 
     var emp = dadosEmpresa();
     document.getElementById('recEmpresa').textContent = emp.nome;
@@ -471,11 +495,12 @@
       cnpj: emp.cnpj,
       nome: nome.toUpperCase(),
       competencia: doisDig(mes) + '/' + ano,
-      hora: num(valorHora, 2),
-      percentual: num(pct, 0) + '%',
-      adiantamento: contabil(adiantamento),
-      arredondamento: contabil(arredondamento),
-      total: contabil(total)
+      hora: num(salario, 2),
+      detalheHora: detalheHora,
+      percentual: ad.direto ? '' : num(ad.pct, 0) + '%',
+      adiantamento: contabil(ad.bruto),
+      arredondamento: contabil(ad.arredondamento),
+      total: contabil(ad.total)
     };
 
     var area = document.getElementById('areaRecibo');
@@ -546,6 +571,9 @@
     doc.setFontSize(10);
     doc.text('R$', x2 + 6, y + 14);
     dir(r.hora, x2 + c2 - 6, y + 14);
+    doc.setFontSize(8).setTextColor(60);
+    doc.text(r.detalheHora || '', x3 + 8, y + 14);
+    doc.setFontSize(10).setTextColor(0);
     y += hSal;
 
     // cabeçalho da tabela
@@ -613,7 +641,7 @@
     doc.save('Recibo adiantamento - ' + dadosRecibo.nome + ' - ' + dadosRecibo.competencia.replace('/', '-') + '.pdf');
   });
 
-  ['nome','hora','pct','mes','ano','empresa','cnpj'].forEach(function(id){
+  ['nome','hora','pct','valorAdi','mes','ano','empresa','cnpj'].forEach(function(id){
     document.getElementById(id).addEventListener('input', function(){
       if (!document.getElementById('areaRecibo').hidden) gerarRecibo();
     });
