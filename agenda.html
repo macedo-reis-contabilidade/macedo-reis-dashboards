@@ -324,6 +324,18 @@
     </div>
   </div>
 
+  <!-- lote: observação que vai pro histórico de cada tarefa selecionada (concluir ou só registrar andamento) -->
+  <div id="loOverlay" style="display:none; position:fixed; inset:0; background:var(--overlay); z-index:70; align-items:center; justify-content:center; padding:20px;">
+    <div style="background:var(--surface); border:1px solid var(--fill-3); border-radius:14px; padding:18px 20px; max-width:460px; width:100%;">
+      <h3 id="loTitulo" style="margin:0 0 10px; font-size:15px; color:var(--text);">Concluir tarefas</h3>
+      <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px;" id="loLabel">Observação (opcional) — vai pro histórico de cada uma</label>
+      <textarea id="loObs" class="input" rows="3" style="width:100%; resize:vertical; font-family:inherit;" placeholder="Ex.: Recadastramento feito no portal da SEFAZ, protocolo enviado ao cliente por WhatsApp."></textarea>
+      <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:14px;">
+        <button class="btn btn-ghost btn-sm" id="loCancelar">Cancelar</button>
+        <button class="btn btn-primary btn-sm" id="loConfirmar">Concluir</button>
+      </div>
+    </div>
+  </div>
   <div id="raOverlay" style="display:none; position:fixed; inset:0; background:var(--overlay); z-index:70; align-items:center; justify-content:center; padding:20px;">
     <div style="background:var(--surface); border:1px solid var(--fill-3); border-radius:14px; padding:18px 20px; max-width:380px; width:100%;">
       <h3 style="margin:0 0 4px; font-size:14px; color:#52B4C6; text-transform:uppercase; letter-spacing:.05em;">Rotina</h3>
@@ -584,13 +596,15 @@
       return `<div class="ag-lote-barra" id="agLoteBarra">
         <label><input type="checkbox" id="agLoteTodas" ${n && n === abertas.length ? 'checked' : ''}> Selecionar todas (${abertas.length})</label>
         <span class="ag-lote-n" id="agLoteN">${n ? n + ' selecionada(s)' : 'Marque as tarefas que quer concluir'}</span>
+        <button class="btn btn-ghost btn-sm" id="agLoteAndamento" ${n ? '' : 'disabled'} title="Anota a mesma observação no histórico de todas as selecionadas, sem concluir">Registrar andamento</button>
         <button class="btn btn-primary btn-sm" id="agLoteConcluir" ${n ? '' : 'disabled'}>Concluir ${n || ''} selecionada${n === 1 ? '' : 's'}</button>
       </div>`;
     }
     function loteAtualizar(itens){
       const abertas = loteAbertas(itens);
       const n = [...loteSel].filter(id => abertas.some(t => String(t.id) === id)).length;
-      const nEl = document.getElementById('agLoteN'), b = document.getElementById('agLoteConcluir'), todas = document.getElementById('agLoteTodas');
+      const nEl = document.getElementById('agLoteN'), b = document.getElementById('agLoteConcluir'), todas = document.getElementById('agLoteTodas'), ba = document.getElementById('agLoteAndamento');
+      if (ba) ba.disabled = !n;
       if (nEl) nEl.textContent = n ? n + ' selecionada(s)' : 'Marque as tarefas que quer concluir';
       if (b) { b.disabled = !n; b.textContent = 'Concluir ' + (n || '') + ' selecionada' + (n === 1 ? '' : 's'); }
       if (todas) todas.checked = !!n && n === abertas.length;
@@ -605,20 +619,49 @@
         document.querySelectorAll('.ag-lote-ck').forEach(ck => ck.checked = e.target.checked);
         loteAtualizar(itens);
       });
-      document.getElementById('agLoteConcluir')?.addEventListener('click', async () => {
-        const ids = [...loteSel].filter(id => loteAbertas(itens).some(t => String(t.id) === id));
-        if (!ids.length) return;
-        if (!confirm('Concluir ' + ids.length + ' tarefa(s) de uma vez?')) return;
-        const b = document.getElementById('agLoteConcluir'); b.disabled = true; b.textContent = 'Concluindo…';
-        const agora = new Date().toISOString();
-        const { error } = await supabase.from('tarefas').update({ status: 'concluida', concluida_em: agora, concluida_por: usuarioEmail }).in('id', ids);
-        if (error) { alert('Erro ao concluir: ' + error.message); b.disabled = false; return; }
-        await supabase.from('tarefa_historico').insert(ids.map(id => ({ tarefa_id: id, descricao: 'Tarefa concluída em lote pela Agenda (' + ids.length + ' tarefas).', autor: usuarioEmail })));
+      const idsSel = () => [...loteSel].filter(id => loteAbertas(itens).some(t => String(t.id) === id));
+      document.getElementById('agLoteConcluir')?.addEventListener('click', () => abrirLote('concluir', idsSel()));
+      document.getElementById('agLoteAndamento')?.addEventListener('click', () => abrirLote('andamento', idsSel()));
+    }
+    // modal do lote: uma observação pra todas (opcional ao concluir, obrigatória no andamento)
+    let loteModo = 'concluir', loteIds = [];
+    function abrirLote(modo, ids){
+      if (!ids.length) return;
+      loteModo = modo; loteIds = ids;
+      const n = ids.length;
+      document.getElementById('loTitulo').textContent = modo === 'concluir' ? `Concluir ${n} tarefa${n > 1 ? 's' : ''}` : `Registrar andamento em ${n} tarefa${n > 1 ? 's' : ''}`;
+      document.getElementById('loLabel').textContent = modo === 'concluir' ? 'Observação (opcional) — vai pro histórico de cada uma' : 'O que aconteceu — vai pro histórico de cada uma';
+      document.getElementById('loConfirmar').textContent = modo === 'concluir' ? `Concluir ${n}` : `Registrar em ${n}`;
+      document.getElementById('loObs').value = '';
+      const ov = document.getElementById('loOverlay'); ov.style.display = 'flex';
+      setTimeout(() => document.getElementById('loObs').focus(), 50);
+    }
+    function fecharLote(){ document.getElementById('loOverlay').style.display = 'none'; }
+    document.getElementById('loCancelar').addEventListener('click', fecharLote);
+    document.getElementById('loOverlay').addEventListener('click', e => { if (e.target.id === 'loOverlay') fecharLote(); });
+    document.getElementById('loConfirmar').addEventListener('click', async () => {
+      const obs = document.getElementById('loObs').value.trim();
+      const ids = loteIds, n = ids.length;
+      if (loteModo === 'andamento' && !obs) { alert('Escreve o que aconteceu — é isso que vai pro histórico.'); return; }
+      const b = document.getElementById('loConfirmar'); b.disabled = true; b.textContent = 'Gravando…';
+      try {
+        if (loteModo === 'concluir') {
+          const { error } = await supabase.from('tarefas').update({ status: 'concluida', concluida_em: new Date().toISOString(), concluida_por: usuarioEmail }).in('id', ids);
+          if (error) { alert('Erro ao concluir: ' + error.message); return; }
+        }
+        const texto = loteModo === 'concluir'
+          ? 'Tarefa concluída em lote pela Agenda (' + n + ' tarefas).' + (obs ? ' ' + obs : '')
+          : obs + ' (registrado em lote pela Agenda, ' + n + ' tarefas)';
+        const { error: eh } = await supabase.from('tarefa_historico').insert(ids.map(id => ({ tarefa_id: id, descricao: texto, autor: usuarioEmail })));
+        if (eh) { alert('Histórico não gravado: ' + eh.message); }
+        fecharLote();
         loteSel = new Set();
         if (modoBusca) { await carregarDados(...rangeAtual()); await carregarFoco(); await executarBusca(termoBusca); }
         else await recarregarERenderizar();
-      });
-    }
+      } finally {
+        b.disabled = false;
+      }
+    });
 
     function renderBusca(){
       const fData = p => p ? String(p).slice(0, 10).split('-').reverse().join('/') : 'Sem prazo';
