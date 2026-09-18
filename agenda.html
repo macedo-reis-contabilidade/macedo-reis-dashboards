@@ -137,6 +137,8 @@
     .ag-lote-barra label { display:inline-flex; align-items:center; gap:7px; cursor:pointer; color:var(--text); }
     .ag-lote-barra input { accent-color:var(--ok); width:15px; height:15px; margin:0; }
     .ag-lote-n { flex:1; }
+    .ag-ordem { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--text-dim); }
+    .ag-ordem .select { height:28px; padding:0 26px 0 8px; font-size:12px; border-radius:var(--ag-r-sm); width:auto; }
     .ag-lote-barra .btn-sm { height:28px; padding:0 12px; font-size:12px; border-radius:var(--ag-r-sm); }
     .ag-lote-barra .btn-sm:disabled { opacity:.45; cursor:default; }
     .ag-vazio { padding:12px 14px; text-align:center; color:var(--text-muted); font-size:13px; background:var(--ag-fill); border:1px dashed var(--ag-line); border-radius:var(--ag-r); }
@@ -481,6 +483,28 @@
         .order('prazo', { ascending: true }).limit(2000);
       cacheFoco = data || [];
     }
+    // ---------- ordem das listas (foco e busca) — pedido da Adaini, 18/09 ----------
+    const ORDENS = { prazo_cliente: 'Prazo, depois cliente A–Z', prazo_titulo: 'Prazo, depois título A–Z', cliente: 'Cliente A–Z', titulo: 'Título A–Z' };
+    let ordemLista = localStorage.getItem('mr_agenda_ordem') || 'prazo_cliente';
+    if (!ORDENS[ordemLista]) ordemLista = 'prazo_cliente';
+    const nomeCli = t => (t.clientes?.nome_principal || '\uffff').toLowerCase();   // sem cliente vai pro fim
+    const cmpTxt = (a, b) => a.localeCompare(b, 'pt-BR');
+    function ordenarLista(arr){
+      const concl = t => t.status === 'concluida' ? 1 : 0;
+      const prazo = t => String(t.prazo || '9999');
+      return [...arr].sort((a, b) => {
+        if (concl(a) !== concl(b)) return concl(a) - concl(b);          // abertas primeiro, sempre
+        if (ordemLista === 'cliente') return cmpTxt(nomeCli(a), nomeCli(b)) || cmpTxt(prazo(a), prazo(b));
+        if (ordemLista === 'titulo')  return cmpTxt((a.titulo||'').toLowerCase(), (b.titulo||'').toLowerCase()) || cmpTxt(prazo(a), prazo(b));
+        const p = cmpTxt(prazo(a), prazo(b)); if (p) return p;
+        if (ordemLista === 'prazo_titulo') return cmpTxt((a.titulo||'').toLowerCase(), (b.titulo||'').toLowerCase()) || cmpTxt(nomeCli(a), nomeCli(b));
+        return cmpTxt(nomeCli(a), nomeCli(b)) || cmpTxt((a.titulo||'').toLowerCase(), (b.titulo||'').toLowerCase());
+      });
+    }
+    const ordemSelect = () => `<label class="ag-ordem"><span>Ordem</span><select id="agOrdem" class="select">${Object.entries(ORDENS).map(([v,l]) => `<option value="${v}" ${v===ordemLista?'selected':''}>${l}</option>`).join('')}</select></label>`;
+    function wireOrdem(){
+      document.getElementById('agOrdem')?.addEventListener('change', e => { ordemLista = e.target.value; localStorage.setItem('mr_agenda_ordem', ordemLista); render(); });
+    }
     function bucketsFoco(){
       const hoje = hojeMeiaNoite(), hS = ymd(hoje), s7 = ymd(addDias(hoje, 7));
       const fimMes = ymd(new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0));
@@ -502,7 +526,7 @@
     }
     const FOCO_LBL = { atrasadas: '⚠ Atrasadas', hoje: 'Vencem hoje', '7dias': 'Próximos 7 dias', mes: 'Este mês' };
     function renderFoco(){
-      const b = bucketsFoco(); const itens = b[estado.foco] || [];
+      const b = bucketsFoco(); const itens = ordenarLista(b[estado.foco] || []);
       const fData = p => p ? String(p).slice(0, 10).split('-').reverse().join('/') : 'Sem prazo';
       const hS = ymd(hojeMeiaNoite());
       let html = `<div class="ag-dia-secao">${FOCO_LBL[estado.foco]} <span class="cont">${itens.length}</span>
@@ -573,11 +597,7 @@
       }
       const mapa = new Map();
       [...(porTexto.data || []), ...(porCliente.data || [])].forEach(x => mapa.set(x.id, x));
-      cacheBusca = [...mapa.values()].sort((a, b) => {
-        const ca = a.status === 'concluida' ? 1 : 0, cb = b.status === 'concluida' ? 1 : 0;
-        if (ca !== cb) return ca - cb;
-        return String(a.prazo || '0000') < String(b.prazo || '0000') ? -1 : 1;
-      });
+      cacheBusca = ordenarLista([...mapa.values()]);
       termoBusca = termo; modoBusca = true;
       render();
     }
@@ -591,11 +611,12 @@
     }
     function loteBarra(itens){
       const abertas = loteAbertas(itens);
-      if (!abertas.length) return '';
+      if (!abertas.length) return itens.length ? `<div class="ag-lote-barra"><span class="ag-lote-n">Todas concluídas</span>${ordemSelect()}</div>` : '';
       const n = [...loteSel].filter(id => abertas.some(t => String(t.id) === id)).length;
       return `<div class="ag-lote-barra" id="agLoteBarra">
         <label><input type="checkbox" id="agLoteTodas" ${n && n === abertas.length ? 'checked' : ''}> Selecionar todas (${abertas.length})</label>
         <span class="ag-lote-n" id="agLoteN">${n ? n + ' selecionada(s)' : 'Marque as tarefas que quer concluir'}</span>
+        ${ordemSelect()}
         <button class="btn btn-ghost btn-sm" id="agLoteAndamento" ${n ? '' : 'disabled'} title="Anota a mesma observação no histórico de todas as selecionadas, sem concluir">Registrar andamento</button>
         <button class="btn btn-primary btn-sm" id="agLoteConcluir" ${n ? '' : 'disabled'}>Concluir ${n || ''} selecionada${n === 1 ? '' : 's'}</button>
       </div>`;
@@ -668,6 +689,7 @@
       let html = `<div class="ag-dia-secao">🔎 Resultados para "${esc(termoBusca)}" <span class="cont">${cacheBusca.length}</span>
         <button class="btn btn-ghost btn-sm" id="agBuscaLimpar" style="margin-left:12px;">Limpar busca</button>
         <span style="font-weight:400; font-size:11.5px; color:var(--text-dim); margin-left:10px;">busca em todas as datas e responsáveis${cacheBusca.length >= 200 ? ' · mostrando as 200 primeiras, refine o termo' : ''}</span></div>`;
+      cacheBusca = ordenarLista(cacheBusca);
       html += loteBarra(cacheBusca);
       if (!cacheBusca.length) html += '<div style="color:var(--text-muted); padding:20px 4px;">Nada encontrado com esse termo.</div>';
       cacheBusca.forEach(t => {
@@ -687,6 +709,7 @@
 
     function wireBusca(){
       document.getElementById('agBuscaLimpar')?.addEventListener('click', limparBusca);
+      wireOrdem();
       document.querySelectorAll('[data-bstask]').forEach(el =>
         el.addEventListener('click', () => abrirDetalhe(el.dataset.bstask)));
       wireLote(cacheBusca);
@@ -745,7 +768,7 @@
         c.innerHTML = renderFoco();
         document.getElementById('agFocoLimpar')?.addEventListener('click', () => { estado.foco = null; render(); });
         document.querySelectorAll('[data-bstask]').forEach(el => el.addEventListener('click', () => abrirDetalhe(el.dataset.bstask)));
-        wireLote((bucketsFoco()[estado.foco] || []));
+        wireLote(ordenarLista(bucketsFoco()[estado.foco] || [])); wireOrdem();
         return;
       }
       if (estado.view==='dia') c.innerHTML = renderDia();
