@@ -482,7 +482,7 @@
       if (t.length < 3) { el.innerHTML = ''; return; }
       const { data } = await supabase.from('clientes')
         .select('id, nome_principal, nome_fantasia, regime_tributario, cidade')
-        .or(`nome_principal.ilike.*${t}*,nome_fantasia.ilike.*${t}*`)
+        .or(`nome_principal.ilike.*${t}*,nome_fantasia.ilike.*${t}*,nome_busca.ilike.*${t.toLowerCase().replace(/[^a-z0-9]/g, '') || t}*`)
         .limit(8);
       const jaIds = new Set(rows.map(r => r.cliente_id));
       const livres = (data || []).filter(c => !jaIds.has(c.id));

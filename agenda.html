@@ -562,7 +562,7 @@
         supabase.from('tarefas').select('*, clientes(nome_principal, nome_fantasia, documento)')
           .or(`titulo.ilike.*${t}*,descricao.ilike.*${t}*,responsavel.ilike.*${t}*`).limit(200),
         supabase.from('clientes').select('id')
-          .or(`nome_principal.ilike.*${t}*,nome_fantasia.ilike.*${t}*`).limit(20)
+          .or(`nome_principal.ilike.*${t}*,nome_fantasia.ilike.*${t}*,nome_busca.ilike.*${t.toLowerCase().replace(/[^a-z0-9]/g, '') || t}*`).limit(20)
       ]);
       let porCliente = { data: [] };
       const ids = (cli.data || []).map(c => c.id);
@@ -1169,7 +1169,7 @@
         if (t.length < 3) { el.style.display = 'none'; return; }
         const { data } = await supabase.from('clientes')
           .select('id, nome_principal, nome_fantasia, cidade')
-          .or(`nome_principal.ilike.*${t}*,nome_fantasia.ilike.*${t}*`).limit(8);
+          .or(`nome_principal.ilike.*${t}*,nome_fantasia.ilike.*${t}*,nome_busca.ilike.*${t.toLowerCase().replace(/[^a-z0-9]/g, '') || t}*`).limit(8);
         el.innerHTML = (data || []).map(c => `<button data-id="${c.id}">${c.nome_principal}<small>${[c.nome_fantasia, c.cidade].filter(Boolean).join(' · ') || '&nbsp;'}</small></button>`).join('')
           || '<button disabled style="color:var(--text-dim);cursor:default;">Nada encontrado.</button>';
         el.style.display = 'block';

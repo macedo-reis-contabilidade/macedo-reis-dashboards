@@ -86,7 +86,7 @@ function montar() {
       if (t.length < 3) { res.style.display = 'none'; return; }
       const { data } = await supabase.from('clientes')
         .select('id, nome_principal, nome_fantasia, cidade')
-        .or(`nome_principal.ilike.*${t}*,nome_fantasia.ilike.*${t}*`).limit(8);
+        .or(`nome_principal.ilike.*${t}*,nome_fantasia.ilike.*${t}*,nome_busca.ilike.*${t.toLowerCase().replace(/[^a-z0-9]/g, '') || t}*`).limit(8);
       res.innerHTML = (data || []).map(c => `<button type="button" data-id="${esc(c.id)}" data-nome="${esc(c.nome_principal)}">${esc(c.nome_principal)}<small>${esc([c.nome_fantasia, c.cidade].filter(Boolean).join(' · '))}</small></button>`).join('')
         || '<button type="button" disabled>Nada encontrado.</button>';
       res.style.display = 'block';

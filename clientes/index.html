@@ -274,7 +274,7 @@
         if (search) {
           const cnaes = `${c.cnae_principal || ''} ${Array.isArray(c.cnaes_secundarios) ? c.cnaes_secundarios.join(' ') : ''}`;
           const haystack = norm(`${c.nome_principal} ${c.nome_fantasia || ''} ${c.documento} ${cnaes}`);
-          if (!haystack.includes(search)) return false;
+          if (!haystack.includes(search) && !haystack.replace(/[^a-z0-9]/g, '').includes(search.replace(/[^a-z0-9]/g, ''))) return false;   // "LTC" acha "L T C"
         }
         return true;
       });
