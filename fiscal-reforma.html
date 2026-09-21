@@ -259,7 +259,7 @@
           <span class="rg-msg" id="bMsg"></span>
           <button class="btn btn-ghost" id="bImportarDom" title="Relatórios do Domínio (PDF) e notas fiscais (XML ou ZIP) na mesma caixa — lê, importa e preenche a ficha">Importar</button>
           <button class="btn btn-ghost" id="bCalcular">Calcular</button>
-          <button class="btn btn-primary" id="bGravar" disabled>Gravar simulação</button>
+          <button class="btn btn-primary" id="bGravar">Gravar simulação</button>
         </div>
         <p class="rt-nota" id="bXmlInfo" hidden></p>
         <div id="bSaida" hidden>
@@ -574,7 +574,6 @@
       if (!$('sPartilha').value) preencherPartilhaAuto();
       $('bMsg').textContent = '';
       $('bSaida').hidden = true;
-      $('bGravar').disabled = true;
       prepararPuxarXml(c.cliente_id);
 
       // C — decisão
@@ -918,7 +917,7 @@
           catch (e) { notasFonte = { fonte: null, aviso: 'Notas: ' + (e.message || e) }; }
         }
         $('ovDom').classList.remove('on');
-        $('bSaida').hidden = true; $('bGravar').disabled = true;
+        $('bSaida').hidden = true;
         const partes = [];
         if (cons && Object.keys(cons.campos).length) partes.push('Domínio: ' + domEstado.rels.map(rotuloRel).join(' · ') + '.');
         if (notasFonte && notasFonte.fonte) partes.push(notasFonte.fonte);
@@ -926,6 +925,9 @@
         $('bXmlInfo').hidden = false;
         if (notasFonte && notasFonte.aviso) { $('bMsg').style.color = '#E3B341'; $('bMsg').textContent = notasFonte.aviso; }
         else { $('bMsg').style.color = '#3FB07A'; $('bMsg').textContent = '✓ Campos preenchidos — confira e calcule' + ((domEstado.notas || 0) > 0 ? '' : ' (sem notas na base: % PJ e mix ficam por sua conta)'); }
+        // menos um clique: com o que veio dá pra calcular, calcula; se faltar algo, a mensagem diz o quê
+        try { calcular(); $('bMsg').style.color = '#3FB07A'; $('bMsg').textContent = '✓ Campos preenchidos e simulação calculada — confira e clique em Gravar simulação.'; }
+        catch (err) { $('bMsg').style.color = '#E3B341'; $('bMsg').textContent = 'Campos preenchidos; falta pra calcular: ' + err.message; }
       } finally { btn.disabled = false; btn.textContent = 'Aplicar'; }
     };
     function aplicarDominio(cons) {
@@ -1005,6 +1007,9 @@
     $('sPartilha').oninput = () => { $('sPartilha').dataset.auto = ''; $('sPartilhaHint').textContent = 'manual — ler no PGDAS'; };
 
     function entradaDaTela() {
+      // mix todo em branco = 100% à alíquota cheia (é o caso comum sem notas na base); a tela avisa
+      const mixVazio = ['sMixCheia', 'sMixRed60', 'sMixRed40', 'sMixRed30', 'sMixZero'].every(id => $(id).value.trim() === '');
+      if (mixVazio) { $('sMixCheia').value = '100'; origemXml('sMixCheia', 'sem mix informado: assumido 100% à alíquota cheia — ajuste se houver redução por NCM'); }
       return {
         anexo: $('sAnexo').value,
         rbt12: parseNum($('sRbt12').value),
@@ -1053,13 +1058,12 @@
         r.meses.map((m, i) => '<tr><td>' + MESES[i] + '</td><td>' + brl(m.caixaDentro) + '</td><td>' + brl(r.mes.dasSobra) + '</td><td>' + brl(m.aRecolher) + '</td><td>' + brl(m.estoque) + '</td><td>' + brl(m.custoDentro) + '</td><td>' + brl(m.custoFora) + '</td></tr>').join('') +
         '<tr class="tot"><td>Semestre</td><td>' + brl(s.caixaDentro) + '</td><td>' + brl(r.mes.dasSobra * 6) + '</td><td>' + brl(r.meses.reduce((a, m) => a + m.aRecolher, 0)) + '</td><td>' + brl(r.meses.reduce((a, m) => a + m.estoque, 0)) + '</td><td>' + brl(s.custoDentro) + '</td><td>' + brl(s.custoFora) + '</td></tr></tbody>';
       $('bSaida').hidden = false;
-      $('bGravar').disabled = false;
       return r;
     }
 
     $('bCalcular').onclick = () => {
       try { $('bMsg').textContent = ''; calcular(); }
-      catch (err) { simAtual = null; $('bGravar').disabled = true; $('bSaida').hidden = true; $('bMsg').style.color = '#E06C6C'; $('bMsg').textContent = err.message; }
+      catch (err) { simAtual = null; $('bSaida').hidden = true; $('bMsg').style.color = '#E06C6C'; $('bMsg').textContent = err.message; }
     };
 
     $('bGravar').onclick = async () => {
