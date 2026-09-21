@@ -9,6 +9,11 @@
 //   · RELATÓRIO DE FATURAMENTO      (saídas × serviços, mês a mês)
 //   · SIMPLES NACIONAL (PGDAS)      (RPA, RBT12, anexos e partilha por tributo)
 //   · ACOMPANHAMENTO DE ENTRADAS    (um lançamento por linha, com CFOP)
+//   · ACOMPANHAMENTO DE SAÍDAS      (vendas de mercadoria: cliente, CFOP, valor)
+//   · ACOMPANHAMENTO DE SERVIÇOS    (notas de serviço: cliente, valor)
+//     — os dois últimos dão receita por mês, % de vendas para PJ e a parcela com ST (CFOP x405).
+//       O relatório não traz CNPJ do cliente: PJ é reconhecida pelo nome (LTDA, ME, MUNICÍPIO…),
+//       e a lista fica visível na prévia pra conferência.
 // ============================================================
 
 const MESES = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
@@ -63,6 +68,8 @@ export function detectarTipo(paginas) {
   if (cabeca.includes('RELATORIO DE FATURAMENTO')) return 'faturamento';
   if (cabeca.includes('DEMONSTRATIVO MENSAL')) return 'demonstrativo';
   if (cabeca.includes('ACOMPANHAMENTO DE ENTRADAS')) return 'entradas';
+  if (cabeca.includes('ACOMPANHAMENTO DE SAIDAS')) return 'saidas';
+  if (cabeca.includes('ACOMPANHAMENTO DE SERVICOS')) return 'servicos';
   if (cabeca.includes('SIMPLES NACIONAL')) return 'simples';
   return null;
 }
@@ -71,7 +78,11 @@ function cabecalho(paginas) {
   const alvo = l => norm(l);
   const doc = linhas.map(l => (l.match(/CNPJ:?\s*(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})/) || [])[1]).find(Boolean) || null;
   let empresa = null;
+  // acompanhamentos de saídas/serviços abrem com "NOME DA EMPRESA  Página:  0001", sem rótulo
+  const m0 = (linhas[0] || '').match(/^[ \t]*([A-ZÀ-Ú0-9].*?)  +P[áa]gina/);
+  if (m0 && !/^(CNPJ|Empresa|Per[íi]odo|Insc)[^:]{0,12}:/i.test(m0[1])) empresa = m0[1].replace(/^\d+\s*-\s*/, '').trim();
   for (const l of linhas) {
+    if (empresa) break;
     const m = l.match(/Empresa:\s*(.+?)(?:\s{2,}(?:P[áa]gina|Emiss[ãa]o|CNPJ)|$)/i);
     if (m) { empresa = m[1].trim(); break; }
     const m2 = l.match(/^\s*\d+\s*-\s*(.+?)(?:\s{2,}(?:P[áa]gina|Emiss[ãa]o)|$)/);
@@ -235,13 +246,98 @@ export function lerEntradas(paginas) {
   return { tipo: 'entradas', ...base, lancamentos, totalGeral, conferido: totalGeral != null ? Math.abs(soma - totalGeral) <= 0.05 : null, soma };
 }
 
+
+// ---------- 4) ACOMPANHAMENTO DE SAÍDAS / DE SERVIÇOS ----------
+// Saídas:   "14  23/01/2026  6  1  36  2745  NOME DO CLIENTE  5-102  35  RS  250,00  ICMS  0,00 …"
+//           (código, data, nota, série, espécie, código do cliente, nome, CFOP, AC, UF, valor contábil…)
+// Serviços: "1  23/04/2026  1  84  2655  NOME DO CLIENTE  55  RS  250,00  0,00 …"  (sem CFOP; série pode vir vazia)
+// Depois da data vêm até 4 números (nota, série, espécie, código do cliente); o nome é o que sobra
+// até a âncora da direita (CFOP + AC + UF + valor nas saídas; AC + UF + valor nos serviços).
+const RX_SAIDA = /(\d)-(\d{3})\s+(\d+)\s+([A-Z]{2})\s+(-?[\d.]+,\d{2})/;
+const RX_SERV = /(\d{1,3})\s+([A-Z]{2})\s+(-?[\d.]+,\d{2})/;   // o AC pode vir colado ao nome ("…BENEFICENCIA55 RS")
+const CONSUMIDOR = ['AO CONSUMIDOR', 'CONSUMIDOR', 'CONSUMIDOR FINAL', 'CLIENTES DIVERSOS', 'CLIENTE DIVERSOS', 'DIVERSOS', 'VENDA A CONSUMIDOR', 'NAO IDENTIFICADO'];
+const PJ_TOKENS = ['LTDA', 'LTDA.', 'S/A', 'S.A', 'S.A.', 'SA', 'ME', 'EPP', 'EIRELI', 'MEI', 'CIA', 'CIA.', '&', 'COML', 'COM', 'COMERCIO', 'COMERCIAL', 'IND', 'INDUSTRIA', 'INDUSTRIAL',
+  'MUNICIPIO', 'PREFEITURA', 'ESTADO', 'UNIAO', 'FUNDACAO', 'ASSOCIACAO', 'ASSOC', 'CONSELHO', 'INSTITUICAO', 'INSTITUTO', 'INST', 'CIRCULO', 'ESCOLA', 'EMEF', 'EMEI', 'EMEIF', 'COLEGIO',
+  'ACADEMIA', 'CHURRASCARIA', 'HAMBURGUERIA', 'RESTAURANTE', 'PIZZARIA', 'LANCHERIA', 'PADARIA', 'CAFE', 'HOTEL', 'POUSADA', 'IGREJA', 'PAROQUIA', 'SINDICATO', 'COOPERATIVA', 'COOP',
+  'CONDOMINIO', 'CLINICA', 'HOSPITAL', 'FARMACIA', 'SUPERMERCADO', 'MERCADO', 'LOJA', 'LOJAS', 'TRANSPORTES', 'TRANSP', 'SERVICOS', 'PARTICIPACOES', 'EMPREENDIMENTOS', 'TECNOLOGIA',
+  'CONSTRUTORA', 'CONSTRUCOES', 'MECANICA', 'GRAFICA', 'DISTRIBUIDORA', 'CALCADOS', 'ESQUADRIAS', 'ARTEFATOS', 'FABRICACAO', 'CONFECCOES', 'MOVEIS', 'IMOVEIS', 'AGROPECUARIA', 'AGRO',
+  'VETERINARIA', 'ODONTOLOGIA', 'CONTABILIDADE', 'ADVOCACIA', 'ADVOGADOS', 'ENGENHARIA', 'ARQUITETURA', 'AUTOMOTIVA', 'AUTO', 'POSTO', 'CENTRO', 'GRUPO', 'HOLDING', 'EMPRESA', 'SOCIEDADE',
+  'ORGANIZACAO', 'ENTIDADE', 'CAMARA', 'SECRETARIA', 'DEPARTAMENTO', 'ASSISTENCIA', 'BENEFICENCIA', 'BENEFICIENCIA', 'TEMPLO', 'GONPA', 'MOSTEIRO', 'CONGREGACAO', 'MISSAO', 'LTD', 'INC', 'CORP'];
+export function classificarCliente(nome) {
+  const n = norm(nome).replace(/[.,]/g, m => m === '.' ? '.' : ' ');
+  if (!n) return 'consumidor';
+  if (CONSUMIDOR.some(c => n === c || n.startsWith(c + ' '))) return 'consumidor';
+  const toks = n.replace(/\./g, ' ').split(/\s+/).filter(Boolean);
+  if (toks.some(t => PJ_TOKENS.includes(t))) return 'pj';
+  if (/\bS\/?A\b|\bLTDA\b|\bM\.?E\b|\bE\.?P\.?P\b/.test(n)) return 'pj';
+  return 'pf';
+}
+export function lerVendas(paginas, tipo) {
+  const base = cabecalho(paginas);
+  const vendas = [];
+  let totalGeral = null;
+  const todas = paginas.flat();
+  for (let i = 0; i < todas.length; i++) {
+    const linha = todas[i];
+    if (/Total (CFOP|Acumulador|Cliente)/i.test(linha)) continue;
+    if (/Total Geral/i.test(linha)) {
+      const v = valores(linha).concat(valores(todas[i + 1] || ''));
+      if (v.length) totalGeral = v[0];
+      continue;
+    }
+    const dm = linha.match(/(\d{2}\/\d{2}\/\d{4})/);
+    if (!dm) continue;
+    const alvo = tipo === 'saidas' ? linha.match(RX_SAIDA) : linha.match(RX_SERV);
+    if (!alvo || alvo.index <= dm.index) continue;
+    // entre a data e a âncora: nota, [série], espécie, código do cliente (números), depois o nome
+    let meio = linha.slice(dm.index + dm[0].length, alvo.index).trim();
+    const cabeca = [];
+    while (cabeca.length < 4) {
+      const m = meio.match(/^(\d+)(?:\s+|$)/);
+      if (!m) break;
+      cabeca.push(m[1]); meio = meio.slice(m[0].length);
+    }
+    const nome = meio.replace(/\s{2,}/g, ' ').trim();
+    if (!nome) continue;
+    const data = dm[1];
+    const especie = cabeca.length >= 2 ? cabeca[cabeca.length - 2] : null;
+    const cfop = tipo === 'saidas' ? alvo[1] + alvo[2] : null;
+    const valor = numBR(tipo === 'saidas' ? alvo[5] : alvo[3]);
+    vendas.push({
+      tipo, data, competencia: data.slice(6, 10) + '-' + data.slice(3, 5),
+      nota: cabeca[0] || null, especie, cliente: nome, classe: classificarCliente(nome),
+      cfop, st: cfop ? cfop.slice(1) === '405' : false, valor
+    });
+  }
+  if (!vendas.length) throw new Error('não encontrei notas no acompanhamento de ' + (tipo === 'saidas' ? 'saídas' : 'serviços'));
+  const soma = vendas.reduce((a, x) => a + (x.valor || 0), 0);
+  return { tipo, ...base, vendas, totalGeral, conferido: totalGeral != null ? Math.abs(soma - totalGeral) <= 0.05 : null, soma };
+}
+
+// ---------- resumo das vendas (saídas + serviços) por tipo de cliente ----------
+export function resumirVendas(vendas, competencias) {
+  const dentro = v => !competencias || !competencias.length || competencias.includes(v.competencia);
+  const vs = vendas.filter(dentro);
+  const total = vs.reduce((a, v) => a + (v.valor || 0), 0);
+  const classes = { pj: { rotulo: 'Pessoa jurídica (pelo nome)', valor: 0, notas: 0, nomes: {} }, pf: { rotulo: 'Pessoa física (pelo nome)', valor: 0, notas: 0, nomes: {} }, consumidor: { rotulo: 'Consumidor não identificado', valor: 0, notas: 0, nomes: {} } };
+  vs.forEach(v => { const c = classes[v.classe]; c.valor += v.valor || 0; c.notas++; c.nomes[v.cliente] = (c.nomes[v.cliente] || 0) + (v.valor || 0); });
+  Object.values(classes).forEach(c => { c.top = Object.entries(c.nomes).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([nome, valor]) => ({ nome, valor })); c.nClientes = Object.keys(c.nomes).length; delete c.nomes; });
+  const mercadorias = vs.filter(v => v.tipo === 'saidas').reduce((a, v) => a + (v.valor || 0), 0);
+  const servicos = vs.filter(v => v.tipo === 'servicos').reduce((a, v) => a + (v.valor || 0), 0);
+  const st = vs.filter(v => v.st).reduce((a, v) => a + (v.valor || 0), 0);
+  const porMes = {};
+  vs.forEach(v => { const m = porMes[v.competencia] || (porMes[v.competencia] = { competencia: v.competencia, saidas: 0, servicos: 0, total: 0 }); m[v.tipo] += v.valor || 0; m.total += v.valor || 0; });
+  return { total, mercadorias, servicos, st, pctPJ: total ? classes.pj.valor / total * 100 : null, classes, meses: Object.values(porMes).sort((a, b) => a.competencia < b.competencia ? -1 : 1) };
+}
+
 export function lerRelatorio(paginas) {
   const tipo = detectarTipo(paginas);
   if (tipo === 'faturamento') return lerFaturamento(paginas, 'faturamento');
   if (tipo === 'demonstrativo') return lerFaturamento(paginas, 'demonstrativo');
   if (tipo === 'simples') return lerSimples(paginas);
   if (tipo === 'entradas') return lerEntradas(paginas);
-  throw new Error('não reconheci o relatório (esperado: Relatório de Faturamento, Demonstrativo Mensal, Simples Nacional ou Acompanhamento de Entradas da Domínio)');
+  if (tipo === 'saidas' || tipo === 'servicos') return lerVendas(paginas, tipo);
+  throw new Error('não reconheci o relatório (esperado: Relatório de Faturamento, Demonstrativo Mensal, Simples Nacional, Acompanhamento de Entradas, de Saídas ou de Serviços da Domínio)');
 }
 
 // ---------- resumo das entradas por grupo de CFOP ----------
@@ -289,6 +385,14 @@ export function consolidar(rels, incluir) {
     ents.forEach(e => { const comps = [...new Set(e.lancamentos.map(l => l.competencia))]; comps.forEach(c => porComp.set(c, e.lancamentos.filter(l => l.competencia === c))); });
     ent = { ...ents[ents.length - 1], lancamentos: [...porComp.values()].flat(), combinados: ents.length };
   }
+  // saídas + serviços: junta por competência (o relatório mais recente vence no mês repetido)
+  const vens = rels.filter(r => r.tipo === 'saidas' || r.tipo === 'servicos');
+  let ven = null;
+  if (vens.length) {
+    const porComp = new Map();
+    vens.forEach(r => { const comps = [...new Set(r.vendas.map(v => v.competencia))]; comps.forEach(c => porComp.set(r.tipo + '|' + c, r.vendas.filter(v => v.competencia === c))); });
+    ven = { vendas: [...porComp.values()].flat(), combinados: vens.length, tipos: [...new Set(vens.map(r => r.tipo))] };
+  }
   const campos = {}, origem = {}, avisos = [];
 
   // empresas diferentes no mesmo lote é erro de operação, não de leitura
@@ -309,10 +413,49 @@ export function consolidar(rels, incluir) {
       origem.receita = 'faturamento Domínio: ' + brl(totalBase) + ' ÷ ' + comFat.length + ' mês(es) (' + comFat[0].competencia.slice(5) + '/' + comFat[0].competencia.slice(2, 4) + ' a ' + comFat[comFat.length - 1].competencia.slice(5) + '/' + comFat[comFat.length - 1].competencia.slice(2, 4) + ')'
         + (pctServ > 0 ? ' · ' + pct(pctServ) + '% serviço' : '');
     }
+  } else if (ven) {
+    // sem o relatório de faturamento, saídas + serviços dão a receita por mês (até 12 meses)
+    const rv = resumirVendas(ven.vendas, null);
+    const comRec = rv.meses.filter(m => m.total > 0).slice(-12);
+    competencias = comRec.map(m => m.competencia);
+    if (comRec.length) {
+      const totalBase = comRec.reduce((a, m) => a + m.total, 0), servBase = comRec.reduce((a, m) => a + m.servicos, 0);
+      campos.receita = totalBase / comRec.length;
+      const pctServ = totalBase ? servBase / totalBase * 100 : 0;
+      origem.receita = (ven.tipos.includes('servicos') ? 'saídas + serviços' : 'saídas') + ' Domínio: ' + brl(totalBase) + ' ÷ ' + comRec.length + ' mês(es) (' + comRec[0].competencia.slice(5) + '/' + comRec[0].competencia.slice(2, 4) + ' a ' + comRec[comRec.length - 1].competencia.slice(5) + '/' + comRec[comRec.length - 1].competencia.slice(2, 4) + ')'
+        + (pctServ > 0 ? ' · ' + pct(pctServ) + '% serviço' : '');
+      if (!ven.tipos.includes('servicos')) avisos.push('Só o acompanhamento de saídas: se a empresa também presta serviço, suba o acompanhamento de serviços — senão a receita fica só de mercadoria.');
+      if (sim && sim.rpa && comRec.some(m => m.competencia === sim.competencia)) {
+        const mes = comRec.find(m => m.competencia === sim.competencia);
+        if (Math.abs(mes.total - sim.rpa) > 0.05) avisos.push('Em ' + sim.competencia + ' as saídas + serviços somam ' + brl(mes.total) + ' e o PGDAS traz ' + brl(sim.rpa) + ' de receita — diferença de ' + brl(mes.total - sim.rpa) + '; confira se falta relatório (serviços, outras saídas) ou se há receita fora dos acompanhamentos.');
+      }
+    }
   } else if (sim) {
     const h = sim.historico.filter(x => x.receita > 0);
     if (sim.rpa) { campos.receita = sim.rpa; origem.receita = 'PGDAS ' + sim.competencia + ': receita do período'; }
     if (h.length >= 12) avisos.push('Sem o relatório de faturamento, a receita vem de um mês só — suba o faturamento do ano para a média.');
+  }
+
+  // % de vendas para PJ e parcela com ST, das saídas + serviços
+  let resVen = null;
+  if (ven) {
+    resVen = resumirVendas(ven.vendas, competencias);
+    if (resVen.total > 0) {
+      campos.pctPJ = resVen.pctPJ;
+      origem.pctPJ = (ven.tipos.includes('servicos') ? 'saídas + serviços' : 'saídas') + ' Domínio: ' + brl(resVen.classes.pj.valor) + ' para ' + resVen.classes.pj.nClientes + ' cliente(s) com nome de PJ ÷ ' + brl(resVen.total)
+        + (resVen.classes.consumidor.valor > 0 ? ' (' + brl(resVen.classes.consumidor.valor) + ' a consumidor não identificado)' : '');
+      avisos.push('O relatório não traz o CNPJ do cliente: PJ foi reconhecida pelo nome (LTDA, ME, MUNICÍPIO, ESCOLA…). Confira a lista na prévia — quem estiver do lado errado muda o %.');
+      if (resVen.mercadorias > 0 && resVen.st > 0) {
+        const pctSt = resVen.st / resVen.mercadorias * 100;
+        origem.stVendas = 'saídas Domínio: ' + brl(resVen.st) + ' com CFOP x405 (ST) = ' + pct(pctSt) + '% das vendas de mercadoria';
+        if (campos.pctExcluidoST != null && Math.abs(pctSt - campos.pctExcluidoST) > 15) avisos.push('Parcela com ST nas saídas (' + pct(pctSt) + '%) e % excluído do DAS pelo PGDAS (' + pct(campos.pctExcluidoST) + '%) estão longe um do outro — vale entender por quê antes de calcular.');
+      }
+      if (fat) {
+        const mesesFat = fat.meses.filter(m => competencias.includes(m.competencia));
+        const totFat = mesesFat.reduce((a, m) => a + (m.total || 0), 0);
+        if (totFat > 0 && Math.abs(totFat - resVen.total) / totFat > 0.01) avisos.push('Saídas + serviços (' + brl(resVen.total) + ') e faturamento (' + brl(totFat) + ') não batem no período — o % de PJ foi medido sobre o que está nos acompanhamentos.');
+      }
+    }
   }
 
   if (sim) {
@@ -373,7 +516,7 @@ export function consolidar(rels, incluir) {
     avisos.push('Sem o relatório de entradas o % de compras não é calculado — é ele que decide o crédito no regime regular.');
   }
 
-  return { campos, origem, avisos, fat, sim, ent, competencias };
+  return { campos, origem, avisos, fat, sim, ent, ven, resVen, competencias };
 }
 
 const brl = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });

@@ -319,7 +319,7 @@
   <div class="rg-ov" id="ovDom">
     <div class="rg-card" style="max-width:900px">
       <h2>Importar</h2>
-      <p style="font-size:12.5px;color:#8A93A6;margin:6px 0 10px">Tudo na mesma caixa, na ordem que vier. <b>PDFs do Domínio</b> — Relatório de faturamento (receita e peso do serviço), Simples Nacional / PGDAS (anexo, RBT12 e partilha do DAS; vários meses, vale o mais recente) e Acompanhamento de entradas (% de compras que vira crédito) — são lidos direto do papel, sem IA, e nada é gravado até você aplicar. <b>Notas fiscais em XML ou ZIP</b> (NF-e, NFC-e, NFS-e) entram na base da empresa na hora, como no módulo de notas; delas saem % de clientes PJ, mix de alíquotas e a carteira da análise.</p>
+      <p style="font-size:12.5px;color:#8A93A6;margin:6px 0 10px">Tudo na mesma caixa, na ordem que vier. <b>PDFs do Domínio</b> — Relatório de faturamento (receita e peso do serviço), Simples Nacional / PGDAS (anexo, RBT12 e partilha do DAS; vários meses, vale o mais recente) e Acompanhamento de entradas (% de compras que vira crédito), Acompanhamento de saídas e de serviços (receita por mês, % de vendas para PJ e parcela com ST) — são lidos direto do papel, sem IA, e nada é gravado até você aplicar. <b>Notas fiscais em XML ou ZIP</b> (NF-e, NFC-e, NFS-e) entram na base da empresa na hora, como no módulo de notas; delas saem % de clientes PJ, mix de alíquotas e a carteira da análise.</p>
       <div class="dom-drop" id="domDrop"><b>Arraste PDF, XML ou ZIP aqui</b><br>ou clique pra escolher — vários de uma vez</div>
       <input type="file" id="domFile" accept="application/pdf,.pdf,.xml,.zip,application/zip" multiple hidden>
       <div class="dom-lidos" id="domLidos"></div>
@@ -835,6 +835,7 @@
     function rotuloRel(r) {
       if (r.tipo === 'faturamento') return 'faturamento · ' + r.meses.length + ' mês(es)' + (r.conferido === false ? ' ⚠ soma não fecha' : '');
       if (r.tipo === 'simples') return 'PGDAS ' + (r.competencia || '?');
+      if (r.tipo === 'saidas' || r.tipo === 'servicos') return (r.tipo === 'saidas' ? 'saídas' : 'serviços') + ' · ' + r.vendas.length + ' nota(s)' + (r.conferido === false ? ' ⚠ soma não fecha' : '');
       return 'entradas · ' + r.lancamentos.length + ' lançamento(s)' + (r.conferido === false ? ' ⚠ soma não fecha' : '');
     }
 
@@ -873,6 +874,14 @@
           }).join('') + '</tbody></table>';
       }
 
+      if (cons.resVen && cons.resVen.total > 0) {
+        const rv = cons.resVen;
+        const lista = c => c.top.map(t => escapeHtml(t.nome.slice(0, 34)) + ' ' + brl(t.valor)).join(' · ') + (c.nClientes > c.top.length ? ' · +' + (c.nClientes - c.top.length) : '');
+        html += '<h3 style="margin:14px 0 0;font-size:12px;color:var(--text);">Vendas por tipo de cliente <small style="color:var(--text-dim);font-weight:400;">— PJ reconhecida pelo nome; confira quem está de cada lado</small></h3>' +
+          '<table class="dom-tab"><thead><tr><th>Tipo</th><th>Notas</th><th>Valor</th><th>% do total</th></tr></thead><tbody>' +
+          ['pj', 'pf', 'consumidor'].filter(k => rv.classes[k].notas > 0).map(k => { const c = rv.classes[k]; return '<tr><td>' + escapeHtml(c.rotulo) + '<div class="g" style="margin-top:2px;">' + lista(c) + '</div></td><td>' + c.notas + '</td><td>' + brl(c.valor) + '</td><td>' + brPct(Math.round(c.valor / rv.total * 1000) / 10) + '%</td></tr>'; }).join('') +
+          '</tbody></table>';
+      }
       const linha = (rot, val, of) => val == null ? '' :
         '<div class="dom-campo"><span>' + rot + (of ? '<span class="of">' + escapeHtml(of) + '</span>' : '') + '</span><b>' + val + '</b></div>';
       const k = cons.campos;
@@ -883,11 +892,13 @@
         linha('Partilha CBS/IBS no DAS', k.partilha != null ? brPct(Math.round(k.partilha * 10) / 10) + '%' : null, cons.origem.partilha) +
         linha('% compras de mercadorias', k.pctMerc != null ? brPct(Math.round(k.pctMerc * 10) / 10) + '%' : null, cons.origem.pctMerc) +
         linha('% compras de despesas', k.pctDesp != null ? brPct(Math.round(k.pctDesp * 10) / 10) + '%' : null, cons.origem.pctDesp) +
+        linha('% vendas para PJ', k.pctPJ != null ? brPct(Math.round(k.pctPJ * 10) / 10) + '%' : null, cons.origem.pctPJ) +
+        linha('Vendas com ST (informativo)', cons.origem.stVendas ? '✓' : null, cons.origem.stVendas) +
         '</div>';
       if (cons.origem.aliquotaEfetiva) html += '<p class="rt-nota">Alíquota efetiva no PGDAS: ' + escapeHtml(cons.origem.aliquotaEfetiva) + ' — depois de calcular, confira contra a que o simulador usa; diferença grande costuma ser receita em mais de um anexo.</p>';
       if (docFicha && docRel && docFicha !== docRel) cons.avisos.unshift('Os relatórios são do CNPJ ' + docRel + ', e esta ficha é de ' + docFicha + ' — confira se pegou o cliente certo.');
       cons.avisos.forEach(a => { html += '<div class="dom-aviso">⚠ ' + escapeHtml(a) + '</div>'; });
-      html += '<p class="rt-nota">% de clientes PJ e o mix de alíquotas não saem destes relatórios — vêm das notas na base (acima) ou você preenche à mão.</p>';
+      html += '<p class="rt-nota">' + (cons.resVen ? 'O mix de alíquotas (redução por NCM) não sai destes relatórios — vem das notas na base (acima) ou você preenche à mão. O % de PJ veio das saídas + serviços; com notas na base, as notas vencem.' : '% de clientes PJ e o mix de alíquotas não saem destes relatórios — suba o acompanhamento de saídas (e de serviços) pro % de PJ, ou as notas na base (acima), ou preencha à mão.') + '</p>';
       box.innerHTML = html;
       box.querySelectorAll('[data-dom-g]').forEach(cb => cb.onchange = () => { domEstado.incluir[cb.dataset.domG] = cb.checked; renderPreviaDom(); });
       atualizarAplicar();
@@ -925,6 +936,7 @@
       por('sReceita', k.receita != null ? brNum(Math.round(k.receita * 100) / 100) : null, cons.origem.receita ? 'do Domínio: ' + cons.origem.receita : null);
       por('sPctMerc', k.pctMerc != null ? brPct(r1(k.pctMerc)) : null, cons.origem.pctMerc ? 'do Domínio: ' + cons.origem.pctMerc : null);
       por('sPctDesp', k.pctDesp != null ? brPct(r1(k.pctDesp)) : null, cons.origem.pctDesp ? 'do Domínio: ' + cons.origem.pctDesp : null);
+      por('sPctPJ', k.pctPJ != null ? brPct(r1(k.pctPJ)) : null, cons.origem.pctPJ ? 'do Domínio: ' + cons.origem.pctPJ + ' — PJ pelo nome, sem CNPJ no relatório' : null);
       if (k.pctExcluidoST != null) {
         $('sPctST').value = brPct(r1(k.pctExcluidoST));
         origemXml('sPctST', 'do Domínio: ' + (cons.origem.pctExcluidoST || ''), 'dominio');
@@ -958,6 +970,7 @@
         // DAS realmente pago: média das apurações enviadas (não o simulado)
         dasMedio: (() => { const ps = rels.filter(r => r.tipo === 'simples'); return ps.length ? ps.reduce((a, r) => a + (r.dasTotal || 0), 0) / ps.length : null; })(),
         nPgdas: rels.filter(r => r.tipo === 'simples').length,
+        vendas: cons.resVen ? { total: cons.resVen.total, mercadorias: cons.resVen.mercadorias, servicos: cons.resVen.servicos, st: cons.resVen.st, pctPJ: cons.resVen.pctPJ, pj: cons.resVen.classes.pj.valor, pf: cons.resVen.classes.pf.valor, consumidor: cons.resVen.classes.consumidor.valor, nPJ: cons.resVen.classes.pj.nClientes, meses: cons.resVen.meses, fonte: 'acompanhamento de saídas' + (cons.ven.tipos.includes('servicos') ? ' e de serviços' : '') + ' (Domínio), PJ pelo nome' } : null,
         // soma TODAS as apurações enviadas: um mês só distorce o peso de cada anexo
         anexosOutros: (() => {
           const ps = rels.filter(r => r.tipo === 'simples');

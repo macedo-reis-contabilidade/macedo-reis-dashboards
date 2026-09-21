@@ -11,7 +11,7 @@
 // acompanhamento de entradas de 686 lançamentos): totais fechando ao
 // centavo e alíquota efetiva batendo com a do PGDAS na quarta casa.
 
-import { lerRelatorio, detectarTipo, grupoDoCfop, resumirEntradas, consolidar, numBR } from '../assets/js/dominio-relatorios.js';
+import { lerRelatorio, detectarTipo, grupoDoCfop, resumirEntradas, consolidar, numBR, classificarCliente, resumirVendas } from '../assets/js/dominio-relatorios.js';
 import { aliqEfetiva } from '../assets/js/rt-motor.js';
 
 let falhas = 0;
@@ -190,6 +190,62 @@ ok(cSemEnt.avisos.some(a => /entradas/i.test(a)), 'cobra o relatório de entrada
 console.log('\nCNPJs diferentes no mesmo lote:');
 const cMisto = consolidar([fat, { ...sim, cnpj: '99999999000199' }]);
 ok(cMisto.avisos.some(a => /CNPJs diferentes/i.test(a)), 'acusa lote com mais de uma empresa');
+
+console.log('\nAcompanhamento de saídas e de serviços (sintéticos, layout do pdf.js):');
+// saídas: colunas Código  Data  Nota  Série  Espécie  Código  Cliente  CFOP  AC.  UF  Valor…; o "1" de controle às vezes cola na frente,
+// e o CFOP às vezes cola no nome quando o nome é comprido
+const SAIDAS = [[
+  'EMPRESA TESTE COMERCIO LTDA  Página:  0001',
+  'CNPJ:  11.222.333/0001-44  Emissão:  21/09/2026',
+  'Insc Est.:  Hora:  15:11',
+  'Período:  01/01/2026 até 28/02/2026',
+  'ACOMPANHAMENTO DE SAÍDAS',
+  'Código  Data  Nota  Série  Espécie  Código  Cliente  CFOP  AC.  UF  Valor Contábil  Tipo  Base Cálculo  Alíq.  Valor  Isentas  Outras',
+  '14  23/01/2026  6  1  36  2745  MARIA DA SILVA  5-102  35  RS  250,00  ICMS  0,00  0,00  0,00  0,00  250,00',
+  '1  19  09/01/2026  1  1  45  2747  AO CONSUMIDOR  5-102  35  RS  100,00  ICMS  0,00  0,00  0,00  0,00  100,00',
+  '20  20/01/2026  2  1  36  2748  FABRICA DE CALCADOS TESTE LTDA5-102  35  RS  1.000,00  ICMS  0,00  0,00  0,00  0,00  1.000,00',
+  '21  05/02/2026  3  1  36  2749  MUNICIPIO DE TESTE  5-102  35  RS  650,00  ICMS  0,00  0,00  0,00  0,00  650,00',
+  'Total CFOP',
+  '2.000,00  ICMS  0,00  0,00  0,00  2.000,00',
+  '22  10/02/2026  4  1  36  2750  COML BEBIDAS TESTE LTDA  5-405  36  RS  3.000,00  ICMS  0,00  0,00  0,00  0,00  3.000,00',
+  'Total CFOP',
+  '3.000,00  ICMS  0,00  0,00  0,00  3.000,00',
+  'Total Geral',
+  '5.000,00  ICMS  0,00  0,00  0,00  5.000,00'
+]];
+const SERVICOS = [[
+  'EMPRESA TESTE COMERCIO LTDA  Página:  0001',
+  'CNPJ:  11.222.333/0001-44  Emissão:  21/09/2026',
+  'Período:  01/01/2026 até 28/02/2026',
+  'ACOMPANHAMENTO DE SERVIÇOS',
+  'Código  Data  Nota  Série  Espécie  Código Cliente  AC. UF  Valor Contábil Tipo  Base Cálculo  Alíq.  Valor  Isentas  Outras',
+  '1  23/02/2026  1  84  2655 ASSOCIACAO DE TESTE DE BENEFICENCIA55 RS  500,00  0,00  0,00  0,00  0,00  0,00',   // AC colado no nome, série vazia
+  '1  2  25/02/2026  2  84  2770 JOAO DE TESTE  55 RS  500,00  0,00  0,00  0,00  0,00  0,00',
+  'Total Acumulador',
+  '1.000,00  0,00  0,00  0,00  0,00',
+  'Total Geral',
+  '1.000,00  0,00  0,00  0,00  0,00'
+]];
+ok(detectarTipo(SAIDAS) === 'saidas' && detectarTipo(SERVICOS) === 'servicos', 'reconhece os dois acompanhamentos');
+const sai = lerRelatorio(SAIDAS), serv = lerRelatorio(SERVICOS);
+ok(sai.empresa === 'EMPRESA TESTE COMERCIO LTDA' && sai.cnpj === '11222333000144', 'cabeçalho sem rótulo "Empresa:" ainda dá nome e CNPJ');
+ok(sai.vendas.length === 5 && serv.vendas.length === 2, 'uma linha por nota, ignorando os totais por CFOP/acumulador');
+perto(sai.soma, 5000, 0.005, 'soma das saídas'); ok(sai.conferido === true, 'saídas batem com o Total Geral');
+perto(serv.soma, 1000, 0.005, 'soma dos serviços'); ok(serv.conferido === true, 'serviços batem com o Total Geral');
+ok(sai.vendas[2].cliente === 'FABRICA DE CALCADOS TESTE LTDA' && sai.vendas[2].cfop === '5102', 'CFOP colado no nome não entra no nome');
+ok(serv.vendas[0].cliente === 'ASSOCIACAO DE TESTE DE BENEFICENCIA' && serv.vendas[0].valor === 500, 'AC colado no nome não entra no nome (serviços)');
+ok(sai.vendas[1].classe === 'consumidor' && sai.vendas[0].classe === 'pf' && sai.vendas[2].classe === 'pj' && sai.vendas[3].classe === 'pj', 'consumidor, PF e PJ pelo nome');
+ok(classificarCliente('ELISANGELA R FREY & CIA LTDA') === 'pj' && classificarCliente('CHAGDUD GONPA BRASIL') === 'pj' && classificarCliente('ANA CARINA DEBARBA') === 'pf', 'tokens de PJ');
+ok(sai.vendas[4].st === true && sai.vendas[0].st === false, 'CFOP x405 marca ST');
+const rv = resumirVendas([...sai.vendas, ...serv.vendas], null);
+perto(rv.pctPJ, (1000 + 650 + 3000 + 500) / 6000 * 100, 0.005, '% PJ = valor com nome de PJ ÷ total (saídas + serviços)');
+perto(rv.st, 3000, 0.005, 'valor com ST');
+const cVen = consolidar([sai, serv], null);
+perto(cVen.campos.receita, 6000 / 2, 0.005, 'sem faturamento, receita = média mensal das saídas + serviços');
+perto(cVen.campos.pctPJ, rv.pctPJ, 0.005, 'pctPJ vai pros campos');
+ok(/PJ foi reconhecida pelo nome/.test(cVen.avisos.join(' ')), 'avisa que PJ é pelo nome');
+const cVenSim = consolidar([sai, serv, { ...sim, competencia: '2026-02', rpa: 4000 }], null);
+ok(cVenSim.avisos.some(a => /PGDAS traz/.test(a)), 'cruza o mês do PGDAS com saídas + serviços e acusa diferença');
 
 console.log('\nNúmeros no formato brasileiro:');
 ok(numBR('1.034.942,41') === 1034942.41, 'milhar com ponto e decimal com vírgula');
