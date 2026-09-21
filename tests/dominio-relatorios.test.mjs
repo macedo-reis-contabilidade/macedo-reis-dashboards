@@ -11,7 +11,7 @@
 // acompanhamento de entradas de 686 lançamentos): totais fechando ao
 // centavo e alíquota efetiva batendo com a do PGDAS na quarta casa.
 
-import { lerRelatorio, detectarTipo, grupoDoCfop, resumirEntradas, consolidar, numBR, classificarCliente, resumirVendas } from '../assets/js/dominio-relatorios.js';
+import { lerRelatorio, detectarTipo, grupoDoCfop, resumirEntradas, consolidar, numBR, classificarCliente, resumirVendas, lerPlanilha, detectarTipoPlanilha } from '../assets/js/dominio-relatorios.js';
 import { aliqEfetiva } from '../assets/js/rt-motor.js';
 
 let falhas = 0;
@@ -246,6 +246,47 @@ perto(cVen.campos.pctPJ, rv.pctPJ, 0.005, 'pctPJ vai pros campos');
 ok(/PJ foi reconhecida pelo nome/.test(cVen.avisos.join(' ')), 'avisa que PJ é pelo nome');
 const cVenSim = consolidar([sai, serv, { ...sim, competencia: '2026-02', rpa: 4000 }], null);
 ok(cVenSim.avisos.some(a => /PGDAS traz/.test(a)), 'cruza o mês do PGDAS com saídas + serviços e acusa diferença');
+
+console.log('\nPlanilha XLS da Domínio (matriz sintética, mesmo layout do export):');
+const XLS_SAIDAS = [
+  ['416 - EMPRESA TESTE COMERCIO LTDA'],
+  ['CNPJ:', '11.222.333/0001-44'],
+  ['Insc Est.:', '1234567890'],
+  ['Período:', '01/01/2016 até 31/08/2026'],
+  ['', '', '', '', '', '', '', '', 'ACOMPANHAMENTO DE SAÍDAS'],
+  ['Código', 'Data Emissão', 'Data', 'Nota', 'Série', 'Espécie', 'Código', 'Cliente', 'CNPJ/CPF/CEI/CAEPF', 'Insc. Est.', 'CFOP', 'AC.', 'UF', 'Valor Contábil', 'Tipo', 'Base Cálculo', 'Alíq.'],
+  ['3521', '02/08/2024', '02/08/2024', '82', '', '36', '7', 'CONDOMINIO TESTE', '50400850000148', '', '5-102', '35', 'RS', '271,68', '', '0,00', '0,00'],
+  ['3522', '02/08/2024', '02/08/2024', '83', '', '36', '8', 'MARIA DE TESTE', '12345678901', '', '5-102', '35', 'RS', 1115.7, '', 0, 0],      // valor numérico e CPF
+  ['3536', '01/08/2024', '01/08/2024', '42640', '', '45', '1', 'CLIENTES DIVERSOS', '00000000000000', '', '5-102', '35', 'RS', '17,00', '', '0,00', '0,00'],
+  ['3537', '01/08/2024', '01/08/2024', '42641', '', '45', '1', 'JOSE SEM DOCUMENTO LTDA', '', '', '5-405', '36', 'RS', '100,00', '', '0,00', '0,00'],   // sem documento: cai no nome
+  ['Total CFOP', '', '', '', '', '', '', '', '', '', '', '', '', '1.404,38'],
+  ['Total Geral', '', '', '', '', '', '', '', '', '', '', '', '', '1.504,38']
+];
+ok(detectarTipoPlanilha(XLS_SAIDAS) === 'saidas', 'reconhece a planilha de saídas pelo título numa célula solta');
+const xs = lerPlanilha(XLS_SAIDAS);
+ok(xs.empresa === 'EMPRESA TESTE COMERCIO LTDA' && xs.cnpj === '11222333000144', 'cabeçalho "416 - EMPRESA" e CNPJ');
+ok(xs.vendas.length === 4, 'uma venda por linha, sem os totais');
+perto(xs.soma, 1504.38, 0.005, 'soma (texto "271,68" e número 1115.7 misturados)'); ok(xs.conferido === true, 'bate com o Total Geral');
+ok(xs.vendas[0].classe === 'pj' && xs.vendas[0].classePorDocumento, 'CNPJ de 14 dígitos = PJ pelo documento');
+ok(xs.vendas[1].classe === 'pf' && xs.vendas[1].classePorDocumento, 'CPF de 11 dígitos = PF pelo documento');
+ok(xs.vendas[2].classe === 'consumidor' && xs.vendas[2].classePorDocumento, 'documento zerado = consumidor');
+ok(xs.vendas[3].classe === 'pj' && !xs.vendas[3].classePorDocumento, 'sem documento cai na leitura pelo nome');
+ok(xs.vendas[3].st === true && xs.vendas[3].cfop === '5405', 'CFOP "5-405" vira 5405 com ST');
+const XLS_ENT = [
+  ['416 - EMPRESA TESTE COMERCIO LTDA'], ['CNPJ:', '11.222.333/0001-44'], ['Período:', '01/01/2026 até 31/03/2026'],
+  ['', '', '', '', 'ACOMPANHAMENTO DE ENTRADAS'],
+  ['Código', 'Data Emissão', 'Data Entrada', 'Nota', 'Série', 'Espécie', 'Código', 'Fornecedor', 'CNPJ/CPF/CEI/CAEPF', 'Insc. Est.', 'CFOP', 'AC.', 'UF', 'Valor Contábil', 'Tipo'],
+  ['1', '05/01/2026', '06/01/2026', '111', '1', '55', '9', 'FORNECEDOR PECAS LTDA', '22.333.444/0001-55', '', '1-102', '67', 'RS', '10.000,00', 'ICMS'],
+  ['2', '11/02/2026', '11/02/2026', '114', '1', '55', '9', 'POSTO COMBUSTIVEL LTDA', '44.555.666/0001-77', '', '1-949', '67', 'RS', '500,00', 'ICMS'],
+  ['Total Geral', '', '', '', '', '', '', '', '', '', '', '', '', '10.500,00']
+];
+const xe = lerPlanilha(XLS_ENT);
+ok(xe.tipo === 'entradas' && xe.lancamentos.length === 2 && xe.lancamentos[0].competencia === '2026-01' && xe.lancamentos[0].grupo === 'mercadoria' && xe.lancamentos[1].grupo === 'outras', 'entradas em planilha: data de entrada, CFOP e grupo');
+ok(xe.conferido === true && xe.lancamentos[0].documento === '22333444000155', 'entradas batem com o Total Geral; CNPJ do fornecedor sem pontuação');
+const cX = consolidar([xs], null);
+ok(/com CNPJ/.test(cX.origem.pctPJ) === false && cX.avisos.some(a => /Parte das notas veio sem CNPJ/.test(a)), 'com uma venda sem documento, avisa que parte foi pelo nome');
+const cX2 = consolidar([{ ...xs, vendas: xs.vendas.slice(0, 3) }], null);
+ok(/com CNPJ/.test(cX2.origem.pctPJ) && !cX2.avisos.some(a => /pelo nome/.test(a)), 'com documento em todas, % PJ é pelo CNPJ e sem aviso de nome');
 
 console.log('\nNúmeros no formato brasileiro:');
 ok(numBR('1.034.942,41') === 1034942.41, 'milhar com ponto e decimal com vírgula');

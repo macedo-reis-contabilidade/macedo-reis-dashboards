@@ -319,7 +319,8 @@ export function resumirVendas(vendas, competencias) {
   const dentro = v => !competencias || !competencias.length || competencias.includes(v.competencia);
   const vs = vendas.filter(dentro);
   const total = vs.reduce((a, v) => a + (v.valor || 0), 0);
-  const classes = { pj: { rotulo: 'Pessoa jurídica (pelo nome)', valor: 0, notas: 0, nomes: {} }, pf: { rotulo: 'Pessoa física (pelo nome)', valor: 0, notas: 0, nomes: {} }, consumidor: { rotulo: 'Consumidor não identificado', valor: 0, notas: 0, nomes: {} } };
+  const porDoc = vs.length ? vs.filter(v => v.classePorDocumento).length / vs.length >= 0.99 : false;
+  const classes = { pj: { rotulo: porDoc ? 'Pessoa jurídica (CNPJ)' : 'Pessoa jurídica (pelo nome)', valor: 0, notas: 0, nomes: {} }, pf: { rotulo: porDoc ? 'Pessoa física (CPF)' : 'Pessoa física (pelo nome)', valor: 0, notas: 0, nomes: {} }, consumidor: { rotulo: 'Consumidor não identificado', valor: 0, notas: 0, nomes: {} } };
   vs.forEach(v => { const c = classes[v.classe]; c.valor += v.valor || 0; c.notas++; c.nomes[v.cliente] = (c.nomes[v.cliente] || 0) + (v.valor || 0); });
   Object.values(classes).forEach(c => { c.top = Object.entries(c.nomes).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([nome, valor]) => ({ nome, valor })); c.nClientes = Object.keys(c.nomes).length; delete c.nomes; });
   const mercadorias = vs.filter(v => v.tipo === 'saidas').reduce((a, v) => a + (v.valor || 0), 0);
@@ -328,6 +329,77 @@ export function resumirVendas(vendas, competencias) {
   const porMes = {};
   vs.forEach(v => { const m = porMes[v.competencia] || (porMes[v.competencia] = { competencia: v.competencia, saidas: 0, servicos: 0, total: 0 }); m[v.tipo] += v.valor || 0; m.total += v.valor || 0; });
   return { total, mercadorias, servicos, st, pctPJ: total ? classes.pj.valor / total * 100 : null, classes, meses: Object.values(porMes).sort((a, b) => a.competencia < b.competencia ? -1 : 1) };
+}
+
+// ---------- 5) PLANILHA (XLS/XLSX/CSV exportado da Domínio) ----------
+// Mesmos relatórios, em colunas: sem regex, sem coluna colada. `linhas` é a matriz da planilha
+// (uma linha = um array de células, já como texto ou número). O cabeçalho da empresa vem nas
+// primeiras linhas ("416 - EMPRESA", "CNPJ: …", "Período: …"), o título do relatório numa célula
+// solta e a linha de nomes de coluna logo abaixo. A planilha traz o CNPJ/CPF do cliente, que o PDF
+// não traz — por isso o % de PJ fica exato aqui (14 dígitos = PJ, 11 = PF, zeros/vazio = consumidor).
+const celTxt = c => c == null ? '' : (typeof c === 'number' ? String(c) : String(c)).trim();
+const celNum = c => c == null || c === '' ? null : (typeof c === 'number' ? c : numBR(String(c)));
+const acha = (cab, ...nomes) => { const n = cab.map(x => norm(x)); for (const nome of nomes) { const i = n.findIndex(x => x === norm(nome)); if (i >= 0) return i; } for (const nome of nomes) { const i = n.findIndex(x => x.startsWith(norm(nome))); if (i >= 0) return i; } return -1; };
+export function detectarTipoPlanilha(linhas) {
+  const cab = norm(linhas.slice(0, 12).map(l => (l || []).map(celTxt).join(' ')).join(' | '));
+  if (cab.includes('RELATORIO DE FATURAMENTO')) return 'faturamento';
+  if (cab.includes('DEMONSTRATIVO MENSAL')) return 'demonstrativo';
+  if (cab.includes('ACOMPANHAMENTO DE ENTRADAS')) return 'entradas';
+  if (cab.includes('ACOMPANHAMENTO DE SAIDAS')) return 'saidas';
+  if (cab.includes('ACOMPANHAMENTO DE SERVICOS')) return 'servicos';
+  return null;
+}
+function cabecalhoPlanilha(linhas) {
+  const txt = linhas.slice(0, 10).map(l => (l || []).map(celTxt).filter(Boolean).join('  '));
+  const paginas = [txt];
+  return cabecalho(paginas);
+}
+export function lerPlanilha(linhas) {
+  const tipo = detectarTipoPlanilha(linhas);
+  if (!tipo) throw new Error('não reconheci a planilha (esperado: Relatório de Faturamento, Demonstrativo Mensal, Acompanhamento de Entradas, de Saídas ou de Serviços exportado da Domínio)');
+  if (tipo === 'faturamento' || tipo === 'demonstrativo') {
+    // mesma leitura do PDF: junta as células com dois espaços e usa o leitor de texto
+    return lerFaturamento([linhas.map(l => (l || []).map(celTxt).filter(Boolean).join('  '))], tipo);
+  }
+  const base = cabecalhoPlanilha(linhas);
+  // linha de colunas: tem "Cliente"/"Fornecedor" e "Valor Contábil"
+  const iCab = linhas.findIndex(l => { const n = (l || []).map(norm); return n.some(x => x.startsWith('VALOR CONTABIL')) && n.some(x => x === 'CLIENTE' || x === 'FORNECEDOR'); });
+  if (iCab < 0) throw new Error('não achei a linha de colunas (Cliente/Fornecedor + Valor Contábil) na planilha');
+  const cab = linhas[iCab].map(celTxt);
+  const col = {
+    data: acha(cab, 'Data Entrada', 'Data Emissão', 'Data Emissao', 'Data'),
+    nota: acha(cab, 'Nota'), especie: acha(cab, 'Espécie', 'Especie'),
+    nome: acha(cab, 'Cliente', 'Fornecedor'), doc: acha(cab, 'CNPJ/CPF', 'CNPJ'),
+    cfop: acha(cab, 'CFOP'), ac: acha(cab, 'AC.', 'AC'), uf: acha(cab, 'UF'), valor: acha(cab, 'Valor Contábil', 'Valor Contabil')
+  };
+  if (col.nome < 0 || col.valor < 0) throw new Error('a planilha não tem as colunas esperadas (Cliente/Fornecedor e Valor Contábil)');
+  const itens = []; let totalGeral = null;
+  for (let i = iCab + 1; i < linhas.length; i++) {
+    const l = linhas[i] || []; const txt = l.map(celTxt);
+    const junto = txt.join(' ');
+    if (/Total Geral/i.test(junto)) { const v = l.map(celNum).filter(x => x != null && x !== 0); totalGeral = v.length ? v[0] : (totalGeral ?? 0); if (!v.length) { const prox = (linhas[i + 1] || []).map(celNum).filter(x => x != null); if (prox.length) totalGeral = prox[0]; } continue; }
+    if (/Total (CFOP|Acumulador|Fornecedor|Cliente)/i.test(junto)) continue;
+    const data = (txt[col.data] || '').match(/\d{2}\/\d{2}\/\d{4}/)?.[0] || null;
+    const valor = celNum(l[col.valor]);
+    const nome = txt[col.nome];
+    if (!data || valor == null || !nome) continue;
+    const doc = col.doc >= 0 ? dig(txt[col.doc]) : '';
+    const cfopTxt = col.cfop >= 0 ? dig(txt[col.cfop]) : '';
+    const cfop = cfopTxt.length === 4 ? cfopTxt : null;
+    const competencia = data.slice(6, 10) + '-' + data.slice(3, 5);
+    if (tipo === 'entradas') {
+      itens.push({ data, competencia, fornecedor: nome, documento: doc || null, cfop, ac: txt[col.ac] || null, uf: txt[col.uf] || null, valor, grupo: grupoDoCfop(cfop) });
+    } else {
+      const docLimpo = doc.replace(/^0+$/, '');
+      const classe = docLimpo.length === 14 ? 'pj' : docLimpo.length === 11 ? 'pf' : (doc && !docLimpo ? 'consumidor' : classificarCliente(nome));
+      itens.push({ tipo, data, competencia, nota: txt[col.nota] || null, especie: txt[col.especie] || null, cliente: nome, documento: docLimpo || null, classe, classePorDocumento: docLimpo.length === 14 || docLimpo.length === 11 || (!!doc && !docLimpo), cfop, st: cfop ? cfop.slice(1) === '405' : false, valor });
+    }
+  }
+  if (!itens.length) throw new Error('não encontrei lançamentos na planilha de ' + tipo);
+  const soma = itens.reduce((a, x) => a + (x.valor || 0), 0);
+  const conferido = totalGeral != null && totalGeral !== 0 ? Math.abs(soma - totalGeral) <= 0.05 : null;
+  if (tipo === 'entradas') return { tipo, ...base, lancamentos: itens, totalGeral, conferido, soma, fonte: 'planilha' };
+  return { tipo, ...base, vendas: itens, totalGeral, conferido, soma, fonte: 'planilha', porDocumento: itens.filter(v => v.classePorDocumento).length / itens.length };
 }
 
 export function lerRelatorio(paginas) {
@@ -442,9 +514,11 @@ export function consolidar(rels, incluir) {
     resVen = resumirVendas(ven.vendas, competencias);
     if (resVen.total > 0) {
       campos.pctPJ = resVen.pctPJ;
-      origem.pctPJ = (ven.tipos.includes('servicos') ? 'saídas + serviços' : 'saídas') + ' Domínio: ' + brl(resVen.classes.pj.valor) + ' para ' + resVen.classes.pj.nClientes + ' cliente(s) com nome de PJ ÷ ' + brl(resVen.total)
+      const porDoc = ven.vendas.length ? ven.vendas.filter(v => v.classePorDocumento).length / ven.vendas.length : 0;
+      origem.pctPJ = (ven.tipos.includes('servicos') ? 'saídas + serviços' : 'saídas') + ' Domínio: ' + brl(resVen.classes.pj.valor) + ' para ' + resVen.classes.pj.nClientes + ' cliente(s) ' + (porDoc >= 0.99 ? 'com CNPJ' : 'com nome de PJ') + ' ÷ ' + brl(resVen.total)
         + (resVen.classes.consumidor.valor > 0 ? ' (' + brl(resVen.classes.consumidor.valor) + ' a consumidor não identificado)' : '');
-      avisos.push('O relatório não traz o CNPJ do cliente: PJ foi reconhecida pelo nome (LTDA, ME, MUNICÍPIO, ESCOLA…). Confira a lista na prévia — quem estiver do lado errado muda o %.');
+      if (porDoc >= 0.99) resVen.porDocumento = true;
+      else avisos.push((porDoc > 0 ? 'Parte das notas veio sem CNPJ/CPF do cliente: nessas, ' : 'O relatório em PDF não traz o CNPJ do cliente: ') + 'PJ foi reconhecida pelo nome (LTDA, ME, MUNICÍPIO, ESCOLA…). Confira a lista na prévia — quem estiver do lado errado muda o %. A planilha (XLS) da Domínio traz o CNPJ e resolve isso.');
       if (resVen.mercadorias > 0 && resVen.st > 0) {
         const pctSt = resVen.st / resVen.mercadorias * 100;
         origem.stVendas = 'saídas Domínio: ' + brl(resVen.st) + ' com CFOP x405 (ST) = ' + pct(pctSt) + '% das vendas de mercadoria';

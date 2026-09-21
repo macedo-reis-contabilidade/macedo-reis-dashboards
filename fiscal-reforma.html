@@ -319,9 +319,9 @@
   <div class="rg-ov" id="ovDom">
     <div class="rg-card" style="max-width:900px">
       <h2>Importar</h2>
-      <p style="font-size:12.5px;color:#8A93A6;margin:6px 0 10px">Tudo na mesma caixa, na ordem que vier. <b>PDFs do Domínio</b> — Relatório de faturamento (receita e peso do serviço), Simples Nacional / PGDAS (anexo, RBT12 e partilha do DAS; vários meses, vale o mais recente) e Acompanhamento de entradas (% de compras que vira crédito), Acompanhamento de saídas e de serviços (receita por mês, % de vendas para PJ e parcela com ST) — são lidos direto do papel, sem IA, e nada é gravado até você aplicar. <b>Notas fiscais em XML ou ZIP</b> (NF-e, NFC-e, NFS-e) entram na base da empresa na hora, como no módulo de notas; delas saem % de clientes PJ, mix de alíquotas e a carteira da análise.</p>
-      <div class="dom-drop" id="domDrop"><b>Arraste PDF, XML ou ZIP aqui</b><br>ou clique pra escolher — vários de uma vez</div>
-      <input type="file" id="domFile" accept="application/pdf,.pdf,.xml,.zip,application/zip" multiple hidden>
+      <p style="font-size:12.5px;color:#8A93A6;margin:6px 0 10px">Tudo na mesma caixa, na ordem que vier. <b>PDFs do Domínio</b> — Relatório de faturamento (receita e peso do serviço), Simples Nacional / PGDAS (anexo, RBT12 e partilha do DAS; vários meses, vale o mais recente) e Acompanhamento de entradas (% de compras que vira crédito), Acompanhamento de saídas e de serviços (receita por mês, % de vendas para PJ e parcela com ST) — em PDF ou na <b>planilha XLS</b> exportada da Domínio (a planilha traz o CNPJ do cliente, e o % de PJ fica exato; é o formato pra empresa grande) — são lidos direto do papel, sem IA, e nada é gravado até você aplicar. <b>Notas fiscais em XML ou ZIP</b> (NF-e, NFC-e, NFS-e) entram na base da empresa na hora, como no módulo de notas; delas saem % de clientes PJ, mix de alíquotas e a carteira da análise.</p>
+      <div class="dom-drop" id="domDrop"><b>Arraste PDF, XLS, XML ou ZIP aqui</b><br>ou clique pra escolher — vários de uma vez</div>
+      <input type="file" id="domFile" accept="application/pdf,.pdf,.xml,.zip,application/zip,.xls,.xlsx,.csv" multiple hidden>
       <div class="dom-lidos" id="domLidos"></div>
       <div class="dom-notas" id="domNotas"></div>
       <div id="domPrevia"></div>
@@ -335,10 +335,11 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { carregarOperacao, MESES_ABREV } from './assets/js/operacao-xml.js';
-    import { lerRelatorio, consolidar, resumirEntradas, GRUPOS } from './assets/js/dominio-relatorios.js';
+    import { lerRelatorio, consolidar, resumirEntradas, GRUPOS, lerPlanilha } from './assets/js/dominio-relatorios.js';
     import { importarLote, separarNaoXml } from './assets/js/importar-xml.js';
     import { formatDocumento } from './assets/js/utils.js';
     import { gerarAnalise } from './assets/js/rt-analise.js';
@@ -768,9 +769,10 @@
     async function lerArquivosDom(files) {
       if (domEstado.lendo) { domMsgErro('Espere terminar a leitura anterior.'); return; }
       let pdfs = files.filter(f => /\.pdf$/i.test(f.name));
+      const planilhas = files.filter(f => /\.(xls|xlsx|csv)$/i.test(f.name));
       const notas = files.filter(f => /\.(xml|zip)$/i.test(f.name));
-      let fora = files.length - pdfs.length - notas.length;
-      if (!pdfs.length && !notas.length) { domMsgErro(fora ? fora + ' arquivo(s) fora do padrão (PDF, XML ou ZIP) não entraram.' : 'Escolha ao menos um arquivo.'); return; }
+      let fora = files.length - pdfs.length - notas.length - planilhas.length;
+      if (!pdfs.length && !notas.length && !planilhas.length) { domMsgErro(fora ? fora + ' arquivo(s) fora do padrão (PDF, XLS, XML ou ZIP) não entraram.' : 'Escolha ao menos um arquivo.'); return; }
       domEstado.lendo = true; atualizarAplicar();
       try {
         // o ZIP do Domínio costuma trazer notas e relatórios juntos: os PDFs de dentro vão pro leitor
@@ -780,8 +782,10 @@
           if (sep.outros.length) $('domLidos').insertAdjacentHTML('beforeend', '<span class="dom-chip err" title="' + escapeHtml(sep.outros.slice(0, 30).join('\n')) + '">' + sep.outros.length + ' arquivo(s) dentro do ZIP que não são XML nem PDF — ignorados</span>');
         }
         if (notas.length) await importarNotasDom(notas);
+        if (planilhas.length) await lerPlanilhasDom(planilhas);
         if (pdfs.length) await lerPdfsDom(pdfs, fora);
         else if (fora) $('domLidos').insertAdjacentHTML('beforeend', '<span class="dom-chip err">' + fora + ' arquivo(s) fora do padrão</span>');
+        if (!pdfs.length && planilhas.length) { domEstado.incluir = null; renderPreviaDom(); }
       } finally { domEstado.lendo = false; atualizarAplicar(); }
     }
     // notas entram na base agora, pelo mesmo código do módulo de notas (lote atômico, duplicada não regrava)
@@ -806,6 +810,36 @@
       } catch (e) {
         domMsgErro('Notas não importadas: ' + (e.message || e));
       }
+    }
+    // planilhas exportadas da Domínio (XLS/XLSX/CSV): SheetJS lê, o leitor de colunas faz o resto
+    async function lerPlanilhasDom(arquivos) {
+      if (!window.XLSX) { domMsgErro('O leitor de planilha não carregou — verifique a conexão e recarregue a página (Ctrl+F5).'); return; }
+      $('domMsg').style.color = '#8A93A6'; $('domMsg').textContent = 'Lendo ' + arquivos.length + ' planilha(s)…';
+      const cFicha = casoAtual(); const cliF = cFicha ? clientesMap[cFicha.cliente_id] : null;
+      const docFicha = cliF && cliF.documento ? String(cliF.documento).replace(/\D/g, '') : null;
+      for (const f of arquivos) {
+        try {
+          const buf = await f.arrayBuffer();
+          if (!buf.byteLength || new Uint8Array(buf).every(b => b === 0)) throw new Error('arquivo vazio (só zeros) — a exportação da Domínio não terminou ou o arquivo foi copiado antes de gravar');
+          const wb = XLSX.read(buf, { type: 'array', raw: false, cellDates: false, dateNF: 'dd/mm/yyyy' });
+          let lido = null, erro = null;
+          for (const nome of wb.SheetNames) {
+            const linhas = XLSX.utils.sheet_to_json(wb.Sheets[nome], { header: 1, raw: false, defval: '' });
+            try { lido = lerPlanilha(linhas); break; } catch (e) { erro = e; }
+          }
+          if (!lido) throw erro || new Error('planilha sem aba reconhecida');
+          const rel = lido;
+          if (docFicha && rel.cnpj && rel.cnpj !== docFicha) {
+            $('domLidos').insertAdjacentHTML('beforeend', '<span class="dom-chip err" title="Planilha do CNPJ ' + escapeHtml(formatDocumento(rel.cnpj)) + (rel.empresa ? ' (' + escapeHtml(rel.empresa) + ')' : '') + '; esta ficha é ' + escapeHtml(formatDocumento(docFicha)) + '">' + escapeHtml(f.name) + ' · outra empresa</span>');
+            continue;
+          }
+          domEstado.rels.push(rel);
+          $('domLidos').insertAdjacentHTML('beforeend', '<span class="dom-chip' + (docFicha && !rel.cnpj ? ' warn' : '') + '">' + escapeHtml(f.name) + ' · ' + rotuloRel(rel) + '</span>');
+        } catch (e) {
+          $('domLidos').insertAdjacentHTML('beforeend', '<span class="dom-chip err" title="' + escapeHtml(e.message || '') + '">' + escapeHtml(f.name) + ' · não lido</span>');
+        }
+      }
+      $('domMsg').textContent = '';
     }
     async function lerPdfsDom(pdfs, fora) {
       $('domMsg').style.color = '#8A93A6'; $('domMsg').textContent = 'Lendo ' + pdfs.length + ' arquivo(s)…';
@@ -834,7 +868,7 @@
     function rotuloRel(r) {
       if (r.tipo === 'faturamento') return 'faturamento · ' + r.meses.length + ' mês(es)' + (r.conferido === false ? ' ⚠ soma não fecha' : '');
       if (r.tipo === 'simples') return 'PGDAS ' + (r.competencia || '?');
-      if (r.tipo === 'saidas' || r.tipo === 'servicos') return (r.tipo === 'saidas' ? 'saídas' : 'serviços') + ' · ' + r.vendas.length + ' nota(s)' + (r.conferido === false ? ' ⚠ soma não fecha' : '');
+      if (r.tipo === 'saidas' || r.tipo === 'servicos') return (r.tipo === 'saidas' ? 'saídas' : 'serviços') + ' · ' + r.vendas.length + ' nota(s)' + (r.fonte === 'planilha' ? ' · CNPJ do cliente' : '') + (r.conferido === false ? ' ⚠ soma não fecha' : '');
       return 'entradas · ' + r.lancamentos.length + ' lançamento(s)' + (r.conferido === false ? ' ⚠ soma não fecha' : '');
     }
 
