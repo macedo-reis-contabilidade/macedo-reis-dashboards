@@ -338,6 +338,12 @@ export function resumirVendas(vendas, competencias) {
 // solta e a linha de nomes de coluna logo abaixo. A planilha traz o CNPJ/CPF do cliente, que o PDF
 // não traz — por isso o % de PJ fica exato aqui (14 dígitos = PJ, 11 = PF, zeros/vazio = consumidor).
 const celTxt = c => c == null ? '' : (typeof c === 'number' ? String(c) : String(c)).trim();
+// data: texto "dd/mm/aaaa" ou número de série do Excel (o XLS da Domínio grava a data como número)
+const dataCel = c => {
+  if (c == null || c === '') return null;
+  if (typeof c === 'number') { if (c < 20000 || c > 80000) return null; const d = new Date(Date.UTC(1899, 11, 30) + Math.round(c) * 86400000); return String(d.getUTCDate()).padStart(2, '0') + '/' + String(d.getUTCMonth() + 1).padStart(2, '0') + '/' + d.getUTCFullYear(); }
+  return String(c).match(/\d{2}\/\d{2}\/\d{4}/)?.[0] || null;
+};
 const celNum = c => c == null || c === '' ? null : (typeof c === 'number' ? c : numBR(String(c)));
 const acha = (cab, ...nomes) => { const n = cab.map(x => norm(x)); for (const nome of nomes) { const i = n.findIndex(x => x === norm(nome)); if (i >= 0) return i; } for (const nome of nomes) { const i = n.findIndex(x => x.startsWith(norm(nome))); if (i >= 0) return i; } return -1; };
 export function detectarTipoPlanilha(linhas) {
@@ -367,7 +373,7 @@ export function lerPlanilha(linhas) {
   if (iCab < 0) throw new Error('não achei a linha de colunas (Cliente/Fornecedor + Valor Contábil) na planilha');
   const cab = linhas[iCab].map(celTxt);
   const col = {
-    data: acha(cab, 'Data Entrada', 'Data Emissão', 'Data Emissao', 'Data'),
+    data: acha(cab, 'Data Entrada', 'Data Saída', 'Data Saida', 'Data Emissão', 'Data Emissao', 'Data'),
     nota: acha(cab, 'Nota'), especie: acha(cab, 'Espécie', 'Especie'),
     nome: acha(cab, 'Cliente', 'Fornecedor'), doc: acha(cab, 'CNPJ/CPF', 'CNPJ'),
     cfop: acha(cab, 'CFOP'), ac: acha(cab, 'AC.', 'AC'), uf: acha(cab, 'UF'), valor: acha(cab, 'Valor Contábil', 'Valor Contabil')
@@ -379,7 +385,7 @@ export function lerPlanilha(linhas) {
     const junto = txt.join(' ');
     if (/Total Geral/i.test(junto)) { const v = l.map(celNum).filter(x => x != null && x !== 0); totalGeral = v.length ? v[0] : (totalGeral ?? 0); if (!v.length) { const prox = (linhas[i + 1] || []).map(celNum).filter(x => x != null); if (prox.length) totalGeral = prox[0]; } continue; }
     if (/Total (CFOP|Acumulador|Fornecedor|Cliente)/i.test(junto)) continue;
-    const data = (txt[col.data] || '').match(/\d{2}\/\d{2}\/\d{4}/)?.[0] || null;
+    const data = dataCel(l[col.data]);
     const valor = celNum(l[col.valor]);
     const nome = txt[col.nome];
     if (!data || valor == null || !nome) continue;

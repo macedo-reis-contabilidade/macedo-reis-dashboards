@@ -256,7 +256,7 @@ const XLS_SAIDAS = [
   ['', '', '', '', '', '', '', '', 'ACOMPANHAMENTO DE SAÍDAS'],
   ['Código', 'Data Emissão', 'Data', 'Nota', 'Série', 'Espécie', 'Código', 'Cliente', 'CNPJ/CPF/CEI/CAEPF', 'Insc. Est.', 'CFOP', 'AC.', 'UF', 'Valor Contábil', 'Tipo', 'Base Cálculo', 'Alíq.'],
   ['3521', '02/08/2024', '02/08/2024', '82', '', '36', '7', 'CONDOMINIO TESTE', '50400850000148', '', '5-102', '35', 'RS', '271,68', '', '0,00', '0,00'],
-  ['3522', '02/08/2024', '02/08/2024', '83', '', '36', '8', 'MARIA DE TESTE', '12345678901', '', '5-102', '35', 'RS', 1115.7, '', 0, 0],      // valor numérico e CPF
+  [3522, 45506, 45506, '83', '', 36, 8, 'MARIA DE TESTE', '12345678901', '', 5102, 35, 'RS', 1115.7, '', 0, 0],      // como o XLS real grava: data em número de série, CFOP e valor numéricos, CPF
   ['3536', '01/08/2024', '01/08/2024', '42640', '', '45', '1', 'CLIENTES DIVERSOS', '00000000000000', '', '5-102', '35', 'RS', '17,00', '', '0,00', '0,00'],
   ['3537', '01/08/2024', '01/08/2024', '42641', '', '45', '1', 'JOSE SEM DOCUMENTO LTDA', '', '', '5-405', '36', 'RS', '100,00', '', '0,00', '0,00'],   // sem documento: cai no nome
   ['Total CFOP', '', '', '', '', '', '', '', '', '', '', '', '', '1.404,38'],
@@ -269,6 +269,7 @@ ok(xs.vendas.length === 4, 'uma venda por linha, sem os totais');
 perto(xs.soma, 1504.38, 0.005, 'soma (texto "271,68" e número 1115.7 misturados)'); ok(xs.conferido === true, 'bate com o Total Geral');
 ok(xs.vendas[0].classe === 'pj' && xs.vendas[0].classePorDocumento, 'CNPJ de 14 dígitos = PJ pelo documento');
 ok(xs.vendas[1].classe === 'pf' && xs.vendas[1].classePorDocumento, 'CPF de 11 dígitos = PF pelo documento');
+ok(xs.vendas[1].data === '02/08/2024' && xs.vendas[1].competencia === '2024-08' && xs.vendas[1].cfop === '5102', 'data em número de série do Excel (45506 = 02/08/2024) e CFOP numérico');
 ok(xs.vendas[2].classe === 'consumidor' && xs.vendas[2].classePorDocumento, 'documento zerado = consumidor');
 ok(xs.vendas[3].classe === 'pj' && !xs.vendas[3].classePorDocumento, 'sem documento cai na leitura pelo nome');
 ok(xs.vendas[3].st === true && xs.vendas[3].cfop === '5405', 'CFOP "5-405" vira 5405 com ST');

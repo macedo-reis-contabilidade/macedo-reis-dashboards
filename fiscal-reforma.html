@@ -340,6 +340,7 @@
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { carregarOperacao, MESES_ABREV } from './assets/js/operacao-xml.js';
     import { lerRelatorio, consolidar, resumirEntradas, GRUPOS, lerPlanilha } from './assets/js/dominio-relatorios.js';
+    import { lerXls } from './assets/js/xls-biff.js';
     import { importarLote, separarNaoXml } from './assets/js/importar-xml.js';
     import { formatDocumento } from './assets/js/utils.js';
     import { gerarAnalise } from './assets/js/rt-analise.js';
@@ -813,7 +814,7 @@
     }
     // planilhas exportadas da Domínio (XLS/XLSX/CSV): SheetJS lê, o leitor de colunas faz o resto
     async function lerPlanilhasDom(arquivos) {
-      if (!window.XLSX) { domMsgErro('O leitor de planilha não carregou — verifique a conexão e recarregue a página (Ctrl+F5).'); return; }
+      if (!window.XLSX && arquivos.some(f => !/\.xls$/i.test(f.name))) { domMsgErro('O leitor de planilha não carregou — verifique a conexão e recarregue a página (Ctrl+F5).'); return; }
       $('domMsg').style.color = '#8A93A6'; $('domMsg').textContent = 'Lendo ' + arquivos.length + ' planilha(s)…';
       const cFicha = casoAtual(); const cliF = cFicha ? clientesMap[cFicha.cliente_id] : null;
       const docFicha = cliF && cliF.documento ? String(cliF.documento).replace(/\D/g, '') : null;
@@ -821,11 +822,19 @@
         try {
           const buf = await f.arrayBuffer();
           if (!buf.byteLength || new Uint8Array(buf).every(b => b === 0)) throw new Error('arquivo vazio (só zeros) — a exportação da Domínio não terminou ou o arquivo foi copiado antes de gravar');
-          const wb = XLSX.read(buf, { type: 'array', raw: false, cellDates: false, dateNF: 'dd/mm/yyyy' });
+          // .xls da Domínio: leitor próprio (o arquivo é fora do padrão e o SheetJS devolve a aba vazia depois de minutos);
+          // .xlsx/.csv: SheetJS
+          let abas;
+          if (/\.xls$/i.test(f.name)) {
+            try { abas = lerXls(buf).abas; }
+            catch (e1) { const wb = XLSX.read(buf, { type: 'array', raw: true }); abas = wb.SheetNames.map(n => ({ nome: n, linhas: XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: '' }) })); }
+          } else {
+            const wb = XLSX.read(buf, { type: 'array', raw: true });
+            abas = wb.SheetNames.map(n => ({ nome: n, linhas: XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: '' }) }));
+          }
           let lido = null, erro = null;
-          for (const nome of wb.SheetNames) {
-            const linhas = XLSX.utils.sheet_to_json(wb.Sheets[nome], { header: 1, raw: false, defval: '' });
-            try { lido = lerPlanilha(linhas); break; } catch (e) { erro = e; }
+          for (const aba of abas) {
+            try { lido = lerPlanilha(aba.linhas); break; } catch (e) { erro = e; }
           }
           if (!lido) throw erro || new Error('planilha sem aba reconhecida');
           const rel = lido;
