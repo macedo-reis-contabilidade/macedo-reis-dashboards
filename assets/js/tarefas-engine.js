@@ -232,7 +232,6 @@ export function initTarefas(userCfg) {
       </div>
       <div class="fa-toolbar-actions">
         <button class="btn btn-ghost btn-sm" id="btnRotinas"${MODO_ROTINAS ? ' style="display:none;"' : ''}>Gerenciar rotinas</button>
-        ${C.gerarMes ? '<button class="btn btn-ghost" id="btnGerarMes">Gerar tarefas do mês</button>' : ''}
         <button class="btn btn-primary" id="btnNova">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           ${esc(C.btnNova)}
@@ -280,7 +279,7 @@ export function initTarefas(userCfg) {
           </label>
           <label class="fa-field"><span>Responsável</span>${campoResp('qResp', 'Ex.: Thalia')}</label>
           <label class="fa-field"><span>Descrição</span><textarea id="qDesc" class="input" rows="2" placeholder="Detalhes (opcional)"></textarea></label>
-          <p style="font-size:12px;color:var(--text-muted);margin:0;">A regra entra na base de recorrentes do setor; as tarefas do mês nascem pelo botão “Gerar tarefas do mês”.</p>
+          <p style="font-size:12px;color:var(--text-muted);margin:0;">A regra entra na base de recorrentes do setor; as tarefas nascem sozinhas, todo dia de madrugada, com a primeira já criada agora.</p>
         </div>
         <div class="fa-modal-body" id="formRotina" style="display:none;">
           <label class="fa-field"><span>Título *</span><input type="text" id="rTitulo" class="input" placeholder="Ex.: Conferir e-mails"></label>
@@ -590,7 +589,7 @@ export function initTarefas(userCfg) {
     const { error } = await supabase.from('tarefas_recorrentes').insert(idsQ.map(cliente_id => ({ ...payload, cliente_id })));
     if (error) { alert('Erro ao salvar: ' + error.message); return; }
     fecharModal();
-    alert((idsQ.length > 1 ? idsQ.length + ' regras recorrentes criadas (uma por cliente).' : 'Tarefa recorrente criada.') + ' As tarefas do mês nascem pelo botão “Gerar tarefas do mês”.');
+    alert((idsQ.length > 1 ? idsQ.length + ' regras recorrentes criadas (uma por cliente).' : 'Tarefa recorrente criada.') + ' As tarefas nascem sozinhas, todo dia de madrugada.');
   }
 
   async function salvarRotinaForm() {
@@ -641,27 +640,7 @@ export function initTarefas(userCfg) {
   });
 
   // ==================== GERAR TAREFAS DO MÊS ====================
-  if (C.gerarMes) $('btnGerarMes').addEventListener('click', gerarTarefasDoMes);
-  async function gerarTarefasDoMes() {
-    const { data: regras, error: eR } = await supabase.from('tarefas_recorrentes').select('*').eq('setor', SETOR).eq('ativo', true).eq('periodicidade', 'mensal');
-    if (eR) { alert('Erro ao ler as regras: ' + eR.message); return; }
-    if (!regras || !regras.length) { alert(C.gerarMesAvisoVazio); return; }
-    const { data: existentes, error: eE } = await supabase.from('tarefas').select('regra_id').eq('setor', SETOR).eq('competencia', anoMes).not('regra_id', 'is', null);
-    if (eE) { alert('Erro ao conferir as já geradas: ' + eE.message); return; }
-    const jaTem = new Set((existentes || []).map(t => t.regra_id));
-    const ultimoDia = diasNoMes(hojeD.getFullYear(), hojeD.getMonth());
-    const novas = [];
-    for (const r of regras) {
-      if (jaTem.has(r.id)) continue;
-      let prazo = r.dia_vencimento ? (anoMes + '-' + pad(Math.min(r.dia_vencimento, ultimoDia))) : null;
-      novas.push({ cliente_id: r.cliente_id, setor: SETOR, titulo: r.titulo, responsavel: r.responsavel, prazo, status: 'pendente', prioridade: 'media', origem: 'recorrente', regra_id: r.id, competencia: anoMes });
-    }
-    if (!novas.length) { alert('As tarefas mensais deste mês já foram geradas.'); return; }
-    const { error } = await supabase.from('tarefas').insert(novas);
-    if (error) { alert('Erro ao gerar: ' + error.message); return; }
-    alert(novas.length + ' tarefa(s) gerada(s) para ' + anoMes.split('-').reverse().join('/') + '.');
-    await carregarTarefas();
-  }
+  // (21/09/2026) "Gerar tarefas do mês" saiu: as recorrentes mensais e anuais nascem sozinhas pela função gerar_tarefas_recorrentes (pg_cron, diária).
 
   // ==================== TAREFAS: carga, filtros, render ====================
   async function carregarTarefas() {
@@ -1435,12 +1414,14 @@ export function initTarefas(userCfg) {
   // Só mensal: a geração do mês materializa apenas regras mensais — converter
   // outra periodicidade criaria regra morta e sumiria com o trabalho.
   async function converterEmRecorrente(r){
-    if (periDe(r) !== 'mensal') { alert('Só rotinas mensais têm tarefa recorrente equivalente — a geração do mês trabalha com regras mensais.'); return; }
+    if (!['mensal', 'anual'].includes(periDe(r))) { alert('Só rotinas mensais ou anuais viram tarefa recorrente — diárias e semanais continuam como rotina.'); return; }
     if (!confirm('Converter “' + r.titulo + '” em tarefa recorrente? A recorrente equivalente é criada na base de regras e a rotina fica pausada.')) return;
     const payload = {
       setor: SETOR, titulo: r.titulo, descricao: r.descricao || null,
-      responsavel: r.responsavel || null, periodicidade: 'mensal',
-      dia_vencimento: r.dia_mes || null, mes_vencimento: null,
+      responsavel: r.responsavel || null, periodicidade: periDe(r),
+      dia_vencimento: periDe(r) === 'anual' ? (parseInt(String(r.dia_anual || '').slice(3), 10) || null) : (r.dia_mes || null),
+      mes_vencimento: periDe(r) === 'anual' ? (parseInt(String(r.dia_anual || '').slice(0, 2), 10) || null) : null,
+      dia_util: r.dia_util !== false,
       cliente_id: null, ativo: true, origem: 'manual'
     };
     const { error } = await supabase.from('tarefas_recorrentes').insert(payload);

@@ -8,7 +8,7 @@
 //   Repetir = Não .................. tarefas (uma por cliente; sem cliente = uma interna)
 //   Repetir ≠ Não, sem cliente ..... rotinas (quadro "Rotinas do dia" / Rotinas do setor)
 //   Repetir mensal/anual, com cliente  tarefas_recorrentes (uma regra por cliente)
-//                                      + a primeira tarefa já nasce com prazo na próxima ocorrência
+//                                      + a primeira tarefa já nasce; as seguintes, a função gerar_tarefas_recorrentes (pg_cron, diária)
 //   Repetir diária/semanal, com cliente  ainda não existe — o formulário avisa
 // ============================================================
 import { supabase } from './supabase.js';
@@ -119,7 +119,7 @@ function atualizarRep() {
   let txt = '', btn = 'Criar tarefa';
   if (rep === 'nao') { btn = n > 1 ? `Criar ${n} tarefas` : 'Criar tarefa'; }
   else if (!n) { txt = 'Sem cliente, vira uma rotina do setor: aparece em "Rotinas do dia" e se marca como feita a cada vez.'; btn = 'Criar rotina'; }
-  else if (rep === 'mensal' || rep === 'anual') { txt = `Vira uma regra por cliente (${n}); a primeira tarefa já nasce com prazo na próxima ocorrência, as seguintes pelo "Gerar tarefas do mês" da tela do setor.`; btn = n > 1 ? `Criar ${n} recorrências` : 'Criar recorrência'; }
+  else if (rep === 'mensal' || rep === 'anual') { txt = `Vira uma regra por cliente (${n}); a primeira tarefa já nasce com prazo na próxima ocorrência e as seguintes nascem sozinhas, todo dia de madrugada.`; btn = n > 1 ? `Criar ${n} recorrências` : 'Criar recorrência'; }
   else { txt = 'Repetição diária ou semanal por cliente ainda não existe: escolha mensal/anual, ou tire os clientes pra virar rotina.'; btn = 'Criar'; }
   dica.textContent = txt; dica.style.display = txt ? 'block' : 'none';
   $('ntSalvar').textContent = btn;
@@ -174,12 +174,12 @@ async function salvar() {
       fechar(); await cfg.aoSalvar?.('rotina', 1); return;
     }
     if (rep !== 'mensal' && rep !== 'anual') { alert('Repetição diária ou semanal por cliente ainda não existe. Escolha mensal/anual, ou tire os clientes pra virar rotina.'); return; }
-    const regras = clis.map(c => ({ cliente_id: c.id, setor, titulo, descricao, responsavel, periodicidade: rep, ativo: true, origem: 'manual',
+    const regras = clis.map(c => ({ cliente_id: c.id, setor, titulo, descricao, responsavel, periodicidade: rep, ativo: true, origem: 'manual', dia_util: $('ntUtil').checked,
       dia_vencimento: rep === 'mensal' ? diaMes : parseInt(mmdd.slice(3), 10),
       mes_vencimento: rep === 'anual' ? parseInt(mmdd.slice(0, 2), 10) : null }));
     const { data: rIns, error: rErr } = await supabase.from('tarefas_recorrentes').insert(regras).select('id, cliente_id');
     if (rErr) { alert('Erro ao criar a recorrência: ' + rErr.message); return; }
-    // primeira tarefa de cada regra: prazo na próxima ocorrência (o "Gerar tarefas do mês" pula regra+competência já existentes)
+    // primeira tarefa de cada regra: prazo na próxima ocorrência (a função diária pula regra+competência já existentes)
     let d = proximaOcorrencia(rep, diaMes, mmdd);
     if ($('ntUtil').checked) { while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1); }
     const prazo = ymd(d), competencia = prazo.slice(0, 7);
