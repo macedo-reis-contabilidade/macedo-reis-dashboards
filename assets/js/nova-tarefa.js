@@ -60,6 +60,7 @@ function montar() {
           <label class="fa-field" id="ntWrapMes" style="display:none;"><span>Dia do mês</span><input type="number" id="ntDiaMes" class="input" min="1" max="31" value="1"></label>
           <label class="fa-field" id="ntWrapAnual" style="display:none;"><span>Data (MM-DD)</span><input type="text" id="ntAnual" class="input" placeholder="ex.: 01-15"></label>
         </div>
+        <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text); cursor:pointer; margin:-4px 0 0;"><input type="checkbox" id="ntFat"> 💰 Faturável (serviço avulso) <i style="font-style:normal; font-size:12px; color:var(--text-dim);">— ao concluir, o Samuel recebe a tarefa "Faturar:" na Agenda</i></label>
         <label id="ntWrapUtil" style="display:none; align-items:center; gap:8px; font-size:12.5px; color:var(--text-2); margin:-4px 0 12px; cursor:pointer;"><input type="checkbox" id="ntUtil" checked> Se cair no fim de semana, vale o próximo dia útil</label>
         <div id="ntRepDica" class="nt-dica" style="display:none;"></div>
         <label class="fa-field"><span>Descrição (opcional)</span><textarea id="ntDesc" class="input" rows="3"></textarea></label>
@@ -153,7 +154,7 @@ async function salvar() {
   const btn = $('ntSalvar'); btn.disabled = true;
   try {
     if (rep === 'nao') {
-      const base = { setor, titulo, descricao, responsavel, prazo: $('ntPrazo').value || null, prioridade: $('ntPri').value, tipo: 'tarefa', status: 'pendente', origem: 'avulsa' };
+      const base = { setor, titulo, descricao, responsavel, prazo: $('ntPrazo').value || null, prioridade: $('ntPri').value, tipo: 'tarefa', status: 'pendente', origem: 'avulsa', faturavel: $('ntFat').checked };
       const ids = clis.length ? clis.map(c => c.id) : [null];
       const { data: ins, error } = await supabase.from('tarefas').insert(ids.map(cliente_id => ({ ...base, cliente_id }))).select('id');
       if (error) { alert('Erro ao criar: ' + error.message); return; }
@@ -213,7 +214,7 @@ export function abrirNovaTarefa(opts = {}) {
   ['ntTitulo', 'ntCliBusca', 'ntDesc', 'ntAnual'].forEach(id => $(id).value = '');
   $('ntSetor').value = SETORES.some(([v]) => v === opts.setor) ? opts.setor : 'geral';
   $('ntPrazo').value = ymd(new Date());
-  $('ntPri').value = 'media'; $('ntRep').value = 'nao'; $('ntDiaMes').value = '1'; $('ntUtil').checked = true;
+  $('ntPri').value = 'media'; $('ntRep').value = 'nao'; $('ntDiaMes').value = '1'; $('ntUtil').checked = true; $('ntFat').checked = false;
   $('ntCliRes').style.display = 'none';
   renderClis();
   el.classList.add('is-open');

@@ -305,6 +305,7 @@
         <div class="fa-field-row">
           <label class="fa-field"><span>Hora <i style="font-style:normal;color:var(--text-dim);">(alimenta o 🕐)</i></span><input type="time" id="dHoraInp" class="input"></label>
           <label class="fa-field"><span>Setor</span><select id="dSetor" class="select"></select></label>
+          <label class="fa-field"><span>Faturável</span><label style="display:flex;align-items:center;gap:8px;height:34px;cursor:pointer;color:var(--text);font-size:13px;"><input type="checkbox" id="dFaturavel"> 💰 serviço avulso — ao concluir, gera "Faturar:" pro Samuel</label></label>
         </div>
         <div class="fa-field-row">
           <label class="fa-field"><span>Prioridade</span><select id="dPrioridade" class="select"><option value="media">Média</option><option value="alta">Alta</option><option value="baixa">Baixa</option></select></label>
@@ -541,7 +542,7 @@
         html += `<div class="ag-card ${classePrio(t.prioridade)}" data-bstask="${t.id}">
           ${loteCheck(t)}
           <div class="ag-card-main">
-            <div class="ag-card-titulo">${esc(t.titulo) || '(sem título)'}${horaDaTarefa(t) ? `<span class="t-hora">🕐 ${horaDaTarefa(t)}</span>` : ''}${atras}</div>
+            <div class="ag-card-titulo">${t.faturavel ? '💰 ' : ''}${esc(t.titulo) || '(sem título)'}${horaDaTarefa(t) ? `<span class="t-hora">🕐 ${horaDaTarefa(t)}</span>` : ''}${atras}</div>
             <div class="ag-card-meta"><b style="color:var(--brand-light);">${fData(t.prazo)}</b><span class="sep">·</span>${chip(t.setor)} ${cli} ${resp}</div>
           </div>
         </div>`;
@@ -1143,6 +1144,7 @@
       document.getElementById('dResp').value = t.responsavel || '';
       document.getElementById('dPrazo').value = t.prazo ? String(t.prazo).slice(0,10) : '';
       document.getElementById('dPrioridade').value = (norm(t.prioridade)==='alta'||norm(t.prioridade)==='baixa') ? norm(t.prioridade) : 'media';
+      document.getElementById('dFaturavel').checked = !!t.faturavel;
       { const ds = document.getElementById('dSetor'); ds.innerHTML = SETORES_LISTA.map(x => `<option value="${x}">${(SETOR_INFO[x]||[x])[0]}</option>`).join(''); if (t.setor && !SETORES_LISTA.includes(t.setor)) ds.insertAdjacentHTML('beforeend', `<option value="${t.setor}">${t.setor}</option>`); ds.value = t.setor || 'geral'; }
       document.getElementById('dStatus').value = concl ? 'em_andamento' : (t.status || 'pendente');
       document.getElementById('dDescricao').value = t.descricao || '';
@@ -1265,6 +1267,7 @@
         prazo: document.getElementById('dPrazo').value || null,
         prioridade: document.getElementById('dPrioridade').value,
         setor: document.getElementById('dSetor').value,
+        faturavel: document.getElementById('dFaturavel').checked,
         descricao: document.getElementById('dDescricao').value.trim() || null,
       };
       const setorMudou = patch.setor !== (procAtual.setor || 'geral');

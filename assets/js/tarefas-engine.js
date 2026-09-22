@@ -336,7 +336,7 @@ export function initTarefas(userCfg) {
           </div>
           <div class="fa-field-row">
             <label class="fa-field"><span>Setor <i style="font-style:normal;color:var(--text-dim);">(mudar tira a tarefa desta tela)</i></span><select id="dSetor" class="select"></select></label>
-            <label class="fa-field"><span>&nbsp;</span><span></span></label>
+            <label class="fa-field"><span>Faturável</span><label style="display:flex;align-items:center;gap:8px;height:38px;cursor:pointer;color:var(--text);font-size:13px;"><input type="checkbox" id="dFaturavel"> 💰 serviço avulso — ao concluir, gera "Faturar:" pro Samuel</label></label>
           </div>
           <label class="fa-field"><span>Descrição</span><textarea id="dDescricao" class="input" rows="2"></textarea></label>
           <div><button class="btn btn-primary btn-sm" id="dSalvar">Salvar alterações</button></div>
@@ -718,7 +718,7 @@ export function initTarefas(userCfg) {
         const caixa = t.status === 'concluida' ? '' : '<input type="checkbox" class="fa-chk" data-sel="'+t.id+'" aria-label="Selecionar">';
         return '<tr class="fa-row-proc '+(t.status==='concluida'?'fa-row-done':'')+'" data-id="'+t.id+'">'+
           '<td class="fa-chk-td" data-label="">'+caixa+'</td>'+
-          '<td data-label="'+escA(C.clienteLabel)+'">'+cli+'</td>'+
+          '<td data-label="'+escA(C.clienteLabel)+'">'+(t.faturavel ? '<span title="Faturável: ao concluir, gera a tarefa Faturar: pro Samuel">💰</span> ' : '')+cli+'</td>'+
           '<td data-label="Responsável">'+(t.responsavel?esc(t.responsavel):'—')+'</td>'+
           '<td data-label="Prazo">'+(t.prazo?'<span class="'+(atrasada?'fa-atrasada':'')+'">'+formatDate(t.prazo)+'</span>':'—')+'</td>'+
           '<td data-label="Status">'+statusPill(t.status)+'</td></tr>';
@@ -944,6 +944,7 @@ export function initTarefas(userCfg) {
     $('dResp').value = t.responsavel || '';
     $('dPrazo').value = t.prazo ? String(t.prazo).slice(0,10) : '';
     $('dPrioridade').value = t.prioridade || 'media';
+    $('dFaturavel').checked = !!t.faturavel;
     { const ds = $('dSetor'); ds.innerHTML = Object.keys(SETOR_LBL).map(x => '<option value="'+x+'">'+SETOR_LBL[x]+'</option>').join(''); if (t.setor && !SETOR_LBL[t.setor]) ds.insertAdjacentHTML('beforeend', '<option value="'+escA(t.setor)+'">'+esc(t.setor)+'</option>'); ds.value = t.setor || 'geral'; }
     $('dStatus').value = concl ? 'em_andamento' : (t.status || 'pendente');
     $('dDescricao').value = t.descricao || '';
@@ -992,6 +993,7 @@ export function initTarefas(userCfg) {
       prazo: $('dPrazo').value || null,
       prioridade: $('dPrioridade').value,
       setor: $('dSetor').value,
+      faturavel: $('dFaturavel').checked,
       descricao: $('dDescricao').value.trim() || null
     };
     const setorMudou = patch.setor !== (procAtual.setor || 'geral');
