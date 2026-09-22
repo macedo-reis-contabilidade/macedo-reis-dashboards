@@ -57,4 +57,20 @@ if (!aeOk) falhas++;
 console.log((aeOk ? '  ok ' : 'FALHA') + '  aliqEfetiva(\'I\', 1.800.000)  esperado         9.45  ×  obtido ' + (aliqEfetiva('I', 1800000) * 100).toFixed(4).padStart(12));
 
 console.log(falhas ? '\n✗ ' + falhas + ' linha(s) fora da tolerância' : '\n✓ todas as linhas dentro da tolerância de R$ 0,05');
+// ---- alíquota efetiva informada (PGDAS) vale sobre a tabela ----
+console.log('\nAlíquota efetiva informada:');
+{
+  const base = { anexo: 'I', rbt12: 1800000, receita: 100000, partilha: 15.5, cbs: 0.9, ibs: 0.1, mixCheia: 100 };
+  const t = simular(base), i = simular({ ...base, aliqEfetivaInformada: 12.5 });
+  linha('tabela (%)', 9.45, t.aliqEfetiva * 100, 0.005);
+  linha('informada (%)', 12.5, i.aliqEfetiva * 100, 0.005);
+  linha('DAS cheio sobe na proporção', 100000 * 0.125, i.mes.dasCheio, 0.01);
+  linha('parcela CBS/IBS acompanha', 100000 * 0.125 * 0.155, i.mes.parcelaCbsIbs, 0.01);
+  linha('fora não muda', t.mes.debitoFora, i.mes.debitoFora, 0.001);
+  console.log(i.fatores.aliqFonte === 'informada' && Math.abs(i.fatores.aliqTabela - 0.0945) < 0.0001 ? '  ✓ fatores registram fonte e tabela' : '  ✗ fatores');
+  console.log(i.avisos.some(a => /2 pontos longe/.test(a)) ? '  ✓ avisa quando a informada foge muito da tabela' : '  ✗ aviso da diferença');
+  let erro = null; try { simular({ ...base, aliqEfetivaInformada: 0 }); } catch (e) { erro = e; }
+  console.log(erro ? '  ✓ rejeita alíquota informada fora de 0–35%' : '  ✗ aceitou 0%');
+}
+
 process.exit(falhas ? 1 : 0);

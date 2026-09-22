@@ -238,6 +238,7 @@
           <label>Anexo do Simples
             <select id="sAnexo"><option>I</option><option>II</option><option>III</option><option>IV</option><option>V</option></select></label>
           <label>RBT12 (R$)<input id="sRbt12" placeholder="ex.: 1.800.000,00"></label>
+          <label>Alíquota efetiva real (%)<input id="sAliqEf" placeholder="do PGDAS; vazio = tabela"></label>
           <label>Receita mensal (R$)<input id="sReceita"></label>
           <label>% clientes PJ (regime regular)<input id="sPctPJ" placeholder="0"></label>
           <label>% compras de mercadorias/insumos <span class="hint">seguem o mix de vendas</span><input id="sPctMerc" placeholder="ex.: 60"></label>
@@ -937,7 +938,7 @@
         linha('% vendas para PJ', k.pctPJ != null ? brPct(Math.round(k.pctPJ * 10) / 10) + '%' : null, cons.origem.pctPJ) +
         linha('Vendas com ST (informativo)', cons.origem.stVendas ? '✓' : null, cons.origem.stVendas) +
         '</div>';
-      if (cons.origem.aliquotaEfetiva) html += '<p class="rt-nota">Alíquota efetiva no PGDAS: ' + escapeHtml(cons.origem.aliquotaEfetiva) + ' — depois de calcular, confira contra a que o simulador usa; diferença grande costuma ser receita em mais de um anexo.</p>';
+      if (cons.origem.aliquotaEfetiva) html += '<p class="rt-nota">Alíquota efetiva no PGDAS: ' + escapeHtml(cons.origem.aliquotaEfetiva) + ' — vai pro campo "Alíquota efetiva real" e vale sobre a tabela do anexo.</p>';
       if (docFicha && docRel && docFicha !== docRel) cons.avisos.unshift('Os relatórios são do CNPJ ' + docRel + ', e esta ficha é de ' + docFicha + ' — confira se pegou o cliente certo.');
       cons.avisos.forEach(a => { html += '<div class="dom-aviso">⚠ ' + escapeHtml(a) + '</div>'; });
       html += '<p class="rt-nota">' + (cons.resVen ? 'O mix de alíquotas (redução por NCM) não sai destes relatórios — vem das notas na base (acima) ou você preenche à mão. O % de PJ veio das saídas + serviços; com notas na base, as notas vencem.' : '% de clientes PJ e o mix de alíquotas não saem destes relatórios — suba o acompanhamento de saídas (e de serviços) pro % de PJ, ou as notas na base (acima), ou preencha à mão.') + '</p>';
@@ -982,6 +983,7 @@
       por('sPctMerc', k.pctMerc != null ? brPct(r1(k.pctMerc)) : null, cons.origem.pctMerc ? 'do Domínio: ' + cons.origem.pctMerc : null);
       por('sPctDesp', k.pctDesp != null ? brPct(r1(k.pctDesp)) : null, cons.origem.pctDesp ? 'do Domínio: ' + cons.origem.pctDesp : null);
       por('sPctPJ', k.pctPJ != null ? brPct(r1(k.pctPJ)) : null, cons.origem.pctPJ ? 'do Domínio: ' + cons.origem.pctPJ + ' — PJ pelo nome, sem CNPJ no relatório' : null);
+      por('sAliqEf', k.aliqEfetiva != null ? brPct(Math.round(k.aliqEfetiva * 100) / 100) : null, cons.origem.aliqEfetiva ? 'do Domínio: ' + cons.origem.aliqEfetiva : null);
       if (k.pctExcluidoST != null) {
         $('sPctST').value = brPct(r1(k.pctExcluidoST));
         origemXml('sPctST', 'do Domínio: ' + (cons.origem.pctExcluidoST || ''), 'dominio');
@@ -1056,6 +1058,7 @@
       return {
         anexo: $('sAnexo').value,
         rbt12: parseNum($('sRbt12').value),
+        aliqEfetivaInformada: $('sAliqEf').value.trim() === '' ? null : parseNum($('sAliqEf').value),
         receita: parseNum($('sReceita').value),
         mixCheia: parseNum($('sMixCheia').value) ?? 0,
         mixRed60: parseNum($('sMixRed60').value) ?? 0,

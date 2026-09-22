@@ -44,6 +44,7 @@ const num = (v, def) => {
 //   pctImpostoEmbutido (default 0) · pctExcluidoST (default 0)
 //   partilha (% do DAS que é CBS/IBS) · cbs · ibs (referência, %)
 //   pctPJ (default 0) · creditoEstoqueMes (R$, entra do 2º mês — 5 parcelas)
+//   aliqEfetivaInformada (%, opcional): alíquota real do PGDAS; quando vem, vale sobre a tabela anexo+RBT12
 export function simular(input) {
   const anexo = String(input.anexo || '').trim().toUpperCase();
   const rbt12 = num(input.rbt12, 0);
@@ -74,7 +75,14 @@ export function simular(input) {
   if (estoqueMes < 0) throw new Error('O crédito de estoque mensal não pode ser negativo.');
 
   const avisos = [];
-  const ae = aliqEfetiva(anexo, rbt12);
+  // alíquota efetiva: a informada (do PGDAS: DAS ÷ receita tributada, já misturando os anexos que houver)
+  // vale sobre a da tabela; a tabela é a reserva quando não há PGDAS
+  const aeInf = input.aliqEfetivaInformada == null || input.aliqEfetivaInformada === '' ? null : num(input.aliqEfetivaInformada, NaN);
+  if (aeInf != null && (!Number.isFinite(aeInf) || aeInf <= 0 || aeInf > 35)) throw new Error('Alíquota efetiva informada precisa estar entre 0 e 35% (informado: ' + input.aliqEfetivaInformada + ').');
+  const aeTabela = aliqEfetiva(anexo, rbt12);
+  const ae = aeInf != null ? aeInf / 100 : aeTabela;
+  const aliqFonte = aeInf != null ? 'informada' : 'tabela';
+  if (aeInf != null && aeTabela != null && Math.abs(aeInf / 100 - aeTabela) > 0.02) avisos.push('Alíquota efetiva informada (' + aeInf.toFixed(2) + '%) está mais de 2 pontos longe da tabela do Anexo ' + anexo + ' (' + (aeTabela * 100).toFixed(2) + '%) — normal se há receita em mais de um anexo; se não, confira o PGDAS.');
   const aliqRef = (cbs + ibs) / 100;
   const fatorMix = (mixCheia + 0.40 * mixRed60 + 0.60 * mixRed40 + 0.70 * mixRed30 + 0 * mixZero) / 100;
   // crédito das compras: pelo NCM das entradas quando medido; senão, o mix das vendas (revenda)
@@ -118,7 +126,7 @@ export function simular(input) {
   }
 
   const soma = k => meses.reduce((a, x) => a + x[k], 0);
-  const fatores = { mix: fatorMix, compras: fatorCompras, comprasMedido: pctCred != null };
+  const fatores = { mix: fatorMix, compras: fatorCompras, comprasMedido: pctCred != null, aliqFonte, aliqTabela: aeTabela };
   const semestre = {
     custoDentro: soma('custoDentro'),
     custoFora: soma('custoFora'),

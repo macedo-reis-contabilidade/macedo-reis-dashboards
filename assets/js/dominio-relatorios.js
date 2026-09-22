@@ -544,7 +544,12 @@ export function consolidar(rels, incluir) {
     origem.anexo = 'PGDAS ' + sim.competencia + ': Anexo ' + sim.anexoPredominante
       + ' com ' + brl(sim.anexos.find(a => a.anexo === sim.anexoPredominante).receita)
       + (outros.length ? ' (também ' + outros.map(a => 'Anexo ' + a.anexo + ' ' + brl(a.receita)).join(', ') + ')' : '');
-    if (outros.length) avisos.push('A empresa tem receita em mais de um anexo — o simulador trabalha com um só; foi usado o predominante (Anexo ' + sim.anexoPredominante + ').');
+    if (sim.aliquotaEfetiva != null) {
+      campos.aliqEfetiva = sim.aliquotaEfetiva;
+      origem.aliqEfetiva = 'PGDAS ' + sim.competencia + ': DAS ÷ receita tributada' + (outros.length ? ', já misturando Anexo ' + sim.anexoPredominante + ' e ' + outros.map(a => 'Anexo ' + a.anexo).join(', ') : '') + ' — vale sobre a tabela';
+    }
+    if (outros.length) avisos.push('A empresa tem receita em mais de um anexo (' + sim.anexoPredominante + ' predominante' + outros.map(a => ', ' + a.anexo + ' ' + brl(a.receita)).join('') + '). '
+      + (sim.aliquotaEfetiva != null ? 'O simulador usa a alíquota efetiva do PGDAS (' + pct(sim.aliquotaEfetiva) + '%), que já mistura os anexos; o Anexo fica só de referência.' : 'Sem alíquota efetiva no PGDAS, a tabela do Anexo predominante é usada — o DAS pode sair subestimado.'));
     campos.rbt12 = sim.rbt12;
     origem.rbt12 = 'PGDAS ' + sim.competencia;
     // DAS pela tabela do anexo × DAS realmente apurado: a diferença é ICMS-ST, monofásico,
