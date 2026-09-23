@@ -127,7 +127,8 @@
 #ntOverlay .fa-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid var(--line); }
 #ntOverlay textarea.input { resize:vertical; font-family:inherit; }
 #ntOverlay .cli-chips { margin:-4px 0 0; }
-.nt-res { border:1px solid var(--fill-3); border-radius:10px; overflow:hidden; margin:-6px 0 0; background:var(--surface-2); }
+#ntOverlay .fa-modal-body > * { flex-shrink:0; }   /* nada no formulário encolhe; quem rola é o corpo */
+.nt-res { border:1px solid var(--fill-3); border-radius:10px; overflow:auto; max-height:280px; margin:-6px 0 0; background:var(--surface-2); }
 .nt-res button { display:block; width:100%; text-align:left; background:transparent; border:none; border-bottom:1px solid var(--line); color:var(--text); font:inherit; font-size:13px; padding:9px 12px; cursor:pointer; }
 .nt-res button:last-child { border-bottom:none; }
 .nt-res button:hover:not(:disabled) { background:var(--fill-2); }
