@@ -86,7 +86,7 @@
         </div>
         <div class="fa-field-row">
           <label class="fa-field"><span>Cidade</span><input type="text" id="nCidade" class="input"></label>
-          <label class="fa-field"><span>Responsável</span><input type="text" id="nResp" class="input"></label>
+          <label class="fa-field"><span>Responsável * <i style="font-style:normal;color:var(--text-dim)">(a tarefa de renovação vai pra agenda dela)</i></span><select id="nResp" class="input"><option value="">— escolha —</option></select></label>
         </div>
         <div class="fa-field-row">
           <label class="fa-field"><span>Vencimento</span><input type="date" id="nVenc" class="input"></label>
@@ -133,7 +133,7 @@
           <label class="fa-field"><span>Órgão emissor</span><input type="text" id="dOrgao" class="input"></label>
         </div>
         <div class="fa-field-row">
-          <label class="fa-field"><span>Responsável</span><input type="text" id="dResp" class="input"></label>
+          <label class="fa-field"><span>Responsável</span><select id="dResp" class="input"><option value="">— escolha —</option></select></label>
           <label class="fa-field"><span>Recorrência</span>
             <select id="dRecorr" class="input">
               <option value="nenhuma">Sem recorrência</option>
@@ -317,6 +317,16 @@
     }
 
     /* ---------- MODAL NOVO ---------- */
+    // responsável = alguém da equipe (a Agenda filtra pelo nome; texto livre com erro de digitação some da agenda)
+    const EQUIPE_ALV = ['Adaini', 'Thalia', 'Vitória', 'Samuel', 'Diego', 'Edna'];
+    function preencherResp(sel, atual) {
+      const opts = [...EQUIPE_ALV];
+      if (atual && !opts.some(n => n.toLowerCase() === String(atual).trim().toLowerCase())) opts.push(String(atual).trim());
+      sel.innerHTML = '<option value="">— escolha —</option>' + opts.map(n => '<option value="' + escapeHtml(n) + '">' + escapeHtml(n) + '</option>').join('');
+      const achado = opts.find(n => n.toLowerCase() === String(atual || '').trim().toLowerCase());
+      sel.value = achado || '';
+    }
+    preencherResp(document.getElementById('nResp'), '');
     const ovNovo = document.getElementById('ovNovo');
     function abrirNovo(){ ovNovo.classList.add('is-open'); }
     function fecharNovo(){
@@ -436,6 +446,7 @@
       if (tipo==='__outro__') tipo = document.getElementById('nTipoOutro').value.trim();
       if (!cliente_id) { alert('Selecione a empresa.'); return; }
       if (!tipo) { alert('Informe o tipo de alvará.'); return; }
+      if (!document.getElementById('nResp').value) { alert('Escolha o responsável — a tarefa de renovação vai pra agenda dessa pessoa.'); return; }
 
       const btn = document.getElementById('nSalvar');
       btn.disabled = true; btn.innerHTML = '<span class="spinner spinner-sm"></span>Salvando...';
@@ -457,34 +468,14 @@
       await supabase.from('alvara_historico').insert({ alvara_id: ins.id, descricao: 'Alvará cadastrado.', autor: usuarioEmail });
       const selCli = document.getElementById('nCliente');
       const nomeCli = selCli.selectedOptions && selCli.selectedOptions[0] ? selCli.selectedOptions[0].textContent : '';
-      await sincronizarTarefaRenovacao(Object.assign({ id: ins.id }, novo), nomeCli);
       fecharNovo();
       await carregar();
     });
 
     /* ---------- PONTE COM A AGENDA: tarefa de renovação 60 dias antes ---------- */
     const addDias = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
-    async function sincronizarTarefaRenovacao(alv, nomeCliente) {
-      try {
-        const { data: pend } = await supabase.from('tarefas').select('id').eq('alvara_id', alv.id).eq('status', 'pendente').limit(1);
-        const temTarefa = pend && pend.length;
-        if (!alv.vencimento || !alv.responsavel) {
-          if (temTarefa) await supabase.from('tarefas').delete().eq('id', pend[0].id);
-          return;
-        }
-        let prazo = addDias(String(alv.vencimento).slice(0, 10), -60);
-        if (prazo < hojeStr) prazo = hojeStr;
-        const payload = {
-          setor: 'societario', origem: 'alvara', status: 'pendente', prioridade: 'alta',
-          alvara_id: alv.id, cliente_id: alv.cliente_id || null,
-          titulo: 'Renovar alvará: ' + (alv.tipo || 'alvará') + (nomeCliente ? ' — ' + nomeCliente : ''),
-          descricao: 'Alvará vence em ' + fmtData(alv.vencimento) + '.' + (alv.numero ? ' Nº ' + alv.numero + '.' : '') + (alv.orgao ? ' Órgão emissor: ' + alv.orgao + '.' : '') + (alv.link_drive ? ' Documento: ' + alv.link_drive : ''),
-          responsavel: alv.responsavel, prazo
-        };
-        if (temTarefa) await supabase.from('tarefas').update(payload).eq('id', pend[0].id);
-        else await supabase.from('tarefas').insert(payload);
-      } catch (ex) { console.warn('Sincronização com a agenda falhou:', ex); }
-    }
+    // (23/09/2026) a tarefa de renovação nasce e se atualiza no banco (alvara_sincronizar_tarefa, gatilho em alvaras):
+    // um mês antes do vencimento, na agenda do responsável — vale pra qualquer tela que grave o alvará.
 
     /* ---------- MODAL DETALHE ---------- */
     const ovDet = document.getElementById('ovDet');
@@ -502,7 +493,7 @@
       document.getElementById('dVenc').value = a.vencimento ? String(a.vencimento).slice(0,10) : '';
       document.getElementById('dNumero').value = a.numero || '';
       document.getElementById('dOrgao').value = a.orgao || '';
-      document.getElementById('dResp').value = a.responsavel || '';
+      preencherResp(document.getElementById('dResp'), a.responsavel || '');
       document.getElementById('dRecorr').value = a.recorrencia || 'nenhuma';
       document.getElementById('dCidade').value = a.cidade || '';
       document.getElementById('dLink').value = a.link_drive || '';
@@ -568,7 +559,6 @@
       btn.disabled = false; btn.textContent = 'Salvar alterações';
       if (error) { alert('Erro ao salvar: ' + error.message); return; }
       Object.assign(alvAtual, patch);
-      await sincronizarTarefaRenovacao(alvAtual, alvAtual.clientes && alvAtual.clientes.nome_principal ? alvAtual.clientes.nome_principal : '');
       await carregar();
       if (statusMudou) await carregarTimeline(alvAtual.id);
     });
@@ -600,7 +590,6 @@
       btn.disabled = false; btn.textContent = 'Renovar';
       if (error) { alert('Erro ao renovar: ' + error.message); return; }
       Object.assign(alvAtual, patch);
-      await sincronizarTarefaRenovacao(alvAtual, alvAtual.clientes && alvAtual.clientes.nome_principal ? alvAtual.clientes.nome_principal : '');
       await carregar();
       await carregarTimeline(alvAtual.id);
     });
