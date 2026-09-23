@@ -324,6 +324,8 @@
       ['nCliente','nTipo','nTipoOutro','nNumero','nOrgao','nCidade','nResp','nVenc','nLink','nObs'].forEach(id=>document.getElementById(id).value='');
       document.getElementById('nRecorr').value='nenhuma';
       document.getElementById('nTipoOutroWrap').hidden = true;
+      // o bloco "Anexar alvará" também zera: arquivo, lista, status e o botão Ler e preencher
+      aArquivos = []; aDoc.value = ''; aArquivosEl.innerHTML = ''; aStatus.textContent = ''; aStatus.style.color = ''; aBtnExtrair.hidden = true;
     }
     document.getElementById('btnNovo').addEventListener('click', abrirNovo);
     document.getElementById('nClose').addEventListener('click', fecharNovo);
