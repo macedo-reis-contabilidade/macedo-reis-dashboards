@@ -474,8 +474,9 @@ export function consolidar(rels, incluir) {
   const campos = {}, origem = {}, avisos = [];
 
   // empresas diferentes no mesmo lote é erro de operação, não de leitura
-  const docs = [...new Set(rels.map(r => r.cnpj).filter(Boolean))];
+  const docs = [...new Set(rels.filter(r => !r.outraEmpresa).map(r => r.cnpj).filter(Boolean))];
   if (docs.length > 1) avisos.push('Os relatórios são de CNPJs diferentes (' + docs.join(' · ') + ') — importe um cliente por vez.');
+  rels.filter(r => r.outraEmpresa).forEach(r => avisos.push('Exceção aceita: ' + ({ simples: 'PGDAS', faturamento: 'faturamento', entradas: 'entradas', saidas: 'saídas', servicos: 'serviços' }[r.tipo] || r.tipo) + ' do CNPJ ' + r.cnpj + (r.empresa ? ' (' + r.empresa + ')' : '') + ' usado nesta ficha por decisão manual.'));
 
   // receita mensal: média dos meses com faturamento
   let competencias = [];

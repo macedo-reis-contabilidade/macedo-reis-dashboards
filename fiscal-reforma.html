@@ -742,7 +742,7 @@
 
     $('bImportarDom').onclick = async () => {
       const c = casoAtual(); if (!c) return;
-      domEstado.rels = []; domEstado.incluir = null; domEstado.cons = null;
+      domEstado.rels = []; domEstado.outras = []; domEstado.incluir = null; domEstado.cons = null;
       $('domLidos').innerHTML = ''; $('domPrevia').innerHTML = '';
       $('domAplicar').disabled = true; $('domMsg').textContent = '';
       $('ovDom').classList.add('on');
@@ -814,6 +814,17 @@
       }
     }
     // planilhas exportadas da Domínio (XLS/XLSX/CSV): SheetJS lê, o leitor de colunas faz o resto
+    // relatório de outra empresa: por padrão não entra; exceção explícita, com confirmação, fica registrada nos avisos
+    document.addEventListener('click', e => {
+      const chip = e.target.closest('.dom-outra'); if (!chip) return;
+      const o = (domEstado.outras || [])[+chip.dataset.outra]; if (!o || o.usado) return;
+      if (!confirm('Usar "' + o.nome + '" nesta ficha mesmo sendo do CNPJ ' + formatDocumento(o.doc) + (o.rel.empresa ? ' (' + o.rel.empresa + ')' : '') + '?\n\nA ficha é do CNPJ ' + formatDocumento(o.docFicha) + '. Os números desse relatório vão entrar no cálculo como se fossem desta empresa.')) return;
+      o.usado = true; o.rel.outraEmpresa = true;
+      domEstado.rels.push(o.rel);
+      chip.classList.remove('err', 'dom-outra'); chip.classList.add('warn'); chip.style.cursor = '';
+      chip.textContent = o.nome + ' · ' + rotuloRel(o.rel) + ' · de outra empresa (aceito)';
+      domEstado.incluir = null; renderPreviaDom();
+    });
     async function lerPlanilhasDom(arquivos) {
       if (!window.XLSX && arquivos.some(f => !/\.xls$/i.test(f.name))) { domMsgErro('O leitor de planilha não carregou — verifique a conexão e recarregue a página (Ctrl+F5).'); return; }
       $('domMsg').style.color = '#8A93A6'; $('domMsg').textContent = 'Lendo ' + arquivos.length + ' planilha(s)…';
@@ -840,7 +851,8 @@
           if (!lido) throw erro || new Error('planilha sem aba reconhecida');
           const rel = lido;
           if (docFicha && rel.cnpj && rel.cnpj !== docFicha) {
-            $('domLidos').insertAdjacentHTML('beforeend', '<span class="dom-chip err" title="Planilha do CNPJ ' + escapeHtml(formatDocumento(rel.cnpj)) + (rel.empresa ? ' (' + escapeHtml(rel.empresa) + ')' : '') + '; esta ficha é ' + escapeHtml(formatDocumento(docFicha)) + '">' + escapeHtml(f.name) + ' · outra empresa</span>');
+            { const k = (domEstado.outras = domEstado.outras || []).push({ rel, nome: f.name, doc: rel.cnpj, docFicha }) - 1;
+            $('domLidos').insertAdjacentHTML('beforeend', '<span class="dom-chip err dom-outra" data-outra="' + k + '" style="cursor:pointer" title="Planilha do CNPJ ' + escapeHtml(formatDocumento(rel.cnpj)) + (rel.empresa ? ' (' + escapeHtml(rel.empresa) + ')' : '') + '; esta ficha é ' + escapeHtml(formatDocumento(docFicha)) + '. Clique pra usar mesmo assim.">' + escapeHtml(f.name) + ' · de outra empresa — clique pra usar mesmo assim</span>'); }
             continue;
           }
           domEstado.rels.push(rel);
@@ -860,7 +872,8 @@
         try {
           const rel = lerRelatorio(await paginasDoPdf(f));
           if (docFicha && rel.cnpj && rel.cnpj !== docFicha) {
-            $('domLidos').insertAdjacentHTML('beforeend', '<span class="dom-chip err" title="Relatório do CNPJ ' + escapeHtml(formatDocumento(rel.cnpj)) + (rel.empresa ? ' (' + escapeHtml(rel.empresa) + ')' : '') + '; esta ficha é ' + escapeHtml(formatDocumento(docFicha)) + '">' + escapeHtml(f.name) + ' · de outra empresa — não entra</span>');
+            { const k = (domEstado.outras = domEstado.outras || []).push({ rel, nome: f.name, doc: rel.cnpj, docFicha }) - 1;
+            $('domLidos').insertAdjacentHTML('beforeend', '<span class="dom-chip err dom-outra" data-outra="' + k + '" style="cursor:pointer" title="Relatório do CNPJ ' + escapeHtml(formatDocumento(rel.cnpj)) + (rel.empresa ? ' (' + escapeHtml(rel.empresa) + ')' : '') + '; esta ficha é ' + escapeHtml(formatDocumento(docFicha)) + '. Clique pra usar mesmo assim.">' + escapeHtml(f.name) + ' · de outra empresa — clique pra usar mesmo assim</span>'); }
             continue;
           }
           domEstado.rels.push(rel);
