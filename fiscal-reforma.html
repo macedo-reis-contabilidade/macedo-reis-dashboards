@@ -387,8 +387,15 @@
       });
       const ids = casos.map(c => c.cliente_id);
       if (ids.length) {
-        const { data: clis } = await supabase.from('clientes').select('id, nome_principal, documento, cnae_principal, cidade').in('id', ids);
+        const [{ data: clis }, { data: cart }] = await Promise.all([
+          supabase.from('clientes').select('id, nome_principal, documento, cnae_principal, cidade').in('id', ids),
+          supabase.from('carteira_info').select('cliente_id, saida').in('cliente_id', ids)
+        ]);
         clientesMap = Object.fromEntries((clis || []).map(c => [c.id, c]));
+        // espelho da carteira (23/09/2026): quem saiu da carteira some da lista; o caso fica guardado no banco
+        const hoje = new Date().toISOString().slice(0, 10);
+        const saiu = new Set((cart || []).filter(x => x.saida && x.saida <= hoje).map(x => x.cliente_id));
+        casos = casos.filter(c => !saiu.has(c.cliente_id));
       }
       casos.sort((a, b) => (clientesMap[a.cliente_id]?.nome_principal || '').localeCompare(clientesMap[b.cliente_id]?.nome_principal || ''));
       const segs = [...new Set(casos.map(c => c.segmento).filter(Boolean))].sort();
