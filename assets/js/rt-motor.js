@@ -8,6 +8,11 @@
 
 // LC 123/2006, art. 18 — Anexos I a V: faixas de RBT12,
 // alíquota nominal e parcela a deduzir.
+// Empate técnico: abaixo de max(0,3% da receita do semestre, R$ 3.000) a vantagem de apurar por fora não é recomendada
+// (decisão do Samuel, 23/09/2026 — calibrada pra manter o caso de referência Drogaria Guerra, 0,46%, como OPTE).
+export const LIMIAR_EMPATE_PCT = 0.3;
+export const LIMIAR_EMPATE_MIN = 3000;
+
 export const TAB_SIMPLES = {
   'I':   { lim: [180000, 360000, 720000, 1800000, 3600000, 4800000], aliq: [0.04,  0.073, 0.095, 0.107, 0.143, 0.19],  pd: [0, 5940, 13860, 22500, 87300, 378000] },
   'II':  { lim: [180000, 360000, 720000, 1800000, 3600000, 4800000], aliq: [0.045, 0.078, 0.10,  0.112, 0.147, 0.30],  pd: [0, 5940, 13860, 22500, 85500, 720000] },
@@ -140,10 +145,29 @@ export function simular(input) {
   semestre.diferenca = semestre.custoFora - semestre.custoDentro;
 
   const brl = v => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  // EMPATE TÉCNICO (23/09/2026): vantagem de "por fora" menor que o limiar não justifica a mudança —
+  // fica dentro da incerteza das premissas (crédito cheio sobre todas as entradas, fornecedores do regime
+  // regular, crédito condicionado ao pagamento do fornecedor) e do custo de apurar IBS/CBS fora do DAS.
+  // Só vale se o ganho de crédito da carteira PJ também for pequeno (senão o motivo é o cliente, não o custo).
+  const limiarEmpate = Math.max(LIMIAR_EMPATE_PCT / 100 * receita * 6, LIMIAR_EMPATE_MIN);
+  const economiaFora = -semestre.diferenca;
+  const ganhoAproveitado = semestre.aproveitadoFora - semestre.aproveitadoDentro;
+  const empate = Math.abs(semestre.diferenca) < limiarEmpate && ganhoAproveitado < limiarEmpate;
   let veredito;
-  if (semestre.custoFora < semestre.custoDentro) {
+  if (economiaFora > 0 && empate) {
+    const pct2 = v => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     veredito = {
-      tipo: 'OPTE',
+      tipo: 'MANTENHA', empate: true, limiarEmpate,
+      pontoEquilibrioPJ: null,
+      frase: 'Empate técnico: pelo regime regular o custo do primeiro semestre de 2027 seria ' + brl(economiaFora) +
+        ' menor (' + pct2(economiaFora / (receita * 6) * 100) + '% da receita), abaixo do limiar de ' + brl(limiarEmpate) +
+        ' que justifica a mudança. Essa margem é menor que a incerteza das premissas — crédito cheio sobre todas as entradas, ' +
+        'fornecedores do regime regular — e que o custo de apurar IBS/CBS fora do DAS; e a carteira PJ ganharia só ' + brl(Math.max(0, ganhoAproveitado)) +
+        ' de crédito aproveitado. Mantém-se a apuração dentro do Simples.'
+    };
+  } else if (semestre.custoFora < semestre.custoDentro) {
+    veredito = {
+      tipo: 'OPTE', empate: false, limiarEmpate,
       pontoEquilibrioPJ: null,
       frase: 'A simulação do primeiro semestre de 2027 indica custo tributário de ' + brl(semestre.custoFora) +
         ' pelo regime regular contra ' + brl(semestre.custoDentro) + ' dentro do Simples — economia estimada de ' +
@@ -167,7 +191,7 @@ export function simular(input) {
           '% de clientes PJ informados, esse ganho já supera a diferença de custo; pesar o custo próprio contra o ganho dos clientes antes de decidir.';
     }
     veredito = {
-      tipo: 'MANTENHA',
+      tipo: 'MANTENHA', empate, limiarEmpate,
       pontoEquilibrioPJ: pe != null && pe <= 100 ? pe : null,
       frase: 'A simulação do primeiro semestre de 2027 indica custo tributário de ' + brl(semestre.custoDentro) +
         ' dentro do Simples contra ' + brl(semestre.custoFora) + ' pelo regime regular — a permanência é ' +

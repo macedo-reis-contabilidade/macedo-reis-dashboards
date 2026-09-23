@@ -88,7 +88,8 @@ export function gerarAnalise(d) {
   const hoje = d.hoje || new Date().toLocaleDateString('pt-BR');
   const s = sim.semestre, m = sim.mes;
   const receita = e.receita;
-  const optar = s.custoFora < s.custoDentro;
+  const optar = sim.veredito ? sim.veredito.tipo === 'OPTE' : s.custoFora < s.custoDentro;
+  const empate = !!(sim.veredito && sim.veredito.empate) && s.diferenca < 0;
 
   // --- repasse: a CBS cobrada por fora do preço sai do bolso do cliente (que credita) ---
   const pontos = [0, 25, 50, 75, 100].map(r => ({ repasse: r, liquido: -(s.custoFora - m.debitoFora * (r / 100) * 6 - s.custoDentro) }));
@@ -135,7 +136,7 @@ export function gerarAnalise(d) {
 
   // ---------- 2. clientes ----------
   const barRestaurante = (e.mixRed40 || 0) > 0;
-  const vendeAConsumidor = xml && xml.pctPJ != null && xml.pctPJ < 10;
+  const vendeAConsumidor = !!d.consumidor;
   if (xml && (vendeAConsumidor || barRestaurante)) {
     // empresa que vende a consumidor final (ou bar/restaurante): ninguém credita — a decisão é só a conta própria
     P('<h2>2. Para quem a empresa vende — e por que isso simplifica a conta</h2>');
@@ -145,6 +146,14 @@ export function gerarAnalise(d) {
       + '<p>Consumidor final não credita imposto — hoje nem em 2027. ' + (barRestaurante ? 'E para bar e restaurante a lei fecha a porta também para o cliente pessoa jurídica: <b>o adquirente de alimentação e bebidas não pode se apropriar de crédito de IBS/CBS</b> (LC 214/2025, art. 276). ' : '')
       + 'Logo, apurar <b>por fora</b> não devolve crédito a ninguém — a única coisa que a opção muda é a conta da própria empresa.</p>'
       + '<p style="margin-bottom:0">Isso tira da mesa a variável que costuma decidir esse tipo de caso (o quanto o cliente pressiona por crédito). Aqui a decisão é aritmética: o que a empresa paga por dentro contra o que pagaria por fora, e só.</p></div>');
+  } else if (!xml && d.consumidor && dominio && dominio.vendas && dominio.vendas.total > 0) {
+    const v = dominio.vendas;
+    const pf = (v.pf || 0) + (v.consumidor || 0);
+    P('<h2>2. Para quem a empresa vende — e por que isso simplifica a conta</h2>');
+    P('<p>Pelo ' + esc(v.fonte || 'acompanhamento de saídas do Domínio') + ': de ' + brl(v.total) + ' vendidos, <b>' + pct1(pf / v.total * 100) + '% foram para pessoa física ou consumidor não identificado</b> e ' + pct1((v.pj || 0) / v.total * 100) + '% para ' + (v.nPJ || 0) + ' CNPJ(s).</p>');
+    P('<div class="cx chave"><h4>O ponto central</h4>'
+      + '<p>Pessoa física não credita imposto — nem hoje, nem em 2027. Apurar <b>por fora</b> não devolve crédito a quase ninguém: a carteira PJ aproveitaria ' + brl0(s.aproveitadoFora) + ' no semestre (contra ' + brl0(s.aproveitadoDentro) + ' por dentro).</p>'
+      + '<p style="margin-bottom:0">Por isso a decisão aqui é só a conta da própria empresa: o que ela paga por dentro contra o que pagaria por fora.</p></div>');
   } else if (xml && xml.clientes && xml.clientes.length) {
     P('<h2>2. Para quem a empresa vende — e por que isso decide a conta</h2>');
     P('<p>Medido em <b>' + esc(xml.periodoRotulo) + '</b>' + (xml.cobertura != null ? ', período em que as notas eletrônicas cobrem <b>' + (xml.cobertura >= 99.995 ? '100%' : pct2(xml.cobertura) + '%') + '</b> do faturamento declarado' : '') + '. A empresa atendeu <b>' + xml.nClientes + ' grupos econômicos</b>; os dez maiores concentram <b>' + pct1(xml.top10) + '% da receita</b>'
@@ -190,7 +199,7 @@ export function gerarAnalise(d) {
   P('<h2>4. A simulação: os dois caminhos no primeiro semestre de 2027</h2>');
   P('<p>Alíquotas de referência de 2027: <b>CBS ' + pct1(e.cbs) + '%</b> (pendente de Resolução do Senado) e <b>IBS ' + pct1(e.ibs) + '%</b> (alíquota-teste). Cenário: preço de venda inalterado, isto é, a empresa <b>absorve</b> a CBS.</p>');
   P('<div class="duas">'
-    + '<div class="ret' + (optar ? '' : ' win') + '"><h4>Por dentro — IBS/CBS no DAS</h4>'
+    + '<div class="ret' + (optar ? '' : ' win') + '"><h4>Por dentro — IBS/CBS no DAS' + (empate ? ' · recomendado (empate técnico)' : '') + '</h4>'
       + '<div class="rw"><span>Custo tributário do semestre</span><b>' + brl(s.custoDentro) + '</b></div>'
       + '<div class="rw"><span>Caixa pago ao fisco</span><b>' + brl(s.caixaDentro) + '</b></div>'
       + '<div class="rw"><span>Crédito que o cliente leva</span><b>' + brl(s.creditoClienteDentro) + '</b></div>'
@@ -224,7 +233,10 @@ export function gerarAnalise(d) {
   if ((e.mixRed60 || 0) > 0) mixTxt.push(pct1(e.mixRed60) + '% com redução de 60%');
   if ((e.mixRed30 || 0) > 0) mixTxt.push(pct1(e.mixRed30) + '% com redução de 30%');
   if ((e.mixZero || 0) > 0) mixTxt.push(pct1(e.mixZero) + '% em alíquota zero');
-  if (!optar) {
+  if (empate) {
+    P('<div class="cx chave"><h4>Empate técnico</h4><p style="margin:0">Por fora a conta sai <b>' + brl0(Math.abs(s.diferenca)) + ' menor no semestre — ' + pct2(Math.abs(s.diferenca) / (receita * 6) * 100) + '% da receita</b>, abaixo do limiar de ' + brl0(sim.veredito.limiarEmpate) + ' que o escritório adota pra recomendar a mudança. '
+      + 'A vantagem vem de a empresa creditar IBS/CBS sobre entradas que somam ' + pct1(e.pctComprasMercadorias + (e.pctComprasDespesas || 0)) + '% da receita, pagando só sobre a margem — e supõe crédito cheio em <b>todas</b> essas entradas. Se parte delas vier de fornecedor do Simples ou tiver o crédito glosado, a diferença some. Com essa margem, não vale trocar a apuração.</p></div>');
+  } else if (!optar) {
     P('<p>O motivo é aritmético: <b>por fora a empresa debita ' + pct1(aliqVendas) + '% sobre o que fatura' + (mixTxt.length ? ' (' + pct1(e.cbs + e.ibs) + '% de referência, com ' + mixTxt.join(', ') + ')' : '') + ' e credita ' + (fat.compras < 0.5 ? 'pouco' : 'menos') + ' na entrada</b>: compra ' + pct1(e.pctComprasMercadorias + e.pctComprasDespesas) + '% do que fatura'
       + (fat.comprasMedido ? ', e só ' + pct1(fat.compras * 100) + '% dessas compras carregam IBS/CBS pra creditar — o resto é cesta básica, alíquota zero (medido pelo NCM das notas de entrada)' : '') + '. O regime regular favorece quem compra muito e compra tributado.</p>');
   } else if (mixTxt.length || fat.comprasMedido) {
