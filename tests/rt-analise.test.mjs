@@ -36,6 +36,20 @@ console.log('Prestador B2B:'); chk('veredito ' + pb.sim.veredito.tipo, true);
 chk('repasse ainda é a variável', /A variável que inverte|repasse/i.test(pb.txt));
 chk('hora técnica presente', /hora técnica/.test(pb.txt));
 chk('ISS presente', /ISS retido/.test(pb.txt));
+// 4) Varejo com entradas acima da receita (caso "compras = vendas"): tendência a confirmar, sem contradição
+const vr = caso('MOVEIS TESTE', { anexo:'I', rbt12:1133527.31, receita:59311.38, mixCheia:100, pctComprasMercadorias:100, pctComprasDespesas:4, pctImpostoEmbutido:0, pctExcluidoST:0, partilha:15.5, cbs:9.3, ibs:0.1, pctPJ:2.2, aliqEfetivaInformada:8.72 },
+  { faturamento: { total: 474491.04, servicos: 0, saidas: 474491.04 }, periodoRotulo: 'jan/26–ago/26', vendas: { total: 482844.13, mercadorias: 482844.13, servicos: 0, st: 0, pctPJ: 2.2, pj: 10622, pf: 0, consumidor: 472222, nPJ: 5, fonte: 'acompanhamento de saídas (Domínio), PJ pelo CNPJ do cliente' } }, null);
+console.log('Varejo com compras ≥ vendas:'); chk('veredito OPTE (' + vr.sim.veredito.tipo + ')', vr.sim.veredito.tipo === 'OPTE');
+chk('recomendação vira "tendência — a confirmar"', /Tendência: .*a confirmar/.test(vr.txt));
+chk('alerta de compras × vendas', /compra quase o mesmo/.test(vr.txt));
+chk('aponta o que inverte (crédito 20% menor)', /crédito das entradas 20% menor/.test(vr.txt));
+chk('sem "Nenhuma incerteza técnica isolada derruba"', !/Nenhuma incerteza técnica isolada derruba/.test(vr.txt));
+chk('seção 10 sem "nenhum deles inverte"', !/nenhum deles inverte/.test(vr.txt));
+chk('linha "Base creditável" marca que muda', /Sim — com menos crédito de entrada/.test(vr.txt));
+chk('dica do cancelamento até 30/11', /cancelá-la até 30\/11\/2026/.test(vr.txt));
+// 5) caso limpo continua firme (prestador B2B sem alertas)
+chk('caso sem dado suspeito não vira "a confirmar" (' + pb.d.alertas.length + ' alerta)', pb.d.aConfirmar === false && !/Tendência:/.test(pb.txt));
+
 // 3) Drogaria Guerra (referência)
 const g = simular({ anexo:'I', rbt12:1800000, receita:150000, mixCheia:20, mixRed60:70, mixRed30:0, mixZero:10, pctComprasMercadorias:60, pctComprasDespesas:5.33, pctImpostoEmbutido:18, pctExcluidoST:33.5, partilha:15.5, cbs:9.3, ibs:0, pctPJ:10, creditoEstoqueMes:1541.67 });
 console.log('Referência:'); chk('Guerra continua OPTE (' + g.veredito.tipo + ')', g.veredito.tipo === 'OPTE');

@@ -1037,6 +1037,7 @@
         // DAS realmente pago: média das apurações enviadas (não o simulado)
         dasMedio: (() => { const ps = rels.filter(r => r.tipo === 'simples'); return ps.length ? ps.reduce((a, r) => a + (r.dasTotal || 0), 0) / ps.length : null; })(),
         nPgdas: rels.filter(r => r.tipo === 'simples').length,
+        excecoes: rels.filter(r => r.outraEmpresa).map(r => ({ simples: 'PGDAS', faturamento: 'faturamento', entradas: 'entradas', saidas: 'saídas', servicos: 'serviços' }[r.tipo] || r.tipo) + (r.competencia ? ' ' + r.competencia : '') + ' do CNPJ ' + r.cnpj + (r.empresa ? ' (' + r.empresa + ')' : '')),
         vendas: cons.resVen ? { total: cons.resVen.total, mercadorias: cons.resVen.mercadorias, servicos: cons.resVen.servicos, st: cons.resVen.st, pctPJ: cons.resVen.pctPJ, pj: cons.resVen.classes.pj.valor, pf: cons.resVen.classes.pf.valor, consumidor: cons.resVen.classes.consumidor.valor, nPJ: cons.resVen.classes.pj.nClientes, meses: cons.resVen.meses, fonte: 'acompanhamento de saídas' + (cons.ven.tipos.includes('servicos') ? ' e de serviços' : '') + ' (Domínio), ' + (cons.resVen.porDocumento ? 'PJ pelo CNPJ do cliente' : 'PJ pelo nome') } : null,
         // soma TODAS as apurações enviadas: um mês só distorce o peso de cada anexo
         anexosOutros: (() => {
@@ -1353,6 +1354,7 @@
       const viraEm = m.debitoFora > 0 ? (s.diferenca / 6) / m.debitoFora * 100 : null;
       const dif = x => simular({ ...ent, ...x }).semestre.diferenca;
       const sinal = v => (v < 0 ? 'economia de ' : 'custo de ') + brl0(Math.abs(v));
+      const inverteDif = v => !empate && Math.abs(v) > 0.5 && (v < 0) !== (s.diferenca < 0);
 
       // ponto em que as compras empatariam a conta
       let lo = ent.pctComprasMercadorias, hi = 100, empataCompras = null;
@@ -1381,13 +1383,13 @@
               efeito: 'de ' + brl0(-s.diferenca) + ' (0% de repasse) a ' + brl0(m.debitoFora * 6 - s.diferenca) + ' (100%)',
               muda: viraEm != null && viraEm >= 0 && viraEm <= 100 ? 'Sim — inverte a partir de ' + Math.round(viraEm) + '%' : 'Sim' },
         { nome: 'Alíquota final da CBS', hoje: p1(ent.cbs) + '% (não fixada)',
-          efeito: '8,8% (Fazenda) → ' + sinal(dif({ cbs: 8.8 })) + ' · 9,21% (CGIBS) → ' + sinal(dif({ cbs: 9.21 })), muda: 'Não — nas três estimativas a conclusão é a mesma' },
+          efeito: '8,8% (Fazenda) → ' + sinal(dif({ cbs: 8.8 })) + ' · 9,21% (CGIBS) → ' + sinal(dif({ cbs: 9.21 })), muda: [8.8, 9.21].some(v => inverteDif(dif({ cbs: v }))) ? 'Sim — alguma das estimativas inverte a conclusão' : 'Não — nas três estimativas a conclusão é a mesma' },
         { nome: 'Base creditável de entradas', hoje: p1(ent.pctComprasMercadorias + ent.pctComprasDespesas) + '% da receita',
           efeito: '25% → ' + sinal(dif({ pctComprasMercadorias: 25 })) + ' · 60% → ' + sinal(dif({ pctComprasMercadorias: 60 })),
-          muda: empataCompras ? 'Não (empataria só a ~' + Math.round(empataCompras) + '%)' : 'Não' },
+          muda: [25, 60].some(v => inverteDif(dif({ pctComprasMercadorias: v }))) ? 'Sim — com menos crédito de entrada a conclusão inverte' + (empataCompras ? ' (empata a ~' + Math.round(empataCompras) + '%)' : '') : (empataCompras ? 'Não (empataria só a ~' + Math.round(empataCompras) + '%)' : 'Não') },
         { nome: 'Receita mensal', hoje: brl0(ent.receita),
           efeito: '−30% → ' + sinal(dif({ receita: ent.receita * 0.7 })) + ' · +30% → ' + sinal(dif({ receita: ent.receita * 1.3 })),
-          muda: 'Não — a diferença acompanha a receita' },
+          muda: [0.7, 1.3].some(f => inverteDif(dif({ receita: ent.receita * f }))) ? 'Sim — com outra receita a conclusão inverte' : 'Não — a diferença acompanha a receita' },
         barRest
           ? { nome: 'Redução de 40% (bar/restaurante)', hoje: p1(ent.mixRed40 || 0) + '% da receita',
               efeito: 'sem a redução (tudo à alíquota cheia) → ' + sinal(dif({ mixRed40: 0, mixCheia: (ent.mixCheia || 0) + (ent.mixRed40 || 0) })), muda: 'Não — sem ela, por fora fica ainda pior' }
@@ -1497,18 +1499,60 @@
         { o_que: 'Alíquota oficial da CBS', porque: 'Hoje é estimativa; a variação testada não inverte a conclusão', onde: 'Resolução do Senado', quem: 'Acompanhar', nivel: 'alta', peso: 'baixo' }
       );
 
+      // ---------- REVISOR (24/09/2026): o relatório confere a si mesmo antes de recomendar ----------
+      // Não buscamos definição 100%: se algum dado sustenta a conclusão sem certeza, o relatório diz
+      // "pode ser isso, porém…" e aponta o que conferir. Regras vindas dos casos reais da campanha.
+      const testes = [
+        { nome: 'crédito das entradas 20% menor (fornecedores do Simples, crédito glosado)', v: dif({ pctComprasMercadorias: ent.pctComprasMercadorias * 0.8, pctComprasDespesas: (ent.pctComprasDespesas || 0) * 0.8 }), conferir: 'regime dos principais fornecedores' },
+        { nome: 'CBS de 8,8% (projeção da Fazenda)', v: dif({ cbs: 8.8 }), conferir: 'alíquota oficial da CBS' },
+        { nome: 'receita 30% menor', v: dif({ receita: ent.receita * 0.7 }), conferir: 'receita esperada para 2027' },
+        { nome: 'receita 30% maior', v: dif({ receita: ent.receita * 1.3 }), conferir: 'receita esperada para 2027' }
+      ];
+      if (!mixMedido && !prestador) testes.push({ nome: 'metade das vendas com redução de 60%', v: dif({ mixCheia: 50, mixRed60: 50, mixRed40: 0, mixRed30: 0, mixZero: 0 }), conferir: 'mix das vendas por NCM' });
+      const viram = testes.filter(t => inverteDif(t.v));
+      const alertas = viram.map(t => ({ texto: 'Com ' + t.nome + ', o resultado se inverte (' + sinal(t.v) + ' no semestre apurando por fora).', conferir: t.conferir }));
+      const pEnt = (ent.pctComprasMercadorias || 0) + (ent.pctComprasDespesas || 0);
+      if ((!prestador && pEnt > 90) || pEnt > 100) {
+        alertas.unshift({ texto: 'As entradas que geram crédito somam ' + p1(pEnt) + '% da receita — a empresa compra quase o mesmo (ou mais) do que vende. Pode ser formação de estoque, venda que não passa pela receita considerada, ou entrada lançada como revenda sem ser. Com uma proporção de compras mais usual, a conta por fora piora.', conferir: 'compras × vendas do período' });
+        pendencias.unshift({ o_que: 'Compras × vendas do período', porque: 'Entradas em ' + p1(pEnt) + '% da receita, acima do usual — é o que mais pesa na conta por fora', onde: 'Acompanhamento de entradas e estoque; conversa com o cliente', quem: 'Fiscal / Direção', nivel: 'alta', peso: 'decisivo' });
+      }
+      if (dom && dom.excecoes && dom.excecoes.length) alertas.push({ texto: 'Usado nesta análise por decisão manual, de outro CNPJ: ' + dom.excecoes.join('; ') + '.', conferir: null });
+      const aConfirmar = alertas.length > 0;
+      const conferirLista = [...new Set(alertas.map(a => a.conferir).filter(Boolean))];
+      const listaAlertas = '<ul style="margin:6px 0 10px 18px;padding:0">' + alertas.map(a => '<li>' + a.texto + '</li>').join('') + '</ul>';
+      let recomendacaoFinal = recomendacao;
+      if (aConfirmar && empate) {
+        recomendacaoFinal = { titulo: recomendacao.titulo, corpo: recomendacao.corpo + '<p style="margin-bottom:0"><b>Dados a conferir</b> — não mudam a recomendação de manter, mas o cliente deve saber:</p>' + listaAlertas };
+      } else if (aConfirmar) {
+        const lado = optar ? 'apurar por fora' : 'manter dentro do DAS';
+        recomendacaoFinal = {
+          titulo: 'Tendência: ' + (optar ? 'optar pelo recolhimento por fora do DAS' : 'manter o IBS/CBS dentro do DAS') + ' — a confirmar',
+          corpo: '<p>Pelos números de hoje, ' + lado + ' sai ' + brl0(Math.abs(s.diferenca)) + ' mais barato no semestre (' + p1(Math.abs(s.diferenca) / (ent.receita * 6) * 100) + '% da receita). Mas esse resultado ainda não é seguro:</p>'
+            + listaAlertas
+            + (conferirLista.length ? '<p>Antes de decidir, conferir: <b>' + conferirLista.join('</b>, <b>') + '</b>.</p>' : '')
+            + (optar ? '<p style="margin-bottom:0">Se não der pra conferir até 30/09/2026, é possível formalizar a opção e cancelá-la até 30/11/2026 sem efeito, caso a conferência não confirme.</p>' : '<p style="margin-bottom:0">Enquanto não houver confirmação, manter é o caminho sem custo de mudança.</p>')
+        };
+      }
+      const sensibilidadeNotaFinal = !empate && viram.length
+        ? 'Atenção: ' + viram.map(t => t.nome).join('; ') + ' — ' + (viram.length > 1 ? 'cada uma dessas variáveis inverte' : 'essa variável inverte') + ' a conclusão. Por isso a recomendação é uma tendência, a confirmar.'
+        : null;
+      const pendenciasNota = viram.length || (aConfirmar && !empate)
+        ? 'Em ordem de valor. Podem inverter a recomendação: ' + (conferirLista.length ? conferirLista.join(', ') : 'os itens marcados como decisivos') + '.'
+        : consumidor ? 'Em ordem de valor — nenhum deles inverte a recomendação; servem para afinar o número.'
+        : 'Em ordem de valor para a decisão — o item 1 é o único que pode inverter a recomendação.';
       return {
+        alertas, aConfirmar, pendenciasNota,
         cliente: cli || { nome_principal: '—', documento: null }, caso: c, sim, entrada: ent, dominio: dom, xml,
         logoUrl: new URL('assets/logo-mr.png', location.href).href,
         hoje: new Date().toLocaleDateString('pt-BR'),
         origemReceita: dom && dom.faturamento ? 'média do faturamento ' + dom.periodoRotulo : 'informada na ficha',
-        sensibilidade, sensibilidadeNota: empate
+        sensibilidade, sensibilidadeNota: sensibilidadeNotaFinal || (empate
           ? 'A diferença de ' + brl0(Math.abs(s.diferenca)) + ' no semestre está abaixo do limiar de ' + brl0(sim.veredito.limiarEmpate) + ': qualquer das variáveis acima, isolada, já a apaga ou inverte. É empate técnico — e no empate a recomendação é não mudar.'
           : consumidor
           ? 'Nenhuma incerteza técnica isolada derruba a diferença de ' + brl0(Math.abs(s.diferenca)) + ' do semestre, e não há variável comercial em jogo: ninguém credita o que compra desta empresa. A decisão é aritmética.'
-          : 'Nenhuma incerteza técnica isolada derruba a diferença de ' + brl0(Math.abs(s.diferenca)) + ' do semestre. Só o repasse derruba — por isso a decisão é comercial, não fiscal.',
+          : 'Nenhuma incerteza técnica isolada derruba a diferença de ' + brl0(Math.abs(s.diferenca)) + ' do semestre. Só o repasse derruba — por isso a decisão é comercial, não fiscal.'),
         consumidor, empate, pctPJ, fontePJ, barRest, prestador,
-        fontes, recomendacao, perguntas, pendencias
+        fontes, recomendacao: recomendacaoFinal, perguntas, pendencias
       };
     }
 

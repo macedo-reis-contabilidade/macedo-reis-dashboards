@@ -284,7 +284,7 @@ export function gerarAnalise(d) {
   // ---------- 10. pendências ----------
   if (d.pendencias && d.pendencias.length) {
     P('<h2>10. O que falta para fechar o caso</h2>');
-    P('<p>' + (d.consumidor ? 'Em ordem de valor — nenhum deles inverte a recomendação; servem para afinar o número.' : 'Em ordem de valor para a decisão — o item 1 é o único que pode inverter a recomendação.') + '</p>');
+    P('<p>' + esc(d.pendenciasNota || (d.consumidor ? 'Em ordem de valor — nenhum deles inverte a recomendação; servem para afinar o número.' : 'Em ordem de valor para a decisão — o item 1 é o único que pode inverter a recomendação.')) + '</p>');
     P('<table><thead><tr><th style="width:26px">#</th><th>O que falta</th><th>Por que importa</th><th>Onde se obtém</th><th>Quem</th><th>Peso</th></tr></thead><tbody>'
       + d.pendencias.map((p, i) => '<tr><td class="num">' + (i + 1) + '</td><td><b>' + esc(p.o_que) + '</b></td><td>' + esc(p.porque) + '</td><td>' + esc(p.onde) + '</td><td>' + esc(p.quem) + '</td><td>' + selo(p.nivel, p.peso) + '</td></tr>').join('')
       + '</tbody></table>');
