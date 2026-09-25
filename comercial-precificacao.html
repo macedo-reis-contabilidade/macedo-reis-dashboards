@@ -317,7 +317,9 @@
       return base;
     }
     const num = id => Number(respostas[id]) || 0;
-    const fatAnual = () => num('A2') || num('A2N') * 12; // empresa em constituição responde a projeção mensal (A2N)
+    // faturamento: desde 25/09/2026 o formulário pergunta a média MENSAL (A2M); A2 (anual) só nas precificações antigas;
+    // empresa em constituição responde a projeção mensal (A2N). As faixas de preço continuam anuais.
+    const fatAnual = () => num('A2M') * 12 || num('A2') || num('A2N') * 12;
     const sim = id => respostas[id] === 'Sim';
     const R = id => respostas[id] ?? '';
 
@@ -507,7 +509,7 @@
       tx.textContent = c.taxaUnica ? '+ taxa única de organização inicial: ' + fmt(c.taxaUnica) : '';
       renderRef();
       const a3 = document.getElementById('auto_A3');
-      if (a3) a3.textContent = fmt(fatAnual() / 12) + ' / mês';
+      if (a3) a3.textContent = fmt(fatAnual()) + ' / ano';
       const oo = document.getElementById('prObsOrc');
       if (oo && document.activeElement !== oo && oo.value !== (respostas['obs_orcamento'] || '')) oo.value = respostas['obs_orcamento'] || '';
       const mm = document.getElementById('prMsgOrc');
