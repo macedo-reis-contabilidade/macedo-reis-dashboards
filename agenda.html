@@ -443,6 +443,7 @@
       if (!m) return null;
       return m[1] + 'h' + (m[2] && m[2] !== '00' ? m[2] : '');
     }
+    const compLbl = c => !c ? '' : /^\d{4}-\d{2}$/.test(c) ? c.slice(5) + '/' + c.slice(0, 4) : String(c);   // 'AAAA-MM' → 'MM/AAAA'
     function passaFiltro(item){
       if (estado.setor && item.setor !== estado.setor) return false;
       if (estado.resp){
@@ -542,7 +543,7 @@
         html += `<div class="ag-card ${classePrio(t.prioridade)}" data-bstask="${t.id}">
           ${loteCheck(t)}
           <div class="ag-card-main">
-            <div class="ag-card-titulo">${t.faturavel ? '💰 ' : ''}${esc(t.titulo) || '(sem título)'}${horaDaTarefa(t) ? `<span class="t-hora">🕐 ${horaDaTarefa(t)}</span>` : ''}${atras}</div>
+            <div class="ag-card-titulo">${t.faturavel ? '💰 ' : ''}${esc(t.titulo) || '(sem título)'}${horaDaTarefa(t) ? `<span class="t-hora">🕐 ${horaDaTarefa(t)}</span>` : ''}${t.competencia ? `<span class="t-hora" title="Competência">comp. ${compLbl(t.competencia)}</span>` : ''}${atras}</div>
             <div class="ag-card-meta"><b style="color:var(--brand-light);">${fData(t.prazo)}</b><span class="sep">·</span>${chip(t.setor)} ${cli} ${resp}</div>
           </div>
         </div>`;
@@ -700,7 +701,7 @@
         html += `<div class="ag-card ${classePrio(t.prioridade)}" data-bstask="${t.id}"${concl ? ' style="opacity:.55;"' : ''}>
           ${loteCheck(t)}
           <div class="ag-card-main">
-            <div class="ag-card-titulo">${concl ? '✓ ' : ''}${esc(t.titulo) || '(sem título)'}${horaDaTarefa(t) ? `<span class="t-hora">🕐 ${horaDaTarefa(t)}</span>` : ''}${t.transicao_id ? '<span class="t-hora" title="tarefa de transição">🔁</span>' : ''}</div>
+            <div class="ag-card-titulo">${concl ? '✓ ' : ''}${esc(t.titulo) || '(sem título)'}${horaDaTarefa(t) ? `<span class="t-hora">🕐 ${horaDaTarefa(t)}</span>` : ''}${t.competencia ? `<span class="t-hora" title="Competência">comp. ${compLbl(t.competencia)}</span>` : ''}${t.transicao_id ? '<span class="t-hora" title="tarefa de transição">🔁</span>' : ''}</div>
             <div class="ag-card-meta"><b style="color:var(--brand-light);">${fData(t.prazo)}</b><span class="sep">·</span>${chip(t.setor)} ${cli} ${resp}</div>
           </div>
         </div>`;
@@ -746,7 +747,7 @@
         const resp = t.responsavel ? `<span>${esc(t.responsavel)}</span>` : '';
         html += `<div class="ag-card ${classePrio(t.prioridade)}" data-sptask="${t.id}">
           <div class="ag-card-main">
-            <div class="ag-card-titulo">${esc(t.titulo) || '(sem título)'}${horaDaTarefa(t) ? `<span class="t-hora">🕐 ${horaDaTarefa(t)}</span>` : ''}${t.transicao_id ? '<span class="t-hora" title="tarefa de transição">🔁</span>' : ''}</div>
+            <div class="ag-card-titulo">${esc(t.titulo) || '(sem título)'}${horaDaTarefa(t) ? `<span class="t-hora">🕐 ${horaDaTarefa(t)}</span>` : ''}${t.competencia ? `<span class="t-hora" title="Competência">comp. ${compLbl(t.competencia)}</span>` : ''}${t.transicao_id ? '<span class="t-hora" title="tarefa de transição">🔁</span>' : ''}</div>
             <div class="ag-card-meta">${chip(t.setor)} ${cli} ${resp}</div>
           </div>
         </div>`;
@@ -833,7 +834,7 @@
         const cli = t.clientes?.nome_principal ? `<small>${esc(t.clientes.nome_principal)}</small>` : '';
         return `<div class="rp-prazo" data-rptask="${t.id}">
           <span class="rp-selo" style="background:${cor}1f;color:${cor};border-color:${cor}55;">${txt}</span>
-          <span class="rp-ptit">${esc(t.titulo)}${cli}</span>
+          <span class="rp-ptit">${esc(t.titulo)}${t.competencia ? ' · ' + compLbl(t.competencia) : ''}${cli}</span>
         </div>`;
       }).join('') || '<div style="color:var(--text-dim);font-size:12px;padding:4px 0;">Nada no radar.</div>';
 
@@ -893,7 +894,7 @@
         const resp = t.responsavel ? `<span>${esc(t.responsavel)}</span>` : '';
         html += `<div class="ag-card ${classePrio(t.prioridade)}" data-taskid="${t.id}" data-prio="${norm(t.prioridade)}" draggable="true" title="Arraste pra reordenar (dentro da mesma prioridade)">
           <div class="ag-card-main">
-            <div class="ag-card-titulo">${esc(t.titulo)||'(sem título)'}${horaDaTarefa(t) ? `<span class="t-hora">🕐 ${horaDaTarefa(t)}</span>` : ''}${t.transicao_id ? '<span class="t-hora" title="tarefa de transição">🔁</span>' : ''}</div>
+            <div class="ag-card-titulo">${esc(t.titulo)||'(sem título)'}${horaDaTarefa(t) ? `<span class="t-hora">🕐 ${horaDaTarefa(t)}</span>` : ''}${t.competencia ? `<span class="t-hora" title="Competência">comp. ${compLbl(t.competencia)}</span>` : ''}${t.transicao_id ? '<span class="t-hora" title="tarefa de transição">🔁</span>' : ''}</div>
             <div class="ag-card-meta">${chip(t.setor)} ${cli} ${resp}</div>
           </div>
           <select class="ag-prio" data-id="${t.id}">
@@ -927,7 +928,7 @@
           const quem = t.concluida_por ? `<span>por ${esc(nomePorEmail(t.concluida_por))}</span>` : '';
           html += `<div class="ag-card feita ${classePrio(t.prioridade)}" data-taskid="${t.id}">
             <div class="ag-card-main">
-              <div class="ag-card-titulo">${esc(t.titulo)||'(sem título)'}${horaDaTarefa(t) ? `<span class="t-hora">🕐 ${horaDaTarefa(t)}</span>` : ''}${t.transicao_id ? '<span class="t-hora" title="tarefa de transição">🔁</span>' : ''}</div>
+              <div class="ag-card-titulo">${esc(t.titulo)||'(sem título)'}${horaDaTarefa(t) ? `<span class="t-hora">🕐 ${horaDaTarefa(t)}</span>` : ''}${t.competencia ? `<span class="t-hora" title="Competência">comp. ${compLbl(t.competencia)}</span>` : ''}${t.transicao_id ? '<span class="t-hora" title="tarefa de transição">🔁</span>' : ''}</div>
               <div class="ag-card-meta">${chip(t.setor)} ${quem}</div>
             </div>
           </div>`;
@@ -960,7 +961,7 @@
           <div class="ag-wk-head">${DOW[i]}<span class="dnum">${d.getDate()}</span></div>`;
         ts.sort((a,b)=>(PRIO_ORDEM[norm(a.prioridade)]??1)-(PRIO_ORDEM[norm(b.prioridade)]??1));
         ts.forEach(t => {
-          html += `<div class="ag-wk-item ${classePrio(t.prioridade)} ${t.status==='concluida'?'feita':''}">${dot(t.setor)}<span class="t">${esc(t.titulo)||'—'}</span></div>`;
+          html += `<div class="ag-wk-item ${classePrio(t.prioridade)} ${t.status==='concluida'?'feita':''}">${dot(t.setor)}<span class="t">${esc(t.titulo)||'—'}${t.competencia ? ' · ' + compLbl(t.competencia) : ''}</span></div>`;
         });
         rs.forEach(r => {
           html += `<div class="ag-wk-item"><span class="setor-dot" style="background:var(--text-muted);"></span><span class="t">↻ ${esc(rotuloRotina(r))}</span></div>`;
@@ -984,7 +985,7 @@
         const ts = tarefasDoDia(cur), rs = rotinasDoDia(cur);
         const itens = [];
         ts.sort((a,b)=>(PRIO_ORDEM[norm(a.prioridade)]??1)-(PRIO_ORDEM[norm(b.prioridade)]??1));
-        ts.forEach(t => itens.push({txt:t.titulo||'—', setor:t.setor, feita:t.status==='concluida'}));
+        ts.forEach(t => itens.push({txt:(t.titulo||'—') + (t.competencia ? ' · ' + compLbl(t.competencia) : ''), setor:t.setor, feita:t.status==='concluida'}));
         rs.forEach(r => itens.push({txt:'↻ '+rotuloRotina(r), setor:r.setor, feita:false}));
         let chips = itens.slice(0,3).map(it => `<div class="ag-mo-chip ${it.feita?'feita':''}">${dot(it.setor)} ${esc(it.txt)}</div>`).join('');
         if (itens.length>3) chips += `<div class="ag-mo-mais">+${itens.length-3} mais</div>`;
@@ -1106,7 +1107,7 @@
       detCli = { id: t.cliente_id || null, mudou: false };
       document.getElementById('dCliBusca').value = '';
       document.getElementById('dCliRes').style.display = 'none';
-      document.getElementById('dEmpresa').textContent = t.clientes?.nome_principal || 'Interno (sem empresa)';
+      document.getElementById('dEmpresa').textContent = (t.clientes?.nome_principal || 'Interno (sem empresa)') + (t.competencia ? ' · competência ' + compLbl(t.competencia) : '');
       const hEl = document.getElementById('dHora'), hV = horaDaTarefa(t);
       hEl.style.display = hV ? 'inline-block' : 'none';
       if (hV) hEl.textContent = '🕐 ' + hV;
