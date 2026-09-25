@@ -803,7 +803,7 @@
         setor: 'fiscal', titulo: r.nome, cliente_id: v.cliente_id,
         responsavel: v.responsavel || null, prazo: toYMD(prazoD),
         status: 'pendente', prioridade: 'media', origem: 'recorrente',
-        obrigacao_id: r.id, competencia: comp,
+        obrigacao_id: r.id, competencia: comp, competencia_fiscal: compFiscal(r, ano, mes),
         descricao: 'Competência ' + compFiscal(r, ano, mes) + ' · Gerada pelo módulo Obrigações'
       }).select('*').single();
       btn.disabled = false;
@@ -1176,7 +1176,7 @@
             setor: 'fiscal', titulo: r.nome, cliente_id: v.cliente_id,
             responsavel: v.responsavel || null, prazo: toYMD(prazoD),
             status: 'pendente', prioridade: 'media', origem: 'recorrente',
-            obrigacao_id: r.id, competencia: chaveComp,
+            obrigacao_id: r.id, competencia: chaveComp, competencia_fiscal: compFiscal(r, anoOcc, M),
             descricao: 'Competência ' + compFiscal(r, anoOcc, M) + ' · Gerada pelo módulo Obrigações'
           });
           criar++;

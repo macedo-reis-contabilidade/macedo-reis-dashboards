@@ -184,7 +184,8 @@ async function salvar() {
     let d = proximaOcorrencia(rep, diaMes, mmdd);
     if ($('ntUtil').checked) { while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1); }
     const prazo = ymd(d), competencia = prazo.slice(0, 7);
-    const primeiras = (rIns || []).map(r => ({ cliente_id: r.cliente_id, setor, titulo, descricao, responsavel, prazo, status: 'pendente', prioridade: 'media', origem: 'recorrente', regra_id: r.id, competencia }));
+    const cf = new Date(d.getFullYear(), d.getMonth() - 1, 1); const competencia_fiscal = String(cf.getMonth() + 1).padStart(2, '0') + '/' + cf.getFullYear();   // praxe: mês anterior ao vencimento
+    const primeiras = (rIns || []).map(r => ({ cliente_id: r.cliente_id, setor, titulo, descricao, responsavel, prazo, status: 'pendente', prioridade: 'media', origem: 'recorrente', regra_id: r.id, competencia, competencia_fiscal }));
     const { data: tIns, error: tErr } = await supabase.from('tarefas').insert(primeiras).select('id');
     if (tErr) { alert('Recorrência criada, mas a primeira tarefa falhou: ' + tErr.message); }
     else if (tIns?.length) await supabase.from('tarefa_historico').insert(tIns.map(t => ({ tarefa_id: t.id, descricao: `Primeira tarefa da recorrência ${rep} (${regras.length > 1 ? 'lote de ' + regras.length + ' clientes' : '1 cliente'}).`, autor })));

@@ -11,8 +11,6 @@
 import { supabase, getCurrentUser, signOut } from './supabase.js';
 import { formatDate } from './utils.js';
 import { abrirNovaTarefa } from './nova-tarefa.js';
-// competência 'AAAA-MM' → 'MM/AAAA' (anual 'AAAA' fica como está)
-const compLbl = c => !c ? '' : /^\d{4}-\d{2}$/.test(c) ? c.slice(5) + '/' + c.slice(0, 4) : String(c);
 
 const CSS = `
   .fa-focus { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:22px; }
@@ -698,7 +696,7 @@ export function initTarefas(userCfg) {
 
     // competência (obrigações do fiscal): grupos separados por mês — "DCTFWeb · comp. 08/2026"
     const grupos = {};
-    vis.forEach(t => { const k = t.titulo + (t.competencia ? ' · comp. ' + compLbl(t.competencia) : ''); (grupos[k] = grupos[k] || []).push(t); });
+    vis.forEach(t => { const k = t.titulo + (t.competencia_fiscal ? ' · comp. ' + t.competencia_fiscal : ''); (grupos[k] = grupos[k] || []).push(t); });
     const ordenados = Object.keys(grupos).sort((a,b) => {
       const pa = menorPrazo(grupos[a]), pb = menorPrazo(grupos[b]);
       if (!pa) return 1; if (!pb) return -1; return pa < pb ? -1 : 1;
@@ -943,7 +941,7 @@ export function initTarefas(userCfg) {
     procAtual = t;
     const concl = t.status === 'concluida';
     $('dTipo').textContent = t.titulo || 'Tarefa';
-    $('dEmpresa').textContent = (t.clientes?.nome_principal || C.semClienteDetalhe) + (t.competencia ? ' · competência ' + compLbl(t.competencia) : '');
+    $('dEmpresa').textContent = (t.clientes?.nome_principal || C.semClienteDetalhe) + (t.competencia_fiscal ? ' · competência ' + t.competencia_fiscal : '');
     $('dResp').value = t.responsavel || '';
     $('dPrazo').value = t.prazo ? String(t.prazo).slice(0,10) : '';
     $('dPrioridade').value = t.prioridade || 'media';
