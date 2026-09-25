@@ -97,7 +97,7 @@
         <div class="dica" id="ovAlvo"></div>
         <div class="row">
           <label class="f">Periodicidade
-            <select class="input" id="ovPer"><option value="mensal">Todo mês</option><option value="anual">Todo ano</option></select></label>
+            <select class="input" id="ovPer"><option value="mensal">Todo mês</option><option value="semestral">A cada 6 meses (semestral)</option><option value="anual">Todo ano</option></select></label>
           <label class="f">Responsável
             <select class="input" id="ovResp"></select></label>
         </div>
@@ -174,7 +174,10 @@
       $('rvRotinas').querySelectorAll('[data-r]').forEach(b => b.addEventListener('click', () => { sel = b.dataset.r; marcados = new Set(); renderLista(); renderPainel(); }));
     }
 
-    const dataTxt = v => v.periodicidade === 'anual' ? `${v.dia_vencimento || '?'}/${MESES[v.mes_vencimento] || '?'} de cada ano` : `dia ${v.dia_vencimento || '?'} de cada mês`;
+    const mes6 = m => ((m + 5) % 12) + 1;
+    const dataTxt = v => v.periodicidade === 'anual' ? `${v.dia_vencimento || '?'}/${MESES[v.mes_vencimento] || '?'} de cada ano`
+      : v.periodicidade === 'semestral' ? `dia ${v.dia_vencimento || '?'} de ${MESES[v.mes_vencimento] || '?'} e ${MESES[mes6(v.mes_vencimento)] || '?'}`
+      : `dia ${v.dia_vencimento || '?'} de cada mês`;
 
     function renderPainel() {
       const r = rotinas.find(x => x.id === sel);
@@ -275,7 +278,11 @@
     const fechar = () => $('rvOv').classList.remove('on');
     $('ovX').onclick = fechar; $('ovCancelar').onclick = fechar;
     $('rvOv').addEventListener('click', e => { if (e.target.id === 'rvOv') fechar(); });
-    const perTroca = () => { $('ovMesWrap').style.visibility = $('ovPer').value === 'anual' ? 'visible' : 'hidden'; };
+    const perTroca = () => {
+      const p = $('ovPer').value;
+      $('ovMesWrap').style.visibility = p === 'mensal' ? 'hidden' : 'visible';
+      $('ovMesWrap').firstChild.textContent = p === 'semestral' ? 'Primeiro mês (repete 6 meses depois)' : 'Mês';
+    };
     $('ovPer').addEventListener('change', perTroca);
 
     function renderChips() {
@@ -309,7 +316,7 @@
       const resp = $('ovResp').value, obs = $('ovObs').value.trim(), util = $('ovUtil').checked;
       if (!(dia >= 1 && dia <= 31)) { alert('Informe o dia (1 a 31).'); return; }
       if (!resp) { alert('Escolha o responsável — a tarefa vai pra agenda dessa pessoa.'); return; }
-      const campos = { periodicidade: per, dia_vencimento: dia, mes_vencimento: per === 'anual' ? mes : null, dia_util: util, responsavel: resp };
+      const campos = { periodicidade: per, dia_vencimento: dia, mes_vencimento: per === 'mensal' ? null : mes, dia_util: util, responsavel: resp };
       const r = rotinas.find(x => x.id === sel);
       const b = $('ovSalvar'); b.disabled = true;
       try {
