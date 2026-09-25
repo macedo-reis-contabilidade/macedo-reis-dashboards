@@ -3,9 +3,51 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DP — Tarefas recorrentes — Macedo & Reis</title>
+  <title>Tarefas recorrentes · Departamento Pessoal — Macedo & Reis</title>
   <link rel="stylesheet" href="assets/css/style.css">
   <script type="module" src="assets/js/auth-guard.js"></script>
+  <style>
+    /* Rotinas com empresas (25/09/2026): a rotina é só um nome; cada empresa vinculada tem a sua data e periodicidade */
+    .rv { display:grid; grid-template-columns:minmax(240px, 320px) minmax(0, 1fr); gap:16px; align-items:start; }
+    .rv-lista { background:var(--fill-1); border:1px solid var(--line); border-radius:12px; padding:8px; }
+    .rv-lista-head { display:flex; justify-content:space-between; align-items:center; padding:6px 8px 10px; }
+    .rv-lista-head b { font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted); }
+    .rv-item { display:flex; justify-content:space-between; gap:8px; align-items:center; width:100%; text-align:left; background:none; border:1px solid transparent; border-radius:8px; padding:8px 10px; color:var(--text); font:inherit; font-size:13px; cursor:pointer; }
+    .rv-item:hover { background:var(--fill-2); }
+    .rv-item.on { background:var(--fill-3); border-color:var(--line); }
+    .rv-item .n { flex:none; font-size:11px; color:var(--text-muted); background:var(--fill-2); border-radius:999px; padding:1px 7px; }
+    .rv-painel { background:var(--fill-1); border:1px solid var(--line); border-radius:12px; padding:14px 16px; min-height:240px; }
+    .rv-top { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+    .rv-top h2 { margin:0; font-size:17px; color:var(--text); flex:1 1 auto; }
+    .rv-top .acoes { display:flex; gap:6px; flex-wrap:wrap; }
+    .rv-tab { width:100%; border-collapse:collapse; font-size:13px; }
+    .rv-tab th { text-align:left; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); padding:6px 8px; border-bottom:1px solid var(--line); }
+    .rv-tab td { padding:8px; border-bottom:1px solid var(--line); color:var(--text); vertical-align:middle; }
+    .rv-tab tr:hover td { background:var(--fill-2); }
+    .rv-tab .dim { color:var(--text-muted); }
+    .rv-tab input[type=checkbox] { accent-color:var(--ok); width:15px; height:15px; }
+    .rv-vazio { color:var(--text-muted); font-size:13px; padding:18px 4px; }
+    .rv-msg { font-size:12.5px; margin:8px 0 0; min-height:18px; }
+    .btn-link { background:none; border:none; color:var(--brand-light); cursor:pointer; font:inherit; font-size:12px; padding:2px 4px; }
+    .btn-link:hover { text-decoration:underline; }
+    #rvOv { position:fixed; inset:0; background:var(--overlay); display:none; align-items:center; justify-content:center; padding:20px; z-index:1000; }
+    #rvOv.on { display:flex; }
+    #rvOv .box { width:100%; max-width:560px; background:var(--surface); border:1px solid var(--fill-3); border-radius:14px; max-height:92vh; display:flex; flex-direction:column; }
+    #rvOv .hd { padding:16px 20px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; }
+    #rvOv .hd h3 { margin:0; font-size:16px; color:var(--text); }
+    #rvOv .bd { padding:16px 20px; overflow:auto; display:flex; flex-direction:column; gap:12px; }
+    #rvOv .bd > * { flex-shrink:0; }
+    #rvOv .ft { padding:14px 20px; border-top:1px solid var(--line); display:flex; justify-content:flex-end; gap:8px; }
+    #rvOv label.f { display:flex; flex-direction:column; gap:5px; font-size:12.5px; color:var(--brand-light); }
+    #rvOv .row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    #rvOv .dica { font-size:12px; color:var(--text-dim); }
+    .rv-res { border:1px solid var(--fill-3); border-radius:10px; overflow:auto; max-height:240px; background:var(--surface-2); }
+    .rv-res button { display:block; width:100%; text-align:left; background:none; border:none; border-bottom:1px solid var(--line); color:var(--text); font:inherit; font-size:13px; padding:8px 12px; cursor:pointer; }
+    .rv-res button:hover:not(:disabled) { background:var(--fill-2); }
+    .rv-res button small { display:block; color:var(--text-dim); font-size:11px; }
+    .rv-res button.ja { color:var(--text-dim); cursor:default; }
+    @media (max-width:860px) { .rv { grid-template-columns:1fr; } #rvOv .row { grid-template-columns:1fr; } }
+  </style>
 </head>
 <body>
   <div class="app-shell">
@@ -23,287 +65,281 @@
     <main class="content">
       <div class="page-header">
         <div class="breadcrumb">
-          <a href="index.html">Painel central</a>
-          <span class="breadcrumb-sep">/</span>
-          <a href="dp.html">Departamento Pessoal</a>
-          <span class="breadcrumb-sep">/</span>
+          <a href="index.html">Painel central</a><span class="breadcrumb-sep">/</span>
+          <a href="dp.html">Departamento Pessoal</a><span class="breadcrumb-sep">/</span>
           <span>Tarefas recorrentes</span>
         </div>
-        <div class="eyebrow">Controle de tarefas</div>
-        <h1>Departamento Pessoal</h1>
-        <p>As regras recorrentes são os moldes das tarefas. Quando você gera as tarefas do mês, é daqui que elas saem. Edite o dia de vencimento, o responsável, desative o que não vale mais ou crie uma regra na mão.</p>
+        <div class="eyebrow">Recorrência</div>
+        <h1>Tarefas recorrentes</h1>
+        <p>A rotina é só o nome. Em cada uma, vincule as empresas — várias de uma vez — com a periodicidade, a data e o responsável de cada vínculo. As tarefas nascem sozinhas na agenda do responsável, na data certa.</p>
       </div>
 
-      <div class="toolbar">
-        <div class="toolbar-filters">
-          <select id="filterCliente" class="select fa-sel-cli"><option value="">Todos os clientes</option></select>
-          <select id="filterPeriod" class="select fa-sel">
-            <option value="">Toda periodicidade</option>
-            <option value="mensal">Mensal</option>
-            <option value="bimestral">Bimestral</option>
-            <option value="trimestral">Trimestral</option>
-            <option value="semestral">Semestral</option>
-            <option value="anual">Anual</option>
-          </select>
-          <select id="filterAtivo" class="select fa-sel">
-            <option value="ativas">Só ativas</option>
-            <option value="todas">Todas</option>
-            <option value="inativas">Só inativas</option>
-          </select>
+      <div class="rv">
+        <div class="rv-lista">
+          <div class="rv-lista-head"><b>Rotinas</b><button class="btn btn-ghost btn-sm" id="rvNova">+ Rotina</button></div>
+          <div id="rvRotinas"><div class="rv-vazio">Carregando…</div></div>
         </div>
-        <button class="btn btn-primary" id="btnNova">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Nova regra
-        </button>
-      </div>
-
-      <div id="lista">
-        <div class="loading-row" style="padding:40px;text-align:center;"><span class="spinner"></span>Carregando regras…</div>
+        <div class="rv-painel" id="rvPainel"><div class="rv-vazio">Escolha uma rotina à esquerda.</div></div>
       </div>
     </main>
   </div>
 
-  <div class="fa-modal-overlay" id="modalOverlay">
-    <div class="fa-modal">
-      <div class="fa-modal-head"><h3 id="modalTitulo">Nova tarefa recorrente</h3><button class="fa-modal-close" id="modalClose">&times;</button></div>
-      <div class="fa-modal-body">
-        <label class="fa-field"><span>Cliente *</span><select id="rCliente" class="select"></select></label>
-        <label class="fa-field"><span>Obrigação / título *</span><input type="text" id="rTitulo" class="input" placeholder="Ex.: PGDAS-D"></label>
-        <div class="fa-field-row">
-          <label class="fa-field"><span>Periodicidade</span>
-            <select id="rPeriod" class="select">
-              <option value="mensal">Mensal</option><option value="bimestral">Bimestral</option><option value="trimestral">Trimestral</option><option value="semestral">Semestral</option><option value="anual">Anual</option>
-            </select>
-          </label>
-          <label class="fa-field"><span>Dia de vencimento</span><input type="number" id="rDia" class="input" min="1" max="31" placeholder="ex.: 20"></label>
+  <div id="rvOv">
+    <div class="box">
+      <div class="hd"><h3 id="ovTit">Vincular empresas</h3><button class="btn-link" id="ovX" style="font-size:22px;color:var(--text-muted)">&times;</button></div>
+      <div class="bd">
+        <div id="ovBusca">
+          <label class="f">Empresas <span class="dica">— busque e clique; pode escolher várias</span>
+            <input class="input" id="ovCli" placeholder="Buscar por razão, fantasia ou CNPJ… (3+ letras)" autocomplete="off"></label>
+          <div class="rv-res" id="ovRes" style="display:none;margin-top:6px"></div>
+          <div class="cli-chips" id="ovChips" style="margin-top:8px"></div>
         </div>
-        <label class="fa-field" id="rMesWrap" style="display:none;"><span>Mês de vencimento (1 a 12)</span><input type="number" id="rMes" class="input" min="1" max="12" placeholder="ex.: 5 para maio"></label>
-        <label class="fa-field"><span>Responsável</span><input type="text" id="rResp" class="input" placeholder="Ex.: Thalia"></label>
-        <label class="fa-checkline" id="rAtivoWrap"><input type="checkbox" id="rAtivo" checked><span>Regra ativa (gera tarefas)</span></label>
+        <div class="dica" id="ovAlvo"></div>
+        <div class="row">
+          <label class="f">Periodicidade
+            <select class="input" id="ovPer"><option value="mensal">Todo mês</option><option value="anual">Todo ano</option></select></label>
+          <label class="f">Responsável
+            <select class="input" id="ovResp"></select></label>
+        </div>
+        <div class="row">
+          <label class="f">Dia
+            <input class="input" id="ovDia" type="number" min="1" max="31" placeholder="ex.: 20"></label>
+          <label class="f" id="ovMesWrap">Mês
+            <select class="input" id="ovMes">
+              <option value="1">Janeiro</option><option value="2">Fevereiro</option><option value="3">Março</option><option value="4">Abril</option>
+              <option value="5">Maio</option><option value="6">Junho</option><option value="7">Julho</option><option value="8">Agosto</option>
+              <option value="9">Setembro</option><option value="10">Outubro</option><option value="11">Novembro</option><option value="12">Dezembro</option>
+            </select></label>
+        </div>
+        <label style="display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--text-2);cursor:pointer"><input type="checkbox" id="ovUtil" checked> Se cair no fim de semana, vale o próximo dia útil</label>
+        <label class="f">Observação <span class="dica">— opcional; vai na descrição da tarefa (ex.: segmento/sindicato do dissídio)</span>
+          <input class="input" id="ovObs"></label>
       </div>
-      <div class="fa-modal-foot"><button class="btn btn-ghost" id="btnCancelar">Cancelar</button><button class="btn btn-primary" id="btnSalvar">Salvar regra</button></div>
+      <div class="ft"><button class="btn btn-ghost" id="ovCancelar">Cancelar</button><button class="btn btn-primary" id="ovSalvar">Vincular</button></div>
     </div>
   </div>
 
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
-
     const SETOR = 'dp';
-    const PERIODOS = { mensal:'Mensal', bimestral:'Bimestral', trimestral:'Trimestral', semestral:'Semestral', anual:'Anual' };
-    const MESES = ['','jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
-    const elLista = document.getElementById('lista');
-    const filterCliente = document.getElementById('filterCliente');
-    const filterPeriod = document.getElementById('filterPeriod');
-    const filterAtivo = document.getElementById('filterAtivo');
+    const EQUIPE = ['Vitória', 'Adaini', 'Thalia', 'Samuel', 'Diego', 'Edna'];
+    const MESES = ['', 'jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+    const $ = id => document.getElementById(id);
+    const esc = t => String(t == null ? '' : t).replace(/[&<>"]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
+    const fdata = d => d ? String(d).slice(0, 10).split('-').reverse().join('/') : '—';
+    let rotinas = [], vinculos = [], proximas = {}, sel = null, marcados = new Set();
+    let modo = 'vincular', alvo = [], clis = [], timer = null;
 
-    let regras = [];
-    let clientes = [];
-    let editandoId = null;
-    let abertos = new Set();
-
+    $('btnLogout').addEventListener('click', signOut);
     (async () => {
-      const user = await getCurrentUser();
-      if (user) {
-        const n = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário';
-        document.getElementById('userName').textContent = n;
-        document.getElementById('userAvatar').textContent = n.charAt(0).toUpperCase();
-      }
-      await carregarClientes();
-      await carregarRegras();
+      const u = await getCurrentUser();
+      if (u) { const n = u.user_metadata?.full_name || u.email?.split('@')[0] || 'Usuário'; $('userName').textContent = n; $('userAvatar').textContent = n.charAt(0).toUpperCase(); }
+      $('ovResp').innerHTML = '<option value="">— escolha —</option>' + EQUIPE.map(n => `<option>${esc(n)}</option>`).join('');
+      await carregar();
     })();
 
-    document.getElementById('btnLogout').addEventListener('click', signOut);
-
-    async function carregarClientes() {
-      const { data } = await supabase.todosClientes('id, nome_principal');
-      clientes = data || [];
-      const opts = clientes.map(c => '<option value="'+c.id+'">'+escapeHtml(c.nome_principal)+'</option>').join('');
-      filterCliente.innerHTML = '<option value="">Todos os clientes</option>' + opts;
-      document.getElementById('rCliente').innerHTML = '<option value="">Selecione…</option>' + opts;
-    }
-
-    async function carregarRegras() {
-      const { data, error } = await supabase.from('tarefas_recorrentes').select('*, clientes(nome_principal)').eq('setor', SETOR).order('titulo', { ascending: true });
-      if (error) { elLista.innerHTML = '<div style="text-align:center;color:var(--danger);padding:40px;">Erro: ' + error.message + '</div>'; return; }
-      regras = data || [];
-      render();
-    }
-
-    function render() {
-      const fc = filterCliente.value, fp = filterPeriod.value, fa = filterAtivo.value;
-      const vis = regras.filter(r => {
-        if (fc && r.cliente_id !== fc) return false;
-        if (fp && r.periodicidade !== fp) return false;
-        if (fa === 'ativas' && !r.ativo) return false;
-        if (fa === 'inativas' && r.ativo) return false;
-        return true;
+    async function carregar() {
+      const { data: rs } = await supabase.from('rotinas_modelo').select('*').eq('setor', SETOR).eq('ativo', true).order('nome');
+      rotinas = (rs || []).map(r => ({ ...r, avulsa: false }));
+      const ids = rotinas.map(r => r.id);
+      vinculos = [];
+      if (ids.length) {
+        const { data: vs } = await supabase.from('tarefas_recorrentes').select('*, clientes(nome_principal)').in('modelo_id', ids).eq('ativo', true);
+        vinculos = vs || [];
+      }
+      // regras do setor sem rotina (criadas pela Nova tarefa): agrupadas pelo título, como rotinas "avulsas"
+      const { data: soltas } = await supabase.from('tarefas_recorrentes').select('*, clientes(nome_principal)').eq('setor', SETOR).is('modelo_id', null).eq('ativo', true);
+      const porTitulo = {};
+      (soltas || []).forEach(v => { (porTitulo[v.titulo] = porTitulo[v.titulo] || []).push(v); });
+      Object.entries(porTitulo).forEach(([titulo, vs]) => {
+        const id = 'avulsa:' + titulo;
+        rotinas.push({ id, nome: titulo, avulsa: true });
+        vs.forEach(v => vinculos.push({ ...v, modelo_id: id }));
       });
-
-      if (vis.length === 0) {
-        elLista.innerHTML = '<div class="empty-state" style="padding:48px 24px;">'+
-          '<svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-5"/></svg>'+
-          '<h3>'+(regras.length===0?'Nenhuma regra ainda':'Nada neste filtro')+'</h3>'+
-          '<p>'+(regras.length===0?'As regras nascem ao aprovar uma análise, ou crie uma na mão em “Nova regra”.':'Ajuste os filtros acima.')+'</p></div>';
-        return;
+      proximas = {};
+      const regras = vinculos.map(v => v.id);
+      if (regras.length) {
+        const { data: ts } = await supabase.from('tarefas').select('regra_id, prazo').in('regra_id', regras).eq('status', 'pendente').order('prazo');
+        (ts || []).forEach(t => { if (!proximas[t.regra_id]) proximas[t.regra_id] = t.prazo; });
       }
-
-      // agrupar por cliente
-      const grupos = {};
-      vis.forEach(r => { const k = r.cliente_id || '_interna'; (grupos[k] = grupos[k] || []).push(r); });
-      const nomeCliente = id => (clientes.find(c => c.id === id)?.nome_principal) || 'Sem cliente';
-      const chaves = Object.keys(grupos).sort((a,b) => nomeCliente(a).localeCompare(nomeCliente(b)));
-      // se filtrou 1 cliente, abre por padrão
-      const abrirTudo = !!fc;
-
-      elLista.innerHTML = chaves.map(k => {
-        const itens = grupos[k];
-        const nome = nomeCliente(k);
-        const aberto = (abrirTudo || abertos.has(k)) ? 'open' : '';
-        const ativas = itens.filter(r => r.ativo).length;
-        const linhas = itens.map(r => {
-          const dia = r.dia_vencimento ? ('dia ' + r.dia_vencimento) : '—';
-          const quando = r.periodicidade === 'mensal' ? dia : (dia + (r.mes_vencimento ? (' / ' + MESES[r.mes_vencimento]) : ''));
-          return '<tr class="'+(r.ativo?'':'rg-inativa')+'">'+
-            '<td data-label="Obrigação"><strong>'+escapeHtml(r.titulo)+'</strong>'+(r.origem==='analise'?' <span class="rg-origem">da análise</span>':'')+'</td>'+
-            '<td data-label="Periodicidade">'+(PERIODOS[r.periodicidade]||r.periodicidade)+'</td>'+
-            '<td data-label="Vencimento">'+quando+'</td>'+
-            '<td data-label="Responsável">'+(r.responsavel?escapeHtml(r.responsavel):'—')+'</td>'+
-            '<td data-label="Status">'+(r.ativo?'<span class="rg-badge rg-on">Ativa</span>':'<span class="rg-badge rg-off">Inativa</span>')+'</td>'+
-            '<td data-label="Ações" class="rg-acoes">'+
-              '<button class="rg-link" data-act="editar" data-id="'+r.id+'">Editar</button>'+
-              '<button class="rg-link" data-act="toggle" data-id="'+r.id+'">'+(r.ativo?'Desativar':'Reativar')+'</button>'+
-              '<button class="rg-link rg-del" data-act="excluir" data-id="'+r.id+'">Excluir</button>'+
-            '</td></tr>';
-        }).join('');
-        return '<details class="fa-grupo" '+aberto+' data-k="'+escapeAttr(k)+'">'+
-          '<summary class="fa-grupo-head">'+
-            '<svg class="fa-grupo-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>'+
-            '<span class="fa-grupo-nome">'+escapeHtml(nome)+'</span>'+
-            '<span class="fa-grupo-meta">'+itens.length+(itens.length>1?' regras':' regra')+'</span>'+
-            '<span class="fa-grupo-prog">'+ativas+' ativas</span>'+
-          '</summary>'+
-          '<div class="fa-grupo-body"><table class="table"><tbody>'+linhas+'</tbody></table></div>'+
-        '</details>';
-      }).join('');
-
-      elLista.querySelectorAll('details.fa-grupo').forEach(d => d.addEventListener('toggle', () => { if(d.open) abertos.add(d.dataset.k); else abertos.delete(d.dataset.k); }));
-      elLista.querySelectorAll('.rg-link').forEach(b => b.addEventListener('click', onAcao));
+      if (sel && !rotinas.some(r => r.id === sel)) sel = null;
+      renderLista(); renderPainel();
     }
 
-    async function onAcao(e) {
-      const id = e.target.dataset.id, act = e.target.dataset.act;
-      const r = regras.find(x => x.id === id);
-      if (!r) return;
-      if (act === 'editar') return abrirModal(r);
-      if (act === 'toggle') {
-        const { error } = await supabase.from('tarefas_recorrentes').update({ ativo: !r.ativo }).eq('id', id);
-        if (error) { alert('Erro: ' + error.message); return; }
-        await carregarRegras();
-      }
-      if (act === 'excluir') {
-        if (!confirm('Excluir a regra “'+r.titulo+'”? As tarefas já geradas continuam, mas não nascerão novas. Para apenas pausar, use Desativar.')) return;
-        const { error } = await supabase.from('tarefas_recorrentes').delete().eq('id', id);
-        if (error) { alert('Erro: ' + error.message); return; }
-        await carregarRegras();
-      }
+    function renderLista() {
+      $('rvRotinas').innerHTML = rotinas.length ? rotinas.map(r => {
+        const n = vinculos.filter(v => v.modelo_id === r.id).length;
+        return `<button class="rv-item ${r.id === sel ? 'on' : ''}" data-r="${esc(r.id)}"><span>${esc(r.nome)}${r.avulsa ? ' <span class="dim" style="font-size:11px">· criada pela Nova tarefa</span>' : ''}</span><span class="n">${n}</span></button>`;
+      }).join('') : '<div class="rv-vazio">Nenhuma rotina ainda.</div>';
+      $('rvRotinas').querySelectorAll('[data-r]').forEach(b => b.addEventListener('click', () => { sel = b.dataset.r; marcados = new Set(); renderLista(); renderPainel(); }));
     }
 
-    // ----- Modal -----
-    const overlay = document.getElementById('modalOverlay');
-    const rPeriod = document.getElementById('rPeriod');
-    rPeriod.addEventListener('change', toggleMes);
-    function toggleMes(){ document.getElementById('rMesWrap').style.display = (rPeriod.value === 'mensal') ? 'none' : 'flex'; }
+    const dataTxt = v => v.periodicidade === 'anual' ? `${v.dia_vencimento || '?'}/${MESES[v.mes_vencimento] || '?'} de cada ano` : `dia ${v.dia_vencimento || '?'} de cada mês`;
 
-    document.getElementById('btnNova').addEventListener('click', () => abrirModal(null));
-    document.getElementById('modalClose').addEventListener('click', fecharModal);
-    document.getElementById('btnCancelar').addEventListener('click', fecharModal);
-    overlay.addEventListener('click', e => { if (e.target === overlay) fecharModal(); });
-
-    function abrirModal(r) {
-      editandoId = r ? r.id : null;
-      document.getElementById('modalTitulo').textContent = r ? 'Editar regra' : 'Nova tarefa recorrente';
-      document.getElementById('rCliente').value = r ? (r.cliente_id || '') : (filterCliente.value || '');
-      document.getElementById('rTitulo').value = r ? r.titulo : '';
-      rPeriod.value = r ? (r.periodicidade || 'mensal') : 'mensal';
-      document.getElementById('rDia').value = r && r.dia_vencimento ? r.dia_vencimento : '';
-      document.getElementById('rMes').value = r && r.mes_vencimento ? r.mes_vencimento : '';
-      document.getElementById('rResp').value = r && r.responsavel ? r.responsavel : '';
-      document.getElementById('rAtivo').checked = r ? !!r.ativo : true;
-      toggleMes();
-      overlay.classList.add('is-open');
+    function renderPainel() {
+      const r = rotinas.find(x => x.id === sel);
+      if (!r) { $('rvPainel').innerHTML = '<div class="rv-vazio">Escolha uma rotina à esquerda.</div>'; return; }
+      const vs = vinculos.filter(v => v.modelo_id === r.id).sort((a, b) => (a.clientes?.nome_principal || '').localeCompare(b.clientes?.nome_principal || '', 'pt-BR'));
+      const n = [...marcados].filter(id => vs.some(v => v.id === id)).length;
+      $('rvPainel').innerHTML = `
+        <div class="rv-top"><h2>${esc(r.nome)}</h2>
+          <div class="acoes">
+            <button class="btn btn-primary btn-sm" id="rvVinc">+ Vincular empresas</button>
+            <button class="btn btn-ghost btn-sm" id="rvAlt" ${n ? '' : 'disabled'}>Alterar ${n || ''} selecionada${n === 1 ? '' : 's'}</button>
+            <button class="btn btn-ghost btn-sm" id="rvRem" ${n ? '' : 'disabled'}>Desvincular</button>
+            ${r.avulsa ? '<button class="btn-link" id="rvConv">transformar em rotina</button>' : '<button class="btn-link" id="rvRen">renomear</button><button class="btn-link" id="rvDel">excluir rotina</button>'}
+          </div></div>
+        ${vs.length ? `<table class="rv-tab"><thead><tr><th><input type="checkbox" id="rvTodas" ${n && n === vs.length ? 'checked' : ''}></th><th>Empresa</th><th>Quando</th><th>Responsável</th><th>Observação</th><th>Próxima tarefa</th><th></th></tr></thead><tbody>
+          ${vs.map(v => `<tr><td><input type="checkbox" data-sel="${v.id}" ${marcados.has(v.id) ? 'checked' : ''}></td>
+            <td>${esc(v.clientes?.nome_principal || '—')}</td>
+            <td>${dataTxt(v)}${v.dia_util ? '' : ' <span class="dim">(dia exato)</span>'}</td>
+            <td>${esc(v.responsavel || '—')}</td>
+            <td class="dim">${esc(v.observacao || '')}</td>
+            <td class="dim">${proximas[v.id] ? fdata(proximas[v.id]) : 'nasce até 31 dias antes'}</td>
+            <td><button class="btn-link" data-ed="${v.id}">editar</button></td></tr>`).join('')}
+          </tbody></table>` : '<div class="rv-vazio">Nenhuma empresa vinculada. Clique em "+ Vincular empresas".</div>'}
+        <div class="rv-msg" id="rvMsg"></div>`;
+      $('rvVinc').onclick = () => abrir('vincular', []);
+      $('rvAlt').onclick = () => abrir('alterar', vs.filter(v => marcados.has(v.id)));
+      $('rvRem').onclick = () => desvincular(vs.filter(v => marcados.has(v.id)));
+      if (r.avulsa) { $('rvConv').onclick = () => transformar(r); $('rvVinc').style.display = 'none'; }
+      else { $('rvRen').onclick = renomear; $('rvDel').onclick = excluirRotina; }
+      $('rvPainel').querySelectorAll('[data-sel]').forEach(c => c.addEventListener('change', () => { c.checked ? marcados.add(c.dataset.sel) : marcados.delete(c.dataset.sel); renderPainel(); }));
+      $('rvPainel').querySelectorAll('[data-ed]').forEach(b => b.addEventListener('click', () => abrir('alterar', vs.filter(v => v.id === b.dataset.ed))));
+      const todas = $('rvTodas'); if (todas) todas.addEventListener('change', () => { vs.forEach(v => todas.checked ? marcados.add(v.id) : marcados.delete(v.id)); renderPainel(); });
     }
-    function fecharModal(){ overlay.classList.remove('is-open'); editandoId = null; }
+    const msg = (t, cor) => { const m = $('rvMsg'); if (m) { m.style.color = cor || 'var(--text-muted)'; m.textContent = t; } };
 
-    document.getElementById('btnSalvar').addEventListener('click', async () => {
-      const cliente_id = document.getElementById('rCliente').value || null;
-      const titulo = document.getElementById('rTitulo').value.trim();
-      if (!cliente_id) { alert('Selecione o cliente.'); return; }
-      if (!titulo) { alert('Informe a obrigação / título.'); return; }
-      const period = rPeriod.value;
-      const dia = document.getElementById('rDia').value ? parseInt(document.getElementById('rDia').value,10) : null;
-      const mes = (period !== 'mensal' && document.getElementById('rMes').value) ? parseInt(document.getElementById('rMes').value,10) : null;
-      const payload = {
-        cliente_id, setor: SETOR, titulo, periodicidade: period,
-        dia_vencimento: dia, mes_vencimento: mes,
-        responsavel: document.getElementById('rResp').value.trim() || null,
-        ativo: document.getElementById('rAtivo').checked
-      };
-      let error;
-      if (editandoId) { ({ error } = await supabase.from('tarefas_recorrentes').update(payload).eq('id', editandoId)); }
-      else { payload.origem = 'manual'; ({ error } = await supabase.from('tarefas_recorrentes').insert(payload)); }
-      if (error) { alert('Erro ao salvar: ' + error.message); return; }
-      fecharModal();
-      await carregarRegras();
+    // ---------- rotina: nome ----------
+    $('rvNova').onclick = async () => {
+      const nome = (prompt('Nome da rotina:') || '').trim(); if (!nome) return;
+      const { data, error } = await supabase.from('rotinas_modelo').insert({ setor: SETOR, nome }).select('id').single();
+      if (error) { alert(/duplicate|unique/i.test(error.message) ? 'Já existe uma rotina com esse nome.' : 'Erro: ' + error.message); return; }
+      sel = data.id; await carregar();
+    };
+    async function transformar(r) {
+      const { data, error } = await supabase.from('rotinas_modelo').insert({ setor: SETOR, nome: r.nome }).select('id').single();
+      let id = data && data.id;
+      if (error) {
+        if (!/duplicate|unique/i.test(error.message)) { alert('Erro: ' + error.message); return; }
+        const { data: ex } = await supabase.from('rotinas_modelo').select('id').eq('setor', SETOR).eq('nome', r.nome).single(); id = ex && ex.id;
+        await supabase.from('rotinas_modelo').update({ ativo: true }).eq('id', id);
+      }
+      const ids = vinculos.filter(v => v.modelo_id === r.id).map(v => v.id);
+      const { error: e2 } = await supabase.from('tarefas_recorrentes').update({ modelo_id: id }).in('id', ids);
+      if (e2) { alert('Erro: ' + e2.message); return; }
+      sel = id; await carregar(); msg('Agora é uma rotina: dá pra vincular mais empresas.', 'var(--ok)');
+    }
+    async function renomear() {
+      const r = rotinas.find(x => x.id === sel); const nome = (prompt('Novo nome da rotina:', r.nome) || '').trim();
+      if (!nome || nome === r.nome) return;
+      const { error } = await supabase.from('rotinas_modelo').update({ nome }).eq('id', r.id);
+      if (error) { alert('Erro: ' + error.message); return; }
+      await carregar();
+    }
+    async function excluirRotina() {
+      const r = rotinas.find(x => x.id === sel); const n = vinculos.filter(v => v.modelo_id === r.id);
+      if (!confirm('Excluir a rotina "' + r.nome + '"' + (n.length ? ' e parar as tarefas de ' + n.length + ' empresa(s)' : '') + '? As tarefas já concluídas ficam no histórico.')) return;
+      await apagarFuturas(n.map(v => v.id));
+      const { error } = await supabase.from('rotinas_modelo').update({ ativo: false }).eq('id', r.id);
+      if (error) { alert('Erro: ' + error.message); return; }
+      sel = null; await carregar();
+    }
+
+    // tarefas pendentes a partir de hoje dessas regras: saem pra nascer de novo com a data certa
+    async function apagarFuturas(ids) {
+      if (!ids.length) return;
+      const hoje = new Date().toISOString().slice(0, 10);
+      await supabase.from('tarefas').delete().in('regra_id', ids).eq('status', 'pendente').gte('prazo', hoje);
+    }
+    async function gerar() { const { data } = await supabase.rpc('gerar_tarefas_recorrentes'); return Array.isArray(data) && data[0] ? data[0].criadas : 0; }
+
+    // ---------- modal: vincular / alterar ----------
+    function abrir(m, lista) {
+      modo = m; alvo = lista; clis = [];
+      $('ovTit').textContent = m === 'vincular' ? 'Vincular empresas' : (lista.length > 1 ? 'Alterar ' + lista.length + ' vínculos' : 'Alterar vínculo');
+      $('ovBusca').style.display = m === 'vincular' ? '' : 'none';
+      $('ovAlvo').textContent = m === 'alterar' ? lista.map(v => v.clientes?.nome_principal || '—').join(' · ') : '';
+      const base = lista[0] || {};
+      $('ovPer').value = base.periodicidade || 'mensal';
+      $('ovDia').value = base.dia_vencimento || '';
+      $('ovMes').value = String(base.mes_vencimento || 1);
+      $('ovUtil').checked = base.dia_util !== false;
+      $('ovResp').value = base.responsavel && EQUIPE.includes(base.responsavel) ? base.responsavel : '';
+      $('ovObs').value = lista.length === 1 ? (base.observacao || '') : '';
+      $('ovObs').placeholder = lista.length > 1 ? 'deixe em branco pra manter a de cada uma' : '';
+      $('ovCli').value = ''; $('ovRes').style.display = 'none'; renderChips(); perTroca();
+      $('ovSalvar').textContent = m === 'vincular' ? 'Vincular' : 'Salvar';
+      $('rvOv').classList.add('on');
+    }
+    const fechar = () => $('rvOv').classList.remove('on');
+    $('ovX').onclick = fechar; $('ovCancelar').onclick = fechar;
+    $('rvOv').addEventListener('click', e => { if (e.target.id === 'rvOv') fechar(); });
+    const perTroca = () => { $('ovMesWrap').style.visibility = $('ovPer').value === 'anual' ? 'visible' : 'hidden'; };
+    $('ovPer').addEventListener('change', perTroca);
+
+    function renderChips() {
+      $('ovChips').innerHTML = clis.map(c => `<span class="chip">🏢 ${esc(c.nome)} <a href="#" data-tira="${c.id}" title="Tirar">✕</a></span>`).join('');
+      $('ovChips').querySelectorAll('[data-tira]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); clis = clis.filter(c => c.id !== a.dataset.tira); renderChips(); }));
+      if (modo === 'vincular') $('ovSalvar').textContent = clis.length > 1 ? 'Vincular ' + clis.length + ' empresas' : 'Vincular';
+    }
+    $('ovCli').addEventListener('input', () => {
+      clearTimeout(timer);
+      timer = setTimeout(async () => {
+        const t = $('ovCli').value.trim(); const res = $('ovRes');
+        if (t.length < 3) { res.style.display = 'none'; return; }
+        const tb = t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '') || t;
+        const { data } = await supabase.from('clientes').select('id, nome_principal, nome_fantasia, cidade')
+          .or(`nome_principal.ilike.*${t}*,nome_fantasia.ilike.*${t}*,nome_busca.ilike.*${tb}*`).order('nome_principal').limit(30);
+        const ja = new Set(vinculos.filter(v => v.modelo_id === sel).map(v => v.cliente_id));
+        res.innerHTML = (data || []).map(c => ja.has(c.id)
+          ? `<button type="button" class="ja" disabled>${esc(c.nome_principal)}<small>já vinculada a esta rotina</small></button>`
+          : `<button type="button" data-id="${c.id}" data-nome="${esc(c.nome_principal)}">${esc(c.nome_principal)}<small>${esc([c.nome_fantasia, c.cidade].filter(Boolean).join(' · '))}</small></button>`).join('')
+          || '<button type="button" disabled>Nada encontrado.</button>';
+        res.style.display = 'block';
+        res.querySelectorAll('[data-id]').forEach(b => b.addEventListener('click', () => {
+          if (!clis.some(c => c.id === b.dataset.id)) clis.push({ id: b.dataset.id, nome: b.dataset.nome });
+          renderChips(); b.classList.add('ja'); b.disabled = true;
+        }));
+      }, 300);
     });
 
-    function escapeHtml(t){ return String(t==null?'':t).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
-    function escapeAttr(t){ return String(t==null?'':t).replace(/"/g,'&quot;'); }
+    $('ovSalvar').onclick = async () => {
+      const per = $('ovPer').value, dia = parseInt($('ovDia').value, 10), mes = parseInt($('ovMes').value, 10);
+      const resp = $('ovResp').value, obs = $('ovObs').value.trim(), util = $('ovUtil').checked;
+      if (!(dia >= 1 && dia <= 31)) { alert('Informe o dia (1 a 31).'); return; }
+      if (!resp) { alert('Escolha o responsável — a tarefa vai pra agenda dessa pessoa.'); return; }
+      const campos = { periodicidade: per, dia_vencimento: dia, mes_vencimento: per === 'anual' ? mes : null, dia_util: util, responsavel: resp };
+      const r = rotinas.find(x => x.id === sel);
+      const b = $('ovSalvar'); b.disabled = true;
+      try {
+        if (modo === 'vincular') {
+          if (!clis.length) { alert('Escolha ao menos uma empresa.'); return; }
+          const linhas = clis.map(c => ({ ...campos, observacao: obs || null, modelo_id: r.id, cliente_id: c.id, setor: SETOR, titulo: r.nome, origem: 'rotina', ativo: true }));
+          const { error } = await supabase.from('tarefas_recorrentes').insert(linhas);
+          if (error) { alert('Erro ao vincular: ' + error.message); return; }
+          const n = await gerar(); fechar(); await carregar();
+          msg(linhas.length + ' empresa(s) vinculada(s)' + (n ? ' · ' + n + ' tarefa(s) já na agenda' : ' · as tarefas nascem até 31 dias antes da data'), 'var(--ok)');
+        } else {
+          const ids = alvo.map(v => v.id);
+          const patch = alvo.length === 1 ? { ...campos, observacao: obs || null } : (obs ? { ...campos, observacao: obs } : campos);
+          const { error } = await supabase.from('tarefas_recorrentes').update(patch).in('id', ids);
+          if (error) { alert('Erro ao salvar: ' + error.message); return; }
+          await apagarFuturas(ids); const n = await gerar(); marcados = new Set(); fechar(); await carregar();
+          msg(ids.length + ' vínculo(s) alterado(s)' + (n ? ' · ' + n + ' tarefa(s) refeita(s) com a data nova' : ''), 'var(--ok)');
+        }
+      } finally { b.disabled = false; }
+    };
 
-    filterCliente.addEventListener('change', render);
-    filterPeriod.addEventListener('change', render);
-    filterAtivo.addEventListener('change', render);
+    async function desvincular(lista) {
+      if (!lista.length) return;
+      if (!confirm('Desvincular ' + lista.length + ' empresa(s) desta rotina? As tarefas futuras saem; as já concluídas ficam no histórico.')) return;
+      const ids = lista.map(v => v.id);
+      await apagarFuturas(ids);
+      const { error } = await supabase.from('tarefas_recorrentes').update({ ativo: false }).in('id', ids);
+      if (error) { alert('Erro: ' + error.message); return; }
+      marcados = new Set(); await carregar(); msg(ids.length + ' empresa(s) desvinculada(s).', 'var(--ok)');
+    }
   </script>
-
-  <style>
-    .fa-sel { max-width:200px; }
-    .fa-sel-cli { max-width:240px; }
-
-    .fa-grupo { background:rgba(255,255,255,.025); border:1px solid rgba(255,255,255,.08); border-radius:14px; margin-bottom:10px; overflow:hidden; }
-    .fa-grupo-head { display:flex; align-items:center; gap:12px; padding:14px 18px; cursor:pointer; list-style:none; user-select:none; }
-    .fa-grupo-head::-webkit-details-marker { display:none; }
-    .fa-grupo-chev { color:#8A93A6; transition:transform .15s; flex:none; }
-    .fa-grupo[open] .fa-grupo-chev { transform:rotate(90deg); }
-    .fa-grupo-nome { font-weight:600; color:#E6EBF2; font-size:15px; }
-    .fa-grupo-meta { color:#8A93A6; font-size:13px; flex:1; }
-    .fa-grupo-prog { color:#8AAEC8; font-size:13px; background:rgba(91,130,166,.12); border:1px solid rgba(91,130,166,.25); border-radius:999px; padding:2px 10px; }
-    .fa-grupo-body { border-top:1px solid rgba(255,255,255,.06); padding:4px 6px 8px; }
-    .fa-grupo-body .table { margin:0; }
-    .fa-grupo-body .table td { padding:9px 12px; vertical-align:middle; }
-
-    .rg-inativa { opacity:.5; }
-    .rg-origem { font-size:10px; font-weight:700; letter-spacing:.3px; color:#8AAEC8; background:rgba(91,130,166,.14); border-radius:5px; padding:1px 6px; margin-left:6px; }
-    .rg-badge { font-size:11px; font-weight:600; border-radius:999px; padding:2px 9px; }
-    .rg-on { color:#3FB07A; background:rgba(63,176,122,.14); border:1px solid rgba(63,176,122,.3); }
-    .rg-off { color:#9AA3B2; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.12); }
-    .rg-acoes { white-space:nowrap; }
-    .rg-link { background:none; border:none; color:#8AAEC8; cursor:pointer; font-size:13px; padding:3px 6px; }
-    .rg-link:hover { color:#C5D8E8; text-decoration:underline; }
-    .rg-del:hover { color:#E06C6C; }
-
-    .fa-modal-overlay { position:fixed; inset:0; background:rgba(8,12,18,.72); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
-    .fa-modal-overlay.is-open { display:flex; }
-    .fa-modal { width:100%; max-width:520px; background:#141A22; border:1px solid rgba(255,255,255,.10); border-radius:16px; overflow:hidden; }
-    .fa-modal-head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid rgba(255,255,255,.08); }
-    .fa-modal-head h3 { margin:0; color:#E6EBF2; font-size:18px; }
-    .fa-modal-close { background:none; border:none; color:#8A93A6; font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }
-    .fa-modal-close:hover { color:#E6EBF2; }
-    .fa-modal-body { padding:22px; display:flex; flex-direction:column; gap:14px; }
-    .fa-field { display:flex; flex-direction:column; gap:6px; }
-    .fa-field > span { font-size:13px; color:#8AAEC8; }
-    .fa-field-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
-    .fa-checkline { display:flex; align-items:center; gap:10px; color:#D7DEE8; font-size:14px; cursor:pointer; }
-    .fa-checkline input { width:18px; height:18px; cursor:pointer; }
-    .fa-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid rgba(255,255,255,.08); }
-  </style>
 </body>
 </html>
