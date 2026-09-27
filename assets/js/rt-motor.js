@@ -8,10 +8,10 @@
 
 // LC 123/2006, art. 18 — Anexos I a V: faixas de RBT12,
 // alíquota nominal e parcela a deduzir.
-// Empate técnico: abaixo de max(0,3% da receita do semestre, R$ 3.000) a vantagem de apurar por fora não é recomendada
-// (decisão do Samuel, 23/09/2026 — calibrada pra manter o caso de referência Drogaria Guerra, 0,46%, como OPTE).
+// Empate técnico: abaixo de max(0,3% da receita do semestre, R$ 1.000) a vantagem de apurar por fora não é recomendada
+// (decisão do Samuel, 23/09/2026, piso baixado de R$ 3.000 pra R$ 1.000 em 27/09 — o de 3 mil punha empresa pequena em "empate" com 5% da receita de diferença; Drogaria Guerra, 0,46%, segue OPTE).
 export const LIMIAR_EMPATE_PCT = 0.3;
-export const LIMIAR_EMPATE_MIN = 3000;
+export const LIMIAR_EMPATE_MIN = 1000;
 
 export const TAB_SIMPLES = {
   'I':   { lim: [180000, 360000, 720000, 1800000, 3600000, 4800000], aliq: [0.04,  0.073, 0.095, 0.107, 0.143, 0.19],  pd: [0, 5940, 13860, 22500, 87300, 378000] },

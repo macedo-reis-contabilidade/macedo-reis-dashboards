@@ -83,7 +83,8 @@ function graficoCaixa(m, dentroMes, foraMes) {
 // gerarAnalise(dados) → HTML completo do documento
 // dados: { cliente, caso, sim, entrada, dominio, xml, logoUrl, hoje }
 // ============================================================
-export function gerarAnalise(d) {
+export function gerarAnalise(d, opts = {}) {
+  const versaoCliente = opts.versao === 'cliente';
   const { cliente, caso, sim, entrada: e, dominio, xml } = d;
   const hoje = d.hoje || new Date().toLocaleDateString('pt-BR');
   const s = sim.semestre, m = sim.mes;
@@ -101,9 +102,9 @@ export function gerarAnalise(d) {
   // ---------- capa ----------
   P('<header class="cab"><img src="' + d.logoUrl + '" alt="Macedo &amp; Reis"><div class="esc"><strong>Macedo &amp; Reis Contabilidade</strong><span>CRC/RS 006418/O</span><span>Três Coroas – RS</span></div></header><hr class="reg">');
   P('<h1>IBS/CBS em 2027: por dentro ou por fora do DAS</h1>');
-  P('<p class="sub">Análise técnica de apoio à decisão — <b>' + esc(cliente.nome_principal) + '</b> · CNPJ ' + fmtCnpj(cliente.documento)
+  P('<p class="sub">' + (versaoCliente ? 'Análise de apoio à decisão' : 'Análise técnica de apoio à decisão') + ' — <b>' + esc(cliente.nome_principal) + '</b> · CNPJ ' + fmtCnpj(cliente.documento)
     + (cliente.cidade ? ' · ' + esc(cliente.cidade) : '') + (caso.cnae_base ? ' · CNAE ' + esc(caso.cnae_base) : '')
-    + ' · Documento interno, ' + hoje + '</p>');
+    + ' · ' + hoje + '</p>');
 
   P('<div class="dados"><b>Prazo:</b> a opção deve ser formalizada até <b>30/09/2026</b> e pode ser <b>cancelada até 30/11/2026</b> sem produzir efeito (Resolução CGSN 186/2026). Quem não opta em setembro só tem nova janela em <b>março/2027</b>, com efeito a partir de <b>julho/2027</b>.'
     + (dominio || xml ? '<br><b>Base desta análise:</b> ' + [
@@ -141,6 +142,23 @@ export function gerarAnalise(d) {
       + (d.observacoes && d.observacoes.length ? '<p style="margin-bottom:4px"><b>Dados que faltaram' + (aConf || (d.alertas && d.alertas.length) ? ' (não mudam a conclusão)' : '') + ':</b></p><ul class="rs-al">' + d.observacoes.map(t => '<li>' + t + '</li>').join('') + '</ul>' : '')
       + (optar ? '<p class="rs-pz">Se optar: formalizar até <b>30/09/2026</b>. Dá pra cancelar até <b>30/11/2026</b> sem efeito.</p>' : '<p class="rs-pz">Mantendo, não é preciso fazer nada. Se o quadro mudar, há nova janela em março/2027.</p>')
       + '</div>');
+  }
+
+  if (versaoCliente) {
+    P('<h2>Os números</h2>');
+    P('<table><tbody>'
+      + '<tr><td>Faturamento médio por mês</td><td class="num">' + brl0(receita) + '</td></tr>'
+      + '<tr><td>Impostos no 1º semestre de 2027 — mantendo tudo no DAS</td><td class="num">' + brl0(s.custoDentro) + '</td></tr>'
+      + '<tr><td>Impostos no 1º semestre de 2027 — recolhendo IBS/CBS por fora</td><td class="num">' + brl0(s.custoFora) + '</td></tr>'
+      + '<tr class="tot"><td>Diferença no semestre</td><td class="num">' + brl0(Math.abs(s.diferenca)) + ' ' + (s.diferenca < 0 ? 'a favor de recolher por fora' : 'a favor de manter no DAS') + '</td></tr>'
+      + (!d.consumidor ? '<tr><td>Crédito de imposto que seus clientes empresa aproveitariam no semestre</td><td class="num">' + brl0(s.aproveitadoDentro) + ' mantendo · ' + brl0(s.aproveitadoFora) + ' por fora</td></tr>' : '')
+      + '</tbody></table>');
+    P('<p class="fonte">Valores estimados com os relatórios do seu Simples e as alíquotas de referência de 2027 (a CBS ainda depende de resolução do Senado).</p>');
+    if (d.perguntas && d.perguntas.length) {
+      P('<h2>Para conversarmos</h2><ol>' + d.perguntas.map(q => '<li>' + q + '</li>').join('') + '</ol>');
+    }
+    P('<div class="rodape">Documento de apoio à decisão, elaborado em ' + hoje + ' pela Macedo &amp; Reis Contabilidade. A empresa continua no Simples Nacional em qualquer caso; a escolha é só a forma de recolher o IBS e a CBS em 2027. Valores estimativos; a decisão é do contribuinte. A análise técnica completa, com fontes e premissas, fica à disposição no escritório.<br>Base legal: LC 214/2025 · LC 123/2006 · Resolução CGSN 186/2026.</div>');
+    return montarHtml();
   }
 
   // ---------- 1. retrato ----------
@@ -320,15 +338,18 @@ export function gerarAnalise(d) {
       + '</tbody></table>');
   }
 
-  P('<div class="rodape">Documento interno de apoio à decisão, elaborado em ' + hoje + ' pela Macedo &amp; Reis Contabilidade. '
+  P('<div class="rodape">Documento de apoio à decisão, elaborado em ' + hoje + ' pela Macedo &amp; Reis Contabilidade. '
     + 'A empresa permanece no Simples Nacional em qualquer das hipóteses analisadas; discute-se exclusivamente a forma de recolhimento do IBS e da CBS em 2027. '
     + 'Simulação baseada nas alíquotas de referência de 2027 (CBS pendente de Resolução do Senado). Valores estimativos: a decisão pela opção é do contribuinte.<br>'
     + 'Base legal: LC 214/2025 · LC 123/2006, art. 18 · Resolução CGSN 140/2018 · Resolução CGSN 186/2026.</div>');
 
+  return montarHtml();
+  function montarHtml() {
   return '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
-    + '<title>Análise IBS/CBS 2027 — ' + esc(cliente.nome_principal) + '</title><style>' + CSS + '</style></head><body>'
+    + '<title>' + (versaoCliente ? 'IBS/CBS 2027 — ' : 'Análise IBS/CBS 2027 — ') + esc(cliente.nome_principal) + '</title><style>' + CSS + '</style></head><body>'
     + '<div class="toolbar-print"><button onclick="window.print()">Imprimir / Salvar PDF</button></div>'
     + '<div class="folha">' + partes.join('') + '</div></body></html>';
+  }
 }
 
 const CSS = `body{font-family:"Segoe UI",Arial,sans-serif;color:#23272E;margin:0;padding:28px;background:#F4F6F8;font-size:13px;line-height:1.55;}

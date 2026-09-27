@@ -292,7 +292,8 @@
       <div class="rt-bloco">
         <h3>D · Comunicado</h3>
         <div class="rg-acoes" style="justify-content:flex-start; margin-top:0">
-          <button class="btn btn-ghost" id="dAnalise" title="Documento interno de apoio à decisão: fontes, evidências, sensibilidade e o que ainda falta levantar">Gerar análise técnica</button>
+          <button class="btn btn-primary" id="dCliente" title="Para mandar ao cliente: a recomendação em linguagem simples, os números essenciais e as perguntas pra conversa">Relatório do cliente</button>
+          <button class="btn btn-ghost" id="dAnalise" title="Versão completa: fontes, evidências, sensibilidade e o que ainda falta levantar">Análise técnica completa</button>
           <button class="btn btn-ghost" id="dGerar">Gerar comunicado</button>
           <button class="btn btn-ghost" id="dMarcar">Marcar como comunicado</button>
           <button class="btn btn-ghost" id="dOpcao" hidden>Opção registrada no portal</button>
@@ -1275,7 +1276,7 @@
     // Junta o que está gravado no caso, o que as notas dizem e o resumo dos
     // relatórios do Domínio guardado na simulação. Nada é inventado: o que
     // não foi medido aparece como pendência no fim do documento.
-    $('dAnalise').onclick = async () => {
+    const gerarRelatorio = async (versao) => {
       const c = casoAtual(); if (!c) return;
       const cli = clientesMap[c.cliente_id];
       let ent = null, domRes = null;
@@ -1332,13 +1333,15 @@
           }
         } catch (e) { /* sem notas importadas o documento sai sem a seção de clientes */ }
 
-        const html = gerarAnalise(montarDadosAnalise(c, cli, ent, sim, dom, xml));
+        const html = gerarAnalise(montarDadosAnalise(c, cli, ent, sim, dom, xml), { versao });
         const w = window.open('', '_blank');
         w.document.write(html); w.document.close();
       } catch (err) {
         alert('Não consegui montar a análise: ' + (err.message || err));
       } finally { btn.disabled = false; btn.textContent = 'Gerar análise técnica'; }
     };
+    $('dAnalise').onclick = () => gerarRelatorio('completa');
+    $('dCliente').onclick = () => gerarRelatorio('cliente');
 
     // sensibilidade, fontes, recomendação e pendências: tudo derivado do caso
     function montarDadosAnalise(c, cli, ent, sim, dom, xml) {
@@ -1467,7 +1470,7 @@
               + '<p style="margin-bottom:0">Se até novembro ficar claro que os contratos não comportam o destaque da CBS, cancela-se a opção e tudo segue como está — com a economia preservada e nenhum custo pela tentativa.</p>' };
 
       const perguntas = consumidor && !barRest ? [
-        'A receita passa <b>toda</b> por nota (NF-e/NFC-e)? Há venda fora das notas? A simulação usa ' + (dom && dom.faturamento ? 'o faturamento do Domínio' : 'as saídas do Domínio') + '.',
+        'A receita passa <b>toda</b> por nota (NF-e/NFC-e)? Há venda fora das notas? A simulação usa o faturamento registrado na contabilidade.',
         'Quais <b>linhas de produto</b> pesam mais nas vendas? Insumos agropecuários, itens da cesta básica e medicamentos têm redução ou alíquota zero por fora — isso muda o débito.',
         'Os principais <b>fornecedores</b> são indústria ou distribuidor do regime regular, ou do Simples? Fornecedor do Simples não gera crédito cheio — é o que sustenta (ou derruba) a conta por fora.',
         'Há previsão de <b>investimento em máquinas, veículos ou reforma</b> em 2027? Compra de ativo gera crédito integral no regime regular.'
