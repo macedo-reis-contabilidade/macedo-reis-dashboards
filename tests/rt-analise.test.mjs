@@ -7,9 +7,9 @@ const page = fs.readFileSync(new URL('../fiscal-reforma.html', import.meta.url),
 const i = page.indexOf('    function montarDadosAnalise('); const j = page.indexOf("\n    $('dGerar').onclick");
 const src = page.slice(i, j);
 const montarDadosAnalise = new Function('simular', 'ANO_XML', 'location', src + '\nreturn montarDadosAnalise;')(simular, 2026, { href: 'http://x/' });
-function caso(nome, ent, dom, xml) {
+function caso(nome, ent, dom, xml, cnae) {
   const sim = simular(ent);
-  const d = montarDadosAnalise({ id: 1 }, { nome_principal: nome, documento: '00000000000000' }, ent, sim, dom, xml);
+  const d = montarDadosAnalise({ id: 1, cnae_base: cnae || null }, { nome_principal: nome, documento: '00000000000000' }, ent, sim, dom, xml);
   const html = gerarAnalise(d);
   const txt = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
   return { sim, d, txt };
@@ -54,6 +54,14 @@ chk('caso sem dado suspeito não vira "a confirmar" (' + pb.d.alertas.length + '
 chk('resumo: empate diz "Manter como está"', /EMPATE TÉCNICO Manter como está/.test(vn.txt.replace(/·/g, '')) || /Manter como está/.test(vn.txt));
 chk('resumo: compras ≥ vendas vira "TENDÊNCIA — A CONFIRMAR"', /TENDÊNCIA — A CONFIRMAR/.test(vr.txt));
 chk('resumo: alerta de receita × faturamento do Simples', /do faturamento dos últimos 12 meses informado no Simples/.test(vr.txt));
+
+// 6) Restaurante sem notas: mix não medido vira "dado que faltou", com a direção do erro
+const rs = caso('HAMBURGUERIA TESTE', { anexo:'I', rbt12:872624.42, receita:72478.81, mixCheia:100, pctComprasMercadorias:49.5, pctComprasDespesas:0, pctImpostoEmbutido:0, pctExcluidoST:3.4, partilha:15.5, cbs:9.3, ibs:0.1, pctPJ:2.4, aliqEfetivaInformada:7.85 },
+  { faturamento: { total: 579830, servicos: 0, saidas: 579830 }, periodoRotulo: 'jan/26–ago/26' }, null, '5611-2/01');
+console.log('Restaurante sem notas:');
+chk('veredito segue MANTENHA', rs.sim.veredito.tipo === 'MANTENHA');
+chk('aponta a redução de 40% que faltou medir', /comida preparada tem redução de 40%/.test(rs.txt));
+chk('diz que a conclusão não muda', /a conclusão não muda/.test(rs.txt));
 
 // 3) Drogaria Guerra (referência)
 const g = simular({ anexo:'I', rbt12:1800000, receita:150000, mixCheia:20, mixRed60:70, mixRed30:0, mixZero:10, pctComprasMercadorias:60, pctComprasDespesas:5.33, pctImpostoEmbutido:18, pctExcluidoST:33.5, partilha:15.5, cbs:9.3, ibs:0, pctPJ:10, creditoEstoqueMes:1541.67 });

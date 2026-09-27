@@ -960,6 +960,14 @@
         '</div>';
       if (cons.origem.aliquotaEfetiva) html += '<p class="rt-nota">Alíquota efetiva no PGDAS: ' + escapeHtml(cons.origem.aliquotaEfetiva) + ' — vai pro campo "Alíquota efetiva real" e vale sobre a tabela do anexo.</p>';
       if (docFicha && docRel && docFicha !== docRel) cons.avisos.unshift('Os relatórios são do CNPJ ' + docRel + ', e esta ficha é de ' + docFicha + ' — confira se pegou o cliente certo.');
+      { // mix de alíquotas só sai das notas de venda: alimentação (redução de 40% na comida) e comércio precisam delas
+        const cF = casoAtual(); const cliF = cF ? clientesMap[cF.cliente_id] : null;
+        const cnae = String((cF && cF.cnae_base) || (cliF && cliF.cnae_principal) || '').replace(/\D/g, '');
+        const temNotas = (domEstado.notas || 0) > 0;
+        const servicoPuro = cons.fat && cons.fat.meses && cons.fat.meses.reduce((a, m) => a + (m.servicos || 0), 0) >= 0.9 * cons.fat.meses.reduce((a, m) => a + (m.total || 0), 0);
+        if (!temNotas && cnae.startsWith('56')) cons.avisos.push('Bar/restaurante sem notas de venda na base: a comida preparada tem redução de 40% no IBS/CBS e as bebidas revendidas pagam cheio. Importe as NFC-e (XML ou ZIP) aqui mesmo pra medir essa divisão — sem elas o cálculo põe tudo na alíquota cheia e o custo "por fora" sai maior que o real.');
+        else if (!temNotas && !servicoPuro) cons.avisos.push('Sem notas de venda na base, o mix de alíquotas fica 100% cheio. Se a empresa vende produtos com redução (insumos agropecuários, cesta básica, medicamentos…), importe as notas (XML ou ZIP) pra medir.');
+      }
       cons.avisos.forEach(a => { html += '<div class="dom-aviso">⚠ ' + escapeHtml(a) + '</div>'; });
       html += '<p class="rt-nota">' + (cons.resVen ? 'O mix de alíquotas (redução por NCM) não sai destes relatórios — vem das notas na base (acima) ou você preenche à mão. O % de PJ veio das saídas + serviços; com notas na base, as notas vencem.' : '% de clientes PJ e o mix de alíquotas não saem destes relatórios — suba o acompanhamento de saídas (e de serviços) pro % de PJ, ou as notas na base (acima), ou preencha à mão.') + '</p>';
       box.innerHTML = html;
@@ -1523,6 +1531,17 @@
         if (inverteDif(v)) alertas.push({ texto: 'As compras da empresa não foram informadas, e a análise considerou zero crédito. Com compras de 20% da receita, o resultado se inverte.', conferir: 'acompanhamento de entradas' });
       }
       if (dom && dom.excecoes && dom.excecoes.length) alertas.push({ texto: 'Usado nesta análise por decisão manual, de outro CNPJ: ' + dom.excecoes.join('; ') + '.', conferir: null });
+      // mix não medido: observação sempre (dado faltando, com a direção do erro); vira alerta se puder inverter
+      const observacoes = [];
+      const cnaeCaso = String(c.cnae_base || (cli && cli.cnae_principal) || '').replace(/\D/g, '');
+      const alimentacao = cnaeCaso.startsWith('56') || barRest;
+      if (!mixMedido && alimentacao) {
+        const v = dif({ mixCheia: 10, mixRed40: 90, mixRed60: 0, mixRed30: 0, mixZero: 0 });
+        const t = 'As notas de venda não foram analisadas, então o cálculo pôs tudo na alíquota cheia. Em bar e restaurante a comida preparada tem redução de 40% — por fora, o custo real é menor que o mostrado' + (inverteDif(v) ? ', e com 90% das vendas com redução o resultado se inverte.' : ' (com 90% das vendas com redução ficaria ' + sinal(v) + ' no semestre — a conclusão não muda).');
+        if (inverteDif(v)) alertas.push({ texto: t, conferir: 'notas de venda (NFC-e) — comida × bebida' }); else observacoes.push(t);
+      } else if (!mixMedido && !prestador && !viram.some(t => /mix|redução de 60/.test(t.nome))) {
+        observacoes.push('As notas de venda não foram analisadas, então o cálculo pôs tudo na alíquota cheia. Se a empresa vende produtos com redução (insumos agropecuários, cesta básica, medicamentos), o custo real por fora é menor — a conclusão não muda com metade das vendas nessa condição.');
+      }
       const aConfirmar = alertas.length > 0;
       const conferirLista = [...new Set(alertas.map(a => a.conferir).filter(Boolean))];
       const listaAlertas = '<ul style="margin:6px 0 10px 18px;padding:0">' + alertas.map(a => '<li>' + a.texto + '</li>').join('') + '</ul>';
@@ -1547,7 +1566,7 @@
         : consumidor ? 'Em ordem de valor — nenhum deles inverte a recomendação; servem para afinar o número.'
         : 'Em ordem de valor para a decisão — o item 1 é o único que pode inverter a recomendação.';
       return {
-        alertas, aConfirmar, pendenciasNota,
+        alertas, aConfirmar, pendenciasNota, observacoes,
         cliente: cli || { nome_principal: '—', documento: null }, caso: c, sim, entrada: ent, dominio: dom, xml,
         logoUrl: new URL('assets/logo-mr.png', location.href).href,
         hoje: new Date().toLocaleDateString('pt-BR'),
