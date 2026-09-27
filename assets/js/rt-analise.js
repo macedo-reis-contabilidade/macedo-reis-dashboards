@@ -122,7 +122,7 @@ export function gerarAnalise(d, opts = {}) {
 
   const hojeISO = d.hojeISO || new Date().toISOString().slice(0, 10);
   const janelaAberta = hojeISO <= '2026-09-30';
-  P('<div class="dados"><b>Prazo:</b> ' + (janelaAberta
+  if (!versaoCliente) P('<div class="dados"><b>Prazo:</b> ' + (janelaAberta
       ? 'a opção deve ser formalizada até <b>30/09/2026</b> e pode ser <b>cancelada até 30/11/2026</b> sem produzir efeito (Resolução CGSN 186/2026). Quem não opta em setembro só tem nova janela em <b>março/2027</b>, com efeito a partir de <b>julho/2027</b>.'
       : 'a janela de setembro/2026 já fechou (a opção valeria desde janeiro/2027). A próxima é em <b>março/2027</b>, com efeito a partir de <b>julho/2027</b> (Resolução CGSN 186/2026) — esta análise serve de base para ela.')
     + (dominio || xml ? '<br><b>Base desta análise:</b> ' + [
@@ -180,19 +180,16 @@ export function gerarAnalise(d, opts = {}) {
   }
 
   if (versaoCliente) {
-    P('<h2>Os números</h2>');
-    P('<table><tbody>'
-      + '<tr><td>Faturamento médio por mês</td><td class="num">' + brl0(receita) + '</td></tr>'
-      + '<tr><td>Impostos no 1º semestre de 2027 — mantendo tudo no DAS</td><td class="num">' + brl0(s.custoDentro) + '</td></tr>'
-      + '<tr><td>Impostos no 1º semestre de 2027 — recolhendo IBS/CBS por fora</td><td class="num">' + brl0(s.custoFora) + '</td></tr>'
-      + '<tr class="tot"><td>Diferença no semestre</td><td class="num">' + brl0(Math.abs(s.diferenca)) + ' ' + (s.diferenca < 0 ? 'a favor de recolher por fora' : 'a favor de manter no DAS') + '</td></tr>'
-      + (!d.consumidor ? '<tr><td>Crédito de imposto que seus clientes empresa aproveitariam no semestre</td><td class="num">' + brl0(s.aproveitadoDentro) + ' mantendo · ' + brl0(s.aproveitadoFora) + ' por fora</td></tr>' : '')
-      + '</tbody></table>');
-    P('<p class="fonte">Valores estimados com os relatórios do seu Simples e as alíquotas de referência de 2027 (a CBS ainda depende de resolução do Senado).</p>');
-    if (d.perguntas && d.perguntas.length) {
-      P('<h2>Para conversarmos</h2><ol>' + d.perguntas.map(q => '<li>' + q + '</li>').join('') + '</ol>');
-    }
-    P('<div class="rodape">Documento de apoio à decisão, elaborado em ' + hoje + ' pela Macedo &amp; Reis Contabilidade. A empresa continua no Simples Nacional em qualquer caso; a escolha é só a forma de recolher o IBS e a CBS em 2027. Valores estimativos; a decisão é do contribuinte. A análise técnica completa, com fontes e premissas, fica à disposição no escritório.<br>Base legal: LC 214/2025 · LC 123/2006 · Resolução CGSN 186/2026.</div>');
+    const base = dominio || xml ? [
+        dominio && dominio.faturamento ? 'faturamento ' + dominio.periodoRotulo : null,
+        dominio && dominio.pgdas ? 'PGDAS ' + esc(dominio.pgdas.competencia) : null,
+        dominio && dominio.entradas ? 'entradas' : null,
+        xml && xml.nNotas ? xml.nNotas + ' notas fiscais' : null
+      ].filter(Boolean).join(', ') : null;
+    P('<p class="numlinha"><b>Faturamento médio:</b> ' + brl0(receita) + '/mês'
+      + (!d.consumidor ? ' · <b>Crédito que seus clientes empresa aproveitariam no semestre:</b> ' + brl0(s.aproveitadoDentro) + ' mantendo, ' + brl0(s.aproveitadoFora) + ' por fora' : '') + '</p>');
+    if (d.perguntas && d.perguntas.length) P('<h2>Para conversarmos</h2><ol class="perg">' + d.perguntas.slice(0, 3).map(q => '<li>' + q + '</li>').join('') + '</ol>');
+    P('<div class="rodape">Elaborado em ' + hoje + ' pela Macedo &amp; Reis Contabilidade' + (base ? ', com ' + base : '') + ' e as alíquotas de referência de 2027 (CBS pendente de resolução do Senado). A empresa continua no Simples em qualquer caso; a escolha é só a forma de recolher IBS e CBS. Valores estimados; a decisão é do contribuinte. A análise técnica completa fica à disposição no escritório. Base legal: LC 214/2025 · LC 123/2006 · Resolução CGSN 186/2026.</div>');
     return montarHtml();
   }
 
@@ -397,7 +394,7 @@ export function gerarAnalise(d, opts = {}) {
   return montarHtml();
   function montarHtml() {
   return '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
-    + '<title>' + (versaoCliente ? 'IBS/CBS 2027 — ' : 'Análise IBS/CBS 2027 — ') + esc(cliente.nome_principal) + '</title><style>' + CSS + '</style></head><body>'
+    + '<title>' + (versaoCliente ? 'IBS/CBS 2027 — ' : 'Análise IBS/CBS 2027 — ') + esc(cliente.nome_principal) + '</title><style>' + CSS + '</style></head><body class="' + (versaoCliente ? 'v-cli' : 'v-tec') + '">'
     + '<div class="toolbar-print"><button onclick="window.print()">Imprimir / Salvar PDF</button></div>'
     + '<div class="folha">' + partes.join('') + '</div></body></html>';
   }
@@ -450,6 +447,13 @@ ol,ul{margin:0 0 10px;padding-left:20px;} li{margin-bottom:5px;}
 .toolbar-print{position:fixed;top:10px;right:10px;} .toolbar-print button{padding:8px 14px;cursor:pointer;}
 svg{display:block;max-width:100%;}
 @page{margin:1.2cm;}
+/* versão do cliente: uma folha A4 */
+.v-cli .folha{padding:26px 34px 22px;} .v-cli h1{font-size:18px;} .v-cli .sub{margin:0 0 8px;font-size:11.5px;} .v-cli .sobre{margin:0 0 10px;font-size:12.5px;}
+.v-cli .resumo{padding:12px 16px;margin:2px 0 12px;} .v-cli .rs-dec{font-size:19px;} .v-cli .resumo p, .v-cli .rs-al li{font-size:12px;line-height:1.45;} .v-cli .rs-al li{margin-bottom:3px;}
+.v-cli .rs-barras{margin:0 0 8px;} .v-cli h2{margin:14px 0 6px;font-size:13.5px;} .v-cli .perg li{font-size:12px;margin-bottom:3px;}
+.numlinha{font-size:12px;color:#4A525E;margin:0 0 4px;} .v-cli .rodape{margin-top:12px;font-size:9.5px;}
+.v-cli .cab img{width:44px;height:44px;} .v-cli .cab{padding-bottom:10px;margin-bottom:12px;}
+@media print{ .v-cli .folha{padding:0;} }
 @media print{ body{padding:0;background:#fff;} .folha{box-shadow:none;padding:0;max-width:none;} .toolbar-print{display:none;}
   /* fluxo de livro: tabela pode quebrar entre páginas (cabeçalho repete), linha não; título fica com o que vem depois;
      só o que é pequeno e visual (caixas, cards, gráfico) é indivisível — assim cada página enche parelho */
