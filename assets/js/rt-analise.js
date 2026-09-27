@@ -170,7 +170,7 @@ export function gerarAnalise(d, opts = {}) {
           : barra('Por dentro do DAS' + (optar ? '' : ' ✓'), s.custoDentro, !optar) + barra('Por fora do DAS' + (optar ? ' ✓' : ''), s.custoFora, optar) + '<div class="rs-cap" style="margin-top:4px;text-transform:none;letter-spacing:0">✓ recomendado' + (empate ? ' — a diferença está dentro da margem de incerteza' : '') + '</div></div>')
       + '<p><b>Por quê:</b> ' + porque + '</p>'
       + (alertasVis.length ? '<p style="margin-bottom:4px"><b>' + (aConf ? 'Antes de decidir, precisamos confirmar:' : 'Pontos de atenção:') + '</b></p><ul class="rs-al">' + alertasVis.map(a => '<li>' + a.texto + '</li>').join('') + '</ul>' : '')
-      + (d.observacoes && d.observacoes.length ? '<p style="margin-bottom:4px"><b>Dados que faltaram' + (aConf || alertasVis.length ? ' (não mudam a conclusão)' : '') + ':</b></p><ul class="rs-al">' + d.observacoes.map(t => '<li>' + t + '</li>').join('') + '</ul>' : '')
+      + (d.observacoes && d.observacoes.length ? '<p style="margin-bottom:4px"><b>Para um cálculo mais preciso:</b></p><ul class="rs-al">' + d.observacoes.map(t => '<li>' + t + '</li>').join('') + '</ul>' : '')
       + ({ optar: '<p class="rs-pz">Próximo passo: formalizar a opção até <b>30/09/2026</b>. Dá pra cancelar até <b>30/11/2026</b> sem efeito.</p>',
            formalizar: '<p class="rs-pz">Próximo passo: registrar a opção até <b>30/09/2026</b>; decidir até <b>30/11/2026</b> (cancelar, se não fizer sentido).</p>',
            optar_marco: '<p class="rs-pz">Próximo passo: formalizar a opção na janela de <b>março/2027</b>; vale a partir de julho/2027.</p>',

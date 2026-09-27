@@ -1602,12 +1602,14 @@
       const alimentacao = perfil.tipo === 'alimentacao';
       if (!mixMedido && alimentacao) {
         const v = dif({ mixCheia: 10, mixRed40: 90, mixRed60: 0, mixRed30: 0, mixZero: 0 });
-        const t = 'As notas de venda não foram analisadas, então o cálculo pôs tudo na alíquota cheia. Em bar e restaurante a comida preparada tem redução de 40% — por fora, o custo real é menor que o mostrado' + (inverteDif(v) ? ', e com 90% das vendas com redução o resultado se inverte.' : ' (com 90% das vendas com redução ficaria ' + sinal(v) + ' no semestre — a conclusão não muda).');
+        const t = inverteDif(v)
+          ? 'Não usamos as notas fiscais de venda (NFC-e). Em restaurante, a comida paga o imposto novo com desconto de 40% e só as bebidas pagam cheio; sem as notas, consideramos tudo sem desconto. Com esse desconto a conta pode virar a favor de recolher por fora — precisamos das notas pra fechar.'
+          : 'Não usamos as notas fiscais de venda (NFC-e). Em restaurante, a comida paga o imposto novo com desconto de 40% e só as bebidas pagam cheio; sem as notas, consideramos tudo sem desconto, então o custo "por fora" mostrado está um pouco acima do real. Mesmo com o desconto, a recomendação não muda.';
         if (inverteDif(v)) alertas.push({ texto: t, conferir: 'notas de venda (NFC-e) — comida × bebida' }); else observacoes.push(t);
       } else if (!mixMedido && podeReduzir && !viram.some(t => /mix|redução de 60/.test(t.nome))) {
-        observacoes.push('As notas de venda não foram analisadas, então o cálculo pôs tudo na alíquota cheia. Se a empresa vende produtos com redução (insumos agropecuários, cesta básica, medicamentos), o custo real por fora é menor — a conclusão não muda com metade das vendas nessa condição.');
+        observacoes.push('Não usamos as notas fiscais de venda. Parte dos produtos do seu ramo (alimentos, ração, adubo, remédios, itens de higiene) pode pagar o imposto novo com desconto; sem as notas, consideramos tudo sem desconto, então o custo "por fora" mostrado pode estar acima do real. Mesmo com metade das vendas com desconto, a recomendação não muda.');
       }
-      if (dom && dom.pctPJDeduzido) observacoes.push('Os relatórios não traziam o CNPJ dos clientes. ' + dom.pctPJDeduzido.charAt(0).toUpperCase() + dom.pctPJDeduzido.slice(1) + '.');
+      if (dom && dom.pctPJDeduzido) observacoes.push('Não tínhamos a lista de clientes com CNPJ, então partimos do perfil da empresa (' + String(dom.pctPJDeduzido).replace(/^deduzido:\s*/, '').replace(/\s*—.*$/, '') + '). Se boa parte das vendas for para empresas, nos avise — isso pode mudar a conta.');
       const aConfirmar = alertas.length > 0;
       const conferirLista = [...new Set(alertas.map(a => a.conferir).filter(Boolean))];
       const listaAlertas = '<ul style="margin:6px 0 10px 18px;padding:0">' + alertas.map(a => '<li>' + a.texto + '</li>').join('') + '</ul>';

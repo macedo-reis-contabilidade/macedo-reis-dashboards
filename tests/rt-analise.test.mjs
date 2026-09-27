@@ -29,7 +29,7 @@ chk('sem "Serviço não consta"', !/Serviço não consta/.test(vn.txt));
 chk('sem "multiplicar o crédito"', !/multiplicar o crédito/.test(vn.txt));
 chk('sem repasse que inverte', !/A variável que inverte/.test(vn.txt));
 chk('pergunta de fornecedores', /fornecedores/.test(vn.txt));
-chk('mix a conferir', /assumido integralmente cheio/.test(vn.txt));
+chk('mix a conferir', /assumido integralmente cheio/.test(vn.txt) && /Não usamos as notas fiscais de venda/.test(vn.txt));
 // 2) Prestador B2B (regra antiga preservada)
 const pb = caso('SERVIÇOS TESTE', { anexo:'III', rbt12:1200000, receita:100000, mixCheia:100, pctComprasMercadorias:5, pctComprasDespesas:5, pctImpostoEmbutido:0, pctExcluidoST:0, partilha:15.5, cbs:9.3, ibs:0.1, pctPJ:95 },
   { faturamento: { total: 800000, servicos: 800000, saidas: 0 }, periodoRotulo: 'jan/26–ago/26' }, null);
@@ -61,15 +61,15 @@ const rs = caso('HAMBURGUERIA TESTE', { anexo:'I', rbt12:872624.42, receita:7247
   { faturamento: { total: 579830, servicos: 0, saidas: 579830 }, periodoRotulo: 'jan/26–ago/26' }, null, '5611-2/01');
 console.log('Restaurante sem notas:');
 chk('veredito segue MANTENHA', rs.sim.veredito.tipo === 'MANTENHA');
-chk('aponta a redução de 40% que faltou medir', /comida preparada tem redução de 40%/.test(rs.txt));
-chk('diz que a conclusão não muda', /a conclusão não muda/.test(rs.txt));
+chk('aponta o desconto de 40% que faltou medir, em linguagem simples', /a comida paga o imposto novo com desconto de 40%/.test(rs.txt) && /Para um cálculo mais preciso/.test(rs.txt));
+chk('diz que a recomendação não muda', /a recomendação não muda/.test(rs.txt));
 
 // 7) Transportadora de carga (CT-e nas saídas, CNAE 4930, Anexo III): nada de mix, redução ou "produtos"
 const tr = caso('TRANSPORTES TESTE', { anexo:'III', rbt12:410549.94, receita:35875.03, mixCheia:100, pctComprasMercadorias:1.3, pctComprasDespesas:2.2, pctImpostoEmbutido:0, pctExcluidoST:10.2, partilha:16.6, cbs:9.3, ibs:0.1, pctPJ:99.5, aliqEfetivaInformada:8.26 },
   { faturamento: { total: 287000.22, servicos: 0, saidas: 287000.22 }, periodoRotulo: 'jan/26–ago/26', entradas: { grupos: [] }, vendas: { total: 287003.22, pctPJ: 99.5, pj: 285523, pf: 1480, consumidor: 0, nPJ: 109, fonte: 'acompanhamento de saídas (Domínio), PJ pelo CNPJ do cliente' } }, null, '4930-2/02');
 console.log('Transporte de cargas:');
 chk('perfil = transporte de cargas', tr.d.perfil.tipo === 'transporte' && !tr.d.perfil.vendeMercadoria);
-chk('sem "notas de venda não foram analisadas"', !/notas de venda não foram analisadas/.test(tr.txt));
+chk('sem aviso de notas de venda', !/Não usamos as notas fiscais de venda/.test(tr.txt));
 chk('sem "insumos agropecuários, cesta básica"', !/cesta básica/.test(tr.txt));
 chk('faturamento rotulado como fretes (CT-e)', /fretes \(CT-e\)/.test(tr.txt));
 chk('fonte da alíquota: frete sem redução na LC 214', /Transporte de cargas não tem redução na LC 214/.test(tr.txt));
