@@ -280,7 +280,7 @@ export function grupoSaida(cfop) {
   if (n >= 551 && n <= 552) return 'ativo';
   return 'outras';
 }
-const GRUPO_SAIDA_ROT = { remessa: 'remessas e retornos (CFOP x9xx — ex.: 5902, retorno da industrialização por encomenda)', transferencia: 'transferências entre estabelecimentos', devolucao: 'devoluções de compra', ativo: 'venda de ativo imobilizado', outras: 'outras saídas sem natureza de venda' };
+const GRUPO_SAIDA_ROT = { remessa: 'remessas, retornos e outras saídas sem venda', transferencia: 'transferências entre estabelecimentos', devolucao: 'devoluções de compra', ativo: 'venda de ativo imobilizado', outras: 'outras saídas sem natureza de venda' };
 
 // natureza da RECEITA pelo CFOP: separa venda de mercadoria de transporte, comunicação, energia e serviço
 export function naturezaReceita(v) {
