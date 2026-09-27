@@ -11,7 +11,7 @@
 // acompanhamento de entradas de 686 lançamentos): totais fechando ao
 // centavo e alíquota efetiva batendo com a do PGDAS na quarta casa.
 
-import { lerRelatorio, detectarTipo, grupoDoCfop, resumirEntradas, consolidar, numBR, classificarCliente, resumirVendas, lerPlanilha, detectarTipoPlanilha, grupoSaida, cnpjsParaConsultar, perfilAtividade } from '../assets/js/dominio-relatorios.js';
+import { lerRelatorio, detectarTipo, grupoDoCfop, resumirEntradas, consolidar, numBR, classificarCliente, resumirVendas, lerPlanilha, detectarTipoPlanilha, grupoSaida, cnpjsParaConsultar, perfilAtividade, conferirRbt12 } from '../assets/js/dominio-relatorios.js';
 import { aliqEfetiva } from '../assets/js/rt-motor.js';
 
 let falhas = 0;
@@ -326,6 +326,19 @@ console.log('\nRegime de fornecedores e clientes (Receita) e deduções pelo per
   ok(semVenda.campos.pctPJ === 0 && semVenda.campos.pctPJDeduzido, 'restaurante sem CNPJ de clientes: deduz consumidor final');
   const ind = consolidar([{ tipo: 'faturamento', meses: [{ competencia: '2026-01', total: 150000, saidas: 150000, servicos: 0 }] }], null, { perfil: perfilAtividade({ cnae: '1531-9/01', anexo: 'II' }) });
   ok(ind.campos.pctPJ === 90 && /indústria vende essencialmente a empresas/.test(ind.origem.pctPJ), 'fábrica de calçados sem CNPJ de clientes: deduz venda a empresas (a confirmar)');
+}
+
+console.log('\nRBT12 × relatórios, mês com mês:');
+{
+  const mes = (c, t) => ({ competencia: c, total: t });
+  const novos = ['2026-01','2026-02','2026-03','2026-04','2026-05','2026-06','2026-07','2026-08'].map(c => mes(c, 106000));
+  const a = conferirRbt12(novos, '2026-08', 745735);
+  ok(a && a.alerta === false && a.meses === 7, 'empresa que começou em 2026: 7 meses somando ~o RBT12 não dispara nada');
+  const b = conferirRbt12(novos, '2026-08', 500000);
+  ok(b && b.alerta === true && /não foi declarada no Simples/.test(b.texto), 'relatórios com mais receita que o RBT12 inteiro: alerta de receita fora do Simples');
+  const doze = ['2025-08','2025-09','2025-10','2025-11','2025-12','2026-01','2026-02','2026-03','2026-04','2026-05','2026-06','2026-07'].map(c => mes(c, 50000));
+  ok(conferirRbt12(doze, '2026-08', 1000000).alerta === true, 'cobrindo os 12 meses e somando 60% do RBT12: falta receita');
+  ok(conferirRbt12(doze, '2026-08', 600000).alerta === false, 'cobrindo os 12 meses e batendo: nada');
 }
 
 console.log('\nNúmeros no formato brasileiro:');

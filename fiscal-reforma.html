@@ -341,7 +341,7 @@
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { carregarOperacao, MESES_ABREV } from './assets/js/operacao-xml.js';
-    import { lerRelatorio, consolidar, resumirEntradas, GRUPOS, lerPlanilha, perfilAtividade, cnpjsParaConsultar, ramoComReducao } from './assets/js/dominio-relatorios.js';
+    import { lerRelatorio, consolidar, resumirEntradas, GRUPOS, lerPlanilha, perfilAtividade, cnpjsParaConsultar, ramoComReducao, conferirRbt12 } from './assets/js/dominio-relatorios.js';
     import { lerXls } from './assets/js/xls-biff.js';
     import { importarLote, separarNaoXml } from './assets/js/importar-xml.js';
     import { formatDocumento } from './assets/js/utils.js';
@@ -1590,8 +1590,8 @@
         const razaoSai = vendasDom.total / dom.faturamento.total;
         if (razaoSai > 1.2 || razaoSai < 0.8) alertas.push({ texto: 'As saídas importadas somam ' + brl0(vendasDom.total) + ', ' + p1(razaoSai * 100) + '% do faturamento do período (' + brl0(dom.faturamento.total) + '). ' + (razaoSai > 1.2 ? 'Entrou nas saídas algo que não é venda — remessa pra depósito de marketplace (Mercado Livre Full, Amazon), consignação ou retorno —, e o % de vendas a empresas (' + p1(vendasDom.pctPJ || 0) + '%) está distorcido. Reimportar as saídas em XLS separa isso pelo CFOP.' : 'Faltam saídas no relatório importado — confira o período.'), conferir: 'saídas × faturamento (reimportar as saídas em XLS)', interno: true });
       }
-      const razaoRbt = ent.rbt12 > 0 ? ent.receita * 12 / ent.rbt12 * 100 : null;
-      if (razaoRbt != null && (razaoRbt < 70 || razaoRbt > 130)) alertas.push({ texto: 'A receita usada (' + brl0(ent.receita) + ' por mês, ' + brl0(ent.receita * 12) + ' no ano) é ' + p1(razaoRbt) + '% do faturamento dos últimos 12 meses informado no Simples (' + brl0(ent.rbt12) + '). ' + (razaoRbt < 70 ? 'Pode faltar receita nos relatórios (serviços, outra filial) ou a empresa vendeu menos este ano.' : 'A empresa cresceu no período (o faturamento dos 12 meses inclui meses anteriores, mais fracos), ou os relatórios trazem receita que não foi declarada no Simples.'), conferir: 'receita dos relatórios × faturamento do Simples', interno: true });
+      const confRbt = conferirRbt12((dom && dom.meses) || (vendasDom && vendasDom.meses) || null, dom && dom.pgdas && dom.pgdas.competencia, ent.rbt12);
+      if (confRbt && confRbt.alerta) alertas.push({ texto: confRbt.texto, conferir: 'receita dos relatórios × faturamento declarado no Simples', interno: true });
       if (!(dom && dom.entradas) && !xml && ((ent.pctComprasMercadorias || 0) + (ent.pctComprasDespesas || 0)) === 0) {
         const v = dif({ pctComprasDespesas: 20 });
         if (inverteDif(v)) alertas.push({ texto: 'As compras da empresa não foram informadas, e a análise considerou zero crédito. Com compras de 20% da receita, o resultado se inverte.', conferir: 'acompanhamento de entradas' });

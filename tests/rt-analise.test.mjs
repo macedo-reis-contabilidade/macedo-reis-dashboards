@@ -6,8 +6,8 @@ import { gerarAnalise } from '../assets/js/rt-analise.js';
 const page = fs.readFileSync(new URL('../fiscal-reforma.html', import.meta.url), 'utf8');
 const i = page.indexOf('    function montarDadosAnalise('); const j = page.indexOf("\n    $('dGerar').onclick");
 const src = page.slice(i, j);
-import { perfilAtividade, ramoComReducao } from '../assets/js/dominio-relatorios.js';
-const montarDadosAnalise = new Function('simular', 'ANO_XML', 'location', 'perfilAtividade', 'ramoComReducao', src + '\nreturn montarDadosAnalise;')(simular, 2026, { href: 'http://x/' }, perfilAtividade, ramoComReducao);
+import { perfilAtividade, ramoComReducao, conferirRbt12 } from '../assets/js/dominio-relatorios.js';
+const montarDadosAnalise = new Function('simular', 'ANO_XML', 'location', 'perfilAtividade', 'ramoComReducao', 'conferirRbt12', src + '\nreturn montarDadosAnalise;')(simular, 2026, { href: 'http://x/' }, perfilAtividade, ramoComReducao, conferirRbt12);
 function caso(nome, ent, dom, xml, cnae) {
   const sim = simular(ent);
   const d = montarDadosAnalise({ id: 1, cnae_base: cnae || null }, { nome_principal: nome, documento: '00000000000000' }, ent, sim, dom, xml);
@@ -54,7 +54,7 @@ chk('caso sem dado suspeito não vira "a confirmar" (' + pb.d.alertas.length + '
 // resumo no topo, em linguagem simples, coerente com a recomendação
 chk('resumo: empate diz "Manter como está"', /EMPATE TÉCNICO Manter como está/.test(vn.txt.replace(/·/g, '')) || /Manter como está/.test(vn.txt));
 chk('resumo: compras ≥ vendas vira "TENDÊNCIA — A CONFIRMAR"', /TENDÊNCIA — A CONFIRMAR/.test(vr.txt));
-chk('resumo: alerta de receita × faturamento do Simples', /do faturamento dos últimos 12 meses informado no Simples/.test(vr.txt));
+chk('sem a conta errada de média × 12 contra o RBT12', !/× 12|no ano\) é/.test(vr.txt));
 
 // 6) Restaurante sem notas: mix não medido vira "dado que faltou", com a direção do erro
 const rs = caso('HAMBURGUERIA TESTE', { anexo:'I', rbt12:872624.42, receita:72478.81, mixCheia:100, pctComprasMercadorias:49.5, pctComprasDespesas:0, pctImpostoEmbutido:0, pctExcluidoST:3.4, partilha:15.5, cbs:9.3, ibs:0.1, pctPJ:2.4, aliqEfetivaInformada:7.85 },

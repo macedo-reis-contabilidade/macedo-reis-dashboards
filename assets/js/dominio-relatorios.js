@@ -347,6 +347,20 @@ export function cnpjsParaConsultar(rels, n = 20) {
 // MEI: praticamente nenhum. (LC 214, art. 47 §§ — crédito limitado ao montante pago no regime do Simples)
 export const CREDITO_FORNECEDOR_SIMPLES = 0.15;
 
+export function conferirRbt12(meses, compPgdas, rbt12) {
+  if (!meses || !meses.length || !compPgdas || !(rbt12 > 0)) return null;
+  const [a, m] = String(compPgdas).split('-').map(Number);
+  const janela = []; for (let k = 12; k >= 1; k--) { const d = new Date(a, m - 1 - k, 1); janela.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')); }
+  const dentro = meses.filter(x => janela.includes(x.competencia));
+  if (!dentro.length) return null;
+  const soma = dentro.reduce((t, x) => t + (x.total || 0), 0);
+  const brl2 = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const r = { meses: dentro.length, soma, rbt12, razao: soma / rbt12 * 100, alerta: false, texto: '' };
+  if (soma > rbt12 * 1.1) { r.alerta = true; r.texto = 'Nos ' + dentro.length + ' meses que o RBT12 do PGDAS cobre, os relatórios somam ' + brl2(soma) + ' — mais que o RBT12 inteiro (' + brl2(rbt12) + '). Há receita nos relatórios que não foi declarada no Simples, ou o PGDAS é de outra competência. Confira antes de calcular.'; }
+  else if (dentro.length === 12 && soma < rbt12 * 0.85) { r.alerta = true; r.texto = 'Nos 12 meses que o RBT12 cobre, os relatórios somam ' + brl2(soma) + ', ' + Math.round(soma / rbt12 * 100) + '% do RBT12 do PGDAS (' + brl2(rbt12) + ') — está faltando receita nos relatórios (serviços, filial: o RBT12 é da empresa inteira). Confira antes de calcular.'; }
+  return r;
+}
+
 export function classificarCliente(nome) {
   const n = norm(nome).replace(/[.,]/g, m => m === '.' ? '.' : ' ');
   if (!n) return 'consumidor';
@@ -736,11 +750,14 @@ export function consolidar(rels, incluir, opcoes = {}) {
     else if (industrializacao) { campos.pctPJ = 100; campos.pctPJDeduzido = true; origem.pctPJ = 'deduzido: industrialização por encomenda (CFOP x124/x125) é sempre para empresa'; }
     else if (pf.tipo === 'industria') { campos.pctPJ = 90; campos.pctPJDeduzido = true; origem.pctPJ = 'deduzido: indústria vende essencialmente a empresas — confirme importando as saídas em XLS (trazem o CNPJ do cliente)'; }
   }
-  if (campos.receita && campos.rbt12) {
-    const razao = campos.receita * 12 / campos.rbt12 * 100;
-    campos.receitaSobreRbt12 = razao;
-    if (razao < 70 || razao > 130) avisos.push('Receita dos relatórios × 12 = ' + brl(campos.receita * 12) + ', ' + pct(razao) + '% do RBT12 do PGDAS (' + brl(campos.rbt12) + '). '
-      + (razao < 70 ? 'Pode estar faltando receita (relatório de serviços, filial — o RBT12 é da empresa inteira) ou a empresa encolheu no período.' : 'Ou a empresa cresceu no período (o RBT12 inclui meses anteriores, mais fracos — confira o faturamento desses meses no Domínio), ou os relatórios trazem receita que não foi declarada no Simples.') + ' Confira antes de calcular.');
+  // RBT12 × relatórios, MÊS COM MÊS (27/09/2026): o RBT12 é a soma dos 12 meses anteriores à competência do PGDAS.
+  // Soma-se a receita dos relatórios nos meses dessa janela. Só há problema se os relatórios mostram MAIS receita que o
+  // RBT12 inteiro (receita fora do Simples) — ou, quando cobrem os 12 meses, se ficam muito abaixo. Empresa que começou
+  // a faturar há menos de um ano não dispara nada (nada de média × 12).
+  const conf = conferirRbt12(fat ? fat.meses : resVen ? resVen.meses : null, sim && sim.competencia, campos.rbt12);
+  if (conf) {
+    campos.rbt12Conferencia = conf;
+    if (conf.alerta) avisos.push(conf.texto);
   }
   return { campos, origem, avisos, fat, sim, ent, ven, resVen, competencias };
 }
