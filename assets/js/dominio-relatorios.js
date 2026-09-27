@@ -263,6 +263,25 @@ const PJ_TOKENS = ['LTDA', 'LTDA.', 'S/A', 'S.A', 'S.A.', 'SA', 'ME', 'EPP', 'EI
   'CONSTRUTORA', 'CONSTRUCOES', 'MECANICA', 'GRAFICA', 'DISTRIBUIDORA', 'CALCADOS', 'ESQUADRIAS', 'ARTEFATOS', 'FABRICACAO', 'CONFECCOES', 'MOVEIS', 'IMOVEIS', 'AGROPECUARIA', 'AGRO',
   'VETERINARIA', 'ODONTOLOGIA', 'CONTABILIDADE', 'ADVOCACIA', 'ADVOGADOS', 'ENGENHARIA', 'ARQUITETURA', 'AUTOMOTIVA', 'AUTO', 'POSTO', 'CENTRO', 'GRUPO', 'HOLDING', 'EMPRESA', 'SOCIEDADE',
   'ORGANIZACAO', 'ENTIDADE', 'CAMARA', 'SECRETARIA', 'DEPARTAMENTO', 'ASSISTENCIA', 'BENEFICENCIA', 'BENEFICIENCIA', 'TEMPLO', 'GONPA', 'MOSTEIRO', 'CONGREGACAO', 'MISSAO', 'LTD', 'INC', 'CORP'];
+// ---------- saídas: o que é receita e o que não é (25/09/2026) ----------
+// Receita: venda (x101–x125, inclui industrialização por encomenda x124/x125), venda com ST (x401–x405),
+// energia/comunicação/transporte (x251–x360), combustível (x651–x667), serviço com ISS (x933), exportação (7101–7127).
+// Não é receita: remessas e retornos (x9xx, ex.: 5902 retorno da industrialização), transferências (x151–x159,
+// x408/x409), devoluções de compra (x201–x212, x410–x413, x503, x553–x556, x660–x662), venda de ativo (x551).
+export function grupoSaida(cfop) {
+  if (!cfop) return 'receita';                                 // relatório de serviços: sem CFOP, é receita
+  const n = parseInt(String(cfop).slice(1), 10), p = String(cfop)[0];
+  if (p === '7') return n >= 101 && n <= 127 ? 'receita' : 'outras';
+  if (n === 933) return 'receita';
+  if ((n >= 101 && n <= 125) || (n >= 401 && n <= 405) || (n >= 251 && n <= 360) || (n >= 651 && n <= 667)) return 'receita';
+  if (n >= 900 && n <= 999) return 'remessa';
+  if ((n >= 151 && n <= 159) || n === 408 || n === 409) return 'transferencia';
+  if ((n >= 201 && n <= 212) || (n >= 410 && n <= 413) || n === 503 || (n >= 553 && n <= 556) || (n >= 660 && n <= 662)) return 'devolucao';
+  if (n >= 551 && n <= 552) return 'ativo';
+  return 'outras';
+}
+const GRUPO_SAIDA_ROT = { remessa: 'remessas e retornos (CFOP x9xx — ex.: 5902, retorno da industrialização por encomenda)', transferencia: 'transferências entre estabelecimentos', devolucao: 'devoluções de compra', ativo: 'venda de ativo imobilizado', outras: 'outras saídas sem natureza de venda' };
+
 export function classificarCliente(nome) {
   const n = norm(nome).replace(/[.,]/g, m => m === '.' ? '.' : ' ');
   if (!n) return 'consumidor';
@@ -306,7 +325,7 @@ export function lerVendas(paginas, tipo) {
     vendas.push({
       tipo, data, competencia: data.slice(6, 10) + '-' + data.slice(3, 5),
       nota: cabeca[0] || null, especie, cliente: nome, classe: classificarCliente(nome),
-      cfop, st: cfop ? cfop.slice(1) === '405' : false, valor
+      cfop, st: cfop ? cfop.slice(1) === '405' : false, valor, grupo: grupoSaida(cfop)
     });
   }
   if (!vendas.length) throw new Error('não encontrei notas no acompanhamento de ' + (tipo === 'saidas' ? 'saídas' : 'serviços'));
@@ -317,7 +336,11 @@ export function lerVendas(paginas, tipo) {
 // ---------- resumo das vendas (saídas + serviços) por tipo de cliente ----------
 export function resumirVendas(vendas, competencias) {
   const dentro = v => !competencias || !competencias.length || competencias.includes(v.competencia);
-  const vs = vendas.filter(dentro);
+  const noPeriodo = vendas.filter(dentro);
+  const eReceita = v => (v.grupo || 'receita') === 'receita';
+  const vs = noPeriodo.filter(eReceita);
+  const fora = {};
+  noPeriodo.filter(v => !eReceita(v)).forEach(v => { const f = fora[v.grupo] || (fora[v.grupo] = { rotulo: GRUPO_SAIDA_ROT[v.grupo] || v.grupo, valor: 0, notas: 0, cfops: {} }); f.valor += v.valor || 0; f.notas++; f.cfops[v.cfop] = (f.cfops[v.cfop] || 0) + (v.valor || 0); });
   const total = vs.reduce((a, v) => a + (v.valor || 0), 0);
   const porDoc = vs.length ? vs.filter(v => v.classePorDocumento).length / vs.length >= 0.99 : false;
   const classes = { pj: { rotulo: porDoc ? 'Pessoa jurídica (CNPJ)' : 'Pessoa jurídica (pelo nome)', valor: 0, notas: 0, nomes: {} }, pf: { rotulo: porDoc ? 'Pessoa física (CPF)' : 'Pessoa física (pelo nome)', valor: 0, notas: 0, nomes: {} }, consumidor: { rotulo: 'Consumidor não identificado', valor: 0, notas: 0, nomes: {} } };
@@ -328,7 +351,7 @@ export function resumirVendas(vendas, competencias) {
   const st = vs.filter(v => v.st).reduce((a, v) => a + (v.valor || 0), 0);
   const porMes = {};
   vs.forEach(v => { const m = porMes[v.competencia] || (porMes[v.competencia] = { competencia: v.competencia, saidas: 0, servicos: 0, total: 0 }); m[v.tipo] += v.valor || 0; m.total += v.valor || 0; });
-  return { total, mercadorias, servicos, st, pctPJ: total ? classes.pj.valor / total * 100 : null, classes, meses: Object.values(porMes).sort((a, b) => a.competencia < b.competencia ? -1 : 1) };
+  return { total, mercadorias, servicos, st, pctPJ: total ? classes.pj.valor / total * 100 : null, classes, meses: Object.values(porMes).sort((a, b) => a.competencia < b.competencia ? -1 : 1), fora };
 }
 
 // ---------- 5) PLANILHA (XLS/XLSX/CSV exportado da Domínio) ----------
@@ -398,7 +421,7 @@ export function lerPlanilha(linhas) {
     } else {
       const docLimpo = doc.replace(/^0+$/, '');
       const classe = docLimpo.length === 14 ? 'pj' : docLimpo.length === 11 ? 'pf' : (doc && !docLimpo ? 'consumidor' : classificarCliente(nome));
-      itens.push({ tipo, data, competencia, nota: txt[col.nota] || null, especie: txt[col.especie] || null, cliente: nome, documento: docLimpo || null, classe, classePorDocumento: docLimpo.length === 14 || docLimpo.length === 11 || (!!doc && !docLimpo), cfop, st: cfop ? cfop.slice(1) === '405' : false, valor });
+      itens.push({ tipo, data, competencia, nota: txt[col.nota] || null, especie: txt[col.especie] || null, cliente: nome, documento: docLimpo || null, classe, classePorDocumento: docLimpo.length === 14 || docLimpo.length === 11 || (!!doc && !docLimpo), cfop, st: cfop ? cfop.slice(1) === '405' : false, valor, grupo: tipo === 'servicos' ? 'receita' : grupoSaida(cfop) });
     }
   }
   if (!itens.length) throw new Error('não encontrei lançamentos na planilha de ' + tipo);
@@ -519,6 +542,8 @@ export function consolidar(rels, incluir) {
   let resVen = null;
   if (ven) {
     resVen = resumirVendas(ven.vendas, competencias);
+    const foraV = Object.values(resVen.fora || {});
+    if (foraV.length) avisos.push('Fora da receita, por não serem venda: ' + foraV.map(f => f.rotulo + ' ' + brl(f.valor) + ' (' + Object.keys(f.cfops).map(c => 'CFOP ' + c).join(', ') + ')').join('; ') + '.');
     if (resVen.total > 0) {
       campos.pctPJ = resVen.pctPJ;
       const porDoc = ven.vendas.length ? ven.vendas.filter(v => v.classePorDocumento).length / ven.vendas.length : 0;

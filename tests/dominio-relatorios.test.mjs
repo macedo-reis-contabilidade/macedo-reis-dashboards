@@ -11,7 +11,7 @@
 // acompanhamento de entradas de 686 lançamentos): totais fechando ao
 // centavo e alíquota efetiva batendo com a do PGDAS na quarta casa.
 
-import { lerRelatorio, detectarTipo, grupoDoCfop, resumirEntradas, consolidar, numBR, classificarCliente, resumirVendas, lerPlanilha, detectarTipoPlanilha } from '../assets/js/dominio-relatorios.js';
+import { lerRelatorio, detectarTipo, grupoDoCfop, resumirEntradas, consolidar, numBR, classificarCliente, resumirVendas, lerPlanilha, detectarTipoPlanilha, grupoSaida } from '../assets/js/dominio-relatorios.js';
 import { aliqEfetiva } from '../assets/js/rt-motor.js';
 
 let falhas = 0;
@@ -288,6 +288,23 @@ const cX = consolidar([xs], null);
 ok(/com CNPJ/.test(cX.origem.pctPJ) === false && cX.avisos.some(a => /Parte das notas veio sem CNPJ/.test(a)), 'com uma venda sem documento, avisa que parte foi pelo nome');
 const cX2 = consolidar([{ ...xs, vendas: xs.vendas.slice(0, 3) }], null);
 ok(/com CNPJ/.test(cX2.origem.pctPJ) && !cX2.avisos.some(a => /pelo nome/.test(a)), 'com documento em todas, % PJ é pelo CNPJ e sem aviso de nome');
+
+console.log('\nSaídas por CFOP: retorno de industrialização não é receita:');
+ok(grupoSaida('5124') === 'receita' && grupoSaida('5102') === 'receita' && grupoSaida('5405') === 'receita' && grupoSaida('5933') === 'receita' && grupoSaida('7101') === 'receita', 'venda, industrialização, ST, serviço e exportação são receita');
+ok(grupoSaida('5902') === 'remessa' && grupoSaida('5920') === 'remessa' && grupoSaida('5152') === 'transferencia' && grupoSaida('5202') === 'devolucao' && grupoSaida('5551') === 'ativo', 'retorno, vasilhame, transferência, devolução e ativo não são');
+const XLS_IND = [
+  ['14 - INDUSTRIA TESTE LTDA'], ['CNPJ:', '11.222.333/0001-44'], ['Período:', '01/01/2026 até 31/01/2026'],
+  ['', '', '', '', 'ACOMPANHAMENTO DE SAÍDAS'],
+  ['Código', 'Data Emissão', 'Data', 'Nota', 'Série', 'Espécie', 'Código', 'Cliente', 'CNPJ/CPF/CEI/CAEPF', 'Insc. Est.', 'CFOP', 'AC.', 'UF', 'Valor Contábil'],
+  ['1', 46023, 46023, '10', '1', 55, 9, 'CALCADOS CONTRATANTE LTDA', '55666777000188', '', 5902, 35, 'RS', 40000],
+  ['2', 46023, 46023, '10', '1', 55, 9, 'CALCADOS CONTRATANTE LTDA', '55666777000188', '', 5124, 35, 'RS', 9000],
+  ['Total Geral', '', '', '', '', '', '', '', '', '', '', '', '', 49000]
+];
+const xi = lerPlanilha(XLS_IND);
+ok(xi.conferido === true && xi.vendas.length === 2, 'planilha de industrialização lida inteira (bate com o Total Geral)');
+const ci = consolidar([xi], null);
+perto(ci.campos.receita, 9000, 0.005, 'receita = só o 5124 (o 5902 é retorno do material do cliente)');
+ok(ci.avisos.some(a => /Fora da receita.*5902/.test(a)), 'avisa o que ficou fora da receita, com o CFOP');
 
 console.log('\nNúmeros no formato brasileiro:');
 ok(numBR('1.034.942,41') === 1034942.41, 'milhar com ponto e decimal com vírgula');
