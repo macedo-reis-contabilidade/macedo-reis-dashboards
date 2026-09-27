@@ -341,7 +341,7 @@
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { carregarOperacao, MESES_ABREV } from './assets/js/operacao-xml.js';
-    import { lerRelatorio, consolidar, resumirEntradas, GRUPOS, lerPlanilha, perfilAtividade, cnpjsParaConsultar } from './assets/js/dominio-relatorios.js';
+    import { lerRelatorio, consolidar, resumirEntradas, GRUPOS, lerPlanilha, perfilAtividade, cnpjsParaConsultar, ramoComReducao } from './assets/js/dominio-relatorios.js';
     import { lerXls } from './assets/js/xls-biff.js';
     import { importarLote, separarNaoXml } from './assets/js/importar-xml.js';
     import { formatDocumento } from './assets/js/utils.js';
@@ -991,7 +991,7 @@
         const perfilImp = perfilAtividade({ natureza: cons.resVen && cons.resVen.natureza, cnae, anexo: cons.sim && cons.sim.anexoPredominante });
         const servicoPuro = !perfilImp.vendeMercadoria;
         if (!temNotas && perfilImp.tipo === 'alimentacao') cons.avisos.push('Bar/restaurante sem notas de venda na base: a comida preparada tem redução de 40% no IBS/CBS e as bebidas revendidas pagam cheio. Importe as NFC-e (XML ou ZIP) aqui mesmo pra medir essa divisão — sem elas o cálculo põe tudo na alíquota cheia e o custo "por fora" sai maior que o real.');
-        else if (!temNotas && !servicoPuro) cons.avisos.push('Sem notas de venda na base, o mix de alíquotas fica 100% cheio. Se a empresa vende produtos com redução (insumos agropecuários, cesta básica, medicamentos…), importe as notas (XML ou ZIP) pra medir.');
+        else if (!temNotas && !servicoPuro && ramoComReducao(cnae)) cons.avisos.push('Sem notas de venda na base, o mix de alíquotas fica 100% cheio. Se a empresa vende produtos com redução (insumos agropecuários, cesta básica, medicamentos…), importe as notas (XML ou ZIP) pra medir.');
       }
       cons.avisos.forEach(a => { html += '<div class="dom-aviso">⚠ ' + escapeHtml(a) + '</div>'; });
       html += '<p class="rt-nota">' + (cons.resVen ? 'O mix de alíquotas (redução por NCM) não sai destes relatórios — vem das notas na base (acima) ou você preenche à mão. O % de PJ veio das saídas + serviços; com notas na base, as notas vencem.' : '% de clientes PJ e o mix de alíquotas não saem destes relatórios — suba o acompanhamento de saídas (e de serviços) pro % de PJ, ou as notas na base (acima), ou preencha à mão.') + '</p>';
@@ -1396,6 +1396,8 @@
       const transporte = perfil.tipo === 'transporte';
       const temServico = prestador;
       const vendeMercadoria = perfil.vendeMercadoria;
+      const cnaeRamo = c.cnae_base || (cli && cli.cnae_principal) || '';
+      const podeReduzir = vendeMercadoria && (perfil.tipo === 'alimentacao' || ramoComReducao((cli && cli.cnae_principal) || cnaeRamo));
       const mixMedido = !((ent.mixCheia || 0) >= 99) || !!(xml && xml.nNotas);
       const brl0 = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
       const p1 = v => (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -1471,7 +1473,8 @@
       if (ent.mixCheia >= 99 && transporte && !perfil.passageiros) fontes.push({ o_que: 'Alíquota do frete (integralmente cheia)', origem: 'Transporte de cargas não tem redução na LC 214 — as reduções de transporte são do coletivo de passageiros (arts. 284 a 287)', nivel: 'alta', rotulo: 'alta (norma)' });
       else if (ent.mixCheia >= 99 && transporte && perfil.passageiros) fontes.push({ o_que: 'Alíquota do transporte de passageiros (assumida cheia)', origem: 'Transporte coletivo de passageiros tem redução (40% intermunicipal e interestadual; 100% urbano e metropolitano — LC 214, arts. 285 e 286): conferir o enquadramento', nivel: 'baixa', rotulo: 'a conferir' });
       else if (ent.mixCheia >= 99 && prestador) fontes.push({ o_que: 'Mix de alíquotas (integralmente cheia)', origem: 'Serviço não consta dos anexos de redução da LC 214', nivel: 'alta', rotulo: 'alta (norma)' });
-      else if (ent.mixCheia >= 99 && !mixMedido && vendeMercadoria) fontes.push({ o_que: 'Mix de alíquotas (assumido integralmente cheio)', origem: 'Não medido — sem notas de venda na base. Produtos com redução (insumos agropecuários, cesta básica, medicamentos e outros dos anexos da LC 214) baixariam o débito por fora', nivel: 'baixa', rotulo: 'a conferir' });
+      else if (ent.mixCheia >= 99 && !mixMedido && vendeMercadoria && !podeReduzir) fontes.push({ o_que: 'Mix de alíquotas (integralmente cheia)', origem: 'Os produtos do ramo' + (cli && cli.cnae_principal ? ' (' + String(cli.cnae_principal).replace(/^[\d./-]+\s*-\s*/, '').toLowerCase() + ')' : '') + ' não estão nos anexos de redução da LC 214', nivel: 'media', rotulo: 'média (ramo)' });
+      else if (ent.mixCheia >= 99 && !mixMedido && podeReduzir) fontes.push({ o_que: 'Mix de alíquotas (assumido integralmente cheio)', origem: 'Não medido — sem notas de venda na base. Produtos com redução (insumos agropecuários, cesta básica, medicamentos e outros dos anexos da LC 214) baixariam o débito por fora', nivel: 'baixa', rotulo: 'a conferir' });
       else if (ent.mixCheia >= 99) fontes.push({ o_que: 'Mix de alíquotas (integralmente cheia)', origem: 'NCM das notas de venda: nenhum item nos anexos de redução da LC 214', nivel: 'media', rotulo: 'média' });
       else if ((ent.mixRed40 || 0) > 0) fontes.push({ o_que: 'Mix de alíquotas (' + p1(ent.mixRed40) + '% com redução de 40%)', origem: 'LC 214/2025 arts. 273-276: alimentação preparada por bar/restaurante, inclusive com entrega por plataforma (art. 274, parágrafo único, II); bebidas alcoólicas e industrializados revendidos ficam na alíquota cheia (art. 273 §2º); o cliente não credita (art. 276)', nivel: 'alta', rotulo: 'alta (norma)', ressalva: '— divisão entre preparado e revendido estimada pelas seções do PGDAS' });
       if (ent.pctComprasComCredito != null) fontes.push({ o_que: 'Crédito das compras (' + p1(ent.pctComprasComCredito) + '% das mercadorias)', origem: 'NCM das notas de entrada classificado pela tabela de regimes da Reforma (cesta básica = zero)', nivel: 'media', rotulo: 'média', ressalva: '— classificação por NCM, sujeita a revisão item a item' });
@@ -1513,7 +1516,7 @@
 
       const perguntas = consumidor && !barRest ? [
         'A receita passa <b>toda</b> por nota (NF-e/NFC-e)? Há venda fora das notas? A simulação usa o faturamento registrado na contabilidade.',
-        'Quais <b>linhas de produto</b> pesam mais nas vendas? Insumos agropecuários, itens da cesta básica e medicamentos têm redução ou alíquota zero por fora — isso muda o débito.',
+        ...(podeReduzir ? ['Quais <b>linhas de produto</b> pesam mais nas vendas? Insumos agropecuários, itens da cesta básica e medicamentos têm redução ou alíquota zero por fora — isso muda o débito.'] : []),
         'Os principais <b>fornecedores</b> são indústria ou distribuidor do regime regular, ou do Simples? Fornecedor do Simples não gera crédito cheio — é o que sustenta (ou derruba) a conta por fora.',
         'Há previsão de <b>investimento em máquinas, veículos ou reforma</b> em 2027? Compra de ativo gera crédito integral no regime regular.'
       ] : consumidor ? [
@@ -1533,7 +1536,7 @@
       }
 
       const pendencias = consumidor && !barRest ? [
-        ...(!mixMedido ? [{ o_que: 'Mix das vendas por NCM', porque: 'A análise supôs tudo à alíquota cheia; produtos com redução baixam o débito por fora', onde: 'Notas de venda (XML) ou cadastro de produtos', quem: 'Fiscal', nivel: 'media', peso: 'médio' }] : [])
+        ...(!mixMedido && podeReduzir ? [{ o_que: 'Mix das vendas por NCM', porque: 'A análise supôs tudo à alíquota cheia; produtos com redução baixam o débito por fora', onde: 'Notas de venda (XML) ou cadastro de produtos', quem: 'Fiscal', nivel: 'media', peso: 'médio' }] : [])
       ] : consumidor ? [
         { o_que: 'Classificação das compras por NCM', porque: 'Define quanto das compras credita por fora (cesta básica não credita); a tabela de NCM merece revisão item a item nos maiores fornecedores', onde: 'Itens das notas de entrada', quem: 'Fiscal', nivel: 'media', peso: 'médio' },
         { o_que: 'Divisão entre alimentação preparada e revenda', porque: 'Preparado no local tem redução de 40% por fora; bebida alcoólica e industrializado revendido não', onde: 'Cardápio e seções do PGDAS', quem: 'Fiscal', nivel: 'media', peso: 'médio' }
@@ -1561,7 +1564,7 @@
         { nome: 'receita 30% menor', v: dif({ receita: ent.receita * 0.7 }), conferir: 'receita esperada para 2027' },
         { nome: 'receita 30% maior', v: dif({ receita: ent.receita * 1.3 }), conferir: 'receita esperada para 2027' }
       ];
-      if (!mixMedido && vendeMercadoria && !barRest) testes.push({ nome: 'metade das vendas com redução de 60%', v: dif({ mixCheia: 50, mixRed60: 50, mixRed40: 0, mixRed30: 0, mixZero: 0 }), conferir: 'mix das vendas por NCM' });
+      if (!mixMedido && podeReduzir && !barRest) testes.push({ nome: 'metade das vendas com redução de 60%', v: dif({ mixCheia: 50, mixRed60: 50, mixRed40: 0, mixRed30: 0, mixZero: 0 }), conferir: 'mix das vendas por NCM' });
       const viram = testes.filter(t => inverteDif(t.v));
       const alertas = viram.map(t => ({ texto: 'Com ' + t.nome + ', o resultado se inverte (' + sinal(t.v) + ' no semestre apurando por fora).', conferir: t.conferir }));
       const pEnt = (ent.pctComprasMercadorias || 0) + (ent.pctComprasDespesas || 0);
@@ -1569,13 +1572,19 @@
         alertas.unshift({ texto: 'As entradas que geram crédito somam ' + p1(pEnt) + '% da receita — a empresa compra quase o mesmo (ou mais) do que vende. Pode ser formação de estoque, venda que não passa pela receita considerada, ou entrada lançada como revenda sem ser. Com uma proporção de compras mais usual, a conta por fora piora.', conferir: 'compras × vendas do período' });
         pendencias.unshift({ o_que: 'Compras × vendas do período', porque: 'Entradas em ' + p1(pEnt) + '% da receita, acima do usual — é o que mais pesa na conta por fora', onde: 'Acompanhamento de entradas e estoque; conversa com o cliente', quem: 'Fiscal / Direção', nivel: 'alta', peso: 'decisivo' });
       }
+      // saídas × faturamento: se as saídas passam muito do faturamento, entrou coisa que não é venda (remessa pra marketplace,
+      // consignação, retorno) — e o % de clientes empresa sai distorcido
+      if (vendasDom && vendasDom.total > 0 && dom.faturamento && dom.faturamento.total > 0) {
+        const razaoSai = vendasDom.total / dom.faturamento.total;
+        if (razaoSai > 1.2 || razaoSai < 0.8) alertas.push({ texto: 'As saídas importadas somam ' + brl0(vendasDom.total) + ', ' + p1(razaoSai * 100) + '% do faturamento do período (' + brl0(dom.faturamento.total) + '). ' + (razaoSai > 1.2 ? 'Entrou nas saídas algo que não é venda — remessa pra depósito de marketplace (Mercado Livre Full, Amazon), consignação ou retorno —, e o % de vendas a empresas (' + p1(vendasDom.pctPJ || 0) + '%) está distorcido. Reimportar as saídas em XLS separa isso pelo CFOP.' : 'Faltam saídas no relatório importado — confira o período.'), conferir: 'saídas × faturamento (reimportar as saídas em XLS)', interno: true });
+      }
       const razaoRbt = ent.rbt12 > 0 ? ent.receita * 12 / ent.rbt12 * 100 : null;
-      if (razaoRbt != null && (razaoRbt < 70 || razaoRbt > 130)) alertas.push({ texto: 'A receita usada (' + brl0(ent.receita) + ' por mês, ' + brl0(ent.receita * 12) + ' no ano) é ' + p1(razaoRbt) + '% do faturamento dos últimos 12 meses informado no Simples (' + brl0(ent.rbt12) + '). ' + (razaoRbt < 70 ? 'Pode faltar receita nos relatórios (serviços, outra filial) ou a empresa vendeu menos este ano.' : 'A empresa cresceu no período, ou o Simples considera só parte dela.'), conferir: 'receita dos relatórios × faturamento do Simples' });
+      if (razaoRbt != null && (razaoRbt < 70 || razaoRbt > 130)) alertas.push({ texto: 'A receita usada (' + brl0(ent.receita) + ' por mês, ' + brl0(ent.receita * 12) + ' no ano) é ' + p1(razaoRbt) + '% do faturamento dos últimos 12 meses informado no Simples (' + brl0(ent.rbt12) + '). ' + (razaoRbt < 70 ? 'Pode faltar receita nos relatórios (serviços, outra filial) ou a empresa vendeu menos este ano.' : 'A empresa cresceu no período, ou o Simples considera só parte dela.'), conferir: 'receita dos relatórios × faturamento do Simples', interno: true });
       if (!(dom && dom.entradas) && !xml && ((ent.pctComprasMercadorias || 0) + (ent.pctComprasDespesas || 0)) === 0) {
         const v = dif({ pctComprasDespesas: 20 });
         if (inverteDif(v)) alertas.push({ texto: 'As compras da empresa não foram informadas, e a análise considerou zero crédito. Com compras de 20% da receita, o resultado se inverte.', conferir: 'acompanhamento de entradas' });
       }
-      if (dom && dom.excecoes && dom.excecoes.length) alertas.push({ texto: 'Usado nesta análise por decisão manual, de outro CNPJ: ' + dom.excecoes.join('; ') + '.', conferir: null });
+      if (dom && dom.excecoes && dom.excecoes.length) alertas.push({ texto: 'Usado nesta análise por decisão manual, de outro CNPJ: ' + dom.excecoes.join('; ') + '.', conferir: null, interno: true });
       // mix não medido: observação sempre (dado faltando, com a direção do erro); vira alerta se puder inverter
       const observacoes = [];
       const alimentacao = perfil.tipo === 'alimentacao';
@@ -1583,7 +1592,7 @@
         const v = dif({ mixCheia: 10, mixRed40: 90, mixRed60: 0, mixRed30: 0, mixZero: 0 });
         const t = 'As notas de venda não foram analisadas, então o cálculo pôs tudo na alíquota cheia. Em bar e restaurante a comida preparada tem redução de 40% — por fora, o custo real é menor que o mostrado' + (inverteDif(v) ? ', e com 90% das vendas com redução o resultado se inverte.' : ' (com 90% das vendas com redução ficaria ' + sinal(v) + ' no semestre — a conclusão não muda).');
         if (inverteDif(v)) alertas.push({ texto: t, conferir: 'notas de venda (NFC-e) — comida × bebida' }); else observacoes.push(t);
-      } else if (!mixMedido && vendeMercadoria && !viram.some(t => /mix|redução de 60/.test(t.nome))) {
+      } else if (!mixMedido && podeReduzir && !viram.some(t => /mix|redução de 60/.test(t.nome))) {
         observacoes.push('As notas de venda não foram analisadas, então o cálculo pôs tudo na alíquota cheia. Se a empresa vende produtos com redução (insumos agropecuários, cesta básica, medicamentos), o custo real por fora é menor — a conclusão não muda com metade das vendas nessa condição.');
       }
       if (dom && dom.pctPJDeduzido) observacoes.push('Os relatórios não traziam o CNPJ dos clientes. ' + dom.pctPJDeduzido.charAt(0).toUpperCase() + dom.pctPJDeduzido.slice(1) + '.');

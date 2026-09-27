@@ -292,6 +292,16 @@ export function naturezaReceita(v) {
   if (n === 933) return 'servico';
   return 'mercadoria';
 }
+// Ramos que vendem produto com alíquota reduzida ou zero na LC 214 (alimentos/cesta básica, medicamentos, higiene,
+// insumos agropecuários). Nos outros (eletro, móveis, vestuário, construção, autopeças…) o mix cheio é o correto pela norma,
+// não dado faltando. Pelo CNAE principal (7 dígitos ou prefixo).
+const RAMOS_COM_REDUCAO = ['01', '02', '03', '10', '4623', '4631', '4632', '4633', '4634', '4637', '4639', '4644', '4646', '4683', '4692',
+  '4711', '4712', '4721', '4722', '4724', '4729', '4771', '4772', '4789004'];
+export function ramoComReducao(cnae) {
+  const d = String(cnae || '').replace(/\D/g, '');
+  return !!d && RAMOS_COM_REDUCAO.some(p => d.startsWith(p));
+}
+
 // PERFIL DE ATIVIDADE (27/09/2026): uma fonte só pra todo texto que depende do que a empresa faz.
 // Ordem: o que as saídas mostram (CFOP) > CNAE do cadastro > anexo do Simples. Nunca um critério isolado.
 export function perfilAtividade({ natureza, cnae, anexo, restaurante } = {}) {

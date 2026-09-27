@@ -110,7 +110,9 @@ export function gerarAnalise(d, opts = {}) {
     const sb = d.sobre || {};
     const ano = x => x ? String(x).slice(0, 4) : null;
     const partes2 = [];
-    const ativ = sb.ramo ? String(sb.ramo).replace(/\.$/, '') : (d.perfil ? d.perfil.rotulo : null);
+    const caixa = t => t && t === t.toUpperCase() ? t.toLowerCase().replace(/\b(ltda|me|epp|sa)\b/g, m => m.toUpperCase()) : t;
+    const ativ = sb.ramo ? caixa(String(sb.ramo).replace(/\.$/, '')) : (d.perfil ? d.perfil.rotulo : null);
+    if (sb.fantasia) sb.fantasia = caixa(sb.fantasia).replace(/(^|\s)\S/g, m => m.toUpperCase());
     if (ativ) partes2.push(ativ.charAt(0).toUpperCase() + ativ.slice(1) + (sb.cidade ? ', em ' + sb.cidade + (sb.uf ? '/' + sb.uf : '') : ''));
     else if (sb.cidade) partes2.push('Empresa de ' + sb.cidade + (sb.uf ? '/' + sb.uf : ''));
     if (ano(sb.abertura)) partes2.push('aberta em ' + ano(sb.abertura));
@@ -130,7 +132,10 @@ export function gerarAnalise(d, opts = {}) {
   {
     const dif = Math.abs(s.diferenca), pctRec = dif / ((d.entrada && d.entrada.receita || 0) * 6) * 100;
     const foraMaisBarato = s.diferenca < 0;
-    const aConf = !!d.aConfirmar && !empate;
+    const alertasVis = (d.alertas || []).filter(a => !(versaoCliente && a.interno));
+    const internos = (d.alertas || []).filter(a => a.interno);
+    const aConf = alertasVis.length > 0 && !empate;
+    if (versaoCliente && internos.length) partes.unshift('<div class="so-escritorio"><b>Antes de mandar pro cliente</b> (esta faixa não sai na impressão): ' + internos.map(a => esc(a.texto.replace(/<[^>]+>/g, ''))).join(' · ') + '</div>');
     const decisao = empate ? 'Manter como está'
       : optar ? 'Recolher o IBS/CBS por fora do DAS'
       : 'Manter como está';
@@ -141,7 +146,13 @@ export function gerarAnalise(d, opts = {}) {
     let porque;
     if (empate) porque = 'Os dois caminhos custam praticamente o mesmo: a diferença é de ' + brl0(dif) + ' no semestre (' + pct2(pctRec) + '% do faturamento). Quando dá empate, mudar só traz trabalho e risco.';
     else if (optar) porque = 'Pagar por fora sai ' + brl0(dif) + ' mais barato no primeiro semestre de 2027 (' + pct2(pctRec) + '% do faturamento)' + (d.consumidor ? ', porque a empresa desconta o imposto das compras e paga só sobre a margem.' : ', e os clientes empresa passam a aproveitar ' + brl0(s.aproveitadoFora) + ' de crédito do imposto.');
-    else porque = 'Continuar no DAS sai ' + brl0(dif) + ' mais barato no primeiro semestre de 2027 (' + pct2(pctRec) + '% do faturamento).' + (d.consumidor ? ' A maioria das vendas é para pessoa física, que não aproveita o imposto destacado — então não há ganho para o cliente.' : ' O crédito que os clientes empresa ganhariam não compensa o custo a mais.');
+    else {
+      const ganhoCli = s.aproveitadoFora - s.aproveitadoDentro;
+      porque = 'Continuar no DAS sai ' + brl0(dif) + ' mais barato no primeiro semestre de 2027 (' + pct2(pctRec) + '% do faturamento).'
+        + (d.consumidor ? ' A maioria das vendas é para pessoa física, que não aproveita o imposto destacado — então não há ganho para o cliente.'
+          : ganhoCli > dif ? ' Mas os seus clientes empresa aproveitariam ' + brl0(ganhoCli) + ' a mais de crédito se você recolhesse por fora — mais do que o seu custo a mais. Optar só compensa se eles aceitarem pagar parte disso no preço: é uma conversa comercial com os maiores clientes antes de 30/09.'
+          : ' O crédito a mais que os clientes empresa aproveitariam (' + brl0(Math.max(0, ganhoCli)) + ') não cobre esse custo.');
+    }
     const maxV = Math.max(s.custoDentro, s.custoFora) || 1;
     const barra = (rot, v, win) => '<div class="rs-b"><span class="rs-bl">' + rot + '</span><span class="rs-bt"><span class="rs-bf' + (win ? ' win' : '') + '" style="width:' + (v / maxV * 100).toFixed(1) + '%"></span></span><b>' + brl0(v) + '</b></div>';
     P('<div class="resumo' + (aConf ? ' conf' : '') + '"><div class="rs-selo">' + selo + '</div>'
@@ -150,8 +161,8 @@ export function gerarAnalise(d, opts = {}) {
       + '<div class="rs-barras"><div class="rs-cap">Custo com impostos no 1º semestre de 2027</div>'
       + barra('Por dentro do DAS' + (optar ? '' : ' ✓'), s.custoDentro, !optar) + barra('Por fora do DAS' + (optar ? ' ✓' : ''), s.custoFora, optar) + '<div class="rs-cap" style="margin-top:4px;text-transform:none;letter-spacing:0">✓ recomendado' + (empate ? ' — a diferença está dentro da margem de incerteza' : '') + '</div></div>'
       + '<p><b>Por quê:</b> ' + porque + '</p>'
-      + (d.alertas && d.alertas.length ? '<p style="margin-bottom:4px"><b>' + (aConf ? 'Antes de decidir, precisamos confirmar:' : 'Pontos de atenção:') + '</b></p><ul class="rs-al">' + d.alertas.map(a => '<li>' + a.texto + '</li>').join('') + '</ul>' : '')
-      + (d.observacoes && d.observacoes.length ? '<p style="margin-bottom:4px"><b>Dados que faltaram' + (aConf || (d.alertas && d.alertas.length) ? ' (não mudam a conclusão)' : '') + ':</b></p><ul class="rs-al">' + d.observacoes.map(t => '<li>' + t + '</li>').join('') + '</ul>' : '')
+      + (alertasVis.length ? '<p style="margin-bottom:4px"><b>' + (aConf ? 'Antes de decidir, precisamos confirmar:' : 'Pontos de atenção:') + '</b></p><ul class="rs-al">' + alertasVis.map(a => '<li>' + a.texto + '</li>').join('') + '</ul>' : '')
+      + (d.observacoes && d.observacoes.length ? '<p style="margin-bottom:4px"><b>Dados que faltaram' + (aConf || alertasVis.length ? ' (não mudam a conclusão)' : '') + ':</b></p><ul class="rs-al">' + d.observacoes.map(t => '<li>' + t + '</li>').join('') + '</ul>' : '')
       + (optar ? '<p class="rs-pz">Se optar: formalizar até <b>30/09/2026</b>. Dá pra cancelar até <b>30/11/2026</b> sem efeito.</p>' : '<p class="rs-pz">Mantendo, não é preciso fazer nada. Se o quadro mudar, há nova janela em março/2027.</p>')
       + '</div>');
   }
@@ -401,6 +412,8 @@ tr.tot td{font-weight:700;background:#F3F6F9;}
 .s-conf{background:#E1F0E6;color:#2E6B47;} .s-err{background:#FBE4E4;color:#A03A3A;}
 .cx{border-left:4px solid #5B82A6;background:#F7F9FB;border-radius:6px;padding:12px 15px;margin:14px 0;}
 .sobre{margin:-4px 0 14px;color:#3A5878;font-size:13.5px;}
+.so-escritorio{background:#FBE4E4;border:1px solid #E7A5A5;color:#7A2323;border-radius:8px;padding:10px 14px;margin:0 0 16px;font-size:12.5px;}
+@media print{ .so-escritorio{display:none;} }
 .resumo{border:2px solid #2E6B47;border-radius:10px;padding:16px 18px;margin:4px 0 20px;background:#F5FBF7;break-inside:avoid;}
 .resumo.conf{border-color:#D69A3C;background:#FFFBF3;}
 .rs-selo{font-size:10.5px;font-weight:700;letter-spacing:.08em;color:#2E6B47;} .resumo.conf .rs-selo{color:#8A5A18;}
