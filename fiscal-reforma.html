@@ -341,7 +341,7 @@
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { carregarOperacao, MESES_ABREV } from './assets/js/operacao-xml.js';
-    import { lerRelatorio, consolidar, resumirEntradas, GRUPOS, lerPlanilha, perfilAtividade } from './assets/js/dominio-relatorios.js';
+    import { lerRelatorio, consolidar, resumirEntradas, GRUPOS, lerPlanilha, perfilAtividade, cnpjsParaConsultar } from './assets/js/dominio-relatorios.js';
     import { lerXls } from './assets/js/xls-biff.js';
     import { importarLote, separarNaoXml } from './assets/js/importar-xml.js';
     import { formatDocumento } from './assets/js/utils.js';
@@ -750,7 +750,7 @@
 
     $('bImportarDom').onclick = async () => {
       const c = casoAtual(); if (!c) return;
-      domEstado.rels = []; domEstado.outras = []; domEstado.incluir = null; domEstado.cons = null;
+      domEstado.rels = []; domEstado.outras = []; domEstado.regimes = null; domEstado.incluir = null; domEstado.cons = null;
       $('domLidos').innerHTML = ''; $('domPrevia').innerHTML = '';
       $('domAplicar').disabled = true; $('domMsg').textContent = '';
       $('ovDom').classList.add('on');
@@ -796,6 +796,7 @@
         if (pdfs.length) await lerPdfsDom(pdfs, fora);
         else if (fora) $('domLidos').insertAdjacentHTML('beforeend', '<span class="dom-chip err">' + fora + ' arquivo(s) fora do padrão</span>');
         if (!pdfs.length && planilhas.length) { domEstado.incluir = null; renderPreviaDom(); }
+        await consultarRegimesDom();
       } finally { domEstado.lendo = false; atualizarAplicar(); }
     }
     // notas entram na base agora, pelo mesmo código do módulo de notas (lote atômico, duplicada não regrava)
@@ -821,6 +822,24 @@
         domMsgErro('Notas não importadas: ' + (e.message || e));
       }
     }
+    // regime (Simples/MEI/regular) dos maiores fornecedores e clientes, pela Receita — cache no banco (edge consultar-cnpjs)
+    async function consultarRegimesDom() {
+      const { fornecedores, clientes } = cnpjsParaConsultar(domEstado.rels, 20);
+      const lista = [...new Set([...fornecedores, ...clientes])];
+      if (!lista.length) return;
+      $('domMsg').style.color = '#8A93A6'; $('domMsg').textContent = 'Consultando o regime de ' + lista.length + ' fornecedores e clientes na Receita…';
+      try {
+        const { data, error } = await supabase.functions.invoke('consultar-cnpjs', { body: { cnpjs: lista } });
+        if (error) throw error;
+        domEstado.regimes = new Map((data && data.resultados || []).filter(r => r.simples != null).map(r => [r.cnpj, r]));
+        $('domMsg').textContent = domEstado.regimes.size ? 'Regime consultado: ' + domEstado.regimes.size + ' de ' + lista.length + ' CNPJs.' : '';
+      } catch (e) {
+        domEstado.regimes = null;
+        $('domMsg').style.color = '#E3B341'; $('domMsg').textContent = 'Não consegui consultar o regime dos fornecedores/clientes agora — o cálculo segue sem esse ajuste.';
+      }
+      domEstado.incluir = domEstado.incluir || null; renderPreviaDom();
+    }
+
     // planilhas exportadas da Domínio (XLS/XLSX/CSV): SheetJS lê, o leitor de colunas faz o resto
     // relatório de outra empresa: por padrão não entra; exceção explícita, com confirmação, fica registrada nos avisos
     document.addEventListener('click', e => {
@@ -911,7 +930,11 @@
         domEstado.incluir = {};
         Object.entries(GRUPOS).forEach(([k, g]) => { domEstado.incluir[k] = g.padrao; });
       }
-      const cons = domEstado.cons = consolidar(domEstado.rels, domEstado.incluir);
+      const cF0 = casoAtual(); const cli0 = cF0 ? clientesMap[cF0.cliente_id] : null;
+      const cnae0 = String((cF0 && cF0.cnae_base) || (cli0 && cli0.cnae_principal) || '');
+      const sim0 = domEstado.rels.filter(r => r.tipo === 'simples').slice(-1)[0];
+      const perfil0 = perfilAtividade({ cnae: cnae0, anexo: sim0 && sim0.anexoPredominante });
+      const cons = domEstado.cons = consolidar(domEstado.rels, domEstado.incluir, { regimes: domEstado.regimes, perfil: perfil0, varejo: cnae0.replace(/\D/g, '').startsWith('47') });
       const c = casoAtual();
       const cliFicha = c ? clientesMap[c.cliente_id] : null;
       const docFicha = (cliFicha && cliFicha.documento) ? String(cliFicha.documento).replace(/\D/g, '') : null;
@@ -1012,7 +1035,7 @@
       por('sReceita', k.receita != null ? brNum(Math.round(k.receita * 100) / 100) : null, cons.origem.receita ? 'do Domínio: ' + cons.origem.receita : null);
       por('sPctMerc', k.pctMerc != null ? brPct(r1(k.pctMerc)) : null, cons.origem.pctMerc ? 'do Domínio: ' + cons.origem.pctMerc : null);
       por('sPctDesp', k.pctDesp != null ? brPct(r1(k.pctDesp)) : null, cons.origem.pctDesp ? 'do Domínio: ' + cons.origem.pctDesp : null);
-      por('sPctPJ', k.pctPJ != null ? brPct(r1(k.pctPJ)) : null, cons.origem.pctPJ ? 'do Domínio: ' + cons.origem.pctPJ + ' — PJ pelo nome, sem CNPJ no relatório' : null);
+      por('sPctPJ', k.pctPJ != null ? brPct(r1(k.pctPJ)) : null, cons.origem.pctPJ ? (k.pctPJDeduzido ? cons.origem.pctPJ : 'do Domínio: ' + cons.origem.pctPJ + (k.clientesRegime ? ' — só empresas do regime regular (as do Simples não aproveitam o crédito)' : '')) : null);
       por('sAliqEf', k.aliqEfetiva != null ? brPct(Math.round(k.aliqEfetiva * 100) / 100) : null, cons.origem.aliqEfetiva ? 'do Domínio: ' + cons.origem.aliqEfetiva : null);
       if (k.pctExcluidoST != null) {
         $('sPctST').value = brPct(r1(k.pctExcluidoST));
@@ -1047,6 +1070,9 @@
         // DAS realmente pago: média das apurações enviadas (não o simulado)
         dasMedio: (() => { const ps = rels.filter(r => r.tipo === 'simples'); return ps.length ? ps.reduce((a, r) => a + (r.dasTotal || 0), 0) / ps.length : null; })(),
         nPgdas: rels.filter(r => r.tipo === 'simples').length,
+        fornecedoresRegime: cons.campos.fornecedoresRegime || null,
+        clientesRegime: cons.campos.clientesRegime || null,
+        pctPJDeduzido: cons.campos.pctPJDeduzido ? cons.origem.pctPJ : null,
         excecoes: rels.filter(r => r.outraEmpresa).map(r => ({ simples: 'PGDAS', faturamento: 'faturamento', entradas: 'entradas', saidas: 'saídas', servicos: 'serviços' }[r.tipo] || r.tipo) + (r.competencia ? ' ' + r.competencia : '') + ' do CNPJ ' + r.cnpj + (r.empresa ? ' (' + r.empresa + ')' : '')),
         vendas: cons.resVen ? { natureza: cons.resVen.natureza, total: cons.resVen.total, mercadorias: cons.resVen.mercadorias, servicos: cons.resVen.servicos, st: cons.resVen.st, pctPJ: cons.resVen.pctPJ, pj: cons.resVen.classes.pj.valor, pf: cons.resVen.classes.pf.valor, consumidor: cons.resVen.classes.consumidor.valor, nPJ: cons.resVen.classes.pj.nClientes, meses: cons.resVen.meses, fonte: 'acompanhamento de saídas' + (cons.ven.tipos.includes('servicos') ? ' e de serviços' : '') + ' (Domínio), ' + (cons.resVen.porDocumento ? 'PJ pelo CNPJ do cliente' : 'PJ pelo nome') } : null,
         // soma TODAS as apurações enviadas: um mês só distorce o peso de cada anexo
@@ -1285,9 +1311,16 @@
       // o que foi importado nesta sessão vale mais que o que está gravado
       if (domEstado.resumo) domRes = domEstado.resumo;
       if (!ent) { alert('Grave a simulação antes de gerar a análise — é dela que saem os números do documento.'); return; }
-      const btn = $('dAnalise'); btn.disabled = true; btn.textContent = 'Montando…';
+      const btn = versao === 'cliente' ? $('dCliente') : $('dAnalise'); const rotBtn = btn.textContent; btn.disabled = true; btn.textContent = 'Montando…';
       try {
         const sim = simular(ent);
+        // o que o escritório sabe do cliente: cadastro, carteira e reuniões
+        const [{ data: cad }, { data: cart }, { data: reus }] = await Promise.all([
+          supabase.from('clientes').select('nome_fantasia, cidade, uf, data_abertura, data_inicio_cliente, cnae_principal, cnaes_secundarios, porte_empresa').eq('id', c.cliente_id).maybeSingle(),
+          supabase.from('carteira_info').select('entrada, segmento, ramo').eq('cliente_id', c.cliente_id).maybeSingle(),
+          supabase.from('reunioes').select('id, data_reuniao, titulo, observacoes, reuniao_pautas(titulo, discussao, setor)').eq('cliente_id', c.cliente_id).order('data_reuniao', { ascending: false }).limit(3)
+        ]);
+        const cliAmpl = { ...(cli || {}), cadastro: cad || null, carteira: cart || null, reunioes: reus || [] };
         // carteira de clientes pelas notas, agrupada por raiz de CNPJ (filial não é cliente novo)
         let xml = null;
         const dom = domRes;
@@ -1334,12 +1367,12 @@
           }
         } catch (e) { /* sem notas importadas o documento sai sem a seção de clientes */ }
 
-        const html = gerarAnalise(montarDadosAnalise(c, cli, ent, sim, dom, xml), { versao });
+        const html = gerarAnalise(montarDadosAnalise(c, cliAmpl, ent, sim, dom, xml), { versao });
         const w = window.open('', '_blank');
         w.document.write(html); w.document.close();
       } catch (err) {
         alert('Não consegui montar a análise: ' + (err.message || err));
-      } finally { btn.disabled = false; btn.textContent = 'Gerar análise técnica'; }
+      } finally { btn.disabled = false; btn.textContent = rotBtn; }
     };
     $('dAnalise').onclick = () => gerarRelatorio('completa');
     $('dCliente').onclick = () => gerarRelatorio('cliente');
@@ -1430,6 +1463,9 @@
       }
       else fontes.push({ o_que: 'RBT12, anexo e partilha do DAS', origem: 'Informados na ficha — a apuração do Simples não está anexada a este caso', nivel: 'media', rotulo: 'a anexar' });
       if (xml) fontes.push({ o_que: (xml.clientes && xml.clientes.length && !consumidor ? '% de vendas para CNPJ e concentração de clientes' : '% de vendas para CNPJ'), origem: 'XML das notas fiscais de ' + (xml.periodoRotulo || ANO_XML) + (xml.cobertura != null ? ' (cobrem ' + (xml.cobertura >= 99.995 ? '100%' : p1(xml.cobertura) + '%') + ' do faturamento do período)' : ''), nivel: 'alta', rotulo: 'alta' });
+      if (dom && dom.fornecedoresRegime) fontes.push({ o_que: 'Regime dos fornecedores', origem: 'Receita Federal, pelos CNPJs das entradas: ' + p1(dom.fornecedoresRegime.simplesPct) + '% das compras consultadas vêm do Simples/MEI (crédito reduzido, estimado em 15% do cheio); consultados os maiores, ' + p1(dom.fornecedoresRegime.cobertura) + '% das compras', nivel: 'alta', rotulo: 'alta' });
+      if (dom && dom.clientesRegime) fontes.push({ o_que: 'Regime dos clientes empresa', origem: 'Receita Federal, pelos CNPJs das saídas: ' + p1(100 - dom.clientesRegime.regularPct) + '% das vendas a empresas vão pra empresas do Simples, que não aproveitam o crédito', nivel: 'alta', rotulo: 'alta' });
+      if (dom && dom.pctPJDeduzido) fontes.push({ o_que: 'Clientes empresa × consumidor', origem: dom.pctPJDeduzido, nivel: 'baixa', rotulo: 'deduzido' });
       if (pctPJ != null && !xml) fontes.push({ o_que: '% de vendas para CNPJ (' + p1(pctPJ) + '%)', origem: fontePJ, nivel: fontePJ === 'informado na ficha' ? 'baixa' : 'media', rotulo: fontePJ === 'informado na ficha' ? 'informado' : 'média' });
       if (dom && dom.entradas) fontes.push({ o_que: 'Base creditável de entradas', origem: 'Acompanhamento de entradas, classificado por CFOP', nivel: 'media', rotulo: 'média', ressalva: '— regime dos fornecedores não verificado' });
       if (ent.mixCheia >= 99 && transporte && !perfil.passageiros) fontes.push({ o_que: 'Alíquota do frete (integralmente cheia)', origem: 'Transporte de cargas não tem redução na LC 214 — as reduções de transporte são do coletivo de passageiros (arts. 284 a 287)', nivel: 'alta', rotulo: 'alta (norma)' });
@@ -1509,7 +1545,7 @@
         const duvida = dom.entradas.grupos.find(g => g.grupo === 'outras' && g.valor > 0 && !g.incluido);
         if (duvida) pendencias.push({ o_que: 'Reclassificar ' + brl0(duvida.valor) + ' em CFOP x949', porque: 'Se for compra, aumenta a base creditável e reduz a diferença', onde: 'Notas no Domínio', quem: 'Fiscal', nivel: 'media', peso: 'médio' });
       }
-      pendencias.push({ o_que: 'Regime dos fornecedores creditáveis', porque: 'Fornecedor do Simples não gera crédito cheio na entrada', onde: 'Consulta de CNPJ', quem: 'Fiscal', nivel: 'media', peso: 'médio' });
+      if (!(dom && dom.fornecedoresRegime)) pendencias.push({ o_que: 'Regime dos fornecedores creditáveis', porque: 'Fornecedor do Simples não gera crédito cheio na entrada', onde: 'Consulta de CNPJ', quem: 'Fiscal', nivel: 'media', peso: 'médio' });
       if (!consumidor && temServico) pendencias.push({ o_que: 'ISS retido e município de prestação', porque: 'Retenção reduz o DAS por dentro e muda a comparação', onde: 'NFS-e e apurações do Simples', quem: 'Fiscal', nivel: 'media', peso: 'médio' });
       pendencias.push(
         { o_que: 'Receita esperada para 2027', porque: 'A simulação usa a média do período apurado', onde: 'Contratos e expectativa do cliente', quem: 'Direção', nivel: 'media', peso: 'médio' },
@@ -1520,7 +1556,7 @@
       // Não buscamos definição 100%: se algum dado sustenta a conclusão sem certeza, o relatório diz
       // "pode ser isso, porém…" e aponta o que conferir. Regras vindas dos casos reais da campanha.
       const testes = [
-        { nome: 'crédito das entradas 20% menor (fornecedores do Simples, crédito glosado)', v: dif({ pctComprasMercadorias: ent.pctComprasMercadorias * 0.8, pctComprasDespesas: (ent.pctComprasDespesas || 0) * 0.8 }), conferir: 'regime dos principais fornecedores' },
+        { nome: dom && dom.fornecedoresRegime ? 'crédito das entradas 20% menor (além do ajuste pelos fornecedores do Simples: crédito glosado, fornecedores menores)' : 'crédito das entradas 20% menor (fornecedores do Simples, crédito glosado)', v: dif({ pctComprasMercadorias: ent.pctComprasMercadorias * 0.8, pctComprasDespesas: (ent.pctComprasDespesas || 0) * 0.8 }), conferir: 'regime dos principais fornecedores' },
         { nome: 'CBS de 8,8% (projeção da Fazenda)', v: dif({ cbs: 8.8 }), conferir: 'alíquota oficial da CBS' },
         { nome: 'receita 30% menor', v: dif({ receita: ent.receita * 0.7 }), conferir: 'receita esperada para 2027' },
         { nome: 'receita 30% maior', v: dif({ receita: ent.receita * 1.3 }), conferir: 'receita esperada para 2027' }
@@ -1550,6 +1586,7 @@
       } else if (!mixMedido && vendeMercadoria && !viram.some(t => /mix|redução de 60/.test(t.nome))) {
         observacoes.push('As notas de venda não foram analisadas, então o cálculo pôs tudo na alíquota cheia. Se a empresa vende produtos com redução (insumos agropecuários, cesta básica, medicamentos), o custo real por fora é menor — a conclusão não muda com metade das vendas nessa condição.');
       }
+      if (dom && dom.pctPJDeduzido) observacoes.push('Os relatórios não traziam o CNPJ dos clientes. ' + dom.pctPJDeduzido.charAt(0).toUpperCase() + dom.pctPJDeduzido.slice(1) + '.');
       const aConfirmar = alertas.length > 0;
       const conferirLista = [...new Set(alertas.map(a => a.conferir).filter(Boolean))];
       const listaAlertas = '<ul style="margin:6px 0 10px 18px;padding:0">' + alertas.map(a => '<li>' + a.texto + '</li>').join('') + '</ul>';
@@ -1573,7 +1610,19 @@
         ? 'Em ordem de valor. Podem inverter a recomendação: ' + (conferirLista.length ? conferirLista.join(', ') : 'os itens marcados como decisivos') + '.'
         : consumidor ? 'Em ordem de valor — nenhum deles inverte a recomendação; servem para afinar o número.'
         : 'Em ordem de valor para a decisão — o item 1 é o único que pode inverter a recomendação.';
+      const sobre = {
+        fantasia: cli && cli.cadastro && cli.cadastro.nome_fantasia,
+        ramo: cli && cli.carteira && cli.carteira.ramo, segmento: cli && cli.carteira && cli.carteira.segmento,
+        cidade: cli && cli.cadastro && cli.cadastro.cidade, uf: cli && cli.cadastro && cli.cadastro.uf,
+        abertura: cli && cli.cadastro && cli.cadastro.data_abertura,
+        clienteDesde: (cli && cli.carteira && cli.carteira.entrada) || (cli && cli.cadastro && cli.cadastro.data_inicio_cliente),
+        cnaePrincipal: cli && cli.cadastro && cli.cadastro.cnae_principal,
+        cnaesSecundarios: cli && cli.cadastro && cli.cadastro.cnaes_secundarios,
+        reunioes: (cli && cli.reunioes) || [],
+        fornecedores: dom && dom.fornecedoresRegime, clientes: dom && dom.clientesRegime
+      };
       return {
+        sobre,
         alertas, aConfirmar, pendenciasNota, observacoes,
         cliente: cli || { nome_principal: '—', documento: null }, caso: c, sim, entrada: ent, dominio: dom, xml,
         logoUrl: new URL('assets/logo-mr.png', location.href).href,

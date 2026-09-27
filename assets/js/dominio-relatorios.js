@@ -324,6 +324,19 @@ export function perfilAtividade({ natureza, cnae, anexo, restaurante } = {}) {
   };
 }
 
+// maiores fornecedores com crédito e maiores clientes PJ, por CNPJ — pra consultar o regime de cada um
+export function cnpjsParaConsultar(rels, n = 20) {
+  const soma = (arr) => { const m = new Map(); arr.forEach(([d, v]) => m.set(d, (m.get(d) || 0) + v)); return [...m.entries()].sort((a, b) => b[1] - a[1]); };
+  const ents = rels.filter(r => r.tipo === 'entradas').flatMap(r => r.lancamentos || []);
+  const fornecedores = soma(ents.filter(l => ['mercadoria', 'despesa'].includes(l.grupo) && dig(l.documento).length === 14).map(l => [dig(l.documento), l.valor || 0])).slice(0, n);
+  const vens = rels.filter(r => r.tipo === 'saidas' || r.tipo === 'servicos').flatMap(r => r.vendas || []);
+  const clientes = soma(vens.filter(v => (v.grupo || 'receita') === 'receita' && dig(v.documento).length === 14).map(v => [dig(v.documento), v.valor || 0])).slice(0, n);
+  return { fornecedores: fornecedores.map(x => x[0]), clientes: clientes.map(x => x[0]) };
+}
+// crédito de compra de fornecedor do Simples: só o IBS/CBS que ele recolheu dentro do DAS — estimado em 15% do crédito cheio;
+// MEI: praticamente nenhum. (LC 214, art. 47 §§ — crédito limitado ao montante pago no regime do Simples)
+export const CREDITO_FORNECEDOR_SIMPLES = 0.15;
+
 export function classificarCliente(nome) {
   const n = norm(nome).replace(/[.,]/g, m => m === '.' ? '.' : ' ');
   if (!n) return 'consumidor';
@@ -508,7 +521,8 @@ export function resumirEntradas(ent, competencias) {
 
 // ---------- consolidação para a ficha da Reforma ----------
 // rels: relatórios lidos · incluir: { grupo: bool } vindo dos checkboxes da prévia
-export function consolidar(rels, incluir) {
+export function consolidar(rels, incluir, opcoes = {}) {
+  const regimes = opcoes.regimes || null;   // Map cnpj → { simples, mei, razao, fonte }
   // vários relatórios de faturamento (12 meses + mês corrente): junta por competência, o mais recente vence
   const fats = rels.filter(r => r.tipo === 'faturamento');
   let fat = null;
@@ -589,6 +603,19 @@ export function consolidar(rels, incluir) {
     if (foraV.length) avisos.push('Fora da receita, por não serem venda: ' + foraV.map(f => f.rotulo + ' ' + brl(f.valor) + ' (' + Object.keys(f.cfops).map(c => 'CFOP ' + c).join(', ') + ')').join('; ') + '.');
     if (resVen.total > 0) {
       campos.pctPJ = resVen.pctPJ;
+      campos.pctPJTotal = resVen.pctPJ;
+      if (regimes && regimes.size) {
+        let vReg = 0, vSim = 0, vDesc = 0;
+        ven.vendas.filter(v => (v.grupo || 'receita') === 'receita' && (!competencias.length || competencias.includes(v.competencia)) && dig(v.documento).length === 14)
+          .forEach(v => { const r = regimes.get(dig(v.documento)); const x = v.valor || 0; if (!r || r.simples == null) vDesc += x; else if (r.simples) vSim += x; else vReg += x; });
+        if (vReg + vSim > 0) {
+          const propReg = vReg / (vReg + vSim);
+          const pjRegular = (vReg + vDesc * propReg) / resVen.total * 100;
+          campos.clientesRegime = { regularPct: propReg * 100, pjRegularPct: pjRegular, cobertura: (vReg + vSim) / (vReg + vSim + vDesc) * 100 };
+          campos.pctPJ = pjRegular;
+          avisos.push('Regime dos clientes (Receita): das vendas a empresas consultadas, ' + pct(100 - propReg * 100) + '% são pra empresas do Simples, que não aproveitam o crédito — o % de clientes que creditam ficou em ' + pct(pjRegular) + '% (era ' + pct(resVen.pctPJ) + '% contando todas as PJ).');
+        }
+      }
       const porDoc = ven.vendas.length ? ven.vendas.filter(v => v.classePorDocumento).length / ven.vendas.length : 0;
       origem.pctPJ = (ven.tipos.includes('servicos') ? 'saídas + serviços' : 'saídas') + ' Domínio: ' + brl(resVen.classes.pj.valor) + ' para ' + resVen.classes.pj.nClientes + ' cliente(s) ' + (porDoc >= 0.99 ? 'com CNPJ' : 'com nome de PJ') + ' ÷ ' + brl(resVen.total)
         + (resVen.classes.consumidor.valor > 0 ? ' (' + brl(resVen.classes.consumidor.valor) + ' a consumidor não identificado)' : '');
@@ -654,15 +681,33 @@ export function consolidar(rels, incluir) {
       : campos.receita * base.length;
     const res = resumirEntradas(ent, base);
     const somaSe = tipo => res.filter(g => (incluir ? incluir[g.grupo] : g.padrao) && g.credita === tipo).reduce((a, g) => a + g.valor, 0);
-    let merc = somaSe('mercadoria'); const desp = somaSe('despesa');
+    let merc = somaSe('mercadoria'); let desp = somaSe('despesa');
     // devolução de compra (saídas x201–x212, x410–x413…): a mercadoria voltou pro fornecedor, o crédito também sai
     const devCompra = ven ? ven.vendas.filter(v => v.grupo === 'devolucao' && base.includes(v.competencia)).reduce((a, v) => a + (v.valor || 0), 0) : 0;
     if (devCompra > 0 && merc > 0) { merc = Math.max(0, merc - devCompra); avisos.push('Devoluções de compra nas saídas (' + brl(devCompra) + ') abatidas das compras com crédito.'); }
+    let despAj = null;
+    if (regimes && regimes.size) {
+      // compras com crédito, por fornecedor, no período — quem é do Simples credita só uma fração
+      const cred = ent.lancamentos.filter(l => base.includes(l.competencia) && ['mercadoria', 'despesa'].includes(l.grupo));
+      let vSimples = 0, vMei = 0, vRegular = 0, vDesc = 0; const nomesS = {};
+      cred.forEach(l => { const r = regimes.get(dig(l.documento)); const v = l.valor || 0;
+        if (!r || r.simples == null) vDesc += v; else if (r.mei) vMei += v; else if (r.simples) { vSimples += v; nomesS[r.razao || l.fornecedor] = (nomesS[r.razao || l.fornecedor] || 0) + v; } else vRegular += v; });
+      const conhecido = vSimples + vMei + vRegular, totalCred = conhecido + vDesc;
+      if (conhecido > 0 && totalCred > 0) {
+        const perdaConhecida = vSimples * (1 - CREDITO_FORNECEDOR_SIMPLES) + vMei;       // crédito que não vem
+        // aplica ao total a proporção medida nos fornecedores consultados (os maiores — o resto segue a mesma mistura)
+        const fator = Math.max(0, 1 - perdaConhecida / conhecido);
+        merc = merc * fator; despAj = fator;
+        campos.fornecedoresRegime = { simplesPct: (vSimples + vMei) / conhecido * 100, cobertura: conhecido / totalCred * 100, fator, maiores: Object.entries(nomesS).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([n, v]) => ({ nome: n, valor: v })) };
+        avisos.push('Regime dos fornecedores (Receita): das compras com crédito consultadas (' + pct(conhecido / totalCred * 100) + '% do total), ' + pct((vSimples + vMei) / conhecido * 100) + '% vêm de empresas do Simples/MEI, que geram crédito reduzido — o % de compras foi ajustado.');
+      }
+    }
     if (receitaBase > 0) {
       if ((merc + desp) / receitaBase > 1) avisos.push('As compras com crédito (' + brl(merc + desp) + ') passam da receita do período (' + brl(receitaBase) + ') — o campo fica limitado a 100%. Confira estoque, período dos relatórios e se há entrada que não é compra.');
+      if (despAj != null) desp = desp * despAj;
       campos.pctMerc = Math.min(100, merc / receitaBase * 100);
       campos.pctDesp = Math.min(100, desp / receitaBase * 100);
-      origem.pctMerc = 'entradas Domínio: ' + brl(merc) + ' ÷ ' + brl(receitaBase) + ' de receita';
+      origem.pctMerc = 'entradas Domínio: ' + brl(merc) + ' ÷ ' + brl(receitaBase) + ' de receita' + (campos.fornecedoresRegime ? ' — já descontado o crédito menor dos fornecedores do Simples (' + pct(campos.fornecedoresRegime.simplesPct) + '% das compras consultadas)' : '');
       origem.pctDesp = 'entradas Domínio: ' + brl(desp) + ' ÷ receita do período';
     }
     const fora = res.filter(g => g.credita === null && g.valor > 0);
@@ -674,6 +719,13 @@ export function consolidar(rels, incluir) {
     avisos.push('Sem o relatório de entradas o % de compras não é calculado — é ele que decide o crédito no regime regular.');
   }
 
+  if (campos.pctPJ == null && opcoes.perfil) {
+    const pf = opcoes.perfil;
+    const industrializacao = ven && ven.vendas.some(v => /^[56]12[45]$/.test(String(v.cfop || '')));
+    if (pf.tipo === 'alimentacao' || (pf.tipo === 'comercio' && opcoes.varejo)) { campos.pctPJ = 0; campos.pctPJDeduzido = true; origem.pctPJ = 'deduzido: ' + (pf.tipo === 'alimentacao' ? 'bar e restaurante' : 'varejo') + ' vende a consumidor final — confirme se houver venda relevante a empresas'; }
+    else if (industrializacao) { campos.pctPJ = 100; campos.pctPJDeduzido = true; origem.pctPJ = 'deduzido: industrialização por encomenda (CFOP x124/x125) é sempre para empresa'; }
+    else if (pf.tipo === 'industria') { campos.pctPJ = 90; campos.pctPJDeduzido = true; origem.pctPJ = 'deduzido: indústria vende essencialmente a empresas — confirme importando as saídas em XLS (trazem o CNPJ do cliente)'; }
+  }
   if (campos.receita && campos.rbt12) {
     const razao = campos.receita * 12 / campos.rbt12 * 100;
     campos.receitaSobreRbt12 = razao;

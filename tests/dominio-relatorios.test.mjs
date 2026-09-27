@@ -11,7 +11,7 @@
 // acompanhamento de entradas de 686 lançamentos): totais fechando ao
 // centavo e alíquota efetiva batendo com a do PGDAS na quarta casa.
 
-import { lerRelatorio, detectarTipo, grupoDoCfop, resumirEntradas, consolidar, numBR, classificarCliente, resumirVendas, lerPlanilha, detectarTipoPlanilha, grupoSaida } from '../assets/js/dominio-relatorios.js';
+import { lerRelatorio, detectarTipo, grupoDoCfop, resumirEntradas, consolidar, numBR, classificarCliente, resumirVendas, lerPlanilha, detectarTipoPlanilha, grupoSaida, cnpjsParaConsultar, perfilAtividade } from '../assets/js/dominio-relatorios.js';
 import { aliqEfetiva } from '../assets/js/rt-motor.js';
 
 let falhas = 0;
@@ -305,6 +305,28 @@ ok(xi.conferido === true && xi.vendas.length === 2, 'planilha de industrializaç
 const ci = consolidar([xi], null);
 perto(ci.campos.receita, 9000, 0.005, 'receita = só o 5124 (o 5902 é retorno do material do cliente)');
 ok(ci.avisos.some(a => /Fora da receita.*5902/.test(a)), 'avisa o que ficou fora da receita, com o CFOP');
+
+console.log('\nRegime de fornecedores e clientes (Receita) e deduções pelo perfil:');
+{
+  const ENT = { tipo: 'entradas', cnpj: '11222333000144', lancamentos: [
+    { competencia: '2026-01', grupo: 'mercadoria', documento: '10000000000100', fornecedor: 'DISTRIBUIDORA REGULAR', valor: 6000 },
+    { competencia: '2026-01', grupo: 'mercadoria', documento: '20000000000100', fornecedor: 'FABRICA DO SIMPLES', valor: 4000 } ] };
+  const SAI = { tipo: 'saidas', cnpj: '11222333000144', vendas: [
+    { tipo: 'saidas', competencia: '2026-01', documento: '30000000000100', classe: 'pj', classePorDocumento: true, valor: 8000, grupo: 'receita', cfop: '5102' },
+    { tipo: 'saidas', competencia: '2026-01', documento: '40000000000100', classe: 'pj', classePorDocumento: true, valor: 2000, grupo: 'receita', cfop: '5102' } ] };
+  const q = cnpjsParaConsultar([ENT, SAI]);
+  ok(q.fornecedores.length === 2 && q.clientes.length === 2 && q.fornecedores[0] === '10000000000100', 'lista os maiores fornecedores e clientes por CNPJ');
+  const regimes = new Map([['10000000000100', { simples: false }], ['20000000000100', { simples: true }], ['30000000000100', { simples: false }], ['40000000000100', { simples: true }]]);
+  const sem = consolidar([ENT, SAI], null), com = consolidar([ENT, SAI], null, { regimes });
+  perto(sem.campos.pctMerc, 100, 0.01, 'sem regimes: compras 100% da receita');
+  perto(com.campos.pctMerc, 100 * (1 - 0.4 * 0.85), 0.01, 'com regimes: 40% das compras do Simples creditam só 15% → 66%');
+  perto(com.campos.pctPJ, 80, 0.01, 'clientes: só os 80% vendidos a empresas do regime regular aproveitam o crédito');
+  ok(com.avisos.some(a => /Regime dos fornecedores/.test(a)) && com.avisos.some(a => /Regime dos clientes/.test(a)), 'avisa os dois ajustes');
+  const semVenda = consolidar([{ tipo: 'faturamento', meses: [{ competencia: '2026-01', total: 50000, saidas: 50000, servicos: 0 }] }], null, { perfil: perfilAtividade({ cnae: '5611-2/01', anexo: 'I' }) });
+  ok(semVenda.campos.pctPJ === 0 && semVenda.campos.pctPJDeduzido, 'restaurante sem CNPJ de clientes: deduz consumidor final');
+  const ind = consolidar([{ tipo: 'faturamento', meses: [{ competencia: '2026-01', total: 150000, saidas: 150000, servicos: 0 }] }], null, { perfil: perfilAtividade({ cnae: '1531-9/01', anexo: 'II' }) });
+  ok(ind.campos.pctPJ === 90 && /indústria vende essencialmente a empresas/.test(ind.origem.pctPJ), 'fábrica de calçados sem CNPJ de clientes: deduz venda a empresas (a confirmar)');
+}
 
 console.log('\nNúmeros no formato brasileiro:');
 ok(numBR('1.034.942,41') === 1034942.41, 'milhar com ponto e decimal com vírgula');

@@ -18,6 +18,7 @@ const brl = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', c
 const brl0 = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 const pct1 = v => (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 // nunca arredondar cobertura/alíquota para cima a ponto de virar outra afirmação
+const fmtData = v => v ? String(v).slice(0, 10).split('-').reverse().join('/') : '—';
 const pct2 = v => (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const dataBR = iso => { try { return new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR'); } catch (e) { return iso; } };
@@ -105,6 +106,17 @@ export function gerarAnalise(d, opts = {}) {
   P('<p class="sub">' + (versaoCliente ? 'Análise de apoio à decisão' : 'Análise técnica de apoio à decisão') + ' — <b>' + esc(cliente.nome_principal) + '</b> · CNPJ ' + fmtCnpj(cliente.documento)
     + (cliente.cidade ? ' · ' + esc(cliente.cidade) : '') + (caso.cnae_base ? ' · CNAE ' + esc(caso.cnae_base) : '')
     + ' · ' + hoje + '</p>');
+  {
+    const sb = d.sobre || {};
+    const ano = x => x ? String(x).slice(0, 4) : null;
+    const partes2 = [];
+    const ativ = sb.ramo ? String(sb.ramo).replace(/\.$/, '') : (d.perfil ? d.perfil.rotulo : null);
+    if (ativ) partes2.push(ativ.charAt(0).toUpperCase() + ativ.slice(1) + (sb.cidade ? ', em ' + sb.cidade + (sb.uf ? '/' + sb.uf : '') : ''));
+    else if (sb.cidade) partes2.push('Empresa de ' + sb.cidade + (sb.uf ? '/' + sb.uf : ''));
+    if (ano(sb.abertura)) partes2.push('aberta em ' + ano(sb.abertura));
+    if (ano(sb.clienteDesde)) partes2.push('cliente do escritório desde ' + ano(sb.clienteDesde));
+    if (partes2.length) P('<p class="sobre">' + esc((sb.fantasia ? sb.fantasia + ' — ' : '') + partes2.join('; ')) + '.</p>');
+  }
 
   P('<div class="dados"><b>Prazo:</b> a opção deve ser formalizada até <b>30/09/2026</b> e pode ser <b>cancelada até 30/11/2026</b> sem produzir efeito (Resolução CGSN 186/2026). Quem não opta em setembro só tem nova janela em <b>março/2027</b>, com efeito a partir de <b>julho/2027</b>.'
     + (dominio || xml ? '<br><b>Base desta análise:</b> ' + [
@@ -163,6 +175,21 @@ export function gerarAnalise(d, opts = {}) {
 
   // ---------- 1. retrato ----------
   P('<h2>1. O que a empresa é, pelos números</h2>');
+  {
+    const sb = d.sobre || {};
+    const linhas = [];
+    if (sb.ramo || sb.segmento) linhas.push(['Ramo (carteira)', esc([sb.segmento, sb.ramo].filter(Boolean).join(' — ')), 'cadastro do escritório']);
+    if (sb.cnaesSecundarios) linhas.push(['Atividades secundárias', esc(String(sb.cnaesSecundarios).slice(0, 220)), 'cadastro (CNPJ)']);
+    if (sb.fornecedores) linhas.push(['Fornecedores do Simples/MEI', pct1(sb.fornecedores.simplesPct) + '% das compras consultadas' + (sb.fornecedores.maiores && sb.fornecedores.maiores.length ? ' — maiores: ' + sb.fornecedores.maiores.slice(0, 3).map(f => esc(f.nome)).join(', ') : ''), 'Receita Federal (CNPJs das entradas)']);
+    if (sb.clientes) linhas.push(['Clientes empresa do regime regular', pct1(sb.clientes.regularPct) + '% das vendas a empresas — os do Simples não aproveitam o crédito', 'Receita Federal (CNPJs das saídas)']);
+    if (linhas.length) P('<table><thead><tr><th>Sobre o cliente</th><th>O que sabemos</th><th>Fonte</th></tr></thead><tbody>' + linhas.map(l => '<tr><td>' + l[0] + '</td><td>' + l[1] + '</td><td>' + l[2] + '</td></tr>').join('') + '</tbody></table>');
+    if (sb.reunioes && sb.reunioes.length) {
+      P('<p class="fonte" style="margin-top:6px">Reuniões registradas com o cliente (uso interno):</p><ul class="fonte" style="font-style:normal">' + sb.reunioes.map(r => {
+        const disc = (r.reuniao_pautas || []).filter(p => p.discussao).map(p => p.titulo + ': ' + String(p.discussao).replace(/<[^>]+>/g, ' ').slice(0, 160)).slice(0, 2);
+        return '<li><b>' + fmtData(r.data_reuniao) + '</b> — ' + esc(r.titulo || 'reunião') + (disc.length ? ' · ' + esc(disc.join(' · ')) : (r.observacoes ? ' · ' + esc(String(r.observacoes).slice(0, 160)) : '')) + '</li>';
+      }).join('') + '</ul>');
+    }
+  }
   const pctServ = dominio && dominio.faturamento ? dominio.faturamento.servicos / dominio.faturamento.total * 100 : null;
   if (pctServ != null && pctServ >= 60) {
     P('<p>A empresa fatura <b>' + pct1(pctServ) + '% em serviço</b> e ' + pct1(100 - pctServ) + '% em mercadoria. O custo de uma prestadora de serviço é mão de obra, e <b>folha de pagamento não gera crédito de IBS/CBS</b> — é isso que define toda a conta adiante.</p>');
@@ -373,6 +400,7 @@ tr.tot td{font-weight:700;background:#F3F6F9;}
 .s-forte{background:#E1F0E6;color:#2E6B47;} .s-media{background:#FDF0DC;color:#8A5A18;} .s-fraca{background:#FBE4E4;color:#A03A3A;}
 .s-conf{background:#E1F0E6;color:#2E6B47;} .s-err{background:#FBE4E4;color:#A03A3A;}
 .cx{border-left:4px solid #5B82A6;background:#F7F9FB;border-radius:6px;padding:12px 15px;margin:14px 0;}
+.sobre{margin:-4px 0 14px;color:#3A5878;font-size:13.5px;}
 .resumo{border:2px solid #2E6B47;border-radius:10px;padding:16px 18px;margin:4px 0 20px;background:#F5FBF7;break-inside:avoid;}
 .resumo.conf{border-color:#D69A3C;background:#FFFBF3;}
 .rs-selo{font-size:10.5px;font-weight:700;letter-spacing:.08em;color:#2E6B47;} .resumo.conf .rs-selo{color:#8A5A18;}
