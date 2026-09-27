@@ -117,7 +117,7 @@ export function gerarAnalise(d, opts = {}) {
     else if (sb.cidade) partes2.push('Empresa de ' + sb.cidade + (sb.uf ? '/' + sb.uf : ''));
     if (ano(sb.abertura)) partes2.push('aberta em ' + ano(sb.abertura));
     if (ano(sb.clienteDesde)) partes2.push('cliente do escritório desde ' + ano(sb.clienteDesde));
-    if (partes2.length) P('<p class="sobre">' + esc((sb.fantasia ? sb.fantasia + ' — ' : '') + partes2.join('; ')) + '.</p>');
+    // (27/09/2026) linha de apresentação removida a pedido do Samuel — o relatório vai direto à decisão
   }
 
   const hojeISO = d.hojeISO || new Date().toISOString().slice(0, 10);

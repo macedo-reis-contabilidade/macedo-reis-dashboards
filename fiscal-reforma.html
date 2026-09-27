@@ -1529,7 +1529,7 @@
       const perguntas = consumidor && !barRest ? [
         'A receita passa <b>toda</b> por nota (NF-e/NFC-e)? Há venda fora das notas? A simulação usa o faturamento registrado na contabilidade.',
         ...(podeReduzir ? ['Quais <b>linhas de produto</b> pesam mais nas vendas? Insumos agropecuários, itens da cesta básica e medicamentos têm redução ou alíquota zero por fora — isso muda o débito.'] : []),
-        'Os principais <b>fornecedores</b> são indústria ou distribuidor do regime regular, ou do Simples? Fornecedor do Simples não gera crédito cheio — é o que sustenta (ou derruba) a conta por fora.',
+        ...(dom && dom.fornecedoresRegime ? [] : ['Os principais <b>fornecedores</b> são indústria ou distribuidor do regime regular, ou do Simples? Fornecedor do Simples não gera crédito cheio — é o que sustenta (ou derruba) a conta por fora.']),
         'Há previsão de <b>investimento em máquinas, veículos ou reforma</b> em 2027? Compra de ativo gera crédito integral no regime regular.'
       ] : consumidor ? [
         'A receita passa <b>toda</b> por NFC-e? Há venda por aplicativo (iFood etc.) que não esteja nas notas? A simulação usa o faturamento do Domínio' + (dom && dom.faturamento ? ', que fecha com as notas' : '') + '.',
