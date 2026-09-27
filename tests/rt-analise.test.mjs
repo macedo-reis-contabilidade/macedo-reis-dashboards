@@ -50,6 +50,11 @@ chk('dica do cancelamento até 30/11', /cancelá-la até 30\/11\/2026/.test(vr.t
 // 5) caso limpo continua firme (prestador B2B sem alertas)
 chk('caso sem dado suspeito não vira "a confirmar" (' + pb.d.alertas.length + ' alerta)', pb.d.aConfirmar === false && !/Tendência:/.test(pb.txt));
 
+// resumo no topo, em linguagem simples, coerente com a recomendação
+chk('resumo: empate diz "Manter como está"', /EMPATE TÉCNICO Manter como está/.test(vn.txt.replace(/·/g, '')) || /Manter como está/.test(vn.txt));
+chk('resumo: compras ≥ vendas vira "TENDÊNCIA — A CONFIRMAR"', /TENDÊNCIA — A CONFIRMAR/.test(vr.txt));
+chk('resumo: alerta de receita × faturamento do Simples', /do faturamento dos últimos 12 meses informado no Simples/.test(vr.txt));
+
 // 3) Drogaria Guerra (referência)
 const g = simular({ anexo:'I', rbt12:1800000, receita:150000, mixCheia:20, mixRed60:70, mixRed30:0, mixZero:10, pctComprasMercadorias:60, pctComprasDespesas:5.33, pctImpostoEmbutido:18, pctExcluidoST:33.5, partilha:15.5, cbs:9.3, ibs:0, pctPJ:10, creditoEstoqueMes:1541.67 });
 console.log('Referência:'); chk('Guerra continua OPTE (' + g.veredito.tipo + ')', g.veredito.tipo === 'OPTE');

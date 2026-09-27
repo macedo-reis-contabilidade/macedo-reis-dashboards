@@ -113,6 +113,35 @@ export function gerarAnalise(d) {
         xml && xml.nNotas ? xml.nNotas + ' notas fiscais eletrônicas (emitidas e recebidas) de ' + esc(xml.periodoRotulo || '') : null
       ].filter(Boolean).join(', ') + '.' : '') + '</div>');
 
+  // ---------- EM RESUMO (27/09/2026): a decisão em linguagem simples, antes de qualquer tabela ----------
+  {
+    const dif = Math.abs(s.diferenca), pctRec = dif / ((d.entrada && d.entrada.receita || 0) * 6) * 100;
+    const foraMaisBarato = s.diferenca < 0;
+    const aConf = !!d.aConfirmar && !empate;
+    const decisao = empate ? 'Manter como está'
+      : optar ? 'Recolher o IBS/CBS por fora do DAS'
+      : 'Manter como está';
+    const selo = aConf ? 'TENDÊNCIA — A CONFIRMAR' : empate ? 'RECOMENDAÇÃO · EMPATE TÉCNICO' : 'RECOMENDAÇÃO';
+    const oQue = optar
+      ? 'A empresa continua no Simples, mas passa a pagar o IBS e a CBS numa apuração separada, descontando o que pagou nas compras.'
+      : 'A empresa continua pagando tudo numa guia só, o DAS do Simples, como hoje.';
+    let porque;
+    if (empate) porque = 'Os dois caminhos custam praticamente o mesmo: a diferença é de ' + brl0(dif) + ' no semestre (' + pct2(pctRec) + '% do faturamento). Quando dá empate, mudar só traz trabalho e risco.';
+    else if (optar) porque = 'Pagar por fora sai ' + brl0(dif) + ' mais barato no primeiro semestre de 2027 (' + pct2(pctRec) + '% do faturamento)' + (d.consumidor ? ', porque a empresa desconta o imposto das compras e paga só sobre a margem.' : ', e os clientes empresa passam a aproveitar ' + brl0(s.aproveitadoFora) + ' de crédito do imposto.');
+    else porque = 'Continuar no DAS sai ' + brl0(dif) + ' mais barato no primeiro semestre de 2027 (' + pct2(pctRec) + '% do faturamento).' + (d.consumidor ? ' A maioria das vendas é para pessoa física, que não aproveita o imposto destacado — então não há ganho para o cliente.' : ' O crédito que os clientes empresa ganhariam não compensa o custo a mais.');
+    const maxV = Math.max(s.custoDentro, s.custoFora) || 1;
+    const barra = (rot, v, win) => '<div class="rs-b"><span class="rs-bl">' + rot + '</span><span class="rs-bt"><span class="rs-bf' + (win ? ' win' : '') + '" style="width:' + (v / maxV * 100).toFixed(1) + '%"></span></span><b>' + brl0(v) + '</b></div>';
+    P('<div class="resumo' + (aConf ? ' conf' : '') + '"><div class="rs-selo">' + selo + '</div>'
+      + '<div class="rs-dec">' + decisao + '</div>'
+      + '<p class="rs-oq">' + oQue + '</p>'
+      + '<div class="rs-barras"><div class="rs-cap">Custo com impostos no 1º semestre de 2027</div>'
+      + barra('Por dentro do DAS' + (optar ? '' : ' ✓'), s.custoDentro, !optar) + barra('Por fora do DAS' + (optar ? ' ✓' : ''), s.custoFora, optar) + '<div class="rs-cap" style="margin-top:4px;text-transform:none;letter-spacing:0">✓ recomendado' + (empate ? ' — a diferença está dentro da margem de incerteza' : '') + '</div></div>'
+      + '<p><b>Por quê:</b> ' + porque + '</p>'
+      + (d.alertas && d.alertas.length ? '<p style="margin-bottom:4px"><b>' + (aConf ? 'Antes de decidir, precisamos confirmar:' : 'Pontos de atenção:') + '</b></p><ul class="rs-al">' + d.alertas.map(a => '<li>' + a.texto + '</li>').join('') + '</ul>' : '')
+      + (optar ? '<p class="rs-pz">Se optar: formalizar até <b>30/09/2026</b>. Dá pra cancelar até <b>30/11/2026</b> sem efeito.</p>' : '<p class="rs-pz">Mantendo, não é preciso fazer nada. Se o quadro mudar, há nova janela em março/2027.</p>')
+      + '</div>');
+  }
+
   // ---------- 1. retrato ----------
   P('<h2>1. O que a empresa é, pelos números</h2>');
   const pctServ = dominio && dominio.faturamento ? dominio.faturamento.servicos / dominio.faturamento.total * 100 : null;
@@ -321,6 +350,15 @@ tr.tot td{font-weight:700;background:#F3F6F9;}
 .s-forte{background:#E1F0E6;color:#2E6B47;} .s-media{background:#FDF0DC;color:#8A5A18;} .s-fraca{background:#FBE4E4;color:#A03A3A;}
 .s-conf{background:#E1F0E6;color:#2E6B47;} .s-err{background:#FBE4E4;color:#A03A3A;}
 .cx{border-left:4px solid #5B82A6;background:#F7F9FB;border-radius:6px;padding:12px 15px;margin:14px 0;}
+.resumo{border:2px solid #2E6B47;border-radius:10px;padding:16px 18px;margin:4px 0 20px;background:#F5FBF7;break-inside:avoid;}
+.resumo.conf{border-color:#D69A3C;background:#FFFBF3;}
+.rs-selo{font-size:10.5px;font-weight:700;letter-spacing:.08em;color:#2E6B47;} .resumo.conf .rs-selo{color:#8A5A18;}
+.rs-dec{font-size:22px;font-weight:700;color:#1D2B36;margin:2px 0 6px;line-height:1.2;}
+.rs-oq{margin:0 0 12px;color:#4A525E;}
+.rs-barras{margin:0 0 12px;} .rs-cap{font-size:11px;color:#66707E;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em;}
+.rs-b{display:grid;grid-template-columns:130px 1fr 110px;gap:10px;align-items:center;font-size:12.5px;margin:4px 0;} .rs-b b{text-align:right;font-variant-numeric:tabular-nums;}
+.rs-bt{height:14px;background:#EDF0F3;border-radius:7px;overflow:hidden;} .rs-bf{display:block;height:100%;background:#9AA7B6;border-radius:7px;} .rs-bf.win{background:#2E6B47;}
+.rs-al{margin:0 0 8px;} .rs-pz{margin:8px 0 0;font-size:12px;color:#4A525E;}
 .cx.alerta{border-left-color:#D69A3C;background:#FDF9F2;} .cx.chave{border-left-color:#2E6B47;background:#F2F9F4;}
 .cx h4{margin:0 0 6px;font-size:13px;color:#3A5878;} .cx.alerta h4{color:#8A5A18;} .cx.chave h4{color:#2E6B47;}
 .duas{display:grid;grid-template-columns:1fr 1fr;gap:16px;}

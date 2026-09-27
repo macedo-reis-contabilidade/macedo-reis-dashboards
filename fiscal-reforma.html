@@ -1516,6 +1516,12 @@
         alertas.unshift({ texto: 'As entradas que geram crédito somam ' + p1(pEnt) + '% da receita — a empresa compra quase o mesmo (ou mais) do que vende. Pode ser formação de estoque, venda que não passa pela receita considerada, ou entrada lançada como revenda sem ser. Com uma proporção de compras mais usual, a conta por fora piora.', conferir: 'compras × vendas do período' });
         pendencias.unshift({ o_que: 'Compras × vendas do período', porque: 'Entradas em ' + p1(pEnt) + '% da receita, acima do usual — é o que mais pesa na conta por fora', onde: 'Acompanhamento de entradas e estoque; conversa com o cliente', quem: 'Fiscal / Direção', nivel: 'alta', peso: 'decisivo' });
       }
+      const razaoRbt = ent.rbt12 > 0 ? ent.receita * 12 / ent.rbt12 * 100 : null;
+      if (razaoRbt != null && (razaoRbt < 70 || razaoRbt > 130)) alertas.push({ texto: 'A receita usada (' + brl0(ent.receita) + ' por mês, ' + brl0(ent.receita * 12) + ' no ano) é ' + p1(razaoRbt) + '% do faturamento dos últimos 12 meses informado no Simples (' + brl0(ent.rbt12) + '). ' + (razaoRbt < 70 ? 'Pode faltar receita nos relatórios (serviços, outra filial) ou a empresa vendeu menos este ano.' : 'A empresa cresceu no período, ou o Simples considera só parte dela.'), conferir: 'receita dos relatórios × faturamento do Simples' });
+      if (!(dom && dom.entradas) && !xml && ((ent.pctComprasMercadorias || 0) + (ent.pctComprasDespesas || 0)) === 0) {
+        const v = dif({ pctComprasDespesas: 20 });
+        if (inverteDif(v)) alertas.push({ texto: 'As compras da empresa não foram informadas, e a análise considerou zero crédito. Com compras de 20% da receita, o resultado se inverte.', conferir: 'acompanhamento de entradas' });
+      }
       if (dom && dom.excecoes && dom.excecoes.length) alertas.push({ texto: 'Usado nesta análise por decisão manual, de outro CNPJ: ' + dom.excecoes.join('; ') + '.', conferir: null });
       const aConfirmar = alertas.length > 0;
       const conferirLista = [...new Set(alertas.map(a => a.conferir).filter(Boolean))];

@@ -34,8 +34,8 @@ const RX_DOC = /(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\d{3}\.\d{3}\.\d{3}-\d{2})/;
 // ---------- CFOP: o que credita, o que não é compra ----------
 // Sufixo do CFOP (os 3 últimos dígitos); o 1º dígito é só a origem (1 estado, 2 outro, 3 exterior).
 const SUF = {
-  mercadoria: ['101','102','111','113','116','117','118','120','121','122','124','125','126','128','401','403','406','407'],
-  despesa:    ['251','252','253','254','255','256','257','301','302','303','304','305','306','351','352','353','354','355','356','360','551','552','553','554','555','556','557','601','602','603','604','605','651','652','653'],
+  mercadoria: ['101','102','111','113','116','117','118','120','121','122','124','125','126','128','401','403'],
+  despesa:    ['251','252','253','254','255','256','257','301','302','303','304','305','306','351','352','353','354','355','356','360','406','407','551','552','553','554','555','556','557','601','602','603','604','605','651','652','653','933'],   // 406/407 ativo e consumo com ST; 933 serviço tomado (gera crédito em 2027)
   devolucao:  ['201','202','203','204','205','206','207','208','209','210','211','212','213','214','215','410','411','412','413','414','415','503','504','505']
 };
 export const GRUPOS = {
@@ -611,8 +611,12 @@ export function consolidar(rels, incluir) {
       : campos.receita * base.length;
     const res = resumirEntradas(ent, base);
     const somaSe = tipo => res.filter(g => (incluir ? incluir[g.grupo] : g.padrao) && g.credita === tipo).reduce((a, g) => a + g.valor, 0);
-    const merc = somaSe('mercadoria'), desp = somaSe('despesa');
+    let merc = somaSe('mercadoria'); const desp = somaSe('despesa');
+    // devolução de compra (saídas x201–x212, x410–x413…): a mercadoria voltou pro fornecedor, o crédito também sai
+    const devCompra = ven ? ven.vendas.filter(v => v.grupo === 'devolucao' && base.includes(v.competencia)).reduce((a, v) => a + (v.valor || 0), 0) : 0;
+    if (devCompra > 0 && merc > 0) { merc = Math.max(0, merc - devCompra); avisos.push('Devoluções de compra nas saídas (' + brl(devCompra) + ') abatidas das compras com crédito.'); }
     if (receitaBase > 0) {
+      if ((merc + desp) / receitaBase > 1) avisos.push('As compras com crédito (' + brl(merc + desp) + ') passam da receita do período (' + brl(receitaBase) + ') — o campo fica limitado a 100%. Confira estoque, período dos relatórios e se há entrada que não é compra.');
       campos.pctMerc = Math.min(100, merc / receitaBase * 100);
       campos.pctDesp = Math.min(100, desp / receitaBase * 100);
       origem.pctMerc = 'entradas Domínio: ' + brl(merc) + ' ÷ ' + brl(receitaBase) + ' de receita';
@@ -627,6 +631,12 @@ export function consolidar(rels, incluir) {
     avisos.push('Sem o relatório de entradas o % de compras não é calculado — é ele que decide o crédito no regime regular.');
   }
 
+  if (campos.receita && campos.rbt12) {
+    const razao = campos.receita * 12 / campos.rbt12 * 100;
+    campos.receitaSobreRbt12 = razao;
+    if (razao < 70 || razao > 130) avisos.push('Receita dos relatórios × 12 = ' + brl(campos.receita * 12) + ', ' + pct(razao) + '% do RBT12 do PGDAS (' + brl(campos.rbt12) + '). '
+      + (razao < 70 ? 'Pode estar faltando receita (relatório de serviços, filial — o RBT12 é do CNPJ inteiro) ou a empresa encolheu no período.' : 'A empresa cresceu no período ou o PGDAS é de um estabelecimento só.') + ' Confira antes de calcular.');
+  }
   return { campos, origem, avisos, fat, sim, ent, ven, resVen, competencias };
 }
 
