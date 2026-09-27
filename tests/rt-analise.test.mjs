@@ -6,7 +6,8 @@ import { gerarAnalise } from '../assets/js/rt-analise.js';
 const page = fs.readFileSync(new URL('../fiscal-reforma.html', import.meta.url), 'utf8');
 const i = page.indexOf('    function montarDadosAnalise('); const j = page.indexOf("\n    $('dGerar').onclick");
 const src = page.slice(i, j);
-const montarDadosAnalise = new Function('simular', 'ANO_XML', 'location', src + '\nreturn montarDadosAnalise;')(simular, 2026, { href: 'http://x/' });
+import { perfilAtividade } from '../assets/js/dominio-relatorios.js';
+const montarDadosAnalise = new Function('simular', 'ANO_XML', 'location', 'perfilAtividade', src + '\nreturn montarDadosAnalise;')(simular, 2026, { href: 'http://x/' }, perfilAtividade);
 function caso(nome, ent, dom, xml, cnae) {
   const sim = simular(ent);
   const d = montarDadosAnalise({ id: 1, cnae_base: cnae || null }, { nome_principal: nome, documento: '00000000000000' }, ent, sim, dom, xml);
@@ -62,6 +63,18 @@ console.log('Restaurante sem notas:');
 chk('veredito segue MANTENHA', rs.sim.veredito.tipo === 'MANTENHA');
 chk('aponta a redução de 40% que faltou medir', /comida preparada tem redução de 40%/.test(rs.txt));
 chk('diz que a conclusão não muda', /a conclusão não muda/.test(rs.txt));
+
+// 7) Transportadora de carga (CT-e nas saídas, CNAE 4930, Anexo III): nada de mix, redução ou "produtos"
+const tr = caso('TRANSPORTES TESTE', { anexo:'III', rbt12:410549.94, receita:35875.03, mixCheia:100, pctComprasMercadorias:1.3, pctComprasDespesas:2.2, pctImpostoEmbutido:0, pctExcluidoST:10.2, partilha:16.6, cbs:9.3, ibs:0.1, pctPJ:99.5, aliqEfetivaInformada:8.26 },
+  { faturamento: { total: 287000.22, servicos: 0, saidas: 287000.22 }, periodoRotulo: 'jan/26–ago/26', entradas: { grupos: [] }, vendas: { total: 287003.22, pctPJ: 99.5, pj: 285523, pf: 1480, consumidor: 0, nPJ: 109, fonte: 'acompanhamento de saídas (Domínio), PJ pelo CNPJ do cliente' } }, null, '4930-2/02');
+console.log('Transporte de cargas:');
+chk('perfil = transporte de cargas', tr.d.perfil.tipo === 'transporte' && !tr.d.perfil.vendeMercadoria);
+chk('sem "notas de venda não foram analisadas"', !/notas de venda não foram analisadas/.test(tr.txt));
+chk('sem "insumos agropecuários, cesta básica"', !/cesta básica/.test(tr.txt));
+chk('faturamento rotulado como fretes (CT-e)', /fretes \(CT-e\)/.test(tr.txt));
+chk('fonte da alíquota: frete sem redução na LC 214', /Transporte de cargas não tem redução na LC 214/.test(tr.txt));
+chk('pergunta sobre o frete, não sobre hora técnica', /Como o frete é cobrado/.test(tr.txt) && !/hora técnica/.test(tr.txt));
+chk('sem ISS retido (frete é ICMS)', !/ISS retido/.test(tr.txt));
 
 // 3) Drogaria Guerra (referência)
 const g = simular({ anexo:'I', rbt12:1800000, receita:150000, mixCheia:20, mixRed60:70, mixRed30:0, mixZero:10, pctComprasMercadorias:60, pctComprasDespesas:5.33, pctImpostoEmbutido:18, pctExcluidoST:33.5, partilha:15.5, cbs:9.3, ibs:0, pctPJ:10, creditoEstoqueMes:1541.67 });

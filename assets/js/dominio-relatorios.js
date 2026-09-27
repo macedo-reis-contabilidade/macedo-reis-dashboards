@@ -282,6 +282,48 @@ export function grupoSaida(cfop) {
 }
 const GRUPO_SAIDA_ROT = { remessa: 'remessas e retornos (CFOP x9xx — ex.: 5902, retorno da industrialização por encomenda)', transferencia: 'transferências entre estabelecimentos', devolucao: 'devoluções de compra', ativo: 'venda de ativo imobilizado', outras: 'outras saídas sem natureza de venda' };
 
+// natureza da RECEITA pelo CFOP: separa venda de mercadoria de transporte, comunicação, energia e serviço
+export function naturezaReceita(v) {
+  if (v.tipo === 'servicos' || !v.cfop) return 'servico';
+  const n = parseInt(String(v.cfop).slice(1), 10);
+  if (n >= 351 && n <= 360) return 'transporte';
+  if (n >= 301 && n <= 307) return 'comunicacao';
+  if (n >= 251 && n <= 258) return 'energia';
+  if (n === 933) return 'servico';
+  return 'mercadoria';
+}
+// PERFIL DE ATIVIDADE (27/09/2026): uma fonte só pra todo texto que depende do que a empresa faz.
+// Ordem: o que as saídas mostram (CFOP) > CNAE do cadastro > anexo do Simples. Nunca um critério isolado.
+export function perfilAtividade({ natureza, cnae, anexo, restaurante } = {}) {
+  const div = parseInt(String(cnae || '').replace(/\D/g, '').slice(0, 2), 10);
+  const cnae4 = String(cnae || '').replace(/\D/g, '').slice(0, 4);
+  const tot = natureza ? Object.values(natureza).reduce((a, x) => a + (x || 0), 0) : 0;
+  const maior = tot > 0 ? Object.entries(natureza).sort((a, b) => b[1] - a[1])[0] : null;
+  const decisivo = maior && maior[1] / tot >= 0.6 ? maior[0] : null;
+  let tipo, fonte;
+  // 1) o que as saídas mostram, quando não é venda de mercadoria (transporte, serviço, comunicação, energia)
+  if (decisivo && decisivo !== 'mercadoria') { tipo = decisivo; fonte = 'saídas por CFOP'; }
+  // 2) CNAE específico: bar/restaurante e transporte têm regras próprias na LC 214
+  else if (restaurante || div === 56) { tipo = 'alimentacao'; fonte = restaurante ? 'mix das notas' : 'CNAE'; }
+  else if (div >= 49 && div <= 53) { tipo = 'transporte'; fonte = 'CNAE'; }
+  // 3) saídas de mercadoria / anexo do Simples: mostram como a receita é de fato tributada
+  else if (decisivo === 'mercadoria') { tipo = anexo === 'II' ? 'industria' : 'comercio'; fonte = 'saídas por CFOP'; }
+  else if (anexo === 'I') { tipo = 'comercio'; fonte = 'anexo do Simples'; }
+  else if (anexo === 'II') { tipo = 'industria'; fonte = 'anexo do Simples'; }
+  else if (['III', 'IV', 'V'].includes(anexo)) { tipo = 'servico'; fonte = 'anexo do Simples'; }
+  // 4) CNAE genérico, só sem nada melhor
+  else if (div >= 45 && div <= 47) { tipo = 'comercio'; fonte = 'CNAE'; }
+  else if (div >= 10 && div <= 32) { tipo = 'industria'; fonte = 'CNAE'; }
+  else if (div >= 1 && div <= 3) { tipo = 'agro'; fonte = 'CNAE'; }
+  else { tipo = 'servico'; fonte = 'CNAE'; }
+  const passageiros = ['4921', '4922'].includes(cnae4);
+  return {
+    tipo, fonte, passageiros,
+    vendeMercadoria: ['comercio', 'industria', 'alimentacao', 'agro'].includes(tipo),
+    rotulo: { transporte: passageiros ? 'transporte de passageiros' : 'transporte de cargas', comercio: 'comércio', industria: 'indústria', alimentacao: 'bar e restaurante', agro: 'produção agropecuária', servico: 'prestação de serviços', comunicacao: 'comunicação', energia: 'energia' }[tipo] || tipo
+  };
+}
+
 export function classificarCliente(nome) {
   const n = norm(nome).replace(/[.,]/g, m => m === '.' ? '.' : ' ');
   if (!n) return 'consumidor';
@@ -351,7 +393,8 @@ export function resumirVendas(vendas, competencias) {
   const st = vs.filter(v => v.st).reduce((a, v) => a + (v.valor || 0), 0);
   const porMes = {};
   vs.forEach(v => { const m = porMes[v.competencia] || (porMes[v.competencia] = { competencia: v.competencia, saidas: 0, servicos: 0, total: 0 }); m[v.tipo] += v.valor || 0; m.total += v.valor || 0; });
-  return { total, mercadorias, servicos, st, pctPJ: total ? classes.pj.valor / total * 100 : null, classes, meses: Object.values(porMes).sort((a, b) => a.competencia < b.competencia ? -1 : 1), fora };
+  const natureza = {}; vs.forEach(v => { const k = naturezaReceita(v); natureza[k] = (natureza[k] || 0) + (v.valor || 0); });
+  return { total, mercadorias, servicos, st, pctPJ: total ? classes.pj.valor / total * 100 : null, classes, meses: Object.values(porMes).sort((a, b) => a.competencia < b.competencia ? -1 : 1), fora, natureza };
 }
 
 // ---------- 5) PLANILHA (XLS/XLSX/CSV exportado da Domínio) ----------

@@ -341,7 +341,7 @@
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { carregarOperacao, MESES_ABREV } from './assets/js/operacao-xml.js';
-    import { lerRelatorio, consolidar, resumirEntradas, GRUPOS, lerPlanilha } from './assets/js/dominio-relatorios.js';
+    import { lerRelatorio, consolidar, resumirEntradas, GRUPOS, lerPlanilha, perfilAtividade } from './assets/js/dominio-relatorios.js';
     import { lerXls } from './assets/js/xls-biff.js';
     import { importarLote, separarNaoXml } from './assets/js/importar-xml.js';
     import { formatDocumento } from './assets/js/utils.js';
@@ -965,8 +965,9 @@
         const cF = casoAtual(); const cliF = cF ? clientesMap[cF.cliente_id] : null;
         const cnae = String((cF && cF.cnae_base) || (cliF && cliF.cnae_principal) || '').replace(/\D/g, '');
         const temNotas = (domEstado.notas || 0) > 0;
-        const servicoPuro = cons.fat && cons.fat.meses && cons.fat.meses.reduce((a, m) => a + (m.servicos || 0), 0) >= 0.9 * cons.fat.meses.reduce((a, m) => a + (m.total || 0), 0);
-        if (!temNotas && cnae.startsWith('56')) cons.avisos.push('Bar/restaurante sem notas de venda na base: a comida preparada tem redução de 40% no IBS/CBS e as bebidas revendidas pagam cheio. Importe as NFC-e (XML ou ZIP) aqui mesmo pra medir essa divisão — sem elas o cálculo põe tudo na alíquota cheia e o custo "por fora" sai maior que o real.');
+        const perfilImp = perfilAtividade({ natureza: cons.resVen && cons.resVen.natureza, cnae, anexo: cons.sim && cons.sim.anexoPredominante });
+        const servicoPuro = !perfilImp.vendeMercadoria;
+        if (!temNotas && perfilImp.tipo === 'alimentacao') cons.avisos.push('Bar/restaurante sem notas de venda na base: a comida preparada tem redução de 40% no IBS/CBS e as bebidas revendidas pagam cheio. Importe as NFC-e (XML ou ZIP) aqui mesmo pra medir essa divisão — sem elas o cálculo põe tudo na alíquota cheia e o custo "por fora" sai maior que o real.');
         else if (!temNotas && !servicoPuro) cons.avisos.push('Sem notas de venda na base, o mix de alíquotas fica 100% cheio. Se a empresa vende produtos com redução (insumos agropecuários, cesta básica, medicamentos…), importe as notas (XML ou ZIP) pra medir.');
       }
       cons.avisos.forEach(a => { html += '<div class="dom-aviso">⚠ ' + escapeHtml(a) + '</div>'; });
@@ -1047,7 +1048,7 @@
         dasMedio: (() => { const ps = rels.filter(r => r.tipo === 'simples'); return ps.length ? ps.reduce((a, r) => a + (r.dasTotal || 0), 0) / ps.length : null; })(),
         nPgdas: rels.filter(r => r.tipo === 'simples').length,
         excecoes: rels.filter(r => r.outraEmpresa).map(r => ({ simples: 'PGDAS', faturamento: 'faturamento', entradas: 'entradas', saidas: 'saídas', servicos: 'serviços' }[r.tipo] || r.tipo) + (r.competencia ? ' ' + r.competencia : '') + ' do CNPJ ' + r.cnpj + (r.empresa ? ' (' + r.empresa + ')' : '')),
-        vendas: cons.resVen ? { total: cons.resVen.total, mercadorias: cons.resVen.mercadorias, servicos: cons.resVen.servicos, st: cons.resVen.st, pctPJ: cons.resVen.pctPJ, pj: cons.resVen.classes.pj.valor, pf: cons.resVen.classes.pf.valor, consumidor: cons.resVen.classes.consumidor.valor, nPJ: cons.resVen.classes.pj.nClientes, meses: cons.resVen.meses, fonte: 'acompanhamento de saídas' + (cons.ven.tipos.includes('servicos') ? ' e de serviços' : '') + ' (Domínio), ' + (cons.resVen.porDocumento ? 'PJ pelo CNPJ do cliente' : 'PJ pelo nome') } : null,
+        vendas: cons.resVen ? { natureza: cons.resVen.natureza, total: cons.resVen.total, mercadorias: cons.resVen.mercadorias, servicos: cons.resVen.servicos, st: cons.resVen.st, pctPJ: cons.resVen.pctPJ, pj: cons.resVen.classes.pj.valor, pf: cons.resVen.classes.pf.valor, consumidor: cons.resVen.classes.consumidor.valor, nPJ: cons.resVen.classes.pj.nClientes, meses: cons.resVen.meses, fonte: 'acompanhamento de saídas' + (cons.ven.tipos.includes('servicos') ? ' e de serviços' : '') + ' (Domínio), ' + (cons.resVen.porDocumento ? 'PJ pelo CNPJ do cliente' : 'PJ pelo nome') } : null,
         // soma TODAS as apurações enviadas: um mês só distorce o peso de cada anexo
         anexosOutros: (() => {
           const ps = rels.filter(r => r.tipo === 'simples');
@@ -1357,8 +1358,11 @@
       // ATIVIDADE — serviço x comércio, pelo faturamento ou pelas saídas/serviços
       const servShare = dom && dom.faturamento && dom.faturamento.total > 0 ? dom.faturamento.servicos / dom.faturamento.total * 100
         : vendasDom && vendasDom.total > 0 ? (vendasDom.servicos || 0) / vendasDom.total * 100 : null;
-      const prestador = servShare != null ? servShare >= 50 : (!consumidor && !barRest);
-      const temServico = servShare == null ? prestador : servShare > 0;
+      const perfil = perfilAtividade({ natureza: vendasDom && vendasDom.natureza, cnae: c.cnae_base || (cli && cli.cnae_principal), anexo: ent.anexo, restaurante: barRest });
+      const prestador = perfil.tipo === 'servico';            // serviço com ISS: textos de hora técnica, retenção
+      const transporte = perfil.tipo === 'transporte';
+      const temServico = prestador;
+      const vendeMercadoria = perfil.vendeMercadoria;
       const mixMedido = !((ent.mixCheia || 0) >= 99) || !!(xml && xml.nNotas);
       const brl0 = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
       const p1 = v => (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -1428,8 +1432,10 @@
       if (xml) fontes.push({ o_que: (xml.clientes && xml.clientes.length && !consumidor ? '% de vendas para CNPJ e concentração de clientes' : '% de vendas para CNPJ'), origem: 'XML das notas fiscais de ' + (xml.periodoRotulo || ANO_XML) + (xml.cobertura != null ? ' (cobrem ' + (xml.cobertura >= 99.995 ? '100%' : p1(xml.cobertura) + '%') + ' do faturamento do período)' : ''), nivel: 'alta', rotulo: 'alta' });
       if (pctPJ != null && !xml) fontes.push({ o_que: '% de vendas para CNPJ (' + p1(pctPJ) + '%)', origem: fontePJ, nivel: fontePJ === 'informado na ficha' ? 'baixa' : 'media', rotulo: fontePJ === 'informado na ficha' ? 'informado' : 'média' });
       if (dom && dom.entradas) fontes.push({ o_que: 'Base creditável de entradas', origem: 'Acompanhamento de entradas, classificado por CFOP', nivel: 'media', rotulo: 'média', ressalva: '— regime dos fornecedores não verificado' });
-      if (ent.mixCheia >= 99 && prestador) fontes.push({ o_que: 'Mix de alíquotas (integralmente cheia)', origem: 'Serviço não consta dos anexos de redução da LC 214', nivel: 'alta', rotulo: 'alta (norma)' });
-      else if (ent.mixCheia >= 99 && !mixMedido) fontes.push({ o_que: 'Mix de alíquotas (assumido integralmente cheio)', origem: 'Não medido — sem notas de venda na base. Produtos com redução (insumos agropecuários, cesta básica, medicamentos e outros dos anexos da LC 214) baixariam o débito por fora', nivel: 'baixa', rotulo: 'a conferir' });
+      if (ent.mixCheia >= 99 && transporte && !perfil.passageiros) fontes.push({ o_que: 'Alíquota do frete (integralmente cheia)', origem: 'Transporte de cargas não tem redução na LC 214 — as reduções de transporte são do coletivo de passageiros (arts. 284 a 287)', nivel: 'alta', rotulo: 'alta (norma)' });
+      else if (ent.mixCheia >= 99 && transporte && perfil.passageiros) fontes.push({ o_que: 'Alíquota do transporte de passageiros (assumida cheia)', origem: 'Transporte coletivo de passageiros tem redução (40% intermunicipal e interestadual; 100% urbano e metropolitano — LC 214, arts. 285 e 286): conferir o enquadramento', nivel: 'baixa', rotulo: 'a conferir' });
+      else if (ent.mixCheia >= 99 && prestador) fontes.push({ o_que: 'Mix de alíquotas (integralmente cheia)', origem: 'Serviço não consta dos anexos de redução da LC 214', nivel: 'alta', rotulo: 'alta (norma)' });
+      else if (ent.mixCheia >= 99 && !mixMedido && vendeMercadoria) fontes.push({ o_que: 'Mix de alíquotas (assumido integralmente cheio)', origem: 'Não medido — sem notas de venda na base. Produtos com redução (insumos agropecuários, cesta básica, medicamentos e outros dos anexos da LC 214) baixariam o débito por fora', nivel: 'baixa', rotulo: 'a conferir' });
       else if (ent.mixCheia >= 99) fontes.push({ o_que: 'Mix de alíquotas (integralmente cheia)', origem: 'NCM das notas de venda: nenhum item nos anexos de redução da LC 214', nivel: 'media', rotulo: 'média' });
       else if ((ent.mixRed40 || 0) > 0) fontes.push({ o_que: 'Mix de alíquotas (' + p1(ent.mixRed40) + '% com redução de 40%)', origem: 'LC 214/2025 arts. 273-276: alimentação preparada por bar/restaurante, inclusive com entrega por plataforma (art. 274, parágrafo único, II); bebidas alcoólicas e industrializados revendidos ficam na alíquota cheia (art. 273 §2º); o cliente não credita (art. 276)', nivel: 'alta', rotulo: 'alta (norma)', ressalva: '— divisão entre preparado e revendido estimada pelas seções do PGDAS' });
       if (ent.pctComprasComCredito != null) fontes.push({ o_que: 'Crédito das compras (' + p1(ent.pctComprasComCredito) + '% das mercadorias)', origem: 'NCM das notas de entrada classificado pela tabela de regimes da Reforma (cesta básica = zero)', nivel: 'media', rotulo: 'média', ressalva: '— classificação por NCM, sujeita a revisão item a item' });
@@ -1481,7 +1487,7 @@
         'Quanto da venda é <b>bebida alcoólica e industrializado revendido</b> (refrigerante, cerveja)? Ficam na alíquota cheia por fora; a divisão usada veio das seções do PGDAS.'
       ] : [
         'Os contratos com os maiores clientes têm <b>preço fechado</b> ou permitem repasse de tributo? Há cláusula de revisão?',
-        prestador ? 'Como o preço é negociado hoje — por hora técnica, por serviço, por contrato mensal?' : 'Como o preço é formado hoje — tabela, negociação por pedido, contrato de fornecimento?',
+        prestador ? 'Como o preço é negociado hoje — por hora técnica, por serviço, por contrato mensal?' : transporte ? 'Como o frete é cobrado hoje — tabela, contrato com o embarcador, por viagem? Há cláusula de reajuste?' : 'Como o preço é formado hoje — tabela, negociação por pedido, contrato de fornecimento?',
         'Algum cliente <b>já perguntou</b> sobre crédito de IBS/CBS em 2027?',
         'Há previsão de <b>investimento em máquinas ou equipamentos</b>? Compra de ativo gera crédito integral no regime regular e melhora a conta.'
       ];
@@ -1519,11 +1525,11 @@
         { nome: 'receita 30% menor', v: dif({ receita: ent.receita * 0.7 }), conferir: 'receita esperada para 2027' },
         { nome: 'receita 30% maior', v: dif({ receita: ent.receita * 1.3 }), conferir: 'receita esperada para 2027' }
       ];
-      if (!mixMedido && !prestador) testes.push({ nome: 'metade das vendas com redução de 60%', v: dif({ mixCheia: 50, mixRed60: 50, mixRed40: 0, mixRed30: 0, mixZero: 0 }), conferir: 'mix das vendas por NCM' });
+      if (!mixMedido && vendeMercadoria && !barRest) testes.push({ nome: 'metade das vendas com redução de 60%', v: dif({ mixCheia: 50, mixRed60: 50, mixRed40: 0, mixRed30: 0, mixZero: 0 }), conferir: 'mix das vendas por NCM' });
       const viram = testes.filter(t => inverteDif(t.v));
       const alertas = viram.map(t => ({ texto: 'Com ' + t.nome + ', o resultado se inverte (' + sinal(t.v) + ' no semestre apurando por fora).', conferir: t.conferir }));
       const pEnt = (ent.pctComprasMercadorias || 0) + (ent.pctComprasDespesas || 0);
-      if ((!prestador && pEnt > 90) || pEnt > 100) {
+      if ((vendeMercadoria && pEnt > 90) || pEnt > 100) {
         alertas.unshift({ texto: 'As entradas que geram crédito somam ' + p1(pEnt) + '% da receita — a empresa compra quase o mesmo (ou mais) do que vende. Pode ser formação de estoque, venda que não passa pela receita considerada, ou entrada lançada como revenda sem ser. Com uma proporção de compras mais usual, a conta por fora piora.', conferir: 'compras × vendas do período' });
         pendencias.unshift({ o_que: 'Compras × vendas do período', porque: 'Entradas em ' + p1(pEnt) + '% da receita, acima do usual — é o que mais pesa na conta por fora', onde: 'Acompanhamento de entradas e estoque; conversa com o cliente', quem: 'Fiscal / Direção', nivel: 'alta', peso: 'decisivo' });
       }
@@ -1536,13 +1542,12 @@
       if (dom && dom.excecoes && dom.excecoes.length) alertas.push({ texto: 'Usado nesta análise por decisão manual, de outro CNPJ: ' + dom.excecoes.join('; ') + '.', conferir: null });
       // mix não medido: observação sempre (dado faltando, com a direção do erro); vira alerta se puder inverter
       const observacoes = [];
-      const cnaeCaso = String(c.cnae_base || (cli && cli.cnae_principal) || '').replace(/\D/g, '');
-      const alimentacao = cnaeCaso.startsWith('56') || barRest;
+      const alimentacao = perfil.tipo === 'alimentacao';
       if (!mixMedido && alimentacao) {
         const v = dif({ mixCheia: 10, mixRed40: 90, mixRed60: 0, mixRed30: 0, mixZero: 0 });
         const t = 'As notas de venda não foram analisadas, então o cálculo pôs tudo na alíquota cheia. Em bar e restaurante a comida preparada tem redução de 40% — por fora, o custo real é menor que o mostrado' + (inverteDif(v) ? ', e com 90% das vendas com redução o resultado se inverte.' : ' (com 90% das vendas com redução ficaria ' + sinal(v) + ' no semestre — a conclusão não muda).');
         if (inverteDif(v)) alertas.push({ texto: t, conferir: 'notas de venda (NFC-e) — comida × bebida' }); else observacoes.push(t);
-      } else if (!mixMedido && !prestador && !viram.some(t => /mix|redução de 60/.test(t.nome))) {
+      } else if (!mixMedido && vendeMercadoria && !viram.some(t => /mix|redução de 60/.test(t.nome))) {
         observacoes.push('As notas de venda não foram analisadas, então o cálculo pôs tudo na alíquota cheia. Se a empresa vende produtos com redução (insumos agropecuários, cesta básica, medicamentos), o custo real por fora é menor — a conclusão não muda com metade das vendas nessa condição.');
       }
       const aConfirmar = alertas.length > 0;
@@ -1579,7 +1584,7 @@
           : consumidor
           ? 'Nenhuma incerteza técnica isolada derruba a diferença de ' + brl0(Math.abs(s.diferenca)) + ' do semestre, e não há variável comercial em jogo: ninguém credita o que compra desta empresa. A decisão é aritmética.'
           : 'Nenhuma incerteza técnica isolada derruba a diferença de ' + brl0(Math.abs(s.diferenca)) + ' do semestre. Só o repasse derruba — por isso a decisão é comercial, não fiscal.'),
-        consumidor, empate, pctPJ, fontePJ, barRest, prestador,
+        consumidor, empate, pctPJ, fontePJ, barRest, prestador, perfil,
         fontes, recomendacao: recomendacaoFinal, perguntas, pendencias
       };
     }
