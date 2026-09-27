@@ -120,7 +120,11 @@ export function gerarAnalise(d, opts = {}) {
     if (partes2.length) P('<p class="sobre">' + esc((sb.fantasia ? sb.fantasia + ' — ' : '') + partes2.join('; ')) + '.</p>');
   }
 
-  P('<div class="dados"><b>Prazo:</b> a opção deve ser formalizada até <b>30/09/2026</b> e pode ser <b>cancelada até 30/11/2026</b> sem produzir efeito (Resolução CGSN 186/2026). Quem não opta em setembro só tem nova janela em <b>março/2027</b>, com efeito a partir de <b>julho/2027</b>.'
+  const hojeISO = d.hojeISO || new Date().toISOString().slice(0, 10);
+  const janelaAberta = hojeISO <= '2026-09-30';
+  P('<div class="dados"><b>Prazo:</b> ' + (janelaAberta
+      ? 'a opção deve ser formalizada até <b>30/09/2026</b> e pode ser <b>cancelada até 30/11/2026</b> sem produzir efeito (Resolução CGSN 186/2026). Quem não opta em setembro só tem nova janela em <b>março/2027</b>, com efeito a partir de <b>julho/2027</b>.'
+      : 'a janela de setembro/2026 já fechou (a opção valeria desde janeiro/2027). A próxima é em <b>março/2027</b>, com efeito a partir de <b>julho/2027</b> (Resolução CGSN 186/2026) — esta análise serve de base para ela.')
     + (dominio || xml ? '<br><b>Base desta análise:</b> ' + [
         dominio && dominio.faturamento ? 'relatório de faturamento ' + dominio.periodoRotulo : null,
         dominio && dominio.pgdas ? 'apuração do Simples (PGDAS ' + esc(dominio.pgdas.competencia) + ')' : null,
@@ -136,11 +140,13 @@ export function gerarAnalise(d, opts = {}) {
     const internos = (d.alertas || []).filter(a => a.interno);
     const aConf = alertasVis.length > 0 && !empate;
     if (versaoCliente && internos.length) partes.unshift('<div class="so-escritorio"><b>Antes de mandar pro cliente</b> (esta faixa não sai na impressão): ' + internos.map(a => esc(a.texto.replace(/<[^>]+>/g, ''))).join(' · ') + '</div>');
-    const decisao = empate ? 'Manter como está'
-      : optar ? 'Recolher o IBS/CBS por fora do DAS'
-      : 'Manter como está';
+    const dec = (d.recomendacao && d.recomendacao.decisao) || (optar ? 'optar' : 'manter');
+    const decisao = { manter: 'Manter como está', optar: 'Recolher o IBS/CBS por fora do DAS', optar_marco: 'Recolher o IBS/CBS por fora do DAS a partir de julho/2027',
+      formalizar: 'Registrar a opção até 30/09 — e decidir até 30/11', manter_reavaliar: 'Manter por ora — e reavaliar em março/2027' }[dec] || 'Manter como está';
     const selo = aConf ? 'TENDÊNCIA — A CONFIRMAR' : empate ? 'RECOMENDAÇÃO · EMPATE TÉCNICO' : 'RECOMENDAÇÃO';
-    const oQue = optar
+    const oQue = dec === 'formalizar'
+      ? 'Registrar a opção não muda nada ainda: até 30/11/2026 dá pra cancelar sem efeito nenhum. Serve pra não perder a chance enquanto você vê com os seus principais clientes se faz sentido.'
+      : dec === 'optar' || dec === 'optar_marco'
       ? 'A empresa continua no Simples, mas passa a pagar o IBS e a CBS numa apuração separada, descontando o que pagou nas compras.'
       : 'A empresa continua pagando tudo numa guia só, o DAS do Simples, como hoje.';
     let porque;
@@ -150,7 +156,7 @@ export function gerarAnalise(d, opts = {}) {
       const ganhoCli = s.aproveitadoFora - s.aproveitadoDentro;
       porque = 'Continuar no DAS sai ' + brl0(dif) + ' mais barato no primeiro semestre de 2027 (' + pct2(pctRec) + '% do faturamento).'
         + (d.consumidor ? ' A maioria das vendas é para pessoa física, que não aproveita o imposto destacado — então não há ganho para o cliente.'
-          : ganhoCli > dif ? ' Mas os seus clientes empresa aproveitariam ' + brl0(ganhoCli) + ' a mais de crédito se você recolhesse por fora — mais do que o seu custo a mais. Optar só compensa se eles aceitarem pagar parte disso no preço: é uma conversa comercial com os maiores clientes antes de 30/09.'
+          : ganhoCli > dif ? ' Mas os seus clientes empresa aproveitariam ' + brl0(ganhoCli) + ' a mais de crédito se você recolhesse por fora — mais do que o seu custo a mais' + (d.sobre && d.sobre.clientes ? '' : ' (contando todos os clientes empresa; os do Simples não aproveitam, então o ganho real deles é menor)') + '. Só vale a pena se eles pagarem parte desse imposto no preço — ' + (janelaAberta ? 'e há tempo pra ver isso: registrando a opção até 30/09, dá pra cancelar até 30/11 sem efeito nenhum se não fizer sentido.' : 'há tempo até a janela de março/2027 pra ver isso com eles.')
           : ' O crédito a mais que os clientes empresa aproveitariam (' + brl0(Math.max(0, ganhoCli)) + ') não cobre esse custo.');
     }
     const maxV = Math.max(s.custoDentro, s.custoFora) || 1;
@@ -159,11 +165,17 @@ export function gerarAnalise(d, opts = {}) {
       + '<div class="rs-dec">' + decisao + '</div>'
       + '<p class="rs-oq">' + oQue + '</p>'
       + '<div class="rs-barras"><div class="rs-cap">Custo com impostos no 1º semestre de 2027</div>'
-      + barra('Por dentro do DAS' + (optar ? '' : ' ✓'), s.custoDentro, !optar) + barra('Por fora do DAS' + (optar ? ' ✓' : ''), s.custoFora, optar) + '<div class="rs-cap" style="margin-top:4px;text-transform:none;letter-spacing:0">✓ recomendado' + (empate ? ' — a diferença está dentro da margem de incerteza' : '') + '</div></div>'
+      + (dec === 'formalizar' || dec === 'manter_reavaliar'
+          ? barra('Por dentro do DAS', s.custoDentro, false) + barra('Por fora do DAS', s.custoFora, false) + '<div class="rs-cap" style="margin-top:4px;text-transform:none;letter-spacing:0">Com o preço de hoje, por dentro sai mais barato; por fora só compensa com parte do imposto no preço.</div></div>'
+          : barra('Por dentro do DAS' + (optar ? '' : ' ✓'), s.custoDentro, !optar) + barra('Por fora do DAS' + (optar ? ' ✓' : ''), s.custoFora, optar) + '<div class="rs-cap" style="margin-top:4px;text-transform:none;letter-spacing:0">✓ recomendado' + (empate ? ' — a diferença está dentro da margem de incerteza' : '') + '</div></div>')
       + '<p><b>Por quê:</b> ' + porque + '</p>'
       + (alertasVis.length ? '<p style="margin-bottom:4px"><b>' + (aConf ? 'Antes de decidir, precisamos confirmar:' : 'Pontos de atenção:') + '</b></p><ul class="rs-al">' + alertasVis.map(a => '<li>' + a.texto + '</li>').join('') + '</ul>' : '')
       + (d.observacoes && d.observacoes.length ? '<p style="margin-bottom:4px"><b>Dados que faltaram' + (aConf || alertasVis.length ? ' (não mudam a conclusão)' : '') + ':</b></p><ul class="rs-al">' + d.observacoes.map(t => '<li>' + t + '</li>').join('') + '</ul>' : '')
-      + (optar ? '<p class="rs-pz">Se optar: formalizar até <b>30/09/2026</b>. Dá pra cancelar até <b>30/11/2026</b> sem efeito.</p>' : '<p class="rs-pz">Mantendo, não é preciso fazer nada. Se o quadro mudar, há nova janela em março/2027.</p>')
+      + ({ optar: '<p class="rs-pz">Próximo passo: formalizar a opção até <b>30/09/2026</b>. Dá pra cancelar até <b>30/11/2026</b> sem efeito.</p>',
+           formalizar: '<p class="rs-pz">Próximo passo: registrar a opção até <b>30/09/2026</b>; decidir até <b>30/11/2026</b> (cancelar, se não fizer sentido).</p>',
+           optar_marco: '<p class="rs-pz">Próximo passo: formalizar a opção na janela de <b>março/2027</b>; vale a partir de julho/2027.</p>',
+           manter_reavaliar: '<p class="rs-pz">Próximo passo: nenhum agora. Reavaliar antes da janela de <b>março/2027</b>.</p>' }[dec]
+         || '<p class="rs-pz">Mantendo, não é preciso fazer nada. Se o quadro mudar, há nova janela em março/2027.</p>')
       + '</div>');
   }
 

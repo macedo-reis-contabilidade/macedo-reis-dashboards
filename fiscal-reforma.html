@@ -1488,26 +1488,38 @@
 
       // recomendação: a assimetria das janelas manda mais que a diferença de custo
       const aprovGanho = s.aproveitadoFora - s.aproveitadoDentro;
+      // JANELA (27/09/2026): os textos dependem da data em que o relatório é gerado
+      const hojeISO = globalThis.__HOJE_ISO__ || new Date().toISOString().slice(0, 10);   // (teste pode fixar a data)
+      const janelaAberta = hojeISO <= '2026-09-30';
+      const ganhoSuperaCusto = !consumidor && !optar && !empate && aprovGanho > Math.abs(s.diferenca);
       const recomendacao = empate
-        ? { titulo: 'Manter o IBS/CBS dentro do DAS — empate técnico, não formalizar a opção',
+        ? { decisao: 'manter', titulo: 'Manter o IBS/CBS dentro do DAS — empate técnico, não formalizar a opção',
             corpo: '<p>Por fora a conta sai ' + brl0(Math.abs(s.diferenca)) + ' menor no semestre — ' + p1(Math.abs(s.diferenca) / (ent.receita * 6) * 100) + '% da receita, abaixo do limiar de ' + brl0(sim.veredito.limiarEmpate) + ' que o escritório adota pra recomendar a mudança. '
               + (consumidor ? 'E não há cliente que ganhe com a opção: ' + (pctPJ != null ? p1(100 - pctPJ) + '% das vendas vão a pessoa física ou consumidor, que não credita' : 'a empresa vende a consumidor final, que não credita') + ' — a carteira PJ aproveitaria só ' + brl0(Math.max(0, aprovGanho)) + ' a mais.' : 'A carteira PJ aproveitaria só ' + brl0(Math.max(0, aprovGanho)) + ' a mais de crédito.') + '</p>'
               + '<p>Essa vantagem depende de premissas que ainda não foram conferidas e que, se falharem, a apagam: crédito cheio sobre <b>todas</b> as entradas, fornecedores do regime regular, crédito liberado só com o tributo do fornecedor pago. Soma-se o custo de passar a apurar IBS/CBS fora do DAS todo mês.</p>'
-              + '<p style="margin-bottom:0">Não formalizar a opção em setembro. A janela reabre em março/2027 (efeito em julho) se o quadro mudar — margem, fornecedores ou vendas a empresas.</p>' }
+              + '<p style="margin-bottom:0">' + (janelaAberta ? 'Não formalizar a opção em setembro. A janela reabre' : 'Nada a fazer agora. A próxima janela é') + ' em março/2027 (efeito em julho) se o quadro mudar — margem, fornecedores ou vendas a empresas.</p>' }
         : consumidor && !optar
-        ? { titulo: 'Manter o IBS/CBS dentro do DAS — não formalizar a opção',
+        ? { decisao: 'manter', titulo: 'Manter o IBS/CBS dentro do DAS — não formalizar a opção',
             corpo: '<p>A simulação aponta ' + brl0(Math.abs(s.diferenca)) + ' de economia no semestre mantendo a apuração por dentro, e não há variável comercial capaz de inverter: a empresa vende a consumidor final' + (barRest ? ' e, sendo bar/restaurante, nem o cliente pessoa jurídica pode creditar (art. 276)' : '') + '. Apurar por fora não devolveria crédito a ninguém.</p>'
               + '<p>Por fora a empresa passaria a destacar CBS e IBS na nota do consumidor' + (barRest ? ' — ' + p1((ent.cbs + ent.ibs) * 0.6) + '% sobre a alimentação preparada e ' + p1(ent.cbs + ent.ibs) + '% sobre bebidas revendidas —' : '') + ' e a apurar crédito só sobre a parte tributada das compras' + (barRest || (ent.pctComprasComCredito != null && ent.pctComprasComCredito < 60) ? '; a maior parte do que ela compra é cesta básica, alíquota zero, sem crédito.' : '.') + ' A conta não fecha em nenhum dos cenários testados na seção 6.</p>'
-              + '<p style="margin-bottom:0">Não formalizar a opção em setembro. A janela reabre em março/2027 (efeito em julho) se o quadro mudar — por exemplo, se a empresa passar a vender a pessoas jurídicas fora do regime de bar e restaurante, ou se o mix de compras mudar.</p>' }
+              + '<p style="margin-bottom:0">' + (janelaAberta ? 'Não formalizar a opção em setembro. A janela reabre' : 'Nada a fazer agora. A próxima janela é') + ' em março/2027 (efeito em julho) se o quadro mudar — por exemplo, se a empresa passar a vender a pessoas jurídicas fora do regime de bar e restaurante, ou se o mix de compras mudar.</p>' }
         : optar && consumidor
-        ? { titulo: 'Optar pelo recolhimento de IBS/CBS por fora do DAS — pela conta da própria empresa',
+        ? { decisao: janelaAberta ? 'optar' : 'optar_marco', titulo: (janelaAberta ? 'Optar' : 'Optar na próxima janela (março/2027)') + ' pelo recolhimento de IBS/CBS por fora do DAS — pela conta da própria empresa',
             corpo: '<p>A simulação aponta ' + brl0(Math.abs(s.diferenca)) + ' de economia no semestre apurando por fora (' + p1(Math.abs(s.diferenca) / (ent.receita * 6) * 100) + '% da receita). O motivo não é o cliente — ' + (pctPJ != null ? p1(100 - pctPJ) + '% das vendas vão a quem não credita' : 'a empresa vende a consumidor final') + ' —, é a conta própria: as entradas creditáveis são ' + p1(ent.pctComprasMercadorias + ent.pctComprasDespesas) + '% da receita, e por fora o IBS/CBS incide só sobre a margem.</p>'
-              + '<p style="margin-bottom:0">Antes de formalizar, confirmar o que sustenta esse crédito: fornecedores do regime regular e mix das vendas. A opção pode ser cancelada até 30/11/2026 sem efeito.</p>' }
+              + '<p style="margin-bottom:0">Antes de formalizar, confirmar o que sustenta esse crédito: fornecedores do regime regular e mix das vendas.' + (janelaAberta ? ' A opção pode ser cancelada até 30/11/2026 sem efeito.' : ' A formalização é na janela de março/2027, com efeito a partir de julho.') + '</p>' }
         : optar
-        ? { titulo: 'Optar pelo recolhimento de IBS/CBS por fora do DAS',
+        ? { decisao: janelaAberta ? 'optar' : 'optar_marco', titulo: janelaAberta ? 'Optar pelo recolhimento de IBS/CBS por fora do DAS' : 'Optar pelo recolhimento de IBS/CBS por fora do DAS na próxima janela (março/2027)',
             corpo: '<p>A simulação aponta ' + brl0(Math.abs(s.diferenca)) + ' de economia no semestre apurando por fora, e a carteira PJ passa a aproveitar ' + brl0(s.aproveitadoFora) + ' de crédito (contra ' + brl0(s.aproveitadoDentro) + ' por dentro).</p>'
               + '<p style="margin-bottom:0">Vale confirmar antes da formalização os itens da seção seguinte, em especial o regime tributário dos maiores clientes: o crédito gerado por fora só tem valor para quem apura pelo regime regular.</p>' }
-        : { titulo: 'Formalizar a opção em setembro e decidir de fato até 30/11',
+        : !ganhoSuperaCusto
+        ? { decisao: 'manter', titulo: 'Manter o IBS/CBS dentro do DAS',
+            corpo: '<p>Por dentro sai ' + brl0(Math.abs(s.diferenca)) + ' mais barato no semestre. O crédito a mais que os clientes empresa aproveitariam por fora (' + brl0(Math.max(0, aprovGanho)) + ') não cobre esse custo — nem com parte do imposto repassada no preço a conta fecha a favor de optar.</p>'
+              + '<p style="margin-bottom:0">' + (janelaAberta ? 'Não formalizar a opção em setembro.' : 'A janela de setembro já fechou; nada a fazer.') + ' Se o quadro mudar — mais vendas a empresas do regime regular, contratos que aceitem o destaque do imposto —, há nova janela em março/2027, com efeito a partir de julho.</p>' }
+        : !janelaAberta
+        ? { decisao: 'manter_reavaliar', titulo: 'Manter por ora e reavaliar na janela de março/2027',
+            corpo: '<p>Por dentro sai ' + brl0(Math.abs(s.diferenca)) + ' mais barato no semestre, mas os clientes empresa aproveitariam ' + brl0(aprovGanho) + ' a mais de crédito se a empresa recolhesse por fora — mais que o custo a mais. Optar só vale se eles pagarem parte desse imposto no preço.</p>'
+              + '<p style="margin-bottom:0">A janela de setembro/2026 já fechou. Há tempo até março/2027 pra conversar com os principais clientes; se aceitarem, a opção feita em março vale a partir de julho/2027.</p>' }
+        : { decisao: 'formalizar', titulo: 'Formalizar a opção em setembro e decidir de fato até 30/11',
             corpo: '<p>A recomendação <b>não</b> é simplesmente manter o IBS/CBS dentro do DAS, apesar de a conta apontar ' + brl0(Math.abs(s.diferenca)) + ' de economia no semestre com preço inalterado. É <b>formalizar a opção até 30/09 e usar a janela de cancelamento</b>, pelos motivos abaixo:</p><ol>'
               + '<li><b>As portas não são simétricas.</b> Optar agora é reversível: o cancelamento até 30/11/2026 anula a opção sem qualquer efeito. Não optar tranca a apuração dentro do DAS até março/2027, com efeito só em julho — sete meses sem poder mudar de ideia.</li>'
               + '<li><b>A variável que decide ainda não foi levantada.</b> ' + (viraEm != null && viraEm <= 100 ? 'A partir de ' + Math.round(viraEm) + '% de repasse da CBS o resultado inverte. ' : '') + 'Isso é conversa comercial com os maiores clientes — e setembro a novembro é exatamente o tempo de tê-la.</li>'
@@ -1609,7 +1621,7 @@
           corpo: '<p>Pelos números de hoje, ' + lado + ' sai ' + brl0(Math.abs(s.diferenca)) + ' mais barato no semestre (' + p1(Math.abs(s.diferenca) / (ent.receita * 6) * 100) + '% da receita). Mas esse resultado ainda não é seguro:</p>'
             + listaAlertas
             + (conferirLista.length ? '<p>Antes de decidir, conferir: <b>' + conferirLista.join('</b>, <b>') + '</b>.</p>' : '')
-            + (optar ? '<p style="margin-bottom:0">Se não der pra conferir até 30/09/2026, é possível formalizar a opção e cancelá-la até 30/11/2026 sem efeito, caso a conferência não confirme.</p>' : '<p style="margin-bottom:0">Enquanto não houver confirmação, manter é o caminho sem custo de mudança.</p>')
+            + (optar ? '<p style="margin-bottom:0">' + (janelaAberta ? 'Se não der pra conferir até 30/09/2026, é possível formalizar a opção e cancelá-la até 30/11/2026 sem efeito, caso a conferência não confirme.' : 'A próxima janela é em março/2027 (efeito em julho): há tempo pra conferir antes.') + '</p>' : '<p style="margin-bottom:0">Enquanto não houver confirmação, manter é o caminho sem custo de mudança.</p>')
         };
       }
       const sensibilidadeNotaFinal = !empate && viram.length
@@ -1631,7 +1643,7 @@
         fornecedores: dom && dom.fornecedoresRegime, clientes: dom && dom.clientesRegime
       };
       return {
-        sobre,
+        sobre, hojeISO,
         alertas, aConfirmar, pendenciasNota, observacoes,
         cliente: cli || { nome_principal: '—', documento: null }, caso: c, sim, entrada: ent, dominio: dom, xml,
         logoUrl: new URL('assets/logo-mr.png', location.href).href,

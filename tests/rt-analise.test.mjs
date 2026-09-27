@@ -77,6 +77,22 @@ chk('pergunta sobre o frete, não sobre hora técnica', /Como o frete é cobrado
 chk('sem ISS retido (frete é ICMS)', !/ISS retido/.test(tr.txt));
 chk('resumo não diz "não compensa" quando o crédito dos clientes supera o custo', !/não compensa o custo/.test(tr.txt) && /conversa comercial/.test(tr.txt));
 
+// 8) Janela e B2B com crédito dos clientes maior que o custo: registrar agora, decidir até 30/11 — nunca "conversar até 30/09"
+globalThis.__HOJE_ISO__ = '2026-09-28';
+const b2b = caso('TRANSPORTES TESTE', { anexo:'III', rbt12:410549.94, receita:35875.03, mixCheia:100, pctComprasMercadorias:1.3, pctComprasDespesas:2.2, pctImpostoEmbutido:0, pctExcluidoST:10.2, partilha:16.6, cbs:9.3, ibs:0.1, pctPJ:99.5, aliqEfetivaInformada:8.26 },
+  { faturamento: { total: 287000.22, servicos: 0, saidas: 287000.22 }, periodoRotulo: 'jan/26–ago/26', entradas: { grupos: [] }, vendas: { total: 287003.22, pctPJ: 99.5, pj: 285523, pf: 1480, consumidor: 0, nPJ: 109 } }, null, '4930-2/02');
+console.log('Janela aberta, crédito dos clientes > custo:');
+chk('decisão: registrar até 30/09 e decidir até 30/11', /Registrar a opção até 30\/09 — e decidir até 30\/11/.test(b2b.txt));
+chk('nada de "conversa ... antes de 30/09"', !/antes de 30\/09/.test(b2b.txt));
+globalThis.__HOJE_ISO__ = '2026-10-05';
+const b2bOut = caso('TRANSPORTES TESTE', { anexo:'III', rbt12:410549.94, receita:35875.03, mixCheia:100, pctComprasMercadorias:1.3, pctComprasDespesas:2.2, pctImpostoEmbutido:0, pctExcluidoST:10.2, partilha:16.6, cbs:9.3, ibs:0.1, pctPJ:99.5, aliqEfetivaInformada:8.26 },
+  { faturamento: { total: 287000.22, servicos: 0, saidas: 287000.22 }, periodoRotulo: 'jan/26–ago/26', entradas: { grupos: [] }, vendas: { total: 287003.22, pctPJ: 99.5, pj: 285523, pf: 1480, consumidor: 0, nPJ: 109 } }, null, '4930-2/02');
+console.log('Janela fechada (outubro):');
+chk('prazo diz que setembro fechou e aponta março/2027', /janela de setembro\/2026 já fechou/.test(b2bOut.txt) && /março\/2027/.test(b2bOut.txt));
+chk('decisão: manter por ora e reavaliar em março/2027', /Manter por ora — e reavaliar em março\/2027/.test(b2bOut.txt));
+chk('sem "formalizar até 30/09"', !/formalizar a opção até <b>30\/09|formalizar até 30\/09|até 30\/09\/2026;/.test(b2bOut.txt.replace(/\s+/g, ' ')) && !/Registrar a opção até 30\/09/.test(b2bOut.txt));
+delete globalThis.__HOJE_ISO__;
+
 // 3) Drogaria Guerra (referência)
 const g = simular({ anexo:'I', rbt12:1800000, receita:150000, mixCheia:20, mixRed60:70, mixRed30:0, mixZero:10, pctComprasMercadorias:60, pctComprasDespesas:5.33, pctImpostoEmbutido:18, pctExcluidoST:33.5, partilha:15.5, cbs:9.3, ibs:0, pctPJ:10, creditoEstoqueMes:1541.67 });
 console.log('Referência:'); chk('Guerra continua OPTE (' + g.veredito.tipo + ')', g.veredito.tipo === 'OPTE');
