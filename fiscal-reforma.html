@@ -1387,7 +1387,7 @@
       const pctPJ = xml && xml.pctPJ != null ? xml.pctPJ : vendasDom && vendasDom.pctPJ != null ? vendasDom.pctPJ : (ent.pctPJ != null && ent.pctPJ !== '' ? Number(ent.pctPJ) : null);
       const fontePJ = xml && xml.pctPJ != null ? 'XML das notas' : vendasDom && vendasDom.pctPJ != null ? vendasDom.fonte || 'acompanhamento de saídas (Domínio)' : pctPJ != null ? 'informado na ficha' : null;
       const barRest = (ent.mixRed40 || 0) > 0;
-      const consumidor = barRest || (pctPJ != null && pctPJ < 20);
+      let consumidor = barRest || (pctPJ != null && pctPJ < 20);
       // ATIVIDADE — serviço x comércio, pelo faturamento ou pelas saídas/serviços
       const servShare = dom && dom.faturamento && dom.faturamento.total > 0 ? dom.faturamento.servicos / dom.faturamento.total * 100
         : vendasDom && vendasDom.total > 0 ? (vendasDom.servicos || 0) / vendasDom.total * 100 : null;
@@ -1396,6 +1396,8 @@
       const transporte = perfil.tipo === 'transporte';
       const temServico = prestador;
       const vendeMercadoria = perfil.vendeMercadoria;
+      const ehAlimentacao = perfil.tipo === 'alimentacao';      // lancheria, restaurante, bar: textos próprios, nunca os de varejo
+      if (ehAlimentacao) consumidor = true;
       const cnaeRamo = c.cnae_base || (cli && cli.cnae_principal) || '';
       const podeReduzir = vendeMercadoria && (perfil.tipo === 'alimentacao' || ramoComReducao((cli && cli.cnae_principal) || cnaeRamo));
       const mixMedido = !((ent.mixCheia || 0) >= 99) || !!(xml && xml.nNotas);
@@ -1526,16 +1528,16 @@
               + '<li><b>O cliente vai perguntar antes.</b> A queda no crédito aparece na planilha de compras dele em janeiro de 2027. É melhor chegar com a proposta do que receber a cobrança.</li></ol>'
               + '<p style="margin-bottom:0">Se até novembro ficar claro que os contratos não comportam o destaque da CBS, cancela-se a opção e tudo segue como está — com a economia preservada e nenhum custo pela tentativa.</p>' };
 
-      const perguntas = consumidor && !barRest ? [
+      const perguntas = consumidor && !ehAlimentacao ? [
         'A receita passa <b>toda</b> por nota (NF-e/NFC-e)? Há venda fora das notas? A simulação usa o faturamento registrado na contabilidade.',
         ...(podeReduzir ? ['Quais <b>linhas de produto</b> pesam mais nas vendas? Insumos agropecuários, itens da cesta básica e medicamentos têm redução ou alíquota zero por fora — isso muda o débito.'] : []),
         ...(dom && dom.fornecedoresRegime ? [] : ['Os principais <b>fornecedores</b> são indústria ou distribuidor do regime regular, ou do Simples? Fornecedor do Simples não gera crédito cheio — é o que sustenta (ou derruba) a conta por fora.']),
         'Há previsão de <b>investimento em máquinas, veículos ou reforma</b> em 2027? Compra de ativo gera crédito integral no regime regular.'
       ] : consumidor ? [
-        'A receita passa <b>toda</b> por NFC-e? Há venda por aplicativo (iFood etc.) que não esteja nas notas? A simulação usa o faturamento do Domínio' + (dom && dom.faturamento ? ', que fecha com as notas' : '') + '.',
+        'A receita passa <b>toda</b> por NFC-e? Há venda por aplicativo (iFood etc.) que não esteja nas notas? A simulação usa o faturamento registrado na contabilidade.',
         'Há previsão de <b>investimento em máquinas, reforma ou equipamentos</b> em 2027? Compra de ativo gera crédito integral no regime regular e é o que mais mexe nessa conta.',
         'Existe venda relevante a <b>pessoa jurídica fora do balcão</b> (refeições coletivas, eventos, contrato)? Isso fica fora do regime de bar e restaurante e muda o crédito do cliente.',
-        'Quanto da venda é <b>bebida alcoólica e industrializado revendido</b> (refrigerante, cerveja)? Ficam na alíquota cheia por fora; a divisão usada veio das seções do PGDAS.'
+        'Quanto da venda é <b>bebida</b> (refrigerante, cerveja, água)? Por fora, as bebidas pagam o imposto cheio e a comida tem desconto de 40% — com as notas (NFC-e) a gente mede isso direto.'
       ] : [
         'Os contratos com os maiores clientes têm <b>preço fechado</b> ou permitem repasse de tributo? Há cláusula de revisão?',
         prestador ? 'Como o preço é negociado hoje — por hora técnica, por serviço, por contrato mensal?' : transporte ? 'Como o frete é cobrado hoje — tabela, contrato com o embarcador, por viagem? Há cláusula de reajuste?' : 'Como o preço é formado hoje — tabela, negociação por pedido, contrato de fornecimento?',
@@ -1547,7 +1549,7 @@
         perguntas.splice(3, 0, '<b>' + maior.nome + ' representa ' + p1(maior.pct) + '% da receita.</b> O que acontece se pedir desconto equivalente ao crédito que deixará de tomar?');
       }
 
-      const pendencias = consumidor && !barRest ? [
+      const pendencias = consumidor && !ehAlimentacao ? [
         ...(!mixMedido && podeReduzir ? [{ o_que: 'Mix das vendas por NCM', porque: 'A análise supôs tudo à alíquota cheia; produtos com redução baixam o débito por fora', onde: 'Notas de venda (XML) ou cadastro de produtos', quem: 'Fiscal', nivel: 'media', peso: 'médio' }] : [])
       ] : consumidor ? [
         { o_que: 'Classificação das compras por NCM', porque: 'Define quanto das compras credita por fora (cesta básica não credita); a tabela de NCM merece revisão item a item nos maiores fornecedores', onde: 'Itens das notas de entrada', quem: 'Fiscal', nivel: 'media', peso: 'médio' },

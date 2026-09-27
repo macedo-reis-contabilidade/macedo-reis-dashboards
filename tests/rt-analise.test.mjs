@@ -63,6 +63,8 @@ console.log('Restaurante sem notas:');
 chk('veredito segue MANTENHA', rs.sim.veredito.tipo === 'MANTENHA');
 chk('aponta o desconto de 40% que faltou medir, em linguagem simples', /a comida paga o imposto novo com desconto de 40%/.test(rs.txt) && /Para um cálculo mais preciso/.test(rs.txt));
 chk('diz que a recomendação não muda', /a recomendação não muda/.test(rs.txt));
+{ const perg = rs.txt.slice(rs.txt.indexOf('O que levantar'), rs.txt.indexOf('O que falta para fechar'));
+  chk('lancheria: perguntas de restaurante, sem cesta básica nem insumos agropecuários', /iFood/.test(perg) && !/cesta básica|insumos agropecuários|linhas de produto/.test(perg)); }
 
 // 7) Transportadora de carga (CT-e nas saídas, CNAE 4930, Anexo III): nada de mix, redução ou "produtos"
 const tr = caso('TRANSPORTES TESTE', { anexo:'III', rbt12:410549.94, receita:35875.03, mixCheia:100, pctComprasMercadorias:1.3, pctComprasDespesas:2.2, pctImpostoEmbutido:0, pctExcluidoST:10.2, partilha:16.6, cbs:9.3, ibs:0.1, pctPJ:99.5, aliqEfetivaInformada:8.26 },
