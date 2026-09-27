@@ -740,7 +740,7 @@ export function consolidar(rels, incluir, opcoes = {}) {
     const razao = campos.receita * 12 / campos.rbt12 * 100;
     campos.receitaSobreRbt12 = razao;
     if (razao < 70 || razao > 130) avisos.push('Receita dos relatórios × 12 = ' + brl(campos.receita * 12) + ', ' + pct(razao) + '% do RBT12 do PGDAS (' + brl(campos.rbt12) + '). '
-      + (razao < 70 ? 'Pode estar faltando receita (relatório de serviços, filial — o RBT12 é do CNPJ inteiro) ou a empresa encolheu no período.' : 'A empresa cresceu no período ou o PGDAS é de um estabelecimento só.') + ' Confira antes de calcular.');
+      + (razao < 70 ? 'Pode estar faltando receita (relatório de serviços, filial — o RBT12 é da empresa inteira) ou a empresa encolheu no período.' : 'Ou a empresa cresceu no período (o RBT12 inclui meses anteriores, mais fracos — confira o faturamento desses meses no Domínio), ou os relatórios trazem receita que não foi declarada no Simples.') + ' Confira antes de calcular.');
   }
   return { campos, origem, avisos, fat, sim, ent, ven, resVen, competencias };
 }
