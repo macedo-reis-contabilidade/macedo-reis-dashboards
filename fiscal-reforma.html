@@ -396,8 +396,6 @@
         // espelho da carteira (23/09/2026): quem saiu da carteira some da lista; o caso fica guardado no banco
         const hoje = new Date().toISOString().slice(0, 10);
         const saiu = new Set((cart || []).filter(x => x.saida && x.saida <= hoje).map(x => x.cliente_id));
-        // e quem deixou de ser cliente ativo no cadastro também
-        (clis || []).forEach(c => { if (c.status && !['ativo', 'em_transicao'].includes(String(c.status))) saiu.add(c.id); });
         casos = casos.filter(c => !saiu.has(c.cliente_id));
       }
       casos.sort((a, b) => (clientesMap[a.cliente_id]?.nome_principal || '').localeCompare(clientesMap[b.cliente_id]?.nome_principal || ''));
