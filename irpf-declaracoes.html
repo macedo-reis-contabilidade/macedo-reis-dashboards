@@ -11,61 +11,61 @@
     .page-header { max-width:880px; }
 
     .fa-focus { display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin-bottom:20px; }
-    .fa-focus-card { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:14px 16px; display:flex; flex-direction:column; gap:4px; }
-    .fc-num { font-size:24px; font-weight:700; color:#E6EBF2; line-height:1; }
+    .fa-focus-card { background:var(--fill-1); border:1px solid var(--line); border-radius:14px; padding:14px 16px; display:flex; flex-direction:column; gap:4px; }
+    .fc-num { font-size:24px; font-weight:700; color:var(--text); line-height:1; }
     .fc-num.money { font-size:18px; }
-    .fc-lbl { font-size:12px; color:#8A93A6; }
+    .fc-lbl { font-size:12px; color:var(--text-muted); }
     @media (max-width:760px){ .fa-focus { grid-template-columns:repeat(2,1fr); } }
 
     .bo-toolbar { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; justify-content:space-between; margin-bottom:16px; }
     .bo-left, .bo-right { display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; }
-    .bo-comp { display:flex; flex-direction:column; gap:5px; font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:#8AAEC8; }
+    .bo-comp { display:flex; flex-direction:column; gap:5px; font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--brand-light); }
 
-    .bo-tablewrap { background:rgba(255,255,255,.025); border:1px solid rgba(255,255,255,.08); border-radius:14px; overflow-x:auto; }
+    .bo-tablewrap { background:var(--fill-1); border:1px solid var(--line); border-radius:14px; overflow-x:auto; }
     table.bo { border-collapse:collapse; width:100%; min-width:1120px; font-size:12.5px; }
-    table.bo th { position:sticky; top:0; background:#11171f; color:#8AAEC8; font-weight:600; text-align:left; padding:8px 6px; border-bottom:1px solid rgba(255,255,255,.08); font-size:11px; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; z-index:1; }
-    table.bo td { padding:4px 6px; border-bottom:1px solid rgba(255,255,255,.05); vertical-align:middle; }
-    table.bo tr:hover td { background:rgba(255,255,255,.02); }
-    .ci { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.14); color:#E6EBF2; border-radius:7px; padding:5px 6px; font-size:12.5px; width:100%; outline:none; font-family:inherit; }
-    .ci:focus { border-color:#5B82A6; }
+    table.bo th { position:sticky; top:0; background:var(--surface); color:var(--brand-light); font-weight:600; text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); font-size:11px; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; z-index:1; }
+    table.bo td { padding:4px 6px; border-bottom:1px solid var(--line); vertical-align:middle; }
+    table.bo tr:hover td { background:var(--fill-1); }
+    .ci { background:var(--fill-1); border:1px solid var(--fill-3); color:var(--text); border-radius:7px; padding:5px 6px; font-size:12.5px; width:100%; outline:none; font-family:inherit; }
+    .ci:focus { border-color:var(--brand-primary); }
     .ci.nome { min-width:175px; font-weight:600; }
     .ci.val { width:78px; text-align:right; }
     .ci.dt { width:122px; }
     .ci.sel { width:104px; }
-    td.ant { color:#8A93A6; text-align:right; white-space:nowrap; width:78px; }
-    td.ant .novo { color:#8AAEC8; font-size:11px; font-weight:600; letter-spacing:.04em; }
+    td.ant { color:var(--text-muted); text-align:right; white-space:nowrap; width:78px; }
+    td.ant .novo { color:var(--brand-light); font-size:11px; font-weight:600; letter-spacing:.04em; }
     .w-obs { min-width:150px; }
-    td.num { color:#8A93A6; text-align:center; width:30px; }
-    .st, .cb { border-radius:7px; padding:5px 6px; font-size:12px; font-weight:600; border:1px solid rgba(255,255,255,.14); font-family:inherit; cursor:pointer; background:rgba(255,255,255,.04); color:#D7DEE8; }
+    td.num { color:var(--text-muted); text-align:center; width:30px; }
+    .st, .cb { border-radius:7px; padding:5px 6px; font-size:12px; font-weight:600; border:1px solid var(--fill-3); font-family:inherit; cursor:pointer; background:var(--fill-1); color:var(--text); }
     .st { width:128px; }
     .cb { width:138px; }
-    .st-a_contatar { color:#c3c9d4; }
-    .st-em_andamento { color:#8AAEC8; border-color:rgba(91,130,166,.45); }
-    .st-entregue { color:#3FB07A; border-color:rgba(63,176,122,.45); }
-    .st-nao_declara { color:#8A93A6; }
-    .st-ja_fez { color:#8A93A6; }
-    .st-desvinculado { color:#E06C6C; border-color:rgba(224,108,108,.4); }
-    .cb-a_cobrar { color:#E3B341; border-color:rgba(227,179,65,.45); }
-    .cb-pago { color:#0e1a13; background:#3FB07A; border-color:#3FB07A; font-weight:700; }
-    .cb-lancado_ca { color:#8AAEC8; border-color:rgba(91,130,166,.45); }
-    .cb-nao_cobrar { color:#8A93A6; }
-    .cb-isento { color:#8A93A6; }
-    .rm { color:#8A93A6; cursor:pointer; border:none; background:none; font-size:16px; padding:2px 6px; border-radius:6px; }
-    .rm:hover { color:#E06C6C; background:rgba(224,108,108,.1); }
+    .st-a_contatar { color:var(--text-2); }
+    .st-em_andamento { color:var(--brand-light); border-color:rgba(91,130,166,.45); }
+    .st-entregue { color:var(--ok); border-color:rgba(63,176,122,.45); }
+    .st-nao_declara { color:var(--text-muted); }
+    .st-ja_fez { color:var(--text-muted); }
+    .st-desvinculado { color:var(--err); border-color:rgba(224,108,108,.4); }
+    .cb-a_cobrar { color:var(--warn); border-color:rgba(227,179,65,.45); }
+    .cb-pago { color:#0e1a13; background:var(--ok); border-color:var(--ok); font-weight:700; }
+    .cb-lancado_ca { color:var(--brand-light); border-color:rgba(91,130,166,.45); }
+    .cb-nao_cobrar { color:var(--text-muted); }
+    .cb-isento { color:var(--text-muted); }
+    .rm { color:var(--text-muted); cursor:pointer; border:none; background:none; font-size:16px; padding:2px 6px; border-radius:6px; }
+    .rm:hover { color:var(--err); background:rgba(224,108,108,.1); }
 
     .bo-foot { display:flex; justify-content:flex-start; align-items:center; gap:12px; flex-wrap:wrap; margin-top:14px; }
-    .bo-msg { font-size:13px; color:#8A93A6; min-height:18px; }
-    .bo-empty { text-align:center; padding:46px 20px; color:#8A93A6; }
-    .spin { display:inline-block; width:13px; height:13px; border:2px solid rgba(255,255,255,.3); border-top-color:#fff; border-radius:50%; animation:sp .7s linear infinite; vertical-align:-2px; margin-right:6px; }
+    .bo-msg { font-size:13px; color:var(--text-muted); min-height:18px; }
+    .bo-empty { text-align:center; padding:46px 20px; color:var(--text-muted); }
+    .spin { display:inline-block; width:13px; height:13px; border:2px solid var(--line-strong); border-top-color:var(--text); border-radius:50%; animation:sp .7s linear infinite; vertical-align:-2px; margin-right:6px; }
     @keyframes sp { to { transform:rotate(360deg); } }
 
-    .ov { position:fixed; inset:0; background:rgba(8,12,18,.72); display:none; align-items:flex-start; justify-content:center; z-index:100; padding:60px 16px; }
+    .ov { position:fixed; inset:0; background:var(--overlay); display:none; align-items:flex-start; justify-content:center; z-index:100; padding:60px 16px; }
     .ov.open { display:flex; }
-    .ov-box { background:#141A22; border:1px solid rgba(255,255,255,.10); border-radius:16px; width:100%; max-width:460px; display:flex; flex-direction:column; overflow:hidden; }
-    .ov-head { padding:16px 20px; border-bottom:1px solid rgba(255,255,255,.08); display:flex; justify-content:space-between; align-items:center; }
-    .ov-head h3 { font-size:18px; font-weight:600; color:#E6EBF2; margin:0; }
+    .ov-box { background:var(--surface); border:1px solid var(--fill-3); border-radius:16px; width:100%; max-width:460px; display:flex; flex-direction:column; overflow:hidden; }
+    .ov-head { padding:16px 20px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; }
+    .ov-head h3 { font-size:18px; font-weight:600; color:var(--text); margin:0; }
     .ov-body { padding:16px 20px; display:flex; flex-direction:column; gap:12px; }
-    .ov-err { color:#E06C6C; font-size:13px; min-height:16px; }
+    .ov-err { color:var(--err); font-size:13px; min-height:16px; }
   </style>
 </head>
 <body>
@@ -303,11 +303,11 @@ function updateCards(){
   const pendCob=rows.filter(r=>r.situacao==='entregue' && r.cobranca==='a_cobrar').length;
   $('cards').innerHTML=`
     <div class="fa-focus-card"><span class="fc-num">${rows.length}</span><span class="fc-lbl">Clientes no ano</span></div>
-    <div class="fa-focus-card"><span class="fc-num" style="color:#3FB07A">${entregues} <small style="font-size:13px;color:#8A93A6">(${pct}%)</small></span><span class="fc-lbl">Entregues</span></div>
+    <div class="fa-focus-card"><span class="fc-num" style="color:var(--ok)">${entregues} <small style="font-size:13px;color:var(--text-muted)">(${pct}%)</small></span><span class="fc-lbl">Entregues</span></div>
     <div class="fa-focus-card"><span class="fc-num money">${BRL(previstos)}</span><span class="fc-lbl">Honorários previstos</span></div>
-    <div class="fa-focus-card"><span class="fc-num money" style="color:#3FB07A">${BRL(recebido)}</span><span class="fc-lbl">Pago / lançado</span></div>
-    <div class="fa-focus-card"><span class="fc-num" style="color:#8AAEC8">${pendEnt}</span><span class="fc-lbl">Pendentes de entrega</span></div>
-    <div class="fa-focus-card"><span class="fc-num" style="color:#E3B341">${pendCob}</span><span class="fc-lbl">Entregues a cobrar</span></div>`;
+    <div class="fa-focus-card"><span class="fc-num money" style="color:var(--ok)">${BRL(recebido)}</span><span class="fc-lbl">Pago / lançado</span></div>
+    <div class="fa-focus-card"><span class="fc-num" style="color:var(--brand-light)">${pendEnt}</span><span class="fc-lbl">Pendentes de entrega</span></div>
+    <div class="fa-focus-card"><span class="fc-num" style="color:var(--warn)">${pendCob}</span><span class="fc-lbl">Entregues a cobrar</span></div>`;
 }
 
 async function removerRow(r){
@@ -324,9 +324,9 @@ async function removerRow(r){
 const SAVE_DELAY=800;
 function saveState(s){
   const el=$('msg');
-  if(s==='saving'){ el.innerHTML='<span class="spin"></span>Salvando…'; el.style.color='#8A93A6'; }
-  else if(s==='saved'){ const t=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); el.textContent='Salvo ✓ '+t; el.style.color='#3FB07A'; }
-  else if(s==='error'){ el.textContent='Erro ao salvar — sem conexão? vou tentar de novo'; el.style.color='#E06C6C'; }
+  if(s==='saving'){ el.innerHTML='<span class="spin"></span>Salvando…'; el.style.color='var(--text-muted)'; }
+  else if(s==='saved'){ const t=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); el.textContent='Salvo ✓ '+t; el.style.color='var(--ok)'; }
+  else if(s==='error'){ el.textContent='Erro ao salvar — sem conexão? vou tentar de novo'; el.style.color='var(--err)'; }
 }
 function agendarSalvar(r){ clearTimeout(r._t); r._t=setTimeout(()=>salvarLinha(r), SAVE_DELAY); }
 async function salvarLinha(r){

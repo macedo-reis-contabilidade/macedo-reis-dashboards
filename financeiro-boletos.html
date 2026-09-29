@@ -11,68 +11,68 @@
     .page-header { max-width:880px; }
 
     .fa-focus { display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin-bottom:20px; }
-    .fa-focus-card { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:14px 16px; display:flex; flex-direction:column; gap:4px; }
-    .fc-num { font-size:24px; font-weight:700; color:#E6EBF2; line-height:1; }
+    .fa-focus-card { background:var(--fill-1); border:1px solid var(--line); border-radius:14px; padding:14px 16px; display:flex; flex-direction:column; gap:4px; }
+    .fc-num { font-size:24px; font-weight:700; color:var(--text); line-height:1; }
     .fc-num.money { font-size:18px; }
-    .fc-lbl { font-size:12px; color:#8A93A6; }
+    .fc-lbl { font-size:12px; color:var(--text-muted); }
     @media (max-width:760px){ .fa-focus { grid-template-columns:repeat(2,1fr); } }
 
     .bo-toolbar { display:flex; flex-wrap:wrap; gap:10px 12px; align-items:flex-end; margin-bottom:16px; }
     .bo-left, .bo-right { display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; }
-    .bo-right { padding-left:14px; border-left:1px solid rgba(255,255,255,.08); }
+    .bo-right { padding-left:14px; border-left:1px solid var(--line); }
     .bo-right .input-search { width:240px; } .bo-right .select { width:170px; }
-    .bo-comp { display:flex; flex-direction:column; gap:5px; font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:#8AAEC8; }
+    .bo-comp { display:flex; flex-direction:column; gap:5px; font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--brand-light); }
 
-    .bo-tablewrap { background:rgba(255,255,255,.025); border:1px solid rgba(255,255,255,.08); border-radius:14px; overflow-x:auto; }
+    .bo-tablewrap { background:var(--fill-1); border:1px solid var(--line); border-radius:14px; overflow-x:auto; }
     table.bo { border-collapse:collapse; width:100%; min-width:980px; font-size:12.5px; }
-    table.bo th { position:sticky; top:0; background:#11171f; color:#8AAEC8; font-weight:600; text-align:left; padding:8px 6px; border-bottom:1px solid rgba(255,255,255,.08); font-size:11px; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; z-index:1; }
-    table.bo td { padding:4px 6px; border-bottom:1px solid rgba(255,255,255,.05); vertical-align:middle; }
-    table.bo tr:hover td { background:rgba(255,255,255,.02); }
-    .bo-emp { font-weight:600; color:#E6EBF2; min-width:150px; max-width:200px; }
-    .bo-emp small { display:block; color:#8A93A6; font-weight:400; font-size:11px; }
-    .ci { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.14); color:#E6EBF2; border-radius:7px; padding:5px 6px; font-size:12.5px; width:100%; outline:none; font-family:inherit; }
-    .ci:focus { border-color:#5B82A6; }
+    table.bo th { position:sticky; top:0; background:var(--surface); color:var(--brand-light); font-weight:600; text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); font-size:11px; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; z-index:1; }
+    table.bo td { padding:4px 6px; border-bottom:1px solid var(--line); vertical-align:middle; }
+    table.bo tr:hover td { background:var(--fill-1); }
+    .bo-emp { font-weight:600; color:var(--text); min-width:150px; max-width:200px; }
+    .bo-emp small { display:block; color:var(--text-muted); font-weight:400; font-size:11px; }
+    .ci { background:var(--fill-1); border:1px solid var(--fill-3); color:var(--text); border-radius:7px; padding:5px 6px; font-size:12.5px; width:100%; outline:none; font-family:inherit; }
+    .ci:focus { border-color:var(--brand-primary); }
     .ci.val { width:74px; text-align:right; }
     .ci.dt { width:122px; }
     .ci.sel { width:98px; }
     .w-envio { min-width:112px; } .w-resp { min-width:80px; } .w-dest { min-width:132px; } .w-obs { min-width:112px; }
-    td.num { color:#8A93A6; text-align:center; width:30px; }
-    .st { border-radius:7px; padding:5px 6px; font-size:12px; font-weight:600; border:1px solid rgba(255,255,255,.14); width:100px; font-family:inherit; cursor:pointer; background:rgba(255,255,255,.04); color:#D7DEE8; }
-    .st-a_emitir { color:#c3c9d4; }
-    .st-emitido { color:#E3B341; border-color:rgba(227,179,65,.45); }
-    .st-enviado { color:#3FB07A; border-color:rgba(63,176,122,.45); }
-    .st-pago { color:#0e1a13; background:#3FB07A; border-color:#3FB07A; font-weight:700; }
-    .st-cancelado { color:#E06C6C; border-color:rgba(224,108,108,.4); }
-    .rm { color:#8A93A6; cursor:pointer; border:none; background:none; font-size:16px; padding:2px 6px; border-radius:6px; }
-    .rm:hover { color:#E06C6C; background:rgba(224,108,108,.1); }
+    td.num { color:var(--text-muted); text-align:center; width:30px; }
+    .st { border-radius:7px; padding:5px 6px; font-size:12px; font-weight:600; border:1px solid var(--fill-3); width:100px; font-family:inherit; cursor:pointer; background:var(--fill-1); color:var(--text); }
+    .st-a_emitir { color:var(--text-2); }
+    .st-emitido { color:var(--warn); border-color:rgba(227,179,65,.45); }
+    .st-enviado { color:var(--ok); border-color:rgba(63,176,122,.45); }
+    .st-pago { color:#0e1a13; background:var(--ok); border-color:var(--ok); font-weight:700; }
+    .st-cancelado { color:var(--err); border-color:rgba(224,108,108,.4); }
+    .rm { color:var(--text-muted); cursor:pointer; border:none; background:none; font-size:16px; padding:2px 6px; border-radius:6px; }
+    .rm:hover { color:var(--err); background:rgba(224,108,108,.1); }
 
     /* itens extras (faturáveis incluídos no boleto) */
-    .bo-extra { display:block; margin-top:4px; background:rgba(227,179,65,.14); border:1px solid rgba(227,179,65,.4); color:#E3B341; border-radius:999px; padding:2px 8px; font-size:11px; font-weight:600; cursor:pointer; font-family:inherit; white-space:nowrap; }
+    .bo-extra { display:block; margin-top:4px; background:rgba(227,179,65,.14); border:1px solid rgba(227,179,65,.4); color:var(--warn); border-radius:999px; padding:2px 8px; font-size:11px; font-weight:600; cursor:pointer; font-family:inherit; white-space:nowrap; }
     .bo-extra:hover { background:rgba(227,179,65,.24); }
-    .bo-tot { display:block; color:#8AAEC8; font-size:11px; margin-top:3px; white-space:nowrap; }
+    .bo-tot { display:block; color:var(--brand-light); font-size:11px; margin-top:3px; white-space:nowrap; }
     .bo-extras-row td { background:rgba(227,179,65,.04) !important; padding:6px 10px 10px; }
-    .bo-extras { display:flex; flex-wrap:wrap; gap:6px 18px; font-size:12px; color:#C5D8E8; align-items:center; }
-    .bo-extras span b { color:#E6EBF2; margin-left:6px; }
-    .bo-extras-tot { margin-left:auto; color:#8AAEC8; }
-    .bo-total small { font-size:13px; color:#8A93A6; font-weight:400; }
+    .bo-extras { display:flex; flex-wrap:wrap; gap:6px 18px; font-size:12px; color:var(--brand-pale); align-items:center; }
+    .bo-extras span b { color:var(--text); margin-left:6px; }
+    .bo-extras-tot { margin-left:auto; color:var(--brand-light); }
+    .bo-total small { font-size:13px; color:var(--text-muted); font-weight:400; }
 
     .bo-foot { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-top:14px; }
-    .bo-total { font-size:15px; color:#C5D8E8; } .bo-total b { font-size:20px; color:#E6EBF2; }
-    .bo-msg { font-size:13px; color:#8A93A6; min-height:18px; }
-    .bo-empty { text-align:center; padding:46px 20px; color:#8A93A6; }
-    .spin { display:inline-block; width:13px; height:13px; border:2px solid rgba(255,255,255,.3); border-top-color:#fff; border-radius:50%; animation:sp .7s linear infinite; vertical-align:-2px; margin-right:6px; }
+    .bo-total { font-size:15px; color:var(--brand-pale); } .bo-total b { font-size:20px; color:var(--text); }
+    .bo-msg { font-size:13px; color:var(--text-muted); min-height:18px; }
+    .bo-empty { text-align:center; padding:46px 20px; color:var(--text-muted); }
+    .spin { display:inline-block; width:13px; height:13px; border:2px solid var(--line-strong); border-top-color:var(--text); border-radius:50%; animation:sp .7s linear infinite; vertical-align:-2px; margin-right:6px; }
     @keyframes sp { to { transform:rotate(360deg); } }
 
-    .ov { position:fixed; inset:0; background:rgba(8,12,18,.72); display:none; align-items:flex-start; justify-content:center; z-index:100; padding:60px 16px; }
+    .ov { position:fixed; inset:0; background:var(--overlay); display:none; align-items:flex-start; justify-content:center; z-index:100; padding:60px 16px; }
     .ov.open { display:flex; }
-    .ov-box { background:#141A22; border:1px solid rgba(255,255,255,.10); border-radius:16px; width:100%; max-width:520px; max-height:75vh; display:flex; flex-direction:column; overflow:hidden; }
-    .ov-head { padding:16px 20px; border-bottom:1px solid rgba(255,255,255,.08); display:flex; justify-content:space-between; align-items:center; }
-    .ov-head h3 { font-size:18px; font-weight:600; color:#E6EBF2; margin:0; }
+    .ov-box { background:var(--surface); border:1px solid var(--fill-3); border-radius:16px; width:100%; max-width:520px; max-height:75vh; display:flex; flex-direction:column; overflow:hidden; }
+    .ov-head { padding:16px 20px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; }
+    .ov-head h3 { font-size:18px; font-weight:600; color:var(--text); margin:0; }
     .ov-body { padding:16px 20px; overflow:auto; }
     .ov-list { list-style:none; margin:8px 0 0; padding:0; }
-    .ov-list li { padding:9px 10px; border:1px solid rgba(255,255,255,.10); border-radius:9px; margin-bottom:6px; cursor:pointer; font-size:13.5px; color:#E6EBF2; }
-    .ov-list li:hover { border-color:#5B82A6; background:rgba(91,130,166,.10); }
-    .ov-list li small { color:#8A93A6; }
+    .ov-list li { padding:9px 10px; border:1px solid var(--fill-3); border-radius:9px; margin-bottom:6px; cursor:pointer; font-size:13.5px; color:var(--text); }
+    .ov-list li:hover { border-color:var(--brand-primary); background:rgba(91,130,166,.10); }
+    .ov-list li small { color:var(--text-muted); }
   </style>
 </head>
 <body>
@@ -380,10 +380,10 @@ function updateCards(){
   $('cards').innerHTML=`
     <div class="fa-focus-card"><span class="fc-num">${rows.length}</span><span class="fc-lbl">Empresas</span></div>
     <div class="fa-focus-card"><span class="fc-num money">${BRL(total)}</span><span class="fc-lbl">Total do mês${extras ? ' · honorários ' + BRL(honor) + ' + extras ' + BRL(extras) : ''}</span></div>
-    <div class="fa-focus-card"><span class="fc-num" style="color:#8A93A6">${by('a_emitir')}</span><span class="fc-lbl">A emitir</span></div>
-    <div class="fa-focus-card"><span class="fc-num" style="color:#E3B341">${by('emitido')}</span><span class="fc-lbl">Emitido</span></div>
-    <div class="fa-focus-card"><span class="fc-num" style="color:#3FB07A">${by('enviado')}</span><span class="fc-lbl">Enviado</span></div>
-    <div class="fa-focus-card"><span class="fc-num" style="color:#3FB07A">${by('pago')}</span><span class="fc-lbl">Pago</span></div>`;
+    <div class="fa-focus-card"><span class="fc-num" style="color:var(--text-muted)">${by('a_emitir')}</span><span class="fc-lbl">A emitir</span></div>
+    <div class="fa-focus-card"><span class="fc-num" style="color:var(--warn)">${by('emitido')}</span><span class="fc-lbl">Emitido</span></div>
+    <div class="fa-focus-card"><span class="fc-num" style="color:var(--ok)">${by('enviado')}</span><span class="fc-lbl">Enviado</span></div>
+    <div class="fa-focus-card"><span class="fc-num" style="color:var(--ok)">${by('pago')}</span><span class="fc-lbl">Pago</span></div>`;
 }
 
 async function removerRow(r){
@@ -415,9 +415,9 @@ async function removerRow(r){
 const SAVE_DELAY=800;
 function saveState(s){
   const el=$('msg');
-  if(s==='saving'){ el.innerHTML='<span class="spin"></span>Salvando…'; el.style.color='#8A93A6'; }
-  else if(s==='saved'){ const t=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); el.textContent='Salvo ✓ '+t; el.style.color='#3FB07A'; }
-  else if(s==='error'){ el.textContent='Erro ao salvar — sem conexão? vou tentar de novo'; el.style.color='#E06C6C'; }
+  if(s==='saving'){ el.innerHTML='<span class="spin"></span>Salvando…'; el.style.color='var(--text-muted)'; }
+  else if(s==='saved'){ const t=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); el.textContent='Salvo ✓ '+t; el.style.color='var(--ok)'; }
+  else if(s==='error'){ el.textContent='Erro ao salvar — sem conexão? vou tentar de novo'; el.style.color='var(--err)'; }
 }
 function agendarSalvar(r){ clearTimeout(r._t); r._t=setTimeout(()=>salvarLinha(r), SAVE_DELAY); }
 async function salvarLinha(r){
@@ -466,7 +466,7 @@ function renderAddList(){
   let l=clientesList.filter(c=>!usados.has(c.id));
   if(q) l=l.filter(c=>c.nome.toLowerCase().includes(q));
   l=l.slice(0,40);
-  $('ovList').innerHTML = l.map(c=>`<li data-id="${c.id}">${esc(c.nome)} <small>${fmtDoc(c.doc)}</small></li>`).join('') || '<li style="cursor:default;color:#8A93A6">Nenhum cliente encontrado</li>';
+  $('ovList').innerHTML = l.map(c=>`<li data-id="${c.id}">${esc(c.nome)} <small>${fmtDoc(c.doc)}</small></li>`).join('') || '<li style="cursor:default;color:var(--text-muted)">Nenhum cliente encontrado</li>';
   $('ovList').querySelectorAll('li[data-id]').forEach(li=>{ li.addEventListener('click', ()=>addEmpresa(li.dataset.id)); });
 }
 async function addEmpresa(id){

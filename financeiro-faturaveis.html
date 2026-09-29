@@ -11,73 +11,73 @@
     .page-header { max-width:880px; }
 
     .fa-focus { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:20px; }
-    .fa-focus-card { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:14px 16px; display:flex; flex-direction:column; gap:4px; }
-    .fc-num { font-size:24px; font-weight:700; color:#E6EBF2; line-height:1; }
-    .fc-num small { font-size:14px; font-weight:600; color:#8AAEC8; margin-left:8px; }
-    .fc-lbl { font-size:12px; color:#8A93A6; }
-    .fc-pend .fc-num { color:#E3B341; }
+    .fa-focus-card { background:var(--fill-1); border:1px solid var(--line); border-radius:14px; padding:14px 16px; display:flex; flex-direction:column; gap:4px; }
+    .fc-num { font-size:24px; font-weight:700; color:var(--text); line-height:1; }
+    .fc-num small { font-size:14px; font-weight:600; color:var(--brand-light); margin-left:8px; }
+    .fc-lbl { font-size:12px; color:var(--text-muted); }
+    .fc-pend .fc-num { color:var(--warn); }
     @media (max-width:760px){ .fa-focus { grid-template-columns:1fr; } }
 
     .ft-toolbar { display:flex; flex-wrap:wrap; gap:10px 12px; align-items:center; justify-content:space-between; margin-bottom:16px; }
     .ft-funil { display:flex; gap:6px; flex-wrap:wrap; }
-    .ft-chip { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.12); color:#8A93A6; border-radius:999px; padding:6px 13px; font-size:13px; cursor:pointer; font-family:inherit; }
-    .ft-chip b { color:#C5D8E8; font-weight:600; margin-left:4px; }
-    .ft-chip.is-on { background:rgba(91,130,166,.18); border-color:rgba(91,130,166,.6); color:#E6EBF2; }
+    .ft-chip { background:var(--fill-1); border:1px solid var(--fill-3); color:var(--text-muted); border-radius:999px; padding:6px 13px; font-size:13px; cursor:pointer; font-family:inherit; }
+    .ft-chip b { color:var(--brand-pale); font-weight:600; margin-left:4px; }
+    .ft-chip.is-on { background:rgba(91,130,166,.18); border-color:rgba(91,130,166,.6); color:var(--text); }
     .ft-right { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
     .ft-right .input-search { width:220px; min-width:0; }
 
-    .ft-tablewrap { background:rgba(255,255,255,.025); border:1px solid rgba(255,255,255,.08); border-radius:14px; overflow-x:auto; }
+    .ft-tablewrap { background:var(--fill-1); border:1px solid var(--line); border-radius:14px; overflow-x:auto; }
     table.ft { border-collapse:collapse; width:100%; min-width:960px; font-size:13px; }
-    table.ft th { position:sticky; top:0; background:#11171f; color:#8AAEC8; font-weight:600; text-align:left; padding:9px 10px; border-bottom:1px solid rgba(255,255,255,.08); font-size:11px; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; z-index:1; }
-    table.ft td { padding:9px 10px; border-bottom:1px solid rgba(255,255,255,.05); vertical-align:top; }
-    table.ft tr:hover td { background:rgba(255,255,255,.02); }
-    .ft-cli { font-weight:600; color:#E6EBF2; }
+    table.ft th { position:sticky; top:0; background:var(--surface); color:var(--brand-light); font-weight:600; text-align:left; padding:9px 10px; border-bottom:1px solid var(--line); font-size:11px; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; z-index:1; }
+    table.ft td { padding:9px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+    table.ft tr:hover td { background:var(--fill-1); }
+    .ft-cli { font-weight:600; color:var(--text); }
     .ft-cli a { color:inherit; text-decoration:none; }
     .ft-cli a:hover { text-decoration:underline; }
-    .ft-sub { display:block; color:#8A93A6; font-weight:400; font-size:11.5px; margin-top:2px; }
+    .ft-sub { display:block; color:var(--text-muted); font-weight:400; font-size:11.5px; margin-top:2px; }
     .pill { display:inline-block; font-size:11px; font-weight:600; border-radius:999px; padding:2px 9px; border:1px solid transparent; white-space:nowrap; }
-    .pill-setor { color:#8AAEC8; background:rgba(91,130,166,.14); border-color:rgba(91,130,166,.3); }
-    .pill-a_faturar { color:#E3B341; background:rgba(227,179,65,.14); border-color:rgba(227,179,65,.3); }
-    .pill-no_boleto { color:#8AAEC8; background:rgba(91,130,166,.14); border-color:rgba(91,130,166,.3); }
-    .pill-lancado { color:#3FB07A; background:rgba(63,176,122,.14); border-color:rgba(63,176,122,.3); }
-    .pill-descartado { color:#8A93A6; background:rgba(138,147,166,.12); border-color:rgba(138,147,166,.3); }
-    .ci { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.14); color:#E6EBF2; border-radius:7px; padding:5px 6px; font-size:12.5px; outline:none; font-family:inherit; }
-    .ci:focus { border-color:#5B82A6; }
+    .pill-setor { color:var(--brand-light); background:rgba(91,130,166,.14); border-color:rgba(91,130,166,.3); }
+    .pill-a_faturar { color:var(--warn); background:rgba(227,179,65,.14); border-color:rgba(227,179,65,.3); }
+    .pill-no_boleto { color:var(--brand-light); background:rgba(91,130,166,.14); border-color:rgba(91,130,166,.3); }
+    .pill-lancado { color:var(--ok); background:rgba(63,176,122,.14); border-color:rgba(63,176,122,.3); }
+    .pill-descartado { color:var(--text-muted); background:rgba(138,147,166,.12); border-color:rgba(138,147,166,.3); }
+    .ci { background:var(--fill-1); border:1px solid var(--fill-3); color:var(--text); border-radius:7px; padding:5px 6px; font-size:12.5px; outline:none; font-family:inherit; }
+    .ci:focus { border-color:var(--brand-primary); }
     .ci.val { width:92px; text-align:right; }
     .ci.comp { width:132px; }
-    .ft-valor { font-weight:600; color:#E6EBF2; white-space:nowrap; }
+    .ft-valor { font-weight:600; color:var(--text); white-space:nowrap; }
     .ft-acoes { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
-    .btn-mini { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.14); color:#C5D8E8; border-radius:7px; padding:5px 10px; font-size:12px; cursor:pointer; font-family:inherit; white-space:nowrap; }
-    .btn-mini:hover { border-color:#5B82A6; color:#E6EBF2; }
-    .btn-mini.ok { color:#7FBF8E; border-color:rgba(63,176,122,.4); }
-    .btn-mini.mute { color:#8A93A6; }
+    .btn-mini { background:var(--fill-2); border:1px solid var(--fill-3); color:var(--brand-pale); border-radius:7px; padding:5px 10px; font-size:12px; cursor:pointer; font-family:inherit; white-space:nowrap; }
+    .btn-mini:hover { border-color:var(--brand-primary); color:var(--text); }
+    .btn-mini.ok { color:var(--ok); border-color:rgba(63,176,122,.4); }
+    .btn-mini.mute { color:var(--text-muted); }
     .btn-mini:disabled { opacity:.5; cursor:default; }
-    .ft-empty { text-align:center; padding:46px 20px; color:#8A93A6; }
-    .ft-foot { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-top:12px; font-size:13px; color:#8A93A6; min-height:18px; }
+    .ft-empty { text-align:center; padding:46px 20px; color:var(--text-muted); }
+    .ft-foot { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-top:12px; font-size:13px; color:var(--text-muted); min-height:18px; }
 
-    .fa-modal-overlay { position:fixed; inset:0; background:rgba(8,12,18,.72); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
+    .fa-modal-overlay { position:fixed; inset:0; background:var(--overlay); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
     .fa-modal-overlay.is-open { display:flex; }
-    .fa-modal { width:100%; max-width:520px; background:#141A22; border:1px solid rgba(255,255,255,.10); border-radius:16px; overflow:hidden; max-height:92vh; display:flex; flex-direction:column; }
+    .fa-modal { width:100%; max-width:520px; background:var(--surface); border:1px solid var(--fill-3); border-radius:16px; overflow:hidden; max-height:92vh; display:flex; flex-direction:column; }
     .fa-modal.wide { max-width:680px; }
-    .fa-modal-head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid rgba(255,255,255,.08); }
-    .fa-modal-head h3 { margin:0; color:#E6EBF2; font-size:18px; }
-    .fa-modal-close { background:none; border:none; color:#8A93A6; font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }
-    .fa-modal-close:hover { color:#E6EBF2; }
+    .fa-modal-head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid var(--line); }
+    .fa-modal-head h3 { margin:0; color:var(--text); font-size:18px; }
+    .fa-modal-close { background:none; border:none; color:var(--text-muted); font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }
+    .fa-modal-close:hover { color:var(--text); }
     .fa-modal-body { padding:22px; display:flex; flex-direction:column; gap:14px; overflow:auto; }
     .fa-field { display:flex; flex-direction:column; gap:6px; }
-    .fa-field > span { font-size:13px; color:#8AAEC8; }
+    .fa-field > span { font-size:13px; color:var(--brand-light); }
     .fa-field-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
-    .fa-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid rgba(255,255,255,.08); }
-    .add-res { border:1px solid rgba(255,255,255,.08); border-radius:10px; overflow:hidden; max-height:220px; overflow-y:auto; }
+    .fa-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid var(--line); }
+    .add-res { border:1px solid var(--line); border-radius:10px; overflow:hidden; max-height:220px; overflow-y:auto; }
     .add-res:empty { display:none; }
-    .add-res button { display:block; width:100%; text-align:left; background:transparent; border:none; border-bottom:1px solid rgba(255,255,255,.06); color:#E6EBF2; font:inherit; font-size:13px; padding:9px 12px; cursor:pointer; }
+    .add-res button { display:block; width:100%; text-align:left; background:transparent; border:none; border-bottom:1px solid var(--line); color:var(--text); font:inherit; font-size:13px; padding:9px 12px; cursor:pointer; }
     .add-res button:hover, .add-res button.is-sel { background:rgba(138,174,200,.12); }
-    .cat-item { display:grid; grid-template-columns:1fr 110px 110px auto; gap:10px; align-items:center; padding:9px 4px; border-bottom:1px solid rgba(255,255,255,.06); font-size:13px; }
+    .cat-item { display:grid; grid-template-columns:1fr 110px 110px auto; gap:10px; align-items:center; padding:9px 4px; border-bottom:1px solid var(--line); font-size:13px; }
     .cat-item.off { opacity:.5; }
-    .cat-item b { color:#E6EBF2; font-weight:600; }
-    .cat-form { display:grid; grid-template-columns:2fr 1fr 1fr; gap:10px; align-items:end; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:12px; }
+    .cat-item b { color:var(--text); font-weight:600; }
+    .cat-form { display:grid; grid-template-columns:2fr 1fr 1fr; gap:10px; align-items:end; background:var(--fill-1); border:1px solid var(--line); border-radius:12px; padding:12px; }
     .cat-form .fa-field > span { font-size:12px; }
-    .msg-ok { color:#3FB07A; } .msg-err { color:#E06C6C; }
+    .msg-ok { color:var(--ok); } .msg-err { color:var(--err); }
   </style>
 </head>
 <body>
@@ -144,7 +144,7 @@
       <div class="fa-modal-body">
         <label class="fa-field"><span>Cliente</span><input type="text" id="manBusca" class="input" placeholder="Digite pelo menos 3 letras…" autocomplete="off"></label>
         <div class="add-res" id="manRes"></div>
-        <div id="manCliSel" style="font-size:13px;color:#7FBF8E;min-height:18px;"></div>
+        <div id="manCliSel" style="font-size:13px;color:var(--ok);min-height:18px;"></div>
         <label class="fa-field"><span>Serviço</span><select id="manServ" class="select"></select></label>
         <label class="fa-field"><span>Descrição (vai pro boleto / lançamento)</span><input type="text" id="manDesc" class="input" maxlength="160"></label>
         <div class="fa-field-row">
@@ -289,7 +289,7 @@ function render(){
         <button class="btn-mini" data-act="lancar">Lançado no Conta Azul</button>
         <button class="btn-mini mute" data-act="descartar">Descartar</button>`;
     else if (f.status === 'no_boleto') acoes = `<button class="btn-mini" data-act="desfazer">Desfazer (volta pra fila)</button>`;
-    else acoes = '<span style="color:#6E7787;">—</span>';
+    else acoes = '<span style="color:var(--text-dim);">—</span>';
     tr.innerHTML = `
       <td class="ft-cli"><a href="clientes/editar.html?id=${esc(f.cliente_id)}" target="_blank" rel="noopener">${esc(f.clientes?.nome_principal || '(cliente removido)')}</a>
         <span class="ft-sub"><span class="pill pill-setor">${esc(SETOR_LBL[f.setor] || f.setor || '—')}</span></span></td>
@@ -471,7 +471,7 @@ function renderCatalogo(){
   $('catLista').innerHTML = l.length ? l.map(s => `
     <div class="cat-item${s.ativo ? '' : ' off'}">
       <div><b>${esc(s.nome)}</b>${s.ativo ? '' : ' <span class="pill pill-descartado">inativo</span>'}</div>
-      <div>${s.valor_padrao != null ? BRL(s.valor_padrao) : '<span style="color:#6E7787">sem valor</span>'}</div>
+      <div>${s.valor_padrao != null ? BRL(s.valor_padrao) : '<span style="color:var(--text-dim)">sem valor</span>'}</div>
       <div><span class="pill pill-setor">${esc(SETOR_LBL[s.setor] || s.setor || '—')}</span></div>
       <div style="display:flex;gap:6px;"><button class="btn-mini" data-cat="editar" data-id="${esc(s.id)}">Editar</button><button class="btn-mini mute" data-cat="toggle" data-id="${esc(s.id)}">${s.ativo ? 'Inativar' : 'Reativar'}</button></div>
     </div>`).join('') : '<div class="ft-empty">Nenhum serviço no catálogo ainda. Cadastre os primeiros acima — eles aparecem no "Cobrar à parte" das tarefas.</div>';
@@ -520,8 +520,8 @@ function wireManual(){
     const res = $('manRes');
     if (t.length < 3 || !clientesList) { res.innerHTML = ''; return; }
     const hits = clientesList.filter(c => ((c.nome_principal || '') + ' ' + (c.nome_fantasia || '')).toLowerCase().includes(t)).slice(0, 8);
-    res.innerHTML = hits.map(c => `<button type="button" data-cli="${esc(c.id)}">${esc(c.nome_principal)}${c.nome_fantasia ? ' <span style="color:#8A93A6">· ' + esc(c.nome_fantasia) + '</span>' : ''}</button>`).join('')
-      || '<button type="button" disabled style="color:#6E7787;cursor:default;">Nenhum cliente com esse termo.</button>';
+    res.innerHTML = hits.map(c => `<button type="button" data-cli="${esc(c.id)}">${esc(c.nome_principal)}${c.nome_fantasia ? ' <span style="color:var(--text-muted)">· ' + esc(c.nome_fantasia) + '</span>' : ''}</button>`).join('')
+      || '<button type="button" disabled style="color:var(--text-dim);cursor:default;">Nenhum cliente com esse termo.</button>';
   });
   $('manRes').addEventListener('click', e => {
     const b = e.target.closest('[data-cli]'); if (!b) return;

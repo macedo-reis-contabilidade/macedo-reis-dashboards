@@ -59,6 +59,18 @@
 - **relatorios-vivos** `#E08FA8`, que nesta página é a cor de negativo/erro, virou `--err` (no escuro fica mais vermelho). Em outras telas a mesma cor é o setor IRPF.
 - **relatorios-vivos** L16 `.saude-erro .saude-dot`: o ponto virou `--err`, mas o brilho continua `rgba(224,143,168,.6)` (rosa), uma tinta translúcida permitida. Os irmãos `.saude-ok`/`.saude-alerta` já tinham a mesma diferença desde o tokenize.
 
+## Lote 3 (#12–#17) — dúvidas novas, 28/09/2026
+- **contabil-dre** L12/L33/L36/L40: a borda dos campos (`.dre-sel`, `.dre-txt`, `.dre-in`, `.dre-obs`, `.dre-nome:hover`) era `#2A313C` e virou `var(--border)`.
+  - É o primeiro uso de `--border` numa tela; o briefing chama esse token de legado.
+  - No escuro é `#2A323D`, idêntico ao original, e é o mesmo token do `.input`/`.select` global do `style.css`. No claro vira `#D5DBE5`, bem visível.
+  - `--line-strong` ou `--fill-3` mudariam o escuro. Confirmar se vale.
+- **contabil-dre** L44 `.dre-add` ("+ adicionar linha"): `#6E8FB0` virou `--brand-primary` (escuro `(110,143,176)` → `(91,130,166)`). Fixo, ficaria ~3,4:1 no claro.
+- **financeiro-boletos** L63 e **irpf-declaracoes**, spinner `.spin`: o `#fff` do arco virou `--text`, e o anel `rgba(255,255,255,.3)` virou `--line-strong`.
+  - O spinner também aparece no `#msg`, sobre o fundo da página, e branco fixo sumiria ali no claro.
+  - No escuro muda pouco (`#fff` → `#E8ECF2`, `.30` → `.22`). Se o escuro 100% idêntico valer mais, é só voltar as duas cores.
+- **irpf-declaracoes** e **financeiro-boletos** (mesmo template `table.bo`): o hover de linha `rgba(255,255,255,.02)` virou `--fill-1`, e não o `--fill-2` da decisão de hover, que triplicaria o hover no escuro. Confirmar se a regra valia só pra hovers originais de .04–.06.
+- **financeiro-faturaveis**, **financeiro-boletos** e **irpf-declaracoes**: o cabeçalho fixo `th { position:sticky; background:#11171f }` virou `var(--surface)` nas três, do mesmo jeito.
+
 ---
 ## Decisões do arquiteto — 29/09/2026 (lote 1 revisado e publicado)
 - **Ciano `#52B4C6`** → novo token **`--accent`** (escuro `#52B4C6`, claro `#1C7A8A`). Já trocado nas telas do lote 1 e na Agenda; o `tokenize.py` passa a converter sozinho. Tintas `rgba(82,180,198,…)` ficam.
