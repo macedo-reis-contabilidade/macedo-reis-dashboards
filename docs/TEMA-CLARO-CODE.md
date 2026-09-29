@@ -77,11 +77,11 @@ e vá para a próxima tela.
 ## 7. Telas, na ordem (cores fixas contadas em 29/09/2026)
 | # | Tela | Cores fixas | Feita |
 |---|---|---|---|
-| 1 | `fiscal-reforma.html` | 135 | ⬜ |
-| 2 | `comercial-precificacao.html` | 125 | ⬜ |
-| 3 | `comercial-reunioes.html` | 116 | ⬜ |
-| 4 | `fiscal-analise.html` | 111 | ⬜ |
-| 5 | `clientes/editar.html` | 99 | ⬜ |
+| 1 | `fiscal-reforma.html` | 135 | ✅ |
+| 2 | `comercial-precificacao.html` | 125 | ✅ |
+| 3 | `comercial-reunioes.html` | 116 | ✅ |
+| 4 | `fiscal-analise.html` | 111 | ✅ |
+| 5 | `clientes/editar.html` | 99 | ✅ |
 | 6 | `dp-pareceres.html` | 89 | ⬜ |
 | 7 | `comercial-carteira.html` | 85 | ⬜ |
 | 8 | `fiscal-obrigacoes.html` | 81 | ⬜ |
@@ -136,4 +136,4 @@ Ao fim de cada sessão, acrescente uma linha: data, telas feitas (marque ✅ na 
 
 | Data | Telas feitas | Commit | Onde parou / observação |
 |---|---|---|---|
-| — | — | — | (ninguém começou ainda) |
+| 28/09/2026 | #1–#5: fiscal-reforma, comercial-precificacao, comercial-reunioes, fiscal-analise, clientes/editar | este commit (lote 1) | Lote 1 feito: diff só de cor, escuro igual ao antes, claro sem fundo escuro; HTML de impressão/janela nova e cores concatenadas em JS ficaram fixos. Próximo: #6 `dp-pareceres.html` (lote 2 = #6–#11). Dúvidas em `docs/TEMA-CLARO-DUVIDAS.md`. |
