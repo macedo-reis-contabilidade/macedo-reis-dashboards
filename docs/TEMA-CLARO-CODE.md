@@ -118,13 +118,13 @@ e vá para a próxima tela.
 | 38 | `fiscal.html` | 16 | ✅ |
 | 39 | `dp.html` | 16 | ✅ |
 | 40 | `setores.html` | 15 | ✅ |
-| 41 | `clientes/novo.html` | 15 | ⬜ |
-| 42 | `financeiro.html` | 14 | ⬜ |
-| 43 | `comercial.html` | 14 | ⬜ |
-| 44 | `societario.html` | 11 | ⬜ |
-| 45 | `irpf.html` | 11 | ⬜ |
-| 46 | `contabil.html` | 11 | ⬜ |
-| 47 | `administracao.html` | 10 | ⬜ |
+| 41 | `clientes/novo.html` | 15 | ✅ |
+| 42 | `financeiro.html` | 14 | ✅ |
+| 43 | `comercial.html` | 14 | ✅ |
+| 44 | `societario.html` | 11 | ✅ |
+| 45 | `irpf.html` | 11 | ✅ |
+| 46 | `contabil.html` | 11 | ✅ |
+| 47 | `administracao.html` | 10 | ✅ |
 | 48 | `gestao-rotinas.html` | 5 | ⬜ |
 | 49 | `clientes/clientes-tarefas.html` | 5 | ⬜ |
 | 50 | `login.html` | 3 | ⬜ |
@@ -142,4 +142,5 @@ Ao fim de cada sessão, acrescente uma linha: data, telas feitas (marque ✅ na 
 | 28/09/2026 | #12–#17: contabil-dre, financeiro-faturaveis, financeiro-boletos, dp-convencoes, irpf-declaracoes, fiscal-xml | `9c0416f` (lote 3) | Lote 3 feito sobre a revisão do arquiteto (--accent, --warn novo). Próximo: #18 `comercial-transicao.html` (lote 4 = #18–#24). Dúvidas do lote 3 em `docs/TEMA-CLARO-DUVIDAS.md`. |
 | 28/09/2026 | #18–#24: comercial-transicao, societario-alvaras, fator-r, financeiro-regras, societario-regras, fiscal-sugestoes, dp-sugestoes | `05d8372` (lote 4) | Lote 4 feito. Telas de mesmo template (regras, sugestões) espelham a primeira convertida: societario-regras = financeiro-regras, dp-sugestoes = fiscal-sugestoes, linha a linha. Próximo: #25 `contabil-sugestoes.html` (lote 5 = #25–#32). |
 | 29/09/2026 | #25–#32: contabil-sugestoes, gestao, fiscal-regras, contabil-regras, comercial-regras, societario-relatorios, irpf-relatorios (proposta: não se aplica) | `1506f9d` (lote 5) | Lote 5 feito. Irmãs espelhadas da matriz: contabil-sugestoes = fiscal-sugestoes; fiscal/contabil/comercial-regras = societario-regras; irpf-relatorios = societario-relatorios. `proposta.html` ficou sem troca: é o questionário público, não carrega style.css nem theme.js (tokens não existem lá). Próximo: #33 `fiscal-relatorios.html` (lote 6 = #33–#40). |
-| 29/09/2026 | #33–#40: fiscal-relatorios, financeiro-relatorios, dp-relatorios, contabil-relatorios, comercial-relatorios, fiscal, dp, setores | este commit (lote 6) | Lote 6 feito. Os 5 relatórios espelham societario-relatorios; dp espelha fiscal (páginas de setor). Cores dos ícones de módulo (.dashboard-card-icon) ficam fixas nas páginas de setor. Próximo: #41 `clientes/novo.html` (lote 7 = #41–#47). |
+| 29/09/2026 | #33–#40: fiscal-relatorios, financeiro-relatorios, dp-relatorios, contabil-relatorios, comercial-relatorios, fiscal, dp, setores | `fa2de1f` (lote 6) | Lote 6 feito. Os 5 relatórios espelham societario-relatorios; dp espelha fiscal (páginas de setor). Cores dos ícones de módulo (.dashboard-card-icon) ficam fixas nas páginas de setor. Próximo: #41 `clientes/novo.html` (lote 7 = #41–#47). |
+| 29/09/2026 | #41–#47: clientes/novo, financeiro, comercial, societario, irpf, contabil, administracao | este commit (lote 7) | Lote 7 feito. Páginas de setor espelham fiscal (financeiro) e dp (comercial, societario, irpf, contabil); administracao espelha setores. Ícones de módulo fixos, como no lote 6. clientes/novo: regras .vo-* iguais às da clientes/editar. Próximo: #48 `gestao-rotinas.html` (lote 8 = #48–#53, o último). |

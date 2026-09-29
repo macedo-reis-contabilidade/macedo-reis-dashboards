@@ -357,7 +357,7 @@
       </section>
 
       <div class="form-actions" style="flex-wrap:wrap; gap:14px;">
-        <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:#B9C2D0; margin-right:auto; cursor:pointer;">
+        <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-2); margin-right:auto; cursor:pointer;">
           <input type="checkbox" id="chkDrive" checked> 📁 Criar a pasta do cliente no Drive (Clientes Ativos, com as subpastas padrão)
         </label>
         <a href="index.html" class="btn btn-ghost">Cancelar</a>
@@ -368,27 +368,27 @@
 
   <style>
     .extrai-drop { border:1.5px dashed rgba(138,174,200,.4); border-radius:12px; padding:20px; text-align:center; background:rgba(91,130,166,.06); transition:border-color .15s, background .15s; }
-    .extrai-drop.is-over { border-color:#5B82A6; background:rgba(91,130,166,.16); }
-    .extrai-hint { color:#8A93A6; font-size:14px; margin:0 0 8px; }
-    .extrai-lista { margin-top:10px; display:flex; flex-direction:column; gap:4px; font-size:13px; color:#C5D8E8; }
+    .extrai-drop.is-over { border-color:var(--brand-primary); background:rgba(91,130,166,.16); }
+    .extrai-hint { color:var(--text-muted); font-size:14px; margin:0 0 8px; }
+    .extrai-lista { margin-top:10px; display:flex; flex-direction:column; gap:4px; font-size:13px; color:var(--brand-pale); }
     .extrai-acoes { display:flex; align-items:center; gap:14px; margin-top:14px; flex-wrap:wrap; }
-    .extrai-status { font-size:13px; color:#8A93A6; }
+    .extrai-status { font-size:13px; color:var(--text-muted); }
   
     /* Passo opcional: vincular obrigações fiscais */
-    .vo-overlay { position:fixed; inset:0; background:rgba(6,10,16,.72); display:none; align-items:center; justify-content:center; z-index:60; padding:18px; }
+    .vo-overlay { position:fixed; inset:0; background:var(--overlay); display:none; align-items:center; justify-content:center; z-index:60; padding:18px; }
     .vo-overlay.is-open { display:flex; }
-    .vo-modal { background:#0F1620; border:1px solid rgba(255,255,255,.1); border-radius:14px; width:min(620px, 96vw); max-height:88vh; display:flex; flex-direction:column; }
-    .vo-head { padding:16px 22px; border-bottom:1px solid rgba(255,255,255,.08); }
+    .vo-modal { background:var(--surface); border:1px solid var(--fill-3); border-radius:14px; width:min(620px, 96vw); max-height:88vh; display:flex; flex-direction:column; }
+    .vo-head { padding:16px 22px; border-bottom:1px solid var(--line); }
     .vo-head h3 { margin:0; font-size:17px; }
     .vo-body { padding:16px 22px; overflow:hidden; display:flex; flex-direction:column; }
-    .vo-sub { margin:0 0 10px; font-size:13px; color:#8A93A6; }
-    .vo-lista { overflow:auto; max-height:44vh; border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:4px; }
+    .vo-sub { margin:0 0 10px; font-size:13px; color:var(--text-muted); }
+    .vo-lista { overflow:auto; max-height:44vh; border:1px solid var(--line); border-radius:10px; padding:4px; }
     .vo-item { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:8px; cursor:pointer; font-size:13.5px; }
-    .vo-item:hover { background:rgba(255,255,255,.05); }
-    .vo-item .vv-freq { margin-left:auto; color:#8A93A6; font-size:12px; white-space:nowrap; }
-    .vo-item .vv-dia { color:#8AAEC8; font-size:11.5px; border:1px solid rgba(91,130,166,.4); border-radius:999px; padding:2px 8px; white-space:nowrap; }
-    .vo-resp-l { display:block; font-size:12.5px; color:#8A93A6; margin:12px 0 5px; }
-    .vo-foot { display:flex; justify-content:flex-end; gap:10px; padding:14px 22px; border-top:1px solid rgba(255,255,255,.08); }
+    .vo-item:hover { background:var(--fill-2); }
+    .vo-item .vv-freq { margin-left:auto; color:var(--text-muted); font-size:12px; white-space:nowrap; }
+    .vo-item .vv-dia { color:var(--brand-light); font-size:11.5px; border:1px solid rgba(91,130,166,.4); border-radius:999px; padding:2px 8px; white-space:nowrap; }
+    .vo-resp-l { display:block; font-size:12.5px; color:var(--text-muted); margin:12px 0 5px; }
+    .vo-foot { display:flex; justify-content:flex-end; gap:10px; padding:14px 22px; border-top:1px solid var(--line); }
   </style>
 
   <div class="vo-overlay" id="voOverlay">
