@@ -47,11 +47,13 @@ const CSS = `
   .fa-lote.is-rodando ~ table tr.fa-row-proc { pointer-events:none; }
   @media (max-width:768px){ .fa-chk-td { display:none !important; } .fa-chk-td:has(input) { display:flex !important; } .fa-chk-td::before { content:"Selecionar" !important; } }
   .fa-lote b { color:var(--text); }
+  .fa-lote .btn-ghost { border-color:var(--line-strong); }   /* "Registrar andamento": no claro a borda padrão some no fundo da barra */
   .fa-lote-aviso { flex-basis:100%; font-size:12px; color:var(--text-muted); }
   .fa-lote-resumo { margin:6px 6px 2px; padding:10px 14px; border-radius:10px; font-size:13px; line-height:1.5; }
   .fa-lote-resumo.ok { background:rgba(63,176,122,.12); border:1px solid rgba(63,176,122,.35); color:var(--ok); }
   .fa-lote-resumo.erro { background:rgba(224,108,108,.10); border:1px solid rgba(224,108,108,.35); color:var(--text); }
   .fa-lote-resumo.erro b { color:var(--err); }
+  .fa-lote-msg { font-size:12.5px; color:var(--err); }   /* aviso dentro da janela do lote (andamento sem texto) */
   .fa-row-proc { cursor:pointer; transition:background .12s; }
   .fa-row-proc:hover { background:var(--fill-1); }
   .pill { display:inline-block; font-size:11px; font-weight:600; border-radius:999px; padding:3px 10px; }
@@ -391,6 +393,21 @@ export function initTarefas(userCfg) {
           <button class="btn btn-ghost" id="adiVoltar" style="display:none;margin-right:auto;">Voltar ao ciclo normal</button>
           <button class="btn btn-ghost" id="adiCancelar">Cancelar</button>
           <button class="btn btn-primary" id="adiConfirmar">Adiar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- lote: uma observação pra todas as selecionadas (concluir) ou só o andamento, sem mudar status -->
+    <div class="fa-modal-overlay" id="loteOverlay">
+      <div class="fa-modal" style="max-width:480px;">
+        <div class="fa-modal-head"><h3 id="loteTitulo"></h3><button class="fa-modal-close" id="loteClose">&times;</button></div>
+        <div class="fa-modal-body">
+          <label class="fa-field"><span id="loteLabel"></span><textarea id="loteObs" class="input" rows="3" placeholder="${escA(C.andamentoPlaceholder)}"></textarea></label>
+          <div class="fa-lote-msg" id="loteMsg" hidden></div>
+        </div>
+        <div class="fa-modal-foot">
+          <button class="btn btn-ghost" id="loteCancelar">Cancelar</button>
+          <button class="btn btn-primary" id="loteConfirmar"></button>
         </div>
       </div>
     </div>
@@ -762,10 +779,12 @@ export function initTarefas(userCfg) {
       barra.hidden = false;
       barra.innerHTML = '<b data-lote-cont>' + fmtSel(n) + '</b>'
         + '<button class="btn btn-primary btn-sm" data-lote-ok>Concluir ' + rotuloItens(n) + '</button>'
+        + '<button class="btn btn-ghost btn-sm" data-lote-and title="Anota o mesmo texto no histórico de tod' + (C.itemPluralFem ? 'as as selecionadas' : 'os os selecionados') + ', sem concluir">Registrar andamento</button>'
         + '<button class="rt-link" data-lote-limpar>Limpar seleção</button>'
         + '<span class="fa-lote-aviso">O lote não gera cobrança à parte — para isso, conclua ' + (C.itemPluralFem ? 'a ' : 'o ') + esc(C.item) + ' individualmente.</span>';
       barra.querySelector('[data-lote-limpar]').addEventListener('click', () => { caixas().forEach(c => { c.checked = false; }); atualizar(); });
-      barra.querySelector('[data-lote-ok]').addEventListener('click', () => concluirLote(det, marcadas(), barra));
+      barra.querySelector('[data-lote-ok]').addEventListener('click', () => abrirLote('concluir', det, marcadas(), barra));
+      barra.querySelector('[data-lote-and]').addEventListener('click', () => abrirLote('andamento', det, marcadas(), barra));
     };
     // a caixa fica dentro da linha clicável (abre o detalhe) e do <summary> (abre/fecha o grupo):
     // o clique precisa parar nela
@@ -782,23 +801,25 @@ export function initTarefas(userCfg) {
   // Conclusão simples, uma a uma, sem cobrança à parte (decisão do Samuel): update + histórico,
   // erro checado em cada passo; falha numa não interrompe as outras; resumo honesto no fim.
   let loteRodando = false;
-  async function concluirLote(det, ids, barra) {
+  async function concluirLote(det, ids, barra, obs) {   // confirmação e observação vêm da janela do lote
     if (!ids.length) return;
     if (loteRodando) { alert('Já tem um lote em andamento — espere ele terminar.'); return; }
-    if (!confirm('Concluir ' + rotuloItens(ids.length) + '?')) return;
-    loteRodando = true;
     const btn = barra.querySelector('[data-lote-ok]');
     const limpar = barra.querySelector('[data-lote-limpar]');
+    if (!btn) return;   // barra esvaziada (seleção desfeita por trás da janela): sem isso o lote ficava preso
+    loteRodando = true;
     btn.disabled = true; if (limpar) limpar.disabled = true;
     barra.classList.add('is-rodando');
     // enquanto roda, nada que re-renderize a lista (busca, filtros, faixa de foco, caixas de outros grupos):
     // um render() no meio descartaria a barra de progresso e devolveria caixas em cima de dados velhos
-    const travados = [searchInput, filterStatus, filterResp, ...document.querySelectorAll('.fa-focus-card'), ...elGrupos.querySelectorAll('input.fa-chk'), ...elGrupos.querySelectorAll('[data-lote-ok],[data-lote-limpar]')];
+    const travados = [searchInput, filterStatus, filterResp, ...document.querySelectorAll('.fa-focus-card'), ...elGrupos.querySelectorAll('input.fa-chk'), ...elGrupos.querySelectorAll('[data-lote-ok],[data-lote-and],[data-lote-limpar]')];
     travados.forEach(el => { if (el !== btn && el !== limpar) { el.dataset.loteTrava = el.disabled ? '1' : ''; el.disabled = true; } });
     const nomeDe = id => { const t = tarefas.find(x => x.id === id); return t ? (t.clientes?.nome_principal || t.titulo || 'sem cliente') : id; };
+    const descricao = C.historicoConcluida + (obs ? ' ' + obs : '');
     // dependências entre tarefas do mesmo processo (best-effort: falha aqui não desfaz a conclusão)
     const avisarDependentes = async (tarefa) => { try { await _avisarDependentes(tarefa); } catch (e) { console.warn('dependentes', e); } };
     let feitas = 0; const falhas = [], semHist = [], jaEstavam = [];
+    const titulo = det.dataset.titulo;
     try {
       for (let i = 0; i < ids.length; i++) {
         const id = ids[i];
@@ -809,17 +830,18 @@ export function initTarefas(userCfg) {
           .eq('id', id).neq('status', 'concluida').select('id');
         if (error) { falhas.push(nomeDe(id) + ' (' + error.message + ')'); continue; }
         if (!up || !up.length) { jaEstavam.push(nomeDe(id)); continue; }
-        const { error: eHist } = await supabase.from('tarefa_historico').insert({ tarefa_id:id, descricao:C.historicoConcluida, autor:usuarioEmail });
+        const { error: eHist } = await supabase.from('tarefa_historico').insert({ tarefa_id:id, descricao, autor:usuarioEmail });
         feitas++;   // a conclusão valeu mesmo sem o registro — o histórico é avisado à parte
         await avisarDependentes(tarefas.find(x => x.id === id));
         if (eHist) semHist.push(nomeDe(id) + ' (' + eHist.message + ')');
       }
+      // a trava só sai depois da recarga: antes dela, o botão vizinho da barra (ou uma caixa reaberta)
+      // deixaria começar outro lote em cima da barra que o render() está pra descartar
+      await carregarTarefas();   // re-renderiza; o resumo entra no grupo pelo título
     } finally {
       loteRodando = false;
       travados.forEach(el => { if (el.isConnected && el !== btn && el !== limpar) { el.disabled = el.dataset.loteTrava === '1'; delete el.dataset.loteTrava; } });
     }
-    const titulo = det.dataset.titulo;
-    await carregarTarefas();   // re-renderiza; o resumo entra no grupo pelo título
     const grupo = [...elGrupos.querySelectorAll('details.fa-grupo')].find(d => d.dataset.titulo === titulo);
     const alvo = grupo ? grupo.querySelector('.fa-grupo-body') : null;
     const problemas = falhas.length || semHist.length;
@@ -836,6 +858,91 @@ export function initTarefas(userCfg) {
     else elGrupos.insertAdjacentElement('beforebegin', resumo);
     if (!problemas && !jaEstavam.length) setTimeout(() => resumo.remove(), 6000);
   }
+
+  // Registrar andamento em lote (mesmo comportamento da Agenda): o mesmo texto no histórico de cada
+  // selecionada, uma a uma — o status NÃO muda. Mesmas travas de tela e resumo honesto do concluir.
+  async function andamentoLote(det, ids, barra, obs) {
+    if (!ids.length || !obs) return;
+    if (loteRodando) { alert('Já tem um lote em andamento — espere ele terminar.'); return; }
+    const btn = barra.querySelector('[data-lote-and]');
+    const limpar = barra.querySelector('[data-lote-limpar]');
+    if (!btn) return;   // barra esvaziada (seleção desfeita por trás da janela): sem isso o lote ficava preso
+    loteRodando = true;
+    btn.disabled = true; if (limpar) limpar.disabled = true;
+    barra.classList.add('is-rodando');
+    const travados = [searchInput, filterStatus, filterResp, ...document.querySelectorAll('.fa-focus-card'), ...elGrupos.querySelectorAll('input.fa-chk'), ...elGrupos.querySelectorAll('[data-lote-ok],[data-lote-and],[data-lote-limpar]')];
+    travados.forEach(el => { if (el !== btn && el !== limpar) { el.dataset.loteTrava = el.disabled ? '1' : ''; el.disabled = true; } });
+    const nomeDe = id => { const t = tarefas.find(x => x.id === id); return t ? (t.clientes?.nome_principal || t.titulo || 'sem cliente') : id; };
+    const descricao = obs + ' (registrado em lote, ' + rotuloItens(ids.length) + ')';
+    let feitas = 0; const falhas = [];
+    const titulo = det.dataset.titulo;
+    try {
+      for (let i = 0; i < ids.length; i++) {
+        const id = ids[i];
+        btn.innerHTML = '<span class="spinner spinner-sm"></span>Registrando ' + (i + 1) + ' de ' + ids.length + '…';
+        const { error } = await supabase.from('tarefa_historico').insert({ tarefa_id:id, descricao, autor:usuarioEmail });
+        if (error) { falhas.push(nomeDe(id) + ' (' + error.message + ')'); continue; }
+        feitas++;
+      }
+      await carregarTarefas();   // re-renderiza (a seleção some junto); a trava só sai depois, como no concluir
+    } finally {
+      loteRodando = false;
+      travados.forEach(el => { if (el.isConnected && el !== btn && el !== limpar) { el.disabled = el.dataset.loteTrava === '1'; delete el.dataset.loteTrava; } });
+    }
+    const grupo = [...elGrupos.querySelectorAll('details.fa-grupo')].find(d => d.dataset.titulo === titulo);
+    const alvo = grupo ? grupo.querySelector('.fa-grupo-body') : null;
+    const resumo = document.createElement('div');
+    resumo.className = 'fa-lote-resumo ' + (falhas.length ? 'erro' : 'ok');
+    let txt = (grupo ? '' : '<b>' + esc(titulo) + '</b> — ') + (falhas.length ? 'Andamento registrado em ' + rotuloItens(feitas) + '.' : '✓ Andamento registrado em ' + rotuloItens(feitas) + '.');
+    if (falhas.length) txt += ' <b>' + falhas.length + ' sem o registro:</b> ' + falhas.map(esc).join('; ') + '.';
+    resumo.innerHTML = txt;
+    if (alvo) { grupo.open = true; gruposAbertos.add(titulo); alvo.prepend(resumo); }
+    else elGrupos.insertAdjacentElement('beforebegin', resumo);
+    if (!falhas.length) setTimeout(() => resumo.remove(), 6000);
+  }
+
+  // ---------- janela do lote (no lugar do confirm do navegador) ----------
+  // Concluir: observação opcional, vai junto no histórico de cada uma. Registrar andamento: texto
+  // obrigatório. Cancelar, × ou clique fora fecham sem gravar nada.
+  const loteOverlay = $('loteOverlay');
+  let lotePend = null;   // { modo, det, ids, barra } da janela aberta
+  const deCada = 'vai pro histórico de ' + (C.itemPluralFem ? 'cada uma' : 'cada um');
+  function abrirLote(modo, det, ids, barra) {
+    if (!ids.length) return;
+    if (loteRodando) { alert('Já tem um lote em andamento — espere ele terminar.'); return; }
+    lotePend = { modo, det, ids: [...ids], barra };
+    const n = ids.length;
+    $('loteTitulo').innerHTML = modo === 'concluir' ? 'Concluir ' + rotuloItens(n) : 'Registrar andamento em ' + rotuloItens(n);
+    $('loteLabel').textContent = (modo === 'concluir' ? 'Observação (opcional) — ' : 'O que aconteceu — ') + deCada;
+    $('loteConfirmar').textContent = modo === 'concluir' ? 'Concluir ' + n : 'Registrar em ' + n;
+    $('loteObs').placeholder = modo === 'concluir' ? 'Ex.: Feito e cliente avisado pelo WhatsApp.' : C.andamentoPlaceholder;
+    $('loteObs').value = '';
+    $('loteMsg').hidden = true;
+    loteOverlay.classList.add('is-open');
+    setTimeout(() => $('loteObs').focus(), 50);
+  }
+  function fecharLote() { loteOverlay.classList.remove('is-open'); lotePend = null; $('loteObs').value = ''; $('loteMsg').hidden = true; }
+  $('loteCancelar').addEventListener('click', fecharLote);
+  $('loteClose').addEventListener('click', fecharLote);
+  // clique fora só fecha se também começou fora (arrastar a seleção do texto até o fundo não perde o que foi
+  // escrito) e não conta o 2º clique de um duplo clique no botão da barra que abriu a janela
+  let loteDownFora = false;
+  loteOverlay.addEventListener('mousedown', e => { loteDownFora = e.target === loteOverlay; });
+  loteOverlay.addEventListener('click', e => { if (e.target === loteOverlay && loteDownFora && e.detail < 2) fecharLote(); });
+  $('loteConfirmar').addEventListener('click', () => {
+    if (!lotePend) return;
+    const { modo, det, ids, barra } = lotePend;
+    const aviso = t => { const m = $('loteMsg'); m.textContent = t; m.hidden = false; $('loteObs').focus(); };
+    if (!barra.isConnected || !barra.querySelector(modo === 'concluir' ? '[data-lote-ok]' : '[data-lote-and]')) {
+      aviso('A seleção mudou enquanto a janela estava aberta — cancele e marque de novo.');
+      return;
+    }
+    const obs = $('loteObs').value.trim();
+    if (modo === 'andamento' && !obs) { aviso('Escreve o que aconteceu — é isso que vai pro histórico.'); return; }
+    fecharLote();   // o andamento do lote aparece na própria barra do grupo ("Concluindo 1 de N…")
+    if (modo === 'concluir') concluirLote(det, ids, barra, obs);
+    else andamentoLote(det, ids, barra, obs);
+  });
 
   function menorPrazo(itens){ const ps = itens.map(t=>t.prazo).filter(Boolean).sort(); return ps[0] || ''; }
   const STATUS_LBL = { pendente:'Pendente', em_andamento:'Em andamento', concluida:'Concluído' };
