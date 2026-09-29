@@ -6,6 +6,7 @@
 import { supabase } from './supabase.js';
 import './autogrow.js'; // textareas crescem com o texto em todo o sistema
 import './theme.js';    // tema claro/escuro (interruptor no topo, escolha por navegador)
+import './janelas.js';  // Esc fecha a janela aberta que está por cima
 
 document.documentElement.style.visibility = 'hidden';
 
