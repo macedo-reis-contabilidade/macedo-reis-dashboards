@@ -23,7 +23,12 @@ def conv(s):
     for k,v in MAP.items(): s = re.sub(re.escape(k)+r'\b', v, s, flags=re.I)
     for pat,v in RGBA: s = re.sub(pat, v, s)
     return s
+# uso: python tools/tema-claro/tokenize.py tela.html [outra.html ...]
+# Troca as cores fixas conhecidas por tokens do tema e lista o que sobrou pra decidir à mão.
+# Lê e grava em UTF-8 preservando o fim de linha (no Windows, sem isso, os acentos estragam).
 for f in sys.argv[1:]:
-    s=open(f).read(); n=conv(s); open(f,'w').write(n)
+    with open(f, encoding='utf-8', newline='') as h: s = h.read()
+    n = conv(s)
+    with open(f, 'w', encoding='utf-8', newline='') as h: h.write(n)
     rest = re.findall(r'#[0-9A-Fa-f]{6}\b|rgba\(255,\s*255,\s*255[^)]*\)|rgba\((?:8,12,18|6,10,16|4,8,14)[^)]*\)', n)
     print(f, 'restantes:', len(rest), sorted(set(rest))[:12])
