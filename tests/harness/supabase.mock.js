@@ -44,7 +44,16 @@ const DATA = {
     { id:'v2', cliente_id:'c2', obrigacao_id:'o1', responsavel:'Thalia', dia_prazo_override:null, ativo:true, clientes:{ nome_principal:'EMPRESA EXEMPLO LTDA' } },
     { id:'v3', cliente_id:'c3', obrigacao_id:'o1', responsavel:null, dia_prazo_override:null, ativo:false, clientes:{ nome_principal:'LOJA DE TESTE LTDA' } },
   ],
-  alvaras:[], transicoes:[], precificacoes:[], carteira_info:[], rt_casos:[], faturaveis:[], tarefa_historico:[], servicos_avulsos:[],
+  alvaras:[], carteira_info:[], rt_casos:[], faturaveis:[], tarefa_historico:[], servicos_avulsos:[],
+  // Propostas → transição (tests/harness/proposta-transicao.py): uma apresentada, uma fechada sem transição e uma fechada com
+  precificacoes: [
+    { id:'pp1', cliente_nome:'PADARIA FICTÍCIA LTDA', contato:'51900000001', cliente_id:null, origem:'interna', status:'apresentada', respostas:{ A1:'PADARIA FICTÍCIA LTDA' }, resultado:null, honorario:650, taxa_unica:null, observacao:null, criado_por:'samuel@macedoereis.com.br', criado_em:add(-2)+'T12:00:00Z', atualizado_em:add(-2)+'T12:00:00Z' },
+    { id:'pp2', cliente_nome:'OFICINA MODELO LTDA', contato:'51900000002', cliente_id:null, origem:'externa', status:'fechada', respostas:{ A1:'OFICINA MODELO LTDA' }, resultado:null, honorario:900, taxa_unica:450, observacao:null, criado_por:'Contato Teste', criado_em:add(-5)+'T12:00:00Z', atualizado_em:add(-1)+'T12:00:00Z' },
+    { id:'pp3', cliente_nome:'CONFECÇÃO TESTE LTDA', contato:null, cliente_id:null, origem:'interna', status:'fechada', respostas:{ A1:'CONFECÇÃO TESTE LTDA' }, resultado:null, honorario:1200, taxa_unica:null, observacao:null, criado_por:'diego@macedoereis.com.br', criado_em:add(-20)+'T12:00:00Z', atualizado_em:add(-15)+'T12:00:00Z' },
+  ],
+  transicoes: [
+    { id:'tx1', titulo:'CONFECÇÃO TESTE LTDA', tipo:'entrada', proposta_id:'pp3', padrinho:null, inicio:add(-15), previsao_fim:add(75), tera_funcionarios:null, contato:null, observacao:'Aberta a partir da proposta fechada.', status:'em_andamento', concluida_em:null, criado_em:add(-15)+'T12:00:00Z', transicao_empresas:[] },
+  ],
   // Tarefas recorrentes por setor (assets/js/rotinas-setor.js; teste em tests/harness/rotinas-setor.py)
   rotinas_modelo: [
     { id:'rm1', setor:'dp', nome:'FOLHA DE PAGAMENTO (TESTE)', ativo:true },
