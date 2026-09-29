@@ -46,3 +46,14 @@
   - trava saindo antes da recarga;
   - andamento sem travas;
   - clique fora no duplo clique.
+
+---
+## Decisões do arquiteto — 29/09/2026 (revisado e publicado)
+Revisão: escopo respeitado (só motor, mock, teste e docs); LF e UTF-8 intactos; `lote-setores.py` rodado do zero (95 ok, 0 falhas);
+verificação independente do arquiteto nos dois temas (andamento grava nas selecionadas sem mudar status; concluir leva a
+observação; nenhum `alert/confirm`; nenhum erro de JavaScript).
+- Todas as escolhas da seção "Escolhas que o briefing não fixava" e os ajustes no fluxo de concluir: **aceitos**.
+- **Card na Ajuda**: feito pelo arquiteto.
+- **Topbar por cima das janelas do motor**: problema antigo, vale para todas as janelas — fica registrado, sem correção agora.
+- **Exceção lançada no meio do laço** e **Esc/foco**: ficam como estão (mesmo padrão das outras janelas).
+- **t61–t65 nas fotos de outras telas**: aceito (dados inventados, só no mock).
