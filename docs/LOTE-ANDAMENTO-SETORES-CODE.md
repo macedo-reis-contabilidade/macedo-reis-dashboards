@@ -78,4 +78,4 @@ impedem o trabalho: anote em `docs/LOTE-ANDAMENTO-DUVIDAS.md` e siga.
 ## 7. Registro de progresso
 | Data | O que foi feito | Commit | Onde parou / observação |
 |---|---|---|---|
-| — | — | — | (ninguém começou ainda) |
+| 29/09/2026 | "Registrar andamento" + observação ao concluir em lote, na janela criada pelo motor (só `assets/js/tarefas-engine.js`); teste `tests/harness/lote-setores.py`; mock com cópias, `__mockDb`, `__mockDelay` e tarefas inventadas | `63458e0` (motor), `05b42dc` (teste) | Pronto pra revisão na branch `lote-andamento-setores`. `lote-setores.py`: TUDO OK nos dois temas; `conferir.py` nas 9 telas do motor + Agenda + painel: "Erros de JavaScript: nenhum"; `node --check` OK. Escolhas e pendências (card na Ajuda, topbar sobre as janelas) em `docs/LOTE-ANDAMENTO-DUVIDAS.md`. |
