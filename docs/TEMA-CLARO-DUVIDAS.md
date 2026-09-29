@@ -106,6 +106,16 @@
 - **`.card-status.st-load`** (selo "carregando"): em `fiscal`, `dp` e `setores`, o fundo `rgba(255,255,255,.05)` virou `--fill-2`, pela decisão ".05 de fundo → `--fill-2`". O `index.html`, convertido antes, usa `--line` na mesma regra: `.08` contra `.06` no escuro. Pode ser alinhado depois, se quiserem o mesmo token em todas as telas-hub.
 - **Relatórios** (`*-relatorios`): o bloco `@media print` (25 cores) ficou todo fixo. Resta só o contraste do `--ok` no claro (`#statOk`, 3,5:1), que já está registrado como pendência global.
 
+## Lote 8 (#48–#53) — dúvidas novas, 29/09/2026
+- **login.html — o login não troca de tema.**
+  - Carrega o `style.css`, mas não o `auth-guard.js`/`theme.js`, então nunca recebe `data-theme="light"` e fica sempre escuro, mesmo com `mr_tema='claro'`. O `style.css` também não tem `prefers-color-scheme`.
+  - As classes `.login-*` já usam token no `style.css` e funcionariam no claro (testado forçando o tema).
+  - As 3 cores fixas da tela são o gradiente do logo (`stop-color` em SVG), que ficam.
+  - Fazer o login seguir o tema exige carregar o `theme.js` ali, uma mudança de estrutura fora desta tarefa.
+  - Obs.: o harness não fotografa o login, porque o mock tem sessão e ele redireciona pro `index.html`.
+- **financeiro-rotinas.html e editar.html (raiz) — não se aplica.** São páginas de redirecionamento sem `style.css`. O aviso "Redirecionando…" fica com o escuro fixo (`#0D1117`/`#D7DEE8`) e pode dar um flash escuro rápido no tema claro. Se incomodar, precisa de uma decisão global sobre essas páginas.
+- **gestao-rotinas** e **clientes/clientes-tarefas**: a lista vem do `assets/js/tarefas-engine.js`. No claro, o check sólido de "feita" (3,8:1) e a pill "Diária" (3,3:1) caem na pendência global do `--ok`.
+
 ---
 ## Decisões do arquiteto — 29/09/2026 (lote 1 revisado e publicado)
 - **Ciano `#52B4C6`** → novo token **`--accent`** (escuro `#52B4C6`, claro `#1C7A8A`). Já trocado nas telas do lote 1 e na Agenda; o `tokenize.py` passa a converter sozinho. Tintas `rgba(82,180,198,…)` ficam.
