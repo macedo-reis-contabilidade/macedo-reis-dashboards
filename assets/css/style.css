@@ -32,6 +32,9 @@
   --ok:            #3FB07A;                 /* verde de estado (tarefa feita, positivo) */
   --warn:          #E3B341;                 /* amarelo de estado */
   --accent:        #52B4C6;                 /* ciano de destaque (títulos de bloco, totais) */
+  --rose:          #F472B6;                 /* rosa de categoria (Anexo V, contrato 2029+) */
+  --orange:        #FB923C;                 /* laranja: degrau entre alerta e erro */
+  --sel:           rgba(197,216,232,.18);   /* fundo de opção selecionada (segmentado) */
   --err:           #E06C6C;                 /* vermelho de estado (atraso, alta) */
   --fill-1:        rgba(255,255,255,.035);  /* fundo de card sobre o bg */
   --fill-2:        rgba(255,255,255,.06);   /* card em hover / segundo nível */
@@ -67,16 +70,19 @@
 
   --text:          #1B2430;
   --text-muted:    #5B6678;
-  --text-dim:      #8A94A6;
+  --text-dim:      #6E788A;                 /* 30/09: mais escuro — o anterior dava 2,4–2,9:1 */
 
   --success:       #1E8E5A;
   --warning:       #B7791F;
   --danger:        #C43C3C;
 
   --text-2:        #3F4A5C;
-  --ok:            #1E8E5A;
+  --ok:            #157347;                 /* 30/09: mais escuro — o anterior dava 3,2–3,8:1 */
   --warn:          #8A5A0A;                 /* 29/09: mais escuro — o anterior dava 3,7:1 */
   --accent:        #1C7A8A;
+  --rose:          #B42F73;
+  --orange:        #B45309;
+  --sel:           rgba(58,88,120,.16);
   --err:           #C43C3C;
   --fill-1:        rgba(15,23,42,.035);
   --fill-2:        rgba(15,23,42,.06);
@@ -291,6 +297,7 @@ a:hover { color: var(--brand-pale); }
 
 .btn-primary { background: var(--brand-primary); border-color: var(--brand-primary); }
 .btn-primary:hover:not(:disabled) { background: var(--brand-dark); border-color: var(--brand-dark); color: var(--text); }
+[data-theme="light"] .btn-primary, [data-theme="light"] .btn-primary:hover:not(:disabled) { color: #fff; }
 
 .btn-ghost { background: transparent; border-color: var(--border); }
 .btn-ghost:hover:not(:disabled) { background: var(--surface); }

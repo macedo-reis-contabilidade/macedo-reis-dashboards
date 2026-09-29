@@ -25,8 +25,8 @@
     .fr-badge { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: 700; }
     .fr-ok    { background: rgba(74,222,128,.15); color: var(--ok); }
     .fr-fio   { background: rgba(250,204,21,.15); color: var(--warn); }
-    .fr-perto { background: rgba(251,146,60,.15); color: var(--warn); }
-    .fr-longe { background: rgba(244,114,182,.14); color: #F472B6; }
+    .fr-perto { background: rgba(251,146,60,.15); color: var(--orange); }
+    .fr-longe { background: rgba(244,114,182,.14); color: var(--rose); }
     .fr-nd    { background: rgba(138,174,200,.14); color: var(--brand-light); }
     .fr-mini { display: inline-block; min-width: 46px; text-align: center; padding: 1px 6px; border-radius: 8px; font-size: 11px; font-weight: 600; margin-right: 4px; }
     .fr-alerta { color: var(--warn); font-size: 12px; }
@@ -315,10 +315,10 @@
       el('painelCards').innerHTML =
         '<div class="fr-card"><div class="num">' + ativas.length + '</div><div class="lbl">Empresas acompanhadas</div></div>' +
         '<div class="fr-card"><div class="num" style="color:var(--ok);">' + iii + '</div><div class="lbl">No Anexo III (' + mesRot(paAtual) + ')</div></div>' +
-        '<div class="fr-card"><div class="num" style="color:#F472B6;">' + v5 + '</div><div class="lbl">No Anexo V</div></div>' +
+        '<div class="fr-card"><div class="num" style="color:var(--rose);">' + v5 + '</div><div class="lbl">No Anexo V</div></div>' +
         '<div class="fr-card"><div class="num" style="color:var(--warn);">' + fio + '</div><div class="lbl">Na zona de atenção</div></div>' +
         '<div class="fr-card"><div class="num" style="color:' + (pend ? 'var(--warn)' : 'var(--ok)') + ';">' + pend + '</div><div class="lbl">Com dados faltando</div></div>' +
-        '<div class="fr-card"><div class="num" style="color:' + (viram ? '#F472B6' : 'var(--ok)') + ';">' + viram + '</div><div class="lbl">Viram de anexo em ' + mesRot(paProx) + '</div></div>';
+        '<div class="fr-card"><div class="num" style="color:' + (viram ? 'var(--rose)' : 'var(--ok)') + ';">' + viram + '</div><div class="lbl">Viram de anexo em ' + mesRot(paProx) + '</div></div>';
       el('painelCab').innerHTML = '<tr><th>Empresa</th><th>Início</th><th class="fr-num">Fator r · ' + mesRot(paAtual) + '</th><th>Situação</th><th class="fr-num">Margem</th><th>Últimos PAs</th><th>Radar ' + mesRot(paProx) + '</th><th>Dados</th></tr>';
       if (!ativas.length) {
         el('painelCorpo').innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;" class="fr-dim">Nenhuma empresa cadastrada ainda. Comece em "Gerenciar empresas".</td></tr>';

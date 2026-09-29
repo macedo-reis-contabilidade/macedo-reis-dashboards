@@ -127,3 +127,21 @@
 - **`.fa-risco`**: fica `--warn` (a tela era laranja; o PDF é outro contexto).
 - **Botão "?" do tour** corrigido no `tour.js` pelo arquiteto.
 - **Harness**: `conferir.py` agora desliga todos os tours e aceita `"tela.html?id=..."` (nome da foto sem `?`).
+
+---
+## Decisões do arquiteto — 30/09/2026 (lotes 2 a 8 revisados e publicados)
+Revisão: só cor mudou nas 44 telas; UTF-8 e fim de linha intactos; nenhum erro de JavaScript; escuro idêntico em 37 telas e,
+nas outras 7, só onde as dúvidas abaixo previam; no claro, nenhuma tela com área escura (máx. 0,4% — texto).
+- **`.btn-primary` no claro**: texto branco (regra no `style.css`). Feito.
+- **`--ok` no claro** → `#157347` e **`--text-dim` no claro** → `#6E788A` (contraste ≥ 4,5:1). Feito.
+- **Tokens novos**: `--rose` (`#F472B6` / claro `#B42F73`), `--orange` (`#FB923C` / claro `#B45309`), `--sel` (fundo de opção selecionada).
+  Aplicados: `fator-r` (`.fr-longe`, cards "No Anexo V"/"Viram de anexo" → `--rose`; `.fr-perto` → `--orange`, o degrau volta a ter cor própria),
+  `relatorios-vivos` (`.fim-tag.pl29` → `--rose`), `comercial-carteira` (`.seg .is-on` → `--sel`), `comercial-precificacao` (`.seg .is-on` com tinta própria no claro).
+- **Aceitas como ele fez**: `--border` nos campos do DRE; spinner com `--text`/`--line-strong`; hover `.02` → `--fill-1`; `th` fixo → `--surface`;
+  `#8FC0F0` → `--brand-light`; `pl26/pl28` → `--ok`/`--warn`; `#E08FA8` → `--err` em relatorios-vivos; ícones de módulo fixos nas páginas de setor;
+  `@media print` fixo; faixa terracota da inadimplência fixa; `.fr-tour-hi` fixo.
+- **Não se aplica** (confirmado): `proposta.html` (página pública, clara por desenho — fora de qualquer `tokenize.py` em lote), `login.html`,
+  `financeiro-rotinas.html` e `editar.html` da raiz (redirecionamentos).
+- **Fica para depois, se o Samuel quiser**: login seguindo o tema (exige carregar o `theme.js` na tela de login).
+
+**Tarefa do tema claro: concluída.**
