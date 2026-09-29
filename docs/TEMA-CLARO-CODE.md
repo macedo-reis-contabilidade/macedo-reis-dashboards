@@ -83,58 +83,65 @@ e vá para a próxima tela.
 | 3 | `comercial-reunioes.html` | 116 | ✅ |
 | 4 | `fiscal-analise.html` | 111 | ✅ |
 | 5 | `clientes/editar.html` | 99 | ✅ |
-| 6 | `dp-pareceres.html` | 89 | ⬜ |
-| 7 | `comercial-carteira.html` | 85 | ⬜ |
-| 8 | `fiscal-obrigacoes.html` | 81 | ⬜ |
-| 9 | `dp-custo.html` | 73 | ⬜ |
-| 10 | `relatorios-vivos.html` | 72 | ⬜ |
-| 11 | `fiscal-regularizacao.html` | 72 | ⬜ |
-| 12 | `contabil-dre.html` | 72 | ⬜ |
-| 13 | `financeiro-faturaveis.html` | 61 | ⬜ |
-| 14 | `financeiro-boletos.html` | 59 | ⬜ |
-| 15 | `dp-convencoes.html` | 55 | ⬜ |
-| 16 | `irpf-declaracoes.html` | 53 | ⬜ |
-| 17 | `fiscal-xml.html` | 52 | ⬜ |
-| 18 | `comercial-transicao.html` | 51 | ⬜ |
-| 19 | `societario-alvaras.html` | 45 | ⬜ |
-| 20 | `fator-r.html` | 45 | ⬜ |
-| 21 | `financeiro-regras.html` | 32 | ⬜ |
-| 22 | `societario-regras.html` | 29 | ⬜ |
-| 23 | `fiscal-sugestoes.html` | 29 | ⬜ |
-| 24 | `dp-sugestoes.html` | 29 | ⬜ |
-| 25 | `contabil-sugestoes.html` | 29 | ⬜ |
-| 26 | `gestao.html` | 28 | ⬜ |
-| 27 | `fiscal-regras.html` | 24 | ⬜ |
-| 28 | `contabil-regras.html` | 24 | ⬜ |
-| 29 | `comercial-regras.html` | 24 | ⬜ |
-| 30 | `proposta.html` | 22 | ⬜ |
-| 31 | `societario-relatorios.html` | 20 | ⬜ |
-| 32 | `irpf-relatorios.html` | 20 | ⬜ |
-| 33 | `fiscal-relatorios.html` | 20 | ⬜ |
-| 34 | `financeiro-relatorios.html` | 20 | ⬜ |
-| 35 | `dp-relatorios.html` | 20 | ⬜ |
-| 36 | `contabil-relatorios.html` | 20 | ⬜ |
-| 37 | `comercial-relatorios.html` | 20 | ⬜ |
-| 38 | `fiscal.html` | 16 | ⬜ |
-| 39 | `dp.html` | 16 | ⬜ |
-| 40 | `setores.html` | 15 | ⬜ |
-| 41 | `clientes/novo.html` | 15 | ⬜ |
-| 42 | `financeiro.html` | 14 | ⬜ |
-| 43 | `comercial.html` | 14 | ⬜ |
-| 44 | `societario.html` | 11 | ⬜ |
-| 45 | `irpf.html` | 11 | ⬜ |
-| 46 | `contabil.html` | 11 | ⬜ |
-| 47 | `administracao.html` | 10 | ⬜ |
-| 48 | `gestao-rotinas.html` | 5 | ⬜ |
-| 49 | `clientes/clientes-tarefas.html` | 5 | ⬜ |
-| 50 | `login.html` | 3 | ⬜ |
-| 51 | `fiscal-clientes.html` | 3 | ⬜ |
-| 52 | `financeiro-rotinas.html` | 3 | ⬜ |
-| 53 | `editar.html` | 3 | ⬜ |
+| 6 | `dp-pareceres.html` | 89 | ✅ |
+| 7 | `comercial-carteira.html` | 85 | ✅ |
+| 8 | `fiscal-obrigacoes.html` | 81 | ✅ |
+| 9 | `dp-custo.html` | 73 | ✅ |
+| 10 | `relatorios-vivos.html` | 72 | ✅ |
+| 11 | `fiscal-regularizacao.html` | 72 | ✅ |
+| 12 | `contabil-dre.html` | 72 | ✅ |
+| 13 | `financeiro-faturaveis.html` | 61 | ✅ |
+| 14 | `financeiro-boletos.html` | 59 | ✅ |
+| 15 | `dp-convencoes.html` | 55 | ✅ |
+| 16 | `irpf-declaracoes.html` | 53 | ✅ |
+| 17 | `fiscal-xml.html` | 52 | ✅ |
+| 18 | `comercial-transicao.html` | 51 | ✅ |
+| 19 | `societario-alvaras.html` | 45 | ✅ |
+| 20 | `fator-r.html` | 45 | ✅ |
+| 21 | `financeiro-regras.html` | 32 | ✅ |
+| 22 | `societario-regras.html` | 29 | ✅ |
+| 23 | `fiscal-sugestoes.html` | 29 | ✅ |
+| 24 | `dp-sugestoes.html` | 29 | ✅ |
+| 25 | `contabil-sugestoes.html` | 29 | ✅ |
+| 26 | `gestao.html` | 28 | ✅ |
+| 27 | `fiscal-regras.html` | 24 | ✅ |
+| 28 | `contabil-regras.html` | 24 | ✅ |
+| 29 | `comercial-regras.html` | 24 | ✅ |
+| 30 | `proposta.html` | 22 | ➖ não se aplica (página pública sem style.css — ver dúvidas) |
+| 31 | `societario-relatorios.html` | 20 | ✅ |
+| 32 | `irpf-relatorios.html` | 20 | ✅ |
+| 33 | `fiscal-relatorios.html` | 20 | ✅ |
+| 34 | `financeiro-relatorios.html` | 20 | ✅ |
+| 35 | `dp-relatorios.html` | 20 | ✅ |
+| 36 | `contabil-relatorios.html` | 20 | ✅ |
+| 37 | `comercial-relatorios.html` | 20 | ✅ |
+| 38 | `fiscal.html` | 16 | ✅ |
+| 39 | `dp.html` | 16 | ✅ |
+| 40 | `setores.html` | 15 | ✅ |
+| 41 | `clientes/novo.html` | 15 | ✅ |
+| 42 | `financeiro.html` | 14 | ✅ |
+| 43 | `comercial.html` | 14 | ✅ |
+| 44 | `societario.html` | 11 | ✅ |
+| 45 | `irpf.html` | 11 | ✅ |
+| 46 | `contabil.html` | 11 | ✅ |
+| 47 | `administracao.html` | 10 | ✅ |
+| 48 | `gestao-rotinas.html` | 5 | ✅ |
+| 49 | `clientes/clientes-tarefas.html` | 5 | ✅ |
+| 50 | `login.html` | 3 | ➖ nada a converter (as 3 cores são do SVG do logo; a tela não carrega theme.js — ver dúvidas) |
+| 51 | `fiscal-clientes.html` | 3 | ✅ |
+| 52 | `financeiro-rotinas.html` | 3 | ➖ não se aplica (redirecionamento sem style.css) |
+| 53 | `editar.html` | 3 | ➖ não se aplica (redirecionamento sem style.css) |
 
 ## 8. Registro de progresso
 Ao fim de cada sessão, acrescente uma linha: data, telas feitas (marque ✅ na tabela acima), commit, onde parou.
 
 | Data | Telas feitas | Commit | Onde parou / observação |
 |---|---|---|---|
-| 28/09/2026 | #1–#5: fiscal-reforma, comercial-precificacao, comercial-reunioes, fiscal-analise, clientes/editar | este commit (lote 1) | Lote 1 feito: diff só de cor, escuro igual ao antes, claro sem fundo escuro; HTML de impressão/janela nova e cores concatenadas em JS ficaram fixos. Próximo: #6 `dp-pareceres.html` (lote 2 = #6–#11). Dúvidas em `docs/TEMA-CLARO-DUVIDAS.md`. |
+| 28/09/2026 | #1–#5: fiscal-reforma, comercial-precificacao, comercial-reunioes, fiscal-analise, clientes/editar | `2414ec9` (lote 1) | Lote 1 feito: diff só de cor, escuro igual ao antes, claro sem fundo escuro; HTML de impressão/janela nova e cores concatenadas em JS ficaram fixos. Próximo: #6 `dp-pareceres.html` (lote 2 = #6–#11). Dúvidas em `docs/TEMA-CLARO-DUVIDAS.md`. |
+| 28/09/2026 | #6–#11: dp-pareceres, comercial-carteira, fiscal-obrigacoes, dp-custo, relatorios-vivos, fiscal-regularizacao | `6f3e996` (lote 2) | Lote 2 feito, mesmos critérios do lote 1. Próximo: #12 `contabil-dre.html` (lote 3 = #12–#17). Novas dúvidas (btn-primary e --ok no claro, token de selecionado, rosa/terracota) em `docs/TEMA-CLARO-DUVIDAS.md`. |
+| 28/09/2026 | #12–#17: contabil-dre, financeiro-faturaveis, financeiro-boletos, dp-convencoes, irpf-declaracoes, fiscal-xml | `9c0416f` (lote 3) | Lote 3 feito sobre a revisão do arquiteto (--accent, --warn novo). Próximo: #18 `comercial-transicao.html` (lote 4 = #18–#24). Dúvidas do lote 3 em `docs/TEMA-CLARO-DUVIDAS.md`. |
+| 28/09/2026 | #18–#24: comercial-transicao, societario-alvaras, fator-r, financeiro-regras, societario-regras, fiscal-sugestoes, dp-sugestoes | `05d8372` (lote 4) | Lote 4 feito. Telas de mesmo template (regras, sugestões) espelham a primeira convertida: societario-regras = financeiro-regras, dp-sugestoes = fiscal-sugestoes, linha a linha. Próximo: #25 `contabil-sugestoes.html` (lote 5 = #25–#32). |
+| 29/09/2026 | #25–#32: contabil-sugestoes, gestao, fiscal-regras, contabil-regras, comercial-regras, societario-relatorios, irpf-relatorios (proposta: não se aplica) | `1506f9d` (lote 5) | Lote 5 feito. Irmãs espelhadas da matriz: contabil-sugestoes = fiscal-sugestoes; fiscal/contabil/comercial-regras = societario-regras; irpf-relatorios = societario-relatorios. `proposta.html` ficou sem troca: é o questionário público, não carrega style.css nem theme.js (tokens não existem lá). Próximo: #33 `fiscal-relatorios.html` (lote 6 = #33–#40). |
+| 29/09/2026 | #33–#40: fiscal-relatorios, financeiro-relatorios, dp-relatorios, contabil-relatorios, comercial-relatorios, fiscal, dp, setores | `fa2de1f` (lote 6) | Lote 6 feito. Os 5 relatórios espelham societario-relatorios; dp espelha fiscal (páginas de setor). Cores dos ícones de módulo (.dashboard-card-icon) ficam fixas nas páginas de setor. Próximo: #41 `clientes/novo.html` (lote 7 = #41–#47). |
+| 29/09/2026 | #41–#47: clientes/novo, financeiro, comercial, societario, irpf, contabil, administracao | `cc36baf` (lote 7) | Lote 7 feito. Páginas de setor espelham fiscal (financeiro) e dp (comercial, societario, irpf, contabil); administracao espelha setores. Ícones de módulo fixos, como no lote 6. clientes/novo: regras .vo-* iguais às da clientes/editar. Próximo: #48 `gestao-rotinas.html` (lote 8 = #48–#53, o último). |
+| 29/09/2026 | #48–#53: gestao-rotinas, clientes/clientes-tarefas, fiscal-clientes (login, financeiro-rotinas e editar: nada a converter / não se aplica) | este commit (lote 8) | **Tabela concluída**: 49 telas convertidas; 4 marcadas ➖ (proposta, login, financeiro-rotinas, editar). Conferência final: `conferir.py` nas 53 telas, "Erros de JavaScript: nenhum". Pendências para decidir estão em `docs/TEMA-CLARO-DUVIDAS.md` (tokens globais: btn-primary, --ok, --text-dim, selecionado, rosa/laranja; login sem theme.js). |

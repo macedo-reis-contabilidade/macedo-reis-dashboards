@@ -10,54 +10,54 @@
   <style>
     .content { max-width:none; }
     .page-header { max-width:880px; }
-    .xm-sec { background:rgba(255,255,255,.025); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:18px 20px; margin-bottom:18px; }
-    .xm-sec h2 { margin:0 0 12px; font-size:16px; color:#E6EBF2; }
-    .xm-sec h2 small { color:#8A93A6; font-weight:400; font-size:13px; margin-left:8px; }
+    .xm-sec { background:var(--fill-1); border:1px solid var(--line); border-radius:14px; padding:18px 20px; margin-bottom:18px; }
+    .xm-sec h2 { margin:0 0 12px; font-size:16px; color:var(--text); }
+    .xm-sec h2 small { color:var(--text-muted); font-weight:400; font-size:13px; margin-left:8px; }
     .xm-row { display:flex; gap:14px; flex-wrap:wrap; align-items:flex-start; }
     .xm-cli { flex:1 1 360px; position:relative; }
-    .xm-res { position:absolute; left:0; right:0; top:100%; z-index:20; background:#141A22; border:1px solid rgba(255,255,255,.12); border-radius:10px; overflow:hidden; max-height:260px; overflow-y:auto; }
+    .xm-res { position:absolute; left:0; right:0; top:100%; z-index:20; background:var(--surface); border:1px solid var(--fill-3); border-radius:10px; overflow:hidden; max-height:260px; overflow-y:auto; }
     .xm-res:empty { display:none; }
-    .xm-res button { display:block; width:100%; text-align:left; background:transparent; border:none; border-bottom:1px solid rgba(255,255,255,.06); color:#E6EBF2; font:inherit; font-size:13px; padding:9px 12px; cursor:pointer; }
+    .xm-res button { display:block; width:100%; text-align:left; background:transparent; border:none; border-bottom:1px solid var(--line); color:var(--text); font:inherit; font-size:13px; padding:9px 12px; cursor:pointer; }
     .xm-res button:hover { background:rgba(138,174,200,.12); }
-    .xm-res small { color:#8A93A6; margin-left:6px; }
-    .xm-sel { margin-top:8px; font-size:13px; color:#8AAEC8; min-height:18px; }
-    .xm-sel b { color:#E6EBF2; }
-    .xm-sel .warn { color:#E3B341; }
-    .xm-drop { border:2px dashed rgba(255,255,255,.18); border-radius:12px; padding:26px 20px; text-align:center; color:#8A93A6; cursor:pointer; transition:border-color .15s, background .15s; flex:1 1 360px; }
-    .xm-drop:hover, .xm-drop.is-over { border-color:#5B82A6; background:rgba(91,130,166,.08); color:#C5D8E8; }
-    .xm-drop b { color:#E6EBF2; }
-    .xm-files { margin-top:10px; font-size:13px; color:#8A93A6; }
-    .xm-files b { color:#E6EBF2; }
+    .xm-res small { color:var(--text-muted); margin-left:6px; }
+    .xm-sel { margin-top:8px; font-size:13px; color:var(--brand-light); min-height:18px; }
+    .xm-sel b { color:var(--text); }
+    .xm-sel .warn { color:var(--warn); }
+    .xm-drop { border:2px dashed var(--line-strong); border-radius:12px; padding:26px 20px; text-align:center; color:var(--text-muted); cursor:pointer; transition:border-color .15s, background .15s; flex:1 1 360px; }
+    .xm-drop:hover, .xm-drop.is-over { border-color:var(--brand-primary); background:rgba(91,130,166,.08); color:var(--brand-pale); }
+    .xm-drop b { color:var(--text); }
+    .xm-files { margin-top:10px; font-size:13px; color:var(--text-muted); }
+    .xm-files b { color:var(--text); }
     .xm-prog { margin-top:14px; display:none; }
     .xm-prog.is-on { display:block; }
-    .xm-bar { height:10px; background:rgba(255,255,255,.07); border-radius:6px; overflow:hidden; }
-    .xm-fill { height:100%; width:0%; background:#5B82A6; border-radius:6px; transition:width .2s; }
-    .xm-prog-txt { margin-top:6px; font-size:12.5px; color:#8A93A6; }
+    .xm-bar { height:10px; background:var(--fill-2); border-radius:6px; overflow:hidden; }
+    .xm-fill { height:100%; width:0%; background:var(--brand-primary); border-radius:6px; transition:width .2s; }
+    .xm-prog-txt { margin-top:6px; font-size:12.5px; color:var(--text-muted); }
     .xm-rel { margin-top:14px; display:none; }
     .xm-rel.is-on { display:block; }
     .xm-kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:12px; }
-    .xm-kpi { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:12px 14px; }
-    .xm-kpi .n { font-size:22px; font-weight:700; color:#E6EBF2; line-height:1; }
-    .xm-kpi .l { font-size:12px; color:#8A93A6; margin-top:4px; }
-    .xm-kpi.ok .n { color:#3FB07A; } .xm-kpi.dup .n { color:#8AAEC8; } .xm-kpi.ign .n { color:#E3B341; } .xm-kpi.err .n { color:#E06C6C; }
-    .xm-det { font-size:13px; color:#C5D8E8; }
+    .xm-kpi { background:var(--fill-1); border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
+    .xm-kpi .n { font-size:22px; font-weight:700; color:var(--text); line-height:1; }
+    .xm-kpi .l { font-size:12px; color:var(--text-muted); margin-top:4px; }
+    .xm-kpi.ok .n { color:var(--ok); } .xm-kpi.dup .n { color:var(--brand-light); } .xm-kpi.ign .n { color:var(--warn); } .xm-kpi.err .n { color:var(--err); }
+    .xm-det { font-size:13px; color:var(--brand-pale); }
     .xm-det details { margin-top:6px; }
-    .xm-det summary { cursor:pointer; color:#8AAEC8; }
-    .xm-det ul { margin:6px 0 0 18px; padding:0; color:#8A93A6; font-size:12.5px; max-height:180px; overflow:auto; }
+    .xm-det summary { cursor:pointer; color:var(--brand-light); }
+    .xm-det ul { margin:6px 0 0 18px; padding:0; color:var(--text-muted); font-size:12.5px; max-height:180px; overflow:auto; }
     table.xm { border-collapse:collapse; width:100%; font-size:13px; }
-    table.xm th { text-align:left; color:#8AAEC8; font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.04em; padding:8px 10px; border-bottom:1px solid rgba(255,255,255,.08); }
-    table.xm td { padding:8px 10px; border-bottom:1px solid rgba(255,255,255,.05); color:#E6EBF2; vertical-align:middle; }
+    table.xm th { text-align:left; color:var(--brand-light); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.04em; padding:8px 10px; border-bottom:1px solid var(--line); }
+    table.xm td { padding:8px 10px; border-bottom:1px solid var(--line); color:var(--text); vertical-align:middle; }
     table.xm td.num, table.xm th.num { text-align:right; font-variant-numeric:tabular-nums; }
-    table.xm td small { color:#8A93A6; }
-    .btn-mini { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.14); color:#C5D8E8; border-radius:7px; padding:5px 10px; font-size:12px; cursor:pointer; font-family:inherit; white-space:nowrap; }
-    .btn-mini:hover { border-color:#E06C6C; color:#E06C6C; }
+    table.xm td small { color:var(--text-muted); }
+    .btn-mini { background:var(--fill-2); border:1px solid var(--fill-3); color:var(--brand-pale); border-radius:7px; padding:5px 10px; font-size:12px; cursor:pointer; font-family:inherit; white-space:nowrap; }
+    .btn-mini:hover { border-color:var(--err); color:var(--err); }
     .btn-mini:disabled { opacity:.5; cursor:default; }
-    .xm-vazio { color:#8A93A6; font-size:13px; padding:8px 0; }
+    .xm-vazio { color:var(--text-muted); font-size:13px; padding:8px 0; }
     .xm-msg { font-size:13px; min-height:18px; margin-top:8px; }
-    .msg-ok { color:#3FB07A; } .msg-err { color:#E06C6C; }
+    .msg-ok { color:var(--ok); } .msg-err { color:var(--err); }
     .pill { display:inline-block; font-size:11px; font-weight:600; border-radius:999px; padding:2px 9px; border:1px solid transparent; white-space:nowrap; }
-    .pill-saida { color:#3FB07A; background:rgba(63,176,122,.14); border-color:rgba(63,176,122,.3); }
-    .pill-entrada { color:#8AAEC8; background:rgba(91,130,166,.14); border-color:rgba(91,130,166,.3); }
+    .pill-saida { color:var(--ok); background:rgba(63,176,122,.14); border-color:rgba(63,176,122,.3); }
+    .pill-entrada { color:var(--brand-light); background:rgba(91,130,166,.14); border-color:rgba(91,130,166,.3); }
     @media (max-width:760px){ .xm-kpis { grid-template-columns:repeat(2,1fr); } }
   </style>
 </head>
@@ -163,7 +163,7 @@ let rodando = false;
     const c = clientesList.find(x => x.id === pre);
     if (!c) { msg('Empresa não encontrada no cadastro.', 'err'); $('drop').style.display = 'none'; return; }
     escolherCliente(c);
-    $('cliSel').insertAdjacentHTML('beforeend', ' <span style="color:#8A93A6;">· fixada pela ficha da Reforma</span>');
+    $('cliSel').insertAdjacentHTML('beforeend', ' <span style="color:var(--text-muted);">· fixada pela ficha da Reforma</span>');
   } else {
     msg('A importação de notas é feita a partir da ficha da empresa em Reforma Tributária (aba Simular → Importar notas).', 'err');
     $('cliBusca').closest('.form-group').style.display = 'none';
@@ -178,7 +178,7 @@ $('cliBusca').addEventListener('input', () => {
   if (t.length < 2 || !clientesList) { res.innerHTML = ''; return; }
   const hits = clientesList.filter(c => ((c.nome_principal || '') + ' ' + (c.nome_fantasia || '') + ' ' + (c.documento || '')).toLowerCase().includes(t)).slice(0, 10);
   res.innerHTML = hits.map(c => `<button type="button" data-cli="${esc(c.id)}">${esc(c.nome_principal)}<small>${c.documento ? formatDocumento(c.documento) : 'sem documento'}${c.status && c.status !== 'ativo' ? ' · ' + esc(c.status) : ''}</small></button>`).join('')
-    || '<button type="button" disabled style="color:#6E7787;cursor:default;">Nenhum cliente com esse termo.</button>';
+    || '<button type="button" disabled style="color:var(--text-dim);cursor:default;">Nenhum cliente com esse termo.</button>';
 });
 $('cliRes').addEventListener('click', e => {
   const b = e.target.closest('[data-cli]'); if (!b) return;
@@ -263,7 +263,7 @@ function relatorio(r){
       ${r.canceladas ? `<div>✓ ${r.canceladas} nota(s) marcada(s) como <b>cancelada(s)</b> por evento.</div>` : ''}
       ${r.naoAchadas ? `<div>⚠ ${r.naoAchadas} evento(s) de cancelamento sem a nota correspondente na base — importe o XML da nota e depois o evento.</div>` : ''}
       ${Object.keys(porMotivo).map(m => `<details><summary>${porMotivo[m].length} ignorado(s): ${esc(m)}</summary>${lista(porMotivo[m])}</details>`).join('')}
-      ${r.erros.length ? `<details open><summary style="color:#E06C6C;">${r.erros.length} erro(s) de leitura</summary>${lista(r.erros.map(e => e.arquivo + ' — ' + e.motivo))}</details>` : ''}
+      ${r.erros.length ? `<details open><summary style="color:var(--err);">${r.erros.length} erro(s) de leitura</summary>${lista(r.erros.map(e => e.arquivo + ' — ' + e.motivo))}</details>` : ''}
     </div>`;
   $('rel').classList.add('is-on');
 }
@@ -288,7 +288,7 @@ async function carregarExistente(){
   const linhas = Object.values(grp).sort((a, b) => b.ano.localeCompare(a.ano) || a.tipo.localeCompare(b.tipo));
   $('existeAnos').innerHTML = linhas.length
     ? `<table class="xm"><thead><tr><th>Ano</th><th>Tipo</th><th class="num">Notas autorizadas</th><th class="num">Valor</th><th class="num">Canceladas / denegadas</th></tr></thead><tbody>`
-      + linhas.map(g => `<tr><td>${g.ano}</td><td><span class="pill pill-${g.tipo}">${g.tipo === 'saida' ? 'Saída (vendas)' : 'Entrada (compras)'}</span></td><td class="num">${g.n}${g.serv ? ' <small style="color:#8A93A6;">(' + g.serv + ' NFS-e)</small>' : ''}</td><td class="num">${BRL(g.valor)}</td><td class="num">${g.canc || '—'}</td></tr>`).join('')
+      + linhas.map(g => `<tr><td>${g.ano}</td><td><span class="pill pill-${g.tipo}">${g.tipo === 'saida' ? 'Saída (vendas)' : 'Entrada (compras)'}</span></td><td class="num">${g.n}${g.serv ? ' <small style="color:var(--text-muted);">(' + g.serv + ' NFS-e)</small>' : ''}</td><td class="num">${BRL(g.valor)}</td><td class="num">${g.canc || '—'}</td></tr>`).join('')
       + `</tbody></table>`
     : '<div class="xm-vazio">Nenhuma nota importada pra este cliente ainda.</div>';
   if (e2) { $('existeLotes').innerHTML = '<div class="xm-vazio msg-err">Erro: ' + esc(e2.message) + '</div>'; return; }
