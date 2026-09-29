@@ -602,9 +602,8 @@
       <div class="vo-body">
         <p class="vo-sub" id="voSub">Sugestões pro regime do cliente — marca/desmarca à vontade.</p>
         <div class="vo-lista" id="voLista">Carregando…</div>
-        <label class="vo-resp-l" for="voResp">Responsável (aplicado a todas as selecionadas — opcional)</label>
-        <input type="text" id="voResp" class="input" list="voRespList" placeholder="Ex.: Thalia">
-        <datalist id="voRespList"></datalist>
+        <label class="vo-resp-l" for="voResp">Responsável (aplicado a todas as selecionadas — obrigatório)</label>
+        <select id="voResp" class="input"></select>
       </div>
       <div class="vo-foot">
         <span class="proc-status" id="voMsg" style="margin-right:auto;"></span>
@@ -2088,8 +2087,12 @@
           <span class="vv-dia">dia ${a.r.dia_prazo}</span>
           <span class="vv-freq">${a.n ? a.n + ' cliente(s) do regime usam' : 'nenhum ainda'}</span>
         </label>`).join('') || '';
-      document.getElementById('voRespList').innerHTML =
-        [...new Set((vincs || []).map(v => v.responsavel).filter(Boolean))].sort().map(x => '<option value="' + x.replace(/"/g, '&quot;') + '">').join('');
+      // responsável = alguém da equipe (vínculo sem responsável gera tarefa que não aparece na agenda de ninguém);
+      // quem já é responsável em algum vínculo também entra na lista
+      const nomesVo = ['Thalia', 'Adaini', 'Vitória', 'Samuel', 'Diego', 'Edna'];
+      (vincs || []).forEach(v => { if (v.responsavel && !nomesVo.some(n => n.toLowerCase() === v.responsavel.trim().toLowerCase())) nomesVo.push(v.responsavel.trim()); });
+      const escVo = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      document.getElementById('voResp').innerHTML = '<option value="">— escolha —</option>' + nomesVo.map(n => '<option value="' + escVo(n) + '">' + escVo(n) + '</option>').join('');
       document.getElementById('voVincular').disabled = !aplicaveis.length;
       document.getElementById('voOverlay').classList.add('is-open');
     });
@@ -2098,7 +2101,8 @@
       const marcadas = [...document.querySelectorAll('#voLista input:checked')].map(c => c.dataset.oid);
       const msg = document.getElementById('voMsg');
       if (!marcadas.length) { msg.textContent = 'Marque ao menos uma obrigação.'; msg.style.color = 'var(--warning)'; return; }
-      const resp = document.getElementById('voResp').value.trim() || null;
+      const resp = document.getElementById('voResp').value.trim();
+      if (!resp) { msg.textContent = 'Escolha o responsável — sem ele, as tarefas destas obrigações não aparecem na agenda de ninguém.'; msg.style.color = 'var(--warning)'; document.getElementById('voResp').focus(); return; }
       const btn = document.getElementById('voVincular'); btn.disabled = true; btn.textContent = 'Vinculando…';
       const { error } = await supabase.from('cliente_obrigacoes').insert(marcadas.map(oid => ({ cliente_id: clienteId, obrigacao_id: oid, responsavel: resp, ativo: true })));
       btn.disabled = false; btn.textContent = 'Vincular selecionadas';

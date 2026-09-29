@@ -160,8 +160,8 @@
         </div>
         <div id="vincEtapa2" hidden class="vm-form">
           <div id="vincEscolha" style="font-size:14px;"></div>
-          <label for="vincResp">Responsável</label>
-          <input type="text" id="vincResp" class="input" list="respList" placeholder="Ex.: Thalia" style="width:100%;">
+          <label for="vincResp">Responsável (obrigatório)</label>
+          <select id="vincResp" class="input" style="width:100%;"></select>
           <datalist id="respList"></datalist>
           <label for="vincDia">Dia do prazo (vazio = padrão da obrigação)</label>
           <input type="number" id="vincDia" class="input" min="1" max="31" placeholder="padrão" style="width:140px;">
@@ -360,6 +360,18 @@
       return statusMes[v.obrigacao_id + '|' + v.cliente_id] === 'concluida';
     }
 
+    // Responsável = alguém da equipe: a Agenda filtra pelo nome, e vínculo sem responsável gera tarefa que não
+    // aparece pra ninguém (caso Vila Rocha, 29/09/2026). Quem já é responsável em algum vínculo — ex.: alguém novo
+    // que entrou pelo "Renomear em lote", que aceita nome livre — também aparece na lista.
+    function escR(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    function opcoesResp(atual){
+      const nomes = ['Thalia', 'Adaini', 'Vitória', 'Samuel', 'Diego', 'Edna'];
+      const tem = n => nomes.some(x => x.toLowerCase() === String(n).trim().toLowerCase());
+      vinculos.forEach(v => { if (v.responsavel && !tem(v.responsavel)) nomes.push(v.responsavel.trim()); });
+      if (atual && !tem(atual)) nomes.push(String(atual).trim());
+      return '<option value="">— escolha —</option>' + nomes.map(n => '<option value="' + escR(n) + '">' + escR(n) + '</option>').join('');
+    }
+
     function preencherRespList(){
       document.getElementById('respList').innerHTML =
         [...new Set(vinculos.map(v => v.responsavel).filter(Boolean))].sort()
@@ -396,7 +408,11 @@
       return `
           <div class="obr-cli ${v.ativo ? '' : 'inativo'}" data-vid="${v.id}">
             <span class="nm">${esq}</span>
-            <span class="dt dt-edit" data-edit="resp" data-vid="${v.id}" title="Clique para editar o responsável">${v.responsavel || '—'}</span>
+            ${v.responsavel
+              ? `<span class="dt dt-edit" data-edit="resp" data-vid="${v.id}" title="Clique para trocar o responsável">${escR(v.responsavel)}</span>`
+              : v.ativo
+                ? `<span class="dt dt-edit" data-edit="resp" data-vid="${v.id}" title="Sem responsável: as tarefas deste vínculo não aparecem na agenda de ninguém. Clique para definir." style="color:var(--warn);font-weight:600;">⚠ definir responsável</span>`
+                : `<span class="dt dt-edit" data-edit="resp" data-vid="${v.id}" title="Clique para definir o responsável">—</span>`}
             <span class="dt dt-edit" data-edit="dia" data-vid="${v.id}" title="Clique para editar o dia">dia ${v.dia_prazo_override || r.dia_prazo}${v.dia_prazo_override ? ' *' : ''}</span>
             ${concluidoNoMes(v) ? '<span class="chip c-verde" title="Concluída no mês selecionado">✓ mês</span>' : ''}
             <label class="sw"><input type="checkbox" data-vid="${v.id}" ${v.ativo ? 'checked' : ''}><i></i></label>
@@ -575,6 +591,7 @@
       document.getElementById('vincEscolha').innerHTML = '<b>' + rotulo + '</b>';
       document.getElementById('vincDia').value = '';
       document.getElementById('vincDia').placeholder = 'padrão: dia ' + (r ? r.dia_prazo : '');
+      document.getElementById('vincResp').innerHTML = opcoesResp('');
       document.getElementById('vincResp').value = '';
       etapaVinculo(2);
     }
@@ -585,9 +602,11 @@
       const obrigacaoId = vincCtx.modo === 'addCliente' ? vincCtx.obrigacaoId : vincCtx.escolhidoId;
       const r = regras.find(x => x.id === obrigacaoId);
       const dia = parseInt(document.getElementById('vincDia').value, 10);
+      const resp = document.getElementById('vincResp').value.trim();
+      if (!resp) { alert('Escolha o responsável — sem ele, as tarefas desta obrigação não aparecem na agenda de ninguém.'); document.getElementById('vincResp').focus(); return; }
       const linha = {
         cliente_id: clienteId, obrigacao_id: obrigacaoId,
-        responsavel: document.getElementById('vincResp').value.trim() || null,
+        responsavel: resp,
         dia_prazo_override: (dia >= 1 && dia <= 31 && r && dia !== r.dia_prazo) ? dia : null,
         ativo: true
       };
@@ -980,23 +999,25 @@
 
     // ===================== EDIÇÃO INLINE =====================
     function editarInline(sp){
-      if (sp.querySelector('input')) return;
+      if (sp.querySelector('input, select')) return;
       const vid = sp.dataset.vid, campo = sp.dataset.edit;
       const v = vinculos.find(x => x.id === vid);
       const r = regras.find(x => x.id === v.obrigacao_id);
-      const inp = document.createElement('input');
+      const inp = document.createElement(campo === 'resp' ? 'select' : 'input');
       inp.className = 'input-inline' + (campo === 'dia' ? ' curto' : '');
       if (campo === 'resp') {
-        inp.type = 'text'; inp.setAttribute('list', 'respList');
-        inp.value = v.responsavel || '';
-        inp.placeholder = 'responsável';
+        inp.innerHTML = opcoesResp(v.responsavel);
+        const achado = [...inp.options].find(o => o.value && o.value.toLowerCase() === String(v.responsavel || '').trim().toLowerCase());
+        inp.value = achado ? achado.value : '';
       } else {
         inp.type = 'number'; inp.min = 1; inp.max = 31;
         inp.value = v.dia_prazo_override || '';
         inp.placeholder = 'padrão ' + (r ? r.dia_prazo : '');
       }
       sp.textContent = ''; sp.appendChild(inp);
-      inp.focus(); inp.select();
+      inp.focus();
+      if (campo === 'resp') { try { inp.showPicker && inp.showPicker(); } catch (e) { /* navegador sem showPicker: abre no 2º clique */ } }
+      else inp.select();
       let feito = false;
       const concluir = salvar => {
         if (feito) return; feito = true;
@@ -1006,14 +1027,15 @@
         if (e.key === 'Enter') concluir(true);
         if (e.key === 'Escape') concluir(false);
       });
+      if (campo === 'resp') inp.addEventListener('change', () => concluir(true));   // escolheu na lista: grava
       inp.addEventListener('blur', () => concluir(true));
     }
 
     async function salvarInline(v, r, campo, bruto){
       let payload;
       if (campo === 'resp') {
-        const novo = bruto.trim() || null;
-        if (novo === v.responsavel) { render(); return; }
+        const novo = bruto.trim();
+        if (!novo || novo === v.responsavel) { render(); return; }   // obrigatório: não dá pra deixar em branco
         payload = { responsavel: novo };
       } else {
         const d = parseInt(bruto, 10);
@@ -1023,9 +1045,24 @@
       }
       const { error } = await supabase.from('cliente_obrigacoes').update(payload).eq('id', v.id);
       if (error) { alert('Erro ao salvar: ' + error.message); render(); return; }
+      // trocou o responsável: as tarefas abertas deste vínculo vão junto — só as que estavam com o responsável
+      // anterior (ou sem ninguém); tarefa repassada à mão pra outra pessoa fica como está
+      let aviso = '';
+      if (campo === 'resp') {
+        let qt = supabase.from('tarefas').update({ responsavel: payload.responsavel })
+          .eq('cliente_id', v.cliente_id).eq('obrigacao_id', v.obrigacao_id).neq('status', 'concluida');
+        qt = v.responsavel ? qt.eq('responsavel', v.responsavel) : qt.is('responsavel', null);
+        const { data: foram, error: et } = await qt.select('id');
+        if (et) alert('O responsável do vínculo foi salvo, mas as tarefas abertas dele não foram atualizadas: ' + et.message);
+        else if (foram && foram.length) aviso = '✓ ' + foram.length + ' tarefa' + (foram.length > 1 ? 's abertas foram' : ' aberta foi') + ' junto';
+      }
       Object.assign(v, payload);
       preencherRespList();
       render();
+      if (aviso) document.querySelectorAll('.obr-cli[data-vid="' + v.id + '"] .dt-edit[data-edit="resp"]').forEach(sp => {
+        const chip = document.createElement('span'); chip.className = 'chip c-verde'; chip.textContent = aviso;
+        sp.insertAdjacentElement('afterend', chip); setTimeout(() => chip.remove(), 6000);
+      });
     }
 
     // ===================== RENOMEAR EM LOTE =====================

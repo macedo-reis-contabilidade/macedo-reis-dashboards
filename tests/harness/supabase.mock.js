@@ -23,6 +23,11 @@ const DATA = {
     T(63,'Conferir notas de entrada','fiscal','Thalia',add(0),'media',{cli:'LOJA DE TESTE LTDA'}),
     T(64,'Alteração contratual','societario','Samuel',add(2),'media',{cli:'AGRO FICTÍCIA LTDA'}),
     T(65,'Alteração contratual','societario','Samuel',add(2),'media',{cli:'COMÉRCIO MODELO ME'}),
+    // vínculo sem responsável em Obrigações fiscais (tests/harness/obrigacoes-responsavel.py): aberta sem dono,
+    // aberta repassada à mão pra Adaini, e uma já concluída
+    T(71,'EFD TESTE MENSAL','fiscal',null,add(5),'media',{cli:'COMÉRCIO MODELO ME',cliente_id:'c1',obrigacao_id:'o1'}),
+    T(72,'EFD TESTE MENSAL','fiscal','Adaini',add(35),'media',{cli:'COMÉRCIO MODELO ME',cliente_id:'c1',obrigacao_id:'o1'}),
+    T(73,'EFD TESTE MENSAL','fiscal',null,add(-25),'media',{cli:'COMÉRCIO MODELO ME',cliente_id:'c1',obrigacao_id:'o1',status:'concluida'}),
   ],
   rotinas: [
     { id:'r1', titulo:'Conferir e-mail', setor:'gestao', responsavel:'Samuel', ativo:true, periodicidade:'diaria', ultima_execucao:ymd(hoje), adiada_para:null },
@@ -30,6 +35,15 @@ const DATA = {
     { id:'r4', titulo:'Conciliação bancária', setor:'contabil', responsavel:'Adaini', ativo:true, periodicidade:'diaria', ultima_execucao:null, adiada_para:null },
   ],
   clientes: [{id:'c1',nome_principal:'COMÉRCIO MODELO ME',documento:'00000000000000',status:'ativo',regime:'simples'},{id:'c2',nome_principal:'EMPRESA EXEMPLO LTDA',documento:'11111111111111',status:'ativo',regime:'presumido'}],
+  obrigacoes_fiscais: [
+    { id:'o1', nome:'EFD TESTE MENSAL', periodicidade:'mensal', meses_vencimento:[], dia_prazo:10, gatilho_dias_antes:0, ativo:true, regimes_aplicaveis:['Simples Nacional'] },
+    { id:'o2', nome:'DCTF TESTE MENSAL', periodicidade:'mensal', meses_vencimento:[], dia_prazo:15, gatilho_dias_antes:0, ativo:true, regimes_aplicaveis:['Simples Nacional'] },
+  ],
+  cliente_obrigacoes: [
+    { id:'v1', cliente_id:'c1', obrigacao_id:'o1', responsavel:null, dia_prazo_override:null, ativo:true, clientes:{ nome_principal:'COMÉRCIO MODELO ME' } },
+    { id:'v2', cliente_id:'c2', obrigacao_id:'o1', responsavel:'Thalia', dia_prazo_override:null, ativo:true, clientes:{ nome_principal:'EMPRESA EXEMPLO LTDA' } },
+    { id:'v3', cliente_id:'c3', obrigacao_id:'o1', responsavel:null, dia_prazo_override:null, ativo:false, clientes:{ nome_principal:'LOJA DE TESTE LTDA' } },
+  ],
   alvaras:[], transicoes:[], precificacoes:[], carteira_info:[], rt_casos:[], faturaveis:[], tarefa_historico:[], tarefas_recorrentes:[], servicos_avulsos:[],
 };
 // o teste de comportamento (tests/harness/lote-setores.py) lê o banco falso por aqui
