@@ -1,12 +1,39 @@
-# Harness visual (sem login, sem Supabase)
+# Testes (sem login, sem Supabase, sem npm)
 
-Um comando só, em Windows, Mac ou Linux:
+Pré-requisito, uma vez: `pip install playwright` e `python -m playwright install chromium`.
+
+## Antes de entregar, rode tudo
+
+```
+python tests/rodar-tudo.py
+```
+
+Roda sozinho todos os `tests/*.test.mjs` (no node) e todos os testes de comportamento em
+`tests/harness/*.py` (no Chromium), e imprime um resumo `teste → ok/falhou`. Sai com código 1 se algum falhar,
+e aí mostra a saída inteira do que quebrou. Teste novo não precisa ser inscrito em lugar nenhum: basta o
+arquivo estar na pasta. O `conferir.py` fica de fora — é ferramenta, não teste.
+
+## Fotografar telas (ferramenta)
 
 ```
 python tests/harness/conferir.py fiscal-reforma.html comercial-precificacao.html
 ```
 
 Fotografa cada tela nos temas escuro e claro em `.harness/fotos/` e lista os erros de JavaScript.
-Usa `supabase.mock.js` (dados inventados — nada de cliente) no lugar do Supabase real.
-Pré-requisito, uma vez: `pip install playwright` e `python -m playwright install chromium`.
-Detalhes do trabalho de tema: `docs/TEMA-CLARO-CODE.md`.
+Serve pra conferir à vista e pra provar que uma mudança não mexeu no visual (fotografe antes e depois e
+compare pixel a pixel). Detalhes do trabalho de tema: `docs/TEMA-CLARO-CODE.md`.
+
+## O banco falso
+
+`supabase.mock.js` entra no lugar de `assets/js/supabase.js` na cópia do site (`.harness/site`, fora do git).
+Os dados são todos inventados — **nada de cliente**, que este repositório é público. Dá pra acrescentar dados
+inventados quando um teste precisar; os testes leem o banco falso por `window.__mockDb`.
+
+## O que cada teste cobre
+
+| Teste | Cobre |
+|---|---|
+| `importar-xml.py` | o parser de notas (`assets/js/importar-xml.js`): NF-e, evento de cancelamento, NFS-e nacional, descontos, XML mal formado. Roda no navegador porque o Node não tem `DOMParser` |
+| `lote-setores.py` | concluir e registrar andamento em lote nas telas de tarefas dos setores |
+| `obrigacoes-responsavel.py` | responsável obrigatório no vínculo de obrigação fiscal |
+| `rotinas-setor.py` | o módulo único de tarefas recorrentes por setor (`assets/js/rotinas-setor.js`) |

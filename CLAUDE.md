@@ -10,6 +10,7 @@ Sistema interno de gestão do escritório **Macedo & Reis Contabilidade** (Três
 2. **Nunca inventar classe CSS** — conferir se existe no `style.css`; modais novos usam estilo inline (padrão da casa nos módulos recentes).
 3. **Selects explícitos**: várias consultas listam colunas uma a uma. Coluna nova no banco **entra nos selects** que alimentam a tela, senão vira feature muda (bug clássico já vivido).
 4. **`node --check`** em todo JS mexido (extrair os `<script type="module">` pra um .mjs temporário e checar). Zero `console.log` de debug esquecido.
+4b. **Antes de entregar, rode `python tests/rodar-tudo.py`** — roda todos os `tests/*.test.mjs` e os testes de tela em `tests/harness/*.py`, com resumo e código de saída. Detalhes em `tests/harness/README.md`.
 5. Interface em **pt-BR**, tom direto. Datas `dd/mm/aaaa`; dinheiro `1.234,56`; datas por extenso "3 de Agosto de 2026".
 6. **Migrations NÃO são feitas por aqui.** Se a tarefa pedir coluna/tabela nova: parar, implementar o resto, e **listar o SQL necessário no fim da resposta** pro Samuel aplicar via chat web (é o rito da casa). Nunca rodar DDL.
 7. **Mudança visível ao usuário = card novo em `ajuda.html`** (seção de novidades, padrão `<div class="hp-item">` com `hp-q` "dd/mm · Título" e `hp-a` corpo; entra no topo da lista).
