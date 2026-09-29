@@ -5,7 +5,7 @@ MAP = {
  '#B9C2D0':'var(--text-2)','#B6C7DA':'var(--text-2)','#A9B2C2':'var(--text-2)','#9AA8BE':'var(--text-2)',
  '#8A93A6':'var(--text-muted)','#6E7787':'var(--text-dim)','#6B7385':'var(--text-dim)',
  # marca
- '#8AAEC8':'var(--brand-light)','#C5D8E8':'var(--brand-pale)','#5B82A6':'var(--brand-primary)',
+ '#52B4C6':'var(--accent)','#8AAEC8':'var(--brand-light)','#C5D8E8':'var(--brand-pale)','#5B82A6':'var(--brand-primary)',
  # estado
  '#E06C6C':'var(--err)','#E06C75':'var(--err)','#3FB07A':'var(--ok)','#7FBF8E':'var(--ok)','#5FC698':'var(--ok)','#E3B341':'var(--warn)',
  # superfícies escuras

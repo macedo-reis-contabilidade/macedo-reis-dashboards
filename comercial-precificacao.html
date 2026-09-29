@@ -20,7 +20,7 @@
     .seg button.is-on { background:rgba(82,180,198,.22); color:var(--text); }
     .pr-layout { display:grid; grid-template-columns: 1fr 340px; gap:20px; align-items:start; }
     @media (max-width: 980px){ .pr-layout { grid-template-columns: 1fr; } }
-    .pr-bloco h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:#52B4C6; margin:22px 0 10px; }
+    .pr-bloco h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--accent); margin:22px 0 10px; }
     .pr-q { display:grid; grid-template-columns: minmax(220px,1fr) 220px; gap:10px; align-items:center; padding:7px 0; border-bottom:1px solid var(--line); }
     .pr-q label { font-size:13px; color:var(--text-2); }
     .pr-q label small { display:block; color:var(--text-dim); font-size:11px; margin-top:2px; }
@@ -35,7 +35,7 @@
     .pr-col-lateral .pr-painel { position:static; }
     #prObrigacoes { margin-top:18px; }
     .pr-ob-card { background:var(--fill-1); border:1px solid var(--fill-3); border-radius:14px; padding:14px 16px; }
-    .pr-ob-card h3 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:#52B4C6; margin:0 0 8px; }
+    .pr-ob-card h3 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--accent); margin:0 0 8px; }
     .pr-ob-grupo { font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--text-dim); margin:10px 0 4px; }
     .pr-ob { display:flex; justify-content:space-between; gap:10px; padding:5px 0; border-bottom:1px solid var(--line); font-size:12.5px; }
     .pr-ob .nome { color:var(--text-2); }
@@ -56,27 +56,27 @@
     .pr-obs-orc input { display:block; width:120px; font-size:12.5px; }
     .mei-cards { display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; margin-bottom:16px; }
     .mei-card { background:var(--fill-1); border:1px solid var(--fill-3); border-radius:14px; padding:14px; display:flex; flex-direction:column; gap:6px; }
-    .mei-card.is-base { border-color:#52B4C6; box-shadow:0 0 0 1px rgba(82,180,198,.35); }
+    .mei-card.is-base { border-color:var(--accent); box-shadow:0 0 0 1px rgba(82,180,198,.35); }
     .mei-card h4 { margin:0; font-size:13.5px; color:var(--text); }
     .mei-card em { font-size:11.5px; color:var(--text-muted); font-style:normal; min-height:28px; }
-    .mei-preco { font-size:20px; font-weight:700; color:#52B4C6; }
+    .mei-preco { font-size:20px; font-weight:700; color:var(--accent); }
     .mei-preco small { font-size:11px; color:var(--text-dim); font-weight:400; margin-left:2px; }
     .mei-serv { display:flex; gap:8px; align-items:center; padding:6px 2px; border-bottom:1px solid var(--line); font-size:13px; color:var(--text-2); cursor:pointer; }
     .mei-serv.on { color:var(--text); }
     .mei-serv .mei-extra { font-style:normal; color:var(--warn); font-size:11.5px; margin-left:6px; }
     .mei-serv .mei-x { width:64px; padding:2px 6px; font-size:12px; margin:0 4px; }
     .mei-total { text-align:center; margin:12px 0; }
-    .mei-total b { display:block; font-size:26px; color:#52B4C6; }
+    .mei-total b { display:block; font-size:26px; color:var(--accent); }
     .mei-total small { font-size:10px; letter-spacing:.08em; color:var(--text-dim); }
 
     .pr-q .auto { color:var(--brand-light); font-size:13px; }
     .pr-painel { position:sticky; top:16px; background:var(--fill-1); border:1px solid var(--fill-3); border-radius:14px; padding:16px 18px; }
-    .pr-painel h3 { margin:0 0 10px; font-size:14px; color:#52B4C6; }
+    .pr-painel h3 { margin:0 0 10px; font-size:14px; color:var(--accent); }
     .pr-linha { display:flex; justify-content:space-between; font-size:12.5px; color:var(--text-muted); padding:2.5px 0; }
     .pr-linha b { color:var(--text-2); font-weight:600; }
     .pr-sub { display:flex; justify-content:space-between; font-size:13px; color:var(--text); font-weight:600; border-top:1px solid var(--fill-3); margin-top:6px; padding-top:6px; }
     .pr-total { text-align:center; margin-top:14px; padding-top:12px; border-top:1px solid rgba(82,180,198,.35); }
-    .pr-total .num { font-size:28px; font-weight:700; color:#52B4C6; }
+    .pr-total .num { font-size:28px; font-weight:700; color:var(--accent); }
     .pr-total .lbl { font-size:11.5px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.06em; }
     .pr-taxa { text-align:center; margin-top:8px; font-size:13px; color:var(--warn); }
     .pr-ref { margin-top:12px; display:flex; gap:8px; align-items:center; font-size:12.5px; color:var(--text-muted); }
@@ -101,7 +101,7 @@
     tr.prop-descartada td:first-child b { text-decoration:line-through; }
     .prop-placar { display:flex; gap:8px; align-items:center; margin:0 0 14px; padding:10px 16px; background:rgba(127,191,142,.08); border:1px solid rgba(127,191,142,.25); border-radius:12px; font-size:13px; color:var(--text-2); }
     .prop-placar b { color:var(--ok); font-size:15px; }
-    .par-grupo h3 { font-size:13px; color:#52B4C6; margin:20px 0 8px; }
+    .par-grupo h3 { font-size:13px; color:var(--accent); margin:20px 0 8px; }
     .par-item { display:flex; justify-content:space-between; gap:12px; padding:6px 0; border-bottom:1px solid var(--line); font-size:13px; }
     .par-item .pv { cursor:pointer; border-bottom:1px dashed rgba(138,174,200,.4); color:var(--text); }
     .par-item .pv:hover { color:var(--brand-pale); }
@@ -235,7 +235,7 @@
   <div id="modalObrig" style="display:none; position:fixed; inset:0; background:var(--overlay); z-index:60; overflow:auto; padding:32px 18px;">
     <div style="max-width:1080px; margin:0 auto; background:var(--surface); border:1px solid var(--fill-3); border-radius:16px; padding:20px 22px;">
       <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
-        <h3 style="margin:0; font-size:15px; color:#52B4C6; text-transform:uppercase; letter-spacing:.05em;">Obrigações por regime</h3>
+        <h3 style="margin:0; font-size:15px; color:var(--accent); text-transform:uppercase; letter-spacing:.05em;">Obrigações por regime</h3>
         <span style="font-size:11.5px; color:var(--text-dim);">° = condicional (depende de resposta do bloco D)</span>
         <button id="modalObrigX" class="btn-mini" style="margin-left:auto;">✕ Fechar</button>
       </div>
@@ -951,7 +951,7 @@
       }
       tb.innerHTML = lista.map(p => `
         <tr class="prop ${p.status === 'fechada' ? 'prop-fechada' : p.status === 'descartada' ? 'prop-descartada' : ''}" data-pid="${p.id}">
-          <td><b>${p.cliente_nome}</b>${(p.respostas && p.respostas._tipo === 'mei') ? ' <span class="chip" style="background:rgba(82,180,198,.15);color:#52B4C6;">MEI</span>' : ''}${p.contato ? `<br><small style="color:var(--text-muted);">${p.contato}</small>` : ''}</td>
+          <td><b>${p.cliente_nome}</b>${(p.respostas && p.respostas._tipo === 'mei') ? ' <span class="chip" style="background:rgba(82,180,198,.15);color:var(--accent);">MEI</span>' : ''}${p.contato ? `<br><small style="color:var(--text-muted);">${p.contato}</small>` : ''}</td>
           <td>${p.honorario != null ? fmt(p.honorario) : '—'}</td>
           <td>${p.taxa_unica ? fmt(p.taxa_unica) : '—'}</td>
           <td><span class="chip ${p.origem === 'externa' ? 'c-ama' : ''}">${p.origem}</span></td>

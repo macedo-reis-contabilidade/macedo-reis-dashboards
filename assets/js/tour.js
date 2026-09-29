@@ -20,6 +20,7 @@
     background:var(--pop); border:1px solid rgba(224,143,168,.45); color:#E08FA8;
     font-size:19px; font-weight:700; text-decoration:none; box-shadow:0 4px 16px rgba(0,0,0,.4); transition:.15s; }
   .mrt-help:hover { background:rgba(224,143,168,.18); transform:scale(1.06); }
+  [data-theme="light"] .mrt-help { color:#A8406A; border-color:rgba(168,64,106,.45); box-shadow:0 4px 16px rgba(0,0,0,.12); }
   .mrt-menu { position:fixed; right:18px; bottom:66px; z-index:9001; background:var(--surface);
     border:1px solid var(--fill-3); border-radius:12px; padding:6px; min-width:220px;
     box-shadow:0 12px 40px rgba(0,0,0,.5); display:none; }

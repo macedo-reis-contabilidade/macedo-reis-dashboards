@@ -23,6 +23,7 @@ com JavaScript em módulos ES, publicadas pelo **GitHub Pages** a partir da bran
   - preenchimentos translúcidos: `--fill-1` (leve), `--fill-2`, `--fill-3` (mais forte)
   - bordas: `--line` (fina), `--line-strong` (de controle/campo)
   - estados: `--ok`, `--warn`, `--err`  ·  marca: `--brand-primary`, `--brand-light`, `--brand-pale`
+  - destaque: `--accent` (o ciano `#52B4C6` de títulos de bloco e totais — criado em 29/09)
   - camadas: `--overlay` (fundo de modal), `--pop` (popover/menu)
 - As telas **já convertidas** (Painel central, Agenda, Clientes, telas de Tarefas, Ajuda) usam só tokens.
 - As **outras** têm cor fixa (`#141A22`, `rgba(255,255,255,.08)`, `color:#E6EBF2`…) no `<style>` da página ou em
@@ -65,7 +66,7 @@ python -m playwright install chromium
 No Windows, use `python` (ou `py`) no lugar de `python3`. Os dois scripts leem e gravam em UTF-8 — os acentos ficam intactos.
 
 ## 5. Git
-- Antes de começar: `git checkout main && git pull`, depois `git checkout -B tema-claro` (ou `git checkout tema-claro && git pull` se já existir no remoto).
+- Antes de **cada** lote: `git fetch origin && git checkout tema-claro && git pull origin tema-claro`. O arquiteto publica cada lote revisado e já deixa a branch `tema-claro` atualizada com o `main` (tokens novos, decisões). Leia as **Decisões do arquiteto** no fim de `docs/TEMA-CLARO-DUVIDAS.md` antes de continuar.
 - **Um commit por lote de 5 a 8 telas**, mensagem: `Tema claro: <tela1>, <tela2>, ... convertidas para tokens`.
 - Envie: `git push origin tema-claro`. **Nunca** faça push em `main` nem merge — o Claude web revisa e publica.
 - Se o push pedir credencial e não houver, deixe os commits locais e avise o Samuel.

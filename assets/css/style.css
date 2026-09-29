@@ -31,6 +31,7 @@
   --text-2:        #B9C2D0;                 /* texto secundário, entre --text e --text-muted */
   --ok:            #3FB07A;                 /* verde de estado (tarefa feita, positivo) */
   --warn:          #E3B341;                 /* amarelo de estado */
+  --accent:        #52B4C6;                 /* ciano de destaque (títulos de bloco, totais) */
   --err:           #E06C6C;                 /* vermelho de estado (atraso, alta) */
   --fill-1:        rgba(255,255,255,.035);  /* fundo de card sobre o bg */
   --fill-2:        rgba(255,255,255,.06);   /* card em hover / segundo nível */
@@ -74,7 +75,8 @@
 
   --text-2:        #3F4A5C;
   --ok:            #1E8E5A;
-  --warn:          #A56E12;
+  --warn:          #8A5A0A;                 /* 29/09: mais escuro — o anterior dava 3,7:1 */
+  --accent:        #1C7A8A;
   --err:           #C43C3C;
   --fill-1:        rgba(15,23,42,.035);
   --fill-2:        rgba(15,23,42,.06);

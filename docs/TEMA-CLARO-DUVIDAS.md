@@ -35,3 +35,15 @@
 - `python tests/harness/conferir.py clientes/editar.html` fotografa a **listagem**. Sem `?id=`, o editor redireciona pra `clientes/index.html` (L1118), e no Windows o `?` não pode ir no nome do arquivo da foto. O editor foi conferido com `?id=c1`.
 - O `conferir.py` só pula os tours `agenda_v1`, `reforma_v1` e `clientes_v1`. `comercial-precificacao` (`precificacao_v2`), `fiscal-obrigacoes` (`obrigacoes_v1`) e `comercial-carteira` (`carteira_v2`, `carteira_analise_v1`) saem na foto com o tour por cima.
 - Botão "?" do tour (`a.mrt-help`, de `assets/js/tour.js`): rosa com ~2,4:1 no claro. Vem do `tour.js`, que fica fora desta tarefa.
+
+---
+## Decisões do arquiteto — 29/09/2026 (lote 1 revisado e publicado)
+- **Ciano `#52B4C6`** → novo token **`--accent`** (escuro `#52B4C6`, claro `#1C7A8A`). Já trocado nas telas do lote 1 e na Agenda; o `tokenize.py` passa a converter sozinho. Tintas `rgba(82,180,198,…)` ficam.
+- **`--warn` no claro** escurecido para `#8A5A0A` (~5:1) — resolve o "1 dia" e todo texto de alerta.
+- **Laranja `#E8A15C`/`#E0A06C`**: onde virou `--warn`, aceito; faixa decorativa fica fixa. Sem token novo.
+- **`.rg-status`, `.rt-grid input/select`, `.rg-obs`**: ficam como estão (escuro idêntico vale mais que a regra).
+- **`#tpConfirmar`** (texto escuro sobre verde sólido): fica.
+- **Reuniões**: converter cor está liberado; o "congelado" vale para lógica e layout.
+- **`.fa-risco`**: fica `--warn` (a tela era laranja; o PDF é outro contexto).
+- **Botão "?" do tour** corrigido no `tour.js` pelo arquiteto.
+- **Harness**: `conferir.py` agora desliga todos os tours e aceita `"tela.html?id=..."` (nome da foto sem `?`).

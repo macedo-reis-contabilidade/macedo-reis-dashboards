@@ -1,7 +1,7 @@
 """
 Conferência visual das telas nos dois temas — roda em Windows, Mac ou Linux, sem login e sem banco.
 
-    python tests/harness/conferir.py fiscal-reforma.html comercial-precificacao.html
+    python tests/harness/conferir.py fiscal-reforma.html comercial-precificacao.html "clientes/editar.html?id=c1"
 
 1. Monta uma cópia do site em .harness/site (ignorada pelo git) com o mock do Supabase no lugar do real
    (dados inventados — nada de cliente).
@@ -11,7 +11,7 @@ Conferência visual das telas nos dois temas — roda em Windows, Mac ou Linux, 
 
 Pré-requisito (uma vez): pip install playwright  e  python -m playwright install chromium
 """
-import sys, shutil, threading, http.server, socketserver, functools, pathlib, time
+import sys, re, shutil, threading, http.server, socketserver, functools, pathlib, time
 
 RAIZ = pathlib.Path(__file__).resolve().parents[2]
 SITE = RAIZ / '.harness' / 'site'
@@ -45,11 +45,14 @@ def main(telas):
         for tema in ('escuro', 'claro'):
             p = b.new_page(viewport={'width': 1600, 'height': 900})
             p.on('pageerror', lambda e, t=tema: erros.append(f'{t}: {e}'))
+            # nenhum tour por cima da foto: qualquer chave mr_tour_* responde "já visto"
+            p.add_init_script("(() => { const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { return String(k).startsWith('mr_tour_') ? 'ok' : g.call(this, k); }; })()")
             p.goto(base + 'index.html')
             p.evaluate(f"() => {{ localStorage.setItem('mr_tema', '{tema}'); for (const k of ['agenda_v1','reforma_v1','clientes_v1']) localStorage.setItem('mr_tour_' + k + '::financeiro@macedoereis.com.br', 'ok'); }}")
             for t in telas:
                 p.goto(base + t); p.wait_for_timeout(1500)
-                destino = FOTOS / f"{tema}-{t.replace('/', '_').replace('.html', '')}.png"
+                nome = re.sub(r'[^A-Za-z0-9_-]+', '_', t.replace('.html', ''))   # aceita tela?id=... (o Windows não deixa ? no nome)
+                destino = FOTOS / f"{tema}-{nome}.png"
                 p.screenshot(path=str(destino), full_page=True)
                 print('foto:', destino.relative_to(RAIZ))
             p.close()
