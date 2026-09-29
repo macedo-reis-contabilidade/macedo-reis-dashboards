@@ -9,75 +9,75 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
-    .saude-pill { display:inline-flex; align-items:center; gap:8px; font-size:12px; font-weight:600; padding:6px 14px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.04); color:#B6C7DA; }
-    .saude-dot { width:8px; height:8px; border-radius:50%; background:#8A93A6; }
-    .saude-ok .saude-dot { background:#5FC698; box-shadow:0 0 8px rgba(95,198,152,.6); }
-    .saude-alerta .saude-dot { background:#E3B341; box-shadow:0 0 8px rgba(227,179,65,.6); }
-    .saude-erro .saude-dot { background:#E08FA8; box-shadow:0 0 8px rgba(224,143,168,.6); }
+    .saude-pill { display:inline-flex; align-items:center; gap:8px; font-size:12px; font-weight:600; padding:6px 14px; border-radius:999px; border:1px solid var(--fill-3); background:var(--fill-1); color:var(--text-2); }
+    .saude-dot { width:8px; height:8px; border-radius:50%; background:var(--text-muted); }
+    .saude-ok .saude-dot { background:var(--ok); box-shadow:0 0 8px rgba(95,198,152,.6); }
+    .saude-alerta .saude-dot { background:var(--warn); box-shadow:0 0 8px rgba(227,179,65,.6); }
+    .saude-erro .saude-dot { background:var(--err); box-shadow:0 0 8px rgba(224,143,168,.6); }
 
     .resumo-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:14px; margin:18px 0 26px; }
-    .resumo-card { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.09); border-radius:12px; padding:18px 20px; }
-    .resumo-card .rotulo { font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:#8A93A6; margin-bottom:8px; }
-    .resumo-card .valor { font-size:22px; font-weight:700; color:#E8EEF5; font-variant-numeric:tabular-nums; }
-    .resumo-card .sub { font-size:11px; color:#8A93A6; margin-top:6px; }
-    .resumo-card.positivo .valor { color:#5FC698; }
-    .resumo-card.negativo .valor { color:#E08FA8; }
+    .resumo-card { background:var(--fill-1); border:1px solid var(--line); border-radius:12px; padding:18px 20px; }
+    .resumo-card .rotulo { font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted); margin-bottom:8px; }
+    .resumo-card .valor { font-size:22px; font-weight:700; color:var(--text); font-variant-numeric:tabular-nums; }
+    .resumo-card .sub { font-size:11px; color:var(--text-muted); margin-top:6px; }
+    .resumo-card.positivo .valor { color:var(--ok); }
+    .resumo-card.negativo .valor { color:var(--err); }
 
     /* Estante de relatórios */
     .estante { display:flex; flex-direction:column; gap:10px; max-width:760px; }
-    .estante-item { display:flex; align-items:center; gap:16px; padding:16px 20px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.09); border-radius:12px; cursor:pointer; transition:transform .12s ease, border-color .12s ease, background .12s ease; text-align:left; width:100%; font:inherit; color:inherit; }
-    .estante-item:hover { transform:translateX(3px); border-color:rgba(138,174,200,.35); background:rgba(255,255,255,.05); }
+    .estante-item { display:flex; align-items:center; gap:16px; padding:16px 20px; background:var(--fill-1); border:1px solid var(--line); border-radius:12px; cursor:pointer; transition:transform .12s ease, border-color .12s ease, background .12s ease; text-align:left; width:100%; font:inherit; color:inherit; }
+    .estante-item:hover { transform:translateX(3px); border-color:rgba(138,174,200,.35); background:var(--fill-2); }
     .estante-item.breve { opacity:.45; cursor:default; }
-    .estante-item.breve:hover { transform:none; border-color:rgba(255,255,255,.09); background:rgba(255,255,255,.03); }
-    .estante-icone { width:40px; height:40px; border-radius:10px; display:grid; place-items:center; background:rgba(91,130,166,.18); color:#8AAEC8; flex-shrink:0; }
+    .estante-item.breve:hover { transform:none; border-color:var(--line); background:var(--fill-1); }
+    .estante-icone { width:40px; height:40px; border-radius:10px; display:grid; place-items:center; background:rgba(91,130,166,.18); color:var(--brand-light); flex-shrink:0; }
     .estante-info { flex:1; min-width:0; }
-    .estante-info h3 { margin:0 0 3px; font-size:15px; color:#E8EEF5; }
-    .estante-info p { margin:0; font-size:12px; color:#8A93A6; }
-    .badge-vivo { background:rgba(95,198,152,.14); border:1px solid rgba(95,198,152,.45); color:#5FC698; font-size:10px; font-weight:700; padding:3px 9px; border-radius:999px; letter-spacing:.04em; white-space:nowrap; }
-    .badge-breve { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.14); color:#8A93A6; font-size:10px; font-weight:700; padding:3px 9px; border-radius:999px; letter-spacing:.04em; white-space:nowrap; }
+    .estante-info h3 { margin:0 0 3px; font-size:15px; color:var(--text); }
+    .estante-info p { margin:0; font-size:12px; color:var(--text-muted); }
+    .badge-vivo { background:rgba(95,198,152,.14); border:1px solid rgba(95,198,152,.45); color:var(--ok); font-size:10px; font-weight:700; padding:3px 9px; border-radius:999px; letter-spacing:.04em; white-space:nowrap; }
+    .badge-breve { background:var(--fill-2); border:1px solid var(--fill-3); color:var(--text-muted); font-size:10px; font-weight:700; padding:3px 9px; border-radius:999px; letter-spacing:.04em; white-space:nowrap; }
 
     /* Vista de relatório */
     .rel-topo { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:14px; }
-    .rel-titulo { font-size:17px; font-weight:700; color:#E8EEF5; }
-    .btn-voltar { border:1px solid rgba(255,255,255,.14); background:rgba(255,255,255,.04); color:#B6C7DA; font-size:12px; font-weight:700; padding:7px 14px; border-radius:8px; cursor:pointer; }
-    .btn-voltar:hover { border-color:rgba(138,174,200,.4); color:#C5D8E8; }
-    .seletor-ano { display:inline-flex; gap:6px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); border-radius:10px; padding:4px; }
-    .seletor-ano button { border:0; background:transparent; color:#8A93A6; font-weight:700; font-size:13px; padding:7px 18px; border-radius:8px; cursor:pointer; }
-    .seletor-ano button.is-on { background:rgba(91,130,166,.28); color:#C5D8E8; }
+    .rel-titulo { font-size:17px; font-weight:700; color:var(--text); }
+    .btn-voltar { border:1px solid var(--fill-3); background:var(--fill-1); color:var(--text-2); font-size:12px; font-weight:700; padding:7px 14px; border-radius:8px; cursor:pointer; }
+    .btn-voltar:hover { border-color:rgba(138,174,200,.4); color:var(--brand-pale); }
+    .seletor-ano { display:inline-flex; gap:6px; background:var(--fill-1); border:1px solid var(--fill-3); border-radius:10px; padding:4px; }
+    .seletor-ano button { border:0; background:transparent; color:var(--text-muted); font-weight:700; font-size:13px; padding:7px 18px; border-radius:8px; cursor:pointer; }
+    .seletor-ano button.is-on { background:rgba(91,130,166,.28); color:var(--brand-pale); }
 
-    .pr-wrap { overflow-x:auto; border:1px solid rgba(255,255,255,.09); border-radius:12px; }
+    .pr-wrap { overflow-x:auto; border:1px solid var(--line); border-radius:12px; }
     table.pr { width:100%; border-collapse:collapse; font-size:13px; min-width:780px; }
-    .pr th { font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:#8AAEC8; text-align:right; padding:12px 14px; border-bottom:1px solid rgba(138,174,200,.25); background:rgba(91,130,166,.08); white-space:nowrap; }
+    .pr th { font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--brand-light); text-align:right; padding:12px 14px; border-bottom:1px solid rgba(138,174,200,.25); background:rgba(91,130,166,.08); white-space:nowrap; }
     .pr th:first-child { text-align:left; }
-    .pr td { padding:10px 14px; text-align:right; color:#C5D8E8; border-bottom:1px solid rgba(255,255,255,.05); font-variant-numeric:tabular-nums; white-space:nowrap; }
-    .pr td:first-child { text-align:left; font-weight:600; color:#E8EEF5; }
+    .pr td { padding:10px 14px; text-align:right; color:var(--brand-pale); border-bottom:1px solid var(--line); font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .pr td:first-child { text-align:left; font-weight:600; color:var(--text); }
     .pr tbody tr.clicavel { cursor:pointer; }
     .pr tbody tr.clicavel:hover td { background:rgba(138,174,200,.07); }
-    .pr tbody tr.clicavel td:first-child::before { content:"› "; color:#5B82A6; }
+    .pr tbody tr.clicavel td:first-child::before { content:"› "; color:var(--brand-primary); }
     .pr tr.mes-atual td { background:rgba(227,179,65,.06); }
-    .pr td.pos { color:#5FC698; }
-    .pr td.neg { color:#E08FA8; }
-    .pr td.dim { color:#5d6675; }
-    .pr tfoot td { font-weight:700; color:#E8EEF5; border-top:2px solid rgba(138,174,200,.3); background:rgba(91,130,166,.06); }
+    .pr td.pos { color:var(--ok); }
+    .pr td.neg { color:var(--err); }
+    .pr td.dim { color:var(--text-dim); }
+    .pr tfoot td { font-weight:700; color:var(--text); border-top:2px solid rgba(138,174,200,.3); background:rgba(91,130,166,.06); }
 
-    .mes-secao { font-size:13px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:#8AAEC8; margin:24px 0 10px; }
-    .nota-semantica { margin-top:16px; font-size:12px; line-height:1.6; color:#8A93A6; max-width:940px; }
-    .nota-semantica b { color:#B6C7DA; }
+    .mes-secao { font-size:13px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--brand-light); margin:24px 0 10px; }
+    .nota-semantica { margin-top:16px; font-size:12px; line-height:1.6; color:var(--text-muted); max-width:940px; }
+    .nota-semantica b { color:var(--text-2); }
     .hidden { display:none !important; }
   </style>
   <style>
     .fim-tag { padding: 1px 8px; border-radius: 8px; font-size: 12px; font-weight: 600; }
-    .fim-tag.pl26 { background: rgba(74,222,128,.15); color: #4ADE80; }
-    .fim-tag.pl27 { background: rgba(138,174,200,.18); color: #8AAEC8; }
-    .fim-tag.pl28 { background: rgba(250,204,21,.13); color: #FACC15; }
+    .fim-tag.pl26 { background: rgba(74,222,128,.15); color: var(--ok); }
+    .fim-tag.pl27 { background: rgba(138,174,200,.18); color: var(--brand-light); }
+    .fim-tag.pl28 { background: rgba(250,204,21,.13); color: var(--warn); }
     .fim-tag.pl29 { background: rgba(244,114,182,.13); color: #F472B6; }
     tr.pl26 > td:first-child { box-shadow: inset 3px 0 0 rgba(74,222,128,.7); }
     tr.pl27 > td:first-child { box-shadow: inset 3px 0 0 rgba(138,174,200,.7); }
     tr.pl28 > td:first-child { box-shadow: inset 3px 0 0 rgba(250,204,21,.7); }
     tr.pl29 > td:first-child { box-shadow: inset 3px 0 0 rgba(244,114,182,.7); }
-    .pl-secao td { padding-top: 20px !important; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; font-size: 12px; color: #8AAEC8; }
+    .pl-secao td { padding-top: 20px !important; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; font-size: 12px; color: var(--brand-light); }
     .alv-barra { background: rgba(138,174,200,.10); border-radius: 6px; height: 14px; overflow: hidden; }
-    .alv-barra > div { height: 100%; background: linear-gradient(90deg, #3A5878, #5B82A6); border-radius: 6px; }
+    .alv-barra > div { height: 100%; background: linear-gradient(90deg, var(--brand-dark), var(--brand-primary)); border-radius: 6px; }
   </style>
 </head>
 <body>
@@ -958,21 +958,21 @@
         location.hash = 'dre/' + anoSel + iso.slice(4);
       }));
       el('relCabecalho').innerHTML = '<tr><th>Linha</th><th>Previsto</th><th>%</th><th>Realizado</th><th>%</th><th>Diferença</th></tr>';
-      el('relCorpo').innerHTML = '<tr><td colspan="6" style="color:#8A93A6;padding:16px 4px;">Montando o mês…</td></tr>';
+      el('relCorpo').innerHTML = '<tr><td colspan="6" style="color:var(--text-muted);padding:16px 4px;">Montando o mês…</td></tr>';
       const d = await montarDRE(iso);
       if (dreMesSel !== iso) return;
       dreCache = d;
       const pct = (v, b) => b > 0.004 ? (100 * v / b).toFixed(1).replace('.', ',') + '%' : '—';
       let h = '';
       for (const it of d.itens) {
-        if (it.t === 'grupo') h += '<tr><td colspan="6" style="padding:14px 4px 6px;font-weight:700;' + (it.alerta ? 'color:#E08FA8;' : 'color:#C5D8E8;') + '">' + it.rot + '</td></tr>';
-        else if (it.t === 'subcab') h += '<tr><td colspan="6" style="padding:8px 4px 2px 14px;font-weight:600;color:#8AAEC8;">' + it.rot + '</td></tr>';
-        else if (it.t === 'cat') h += '<tr><td style="white-space:normal;padding-left:' + (it.sub2 ? '28px' : '14px') + ';color:#8A93A6;">' + it.rot + '</td><td>' + brl(it.prev) + '</td><td style="color:#8A93A6;">' + pct(it.prev, d.spPrev) + '</td><td>' + brl(it.real) + '</td><td style="color:#8A93A6;">' + pct(it.real, d.spReal) + '</td><td>' + brl(it.prev - it.real) + '</td></tr>';
+        if (it.t === 'grupo') h += '<tr><td colspan="6" style="padding:14px 4px 6px;font-weight:700;' + (it.alerta ? 'color:var(--err);' : 'color:var(--brand-pale);') + '">' + it.rot + '</td></tr>';
+        else if (it.t === 'subcab') h += '<tr><td colspan="6" style="padding:8px 4px 2px 14px;font-weight:600;color:var(--brand-light);">' + it.rot + '</td></tr>';
+        else if (it.t === 'cat') h += '<tr><td style="white-space:normal;padding-left:' + (it.sub2 ? '28px' : '14px') + ';color:var(--text-muted);">' + it.rot + '</td><td>' + brl(it.prev) + '</td><td style="color:var(--text-muted);">' + pct(it.prev, d.spPrev) + '</td><td>' + brl(it.real) + '</td><td style="color:var(--text-muted);">' + pct(it.real, d.spReal) + '</td><td>' + brl(it.prev - it.real) + '</td></tr>';
         else if (it.t === 'sub') h += '<tr><td style="padding-left:14px;font-weight:600;">' + it.rot + '</td><td style="font-weight:600;">' + brl(it.prev) + '</td><td>' + pct(it.prev, d.spPrev) + '</td><td style="font-weight:600;">' + brl(it.real) + '</td><td>' + pct(it.real, d.spReal) + '</td><td style="font-weight:600;">' + brl(it.prev - it.real) + '</td></tr>';
-        else if (it.t === 'calc') h += '<tr><td style="font-weight:700;border-top:1px solid #3A5878;padding-top:10px;">' + it.rot + '</td><td style="font-weight:700;border-top:1px solid #3A5878;">' + brl(it.prev) + '</td><td style="border-top:1px solid #3A5878;">' + pct(it.prev, d.spPrev) + '</td><td style="font-weight:700;border-top:1px solid #3A5878;">' + brl(it.real) + '</td><td style="border-top:1px solid #3A5878;">' + pct(it.real, d.spReal) + '</td><td style="font-weight:700;border-top:1px solid #3A5878;">' + brl(it.prev - it.real) + '</td></tr>';
-        else if (it.t === 'info') h += '<tr><td colspan="3" style="white-space:normal;padding-left:14px;font-style:italic;color:#8A93A6;">' + it.rot + '</td><td style="font-style:italic;color:#8A93A6;">' + brl(it.real) + '</td><td colspan="2"></td></tr>';
+        else if (it.t === 'calc') h += '<tr><td style="font-weight:700;border-top:1px solid var(--brand-dark);padding-top:10px;">' + it.rot + '</td><td style="font-weight:700;border-top:1px solid var(--brand-dark);">' + brl(it.prev) + '</td><td style="border-top:1px solid var(--brand-dark);">' + pct(it.prev, d.spPrev) + '</td><td style="font-weight:700;border-top:1px solid var(--brand-dark);">' + brl(it.real) + '</td><td style="border-top:1px solid var(--brand-dark);">' + pct(it.real, d.spReal) + '</td><td style="font-weight:700;border-top:1px solid var(--brand-dark);">' + brl(it.prev - it.real) + '</td></tr>';
+        else if (it.t === 'info') h += '<tr><td colspan="3" style="white-space:normal;padding-left:14px;font-style:italic;color:var(--text-muted);">' + it.rot + '</td><td style="font-style:italic;color:var(--text-muted);">' + brl(it.real) + '</td><td colspan="2"></td></tr>';
       }
-      el('relCorpo').innerHTML = h || '<tr><td colspan="6" style="color:#8A93A6;">Sem lançamentos neste mês.</td></tr>';
+      el('relCorpo').innerHTML = h || '<tr><td colspan="6" style="color:var(--text-muted);">Sem lançamentos neste mês.</td></tr>';
       pintarNota('dre');
     }
     async function gerarExcelDRE() {
@@ -1114,7 +1114,7 @@
       saudeInfo = saude || null;
       pintarSaude(saude);
       if (e1 || e2) {
-        el('vistaEstante').insertAdjacentHTML('afterbegin', '<p style="color:#E08FA8;">Erro ao carregar o espelho: ' + ((e1||e2).message) + '</p>');
+        el('vistaEstante').insertAdjacentHTML('afterbegin', '<p style="color:var(--err);">Erro ao carregar o espelho: ' + ((e1||e2).message) + '</p>');
         return;
       }
       pr = prData || [];

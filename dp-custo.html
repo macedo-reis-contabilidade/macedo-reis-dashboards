@@ -16,67 +16,67 @@
       @page { margin:14mm; }
     }
     /* subnav (faltava nesta página) */
-    .fa-subnav { display:flex; gap:6px; margin-bottom:22px; border-bottom:1px solid rgba(255,255,255,.08); flex-wrap:wrap; }
-    .fa-tab { padding:9px 16px; font-size:14px; color:#8A93A6; text-decoration:none; border-bottom:2px solid transparent; margin-bottom:-1px; }
-    .fa-tab:hover { color:#C5D8E8; }
-    .fa-tab.is-active { color:#C5D8E8; border-bottom-color:#5B82A6; font-weight:600; }
+    .fa-subnav { display:flex; gap:6px; margin-bottom:22px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    .fa-tab { padding:9px 16px; font-size:14px; color:var(--text-muted); text-decoration:none; border-bottom:2px solid transparent; margin-bottom:-1px; }
+    .fa-tab:hover { color:var(--brand-pale); }
+    .fa-tab.is-active { color:var(--brand-pale); border-bottom-color:var(--brand-primary); font-weight:600; }
     /* subtotal na tabela de custo + cards */
-    .cc-result tr.cc-subtot td { font-weight:600; color:#8AAEC8 !important; background:rgba(91,130,166,.07); }
-    .cc-big .cc-big-sub { color:#8A93A6; font-size:10.5px; margin-top:2px; }
+    .cc-result tr.cc-subtot td { font-weight:600; color:var(--brand-light) !important; background:rgba(91,130,166,.07); }
+    .cc-big .cc-big-sub { color:var(--text-muted); font-size:10.5px; margin-top:2px; }
     .cc-big.cc-caixa { background:rgba(138,174,200,.13); border-color:rgba(138,174,200,.3); }
     .cc-wrap { display:grid; grid-template-columns:1fr; gap:18px; align-items:start; }
     @media (min-width:1000px){ .cc-wrap { grid-template-columns:1.15fr .85fr; } .cc-right { position:sticky; top:18px; } }
-    .cc-card { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:18px 18px 16px; margin-bottom:16px; }
-    .cc-card h3 { margin:0 0 4px; font-size:16px; color:#E6EBF2; }
-    .cc-card .cc-hint { color:#8A93A6; font-size:12.5px; margin:0 0 14px; line-height:1.5; }
+    .cc-card { background:var(--fill-1); border:1px solid var(--line); border-radius:16px; padding:18px 18px 16px; margin-bottom:16px; }
+    .cc-card h3 { margin:0 0 4px; font-size:16px; color:var(--text); }
+    .cc-card .cc-hint { color:var(--text-muted); font-size:12.5px; margin:0 0 14px; line-height:1.5; }
     .cc-top-grid { display:grid; grid-template-columns:1fr; gap:12px; }
     @media (min-width:560px){ .cc-top-grid { grid-template-columns:1fr 1fr; } }
     .cc-field { display:flex; flex-direction:column; gap:6px; }
-    .cc-field > span { font-size:12.5px; color:#C5D8E8; font-weight:500; }
+    .cc-field > span { font-size:12.5px; color:var(--brand-pale); font-weight:500; }
     .cc-field .input { width:100%; }
     .cc-seg { display:flex; gap:8px; }
-    .cc-seg-btn { flex:1; padding:9px 10px; border-radius:10px; border:1px solid rgba(255,255,255,.12); background:transparent; color:#8A93A6; font-size:13px; font-weight:600; cursor:pointer; transition:all .15s; }
-    .cc-seg-btn:hover { border-color:#5B82A6; color:#C5D8E8; }
-    .cc-seg-btn.is-active { background:rgba(91,130,166,.18); border-color:#5B82A6; color:#E6EBF2; }
-    .cc-row { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid rgba(255,255,255,.05); }
+    .cc-seg-btn { flex:1; padding:9px 10px; border-radius:10px; border:1px solid var(--fill-3); background:transparent; color:var(--text-muted); font-size:13px; font-weight:600; cursor:pointer; transition:all .15s; }
+    .cc-seg-btn:hover { border-color:var(--brand-primary); color:var(--brand-pale); }
+    .cc-seg-btn.is-active { background:rgba(91,130,166,.18); border-color:var(--brand-primary); color:var(--text); }
+    .cc-row { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--line); }
     .cc-row:last-child { border-bottom:0; }
-    .cc-chk { width:17px; height:17px; flex-shrink:0; accent-color:#5B82A6; cursor:pointer; }
-    .cc-row-lbl { flex:1; font-size:13.5px; color:#E6EBF2; min-width:0; }
-    .cc-row-lbl small { display:block; color:#8A93A6; font-size:11px; font-weight:400; margin-top:1px; }
+    .cc-chk { width:17px; height:17px; flex-shrink:0; accent-color:var(--brand-primary); cursor:pointer; }
+    .cc-row-lbl { flex:1; font-size:13.5px; color:var(--text); min-width:0; }
+    .cc-row-lbl small { display:block; color:var(--text-muted); font-size:11px; font-weight:400; margin-top:1px; }
     .cc-pct { display:flex; align-items:center; gap:4px; }
     .cc-pct input { width:74px; text-align:right; padding:7px 8px; }
-    .cc-pct .cc-unit { color:#8A93A6; font-size:13px; }
-    .cc-derived { color:#8AAEC8; font-size:13px; font-weight:600; font-variant-numeric:tabular-nums; }
+    .cc-pct .cc-unit { color:var(--text-muted); font-size:13px; }
+    .cc-derived { color:var(--brand-light); font-size:13px; font-weight:600; font-variant-numeric:tabular-nums; }
     .cc-dyn-row { display:grid; grid-template-columns:1fr 110px 110px 34px; gap:8px; margin-bottom:8px; align-items:center; }
     .cc-dyn-row .input { padding:7px 9px; font-size:13px; }
-    .cc-del { width:30px; height:30px; border-radius:8px; border:1px solid rgba(224,108,108,.3); background:rgba(224,108,108,.1); color:#E06C6C; font-size:18px; line-height:1; cursor:pointer; }
+    .cc-del { width:30px; height:30px; border-radius:8px; border:1px solid rgba(224,108,108,.3); background:rgba(224,108,108,.1); color:var(--err); font-size:18px; line-height:1; cursor:pointer; }
     .cc-del:hover { background:rgba(224,108,108,.2); }
     .cc-add { margin-top:6px; }
     .cc-dyn-head { display:grid; grid-template-columns:1fr 110px 110px 34px; gap:8px; margin-bottom:6px; }
-    .cc-dyn-head span { font-size:10.5px; color:#8A93A6; text-transform:uppercase; letter-spacing:.04em; }
+    .cc-dyn-head span { font-size:10.5px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.04em; }
     .cc-result table { width:100%; border-collapse:collapse; }
-    .cc-result td { padding:7px 0; font-size:13.5px; border-bottom:1px solid rgba(255,255,255,.05); }
-    .cc-result td:first-child { color:#C5D8E8; }
-    .cc-num { text-align:right; color:#E6EBF2; font-variant-numeric:tabular-nums; white-space:nowrap; }
-    .cc-sub { width:64px; color:#8A93A6 !important; font-size:12px; }
-    .cc-result tr.cc-total td { border-top:2px solid rgba(255,255,255,.14); border-bottom:0; padding-top:11px; font-weight:700; color:#E6EBF2; font-size:15px; }
+    .cc-result td { padding:7px 0; font-size:13.5px; border-bottom:1px solid var(--line); }
+    .cc-result td:first-child { color:var(--brand-pale); }
+    .cc-num { text-align:right; color:var(--text); font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .cc-sub { width:64px; color:var(--text-muted) !important; font-size:12px; }
+    .cc-result tr.cc-total td { border-top:2px solid var(--fill-3); border-bottom:0; padding-top:11px; font-weight:700; color:var(--text); font-size:15px; }
     .cc-bigs { display:flex; gap:12px; margin-top:14px; flex-wrap:wrap; }
     .cc-big { flex:1; min-width:130px; background:rgba(91,130,166,.12); border:1px solid rgba(91,130,166,.25); border-radius:12px; padding:12px 14px; }
-    .cc-big .cc-big-lbl { color:#8AAEC8; font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; }
-    .cc-big .cc-big-val { color:#E6EBF2; font-size:21px; font-weight:700; margin-top:3px; font-variant-numeric:tabular-nums; }
+    .cc-big .cc-big-lbl { color:var(--brand-light); font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; }
+    .cc-big .cc-big-val { color:var(--text); font-size:21px; font-weight:700; margin-top:3px; font-variant-numeric:tabular-nums; }
     .cc-big.cc-mult { background:rgba(63,176,122,.12); border-color:rgba(63,176,122,.28); }
-    .cc-big.cc-mult .cc-big-val { color:#3FB07A; }
-    .cc-liq-final td { color:#3FB07A !important; }
-    .cc-nota { color:#8A93A6; font-size:12px; margin-top:12px; line-height:1.55; font-style:italic; }
-    .cc-adv { margin-top:4px; border:1px solid rgba(255,255,255,.08); border-radius:14px; background:rgba(255,255,255,.02); overflow:hidden; }
-    .cc-adv summary { cursor:pointer; padding:14px 18px; font-size:14px; font-weight:600; color:#C5D8E8; list-style:none; }
+    .cc-big.cc-mult .cc-big-val { color:var(--ok); }
+    .cc-liq-final td { color:var(--ok) !important; }
+    .cc-nota { color:var(--text-muted); font-size:12px; margin-top:12px; line-height:1.55; font-style:italic; }
+    .cc-adv { margin-top:4px; border:1px solid var(--line); border-radius:14px; background:var(--fill-1); overflow:hidden; }
+    .cc-adv summary { cursor:pointer; padding:14px 18px; font-size:14px; font-weight:600; color:var(--brand-pale); list-style:none; }
     .cc-adv summary::-webkit-details-marker { display:none; }
-    .cc-adv summary::before { content:'▸ '; color:#8AAEC8; }
+    .cc-adv summary::before { content:'▸ '; color:var(--brand-light); }
     .cc-adv[open] summary::before { content:'▾ '; }
     .cc-adv-body { padding:0 18px 18px; }
-    .cc-adv-body h4 { color:#E6EBF2; font-size:13px; margin:10px 0 8px; }
+    .cc-adv-body h4 { color:var(--text); font-size:13px; margin:10px 0 8px; }
     .cc-tbl { width:100%; border-collapse:collapse; margin-bottom:10px; }
-    .cc-tbl th { font-size:10.5px; color:#8A93A6; text-transform:uppercase; letter-spacing:.03em; text-align:left; padding:4px 6px; font-weight:600; }
+    .cc-tbl th { font-size:10.5px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.03em; text-align:left; padding:4px 6px; font-weight:600; }
     .cc-tbl td { padding:3px 6px; }
     .cc-tbl input { width:100%; padding:6px 7px; font-size:12.5px; text-align:right; }
     .cc-tbl input[readonly] { opacity:.5; }
@@ -86,12 +86,12 @@
     /* adicionais: selects compactos e sub-linha recuada */
     .cc-mini-sel { width:auto !important; padding:7px 8px; font-size:13px; }
     .cc-subrow { padding-left:27px; }
-    .cc-subrow .cc-row-lbl { color:#8A93A6; font-weight:400; }
+    .cc-subrow .cc-row-lbl { color:var(--text-muted); font-weight:400; }
     /* linha personalizada com coluna "compõe base" */
     .cc-dyn-row.cust { grid-template-columns:1fr 74px 90px 50px 32px; }
     .cc-dyn-head.cust { grid-template-columns:1fr 74px 90px 50px 32px; }
     .cc-base-cell { display:flex; align-items:center; justify-content:center; }
-    .cc-base-cell input { width:17px; height:17px; accent-color:#5B82A6; cursor:pointer; }
+    .cc-base-cell input { width:17px; height:17px; accent-color:var(--brand-primary); cursor:pointer; }
     .cc-dyn-head.cust span.base-h { text-align:center; }
   </style>
 </head>
@@ -273,7 +273,7 @@
                   <tr><td><input type="number" step="0.01" id="irLim2" value="2826.65"></td><td><input type="number" step="0.01" id="irAliq2" value="7.5"></td><td><input type="number" step="0.01" id="irParc2" value="182.16"></td></tr>
                   <tr><td><input type="number" step="0.01" id="irLim3" value="3751.05"></td><td><input type="number" step="0.01" id="irAliq3" value="15"></td><td><input type="number" step="0.01" id="irParc3" value="394.16"></td></tr>
                   <tr><td><input type="number" step="0.01" id="irLim4" value="4664.68"></td><td><input type="number" step="0.01" id="irAliq4" value="22.5"></td><td><input type="number" step="0.01" id="irParc4" value="675.49"></td></tr>
-                  <tr><td style="padding-left:12px;color:#8A93A6;font-size:12px;">acima da anterior</td><td><input type="number" step="0.01" id="irAliq5" value="27.5"></td><td><input type="number" step="0.01" id="irParc5" value="908.73"></td></tr>
+                  <tr><td style="padding-left:12px;color:var(--text-muted);font-size:12px;">acima da anterior</td><td><input type="number" step="0.01" id="irAliq5" value="27.5"></td><td><input type="number" step="0.01" id="irParc5" value="908.73"></td></tr>
                 </tbody>
               </table>
               <div class="cc-adv-grid" style="margin-top:8px;">

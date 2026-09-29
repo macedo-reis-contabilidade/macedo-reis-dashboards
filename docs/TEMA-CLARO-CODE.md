@@ -83,12 +83,12 @@ e vá para a próxima tela.
 | 3 | `comercial-reunioes.html` | 116 | ✅ |
 | 4 | `fiscal-analise.html` | 111 | ✅ |
 | 5 | `clientes/editar.html` | 99 | ✅ |
-| 6 | `dp-pareceres.html` | 89 | ⬜ |
-| 7 | `comercial-carteira.html` | 85 | ⬜ |
-| 8 | `fiscal-obrigacoes.html` | 81 | ⬜ |
-| 9 | `dp-custo.html` | 73 | ⬜ |
-| 10 | `relatorios-vivos.html` | 72 | ⬜ |
-| 11 | `fiscal-regularizacao.html` | 72 | ⬜ |
+| 6 | `dp-pareceres.html` | 89 | ✅ |
+| 7 | `comercial-carteira.html` | 85 | ✅ |
+| 8 | `fiscal-obrigacoes.html` | 81 | ✅ |
+| 9 | `dp-custo.html` | 73 | ✅ |
+| 10 | `relatorios-vivos.html` | 72 | ✅ |
+| 11 | `fiscal-regularizacao.html` | 72 | ✅ |
 | 12 | `contabil-dre.html` | 72 | ⬜ |
 | 13 | `financeiro-faturaveis.html` | 61 | ⬜ |
 | 14 | `financeiro-boletos.html` | 59 | ⬜ |
@@ -137,4 +137,5 @@ Ao fim de cada sessão, acrescente uma linha: data, telas feitas (marque ✅ na 
 
 | Data | Telas feitas | Commit | Onde parou / observação |
 |---|---|---|---|
-| 28/09/2026 | #1–#5: fiscal-reforma, comercial-precificacao, comercial-reunioes, fiscal-analise, clientes/editar | este commit (lote 1) | Lote 1 feito: diff só de cor, escuro igual ao antes, claro sem fundo escuro; HTML de impressão/janela nova e cores concatenadas em JS ficaram fixos. Próximo: #6 `dp-pareceres.html` (lote 2 = #6–#11). Dúvidas em `docs/TEMA-CLARO-DUVIDAS.md`. |
+| 28/09/2026 | #1–#5: fiscal-reforma, comercial-precificacao, comercial-reunioes, fiscal-analise, clientes/editar | `2414ec9` (lote 1) | Lote 1 feito: diff só de cor, escuro igual ao antes, claro sem fundo escuro; HTML de impressão/janela nova e cores concatenadas em JS ficaram fixos. Próximo: #6 `dp-pareceres.html` (lote 2 = #6–#11). Dúvidas em `docs/TEMA-CLARO-DUVIDAS.md`. |
+| 28/09/2026 | #6–#11: dp-pareceres, comercial-carteira, fiscal-obrigacoes, dp-custo, relatorios-vivos, fiscal-regularizacao | este commit (lote 2) | Lote 2 feito, mesmos critérios do lote 1. Próximo: #12 `contabil-dre.html` (lote 3 = #12–#17). Novas dúvidas (btn-primary e --ok no claro, token de selecionado, rosa/terracota) em `docs/TEMA-CLARO-DUVIDAS.md`. |

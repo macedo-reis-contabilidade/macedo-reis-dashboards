@@ -8,80 +8,80 @@
   <script type="module" src="assets/js/auth-guard.js"></script>
   <style>
     .dashboard-card { position:relative; transition: transform .15s ease, border-color .15s ease, background .15s ease, box-shadow .15s ease; }
-    .dashboard-card:hover { transform: translateY(-2px); border-color: rgba(138,174,200,.35); background: rgba(255,255,255,.045); box-shadow: 0 8px 24px rgba(0,0,0,.25); }
+    .dashboard-card:hover { transform: translateY(-2px); border-color: rgba(138,174,200,.35); background: var(--fill-1); box-shadow: 0 8px 24px rgba(0,0,0,.25); }
 
     /* Cor de identidade por setor (no ícone) */
-    .seg { display:flex; border:1px solid rgba(255,255,255,.12); border-radius:10px; overflow:hidden; flex:none; }
-    .seg button { background:transparent; border:none; color:#8A93A6; font:inherit; font-size:13px; padding:8px 16px; cursor:pointer; }
-    .seg button.is-on { background:rgba(197,216,232,.18); color:#E6EBF2; }
+    .seg { display:flex; border:1px solid var(--fill-3); border-radius:10px; overflow:hidden; flex:none; }
+    .seg button { background:transparent; border:none; color:var(--text-muted); font:inherit; font-size:13px; padding:8px 16px; cursor:pointer; }
+    .seg button.is-on { background:rgba(197,216,232,.18); color:var(--text); }
     .ct-bar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:16px 0; }
     .ct-bar .input, .ct-bar select { font-size:13px; padding:7px 10px; }
-    .ct-bar select { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.12); border-radius:8px; color:#E6EBF2; font:inherit; }
-    .ct-cont { margin-left:auto; color:#8A93A6; font-size:12.5px; white-space:nowrap; }
+    .ct-bar select { background:var(--fill-2); border:1px solid var(--fill-3); border-radius:8px; color:var(--text); font:inherit; }
+    .ct-cont { margin-left:auto; color:var(--text-muted); font-size:12.5px; white-space:nowrap; }
     .ct-alerta { display:none; align-items:center; gap:12px; flex-wrap:wrap; margin:0 0 14px; padding:10px 14px;
       border:1px solid rgba(227,179,65,.45); border-radius:10px; background:rgba(227,179,65,.08);
-      color:#E3B341; font-size:13px; }
+      color:var(--warn); font-size:13px; }
     .ct-alerta.is-on { display:flex; }
     .ct-alerta button { margin-left:auto; }
     .pr-tab { width:100%; border-collapse:collapse; font-size:13px; }
-    .pr-tab th { text-align:left; color:#8A93A6; font-size:11px; text-transform:uppercase; letter-spacing:.05em; padding:8px 8px; border-bottom:1px solid rgba(255,255,255,.1); }
-    .pr-tab td { padding:8px 8px; border-bottom:1px solid rgba(255,255,255,.06); vertical-align:middle; }
-    .ct-emp a { color:#E6EBF2; text-decoration:none; font-weight:600; }
-    .ct-emp a:hover { color:#C5D8E8; }
-    .ct-emp small { display:block; color:#6E7787; font-size:11px; }
-    .chip { font-size:11px; padding:3px 9px; border-radius:999px; background:rgba(91,130,166,.16); color:#8AAEC8; border:1px solid rgba(91,130,166,.35); white-space:nowrap; }
-    .chip.c-ama { background:rgba(227,179,65,.14); color:#E3B341; border-color:rgba(227,179,65,.35); }
-    .chip.c-verm { background:rgba(224,108,108,.14); color:#E06C6C; border-color:rgba(224,108,108,.35); }
+    .pr-tab th { text-align:left; color:var(--text-muted); font-size:11px; text-transform:uppercase; letter-spacing:.05em; padding:8px 8px; border-bottom:1px solid var(--fill-3); }
+    .pr-tab td { padding:8px 8px; border-bottom:1px solid var(--line); vertical-align:middle; }
+    .ct-emp a { color:var(--text); text-decoration:none; font-weight:600; }
+    .ct-emp a:hover { color:var(--brand-pale); }
+    .ct-emp small { display:block; color:var(--text-dim); font-size:11px; }
+    .chip { font-size:11px; padding:3px 9px; border-radius:999px; background:rgba(91,130,166,.16); color:var(--brand-light); border:1px solid rgba(91,130,166,.35); white-space:nowrap; }
+    .chip.c-ama { background:rgba(227,179,65,.14); color:var(--warn); border-color:rgba(227,179,65,.35); }
+    .chip.c-verm { background:rgba(224,108,108,.14); color:var(--err); border-color:rgba(224,108,108,.35); }
     .ed { cursor:pointer; border-bottom:1px dashed rgba(138,174,200,.35); }
-    .ed:hover { color:#C5D8E8; }
-    .ed.vazio { color:#4E5768; border-bottom-style:dotted; }
-    .input-inline { font:inherit; font-size:12.5px; padding:3px 8px; background:rgba(255,255,255,.07); border:1px solid rgba(91,130,166,.55); border-radius:6px; color:#E6EBF2; width:120px; }
-    .btn-mini { font-size:11.5px; padding:4px 10px; border-radius:8px; border:1px solid rgba(138,174,200,.4); background:transparent; color:#8AAEC8; cursor:pointer; white-space:nowrap; }
+    .ed:hover { color:var(--brand-pale); }
+    .ed.vazio { color:var(--text-dim); border-bottom-style:dotted; }
+    .input-inline { font:inherit; font-size:12.5px; padding:3px 8px; background:var(--surface-2); border:1px solid rgba(91,130,166,.55); border-radius:6px; color:var(--text); width:120px; }
+    .btn-mini { font-size:11.5px; padding:4px 10px; border-radius:8px; border:1px solid rgba(138,174,200,.4); background:transparent; color:var(--brand-light); cursor:pointer; white-space:nowrap; }
     .btn-mini:hover { background:rgba(138,174,200,.12); }
     .ana-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin:16px 0 22px; }
-    .ana-card { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.1); border-radius:12px; padding:14px 16px; }
-    .ana-card .num { font-size:24px; font-weight:700; color:#C5D8E8; }
-    .ana-card .num.pos { color:#3FB07A; } .ana-card .num.neg { color:#E06C6C; }
-    .ana-card .lbl { font-size:11.5px; color:#8A93A6; text-transform:uppercase; letter-spacing:.05em; margin-top:2px; }
+    .ana-card { background:var(--fill-1); border:1px solid var(--fill-3); border-radius:12px; padding:14px 16px; }
+    .ana-card .num { font-size:24px; font-weight:700; color:var(--brand-pale); }
+    .ana-card .num.pos { color:var(--ok); } .ana-card .num.neg { color:var(--err); }
+    .ana-card .lbl { font-size:11.5px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; margin-top:2px; }
     .ana-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:20px; }
-    .ana-bloco h3 { font-size:13px; color:#C5D8E8; margin:6px 0 10px; text-transform:uppercase; letter-spacing:.05em; }
-    .barra { display:flex; align-items:center; gap:8px; font-size:12.5px; color:#B9C2D0; padding:3px 0; }
+    .ana-bloco h3 { font-size:13px; color:var(--brand-pale); margin:6px 0 10px; text-transform:uppercase; letter-spacing:.05em; }
+    .barra { display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--text-2); padding:3px 0; }
     .barra .bl { flex:0 0 150px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .barra .bt { flex:1; height:8px; background:rgba(255,255,255,.06); border-radius:99px; overflow:hidden; }
-    .barra .bf { height:100%; background:linear-gradient(90deg,#5B82A6,#8AAEC8); border-radius:99px; }
-    .barra .bn { flex:0 0 34px; text-align:right; color:#8A93A6; font-size:12px; }
+    .barra .bt { flex:1; height:8px; background:var(--fill-2); border-radius:99px; overflow:hidden; }
+    .barra .bf { height:100%; background:linear-gradient(90deg,var(--brand-primary),var(--brand-light)); border-radius:99px; }
+    .barra .bn { flex:0 0 34px; text-align:right; color:var(--text-muted); font-size:12px; }
     .mov-tab td, .mov-tab th { padding:5px 10px; }
-    .mov-tab .pos { color:#3FB07A; } .mov-tab .neg { color:#E06C6C; }
-    .ins-item { padding:8px 12px; border-left:3px solid #8AAEC8; background:rgba(255,255,255,.03); border-radius:0 8px 8px 0; margin-bottom:8px; font-size:13px; color:#B9C2D0; }
-    .mov-item { padding:7px 12px; border-left:3px solid #3FB07A; background:rgba(255,255,255,.03); border-radius:0 8px 8px 0; margin-bottom:6px; font-size:13px; }
-    .mov-item.sai { border-left-color:#E06C6C; }
-    .mov-item a { color:#E6EBF2; text-decoration:none; font-weight:600; }
-    .mov-item a:hover { color:#C5D8E8; }
-    .mov-item small { display:block; color:#6E7787; font-size:11px; }
-    .mov-item .mt { color:#8A93A6; font-size:11.5px; }
-    .fa-modal-overlay { position:fixed; inset:0; background:rgba(6,10,16,.7); display:none; align-items:center; justify-content:center; z-index:999; }
+    .mov-tab .pos { color:var(--ok); } .mov-tab .neg { color:var(--err); }
+    .ins-item { padding:8px 12px; border-left:3px solid var(--brand-light); background:var(--fill-1); border-radius:0 8px 8px 0; margin-bottom:8px; font-size:13px; color:var(--text-2); }
+    .mov-item { padding:7px 12px; border-left:3px solid var(--ok); background:var(--fill-1); border-radius:0 8px 8px 0; margin-bottom:6px; font-size:13px; }
+    .mov-item.sai { border-left-color:var(--err); }
+    .mov-item a { color:var(--text); text-decoration:none; font-weight:600; }
+    .mov-item a:hover { color:var(--brand-pale); }
+    .mov-item small { display:block; color:var(--text-dim); font-size:11px; }
+    .mov-item .mt { color:var(--text-muted); font-size:11.5px; }
+    .fa-modal-overlay { position:fixed; inset:0; background:var(--overlay); display:none; align-items:center; justify-content:center; z-index:999; }
     .fa-modal-overlay.is-open { display:flex; }
-    .fa-modal { background:#111A26; border:1px solid rgba(255,255,255,.12); border-radius:16px; width:min(480px,92vw); max-height:88vh; overflow:auto; }
-    .fa-modal-head { display:flex; justify-content:space-between; align-items:center; padding:14px 18px; border-bottom:1px solid rgba(255,255,255,.08); }
+    .fa-modal { background:var(--surface); border:1px solid var(--fill-3); border-radius:16px; width:min(480px,92vw); max-height:88vh; overflow:auto; }
+    .fa-modal-head { display:flex; justify-content:space-between; align-items:center; padding:14px 18px; border-bottom:1px solid var(--line); }
     .fa-modal-head h3 { margin:0; font-size:15px; }
-    .fa-modal-close { background:none; border:none; color:#8A93A6; font-size:20px; cursor:pointer; }
+    .fa-modal-close { background:none; border:none; color:var(--text-muted); font-size:20px; cursor:pointer; }
     .fa-modal-body { padding:16px 18px; }
-    .fa-modal-foot { display:flex; justify-content:flex-end; gap:8px; padding:12px 18px; border-top:1px solid rgba(255,255,255,.08); }
-    .fa-field { display:flex; flex-direction:column; gap:5px; margin-bottom:12px; font-size:12.5px; color:#8A93A6; }
+    .fa-modal-foot { display:flex; justify-content:flex-end; gap:8px; padding:12px 18px; border-top:1px solid var(--line); }
+    .fa-field { display:flex; flex-direction:column; gap:5px; margin-bottom:12px; font-size:12.5px; color:var(--text-muted); }
     .fa-field .input, .fa-field select { width:100%; }
-    .fa-field select { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.12); border-radius:8px; color:#E6EBF2; font:inherit; font-size:13px; padding:8px 10px; }
-    .add-res { border:1px solid rgba(255,255,255,.08); border-radius:10px; overflow:hidden; margin-top:6px; }
-    .add-res button { display:block; width:100%; text-align:left; background:transparent; border:none; border-bottom:1px solid rgba(255,255,255,.06); color:#E6EBF2; font:inherit; font-size:13px; padding:9px 12px; cursor:pointer; }
+    .fa-field select { background:var(--fill-2); border:1px solid var(--fill-3); border-radius:8px; color:var(--text); font:inherit; font-size:13px; padding:8px 10px; }
+    .add-res { border:1px solid var(--line); border-radius:10px; overflow:hidden; margin-top:6px; }
+    .add-res button { display:block; width:100%; text-align:left; background:transparent; border:none; border-bottom:1px solid var(--line); color:var(--text); font:inherit; font-size:13px; padding:9px 12px; cursor:pointer; }
     .add-res button:hover { background:rgba(138,174,200,.1); }
-    .add-res small { color:#6E7787; display:block; font-size:11px; }
+    .add-res small { color:var(--text-dim); display:block; font-size:11px; }
 
     /* Selo "hoje" (urgência do dia) — canto superior direito */
 
     /* Status no rodapé: backlog de tarefas abertas (ou "em dia") */
     .badge.card-status { font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.03em; }
-    .card-status.st-open  { background:rgba(138,174,200,.14); border:1px solid rgba(138,174,200,.38); color:#B6C7DA; }
-    .card-status.st-clear { background:rgba(63,176,122,.14);  border:1px solid rgba(63,176,122,.4);  color:#5FC698; }
-    .card-status.st-load  { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); color:#8A93A6; }
+    .card-status.st-open  { background:rgba(138,174,200,.14); border:1px solid rgba(138,174,200,.38); color:var(--text-2); }
+    .card-status.st-clear { background:rgba(63,176,122,.14);  border:1px solid rgba(63,176,122,.4);  color:var(--ok); }
+    .card-status.st-load  { background:var(--fill-2); border:1px solid var(--fill-3); color:var(--text-muted); }
   </style>
 </head>
 <body>
@@ -129,8 +129,8 @@
             <select id="fRegime"><option value="">Regime: todos</option></select>
             <select id="fMun"><option value="">Município: todos</option></select>
             <select id="fSeg"><option value="">Segmento: todos</option></select>
-            <label style="font-size:12.5px;color:#8A93A6;display:flex;gap:6px;align-items:center;"><input type="checkbox" id="fSaidas"> incluir saídas</label>
-            <label style="font-size:12.5px;color:#D0715A;display:flex;gap:6px;align-items:center;"><input type="checkbox" id="fInad"> ⚠ só inadimplentes</label>
+            <label style="font-size:12.5px;color:var(--text-muted);display:flex;gap:6px;align-items:center;"><input type="checkbox" id="fSaidas"> incluir saídas</label>
+            <label style="font-size:12.5px;color:var(--err);display:flex;gap:6px;align-items:center;"><input type="checkbox" id="fInad"> ⚠ só inadimplentes</label>
             <button class="btn btn-primary btn-sm" id="btnAdd" style="margin-left:auto;">+ Adicionar à carteira</button>
             <span class="ct-cont" id="ctCont">—</span>
           </div>
@@ -141,12 +141,12 @@
           <table class="pr-tab"><thead><tr>
             <th>Empresa</th><th>Regime</th><th>Município</th><th>Entrada</th><th>Segmento</th><th>Sistemas</th><th>Contato</th><th>Ramo</th><th>Saída</th>
           </tr></thead><tbody id="ctBody"></tbody></table>
-          <div id="ctVazio" style="display:none; color:#8A93A6; text-align:center; padding:30px;">Nada encontrado com esses filtros.</div>
+          <div id="ctVazio" style="display:none; color:var(--text-muted); text-align:center; padding:30px;">Nada encontrado com esses filtros.</div>
         </div>
 
         <div id="vAna" style="display:none;">
           <div class="ct-bar">
-            <label style="font-size:12.5px;color:#8A93A6;">Movimentação do mês:</label>
+            <label style="font-size:12.5px;color:var(--text-muted);">Movimentação do mês:</label>
             <input type="month" id="anaMes" class="input" style="max-width:170px;">
             <button class="btn-mini" id="btnPdfCart" style="margin-left:auto;">🖨 PDF pra impressão</button>
             <button class="btn-mini" id="btnXlsCart">📊 Excel</button>
@@ -183,7 +183,7 @@
       <div class="fa-modal-head"><h3>Adicionar cliente à carteira</h3><button class="fa-modal-close" id="addClose">&times;</button></div>
       <div class="fa-modal-body">
         <label class="fa-field"><span>Buscar no cadastro (razão ou fantasia)</span><input type="text" id="addBusca" class="input" placeholder="Digite pelo menos 3 letras…"></label>
-        <label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:12.5px;color:#8A93A6;">Entrada na carteira: <input type="date" id="addEntrada" class="input" style="width:auto;padding:6px 10px;"></label>
+        <label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:12.5px;color:var(--text-muted);">Entrada na carteira: <input type="date" id="addEntrada" class="input" style="width:auto;padding:6px 10px;"></label>
         <div class="add-res" id="addRes"></div>
       </div>
     </div>
@@ -316,7 +316,7 @@
         const estilo = r.saida ? ' style="opacity:.55;"' : (inad ? ' style="background:rgba(208,113,90,.07); box-shadow:inset 3px 0 0 #D0715A;"' : '');
         return `<tr${estilo}>
           <td class="ct-emp"><span data-inad="${r.cliente_id}" title="${inad ? 'Marcar como em dia' : 'Marcar como inadimplente'}" style="cursor:pointer; margin-right:6px; opacity:${inad ? '1' : '.35'};">${inad ? '⚠' : '💰'}</span><a href="clientes/editar.html?id=${c.id}" target="_blank" rel="noopener">${c.nome_principal}</a>${/^https?:\/\//i.test(c.drive_folder_url || '') ? ` <a href="${String(c.drive_folder_url).replace(/"/g, '&quot;')}" target="_blank" rel="noopener" title="Abrir a pasta do cliente no Drive" style="text-decoration:none;">📁</a>` : ''}
-            ${c.nome_fantasia ? `<small>${c.nome_fantasia}</small>` : ''}${emTransicao ? ' <span class="chip" style="background:rgba(91,130,166,.16); color:#8FC0F0;">em transição</span>' : ''}${inativo ? ' <span class="chip c-ama">inativo no cadastro</span>' : ''}${inad ? ` <span class="chip c-verm">⚠ inadimplente desde ${dBR(r.inadimplente_desde)}</span>` : ''}</td>
+            ${c.nome_fantasia ? `<small>${c.nome_fantasia}</small>` : ''}${emTransicao ? ' <span class="chip" style="background:rgba(91,130,166,.16); color:var(--brand-light);">em transição</span>' : ''}${inativo ? ' <span class="chip c-ama">inativo no cadastro</span>' : ''}${inad ? ` <span class="chip c-verm">⚠ inadimplente desde ${dBR(r.inadimplente_desde)}</span>` : ''}</td>
           <td><span class="chip" data-reg="${r.cliente_id}" style="cursor:pointer;" title="Clique para definir o regime — grava direto no cadastro">${c.regime_tributario || '—'}</span></td>
           <td>${c.cidade ? c.cidade : '<span class="chip c-ama" title="Preencha a cidade no cadastro do cliente">sem cidade</span>'}</td>
           <td>${ed(r, 'entrada', dBR(r.entrada), 'data')}</td>
@@ -456,7 +456,7 @@
     function toastDrive(txt){
       const el = document.createElement('div');
       el.textContent = txt;
-      el.style.cssText = 'position:fixed;right:18px;bottom:18px;z-index:1200;background:#111A26;border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:10px 14px;color:#E6EBF2;font-size:13px;box-shadow:0 6px 24px rgba(0,0,0,.4);max-width:340px;';
+      el.style.cssText = 'position:fixed;right:18px;bottom:18px;z-index:1200;background:var(--surface);border:1px solid var(--fill-3);border-radius:10px;padding:10px 14px;color:var(--text);font-size:13px;box-shadow:0 6px 24px rgba(0,0,0,.4);max-width:340px;';
       document.body.appendChild(el);
       setTimeout(() => el.remove(), 6000);
     }
@@ -489,9 +489,9 @@
       el.innerHTML = (livres.length
         ? livres.map(c => `<button data-add="${c.id}">${c.nome_principal}
             <small>${[c.nome_fantasia, c.regime_tributario, c.cidade].filter(Boolean).join(' · ') || '&nbsp;'}</small></button>`).join('')
-        : '<button disabled style="color:#6E7787;cursor:default;">Nada livre encontrado com esse termo.</button>')
-        + `<button data-criar style="color:#8FC0F0;">➕ Criar pré-cadastro "${t.toUpperCase()}" — dados a completar — e adicionar à carteira</button>`
-        + `<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;font-size:12.5px;color:#B9C2D0;cursor:pointer;"><input type="checkbox" data-pasta checked> 📁 criar a pasta no Drive junto com o pré-cadastro</label>`;
+        : '<button disabled style="color:var(--text-dim);cursor:default;">Nada livre encontrado com esse termo.</button>')
+        + `<button data-criar style="color:var(--brand-light);">➕ Criar pré-cadastro "${t.toUpperCase()}" — dados a completar — e adicionar à carteira</button>`
+        + `<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;font-size:12.5px;color:var(--text-2);cursor:pointer;"><input type="checkbox" data-pasta checked> 📁 criar a pasta no Drive junto com o pré-cadastro</label>`;
       const btnCriar = el.querySelector('[data-criar]');
       if (btnCriar) btnCriar.addEventListener('click', async () => {
         if (!confirm('Criar o pré-cadastro "' + t.toUpperCase() + '" em transição, ainda sem CNPJ informado, e adicionar à carteira?\n\nQuando os dados chegarem (empresa vinda de outro escritório ou CNPJ recém-emitido), complete no cadastro do cliente.')) return;
@@ -547,9 +547,9 @@
       if (!entrouRows.length && !saiuRows.length) mov.innerHTML = '';
       else mov.innerHTML = `
         <div class="ana-bloco"><h3>Entraram em ${rotMes} (${entrouRows.length})</h3>
-          ${entrouRows.map(r => itemMov(r, false)).join('') || '<span style="color:#6E7787;font-size:12.5px;">Ninguém.</span>'}</div>
+          ${entrouRows.map(r => itemMov(r, false)).join('') || '<span style="color:var(--text-dim);font-size:12.5px;">Ninguém.</span>'}</div>
         <div class="ana-bloco"><h3>Saíram em ${rotMes} (${saiuRows.length})</h3>
-          ${saiuRows.map(r => itemMov(r, true)).join('') || '<span style="color:#6E7787;font-size:12.5px;">Ninguém.</span>'}</div>`;
+          ${saiuRows.map(r => itemMov(r, true)).join('') || '<span style="color:var(--text-dim);font-size:12.5px;">Ninguém.</span>'}</div>`;
       const saldo = entradasMes - saidasMes;
       const cS = document.getElementById('cSaldo');
       cS.textContent = (saldo > 0 ? '+' : '') + saldo;
@@ -560,7 +560,7 @@
         const max = itens[0]?.[1] || 1;
         document.getElementById(el).innerHTML = itens.map(([k, v]) =>
           `<div class="barra"><span class="bl" title="${k}">${k}</span><span class="bt"><span class="bf" style="width:${v / max * 100}%"></span></span><span class="bn">${v}</span></div>`
-        ).join('') || '<span style="color:#6E7787;font-size:12.5px;">Sem dados.</span>';
+        ).join('') || '<span style="color:var(--text-dim);font-size:12.5px;">Sem dados.</span>';
       };
       const conta = (arr, fn) => arr.reduce((m, r) => { const k = fn(r); if (k) m[k] = (m[k] || 0) + 1; return m; }, {});
       barras('dRegime', conta(ativos, r => r.clientes.regime_tributario));
@@ -627,7 +627,7 @@
       document.getElementById('foraTitulo').textContent =
         foraCarteira.length + ' cliente(s) ativos no cadastro sem carteira';
       document.getElementById('foraBody').innerHTML = foraCarteira.length
-        ? `<p style="font-size:12.5px;color:#8A93A6;margin:0 0 10px;">Quem não é cliente mensal, inative no cadastro; quem é, adicione à carteira com a data de entrada.</p>
+        ? `<p style="font-size:12.5px;color:var(--text-muted);margin:0 0 10px;">Quem não é cliente mensal, inative no cadastro; quem é, adicione à carteira com a data de entrada.</p>
           <table class="pr-tab"><thead><tr><th>Empresa</th><th>CNPJ</th><th>Cidade</th><th>Status</th><th></th></tr></thead><tbody>` +
           foraCarteira.map(c => `<tr>
             <td class="ct-emp"><a href="clientes/editar.html?id=${c.id}" target="_blank" rel="noopener">${c.nome_principal || '?'}</a>${c.nome_fantasia ? `<small>${c.nome_fantasia}</small>` : ''}</td>
@@ -637,7 +637,7 @@
             <td style="white-space:nowrap;"><button class="btn-mini" data-fora-inativar="${c.id}">Inativar no cadastro</button>
               <button class="btn-mini" data-fora-add="${c.id}" style="margin-left:6px;">Adicionar à carteira</button></td>
           </tr>`).join('') + '</tbody></table>'
-        : '<p style="color:#3FB07A;font-size:13px;">Tudo certo — nenhum ativo fora da carteira. 🎉</p>';
+        : '<p style="color:var(--ok);font-size:13px;">Tudo certo — nenhum ativo fora da carteira. 🎉</p>';
       document.getElementById('foraBody').querySelectorAll('[data-fora-inativar]').forEach(b => b.addEventListener('click', async () => {
         const c = foraCarteira.find(x => x.id === b.dataset.foraInativar);
         if (!c) return;

@@ -36,6 +36,29 @@
 - O `conferir.py` só pula os tours `agenda_v1`, `reforma_v1` e `clientes_v1`. `comercial-precificacao` (`precificacao_v2`), `fiscal-obrigacoes` (`obrigacoes_v1`) e `comercial-carteira` (`carteira_v2`, `carteira_analise_v1`) saem na foto com o tour por cima.
 - Botão "?" do tour (`a.mrt-help`, de `assets/js/tour.js`): rosa com ~2,4:1 no claro. Vem do `tour.js`, que fica fora desta tarefa.
 
+## Lote 2 (#6–#11) — dúvidas novas, 28/09/2026
+### Global (`style.css`, fora desta tarefa)
+- **`.btn-primary` no claro**: o texto herda o `--text` escuro (`#1B2430`) sobre o `--brand-primary` claro (`#4A739A`), uns 3:1. Afeta todas as telas.
+  Exemplos: "+ Novo caso", "Gerar documento", "Gerar relatório para o cliente", "Salvar proposta", "+ Adicionar à carteira".
+  Sugestão: `.btn-primary` com texto `#fff` nos dois temas.
+- **`--ok` no claro** (`#1E8E5A`): dá 3,2–3,8:1 em números verdes.
+  - `dp-custo` (multiplicador e "Líquido a receber");
+  - `relatorios-vivos` (valores positivos);
+  - `comercial-carteira` (aba Análise).
+  Passa como texto grande em negrito, mas a célula de 15px fica abaixo de 4,5:1. Sugestão: escurecer o `--ok` do claro, como foi feito com o `--warn`.
+
+### Tokens que faltam
+- **Estado "selecionado"**: em `comercial-carteira`, `.seg button.is-on` usa a tinta `rgba(197,216,232,.18)`, que quase some no claro. O botão ativo (Carteira/Análise) só se distingue pela cor do texto. O `.seg` da `comercial-precificacao` (tinta ciano) tem o mesmo efeito.
+- **Rosa `#F472B6`**: em `relatorios-vivos`, `.fim-tag.pl29` (contrato que termina em 2029 ou depois) dá ~2,5:1 no claro. A cor ficou fixa porque não há token rosa. As faixas e tintas rosa translúcidas funcionam nos dois temas.
+- **Terracota `#D0715A`**: em `comercial-carteira`, o texto do filtro "só inadimplentes" virou `--err`. A tinta e a faixa de 3px da linha inadimplente (template JS, L316) ficaram fixas, então no claro o rótulo e a faixa ficam em tons um pouco diferentes. Para uniformizar, dá pra trocar a faixa por `var(--err)`, o que muda levemente o escuro.
+
+### Por tela
+- **comercial-carteira** L459 `toastDrive` (`el.style.cssText`): `#111A26` virou `--surface` (igual ao `.fa-modal`) e a borda `.16` virou `--fill-3`. `--pop` e `--line-strong` seriam as alternativas.
+- **comercial-carteira** `#8FC0F0` (chip "em transição" e botão "Criar pré-cadastro", que só aparecem com dados) virou `--brand-light`. No escuro muda de `(143,192,240)` pra `(138,174,200)`.
+- **relatorios-vivos** `.fim-tag.pl26` `#4ADE80` virou `--ok`, e `.fim-tag.pl28` `#FACC15` virou `--warn`. São cores de categoria (ano de término), mas a legenda dá leitura de estado ("verde", "âmbar"), e sem a troca o texto fica ~1,5:1 no claro. Se preferirem tratar como série de gráfico, basta voltar os dois valores.
+- **relatorios-vivos** `#E08FA8`, que nesta página é a cor de negativo/erro, virou `--err` (no escuro fica mais vermelho). Em outras telas a mesma cor é o setor IRPF.
+- **relatorios-vivos** L16 `.saude-erro .saude-dot`: o ponto virou `--err`, mas o brilho continua `rgba(224,143,168,.6)` (rosa), uma tinta translúcida permitida. Os irmãos `.saude-ok`/`.saude-alerta` já tinham a mesma diferença desde o tokenize.
+
 ---
 ## Decisões do arquiteto — 29/09/2026 (lote 1 revisado e publicado)
 - **Ciano `#52B4C6`** → novo token **`--accent`** (escuro `#52B4C6`, claro `#1C7A8A`). Já trocado nas telas do lote 1 e na Agenda; o `tokenize.py` passa a converter sozinho. Tintas `rgba(82,180,198,…)` ficam.
