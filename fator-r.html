@@ -8,34 +8,34 @@
   <script type="module" src="assets/js/auth-guard.js"></script>
   <style>
     .fr-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 22px; }
-    .fr-card { background: var(--surface, rgba(255,255,255,.03)); border: 1px solid rgba(138,174,200,.16); border-radius: 12px; padding: 14px 16px; }
+    .fr-card { background: var(--surface, var(--fill-1)); border: 1px solid rgba(138,174,200,.16); border-radius: 12px; padding: 14px 16px; }
     .fr-card .num { font-size: 26px; font-weight: 700; }
-    .fr-card .lbl { font-size: 12px; color: #8AAEC8; margin-top: 2px; }
+    .fr-card .lbl { font-size: 12px; color: var(--brand-light); margin-top: 2px; }
     .fr-tab { width: 100%; border-collapse: collapse; font-size: 14px; }
-    .fr-tab th { text-align: left; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: #8AAEC8; padding: 10px 10px; border-bottom: 1px solid rgba(138,174,200,.25); }
+    .fr-tab th { text-align: left; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--brand-light); padding: 10px 10px; border-bottom: 1px solid rgba(138,174,200,.25); }
     .fr-tab td { padding: 10px 10px; border-bottom: 1px solid rgba(138,174,200,.08); }
     .fr-tab tr.clicavel { cursor: pointer; }
     .fr-tab tr.clicavel:hover td { background: rgba(91,130,166,.08); }
     .fr-num { text-align: right; font-variant-numeric: tabular-nums; }
     .fr-tab th.fr-num { text-align: right; }
     .fr-hcell { background: transparent; border-color: rgba(91,130,166,.25); text-align: right; padding: 4px 8px; font-size: 13px; }
-    .fr-hcell:focus { border-color: #5B82A6; }
-    .fr-tour-hi { outline: 3px solid #5B82A6; outline-offset: 4px; border-radius: 8px; box-shadow: 0 0 0 9999px rgba(0,0,0,.55); position: relative; z-index: 61; }
-    .fr-tour-balao { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 62; background: #16202b; border: 1px solid #3A5878; border-radius: 12px; padding: 14px 16px; max-width: 540px; width: calc(100% - 32px); box-shadow: 0 8px 30px rgba(0,0,0,.5); }
+    .fr-hcell:focus { border-color: var(--brand-primary); }
+    .fr-tour-hi { outline: 3px solid var(--brand-primary); outline-offset: 4px; border-radius: 8px; box-shadow: 0 0 0 9999px rgba(0,0,0,.55); position: relative; z-index: 61; }
+    .fr-tour-balao { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 62; background: var(--surface); border: 1px solid var(--brand-dark); border-radius: 12px; padding: 14px 16px; max-width: 540px; width: calc(100% - 32px); box-shadow: 0 8px 30px rgba(0,0,0,.5); }
     .fr-badge { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: 700; }
-    .fr-ok    { background: rgba(74,222,128,.15); color: #4ADE80; }
-    .fr-fio   { background: rgba(250,204,21,.15); color: #FACC15; }
-    .fr-perto { background: rgba(251,146,60,.15); color: #FB923C; }
+    .fr-ok    { background: rgba(74,222,128,.15); color: var(--ok); }
+    .fr-fio   { background: rgba(250,204,21,.15); color: var(--warn); }
+    .fr-perto { background: rgba(251,146,60,.15); color: var(--warn); }
     .fr-longe { background: rgba(244,114,182,.14); color: #F472B6; }
-    .fr-nd    { background: rgba(138,174,200,.14); color: #8AAEC8; }
+    .fr-nd    { background: rgba(138,174,200,.14); color: var(--brand-light); }
     .fr-mini { display: inline-block; min-width: 46px; text-align: center; padding: 1px 6px; border-radius: 8px; font-size: 11px; font-weight: 600; margin-right: 4px; }
-    .fr-alerta { color: #FACC15; font-size: 12px; }
-    .fr-dim { color: #8AAEC8; opacity: .75; }
-    .fr-secao { margin: 26px 0 12px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: #8AAEC8; font-weight: 700; }
+    .fr-alerta { color: var(--warn); font-size: 12px; }
+    .fr-dim { color: var(--brand-light); opacity: .75; }
+    .fr-secao { margin: 26px 0 12px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--brand-light); font-weight: 700; }
     .fr-hero { display: flex; flex-wrap: wrap; gap: 18px; align-items: stretch; margin-bottom: 8px; }
-    .fr-hero-fator { background: var(--surface, rgba(255,255,255,.03)); border: 1px solid rgba(138,174,200,.16); border-radius: 14px; padding: 18px 26px; text-align: center; min-width: 200px; }
+    .fr-hero-fator { background: var(--surface, var(--fill-1)); border: 1px solid rgba(138,174,200,.16); border-radius: 14px; padding: 18px 26px; text-align: center; min-width: 200px; }
     .fr-hero-fator .r { font-size: 42px; font-weight: 800; line-height: 1.1; }
-    .fr-hero-info { flex: 1 1 300px; background: var(--surface, rgba(255,255,255,.03)); border: 1px solid rgba(138,174,200,.16); border-radius: 14px; padding: 16px 20px; font-size: 14px; line-height: 1.7; }
+    .fr-hero-info { flex: 1 1 300px; background: var(--surface, var(--fill-1)); border: 1px solid rgba(138,174,200,.16); border-radius: 14px; padding: 16px 20px; font-size: 14px; line-height: 1.7; }
     .fr-sim { background: linear-gradient(135deg, rgba(58,88,120,.25), rgba(91,130,166,.12)); border: 1px solid rgba(91,130,166,.35); border-radius: 14px; padding: 18px 22px; margin: 18px 0 24px; }
     .fr-sim h3 { margin: 0 0 10px; font-size: 15px; }
     .fr-sim .res { font-size: 15px; line-height: 1.8; }
@@ -45,21 +45,21 @@
     .fr-nav { display: inline-flex; gap: 6px; align-items: center; margin: 0 0 16px; }
     .fr-nav button { min-width: 34px; }
     .fr-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 14px 0 8px; }
-    .fr-form label { display: block; font-size: 12px; color: #8AAEC8; margin-bottom: 4px; }
-    .fr-nota { margin-top: 30px; padding: 14px 18px; border-left: 3px solid rgba(91,130,166,.5); background: rgba(91,130,166,.06); border-radius: 0 10px 10px 0; font-size: 12.5px; line-height: 1.7; color: #C5D8E8; }
+    .fr-form label { display: block; font-size: 12px; color: var(--brand-light); margin-bottom: 4px; }
+    .fr-nota { margin-top: 30px; padding: 14px 18px; border-left: 3px solid rgba(91,130,166,.5); background: rgba(91,130,166,.06); border-radius: 0 10px 10px 0; font-size: 12.5px; line-height: 1.7; color: var(--brand-pale); }
     .fr-vista { display: none; }
     .fr-vista.ativa { display: block; }
     .fr-acoes-topo { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
-    .fr-salvo { color: #4ADE80; font-size: 12px; }
-    .fr-import { background: var(--surface, rgba(255,255,255,.03)); border: 1px solid rgba(138,174,200,.2); border-radius: 14px; padding: 16px 20px; margin: 0 0 24px; }
+    .fr-salvo { color: var(--ok); font-size: 12px; }
+    .fr-import { background: var(--surface, var(--fill-1)); border: 1px solid rgba(138,174,200,.2); border-radius: 14px; padding: 16px 20px; margin: 0 0 24px; }
     .fr-import input[type="number"] { width: 96px; }
     .fr-conflito { outline: 1px solid rgba(250,204,21,.55); }
-    .fr-atual { display: block; font-size: 10.5px; color: #FACC15; margin-top: 2px; }
+    .fr-atual { display: block; font-size: 10.5px; color: var(--warn); margin-top: 2px; }
     .fr-vira { animation: frPulse 1.6s ease-in-out infinite; }
     @keyframes frPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(244,114,182,0); } 50% { box-shadow: 0 0 0 4px rgba(244,114,182,.18); } }
-    .fr-erro { color: #F472B6; font-size: 12px; }
-    .fr-avisos { display: none; margin: 0 0 16px; padding: 10px 14px; border: 1px solid rgba(250,204,21,.4); background: rgba(250,204,21,.07); border-radius: 10px; font-size: 13px; color: #E3B341; line-height: 1.7; }
-    .fr-avisos a { color: #FACC15; font-weight: 600; }
+    .fr-erro { color: var(--err); font-size: 12px; }
+    .fr-avisos { display: none; margin: 0 0 16px; padding: 10px 14px; border: 1px solid rgba(250,204,21,.4); background: rgba(250,204,21,.07); border-radius: 10px; font-size: 13px; color: var(--warn); line-height: 1.7; }
+    .fr-avisos a { color: var(--warn); font-weight: 600; }
     .fr-avisos .fr-chip-emp { display: inline-block; margin: 2px 6px 2px 0; padding: 2px 10px; border-radius: 999px; background: rgba(250,204,21,.12); border: 1px solid rgba(250,204,21,.35); white-space: nowrap; }
   </style>
 </head>
@@ -314,11 +314,11 @@
       const viram = calcs.filter(x => { const r = radar.get(x.e.id); return x.c && r && x.c.anexo !== '—' && r.anexo !== '—' && x.c.anexo !== r.anexo; }).length;
       el('painelCards').innerHTML =
         '<div class="fr-card"><div class="num">' + ativas.length + '</div><div class="lbl">Empresas acompanhadas</div></div>' +
-        '<div class="fr-card"><div class="num" style="color:#4ADE80;">' + iii + '</div><div class="lbl">No Anexo III (' + mesRot(paAtual) + ')</div></div>' +
+        '<div class="fr-card"><div class="num" style="color:var(--ok);">' + iii + '</div><div class="lbl">No Anexo III (' + mesRot(paAtual) + ')</div></div>' +
         '<div class="fr-card"><div class="num" style="color:#F472B6;">' + v5 + '</div><div class="lbl">No Anexo V</div></div>' +
-        '<div class="fr-card"><div class="num" style="color:#FACC15;">' + fio + '</div><div class="lbl">Na zona de atenção</div></div>' +
-        '<div class="fr-card"><div class="num" style="color:' + (pend ? '#FACC15' : '#4ADE80') + ';">' + pend + '</div><div class="lbl">Com dados faltando</div></div>' +
-        '<div class="fr-card"><div class="num" style="color:' + (viram ? '#F472B6' : '#4ADE80') + ';">' + viram + '</div><div class="lbl">Viram de anexo em ' + mesRot(paProx) + '</div></div>';
+        '<div class="fr-card"><div class="num" style="color:var(--warn);">' + fio + '</div><div class="lbl">Na zona de atenção</div></div>' +
+        '<div class="fr-card"><div class="num" style="color:' + (pend ? 'var(--warn)' : 'var(--ok)') + ';">' + pend + '</div><div class="lbl">Com dados faltando</div></div>' +
+        '<div class="fr-card"><div class="num" style="color:' + (viram ? '#F472B6' : 'var(--ok)') + ';">' + viram + '</div><div class="lbl">Viram de anexo em ' + mesRot(paProx) + '</div></div>';
       el('painelCab').innerHTML = '<tr><th>Empresa</th><th>Início</th><th class="fr-num">Fator r · ' + mesRot(paAtual) + '</th><th>Situação</th><th class="fr-num">Margem</th><th>Últimos PAs</th><th>Radar ' + mesRot(paProx) + '</th><th>Dados</th></tr>';
       if (!ativas.length) {
         el('painelCorpo').innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;" class="fr-dim">Nenhuma empresa cadastrada ainda. Comece em "Gerenciar empresas".</td></tr>';
@@ -425,9 +425,9 @@
         const falta = alvoMes - jaMes;
         let h = '<b>Simulador do mês</b> <span class="fr-dim" style="font-size:12px;">— edite receita, folha e CPP na linha acima · janela de ' + mesRot(paProx) + ' (' + mesRot(j0) + ' → ' + mesRot(paAtual) + ') · receita da janela: <b>' + brl(somaR) + '</b></span><br>';
         h += 'Pra ' + mesRot(paProx) + ' fechar r ≥ 28%: folha + CPP pagos em <b>' + mesRot(paAtual) + '</b> precisam somar <b>' + brl(Math.max(0, alvoMes)) + '</b> · informado: <b>' + brl(jaMes) + '</b> — ';
-        if (alvoMes <= 0) h += '<span style="color:#4ADE80;font-weight:600;">Anexo III garantido pelos meses anteriores.</span>';
-        else if (falta <= 0) h += '<span style="color:#4ADE80;font-weight:600;">garantido, com folga de ' + brl(-falta) + '.</span>';
-        else h += '<span style="color:#FACC15;font-weight:600;">faltam ' + brl(falta) + ' até o fim do mês.</span>';
+        if (alvoMes <= 0) h += '<span style="color:var(--ok);font-weight:600;">Anexo III garantido pelos meses anteriores.</span>';
+        else if (falta <= 0) h += '<span style="color:var(--ok);font-weight:600;">garantido, com folga de ' + brl(-falta) + '.</span>';
+        else h += '<span style="color:var(--warn);font-weight:600;">faltam ' + brl(falta) + ' até o fim do mês.</span>';
         h += '<br><span class="fr-dim" style="font-size:11px;">Regime de caixa: vale o que for pago dentro de ' + mesRot(paAtual) + '. Edições em qualquer linha só entram no cálculo depois de gravadas pela barra acima da tabela.</span>';
         el('histSimRes').innerHTML = h;
       };
@@ -459,16 +459,16 @@
         msg.textContent = 'Gravando…'; msg.style.color = '';
         try {
           const { error: eH } = await supabase.from('fr_lancamentos').upsert(regs, { onConflict: 'empresa_id,competencia' });
-          if (eH) { msg.style.color = '#F87171'; msg.textContent = 'Erro: ' + eH.message; return; }
+          if (eH) { msg.style.color = 'var(--err)'; msg.textContent = 'Erro: ' + eH.message; return; }
           if (consolidadas) alert(consolidadas + ' mês(es) tinham a folha em várias rubricas — o novo total foi consolidado na rubrica principal e as demais foram zeradas. Pro detalhe por rubrica, use a grade de competências.');
           await carregarTudo();
           renderEmpresa(e.id);
           const b2 = el('histBarra');
           b2.style.display = '';
-          b2.innerHTML = '<span style="color:#4ADE80;font-weight:600;">✓ ' + regs.length + ' mês(es) gravado(s) — histórico recalculado.</span>';
+          b2.innerHTML = '<span style="color:var(--ok);font-weight:600;">✓ ' + regs.length + ' mês(es) gravado(s) — histórico recalculado.</span>';
           setTimeout(() => { if (b2.innerHTML.includes('gravado(s)')) { b2.style.display = 'none'; b2.innerHTML = ''; } }, 4000);
         } catch (ex) {
-          msg.style.color = '#F87171';
+          msg.style.color = 'var(--err)';
           msg.textContent = 'Erro inesperado: ' + (ex && ex.message ? ex.message : ex) + ' — recarregue a página e confira se salvou.';
         }
       };
@@ -566,7 +566,7 @@
         }
         html += '</tbody></table>';
         const alvoMensal = 0.28 * rec;
-        let sintese = '<p style="margin:10px 0 0;">Regra de bolso do regime cheio: com faturamento de <b>' + brl(rec) + '</b>/mês, a folha paga precisa de <b>' + brl(alvoMensal) + '</b>/mês (28%) pra sustentar o Anexo III. Cenário informado: <b>' + brl(fol) + '</b>/mês' + (fol >= alvoMensal ? ' <span style="color:#4ADE80;">— sustenta ✓</span>' : ' <span style="color:#FACC15;">— faltam ' + brl(alvoMensal - fol) + '/mês</span>') + '.</p>';
+        let sintese = '<p style="margin:10px 0 0;">Regra de bolso do regime cheio: com faturamento de <b>' + brl(rec) + '</b>/mês, a folha paga precisa de <b>' + brl(alvoMensal) + '</b>/mês (28%) pra sustentar o Anexo III. Cenário informado: <b>' + brl(fol) + '</b>/mês' + (fol >= alvoMensal ? ' <span style="color:var(--ok);">— sustenta ✓</span>' : ' <span style="color:var(--warn);">— faltam ' + brl(alvoMensal - fol) + '/mês</span>') + '.</p>';
         if (viradaEm) sintese += '<p style="margin:6px 0 0;"><span class="fr-badge ' + (viradaEm.para === 'V' ? 'fr-longe' : 'fr-ok') + '">Nesse cenário, o anexo vira de ' + viradaEm.de + ' pra ' + viradaEm.para + ' em <b>' + mesRot(viradaEm.pa) + '</b></span></p>';
         sintese += '<p class="fr-dim" style="font-size:12px;margin:8px 0 0;">O cenário substitui o mês corrente e os futuros pelos valores projetados; o passado lançado permanece real. Serve também pra empresa ainda sem nenhum histórico (projeção pura com a regra de proporcionalização).</p>';
         el('planRes').innerHTML = html + sintese;
@@ -652,8 +652,8 @@
               '<select class="input imp-dest" data-comp="' + comp + '" style="width:118px;display:inline-block;">' +
               [addMeses(comp, -1), comp, addMeses(comp, 1)].map(m => '<option value="' + m + '"' + (m === comp ? ' selected' : '') + '>' + mesRot(m) + '</option>').join('') +
               '</select>' +
-              (vals.origens && vals.origens.length ? '<span class="fr-atual" style="color:#8AAEC8;">folha comp. ' + vals.origens.map(x => mesRot(x + '-01')).join(', ') + '</span>' : '') +
-              (vals.jaCaixa ? '<span class="fr-atual" style="color:#4ADE80;">já em caixa (PGDAS)</span>' : '') + '</td>';
+              (vals.origens && vals.origens.length ? '<span class="fr-atual" style="color:var(--brand-light);">folha comp. ' + vals.origens.map(x => mesRot(x + '-01')).join(', ') + '</span>' : '') +
+              (vals.jaCaixa ? '<span class="fr-atual" style="color:var(--ok);">já em caixa (PGDAS)</span>' : '') + '</td>';
             campos.forEach(cp => {
               const novo = vals[cp] != null ? Number(vals[cp]) : null;
               const velho = atual[cp] != null ? Number(atual[cp]) : null;
@@ -704,7 +704,7 @@
               renderEmpresa(e.id);
               const bx = el('fichaImport');
               bx.style.display = '';
-              bx.innerHTML = '<span style="color:#4ADE80;font-weight:600;">✓ Gravadas ' + regs.length + ' competência(s) — histórico atualizado abaixo.</span>';
+              bx.innerHTML = '<span style="color:var(--ok);font-weight:600;">✓ Gravadas ' + regs.length + ' competência(s) — histórico atualizado abaixo.</span>';
               setTimeout(() => { bx.style.display = 'none'; bx.innerHTML = ''; }, 5000);
             } catch (ex) {
               el('impMsg').className = 'fr-erro';

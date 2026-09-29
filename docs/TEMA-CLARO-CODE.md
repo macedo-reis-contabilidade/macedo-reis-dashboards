@@ -95,13 +95,13 @@ e vá para a próxima tela.
 | 15 | `dp-convencoes.html` | 55 | ✅ |
 | 16 | `irpf-declaracoes.html` | 53 | ✅ |
 | 17 | `fiscal-xml.html` | 52 | ✅ |
-| 18 | `comercial-transicao.html` | 51 | ⬜ |
-| 19 | `societario-alvaras.html` | 45 | ⬜ |
-| 20 | `fator-r.html` | 45 | ⬜ |
-| 21 | `financeiro-regras.html` | 32 | ⬜ |
-| 22 | `societario-regras.html` | 29 | ⬜ |
-| 23 | `fiscal-sugestoes.html` | 29 | ⬜ |
-| 24 | `dp-sugestoes.html` | 29 | ⬜ |
+| 18 | `comercial-transicao.html` | 51 | ✅ |
+| 19 | `societario-alvaras.html` | 45 | ✅ |
+| 20 | `fator-r.html` | 45 | ✅ |
+| 21 | `financeiro-regras.html` | 32 | ✅ |
+| 22 | `societario-regras.html` | 29 | ✅ |
+| 23 | `fiscal-sugestoes.html` | 29 | ✅ |
+| 24 | `dp-sugestoes.html` | 29 | ✅ |
 | 25 | `contabil-sugestoes.html` | 29 | ⬜ |
 | 26 | `gestao.html` | 28 | ⬜ |
 | 27 | `fiscal-regras.html` | 24 | ⬜ |
@@ -139,4 +139,5 @@ Ao fim de cada sessão, acrescente uma linha: data, telas feitas (marque ✅ na 
 |---|---|---|---|
 | 28/09/2026 | #1–#5: fiscal-reforma, comercial-precificacao, comercial-reunioes, fiscal-analise, clientes/editar | `2414ec9` (lote 1) | Lote 1 feito: diff só de cor, escuro igual ao antes, claro sem fundo escuro; HTML de impressão/janela nova e cores concatenadas em JS ficaram fixos. Próximo: #6 `dp-pareceres.html` (lote 2 = #6–#11). Dúvidas em `docs/TEMA-CLARO-DUVIDAS.md`. |
 | 28/09/2026 | #6–#11: dp-pareceres, comercial-carteira, fiscal-obrigacoes, dp-custo, relatorios-vivos, fiscal-regularizacao | `6f3e996` (lote 2) | Lote 2 feito, mesmos critérios do lote 1. Próximo: #12 `contabil-dre.html` (lote 3 = #12–#17). Novas dúvidas (btn-primary e --ok no claro, token de selecionado, rosa/terracota) em `docs/TEMA-CLARO-DUVIDAS.md`. |
-| 28/09/2026 | #12–#17: contabil-dre, financeiro-faturaveis, financeiro-boletos, dp-convencoes, irpf-declaracoes, fiscal-xml | este commit (lote 3) | Lote 3 feito sobre a revisão do arquiteto (--accent, --warn novo). Próximo: #18 `comercial-transicao.html` (lote 4 = #18–#24). Dúvidas do lote 3 em `docs/TEMA-CLARO-DUVIDAS.md`. |
+| 28/09/2026 | #12–#17: contabil-dre, financeiro-faturaveis, financeiro-boletos, dp-convencoes, irpf-declaracoes, fiscal-xml | `9c0416f` (lote 3) | Lote 3 feito sobre a revisão do arquiteto (--accent, --warn novo). Próximo: #18 `comercial-transicao.html` (lote 4 = #18–#24). Dúvidas do lote 3 em `docs/TEMA-CLARO-DUVIDAS.md`. |
+| 28/09/2026 | #18–#24: comercial-transicao, societario-alvaras, fator-r, financeiro-regras, societario-regras, fiscal-sugestoes, dp-sugestoes | este commit (lote 4) | Lote 4 feito. Telas de mesmo template (regras, sugestões) espelham a primeira convertida: societario-regras = financeiro-regras, dp-sugestoes = fiscal-sugestoes, linha a linha. Próximo: #25 `contabil-sugestoes.html` (lote 5 = #25–#32). |

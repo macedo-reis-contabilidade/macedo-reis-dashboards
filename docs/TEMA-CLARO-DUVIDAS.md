@@ -71,6 +71,25 @@
 - **irpf-declaracoes** e **financeiro-boletos** (mesmo template `table.bo`): o hover de linha `rgba(255,255,255,.02)` virou `--fill-1`, e não o `--fill-2` da decisão de hover, que triplicaria o hover no escuro. Confirmar se a regra valia só pra hovers originais de .04–.06.
 - **financeiro-faturaveis**, **financeiro-boletos** e **irpf-declaracoes**: o cabeçalho fixo `th { position:sticky; background:#11171f }` virou `var(--surface)` nas três, do mesmo jeito.
 
+## Lote 4 (#18–#24) — dúvidas novas, 28/09/2026
+### Global
+- **`--text-dim` no claro** (`#8A94A6`): dá 2,4–2,9:1 em texto pequeno e até em botão de ação.
+  - É o token de valor escuro mais próximo de `#6B7385`/`#6E7787`, por isso o escuro não muda.
+  - Casos: `comercial-transicao` ("dia X de 90", "N de M tarefas") e `fiscal-sugestoes`/`dp-sugestoes` (botão "Excluir" `.sg-del` e data `.sg-done-meta`; o mesmo CSS vale pra `contabil-sugestoes`).
+  - Sugestão: um `--text-dim` claro um pouco mais escuro no `style.css`, ou `--text-muted` nesses pontos (o que clareia o escuro).
+
+### fator-r.html
+- **Rosa `#F472B6`**: em L29 `.fr-longe` (degrau "Anexo V") e nos cards "No Anexo V"/"Viram de anexo", ficou fixo porque falta token rosa (mesma pendência do `.fim-tag.pl29` de `relatorios-vivos`). No claro dá ~2,6:1. A alternativa é `--err`, que deixaria o escuro vermelho.
+- L60 `.fr-erro` (rosa, só em mensagens de erro): virou `--err`, porque a tela já usa vermelho em erros equivalentes.
+- L27 `.fr-fio` (`#FACC15`) e L28 `.fr-perto` (`#FB923C`) viraram os dois `--warn`. Agora os degraus vizinhos "III no fio" e "V — quase III" só se distinguem pela tinta de fundo e pelo rótulo. Um token laranja (`--warn-2`) manteria o degrau.
+- L56 `.fr-conflito`: o contorno `rgba(250,204,21,.55)` (tinta de estado, ficou) quase some no claro (~1,3:1). A divergência continua sinalizada pelo texto em `--warn` logo abaixo.
+- L23 `.fr-tour-hi` (tour próprio da ficha): o escurecimento `rgba(0,0,0,.55)` ficou fixo. O tour global usa `var(--overlay)`. Padronizar mudaria o escuro.
+- L24 `.fr-tour-balao`: `#16202b` virou `--surface`, igual ao balão do `tour.js`.
+
+### comercial-transicao.html
+- L59, fundo dos campos: `rgba(255,255,255,.05)` virou `--fill-2`. O `--surface-2` deu diferença no escuro (19 campos).
+- `#C6A75A` ("aguardando terceiro") virou `--warn`, e `#D08770` ("atrasada", botão Excluir, mensagem de erro) virou `--err`. O gradiente `#3A5878` das barras virou `--brand-dark`, que tem o mesmo valor no escuro.
+
 ---
 ## Decisões do arquiteto — 29/09/2026 (lote 1 revisado e publicado)
 - **Ciano `#52B4C6`** → novo token **`--accent`** (escuro `#52B4C6`, claro `#1C7A8A`). Já trocado nas telas do lote 1 e na Agenda; o `tokenize.py` passa a converter sozinho. Tintas `rgba(82,180,198,…)` ficam.
