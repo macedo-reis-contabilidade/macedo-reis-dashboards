@@ -7,84 +7,84 @@
   <link rel="stylesheet" href="../assets/css/style.css">
   <script type="module" src="../assets/js/auth-guard.js"></script>
   <style>
-    .fa-modal-overlay { position:fixed; inset:0; background:rgba(8,12,18,.72); display:none; align-items:flex-start; justify-content:center; padding:48px 16px; z-index:200; overflow-y:auto; }
+    .fa-modal-overlay { position:fixed; inset:0; background:var(--overlay); display:none; align-items:flex-start; justify-content:center; padding:48px 16px; z-index:200; overflow-y:auto; }
     .fa-modal-overlay.is-open { display:flex; }
-    .fa-modal { width:100%; max-width:600px; background:#141A22; border:1px solid rgba(255,255,255,.10); border-radius:16px; overflow:hidden; }
-    .fa-modal-head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid rgba(255,255,255,.08); }
-    .fa-modal-head h3 { margin:0; color:#E6EBF2; font-size:18px; }
-    .fa-modal-close { background:none; border:none; color:#8A93A6; font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }
-    .fa-modal-close:hover { color:#E6EBF2; }
+    .fa-modal { width:100%; max-width:600px; background:var(--surface); border:1px solid var(--fill-3); border-radius:16px; overflow:hidden; }
+    .fa-modal-head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid var(--line); }
+    .fa-modal-head h3 { margin:0; color:var(--text); font-size:18px; }
+    .fa-modal-close { background:none; border:none; color:var(--text-muted); font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }
+    .fa-modal-close:hover { color:var(--text); }
     .btn[hidden] { display:none; } /* [hidden] perde do display:inline-flex do .btn — sem isso, esconder botão por atributo não funciona */
     .fa-modal-body { padding:22px; display:flex; flex-direction:column; gap:14px; }
     .fa-field { display:flex; flex-direction:column; gap:6px; }
-    .fa-field > span { font-size:13px; color:#8AAEC8; }
+    .fa-field > span { font-size:13px; color:var(--brand-light); }
     .fa-field-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
-    .fa-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid rgba(255,255,255,.08); }
+    .fa-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid var(--line); }
     .fa-modal textarea.input { resize:vertical; font-family:inherit; }
-    .alv-hr { border:none; border-top:1px solid rgba(255,255,255,.08); margin:8px 0 2px; }
+    .alv-hr { border:none; border-top:1px solid var(--line); margin:8px 0 2px; }
     .cmp-box { border:1px solid rgba(91,130,166,.25); background:rgba(91,130,166,.06); border-radius:10px; padding:10px 12px; }
-    .proc-drop { border:1.5px dashed rgba(138,147,166,.45); border-radius:10px; padding:16px; text-align:center; font-size:13px; color:#8A93A6; cursor:pointer; margin:-4px 0 8px; }
-    .proc-drop.is-over, .proc-drop:hover { border-color:#5B82A6; color:#C9D3E0; background:rgba(91,130,166,.06); }
+    .proc-drop { border:1.5px dashed rgba(138,147,166,.45); border-radius:10px; padding:16px; text-align:center; font-size:13px; color:var(--text-muted); cursor:pointer; margin:-4px 0 8px; }
+    .proc-drop.is-over, .proc-drop:hover { border-color:var(--brand-primary); color:var(--text); background:rgba(91,130,166,.06); }
     .proc-lista { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
     .proc-lista:empty { display:none; }
-    .proc-chip { display:inline-flex; align-items:center; gap:6px; padding:5px 9px; border-radius:8px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); font-size:12px; color:#C9D3E0; max-width:100%; }
+    .proc-chip { display:inline-flex; align-items:center; gap:6px; padding:5px 9px; border-radius:8px; background:var(--fill-2); border:1px solid var(--fill-3); font-size:12px; color:var(--text); max-width:100%; }
     .proc-chip .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:260px; }
-    .proc-chip .tp { color:#8AAEC8; font-size:11px; }
+    .proc-chip .tp { color:var(--brand-light); font-size:11px; }
     .proc-chip.lido { border-color:rgba(91,130,166,.6); }
-    .proc-chip button { background:none; border:0; color:#8A93A6; cursor:pointer; font-size:15px; line-height:1; padding:0 0 0 2px; }
-    .proc-chip button:hover { color:#F0A0A0; }
+    .proc-chip button { background:none; border:0; color:var(--text-muted); cursor:pointer; font-size:15px; line-height:1; padding:0 0 0 2px; }
+    .proc-chip button:hover { color:var(--err); }
     .cmp-step { display:flex; flex-direction:column; gap:10px; }
     .cmp-tbl { width:100%; border-collapse:collapse; font-size:12.5px; margin-top:4px; }
-    .cmp-tbl th { text-align:left; color:#8AAEC8; font-size:11px; text-transform:uppercase; letter-spacing:.04em; padding:6px 8px; border-bottom:1px solid rgba(255,255,255,.1); }
-    .cmp-tbl td { padding:6px 8px; border-bottom:1px solid rgba(255,255,255,.05); vertical-align:top; color:#D7DEE8; }
+    .cmp-tbl th { text-align:left; color:var(--brand-light); font-size:11px; text-transform:uppercase; letter-spacing:.04em; padding:6px 8px; border-bottom:1px solid var(--fill-3); }
+    .cmp-tbl td { padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; color:var(--text); }
     .cmp-tbl tr.mudou td { background:rgba(227,179,65,.10); }
-    .cmp-tbl tr.mudou td:first-child { border-left:2px solid #E3B341; }
-    .cmp-campo { color:#8A93A6; white-space:nowrap; }
-    .cmp-flag { color:#E3B341; font-weight:700; font-size:11px; }
-    .alv-tl-head { font-weight:600; color:#E6EBF2; }
-    .proc-warn { background:rgba(227,179,65,.12); border:1px solid rgba(227,179,65,.35); color:#E3B341; border-radius:10px; padding:9px 12px; font-size:13px; }
-    .proc-status { font-size:13px; color:#8A93A6; min-height:16px; }
+    .cmp-tbl tr.mudou td:first-child { border-left:2px solid var(--warn); }
+    .cmp-campo { color:var(--text-muted); white-space:nowrap; }
+    .cmp-flag { color:var(--warn); font-weight:700; font-size:11px; }
+    .alv-tl-head { font-weight:600; color:var(--text); }
+    .proc-warn { background:rgba(227,179,65,.12); border:1px solid rgba(227,179,65,.35); color:var(--warn); border-radius:10px; padding:9px 12px; font-size:13px; }
+    .proc-status { font-size:13px; color:var(--text-muted); min-height:16px; }
     .proc-task { display:grid; grid-template-columns:26px 1fr 150px 130px 28px; gap:8px; align-items:center; margin-bottom:8px; }
     .proc-task-chk { display:flex; align-items:center; justify-content:center; }
-    .proc-task-chk input { width:17px; height:17px; accent-color:#5B82A6; cursor:pointer; }
+    .proc-task-chk input { width:17px; height:17px; accent-color:var(--brand-primary); cursor:pointer; }
     .proc-task .input, .proc-task .select { padding:7px 9px; font-size:13px; }
-    .rm-task { background:none; border:none; color:#8A93A6; font-size:18px; cursor:pointer; padding:0; border-radius:6px; }
-    .rm-task:hover { color:#E06C6C; }
+    .rm-task { background:none; border:none; color:var(--text-muted); font-size:18px; cursor:pointer; padding:0; border-radius:6px; }
+    .rm-task:hover { color:var(--err); }
     @media (max-width:640px){ .proc-task { grid-template-columns:26px 1fr; } .proc-task .pt-setor,.proc-task .pt-resp{ grid-column:2; } .rm-task{ display:none; } .fa-field-row{ grid-template-columns:1fr; } }
 
     /* sub-abas Dados / Histórico */
-    .subtabs { display:flex; gap:4px; margin:2px 0 20px; border-bottom:1px solid rgba(255,255,255,.08); }
-    .stab { padding:9px 16px; font-size:14px; color:#8A93A6; background:none; border:none; border-bottom:2px solid transparent; margin-bottom:-1px; cursor:pointer; font-family:inherit; }
-    .stab:hover { color:#C5D8E8; }
-    .stab.is-active { color:#C5D8E8; border-bottom-color:#5B82A6; font-weight:600; }
+    .subtabs { display:flex; gap:4px; margin:2px 0 20px; border-bottom:1px solid var(--line); }
+    .stab { padding:9px 16px; font-size:14px; color:var(--text-muted); background:none; border:none; border-bottom:2px solid transparent; margin-bottom:-1px; cursor:pointer; font-family:inherit; }
+    .stab:hover { color:var(--brand-pale); }
+    .stab.is-active { color:var(--brand-pale); border-bottom-color:var(--brand-primary); font-weight:600; }
 
     /* histórico do cliente */
     .hist-resumo { display:flex; gap:10px; flex-wrap:wrap; margin:4px 0 16px; }
-    .hist-stat { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:8px 14px; font-size:13px; color:#8A93A6; }
-    .hist-stat b { color:#E6EBF2; font-size:16px; margin-right:4px; }
-    .hist-stat-open b { color:#B6C7DA; }
-    .hist-stat-done b { color:#5FC698; }
-    .hist-secao { font-size:13px; font-weight:600; color:#8AAEC8; margin:18px 0 8px; }
+    .hist-stat { background:var(--fill-1); border:1px solid var(--line); border-radius:10px; padding:8px 14px; font-size:13px; color:var(--text-muted); }
+    .hist-stat b { color:var(--text); font-size:16px; margin-right:4px; }
+    .hist-stat-open b { color:var(--text-2); }
+    .hist-stat-done b { color:var(--ok); }
+    .hist-secao { font-size:13px; font-weight:600; color:var(--brand-light); margin:18px 0 8px; }
     .hist-tbl { width:100%; border-collapse:collapse; font-size:13px; }
-    .hist-tbl th { text-align:left; color:#8A93A6; font-size:11px; text-transform:uppercase; letter-spacing:.04em; font-weight:600; padding:8px 10px; border-bottom:1px solid rgba(255,255,255,.1); }
-    .hist-tbl td { padding:9px 10px; border-bottom:1px solid rgba(255,255,255,.05); color:#D7DEE8; }
-    .hist-tbl tr:hover td { background:rgba(255,255,255,.02); }
+    .hist-tbl th { text-align:left; color:var(--text-muted); font-size:11px; text-transform:uppercase; letter-spacing:.04em; font-weight:600; padding:8px 10px; border-bottom:1px solid var(--fill-3); }
+    .hist-tbl td { padding:9px 10px; border-bottom:1px solid var(--line); color:var(--text); }
+    .hist-tbl tr:hover td { background:var(--fill-1); }
     .setor-chip { display:inline-block; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:600; border:1px solid; white-space:nowrap; }
-    .hist-empty, .hist-loading { padding:30px; text-align:center; color:#8A93A6; font-size:14px; }
-    .vo-overlay { position:fixed; inset:0; background:rgba(6,10,16,.72); display:none; align-items:center; justify-content:center; z-index:60; padding:18px; }
+    .hist-empty, .hist-loading { padding:30px; text-align:center; color:var(--text-muted); font-size:14px; }
+    .vo-overlay { position:fixed; inset:0; background:var(--overlay); display:none; align-items:center; justify-content:center; z-index:60; padding:18px; }
     .vo-overlay.is-open { display:flex; }
-    .vo-modal { background:#0F1620; border:1px solid rgba(255,255,255,.1); border-radius:14px; width:min(620px, 96vw); max-height:88vh; display:flex; flex-direction:column; }
-    .vo-head { padding:16px 22px; border-bottom:1px solid rgba(255,255,255,.08); }
+    .vo-modal { background:var(--surface); border:1px solid var(--fill-3); border-radius:14px; width:min(620px, 96vw); max-height:88vh; display:flex; flex-direction:column; }
+    .vo-head { padding:16px 22px; border-bottom:1px solid var(--line); }
     .vo-head h3 { margin:0; font-size:17px; }
     .vo-body { padding:16px 22px; overflow:hidden; display:flex; flex-direction:column; }
-    .vo-sub { margin:0 0 10px; font-size:13px; color:#8A93A6; }
-    .vo-lista { overflow:auto; max-height:44vh; border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:4px; }
+    .vo-sub { margin:0 0 10px; font-size:13px; color:var(--text-muted); }
+    .vo-lista { overflow:auto; max-height:44vh; border:1px solid var(--line); border-radius:10px; padding:4px; }
     .vo-item { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:8px; cursor:pointer; font-size:13.5px; }
-    .vo-item:hover { background:rgba(255,255,255,.05); }
-    .vo-item .vv-freq { margin-left:auto; color:#8A93A6; font-size:12px; white-space:nowrap; }
-    .vo-item .vv-dia { color:#8AAEC8; font-size:11.5px; border:1px solid rgba(91,130,166,.4); border-radius:999px; padding:2px 8px; white-space:nowrap; }
-    .vo-resp-l { display:block; font-size:12.5px; color:#8A93A6; margin:12px 0 5px; }
-    .vo-foot { display:flex; justify-content:flex-end; gap:10px; padding:14px 22px; border-top:1px solid rgba(255,255,255,.08); }
+    .vo-item:hover { background:var(--fill-2); }
+    .vo-item .vv-freq { margin-left:auto; color:var(--text-muted); font-size:12px; white-space:nowrap; }
+    .vo-item .vv-dia { color:var(--brand-light); font-size:11.5px; border:1px solid rgba(91,130,166,.4); border-radius:999px; padding:2px 8px; white-space:nowrap; }
+    .vo-resp-l { display:block; font-size:12.5px; color:var(--text-muted); margin:12px 0 5px; }
+    .vo-foot { display:flex; justify-content:flex-end; gap:10px; padding:14px 22px; border-top:1px solid var(--line); }
   </style>
 </head>
 <body>
@@ -682,28 +682,28 @@
 
 
   <!-- kit de boas-vindas -->
-  <div id="ovKit" style="display:none; position:fixed; inset:0; background:rgba(6,10,16,.82); z-index:80; align-items:flex-start; justify-content:center; overflow:auto; padding:36px 16px;">
-    <div style="background:#10161F; border:1px solid rgba(255,255,255,.12); border-radius:16px; padding:20px 24px; max-width:620px; width:100%;">
+  <div id="ovKit" style="display:none; position:fixed; inset:0; background:var(--overlay); z-index:80; align-items:flex-start; justify-content:center; overflow:auto; padding:36px 16px;">
+    <div style="background:var(--surface); border:1px solid var(--fill-3); border-radius:16px; padding:20px 24px; max-width:620px; width:100%;">
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
         <h3 style="margin:0; font-size:15px; color:#52B4C6; text-transform:uppercase; letter-spacing:.05em;">🤝 Kit de boas-vindas</h3>
-        <button id="kitFechar" type="button" style="background:none; border:0; color:#8A93A6; font-size:22px; cursor:pointer; line-height:1;">&times;</button>
+        <button id="kitFechar" type="button" style="background:none; border:0; color:var(--text-muted); font-size:22px; cursor:pointer; line-height:1;">&times;</button>
       </div>
-      <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:12px; font-size:13px; color:#B9C2D0;">
+      <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:12px; font-size:13px; color:var(--text-2);">
         <label><input type="checkbox" id="chkContrato" checked> Contrato de prestação</label>
         <label><input type="checkbox" id="chkCarta" checked> Carta de responsabilidade</label>
         <label><input type="checkbox" id="chkTermo" checked> Autorização de logomarca</label>
       </div>
-      <label style="display:block; margin-bottom:10px;"><span style="display:block; font-size:12px; color:#8A93A6; margin-bottom:4px;">Sócio(a) que assina</span>
+      <label style="display:block; margin-bottom:10px;"><span style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px;">Sócio(a) que assina</span>
         <select id="kitSocio" class="input" style="width:100%;"></select></label>
-      <label style="display:block; margin-bottom:10px;"><span style="display:block; font-size:12px; color:#8A93A6; margin-bottom:4px;">Sócio(a) 2 — assina junto (contrato e carta)</span>
+      <label style="display:block; margin-bottom:10px;"><span style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px;">Sócio(a) 2 — assina junto (contrato e carta)</span>
         <select id="kitSocio2" class="input" style="width:100%;"></select></label>
-      <div id="kitResumoSocios" style="background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:10px 12px; font-size:12.5px; margin-bottom:10px;"></div>
-      <div id="kitCamposContrato" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; border-top:1px solid rgba(255,255,255,.08); padding-top:12px;">
-        <label><span style="display:block; font-size:12px; color:#8A93A6; margin-bottom:4px;">Honorário mensal (R$)</span><input id="kitHonorario" class="input" style="width:100%;" placeholder="750,00"></label>
-        <label><span style="display:block; font-size:12px; color:#8A93A6; margin-bottom:4px;">Dia de vencimento</span><input type="number" id="kitVencimento" class="input" style="width:100%;" min="1" max="31" value="10"></label>
-        <label><span style="display:block; font-size:12px; color:#8A93A6; margin-bottom:4px;">Regime (cláusula fiscal)</span><input id="kitRegime" class="input" style="width:100%;"></label>
+      <div id="kitResumoSocios" style="background:var(--fill-1); border:1px solid var(--line); border-radius:10px; padding:10px 12px; font-size:12.5px; margin-bottom:10px;"></div>
+      <div id="kitCamposContrato" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; border-top:1px solid var(--line); padding-top:12px;">
+        <label><span style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px;">Honorário mensal (R$)</span><input id="kitHonorario" class="input" style="width:100%;" placeholder="750,00"></label>
+        <label><span style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px;">Dia de vencimento</span><input type="number" id="kitVencimento" class="input" style="width:100%;" min="1" max="31" value="10"></label>
+        <label><span style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px;">Regime (cláusula fiscal)</span><input id="kitRegime" class="input" style="width:100%;"></label>
       </div>
-      <label style="display:block; margin-top:10px;"><span style="display:block; font-size:12px; color:#8A93A6; margin-bottom:4px;">Data do documento</span><input type="date" id="kitData" class="input" style="width:180px;"></label>
+      <label style="display:block; margin-top:10px;"><span style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px;">Data do documento</span><input type="date" id="kitData" class="input" style="width:180px;"></label>
       <div id="kitMsg" style="min-height:16px; font-size:12.5px; margin-top:8px;"></div>
       <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:12px;">
         <button class="btn btn-ghost" type="button" id="kitCancelar">Cancelar</button>
@@ -785,14 +785,14 @@
       if (!s.estado_civil) faltas.push('estado civil');
       if (!s.data_nascimento) faltas.push('nascimento');
       const dados = [s.rg ? 'RG ' + s.rg : null, s.data_nascimento ? 'nasc. ' + String(s.data_nascimento).split('-').reverse().join('/') : null, s.estado_civil || null, s.profissao || null, s.endereco_residencial || null].filter(Boolean).join(' · ');
-      return `<div style="margin-bottom:8px;"><b style="color:#E6EBF2;">${rotulo}: ${s.nome}</b><br><span style="color:#8A93A6;">${dados || 'sem dados documentais no cadastro'}</span>${faltas.length ? `<br><span style="color:#C6A75A;">⚠ faltam: ${faltas.join(', ')} — complete na seção Sócios desta página e reabra o kit</span>` : ''}</div>`;
+      return `<div style="margin-bottom:8px;"><b style="color:var(--text);">${rotulo}: ${s.nome}</b><br><span style="color:var(--text-muted);">${dados || 'sem dados documentais no cadastro'}</span>${faltas.length ? `<br><span style="color:var(--warn);">⚠ faltam: ${faltas.join(', ')} — complete na seção Sócios desta página e reabra o kit</span>` : ''}</div>`;
     }
     function resumoSociosKit(){
       const s1 = socios.find(x => x.id === document.getElementById('kitSocio').value);
       const s2id = document.getElementById('kitSocio2').value;
       const s2 = s2id && s1 && s2id !== s1.id ? socios.find(x => x.id === s2id) : null;
       document.getElementById('kitResumoSocios').innerHTML = linhaSocioKit(s1, 'Assinante 1') + linhaSocioKit(s2, 'Assinante 2')
-        + '<div style="font-size:11px; color:#6E7787;">Dados importados do cadastro de sócios (fonte: contrato social) — pra corrigir, edite o sócio na seção Sócios.</div>';
+        + '<div style="font-size:11px; color:var(--text-dim);">Dados importados do cadastro de sócios (fonte: contrato social) — pra corrigir, edite o sócio na seção Sócios.</div>';
     }
 
     // ---------- geração dos PDFs do kit (padrão GOV.br: folga de assinatura) ----------
@@ -1062,14 +1062,14 @@
       const querContrato = document.getElementById('chkContrato').checked;
       const querCarta = document.getElementById('chkCarta').checked;
       const querTermo = document.getElementById('chkTermo').checked;
-      if (!querContrato && !querCarta && !querTermo) { msg.style.color = '#D08770'; msg.textContent = 'Escolhe ao menos um documento.'; return; }
+      if (!querContrato && !querCarta && !querTermo) { msg.style.color = 'var(--err)'; msg.textContent = 'Escolhe ao menos um documento.'; return; }
       const s = socios.find(x => x.id === document.getElementById('kitSocio').value);
-      if (!s) { msg.style.color = '#D08770'; msg.textContent = 'Escolhe o sócio.'; return; }
+      if (!s) { msg.style.color = 'var(--err)'; msg.textContent = 'Escolhe o sócio.'; return; }
       let honor = 0, honorTxt = '';
       if (querContrato) {
         honorTxt = document.getElementById('kitHonorario').value.trim();
         honor = parseFloat(honorTxt.replace(/\./g, '').replace(',', '.'));
-        if (!honor || honor <= 0) { msg.style.color = '#D08770'; msg.textContent = 'Informa o honorário mensal pro contrato.'; return; }
+        if (!honor || honor <= 0) { msg.style.color = 'var(--err)'; msg.textContent = 'Informa o honorário mensal pro contrato.'; return; }
       }
       const dataDoc = document.getElementById('kitData').value || new Date().toISOString().slice(0, 10);
       const [aa, mm, dd] = dataDoc.split('-');
@@ -1097,17 +1097,17 @@
       const s2 = s2id && s2id !== s.id ? socios.find(x => x.id === s2id) : null;
       valores.SOCIO2_QUALIFICACAO = s2 ? `Representada, em conjunto, também por seu(a) sócio(a), Sr(a). ${s2.nome}, ${s2.nacionalidade || 'brasileiro(a)'}, ${s2.profissao || 'empresário(a)'}, ${s2.estado_civil || ''}${s2.data_nascimento ? ', nascido(a) em ' + String(s2.data_nascimento).split('-').reverse().join('/') : ''}, inscrito(a) no CPF sob nº ${fmtCpfKit(s2.cpf)}${s2.rg ? ', portador(a) da cédula de identidade nº ' + s2.rg : ''}${s2.endereco_residencial ? ', residente e domiciliado(a) na ' + s2.endereco_residencial : ''}.` : '';
       valores.ASS2_NOME = s2 ? (s2.nome || '') : '';
-      msg.style.color = '#8A93A6'; msg.textContent = 'Gerando…';
+      msg.style.color = 'var(--text-muted)'; msg.textContent = 'Gerando…';
       try {
-        if (!window.jspdf) { msg.style.color = '#D08770'; msg.textContent = 'Gerador de PDF ainda carregando — tenta de novo em 2 segundos.'; return; }
+        if (!window.jspdf) { msg.style.color = 'var(--err)'; msg.textContent = 'Gerador de PDF ainda carregando — tenta de novo em 2 segundos.'; return; }
         let qtd = 0;
         if (querContrato) { gerarContratoPdf(valores); qtd++; }
         if (querCarta) { gerarCartaPdf(valores); qtd++; }
         if (querTermo) { gerarTermoPdf(valores); qtd++; }
-        msg.style.color = '#7FBF8E';
+        msg.style.color = 'var(--ok)';
         msg.textContent = `✓ ${qtd} PDF${qtd > 1 ? 's' : ''} gerado${qtd > 1 ? 's' : ''} — confere, assina no GOV.br e sobe na pasta do cliente.`;
       } catch (e) {
-        msg.style.color = '#D08770'; msg.textContent = 'Erro: ' + e.message;
+        msg.style.color = 'var(--err)'; msg.textContent = 'Erro: ' + e.message;
       }
     });
 
@@ -2337,7 +2337,7 @@
               <td>${atzEsc(r.antes)}</td>
               <td>${atzEsc(r.depois)}</td></tr>`;
             }).join('')
-          : `<tr><td colspan="4" style="color:#8A93A6;">${vazio}</td></tr>`;
+          : `<tr><td colspan="4" style="color:var(--text-muted);">${vazio}</td></tr>`;
         return `<div class="alv-tl-head" style="font-size:14px; margin-top:14px;">${titulo}</div>
           <table class="cmp-tbl"><thead><tr><th></th><th>Campo</th><th>Antes (cadastro)</th><th>Depois (${atzEsc(fonte)})</th></tr></thead><tbody>${corpo}</tbody></table>`;
       };
@@ -2367,7 +2367,7 @@
           const igual = atzNorm(valorDe(par)) === atzNorm(valorDe(cb));
           tds[3].insertAdjacentHTML('beforeend', igual ? ' <span class="atz-tag" style="color:var(--success);font-size:11px;">✓ confere com o documento</span>'
                                                           : ' <span class="atz-tag" style="color:var(--warning);font-size:11px;">≠ documento: ' + atzEsc(valorDe(par)) + '</span>');
-        } else tds[3].insertAdjacentHTML('beforeend', ' <span class="atz-tag" style="color:#8A93A6;font-size:11px;">só na Receita</span>');
+        } else tds[3].insertAdjacentHTML('beforeend', ' <span class="atz-tag" style="color:var(--text-muted);font-size:11px;">só na Receita</span>');
       });
     }
     document.getElementById('atzDiff').addEventListener('change', e => {
@@ -2580,7 +2580,7 @@
     };
     function nomePorEmail(e){ if (!e) return null; return EMAIL_NOME[String(e).toLowerCase()] || String(e).split('@')[0]; }
     function fmtH(d){ if (!d) return '—'; try { const x = new Date(String(d).length <= 10 ? d + 'T00:00:00' : d); return x.toLocaleDateString('pt-BR'); } catch { return d; } }
-    function chipSetor(s){ const i = SETOR_INFO[s] || [s || '—', '#8A93A6', 'rgba(255,255,255,.06)']; return `<span class="setor-chip" style="color:${i[1]};background:${i[2]};border-color:${i[1]}55;">${i[0]}</span>`; }
+    function chipSetor(s){ const i = SETOR_INFO[s] || [s || '—', '#8A93A6', 'var(--fill-2)']; return `<span class="setor-chip" style="color:${i[1]};background:${i[2]};border-color:${i[1]}55;">${i[0]}</span>`; }
     function escH(t){ return String(t == null ? '' : t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
     function _tabelaHist(arr, concluida){
