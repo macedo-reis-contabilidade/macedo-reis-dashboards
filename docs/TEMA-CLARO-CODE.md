@@ -102,14 +102,14 @@ e vá para a próxima tela.
 | 22 | `societario-regras.html` | 29 | ✅ |
 | 23 | `fiscal-sugestoes.html` | 29 | ✅ |
 | 24 | `dp-sugestoes.html` | 29 | ✅ |
-| 25 | `contabil-sugestoes.html` | 29 | ⬜ |
-| 26 | `gestao.html` | 28 | ⬜ |
-| 27 | `fiscal-regras.html` | 24 | ⬜ |
-| 28 | `contabil-regras.html` | 24 | ⬜ |
-| 29 | `comercial-regras.html` | 24 | ⬜ |
-| 30 | `proposta.html` | 22 | ⬜ |
-| 31 | `societario-relatorios.html` | 20 | ⬜ |
-| 32 | `irpf-relatorios.html` | 20 | ⬜ |
+| 25 | `contabil-sugestoes.html` | 29 | ✅ |
+| 26 | `gestao.html` | 28 | ✅ |
+| 27 | `fiscal-regras.html` | 24 | ✅ |
+| 28 | `contabil-regras.html` | 24 | ✅ |
+| 29 | `comercial-regras.html` | 24 | ✅ |
+| 30 | `proposta.html` | 22 | ➖ não se aplica (página pública sem style.css — ver dúvidas) |
+| 31 | `societario-relatorios.html` | 20 | ✅ |
+| 32 | `irpf-relatorios.html` | 20 | ✅ |
 | 33 | `fiscal-relatorios.html` | 20 | ⬜ |
 | 34 | `financeiro-relatorios.html` | 20 | ⬜ |
 | 35 | `dp-relatorios.html` | 20 | ⬜ |
@@ -140,4 +140,5 @@ Ao fim de cada sessão, acrescente uma linha: data, telas feitas (marque ✅ na 
 | 28/09/2026 | #1–#5: fiscal-reforma, comercial-precificacao, comercial-reunioes, fiscal-analise, clientes/editar | `2414ec9` (lote 1) | Lote 1 feito: diff só de cor, escuro igual ao antes, claro sem fundo escuro; HTML de impressão/janela nova e cores concatenadas em JS ficaram fixos. Próximo: #6 `dp-pareceres.html` (lote 2 = #6–#11). Dúvidas em `docs/TEMA-CLARO-DUVIDAS.md`. |
 | 28/09/2026 | #6–#11: dp-pareceres, comercial-carteira, fiscal-obrigacoes, dp-custo, relatorios-vivos, fiscal-regularizacao | `6f3e996` (lote 2) | Lote 2 feito, mesmos critérios do lote 1. Próximo: #12 `contabil-dre.html` (lote 3 = #12–#17). Novas dúvidas (btn-primary e --ok no claro, token de selecionado, rosa/terracota) em `docs/TEMA-CLARO-DUVIDAS.md`. |
 | 28/09/2026 | #12–#17: contabil-dre, financeiro-faturaveis, financeiro-boletos, dp-convencoes, irpf-declaracoes, fiscal-xml | `9c0416f` (lote 3) | Lote 3 feito sobre a revisão do arquiteto (--accent, --warn novo). Próximo: #18 `comercial-transicao.html` (lote 4 = #18–#24). Dúvidas do lote 3 em `docs/TEMA-CLARO-DUVIDAS.md`. |
-| 28/09/2026 | #18–#24: comercial-transicao, societario-alvaras, fator-r, financeiro-regras, societario-regras, fiscal-sugestoes, dp-sugestoes | este commit (lote 4) | Lote 4 feito. Telas de mesmo template (regras, sugestões) espelham a primeira convertida: societario-regras = financeiro-regras, dp-sugestoes = fiscal-sugestoes, linha a linha. Próximo: #25 `contabil-sugestoes.html` (lote 5 = #25–#32). |
+| 28/09/2026 | #18–#24: comercial-transicao, societario-alvaras, fator-r, financeiro-regras, societario-regras, fiscal-sugestoes, dp-sugestoes | `05d8372` (lote 4) | Lote 4 feito. Telas de mesmo template (regras, sugestões) espelham a primeira convertida: societario-regras = financeiro-regras, dp-sugestoes = fiscal-sugestoes, linha a linha. Próximo: #25 `contabil-sugestoes.html` (lote 5 = #25–#32). |
+| 29/09/2026 | #25–#32: contabil-sugestoes, gestao, fiscal-regras, contabil-regras, comercial-regras, societario-relatorios, irpf-relatorios (proposta: não se aplica) | este commit (lote 5) | Lote 5 feito. Irmãs espelhadas da matriz: contabil-sugestoes = fiscal-sugestoes; fiscal/contabil/comercial-regras = societario-regras; irpf-relatorios = societario-relatorios. `proposta.html` ficou sem troca: é o questionário público, não carrega style.css nem theme.js (tokens não existem lá). Próximo: #33 `fiscal-relatorios.html` (lote 6 = #33–#40). |

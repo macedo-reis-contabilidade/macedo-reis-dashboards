@@ -90,6 +90,14 @@
 - L59, fundo dos campos: `rgba(255,255,255,.05)` virou `--fill-2`. O `--surface-2` deu diferença no escuro (19 campos).
 - `#C6A75A` ("aguardando terceiro") virou `--warn`, e `#D08770` ("atrasada", botão Excluir, mensagem de erro) virou `--err`. O gradiente `#3A5878` das barras virou `--brand-dark`, que tem o mesmo valor no escuro.
 
+## Lote 5 (#25–#32) — dúvidas novas, 29/09/2026
+- **proposta.html (#30) — não se aplica.** É o questionário público do cliente, sem login.
+  - Não carrega `style.css` nem `theme.js`, então nenhum token existe nela e o botão de tema nem aparece. Ela já é clara por desenho.
+  - Converter quebra a página: o `tokenize.py` deixa o cabeçalho sem gradiente e a borda de foco escura (testado numa cópia). Ficou sem nenhuma troca.
+  - Sugestão: tirar da contagem e excluir de qualquer rodada do `tokenize.py` em lote.
+  - À parte, sem relação com o tema: o `.rodape` (`#9aa4b2` sobre `#EEF2F6`) dá 2,2:1. É do design original.
+- **gestao.html** L102: o `stroke="#8AAEC8"` do SVG em `bloquearAcesso` ficou fixo (regra de atributo SVG). O `.gz-status` (select) virou `--surface-2`.
+
 ---
 ## Decisões do arquiteto — 29/09/2026 (lote 1 revisado e publicado)
 - **Ciano `#52B4C6`** → novo token **`--accent`** (escuro `#52B4C6`, claro `#1C7A8A`). Já trocado nas telas do lote 1 e na Agenda; o `tokenize.py` passa a converter sozinho. Tintas `rgba(82,180,198,…)` ficam.

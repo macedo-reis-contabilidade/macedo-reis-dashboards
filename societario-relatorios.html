@@ -9,21 +9,21 @@
   <style>
 
     .fa-focus { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:22px; }
-    .fa-focus-card { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:14px 16px; display:flex; flex-direction:column; gap:4px; }
-    .fc-num { font-size:24px; font-weight:700; color:#E6EBF2; line-height:1; }
-    .fc-lbl { font-size:12px; color:#8A93A6; }
-    .fc-ok .fc-num { color:#3FB07A; }
-    .fc-pend .fc-num { color:#E3B341; }
-    .fc-danger .fc-num { color:#E06C6C; }
+    .fa-focus-card { background:var(--fill-1); border:1px solid var(--line); border-radius:14px; padding:14px 16px; display:flex; flex-direction:column; gap:4px; }
+    .fc-num { font-size:24px; font-weight:700; color:var(--text); line-height:1; }
+    .fc-lbl { font-size:12px; color:var(--text-muted); }
+    .fc-ok .fc-num { color:var(--ok); }
+    .fc-pend .fc-num { color:var(--warn); }
+    .fc-danger .fc-num { color:var(--err); }
 
     .fa-sel { max-width:220px; }
     .toolbar-filters { display:flex; flex-wrap:wrap; gap:12px; align-items:center; flex:1 1 auto; }
     .toolbar-filters .input-search { flex:1 1 220px; min-width:180px; max-width:320px; }
 
     .sit { display:inline-block; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600; white-space:nowrap; }
-    .sit-concluida { background:rgba(63,176,122,.15); color:#3FB07A; }
-    .sit-pendente { background:rgba(255,255,255,.08); color:#C5D8E8; }
-    .sit-atrasada { background:rgba(224,108,108,.15); color:#E06C6C; }
+    .sit-concluida { background:rgba(63,176,122,.15); color:var(--ok); }
+    .sit-pendente { background:var(--line); color:var(--brand-pale); }
+    .sit-atrasada { background:rgba(224,108,108,.15); color:var(--err); }
 
     @media (max-width:720px){ .fa-focus { grid-template-columns:repeat(2,1fr); } }
 
@@ -177,7 +177,7 @@
         .order('prazo', { ascending: false, nullsFirst: false });
 
       if (error) {
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#E06C6C;padding:40px;">Erro ao carregar: ${error.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--err);padding:40px;">Erro ao carregar: ${error.message}</td></tr>`;
         return;
       }
       all = data || [];
