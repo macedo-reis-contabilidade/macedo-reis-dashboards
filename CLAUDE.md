@@ -28,7 +28,7 @@ Sistema interno de gestão do escritório **Macedo & Reis Contabilidade** (Três
 - `comercial-transicao.html` — transições entrada/saída/CNPJ novo, kit de tarefas por tipo (`transicao_kit`), sala de guerra (dia X de 90, raias por setor), vínculo N:N `transicao_empresas`, deep-link `?transicao=`.
 - `financeiro-boletos.html` — grade mensal (`cobrancas_mensais`), base `cobrancas_config` (decide **quem** é cobrado), **geração copia a última competência** (valores/canais/dia vivos) com fallback da base pra empresa nova, **pula quem tem saída na carteira**, ✕ pergunta "só este mês ou parar de vez".
 - Demais `financeiro-*`, `contabil-*`, `dp-*`, `societario*`, `gestao*` — módulos por setor (rotinas, tarefas, controles próprios).
-- `dp-regras.html`, `contabil-regras.html` — **Tarefas recorrentes** (rotinas com empresas): páginas finas que chamam o **módulo único** `assets/js/rotinas-setor.js` (`initRotinasSetor({ setor, nomeSetor, hub, equipe })`). Os setores seguem a mesma lógica (decisão do Samuel, 29/09/2026): setor novo = página fina + card no hub — nunca copiar a lógica. `fiscal-`, `financeiro-`, `comercial-` e `societario-regras.html` ainda são a versão antiga, sem card no hub.
+- `dp-regras.html`, `contabil-regras.html`, `financeiro-regras.html` — **Tarefas recorrentes** (rotinas com empresas): páginas finas que chamam o **módulo único** `assets/js/rotinas-setor.js` (`initRotinasSetor({ setor, nomeSetor, hub, equipe })`). Os setores seguem a mesma lógica (decisão do Samuel, 29/09/2026): setor novo = página fina + card no hub — nunca copiar a lógica. `fiscal-`, `comercial-` e `societario-regras.html` ainda são a versão antiga, sem card no hub.
 - `ajuda.html` — manual + novidades (manter atualizado, regra 7).
 
 ## Banco (Supabase) — tabelas centrais

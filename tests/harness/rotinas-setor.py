@@ -16,6 +16,10 @@ Confere, nos temas escuro e claro:
     6. lista só a rotina do DP; vincular grava com setor 'dp'.
   Hub (contabil.html)
     7. tem o card "Tarefas recorrentes" apontando pra contabil-regras.html.
+  Financeiro (financeiro-regras.html e financeiro.html)
+    8. caminho aponta pro Financeiro; não mostra rotinas de outros setores; "+ Rotina" cria no setor 'financeiro';
+       a lista de responsável começa pelo Samuel;
+    9. o hub do Financeiro tem o card "Tarefas recorrentes".
 Termina com código 1 se alguma checagem falhar. Pré-requisito: pip install playwright e python -m playwright install chromium
 """
 import sys, pathlib
@@ -102,6 +106,22 @@ def main():
             card = p.locator('a.dashboard-card[href="contabil-regras.html"]')
             ok(card.count() == 1 and 'Tarefas recorrentes' in card.inner_text(), '7. card "Tarefas recorrentes" no hub do Contábil')
             p.screenshot(path=str(FOTOS / f'hub-contabil-{tema}.png'))
+            p.close()
+
+            print(f'[{tema}] Financeiro')
+            p, _ = abrir(b, base, tema, 'financeiro-regras.html', erros, respostas=['CONFERÊNCIA DE BOLETOS (TESTE)'])
+            ok(p.locator('.breadcrumb a[href="financeiro.html"]').inner_text().strip() == 'Financeiro', '8. caminho aponta pro Financeiro')
+            itens = p.locator('.rv-item').all_inner_texts()
+            ok(not any(x in t for t in itens for x in ('CONCILIAÇÃO', 'FOLHA', 'EXTRATOS')), '8. não mostra rotinas de outros setores')
+            ok(p.evaluate("() => [...document.querySelectorAll('#ovResp option')].map(o => o.textContent)[1]") == 'Samuel', '8. lista de responsável começa pelo Samuel')
+            p.click('#rvNova'); p.wait_for_timeout(600)
+            nova = p.evaluate("() => window.__mockDb.rotinas_modelo.find(r => r.nome === 'CONFERÊNCIA DE BOLETOS (TESTE)')")
+            ok(bool(nova) and nova['setor'] == 'financeiro', '8. "+ Rotina" cria no setor financeiro')
+            p.close()
+            p, _ = abrir(b, base, tema, 'financeiro.html', erros)
+            card = p.locator('a.dashboard-card[href="financeiro-regras.html"]')
+            ok(card.count() == 1 and 'Tarefas recorrentes' in card.inner_text(), '9. card "Tarefas recorrentes" no hub do Financeiro')
+            p.screenshot(path=str(FOTOS / f'hub-financeiro-{tema}.png'))
             p.close()
         b.close()
     srv.shutdown()
