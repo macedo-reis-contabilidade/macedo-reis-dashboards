@@ -98,6 +98,14 @@
   - À parte, sem relação com o tema: o `.rodape` (`#9aa4b2` sobre `#EEF2F6`) dá 2,2:1. É do design original.
 - **gestao.html** L102: o `stroke="#8AAEC8"` do SVG em `bloquearAcesso` ficou fixo (regra de atributo SVG). O `.gz-status` (select) virou `--surface-2`.
 
+## Lote 6 (#33–#40) — dúvidas novas, 29/09/2026
+- **Páginas de setor** (`fiscal`, `dp` e as do lote 7), `a[href=...] .dashboard-card-icon { color: ... }`: todas as cores de ícone de módulo ficaram fixas, inclusive as que o `tokenize.py` converteria sozinho (`#8AAEC8`, `#3FB07A`, `#E3B341`).
+  - São a cor de cada módulo, sem sentido de estado.
+  - O `style.css` já escurece o `.dashboard-card-icon` no claro (`filter: brightness(.62) saturate(1.35)`). Com token, o filtro escureceria duas vezes esses três e eles destoariam dos outros.
+  - Confirmar se vale como padrão para todas as páginas de setor.
+- **`.card-status.st-load`** (selo "carregando"): em `fiscal`, `dp` e `setores`, o fundo `rgba(255,255,255,.05)` virou `--fill-2`, pela decisão ".05 de fundo → `--fill-2`". O `index.html`, convertido antes, usa `--line` na mesma regra: `.08` contra `.06` no escuro. Pode ser alinhado depois, se quiserem o mesmo token em todas as telas-hub.
+- **Relatórios** (`*-relatorios`): o bloco `@media print` (25 cores) ficou todo fixo. Resta só o contraste do `--ok` no claro (`#statOk`, 3,5:1), que já está registrado como pendência global.
+
 ---
 ## Decisões do arquiteto — 29/09/2026 (lote 1 revisado e publicado)
 - **Ciano `#52B4C6`** → novo token **`--accent`** (escuro `#52B4C6`, claro `#1C7A8A`). Já trocado nas telas do lote 1 e na Agenda; o `tokenize.py` passa a converter sozinho. Tintas `rgba(82,180,198,…)` ficam.
