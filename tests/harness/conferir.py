@@ -29,9 +29,15 @@ def montar_site():
 class _Quieto(http.server.SimpleHTTPRequestHandler):
     def log_message(self, *a): pass
 
+class _Servidor(socketserver.ThreadingTCPServer):
+    # uma requisição por vez não dá conta: as telas pedem vários módulos de uma vez e alguns
+    # voltavam com ERR_CONNECTION_REFUSED, deixando a tela pela metade sem erro de JavaScript
+    daemon_threads = True
+    allow_reuse_address = True
+
 def servir():
     h = functools.partial(_Quieto, directory=str(SITE))
-    srv = socketserver.TCPServer(('127.0.0.1', 0), h)
+    srv = _Servidor(('127.0.0.1', 0), h)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv, srv.server_address[1]
 
