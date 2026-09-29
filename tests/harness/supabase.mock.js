@@ -44,7 +44,17 @@ const DATA = {
     { id:'v2', cliente_id:'c2', obrigacao_id:'o1', responsavel:'Thalia', dia_prazo_override:null, ativo:true, clientes:{ nome_principal:'EMPRESA EXEMPLO LTDA' } },
     { id:'v3', cliente_id:'c3', obrigacao_id:'o1', responsavel:null, dia_prazo_override:null, ativo:false, clientes:{ nome_principal:'LOJA DE TESTE LTDA' } },
   ],
-  alvaras:[], transicoes:[], precificacoes:[], carteira_info:[], rt_casos:[], faturaveis:[], tarefa_historico:[], tarefas_recorrentes:[], servicos_avulsos:[],
+  alvaras:[], transicoes:[], precificacoes:[], carteira_info:[], rt_casos:[], faturaveis:[], tarefa_historico:[], servicos_avulsos:[],
+  // Tarefas recorrentes por setor (assets/js/rotinas-setor.js; teste em tests/harness/rotinas-setor.py)
+  rotinas_modelo: [
+    { id:'rm1', setor:'dp', nome:'FOLHA DE PAGAMENTO (TESTE)', ativo:true },
+    { id:'rm2', setor:'contabil', nome:'CONCILIAÇÃO BANCÁRIA (TESTE)', ativo:true },
+  ],
+  tarefas_recorrentes: [
+    { id:'tr1', modelo_id:'rm1', setor:'dp', titulo:'FOLHA DE PAGAMENTO (TESTE)', cliente_id:'c1', clientes:{ nome_principal:'COMÉRCIO MODELO ME' }, periodicidade:'mensal', dia_vencimento:5, mes_vencimento:null, dia_util:true, responsavel:'Vitória', observacao:null, origem:'rotina', ativo:true },
+    { id:'tr2', modelo_id:'rm2', setor:'contabil', titulo:'CONCILIAÇÃO BANCÁRIA (TESTE)', cliente_id:'c2', clientes:{ nome_principal:'EMPRESA EXEMPLO LTDA' }, periodicidade:'mensal', dia_vencimento:10, mes_vencimento:null, dia_util:true, responsavel:'Adaini', observacao:null, origem:'rotina', ativo:true },
+    { id:'tr3', modelo_id:null, setor:'contabil', titulo:'EMISSÃO DE EXTRATOS (TESTE)', cliente_id:null, periodicidade:'mensal', dia_vencimento:5, mes_vencimento:null, dia_util:true, responsavel:'Adaini', observacao:null, origem:'manual', ativo:true },
+  ],
 };
 // o teste de comportamento (tests/harness/lote-setores.py) lê o banco falso por aqui
 window.__mockDb = DATA;
