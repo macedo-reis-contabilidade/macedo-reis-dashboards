@@ -1,6 +1,7 @@
 // MOCK — dados inventados, só pro harness visual
 const hoje = new Date(); const ymd = d => d.toISOString().slice(0,10);
 const add = n => { const d = new Date(); d.setDate(d.getDate()+n); return ymd(d); };
+const mesAtual = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0'); // o mês de referência padrão das telas
 const T = (i, titulo, setor, resp, prazo, prio, extra={}) => ({ id:'t'+i, titulo, setor, responsavel:resp, prazo, status:'pendente', prioridade:prio, cliente_id:null, proposta_id:null, hora:null, transicao_id:null, posicao:i*10, clientes:extra.cli?{nome_principal:extra.cli, documento:'00000000000000'}:null, concluida_em:null, concluida_por:null, ...extra });
 const DATA = {
   tarefas: [
@@ -28,6 +29,8 @@ const DATA = {
     T(71,'EFD TESTE MENSAL','fiscal',null,add(5),'media',{cli:'COMÉRCIO MODELO ME',cliente_id:'c1',obrigacao_id:'o1'}),
     T(72,'EFD TESTE MENSAL','fiscal','Adaini',add(35),'media',{cli:'COMÉRCIO MODELO ME',cliente_id:'c1',obrigacao_id:'o1'}),
     T(73,'EFD TESTE MENSAL','fiscal',null,add(-25),'media',{cli:'COMÉRCIO MODELO ME',cliente_id:'c1',obrigacao_id:'o1',status:'concluida'}),
+    // obrigação com o mês todo concluído (tests/harness/obrigacoes-mes-concluido.py): não pode sumir de Obrigações fiscais
+    T(74,'PGDAS TESTE MENSAL','fiscal','Thalia',add(-10),'media',{cli:'EMPRESA EXEMPLO LTDA',cliente_id:'c2',obrigacao_id:'o3',status:'concluida',competencia:mesAtual,concluida_em:add(-9)+'T15:00:00Z'}),
   ],
   rotinas: [
     { id:'r1', titulo:'Conferir e-mail', setor:'gestao', responsavel:'Samuel', ativo:true, periodicidade:'diaria', ultima_execucao:ymd(hoje), adiada_para:null },
@@ -38,11 +41,13 @@ const DATA = {
   obrigacoes_fiscais: [
     { id:'o1', nome:'EFD TESTE MENSAL', periodicidade:'mensal', meses_vencimento:[], dia_prazo:10, gatilho_dias_antes:0, ativo:true, regimes_aplicaveis:['Simples Nacional'] },
     { id:'o2', nome:'DCTF TESTE MENSAL', periodicidade:'mensal', meses_vencimento:[], dia_prazo:15, gatilho_dias_antes:0, ativo:true, regimes_aplicaveis:['Simples Nacional'] },
+    { id:'o3', nome:'PGDAS TESTE MENSAL', periodicidade:'mensal', meses_vencimento:[], dia_prazo:20, gatilho_dias_antes:0, ativo:true, regimes_aplicaveis:['Simples Nacional'] },
   ],
   cliente_obrigacoes: [
     { id:'v1', cliente_id:'c1', obrigacao_id:'o1', responsavel:null, dia_prazo_override:null, ativo:true, clientes:{ nome_principal:'COMÉRCIO MODELO ME' } },
     { id:'v2', cliente_id:'c2', obrigacao_id:'o1', responsavel:'Thalia', dia_prazo_override:null, ativo:true, clientes:{ nome_principal:'EMPRESA EXEMPLO LTDA' } },
     { id:'v3', cliente_id:'c3', obrigacao_id:'o1', responsavel:null, dia_prazo_override:null, ativo:false, clientes:{ nome_principal:'LOJA DE TESTE LTDA' } },
+    { id:'v4', cliente_id:'c2', obrigacao_id:'o3', responsavel:'Thalia', dia_prazo_override:null, ativo:true, clientes:{ nome_principal:'EMPRESA EXEMPLO LTDA' } },
   ],
   alvaras:[], carteira_info:[], rt_casos:[], faturaveis:[], tarefa_historico:[], servicos_avulsos:[],
   // Propostas → transição (tests/harness/proposta-transicao.py): uma apresentada, uma fechada sem transição e uma fechada com
@@ -89,5 +94,7 @@ function q(table){
 }
 export const supabase = { from: q, auth: { getUser: async () => ({ data: { user: { email:'financeiro@macedoereis.com.br' } } }), getSession: async () => ({ data: { session: { user: { email:'financeiro@macedoereis.com.br' } } } }) }, rpc: async () => ({ data: [], error:null }) };
 supabase.todosClientes = async () => ({ data: DATA.clientes, error:null });
+// igual ao helper de verdade (assets/js/supabase.js): busca em lotes de mil até o fim
+supabase.todasLinhas = async function (montar) { const tudo = []; for (let i = 0; ; i += 1000) { const { data, error } = await montar().range(i, i + 999); if (error) return { data: tudo, error }; tudo.push(...(data || [])); if (!data || data.length < 1000) return { data: tudo, error: null }; } };
 export async function getCurrentUser(){ return { email:'financeiro@macedoereis.com.br' }; }
 export async function signOut(){}

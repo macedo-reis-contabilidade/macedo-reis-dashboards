@@ -335,7 +335,8 @@
     async function carregar(){
       const [{ data: rs, error: e1 }, { data: vs, error: e2 }] = await Promise.all([
         supabase.from('obrigacoes_fiscais').select('*').order('nome'),
-        supabase.from('cliente_obrigacoes').select('id, cliente_id, obrigacao_id, responsavel, dia_prazo_override, ativo, clientes(nome_principal)')
+        // em lotes: o banco entrega no máximo mil linhas por consulta e os vínculos crescem (594 em 30/09/2026)
+        supabase.todasLinhas(() => supabase.from('cliente_obrigacoes').select('id, cliente_id, obrigacao_id, responsavel, dia_prazo_override, ativo, clientes(nome_principal)').order('id'))
       ]);
       if (e1 || e2) { document.getElementById('listaObr').textContent = 'Erro ao carregar: ' + (e1 || e2).message; return; }
       regras = rs || []; vinculos = vs || [];
@@ -350,9 +351,9 @@
       statusMes = {};
       const comp = document.getElementById('mesRef').value;
       if (!comp) return;
-      const { data } = await supabase.from('tarefas')
+      const { data } = await supabase.todasLinhas(() => supabase.from('tarefas')
         .select('obrigacao_id, cliente_id, status')
-        .eq('competencia', comp).not('obrigacao_id', 'is', null);
+        .eq('competencia', comp).not('obrigacao_id', 'is', null).order('id'));
       (data || []).forEach(t => { statusMes[t.obrigacao_id + '|' + t.cliente_id] = t.status; });
     }
 
@@ -430,28 +431,46 @@
       vinculos.forEach(v => { (porRegra[v.obrigacao_id] = porRegra[v.obrigacao_id] || []).push(v); });
       const vis = regras.filter(r => !q || norm(r.nome).includes(q));
       if (!vis.length) { el.innerHTML = '<p style="color:var(--text-muted);">Nenhuma obrigação encontrada.</p>'; return; }
-      el.innerHTML = vis.map(r => {
-        let vs = (porRegra[r.id] || []).sort((a, b) => (a.clientes?.nome_principal || '').localeCompare(b.clientes?.nome_principal || ''));
+      // Pendentes do mês esconde os clientes concluídos, nunca a obrigação: a zerada (tudo concluído, ou sem vínculo
+      // ativo) desce pro grupo "sem pendência", com o "+ Vincular cliente" à mão — antes ela sumia inteira e não dava
+      // pra vincular empresa nova (PGDAS com setembro todo concluído, relato da Thalia em 30/09/2026)
+      const itens = vis.map(r => {
+        const todos = porRegra[r.id] || [];
+        let vs = todos.slice().sort((a, b) => (a.clientes?.nome_principal || '').localeCompare(b.clientes?.nome_principal || ''));
         const ativos = vs.filter(v => v.ativo).length;
+        let zerada = false;
         if (filtroMes === 'pendentes') {
           vs = vs.filter(v => v.ativo && !concluidoNoMes(v));
-          if (!vs.length) return '';
+          zerada = !vs.length;
         }
         const linhas = vs.map(v => linhaVinculo(v, r, 'obrigacao')).join('');
-        return `
+        return { zerada, html: `
         <div class="obr-item ${abertas.has(r.id) ? 'is-open' : ''}" data-rid="${r.id}">
-          <div class="obr-head" data-rid="${r.id}">
+          <div class="obr-head" data-rid="${r.id}"${zerada ? ' style="opacity:.6;"' : ''}>
             <svg class="obr-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
             <span class="obr-nome">${r.nome}</span>
-            <span class="obr-chips">${chipsDe(r)}</span>
+            <span class="obr-chips">${chipsDe(r)}${zerada && ativos ? '<span class="chip c-verde">✓ mês concluído</span>' : ''}</span>
             <span class="obr-qtd">${filtroMes === 'pendentes' ? `<b>${vs.length}</b> de ${ativos} no mês` : `<b>${ativos}</b> vínculo${ativos === 1 ? '' : 's'}`}</span>
           </div>
-          <div class="obr-corpo">${linhas || '<p style="color:var(--text-muted);font-size:13px;">Nenhum cliente vinculado.</p>'}
+          <div class="obr-corpo">${linhas || `<p style="color:var(--text-muted);font-size:13px;">${
+              zerada && ativos ? '✓ Tudo concluído no mês — os feitos aparecem em <b>Todos</b>.'
+              : zerada && todos.length ? 'Nenhum vínculo ativo — os desligados aparecem em <b>Todos</b>.'
+              : 'Nenhum cliente vinculado.'}</p>`}
             <button class="btn-add" data-add-rid="${r.id}">+ Vincular cliente</button>
           </div>
-        </div>`;
-      }).join('');
+        </div>` };
+      });
+      el.innerHTML = juntarPorPendencia(itens, 'obrigação', 'obrigações');
       ligarLista(el, abertas);
+    }
+
+    // com pendência primeiro; as zeradas depois, sob um título — nada some da lista
+    function juntarPorPendencia(itens, um, varios){
+      const pend = itens.filter(x => !x.zerada), zer = itens.filter(x => x.zerada);
+      return pend.map(x => x.html).join('') + (zer.length
+        ? `<p data-grupo="sem-pendencia" style="margin:${pend.length ? '22px' : '4px'} 0 10px;font-size:11.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text-muted);">✓ Sem pendência no mês · ${zer.length} ${zer.length === 1 ? um : varios}</p>`
+          + zer.map(x => x.html).join('')
+        : '');
     }
 
     function renderClientes(){
@@ -467,26 +486,31 @@
         .filter(([, c]) => !q || norm(c.nome).includes(q))
         .sort((a, b) => a[1].nome.localeCompare(b[1].nome));
       if (!lista.length) { el.innerHTML = '<p style="color:var(--text-muted);">Nenhum cliente encontrado.</p>'; return; }
-      el.innerHTML = lista.map(([cid, c]) => {
+      // mesma regra da visão por obrigação: o filtro esconde as obrigações concluídas, nunca o cliente
+      const blocos = lista.map(([cid, c]) => {
         let itens = c.itens.slice().sort((a, b) => (regraDe[a.obrigacao_id]?.nome || '').localeCompare(regraDe[b.obrigacao_id]?.nome || ''));
         const ativos = itens.filter(v => v.ativo).length;
+        let zerado = false;
         if (filtroMes === 'pendentes') {
           itens = itens.filter(v => v.ativo && !concluidoNoMes(v));
-          if (!itens.length) return '';
+          zerado = !itens.length;
         }
         const linhas = itens.map(v => linhaVinculo(v, regraDe[v.obrigacao_id] || { nome: '(obrigação removida)', dia_prazo: '?' }, 'cliente')).join('');
-        return `
+        return { zerada: zerado, html: `
         <div class="obr-item ${abertasCli.has(cid) ? 'is-open' : ''}" data-rid="${cid}">
-          <div class="obr-head" data-rid="${cid}">
+          <div class="obr-head" data-rid="${cid}"${zerado ? ' style="opacity:.6;"' : ''}>
             <svg class="obr-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
             <span class="obr-nome">${c.nome}</span>
+            ${zerado && ativos ? '<span class="chip c-verde">✓ mês concluído</span>' : ''}
             <span class="obr-qtd">${filtroMes === 'pendentes' ? `<b>${itens.length}</b> de ${ativos} no mês` : `<b>${ativos}</b> obrigaç${ativos === 1 ? 'ão' : 'ões'}`}</span>
           </div>
-          <div class="obr-corpo">${linhas}
+          <div class="obr-corpo">${linhas || `<p style="color:var(--text-muted);font-size:13px;">${
+              ativos ? '✓ Tudo concluído no mês — os feitos aparecem em <b>Todos</b>.' : 'Nenhum vínculo ativo — os desligados aparecem em <b>Todos</b>.'}</p>`}
             <button class="btn-add" data-add-cid="${cid}">+ Adicionar obrigação</button>
           </div>
-        </div>`;
-      }).join('');
+        </div>` };
+      });
+      el.innerHTML = juntarPorPendencia(blocos, 'cliente', 'clientes');
       ligarLista(el, abertasCli);
     }
 
@@ -1270,7 +1294,7 @@
       { el: '.obr-item', titulo: 'Cada obrigação é uma caixa', texto: 'Clique pra abrir e ver os clientes. Dentro: responsável e dia são editáveis no clique, o switch liga/desliga o vínculo, o + vincula gente nova — e clicar no NOME do cliente abre a central da obrigação: a tarefa do mês (andamentos, concluir) + o arquivamento e envio da guia.' },
       { el: '#btnRenomear', titulo: 'Renomear em lote', texto: 'Troca um responsável por outro em todos os vínculos de uma vez — com opção de atualizar também as tarefas pendentes.' },
       { el: '#mesRef', titulo: 'Mês de referência', texto: 'Define pra qual mês o motor vai trabalhar. Obrigações sazonais só aparecem quando a janela delas abre.' },
-      { el: '#segFiltro', titulo: 'Foco no que falta', texto: 'Pendentes do mês esconde quem já foi concluído (e os vínculos desligados) — obrigação zerada some inteira. Troque pra Todos pra rever ou reabrir alguém: os feitos aparecem com o ✓ verde.' },
+      { el: '#segFiltro', titulo: 'Foco no que falta', texto: 'Pendentes do mês esconde quem já foi concluído (e os vínculos desligados). A obrigação zerada não some: desce pro grupo ✓ Sem pendência no mês, com o + Vincular cliente à mão. Troque pra Todos pra rever ou reabrir alguém: os feitos aparecem com o ✓ verde.' },
       { el: '#btnGerar', titulo: 'Gerar rotinas do mês', texto: 'Sempre mostra o plano antes: o que vai criar e o que já existe. Nada é criado sem confirmação — e rodar de novo não duplica.' }
     ];
     carregar().then(() => {
