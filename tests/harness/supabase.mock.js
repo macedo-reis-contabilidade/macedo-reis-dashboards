@@ -31,6 +31,14 @@ const DATA = {
     T(73,'EFD TESTE MENSAL','fiscal',null,add(-25),'media',{cli:'COMÉRCIO MODELO ME',cliente_id:'c1',obrigacao_id:'o1',status:'concluida'}),
     // obrigação com o mês todo concluído (tests/harness/obrigacoes-mes-concluido.py): não pode sumir de Obrigações fiscais
     T(74,'PGDAS TESTE MENSAL','fiscal','Thalia',add(-10),'media',{cli:'EMPRESA EXEMPLO LTDA',cliente_id:'c2',obrigacao_id:'o3',status:'concluida',competencia:mesAtual,concluida_em:add(-9)+'T15:00:00Z'}),
+    // tarefas das recorrências do Contábil (tests/harness/rotinas-excluir.py): desvincular tira as pendentes, de qualquer
+    // data; a concluída e a em andamento ficam
+    T(81,'EMISSÃO DE EXTRATOS (TESTE)','contabil','Adaini',add(-20),'media',{regra_id:'tr3',origem:'recorrente'}),
+    T(82,'EMISSÃO DE EXTRATOS (TESTE)','contabil','Adaini',add(10),'media',{regra_id:'tr3',origem:'recorrente'}),
+    T(83,'EMISSÃO DE EXTRATOS (TESTE)','contabil','Adaini',add(-50),'media',{regra_id:'tr3',origem:'recorrente',status:'concluida',concluida_em:add(-49)+'T15:00:00Z'}),
+    T(84,'CONCILIAÇÃO BANCÁRIA (TESTE)','contabil','Adaini',add(-20),'media',{cli:'EMPRESA EXEMPLO LTDA',cliente_id:'c2',regra_id:'tr2',origem:'recorrente'}),
+    T(85,'CONCILIAÇÃO BANCÁRIA (TESTE)','contabil','Adaini',add(-50),'media',{cli:'EMPRESA EXEMPLO LTDA',cliente_id:'c2',regra_id:'tr2',origem:'recorrente',status:'concluida',concluida_em:add(-49)+'T15:00:00Z'}),
+    T(86,'CONCILIAÇÃO BANCÁRIA (TESTE)','contabil','Adaini',add(-3),'media',{cli:'EMPRESA EXEMPLO LTDA',cliente_id:'c2',regra_id:'tr2',origem:'recorrente',status:'em_andamento'}),
   ],
   rotinas: [
     { id:'r1', titulo:'Conferir e-mail', setor:'gestao', responsavel:'Samuel', ativo:true, periodicidade:'diaria', ultima_execucao:ymd(hoje), adiada_para:null },
@@ -77,17 +85,35 @@ let seq = 1000;
 const copia = v => (v == null ? v : structuredClone(v));
 // atraso opcional por consulta (o lote-setores.py usa pra ver o progresso e as travas no meio de um lote)
 const responder = out => (window.__mockDelay ? new Promise(r => setTimeout(() => r(out), window.__mockDelay)) : Promise.resolve(out));
+// chaves únicas do banco de verdade que as telas tratam (erro 23505 = "duplicate key")
+const UNICOS = { rotinas_modelo: [['setor', 'nome']] };
 function q(table){
   const rows = DATA[table] || (DATA[table] = []);
   const self = { _head:false };
+  const passa = r => (self._f||[]).every(([k,col,v,v2]) => { const x = r[col]; if (k==='in') return v.includes(x); if (k==='eq') return x===v; if (k==='neq') return x!==v; if (k==='is') return x==v; if (k==='not') return !(x==v2); if (x==null) return false; if (k==='lt') return x<v; if (k==='lte') return x<=v; if (k==='gt') return x>v; if (k==='gte') return x>=v; return true; });
+  // executa a consulta montada: insert já feito, update/delete aplicados aqui (uma vez só)
+  const executar = () => {
+    if (self._out) return self._out;
+    if (self._err) return (self._out = { data:null, error:self._err, count:0 });
+    const data = self._ins || rows.filter(passa);
+    if (self._patch) { data.forEach(r => Object.assign(r, self._patch)); console.log('MOCK UPDATE', table, data.length); }
+    if (self._del) { data.forEach(r => rows.splice(rows.indexOf(r), 1)); console.log('MOCK DELETE', table, data.length); }
+    return (self._out = { data: self._head ? null : copia(data), error:null, count: data.length });
+  };
   const chain = new Proxy(self, { get(t, k){
-    if (k==='then') return (res, rej) => { let data = self._ins || rows.filter(r => (self._f||[]).every(([k,col,v,v2]) => { const x = r[col]; if (k==='in') return v.includes(x); if (k==='eq') return x===v; if (k==='neq') return x!==v; if (k==='is') return x==v; if (k==='not') return !(x==v2); if (x==null) return false; if (k==='lt') return x<v; if (k==='lte') return x<=v; if (k==='gt') return x>v; if (k==='gte') return x>=v; return true; })); if (self._patch) { data.forEach(r => Object.assign(r, self._patch)); console.log('MOCK UPDATE', table, data.length); } const out = { data: self._head ? null : copia(data), error:null, count: data.length }; return responder(out).then(res, rej); };
+    if (k==='then') return (res, rej) => responder(executar()).then(res, rej);
     if (k==='select') return (c, o) => { if (o && o.head) self._head = true; return chain; };
     if (k==='update') return (patch) => { self._patch = patch; return chain; };
+    if (k==='delete') return () => { self._del = true; return chain; };
     if (k==='in') return (col, vals) => { (self._f ||= []).push(['in',col,vals]); return chain; };
-    if (k==='insert') return (payload) => { const arr = (Array.isArray(payload)?payload:[payload]).map(r => ({ id: 'n'+(seq++), ...r })); rows.push(...arr); self._ins = arr; console.log('MOCK INSERT', table, JSON.stringify(arr)); return chain; };
+    if (k==='insert') return (payload) => {
+      const arr = (Array.isArray(payload)?payload:[payload]).map(r => ({ id: 'n'+(seq++), ...r }));
+      const dup = (UNICOS[table] || []).some(cols => arr.some(n => rows.some(r => cols.every(c => r[c] === n[c]))));
+      if (dup) { self._err = { code:'23505', message:'duplicate key value violates unique constraint' }; return chain; }
+      rows.push(...arr); self._ins = arr; console.log('MOCK INSERT', table, JSON.stringify(arr)); return chain;
+    };
     if (['lt','lte','gt','gte','eq','neq','is','not'].includes(k)) return (col, v, v2) => { (self._f ||= []).push([k,col,v,v2]); return chain; };
-    if (k==='single' || k==='maybeSingle') return () => responder({ data: copia((self._ins||rows)[0]||null), error:null });
+    if (k==='single' || k==='maybeSingle') return () => { const out = executar(); return responder({ data: out.error ? null : ((out.data || [])[0] ?? null), error: out.error }); };
     return () => chain;
   }});
   return chain;

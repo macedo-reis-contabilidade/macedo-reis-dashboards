@@ -193,7 +193,7 @@ export function initRotinasSetor(cfg) {
           <button class="btn btn-primary btn-sm" id="rvVinc">+ Vincular empresas</button>
           <button class="btn btn-ghost btn-sm" id="rvAlt" ${n ? '' : 'disabled'}>Alterar ${n || ''} selecionada${n === 1 ? '' : 's'}</button>
           <button class="btn btn-ghost btn-sm" id="rvRem" ${n ? '' : 'disabled'}>Desvincular</button>
-          ${r.avulsa ? '<button class="btn-link" id="rvConv">transformar em rotina</button>' : '<button class="btn-link" id="rvRen">renomear</button><button class="btn-link" id="rvDel">excluir rotina</button>'}
+          ${r.avulsa ? '<button class="btn-link" id="rvConv">transformar em rotina</button>' : '<button class="btn-link" id="rvRen">renomear</button>'}<button class="btn-link" id="rvDel">excluir rotina</button>
         </div></div>
       ${vs.length ? `<table class="rv-tab"><thead><tr><th><input type="checkbox" id="rvTodas" ${n && n === vs.length ? 'checked' : ''}></th><th>Empresa</th><th>Quando</th><th>Responsável</th><th>Observação</th><th>Próxima tarefa</th><th></th></tr></thead><tbody>
         ${vs.map(v => `<tr><td><input type="checkbox" data-sel="${v.id}" ${marcados.has(v.id) ? 'checked' : ''}></td>
@@ -209,19 +209,31 @@ export function initRotinasSetor(cfg) {
     $('rvAlt').onclick = () => abrir('alterar', vs.filter(v => marcados.has(v.id)));
     $('rvRem').onclick = () => desvincular(vs.filter(v => marcados.has(v.id)));
     if (r.avulsa) { $('rvConv').onclick = () => transformar(r); $('rvVinc').style.display = 'none'; }
-    else { $('rvRen').onclick = renomear; $('rvDel').onclick = excluirRotina; }
+    else $('rvRen').onclick = renomear;
+    $('rvDel').onclick = excluirRotina;
     $('rvPainel').querySelectorAll('[data-sel]').forEach(c => c.addEventListener('change', () => { c.checked ? marcados.add(c.dataset.sel) : marcados.delete(c.dataset.sel); renderPainel(); }));
     $('rvPainel').querySelectorAll('[data-ed]').forEach(b => b.addEventListener('click', () => abrir('alterar', vs.filter(v => v.id === b.dataset.ed))));
     const todas = $('rvTodas'); if (todas) todas.addEventListener('change', () => { vs.forEach(v => todas.checked ? marcados.add(v.id) : marcados.delete(v.id)); renderPainel(); });
   }
   const msg = (t, cor) => { const m = $('rvMsg'); if (m) { m.style.color = cor || 'var(--text-muted)'; m.textContent = t; } };
+  // recado no painel vazio, quando a rotina escolhida saiu da lista
+  const aviso = t => { $('rvPainel').innerHTML = '<div class="rv-vazio" style="color:var(--ok)">' + esc(t) + '</div>'; };
 
   // ---------- rotina: nome ----------
   $('rvNova').onclick = async () => {
     const nome = (prompt('Nome da rotina:') || '').trim(); if (!nome) return;
     const { data, error } = await supabase.from('rotinas_modelo').insert({ setor: SETOR, nome }).select('id').single();
-    if (error) { alert(/duplicate|unique/i.test(error.message) ? 'Já existe uma rotina com esse nome.' : 'Erro: ' + error.message); return; }
-    sel = data.id; await carregar();
+    let id = data && data.id;
+    if (error) {
+      if (!/duplicate|unique/i.test(error.message)) { alert('Erro: ' + error.message); return; }
+      // o nome é único no setor: se for de uma rotina excluída, ela volta (sem as empresas de antes)
+      const { data: ex } = await supabase.from('rotinas_modelo').select('id, ativo').eq('setor', SETOR).eq('nome', nome).single();
+      if (!ex || ex.ativo) { alert('Já existe uma rotina com esse nome.'); return; }
+      const { error: e2 } = await supabase.from('rotinas_modelo').update({ ativo: true }).eq('id', ex.id);
+      if (e2) { alert('Erro: ' + e2.message); return; }
+      id = ex.id;
+    }
+    sel = id; await carregar();
   };
   async function transformar(r) {
     const { data, error } = await supabase.from('rotinas_modelo').insert({ setor: SETOR, nome: r.nome }).select('id').single();
@@ -243,13 +255,23 @@ export function initRotinasSetor(cfg) {
     if (error) { alert('Erro: ' + error.message); return; }
     await carregar();
   }
+  // Excluir só sem empresa vinculada (regra do Samuel, 30/09/2026): primeiro desvincula, depois exclui. A rotina sai
+  // da lista (ativo = false) e as tarefas já concluídas ficam no histórico. Antes, excluir com empresas só escondia a
+  // rotina: os vínculos seguiam ativos e continuavam gerando tarefas, sem aparecer em lugar nenhum.
   async function excluirRotina() {
-    const r = rotinas.find(x => x.id === sel); const n = vinculos.filter(v => v.modelo_id === r.id);
-    if (!confirm('Excluir a rotina "' + r.nome + '"' + (n.length ? ' e parar as tarefas de ' + n.length + ' empresa(s)' : '') + '? As tarefas já concluídas ficam no histórico.')) return;
-    await apagarFuturas(n.map(v => v.id));
+    const r = rotinas.find(x => x.id === sel); if (!r) return;
+    const n = vinculos.filter(v => v.modelo_id === r.id).length;
+    if (n) {
+      alert(r.avulsa
+        ? 'Pra apagar esta rotina, desvincule ' + (n === 1 ? 'a empresa' : 'as ' + n + ' empresas') + ': marque e clique em "Desvincular". Sem nenhuma empresa, ela sai da lista.'
+        : 'A rotina "' + r.nome + '" ainda tem ' + n + ' empresa(s) vinculada(s). Desvincule todas (marque e clique em "Desvincular") e depois exclua a rotina.');
+      return;
+    }
+    if (!confirm('Excluir a rotina "' + r.nome + '"? As tarefas já concluídas ficam no histórico.')) return;
     const { error } = await supabase.from('rotinas_modelo').update({ ativo: false }).eq('id', r.id);
     if (error) { alert('Erro: ' + error.message); return; }
     sel = null; await carregar();
+    aviso('✓ Rotina "' + r.nome + '" excluída. As tarefas já concluídas ficam no histórico.');
   }
 
   // tarefas pendentes a partir de hoje dessas regras: saem pra nascer de novo com a data certa
@@ -343,11 +365,22 @@ export function initRotinasSetor(cfg) {
 
   async function desvincular(lista) {
     if (!lista.length) return;
-    if (!confirm('Desvincular ' + lista.length + ' empresa(s) desta rotina? As tarefas futuras saem; as já concluídas ficam no histórico.')) return;
+    const r = rotinas.find(x => x.id === sel);
+    const somem = r && r.avulsa && vinculos.filter(v => v.modelo_id === r.id).length === lista.length;
+    if (!confirm('Desvincular ' + lista.length + ' empresa(s) desta rotina? As tarefas pendentes dessas empresas saem da agenda (inclusive as atrasadas); as concluídas ficam no histórico.'
+      + (somem ? '\n\nSem nenhuma empresa, esta rotina sai da lista.' : ''))) return;
     const ids = lista.map(v => v.id);
-    await apagarFuturas(ids);
+    await apagarPendentes(ids);
     const { error } = await supabase.from('tarefas_recorrentes').update({ ativo: false }).in('id', ids);
     if (error) { alert('Erro: ' + error.message); return; }
-    marcados = new Set(); await carregar(); msg(ids.length + ' empresa(s) desvinculada(s).', 'var(--ok)');
+    marcados = new Set(); await carregar();
+    if (sel) msg(ids.length + ' empresa(s) desvinculada(s).', 'var(--ok)');
+    else if (r) aviso('✓ Rotina "' + r.nome + '" removida da lista. As tarefas já concluídas ficam no histórico.');
+  }
+  // desvinculou = a rotina parou pra essas empresas: as tarefas pendentes delas saem, de qualquer data (a atrasada
+  // ficava órfã na agenda); concluídas e em andamento ficam
+  async function apagarPendentes(ids) {
+    if (!ids.length) return;
+    await supabase.from('tarefas').delete().in('regra_id', ids).eq('status', 'pendente');
   }
 }
