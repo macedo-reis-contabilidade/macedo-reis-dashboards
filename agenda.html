@@ -780,7 +780,7 @@
     }
 
     // ===================== RESUMO DO DIA (rotativo) =====================
-    const fmtISO = dt => dt.toISOString().slice(0, 10);
+    const fmtISO = dt => ymd(dt);   // ymd = dia no fuso local; toISOString é UTC e depois das 21h já era amanhã
     function montarResumo(){
       const painel = document.getElementById('resumoPainel');
       if (!painel) return;
@@ -1477,8 +1477,8 @@
     async function montarRadar() {
       const box = document.getElementById('agRadarBox'); if (!box) return;
       try {
-        const hj = new Date().toISOString().slice(0, 10);
-        const em60 = new Date(Date.now() + 60 * 864e5).toISOString().slice(0, 10);
+        const hj = ymd(new Date());
+        const em60 = ymd(new Date(Date.now() + 60 * 864e5));
         const seteDias = new Date(Date.now() - 7 * 864e5).toISOString();
         const [alv, alvSemResp, trs, propF, trProp, propPar, inad, tVenc, tMinhas, rtPend, fat] = await Promise.all([
           supabase.from('alvaras').select('vencimento').not('vencimento', 'is', null),

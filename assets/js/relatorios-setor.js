@@ -8,7 +8,7 @@
 // e um cabeçalho que só aparece na impressão ("Emitir PDF" = imprimir a página).
 // =====================================================================
 import { supabase, getCurrentUser, signOut } from './supabase.js';
-import { formatDate } from './utils.js';
+import { formatDate, hojeLocal } from './utils.js';
 
 const CSS = `
     .fa-focus { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:22px; }
@@ -69,7 +69,7 @@ export function initRelatoriosSetor(cfg) {
   const SETOR = C.setor;
   const VAZIO = C.rotuloVazio;
   const TITULO_IMPRESSAO = C.tituloImpressao || C.nomeSetor;
-  const HOJE = new Date().toISOString().slice(0, 10);
+  const HOJE = hojeLocal();   // dia no fuso local (toISOString é UTC)
   const esc = t => String(t == null ? '' : t).replace(/[&<>"]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
 
   // ---------- estrutura da tela ----------

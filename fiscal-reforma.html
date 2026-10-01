@@ -395,7 +395,7 @@
         ]);
         clientesMap = Object.fromEntries((clis || []).map(c => [c.id, c]));
         // espelho da carteira (23/09/2026): quem saiu da carteira some da lista; o caso fica guardado no banco
-        const hoje = new Date().toISOString().slice(0, 10);
+        const hoje = hojeISO();   // helper local da página (já no fuso local)
         const saiu = new Set((cart || []).filter(x => x.saida && x.saida <= hoje).map(x => x.cliente_id));
         casos = casos.filter(c => !saiu.has(c.cliente_id));
       }

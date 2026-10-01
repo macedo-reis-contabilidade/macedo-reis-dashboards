@@ -473,7 +473,7 @@
     });
 
     /* ---------- PONTE COM A AGENDA: tarefa de renovação 60 dias antes ---------- */
-    const addDias = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+    const addDias = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return toYMD(d); };
     // (23/09/2026) a tarefa de renovação nasce e se atualiza no banco (alvara_sincronizar_tarefa, gatilho em alvaras):
     // um mês antes do vencimento, na agenda do responsável — vale pra qualquer tela que grave o alvará.
 

@@ -220,11 +220,12 @@
 
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { hojeLocal, dataLocal } from './assets/js/utils.js';   // dia no fuso local (toISOString é UTC)
 
     const SETORES = [['societario','Societário'],['fiscal','Fiscal'],['dp','DP'],['contabil','Contábil'],['financeiro','Financeiro'],['comercial','Comercial']];
     const TIPO_LABEL = { entrada:'Entrada', cnpj_novo:'CNPJ novo', saida:'Saída' };
     const fmtData = d => d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
-    const hojeISO = () => new Date().toISOString().slice(0, 10);
+    const hojeISO = () => hojeLocal();   // dia no fuso local (toISOString é UTC: depois das 21h já era amanhã)
 
     let transicoes = [], clientes = [], atual = null, tarefasAtual = [], empresasAtual = [];
     let empSelecionadas = [];
@@ -319,7 +320,7 @@
       const inicio = document.getElementById('nvInicio').value || hojeISO();
       const tipo = document.getElementById('nvTipo').value;
       const funcV = document.getElementById('nvFunc').value;
-      const prev = new Date(new Date(inicio + 'T12:00:00').getTime() + 90 * 864e5).toISOString().slice(0, 10);
+      const prev = dataLocal(new Date(new Date(inicio + 'T12:00:00').getTime() + 90 * 864e5));
       const { data: tr, error } = await supabase.from('transicoes').insert({
         titulo, tipo,
         inicio, previsao_fim: prev,
@@ -335,7 +336,7 @@
         await supabase.from('tarefas').insert(kit.map(k => ({
           setor: k.setor, tipo: 'tarefa', titulo: k.titulo,
           responsavel: k.responsavel_padrao || null,
-          prazo: new Date(base + (k.prazo_dias || 0) * 864e5).toISOString().slice(0, 10),
+          prazo: dataLocal(new Date(base + (k.prazo_dias || 0) * 864e5)),
           status: 'pendente', origem: 'transicao',
           transicao_id: tr.id, fase: k.fase || null, cliente_id: null
         })));
@@ -433,7 +434,7 @@
                 }
               } catch (eRt) { console.warn('Reforma: não consegui incluir na campanha', eRt); }
               if (pjs.length) {
-                let dEnt = prompt('Data de entrada na carteira de clientes (AAAA-MM-DD) — ajuste se o contrato começa em outra data:', new Date().toISOString().slice(0, 10));
+                let dEnt = prompt('Data de entrada na carteira de clientes (AAAA-MM-DD) — ajuste se o contrato começa em outra data:', hojeISO());
                 if (dEnt) {
                   dEnt = dEnt.trim();
                   if (!/^\d{4}-\d{2}-\d{2}$/.test(dEnt)) { alert('Data inválida — a entrada na carteira não foi registrada; preencha depois na tela da Carteira.'); dEnt = null; }

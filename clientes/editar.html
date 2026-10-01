@@ -718,7 +718,7 @@
     import {
       bindMask, maskCNPJ, maskCPF, maskTelefone, maskCEP,
       formatCNPJ, formatCPF, formatDocumento, formatTelefone,
-      onlyDigits, buscarCEP, ESTADOS_BR
+      onlyDigits, buscarCEP, ESTADOS_BR, hojeLocal
     } from '../assets/js/utils.js';
 
     let usuarioEmail = null;
@@ -1044,7 +1044,7 @@
       sel2.value = admins.length === 2 ? (admins.find(a => a.id !== sel.value)?.id || '') : '';
       resumoSociosKit();
       document.getElementById('kitRegime').value = cliente.regime_tributario || '';
-      document.getElementById('kitData').value = new Date().toISOString().slice(0, 10);
+      document.getElementById('kitData').value = hojeLocal();
       document.getElementById('kitMsg').textContent = '';
       document.getElementById('ovKit').style.display = 'flex';
     });
@@ -1070,7 +1070,7 @@
         honor = parseFloat(honorTxt.replace(/\./g, '').replace(',', '.'));
         if (!honor || honor <= 0) { msg.style.color = 'var(--err)'; msg.textContent = 'Informa o honorário mensal pro contrato.'; return; }
       }
-      const dataDoc = document.getElementById('kitData').value || new Date().toISOString().slice(0, 10);
+      const dataDoc = document.getElementById('kitData').value || hojeLocal();
       const [aa, mm, dd] = dataDoc.split('-');
       const venc = parseInt(document.getElementById('kitVencimento').value || '10', 10);
       const valores = {

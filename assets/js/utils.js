@@ -51,6 +51,22 @@ export function formatDate(iso) {
   return d.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 }
 
+// DATA LOCAL ('AAAA-MM-DD') -------------------------------------------
+// toISOString() é UTC: em Brasília (UTC−3), das 21h à meia-noite ele já devolve o dia seguinte — em 30/09/2026 a
+// Reforma disse, às 22h do último dia da opção, que a janela tinha fechado. Pra "hoje", "amanhã", "+N dias", mês
+// atual etc., use estes, que leem o calendário no fuso do navegador. Carimbo com hora (created_at, concluida_em…)
+// continua com new Date().toISOString() inteiro — em UTC está certo.
+
+/** 'AAAA-MM-DD' de um Date qualquer, no fuso do navegador (ex.: dataLocal(new Date(Date.now() + 90 * 864e5))). */
+export function dataLocal(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+/** 'AAAA-MM-DD' de hoje, no fuso do navegador. */
+export function hojeLocal() {
+  return dataLocal(new Date());
+}
+
 // MÁSCARAS DINÂMICAS (aplicar ao input enquanto digita) -------------
 
 /**

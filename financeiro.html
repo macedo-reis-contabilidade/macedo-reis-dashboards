@@ -118,6 +118,7 @@
 
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { hojeLocal } from './assets/js/utils.js';   // dia no fuso local (toISOString é UTC)
 
     const user = await getCurrentUser();
     if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; const av = document.getElementById('userAvatar'); if (av) av.textContent = (user.email || '?').charAt(0).toUpperCase(); }
@@ -154,7 +155,7 @@
 
         const { count: vencemHoje } = await supabase.from('tarefas')
           .select('id', { count: 'exact', head: true })
-          .eq('setor', 'financeiro').eq('prazo', new Date().toISOString().slice(0,10)).neq('status', 'concluida');
+          .eq('setor', 'financeiro').eq('prazo', hojeLocal()).neq('status', 'concluida');
         if (vencemHoje) {
           const card = document.querySelector('a[href="financeiro-tarefas.html"]');
           const pill = document.createElement('span');

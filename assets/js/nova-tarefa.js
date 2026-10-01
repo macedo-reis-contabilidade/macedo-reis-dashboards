@@ -12,6 +12,7 @@
 //   Repetir diária/semanal, com cliente  ainda não existe — o formulário avisa
 // ============================================================
 import { supabase } from './supabase.js';
+import { dataLocal } from './utils.js';
 
 export const SETORES = [
   ['clientes', 'Clientes'], ['dp', 'DP'], ['fiscal', 'Fiscal'], ['contabil', 'Contábil'],
@@ -20,7 +21,7 @@ export const SETORES = [
 ];
 const EQUIPE_PADRAO = ['Thalia', 'Vitória', 'Adaini', 'Samuel', 'Diego', 'Edna'];
 const esc = t => String(t == null ? '' : t).replace(/[&<>"]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
-const ymd = d => d.toISOString().slice(0, 10);
+const ymd = d => dataLocal(d);   // dia no fuso local: toISOString é UTC e depois das 21h já era amanhã
 
 let el = null, clis = [], timer = null, cfg = {};
 

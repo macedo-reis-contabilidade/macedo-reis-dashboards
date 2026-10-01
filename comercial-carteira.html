@@ -221,6 +221,7 @@
   <script src="assets/js/tour.js"></script>
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { hojeLocal, dataLocal } from './assets/js/utils.js';   // dia no fuso local (toISOString é UTC)
     const user = await getCurrentUser();
     if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; const av = document.getElementById('userAvatar'); if (av) av.textContent = (user.email || '?').charAt(0).toUpperCase(); }
     document.getElementById('btnLogout')?.addEventListener('click', signOut);
@@ -335,7 +336,7 @@
       tb.querySelectorAll('[data-inad]').forEach(sp => sp.addEventListener('click', async () => {
         const r = rows.find(x => String(x.cliente_id) === String(sp.dataset.inad));
         if (!r) return;
-        const novo = r.inadimplente_desde ? null : new Date().toISOString().slice(0, 10);
+        const novo = r.inadimplente_desde ? null : hojeLocal();
         if (r.inadimplente_desde && !confirm('Marcar este cliente como em dia novamente?')) return;
         const { error } = await supabase.from('carteira_info').update({ inadimplente_desde: novo }).eq('cliente_id', r.cliente_id);
         if (error) { alert('Erro: ' + error.message); return; }
@@ -403,7 +404,7 @@
       saiCid = cid;
       const r = rows.find(x => x.cliente_id === cid);
       document.getElementById('saiTitulo').textContent = 'Saída — ' + r.clientes.nome_principal;
-      document.getElementById('saiData').value = r.saida ? String(r.saida).slice(0, 10) : new Date().toISOString().slice(0, 10);
+      document.getElementById('saiData').value = r.saida ? String(r.saida).slice(0, 10) : hojeLocal();
       document.getElementById('saiMotivo').value = r.motivo_saida || 'FECHOU';
       document.getElementById('saiLimpar').style.display = r.saida ? 'inline-flex' : 'none';
       saiOverlay.classList.add('is-open');
@@ -440,7 +441,7 @@
     const addOverlay = document.getElementById('addOverlay');
     document.getElementById('btnAdd').addEventListener('click', () => {
       document.getElementById('addBusca').value = '';
-      document.getElementById('addEntrada').value = new Date().toISOString().slice(0, 10);
+      document.getElementById('addEntrada').value = hojeLocal();
       document.getElementById('addRes').innerHTML = '';
       addOverlay.classList.add('is-open');
       document.getElementById('addBusca').focus();
@@ -517,7 +518,7 @@
     const ymDe = d => d ? String(d).slice(0, 7) : null;
     function renderAnalise(){
       const mes = document.getElementById('anaMes').value || ymNow;
-      const fimDe = ym => { const [a, m] = ym.split('-').map(Number); return new Date(a, m, 0).toISOString().slice(0, 10); };
+      const fimDe = ym => { const [a, m] = ym.split('-').map(Number); return dataLocal(new Date(a, m, 0)); };
       const presenteEm = fim => rows.filter(r =>
         (!r.entrada || String(r.entrada).slice(0, 10) <= fim) &&
         (!r.saida || String(r.saida).slice(0, 10) > fim));
@@ -655,7 +656,7 @@
         // o cliente já é conhecido — nada de re-buscar por nome (busca que falha
         // convidaria a criar um pré-cadastro duplicado); só a data de entrada é pedida
         document.getElementById('addBusca').value = c.nome_principal || '';
-        document.getElementById('addEntrada').value = new Date().toISOString().slice(0, 10);
+        document.getElementById('addEntrada').value = hojeLocal();
         const res = document.getElementById('addRes');
         res.innerHTML = `<button data-add="${c.id}">${c.nome_principal}
           <small>${[c.nome_fantasia, c.cidade].filter(Boolean).join(' · ') || 'confirme a data de entrada e clique pra adicionar'}</small></button>`;
@@ -697,7 +698,7 @@
     document.getElementById('btnPdfCart').addEventListener('click', () => {
       if (!window.jspdf) { alert('Gerador de PDF carregando — tenta de novo em 2 segundos.'); return; }
       const mes = document.getElementById('anaMes').value || ymNow;
-      const fimDe = ym => { const [a, m] = ym.split('-').map(Number); return new Date(a, m, 0).toISOString().slice(0, 10); };
+      const fimDe = ym => { const [a, m] = ym.split('-').map(Number); return dataLocal(new Date(a, m, 0)); };
       const presenteEm = fim => rows.filter(r =>
         (!r.entrada || String(r.entrada).slice(0, 10) <= fim) &&
         (!r.saida || String(r.saida).slice(0, 10) > fim));
@@ -867,7 +868,7 @@
     document.getElementById('btnXlsCart').addEventListener('click', () => {
       if (!window.XLSX) { alert('Gerador de Excel carregando — tenta de novo em 2 segundos.'); return; }
       const mes = document.getElementById('anaMes').value || ymNow;
-      const fimDe = ym => { const [a, m] = ym.split('-').map(Number); return new Date(a, m, 0).toISOString().slice(0, 10); };
+      const fimDe = ym => { const [a, m] = ym.split('-').map(Number); return dataLocal(new Date(a, m, 0)); };
       const presenteEm = fim => rows.filter(r =>
         (!r.entrada || String(r.entrada).slice(0, 10) <= fim) &&
         (!r.saida || String(r.saida).slice(0, 10) > fim));
