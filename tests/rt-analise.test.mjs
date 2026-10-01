@@ -8,12 +8,18 @@ const i = page.indexOf('    function montarDadosAnalise('); const j = page.index
 const src = page.slice(i, j);
 import { perfilAtividade, ramoComReducao, conferirRbt12 } from '../assets/js/dominio-relatorios.js';
 const montarDadosAnalise = new Function('simular', 'ANO_XML', 'location', 'perfilAtividade', 'ramoComReducao', 'conferirRbt12', src + '\nreturn montarDadosAnalise;')(simular, 2026, { href: 'http://x/' }, perfilAtividade, ramoComReducao, conferirRbt12);
-function caso(nome, ent, dom, xml, cnae) {
+// data fixa dentro da janela de setembro/2026: o teste não pode depender do relógio de quem roda
+// (os casos que testam a janela fechada fixam globalThis.__HOJE_ISO__ antes de chamar)
+function caso(nome, ent, dom, xml, cnae, hojeISO = globalThis.__HOJE_ISO__ || '2026-09-29') {
   const sim = simular(ent);
+  const antes = globalThis.__HOJE_ISO__;
+  globalThis.__HOJE_ISO__ = hojeISO;
   const d = montarDadosAnalise({ id: 1, cnae_base: cnae || null }, { nome_principal: nome, documento: '00000000000000' }, ent, sim, dom, xml);
+  if (antes === undefined) delete globalThis.__HOJE_ISO__; else globalThis.__HOJE_ISO__ = antes;
+  d.hojeISO = hojeISO;
   const html = gerarAnalise(d);
   const txt = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
-  return { sim, d, txt };
+  return { sim, d, txt, args: [nome, ent, dom, xml, cnae] };
 }
 // 1) Vila Nova: varejo, 2,6% PJ pelas saídas XLS, sem XML
 const vn = caso('VAREJO TESTE', { anexo:'I', rbt12:2484930.98, receita:205256.49, mixCheia:100, pctComprasMercadorias:83.29, pctComprasDespesas:2.35, pctImpostoEmbutido:0, pctExcluidoST:8.5, partilha:15.5, cbs:9.3, ibs:0.1, pctPJ:2.6, aliqEfetivaInformada:9.87 },
@@ -48,6 +54,10 @@ chk('sem "Nenhuma incerteza técnica isolada derruba"', !/Nenhuma incerteza téc
 chk('seção 10 sem "nenhum deles inverte"', !/nenhum deles inverte/.test(vr.txt));
 chk('linha "Base creditável" marca que muda', /Sim — com menos crédito de entrada/.test(vr.txt));
 chk('dica do cancelamento até 30/11', /cancelá-la até 30\/11\/2026/.test(vr.txt));
+// o mesmo varejo gerado depois da janela (01/10/2026): o prazo vira "já fechou" e some a dica de cancelar até 30/11
+const vrF = caso(...vr.args, '2026-10-01');
+chk('janela fechada: prazo diz que a de setembro já fechou', /janela de setembro\/2026 já fechou/.test(vrF.txt));
+chk('janela fechada: sem a dica de cancelar até 30/11', !/cancelá-la até 30\/11\/2026/.test(vrF.txt));
 // 5) caso limpo continua firme (prestador B2B sem alertas)
 chk('caso sem dado suspeito não vira "a confirmar" (' + pb.d.alertas.length + ' alerta)', pb.d.aConfirmar === false && !/Tendência:/.test(pb.txt));
 

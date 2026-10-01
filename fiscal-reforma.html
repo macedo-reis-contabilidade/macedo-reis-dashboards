@@ -356,7 +356,8 @@
     const parseNum = s => { const t = String(s || '').trim().replace(/\./g, '').replace(',', '.'); return t === '' ? null : (isNaN(+t) ? null : +t); };
     const fmtData = d => d ? d.split('-').reverse().join('/') : '—';
     const fmtCnpj = d => { const x = String(d || '').replace(/\D/g, ''); return x.length === 14 ? x.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5') : (x.length === 11 ? x.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : (d || '')); };
-    const hojeISO = () => new Date().toISOString().slice(0, 10);
+    // data local (Brasília): toISOString() é UTC e depois das 21h já devolve o dia seguinte (achado de 30/09/2026)
+    const hojeISO = () => { const a = new Date(); return a.getFullYear() + '-' + String(a.getMonth() + 1).padStart(2, '0') + '-' + String(a.getDate()).padStart(2, '0'); };
     const agoraISO = () => new Date().toISOString();
     const nomePorEmail = e => { if (!e) return ''; const inv = {'fiscal@macedoereis.com.br':'Thalia','rh@macedoereis.com.br':'Vitória','contabil@macedoereis.com.br':'Adaini','financeiro@macedoereis.com.br':'Samuel','diego@macedoereis.com.br':'Diego'}; return inv[String(e).toLowerCase()] || String(e).split('@')[0]; };
 
@@ -1494,7 +1495,9 @@
       // recomendação: a assimetria das janelas manda mais que a diferença de custo
       const aprovGanho = s.aproveitadoFora - s.aproveitadoDentro;
       // JANELA (27/09/2026): os textos dependem da data em que o relatório é gerado
-      const hojeISO = globalThis.__HOJE_ISO__ || new Date().toISOString().slice(0, 10);   // (teste pode fixar a data)
+      // data local, não UTC: em 30/09/2026 depois das 21h a análise dizia que a janela já tinha fechado
+      const agoraLocal = new Date();
+      const hojeISO = globalThis.__HOJE_ISO__ || (agoraLocal.getFullYear() + '-' + String(agoraLocal.getMonth() + 1).padStart(2, '0') + '-' + String(agoraLocal.getDate()).padStart(2, '0'));   // (teste pode fixar a data)
       const janelaAberta = hojeISO <= '2026-09-30';
       const ganhoSuperaCusto = !consumidor && !optar && !empate && aprovGanho > Math.abs(s.diferenca);
       const recomendacao = empate

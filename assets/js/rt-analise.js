@@ -120,7 +120,10 @@ export function gerarAnalise(d, opts = {}) {
     // (27/09/2026) linha de apresentação removida a pedido do Samuel — o relatório vai direto à decisão
   }
 
-  const hojeISO = d.hojeISO || new Date().toISOString().slice(0, 10);
+  // "hoje" no fuso de quem gera (Brasília): toISOString() é UTC e, depois das 21h, já devolvia o dia seguinte —
+  // em 30/09/2026, último dia da opção, a análise dizia que a janela tinha fechado (achado do Claude Code em 30/09)
+  const agora = new Date();
+  const hojeISO = d.hojeISO || agora.getFullYear() + '-' + String(agora.getMonth() + 1).padStart(2, '0') + '-' + String(agora.getDate()).padStart(2, '0');
   const janelaAberta = hojeISO <= '2026-09-30';
   if (!versaoCliente) P('<div class="dados"><b>Prazo:</b> ' + (janelaAberta
       ? 'a opção deve ser formalizada até <b>30/09/2026</b> e pode ser <b>cancelada até 30/11/2026</b> sem produzir efeito (Resolução CGSN 186/2026). Quem não opta em setembro só tem nova janela em <b>março/2027</b>, com efeito a partir de <b>julho/2027</b>.'
