@@ -84,6 +84,10 @@ const DATA = {
   rotinas_modelo: [
     { id:'rm1', setor:'dp', nome:'FOLHA DE PAGAMENTO (TESTE)', ativo:true },
     { id:'rm2', setor:'contabil', nome:'CONCILIAÇÃO BANCÁRIA (TESTE)', ativo:true },
+    // uma por setor que virou página fina em 01/10 (teste em tests/harness/rotinas-tres-setores.py)
+    { id:'rm3', setor:'fiscal', nome:'RECADASTRAMENTO ESTADUAL (TESTE)', ativo:true },
+    { id:'rm4', setor:'comercial', nome:'LIGAÇÃO DE RELACIONAMENTO (TESTE)', ativo:true },
+    { id:'rm5', setor:'societario', nome:'RENOVAÇÃO DE ALVARÁ (TESTE)', ativo:true },
   ],
   tarefas_recorrentes: [
     { id:'tr1', modelo_id:'rm1', setor:'dp', titulo:'FOLHA DE PAGAMENTO (TESTE)', cliente_id:'c1', clientes:{ nome_principal:'COMÉRCIO MODELO ME' }, periodicidade:'mensal', dia_vencimento:5, mes_vencimento:null, dia_util:true, responsavel:'Vitória', observacao:null, origem:'rotina', ativo:true },
