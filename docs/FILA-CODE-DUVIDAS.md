@@ -49,3 +49,15 @@ a tela** e está mais por cima, e clica no fechar dela mesma. Então formato nov
 - **Os testes do harness quebram no console padrão do Windows** (`UnicodeEncodeError` no ✓, cp1252). Os dois testes
   novos desta fila abrem com `sys.stdout.reconfigure(encoding='utf-8')`; os três antigos continuam como estão.
   O `tests/rodar-tudo.py` (item 3) resolve isso pra todos.
+
+## Verificação de 30/09 (Claude Code) — item 2
+- **O que ainda passa por cima da barra do topo, e é de propósito ou inofensivo.** Sem o `z-index` no `main`, tudo que está
+  dentro dele com `z-index` ≥ 10 passa a competir com a `.topbar` (sticky, `z-index:10`). Levantamento completo:
+  - janelas de tela cheia (`position:fixed; inset:0`) — o objetivo do item;
+  - `.rt-massa` da Reforma (barra flutuante no rodapé, `z-index:70`) e o aviso do Drive na Carteira (canto inferior) — longe do topo;
+  - `.xm-res` em `fiscal-xml.html` (lista de sugestões, `position:absolute; z-index:20`): **se a página estiver rolada com a lista
+    aberta, ela passa por cima da barra do topo** (antes ficava por baixo). Efeito pequeno; se incomodar, `z-index` abaixo de 10 nela;
+  - `.fr-tour-hi` (tour próprio do Fator R): o escurecimento do tour agora cobre também a barra do topo — coerente com o tour global.
+  Nenhum `z-index` negativo no repositório, então nada some atrás do fundo.
+- **Fotos rolada:** a prova do item foi feita também com a página rolada 600px (onde o conteúdo passa sob a barra), nas 66 telas:
+  0 pixels.
