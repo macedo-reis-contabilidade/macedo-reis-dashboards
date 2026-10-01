@@ -7,18 +7,21 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 //    configuracoes_escritorio) — só o servidor, que conhece a chave, consegue chamar.
 //  • NÃO renova o token do Conta Azul: usa o access_token que o ca-sync mantém (ele renova a cada 10 min).
 //    Se o token estiver perto de vencer, recusa — assim nunca disputa a renovação com o ca-sync.
-//  • Só aceita caminhos de leitura de /v1/pessoas e /v1/contratos.
+//  • Só aceita caminhos de leitura de /v1/pessoas, /v1/contratos e, desde 01/10 à tarde, a parcela por id
+//    (/v1/financeiro/eventos-financeiros/parcelas/<id>) — pra conferir, uma a uma, se uma parcela do espelho
+//    ca_parcelas ainda existe no Conta Azul.
 // Modos (corpo JSON):
 //  { modo: 'get', path, params }                       → uma chamada GET, resposta crua
 //  { modo: 'todas', path, params, tamanho }            → percorre todas as páginas da lista, devolve os itens
 //  { modo: 'detalhes', path_base: '/v1/pessoas', ids } → GET de cada id (4 de cada vez), devolve os itens
+//                                                        (path_base também pode ser .../eventos-financeiros/parcelas)
 //  { modo: 'receita', cnpjs }                          → dados públicos da Receita (BrasilAPI) de até 150 CNPJs, com o
 //                                                        nome oficial do município (IBGE). Não usa o token do Conta Azul.
 // ============================================================
 
 const API = 'https://api-v2.contaazul.com';
 const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-const PERMITIDO = /^\/v1\/(pessoas|contratos)(\/[0-9a-fA-F-]{36})?$/;
+const PERMITIDO = /^\/v1\/(pessoas|contratos)(\/[0-9a-fA-F-]{36})?$|^\/v1\/financeiro\/eventos-financeiros\/parcelas\/[0-9a-fA-F-]{36}$/;
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -127,13 +130,15 @@ Deno.serve(async (req: Request) => {
     if (modo === 'detalhes') {
       const base = String(corpo.path_base || '');
       const ids: string[] = Array.isArray(corpo.ids) ? corpo.ids.map(String) : [];
-      if (!PERMITIDO.test(base) || ids.some((id) => !/^[0-9a-fA-F-]{36}$/.test(id))) return json(400, { erro: 'pedido não permitido' });
+      if (!ids.length || ids.some((id) => !/^[0-9a-fA-F-]{36}$/.test(id) || !PERMITIDO.test(`${base}/${id}`))) return json(400, { erro: 'pedido não permitido' });
       const itens: any[] = [];
       const falhas: any[] = [];
       for (let i = 0; i < ids.length; i += 4) {
         const lote = ids.slice(i, i + 4);
         const res = await Promise.allSettled(lote.map((id) => caGet(tk, `${base}/${id}`)));
-        res.forEach((r, j) => r.status === 'fulfilled' ? itens.push(r.value) : falhas.push({ id: lote[j], erro: String((r as PromiseRejectedResult).reason?.message || r) }));
+        res.forEach((r, j) => r.status === 'fulfilled'
+          ? itens.push(r.value && typeof r.value === 'object' ? { id_pedido: lote[j], ...r.value } : { id_pedido: lote[j], resposta: r.value })
+          : falhas.push({ id: lote[j], erro: String((r as PromiseRejectedResult).reason?.message || r) }));
       }
       return json(200, { recebidos: itens.length, falhas, itens });
     }
