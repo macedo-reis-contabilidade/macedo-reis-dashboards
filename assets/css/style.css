@@ -169,7 +169,10 @@ body::before {
   z-index: 0;
 }
 
-main, .app-shell, .login-shell { position: relative; z-index: 1; }
+/* O `main` fica de fora de propósito: com z-index próprio ele virava uma camada, e toda janela
+   montada dentro dele (modais das telas de tarefas, de rotinas…) ficava por baixo da .topbar,
+   por mais alto que fosse o z-index da janela. O .app-shell já põe tudo acima do fundo do body. */
+.app-shell, .login-shell { position: relative; z-index: 1; }
 
 h1, h2, h3, h4 {
   font-family: var(--font-display);
