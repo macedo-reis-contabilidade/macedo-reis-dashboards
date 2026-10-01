@@ -44,4 +44,5 @@ inventados quando um teste precisar; os testes leem o banco falso por `window.__
 | `obrigacoes-mes-concluido.py` | Obrigações fiscais: obrigação com o mês todo concluído não some do filtro "Pendentes do mês" |
 | `proposta-transicao.py` | Precificação: proposta fechada pergunta pela transição (aba Propostas) |
 | `relatorios-sugestoes.py` | os módulos únicos de Relatórios e Sugestões de melhoria (`assets/js/relatorios-setor.js`, `assets/js/sugestoes-setor.js`): cada tela mostra o seu setor e só os seus dados |
+| `carteira-analise.py` | Carteira de clientes: a Análise mostra todos os municípios (antes cortava nos 8 maiores), o MEI aparece sem o CPF do nome oficial na lista, no PDF e no Excel, e o CNPJ sai formatado no Excel (jsPDF e SheetJS entram como dublês — o teste não depende do CDN) |
 | `janelas-esc.py` | janelas por cima da barra do topo em tela baixa e Esc fechando a janela aberta (`assets/js/janelas.js`) |

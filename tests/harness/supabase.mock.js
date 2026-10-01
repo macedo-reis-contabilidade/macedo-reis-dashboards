@@ -59,7 +59,30 @@ const DATA = {
     { id:'v3', cliente_id:'c3', obrigacao_id:'o1', responsavel:null, dia_prazo_override:null, ativo:false, clientes:{ nome_principal:'LOJA DE TESTE LTDA' } },
     { id:'v4', cliente_id:'c2', obrigacao_id:'o3', responsavel:'Thalia', dia_prazo_override:null, ativo:true, clientes:{ nome_principal:'EMPRESA EXEMPLO LTDA' } },
   ],
-  alvaras:[], carteira_info:[], rt_casos:[], faturaveis:[], tarefa_historico:[], servicos_avulsos:[],
+  alvaras:[], rt_casos:[], faturaveis:[], tarefa_historico:[], servicos_avulsos:[],
+  // Carteira de clientes (tests/harness/carteira-analise.py): 10 municípios (mais de 8, pra provar que a Análise não corta
+  // o município de 1 cliente só), um MEI com o "CPF" no fim do nome oficial e outro com a raiz do "CNPJ" na frente —
+  // números inventados, como todo o resto
+  carteira_info: [
+    ['k1', 'ALFA COMÉRCIO DE TESTE LTDA', '10000000000101', 'Simples Nacional', 'Três Coroas', '2019-03-01', 'COMÉRCIO'],
+    ['k2', 'BETA SERVIÇOS DE TESTE LTDA', '10000000000102', 'Lucro Presumido', 'Três Coroas', '2020-06-15', 'SERVIÇO'],
+    ['k3', 'GAMA INDÚSTRIA DE TESTE LTDA', '10000000000103', 'Simples Nacional', 'Três Coroas', '2021-01-10', 'INDÚSTRIA'],
+    ['k4', 'DELTA LOJA DE TESTE LTDA', '10000000000104', 'Simples Nacional', 'Igrejinha', '2022-02-01', 'COMÉRCIO'],
+    ['k5', 'ÉPSILON OFICINA DE TESTE LTDA', '10000000000105', 'Simples Nacional', 'Igrejinha', '2023-04-01', 'SERVIÇO'],
+    ['k6', 'FULANO DE TESTE 12345678901', '10000000000106', 'MEI', 'Gramado', '2024-05-01', 'SERVIÇO'],
+    ['k7', '12.345.678 BELTRANA DE TESTE', '12345678000107', 'MEI', 'Canela', '2024-07-01', 'COMÉRCIO'],
+    ['k8', 'ZETA MERCADO DE TESTE LTDA', '10000000000108', 'Lucro Real', 'Taquara', '2025-01-02', 'COMÉRCIO'],
+    ['k9', 'ETA PADARIA DE TESTE LTDA', '10000000000109', 'Simples Nacional', 'Rolante', '2025-03-03', 'COMÉRCIO'],
+    ['k10', 'TETA CONSERTOS DE TESTE LTDA', '10000000000110', 'Simples Nacional', 'Parobé', '2025-08-08', 'COMÉRCIO + SERVIÇO'],
+    ['k11', 'IOTA CALÇADOS DE TESTE LTDA', '10000000000111', 'Simples Nacional', 'Nova Hartz', '2026-02-02', 'INDÚSTRIA'],
+    ['k12', 'CAPA TRANSPORTES DE TESTE LTDA', '10000000000112', 'Lucro Presumido', 'Sapiranga', '2026-05-05', 'SERVIÇO'],
+    ['k13', 'LAMBDA ASSOCIAÇÃO DE TESTE', '10000000000113', 'Imune', 'Esteio', '2018-12-01', 'ASSOCIAÇÃO'],
+    ['k14', 'MI SAIU DE TESTE LTDA', '10000000000114', 'Simples Nacional', 'Três Coroas', '2018-12-01', 'COMÉRCIO', '2026-03-31', 'FECHOU'],
+  ].map(([id, nome, doc, regime, cidade, entrada, segmento, saida, motivo]) => ({
+    cliente_id: id, entrada, saida: saida || null, motivo_saida: motivo || null, segmento, sistemas: null, contato: null, ramo: null,
+    inadimplente_desde: null,
+    clientes: { id, nome_principal: nome, nome_fantasia: null, regime_tributario: regime, cidade, uf: 'RS', status: 'ativo', documento: doc, drive_folder_url: null },
+  })),
   // Propostas → transição (tests/harness/proposta-transicao.py): uma apresentada, uma fechada sem transição e uma fechada com
   precificacoes: [
     { id:'pp1', cliente_nome:'PADARIA FICTÍCIA LTDA', contato:'51900000001', cliente_id:null, origem:'interna', status:'apresentada', respostas:{ A1:'PADARIA FICTÍCIA LTDA' }, resultado:null, honorario:650, taxa_unica:null, observacao:null, criado_por:'samuel@macedoereis.com.br', criado_em:add(-2)+'T12:00:00Z', atualizado_em:add(-2)+'T12:00:00Z' },

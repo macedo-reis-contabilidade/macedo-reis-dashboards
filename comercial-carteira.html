@@ -48,7 +48,7 @@
     .barra { display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--text-2); padding:3px 0; }
     .barra .bl { flex:0 0 150px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .barra .bt { flex:1; height:8px; background:var(--fill-2); border-radius:99px; overflow:hidden; }
-    .barra .bf { height:100%; background:linear-gradient(90deg,var(--brand-primary),var(--brand-light)); border-radius:99px; }
+    .barra .bf { display:block; height:100%; background:linear-gradient(90deg,var(--brand-primary),var(--brand-light)); border-radius:99px; }
     .barra .bn { flex:0 0 34px; text-align:right; color:var(--text-muted); font-size:12px; }
     .mov-tab td, .mov-tab th { padding:5px 10px; }
     .mov-tab .pos { color:var(--ok); } .mov-tab .neg { color:var(--err); }
@@ -228,6 +228,17 @@
 
     const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/&/g, 'e').toLowerCase();
     const dBR = d => d ? String(d).slice(0, 10).split('-').reverse().join('/') : '';
+    // Nome pra mostrar: o nome oficial do MEI antigo traz o CPF no fim ("FULANO 12345678901") e o do MEI novo, a raiz do
+    // CNPJ na frente ("12.345.678 FULANO"). Na carteira, no PDF e no Excel sai só o nome — o cadastro continua com o
+    // oficial (é o que o contrato usa) e a busca procura nos dois.
+    const nomeVis = c => String(c?.nome_principal || '').replace(/\s+\d{11}$/, '').replace(/^\d{2}\.\d{3}\.\d{3}\s+/, '').trim() || String(c?.nome_principal || '');
+    const porNome = (a, b) => nomeVis(a.clientes).localeCompare(nomeVis(b.clientes));
+    const docFmt = d => {
+      const s = String(d || '').replace(/\D/g, '');
+      if (s.length === 14) return s.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+      if (s.length === 11) return s.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
+      return String(d || '');
+    };
     const hoje = new Date();
     const ymNow = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0');
 
@@ -248,7 +259,7 @@
         if (!data || data.length < 1000) break;
       }
       rows = todas.filter(r => r.clientes);
-      rows.sort((a, b) => (a.clientes.nome_principal || '').localeCompare(b.clientes.nome_principal || ''));
+      rows.sort(porNome);
       rows.forEach(r => { r._busca = norm(r.clientes.nome_principal + ' ' + (r.clientes.nome_fantasia || '')); });
       await carregarForaCarteira();
       preencherFiltros();
@@ -316,7 +327,7 @@
         const inad = !!r.inadimplente_desde;
         const estilo = r.saida ? ' style="opacity:.55;"' : (inad ? ' style="background:rgba(208,113,90,.07); box-shadow:inset 3px 0 0 #D0715A;"' : '');
         return `<tr${estilo}>
-          <td class="ct-emp"><span data-inad="${r.cliente_id}" title="${inad ? 'Marcar como em dia' : 'Marcar como inadimplente'}" style="cursor:pointer; margin-right:6px; opacity:${inad ? '1' : '.35'};">${inad ? '⚠' : '💰'}</span><a href="clientes/editar.html?id=${c.id}" target="_blank" rel="noopener">${c.nome_principal}</a>${/^https?:\/\//i.test(c.drive_folder_url || '') ? ` <a href="${String(c.drive_folder_url).replace(/"/g, '&quot;')}" target="_blank" rel="noopener" title="Abrir a pasta do cliente no Drive" style="text-decoration:none;">📁</a>` : ''}
+          <td class="ct-emp"><span data-inad="${r.cliente_id}" title="${inad ? 'Marcar como em dia' : 'Marcar como inadimplente'}" style="cursor:pointer; margin-right:6px; opacity:${inad ? '1' : '.35'};">${inad ? '⚠' : '💰'}</span><a href="clientes/editar.html?id=${c.id}" target="_blank" rel="noopener"${nomeVis(c) !== c.nome_principal ? ` title="Nome oficial: ${c.nome_principal}"` : ''}>${nomeVis(c)}</a>${/^https?:\/\//i.test(c.drive_folder_url || '') ? ` <a href="${String(c.drive_folder_url).replace(/"/g, '&quot;')}" target="_blank" rel="noopener" title="Abrir a pasta do cliente no Drive" style="text-decoration:none;">📁</a>` : ''}
             ${c.nome_fantasia ? `<small>${c.nome_fantasia}</small>` : ''}${emTransicao ? ' <span class="chip" style="background:rgba(91,130,166,.16); color:var(--brand-light);">em transição</span>' : ''}${inativo ? ' <span class="chip c-ama">inativo no cadastro</span>' : ''}${inad ? ` <span class="chip c-verm">⚠ inadimplente desde ${dBR(r.inadimplente_desde)}</span>` : ''}</td>
           <td><span class="chip" data-reg="${r.cliente_id}" style="cursor:pointer;" title="Clique para definir o regime — grava direto no cadastro">${c.regime_tributario || '—'}</span></td>
           <td>${c.cidade ? c.cidade : '<span class="chip c-ama" title="Preencha a cidade no cadastro do cliente">sem cidade</span>'}</td>
@@ -403,7 +414,7 @@
     function abrirSaida(cid){
       saiCid = cid;
       const r = rows.find(x => x.cliente_id === cid);
-      document.getElementById('saiTitulo').textContent = 'Saída — ' + r.clientes.nome_principal;
+      document.getElementById('saiTitulo').textContent = 'Saída — ' + nomeVis(r.clientes);
       document.getElementById('saiData').value = r.saida ? String(r.saida).slice(0, 10) : hojeLocal();
       document.getElementById('saiMotivo').value = r.motivo_saida || 'FECHOU';
       document.getElementById('saiLimpar').style.display = r.saida ? 'inline-flex' : 'none';
@@ -422,7 +433,7 @@
       Object.assign(r, patch); fecharSaida();
       // ponte inversa: saiu da carteira → oferecer a inativação no cadastro
       if (patch.saida && r.clientes.status === 'ativo' &&
-          confirm('Inativar ' + r.clientes.nome_principal + ' também no cadastro? (deixa de aparecer em tarefas, alvarás e campanhas)')) {
+          confirm('Inativar ' + nomeVis(r.clientes) + ' também no cadastro? (deixa de aparecer em tarefas, alvarás e campanhas)')) {
         const { error: eInat } = await supabase.from('clientes').update({ status: 'inativo' }).eq('id', r.cliente_id);
         if (eInat) alert('A saída foi registrada, mas a inativação no cadastro falhou: ' + eInat.message);
         else r.clientes.status = 'inativo';
@@ -524,9 +535,9 @@
         (!r.saida || String(r.saida).slice(0, 10) > fim));
       const ativos = rows.filter(r => !r.saida);
       const entrouRows = rows.filter(r => ymDe(r.entrada) === mes)
-        .sort((a, b) => (a.clientes.nome_principal || '').localeCompare(b.clientes.nome_principal || ''));
+        .sort(porNome);
       const saiuRows = rows.filter(r => ymDe(r.saida) === mes)
-        .sort((a, b) => (a.clientes.nome_principal || '').localeCompare(b.clientes.nome_principal || ''));
+        .sort(porNome);
       const entradasMes = entrouRows.length;
       const saidasMes = saiuRows.length;
       document.getElementById('cAtivos').textContent = presenteEm(fimDe(mes)).length;
@@ -539,7 +550,7 @@
         const c = r.clientes;
         const dia = String(sai ? r.saida : r.entrada).slice(8, 10);
         return `<div class="mov-item${sai ? ' sai' : ''}">
-          <a href="clientes/editar.html?id=${c.id}" target="_blank" rel="noopener">${c.nome_principal}</a>
+          <a href="clientes/editar.html?id=${c.id}" target="_blank" rel="noopener">${nomeVis(c)}</a>
           ${c.nome_fantasia ? `<small>${c.nome_fantasia}</small>` : ''}
           <span class="mt">dia ${dia}${sai ? ' · ' + (r.motivo_saida || 'sem motivo') : ''}</span>
         </div>`;
@@ -557,7 +568,8 @@
       cS.className = 'num ' + (saldo > 0 ? 'pos' : saldo < 0 ? 'neg' : '');
 
       const barras = (el, mapa) => {
-        const itens = Object.entries(mapa).sort((a, b) => b[1] - a[1]).slice(0, 8);
+        // todas as linhas — antes cortava nas 8 maiores e município com 1 cliente (Parobé) sumia da Análise
+        const itens = Object.entries(mapa).sort((a, b) => b[1] - a[1]);
         const max = itens[0]?.[1] || 1;
         document.getElementById(el).innerHTML = itens.map(([k, v]) =>
           `<div class="barra"><span class="bl" title="${k}">${k}</span><span class="bt"><span class="bf" style="width:${v / max * 100}%"></span></span><span class="bn">${v}</span></div>`
@@ -705,7 +717,7 @@
       const [anoM, mesM] = mes.split('-');
       const rot = mesM + '/' + anoM;
       const lista = presenteEm(fimDe(mes))
-        .sort((a, b) => (a.clientes.nome_principal || '').localeCompare(b.clientes.nome_principal || ''));
+        .sort(porNome);
 
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF({ unit: 'pt', format: 'a4' });
@@ -748,7 +760,7 @@
         const c = r.clientes;
         doc.setFont('helvetica', 'normal');
         doc.text(String(i + 1), MX, y);
-        doc.text(clip(c.nome_principal, 216), MX + 24, y);
+        doc.text(clip(nomeVis(c), 216), MX + 24, y);
         doc.text(AB[c.regime_tributario] || c.regime_tributario || '—', MX + 246, y);
         doc.text(clip(c.cidade || '—', 92), MX + 292, y);
         doc.text(r.entrada ? String(r.entrada).slice(0, 10).split('-').reverse().join('/').slice(0, 8) + String(r.entrada).slice(2, 4) : '—', MX + 390, y);
@@ -764,9 +776,9 @@
       doc.text('Resumo da carteira — ' + rot, MX, y); y += 20;
 
       const entrou = rows.filter(r => String(r.entrada || '').slice(0, 7) === mes)
-        .sort((a, b) => (a.clientes.nome_principal || '').localeCompare(b.clientes.nome_principal || ''));
+        .sort(porNome);
       const saiu = rows.filter(r => String(r.saida || '').slice(0, 7) === mes)
-        .sort((a, b) => (a.clientes.nome_principal || '').localeCompare(b.clientes.nome_principal || ''));
+        .sort(porNome);
       const saldo = entrou.length - saiu.length;
       doc.setFontSize(9);
       const cardPdf = (x, num, lbl) => {
@@ -797,11 +809,11 @@
 
       secao('Entraram em ' + rot + ' (' + entrou.length + ')');
       if (!entrou.length) linhaTxt('Ninguém.');
-      entrou.forEach(r => linhaTxt('• ' + r.clientes.nome_principal + '  (dia ' + String(r.entrada).slice(8, 10) + ')'));
+      entrou.forEach(r => linhaTxt('• ' + nomeVis(r.clientes) + '  (dia ' + String(r.entrada).slice(8, 10) + ')'));
       y += 4;
       secao('Saíram em ' + rot + ' (' + saiu.length + ')');
       if (!saiu.length) linhaTxt('Ninguém.');
-      saiu.forEach(r => linhaTxt('• ' + r.clientes.nome_principal + '  (dia ' + String(r.saida).slice(8, 10) + ' · ' + (r.motivo_saida || 'sem motivo') + ')'));
+      saiu.forEach(r => linhaTxt('• ' + nomeVis(r.clientes) + '  (dia ' + String(r.saida).slice(8, 10) + ' · ' + (r.motivo_saida || 'sem motivo') + ')'));
       y += 4;
 
       const ativosAtu = rows.filter(r => !r.saida);
@@ -811,21 +823,30 @@
         doc.setFont('helvetica', 'bold').setFontSize(8).setTextColor(...AZUL);
         doc.text(titulo.toUpperCase(), x, yy); yy += 11;
         doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(...ESCURO);
-        Object.entries(mapa).sort((a, b) => b[1] - a[1]).slice(0, 9).forEach(([k, v]) => {
+        Object.entries(mapa).sort((a, b) => b[1] - a[1]).forEach(([k, v]) => {
           doc.text(clip(k, 130), x, yy);
           doc.text(String(v), x + 152, yy, { align: 'right' });
           yy += 9.5;
         });
         return yy;
       };
-      if (y > 640) { doc.addPage(); cabecalho('Resumo — ' + rot + ' (continuação)'); }
+      // as listas saem inteiras (município com 1 cliente também); se não couberem no resto da página, vão pra próxima
+      const mReg = conta(ativosAtu, r => r.clientes.regime_tributario);
+      const mMun = conta(ativosAtu, r => r.clientes.cidade);
+      const mSeg = conta(ativosAtu, r => r.segmento);
+      const alturaDist = n => 11 + n * 9.5;
+      const hDist = alturaDist(Math.max(Object.keys(mReg).length, Object.keys(mMun).length, Object.keys(mSeg).length));
+      if (y + 6 + hDist > 800) { doc.addPage(); cabecalho('Resumo — ' + rot + ' (continuação)'); }
       const topoDist = y + 6;
-      const y1 = blocoDist('Por regime', conta(ativosAtu, r => r.clientes.regime_tributario), MX, topoDist);
-      const y2 = blocoDist('Por município', conta(ativosAtu, r => r.clientes.cidade), MX + 178, topoDist);
-      const y3 = blocoDist('Por segmento', conta(ativosAtu, r => r.segmento), MX + 356, topoDist);
+      const y1 = blocoDist('Por regime', mReg, MX, topoDist);
+      const y2 = blocoDist('Por município', mMun, MX + 178, topoDist);
+      const y3 = blocoDist('Por segmento', mSeg, MX + 356, topoDist);
       y = Math.max(y1, y2, y3) + 10;
       const motivos = conta(rows.filter(r => r.saida), r => r.motivo_saida || '(sem motivo)');
-      if (Object.keys(motivos).length) { y = blocoDist('Saídas por motivo (acumulado)', motivos, MX, y + 6) + 6; }
+      if (Object.keys(motivos).length) {
+        if (y + 6 + alturaDist(Object.keys(motivos).length) > 800) { doc.addPage(); cabecalho('Resumo — ' + rot + ' (continuação)'); }
+        y = blocoDist('Saídas por motivo (acumulado)', motivos, MX, y + 6) + 6;
+      }
 
       secao('Mês a mês (últimos 13)');
       doc.setFont('helvetica', 'bold').setFontSize(7).setTextColor(...CINZA);
@@ -875,15 +896,15 @@
       const [anoM, mesM] = mes.split('-');
       const rot = mesM + '/' + anoM;
       const lista = presenteEm(fimDe(mes))
-        .sort((a, b) => (a.clientes.nome_principal || '').localeCompare(b.clientes.nome_principal || ''));
+        .sort(porNome);
 
       const wb = XLSX.utils.book_new();
 
       // ---------- aba 1: a relação ----------
       const linhas = lista.map((r, i) => ({
         'Nº': i + 1,
-        'Empresa': r.clientes.nome_principal || '',
-        'CNPJ/CPF': r.clientes.documento || '',
+        'Empresa': nomeVis(r.clientes),
+        'CNPJ/CPF': docFmt(r.clientes.documento),
         'Regime': r.clientes.regime_tributario || '',
         'Município': r.clientes.cidade || '',
         'Entrada': r.entrada ? new Date(String(r.entrada).slice(0, 10) + 'T12:00:00') : '',
@@ -896,9 +917,9 @@
 
       // ---------- aba 2: o resumo (espelho do PDF) ----------
       const entrou = rows.filter(r => String(r.entrada || '').slice(0, 7) === mes)
-        .sort((a, b) => (a.clientes.nome_principal || '').localeCompare(b.clientes.nome_principal || ''));
+        .sort(porNome);
       const saiu = rows.filter(r => String(r.saida || '').slice(0, 7) === mes)
-        .sort((a, b) => (a.clientes.nome_principal || '').localeCompare(b.clientes.nome_principal || ''));
+        .sort(porNome);
       const ativosAtu = rows.filter(r => !r.saida);
       const conta = (arr, fn) => arr.reduce((m, r) => { const k = fn(r); if (k) m[k] = (m[k] || 0) + 1; return m; }, {});
       const aoa = [];
@@ -911,11 +932,11 @@
       aoa.push([]);
       aoa.push(['Entraram em ' + rot + ' (' + entrou.length + ')']);
       if (!entrou.length) aoa.push(['— ninguém']);
-      entrou.forEach(r => aoa.push([r.clientes.nome_principal, 'dia ' + String(r.entrada).slice(8, 10)]));
+      entrou.forEach(r => aoa.push([nomeVis(r.clientes), 'dia ' + String(r.entrada).slice(8, 10)]));
       aoa.push([]);
       aoa.push(['Saíram em ' + rot + ' (' + saiu.length + ')']);
       if (!saiu.length) aoa.push(['— ninguém']);
-      saiu.forEach(r => aoa.push([r.clientes.nome_principal, 'dia ' + String(r.saida).slice(8, 10), r.motivo_saida || 'sem motivo']));
+      saiu.forEach(r => aoa.push([nomeVis(r.clientes), 'dia ' + String(r.saida).slice(8, 10), r.motivo_saida || 'sem motivo']));
       aoa.push([]);
       const despeja = (titulo, mapa) => {
         aoa.push([titulo]);

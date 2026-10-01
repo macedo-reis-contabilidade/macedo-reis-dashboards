@@ -16,7 +16,8 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 //  { modo: 'detalhes', path_base: '/v1/pessoas', ids } → GET de cada id (4 de cada vez), devolve os itens
 //                                                        (path_base também pode ser .../eventos-financeiros/parcelas)
 //  { modo: 'receita', cnpjs }                          → dados públicos da Receita (BrasilAPI) de até 150 CNPJs, com o
-//                                                        nome oficial do município (IBGE). Não usa o token do Conta Azul.
+//                                                        nome oficial do município (IBGE), as atividades (CNAE principal e
+//                                                        secundárias) e os telefones do cadastro (v4). Não usa o token do Conta Azul.
 // ============================================================
 
 const API = 'https://api-v2.contaazul.com';
@@ -86,6 +87,11 @@ Deno.serve(async (req: Request) => {
           municipio: j.municipio ?? null, uf: j.uf ?? null, ibge: j.codigo_municipio_ibge ?? null,
           simples: j.opcao_pelo_simples ?? null, mei: j.opcao_pelo_mei ?? null,
           data_exclusao_simples: j.data_exclusao_do_simples ?? null, cnae: j.cnae_fiscal ?? null,
+          cnae_descricao: j.cnae_fiscal_descricao ?? null,
+          cnaes_secundarios: Array.isArray(j.cnaes_secundarios)
+            ? j.cnaes_secundarios.filter((x: any) => x?.codigo).map((x: any) => ({ codigo: x.codigo, descricao: x.descricao ?? null }))
+            : [],
+          telefones: [j.ddd_telefone_1, j.ddd_telefone_2].map((t: unknown) => String(t ?? '').replace(/\D/g, '')).filter((t: string) => t.length >= 10),
           natureza: j.natureza_juridica ?? null, abertura: j.data_inicio_atividade ?? null,
         } : { cnpj: c, erro: status });
         await new Promise((res) => setTimeout(res, 300));
