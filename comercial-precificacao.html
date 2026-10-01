@@ -936,8 +936,14 @@
     });
 
     const ST_PROP = ['recebida','rascunho','calculada','apresentada','fechada','descartada'];
+    let transPorProp = {}; // proposta_id -> id da transição criada a partir dela
     async function carregarProps(){
-      const { data } = await supabase.from('precificacoes').select('*').order('criado_em', { ascending: false }).limit(200);
+      const [{ data }, { data: trs }] = await Promise.all([
+        supabase.from('precificacoes').select('*').order('criado_em', { ascending: false }).limit(200),
+        supabase.from('transicoes').select('id, proposta_id').not('proposta_id', 'is', null)
+      ]);
+      transPorProp = {};
+      (trs || []).forEach(t => { if (!transPorProp[t.proposta_id]) transPorProp[t.proposta_id] = t.id; });
       const tb = document.getElementById('prProps');
       const lista = data || [];
       document.getElementById('prPropsVazio').style.display = lista.length ? 'none' : 'block';
@@ -959,10 +965,14 @@
           <td><select class="st-sel" data-st="${p.id}">${ST_PROP.map(s => `<option${s === p.status ? ' selected' : ''}>${s}</option>`).join('')}</select></td>
           <td style="color:var(--text-muted);">${new Date(p.criado_em).toLocaleDateString('pt-BR')}</td>
           <td style="color:var(--text-muted);">${p.criado_por ? p.criado_por.split('@')[0] : '—'}</td>
-          <td style="white-space:nowrap;">${p.status === 'fechada' ? `<button class="btn-x" data-trans="${p.id}" title="Iniciar transição da proposta fechada" style="background:none;border:none;color:var(--ok);cursor:pointer;">🚀</button> ` : ''}<button class="btn-x" data-dup="${p.id}" title="Duplicar como nova" style="background:none;border:none;color:var(--text-muted);cursor:pointer;">⧉</button> <button class="btn-x" data-del="${p.id}" title="Excluir" style="background:none;border:none;color:var(--text-muted);cursor:pointer;">✕</button></td>
+          <td style="white-space:nowrap;text-align:right;">${transPorProp[p.id]
+            ? `<a href="comercial-transicao.html?transicao=${transPorProp[p.id]}" data-vertrans="${p.id}" title="Abrir a transição desta proposta" style="display:inline-block;margin-right:10px;border:1px solid var(--line-strong);border-radius:8px;padding:3px 10px;font-size:12px;font-weight:600;color:var(--text-muted);text-decoration:none;">Ver transição →</a>`
+            : p.status === 'fechada'
+              ? `<button data-trans="${p.id}" title="Cria a transição: tarefas do kit, pré-cadastro do cliente e pasta no Drive" style="margin-right:10px;background:none;border:1px solid var(--ok);border-radius:8px;padding:3px 10px;font:inherit;font-size:12px;font-weight:600;color:var(--ok);cursor:pointer;">🚀 Iniciar transição</button>`
+              : ''}<button class="btn-x" data-dup="${p.id}" title="Duplicar como nova" style="background:none;border:none;color:var(--text-muted);cursor:pointer;">⧉</button> <button class="btn-x" data-del="${p.id}" title="Excluir" style="background:none;border:none;color:var(--text-muted);cursor:pointer;">✕</button></td>
         </tr>`).join('');
       tb.querySelectorAll('tr.prop').forEach(tr => tr.addEventListener('click', e => {
-        if (e.target.closest('.st-sel') || e.target.closest('[data-del]') || e.target.closest('[data-dup]') || e.target.closest('[data-trans]')) return;
+        if (e.target.closest('.st-sel') || e.target.closest('[data-del]') || e.target.closest('[data-dup]') || e.target.closest('[data-trans]') || e.target.closest('[data-vertrans]')) return;
         const p = lista.find(x => x.id === tr.dataset.pid);
         if (p.respostas && p.respostas._tipo === 'mei') { carregarPropostaMei(p); return; }
         respostas = p.respostas || {}; editandoId = p.id;
@@ -971,8 +981,12 @@
         trocarVisao('form'); renderForm();
       }));
       tb.querySelectorAll('.st-sel').forEach(s => s.addEventListener('change', async () => {
-        await supabase.from('precificacoes').update({ status: s.value, atualizado_em: new Date().toISOString() }).eq('id', s.dataset.st);
-        carregarProps();
+        const novo = s.value;
+        const p = lista.find(x => x.id === s.dataset.st);
+        const { error } = await supabase.from('precificacoes').update({ status: novo, atualizado_em: new Date().toISOString() }).eq('id', s.dataset.st);
+        await carregarProps();
+        // acabou de fechar e ainda não tem transição: a pergunta vem na hora (a mesma janela do "Iniciar transição")
+        if (!error && p && novo === 'fechada' && !transPorProp[p.id]) abrirModalTransicao(p, true);
       }));
       tb.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
         if (!confirm('Excluir esta proposta?')) return;
@@ -1006,7 +1020,7 @@
         if (!p) return;
         const { data: jaTem } = await supabase.from('transicoes').select('id').eq('proposta_id', p.id).limit(1);
         if (jaTem && jaTem.length) {
-          if (confirm('Esta proposta já tem uma transição aberta. Ir pra tela de transições?')) location.href = 'comercial-transicao.html';
+          if (confirm('Esta proposta já tem uma transição aberta. Abrir a transição?')) location.href = 'comercial-transicao.html?transicao=' + jaTem[0].id;
           return;
         }
         abrirModalTransicao(p);
@@ -1030,8 +1044,11 @@
       return false;
     };
     let propTransAtual = null;
-    function abrirModalTransicao(p) {
+    // aoFechar = aberta sozinha porque a proposta acabou de virar "fechada" (a pergunta vem na hora)
+    function abrirModalTransicao(p, aoFechar) {
       propTransAtual = p;
+      document.getElementById('tpTitulo').textContent = aoFechar ? '🚀 Proposta fechada — iniciar a transição?' : '🚀 Iniciar transição';
+      document.getElementById('tpCancelar').textContent = aoFechar ? 'Agora não' : 'Cancelar';
       document.getElementById('tpNome').textContent = p.cliente_nome + (p.honorario != null ? ' · honorário fechado: ' + fmt(p.honorario) + '/mês' : '');
       let docResp = '';
       const candChaves = [p.respostas && p.respostas.A1B, p.respostas && p.respostas.cnpj, p.respostas && p.respostas.documento];
@@ -1047,7 +1064,9 @@
       document.getElementById('tpDoc').value = (docResp.length === 11 || docResp.length === 14) ? docResp : '';
       // pasta é coisa de empresa: CPF nasce com a caixa desmarcada (dá pra marcar)
       document.getElementById('tpDrive').checked = docResp.length !== 11;
-      document.getElementById('tpMsg').textContent = '';
+      const tpMsg = document.getElementById('tpMsg');
+      tpMsg.style.color = 'var(--text-muted)';
+      tpMsg.textContent = aoFechar ? 'Deixando pra depois, o botão 🚀 Iniciar transição fica na linha da proposta.' : '';
       document.getElementById('tpConfirmar').disabled = false;
       document.getElementById('ovTransProp').style.display = 'flex';
     }
@@ -1121,8 +1140,8 @@
           })));
         }
         msg.style.color = 'var(--ok)';
-        msg.textContent = '✓ Transição criada' + (kit && kit.length ? ' com ' + kit.length + ' tarefa(s) do kit' : '') + (clienteId ? ' e cliente vinculado' : '') + '.' + pastaInfo + ' Abrindo a tela de transições…';
-        setTimeout(() => { location.href = 'comercial-transicao.html'; }, 1400);
+        msg.textContent = '✓ Transição criada' + (kit && kit.length ? ' com ' + kit.length + ' tarefa(s) do kit' : '') + (clienteId ? ' e cliente vinculado' : '') + '.' + pastaInfo + ' Abrindo a transição…';
+        setTimeout(() => { location.href = 'comercial-transicao.html?transicao=' + tr.id; }, 1400);
       } catch (ex) {
         msg.style.color = 'var(--err)';
         msg.textContent = 'Erro: ' + (ex && ex.message ? ex.message : ex);
@@ -1567,7 +1586,7 @@
   </script>
 <div id="ovTransProp" style="display:none;position:fixed;inset:0;background:var(--overlay);z-index:80;align-items:center;justify-content:center;">
   <div style="background:var(--surface);border:1px solid rgba(91,130,166,.35);border-radius:12px;padding:22px;max-width:470px;width:92%;">
-    <h3 style="margin:0 0 6px;">🚀 Iniciar transição</h3>
+    <h3 id="tpTitulo" style="margin:0 0 6px;">🚀 Iniciar transição</h3>
     <p id="tpNome" style="margin:0 0 14px;color:var(--text-muted);font-size:14px;"></p>
     <label style="display:block;margin-bottom:10px;font-size:13px;">Tipo da transição<br>
       <select id="tpTipo" class="input" style="width:100%;margin-top:4px;">
