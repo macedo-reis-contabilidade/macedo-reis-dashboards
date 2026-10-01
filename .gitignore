@@ -1,3 +1,8 @@
 
 # conferência visual local (tests/harness/conferir.py)
 .harness/
+
+# dado de cliente NUNCA entra no Git — o repositório é público (regra 9 do CLAUDE.md).
+# Entrada do scripts/pente-fino (o caminho está fixo no pente-fino.py): nome, CNPJ e CPF de clientes reais.
+# As saídas dos dois scripts já estão nos .gitignore de scripts/pente-fino/ e scripts/garimpo-alvaras/.
+pente-fino-insumo.csv
