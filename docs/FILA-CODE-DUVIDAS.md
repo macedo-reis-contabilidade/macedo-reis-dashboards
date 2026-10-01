@@ -30,3 +30,12 @@
   medir só a troca das telas pelo módulo, e não os dados de teste.
 - **Sugestões de melhoria só existe em 3 setores** (contábil, DP, fiscal). Não criei as telas que faltam nem mexi nos
   hubs: não era do item. Com o módulo pronto, cada uma é uma página fina de 30 linhas.
+
+## Verificação de 30/09 (Claude Code) — achado fora da fila
+- **`assets/js/rt-analise.js` calcula "hoje" em UTC** (`new Date().toISOString().slice(0, 10)`, linha ~123). Em Brasília (UTC−3),
+  depois das 21h o "hoje" já é o dia seguinte. Em 30/09/2026 — último dia da opção IBS/CBS — quem gerar a análise técnica da
+  Reforma depois das 21h recebe "a janela de setembro/2026 já fechou", com o prazo ainda aberto. É por isso que
+  `tests/rt-analise.test.mjs` falha em 2 checagens hoje à noite (também no `main`, fora desta branch): o teste não passa
+  `hojeISO` e depende do relógio. Correção sugerida: data local (`toLocaleDateString('sv-SE')` ou montar `AAAA-MM-DD` com
+  `getFullYear/getMonth/getDate`) e, no teste, passar `hojeISO` fixo. O mesmo padrão `toISOString().slice(0, 10)` aparece em ~40
+  lugares do repositório — vale uma revisão à parte de onde ele é usado como "hoje".
