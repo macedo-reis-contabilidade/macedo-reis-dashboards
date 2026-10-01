@@ -26,3 +26,13 @@
   feita na branch do item 2 (arquivo e texto idênticos: juntar as duas branches não gera conflito aqui).
 - **O `rodar-tudo.py` acha os testes sozinho** (`tests/*.test.mjs` + `tests/harness/*.py`, menos o `conferir.py`).
   Teste novo não precisa ser inscrito em lugar nenhum. A volta inteira leva cerca de 1 minuto e meio nesta máquina.
+
+## Verificação de 30/09 (Claude Code) — item 3
+- **O `rodar-tudo.py` não sai todo verde hoje à noite, e não é por causa do item 3.** O `tests/rt-analise.test.mjs` falha em 2
+  checagens depois das 21h de Brasília, também no `main`: o `assets/js/rt-analise.js` calcula "hoje" em UTC
+  (`new Date().toISOString().slice(0, 10)`), e às 21h de 30/09 em UTC já é 01/10 — a análise técnica da Reforma passa a dizer que
+  a janela de setembro fechou, no último dia do prazo. Com o relógio fixado em 30/09 12:00 o teste passa inteiro. Correção sugerida
+  (fora desta branch): data local no `rt-analise.js` e `hojeISO` fixo no teste. O padrão `toISOString().slice(0, 10)` aparece em
+  ~40 lugares do repositório — vale revisar onde é usado como "hoje".
+- **Quando os itens 1 e 2 forem publicados**, vale pôr na tabela do `tests/harness/README.md` os testes que eles trazem
+  (`relatorios-sugestoes.py` e `janelas-esc.py`). O `rodar-tudo.py` já acha os dois sozinho.
