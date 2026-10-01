@@ -281,7 +281,9 @@ export function initRotinasSetor(cfg) {
     const hoje = hojeLocal();   // dia no fuso local (toISOString é UTC)
     await supabase.from('tarefas').delete().in('regra_id', ids).eq('status', 'pendente').gte('prazo', hoje);
   }
-  async function gerar() { const { data } = await supabase.rpc('gerar_tarefas_recorrentes'); return Array.isArray(data) && data[0] ? data[0].criadas : 0; }
+  // p_hoje vai do navegador: sem ele o banco usa CURRENT_DATE, que é UTC — das 21h à meia-noite a função começaria
+  // em amanhã e a tarefa de hoje, apagada pelo apagarFuturas (dia local), não voltaria
+  async function gerar() { const { data } = await supabase.rpc('gerar_tarefas_recorrentes', { p_hoje: hojeLocal() }); return Array.isArray(data) && data[0] ? data[0].criadas : 0; }
 
   // ---------- janela: vincular / alterar ----------
   function abrir(m, lista) {

@@ -1,5 +1,7 @@
 // MOCK — dados inventados, só pro harness visual
-const hoje = new Date(); const ymd = d => d.toISOString().slice(0,10);
+// dia no fuso local, como as telas (hojeLocal/dataLocal): com toISOString (UTC), das 21h à meia-noite as tarefas
+// inventadas "de hoje" nasciam com a data de amanhã e o harness mostrava outra coisa que de dia
+const hoje = new Date(); const ymd = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 const add = n => { const d = new Date(); d.setDate(d.getDate()+n); return ymd(d); };
 const mesAtual = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0'); // o mês de referência padrão das telas
 const T = (i, titulo, setor, resp, prazo, prio, extra={}) => ({ id:'t'+i, titulo, setor, responsavel:resp, prazo, status:'pendente', prioridade:prio, cliente_id:null, proposta_id:null, hora:null, transicao_id:null, posicao:i*10, clientes:extra.cli?{nome_principal:extra.cli, documento:'00000000000000'}:null, concluida_em:null, concluida_por:null, ...extra });
