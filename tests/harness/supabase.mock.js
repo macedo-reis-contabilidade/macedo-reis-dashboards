@@ -5,7 +5,7 @@ const mesAtual = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart
 const T = (i, titulo, setor, resp, prazo, prio, extra={}) => ({ id:'t'+i, titulo, setor, responsavel:resp, prazo, status:'pendente', prioridade:prio, cliente_id:null, proposta_id:null, hora:null, transicao_id:null, posicao:i*10, clientes:extra.cli?{nome_principal:extra.cli, documento:'00000000000000'}:null, concluida_em:null, concluida_por:null, ...extra });
 const DATA = {
   tarefas: [
-    T(1,'Enviar guias do mês','fiscal','Thalia',add(0),'alta',{cli:'EMPRESA EXEMPLO LTDA'}),
+    T(1,'Enviar guias do mês','fiscal','Thalia',add(0),'alta',{cli:'EMPRESA EXEMPLO LTDA',competencia:'2026-09'}),
     T(3,'Balancete do trimestre','contabil','Adaini',add(0),'baixa'),
     T(51,'RECADASTRAMENTO SEFAZ RS - GERAIS','fiscal','Samuel',add(13),'media',{cli:'EMPRESA EXEMPLO LTDA'}),
     T(52,'RECADASTRAMENTO SEFAZ RS - GERAIS','fiscal','Samuel',add(13),'media',{cli:'COMÉRCIO MODELO ME'}),
@@ -17,7 +17,7 @@ const DATA = {
     T(9,'IRPF','irpf','Samuel',add(0),'media',{status:'concluida',concluida_em:new Date().toISOString(),concluida_por:'financeiro@macedoereis.com.br'}),
     T(10,'Renovar alvará','societario','Samuel',add(-3),'alta',{cli:'LOJA DE TESTE LTDA'}),
     T(11,'Cobrar honorários atrasados','financeiro','Samuel',add(-10),'alta'),
-    T(14,'Fechamento contábil','contabil','Adaini',add(12),'media',{cli:'COMÉRCIO MODELO ME'}),
+    T(14,'Fechamento contábil','contabil','Adaini',add(12),'media',{cli:'COMÉRCIO MODELO ME',competencia:'2026-08'}),
     // lote nas telas dos setores (tests/harness/lote-setores.py): um grupo fiscal com 3 e um societário com 2
     T(61,'Conferir notas de entrada','fiscal','Thalia',add(0),'media',{cli:'EMPRESA EXEMPLO LTDA'}),
     T(62,'Conferir notas de entrada','fiscal','Thalia',add(0),'media',{cli:'COMÉRCIO MODELO ME',status:'em_andamento'}),
@@ -66,6 +66,17 @@ const DATA = {
   ],
   transicoes: [
     { id:'tx1', titulo:'CONFECÇÃO TESTE LTDA', tipo:'entrada', proposta_id:'pp3', padrinho:null, inicio:add(-15), previsao_fim:add(75), tera_funcionarios:null, contato:null, observacao:'Aberta a partir da proposta fechada.', status:'em_andamento', concluida_em:null, criado_em:add(-15)+'T12:00:00Z', transicao_empresas:[] },
+  ],
+  // Sugestões de melhoria por setor (assets/js/sugestoes-setor.js; teste em tests/harness/relatorios-sugestoes.py)
+  sugestoes: [
+    { id:'s1', setor:'contabil', titulo:'CONFERÊNCIA EM DUPLICIDADE (TESTE)', autor:'Adaini', status:'nova', created_at:add(-2)+'T09:00:00Z',
+      melhoria:'Conferir o balancete uma vez só', como_atual:'Duas pessoas conferem o mesmo balancete', como_melhorar:'Dividir por competência', cenario_ideal:'Conferência automática', concluida_em:null, concluida_por:null },
+    { id:'s2', setor:'contabil', titulo:'PASTA ÚNICA DE DOCUMENTOS (TESTE)', autor:null, status:'concluida', created_at:add(-40)+'T09:00:00Z',
+      melhoria:'Uma pasta por empresa', como_atual:'Cada um guarda onde quer', como_melhorar:null, cenario_ideal:null, concluida_em:add(-5)+'T15:00:00Z', concluida_por:'financeiro@macedoereis.com.br' },
+    { id:'s3', setor:'dp', titulo:'AVISO DE FÉRIAS COM 40 DIAS (TESTE)', autor:'Vitória', status:'nova', created_at:add(-1)+'T09:00:00Z',
+      melhoria:'Avisar a empresa antes do prazo legal', como_atual:'Aviso sai junto com a folha', como_melhorar:'Tarefa recorrente 40 dias antes', cenario_ideal:null, concluida_em:null, concluida_por:null },
+    { id:'s4', setor:'fiscal', titulo:'CONFERIR XML ANTES DE FECHAR (TESTE)', autor:'Thalia', status:'nova', created_at:add(-3)+'T09:00:00Z',
+      melhoria:'Importar os XML no dia 5', como_atual:'Importação no fechamento', como_melhorar:null, cenario_ideal:'Nota conferida no mesmo dia', concluida_em:null, concluida_por:null },
   ],
   // Tarefas recorrentes por setor (assets/js/rotinas-setor.js; teste em tests/harness/rotinas-setor.py)
   rotinas_modelo: [

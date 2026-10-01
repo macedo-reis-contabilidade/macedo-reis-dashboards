@@ -1,0 +1,265 @@
+// =====================================================================
+// MACEDO & REIS — Sugestões de melhoria por setor
+// Um módulo só pra todos os setores — decisão do Samuel (29/09/2026): "os setores seguem a mesma lógica".
+// Nasceu das 3 cópias de *-sugestoes.html, que mudavam só o texto do setor; cada setor tem agora uma
+// página curtinha que chama initSugestoesSetor({ setor, nomeSetor, hub }).
+//
+// A equipe registra a ideia (melhoria, como é hoje, como poderia ser, cenário ideal); a sugestão
+// fica pendente até alguém concluir, e as concluídas ficam recolhidas no fim da lista.
+// =====================================================================
+import { supabase, getCurrentUser, signOut } from './supabase.js';
+import { formatDate } from './utils.js';
+
+const CSS = `
+    .toolbar-filters { display:flex; flex-wrap:wrap; gap:12px; align-items:center; flex:1 1 auto; }
+    .toolbar-filters .input-search { flex:1 1 240px; min-width:200px; max-width:360px; }
+
+    .sg-card { background:var(--fill-1); border:1px solid var(--line); border-radius:14px; padding:18px 20px; margin-bottom:12px; }
+    .sg-card-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+    .sg-title { font-size:16px; font-weight:600; color:var(--text); margin:0; }
+    .sg-meta { font-size:12px; color:var(--text-muted); margin:2px 0 14px; }
+    .sg-block { margin-bottom:10px; }
+    .sg-block:last-child { margin-bottom:0; }
+    .sg-block-lbl { font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--brand-light); margin-bottom:3px; }
+    .sg-block-txt { font-size:14px; color:var(--text); white-space:pre-wrap; line-height:1.5; }
+
+    .sg-actions { display:flex; gap:6px; flex:none; align-items:flex-start; }
+    .sg-act-done { background:rgba(63,176,122,.12); border:1px solid rgba(63,176,122,.30); color:var(--ok); cursor:pointer; font-size:13px; padding:4px 12px; border-radius:8px; white-space:nowrap; }
+    .sg-act-done:hover { background:rgba(63,176,122,.20); }
+    .sg-del { background:none; border:none; color:var(--text-dim); cursor:pointer; font-size:13px; padding:4px 8px; border-radius:8px; flex:none; }
+    .sg-del:hover { color:var(--err); background:rgba(224,108,108,.1); }
+
+    .sg-done-sec { margin-top:26px; }
+    .sg-done-sec-title { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--text-muted); margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid var(--line); }
+    .sg-done { background:var(--fill-1); border:1px solid var(--line); border-radius:10px; margin-bottom:8px; overflow:hidden; }
+    .sg-done > summary { display:flex; align-items:center; gap:10px; padding:11px 16px; cursor:pointer; list-style:none; }
+    .sg-done > summary::-webkit-details-marker { display:none; }
+    .sg-done-check { color:var(--ok); flex:none; }
+    .sg-done-title { color:var(--text-2); font-size:14px; font-weight:500; }
+    .sg-done-meta { color:var(--text-dim); font-size:12px; margin-left:auto; flex:none; white-space:nowrap; }
+    .sg-done-body { padding:6px 16px 16px; border-top:1px solid var(--line); }
+    .sg-done-acts { display:flex; gap:8px; margin-top:12px; }
+    .sg-act-reopen { background:var(--fill-1); border:1px solid var(--fill-3); color:var(--brand-pale); cursor:pointer; font-size:13px; padding:4px 12px; border-radius:8px; }
+    .sg-act-reopen:hover { background:var(--line); }
+
+    .fa-modal-overlay { position:fixed; inset:0; background:var(--overlay); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
+    .fa-modal-overlay.is-open { display:flex; }
+    .fa-modal { width:100%; max-width:560px; background:var(--surface); border:1px solid var(--fill-3); border-radius:16px; overflow:hidden; max-height:92vh; display:flex; flex-direction:column; }
+    .fa-modal-head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid var(--line); }
+    .fa-modal-head h3 { margin:0; color:var(--text); font-size:18px; }
+    .fa-modal-close { background:none; border:none; color:var(--text-muted); font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }
+    .fa-modal-close:hover { color:var(--text); }
+    .fa-modal-body { padding:22px; display:flex; flex-direction:column; gap:14px; overflow-y:auto; }
+    .fa-field { display:flex; flex-direction:column; gap:6px; }
+    .fa-field > span { font-size:13px; color:var(--brand-light); }
+    .fa-field-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .fa-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid var(--line); }
+    .fa-modal textarea.input { resize:vertical; font-family:inherit; }
+
+    @media (max-width:560px){ .fa-field-row { grid-template-columns:1fr; } .sg-done-meta { display:none; } }
+`;
+
+export function initSugestoesSetor(cfg) {
+  const C = { raiz: 'sgRaiz', ...cfg };
+  if (!C.setor || !C.nomeSetor || !C.hub) throw new Error('initSugestoesSetor: informe setor, nomeSetor e hub');
+  const SETOR = C.setor;
+
+  function esc(t){ return String(t==null?'':t).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
+
+  // ---------- estrutura da tela ----------
+  if (!document.getElementById('sgCss')) {
+    const st = document.createElement('style'); st.id = 'sgCss'; st.textContent = CSS; document.head.appendChild(st);
+  }
+  document.getElementById(C.raiz).innerHTML = `
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <a href="${esc(C.hub)}">${esc(C.nomeSetor)}</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Sugestões de melhoria</span>
+        </div>
+        <div class="eyebrow">Melhoria contínua</div>
+        <h1>${esc(C.nomeSetor)}</h1>
+        <p>Espaço para a equipe registrar ideias de melhoria nos processos do setor. Descreva como é feito hoje e como poderia ser melhor.</p>
+      </div>
+
+      <div class="toolbar">
+        <div class="toolbar-filters">
+          <input type="text" id="searchInput" class="input input-search" placeholder="Buscar por título, autor ou conteúdo…">
+        </div>
+        <button class="btn btn-primary" id="btnNova">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Adicionar sugestão
+        </button>
+      </div>
+
+      <div id="lista">
+        <div class="loading-row" style="padding:40px;text-align:center;"><span class="spinner"></span>Carregando sugestões…</div>
+      </div>`;
+
+  const modal = document.createElement('div');
+  modal.className = 'fa-modal-overlay';
+  modal.id = 'modalOverlay';
+  modal.innerHTML = `
+    <div class="fa-modal">
+      <div class="fa-modal-head"><h3>Adicionar sugestão</h3><button class="fa-modal-close" id="modalClose">&times;</button></div>
+      <div class="fa-modal-body">
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Seu nome</span><input type="text" id="fAutor" class="input" placeholder="Ex.: Thalia"></label>
+          <label class="fa-field"><span>Título da sugestão *</span><input type="text" id="fTitulo" class="input" placeholder="Resumo da ideia"></label>
+        </div>
+        <label class="fa-field"><span>Qual é a melhoria sugerida? *</span><textarea id="fMelhoria" class="input" rows="2" placeholder="Descreva a melhoria que você propõe"></textarea></label>
+        <label class="fa-field"><span>Como é feito atualmente?</span><textarea id="fAtual" class="input" rows="2" placeholder="Como o processo funciona hoje"></textarea></label>
+        <label class="fa-field"><span>Como imagina que pode ser melhorado?</span><textarea id="fMelhorar" class="input" rows="2" placeholder="A mudança que você imagina"></textarea></label>
+        <label class="fa-field"><span>O que seria o cenário ideal?</span><textarea id="fIdeal" class="input" rows="2" placeholder="O resultado perfeito, sem limitações"></textarea></label>
+      </div>
+      <div class="fa-modal-foot"><button class="btn btn-ghost" id="btnCancelar">Cancelar</button><button class="btn btn-primary" id="btnSalvar">Salvar sugestão</button></div>
+    </div>`;
+  document.body.appendChild(modal);
+
+  const lista = document.getElementById('lista');
+  const searchInput = document.getElementById('searchInput');
+  const overlay = document.getElementById('modalOverlay');
+
+  let all = [];
+  let usuarioEmail = null;
+
+  (async () => {
+    const user = await getCurrentUser();
+    if (user) {
+      usuarioEmail = user.email;
+      const n = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário';
+      document.getElementById('userName').textContent = n;
+      document.getElementById('userAvatar').textContent = n.charAt(0).toUpperCase();
+    }
+  })();
+  document.getElementById('btnLogout').addEventListener('click', signOut);
+
+  function abrir(){ overlay.classList.add('is-open'); }
+  function fechar(){ overlay.classList.remove('is-open'); }
+  document.getElementById('btnNova').addEventListener('click', abrir);
+  document.getElementById('modalClose').addEventListener('click', fechar);
+  document.getElementById('btnCancelar').addEventListener('click', fechar);
+  overlay.addEventListener('click', e => { if (e.target === overlay) fechar(); });
+
+  function bloco(lbl, txt){
+    if (!txt) return '';
+    return `<div class="sg-block"><div class="sg-block-lbl">${lbl}</div><div class="sg-block-txt">${esc(txt)}</div></div>`;
+  }
+
+  function cardPendente(s){
+    return `
+        <div class="sg-card">
+          <div class="sg-card-head">
+            <h3 class="sg-title">${esc(s.titulo)}</h3>
+            <div class="sg-actions">
+              <button class="sg-act-done" data-done="${s.id}">Concluir</button>
+              <button class="sg-del" data-del="${s.id}" title="Excluir sugestão">Excluir</button>
+            </div>
+          </div>
+          <div class="sg-meta">por ${esc(s.autor||'—')} · ${formatDate(s.created_at)}</div>
+          ${bloco('Melhoria sugerida', s.melhoria)}
+          ${bloco('Como é feito hoje', s.como_atual)}
+          ${bloco('Como poderia ser melhorado', s.como_melhorar)}
+          ${bloco('Cenário ideal', s.cenario_ideal)}
+        </div>`;
+  }
+
+  function linhaConcluida(s){
+    return `
+        <details class="sg-done">
+          <summary>
+            <svg class="sg-done-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            <span class="sg-done-title">${esc(s.titulo)}</span>
+            <span class="sg-done-meta">${s.autor?('por '+esc(s.autor)+' · '):''}concluída em ${s.concluida_em?formatDate(s.concluida_em):'—'}</span>
+          </summary>
+          <div class="sg-done-body">
+            ${bloco('Melhoria sugerida', s.melhoria)}
+            ${bloco('Como era feito', s.como_atual)}
+            ${bloco('Como poderia ser melhorado', s.como_melhorar)}
+            ${bloco('Cenário ideal', s.cenario_ideal)}
+            <div class="sg-done-acts">
+              <button class="sg-act-reopen" data-reopen="${s.id}">Reabrir</button>
+              <button class="sg-del" data-del="${s.id}">Excluir</button>
+            </div>
+          </div>
+        </details>`;
+  }
+
+  function render(){
+    const q = searchInput.value.toLowerCase().trim();
+    const match = s => !q || `${s.titulo} ${s.autor||''} ${s.melhoria||''}`.toLowerCase().includes(q);
+    const pend = all.filter(s => s.status !== 'concluida' && match(s));
+    const done = all.filter(s => s.status === 'concluida' && match(s));
+
+    if (pend.length === 0 && done.length === 0){
+      lista.innerHTML = `<div class="empty-state" style="padding:48px 24px;">
+          <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1h6c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z"/></svg>
+          <h3>${all.length===0?'Nenhuma sugestão ainda':'Nenhum resultado'}</h3>
+          <p>${all.length===0?'Clique em "Adicionar sugestão" para registrar a primeira ideia.':'Tente ajustar a busca.'}</p>
+        </div>`;
+      return;
+    }
+
+    let html = '';
+    if (pend.length) html += pend.map(cardPendente).join('');
+    if (done.length) html += `<div class="sg-done-sec"><div class="sg-done-sec-title">Concluídas · ${done.length}</div>${done.map(linhaConcluida).join('')}</div>`;
+    lista.innerHTML = html;
+
+    lista.querySelectorAll('[data-done]').forEach(b => b.addEventListener('click', async () => {
+      const { error } = await supabase.from('sugestoes').update({ status:'concluida', concluida_em:new Date().toISOString(), concluida_por: usuarioEmail }).eq('id', b.dataset.done);
+      if (error){ alert('Erro: ' + error.message); return; }
+      await load();
+    }));
+    lista.querySelectorAll('[data-reopen]').forEach(b => b.addEventListener('click', async () => {
+      const { error } = await supabase.from('sugestoes').update({ status:'nova', concluida_em:null, concluida_por:null }).eq('id', b.dataset.reopen);
+      if (error){ alert('Erro: ' + error.message); return; }
+      await load();
+    }));
+    lista.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('Excluir esta sugestão? Essa ação não pode ser desfeita.')) return;
+      const { error } = await supabase.from('sugestoes').delete().eq('id', b.dataset.del);
+      if (error){ alert('Erro ao excluir: ' + error.message); return; }
+      await load();
+    }));
+  }
+
+  document.getElementById('btnSalvar').addEventListener('click', async () => {
+    const titulo = document.getElementById('fTitulo').value.trim();
+    const autor = document.getElementById('fAutor').value.trim();
+    const melhoria = document.getElementById('fMelhoria').value.trim();
+    const como_atual = document.getElementById('fAtual').value.trim();
+    const como_melhorar = document.getElementById('fMelhorar').value.trim();
+    const cenario_ideal = document.getElementById('fIdeal').value.trim();
+    if (!titulo || !melhoria){ alert('Preencha pelo menos o título e a melhoria sugerida.'); return; }
+    const btn = document.getElementById('btnSalvar');
+    btn.disabled = true; btn.textContent = 'Salvando…';
+    const { error } = await supabase.from('sugestoes').insert({
+      setor: SETOR, titulo, autor: autor || null, melhoria,
+      como_atual: como_atual || null, como_melhorar: como_melhorar || null, cenario_ideal: cenario_ideal || null
+    });
+    btn.disabled = false; btn.textContent = 'Salvar sugestão';
+    if (error){ alert('Erro ao salvar: ' + error.message); return; }
+    ['fTitulo','fAutor','fMelhoria','fAtual','fMelhorar','fIdeal'].forEach(id => document.getElementById(id).value = '');
+    fechar();
+    await load();
+  });
+
+  async function load(){
+    const { data, error } = await supabase
+      .from('sugestoes')
+      .select('*')
+      .eq('setor', SETOR)
+      .order('created_at', { ascending: false });
+    if (error){
+      lista.innerHTML = `<div class="empty-state"><h3>Erro ao carregar</h3><p>${esc(error.message)}</p></div>`;
+      return;
+    }
+    all = data || [];
+    render();
+  }
+
+  searchInput.addEventListener('input', render);
+  load();
+}

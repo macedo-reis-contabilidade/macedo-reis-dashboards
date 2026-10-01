@@ -29,6 +29,7 @@ Sistema interno de gestão do escritório **Macedo & Reis Contabilidade** (Três
 - `financeiro-boletos.html` — grade mensal (`cobrancas_mensais`), base `cobrancas_config` (decide **quem** é cobrado), **geração copia a última competência** (valores/canais/dia vivos) com fallback da base pra empresa nova, **pula quem tem saída na carteira**, ✕ pergunta "só este mês ou parar de vez".
 - Demais `financeiro-*`, `contabil-*`, `dp-*`, `societario*`, `gestao*` — módulos por setor (rotinas, tarefas, controles próprios).
 - `dp-regras.html`, `contabil-regras.html`, `financeiro-regras.html` — **Tarefas recorrentes** (rotinas com empresas): páginas finas que chamam o **módulo único** `assets/js/rotinas-setor.js` (`initRotinasSetor({ setor, nomeSetor, hub, equipe })`). Os setores seguem a mesma lógica (decisão do Samuel, 29/09/2026): setor novo = página fina + card no hub — nunca copiar a lógica. `fiscal-`, `comercial-` e `societario-regras.html` ainda são a versão antiga, sem card no hub.
+- `*-relatorios.html` (7 setores) e `*-sugestoes.html` (contábil, DP, fiscal) — **Relatórios** e **Sugestões de melhoria**: páginas finas dos **módulos únicos** `assets/js/relatorios-setor.js` (`initRelatoriosSetor({ setor, nomeSetor, hub, rotuloVazio })`) e `assets/js/sugestoes-setor.js` (`initSugestoesSetor({ setor, nomeSetor, hub })`). Mesma regra das Tarefas recorrentes: setor novo = página fina — nunca copiar a lógica.
 - `ajuda.html` — manual + novidades (manter atualizado, regra 7).
 
 ## Banco (Supabase) — tabelas centrais
