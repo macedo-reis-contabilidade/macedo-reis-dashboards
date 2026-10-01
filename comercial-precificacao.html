@@ -264,6 +264,7 @@
 
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { hojeLocal, dataLocal } from './assets/js/utils.js';   // dia no fuso local (toISOString é UTC)
     const user = await getCurrentUser();
     if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; const av = document.getElementById('userAvatar'); if (av) av.textContent = (user.email || '?').charAt(0).toUpperCase(); }
     const btnOut = document.getElementById('btnLogout');
@@ -1119,8 +1120,8 @@
           }
         }
         if (clienteId && !p.cliente_id) await supabase.from('precificacoes').update({ cliente_id: clienteId, atualizado_em: new Date().toISOString() }).eq('id', p.id);
-        const hoje = new Date().toISOString().slice(0, 10);
-        const prev = new Date(Date.now() + 90 * 864e5).toISOString().slice(0, 10);
+        const hoje = hojeLocal();
+        const prev = dataLocal(new Date(Date.now() + 90 * 864e5));
         const { data: tr, error: eTr } = await supabase.from('transicoes').insert({
           titulo: p.cliente_nome, tipo, inicio: hoje, previsao_fim: prev,
           contato: p.contato || null, proposta_id: p.id,
@@ -1134,7 +1135,7 @@
           await supabase.from('tarefas').insert(kit.map(k => ({
             setor: k.setor, tipo: 'tarefa', titulo: k.titulo,
             responsavel: k.responsavel_padrao || null,
-            prazo: new Date(base + (k.prazo_dias || 0) * 864e5).toISOString().slice(0, 10),
+            prazo: dataLocal(new Date(base + (k.prazo_dias || 0) * 864e5)),
             status: 'pendente', origem: 'transicao',
             transicao_id: tr.id, fase: k.fase || null, cliente_id: clienteId
           })));

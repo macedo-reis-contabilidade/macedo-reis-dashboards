@@ -10,6 +10,7 @@
 // como rotinas "avulsas", com a opção "transformar em rotina".
 // =====================================================================
 import { supabase, getCurrentUser, signOut } from './supabase.js';
+import { hojeLocal } from './utils.js';
 
 const CSS = `
   .rv { display:grid; grid-template-columns:minmax(240px, 320px) minmax(0, 1fr); gap:16px; align-items:start; }
@@ -277,7 +278,7 @@ export function initRotinasSetor(cfg) {
   // tarefas pendentes a partir de hoje dessas regras: saem pra nascer de novo com a data certa
   async function apagarFuturas(ids) {
     if (!ids.length) return;
-    const hoje = new Date().toISOString().slice(0, 10);
+    const hoje = hojeLocal();   // dia no fuso local (toISOString é UTC)
     await supabase.from('tarefas').delete().in('regra_id', ids).eq('status', 'pendente').gte('prazo', hoje);
   }
   async function gerar() { const { data } = await supabase.rpc('gerar_tarefas_recorrentes'); return Array.isArray(data) && data[0] ? data[0].criadas : 0; }

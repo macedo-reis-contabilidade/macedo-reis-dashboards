@@ -171,6 +171,7 @@
 
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { dataLocal } from './assets/js/utils.js';   // dia no fuso local (toISOString é UTC)
 
     const fmt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
     const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -461,7 +462,7 @@
       const errPl = await carregarPlanilha();
       if (errPl) { el('relCorpo').innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--danger);padding:30px;">Erro ao carregar: ' + errPl.message + '</td></tr>'; return; }
       const { ops, alv } = planCache;
-      const hojeStr = hoje.toISOString().slice(0, 10);
+      const hojeStr = dataLocal(hoje);
       el('relCabecalho').innerHTML = '<tr><th>#</th><th>Banco</th><th>Titular</th><th style="text-align:right;">Parcela (R$)</th><th>Início</th><th>Última parcela</th><th style="text-align:right;">Restante (R$)</th><th>Obs.</th></tr>';
       let html = ''; let totMensal = 0, totRestante = 0;
       const porTitular = new Map();
@@ -660,7 +661,7 @@
       if (errPl) { alert('Erro ao carregar os contratos: ' + errPl.message); return; }
       const logo = await logoParaPDF();
       const { ops, alv } = planCache;
-      const hojeStr = hoje.toISOString().slice(0, 10);
+      const hojeStr = dataLocal(hoje);
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'landscape' });
       const W = doc.internal.pageSize.getWidth();

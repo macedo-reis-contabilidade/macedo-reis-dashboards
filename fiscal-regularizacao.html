@@ -176,6 +176,7 @@
 
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { hojeLocal } from './assets/js/utils.js';   // dia no fuso local (toISOString é UTC)
 
     const $ = id => document.getElementById(id);
     const escapeHtml = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -217,7 +218,7 @@
     }
 
     function render() {
-      const hoje = new Date().toISOString().slice(0, 10);
+      const hoje = hojeLocal();
       const base = filtroCampanha === 'todas' ? casos : casos.filter(c => (c.campanha || 'Sem campanha') === filtroCampanha);
       const totD = base.reduce((a, c) => a + (+c.total_debitos || 0), 0);
       const totE = base.reduce((a, c) => a + (+c.entrada_prevista || 0), 0);
@@ -490,7 +491,7 @@
       $('nvMsg').textContent = '';
       const { data: cls } = await supabase.todosClientes('id, nome_principal', q => q.eq('status', 'ativo').eq('tipo_pessoa', 'PJ'));
       $('nvCliente').innerHTML = '<option value="">— selecionar —</option>' + (cls || []).sort((a, b) => a.nome_principal.localeCompare(b.nome_principal)).map(c => '<option value="' + c.id + '">' + escapeHtml(c.nome_principal) + '</option>').join('');
-      const hj = new Date().toISOString().slice(0, 10);
+      const hj = hojeLocal();
       $('nvBase').value = hj;
       $('ovNovo').classList.add('on');
     };
