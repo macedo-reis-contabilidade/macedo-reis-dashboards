@@ -37,3 +37,6 @@ inventados quando um teste precisar; os testes leem o banco falso por `window.__
 | `lote-setores.py` | concluir e registrar andamento em lote nas telas de tarefas dos setores |
 | `obrigacoes-responsavel.py` | responsável obrigatório no vínculo de obrigação fiscal |
 | `rotinas-setor.py` | o módulo único de tarefas recorrentes por setor (`assets/js/rotinas-setor.js`) |
+| `rotinas-excluir.py` | excluir rotina nas Tarefas recorrentes só depois de desvincular as empresas (`assets/js/rotinas-setor.js`) |
+| `obrigacoes-mes-concluido.py` | Obrigações fiscais: obrigação com o mês todo concluído não some do filtro "Pendentes do mês" |
+| `proposta-transicao.py` | Precificação: proposta fechada pergunta pela transição (aba Propostas) |
