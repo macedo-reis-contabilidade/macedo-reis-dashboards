@@ -12,6 +12,7 @@
 
     /* Cor de identidade por setor (no ícone) */
     a[href="fiscal-tarefas.html"]     .dashboard-card-icon { background: rgba(138,174,200,.16); color:#8AAEC8; }
+    a[href="fiscal-regras.html"]     .dashboard-card-icon { background: rgba(63,176,122,.16); color:#3FB07A; }
     a[href="fiscal-obrigacoes.html"] .dashboard-card-icon { background: rgba(63,176,122,.15);  color:#3FB07A; }
     a[href="fiscal-clientes.html"]   .dashboard-card-icon { background: rgba(133,151,224,.15); color:#8597E0; }
     a[href="fiscal-regularizacao.html"] .dashboard-card-icon { background: rgba(232,161,92,.15); color:#E8A15C; }
@@ -67,6 +68,15 @@
           <h3>Tarefas</h3>
           <p>Tarefas do dia a dia do setor, agrupadas por tipo, com faixa de foco por vencimento.</p>
           <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="fiscal-tarefas.html">·</span></div>
+        </a>
+
+        <a href="fiscal-regras.html" class="dashboard-card">
+          <div class="dashboard-card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+          </div>
+          <h3>Tarefas recorrentes</h3>
+          <p>Rotinas do setor que não são obrigação fiscal: vincule várias empresas de uma vez, cada uma com sua data e periodicidade. As obrigações continuam em Obrigações.</p>
+          <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="fiscal-regras.html">·</span></div>
         </a>
 
         <a href="fator-r.html" class="dashboard-card">
@@ -173,7 +183,7 @@
           pill.className = 'badge-hoje'; pill.textContent = hoje + ' hoje';
           card.appendChild(pill);
         }
-        ['fiscal-clientes.html','fiscal-relatorios.html','fiscal-sugestoes.html']
+        ['fiscal-regras.html','fiscal-clientes.html','fiscal-relatorios.html','fiscal-sugestoes.html']
           .forEach(h => setBadge(h, '—'));
       } catch (e) { console.error(e); }
     }
