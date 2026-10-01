@@ -61,14 +61,11 @@
     .ag-lateral { display:none; }
     @media (min-width:1640px){
       .ag-lateral { display:block; position:fixed; top:92px; width:248px; max-height:calc(100vh - 116px); overflow:auto; z-index:5; }
-      .ag-lateral.esq { left:24px; }
       .ag-lateral.dir { right:24px; }
+      /* 01/10/2026: saíram os Atalhos da esquerda — a Agenda usa a largura até o Radar (alinhada à esquerda com o topo;
+         em monitor muito largo, centrada no espaço que sobra ao lado do Radar) */
+      main.content.ag { max-width:min(1700px, calc(100% - 272px)); margin-left:max(0px, calc((100% - 272px - 1700px) / 2)); margin-right:0; padding-right:32px; }
       .ag-lat-tit { font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--text-dim); margin:0 0 8px; }
-      .ag-atalho { display:block; padding:6px 10px; margin-bottom:1px; color:var(--text-muted); text-decoration:none; font-size:12.5px; border-left:2px solid transparent; border-radius:0 var(--ag-r-sm) var(--ag-r-sm) 0; }
-      .ag-atalho:hover { color:var(--text); border-left-color:rgba(91,130,166,.7); background:var(--ag-fill); }
-      .ag-atalho-ck { display:block; font-size:12px; color:var(--text-muted); padding:4px 2px; cursor:pointer; }
-      .ag-lat-btn { background:none; border:none; color:var(--text-dim); font-size:11px; cursor:pointer; padding:6px 10px; margin-top:2px; text-decoration:underline dotted; }
-      .ag-lat-btn:hover { color:var(--brand-pale); }
       .ag-radar-card { display:block; padding:6px 10px; margin-bottom:4px; border-left:2px solid rgba(91,130,166,.55); color:var(--text-muted); font-size:12px; line-height:1.4; text-decoration:none; border-radius:0 var(--ag-r-sm) var(--ag-r-sm) 0; }
       .ag-radar-card b { color:var(--text); }
       .ag-radar-card:hover { background:var(--ag-fill); color:var(--brand-pale); }
@@ -1438,42 +1435,7 @@
       ], 'agenda_v1', new URLSearchParams(location.search).has('tour'), au2?.data?.user?.email || '');
     }
   
-    // ---------- laterais (telas largas): atalhos + radar do escritório ----------
-    const ATALHO_CATALOGO = [
-      ['clientes/index.html', '👥 Clientes'],
-      ['fator-r.html', '📈 Fator R'],
-      ['societario-alvaras.html', '📜 Alvarás'],
-      ['comercial-precificacao.html', '💰 Precificação'],
-      ['comercial-transicao.html', '🔄 Transições'],
-      ['relatorios-vivos.html', '📊 Relatórios Vivos'],
-      ['comercial-carteira.html', '💼 Carteira'],
-      ['fiscal-obrigacoes.html', '🧾 Obrigações fiscais'],
-      ['financeiro-boletos.html', '💳 Boletos'],
-      ['irpf-declaracoes.html', '🧮 IRPF'],
-      ['dp.html', '🧑‍🏭 DP'],
-      ['contabil.html', '📚 Contábil']
-    ];
-    function atalhosSalvos() {
-      try { const v = JSON.parse(localStorage.getItem('ag_atalhos_' + (usuarioEmail || '')) || 'null'); if (Array.isArray(v) && v.length) return v; } catch (e) {}
-      return ['clientes/index.html', 'fator-r.html', 'societario-alvaras.html', 'comercial-precificacao.html', 'relatorios-vivos.html'];
-    }
-    function montarAtalhos(editando) {
-      const box = document.getElementById('agAtalhosBox'); if (!box) return;
-      const sel = atalhosSalvos();
-      if (!editando) {
-        box.innerHTML = sel.map(h => { const it = ATALHO_CATALOGO.find(a => a[0] === h); return it ? '<a class="ag-atalho" href="' + it[0] + '">' + it[1] + '</a>' : ''; }).join('') +
-          '<button id="agAtEd" class="ag-lat-btn">✎ editar</button>';
-        document.getElementById('agAtEd').onclick = () => montarAtalhos(true);
-      } else {
-        box.innerHTML = ATALHO_CATALOGO.map(a => '<label class="ag-atalho-ck"><input type="checkbox" value="' + a[0] + '"' + (sel.includes(a[0]) ? ' checked' : '') + '> ' + a[1] + '</label>').join('') +
-          '<button id="agAtOk" class="ag-lat-btn">salvar</button>';
-        document.getElementById('agAtOk').onclick = () => {
-          const marcados = Array.from(box.querySelectorAll('input:checked')).map(i => i.value);
-          localStorage.setItem('ag_atalhos_' + (usuarioEmail || ''), JSON.stringify(marcados));
-          montarAtalhos(false);
-        };
-      }
-    }
+    // ---------- lateral (telas largas): radar do escritório ----------
     async function montarRadar() {
       const box = document.getElementById('agRadarBox'); if (!box) return;
       try {
@@ -1517,10 +1479,8 @@
         box.innerHTML = cards.length ? cards.join('') : '<span class="ag-lat-vazio">tudo em dia por aqui 🎉</span>';
       } catch (e) { box.innerHTML = ''; }
     }
-    montarAtalhos(false);
     montarRadar();
 </script>
-<aside class="ag-lateral esq ag"><p class="ag-lat-tit">Atalhos</p><div id="agAtalhosBox"></div></aside>
 <aside class="ag-lateral dir ag"><p class="ag-lat-tit">Radar do escritório</p><div id="agRadarBox"></div></aside>
 </body>
 </html>

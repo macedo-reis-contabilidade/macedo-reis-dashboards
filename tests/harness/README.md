@@ -33,6 +33,7 @@ inventados quando um teste precisar; os testes leem o banco falso por `window.__
 
 | Teste | Cobre |
 |---|---|
+| `agenda-lateral.py` | a lateral da Agenda em telas largas: sem Atalhos, Radar à direita e a Agenda usando a largura até ele, sem encostar |
 | `data-local.py` | o "hoje" no fuso de Brasília (`hojeLocal`/`dataLocal` do `assets/js/utils.js`): às 22h30 de 30/09, quando o UTC já é 01/10, seis telas gravam e comparam 30/09 |
 | `importar-xml.py` | o parser de notas (`assets/js/importar-xml.js`): NF-e, evento de cancelamento, NFS-e nacional, descontos, XML mal formado. Roda no navegador porque o Node não tem `DOMParser` |
 | `lote-setores.py` | concluir e registrar andamento em lote nas telas de tarefas dos setores |
