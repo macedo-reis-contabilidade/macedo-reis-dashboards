@@ -14,6 +14,14 @@
 //   3. Modo novo 'backfill_dias' (body: { modo: 'backfill_dias', dias_de, dias_ate,
 //      máx. 31 dias por chamada — fatiar por mês }) para preencher o histórico.
 //      O modo 'backfill' mensal NÃO preenche data_pagamento; só o backfill_dias.
+//
+// v6 — 01/10/2026 (Claude, com o ok do Samuel): limpeza das parcelas apagadas no Conta Azul.
+//   A sincronização só gravava e atualizava; o que era apagado no Conta Azul ficava pra sempre
+//   no espelho ("parcelas fantasmas" — em 01/10 eram 176, R$ 42.763,27, inflando o previsto dos
+//   Relatórios Vivos). Agora, no modo 'backfill' (as passadas completas de domingo), DEPOIS de
+//   varrer a janela inteira sem erro, as parcelas da janela que a passada não viu são conferidas
+//   uma a uma na API (parcela por id) e só sai do espelho a que o Conta Azul responder 404.
+//   Detalhes em limparSumidas(). Corpo { simular: true } só relata, não apaga.
 // ============================================================
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
@@ -122,6 +130,58 @@ async function varrer(token: string, natureza: 'receita' | 'despesa', extra: Rec
     if (pagina > 200) throw new Error('Paginação estourou 200 páginas — abortando por segurança');
   }
   return gravadas;
+}
+
+// Limpeza das parcelas sumidas (v6). Só roda no fim de uma passada 'backfill' que varreu a janela
+// inteira sem erro (se a varredura falha, a função cai no catch antes de chegar aqui).
+//  • candidatas: parcelas com vencimento na janela que a passada não regravou (sincronizado_em
+//    anterior ao início da passada) — as mais antigas primeiro, no máximo LIMPEZA_MAX por rodada;
+//  • cada candidata é conferida na API pelo id: 404 = não existe mais no Conta Azul → sai do espelho;
+//    200 = existe → fica como está (o formato da consulta por id é outro, então não é regravada);
+//    qualquer outra resposta → fica, e entra no relatório como falha;
+//  • o apagar repete a trava "não regravada nesta passada", então nada que o incremental tenha
+//    acabado de gravar sai por engano.
+const LIMPEZA_MAX = 300;
+const PARCELA_POR_ID = '/v1/financeiro/eventos-financeiros/parcelas/';
+
+async function caStatus(token: string, path: string): Promise<number> {
+  for (let tentativa = 0; tentativa < 5; tentativa++) {
+    const resp = await fetch(`${API}${path}`, { headers: { 'Authorization': `Bearer ${token}` } });
+    await resp.body?.cancel();
+    if (resp.status === 429) { await new Promise(r => setTimeout(r, 1500 * (tentativa + 1))); continue; }
+    return resp.status;
+  }
+  return 429;
+}
+
+async function limparSumidas(token: string, deIso: string, ateIso: string, inicioPassada: string, simular: boolean) {
+  const { data: cand, error } = await sb.from('ca_parcelas').select('id')
+    .gte('data_vencimento', deIso).lte('data_vencimento', ateIso)
+    .lt('sincronizado_em', inicioPassada)
+    .order('data_vencimento', { ascending: true })
+    .limit(LIMPEZA_MAX + 1);
+  if (error) throw new Error('leitura das candidatas falhou: ' + error.message);
+  const ids: string[] = (cand ?? []).map((r: { id: string }) => r.id);
+  const conferir = ids.slice(0, LIMPEZA_MAX);
+  const sumidas: string[] = [], vivas: string[] = [], falhas: string[] = [];
+  for (let i = 0; i < conferir.length; i += 4) {
+    const lote = conferir.slice(i, i + 4);
+    const sts = await Promise.all(lote.map((id) => caStatus(token, PARCELA_POR_ID + id).catch(() => -1)));
+    sts.forEach((st, j) => (st === 404 ? sumidas : st === 200 ? vivas : falhas).push(lote[j]));
+  }
+  let apagadas = 0;
+  if (!simular) {
+    for (let i = 0; i < sumidas.length; i += 200) {
+      const { data: del, error: eDel } = await sb.from('ca_parcelas').delete()
+        .in('id', sumidas.slice(i, i + 200)).lt('sincronizado_em', inicioPassada).select('id');
+      if (eDel) throw new Error('apagar falhou: ' + eDel.message);
+      apagadas += del?.length ?? 0;
+    }
+  }
+  return {
+    simular, candidatas: conferir.length, sobrou_pra_proxima: ids.length > LIMPEZA_MAX,
+    sumidas: sumidas.length, apagadas, vivas: vivas.length, falhas: falhas.length,
+  };
 }
 
 // Passada mensal de pagamentos: zera a marca do mês e remarca com quem a API diz que foi pago nele
@@ -241,7 +301,7 @@ async function sincronizarCategorias(token: string): Promise<number> {
   return gravadas;
 }
 
-Deno.serve(async (req) => {
+Deno.serve(async (req: Request) => {
   // Tranca (31/08/2026): só quem apresenta a chave de sincronização passa — os agendadores do banco a enviam no cabeçalho x-sync-key
   const { data: cfgKey } = await sb.from('configuracoes_escritorio').select('valor').eq('chave', 'ca_sync_key').single();
   const chaveRecebida = req.headers.get('x-sync-key') || '';
@@ -317,6 +377,7 @@ Deno.serve(async (req) => {
       mesesPagamento = [anterior, agora];
     }
 
+    const inicioPassada = new Date().toISOString();
     const receitas = await varrer(token, 'receita', extra);
     const despesas = await varrer(token, 'despesa', extra);
 
@@ -350,16 +411,29 @@ Deno.serve(async (req) => {
 
     const categorias = modo === 'backfill' || Math.random() < 0.1 ? await sincronizarCategorias(token) : 0;
 
+    // Limpeza das parcelas sumidas (v6): só nas passadas completas. Falha aqui não derruba a
+    // passada (o espelho já foi atualizado) — fica anotada no log e no retorno.
+    let limpeza: Record<string, unknown> | null = null;
+    if (modo === 'backfill' && janelaDe && janelaAte) {
+      try {
+        limpeza = await limparSumidas(token, janelaDe, janelaAte, inicioPassada, body.simular === true);
+      } catch (eL) {
+        limpeza = { erro: eL instanceof Error ? eL.message : String(eL) };
+      }
+      console.info('ca-sync limpeza', janelaDe, janelaAte, JSON.stringify(limpeza));
+    }
+
     await sb.from('ca_sync_log').update({
       concluido_em: new Date().toISOString(),
       janela_de: janelaDe ? new Date(janelaDe + (janelaDe.length === 10 ? 'T00:00:00-03:00' : '-03:00')).toISOString() : null,
       janela_ate: janelaAte ? new Date(janelaAte + (janelaAte.length === 10 ? 'T23:59:59-03:00' : '-03:00')).toISOString() : null,
       parcelas_upsert: receitas + despesas,
       categorias_upsert: categorias,
-      sucesso: true
+      sucesso: true,
+      ...(limpeza?.erro ? { erro: 'limpeza: ' + String(limpeza.erro) } : {})
     }).eq('id', logId);
 
-    return json(200, { ok: true, modo, receitas, despesas, pagamentosMarcados, pagamentosDia, categorias, ms: Date.now() - t0 });
+    return json(200, { ok: true, modo, receitas, despesas, pagamentosMarcados, pagamentosDia, categorias, limpeza, ms: Date.now() - t0 });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await sb.from('ca_sync_log').update({ concluido_em: new Date().toISOString(), sucesso: false, erro: msg }).eq('id', logId);
