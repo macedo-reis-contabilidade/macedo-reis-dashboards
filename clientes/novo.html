@@ -606,15 +606,19 @@
         if (falhas.length) alert('Cliente criado, mas os setores contratados não foram salvos: ' + falhas.join('; ') + '.\nMarque-os de novo na tela de edição do cliente.');
       }
 
-      // sócios detectados na extração do documento → gravados já no cadastro
+      // sócios detectados na extração do documento → gravados já no cadastro, com os dados pessoais da
+      // qualificação no contrato (RG, nascimento, estado civil, nacionalidade, profissão, endereço residencial).
+      // A leitura traz esses campos desde 15/09, mas aqui só iam nome/CPF/participação e o kit de boas-vindas
+      // nascia avisando "faltam: RG, endereço residencial..." (corrigido em 02/10/2026)
       if (sociosExtraidos.length > 0) {
         const sociosPayload = sociosExtraidos.map(s => ({
           cliente_id: novo.id,
-          nome: s.nome,
-          cpf: s.cpf ? onlyDigits(String(s.cpf)) : null,
-          participacao_percentual: (s.participacao_percentual != null ? s.participacao_percentual : null),
+          nome: String(s.nome).trim(),
+          cpf: s.cpf ? (onlyDigits(String(s.cpf)) || null) : null,
+          participacao_percentual: percentualOuNull(s.participacao_percentual),
           qualificacao: s.qualificacao || null,
-          eh_administrador: !!s.eh_administrador
+          eh_administrador: !!s.eh_administrador,
+          ...dadosPessoaisSocio(s)
         }));
         const { error: socErr } = await supabase.from('socios').insert(sociosPayload);
         if (socErr) alert('Cliente criado, mas os sócios não foram salvos: ' + socErr.message + '\nCadastre-os na tela de edição do cliente.');
@@ -727,6 +731,49 @@
     }
 
     // ---------- Extração automática por documento ----------
+    // dados pessoais do sócio que a leitura do contrato traz (os que o kit de boas-vindas usa). Só entra o que
+    // veio: campo vazio fica de fora (sem nacionalidade, vale o padrão do banco). Data só em formato válido —
+    // o banco recusaria "31/02/1980" e derrubaria a gravação de TODOS os sócios do cliente.
+    function dataNascimentoIso(v){
+      let s = String(v ?? '').trim();
+      const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      if (br) s = `${br[3]}-${br[2]}-${br[1]}`;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+      const [a, m, d] = s.split('-').map(Number);
+      const dt = new Date(Date.UTC(a, m - 1, d));
+      return (dt.getUTCFullYear() === a && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d) ? s : null;
+    }
+    function dadosPessoaisSocio(s){
+      const out = {};
+      ['rg', 'estado_civil', 'nacionalidade', 'profissao', 'endereco_residencial'].forEach(k => {
+        const v = String(s?.[k] ?? '').trim();
+        if (v) out[k] = v;
+      });
+      const nasc = dataNascimentoIso(s?.data_nascimento);
+      if (nasc) out.data_nascimento = nasc;
+      return out;
+    }
+    // participação: número, ou texto tipo "50" / "33,33" / "50%"; o que não for número vira vazio (não derruba a gravação)
+    function percentualOuNull(v){
+      if (v == null || String(v).trim() === '') return null;
+      const n = typeof v === 'number' ? v : Number(String(v).replace(/[%\s]/g, '').replace(',', '.'));
+      return Number.isFinite(n) ? n : null;
+    }
+    // o que o kit de boas-vindas vai pedir de cada sócio (mesma conta do aviso do kit em clientes/editar.html)
+    function resumoKitSocios(lista){
+      const faltando = lista.map(s => {
+        const p = dadosPessoaisSocio(s), f = [];
+        if (!p.rg) f.push('RG');
+        if (!p.endereco_residencial) f.push('endereço residencial');
+        if (!p.estado_civil) f.push('estado civil');
+        if (!p.data_nascimento) f.push('nascimento');
+        return { nome: String(s.nome).trim(), f };
+      }).filter(x => x.f.length);
+      if (!faltando.length) return ', com RG, nascimento, estado civil e endereço residencial (o kit de boas-vindas sai completo).';
+      return '. O documento não trouxe: ' + faltando.map(x => x.f.join(', ') + ' de ' + x.nome).join('; ')
+        + ' — o kit de boas-vindas vai pedir isso (complete na seção Sócios do cliente).';
+    }
+
     let sociosExtraidos = [];
     let arquivosDoc = [];
     const docFiles = document.getElementById('docFiles');
@@ -777,7 +824,7 @@
         preencherDoExtrator(d);
         const conf = d.confianca ? (' Confiança da leitura: ' + d.confianca + '.') : '';
         const obs = d.observacoes_extracao ? (' ' + d.observacoes_extracao) : '';
-        const nSoc = sociosExtraidos.length ? (' ' + sociosExtraidos.length + ' sócio(s) detectado(s) — serão gravados ao cadastrar.') : '';
+        const nSoc = sociosExtraidos.length ? (' ' + sociosExtraidos.length + ' sócio(s) detectado(s) — serão gravados ao cadastrar' + resumoKitSocios(sociosExtraidos)) : '';
         extraiStatus.textContent = 'Campos preenchidos abaixo — confira antes de cadastrar.' + conf + nSoc + obs;
         extraiStatus.style.color = 'var(--success)';
       } catch (e) {
@@ -832,7 +879,7 @@
       setVal('profissao', d.profissao);
       setVal('estado_civil', d.estado_civil);
       setVal('nacionalidade', d.nacionalidade);
-      sociosExtraidos = Array.isArray(d.socios) ? d.socios.filter(s => s && s.nome) : [];
+      sociosExtraidos = Array.isArray(d.socios) ? d.socios.filter(s => s && String(s.nome ?? '').trim()) : [];
     }
 
     document.getElementById('btnSalvar').addEventListener('click', cadastrar);

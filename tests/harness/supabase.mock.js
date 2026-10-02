@@ -160,6 +160,11 @@ function q(table){
 }
 export const supabase = { from: q, auth: { getUser: async () => ({ data: { user: { email:'financeiro@macedoereis.com.br' } } }), getSession: async () => ({ data: { session: { user: { email:'financeiro@macedoereis.com.br' } } } }) }, rpc: async () => ({ data: [], error:null }) };
 supabase.todosClientes = async () => ({ data: DATA.clientes, error:null });
+// Edge Functions: quem responde é o teste, por window.__mockInvoke(nome, { body }) (o cadastro-socios.py usa pra
+// devolver uma leitura de contrato inventada). Sem ele, a chamada volta com erro — o harness nunca chama função de verdade
+supabase.functions = { invoke: async (nome, opts) => (typeof window.__mockInvoke === 'function'
+  ? window.__mockInvoke(nome, opts || {})
+  : { data: null, error: { message: 'função ' + nome + ' fora do harness' } }) };
 // igual ao helper de verdade (assets/js/supabase.js): busca em lotes de mil até o fim
 supabase.todasLinhas = async function (montar) { const tudo = []; for (let i = 0; ; i += 1000) { const { data, error } = await montar().range(i, i + 999); if (error) return { data: tudo, error }; tudo.push(...(data || [])); if (!data || data.length < 1000) return { data: tudo, error: null }; } };
 export async function getCurrentUser(){ return { email:'financeiro@macedoereis.com.br' }; }
