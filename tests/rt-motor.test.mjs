@@ -72,5 +72,27 @@ console.log('\nAlíquota efetiva informada:');
   let erro = null; try { simular({ ...base, aliqEfetivaInformada: 0 }); } catch (e) { erro = e; }
   console.log(erro ? '  ✓ rejeita alíquota informada fora de 0–35%' : '  ✗ aceitou 0%');
 }
+// ---- alíquota do PGDAS com parte do DAS excluída: a exclusão vale UMA vez (02/10/2026) ----
+// O PGDAS já dá o DAS sem o ICMS/ST excluído; antes o motor descontava a exclusão de novo e o DAS de hoje saía
+// 32% menor que o pago. Mesmo caso pelos dois caminhos: tabela + exclusão × alíquota do PGDAS + exclusão.
+console.log('\nAlíquota do PGDAS com exclusão (ateliê, Anexo II, 32% do DAS excluído):');
+{
+  const base = { anexo: 'II', rbt12: 1000000, receita: 100000, partilha: 14, cbs: 9.3, ibs: 0.1, mixCheia: 100, pctComprasDespesas: 3, pctExcluidoST: 32, pctPJ: 100 };
+  const tab = simular(base);                                        // tabela: 8,95%; DAS de hoje 8,95% × 68% = 6,086%
+  const pgdas = simular({ ...base, aliqEfetivaInformada: 6.086 });  // o que o PGDAS mostra: DAS ÷ receita
+  linha('tabela: alíquota (%)', 8.95, tab.aliqEfetiva * 100, 0.005);
+  linha('PGDAS: DAS de hoje = o pago', 6086.00, pgdas.mes.dasHoje);
+  linha('PGDAS: DAS cheio reconstituído', 8950.00, pgdas.mes.dasCheio);
+  linha('PGDAS: parcela CBS/IBS (14% do cheio)', 1253.00, pgdas.mes.parcelaCbsIbs);
+  linha('DAS de hoje igual pelos dois', tab.mes.dasHoje, pgdas.mes.dasHoje);
+  linha('custo por dentro igual pelos dois', tab.semestre.custoDentro, pgdas.semestre.custoDentro);
+  linha('custo por fora igual pelos dois', tab.semestre.custoFora, pgdas.semestre.custoFora);
+  const semAviso = !pgdas.avisos.some(a => /2 pontos longe/.test(a));
+  if (!semAviso) falhas++;
+  console.log(semAviso ? '  ✓ sem aviso de "2 pontos longe da tabela" (a comparação é pela alíquota cheia)' : '  ✗ avisou longe da tabela por causa da exclusão');
+  const longe = simular({ ...base, aliqEfetivaInformada: 9.0 }).avisos.some(a => /2 pontos longe/.test(a));
+  if (!longe) falhas++;
+  console.log(longe ? '  ✓ ainda avisa quando a informada, sem a exclusão, foge da tabela (9% ÷ 68% = 13,2% × 8,95%)' : '  ✗ não avisou a informada fora da tabela');
+}
 
 process.exit(falhas ? 1 : 0);

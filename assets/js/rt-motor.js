@@ -49,7 +49,8 @@ const num = (v, def) => {
 //   pctImpostoEmbutido (default 0) · pctExcluidoST (default 0)
 //   partilha (% do DAS que é CBS/IBS) · cbs · ibs (referência, %)
 //   pctPJ (default 0) · creditoEstoqueMes (R$, entra do 2º mês — 5 parcelas)
-//   aliqEfetivaInformada (%, opcional): alíquota real do PGDAS; quando vem, vale sobre a tabela anexo+RBT12
+//   aliqEfetivaInformada (%, opcional): alíquota real do PGDAS (DAS apurado ÷ receita, já sem o % excluído);
+//     quando vem, vale sobre a tabela anexo+RBT12 e o pctExcluidoST serve só pra reconstituir o DAS cheio
 export function simular(input) {
   const anexo = String(input.anexo || '').trim().toUpperCase();
   const rbt12 = num(input.rbt12, 0);
@@ -87,7 +88,9 @@ export function simular(input) {
   const aeTabela = aliqEfetiva(anexo, rbt12);
   const ae = aeInf != null ? aeInf / 100 : aeTabela;
   const aliqFonte = aeInf != null ? 'informada' : 'tabela';
-  if (aeInf != null && aeTabela != null && Math.abs(aeInf / 100 - aeTabela) > 0.02) avisos.push('Alíquota efetiva informada (' + aeInf.toFixed(2) + '%) está mais de 2 pontos longe da tabela do Anexo ' + anexo + ' (' + (aeTabela * 100).toFixed(2) + '%) — normal se há receita em mais de um anexo; se não, confira o PGDAS.');
+  // a informada já vem sem a parte excluída (ST, monofásico, ICMS…): a comparação com a tabela é pela alíquota cheia
+  const aeInfCheia = aeInf != null && pctST < 100 ? aeInf / 100 / (1 - pctST / 100) : null;
+  if (aeInfCheia != null && aeTabela != null && Math.abs(aeInfCheia - aeTabela) > 0.02) avisos.push('Alíquota efetiva informada (' + aeInf.toFixed(2) + '%' + (pctST > 0 ? ', ' + (aeInfCheia * 100).toFixed(2) + '% sem a exclusão de ' + pctST.toLocaleString('pt-BR') + '%' : '') + ') está mais de 2 pontos longe da tabela do Anexo ' + anexo + ' (' + (aeTabela * 100).toFixed(2) + '%) — normal se há receita em mais de um anexo; se não, confira o PGDAS.');
   const aliqRef = (cbs + ibs) / 100;
   const fatorMix = (mixCheia + 0.40 * mixRed60 + 0.60 * mixRed40 + 0.70 * mixRed30 + 0 * mixZero) / 100;
   // crédito das compras: pelo NCM das entradas quando medido; senão, o mix das vendas (revenda)
@@ -96,8 +99,12 @@ export function simular(input) {
   const fatorCompras = pctCred != null ? pctCred / 100 : fatorMix;
 
   // --- mês (os 6 meses são iguais; só o crédito de estoque varia) ---
-  const dasCheio = receita * ae;
-  const dasHoje = dasCheio * (1 - pctST / 100);
+  // Exclusão de ST/monofásico/ICMS aplicada UMA vez. Pela tabela, o DAS de hoje sai do DAS cheio menos a exclusão.
+  // Pela alíquota informada (PGDAS: DAS apurado ÷ receita), a exclusão JÁ está dentro dela — ela é o DAS de hoje, e o
+  // DAS cheio (base da partilha) é reconstituído. Até 02/10/2026 a exclusão era descontada de novo sobre a informada:
+  // num ateliê de calçados com 32% excluído, o DAS de hoje saía 4,45% da receita contra os 6,54% pagos de verdade.
+  const dasHoje = aeInf != null ? receita * ae : receita * ae * (1 - pctST / 100);
+  const dasCheio = aeInf != null ? (pctST < 100 ? dasHoje / (1 - pctST / 100) : receita * (aeTabela ?? ae)) : receita * ae;
   // A parcela CBS/IBS incide sobre o DAS cheio: a exclusão de ST/ISS retido
   // tira ICMS/ISS do DAS, não os novos tributos (validado pelo caso-teste).
   let parcelaCbsIbs = dasCheio * (partilha / 100);

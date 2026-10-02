@@ -159,10 +159,17 @@
       <div class="rt-filtros">
         <input type="text" id="rtBusca" class="input input-search" placeholder="Buscar cliente ou CNAE…">
         <select class="rg-status" id="rtFtri">
-          <option value="">Triagem: todas</option>
-          <option value="candidato_por_fora">Candidato por fora</option>
-          <option value="simular">Simular</option>
-          <option value="tende_por_dentro">Tende por dentro</option>
+          <option value="">Triagem · simulação: todas</option>
+          <optgroup label="Triagem por CNAE (antes da conta)">
+            <option value="candidato_por_fora">Candidato por fora</option>
+            <option value="simular">Simular</option>
+            <option value="tende_por_dentro">Tende por dentro</option>
+          </optgroup>
+          <optgroup label="Simulação gravada">
+            <option value="sim_por_dentro">Simulado: por dentro</option>
+            <option value="sim_por_fora">Simulado: por fora</option>
+            <option value="sim_empate">Simulado: empate</option>
+          </optgroup>
         </select>
         <select class="rg-status" id="rtFseg"><option value="">Segmento: todos</option></select>
         <select class="rg-status" id="rtFdec">
@@ -183,7 +190,7 @@
           <th class="oculta-m">CNAE · segmento</th>
           <th>Sinais</th>
           <th class="num oculta-m">Score</th>
-          <th>Triagem</th>
+          <th>Triagem · simulação</th>
           <th>Decisão</th>
           <th>Status</th>
         </tr></thead>
@@ -408,6 +415,36 @@
     function scoreDe(c) { return SINAIS.reduce((a, s) => a + (+c[s] || 0), 0); }
     function triagemDoScore(sc) { return sc <= 2 ? 'tende_por_dentro' : (sc <= 4 ? 'simular' : 'candidato_por_fora'); }
 
+    // Depois de gravada a simulação, o chip mostra o resultado da conta; a triagem por CNAE (hipótese de antes da conta)
+    // vai pro título do chip. Antes a lista seguia dizendo "Candidato por fora" em caso cuja simulação deu por dentro
+    // (ateliês de calçados, 02/10/2026). O filtro usa o mesmo valor que aparece.
+    const SIM_LBL = { por_dentro:['Simulado: por dentro','t-dentro'], por_fora:['Simulado: por fora','t-fora'], empate:['Simulado: empate','t-sim'] };
+    const cacheSim = new Map();
+    function resultadoSim(c) {
+      if (c.sim_custo_dentro == null || c.sim_custo_fora == null) return null;
+      const chave = c.sim_obs || '';
+      if (!cacheSim.has(chave)) {
+        let j = null; try { j = JSON.parse(chave || 'null'); } catch (e) {}
+        let r = null;
+        if (j && j.veredito === 'OPTE') r = 'por_fora';
+        // empate: gravado desde 02/10/2026; nas simulações anteriores, pela frase do veredito
+        else if (j && j.veredito === 'MANTENHA') r = (j.empate === true || /^Empate técnico/.test(j.frase || '')) ? 'empate' : 'por_dentro';
+        cacheSim.set(chave, r);
+      }
+      return cacheSim.get(chave) || (+c.sim_custo_fora < +c.sim_custo_dentro ? 'por_fora' : 'por_dentro');
+    }
+    function situacaoDe(c) { const r = resultadoSim(c); return r ? 'sim_' + r : (c.triagem || ''); }
+    function chipSituacao(c) {
+      const tri = TRI_LBL[c.triagem] || null;
+      const r = resultadoSim(c);
+      if (r) {
+        const tit = 'Resultado da simulação gravada' + (tri ? ' — a triagem por CNAE, de antes da conta, era "' + tri[0] + '"' : '');
+        return '<span class="rt-chip ' + SIM_LBL[r][1] + '" title="' + escapeHtml(tit) + '">' + SIM_LBL[r][0] + '</span>';
+      }
+      const t = tri || ['—', 't-dentro'];
+      return '<span class="rt-chip ' + t[1] + '" title="Triagem por CNAE — hipótese até a simulação ser gravada">' + t[0] + '</span>';
+    }
+
     function render() {
       const hj = hojeISO();
       const prazo = casos.map(c => c.prazo_opcao).filter(Boolean).sort()[0] || '2026-09-30';
@@ -430,7 +467,7 @@
 
       const vis = casos.filter(c => {
         if (filtroStatus !== 'todos' && c.status !== filtroStatus) return false;
-        if (fTri && c.triagem !== fTri) return false;
+        if (fTri && situacaoDe(c) !== fTri) return false;
         if (fSeg && c.segmento !== fSeg) return false;
         if (fDec && (c.decisao || 'pendente') !== fDec) return false;
         if (busca) {
@@ -446,15 +483,14 @@
 
       $('rtLista').innerHTML = vis.map(c => {
         const cli = clientesMap[c.cliente_id] || {};
-        const tri = TRI_LBL[c.triagem] || ['—', 't-dentro'];
-        const pills = SINAIS.map(s => '<span class="rt-pill p' + (+c[s] || 0) + '" title="' + SINAL_TIT[s] + ': ' + (+c[s] || 0) + '">' + SINAL_TAG[s] + ' ' + (+c[s] || 0) + '</span>').join('');
+        const pills =SINAIS.map(s => '<span class="rt-pill p' + (+c[s] || 0) + '" title="' + SINAL_TIT[s] + ': ' + (+c[s] || 0) + '">' + SINAL_TAG[s] + ' ' + (+c[s] || 0) + '</span>').join('');
         return '<tr data-id="' + c.id + '">' +
           '<td><input type="checkbox" class="rt-ck" data-id="' + c.id + '"' + (sel.has(c.id) ? ' checked' : '') + '></td>' +
           '<td><b style="color:var(--text)">' + escapeHtml(cli.nome_principal || '?') + '</b><br><span style="font-size:11.5px;color:var(--text-dim)">' + escapeHtml(fmtCnpj(cli.documento)) + '</span></td>' +
           '<td class="oculta-m"><span style="font-size:12px">' + escapeHtml(c.cnae_base || cli.cnae_principal || '—') + '</span><br><span style="font-size:11px;color:var(--text-dim)">' + escapeHtml(SEG_LBL[c.segmento] || c.segmento || '') + '</span></td>' +
           '<td>' + pills + '</td>' +
           '<td class="num oculta-m"><b>' + scoreDe(c) + '</b></td>' +
-          '<td><span class="rt-chip ' + tri[1] + '">' + tri[0] + '</span></td>' +
+          '<td>' + chipSituacao(c) + '</td>' +
           '<td><select class="rg-status rt-dec-sel" data-id="' + c.id + '">' +
             '<option value="pendente"' + ((c.decisao || 'pendente') === 'pendente' ? ' selected' : '') + '>Pendente</option>' +
             '<option value="por_dentro"' + (c.decisao === 'por_dentro' ? ' selected' : '') + '>Por dentro</option>' +
@@ -608,8 +644,7 @@
 
     function atualizarChips() {
       const c = casoAtual(); if (!c) return;
-      const tri = TRI_LBL[c.triagem] || ['—', 't-dentro'];
-      $('fiTriagem').innerHTML = '<span class="rt-chip ' + tri[1] + '">' + tri[0] + '</span>';
+      $('fiTriagem').innerHTML = chipSituacao(c);
       $('fiStatus').innerHTML = 'Status: <b style="color:var(--text)">' + escapeHtml(ST_LBL[c.status] || c.status || '—') + '</b>';
       $('dOpcao').hidden = c.decisao !== 'por_fora';
     }
@@ -1188,7 +1223,8 @@
         sim_custo_fora: +r.semestre.custoFora.toFixed(2),
         sim_credito_cliente_dentro: +r.semestre.creditoClienteDentro.toFixed(2),
         sim_credito_cliente_fora: +r.semestre.creditoClienteFora.toFixed(2),
-        sim_obs: JSON.stringify({ v: 1, input: ent, veredito: r.veredito.tipo, frase: r.veredito.frase, calculado_em: hojeISO(),
+        // empate = por fora sai mais barato, mas abaixo do limiar (o mesmo critério da análise técnica)
+        sim_obs: JSON.stringify({ v: 1, input: ent, veredito: r.veredito.tipo, empate: !!r.veredito.empate && r.semestre.diferenca < 0, frase: r.veredito.frase, calculado_em: hojeISO(),
           dominio: domEstado.resumo || (() => { try { return JSON.parse(c.sim_obs || 'null')?.dominio || null; } catch (e) { return null; } })() }),
         atualizado_em: agoraISO()
       };
