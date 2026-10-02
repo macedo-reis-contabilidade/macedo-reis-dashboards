@@ -1467,7 +1467,7 @@
         const rtPrazo = rtLista.map(x => x.prazo_opcao).filter(Boolean).sort()[0];
         const rtDias = rtPrazo ? Math.ceil((new Date(rtPrazo) - new Date(hj)) / 864e5) : null;
         const cards = [];
-        if (rtLista.length) cards.push('<a class="ag-radar-card' + (rtDias != null && rtDias <= 10 ? ' rc-alerta' : '') + '" href="fiscal-reforma.html"><b>' + rtLista.length + '</b> cliente(s) do Simples sem decisão IBS/CBS · prazo ' + (rtPrazo ? rtPrazo.slice(5).split('-').reverse().join('/') : '30/09') + '</a>');
+        if (rtLista.length) cards.push('<a class="ag-radar-card' + (rtDias != null && rtDias <= 10 ? ' rc-alerta' : '') + '" href="fiscal-reforma.html"><b>' + rtLista.length + '</b> cliente(s) do Simples sem decisão IBS/CBS · prazo ' + (rtPrazo ? rtPrazo.slice(5).split('-').reverse().join('/') : '30/10') + '</a>');
         if (alvVencidos || alvBreve) cards.push('<a class="ag-radar-card' + (alvVencidos ? ' rc-alerta' : '') + '" href="societario-alvaras.html">' + (alvVencidos ? '<b>' + alvVencidos + '</b> alvará(s) vencido(s)' : '') + (alvVencidos && alvBreve ? ' · ' : '') + (alvBreve ? '<b>' + alvBreve + '</b> vence(m) em 60 dias' : '') + '</a>');
         if (alvSemResp.count) cards.push('<a class="ag-radar-card" href="societario-alvaras.html"><b>' + alvSemResp.count + '</b> alvará(s) sem responsável — sem tarefa de renovação</a>');
         if (trLista.length) cards.push('<a class="ag-radar-card' + (trAtrasadas ? ' rc-alerta' : '') + '" href="comercial-transicao.html"><b>' + trLista.length + '</b> transição(ões) em curso' + (trAtrasadas ? ' · <b>' + trAtrasadas + '</b> além dos 90 dias' : '') + '</a>');

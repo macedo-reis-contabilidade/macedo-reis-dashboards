@@ -14,6 +14,8 @@
 // seguem no DAS. Nada aqui é sobre trocar de regime tributário.
 // ============================================================
 
+import { RT_PRAZO, janelaAberta as janelaAbertaEm } from './rt-prazos.js';
+
 const brl = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const brl0 = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 const pct1 = v => (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -124,10 +126,11 @@ export function gerarAnalise(d, opts = {}) {
   // em 30/09/2026, último dia da opção, a análise dizia que a janela tinha fechado (achado do Claude Code em 30/09)
   const agora = new Date();
   const hojeISO = d.hojeISO || agora.getFullYear() + '-' + String(agora.getMonth() + 1).padStart(2, '0') + '-' + String(agora.getDate()).padStart(2, '0');
-  const janelaAberta = hojeISO <= '2026-09-30';
+  // prazos em assets/js/rt-prazos.js (Res. CGSN 194/2026 levou a opção a 30/10 e o cancelamento a 03/11–20/12)
+  const janelaAberta = janelaAbertaEm(hojeISO);
   if (!versaoCliente) P('<div class="dados"><b>Prazo:</b> ' + (janelaAberta
-      ? 'a opção deve ser formalizada até <b>30/09/2026</b> e pode ser <b>cancelada até 30/11/2026</b> sem produzir efeito (Resolução CGSN 186/2026). Quem não opta em setembro só tem nova janela em <b>março/2027</b>, com efeito a partir de <b>julho/2027</b>.'
-      : 'a janela de setembro/2026 já fechou (a opção valeria desde janeiro/2027). A próxima é em <b>março/2027</b>, com efeito a partir de <b>julho/2027</b> (Resolução CGSN 186/2026) — esta análise serve de base para ela.')
+      ? 'a opção deve ser formalizada até <b>' + RT_PRAZO.opcao + '</b> e pode ser <b>cancelada ' + RT_PRAZO.cancelamento + '</b>, sem produzir efeito — o cancelamento é irretratável (' + RT_PRAZO.norma + '). Quem não opta até ' + RT_PRAZO.opcaoDM + ' só tem nova janela em <b>' + RT_PRAZO.proxima + '</b>, com efeito a partir de <b>' + RT_PRAZO.proximaEfeito + '</b>.'
+      : 'a janela da opção com efeito em janeiro/2027 fechou em ' + RT_PRAZO.opcao + ' (quem optou pode cancelar ' + RT_PRAZO.cancelamento + '). A próxima é em <b>' + RT_PRAZO.proxima + '</b>, com efeito a partir de <b>' + RT_PRAZO.proximaEfeito + '</b> (' + RT_PRAZO.norma + ') — esta análise serve de base para ela.')
     + (dominio || xml ? '<br><b>Base desta análise:</b> ' + [
         dominio && dominio.faturamento ? 'relatório de faturamento ' + dominio.periodoRotulo : null,
         dominio && dominio.pgdas ? 'apuração do Simples (PGDAS ' + esc(dominio.pgdas.competencia) + ')' : null,
@@ -145,10 +148,10 @@ export function gerarAnalise(d, opts = {}) {
     if (versaoCliente && internos.length) partes.unshift('<div class="so-escritorio"><b>Antes de mandar pro cliente</b> (esta faixa não sai na impressão): ' + internos.map(a => esc(a.texto.replace(/<[^>]+>/g, ''))).join(' · ') + '</div>');
     const dec = (d.recomendacao && d.recomendacao.decisao) || (optar ? 'optar' : 'manter');
     const decisao = { manter: 'Manter como está', optar: 'Recolher o IBS/CBS por fora do DAS', optar_marco: 'Recolher o IBS/CBS por fora do DAS a partir de julho/2027',
-      formalizar: 'Registrar a opção até 30/09 — e decidir até 30/11', manter_reavaliar: 'Manter por ora — e reavaliar em março/2027' }[dec] || 'Manter como está';
+      formalizar: 'Registrar a opção até ' + RT_PRAZO.opcaoDM + ' — e decidir até ' + RT_PRAZO.cancelaAteDM, manter_reavaliar: 'Manter por ora — e reavaliar em março/2027' }[dec] || 'Manter como está';
     const selo = aConf ? 'TENDÊNCIA — A CONFIRMAR' : empate ? 'RECOMENDAÇÃO · EMPATE TÉCNICO' : 'RECOMENDAÇÃO';
     const oQue = dec === 'formalizar'
-      ? 'Registrar a opção não muda nada ainda: até 30/11/2026 dá pra cancelar sem efeito nenhum. Serve pra não perder a chance enquanto você vê com os seus principais clientes se faz sentido.'
+      ? 'Registrar a opção não muda nada ainda: ' + RT_PRAZO.cancelamento + ' dá pra cancelar sem efeito nenhum. Serve pra não perder a chance enquanto você vê com os seus principais clientes se faz sentido.'
       : dec === 'optar' || dec === 'optar_marco'
       ? 'A empresa continua no Simples, mas passa a pagar o IBS e a CBS numa apuração separada, descontando o que pagou nas compras.'
       : 'A empresa continua pagando tudo numa guia só, o DAS do Simples, como hoje.';
@@ -159,7 +162,7 @@ export function gerarAnalise(d, opts = {}) {
       const ganhoCli = s.aproveitadoFora - s.aproveitadoDentro;
       porque = 'Continuar no DAS sai ' + brl0(dif) + ' mais barato no primeiro semestre de 2027 (' + pct2(pctRec) + '% do faturamento).'
         + (d.consumidor ? ' A maioria das vendas é para pessoa física, que não aproveita o imposto destacado — então não há ganho para o cliente.'
-          : ganhoCli > dif ? ' Mas os seus clientes empresa aproveitariam ' + brl0(ganhoCli) + ' a mais de crédito se você recolhesse por fora — mais do que o seu custo a mais' + (d.sobre && d.sobre.clientes ? '' : ' (contando todos os clientes empresa; os do Simples não aproveitam, então o ganho real deles é menor)') + '. Só vale a pena se eles pagarem parte desse imposto no preço — ' + (janelaAberta ? 'e há tempo pra ver isso: registrando a opção até 30/09, dá pra cancelar até 30/11 sem efeito nenhum se não fizer sentido.' : 'há tempo até a janela de março/2027 pra ver isso com eles.')
+          : ganhoCli > dif ? ' Mas os seus clientes empresa aproveitariam ' + brl0(ganhoCli) + ' a mais de crédito se você recolhesse por fora — mais do que o seu custo a mais' + (d.sobre && d.sobre.clientes ? '' : ' (contando todos os clientes empresa; os do Simples não aproveitam, então o ganho real deles é menor)') + '. Só vale a pena se eles pagarem parte desse imposto no preço — ' + (janelaAberta ? 'e há tempo pra ver isso: registrando a opção até ' + RT_PRAZO.opcaoDM + ', dá pra cancelar ' + RT_PRAZO.cancelamento + ' sem efeito nenhum se não fizer sentido.' : 'há tempo até a janela de março/2027 pra ver isso com eles.')
           : ' O crédito a mais que os clientes empresa aproveitariam (' + brl0(Math.max(0, ganhoCli)) + ') não cobre esse custo.');
     }
     const maxV = Math.max(s.custoDentro, s.custoFora) || 1;
@@ -174,8 +177,8 @@ export function gerarAnalise(d, opts = {}) {
       + '<p><b>Por quê:</b> ' + porque + '</p>'
       + (alertasVis.length ? '<p style="margin-bottom:4px"><b>' + (aConf ? 'Antes de decidir, precisamos confirmar:' : 'Pontos de atenção:') + '</b></p><ul class="rs-al">' + alertasVis.map(a => '<li>' + a.texto + '</li>').join('') + '</ul>' : '')
       + (d.observacoes && d.observacoes.length ? '<p style="margin-bottom:4px"><b>Para um cálculo mais preciso:</b></p><ul class="rs-al">' + d.observacoes.map(t => '<li>' + t + '</li>').join('') + '</ul>' : '')
-      + ({ optar: '<p class="rs-pz">Próximo passo: formalizar a opção até <b>30/09/2026</b>. Dá pra cancelar até <b>30/11/2026</b> sem efeito.</p>',
-           formalizar: '<p class="rs-pz">Próximo passo: registrar a opção até <b>30/09/2026</b>; decidir até <b>30/11/2026</b> (cancelar, se não fizer sentido).</p>',
+      + ({ optar: '<p class="rs-pz">Próximo passo: formalizar a opção até <b>' + RT_PRAZO.opcao + '</b>. Dá pra cancelar <b>' + RT_PRAZO.cancelamento + '</b> sem efeito.</p>',
+           formalizar: '<p class="rs-pz">Próximo passo: registrar a opção até <b>' + RT_PRAZO.opcao + '</b>; decidir até <b>' + RT_PRAZO.cancelaAte + '</b> (cancelar ' + RT_PRAZO.cancelamento + ', se não fizer sentido).</p>',
            optar_marco: '<p class="rs-pz">Próximo passo: formalizar a opção na janela de <b>março/2027</b>; vale a partir de julho/2027.</p>',
            manter_reavaliar: '<p class="rs-pz">Próximo passo: nenhum agora. Reavaliar antes da janela de <b>março/2027</b>.</p>' }[dec]
          || '<p class="rs-pz">Mantendo, não é preciso fazer nada. Se o quadro mudar, há nova janela em março/2027.</p>')
@@ -192,7 +195,7 @@ export function gerarAnalise(d, opts = {}) {
     P('<p class="numlinha"><b>Faturamento médio:</b> ' + brl0(receita) + '/mês'
       + (!d.consumidor ? ' · <b>Crédito que seus clientes empresa aproveitariam no semestre:</b> ' + brl0(s.aproveitadoDentro) + ' mantendo, ' + brl0(s.aproveitadoFora) + ' por fora' : '') + '</p>');
     if (d.perguntas && d.perguntas.length) P('<h2>Para conversarmos</h2><ol class="perg">' + d.perguntas.slice(0, 3).map(q => '<li>' + q + '</li>').join('') + '</ol>');
-    P('<div class="rodape">Elaborado em ' + hoje + ' pela Macedo &amp; Reis Contabilidade' + (base ? ', com ' + base : '') + ' e as alíquotas de referência de 2027 (CBS pendente de resolução do Senado). A empresa continua no Simples em qualquer caso; a escolha é só a forma de recolher IBS e CBS. Valores estimados; a decisão é do contribuinte. A análise técnica completa fica à disposição no escritório. Base legal: LC 214/2025 · LC 123/2006 · Resolução CGSN 186/2026.</div>');
+    P('<div class="rodape">Elaborado em ' + hoje + ' pela Macedo &amp; Reis Contabilidade' + (base ? ', com ' + base : '') + ' e as alíquotas de referência de 2027 (CBS pendente de resolução do Senado). A empresa continua no Simples em qualquer caso; a escolha é só a forma de recolher IBS e CBS. Valores estimados; a decisão é do contribuinte. A análise técnica completa fica à disposição no escritório. Base legal: LC 214/2025 · LC 123/2006 · Resoluções CGSN 186/2026 e 194/2026.</div>');
     return montarHtml();
   }
 
@@ -392,7 +395,7 @@ export function gerarAnalise(d, opts = {}) {
   P('<div class="rodape">Documento de apoio à decisão, elaborado em ' + hoje + ' pela Macedo &amp; Reis Contabilidade. '
     + 'A empresa permanece no Simples Nacional em qualquer das hipóteses analisadas; discute-se exclusivamente a forma de recolhimento do IBS e da CBS em 2027. '
     + 'Simulação baseada nas alíquotas de referência de 2027 (CBS pendente de Resolução do Senado). Valores estimativos: a decisão pela opção é do contribuinte.<br>'
-    + 'Base legal: LC 214/2025 · LC 123/2006, art. 18 · Resolução CGSN 140/2018 · Resolução CGSN 186/2026.</div>');
+    + 'Base legal: LC 214/2025 · LC 123/2006, art. 18 · Resolução CGSN 140/2018 · Resoluções CGSN 186/2026 e 194/2026.</div>');
 
   return montarHtml();
   function montarHtml() {

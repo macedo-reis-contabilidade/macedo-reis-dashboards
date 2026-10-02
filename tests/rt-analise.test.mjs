@@ -7,8 +7,9 @@ const page = fs.readFileSync(new URL('../fiscal-reforma.html', import.meta.url),
 const i = page.indexOf('    function montarDadosAnalise('); const j = page.indexOf("\n    $('dGerar').onclick");
 const src = page.slice(i, j);
 import { perfilAtividade, ramoComReducao, conferirRbt12 } from '../assets/js/dominio-relatorios.js';
-const montarDadosAnalise = new Function('simular', 'ANO_XML', 'location', 'perfilAtividade', 'ramoComReducao', 'conferirRbt12', src + '\nreturn montarDadosAnalise;')(simular, 2026, { href: 'http://x/' }, perfilAtividade, ramoComReducao, conferirRbt12);
-// data fixa dentro da janela de setembro/2026: o teste não pode depender do relógio de quem roda
+import { RT_PRAZO, janelaAberta as janelaAbertaEm } from '../assets/js/rt-prazos.js';
+const montarDadosAnalise = new Function('simular', 'ANO_XML', 'location', 'perfilAtividade', 'ramoComReducao', 'conferirRbt12', 'RT_PRAZO', 'janelaAbertaEm', src + '\nreturn montarDadosAnalise;')(simular, 2026, { href: 'http://x/' }, perfilAtividade, ramoComReducao, conferirRbt12, RT_PRAZO, janelaAbertaEm);
+// data fixa dentro da janela (até 30/10/2026, Res. CGSN 194/2026): o teste não pode depender do relógio de quem roda
 // (os casos que testam a janela fechada fixam globalThis.__HOJE_ISO__ antes de chamar)
 function caso(nome, ent, dom, xml, cnae, hojeISO = globalThis.__HOJE_ISO__ || '2026-09-29') {
   const sim = simular(ent);
@@ -55,11 +56,14 @@ chk('aponta o que inverte (crédito 20% menor)', /crédito das entradas 20% meno
 chk('sem "Nenhuma incerteza técnica isolada derruba"', !/Nenhuma incerteza técnica isolada derruba/.test(vr.txt));
 chk('seção 10 sem "nenhum deles inverte"', !/nenhum deles inverte/.test(vr.txt));
 chk('linha "Base creditável" marca que muda', /Sim — com menos crédito de entrada/.test(vr.txt));
-chk('dica do cancelamento até 30/11', /cancelá-la até 30\/11\/2026/.test(vr.txt));
-// o mesmo varejo gerado depois da janela (01/10/2026): o prazo vira "já fechou" e some a dica de cancelar até 30/11
-const vrF = caso(...vr.args, '2026-10-01');
-chk('janela fechada: prazo diz que a de setembro já fechou', /janela de setembro\/2026 já fechou/.test(vrF.txt));
-chk('janela fechada: sem a dica de cancelar até 30/11', !/cancelá-la até 30\/11\/2026/.test(vrF.txt));
+chk('dica do cancelamento de 03/11 a 20/12', /cancelá-la de 03\/11 a 20\/12\/2026/.test(vr.txt));
+// 01/10/2026: pela Res. CGSN 194/2026 a janela vai até 30/10 — a análise não pode dizer que fechou (dizia, até 02/10)
+const vrO = caso(...vr.args, '2026-10-01');
+chk('01/10: janela ainda aberta, prazo 30/10/2026', /formalizada até 30\/10\/2026/.test(vrO.txt) && !/fechou/.test(vrO.txt));
+// o mesmo varejo gerado depois da janela (31/10/2026): o prazo vira "fechou" e some a dica de cancelar
+const vrF = caso(...vr.args, '2026-10-31');
+chk('janela fechada: prazo diz que fechou em 30/10', /fechou em 30\/10\/2026/.test(vrF.txt));
+chk('janela fechada: sem a dica de cancelar de 03/11 a 20/12', !/cancelá-la de 03\/11 a 20\/12\/2026/.test(vrF.txt));
 // 5) caso limpo continua firme (prestador B2B sem alertas)
 chk('caso sem dado suspeito não vira "a confirmar" (' + pb.d.alertas.length + ' alerta)', pb.d.aConfirmar === false && !/Tendência:/.test(pb.txt));
 
@@ -91,20 +95,20 @@ chk('pergunta sobre o frete, não sobre hora técnica', /Como o frete é cobrado
 chk('sem ISS retido (frete é ICMS)', !/ISS retido/.test(tr.txt));
 chk('resumo não diz "não compensa" quando o crédito dos clientes supera o custo', !/não compensa o custo/.test(tr.txt) && /conversa comercial/.test(tr.txt));
 
-// 8) Janela e B2B com crédito dos clientes maior que o custo: registrar agora, decidir até 30/11 — nunca "conversar até 30/09"
+// 8) Janela e B2B com crédito dos clientes maior que o custo: registrar agora, decidir até 20/12 — nunca "conversar até 30/10"
 globalThis.__HOJE_ISO__ = '2026-09-28';
 const b2b = caso('TRANSPORTES TESTE', { anexo:'III', rbt12:410549.94, receita:35875.03, mixCheia:100, pctComprasMercadorias:1.3, pctComprasDespesas:2.2, pctImpostoEmbutido:0, pctExcluidoST:10.2, partilha:16.6, cbs:9.3, ibs:0.1, pctPJ:99.5, aliqEfetivaInformada:8.26 },
   { faturamento: { total: 287000.22, servicos: 0, saidas: 287000.22 }, periodoRotulo: 'jan/26–ago/26', entradas: { grupos: [] }, vendas: { total: 287003.22, pctPJ: 99.5, pj: 285523, pf: 1480, consumidor: 0, nPJ: 109 } }, null, '4930-2/02');
 console.log('Janela aberta, crédito dos clientes > custo:');
-chk('decisão: registrar até 30/09 e decidir até 30/11', /Registrar a opção até 30\/09 — e decidir até 30\/11/.test(b2b.txt));
-chk('nada de "conversa ... antes de 30/09"', !/antes de 30\/09/.test(b2b.txt));
-globalThis.__HOJE_ISO__ = '2026-10-05';
+chk('decisão: registrar até 30/10 e decidir até 20/12', /Registrar a opção até 30\/10 — e decidir até 20\/12/.test(b2b.txt));
+chk('nada de "conversa ... antes de 30/10"', !/antes de 30\/10/.test(b2b.txt));
+globalThis.__HOJE_ISO__ = '2026-10-31';
 const b2bOut = caso('TRANSPORTES TESTE', { anexo:'III', rbt12:410549.94, receita:35875.03, mixCheia:100, pctComprasMercadorias:1.3, pctComprasDespesas:2.2, pctImpostoEmbutido:0, pctExcluidoST:10.2, partilha:16.6, cbs:9.3, ibs:0.1, pctPJ:99.5, aliqEfetivaInformada:8.26 },
   { faturamento: { total: 287000.22, servicos: 0, saidas: 287000.22 }, periodoRotulo: 'jan/26–ago/26', entradas: { grupos: [] }, vendas: { total: 287003.22, pctPJ: 99.5, pj: 285523, pf: 1480, consumidor: 0, nPJ: 109 } }, null, '4930-2/02');
-console.log('Janela fechada (outubro):');
-chk('prazo diz que setembro fechou e aponta março/2027', /janela de setembro\/2026 já fechou/.test(b2bOut.txt) && /março\/2027/.test(b2bOut.txt));
+console.log('Janela fechada (31/10):');
+chk('prazo diz que fechou em 30/10 e aponta março/2027', /fechou em 30\/10\/2026/.test(b2bOut.txt) && /março\/2027/.test(b2bOut.txt));
 chk('decisão: manter por ora e reavaliar em março/2027', /Manter por ora — e reavaliar em março\/2027/.test(b2bOut.txt));
-chk('sem "formalizar até 30/09"', !/formalizar a opção até <b>30\/09|formalizar até 30\/09|até 30\/09\/2026;/.test(b2bOut.txt.replace(/\s+/g, ' ')) && !/Registrar a opção até 30\/09/.test(b2bOut.txt));
+chk('sem "formalizar até 30/10"', !/formalizar a opção até 30\/10|formalizar até 30\/10|até 30\/10\/2026;/.test(b2bOut.txt.replace(/\s+/g, ' ')) && !/Registrar a opção até 30\/10/.test(b2bOut.txt));
 delete globalThis.__HOJE_ISO__;
 
 // 3) Drogaria Guerra (referência)
