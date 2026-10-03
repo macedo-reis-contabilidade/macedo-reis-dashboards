@@ -3,13 +3,44 @@
 // Formatadores, máscaras e validações
 // ============================================================
 
+// CNPJ ALFANUMÉRICO (IN RFB 2.229/2024; os primeiros saíram em julho/2026) -----------------------
+// As 12 primeiras posições aceitam letras maiúsculas e números; os 2 dígitos verificadores seguem só números.
+// O DV é o mesmo módulo 11 de sempre, com o valor de cada caractere = código ASCII − 48 ('0'..'9' = 0..9,
+// 'A' = 17 … 'Z' = 42). CNPJ só de números continua valendo e não muda nada. Documento no banco: sem pontuação,
+// letras em maiúsculo (ex.: 12ABC34501DE35).
+const RX_CNPJ = /^[0-9A-Z]{12}\d{2}$/;
+
+/** Documento sem pontuação: CNPJ alfanumérico preservado (maiúsculo); CPF e o resto, só dígitos. */
+export function normalizarDocumento(doc) {
+  const s = String(doc ?? '').toUpperCase().replace(/[\s.\-\/]/g, '');
+  return RX_CNPJ.test(s) ? s : s.replace(/\D/g, '');
+}
+
+/** É CNPJ (numérico ou alfanumérico) no formato, sem conferir o DV? */
+export function ehCnpj(doc) {
+  return RX_CNPJ.test(normalizarDocumento(doc));
+}
+
+/** CNPJ válido pelos dígitos verificadores — numérico ou alfanumérico. */
+export function cnpjValido(doc) {
+  const c = normalizarDocumento(doc);
+  if (!RX_CNPJ.test(c) || /^(\d)\1{13}$/.test(c)) return false;
+  const dv = n => {
+    let soma = 0, peso = n - 7;
+    for (let i = 0; i < n; i++) { soma += (c.charCodeAt(i) - 48) * peso--; if (peso < 2) peso = 9; }
+    const r = soma % 11;
+    return r < 2 ? 0 : 11 - r;
+  };
+  return dv(12) === +c[12] && dv(13) === +c[13];
+}
+
 // FORMATADORES (entrada com/sem máscara → saída formatada) ---------
 
 export function formatCNPJ(cnpj) {
   if (!cnpj) return '';
-  const digits = cnpj.replace(/\D/g, '');
-  if (digits.length !== 14) return cnpj;
-  return digits.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+  const c = normalizarDocumento(cnpj);
+  if (!RX_CNPJ.test(c)) return cnpj;
+  return c.replace(/^(.{2})(.{3})(.{3})(.{4})(.{2})$/, '$1.$2.$3/$4-$5');
 }
 
 export function formatCPF(cpf) {
@@ -21,9 +52,9 @@ export function formatCPF(cpf) {
 
 export function formatDocumento(doc) {
   if (!doc) return '';
-  const digits = doc.replace(/\D/g, '');
-  if (digits.length === 14) return formatCNPJ(digits);
-  if (digits.length === 11) return formatCPF(digits);
+  const c = normalizarDocumento(doc);
+  if (c.length === 14) return formatCNPJ(c);
+  if (c.length === 11) return formatCPF(c);
   return doc;
 }
 
@@ -83,7 +114,13 @@ export function bindMask(input, maskFn) {
 }
 
 export function maskCNPJ(value) {
-  const d = onlyDigits(value).slice(0, 14);
+  // CNPJ alfanumérico: letra e número nas 12 primeiras posições; os 2 dígitos verificadores, só número
+  let d = '';
+  for (const ch of String(value || '').toUpperCase().replace(/[^0-9A-Z]/g, '')) {
+    if (d.length >= 14) break;
+    if (d.length >= 12 && !/\d/.test(ch)) continue;
+    d += ch;
+  }
   if (d.length <= 2) return d;
   if (d.length <= 5) return `${d.slice(0,2)}.${d.slice(2)}`;
   if (d.length <= 8) return `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5)}`;

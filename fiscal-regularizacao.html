@@ -176,7 +176,7 @@
 
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
-    import { hojeLocal } from './assets/js/utils.js';   // dia no fuso local (toISOString é UTC)
+    import { hojeLocal, formatDocumento } from './assets/js/utils.js';   // dia no fuso local (toISOString é UTC)
 
     const $ = id => document.getElementById(id);
     const escapeHtml = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -184,7 +184,7 @@
     const brNum = v => v == null || v === '' ? '' : Number(v).toLocaleString('pt-BR', { minimumFractionDigits:2, maximumFractionDigits:2 });
     const parseNum = s => { const t = String(s || '').trim().replace(/\./g, '').replace(',', '.'); return t === '' ? null : (isNaN(+t) ? null : +t); };
     const fmtData = d => d ? d.split('-').reverse().join('/') : '—';
-    const fmtCnpj = d => { const x = String(d || '').replace(/\D/g, ''); return x.length === 14 ? x.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5') : (x.length === 11 ? x.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : (d || '')); };
+    const fmtCnpj = d => formatDocumento(d);   // CNPJ numérico ou alfanumérico (IN RFB 2.229/2024) e CPF
     const STATUS = [['levantamento','Levantamento'],['apresentado','Apresentado ao cliente'],['aprovado_cliente','Aprovado pelo cliente'],['parcelado','Parcelamentos efetuados'],['regularizado','Regularizado'],['sem_acordo','Sem acordo']];
     const ST_DEB = [['pendente','Pendente'],['parcelado','Parcelado'],['pago','Pago'],['dispensado','Dispensado']];
 

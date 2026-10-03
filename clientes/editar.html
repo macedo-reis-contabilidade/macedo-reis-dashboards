@@ -718,7 +718,7 @@
     import {
       bindMask, maskCNPJ, maskCPF, maskTelefone, maskCEP,
       formatCNPJ, formatCPF, formatDocumento, formatTelefone,
-      onlyDigits, buscarCEP, ESTADOS_BR, hojeLocal
+      onlyDigits, normalizarDocumento, ehCnpj, buscarCEP, ESTADOS_BR, hojeLocal
     } from '../assets/js/utils.js';
 
     let usuarioEmail = null;
@@ -740,7 +740,7 @@
 
     // ---------- kit de boas-vindas ----------
     const MESES_KIT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-    const fmtCnpjKit = d => { const s = String(d || '').replace(/\D/g, ''); return s.length === 14 ? s.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5') : (d || ''); };
+    const fmtCnpjKit = d => d ? formatCNPJ(String(d)) : '';   // numérico ou alfanumérico (IN RFB 2.229/2024)
     const fmtCpfKit = d => { const s = String(d || '').replace(/\D/g, ''); return s.length === 11 ? s.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : (d || ''); };
     function extensoNum(n){
       n = Math.floor(Math.abs(n));
@@ -2139,7 +2139,7 @@
         const d = resp?.data;
         if (!d) throw new Error('A extração não retornou dados.');
         const difs = montarDiffDocumento(d);
-        const cnpjDoc = atzDig(d.documento), cnpjCli = atzDig(cliente?.documento);
+        const cnpjDoc = normalizarDocumento(d.documento), cnpjCli = normalizarDocumento(cliente?.documento);   // CNPJ alfanumérico mantém as letras
         const avisoCnpj = (cnpjDoc && cnpjCli && cnpjDoc !== cnpjCli)
           ? `<div class="proc-warn" style="margin-top:10px;">⚠ O CNPJ do documento (${atzEsc(d.documento)}) não bate com o deste cliente (${atzEsc(cliente.documento)}). Confira se anexou o arquivo da empresa certa — as diferenças abaixo provavelmente não valem.</div>`
           : '';
@@ -2162,8 +2162,8 @@
 
     // Receita Federal via BrasilAPI: cartão CNPJ + QSA no mesmo formato que o leitor de documento devolve
     document.getElementById('atzRfb').addEventListener('click', async () => {
-      const cnpj = atzDig(cliente?.documento);
-      if (cnpj.length !== 14) { atzStatus('Este cliente não tem CNPJ válido no cadastro — a consulta precisa dele.', 'var(--warning)'); return; }
+      const cnpj = normalizarDocumento(cliente?.documento);
+      if (!ehCnpj(cnpj)) { atzStatus('Este cliente não tem CNPJ válido no cadastro — a consulta precisa dele.', 'var(--warning)'); return; }
       const btn = document.getElementById('atzRfb'); btn.disabled = true;
       const gen = ++atzGen;
       atzStatus('Consultando a Receita Federal…');

@@ -212,7 +212,7 @@
 
   <script type="module">
     import { supabase, getCurrentUser, signOut } from '../assets/js/supabase.js';
-    import { formatDocumento, formatDate, STATUS_LABELS } from '../assets/js/utils.js';
+    import { formatDocumento, normalizarDocumento, formatDate, STATUS_LABELS } from '../assets/js/utils.js';
 
     const tbody = document.getElementById('tbody');
     const searchInput = document.getElementById('searchInput');
@@ -413,7 +413,6 @@
 
     // ===== Importação de clientes do Taskdo (.xls) =====
     const REG_MAP = { 'MEI':'MEI', 'SIMPLES NACIONAL':'Simples Nacional', 'LUCRO PRESUMIDO':'Lucro Presumido', 'LUCRO REAL':'Lucro Real', 'IMUNE - ISENTA':'Imune' };
-    const dig = s => String(s==null?'':s).replace(/\D/g,'');
     const st = s => String(s==null?'':s).trim();
     const firstEmail = s => { const m = String(s==null?'':s).match(/[\w.\-+]+@[\w.\-]+\.\w+/); return m ? m[0] : ''; };
     const titleCase = s => s.toLowerCase().replace(/(^|\s|\/)([^\s\/])/g, (_,p,c) => p + c.toUpperCase());
@@ -426,7 +425,7 @@
       return null;
     }
     function mapearLinha(r){
-      const doc = dig(r['IDENTIFICAÇÃO']);
+      const doc = normalizarDocumento(r['IDENTIFICAÇÃO']);   // CNPJ alfanumérico mantém as letras
       const nome = st(r['RAZÃO']);
       if (![11,14].includes(doc.length) || doc.startsWith('0000000000') || nome.toUpperCase().startsWith('CLIENTES')) return null;
       const nomeLimpo = nome.replace(/^[\d.\-/]+\s+/, '').trim();

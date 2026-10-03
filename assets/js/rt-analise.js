@@ -15,6 +15,7 @@
 // ============================================================
 
 import { RT_PRAZO, janelaAberta as janelaAbertaEm } from './rt-prazos.js';
+import { formatDocumento } from './utils.js';
 
 const brl = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const brl0 = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
@@ -25,7 +26,7 @@ const pct2 = v => (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigi
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const dataBR = iso => { try { return new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR'); } catch (e) { return iso; } };
 const MES_ABREV = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-const fmtCnpj = d => { const s = String(d || '').replace(/\D/g, ''); return s.length === 14 ? s.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5') : (d || '—'); };
+const fmtCnpj = d => d ? formatDocumento(d) : '—';   // CNPJ numérico ou alfanumérico (IN RFB 2.229/2024)
 
 // Notas fiscais no padrão do IBS/CBS: para o optante do Simples, obrigatórias a partir de 01/01/2027, por dentro ou por
 // fora (Ato Conjunto RFB/CGIBS nº 4/2026, art. 1º, § 1º) — "manter" não dispensa a adequação do emissor

@@ -15,7 +15,8 @@ Confere:
   3. campo que a leitura não trouxe fica de fora (a nacionalidade vazia não apaga o padrão do banco), a data em
      dd/mm/aaaa vira aaaa-mm-dd, e data impossível ou participação ilegível ficam vazias em vez de derrubar a
      gravação de todos os sócios;
-  4. a tela não dá erro de JavaScript.
+  4. a tela não dá erro de JavaScript;
+  5. CNPJ alfanumérico (IN RFB 2.229/2024): a máscara aceita letras, o DV é conferido e o documento é gravado com elas.
 Termina com código 1 se alguma checagem falhar.
 Pré-requisito: pip install playwright e python -m playwright install chromium
 """
@@ -119,6 +120,27 @@ def main():
         ok(bt.get('rg') == '9876543210 SSP-RS' and bt.get('endereco_residencial', '').startswith('Avenida de Teste'), 'RG e endereço do BELTRANO gravados')
 
         ok(not erros, 'sem erro de JavaScript' + (f': {erros}' if erros else ''))
+        p.close()
+
+        # 5. CNPJ alfanumérico (IN RFB 2.229/2024, desde julho/2026): digitado em minúsculo, vira a máscara com letras
+        #    maiúsculas, passa na validação do DV e é gravado sem pontuação, com as letras (exemplo oficial da Receita)
+        p = b.new_page(viewport={'width': 1400, 'height': 1000})
+        p.on('pageerror', lambda e: erros.append(str(e)))
+        p.add_init_script("(() => { const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { return String(k).startsWith('mr_tour_') ? 'ok' : g.call(this, k); }; })()")
+        p.add_init_script(DUBLE)
+        # depois de gravar, a tela vai pro editor e o banco falso recomeça: guarda os clientes antes de sair
+        p.add_init_script("window.addEventListener('beforeunload', () => { try { sessionStorage.setItem('__clientes', JSON.stringify((window.__mockDb || {}).clientes || [])); } catch (e) {} });")
+        p.goto(base + 'clientes/novo.html'); p.wait_for_timeout(1200)
+        p.select_option('#tipo_pessoa', 'PJ')
+        p.type('#documento', '12abc34501de35')
+        ok(p.input_value('#documento') == '12.ABC.345/01DE-35', f'CNPJ alfanumérico mascarado com letras maiúsculas ({p.input_value("#documento")})')
+        p.fill('#nome_principal', 'EMPRESA ALFANUMERICA TESTE LTDA')
+        p.click('#btnSalvar')
+        p.wait_for_url('**/clientes/editar.html?id=*', timeout=8000)
+        gravados = json.loads(p.evaluate("sessionStorage.getItem('__clientes') || '[]'"))
+        docs = [c.get('documento') for c in gravados if c.get('nome_principal') == 'EMPRESA ALFANUMERICA TESTE LTDA']
+        ok(docs == ['12ABC34501DE35'], f'cadastro aceito e gravado sem pontuação, com as letras ({docs})')
+        ok(not erros, 'sem erro de JavaScript no cadastro com CNPJ alfanumérico' + (f': {erros}' if erros else ''))
         p.close()
         b.close()
     srv.shutdown()

@@ -4,7 +4,15 @@
 //
 // Precisa de DOMParser (navegador) e, para ZIP, de JSZip carregado na página (window.JSZip).
 
+import { normalizarDocumento } from './utils.js';
+
 export const dig = s => String(s == null ? '' : s).replace(/\D/g, '');
+// CNPJ ALFANUMÉRICO (IN RFB 2.229/2024; os primeiros saíram em julho/2026): o CNPJ das notas mantém as letras (maiúsculas);
+// CPF segue só dígitos. A chave de acesso carrega o CNPJ do emitente, então as 12 posições dele também podem ter letras.
+const docXml = s => normalizarDocumento(s);
+const chaveXml = s => String(s == null ? '' : s).toUpperCase().replace(/[^0-9A-Z]/g, '');
+const RX_CHAVE_NFE = /^\d{6}[0-9A-Z]{12}\d{26}$/;    // cUF + AAMM · CNPJ do emitente · modelo, série, número, tpEmis, cNF e DV
+const RX_CHAVE_NFSE = /^\d{9}[0-9A-Z]{12}\d{29}$/;   // município, ambiente e tipo · inscrição federal · número, AAMM, código e DV
 const num = v => { const n = Number(String(v == null ? '' : v).trim()); return isFinite(n) ? n : 0; };
 
 // ---------- parse ----------
@@ -40,8 +48,8 @@ export function parseXml(texto, nome){
     if (/^mdfe|MDFe/i.test(rl) || first(dom, 'infMDFe')) return { kind: 'ignorado', motivo: 'MDF-e' };
     return { kind: 'ignorado', motivo: 'XML não reconhecido (' + rl + ')' };
   }
-  const chave = String(infNFe.getAttribute('Id') || '').replace(/^NFe/i, '').trim();
-  if (!/^\d{44}$/.test(chave)) throw new Error('chave de acesso inválida');
+  const chave = chaveXml(String(infNFe.getAttribute('Id') || '').replace(/^NFe/i, ''));
+  if (!RX_CHAVE_NFE.test(chave)) throw new Error('chave de acesso inválida');
   const ide = childByLocal(infNFe, 'ide'), emit = childByLocal(infNFe, 'emit'), dest = childByLocal(infNFe, 'dest');
   const tot = first(childByLocal(infNFe, 'total'), 'ICMSTot');
   const dh = txt(ide, 'dhEmi') || txt(ide, 'dEmi') || '';
@@ -60,8 +68,8 @@ export function parseXml(texto, nome){
   const enderEmit = childByLocal(emit, 'enderEmit'), enderDest = childByLocal(dest, 'enderDest');
   let dest_tipo = 'PF', dest_doc = null;
   if (dest) {
-    if (txt(dest, 'CNPJ')) { dest_tipo = 'PJ'; dest_doc = dig(txt(dest, 'CNPJ')); }
-    else if (txt(dest, 'CPF')) { dest_tipo = 'PF'; dest_doc = dig(txt(dest, 'CPF')); }
+    if (txt(dest, 'CNPJ')) { dest_tipo = 'PJ'; dest_doc = docXml(txt(dest, 'CNPJ')); }
+    else if (txt(dest, 'CPF')) { dest_tipo = 'PF'; dest_doc = docXml(txt(dest, 'CPF')); }
     else if (txt(dest, 'idEstrangeiro') != null) { dest_tipo = 'EX'; dest_doc = txt(dest, 'idEstrangeiro') || null; }
   }
   const itens = [];
@@ -84,7 +92,7 @@ export function parseXml(texto, nome){
     chave, modelo: txt(ide, 'mod') || '55', serie: txt(ide, 'serie'), numero: txt(ide, 'nNF'), data_emissao: data,
     tp_nf: txt(ide, 'tpNF') != null ? Number(txt(ide, 'tpNF')) : null, finalidade: txt(ide, 'finNFe') != null ? Number(txt(ide, 'finNFe')) : null,
     natureza_operacao: txt(ide, 'natOp'),
-    emit_doc: dig(txt(emit, 'CNPJ') || txt(emit, 'CPF')) || null, emit_nome: txt(emit, 'xNome'), emit_uf: txt(enderEmit, 'UF'), emit_municipio: txt(enderEmit, 'xMun'),
+    emit_doc: docXml(txt(emit, 'CNPJ') || txt(emit, 'CPF')) || null, emit_nome: txt(emit, 'xNome'), emit_uf: txt(enderEmit, 'UF'), emit_municipio: txt(enderEmit, 'xMun'),
     emit_ie: txt(emit, 'IE'), emit_crt: txt(emit, 'CRT') != null ? Number(txt(emit, 'CRT')) : null,
     dest_doc, dest_tipo, dest_nome: txt(dest, 'xNome'), dest_uf: txt(enderDest, 'UF'), dest_municipio: txt(enderDest, 'xMun'),
     dest_ie: txt(dest, 'IE'), dest_ind_ie: txt(dest, 'indIEDest') != null ? Number(txt(dest, 'indIEDest')) : null,
@@ -117,8 +125,8 @@ const itemServico = (codigo, descricao, vServ, desconto, pisCst, vPis, vCofins) 
 function parseNfseNacional(dom, nome){
   const lista = [];
   [...byName(dom, 'infNFSe')].forEach(inf => {
-    const chave = String(inf.getAttribute('Id') || '').replace(/^NFS/i, '').trim();
-    if (!/^\d{50}$/.test(chave)) throw new Error('chave da NFS-e inválida');
+    const chave = chaveXml(String(inf.getAttribute('Id') || '').replace(/^NFS/i, ''));
+    if (!RX_CHAVE_NFSE.test(chave)) throw new Error('chave da NFS-e inválida');
     const emit = childByLocal(inf, 'emit');
     const dps = first(inf, 'infDPS');
     const prest = childByLocal(dps, 'prest'), toma = childByLocal(dps, 'toma'), serv = childByLocal(dps, 'serv'), vDps = childByLocal(dps, 'valores');
@@ -128,8 +136,8 @@ function parseNfseNacional(dom, nome){
     // tomador: CNPJ, CPF ou NIF (exterior); sem <toma> = não identificado (fica como PF, sem documento)
     let dest_tipo = 'PF', dest_doc = null, dest_uf = null;
     if (toma) {
-      if (txt(toma, 'CNPJ')) { dest_tipo = 'PJ'; dest_doc = dig(txt(toma, 'CNPJ')); }
-      else if (txt(toma, 'CPF')) { dest_tipo = 'PF'; dest_doc = dig(txt(toma, 'CPF')); }
+      if (txt(toma, 'CNPJ')) { dest_tipo = 'PJ'; dest_doc = docXml(txt(toma, 'CNPJ')); }
+      else if (txt(toma, 'CPF')) { dest_tipo = 'PF'; dest_doc = docXml(txt(toma, 'CPF')); }
       else if (txt(toma, 'NIF') != null || first(toma, 'cNaoNIF')) { dest_tipo = 'EX'; dest_doc = txt(toma, 'NIF') || null; }
       const endNac = first(toma, 'endNac');
       dest_uf = endNac ? ufDoIbge(txt(endNac, 'cMun')) : (first(toma, 'endExt') ? 'EX' : null);
@@ -143,7 +151,7 @@ function parseNfseNacional(dom, nome){
     const doc = {
       chave, modelo: 'nfse', serie: txt(dps, 'serie'), numero: txt(inf, 'nNFSe'), data_emissao: data,
       tp_nf: null, finalidade: null, natureza_operacao: txt(inf, 'xTribNac') || 'Serviço',
-      emit_doc: dig(txt(emit, 'CNPJ') || txt(emit, 'CPF')) || null, emit_nome: txt(emit, 'xNome'),
+      emit_doc: docXml(txt(emit, 'CNPJ') || txt(emit, 'CPF')) || null, emit_nome: txt(emit, 'xNome'),
       emit_uf: txt(enderEmit, 'UF') || ufDoIbge(txt(enderEmit, 'cMun')), emit_municipio: txt(inf, 'xLocEmi'),
       emit_ie: null, emit_crt: opSN ? crtDe(opSN === '3', opSN === '2') : null,
       dest_doc, dest_tipo, dest_nome: txt(toma, 'xNome'), dest_uf, dest_municipio: null, dest_ie: null, dest_ind_ie: null,
@@ -162,9 +170,9 @@ const NFSE_EVT_CANCEL = new Set(['101101', '105102', '105105', '305101']);   // 
 function parseEventoNfseNacional(dom){
   const tipoEl = [...byName(dom, '*')].find(e => /^e\d{6}$/.test(e.localName));
   const tpEvento = tipoEl ? tipoEl.localName.slice(1) : null;
-  const chave = dig(txt(dom, 'chNFSe'));
+  const chave = chaveXml(txt(dom, 'chNFSe'));
   const infEv = first(dom, 'infEvento');
-  return { kind: 'evento', modelo: 'nfse', chave: /^\d{50}$/.test(chave) ? chave : null, tpEvento, cancel: NFSE_EVT_CANCEL.has(tpEvento), homologado: !!(txt(infEv, 'dhProc') || txt(infEv, 'nSeqEvento')), cStat: null };
+  return { kind: 'evento', modelo: 'nfse', chave: RX_CHAVE_NFSE.test(chave) ? chave : null, tpEvento, cancel: NFSE_EVT_CANCEL.has(tpEvento), homologado: !!(txt(infEv, 'dhProc') || txt(infEv, 'nSeqEvento')), cStat: null };
 }
 
 // NFS-e municipal padrão ABRASF (1.0 e 2.x — Betha, GINFES, ISSNet e afins): <CompNfse><Nfse><InfNfse>…; pode vir uma lista
@@ -176,7 +184,7 @@ function parseNfseAbrasf(dom, nome){
     const numero = semNumeroZero(txtChild(inf, 'Numero') || txt(inf, 'Numero'));
     const prest = first(inf, 'PrestadorServico') || first(inf, 'Prestador');
     const idPrest = first(prest, 'IdentificacaoPrestador') || prest;
-    const emitDoc = dig(txt(idPrest, 'Cnpj') || txt(idPrest, 'Cpf') || txt(idPrest, 'CpfCnpj'));
+    const emitDoc = docXml(txt(idPrest, 'Cnpj') || txt(idPrest, 'Cpf') || txt(idPrest, 'CpfCnpj'));
     if (!numero || !(emitDoc.length === 14 || emitDoc.length === 11)) throw new Error('NFS-e sem número ou sem CNPJ/CPF do prestador');
     const data = dataDe(txtChild(inf, 'DataEmissao')) || dataDe(txt(inf, 'DataEmissao')) || dataDe(txt(inf, 'Competencia'));
     if (!data) throw new Error('data de emissão ausente');
@@ -184,8 +192,8 @@ function parseNfseAbrasf(dom, nome){
     const idToma = first(toma, 'IdentificacaoTomador') || toma;
     let dest_tipo = 'PF', dest_doc = null;
     if (idToma) {
-      if (txt(idToma, 'Cnpj')) { dest_tipo = 'PJ'; dest_doc = dig(txt(idToma, 'Cnpj')); }
-      else if (txt(idToma, 'Cpf')) { dest_tipo = 'PF'; dest_doc = dig(txt(idToma, 'Cpf')); }
+      if (txt(idToma, 'Cnpj')) { dest_tipo = 'PJ'; dest_doc = docXml(txt(idToma, 'Cnpj')); }
+      else if (txt(idToma, 'Cpf')) { dest_tipo = 'PF'; dest_doc = docXml(txt(idToma, 'Cpf')); }
     }
     const serv = first(inf, 'Servico');
     const val = first(serv, 'Valores') || first(inf, 'Valores');
@@ -217,7 +225,7 @@ function parseNfseAbrasf(dom, nome){
 function parseCancelAbrasf(dom){
   const idn = first(dom, 'IdentificacaoNfse');
   const numero = semNumeroZero(txt(idn, 'Numero'));
-  const cnpj = dig(txt(idn, 'Cnpj') || txt(idn, 'Cpf'));
+  const cnpj = docXml(txt(idn, 'Cnpj') || txt(idn, 'Cpf'));
   const ok = !!(first(dom, 'Confirmacao') || first(dom, 'DataHora') || first(dom, 'DataHoraCancelamento') || first(dom, 'Sucesso'));
   return { kind: 'evento', modelo: 'nfse', chave: numero && cnpj ? 'NFSE-' + cnpj + '-' + numero : null, tpEvento: 'cancelamento', cancel: true, homologado: ok, cStat: null };
 }
@@ -281,7 +289,7 @@ export async function separarNaoXml(files) {
 export async function importarLote({ supabase, cliente, arquivos, usuario, onProgresso }) {
   const progresso = (n, m, t) => { if (onProgresso) onProgresso(n, m, t); };
   const cli = cliente;
-  const docCli = dig(cli.documento);
+  const docCli = docXml(cli.documento);
   if (docCli.length !== 14 && docCli.length !== 11) throw new Error('cliente sem CNPJ/CPF no cadastro — a importação precisa do documento pra saber o que é venda e o que é compra');
   if (!arquivos || !arquivos.length) throw new Error('nenhum arquivo para importar');
   const ignorados = [], erros = [];

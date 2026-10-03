@@ -157,6 +157,7 @@
 
 <script type="module">
 import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+import { formatDocumento } from './assets/js/utils.js';
 
 const $ = id => document.getElementById(id);
 const BRL = n => 'R$ ' + (Number(n)||0).toLocaleString('pt-BR',{minimumFractionDigits:2, maximumFractionDigits:2});
@@ -498,9 +499,8 @@ async function addEmpresa(id){
 }
 
 function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function fmtDoc(d){ if(!d) return ''; const s=String(d).replace(/\D/g,'');
-  if(s.length===14) return s.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5');
-  if(s.length===11) return s.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4'); return d; }
+// CNPJ numérico ou alfanumérico (IN RFB 2.229/2024) e CPF
+function fmtDoc(d){ if(!d) return ''; return formatDocumento(String(d)); }
 function msg(t){ const el=$('msg'); el.textContent=t||''; el.style.color=''; }
 
 init();

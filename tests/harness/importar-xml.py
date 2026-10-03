@@ -7,8 +7,8 @@ não permite npm (o `linkedom` nunca vai estar instalado). Aqui ele roda de verd
 que o `conferir.py` usa, com os mesmos XMLs inventados (repositório público — nada de nota de cliente).
 
 Confere: NF-e autorizada (chave, emitente/destinatário, status, CFOP, valor, item), NF-e rejeitada,
-evento de cancelamento (homologado e não homologado), NFS-e do padrão nacional, DPS solta, CT-e e
-XML mal formado. Termina com código 1 se alguma checagem falhar.
+evento de cancelamento (homologado e não homologado), NFS-e do padrão nacional, CNPJ alfanumérico na chave e
+nos documentos (IN RFB 2.229/2024), DPS solta, CT-e e XML mal formado. Termina com código 1 se alguma checagem falhar.
 Pré-requisito: pip install playwright e python -m playwright install chromium
 """
 import sys, pathlib
@@ -44,6 +44,15 @@ NFSE = f'''<?xml version="1.0"?><NFSe xmlns="http://www.sped.fazenda.gov.br/nfse
 # incondicional. Faltava no teste antigo — sem desconto, trocar o sinal da conta não muda nada.
 NFSE_DESC = NFSE.replace('<vServPrest><vServ>1500.00</vServ></vServPrest>',
                          '<vServPrest><vServ>1500.00</vServ></vServPrest><vDescIncond>100.00</vDescIncond><vDescCond>50.00</vDescCond>')
+
+# CNPJ alfanumérico (IN RFB 2.229/2024, desde julho/2026): a chave de acesso carrega o CNPJ do emitente com letras
+# (exemplo oficial da Receita: 12.ABC.345/01DE-35)
+CNPJ_ALFA = '12ABC34501DE35'
+CHAVE_ALFA = '432609' + CNPJ_ALFA + '55' + '001' + '000012345' + '1' + '00012345' + '0'
+CHAVE_NFSE_ALFA = '4321501' + '2' + '1' + CNPJ_ALFA + '2' * 27
+NFE_ALFA = NFE.replace(CHAVE, CHAVE_ALFA).replace('<emit><CNPJ>11111111000111</CNPJ>', '<emit><CNPJ>' + CNPJ_ALFA + '</CNPJ>')
+NFSE_ALFA = NFSE.replace(CHAVE_NFSE, CHAVE_NFSE_ALFA).replace('<emit><CNPJ>11111111000111</CNPJ>', '<emit><CNPJ>' + CNPJ_ALFA + '</CNPJ>').replace('<toma><CNPJ>22222222000122</CNPJ>', '<toma><CNPJ>' + CNPJ_ALFA + '</CNPJ>')
+assert len(CHAVE_ALFA) == 44 and len(CHAVE_NFSE_ALFA) == 50
 
 # as mesmas checagens do .mjs antigo, agora rodando no navegador
 CHECAGENS = r'''
@@ -91,6 +100,15 @@ async (x) => {
     ok(Math.abs(d.valor_desconto - 150) < 0.005, 'com desconto: o desconto registrado soma os dois (100 + 50)');
   } else ok(false, 'com desconto: reconhece a NFS-e');
 
+  tit('CNPJ alfanumérico:');
+  const ra = parseXml(x.nfeAlfa, 'nfe-alfa.xml');
+  ok(ra.kind === 'nfe' && ra.doc.chave === x.chaveAlfa, 'NF-e com letras na chave (CNPJ do emitente) é aceita');
+  ok(ra.kind === 'nfe' && ra.doc.emit_doc === x.cnpjAlfa, 'emitente com CNPJ alfanumérico mantém as letras');
+  const rb = parseXml(x.nfseAlfa, 'nfse-alfa.xml');
+  ok(rb.kind === 'nfse' && rb.lista[0].doc.emit_doc === x.cnpjAlfa && rb.lista[0].doc.dest_doc === x.cnpjAlfa, 'NFS-e nacional: prestador e tomador com CNPJ alfanumérico');
+  let ruim = null; try { ruim = parseXml(x.nfeAlfa.split(x.chaveAlfa).join(x.chaveAlfa.slice(0, 40) + 'ABCD'), 'nfe-ruim.xml'); } catch (e) { ruim = { kind: 'erro', motivo: e.message }; }
+  ok(ruim.kind === 'erro' && /chave de acesso inválida/.test(ruim.motivo), 'letra fora da posição do CNPJ continua sendo chave inválida');
+
   tit('Outros:');
   ok(parseXml('<DPS xmlns="http://www.sped.fazenda.gov.br/nfse"><infDPS></infDPS></DPS>', 'dps.xml').kind === 'ignorado', 'DPS solta é ignorada');
   ok(parseXml('<cteProc xmlns="http://www.portalfiscal.inf.br/cte"><CTe><infCte/></CTe></cteProc>', 'cte.xml').motivo === 'CT-e', 'CT-e é ignorado com o motivo');
@@ -114,7 +132,8 @@ def main():
         p = b.new_page()
         p.on('pageerror', lambda e: erros.append(str(e)))
         p.goto(base + '_parser.html')
-        linhas = p.evaluate(CHECAGENS, { 'nfe': NFE, 'evento': EVENTO, 'nfse': NFSE, 'nfseDesc': NFSE_DESC, 'chave': CHAVE })
+        linhas = p.evaluate(CHECAGENS, { 'nfe': NFE, 'evento': EVENTO, 'nfse': NFSE, 'nfseDesc': NFSE_DESC, 'chave': CHAVE,
+                                         'nfeAlfa': NFE_ALFA, 'nfseAlfa': NFSE_ALFA, 'chaveAlfa': CHAVE_ALFA, 'cnpjAlfa': CNPJ_ALFA })
         b.close()
     srv.shutdown()
 

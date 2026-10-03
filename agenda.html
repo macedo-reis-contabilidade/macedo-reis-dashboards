@@ -355,6 +355,7 @@
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { abrirNovaTarefa } from './assets/js/nova-tarefa.js';
+    import { formatDocumento, normalizarDocumento } from './assets/js/utils.js';
 
     // ---- identidade visual por setor ----
     const SETOR_INFO = {
@@ -1127,12 +1128,10 @@
         gw.style.display = 'block';
       } else { gw.style.display = 'none'; }
       {
-        const docBruto = String(t.clientes?.documento || '').replace(/\D/g, '');
+        const docBruto = normalizarDocumento(t.clientes?.documento);   // CNPJ alfanumérico mantém as letras
         const wrapD = document.getElementById('dDocWrap');
         if (docBruto.length === 11 || docBruto.length === 14) {
-          const fmtD = docBruto.length === 14
-            ? docBruto.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5')
-            : docBruto.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+          const fmtD = formatDocumento(docBruto);
                 document.getElementById('dDoc').textContent = fmtD;
           wrapD.dataset.raw = docBruto;
           wrapD.style.display = '';

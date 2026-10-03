@@ -221,7 +221,7 @@
   <script src="assets/js/tour.js"></script>
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
-    import { hojeLocal, dataLocal } from './assets/js/utils.js';   // dia no fuso local (toISOString é UTC)
+    import { hojeLocal, dataLocal, formatDocumento } from './assets/js/utils.js';   // dia no fuso local (toISOString é UTC)
     const user = await getCurrentUser();
     if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; const av = document.getElementById('userAvatar'); if (av) av.textContent = (user.email || '?').charAt(0).toUpperCase(); }
     document.getElementById('btnLogout')?.addEventListener('click', signOut);
@@ -233,12 +233,7 @@
     // oficial (é o que o contrato usa) e a busca procura nos dois.
     const nomeVis = c => String(c?.nome_principal || '').replace(/\s+\d{11}$/, '').replace(/^\d{2}\.\d{3}\.\d{3}\s+/, '').trim() || String(c?.nome_principal || '');
     const porNome = (a, b) => nomeVis(a.clientes).localeCompare(nomeVis(b.clientes));
-    const docFmt = d => {
-      const s = String(d || '').replace(/\D/g, '');
-      if (s.length === 14) return s.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
-      if (s.length === 11) return s.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
-      return String(d || '');
-    };
+    const docFmt = d => formatDocumento(String(d || ''));   // CNPJ numérico ou alfanumérico (IN RFB 2.229/2024) e CPF
     const hoje = new Date();
     const ymNow = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0');
 

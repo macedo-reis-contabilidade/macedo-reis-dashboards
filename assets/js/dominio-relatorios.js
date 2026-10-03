@@ -16,10 +16,14 @@
 //       e a lista fica visível na prévia pra conferência.
 // ============================================================
 
+import { normalizarDocumento, ehCnpj } from './utils.js';
+
 const MESES = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
 const semAcento = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 const norm = s => semAcento(s).toUpperCase().replace(/\s+/g, ' ').trim();
 const dig = s => String(s == null ? '' : s).replace(/\D/g, '');
+// documento (CNPJ/CPF) sem pontuação — CNPJ alfanumérico (IN RFB 2.229/2024) mantém as letras
+const docN = s => normalizarDocumento(s);
 // "1.034.942,41" → 1034942.41 · devolve null se não for número
 export function numBR(s) {
   const t = String(s == null ? '' : s).trim();
@@ -29,7 +33,8 @@ export function numBR(s) {
 }
 const RX_VALOR = /-?\d{1,3}(?:\.\d{3})*,\d{2}/g;
 const valores = l => (String(l).match(RX_VALOR) || []).map(numBR);
-const RX_DOC = /(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\d{3}\.\d{3}\.\d{3}-\d{2})/;
+// CNPJ (numérico ou alfanumérico: letras nas 12 primeiras posições) ou CPF, com a pontuação de sempre
+const RX_DOC = /([0-9A-Z]{2}\.[0-9A-Z]{3}\.[0-9A-Z]{3}\/[0-9A-Z]{4}-\d{2}|\d{3}\.\d{3}\.\d{3}-\d{2})/;
 
 // ---------- CFOP: o que credita, o que não é compra ----------
 // Sufixo do CFOP (os 3 últimos dígitos); o 1º dígito é só a origem (1 estado, 2 outro, 3 exterior).
@@ -76,7 +81,7 @@ export function detectarTipo(paginas) {
 function cabecalho(paginas) {
   const linhas = (paginas[0] || []).slice(0, 16);
   const alvo = l => norm(l);
-  const doc = linhas.map(l => (l.match(/CNPJ:?\s*(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})/) || [])[1]).find(Boolean) || null;
+  const doc = linhas.map(l => (l.match(/CNPJ:?\s*([0-9A-Z]{2}\.[0-9A-Z]{3}\.[0-9A-Z]{3}\/[0-9A-Z]{4}-\d{2})/) || [])[1]).find(Boolean) || null;
   let empresa = null;
   // acompanhamentos de saídas/serviços abrem com "NOME DA EMPRESA  Página:  0001", sem rótulo
   const m0 = (linhas[0] || '').match(/^[ \t]*([A-ZÀ-Ú0-9].*?)  +P[áa]gina/);
@@ -89,7 +94,7 @@ function cabecalho(paginas) {
     if (m2 && alvo(m2[1]).length > 4) { empresa = m2[1].trim(); break; }
   }
   const per = linhas.map(l => (l.match(/Per[íi]odo:\s*(.+?)(?:\s{2,}|$)/i) || [])[1]).find(Boolean) || null;
-  return { empresa, cnpj: doc ? dig(doc) : null, periodo: per ? per.trim() : null };
+  return { empresa, cnpj: doc ? docN(doc) : null, periodo: per ? per.trim() : null };
 }
 
 // ---------- 1) RELATÓRIO DE FATURAMENTO ----------
@@ -237,7 +242,7 @@ export function lerEntradas(paginas) {
     const data = datas[0];
     lancamentos.push({
       data, competencia: data.slice(6, 10) + '-' + data.slice(3, 5),
-      fornecedor: nome || null, documento: doc ? dig(doc) : null,
+      fornecedor: nome || null, documento: doc ? docN(doc) : null,
       cfop: o + s, ac, uf, valor: numBR(val), grupo: grupoDoCfop(o + s)
     });
   }
@@ -338,9 +343,9 @@ export function perfilAtividade({ natureza, cnae, anexo, restaurante } = {}) {
 export function cnpjsParaConsultar(rels, n = 20) {
   const soma = (arr) => { const m = new Map(); arr.forEach(([d, v]) => m.set(d, (m.get(d) || 0) + v)); return [...m.entries()].sort((a, b) => b[1] - a[1]); };
   const ents = rels.filter(r => r.tipo === 'entradas').flatMap(r => r.lancamentos || []);
-  const fornecedores = soma(ents.filter(l => ['mercadoria', 'despesa'].includes(l.grupo) && dig(l.documento).length === 14).map(l => [dig(l.documento), l.valor || 0])).slice(0, n);
+  const fornecedores = soma(ents.filter(l => ['mercadoria', 'despesa'].includes(l.grupo) && ehCnpj(l.documento)).map(l => [docN(l.documento), l.valor || 0])).slice(0, n);
   const vens = rels.filter(r => r.tipo === 'saidas' || r.tipo === 'servicos').flatMap(r => r.vendas || []);
-  const clientes = soma(vens.filter(v => (v.grupo || 'receita') === 'receita' && dig(v.documento).length === 14).map(v => [dig(v.documento), v.valor || 0])).slice(0, n);
+  const clientes = soma(vens.filter(v => (v.grupo || 'receita') === 'receita' && ehCnpj(v.documento)).map(v => [docN(v.documento), v.valor || 0])).slice(0, n);
   return { fornecedores: fornecedores.map(x => x[0]), clientes: clientes.map(x => x[0]) };
 }
 // crédito de compra de fornecedor do Simples: só o IBS/CBS que ele recolheu dentro do DAS — estimado em 15% do crédito cheio;
@@ -493,7 +498,7 @@ export function lerPlanilha(linhas) {
     const valor = celNum(l[col.valor]);
     const nome = txt[col.nome];
     if (!data || valor == null || !nome) continue;
-    const doc = col.doc >= 0 ? dig(txt[col.doc]) : '';
+    const doc = col.doc >= 0 ? docN(txt[col.doc]) : '';
     const cfopTxt = col.cfop >= 0 ? dig(txt[col.cfop]) : '';
     const cfop = cfopTxt.length === 4 ? cfopTxt : null;
     const competencia = data.slice(6, 10) + '-' + data.slice(3, 5);
@@ -631,8 +636,8 @@ export function consolidar(rels, incluir, opcoes = {}) {
       campos.pctPJTotal = resVen.pctPJ;
       if (regimes && regimes.size) {
         let vReg = 0, vSim = 0, vDesc = 0;
-        ven.vendas.filter(v => (v.grupo || 'receita') === 'receita' && (!competencias.length || competencias.includes(v.competencia)) && dig(v.documento).length === 14)
-          .forEach(v => { const r = regimes.get(dig(v.documento)); const x = v.valor || 0; if (!r || r.simples == null) vDesc += x; else if (r.simples) vSim += x; else vReg += x; });
+        ven.vendas.filter(v => (v.grupo || 'receita') === 'receita' && (!competencias.length || competencias.includes(v.competencia)) && ehCnpj(v.documento))
+          .forEach(v => { const r = regimes.get(docN(v.documento)); const x = v.valor || 0; if (!r || r.simples == null) vDesc += x; else if (r.simples) vSim += x; else vReg += x; });
         if (vReg + vSim > 0) {
           const propReg = vReg / (vReg + vSim);
           const pjRegular = (vReg + vDesc * propReg) / resVen.total * 100;
@@ -715,7 +720,7 @@ export function consolidar(rels, incluir, opcoes = {}) {
       // compras com crédito, por fornecedor, no período — quem é do Simples credita só uma fração
       const cred = ent.lancamentos.filter(l => base.includes(l.competencia) && ['mercadoria', 'despesa'].includes(l.grupo));
       let vSimples = 0, vMei = 0, vRegular = 0, vDesc = 0; const nomesS = {};
-      cred.forEach(l => { const r = regimes.get(dig(l.documento)); const v = l.valor || 0;
+      cred.forEach(l => { const r = regimes.get(docN(l.documento)); const v = l.valor || 0;
         if (!r || r.simples == null) vDesc += v; else if (r.mei) vMei += v; else if (r.simples) { vSimples += v; nomesS[r.razao || l.fornecedor] = (nomesS[r.razao || l.fornecedor] || 0) + v; } else vRegular += v; });
       const conhecido = vSimples + vMei + vRegular, totalCred = conhecido + vDesc;
       if (conhecido > 0 && totalCred > 0) {

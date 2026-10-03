@@ -352,7 +352,7 @@
     import { lerRelatorio, consolidar, resumirEntradas, GRUPOS, lerPlanilha, perfilAtividade, cnpjsParaConsultar, ramoComReducao, conferirRbt12, CREDITO_FORNECEDOR_SIMPLES } from './assets/js/dominio-relatorios.js';
     import { lerXls } from './assets/js/xls-biff.js';
     import { importarLote, separarNaoXml } from './assets/js/importar-xml.js';
-    import { formatDocumento } from './assets/js/utils.js';
+    import { formatDocumento, normalizarDocumento } from './assets/js/utils.js';
     import { gerarAnalise } from './assets/js/rt-analise.js';
     import { simular } from './assets/js/rt-motor.js';
     import { RT_PRAZO, janelaAberta as janelaAbertaEm } from './assets/js/rt-prazos.js';
@@ -364,7 +364,7 @@
     const brPct = v => v == null || v === '' ? '' : Number(v).toLocaleString('pt-BR', { maximumFractionDigits:4 });
     const parseNum = s => { const t = String(s || '').trim().replace(/\./g, '').replace(',', '.'); return t === '' ? null : (isNaN(+t) ? null : +t); };
     const fmtData = d => d ? d.split('-').reverse().join('/') : '—';
-    const fmtCnpj = d => { const x = String(d || '').replace(/\D/g, ''); return x.length === 14 ? x.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5') : (x.length === 11 ? x.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : (d || '')); };
+    const fmtCnpj = d => formatDocumento(d);   // CNPJ numérico ou alfanumérico (IN RFB 2.229/2024) e CPF
     // data local (Brasília): toISOString() é UTC e depois das 21h já devolve o dia seguinte (achado de 30/09/2026)
     const hojeISO = () => { const a = new Date(); return a.getFullYear() + '-' + String(a.getMonth() + 1).padStart(2, '0') + '-' + String(a.getDate()).padStart(2, '0'); };
     const agoraISO = () => new Date().toISOString();
@@ -483,7 +483,7 @@
           const cli = clientesMap[c.cliente_id] || {};
           // razão, fantasia, CNPJ e CNAE; sem acento e sem pontuação ("jovenil", "p s f da silva", "04740303")
           const sem = t => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-          const alvo = sem((cli.nome_principal || '') + ' ' + (cli.nome_fantasia || '') + ' ' + String(cli.documento || '').replace(/\D/g, '') + ' ' + (c.cnae_base || ''));
+          const alvo = sem((cli.nome_principal || '') + ' ' + (cli.nome_fantasia || '') + ' ' + normalizarDocumento(cli.documento) + ' ' + (c.cnae_base || ''));
           const b = sem(busca);
           if (!alvo.includes(b) && !alvo.replace(/[^a-z0-9]/g, '').includes(b.replace(/[^a-z0-9]/g, ''))) return false;
         }
@@ -905,7 +905,7 @@
       if (!window.XLSX && arquivos.some(f => !/\.xls$/i.test(f.name))) { domMsgErro('O leitor de planilha não carregou — verifique a conexão e recarregue a página (Ctrl+F5).'); return; }
       $('domMsg').style.color = 'var(--text-muted)'; $('domMsg').textContent = 'Lendo ' + arquivos.length + ' planilha(s)…';
       const cFicha = casoAtual(); const cliF = cFicha ? clientesMap[cFicha.cliente_id] : null;
-      const docFicha = cliF && cliF.documento ? String(cliF.documento).replace(/\D/g, '') : null;
+      const docFicha = cliF && cliF.documento ? normalizarDocumento(cliF.documento) : null;
       for (const f of arquivos) {
         try {
           const buf = await f.arrayBuffer();
@@ -943,7 +943,7 @@
       $('domMsg').style.color = 'var(--text-muted)'; $('domMsg').textContent = 'Lendo ' + pdfs.length + ' arquivo(s)…';
       // relatório de outra empresa não entra — mesma regra das notas ("XML de terceiro")
       const cFicha = casoAtual(); const cliF = cFicha ? clientesMap[cFicha.cliente_id] : null;
-      const docFicha = cliF && cliF.documento ? String(cliF.documento).replace(/\D/g, '') : null;
+      const docFicha = cliF && cliF.documento ? normalizarDocumento(cliF.documento) : null;
       for (const f of pdfs) {
         try {
           const rel = lerRelatorio(await paginasDoPdf(f));
@@ -986,7 +986,7 @@
       const cons = domEstado.cons = consolidar(domEstado.rels, domEstado.incluir, { regimes: domEstado.regimes, perfil: perfil0, varejo: cnae0.replace(/\D/g, '').startsWith('47') });
       const c = casoAtual();
       const cliFicha = c ? clientesMap[c.cliente_id] : null;
-      const docFicha = (cliFicha && cliFicha.documento) ? String(cliFicha.documento).replace(/\D/g, '') : null;
+      const docFicha = (cliFicha && cliFicha.documento) ? normalizarDocumento(cliFicha.documento) : null;
       const docRel = domEstado.rels.map(r => r.cnpj).filter(Boolean)[0] || null;
       let html = '';
 

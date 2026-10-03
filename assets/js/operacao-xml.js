@@ -5,6 +5,10 @@
 // ficam fora de vendas/compras e são devolvidas à parte.
 // ============================================================
 
+import { normalizarDocumento } from './utils.js';
+// raiz do CNPJ (8 primeiras posições — no CNPJ alfanumérico, com as letras): filial não é cliente novo
+const raizDoc = doc => normalizarDocumento(doc).slice(0, 8);
+
 export const CFOP_COMPRA_MERCADORIA = new Set(['1101','1102','1111','1113','1116','1117','1118','1120','1121','1122','1401','1403','2101','2102','2111','2113','2116','2117','2118','2120','2121','2122','2401','2403','3101','3102','3127']);
 // saídas/entradas que não são venda nem compra: transferência, remessas, retornos, bonificação, demonstração…
 // 949 (outra saída/entrada não especificada) fica fora do faturamento, como no relatório da Domínio
@@ -39,7 +43,7 @@ export function regimeDoNcm(ncm, regras) {
 }
 
 export function mascararDoc(doc) {
-  const d = String(doc || '').replace(/\D/g, '');
+  const d = normalizarDocumento(doc);   // CNPJ alfanumérico mantém as letras
   if (d.length === 14) return d.slice(0, 2) + '.***.***/' + d.slice(8, 12) + '-' + d.slice(12);
   if (d.length === 11) return '***.' + d.slice(3, 6) + '.' + d.slice(6, 9) + '-**';
   return doc || '—';
@@ -126,12 +130,12 @@ export function agregar(docs, itens, regras, periodo) {
   // reagrupar só o topo por documento perderia o grupo cujos CNPJs, sozinhos, não
   // entram na lista (o caso clássico da indústria com várias filiais comprando).
   const clientesRaiz = ranking(vendas,
-    d => (String(d.dest_doc || '').replace(/\D/g, '').slice(0, 8)) || ('__' + (d.dest_nome || 'sem nome')),
-    d => ({ nome: d.dest_nome || '—', raiz: String(d.dest_doc || '').replace(/\D/g, '').slice(0, 8) || null, uf: ufVenda(d), tipo: d.dest_tipo || 'PF', docs: new Set(), valor: 0, notas: 0 }), 20);
+    d => raizDoc(d.dest_doc) || ('__' + (d.dest_nome || 'sem nome')),
+    d => ({ nome: d.dest_nome || '—', raiz: raizDoc(d.dest_doc) || null, uf: ufVenda(d), tipo: d.dest_tipo || 'PF', docs: new Set(), valor: 0, notas: 0 }), 20);
   // conta os CNPJs de cada grupo (a ranking não sabe fazer isso sozinha)
   const docsPorRaiz = new Map();
   vendas.forEach(d => {
-    const r = String(d.dest_doc || '').replace(/\D/g, '').slice(0, 8) || ('__' + (d.dest_nome || 'sem nome'));
+    const r = raizDoc(d.dest_doc) || ('__' + (d.dest_nome || 'sem nome'));
     if (!docsPorRaiz.has(r)) docsPorRaiz.set(r, new Set());
     if (d.dest_doc) docsPorRaiz.get(r).add(d.dest_doc);
   });
@@ -141,7 +145,7 @@ export function agregar(docs, itens, regras, periodo) {
     delete g.docs;
     // grupo com várias filiais: UF de cada uma, e o nome mais curto (a matriz não carrega "FL 09")
     if (g.cnpjs > 1) {
-      const doGrupo = vendas.filter(d => String(d.dest_doc || '').replace(/\D/g, '').slice(0, 8) === g.raiz);
+      const doGrupo = vendas.filter(d => raizDoc(d.dest_doc) === g.raiz);
       g.uf = [...new Set(doGrupo.map(ufVenda))].sort().join('/');
       g.nome = doGrupo.map(d => String(d.dest_nome || '').trim()).filter(Boolean).sort((a, b) => a.length - b.length)[0] || g.nome;
     }

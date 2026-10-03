@@ -126,8 +126,8 @@
 
 <script type="module">
 import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
-import { formatDocumento } from './assets/js/utils.js';
-import { importarLote, dig } from './assets/js/importar-xml.js';
+import { formatDocumento, normalizarDocumento } from './assets/js/utils.js';
+import { importarLote } from './assets/js/importar-xml.js';
 
 const $ = id => document.getElementById(id);
 const BRL = n => 'R$ ' + (Number(n) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -192,7 +192,7 @@ function escolherCliente(c){
   $('cliRes').innerHTML = '';
   if (!cliente) { $('cliSel').textContent = 'Nenhum cliente escolhido.'; $('secExiste').style.display = 'none'; atualizarBotao(); return; }
   $('cliBusca').value = cliente.nome_principal;
-  const d = dig(cliente.documento);
+  const d = normalizarDocumento(cliente.documento);   // CNPJ alfanumérico mantém as letras
   if (d.length !== 14 && d.length !== 11) {
     $('cliSel').innerHTML = '<b>' + esc(cliente.nome_principal) + '</b> · <span class="warn">sem CNPJ/CPF no cadastro — a importação precisa do documento pra saber o que é venda e o que é compra. Complete o cadastro primeiro.</span>';
   } else {
@@ -201,7 +201,7 @@ function escolherCliente(c){
   atualizarBotao();
   carregarExistente();
 }
-const clienteTemDoc = () => { const d = dig(cliente?.documento); return d.length === 14 || d.length === 11; };
+const clienteTemDoc = () => { const d = normalizarDocumento(cliente?.documento); return d.length === 14 || d.length === 11; };
 
 // ---------- arquivos ----------
 const drop = $('drop');

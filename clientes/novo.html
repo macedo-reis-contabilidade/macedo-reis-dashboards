@@ -412,7 +412,7 @@
     import { supabase, getCurrentUser, signOut } from '../assets/js/supabase.js';
     import {
       bindMask, maskCNPJ, maskCPF, maskTelefone, maskCEP,
-      onlyDigits, buscarCEP, ESTADOS_BR
+      onlyDigits, normalizarDocumento, cnpjValido, buscarCEP, ESTADOS_BR
     } from '../assets/js/utils.js';
 
     (async () => {
@@ -498,17 +498,8 @@
       let d2 = 11 - (s % 11); if (d2 >= 10) d2 = 0;
       return d2 === parseInt(cpf[10]);
     }
-    function isValidCNPJ(cnpj) {
-      cnpj = onlyDigits(cnpj);
-      if (cnpj.length !== 14 || /^(\d)\1{13}$/.test(cnpj)) return false;
-      const calc = (len) => {
-        let s = 0, pos = len - 7;
-        for (let i = len; i >= 1; i--) { s += parseInt(cnpj[len - i]) * pos--; if (pos < 2) pos = 9; }
-        const r = s % 11; return r < 2 ? 0 : 11 - r;
-      };
-      if (calc(12) !== parseInt(cnpj[12])) return false;
-      return calc(13) === parseInt(cnpj[13]);
-    }
+    // CNPJ numérico ou alfanumérico (IN RFB 2.229/2024) — a conta do DV fica em utils.js
+    const isValidCNPJ = cnpjValido;
 
     // Mensagens
     const formError = document.getElementById('formError');
@@ -530,12 +521,13 @@
     async function cadastrar() {
       const tipo = selTipo.value;
       const nome = document.getElementById('nome_principal').value.trim();
-      const docRaw = onlyDigits(docInput.value);
+      // CNPJ alfanumérico guarda as letras (maiúsculas); CPF, só dígitos
+      const docRaw = normalizarDocumento(docInput.value);
 
       const errs = [];
       if (!tipo) errs.push('Escolha o tipo de pessoa.');
       if (!nome) errs.push(tipo === 'PJ' ? 'Informe a razão social.' : 'Informe o nome.');
-      if (tipo === 'PJ' && !isValidCNPJ(docRaw)) errs.push('CNPJ inválido. Confira os dígitos.');
+      if (tipo === 'PJ' && !isValidCNPJ(docRaw)) errs.push('CNPJ inválido. Confira os caracteres e os dois dígitos verificadores.');
       if (tipo === 'PF' && !isValidCPF(docRaw)) errs.push('CPF inválido. Confira os dígitos.');
       if (errs.length) { showError(errs.join(' ')); return; }
 
@@ -851,7 +843,7 @@
         selTipo.dispatchEvent(new Event('change'));
       }
       if (d.documento) {
-        const dig = onlyDigits(String(d.documento));
+        const dig = normalizarDocumento(String(d.documento));
         docInput.value = (selTipo.value === 'PJ') ? maskCNPJ(dig) : (selTipo.value === 'PF' ? maskCPF(dig) : dig);
       }
       setVal('nome_principal', d.nome_principal);

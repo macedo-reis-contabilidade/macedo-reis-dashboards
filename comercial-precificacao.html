@@ -264,7 +264,7 @@
 
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
-    import { hojeLocal, dataLocal } from './assets/js/utils.js';   // dia no fuso local (toISOString é UTC)
+    import { hojeLocal, dataLocal, normalizarDocumento, cnpjValido } from './assets/js/utils.js';   // dia no fuso local (toISOString é UTC)
     const user = await getCurrentUser();
     if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; const av = document.getElementById('userAvatar'); if (av) av.textContent = (user.email || '?').charAt(0).toUpperCase(); }
     const btnOut = document.getElementById('btnLogout');
@@ -1037,11 +1037,7 @@
         s = 0; for (let i = 0; i < 10; i++) s += +d[i] * (11 - i);
         return ((s * 10) % 11 % 10) === +d[10];
       }
-      if (d.length === 14) {
-        if (/^(\d)\1+$/.test(d)) return false;
-        const calc = (n) => { const pe = n === 12 ? [5,4,3,2,9,8,7,6,5,4,3,2] : [6,5,4,3,2,9,8,7,6,5,4,3,2]; let s2 = 0; for (let i = 0; i < n; i++) s2 += +d[i] * pe[i]; const r = s2 % 11; return r < 2 ? 0 : 11 - r; };
-        return calc(12) === +d[12] && calc(13) === +d[13];
-      }
+      if (d.length === 14) return cnpjValido(d);   // numérico ou alfanumérico (IN RFB 2.229/2024)
       return false;
     };
     let propTransAtual = null;
@@ -1053,11 +1049,11 @@
       document.getElementById('tpNome').textContent = p.cliente_nome + (p.honorario != null ? ' · honorário fechado: ' + fmt(p.honorario) + '/mês' : '');
       let docResp = '';
       const candChaves = [p.respostas && p.respostas.A1B, p.respostas && p.respostas.cnpj, p.respostas && p.respostas.documento];
-      for (const c of candChaves) { const d = String(c || '').replace(/\D/g, ''); if ((d.length === 11 || d.length === 14) && validaDV(d)) { docResp = d; break; } }
+      for (const c of candChaves) { const d = normalizarDocumento(c); if ((d.length === 11 || d.length === 14) && validaDV(d)) { docResp = d; break; } }
       if (!docResp && p.respostas) {
         const contatoDig = String(p.contato || '').replace(/\D/g, '');
         for (const v of Object.values(p.respostas)) {
-          const d = String(v == null ? '' : v).replace(/\D/g, '');
+          const d = normalizarDocumento(v);
           if (d.length === 14 && validaDV(d)) { docResp = d; break; }
           if (!docResp && d.length === 11 && d !== contatoDig && validaDV(d)) docResp = d;
         }
@@ -1072,14 +1068,14 @@
       document.getElementById('ovTransProp').style.display = 'flex';
     }
     document.getElementById('tpCancelar').addEventListener('click', () => { document.getElementById('ovTransProp').style.display = 'none'; });
-    document.getElementById('tpDoc').addEventListener('input', e => { const d = e.target.value.replace(/\D/g, ''); if (d.length === 11 || d.length === 14) document.getElementById('tpDrive').checked = d.length === 14; });
+    document.getElementById('tpDoc').addEventListener('input', e => { const d = normalizarDocumento(e.target.value); if (d.length === 11 || d.length === 14) document.getElementById('tpDrive').checked = d.length === 14; });
     document.getElementById('tpConfirmar').addEventListener('click', async () => {
       const p = propTransAtual; if (!p) return;
       const msg = document.getElementById('tpMsg');
       const btn = document.getElementById('tpConfirmar');
       const tipo = document.getElementById('tpTipo').value;
-      const doc = document.getElementById('tpDoc').value.replace(/\D/g, '');
-      if (doc && !validaDV(doc)) { msg.style.color = 'var(--err)'; msg.textContent = 'Documento inválido (dígito verificador não confere): use CPF de 11 ou CNPJ de 14 dígitos — ou deixe vazio pra vincular depois.'; return; }
+      const doc = normalizarDocumento(document.getElementById('tpDoc').value);   // CNPJ alfanumérico mantém as letras
+      if (doc && !validaDV(doc)) { msg.style.color = 'var(--err)'; msg.textContent = 'Documento inválido (dígito verificador não confere): use CPF de 11 dígitos ou CNPJ de 14 caracteres — ou deixe vazio pra vincular depois.'; return; }
       btn.disabled = true; msg.style.color = 'var(--text-muted)'; msg.textContent = 'Criando…';
       let pastaInfo = '';
       try {
