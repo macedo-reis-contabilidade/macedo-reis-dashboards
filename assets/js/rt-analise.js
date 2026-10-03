@@ -27,6 +27,10 @@ const dataBR = iso => { try { return new Date(iso + 'T12:00:00').toLocaleDateStr
 const MES_ABREV = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 const fmtCnpj = d => { const s = String(d || '').replace(/\D/g, ''); return s.length === 14 ? s.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5') : (d || '—'); };
 
+// Notas fiscais no padrão do IBS/CBS: para o optante do Simples, obrigatórias a partir de 01/01/2027, por dentro ou por
+// fora (Ato Conjunto RFB/CGIBS nº 4/2026, art. 1º, § 1º) — "manter" não dispensa a adequação do emissor
+const NOTA_DFE = ' Em qualquer caso, a partir de 01/01/2027 as notas fiscais passam a sair no novo padrão, com IBS e CBS (Ato Conjunto RFB/CGIBS nº 4/2026).';
+
 const SELO = { alta: 's-forte', media: 's-media', baixa: 's-fraca' };
 const selo = (nivel, texto) => '<span class="selo ' + SELO[nivel] + '">' + esc(texto || nivel) + '</span>';
 
@@ -180,8 +184,8 @@ export function gerarAnalise(d, opts = {}) {
       + ({ optar: '<p class="rs-pz">Próximo passo: formalizar a opção até <b>' + RT_PRAZO.opcao + '</b>. Dá pra cancelar <b>' + RT_PRAZO.cancelamento + '</b> sem efeito.</p>',
            formalizar: '<p class="rs-pz">Próximo passo: registrar a opção até <b>' + RT_PRAZO.opcao + '</b>; decidir até <b>' + RT_PRAZO.cancelaAte + '</b> (cancelar ' + RT_PRAZO.cancelamento + ', se não fizer sentido).</p>',
            optar_marco: '<p class="rs-pz">Próximo passo: formalizar a opção na janela de <b>março/2027</b>; vale a partir de julho/2027.</p>',
-           manter_reavaliar: '<p class="rs-pz">Próximo passo: nenhum agora. Reavaliar antes da janela de <b>março/2027</b>.</p>' }[dec]
-         || '<p class="rs-pz">Mantendo, não é preciso fazer nada. Se o quadro mudar, há nova janela em março/2027.</p>')
+           manter_reavaliar: '<p class="rs-pz">Próximo passo: nenhum quanto à opção. Reavaliar antes da janela de <b>março/2027</b>.' + NOTA_DFE + '</p>' }[dec]
+         || '<p class="rs-pz">Mantendo, não é preciso fazer nada quanto à opção. Se o quadro mudar, há nova janela em março/2027.' + NOTA_DFE + '</p>')
       + '</div>');
   }
 
@@ -245,8 +249,8 @@ export function gerarAnalise(d, opts = {}) {
     P('<p>Medido em <b>' + esc(xml.periodoRotulo) + '</b>' + (xml.cobertura != null ? ', período em que as notas eletrônicas cobrem <b>' + (xml.cobertura >= 99.995 ? '100%' : pct2(xml.cobertura) + '%') + '</b> do faturamento declarado' : '') + ': <b>' + pct1(100 - (xml.pctPJ || 0)) + '% das vendas vão para consumidor final</b>'
       + (xml.pctPJ >= 0.05 ? ' e ' + pct1(xml.pctPJ) + '% para CNPJ' : '') + '.</p>');
     P('<div class="cx chave"><h4>O ponto central</h4>'
-      + '<p>Consumidor final não credita imposto — hoje nem em 2027. ' + (barRestaurante ? 'E para bar e restaurante a lei fecha a porta também para o cliente pessoa jurídica: <b>o adquirente de alimentação e bebidas não pode se apropriar de crédito de IBS/CBS</b> (LC 214/2025, art. 276). ' : '')
-      + 'Logo, apurar <b>por fora</b> não devolve crédito a ninguém — a única coisa que a opção muda é a conta da própria empresa.</p>'
+      + '<p>Consumidor final não credita imposto — hoje nem em 2027. ' + (barRestaurante ? 'E para bar e restaurante a lei fecha a porta também para o cliente pessoa jurídica na parte principal: <b>o adquirente não se apropria de crédito de IBS/CBS sobre a alimentação e a bebida preparadas na casa</b>, que têm a redução de 40% (LC 214/2025, arts. 275 e 276). Só a bebida em lata ou garrafa e a alcoólica, que ficam fora desse regime e pagam a alíquota cheia, geram crédito a quem compra. ' : '')
+      + 'Logo, apurar <b>por fora</b> não devolve crédito relevante a ninguém — a única coisa que a opção muda é a conta da própria empresa.</p>'
       + '<p style="margin-bottom:0">Isso tira da mesa a variável que costuma decidir esse tipo de caso (o quanto o cliente pressiona por crédito). Aqui a decisão é aritmética: o que a empresa paga por dentro contra o que pagaria por fora, e só.</p></div>');
   } else if (!xml && d.consumidor && dominio && dominio.vendas && dominio.vendas.total > 0) {
     const v = dominio.vendas;
@@ -299,7 +303,8 @@ export function gerarAnalise(d, opts = {}) {
 
   // ---------- 4. simulação ----------
   P('<h2>4. A simulação: os dois caminhos no primeiro semestre de 2027</h2>');
-  P('<p>Alíquotas de referência de 2027: <b>CBS ' + pct1(e.cbs) + '%</b> (pendente de Resolução do Senado) e <b>IBS ' + pct1(e.ibs) + '%</b> (alíquota-teste). Cenário: preço de venda inalterado, isto é, a empresa <b>absorve</b> a CBS.</p>');
+  P('<p>Alíquotas de 2027: <b>CBS ' + pct1(e.cbs) + '%</b> (a referência, ainda pendente de Resolução do Senado, menos 0,1 ponto, como manda o ADCT, art. 127, parágrafo único) e <b>IBS ' + pct1(e.ibs) + '%</b> (0,05% estadual + 0,05% municipal). Cenário: o IBS/CBS por fora é calculado sobre a receita de hoje e a empresa o <b>absorve</b>, sem repassar ao cliente — se o preço final ficar igual ao de hoje, com o imposto dentro dele, veja a seção 6.</p>');
+  if ((m.das2027 || 0) - (m.dasHoje || 0) > 0.005) P('<p class="fonte">O DAS por dentro de 2027 (' + brl(m.das2027) + '/mês) é maior que o de hoje (' + brl(m.dasHoje) + '): a exclusão do PIS/COFINS monofásico acaba em 2027 e a CBS alcança essa receita (Res. CGSN 140/2018, art. 25, §6º, na redação da Res. CGSN 190/2026). A exclusão do ICMS-ST e do ISS retido continua.</p>');
   P('<div class="duas">'
     + '<div class="ret' + (optar ? '' : ' win') + '"><h4>Por dentro — IBS/CBS no DAS' + (empate ? ' · recomendado (empate técnico)' : '') + '</h4>'
       + '<div class="rw"><span>Custo tributário do semestre</span><b>' + brl(s.custoDentro) + '</b></div>'
@@ -322,7 +327,7 @@ export function gerarAnalise(d, opts = {}) {
   P('<h3>De onde vem a diferença, mês a mês</h3>');
   P(graficoCaixa(m, s.caixaDentro / 6, s.caixaFora / 6));
   P('<table><thead><tr><th>Componente</th><th class="num">Por dentro</th><th class="num">Por fora</th></tr></thead><tbody>'
-    + '<tr><td>DAS do Simples</td><td class="num">' + brl(m.dasHoje) + '</td><td class="num">' + brl(m.dasSobra) + ' <span class="fonte">(sai a fatia de CBS)</span></td></tr>'
+    + '<tr><td>DAS do Simples</td><td class="num">' + brl(m.das2027 != null ? m.das2027 : m.dasHoje) + '</td><td class="num">' + brl(m.dasSobra) + ' <span class="fonte">(sai a fatia de CBS)</span></td></tr>'
     + '<tr><td>IBS/CBS sobre as vendas</td><td class="num">—</td><td class="num">' + brl(m.debitoFora) + '</td></tr>'
     + '<tr><td>(−) crédito das entradas</td><td class="num">—</td><td class="num">− ' + brl(m.creditoEntradas) + '</td></tr>'
     + '<tr class="tot"><td>Custo do mês</td><td class="num">' + brl(s.custoDentro / 6) + '</td><td class="num">' + brl(s.custoFora / 6) + '</td></tr>'
@@ -351,7 +356,7 @@ export function gerarAnalise(d, opts = {}) {
     P('<p>Numa empresa que vende a outras empresas, a variável decisiva é o repasse: o cliente credita a CBS destacada e fica neutro. Aqui não há isso. O consumidor não credita nada, então destacar CBS na nota é <b>reajuste de preço puro</b> — e o mesmo reajuste pode ser feito com a apuração por dentro, sem mudar de regime. Não existe percentual de repasse que inverta a conclusão.</p>');
   } else {
   P('<h2>5. A variável que inverte a conclusão</h2>');
-  P('<p>Tudo acima pressupõe preço inalterado. Mas a CBS é tributo <b>por fora</b>: a prática do mercado é destacá-la na nota, como faz qualquer empresa do regime regular. Se a empresa repassar a CBS ao cliente — que a credita integralmente e fica neutro —, o resultado se desloca:</p>');
+  P('<p>Tudo acima supõe que a empresa absorve o imposto. Mas a CBS é tributo <b>por fora</b>: a prática do mercado é destacá-la na nota, como faz qualquer empresa do regime regular. Se a empresa repassar a CBS ao cliente — que a credita integralmente e fica neutro —, o resultado se desloca:</p>');
   P(graficoRepasse(pontos, viraEm));
   P('<p class="fonte">Resultado no semestre jan–jun/2027 conforme a parcela da CBS cobrada por fora do preço atual. Cálculo sobre a simulação do item 4.</p>');
   if (viraEm != null && viraEm > 0 && viraEm < 100) {

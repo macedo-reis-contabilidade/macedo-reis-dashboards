@@ -95,4 +95,77 @@ console.log('\nAlíquota do PGDAS com exclusão (ateliê, Anexo II, 32% do DAS e
   console.log(longe ? '  ✓ ainda avisa quando a informada, sem a exclusão, foge da tabela (9% ÷ 68% = 13,2% × 8,95%)' : '  ✗ não avisou a informada fora da tabela');
 }
 
+// ---- alíquotas de 2027 (03/10/2026): CBS = referência − 0,1 p.p. (ADCT art. 127 p.ú.) + IBS 0,10 = 9,30% ----
+// O caso do curso soma tudo na CBS (9,30 + 0); a tela usa 9,20 + 0,10 — tem que dar o mesmo resultado.
+console.log('\nAlíquotas de 2027 (CBS 9,20 + IBS 0,10 = 9,30% do caso):');
+{
+  const base = { anexo: 'I', rbt12: 1800000, receita: 150000, mixCheia: 20, mixRed60: 70, mixRed30: 0, mixZero: 10,
+    pctComprasMercadorias: 90000 / 150000 * 100, pctComprasDespesas: 8000 / 150000 * 100, pctImpostoEmbutido: 18,
+    pctExcluidoST: 33.5, partilha: 15.5, pctPJ: 10, creditoEstoqueMes: 18500 / 12 };
+  const tela = simular({ ...base, cbs: 9.2, ibs: 0.1 });
+  linha('custo dentro (9,20 + 0,10)', 79985.32, tela.semestre.custoDentro);
+  linha('custo fora (9,20 + 0,10)', 75843.17, tela.semestre.custoFora);
+  linha('diferença (9,20 + 0,10)', -4142.16, tela.semestre.diferenca);
+}
+
+// ---- PIS/COFINS monofásico (03/10/2026): a exclusão acaba em 2027 (Res. CGSN 140 art. 25 §6º, red. Res. 190) ----
+// A mesma drogaria pelo PGDAS de 2026: hoje o DAS exclui o ICMS-ST (33,5%) e também o PIS/COFINS dos medicamentos
+// (15,5%) = 49%. Em 2027 só a exclusão do ICMS-ST continua: o DAS por dentro volta aos 9.426,38 do curso.
+console.log('\nMonofásico de PIS/COFINS (drogaria pelo PGDAS de 2026: 49% excluído, receita toda monofásica):');
+{
+  const base = { anexo: 'I', rbt12: 1800000, receita: 150000, mixCheia: 20, mixRed60: 70, mixRed30: 0, mixZero: 10,
+    pctComprasMercadorias: 90000 / 150000 * 100, pctComprasDespesas: 8000 / 150000 * 100, pctImpostoEmbutido: 18,
+    pctExcluidoST: 49, partilha: 15.5, cbs: 9.2, ibs: 0.1, pctPJ: 10, creditoEstoqueMes: 18500 / 12 };
+  const mono = simular({ ...base, pctReceitaMonofasica: 100 });
+  const semMono = simular(base);
+  linha('DAS de hoje (2026)', 7229.25, mono.mes.dasHoje);
+  linha('DAS por dentro de 2027', 9426.38, mono.mes.das2027);
+  linha('DAS que sobra por fora', 7229.25, mono.mes.dasSobra);
+  linha('custo dentro = o do curso', 79985.32, mono.semestre.custoDentro);
+  linha('custo fora = o do curso', 75843.17, mono.semestre.custoFora);
+  linha('caixa por dentro (6 × DAS 2027)', 56558.25, mono.semestre.caixaDentro);
+  linha('sem o campo: DAS 2027 = o de hoje', 7229.25, semMono.mes.das2027);
+  linha('a diferença não depende do campo', mono.semestre.diferenca, semMono.semestre.diferenca);
+  const avisa = simular({ ...base, pctExcluidoST: 10, pctReceitaMonofasica: 100 });
+  const okAviso = avisa.avisos.some(a => /monofásica/.test(a)) && Math.abs(avisa.mes.exclMono - 0.10) < 1e-9;
+  if (!okAviso) falhas++;
+  console.log(okAviso ? '  ✓ monofásico maior que o % excluído: avisa e limita ao excluído' : '  ✗ não limitou/avisou o monofásico acima do % excluído');
+  let rejeita = false; try { simular({ ...base, pctReceitaMonofasica: 120 }); } catch (e) { rejeita = /monofásica/.test(e.message); }
+  if (!rejeita) falhas++;
+  console.log(rejeita ? '  ✓ rejeita % de receita monofásica fora de 0–100' : '  ✗ aceitou % monofásico acima de 100');
+}
+
+// ---- bar e restaurante (03/10/2026): a alimentação preparada (−40%) não gera crédito ao adquirente (LC 214 art. 276) ----
+console.log('\nBar e restaurante (80% preparado com −40%, 20% bebida revendida à alíquota cheia):');
+{
+  const base = { anexo: 'I', rbt12: 1200000, receita: 100000, mixCheia: 20, mixRed40: 80, pctComprasMercadorias: 40,
+    partilha: 15.5, cbs: 9.2, ibs: 0.1, pctPJ: 50 };
+  const r = simular(base);
+  linha('débito por fora (mês)', 6324.00, r.mes.debitoFora);                 // 100.000 × 9,3% × (0,2 + 0,8 × 0,6)
+  linha('débito que o cliente credita (mês)', 1860.00, r.mes.debitoCreditavel); // só a parte cheia: 100.000 × 9,3% × 0,2
+  linha('crédito do cliente por fora (semestre)', 11160.00, r.semestre.creditoClienteFora);
+  linha('aproveitado pela carteira (50% PJ)', 5580.00, r.semestre.aproveitadoFora);
+  const sohCheia = simular({ ...base, mixCheia: 100, mixRed40: 0 });
+  linha('sem restaurante: crédito = débito', sohCheia.semestre.creditoClienteFora, 6 * sohCheia.mes.debitoFora);
+  const okFrase = /art\. 276/.test(r.veredito.frase) && !/não há carteira de clientes/.test(r.veredito.frase);
+  if (!okFrase) falhas++;
+  console.log(okFrase ? '  ✓ frase cita o art. 276 sem dizer que nenhum cliente credita' : '  ✗ frase do veredito: ' + r.veredito.frase);
+}
+
+// ---- preço final mantido (sensibilidade, 03/10/2026): o imposto sai de dentro do preço ----
+console.log('\nPreço final mantido (drogaria do curso, só como sensibilidade):');
+{
+  const base = { anexo: 'I', rbt12: 1800000, receita: 150000, mixCheia: 20, mixRed60: 70, mixRed30: 0, mixZero: 10,
+    pctComprasMercadorias: 90000 / 150000 * 100, pctComprasDespesas: 8000 / 150000 * 100, pctImpostoEmbutido: 18,
+    pctExcluidoST: 33.5, partilha: 15.5, cbs: 9.2, ibs: 0.1, pctPJ: 10, creditoEstoqueMes: 18500 / 12 };
+  const p = simular({ ...base, precoFinalMantido: true });
+  linha('débito ÷ 1,093', 6696 / 1.093, p.mes.debitoFora);
+  linha('créditos das entradas ÷ 1,093', 3904.51 / 1.093, p.mes.creditoEntradas);
+  linha('DAS por dentro não muda', 9426.38, p.mes.das2027);
+  const padrao = simular(base);
+  const ok = !padrao.fatores.precoFinalMantido && p.fatores.precoFinalMantido;
+  if (!ok) falhas++;
+  console.log(ok ? '  ✓ o padrão segue o método do curso; a variante fica marcada nos fatores' : '  ✗ marcação da variante');
+}
+
 process.exit(falhas ? 1 : 0);

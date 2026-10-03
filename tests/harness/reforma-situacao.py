@@ -13,7 +13,9 @@ Confere:
   3. caso ainda sem simulação continua mostrando a triagem;
   4. o filtro usa o mesmo valor que aparece: "Candidato por fora" não traz mais o caso já simulado;
   5. a ficha do caso mostra no topo o mesmo chip da lista;
-  6. a tela não dá erro de JavaScript.
+  6. o simulador usa a CBS de 2027 (referência − 0,1), sobe o DAS por dentro com o fim do monofásico e mostra o
+     resultado sem o crédito de estoque (03/10/2026);
+  7. a tela não dá erro de JavaScript.
 Termina com código 1 se alguma checagem falhar.
 Pré-requisito: pip install playwright e python -m playwright install chromium
 """
@@ -110,6 +112,22 @@ def main():
         p.click('#rtLista tr:has-text("ATELIÊ DE TESTE LTDA")'); p.wait_for_timeout(500)
         topo = p.inner_text('#fiTriagem').strip()
         ok(topo == 'Simulado: por dentro', f'a ficha mostra no topo o mesmo chip da lista ({topo})')
+
+        # simulador (03/10/2026): CBS de 2027 = referência − 0,1; receita monofásica; resultado sem o crédito de estoque
+        p.click('#fiFechar'); p.wait_for_timeout(300)
+        p.click('#rtLista tr:has-text("OFICINA DE TESTE LTDA")'); p.wait_for_timeout(500)
+        ok(p.input_value('#sCbs') == '9,2' and p.input_value('#sIbs') == '0,1', f'CBS de 2027 = 9,2 e IBS 0,1 ({p.input_value("#sCbs")} + {p.input_value("#sIbs")})')
+        p.select_option('#sAnexo', 'I')
+        for campo, valor in [('#sRbt12', '1.800.000,00'), ('#sReceita', '150.000,00'), ('#sMixCheia', '20'), ('#sMixRed60', '70'), ('#sMixRed40', '0'), ('#sMixRed30', '0'),
+                             ('#sMixZero', '10'), ('#sPctMerc', '60'), ('#sPctDesp', '5,333333'), ('#sPctEmb', '18'), ('#sPctST', '49'), ('#sPctMono', '100'),
+                             ('#sPartilha', '15,5'), ('#sPctPJ', '10'), ('#sEstoque', '1.541,67')]:
+            p.fill(campo, valor)
+        p.click('#bCalcular'); p.wait_for_timeout(300)
+        verd = p.inner_text('#bVeredito')
+        ok('Sem o crédito de estoque' in verd and 'A conclusão depende do crédito de estoque' in verd, 'o veredito mostra o resultado sem o crédito de estoque, e que a conclusão depende dele')
+        ok('DAS por dentro em 2027' in verd, 'o veredito avisa que o DAS por dentro de 2027 sobe com o fim da exclusão do monofásico')
+        jan = p.inner_text('#bMeses tbody tr:first-child td:nth-child(2)').replace('\xa0', ' ')
+        ok(jan == 'R$ 9.426,38', f'DAS por dentro de janeiro/2027 = R$ 9.426,38, o do caso do curso ({jan})')
 
         ok(not erros, 'sem erro de JavaScript' + (f': {erros}' if erros else ''))
         p.close()

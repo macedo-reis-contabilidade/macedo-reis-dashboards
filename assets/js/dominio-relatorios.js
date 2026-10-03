@@ -344,7 +344,8 @@ export function cnpjsParaConsultar(rels, n = 20) {
   return { fornecedores: fornecedores.map(x => x[0]), clientes: clientes.map(x => x[0]) };
 }
 // crédito de compra de fornecedor do Simples: só o IBS/CBS que ele recolheu dentro do DAS — estimado em 15% do crédito cheio;
-// MEI: praticamente nenhum. (LC 214, art. 47 §§ — crédito limitado ao montante pago no regime do Simples)
+// MEI: praticamente nenhum. (LC 214, art. 47, §9º, II; LC 123, art. 23, §1º-A — crédito limitado ao montante pago no Simples)
+// Também usado pela análise técnica quando o regime dos fornecedores não foi consultado (fiscal-reforma.html).
 export const CREDITO_FORNECEDOR_SIMPLES = 0.15;
 
 export function conferirRbt12(meses, compPgdas, rbt12) {

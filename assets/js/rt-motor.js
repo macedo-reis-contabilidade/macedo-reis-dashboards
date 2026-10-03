@@ -46,11 +46,19 @@ const num = (v, def) => {
 //     medido pelo NCM das entradas (cesta básica = zero). Se ausente, as compras seguem o mix das vendas.
 //   pctComprasMercadorias  (% da receita: compras que seguem o mix de vendas)
 //   pctComprasDespesas     (% da receita: compras creditadas à alíquota cheia; default 0)
-//   pctImpostoEmbutido (default 0) · pctExcluidoST (default 0)
-//   partilha (% do DAS que é CBS/IBS) · cbs · ibs (referência, %)
+//   pctImpostoEmbutido (default 0) · pctExcluidoST (default 0): % do DAS excluído HOJE (ICMS-ST, ISS retido,
+//     PIS/COFINS monofásico — tudo junto, como sai do PGDAS)
+//   pctReceitaMonofasica (default 0): % da receita que hoje é monofásica de PIS/COFINS (medicamentos, perfumaria,
+//     autopeças, bebidas frias…). Em 2027 essa exclusão acaba — a CBS alcança essa receita dentro do DAS (Res. CGSN
+//     140/2018, art. 25, §6º, na redação da Res. CGSN 190/2026: a segregação passa a ser só da tributação concentrada
+//     de IBS/CBS, ou seja, combustíveis). A exclusão do ICMS-ST e do ISS retido continua.
+//   partilha (% do DAS que é CBS/IBS) · cbs · ibs (as de 2027, %: CBS = referência − 0,1 p.p., ADCT art. 127 p.ú.)
 //   pctPJ (default 0) · creditoEstoqueMes (R$, entra do 2º mês — 5 parcelas)
 //   aliqEfetivaInformada (%, opcional): alíquota real do PGDAS (DAS apurado ÷ receita, já sem o % excluído);
 //     quando vem, vale sobre a tabela anexo+RBT12 e o pctExcluidoST serve só pra reconstituir o DAS cheio
+//   precoFinalMantido (opcional, só pra sensibilidade): o preço final — com o imposto — fica igual ao de hoje, na
+//     venda e na compra; o IBS/CBS sai de dentro do preço, e débito e créditos dividem por (1 + alíquota). O padrão
+//     segue o método do curso (Dominando Simples): imposto calculado sobre a receita de hoje.
 export function simular(input) {
   const anexo = String(input.anexo || '').trim().toUpperCase();
   const rbt12 = num(input.rbt12, 0);
@@ -75,7 +83,8 @@ export function simular(input) {
   if (!(cbs + ibs > 0)) throw new Error('Informe as alíquotas de referência (CBS/IBS).');
   const pctPJ = num(input.pctPJ, 0);
   const estoqueMes = num(input.creditoEstoqueMes, 0);
-  for (const [rotulo, v] of [['% compras de mercadorias', pctMerc], ['% compras de despesas', pctDesp], ['% imposto embutido nas compras', pctEmb], ['% do DAS excluído por ST/ISS', pctST], ['% clientes PJ', pctPJ]]) {
+  const pctMono = num(input.pctReceitaMonofasica, 0);
+  for (const [rotulo, v] of [['% compras de mercadorias', pctMerc], ['% compras de despesas', pctDesp], ['% imposto embutido nas compras', pctEmb], ['% do DAS excluído por ST/ISS', pctST], ['% clientes PJ', pctPJ], ['% da receita monofásica de PIS/COFINS', pctMono]]) {
     if (v < 0 || v > 100) throw new Error(rotulo + ' precisa estar entre 0 e 100 (informado: ' + v + ').');
   }
   if (estoqueMes < 0) throw new Error('O crédito de estoque mensal não pode ser negativo.');
@@ -93,6 +102,8 @@ export function simular(input) {
   if (aeInfCheia != null && aeTabela != null && Math.abs(aeInfCheia - aeTabela) > 0.02) avisos.push('Alíquota efetiva informada (' + aeInf.toFixed(2) + '%' + (pctST > 0 ? ', ' + (aeInfCheia * 100).toFixed(2) + '% sem a exclusão de ' + pctST.toLocaleString('pt-BR') + '%' : '') + ') está mais de 2 pontos longe da tabela do Anexo ' + anexo + ' (' + (aeTabela * 100).toFixed(2) + '%) — normal se há receita em mais de um anexo; se não, confira o PGDAS.');
   const aliqRef = (cbs + ibs) / 100;
   const fatorMix = (mixCheia + 0.40 * mixRed60 + 0.60 * mixRed40 + 0.70 * mixRed30 + 0 * mixZero) / 100;
+  // preço final mantido (só sensibilidade): o imposto sai de dentro do preço — débito e créditos ÷ (1 + alíquota)
+  const fatorPreco = input.precoFinalMantido ? 1 / (1 + aliqRef) : 1;
   // crédito das compras: pelo NCM das entradas quando medido; senão, o mix das vendas (revenda)
   const pctCred = input.pctComprasComCredito == null || input.pctComprasComCredito === '' ? null : num(input.pctComprasComCredito, NaN);
   if (pctCred != null && (!Number.isFinite(pctCred) || pctCred < 0 || pctCred > 100)) throw new Error('% das compras com crédito precisa estar entre 0 e 100.');
@@ -105,22 +116,37 @@ export function simular(input) {
   // num ateliê de calçados com 32% excluído, o DAS de hoje saía 4,45% da receita contra os 6,54% pagos de verdade.
   const dasHoje = aeInf != null ? receita * ae : receita * ae * (1 - pctST / 100);
   const dasCheio = aeInf != null ? (pctST < 100 ? dasHoje / (1 - pctST / 100) : receita * (aeTabela ?? ae)) : receita * ae;
+  // MONOFÁSICO (03/10/2026): o % excluído de hoje mistura ICMS-ST e ISS retido — que seguem fora do DAS em 2027 — com
+  // PIS/COFINS monofásico, que acaba. A fatia de PIS/COFINS de 2026 é a mesma de CBS+IBS de 2027 (a partilha), então a
+  // parte monofásica excluída hoje = % da receita monofásica × partilha, sobre o DAS cheio. Sem isso, numa farmácia o
+  // DAS por dentro de 2027 saía igual ao de hoje, sem a CBS que passa a incidir sobre os medicamentos.
+  const exclMonoInformada = (pctMono / 100) * (partilha / 100);
+  const exclMono = Math.min(exclMonoInformada, pctST / 100);
+  if (exclMonoInformada - exclMono > 0.0005) {
+    const p2 = v => v.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+    avisos.push('Receita monofásica de ' + p2(pctMono) + '% com partilha de ' + p2(partilha) + '% dá ' + p2(exclMonoInformada * 100) + '% do DAS de PIS/COFINS excluído hoje — mais que o % excluído informado (' + p2(pctST) + '%). Considerado só o excluído; confira os dois campos.');
+  }
+  const das2027 = dasHoje + dasCheio * exclMono;     // DAS por dentro em 2027 (sem a exclusão do monofásico)
   // A parcela CBS/IBS incide sobre o DAS cheio: a exclusão de ST/ISS retido
   // tira ICMS/ISS do DAS, não os novos tributos (validado pelo caso-teste).
   let parcelaCbsIbs = dasCheio * (partilha / 100);
-  if (parcelaCbsIbs > dasHoje) {
-    parcelaCbsIbs = dasHoje;
-    avisos.push('Partilha CBS/IBS maior que o DAS após exclusão de ST — parcela limitada ao DAS pago hoje.');
+  if (parcelaCbsIbs > das2027) {
+    parcelaCbsIbs = das2027;
+    avisos.push('Partilha CBS/IBS maior que o DAS de 2027 depois da exclusão de ST — parcela limitada a esse DAS.');
   }
-  const dasSobra = dasHoje - parcelaCbsIbs;
-  const debitoFora = receita * aliqRef * fatorMix;
+  const dasSobra = das2027 - parcelaCbsIbs;
+  const debitoFora = receita * aliqRef * fatorMix * fatorPreco;
+  // Crédito que o cliente PJ pode tomar por fora: a alimentação preparada em bar/restaurante (redução de 40%, LC 214
+  // art. 275) não gera crédito ao adquirente (art. 276); bebida em lata ou garrafa e bebida alcoólica, à alíquota cheia
+  // (CST 000, fora do regime específico), geram. Até 03/10/2026 o crédito do cliente contava o débito inteiro.
+  const debitoCreditavel = receita * aliqRef * (fatorMix - 0.60 * mixRed40 / 100) * fatorPreco;
   const comprasMerc = receita * pctMerc / 100;
   const comprasDesp = receita * pctDesp / 100;
   const baseMerc = comprasMerc * (1 - pctEmb / 100);
   const baseDesp = comprasDesp * (1 - pctEmb / 100);
   // Mercadorias revendidas carregam o mesmo mix das vendas (o fornecedor
   // destaca a alíquota do produto); despesas creditam à alíquota cheia.
-  const creditoEntradas = baseMerc * aliqRef * fatorCompras + baseDesp * aliqRef;
+  const creditoEntradas = (baseMerc * aliqRef * fatorCompras + baseDesp * aliqRef) * fatorPreco;
 
   const meses = [];
   for (let m = 1; m <= 6; m++) {
@@ -130,24 +156,25 @@ export function simular(input) {
       n: m,
       estoque,
       aRecolher,
-      caixaDentro: dasHoje,
+      caixaDentro: das2027,
       caixaFora: dasSobra + aRecolher,
-      custoDentro: dasHoje + creditoEntradas,
+      custoDentro: das2027 + creditoEntradas,
       custoFora: dasSobra + debitoFora - estoque
     });
   }
 
   const soma = k => meses.reduce((a, x) => a + x[k], 0);
-  const fatores = { mix: fatorMix, compras: fatorCompras, comprasMedido: pctCred != null, aliqFonte, aliqTabela: aeTabela };
+  const fatores = { mix: fatorMix, compras: fatorCompras, comprasMedido: pctCred != null, aliqFonte, aliqTabela: aeTabela,
+    monofasico: { pctReceita: pctMono, exclusao: exclMono }, precoFinalMantido: !!input.precoFinalMantido };
   const semestre = {
     custoDentro: soma('custoDentro'),
     custoFora: soma('custoFora'),
     caixaDentro: soma('caixaDentro'),
     caixaFora: soma('caixaFora'),
     creditoClienteDentro: 6 * parcelaCbsIbs,
-    creditoClienteFora: 6 * debitoFora,
+    creditoClienteFora: 6 * debitoCreditavel,
     aproveitadoDentro: 6 * parcelaCbsIbs * pctPJ / 100,
-    aproveitadoFora: 6 * debitoFora * pctPJ / 100
+    aproveitadoFora: 6 * debitoCreditavel * pctPJ / 100
   };
   semestre.diferenca = semestre.custoFora - semestre.custoDentro;
 
@@ -178,8 +205,9 @@ export function simular(input) {
       pontoEquilibrioPJ: null,
       frase: 'A simulação do primeiro semestre de 2027 indica custo tributário de ' + brl(semestre.custoFora) +
         ' pelo regime regular contra ' + brl(semestre.custoDentro) + ' dentro do Simples — economia estimada de ' +
-        brl(-semestre.diferenca) + ' no semestre, além de os clientes PJ passarem a aproveitar ' +
-        brl(semestre.creditoClienteFora) + ' de crédito (contra ' + brl(semestre.creditoClienteDentro) + ' por dentro).'
+        brl(-semestre.diferenca) + ' no semestre' + (semestre.creditoClienteFora > semestre.creditoClienteDentro
+          ? ', além de os clientes PJ passarem a aproveitar ' + brl(semestre.creditoClienteFora) + ' de crédito (contra ' + brl(semestre.creditoClienteDentro) + ' por dentro).'
+          : '. A carteira PJ não ganha crédito com a mudança' + (mixRed40 > 0 ? ': a alimentação preparada no bar ou restaurante não gera crédito ao adquirente (LC 214, art. 276).' : '.'))
     };
   } else {
     const ganhoCarteira = semestre.creditoClienteFora - semestre.creditoClienteDentro;
@@ -187,15 +215,17 @@ export function simular(input) {
     if (ganhoCarteira > 0) pe = semestre.diferenca / (ganhoCarteira / 100);
     const pct = v => v.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
     let complemento = '';
-    if (mixRed40 > 0) {
-      // bar e restaurante: o adquirente não credita (LC 214 art. 276) — não existe carteira PJ capaz de inverter
-      complemento = ' Como o adquirente de alimentação em bar e restaurante não pode creditar IBS/CBS (LC 214, art. 276), não há carteira de clientes capaz de inverter esse resultado: a decisão é só de custo próprio.';
-    } else if (pe != null && pe <= 100) {
-      complemento = pe > pctPJ
+    // bar e restaurante: o adquirente não credita a alimentação preparada (LC 214 art. 276); a parte à alíquota cheia
+    // (bebida em lata ou garrafa, alcoólica) credita — o ponto de equilíbrio já sai só dela
+    const notaBar = mixRed40 > 0 ? ' Só conta a parte vendida à alíquota cheia (bebida em lata ou garrafa, bebida alcoólica): a alimentação preparada no bar ou restaurante não gera crédito ao adquirente (LC 214, art. 276).' : '';
+    if (pe != null && pe <= 100) {
+      complemento = (pe > pctPJ
         ? ' A carteira PJ levaria ' + brl(ganhoCarteira) + ' a mais de crédito por fora; a opção passaria a compensar se ao menos ' +
           pct(pe) + '% da receita viesse de clientes PJ que aproveitam o crédito (informado hoje: ' + pct(pctPJ) + '%).'
         : ' A carteira PJ levaria ' + brl(ganhoCarteira) + ' a mais de crédito por fora — com os ' + pct(pctPJ) +
-          '% de clientes PJ informados, esse ganho já supera a diferença de custo; pesar o custo próprio contra o ganho dos clientes antes de decidir.';
+          '% de clientes PJ informados, esse ganho já supera a diferença de custo; pesar o custo próprio contra o ganho dos clientes antes de decidir.') + notaBar;
+    } else if (mixRed40 > 0) {
+      complemento = ' O adquirente não credita a alimentação preparada no bar ou restaurante (LC 214, art. 276); só a parte vendida à alíquota cheia (bebida em lata ou garrafa, bebida alcoólica) gera crédito ao cliente PJ — e nem com toda a receita vindo de clientes PJ isso inverteria o resultado: a decisão é de custo próprio.';
     }
     veredito = {
       tipo: 'MANTENHA', empate, limiarEmpate,
@@ -211,7 +241,7 @@ export function simular(input) {
     aliqRef,
     fatorMix,
     fatores,
-    mes: { dasCheio, dasHoje, parcelaCbsIbs, dasSobra, debitoFora, comprasMerc, comprasDesp, creditoEntradas, aRecolherSemEstoque: Math.max(0, debitoFora - creditoEntradas) },
+    mes: { dasCheio, dasHoje, das2027, exclMono, parcelaCbsIbs, dasSobra, debitoFora, debitoCreditavel, comprasMerc, comprasDesp, creditoEntradas, aRecolherSemEstoque: Math.max(0, debitoFora - creditoEntradas) },
     meses,
     semestre,
     veredito,

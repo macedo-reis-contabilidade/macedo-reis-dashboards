@@ -6,9 +6,9 @@ import { gerarAnalise } from '../assets/js/rt-analise.js';
 const page = fs.readFileSync(new URL('../fiscal-reforma.html', import.meta.url), 'utf8');
 const i = page.indexOf('    function montarDadosAnalise('); const j = page.indexOf("\n    $('dGerar').onclick");
 const src = page.slice(i, j);
-import { perfilAtividade, ramoComReducao, conferirRbt12 } from '../assets/js/dominio-relatorios.js';
+import { perfilAtividade, ramoComReducao, conferirRbt12, CREDITO_FORNECEDOR_SIMPLES } from '../assets/js/dominio-relatorios.js';
 import { RT_PRAZO, janelaAberta as janelaAbertaEm } from '../assets/js/rt-prazos.js';
-const montarDadosAnalise = new Function('simular', 'ANO_XML', 'location', 'perfilAtividade', 'ramoComReducao', 'conferirRbt12', 'RT_PRAZO', 'janelaAbertaEm', src + '\nreturn montarDadosAnalise;')(simular, 2026, { href: 'http://x/' }, perfilAtividade, ramoComReducao, conferirRbt12, RT_PRAZO, janelaAbertaEm);
+const montarDadosAnalise = new Function('simular', 'ANO_XML', 'location', 'perfilAtividade', 'ramoComReducao', 'conferirRbt12', 'RT_PRAZO', 'janelaAbertaEm', 'CREDITO_FORNECEDOR_SIMPLES', src + '\nreturn montarDadosAnalise;')(simular, 2026, { href: 'http://x/' }, perfilAtividade, ramoComReducao, conferirRbt12, RT_PRAZO, janelaAbertaEm, CREDITO_FORNECEDOR_SIMPLES);
 // data fixa dentro da janela (até 30/10/2026, Res. CGSN 194/2026): o teste não pode depender do relógio de quem roda
 // (os casos que testam a janela fechada fixam globalThis.__HOJE_ISO__ antes de chamar)
 function caso(nome, ent, dom, xml, cnae, hojeISO = globalThis.__HOJE_ISO__ || '2026-09-29') {
@@ -114,6 +114,30 @@ delete globalThis.__HOJE_ISO__;
 // 3) Drogaria Guerra (referência)
 const g = simular({ anexo:'I', rbt12:1800000, receita:150000, mixCheia:20, mixRed60:70, mixRed30:0, mixZero:10, pctComprasMercadorias:60, pctComprasDespesas:5.33, pctImpostoEmbutido:18, pctExcluidoST:33.5, partilha:15.5, cbs:9.3, ibs:0, pctPJ:10, creditoEstoqueMes:1541.67 });
 console.log('Referência:'); chk('Guerra continua OPTE (' + g.veredito.tipo + ')', g.veredito.tipo === 'OPTE');
+
+// 4) Correções de 03/10/2026 (base do curso): crédito de estoque, fornecedor do Simples, bar e restaurante, notas em 2027
+const ga = caso('DROGARIA TESTE', { anexo:'I', rbt12:1800000, receita:150000, mixCheia:20, mixRed60:70, mixRed30:0, mixZero:10, pctComprasMercadorias:60, pctComprasDespesas:5.33, pctImpostoEmbutido:18, pctExcluidoST:49, pctReceitaMonofasica:100, partilha:15.5, cbs:9.2, ibs:0.1, pctPJ:10, creditoEstoqueMes:1541.67 }, null, null, '4771-7/01');
+console.log('Crédito de estoque (art. 381, provável, não garantido):');
+chk('sem o estoque a conclusão inverte → alerta', ga.d.alertas.some(a => /crédito de estoque/.test(a.texto)));
+chk('recomendação vira tendência a confirmar', /Tendência/.test(ga.d.recomendacao.titulo) || /TENDÊNCIA/.test(ga.txt));
+chk('linha de sensibilidade do estoque', ga.d.sensibilidade.some(x => /estoque/.test(x.nome) && /^Sim/.test(x.muda)));
+chk('DAS de 2027 acima do de hoje, com a explicação do monofásico', /exclusão do PIS\/COFINS monofásico acaba em 2027/.test(ga.txt));
+chk('alíquota: referência menos 0,1 ponto (ADCT)', /menos 0,1 ponto, como manda o ADCT/.test(ga.txt));
+chk('linha de sensibilidade do preço final mantido', ga.d.sensibilidade.some(x => /Preço final igual/.test(x.nome)));
+const fs1 = caso('VAREJO SEM CONSULTA', { anexo:'I', rbt12:1200000, receita:100000, mixCheia:100, pctComprasMercadorias:89, pctComprasDespesas:1, pctImpostoEmbutido:0, pctExcluidoST:0, partilha:15.5, cbs:9.2, ibs:0.1, pctPJ:3, aliqEfetivaInformada:8.86 }, null, null, '4754-7/01');
+console.log('Fornecedor do Simples (regime não consultado):');
+chk('veredito OPTE (' + fs1.sim.veredito.tipo + ')', fs1.sim.veredito.tipo === 'OPTE');
+const alF = fs1.d.alertas.find(a => /regime dos fornecedores não foi consultado/.test(a.texto));
+chk('alerta com o limite de compras do Simples e a base legal', !!alF && /se \d+% ou mais das compras/.test(alF.texto) && /LC 123, art\. 23, §1º-A/.test(alF.texto));
+chk('o teste de 20% não repete "fornecedores do Simples"', !fs1.d.alertas.some(a => /20% menor \(fornecedores do Simples/.test(a.texto)));
+const rest = caso('RESTAURANTE TESTE', { anexo:'I', rbt12:1200000, receita:100000, mixCheia:20, mixRed40:80, pctComprasMercadorias:40, pctComprasDespesas:0, pctImpostoEmbutido:0, pctExcluidoST:10, partilha:15.5, cbs:9.2, ibs:0.1, pctPJ:5 },
+  null, { pctPJ: 5, nNotas: 900, periodoRotulo: 'jan–ago/2026', cobertura: 100, clientes: [] }, '5611-2/01');
+console.log('Bar e restaurante (art. 276):');
+chk('ponto central: bebida em lata/garrafa e alcoólica geram crédito', /bebida em lata ou garrafa e a alcoólica/.test(rest.txt));
+chk('sem "adquirente de alimentação e bebidas não pode"', !/adquirente de alimentação e bebidas não pode/.test(rest.txt));
+chk('crédito do cliente só da parte cheia', Math.abs(rest.sim.semestre.creditoClienteFora - 6 * rest.sim.mes.debitoCreditavel) < 0.01 && rest.sim.mes.debitoCreditavel < rest.sim.mes.debitoFora);
+console.log('Notas no padrão IBS/CBS em 2027:');
+chk('manter também avisa das notas a partir de 01/01/2027', /Mantendo, não é preciso fazer nada quanto à opção/.test(rest.txt) && /Ato Conjunto RFB\/CGIBS nº 4\/2026/.test(rest.txt));
 
 console.log(falhas ? '\n' + falhas + ' FALHA(S)' : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);
