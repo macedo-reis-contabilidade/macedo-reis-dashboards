@@ -15,7 +15,9 @@ Confere:
   5. a ficha do caso mostra no topo o mesmo chip da lista;
   6. o simulador usa a CBS de 2027 (referência − 0,1), sobe o DAS por dentro com o fim do monofásico e mostra o
      resultado sem o crédito de estoque (03/10/2026);
-  7. a tela não dá erro de JavaScript.
+  7. "Refazer simulações" recalcula as gravadas com o cálculo atual, grava, troca o fundamento automático antigo, deixa
+     de fora (com o motivo) as que não dá pra recalcular e mostra o que mudou de resultado;
+  8. a tela não dá erro de JavaScript.
 Termina com código 1 se alguma checagem falhar.
 Pré-requisito: pip install playwright e python -m playwright install chromium
 """
@@ -52,6 +54,16 @@ CASOS = [
     caso(5, 'rx5', 'tende_por_dentro', 1, status='triado'),
     caso(6, 'rx6', 'simular', 3, 34150, 33100, obs('MANTENHA', 'Texto qualquer do veredito', empate=True)),
 ]
+# Refazer simulações (03/10/2026): o ATELIÊ ganha uma entrada completa, inventada, gravada com a CBS antiga (9,30 + 0,10).
+# Por R$ 15,90 no semestre dava "manter"; com a CBS de 2027 (9,20 + 0,10) a conta vira empate técnico (R$ 13,95 a favor de
+# por fora, abaixo do limiar de R$ 1.000). O fundamento é a frase automática antiga, então é trocado pela nova.
+ENT_ATELIE = {'anexo': 'I', 'rbt12': 600000, 'receita': 50000, 'aliqEfetivaInformada': 6, 'mixCheia': 100, 'mixRed60': 0, 'mixRed40': 0, 'mixRed30': 0,
+              'mixZero': 0, 'pctComprasMercadorias': 90.05, 'pctComprasDespesas': 0, 'pctImpostoEmbutido': 0, 'pctExcluidoST': 0, 'partilha': 15.5,
+              'cbs': 9.3, 'ibs': 0.1, 'pctPJ': 0, 'creditoEstoqueMes': 0}
+FRASE_ATELIE = 'A simulação do primeiro semestre de 2027 indica custo tributário de R$ 48.300,00 dentro do Simples…'
+CASOS[0]['sim_obs'] = json.dumps({'v': 1, 'input': ENT_ATELIE, 'veredito': 'MANTENHA', 'frase': FRASE_ATELIE, 'calculado_em': '2026-09-27'}, ensure_ascii=False)
+CASOS[0]['fundamento'] = FRASE_ATELIE
+
 # simulação gravada antes de 03/10/2026: CBS de referência cheia (9,30) com IBS 0,10 — a tela lê como a CBS de 2027 (9,20)
 CASOS[1]['sim_obs'] = json.dumps({'v': 1, 'input': {'anexo': 'II', 'receita': 100000, 'cbs': 9.3, 'ibs': 0.1}, 'veredito': 'OPTE',
     'frase': 'A simulação do primeiro semestre de 2027 indica custo tributário de R$ 55.000,00 pelo regime regular…', 'calculado_em': '2026-09-27'}, ensure_ascii=False)
@@ -134,6 +146,35 @@ def main():
         p.click('#fiFechar'); p.wait_for_timeout(300)
         p.click('#rtLista tr:has-text("COMÉRCIO DE TESTE LTDA")'); p.wait_for_timeout(500)
         ok(p.input_value('#sCbs') == '9,2', f'simulação antiga (CBS 9,30 + IBS 0,10) abre com a CBS de 2027 = 9,2 ({p.input_value("#sCbs")})')
+
+        # Refazer simulações: recalcula as gravadas com o cálculo atual, grava e mostra o que mudou
+        p.click('#fiFechar'); p.wait_for_timeout(300)
+        p.once('dialog', lambda d: d.accept())
+        p.click('#btnRefazer')
+        p.wait_for_selector('#ovRefazer.on', timeout=5000)
+        resumo = p.inner_text('#refazerResumo')
+        print('  · resumo: ' + ' | '.join(l for l in resumo.splitlines() if l.strip()))
+        ok('1 refeita(s)' in resumo, 'uma simulação refeita (a do ATELIÊ, a única com entrada completa)')
+        ok('ATELIÊ DE TESTE LTDA: por dentro → empate técnico (manter)' in resumo, 'o resumo diz que o ATELIÊ passou de "por dentro" a empate técnico')
+        ok('3 não refeita(s)' in resumo and 'RBT12 não informado' in resumo, 'as entradas incompletas não são regravadas, com o motivo')
+        rc1 = p.evaluate("window.__mockDb.rt_casos.find(c => c.id === 'rc1')")
+        obs1 = json.loads(rc1.get('sim_obs') or '{}')
+        ok(obs1.get('input', {}).get('cbs') == 9.2 and obs1.get('empate') is True and obs1.get('veredito') == 'MANTENHA',
+           f'gravada com a CBS de 2027 e o empate técnico (cbs {obs1.get("input", {}).get("cbs")}, empate {obs1.get("empate")})')
+        ok(str(rc1.get('fundamento', '')).startswith('Empate técnico'), 'o fundamento automático antigo foi trocado pela frase nova')
+        ok(abs(float(rc1.get('sim_custo_dentro') or 0) - 48300) > 1, f'o custo gravado foi recalculado ({rc1.get("sim_custo_dentro")})')
+        rc2 = p.evaluate("window.__mockDb.rt_casos.find(c => c.id === 'rc2')")
+        ok(json.loads(rc2['sim_obs'])['input'].get('cbs') == 9.3, 'a simulação que não pôde ser refeita ficou como estava')
+        p.click('#refazerFechar'); p.wait_for_timeout(300)
+        chip = {l['nome']: l for l in linhas(p)}.get('ATELIÊ DE TESTE LTDA', {}).get('chip')
+        ok(chip == 'Simulado: empate', f'a lista já mostra o resultado novo ({chip})')
+        # de novo: nada a regravar (não reescreve o que já está com o cálculo atual)
+        p.once('dialog', lambda d: d.accept())
+        p.click('#btnRefazer')
+        p.wait_for_selector('#ovRefazer.on', timeout=5000)
+        resumo2 = p.inner_text('#refazerResumo')
+        ok('0 refeita(s)' in resumo2 and '1 já estava(m) com o cálculo atual' in resumo2, 'rodando de novo, a refeita conta como já atualizada e não é regravada')
+        p.click('#refazerFechar'); p.wait_for_timeout(200)
 
         ok(not erros, 'sem erro de JavaScript' + (f': {erros}' if erros else ''))
         p.close()

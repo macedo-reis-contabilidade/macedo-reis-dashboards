@@ -179,6 +179,7 @@
           <option value="por_fora">Por fora</option>
         </select>
         <div class="apoio">
+          <button class="btn btn-ghost" id="btnRefazer" title="Recalcula as simulações gravadas com o motor atual — use quando o cálculo ou um parâmetro mudar">Refazer simulações</button>
           <button class="btn btn-ghost" id="btnBase">Base legal</button>
         </div>
       </div>
@@ -322,6 +323,15 @@
       <p style="font-size:12.5px;color:var(--text-muted);margin:6px 0 14px">Regras verificadas que sustentam a triagem, o simulador e os comunicados. Conteúdo de leitura — a manutenção é feita fora desta tela.</p>
       <div id="baseLista">Carregando…</div>
       <div class="rg-acoes"><button class="btn btn-ghost" id="baseFechar">Fechar</button></div>
+    </div>
+  </div>
+
+  <!-- REFAZER SIMULAÇÕES: resumo -->
+  <div class="rg-ov" id="ovRefazer">
+    <div class="rg-card" style="max-width:640px">
+      <h2>Simulações refeitas</h2>
+      <div id="refazerResumo" style="font-size:13px;line-height:1.55;margin-top:8px"></div>
+      <div class="rg-acoes"><button class="btn btn-ghost" id="refazerFechar">Fechar</button></div>
     </div>
   </div>
 
@@ -1818,6 +1828,71 @@
         (r.fonte ? ' · Fonte: ' + escapeHtml(r.fonte) : '') + (r.verificado_em ? ' · verificado em ' + fmtData(r.verificado_em) : '') + '</span></div>').join('');
     };
     $('baseFechar').onclick = () => $('ovBase').classList.remove('on');
+
+    // ---------- refazer simulações (03/10/2026) ----------
+    // Recalcula as simulações gravadas com o motor atual e grava pelo login de quem clicou — pra quando o cálculo ou um
+    // parâmetro muda (ex.: CBS de 2027 com 0,1 ponto a menos). Não mexe na decisão nem no comunicado já gerado; o
+    // fundamento só é trocado se ainda for a frase automática da simulação anterior. Caso alterado por outra pessoa
+    // enquanto o lote roda fica de fora (a gravação confere o atualizado_em lido).
+    // Receita monofásica de PIS/COFINS pela apuração do Simples guardada na simulação, com a mesma regra da importação:
+    // PIS+COFINS do PGDAS abaixo da partilha da tabela = parte da receita é monofásica hoje. null = não dá pra saber.
+    function monofasicoDoPgdas(ent, dom) {
+      const pg = dom && dom.pgdas, pctST = +ent.pctExcluidoST || 0, partilha = +ent.partilha || 0;
+      if (!pg || !(pg.dasTotal > 0) || pg.cbsNoDas == null || !(pctST > 0) || pctST >= 100 || !(partilha > 0)) return null;
+      if (dom.anexosOutros) return null;            // mais de um anexo: a mistura também desloca a partilha
+      const falta = partilha - pg.cbsNoDas / (pg.dasTotal / (1 - pctST / 100)) * 100;
+      if (falta < 1) return 0;
+      return Math.round(Math.min(100, falta / partilha * 100, pctST / partilha * 100) * 10) / 10;
+    }
+    const ROT_RESULTADO = { OPTE: 'por fora', MANTENHA: 'por dentro', EMPATE: 'empate técnico (manter)' };
+    $('btnRefazer').onclick = async () => {
+      const alvo = casos.filter(c => c.sim_custo_dentro != null && c.sim_obs);
+      if (!alvo.length) { alert('Nenhuma simulação gravada para refazer.'); return; }
+      if (!confirm('Refazer as ' + alvo.length + ' simulações gravadas com o cálculo atual?\n\nOs valores e o resultado de cada uma são regravados. A decisão e o comunicado já gerado não mudam.')) return;
+      const btn = $('btnRefazer'); btn.disabled = true;
+      const res = { refeitas: 0, iguais: 0, mudaram: [], erros: [] };
+      for (const [i, c] of alvo.entries()) {
+        btn.textContent = 'Refazendo ' + (i + 1) + ' de ' + alvo.length + '…';
+        const nome = (clientesMap[c.cliente_id] || {}).nome_principal || '—';
+        let j = null; try { j = JSON.parse(c.sim_obs); } catch (e) {}
+        if (!j || !j.input) { res.erros.push({ nome, motivo: 'simulação gravada ilegível' }); continue; }
+        const ent = entradaAtual(j.input);
+        if (ent.pctReceitaMonofasica == null) { const mono = monofasicoDoPgdas(ent, j.dominio); if (mono != null) ent.pctReceitaMonofasica = mono; }
+        let r;
+        try { r = simular(ent); } catch (err) { res.erros.push({ nome, motivo: err.message }); continue; }
+        const empate = !!r.veredito.empate && r.semestre.diferenca < 0;
+        const upd = {
+          sim_custo_dentro: +r.semestre.custoDentro.toFixed(2), sim_custo_fora: +r.semestre.custoFora.toFixed(2),
+          sim_credito_cliente_dentro: +r.semestre.creditoClienteDentro.toFixed(2), sim_credito_cliente_fora: +r.semestre.creditoClienteFora.toFixed(2)
+        };
+        const empateAntes = j.empate === true || /^Empate técnico/.test(j.frase || '');
+        const igual = JSON.stringify(ent) === JSON.stringify(j.input) && j.veredito === r.veredito.tipo && empateAntes === empate
+          && Object.keys(upd).every(k => Math.abs((+c[k] || 0) - upd[k]) < 0.005);
+        if (igual) { res.iguais++; continue; }
+        upd.sim_obs = JSON.stringify({ ...j, input: ent, veredito: r.veredito.tipo, empate, frase: r.veredito.frase, calculado_em: hojeISO(), recalculado: 'Refazer simulações, ' + fmtData(hojeISO()) });
+        if (c.fundamento && c.fundamento === j.frase) upd.fundamento = r.veredito.frase;
+        upd.atualizado_em = agoraISO();
+        let qy = supabase.from('rt_casos').update(upd).eq('id', c.id);
+        qy = c.atualizado_em ? qy.eq('atualizado_em', c.atualizado_em) : qy.is('atualizado_em', null);
+        const { data, error } = await qy.select('id');
+        if (error) { res.erros.push({ nome, motivo: error.message }); continue; }
+        if (!data || !data.length) { res.erros.push({ nome, motivo: 'alterada por outra pessoa enquanto o lote rodava — abra a ficha e grave de novo' }); continue; }
+        Object.assign(c, upd);
+        res.refeitas++;
+        const antes = empateAntes ? 'EMPATE' : j.veredito, depois = empate ? 'EMPATE' : r.veredito.tipo;
+        if (antes !== depois) res.mudaram.push({ nome, antes: ROT_RESULTADO[antes] || antes || '—', depois: ROT_RESULTADO[depois] || depois });
+      }
+      btn.disabled = false; btn.textContent = 'Refazer simulações';
+      render();
+      const lista = itens => '<ul style="margin:4px 0 10px 18px;padding:0">' + itens.join('') + '</ul>';
+      $('refazerResumo').innerHTML = '<p style="margin:0 0 10px"><b>' + res.refeitas + '</b> refeita(s) · <b>' + res.iguais + '</b> já estava(m) com o cálculo atual'
+          + (res.erros.length ? ' · <b>' + res.erros.length + '</b> não refeita(s)' : '') + '.</p>'
+        + (res.mudaram.length ? '<p style="margin:0"><b>Mudaram de resultado:</b></p>' + lista(res.mudaram.map(m => '<li>' + escapeHtml(m.nome) + ': ' + escapeHtml(m.antes) + ' → <b>' + escapeHtml(m.depois) + '</b></li>'))
+          : '<p style="margin:0 0 10px">Nenhuma mudou de resultado.</p>')
+        + (res.erros.length ? '<p style="margin:0"><b>Não refeitas</b> (ficaram como estavam):</p>' + lista(res.erros.map(e => '<li>' + escapeHtml(e.nome) + ': ' + escapeHtml(e.motivo) + '</li>')) : '');
+      $('ovRefazer').classList.add('on');
+    };
+    $('refazerFechar').onclick = () => $('ovRefazer').classList.remove('on');
 
     // ---------- importação Domínio ----------
     load();
