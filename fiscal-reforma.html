@@ -382,6 +382,9 @@
     // CBS de 2027 = referência − 0,1 ponto (ADCT, art. 127, parágrafo único): 9,30 − 0,10 = 9,20; IBS 0,10 (0,05 + 0,05).
     // Até 03/10/2026 a tela somava a referência cheia (9,30 + 0,10 = 9,40%); o caso do curso usa 9,30% no total.
     let casos = [], clientesMap = {}, params = { cbs: 9.20, cbsRef: 9.30, ibs: 0.10, partilha: null };
+    // simulação gravada antes de 03/10/2026 (ou por uma aba aberta com a versão antiga) traz a CBS de referência cheia
+    // (9,30 com IBS 0,10): lida como a CBS de 2027 (9,20), pra tela e análise não somarem 9,40% de novo
+    const entradaAtual = e => (e && +e.cbs === params.cbsRef && +e.ibs === params.ibs) ? { ...e, cbs: params.cbs } : e;
     let filtroStatus = 'todos', busca = '', fTri = '', fSeg = '', fDec = '';
     let sel = new Set(), fichaId = null, simAtual = null, usuarioEmail = '';
 
@@ -611,7 +614,7 @@
 
       // B — simulador (restaura da última simulação gravada, senão das colunas)
       let ent = null;
-      try { const j = JSON.parse(c.sim_obs || 'null'); if (j && j.input) ent = j.input; } catch (e) {}
+      try { const j = JSON.parse(c.sim_obs || 'null'); if (j && j.input) ent = entradaAtual(j.input); } catch (e) {}
       $('sAnexo').value = (ent && ent.anexo) || c.anexo || 'I';
       $('sRbt12').value = brNum(ent ? ent.rbt12 : c.rbt12);
       $('sReceita').value = brNum(ent ? ent.receita : c.receita_mensal);
@@ -1384,7 +1387,7 @@
       const c = casoAtual(); if (!c) return;
       const cli = clientesMap[c.cliente_id];
       let ent = null, domRes = null;
-      try { const j = JSON.parse(c.sim_obs || 'null'); if (j && j.input) { ent = j.input; domRes = j.dominio || null; } } catch (e) {}
+      try { const j = JSON.parse(c.sim_obs || 'null'); if (j && j.input) { ent = entradaAtual(j.input); domRes = j.dominio || null; } } catch (e) {}
       // o que foi importado nesta sessão vale mais que o que está gravado
       if (domEstado.resumo) domRes = domEstado.resumo;
       if (!ent) { alert('Grave a simulação antes de gerar a análise — é dela que saem os números do documento.'); return; }

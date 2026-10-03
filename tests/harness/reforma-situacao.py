@@ -52,6 +52,9 @@ CASOS = [
     caso(5, 'rx5', 'tende_por_dentro', 1, status='triado'),
     caso(6, 'rx6', 'simular', 3, 34150, 33100, obs('MANTENHA', 'Texto qualquer do veredito', empate=True)),
 ]
+# simulação gravada antes de 03/10/2026: CBS de referência cheia (9,30) com IBS 0,10 — a tela lê como a CBS de 2027 (9,20)
+CASOS[1]['sim_obs'] = json.dumps({'v': 1, 'input': {'anexo': 'II', 'receita': 100000, 'cbs': 9.3, 'ibs': 0.1}, 'veredito': 'OPTE',
+    'frase': 'A simulação do primeiro semestre de 2027 indica custo tributário de R$ 55.000,00 pelo regime regular…', 'calculado_em': '2026-09-27'}, ensure_ascii=False)
 SEMEAR = """
 (() => {
   const CLIENTES = %s, CASOS = %s;
@@ -128,6 +131,9 @@ def main():
         ok('DAS por dentro em 2027' in verd, 'o veredito avisa que o DAS por dentro de 2027 sobe com o fim da exclusão do monofásico')
         jan = p.inner_text('#bMeses tbody tr:first-child td:nth-child(2)').replace('\xa0', ' ')
         ok(jan == 'R$ 9.426,38', f'DAS por dentro de janeiro/2027 = R$ 9.426,38, o do caso do curso ({jan})')
+        p.click('#fiFechar'); p.wait_for_timeout(300)
+        p.click('#rtLista tr:has-text("COMÉRCIO DE TESTE LTDA")'); p.wait_for_timeout(500)
+        ok(p.input_value('#sCbs') == '9,2', f'simulação antiga (CBS 9,30 + IBS 0,10) abre com a CBS de 2027 = 9,2 ({p.input_value("#sCbs")})')
 
         ok(not erros, 'sem erro de JavaScript' + (f': {erros}' if erros else ''))
         p.close()
