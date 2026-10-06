@@ -1,12 +1,14 @@
 // ============================================================
-// MACEDO & REIS - Edge Function: admissao-link (v1, 06/10/2026)
+// MACEDO & REIS - Edge Function: admissao-link (v2, 06/10/2026)
+// v2: o link não pede mais CNPJ nem WhatsApp (pedido do Samuel) — a empresa é achada pelo nome digitado (razão social ou
+// fantasia, sem LTDA/ME/EPP…); sem um único cliente que bata, a admissão entra sem vínculo e o DP escolhe na ficha.
 // Link público das admissões do DP (admissao.html), na lógica do forms da precificação: a empresa preenche, envia e
 // a admissão nasce no módulo (dp-admissoes.html) e na agenda (o gatilho do banco cria a tarefa na hora, com prazo no
 // dia do envio). Os anexos vão pro Drive em BANCO DE INFORMAÇÕES > SETOR DP E RH > ADMISSÕES > EMPRESA > FUNCIONÁRIO
 // (raiz em configuracoes_escritorio.drive_pasta_admissoes_id; mesma conta Google OAuth do registrar-processo-drive).
 //
 // verify_jwt = true (regra 10): a página chama com a chave anônima; aqui dentro grava com a chave de servidor — nenhuma
-// tabela fica aberta. Só aceita empresa que esteja no cadastro (pelo CNPJ/CPF). Trava de 30 envios por hora.
+// tabela fica aberta. Trava de 30 envios por hora.
 // Ações (corpo JSON, campo "acao"):
 //   formulario — o modelo em vigor (sem dado de cliente)
 //   enviar     — grava a admissão, cria as pastas e devolve { id, chave } pra subir os anexos
@@ -66,20 +68,28 @@ const normNome = (s: string) =>
   String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
 // MEI: o nome oficial vem com o CPF no fim (ou a raiz do CNPJ na frente)
 const limpaNome = (n: string) => String(n || "").replace(/\s*\d{11}\s*$/, "").replace(/^\d{2}\.?\d{3}\.?\d{3}\s+/, "").trim();
-// CNPJ alfanumérico (IN RFB 2.229/2024) preservado; CPF e o resto, só dígitos — igual ao assets/js/utils.js
-const normDoc = (d: unknown) => {
-  const s = String(d ?? "").toUpperCase().replace(/[\s.\-\/]/g, "");
-  return /^[0-9A-Z]{12}\d{2}$/.test(s) ? s : s.replace(/\D/g, "");
-};
 const txt = (v: unknown, max: number) => String(v ?? "").trim().slice(0, max);
+// chave de comparação de nome de empresa: sem acento, sem pontuação, sem o CPF do MEI e sem LTDA/ME/EPP/EIRELI/S.A. no fim
+const SUFIXOS = new Set(["LTDA", "ME", "EPP", "EIRELI", "EIRELLI", "MEI", "SLU", "LIMITADA", "SA"]);
+const chaveNome = (n: string) => {
+  const t = normNome(limpaNome(n)).split(" ").filter(Boolean);
+  for (;;) {
+    if (t.length > 1 && SUFIXOS.has(t[t.length - 1])) { t.pop(); continue; }
+    if (t.length > 2 && t[t.length - 2] === "S" && t[t.length - 1] === "A") { t.splice(-2); continue; }
+    break;
+  }
+  return t.join(" ");
+};
 // nome de pasta/arquivo no Drive: sem barra nem caractere de controle
 const seguro = (s: string, max = 150) =>
   String(s || "").replace(/[\u0000-\u001f\/\\]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
 const hojeBR = () => new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo" }).format(new Date()).replaceAll("/", "-");
 
-async function filhoPorNome(t: string, pai: string, nome: string): Promise<string | null> {
+// comparar: normNome (pasta do funcionário) ou chaveNome (pasta da empresa: "PADARIA X" e "PADARIA X LTDA" são a mesma)
+async function filhoPorNome(t: string, pai: string, nome: string, comparar = normNome): Promise<string | null> {
   const q = encodeURIComponent(`'${pai}' in parents and mimeType='${FOLDER}' and trashed=false`);
-  const alvo = normNome(nome);
+  const alvo = comparar(nome);
+  if (!alvo) return null;
   let pagina = "";
   do {
     const r = await fetch(`${DRIVE}?q=${q}&fields=nextPageToken,files(id,name)&pageSize=1000${pagina ? "&pageToken=" + pagina : ""}`, {
@@ -87,7 +97,7 @@ async function filhoPorNome(t: string, pai: string, nome: string): Promise<strin
     });
     if (!r.ok) throw new Error("Drive (listar): " + (await r.text()).slice(0, 300));
     const d = await r.json();
-    const hit = (d.files || []).find((f: { name: string }) => normNome(f.name) === alvo);
+    const hit = (d.files || []).find((f: { name: string }) => comparar(f.name) === alvo);
     if (hit) return hit.id;
     pagina = d.nextPageToken || "";
   } while (pagina);
@@ -102,12 +112,45 @@ async function criarPasta(t: string, nome: string, pai: string): Promise<string>
   if (!r.ok) throw new Error(`Drive (criar pasta "${nome}"): ` + (await r.text()).slice(0, 300));
   return (await r.json()).id;
 }
-const pastaFilha = async (t: string, pai: string, nome: string) => (await filhoPorNome(t, pai, nome)) || (await criarPasta(t, nome, pai));
+const pastaFilha = async (t: string, pai: string, nome: string, comparar = normNome) =>
+  (await filhoPorNome(t, pai, nome, comparar)) || (await criarPasta(t, nome, pai));
 
 async function raizAdmissoes(supa: ReturnType<typeof db>): Promise<string> {
   const { data } = await supa.from("configuracoes_escritorio").select("valor").eq("chave", "drive_pasta_admissoes_id").maybeSingle();
   if (!data?.valor) throw new Error("drive_pasta_admissoes_id não configurado");
   return data.valor as string;
+}
+
+// empresa do cadastro pelo nome digitado: igual (razão ou fantasia) → esse; havendo mais de um, o que está na carteira;
+// sem igual, todas as palavras digitadas (3+ letras) dentro do nome de um único cliente da carteira. Fora disso, sem vínculo.
+// deno-lint-ignore no-explicit-any
+async function acharCliente(supa: ReturnType<typeof db>, digitado: string): Promise<any | null> {
+  const alvo = chaveNome(digitado);
+  if (!alvo) return null;
+  // deno-lint-ignore no-explicit-any
+  const clis: any[] = [];
+  for (let i = 0; ; i += 1000) {
+    const { data, error } = await supa.from("clientes").select("id, nome_principal, nome_fantasia").order("id").range(i, i + 999);
+    if (error) throw new Error("clientes: " + error.message);
+    clis.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  const { data: cart } = await supa.from("carteira_info").select("cliente_id").is("saida", null).range(0, 4999);
+  const ativos = new Set((cart || []).map((c: { cliente_id: string }) => c.cliente_id));
+  // deno-lint-ignore no-explicit-any
+  const nomes = (c: any) => [c.nome_principal, c.nome_fantasia].filter(Boolean).map(chaveNome);
+  // deno-lint-ignore no-explicit-any
+  const um = (lista: any[]) => {
+    if (lista.length === 1) return lista[0];
+    const at = lista.filter((c) => ativos.has(c.id));
+    return at.length === 1 ? at[0] : null;
+  };
+  const iguais = clis.filter((c) => nomes(c).includes(alvo));
+  if (iguais.length) return um(iguais);
+  const palavras = alvo.split(" ").filter((p) => p.length >= 3);
+  if (!palavras.length) return null;
+  const contem = clis.filter((c) => ativos.has(c.id) && nomes(c).some((n) => { const t = new Set(n.split(" ")); return palavras.every((p) => t.has(p)); }));
+  return contem.length === 1 ? contem[0] : null;
 }
 
 async function sessaoResumivel(t: string, pasta: string, nome: string, tipo: string, tamanho: number): Promise<string> {
@@ -149,9 +192,8 @@ async function formulario() {
 
 // deno-lint-ignore no-explicit-any
 async function enviar(b: any) {
-  const empresa = txt(b.empresa, 200), contato = txt(b.contato, 120), whatsapp = txt(b.whatsapp, 40), doc = normDoc(b.documento);
-  if (!empresa || !contato || !whatsapp || !doc) return { error: "Preencha a empresa, o CNPJ e o contato." };
-  if (!(doc.length === 11 || doc.length === 14)) return { error: "CNPJ ou CPF inválido." };
+  const empresa = txt(b.empresa, 200), contato = txt(b.contato, 120);
+  if (!empresa || !contato) return { error: "Preencha o nome da empresa e o seu nome." };
   const respostas = b.respostas;
   if (!Array.isArray(respostas) || respostas.length > 200 || JSON.stringify(respostas).length > 100000
     || respostas.some((x: unknown) => !x || typeof x !== "object" || Array.isArray(x))) return { error: "Respostas inválidas." };
@@ -169,17 +211,7 @@ async function enviar(b: any) {
   if (!mod?.conteudo) return { error: "Formulário indisponível." };
   const email = mod.conteudo.email || "rh@macedoereis.com.br";
 
-  // empresa do cadastro pelo CNPJ/CPF (havendo duplicata, a que está na carteira)
-  const { data: clis } = await supa.from("clientes").select("id, nome_principal, nome_fantasia").eq("documento", doc);
-  let cli = (clis || [])[0];
-  if ((clis || []).length > 1) {
-    const { data: cart } = await supa.from("carteira_info").select("cliente_id").in("cliente_id", clis!.map((c: { id: string }) => c.id)).is("saida", null);
-    const ativos = new Set((cart || []).map((c: { cliente_id: string }) => c.cliente_id));
-    cli = clis!.find((c: { id: string }) => ativos.has(c.id)) || cli;
-  }
-  if (!cli) {
-    return { error: "NAO_CLIENTE", mensagem: `Não encontramos esse CNPJ/CPF entre as empresas atendidas pelo escritório. Confira o número; se estiver certo, fale com a gente pelo e-mail ${email}.` };
-  }
+  const cli = await acharCliente(supa, empresa);
 
   const valor = (id: string) => {
     const x = respostas.find((r: { id?: string }) => r.id === id);
@@ -196,25 +228,26 @@ async function enviar(b: any) {
   const chave = anexos.length ? crypto.randomUUID() + crypto.randomUUID() : null;
 
   const { data: adm, error } = await supa.from("admissoes").insert({
-    cliente_id: cli.id, empresa_nome: empresa, empresa_documento: doc, contato_nome: contato, contato_whatsapp: whatsapp,
+    cliente_id: cli ? cli.id : null, empresa_nome: empresa, contato_nome: contato,
     origem: "externa", status: "respondida", funcionario_nome: nome, data_inicio: dataIni,
     responsavel: txt(mod.conteudo.responsavel, 60) || null, respostas, documentos, criado_por: "formulário da empresa",
     envio_chave: chave, envio_expira: chave ? new Date(Date.now() + HORAS_CHAVE * 3600e3).toISOString() : null,
   }).select("id").single();
   if (error) throw new Error("gravar admissão: " + error.message);
 
-  // ADMISSÕES > EMPRESA > FUNCIONÁRIO (a da empresa é reaproveitada quando já existe; tudo em MAIÚSCULAS, padrão do Drive)
+  // ADMISSÕES > EMPRESA > FUNCIONÁRIO (a da empresa é reaproveitada quando já existe, mesmo sem o LTDA/ME no nome;
+  // tudo em MAIÚSCULAS, padrão do Drive)
   let pasta: string | null = null;
   try {
     const t = await token();
     const raiz = await raizAdmissoes(supa);
-    const pEmp = await pastaFilha(t, raiz, seguro((limpaNome(cli.nome_principal) || empresa).toUpperCase()));
+    const pEmp = await pastaFilha(t, raiz, seguro(((cli && limpaNome(cli.nome_principal)) || empresa).toUpperCase()), chaveNome);
     pasta = await pastaFilha(t, pEmp, seguro((nome || "FUNCIONÁRIO " + hojeBR()).toUpperCase()));
     await supa.from("admissoes").update({ drive_pasta_id: pasta, drive_pasta_url: `https://drive.google.com/drive/folders/${pasta}` }).eq("id", adm.id);
   } catch (e) {
     console.error("[adm] drive:", (e as Error)?.message);
   }
-  console.log("[adm] enviada", adm.id, "anexos:", anexos.length, "pasta:", !!pasta);
+  console.log("[adm] enviada", adm.id, "vinculada:", !!cli, "anexos:", anexos.length, "pasta:", !!pasta);
   return { ok: true, id: adm.id, chave: pasta ? chave : null, drive: !!pasta, email };
 }
 

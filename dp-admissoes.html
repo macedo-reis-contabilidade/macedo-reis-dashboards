@@ -161,7 +161,7 @@
         <label class="ad-f"><span>Título</span><input class="ad-in" id="edTitulo"></label>
         <label class="ad-f"><span>Introdução (opcional — aparece logo abaixo do título)</span><textarea class="ad-in" id="edIntro" rows="2"></textarea></label>
         <div class="ad-sec">Perguntas e textos, na ordem em que a empresa vê</div>
-        <div class="ad-bl fixo"><div class="ad-bl-cab"><span class="t">Fixo</span><span class="r">Empresa (razão social), CNPJ, nome e WhatsApp de quem preenche — sempre no topo: é por eles que a admissão chega vinculada à empresa do cadastro</span></div></div>
+        <div class="ad-bl fixo"><div class="ad-bl-cab"><span class="t">Fixo</span><span class="r">Empresa (razão social) e nome de quem preenche — sempre no topo: pelo nome da empresa a admissão chega vinculada ao cadastro (quando não acha, vincule na ficha)</span></div></div>
         <div id="edBlocos"></div>
         <div class="ad-add">
           <button data-novo="pergunta">+ Pergunta</button>
@@ -237,8 +237,8 @@
     // ---------------------------------------------------------------------------------------------
     // Modelo do formulário: nasce do PDF "Documentos e informações necessárias para registro de funcionário(a)"
     // (ficha 2026 do DP). Fica no banco (admissao_modelos) na primeira abertura e daí em diante é editado na aba
-    // "Formulário da empresa". Os ids 'nome' e 'data_inicio' alimentam a admissão quando a empresa envia; empresa,
-    // CNPJ e contato são campos fixos do link (admissao.html), fora do modelo.
+    // "Formulário da empresa". Os ids 'nome' e 'data_inicio' alimentam a admissão quando a empresa envia; o nome da
+    // empresa e de quem preenche são campos fixos do link (admissao.html), fora do modelo.
     // ---------------------------------------------------------------------------------------------
     const op = (...l) => l.map(texto => ({ texto }));
     const MODELO_PADRAO = {
@@ -410,7 +410,7 @@
         const docs = total ? `<span class="ad-mini ${feitos === total ? 'ok' : 'p'}">${feitos}/${total}</span>` : '<span class="ad-dim">—</span>';
         const quando = a.status === 'respondida' ? 'recebida em ' + fmtData(diaDe(a.criado_em))
           : a.status === 'registrada' && a.registrada_em ? 'em ' + fmtData(diaDe(a.registrada_em)) : '';
-        const semVinculo = !a.cliente_id ? ' <span class="ad-mini p" title="O CNPJ informado não bate com nenhuma empresa do cadastro — vincule na ficha">não vinculada</span>' : '';
+        const semVinculo = !a.cliente_id ? ' <span class="ad-mini p" title="O nome informado não bateu com uma empresa do cadastro — vincule na ficha">não vinculada</span>' : '';
         return `<tr data-id="${esc(a.id)}">`
           + `<td><b>${a.funcionario_nome ? esc(a.funcionario_nome) : '<span class="ad-dim">funcionário(a) sem nome</span>'}</b><br><span class="ad-sub">${esc(empresaDe(a))}</span>${semVinculo}</td>`
           + `<td>${selInicio(a)}</td>`

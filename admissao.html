@@ -89,7 +89,6 @@
 
 <script type="module">
   import { supabase } from './assets/js/supabase.js';
-  import { normalizarDocumento, cnpjValido, bindMask, maskTelefone } from './assets/js/utils.js';
 
   const RODAPE_PADRAO = 'Macedo e Reis Contabilidade Ltda · Rua Luiz Volkart, 35, 1º andar – Centro – Três Coroas/RS · CEP 95660-000 · (51) 3546-1385 · rh@macedoereis.com.br';
   const PRIVACIDADE = 'As informações vão direto para o Departamento Pessoal da Macedo & Reis e são usadas só para o registro do(a) funcionário(a).';
@@ -101,12 +100,10 @@
   const app = document.getElementById('app');
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
   const tam = n => n >= 1048576 ? (n / 1048576).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
-  // quem está preenchendo e a empresa: fixos (o sistema usa pra achar a empresa no cadastro e pra retornar o contato)
+  // a empresa e quem está preenchendo: fixos (o sistema acha a empresa no cadastro pelo nome; CNPJ e contato o escritório já tem)
   const IDENT = [
     { k: 'empresa', rot: 'Empresa (razão social)', tipo: 'text' },
-    { k: 'documento', rot: 'CNPJ da empresa', ajuda: 'Se o empregador for pessoa física, o CPF.', tipo: 'text' },
     { k: 'contato', rot: 'Seu nome', tipo: 'text' },
-    { k: 'whatsapp', rot: 'Seu WhatsApp (para retorno)', tipo: 'tel' },
   ];
   let modelo = null, anexos = {};
   const email = () => (modelo && modelo.email) || EMAIL_PADRAO;
@@ -182,8 +179,8 @@
       + '</div>';
     html += '<div class="card"><h3 class="bloco">Empresa</h3>' + IDENT.map(c =>
       `<div class="campo" data-id="${c.k}"><label for="id_${c.k}"><span class="obr">${esc(c.rot)}</span>${c.ajuda ? `<small class="ajuda">${esc(c.ajuda)}</small>` : ''}</label>`
-      + `<input type="${c.tipo}" id="id_${c.k}" value="${esc(ident[c.k] || '')}"${c.tipo === 'tel' ? ' inputmode="tel" placeholder="(51) 9 9999-9999"' : ''}${c.k === 'documento' ? ' autocapitalize="characters"' : ''}>`
-      + `<div class="falta-msg">${c.k === 'documento' ? 'Informe o CNPJ (14 caracteres) ou o CPF (11 números).' : 'Preencha este campo.'}</div></div>`).join('') + '</div>';
+      + `<input type="${c.tipo}" id="id_${c.k}" value="${esc(ident[c.k] || '')}">`
+      + '<div class="falta-msg">Preencha este campo.</div></div>').join('') + '</div>';
     let aberto = false;
     const abre = titulo => { if (aberto) html += '</div>'; html += '<div class="card">' + (titulo ? `<h3 class="bloco">${esc(titulo)}</h3>` : ''); aberto = true; };
     blocos.forEach((b, i) => {
@@ -220,7 +217,6 @@
     app.innerHTML = html;
     app.querySelectorAll('.campo').forEach(c => { c.addEventListener('input', () => c.classList.remove('falta')); c.addEventListener('change', () => c.classList.remove('falta')); });
     app.querySelectorAll('[data-anexo]').forEach(inp => inp.addEventListener('change', () => { adicionarAnexos(+inp.dataset.anexo, [...inp.files]); inp.value = ''; }));
-    bindMask(document.getElementById('id_whatsapp'), maskTelefone);
     document.getElementById('btnEnviar').addEventListener('click', enviar);
   }
 
@@ -231,9 +227,6 @@
     const respostas = [], faltam = [];
     const ident = lerIdent();
     IDENT.forEach(c => { if (!ident[c.k]) faltam.push(app.querySelector(`.campo[data-id="${c.k}"]`)); });
-    const doc = normalizarDocumento(ident.documento);
-    const docOk = doc.length === 11 ? /^\d{11}$/.test(doc) : doc.length === 14 && cnpjValido(doc);
-    if (ident.documento && !docOk) faltam.push(app.querySelector('.campo[data-id="documento"]'));
     let secao = '';
     blocos.forEach((b, i) => {
       if (!b) return;
@@ -252,7 +245,7 @@
         respostas.push({ id: b.id, rotulo: b.rotulo || 'Ciente', tipo: 'declaracao', secao: b.titulo || secao, valor: marcado ? 'Sim' : 'Não', texto: b.texto || '' });
       }
     });
-    return { ident: { ...ident, documento: doc }, respostas, faltam: [...new Set(faltam.filter(Boolean))] };
+    return { ident, respostas, faltam: [...new Set(faltam.filter(Boolean))] };
   }
 
   function progresso(texto, fracao) {
@@ -296,18 +289,11 @@
     const lista = todosAnexos();
     btn.disabled = true; btn.textContent = 'Enviando…';
     progresso(lista.length ? 'Enviando as informações…' : '', null);
-    const { data, error } = await chamar({ acao: 'enviar', empresa: ident.empresa, documento: ident.documento, contato: ident.contato,
-      whatsapp: ident.whatsapp, respostas, arquivos: lista.map(a => ({ nome: a.file.name, tamanho: a.file.size, tipo: a.file.type || 'application/octet-stream', grupo: a.grupo })) });
+    const { data, error } = await chamar({ acao: 'enviar', empresa: ident.empresa, contato: ident.contato, respostas,
+      arquivos: lista.map(a => ({ nome: a.file.name, tamanho: a.file.size, tipo: a.file.type || 'application/octet-stream', grupo: a.grupo })) });
     if (error || !data || data.error) {
       btn.disabled = false; btn.textContent = 'Enviar informações'; progresso('', null);
-      if (data && data.error === 'NAO_CLIENTE') {
-        const campo = app.querySelector('.campo[data-id="documento"]');
-        campo.classList.add('falta'); campo.querySelector('.falta-msg').textContent = data.mensagem;
-        campo.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        erro.textContent = 'Confira o CNPJ/CPF da empresa.';
-      } else {
-        erro.textContent = (data && data.error) ? data.error : 'Não foi possível enviar agora (' + ((error && error.message) || 'erro de conexão') + '). Tente novamente.';
-      }
+      erro.textContent = (data && data.error) ? data.error : 'Não foi possível enviar agora (' + ((error && error.message) || 'erro de conexão') + '). Tente novamente.';
       return;
     }
     const falhas = [];
@@ -331,7 +317,7 @@
     aviso(falhas.length ? '⚠️' : '✅', 'Informações recebidas!', texto, falhas.length ? '' : 'ok');
     const outro = document.createElement('button');
     outro.className = 'botao sec'; outro.id = 'btnOutro'; outro.textContent = 'Enviar outro funcionário';
-    outro.addEventListener('click', () => { desenhar({ empresa: ident.empresa, documento: ident.documento, contato: ident.contato, whatsapp: ident.whatsapp }); window.scrollTo({ top: 0 }); });
+    outro.addEventListener('click', () => { desenhar({ empresa: ident.empresa, contato: ident.contato }); window.scrollTo({ top: 0 }); });
     app.querySelector('.aviso').appendChild(outro);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }

@@ -17,9 +17,9 @@ Confere, nos temas escuro e claro (o link público é sempre claro):
   3. editor do formulário: sem quem recebe na agenda não salva; pergunta nova gravada no modelo; pergunta sem texto
      não salva; a prévia abre o link no modo prévia, sem enviar nada;
   4. link público: campos da empresa no topo, formulário do modelo, anexos e o e-mail em cada lista de documentos,
-     obrigatórios barrados, CNPJ com dígito errado barrado, envio com empresa/CNPJ/contato, as respostas (nome, data,
-     declaração) e os anexos (cada um aberto no Drive e mandado em partes de 2 MB), mensagem final com a contagem e
-     "Enviar outro funcionário" mantendo a empresa; CNPJ fora do cadastro, anexo que não sobe, formulário
+     no topo só a empresa e quem preenche (sem CNPJ e sem WhatsApp), obrigatórios barrados, envio com a empresa, quem
+     preencheu, as respostas (nome, data, declaração) e os anexos (cada um aberto no Drive e mandado em partes de 2 MB),
+     mensagem final com a contagem e "Enviar outro funcionário" mantendo a empresa; anexo que não sobe, formulário
      indisponível e "muitos envios" avisados.
 Termina com código 1 se alguma checagem falhar. Pré-requisito: pip install playwright e python -m playwright install chromium
 """
@@ -36,7 +36,6 @@ def ok(cond, msg):
 
 hoje = datetime.date.today()
 dia = lambda n: (hoje + datetime.timedelta(days=n)).isoformat()
-CNPJ_OK = '11222333000181'          # CNPJ de exemplo com dígito verificador certo (inventado)
 
 def admissoes_teste():
     docs = lambda recebidos: [{'grupo': 'Documentos', 'item': i, 'condicional': False, 'recebido': n < recebidos} for n, i in enumerate(
@@ -135,7 +134,7 @@ def modulo(b, base, tema, erros):
     ok('<img src=x' in txt and p.evaluate('() => window.__xss === undefined') and p.locator('#fiRespostas img').count() == 0, '2. o que a empresa digitou sai como texto (sem HTML injetado)')
     env = p.inner_text('#fiEnvio')
     ok('CONTATO DE TESTE' in env and '(51) 99999-0000' in env and p.get_attribute('#fiEnvio a', 'href') == 'https://wa.me/5551999990000', '2. quem enviou, com o WhatsApp e o atalho da conversa')
-    ok('Vinculada a' in p.inner_text('#fiVinc') and 'COMÉRCIO MODELO ME' in p.inner_text('#fiVinc'), '2. empresa vinculada pelo CNPJ')
+    ok('Vinculada a' in p.inner_text('#fiVinc') and 'COMÉRCIO MODELO ME' in p.inner_text('#fiVinc'), '2. empresa vinculada ao cadastro')
     arq = p.inner_text('#fiArquivos')
     ok(p.get_attribute('#fiArquivos a >> nth=0', 'href') == 'https://drive.google.com/drive/folders/PASTA1' and 'rg-frente.jpg' in arq
        and p.get_attribute('#fiArquivos a >> nth=1', 'href') == 'https://drive.google.com/file/d/ARQ1/view' and 'não chegou' in arq, '2. pasta e arquivos no Drive, com o que não chegou marcado')
@@ -174,7 +173,7 @@ def modulo(b, base, tema, erros):
     p.goto(base + 'dp-admissoes.html'); p.wait_for_timeout(1500)
     p.click('.ad-aba[data-aba="form"]'); p.wait_for_timeout(300)
     ok(p.locator('#edBlocos .ad-bl').count() == 16 and p.input_value('#edTitulo').startswith('Documentos e informações'), '3. editor mostra os 16 itens do formulário')
-    ok('Empresa (razão social), CNPJ' in p.inner_text('#secForm'), '3. editor mostra os campos fixos da empresa')
+    ok('Empresa (razão social) e nome de quem preenche' in p.inner_text('#secForm'), '3. editor mostra os campos fixos (empresa e quem preenche)')
     p.click('.ad-add [data-novo="pergunta"]'); p.wait_for_timeout(200)
     nova = p.locator('#edBlocos .ad-bl').last
     nova.locator('[data-k="rotulo"]').fill('Possui CNH?')
@@ -236,8 +235,8 @@ window.__mockInvoke = async (nome, opts) => {
         return p
     def log(p, acao=None):
         return [x for x in p.evaluate('() => window.__log') if acao is None or x[0] == acao]
-    def preencher(p, doc='11.222.333/0001-81'):
-        p.fill('#id_empresa', 'Comércio Modelo'); p.fill('#id_documento', doc); p.fill('#id_contato', 'Contato de Teste'); p.fill('#id_whatsapp', '51999990000')
+    def preencher(p):
+        p.fill('#id_empresa', 'Comércio Modelo'); p.fill('#id_contato', 'Contato de Teste')
         p.fill('input[name="q0"]', 'FULANA DE TESTE'); p.fill('input[name="q1"]', dia(10))
         for i, v in ((4, 'R$ 2.000,00 mensal'), (5, 'Vendedora'), (6, '08h às 12h e 13h às 18h'), (7, '1 hora')): p.fill(f'input[name="q{i}"]', v)
         for i, v in ((8, 'Experiência'), (11, 'Ensino Médio completo'), (12, 'Parda'), (13, 'Não'), (14, 'Solteiro(a)')): p.check(f'input[name="q{i}"][value="{v}"]')
@@ -247,8 +246,9 @@ window.__mockInvoke = async (nome, opts) => {
     form = json.dumps(publicado, ensure_ascii=False)
     p = pagina(form)
     ok(p.inner_text('.cab h2') == modelo['titulo'], '4. título do modelo')
-    ok(all(p.locator(f'#id_{k}').count() == 1 for k in ('empresa', 'documento', 'contato', 'whatsapp')), '4. campos da empresa e do contato no topo')
-    ok(p.locator('.campo').count() == 16 and p.locator('.op').count() == 2 + 7 + 5 + 2 + 4, '4. perguntas e opções do PDF desenhadas')
+    ok(p.locator('#id_empresa').count() == 1 and p.locator('#id_contato').count() == 1 and p.locator('#id_documento').count() == 0
+       and p.locator('#id_whatsapp').count() == 0, '4. no topo só a empresa e quem preenche (sem CNPJ e sem WhatsApp)')
+    ok(p.locator('.campo').count() == 14 and p.locator('.op').count() == 2 + 7 + 5 + 2 + 4, '4. perguntas e opções do PDF desenhadas')
     ok('1.980,38' in p.inner_text('#app') and 'Exame Médico admissional (ASO)' in p.inner_text('#app'), '4. documentos e salário família na tela')
     ok(p.locator('input[type=file][data-anexo]').count() == 2 and p.locator('.anexo-email', has_text='rh@macedoereis.com.br').count() == 2,
        '4. anexar arquivos e o e-mail rh@ nas duas listas de documentos')
@@ -262,18 +262,14 @@ window.__mockInvoke = async (nome, opts) => {
     p.set_input_files('input[data-anexo="2"]', [{'name': 'ctps.pdf', 'mimeType': 'application/pdf', 'buffer': b'%PDF' + b'0' * 5000}])
     p.screenshot(path=str(FOTOS / 'admissoes-link-claro.png'), full_page=True)
     p.click('#btnEnviar'); p.wait_for_timeout(400)
-    ok(p.locator('.campo.falta').count() == 16 and 'Faltam 16' in p.inner_text('#msgErro'), '4. obrigatórios barrados (16)')
+    ok(p.locator('.campo.falta').count() == 14 and 'Faltam 14' in p.inner_text('#msgErro'), '4. obrigatórios barrados (14)')
     ok(not log(p, 'enviar'), '4. nada enviado com obrigatório vazio')
-    preencher(p, doc='11.222.333/0001-82')
-    ok(p.input_value('#id_whatsapp') == '(51) 99999-0000', '4. WhatsApp com máscara')
-    p.click('#btnEnviar'); p.wait_for_timeout(400)
-    ok(p.locator('.campo.falta').count() == 1 and p.locator('.campo.falta[data-id="documento"]').count() == 1, '4. CNPJ com dígito errado barrado')
-    p.fill('#id_documento', '11.222.333/0001-81')
+    preencher(p)
     p.click('#btnEnviar'); p.wait_for_timeout(1500)
     env = log(p, 'enviar'); a = env[0][1] if env else {}
     r = {x['id']: x for x in a.get('respostas', [])}
-    ok(len(env) == 1 and a.get('empresa') == 'Comércio Modelo' and a.get('documento') == CNPJ_OK and a.get('contato') == 'Contato de Teste'
-       and a.get('whatsapp') == '(51) 99999-0000', '4. envia empresa, CNPJ (sem pontuação) e contato')
+    ok(len(env) == 1 and a.get('empresa') == 'Comércio Modelo' and a.get('contato') == 'Contato de Teste' and 'documento' not in a
+       and 'whatsapp' not in a, '4. envia a empresa e quem preencheu (sem CNPJ e sem WhatsApp)')
     ok(len(r) == 12 and r.get('nome', {}).get('valor') == 'FULANA DE TESTE' and r.get('data_inicio', {}).get('valor') == dia(10)
        and r.get('tipo_contrato', {}).get('valor') == 'Experiência', '4. envia as 12 respostas com o valor certo')
     ok(r.get('ciente_menor', {}).get('valor') == 'Sim' and 'menores de dezesseis' in r.get('ciente_menor', {}).get('texto', ''), '4. declaração vai com o texto declarado')
@@ -288,14 +284,9 @@ window.__mockInvoke = async (nome, opts) => {
     ok('Informações recebidas' in txt and '3 arquivos enviados' in txt and modelo['final'][:30] in txt, '4. mensagem final com a contagem dos anexos')
     p.screenshot(path=str(FOTOS / 'admissoes-link-enviado-claro.png'), full_page=True)
     p.click('#btnOutro'); p.wait_for_timeout(300)
-    ok(p.input_value('#id_empresa') == 'Comércio Modelo' and p.input_value('#id_documento') == CNPJ_OK and p.input_value('input[name="q0"]') == ''
+    ok(p.input_value('#id_empresa') == 'Comércio Modelo' and p.input_value('#id_contato') == 'Contato de Teste' and p.input_value('input[name="q0"]') == ''
        and p.locator('.anexo-item').count() == 0, '4. "Enviar outro funcionário" mantém a empresa e limpa o resto (anexos também)')
     p.close()
-
-    p = pagina(form, enviar='{ error: "NAO_CLIENTE", mensagem: "Não encontramos esse CNPJ/CPF entre as empresas atendidas pelo escritório." }')
-    preencher(p); p.click('#btnEnviar'); p.wait_for_timeout(500)
-    ok(p.locator('.campo.falta[data-id="documento"]').count() == 1 and 'Não encontramos esse CNPJ' in p.inner_text('.campo[data-id="documento"]')
-       and p.locator('#btnEnviar').count() == 1, '4. CNPJ fora do cadastro: avisa no campo e mantém o formulário'); p.close()
 
     p = pagina(form, falha_parte='aso.pdf')
     p.set_input_files('input[data-anexo="2"]', [{'name': 'aso.pdf', 'mimeType': 'application/pdf', 'buffer': b'%PDF' + b'0' * 800},
@@ -307,8 +298,8 @@ window.__mockInvoke = async (nome, opts) => {
     p = pagina('{ error: "Formulário indisponível." }')
     ok('Formulário indisponível' in p.inner_text('#app'), '4. sem formulário no banco, avisa'); p.close()
     p = pagina(form, enviar='{ error: "Muitos envios agora — tente de novo mais tarde." }')
-    preencher(p, doc='12345678901'); p.click('#btnEnviar'); p.wait_for_timeout(400)
-    ok('Muitos envios agora' in p.inner_text('#msgErro') and p.locator('#btnEnviar').count() == 1, '4. CPF aceito; "muitos envios" avisado sem perder o preenchido'); p.close()
+    preencher(p); p.click('#btnEnviar'); p.wait_for_timeout(400)
+    ok('Muitos envios agora' in p.inner_text('#msgErro') and p.locator('#btnEnviar').count() == 1, '4. "muitos envios" avisado sem perder o preenchido'); p.close()
 
 def main():
     from playwright.sync_api import sync_playwright
