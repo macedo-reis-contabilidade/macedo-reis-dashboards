@@ -126,6 +126,8 @@
       +   '<div id="blImediato" hidden>' + escolha('desconto', PERGUNTAS.desconto) + data('ultimoDia', PERGUNTAS.ultimoDia) + '</div>'
       + '</div>'
       + '<div class="ramo" id="blDispensa" hidden>' + data('dataComunicacao', PERGUNTAS.dataComunicacao) + escolha('avisoDispensa', PERGUNTAS.avisoDispensa) + '</div>'
+      + '<div class="ramo" id="blExperiencia" hidden>' + data('admissao', PERGUNTAS.admissao) + escolha('prazoExperiencia', PERGUNTAS.prazoExperiencia)
+      +   data('dataDesligamento', PERGUNTAS.dataDesligamento) + '</div>'
       + '<div class="datas" id="datas" hidden></div>'
       + '</div>';
     html += `<div class="card"><h3 class="bloco">${esc(PERGUNTAS.obs.rotulo)}</h3><div class="campo" data-id="obs"><label for="id_obs"><small class="ajuda" style="margin:0">${esc(PERGUNTAS.obs.ajuda)}</small></label><textarea id="id_obs"></textarea></div></div>`;
@@ -151,6 +153,7 @@
       return { tipo };
     }
     if (tipo === 'dispensa') return { tipo, aviso: marcado('avisoDispensa'), data: valor('dataComunicacao'), campoData: 'dataComunicacao' };
+    if (tipo === 'experiencia') return { tipo, aviso: null, data: valor('dataDesligamento'), campoData: 'dataDesligamento', admissao: valor('admissao'), prazo: marcado('prazoExperiencia') };
     return {};
   }
 
@@ -159,6 +162,7 @@
     const c = lerCaso();
     $('blPedido').hidden = c.tipo !== 'pedido';
     $('blDispensa').hidden = c.tipo !== 'dispensa';
+    $('blExperiencia').hidden = c.tipo !== 'experiencia';
     $('blCumpre').hidden = !(c.tipo === 'pedido' && c.aviso === 'trabalhado');
     $('blImediato').hidden = !(c.tipo === 'pedido' && c.aviso === 'imediato');
     pintarDatas(calcularRescisao(c));
@@ -170,6 +174,7 @@
     if (!r) { el.hidden = true; el.innerHTML = ''; return; }
     el.hidden = false;
     el.innerHTML = '<h4>📅 Pelas informações acima</h4>'
+      + (r.alerta ? `<div class="passou" style="margin:0 0 6px">⚠ ${esc(r.alerta)}</div>` : '')
       + r.linhas.map(l => `<div class="lin${l.destaque ? ' dest' : ''}"><span>${esc(l.rotulo)}</span><b>${fmtData(l.data)}<small>${diaSemana(l.data)}</small></b></div>`).join('')
       + (calc.limite < hoje() ? '<div class="passou">⚠ Esse prazo já passou — confira a data informada ou fale com o escritório o quanto antes.</div>' : '')
       + '<ul>' + r.notas.map(n => `<li>${esc(n)}</li>`).join('') + '</ul>';
@@ -181,11 +186,19 @@
     const ident = { empresa: valor('empresa'), contato: valor('contato') };
     ['empresa', 'contato', 'funcionario'].forEach(id => { if (!valor(id)) faltam.push(campo(id)); });
     const c = lerCaso();
+    const msgData = $('id_dataDesligamento') && campo('dataDesligamento').querySelector('.falta-msg');
+    if (msgData) msgData.textContent = 'Informe a data.';
     if (!c.tipo) faltam.push(campo('tipo'));
-    else if (!c.aviso) faltam.push(campo(c.tipo === 'pedido' ? 'avisoPedido' : 'avisoDispensa'));
+    else if (c.tipo === 'experiencia') {
+      // contrato de experiência: admissão, prazo e o último dia (que não pode ser antes da admissão)
+      if (!c.admissao) faltam.push(campo('admissao'));
+      if (!c.prazo) faltam.push(campo('prazoExperiencia'));
+      if (!c.data) faltam.push(campo('dataDesligamento'));
+      else if (c.admissao && c.data < c.admissao) { msgData.textContent = 'A data de encerramento é antes da admissão.'; faltam.push(campo('dataDesligamento')); }
+    } else if (!c.aviso) faltam.push(campo(c.tipo === 'pedido' ? 'avisoPedido' : 'avisoDispensa'));
     if (c.tipo === 'pedido' && c.aviso === 'imediato' && c.desconta == null) faltam.push(campo('desconto'));
-    if (c.campoData && !calcularRescisao(c)) faltam.push(campo(c.campoData));
-    return { ident, caso: c, funcionario: valor('funcionario'), obs: valor('obs'), faltam: faltam.filter(Boolean) };
+    if (c.tipo !== 'experiencia' && c.campoData && !calcularRescisao(c)) faltam.push(campo(c.campoData));
+    return { ident, caso: c, funcionario: valor('funcionario'), obs: valor('obs'), faltam: [...new Set(faltam.filter(Boolean))] };
   }
 
   async function enviar() {
@@ -202,7 +215,9 @@
     if (PREVIA) { erro.textContent = 'Prévia: tudo preenchido. Na prévia nada é enviado.'; return; }
     erro.textContent = '';
     btn.disabled = true; btn.textContent = 'Enviando…';
-    const corpo = { acao: 'enviar', empresa: ident.empresa, contato: ident.contato, funcionario, tipo: caso.tipo, aviso: caso.aviso, data: caso.data, obs };
+    const corpo = { acao: 'enviar', empresa: ident.empresa, contato: ident.contato, funcionario, tipo: caso.tipo, data: caso.data, obs };
+    if (caso.tipo === 'experiencia') { corpo.admissao = caso.admissao; corpo.prazo = caso.prazo; }
+    else corpo.aviso = caso.aviso;
     if (caso.tipo === 'pedido' && caso.aviso === 'imediato') corpo.desconta = caso.desconta;
     const { data: r, error } = await chamar(corpo);
     if (error || !r || r.error) {

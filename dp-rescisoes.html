@@ -99,7 +99,7 @@
         </div>
         <div class="eyebrow">Departamento Pessoal</div>
         <h1>Rescisões</h1>
-        <p>Desligamento de funcionários das empresas: a empresa responde o formulário pelo link — pedido de demissão ou demissão por parte da empresa, e como fica o aviso — e vê na hora a data do pagamento; a rescisão aparece aqui e na agenda.</p>
+        <p>Desligamento de funcionários das empresas: a empresa responde o formulário pelo link — pedido de demissão, demissão por parte da empresa ou contrato de experiência — e vê na hora a data do pagamento; a rescisão aparece aqui e na agenda.</p>
       </div>
 
       <div class="rs-abas">
@@ -187,8 +187,10 @@
       <div class="rs-sec">Rescisão</div>
       <div class="rs-f-row">
         <label class="rs-f"><span>Caso</span><select class="rs-in" id="fiTipo"></select></label>
-        <label class="rs-f"><span>Aviso prévio</span><select class="rs-in" id="fiAviso"></select></label>
+        <label class="rs-f" id="fiAvisoWrap"><span>Aviso prévio</span><select class="rs-in" id="fiAviso"></select></label>
         <label class="rs-f" id="fiDescWrap"><span>Desconto do aviso</span><select class="rs-in" id="fiDesc"></select></label>
+        <label class="rs-f" id="fiAdmWrap"><span>Admissão</span><input type="date" class="rs-in" id="fiAdm"></label>
+        <label class="rs-f" id="fiPrazoWrap"><span>Prazo da experiência</span><select class="rs-in" id="fiPrazo"></select></label>
         <label class="rs-f"><span id="fiDataRot">Data</span><input type="date" class="rs-in" id="fiData"></label>
       </div>
       <div class="rs-datas" id="fiDatas"></div>
@@ -239,11 +241,15 @@
     const ABERTAS = ['recebida', 'em_andamento'];
     const opcoesStatus = atual => STATUS.map(([v, l]) => `<option value="${v}"${atual === v ? ' selected' : ''}>${l}</option>`).join('');
     const ST_TAREFA = { aguardando: 'aguardando', pendente: 'pendente', em_andamento: 'em andamento', concluida: 'concluída' };
-    const TIPOS = [['pedido', 'Pedido de demissão'], ['dispensa', 'Demissão por parte da empresa']];
+    const TIPOS = [['pedido', 'Pedido de demissão'], ['dispensa', 'Demissão por parte da empresa'], ['experiencia', 'Contrato de experiência']];
     const AVISOS = { pedido: [['trabalhado', 'Cumpre os 30 dias de aviso'], ['imediato', 'Desligamento imediato']],
                      dispensa: [['trabalhado', 'Aviso trabalhado'], ['indenizado', 'Aviso indenizado']] };
-    const ROT_DATA = { dataPedido: 'Data do pedido de demissão', ultimoDia: 'Último dia de trabalho', dataComunicacao: 'Data da comunicação ao funcionário' };
-    const COLS = 'id, cliente_id, empresa_nome, contato_nome, origem, funcionario_nome, tipo, aviso, desconta_aviso, data_base, inicio_aviso, ultimo_dia, data_acerto, respostas, responsavel, status, observacoes, concluida_em, concluida_por, criado_por, criado_em, atualizado_em, clientes(nome_principal, nome_fantasia, documento)';
+    const PRAZOS = PERGUNTAS.prazoExperiencia.opcoes.map(o => [o[0], o[1]]);
+    const ROT_DATA = { dataPedido: 'Data do pedido de demissão', ultimoDia: 'Último dia de trabalho', dataComunicacao: 'Data da comunicação ao funcionário',
+                       dataDesligamento: 'Último dia de trabalho' };
+    const COLS = 'id, cliente_id, empresa_nome, contato_nome, origem, funcionario_nome, tipo, aviso, desconta_aviso, data_base, data_admissao, prazo_experiencia, inicio_aviso, ultimo_dia, data_acerto, respostas, responsavel, status, observacoes, concluida_em, concluida_por, criado_por, criado_em, atualizado_em, clientes(nome_principal, nome_fantasia, documento)';
+    // o caso gravado, do jeito que a conta das datas pede
+    const casoDe = r => ({ tipo: r.tipo, aviso: r.aviso, data: r.data_base, admissao: r.data_admissao, prazo: r.prazo_experiencia });
 
     const $ = id => document.getElementById(id);
     const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -349,7 +355,7 @@
         const semVinculo = !r.cliente_id ? ' <span class="rs-mini p" title="O nome informado não bateu com uma empresa do cadastro — vincule na ficha">não vinculada</span>' : '';
         return `<tr data-id="${esc(r.id)}">`
           + `<td><b>${r.funcionario_nome ? esc(r.funcionario_nome) : '<span class="rs-dim">funcionário(a) sem nome</span>'}</b><br><span class="rs-sub">${esc(empresaDe(r))}</span>${semVinculo}</td>`
-          + `<td class="oculta-m">${esc(resumoCaso(r.tipo, r.aviso, r.desconta_aviso))}</td>`
+          + `<td class="oculta-m">${esc(resumoCaso(r.tipo, r.aviso, r.desconta_aviso, r.prazo_experiencia))}</td>`
           + `<td>${celPagar(r)}</td>`
           + `<td class="oculta-m">${esc(r.responsavel || '—')}</td>`
           + `<td><select class="rs-sel st-lin" data-id="${esc(r.id)}">${opcoesStatus(r.status)}</select>${quando ? `<div class="rs-sub" style="margin-top:3px">${quando}</div>` : ''}</td>`
@@ -408,14 +414,18 @@
       const linhas = [`Rescisão — ${r.funcionario_nome || 'funcionário(a)'} — ${empresaDe(r)}${docEmpresa(r) ? ' (' + docEmpresa(r) + ')' : ''}`];
       if (r.contato_nome) linhas.push(`Enviado por ${r.contato_nome} em ${fmtQuando(r.criado_em)}`);
       listaResp(r).forEach(x => { const v = valorResp(x); linhas.push(`${x.rotulo}: ${v === '' || v == null ? '(em branco)' : v}`); });
-      const res = resumoDatas(calcularRescisao({ tipo: r.tipo, aviso: r.aviso, data: r.data_base }));
+      const res = resumoDatas(calcularRescisao(casoDe(r)));
       if (res) { linhas.push(''); res.linhas.forEach(l => linhas.push(`${l.rotulo}: ${fmtData(l.data)} (${diaSemana(l.data)})`)); }
       return linhas.join('\n');
     }
 
     // o caso como está na ficha agora
-    const casoFicha = () => ({ tipo: $('fiTipo').value, aviso: $('fiAviso').value, data: $('fiData').value,
-      desconta: $('fiDesc').value === 'sim' ? true : $('fiDesc').value === 'nao' ? false : null });
+    const casoFicha = () => {
+      const tipo = $('fiTipo').value, exp = tipo === 'experiencia';
+      return { tipo, aviso: exp ? null : $('fiAviso').value, data: $('fiData').value,
+        desconta: $('fiDesc').value === 'sim' ? true : $('fiDesc').value === 'nao' ? false : null,
+        admissao: exp ? $('fiAdm').value : null, prazo: exp ? $('fiPrazo').value : null };
+    };
 
     function pintarCaso(manterAviso = true) {
       const tipo = $('fiTipo').value;
@@ -423,22 +433,29 @@
       const lista = AVISOS[tipo] || [];
       $('fiAviso').innerHTML = opcoes(lista, lista.some(o => o[0] === avisoAtual) ? avisoAtual : '', '— escolha —');
       const c = casoFicha();
-      const imediato = c.tipo === 'pedido' && c.aviso === 'imediato';
-      $('fiDescWrap').style.display = imediato ? '' : 'none';
-      $('fiDataRot').textContent = c.tipo && c.aviso ? ROT_DATA[perguntaData(c.tipo, c.aviso)] : 'Data';
+      const exp = c.tipo === 'experiencia';
+      $('fiAvisoWrap').style.display = exp ? 'none' : '';
+      $('fiAdmWrap').style.display = exp ? '' : 'none';
+      $('fiPrazoWrap').style.display = exp ? '' : 'none';
+      $('fiDescWrap').style.display = c.tipo === 'pedido' && c.aviso === 'imediato' ? '' : 'none';
+      $('fiDataRot').textContent = exp || (c.tipo && c.aviso) ? ROT_DATA[perguntaData(c.tipo, c.aviso)] : 'Data';
       pintarDatas(c);
     }
 
     function pintarDatas(c) {
       const calc = calcularRescisao(c);
       const res = resumoDatas(calc);
-      if (!res) { $('fiDatas').innerHTML = '<span class="rs-alerta">Complete o caso (aviso e data) pra ver as datas.</span>'; return; }
+      if (!res) {
+        $('fiDatas').innerHTML = `<span class="rs-alerta">${c.tipo === 'experiencia' ? 'Complete o caso (admissão, prazo e último dia, depois da admissão) pra ver as datas.' : 'Complete o caso (aviso e data) pra ver as datas.'}</span>`;
+        return;
+      }
       const linhas = [...res.linhas];
       if (calc.projecao) linhas.splice(1, 0, { rotulo: 'Projeção do aviso indenizado (30 dias; +3 por ano completo)', data: calc.projecao });
       const aberta = ABERTAS.includes($('fiStatus').value);
       const d = diasAte(calc.limite);
       const flag = !aberta ? '' : d < 0 ? ' <span class="rs-mini er">venceu</span>' : d === 0 ? ' <span class="rs-mini er">hoje</span>' : d <= 5 ? ` <span class="rs-mini p">em ${d} dia${d === 1 ? '' : 's'}</span>` : '';
-      $('fiDatas').innerHTML = linhas.map(l => `<div class="lin${l.destaque ? ' dest' : ''}"><span>${esc(l.rotulo)}</span><b>${fmtData(l.data)} · ${diaSemana(l.data)}${l.destaque ? flag : ''}</b></div>`).join('')
+      $('fiDatas').innerHTML = (res.alerta ? `<div class="rs-alerta" style="margin:2px 0 6px">⚠ ${esc(res.alerta)}</div>` : '')
+        + linhas.map(l => `<div class="lin${l.destaque ? ' dest' : ''}"><span>${esc(l.rotulo)}</span><b>${fmtData(l.data)} · ${diaSemana(l.data)}${l.destaque ? flag : ''}</b></div>`).join('')
         + '<ul>' + res.notas.map(n => `<li>${esc(n)}</li>`).join('') + '</ul>';
     }
 
@@ -452,7 +469,7 @@
     }
 
     const fotoFicha = () => JSON.stringify([$('fiNome').value, $('fiResp').value, $('fiStatus').value, $('fiObs').value, fichaCli === undefined ? null : fichaCli.id,
-      $('fiTipo').value, $('fiAviso').value, $('fiDesc').value, $('fiData').value]);
+      $('fiTipo').value, $('fiAviso').value, $('fiDesc').value, $('fiData').value, $('fiAdm').value, $('fiPrazo').value]);
 
     async function abrirFicha(id) {
       const r = rescisoes.find(x => x.id === id);
@@ -470,6 +487,8 @@
       $('fiAviso').innerHTML = opcoes(AVISOS[r.tipo] || [], r.aviso || '', '— escolha —');
       $('fiDesc').innerHTML = opcoes([['sim', 'Desconta os 30 dias'], ['nao', 'Não desconta']], r.desconta_aviso === true ? 'sim' : r.desconta_aviso === false ? 'nao' : '', '— escolha —');
       $('fiData').value = r.data_base || '';
+      $('fiAdm').value = r.data_admissao || '';
+      $('fiPrazo').innerHTML = opcoes(PRAZOS, r.prazo_experiencia || '', '— escolha —');
       pintarCaso();
       pintarVinculo(r);
       $('fiBusca').value = ''; $('fiRes').style.display = 'none';
@@ -492,6 +511,8 @@
     $('fiAviso').addEventListener('change', () => pintarCaso());
     $('fiDesc').addEventListener('change', () => pintarCaso());
     $('fiData').addEventListener('input', () => pintarCaso());
+    $('fiAdm').addEventListener('input', () => pintarCaso());
+    $('fiPrazo').addEventListener('change', () => pintarCaso());
     $('fiStatus').addEventListener('change', () => pintarDatas(casoFicha()));
 
     $('fiBusca').addEventListener('input', () => {
@@ -526,12 +547,14 @@
       const c = casoFicha();
       const calc = calcularRescisao(c);
       const erro = msg => { $('fiMsg').textContent = msg; $('fiMsg').classList.add('er'); };
-      if (!calc) return erro('Complete o caso da rescisão: aviso e data.');
+      const exp = c.tipo === 'experiencia';
+      if (!calc) return erro(exp ? 'Complete o caso: admissão, prazo da experiência e último dia (depois da admissão).' : 'Complete o caso da rescisão: aviso e data.');
       if (c.tipo === 'pedido' && c.aviso === 'imediato' && c.desconta == null) return erro('Diga se a empresa desconta o aviso.');
       if (novo === 'cancelada' && r.status !== 'cancelada' && !confirm('Cancelar esta rescisão? A tarefa sai da agenda.')) return;
       const p = { ...patchStatus(r, novo), funcionario_nome: $('fiNome').value.trim() || null, responsavel: $('fiResp').value || null,
-        observacoes: $('fiObs').value.trim() || null, tipo: c.tipo, aviso: c.aviso,
+        observacoes: $('fiObs').value.trim() || null, tipo: c.tipo, aviso: exp ? null : c.aviso,
         desconta_aviso: c.tipo === 'pedido' && c.aviso === 'imediato' ? c.desconta : null,
+        data_admissao: exp ? c.admissao : null, prazo_experiencia: exp ? c.prazo : null,
         data_base: c.data, inicio_aviso: calc.inicioAviso, ultimo_dia: calc.ultimoDia, data_acerto: calc.limite };
       if (novo === r.status) { delete p.concluida_em; delete p.concluida_por; }
       if (fichaCli !== undefined) p.cliente_id = fichaCli ? fichaCli.id : null;
@@ -561,7 +584,8 @@
         +   `<br><span class="se">cumpre →</span> ${esc(P.dataPedido.rotulo)}`
         +   `<br><span class="se">imediato →</span> ${esc(P.desconto.rotulo)} · ${esc(P.ultimoDia.rotulo)}</li>`
         + `<li><span class="se">Se demissão por parte da empresa:</span> ${esc(P.dataComunicacao.rotulo)} · ${esc(P.avisoDispensa.rotulo)}</li>`
-        + '<li>Datas na hora: início do aviso, último dia de trabalho e pagamento da rescisão até</li>'
+        + `<li><span class="se">Se contrato de experiência:</span> ${esc(P.admissao.rotulo)} · ${esc(P.prazoExperiencia.rotulo)} <span class="se">(${esc(ops(P.prazoExperiencia))})</span> · ${esc(P.dataDesligamento.rotulo)}</li>`
+        + '<li>Datas na hora: início e fim do aviso (ou o fim do contrato de experiência), último dia de trabalho e pagamento da rescisão até — na experiência, também se a data cai no fim do prazo ou antes (aí com a indenização do art. 479)</li>'
         + `<li>${esc(P.obs.rotulo)} <span class="se">(opcional)</span></li>`
         + '</ol>';
     }

@@ -16,18 +16,36 @@
 //   terça de Carnaval, Sexta-feira Santa, Corpus Christi) — a mesma lista do financeiro-boletos. Municipal não entra.
 // - Aviso proporcional (Lei 12.506/2011: +3 dias por ano completo, até 90): só na demissão por parte da empresa; a
 //   conta usa os 30 dias e o DP confere o tempo de casa.
+// - Contrato de experiência (06/10/2026): no máximo 90 dias e uma prorrogação (CLT art. 445 p.ú. e 451); o prazo conta
+//   o dia da admissão (90 dias a partir de 01/03 terminam em 29/05). Encerrar no último dia do período = término no
+//   prazo, sem aviso. Antes disso = rescisão antecipada: a empresa paga metade da remuneração dos dias que faltariam
+//   (art. 479) e a multa de 40% do FGTS (Decreto 99.684/1990, art. 14), salvo cláusula de rescisão antecipada (art. 481,
+//   aí vale o aviso prévio). Passou de 90 dias: virou contrato por prazo indeterminado. Pagamento: os mesmos 10 dias.
 // ============================================================
 
 export const AVISO_DIAS = 30;
 export const PRAZO_PAGAMENTO = 10;
+export const EXPERIENCIA_MAX = 90;
+// prazos do contrato de experiência: [1º período, prorrogação] em dias; '?' = a empresa não sabe (o DP confere)
+export const PRAZOS_EXPERIENCIA = { '30+60': [30, 60], '45+45': [45, 45], '60+30': [60, 30], '90': [90, 0], '?': null };
+// só as chaves da lista ("toString" e afins, herdados do objeto, não valem)
+export const prazoValido = p => Object.prototype.hasOwnProperty.call(PRAZOS_EXPERIENCIA, String(p));
 
 // perguntas do link — os textos ficam aqui pra o link, a ficha do módulo e a função dizerem a mesma coisa
 export const PERGUNTAS = {
   funcionario: { rotulo: 'Nome completo do(a) funcionário(a)' },
   tipo: {
-    rotulo: 'É pedido de demissão do funcionário ou demissão por parte da empresa?',
-    opcoes: [['pedido', 'Pedido de demissão do funcionário'], ['dispensa', 'Demissão por parte da empresa']],
+    rotulo: 'Qual é o caso?',
+    opcoes: [['pedido', 'Pedido de demissão do funcionário'], ['dispensa', 'Demissão por parte da empresa'],
+             ['experiencia', 'Contrato de experiência — a empresa vai encerrar', 'funcionário nos primeiros 90 dias, com contrato de experiência']],
   },
+  admissao: { rotulo: 'Data de admissão (início do contrato de experiência)' },
+  prazoExperiencia: {
+    rotulo: 'Prazo do contrato de experiência',
+    ajuda: 'Está no contrato assinado na admissão.',
+    opcoes: [['30+60', '30 + 60 dias'], ['45+45', '45 + 45 dias'], ['60+30', '60 + 30 dias'], ['90', '90 dias, sem prorrogação'], ['?', 'Outro / não sei']],
+  },
+  dataDesligamento: { rotulo: 'Quando a empresa quer encerrar o contrato? (último dia de trabalho)' },
   avisoPedido: {
     rotulo: 'Vai cumprir os 30 dias de aviso prévio ou quer fazer o desligamento imediato?',
     opcoes: [['trabalhado', 'Vai cumprir os 30 dias de aviso prévio'], ['imediato', 'Desligamento imediato (não vai cumprir o aviso)']],
@@ -58,6 +76,7 @@ const paraUTC = iso => { const [a, m, d] = String(iso).split('-').map(Number); r
 const deUTC = t => new Date(t).toISOString().slice(0, 10);
 export const isoValida = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s || '')) && deUTC(paraUTC(s)) === s;
 export const somaDias = (iso, n) => deUTC(paraUTC(iso) + n * MS_DIA);
+export const diasEntre = (de, ate) => Math.round((paraUTC(ate) - paraUTC(de)) / MS_DIA);
 export const fmtData = iso => (isoValida(iso) ? iso.split('-').reverse().join('/') : '');
 const SEMANA = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
 export const diaSemana = iso => SEMANA[new Date(paraUTC(iso)).getUTCDay()];
@@ -98,62 +117,131 @@ function motivoNaoUtil(iso) {
 }
 
 // ---------- o caso ----------
-export const combinacaoValida = (tipo, aviso) =>
-  (tipo === 'pedido' && (aviso === 'trabalhado' || aviso === 'imediato')) || (tipo === 'dispensa' && (aviso === 'trabalhado' || aviso === 'indenizado'));
+// no contrato de experiência não há aviso a escolher (o que vale é o prazo do contrato)
+export const combinacaoValida = (tipo, aviso) => tipo === 'experiencia'
+  || (tipo === 'pedido' && (aviso === 'trabalhado' || aviso === 'imediato')) || (tipo === 'dispensa' && (aviso === 'trabalhado' || aviso === 'indenizado'));
 
 // pergunta da data que o caso usa
-export const perguntaData = (tipo, aviso) => (tipo === 'dispensa' ? 'dataComunicacao' : aviso === 'imediato' ? 'ultimoDia' : 'dataPedido');
+export const perguntaData = (tipo, aviso) => (tipo === 'experiencia' ? 'dataDesligamento' : tipo === 'dispensa' ? 'dataComunicacao' : aviso === 'imediato' ? 'ultimoDia' : 'dataPedido');
 
-export function resumoCaso(tipo, aviso, desconta) {
+export function resumoCaso(tipo, aviso, desconta, prazo) {
   if (tipo === 'pedido') {
     if (aviso === 'trabalhado') return 'Pedido de demissão · cumpre o aviso';
     if (aviso === 'imediato') return 'Pedido de demissão · desligamento imediato' + (desconta === true ? ' (desconta o aviso)' : desconta === false ? ' (sem desconto)' : '');
     return 'Pedido de demissão';
   }
   if (tipo === 'dispensa') return 'Demissão pela empresa' + (aviso === 'trabalhado' ? ' · aviso trabalhado' : aviso === 'indenizado' ? ' · aviso indenizado' : '');
+  if (tipo === 'experiencia') return 'Contrato de experiência' + (prazoValido(prazo) && PRAZOS_EXPERIENCIA[prazo] ? ' · ' + textoOpcao('prazoExperiencia', prazo) : '');
   return 'Tipo não informado';
 }
 
-// datas do caso; null se faltar ou não fizer sentido
-export function calcularRescisao({ tipo, aviso, data } = {}) {
-  if (!combinacaoValida(tipo, aviso) || !isoValida(data)) return null;
-  const trabalhado = aviso === 'trabalhado';
-  const inicioAviso = trabalhado ? somaDias(data, 1) : null;
-  const ultimoDia = trabalhado ? somaDias(data, AVISO_DIAS) : data;
+// prazo do pagamento a partir do último dia de contrato
+function prazoPagamento(ultimoDia) {
   const limiteLegal = somaDias(ultimoDia, PRAZO_PAGAMENTO);
   let limite = limiteLegal;
   while (!diaUtil(limite)) limite = somaDias(limite, -1);
+  return { limiteLegal, limite, ajustado: limite !== limiteLegal, motivo: limite !== limiteLegal ? motivoNaoUtil(limiteLegal) : null };
+}
+
+// contrato de experiência: em que ponto do contrato cai o último dia
+//   fim1 / fim → no último dia do 1º período / do contrato; antecipada → antes do fim (fimRef, faltam dias);
+//   passou → mais de 90 dias de contrato; indefinido → prazo não informado
+function situacaoExperiencia(admissao, prazo, data) {
+  const dia = diasEntre(admissao, data) + 1;
+  const p = prazoValido(prazo) ? PRAZOS_EXPERIENCIA[prazo] : null;
+  const fim1 = p ? somaDias(admissao, p[0] - 1) : null;
+  const fim2 = p && p[1] ? somaDias(admissao, p[0] + p[1] - 1) : null;
+  const r = { dia, fim1, fim2, situacao: 'indefinido', fimRef: null, faltam: 0 };
+  if (dia > EXPERIENCIA_MAX) r.situacao = 'passou';
+  else if (!p) r.situacao = 'indefinido';
+  else if (data === fim1) r.situacao = fim2 ? 'fim1' : 'fim';
+  else if (data < fim1) Object.assign(r, { situacao: 'antecipada', fimRef: fim1, faltam: diasEntre(data, fim1) });
+  else if (fim2 && data === fim2) r.situacao = 'fim';
+  else if (fim2 && data < fim2) Object.assign(r, { situacao: 'antecipada', fimRef: fim2, faltam: diasEntre(data, fim2) });
+  else r.situacao = 'passou';
+  return r;
+}
+
+// datas do caso; null se faltar ou não fizer sentido
+export function calcularRescisao({ tipo, aviso, data, admissao, prazo } = {}) {
+  if (!combinacaoValida(tipo, aviso) || !isoValida(data)) return null;
+  if (tipo === 'experiencia') {
+    if (!isoValida(admissao) || data < admissao || !prazoValido(prazo)) return null;
+    return { tipo, aviso: null, dataBase: data, admissao, prazo, inicioAviso: null, ultimoDia: data, ...prazoPagamento(data),
+      projecao: null, experiencia: situacaoExperiencia(admissao, prazo, data) };
+  }
+  const trabalhado = aviso === 'trabalhado';
+  const inicioAviso = trabalhado ? somaDias(data, 1) : null;
+  const ultimoDia = trabalhado ? somaDias(data, AVISO_DIAS) : data;
   return {
-    tipo, aviso, dataBase: data, inicioAviso, ultimoDia, limiteLegal, limite,
-    ajustado: limite !== limiteLegal, motivo: limite !== limiteLegal ? motivoNaoUtil(limiteLegal) : null,
+    tipo, aviso, dataBase: data, inicioAviso, ultimoDia, ...prazoPagamento(ultimoDia),
     // aviso indenizado: projeção dos 30 dias (CTPS/eSocial); não muda o prazo do pagamento
     projecao: tipo === 'dispensa' && aviso === 'indenizado' ? somaDias(data, AVISO_DIAS) : null,
   };
 }
 
-// o que o link e a ficha mostram: linhas de data + notas curtas
+// notas do prazo do pagamento (iguais pra todo caso)
+function notasPagamento(c) {
+  const n = [`O pagamento vence ${PRAZO_PAGAMENTO} dias corridos depois do último dia de contrato (CLT, art. 477, §6º).`];
+  if (c.ajustado) n.push(`O ${PRAZO_PAGAMENTO}º dia (${fmtData(c.limiteLegal)}) cai em ${c.motivo} — por isso o pagamento fica para o dia útil anterior.`);
+  return n;
+}
+const NOTA_MUNICIPAL = 'Se o dia do pagamento for feriado na cidade da empresa, pague no dia útil anterior.';
+
+function resumoExperiencia(c) {
+  const e = c.experiencia, p = prazoValido(c.prazo) ? PRAZOS_EXPERIENCIA[c.prazo] : null;
+  const linhas = [];
+  if (p && e.fim2) {
+    linhas.push({ rotulo: `Fim do 1º período (${p[0]} dias)`, data: e.fim1 });
+    linhas.push({ rotulo: `Fim da prorrogação (${p[0] + p[1]} dias)`, data: e.fim2 });
+  } else if (p) linhas.push({ rotulo: `Fim do contrato de experiência (${p[0]} dias)`, data: e.fim1 });
+  linhas.push({ rotulo: `Último dia de trabalho (${e.dia}º dia de contrato)`, data: c.ultimoDia });
+  linhas.push({ rotulo: 'Pagamento da rescisão até', data: c.limite, destaque: true });
+  const notas = [];
+  let alerta = null;
+  if (e.situacao === 'passou') {
+    alerta = `Passou de ${EXPERIENCIA_MAX} dias de contrato: a experiência já acabou e o contrato virou por prazo indeterminado — a demissão segue as regras normais, com aviso prévio. Marque "Demissão por parte da empresa".`;
+  } else if (e.situacao === 'fim1') {
+    notas.push('É o último dia do 1º período: o contrato termina no prazo, sem prorrogar — sem aviso prévio e sem a indenização do art. 479 da CLT.');
+  } else if (e.situacao === 'fim') {
+    notas.push('É o último dia do contrato de experiência: termina no prazo — sem aviso prévio e sem a indenização do art. 479 da CLT.');
+  } else if (e.situacao === 'antecipada') {
+    notas.push(`Antes do fim do contrato (${fmtData(e.fimRef)}): a empresa paga metade da remuneração dos ${e.faltam} ${e.faltam === 1 ? 'dia' : 'dias'} que faltariam (CLT, art. 479) e a multa de 40% do FGTS.`);
+    notas.push(`Encerrando em ${fmtData(e.fimRef)}, no fim do prazo, não há essa indenização. Se o contrato tiver cláusula de rescisão antecipada (art. 481), valem as regras do aviso prévio — o DP confere.`);
+  } else {
+    notas.push(`Se ${fmtData(c.ultimoDia)} não for o último dia do contrato de experiência, a empresa paga metade da remuneração dos dias que faltariam (CLT, art. 479) e a multa de 40% do FGTS — o DP confere no contrato.`);
+  }
+  notas.push(...notasPagamento(c), NOTA_MUNICIPAL);
+  return { linhas, notas, alerta };
+}
+
+// o que o link e a ficha mostram: linhas de data + notas curtas (+ alerta, quando o caso não fecha)
 export function resumoDatas(c) {
   if (!c) return null;
+  if (c.tipo === 'experiencia') return resumoExperiencia(c);
   const linhas = [];
   if (c.inicioAviso) linhas.push({ rotulo: 'Início do aviso prévio', data: c.inicioAviso });
   // no aviso trabalhado o contrato termina no fim do aviso (mesmo se o funcionário folgar os 7 últimos dias, art. 488)
   linhas.push({ rotulo: c.aviso === 'trabalhado' ? 'Fim do aviso prévio' : c.tipo === 'dispensa' ? 'Último dia de trabalho (dia da comunicação)' : 'Último dia de trabalho', data: c.ultimoDia });
   linhas.push({ rotulo: 'Pagamento da rescisão até', data: c.limite, destaque: true });
-  const notas = [`O pagamento vence ${PRAZO_PAGAMENTO} dias corridos depois do último dia de contrato (CLT, art. 477, §6º).`];
-  if (c.ajustado) notas.push(`O ${PRAZO_PAGAMENTO}º dia (${fmtData(c.limiteLegal)}) cai em ${c.motivo} — por isso o pagamento fica para o dia útil anterior.`);
+  const notas = notasPagamento(c);
   if (c.tipo === 'dispensa') {
     notas.push(c.aviso === 'indenizado'
       ? 'Funcionário com mais de 1 ano de empresa tem 3 dias a mais de aviso por ano completo (até 90 dias, Lei 12.506/2011): isso muda o valor da rescisão, não a data do pagamento.'
       : 'Funcionário com mais de 1 ano de empresa tem 3 dias a mais de aviso por ano completo (até 90 dias, Lei 12.506/2011). As datas acima contam 30 dias: o DP confere o tempo de casa e confirma.');
   }
-  notas.push('Se o dia do pagamento for feriado na cidade da empresa, pague no dia útil anterior.');
-  return { linhas, notas };
+  notas.push(NOTA_MUNICIPAL);
+  return { linhas, notas, alerta: null };
 }
 
 // respostas como ficam gravadas na rescisão (o que a empresa respondeu, com as perguntas que ela viu)
-export function montarRespostas({ funcionario, tipo, aviso, desconta, data, obs } = {}) {
+export function montarRespostas({ funcionario, tipo, aviso, desconta, data, obs, admissao, prazo } = {}) {
   const r = [{ id: 'funcionario', rotulo: PERGUNTAS.funcionario.rotulo, valor: funcionario || '' }];
   r.push({ id: 'tipo', rotulo: PERGUNTAS.tipo.rotulo, valor: textoOpcao('tipo', tipo) });
+  if (tipo === 'experiencia') {
+    r.push({ id: 'admissao', rotulo: PERGUNTAS.admissao.rotulo, tipo: 'data', valor: admissao || '' });
+    r.push({ id: 'prazo', rotulo: PERGUNTAS.prazoExperiencia.rotulo, valor: textoOpcao('prazoExperiencia', prazo) });
+  }
   if (tipo === 'pedido') {
     r.push({ id: 'aviso', rotulo: PERGUNTAS.avisoPedido.rotulo, valor: textoOpcao('avisoPedido', aviso) });
     if (aviso === 'imediato') r.push({ id: 'desconto', rotulo: PERGUNTAS.desconto.rotulo, valor: desconta === true ? textoOpcao('desconto', 'sim') : desconta === false ? textoOpcao('desconto', 'nao') : '' });

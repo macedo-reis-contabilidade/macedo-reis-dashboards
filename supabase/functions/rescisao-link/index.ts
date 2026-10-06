@@ -1,5 +1,5 @@
 // ============================================================
-// MACEDO & REIS - Edge Function: rescisao-link (v1, 06/10/2026)
+// MACEDO & REIS - Edge Function: rescisao-link (v2, 06/10/2026 — v2: contrato de experiência, com admissão e prazo)
 // Link público das rescisões do DP (rescisao.html), na lógica das admissões: a empresa responde, envia e a rescisão
 // nasce no módulo (dp-rescisoes.html) e na agenda (o gatilho do banco cria a tarefa na hora, com prazo no dia do
 // envio e "pagar até" no título). A empresa é achada pelo nome digitado, com a mesma regra do admissao-link (o bloco
@@ -17,7 +17,7 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
-import { calcularRescisao, combinacaoValida, isoValida, montarRespostas } from "./rescisao-datas.js";
+import { calcularRescisao, combinacaoValida, isoValida, montarRespostas, prazoValido } from "./rescisao-datas.js";
 
 const ENVIOS_HORA = 30;                  // trava contra enxurrada (o link é público)
 
@@ -96,13 +96,22 @@ async function enviar(b: any) {
   const empresa = txt(b.empresa, 200), contato = txt(b.contato, 120), funcionario = txt(b.funcionario, 200);
   if (!empresa || !contato) return { error: "Preencha o nome da empresa e o seu nome." };
   if (!funcionario) return { error: "Preencha o nome do funcionário." };
-  const tipo = txt(b.tipo, 20), aviso = txt(b.aviso, 20), data = txt(b.data, 10);
-  if (!combinacaoValida(tipo, aviso)) return { error: "Responda se é pedido de demissão ou demissão por parte da empresa, e como fica o aviso." };
+  const tipo = txt(b.tipo, 20), data = txt(b.data, 10);
+  const experiencia = tipo === "experiencia";
+  const aviso = experiencia ? "" : txt(b.aviso, 20);
+  if (!combinacaoValida(tipo, aviso)) return { error: "Responda qual é o caso da rescisão e como fica o aviso." };
   if (!isoValida(data) || data < "2000-01-01" || data > "2100-12-31") return { error: "Confira a data informada." };
   let desconta: boolean | null = null;
   if (tipo === "pedido" && aviso === "imediato") {
     if (typeof b.desconta !== "boolean") return { error: "Responda se a empresa vai descontar os 30 dias de aviso." };
     desconta = b.desconta;
+  }
+  // contrato de experiência: admissão e prazo do contrato
+  const admissao = experiencia ? txt(b.admissao, 10) : "", prazo = experiencia ? txt(b.prazo, 10) : "";
+  if (experiencia) {
+    if (!isoValida(admissao) || admissao < "2000-01-01") return { error: "Confira a data de admissão." };
+    if (!prazoValido(prazo)) return { error: "Responda o prazo do contrato de experiência." };
+    if (data < admissao) return { error: "A data de encerramento é antes da admissão." };
   }
   const obs = txt(b.obs, 2000);
 
@@ -114,13 +123,14 @@ async function enviar(b: any) {
   if (!mod?.conteudo) return { error: "Formulário indisponível." };
 
   const cli = await acharCliente(supa, empresa);
-  const c = calcularRescisao({ tipo, aviso, data });
+  const c = calcularRescisao({ tipo, aviso, data, admissao, prazo });
   if (!c) return { error: "Confira a data informada." };
-  const respostas = montarRespostas({ funcionario, tipo, aviso, desconta, data, obs });
+  const respostas = montarRespostas({ funcionario, tipo, aviso, desconta, data, obs, admissao, prazo });
 
   const { data: res, error } = await supa.from("rescisoes").insert({
     cliente_id: cli ? cli.id : null, empresa_nome: empresa, contato_nome: contato, origem: "externa", status: "recebida",
-    funcionario_nome: funcionario, tipo, aviso, desconta_aviso: desconta, data_base: data,
+    funcionario_nome: funcionario, tipo, aviso: aviso || null, desconta_aviso: desconta, data_base: data,
+    data_admissao: admissao || null, prazo_experiencia: prazo || null,
     inicio_aviso: c.inicioAviso, ultimo_dia: c.ultimoDia, data_acerto: c.limite, respostas,
     responsavel: txt(mod.conteudo.responsavel, 60) || null, criado_por: "formulário da empresa",
   }).select("id").single();

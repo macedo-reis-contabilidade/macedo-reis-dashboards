@@ -14,7 +14,8 @@ Confere, nos temas escuro e claro (o link público é sempre claro):
      pela lista (concluída grava quando e quem);
   3. aba do formulário: perguntas fixas listadas, sem quem recebe não salva, textos e quem recebe gravados, prévia;
   4. agenda: a tarefa da rescisão leva pro módulo;
-  5. link público: os "se" (pedido de demissão → cumpre o aviso ou imediato; demissão pela empresa → data e aviso), as
+  5. link público: os "se" (pedido de demissão → cumpre o aviso ou imediato; demissão pela empresa → data e aviso;
+     contrato de experiência → admissão, prazo e último dia, com o fim do período e a indenização do art. 479), as
      datas na hora (antecipando o 10º dia em domingo/feriado), prazo vencido avisado, obrigatórios barrados, envio só
      com o ramo respondido, mensagem final com a data do pagamento, "Enviar outra rescisão" mantendo a empresa;
      formulário indisponível e "muitos envios" avisados.
@@ -43,7 +44,7 @@ def rescisoes_teste():
         {'id': 'data', 'rotulo': 'Quando foi o pedido de demissão?', 'tipo': 'data', 'valor': '2026-10-06'},
         {'id': 'obs', 'rotulo': 'Observações', 'valor': '<img src=x onerror="window.__xss=1">Vai trabalhar normalmente'},
     ]
-    base = lambda **k: {'origem': 'externa', 'respostas': [], 'observacoes': None, 'concluida_em': None, 'concluida_por': None,
+    base = lambda **k: {'origem': 'externa', 'respostas': [], 'observacoes': None, 'concluida_em': None, 'concluida_por': None, 'data_admissao': None, 'prazo_experiencia': None,
                         'empresa_nome': None, 'contato_nome': None, 'clientes': None, 'desconta_aviso': None,
                         'criado_por': 'formulário da empresa', 'atualizado_em': None, **k}
     return [
@@ -58,6 +59,9 @@ def rescisoes_teste():
              concluida_em=dia(-21) + 'T15:00:00Z', concluida_por='rh@macedoereis.com.br', criado_em=dia(-61) + 'T12:00:00Z'),
         base(id='r4', cliente_id='c1', clientes=cli1, funcionario_nome='CICLANO DE TESTE', tipo='pedido', aviso='imediato', desconta_aviso=True,
              data_base=dia(-40), ultimo_dia=dia(-40), data_acerto=dia(-30), responsavel='Vitória', status='cancelada', criado_em=dia(-41) + 'T12:00:00Z'),
+        base(id='r5', cliente_id='c1', clientes=cli1, funcionario_nome='MARIA EXPERIÊNCIA DE TESTE', tipo='experiencia', aviso=None,
+             data_admissao='2026-09-01', prazo_experiencia='45+45', data_base='2026-10-15', inicio_aviso=None, ultimo_dia='2026-10-15', data_acerto=dia(30),
+             responsavel='Vitória', status='em_andamento', criado_em=dia(-2) + 'T12:00:00Z'),
     ]
 
 def armadilha(modelo, tarefas=False):
@@ -113,14 +117,15 @@ def modulo(b, base, tema, erros):
     ok(len(db(p, 'window.__mockDb.rescisao_modelos')) == 1, '2. com textos no banco, não grava outros')
     ok('Vitória' in p.inner_text('#lkResp'), '2. a caixa do link diz de quem é a agenda')
     cont = [p.inner_text(s) for s in ('#fAbe', '#fRec', '#fAnd', '#fCon', '#fCan', '#fTod')]
-    ok(cont == ['2', '2', '0', '1', '1', '4'], f'2. contagem por situação {cont}')
-    ok(p.locator('#rsLista tr').count() == 2, '2. "Abertas" mostra só as duas abertas')
+    ok(cont == ['3', '2', '1', '1', '1', '5'], f'2. contagem por situação {cont}')
+    ok(p.locator('#rsLista tr').count() == 3, '2. "Abertas" mostra só as três abertas')
     ok(p.locator('#rsLista tr').first.get_attribute('data-id') == 'r2', '2. a de pagamento mais perto vem primeiro')
     l2 = p.locator('#rsLista tr[data-id="r2"]').inner_text()
     ok('venceu' in l2 and 'PADARIA NOVA DE TESTE LTDA' in l2 and 'não vinculada' in l2 and 'aviso indenizado' in l2,
        '2. pagamento vencido "venceu"; empresa fora do cadastro "não vinculada"; o caso na lista')
     l1 = p.locator('#rsLista tr[data-id="r1"]').inner_text()
     ok('13/11/2026' in l1 and 'Pedido de demissão · cumpre o aviso' in l1, '2. data do pagamento e caso da r1')
+    ok('Contrato de experiência · 45 + 45 dias' in p.locator('#rsLista tr[data-id="r5"]').inner_text(), '2. contrato de experiência na lista, com o prazo')
     p.screenshot(path=str(FOTOS / f'rescisoes-lista-{tema}.png'))
 
     p.click('#rsLista tr[data-id="r1"] td >> nth=0'); p.wait_for_timeout(500)
@@ -156,8 +161,27 @@ def modulo(b, base, tema, erros):
     l2 = p.locator('#rsLista tr[data-id="r2"]').inner_text()
     ok('EMPRESA EXEMPLO LTDA' in l2 and 'não vinculada' not in l2, '2. a lista mostra a empresa do cadastro')
 
+    p.click('#rsLista tr[data-id="r5"] td >> nth=0'); p.wait_for_timeout(500)
+    ok(p.is_visible('#fiAdmWrap') and p.is_visible('#fiPrazoWrap') and not p.is_visible('#fiAvisoWrap') and not p.is_visible('#fiDescWrap')
+       and p.input_value('#fiAdm') == '2026-09-01' and p.input_value('#fiPrazo') == '45+45' and 'Último dia' in p.inner_text('#fiDataRot'),
+       '2. experiência: ficha com admissão e prazo (sem aviso nem desconto)')
+    dt = p.inner_text('#fiDatas')
+    ok('Fim do 1º período (45 dias)' in dt and '15/10/2026' in dt and '29/11/2026' in dt and '45º dia de contrato' in dt and '23/10/2026' in dt
+       and 'último dia do 1º período' in dt, '2. experiência: fim do 1º período e da prorrogação; 15/10 é o fim do 1º período; pagar até 23/10')
+    p.select_option('#fiPrazo', '30+60'); p.wait_for_timeout(100)
+    dt = p.inner_text('#fiDatas')
+    ok('30/09/2026' in dt and '45 dias que faltariam' in dt and 'art. 479' in dt and '40% do FGTS' in dt, '2. trocando o prazo pra 30+60: 15/10 fica antes do fim (faltam 45 dias)')
+    p.fill('#fiData', '2026-08-20'); p.wait_for_timeout(100)
+    ok('depois da admissão' in p.inner_text('#fiDatas'), '2. último dia antes da admissão: pede pra completar o caso')
+    p.fill('#fiData', '2026-10-15'); p.wait_for_timeout(100)
+    p.click('#fiSalvar'); p.wait_for_timeout(400)
+    r5 = db(p, "window.__mockDb.rescisoes.find(r => r.id === 'r5')")
+    ok(r5['prazo_experiencia'] == '30+60' and r5['data_admissao'] == '2026-09-01' and r5['aviso'] is None and r5['data_base'] == '2026-10-15'
+       and r5['ultimo_dia'] == '2026-10-15' and r5['data_acerto'] == '2026-10-23', '2. experiência regravada (prazo, admissão e datas)')
+    ok('Contrato de experiência · 30 + 60 dias' in p.locator('#rsLista tr[data-id="r5"]').inner_text(), '2. a lista mostra o prazo novo')
+
     p.select_option('#rsLista tr[data-id="r2"] select', 'em_andamento'); p.wait_for_timeout(400)
-    ok(db(p, "window.__mockDb.rescisoes.find(r => r.id === 'r2').status") == 'em_andamento' and p.inner_text('#fAnd') == '1', '2. situação mudada pela lista (em andamento)')
+    ok(db(p, "window.__mockDb.rescisoes.find(r => r.id === 'r2').status") == 'em_andamento' and p.inner_text('#fAnd') == '2', '2. situação mudada pela lista (em andamento)')
     p.select_option('#rsLista tr[data-id="r1"] select', 'concluida'); p.wait_for_timeout(400)
     r1 = db(p, "window.__mockDb.rescisoes.find(r => r.id === 'r1')")
     ok(r1['status'] == 'concluida' and r1.get('concluida_em') and r1.get('concluida_por') == 'financeiro@macedoereis.com.br', '2. concluída grava quando e quem')
@@ -174,7 +198,8 @@ def modulo(b, base, tema, erros):
     p.goto(base + 'dp-rescisoes.html'); p.wait_for_timeout(1500)
     p.click('.rs-aba[data-aba="form"]'); p.wait_for_timeout(300)
     perg = p.inner_text('#edPerguntas')
-    ok('Se pedido de demissão' in perg and 'Se demissão por parte da empresa' in perg and 'Quando foi o pedido de demissão?' in perg and 'último dia de trabalho' in perg.lower(),
+    ok('Se pedido de demissão' in perg and 'Se demissão por parte da empresa' in perg and 'Se contrato de experiência' in perg and '45 + 45 dias' in perg
+       and 'Quando foi o pedido de demissão?' in perg and 'último dia de trabalho' in perg.lower(),
        '3. perguntas fixas listadas, com os "se"')
     p.fill('#edFinal', 'Recebido! O DP já vai preparar a rescisão.')
     ok('Alterações não salvas' in p.inner_text('#edSujo'), '3. avisa que há alteração não salva')
@@ -245,7 +270,7 @@ window.__mockInvoke = async (nome, opts) => {
     ok(p.inner_text('.cab h2') == modelo['titulo'] and modelo['introducao'][:30] in p.inner_text('.cab'), '5. título e introdução dos textos do módulo')
     ok(all(p.locator(f'#id_{k}').count() == 1 for k in ('empresa', 'contato', 'funcionario')) and p.locator('#id_documento').count() == 0
        and p.locator('#id_whatsapp').count() == 0, '5. empresa, quem preenche e funcionário (sem CNPJ e sem WhatsApp)')
-    ok(vis(p, 'input[name="tipo"][value="pedido"]') and not vis(p, '#blPedido') and not vis(p, '#blDispensa') and not vis(p, '#datas'),
+    ok(vis(p, 'input[name="tipo"][value="experiencia"]') and not vis(p, '#blPedido') and not vis(p, '#blDispensa') and not vis(p, '#blExperiencia') and not vis(p, '#datas'),
        '5. de início só a primeira pergunta; os "se" e as datas escondidos')
     p.click('#btnEnviar'); p.wait_for_timeout(300)
     ok(p.locator('.campo.falta').count() == 4 and 'Faltam 4' in p.inner_text('#msgErro') and not envios(p), '5. obrigatórios barrados (empresa, seu nome, funcionário e o caso)')
@@ -294,6 +319,31 @@ window.__mockInvoke = async (nome, opts) => {
     p.click('#btnEnviar'); p.wait_for_timeout(1000)
     env = envios(p); a = env[-1][1] if env else {}
     ok(len(env) == 2 and a.get('tipo') == 'pedido' and a.get('aviso') == 'imediato' and a.get('desconta') is True and a.get('data') == '2026-10-07', '5. pedido imediato vai com o desconto')
+    p.close()
+
+    p = pagina(form, enviar='{ ok: true, id: "11111111-2222-4333-8444-555555555556", email: "rh@macedoereis.com.br", datas: { inicioAviso: null, ultimoDia: "2026-10-15", limite: "2026-10-23" } }')
+    p.check('input[name="tipo"][value="experiencia"]'); p.wait_for_timeout(100)
+    ok(vis(p, '#blExperiencia') and not vis(p, '#blPedido') and not vis(p, '#blDispensa') and vis(p, '#id_admissao') and vis(p, 'input[name="prazoExperiencia"][value="45+45"]')
+       and vis(p, '#id_dataDesligamento'), '5. contrato de experiência: admissão, prazo e quando a empresa quer encerrar')
+    p.fill('#id_admissao', '2026-09-01'); p.check('input[name="prazoExperiencia"][value="45+45"]'); p.fill('#id_dataDesligamento', '2026-10-15'); p.wait_for_timeout(150)
+    dt = p.inner_text('#datas')
+    ok('Fim do 1º período (45 dias)' in dt and '15/10/2026' in dt and 'Fim da prorrogação (90 dias)' in dt and '29/11/2026' in dt and '45º dia de contrato' in dt
+       and '23/10/2026' in dt and 'último dia do 1º período' in dt, '5. experiência no 45º dia: fim do 1º período, sem indenização; pagar até 23/10 (25/10 é domingo)')
+    p.screenshot(path=str(FOTOS / 'rescisoes-link-experiencia-claro.png'), full_page=True)
+    p.fill('#id_dataDesligamento', '2026-10-10'); p.wait_for_timeout(150)
+    dt = p.inner_text('#datas')
+    ok('5 dias que faltariam' in dt and 'art. 479' in dt and '40% do FGTS' in dt and 'Encerrando em 15/10/2026' in dt, '5. antes do fim: metade dos 5 dias que faltam (art. 479) + 40% do FGTS, e a data sem indenização')
+    p.fill('#id_dataDesligamento', '2026-12-05'); p.wait_for_timeout(150)
+    ok('Passou de 90 dias' in p.inner_text('#datas') and 'Demissão por parte da empresa' in p.inner_text('#datas'), '5. mais de 90 dias: avisa que virou prazo indeterminado')
+    p.fill('#id_empresa', 'Comércio Modelo'); p.fill('#id_contato', 'Contato de Teste'); p.fill('#id_funcionario', 'MARIA DE TESTE')
+    p.fill('#id_dataDesligamento', '2026-08-20'); p.click('#btnEnviar'); p.wait_for_timeout(300)
+    ok(p.locator('.campo.falta[data-id="dataDesligamento"]').count() == 1 and 'antes da admissão' in p.inner_text('.campo[data-id="dataDesligamento"]') and not envios(p),
+       '5. encerramento antes da admissão: barrado com o motivo')
+    p.fill('#id_dataDesligamento', '2026-10-15'); p.click('#btnEnviar'); p.wait_for_timeout(1000)
+    env = envios(p); a = env[0][1] if env else {}
+    ok(len(env) == 1 and a.get('tipo') == 'experiencia' and a.get('admissao') == '2026-09-01' and a.get('prazo') == '45+45' and a.get('data') == '2026-10-15'
+       and 'aviso' not in a and 'desconta' not in a, '5. envia a experiência com admissão, prazo e o último dia (sem aviso)')
+    ok('Pagamento da rescisão até 23/10/2026 (sexta-feira)' in p.inner_text('#app'), '5. mensagem final com a data do pagamento da experiência')
     p.close()
 
     p = pagina(form)

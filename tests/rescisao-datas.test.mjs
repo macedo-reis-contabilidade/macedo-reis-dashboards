@@ -95,6 +95,52 @@ resp = montarRespostas({ funcionario: 'João', tipo: 'dispensa', aviso: 'indeniz
 igual('respostas da demissão pela empresa', resp.map(x => [x.id, x.valor]), [['funcionario', 'João'], ['tipo', 'Demissão por parte da empresa'],
   ['aviso', 'Indenizado'], ['data', '2026-10-02'], ['obs', '']]);
 
+console.log('Contrato de experiência:');
+// admissão em 01/09/2026 (terça)
+let e = calcularRescisao({ tipo: 'experiencia', data: '2026-10-15', admissao: '2026-09-01', prazo: '45+45' });
+igual('45+45: fim do 1º período 15/10 e da prorrogação 29/11', [e.experiencia.fim1, e.experiencia.fim2], ['2026-10-15', '2026-11-29']);
+igual('encerrar em 15/10 = 45º dia, no fim do 1º período', [e.experiencia.dia, e.experiencia.situacao], [45, 'fim1']);
+igual('pagamento: 25/10 é domingo → sexta 23/10', [e.limiteLegal, e.limite, e.inicioAviso, e.aviso], ['2026-10-25', '2026-10-23', null, null]);
+let rr = resumoDatas(e);
+igual('linhas da experiência', rr.linhas.map(l => [l.rotulo, l.data]), [['Fim do 1º período (45 dias)', '2026-10-15'], ['Fim da prorrogação (90 dias)', '2026-11-29'],
+  ['Último dia de trabalho (45º dia de contrato)', '2026-10-15'], ['Pagamento da rescisão até', '2026-10-23']]);
+chk('nota: termina no prazo, sem a indenização', rr.notas[0].includes('último dia do 1º período') && rr.notas[0].includes('sem a indenização do art. 479'));
+chk('notas do pagamento e do feriado municipal também', rr.notas.some(n => n.includes('art. 477')) && rr.notas.some(n => n.includes('feriado na cidade')) && rr.alerta === null);
+e = calcularRescisao({ tipo: 'experiencia', data: '2026-10-10', admissao: '2026-09-01', prazo: '45+45' });
+igual('antes do fim: faltam 5 dias até 15/10', [e.experiencia.situacao, e.experiencia.fimRef, e.experiencia.faltam], ['antecipada', '2026-10-15', 5]);
+rr = resumoDatas(e);
+chk('nota: metade dos 5 dias (art. 479) e 40% do FGTS', rr.notas[0].includes('5 dias') && rr.notas[0].includes('art. 479') && rr.notas[0].includes('40% do FGTS'));
+chk('nota: no fim do prazo não há indenização; cláusula do art. 481', rr.notas[1].includes('15/10/2026') && rr.notas[1].includes('art. 481'));
+igual('quem sai num sábado (10/10) recebe até terça 20/10', e.limite, '2026-10-20');
+e = calcularRescisao({ tipo: 'experiencia', data: '2026-11-01', admissao: '2026-09-01', prazo: '45+45' });
+igual('na prorrogação: antes do fim (29/11), faltam 28 dias', [e.experiencia.situacao, e.experiencia.fimRef, e.experiencia.faltam], ['antecipada', '2026-11-29', 28]);
+e = calcularRescisao({ tipo: 'experiencia', data: '2026-11-29', admissao: '2026-09-01', prazo: '45+45' });
+igual('no 90º dia: fim do contrato', [e.experiencia.dia, e.experiencia.situacao], [90, 'fim']);
+e = calcularRescisao({ tipo: 'experiencia', data: '2026-11-30', admissao: '2026-09-01', prazo: '45+45' });
+rr = resumoDatas(e);
+igual('91º dia: passou da experiência', [e.experiencia.dia, e.experiencia.situacao], [91, 'passou']);
+chk('alerta: virou prazo indeterminado, marcar "Demissão por parte da empresa"', !!rr.alerta && rr.alerta.includes('prazo indeterminado') && rr.alerta.includes('Demissão por parte da empresa'));
+e = calcularRescisao({ tipo: 'experiencia', data: '2026-09-30', admissao: '2026-09-01', prazo: '30+60' });
+igual('30+60: fim do 1º período no 30º dia', [e.experiencia.fim1, e.experiencia.fim2, e.experiencia.situacao], ['2026-09-30', '2026-11-29', 'fim1']);
+e = calcularRescisao({ tipo: 'experiencia', data: '2026-05-29', admissao: '2026-03-01', prazo: '90' });
+igual('90 dias a partir de 01/03 terminam em 29/05 (a admissão conta)', [e.experiencia.fim1, e.experiencia.fim2, e.experiencia.situacao], ['2026-05-29', null, 'fim']);
+igual('90 dias: uma linha só de fim', resumoDatas(e).linhas[0].rotulo, 'Fim do contrato de experiência (90 dias)');
+e = calcularRescisao({ tipo: 'experiencia', data: '2026-10-10', admissao: '2026-09-01', prazo: '?' });
+rr = resumoDatas(e);
+igual('não sabe o prazo: sem linhas de fim', [e.experiencia.situacao, rr.linhas.length, rr.linhas[0].rotulo], ['indefinido', 2, 'Último dia de trabalho (40º dia de contrato)']);
+chk('nota: o DP confere no contrato', rr.notas[0].includes('o DP confere no contrato'));
+chk('encerrar antes da admissão não fecha', calcularRescisao({ tipo: 'experiencia', data: '2026-08-31', admissao: '2026-09-01', prazo: '45+45' }) === null);
+chk('prazo fora da lista (até nome herdado do objeto) não fecha', calcularRescisao({ tipo: 'experiencia', data: '2026-10-10', admissao: '2026-09-01', prazo: 'toString' }) === null
+  && resumoCaso('experiencia', null, null, 'toString') === 'Contrato de experiência');
+chk('sem prazo ou sem admissão não fecha', calcularRescisao({ tipo: 'experiencia', data: '2026-10-10', admissao: '2026-09-01' }) === null
+  && calcularRescisao({ tipo: 'experiencia', data: '2026-10-10', prazo: '45+45' }) === null);
+igual('resumo do caso', [resumoCaso('experiencia', null, null, '45+45'), resumoCaso('experiencia', null, null, '?')], ['Contrato de experiência · 45 + 45 dias', 'Contrato de experiência']);
+igual('pergunta da data', perguntaData('experiencia'), 'dataDesligamento');
+resp = montarRespostas({ funcionario: 'Ana', tipo: 'experiencia', admissao: '2026-09-01', prazo: '45+45', data: '2026-10-15', obs: '' });
+igual('respostas da experiência', resp.map(x => [x.id, x.valor]), [['funcionario', 'Ana'], ['tipo', 'Contrato de experiência — a empresa vai encerrar'],
+  ['admissao', '2026-09-01'], ['prazo', '45 + 45 dias'], ['data', '2026-10-15'], ['obs', '']]);
+igual('a data leva a pergunta do encerramento', resp.find(x => x.id === 'data').rotulo, PERGUNTAS.dataDesligamento.rotulo);
+
 console.log('Cópia da Edge Function:');
 const original = readFileSync(raiz + 'assets/js/rescisao-datas.js', 'utf8');
 let copia = '';
