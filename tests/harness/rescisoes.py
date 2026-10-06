@@ -44,7 +44,7 @@ def rescisoes_teste():
         {'id': 'data', 'rotulo': 'Quando foi o pedido de demissão?', 'tipo': 'data', 'valor': '2026-10-06'},
         {'id': 'obs', 'rotulo': 'Observações', 'valor': '<img src=x onerror="window.__xss=1">Vai trabalhar normalmente'},
     ]
-    base = lambda **k: {'origem': 'externa', 'respostas': [], 'observacoes': None, 'concluida_em': None, 'concluida_por': None, 'data_admissao': None, 'prazo_experiencia': None,
+    base = lambda **k: {'origem': 'externa', 'respostas': [], 'observacoes': None, 'concluida_em': None, 'concluida_por': None, 'data_admissao': None, 'prazo_experiencia': None, 'iniciativa': None,
                         'empresa_nome': None, 'contato_nome': None, 'clientes': None, 'desconta_aviso': None,
                         'criado_por': 'formulário da empresa', 'atualizado_em': None, **k}
     return [
@@ -60,7 +60,7 @@ def rescisoes_teste():
         base(id='r4', cliente_id='c1', clientes=cli1, funcionario_nome='CICLANO DE TESTE', tipo='pedido', aviso='imediato', desconta_aviso=True,
              data_base=dia(-40), ultimo_dia=dia(-40), data_acerto=dia(-30), responsavel='Vitória', status='cancelada', criado_em=dia(-41) + 'T12:00:00Z'),
         base(id='r5', cliente_id='c1', clientes=cli1, funcionario_nome='MARIA EXPERIÊNCIA DE TESTE', tipo='experiencia', aviso=None,
-             data_admissao='2026-09-01', prazo_experiencia='45+45', data_base='2026-10-15', inicio_aviso=None, ultimo_dia='2026-10-15', data_acerto=dia(30),
+             data_admissao='2026-09-01', prazo_experiencia='45+45', iniciativa='empresa', data_base='2026-10-15', inicio_aviso=None, ultimo_dia='2026-10-15', data_acerto=dia(30),
              responsavel='Vitória', status='em_andamento', criado_em=dia(-2) + 'T12:00:00Z'),
     ]
 
@@ -162,9 +162,9 @@ def modulo(b, base, tema, erros):
     ok('EMPRESA EXEMPLO LTDA' in l2 and 'não vinculada' not in l2, '2. a lista mostra a empresa do cadastro')
 
     p.click('#rsLista tr[data-id="r5"] td >> nth=0'); p.wait_for_timeout(500)
-    ok(p.is_visible('#fiAdmWrap') and p.is_visible('#fiPrazoWrap') and not p.is_visible('#fiAvisoWrap') and not p.is_visible('#fiDescWrap')
-       and p.input_value('#fiAdm') == '2026-09-01' and p.input_value('#fiPrazo') == '45+45' and 'Último dia' in p.inner_text('#fiDataRot'),
-       '2. experiência: ficha com admissão e prazo (sem aviso nem desconto)')
+    ok(p.is_visible('#fiAdmWrap') and p.is_visible('#fiPrazoWrap') and p.is_visible('#fiIniWrap') and not p.is_visible('#fiAvisoWrap') and not p.is_visible('#fiDescWrap')
+       and p.input_value('#fiAdm') == '2026-09-01' and p.input_value('#fiPrazo') == '45+45' and p.input_value('#fiIni') == 'empresa' and 'Último dia' in p.inner_text('#fiDataRot'),
+       '2. experiência: ficha com quem encerra, admissão e prazo (sem aviso nem desconto)')
     dt = p.inner_text('#fiDatas')
     ok('Fim do 1º período (45 dias)' in dt and '15/10/2026' in dt and '29/11/2026' in dt and '45º dia de contrato' in dt and '23/10/2026' in dt
        and 'último dia do 1º período' in dt, '2. experiência: fim do 1º período e da prorrogação; 15/10 é o fim do 1º período; pagar até 23/10')
@@ -179,6 +179,17 @@ def modulo(b, base, tema, erros):
     ok(r5['prazo_experiencia'] == '30+60' and r5['data_admissao'] == '2026-09-01' and r5['aviso'] is None and r5['data_base'] == '2026-10-15'
        and r5['ultimo_dia'] == '2026-10-15' and r5['data_acerto'] == '2026-10-23', '2. experiência regravada (prazo, admissão e datas)')
     ok('Contrato de experiência · 30 + 60 dias' in p.locator('#rsLista tr[data-id="r5"]').inner_text(), '2. a lista mostra o prazo novo')
+    p.click('#rsLista tr[data-id="r5"] td >> nth=0'); p.wait_for_timeout(500)
+    p.select_option('#fiIni', 'empregado'); p.wait_for_timeout(100)
+    dt = p.inner_text('#fiDatas')
+    ok(p.is_visible('#fiDescWrap') and 'art. 480' in p.inner_text('#fiDescRot') and 'art. 480' in dt and 'Não há multa de 40%' in dt,
+       '2. a pedido do funcionário, antes do fim: pede o desconto do art. 480 e explica (sem 40% do FGTS)')
+    p.click('#fiSalvar'); p.wait_for_timeout(300)
+    ok('art. 480' in p.inner_text('#fiMsg') and db(p, "window.__mockDb.rescisoes.find(r => r.id === 'r5').iniciativa") == 'empresa', '2. sem dizer o desconto do art. 480 não salva')
+    p.select_option('#fiDesc', 'nao'); p.click('#fiSalvar'); p.wait_for_timeout(400)
+    r5 = db(p, "window.__mockDb.rescisoes.find(r => r.id === 'r5')")
+    ok(r5['iniciativa'] == 'empregado' and r5['desconta_aviso'] is False, '2. quem encerra e o desconto gravados')
+    ok('a pedido do funcionário (sem desconto)' in p.locator('#rsLista tr[data-id="r5"]').inner_text(), '2. a lista mostra que foi a pedido do funcionário')
 
     p.select_option('#rsLista tr[data-id="r2"] select', 'em_andamento'); p.wait_for_timeout(400)
     ok(db(p, "window.__mockDb.rescisoes.find(r => r.id === 'r2').status") == 'em_andamento' and p.inner_text('#fAnd') == '2', '2. situação mudada pela lista (em andamento)')
@@ -323,9 +334,12 @@ window.__mockInvoke = async (nome, opts) => {
 
     p = pagina(form, enviar='{ ok: true, id: "11111111-2222-4333-8444-555555555556", email: "rh@macedoereis.com.br", datas: { inicioAviso: null, ultimoDia: "2026-10-15", limite: "2026-10-23" } }')
     p.check('input[name="tipo"][value="experiencia"]'); p.wait_for_timeout(100)
-    ok(vis(p, '#blExperiencia') and not vis(p, '#blPedido') and not vis(p, '#blDispensa') and vis(p, '#id_admissao') and vis(p, 'input[name="prazoExperiencia"][value="45+45"]')
-       and vis(p, '#id_dataDesligamento'), '5. contrato de experiência: admissão, prazo e quando a empresa quer encerrar')
+    ok(vis(p, '#blExperiencia') and not vis(p, '#blPedido') and not vis(p, '#blDispensa') and vis(p, 'input[name="iniciativa"][value="empregado"]') and vis(p, '#id_admissao')
+       and vis(p, 'input[name="prazoExperiencia"][value="45+45"]') and vis(p, '#id_dataDesligamento') and not vis(p, '#blDescExp'),
+       '5. contrato de experiência: quem encerra, admissão, prazo e o último dia')
     p.fill('#id_admissao', '2026-09-01'); p.check('input[name="prazoExperiencia"][value="45+45"]'); p.fill('#id_dataDesligamento', '2026-10-15'); p.wait_for_timeout(150)
+    ok(not vis(p, '#datas'), '5. sem dizer quem encerra, as datas esperam')
+    p.check('input[name="iniciativa"][value="empresa"]'); p.wait_for_timeout(150)
     dt = p.inner_text('#datas')
     ok('Fim do 1º período (45 dias)' in dt and '15/10/2026' in dt and 'Fim da prorrogação (90 dias)' in dt and '29/11/2026' in dt and '45º dia de contrato' in dt
        and '23/10/2026' in dt and 'último dia do 1º período' in dt, '5. experiência no 45º dia: fim do 1º período, sem indenização; pagar até 23/10 (25/10 é domingo)')
@@ -341,9 +355,28 @@ window.__mockInvoke = async (nome, opts) => {
        '5. encerramento antes da admissão: barrado com o motivo')
     p.fill('#id_dataDesligamento', '2026-10-15'); p.click('#btnEnviar'); p.wait_for_timeout(1000)
     env = envios(p); a = env[0][1] if env else {}
-    ok(len(env) == 1 and a.get('tipo') == 'experiencia' and a.get('admissao') == '2026-09-01' and a.get('prazo') == '45+45' and a.get('data') == '2026-10-15'
-       and 'aviso' not in a and 'desconta' not in a, '5. envia a experiência com admissão, prazo e o último dia (sem aviso)')
+    ok(len(env) == 1 and a.get('tipo') == 'experiencia' and a.get('iniciativa') == 'empresa' and a.get('admissao') == '2026-09-01' and a.get('prazo') == '45+45'
+       and a.get('data') == '2026-10-15' and 'aviso' not in a and 'desconta' not in a, '5. envia a experiência com quem encerra, admissão, prazo e o último dia (sem aviso)')
     ok('Pagamento da rescisão até 23/10/2026 (sexta-feira)' in p.inner_text('#app'), '5. mensagem final com a data do pagamento da experiência')
+    p.close()
+
+    p = pagina(form)
+    p.fill('#id_empresa', 'Comércio Modelo'); p.fill('#id_contato', 'Contato de Teste'); p.fill('#id_funcionario', 'JOÃO DE TESTE')
+    p.check('input[name="tipo"][value="experiencia"]'); p.check('input[name="iniciativa"][value="empregado"]')
+    p.fill('#id_admissao', '2026-09-01'); p.check('input[name="prazoExperiencia"][value="45+45"]'); p.fill('#id_dataDesligamento', '2026-10-10'); p.wait_for_timeout(150)
+    dt = p.inner_text('#datas')
+    ok(vis(p, '#blDescExp') and 'art. 480' in dt and '5 dias' in dt and 'Não há multa de 40%' in dt and '20/10/2026' in dt,
+       '5. a pedido do funcionário, antes do fim: indenização do art. 480 (até metade dos 5 dias), sem 40% do FGTS; pergunta o desconto')
+    p.screenshot(path=str(FOTOS / 'rescisoes-link-experiencia-funcionario-claro.png'), full_page=True)
+    p.click('#btnEnviar'); p.wait_for_timeout(300)
+    ok(p.locator('.campo.falta').count() == 1 and p.locator('.campo.falta[data-id="descontoExperiencia"]').count() == 1 and not envios(p), '5. sem dizer o desconto do art. 480 não envia')
+    p.fill('#id_dataDesligamento', '2026-10-15'); p.wait_for_timeout(150)
+    ok(not vis(p, '#blDescExp') and 'sem indenização' in p.inner_text('#datas'), '5. saindo no fim do período: sem indenização e sem a pergunta do desconto')
+    p.fill('#id_dataDesligamento', '2026-12-05'); p.wait_for_timeout(150)
+    ok('Pedido de demissão do funcionário' in p.inner_text('#datas'), '5. a pedido do funcionário com mais de 90 dias: marcar pedido de demissão')
+    p.fill('#id_dataDesligamento', '2026-10-10'); p.check('input[name="descontoExperiencia"][value="sim"]'); p.click('#btnEnviar'); p.wait_for_timeout(1000)
+    env = envios(p); a = env[0][1] if env else {}
+    ok(len(env) == 1 and a.get('iniciativa') == 'empregado' and a.get('desconta') is True and a.get('data') == '2026-10-10', '5. envia a pedido do funcionário, com o desconto do art. 480')
     p.close()
 
     p = pagina(form)

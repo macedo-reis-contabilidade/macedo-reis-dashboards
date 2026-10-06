@@ -1,5 +1,5 @@
 // ============================================================
-// MACEDO & REIS - Edge Function: rescisao-link (v2, 06/10/2026 — v2: contrato de experiência, com admissão e prazo)
+// MACEDO & REIS - Edge Function: rescisao-link (v3, 06/10/2026 — v2: contrato de experiência; v3: também a pedido do funcionário)
 // Link público das rescisões do DP (rescisao.html), na lógica das admissões: a empresa responde, envia e a rescisão
 // nasce no módulo (dp-rescisoes.html) e na agenda (o gatilho do banco cria a tarefa na hora, com prazo no dia do
 // envio e "pagar até" no título). A empresa é achada pelo nome digitado, com a mesma regra do admissao-link (o bloco
@@ -17,7 +17,7 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
-import { calcularRescisao, combinacaoValida, isoValida, montarRespostas, prazoValido } from "./rescisao-datas.js";
+import { calcularRescisao, combinacaoValida, isoValida, montarRespostas, pedeDescontoExperiencia, prazoValido } from "./rescisao-datas.js";
 
 const ENVIOS_HORA = 30;                  // trava contra enxurrada (o link é público)
 
@@ -106,14 +106,23 @@ async function enviar(b: any) {
     if (typeof b.desconta !== "boolean") return { error: "Responda se a empresa vai descontar os 30 dias de aviso." };
     desconta = b.desconta;
   }
-  // contrato de experiência: admissão e prazo do contrato
+  // contrato de experiência: quem encerra, admissão e prazo do contrato
   const admissao = experiencia ? txt(b.admissao, 10) : "", prazo = experiencia ? txt(b.prazo, 10) : "";
+  const iniciativa = experiencia ? txt(b.iniciativa, 12) : "";
   if (experiencia) {
+    if (iniciativa !== "empresa" && iniciativa !== "empregado") return { error: "Responda quem quer encerrar o contrato." };
     if (!isoValida(admissao) || admissao < "2000-01-01") return { error: "Confira a data de admissão." };
     if (!prazoValido(prazo)) return { error: "Responda o prazo do contrato de experiência." };
     if (data < admissao) return { error: "A data de encerramento é antes da admissão." };
   }
   const obs = txt(b.obs, 2000);
+  const c = calcularRescisao({ tipo, aviso, data, admissao, prazo, iniciativa });
+  if (!c) return { error: "Confira a data informada." };
+  // a pedido do funcionário, saindo antes do fim: a empresa diz se desconta a indenização do art. 480
+  if (pedeDescontoExperiencia(c)) {
+    if (typeof b.desconta !== "boolean") return { error: "Responda se a empresa vai descontar a indenização do art. 480." };
+    desconta = b.desconta;
+  }
 
   const supa = db();
   const { count } = await supa.from("rescisoes").select("id", { count: "exact", head: true })
@@ -123,14 +132,12 @@ async function enviar(b: any) {
   if (!mod?.conteudo) return { error: "Formulário indisponível." };
 
   const cli = await acharCliente(supa, empresa);
-  const c = calcularRescisao({ tipo, aviso, data, admissao, prazo });
-  if (!c) return { error: "Confira a data informada." };
-  const respostas = montarRespostas({ funcionario, tipo, aviso, desconta, data, obs, admissao, prazo });
+  const respostas = montarRespostas({ funcionario, tipo, aviso, desconta, data, obs, admissao, prazo, iniciativa });
 
   const { data: res, error } = await supa.from("rescisoes").insert({
     cliente_id: cli ? cli.id : null, empresa_nome: empresa, contato_nome: contato, origem: "externa", status: "recebida",
     funcionario_nome: funcionario, tipo, aviso: aviso || null, desconta_aviso: desconta, data_base: data,
-    data_admissao: admissao || null, prazo_experiencia: prazo || null,
+    data_admissao: admissao || null, prazo_experiencia: prazo || null, iniciativa: iniciativa || null,
     inicio_aviso: c.inicioAviso, ultimo_dia: c.ultimoDia, data_acerto: c.limite, respostas,
     responsavel: txt(mod.conteudo.responsavel, 60) || null, criado_por: "formulário da empresa",
   }).select("id").single();

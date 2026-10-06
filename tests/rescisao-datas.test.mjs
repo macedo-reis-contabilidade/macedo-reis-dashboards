@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   pascoa, feriado, diaUtil, calcularRescisao, resumoDatas, montarRespostas, combinacaoValida, perguntaData,
-  resumoCaso, fmtData, diaSemana, isoValida, somaDias, PERGUNTAS,
+  resumoCaso, fmtData, diaSemana, isoValida, somaDias, PERGUNTAS, pedeDescontoExperiencia,
 } from '../assets/js/rescisao-datas.js';
 
 const raiz = fileURLToPath(new URL('..', import.meta.url));
@@ -136,10 +136,31 @@ chk('sem prazo ou sem admissão não fecha', calcularRescisao({ tipo: 'experienc
   && calcularRescisao({ tipo: 'experiencia', data: '2026-10-10', prazo: '45+45' }) === null);
 igual('resumo do caso', [resumoCaso('experiencia', null, null, '45+45'), resumoCaso('experiencia', null, null, '?')], ['Contrato de experiência · 45 + 45 dias', 'Contrato de experiência']);
 igual('pergunta da data', perguntaData('experiencia'), 'dataDesligamento');
-resp = montarRespostas({ funcionario: 'Ana', tipo: 'experiencia', admissao: '2026-09-01', prazo: '45+45', data: '2026-10-15', obs: '' });
-igual('respostas da experiência', resp.map(x => [x.id, x.valor]), [['funcionario', 'Ana'], ['tipo', 'Contrato de experiência — a empresa vai encerrar'],
+resp = montarRespostas({ funcionario: 'Ana', tipo: 'experiencia', iniciativa: 'empresa', admissao: '2026-09-01', prazo: '45+45', data: '2026-10-15', obs: '' });
+igual('respostas da experiência', resp.map(x => [x.id, x.valor]), [['funcionario', 'Ana'], ['tipo', 'Contrato de experiência'], ['iniciativa', 'A empresa'],
   ['admissao', '2026-09-01'], ['prazo', '45 + 45 dias'], ['data', '2026-10-15'], ['obs', '']]);
 igual('a data leva a pergunta do encerramento', resp.find(x => x.id === 'data').rotulo, PERGUNTAS.dataDesligamento.rotulo);
+
+console.log('Experiência a pedido do funcionário:');
+e = calcularRescisao({ tipo: 'experiencia', data: '2026-10-10', admissao: '2026-09-01', prazo: '45+45', iniciativa: 'empregado' });
+igual('quem encerra', e.iniciativa, 'empregado');
+rr = resumoDatas(e);
+chk('antes do fim: ele indeniza até metade dos 5 dias (art. 480), sem 40% do FGTS', rr.notas[0].includes('5 dias') && rr.notas[0].includes('art. 480') && rr.notas[0].includes('Não há multa de 40%'));
+chk('cláusula do art. 481: aviso de 30 dias', rr.notas[1].includes('art. 481') && rr.notas[1].includes('30 dias'));
+chk('pede o desconto do art. 480', pedeDescontoExperiencia(e));
+igual('mesmo prazo de pagamento (10/10 → 20/10)', e.limite, '2026-10-20');
+e = calcularRescisao({ tipo: 'experiencia', data: '2026-10-15', admissao: '2026-09-01', prazo: '45+45', iniciativa: 'empregado' });
+chk('no fim do 1º período: sem indenização, não pede desconto', resumoDatas(e).notas[0].includes('sem indenização') && !pedeDescontoExperiencia(e));
+e = calcularRescisao({ tipo: 'experiencia', data: '2026-12-05', admissao: '2026-09-01', prazo: '45+45', iniciativa: 'empregado' });
+chk('mais de 90 dias: alerta pra marcar pedido de demissão, sem pedir desconto', resumoDatas(e).alerta.includes('Pedido de demissão do funcionário') && !pedeDescontoExperiencia(e));
+e = calcularRescisao({ tipo: 'experiencia', data: '2026-10-10', admissao: '2026-09-01', prazo: '?', iniciativa: 'empregado' });
+chk('prazo "não sei": pede o desconto e explica o art. 480', pedeDescontoExperiencia(e) && resumoDatas(e).notas[0].includes('art. 480'));
+chk('a empresa encerrando nunca pede o desconto do art. 480', !pedeDescontoExperiencia(calcularRescisao({ tipo: 'experiencia', data: '2026-10-10', admissao: '2026-09-01', prazo: '45+45', iniciativa: 'empresa' })));
+igual('sem dizer quem encerra, vale a empresa', calcularRescisao({ tipo: 'experiencia', data: '2026-10-10', admissao: '2026-09-01', prazo: '45+45' }).iniciativa, 'empresa');
+igual('resumo do caso a pedido do funcionário', resumoCaso('experiencia', null, true, '45+45', 'empregado'), 'Contrato de experiência · 45 + 45 dias · a pedido do funcionário (desconta o art. 480)');
+resp = montarRespostas({ funcionario: 'Ana', tipo: 'experiencia', iniciativa: 'empregado', admissao: '2026-09-01', prazo: '45+45', data: '2026-10-10', desconta: false, obs: '' });
+igual('respostas a pedido do funcionário', resp.map(x => [x.id, x.valor]), [['funcionario', 'Ana'], ['tipo', 'Contrato de experiência'], ['iniciativa', 'O funcionário (pediu para sair)'],
+  ['admissao', '2026-09-01'], ['prazo', '45 + 45 dias'], ['data', '2026-10-10'], ['desconto', 'Não descontar'], ['obs', '']]);
 
 console.log('Cópia da Edge Function:');
 const original = readFileSync(raiz + 'assets/js/rescisao-datas.js', 'utf8');

@@ -78,7 +78,7 @@
 
 <script type="module">
   import { supabase } from './assets/js/supabase.js';
-  import { PERGUNTAS, calcularRescisao, resumoDatas, fmtData, diaSemana } from './assets/js/rescisao-datas.js';
+  import { PERGUNTAS, calcularRescisao, resumoDatas, fmtData, diaSemana, pedeDescontoExperiencia } from './assets/js/rescisao-datas.js';
 
   const RODAPE_PADRAO = 'Macedo e Reis Contabilidade Ltda · Rua Luiz Volkart, 35, 1º andar – Centro – Três Coroas/RS · CEP 95660-000 · (51) 3546-1385 · rh@macedoereis.com.br';
   const PRIVACIDADE = 'As informações vão direto para o Departamento Pessoal da Macedo & Reis e são usadas só para a rescisão do(a) funcionário(a).';
@@ -126,8 +126,9 @@
       +   '<div id="blImediato" hidden>' + escolha('desconto', PERGUNTAS.desconto) + data('ultimoDia', PERGUNTAS.ultimoDia) + '</div>'
       + '</div>'
       + '<div class="ramo" id="blDispensa" hidden>' + data('dataComunicacao', PERGUNTAS.dataComunicacao) + escolha('avisoDispensa', PERGUNTAS.avisoDispensa) + '</div>'
-      + '<div class="ramo" id="blExperiencia" hidden>' + data('admissao', PERGUNTAS.admissao) + escolha('prazoExperiencia', PERGUNTAS.prazoExperiencia)
-      +   data('dataDesligamento', PERGUNTAS.dataDesligamento) + '</div>'
+      + '<div class="ramo" id="blExperiencia" hidden>' + escolha('iniciativa', PERGUNTAS.iniciativa) + data('admissao', PERGUNTAS.admissao)
+      +   escolha('prazoExperiencia', PERGUNTAS.prazoExperiencia) + data('dataDesligamento', PERGUNTAS.dataDesligamento)
+      +   '<div id="blDescExp" hidden>' + escolha('descontoExperiencia', PERGUNTAS.descontoExperiencia) + '</div></div>'
       + '<div class="datas" id="datas" hidden></div>'
       + '</div>';
     html += `<div class="card"><h3 class="bloco">${esc(PERGUNTAS.obs.rotulo)}</h3><div class="campo" data-id="obs"><label for="id_obs"><small class="ajuda" style="margin:0">${esc(PERGUNTAS.obs.ajuda)}</small></label><textarea id="id_obs"></textarea></div></div>`;
@@ -153,7 +154,11 @@
       return { tipo };
     }
     if (tipo === 'dispensa') return { tipo, aviso: marcado('avisoDispensa'), data: valor('dataComunicacao'), campoData: 'dataComunicacao' };
-    if (tipo === 'experiencia') return { tipo, aviso: null, data: valor('dataDesligamento'), campoData: 'dataDesligamento', admissao: valor('admissao'), prazo: marcado('prazoExperiencia') };
+    if (tipo === 'experiencia') {
+      const d = marcado('descontoExperiencia');
+      return { tipo, aviso: null, data: valor('dataDesligamento'), campoData: 'dataDesligamento', admissao: valor('admissao'), prazo: marcado('prazoExperiencia'),
+               iniciativa: marcado('iniciativa'), desconta: d ? d === 'sim' : null };
+    }
     return {};
   }
 
@@ -165,7 +170,10 @@
     $('blExperiencia').hidden = c.tipo !== 'experiencia';
     $('blCumpre').hidden = !(c.tipo === 'pedido' && c.aviso === 'trabalhado');
     $('blImediato').hidden = !(c.tipo === 'pedido' && c.aviso === 'imediato');
-    pintarDatas(calcularRescisao(c));
+    // datas só depois de dizer quem encerra (as notas da experiência dependem disso)
+    const calc = c.tipo === 'experiencia' && !c.iniciativa ? null : calcularRescisao(c);
+    $('blDescExp').hidden = !pedeDescontoExperiencia(calc);
+    pintarDatas(calc);
   }
 
   function pintarDatas(calc) {
@@ -190,11 +198,13 @@
     if (msgData) msgData.textContent = 'Informe a data.';
     if (!c.tipo) faltam.push(campo('tipo'));
     else if (c.tipo === 'experiencia') {
-      // contrato de experiência: admissão, prazo e o último dia (que não pode ser antes da admissão)
+      // contrato de experiência: quem encerra, admissão, prazo e o último dia (que não pode ser antes da admissão)
+      if (!c.iniciativa) faltam.push(campo('iniciativa'));
       if (!c.admissao) faltam.push(campo('admissao'));
       if (!c.prazo) faltam.push(campo('prazoExperiencia'));
       if (!c.data) faltam.push(campo('dataDesligamento'));
       else if (c.admissao && c.data < c.admissao) { msgData.textContent = 'A data de encerramento é antes da admissão.'; faltam.push(campo('dataDesligamento')); }
+      if (c.iniciativa && pedeDescontoExperiencia(calcularRescisao(c)) && c.desconta == null) faltam.push(campo('descontoExperiencia'));
     } else if (!c.aviso) faltam.push(campo(c.tipo === 'pedido' ? 'avisoPedido' : 'avisoDispensa'));
     if (c.tipo === 'pedido' && c.aviso === 'imediato' && c.desconta == null) faltam.push(campo('desconto'));
     if (c.tipo !== 'experiencia' && c.campoData && !calcularRescisao(c)) faltam.push(campo(c.campoData));
@@ -216,7 +226,10 @@
     erro.textContent = '';
     btn.disabled = true; btn.textContent = 'Enviando…';
     const corpo = { acao: 'enviar', empresa: ident.empresa, contato: ident.contato, funcionario, tipo: caso.tipo, data: caso.data, obs };
-    if (caso.tipo === 'experiencia') { corpo.admissao = caso.admissao; corpo.prazo = caso.prazo; }
+    if (caso.tipo === 'experiencia') {
+      corpo.iniciativa = caso.iniciativa; corpo.admissao = caso.admissao; corpo.prazo = caso.prazo;
+      if (pedeDescontoExperiencia(calcularRescisao(caso))) corpo.desconta = caso.desconta;
+    }
     else corpo.aviso = caso.aviso;
     if (caso.tipo === 'pedido' && caso.aviso === 'imediato') corpo.desconta = caso.desconta;
     const { data: r, error } = await chamar(corpo);

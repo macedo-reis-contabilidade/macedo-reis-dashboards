@@ -188,10 +188,11 @@
       <div class="rs-f-row">
         <label class="rs-f"><span>Caso</span><select class="rs-in" id="fiTipo"></select></label>
         <label class="rs-f" id="fiAvisoWrap"><span>Aviso prévio</span><select class="rs-in" id="fiAviso"></select></label>
-        <label class="rs-f" id="fiDescWrap"><span>Desconto do aviso</span><select class="rs-in" id="fiDesc"></select></label>
+        <label class="rs-f" id="fiIniWrap"><span>Quem encerra</span><select class="rs-in" id="fiIni"></select></label>
         <label class="rs-f" id="fiAdmWrap"><span>Admissão</span><input type="date" class="rs-in" id="fiAdm"></label>
         <label class="rs-f" id="fiPrazoWrap"><span>Prazo da experiência</span><select class="rs-in" id="fiPrazo"></select></label>
         <label class="rs-f"><span id="fiDataRot">Data</span><input type="date" class="rs-in" id="fiData"></label>
+        <label class="rs-f" id="fiDescWrap"><span id="fiDescRot">Desconto do aviso</span><select class="rs-in" id="fiDesc"></select></label>
       </div>
       <div class="rs-datas" id="fiDatas"></div>
 
@@ -220,7 +221,7 @@
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { hojeLocal, formatDocumento } from './assets/js/utils.js';   // dia no fuso local (toISOString é UTC)
-    import { PERGUNTAS, calcularRescisao, resumoDatas, resumoCaso, perguntaData, fmtData, diaSemana } from './assets/js/rescisao-datas.js';
+    import { PERGUNTAS, calcularRescisao, resumoDatas, resumoCaso, perguntaData, fmtData, diaSemana, pedeDescontoExperiencia } from './assets/js/rescisao-datas.js';
 
     // ---------------------------------------------------------------------------------------------
     // Textos do formulário (rescisao_modelos). As perguntas são fixas (assets/js/rescisao-datas.js, a mesma conta das
@@ -245,11 +246,12 @@
     const AVISOS = { pedido: [['trabalhado', 'Cumpre os 30 dias de aviso'], ['imediato', 'Desligamento imediato']],
                      dispensa: [['trabalhado', 'Aviso trabalhado'], ['indenizado', 'Aviso indenizado']] };
     const PRAZOS = PERGUNTAS.prazoExperiencia.opcoes.map(o => [o[0], o[1]]);
+    const INICIATIVAS = [['empresa', 'A empresa'], ['empregado', 'O funcionário (pediu para sair)']];
     const ROT_DATA = { dataPedido: 'Data do pedido de demissão', ultimoDia: 'Último dia de trabalho', dataComunicacao: 'Data da comunicação ao funcionário',
                        dataDesligamento: 'Último dia de trabalho' };
-    const COLS = 'id, cliente_id, empresa_nome, contato_nome, origem, funcionario_nome, tipo, aviso, desconta_aviso, data_base, data_admissao, prazo_experiencia, inicio_aviso, ultimo_dia, data_acerto, respostas, responsavel, status, observacoes, concluida_em, concluida_por, criado_por, criado_em, atualizado_em, clientes(nome_principal, nome_fantasia, documento)';
+    const COLS = 'id, cliente_id, empresa_nome, contato_nome, origem, funcionario_nome, tipo, aviso, desconta_aviso, data_base, data_admissao, prazo_experiencia, iniciativa, inicio_aviso, ultimo_dia, data_acerto, respostas, responsavel, status, observacoes, concluida_em, concluida_por, criado_por, criado_em, atualizado_em, clientes(nome_principal, nome_fantasia, documento)';
     // o caso gravado, do jeito que a conta das datas pede
-    const casoDe = r => ({ tipo: r.tipo, aviso: r.aviso, data: r.data_base, admissao: r.data_admissao, prazo: r.prazo_experiencia });
+    const casoDe = r => ({ tipo: r.tipo, aviso: r.aviso, data: r.data_base, admissao: r.data_admissao, prazo: r.prazo_experiencia, iniciativa: r.iniciativa });
 
     const $ = id => document.getElementById(id);
     const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -355,7 +357,7 @@
         const semVinculo = !r.cliente_id ? ' <span class="rs-mini p" title="O nome informado não bateu com uma empresa do cadastro — vincule na ficha">não vinculada</span>' : '';
         return `<tr data-id="${esc(r.id)}">`
           + `<td><b>${r.funcionario_nome ? esc(r.funcionario_nome) : '<span class="rs-dim">funcionário(a) sem nome</span>'}</b><br><span class="rs-sub">${esc(empresaDe(r))}</span>${semVinculo}</td>`
-          + `<td class="oculta-m">${esc(resumoCaso(r.tipo, r.aviso, r.desconta_aviso, r.prazo_experiencia))}</td>`
+          + `<td class="oculta-m">${esc(resumoCaso(r.tipo, r.aviso, r.desconta_aviso, r.prazo_experiencia, r.iniciativa))}</td>`
           + `<td>${celPagar(r)}</td>`
           + `<td class="oculta-m">${esc(r.responsavel || '—')}</td>`
           + `<td><select class="rs-sel st-lin" data-id="${esc(r.id)}">${opcoesStatus(r.status)}</select>${quando ? `<div class="rs-sub" style="margin-top:3px">${quando}</div>` : ''}</td>`
@@ -424,7 +426,7 @@
       const tipo = $('fiTipo').value, exp = tipo === 'experiencia';
       return { tipo, aviso: exp ? null : $('fiAviso').value, data: $('fiData').value,
         desconta: $('fiDesc').value === 'sim' ? true : $('fiDesc').value === 'nao' ? false : null,
-        admissao: exp ? $('fiAdm').value : null, prazo: exp ? $('fiPrazo').value : null };
+        admissao: exp ? $('fiAdm').value : null, prazo: exp ? $('fiPrazo').value : null, iniciativa: exp ? $('fiIni').value : null };
     };
 
     function pintarCaso(manterAviso = true) {
@@ -435,9 +437,13 @@
       const c = casoFicha();
       const exp = c.tipo === 'experiencia';
       $('fiAvisoWrap').style.display = exp ? 'none' : '';
+      $('fiIniWrap').style.display = exp ? '' : 'none';
       $('fiAdmWrap').style.display = exp ? '' : 'none';
       $('fiPrazoWrap').style.display = exp ? '' : 'none';
-      $('fiDescWrap').style.display = c.tipo === 'pedido' && c.aviso === 'imediato' ? '' : 'none';
+      // desconto: dos 30 dias no pedido imediato; do art. 480 na experiência a pedido do funcionário, saindo antes do fim
+      const descExp = pedeDescontoExperiencia(calcularRescisao(c));
+      $('fiDescWrap').style.display = (c.tipo === 'pedido' && c.aviso === 'imediato') || descExp ? '' : 'none';
+      $('fiDescRot').textContent = descExp ? 'Desconto do art. 480' : 'Desconto do aviso';
       $('fiDataRot').textContent = exp || (c.tipo && c.aviso) ? ROT_DATA[perguntaData(c.tipo, c.aviso)] : 'Data';
       pintarDatas(c);
     }
@@ -469,7 +475,7 @@
     }
 
     const fotoFicha = () => JSON.stringify([$('fiNome').value, $('fiResp').value, $('fiStatus').value, $('fiObs').value, fichaCli === undefined ? null : fichaCli.id,
-      $('fiTipo').value, $('fiAviso').value, $('fiDesc').value, $('fiData').value, $('fiAdm').value, $('fiPrazo').value]);
+      $('fiTipo').value, $('fiAviso').value, $('fiDesc').value, $('fiData').value, $('fiAdm').value, $('fiPrazo').value, $('fiIni').value]);
 
     async function abrirFicha(id) {
       const r = rescisoes.find(x => x.id === id);
@@ -489,6 +495,7 @@
       $('fiData').value = r.data_base || '';
       $('fiAdm').value = r.data_admissao || '';
       $('fiPrazo').innerHTML = opcoes(PRAZOS, r.prazo_experiencia || '', '— escolha —');
+      $('fiIni').innerHTML = opcoes(INICIATIVAS, r.tipo === 'experiencia' ? (r.iniciativa || 'empresa') : '', '— escolha —');
       pintarCaso();
       pintarVinculo(r);
       $('fiBusca').value = ''; $('fiRes').style.display = 'none';
@@ -513,6 +520,7 @@
     $('fiData').addEventListener('input', () => pintarCaso());
     $('fiAdm').addEventListener('input', () => pintarCaso());
     $('fiPrazo').addEventListener('change', () => pintarCaso());
+    $('fiIni').addEventListener('change', () => pintarCaso());
     $('fiStatus').addEventListener('change', () => pintarDatas(casoFicha()));
 
     $('fiBusca').addEventListener('input', () => {
@@ -550,11 +558,14 @@
       const exp = c.tipo === 'experiencia';
       if (!calc) return erro(exp ? 'Complete o caso: admissão, prazo da experiência e último dia (depois da admissão).' : 'Complete o caso da rescisão: aviso e data.');
       if (c.tipo === 'pedido' && c.aviso === 'imediato' && c.desconta == null) return erro('Diga se a empresa desconta o aviso.');
+      if (exp && !c.iniciativa) return erro('Diga quem encerra o contrato de experiência.');
+      const descExp = pedeDescontoExperiencia(calc);
+      if (descExp && c.desconta == null) return erro('Diga se a empresa desconta a indenização do art. 480.');
       if (novo === 'cancelada' && r.status !== 'cancelada' && !confirm('Cancelar esta rescisão? A tarefa sai da agenda.')) return;
       const p = { ...patchStatus(r, novo), funcionario_nome: $('fiNome').value.trim() || null, responsavel: $('fiResp').value || null,
         observacoes: $('fiObs').value.trim() || null, tipo: c.tipo, aviso: exp ? null : c.aviso,
-        desconta_aviso: c.tipo === 'pedido' && c.aviso === 'imediato' ? c.desconta : null,
-        data_admissao: exp ? c.admissao : null, prazo_experiencia: exp ? c.prazo : null,
+        desconta_aviso: (c.tipo === 'pedido' && c.aviso === 'imediato') || descExp ? c.desconta : null,
+        data_admissao: exp ? c.admissao : null, prazo_experiencia: exp ? c.prazo : null, iniciativa: exp ? c.iniciativa : null,
         data_base: c.data, inicio_aviso: calc.inicioAviso, ultimo_dia: calc.ultimoDia, data_acerto: calc.limite };
       if (novo === r.status) { delete p.concluida_em; delete p.concluida_por; }
       if (fichaCli !== undefined) p.cliente_id = fichaCli ? fichaCli.id : null;
@@ -584,8 +595,9 @@
         +   `<br><span class="se">cumpre →</span> ${esc(P.dataPedido.rotulo)}`
         +   `<br><span class="se">imediato →</span> ${esc(P.desconto.rotulo)} · ${esc(P.ultimoDia.rotulo)}</li>`
         + `<li><span class="se">Se demissão por parte da empresa:</span> ${esc(P.dataComunicacao.rotulo)} · ${esc(P.avisoDispensa.rotulo)}</li>`
-        + `<li><span class="se">Se contrato de experiência:</span> ${esc(P.admissao.rotulo)} · ${esc(P.prazoExperiencia.rotulo)} <span class="se">(${esc(ops(P.prazoExperiencia))})</span> · ${esc(P.dataDesligamento.rotulo)}</li>`
-        + '<li>Datas na hora: início e fim do aviso (ou o fim do contrato de experiência), último dia de trabalho e pagamento da rescisão até — na experiência, também se a data cai no fim do prazo ou antes (aí com a indenização do art. 479)</li>'
+        + `<li><span class="se">Se contrato de experiência:</span> ${esc(P.iniciativa.rotulo)} <span class="se">(${esc(ops(P.iniciativa))})</span> · ${esc(P.admissao.rotulo)} · ${esc(P.prazoExperiencia.rotulo)} <span class="se">(${esc(ops(P.prazoExperiencia))})</span> · ${esc(P.dataDesligamento.rotulo)}`
+        +   `<br><span class="se">a pedido do funcionário, saindo antes do fim →</span> ${esc(P.descontoExperiencia.rotulo)}</li>`
+        + '<li>Datas na hora: início e fim do aviso (ou o fim do contrato de experiência), último dia de trabalho e pagamento da rescisão até — na experiência, também se a data cai no fim do prazo ou antes (aí com a indenização do art. 479, ou do art. 480 quando é o funcionário que sai)</li>'
         + `<li>${esc(P.obs.rotulo)} <span class="se">(opcional)</span></li>`
         + '</ol>';
     }

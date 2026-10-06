@@ -21,6 +21,8 @@
 //   prazo, sem aviso. Antes disso = rescisão antecipada: a empresa paga metade da remuneração dos dias que faltariam
 //   (art. 479) e a multa de 40% do FGTS (Decreto 99.684/1990, art. 14), salvo cláusula de rescisão antecipada (art. 481,
 //   aí vale o aviso prévio). Passou de 90 dias: virou contrato por prazo indeterminado. Pagamento: os mesmos 10 dias.
+//   A pedido do funcionário, antes do fim: sem multa do FGTS; ele indeniza os prejuízos da empresa, no máximo o que
+//   receberia pelo art. 479 — metade dos dias que faltariam (art. 480 e §1º) —, e a empresa decide se desconta.
 // ============================================================
 
 export const AVISO_DIAS = 30;
@@ -37,7 +39,11 @@ export const PERGUNTAS = {
   tipo: {
     rotulo: 'Qual é o caso?',
     opcoes: [['pedido', 'Pedido de demissão do funcionário'], ['dispensa', 'Demissão por parte da empresa'],
-             ['experiencia', 'Contrato de experiência — a empresa vai encerrar', 'funcionário nos primeiros 90 dias, com contrato de experiência']],
+             ['experiencia', 'Contrato de experiência', 'funcionário nos primeiros 90 dias — encerrado pela empresa ou a pedido dele']],
+  },
+  iniciativa: {
+    rotulo: 'Quem quer encerrar o contrato?',
+    opcoes: [['empresa', 'A empresa'], ['empregado', 'O funcionário (pediu para sair)']],
   },
   admissao: { rotulo: 'Data de admissão (início do contrato de experiência)' },
   prazoExperiencia: {
@@ -45,7 +51,12 @@ export const PERGUNTAS = {
     ajuda: 'Está no contrato assinado na admissão.',
     opcoes: [['30+60', '30 + 60 dias'], ['45+45', '45 + 45 dias'], ['60+30', '60 + 30 dias'], ['90', '90 dias, sem prorrogação'], ['?', 'Outro / não sei']],
   },
-  dataDesligamento: { rotulo: 'Quando a empresa quer encerrar o contrato? (último dia de trabalho)' },
+  dataDesligamento: { rotulo: 'Quando o contrato vai ser encerrado? (último dia de trabalho)' },
+  descontoExperiencia: {
+    rotulo: 'A empresa vai descontar a indenização do art. 480?',
+    ajuda: 'Saindo antes do fim do contrato, o funcionário indeniza os prejuízos da empresa — no máximo metade da remuneração dos dias que faltariam.',
+    opcoes: [['sim', 'Sim, descontar'], ['nao', 'Não descontar']],
+  },
   avisoPedido: {
     rotulo: 'Vai cumprir os 30 dias de aviso prévio ou quer fazer o desligamento imediato?',
     opcoes: [['trabalhado', 'Vai cumprir os 30 dias de aviso prévio'], ['imediato', 'Desligamento imediato (não vai cumprir o aviso)']],
@@ -124,14 +135,17 @@ export const combinacaoValida = (tipo, aviso) => tipo === 'experiencia'
 // pergunta da data que o caso usa
 export const perguntaData = (tipo, aviso) => (tipo === 'experiencia' ? 'dataDesligamento' : tipo === 'dispensa' ? 'dataComunicacao' : aviso === 'imediato' ? 'ultimoDia' : 'dataPedido');
 
-export function resumoCaso(tipo, aviso, desconta, prazo) {
+export function resumoCaso(tipo, aviso, desconta, prazo, iniciativa) {
   if (tipo === 'pedido') {
     if (aviso === 'trabalhado') return 'Pedido de demissão · cumpre o aviso';
     if (aviso === 'imediato') return 'Pedido de demissão · desligamento imediato' + (desconta === true ? ' (desconta o aviso)' : desconta === false ? ' (sem desconto)' : '');
     return 'Pedido de demissão';
   }
   if (tipo === 'dispensa') return 'Demissão pela empresa' + (aviso === 'trabalhado' ? ' · aviso trabalhado' : aviso === 'indenizado' ? ' · aviso indenizado' : '');
-  if (tipo === 'experiencia') return 'Contrato de experiência' + (prazoValido(prazo) && PRAZOS_EXPERIENCIA[prazo] ? ' · ' + textoOpcao('prazoExperiencia', prazo) : '');
+  if (tipo === 'experiencia') {
+    return 'Contrato de experiência' + (prazoValido(prazo) && PRAZOS_EXPERIENCIA[prazo] ? ' · ' + textoOpcao('prazoExperiencia', prazo) : '')
+      + (iniciativa === 'empregado' ? ' · a pedido do funcionário' + (desconta === true ? ' (desconta o art. 480)' : desconta === false ? ' (sem desconto)' : '') : '');
+  }
   return 'Tipo não informado';
 }
 
@@ -163,12 +177,12 @@ function situacaoExperiencia(admissao, prazo, data) {
 }
 
 // datas do caso; null se faltar ou não fizer sentido
-export function calcularRescisao({ tipo, aviso, data, admissao, prazo } = {}) {
+export function calcularRescisao({ tipo, aviso, data, admissao, prazo, iniciativa } = {}) {
   if (!combinacaoValida(tipo, aviso) || !isoValida(data)) return null;
   if (tipo === 'experiencia') {
     if (!isoValida(admissao) || data < admissao || !prazoValido(prazo)) return null;
-    return { tipo, aviso: null, dataBase: data, admissao, prazo, inicioAviso: null, ultimoDia: data, ...prazoPagamento(data),
-      projecao: null, experiencia: situacaoExperiencia(admissao, prazo, data) };
+    return { tipo, aviso: null, dataBase: data, admissao, prazo, iniciativa: iniciativa === 'empregado' ? 'empregado' : 'empresa',
+      inicioAviso: null, ultimoDia: data, ...prazoPagamento(data), projecao: null, experiencia: situacaoExperiencia(admissao, prazo, data) };
   }
   const trabalhado = aviso === 'trabalhado';
   const inicioAviso = trabalhado ? somaDias(data, 1) : null;
@@ -179,6 +193,10 @@ export function calcularRescisao({ tipo, aviso, data, admissao, prazo } = {}) {
     projecao: tipo === 'dispensa' && aviso === 'indenizado' ? somaDias(data, AVISO_DIAS) : null,
   };
 }
+
+// experiência a pedido do funcionário saindo antes do fim (ou sem saber o prazo): a empresa diz se desconta o art. 480
+export const pedeDescontoExperiencia = c => !!c && c.tipo === 'experiencia' && c.iniciativa === 'empregado'
+  && (c.experiencia.situacao === 'antecipada' || c.experiencia.situacao === 'indefinido');
 
 // notas do prazo do pagamento (iguais pra todo caso)
 function notasPagamento(c) {
@@ -199,6 +217,20 @@ function resumoExperiencia(c) {
   linhas.push({ rotulo: 'Pagamento da rescisão até', data: c.limite, destaque: true });
   const notas = [];
   let alerta = null;
+  if (c.iniciativa === 'empregado') {
+    if (e.situacao === 'passou') {
+      alerta = `Passou de ${EXPERIENCIA_MAX} dias de contrato: a experiência já acabou e o contrato virou por prazo indeterminado — é pedido de demissão comum, com aviso prévio de 30 dias. Marque "Pedido de demissão do funcionário".`;
+    } else if (e.situacao === 'fim1' || e.situacao === 'fim') {
+      notas.push(`É o último dia do ${e.situacao === 'fim1' ? '1º período' : 'contrato de experiência'}: o contrato termina no prazo — sem indenização de nenhum lado.`);
+    } else if (e.situacao === 'antecipada') {
+      notas.push(`Saindo antes do fim do contrato (${fmtData(e.fimRef)}), o funcionário indeniza os prejuízos da empresa, no máximo metade da remuneração dos ${e.faltam} ${e.faltam === 1 ? 'dia' : 'dias'} que faltariam (CLT, art. 480) — a empresa decide se desconta. Não há multa de 40% do FGTS.`);
+      notas.push('Se o contrato tiver cláusula de rescisão antecipada (art. 481), valem as regras do aviso prévio de 30 dias — o DP confere.');
+    } else {
+      notas.push(`Se ${fmtData(c.ultimoDia)} for antes do fim do contrato de experiência, o funcionário indeniza os prejuízos da empresa, no máximo metade da remuneração dos dias que faltariam (CLT, art. 480) — o DP confere no contrato.`);
+    }
+    notas.push(...notasPagamento(c), NOTA_MUNICIPAL);
+    return { linhas, notas, alerta };
+  }
   if (e.situacao === 'passou') {
     alerta = `Passou de ${EXPERIENCIA_MAX} dias de contrato: a experiência já acabou e o contrato virou por prazo indeterminado — a demissão segue as regras normais, com aviso prévio. Marque "Demissão por parte da empresa".`;
   } else if (e.situacao === 'fim1') {
@@ -235,10 +267,11 @@ export function resumoDatas(c) {
 }
 
 // respostas como ficam gravadas na rescisão (o que a empresa respondeu, com as perguntas que ela viu)
-export function montarRespostas({ funcionario, tipo, aviso, desconta, data, obs, admissao, prazo } = {}) {
+export function montarRespostas({ funcionario, tipo, aviso, desconta, data, obs, admissao, prazo, iniciativa } = {}) {
   const r = [{ id: 'funcionario', rotulo: PERGUNTAS.funcionario.rotulo, valor: funcionario || '' }];
   r.push({ id: 'tipo', rotulo: PERGUNTAS.tipo.rotulo, valor: textoOpcao('tipo', tipo) });
   if (tipo === 'experiencia') {
+    r.push({ id: 'iniciativa', rotulo: PERGUNTAS.iniciativa.rotulo, valor: textoOpcao('iniciativa', iniciativa) });
     r.push({ id: 'admissao', rotulo: PERGUNTAS.admissao.rotulo, tipo: 'data', valor: admissao || '' });
     r.push({ id: 'prazo', rotulo: PERGUNTAS.prazoExperiencia.rotulo, valor: textoOpcao('prazoExperiencia', prazo) });
   }
@@ -248,6 +281,9 @@ export function montarRespostas({ funcionario, tipo, aviso, desconta, data, obs,
   }
   if (tipo === 'dispensa') r.push({ id: 'aviso', rotulo: PERGUNTAS.avisoDispensa.rotulo, valor: textoOpcao('avisoDispensa', aviso) });
   if (combinacaoValida(tipo, aviso)) r.push({ id: 'data', rotulo: PERGUNTAS[perguntaData(tipo, aviso)].rotulo, tipo: 'data', valor: data || '' });
+  if (tipo === 'experiencia' && iniciativa === 'empregado' && typeof desconta === 'boolean') {
+    r.push({ id: 'desconto', rotulo: PERGUNTAS.descontoExperiencia.rotulo, valor: textoOpcao('descontoExperiencia', desconta ? 'sim' : 'nao') });
+  }
   r.push({ id: 'obs', rotulo: PERGUNTAS.obs.rotulo, valor: obs || '' });
   return r;
 }
