@@ -99,7 +99,7 @@
         </div>
         <div class="eyebrow">Faturamento</div>
         <h1>Boletos / Honorários</h1>
-        <p>Grade mensal de cobrança. Gere o mês copiando a última competência (valores e envio vivos; a base entra só pra empresa nova), ajuste valores, vencimentos e dados de envio, e marque o status conforme emite e envia. O vencimento é calculado no próximo dia útil.</p>
+        <p>Grade mensal de cobrança. Gere o mês copiando a última competência (valores e envio vivos; a base entra só pra empresa nova), ajuste valores, vencimentos e dados de envio, e marque o status conforme emite e envia. O vencimento é calculado no próximo dia útil. Em <b>Arquivo do Inter</b>, os boletos marcados viram um arquivo que o Inter importa de uma vez.</p>
       </div>
 
       <div class="bo-toolbar">
@@ -109,6 +109,7 @@
           </label>
           <button class="btn btn-primary" id="btnGerar">Gerar mês a partir da base</button>
           <button class="btn btn-ghost" id="btnAdd">+ Adicionar empresa</button>
+          <button class="btn btn-ghost" id="btnInter">Arquivo do Inter</button>
         </div>
         <div class="bo-right">
           <input type="text" id="busca" class="input input-search" placeholder="Buscar empresa…">
@@ -155,9 +156,18 @@
     </div>
   </div>
 
+  <!-- arquivo de boletos do Inter (CNAB 400): os marcados viram o .REM que o Inter importa de uma vez -->
+  <div class="ov" id="ovInter">
+    <div class="ov-box" style="max-width:900px;max-height:88vh;">
+      <div class="ov-head"><h3>Arquivo de boletos do Inter</h3><button class="btn btn-ghost btn-sm" id="inFechar" data-janela-fechar>Fechar</button></div>
+      <div class="ov-body" id="inBody"></div>
+    </div>
+  </div>
+
 <script type="module">
 import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
-import { formatDocumento } from './assets/js/utils.js';
+import { formatDocumento, hojeLocal } from './assets/js/utils.js';
+import { textoCnab, problemasBoleto, montarRemessa, seuNumero, controleDe, lerConta, pagavelAte, ONDE_IMPORTAR } from './assets/js/cnab-inter.js';
 
 const $ = id => document.getElementById(id);
 const BRL = n => 'R$ ' + (Number(n)||0).toLocaleString('pt-BR',{minimumFractionDigits:2, maximumFractionDigits:2});
@@ -208,6 +218,8 @@ async function init(){
   $('btnGerar').addEventListener('click', gerarMes);
   $('btnAdd').addEventListener('click', abrirAdd);
   $('ovClose').addEventListener('click', ()=>$('ov').classList.remove('open'));
+  $('btnInter').addEventListener('click', abrirInter);
+  $('inFechar').addEventListener('click', ()=>$('ovInter').classList.remove('open'));
   $('busca').addEventListener('input', render);
   $('fStatus').addEventListener('change', render);
   $('ovBusca').addEventListener('input', renderAddList);
@@ -496,6 +508,202 @@ async function addEmpresa(id){
   rows.sort((a,b)=> (clientesMap[a.cliente_id]?.nome||'').localeCompare(clientesMap[b.cliente_id]?.nome||''));
   $('ov').classList.remove('open');
   render(); salvarLinha(nova);
+}
+
+// ---- arquivo do Inter (CNAB 400 — assets/js/cnab-inter.js) ----
+// Os boletos marcados viram um arquivo .REM que o Inter importa de uma vez (Cobrar ou Receber › Cobrança via arquivo).
+// Conta, nome no arquivo, número do último arquivo, sequência do "seu número" no dia e os últimos arquivos gerados
+// ficam em configuracoes_escritorio.inter_cnab (JSON) — nada disso vai pro código, que o repositório é público.
+const CHAVE_INTER = 'inter_cnab';
+const DESC_INTER = 'Arquivo de boletos do Inter (grade de boletos, CNAB 400): conta corrente com dígito, nome no arquivo, número do último arquivo, sequência do "seu número" no dia e os últimos arquivos gerados.';
+const inter = { cfg: null, existe: false, clientes: {}, marcados: new Set(), editandoConta: false, gerado: null, itens: [] };
+const EST = {
+  th: 'text-align:left;padding:7px 6px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--brand-light);border-bottom:1px solid var(--line);white-space:nowrap;position:sticky;top:0;background:var(--surface);',
+  td: 'padding:7px 6px;border-bottom:1px solid var(--line);vertical-align:top;font-size:12.5px;color:var(--text);',
+};
+const fmtDia = s => s ? s.slice(8,10)+'/'+s.slice(5,7)+'/'+s.slice(0,4) : '—';
+function cfgInter(v){
+  let o={};
+  try{ o=JSON.parse(v||'{}')||{}; }catch(e){ o={}; }
+  return { conta:'', dv:'', nome:'MACEDO E REIS CONTABILIDADE', remessa:0, seq_dia:'', seq:0, arquivos:[], ...o };
+}
+function inMsg(t, tipo){ const el=$('inMsg'); if(!el) return; el.textContent=t||''; el.style.color = tipo==='err' ? 'var(--err)' : tipo==='ok' ? 'var(--ok)' : ''; }
+
+async function abrirInter(){
+  inter.gerado=null; inter.marcados=new Set();
+  $('ovInter').classList.add('open');
+  $('inBody').innerHTML='<div class="bo-msg"><span class="spin"></span>Carregando o cadastro…</div>';
+  const ids=[...new Set(rows.filter(r=>r.status==='a_emitir').map(r=>r.cliente_id).filter(Boolean))];
+  const lotes=[];
+  for(let i=0;i<ids.length;i+=100){
+    lotes.push(supabase.from('clientes').select('id,nome_principal,documento,logradouro,numero,complemento,bairro,uf,cep').in('id', ids.slice(i,i+100)));
+  }
+  const [cfgR, ...cads]=await Promise.all([
+    supabase.from('configuracoes_escritorio').select('chave,valor').eq('chave', CHAVE_INTER).maybeSingle(), ...lotes ]);
+  const erro=cfgR.error || (cads.find(c=>c.error)||{}).error;
+  if(erro){ $('inBody').innerHTML=`<div class="bo-msg" style="color:var(--err)">Não consegui carregar: ${esc(erro.message)}</div>`; return; }
+  inter.existe=!!cfgR.data;
+  inter.cfg=cfgInter(cfgR.data && cfgR.data.valor);
+  inter.clientes=Object.fromEntries(cads.flatMap(c=>c.data||[]).map(c=>[c.id,c]));
+  inter.editandoConta=!inter.cfg.conta;
+  renderInter();
+}
+
+// cada cobrança "A emitir" da competência, com o boleto montado do cadastro e o que impede de ir no arquivo
+function itensInter(){
+  const hoje=hojeLocal(), arquivos=(inter.cfg && inter.cfg.arquivos) || [];
+  return rows.filter(r=>r.status==='a_emitir').map(r=>{
+    const c=inter.clientes[r.cliente_id]||{};
+    const b={ nome:c.nome_principal || (clientesMap[r.cliente_id]||{}).nome || '', documento:c.documento, logradouro:c.logradouro,
+      numero:c.numero, complemento:c.complemento, bairro:c.bairro, uf:c.uf, cep:c.cep,
+      vencimento:r.vencimento, valor:totalLinha(r), mensagem:r.observacao||'' };
+    const probl=problemasBoleto(b, hoje);
+    if(!r.id) probl.push('linha ainda não salva — espere o "Salvo ✓" da grade');
+    const foi=[...arquivos].reverse().find(a=>(a.ids||[]).includes(r.id)) || null;
+    return { r, b, probl, foi };
+  });
+}
+
+function renderInter(){
+  const cfg=inter.cfg, itens=itensInter();
+  inter.itens=itens;
+  const prontos=new Set(itens.filter(x=>!x.probl.length).map(x=>x.r.id));
+  for(const id of [...inter.marcados]) if(!prontos.has(id)) inter.marcados.delete(id);
+  const g=inter.gerado;
+  const gerado = g ? `<div style="border:1px solid rgba(63,176,122,.45);background:rgba(63,176,122,.08);border-radius:12px;padding:12px 14px;margin-bottom:14px;font-size:13px;color:var(--text);line-height:1.6;">
+      <div style="font-weight:600;">✓ Arquivo ${esc(g.nome)} baixado — ${g.qtd} boleto(s), ${BRL(g.total)}</div>
+      <div>1. No Inter: <b>${esc(ONDE_IMPORTAR)}</b>, e escolha esse arquivo.</div>
+      <div>2. Confira os boletos lá.</div>
+      <div>3. ${g.marcado ? '<span style="color:var(--ok);font-weight:600;">Marcados como Emitido na grade.</span>'
+        : `Deu certo? <button class="btn btn-primary btn-sm" id="inEmitidos">Marcar os ${g.qtd} como Emitido</button>`}</div>
+    </div>` : '';
+  const conta = inter.editandoConta
+    ? `<div style="border:1px solid var(--fill-3);border-radius:12px;padding:12px 14px;margin-bottom:14px;">
+        <div style="font-weight:600;color:var(--text);margin-bottom:8px;">Conta do escritório no Inter</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-muted);">Conta corrente, com o dígito
+            <input id="inConta" class="input" style="width:170px" placeholder="12345678-9" autocomplete="off" value="${cfg.conta ? esc(cfg.conta+'-'+cfg.dv) : ''}"></label>
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-muted);">Nome da empresa no arquivo
+            <input id="inNome" class="input" style="width:280px" maxlength="30" value="${esc(cfg.nome)}"></label>
+          <button class="btn btn-primary btn-sm" id="inSalvarConta">Guardar</button>
+          ${cfg.conta ? '<button class="btn btn-ghost btn-sm" id="inCancelarConta">Voltar</button>' : ''}
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:8px;">Agência 0001, carteira 112. Fica guardada nas configurações do escritório pra próxima vez.</div>
+      </div>`
+    : `<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;font-size:13px;color:var(--text-muted);margin-bottom:12px;">
+        <span id="inContaResumo">Conta Inter <b style="color:var(--text)">0001 / ${esc(cfg.conta)}-${esc(cfg.dv)}</b> · ${esc(cfg.nome)} · próximo arquivo nº ${(Number(cfg.remessa)||0)+1}</span>
+        <button class="btn btn-ghost btn-sm" id="inAlterarConta">Alterar conta</button>
+      </div>`;
+  const info=`<div style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px;line-height:1.5;">Entram as cobranças desta competência que estão <b>A emitir</b>. Sem multa e sem juros, aceitando pagamento até o fim do mês do vencimento, como no site do Inter. O Inter não manda e-mail pro cliente: o envio continua com vocês.</div>`;
+  const linhas=itens.map(x=>{
+    const id=x.r.id||'', pronto=!x.probl.length;
+    const cad=x.probl.some(p=>/cadastro|CNPJ/.test(p));
+    const sit = pronto ? '<span style="color:var(--ok)">pronto</span>'
+      : `<span style="color:var(--err)">${esc(x.probl.join('; '))}</span>${cad && x.r.cliente_id ? ` · <a href="clientes/editar.html?id=${encodeURIComponent(x.r.cliente_id)}" target="_blank" rel="noopener" style="color:var(--brand-light)">abrir cadastro</a>` : ''}`;
+    const foi = x.foi ? `<div style="color:var(--warn);font-size:11.5px;margin-top:3px;">já foi no arquivo nº ${x.foi.numero} de ${fmtDia(x.foi.data)} — só mande de novo se o Inter recusou</div>` : '';
+    return `<tr data-linha="${esc(id)}">
+      <td style="${EST.td}width:28px;"><input type="checkbox" data-in="${esc(id)}"${pronto?'':' disabled'}${inter.marcados.has(id)?' checked':''} aria-label="incluir ${esc(x.b.nome)}"></td>
+      <td style="${EST.td}font-weight:600;">${esc(x.b.nome)}</td>
+      <td style="${EST.td}white-space:nowrap;text-align:right;">${BRL(x.b.valor)}</td>
+      <td style="${EST.td}white-space:nowrap;">${fmtDia(x.b.vencimento)}</td>
+      <td style="${EST.td}white-space:nowrap;">${pronto ? fmtDia(pagavelAte(x.b.vencimento)) : '—'}</td>
+      <td style="${EST.td}">${sit}${foi}</td></tr>`;
+  }).join('');
+  const nProntos=prontos.size, barrados=itens.length-nProntos;
+  $('inBody').innerHTML = gerado + conta + info + (itens.length ? `
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+      <button class="btn btn-ghost btn-sm" id="inTodos"${nProntos?'':' disabled'}>Marcar os prontos (${nProntos})</button>
+      <button class="btn btn-ghost btn-sm" id="inNenhum">Desmarcar</button>
+      <span id="inResumo" style="font-size:12.5px;color:var(--text-muted);">${barrados ? `${barrados} com pendência — não vão no arquivo` : 'todos prontos'}</span>
+    </div>
+    <div style="border:1px solid var(--line);border-radius:12px;overflow:auto;max-height:44vh;">
+      <table style="border-collapse:collapse;width:100%;"><thead><tr>
+        <th style="${EST.th}"></th><th style="${EST.th}">Empresa</th><th style="${EST.th}text-align:right;">Valor</th>
+        <th style="${EST.th}">Vencimento</th><th style="${EST.th}">Pagável até</th><th style="${EST.th}">Situação</th>
+      </tr></thead><tbody>${linhas}</tbody></table>
+    </div>` : '<div class="bo-empty" style="padding:26px 10px;">Nenhuma cobrança <b>A emitir</b> nesta competência.</div>') + `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px;">
+      <div id="inMsg" class="bo-msg"></div>
+      <button class="btn btn-primary" id="inGerar"></button>
+    </div>`;
+  $('inBody').querySelectorAll('[data-in]').forEach(ch=>ch.addEventListener('change', ()=>{
+    if(ch.checked) inter.marcados.add(ch.dataset.in); else inter.marcados.delete(ch.dataset.in);
+    atualizarGerarInter();
+  }));
+  const on=(id, fn)=>{ const el=$(id); if(el) el.addEventListener('click', fn); };
+  on('inTodos', ()=>{ prontos.forEach(id=>inter.marcados.add(id)); $('inBody').querySelectorAll('[data-in]:not(:disabled)').forEach(ch=>{ ch.checked=true; }); atualizarGerarInter(); });
+  on('inNenhum', ()=>{ inter.marcados.clear(); $('inBody').querySelectorAll('[data-in]').forEach(ch=>{ ch.checked=false; }); atualizarGerarInter(); });
+  on('inAlterarConta', ()=>{ inter.editandoConta=true; renderInter(); });
+  on('inCancelarConta', ()=>{ inter.editandoConta=false; renderInter(); });
+  on('inSalvarConta', salvarContaInter);
+  on('inGerar', gerarInter);
+  on('inEmitidos', marcarEmitidosInter);
+  atualizarGerarInter();
+}
+
+// botão de gerar acompanha os marcados sem redesenhar a lista (não perde a rolagem)
+function atualizarGerarInter(){
+  const btn=$('inGerar'); if(!btn) return;
+  const marc=inter.itens.filter(x=>inter.marcados.has(x.r.id));
+  const soma=marc.reduce((s,x)=>s+(Number(x.b.valor)||0),0);
+  btn.disabled=!(marc.length && inter.cfg.conta && !inter.editandoConta);
+  btn.textContent = marc.length ? `Gerar arquivo · ${marc.length} boleto(s) · ${BRL(soma)}` : 'Gerar arquivo';
+  if(!inter.cfg.conta && !inter.editandoConta) inMsg('Falta a conta do Inter.', 'err');
+}
+
+async function salvarCfgInter(cfg){
+  const valor=JSON.stringify(cfg);
+  const { error } = inter.existe
+    ? await supabase.from('configuracoes_escritorio').update({ valor, updated_at:new Date().toISOString() }).eq('chave', CHAVE_INTER)
+    : await supabase.from('configuracoes_escritorio').insert({ chave:CHAVE_INTER, valor, descricao:DESC_INTER });
+  if(error){ inMsg('Não consegui guardar nas configurações: '+error.message, 'err'); return false; }
+  inter.existe=true; inter.cfg=cfg;
+  return true;
+}
+
+async function salvarContaInter(){
+  const c=lerConta($('inConta').value), nome=textoCnab($('inNome').value).slice(0,30);
+  if(!c){ inMsg('Digite a conta corrente do Inter com o dígito (ex.: 12345678-9).', 'err'); return; }
+  if(!nome){ inMsg('Digite o nome da empresa como vai no arquivo.', 'err'); return; }
+  if(await salvarCfgInter({ ...inter.cfg, conta:c.conta, dv:c.dv, nome })){
+    inter.editandoConta=false; renderInter(); inMsg('Conta guardada.', 'ok');
+  }
+}
+
+async function gerarInter(){
+  const cfg=inter.cfg;
+  const itens=itensInter().filter(x=>inter.marcados.has(x.r.id) && !x.probl.length);
+  if(!itens.length || !cfg.conta) return;
+  const btn=$('inGerar'); btn.disabled=true;
+  const hoje=hojeLocal(), numero=(Number(cfg.remessa)||0)+1;
+  const seq0 = cfg.seq_dia===hoje ? (Number(cfg.seq)||0) : 0;
+  let arq;
+  try{
+    arq=montarRemessa({ empresa:cfg.nome, conta:cfg.conta, dv:cfg.dv, numero, data:hoje,
+      boletos:itens.map((x,i)=>({ ...x.b, controle:controleDe(x.r.id), seuNumero:seuNumero(hoje, seq0+i+1) })) });
+  }catch(e){ inMsg(e.message, 'err'); btn.disabled=false; return; }
+  // o número do arquivo e a sequência do "seu número" ficam guardados antes de baixar: dois arquivos nunca saem
+  // com o mesmo número, nem dois boletos com o mesmo "seu número" no dia
+  const ids=itens.map(x=>x.r.id);
+  const arquivos=[...(cfg.arquivos||[]), { numero, data:hoje, ids }].slice(-12);
+  if(!(await salvarCfgInter({ ...cfg, remessa:numero, seq_dia:hoje, seq:seq0+itens.length, arquivos }))){ btn.disabled=false; return; }
+  const url=URL.createObjectURL(new Blob([arq.conteudo], { type:'text/plain' }));
+  const a=document.createElement('a'); a.href=url; a.download=arq.nome; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 5000);
+  inter.gerado={ nome:arq.nome, qtd:arq.qtd, total:arq.total, ids, marcado:false };
+  inter.marcados=new Set();
+  renderInter();
+}
+
+async function marcarEmitidosInter(){
+  const g=inter.gerado; if(!g || !g.ids.length) return;
+  const btn=$('inEmitidos'); if(btn) btn.disabled=true;
+  const { error } = await supabase.from('cobrancas_mensais').update({ status:'emitido' }).in('id', g.ids).eq('status','a_emitir');
+  if(error){ inMsg('Não consegui marcar: '+error.message, 'err'); if(btn) btn.disabled=false; return; }
+  rows.forEach(r=>{ if(g.ids.includes(r.id) && r.status==='a_emitir') r.status='emitido'; });
+  g.marcado=true;
+  render(); renderInter();
+  inMsg(`${g.qtd} cobrança(s) marcada(s) como Emitido.`, 'ok');
 }
 
 function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
