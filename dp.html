@@ -12,6 +12,7 @@
 
     /* Cor de identidade por setor (no ícone) */
     a[href="dp-tarefas.html"] .dashboard-card-icon { background: rgba(138,174,200,.16); color:#8AAEC8; }
+    a[href="dp-admissoes.html"] .dashboard-card-icon { background: rgba(251,146,60,.16); color:#FB923C; }
     a[href="dp-regras.html"] .dashboard-card-icon { background: rgba(63,176,122,.16); color:#3FB07A; }
     a[href="dp-relatorios.html"] .dashboard-card-icon { background: rgba(133,151,224,.16); color:#8597E0; }
     a[href="dp-sugestoes.html"] .dashboard-card-icon { background: rgba(164,143,224,.16); color:#A48FE0; }
@@ -56,7 +57,7 @@
         </div>
         <div class="eyebrow">Setor</div>
         <h1>Departamento Pessoal</h1>
-        <p>Módulos do setor: tarefas, tarefas recorrentes, relatórios, sugestões de melhoria, convenções, custo do funcionário, pareceres.</p>
+        <p>Módulos do setor: tarefas, admissões, tarefas recorrentes, relatórios, sugestões de melhoria, convenções, custo do funcionário, pareceres.</p>
       </div>
 
       <div class="dashboard-grid">
@@ -67,6 +68,15 @@
           <h3>Tarefas</h3>
           <p>Tarefas do dia a dia do setor, com faixa de foco por vencimento.</p>
           <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="dp-tarefas.html">·</span></div>
+        </a>
+
+        <a href="dp-admissoes.html" class="dashboard-card">
+          <div class="dashboard-card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+          </div>
+          <h3>Admissões</h3>
+          <p>Registro de funcionários: link do formulário pra empresa preencher, documentos recebidos e tarefa na agenda até o registro.</p>
+          <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="dp-admissoes.html">·</span></div>
         </a>
 
         <a href="fator-r.html" class="dashboard-card">
@@ -157,6 +167,20 @@
           const pill = document.createElement('span');
           pill.className = 'badge-hoje'; pill.textContent = hoje + ' hoje';
           card.appendChild(pill);
+        }
+        {
+          const { data: ads, error: eAd } = await supabase.from('admissoes').select('status').in('status', ['aguardando_empresa', 'respondida', 'em_registro']);
+          if (eAd) setBadge('dp-admissoes.html', '—');
+          else {
+            setBadge('dp-admissoes.html', (ads || []).length + ' abertas');
+            const resp = (ads || []).filter(a => a.status === 'respondida').length;
+            if (resp) {
+              const card = document.querySelector('a[href="dp-admissoes.html"]');
+              const pill = document.createElement('span');
+              pill.className = 'badge-hoje'; pill.textContent = resp + (resp === 1 ? ' respondida' : ' respondidas');
+              card.appendChild(pill);
+            }
+          }
         }
         ["dp-regras.html", "dp-relatorios.html", "dp-sugestoes.html", "dp-convencoes.html", "dp-custo.html", "dp-pareceres.html"].forEach(h => setBadge(h, '—'));
       } catch (e) { console.error(e); }

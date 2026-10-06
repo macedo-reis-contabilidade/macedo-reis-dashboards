@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Registro de funcionário — Macedo & Reis Contabilidade</title>
+<!-- Link público do módulo Admissões (DP): a empresa preenche sem login. Só fala com o banco pelas funções
+     admissao_publica / admissao_responder, que exigem o token da admissão (?t=). O modelo do formulário é editado
+     no módulo (dp-admissoes.html); ?previa=1 mostra o modelo em edição, guardado pelo módulo no navegador. -->
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system, 'Segoe UI', Roboto, Arial, sans-serif; background:#EEF2F6; color:#1a2330; padding:0 0 60px; }
+  .topo { background:linear-gradient(135deg, #3A5878, #5B82A6); color:#fff; padding:22px 20px 24px; text-align:center; }
+  .topo img { width:46px; height:46px; object-fit:contain; background:#fff; border-radius:12px; padding:5px; display:block; margin:0 auto 8px; }
+  .topo h1 { font-size:18px; font-weight:700; letter-spacing:.02em; }
+  .topo p { font-size:12px; opacity:.85; margin-top:3px; }
+  .wrap { max-width:600px; margin:-14px auto 0; padding:0 14px; }
+  .card { background:#fff; border-radius:14px; box-shadow:0 4px 18px rgba(26,35,48,.08); padding:20px 18px; margin-bottom:14px; }
+  .previa { background:#FFF7E0; border:1.5px dashed #D9A520; color:#6B4E00; font-size:13px; line-height:1.5; }
+  .cab h2 { font-size:17px; color:#3A5878; line-height:1.35; }
+  .cab .emp { font-size:14px; color:#33404f; margin-top:10px; font-weight:600; }
+  .cab .sub { font-size:13px; color:#5c6878; margin-top:3px; }
+  .cab .intro { font-size:13.5px; color:#4a5565; line-height:1.55; margin-top:10px; white-space:pre-line; }
+  h3.bloco { font-size:12.5px; color:#3A5878; text-transform:uppercase; letter-spacing:.06em; margin:0 0 12px; padding-bottom:8px; border-bottom:2px solid #E3EAF1; }
+  .txt { font-size:13.5px; color:#3b4656; line-height:1.55; margin-bottom:12px; }
+  .txt p { margin-bottom:4px; }
+  .txt ul { margin:2px 0 6px 18px; }
+  .txt li { margin-bottom:3px; }
+  .rot { font-size:12px; color:#5c6878; font-weight:600; text-transform:uppercase; letter-spacing:.04em; margin:6px 0 4px; }
+  .nota { font-size:12.5px; color:#5c6878; background:#F4F7FA; border-left:3px solid #8AAEC8; padding:8px 10px; border-radius:0 8px 8px 0; margin-top:6px; line-height:1.5; }
+  .campo { margin-bottom:16px; }
+  .campo > label, .campo > .lbl { display:block; font-size:13.5px; color:#33404f; font-weight:600; margin-bottom:6px; }
+  .campo small.ajuda { display:block; font-weight:400; color:#8a94a3; font-size:12px; margin-top:2px; }
+  .campo input[type=text], .campo input[type=date], .campo input[type=time], .campo textarea { width:100%; font:inherit; font-size:15px; padding:11px 12px; border:1.5px solid #D5DEE7; border-radius:10px; background:#FBFCFE; color:#1a2330; }
+  .campo textarea { min-height:78px; resize:vertical; }
+  .campo input:focus, .campo textarea:focus { outline:none; border-color:#5B82A6; background:#fff; }
+  .ops { display:flex; flex-direction:column; gap:6px; }
+  .op { display:flex; gap:10px; align-items:flex-start; padding:10px 12px; border:1.5px solid #D5DEE7; border-radius:10px; background:#FBFCFE; cursor:pointer; font-size:14.5px; }
+  .op input { margin-top:3px; width:18px; height:18px; accent-color:#3A5878; flex:none; }
+  .op small { display:block; color:#7a8595; font-size:12px; margin-top:2px; }
+  .op:has(input:checked) { border-color:#5B82A6; background:#EEF4FA; }
+  .ciente { display:flex; gap:10px; align-items:flex-start; padding:12px; border:1.5px solid #D5DEE7; border-radius:10px; background:#FBFCFE; cursor:pointer; font-size:14.5px; font-weight:600; color:#33404f; }
+  .ciente input { margin-top:2px; width:20px; height:20px; accent-color:#3A5878; flex:none; }
+  .obr::after { content:' *'; color:#C0564F; }
+  .falta input[type=text], .falta input[type=date], .falta input[type=time], .falta textarea, .falta .op, .falta .ciente { border-color:#C0564F; }
+  .falta-msg { display:none; color:#C0564F; font-size:12px; margin-top:5px; }
+  .falta .falta-msg { display:block; }
+  .botao { width:100%; font:inherit; font-size:16px; font-weight:700; padding:14px; border:none; border-radius:12px; background:#3A5878; color:#fff; cursor:pointer; }
+  .botao.sec { background:#fff; color:#3A5878; border:1.5px solid #3A5878; margin-top:12px; }
+  .botao:active { transform:scale(.99); }
+  .botao[disabled] { opacity:.6; }
+  .erro { color:#C0564F; font-size:13px; margin-top:10px; min-height:18px; text-align:center; }
+  .aviso { text-align:center; padding:30px 20px; }
+  .aviso .ic { font-size:42px; }
+  .aviso h2 { font-size:18px; color:#3A5878; margin:10px 0 8px; }
+  .aviso.ok h2 { color:#2E7D5B; }
+  .aviso p { font-size:14px; color:#4a5565; line-height:1.6; white-space:pre-line; }
+  .rodape { text-align:center; font-size:11.5px; color:#8a94a3; margin-top:18px; line-height:1.6; white-space:pre-line; }
+</style>
+</head>
+<body>
+  <div class="topo">
+    <img src="assets/logo-mr.png" alt="">
+    <h1>Macedo &amp; Reis Contabilidade</h1>
+    <p>Departamento Pessoal · Três Coroas – RS</p>
+  </div>
+  <div class="wrap">
+    <div id="app"><div class="card"><p style="color:#8a94a3;font-size:13.5px;">Carregando o formulário…</p></div></div>
+    <div class="rodape" id="rodape"></div>
+  </div>
+
+<script type="module">
+  import { supabase } from './assets/js/supabase.js';
+
+  const RODAPE_PADRAO = 'Macedo e Reis Contabilidade Ltda · Rua Luiz Volkart, 35, 1º andar – Centro – Três Coroas/RS · CEP 95660-000 · (51) 3546-1385 · rh@macedoereis.com.br';
+  const PRIVACIDADE = 'As informações vão direto para o Departamento Pessoal da Macedo & Reis e são usadas só para o registro do(a) funcionário(a).';
+  const params = new URLSearchParams(location.search);
+  const PREVIA = params.get('previa') === '1';
+  const TOKEN = (params.get('t') || '').trim().toLowerCase();
+  const app = document.getElementById('app');
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  const fmtData = d => d ? String(d).slice(0, 10).split('-').reverse().join('/') : '';
+  const fmtQuando = ts => {
+    if (!ts) return '';
+    const d = new Date(ts);
+    const dia = d.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+    const hora = d.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
+    return dia + ' às ' + hora;
+  };
+  let modelo = null, info = {};
+
+  // texto livre do modelo: linhas com "* " ou "- " viram lista; as outras, parágrafos
+  function textoHtml(t) {
+    let html = '', lista = false;
+    String(t || '').split('\n').forEach(l => {
+      const m = l.match(/^\s*[*•-]\s+(.*)$/);
+      if (m) { if (!lista) { html += '<ul>'; lista = true; } html += '<li>' + esc(m[1]) + '</li>'; return; }
+      if (lista) { html += '</ul>'; lista = false; }
+      if (l.trim()) html += '<p>' + esc(l.trim()) + '</p>';
+    });
+    if (lista) html += '</ul>';
+    return html;
+  }
+
+  function aviso(ic, titulo, texto, classe) {
+    app.innerHTML = `<div class="card aviso ${classe || ''}"><div class="ic">${ic}</div><h2>${esc(titulo)}</h2><p>${esc(texto)}</p></div>`;
+  }
+
+  function campoDe(b, i) {
+    const nome = 'q' + i;
+    if (b.formato === 'escolha') {
+      return '<div class="ops">' + (b.opcoes || []).map(o => {
+        const op = typeof o === 'string' ? { texto: o } : (o || {});
+        return `<label class="op"><input type="radio" name="${nome}" value="${esc(op.texto)}"><span>${esc(op.texto)}${op.ajuda ? `<small>${esc(op.ajuda)}</small>` : ''}</span></label>`;
+      }).join('') + '</div>';
+    }
+    if (b.formato === 'texto_longo') return `<textarea name="${nome}" id="f${i}"></textarea>`;
+    if (b.formato === 'data') return `<input type="date" name="${nome}" id="f${i}">`;
+    if (b.formato === 'hora') return `<input type="time" name="${nome}" id="f${i}">`;
+    return `<input type="text" name="${nome}" id="f${i}">`;
+  }
+
+  function desenhar() {
+    const blocos = Array.isArray(modelo.blocos) ? modelo.blocos : [];
+    let html = '';
+    if (PREVIA) html += '<div class="card previa"><b>Prévia</b> — é assim que a empresa vê o formulário. Nada do que for preenchido aqui é enviado.</div>';
+    html += '<div class="card cab">'
+      + `<h2>${esc(modelo.titulo || 'Registro de funcionário(a)')}</h2>`
+      + (info.empresa ? `<div class="emp">${esc(info.empresa)}</div>` : '')
+      + ((info.funcionario || info.data_inicio) ? `<div class="sub">${info.funcionario ? 'Funcionário(a): ' + esc(info.funcionario) : ''}${info.funcionario && info.data_inicio ? ' · ' : ''}${info.data_inicio ? 'início em ' + fmtData(info.data_inicio) : ''}</div>` : '')
+      + (modelo.introducao ? `<div class="intro">${esc(modelo.introducao)}</div>` : '')
+      + '</div>';
+    let aberto = false;
+    const abre = titulo => { if (aberto) html += '</div>'; html += '<div class="card">' + (titulo ? `<h3 class="bloco">${esc(titulo)}</h3>` : ''); aberto = true; };
+    blocos.forEach((b, i) => {
+      if (!b || !b.tipo) return;
+      if (b.tipo === 'secao') { abre(b.titulo); return; }
+      if (b.tipo === 'documentos') {
+        abre(b.titulo);
+        if (b.texto) html += `<div class="txt">${textoHtml(b.texto)}</div>`;
+        const itens = (b.itens || []).filter(x => String(x).trim());
+        if (itens.length) html += `<div class="txt">${b.texto ? '<div class="rot">Documentos</div>' : ''}<ul>${itens.map(x => '<li>' + esc(x) + '</li>').join('')}</ul></div>`;
+        if (b.nota) html += `<div class="nota">${esc(b.nota)}</div>`;
+        return;
+      }
+      if (b.tipo === 'declaracao') {
+        abre(b.titulo);
+        if (b.texto) html += `<div class="txt">${textoHtml(b.texto)}</div>`;
+        html += `<div class="campo" data-i="${i}"><label class="ciente"><input type="checkbox" name="q${i}"><span class="${b.obrigatoria ? 'obr' : ''}">${esc(b.rotulo || 'Ciente')}</span></label><div class="falta-msg">Marque para continuar.</div></div>`;
+        return;
+      }
+      if (!aberto) abre('');
+      if (b.tipo === 'texto') { html += `<div class="txt">${textoHtml(b.texto)}</div>`; return; }
+      if (b.tipo === 'pergunta') {
+        const tag = b.formato === 'escolha' ? 'div class="lbl"' : `label for="f${i}"`;
+        const fecha = b.formato === 'escolha' ? 'div' : 'label';
+        html += `<div class="campo" data-i="${i}"><${tag}><span class="${b.obrigatoria ? 'obr' : ''}">${esc(b.rotulo)}</span>${b.ajuda ? `<small class="ajuda">${esc(b.ajuda)}</small>` : ''}</${fecha}>${campoDe(b, i)}<div class="falta-msg">Preencha este campo.</div></div>`;
+      }
+    });
+    if (aberto) html += '</div>';
+    html += '<div class="card"><button class="botao" id="btnEnviar">Enviar informações</button><div class="erro" id="msgErro"></div></div>';
+    app.innerHTML = html;
+    app.querySelectorAll('.campo').forEach(c => c.addEventListener('input', () => c.classList.remove('falta')));
+    app.querySelectorAll('.campo').forEach(c => c.addEventListener('change', () => c.classList.remove('falta')));
+    document.getElementById('btnEnviar').addEventListener('click', enviar);
+  }
+
+  function coletar() {
+    const blocos = Array.isArray(modelo.blocos) ? modelo.blocos : [];
+    const respostas = [], faltam = [];
+    let secao = '';
+    blocos.forEach((b, i) => {
+      if (!b) return;
+      if (b.tipo === 'secao' || b.tipo === 'documentos') { secao = b.titulo || secao; return; }
+      const el = app.querySelector(`.campo[data-i="${i}"]`);
+      if (b.tipo === 'pergunta') {
+        let v = '';
+        if (b.formato === 'escolha') v = (app.querySelector(`input[name="q${i}"]:checked`) || {}).value || '';
+        else v = ((app.querySelector(`[name="q${i}"]`) || {}).value || '').trim();
+        if (b.obrigatoria && !v) faltam.push(el);
+        respostas.push({ id: b.id, rotulo: b.rotulo, tipo: b.formato || 'texto', secao, valor: v });
+      }
+      if (b.tipo === 'declaracao') {
+        const marcado = !!(app.querySelector(`input[name="q${i}"]`) || {}).checked;
+        if (b.obrigatoria && !marcado) faltam.push(el);
+        respostas.push({ id: b.id, rotulo: b.rotulo || 'Ciente', tipo: 'declaracao', secao: b.titulo || secao, valor: marcado ? 'Sim' : 'Não', texto: b.texto || '' });
+      }
+    });
+    return { respostas, faltam: faltam.filter(Boolean) };
+  }
+
+  async function enviar() {
+    const erro = document.getElementById('msgErro');
+    const btn = document.getElementById('btnEnviar');
+    app.querySelectorAll('.campo.falta').forEach(c => c.classList.remove('falta'));
+    const { respostas, faltam } = coletar();
+    if (faltam.length) {
+      faltam.forEach(c => c.classList.add('falta'));
+      erro.textContent = faltam.length === 1 ? 'Falta 1 campo obrigatório (marcado em vermelho).' : `Faltam ${faltam.length} campos obrigatórios (marcados em vermelho).`;
+      faltam[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    if (PREVIA) { erro.textContent = 'Prévia: tudo preenchido. Na prévia nada é enviado.'; return; }
+    erro.textContent = '';
+    btn.disabled = true; btn.textContent = 'Enviando…';
+    const { error } = await supabase.rpc('admissao_responder', { p_token: TOKEN, p_respostas: respostas });
+    if (error) {
+      btn.disabled = false; btn.textContent = 'Enviar informações';
+      if (/encerrad/i.test(error.message || '')) {
+        aviso('🔒', 'Este link foi encerrado', 'O registro já está com o escritório. Para mudar alguma informação, fale com o Departamento Pessoal.');
+      } else {
+        erro.textContent = 'Não foi possível enviar agora (' + (error.message || 'erro de conexão') + '). Tente novamente.';
+      }
+      return;
+    }
+    aviso('✅', 'Informações recebidas!', modelo.final || 'Obrigado! O Departamento Pessoal do escritório vai conferir e fazer o registro.', 'ok');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function rodape() {
+    document.getElementById('rodape').textContent = ((modelo && modelo.rodape) || RODAPE_PADRAO) + '\n' + PRIVACIDADE;
+  }
+
+  async function iniciar() {
+    if (PREVIA) {
+      let dados = null;
+      try { dados = JSON.parse(localStorage.getItem('mr_admissao_previa') || 'null'); } catch (e) { dados = null; }
+      if (!dados || !dados.modelo) { aviso('ℹ️', 'Prévia indisponível', 'Abra a prévia pelo módulo Admissões, no botão "Ver como a empresa vê".'); rodape(); return; }
+      modelo = dados.modelo; info = { empresa: 'EMPRESA EXEMPLO LTDA' };
+      rodape(); desenhar(); return;
+    }
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(TOKEN)) {
+      aviso('🔗', 'Link incompleto', 'Confira se o link foi copiado inteiro ou peça um novo ao escritório.'); rodape(); return;
+    }
+    const { data, error } = await supabase.rpc('admissao_publica', { p_token: TOKEN });
+    if (error || !data) { aviso('⚠️', 'Não conseguimos abrir o formulário', 'Tente de novo em instantes. Se continuar, fale com o escritório.'); rodape(); return; }
+    if (data.situacao === 'invalido') { aviso('🔗', 'Link inválido', 'Este link não existe mais ou foi cancelado. Peça um novo ao escritório.'); rodape(); return; }
+    if (data.situacao === 'encerrado') { aviso('🔒', 'Este link foi encerrado', 'O registro já está com o escritório. Para mudar alguma informação, fale com o Departamento Pessoal.'); rodape(); return; }
+    if (data.situacao === 'sem_modelo' || !data.modelo) { aviso('⚠️', 'Formulário indisponível', 'Fale com o escritório, por favor.'); rodape(); return; }
+    modelo = data.modelo; info = { empresa: data.empresa, funcionario: data.funcionario, data_inicio: data.data_inicio };
+    rodape();
+    if (data.situacao === 'respondida') {
+      aviso('✅', 'Já recebemos as informações', 'Enviadas em ' + fmtQuando(data.respondida_em) + '. Se precisar corrigir alguma coisa, preencha de novo: o novo envio substitui o anterior.', 'ok');
+      const b = document.createElement('button');
+      b.className = 'botao sec'; b.id = 'btnDeNovo'; b.textContent = 'Preencher de novo';
+      b.addEventListener('click', desenhar);
+      app.querySelector('.aviso').appendChild(b);
+      return;
+    }
+    desenhar();
+  }
+
+  iniciar();
+</script>
+</body>
+</html>

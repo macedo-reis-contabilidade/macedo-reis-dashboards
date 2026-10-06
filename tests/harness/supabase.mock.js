@@ -158,7 +158,9 @@ function q(table){
   }});
   return chain;
 }
-export const supabase = { from: q, auth: { getUser: async () => ({ data: { user: { email:'financeiro@macedoereis.com.br' } } }), getSession: async () => ({ data: { session: { user: { email:'financeiro@macedoereis.com.br' } } } }) }, rpc: async () => ({ data: [], error:null }) };
+// rpc: quem responde é o teste, por window.__mockRpc(nome, args) (o admissoes.py usa pro link público); sem ele, lista vazia
+export const supabase = { from: q, auth: { getUser: async () => ({ data: { user: { email:'financeiro@macedoereis.com.br' } } }), getSession: async () => ({ data: { session: { user: { email:'financeiro@macedoereis.com.br' } } } }) },
+  rpc: async (nome, args) => (typeof window.__mockRpc === 'function' ? window.__mockRpc(nome, args || {}) : { data: [], error:null }) };
 supabase.todosClientes = async () => ({ data: DATA.clientes, error:null });
 // Edge Functions: quem responde é o teste, por window.__mockInvoke(nome, { body }) (o cadastro-socios.py usa pra
 // devolver uma leitura de contrato inventada). Sem ele, a chamada volta com erro — o harness nunca chama função de verdade
