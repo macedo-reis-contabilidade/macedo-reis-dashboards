@@ -8,7 +8,8 @@
 <title>Registro de funcionário — Macedo & Reis Contabilidade</title>
 <!-- Link público do módulo Admissões (DP), o mesmo pra todas as empresas — como o forms da precificação (proposta.html):
      a empresa se identifica, preenche e envia; a admissão nasce no módulo (dp-admissoes.html) e na agenda do DP.
-     Só fala com o banco pelas funções admissao_formulario / admissao_enviar. O modelo é editado no módulo;
+     Só fala com o sistema pela Edge Function admissao-link (formulário, envio e anexos, que vão pro Drive em
+     BANCO DE INFORMAÇÕES > SETOR DP E RH > ADMISSÕES > EMPRESA > FUNCIONÁRIO). O modelo é editado no módulo;
      ?previa=1 mostra o modelo em edição, guardado pelo módulo no navegador. -->
 <style>
   * { box-sizing:border-box; margin:0; padding:0; }
@@ -56,6 +57,22 @@
   .aviso h2 { font-size:18px; color:#3A5878; margin:10px 0 8px; }
   .aviso.ok h2 { color:#2E7D5B; }
   .aviso p { font-size:14px; color:#4a5565; line-height:1.6; white-space:pre-line; }
+  .anexo { margin-top:12px; padding:12px; border:1.5px dashed #C9D5E2; border-radius:10px; background:#F7FAFC; }
+  .anexo-btn { display:inline-flex; align-items:center; gap:8px; padding:10px 14px; border-radius:10px; background:#fff; border:1.5px solid #5B82A6; color:#3A5878; font-weight:700; font-size:14.5px; cursor:pointer; }
+  .anexo-btn input { display:none; }
+  .anexo-lista { margin-top:8px; display:flex; flex-direction:column; gap:6px; }
+  .anexo-lista:empty { display:none; }
+  .anexo-item { display:flex; gap:8px; align-items:center; font-size:13px; color:#33404f; background:#fff; border:1px solid #E3EAF1; border-radius:8px; padding:6px 8px; }
+  .anexo-item span { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .anexo-item small { color:#8a94a3; white-space:nowrap; }
+  .anexo-item button { background:none; border:none; color:#C0564F; font-size:16px; cursor:pointer; padding:0 4px; }
+  .anexo-email { font-size:12.5px; color:#5c6878; margin-top:8px; line-height:1.5; }
+  .anexo-erro { color:#C0564F; font-size:12px; margin-top:6px; }
+  .anexo-erro:empty { display:none; }
+  .progresso { font-size:13px; color:#3A5878; margin-top:12px; text-align:center; }
+  .progresso:empty { display:none; }
+  .barra { height:6px; background:#E3EAF1; border-radius:99px; overflow:hidden; margin-top:6px; }
+  .barra div { height:100%; background:#3A5878; width:0; transition:width .2s; }
   .rodape { text-align:center; font-size:11.5px; color:#8a94a3; margin-top:18px; line-height:1.6; white-space:pre-line; }
 </style>
 </head>
@@ -76,9 +93,14 @@
 
   const RODAPE_PADRAO = 'Macedo e Reis Contabilidade Ltda · Rua Luiz Volkart, 35, 1º andar – Centro – Três Coroas/RS · CEP 95660-000 · (51) 3546-1385 · rh@macedoereis.com.br';
   const PRIVACIDADE = 'As informações vão direto para o Departamento Pessoal da Macedo & Reis e são usadas só para o registro do(a) funcionário(a).';
+  const EMAIL_PADRAO = 'rh@macedoereis.com.br';
+  const FUNCAO = 'admissao-link';
+  const PARTE = 2 * 1024 * 1024;                       // anexos sobem em partes de 2 MB (múltiplo de 256 KB, exigência do Drive)
+  const MAX_ARQ = 25 * 1024 * 1024, MAX_QTD = 20, MAX_TOTAL = 100 * 1024 * 1024;
   const PREVIA = new URLSearchParams(location.search).get('previa') === '1';
   const app = document.getElementById('app');
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  const tam = n => n >= 1048576 ? (n / 1048576).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
   // quem está preenchendo e a empresa: fixos (o sistema usa pra achar a empresa no cadastro e pra retornar o contato)
   const IDENT = [
     { k: 'empresa', rot: 'Empresa (razão social)', tipo: 'text' },
@@ -86,7 +108,9 @@
     { k: 'contato', rot: 'Seu nome', tipo: 'text' },
     { k: 'whatsapp', rot: 'Seu WhatsApp (para retorno)', tipo: 'tel' },
   ];
-  let modelo = null;
+  let modelo = null, anexos = {};
+  const email = () => (modelo && modelo.email) || EMAIL_PADRAO;
+  const chamar = (body, headers) => supabase.functions.invoke(FUNCAO, headers ? { body, headers } : { body });
 
   // texto livre do modelo: linhas com "* " ou "- " viram lista; as outras, parágrafos
   function textoHtml(t) {
@@ -119,8 +143,37 @@
     return `<input type="text" name="${nome}" id="f${i}">`;
   }
 
+  // ---------- anexos (por lista de documentos) ----------
+  const todosAnexos = () => Object.keys(anexos).sort((a, b) => a - b).flatMap(k => anexos[k].map(f => ({ file: f, grupo: (modelo.blocos[k] || {}).titulo || 'Documentos' })));
+  function pintarAnexos(i) {
+    const el = document.getElementById('anx' + i);
+    if (!el) return;
+    el.innerHTML = (anexos[i] || []).map((f, n) => `<div class="anexo-item"><span>📄 ${esc(f.name)}</span><small>${tam(f.size)}</small><button type="button" data-tira="${i}:${n}" title="Tirar">✕</button></div>`).join('');
+    el.querySelectorAll('[data-tira]').forEach(b => b.addEventListener('click', () => {
+      const [k, n] = b.dataset.tira.split(':').map(Number);
+      anexos[k].splice(n, 1); pintarAnexos(k);
+    }));
+  }
+  function adicionarAnexos(i, files) {
+    const erro = document.getElementById('anxErr' + i);
+    erro.textContent = '';
+    const lista = anexos[i] || (anexos[i] = []);
+    const recusados = [];
+    for (const f of files) {
+      const atuais = todosAnexos();
+      if (f.size > MAX_ARQ) { recusados.push(`${f.name} passa de 25 MB`); continue; }
+      if (!f.size) { recusados.push(`${f.name} está vazio`); continue; }
+      if (atuais.length >= MAX_QTD) { recusados.push(`limite de ${MAX_QTD} arquivos`); break; }
+      if (atuais.reduce((s, a) => s + a.file.size, 0) + f.size > MAX_TOTAL) { recusados.push(`${f.name} passa do total de 100 MB`); continue; }
+      lista.push(f);
+    }
+    if (recusados.length) erro.textContent = 'Não anexado: ' + recusados.join('; ') + '. Se precisar, mande por e-mail para ' + email() + '.';
+    pintarAnexos(i);
+  }
+
   function desenhar(ident = {}) {
     const blocos = Array.isArray(modelo.blocos) ? modelo.blocos : [];
+    anexos = {};
     let html = '';
     if (PREVIA) html += '<div class="card previa"><b>Prévia</b> — é assim que a empresa vê o formulário. Nada do que for preenchido aqui é enviado.</div>';
     html += '<div class="card cab">'
@@ -142,6 +195,9 @@
         const itens = (b.itens || []).filter(x => String(x).trim());
         if (itens.length) html += `<div class="txt">${b.texto ? '<div class="rot">Documentos</div>' : ''}<ul>${itens.map(x => '<li>' + esc(x) + '</li>').join('')}</ul></div>`;
         if (b.nota) html += `<div class="nota">${esc(b.nota)}</div>`;
+        html += `<div class="anexo"><label class="anexo-btn">📎 Anexar arquivos<input type="file" multiple data-anexo="${i}"></label>`
+          + `<div class="anexo-lista" id="anx${i}"></div><div class="anexo-erro" id="anxErr${i}"></div>`
+          + `<div class="anexo-email">Anexe aqui (PDF, foto ou qualquer arquivo) ou envie para <b>${esc(email())}</b>.</div></div>`;
         return;
       }
       if (b.tipo === 'declaracao') {
@@ -159,9 +215,11 @@
       }
     });
     if (aberto) html += '</div>';
-    html += '<div class="card"><button class="botao" id="btnEnviar">Enviar informações</button><div class="erro" id="msgErro"></div></div>';
+    html += '<div class="card"><button class="botao" id="btnEnviar">Enviar informações</button><div class="erro" id="msgErro"></div>'
+      + '<div class="progresso" id="progresso"></div><div class="barra" id="barra" hidden><div></div></div></div>';
     app.innerHTML = html;
     app.querySelectorAll('.campo').forEach(c => { c.addEventListener('input', () => c.classList.remove('falta')); c.addEventListener('change', () => c.classList.remove('falta')); });
+    app.querySelectorAll('[data-anexo]').forEach(inp => inp.addEventListener('change', () => { adicionarAnexos(+inp.dataset.anexo, [...inp.files]); inp.value = ''; }));
     bindMask(document.getElementById('id_whatsapp'), maskTelefone);
     document.getElementById('btnEnviar').addEventListener('click', enviar);
   }
@@ -197,6 +255,31 @@
     return { ident: { ...ident, documento: doc }, respostas, faltam: [...new Set(faltam.filter(Boolean))] };
   }
 
+  function progresso(texto, fracao) {
+    document.getElementById('progresso').textContent = texto || '';
+    const barra = document.getElementById('barra');
+    barra.hidden = fracao == null;
+    if (fracao != null) barra.firstElementChild.style.width = Math.round(Math.min(1, fracao) * 100) + '%';
+  }
+
+  // um anexo: abre o envio no Drive e manda as partes em sequência (tenta de novo a parte que falhar na rede)
+  async function subir(id, chave, i, a, feito, totalBytes, n, qtd) {
+    const f = a.file;
+    const r1 = await chamar({ acao: 'arquivo', id, chave, i, nome: f.name, tipo: f.type || 'application/octet-stream', tamanho: f.size, grupo: a.grupo });
+    if (r1.error || !r1.data || !r1.data.ok) return false;
+    for (let ini = 0; ini < f.size; ini += PARTE) {
+      const pedaco = f.slice(ini, Math.min(f.size, ini + PARTE));
+      let r = null;
+      for (let tentativa = 0; tentativa < 3; tentativa++) {
+        r = await chamar(pedaco, { 'x-acao': 'parte', 'x-id': id, 'x-chave': chave, 'x-i': String(i), 'x-inicio': String(ini), 'x-total': String(f.size) });
+        if (!r.error) break;
+      }
+      if (r.error || !r.data || !r.data.ok) return false;
+      progresso(`Enviando os arquivos: ${n} de ${qtd} (${f.name})`, (feito + Math.min(f.size, ini + PARTE)) / totalBytes);
+    }
+    return true;
+  }
+
   async function enviar() {
     const erro = document.getElementById('msgErro');
     const btn = document.getElementById('btnEnviar');
@@ -210,17 +293,42 @@
     }
     if (PREVIA) { erro.textContent = 'Prévia: tudo preenchido. Na prévia nada é enviado.'; return; }
     erro.textContent = '';
+    const lista = todosAnexos();
     btn.disabled = true; btn.textContent = 'Enviando…';
-    const { error } = await supabase.rpc('admissao_enviar', {
-      p_empresa: ident.empresa, p_documento: ident.documento, p_contato: ident.contato, p_whatsapp: ident.whatsapp, p_respostas: respostas });
-    if (error) {
-      btn.disabled = false; btn.textContent = 'Enviar informações';
-      erro.textContent = /muitos envios/i.test(error.message || '')
-        ? 'Muitos envios agora. Tente de novo daqui a pouco ou fale com o escritório.'
-        : 'Não foi possível enviar agora (' + (error.message || 'erro de conexão') + '). Tente novamente.';
+    progresso(lista.length ? 'Enviando as informações…' : '', null);
+    const { data, error } = await chamar({ acao: 'enviar', empresa: ident.empresa, documento: ident.documento, contato: ident.contato,
+      whatsapp: ident.whatsapp, respostas, arquivos: lista.map(a => ({ nome: a.file.name, tamanho: a.file.size, tipo: a.file.type || 'application/octet-stream', grupo: a.grupo })) });
+    if (error || !data || data.error) {
+      btn.disabled = false; btn.textContent = 'Enviar informações'; progresso('', null);
+      if (data && data.error === 'NAO_CLIENTE') {
+        const campo = app.querySelector('.campo[data-id="documento"]');
+        campo.classList.add('falta'); campo.querySelector('.falta-msg').textContent = data.mensagem;
+        campo.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        erro.textContent = 'Confira o CNPJ/CPF da empresa.';
+      } else {
+        erro.textContent = (data && data.error) ? data.error : 'Não foi possível enviar agora (' + ((error && error.message) || 'erro de conexão') + '). Tente novamente.';
+      }
       return;
     }
-    aviso('✅', 'Informações recebidas!', modelo.final || 'Obrigado! O Departamento Pessoal do escritório vai conferir e fazer o registro.', 'ok');
+    const falhas = [];
+    if (lista.length) {
+      if (!data.chave) falhas.push(...lista.map(a => a.file.name));
+      else {
+        const totalBytes = lista.reduce((s, a) => s + a.file.size, 0);
+        let feito = 0;
+        for (const [i, a] of lista.entries()) {
+          progresso(`Enviando os arquivos: ${i + 1} de ${lista.length} (${a.file.name})`, feito / totalBytes);
+          if (!(await subir(data.id, data.chave, i, a, feito, totalBytes, i + 1, lista.length))) falhas.push(a.file.name);
+          feito += a.file.size;
+        }
+        await chamar({ acao: 'concluir', id: data.id, chave: data.chave });
+      }
+    }
+    const ok = lista.length - falhas.length;
+    let texto = modelo.final || 'Obrigado! O Departamento Pessoal do escritório vai conferir e fazer o registro.';
+    if (ok) texto += `\n\n${ok === 1 ? '1 arquivo enviado' : ok + ' arquivos enviados'} para o escritório.`;
+    if (falhas.length) texto += `\n\nNão conseguimos enviar: ${falhas.join(', ')}. Mande ${falhas.length === 1 ? 'esse arquivo' : 'esses arquivos'} para ${data.email || email()}.`;
+    aviso(falhas.length ? '⚠️' : '✅', 'Informações recebidas!', texto, falhas.length ? '' : 'ok');
     const outro = document.createElement('button');
     outro.className = 'botao sec'; outro.id = 'btnOutro'; outro.textContent = 'Enviar outro funcionário';
     outro.addEventListener('click', () => { desenhar({ empresa: ident.empresa, documento: ident.documento, contato: ident.contato, whatsapp: ident.whatsapp }); window.scrollTo({ top: 0 }); });
@@ -234,9 +342,9 @@
       try { dados = JSON.parse(localStorage.getItem('mr_admissao_previa') || 'null'); } catch (e) { dados = null; }
       modelo = dados && dados.modelo;
     } else {
-      const { data, error } = await supabase.rpc('admissao_formulario');
-      if (error) { aviso('⚠️', 'Não conseguimos abrir o formulário', 'Tente de novo em instantes. Se continuar, fale com o escritório.'); rodape(); return; }
-      modelo = data;
+      const { data, error } = await chamar({ acao: 'formulario' });
+      if (error || !data) { aviso('⚠️', 'Não conseguimos abrir o formulário', 'Tente de novo em instantes. Se continuar, fale com o escritório.'); rodape(); return; }
+      modelo = data.error ? null : data;
     }
     rodape();
     if (!modelo || !Array.isArray(modelo.blocos)) {

@@ -110,7 +110,7 @@
         </div>
         <div class="eyebrow">Departamento Pessoal</div>
         <h1>Admissões</h1>
-        <p>Registro de funcionários das empresas: a empresa preenche o formulário pelo link, a admissão aparece aqui e na agenda, e o DP acompanha documentos e registro.</p>
+        <p>Registro de funcionários das empresas: a empresa preenche o formulário pelo link e anexa os documentos; a admissão aparece aqui e na agenda, e os arquivos vão pro Drive (ADMISSÕES › empresa › funcionário).</p>
       </div>
 
       <div class="ad-abas">
@@ -131,7 +131,7 @@
         </div>
         <div class="ad-funil" id="adFunil">
           <button class="ad-fc on" data-f="abertas"><span class="n" id="fAbe">0</span><span class="l">Abertas</span></button>
-          <button class="ad-fc" data-f="recebida"><span class="n" id="fRec">0</span><span class="l">Recebidas — a registrar</span></button>
+          <button class="ad-fc" data-f="respondida"><span class="n" id="fRec">0</span><span class="l">Recebidas — a registrar</span></button>
           <button class="ad-fc" data-f="em_registro"><span class="n" id="fReg">0</span><span class="l">Em registro</span></button>
           <button class="ad-fc" data-f="registrada"><span class="n" id="fFei">0</span><span class="l">Registradas</span></button>
           <button class="ad-fc" data-f="cancelada"><span class="n" id="fCan">0</span><span class="l">Canceladas</span></button>
@@ -170,6 +170,9 @@
           <button data-novo="declaracao">+ Declaração</button>
           <button data-novo="secao">+ Título de seção</button>
         </div>
+        <div class="ad-sec">E-mail indicado junto dos anexos</div>
+        <input class="ad-in" id="edEmail" style="max-width:320px" placeholder="rh@macedoereis.com.br">
+        <div class="ad-nota">Aparece em cada lista de documentos: "Anexe aqui (PDF, foto ou qualquer arquivo) ou envie para …". Os anexos vão pro Drive em ADMISSÕES › empresa › funcionário.</div>
         <div class="ad-sec">Mensagem do WhatsApp que vai com o link</div>
         <textarea class="ad-in" id="edConvite" rows="4"></textarea>
         <div class="ad-nota">{link} é trocado pelo link do formulário.</div>
@@ -207,6 +210,9 @@
       <div class="ad-sec">Respostas da empresa</div>
       <div id="fiRespostas"></div>
 
+      <div class="ad-sec">Arquivos enviados pela empresa</div>
+      <div class="ad-nota" id="fiArquivos" style="margin-top:0"></div>
+
       <div class="ad-sec">Documentos recebidos</div>
       <div class="ad-docs" id="fiDocs"></div>
 
@@ -239,6 +245,7 @@
       titulo: 'Documentos e informações necessárias para registro de funcionário(a)',
       introducao: '',
       responsavel: '',
+      email: 'rh@macedoereis.com.br',
       convite: 'Olá! Para registrarmos um(a) funcionário(a), preencha este formulário:\n{link}\nQualquer dúvida, estamos à disposição.\nMacedo & Reis Contabilidade — Departamento Pessoal',
       final: 'Obrigado! O Departamento Pessoal do escritório vai conferir as informações e fazer o registro. Se ainda não enviou os documentos listados no formulário, é só mandar para o escritório.',
       rodape: 'Macedo e Reis Contabilidade Ltda · Rua Luiz Volkart, 35, 1º andar – Centro – Três Coroas/RS · CEP 95660-000 · (51) 3546-1385 · rh@macedoereis.com.br',
@@ -276,12 +283,16 @@
     };
 
     const EQUIPE = ['Vitória', 'Adaini', 'Thalia', 'Samuel', 'Diego', 'Edna'];   // ordem do DP (dp-regras.html)
-    const STATUS = [['recebida', 'Recebida — a registrar'], ['em_registro', 'Em registro'], ['registrada', 'Registrada'], ['cancelada', 'Cancelada']];
-    const ABERTAS = ['recebida', 'em_registro'];
+    // no banco a recebida é 'respondida' (nome da primeira versão, que ficou); 'aguardando_empresa' só nas da primeira versão
+    const STATUS = [['respondida', 'Recebida — a registrar'], ['em_registro', 'Em registro'], ['registrada', 'Registrada'], ['cancelada', 'Cancelada']];
+    const ST_ANTIGO = ['aguardando_empresa', 'Aguardando a empresa'];
+    const ABERTAS = ['aguardando_empresa', 'respondida', 'em_registro'];
+    const opcoesStatus = atual => (atual === ST_ANTIGO[0] ? [ST_ANTIGO, ...STATUS] : STATUS)
+      .map(([v, l]) => `<option value="${v}"${atual === v ? ' selected' : ''}>${l}</option>`).join('');
     const ST_TAREFA = { aguardando: 'aguardando', pendente: 'pendente', em_andamento: 'em andamento', concluida: 'concluída' };
     const FORMATOS = [['texto', 'Texto curto'], ['texto_longo', 'Texto longo'], ['data', 'Data'], ['hora', 'Hora'], ['escolha', 'Escolha (uma opção)']];
     const TIPOS_BL = { pergunta: 'Pergunta', texto: 'Texto', documentos: 'Documentos', declaracao: 'Declaração', secao: 'Seção' };
-    const COLS = 'id, cliente_id, empresa_nome, empresa_documento, contato_nome, contato_whatsapp, origem, funcionario_nome, data_inicio, responsavel, status, respostas, documentos, observacoes, registrada_em, registrada_por, criado_por, criado_em, atualizado_em, clientes(nome_principal, nome_fantasia, documento)';
+    const COLS = 'id, cliente_id, empresa_nome, empresa_documento, contato_nome, contato_whatsapp, origem, funcionario_nome, data_inicio, responsavel, status, respostas, documentos, observacoes, drive_pasta_url, arquivos, registrada_em, registrada_por, criado_por, criado_em, atualizado_em, clientes(nome_principal, nome_fantasia, documento)';
 
     const $ = id => document.getElementById(id);
     const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -378,11 +389,11 @@
     }
 
     function render() {
-      const cont = { abertas: 0, recebida: 0, em_registro: 0, registrada: 0, cancelada: 0, todas: admissoes.length };
+      const cont = { abertas: 0, respondida: 0, em_registro: 0, registrada: 0, cancelada: 0, todas: admissoes.length };
       admissoes.forEach(a => { if (cont[a.status] != null) cont[a.status]++; if (ABERTAS.includes(a.status)) cont.abertas++; });
-      $('fAbe').textContent = cont.abertas; $('fRec').textContent = cont.recebida; $('fReg').textContent = cont.em_registro;
+      $('fAbe').textContent = cont.abertas; $('fRec').textContent = cont.respondida; $('fReg').textContent = cont.em_registro;
       $('fFei').textContent = cont.registrada; $('fCan').textContent = cont.cancelada; $('fTod').textContent = cont.todas;
-      document.querySelector('.ad-fc[data-f="recebida"]').classList.toggle('alerta', cont.recebida > 0);
+      document.querySelector('.ad-fc[data-f="respondida"]').classList.toggle('alerta', cont.respondida > 0);
       document.querySelectorAll('.ad-fc').forEach(b => b.classList.toggle('on', b.dataset.f === filtro));
 
       const vis = ordenar(admissoes).filter(a => {
@@ -397,7 +408,7 @@
       $('adLista').innerHTML = vis.map(a => {
         const { feitos, total } = contaDocs(a);
         const docs = total ? `<span class="ad-mini ${feitos === total ? 'ok' : 'p'}">${feitos}/${total}</span>` : '<span class="ad-dim">—</span>';
-        const quando = a.status === 'recebida' ? 'recebida em ' + fmtData(diaDe(a.criado_em))
+        const quando = a.status === 'respondida' ? 'recebida em ' + fmtData(diaDe(a.criado_em))
           : a.status === 'registrada' && a.registrada_em ? 'em ' + fmtData(diaDe(a.registrada_em)) : '';
         const semVinculo = !a.cliente_id ? ' <span class="ad-mini p" title="O CNPJ informado não bate com nenhuma empresa do cadastro — vincule na ficha">não vinculada</span>' : '';
         return `<tr data-id="${esc(a.id)}">`
@@ -405,7 +416,7 @@
           + `<td>${selInicio(a)}</td>`
           + `<td class="oculta-m">${docs}</td>`
           + `<td class="oculta-m">${esc(a.responsavel || '—')}</td>`
-          + `<td><select class="ad-sel st-lin" data-id="${esc(a.id)}">${STATUS.map(([v, l]) => `<option value="${v}"${a.status === v ? ' selected' : ''}>${l}</option>`).join('')}</select>${quando ? `<div class="ad-sub" style="margin-top:3px">${quando}</div>` : ''}</td>`
+          + `<td><select class="ad-sel st-lin" data-id="${esc(a.id)}">${opcoesStatus(a.status)}</select>${quando ? `<div class="ad-sub" style="margin-top:3px">${quando}</div>` : ''}</td>`
           + '</tr>';
       }).join('');
       $('adVazio').hidden = vis.length > 0;
@@ -489,6 +500,19 @@
       return html;
     }
 
+    function arquivosHtml(a) {
+      const lista = (Array.isArray(a.arquivos) ? a.arquivos : []).filter(x => x && typeof x === 'object');
+      const pasta = a.drive_pasta_url ? `<a href="${esc(a.drive_pasta_url)}" target="_blank" rel="noopener">📁 Abrir a pasta no Drive</a>` : '';
+      if (!lista.length) return (pasta ? pasta + ' — ' : '') + (a.origem === 'externa' ? 'nenhum arquivo anexado no formulário.' : 'sem arquivos pelo formulário.');
+      const tam = n => n >= 1048576 ? (n / 1048576).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' MB' : Math.max(1, Math.round((n || 0) / 1024)) + ' KB';
+      return (pasta ? pasta + '<br>' : '') + lista.map(x => {
+        const nome = esc(x.nome || 'arquivo');
+        const link = x.status === 'ok' && x.drive_id ? `<a href="https://drive.google.com/file/d/${esc(x.drive_id)}/view" target="_blank" rel="noopener">${nome}</a>` : nome;
+        const st = x.status === 'ok' ? '✓' : '<span class="ad-alerta" title="Não chegou ao Drive — peça o arquivo por WhatsApp ou e-mail">⚠ não chegou</span>';
+        return `${st} ${link} <span class="ad-sub">${tam(x.tamanho)}${x.grupo ? ' · ' + esc(x.grupo) : ''}</span>`;
+      }).join('<br>');
+    }
+
     function pintarVinculo(a) {
       const c = fichaCli !== undefined ? fichaCli : (a.cliente_id ? { id: a.cliente_id, ...(cliDe(a) || {}) } : null);
       const digitado = a.empresa_nome ? `${esc(a.empresa_nome)}${a.empresa_documento ? ' · ' + esc(formatDocumento(a.empresa_documento)) : ''}` : '';
@@ -515,11 +539,12 @@
       $('fiNome').value = a.funcionario_nome || '';
       $('fiInicio').value = a.data_inicio || '';
       $('fiResp').innerHTML = opcoesEquipe(a.responsavel || '');
-      $('fiStatus').innerHTML = STATUS.map(([v, l]) => `<option value="${v}"${a.status === v ? ' selected' : ''}>${l}</option>`).join('');
+      $('fiStatus').innerHTML = opcoesStatus(a.status);
       pintarVinculo(a);
       $('fiBusca').value = ''; $('fiRes').style.display = 'none';
       $('fiRespostas').innerHTML = respostasHtml(a);
       if ($('fiCopResp')) $('fiCopResp').onclick = () => copiar(respostasTexto(a), $('fiMsg'), 'Respostas copiadas.');
+      $('fiArquivos').innerHTML = arquivosHtml(a);
       $('fiDocs').innerHTML = docsHtml(a);
       $('fiObs').value = a.observacoes || '';
       $('fiMsg').textContent = ''; $('fiMsg').classList.remove('er');
@@ -540,7 +565,7 @@
         const t = $('fiBusca').value.trim();
         const res = $('fiRes');
         if (t.length < 3) { res.style.display = 'none'; return; }
-        const chave = t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+        const chave = t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
         const { data } = await supabase.from('clientes').select('id, nome_principal, nome_fantasia, documento, cidade')
           .or(`nome_principal.ilike.*${t}*,nome_fantasia.ilike.*${t}*${chave ? `,nome_busca.ilike.*${chave}*,documento.ilike.*${chave}*` : ''}`).limit(8);
         res.innerHTML = (data || []).map(c => `<button type="button" data-id="${esc(c.id)}">${esc(c.nome_principal)}<small>${esc([c.nome_fantasia, c.documento ? formatDocumento(c.documento) : '', c.cidade].filter(Boolean).join(' · '))}</small></button>`).join('')
@@ -630,7 +655,7 @@
       const c = rascunho;
       $('edResp').innerHTML = opcoesEquipe(c.responsavel || '');
       $('edTitulo').value = c.titulo || ''; $('edIntro').value = c.introducao || '';
-      $('edConvite').value = c.convite || ''; $('edFinal').value = c.final || ''; $('edRodape').value = c.rodape || '';
+      $('edConvite').value = c.convite || ''; $('edFinal').value = c.final || ''; $('edRodape').value = c.rodape || ''; $('edEmail').value = c.email || '';
       renderBlocos();
       $('edInfo').textContent = modelo && modelo.atualizado_em ? 'Última alteração: ' + fmtQuando(modelo.atualizado_em) + (modelo.atualizado_por ? ' · ' + modelo.atualizado_por : '') : '';
       marcarSujo(edSujo);
@@ -691,7 +716,7 @@
       else card.querySelector('.r').textContent = resumoBloco(b);
       marcarSujo(true);
     });
-    [['edTitulo', 'titulo'], ['edIntro', 'introducao'], ['edConvite', 'convite'], ['edFinal', 'final'], ['edRodape', 'rodape']].forEach(([id, k]) =>
+    [['edTitulo', 'titulo'], ['edIntro', 'introducao'], ['edConvite', 'convite'], ['edFinal', 'final'], ['edRodape', 'rodape'], ['edEmail', 'email']].forEach(([id, k]) =>
       $(id).addEventListener('input', () => { rascunho[k] = $(id).value; marcarSujo(true); }));
     $('edResp').addEventListener('change', () => { rascunho.responsavel = $('edResp').value; marcarSujo(true); });
 

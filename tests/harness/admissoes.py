@@ -1,8 +1,8 @@
 """
 Teste do módulo Admissões do DP (dp-admissoes.html) e do link que a empresa preenche (admissao.html) — sem login e
 sem banco (mesmo mock do conferir.py; dados inventados). O link é o mesmo pra todas as empresas, como o forms da
-precificação, e só fala com o banco por duas funções (admissao_formulario / admissao_enviar); aqui quem responde é o
-teste, por window.__mockRpc.
+precificação, e só fala com o sistema pela Edge Function admissao-link (formulário, envio e anexos pro Drive); aqui quem
+responde é o teste, por window.__mockInvoke.
 
     python tests/harness/admissoes.py
 
@@ -11,13 +11,16 @@ Confere, nos temas escuro e claro (o link público é sempre claro):
      link mostra o endereço do formulário, copia e abre o WhatsApp com a mensagem e o link;
   2. com admissões no banco: contagem por situação, "já começou" no início vencido, empresa que não bateu com o
      cadastro marcada "não vinculada", respostas da empresa na ficha (o que a empresa digita sai sempre como texto,
-     nunca como HTML), quem enviou com o WhatsApp, documentos recebidos gravados e contados (salário família não entra
-     na conta), vincular a empresa pela busca, situação mudada pela lista (registrada grava quando e quem);
+     nunca como HTML), quem enviou com o WhatsApp, a pasta e os arquivos no Drive (o que não chegou, marcado),
+     documentos recebidos gravados e contados (salário família não entra na conta), vincular a empresa pela busca,
+     situação mudada pela lista (registrada grava quando e quem);
   3. editor do formulário: sem quem recebe na agenda não salva; pergunta nova gravada no modelo; pergunta sem texto
      não salva; a prévia abre o link no modo prévia, sem enviar nada;
-  4. link público: campos da empresa no topo, formulário do modelo, obrigatórios barrados, CNPJ com dígito errado
-     barrado, envio com empresa/CNPJ/contato e as respostas (nome, data, declaração), mensagem final e "Enviar outro
-     funcionário" mantendo a empresa; formulário indisponível e "muitos envios" avisados.
+  4. link público: campos da empresa no topo, formulário do modelo, anexos e o e-mail em cada lista de documentos,
+     obrigatórios barrados, CNPJ com dígito errado barrado, envio com empresa/CNPJ/contato, as respostas (nome, data,
+     declaração) e os anexos (cada um aberto no Drive e mandado em partes de 2 MB), mensagem final com a contagem e
+     "Enviar outro funcionário" mantendo a empresa; CNPJ fora do cadastro, anexo que não sobe, formulário
+     indisponível e "muitos envios" avisados.
 Termina com código 1 se alguma checagem falhar. Pré-requisito: pip install playwright e python -m playwright install chromium
 """
 import sys, json, pathlib, datetime, re
@@ -48,16 +51,19 @@ def admissoes_teste():
         {'id': 'funcao', 'rotulo': 'Função', 'tipo': 'texto', 'secao': 'Informações importantes', 'valor': '<img src=x onerror="window.__xss=1">Vendedora'},
         {'id': 'ciente_menor', 'rotulo': 'A empresa declara estar ciente', 'tipo': 'declaracao', 'secao': 'Empresa declara estar ciente que:', 'valor': 'Sim', 'texto': '* É proibido qualquer trabalho a menores de dezesseis anos'},
     ]
-    base = lambda **k: {'origem': 'externa', 'respostas': None, 'observacoes': None, 'registrada_em': None, 'registrada_por': None,
+    base = lambda **k: {'origem': 'externa', 'drive_pasta_url': None, 'arquivos': [], 'respostas': None, 'observacoes': None, 'registrada_em': None, 'registrada_por': None,
                         'empresa_nome': None, 'empresa_documento': None, 'contato_nome': None, 'contato_whatsapp': None, 'clientes': None,
                         'criado_por': 'formulário da empresa', 'atualizado_em': None, **k}
     return [
         base(id='a1', cliente_id='c1', clientes=cli1, empresa_nome='Comércio Modelo', empresa_documento='00000000000000',
              contato_nome='CONTATO DE TESTE', contato_whatsapp='(51) 99999-0000', funcionario_nome='FULANA DE TESTE', data_inicio=dia(3),
-             responsavel='Vitória', status='recebida', respostas=resp, documentos=docs(1), criado_em=dia(-1) + 'T13:00:00Z'),
+             responsavel='Vitória', status='respondida', respostas=resp, documentos=docs(1), criado_em=dia(-1) + 'T13:00:00Z',
+             drive_pasta_url='https://drive.google.com/drive/folders/PASTA1',
+             arquivos=[{'nome': 'rg-frente.jpg', 'tamanho': 2400000, 'tipo': 'image/jpeg', 'grupo': 'Documentos', 'status': 'ok', 'drive_id': 'ARQ1'},
+                       {'nome': 'aso.pdf', 'tamanho': 90000, 'tipo': 'application/pdf', 'grupo': 'Documentos', 'status': 'erro'}]),
         base(id='a2', cliente_id=None, empresa_nome='PADARIA NOVA DE TESTE LTDA', empresa_documento='22222222000122',
              contato_nome='OUTRO CONTATO', contato_whatsapp='51988887777', funcionario_nome='SICRANO DE TESTE', data_inicio=dia(-2),
-             responsavel='Vitória', status='recebida', respostas=resp[:2], documentos=docs(0), criado_em=dia(-4) + 'T12:00:00Z'),
+             responsavel='Vitória', status='respondida', respostas=resp[:2], documentos=docs(0), criado_em=dia(-4) + 'T12:00:00Z'),
         base(id='a3', cliente_id='c1', clientes=cli1, funcionario_nome='BELTRANO DE TESTE', data_inicio=dia(-20), responsavel='Edna',
              status='registrada', registrada_em=dia(-21) + 'T15:00:00Z', registrada_por='rh@macedoereis.com.br', documentos=docs(4), criado_em=dia(-30) + 'T12:00:00Z'),
         base(id='a4', cliente_id='c1', clientes=cli1, funcionario_nome='CICLANO DE TESTE', data_inicio=None, responsavel='Vitória',
@@ -130,6 +136,9 @@ def modulo(b, base, tema, erros):
     env = p.inner_text('#fiEnvio')
     ok('CONTATO DE TESTE' in env and '(51) 99999-0000' in env and p.get_attribute('#fiEnvio a', 'href') == 'https://wa.me/5551999990000', '2. quem enviou, com o WhatsApp e o atalho da conversa')
     ok('Vinculada a' in p.inner_text('#fiVinc') and 'COMÉRCIO MODELO ME' in p.inner_text('#fiVinc'), '2. empresa vinculada pelo CNPJ')
+    arq = p.inner_text('#fiArquivos')
+    ok(p.get_attribute('#fiArquivos a >> nth=0', 'href') == 'https://drive.google.com/drive/folders/PASTA1' and 'rg-frente.jpg' in arq
+       and p.get_attribute('#fiArquivos a >> nth=1', 'href') == 'https://drive.google.com/file/d/ARQ1/view' and 'não chegou' in arq, '2. pasta e arquivos no Drive, com o que não chegou marcado')
     p.screenshot(path=str(FOTOS / f'admissoes-ficha-{tema}.png'))
     for i in range(1, 4): p.check(f'#fiDocs [data-doc="{i}"]')
     p.click('#fiSalvar'); p.wait_for_timeout(500)
@@ -176,6 +185,7 @@ def modulo(b, base, tema, erros):
     p.click('#edSalvar'); p.wait_for_timeout(300)
     ok(any('quem recebe' in d for d in dialogos) and len(db(p, 'window.__mockDb.admissao_modelos[0].conteudo.blocos')) == 16, '3. sem quem recebe na agenda não salva')
     p.select_option('#edResp', 'Vitória')
+    ok(p.input_value('#edEmail') == 'rh@macedoereis.com.br', '3. e-mail dos documentos no editor')
     p.screenshot(path=str(FOTOS / f'admissoes-editor-{tema}.png'), full_page=True)
     p.click('#edSalvar'); p.wait_for_timeout(400)
     c = db(p, 'window.__mockDb.admissao_modelos[0].conteudo')
@@ -201,62 +211,103 @@ def modulo(b, base, tema, erros):
 
 def publico(b, base, modelo, erros):
     print('[link] 4. formulário que a empresa preenche')
-    def pagina(formulario, envio='{ data: { ok: true }, error: null }'):
+    # dublê da Edge Function admissao-link: anota as chamadas; "falhaParte" faz o Drive recusar o anexo com esse nome
+    def pagina(formulario, enviar='{ ok: true, id: "11111111-2222-4333-8444-555555555555", chave: "CHAVE", drive: true, email: "rh@macedoereis.com.br" }', falha_parte=''):
         p = b.new_page(viewport={'width': 420, 'height': 900})
         p.on('pageerror', lambda e: erros.append(f'link: {e}'))
-        p.add_init_script("""window.__rpcLog = [];
-window.__mockRpc = (nome, args) => { window.__rpcLog.push([nome, JSON.parse(JSON.stringify(args))]);
-  if (nome === 'admissao_formulario') return %s;
-  if (nome === 'admissao_enviar') return %s;
-  return { data: null, error: { message: 'rpc ' + nome } }; };""" % (formulario, envio))
+        p.add_init_script("""window.__log = []; window.__arquivoAtual = {};
+window.__mockInvoke = async (nome, opts) => {
+  const h = opts.headers || {};
+  if (h['x-acao'] === 'parte') {
+    window.__log.push(['parte', h['x-i'], Number(h['x-inicio']), opts.body.size, Number(h['x-total'])]);
+    const nomeArq = window.__arquivoAtual[h['x-i']];
+    if (nomeArq && nomeArq === %s) return { data: { error: 'O Drive recusou o arquivo.' }, error: null };
+    return { data: { ok: true }, error: null };
+  }
+  const b = opts.body || {};
+  window.__log.push([b.acao, JSON.parse(JSON.stringify(b))]);
+  if (b.acao === 'formulario') return { data: %s, error: null };
+  if (b.acao === 'enviar') return { data: %s, error: null };
+  if (b.acao === 'arquivo') { window.__arquivoAtual[String(b.i)] = b.nome; return { data: { ok: true }, error: null }; }
+  if (b.acao === 'concluir') return { data: { ok: true }, error: null };
+  return { data: null, error: { message: 'ação ' + b.acao } };
+};""" % (json.dumps(falha_parte), formulario, enviar))
         p.goto(base + 'admissao.html'); p.wait_for_timeout(1200)
         return p
+    def log(p, acao=None):
+        return [x for x in p.evaluate('() => window.__log') if acao is None or x[0] == acao]
+    def preencher(p, doc='11.222.333/0001-81'):
+        p.fill('#id_empresa', 'Comércio Modelo'); p.fill('#id_documento', doc); p.fill('#id_contato', 'Contato de Teste'); p.fill('#id_whatsapp', '51999990000')
+        p.fill('input[name="q0"]', 'FULANA DE TESTE'); p.fill('input[name="q1"]', dia(10))
+        for i, v in ((4, 'R$ 2.000,00 mensal'), (5, 'Vendedora'), (6, '08h às 12h e 13h às 18h'), (7, '1 hora')): p.fill(f'input[name="q{i}"]', v)
+        for i, v in ((8, 'Experiência'), (11, 'Ensino Médio completo'), (12, 'Parda'), (13, 'Não'), (14, 'Solteiro(a)')): p.check(f'input[name="q{i}"][value="{v}"]')
+        p.check('input[name="q15"]')
 
-    publicado = {k: modelo[k] for k in ('titulo', 'introducao', 'blocos', 'final', 'rodape')}
-    form = json.dumps({'data': publicado, 'error': None}, ensure_ascii=False)
+    publicado = {**{k: modelo[k] for k in ('titulo', 'introducao', 'blocos', 'final', 'rodape')}, 'email': 'rh@macedoereis.com.br'}
+    form = json.dumps(publicado, ensure_ascii=False)
     p = pagina(form)
     ok(p.inner_text('.cab h2') == modelo['titulo'], '4. título do modelo')
     ok(all(p.locator(f'#id_{k}').count() == 1 for k in ('empresa', 'documento', 'contato', 'whatsapp')), '4. campos da empresa e do contato no topo')
     ok(p.locator('.campo').count() == 16 and p.locator('.op').count() == 2 + 7 + 5 + 2 + 4, '4. perguntas e opções do PDF desenhadas')
     ok('1.980,38' in p.inner_text('#app') and 'Exame Médico admissional (ASO)' in p.inner_text('#app'), '4. documentos e salário família na tela')
+    ok(p.locator('input[type=file][data-anexo]').count() == 2 and p.locator('.anexo-email', has_text='rh@macedoereis.com.br').count() == 2,
+       '4. anexar arquivos e o e-mail rh@ nas duas listas de documentos')
+    p.set_input_files('input[data-anexo="2"]', [
+        {'name': 'rg-frente.jpg', 'mimeType': 'image/jpeg', 'buffer': b'\xff' * (3 * 1024 * 1024)},
+        {'name': 'ctps.pdf', 'mimeType': 'application/pdf', 'buffer': b'%PDF' + b'0' * 5000}])
+    p.set_input_files('input[data-anexo="9"]', [{'name': 'certidao.png', 'mimeType': 'image/png', 'buffer': b'\x89PNG' + b'1' * 900}])
+    ok(p.locator('#anx2 .anexo-item').count() == 2 and p.locator('#anx9 .anexo-item').count() == 1 and '3 MB' in p.inner_text('#anx2'), '4. anexos listados com o tamanho')
+    p.locator('#anx2 [data-tira="2:1"]').click(); p.wait_for_timeout(100)
+    ok(p.locator('#anx2 .anexo-item').count() == 1, '4. tirar um anexo')
+    p.set_input_files('input[data-anexo="2"]', [{'name': 'ctps.pdf', 'mimeType': 'application/pdf', 'buffer': b'%PDF' + b'0' * 5000}])
     p.screenshot(path=str(FOTOS / 'admissoes-link-claro.png'), full_page=True)
     p.click('#btnEnviar'); p.wait_for_timeout(400)
     ok(p.locator('.campo.falta').count() == 16 and 'Faltam 16' in p.inner_text('#msgErro'), '4. obrigatórios barrados (16)')
-    ok(not any(x[0] == 'admissao_enviar' for x in p.evaluate('() => window.__rpcLog')), '4. nada enviado com obrigatório vazio')
-    p.fill('#id_empresa', 'Comércio Modelo'); p.fill('#id_documento', '11.222.333/0001-82'); p.fill('#id_contato', 'Contato de Teste'); p.fill('#id_whatsapp', '51999990000')
+    ok(not log(p, 'enviar'), '4. nada enviado com obrigatório vazio')
+    preencher(p, doc='11.222.333/0001-82')
     ok(p.input_value('#id_whatsapp') == '(51) 99999-0000', '4. WhatsApp com máscara')
-    p.fill('input[name="q0"]', 'FULANA DE TESTE'); p.fill('input[name="q1"]', dia(10))
-    for i, v in ((4, 'R$ 2.000,00 mensal'), (5, 'Vendedora'), (6, '08h às 12h e 13h às 18h'), (7, '1 hora')): p.fill(f'input[name="q{i}"]', v)
-    for i, v in ((8, 'Experiência'), (11, 'Ensino Médio completo'), (12, 'Parda'), (13, 'Não'), (14, 'Solteiro(a)')): p.check(f'input[name="q{i}"][value="{v}"]')
-    p.check('input[name="q15"]')
     p.click('#btnEnviar'); p.wait_for_timeout(400)
     ok(p.locator('.campo.falta').count() == 1 and p.locator('.campo.falta[data-id="documento"]').count() == 1, '4. CNPJ com dígito errado barrado')
     p.fill('#id_documento', '11.222.333/0001-81')
-    p.click('#btnEnviar'); p.wait_for_timeout(500)
-    env = [x for x in p.evaluate('() => window.__rpcLog') if x[0] == 'admissao_enviar']
-    a = env[0][1] if env else {}
-    r = {x['id']: x for x in a.get('p_respostas', [])}
-    ok(len(env) == 1 and a.get('p_empresa') == 'Comércio Modelo' and a.get('p_documento') == CNPJ_OK and a.get('p_contato') == 'Contato de Teste'
-       and a.get('p_whatsapp') == '(51) 99999-0000', '4. envia empresa, CNPJ (sem pontuação) e contato')
+    p.click('#btnEnviar'); p.wait_for_timeout(1500)
+    env = log(p, 'enviar'); a = env[0][1] if env else {}
+    r = {x['id']: x for x in a.get('respostas', [])}
+    ok(len(env) == 1 and a.get('empresa') == 'Comércio Modelo' and a.get('documento') == CNPJ_OK and a.get('contato') == 'Contato de Teste'
+       and a.get('whatsapp') == '(51) 99999-0000', '4. envia empresa, CNPJ (sem pontuação) e contato')
     ok(len(r) == 12 and r.get('nome', {}).get('valor') == 'FULANA DE TESTE' and r.get('data_inicio', {}).get('valor') == dia(10)
        and r.get('tipo_contrato', {}).get('valor') == 'Experiência', '4. envia as 12 respostas com o valor certo')
     ok(r.get('ciente_menor', {}).get('valor') == 'Sim' and 'menores de dezesseis' in r.get('ciente_menor', {}).get('texto', ''), '4. declaração vai com o texto declarado')
-    ok(r.get('salario', {}).get('secao') == 'Informações importantes', '4. cada resposta leva a seção')
-    ok('Informações recebidas' in p.inner_text('#app') and modelo['final'][:30] in p.inner_text('#app'), '4. mensagem final do modelo')
+    ok([(x['nome'], x['grupo']) for x in a.get('arquivos', [])] == [('rg-frente.jpg', 'Documentos'), ('ctps.pdf', 'Documentos'), ('certidao.png', 'Documentos e informações para salário família')]
+       and a['arquivos'][0]['tamanho'] == 3 * 1024 * 1024, '4. avisa os 3 anexos (nome, tamanho e lista de documentos)')
+    arqs = log(p, 'arquivo'); partes = log(p, 'parte')
+    ok([x[1]['nome'] for x in arqs] == ['rg-frente.jpg', 'ctps.pdf', 'certidao.png'] and all(x[1]['chave'] == 'CHAVE' for x in arqs), '4. abre cada anexo no Drive com a chave do envio')
+    ok([(x[1], x[2], x[3]) for x in partes] == [('0', 0, 2 * 1024 * 1024), ('0', 2 * 1024 * 1024, 1024 * 1024), ('1', 0, 5004), ('2', 0, 904)],
+       '4. anexo de 3 MB sobe em 2 partes (2 MB + 1 MB); os pequenos, numa só')
+    ok(len(log(p, 'concluir')) == 1, '4. fecha o envio no fim')
+    txt = p.inner_text('#app')
+    ok('Informações recebidas' in txt and '3 arquivos enviados' in txt and modelo['final'][:30] in txt, '4. mensagem final com a contagem dos anexos')
     p.screenshot(path=str(FOTOS / 'admissoes-link-enviado-claro.png'), full_page=True)
     p.click('#btnOutro'); p.wait_for_timeout(300)
-    ok(p.input_value('#id_empresa') == 'Comércio Modelo' and p.input_value('#id_documento') == CNPJ_OK and p.input_value('input[name="q0"]') == '',
-       '4. "Enviar outro funcionário" mantém a empresa e limpa o resto')
+    ok(p.input_value('#id_empresa') == 'Comércio Modelo' and p.input_value('#id_documento') == CNPJ_OK and p.input_value('input[name="q0"]') == ''
+       and p.locator('.anexo-item').count() == 0, '4. "Enviar outro funcionário" mantém a empresa e limpa o resto (anexos também)')
     p.close()
 
-    p = pagina('{ data: null, error: null }')
+    p = pagina(form, enviar='{ error: "NAO_CLIENTE", mensagem: "Não encontramos esse CNPJ/CPF entre as empresas atendidas pelo escritório." }')
+    preencher(p); p.click('#btnEnviar'); p.wait_for_timeout(500)
+    ok(p.locator('.campo.falta[data-id="documento"]').count() == 1 and 'Não encontramos esse CNPJ' in p.inner_text('.campo[data-id="documento"]')
+       and p.locator('#btnEnviar').count() == 1, '4. CNPJ fora do cadastro: avisa no campo e mantém o formulário'); p.close()
+
+    p = pagina(form, falha_parte='aso.pdf')
+    p.set_input_files('input[data-anexo="2"]', [{'name': 'aso.pdf', 'mimeType': 'application/pdf', 'buffer': b'%PDF' + b'0' * 800},
+                                                 {'name': 'rg.jpg', 'mimeType': 'image/jpeg', 'buffer': b'\xff' * 700}])
+    preencher(p); p.click('#btnEnviar'); p.wait_for_timeout(1000)
+    txt = p.inner_text('#app')
+    ok('1 arquivo enviado' in txt and 'Não conseguimos enviar: aso.pdf' in txt and 'rh@macedoereis.com.br' in txt, '4. anexo que não sobe: avisa qual e pede por e-mail'); p.close()
+
+    p = pagina('{ error: "Formulário indisponível." }')
     ok('Formulário indisponível' in p.inner_text('#app'), '4. sem formulário no banco, avisa'); p.close()
-    p = pagina(form, envio='{ data: null, error: { message: "muitos envios agora — tente de novo mais tarde" } }')
-    p.fill('#id_empresa', 'X'); p.fill('#id_documento', '12345678901'); p.fill('#id_contato', 'X'); p.fill('#id_whatsapp', '51999990000')
-    p.fill('input[name="q0"]', 'X'); p.fill('input[name="q1"]', dia(10))
-    for i in (4, 5, 6, 7): p.fill(f'input[name="q{i}"]', 'x')
-    for i, v in ((8, 'Indeterminado'), (11, 'Analfabeto'), (12, 'Branco'), (13, 'Sim'), (14, 'Casado(a)')): p.check(f'input[name="q{i}"][value="{v}"]')
-    p.check('input[name="q15"]'); p.click('#btnEnviar'); p.wait_for_timeout(400)
+    p = pagina(form, enviar='{ error: "Muitos envios agora — tente de novo mais tarde." }')
+    preencher(p, doc='12345678901'); p.click('#btnEnviar'); p.wait_for_timeout(400)
     ok('Muitos envios agora' in p.inner_text('#msgErro') and p.locator('#btnEnviar').count() == 1, '4. CPF aceito; "muitos envios" avisado sem perder o preenchido'); p.close()
 
 def main():

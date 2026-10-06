@@ -169,11 +169,11 @@
           card.appendChild(pill);
         }
         {
-          const { data: ads, error: eAd } = await supabase.from('admissoes').select('status').in('status', ['recebida', 'em_registro']);
+          const { data: ads, error: eAd } = await supabase.from('admissoes').select('status').in('status', ['aguardando_empresa', 'respondida', 'em_registro']);
           if (eAd) setBadge('dp-admissoes.html', '—');
           else {
             setBadge('dp-admissoes.html', (ads || []).length + ' abertas');
-            const resp = (ads || []).filter(a => a.status === 'recebida').length;
+            const resp = (ads || []).filter(a => a.status === 'respondida').length;
             if (resp) {
               const card = document.querySelector('a[href="dp-admissoes.html"]');
               const pill = document.createElement('span');
