@@ -13,6 +13,7 @@
     /* Cor de identidade por setor (no ícone) */
     a[href="dp-tarefas.html"] .dashboard-card-icon { background: rgba(138,174,200,.16); color:#8AAEC8; }
     a[href="dp-admissoes.html"] .dashboard-card-icon { background: rgba(251,146,60,.16); color:#FB923C; }
+    a[href="dp-rescisoes.html"] .dashboard-card-icon { background: rgba(239,112,96,.16); color:#EF7060; }
     a[href="dp-regras.html"] .dashboard-card-icon { background: rgba(63,176,122,.16); color:#3FB07A; }
     a[href="dp-relatorios.html"] .dashboard-card-icon { background: rgba(133,151,224,.16); color:#8597E0; }
     a[href="dp-sugestoes.html"] .dashboard-card-icon { background: rgba(164,143,224,.16); color:#A48FE0; }
@@ -57,7 +58,7 @@
         </div>
         <div class="eyebrow">Setor</div>
         <h1>Departamento Pessoal</h1>
-        <p>Módulos do setor: tarefas, admissões, tarefas recorrentes, relatórios, sugestões de melhoria, convenções, custo do funcionário, pareceres.</p>
+        <p>Módulos do setor: tarefas, admissões, rescisões, tarefas recorrentes, relatórios, sugestões de melhoria, convenções, custo do funcionário, pareceres.</p>
       </div>
 
       <div class="dashboard-grid">
@@ -77,6 +78,15 @@
           <h3>Admissões</h3>
           <p>Registro de funcionários: a empresa preenche o formulário pelo link e a admissão chega aqui e na agenda, com os documentos a conferir.</p>
           <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="dp-admissoes.html">·</span></div>
+        </a>
+
+        <a href="dp-rescisoes.html" class="dashboard-card">
+          <div class="dashboard-card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+          </div>
+          <h3>Rescisões</h3>
+          <p>Desligamento de funcionários: a empresa responde pelo link se é pedido de demissão ou demissão pela empresa, já vê a data do pagamento, e a rescisão chega aqui e na agenda.</p>
+          <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="dp-rescisoes.html">·</span></div>
         </a>
 
         <a href="fator-r.html" class="dashboard-card">
@@ -178,6 +188,20 @@
               const card = document.querySelector('a[href="dp-admissoes.html"]');
               const pill = document.createElement('span');
               pill.className = 'badge-hoje'; pill.textContent = resp + (resp === 1 ? ' recebida' : ' recebidas');
+              card.appendChild(pill);
+            }
+          }
+        }
+        {
+          const { data: rs, error: eRs } = await supabase.from('rescisoes').select('status').in('status', ['recebida', 'em_andamento']);
+          if (eRs) setBadge('dp-rescisoes.html', '—');
+          else {
+            setBadge('dp-rescisoes.html', (rs || []).length + ' abertas');
+            const rec = (rs || []).filter(r => r.status === 'recebida').length;
+            if (rec) {
+              const card = document.querySelector('a[href="dp-rescisoes.html"]');
+              const pill = document.createElement('span');
+              pill.className = 'badge-hoje'; pill.textContent = rec + (rec === 1 ? ' recebida' : ' recebidas');
               card.appendChild(pill);
             }
           }

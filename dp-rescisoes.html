@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DP — Rescisões — Macedo & Reis</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+  <style>
+    .rs-abas { display:flex; gap:4px; margin:0 0 18px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    .rs-aba { background:none; border:none; border-bottom:2px solid transparent; margin-bottom:-1px; padding:10px 14px; font:inherit; font-size:14px; color:var(--text-muted); cursor:pointer; }
+    .rs-aba:hover { color:var(--text); }
+    .rs-aba.on { color:var(--text); font-weight:600; border-bottom-color:var(--brand-primary); }
+    .rs-linkbox { background:var(--fill-1); border:1px solid var(--line); border-radius:14px; padding:14px 16px; margin-bottom:16px; }
+    .rs-linkbox-t { font-size:13.5px; color:var(--text-2); margin-bottom:10px; line-height:1.5; }
+    .rs-linkbox-t b { color:var(--text); }
+    .rs-funil { display:grid; grid-template-columns:repeat(6,1fr); gap:10px; margin-bottom:18px; }
+    .rs-fc { background:var(--fill-1); border:none; border-radius:12px; padding:12px 14px; cursor:pointer; text-align:left; transition:background .15s; display:flex; flex-direction:column; gap:4px; font-family:inherit; }
+    .rs-fc:hover { background:var(--fill-2); }
+    .rs-fc.on { background:rgba(91,130,166,.14); }
+    .rs-fc .n { font-size:22px; font-weight:700; color:var(--text); line-height:1; }
+    .rs-fc .l { font-size:11.5px; color:var(--text-muted); }
+    .rs-fc.alerta .n { color:var(--warn); }
+    @media (max-width:900px){ .rs-funil { grid-template-columns:repeat(3,1fr); } }
+    @media (max-width:560px){ .rs-funil { grid-template-columns:repeat(2,1fr); } }
+    .rs-tabela { width:100%; border-collapse:separate; border-spacing:0 6px; }
+    .rs-tabela th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:var(--text-muted); padding:8px 10px; }
+    .rs-tabela td { padding:10px; font-size:13.5px; color:var(--text); background:var(--fill-1); vertical-align:middle; }
+    .rs-tabela tr td:first-child { border-radius:10px 0 0 10px; }
+    .rs-tabela tr td:last-child { border-radius:0 10px 10px 0; }
+    .rs-tabela tbody tr { cursor:pointer; }
+    .rs-tabela tbody tr:hover td { background:var(--fill-2); }
+    .rs-sub { font-size:11.5px; color:var(--text-dim); }
+    .rs-sel { padding:5px 8px; font-size:12px; border-radius:8px; background:var(--surface); color:var(--brand-pale); border:1px solid var(--fill-3); cursor:pointer; font-family:inherit; }
+    .rs-mini { display:inline-block; padding:1px 8px; border-radius:999px; font-size:10.5px; font-weight:600; }
+    .rs-mini.p { background:rgba(232,161,92,.15); color:var(--warn); }
+    .rs-mini.ok { background:rgba(63,176,122,.15); color:var(--ok); }
+    .rs-mini.er { background:rgba(224,108,108,.15); color:var(--err); }
+    .rs-dim { color:var(--text-dim); }
+    @media (max-width:820px){ .rs-tabela .oculta-m { display:none; } }
+    .rs-ov { position:fixed; inset:0; background:var(--overlay); display:none; align-items:flex-start; justify-content:center; overflow:auto; padding:34px 16px; z-index:60; }
+    .rs-ov.on { display:flex; }
+    .rs-card { background:var(--surface); border-radius:16px; max-width:920px; width:100%; padding:22px 24px 26px; }
+    .rs-card h2 { margin:0 0 2px; font-size:1.25rem; color:var(--text); }
+    .rs-meta { display:flex; gap:12px 18px; flex-wrap:wrap; align-items:center; margin:12px 0 4px; font-size:13px; color:var(--text-muted); }
+    .rs-meta label { display:flex; align-items:center; gap:6px; }
+    .rs-sec { font-size:11px; text-transform:uppercase; letter-spacing:.09em; color:var(--text-dim); margin:20px 0 8px; }
+    .rs-in { width:100%; background:var(--surface-2); border:1px solid var(--fill-3); border-radius:10px; color:var(--text); padding:9px 11px; font:inherit; font-size:13px; }
+    textarea.rs-in { min-height:56px; resize:vertical; }
+    .rs-link { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    .rs-link input { flex:1; min-width:240px; }
+    .rs-nota { font-size:12.5px; color:var(--text-2); margin-top:6px; line-height:1.5; }
+    .rs-nota a { color:var(--brand-light); }
+    .rs-alerta { color:var(--warn); }
+    .rs-resp { width:100%; border-collapse:collapse; }
+    .rs-resp td { padding:6px 8px; font-size:13px; border-bottom:1px solid var(--line); vertical-align:top; color:var(--text); white-space:pre-line; }
+    .rs-resp td:first-child { color:var(--text-muted); width:46%; white-space:normal; }
+    .rs-datas { background:var(--fill-1); border:1px solid var(--line); border-radius:12px; padding:10px 14px; margin-top:10px; }
+    .rs-datas .lin { display:flex; justify-content:space-between; gap:12px; padding:6px 0; border-bottom:1px solid var(--line); font-size:13px; color:var(--text-2); }
+    .rs-datas .lin:last-of-type { border-bottom:none; }
+    .rs-datas .lin b { color:var(--text); text-align:right; }
+    .rs-datas .lin.dest b { color:var(--ok); }
+    .rs-datas ul { margin:8px 0 2px 18px; font-size:12px; color:var(--text-muted); line-height:1.5; }
+    .rs-acoes { display:flex; gap:10px; justify-content:flex-end; margin-top:22px; flex-wrap:wrap; }
+    .rs-msg { font-size:12.5px; margin-right:auto; align-self:center; color:var(--ok); }
+    .rs-msg.er { color:var(--err); }
+    .rs-f { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--text-muted); margin-bottom:10px; }
+    .rs-f-row { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; }
+    .rs-f-row .rs-f { flex:1; min-width:180px; }
+    .rs-ed-topo { display:flex; gap:12px; justify-content:space-between; flex-wrap:wrap; align-items:flex-start; font-size:13px; color:var(--text-2); margin-bottom:6px; }
+    .rs-ed-topo p { max-width:640px; line-height:1.5; }
+    .rs-perg { border:1px dashed var(--line-strong); border-radius:12px; padding:10px 14px; font-size:13px; color:var(--text-2); line-height:1.6; }
+    .rs-perg li { margin-left:18px; }
+    .rs-perg .se { color:var(--text-muted); }
+    .rs-sujo { font-size:12.5px; color:var(--warn); margin-right:auto; align-self:center; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip"><div class="user-avatar" id="userAvatar">—</div><span id="userName">Carregando…</span></div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <a href="dp.html">Departamento Pessoal</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Rescisões</span>
+        </div>
+        <div class="eyebrow">Departamento Pessoal</div>
+        <h1>Rescisões</h1>
+        <p>Desligamento de funcionários das empresas: a empresa responde o formulário pelo link — pedido de demissão ou demissão por parte da empresa, e como fica o aviso — e vê na hora a data do pagamento; a rescisão aparece aqui e na agenda.</p>
+      </div>
+
+      <div class="rs-abas">
+        <button class="rs-aba on" data-aba="lista">Rescisões</button>
+        <button class="rs-aba" data-aba="form">Formulário da empresa</button>
+      </div>
+
+      <section id="secLista">
+        <div class="rs-linkbox">
+          <div class="rs-linkbox-t"><b>Link do formulário</b> — o mesmo pra todas as empresas. A empresa preenche e envia; a rescisão aparece aqui e na agenda <span id="lkResp"></span>.</div>
+          <div class="rs-link">
+            <input class="rs-in" id="lkUrl" readonly>
+            <button class="btn btn-ghost btn-sm" id="lkCopiar">Copiar link</button>
+            <button class="btn btn-ghost btn-sm" id="lkZap">Enviar pelo WhatsApp</button>
+            <a class="btn btn-ghost btn-sm" id="lkAbrir" href="rescisao.html" target="_blank" rel="noopener" title="Pra preencher no lugar da empresa, quando ela passou as informações por outro meio">Abrir o formulário</a>
+          </div>
+          <div class="rs-nota" id="lkMsg"></div>
+        </div>
+        <div class="rs-funil" id="rsFunil">
+          <button class="rs-fc on" data-f="abertas"><span class="n" id="fAbe">0</span><span class="l">Abertas</span></button>
+          <button class="rs-fc" data-f="recebida"><span class="n" id="fRec">0</span><span class="l">Recebidas — a calcular</span></button>
+          <button class="rs-fc" data-f="em_andamento"><span class="n" id="fAnd">0</span><span class="l">Em andamento</span></button>
+          <button class="rs-fc" data-f="concluida"><span class="n" id="fCon">0</span><span class="l">Concluídas</span></button>
+          <button class="rs-fc" data-f="cancelada"><span class="n" id="fCan">0</span><span class="l">Canceladas</span></button>
+          <button class="rs-fc" data-f="todas"><span class="n" id="fTod">0</span><span class="l">Todas</span></button>
+        </div>
+        <div class="toolbar">
+          <div class="toolbar-filters">
+            <input type="text" id="rsBusca" class="input input-search" placeholder="Buscar funcionário ou empresa…">
+          </div>
+        </div>
+        <table class="rs-tabela">
+          <thead><tr><th>Funcionário · empresa</th><th class="oculta-m">Caso</th><th>Pagar até</th><th class="oculta-m">Responsável</th><th>Situação</th></tr></thead>
+          <tbody id="rsLista"></tbody>
+        </table>
+        <div id="rsVazio" class="empty-state" hidden>Nenhuma rescisão neste filtro.</div>
+      </section>
+
+      <section id="secForm" hidden>
+        <div class="rs-ed-topo">
+          <p>Estes são os textos do formulário que a empresa recebe pelo link. As mudanças valem para os próximos preenchimentos.</p>
+          <span class="rs-sub" id="edInfo"></span>
+        </div>
+        <div class="rs-sec">Quem recebe as rescisões na agenda</div>
+        <select class="rs-in" id="edResp" style="max-width:320px"></select>
+        <div class="rs-nota">Cada formulário enviado vira uma tarefa na agenda dessa pessoa, com prazo no dia do envio e "pagar até" no título. Dá pra trocar o responsável na ficha de cada rescisão.</div>
+        <div class="rs-sec">Título e introdução</div>
+        <label class="rs-f"><span>Título</span><input class="rs-in" id="edTitulo"></label>
+        <label class="rs-f"><span>Introdução (opcional — aparece logo abaixo do título)</span><textarea class="rs-in" id="edIntro" rows="2"></textarea></label>
+        <div class="rs-sec">Perguntas, na ordem em que a empresa vê</div>
+        <div class="rs-perg" id="edPerguntas"></div>
+        <div class="rs-nota">As perguntas são fixas: uma depende da outra e da conta das datas.</div>
+        <div class="rs-sec">E-mail do DP</div>
+        <input class="rs-in" id="edEmail" style="max-width:320px" placeholder="rh@macedoereis.com.br">
+        <div class="rs-nota">Aparece pra empresa se o envio pelo formulário falhar.</div>
+        <div class="rs-sec">Mensagem do WhatsApp que vai com o link</div>
+        <textarea class="rs-in" id="edConvite" rows="4"></textarea>
+        <div class="rs-nota">{link} é trocado pelo link do formulário.</div>
+        <div class="rs-sec">Mensagem que a empresa vê depois de enviar</div>
+        <textarea class="rs-in" id="edFinal" rows="2"></textarea>
+        <div class="rs-nota">Logo abaixo vai a data do pagamento da rescisão.</div>
+        <div class="rs-sec">Rodapé</div>
+        <textarea class="rs-in" id="edRodape" rows="2"></textarea>
+        <div class="rs-acoes">
+          <span class="rs-sujo" id="edSujo"></span>
+          <button class="btn btn-ghost" id="edPrevia">Ver como a empresa vê</button>
+          <button class="btn btn-primary" id="edSalvar">Salvar formulário</button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- FICHA -->
+  <div class="rs-ov" id="ovFicha">
+    <div class="rs-card">
+      <h2 id="fiTitulo">—</h2>
+      <div class="rs-sub" id="fiEmpresa"></div>
+      <div class="rs-nota" id="fiEnvio"></div>
+      <div class="rs-meta">
+        <label>Funcionário(a): <input class="rs-sel" id="fiNome" style="min-width:240px" placeholder="nome completo"></label>
+        <label>Responsável: <select class="rs-sel" id="fiResp"></select></label>
+        <label>Situação: <select class="rs-sel" id="fiStatus"></select></label>
+      </div>
+
+      <div class="rs-sec">Rescisão</div>
+      <div class="rs-f-row">
+        <label class="rs-f"><span>Caso</span><select class="rs-in" id="fiTipo"></select></label>
+        <label class="rs-f"><span>Aviso prévio</span><select class="rs-in" id="fiAviso"></select></label>
+        <label class="rs-f" id="fiDescWrap"><span>Desconto do aviso</span><select class="rs-in" id="fiDesc"></select></label>
+        <label class="rs-f"><span id="fiDataRot">Data</span><input type="date" class="rs-in" id="fiData"></label>
+      </div>
+      <div class="rs-datas" id="fiDatas"></div>
+
+      <div class="rs-sec">Empresa no cadastro</div>
+      <div class="rs-nota" id="fiVinc" style="margin-top:0"></div>
+      <input class="rs-in" id="fiBusca" placeholder="Buscar a empresa no cadastro… (3+ letras)" autocomplete="off" style="margin-top:6px">
+      <div id="fiRes" class="nt-res" style="display:none; margin-top:6px;"></div>
+
+      <div class="rs-sec">Respostas da empresa</div>
+      <div id="fiRespostas"></div>
+
+      <div class="rs-sec">Na agenda</div>
+      <div class="rs-nota" id="fiTarefa" style="margin-top:0"></div>
+
+      <div class="rs-sec">Observações internas</div>
+      <textarea class="rs-in" id="fiObs"></textarea>
+
+      <div class="rs-acoes">
+        <span class="rs-msg" id="fiMsg"></span>
+        <button class="btn btn-ghost" id="fiFechar">Fechar</button>
+        <button class="btn btn-primary" id="fiSalvar">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { hojeLocal, formatDocumento } from './assets/js/utils.js';   // dia no fuso local (toISOString é UTC)
+    import { PERGUNTAS, calcularRescisao, resumoDatas, resumoCaso, perguntaData, fmtData, diaSemana } from './assets/js/rescisao-datas.js';
+
+    // ---------------------------------------------------------------------------------------------
+    // Textos do formulário (rescisao_modelos). As perguntas são fixas (assets/js/rescisao-datas.js, a mesma conta das
+    // datas que o link e a Edge Function rescisao-link usam); aqui se editam os textos e quem recebe na agenda.
+    // ---------------------------------------------------------------------------------------------
+    const MODELO_PADRAO = {
+      titulo: 'Informações para a rescisão de funcionário(a)',
+      introducao: 'Responda as perguntas abaixo: com elas o Departamento Pessoal já sabe como fazer a rescisão, e você vê na hora até quando o pagamento precisa ser feito.',
+      responsavel: '',
+      email: 'rh@macedoereis.com.br',
+      convite: 'Olá! Para fazermos a rescisão de um(a) funcionário(a), preencha este formulário:\n{link}\nQualquer dúvida, estamos à disposição.\nMacedo & Reis Contabilidade — Departamento Pessoal',
+      final: 'Obrigado! O Departamento Pessoal do escritório vai conferir as informações e preparar a rescisão.',
+      rodape: 'Macedo e Reis Contabilidade Ltda · Rua Luiz Volkart, 35, 1º andar – Centro – Três Coroas/RS · CEP 95660-000 · (51) 3546-1385 · rh@macedoereis.com.br',
+    };
+
+    const EQUIPE = ['Vitória', 'Adaini', 'Thalia', 'Samuel', 'Diego', 'Edna'];   // ordem do DP (dp-regras.html)
+    const STATUS = [['recebida', 'Recebida — a calcular'], ['em_andamento', 'Em andamento'], ['concluida', 'Concluída'], ['cancelada', 'Cancelada']];
+    const ABERTAS = ['recebida', 'em_andamento'];
+    const opcoesStatus = atual => STATUS.map(([v, l]) => `<option value="${v}"${atual === v ? ' selected' : ''}>${l}</option>`).join('');
+    const ST_TAREFA = { aguardando: 'aguardando', pendente: 'pendente', em_andamento: 'em andamento', concluida: 'concluída' };
+    const TIPOS = [['pedido', 'Pedido de demissão'], ['dispensa', 'Demissão por parte da empresa']];
+    const AVISOS = { pedido: [['trabalhado', 'Cumpre os 30 dias de aviso'], ['imediato', 'Desligamento imediato']],
+                     dispensa: [['trabalhado', 'Aviso trabalhado'], ['indenizado', 'Aviso indenizado']] };
+    const ROT_DATA = { dataPedido: 'Data do pedido de demissão', ultimoDia: 'Último dia de trabalho', dataComunicacao: 'Data da comunicação ao funcionário' };
+    const COLS = 'id, cliente_id, empresa_nome, contato_nome, origem, funcionario_nome, tipo, aviso, desconta_aviso, data_base, inicio_aviso, ultimo_dia, data_acerto, respostas, responsavel, status, observacoes, concluida_em, concluida_por, criado_por, criado_em, atualizado_em, clientes(nome_principal, nome_fantasia, documento)';
+
+    const $ = id => document.getElementById(id);
+    const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const fmtQuando = ts => {
+      if (!ts) return '';
+      const d = new Date(ts);
+      return d.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) + ' às ' + d.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
+    };
+    const diaDe = ts => ts ? new Date(ts).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }) : '';
+    const diasAte = d => Math.round((new Date(d + 'T12:00:00') - new Date(hojeLocal() + 'T12:00:00')) / 864e5);
+    const clone = o => JSON.parse(JSON.stringify(o));
+    const LINK = new URL('rescisao.html', location.href).href;
+
+    let usuario = '', rescisoes = [], nomesCli = {}, modelo = null, filtro = 'abertas', busca = '', fichaId = null, fichaFoto = '', fichaCli;
+    let rascunho = null, edSujo = false, buscaTimer = null;
+
+    // ---------- empresa ----------
+    // MEI: o nome oficial vem com o CPF no fim (ou a raiz do CNPJ na frente) — fica de fora da tela
+    const limpaNome = n => String(n || '').replace(/\s*\d{11}\s*$/, '').replace(/^\d{2}\.?\d{3}\.?\d{3}\s+/, '').trim();
+    const cliDe = r => r.clientes || (r.cliente_id && nomesCli[r.cliente_id]) || null;
+    const empresaDe = r => { const c = r.cliente_id ? cliDe(r) : null; return c ? limpaNome(c.nome_principal) : (r.empresa_nome || '?'); };
+    const docEmpresa = r => { const c = r.cliente_id ? cliDe(r) : null; return c && c.documento ? formatDocumento(c.documento) : ''; };
+
+    getCurrentUser().then(u => { if (!u) return; usuario = u.email || ''; $('userName').textContent = u.email; $('userAvatar').textContent = (u.email || '?')[0].toUpperCase(); });
+    $('btnLogout').onclick = () => signOut();
+
+    // ---------- carregar ----------
+    async function carregarModelo() {
+      const { data, error } = await supabase.from('rescisao_modelos').select('id, conteudo, ativo, atualizado_em, atualizado_por').eq('ativo', true).limit(1);
+      if (error) throw error;
+      if (data && data.length) { modelo = data[0]; return; }
+      const { data: novo, error: e2 } = await supabase.from('rescisao_modelos')
+        .insert({ conteudo: MODELO_PADRAO, ativo: true, atualizado_por: usuario || null })
+        .select('id, conteudo, ativo, atualizado_em, atualizado_por').single();
+      if (e2 && e2.code === '23505') return carregarModelo();   // outra pessoa gravou no mesmo instante
+      if (e2) throw e2;
+      modelo = novo;
+    }
+
+    async function carregar() {
+      const { data, error } = await supabase.todasLinhas(() => supabase.from('rescisoes').select(COLS).order('criado_em', { ascending: false }).order('id'));
+      if (error) throw error;
+      rescisoes = data || [];
+      render();
+    }
+
+    // ---------- link do formulário ----------
+    const convite = () => String(((modelo && modelo.conteudo) || {}).convite || MODELO_PADRAO.convite).split('{link}').join(LINK);
+    function pintarLink() {
+      $('lkUrl').value = LINK;
+      const resp = ((modelo && modelo.conteudo) || {}).responsavel;
+      $('lkResp').innerHTML = resp ? 'de <b>' + esc(resp) + '</b>' : '<span class="rs-alerta">— falta escolher quem recebe, na aba Formulário da empresa</span>';
+    }
+    async function copiar(texto, alvo, recado) {
+      try { await navigator.clipboard.writeText(texto); }
+      catch (e) { const t = document.createElement('textarea'); t.value = texto; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); }
+      alvo.classList.remove('er'); alvo.textContent = recado;
+    }
+    $('lkCopiar').onclick = () => copiar(LINK, $('lkMsg'), 'Link copiado. É só colar na conversa com a empresa.');
+    $('lkZap').onclick = () => window.open('https://wa.me/?text=' + encodeURIComponent(convite()), '_blank', 'noopener');
+
+    // ---------- lista ----------
+    function ordenar(lista) {
+      const aberta = r => ABERTAS.includes(r.status) ? 0 : 1;
+      return [...lista].sort((a, b) => aberta(a) - aberta(b)
+        || (aberta(a) === 0 ? String(a.data_acerto || '9999').localeCompare(String(b.data_acerto || '9999')) : 0)
+        || String(b.criado_em || '').localeCompare(String(a.criado_em || '')));
+    }
+
+    function celPagar(r) {
+      if (!r.data_acerto) return '<span class="rs-dim">—</span>';
+      let flag = '';
+      if (ABERTAS.includes(r.status)) {
+        const d = diasAte(r.data_acerto);
+        if (d < 0) flag = ' <span class="rs-mini er">venceu</span>';
+        else if (d === 0) flag = ' <span class="rs-mini er">hoje</span>';
+        else if (d === 1) flag = ' <span class="rs-mini p">amanhã</span>';
+        else if (d <= 5) flag = ` <span class="rs-mini p">em ${d} dias</span>`;
+      }
+      return fmtData(r.data_acerto) + flag;
+    }
+
+    function render() {
+      const cont = { abertas: 0, recebida: 0, em_andamento: 0, concluida: 0, cancelada: 0, todas: rescisoes.length };
+      rescisoes.forEach(r => { if (cont[r.status] != null) cont[r.status]++; if (ABERTAS.includes(r.status)) cont.abertas++; });
+      $('fAbe').textContent = cont.abertas; $('fRec').textContent = cont.recebida; $('fAnd').textContent = cont.em_andamento;
+      $('fCon').textContent = cont.concluida; $('fCan').textContent = cont.cancelada; $('fTod').textContent = cont.todas;
+      document.querySelector('.rs-fc[data-f="recebida"]').classList.toggle('alerta', cont.recebida > 0);
+      document.querySelectorAll('.rs-fc').forEach(b => b.classList.toggle('on', b.dataset.f === filtro));
+
+      const vis = ordenar(rescisoes).filter(r => {
+        if (filtro === 'abertas' && !ABERTAS.includes(r.status)) return false;
+        if (filtro !== 'abertas' && filtro !== 'todas' && r.status !== filtro) return false;
+        if (busca) {
+          const alvo = [r.funcionario_nome, empresaDe(r), (cliDe(r) || {}).nome_fantasia, r.empresa_nome].filter(Boolean).join(' ').toLowerCase();
+          if (!alvo.includes(busca)) return false;
+        }
+        return true;
+      });
+      $('rsLista').innerHTML = vis.map(r => {
+        const quando = r.status === 'recebida' ? 'recebida em ' + fmtData(diaDe(r.criado_em))
+          : r.status === 'concluida' && r.concluida_em ? 'em ' + fmtData(diaDe(r.concluida_em)) : '';
+        const semVinculo = !r.cliente_id ? ' <span class="rs-mini p" title="O nome informado não bateu com uma empresa do cadastro — vincule na ficha">não vinculada</span>' : '';
+        return `<tr data-id="${esc(r.id)}">`
+          + `<td><b>${r.funcionario_nome ? esc(r.funcionario_nome) : '<span class="rs-dim">funcionário(a) sem nome</span>'}</b><br><span class="rs-sub">${esc(empresaDe(r))}</span>${semVinculo}</td>`
+          + `<td class="oculta-m">${esc(resumoCaso(r.tipo, r.aviso, r.desconta_aviso))}</td>`
+          + `<td>${celPagar(r)}</td>`
+          + `<td class="oculta-m">${esc(r.responsavel || '—')}</td>`
+          + `<td><select class="rs-sel st-lin" data-id="${esc(r.id)}">${opcoesStatus(r.status)}</select>${quando ? `<div class="rs-sub" style="margin-top:3px">${quando}</div>` : ''}</td>`
+          + '</tr>';
+      }).join('');
+      $('rsVazio').hidden = vis.length > 0;
+      $('rsVazio').textContent = rescisoes.length ? 'Nenhuma rescisão neste filtro.' : 'Nenhuma rescisão ainda. Mande o link do formulário pra empresa: quando ela enviar, a rescisão aparece aqui.';
+      document.querySelectorAll('#rsLista tr').forEach(tr => tr.addEventListener('click', () => abrirFicha(tr.dataset.id)));
+      document.querySelectorAll('.st-lin').forEach(sel => {
+        sel.addEventListener('click', e => e.stopPropagation());
+        sel.addEventListener('change', async e => {
+          const r = rescisoes.find(x => x.id === e.target.dataset.id);
+          if (!r) return;
+          if (e.target.value === 'cancelada' && !confirm('Cancelar esta rescisão? A tarefa sai da agenda.')) { e.target.value = r.status; return; }
+          const ok = await gravarStatus(r, e.target.value);
+          if (!ok) e.target.value = r.status;
+          render();
+        });
+      });
+    }
+
+    function patchStatus(r, novo) {
+      const p = { status: novo, atualizado_em: new Date().toISOString() };
+      if (novo === 'concluida' && r.status !== 'concluida') { p.concluida_em = new Date().toISOString(); p.concluida_por = usuario || null; }
+      if (novo !== 'concluida') { p.concluida_em = null; p.concluida_por = null; }
+      return p;
+    }
+    async function gravarStatus(r, novo) {
+      const p = patchStatus(r, novo);
+      const { error } = await supabase.from('rescisoes').update(p).eq('id', r.id);
+      if (error) { alert('Não foi possível mudar a situação: ' + error.message); return false; }
+      Object.assign(r, p);
+      return true;
+    }
+
+    document.querySelectorAll('.rs-fc').forEach(b => b.addEventListener('click', () => { filtro = b.dataset.f; render(); }));
+    $('rsBusca').addEventListener('input', e => { busca = e.target.value.trim().toLowerCase(); render(); });
+
+    // ---------- ficha ----------
+    const opcoesEquipe = atual => '<option value="">— escolha —</option>' + [...new Set([...EQUIPE, ...(atual && !EQUIPE.includes(atual) ? [atual] : [])])]
+      .map(n => `<option${n === atual ? ' selected' : ''}>${esc(n)}</option>`).join('');
+    const opcoes = (lista, atual, vazio) => (vazio ? `<option value="">${vazio}</option>` : '')
+      + lista.map(([v, l]) => `<option value="${v}"${v === atual ? ' selected' : ''}>${esc(l)}</option>`).join('');
+    const listaResp = r => (Array.isArray(r.respostas) ? r.respostas : []).filter(x => x && typeof x === 'object');
+    const valorResp = x => (x.tipo === 'data' && /^\d{4}-\d{2}-\d{2}$/.test(String(x.valor || '')) ? fmtData(x.valor) : x.valor);
+
+    function respostasHtml(r) {
+      const lista = listaResp(r);
+      if (!lista.length) return '<div class="rs-nota" style="margin-top:0">Sem respostas do formulário.</div>';
+      return '<div class="rs-nota" style="margin:0 0 8px"><button class="btn btn-ghost btn-sm" id="fiCopResp">Copiar respostas</button></div><table class="rs-resp">'
+        + lista.map(x => { const v = valorResp(x); return `<tr><td>${esc(x.rotulo)}</td><td>${v === '' || v == null ? '<span class="rs-dim">(em branco)</span>' : esc(v)}</td></tr>`; }).join('')
+        + '</table>';
+    }
+
+    function respostasTexto(r) {
+      const linhas = [`Rescisão — ${r.funcionario_nome || 'funcionário(a)'} — ${empresaDe(r)}${docEmpresa(r) ? ' (' + docEmpresa(r) + ')' : ''}`];
+      if (r.contato_nome) linhas.push(`Enviado por ${r.contato_nome} em ${fmtQuando(r.criado_em)}`);
+      listaResp(r).forEach(x => { const v = valorResp(x); linhas.push(`${x.rotulo}: ${v === '' || v == null ? '(em branco)' : v}`); });
+      const res = resumoDatas(calcularRescisao({ tipo: r.tipo, aviso: r.aviso, data: r.data_base }));
+      if (res) { linhas.push(''); res.linhas.forEach(l => linhas.push(`${l.rotulo}: ${fmtData(l.data)} (${diaSemana(l.data)})`)); }
+      return linhas.join('\n');
+    }
+
+    // o caso como está na ficha agora
+    const casoFicha = () => ({ tipo: $('fiTipo').value, aviso: $('fiAviso').value, data: $('fiData').value,
+      desconta: $('fiDesc').value === 'sim' ? true : $('fiDesc').value === 'nao' ? false : null });
+
+    function pintarCaso(manterAviso = true) {
+      const tipo = $('fiTipo').value;
+      const avisoAtual = manterAviso ? $('fiAviso').value : '';
+      const lista = AVISOS[tipo] || [];
+      $('fiAviso').innerHTML = opcoes(lista, lista.some(o => o[0] === avisoAtual) ? avisoAtual : '', '— escolha —');
+      const c = casoFicha();
+      const imediato = c.tipo === 'pedido' && c.aviso === 'imediato';
+      $('fiDescWrap').style.display = imediato ? '' : 'none';
+      $('fiDataRot').textContent = c.tipo && c.aviso ? ROT_DATA[perguntaData(c.tipo, c.aviso)] : 'Data';
+      pintarDatas(c);
+    }
+
+    function pintarDatas(c) {
+      const calc = calcularRescisao(c);
+      const res = resumoDatas(calc);
+      if (!res) { $('fiDatas').innerHTML = '<span class="rs-alerta">Complete o caso (aviso e data) pra ver as datas.</span>'; return; }
+      const linhas = [...res.linhas];
+      if (calc.projecao) linhas.splice(1, 0, { rotulo: 'Projeção do aviso indenizado (30 dias; +3 por ano completo)', data: calc.projecao });
+      const aberta = ABERTAS.includes($('fiStatus').value);
+      const d = diasAte(calc.limite);
+      const flag = !aberta ? '' : d < 0 ? ' <span class="rs-mini er">venceu</span>' : d === 0 ? ' <span class="rs-mini er">hoje</span>' : d <= 5 ? ` <span class="rs-mini p">em ${d} dia${d === 1 ? '' : 's'}</span>` : '';
+      $('fiDatas').innerHTML = linhas.map(l => `<div class="lin${l.destaque ? ' dest' : ''}"><span>${esc(l.rotulo)}</span><b>${fmtData(l.data)} · ${diaSemana(l.data)}${l.destaque ? flag : ''}</b></div>`).join('')
+        + '<ul>' + res.notas.map(n => `<li>${esc(n)}</li>`).join('') + '</ul>';
+    }
+
+    function pintarVinculo(r) {
+      const c = fichaCli !== undefined ? fichaCli : (r.cliente_id ? { id: r.cliente_id, ...(cliDe(r) || {}) } : null);
+      const digitado = r.empresa_nome ? esc(r.empresa_nome) : '';
+      $('fiVinc').innerHTML = c
+        ? `Vinculada a <b>${esc(limpaNome(c.nome_principal) || '?')}</b>${c.documento ? ' · ' + esc(formatDocumento(c.documento)) : ''}${fichaCli !== undefined ? ' <span class="rs-alerta">(salve pra gravar)</span>' : ''}`
+          + (digitado ? `<br><span class="rs-sub">No formulário: ${digitado}</span>` : '')
+        : `<span class="rs-alerta">Não encontrada no cadastro</span>${digitado ? ' — no formulário: ' + digitado : ''}. Busque abaixo e escolha a empresa.`;
+    }
+
+    const fotoFicha = () => JSON.stringify([$('fiNome').value, $('fiResp').value, $('fiStatus').value, $('fiObs').value, fichaCli === undefined ? null : fichaCli.id,
+      $('fiTipo').value, $('fiAviso').value, $('fiDesc').value, $('fiData').value]);
+
+    async function abrirFicha(id) {
+      const r = rescisoes.find(x => x.id === id);
+      if (!r) return;
+      fichaId = id; fichaCli = undefined;
+      $('fiTitulo').textContent = r.funcionario_nome || 'Funcionário(a) sem nome';
+      $('fiEmpresa').textContent = empresaDe(r) + (docEmpresa(r) ? ' · ' + docEmpresa(r) : '');
+      $('fiEnvio').innerHTML = r.origem === 'externa'
+        ? `Enviada pelo formulário em ${fmtQuando(r.criado_em)}${r.contato_nome ? ' por <b>' + esc(r.contato_nome) + '</b>' : ''}`
+        : `Registrada no módulo em ${fmtQuando(r.criado_em)}${r.criado_por ? ' por ' + esc(r.criado_por) : ''}.`;
+      $('fiNome').value = r.funcionario_nome || '';
+      $('fiResp').innerHTML = opcoesEquipe(r.responsavel || '');
+      $('fiStatus').innerHTML = opcoesStatus(r.status);
+      $('fiTipo').innerHTML = opcoes(TIPOS, r.tipo || '', '— escolha —');
+      $('fiAviso').innerHTML = opcoes(AVISOS[r.tipo] || [], r.aviso || '', '— escolha —');
+      $('fiDesc').innerHTML = opcoes([['sim', 'Desconta os 30 dias'], ['nao', 'Não desconta']], r.desconta_aviso === true ? 'sim' : r.desconta_aviso === false ? 'nao' : '', '— escolha —');
+      $('fiData').value = r.data_base || '';
+      pintarCaso();
+      pintarVinculo(r);
+      $('fiBusca').value = ''; $('fiRes').style.display = 'none';
+      $('fiRespostas').innerHTML = respostasHtml(r);
+      if ($('fiCopResp')) $('fiCopResp').onclick = () => copiar(respostasTexto(r), $('fiMsg'), 'Respostas copiadas.');
+      $('fiObs').value = r.observacoes || '';
+      $('fiMsg').textContent = ''; $('fiMsg').classList.remove('er');
+      $('fiTarefa').textContent = 'Consultando a agenda…';
+      $('ovFicha').classList.add('on');
+      fichaFoto = fotoFicha();
+      const { data: ts } = await supabase.from('tarefas').select('id, prazo, status, responsavel').eq('rescisao_id', id).limit(1);
+      if (fichaId !== id) return;
+      const t = (ts || [])[0];
+      $('fiTarefa').textContent = t
+        ? `Tarefa ${ST_TAREFA[t.status] || t.status}${t.responsavel ? ' na agenda de ' + t.responsavel : ' sem responsável (não aparece na agenda de ninguém)'}${t.prazo ? ', prazo ' + fmtData(t.prazo) + ' (dia do envio)' : ''}. Concluir a tarefa conclui a rescisão, e o contrário também.`
+        : (r.status === 'cancelada' ? 'Rescisão cancelada: sem tarefa na agenda.' : 'A tarefa aparece na agenda do responsável assim que a rescisão é salva.');
+    }
+
+    $('fiTipo').addEventListener('change', () => pintarCaso(false));
+    $('fiAviso').addEventListener('change', () => pintarCaso());
+    $('fiDesc').addEventListener('change', () => pintarCaso());
+    $('fiData').addEventListener('input', () => pintarCaso());
+    $('fiStatus').addEventListener('change', () => pintarDatas(casoFicha()));
+
+    $('fiBusca').addEventListener('input', () => {
+      clearTimeout(buscaTimer);
+      buscaTimer = setTimeout(async () => {
+        const t = $('fiBusca').value.trim();
+        const res = $('fiRes');
+        if (t.length < 3) { res.style.display = 'none'; return; }
+        const chave = t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+        const { data } = await supabase.from('clientes').select('id, nome_principal, nome_fantasia, documento, cidade')
+          .or(`nome_principal.ilike.*${t}*,nome_fantasia.ilike.*${t}*${chave ? `,nome_busca.ilike.*${chave}*,documento.ilike.*${chave}*` : ''}`).limit(8);
+        res.innerHTML = (data || []).map(c => `<button type="button" data-id="${esc(c.id)}">${esc(c.nome_principal)}<small>${esc([c.nome_fantasia, c.documento ? formatDocumento(c.documento) : '', c.cidade].filter(Boolean).join(' · '))}</small></button>`).join('')
+          || '<button type="button" disabled>Nada encontrado.</button>';
+        res.style.display = 'block';
+        res.querySelectorAll('[data-id]').forEach(b => b.addEventListener('click', () => {
+          fichaCli = (data || []).find(x => x.id === b.dataset.id);
+          $('fiBusca').value = ''; res.style.display = 'none';
+          pintarVinculo(rescisoes.find(x => x.id === fichaId));
+        }));
+      }, 300);
+    });
+
+    function fecharFicha(perguntar = true) {
+      if (perguntar && fichaId && fotoFicha() !== fichaFoto && !confirm('Fechar sem salvar as mudanças?')) return;
+      $('ovFicha').classList.remove('on'); fichaId = null; fichaCli = undefined;
+    }
+
+    async function salvarFicha() {
+      const r = rescisoes.find(x => x.id === fichaId);
+      if (!r) return;
+      const novo = $('fiStatus').value;
+      const c = casoFicha();
+      const calc = calcularRescisao(c);
+      const erro = msg => { $('fiMsg').textContent = msg; $('fiMsg').classList.add('er'); };
+      if (!calc) return erro('Complete o caso da rescisão: aviso e data.');
+      if (c.tipo === 'pedido' && c.aviso === 'imediato' && c.desconta == null) return erro('Diga se a empresa desconta o aviso.');
+      if (novo === 'cancelada' && r.status !== 'cancelada' && !confirm('Cancelar esta rescisão? A tarefa sai da agenda.')) return;
+      const p = { ...patchStatus(r, novo), funcionario_nome: $('fiNome').value.trim() || null, responsavel: $('fiResp').value || null,
+        observacoes: $('fiObs').value.trim() || null, tipo: c.tipo, aviso: c.aviso,
+        desconta_aviso: c.tipo === 'pedido' && c.aviso === 'imediato' ? c.desconta : null,
+        data_base: c.data, inicio_aviso: calc.inicioAviso, ultimo_dia: calc.ultimoDia, data_acerto: calc.limite };
+      if (novo === r.status) { delete p.concluida_em; delete p.concluida_por; }
+      if (fichaCli !== undefined) p.cliente_id = fichaCli ? fichaCli.id : null;
+      $('fiSalvar').disabled = true;
+      const { error } = await supabase.from('rescisoes').update(p).eq('id', r.id);
+      $('fiSalvar').disabled = false;
+      if (error) return erro('Não salvou: ' + error.message);
+      if (fichaCli) { nomesCli[fichaCli.id] = { nome_principal: fichaCli.nome_principal, nome_fantasia: fichaCli.nome_fantasia, documento: fichaCli.documento }; r.clientes = nomesCli[fichaCli.id]; }
+      Object.assign(r, p);
+      render();
+      fecharFicha(false);
+    }
+
+    $('fiFechar').onclick = () => fecharFicha();
+    $('fiSalvar').onclick = salvarFicha;
+    $('ovFicha').addEventListener('click', e => { if (e.target === $('ovFicha')) fecharFicha(); });
+
+    // ---------- formulário (textos) ----------
+    function perguntasHtml() {
+      const P = PERGUNTAS;
+      const ops = p => p.opcoes.map(o => o[1]).join(' / ');
+      return '<ol>'
+        + '<li>Empresa (razão social) e seu nome — pelo nome a rescisão chega vinculada ao cadastro (quando não acha, vincule na ficha)</li>'
+        + `<li>${esc(P.funcionario.rotulo)}</li>`
+        + `<li>${esc(P.tipo.rotulo)} <span class="se">(${esc(ops(P.tipo))})</span></li>`
+        + `<li><span class="se">Se pedido de demissão:</span> ${esc(P.avisoPedido.rotulo)}`
+        +   `<br><span class="se">cumpre →</span> ${esc(P.dataPedido.rotulo)}`
+        +   `<br><span class="se">imediato →</span> ${esc(P.desconto.rotulo)} · ${esc(P.ultimoDia.rotulo)}</li>`
+        + `<li><span class="se">Se demissão por parte da empresa:</span> ${esc(P.dataComunicacao.rotulo)} · ${esc(P.avisoDispensa.rotulo)}</li>`
+        + '<li>Datas na hora: início do aviso, último dia de trabalho e pagamento da rescisão até</li>'
+        + `<li>${esc(P.obs.rotulo)} <span class="se">(opcional)</span></li>`
+        + '</ol>';
+    }
+
+    function renderEditor() {
+      const c = rascunho;
+      $('edResp').innerHTML = opcoesEquipe(c.responsavel || '');
+      $('edTitulo').value = c.titulo || ''; $('edIntro').value = c.introducao || ''; $('edEmail').value = c.email || '';
+      $('edConvite').value = c.convite || ''; $('edFinal').value = c.final || ''; $('edRodape').value = c.rodape || '';
+      $('edPerguntas').innerHTML = perguntasHtml();
+      $('edInfo').textContent = modelo && modelo.atualizado_em ? 'Última alteração: ' + fmtQuando(modelo.atualizado_em) + (modelo.atualizado_por ? ' · ' + modelo.atualizado_por : '') : '';
+      marcarSujo(edSujo);
+    }
+    function marcarSujo(v) {
+      edSujo = v;
+      $('edSujo').style.color = ''; $('edSujo').textContent = v ? 'Alterações não salvas' : '';
+    }
+    [['edTitulo', 'titulo'], ['edIntro', 'introducao'], ['edEmail', 'email'], ['edConvite', 'convite'], ['edFinal', 'final'], ['edRodape', 'rodape']].forEach(([id, k]) =>
+      $(id).addEventListener('input', () => { rascunho[k] = $(id).value; marcarSujo(true); }));
+    $('edResp').addEventListener('change', () => { rascunho.responsavel = $('edResp').value; marcarSujo(true); });
+
+    $('edSalvar').onclick = async () => {
+      if (!String(rascunho.responsavel || '').trim()) { alert('Escolha quem recebe as rescisões na agenda.'); return; }
+      if (!String(rascunho.titulo || '').trim()) { alert('Dê um título ao formulário.'); return; }
+      $('edSalvar').disabled = true;
+      const quando = new Date().toISOString();
+      const { error } = await supabase.from('rescisao_modelos').update({ conteudo: clone(rascunho), atualizado_em: quando, atualizado_por: usuario || null }).eq('id', modelo.id);
+      $('edSalvar').disabled = false;
+      if (error) { alert('Não salvou: ' + error.message); return; }
+      modelo.conteudo = clone(rascunho); modelo.atualizado_em = quando; modelo.atualizado_por = usuario || null;
+      marcarSujo(false); renderEditor(); pintarLink();
+      $('edSujo').style.color = 'var(--ok)'; $('edSujo').textContent = 'Formulário salvo — o link já abre assim.';
+      setTimeout(() => { if (!edSujo) { $('edSujo').style.color = ''; $('edSujo').textContent = ''; } }, 4000);
+    };
+    $('edPrevia').onclick = () => {
+      try { localStorage.setItem('mr_rescisao_previa', JSON.stringify({ modelo: rascunho })); }
+      catch (e) { alert('O navegador não deixou guardar a prévia: ' + e.message); return; }
+      window.open('rescisao.html?previa=1', '_blank');
+    };
+    window.addEventListener('beforeunload', e => { if (edSujo) { e.preventDefault(); e.returnValue = ''; } });
+
+    // ---------- abas ----------
+    function mostrarAba(aba) {
+      document.querySelectorAll('.rs-aba').forEach(b => b.classList.toggle('on', b.dataset.aba === aba));
+      $('secLista').hidden = aba !== 'lista';
+      $('secForm').hidden = aba !== 'form';
+      if (aba === 'form' && modelo && !rascunho) { rascunho = { ...MODELO_PADRAO, ...clone(modelo.conteudo || {}) }; renderEditor(); }
+    }
+    document.querySelectorAll('.rs-aba').forEach(b => b.addEventListener('click', () => mostrarAba(b.dataset.aba)));
+
+    // ---------- início ----------
+    (async () => {
+      try {
+        await getCurrentUser().then(u => { usuario = (u && u.email) || ''; });
+        await carregarModelo();
+        pintarLink();
+        await carregar();
+      } catch (e) {
+        $('rsVazio').hidden = false;
+        $('rsVazio').textContent = 'Não foi possível carregar as rescisões: ' + (e.message || e) + '.';
+        return;
+      }
+      const qs = new URLSearchParams(location.search);
+      if (qs.get('aba') === 'formulario') mostrarAba('form');
+      const alvo = qs.get('rescisao');
+      if (alvo && rescisoes.some(r => r.id === alvo)) { filtro = 'todas'; render(); abrirFicha(alvo); }
+    })();
+  </script>
+</body>
+</html>

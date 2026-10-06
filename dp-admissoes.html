@@ -156,7 +156,7 @@
         </div>
         <div class="ad-sec">Quem recebe as admissões na agenda</div>
         <select class="ad-in" id="edResp" style="max-width:320px"></select>
-        <div class="ad-nota">Cada formulário enviado vira uma tarefa na agenda dessa pessoa, com prazo no dia útil antes do início. Dá pra trocar o responsável na ficha de cada admissão.</div>
+        <div class="ad-nota">Cada formulário enviado vira uma tarefa na agenda dessa pessoa, com prazo no dia do envio. Dá pra trocar o responsável na ficha de cada admissão.</div>
         <div class="ad-sec">Título e introdução</div>
         <label class="ad-f"><span>Título</span><input class="ad-in" id="edTitulo"></label>
         <label class="ad-f"><span>Introdução (opcional — aparece logo abaixo do título)</span><textarea class="ad-in" id="edIntro" rows="2"></textarea></label>
@@ -555,7 +555,7 @@
       if (fichaId !== id) return;
       const t = (ts || [])[0];
       $('fiTarefa').textContent = t
-        ? `Tarefa ${ST_TAREFA[t.status] || t.status}${t.responsavel ? ' na agenda de ' + t.responsavel : ' sem responsável (não aparece na agenda de ninguém)'}${t.prazo ? ', prazo ' + fmtData(t.prazo) : ', sem prazo (sem data de início)'}. O prazo é o dia útil antes do início.`
+        ? `Tarefa ${ST_TAREFA[t.status] || t.status}${t.responsavel ? ' na agenda de ' + t.responsavel : ' sem responsável (não aparece na agenda de ninguém)'}${t.prazo ? ', prazo ' + fmtData(t.prazo) + ' (dia do envio)' : ''}.`
         : (a.status === 'cancelada' ? 'Admissão cancelada: sem tarefa na agenda.' : 'A tarefa aparece na agenda do responsável assim que a admissão é salva.');
     }
 
