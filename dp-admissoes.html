@@ -437,7 +437,7 @@
       .map(n => `<option${n === atual ? ' selected' : ''}>${esc(n)}</option>`).join('');
 
     function respostasHtml(a) {
-      const r = Array.isArray(a.respostas) ? a.respostas : null;
+      const r = Array.isArray(a.respostas) ? a.respostas.filter(x => x && typeof x === 'object') : null;
       if (!r || !r.length) return '<div class="ad-nota" style="margin-top:0">A empresa ainda não respondeu.</div>';
       let html = `<div class="ad-nota" style="margin:0 0 8px">Respondido em ${fmtQuando(a.respondida_em)}. <button class="btn btn-ghost btn-sm" id="fiCopResp" style="margin-left:6px">Copiar respostas</button></div><table class="ad-resp">`;
       let grupo = null;
@@ -456,7 +456,7 @@
     function respostasTexto(a) {
       const linhas = [`Admissão — ${a.funcionario_nome || 'funcionário(a)'} — ${empresaDe(a)}`, `Respondido em ${fmtQuando(a.respondida_em)}`];
       let grupo = null;
-      (a.respostas || []).forEach(x => {
+      (Array.isArray(a.respostas) ? a.respostas : []).filter(x => x && typeof x === 'object').forEach(x => {
         if ((x.secao || '') !== grupo) { grupo = x.secao || ''; if (grupo) linhas.push('', grupo.toUpperCase()); }
         let v = x.valor;
         if (x.tipo === 'data' && /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''))) v = fmtData(v);
