@@ -75,7 +75,7 @@
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
           </div>
           <h3>Admissões</h3>
-          <p>Registro de funcionários: link do formulário pra empresa preencher, documentos recebidos e tarefa na agenda até o registro.</p>
+          <p>Registro de funcionários: a empresa preenche o formulário pelo link e a admissão chega aqui e na agenda, com os documentos a conferir.</p>
           <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="dp-admissoes.html">·</span></div>
         </a>
 
@@ -169,15 +169,15 @@
           card.appendChild(pill);
         }
         {
-          const { data: ads, error: eAd } = await supabase.from('admissoes').select('status').in('status', ['aguardando_empresa', 'respondida', 'em_registro']);
+          const { data: ads, error: eAd } = await supabase.from('admissoes').select('status').in('status', ['recebida', 'em_registro']);
           if (eAd) setBadge('dp-admissoes.html', '—');
           else {
             setBadge('dp-admissoes.html', (ads || []).length + ' abertas');
-            const resp = (ads || []).filter(a => a.status === 'respondida').length;
+            const resp = (ads || []).filter(a => a.status === 'recebida').length;
             if (resp) {
               const card = document.querySelector('a[href="dp-admissoes.html"]');
               const pill = document.createElement('span');
-              pill.className = 'badge-hoje'; pill.textContent = resp + (resp === 1 ? ' respondida' : ' respondidas');
+              pill.className = 'badge-hoje'; pill.textContent = resp + (resp === 1 ? ' recebida' : ' recebidas');
               card.appendChild(pill);
             }
           }

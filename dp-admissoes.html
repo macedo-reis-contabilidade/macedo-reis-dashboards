@@ -11,6 +11,9 @@
     .ad-aba { background:none; border:none; border-bottom:2px solid transparent; margin-bottom:-1px; padding:10px 14px; font:inherit; font-size:14px; color:var(--text-muted); cursor:pointer; }
     .ad-aba:hover { color:var(--text); }
     .ad-aba.on { color:var(--text); font-weight:600; border-bottom-color:var(--brand-primary); }
+    .ad-linkbox { background:var(--fill-1); border:1px solid var(--line); border-radius:14px; padding:14px 16px; margin-bottom:16px; }
+    .ad-linkbox-t { font-size:13.5px; color:var(--text-2); margin-bottom:10px; line-height:1.5; }
+    .ad-linkbox-t b { color:var(--text); }
     .ad-funil { display:grid; grid-template-columns:repeat(6,1fr); gap:10px; margin-bottom:18px; }
     .ad-fc { background:var(--fill-1); border:none; border-radius:12px; padding:12px 14px; cursor:pointer; text-align:left; transition:background .15s; display:flex; flex-direction:column; gap:4px; font-family:inherit; }
     .ad-fc:hover { background:var(--fill-2); }
@@ -33,7 +36,6 @@
     .ad-mini.p { background:rgba(232,161,92,.15); color:var(--warn); }
     .ad-mini.ok { background:rgba(63,176,122,.15); color:var(--ok); }
     .ad-mini.er { background:rgba(224,108,108,.15); color:var(--err); }
-    .ad-mini.nt { background:var(--fill-2); color:var(--text-muted); }
     .ad-dim { color:var(--text-dim); }
     @media (max-width:820px){ .ad-tabela .oculta-m { display:none; } }
     .ad-ov { position:fixed; inset:0; background:var(--overlay); display:none; align-items:flex-start; justify-content:center; overflow:auto; padding:34px 16px; z-index:60; }
@@ -47,7 +49,9 @@
     textarea.ad-in { min-height:56px; resize:vertical; }
     .ad-link { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
     .ad-link input { flex:1; min-width:240px; }
-    .ad-nota { font-size:12.5px; color:var(--text-2); margin-top:6px; }
+    .ad-nota { font-size:12.5px; color:var(--text-2); margin-top:6px; line-height:1.5; }
+    .ad-nota a { color:var(--brand-light); }
+    .ad-alerta { color:var(--warn); }
     .ad-resp { width:100%; border-collapse:collapse; }
     .ad-resp td { padding:6px 8px; font-size:13px; border-bottom:1px solid var(--line); vertical-align:top; color:var(--text); }
     .ad-resp td:first-child { color:var(--text-muted); width:42%; }
@@ -70,6 +74,7 @@
     .ad-bl-cab { display:flex; gap:10px; align-items:center; padding:10px 12px; cursor:pointer; }
     .ad-bl-cab .t { font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; padding:2px 8px; border-radius:999px; background:var(--fill-3); color:var(--text-2); white-space:nowrap; }
     .ad-bl.secao { background:transparent; border-style:dashed; }
+    .ad-bl.fixo { background:transparent; border-style:dashed; cursor:default; }
     .ad-bl-cab .r { flex:1; font-size:13px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .ad-bl-cab button { background:none; border:none; color:var(--text-dim); cursor:pointer; font-size:13px; padding:4px 5px; }
     .ad-bl-cab button:hover { color:var(--text); }
@@ -105,7 +110,7 @@
         </div>
         <div class="eyebrow">Departamento Pessoal</div>
         <h1>Admissões</h1>
-        <p>Registro de funcionários das empresas: o link do formulário pra empresa preencher, os documentos recebidos e a tarefa na agenda até o registro.</p>
+        <p>Registro de funcionários das empresas: a empresa preenche o formulário pelo link, a admissão aparece aqui e na agenda, e o DP acompanha documentos e registro.</p>
       </div>
 
       <div class="ad-abas">
@@ -114,19 +119,28 @@
       </div>
 
       <section id="secLista">
+        <div class="ad-linkbox">
+          <div class="ad-linkbox-t"><b>Link do formulário</b> — o mesmo pra todas as empresas. A empresa preenche e envia; a admissão aparece aqui e na agenda <span id="lkResp"></span>.</div>
+          <div class="ad-link">
+            <input class="ad-in" id="lkUrl" readonly>
+            <button class="btn btn-ghost btn-sm" id="lkCopiar">Copiar link</button>
+            <button class="btn btn-ghost btn-sm" id="lkZap">Enviar pelo WhatsApp</button>
+            <a class="btn btn-ghost btn-sm" id="lkAbrir" href="admissao.html" target="_blank" rel="noopener" title="Pra preencher no lugar da empresa, quando ela mandou tudo por outro meio">Abrir o formulário</a>
+          </div>
+          <div class="ad-nota" id="lkMsg"></div>
+        </div>
         <div class="ad-funil" id="adFunil">
           <button class="ad-fc on" data-f="abertas"><span class="n" id="fAbe">0</span><span class="l">Abertas</span></button>
-          <button class="ad-fc" data-f="aguardando_empresa"><span class="n" id="fAgu">0</span><span class="l">Aguardando a empresa</span></button>
-          <button class="ad-fc" data-f="respondida"><span class="n" id="fRes">0</span><span class="l">Respondidas — a registrar</span></button>
+          <button class="ad-fc" data-f="recebida"><span class="n" id="fRec">0</span><span class="l">Recebidas — a registrar</span></button>
           <button class="ad-fc" data-f="em_registro"><span class="n" id="fReg">0</span><span class="l">Em registro</span></button>
           <button class="ad-fc" data-f="registrada"><span class="n" id="fFei">0</span><span class="l">Registradas</span></button>
+          <button class="ad-fc" data-f="cancelada"><span class="n" id="fCan">0</span><span class="l">Canceladas</span></button>
           <button class="ad-fc" data-f="todas"><span class="n" id="fTod">0</span><span class="l">Todas</span></button>
         </div>
         <div class="toolbar">
           <div class="toolbar-filters">
             <input type="text" id="adBusca" class="input input-search" placeholder="Buscar funcionário ou empresa…">
           </div>
-          <button class="btn btn-primary" id="btnNova">+ Nova admissão</button>
         </div>
         <table class="ad-tabela">
           <thead><tr><th>Funcionário · empresa</th><th>Início</th><th class="oculta-m">Documentos</th><th class="oculta-m">Responsável</th><th>Situação</th></tr></thead>
@@ -140,10 +154,14 @@
           <p>Este é o formulário que a empresa recebe pelo link. As mudanças valem para os próximos preenchimentos; as respostas já recebidas ficam como foram enviadas.</p>
           <span class="ad-sub" id="edInfo"></span>
         </div>
+        <div class="ad-sec">Quem recebe as admissões na agenda</div>
+        <select class="ad-in" id="edResp" style="max-width:320px"></select>
+        <div class="ad-nota">Cada formulário enviado vira uma tarefa na agenda dessa pessoa, com prazo no dia útil antes do início. Dá pra trocar o responsável na ficha de cada admissão.</div>
         <div class="ad-sec">Título e introdução</div>
         <label class="ad-f"><span>Título</span><input class="ad-in" id="edTitulo"></label>
         <label class="ad-f"><span>Introdução (opcional — aparece logo abaixo do título)</span><textarea class="ad-in" id="edIntro" rows="2"></textarea></label>
         <div class="ad-sec">Perguntas e textos, na ordem em que a empresa vê</div>
+        <div class="ad-bl fixo"><div class="ad-bl-cab"><span class="t">Fixo</span><span class="r">Empresa (razão social), CNPJ, nome e WhatsApp de quem preenche — sempre no topo: é por eles que a admissão chega vinculada à empresa do cadastro</span></div></div>
         <div id="edBlocos"></div>
         <div class="ad-add">
           <button data-novo="pergunta">+ Pergunta</button>
@@ -154,7 +172,7 @@
         </div>
         <div class="ad-sec">Mensagem do WhatsApp que vai com o link</div>
         <textarea class="ad-in" id="edConvite" rows="4"></textarea>
-        <div class="ad-nota">{empresa}, {funcionario} e {link} são trocados pelos dados de cada admissão.</div>
+        <div class="ad-nota">{link} é trocado pelo link do formulário.</div>
         <div class="ad-sec">Mensagem que a empresa vê depois de enviar</div>
         <textarea class="ad-in" id="edFinal" rows="2"></textarea>
         <div class="ad-sec">Rodapé</div>
@@ -173,6 +191,7 @@
     <div class="ad-card">
       <h2 id="fiTitulo">—</h2>
       <div class="ad-sub" id="fiEmpresa"></div>
+      <div class="ad-nota" id="fiEnvio"></div>
       <div class="ad-meta">
         <label>Funcionário(a): <input class="ad-sel" id="fiNome" style="min-width:240px" placeholder="nome completo"></label>
         <label>Início: <input type="date" class="ad-sel" id="fiInicio"></label>
@@ -180,13 +199,10 @@
         <label>Situação: <select class="ad-sel" id="fiStatus"></select></label>
       </div>
 
-      <div class="ad-sec">Link para a empresa preencher</div>
-      <div class="ad-link">
-        <input class="ad-in" id="fiLink" readonly>
-        <button class="btn btn-ghost btn-sm" id="fiCopiar">Copiar link</button>
-        <button class="btn btn-ghost btn-sm" id="fiZap">Enviar pelo WhatsApp</button>
-      </div>
-      <div class="ad-nota" id="fiLinkNota"></div>
+      <div class="ad-sec">Empresa no cadastro</div>
+      <div class="ad-nota" id="fiVinc" style="margin-top:0"></div>
+      <input class="ad-in" id="fiBusca" placeholder="Buscar a empresa no cadastro… (3+ letras)" autocomplete="off" style="margin-top:6px">
+      <div id="fiRes" class="nt-res" style="display:none; margin-top:6px;"></div>
 
       <div class="ad-sec">Respostas da empresa</div>
       <div id="fiRespostas"></div>
@@ -208,43 +224,22 @@
     </div>
   </div>
 
-  <!-- NOVA ADMISSÃO -->
-  <div class="ad-ov" id="ovNova">
-    <div class="ad-card" style="max-width:560px">
-      <h2>Nova admissão</h2>
-      <div class="ad-sub">Cria o link do formulário e a tarefa na agenda do responsável.</div>
-      <div class="ad-sec">Empresa *</div>
-      <input class="ad-in" id="nvBusca" placeholder="Buscar por razão ou fantasia… (3+ letras)" autocomplete="off">
-      <div id="nvRes" class="nt-res" style="display:none; margin-top:6px;"></div>
-      <div id="nvEscolhida" class="ad-nota"></div>
-      <div class="ad-sec">Funcionário(a)</div>
-      <input class="ad-in" id="nvNome" placeholder="nome, se já souber — a empresa confirma no formulário">
-      <div class="ad-f-row" style="margin-top:12px">
-        <label class="ad-f"><span>Data de início (se já souber)</span><input type="date" class="ad-in" id="nvInicio"></label>
-        <label class="ad-f"><span>Responsável *</span><select class="ad-in" id="nvResp"></select></label>
-      </div>
-      <div class="ad-acoes">
-        <span class="ad-msg er" id="nvMsg"></span>
-        <button class="btn btn-ghost" id="nvFechar">Cancelar</button>
-        <button class="btn btn-primary" id="nvCriar">Criar e gerar o link</button>
-      </div>
-    </div>
-  </div>
-
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
-    import { hojeLocal, formatDocumento } from './assets/js/utils.js';   // dia no fuso local (toISOString é UTC)
+    import { hojeLocal, formatDocumento, formatTelefone } from './assets/js/utils.js';   // dia no fuso local (toISOString é UTC)
 
     // ---------------------------------------------------------------------------------------------
     // Modelo do formulário: nasce do PDF "Documentos e informações necessárias para registro de funcionário(a)"
     // (ficha 2026 do DP). Fica no banco (admissao_modelos) na primeira abertura e daí em diante é editado na aba
-    // "Formulário da empresa". Os ids 'nome' e 'data_inicio' alimentam a admissão quando a empresa responde.
+    // "Formulário da empresa". Os ids 'nome' e 'data_inicio' alimentam a admissão quando a empresa envia; empresa,
+    // CNPJ e contato são campos fixos do link (admissao.html), fora do modelo.
     // ---------------------------------------------------------------------------------------------
     const op = (...l) => l.map(texto => ({ texto }));
     const MODELO_PADRAO = {
       titulo: 'Documentos e informações necessárias para registro de funcionário(a)',
       introducao: '',
-      convite: 'Olá! Segue o formulário para o registro do(a) funcionário(a){funcionario} na {empresa}:\n{link}\nQualquer dúvida, estamos à disposição.\nMacedo & Reis Contabilidade — Departamento Pessoal',
+      responsavel: '',
+      convite: 'Olá! Para registrarmos um(a) funcionário(a), preencha este formulário:\n{link}\nQualquer dúvida, estamos à disposição.\nMacedo & Reis Contabilidade — Departamento Pessoal',
       final: 'Obrigado! O Departamento Pessoal do escritório vai conferir as informações e fazer o registro. Se ainda não enviou os documentos listados no formulário, é só mandar para o escritório.',
       rodape: 'Macedo e Reis Contabilidade Ltda · Rua Luiz Volkart, 35, 1º andar – Centro – Três Coroas/RS · CEP 95660-000 · (51) 3546-1385 · rh@macedoereis.com.br',
       blocos: [
@@ -281,17 +276,17 @@
     };
 
     const EQUIPE = ['Vitória', 'Adaini', 'Thalia', 'Samuel', 'Diego', 'Edna'];   // ordem do DP (dp-regras.html)
-    const STATUS = [['aguardando_empresa', 'Aguardando a empresa'], ['respondida', 'Respondida — a registrar'], ['em_registro', 'Em registro'], ['registrada', 'Registrada'], ['cancelada', 'Cancelada']];
-    const ST_NOME = Object.fromEntries(STATUS);
-    const ABERTAS = ['aguardando_empresa', 'respondida', 'em_registro'];
+    const STATUS = [['recebida', 'Recebida — a registrar'], ['em_registro', 'Em registro'], ['registrada', 'Registrada'], ['cancelada', 'Cancelada']];
+    const ABERTAS = ['recebida', 'em_registro'];
     const ST_TAREFA = { aguardando: 'aguardando', pendente: 'pendente', em_andamento: 'em andamento', concluida: 'concluída' };
     const FORMATOS = [['texto', 'Texto curto'], ['texto_longo', 'Texto longo'], ['data', 'Data'], ['hora', 'Hora'], ['escolha', 'Escolha (uma opção)']];
     const TIPOS_BL = { pergunta: 'Pergunta', texto: 'Texto', documentos: 'Documentos', declaracao: 'Declaração', secao: 'Seção' };
-    const COLS = 'id, cliente_id, funcionario_nome, data_inicio, responsavel, status, token, respostas, documentos, observacoes, respondida_em, registrada_em, registrada_por, criado_por, criado_em, atualizado_em, clientes(nome_principal, nome_fantasia, documento)';
+    const COLS = 'id, cliente_id, empresa_nome, empresa_documento, contato_nome, contato_whatsapp, origem, funcionario_nome, data_inicio, responsavel, status, respostas, documentos, observacoes, registrada_em, registrada_por, criado_por, criado_em, atualizado_em, clientes(nome_principal, nome_fantasia, documento)';
 
     const $ = id => document.getElementById(id);
     const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const fmtData = d => d ? String(d).slice(0, 10).split('-').reverse().join('/') : '';
+    const diaDe = ts => ts ? new Date(ts).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }) : '';
     const fmtQuando = ts => {
       if (!ts) return '';
       const d = new Date(ts);
@@ -299,29 +294,23 @@
     };
     const diasAte = d => Math.round((new Date(d + 'T12:00:00') - new Date(hojeLocal() + 'T12:00:00')) / 864e5);
     const clone = o => JSON.parse(JSON.stringify(o));
+    const LINK = new URL('admissao.html', location.href).href;
 
-    let usuario = '', admissoes = [], nomesCli = {}, modelo = null, filtro = 'abertas', busca = '', fichaId = null, fichaFoto = '';
-    let rascunho = null, edAbertos = new Set(), edSujo = false, nvCli = null, nvTimer = null;
+    let usuario = '', admissoes = [], nomesCli = {}, modelo = null, filtro = 'abertas', busca = '', fichaId = null, fichaFoto = '', fichaCli;
+    let rascunho = null, edAbertos = new Set(), edSujo = false, buscaTimer = null;
 
     // ---------- empresa ----------
-    const cliDe = a => a.clientes || nomesCli[a.cliente_id] || null;
-    // MEI: o nome oficial vem com o CPF no fim (ou a raiz do CNPJ na frente) — fica de fora da tela e da mensagem
+    // MEI: o nome oficial vem com o CPF no fim (ou a raiz do CNPJ na frente) — fica de fora da tela
     const limpaNome = n => String(n || '').replace(/\s*\d{11}\s*$/, '').replace(/^\d{2}\.?\d{3}\.?\d{3}\s+/, '').trim();
-    const empresaDe = a => { const c = cliDe(a); return c ? limpaNome(c.nome_principal) : '?'; };
-    const empresaCurta = a => { const c = cliDe(a); return c ? (String(c.nome_fantasia || '').trim() || limpaNome(c.nome_principal)) : 'a empresa'; };
-    const linkDe = a => new URL('admissao.html?t=' + a.token, location.href).href;
+    const cliDe = a => a.clientes || (a.cliente_id && nomesCli[a.cliente_id]) || null;
+    const empresaDe = a => { const c = a.cliente_id ? cliDe(a) : null; return c ? limpaNome(c.nome_principal) : (a.empresa_nome || '?'); };
+    const docEmpresa = a => { const c = a.cliente_id ? cliDe(a) : null; const d = (c && c.documento) || a.empresa_documento; return d ? formatDocumento(d) : ''; };
+    const zapDe = n => { const d = String(n || '').replace(/\D/g, ''); return d.length >= 10 ? 'https://wa.me/' + (d.length <= 11 ? '55' : '') + d : ''; };
 
     // conferência de documentos: o que entra na conta é o que não é condicional (salário família só se houver)
     function contaDocs(a) {
-      const docs = (a.documentos || []).filter(d => !d.condicional);
+      const docs = (Array.isArray(a.documentos) ? a.documentos : []).filter(d => d && !d.condicional);
       return { feitos: docs.filter(d => d.recebido).length, total: docs.length };
-    }
-    function documentosDoModelo(conteudo) {
-      const out = [];
-      (conteudo.blocos || []).filter(b => b && b.tipo === 'documentos').forEach(b =>
-        (b.itens || []).map(s => String(s).trim()).filter(Boolean).forEach(item =>
-          out.push({ grupo: b.titulo || 'Documentos', item, condicional: !!b.condicional, recebido: false })));
-      return out;
     }
 
     getCurrentUser().then(u => { if (!u) return; usuario = u.email || ''; $('userName').textContent = u.email; $('userAvatar').textContent = (u.email || '?')[0].toUpperCase(); });
@@ -348,6 +337,25 @@
       render();
     }
 
+    // ---------- link do formulário ----------
+    function convite() {
+      const c = (modelo && modelo.conteudo) || MODELO_PADRAO;
+      return String(c.convite || MODELO_PADRAO.convite)
+        .split('{link}').join(LINK).split('{funcionario}').join('').split('{empresa}').join('sua empresa');
+    }
+    function pintarLink() {
+      $('lkUrl').value = LINK;
+      const resp = ((modelo && modelo.conteudo) || {}).responsavel;
+      $('lkResp').innerHTML = resp ? 'de <b>' + esc(resp) + '</b>' : '<span class="ad-alerta">— falta escolher quem recebe, na aba Formulário da empresa</span>';
+    }
+    async function copiar(texto, alvo, recado) {
+      try { await navigator.clipboard.writeText(texto); }
+      catch (e) { const t = document.createElement('textarea'); t.value = texto; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); }
+      alvo.classList.remove('er'); alvo.textContent = recado;
+    }
+    $('lkCopiar').onclick = () => copiar(LINK, $('lkMsg'), 'Link copiado. É só colar na conversa com a empresa.');
+    $('lkZap').onclick = () => window.open('https://wa.me/?text=' + encodeURIComponent(convite()), '_blank', 'noopener');
+
     // ---------- lista ----------
     function ordenar(lista) {
       const aberta = a => ABERTAS.includes(a.status) ? 0 : 1;
@@ -370,18 +378,18 @@
     }
 
     function render() {
-      const cont = { abertas: 0, aguardando_empresa: 0, respondida: 0, em_registro: 0, registrada: 0, todas: admissoes.length };
+      const cont = { abertas: 0, recebida: 0, em_registro: 0, registrada: 0, cancelada: 0, todas: admissoes.length };
       admissoes.forEach(a => { if (cont[a.status] != null) cont[a.status]++; if (ABERTAS.includes(a.status)) cont.abertas++; });
-      $('fAbe').textContent = cont.abertas; $('fAgu').textContent = cont.aguardando_empresa; $('fRes').textContent = cont.respondida;
-      $('fReg').textContent = cont.em_registro; $('fFei').textContent = cont.registrada; $('fTod').textContent = cont.todas;
-      document.querySelector('.ad-fc[data-f="respondida"]').classList.toggle('alerta', cont.respondida > 0);
+      $('fAbe').textContent = cont.abertas; $('fRec').textContent = cont.recebida; $('fReg').textContent = cont.em_registro;
+      $('fFei').textContent = cont.registrada; $('fCan').textContent = cont.cancelada; $('fTod').textContent = cont.todas;
+      document.querySelector('.ad-fc[data-f="recebida"]').classList.toggle('alerta', cont.recebida > 0);
       document.querySelectorAll('.ad-fc').forEach(b => b.classList.toggle('on', b.dataset.f === filtro));
 
       const vis = ordenar(admissoes).filter(a => {
         if (filtro === 'abertas' && !ABERTAS.includes(a.status)) return false;
         if (filtro !== 'abertas' && filtro !== 'todas' && a.status !== filtro) return false;
         if (busca) {
-          const alvo = (String(a.funcionario_nome || '') + ' ' + empresaDe(a) + ' ' + String((cliDe(a) || {}).nome_fantasia || '')).toLowerCase();
+          const alvo = [a.funcionario_nome, empresaDe(a), (cliDe(a) || {}).nome_fantasia, a.empresa_nome].filter(Boolean).join(' ').toLowerCase();
           if (!alvo.includes(busca)) return false;
         }
         return true;
@@ -389,10 +397,11 @@
       $('adLista').innerHTML = vis.map(a => {
         const { feitos, total } = contaDocs(a);
         const docs = total ? `<span class="ad-mini ${feitos === total ? 'ok' : 'p'}">${feitos}/${total}</span>` : '<span class="ad-dim">—</span>';
-        const quando = a.status === 'respondida' && a.respondida_em ? 'respondida em ' + fmtData(new Date(a.respondida_em).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }))
-          : a.status === 'registrada' && a.registrada_em ? 'em ' + fmtData(new Date(a.registrada_em).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })) : '';
+        const quando = a.status === 'recebida' ? 'recebida em ' + fmtData(diaDe(a.criado_em))
+          : a.status === 'registrada' && a.registrada_em ? 'em ' + fmtData(diaDe(a.registrada_em)) : '';
+        const semVinculo = !a.cliente_id ? ' <span class="ad-mini p" title="O CNPJ informado não bate com nenhuma empresa do cadastro — vincule na ficha">não vinculada</span>' : '';
         return `<tr data-id="${esc(a.id)}">`
-          + `<td><b>${a.funcionario_nome ? esc(a.funcionario_nome) : '<span class="ad-dim">funcionário(a) a definir</span>'}</b><br><span class="ad-sub">${esc(empresaDe(a))}</span></td>`
+          + `<td><b>${a.funcionario_nome ? esc(a.funcionario_nome) : '<span class="ad-dim">funcionário(a) sem nome</span>'}</b><br><span class="ad-sub">${esc(empresaDe(a))}</span>${semVinculo}</td>`
           + `<td>${selInicio(a)}</td>`
           + `<td class="oculta-m">${docs}</td>`
           + `<td class="oculta-m">${esc(a.responsavel || '—')}</td>`
@@ -400,14 +409,14 @@
           + '</tr>';
       }).join('');
       $('adVazio').hidden = vis.length > 0;
-      $('adVazio').textContent = admissoes.length ? 'Nenhuma admissão neste filtro.' : 'Nenhuma admissão ainda. Clique em "+ Nova admissão" para gerar o primeiro link.';
+      $('adVazio').textContent = admissoes.length ? 'Nenhuma admissão neste filtro.' : 'Nenhuma admissão ainda. Mande o link do formulário pra empresa: quando ela enviar, a admissão aparece aqui.';
       document.querySelectorAll('#adLista tr').forEach(tr => tr.addEventListener('click', () => abrirFicha(tr.dataset.id)));
       document.querySelectorAll('.st-lin').forEach(sel => {
         sel.addEventListener('click', e => e.stopPropagation());
         sel.addEventListener('change', async e => {
           const a = admissoes.find(x => x.id === e.target.dataset.id);
           if (!a) return;
-          if (e.target.value === 'cancelada' && !confirm('Cancelar esta admissão? O link deixa de abrir e a tarefa sai da agenda.')) { e.target.value = a.status; return; }
+          if (e.target.value === 'cancelada' && !confirm('Cancelar esta admissão? A tarefa sai da agenda.')) { e.target.value = a.status; return; }
           const ok = await gravarStatus(a, e.target.value);
           if (!ok) e.target.value = a.status;
           render();
@@ -435,11 +444,12 @@
     // ---------- ficha ----------
     const opcoesEquipe = (atual) => '<option value="">— escolha —</option>' + [...new Set([...EQUIPE, ...(atual && !EQUIPE.includes(atual) ? [atual] : [])])]
       .map(n => `<option${n === atual ? ' selected' : ''}>${esc(n)}</option>`).join('');
+    const listaResp = a => (Array.isArray(a.respostas) ? a.respostas : []).filter(x => x && typeof x === 'object');
 
     function respostasHtml(a) {
-      const r = Array.isArray(a.respostas) ? a.respostas.filter(x => x && typeof x === 'object') : null;
-      if (!r || !r.length) return '<div class="ad-nota" style="margin-top:0">A empresa ainda não respondeu.</div>';
-      let html = `<div class="ad-nota" style="margin:0 0 8px">Respondido em ${fmtQuando(a.respondida_em)}. <button class="btn btn-ghost btn-sm" id="fiCopResp" style="margin-left:6px">Copiar respostas</button></div><table class="ad-resp">`;
+      const r = listaResp(a);
+      if (!r.length) return '<div class="ad-nota" style="margin-top:0">Sem respostas do formulário.</div>';
+      let html = '<div class="ad-nota" style="margin:0 0 8px"><button class="btn btn-ghost btn-sm" id="fiCopResp">Copiar respostas</button></div><table class="ad-resp">';
       let grupo = null;
       r.forEach(x => {
         const g = x.secao || '';
@@ -454,9 +464,10 @@
     }
 
     function respostasTexto(a) {
-      const linhas = [`Admissão — ${a.funcionario_nome || 'funcionário(a)'} — ${empresaDe(a)}`, `Respondido em ${fmtQuando(a.respondida_em)}`];
+      const linhas = [`Admissão — ${a.funcionario_nome || 'funcionário(a)'} — ${empresaDe(a)}${docEmpresa(a) ? ' (' + docEmpresa(a) + ')' : ''}`];
+      if (a.contato_nome || a.contato_whatsapp) linhas.push(`Enviado por ${a.contato_nome || '?'}${a.contato_whatsapp ? ' · WhatsApp ' + a.contato_whatsapp : ''} em ${fmtQuando(a.criado_em)}`);
       let grupo = null;
-      (Array.isArray(a.respostas) ? a.respostas : []).filter(x => x && typeof x === 'object').forEach(x => {
+      listaResp(a).forEach(x => {
         if ((x.secao || '') !== grupo) { grupo = x.secao || ''; if (grupo) linhas.push('', grupo.toUpperCase()); }
         let v = x.valor;
         if (x.tipo === 'data' && /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''))) v = fmtData(v);
@@ -466,44 +477,49 @@
     }
 
     function docsHtml(a) {
-      const docs = a.documentos || [];
+      const docs = Array.isArray(a.documentos) ? a.documentos : [];
       if (!docs.length) return '<div class="ad-nota" style="margin-top:0">Sem lista de documentos no formulário.</div>';
       let html = '', grupo = null;
       docs.forEach((d, i) => {
-        const g = d.grupo + (d.condicional ? ' (se houver)' : '');
+        if (!d) return;
+        const g = (d.grupo || 'Documentos') + (d.condicional ? ' (se houver)' : '');
         if (g !== grupo) { grupo = g; html += `<div class="g">${esc(g)}</div>`; }
         html += `<label><input type="checkbox" data-doc="${i}"${d.recebido ? ' checked' : ''}> ${esc(d.item)}</label>`;
       });
       return html;
     }
 
-    function notaLink(a) {
-      if (a.status === 'aguardando_empresa') return 'A empresa ainda não preencheu. O link abre no celular, sem login.';
-      if (a.status === 'respondida') return 'Já respondido. O link continua aberto pra empresa corrigir até o registro começar (Em registro).';
-      if (a.status === 'cancelada') return 'Admissão cancelada: o link não abre mais.';
-      return 'Link encerrado: com o registro em andamento, a empresa não consegue mais enviar.';
+    function pintarVinculo(a) {
+      const c = fichaCli !== undefined ? fichaCli : (a.cliente_id ? { id: a.cliente_id, ...(cliDe(a) || {}) } : null);
+      const digitado = a.empresa_nome ? `${esc(a.empresa_nome)}${a.empresa_documento ? ' · ' + esc(formatDocumento(a.empresa_documento)) : ''}` : '';
+      $('fiVinc').innerHTML = c
+        ? `Vinculada a <b>${esc(limpaNome(c.nome_principal) || '?')}</b>${c.documento ? ' · ' + esc(formatDocumento(c.documento)) : ''}${fichaCli !== undefined ? ' <span class="ad-alerta">(salve pra gravar)</span>' : ''}`
+          + (digitado ? `<br><span class="ad-sub">No formulário: ${digitado}</span>` : '')
+        : `<span class="ad-alerta">Não encontrada no cadastro</span>${digitado ? ' — no formulário: ' + digitado : ''}. Busque abaixo e escolha a empresa.`;
     }
 
-    const fotoFicha = () => JSON.stringify([$('fiNome').value, $('fiInicio').value, $('fiResp').value, $('fiStatus').value, $('fiObs').value,
+    const fotoFicha = () => JSON.stringify([$('fiNome').value, $('fiInicio').value, $('fiResp').value, $('fiStatus').value, $('fiObs').value, fichaCli === undefined ? null : fichaCli.id,
       [...document.querySelectorAll('#fiDocs [data-doc]')].map(c => c.checked)]);
 
     async function abrirFicha(id) {
       const a = admissoes.find(x => x.id === id);
       if (!a) return;
-      fichaId = id;
-      $('fiTitulo').textContent = a.funcionario_nome || 'Funcionário(a) a definir';
-      const c = cliDe(a);
-      $('fiEmpresa').textContent = empresaDe(a) + (c && c.documento ? ' · ' + formatDocumento(c.documento) : '');
+      fichaId = id; fichaCli = undefined;
+      $('fiTitulo').textContent = a.funcionario_nome || 'Funcionário(a) sem nome';
+      $('fiEmpresa').textContent = empresaDe(a) + (docEmpresa(a) ? ' · ' + docEmpresa(a) : '');
+      const zap = zapDe(a.contato_whatsapp);
+      $('fiEnvio').innerHTML = a.origem === 'externa'
+        ? `Enviada pelo formulário em ${fmtQuando(a.criado_em)}${a.contato_nome ? ' por <b>' + esc(a.contato_nome) + '</b>' : ''}`
+          + (a.contato_whatsapp ? ` · WhatsApp ${esc(formatTelefone(a.contato_whatsapp) || a.contato_whatsapp)}${zap ? ` (<a href="${esc(zap)}" target="_blank" rel="noopener">abrir conversa</a>)` : ''}` : '')
+        : `Registrada no módulo em ${fmtQuando(a.criado_em)}${a.criado_por ? ' por ' + esc(a.criado_por) : ''}.`;
       $('fiNome').value = a.funcionario_nome || '';
       $('fiInicio').value = a.data_inicio || '';
       $('fiResp').innerHTML = opcoesEquipe(a.responsavel || '');
       $('fiStatus').innerHTML = STATUS.map(([v, l]) => `<option value="${v}"${a.status === v ? ' selected' : ''}>${l}</option>`).join('');
-      $('fiLink').value = linkDe(a);
-      $('fiLinkNota').textContent = notaLink(a);
-      const fechado = !['aguardando_empresa', 'respondida'].includes(a.status);
-      $('fiZap').disabled = fechado; $('fiCopiar').disabled = fechado;
+      pintarVinculo(a);
+      $('fiBusca').value = ''; $('fiRes').style.display = 'none';
       $('fiRespostas').innerHTML = respostasHtml(a);
-      if ($('fiCopResp')) $('fiCopResp').onclick = () => copiar(respostasTexto(a), 'Respostas copiadas.');
+      if ($('fiCopResp')) $('fiCopResp').onclick = () => copiar(respostasTexto(a), $('fiMsg'), 'Respostas copiadas.');
       $('fiDocs').innerHTML = docsHtml(a);
       $('fiObs').value = a.observacoes || '';
       $('fiMsg').textContent = ''; $('fiMsg').classList.remove('er');
@@ -518,103 +534,56 @@
         : (a.status === 'cancelada' ? 'Admissão cancelada: sem tarefa na agenda.' : 'A tarefa aparece na agenda do responsável assim que a admissão é salva.');
     }
 
+    $('fiBusca').addEventListener('input', () => {
+      clearTimeout(buscaTimer);
+      buscaTimer = setTimeout(async () => {
+        const t = $('fiBusca').value.trim();
+        const res = $('fiRes');
+        if (t.length < 3) { res.style.display = 'none'; return; }
+        const chave = t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+        const { data } = await supabase.from('clientes').select('id, nome_principal, nome_fantasia, documento, cidade')
+          .or(`nome_principal.ilike.*${t}*,nome_fantasia.ilike.*${t}*${chave ? `,nome_busca.ilike.*${chave}*,documento.ilike.*${chave}*` : ''}`).limit(8);
+        res.innerHTML = (data || []).map(c => `<button type="button" data-id="${esc(c.id)}">${esc(c.nome_principal)}<small>${esc([c.nome_fantasia, c.documento ? formatDocumento(c.documento) : '', c.cidade].filter(Boolean).join(' · '))}</small></button>`).join('')
+          || '<button type="button" disabled>Nada encontrado.</button>';
+        res.style.display = 'block';
+        res.querySelectorAll('[data-id]').forEach(b => b.addEventListener('click', () => {
+          const c = (data || []).find(x => x.id === b.dataset.id);
+          fichaCli = c;
+          $('fiBusca').value = ''; res.style.display = 'none';
+          pintarVinculo(admissoes.find(x => x.id === fichaId));
+        }));
+      }, 300);
+    });
+
     function fecharFicha(perguntar = true) {
       if (perguntar && fichaId && fotoFicha() !== fichaFoto && !confirm('Fechar sem salvar as mudanças?')) return;
-      $('ovFicha').classList.remove('on'); fichaId = null;
+      $('ovFicha').classList.remove('on'); fichaId = null; fichaCli = undefined;
     }
 
     async function salvarFicha() {
       const a = admissoes.find(x => x.id === fichaId);
       if (!a) return;
       const novo = $('fiStatus').value;
-      if (novo === 'cancelada' && a.status !== 'cancelada' && !confirm('Cancelar esta admissão? O link deixa de abrir e a tarefa sai da agenda.')) return;
-      const docs = clone(a.documentos || []);
+      if (novo === 'cancelada' && a.status !== 'cancelada' && !confirm('Cancelar esta admissão? A tarefa sai da agenda.')) return;
+      const docs = clone(Array.isArray(a.documentos) ? a.documentos : []);
       document.querySelectorAll('#fiDocs [data-doc]').forEach(c => { if (docs[+c.dataset.doc]) docs[+c.dataset.doc].recebido = c.checked; });
       const p = { ...patchStatus(a, novo), funcionario_nome: $('fiNome').value.trim() || null, data_inicio: $('fiInicio').value || null,
         responsavel: $('fiResp').value || null, observacoes: $('fiObs').value.trim() || null, documentos: docs };
       if (novo === a.status) { delete p.registrada_em; delete p.registrada_por; }
+      if (fichaCli !== undefined) p.cliente_id = fichaCli ? fichaCli.id : null;
       $('fiSalvar').disabled = true;
       const { error } = await supabase.from('admissoes').update(p).eq('id', a.id);
       $('fiSalvar').disabled = false;
       if (error) { $('fiMsg').textContent = 'Não salvou: ' + error.message; $('fiMsg').classList.add('er'); return; }
+      if (fichaCli) { nomesCli[fichaCli.id] = { nome_principal: fichaCli.nome_principal, nome_fantasia: fichaCli.nome_fantasia, documento: fichaCli.documento }; a.clientes = nomesCli[fichaCli.id]; }
       Object.assign(a, p);
       render();
       fecharFicha(false);
     }
 
-    async function copiar(texto, recado) {
-      try { await navigator.clipboard.writeText(texto); }
-      catch (e) { const t = document.createElement('textarea'); t.value = texto; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); }
-      $('fiMsg').classList.remove('er'); $('fiMsg').textContent = recado;
-    }
-    function convite(a) {
-      const nome = $('fiNome').value.trim() || a.funcionario_nome || '';
-      return String(((modelo && modelo.conteudo) || MODELO_PADRAO).convite || MODELO_PADRAO.convite)
-        .split('{funcionario}').join(nome ? ' ' + nome : '')
-        .split('{empresa}').join(empresaCurta(a))
-        .split('{link}').join(linkDe(a));
-    }
-    $('fiCopiar').onclick = () => copiar($('fiLink').value, 'Link copiado.');
-    $('fiZap').onclick = () => { const a = admissoes.find(x => x.id === fichaId); if (a) window.open('https://wa.me/?text=' + encodeURIComponent(convite(a)), '_blank', 'noopener'); };
     $('fiFechar').onclick = () => fecharFicha();
     $('fiSalvar').onclick = salvarFicha;
     $('ovFicha').addEventListener('click', e => { if (e.target === $('ovFicha')) fecharFicha(); });
-
-    // ---------- nova admissão ----------
-    function abrirNova() {
-      nvCli = null;
-      $('nvBusca').value = ''; $('nvRes').style.display = 'none'; $('nvEscolhida').textContent = '';
-      $('nvNome').value = ''; $('nvInicio').value = ''; $('nvMsg').textContent = '';
-      $('nvResp').innerHTML = opcoesEquipe('');
-      $('ovNova').classList.add('on');
-      $('nvBusca').focus();
-    }
-    $('btnNova').onclick = abrirNova;
-    $('nvFechar').onclick = () => $('ovNova').classList.remove('on');
-    $('ovNova').addEventListener('click', e => { if (e.target === $('ovNova')) $('ovNova').classList.remove('on'); });
-    $('nvBusca').addEventListener('input', () => {
-      clearTimeout(nvTimer);
-      nvTimer = setTimeout(async () => {
-        const t = $('nvBusca').value.trim();
-        const res = $('nvRes');
-        if (t.length < 3) { res.style.display = 'none'; return; }
-        const chave = t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
-        const { data } = await supabase.from('clientes').select('id, nome_principal, nome_fantasia, documento, cidade')
-          .or(`nome_principal.ilike.*${t}*,nome_fantasia.ilike.*${t}*${chave ? `,nome_busca.ilike.*${chave}*` : ''}`).limit(8);
-        res.innerHTML = (data || []).map(c => `<button type="button" data-id="${esc(c.id)}">${esc(c.nome_principal)}<small>${esc([c.nome_fantasia, c.cidade].filter(Boolean).join(' · '))}</small></button>`).join('')
-          || '<button type="button" disabled>Nada encontrado.</button>';
-        res.style.display = 'block';
-        res.querySelectorAll('[data-id]').forEach(b => b.addEventListener('click', () => {
-          const c = (data || []).find(x => x.id === b.dataset.id);
-          nvCli = c;
-          $('nvEscolhida').innerHTML = '🏢 <b>' + esc(c.nome_principal) + '</b>' + (c.documento ? ' · ' + esc(formatDocumento(c.documento)) : '');
-          $('nvBusca').value = ''; res.style.display = 'none';
-        }));
-      }, 300);
-    });
-    $('nvCriar').onclick = async () => {
-      if (!nvCli) { $('nvMsg').textContent = 'Escolha a empresa.'; return; }
-      if (!$('nvResp').value) { $('nvMsg').textContent = 'Escolha o responsável — é na agenda dele que a tarefa aparece.'; return; }
-      if (!modelo) { $('nvMsg').textContent = 'O formulário ainda não carregou. Recarregue a página.'; return; }
-      $('nvMsg').textContent = ''; $('nvCriar').disabled = true;
-      const reg = {
-        cliente_id: nvCli.id, funcionario_nome: $('nvNome').value.trim() || null, data_inicio: $('nvInicio').value || null,
-        responsavel: $('nvResp').value, status: 'aguardando_empresa', token: crypto.randomUUID(),
-        documentos: documentosDoModelo(modelo.conteudo || MODELO_PADRAO), criado_por: usuario || null,
-      };
-      const { data, error } = await supabase.from('admissoes').insert(reg).select(COLS).single();
-      $('nvCriar').disabled = false;
-      if (error) { $('nvMsg').textContent = 'Não foi possível criar: ' + error.message; return; }
-      nomesCli[nvCli.id] = { nome_principal: nvCli.nome_principal, nome_fantasia: nvCli.nome_fantasia, documento: nvCli.documento };
-      const nova = { criado_em: new Date().toISOString(), ...reg, ...(data || {}) };
-      admissoes.unshift(nova);
-      $('ovNova').classList.remove('on');
-      if (filtro !== 'todas' && filtro !== 'abertas') filtro = 'abertas';
-      render();
-      await abrirFicha(nova.id);
-      $('fiMsg').classList.remove('er');
-      $('fiMsg').textContent = 'Admissão criada. Copie o link ou envie pelo WhatsApp.';
-    };
 
     // ---------- formulário (editor do modelo) ----------
     const opcoesTexto = ops => (ops || []).map(o => typeof o === 'string' ? o : (o.texto + (o.ajuda ? ' | ' + o.ajuda : ''))).join('\n');
@@ -659,6 +628,7 @@
 
     function renderEditor() {
       const c = rascunho;
+      $('edResp').innerHTML = opcoesEquipe(c.responsavel || '');
       $('edTitulo').value = c.titulo || ''; $('edIntro').value = c.introducao || '';
       $('edConvite').value = c.convite || ''; $('edFinal').value = c.final || ''; $('edRodape').value = c.rodape || '';
       renderBlocos();
@@ -678,7 +648,7 @@
 
     function marcarSujo(v) {
       edSujo = v;
-      $('edSujo').textContent = v ? 'Alterações não salvas' : '';
+      $('edSujo').style.color = ''; $('edSujo').textContent = v ? 'Alterações não salvas' : '';
     }
 
     $('edBlocos').addEventListener('click', e => {
@@ -687,13 +657,13 @@
       const i = +btn.closest('.ad-bl').dataset.i;
       const bl = rascunho.blocos;
       const acao = btn.dataset.acao;
-      if (acao === 'abrir') { if (e.target.closest('button')) return; edAbertos.has(bl[i]) ? edAbertos.delete(bl[i]) : edAbertos.add(bl[i]); renderBlocos(); return; }
+      if (acao === 'abrir') { edAbertos.has(bl[i]) ? edAbertos.delete(bl[i]) : edAbertos.add(bl[i]); renderBlocos(); return; }
       e.stopPropagation();
       if (acao === 'sobe' && i > 0) [bl[i - 1], bl[i]] = [bl[i], bl[i - 1]];
       else if (acao === 'desce' && i < bl.length - 1) [bl[i + 1], bl[i]] = [bl[i], bl[i + 1]];
       else if (acao === 'tira') {
         const liga = ['nome', 'data_inicio'].includes(bl[i].id);
-        if (!confirm(liga ? 'Esta pergunta preenche o nome ou a data de início da admissão quando a empresa responde. Tirar mesmo assim?'
+        if (!confirm(liga ? 'Esta pergunta preenche o nome ou a data de início da admissão quando a empresa envia. Tirar mesmo assim?'
                           : 'Tirar "' + resumoBloco(bl[i]) + '" do formulário?')) return;
         edAbertos.delete(bl[i]); bl.splice(i, 1);
       } else return;
@@ -723,6 +693,7 @@
     });
     [['edTitulo', 'titulo'], ['edIntro', 'introducao'], ['edConvite', 'convite'], ['edFinal', 'final'], ['edRodape', 'rodape']].forEach(([id, k]) =>
       $(id).addEventListener('input', () => { rascunho[k] = $(id).value; marcarSujo(true); }));
+    $('edResp').addEventListener('change', () => { rascunho.responsavel = $('edResp').value; marcarSujo(true); });
 
     document.querySelectorAll('.ad-add [data-novo]').forEach(b => b.addEventListener('click', () => {
       const t = b.dataset.novo;
@@ -736,6 +707,7 @@
     }));
 
     function validarModelo(c) {
+      if (!String(c.responsavel || '').trim()) return 'Escolha quem recebe as admissões na agenda.';
       if (!String(c.titulo || '').trim()) return 'Dê um título ao formulário.';
       const ids = new Set();
       for (const [i, b] of c.blocos.entries()) {
@@ -761,9 +733,9 @@
       $('edSalvar').disabled = false;
       if (error) { alert('Não salvou: ' + error.message); return; }
       modelo.conteudo = clone(rascunho); modelo.atualizado_em = quando; modelo.atualizado_por = usuario || null;
-      marcarSujo(false); renderEditor();
-      $('edSujo').style.color = 'var(--ok)'; $('edSujo').textContent = 'Formulário salvo — os próximos links já abrem assim.';
-      setTimeout(() => { $('edSujo').style.color = ''; if (!edSujo) $('edSujo').textContent = ''; }, 4000);
+      marcarSujo(false); renderEditor(); pintarLink();
+      $('edSujo').style.color = 'var(--ok)'; $('edSujo').textContent = 'Formulário salvo — o link já abre assim.';
+      setTimeout(() => { if (!edSujo) { $('edSujo').style.color = ''; $('edSujo').textContent = ''; } }, 4000);
     };
     $('edPrevia').onclick = () => {
       try { localStorage.setItem('mr_admissao_previa', JSON.stringify({ modelo: rascunho })); }
@@ -786,6 +758,7 @@
       try {
         await getCurrentUser().then(u => { usuario = (u && u.email) || ''; });
         await carregarModelo();
+        pintarLink();
         await carregar();
       } catch (e) {
         $('adVazio').hidden = false;
