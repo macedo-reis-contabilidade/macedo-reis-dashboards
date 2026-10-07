@@ -578,14 +578,19 @@
       });
     }
 
-    // ---- busca global (todas as datas, todos os responsáveis) ----
-    let modoBusca = false, cacheBusca = [], termoBusca = '', buscaTimer = null;
+    // ---- busca global (todas as datas) ----
+    // A busca acha em qualquer data, mas mostra só o que passa no filtro de setor e de responsável (o mesmo
+    // passaFiltro do resto da agenda) — pedido da Thalia, 07/10: com Fiscal + Thalia, digitar "J Raupp" trazia outros
+    // setores e outras pessoas. As consultas vêm sem filtro (até BUSCA_MAX) pra dizer quantos ficaram de fora, e trocar
+    // o setor ou o responsável com a busca aberta só redesenha.
+    const BUSCA_MAX = 1000;
+    let modoBusca = false, cacheBusca = [], termoBusca = '', buscaTimer = null, buscaCheia = false, buscaVisiveis = [];
 
     async function executarBusca(termo){
       const t = termo.replace(/[,()]/g, ' ').trim();
       const [porTexto, cli] = await Promise.all([
         supabase.from('tarefas').select('*, clientes(nome_principal, nome_fantasia, documento)')
-          .or(`titulo.ilike.*${t}*,descricao.ilike.*${t}*,responsavel.ilike.*${t}*`).limit(200),
+          .or(`titulo.ilike.*${t}*,descricao.ilike.*${t}*,responsavel.ilike.*${t}*`).limit(BUSCA_MAX),
         supabase.from('clientes').select('id')
           .or(`nome_principal.ilike.*${t}*,nome_fantasia.ilike.*${t}*,nome_busca.ilike.*${t.toLowerCase().replace(/[^a-z0-9]/g, '') || t}*`).limit(20)
       ]);
@@ -594,8 +599,9 @@
       if (ids.length) {
         porCliente = await supabase.from('tarefas')
           .select('*, clientes(nome_principal, nome_fantasia, documento)')
-          .in('cliente_id', ids).limit(200);
+          .in('cliente_id', ids).limit(BUSCA_MAX);
       }
+      buscaCheia = (porTexto.data || []).length >= BUSCA_MAX || (porCliente.data || []).length >= BUSCA_MAX;
       const mapa = new Map();
       [...(porTexto.data || []), ...(porCliente.data || [])].forEach(x => mapa.set(x.id, x));
       cacheBusca = ordenarLista([...mapa.values()]);
@@ -687,13 +693,23 @@
 
     function renderBusca(){
       const fData = p => p ? String(p).slice(0, 10).split('-').reverse().join('/') : 'Sem prazo';
-      let html = `<div class="ag-dia-secao">🔎 Resultados para "${esc(termoBusca)}" <span class="cont">${cacheBusca.length}</span>
-        <button class="btn btn-ghost btn-sm" id="agBuscaLimpar" style="margin-left:12px;">Limpar busca</button>
-        <span style="font-weight:400; font-size:11.5px; color:var(--text-dim); margin-left:10px;">busca em todas as datas e responsáveis${cacheBusca.length >= 200 ? ' · mostrando as 200 primeiras, refine o termo' : ''}</span></div>`;
       cacheBusca = ordenarLista(cacheBusca);
-      html += loteBarra(cacheBusca);
-      if (!cacheBusca.length) html += '<div style="color:var(--text-muted); padding:20px 4px;">Nada encontrado com esse termo.</div>';
-      cacheBusca.forEach(t => {
+      const visiveis = cacheBusca.filter(passaFiltro);
+      buscaVisiveis = visiveis;
+      const ocultas = cacheBusca.length - visiveis.length;
+      const filtro = [estado.setor ? (SETOR_INFO[estado.setor] || [estado.setor])[0] : '', estado.resp || ''].filter(Boolean);
+      const nota = (filtro.length
+        ? `busca em todas as datas · só ${esc(filtro.join(' · '))}${ocultas ? ` · ${ocultas} de outros setores ou responsáveis ficaram de fora` : ''}`
+        : 'busca em todas as datas, setores e responsáveis')
+        + (buscaCheia ? ` · mostrando os ${BUSCA_MAX} primeiros, refine o termo` : '');
+      let html = `<div class="ag-dia-secao">🔎 Resultados para "${esc(termoBusca)}" <span class="cont">${visiveis.length}</span>
+        <button class="btn btn-ghost btn-sm" id="agBuscaLimpar" style="margin-left:12px;">Limpar busca</button>
+        <span id="agBuscaNota" style="font-weight:400; font-size:11.5px; color:var(--text-dim); margin-left:10px;">${nota}</span></div>`;
+      html += loteBarra(visiveis);
+      if (!visiveis.length) html += `<div style="color:var(--text-muted); padding:20px 4px;">${ocultas
+        ? `Nada com esse termo em ${esc(filtro.join(' · '))} — há ${ocultas} resultado(s) em outros setores ou responsáveis (mude os filtros pra ver).`
+        : 'Nada encontrado com esse termo.'}</div>`;
+      visiveis.forEach(t => {
         const concl = t.status === 'concluida';
         const cli = t.clientes?.nome_principal ? `<span>${esc(t.clientes.nome_principal)}</span><span class="sep">·</span>` : '';
         const resp = t.responsavel ? `<span>${esc(t.responsavel)}</span>` : '';
@@ -713,11 +729,11 @@
       wireOrdem();
       document.querySelectorAll('[data-bstask]').forEach(el =>
         el.addEventListener('click', () => abrirDetalhe(el.dataset.bstask)));
-      wireLote(cacheBusca);
+      wireLote(buscaVisiveis);   // "Selecionar todas" e o lote valem só pro que está na tela
     }
 
     function limparBusca(){
-      modoBusca = false; cacheBusca = []; termoBusca = '';
+      modoBusca = false; cacheBusca = []; termoBusca = ''; buscaCheia = false; buscaVisiveis = [];
       document.getElementById('agBusca').value = '';
       render();
     }

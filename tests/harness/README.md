@@ -33,6 +33,7 @@ inventados quando um teste precisar; os testes leem o banco falso por `window.__
 
 | Teste | Cobre |
 |---|---|
+| `agenda-busca.py` | a busca da Agenda com os filtros (pedido da Thalia, 07/10): com Fiscal + Thalia, só as tarefas fiscais da Thalia de qualquer data, com o filtro e quantas ficaram de fora; trocar setor ou responsável com a busca aberta refaz a lista; sem filtro, todos; filtro sem resultado avisa quantos há fora; o "Selecionar todas" do lote conta só o que está na tela; Limpar busca volta pra agenda |
 | `agenda-lateral.py` | a lateral da Agenda em telas largas: sem Atalhos, Radar à direita e a Agenda usando a largura até ele, sem encostar |
 | `data-local.py` | o "hoje" no fuso de Brasília (`hojeLocal`/`dataLocal` do `assets/js/utils.js`): às 22h30 de 30/09, quando o UTC já é 01/10, seis telas gravam e comparam 30/09 |
 | `importar-xml.py` | o parser de notas (`assets/js/importar-xml.js`): NF-e, evento de cancelamento, NFS-e nacional, descontos, CNPJ alfanumérico na chave e nos documentos, XML mal formado. Roda no navegador porque o Node não tem `DOMParser` |
