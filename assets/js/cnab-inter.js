@@ -1,9 +1,12 @@
 // ============================================================
 // MACEDO & REIS — arquivo de boletos do Banco Inter (CNAB 400, carteira 112), 06/10/2026
-// Monta o arquivo .REM que o Inter importa em Cobrar ou Receber › Cobrança via arquivo › Importar arquivo › Arquivo (.REM).
-// Layout do "Manual CNAB400 Emissão boletos de cobrança V2.2" do Inter: header, um detalhe tipo 1 por boleto (mais um
-// tipo 2 quando a mensagem passa de 70 letras) e o trailer; 400 posições por linha, CRLF no fim de cada uma,
-// maiúsculas sem acento nem caractere especial.
+// Monta o arquivo .REM que o Inter importa em Cobrar ou Receber › Cobranças via arquivo › Importar arquivo › Arquivo (.REM).
+// Layout do "Manual CNAB 400 Emissão boletos de cobrança" do Inter — montado pela V2.2 e conferido campo a campo com a
+// V9 (06/07/2026), que não mudou nada do que usamos: header, um detalhe tipo 1 por boleto (mais um tipo 2 quando a
+// mensagem passa de 70 letras) e o trailer; 400 posições por linha, CRLF no fim de cada uma, maiúsculas sem acento nem
+// caractere especial.
+// - Sem Pix: o CNAB 400 do Inter não tem campo de Pix (nem na V9). Boleto com QR Code do Pix só sai pela planilha Excel
+//   do Inter (que não gera arquivo de retorno) ou pela API de cobrança.
 // - Carteira 112: já vem em toda conta Inter PJ, sem pedir nada ao banco; o Inter gera o nosso número (volta no retorno).
 // - Sem multa, sem juros e sem desconto; aceita pagamento até o fim do mês do vencimento (como no site do Inter), no
 //   mínimo 1 e no máximo 60 dias depois do vencimento (limite do layout).
@@ -18,7 +21,7 @@ export const AGENCIA = '0001';
 export const CARTEIRA = '112';
 export const VALOR_MINIMO = 2.5;            // "Valor mínimo R$2,50"
 export const DIAS_PAGAMENTO = [1, 60];      // "Informar valor entre '01' e '60' - dias após o vencimento"
-export const ONDE_IMPORTAR = 'Cobrar ou Receber › Cobrança via arquivo › Importar arquivo › Arquivo (.REM)';
+export const ONDE_IMPORTAR = 'Cobrar ou Receber › Cobranças via arquivo › Importar arquivo › Arquivo (.REM)';
 const UFS = new Set('AC AL AM AP BA CE DF ES GO MA MG MS MT PA PB PE PI PR RJ RN RO RR RS SC SE SP TO'.split(' '));
 
 // texto do arquivo: maiúsculas, sem acento e sem caractere especial (o "&" vira "E"). Ficam ponto, vírgula, hífen, barra,
@@ -160,13 +163,17 @@ export function montarRemessa({ empresa, conta, dv, numero, data, boletos }) {
 }
 
 // ============================================================
-// Arquivo de RETORNO (manual V2.2, seção 5) — o Inter gera em Cobrar ou Receber › Cobrança via arquivo › Retorno ›
-// Novo arquivo de retorno (até 7 dias por arquivo). Cada título: ocorrência 02 = registrado (em aberto), 03 = erro (com o
-// motivo), 06 = pago, 07 = cancelado; traz o nosso número (carteira 112: o número de registro, 11 dígitos com o DV) e o
-// número da operação — os dois que faltam pro código de barras.
+// Arquivo de RETORNO (manual V9, seção 5) — o Inter gera em Cobrar ou Receber › Cobranças via arquivo › Retorno ›
+// Solicitar arquivo retorno (escolhendo o período). Cada título: ocorrência 02 = registrado (em aberto), 03 = erro (com
+// o motivo), 06 = pago, 07 = cancelado e, desde a V9, 14/15/16 = vencimento, valor ou os dois alterados no site do Inter
+// (continua em aberto; a data e o valor que valem vêm nas posições de sempre). Traz o nosso número (carteira 112: o
+// número de registro, 11 dígitos com o DV) e o número da operação — os dois que faltam pro código de barras.
 // ============================================================
-export const ONDE_RETORNO = 'Cobrar ou Receber › Cobrança via arquivo › Retorno › Novo arquivo de retorno';
-export const OCORRENCIAS = { '02': 'registrado', '03': 'erro', '06': 'pago', '07': 'cancelado' };
+export const ONDE_RETORNO = 'Cobrar ou Receber › Cobranças via arquivo › Retorno › Solicitar arquivo retorno';
+export const OCORRENCIAS = { '02': 'registrado', '03': 'erro', '06': 'pago', '07': 'cancelado',
+  '14': 'vencimento alterado', '15': 'valor alterado', '16': 'vencimento e valor alterados' };
+// em aberto = registrado e ainda por pagar: o 02 e as alterações feitas no site do Inter (14, 15 e 16)
+export const emAberto = oc => ['02', '14', '15', '16'].includes(oc);
 const dataRet = s => (/^\d{6}$/.test(s) && s !== '000000') ? `20${s.slice(4, 6)}-${s.slice(2, 4)}-${s.slice(0, 2)}` : null;
 
 export function lerRetorno(texto) {
@@ -202,7 +209,7 @@ export function lerRetorno(texto) {
   return { data: dataRet(h.slice(94, 100)), titulos };
 }
 
-// ---------- código de barras e linha digitável (manual, seção 7) ----------
+// ---------- código de barras e linha digitável (manual V9, seção 8 — era a 7 na V2.2) ----------
 // fator de vencimento: dias corridos desde a data-base; o ciclo reiniciou em 22/02/2025 com 1000 (antes: base 07/10/1997)
 export function fatorVencimento(iso) {
   const [y, m, d] = iso.split('-').map(Number);

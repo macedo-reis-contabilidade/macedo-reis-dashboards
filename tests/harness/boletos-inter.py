@@ -19,8 +19,9 @@ Confere:
   7. primeiro uso sem clicar em Guardar: marcar libera o botão com o aviso, sem conta não gera e diz o que falta,
      com a conta digitada gera e guarda a conta;
   8. retorno do Inter (arquivo inventado): registrado vira Emitido, pago vira Pago, erro aparece com o motivo, título de
-     fora contado à parte, PDFs num .zip com a linha digitável conferida por uma conta feita à parte (jsPDF e JSZip entram
-     como dublês), arquivo que não é retorno recusado.
+     fora contado à parte, boleto com data e valor alterados no site do Inter (ocorrência 16, manual V9) continua em
+     aberto e sai com os novos, PDFs num .zip com a linha digitável conferida por uma conta feita à parte (jsPDF e JSZip
+     entram como dublês), arquivo que não é retorno recusado.
 Termina com código 1 se alguma checagem falhar. Pré-requisito: pip install playwright e python -m playwright install chromium
 """
 import sys, json, pathlib, datetime, calendar
@@ -145,7 +146,7 @@ def fluxo(b, base, tema, erros):
     ok(t[0] == '9' and t[1:7] == '000001', '3. trailer com a quantidade')
     v = json.loads(db(p, "window.__mockDb.configuracoes_escritorio.find(c => c.chave === 'inter_cnab').valor"))
     ok(v['remessa'] == 1 and v['seq_dia'] == hoje.isoformat() and v['seq'] == 1 and v['arquivos'][-1]['ids'] == [ID1], '3. número do arquivo, sequência do dia e o arquivo gerado guardados')
-    ok('CI400_001_0000001.REM baixado' in p.inner_text('#inBody') and 'Cobrança via arquivo' in p.inner_text('#inBody'), '3. diz onde importar no Inter')
+    ok('CI400_001_0000001.REM baixado' in p.inner_text('#inBody') and 'Cobranças via arquivo' in p.inner_text('#inBody'), '3. diz onde importar no Inter')
     ok('já foi no arquivo nº 1' in linha(p, ID1).inner_text(), '3. o boleto avisa que já foi no arquivo nº 1')
     ok(db(p, f"window.__mockDb.cobrancas_mensais.find(c => c.id === '{ID1}').status") == 'a_emitir', '3. gerar não muda a situação sozinho')
     ok(p.inner_text('#inTodos') == 'Marcar os prontos (1)' and '1 já foi(ram) num arquivo' in p.inner_text('#inResumo'), '3. "Marcar os prontos" deixa de fora quem já foi no arquivo')
@@ -197,7 +198,8 @@ def gerar_sem_guardar(b, base, erros):
     ok('CI400_001_0000001.REM baixado' in p.inner_text('#inBody') and '0001 / 1234567-8' in p.inner_text('#inContaResumo'), '7. janela mostra o arquivo baixado e a conta guardada')
     p.close()
 
-# ---- retorno do Inter (arquivo inventado, no layout do manual V2.2) e a conta do código de barras feita à parte ----
+# ---- retorno do Inter (arquivo inventado, no layout do manual V9) e a conta do código de barras feita à parte ----
+V3 = dia(20)   # vencimento novo do boleto alterado no site do Inter
 ddmmaa = lambda iso: iso[8:10] + iso[5:7] + iso[2:4]
 def linha400(campos):
     l = [' '] * 400
@@ -219,8 +221,10 @@ def retorno_teste():
     t = [ret_titulo(2, ctl(ID1), '12345678903', '02', V1, 450),
          ret_titulo(3, ctl(ID2), '12345678911', '06', V2, 425.5, pago=425.5),
          ret_titulo(4, ctl('cccccccc-1111-2222-3333-444444444444'), '00000000000', '03', V1, 300, motivo='CEP DO PAGADOR INVALIDO'),
-         ret_titulo(5, 'ZZZZZZZZZZZZZZZZZZZZZZZZZ', '12345678920', '02', V1, 99)]
-    tr = linha400([(1, 7, '9201077'), (395, 400, '000006')])
+         ret_titulo(5, 'ZZZZZZZZZZZZZZZZZZZZZZZZZ', '12345678920', '02', V1, 99),
+         ret_titulo(6, ctl('ffffffff-1111-2222-3333-444444444444'), '12345678946', '02', V1, 300),
+         ret_titulo(7, ctl('ffffffff-1111-2222-3333-444444444444'), '12345678946', '16', V3, 320)]
+    tr = linha400([(1, 7, '9201077'), (395, 400, '000008')])
     return '\n'.join([h] + t + [tr]) + '\n'
 def linha_esperada(operacao, nn, venc, valor):
     def m10(s):
@@ -260,11 +264,12 @@ def retorno(b, base, erros):
     p.add_init_script(DUBLES_PDF)
     p.goto(base + 'financeiro-boletos.html'); p.wait_for_timeout(1500)
     p.click('#btnInter'); p.wait_for_timeout(500)
-    ok('Retorno do Inter' in p.inner_text('#inBody') and 'Novo arquivo de retorno' in p.inner_text('#inBody'), '8. a janela explica onde gerar o retorno no Inter')
+    ok('Retorno do Inter' in p.inner_text('#inBody') and 'Solicitar arquivo retorno' in p.inner_text('#inBody'), '8. a janela explica onde gerar o retorno no Inter')
     p.set_input_files('#inRetArq', files=[{'name': 'retorno-teste.ret', 'mimeType': 'text/plain', 'buffer': retorno_teste().encode('ascii')}])
     p.wait_for_timeout(600)
     painel = p.inner_text('#inRetorno')
-    ok('1 registrado(s) em aberto · 1 pago(s) · 1 com erro · 0 cancelado(s) · 1 de outra competência' in painel, '8. resumo do retorno: ' + next((l for l in painel.split('\n') if 'registrado(s)' in l), painel))
+    ok('2 registrado(s) em aberto · 1 pago(s) · 1 com erro · 0 cancelado(s) · 1 de outra competência' in painel, '8. resumo do retorno: ' + next((l for l in painel.split('\n') if 'registrado(s)' in l), painel))
+    ok(f'Alterado(s) no site do Inter — o PDF sai com a data e o valor de lá: JÁ EMITIDA DE TESTE LTDA (vence {br(V3)} · R$ 320,00)' in painel, '8. boleto alterado no Inter (ocorrência 16) aparece com a data e o valor novos')
     ok('1 marcado(s) como Emitido · 1 marcado(s) como Pago' in painel, '8. registrado vira Emitido e pago vira Pago sozinhos')
     st = lambda i: db(p, f"window.__mockDb.cobrancas_mensais.find(c => c.id === '{i}').status")
     ok(st(ID1) == 'emitido' and st(ID2) == 'pago' and st('cccccccc-1111-2222-3333-444444444444') == 'a_emitir', '8. situações gravadas no banco (o com erro fica A emitir)')
@@ -276,9 +281,15 @@ def retorno(b, base, erros):
     p.wait_for_timeout(300)
     arquivos = db(p, 'window.__zipArquivos'); textos = db(p, 'window.__pdfTextos')
     ok(zipnome == f"Boletos Inter - {hoje.strftime('%d-%m-%Y')}.zip", '8. baixa um .zip: ' + zipnome)
-    ok(arquivos == [f"EMPRESA EXEMPLO DE TESTE LTDA - {br(V1).replace('/', '-')}.pdf"], '8. um PDF por boleto em aberto, com o nome da empresa e o vencimento: ' + str(arquivos))
+    ok(arquivos == [f"EMPRESA EXEMPLO DE TESTE LTDA - {br(V1).replace('/', '-')}.pdf", f"JÁ EMITIDA DE TESTE LTDA - {br(V3).replace('/', '-')}.pdf"],
+       '8. um PDF por boleto em aberto (o alterado com a data nova), com o nome da empresa e o vencimento: ' + str(arquivos))
     esperada = linha_esperada('0001234', '12345678903', V1, 450)
     ok(esperada in textos, '8. linha digitável igual à conta feita à parte: ' + esperada)
+    esperada_alt = linha_esperada('0001234', '12345678946', V3, 320)
+    ok(esperada_alt in textos and esperada_alt.replace(' ', '')[-14:] != linha_esperada('0001234', '12345678946', V1, 300).replace(' ', '')[-14:],
+       '8. o boleto alterado sai com fator e valor novos na linha digitável: ' + esperada_alt)
+    limites = [t for t in textos if t.startswith('Data limite para pagamento:')]
+    ok(len(limites) == 2, '8. data limite só no boleto não alterado (recibo e ficha); no alterado o Inter não informa a nova: ' + str(limites))
     ok('00019/112/1234567890-3' in textos and 'HONORARIOS DE TESTE' in textos and f"Data limite para pagamento: {br(fim_do_mes(V1)[0])}" in textos, '8. nosso número, observação e data limite no PDF')
     ok('11.111.111/0001-11 - ESCRITORIO DE TESTE LTDA' in textos and 'EMPRESA EXEMPLO DE TESTE LTDA - 11.222.333/0001-81' in textos, '8. beneficiário e pagador no PDF')
     ok('PDF(s) baixado(s)' in p.inner_text('#inMsg'), '8. confirma os PDFs baixados')

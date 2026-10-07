@@ -171,7 +171,7 @@
 import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
 import { formatDocumento, hojeLocal } from './assets/js/utils.js';
 import { textoCnab, problemasBoleto, montarRemessa, seuNumero, controleDe, lerConta, pagavelAte, ONDE_IMPORTAR,
-  lerRetorno, codigoBarras, nossoNumeroImpresso, ONDE_RETORNO } from './assets/js/cnab-inter.js';
+  lerRetorno, emAberto, codigoBarras, nossoNumeroImpresso, ONDE_RETORNO } from './assets/js/cnab-inter.js';
 import { boletoPdf, nomeArquivoBoleto } from './assets/js/boleto-pdf.js';
 
 const $ = id => document.getElementById(id);
@@ -516,7 +516,7 @@ async function addEmpresa(id){
 }
 
 // ---- arquivo do Inter (CNAB 400 — assets/js/cnab-inter.js) ----
-// Os boletos marcados viram um arquivo .REM que o Inter importa de uma vez (Cobrar ou Receber › Cobrança via arquivo).
+// Os boletos marcados viram um arquivo .REM que o Inter importa de uma vez (Cobrar ou Receber › Cobranças via arquivo).
 // Conta, nome no arquivo, número do último arquivo, sequência do "seu número" no dia e os últimos arquivos gerados
 // ficam em configuracoes_escritorio.inter_cnab (JSON) — nada disso vai pro código, que o repositório é público.
 const CHAVE_INTER = 'inter_cnab';
@@ -668,8 +668,9 @@ function blocoRetorno(){
     </div>`;
   const R=inter.retorno;
   if(!R) return barra;
-  const reg=R.casados.filter(x=>x.t.ocorrencia==='02'), pag=R.casados.filter(x=>x.t.ocorrencia==='06');
+  const reg=R.casados.filter(x=>emAberto(x.t.ocorrencia)), pag=R.casados.filter(x=>x.t.ocorrencia==='06');
   const err=R.casados.filter(x=>x.t.ocorrencia==='03'), canc=R.casados.filter(x=>x.t.ocorrencia==='07');
+  const alt=reg.filter(x=>x.t.ocorrencia!=='02');   // data e/ou valor mudados no site do Inter: o PDF sai com os novos
   const nome=x=>(inter.clientes[x.r.cliente_id]||{}).nome_principal || x.t.pagador;
   const feitos=[R.feitos.emitido ? `${R.feitos.emitido} marcado(s) como Emitido` : '', R.feitos.pago ? `${R.feitos.pago} marcado(s) como Pago` : ''].filter(Boolean).join(' · ');
   return barra + `<div id="inRetorno" style="border:1px solid var(--fill-3);border-radius:12px;padding:12px 14px;margin-bottom:12px;font-size:13px;color:var(--text);line-height:1.6;">
@@ -677,6 +678,7 @@ function blocoRetorno(){
       <div>${reg.length} registrado(s) em aberto · ${pag.length} pago(s) · ${err.length} com erro · ${canc.length} cancelado(s)${R.fora.length ? ` · ${R.fora.length} de outra competência ou emitido(s) fora do sistema` : ''}</div>
       ${feitos ? `<div style="color:var(--ok);font-weight:600;">✓ ${feitos} na grade</div>` : ''}
       ${reg.length ? `<div style="margin-top:6px;"><button class="btn btn-primary btn-sm" id="inRetPdf">Baixar os ${reg.length} boleto(s) em PDF</button> <span style="font-size:12px;color:var(--text-muted);">um PDF por empresa, num .zip — sem QR Code de Pix (o retorno não traz)</span></div>` : ''}
+      ${alt.length ? `<div style="color:var(--text-muted);margin-top:6px;">Alterado(s) no site do Inter — o PDF sai com a data e o valor de lá: ${alt.map(x=>`${esc(nome(x))} (vence ${fmtDia(x.t.vencimento)} · ${BRL(x.t.valor)})`).join(', ')}</div>` : ''}
       ${err.length ? `<div style="color:var(--err);margin-top:6px;">${err.map(x=>`${esc(nome(x))}: ${esc(x.t.motivo || 'erro sem motivo informado')}`).join('<br>')}</div>` : ''}
       ${canc.length ? `<div style="color:var(--text-muted);margin-top:6px;">Cancelado(s) no Inter: ${canc.map(x=>esc(nome(x))).join(', ')}</div>` : ''}
     </div>`;
@@ -687,13 +689,16 @@ async function lerRetornoArquivo(f){
   let ret;
   try{ ret=lerRetorno(await f.text()); }
   catch(e){ inMsg(e.message, 'err'); return; }
-  // vale a última ocorrência de cada título (o mesmo boleto pode vir registrado e depois pago)
-  const porCtl=new Map(); ret.titulos.forEach(t=>porCtl.set(t.controle, t));
+  // vale a última ocorrência de cada título (o mesmo boleto pode vir registrado, alterado no Inter e depois pago);
+  // a data do registro (02) fica guardada pro PDF
+  const porCtl=new Map();
+  ret.titulos.forEach(t=>{ const ant=porCtl.get(t.controle);
+    porCtl.set(t.controle, { ...t, registradoEm:(ant && ant.registradoEm) || (t.ocorrencia==='02' ? t.dataOcorrencia : null) }); });
   const porId=new Map(rows.filter(r=>r.id).map(r=>[controleDe(r.id), r]));
   const casados=[], fora=[];
   for(const t of porCtl.values()){ const r=porId.get(t.controle); if(r) casados.push({ t, r }); else fora.push(t); }
   const feitos={ emitido:0, pago:0 };
-  const emitir=casados.filter(x=>x.t.ocorrencia==='02' && x.r.status==='a_emitir').map(x=>x.r.id);
+  const emitir=casados.filter(x=>emAberto(x.t.ocorrencia) && x.r.status==='a_emitir').map(x=>x.r.id);
   const pagos=casados.filter(x=>x.t.ocorrencia==='06' && !['pago','cancelado'].includes(x.r.status)).map(x=>x.r.id);
   let erroGrade='';
   if(emitir.length){
@@ -726,13 +731,14 @@ async function baixarPdfsRetorno(){
   const btn=$('inRetPdf'); if(btn) btn.disabled=true;
   const zip=new Z(), falhas=[], nomes=new Set();
   let n=0;
-  for(const { t, r } of R.casados.filter(x=>x.t.ocorrencia==='02')){
+  for(const { t, r } of R.casados.filter(x=>emAberto(x.t.ocorrencia))){
     const c=inter.clientes[r.cliente_id]||{};
     try{
       const { linha, barras }=codigoBarras(t);
       const doc=boletoPdf(J, { beneficiario:ben, pagador:pagadorPdf(c), vencimento:t.vencimento, valor:t.valor,
-        nossoNumero:nossoNumeroImpresso(t.nossoNumero), seuNumero:t.seuNumero, dataDocumento:t.dataOcorrencia || R.data,
-        instrucoes:[textoCnab(r.observacao), 'Data limite para pagamento: '+fmtDia(pagavelAte(t.vencimento))].filter(Boolean), linha, barras });
+        nossoNumero:nossoNumeroImpresso(t.nossoNumero), seuNumero:t.seuNumero, dataDocumento:t.registradoEm || t.dataOcorrencia || R.data,
+        // com o vencimento mudado no site do Inter (14, 16), a data limite de lá não vem no retorno: fica de fora
+        instrucoes:[textoCnab(r.observacao), ['14','16'].includes(t.ocorrencia) ? '' : 'Data limite para pagamento: '+fmtDia(pagavelAte(t.vencimento))].filter(Boolean), linha, barras });
       let nome=nomeArquivoBoleto(c.nome_principal || t.pagador, t.vencimento);
       if(nomes.has(nome)) nome=nome.replace(/\.pdf$/, ` (${t.seuNumero}).pdf`);
       nomes.add(nome);

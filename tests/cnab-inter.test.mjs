@@ -1,10 +1,11 @@
-// Arquivo de boletos do Inter (assets/js/cnab-inter.js): posições do CNAB 400 pelo manual V2.2 do Inter, textos sem
-// acento, regras do escritório (sem multa/juros, pagável até o fim do mês, seu número dia+mês+ano+nº) e o que barra
-// um boleto; o arquivo de retorno, o código de barras e a linha digitável (manual, seções 5 e 7) e o desenho do
-// Intercalado 2 de 5 do PDF (assets/js/boleto-pdf.js). Dados inventados. Rodar com: node tests/cnab-inter.test.mjs
+// Arquivo de boletos do Inter (assets/js/cnab-inter.js): posições do CNAB 400 pelo manual do Inter (V2.2, conferidas
+// com a V9 de 06/07/2026), textos sem acento, regras do escritório (sem multa/juros, pagável até o fim do mês, seu número
+// dia+mês+ano+nº) e o que barra um boleto; o arquivo de retorno (V9, seção 5, com as ocorrências 14/15/16), o código de
+// barras e a linha digitável (V9, seção 8) e o desenho do Intercalado 2 de 5 do PDF (assets/js/boleto-pdf.js).
+// Dados inventados. Rodar com: node tests/cnab-inter.test.mjs
 import {
   textoCnab, seuNumero, diasPagamento, pagavelAte, lerConta, enderecoCnab, problemasBoleto, montarRemessa, controleDe,
-  isoValida, lerRetorno, codigoBarras, fatorVencimento, mod10, mod11, operacao7, nossoNumeroImpresso,
+  isoValida, lerRetorno, emAberto, codigoBarras, fatorVencimento, mod10, mod11, operacao7, nossoNumeroImpresso,
 } from '../assets/js/cnab-inter.js';
 import { larguras2de5, nomeArquivoBoleto } from '../assets/js/boleto-pdf.js';
 
@@ -172,11 +173,17 @@ igual('vencimento, valor, seu número e data do registro', [r1.vencimento, r1.va
 igual('pago: valor pago e data do crédito', [r2.situacao, r2.valorPago, r2.dataCredito], ['pago', 678.16, '2026-10-08']);
 igual('erro com o motivo', [r3.situacao, r3.motivo], ['erro', 'CEP INVALIDO']);
 igual('pagador e CNPJ', [r1.pagador, r1.documento], ['PAGADOR DE TESTE LTDA', '22333444000190']);
+// V9: vencimento/valor alterados no site do Inter (14, 15, 16) seguem em aberto, com a data e o valor novos
+const alt = lerRetorno([retH, titulo(2, 'JKL', '12345678938', '14', [[119, 124, '201026']]),
+  titulo(3, 'MNO', '12345678946', '16', [[119, 124, '231026'], [125, 137, '0000000070000']])].join('\n'));
+igual('vencimento alterado (14): situação e a data nova', [alt.titulos[0].situacao, alt.titulos[0].vencimento], ['vencimento alterado', '2026-10-20']);
+igual('vencimento e valor alterados (16): data e valor novos', [alt.titulos[1].situacao, alt.titulos[1].vencimento, alt.titulos[1].valor], ['vencimento e valor alterados', '2026-10-23', 700]);
+igual('em aberto: 02, 14, 15 e 16; pago, erro e cancelado não', ['02', '14', '15', '16', '03', '06', '07'].map(emAberto), [true, true, true, true, false, false, false]);
 chk('linha com CRLF também lê', lerRetorno([retH, titulo(2, 'ABC', '12345678903', '02')].join('\r\n')).titulos[0].nossoNumero === '12345678903');
 chk('arquivo que não é retorno do Inter é recusado', erro(() => lerRetorno('QUALQUER COISA\n')).includes('Não é um arquivo de retorno'));
 chk('arquivo vazio é recusado', erro(() => lerRetorno('')).includes('vazio'));
 
-console.log('Código de barras e linha digitável (manual, seção 7):');
+console.log('Código de barras e linha digitável (manual V9, seção 8):');
 igual('fator: 22/02/2025 reinicia em 1000', fatorVencimento('2025-02-22'), 1000);
 igual('fator: 21/02/2025 era 9999', fatorVencimento('2025-02-21'), 9999);
 igual('fator: 03/07/2000 era 1000', fatorVencimento('2000-07-03'), 1000);
