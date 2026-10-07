@@ -158,3 +158,95 @@ export function montarRemessa({ empresa, conta, dv, numero, data, boletos }) {
   linhas.forEach((l, i) => { if (l.length !== 400) throw new Error(`linha ${i + 1} com ${l.length} posições`); });
   return { nome: `CI400_001_${nr}.REM`, conteudo: linhas.join('\r\n') + '\r\n', linhas, qtd: boletos.length, total: total / 100 };
 }
+
+// ============================================================
+// Arquivo de RETORNO (manual V2.2, seção 5) — o Inter gera em Cobrar ou Receber › Cobrança via arquivo › Retorno ›
+// Novo arquivo de retorno (até 7 dias por arquivo). Cada título: ocorrência 02 = registrado (em aberto), 03 = erro (com o
+// motivo), 06 = pago, 07 = cancelado; traz o nosso número (carteira 112: o número de registro, 11 dígitos com o DV) e o
+// número da operação — os dois que faltam pro código de barras.
+// ============================================================
+export const ONDE_RETORNO = 'Cobrar ou Receber › Cobrança via arquivo › Retorno › Novo arquivo de retorno';
+export const OCORRENCIAS = { '02': 'registrado', '03': 'erro', '06': 'pago', '07': 'cancelado' };
+const dataRet = s => (/^\d{6}$/.test(s) && s !== '000000') ? `20${s.slice(4, 6)}-${s.slice(2, 4)}-${s.slice(0, 2)}` : null;
+
+export function lerRetorno(texto) {
+  const linhas = String(texto ?? '').split(/\r?\n/).map(l => l.replace(/\r$/, '')).filter(l => l.trim() !== '');
+  if (!linhas.length) throw new Error('O arquivo está vazio.');
+  const h = linhas[0].padEnd(400, ' ');
+  if (h.slice(0, 9) !== '02RETORNO' || h.slice(76, 79) !== BANCO) {
+    throw new Error('Não é um arquivo de retorno de cobrança do Inter (CNAB 400). Ele sai em ' + ONDE_RETORNO + '.');
+  }
+  const titulos = [];
+  for (const bruta of linhas.slice(1)) {
+    if (bruta[0] !== '1') continue;
+    const l = bruta.padEnd(400, ' ');
+    const g = (a, b) => l.slice(a - 1, b);
+    const ocorrencia = g(90, 91);
+    titulos.push({
+      controle: g(38, 62).trim(),
+      nossoNumero: soDigitos(g(71, 81)),
+      carteira: g(87, 89),
+      ocorrencia, situacao: OCORRENCIAS[ocorrencia] || `ocorrência ${ocorrencia}`,
+      dataOcorrencia: dataRet(g(92, 97)),
+      seuNumero: g(98, 107).trim(),
+      vencimento: dataRet(g(119, 124)),
+      valor: Number(g(125, 137)) / 100,
+      valorPago: Number(g(160, 172)) / 100,
+      dataCredito: dataRet(g(173, 178)),
+      pagador: g(182, 221).trim(),
+      documento: soDigitos(g(227, 240)),
+      motivo: g(241, 380).trim(),
+      operacao: g(381, 394).trim(),
+    });
+  }
+  return { data: dataRet(h.slice(94, 100)), titulos };
+}
+
+// ---------- código de barras e linha digitável (manual, seção 7) ----------
+// fator de vencimento: dias corridos desde a data-base; o ciclo reiniciou em 22/02/2025 com 1000 (antes: base 07/10/1997)
+export function fatorVencimento(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  const t = Date.UTC(y, m - 1, d), novo = Date.UTC(2025, 1, 22);
+  const f = t >= novo ? 1000 + Math.round((t - novo) / 864e5) : Math.round((t - Date.UTC(1997, 9, 7)) / 864e5);
+  if (f < 1000 || f > 9999) throw new Error('vencimento fora da faixa do fator');
+  return f;
+}
+// módulo 10 (pesos 2,1,2,1… da direita; soma os algarismos dos produtos; resto 0 → 0)
+export function mod10(n) {
+  let soma = 0, peso = 2;
+  for (let i = n.length - 1; i >= 0; i--) { const p = Number(n[i]) * peso; soma += p > 9 ? p - 9 : p; peso = 3 - peso; }
+  const r = soma % 10;
+  return r === 0 ? 0 : 10 - r;
+}
+// módulo 11 do código de barras (pesos 2 a 9 da direita; restos 0, 1 e 10 → 1)
+export function mod11(n) {
+  let soma = 0, peso = 2;
+  for (let i = n.length - 1; i >= 0; i--) { soma += Number(n[i]) * peso; peso = peso === 9 ? 2 : peso + 1; }
+  const r = soma % 11;
+  return (r === 0 || r === 1 || r === 10) ? 1 : 11 - r;
+}
+// operação: 7 dígitos (o campo do retorno tem 14; à esquerda só zero ou espaço)
+export function operacao7(op) {
+  const d = soDigitos(op);
+  if (!d || d.length > 14 || (d.length > 7 && /[1-9]/.test(d.slice(0, d.length - 7)))) return null;
+  return d.slice(-7).padStart(7, '0');
+}
+// { operacao, nossoNumero (11, com DV), vencimento, valor } → { barras (44), linha (47, formatada) }
+export function codigoBarras({ operacao, nossoNumero, vencimento, valor }) {
+  const op = operacao7(operacao), nn = soDigitos(nossoNumero);
+  if (!op) throw new Error('número da operação inválido');
+  if (nn.length !== 11) throw new Error('nosso número inválido');
+  if (!isoValida(vencimento)) throw new Error('vencimento inválido');
+  const campoLivre = AGENCIA + CARTEIRA + op + nn;
+  const fator = String(fatorVencimento(vencimento));
+  const val = num(centavos(valor), 10, 'valor');
+  const semDv = BANCO + '9' + fator + val + campoLivre;
+  const dv = mod11(semDv);
+  const barras = BANCO + '9' + dv + fator + val + campoLivre;
+  const c1 = BANCO + '9' + campoLivre.slice(0, 5), c2 = campoLivre.slice(5, 15), c3 = campoLivre.slice(15, 25);
+  const f1 = c1 + mod10(c1), f2 = c2 + mod10(c2), f3 = c3 + mod10(c3);
+  const linha = `${f1.slice(0, 5)}.${f1.slice(5)} ${f2.slice(0, 5)}.${f2.slice(5)} ${f3.slice(0, 5)}.${f3.slice(5)} ${dv} ${fator}${val}`;
+  return { barras, linha };
+}
+// nosso número como o Inter imprime: 00019/112/NNNNNNNNNN-D
+export const nossoNumeroImpresso = nn => { const d = soDigitos(nn); return `00019/${CARTEIRA}/${d.slice(0, -1)}-${d.slice(-1)}`; };

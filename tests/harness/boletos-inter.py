@@ -17,7 +17,10 @@ Confere:
   5. segundo arquivo no mesmo dia: número 2, seu número continua a sequência do dia;
   6. reabrindo: a conta já vem guardada e o próximo número é o 3; Esc fecha a janela;
   7. primeiro uso sem clicar em Guardar: marcar libera o botão com o aviso, sem conta não gera e diz o que falta,
-     com a conta digitada gera e guarda a conta.
+     com a conta digitada gera e guarda a conta;
+  8. retorno do Inter (arquivo inventado): registrado vira Emitido, pago vira Pago, erro aparece com o motivo, título de
+     fora contado à parte, PDFs num .zip com a linha digitável conferida por uma conta feita à parte (jsPDF e JSZip entram
+     como dublês), arquivo que não é retorno recusado.
 Termina com código 1 se alguma checagem falhar. Pré-requisito: pip install playwright e python -m playwright install chromium
 """
 import sys, json, pathlib, datetime, calendar
@@ -194,6 +197,96 @@ def gerar_sem_guardar(b, base, erros):
     ok('CI400_001_0000001.REM baixado' in p.inner_text('#inBody') and '0001 / 1234567-8' in p.inner_text('#inContaResumo'), '7. janela mostra o arquivo baixado e a conta guardada')
     p.close()
 
+# ---- retorno do Inter (arquivo inventado, no layout do manual V2.2) e a conta do código de barras feita à parte ----
+ddmmaa = lambda iso: iso[8:10] + iso[5:7] + iso[2:4]
+def linha400(campos):
+    l = [' '] * 400
+    for a, b, s in campos:
+        s = str(s)
+        assert len(s) == b - a + 1, (a, b, s)
+        l[a - 1:b] = list(s)
+    return ''.join(l)
+def ret_titulo(seq, controle, nn, ocorr, venc, valor, pago=0, motivo='', operacao='0001234', pagador='PAGADOR DE TESTE'):
+    hoje_ = hoje.isoformat()
+    return linha400([(1, 1, '1'), (2, 3, '02'), (4, 17, '11111111000111'), (18, 20, '000'), (21, 23, '112'), (24, 27, '0001'),
+        (28, 37, '0001234567'), (38, 62, controle.ljust(25)), (63, 70, '0' * 8), (71, 81, nn), (87, 89, '112'), (90, 91, ocorr),
+        (92, 97, ddmmaa(hoje_)), (98, 107, '7102661'.ljust(10)), (108, 118, nn), (119, 124, ddmmaa(venc)), (125, 137, f'{round(valor * 100):013d}'),
+        (138, 140, '077'), (141, 144, '0001'), (145, 146, '01'), (160, 172, f'{round(pago * 100):013d}'), (173, 178, ddmmaa(hoje_) if pago else '000000'),
+        (182, 221, pagador.ljust(40)), (227, 240, '22333444000190'), (241, 380, motivo.ljust(140)), (381, 394, operacao.ljust(14)), (395, 400, f'{seq:06d}')])
+def retorno_teste():
+    ctl = lambda i: i.replace('-', '').upper()[:25]
+    h = linha400([(1, 19, '02RETORNO01COBRANCA'), (47, 76, 'ESCRITORIO DE TESTE LTDA'.ljust(30)), (77, 94, '077INTER'.ljust(18)), (95, 100, ddmmaa(hoje.isoformat())), (395, 400, '000001')])
+    t = [ret_titulo(2, ctl(ID1), '12345678903', '02', V1, 450),
+         ret_titulo(3, ctl(ID2), '12345678911', '06', V2, 425.5, pago=425.5),
+         ret_titulo(4, ctl('cccccccc-1111-2222-3333-444444444444'), '00000000000', '03', V1, 300, motivo='CEP DO PAGADOR INVALIDO'),
+         ret_titulo(5, 'ZZZZZZZZZZZZZZZZZZZZZZZZZ', '12345678920', '02', V1, 99)]
+    tr = linha400([(1, 7, '9201077'), (395, 400, '000006')])
+    return '\n'.join([h] + t + [tr]) + '\n'
+def linha_esperada(operacao, nn, venc, valor):
+    def m10(s):
+        tot = 0
+        for i, ch in enumerate(reversed(s)):
+            p = int(ch) * (2 if i % 2 == 0 else 1)
+            tot += p // 10 + p % 10
+        return (10 - tot % 10) % 10
+    def m11(s):
+        tot = sum(int(ch) * (2 + i % 8) for i, ch in enumerate(reversed(s)))
+        r = tot % 11
+        return 1 if r in (0, 1, 10) else 11 - r
+    fator = str((datetime.date.fromisoformat(venc) - datetime.date(2025, 2, 22)).days + 1000)
+    livre = '0001' + '112' + operacao.zfill(7) + nn
+    val = f'{round(valor * 100):010d}'
+    dv = m11('0779' + fator + val + livre)
+    c1, c2, c3 = '0779' + livre[:5], livre[5:15], livre[15:]
+    f1, f2, f3 = c1 + str(m10(c1)), c2 + str(m10(c2)), c3 + str(m10(c3))
+    return f'{f1[:5]}.{f1[5:]} {f2[:5]}.{f2[5:]} {f3[:5]}.{f3[5:]} {dv} {fator}{val}'
+DUBLES_PDF = """(() => {
+  window.__pdfTextos = []; window.__zipArquivos = [];
+  window.jspdf = { jsPDF: class { setDrawColor(){} setLineWidth(){} rect(){} setFont(){} setFontSize(){} setTextColor(){} line(){}
+    setLineDashPattern(){} setFillColor(){} text(s){ window.__pdfTextos.push(String(s)); } output(){ return new ArrayBuffer(8); } } };
+  window.JSZip = class { file(n){ window.__zipArquivos.push(n); } generateAsync(){ return Promise.resolve(new Blob(['zip'])); } };
+})();"""
+BENEF = {'nome': 'ESCRITORIO DE TESTE LTDA', 'documento': '11.111.111/0001-11', 'endereco': 'RUA DE TESTE 1, 95660-000 TRES COROAS - RS', 'agenciaCodigo': '00019/000000000'}
+
+def retorno(b, base, erros):
+    print('[claro] 8. retorno do Inter: Emitido, Pago, erro e os PDFs')
+    p = b.new_page(viewport={'width': 1400, 'height': 900}, accept_downloads=True)
+    p.on('pageerror', lambda e: erros.append(f'retorno: {e}'))
+    p.route('**/cdnjs.cloudflare.com/**', lambda r: r.abort())   # o CDN fica de fora: entram os dublês
+    p.add_init_script(INIT_TEMA % 'claro')
+    p.add_init_script(ARMADILHA.replace("v.configuracoes_escritorio = [];", "v.configuracoes_escritorio = %s;" % json.dumps([
+        {'chave': 'inter_cnab', 'valor': json.dumps({'conta': '1234567', 'dv': '8', 'nome': 'ESCRITORIO DE TESTE', 'remessa': 1, 'seq_dia': '', 'seq': 0, 'arquivos': []})},
+        {'chave': 'inter_beneficiario', 'valor': json.dumps(BENEF)}])))
+    p.add_init_script(DUBLES_PDF)
+    p.goto(base + 'financeiro-boletos.html'); p.wait_for_timeout(1500)
+    p.click('#btnInter'); p.wait_for_timeout(500)
+    ok('Retorno do Inter' in p.inner_text('#inBody') and 'Novo arquivo de retorno' in p.inner_text('#inBody'), '8. a janela explica onde gerar o retorno no Inter')
+    p.set_input_files('#inRetArq', files=[{'name': 'retorno-teste.ret', 'mimeType': 'text/plain', 'buffer': retorno_teste().encode('ascii')}])
+    p.wait_for_timeout(600)
+    painel = p.inner_text('#inRetorno')
+    ok('1 registrado(s) em aberto · 1 pago(s) · 1 com erro · 0 cancelado(s) · 1 de outra competência' in painel, '8. resumo do retorno: ' + next((l for l in painel.split('\n') if 'registrado(s)' in l), painel))
+    ok('1 marcado(s) como Emitido · 1 marcado(s) como Pago' in painel, '8. registrado vira Emitido e pago vira Pago sozinhos')
+    st = lambda i: db(p, f"window.__mockDb.cobrancas_mensais.find(c => c.id === '{i}').status")
+    ok(st(ID1) == 'emitido' and st(ID2) == 'pago' and st('cccccccc-1111-2222-3333-444444444444') == 'a_emitir', '8. situações gravadas no banco (o com erro fica A emitir)')
+    ok('LOJA SEM ENDEREÇO DE TESTE LTDA: CEP DO PAGADOR INVALIDO' in painel, '8. erro do Inter aparece com o motivo')
+    ok(p.locator('select.st-pago').count() == 1, '8. a grade mostra o Pago')
+    with p.expect_download() as dl:
+        p.click('#inRetPdf')
+    zipnome = dl.value.suggested_filename
+    p.wait_for_timeout(300)
+    arquivos = db(p, 'window.__zipArquivos'); textos = db(p, 'window.__pdfTextos')
+    ok(zipnome == f"Boletos Inter - {hoje.strftime('%d-%m-%Y')}.zip", '8. baixa um .zip: ' + zipnome)
+    ok(arquivos == [f"EMPRESA EXEMPLO DE TESTE LTDA - {br(V1).replace('/', '-')}.pdf"], '8. um PDF por boleto em aberto, com o nome da empresa e o vencimento: ' + str(arquivos))
+    esperada = linha_esperada('0001234', '12345678903', V1, 450)
+    ok(esperada in textos, '8. linha digitável igual à conta feita à parte: ' + esperada)
+    ok('00019/112/1234567890-3' in textos and 'HONORARIOS DE TESTE' in textos and f"Data limite para pagamento: {br(fim_do_mes(V1)[0])}" in textos, '8. nosso número, observação e data limite no PDF')
+    ok('11.111.111/0001-11 - ESCRITORIO DE TESTE LTDA' in textos and 'EMPRESA EXEMPLO DE TESTE LTDA - 11.222.333/0001-81' in textos, '8. beneficiário e pagador no PDF')
+    ok('PDF(s) baixado(s)' in p.inner_text('#inMsg'), '8. confirma os PDFs baixados')
+    p.set_input_files('#inRetArq', files=[{'name': 'x.ret', 'mimeType': 'text/plain', 'buffer': b'ISSO NAO E UM RETORNO'}])
+    p.wait_for_timeout(300)
+    ok('Não é um arquivo de retorno' in p.inner_text('#inMsg'), '8. arquivo que não é retorno do Inter é recusado com o motivo')
+    p.close()
+
 def main():
     from playwright.sync_api import sync_playwright
     montar_site(); FOTOS.mkdir(parents=True, exist_ok=True)
@@ -204,6 +297,7 @@ def main():
         for tema in ('escuro', 'claro'):
             fluxo(b, base, tema, erros)
         gerar_sem_guardar(b, base, erros)
+        retorno(b, base, erros)
         b.close()
     srv.shutdown()
     ok(not erros, 'sem erro de JavaScript' + ('' if not erros else ': ' + ' | '.join(erros[:5])))

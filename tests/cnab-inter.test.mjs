@@ -1,10 +1,12 @@
 // Arquivo de boletos do Inter (assets/js/cnab-inter.js): posições do CNAB 400 pelo manual V2.2 do Inter, textos sem
 // acento, regras do escritório (sem multa/juros, pagável até o fim do mês, seu número dia+mês+ano+nº) e o que barra
-// um boleto. Dados inventados. Rodar com: node tests/cnab-inter.test.mjs
+// um boleto; o arquivo de retorno, o código de barras e a linha digitável (manual, seções 5 e 7) e o desenho do
+// Intercalado 2 de 5 do PDF (assets/js/boleto-pdf.js). Dados inventados. Rodar com: node tests/cnab-inter.test.mjs
 import {
   textoCnab, seuNumero, diasPagamento, pagavelAte, lerConta, enderecoCnab, problemasBoleto, montarRemessa, controleDe,
-  isoValida,
+  isoValida, lerRetorno, codigoBarras, fatorVencimento, mod10, mod11, operacao7, nossoNumeroImpresso,
 } from '../assets/js/cnab-inter.js';
+import { larguras2de5, nomeArquivoBoleto } from '../assets/js/boleto-pdf.js';
 
 let falhas = 0;
 const chk = (nome, cond) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome); };
@@ -153,6 +155,62 @@ chk('sem boletos', erro(() => montarRemessa({ ...base, boletos: [] })).includes(
 chk('boleto sem CEP barra o arquivo e diz qual', erro(() => montarRemessa({ ...base, boletos: [{ ...ok, cep: '', controle: 'A1', seuNumero: '1' }] })) === 'EMPRESA EXEMPLO LTDA: CEP faltando ou incompleto no cadastro');
 chk('controle repetido', erro(() => montarRemessa({ ...base, boletos: [{ ...ok, controle: 'A1', seuNumero: '1' }, { ...ok, controle: 'A1', seuNumero: '2' }] })).includes('repetido'));
 chk('sem seu número', erro(() => montarRemessa({ ...base, boletos: [{ ...ok, controle: 'A1', seuNumero: '' }] })).includes('seu número'));
+
+console.log('Arquivo de retorno:');
+const L400 = campos => { const l = Array(400).fill(' '); for (const [a, b, s] of campos) { if (s.length !== b - a + 1) throw new Error(`${a}-${b}`); l.splice(a - 1, s.length, ...s); } return l.join(''); };
+const retH = L400([[1, 19, '02RETORNO01COBRANCA'], [77, 94, '077INTER'.padEnd(18)], [95, 100, '071026'], [395, 400, '000001']]);
+const titulo = (seq, ctl, nn, oc, extra = []) => L400([[1, 1, '1'], [38, 62, ctl.padEnd(25)], [71, 81, nn], [87, 89, '112'], [90, 91, oc], [92, 97, '071026'],
+  [98, 107, '710261'.padEnd(10)], [108, 118, nn], [119, 124, '091026'], [125, 137, '0000000067816'], [182, 221, 'PAGADOR DE TESTE LTDA'.padEnd(40)],
+  [227, 240, '22333444000190'], [381, 394, '0123456'.padEnd(14)], [395, 400, String(seq).padStart(6, '0')], ...extra]);
+const ret = lerRetorno([retH, titulo(2, 'ABC', '12345678903', '02'),
+  titulo(3, 'DEF', '12345678911', '06', [[160, 172, '0000000067816'], [173, 178, '081026']]),
+  titulo(4, 'GHI', '00000000000', '03', [[241, 380, 'CEP INVALIDO'.padEnd(140)]]), L400([[1, 1, '9'], [395, 400, '000005']])].join('\n') + '\n');
+igual('data do arquivo e quantidade', [ret.data, ret.titulos.length], ['2026-10-07', 3]);
+const [r1, r2, r3] = ret.titulos;
+igual('registrado: controle, nosso número, operação, situação', [r1.controle, r1.nossoNumero, r1.operacao, r1.situacao], ['ABC', '12345678903', '0123456', 'registrado']);
+igual('vencimento, valor, seu número e data do registro', [r1.vencimento, r1.valor, r1.seuNumero, r1.dataOcorrencia], ['2026-10-09', 678.16, '710261', '2026-10-07']);
+igual('pago: valor pago e data do crédito', [r2.situacao, r2.valorPago, r2.dataCredito], ['pago', 678.16, '2026-10-08']);
+igual('erro com o motivo', [r3.situacao, r3.motivo], ['erro', 'CEP INVALIDO']);
+igual('pagador e CNPJ', [r1.pagador, r1.documento], ['PAGADOR DE TESTE LTDA', '22333444000190']);
+chk('linha com CRLF também lê', lerRetorno([retH, titulo(2, 'ABC', '12345678903', '02')].join('\r\n')).titulos[0].nossoNumero === '12345678903');
+chk('arquivo que não é retorno do Inter é recusado', erro(() => lerRetorno('QUALQUER COISA\n')).includes('Não é um arquivo de retorno'));
+chk('arquivo vazio é recusado', erro(() => lerRetorno('')).includes('vazio'));
+
+console.log('Código de barras e linha digitável (manual, seção 7):');
+igual('fator: 22/02/2025 reinicia em 1000', fatorVencimento('2025-02-22'), 1000);
+igual('fator: 21/02/2025 era 9999', fatorVencimento('2025-02-21'), 9999);
+igual('fator: 03/07/2000 era 1000', fatorVencimento('2000-07-03'), 1000);
+igual('fator: 09/10/2026', fatorVencimento('2026-10-09'), 1594);
+igual('módulo 10 (exemplo do manual, 999977721)', mod10('999977721'), 3);
+igual('módulo 11: soma 2 → 11 − 2 = 9', mod11('0'.repeat(42) + '1'), 9);
+igual('módulo 11: resto 10 vira 1 (regra do manual)', mod11('0'.repeat(42) + '5'), 1);
+igual('módulo 11: resto 0 vira 1', mod11('0'.repeat(43)), 1);
+igual('operação: 7 dígitos com espaço à direita', operacao7('0201390       '), '0201390');
+igual('operação: zeros à esquerda nos 14', operacao7('00000000201390'), '0201390');
+igual('operação com mais de 7 dígitos que contam é recusada', operacao7('12345678'), null);
+const cb = codigoBarras({ operacao: '0123456', nossoNumero: '12345678903', vencimento: '2026-10-09', valor: 678.16 });
+// conta feita à parte, por outro caminho: DV geral pelo módulo 11 e DVs dos campos pelo módulo 10
+const dvGeral = (() => { const s = cb.barras.slice(0, 4) + cb.barras.slice(5); let t = 0; [...s].reverse().forEach((ch, i) => { t += Number(ch) * (2 + (i % 8)); }); const r = t % 11; return (r === 0 || r === 1 || r === 10) ? 1 : 11 - r; })();
+const dv10 = s => { let t = 0; [...s].reverse().forEach((ch, i) => { const p = Number(ch) * (i % 2 ? 1 : 2); t += Math.floor(p / 10) + (p % 10); }); return (10 - (t % 10)) % 10; };
+igual('44 dígitos: banco, moeda, fator, valor e campo livre (agência, carteira 112, operação, nosso número)', [cb.barras.length, cb.barras.slice(0, 4), cb.barras.slice(5, 9), cb.barras.slice(9, 19), cb.barras.slice(19)],
+  [44, '0779', '1594', '0000067816', '0001' + '112' + '0123456' + '12345678903']);
+igual('DV geral confere com a conta à parte', Number(cb.barras[4]), dvGeral);
+const ld = cb.linha.replace(/[ .]/g, '');
+igual('linha digitável: 47 dígitos no formato do boleto', [ld.length, /^\d{5}\.\d{5} \d{5}\.\d{6} \d{5}\.\d{6} \d \d{14}$/.test(cb.linha)], [47, true]);
+igual('DVs dos três campos conferem', [Number(ld[9]), Number(ld[20]), Number(ld[31])], [dv10(ld.slice(0, 9)), dv10(ld.slice(10, 20)), dv10(ld.slice(21, 31))]);
+igual('campo 4 = DV geral; campo 5 = fator + valor', [ld[32], ld.slice(33)], [cb.barras[4], '15940000067816']);
+igual('linha digitável e código de barras falam a mesma coisa', ld.slice(0, 4) + ld.slice(32, 33) + ld.slice(33) + ld.slice(4, 9) + ld.slice(10, 20) + ld.slice(21, 31), cb.barras);
+chk('sem número da operação, não monta', erro(() => codigoBarras({ operacao: '', nossoNumero: '12345678903', vencimento: '2026-10-09', valor: 1 })).includes('operação'));
+chk('nosso número incompleto, não monta', erro(() => codigoBarras({ operacao: '0123456', nossoNumero: '123', vencimento: '2026-10-09', valor: 1 })).includes('nosso número'));
+igual('nosso número como o Inter imprime', nossoNumeroImpresso('12345678903'), '00019/112/1234567890-3');
+
+console.log('PDF do boleto:');
+const el = larguras2de5(cb.barras);
+igual('Intercalado 2 de 5: 405 unidades de barra fina (103 mm com 0,254 mm)', [el.reduce((a, b) => a + b, 0), (el.reduce((a, b) => a + b, 0) * 0.254).toFixed(1)], [405, '102.9']);
+igual('início (4 finos) e fim (largo, fino, fino)', [el.slice(0, 4), el.slice(-3)], [[1, 1, 1, 1], [3, 1, 1]]);
+igual('par "00": barras e espaços intercalados', larguras2de5('00').slice(4, 14), [1, 1, 1, 1, 3, 3, 3, 3, 1, 1]);
+chk('quantidade ímpar de dígitos é recusada', erro(() => larguras2de5('123')) !== '');
+igual('nome do arquivo sem caractere proibido', nomeArquivoBoleto('A/B: C*D LTDA', '2026-10-30'), 'A B C D LTDA - 30-10-2026.pdf');
 
 console.log(falhas ? `\n${falhas} falha(s)` : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);

@@ -164,10 +164,15 @@
     </div>
   </div>
 
+<!-- PDFs dos boletos pelo retorno do Inter (um .zip com um PDF por empresa) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script type="module">
 import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
 import { formatDocumento, hojeLocal } from './assets/js/utils.js';
-import { textoCnab, problemasBoleto, montarRemessa, seuNumero, controleDe, lerConta, pagavelAte, ONDE_IMPORTAR } from './assets/js/cnab-inter.js';
+import { textoCnab, problemasBoleto, montarRemessa, seuNumero, controleDe, lerConta, pagavelAte, ONDE_IMPORTAR,
+  lerRetorno, codigoBarras, nossoNumeroImpresso, ONDE_RETORNO } from './assets/js/cnab-inter.js';
+import { boletoPdf, nomeArquivoBoleto } from './assets/js/boleto-pdf.js';
 
 const $ = id => document.getElementById(id);
 const BRL = n => 'R$ ' + (Number(n)||0).toLocaleString('pt-BR',{minimumFractionDigits:2, maximumFractionDigits:2});
@@ -515,6 +520,7 @@ async function addEmpresa(id){
 // Conta, nome no arquivo, número do último arquivo, sequência do "seu número" no dia e os últimos arquivos gerados
 // ficam em configuracoes_escritorio.inter_cnab (JSON) — nada disso vai pro código, que o repositório é público.
 const CHAVE_INTER = 'inter_cnab';
+const CHAVE_BENEF = 'inter_beneficiario';   // { nome, documento, endereco, agenciaCodigo } — como no boleto do Inter
 const DESC_INTER = 'Arquivo de boletos do Inter (grade de boletos, CNAB 400): conta corrente com dígito, nome no arquivo, número do último arquivo, sequência do "seu número" no dia e os últimos arquivos gerados.';
 const inter = { cfg: null, existe: false, clientes: {}, marcados: new Set(), editandoConta: false, gerado: null, itens: [] };
 const EST = {
@@ -530,20 +536,23 @@ function cfgInter(v){
 function inMsg(t, tipo){ const el=$('inMsg'); if(!el) return; el.textContent=t||''; el.style.color = tipo==='err' ? 'var(--err)' : tipo==='ok' ? 'var(--ok)' : ''; }
 
 async function abrirInter(){
-  inter.gerado=null; inter.marcados=new Set();
+  inter.gerado=null; inter.marcados=new Set(); inter.retorno=null;
   $('ovInter').classList.add('open');
   $('inBody').innerHTML='<div class="bo-msg"><span class="spin"></span>Carregando o cadastro…</div>';
-  const ids=[...new Set(rows.filter(r=>r.status==='a_emitir').map(r=>r.cliente_id).filter(Boolean))];
+  // o cadastro de todas as cobranças da competência: as "A emitir" vão no arquivo; as já emitidas ganham o PDF pelo retorno
+  const ids=[...new Set(rows.map(r=>r.cliente_id).filter(Boolean))];
   const lotes=[];
   for(let i=0;i<ids.length;i+=100){
-    lotes.push(supabase.from('clientes').select('id,nome_principal,documento,logradouro,numero,complemento,bairro,uf,cep').in('id', ids.slice(i,i+100)));
+    lotes.push(supabase.from('clientes').select('id,nome_principal,documento,logradouro,numero,complemento,bairro,cidade,uf,cep').in('id', ids.slice(i,i+100)));
   }
-  const [cfgR, ...cads]=await Promise.all([
-    supabase.from('configuracoes_escritorio').select('chave,valor').eq('chave', CHAVE_INTER).maybeSingle(), ...lotes ]);
-  const erro=cfgR.error || (cads.find(c=>c.error)||{}).error;
+  const [cfgR, benR, ...cads]=await Promise.all([
+    supabase.from('configuracoes_escritorio').select('chave,valor').eq('chave', CHAVE_INTER).maybeSingle(),
+    supabase.from('configuracoes_escritorio').select('chave,valor').eq('chave', CHAVE_BENEF).maybeSingle(), ...lotes ]);
+  const erro=cfgR.error || benR.error || (cads.find(c=>c.error)||{}).error;
   if(erro){ $('inBody').innerHTML=`<div class="bo-msg" style="color:var(--err)">Não consegui carregar: ${esc(erro.message)}</div>`; return; }
   inter.existe=!!cfgR.data;
   inter.cfg=cfgInter(cfgR.data && cfgR.data.valor);
+  try{ inter.beneficiario=JSON.parse((benR.data && benR.data.valor) || 'null'); }catch(e){ inter.beneficiario=null; }
   inter.clientes=Object.fromEntries(cads.flatMap(c=>c.data||[]).map(c=>[c.id,c]));
   inter.editandoConta=!inter.cfg.conta;
   renderInter();
@@ -614,7 +623,7 @@ function renderInter(){
   const novos=itens.filter(x=>!x.probl.length && !x.foi).map(x=>x.r.id);
   const nProntos=prontos.size, barrados=itens.length-nProntos, jaFoi=nProntos-novos.length;
   const resumo=[barrados ? `${barrados} com pendência — não vão no arquivo` : '', jaFoi ? `${jaFoi} já foi(ram) num arquivo — marque um a um só se o Inter recusou` : ''].filter(Boolean).join(' · ') || 'todos prontos';
-  $('inBody').innerHTML = gerado + conta + info + (itens.length ? `
+  $('inBody').innerHTML = gerado + conta + blocoRetorno() + info + (itens.length ? `
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
       <button class="btn btn-ghost btn-sm" id="inTodos"${novos.length?'':' disabled'}>Marcar os prontos (${novos.length})</button>
       <button class="btn btn-ghost btn-sm" id="inNenhum">Desmarcar</button>
@@ -642,7 +651,104 @@ function renderInter(){
   on('inSalvarConta', salvarContaInter);
   on('inGerar', gerarInter);
   on('inEmitidos', marcarEmitidosInter);
+  on('inRetBtn', ()=>$('inRetArq').click());
+  const arqRet=$('inRetArq'); if(arqRet) arqRet.addEventListener('change', ()=>lerRetornoArquivo(arqRet.files[0]));
+  on('inRetPdf', baixarPdfsRetorno);
+  on('inRetFechar', ()=>{ inter.retorno=null; renderInter(); });
   atualizarGerarInter();
+  if(inter.retornoMsg){ inMsg(inter.retornoMsg[0], inter.retornoMsg[1]); inter.retornoMsg=null; }
+}
+
+// ---- retorno do Inter: confirma o registro (Emitido), dá baixa (Pago) e gera os PDFs dos boletos registrados ----
+function blocoRetorno(){
+  const barra=`<div style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;border:1px dashed var(--fill-3);border-radius:12px;padding:10px 14px;margin-bottom:12px;font-size:12.5px;color:var(--text-muted);line-height:1.5;">
+      <span><b style="color:var(--text)">Retorno do Inter</b> — depois de importar, gere no Inter em <b>${esc(ONDE_RETORNO)}</b> e suba aqui: os registrados viram Emitido, os pagos viram Pago e os PDFs saem num .zip.</span>
+      <button class="btn btn-ghost btn-sm" id="inRetBtn">Ler arquivo de retorno</button>
+      <input type="file" id="inRetArq" accept=".ret,.RET,.txt" style="display:none">
+    </div>`;
+  const R=inter.retorno;
+  if(!R) return barra;
+  const reg=R.casados.filter(x=>x.t.ocorrencia==='02'), pag=R.casados.filter(x=>x.t.ocorrencia==='06');
+  const err=R.casados.filter(x=>x.t.ocorrencia==='03'), canc=R.casados.filter(x=>x.t.ocorrencia==='07');
+  const nome=x=>(inter.clientes[x.r.cliente_id]||{}).nome_principal || x.t.pagador;
+  const feitos=[R.feitos.emitido ? `${R.feitos.emitido} marcado(s) como Emitido` : '', R.feitos.pago ? `${R.feitos.pago} marcado(s) como Pago` : ''].filter(Boolean).join(' · ');
+  return barra + `<div id="inRetorno" style="border:1px solid var(--fill-3);border-radius:12px;padding:12px 14px;margin-bottom:12px;font-size:13px;color:var(--text);line-height:1.6;">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;"><b>Retorno ${esc(R.nome)} · ${fmtDia(R.data)}</b><button class="btn btn-ghost btn-sm" id="inRetFechar">Fechar retorno</button></div>
+      <div>${reg.length} registrado(s) em aberto · ${pag.length} pago(s) · ${err.length} com erro · ${canc.length} cancelado(s)${R.fora.length ? ` · ${R.fora.length} de outra competência ou emitido(s) fora do sistema` : ''}</div>
+      ${feitos ? `<div style="color:var(--ok);font-weight:600;">✓ ${feitos} na grade</div>` : ''}
+      ${reg.length ? `<div style="margin-top:6px;"><button class="btn btn-primary btn-sm" id="inRetPdf">Baixar os ${reg.length} boleto(s) em PDF</button> <span style="font-size:12px;color:var(--text-muted);">um PDF por empresa, num .zip — sem QR Code de Pix (o retorno não traz)</span></div>` : ''}
+      ${err.length ? `<div style="color:var(--err);margin-top:6px;">${err.map(x=>`${esc(nome(x))}: ${esc(x.t.motivo || 'erro sem motivo informado')}`).join('<br>')}</div>` : ''}
+      ${canc.length ? `<div style="color:var(--text-muted);margin-top:6px;">Cancelado(s) no Inter: ${canc.map(x=>esc(nome(x))).join(', ')}</div>` : ''}
+    </div>`;
+}
+
+async function lerRetornoArquivo(f){
+  if(!f) return;
+  let ret;
+  try{ ret=lerRetorno(await f.text()); }
+  catch(e){ inMsg(e.message, 'err'); return; }
+  // vale a última ocorrência de cada título (o mesmo boleto pode vir registrado e depois pago)
+  const porCtl=new Map(); ret.titulos.forEach(t=>porCtl.set(t.controle, t));
+  const porId=new Map(rows.filter(r=>r.id).map(r=>[controleDe(r.id), r]));
+  const casados=[], fora=[];
+  for(const t of porCtl.values()){ const r=porId.get(t.controle); if(r) casados.push({ t, r }); else fora.push(t); }
+  const feitos={ emitido:0, pago:0 };
+  const emitir=casados.filter(x=>x.t.ocorrencia==='02' && x.r.status==='a_emitir').map(x=>x.r.id);
+  const pagos=casados.filter(x=>x.t.ocorrencia==='06' && !['pago','cancelado'].includes(x.r.status)).map(x=>x.r.id);
+  let erroGrade='';
+  if(emitir.length){
+    const { error } = await supabase.from('cobrancas_mensais').update({ status:'emitido' }).in('id', emitir).eq('status','a_emitir');
+    if(error) erroGrade=error.message; else { feitos.emitido=emitir.length; rows.forEach(r=>{ if(emitir.includes(r.id)) r.status='emitido'; }); }
+  }
+  if(pagos.length){
+    const { error } = await supabase.from('cobrancas_mensais').update({ status:'pago' }).in('id', pagos).neq('status','cancelado');
+    if(error) erroGrade=error.message; else { feitos.pago=pagos.length; rows.forEach(r=>{ if(pagos.includes(r.id)) r.status='pago'; }); }
+  }
+  inter.retorno={ nome:f.name, data:ret.data, casados, fora, feitos };
+  if(erroGrade) inter.retornoMsg=['Li o retorno, mas não consegui atualizar a grade: '+erroGrade, 'err'];
+  else if(!ret.titulos.length) inter.retornoMsg=['O arquivo de retorno não tem nenhum boleto nesse período.', 'err'];
+  render(); renderInter();
+}
+
+function pagadorPdf(c){
+  const cep=String(c.cep||'').replace(/\D/g,'');
+  const endereco=[c.logradouro, c.numero, c.complemento].map(s=>String(s||'').trim()).filter(Boolean).join(' ') + (c.bairro ? ' - '+c.bairro : '');
+  return { nome:c.nome_principal||'', documento:fmtDoc(c.documento), endereco,
+    cidade:[cep.length===8 ? cep.slice(0,5)+'-'+cep.slice(5) : cep, [c.cidade, c.uf].filter(Boolean).join('/')].filter(Boolean).join(' ') };
+}
+
+async function baixarPdfsRetorno(){
+  const R=inter.retorno; if(!R) return;
+  const J=window.jspdf && window.jspdf.jsPDF, Z=window.JSZip;
+  if(!J || !Z){ inMsg('Não carregou o gerador de PDF — confira a internet e recarregue a página.', 'err'); return; }
+  const ben=inter.beneficiario;
+  if(!ben || !ben.nome || !ben.documento){ inMsg('Faltam os dados do beneficiário pros PDFs (configurações do escritório: inter_beneficiario).', 'err'); return; }
+  const btn=$('inRetPdf'); if(btn) btn.disabled=true;
+  const zip=new Z(), falhas=[], nomes=new Set();
+  let n=0;
+  for(const { t, r } of R.casados.filter(x=>x.t.ocorrencia==='02')){
+    const c=inter.clientes[r.cliente_id]||{};
+    try{
+      const { linha, barras }=codigoBarras(t);
+      const doc=boletoPdf(J, { beneficiario:ben, pagador:pagadorPdf(c), vencimento:t.vencimento, valor:t.valor,
+        nossoNumero:nossoNumeroImpresso(t.nossoNumero), seuNumero:t.seuNumero, dataDocumento:t.dataOcorrencia || R.data,
+        instrucoes:[textoCnab(r.observacao), 'Data limite para pagamento: '+fmtDia(pagavelAte(t.vencimento))].filter(Boolean), linha, barras });
+      let nome=nomeArquivoBoleto(c.nome_principal || t.pagador, t.vencimento);
+      if(nomes.has(nome)) nome=nome.replace(/\.pdf$/, ` (${t.seuNumero}).pdf`);
+      nomes.add(nome);
+      zip.file(nome, doc.output('arraybuffer'));
+      n++;
+    }catch(e){ falhas.push(`${c.nome_principal || t.pagador}: ${e.message}`); }
+  }
+  if(n) baixarBlob(await zip.generateAsync({ type:'blob' }), `Boletos Inter - ${fmtDia(R.data).replace(/\//g,'-')}.zip`);
+  if(btn) btn.disabled=false;
+  inMsg(falhas.length ? `${n} PDF(s) no .zip; ${falhas.length} não saíram — ${falhas.join('; ')}` : `${n} PDF(s) baixado(s) num .zip.`, falhas.length ? 'err' : 'ok');
+}
+
+function baixarBlob(blob, nome){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=nome; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 5000);
 }
 
 // botão de gerar acompanha os marcados sem redesenhar a lista (não perde a rolagem). Com a conta ainda aberta pra
@@ -700,9 +806,7 @@ async function gerarInter(){
   const ids=itens.map(x=>x.r.id);
   const arquivos=[...(cfg.arquivos||[]), { numero, data:hoje, ids }].slice(-12);
   if(!(await salvarCfgInter({ ...cfg, remessa:numero, seq_dia:hoje, seq:seq0+itens.length, arquivos }))){ btn.disabled=false; return; }
-  const url=URL.createObjectURL(new Blob([arq.conteudo], { type:'text/plain' }));
-  const a=document.createElement('a'); a.href=url; a.download=arq.nome; document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(()=>URL.revokeObjectURL(url), 5000);
+  baixarBlob(new Blob([arq.conteudo], { type:'text/plain' }), arq.nome);
   inter.gerado={ nome:arq.nome, qtd:arq.qtd, total:arq.total, ids, marcado:false };
   inter.marcados=new Set();
   renderInter();
