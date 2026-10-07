@@ -641,14 +641,17 @@ function renderInter(){
   atualizarGerarInter();
 }
 
-// botão de gerar acompanha os marcados sem redesenhar a lista (não perde a rolagem)
+// botão de gerar acompanha os marcados sem redesenhar a lista (não perde a rolagem). Com a conta ainda aberta pra
+// edição (primeiro uso), o gerar guarda a conta digitada antes — e o recado avisa, em vez de o botão ficar cinza mudo
+const DICA_CONTA='Ao gerar, a conta digitada lá em cima fica guardada.';
 function atualizarGerarInter(){
   const btn=$('inGerar'); if(!btn) return;
   const marc=inter.itens.filter(x=>inter.marcados.has(x.r.id));
   const soma=marc.reduce((s,x)=>s+(Number(x.b.valor)||0),0);
-  btn.disabled=!(marc.length && inter.cfg.conta && !inter.editandoConta);
+  btn.disabled=!marc.length;
   btn.textContent = marc.length ? `Gerar arquivo · ${marc.length} boleto(s) · ${BRL(soma)}` : 'Gerar arquivo';
-  if(!inter.cfg.conta && !inter.editandoConta) inMsg('Falta a conta do Inter.', 'err');
+  if(marc.length && inter.editandoConta) inMsg(DICA_CONTA);
+  else if(($('inMsg')||{}).textContent===DICA_CONTA) inMsg('');
 }
 
 async function salvarCfgInter(cfg){
@@ -663,14 +666,20 @@ async function salvarCfgInter(cfg){
 
 async function salvarContaInter(){
   const c=lerConta($('inConta').value), nome=textoCnab($('inNome').value).slice(0,30);
-  if(!c){ inMsg('Digite a conta corrente do Inter com o dígito (ex.: 12345678-9).', 'err'); return; }
-  if(!nome){ inMsg('Digite o nome da empresa como vai no arquivo.', 'err'); return; }
+  if(!c){ inMsg('Digite a conta corrente do Inter com o dígito (ex.: 12345678-9).', 'err'); $('inConta').focus(); return false; }
+  if(!nome){ inMsg('Digite o nome da empresa como vai no arquivo.', 'err'); $('inNome').focus(); return false; }
   if(await salvarCfgInter({ ...inter.cfg, conta:c.conta, dv:c.dv, nome })){
     inter.editandoConta=false; renderInter(); inMsg('Conta guardada.', 'ok');
+    return true;
   }
+  return false;
 }
 
 async function gerarInter(){
+  // primeiro uso: a conta digitada (e não guardada) é guardada agora; sem conta que feche, não gera e diz por quê
+  if(inter.editandoConta || !inter.cfg.conta){
+    if(!(await salvarContaInter())) return;
+  }
   const cfg=inter.cfg;
   const itens=itensInter().filter(x=>inter.marcados.has(x.r.id) && !x.probl.length);
   if(!itens.length || !cfg.conta) return;

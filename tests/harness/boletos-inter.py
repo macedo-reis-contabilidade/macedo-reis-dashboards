@@ -15,7 +15,9 @@ Confere:
      arquivo gerado ficam guardados; o boleto mostra "já foi no arquivo nº 1";
   4. "Marcar como Emitido" muda a situação no banco e na grade, e o boleto sai da lista;
   5. segundo arquivo no mesmo dia: número 2, seu número continua a sequência do dia;
-  6. reabrindo: a conta já vem guardada e o próximo número é o 3; Esc fecha a janela.
+  6. reabrindo: a conta já vem guardada e o próximo número é o 3; Esc fecha a janela;
+  7. primeiro uso sem clicar em Guardar: marcar libera o botão com o aviso, sem conta não gera e diz o que falta,
+     com a conta digitada gera e guarda a conta.
 Termina com código 1 se alguma checagem falhar. Pré-requisito: pip install playwright e python -m playwright install chromium
 """
 import sys, json, pathlib, datetime, calendar
@@ -167,6 +169,28 @@ def fluxo(b, base, tema, erros):
     ok(not p.locator('#ovInter').is_visible(), '6. Esc fecha a janela')
     p.close()
 
+def gerar_sem_guardar(b, base, erros):
+    print('[claro] 7. primeiro uso: marcar e gerar sem clicar em Guardar')
+    p = b.new_page(viewport={'width': 1400, 'height': 900}, accept_downloads=True)
+    p.on('pageerror', lambda e: erros.append(f'gerar sem guardar: {e}'))
+    baixados = []
+    p.on('download', lambda d: baixados.append(d.suggested_filename))
+    p.add_init_script(INIT_TEMA % 'claro')
+    p.add_init_script(ARMADILHA)
+    p.goto(base + 'financeiro-boletos.html'); p.wait_for_timeout(1500)
+    p.click('#btnInter'); p.wait_for_timeout(500)
+    linha(p, ID1).locator('input').check(); p.wait_for_timeout(100)
+    ok(not p.locator('#inGerar').is_disabled() and 'conta digitada' in p.inner_text('#inMsg'), '7. com boleto marcado o botão libera e avisa que a conta digitada é guardada ao gerar')
+    p.click('#inGerar'); p.wait_for_timeout(400)
+    ok('com o dígito' in p.inner_text('#inMsg') and not baixados and db(p, 'window.__mockDb.configuracoes_escritorio.length') == 0, '7. sem conta digitada, não gera e diz o que falta')
+    p.fill('#inConta', '1234567-8')
+    nome, txt = baixar(p); p.wait_for_timeout(300)
+    v = json.loads(db(p, "window.__mockDb.configuracoes_escritorio.find(c => c.chave === 'inter_cnab').valor"))
+    ok(nome == 'CI400_001_0000001.REM' and txt.split('\r\n')[1][27:37] == '0012345678', '7. gerou o arquivo com a conta digitada')
+    ok(v['conta'] == '1234567' and v['dv'] == '8' and v['remessa'] == 1 and v['arquivos'][-1]['ids'] == [ID1], '7. a conta e o arquivo ficaram guardados')
+    ok('CI400_001_0000001.REM baixado' in p.inner_text('#inBody') and '0001 / 1234567-8' in p.inner_text('#inContaResumo'), '7. janela mostra o arquivo baixado e a conta guardada')
+    p.close()
+
 def main():
     from playwright.sync_api import sync_playwright
     montar_site(); FOTOS.mkdir(parents=True, exist_ok=True)
@@ -176,6 +200,7 @@ def main():
         b = pw.chromium.launch()
         for tema in ('escuro', 'claro'):
             fluxo(b, base, tema, erros)
+        gerar_sem_guardar(b, base, erros)
         b.close()
     srv.shutdown()
     ok(not erros, 'sem erro de JavaScript' + ('' if not erros else ': ' + ' | '.join(erros[:5])))
