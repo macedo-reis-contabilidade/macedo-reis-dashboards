@@ -22,6 +22,12 @@ Confere:
      fora contado à parte, boleto com data e valor alterados no site do Inter (ocorrência 16, manual V9) continua em
      aberto e sai com os novos, PDFs num .zip com a linha digitável conferida por uma conta feita à parte (jsPDF e JSZip
      entram como dublês), arquivo que não é retorno recusado.
+  9. planilha com Pix (o padrão; 1 a 8 escolhem o .REM): sem conta e sem retorno na tela; sem bairro e CNPJ com letras
+     barrados; gera EXCEL_BOLETOS_0000000001.xlsx com o JSZip de verdade (tests/harness/vendor, o mesmo do CDN) e lê a
+     planilha de volta em Python — as partes e as abas do modelo do Inter, cada boleto no formato do exemplo da linha 4
+     (CNPJ e vencimento como número, CEP com hífen, Pix Sim, sem multa/juros/desconto/nota), o estilo de cada célula do
+     modelo, a abertura pelo openpyxl; número, sequência e histórico guardados, "já foi na planilha", Marcar como
+     Emitido; voltando pro .REM, a conta e o retorno reaparecem; sem o JSZip, avisa e não gasta número.
 Termina com código 1 se alguma checagem falhar. Pré-requisito: pip install playwright e python -m playwright install chromium
 """
 import sys, json, pathlib, datetime, calendar
@@ -69,13 +75,16 @@ COBRANCAS = [
     cob('eeeeeeee-1111-2222-3333-444444444444', 'k5', 300, dia(-1)),
     cob('ffffffff-1111-2222-3333-444444444444', 'k6', 300, V1, status='emitido'),
 ]
-ARMADILHA = """(() => {
+ARMADILHA_JS = """(() => {
   const CLI = %s, COB = %s;
   let db;
   Object.defineProperty(window, '__mockDb', { configurable: true, get() { return db; }, set(v) {
     db = v; v.clientes = CLI; v.cobrancas_mensais = COB; v.cobrancas_config = []; v.configuracoes_escritorio = []; v.carteira_info = [];
   } });
-})();""" % (json.dumps(CLIENTES, ensure_ascii=False), json.dumps(COBRANCAS, ensure_ascii=False))
+})();"""
+def armadilha(cli, cobs):
+    return ARMADILHA_JS % (json.dumps(cli, ensure_ascii=False), json.dumps(cobs, ensure_ascii=False))
+ARMADILHA = armadilha(CLIENTES, COBRANCAS)
 INIT_TEMA = "localStorage.setItem('mr_tema', '%s'); (() => { const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { return String(k).startsWith('mr_tour_') ? 'ok' : g.call(this, k); }; })()"
 
 def db(p, expr):
@@ -90,6 +99,11 @@ def baixar(p):
     d = dl.value
     return d.suggested_filename, open(d.path(), 'rb').read().decode('ascii')
 
+def abrir(p, formato='planilha'):
+    p.click('#btnInter'); p.wait_for_timeout(500)
+    if formato == 'rem':
+        p.check('input[name="inFormato"][value="rem"]'); p.wait_for_timeout(200)
+
 def seu_numero(seq):
     return f'{hoje.day}{hoje.month}{str(hoje.year)[2:]}{seq}'
 
@@ -101,7 +115,7 @@ def fluxo(b, base, tema, erros):
     p.add_init_script(INIT_TEMA % tema)
     p.add_init_script(ARMADILHA)
     p.goto(base + 'financeiro-boletos.html'); p.wait_for_timeout(1500)
-    p.click('#btnInter'); p.wait_for_timeout(500)
+    abrir(p, 'rem')
     ok(p.locator('#inConta').is_visible() and p.input_value('#inNome') == 'MACEDO E REIS CONTABILIDADE', '1. pede a conta, com o nome do escritório sugerido')
     ok(p.locator('#inGerar').is_disabled(), '1. sem conta, não gera')
     p.fill('#inConta', '7'); p.click('#inSalvarConta'); p.wait_for_timeout(200)
@@ -149,7 +163,7 @@ def fluxo(b, base, tema, erros):
     ok('CI400_001_0000001.REM baixado' in p.inner_text('#inBody') and 'Cobranças via arquivo' in p.inner_text('#inBody'), '3. diz onde importar no Inter')
     ok('já foi no arquivo nº 1' in linha(p, ID1).inner_text(), '3. o boleto avisa que já foi no arquivo nº 1')
     ok(db(p, f"window.__mockDb.cobrancas_mensais.find(c => c.id === '{ID1}').status") == 'a_emitir', '3. gerar não muda a situação sozinho')
-    ok(p.inner_text('#inTodos') == 'Marcar os prontos (1)' and '1 já foi(ram) num arquivo' in p.inner_text('#inResumo'), '3. "Marcar os prontos" deixa de fora quem já foi no arquivo')
+    ok(p.inner_text('#inTodos') == 'Marcar os prontos (1)' and '1 já foi(ram) pro Inter' in p.inner_text('#inResumo'), '3. "Marcar os prontos" deixa de fora quem já foi no arquivo')
     p.click('#inTodos'); p.wait_for_timeout(100)
     ok(linha(p, ID2).locator('input').is_checked() and not linha(p, ID1).locator('input').is_checked(), '3. marcar os prontos não marca de novo o boleto que já foi (sem boleto em dobro)')
 
@@ -169,7 +183,7 @@ def fluxo(b, base, tema, erros):
     p.click('#inFechar'); p.wait_for_timeout(200)
 
     print(f'[{tema}] 6. reabrindo')
-    p.click('#btnInter'); p.wait_for_timeout(500)
+    abrir(p, 'rem')
     ok(p.locator('#inConta').count() == 0 and 'próximo arquivo nº 3' in p.inner_text('#inContaResumo'), '6. conta guardada e próximo número 3')
     ok('já foi no arquivo nº 2' in linha(p, ID2).inner_text(), '6. o boleto do 2º arquivo avisa')
     p.keyboard.press('Escape'); p.wait_for_timeout(200)
@@ -185,7 +199,7 @@ def gerar_sem_guardar(b, base, erros):
     p.add_init_script(INIT_TEMA % 'claro')
     p.add_init_script(ARMADILHA)
     p.goto(base + 'financeiro-boletos.html'); p.wait_for_timeout(1500)
-    p.click('#btnInter'); p.wait_for_timeout(500)
+    abrir(p, 'rem')
     linha(p, ID1).locator('input').check(); p.wait_for_timeout(100)
     ok(not p.locator('#inGerar').is_disabled() and 'conta digitada' in p.inner_text('#inMsg'), '7. com boleto marcado o botão libera e avisa que a conta digitada é guardada ao gerar')
     p.click('#inGerar'); p.wait_for_timeout(400)
@@ -263,7 +277,7 @@ def retorno(b, base, erros):
         {'chave': 'inter_beneficiario', 'valor': json.dumps(BENEF)}])))
     p.add_init_script(DUBLES_PDF)
     p.goto(base + 'financeiro-boletos.html'); p.wait_for_timeout(1500)
-    p.click('#btnInter'); p.wait_for_timeout(500)
+    abrir(p, 'rem')
     ok('Retorno do Inter' in p.inner_text('#inBody') and 'Solicitar arquivo retorno' in p.inner_text('#inBody'), '8. a janela explica onde gerar o retorno no Inter')
     p.set_input_files('#inRetArq', files=[{'name': 'retorno-teste.ret', 'mimeType': 'text/plain', 'buffer': retorno_teste().encode('ascii')}])
     p.wait_for_timeout(600)
@@ -298,6 +312,125 @@ def retorno(b, base, erros):
     ok('Não é um arquivo de retorno' in p.inner_text('#inMsg'), '8. arquivo que não é retorno do Inter é recusado com o motivo')
     p.close()
 
+# ---- planilha com Pix (o padrão): o modelo do Inter preenchido com o JSZip de verdade e lido de volta aqui ----
+RAIZ = pathlib.Path(__file__).resolve().parents[2]
+VENDOR = pathlib.Path(__file__).resolve().parent / 'vendor'      # jszip.min.js 3.10.1, o mesmo do CDN da página
+MODELO = RAIZ / 'assets' / 'inter' / 'Template_Cobrancas_Arquivo_Excel.xlsx'
+ID7 = '77777777-1111-2222-3333-444444444444'
+ID8 = '88888888-1111-2222-3333-444444444444'
+CLI_PL = CLIENTES + [
+    {'id': 'k7', 'nome_principal': 'SEM BAIRRO DE TESTE LTDA', 'documento': '66.777.888/0001-99', **end(bairro=None)},
+    {'id': 'k8', 'nome_principal': 'A&B FILIAL DE TESTE LTDA', 'documento': '07.123.456/0002-10', **end(numero='08', cidade='São Francisco de Paula')},
+]
+COB_PL = COBRANCAS + [cob(ID7, 'k7', 300, V1), cob(ID8, 'k8', 300, V2, obs='EMISSÃO NF (2) = 80,00')]
+ddmmaaaa = lambda iso: int(iso[8:10] + iso[5:7] + iso[0:4])
+
+def ler_xlsx(caminho):
+    """partes do .xlsx e as células de uma linha da aba "Cobrança Simples": coluna → (estilo, valor)"""
+    import zipfile, re, html
+    z = zipfile.ZipFile(caminho)
+    ss = z.read('xl/sharedStrings.xml').decode('utf-8')
+    strs = []
+    for m in re.finditer(r'<si/>|<si>(.*?)</si>', ss, re.S):
+        strs.append('' if m.group(1) is None else html.unescape(''.join(re.findall(r'<t[^>]*>(.*?)</t>', m.group(1), re.S))))
+    folha = z.read('xl/worksheets/sheet2.xml').decode('utf-8')
+    def linha_(r):
+        i = folha.find(f'<row r="{r}"'); bloco = folha[i:folha.find('</row>', i)]
+        out = {}
+        for m in re.finditer(r'<c r="([A-Z]+)\d+"([^>]*?)(?:/>|>(.*?)</c>)', bloco, re.S):
+            s = re.search(r'\bs="(\d+)"', m.group(2)); t = re.search(r'\bt="(\w+)"', m.group(2)); v = re.search(r'<v>(.*?)</v>', m.group(3) or '')
+            val = None if not v else strs[int(v.group(1))] if (t and t.group(1) == 's') else float(v.group(1))
+            out[m.group(1)] = (s.group(1) if s else None, val)
+        return out
+    return z, linha_
+
+def planilha(b, base, erros):
+    print('[claro] 9. planilha com Pix (padrão): o modelo do Inter preenchido')
+    p = b.new_page(viewport={'width': 1400, 'height': 900}, accept_downloads=True)
+    p.on('pageerror', lambda e: erros.append(f'planilha: {e}'))
+    p.route('**/cdnjs.cloudflare.com/**', lambda r: r.abort())
+    p.route('**/cdnjs.cloudflare.com/ajax/libs/jszip/**', lambda r: r.fulfill(path=str(VENDOR / 'jszip.min.js'), content_type='application/javascript'))
+    p.add_init_script(INIT_TEMA % 'claro')
+    p.add_init_script(armadilha(CLI_PL, COB_PL))
+    p.goto(base + 'financeiro-boletos.html'); p.wait_for_timeout(1500)
+    abrir(p)
+    ok(p.is_checked('input[name="inFormato"][value="planilha"]') and p.locator('#inConta').count() == 0 and p.locator('#inRetBtn').count() == 0,
+       '9. abre na planilha com Pix, sem pedir a conta e sem o retorno')
+    info = p.inner_text('#inInfo')
+    ok('QR Code do Pix' in info and 'não gera arquivo de retorno' in info, '9. explica o QR Code e que a planilha não tem retorno')
+    ok('sem bairro no cadastro' in linha(p, ID7).inner_text() and linha(p, ID7).locator('input').is_disabled(), '9. sem bairro: barrado (a planilha exige)')
+    ok('a planilha do Inter só aceita número' in linha(p, 'dddddddd-1111-2222-3333-444444444444').inner_text(), '9. CNPJ com letras: barrado')
+    ok('4 com pendência — não vão na planilha' in p.inner_text('#inResumo'), '9. contagem das pendências da planilha')
+    p.screenshot(path=str(FOTOS / 'claro-boletos-planilha.png'))
+    p.click('#inTodos'); p.wait_for_timeout(100)
+    ok(p.inner_text('#inGerar') == 'Gerar planilha · 3 boleto(s) · R$ 1.175,50', '9. botão: ' + p.inner_text('#inGerar'))
+    with p.expect_download() as dl:
+        p.click('#inGerar')
+    caminho, nome = dl.value.path(), dl.value.suggested_filename
+    p.wait_for_timeout(300)
+    ok(nome == 'EXCEL_BOLETOS_0000000001.xlsx', '9. nome da planilha: ' + nome)
+    z, lin = ler_xlsx(caminho)
+    zm, linm = ler_xlsx(MODELO)
+    ok(sorted(z.namelist()) == sorted(zm.namelist()), '9. as mesmas partes do modelo do Inter (abas, estilos, tabela, imagem)')
+    wb = z.read('xl/workbook.xml').decode('utf-8')
+    ok('name="Instruções de preenchimento"' in wb and 'name="Cobrança Simples"' in wb, '9. as duas abas do modelo, com os nomes de lá')
+    linhas = {lin(r).get('A', (None, None))[1]: (r, lin(r)) for r in (4, 5, 6)}
+    ok(set(linhas) == {'A&B FILIAL DE TESTE LTDA', 'COMÉRCIO MODELO DE TESTE ME', 'EMPRESA EXEMPLO DE TESTE LTDA'}, '9. os 3 boletos nas linhas 4 a 6 (a 4 era o exemplo): ' + str(list(linhas)))
+    ok(lin(7).get('A', (None, None))[1] is None, '9. da linha 7 em diante, vazio como no modelo')
+    v = lambda c, col: c.get(col, (None, None))[1]
+    r1, c1 = linhas['EMPRESA EXEMPLO DE TESTE LTDA']
+    esperado = {'B': 11222333000181, 'C': None, 'D': None, 'E': 'Rua de Teste', 'F': 10, 'G': None, 'H': 'Centro', 'I': 'Três Coroas', 'J': 'RS',
+                'K': '95660-000', 'L': 'Não', 'M': None, 'N': None, 'O': 'Sim', 'P': 'Boleto', 'Q': 450, 'S': 'Honorários de teste', 'T': ddmmaaaa(V1),
+                'U': 'Sim', 'V': fim_do_mes(V1)[1], 'W': 'Não aplicar multa', 'X': 0, 'Y': 'Não aplicar juros', 'Z': 0, 'AA': 'Não aplicar desconto',
+                'AB': 0, 'AC': 0, 'AD': 'Não', 'AE': None, 'AF': None, 'AG': None, 'AH': None, 'AI': None, 'AJ': None}
+    dif = {k: v(c1, k) for k, e in esperado.items() if v(c1, k) != e}
+    ok(not dif, '9. boleto completo, no formato do exemplo do Inter' + (f': {dif}' if dif else ''))
+    c2, c8 = linhas['COMÉRCIO MODELO DE TESTE ME'][1], linhas['A&B FILIAL DE TESTE LTDA'][1]
+    ok([v(c2, k) for k in 'EFGQS'] == ['Avenida Principal', 200, 'Sala 3', 425.5, None], '9. endereço como no cadastro, valor com os extras, sem descrição')
+    ok([v(c8, k) for k in 'BFIST'] == [7123456000210, 8, 'São Francisco de Paula', 'EMISSÃO NF (2) = 80,00', ddmmaaaa(V2)],
+       '9. CNPJ com zero à esquerda, & no nome, acento na cidade e na descrição')
+    ok([v(c, 'R') for _, c in sorted(linhas.values(), key=lambda x: x[0])] == [seu_numero(1), seu_numero(2), seu_numero(3)], '9. código da cobrança = seu número do dia, na ordem das linhas')
+    ok(all(lin(r).get(col, (None,))[0] == est for r in (4, 5, 6) for col, (est, _) in linm(r).items()), '9. cada célula com o estilo (e o tipo) do modelo')
+    try:
+        import openpyxl
+        with open(caminho, 'rb') as f:   # o download vem sem extensão; aberto como arquivo, o openpyxl não olha o nome
+            ws = openpyxl.load_workbook(f)['Cobrança Simples']
+        wm = openpyxl.load_workbook(MODELO)['Cobrança Simples']
+        ok(ws.cell(r1, 2).value == 11222333000181 and ws.cell(r1, 2).number_format == wm.cell(r1, 2).number_format
+           and ws.cell(r1, 20).value == ddmmaaaa(V1) and ws.cell(r1, 20).number_format == wm.cell(r1, 20).number_format,
+           '9. o openpyxl abre a planilha: CNPJ e vencimento como número, com a máscara do modelo')
+    except ImportError:
+        print('  (sem openpyxl: pulei a abertura pelo openpyxl)')
+    cfg = json.loads(db(p, "window.__mockDb.configuracoes_escritorio.find(c => c.chave === 'inter_cnab').valor"))
+    ok(cfg['planilha'] == 1 and cfg['remessa'] == 0 and cfg['seq'] == 3 and cfg['arquivos'][-1]['tipo'] == 'planilha'
+       and sorted(cfg['arquivos'][-1]['ids']) == sorted([ID1, ID2, ID8]) and sorted(cfg['arquivos'][-1]['codigos']) == sorted(seu_numero(i) for i in (1, 2, 3)),
+       '9. número da planilha, sequência do dia e a planilha no histórico guardados')
+    corpo = p.inner_text('#inBody')
+    ok('Planilha EXCEL_BOLETOS_0000000001.xlsx baixada' in corpo and 'Arquivo Excel (.XLS)' in corpo and 'Gestão de cobrança' in corpo,
+       '9. diz onde importar a planilha e onde ficam os PDFs com QR Code')
+    ok('já foi na planilha nº 1' in linha(p, ID1).inner_text(), '9. o boleto avisa que já foi na planilha nº 1')
+    ok(db(p, f"window.__mockDb.cobrancas_mensais.find(c => c.id === '{ID1}').status") == 'a_emitir', '9. gerar não muda a situação sozinho')
+    p.click('#inEmitidos'); p.wait_for_timeout(300)
+    ok([db(p, f"window.__mockDb.cobrancas_mensais.find(c => c.id === '{i}').status") for i in (ID1, ID2, ID8)] == ['emitido'] * 3, '9. Marcar como Emitido vale pra planilha')
+    p.check('input[name="inFormato"][value="rem"]'); p.wait_for_timeout(200)
+    ok(p.locator('#inConta').is_visible() and p.locator('#inRetBtn').is_visible() and 'pronto' in linha(p, ID7).inner_text(),
+       '9. no .REM voltam a conta e o retorno, e o sem bairro passa (o .REM não exige)')
+    p.close()
+
+    print('[claro] 9. planilha sem o JSZip (internet fora)')
+    p = b.new_page(viewport={'width': 1400, 'height': 900}, accept_downloads=True)
+    p.on('pageerror', lambda e: erros.append(f'planilha sem JSZip: {e}'))
+    p.route('**/cdnjs.cloudflare.com/**', lambda r: r.abort())
+    p.add_init_script(INIT_TEMA % 'claro')
+    p.add_init_script(ARMADILHA)
+    p.goto(base + 'financeiro-boletos.html'); p.wait_for_timeout(1500)
+    abrir(p)
+    linha(p, ID1).locator('input').check(); p.wait_for_timeout(100)
+    p.click('#inGerar'); p.wait_for_timeout(300)
+    ok('Não carregou o gerador da planilha' in p.inner_text('#inMsg') and db(p, 'window.__mockDb.configuracoes_escritorio.length') == 0,
+       '9. sem o gerador, avisa e não gasta número nem sequência')
+    p.close()
+
 def main():
     from playwright.sync_api import sync_playwright
     montar_site(); FOTOS.mkdir(parents=True, exist_ok=True)
@@ -309,6 +442,7 @@ def main():
             fluxo(b, base, tema, erros)
         gerar_sem_guardar(b, base, erros)
         retorno(b, base, erros)
+        planilha(b, base, erros)
         b.close()
     srv.shutdown()
     ok(not erros, 'sem erro de JavaScript' + ('' if not erros else ': ' + ' | '.join(erros[:5])))
