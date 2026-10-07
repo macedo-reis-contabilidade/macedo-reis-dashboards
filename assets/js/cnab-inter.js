@@ -21,10 +21,12 @@ export const DIAS_PAGAMENTO = [1, 60];      // "Informar valor entre '01' e '60'
 export const ONDE_IMPORTAR = 'Cobrar ou Receber › Cobrança via arquivo › Importar arquivo › Arquivo (.REM)';
 const UFS = new Set('AC AL AM AP BA CE DF ES GO MA MG MS MT PA PB PE PI PR RJ RN RO RR RS SC SE SP TO'.split(' '));
 
-// texto do arquivo: maiúsculas, sem acento e sem caractere especial (o "&" vira "E"; ficam ponto, hífen e barra)
+// texto do arquivo: maiúsculas, sem acento e sem caractere especial (o "&" vira "E"). Ficam ponto, vírgula, hífen, barra,
+// igual, dois-pontos, ponto e vírgula, % e + — a observação da grade ("EMISSÃO NF (2) = 80,00") sai legível no boleto
+// ("EMISSAO NF 2 = 80,00"); parênteses e os demais símbolos viram espaço
 export function textoCnab(s) {
   return String(s ?? '').normalize('NFKD').replace(/\p{M}+/gu, '').toUpperCase()
-    .replace(/&/g, ' E ').replace(/[^A-Z0-9 .\-\/]/g, ' ').replace(/\s+/g, ' ').trim();
+    .replace(/&/g, ' E ').replace(/[^A-Z0-9 .,\-\/=:;%+]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 const alfa = (s, n) => textoCnab(s).slice(0, n).padEnd(n, ' ');
 const brancos = n => ' '.repeat(n);

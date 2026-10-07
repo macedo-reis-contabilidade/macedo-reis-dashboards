@@ -13,7 +13,10 @@ const pos = (l, de, ate) => l.slice(de - 1, ate);
 const erro = fn => { try { fn(); return ''; } catch (e) { return e.message; } };
 
 console.log('Textos do arquivo:');
-igual('acento, & e caractere especial', textoCnab('Comércio & Indústria Ltda. — Nº 35, sala 2/3'), 'COMERCIO E INDUSTRIA LTDA. NO 35 SALA 2/3');
+igual('acento, & e caractere especial', textoCnab('Comércio & Indústria Ltda. — Nº 35, sala 2/3'), 'COMERCIO E INDUSTRIA LTDA. NO 35, SALA 2/3');
+igual('observação da grade continua legível', textoCnab('EMISSÃO NF (2) = 80,00'), 'EMISSAO NF 2 = 80,00');
+igual('parcela com barra', textoCnab('PARCELAMENTO ICMS (1/12) = 188,16'), 'PARCELAMENTO ICMS 1/12 = 188,16');
+igual('símbolos fora da lista viram espaço', textoCnab('Sala #3 [fundos] "A" @ R$ 10'), 'SALA 3 FUNDOS A R 10');
 igual('ç, til e espaços repetidos', textoCnab('  Confecção   São João  '), 'CONFECCAO SAO JOAO');
 igual('vazio', textoCnab(null), '');
 
