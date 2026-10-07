@@ -145,6 +145,9 @@ def fluxo(b, base, tema, erros):
     ok('CI400_001_0000001.REM baixado' in p.inner_text('#inBody') and 'Cobrança via arquivo' in p.inner_text('#inBody'), '3. diz onde importar no Inter')
     ok('já foi no arquivo nº 1' in linha(p, ID1).inner_text(), '3. o boleto avisa que já foi no arquivo nº 1')
     ok(db(p, f"window.__mockDb.cobrancas_mensais.find(c => c.id === '{ID1}').status") == 'a_emitir', '3. gerar não muda a situação sozinho')
+    ok(p.inner_text('#inTodos') == 'Marcar os prontos (1)' and '1 já foi(ram) num arquivo' in p.inner_text('#inResumo'), '3. "Marcar os prontos" deixa de fora quem já foi no arquivo')
+    p.click('#inTodos'); p.wait_for_timeout(100)
+    ok(linha(p, ID2).locator('input').is_checked() and not linha(p, ID1).locator('input').is_checked(), '3. marcar os prontos não marca de novo o boleto que já foi (sem boleto em dobro)')
 
     print(f'[{tema}] 4. marcar como emitido')
     p.click('#inEmitidos'); p.wait_for_timeout(300)

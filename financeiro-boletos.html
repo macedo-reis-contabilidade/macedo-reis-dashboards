@@ -609,12 +609,16 @@ function renderInter(){
       <td style="${EST.td}white-space:nowrap;">${pronto ? fmtDia(pagavelAte(x.b.vencimento)) : '—'}</td>
       <td style="${EST.td}">${sit}${foi}</td></tr>`;
   }).join('');
-  const nProntos=prontos.size, barrados=itens.length-nProntos;
+  // "Marcar os prontos" pula quem já foi num arquivo (e ainda não foi marcado como Emitido): boleto em dobro no Inter
+  // é o erro caro; se o Inter recusou o arquivo, marca-se um a um
+  const novos=itens.filter(x=>!x.probl.length && !x.foi).map(x=>x.r.id);
+  const nProntos=prontos.size, barrados=itens.length-nProntos, jaFoi=nProntos-novos.length;
+  const resumo=[barrados ? `${barrados} com pendência — não vão no arquivo` : '', jaFoi ? `${jaFoi} já foi(ram) num arquivo — marque um a um só se o Inter recusou` : ''].filter(Boolean).join(' · ') || 'todos prontos';
   $('inBody').innerHTML = gerado + conta + info + (itens.length ? `
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
-      <button class="btn btn-ghost btn-sm" id="inTodos"${nProntos?'':' disabled'}>Marcar os prontos (${nProntos})</button>
+      <button class="btn btn-ghost btn-sm" id="inTodos"${novos.length?'':' disabled'}>Marcar os prontos (${novos.length})</button>
       <button class="btn btn-ghost btn-sm" id="inNenhum">Desmarcar</button>
-      <span id="inResumo" style="font-size:12.5px;color:var(--text-muted);">${barrados ? `${barrados} com pendência — não vão no arquivo` : 'todos prontos'}</span>
+      <span id="inResumo" style="font-size:12.5px;color:var(--text-muted);">${resumo}</span>
     </div>
     <div style="border:1px solid var(--line);border-radius:12px;overflow:auto;max-height:44vh;">
       <table style="border-collapse:collapse;width:100%;"><thead><tr>
@@ -631,7 +635,7 @@ function renderInter(){
     atualizarGerarInter();
   }));
   const on=(id, fn)=>{ const el=$(id); if(el) el.addEventListener('click', fn); };
-  on('inTodos', ()=>{ prontos.forEach(id=>inter.marcados.add(id)); $('inBody').querySelectorAll('[data-in]:not(:disabled)').forEach(ch=>{ ch.checked=true; }); atualizarGerarInter(); });
+  on('inTodos', ()=>{ novos.forEach(id=>inter.marcados.add(id)); $('inBody').querySelectorAll('[data-in]').forEach(ch=>{ if(novos.includes(ch.dataset.in)) ch.checked=true; }); atualizarGerarInter(); });
   on('inNenhum', ()=>{ inter.marcados.clear(); $('inBody').querySelectorAll('[data-in]').forEach(ch=>{ ch.checked=false; }); atualizarGerarInter(); });
   on('inAlterarConta', ()=>{ inter.editandoConta=true; renderInter(); });
   on('inCancelarConta', ()=>{ inter.editandoConta=false; renderInter(); });
