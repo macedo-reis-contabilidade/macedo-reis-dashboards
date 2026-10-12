@@ -47,6 +47,7 @@ MATERIAIS = [
     {'codigo': 'T-AULA', 'titulo': 'Aula de teste', 'tipo': 'aula', 'oficial': False, 'drive_url': 'https://drive.google.com/file/d/TESTE-AULA/view', 'ativo': True},
     {'codigo': 'T-SEM-LINK', 'titulo': 'Leitura sem link', 'tipo': 'sintese', 'oficial': False, 'drive_url': None, 'ativo': True},
     {'codigo': 'T-INATIVO', 'titulo': 'Material inativo', 'tipo': 'aula', 'oficial': False, 'drive_url': 'https://drive.google.com/file/d/TESTE-INATIVO/view', 'ativo': False},
+    {'codigo': 'T-RELATORIO', 'titulo': 'Relatório de teste', 'tipo': 'relatorio', 'oficial': True, 'drive_url': None, 'ativo': True},
 ]
 VINCULOS = [
     {'regra_codigo': 'CRED-CLIENTE', 'material_codigo': 'T-AULA', 'onde': 'slides 9 e 16', 'ordem': 2},
@@ -54,6 +55,7 @@ VINCULOS = [
     {'regra_codigo': 'CRED-CLIENTE', 'material_codigo': 'T-INATIVO', 'onde': 'não pode aparecer', 'ordem': 3},
     {'regra_codigo': 'CRED-CLIENTE', 'material_codigo': 'T-NAO-EXISTE', 'onde': 'não pode aparecer', 'ordem': 4},
     {'regra_codigo': 'PARTILHA-DAS-2027', 'material_codigo': 'T-SEM-LINK', 'onde': None, 'ordem': 1},
+    {'regra_codigo': 'BASE-SEM-ICMS-ISS', 'material_codigo': 'T-RELATORIO', 'onde': 'p. 43', 'ordem': -1},
 ]
 SEMEAR = """
 (() => {
@@ -114,6 +116,9 @@ def main():
         pt = regra(p, 'PARTILHA-DAS-2027')
         ok(pt and pt['mats'] and 'Leitura sem link' in pt['mats'] and 'leitura do escritório' in pt['mats'] and not pt['links'],
            'material sem link aparece só com o título e o tipo')
+        bs = regra(p, 'BASE-SEM-ICMS-ISS')
+        ok(bs and bs['mats'] and 'Relatório de teste' in bs['mats'] and 'relatório legislativo, não é norma' in bs['mats'],
+           'relatório legislativo com o rótulo próprio (tipos relatório e artigo, 12/10/2026)')
         op = regra(p, 'OPC-PADRAO')
         ok(op is not None and op['mats'] is None and 'Regra sem material.' in op['texto'], 'regra sem vínculo aparece como antes, sem o bloco')
         p.click('#baseFechar'); p.wait_for_timeout(200)

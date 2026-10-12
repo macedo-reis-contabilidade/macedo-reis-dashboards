@@ -1914,7 +1914,8 @@
     // análise ou comunicado (material de curso é licenciado e de uso interno). Sem os vínculos, a regra aparece como antes.
     let regrasCarregadas = false;
     const TIPO_MATERIAL = { norma: 'norma', orientacao: 'orientação oficial', nota_tecnica: 'nota técnica', aula: 'aula do curso',
-      exercicio: 'exercício do curso', planilha: 'planilha do curso', perguntas: 'P&R, não oficial', sintese: 'leitura do escritório' };
+      exercicio: 'exercício do curso', planilha: 'planilha do curso', perguntas: 'P&R, não oficial', sintese: 'leitura do escritório',
+      relatorio: 'relatório legislativo, não é norma', artigo: 'artigo, opinião do autor' };
     async function carregarBaseLegal() {
       const [rg, vin, mat] = await Promise.all([
         supabase.from('rt_regras').select('codigo, titulo, dispositivo, regra, aplica_a, efeito, fonte, verificado_em').eq('ativo', true).order('codigo'),
