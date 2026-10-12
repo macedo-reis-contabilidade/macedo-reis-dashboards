@@ -23,9 +23,10 @@ function caso(nome, ent, dom, xml, cnae, hojeISO = globalThis.__HOJE_ISO__ || '2
   return { sim, d, txt, args: [nome, ent, dom, xml, cnae] };
 }
 // 1) Varejo PF em empate técnico: 2,6% PJ pelas saídas XLS, sem XML, alíquota do PGDAS com 8,5% do DAS excluído.
-//    Compras em 82% da receita (eram 83,29%): com a exclusão aplicada uma vez só (02/10/2026) a vantagem de
-//    por fora passou do limiar e o caso deixava de ser empate — o teste é do texto do empate, não desses números
-const vn = caso('VAREJO TESTE', { anexo:'I', rbt12:2484930.98, receita:205256.49, mixCheia:100, pctComprasMercadorias:82, pctComprasDespesas:2.35, pctImpostoEmbutido:0, pctExcluidoST:8.5, partilha:15.5, cbs:9.3, ibs:0.1, pctPJ:2.6, aliqEfetivaInformada:9.87 },
+//    Compras em 79,5% da receita (eram 83,29%, depois 82%): com a exclusão aplicada uma vez só (02/10/2026) e o ICMS do
+//    DAS fora da base do débito por fora (12/10/2026) a vantagem de por fora passava do limiar e o caso deixava de ser
+//    empate — o teste é do texto do empate, não desses números
+const vn = caso('VAREJO TESTE', { anexo:'I', rbt12:2484930.98, receita:205256.49, mixCheia:100, pctComprasMercadorias:79.5, pctComprasDespesas:2.35, pctImpostoEmbutido:0, pctExcluidoST:8.5, partilha:15.5, cbs:9.3, ibs:0.1, pctPJ:2.6, aliqEfetivaInformada:9.87 },
   { faturamento: { total: 1642051.92, servicos: 0, saidas: 1642051.92 }, periodoRotulo: 'jan/26–ago/26', pgdas: { competencia: '2026-08', dasTotal: 22003.93, cbsNoDas: 3718, aliquotaEfetiva: 9.87 }, vendas: { total: 1642051.92, mercadorias: 1642051.92, servicos: 0, st: 0, pctPJ: 2.6, pj: 42693, pf: 60000, consumidor: 1539358, nPJ: 31, fonte: 'acompanhamento de saídas (Domínio), PJ pelo CNPJ do cliente' } }, null, '4789-0/04');
 let falhas = 0;
 const chk = (rot, ok) => { if (!ok) falhas++; console.log((ok ? '  ✓ ' : '  ✗ ') + rot); };
@@ -46,8 +47,10 @@ console.log('Prestador B2B:'); chk('veredito ' + pb.sim.veredito.tipo, true);
 chk('repasse ainda é a variável', /A variável que inverte|repasse/i.test(pb.txt));
 chk('hora técnica presente', /hora técnica/.test(pb.txt));
 chk('ISS presente', /ISS retido/.test(pb.txt));
-// 4) Varejo com entradas acima da receita (caso "compras = vendas"): tendência a confirmar, sem contradição
-const vr = caso('MOVEIS TESTE', { anexo:'I', rbt12:1133527.31, receita:59311.38, mixCheia:100, pctComprasMercadorias:100, pctComprasDespesas:4, pctImpostoEmbutido:0, pctExcluidoST:0, partilha:15.5, cbs:9.3, ibs:0.1, pctPJ:2.2, aliqEfetivaInformada:8.72 },
+// 4) Varejo com entradas acima da receita (caso "compras = vendas"): tendência a confirmar, sem contradição.
+//    Imposto embutido de 5% nas compras (era 0): com o ICMS do DAS fora da base do débito (12/10/2026), sem embutido o
+//    crédito 20% menor já não invertia — o teste é do revisor, que precisa de um caso que inverte
+const vr = caso('MOVEIS TESTE', { anexo:'I', rbt12:1133527.31, receita:59311.38, mixCheia:100, pctComprasMercadorias:100, pctComprasDespesas:4, pctImpostoEmbutido:5, pctExcluidoST:0, partilha:15.5, cbs:9.3, ibs:0.1, pctPJ:2.2, aliqEfetivaInformada:8.72 },
   { faturamento: { total: 474491.04, servicos: 0, saidas: 474491.04 }, periodoRotulo: 'jan/26–ago/26', vendas: { total: 482844.13, mercadorias: 482844.13, servicos: 0, st: 0, pctPJ: 2.2, pj: 10622, pf: 0, consumidor: 472222, nPJ: 5, fonte: 'acompanhamento de saídas (Domínio), PJ pelo CNPJ do cliente' } }, null);
 console.log('Varejo com compras ≥ vendas:'); chk('veredito OPTE (' + vr.sim.veredito.tipo + ')', vr.sim.veredito.tipo === 'OPTE');
 chk('recomendação vira "tendência — a confirmar"', /Tendência: .*a confirmar/.test(vr.txt));
@@ -138,6 +141,34 @@ chk('sem "adquirente de alimentação e bebidas não pode"', !/adquirente de ali
 chk('crédito do cliente só da parte cheia', Math.abs(rest.sim.semestre.creditoClienteFora - 6 * rest.sim.mes.debitoCreditavel) < 0.01 && rest.sim.mes.debitoCreditavel < rest.sim.mes.debitoFora);
 console.log('Notas no padrão IBS/CBS em 2027:');
 chk('manter também avisa das notas a partir de 01/01/2027', /Mantendo, não é preciso fazer nada quanto à opção/.test(rest.txt) && /Ato Conjunto RFB\/CGIBS nº 4\/2026/.test(rest.txt));
+
+// 9) Módulo Simuladores do curso (12/10/2026): indústria no Anexo I em 2027, "opte, se o comercial confirmar", margem da
+//    decisão, ICMS/ISS do DAS fora da base e crédito das despesas por tipo — casos sintéticos com os números dos exercícios
+const ind = caso('INDÚSTRIA TESTE', { anexo:'II', rbt12:2400000, receita:200000, mixCheia:100, pctComprasMercadorias:60, pctComprasDespesas:5, pctImpostoEmbutido:18, pctExcluidoST:0, partilha:14, cbs:9.2, ibs:0.1, pctPJ:85 },
+  { faturamento: { total: 1600000, servicos: 0, saidas: 1600000 }, periodoRotulo: 'jan/26–ago/26' }, null, '1531-9/01');
+console.log('Indústria (PGDAS no Anexo II) — opte, se o comercial confirmar:');
+chk('motor: OPTE_SE no Anexo I de 2027', ind.sim.veredito.tipo === 'OPTE_SE' && ind.sim.fatores.anexo2027 === 'I');
+chk('análise marca o resultado condicional', ind.d.condicional === true);
+chk('resumo: registrar até 30/10 e decidir até 20/12', /Registrar a opção até 30\/10 — e decidir até 20\/12/.test(ind.txt));
+chk('resumo: selo "se o comercial confirmar" (ou tendência a confirmar)', /SE O COMERCIAL CONFIRMAR|TENDÊNCIA — A CONFIRMAR/.test(ind.txt));
+chk('recomendação cita a carteira de virada e a margem', /pelo menos 32,2% das vendas/.test(ind.txt) && /margem da decisão de 163,7%/.test(ind.txt));
+chk('seção 5: pelo lado da carteira, com folga', /Pelo lado da carteira/.test(ind.txt) && /com folga/.test(ind.txt));
+chk('seção 4: a indústria vai ao Anexo I em 2027', /Em 2027 a indústria é tributada no Anexo I/.test(ind.txt));
+chk('fontes: anexo de 2027 pela LC 123, art. 18, §5º', ind.d.fontes.some(f => /Anexo de 2027 \(I, no lugar do II/.test(f.o_que) && /art\. 18, §5º/.test(f.origem)));
+chk('fontes e sensibilidade: ICMS do DAS fora da base', ind.d.fontes.some(f => /ICMS do DAS fora da base/.test(f.o_que)) && ind.d.sensibilidade.some(x => /ICMS do DAS fora da base/.test(x.nome)));
+chk('seção 4: a base do débito sem o ICMS do DAS', /base sem o ICMS do DAS/.test(ind.txt));
+const con = caso('CONSULTORIA TESTE', { anexo:'V', rbt12:900000, receita:75000, mixCheia:100, pctComprasMercadorias:0, pctComprasDespesas:13.3333, pctImpostoEmbutido:5, pctExcluidoST:0, partilha:19.15, cbs:9.2, ibs:0.1, pctPJ:70 },
+  { faturamento: { total: 600000, servicos: 600000, saidas: 0 }, periodoRotulo: 'jan/26–ago/26' }, null, '7020-4/00');
+console.log('Consultoria — não opte, decisão apertada:');
+chk('motor: MANTENHA com margem apertada', con.sim.veredito.tipo === 'MANTENHA' && con.sim.veredito.apertada);
+chk('resumo avisa a margem apertada', /A margem é apertada: com 78,1% ou mais das vendas/.test(con.txt));
+chk('ISS do DAS fora da base nas fontes', con.d.fontes.some(f => /ISS do DAS fora da base/.test(f.o_que)));
+const ctb = caso('CONTABILIDADE TESTE', { anexo:'III', rbt12:1800000, receita:150000, mixRed30:100, pctComprasMercadorias:0, pctComprasDespesas:8, pctImpostoEmbutido:5, pctExcluidoST:32.5, partilha:16.6, cbs:9.2, ibs:0.1, pctPJ:45, issFixo:true, pctDespesasComCredito:70 },
+  null, null, '6920-6/01');
+console.log('Contabilidade — ISS fixo e crédito das despesas:');
+chk('ISS fixo: nada sai da base e a fonte diz por quê', ctb.sim.mes.exclusaoBase === 0 && ctb.d.fontes.some(f => /ISS fixo por profissional/.test(f.o_que)));
+chk('crédito das despesas informado nas fontes', ctb.d.fontes.some(f => /Crédito das despesas \(70,0% do cheio\)/.test(f.o_que)));
+chk('sem linha de base cheia quando nada foi excluído', !ctb.d.sensibilidade.some(x => /fora da base do débito/.test(x.nome)));
 
 console.log(falhas ? '\n' + falhas + ' FALHA(S)' : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);

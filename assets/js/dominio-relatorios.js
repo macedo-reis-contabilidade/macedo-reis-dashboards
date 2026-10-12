@@ -676,6 +676,12 @@ export function consolidar(rels, incluir, opcoes = {}) {
     }
     if (outros.length) avisos.push('A empresa tem receita em mais de um anexo (' + sim.anexoPredominante + ' predominante' + outros.map(a => ', ' + a.anexo + ' ' + brl(a.receita)).join('') + '). '
       + (sim.aliquotaEfetiva != null ? 'O simulador usa a alíquota efetiva do PGDAS (' + pct(sim.aliquotaEfetiva) + '%), que já mistura os anexos; o Anexo fica só de referência.' : 'Sem alíquota efetiva no PGDAS, a tabela do Anexo predominante é usada — o DAS pode sair subestimado.'));
+    // INDÚSTRIA EM 2027 (12/10/2026): o anexo da ficha continua o do PGDAS (é nele que alíquota, % excluído e partilha
+    // foram medidos); o motor calcula 2027 no Anexo I (LC 123, art. 18, §5º, na redação do art. 517 da LC 214)
+    if (sim.anexoPredominante === 'II') {
+      origem.anexo += ' — em 2027, Anexo I';
+      avisos.push('Indústria (Anexo II no PGDAS): em 2027 a atividade industrial passa ao Anexo I (LC 123, art. 18, §5º, na redação da LC 214) — o simulador já calcula 2027 no Anexo I. Produto com IPI mantido (Zona Franca de Manaus) segue no Anexo II: marque "IPI mantido" na ficha.');
+    }
     campos.rbt12 = sim.rbt12;
     origem.rbt12 = 'PGDAS ' + sim.competencia;
     // DAS pela tabela do anexo × DAS realmente apurado: a diferença é ICMS-ST, monofásico,

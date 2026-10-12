@@ -99,6 +99,10 @@ export function gerarAnalise(d, opts = {}) {
   const receita = e.receita;
   const optar = sim.veredito ? sim.veredito.tipo === 'OPTE' : s.custoFora < s.custoDentro;
   const empate = !!(sim.veredito && sim.veredito.empate) && s.diferenca < 0;
+  // OPTE, SE O COMERCIAL CONFIRMAR (12/10/2026): por fora custa mais, mas o crédito a mais da carteira PJ cobre a alta
+  const condicional = !!(d.condicional || (sim.veredito && sim.veredito.tipo === 'OPTE_SE'));
+  const ver = sim.veredito || {};
+  const fat0 = sim.fatores || {};
 
   // --- repasse: a CBS cobrada por fora do preço sai do bolso do cliente (que credita) ---
   const pontos = [0, 25, 50, 75, 100].map(r => ({ repasse: r, liquido: -(s.custoFora - m.debitoFora * (r / 100) * 6 - s.custoDentro) }));
@@ -154,7 +158,7 @@ export function gerarAnalise(d, opts = {}) {
     const dec = (d.recomendacao && d.recomendacao.decisao) || (optar ? 'optar' : 'manter');
     const decisao = { manter: 'Manter como está', optar: 'Recolher o IBS/CBS por fora do DAS', optar_marco: 'Recolher o IBS/CBS por fora do DAS a partir de julho/2027',
       formalizar: 'Registrar a opção até ' + RT_PRAZO.opcaoDM + ' — e decidir até ' + RT_PRAZO.cancelaAteDM, manter_reavaliar: 'Manter por ora — e reavaliar em março/2027' }[dec] || 'Manter como está';
-    const selo = aConf ? 'TENDÊNCIA — A CONFIRMAR' : empate ? 'RECOMENDAÇÃO · EMPATE TÉCNICO' : 'RECOMENDAÇÃO';
+    const selo = aConf ? 'TENDÊNCIA — A CONFIRMAR' : empate ? 'RECOMENDAÇÃO · EMPATE TÉCNICO' : condicional ? 'RECOMENDAÇÃO · SE O COMERCIAL CONFIRMAR' : 'RECOMENDAÇÃO';
     const oQue = dec === 'formalizar'
       ? 'Registrar a opção não muda nada ainda: ' + RT_PRAZO.cancelamento + ' dá pra cancelar sem efeito nenhum. Serve pra não perder a chance enquanto você vê com os seus principais clientes se faz sentido.'
       : dec === 'optar' || dec === 'optar_marco'
@@ -165,14 +169,18 @@ export function gerarAnalise(d, opts = {}) {
     else if (optar) porque = 'Pagar por fora sai ' + brl0(dif) + ' mais barato no primeiro semestre de 2027 (' + pct2(pctRec) + '% do faturamento)' + (d.consumidor ? ', porque a empresa desconta o imposto das compras e paga só sobre a margem.' : ', e os clientes empresa passam a aproveitar ' + brl0(s.aproveitadoFora) + ' de crédito do imposto.');
     else {
       const ganhoCli = s.aproveitadoFora - s.aproveitadoDentro;
+      const apertadaTxt = ver.apertada && ver.carteiraVirada != null;
       porque = 'Continuar no DAS sai ' + brl0(dif) + ' mais barato no primeiro semestre de 2027 (' + pct2(pctRec) + '% do faturamento).'
-        + (d.consumidor ? ' A maioria das vendas é para pessoa física, que não aproveita o imposto destacado — então não há ganho para o cliente.'
-          : ganhoCli > dif ? ' Mas os seus clientes empresa aproveitariam ' + brl0(ganhoCli) + ' a mais de crédito se você recolhesse por fora — mais do que o seu custo a mais' + (d.sobre && d.sobre.clientes ? '' : ' (contando todos os clientes empresa; os do Simples não aproveitam, então o ganho real deles é menor)') + '. Só vale a pena se eles pagarem parte desse imposto no preço — ' + (janelaAberta ? 'e há tempo pra ver isso: registrando a opção até ' + RT_PRAZO.opcaoDM + ', dá pra cancelar ' + RT_PRAZO.cancelamento + ' sem efeito nenhum se não fizer sentido.' : 'há tempo até a janela de março/2027 pra ver isso com eles.')
-          : ' O crédito a mais que os clientes empresa aproveitariam (' + brl0(Math.max(0, ganhoCli)) + ') não cobre esse custo.');
+        + (condicional ? ' Mas os seus clientes empresa aproveitariam ' + brl0(ganhoCli) + ' a mais de crédito se você recolhesse por fora — mais do que o seu custo a mais' + (d.sobre && d.sobre.clientes ? '' : ' (contando todos os clientes empresa; os do Simples não aproveitam, então o ganho real deles é menor)') + '. Só vale a pena se eles pagarem parte desse imposto no preço — ' + (janelaAberta ? 'e há tempo pra ver isso: registrando a opção até ' + RT_PRAZO.opcaoDM + ', dá pra cancelar ' + RT_PRAZO.cancelamento + ' sem efeito nenhum se não fizer sentido.' : 'há tempo até a janela de março/2027 pra ver isso com eles.')
+            + (apertadaTxt ? ' A margem é apertada: se as vendas a clientes que aproveitam o crédito caírem abaixo de ' + pct1(ver.carteiraVirada) + '%, deixa de compensar.' : '')
+          : d.consumidor ? ' A maioria das vendas é para pessoa física, que não aproveita o imposto destacado — então não há ganho para o cliente.'
+          : ganhoCli > dif ? ' O crédito a mais dos seus clientes empresa (' + brl0(ganhoCli) + ') passa desse custo, mas os dois valores são pequenos demais pra justificar a mudança.'
+          : ' O crédito a mais que os clientes empresa aproveitariam (' + brl0(Math.max(0, ganhoCli)) + ') não cobre esse custo.'
+            + (apertadaTxt ? ' A margem é apertada: com ' + pct1(ver.carteiraVirada) + '% ou mais das vendas a clientes que aproveitam o crédito, passaria a compensar.' : ''));
     }
     const maxV = Math.max(s.custoDentro, s.custoFora) || 1;
     const barra = (rot, v, win) => '<div class="rs-b"><span class="rs-bl">' + rot + '</span><span class="rs-bt"><span class="rs-bf' + (win ? ' win' : '') + '" style="width:' + (v / maxV * 100).toFixed(1) + '%"></span></span><b>' + brl0(v) + '</b></div>';
-    P('<div class="resumo' + (aConf ? ' conf' : '') + '"><div class="rs-selo">' + selo + '</div>'
+    P('<div class="resumo' + (aConf || condicional ? ' conf' : '') + '"><div class="rs-selo">' + selo + '</div>'
       + '<div class="rs-dec">' + decisao + '</div>'
       + '<p class="rs-oq">' + oQue + '</p>'
       + '<div class="rs-barras"><div class="rs-cap">Custo com impostos no 1º semestre de 2027</div>'
@@ -233,10 +241,11 @@ export function gerarAnalise(d, opts = {}) {
     + '<tr><td>Receita mensal usada na simulação</td><td class="num">' + brl(receita) + '</td><td>' + esc(d.origemReceita || 'informado na ficha') + '</td></tr>'
     + '<tr><td>RBT12</td><td class="num">' + brl(e.rbt12) + '</td><td>' + (dominio && dominio.pgdas ? 'PGDAS ' + esc(dominio.pgdas.competencia) : 'ficha') + '</td></tr>'
     + '<tr><td>' + (sim.fatores && sim.fatores.aliqFonte === 'informada' ? 'Alíquota efetiva real (DAS ÷ receita, todos os anexos) · Anexo predominante' : 'Anexo predominante e sua alíquota efetiva pela tabela') + '</td><td class="num">' + pct2(sim.aliqEfetiva * 100) + '% · Anexo ' + esc(e.anexo) + (sim.fatores && sim.fatores.aliqFonte === 'informada' && sim.fatores.aliqTabela != null ? ' (tabela: ' + pct2(sim.fatores.aliqTabela * 100) + '%)' : '') + '</td><td>' + (sim.fatores && sim.fatores.aliqFonte === 'informada' ? 'PGDAS' + (dominio && dominio.pgdas ? ' ' + esc(dominio.pgdas.competencia) : '') : 'LC 123, art. 18') + '</td></tr>'
+    + (fat0.mudouAnexo ? '<tr><td>Anexo em 2027 (indústria)</td><td class="num">Anexo ' + esc(fat0.anexo2027) + ' · ' + pct2(fat0.aliqEfetiva2027 * 100) + '%</td><td>LC 123, art. 18, §5º, na redação da LC 214</td></tr>' : '')
     + (dominio && dominio.dasMedio ? (dominio.nPgdas > 1
         ? '<tr><td>DAS médio pago</td><td class="num">' + brl(dominio.dasMedio) + '/mês</td><td>média das ' + dominio.nPgdas + ' apurações do Simples</td></tr>'
         : '<tr><td>DAS apurado em ' + esc(String((dominio.pgdas && dominio.pgdas.competencia) || '').replace(/^(\d{4})-(\d{2})$/, '$2/$1')) + '</td><td class="num">' + brl(dominio.dasMedio) + '</td><td>PGDAS' + (dominio.pgdas && dominio.pgdas.rpa ? ' — sobre receita de ' + brl(dominio.pgdas.rpa) + ' naquele mês' : '') + '</td></tr>')
-        : '<tr><td>DAS na simulação</td><td class="num">' + brl(m.dasHoje) + '/mês</td><td>calculado sobre o Anexo ' + esc(e.anexo) + '</td></tr>')
+        : '<tr><td>DAS na simulação</td><td class="num">' + brl(m.dasHoje) + '/mês</td><td>calculado sobre o Anexo ' + esc(e.anexo) + (fat0.mudouAnexo ? ' de hoje (2027: Anexo ' + esc(fat0.anexo2027) + ')' : '') + '</td></tr>')
     + (xml && xml.pctPJ != null ? '<tr><td>Vendas para CNPJ</td><td class="num">' + pct1(xml.pctPJ) + '%</td><td>XML das notas emitidas</td></tr>' : '')
     + '<tr class="tot"><td>Entradas que geram crédito</td><td class="num">' + (dominio && dominio.entradas ? brl(dominio.entradas.grupos.filter(g => g.incluido).reduce((a, g) => a + g.valor, 0)) + ' no período' : brl(receita * (e.pctComprasMercadorias + e.pctComprasDespesas) / 100) + '/mês') + ' · ' + pct1(e.pctComprasMercadorias + e.pctComprasDespesas) + '% da receita</td><td>' + (dominio && dominio.entradas ? 'Acompanhamento de entradas' : 'ficha') + '</td></tr>'
     + '</tbody></table>');
@@ -305,7 +314,8 @@ export function gerarAnalise(d, opts = {}) {
   // ---------- 4. simulação ----------
   P('<h2>4. A simulação: os dois caminhos no primeiro semestre de 2027</h2>');
   P('<p>Alíquotas de 2027: <b>CBS ' + pct1(e.cbs) + '%</b> (a referência, ainda pendente de Resolução do Senado, menos 0,1 ponto, como manda o ADCT, art. 127, parágrafo único) e <b>IBS ' + pct1(e.ibs) + '%</b> (0,05% estadual + 0,05% municipal). Cenário: o IBS/CBS por fora é calculado sobre a receita de hoje e a empresa o <b>absorve</b>, sem repassar ao cliente — se o preço final ficar igual ao de hoje, com o imposto dentro dele, veja a seção 6.</p>');
-  if ((m.das2027 || 0) - (m.dasHoje || 0) > 0.005) P('<p class="fonte">O DAS por dentro de 2027 (' + brl(m.das2027) + '/mês) é maior que o de hoje (' + brl(m.dasHoje) + '): a exclusão do PIS/COFINS monofásico acaba em 2027 e a CBS alcança essa receita (Res. CGSN 140/2018, art. 25, §6º, na redação da Res. CGSN 190/2026). A exclusão do ICMS-ST e do ISS retido continua.</p>');
+  if (fat0.mudouAnexo) P('<p class="fonte">Em 2027 a indústria é tributada no Anexo ' + esc(fat0.anexo2027) + ' (LC 123, art. 18, §5º, na redação do art. 517 da LC 214): o DAS por dentro de 2027 sai da tabela do Anexo ' + esc(fat0.anexo2027) + ' — alíquota de ' + pct2(fat0.aliqEfetiva2027 * 100) + '% e partilha CBS/IBS de ' + pct2(fat0.partilha2027) + '% —, contra o Anexo ' + esc(fat0.anexo) + ' do PGDAS de hoje (DAS de ' + brl(m.dasHoje) + '/mês). Só a venda de produto com IPI mantido (Zona Franca de Manaus) segue no Anexo II.</p>');
+  if ((m.exclMono || 0) > 0 && (m.das2027 || 0) - (m.dasHoje || 0) > 0.005) P('<p class="fonte">O DAS por dentro de 2027 (' + brl(m.das2027) + '/mês) é maior que o de hoje (' + brl(m.dasHoje) + '): a exclusão do PIS/COFINS monofásico acaba em 2027 e a CBS alcança essa receita (Res. CGSN 140/2018, art. 25, §6º, na redação da Res. CGSN 190/2026). A exclusão do ICMS-ST e do ISS retido continua.</p>');
   P('<div class="duas">'
     + '<div class="ret' + (optar ? '' : ' win') + '"><h4>Por dentro — IBS/CBS no DAS' + (empate ? ' · recomendado (empate técnico)' : '') + '</h4>'
       + '<div class="rw"><span>Custo tributário do semestre</span><b>' + brl(s.custoDentro) + '</b></div>'
@@ -335,20 +345,25 @@ export function gerarAnalise(d, opts = {}) {
     + '<tr><td colspan="3" style="border:none;padding-top:10px;"><b>Diferença: ' + brl0(Math.abs(s.diferenca) / 6) + ' por mês — ' + pct1(Math.abs(s.diferenca) / 6 / receita * 100) + '% da receita mensal.</b></td></tr>'
     + '</tbody></table>');
   const fat = sim.fatores || { mix: sim.fatorMix, compras: sim.fatorMix, comprasMedido: false };
-  const aliqVendas = (e.cbs + e.ibs) * fat.mix, aliqCompras = (e.cbs + e.ibs) * fat.compras;
+  // ICMS/ISS do DAS fora da base do débito (LC 214, art. 12, §2º, V — 12/10/2026): o débito efetivo sobre a receita cai
+  const exclPct = fat.icmsIss && fat.icmsIss.excluido > 0 && receita > 0 ? fat.icmsIss.excluido / receita : 0;
+  const aliqVendas = (e.cbs + e.ibs) * fat.mix * (1 - exclPct), aliqCompras = (e.cbs + e.ibs) * fat.compras;
   const mixTxt = [];
   if ((e.mixRed40 || 0) > 0) mixTxt.push(pct1(e.mixRed40) + '% com redução de 40% (alimentação preparada por bar/restaurante, LC 214 art. 275)');
   if ((e.mixRed60 || 0) > 0) mixTxt.push(pct1(e.mixRed60) + '% com redução de 60%');
   if ((e.mixRed30 || 0) > 0) mixTxt.push(pct1(e.mixRed30) + '% com redução de 30%');
   if ((e.mixZero || 0) > 0) mixTxt.push(pct1(e.mixZero) + '% em alíquota zero');
+  const notasDebito = [];
+  if (mixTxt.length) notasDebito.push(pct1(e.cbs + e.ibs) + '% de referência, com ' + mixTxt.join(', '));
+  if (exclPct > 0) notasDebito.push('base sem o ' + fat.icmsIss.tributo + ' do DAS, ' + pct1(exclPct * 100) + '% da receita — LC 214, art. 12, §2º, V');
   if (empate) {
     P('<div class="cx chave"><h4>Empate técnico</h4><p style="margin:0">Por fora a conta sai <b>' + brl0(Math.abs(s.diferenca)) + ' menor no semestre — ' + pct2(Math.abs(s.diferenca) / (receita * 6) * 100) + '% da receita</b>, abaixo do limiar de ' + brl0(sim.veredito.limiarEmpate) + ' que o escritório adota pra recomendar a mudança. '
       + 'A vantagem vem de a empresa creditar IBS/CBS sobre entradas que somam ' + pct1(e.pctComprasMercadorias + (e.pctComprasDespesas || 0)) + '% da receita, pagando só sobre a margem — e supõe crédito cheio em <b>todas</b> essas entradas. Se parte delas vier de fornecedor do Simples ou tiver o crédito glosado, a diferença some. Com essa margem, não vale trocar a apuração.</p></div>');
   } else if (!optar) {
-    P('<p>O motivo é aritmético: <b>por fora a empresa debita ' + pct1(aliqVendas) + '% sobre o que fatura' + (mixTxt.length ? ' (' + pct1(e.cbs + e.ibs) + '% de referência, com ' + mixTxt.join(', ') + ')' : '') + ' e credita ' + (fat.compras < 0.5 ? 'pouco' : 'menos') + ' na entrada</b>: compra ' + pct1(e.pctComprasMercadorias + e.pctComprasDespesas) + '% do que fatura'
+    P('<p>O motivo é aritmético: <b>por fora a empresa debita ' + pct1(aliqVendas) + '% sobre o que fatura' + (notasDebito.length ? ' (' + notasDebito.join('; ') + ')' : '') + ' e credita ' + (fat.compras < 0.5 ? 'pouco' : 'menos') + ' na entrada</b>: compra ' + pct1(e.pctComprasMercadorias + e.pctComprasDespesas) + '% do que fatura'
       + (fat.comprasMedido ? ', e só ' + pct1(fat.compras * 100) + '% dessas compras carregam IBS/CBS pra creditar — o resto é cesta básica, alíquota zero (medido pelo NCM das notas de entrada)' : '') + '. O regime regular favorece quem compra muito e compra tributado.</p>');
-  } else if (mixTxt.length || fat.comprasMedido) {
-    P('<p class="fonte">Por fora: ' + pct1(aliqVendas) + '% sobre as vendas (' + pct1(e.cbs + e.ibs) + '% de referência' + (mixTxt.length ? ', com ' + mixTxt.join(', ') : '') + ')' + (fat.comprasMedido ? '; crédito sobre ' + pct1(fat.compras * 100) + '% das compras de mercadorias, pelo NCM das entradas' : '') + '.</p>');
+  } else if (mixTxt.length || fat.comprasMedido || exclPct > 0) {
+    P('<p class="fonte">Por fora: ' + pct1(aliqVendas) + '% sobre as vendas (' + (notasDebito.length ? notasDebito.join('; ') : pct1(e.cbs + e.ibs) + '% de referência') + ')' + (fat.comprasMedido ? '; crédito sobre ' + pct1(fat.compras * 100) + '% das compras de mercadorias, pelo NCM das entradas' : '') + '.</p>');
   }
 
   // ---------- 5. repasse ----------
@@ -362,6 +377,10 @@ export function gerarAnalise(d, opts = {}) {
   P('<p class="fonte">Resultado no semestre jan–jun/2027 conforme a parcela da CBS cobrada por fora do preço atual. Cálculo sobre a simulação do item 4.</p>');
   if (viraEm != null && viraEm > 0 && viraEm < 100) {
     P('<div class="cx chave"><h4>Em uma frase</h4><p style="margin:0">A pergunta da reunião <b>não é</b> "por dentro ou por fora custa menos". É: <b>a empresa consegue faturar com a CBS destacada, como faz o regime regular?</b> Se conseguir repassar ao menos <b>' + Math.round(viraEm) + '%</b>, apurar por fora passa a ser mais barato <i>e</i> devolve ao cliente o crédito que ele vai perder. Se não conseguir, manter no DAS economiza ' + brl0(Math.abs(s.diferenca)) + ' no semestre.</p></div>');
+  }
+  // carteira de virada e margem da decisão (12/10/2026, método do curso)
+  if (ver.carteiraVirada != null && ver.margem != null) {
+    P('<p>Pelo lado da carteira: o crédito a mais que os clientes empresa aproveitam por fora cobre o custo a mais a partir de <b>' + pct1(ver.carteiraVirada) + '%</b> das vendas a clientes que creditam (hoje ' + pct1(e.pctPJ || 0) + '%) — <b>margem da decisão de ' + pct1(ver.margem) + '%</b>' + (ver.apertada ? ', <b>apertada</b>: pouca mudança na carteira inverte a conclusão' : ', com folga') + '.</p>');
   }
   }
 
