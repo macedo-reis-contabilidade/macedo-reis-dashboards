@@ -1293,6 +1293,12 @@
       // CRÉDITO DE ESTOQUE (03/10/2026): é provável, não garantido (LC 214, art. 381 — depende da regulamentação do
       // inventário); quando entra na conta, a tela mostra também o resultado sem ele
       const semEstoque = (ent.creditoEstoqueMes || 0) > 0 ? variacao('Sem o crédito de estoque (LC 214, art. 381 — provável, não garantido)', { creditoEstoqueMes: 0 }, 'do crédito de estoque') : '';
+      // INDÚSTRIA SEM AS NOTAS DE ENTRADA (12/10/2026, Módulo 03): sem o % medido, o motor credita as compras como as
+      // vendas — mas insumo com alíquota zero (farinha, ovos, açúcar e outros da cesta básica) não dá crédito
+      const casoFicha = casoAtual();
+      const industria = (casoFicha && casoFicha.segmento === 'industria') || ent.anexo === 'II';
+      const semCreditoCompras = industria && ent.pctComprasComCredito == null && (ent.pctComprasMercadorias || 0) > 0
+        ? variacao('Sem crédito nas compras de insumos (sem as notas de entrada, as compras foram creditadas como as vendas, mas insumo com alíquota zero, como farinha, ovos e açúcar, não dá crédito, e o comprado de fornecedor do Simples dá pouco — importe os XML de entrada pra medir)', { pctComprasComCredito: 0 }, 'do crédito das compras de insumos') : '';
       // ICMS/ISS FORA DA BASE (12/10/2026): o método do curso; pro optante ainda sem norma específica — a tela mostra a
       // conta com a base cheia
       const tributo = r.fatores.icmsIss.tributo;
@@ -1312,7 +1318,7 @@
       $('bVeredito').innerHTML = '<b>' + (venceu ? 'OPTE pelo regime regular.' : condicional ? 'OPTE, SE O COMERCIAL CONFIRMAR.' : (r.veredito.empate && s.diferenca < 0 ? 'EMPATE TÉCNICO — mantenha a apuração no Simples.' : 'MANTENHA a apuração no Simples.')) + '</b>'
         + (r.veredito.apertada ? '<span class="apertada" title="Margem da decisão abaixo de 15%: pouca mudança na carteira de clientes PJ inverte a conclusão">decisão apertada</span>' : '')
         + ' ' + escapeHtml(r.veredito.frase) + notaMargem + notaAliquota +
-        semEstoque + baseCheia + das2027 +
+        semEstoque + semCreditoCompras + baseCheia + das2027 +
         (r.avisos.length ? '<br><span style="font-size:11.5px">⚠ ' + r.avisos.map(escapeHtml).join(' · ') + '</span>' : '');
       const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho'];
       $('bMeses').innerHTML = '<thead><tr><th>Mês</th><th>DAS por dentro</th><th>DAS sobra (fora)</th><th>IBS/CBS a recolher</th><th>Crédito estoque</th><th>Custo dentro</th><th>Custo fora</th></tr></thead><tbody>' +

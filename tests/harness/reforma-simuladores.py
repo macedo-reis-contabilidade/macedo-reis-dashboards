@@ -12,7 +12,8 @@ Confere:
      automática mostra a do Anexo I; o ISS fixo só aparece nos anexos de serviço;
   3. calculando o exercício da indústria (PGDAS no Anexo II, 85% de clientes PJ): "OPTE, SE O COMERCIAL CONFIRMAR", em
      âmbar, com os números do curso no Anexo I, a linha da base cheia e o DAS de 2027 no Anexo I; marcando IPI mantido,
-     a conta volta ao Anexo II;
+     a conta volta ao Anexo II; sem o % das compras medido, a indústria mostra a conta sem crédito nas compras de insumos
+     (Módulo 03), e a linha some quando o % é informado;
   4. a consultoria (Anexo V) sai "MANTENHA" com o selo "decisão apertada"; o crédito das despesas muda o custo por fora;
   5. gravar guarda o resultado, a margem e o anexo de 2027; a lista passa a mostrar o resultado novo;
   6. "Refazer simulações" leva um caso gravado como "por dentro" a "opte, se o comercial confirmar"; em quem já decidiu
@@ -143,6 +144,12 @@ def main():
         ok('margem da decisão: 163,7%' in verd and '32,2%' in verd, 'a frase traz a carteira de virada e a margem')
         ok('Com o ICMS do DAS' in verd and 'na base do débito por fora' in verd, 'mostra a conta com a base cheia (sem a exclusão do ICMS)')
         ok('DAS por dentro em 2027' in verd and 'Anexo I' in verd, 'avisa o DAS de 2027 no Anexo I')
+        # Módulo 03 (12/10/2026): indústria sem as notas de entrada — a conta sem crédito nas compras de insumos
+        ok('Sem crédito nas compras de insumos' in verd and 'importe os XML de entrada' in verd,
+           'indústria sem o % das compras medido: mostra a conta sem crédito nas compras de insumos')
+        p.fill('#sPctCred', '100'); p.click('#bCalcular'); p.wait_for_timeout(300)
+        ok('Sem crédito nas compras de insumos' not in br(p.inner_text('#bVeredito')), 'com o % das compras medido, a linha some')
+        p.fill('#sPctCred', ''); p.click('#bCalcular'); p.wait_for_timeout(300)
         p.check('#sIpiMantido'); p.wait_for_timeout(100)
         ok('o de hoje' in p.inner_text('#sAnexoHint'), 'com IPI mantido o anexo de 2027 é o II')
         p.click('#bCalcular'); p.wait_for_timeout(300)
@@ -181,6 +188,7 @@ def main():
         ok('A alíquota oficial de 2027 é fixada no ano anterior' in verd and 'cancelar de 03/11 a 20/12/2026' in verd,
            'decisão apertada: avisa que a alíquota oficial pode sair depois de 30/10 e que a opção pode ser cancelada')
         ok('margem de contribuição' not in verd, 'fora do "opte, se", sem o aviso da margem')
+        ok('Sem crédito nas compras de insumos' not in verd, 'fora da indústria, sem a linha das compras de insumos')
         ok('R$ 107.886,79' in br(p.inner_text('#bRetratos')), 'custo por fora do curso, com o ISS do DAS fora da base (R$ 107.886,79)')
         p.fill('#sPctDespCred', '70'); p.click('#bCalcular'); p.wait_for_timeout(300)
         ret70 = br(p.inner_text('#bRetratos'))

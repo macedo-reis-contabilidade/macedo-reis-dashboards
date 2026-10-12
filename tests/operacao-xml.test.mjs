@@ -9,7 +9,7 @@
 //
 // Dados inventados: este repositório é público.
 
-import { agregar, cfopOperacao } from '../assets/js/operacao-xml.js';
+import { agregar, cfopOperacao, regimeDoNcm } from '../assets/js/operacao-xml.js';
 
 let falhas = 0;
 const ok = (c, m) => { if (!c) { falhas++; console.error('  ✗ ' + m); } else console.log('  ✓ ' + m); };
@@ -69,6 +69,30 @@ console.log('\nCFOP espelhado na entrada:');
 ok(cfopOperacao({ tipo: 'entrada', cfop_principal: '5102' }) === '1102', 'entrada emitida pelo fornecedor: 5102 vira 1102');
 ok(cfopOperacao({ tipo: 'entrada', cfop_principal: '6102' }) === '2102', '6102 vira 2102');
 ok(cfopOperacao({ tipo: 'saida', cfop_principal: '5102' }) === '5102', 'saída não espelha');
+
+// absorvente e fralda têm o mesmo NCM (9619.00.00): o absorvente tem alíquota zero (LC 214, art. 147),
+// a fralda fica na redução de 60% da tabela — só a descrição do item separa os dois
+console.log('\nAbsorvente × fralda (NCM 9619):');
+const regras9619 = new Map([['9619', { regime: 'reducao_60', descricao: 'Fraldas' }]]);
+ok(regimeDoNcm('9619.00.00', regras9619, 'ABSORVENTE NOTURNO C/ABAS 8UN').regime === 'zero', 'absorvente: alíquota zero');
+ok(regimeDoNcm('96190000', regras9619, 'Tampão interno médio 10 un').regime === 'zero', 'tampão, com acento: alíquota zero');
+ok(regimeDoNcm('96190000', regras9619, 'COLETOR MENSTRUAL TAM 1').regime === 'zero', 'coletor menstrual: alíquota zero');
+ok(regimeDoNcm('96190000', regras9619, 'Calcinha absorvente P').regime === 'zero', 'calcinha absorvente: alíquota zero');
+ok(regimeDoNcm('96190000', regras9619, 'FRALDA INFANTIL G 30UN').regime === 'reducao_60', 'fralda: segue a tabela (−60%)');
+ok(regimeDoNcm('96190000', regras9619, 'FRALDA GERIATRICA ALTA ABSORVENCIA').regime === 'reducao_60', 'fralda que fala em absorção: segue a tabela');
+ok(regimeDoNcm('96190000', regras9619, 'ABSORVENTE PARA SEIOS 30UN').regime === 'reducao_60', 'absorvente para seios: segue a tabela');
+ok(regimeDoNcm('96190000', regras9619).regime === 'reducao_60', 'sem descrição: segue a tabela');
+ok(regimeDoNcm('33049990', regras9619, 'PROTETOR SOLAR FPS 50').regime === 'cheia', 'fora do 9619, a descrição não muda nada');
+
+const docV = { id: 'v9619', modelo: '65', data_emissao: '2026-07-11', tipo: 'saida', finalidade: 1, emit_doc: '11111111000111', emit_nome: 'FARMACIA TESTE',
+  emit_uf: 'RS', emit_crt: 1, dest_doc: null, dest_tipo: 'PF', dest_nome: null, dest_uf: null, valor_total: 1000, cfop_principal: '5102' };
+const itens9619 = [
+  { documento_id: 'v9619', ncm: '96190000', descricao: 'ABSORVENTE NOTURNO C/8', cfop: '5102', unidade: 'UN', quantidade: 10, valor_total: 300 },
+  { documento_id: 'v9619', ncm: '96190000', descricao: 'FRALDA INFANTIL G', cfop: '5102', unidade: 'PCT', quantidade: 5, valor_total: 700 }
+];
+const m9619 = agregar([docV], itens9619, regras9619, { ano: 2026, mesIni: 7, mesFim: 7 });
+perto(m9619.ponte.mixZero, 30, 0.001, 'no mix das vendas, o absorvente vai pra alíquota zero');
+perto(m9619.ponte.mixRed60, 70, 0.001, 'e a fralda fica na redução de 60%');
 
 
 console.log(falhas ? '\n' + falhas + ' FALHA(S)' : '\nTudo certo.');

@@ -31,9 +31,20 @@ export function normDesc(s) {
   return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
 }
 
+// LC 214, art. 147: absorvente, tampão, coletor menstrual e calcinha absorvente têm alíquota zero e dividem
+// o NCM 9619.00.00 com a fralda (higiene, −60%) — só a descrição do item separa os dois
+const ITEM_MENSTRUAL = /\b(ABSORV|TAMPAO|TAMPOES|COLETOR|CALCINHA|PROTETOR)/;
+const NAO_MENSTRUAL = /\b(FRALDA|GERIATR|INCONTIN|SEIO|AMAMENT)/;
+
 // regra de NCM pelo prefixo mais longo (8 → 6 → 4 → 2); sem match = alíquota cheia
-export function regimeDoNcm(ncm, regras) {
+export function regimeDoNcm(ncm, regras, descricao) {
   const d = String(ncm || '').replace(/\D/g, '');
+  if (d.startsWith('9619') && descricao) {
+    const t = normDesc(descricao);
+    if (ITEM_MENSTRUAL.test(t) && !NAO_MENSTRUAL.test(t)) {
+      return { regime: 'zero', descricao: 'Absorvente, tampão, coletor menstrual ou calcinha absorvente — alíquota zero (LC 214, art. 147)' };
+    }
+  }
   for (const len of [8, 6, 4, 2]) {
     if (d.length < len) continue;
     const r = regras.get(d.slice(0, len));
@@ -155,7 +166,7 @@ export function agregar(docs, itens, regras, periodo) {
     d => d.emit_doc || ('__' + (d.emit_nome || 'sem nome')),
     d => ({ nome: d.emit_nome || '—', doc: d.emit_doc, regime: d.emit_crt === 3 ? 'normal' : ehSimples(d) ? 'simples' : 'ni', uf: d.emit_uf || '—', valor: 0, notas: 0 }), 15);
 
-  // produtos (por NCM + descrição normalizada), com regime da Reforma pelo NCM
+  // produtos (por NCM + descrição normalizada), com regime da Reforma pelo NCM (e pela descrição no NCM 9619)
   const produtos = (tipo, top) => {
     const g = new Map();
     itens.forEach(it => {
@@ -163,7 +174,7 @@ export function agregar(docs, itens, regras, periodo) {
       if (!d || d.tipo !== tipo || d.finalidade === 4 || naoOperacional(d)) return;
       const ncm = String(it.ncm || '').replace(/\D/g, '');
       const k = ncm + '|' + normDesc(it.descricao);
-      const p = g.get(k) || { ncm, descricao: String(it.descricao || '').trim(), qtd: 0, valor: 0, unidades: {}, regime: regimeDoNcm(ncm, regras) };
+      const p = g.get(k) || { ncm, descricao: String(it.descricao || '').trim(), qtd: 0, valor: 0, unidades: {}, regime: regimeDoNcm(ncm, regras, it.descricao) };
       p.qtd += n(it.quantidade); p.valor += n(it.valor_total);
       const u = String(it.unidade || '').trim().toUpperCase(); if (u) p.unidades[u] = (p.unidades[u] || 0) + 1;
       g.set(k, p);
