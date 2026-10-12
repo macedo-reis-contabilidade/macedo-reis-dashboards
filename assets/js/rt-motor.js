@@ -287,7 +287,8 @@ export function simular(input) {
   // que aproveitam o crédito a partir da qual o crédito a mais deles cobre o custo a mais; a margem diz quanto o crédito
   // aproveitado pode mudar antes de a conclusão inverter (|aproveitado a mais − custo a mais| ÷ custo a mais)
   const ganhoCarteira = semestre.creditoClienteFora - semestre.creditoClienteDentro;
-  const pe = semestre.diferenca > 0 && ganhoCarteira > 0 ? semestre.diferenca / (ganhoCarteira / 100) : null;
+  // arredondada a 6 casas: sem compras, custo a mais e crédito a mais saem iguais por construção e a virada é 100% exato
+  const pe = semestre.diferenca > 0 && ganhoCarteira > 0 ? Math.round(semestre.diferenca / (ganhoCarteira / 100) * 1e6) / 1e6 : null;
   const margem = semestre.diferenca > 0 && !empate ? Math.abs(ganhoAproveitado - semestre.diferenca) / semestre.diferenca * 100 : null;
   const apertada = margem != null && margem < MARGEM_APERTADA_PCT;
   const txtMargem = margem != null ? 'margem da decisão: ' + pct(margem) + '%' + (apertada ? ', decisão apertada' : '') : '';
@@ -338,9 +339,12 @@ export function simular(input) {
       complemento = ' O crédito a mais que a carteira PJ aproveitaria (' + brl(ganhoAproveitado) + ') é o mesmo que a empresa pagaria a mais: no conjunto, empresa e clientes ficam iguais — a mudança não traz ganho.' + notaBar;
     } else if (pe != null && pe <= 100 && empate && ganhoAproveitado > semestre.diferenca) {
       complemento = ' A carteira PJ aproveitaria ' + brl(ganhoAproveitado) + ' a mais de crédito, mais que a diferença, mas os dois valores ficam abaixo do limiar de ' + brl(limiarEmpate) + ' que justifica a mudança.' + notaBar;
-    } else if (pe != null && pe <= 100) {
+    } else if (pe != null && pe < 100) {
       complemento = ' A carteira PJ levaria ' + brl(ganhoCarteira) + ' a mais de crédito por fora; a opção passaria a compensar se ao menos ' +
         pct(pe) + '% da receita viesse de clientes PJ que aproveitam o crédito (informado hoje: ' + pct(pctPJ) + '%' + (txtMargem ? '; ' + txtMargem : '') + ').' + notaBar;
+    } else if (pe != null && pe === 100) {
+      // serviço sem compras: o crédito a mais da carteira inteira é exatamente o custo a mais — no máximo empata
+      complemento = ' A carteira PJ levaria ' + brl(ganhoCarteira) + ' a mais de crédito por fora — o mesmo que a empresa pagaria a mais: nem com toda a receita vinda de clientes PJ que aproveitam o crédito a opção compensaria, no máximo empataria (informado hoje: ' + pct(pctPJ) + '%' + (txtMargem ? '; ' + txtMargem : '') + ').' + notaBar;
     } else if (mixRed40 > 0) {
       complemento = ' O adquirente não credita a alimentação preparada no bar ou restaurante (LC 214, art. 276); só a parte vendida à alíquota cheia (bebida em lata ou garrafa, bebida alcoólica) gera crédito ao cliente PJ — e nem com toda a receita vindo de clientes PJ isso inverteria o resultado: a decisão é de custo próprio.';
     }

@@ -337,6 +337,15 @@ console.log('\nServiço sem compras, toda a receita de clientes PJ: o crédito a
   console.log(ok ? '  ✓ MANTENHA: no conjunto ninguém ganha (sem "opte, se" por arredondamento)' : '  ✗ empate exato: ' + r.veredito.tipo + ' — ' + r.veredito.frase);
 }
 
+console.log('\nServiço sem compras e parte da receita de PJ: a virada é 100% — nem com toda a carteira compensaria:');
+{
+  const r = sim({ anexo: 'IV', rbt12: 600000, receita: 70000, mixCheia: 100, partilha: 24, cbs: 9.2, ibs: 0.1, pctPJ: 77.6, aliqEfetivaInformada: 8.1 });
+  linha('carteira de virada (%)', 100, r.veredito.carteiraVirada, 0.000001);
+  linha('margem da decisão (%)', 22.4, r.veredito.margem, 0.000001);
+  const ok = r.veredito.tipo === 'MANTENHA' && /nem com toda a receita/.test(r.veredito.frase) && !/se ao menos 100%/.test(r.veredito.frase); if (!ok) falhas++;
+  console.log(ok ? '  ✓ diz que no máximo empataria, sem "passaria a compensar se ao menos 100%"' : '  ✗ ' + r.veredito.frase);
+}
+
 // ---- crédito das despesas por tipo (12/10/2026): o crédito é o IBS/CBS que o fornecedor destaca ----
 console.log('\nApuração do mês (curso): serviço contábil com redução de 30% credita 70% (651,00, não 930,00):');
 {
