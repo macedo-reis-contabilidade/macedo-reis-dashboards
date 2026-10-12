@@ -95,6 +95,13 @@
     .rt-regra { background:var(--fill-1); border-radius:10px; padding:10px 12px; margin-bottom:8px; font-size:12.5px; color:var(--text); line-height:1.5; }
     .rt-regra .cod { display:inline-block; background:rgba(91,130,166,.2); color:var(--brand-light); border-radius:6px; padding:1px 7px; font-size:10.5px; font-weight:700; margin-right:6px; }
     .rt-regra .disp { color:var(--text-muted); font-size:11px; }
+    .rt-regra .mats { margin-top:7px; padding-top:6px; border-top:1px solid var(--line); font-size:11px; color:var(--text-muted); line-height:1.6; }
+    .rt-regra .mats a { color:var(--brand-light); text-decoration:none; }
+    .rt-regra .mats a:hover { text-decoration:underline; }
+    .rt-regra .mats .tp { display:inline-block; font-size:10px; font-weight:600; border-radius:5px; padding:0 5px; margin-left:5px; background:var(--fill-2); color:var(--text-dim); }
+    .rt-regra.alvo { box-shadow:0 0 0 2px var(--brand-light); }
+    .rt-refs .ref { color:var(--brand-light); text-decoration:none; }
+    .rt-refs .ref:hover { text-decoration:underline; }
     .dom-drop { border:1px dashed var(--line-strong); border-radius:12px; padding:18px; text-align:center; color:var(--text-muted); font-size:12.5px; cursor:pointer; }
     .dom-drop.is-over { border-color:rgba(91,130,166,.7); background:rgba(91,130,166,.08); color:var(--text); }
     .dom-lidos { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
@@ -277,7 +284,7 @@
           <div class="rt-verd" id="bVeredito"></div>
           <table class="rt-tm" id="bMeses"></table>
           <p class="rt-nota">Simulação com alíquotas de referência de 2027 (CBS pendente de Resolução do Senado). Valores estimativos, calculados com os dados informados; a decisão é do cliente.</p>
-          <p class="rt-refs">Base legal: [CRED-ENTRADAS] [CRED-CLIENTE] [RED-SO-POR-FORA] [ALIQ-REF-2027] — consulte no botão Base legal.</p>
+          <p class="rt-refs">Base legal: <a class="ref" href="#" data-regra="CRED-ENTRADAS">[CRED-ENTRADAS]</a> <a class="ref" href="#" data-regra="CRED-CLIENTE">[CRED-CLIENTE]</a> <a class="ref" href="#" data-regra="PARTILHA-DAS-2027">[PARTILHA-DAS-2027]</a> <a class="ref" href="#" data-regra="RED-SO-POR-FORA">[RED-SO-POR-FORA]</a> <a class="ref" href="#" data-regra="ALIQ-REF-2027">[ALIQ-REF-2027]</a> — clique pra ver a regra e os materiais de onde ela veio.</p>
         </div>
       </div>
 
@@ -320,7 +327,7 @@
   <div class="rg-ov" id="ovBase">
     <div class="rg-card" style="max-width:760px">
       <h2>Base legal da campanha</h2>
-      <p style="font-size:12.5px;color:var(--text-muted);margin:6px 0 14px">Regras verificadas que sustentam a triagem, o simulador e os comunicados. Conteúdo de leitura — a manutenção é feita fora desta tela.</p>
+      <p style="font-size:12.5px;color:var(--text-muted);margin:6px 0 14px">Regras verificadas que sustentam a triagem, o simulador e os comunicados. Cada regra mostra os materiais de onde veio, com link pro original no Drive do escritório (material de curso é de uso interno — não vai pra relatório nem comunicado). Conteúdo de leitura — a manutenção é feita fora desta tela.</p>
       <div id="baseLista">Carregando…</div>
       <div class="rg-acoes"><button class="btn btn-ghost" id="baseFechar">Fechar</button></div>
     </div>
@@ -1813,20 +1820,52 @@
     };
 
     // ---------- base legal ----------
+    // Cada regra mostra de qual material veio (rt_regra_materiais → rt_materiais, a base de materiais da Reforma montada
+    // em 12/10/2026): título, onde (artigo, página ou slide) e link pro original no Drive. Só na tela — nunca em relatório,
+    // análise ou comunicado (material de curso é licenciado e de uso interno). Sem os vínculos, a regra aparece como antes.
     let regrasCarregadas = false;
-    $('btnBase').onclick = async () => {
+    const TIPO_MATERIAL = { norma: 'norma', orientacao: 'orientação oficial', nota_tecnica: 'nota técnica', aula: 'aula do curso',
+      exercicio: 'exercício do curso', planilha: 'planilha do curso', perguntas: 'P&R, não oficial', sintese: 'leitura do escritório' };
+    async function carregarBaseLegal() {
+      const [rg, vin, mat] = await Promise.all([
+        supabase.from('rt_regras').select('codigo, titulo, dispositivo, regra, aplica_a, efeito, fonte, verificado_em').eq('ativo', true).order('codigo'),
+        supabase.from('rt_regra_materiais').select('regra_codigo, material_codigo, onde, ordem'),
+        supabase.from('rt_materiais').select('codigo, titulo, tipo, oficial, drive_url').eq('ativo', true)
+      ]);
+      if (rg.error) { $('baseLista').textContent = 'Erro ao carregar: ' + rg.error.message; return false; }
+      const materiais = new Map((mat.error ? [] : mat.data || []).map(m => [m.codigo, m]));
+      const porRegra = {};
+      (vin.error ? [] : vin.data || []).forEach(v => {
+        const m = materiais.get(v.material_codigo);
+        if (m) (porRegra[v.regra_codigo] ||= []).push({ onde: v.onde, ordem: v.ordem || 0, m });
+      });
+      const linhaMaterial = x => (x.m.drive_url
+          ? '<a href="' + escapeHtml(x.m.drive_url) + '" target="_blank" rel="noopener">' + escapeHtml(x.m.titulo) + '</a>'
+          : escapeHtml(x.m.titulo)) +
+        '<span class="tp">' + escapeHtml(TIPO_MATERIAL[x.m.tipo] || x.m.tipo) + '</span>' + (x.onde ? ' — ' + escapeHtml(x.onde) : '');
+      $('baseLista').innerHTML = (rg.data || []).map(r => {
+        const mats = (porRegra[r.codigo] || []).sort((a, b) => a.ordem - b.ordem);
+        return '<div class="rt-regra" data-regra="' + escapeHtml(r.codigo) + '"><span class="cod">' + escapeHtml(r.codigo) + '</span><b>' + escapeHtml(r.titulo) + '</b>' +
+          (r.dispositivo ? ' <span class="disp">· ' + escapeHtml(r.dispositivo) + '</span>' : '') +
+          '<br>' + escapeHtml(r.regra || '') +
+          '<br><span class="disp">Aplica-se a: ' + escapeHtml(r.aplica_a || '—') + ' · Efeito: ' + escapeHtml(r.efeito || '—') +
+          (r.fonte ? ' · Fonte: ' + escapeHtml(r.fonte) : '') + (r.verificado_em ? ' · verificado em ' + fmtData(r.verificado_em) : '') + '</span>' +
+          (mats.length ? '<div class="mats"><b>De onde veio</b><br>' + mats.map(linhaMaterial).join('<br>') + '</div>' : '') +
+          '</div>';
+      }).join('');
+      return true;
+    }
+    // abre a Base legal; com um código, destaca e rola até a regra (os códigos da simulação, na ficha, chamam assim)
+    async function abrirBaseLegal(codigo) {
       $('ovBase').classList.add('on');
-      if (regrasCarregadas) return;
-      const { data, error } = await supabase.from('rt_regras').select('codigo, titulo, dispositivo, regra, aplica_a, efeito, fonte, verificado_em').eq('ativo', true).order('codigo');
-      if (error) { $('baseLista').textContent = 'Erro ao carregar: ' + error.message; return; }
-      regrasCarregadas = true;
-      $('baseLista').innerHTML = (data || []).map(r =>
-        '<div class="rt-regra"><span class="cod">' + escapeHtml(r.codigo) + '</span><b>' + escapeHtml(r.titulo) + '</b>' +
-        (r.dispositivo ? ' <span class="disp">· ' + escapeHtml(r.dispositivo) + '</span>' : '') +
-        '<br>' + escapeHtml(r.regra || '') +
-        '<br><span class="disp">Aplica-se a: ' + escapeHtml(r.aplica_a || '—') + ' · Efeito: ' + escapeHtml(r.efeito || '—') +
-        (r.fonte ? ' · Fonte: ' + escapeHtml(r.fonte) : '') + (r.verificado_em ? ' · verificado em ' + fmtData(r.verificado_em) : '') + '</span></div>').join('');
-    };
+      if (!regrasCarregadas) regrasCarregadas = await carregarBaseLegal();
+      document.querySelectorAll('#baseLista .rt-regra.alvo').forEach(el => el.classList.remove('alvo'));
+      if (!codigo) return;
+      const alvo = [...document.querySelectorAll('#baseLista .rt-regra')].find(el => el.dataset.regra === codigo);
+      if (alvo) { alvo.classList.add('alvo'); alvo.scrollIntoView({ block: 'center' }); }
+    }
+    $('btnBase').onclick = () => abrirBaseLegal();
+    document.querySelectorAll('.rt-refs .ref').forEach(a => { a.onclick = ev => { ev.preventDefault(); abrirBaseLegal(a.dataset.regra); }; });
     $('baseFechar').onclick = () => $('ovBase').classList.remove('on');
 
     // ---------- refazer simulações (03/10/2026) ----------
