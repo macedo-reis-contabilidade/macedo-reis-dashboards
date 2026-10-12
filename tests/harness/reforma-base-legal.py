@@ -10,7 +10,8 @@ Confere:
      tipo (norma, aula do curso…), o lugar (artigo, página, slide) e o link pro Drive abrindo em outra aba;
   2. material sem link aparece só com o título; material inativo e vínculo pra material inexistente não aparecem;
      regra sem vínculo aparece como antes, sem o bloco;
-  3. na ficha, depois de calcular, clicar no código [PARTILHA-DAS-2027] abre a Base legal com essa regra destacada;
+  3. na ficha, depois de calcular, a linha "Base legal" traz os 8 códigos (com os 3 dos ajustes de 12/10/2026: CRED-DESTACADO,
+     ANEXO-INDUSTRIA-2027 e BASE-SEM-ICMS-ISS) e clicar num código abre a Base legal com essa regra destacada;
      abrir pelo botão de novo tira o destaque;
   4. os documentos (relatório do cliente e análise técnica) não usam a base de materiais — curso é de uso interno;
   5. a tela não dá erro de JavaScript.
@@ -38,6 +39,8 @@ REGRAS = [
      'aplica_a': 'Todos', 'efeito': '—', 'fonte': None, 'verificado_em': None, 'ativo': True},
     {'codigo': 'PARTILHA-DAS-2027', 'titulo': 'Parcela do DAS (teste)', 'dispositivo': 'Anexos de teste', 'regra': 'Regra da partilha de teste.',
      'aplica_a': 'Todos', 'efeito': 'Partilha', 'fonte': 'Fonte de teste', 'verificado_em': '2026-10-12', 'ativo': True},
+    {'codigo': 'BASE-SEM-ICMS-ISS', 'titulo': 'ICMS/ISS fora da base (teste)', 'dispositivo': 'Artigo de teste', 'regra': 'Regra da base de teste.',
+     'aplica_a': 'Todos', 'efeito': 'Base', 'fonte': 'Fonte de teste', 'verificado_em': '2026-10-12', 'ativo': True},
 ]
 MATERIAIS = [
     {'codigo': 'T-NORMA', 'titulo': 'Resolução de teste', 'tipo': 'norma', 'oficial': True, 'drive_url': 'https://drive.google.com/file/d/TESTE-NORMA/view', 'ativo': True},
@@ -124,7 +127,9 @@ def main():
             p.fill(campo, valor)
         p.click('#bCalcular'); p.wait_for_timeout(300)
         refs = p.eval_on_selector_all('.rt-refs .ref', 'as => as.map(a => a.dataset.regra)')
-        ok('PARTILHA-DAS-2027' in refs and len(refs) == 5, f'os códigos da simulação são clicáveis: {refs}')
+        ok(refs == ['CRED-ENTRADAS', 'CRED-DESTACADO', 'CRED-CLIENTE', 'PARTILHA-DAS-2027', 'ANEXO-INDUSTRIA-2027', 'BASE-SEM-ICMS-ISS',
+                    'RED-SO-POR-FORA', 'ALIQ-REF-2027'],
+           f'os códigos da simulação são clicáveis, com as regras dos ajustes de 12/10 (crédito destacado, Anexo I, ICMS/ISS fora da base): {refs}')
         p.click('.rt-refs .ref[data-regra="PARTILHA-DAS-2027"]'); p.wait_for_selector('#ovBase.on', timeout=5000); p.wait_for_timeout(300)
         pt = regra(p, 'PARTILHA-DAS-2027'); cc = regra(p, 'CRED-CLIENTE')
         ok(pt and pt['alvo'] and cc and not cc['alvo'], 'abre a Base legal com a regra clicada destacada (só ela)')
@@ -132,6 +137,10 @@ def main():
         p.click('.rt-refs .ref[data-regra="CRED-CLIENTE"]'); p.wait_for_timeout(300)
         pt = regra(p, 'PARTILHA-DAS-2027'); cc = regra(p, 'CRED-CLIENTE')
         ok(cc and cc['alvo'] and pt and not pt['alvo'], 'outro código: o destaque passa pra outra regra')
+        p.click('#baseFechar'); p.wait_for_timeout(200)
+        p.click('.rt-refs .ref[data-regra="BASE-SEM-ICMS-ISS"]'); p.wait_for_timeout(300)
+        bs = regra(p, 'BASE-SEM-ICMS-ISS'); cc = regra(p, 'CRED-CLIENTE')
+        ok(bs and bs['alvo'] and cc and not cc['alvo'], 'código novo [BASE-SEM-ICMS-ISS] abre a regra dele')
         p.click('#baseFechar'); p.wait_for_timeout(200)
         p.click('#fiFechar'); p.wait_for_timeout(200)
         p.click('#btnBase'); p.wait_for_timeout(300)
