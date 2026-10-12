@@ -108,8 +108,9 @@ const num = (v, def) => {
 //     o método do curso; para o optante, sem norma específica que confirme). false = base cheia, só pra sensibilidade.
 //   issFixo (opcional): ISS em valor fixo por profissional (LC 123, art. 18, §22-A) — não há ISS do DAS a excluir
 //   precoFinalMantido (opcional, só pra sensibilidade): o preço final — com o imposto — fica igual ao de hoje, na
-//     venda e na compra; o IBS/CBS sai de dentro do preço, e débito e créditos dividem por (1 + alíquota). O padrão
-//     segue o método do curso (Dominando Simples): imposto calculado sobre a receita de hoje.
+//     venda e na compra; o IBS/CBS sai de dentro do preço: cada faixa do mix divide pela própria alíquota
+//     (1 + alíquota × fator da faixa), e o % de compras medido e as despesas, que não dizem a faixa, pela cheia. O
+//     padrão segue o método do curso (Dominando Simples): imposto calculado sobre a receita de hoje.
 export function simular(input) {
   const anexo = String(input.anexo || '').trim().toUpperCase();
   const rbt12 = num(input.rbt12, 0);
@@ -155,8 +156,15 @@ export function simular(input) {
   if (aeInfCheia != null && aeTabela != null && Math.abs(aeInfCheia - aeTabela) > 0.02) avisos.push('Alíquota efetiva informada (' + aeInf.toFixed(2) + '%' + (pctST > 0 ? ', ' + (aeInfCheia * 100).toFixed(2) + '% sem a exclusão de ' + pctST.toLocaleString('pt-BR') + '%' : '') + ') está mais de 2 pontos longe da tabela do Anexo ' + anexo + ' (' + (aeTabela * 100).toFixed(2) + '%) — normal se há receita em mais de um anexo; se não, confira o PGDAS.');
   const aliqRef = (cbs + ibs) / 100;
   const fatorMix = (mixCheia + 0.40 * mixRed60 + 0.60 * mixRed40 + 0.70 * mixRed30 + 0 * mixZero) / 100;
-  // preço final mantido (só sensibilidade): o imposto sai de dentro do preço — débito e créditos ÷ (1 + alíquota)
-  const fatorPreco = input.precoFinalMantido ? 1 / (1 + aliqRef) : 1;
+  // PREÇO FINAL MANTIDO (só sensibilidade): o imposto sai de dentro do preço. Cada faixa divide pela própria alíquota —
+  // a venda a −60% por (1 + 3,72%), não por (1 + 9,30%) —, porque o IBS/CBS não integra a própria base (LC 214, art.
+  // 12, §2º, I). Até 12/10/2026 tudo dividia pela cheia, e o débito dos itens com redução saía menor que o certo (5,1% a
+  // menos no −60%, 2,6% no −30%). O % das compras medido pelo NCM e o crédito das despesas não dizem a faixa de cada
+  // compra: esses seguem divididos pela alíquota cheia.
+  const precoMantido = !!input.precoFinalMantido;
+  const dentroDoPreco = f => precoMantido ? f / (1 + aliqRef * f) : f;
+  const fatorMixPreco = (mixCheia * dentroDoPreco(1) + mixRed60 * dentroDoPreco(0.40) + mixRed40 * dentroDoPreco(0.60) + mixRed30 * dentroDoPreco(0.70)) / 100;
+  const fatorCheioPreco = dentroDoPreco(1);
   // crédito das compras: pelo NCM das entradas quando medido; senão, o mix das vendas (revenda)
   const pctCred = input.pctComprasComCredito == null || input.pctComprasComCredito === '' ? null : num(input.pctComprasComCredito, NaN);
   if (pctCred != null && (!Number.isFinite(pctCred) || pctCred < 0 || pctCred > 100)) throw new Error('% das compras com crédito precisa estar entre 0 e 100.');
@@ -228,18 +236,19 @@ export function simular(input) {
   const exclusaoBase = excluirIcmsIss ? icmsIssMes : 0;
   if (excluirIcmsIss && fx === 5) avisos.push('Acima do sublimite (R$ 3,6 milhões) o ICMS/ISS sai do DAS e é pago pelas regras normais: a exclusão dele da base do débito por fora (LC 214, art. 12, §2º, V) não entrou na conta — o débito por fora real sai menor que o mostrado.');
   const baseDebito = receita - exclusaoBase;
-  const debitoFora = baseDebito * aliqRef * fatorMix * fatorPreco;
+  const debitoFora = baseDebito * aliqRef * fatorMixPreco;
   // Crédito que o cliente PJ pode tomar por fora: a alimentação preparada em bar/restaurante (redução de 40%, LC 214
   // art. 275) não gera crédito ao adquirente (art. 276); bebida em lata ou garrafa e bebida alcoólica, à alíquota cheia
   // (CST 000, fora do regime específico), geram. Até 03/10/2026 o crédito do cliente contava o débito inteiro.
-  const debitoCreditavel = baseDebito * aliqRef * (fatorMix - 0.60 * mixRed40 / 100) * fatorPreco;
+  const debitoCreditavel = baseDebito * aliqRef * (fatorMixPreco - mixRed40 / 100 * dentroDoPreco(0.60));
   const comprasMerc = receita * pctMerc / 100;
   const comprasDesp = receita * pctDesp / 100;
   const baseMerc = comprasMerc * (1 - pctEmb / 100);
   const baseDesp = comprasDesp * (1 - pctEmb / 100);
   // Mercadorias revendidas carregam o mesmo mix das vendas (o fornecedor destaca a alíquota do produto); despesas
   // creditam o que o fornecedor destaca — cheia, ou menos quando o serviço tem redução (pctDespesasComCredito).
-  const creditoEntradas = (baseMerc * aliqRef * fatorCompras + baseDesp * aliqRef * fatorDespesas) * fatorPreco;
+  const creditoEntradas = baseMerc * aliqRef * (pctCred != null ? fatorCompras * fatorCheioPreco : fatorMixPreco)
+    + baseDesp * aliqRef * fatorDespesas * fatorCheioPreco;
 
   const meses = [];
   for (let m = 1; m <= 6; m++) {

@@ -36,6 +36,37 @@ export function normDesc(s) {
 const ITEM_MENSTRUAL = /\b(ABSORV|TAMPAO|TAMPOES|COLETOR|CALCINHA|PROTETOR)/;
 const NAO_MENSTRUAL = /\b(FRALDA|GERIATR|INCONTIN|SEIO|AMAMENT)/;
 
+// VENDAS QUE O SIMULADOR AINDA NÃO SEPARA (12/10/2026, Módulo 05 do curso): a venda ao exterior é imune e mantém o
+// crédito (LC 214, art. 79); o serviço a tomador no exterior também, se o resultado se verifica lá fora (art. 80); a
+// venda com fim específico de exportação pode ter o IBS/CBS suspenso (art. 82); e a de industrializado a comprador
+// habilitado da Zona Franca de Manaus ou de Área de Livre Comércio tem alíquota zero (arts. 445 e 463). Na ponte elas
+// entram pelo NCM, como as outras vendas — a ficha só avisa, com o valor e o peso nas vendas. Venda a turista
+// estrangeiro no balcão (CFOP 5.xxx com idEstrangeiro) é venda interna e não entra aqui.
+export function tipoVendaEspecial(d, it) {
+  if (d.modelo === 'nfse') return d.dest_tipo === 'EX' ? 'servicoExterior' : null;
+  const c = String((it && it.cfop) || d.cfop_principal || '').replace(/\D/g, '');
+  if (/^7\d{3}$/.test(c)) return 'exterior';
+  if (/^[56]50[12]$/.test(c)) return 'fimExportacao';
+  if (/^[56]1(09|10)$/.test(c)) return 'zfm';
+  return null;
+}
+const brl = v => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const cfopFmt = c => (c.length === 4 ? c[0] + '.' + c.slice(1) : c);
+const TEXTO_VENDA_ESPECIAL = {
+  exterior: (cf, q) => 'Venda ao exterior' + cf + ': ' + q + '. É imune e mantém o crédito (LC 214, art. 79), mas o simulador ainda não separa: entrou pelo NCM, como venda tributada, e o débito por fora sai maior que o real. Pra estimar, passe essa fatia pra «Mix: % alíquota zero» (com o % das compras com crédito preenchido). Crédito que sobrar só vira dinheiro com ressarcimento, que prende no regime regular.',
+  servicoExterior: (cf, q) => 'Serviço para tomador no exterior (NFS-e): ' + q + '. Se o resultado do serviço se verifica no exterior, é exportação, imune (LC 214, arts. 79 e 80) — confira caso a caso. O simulador contou como serviço tributado.',
+  fimExportacao: (cf, q) => 'Venda com fim específico de exportação' + cf + ': ' + q + '. Para comercial exportadora habilitada, o IBS/CBS pode ficar suspenso e virar zero com a exportação (LC 214, art. 82); o simulador contou como venda tributada.',
+  zfm: (cf, q) => 'Venda para a Zona Franca de Manaus ou Área de Livre Comércio' + cf + ': ' + q + '. Por fora, o industrializado vendido a comprador habilitado tem alíquota zero (LC 214, arts. 445 e 463), mas o simulador ainda não separa: entrou pelo NCM, como venda tributada, e o débito por fora sai maior que o real. Como fica por dentro, no DAS, ainda está a conferir.'
+};
+// os avisos da ficha, um por tipo, do maior pro menor
+export function avisosVendasEspeciais(lista) {
+  return (lista || []).filter(e => e && e.valor > 0 && TEXTO_VENDA_ESPECIAL[e.tipo]).map(e => {
+    const cf = e.cfops && e.cfops.length ? ' (CFOP ' + e.cfops.map(cfopFmt).join(', ') + ')' : '';
+    const q = brl(e.valor) + ' em ' + e.notas + (e.notas === 1 ? ' nota' : ' notas') + ', ' + e.pct.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '% das vendas';
+    return TEXTO_VENDA_ESPECIAL[e.tipo](cf, q);
+  });
+}
+
 // regra de NCM pelo prefixo mais longo (8 → 6 → 4 → 2); sem match = alíquota cheia
 export function regimeDoNcm(ncm, regras, descricao) {
   const d = String(ncm || '').replace(/\D/g, '');
@@ -216,6 +247,22 @@ export function agregar(docs, itens, regras, periodo) {
   }
   const mesesComVenda = meses.filter(m => m.nV > 0);
 
+  // exportação, serviço ao exterior e Zona Franca (tipoVendaEspecial): medidos sobre os itens vendidos, a mesma base do mix
+  const especiais = new Map();
+  itens.forEach(it => {
+    const d = docPorId.get(it.documento_id);
+    if (!d || d.tipo !== 'saida' || d.finalidade === 4 || naoOperacional(d)) return;
+    const tipo = tipoVendaEspecial(d, it);
+    if (!tipo) return;
+    const e = especiais.get(tipo) || { tipo, valor: 0, notas: new Set(), cfops: new Set() };
+    e.valor += n(it.valor_total); e.notas.add(d.id);
+    const c = String(it.cfop || d.cfop_principal || '').replace(/\D/g, ''); if (c) e.cfops.add(c);
+    especiais.set(tipo, e);
+  });
+  const vendasEspeciais = [...especiais.values()]
+    .map(e => ({ tipo: e.tipo, valor: e.valor, pct: vendidos.total ? e.valor / vendidos.total * 100 : 0, notas: e.notas.size, cfops: [...e.cfops].sort() }))
+    .sort((a, b) => b.valor - a.valor);
+
   // ponte com a ficha da Reforma
   const comprasMerc = soma(compras.filter(d => CFOP_COMPRA_MERCADORIA.has(cfopOperacao(d))));
   const pctMercBruto = totV ? comprasMerc / totV * 100 : 0;
@@ -238,7 +285,9 @@ export function agregar(docs, itens, regras, periodo) {
     mixCompras: { zero: comprados.mix.zero, reducao_60: comprados.mix.reducao_60, reducao_30: comprados.mix.reducao_30, cheia: comprados.mix.cheia },
     pctComprasComCredito: comprados.total > 0 ? Math.max(0, Math.min(100, comprados.mix.cheia + 0.40 * comprados.mix.reducao_60 + 0.70 * comprados.mix.reducao_30)) : null,
     comprasSemNcm: comprados.semNcm,
-    nSaidas: vendas.length, nEntradas: compras.length
+    nSaidas: vendas.length, nEntradas: compras.length,
+    // vendas que o simulador ainda não separa (exterior, Zona Franca): a ficha avisa (avisosVendasEspeciais)
+    vendasEspeciais
   };
 
   return { periodo, kpis, clientes, clientesRaiz, fornecedores, vendidos, comprados, cfops: { lista: cfopLista, total: cfopTotal, grupos: cfopGrupos }, ufs: ufLista, meses, ponte, totalDocs: docs.length };

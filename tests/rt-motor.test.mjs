@@ -168,13 +168,40 @@ console.log('\nPreço final mantido (drogaria do curso, só como sensibilidade):
     pctComprasMercadorias: 90000 / 150000 * 100, pctComprasDespesas: 8000 / 150000 * 100, pctImpostoEmbutido: 18,
     pctExcluidoST: 33.5, partilha: 15.5, cbs: 9.2, ibs: 0.1, pctPJ: 10, creditoEstoqueMes: 18500 / 12 };
   const p = simular({ ...base, precoFinalMantido: true });
-  linha('débito ÷ 1,093', 6696 / 1.093, p.mes.debitoFora);
-  linha('créditos das entradas ÷ 1,093', 3904.51 / 1.093, p.mes.creditoEntradas);
+  // cada faixa divide pela própria alíquota (12/10/2026): a cheia por 1,093, a de −60% por 1,0372 (9,30% × 0,40)
+  const t = 0.093, faixas = 0.20 / (1 + t) + 0.70 * 0.40 / (1 + 0.40 * t);
+  linha('débito: cada faixa pela sua alíquota', 150000 * t * faixas, p.mes.debitoFora);   // 6.318,52 (era 6.696 ÷ 1,093 = 6.126,26)
+  // mercadorias seguem o mix das vendas (sem o % medido); despesas, pela cheia
+  linha('créditos: mercadorias pelo mix, despesas pela cheia', 90000 * 0.82 * t * faixas + 8000 * 0.82 * t / (1 + t), p.mes.creditoEntradas);
   linha('DAS por dentro não muda', 9426.38, p.mes.das2027);
   const padrao = simular(base);
   const ok = !padrao.fatores.precoFinalMantido && p.fatores.precoFinalMantido;
   if (!ok) falhas++;
   console.log(ok ? '  ✓ o padrão segue o método do curso; a variante fica marcada nos fatores' : '  ✗ marcação da variante');
+}
+
+// ---- preço final mantido pela alíquota de cada faixa (12/10/2026, Módulo 05): o IBS/CBS não integra a própria base
+// (LC 214, art. 12, §2º, I) — a venda a −60% sai do preço por (1 + 3,72%), não por (1 + 9,30%) ----
+console.log('\nPreço final mantido pela alíquota de cada faixa (LC 214, art. 12, §2º, I):');
+{
+  const base = { anexo: 'I', rbt12: 1200000, receita: 100000, mixRed60: 100, pctComprasMercadorias: 0, partilha: 15.5,
+    cbs: 9.2, ibs: 0.1, pctPJ: 0, excluirIcmsIssDaBase: false, precoFinalMantido: true };
+  const r60 = simular(base);
+  linha('−60%: 100.000 × 3,72% ÷ 1,0372', 3586.58, r60.mes.debitoFora);            // pela cheia saía 3.403,48 (5,1% a menos)
+  const r30 = simular({ ...base, mixRed60: 0, mixRed30: 100 });
+  linha('−30%: 100.000 × 6,51% ÷ 1,0651', 6112.10, r30.mes.debitoFora);            // pela cheia saía 5.956,08 (2,6% a menos)
+  const zero = simular({ ...base, mixRed60: 0, mixZero: 100 });
+  linha('alíquota zero: nada', 0, zero.mes.debitoFora);
+  // bar e restaurante: o cliente credita só a parte cheia, que sai do preço pela cheia
+  const bar = simular({ ...base, mixRed60: 0, mixCheia: 20, mixRed40: 80 });
+  linha('bar: débito (20% cheia + 80% a −40%)', 100000 * 0.093 * (0.20 / 1.093 + 0.80 * 0.60 / (1 + 0.60 * 0.093)), bar.mes.debitoFora);
+  linha('bar: o cliente credita só a parte cheia', 100000 * 0.093 * 0.20 / 1.093, bar.mes.debitoCreditavel);
+  // o % das compras medido pelo NCM não diz a faixa de cada compra: divide pela cheia, como antes
+  const medido = simular({ ...base, mixRed60: 0, mixCheia: 100, pctComprasMercadorias: 50, pctComprasComCredito: 40 });
+  linha('compras com o % medido: pela cheia', 50000 * 0.093 * 0.40 / 1.093, medido.mes.creditoEntradas);
+  // sem o preço mantido, nada muda
+  const padrao = simular({ ...base, precoFinalMantido: false });
+  linha('padrão: 100.000 × 3,72%', 3720.00, padrao.mes.debitoFora);
 }
 
 // ============================================================================================================

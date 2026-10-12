@@ -279,7 +279,7 @@
           <label>Mix: % alíquota cheia<input id="sMixCheia" placeholder="100"></label>
           <label>Mix: % redução 60%<input id="sMixRed60" placeholder="0"></label>
           <label>Mix: % redução 40% <span class="hint">bares e restaurantes: alimentação preparada no local (LC 214 art. 275) — só por fora</span><input id="sMixRed40" placeholder="0"></label>
-          <label>Mix: % redução 30%<input id="sMixRed30" placeholder="0"></label>
+          <label id="sMixRed30Box" title="LC 214, art. 127: só as 18 profissões do rol, fiscalizadas por conselho — administradores, advogados, arquitetos e urbanistas, assistentes sociais, bibliotecários, biólogos, contabilistas, economistas, economistas domésticos, profissionais de educação física, engenheiros e agrônomos, estatísticos, médicos veterinários e zootecnistas, museólogos, químicos, profissionais de relações públicas, técnicos industriais e técnicos agrícolas. Na sociedade, os cinco requisitos do §1º, II, todos juntos: (a) sócios com habilitação ligada ao objeto e fiscalizados pelo conselho; (b) nenhum sócio pessoa jurídica; (c) a sociedade não é sócia de outra empresa; (d) nenhuma atividade fora das habilitações dos sócios; (e) o serviço da atividade-fim prestado pelos sócios (auxiliares podem ajudar). O tipo de sociedade, sócios de profissões diferentes do rol e a distribuição de lucros não atrapalham (§2º). Academia registrada no conselho tem a redução sem os cinco requisitos (§3º). Sem eles, a alíquota é a cheia.">Mix: % redução 30% <span class="hint">profissão do art. 127 da LC 214 (contador, advogado, engenheiro…); na sociedade, só com os 5 requisitos: sócios habilitados no conselho, nenhum sócio PJ, a sociedade não é sócia de outra, nada fora das habilitações e o serviço feito pelos sócios</span><input id="sMixRed30" placeholder="0"></label>
           <label>Mix: % alíquota zero<input id="sMixZero" placeholder="0"></label>
           <label>CBS de 2027 (%) <span class="hint" id="sCbsHint">referência menos 0,1 ponto (ADCT, art. 127)</span><input id="sCbs"></label>
           <label>IBS de 2027 (%) <span class="hint">0,05 estadual + 0,05 municipal</span><input id="sIbs"></label>
@@ -379,7 +379,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
-    import { carregarOperacao, MESES_ABREV } from './assets/js/operacao-xml.js';
+    import { carregarOperacao, MESES_ABREV, avisosVendasEspeciais } from './assets/js/operacao-xml.js';
     import { lerRelatorio, consolidar, resumirEntradas, GRUPOS, lerPlanilha, perfilAtividade, cnpjsParaConsultar, ramoComReducao, conferirRbt12, CREDITO_FORNECEDOR_SIMPLES } from './assets/js/dominio-relatorios.js';
     import { lerXls } from './assets/js/xls-biff.js';
     import { importarLote, separarNaoXml } from './assets/js/importar-xml.js';
@@ -799,9 +799,14 @@
         const notaPreservados = preservados.length
           ? ' <b>Mantido do Domínio</b> (o XML não enxerga isso): ' + preservados.join(', ') + '.'
           : '';
+        // avisos ficam na nota das notas (bXmlInfo), que não some quando a ficha calcula
+        const avisos = [];
+        if (p.comprasSuperamVendas) avisos.push('No período as compras superam as vendas (estoque sendo montado?) — % de compras limitado a 100; confira antes de calcular.');
+        // exportação e Zona Franca (12/10/2026): entram pelo NCM, como venda tributada — o simulador ainda não separa
+        avisos.push(...avisosVendasEspeciais(p.vendasEspeciais));
         return {
           fonte: 'Notas: ' + p.nSaidas + ' nota(s) de saída' + (p.nServicos ? ' (' + p.nServicos + ' NFS-e de serviço = ' + brPct(r1(p.pctServicos)) + '% da receita)' : '') + ' e ' + p.nEntradas + ' de entrada' + (p.nServTomados ? ' (' + p.nServTomados + ' NFS-e de serviço tomado)' : '') + ' autorizadas, ' + periodo + '.' + notaPreservados,
-          aviso: p.comprasSuperamVendas ? '⚠ No período as compras superam as vendas (estoque sendo montado?) — % de compras limitado a 100; confira antes de calcular' : null
+          avisos
         };
       }
     }
@@ -1105,19 +1110,26 @@
         let notasFonte = null;
         if ((domEstado.notas || 0) > 0) {
           try { notasFonte = await puxarDasNotas(c); }
-          catch (e) { notasFonte = { fonte: null, aviso: 'Notas: ' + (e.message || e) }; }
+          catch (e) { notasFonte = { fonte: null, avisos: ['Notas: ' + (e.message || e)] }; }
         }
         $('ovDom').classList.remove('on');
         $('bSaida').hidden = true;
         const partes = [];
         if (cons && Object.keys(cons.campos).length) partes.push('Domínio: ' + domEstado.rels.map(rotuloRel).join(' · ') + '.');
         if (notasFonte && notasFonte.fonte) partes.push(notasFonte.fonte);
-        $('bXmlInfo').innerHTML = partes.join('<br>') + (partes.length ? '<br>' : '') + 'Nada foi gravado — confira os campos, clique em Calcular e depois em Gravar simulação.';
+        const avisosNotas = (notasFonte && notasFonte.avisos) || [];
+        $('bXmlInfo').innerHTML = partes.join('<br>') + (partes.length ? '<br>' : '') +
+          avisosNotas.map(a => '<span data-aviso-notas style="color:var(--warn)">⚠ ' + escapeHtml(a) + '</span><br>').join('') +
+          'Nada foi gravado — confira os campos, clique em Calcular e depois em Gravar simulação.';
         $('bXmlInfo').hidden = false;
-        if (notasFonte && notasFonte.aviso) { $('bMsg').style.color = 'var(--warn)'; $('bMsg').textContent = notasFonte.aviso; }
+        if (avisosNotas.length) { $('bMsg').style.color = 'var(--warn)'; $('bMsg').textContent = '⚠ ' + avisosNotas[0]; }
         else { $('bMsg').style.color = 'var(--ok)'; $('bMsg').textContent = '✓ Campos preenchidos — confira e calcule' + ((domEstado.notas || 0) > 0 ? '' : ' (sem notas na base: % PJ e mix ficam por sua conta)'); }
         // menos um clique: com o que veio dá pra calcular, calcula; se faltar algo, a mensagem diz o quê
-        try { calcular(); $('bMsg').style.color = 'var(--ok)'; $('bMsg').textContent = '✓ Campos preenchidos e simulação calculada — confira e clique em Gravar simulação.'; }
+        try {
+          calcular();
+          $('bMsg').style.color = avisosNotas.length ? 'var(--warn)' : 'var(--ok)';
+          $('bMsg').textContent = avisosNotas.length ? '✓ Simulação calculada — leia o aviso das notas logo abaixo antes de gravar.' : '✓ Campos preenchidos e simulação calculada — confira e clique em Gravar simulação.';
+        }
         catch (err) { $('bMsg').style.color = 'var(--warn)'; $('bMsg').textContent = 'Campos preenchidos; falta pra calcular: ' + err.message; }
       } finally { btn.disabled = false; btn.textContent = 'Aplicar'; }
     };
@@ -1643,7 +1655,8 @@
           efeito: 'com a base cheia (sem a exclusão) → ' + sinal(v), muda: inverteDif(v) ? 'Sim — a conclusão depende da exclusão, que pro optante do Simples ainda não tem norma específica' : 'Não' });
       }
       // PREÇO FINAL MANTIDO (03/10/2026): o método (o do curso) calcula o IBS/CBS sobre a receita de hoje; se o preço final
-      // ficar igual — com o imposto dentro dele, na venda e na compra —, débito e créditos dividem por (1 + alíquota)
+      // ficar igual — com o imposto dentro dele, na venda e na compra —, o imposto sai de dentro do preço: desde 12/10/2026,
+      // cada faixa do mix pela própria alíquota (a venda a −60% por 1 + 3,72%), não pela cheia (rt-motor.js)
       {
         const v = dif({ precoFinalMantido: true });
         sensibilidade.push({ nome: 'Preço final igual ao de hoje', hoje: 'imposto calculado sobre a receita atual',

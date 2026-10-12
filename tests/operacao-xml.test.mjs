@@ -9,7 +9,7 @@
 //
 // Dados inventados: este repositório é público.
 
-import { agregar, cfopOperacao, regimeDoNcm } from '../assets/js/operacao-xml.js';
+import { agregar, cfopOperacao, regimeDoNcm, avisosVendasEspeciais } from '../assets/js/operacao-xml.js';
 
 let falhas = 0;
 const ok = (c, m) => { if (!c) { falhas++; console.error('  ✗ ' + m); } else console.log('  ✓ ' + m); };
@@ -93,6 +93,47 @@ const itens9619 = [
 const m9619 = agregar([docV], itens9619, regras9619, { ano: 2026, mesIni: 7, mesFim: 7 });
 perto(m9619.ponte.mixZero, 30, 0.001, 'no mix das vendas, o absorvente vai pra alíquota zero');
 perto(m9619.ponte.mixRed60, 70, 0.001, 'e a fralda fica na redução de 60%');
+
+// Exportação e Zona Franca (12/10/2026, Módulo 05): a venda ao exterior é imune (LC 214, art. 79) e a de industrializado
+// para a ZFM/ALC tem alíquota zero (arts. 445 e 463), mas entram pelo NCM — a ponte mede, a ficha avisa
+console.log('\nExportação e Zona Franca (o simulador ainda não separa — a ficha avisa):');
+const ex = (id, cfop, valor, extra = {}) => ({ id, modelo: '55', data_emissao: '2026-07-12', tipo: 'saida', finalidade: 1, emit_doc: '11111111000111',
+  emit_nome: 'INDUSTRIA TESTE', emit_uf: 'RS', emit_crt: 1, dest_doc: '33333333000133', dest_tipo: 'PJ', dest_nome: 'CLIENTE', dest_uf: 'SP',
+  valor_total: valor, cfop_principal: cfop, ...extra });
+const docsEx = [
+  ex('e1', '5101', 4000),                                                            // venda interna comum
+  ex('e2', '7101', 3000, { dest_doc: 'X123', dest_tipo: 'EX', dest_uf: 'EX' }),      // exportação direta
+  ex('e3', '6109', 2000, { dest_uf: 'AM' }),                                         // venda à Zona Franca
+  ex('e4', '6501', 500),                                                             // fim específico de exportação
+  ex('e5', '5102', 300, { modelo: '65', dest_doc: 'P999', dest_tipo: 'EX', dest_uf: 'RS' }), // turista no balcão: venda interna
+  { ...ex('e6', null, 200, { dest_doc: 'NIF77', dest_tipo: 'EX', dest_uf: 'EX' }), modelo: 'nfse' } // serviço a tomador no exterior
+];
+const itEx = [
+  { documento_id: 'e1', ncm: '64039990', descricao: 'CALCADO', cfop: '5101', valor_total: 4000 },
+  { documento_id: 'e2', ncm: '64039990', descricao: 'CALCADO EXPORT', cfop: '7101', valor_total: 2000 },
+  { documento_id: 'e2', ncm: '64039990', descricao: 'CALCADO EXPORT 2', cfop: '7101', valor_total: 1000 },
+  { documento_id: 'e3', ncm: '64039990', descricao: 'CALCADO ZFM', cfop: '6109', valor_total: 2000 },
+  { documento_id: 'e4', ncm: '64039990', descricao: 'CALCADO TRADING', cfop: '6501', valor_total: 500 },
+  { documento_id: 'e5', ncm: '64039990', descricao: 'CALCADO TURISTA', cfop: '5102', valor_total: 300 },
+  { documento_id: 'e6', ncm: null, descricao: 'CONSULTORIA', cfop: null, valor_total: 200 }
+];
+const mEx = agregar(docsEx, itEx, new Map(), { ano: 2026, mesIni: 7, mesFim: 7 });
+const esp = Object.fromEntries(mEx.ponte.vendasEspeciais.map(e => [e.tipo, e]));
+perto(esp.exterior && esp.exterior.valor, 3000, 0.005, 'exportação (CFOP 7.101): R$ 3.000');
+perto(esp.exterior && esp.exterior.pct, 30, 0.001, 'exportação: 30% das vendas (base do mix: itens vendidos)');
+ok(esp.exterior && esp.exterior.notas === 1 && esp.exterior.cfops.join() === '7101', 'exportação: 1 nota, CFOP 7101');
+perto(esp.zfm && esp.zfm.valor, 2000, 0.005, 'Zona Franca (CFOP 6.109): R$ 2.000');
+perto(esp.fimExportacao && esp.fimExportacao.valor, 500, 0.005, 'fim específico de exportação (CFOP 6.501): R$ 500');
+perto(esp.servicoExterior && esp.servicoExterior.valor, 200, 0.005, 'NFS-e com tomador no exterior: R$ 200');
+ok(!Object.values(esp).some(e => e.cfops.includes('5102')), 'turista estrangeiro no balcão (CFOP 5.102) é venda interna: fora dos avisos');
+ok(mEx.ponte.vendasEspeciais[0].tipo === 'exterior', 'do maior pro menor');
+const av = avisosVendasEspeciais(mEx.ponte.vendasEspeciais).map(a => a.replace(/ /g, ' '));
+ok(av.length === 4, 'quatro avisos, um por tipo');
+ok(/^Venda ao exterior \(CFOP 7\.101\): R\$ 3\.000,00 em 1 nota, 30% das vendas\. É imune e mantém o crédito \(LC 214, art\. 79\)/.test(av[0]), 'aviso da exportação: ' + av[0].slice(0, 110));
+ok(av.some(a => /^Venda para a Zona Franca de Manaus ou Área de Livre Comércio \(CFOP 6\.109\): R\$ 2\.000,00 em 1 nota, 20% das vendas.*arts\. 445 e 463/.test(a)), 'aviso da Zona Franca, com os arts. 445 e 463');
+ok(av.some(a => /fim específico de exportação \(CFOP 6\.501\).*art\. 82/.test(a)), 'aviso da venda a comercial exportadora (art. 82)');
+ok(av.some(a => /^Serviço para tomador no exterior \(NFS-e\): R\$ 200,00 em 1 nota, 2% das vendas.*arts\. 79 e 80/.test(a)), 'aviso do serviço ao exterior (arts. 79 e 80)');
+ok(avisosVendasEspeciais(m9619.ponte.vendasEspeciais).length === 0 && m9619.ponte.vendasEspeciais.length === 0, 'sem exportação nem Zona Franca, nenhum aviso');
 
 
 console.log(falhas ? '\n' + falhas + ' FALHA(S)' : '\nTudo certo.');
