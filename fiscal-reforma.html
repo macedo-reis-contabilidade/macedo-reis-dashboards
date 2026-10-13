@@ -380,7 +380,7 @@
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { carregarOperacao, MESES_ABREV, avisosVendasEspeciais } from './assets/js/operacao-xml.js';
-    import { lerRelatorio, consolidar, resumirEntradas, GRUPOS, lerPlanilha, perfilAtividade, cnpjsParaConsultar, ramoComReducao, conferirRbt12, CREDITO_FORNECEDOR_SIMPLES } from './assets/js/dominio-relatorios.js';
+    import { lerRelatorio, consolidar, resumirEntradas, GRUPOS, lerPlanilha, perfilAtividade, cnaeMaisCompleto, cnpjsParaConsultar, ramoComReducao, conferirRbt12, CREDITO_FORNECEDOR_SIMPLES } from './assets/js/dominio-relatorios.js';
     import { lerXls } from './assets/js/xls-biff.js';
     import { importarLote, separarNaoXml } from './assets/js/importar-xml.js';
     import { formatDocumento, normalizarDocumento } from './assets/js/utils.js';
@@ -1030,7 +1030,7 @@
         Object.entries(GRUPOS).forEach(([k, g]) => { domEstado.incluir[k] = g.padrao; });
       }
       const cF0 = casoAtual(); const cli0 = cF0 ? clientesMap[cF0.cliente_id] : null;
-      const cnae0 = String((cF0 && cF0.cnae_base) || (cli0 && cli0.cnae_principal) || '');
+      const cnae0 = String(cnaeMaisCompleto(cF0 && cF0.cnae_base, cli0 && cli0.cnae_principal));
       const sim0 = domEstado.rels.filter(r => r.tipo === 'simples').slice(-1)[0];
       const perfil0 = perfilAtividade({ cnae: cnae0, anexo: sim0 && sim0.anexoPredominante });
       const cons = domEstado.cons = consolidar(domEstado.rels, domEstado.incluir, { regimes: domEstado.regimes, perfil: perfil0, varejo: cnae0.replace(/\D/g, '').startsWith('47') });
@@ -1085,11 +1085,12 @@
       if (docFicha && docRel && docFicha !== docRel) cons.avisos.unshift('Os relatórios são do CNPJ ' + docRel + ', e esta ficha é de ' + docFicha + ' — confira se pegou o cliente certo.');
       { // mix de alíquotas só sai das notas de venda: alimentação (redução de 40% na comida) e comércio precisam delas
         const cF = casoAtual(); const cliF = cF ? clientesMap[cF.cliente_id] : null;
-        const cnae = String((cF && cF.cnae_base) || (cliF && cliF.cnae_principal) || '').replace(/\D/g, '');
+        const cnae = String(cnaeMaisCompleto(cF && cF.cnae_base, cliF && cliF.cnae_principal)).replace(/\D/g, '');
         const temNotas = (domEstado.notas || 0) > 0;
         const perfilImp = perfilAtividade({ natureza: cons.resVen && cons.resVen.natureza, cnae, anexo: cons.sim && cons.sim.anexoPredominante });
         const servicoPuro = !perfilImp.vendeMercadoria;
-        if (!temNotas && perfilImp.tipo === 'alimentacao') cons.avisos.push('Bar/restaurante sem notas de venda na base: a comida preparada tem redução de 40% no IBS/CBS e as bebidas revendidas pagam cheio. Importe as NFC-e (XML ou ZIP) aqui mesmo pra medir essa divisão — sem elas o cálculo põe tudo na alíquota cheia e o custo "por fora" sai maior que o real.');
+        if (perfilImp.refeicaoEmpresas) cons.avisos.push('Refeições para empresas (CNAE 5620-1/01): se o fornecimento por contrato ficar no regime de bares, a refeição tem redução de 40% e o cliente empresa não credita; fora dele, alíquota cheia e o cliente credita (LC 214, art. 273, a conferir). Preencha o mix conforme o enquadramento — a análise mostra o resultado pelo enquadramento contrário.' + (temNotas ? '' : ' Importe as notas de venda (XML ou ZIP) pra medir o que é refeição e o que é revenda.'));
+        else if (!temNotas && perfilImp.tipo === 'alimentacao') cons.avisos.push('Bar/restaurante sem notas de venda na base: a comida preparada tem redução de 40% no IBS/CBS e as bebidas revendidas pagam cheio. Importe as NFC-e (XML ou ZIP) aqui mesmo pra medir essa divisão — sem elas o cálculo põe tudo na alíquota cheia e o custo "por fora" sai maior que o real.');
         else if (!temNotas && !servicoPuro && ramoComReducao(cnae)) cons.avisos.push('Sem notas de venda na base, o mix de alíquotas fica 100% cheio. Se a empresa vende produtos com redução (insumos agropecuários, cesta básica, medicamentos…), importe as notas (XML ou ZIP) pra medir.');
       }
       cons.avisos.forEach(a => { html += '<div class="dom-aviso">⚠ ' + escapeHtml(a) + '</div>'; });
@@ -1573,17 +1574,20 @@
       const pctPJ = xml && xml.pctPJ != null ? xml.pctPJ : vendasDom && vendasDom.pctPJ != null ? vendasDom.pctPJ : (ent.pctPJ != null && ent.pctPJ !== '' ? Number(ent.pctPJ) : null);
       const fontePJ = xml && xml.pctPJ != null ? 'XML das notas' : vendasDom && vendasDom.pctPJ != null ? vendasDom.fonte || 'acompanhamento de saídas (Domínio)' : pctPJ != null ? 'informado na ficha' : null;
       const barRest = (ent.mixRed40 || 0) > 0;
-      let consumidor = barRest || (pctPJ != null && pctPJ < 20);
       // ATIVIDADE — serviço x comércio, pelo faturamento ou pelas saídas/serviços
       const servShare = dom && dom.faturamento && dom.faturamento.total > 0 ? dom.faturamento.servicos / dom.faturamento.total * 100
         : vendasDom && vendasDom.total > 0 ? (vendasDom.servicos || 0) / vendasDom.total * 100 : null;
-      const perfil = perfilAtividade({ natureza: vendasDom && vendasDom.natureza, cnae: c.cnae_base || (cli && cli.cnae_principal), anexo: ent.anexo, restaurante: barRest });
+      const perfil = perfilAtividade({ natureza: vendasDom && vendasDom.natureza, cnae: cnaeMaisCompleto(c.cnae_base, cli && cli.cnae_principal), anexo: ent.anexo, restaurante: barRest });
+      // REFEIÇÕES PARA EMPRESAS (CNAE 5620-1/01, 13/10/2026): vende a empresas por contrato — perfil B2B, nunca os textos e
+      // premissas de restaurante; o enquadramento no regime de bares (LC 214, art. 273) fica a conferir e vira teste abaixo
+      const refeicaoEmpresas = !!perfil.refeicaoEmpresas;
+      let consumidor = (barRest && !refeicaoEmpresas) || (pctPJ != null && pctPJ < 20);
       const prestador = perfil.tipo === 'servico';            // serviço com ISS: textos de hora técnica, retenção
       const transporte = perfil.tipo === 'transporte';
       const temServico = prestador;
       const vendeMercadoria = perfil.vendeMercadoria;
       const ehAlimentacao = perfil.tipo === 'alimentacao';      // lancheria, restaurante, bar: textos próprios, nunca os de varejo
-      if (ehAlimentacao) consumidor = true;
+      if (ehAlimentacao && !refeicaoEmpresas) consumidor = true;
       const cnaeRamo = c.cnae_base || (cli && cli.cnae_principal) || '';
       const podeReduzir = vendeMercadoria && (perfil.tipo === 'alimentacao' || ramoComReducao((cli && cli.cnae_principal) || cnaeRamo));
       const mixMedido = !((ent.mixCheia || 0) >= 99) || !!(xml && xml.nNotas);
@@ -1595,6 +1599,19 @@
       const inverteDif = v => !empate && Math.abs(v) > 0.5 && (v < 0) !== (s.diferenca < 0);
       // a alíquota oficial de 2027 muda o resultado? (estimativas em circulação: referência de 8,8% e de 9,21%, menos 0,1 ponto)
       const cbsMuda = [8.7, 9.11].some(v => { const r2 = simular({ ...ent, cbs: v }); return r2.veredito.tipo !== sim.veredito.tipo || inverteDif(r2.semestre.diferenca); });
+      // ENQUADRAMENTO DA REFEIÇÃO POR CONTRATO (13/10/2026): no regime de bares, −40% e o cliente não credita a refeição
+      // (LC 214, arts. 275 e 276); fora dele, alíquota cheia e o cliente credita. Sem o texto do art. 273 na base, a análise
+      // roda o enquadramento contrário ao da ficha e diz se o resultado muda
+      const veredTxt = t => t === 'OPTE' ? 'optar por fora' : t === 'OPTE_SE' ? 'opte, se o comercial confirmar' : 'manter dentro do DAS';
+      let regime273 = null;
+      if (refeicaoEmpresas) {
+        const dentro = barRest;
+        const alt = dentro ? { mixCheia: (ent.mixCheia || 0) + (ent.mixRed40 || 0), mixRed40: 0 } : { mixRed40: (ent.mixRed40 || 0) + (ent.mixCheia || 0), mixCheia: 0 };
+        const r2 = simular({ ...ent, ...alt });
+        regime273 = { dentro, r2, muda: r2.veredito.tipo !== sim.veredito.tipo || inverteDif(r2.semestre.diferenca),
+          hoje: dentro ? 'no regime de bares (−40%, o cliente não credita a refeição)' : 'fora do regime de bares (alíquota cheia, o cliente credita)',
+          contrario: dentro ? 'fora do regime de bares (alíquota cheia, o cliente credita)' : 'no regime de bares (−40%, o cliente não credita a refeição)' };
+      }
 
       // ponto em que as compras empatariam a conta
       let lo = ent.pctComprasMercadorias, hi = 100, empataCompras = null;
@@ -1631,7 +1648,7 @@
         { nome: 'Receita mensal', hoje: brl0(ent.receita),
           efeito: '−30% → ' + sinal(dif({ receita: ent.receita * 0.7 })) + ' · +30% → ' + sinal(dif({ receita: ent.receita * 1.3 })),
           muda: [0.7, 1.3].some(f => inverteDif(dif({ receita: ent.receita * f }))) ? 'Sim — com outra receita a conclusão inverte' : 'Não — a diferença acompanha a receita' },
-        barRest
+        barRest && !refeicaoEmpresas
           ? { nome: 'Redução de 40% (bar/restaurante)', hoje: p1(ent.mixRed40 || 0) + '% da receita',
               efeito: 'sem a redução (tudo à alíquota cheia) → ' + sinal(dif({ mixRed40: 0, mixCheia: (ent.mixCheia || 0) + (ent.mixRed40 || 0) })), muda: 'Não — sem ela, por fora fica ainda pior' }
           : b2c
@@ -1641,6 +1658,9 @@
           : { nome: 'Regime dos clientes', hoje: pctPJ != null ? p1(pctPJ) + '% das vendas para CNPJ (' + fontePJ + ') — regime de cada um não consultado' : 'não levantado',
               efeito: 'cliente do Simples não aproveita o crédito gerado por fora', muda: optar ? 'Sim — enfraquece a opção' : 'Reforça manter no DAS' }
       ];
+      if (regime273) sensibilidade.push({ nome: 'Enquadramento da refeição por contrato (LC 214, art. 273)', hoje: regime273.hoje,
+        efeito: regime273.contrario + ' → ' + sinal(regime273.r2.semestre.diferenca) + ' · resultado: ' + veredTxt(regime273.r2.veredito.tipo),
+        muda: regime273.muda ? 'Sim — o enquadramento muda o resultado; conferir o art. 273 antes de decidir' : 'Não — nos dois enquadramentos a conclusão é a mesma' });
       // CRÉDITO DE ESTOQUE (03/10/2026): provável, não garantido — depende da regulamentação do inventário (LC 214, art. 381)
       if ((ent.creditoEstoqueMes || 0) > 0) {
         const v = dif({ creditoEstoqueMes: 0 });
@@ -1689,10 +1709,11 @@
       if (ent.mixCheia >= 99 && transporte && !perfil.passageiros) fontes.push({ o_que: 'Alíquota do frete (integralmente cheia)', origem: 'Transporte rodoviário de cargas não tem redução na LC 214 — as reduções de transporte são do coletivo de passageiros e do aéreo regional, de passageiros ou de carga (arts. 284 a 287; o aéreo regional com −40%, art. 287)', nivel: 'alta', rotulo: 'alta (norma)' });
       else if (ent.mixCheia >= 99 && transporte && perfil.passageiros) fontes.push({ o_que: 'Alíquota do transporte de passageiros (assumida cheia)', origem: 'Transporte coletivo de passageiros tem tratamento próprio: −40% no intermunicipal e interestadual (LC 214, art. 286) e no aéreo regional (art. 287); alíquota zero no ferroviário e hidroviário urbano e metropolitano (art. 285, I); isenção no rodoviário e metroviário urbano e metropolitano (art. 157) — conferir o enquadramento', nivel: 'baixa', rotulo: 'a conferir' });
       else if (ent.mixCheia >= 99 && prestador) fontes.push({ o_que: 'Mix de alíquotas (integralmente cheia)', origem: 'Serviço não consta dos anexos de redução da LC 214', nivel: 'alta', rotulo: 'alta (norma)' });
+      else if (ent.mixCheia >= 99 && refeicaoEmpresas) fontes.push({ o_que: 'Mix de alíquotas (integralmente cheia)', origem: 'Refeição fornecida a empresas por contrato tratada fora do regime de bares: alíquota cheia, e o cliente credita (LC 214, art. 273, a conferir — no regime de bares seria −40% e sem crédito ao cliente, art. 276)', nivel: 'baixa', rotulo: 'a conferir' });
       else if (ent.mixCheia >= 99 && !mixMedido && vendeMercadoria && !podeReduzir) fontes.push({ o_que: 'Mix de alíquotas (integralmente cheia)', origem: 'Os produtos do ramo' + (cli && cli.cnae_principal ? ' (' + String(cli.cnae_principal).replace(/^[\d./-]+\s*-\s*/, '').toLowerCase() + ')' : '') + ' não estão nos anexos de redução da LC 214', nivel: 'media', rotulo: 'média (ramo)' });
       else if (ent.mixCheia >= 99 && !mixMedido && podeReduzir) fontes.push({ o_que: 'Mix de alíquotas (assumido integralmente cheio)', origem: 'Não medido — sem notas de venda na base. Produtos com redução (insumos agropecuários, cesta básica, medicamentos e outros dos anexos da LC 214) baixariam o débito por fora', nivel: 'baixa', rotulo: 'a conferir' });
       else if (ent.mixCheia >= 99) fontes.push({ o_que: 'Mix de alíquotas (integralmente cheia)', origem: 'NCM das notas de venda: nenhum item nos anexos de redução da LC 214', nivel: 'media', rotulo: 'média' });
-      else if ((ent.mixRed40 || 0) > 0) fontes.push({ o_que: 'Mix de alíquotas (' + p1(ent.mixRed40) + '% com redução de 40%)', origem: 'LC 214/2025 arts. 273-276: alimentação preparada por bar/restaurante, inclusive com entrega por plataforma (art. 274, parágrafo único, II); bebidas alcoólicas e industrializados revendidos ficam na alíquota cheia (art. 273 §2º); o cliente não credita (art. 276)', nivel: 'alta', rotulo: 'alta (norma)', ressalva: '— divisão entre preparado e revendido estimada pelas seções do PGDAS; refeição fornecida a empresas por contrato pode ficar fora do regime de bares (art. 273, a conferir)' });
+      else if ((ent.mixRed40 || 0) > 0) fontes.push({ o_que: 'Mix de alíquotas (' + p1(ent.mixRed40) + '% com redução de 40%)', origem: 'LC 214/2025 arts. 273-276: alimentação preparada por bar/restaurante, inclusive com entrega por plataforma (art. 274, parágrafo único, II); bebidas alcoólicas e industrializados revendidos ficam na alíquota cheia (art. 273 §2º); o cliente não credita (art. 276)', nivel: refeicaoEmpresas ? 'baixa' : 'alta', rotulo: refeicaoEmpresas ? 'a conferir' : 'alta (norma)', ressalva: '— divisão entre preparado e revendido estimada pelas seções do PGDAS; refeição fornecida a empresas por contrato pode ficar fora do regime de bares (art. 273, a conferir)' });
       if (ent.pctComprasComCredito != null) fontes.push({ o_que: 'Crédito das compras (' + p1(ent.pctComprasComCredito) + '% das mercadorias)', origem: 'NCM das notas de entrada classificado pela tabela de regimes da Reforma (cesta básica = zero)', nivel: 'media', rotulo: 'média', ressalva: '— classificação por NCM, sujeita a revisão item a item' });
       if ((ent.pctExcluidoST || 0) > 0) fontes.push({ o_que: 'DAS real abaixo da tabela (' + p1(ent.pctExcluidoST) + '% excluído)', origem: 'PGDAS: ICMS-ST, monofásico e/ou redução de base — DAS apurado ÷ DAS pela tabela do anexo'
         + ((ent.pctReceitaMonofasica || 0) > 0 ? '. Desse total, o PIS/COFINS monofásico (' + p1(ent.pctReceitaMonofasica) + '% da receita) deixa de ser excluído em 2027: a CBS alcança essa receita e o DAS por dentro sobe (Res. CGSN 140/2018, art. 25, §6º, na redação da Res. CGSN 190/2026); a exclusão do ICMS-ST e do ISS retido continua' : ''), nivel: 'alta', rotulo: 'alta' });
@@ -1781,6 +1802,8 @@
         const maior = xml.clientes[0];
         perguntas.splice(3, 0, '<b>' + maior.nome + ' representa ' + p1(maior.pct) + '% da receita.</b> O que acontece se pedir desconto equivalente ao crédito que deixará de tomar?');
       }
+      // refeições para empresas: o contrato decide o enquadramento (LC 214, art. 273) — pergunta própria, antes das outras
+      if (refeicaoEmpresas && !consumidor) perguntas.unshift('Como são os <b>contratos de refeição</b>: a refeição é preparada na cozinha da empresa ou no local do cliente, e o preço é por refeição ou fechado por período? O enquadramento no regime de bares (LC 214, art. 273, a conferir) muda a alíquota — −40% ou cheia — e se o cliente empresa credita.');
 
       const pendencias = consumidor && !ehAlimentacao ? [
         ...(!mixMedido && podeReduzir ? [{ o_que: 'Mix das vendas por NCM', porque: 'A análise supôs tudo à alíquota cheia; produtos com redução baixam o débito por fora', onde: 'Notas de venda (XML) ou cadastro de produtos', quem: 'Fiscal', nivel: 'media', peso: 'médio' }] : [])
@@ -1791,6 +1814,10 @@
         { o_que: 'Capacidade de repasse da CBS', porque: 'É a única variável capaz de inverter a recomendação', onde: 'Contratos e conversa com os maiores clientes', quem: 'Direção / comercial', nivel: 'baixa', peso: 'decisivo' },
         { o_que: 'Regime tributário dos maiores clientes', porque: 'O crédito gerado por fora só vale para quem apura pelo regime regular', onde: 'Consulta de CNPJ (optante pelo Simples)', quem: 'Fiscal', nivel: 'media', peso: 'alto' }
       ];
+      if (regime273) {
+        const p273 = { o_que: 'Enquadramento da refeição por contrato (LC 214, art. 273)', porque: 'No regime de bares, −40% e o cliente não credita a refeição; fora dele, alíquota cheia e o cliente credita' + (regime273.muda ? ' — muda o resultado desta análise' : ' — nesta análise o resultado não muda'), onde: 'Texto do art. 273 da LC 214 e regulamento; contratos de fornecimento', quem: 'Fiscal', nivel: 'baixa', peso: regime273.muda ? 'decisivo' : 'médio' };
+        if (regime273.muda) pendencias.unshift(p273); else pendencias.push(p273);
+      }
       if (dom && dom.entradas && dom.entradas.grupos) {
         const duvida = dom.entradas.grupos.find(g => g.grupo === 'outras' && g.valor > 0 && !g.incluido);
         if (duvida) pendencias.push({ o_que: 'Reclassificar ' + brl0(duvida.valor) + ' em CFOP x949', porque: 'Se for compra, aumenta a base creditável e reduz a diferença', onde: 'Notas no Domínio', quem: 'Fiscal', nivel: 'media', peso: 'médio' });
@@ -1824,7 +1851,7 @@
         { nome: 'receita 30% menor', v: dif({ receita: ent.receita * 0.7 }), conferir: 'receita esperada para 2027' },
         { nome: 'receita 30% maior', v: dif({ receita: ent.receita * 1.3 }), conferir: 'receita esperada para 2027' }
       ];
-      if (!mixMedido && podeReduzir && !barRest) testes.push({ nome: 'metade das vendas com redução de 60%', v: dif({ mixCheia: 50, mixRed60: 50, mixRed40: 0, mixRed30: 0, mixZero: 0 }), conferir: 'mix das vendas por NCM' });
+      if (!mixMedido && podeReduzir && !barRest && !refeicaoEmpresas) testes.push({ nome: 'metade das vendas com redução de 60%', v: dif({ mixCheia: 50, mixRed60: 50, mixRed40: 0, mixRed30: 0, mixZero: 0 }), conferir: 'mix das vendas por NCM' });
       // o crédito de estoque é provável, não garantido (LC 214, art. 381): se a conclusão depende dele, o relatório diz
       if ((ent.creditoEstoqueMes || 0) > 0) testes.push({ nome: 'o crédito de estoque fora da conta (LC 214, art. 381: provável, não garantido — depende da regulamentação do inventário)', v: dif({ creditoEstoqueMes: 0 }), conferir: 'crédito de estoque (inventário de 31/12/2026)' });
       // a exclusão do ICMS/ISS da base (12/10/2026) é o método do curso, sem norma específica pro optante: se a conclusão
@@ -1853,17 +1880,25 @@
       if (dom && dom.excecoes && dom.excecoes.length) alertas.push({ texto: 'Usado nesta análise por decisão manual, de outro CNPJ: ' + dom.excecoes.join('; ') + '.', conferir: null, interno: true });
       // mix não medido: observação sempre (dado faltando, com a direção do erro); vira alerta se puder inverter
       const observacoes = [];
-      const alimentacao = perfil.tipo === 'alimentacao';
+      if (regime273) {
+        const t = 'Refeição para empresas: a simulação considera o fornecimento ' + regime273.hoje + '. ' + (regime273.muda
+          ? 'Pelo enquadramento contrário — ' + regime273.contrario + ' —, o resultado passa a ser “' + veredTxt(regime273.r2.veredito.tipo) + '” (' + sinal(regime273.r2.semestre.diferenca) + ' no semestre apurando por fora).'
+          : 'Pelo enquadramento contrário a recomendação não muda.') + ' O enquadramento depende do art. 273 da LC 214, a conferir.';
+        if (regime273.muda) alertas.push({ texto: t, conferir: 'enquadramento da refeição por contrato (LC 214, art. 273)' }); else observacoes.push(t);
+      }
+      const alimentacao = perfil.tipo === 'alimentacao' && !refeicaoEmpresas;
       if (!mixMedido && alimentacao) {
         const v = dif({ mixCheia: 10, mixRed40: 90, mixRed60: 0, mixRed30: 0, mixZero: 0 });
         const t = inverteDif(v)
           ? 'Não usamos as notas fiscais de venda (NFC-e). Em restaurante, a comida paga o imposto novo com desconto de 40% e só a bebida em lata ou garrafa e a alcoólica pagam cheio; sem as notas, consideramos tudo sem desconto. Com esse desconto a conta pode virar a favor de recolher por fora — precisamos das notas pra fechar.'
           : 'Não usamos as notas fiscais de venda (NFC-e). Em restaurante, a comida paga o imposto novo com desconto de 40% e só a bebida em lata ou garrafa e a alcoólica pagam cheio; sem as notas, consideramos tudo sem desconto, então o custo "por fora" mostrado está um pouco acima do real. Mesmo com o desconto, a recomendação não muda.';
         if (inverteDif(v)) alertas.push({ texto: t, conferir: 'notas de venda (NFC-e) — comida × bebida' }); else observacoes.push(t);
-      } else if (!mixMedido && podeReduzir && !viram.some(t => /mix|redução de 60/.test(t.nome))) {
+      } else if (!mixMedido && podeReduzir && !refeicaoEmpresas && !viram.some(t => /mix|redução de 60/.test(t.nome))) {
         observacoes.push('Não usamos as notas fiscais de venda. Parte dos produtos do seu ramo (alimentos, ração, adubo, remédios, itens de higiene) pode pagar o imposto novo com desconto; sem as notas, consideramos tudo sem desconto, então o custo "por fora" mostrado pode estar acima do real. Mesmo com metade das vendas com desconto, a recomendação não muda.');
       }
-      if (dom && dom.pctPJDeduzido) observacoes.push('Não tínhamos a lista de clientes com CNPJ, então partimos do perfil da empresa (' + String(dom.pctPJDeduzido).replace(/^deduzido:\s*/, '').replace(/\s*—.*$/, '') + '). Se boa parte das vendas for para empresas, nos avise — isso pode mudar a conta.');
+      // a frase segue o lado da dedução: perfil de consumidor (bar, varejo) ou de empresas (indústria, refeições para empresas)
+      if (dom && dom.pctPJDeduzido) observacoes.push('Não tínhamos a lista de clientes com CNPJ, então partimos do perfil da empresa (' + String(dom.pctPJDeduzido).replace(/^deduzido:\s*/, '').replace(/\s*—.*$/, '') + '). '
+        + (pctPJ != null && pctPJ >= 50 ? 'Se boa parte das vendas for a consumidor final ou a empresas do Simples, que não aproveitam o crédito, nos avise — isso pode mudar a conta.' : 'Se boa parte das vendas for para empresas, nos avise — isso pode mudar a conta.'));
       const aConfirmar = alertas.length > 0;
       const conferirLista = [...new Set(alertas.map(a => a.conferir).filter(Boolean))];
       const listaAlertas = '<ul style="margin:6px 0 10px 18px;padding:0">' + alertas.map(a => '<li>' + a.texto + '</li>').join('') + '</ul>';
@@ -1880,8 +1915,11 @@
             + (optar ? '<p style="margin-bottom:0">' + (janelaAberta ? 'Se não der pra conferir até ' + RT_PRAZO.opcao + ', é possível formalizar a opção e cancelá-la ' + RT_PRAZO.cancelamento + ' sem efeito, caso a conferência não confirme.' : 'A próxima janela é em março/2027 (efeito em julho): há tempo pra conferir antes.') + '</p>' : '<p style="margin-bottom:0">Enquanto não houver confirmação, manter é o caminho sem custo de mudança.</p>')
         };
       }
-      const sensibilidadeNotaFinal = !empate && viram.length
-        ? 'Atenção: ' + viram.map(t => t.nome).join('; ') + ' — ' + (viram.length > 1 ? 'cada uma dessas variáveis inverte' : 'essa variável inverte') + ' a conclusão. Por isso a recomendação é uma tendência, a confirmar.'
+      // o enquadramento da refeição por contrato muda o resultado (MANTENHA × "opte, se") sem trocar o sinal da diferença:
+      // não passa pelos testes acima, mas entra na nota
+      const virouNomes = viram.map(t => t.nome).concat(regime273 && regime273.muda ? ['o enquadramento da refeição por contrato (LC 214, art. 273)'] : []);
+      const sensibilidadeNotaFinal = !empate && virouNomes.length
+        ? 'Atenção: ' + virouNomes.join('; ') + ' — ' + (virouNomes.length > 1 ? 'cada uma dessas variáveis inverte' : 'essa variável inverte') + ' a conclusão. Por isso a recomendação é uma tendência, a confirmar.'
         : null;
       const pendenciasNota = viram.length || (aConfirmar && !empate)
         ? 'Em ordem de valor. Podem inverter a recomendação: ' + (conferirLista.length ? conferirLista.join(', ') : 'os itens marcados como decisivos') + '.'

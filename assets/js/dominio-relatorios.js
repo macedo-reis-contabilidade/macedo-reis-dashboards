@@ -307,11 +307,26 @@ export function ramoComReducao(cnae) {
   return !!d && RAMOS_COM_REDUCAO.some(p => d.startsWith(p));
 }
 
+// O CNAE do caso (rt_casos.cnae_base) às vezes tem só 4 dígitos; o do cadastro vem completo. Quando um é o começo do
+// outro, vale o mais completo — a subclasse decide casos como 5620-1/01 (refeições para empresas) × 5620-1/04 (para
+// consumo domiciliar). Se divergem, vale o do caso, como sempre.
+export function cnaeMaisCompleto(base, cadastro) {
+  const b = String(base || ''), c = String(cadastro || '');
+  const db = b.replace(/\D/g, ''), dc = c.replace(/\D/g, '');
+  if (!db) return c;
+  if (!dc) return b;
+  return dc.length > db.length && dc.startsWith(db) ? c : b;
+}
+
 // PERFIL DE ATIVIDADE (27/09/2026): uma fonte só pra todo texto que depende do que a empresa faz.
 // Ordem: o que as saídas mostram (CFOP) > CNAE do cadastro > anexo do Simples. Nunca um critério isolado.
+// REFEIÇÕES PARA EMPRESAS (13/10/2026): o CNAE 5620-1/01 (alimentos preparados preponderantemente para empresas) segue
+// "alimentação", mas vende a empresas por contrato — o fornecimento pode até ficar fora do regime de bares (LC 214,
+// art. 273, a conferir). Marcado em refeicaoEmpresas, pra não cair nos textos e premissas de restaurante.
 export function perfilAtividade({ natureza, cnae, anexo, restaurante } = {}) {
   const div = parseInt(String(cnae || '').replace(/\D/g, '').slice(0, 2), 10);
   const cnae4 = String(cnae || '').replace(/\D/g, '').slice(0, 4);
+  const cnae7 = String(cnae || '').replace(/\D/g, '').slice(0, 7);
   const tot = natureza ? Object.values(natureza).reduce((a, x) => a + (x || 0), 0) : 0;
   const maior = tot > 0 ? Object.entries(natureza).sort((a, b) => b[1] - a[1])[0] : null;
   const decisivo = maior && maior[1] / tot >= 0.6 ? maior[0] : null;
@@ -332,10 +347,11 @@ export function perfilAtividade({ natureza, cnae, anexo, restaurante } = {}) {
   else if (div >= 1 && div <= 3) { tipo = 'agro'; fonte = 'CNAE'; }
   else { tipo = 'servico'; fonte = 'CNAE'; }
   const passageiros = ['4921', '4922'].includes(cnae4);
+  const refeicaoEmpresas = tipo === 'alimentacao' && cnae7 === '5620101';
   return {
-    tipo, fonte, passageiros,
+    tipo, fonte, passageiros, refeicaoEmpresas,
     vendeMercadoria: ['comercio', 'industria', 'alimentacao', 'agro'].includes(tipo),
-    rotulo: { transporte: passageiros ? 'transporte de passageiros' : 'transporte de cargas', comercio: 'comércio', industria: 'indústria', alimentacao: 'bar e restaurante', agro: 'produção agropecuária', servico: 'prestação de serviços', comunicacao: 'comunicação', energia: 'energia' }[tipo] || tipo
+    rotulo: { transporte: passageiros ? 'transporte de passageiros' : 'transporte de cargas', comercio: 'comércio', industria: 'indústria', alimentacao: refeicaoEmpresas ? 'refeições para empresas' : 'bar e restaurante', agro: 'produção agropecuária', servico: 'prestação de serviços', comunicacao: 'comunicação', energia: 'energia' }[tipo] || tipo
   };
 }
 
@@ -758,7 +774,9 @@ export function consolidar(rels, incluir, opcoes = {}) {
   if (campos.pctPJ == null && opcoes.perfil) {
     const pf = opcoes.perfil;
     const industrializacao = ven && ven.vendas.some(v => /^[56]12[45]$/.test(String(v.cfop || '')));
-    if (pf.tipo === 'alimentacao' || (pf.tipo === 'comercio' && opcoes.varejo)) { campos.pctPJ = 0; campos.pctPJDeduzido = true; origem.pctPJ = 'deduzido: ' + (pf.tipo === 'alimentacao' ? 'bar e restaurante' : 'varejo') + ' vende a consumidor final — confirme se houver venda relevante a empresas'; }
+    // refeições para empresas (CNAE 5620-1/01): o cliente é empresa por definição — nunca "consumidor final"
+    if (pf.refeicaoEmpresas) { campos.pctPJ = 90; campos.pctPJDeduzido = true; origem.pctPJ = 'deduzido: CNAE 5620-1/01, refeições preparadas preponderantemente para empresas — confirme a carteira e o regime dos clientes (empresa do Simples não aproveita o crédito)'; }
+    else if (pf.tipo === 'alimentacao' || (pf.tipo === 'comercio' && opcoes.varejo)) { campos.pctPJ = 0; campos.pctPJDeduzido = true; origem.pctPJ = 'deduzido: ' + (pf.tipo === 'alimentacao' ? 'bar e restaurante' : 'varejo') + ' vende a consumidor final — confirme se houver venda relevante a empresas'; }
     else if (industrializacao) { campos.pctPJ = 100; campos.pctPJDeduzido = true; origem.pctPJ = 'deduzido: industrialização por encomenda (CFOP x124/x125) é sempre para empresa'; }
     else if (pf.tipo === 'industria') { campos.pctPJ = 90; campos.pctPJDeduzido = true; origem.pctPJ = 'deduzido: indústria vende essencialmente a empresas — confirme importando as saídas em XLS (trazem o CNPJ do cliente)'; }
   }

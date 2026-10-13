@@ -11,7 +11,7 @@
 // acompanhamento de entradas de 686 lançamentos): totais fechando ao
 // centavo e alíquota efetiva batendo com a do PGDAS na quarta casa.
 
-import { lerRelatorio, detectarTipo, grupoDoCfop, resumirEntradas, consolidar, numBR, classificarCliente, resumirVendas, lerPlanilha, detectarTipoPlanilha, grupoSaida, cnpjsParaConsultar, perfilAtividade, conferirRbt12 } from '../assets/js/dominio-relatorios.js';
+import { lerRelatorio, detectarTipo, grupoDoCfop, resumirEntradas, consolidar, numBR, classificarCliente, resumirVendas, lerPlanilha, detectarTipoPlanilha, grupoSaida, cnpjsParaConsultar, perfilAtividade, cnaeMaisCompleto, conferirRbt12 } from '../assets/js/dominio-relatorios.js';
 import { aliqEfetiva } from '../assets/js/rt-motor.js';
 
 let falhas = 0;
@@ -326,6 +326,26 @@ console.log('\nRegime de fornecedores e clientes (Receita) e deduções pelo per
   ok(semVenda.campos.pctPJ === 0 && semVenda.campos.pctPJDeduzido, 'restaurante sem CNPJ de clientes: deduz consumidor final');
   const ind = consolidar([{ tipo: 'faturamento', meses: [{ competencia: '2026-01', total: 150000, saidas: 150000, servicos: 0 }] }], null, { perfil: perfilAtividade({ cnae: '1531-9/01', anexo: 'II' }) });
   ok(ind.campos.pctPJ === 90 && /indústria vende essencialmente a empresas/.test(ind.origem.pctPJ), 'fábrica de calçados sem CNPJ de clientes: deduz venda a empresas (a confirmar)');
+  // refeições para empresas (CNAE 5620-1/01, 13/10/2026): cliente empresa por definição — nunca "consumidor final"
+  const fatSo = [{ tipo: 'faturamento', meses: [{ competencia: '2026-01', total: 100000, saidas: 100000, servicos: 0 }] }];
+  const coz = consolidar(fatSo, null, { perfil: perfilAtividade({ cnae: '5620-1/01', anexo: 'I' }) });
+  ok(coz.campos.pctPJ === 90 && coz.campos.pctPJDeduzido && /CNAE 5620-1\/01/.test(coz.origem.pctPJ) && /regime dos clientes/.test(coz.origem.pctPJ), 'refeições para empresas sem CNPJ de clientes: deduz venda a empresas (90%, a confirmar com o regime dos clientes)');
+  const domicilio = consolidar(fatSo, null, { perfil: perfilAtividade({ cnae: '5620-1/04', anexo: 'I' }) });
+  ok(domicilio.campos.pctPJ === 0 && /bar e restaurante/.test(domicilio.origem.pctPJ), 'refeições para consumo domiciliar (5620-1/04, pizzaria de entrega): segue consumidor final');
+}
+
+console.log('\nRefeições para empresas e o CNAE mais completo:');
+{
+  const p1 = perfilAtividade({ cnae: '5620-1/01', anexo: 'I' }), p4 = perfilAtividade({ cnae: '5620-1/04', anexo: 'I' }), p0 = perfilAtividade({ cnae: '5620', anexo: 'I' });
+  ok(p1.tipo === 'alimentacao' && p1.refeicaoEmpresas && p1.rotulo === 'refeições para empresas', '5620-1/01: alimentação, marcada como refeições para empresas');
+  ok(p4.tipo === 'alimentacao' && !p4.refeicaoEmpresas && p4.rotulo === 'bar e restaurante', '5620-1/04: alimentação comum (bar e restaurante)');
+  ok(!p0.refeicaoEmpresas, 'só com 4 dígitos (5620) não dá pra saber a subclasse: não marca');
+  ok(!perfilAtividade({ cnae: '5620-1/01', natureza: { servico: 100 } }).refeicaoEmpresas, 'se as saídas mostram serviço, o perfil é de serviço e não marca');
+  const cad = '5620-1/01 - Fornecimento de alimentos preparados preponderantemente para empresas';
+  ok(cnaeMaisCompleto('5620', cad) === cad, 'caso com 4 dígitos e cadastro completo: vale o cadastro');
+  ok(cnaeMaisCompleto('5620-1/01', '5620-1/01') === '5620-1/01', 'os dois iguais: vale o do caso');
+  ok(cnaeMaisCompleto('5611', '5620-1/04') === '5611', 'caso e cadastro divergem: vale o do caso, como sempre');
+  ok(cnaeMaisCompleto(null, cad) === cad && cnaeMaisCompleto('5620', null) === '5620' && cnaeMaisCompleto(null, null) === '', 'sem um dos dois, vale o outro');
 }
 
 console.log('\nRBT12 × relatórios, mês com mês:');

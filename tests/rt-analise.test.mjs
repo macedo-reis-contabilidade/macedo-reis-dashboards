@@ -6,9 +6,9 @@ import { gerarAnalise } from '../assets/js/rt-analise.js';
 const page = fs.readFileSync(new URL('../fiscal-reforma.html', import.meta.url), 'utf8');
 const i = page.indexOf('    function montarDadosAnalise('); const j = page.indexOf("\n    $('dGerar').onclick");
 const src = page.slice(i, j);
-import { perfilAtividade, ramoComReducao, conferirRbt12, CREDITO_FORNECEDOR_SIMPLES } from '../assets/js/dominio-relatorios.js';
+import { perfilAtividade, cnaeMaisCompleto, ramoComReducao, conferirRbt12, CREDITO_FORNECEDOR_SIMPLES } from '../assets/js/dominio-relatorios.js';
 import { RT_PRAZO, janelaAberta as janelaAbertaEm } from '../assets/js/rt-prazos.js';
-const montarDadosAnalise = new Function('simular', 'ANO_XML', 'location', 'perfilAtividade', 'ramoComReducao', 'conferirRbt12', 'RT_PRAZO', 'janelaAbertaEm', 'CREDITO_FORNECEDOR_SIMPLES', src + '\nreturn montarDadosAnalise;')(simular, 2026, { href: 'http://x/' }, perfilAtividade, ramoComReducao, conferirRbt12, RT_PRAZO, janelaAbertaEm, CREDITO_FORNECEDOR_SIMPLES);
+const montarDadosAnalise = new Function('simular', 'ANO_XML', 'location', 'perfilAtividade', 'cnaeMaisCompleto', 'ramoComReducao', 'conferirRbt12', 'RT_PRAZO', 'janelaAbertaEm', 'CREDITO_FORNECEDOR_SIMPLES', src + '\nreturn montarDadosAnalise;')(simular, 2026, { href: 'http://x/' }, perfilAtividade, cnaeMaisCompleto, ramoComReducao, conferirRbt12, RT_PRAZO, janelaAbertaEm, CREDITO_FORNECEDOR_SIMPLES);
 // data fixa dentro da janela (até 30/10/2026, Res. CGSN 194/2026): o teste não pode depender do relógio de quem roda
 // (os casos que testam a janela fechada fixam globalThis.__HOJE_ISO__ antes de chamar)
 function caso(nome, ent, dom, xml, cnae, hojeISO = globalThis.__HOJE_ISO__ || '2026-09-29') {
@@ -174,6 +174,33 @@ chk('ISS fixo: nada sai da base e a fonte diz por quê', ctb.sim.mes.exclusaoBas
 chk('crédito das despesas informado nas fontes', ctb.d.fontes.some(f => /Crédito das despesas \(70,0% do cheio\)/.test(f.o_que)));
 chk('fonte do crédito das despesas lembra o aluguel (−70%) e VR, VA e plano de saúde (débito do fornecedor)', ctb.d.fontes.some(f => /Crédito das despesas/.test(f.o_que) && /aluguel de imóvel \(−70%, art\. 261/.test(f.origem) && /VR, VA e plano de saúde/.test(f.origem)));
 chk('sem linha de base cheia quando nada foi excluído', !ctb.d.sensibilidade.some(x => /fora da base do débito/.test(x.nome)));
+
+// 10) Refeições para empresas (CNAE 5620-1/01, 13/10/2026): cliente empresa por contrato, nunca os textos de restaurante; o
+//     enquadramento no regime de bares (LC 214, art. 273, a conferir) muda o resultado e a análise mostra os dois lados
+const domCoz = { faturamento: { total: 800000, servicos: 0, saidas: 800000 }, periodoRotulo: 'jan/26–ago/26',
+  pctPJDeduzido: 'deduzido: CNAE 5620-1/01, refeições preparadas preponderantemente para empresas — confirme a carteira e o regime dos clientes (empresa do Simples não aproveita o crédito)' };
+const entCoz = { anexo:'I', rbt12:1200000, receita:100000, pctComprasMercadorias:40, pctComprasDespesas:0, pctImpostoEmbutido:0, pctExcluidoST:0, partilha:15.5, cbs:9.2, ibs:0.1, pctPJ:90, pctComprasComCredito:50 };
+const cozFora = caso('COZINHA EMPRESAS TESTE', { ...entCoz, mixCheia:100, mixRed40:0 }, domCoz, null, '5620-1/01');
+const cozDentro = caso('COZINHA EMPRESAS TESTE', { ...entCoz, mixCheia:10, mixRed40:90 }, domCoz, null, '5620-1/01');
+console.log('Refeições para empresas (CNAE 5620-1/01):');
+chk('perfil: refeições para empresas, não "bar e restaurante"', cozFora.d.perfil.refeicaoEmpresas && cozFora.d.perfil.rotulo === 'refeições para empresas' && /refeições para empresas/.test(cozFora.txt));
+chk('o motor muda com o enquadramento: fora do regime "opte, se", dentro MANTENHA', cozFora.sim.veredito.tipo === 'OPTE_SE' && cozDentro.sim.veredito.tipo === 'MANTENHA');
+chk('B2B: nada de consumidor final nem dos textos de restaurante, mesmo com o mix de 40%', !cozFora.d.consumidor && !cozDentro.d.consumidor && ![cozFora.txt, cozDentro.txt].some(t => /iFood|Em restaurante|bebida em lata ou garrafa e bebida alcoólica\?/.test(t)));
+chk('pergunta do contrato de refeição, com o art. 273', /contratos de refeição/.test(cozFora.txt) && cozFora.d.perguntas[0].includes('art. 273'));
+chk('sensibilidade: o enquadramento do art. 273, que muda o resultado', cozFora.d.sensibilidade.some(x => /Enquadramento da refeição por contrato/.test(x.nome) && /^Sim/.test(x.muda) && /no regime de bares/.test(x.efeito)));
+chk('fora do regime: alerta de que no regime de bares o resultado vira "manter"', cozFora.d.alertas.some(a => /fora do regime de bares/.test(a.texto) && /passa a ser “manter dentro do DAS”/.test(a.texto) && /art\. 273/.test(a.conferir)));
+chk('dentro do regime: alerta de que fora dele o resultado vira "opte, se"', cozDentro.d.alertas.some(a => /no regime de bares \(−40%/.test(a.texto) && /passa a ser “opte, se o comercial confirmar”/.test(a.texto)));
+chk('pendência decisiva em primeiro lugar', cozFora.d.pendencias[0].o_que === 'Enquadramento da refeição por contrato (LC 214, art. 273)' && cozFora.d.pendencias[0].peso === 'decisivo');
+chk('a nota da sensibilidade diz que o enquadramento inverte a conclusão (não "só o repasse")', /enquadramento da refeição por contrato/.test(cozFora.d.sensibilidadeNota) && !/Só o repasse derruba/.test(cozFora.d.sensibilidadeNota));
+chk('fonte do mix: cheia "a conferir" pelo art. 273 (fora) e 40% também "a conferir" (dentro)', cozFora.d.fontes.some(f => /Mix de alíquotas \(integralmente cheia\)/.test(f.o_que) && f.rotulo === 'a conferir' && /art\. 273/.test(f.origem)) && cozDentro.d.fontes.some(f => /com redução de 40%/.test(f.o_que) && f.rotulo === 'a conferir'));
+chk('sem o teste de "metade das vendas com −60%" nem o aviso de produtos do ramo', !cozFora.d.sensibilidade.some(x => /redução de 60%/.test(x.efeito || '')) && !cozFora.d.observacoes.some(o => /ração, adubo/.test(o)));
+chk('% de PJ deduzido pra cima: pede aviso se a venda for a consumidor ou a empresas do Simples', cozFora.d.observacoes.some(o => /refeições preparadas preponderantemente para empresas/.test(o) && /consumidor final ou a empresas do Simples/.test(o)));
+chk('restaurante comum (5611) continua com os textos de restaurante', !rest.d.perfil.refeicaoEmpresas && rest.d.consumidor && /fornecimento de refeições a empresas por contrato/.test(rest.txt));
+const cozXml = caso('COZINHA EMPRESAS TESTE', { ...entCoz, mixCheia:10, mixRed40:90 }, null,
+  { pctPJ: 90, nNotas: 400, periodoRotulo: 'jan–ago/2026', cobertura: 100, nClientes: 6, totalVendas: 800000, top20: 100,
+    clientes: [{ nome: 'CALÇADOS EXEMPLO S.A.', uf: 'RS', valor: 300000, pct: 37.5, cnpjs: 1 }, { nome: 'FÁBRICA EXEMPLO LTDA', uf: 'RS', valor: 200000, pct: 25, cnpjs: 1 }] }, '5620-1/01');
+chk('com notas e mix de 40%: a seção de clientes é a de venda a empresas, não a de "ninguém credita"', /por que isso decide a conta/.test(cozXml.txt) && !/fecha a porta também para o cliente pessoa jurídica/.test(cozXml.txt) && !/Apurar por fora não devolve crédito relevante a ninguém/i.test(cozXml.txt));
+chk('o mix de 40% aparece como regime de bares a conferir (art. 273)', /refeição no regime de bares, LC 214 art\. 275 — enquadramento a conferir no art\. 273/.test(cozXml.txt));
 
 console.log(falhas ? '\n' + falhas + ' FALHA(S)' : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);

@@ -251,7 +251,10 @@ export function gerarAnalise(d, opts = {}) {
     + '</tbody></table>');
 
   // ---------- 2. clientes ----------
-  const barRestaurante = (e.mixRed40 || 0) > 0;
+  // refeições para empresas (CNAE 5620-1/01, 13/10/2026): mesmo com o mix de 40%, o cliente é empresa por contrato e o
+  // enquadramento no regime de bares é a conferir (LC 214, art. 273) — nunca o texto de "ninguém credita"
+  const refeicaoEmpresas = !!(d.perfil && d.perfil.refeicaoEmpresas);
+  const barRestaurante = (e.mixRed40 || 0) > 0 && !refeicaoEmpresas;
   const vendeAConsumidor = !!d.consumidor;
   if (xml && (vendeAConsumidor || barRestaurante)) {
     // empresa que vende a consumidor final (ou bar/restaurante): ninguém credita — a decisão é só a conta própria
@@ -349,7 +352,7 @@ export function gerarAnalise(d, opts = {}) {
   const exclPct = fat.icmsIss && fat.icmsIss.excluido > 0 && receita > 0 ? fat.icmsIss.excluido / receita : 0;
   const aliqVendas = (e.cbs + e.ibs) * fat.mix * (1 - exclPct), aliqCompras = (e.cbs + e.ibs) * fat.compras;
   const mixTxt = [];
-  if ((e.mixRed40 || 0) > 0) mixTxt.push(pct1(e.mixRed40) + '% com redução de 40% (alimentação preparada por bar/restaurante, LC 214 art. 275)');
+  if ((e.mixRed40 || 0) > 0) mixTxt.push(pct1(e.mixRed40) + (refeicaoEmpresas ? '% com redução de 40% (refeição no regime de bares, LC 214 art. 275 — enquadramento a conferir no art. 273)' : '% com redução de 40% (alimentação preparada por bar/restaurante, LC 214 art. 275)'));
   if ((e.mixRed60 || 0) > 0) mixTxt.push(pct1(e.mixRed60) + '% com redução de 60%');
   if ((e.mixRed30 || 0) > 0) mixTxt.push(pct1(e.mixRed30) + '% com redução de 30%');
   if ((e.mixZero || 0) > 0) mixTxt.push(pct1(e.mixZero) + '% em alíquota zero');
