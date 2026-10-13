@@ -41,11 +41,13 @@ export function parseXml(texto, nome){
   if (rl === 'DPS' || first(dom, 'infDPS')) return { kind: 'ignorado', motivo: 'DPS (declaração de serviço) sem a NFS-e gerada — baixe o XML da NFS-e no portal' };
   if (/^(NfseCancelamento|CancelarNfseResposta|CancelarNfseResultado|CancelamentoNfse)$/i.test(rl)) return parseCancelAbrasf(dom);
   if (first(dom, 'InfNfse') || first(dom, 'infNfse')) return parseNfseAbrasf(dom, nome);
+  // CT-e e MDF-e antes da NF-e: os dois citam a NF-e transportada num grupo infNFe (CT-e: infDoc/infNFe/chave;
+  // MDF-e: infMunDescarga/infNFe/chNFe), sem o Id — procurar a NF-e primeiro dava "chave de acesso inválida"
+  if (/cte/i.test(rl) || first(dom, 'infCte')) return { kind: 'ignorado', motivo: 'CT-e' };
+  if (/mdfe/i.test(rl) || first(dom, 'infMDFe')) return { kind: 'ignorado', motivo: 'MDF-e' };
   const infNFe = first(dom, 'infNFe');
   if (!infNFe) {
     if (/nfse|Nfse|NFS-e|ConsultarNfse|CompNfse/i.test(rl)) return { kind: 'ignorado', motivo: 'NFS-e em layout que não reconheço (' + rl + ')' };
-    if (/^cte|CTe/i.test(rl) || first(dom, 'infCte')) return { kind: 'ignorado', motivo: 'CT-e' };
-    if (/^mdfe|MDFe/i.test(rl) || first(dom, 'infMDFe')) return { kind: 'ignorado', motivo: 'MDF-e' };
     return { kind: 'ignorado', motivo: 'XML não reconhecido (' + rl + ')' };
   }
   const chave = chaveXml(String(infNFe.getAttribute('Id') || '').replace(/^NFe/i, ''));

@@ -93,7 +93,8 @@ chk('perfil = transporte de cargas', tr.d.perfil.tipo === 'transporte' && !tr.d.
 chk('sem aviso de notas de venda', !/Não usamos as notas fiscais de venda/.test(tr.txt));
 chk('sem "insumos agropecuários, cesta básica"', !/cesta básica/.test(tr.txt));
 chk('faturamento rotulado como fretes (CT-e)', /fretes \(CT-e\)/.test(tr.txt));
-chk('fonte da alíquota: frete sem redução na LC 214', /Transporte de cargas não tem redução na LC 214/.test(tr.txt));
+chk('fonte da alíquota: frete rodoviário sem redução na LC 214', /Transporte rodoviário de cargas não tem redução na LC 214/.test(tr.txt));
+chk('fonte da alíquota: a redução do aéreo regional também vale para carga (art. 287)', /aéreo regional, de passageiros ou de carga/.test(tr.txt) && /art\. 287/.test(tr.txt));
 chk('pergunta sobre o frete, não sobre hora técnica', /Como o frete é cobrado/.test(tr.txt) && !/hora técnica/.test(tr.txt));
 chk('sem ISS retido (frete é ICMS)', !/ISS retido/.test(tr.txt));
 chk('resumo não diz "não compensa" quando o crédito dos clientes supera o custo', !/não compensa o custo/.test(tr.txt) && /conversa comercial/.test(tr.txt));
@@ -139,6 +140,9 @@ console.log('Bar e restaurante (art. 276):');
 chk('ponto central: bebida em lata/garrafa e alcoólica geram crédito', /bebida em lata ou garrafa e a alcoólica/.test(rest.txt));
 chk('sem "adquirente de alimentação e bebidas não pode"', !/adquirente de alimentação e bebidas não pode/.test(rest.txt));
 chk('crédito do cliente só da parte cheia', Math.abs(rest.sim.semestre.creditoClienteFora - 6 * rest.sim.mes.debitoCreditavel) < 0.01 && rest.sim.mes.debitoCreditavel < rest.sim.mes.debitoFora);
+// Módulo 06 (13/10/2026): refeição fornecida a empresas por contrato pode ficar fora do regime de bares (art. 273, a conferir)
+chk('pergunta de venda a PJ avisa da refeição por contrato (art. 273)', /fornecimento de refeições a empresas por contrato/.test(rest.txt) && /CNAE 5620-1\/01/.test(rest.txt) && /art\. 273, a conferir/.test(rest.txt));
+chk('fonte do mix de 40% traz a mesma ressalva', rest.d.fontes.some(f => /Mix de alíquotas/.test(f.o_que) && /art\. 273, a conferir/.test(f.ressalva || '')));
 console.log('Notas no padrão IBS/CBS em 2027:');
 chk('manter também avisa das notas a partir de 01/01/2027', /Mantendo, não é preciso fazer nada quanto à opção/.test(rest.txt) && /Ato Conjunto RFB\/CGIBS nº 4\/2026/.test(rest.txt));
 
@@ -168,6 +172,7 @@ const ctb = caso('CONTABILIDADE TESTE', { anexo:'III', rbt12:1800000, receita:15
 console.log('Contabilidade — ISS fixo e crédito das despesas:');
 chk('ISS fixo: nada sai da base e a fonte diz por quê', ctb.sim.mes.exclusaoBase === 0 && ctb.d.fontes.some(f => /ISS fixo por profissional/.test(f.o_que)));
 chk('crédito das despesas informado nas fontes', ctb.d.fontes.some(f => /Crédito das despesas \(70,0% do cheio\)/.test(f.o_que)));
+chk('fonte do crédito das despesas lembra o aluguel (−70%) e VR, VA e plano de saúde (débito do fornecedor)', ctb.d.fontes.some(f => /Crédito das despesas/.test(f.o_que) && /aluguel de imóvel \(−70%, art\. 261/.test(f.origem) && /VR, VA e plano de saúde/.test(f.origem)));
 chk('sem linha de base cheia quando nada foi excluído', !ctb.d.sensibilidade.some(x => /fora da base do débito/.test(x.nome)));
 
 console.log(falhas ? '\n' + falhas + ' FALHA(S)' : '\nTudo certo.');

@@ -8,7 +8,8 @@ que o `conferir.py` usa, com os mesmos XMLs inventados (repositório público �
 
 Confere: NF-e autorizada (chave, emitente/destinatário, status, CFOP, valor, item), NF-e rejeitada,
 evento de cancelamento (homologado e não homologado), NFS-e do padrão nacional, CNPJ alfanumérico na chave e
-nos documentos (IN RFB 2.229/2024), DPS solta, CT-e e XML mal formado. Termina com código 1 se alguma checagem falhar.
+nos documentos (IN RFB 2.229/2024), DPS solta, CT-e e MDF-e (inclusive os que citam a NF-e transportada) e XML mal
+formado. Termina com código 1 se alguma checagem falhar.
 Pré-requisito: pip install playwright e python -m playwright install chromium
 """
 import sys, pathlib
@@ -53,6 +54,24 @@ CHAVE_NFSE_ALFA = '4321501' + '2' + '1' + CNPJ_ALFA + '2' * 27
 NFE_ALFA = NFE.replace(CHAVE, CHAVE_ALFA).replace('<emit><CNPJ>11111111000111</CNPJ>', '<emit><CNPJ>' + CNPJ_ALFA + '</CNPJ>')
 NFSE_ALFA = NFSE.replace(CHAVE_NFSE, CHAVE_NFSE_ALFA).replace('<emit><CNPJ>11111111000111</CNPJ>', '<emit><CNPJ>' + CNPJ_ALFA + '</CNPJ>').replace('<toma><CNPJ>22222222000122</CNPJ>', '<toma><CNPJ>' + CNPJ_ALFA + '</CNPJ>')
 assert len(CHAVE_ALFA) == 44 and len(CHAVE_NFSE_ALFA) == 50
+
+# CT-e de carga e MDF-e como saem de verdade: os dois listam a NF-e transportada num grupo infNFe (só com a chave,
+# sem o atributo Id). O parser achava esse grupo antes de ver que era CT-e e dava "chave de acesso inválida".
+CHAVE_CTE = '43' + '2609' + '11111111000111' + '57' + '004' + '000036365' + '1' + '00000001' + '0'   # cUF, AAMM, CNPJ, modelo 57, série, nCT, tpEmis, cCT, DV
+assert len(CHAVE_CTE) == 44
+CTE = f'''<?xml version="1.0"?><cteProc xmlns="http://www.portalfiscal.inf.br/cte" versao="4.00"><CTe><infCte Id="CTe{CHAVE_CTE}" versao="4.00">
+<ide><cUF>43</cUF><CFOP>6353</CFOP><mod>57</mod><serie>4</serie><nCT>36365</nCT><dhEmi>2026-07-10T10:00:00-03:00</dhEmi><tpAmb>2</tpAmb><toma3><toma>3</toma></toma3></ide>
+<emit><CNPJ>11111111000111</CNPJ><xNome>TRANSPORTADORA TESTE LTDA</xNome></emit>
+<rem><CNPJ>22222222000122</CNPJ></rem><dest><CNPJ>33333333000133</CNPJ></dest>
+<vPrest><vTPrest>118.00</vTPrest><vRec>118.00</vRec></vPrest>
+<infCTeNorm><infCarga><vCarga>1000.00</vCarga></infCarga><infDoc><infNFe><chave>{CHAVE}</chave></infNFe></infDoc></infCTeNorm>
+</infCte></CTe><protCTe><infProt><chCTe>{CHAVE_CTE}</chCTe><cStat>100</cStat></infProt></protCTe></cteProc>'''
+MDFE = f'''<?xml version="1.0"?><mdfeProc xmlns="http://www.portalfiscal.inf.br/mdfe" versao="3.00"><MDFe><infMDFe Id="MDFe{CHAVE_CTE}" versao="3.00">
+<ide><cUF>43</cUF><mod>58</mod><serie>1</serie><nMDF>10</nMDF><dhEmi>2026-07-10T10:00:00-03:00</dhEmi></ide>
+<emit><CNPJ>11111111000111</CNPJ></emit>
+<infDoc><infMunDescarga><cMunDescarga>4321501</cMunDescarga><xMunDescarga>TRES COROAS</xMunDescarga><infNFe><chNFe>{CHAVE}</chNFe></infNFe></infMunDescarga></infDoc>
+</infMDFe></MDFe><protMDFe><infProt><cStat>100</cStat></infProt></protMDFe></mdfeProc>'''
+EVENTO_CTE = f'''<procEventoCTe xmlns="http://www.portalfiscal.inf.br/cte" versao="4.00"><eventoCTe><infEvento><chCTe>{CHAVE_CTE}</chCTe><tpEvento>110111</tpEvento></infEvento></eventoCTe></procEventoCTe>'''
 
 # as mesmas checagens do .mjs antigo, agora rodando no navegador
 CHECAGENS = r'''
@@ -112,6 +131,17 @@ async (x) => {
   tit('Outros:');
   ok(parseXml('<DPS xmlns="http://www.sped.fazenda.gov.br/nfse"><infDPS></infDPS></DPS>', 'dps.xml').kind === 'ignorado', 'DPS solta é ignorada');
   ok(parseXml('<cteProc xmlns="http://www.portalfiscal.inf.br/cte"><CTe><infCte/></CTe></cteProc>', 'cte.xml').motivo === 'CT-e', 'CT-e é ignorado com o motivo');
+
+  tit('CT-e e MDF-e que citam a NF-e transportada:');
+  const tenta = (xml, nome) => { try { return parseXml(xml, nome); } catch (e) { return { kind: 'erro', motivo: e.message }; } };
+  const rc = tenta(x.cte, 'cte-carga.xml');
+  ok(rc.kind === 'ignorado' && rc.motivo === 'CT-e', 'CT-e de carga com a chave da NF-e (infDoc/infNFe) é ignorado como CT-e, não vira erro (' + rc.kind + ': ' + rc.motivo + ')');
+  const rm = tenta(x.mdfe, 'mdfe.xml');
+  ok(rm.kind === 'ignorado' && rm.motivo === 'MDF-e', 'MDF-e com NF-e na descarga é ignorado como MDF-e (' + rm.kind + ': ' + rm.motivo + ')');
+  const rec = tenta(x.eventoCte, 'ev-cte.xml');
+  ok(rec.kind === 'ignorado' && rec.motivo === 'CT-e', 'evento de CT-e é ignorado como CT-e');
+  const rn = tenta(x.nfe, 'nfe-de-novo.xml');
+  ok(rn.kind === 'nfe' && rn.doc.chave === x.chave, 'a NF-e continua sendo lida normalmente');
   // no navegador o DOMParser gera <parsererror> e o parser lança
   let mal = null;
   try { mal = parseXml('<a><b></a>', 'x.xml'); } catch (e) { mal = { kind: 'erro', motivo: e.message }; }
@@ -133,7 +163,8 @@ def main():
         p.on('pageerror', lambda e: erros.append(str(e)))
         p.goto(base + '_parser.html')
         linhas = p.evaluate(CHECAGENS, { 'nfe': NFE, 'evento': EVENTO, 'nfse': NFSE, 'nfseDesc': NFSE_DESC, 'chave': CHAVE,
-                                         'nfeAlfa': NFE_ALFA, 'nfseAlfa': NFSE_ALFA, 'chaveAlfa': CHAVE_ALFA, 'cnpjAlfa': CNPJ_ALFA })
+                                         'nfeAlfa': NFE_ALFA, 'nfseAlfa': NFSE_ALFA, 'chaveAlfa': CHAVE_ALFA, 'cnpjAlfa': CNPJ_ALFA,
+                                         'cte': CTE, 'mdfe': MDFE, 'eventoCte': EVENTO_CTE })
         b.close()
     srv.shutdown()
 
