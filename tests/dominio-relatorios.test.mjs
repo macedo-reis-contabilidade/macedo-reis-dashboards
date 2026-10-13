@@ -11,7 +11,7 @@
 // acompanhamento de entradas de 686 lançamentos): totais fechando ao
 // centavo e alíquota efetiva batendo com a do PGDAS na quarta casa.
 
-import { lerRelatorio, detectarTipo, grupoDoCfop, resumirEntradas, consolidar, numBR, classificarCliente, resumirVendas, lerPlanilha, detectarTipoPlanilha, grupoSaida, cnpjsParaConsultar, perfilAtividade, cnaeMaisCompleto, conferirRbt12 } from '../assets/js/dominio-relatorios.js';
+import { lerRelatorio, detectarTipo, grupoDoCfop, resumirEntradas, consolidar, numBR, classificarCliente, resumirVendas, lerPlanilha, detectarTipoPlanilha, grupoSaida, cnpjsParaConsultar, perfilAtividade, cnaeMaisCompleto, conferirRbt12, rotuloMeses } from '../assets/js/dominio-relatorios.js';
 import { aliqEfetiva } from '../assets/js/rt-motor.js';
 
 let falhas = 0;
@@ -359,6 +359,115 @@ console.log('\nRBT12 × relatórios, mês com mês:');
   const doze = ['2025-08','2025-09','2025-10','2025-11','2025-12','2026-01','2026-02','2026-03','2026-04','2026-05','2026-06','2026-07'].map(c => mes(c, 50000));
   ok(conferirRbt12(doze, '2026-08', 1000000).alerta === true, 'cobrindo os 12 meses e somando 60% do RBT12: falta receita');
   ok(conferirRbt12(doze, '2026-08', 600000).alerta === false, 'cobrindo os 12 meses e batendo: nada');
+}
+
+// ---------- período de cada relatório (13/10/2026) ----------
+// Cliente recém-chegado: entradas e saídas só do primeiro mês feito pelo escritório (set/26), faturamento dos 12 meses de
+// antes (set/25 a ago/26) e o PGDAS de set/26. Antes as compras de set/26 ficavam fora da conta (0% de compras) e o % de
+// PJ caía no deduzido pelo perfil, sem aviso; com o faturamento até set/26, as compras de um mês eram divididas pela
+// receita de doze (1/12 do % real).
+console.log('\nPeríodo das entradas e das saídas diferente do faturamento:');
+{
+  const meses = (ini, n) => { const out = []; let [a, m] = ini.split('-').map(Number); for (let i = 0; i < n; i++) { out.push(a + '-' + String(m).padStart(2, '0')); if (++m > 12) { m = 1; a++; } } return out; };
+  const fatDe = ini => ({ tipo: 'faturamento', meses: meses(ini, 12).map(c => ({ competencia: c, total: 108500, saidas: 108500, servicos: 0 })) });
+  const pgdas = { tipo: 'simples', competencia: '2026-09', rpa: 110000, rbt12: 1302000, anexoPredominante: 'II', aliquotaEfetiva: 8.2, receitaTributada: 110000, dasTotal: 9020,
+    partilhaCbsPct: 14, cbsNoDas: 1262.8, anexos: [{ anexo: 'II', receita: 110000, das: 9020, secoes: [{}] }], historico: meses('2025-09', 12).map(c => ({ competencia: c, receita: 108500 })) };
+  const lanc = (c, grupo, cfop, valor, i) => ({ competencia: c, grupo, cfop, documento: '1' + String(i).padStart(13, '0'), fornecedor: 'FORNECEDOR ' + i, valor });
+  const ent = { tipo: 'entradas', lancamentos: [...Array.from({ length: 11 }, (_, i) => lanc('2026-09', 'mercadoria', '1101', 4000, i)), ...Array.from({ length: 5 }, (_, i) => lanc('2026-09', 'despesa', '1353', 440, 20 + i))] };
+  const venda = (valor, i, pj) => ({ tipo: 'saidas', competencia: '2026-09', documento: pj ? '2' + String(i).padStart(13, '0') : '3' + String(i).padStart(10, '0'), cliente: 'CLIENTE ' + i, classe: pj ? 'pj' : 'pf', classePorDocumento: true, valor, grupo: 'receita', cfop: '5101' });
+  const sai = { tipo: 'saidas', fonte: 'planilha', vendas: [...Array.from({ length: 11 }, (_, i) => venda(8500, i, true)), venda(5000, 90, false), venda(5000, 91, false), venda(6500, 92, false)] };
+  const perfil = perfilAtividade({ cnae: '3299-0/99', anexo: 'II' });
+
+  const a = consolidar([fatDe('2025-09'), pgdas, ent, sai], null, { perfil });
+  perto(a.campos.receita, 108500, 0.005, 'a receita média continua a dos 12 meses do faturamento');
+  perto(a.campos.pctMerc, 44000 / 110000 * 100, 0.0001, 'faturamento até ago/26: compras de set/26 ÷ receita de set/26 do PGDAS (não zero)');
+  perto(a.campos.pctDesp, 2200 / 110000 * 100, 0.0001, 'despesas também sobre a receita do mesmo mês');
+  ok(/set\/26 \(1 mês\)/.test(a.origem.pctMerc) && /PGDAS set\/26/.test(a.origem.pctMerc), 'a origem diz o mês das compras e de onde veio a receita: ' + a.origem.pctMerc);
+  ok(a.procedencia.pctMerc.fonte === 'entradas' && a.procedencia.pctMerc.meses.join() === '2026-09' && a.procedencia.pctMerc.mesesFaturamento === 12 && a.procedencia.pctMerc.receitaDe[0] === 'PGDAS set/26', 'procedência das compras: entradas de set/26, contra 12 meses de faturamento');
+  perto(a.campos.pctPJ, 93500 / 110000 * 100, 0.0001, '% de PJ medido nas saídas de set/26 (não o deduzido pelo perfil)');
+  ok(!a.campos.pctPJDeduzido && a.procedencia.pctPJ.fonte === 'saidas' && a.procedencia.pctPJ.meses.join() === '2026-09' && a.procedencia.pctPJ.porDocumento === true, 'procedência do % de PJ: saídas de set/26, pelo CNPJ');
+  ok(a.mesesEntradas.join() === '2026-09' && a.mesesVendas.join() === '2026-09', 'os meses das entradas e das saídas vão junto (a prévia e a análise usam os mesmos)');
+  ok(a.procedencia.receita.fonte === 'faturamento' && a.procedencia.receita.meses.length === 12 && a.procedencia.rbt12.fonte === 'pgdas', 'procedência da receita (12 meses) e do RBT12 (PGDAS)');
+  ok(a.avisos.some(t => /^Compras medidas em set\/26 \(1 mês\), contra 12 meses do faturamento/.test(t) && /confiança baixa/.test(t)), 'avisa que as compras são de 1 mês contra 12 do faturamento');
+  ok(a.avisos.some(t => /^O % de vendas para PJ foi medido nas saídas de set\/26 \(1 mês\)/.test(t)), 'avisa que o % de PJ é das saídas de 1 mês');
+  ok(!a.avisos.some(t => /subestimado|não cobre/.test(t)), 'sem o aviso antigo de "subestimado"');
+  ok(!a.avisos.some(t => /não batem/.test(t)), 'sem comparar saídas de 1 mês com faturamento de 12 (não há mês em comum)');
+
+  const b = consolidar([fatDe('2025-10'), pgdas, ent, sai], null, { perfil });
+  perto(b.campos.pctMerc, 44000 / 108500 * 100, 0.0001, 'faturamento até set/26: compras de set/26 ÷ receita de set/26 do faturamento (não ÷ 12 meses)');
+  ok(b.procedencia.pctMerc.receitaDe.join() === 'faturamento', 'a receita do mês veio do faturamento');
+  ok(b.avisos.some(t => /^Nos meses em que os dois relatórios existem \(set\/26\)/.test(t)), 'saídas × faturamento comparados só no mês em comum (set/26)');
+
+  // entradas de um mês sem receita em relatório nenhum: ficam fora, com aviso — o % não é inventado
+  const entOut = { tipo: 'entradas', lancamentos: [lanc('2026-10', 'mercadoria', '1101', 5000, 1)] };
+  const c = consolidar([fatDe('2025-09'), entOut], null, { perfil });
+  ok(c.campos.pctMerc === undefined && c.procedencia.pctMerc === undefined, 'entradas de out/26 sem receita do mesmo mês: o % de compras não é calculado');
+  ok(c.avisos.some(t => /^As entradas de out\/26 ficaram fora do % de compras/.test(t)), 'e o aviso diz quais meses e por quê');
+
+  // a receita do mês pode vir do histórico do RBT12 que vem no PGDAS
+  const entMar = { tipo: 'entradas', lancamentos: [lanc('2026-03', 'mercadoria', '1101', 54250, 1)] };
+  const d = consolidar([pgdas, entMar], null, { perfil });
+  perto(d.campos.pctMerc, 50, 0.0001, 'entradas de mar/26 ÷ receita de mar/26 do histórico do RBT12 no PGDAS');
+  ok(/histórico do RBT12 no PGDAS set\/26/.test(d.origem.pctMerc), 'e a origem diz isso');
+
+  // sem as saídas, o % de PJ é deduzido — e a procedência marca
+  const e = consolidar([fatDe('2025-09'), pgdas, ent], null, { perfil });
+  ok(e.campos.pctPJ === 90 && e.procedencia.pctPJ.fonte === 'deduzido' && e.procedencia.pctPJ.perfil === 'industria', 'sem as saídas: % de PJ deduzido, com a procedência "deduzido" (indústria)');
+
+  ok(rotuloMeses(['2026-03', '2026-01', '2026-02']) === 'jan/26–mar/26' && rotuloMeses(['2026-01', '2026-03']) === 'jan/26–mar/26 (2 meses)' && rotuloMeses(['2025-12', '2026-01']) === 'dez/25–jan/26' && rotuloMeses([]) === '', 'rótulo dos meses: contínuo, com buraco e virando o ano');
+}
+
+console.log('\nMeses que o relatório de entradas cobre (mês sem nota é compra zero — se a escrita existia):');
+{
+  const meses = (ini, n) => { const out = []; let [a, m] = ini.split('-').map(Number); for (let i = 0; i < n; i++) { out.push(a + '-' + String(m).padStart(2, '0')); if (++m > 12) { m = 1; a++; } } return out; };
+  const M12 = meses('2025-09', 12);
+  const fat = { tipo: 'faturamento', meses: M12.map(c => ({ competencia: c, saidas: 0, servicos: 50000, outros: 0, total: 50000 })) };
+  const lanc = c => ({ competencia: c, valor: 10000, grupo: 'despesa', cfop: '1933', fornecedor: 'FORNECEDOR', documento: null });
+  // a empresa só comprou em 3 meses, e o relatório cobre o ano (cabeçalho de set/25 a ago/26)
+  const ent = { tipo: 'entradas', periodoDe: '2025-09', periodoAte: '2026-08', lancamentos: ['2025-11', '2026-03', '2026-07'].map(lanc) };
+  const a = consolidar([fat, ent], null, {});
+  ok(a.mesesEntradas.length === 9 && a.mesesEntradas[0] === '2025-11' && a.mesesEntradas[8] === '2026-07', 'os meses do meio, sem nota, entram (compra zero): nov/25 a jul/26');
+  perto(a.campos.pctDesp, 30000 / 450000 * 100, 0.0001, 'R$ 30 mil ÷ receita dos 9 meses (antes, só os 3 meses com nota: 20%)');
+  ok(a.avisos.some(t => /set\/25–out\/25 e ago\/26 não têm nenhuma nota/.test(t) && /o % seria 5% \(em vez de 6,7%\)/.test(t)), 'os meses do cabeçalho antes da 1ª nota e depois da última ficam fora, com o % que daria se fossem compra zero');
+  // e a dúvida vai na procedência: a confiança testa os dois números (rt-confianca.js)
+  ok(a.procedencia.pctDesp.mesesIncertos.join() === '2025-09,2025-10,2026-08' && Math.abs(a.procedencia.pctDesp.pctSeZero - 5) < 0.0001, 'a procedência leva os meses em dúvida e o % se fossem compra zero (5%)');
+  ok(!/\(9 meses\) \(9 meses\)/.test(a.origem.pctDesp), 'sem o "(N meses)" repetido na origem: ' + a.origem.pctDesp);
+  // com as saídas do ano, a escrita existia nesses meses: compra zero de verdade — o ano todo entra
+  const sai = { tipo: 'saidas', vendas: M12.map(c => ({ competencia: c, valor: 50000, grupo: 'receita', classe: 'pj', classePorDocumento: true, documento: '11222333000100', cfop: '5102' })) };
+  const b = consolidar([fat, ent, sai], null, {});
+  perto(b.campos.pctDesp, 5, 0.0001, 'com as saídas do ano: 12 meses, R$ 30 mil ÷ R$ 600 mil = 5%');
+  ok(!b.avisos.some(t => /não têm nenhuma nota|Compras medidas em/.test(t)), 'e sem aviso de meses de fora');
+  // cliente novo: relatório de entradas pedido de jan a set, com nota só de setembro, e saídas só de setembro — os meses
+  // antes da escrita do escritório não são "compra zero"
+  const ent3 = { tipo: 'entradas', periodoDe: '2026-01', periodoAte: '2026-09', lancamentos: [{ competencia: '2026-09', valor: 20000, grupo: 'mercadoria', cfop: '1102', fornecedor: 'Y', documento: null }] };
+  const sai3 = { tipo: 'saidas', vendas: [{ competencia: '2026-09', valor: 52000, grupo: 'receita', classe: 'pj', classePorDocumento: true, documento: '11222333000100', cfop: '5102' }] };
+  const pg3 = { tipo: 'simples', competencia: '2026-09', rpa: 52000, historico: [], anexos: [{ anexo: 'I', receita: 52000 }], anexoPredominante: 'I', rbt12: 600000 };
+  const c = consolidar([fat, ent3, sai3, pg3], null, {});
+  ok(c.mesesEntradas.join() === '2026-09', 'cliente novo: só setembro (o único mês com nota e com saída)');
+  perto(c.campos.pctMerc, 20000 / 52000 * 100, 0.0001, 'compras de set ÷ receita de set (PGDAS), não ÷ 9 meses');
+  ok(c.avisos.some(t => /jan\/26–ago\/26 não têm nenhuma nota/.test(t) && /o % seria 4,4%/.test(t)), 'e avisa dos meses do cabeçalho de fora, com o % alternativo');
+  // com o período das saídas no cabeçalho (jan a set) e saída só em setembro: a escrita de jan a ago não era do escritório —
+  // sem dúvida, fora da conta
+  const c2 = consolidar([fat, ent3, { ...sai3, periodoDe: '2026-01', periodoAte: '2026-09' }, pg3], null, {});
+  ok(c2.mesesEntradas.join() === '2026-09' && !c2.procedencia.pctMerc.mesesIncertos && c2.avisos.some(t => /a escrita desses meses não era do escritório/.test(t)), 'saídas do período sem lançamento nesses meses: a escrita não era do escritório (sem dúvida)');
+  // sem o período no cabeçalho das entradas, as saídas do ano dizem que a escrita existia: o ano todo entra
+  const entSemP = { tipo: 'entradas', lancamentos: ['2025-11', '2026-03', '2026-07'].map(lanc) };
+  perto(consolidar([fat, entSemP, sai], null, {}).campos.pctDesp, 5, 0.0001, 'entradas sem período no cabeçalho + saídas do ano: 12 meses, 5%');
+  // dois relatórios de entradas (um por semestre), sem saídas: os meses entre as notas dos dois ficam em dúvida
+  const entA = { tipo: 'entradas', periodoDe: '2025-09', periodoAte: '2026-02', lancamentos: ['2025-10', '2025-12'].map(lanc) };
+  const entB = { tipo: 'entradas', periodoDe: '2026-03', periodoAte: '2026-08', lancamentos: ['2026-04', '2026-06'].map(lanc) };
+  const sem = consolidar([fat, entA, entB], null, {});
+  ok(sem.mesesEntradas.length === 6 && sem.procedencia.pctDesp.mesesIncertos.length === 6 && Math.abs(sem.procedencia.pctDesp.pctSeZero - 40000 / 600000 * 100) < 0.0001, 'dois semestres sem saídas: 6 meses medidos, 6 em dúvida (o % se fossem compra zero vai junto)');
+  ok(c.avisos.some(t => /^Compras medidas em set\/26 \(1 mês\)/.test(t) && /confiança baixa/.test(t)), 'compras de 1 mês: diz que é confiança baixa');
+  // 8 meses de entradas contra 12 de faturamento: o aviso diz o período, mas não fala em confiança (8 meses é alta)
+  const ent8 = { tipo: 'entradas', lancamentos: meses('2026-01', 8).map(lanc) };
+  const d = consolidar([fat, ent8], null, {});
+  ok(d.avisos.some(t => /^Compras medidas em jan\/26–ago\/26 \(8 meses\)/.test(t) && !/confiança/.test(t)), 'com 8 meses, o aviso não fala em confiança média (a análise dá alta)');
+  // o período do cabeçalho, lido do relatório
+  const fatP = lerRelatorio(FATURAMENTO), entP = lerRelatorio(ENTRADAS);
+  const entEmi = lerRelatorio([ENTRADAS[0].map(l => /^Período/.test(l) ? 'Período:  01/02/2026  a  31/03/2026      Emissão: 05/10/2026' : l)]);
+  ok(entP.periodoDe === '2026-01' && entP.periodoAte === '2026-03' && fatP.periodoDe === '2026-01' && fatP.periodoAte === '2026-03', 'período do cabeçalho em competências ("até" e "a"): ' + entP.periodoDe + ' a ' + entP.periodoAte);
+  ok(entEmi.periodoDe === '2026-02' && entEmi.periodoAte === '2026-03', 'a data de emissão na mesma linha não entra no período: ' + entEmi.periodoDe + ' a ' + entEmi.periodoAte);
 }
 
 console.log('\nNúmeros no formato brasileiro:');

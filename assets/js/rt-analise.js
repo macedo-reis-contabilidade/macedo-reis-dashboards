@@ -32,7 +32,7 @@ const fmtCnpj = d => d ? formatDocumento(d) : '—';   // CNPJ numérico ou alfa
 // fora (Ato Conjunto RFB/CGIBS nº 4/2026, art. 1º, § 1º) — "manter" não dispensa a adequação do emissor
 const NOTA_DFE = ' Em qualquer caso, a partir de 01/01/2027 as notas fiscais passam a sair no novo padrão, com IBS e CBS (Ato Conjunto RFB/CGIBS nº 4/2026).';
 
-const SELO = { alta: 's-forte', media: 's-media', baixa: 's-fraca' };
+const SELO = { alta: 's-forte', media: 's-media', baixa: 's-fraca', nao_medido: 's-fraca' };
 const selo = (nivel, texto) => '<span class="selo ' + SELO[nivel] + '">' + esc(texto || nivel) + '</span>';
 
 // ---------- gráfico do repasse: onde o resultado vira ----------
@@ -101,6 +101,10 @@ export function gerarAnalise(d, opts = {}) {
   const empate = !!(sim.veredito && sim.veredito.empate) && s.diferenca < 0;
   // OPTE, SE O COMERCIAL CONFIRMAR (12/10/2026): por fora custa mais, mas o crédito a mais da carteira PJ cobre a alta
   const condicional = !!(d.condicional || (sim.veredito && sim.veredito.tipo === 'OPTE_SE'));
+  // SEM CONCLUSÃO (13/10/2026): nenhuma seção marca lado vencedor nem diz "recomendado"
+  const semConclusaoDoc = !!(d.recomendacao && d.recomendacao.decisao === 'sem_conclusao');
+  // o período dos relatórios ("jan/26–set/26 (3 meses)" → "jan/26–set/26, 3 meses"), pra caber entre parênteses
+  const perTxt = r => esc(String(r || '').replace(/ \((\d+ meses)\)$/, ', $1'));
   const ver = sim.veredito || {};
   const fat0 = sim.fatores || {};
 
@@ -143,7 +147,8 @@ export function gerarAnalise(d, opts = {}) {
     + (dominio || xml ? '<br><b>Base desta análise:</b> ' + [
         dominio && dominio.faturamento ? 'relatório de faturamento ' + dominio.periodoRotulo : null,
         dominio && dominio.pgdas ? 'apuração do Simples (PGDAS ' + esc(dominio.pgdas.competencia) + ')' : null,
-        dominio && dominio.entradas ? 'acompanhamento de entradas' : null,
+        dominio && dominio.entradas ? 'acompanhamento de entradas' + (dominio.periodoEntradas ? ' (' + perTxt(dominio.periodoEntradas) + ')' : '') : null,
+        dominio && dominio.vendas ? 'acompanhamento de saídas' + (dominio.periodoVendas ? ' (' + perTxt(dominio.periodoVendas) + ')' : '') : null,
         xml && xml.nNotas ? xml.nNotas + ' notas fiscais eletrônicas (emitidas e recebidas) de ' + esc(xml.periodoRotulo || '') : null
       ].filter(Boolean).join(', ') + '.' : '') + '</div>');
 
@@ -153,19 +158,30 @@ export function gerarAnalise(d, opts = {}) {
     const foraMaisBarato = s.diferenca < 0;
     const alertasVis = (d.alertas || []).filter(a => !(versaoCliente && a.interno));
     const internos = (d.alertas || []).filter(a => a.interno);
-    const aConf = alertasVis.length > 0 && !empate;
+    // no empate, só vira "a confirmar" o alerta que muda o resultado (dado da confiança que tira o caso do empate)
+    const aConf = alertasVis.length > 0 && (!empate || alertasVis.some(a => a.muda));
     if (versaoCliente && internos.length) partes.unshift('<div class="so-escritorio"><b>Antes de mandar pro cliente</b> (esta faixa não sai na impressão): ' + internos.map(a => esc(a.texto.replace(/<[^>]+>/g, ''))).join(' · ') + '</div>');
     const dec = (d.recomendacao && d.recomendacao.decisao) || (optar ? 'optar' : 'manter');
+    // SEM CONCLUSÃO (13/10/2026): número que decide a conta com confiança baixa — o documento não recomenda nenhum lado
+    const semConc = dec === 'sem_conclusao';
+    const conf = d.confianca || null;
     const decisao = { manter: 'Manter como está', optar: 'Recolher o IBS/CBS por fora do DAS', optar_marco: 'Recolher o IBS/CBS por fora do DAS a partir de julho/2027',
-      formalizar: 'Registrar a opção até ' + RT_PRAZO.opcaoDM + ' — e decidir até ' + RT_PRAZO.cancelaAteDM, manter_reavaliar: 'Manter por ora — e reavaliar em março/2027' }[dec] || 'Manter como está';
-    const selo = aConf ? 'TENDÊNCIA — A CONFIRMAR' : empate ? 'RECOMENDAÇÃO · EMPATE TÉCNICO' : condicional ? 'RECOMENDAÇÃO · SE O COMERCIAL CONFIRMAR' : 'RECOMENDAÇÃO';
-    const oQue = dec === 'formalizar'
+      formalizar: 'Registrar a opção até ' + RT_PRAZO.opcaoDM + ' — e decidir até ' + RT_PRAZO.cancelaAteDM, manter_reavaliar: 'Manter por ora — e reavaliar em março/2027',
+      sem_conclusao: 'Ainda não dá pra recomendar um dos lados' }[dec] || 'Manter como está';
+    const selo = semConc ? 'SEM CONCLUSÃO — FALTAM DADOS' : aConf ? 'TENDÊNCIA — A CONFIRMAR' : empate ? 'RECOMENDAÇÃO · EMPATE TÉCNICO' : condicional ? 'RECOMENDAÇÃO · SE O COMERCIAL CONFIRMAR' : 'RECOMENDAÇÃO';
+    const oQue = semConc
+      ? 'Alguns números que decidem a conta ainda não foram medidos com base suficiente. Com eles como estão, escolher um dos lados seria chute — abaixo, o que falta e por quê.'
+      : dec === 'formalizar'
       ? 'Registrar a opção não muda nada ainda: ' + RT_PRAZO.cancelamento + ' dá pra cancelar sem efeito nenhum. Serve pra não perder a chance enquanto você vê com os seus principais clientes se faz sentido.'
       : dec === 'optar' || dec === 'optar_marco'
       ? 'A empresa continua no Simples, mas passa a pagar o IBS e a CBS numa apuração separada, descontando o que pagou nas compras.'
       : 'A empresa continua pagando tudo numa guia só, o DAS do Simples, como hoje.';
     let porque;
-    if (empate) porque = 'Os dois caminhos custam praticamente o mesmo: a diferença é de ' + brl0(dif) + ' no semestre (' + pct2(pctRec) + '% do faturamento). Quando dá empate, mudar só traz trabalho e risco.';
+    if (semConc) porque = 'Com os dados de hoje a conta daria “' + esc(conf ? conf.rotuloDecisao : '') + '” (' + (empate ? 'por fora sairia ' + brl0(dif) + ' mais barato no semestre, diferença pequena demais pra justificar a troca — empate técnico'
+        : condicional ? 'por dentro sai ' + brl0(dif) + ' mais barato no semestre, mas o crédito a mais dos seus clientes empresa passaria dessa diferença'
+        : (foraMaisBarato ? 'por fora sai ' : 'por dentro sai ') + brl0(dif) + ' mais barato no semestre') + '), mas '
+      + (conf && conf.decisivos.length > 1 ? 'estes números têm pouca base e, dentro do que é plausível para eles, mudam o resultado:' : 'este número tem pouca base e, dentro do que é plausível para ele, muda o resultado:');
+    else if (empate) porque = 'Os dois caminhos custam praticamente o mesmo: a diferença é de ' + brl0(dif) + ' no semestre (' + pct2(pctRec) + '% do faturamento). Quando dá empate, mudar só traz trabalho e risco.';
     else if (optar) porque = 'Pagar por fora sai ' + brl0(dif) + ' mais barato no primeiro semestre de 2027 (' + pct2(pctRec) + '% do faturamento)' + (d.consumidor ? ', porque a empresa desconta o imposto das compras e paga só sobre a margem.' : ', e os clientes empresa passam a aproveitar ' + brl0(s.aproveitadoFora) + ' de crédito do imposto.');
     else {
       const ganhoCli = s.aproveitadoFora - s.aproveitadoDentro;
@@ -180,17 +196,36 @@ export function gerarAnalise(d, opts = {}) {
     }
     const maxV = Math.max(s.custoDentro, s.custoFora) || 1;
     const barra = (rot, v, win) => '<div class="rs-b"><span class="rs-bl">' + rot + '</span><span class="rs-bt"><span class="rs-bf' + (win ? ' win' : '') + '" style="width:' + (v / maxV * 100).toFixed(1) + '%"></span></span><b>' + brl0(v) + '</b></div>';
-    P('<div class="resumo' + (aConf || condicional ? ' conf' : '') + '"><div class="rs-selo">' + selo + '</div>'
+    // o que pesa contra cada número da empresa (fora os que já decidem e aparecem acima): em todo resumo, firme ou não
+    // (a versão do cliente troca os nomes internos — simulação antiga, relatório do Domínio — pelos textos do cliente)
+    const itemConf = it => '<li><b>' + esc(it.rotulo) + '</b> — ' + esc(it.valor) + ', ' + esc(it.confianca || 'confiança ' + it.selo) + (it.periodo && it.periodo !== '—' ? ' (' + esc(it.periodo) + ')' : '') + '. ' + esc(versaoCliente && it.motivoCliente ? it.motivoCliente : it.motivo) + (it.efeito ? ' ' + esc(it.efeito) : '') + '</li>';
+    const outrosFracos = conf ? conf.itens.filter(it => it.categoria === 'dado' && it.nivel !== 'alta' && !conf.decisivos.includes(it) && !conf.aConfirmar.includes(it)) : [];
+    // os que decidem (sem conclusão) e os de confiança média que mudam o resultado (nos alertas) já aparecem acima
+    const jaAcima = conf ? conf.decisivos.length + conf.aConfirmar.length > 0 : false;
+    const blocoConf = !conf ? ''
+      : '<p style="margin-bottom:4px"><b>Com que segurança:</b> ' + (outrosFracos.length
+          ? (jaAcima ? 'além dos números acima, ' : '') + 'estes números não são medida completa' + (outrosFracos.some(it => it.efeito) ? ' — onde dá pra testar, o resultado não muda dentro do que é plausível para cada um' : '') + ':</p><ul class="rs-al">' + outrosFracos.map(itemConf).join('') + '</ul>'
+          : (jaAcima ? 'fora os números acima, os da empresa vêm de relatórios do período inteiro.' : 'os números da empresa vêm de relatórios do período inteiro (confiança alta).') + (versaoCliente ? '' : ' Detalhes na seção 7.') + '</p>');
+    P('<div class="resumo' + (semConc ? ' sem' : aConf || condicional ? ' conf' : '') + '"><div class="rs-selo">' + selo + '</div>'
       + '<div class="rs-dec">' + decisao + '</div>'
       + '<p class="rs-oq">' + oQue + '</p>'
-      + '<div class="rs-barras"><div class="rs-cap">Custo com impostos no 1º semestre de 2027</div>'
-      + (dec === 'formalizar' || dec === 'manter_reavaliar'
+      + '<div class="rs-barras"><div class="rs-cap">Custo com impostos no 1º semestre de 2027' + (semConc ? ' — conta provisória' : '') + '</div>'
+      + (semConc
+          ? barra('Por dentro do DAS', s.custoDentro, false) + barra('Por fora do DAS', s.custoFora, false) + '<div class="rs-cap" style="margin-top:4px;text-transform:none;letter-spacing:0">Conta provisória, não é recomendação: os números abaixo não sustentam nenhum dos lados.</div></div>'
+        : dec === 'formalizar' || dec === 'manter_reavaliar'
           ? barra('Por dentro do DAS', s.custoDentro, false) + barra('Por fora do DAS', s.custoFora, false) + '<div class="rs-cap" style="margin-top:4px;text-transform:none;letter-spacing:0">Com o preço de hoje, por dentro sai mais barato; por fora só compensa com parte do imposto no preço.</div></div>'
           : barra('Por dentro do DAS' + (optar ? '' : ' ✓'), s.custoDentro, !optar) + barra('Por fora do DAS' + (optar ? ' ✓' : ''), s.custoFora, optar) + '<div class="rs-cap" style="margin-top:4px;text-transform:none;letter-spacing:0">✓ recomendado' + (empate ? ' — a diferença está dentro da margem de incerteza' : '') + '</div></div>')
       + '<p><b>Por quê:</b> ' + porque + '</p>'
-      + (alertasVis.length ? '<p style="margin-bottom:4px"><b>' + (aConf ? 'Antes de decidir, precisamos confirmar:' : 'Pontos de atenção:') + '</b></p><ul class="rs-al">' + alertasVis.map(a => '<li>' + a.texto + '</li>').join('') + '</ul>' : '')
+      + (semConc && conf ? '<ul class="rs-al">' + conf.decisivos.map(itemConf).join('') + '</ul>'
+          + (conf.conjunto && conf.conjunto.semConclusao ? '<p><b>Juntos:</b> ' + esc(conf.conjunto.texto) + '</p>' : '')
+          + ((versaoCliente ? conf.faltamCliente || conf.faltam : conf.faltam).length ? '<p><b>Para concluir, precisamos de:</b> ' + esc((versaoCliente ? conf.faltamCliente || conf.faltam : conf.faltam).join('; ')) + '.</p>' : '') : '')
+      + (alertasVis.length ? '<p style="margin-bottom:4px"><b>' + (aConf && !semConc ? 'Antes de decidir, precisamos confirmar:' : 'Pontos de atenção:') + '</b></p><ul class="rs-al">' + alertasVis.map(a => '<li>' + (versaoCliente && a.textoCliente ? a.textoCliente : a.texto) + '</li>').join('') + '</ul>' : '')
+      + blocoConf
       + (d.observacoes && d.observacoes.length ? '<p style="margin-bottom:4px"><b>Para um cálculo mais preciso:</b></p><ul class="rs-al">' + d.observacoes.map(t => '<li>' + t + '</li>').join('') + '</ul>' : '')
-      + ({ optar: '<p class="rs-pz">Próximo passo: formalizar a opção até <b>' + RT_PRAZO.opcao + '</b>. Dá pra cancelar <b>' + RT_PRAZO.cancelamento + '</b> sem efeito.</p>',
+      + ({ sem_conclusao: '<p class="rs-pz">Próximo passo: levantar os dados que faltam e refazer a conta. ' + (janelaAberta
+             ? 'O prazo da opção vai até <b>' + RT_PRAZO.opcao + '</b>; se os dados não chegarem a tempo, registrar a opção deixa a decisão em aberto até <b>' + RT_PRAZO.cancelaAte + '</b> (o cancelamento ' + RT_PRAZO.cancelamento + ' não tem efeito), e não registrar mantém tudo no DAS até ' + RT_PRAZO.proximaEfeito + '.'
+             : 'A próxima janela é em <b>' + RT_PRAZO.proxima + '</b>, com efeito a partir de ' + RT_PRAZO.proximaEfeito + '.') + NOTA_DFE + '</p>',
+           optar: '<p class="rs-pz">Próximo passo: formalizar a opção até <b>' + RT_PRAZO.opcao + '</b>. Dá pra cancelar <b>' + RT_PRAZO.cancelamento + '</b> sem efeito.</p>',
            formalizar: '<p class="rs-pz">Próximo passo: registrar a opção até <b>' + RT_PRAZO.opcao + '</b>; decidir até <b>' + RT_PRAZO.cancelaAte + '</b> (cancelar ' + RT_PRAZO.cancelamento + ', se não fizer sentido).</p>',
            optar_marco: '<p class="rs-pz">Próximo passo: formalizar a opção na janela de <b>março/2027</b>; vale a partir de julho/2027.</p>',
            manter_reavaliar: '<p class="rs-pz">Próximo passo: nenhum quanto à opção. Reavaliar antes da janela de <b>março/2027</b>.' + NOTA_DFE + '</p>' }[dec]
@@ -202,7 +237,8 @@ export function gerarAnalise(d, opts = {}) {
     const base = dominio || xml ? [
         dominio && dominio.faturamento ? 'faturamento ' + dominio.periodoRotulo : null,
         dominio && dominio.pgdas ? 'PGDAS ' + esc(dominio.pgdas.competencia) : null,
-        dominio && dominio.entradas ? 'entradas' : null,
+        dominio && dominio.entradas ? 'entradas' + (dominio.periodoEntradas ? ' de ' + perTxt(dominio.periodoEntradas) : '') : null,
+        dominio && dominio.vendas ? 'saídas' + (dominio.periodoVendas ? ' de ' + perTxt(dominio.periodoVendas) : '') : null,
         xml && xml.nNotas ? xml.nNotas + ' notas fiscais' : null
       ].filter(Boolean).join(', ') : null;
     P('<p class="numlinha"><b>Faturamento médio:</b> ' + brl0(receita) + '/mês'
@@ -233,6 +269,8 @@ export function gerarAnalise(d, opts = {}) {
   if (pctServ != null && pctServ >= 60) {
     P('<p>A empresa fatura <b>' + pct1(pctServ) + '% em serviço</b> e ' + pct1(100 - pctServ) + '% em mercadoria. O custo de uma prestadora de serviço é mão de obra, e <b>folha de pagamento não gera crédito de IBS/CBS</b> — é isso que define toda a conta adiante.</p>');
   }
+  // compras não medidas (sem o relatório de entradas): a linha diz isso, em vez de "R$ 0,00 · ficha"
+  const comprasNaoMedidas = !(dominio && dominio.entradas) && !!(d.confianca && d.confianca.itens.some(it => it.chave === 'compras' && it.nivel === 'nao_medido'));
   P('<table><thead><tr><th>Indicador</th><th class="num">Valor</th><th>Fonte</th></tr></thead><tbody>'
     + (dominio && dominio.faturamento ? '<tr><td>Faturamento ' + dominio.periodoRotulo + '</td><td class="num">' + brl(dominio.faturamento.total) + '</td><td>' + esc(dominio.fonteFaturamento || 'Relatório de faturamento (Domínio)') + '</td></tr>'
       + '<tr><td>— serviços</td><td class="num">' + brl(dominio.faturamento.servicos) + ' · ' + pct1(pctServ) + '%</td><td>idem</td></tr>'
@@ -247,7 +285,9 @@ export function gerarAnalise(d, opts = {}) {
         : '<tr><td>DAS apurado em ' + esc(String((dominio.pgdas && dominio.pgdas.competencia) || '').replace(/^(\d{4})-(\d{2})$/, '$2/$1')) + '</td><td class="num">' + brl(dominio.dasMedio) + '</td><td>PGDAS' + (dominio.pgdas && dominio.pgdas.rpa ? ' — sobre receita de ' + brl(dominio.pgdas.rpa) + ' naquele mês' : '') + '</td></tr>')
         : '<tr><td>DAS na simulação</td><td class="num">' + brl(m.dasHoje) + '/mês</td><td>calculado sobre o Anexo ' + esc(e.anexo) + (fat0.mudouAnexo ? ' de hoje (2027: Anexo ' + esc(fat0.anexo2027) + ')' : '') + '</td></tr>')
     + (xml && xml.pctPJ != null ? '<tr><td>Vendas para CNPJ</td><td class="num">' + pct1(xml.pctPJ) + '%</td><td>XML das notas emitidas</td></tr>' : '')
-    + '<tr class="tot"><td>Entradas que geram crédito</td><td class="num">' + (dominio && dominio.entradas ? brl(dominio.entradas.grupos.filter(g => g.incluido).reduce((a, g) => a + g.valor, 0)) + ' no período' : brl(receita * (e.pctComprasMercadorias + e.pctComprasDespesas) / 100) + '/mês') + ' · ' + pct1(e.pctComprasMercadorias + e.pctComprasDespesas) + '% da receita</td><td>' + (dominio && dominio.entradas ? 'Acompanhamento de entradas' : 'ficha') + '</td></tr>'
+    + (comprasNaoMedidas
+        ? '<tr class="tot"><td>Entradas que geram crédito</td><td class="num">não medido</td><td>sem o relatório de entradas — a conta considerou ' + pct1(e.pctComprasMercadorias + e.pctComprasDespesas) + '% da receita</td></tr>'
+        : '<tr class="tot"><td>Entradas que geram crédito</td><td class="num">' + (dominio && dominio.entradas ? brl(dominio.entradas.grupos.filter(g => g.incluido).reduce((a, g) => a + g.valor, 0)) + (dominio.periodoEntradas ? ' em ' + perTxt(dominio.periodoEntradas) : ' no período') : brl(receita * (e.pctComprasMercadorias + e.pctComprasDespesas) / 100) + '/mês') + ' · ' + pct1(e.pctComprasMercadorias + e.pctComprasDespesas) + '% da receita</td><td>' + (dominio && dominio.entradas ? 'Acompanhamento de entradas' + (dominio.periodoEntradas ? ' (' + perTxt(dominio.periodoEntradas) + ', ÷ receita dos mesmos meses)' : '') : 'ficha') + '</td></tr>')
     + '</tbody></table>');
 
   // ---------- 2. clientes ----------
@@ -319,13 +359,14 @@ export function gerarAnalise(d, opts = {}) {
   P('<p>Alíquotas de 2027: <b>CBS ' + pct1(e.cbs) + '%</b> (a referência, ainda pendente de Resolução do Senado, menos 0,1 ponto, como manda o ADCT, art. 127, parágrafo único) e <b>IBS ' + pct1(e.ibs) + '%</b> (0,05% estadual + 0,05% municipal). Cenário: o IBS/CBS por fora é calculado sobre a receita de hoje e a empresa o <b>absorve</b>, sem repassar ao cliente — se o preço final ficar igual ao de hoje, com o imposto dentro dele, veja a seção 6.</p>');
   if (fat0.mudouAnexo) P('<p class="fonte">Em 2027 a indústria é tributada no Anexo ' + esc(fat0.anexo2027) + ' (LC 123, art. 18, §5º, na redação do art. 517 da LC 214): o DAS por dentro de 2027 sai da tabela do Anexo ' + esc(fat0.anexo2027) + ' — alíquota de ' + pct2(fat0.aliqEfetiva2027 * 100) + '% e partilha CBS/IBS de ' + pct2(fat0.partilha2027) + '% —, contra o Anexo ' + esc(fat0.anexo) + ' do PGDAS de hoje (DAS de ' + brl(m.dasHoje) + '/mês). Só a venda de produto com IPI mantido (Zona Franca de Manaus) segue no Anexo II.</p>');
   if ((m.exclMono || 0) > 0 && (m.das2027 || 0) - (m.dasHoje || 0) > 0.005) P('<p class="fonte">O DAS por dentro de 2027 (' + brl(m.das2027) + '/mês) é maior que o de hoje (' + brl(m.dasHoje) + '): a exclusão do PIS/COFINS monofásico acaba em 2027 e a CBS alcança essa receita (Res. CGSN 140/2018, art. 25, §6º, na redação da Res. CGSN 190/2026). A exclusão do ICMS-ST e do ISS retido continua.</p>');
+  if (semConclusaoDoc) P('<p class="fonte">Conta provisória: com os números de confiança baixa que decidem o resultado (ver o resumo e a seção 7), nenhum dos dois caminhos está recomendado.</p>');
   P('<div class="duas">'
-    + '<div class="ret' + (optar ? '' : ' win') + '"><h4>Por dentro — IBS/CBS no DAS' + (empate ? ' · recomendado (empate técnico)' : '') + '</h4>'
+    + '<div class="ret' + (optar || semConclusaoDoc ? '' : ' win') + '"><h4>Por dentro — IBS/CBS no DAS' + (empate && !semConclusaoDoc ? ' · recomendado (empate técnico)' : '') + '</h4>'
       + '<div class="rw"><span>Custo tributário do semestre</span><b>' + brl(s.custoDentro) + '</b></div>'
       + '<div class="rw"><span>Caixa pago ao fisco</span><b>' + brl(s.caixaDentro) + '</b></div>'
       + '<div class="rw"><span>Crédito que o cliente leva</span><b>' + brl(s.creditoClienteDentro) + '</b></div>'
       + '<div class="rw"><span>Aproveitado pela carteira PJ</span><b>' + brl(s.aproveitadoDentro) + '</b></div></div>'
-    + '<div class="ret' + (optar ? ' win' : '') + '"><h4>Por fora — regime regular</h4>'
+    + '<div class="ret' + (optar && !semConclusaoDoc ? ' win' : '') + '"><h4>Por fora — regime regular</h4>'
       + '<div class="rw"><span>Custo tributário do semestre</span><b>' + brl(s.custoFora) + '</b></div>'
       + '<div class="rw"><span>Caixa pago ao fisco</span><b>' + brl(s.caixaFora) + '</b></div>'
       + '<div class="rw"><span>Crédito que o cliente leva</span><b>' + brl(s.creditoClienteFora) + '</b></div>'
@@ -361,7 +402,10 @@ export function gerarAnalise(d, opts = {}) {
   if (exclPct > 0) notasDebito.push('base sem o ' + fat.icmsIss.tributo + ' do DAS, ' + pct1(exclPct * 100) + '% da receita — LC 214, art. 12, §2º, V');
   if (empate) {
     P('<div class="cx chave"><h4>Empate técnico</h4><p style="margin:0">Por fora a conta sai <b>' + brl0(Math.abs(s.diferenca)) + ' menor no semestre — ' + pct2(Math.abs(s.diferenca) / (receita * 6) * 100) + '% da receita</b>, abaixo do limiar de ' + brl0(sim.veredito.limiarEmpate) + ' que o escritório adota pra recomendar a mudança. '
-      + 'A vantagem vem de a empresa creditar IBS/CBS sobre entradas que somam ' + pct1(e.pctComprasMercadorias + (e.pctComprasDespesas || 0)) + '% da receita, pagando só sobre a margem — e supõe crédito cheio em <b>todas</b> essas entradas. Se parte delas vier de fornecedor do Simples ou tiver o crédito glosado, a diferença some. Com essa margem, não vale trocar a apuração.</p></div>');
+      + 'A vantagem vem de a empresa creditar IBS/CBS sobre entradas que somam ' + pct1(e.pctComprasMercadorias + (e.pctComprasDespesas || 0)) + '% da receita, pagando só sobre a margem — e supõe crédito cheio em <b>todas</b> essas entradas. Se parte delas vier de fornecedor do Simples ou tiver o crédito glosado, a diferença some.'
+      + (semConclusaoDoc ? ' E há número de confiança baixa que, dentro do que é plausível para ele, muda o resultado — por isso, por ora, sem recomendação (ver a seção 7).' : ' Com essa margem, não vale trocar a apuração.') + '</p></div>');
+  } else if (!optar && semConclusaoDoc) {
+    P('<p class="fonte">Na conta provisória, por fora a empresa debitaria ' + pct1(aliqVendas) + '% sobre o que fatura e creditaria sobre compras de ' + pct1(e.pctComprasMercadorias + e.pctComprasDespesas) + '% do que fatura — números que ainda não têm base suficiente pra sustentar o resultado (ver a seção 7).</p>');
   } else if (!optar) {
     P('<p>O motivo é aritmético: <b>por fora a empresa debita ' + pct1(aliqVendas) + '% sobre o que fatura' + (notasDebito.length ? ' (' + notasDebito.join('; ') + ')' : '') + ' e credita ' + (fat.compras < 0.5 ? 'pouco' : 'menos') + ' na entrada</b>: compra ' + pct1(e.pctComprasMercadorias + e.pctComprasDespesas) + '% do que fatura'
       + (fat.comprasMedido ? ', e só ' + pct1(fat.compras * 100) + '% dessas compras carregam IBS/CBS pra creditar — o resto é cesta básica, alíquota zero (medido pelo NCM das notas de entrada)' : '') + '. O regime regular favorece quem compra muito e compra tributado.</p>');
@@ -396,8 +440,22 @@ export function gerarAnalise(d, opts = {}) {
     P('<p>' + esc(d.sensibilidadeNota || '') + '</p>');
   }
 
-  // ---------- 7. fontes ----------
-  P('<h2>7. De onde vem cada número</h2>');
+  // ---------- 7. fontes e confiança ----------
+  // CONFIANÇA (13/10/2026): cada número da empresa com a fonte, o período, o nível e por que não é verdade absoluta — e o
+  // teste do plausível; embaixo, a lei e as premissas da conta
+  P('<h2>7. De onde vem cada número — e quanto dá pra confiar</h2>');
+  if (d.confianca) {
+    const cf = d.confianca;
+    P('<p>Cada número que entra na conta, com a fonte, o período medido, o nível de confiança e por que não deve ser tratado como verdade absoluta. A última coluna testa o número dentro do que é plausível para ele: se o resultado muda e a confiança é média, a conclusão fica <b>a confirmar</b>; se a confiança é baixa, <b>não há conclusão</b>'
+      + (cf.conclusao === 'sem_conclusao' ? ' — é o caso deste documento.' : '.') + ' “—” = medido no período inteiro, ou sem faixa a testar.</p>');
+    P('<table><thead><tr><th>Número</th><th>Valor usado</th><th>De onde veio</th><th>Confiança</th><th>Por que não é verdade absoluta</th><th>Muda o resultado?</th></tr></thead><tbody>'
+      + cf.itens.map(it => '<tr><td><b>' + esc(it.rotulo) + '</b>' + (it.categoria === 'premissa' ? '<br><span class="fonte">premissa</span>' : '') + '</td><td>' + esc(it.valor) + '</td>'
+        + '<td>' + esc(it.fonte) + (it.periodo && it.periodo !== '—' ? '<br><span class="fonte">' + esc(it.periodo) + '</span>' : '') + '</td><td>' + selo(it.nivel, it.selo) + '</td>'
+        + '<td>' + esc(it.motivo) + '</td><td>' + (it.efeito ? (it.muda ? '<b>Sim.</b> ' : 'Não. ') + esc(it.efeito) : '—') + '</td></tr>').join('')
+      + '</tbody></table>');
+    if (cf.conjunto) P('<p><b>Juntos:</b> ' + esc(cf.conjunto.texto) + '</p>');
+    P('<h3>Regras da lei e premissas usadas na conta</h3>');
+  }
   P('<table><thead><tr><th>Informação</th><th>Origem</th><th>Confiabilidade</th></tr></thead><tbody>'
     + (d.fontes || []).map(f => '<tr><td>' + esc(f.o_que) + '</td><td>' + esc(f.origem) + '</td><td>' + selo(f.nivel, f.rotulo) + (f.ressalva ? ' <span class="fonte">' + esc(f.ressalva) + '</span>' : '') + '</td></tr>').join('')
     + '</tbody></table>');
@@ -459,6 +517,7 @@ tr.tot td{font-weight:700;background:#F3F6F9;}
 @media print{ .so-escritorio{display:none;} }
 .resumo{border:2px solid #2E6B47;border-radius:10px;padding:16px 18px;margin:4px 0 20px;background:#F5FBF7;break-inside:avoid;}
 .resumo.conf{border-color:#D69A3C;background:#FFFBF3;}
+.resumo.sem{border-color:#C97B7B;background:#FDF6F6;} .resumo.sem .rs-selo{color:#A03A3A;}
 .rs-selo{font-size:10.5px;font-weight:700;letter-spacing:.08em;color:#2E6B47;} .resumo.conf .rs-selo{color:#8A5A18;}
 .rs-dec{font-size:22px;font-weight:700;color:#1D2B36;margin:2px 0 6px;line-height:1.2;}
 .rs-oq{margin:0 0 12px;color:#4A525E;}

@@ -45,6 +45,7 @@
     .rt-chip.t-dentro { background:var(--fill-2); color:var(--text-muted); }
     /* "opte, se o comercial confirmar" (12/10/2026): âmbar com contorno, pra não confundir com o empate */
     .rt-chip.t-ambar { background:rgba(227,179,65,.16); color:var(--warn); box-shadow:inset 0 0 0 1px rgba(227,179,65,.55); }
+    .rt-chip.t-semconc { background:rgba(224,108,108,.14); color:var(--err); }
     .rt-st { font-size:11.5px; color:var(--text-muted); white-space:nowrap; }
     .rt-massa { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:var(--surface); border-radius:14px; padding:10px 16px; display:none; gap:10px; align-items:center; z-index:70; box-shadow:0 10px 30px rgba(0,0,0,.5); flex-wrap:wrap; justify-content:center; }
     .rt-massa.on { display:flex; }
@@ -89,6 +90,9 @@
     .rt-verd.ambar { background:rgba(227,179,65,.13); box-shadow:inset 3px 0 0 var(--warn); color:var(--text); }
     .rt-verd .apertada { display:inline-block; margin-left:6px; padding:0 7px; border-radius:999px; font-size:10.5px; font-weight:700; background:rgba(224,108,108,.16); color:var(--err); vertical-align:1px; }
     .rt-verd b { font-size:13.5px; }
+    /* SEM CONCLUSÃO (13/10/2026): dado decisivo com confiança baixa — o sistema não recomenda */
+    .rt-verd.semconc { background:rgba(224,108,108,.10); box-shadow:inset 3px 0 0 var(--err); color:var(--text); }
+    .rt-verd .conf { display:block; margin-top:6px; font-size:11.5px; color:var(--text-muted); }
     .rt-tm { width:100%; border-collapse:collapse; margin-top:12px; }
     .rt-tm th { text-align:right; font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--text-dim); padding:5px 8px; }
     .rt-tm th:first-child { text-align:left; }
@@ -185,6 +189,7 @@
             <option value="sim_por_fora">Simulado: por fora</option>
             <option value="sim_condicional">Simulado: opte, se confirmar</option>
             <option value="sim_empate">Simulado: empate</option>
+            <option value="sim_sem_conclusao">Simulado: sem conclusão</option>
           </optgroup>
         </select>
         <select class="rg-status" id="rtFseg"><option value="">Segmento: todos</option></select>
@@ -380,12 +385,13 @@
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { carregarOperacao, MESES_ABREV, avisosVendasEspeciais } from './assets/js/operacao-xml.js';
-    import { lerRelatorio, consolidar, resumirEntradas, GRUPOS, lerPlanilha, perfilAtividade, cnaeMaisCompleto, cnpjsParaConsultar, ramoComReducao, conferirRbt12, CREDITO_FORNECEDOR_SIMPLES } from './assets/js/dominio-relatorios.js';
+    import { lerRelatorio, consolidar, resumirEntradas, GRUPOS, lerPlanilha, perfilAtividade, cnaeMaisCompleto, cnpjsParaConsultar, ramoComReducao, conferirRbt12, CREDITO_FORNECEDOR_SIMPLES, rotuloMeses } from './assets/js/dominio-relatorios.js';
     import { lerXls } from './assets/js/xls-biff.js';
     import { importarLote, separarNaoXml } from './assets/js/importar-xml.js';
     import { formatDocumento, normalizarDocumento } from './assets/js/utils.js';
     import { gerarAnalise } from './assets/js/rt-analise.js';
     import { simular, anexo2027 } from './assets/js/rt-motor.js';
+    import { avaliarConfianca, resumoConfianca, inferirProcedencia, ROT_DECISAO } from './assets/js/rt-confianca.js';
     import { RT_PRAZO, janelaAberta as janelaAbertaEm } from './assets/js/rt-prazos.js';
 
     const $ = id => document.getElementById(id);
@@ -462,18 +468,20 @@
     // vai pro título do chip. Antes a lista seguia dizendo "Candidato por fora" em caso cuja simulação deu por dentro
     // (ateliês de calçados, 02/10/2026). O filtro usa o mesmo valor que aparece.
     // "opte, se confirmar" (12/10/2026): o custo sobe por fora, mas o crédito a mais da carteira PJ supera a alta
-    const SIM_LBL = { por_dentro:['Simulado: por dentro','t-dentro'], por_fora:['Simulado: por fora','t-fora'], condicional:['Simulado: opte, se confirmar','t-ambar'], empate:['Simulado: empate','t-sim'] };
+    // sem conclusão (13/10/2026): dado decisivo com confiança baixa — a lista não mostra um resultado que a conta não sustenta
+    const SIM_LBL = { por_dentro:['Simulado: por dentro','t-dentro'], por_fora:['Simulado: por fora','t-fora'], condicional:['Simulado: opte, se confirmar','t-ambar'], empate:['Simulado: empate','t-sim'], sem_conclusao:['Simulado: sem conclusão','t-semconc'] };
     const cacheSim = new Map();
     function lerSim(c) {
       const chave = c.sim_obs || '';
       if (!cacheSim.has(chave)) {
         let j = null; try { j = JSON.parse(chave || 'null'); } catch (e) {}
         let r = null;
-        if (j && j.veredito === 'OPTE') r = 'por_fora';
+        if (j && j.confianca && j.confianca.conclusao === 'sem_conclusao') r = 'sem_conclusao';
+        else if (j && j.veredito === 'OPTE') r = 'por_fora';
         else if (j && j.veredito === 'OPTE_SE') r = 'condicional';
         // empate: gravado desde 02/10/2026; nas simulações anteriores, pela frase do veredito
         else if (j && j.veredito === 'MANTENHA') r = (j.empate === true || /^Empate técnico/.test(j.frase || '')) ? 'empate' : 'por_dentro';
-        cacheSim.set(chave, { r, margem: j && j.margem != null ? +j.margem : null, apertada: !!(j && j.apertada) });
+        cacheSim.set(chave, { r, margem: j && j.margem != null ? +j.margem : null, apertada: !!(j && j.apertada), confianca: j && j.confianca || null });
       }
       return cacheSim.get(chave);
     }
@@ -487,7 +495,11 @@
       const r = resultadoSim(c);
       if (r) {
         const info = lerSim(c);
-        const tit = 'Resultado da simulação gravada' + (info.margem != null ? ' · margem da decisão ' + info.margem.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%' + (info.apertada ? ' (apertada)' : '') : '')
+        const cf = info.confianca;
+        const tit = (r === 'sem_conclusao'
+            ? 'Sem conclusão: ' + (cf.decisivos || []).join(', ') + ' — pouca base (confiança baixa ou não medido) e muda o resultado' + (cf.faltam && cf.faltam.length ? '. Falta: ' + cf.faltam.join('; ') : '')
+            : 'Resultado da simulação gravada' + (info.margem != null ? ' · margem da decisão ' + info.margem.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%' + (info.apertada ? ' (apertada)' : '') : '')
+              + (cf && cf.conclusao === 'a_confirmar' ? ' · a confirmar: ' + (cf.aConfirmar || []).join('; ') : ''))
           + (tri ? ' — a triagem por CNAE, de antes da conta, era "' + tri[0] + '"' : '');
         return '<span class="rt-chip ' + SIM_LBL[r][1] + '" title="' + escapeHtml(tit) + '">' + SIM_LBL[r][0] + '</span>';
       }
@@ -610,6 +622,8 @@
       const pulados = escolhidos.length - aptos.length;
       if (!aptos.length) { alert('Nenhum selecionado apto: o comunicado exige decisão definida (e simulação gravada, no caso por fora).'); return; }
       if (pulados && !confirm(aptos.length + ' comunicado(s) serão gerados; ' + pulados + ' selecionado(s) ficam de fora (sem decisão, ou por fora sem simulação gravada). Continuar?')) return;
+      const semConc = aptos.filter(c => { const cf = confiancaGravada(c); return cf && cf.conclusao === 'sem_conclusao'; });
+      if (semConc.length && !confirm(semConc.length + ' dos comunicados é(são) de simulação SEM CONCLUSÃO (dado decisivo com confiança baixa): ' + semConc.map(c => (clientesMap[c.cliente_id] || {}).nome_principal || '?').join(', ') + '.\n\nGerar mesmo assim, com a decisão gravada?')) return;
       abrirJanelaComunicados(aptos);
     };
 
@@ -680,7 +694,11 @@
       if (!$('sPartilha').value) preencherPartilhaAuto();
       $('bMsg').textContent = '';
       $('bSaida').hidden = true;
+      // importação feita em outra ficha não vale aqui (13/10/2026): o resumo do Domínio ia junto ao gravar e à análise do
+      // próximo cliente aberto — agora fica preso ao caso em que foi aplicado
+      Object.assign(domEstado, { rels: [], outras: [], regimes: null, incluir: null, cons: null, resumo: null, casoId: null });
       prepararPuxarXml(c.cliente_id);
+      restaurarProcedencia(c);
 
       // C — decisão
       document.querySelectorAll('input[name="cDec"]').forEach(r => r.checked = r.value === c.decisao);
@@ -736,26 +754,97 @@
     // ---------- ponte com as notas importadas (XML) ----------
     const ANO_XML = 2026;
     const XML_CAMPOS = ['sReceita', 'sPctPJ', 'sPctMerc', 'sPctDesp', 'sMixZero', 'sMixRed60', 'sMixRed30', 'sMixCheia', 'sPctCred'];
+    // PROCEDÊNCIA DE CADA CAMPO (13/10/2026): quem preencheu e de onde — relatório do Domínio e os meses medidos, notas,
+    // dedução pelo perfil, tabela da lei, padrão do sistema ou digitado na ficha. Vai gravada com a simulação e decide a
+    // confiança de cada número na ficha, na análise e no relatório do cliente (assets/js/rt-confianca.js). Editar o campo à
+    // mão apaga a origem: o número passa a "digitado na ficha".
+    const CAMPO_PROC = { sReceita: 'receita', sRbt12: 'rbt12', sAnexo: 'anexo', sAliqEf: 'aliqEfetiva', sPartilha: 'partilha', sPctST: 'pctExcluidoST', sPctMono: 'pctReceitaMonofasica',
+      sPctMerc: 'pctMerc', sPctDesp: 'pctDesp', sPctPJ: 'pctPJ', sMixCheia: 'mix', sMixRed60: 'mix', sMixRed40: 'mix', sMixRed30: 'mix', sMixZero: 'mix',
+      sPctCred: 'pctCred', sPctDespCred: 'pctDespCred', sPctEmb: 'pctEmb', sEstoque: 'estoque' };
+    const MIX_IDS = ['sMixCheia', 'sMixRed60', 'sMixRed40', 'sMixRed30', 'sMixZero'];
+    let procCampos = {};
     // manterDominio: o que veio dos relatórios do Domínio sobrevive ao "Puxar das notas"
     function limparOrigemXml(manterDominio) {
       document.querySelectorAll('.xml-origem').forEach(e => { if (!(manterDominio && e.dataset.fonte === 'dominio')) e.remove(); });
       if (!manterDominio) document.querySelectorAll('[data-fonte]').forEach(e => { delete e.dataset.fonte; });
+      // a origem guardada acompanha a etiqueta: some junto (a do Domínio fica quando pedido)
+      Object.keys(procCampos).forEach(id => { if (!(manterDominio && procCampos[id] && procCampos[id].dominio)) delete procCampos[id]; });
       $('bXmlInfo').hidden = true; $('bXmlInfo').textContent = '';
     }
-    function origemXml(id, texto, fonte) {
+    // proc: a procedência estruturada ({ fonte, meses, … }); sem ela, o que a etiqueta diz (Domínio ou notas)
+    function origemXml(id, texto, fonte, proc) {
       const inp = $(id); if (!inp) return;
       const antiga = inp.nextElementSibling;
       if (antiga && antiga.classList.contains('xml-origem')) antiga.remove();
       const s = document.createElement('span'); s.className = 'hint xml-origem'; s.textContent = texto;
       if (fonte) { s.dataset.fonte = fonte; inp.dataset.fonte = fonte; } else { delete inp.dataset.fonte; }
       inp.insertAdjacentElement('afterend', s);
+      if (CAMPO_PROC[id]) procCampos[id] = { ...(proc || { fonte: fonte === 'dominio' ? 'manual' : 'notas' }), texto, ...(fonte === 'dominio' ? { dominio: true } : {}) };
     }
     const veioDoDominio = id => $(id) && $(id).dataset.fonte === 'dominio';
-    // editou o campo à mão: a etiqueta de origem deixa de valer
-    XML_CAMPOS.concat(['sRbt12', 'sPartilha']).forEach(id => { const inp = $(id); if (inp) inp.addEventListener('input', () => {
+    // editou o campo à mão: a etiqueta de origem deixa de valer e o número passa a "informado na ficha" — inclusive o 0
+    // digitado (consultoria que não compra nada informa 0% de compras; sem isso, o 0 ficava "não medido"). Campo apagado
+    // volta a "não informado"
+    Object.keys(CAMPO_PROC).forEach(id => { const inp = $(id); if (inp) inp.addEventListener(inp.tagName === 'SELECT' ? 'change' : 'input', () => {
       delete inp.dataset.fonte;
+      if (inp.tagName !== 'SELECT' && inp.value.trim() === '') delete procCampos[id]; else procCampos[id] = { fonte: 'manual' };
       const s = inp.nextElementSibling; if (s && s.classList.contains('xml-origem')) s.remove();
     }); });
+    // etiqueta curta pra origem guardada sem texto (simulações antigas, restauradas pela dedução do resumo do Domínio)
+    function textoProc(pc) {
+      const per = pc.meses && pc.meses.length ? ' de ' + rotuloMeses(pc.meses) : pc.periodo ? ' de ' + pc.periodo : '';
+      if (pc.legado && (pc.fonte === 'manual' || pc.fonte === 'padrao')) return pc.fonte === 'padrao' ? '100% à alíquota cheia, origem não registrada' : 'origem não registrada';
+      return { faturamento: 'do Domínio: faturamento' + per, pgdas: 'do Domínio: PGDAS' + per, entradas: 'do Domínio: entradas' + (per || ' (período não registrado)'),
+        saidas: 'do Domínio: saídas' + per, notas: 'das notas' + per, deduzido: 'deduzido pelo perfil da empresa', tabela: 'tabela 2027 pelo anexo e faixa',
+        padrao: 'assumido 100% à alíquota cheia (sem as notas de venda)' }[pc.fonte] || '';
+    }
+    // a procedência da tela, por número da simulação (é o que vai gravado e o que a confiança lê)
+    function procedenciaDaTela() {
+      const p = {};
+      const limpo = pc => { const { dominio, ...r } = pc; return r; };
+      Object.entries(CAMPO_PROC).forEach(([id, chave]) => {
+        if (chave === 'mix') return;
+        const el = $(id); if (!el) return;
+        const pc = procCampos[id];
+        if (pc) { p[chave] = limpo(pc); return; }
+        if (chave === 'partilha' && el.dataset.auto === '1') { p[chave] = { fonte: 'tabela' }; return; }
+        // zero sem origem é o padrão de campo não informado, não um número que alguém digitou
+        p[chave] = { fonte: el.value.trim() === '' || parseNum(el.value) === 0 ? 'vazio' : 'manual' };
+      });
+      // mix: a origem do campo "cheia" vale pro conjunto, salvo redução digitada à mão nos outros (editado na tela, ou com
+      // valor e sem origem nenhuma)
+      const pm = procCampos.sMixCheia;
+      const digitado = MIX_IDS.slice(1).some(id => procCampos[id] ? procCampos[id].fonte === 'manual' && !procCampos[id].legado : (parseNum($(id).value) || 0) > 0);
+      p.mix = pm && !digitado ? limpo(pm) : { fonte: MIX_IDS.every(id => $(id).value.trim() === '') ? 'padrao' : 'manual' };
+      return p;
+    }
+    // compras e % de PJ zerados e sem origem: a etiqueta diz que não foram medidos (é o que pesa na confiança)
+    function marcarNaoMedidos() {
+      ['sPctMerc', 'sPctDesp', 'sPctPJ'].forEach(id => {
+        const el = $(id), pc = procCampos[id];
+        if ((pc && pc.fonte !== 'vazio') || (el.value.trim() !== '' && parseNum(el.value) !== 0)) return;
+        origemXml(id, 'não medido: sem relatório, a conta considera 0% — se é 0 mesmo, digite 0', undefined, { fonte: 'vazio' });
+      });
+    }
+    // ao abrir a ficha: a origem de cada campo volta com a simulação gravada (nas antigas, deduzida do resumo do Domínio)
+    function restaurarProcedencia(c) {
+      procCampos = {};
+      let j = null; try { j = JSON.parse(c.sim_obs || 'null'); } catch (e) {}
+      if (!j || !j.input) { if ($('sPartilha').dataset.auto === '1') procCampos.sPartilha = { fonte: 'tabela' }; return; }
+      const legado = !j.procedencia;
+      const proc = j.procedencia || inferirProcedencia(j.input, j.dominio);
+      const DOMINIO = ['faturamento', 'pgdas', 'entradas', 'saidas', 'tabela'];
+      Object.entries(CAMPO_PROC).forEach(([id, chave]) => {
+        const pc = proc[chave]; if (!pc) return;
+        // sem etiqueta: digitado, vazio, o anexo (select) e as reduções do mix (a etiqueta fica no campo "cheia") — salvo o
+        // número de simulação anterior cuja origem não ficou registrada: esse diz isso no campo
+        const semOrigem = pc.fonte === 'manual' && pc.legado;
+        if ((['manual', 'vazio'].includes(pc.fonte) && !semOrigem) || id === 'sAnexo' || (chave === 'mix' && id !== 'sMixCheia')) { procCampos[id] = { ...pc }; return; }
+        const texto = pc.texto || textoProc(pc); if (!texto) { procCampos[id] = { ...pc }; return; }
+        origemXml(id, (legado ? 'simulação anterior — ' : '') + texto, DOMINIO.includes(pc.fonte) ? 'dominio' : undefined, pc);
+      });
+      marcarNaoMedidos();
+    }
     // quantas notas autorizadas do ano a empresa tem na base — a caixa de importar mostra
     async function contarNotas(clienteId) {
       if (!clienteId) return 0;
@@ -777,22 +866,24 @@
         // o Domínio manda no que os dois sabem (receita e compras): o XML só tem o que a empresa
         // EMITIU, então nunca conhece as compras e perde o serviço sem XML. Preserva e avisa.
         const preservados = [];
+        // procedência: as notas e os meses com venda (a confiança de cada número depende de quantos meses as notas cobrem)
+        const pn = { fonte: 'notas', meses: p.mesesComVenda.map(m => ANO_XML + '-' + String(m).padStart(2, '0')) };
         const seLivre = (id, valor, texto, rotulo) => {
           if (veioDoDominio(id)) { preservados.push(rotulo); return; }
-          $(id).value = valor; origemXml(id, texto);
+          $(id).value = valor; origemXml(id, texto, undefined, pn);
         };
         // preenche SEM gravar: o usuário confere, calcula e grava
         seLivre('sReceita', brNum(Math.round(p.receitaMensal * 100) / 100), 'da operação: média de ' + p.mesesComVenda.length + ' mês(es) com venda', 'receita');
-        $('sPctPJ').value = brPct(r1(p.pctPJ)); origemXml('sPctPJ', 'da operação: ' + brPct(r1(p.pctPJ)) + '% das vendas para PJ');
+        $('sPctPJ').value = brPct(r1(p.pctPJ)); origemXml('sPctPJ', 'da operação: ' + brPct(r1(p.pctPJ)) + '% das vendas para PJ', undefined, { ...pn, porDocumento: true, regimeConsultado: false });
         seLivre('sPctMerc', brPct(r1(p.pctMerc)), 'da operação: compras de mercadoria ÷ vendas', '% compras de mercadorias');
         seLivre('sPctDesp', brPct(r1(p.pctDesp)), 'da operação: demais entradas ÷ vendas', '% compras de despesas');
-        $('sMixZero').value = brPct(r1(p.mixZero)); origemXml('sMixZero', 'da operação: NCM em alíquota zero');
-        $('sMixRed60').value = brPct(r1(p.mixRed60)); origemXml('sMixRed60', 'da operação: NCM com redução 60%');
-        $('sMixRed30').value = brPct(r1(p.mixRed30)); origemXml('sMixRed30', 'da operação: NCM com redução 30%');
-        $('sMixCheia').value = brPct(r1(Math.max(0, 100 - r1(p.mixZero) - r1(p.mixRed60) - r1(p.mixRed30)))); origemXml('sMixCheia', 'da operação: 100 − zero − reduções' + (p.nServicos ? ' (serviços contam na cheia)' : ''));
+        $('sMixZero').value = brPct(r1(p.mixZero)); origemXml('sMixZero', 'da operação: NCM em alíquota zero', undefined, pn);
+        $('sMixRed60').value = brPct(r1(p.mixRed60)); origemXml('sMixRed60', 'da operação: NCM com redução 60%', undefined, pn);
+        $('sMixRed30').value = brPct(r1(p.mixRed30)); origemXml('sMixRed30', 'da operação: NCM com redução 30%', undefined, pn);
+        $('sMixCheia').value = brPct(r1(Math.max(0, 100 - r1(p.mixZero) - r1(p.mixRed60) - r1(p.mixRed30)))); origemXml('sMixCheia', 'da operação: 100 − zero − reduções' + (p.nServicos ? ' (serviços contam na cheia)' : ''), undefined, pn);
         if (p.pctComprasComCredito != null) {
           $('sPctCred').value = brPct(r1(p.pctComprasComCredito));
-          origemXml('sPctCred', 'da operação, pelo NCM das compras: ' + brPct(r1(p.mixCompras.cheia)) + '% à alíquota cheia · ' + brPct(r1(p.mixCompras.reducao_60)) + '% redução 60% · ' + brPct(r1(p.mixCompras.zero)) + '% alíquota zero' + (p.comprasSemNcm ? ' · ' + p.comprasSemNcm + ' item(ns) sem NCM' : ''));
+          origemXml('sPctCred', 'da operação, pelo NCM das compras: ' + brPct(r1(p.mixCompras.cheia)) + '% à alíquota cheia · ' + brPct(r1(p.mixCompras.reducao_60)) + '% redução 60% · ' + brPct(r1(p.mixCompras.zero)) + '% alíquota zero' + (p.comprasSemNcm ? ' · ' + p.comprasSemNcm + ' item(ns) sem NCM' : ''), undefined, pn);
         }
         const mi = p.mesesComVenda[0], mf = p.mesesComVenda[p.mesesComVenda.length - 1];
         const periodo = (mi === mf ? MESES_ABREV[mi - 1] : MESES_ABREV[mi - 1] + '–' + MESES_ABREV[mf - 1]) + '/' + ANO_XML;
@@ -1041,7 +1132,8 @@
       let html = '';
 
       if (ent) {
-        const res = resumirEntradas(ent, cons.competencias);
+        // os meses em que as compras foram medidas (os que têm receita do mesmo mês) — podem não ser os do faturamento
+        const res = resumirEntradas(ent, cons.mesesEntradas && cons.mesesEntradas.length ? cons.mesesEntradas : null);
         html += '<h3 style="margin:14px 0 0;font-size:12px;color:var(--text);">Entradas por tipo de operação <small style="color:var(--text-dim);font-weight:400;">— marque o que é compra de verdade</small></h3>' +
           '<table class="dom-tab"><thead><tr><th>Grupo</th><th>Notas</th><th>Valor</th><th>Entra como</th></tr></thead><tbody>' +
           res.map(g => {
@@ -1105,6 +1197,9 @@
       const cons = domEstado.cons;
       const btn = $('domAplicar'); btn.disabled = true; btn.textContent = 'Aplicando…';
       try {
+        // a origem de antes (gravada ou de outra importação): campo que esta importação não tocar continua com ela
+        const antes = { ...procCampos };
+        const valorAntes = Object.fromEntries(Object.keys(CAMPO_PROC).map(id => [id, $(id) ? $(id).value : '']));
         // sem relatórios novos, preserva o que o Domínio já tinha posto nesta sessão
         if (cons && Object.keys(cons.campos).length) { limparOrigemXml(); aplicarDominio(cons); }
         else limparOrigemXml(true);
@@ -1113,6 +1208,11 @@
           try { notasFonte = await puxarDasNotas(c); }
           catch (e) { notasFonte = { fonte: null, avisos: ['Notas: ' + (e.message || e)] }; }
         }
+        Object.entries(antes).forEach(([id, pc]) => {
+          if (procCampos[id] || !pc || !$(id) || $(id).value !== valorAntes[id]) return;
+          if (['manual', 'vazio'].includes(pc.fonte) || id === 'sAnexo' || (CAMPO_PROC[id] === 'mix' && id !== 'sMixCheia')) { procCampos[id] = pc; return; }
+          origemXml(id, pc.texto || textoProc(pc), pc.dominio ? 'dominio' : undefined, pc);
+        });
         $('ovDom').classList.remove('on');
         $('bSaida').hidden = true;
         const partes = [];
@@ -1136,17 +1236,20 @@
     };
     function aplicarDominio(cons) {
       const k = cons.campos, r1 = v => Math.round(v * 10) / 10;
-      const por = (id, valor, texto) => { if (valor == null) return; $(id).value = valor; origemXml(id, texto, 'dominio'); };
-      if (k.anexo) { $('sAnexo').value = k.anexo; ajustarCamposAnexo(); }
-      por('sRbt12', k.rbt12 != null ? brNum(k.rbt12) : null, cons.origem.rbt12 ? 'do Domínio: ' + cons.origem.rbt12 : null);
-      por('sReceita', k.receita != null ? brNum(Math.round(k.receita * 100) / 100) : null, cons.origem.receita ? 'do Domínio: ' + cons.origem.receita : null);
-      por('sPctMerc', k.pctMerc != null ? brPct(r1(k.pctMerc)) : null, cons.origem.pctMerc ? 'do Domínio: ' + cons.origem.pctMerc : null);
-      por('sPctDesp', k.pctDesp != null ? brPct(r1(k.pctDesp)) : null, cons.origem.pctDesp ? 'do Domínio: ' + cons.origem.pctDesp : null);
-      por('sPctPJ', k.pctPJ != null ? brPct(r1(k.pctPJ)) : null, cons.origem.pctPJ ? (k.pctPJDeduzido ? cons.origem.pctPJ : 'do Domínio: ' + cons.origem.pctPJ + (k.clientesRegime ? ' — só empresas do regime regular (as do Simples não aproveitam o crédito)' : '')) : null);
-      por('sAliqEf', k.aliqEfetiva != null ? brPct(Math.round(k.aliqEfetiva * 100) / 100) : null, cons.origem.aliqEfetiva ? 'do Domínio: ' + cons.origem.aliqEfetiva : null);
+      // procedência de cada campo (13/10/2026): o relatório, os meses medidos e o que pesa contra — vai gravada com a simulação
+      const procDe = c => (cons.procedencia && cons.procedencia[c]) || { fonte: 'manual' };
+      const mesesPgdas = procDe('partilha').meses || procDe('rbt12').meses || null;
+      const por = (id, valor, texto, chave) => { if (valor == null) return; $(id).value = valor; origemXml(id, texto, 'dominio', procDe(chave)); };
+      if (k.anexo) { $('sAnexo').value = k.anexo; ajustarCamposAnexo(); procCampos.sAnexo = { ...procDe('anexo'), dominio: true }; }
+      por('sRbt12', k.rbt12 != null ? brNum(k.rbt12) : null, cons.origem.rbt12 ? 'do Domínio: ' + cons.origem.rbt12 : null, 'rbt12');
+      por('sReceita', k.receita != null ? brNum(Math.round(k.receita * 100) / 100) : null, cons.origem.receita ? 'do Domínio: ' + cons.origem.receita : null, 'receita');
+      por('sPctMerc', k.pctMerc != null ? brPct(r1(k.pctMerc)) : null, cons.origem.pctMerc ? 'do Domínio: ' + cons.origem.pctMerc : null, 'pctMerc');
+      por('sPctDesp', k.pctDesp != null ? brPct(r1(k.pctDesp)) : null, cons.origem.pctDesp ? 'do Domínio: ' + cons.origem.pctDesp : null, 'pctDesp');
+      por('sPctPJ', k.pctPJ != null ? brPct(r1(k.pctPJ)) : null, cons.origem.pctPJ ? (k.pctPJDeduzido ? cons.origem.pctPJ : 'do Domínio: ' + cons.origem.pctPJ + (k.clientesRegime ? ' — só empresas do regime regular (as do Simples não aproveitam o crédito)' : '')) : null, 'pctPJ');
+      por('sAliqEf', k.aliqEfetiva != null ? brPct(Math.round(k.aliqEfetiva * 100) / 100) : null, cons.origem.aliqEfetiva ? 'do Domínio: ' + cons.origem.aliqEfetiva : null, 'aliqEfetiva');
       if (k.pctExcluidoST != null) {
         $('sPctST').value = brPct(r1(k.pctExcluidoST));
-        origemXml('sPctST', 'do Domínio: ' + (cons.origem.pctExcluidoST || ''), 'dominio');
+        origemXml('sPctST', 'do Domínio: ' + (cons.origem.pctExcluidoST || ''), 'dominio', procDe('pctExcluidoST'));
       }
       if (k.partilha != null) {
         // com exclusão de ST/monofásico, a tabela 2027 é a referência (a CBS alcança tudo em 2027);
@@ -1158,30 +1261,35 @@
         // a mistura de anexos também desloca a partilha e a conta não separa uma coisa da outra.
         const umAnexo = !(cons.sim && (cons.sim.anexos || []).filter(a => (a.receita || 0) > 0).length > 1);
         if (daTabela != null && Math.abs(daTabela - k.partilha) > 0.3) {
-          origemXml('sPartilha', 'tabela 2027 (' + brPct(daTabela) + '%); PGDAS: ' + (cons.origem.partilha || ''), 'dominio');
+          origemXml('sPartilha', 'tabela 2027 (' + brPct(daTabela) + '%); PGDAS: ' + (cons.origem.partilha || ''), 'dominio', { fonte: 'tabela', meses: mesesPgdas });
           const falta = daTabela - k.partilha;
-          if (!umAnexo) origemXml('sPctMono', 'não separado: o PGDAS tem receita em mais de um anexo — informe se houver revenda monofásica (medicamentos, perfumaria, autopeças, bebidas frias)');
+          if (!umAnexo) origemXml('sPctMono', 'não separado: o PGDAS tem receita em mais de um anexo — informe se houver revenda monofásica (medicamentos, perfumaria, autopeças, bebidas frias)', undefined, { fonte: 'nao_separado' });
           else if (falta >= 1 && (k.pctExcluidoST || 0) > 0) {
             const pctMono = Math.min(100, falta / daTabela * 100, k.pctExcluidoST / daTabela * 100);
             $('sPctMono').value = brPct(r1(pctMono));
-            origemXml('sPctMono', 'do Domínio: PIS+COFINS do PGDAS = ' + brPct(r1(k.partilha)) + '% do DAS pela tabela, contra ' + brPct(daTabela) + '% da partilha — a diferença é receita monofásica hoje (cerca de ' + brPct(r1(pctMono)) + '% da receita); em 2027 a CBS alcança essa receita', 'dominio');
+            origemXml('sPctMono', 'do Domínio: PIS+COFINS do PGDAS = ' + brPct(r1(k.partilha)) + '% do DAS pela tabela, contra ' + brPct(daTabela) + '% da partilha — a diferença é receita monofásica hoje (cerca de ' + brPct(r1(pctMono)) + '% da receita); em 2027 a CBS alcança essa receita', 'dominio', { fonte: 'pgdas', meses: mesesPgdas });
           }
         } else {
           $('sPartilha').value = brPct(r1(daTabela != null ? daTabela : k.partilha));
           $('sPartilha').dataset.auto = '';
           $('sPartilhaHint').textContent = daTabela != null ? 'tabela 2027, confirmada pelo PGDAS' : 'do PGDAS';
-          origemXml('sPartilha', 'do Domínio: ' + (cons.origem.partilha || ''), 'dominio');
-          if (daTabela != null && umAnexo) { $('sPctMono').value = '0'; origemXml('sPctMono', 'do Domínio: PIS+COFINS do PGDAS batem com a partilha da tabela — sem receita monofásica', 'dominio'); }
+          origemXml('sPartilha', 'do Domínio: ' + (cons.origem.partilha || ''), 'dominio', daTabela != null ? { fonte: 'tabela', meses: mesesPgdas } : procDe('partilha'));
+          if (daTabela != null && umAnexo) { $('sPctMono').value = '0'; origemXml('sPctMono', 'do Domínio: PIS+COFINS do PGDAS batem com a partilha da tabela — sem receita monofásica', 'dominio', { fonte: 'pgdas', meses: mesesPgdas }); }
         }
       }
       // resumo compacto para a análise técnica; vai junto da simulação ao gravar
       domEstado.resumo = resumoDominio(domEstado.rels, cons, domEstado.incluir);
+      domEstado.casoId = casoAtual() ? casoAtual().id : null;   // o resumo é deste caso: outra ficha não usa
       // (mensagens e fechamento ficam com o Aplicar, que também puxa as notas)
     }
     function resumoDominio(rels, cons, incluir) {
-      const ent2 = cons.ent, res2 = ent2 ? resumirEntradas(ent2, cons.competencias) : null;
+      const mesesEnt = cons.mesesEntradas && cons.mesesEntradas.length ? cons.mesesEntradas : null;
+      const ent2 = cons.ent, res2 = ent2 ? resumirEntradas(ent2, mesesEnt) : null;
       return {
         periodoRotulo: cons.fat ? rotuloPeriodo(cons.competencias) : null,
+        // os períodos de cada relatório (13/10/2026): compras e vendas podem ter sido medidas em meses diferentes do faturamento
+        periodoEntradas: mesesEnt ? rotuloMeses(mesesEnt) : null, mesesEntradas: mesesEnt ? mesesEnt.length : 0,
+        periodoVendas: cons.mesesVendas && cons.mesesVendas.length ? rotuloMeses(cons.mesesVendas) : null, mesesVendas: cons.mesesVendas ? cons.mesesVendas.length : 0,
         fonteFaturamento: cons.fat ? (cons.fat.layout === 'demonstrativo' ? 'Demonstrativo Mensal (Domínio)' : 'Relatório de faturamento (Domínio)') : null,
         faturamento: cons.fat ? { total: cons.fat.totais.total, servicos: cons.fat.totais.servicos, saidas: cons.fat.totais.saidas } : null,
         meses: cons.fat ? cons.fat.meses : null,
@@ -1219,7 +1327,7 @@
       const fx = params.partilha[anexo].find(f => rbt12 <= +f.ate);
       if (fx) {
         const i = params.partilha[anexo].indexOf(fx);
-        $('sPartilha').value = brPct(fx.pct); $('sPartilha').dataset.auto = '1';
+        $('sPartilha').value = brPct(fx.pct); $('sPartilha').dataset.auto = '1'; delete procCampos.sPartilha;   // tabela da lei (a procedência sai do dataset.auto)
         // indústria: a partilha do campo é a do anexo do PGDAS; o motor converte pra do Anexo I de 2027
         const a27 = anexo2027(anexo, $('sIpiMantido').checked), f27 = a27 !== anexo && params.partilha[a27] ? params.partilha[a27][i] : null;
         $('sPartilhaHint').textContent = 'auto — Anexo ' + anexo + ', ' + (i + 1) + 'ª faixa: CBS ' + brPct(fx.cbs) + '% + IBS ' + brPct(fx.ibs) + '% (tabela 2027-2028)'
@@ -1243,7 +1351,7 @@
     function entradaDaTela() {
       // mix todo em branco = 100% à alíquota cheia (é o caso comum sem notas na base); a tela avisa
       const mixVazio = ['sMixCheia', 'sMixRed60', 'sMixRed40', 'sMixRed30', 'sMixZero'].every(id => $(id).value.trim() === '');
-      if (mixVazio) { $('sMixCheia').value = '100'; origemXml('sMixCheia', 'sem mix informado: assumido 100% à alíquota cheia — ajuste se houver redução por NCM'); }
+      if (mixVazio) { $('sMixCheia').value = '100'; origemXml('sMixCheia', 'sem mix informado: assumido 100% à alíquota cheia — ajuste se houver redução por NCM', undefined, { fonte: 'padrao' }); }
       const anexoTela = $('sAnexo').value;
       return {
         anexo: anexoTela,
@@ -1278,14 +1386,42 @@
     const textoDecisao = r => r.veredito.tipo === 'OPTE' ? 'por fora sai mais barato'
       : r.veredito.tipo === 'OPTE_SE' ? 'por fora custa mais, mas o crédito a mais dos clientes PJ cobre a alta (opte, se o comercial confirmar)'
       : r.veredito.empate && r.semestre.diferenca < 0 ? 'empate técnico, manter' : 'por dentro sai mais barato';
+    // o resumo do Domínio deste caso: o da importação desta sessão (se foi aplicada nesta ficha) ou o gravado
+    function dominioDoCaso(c) {
+      if (domEstado.resumo && domEstado.casoId === c.id) return domEstado.resumo;
+      try { return JSON.parse(c.sim_obs || 'null')?.dominio || null; } catch (e) { return null; }
+    }
+    // perfil da atividade pra confiança: o que é plausível pra cada número depende do que a empresa faz
+    function contextoConfianca(ent, c = casoAtual()) {
+      const cli = c ? clientesMap[c.cliente_id] : null;
+      const cnae = String(cnaeMaisCompleto(c && c.cnae_base, cli && cli.cnae_principal));
+      const dom = c ? dominioDoCaso(c) : null;
+      const pf = perfilAtividade({ natureza: dom && dom.vendas && dom.vendas.natureza, cnae, anexo: ent.anexo, restaurante: (ent.mixRed40 || 0) > 0 });
+      return { tipo: pf.tipo, vendeMercadoria: pf.vendeMercadoria, refeicaoEmpresas: pf.refeicaoEmpresas, passageiros: pf.passageiros,
+        podeReduzir: pf.vendeMercadoria && (pf.tipo === 'alimentacao' || ramoComReducao((cli && cli.cnae_principal) || cnae)) };
+    }
+    // SEM CONCLUSÃO / A CONFIRMAR (13/10/2026): o que a tela diz da confiança dos números que a conta usou
+    function htmlConfianca(conf) {
+      const li = it => '<li><b>' + escapeHtml(it.rotulo) + '</b> — ' + escapeHtml(it.valor) + ', ' + escapeHtml(it.confianca) + (it.periodo && it.periodo !== '—' ? ' (' + escapeHtml(it.periodo) + ')' : '') + '. ' + escapeHtml(it.motivo) + ' ' + escapeHtml(it.efeito || '') + '</li>';
+      const confirmar = conf.conclusao === 'a_confirmar'
+        ? '<span class="conf">⚠ <b>A confirmar</b> — o resultado depende de número que não é firme:</span><ul style="margin:4px 0 4px 18px;padding:0;font-size:12px">' + conf.aConfirmar.map(li).join('')
+          + (conf.conjunto ? '<li>' + escapeHtml(conf.conjunto.texto) + '</li>' : '') + '</ul>' : '';
+      const dados = conf.itens.filter(it => it.categoria === 'dado');
+      return confirmar + '<span class="conf">Confiança dos dados: ' + dados.map(it => escapeHtml(it.curto || it.rotulo) + ' <b>' + escapeHtml(it.selo) + '</b>' + (it.periodo && it.periodo !== '—' ? ' (' + escapeHtml(it.periodo) + ')' : '')).join(' · ')
+        + '. De onde veio cada número e por quê: na análise técnica.</span>';
+    }
     function calcular() {
       const ent = entradaDaTela();
       const r = simular(ent);
-      simAtual = { input: ent, r };
+      marcarNaoMedidos();
+      const conf = avaliarConfianca(ent, procedenciaDaTela(), { ...contextoConfianca(ent), sim: r });
+      simAtual = { input: ent, r, conf };
       const s = r.semestre;
-      const venceu = r.veredito.tipo === 'OPTE', condicional = r.veredito.tipo === 'OPTE_SE';
+      // sem conclusão: nenhum dos dois lados aparece como o recomendado
+      const semConc = conf.conclusao === 'sem_conclusao';
+      const venceu = !semConc && r.veredito.tipo === 'OPTE', condicional = !semConc && r.veredito.tipo === 'OPTE_SE';
       $('bRetratos').innerHTML =
-        '<div class="rt-ret' + (venceu || condicional ? '' : ' win') + '"><h4>Por dentro (Simples)</h4>' +
+        '<div class="rt-ret' + (venceu || condicional || semConc ? '' : ' win') + '"><h4>Por dentro (Simples)</h4>' +
           '<div class="rw"><span>Custo tributário do semestre</span><b>' + brl(s.custoDentro) + '</b></div>' +
           '<div class="rw"><span>Caixa pago ao fisco</span><b>' + brl(s.caixaDentro) + '</b></div>' +
           '<div class="rw"><span>Crédito que o cliente leva</span><b>' + brl(s.creditoClienteDentro) + '</b></div>' +
@@ -1327,10 +1463,19 @@
         ? '<br><span style="font-size:11.5px">Antes de confirmar, veja a margem de contribuição: o cliente do regime regular credita o IBS/CBS destacado por cima do preço, mas o consumidor final e o cliente do Simples pagam mais — se eles não aceitarem, a empresa absorve essa parte.</span>' : '';
       const notaAliquota = r.veredito.apertada
         ? '<br><span style="font-size:11.5px">A alíquota oficial de 2027 é fixada no ano anterior, com base em cálculo do TCU (ADCT, art. 130), e pode sair depois de ' + RT_PRAZO.opcaoDM + '. Numa decisão apertada, refaça a conta com o número oficial: quem optou pode cancelar ' + RT_PRAZO.cancelamento + ', sem efeito.</span>' : '';
-      $('bVeredito').className = 'rt-verd ' + (venceu ? 'opte' : condicional ? 'ambar' : 'mantenha');
-      $('bVeredito').innerHTML = '<b>' + (venceu ? 'OPTE pelo regime regular.' : condicional ? 'OPTE, SE O COMERCIAL CONFIRMAR.' : (r.veredito.empate && s.diferenca < 0 ? 'EMPATE TÉCNICO — mantenha a apuração no Simples.' : 'MANTENHA a apuração no Simples.')) + '</b>'
-        + (r.veredito.apertada ? '<span class="apertada" title="Margem da decisão abaixo de 15%: pouca mudança na carteira de clientes PJ inverte a conclusão">decisão apertada</span>' : '')
-        + ' ' + escapeHtml(r.veredito.frase) + notaMargem + notaAliquota +
+      $('bVeredito').className = 'rt-verd ' + (semConc ? 'semconc' : venceu ? 'opte' : condicional ? 'ambar' : 'mantenha');
+      $('bVeredito').innerHTML = (semConc
+          // o dado que decide tem confiança baixa: a tela não recomenda — diz o que daria, por que não vale e o que falta
+          ? '<b>SEM CONCLUSÃO — os dados de hoje não sustentam uma decisão.</b> Com os números como estão, a conta daria “' + escapeHtml(conf.rotuloDecisao) + '”, mas '
+            + (conf.decisivos.length > 1 ? 'estes números, sem base suficiente (confiança baixa ou não medidos), mudam o resultado:' : 'este número, sem base suficiente (' + escapeHtml(conf.decisivos[0].confianca) + '), muda o resultado:')
+            + '<ul style="margin:6px 0 6px 18px;padding:0">' + conf.decisivos.map(it => '<li><b>' + escapeHtml(it.rotulo) + '</b> — ' + escapeHtml(it.valor) + ', ' + escapeHtml(it.confianca) + (it.periodo && it.periodo !== '—' ? ' (' + escapeHtml(it.periodo) + ')' : '') + '. ' + escapeHtml(it.motivo) + ' ' + escapeHtml(it.efeito || '') + '</li>').join('') + '</ul>'
+            + (conf.conjunto && conf.conjunto.semConclusao ? '<b>Juntos:</b> ' + escapeHtml(conf.conjunto.texto) + ' ' : '')
+            + (conf.faltam.length ? '<b>Para concluir, falta:</b> ' + escapeHtml(conf.faltam.join('; ')) + '.' : '')
+            + '<span class="conf">Conta provisória, só pra referência (não é recomendação): ' + escapeHtml(r.veredito.frase) + '</span>'
+          : '<b>' + (venceu ? 'OPTE pelo regime regular.' : condicional ? 'OPTE, SE O COMERCIAL CONFIRMAR.' : (r.veredito.empate && s.diferenca < 0 ? 'EMPATE TÉCNICO — mantenha a apuração no Simples.' : 'MANTENHA a apuração no Simples.')) + '</b>'
+            + (r.veredito.apertada ? '<span class="apertada" title="Margem da decisão abaixo de 15%: pouca mudança na carteira de clientes PJ inverte a conclusão">decisão apertada</span>' : '')
+            + ' ' + escapeHtml(r.veredito.frase) + notaMargem + notaAliquota)
+        + htmlConfianca(conf) +
         semEstoque + semCreditoCompras + baseCheia + das2027 +
         (r.avisos.length ? '<br><span style="font-size:11.5px">⚠ ' + r.avisos.map(escapeHtml).join(' · ') + '</span>' : '');
       const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho'];
@@ -1367,8 +1512,10 @@
         sim_credito_cliente_dentro: +r.semestre.creditoClienteDentro.toFixed(2),
         sim_credito_cliente_fora: +r.semestre.creditoClienteFora.toFixed(2),
         // empate = por fora sai mais barato, mas abaixo do limiar (o mesmo critério da análise técnica)
+        // procedência de cada campo e a confiança (13/10/2026): o que a análise, o relatório e a lista leem depois
         sim_obs: JSON.stringify({ v: 1, input: ent, veredito: r.veredito.tipo, empate: !!r.veredito.empate && r.semestre.diferenca < 0, frase: r.veredito.frase, calculado_em: hojeISO(), ...resumoVeredito(r),
-          dominio: domEstado.resumo || (() => { try { return JSON.parse(c.sim_obs || 'null')?.dominio || null; } catch (e) { return null; } })() }),
+          procedencia: procedenciaDaTela(), confianca: resumoConfianca(simAtual.conf),
+          dominio: dominioDoCaso(c) }),
         atualizado_em: agoraISO()
       };
       if (c.status === 'triado' || c.status === 'validado') upd.status = 'simulado';
@@ -1376,8 +1523,11 @@
       const { error } = await supabase.from('rt_casos').update(upd).eq('id', c.id);
       if (error) { $('bMsg').style.color = 'var(--err)'; $('bMsg').textContent = 'Erro: ' + error.message; return; }
       Object.assign(c, upd);
-      $('bMsg').style.color = 'var(--ok)'; $('bMsg').textContent = '✓ Simulação gravada';
-      if (!$('cFund').value.trim()) $('cFund').value = r.veredito.frase;
+      const semConc = simAtual.conf.conclusao === 'sem_conclusao';
+      $('bMsg').style.color = semConc ? 'var(--warn)' : 'var(--ok)';
+      $('bMsg').textContent = semConc ? '✓ Simulação gravada — sem conclusão: falta ' + simAtual.conf.faltam.join('; ') : '✓ Simulação gravada';
+      // sem conclusão, a frase da conta provisória não vira fundamento de decisão
+      if (!$('cFund').value.trim() && !semConc) $('cFund').value = r.veredito.frase;
       atualizarChips();
     };
 
@@ -1386,7 +1536,7 @@
       if ($('cFund').value.trim()) return;
       const c = casoAtual();
       let frase = '';
-      try { const j = JSON.parse(c && c.sim_obs || 'null'); if (j && j.frase) frase = j.frase; } catch (e) {}
+      try { const j = JSON.parse(c && c.sim_obs || 'null'); if (j && j.frase && !(j.confianca && j.confianca.conclusao === 'sem_conclusao')) frase = j.frase; } catch (e) {}
       $('cFund').value = frase || (r.value === 'por_dentro' ? FUND_PADRAO_DENTRO : FUND_PADRAO_FORA);
     });
 
@@ -1490,10 +1640,10 @@
     const gerarRelatorio = async (versao) => {
       const c = casoAtual(); if (!c) return;
       const cli = clientesMap[c.cliente_id];
-      let ent = null, domRes = null;
-      try { const j = JSON.parse(c.sim_obs || 'null'); if (j && j.input) { ent = entradaAtual(j.input); domRes = j.dominio || null; } } catch (e) {}
-      // o que foi importado nesta sessão vale mais que o que está gravado
-      if (domEstado.resumo) domRes = domEstado.resumo;
+      let ent = null, domRes = null, procRes = null;
+      try { const j = JSON.parse(c.sim_obs || 'null'); if (j && j.input) { ent = entradaAtual(j.input); domRes = j.dominio || null; procRes = j.procedencia || null; } } catch (e) {}
+      // o que foi importado nesta sessão, nesta ficha, vale mais que o que está gravado
+      if (domEstado.resumo && domEstado.casoId === c.id) domRes = domEstado.resumo;
       if (!ent) { alert('Grave a simulação antes de gerar a análise — é dela que saem os números do documento.'); return; }
       const btn = versao === 'cliente' ? $('dCliente') : $('dAnalise'); const rotBtn = btn.textContent; btn.disabled = true; btn.textContent = 'Montando…';
       try {
@@ -1551,7 +1701,7 @@
           }
         } catch (e) { /* sem notas importadas o documento sai sem a seção de clientes */ }
 
-        const html = gerarAnalise(montarDadosAnalise(c, cliAmpl, ent, sim, dom, xml), { versao });
+        const html = gerarAnalise(montarDadosAnalise(c, cliAmpl, ent, sim, dom, xml, procRes), { versao });
         const w = window.open('', '_blank');
         w.document.write(html); w.document.close();
       } catch (err) {
@@ -1562,7 +1712,8 @@
     $('dCliente').onclick = () => gerarRelatorio('cliente');
 
     // sensibilidade, fontes, recomendação e pendências: tudo derivado do caso
-    function montarDadosAnalise(c, cli, ent, sim, dom, xml) {
+    // proc: a procedência de cada campo gravada com a simulação (13/10/2026); null nas gravadas antes — aí é deduzida
+    function montarDadosAnalise(c, cli, ent, sim, dom, xml, proc) {
       const s = sim.semestre, m = sim.mes, optar = sim.veredito.tipo === 'OPTE';
       const empate = !!sim.veredito.empate && s.diferenca < 0;   // por fora mais barato, mas abaixo do limiar
       // OPTE, SE O COMERCIAL CONFIRMAR (12/10/2026): por fora custa mais, mas o crédito a mais da carteira PJ cobre a alta
@@ -1572,7 +1723,7 @@
       // notas XML > acompanhamento de saídas/serviços do Domínio > % informado na ficha
       const vendasDom = dom && dom.vendas ? dom.vendas : null;
       const pctPJ = xml && xml.pctPJ != null ? xml.pctPJ : vendasDom && vendasDom.pctPJ != null ? vendasDom.pctPJ : (ent.pctPJ != null && ent.pctPJ !== '' ? Number(ent.pctPJ) : null);
-      const fontePJ = xml && xml.pctPJ != null ? 'XML das notas' : vendasDom && vendasDom.pctPJ != null ? vendasDom.fonte || 'acompanhamento de saídas (Domínio)' : pctPJ != null ? 'informado na ficha' : null;
+      let fontePJ = xml && xml.pctPJ != null ? 'XML das notas' : vendasDom && vendasDom.pctPJ != null ? vendasDom.fonte || 'acompanhamento de saídas (Domínio)' : pctPJ != null ? 'informado na ficha' : null;
       const barRest = (ent.mixRed40 || 0) > 0;
       // ATIVIDADE — serviço x comércio, pelo faturamento ou pelas saídas/serviços
       const servShare = dom && dom.faturamento && dom.faturamento.total > 0 ? dom.faturamento.servicos / dom.faturamento.total * 100
@@ -1590,15 +1741,42 @@
       if (ehAlimentacao && !refeicaoEmpresas) consumidor = true;
       const cnaeRamo = c.cnae_base || (cli && cli.cnae_principal) || '';
       const podeReduzir = vendeMercadoria && (perfil.tipo === 'alimentacao' || ramoComReducao((cli && cli.cnae_principal) || cnaeRamo));
-      const mixMedido = !((ent.mixCheia || 0) >= 99) || !!(xml && xml.nNotas);
+      // CONFIANÇA DOS NÚMEROS (13/10/2026): de onde veio cada número, em que período, quanto dá pra confiar e se muda o
+      // resultado (assets/js/rt-confianca.js). Dado da empresa com confiança baixa que muda o resultado = SEM CONCLUSÃO:
+      // a análise e o relatório do cliente não recomendam e dizem o que falta. Média que muda = a confirmar.
+      const confianca = avaliarConfianca(ent, proc || inferirProcedencia(ent, dom), { tipo: perfil.tipo, vendeMercadoria, refeicaoEmpresas, passageiros: perfil.passageiros, podeReduzir, sim });
+      const semConclusao = confianca.conclusao === 'sem_conclusao';
+      // o % de PJ da ficha (sem notas nem saídas no resumo): a origem é a da confiança — deduzido, informado, simulação anterior
+      { const itPJ = confianca.itens.find(it => it.chave === 'pj'); if (fontePJ === 'informado na ficha' && itPJ && itPJ.fonte) fontePJ = itPJ.fonte.charAt(0).toLowerCase() + itPJ.fonte.slice(1); }
       const brl0 = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
       const p1 = v => (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
       const viraEm = m.debitoFora > 0 ? (s.diferenca / 6) / m.debitoFora * 100 : null;
       const dif = x => simular({ ...ent, ...x }).semestre.diferenca;
       const sinal = v => (v < 0 ? 'economia de ' : 'custo de ') + brl0(Math.abs(v));
-      const inverteDif = v => !empate && Math.abs(v) > 0.5 && (v < 0) !== (s.diferenca < 0);
+      // "MUDA O RESULTADO" É UM CRITÉRIO SÓ EM TODO O DOCUMENTO (13/10/2026): a recomendação muda de lado — optar por fora,
+      // "opte, se o comercial confirmar" ou manter —, o mesmo da confiança (seção 7) e da ficha. Antes a seção 6 e os alertas
+      // olhavam o sinal da diferença: um "opte, se" (por fora custa mais) que virava "manter" saía "não muda" na seção 6 e
+      // "muda" na 7; um "manter" de R$ 80 que ficava R$ 20 mais barato por fora (ainda empate) saía como "se inverte"
+      const decBase = decisaoDe(sim);
+      const decCom = x => decisaoDe(simular({ ...ent, ...x }));
+      const mudaCom = x => decCom(x) !== decBase;
+      // O MIX FOI MEDIDO? Pela procedência da simulação — a mesma da confiança (seção 7): notas = medido; divisão com redução
+      // = informada; tudo cheio pela lei (serviço, frete) = conhecido; tudo cheio sem as notas = não medido. As notas que
+      // estão na base HOJE não contam se a simulação não as usou (antes contavam, e a seção 6 dizia "medido" enquanto a
+      // seção 7 dizia "não medido") — a análise só avisa que elas estão lá
+      const itemMix = confianca.itens.find(it => it.chave === 'mix');
+      const cheioMix = (ent.mixCheia || 0) >= 99;
+      const mixPorNotas = !!itemMix && /^NCM das notas/.test(itemMix.fonte);
+      const mixLegado = !!itemMix && /origem não registrada/.test(itemMix.fonte);
+      const mixInformado = !!itemMix && itemMix.fonte === 'Informado, sem relatório';
+      const mixMedido = mixPorNotas || !cheioMix || (!!itemMix && itemMix.nivel === 'alta');
+      const notasNaoUsadas = !mixMedido && !!(xml && xml.nNotas);
+      // o mix testado: o da confiança, quando ela testou; senão a mesma conta aqui (restaurante: a comida a −40%; os demais,
+      // metade das vendas com −60%)
+      const altMix = perfil.tipo === 'alimentacao' ? { mixCheia: 10, mixRed40: 90, mixRed60: 0, mixRed30: 0, mixZero: 0 } : { mixCheia: 50, mixRed60: 50, mixRed40: 0, mixRed30: 0, mixZero: 0 };
+      const mixMuda = itemMix && itemMix.resultados && itemMix.resultados.length ? !!itemMix.muda : mudaCom(altMix);
       // a alíquota oficial de 2027 muda o resultado? (estimativas em circulação: referência de 8,8% e de 9,21%, menos 0,1 ponto)
-      const cbsMuda = [8.7, 9.11].some(v => { const r2 = simular({ ...ent, cbs: v }); return r2.veredito.tipo !== sim.veredito.tipo || inverteDif(r2.semestre.diferenca); });
+      const cbsMuda = [8.7, 9.11].some(v => mudaCom({ cbs: v }));
       // ENQUADRAMENTO DA REFEIÇÃO POR CONTRATO (13/10/2026): no regime de bares, −40% e o cliente não credita a refeição
       // (LC 214, arts. 275 e 276); fora dele, alíquota cheia e o cliente credita. Sem o texto do art. 273 na base, a análise
       // roda o enquadramento contrário ao da ficha e diz se o resultado muda
@@ -1608,7 +1786,7 @@
         const dentro = barRest;
         const alt = dentro ? { mixCheia: (ent.mixCheia || 0) + (ent.mixRed40 || 0), mixRed40: 0 } : { mixRed40: (ent.mixRed40 || 0) + (ent.mixCheia || 0), mixCheia: 0 };
         const r2 = simular({ ...ent, ...alt });
-        regime273 = { dentro, r2, muda: r2.veredito.tipo !== sim.veredito.tipo || inverteDif(r2.semestre.diferenca),
+        regime273 = { dentro, r2, muda: decisaoDe(r2) !== decBase,
           hoje: dentro ? 'no regime de bares (−40%, o cliente não credita a refeição)' : 'fora do regime de bares (alíquota cheia, o cliente credita)',
           contrario: dentro ? 'fora do regime de bares (alíquota cheia, o cliente credita)' : 'no regime de bares (−40%, o cliente não credita a refeição)' };
       }
@@ -1625,36 +1803,38 @@
         b2c && barRest
           ? (() => {
               const c0 = ent.pctComprasComCredito != null ? ent.pctComprasComCredito : 100;
-              // a partir de que % das compras com crédito a conclusão inverteria (se inverter)
+              // a partir de que % das compras com crédito o resultado mudaria (se mudar)
               let vira = null;
-              if (dif({ pctComprasComCredito: 100 }) < 0) { let lo = c0, hi = 100; for (let i = 0; i < 30; i++) { const mid = (lo + hi) / 2; if (dif({ pctComprasComCredito: mid }) > 0) lo = mid; else hi = mid; } vira = lo; }
+              if (mudaCom({ pctComprasComCredito: 100 })) { let lo = c0, hi = 100; for (let i = 0; i < 30; i++) { const mid = (lo + hi) / 2; if (mudaCom({ pctComprasComCredito: mid })) hi = mid; else lo = mid; } vira = hi; }
               return { nome: 'Crédito das compras', hoje: ent.pctComprasComCredito != null ? p1(ent.pctComprasComCredito) + '% das mercadorias (por NCM)' : 'segue o mix de vendas',
                 efeito: '+15 pontos (revisão de NCM) → ' + sinal(dif({ pctComprasComCredito: Math.min(100, c0 + 15) })) + ' · +25 pontos → ' + sinal(dif({ pctComprasComCredito: Math.min(100, c0 + 25) })) + ' · nenhum crédito → ' + sinal(dif({ pctComprasComCredito: 0 })),
-                muda: vira != null ? 'Não em revisão plausível — inverteria só acima de ' + Math.round(vira) + '% das compras creditando (hoje ' + p1(c0) + '%); cesta básica é alíquota zero por lei' : 'Não — nem creditando todas as compras' };
+                muda: vira != null ? 'Não em revisão plausível — mudaria só a partir de ' + Math.round(vira) + '% das compras creditando (hoje ' + p1(c0) + '%); cesta básica é alíquota zero por lei' : 'Não — nem creditando todas as compras' };
             })()
           : b2c
           ? { nome: 'Crédito das entradas', hoje: p1(ent.pctComprasMercadorias + ent.pctComprasDespesas) + '% da receita, todo com crédito cheio',
               efeito: '−20% (fornecedores do Simples, crédito glosado) → ' + sinal(dif({ pctComprasMercadorias: ent.pctComprasMercadorias * 0.8 })) + ' · −40% → ' + sinal(dif({ pctComprasMercadorias: ent.pctComprasMercadorias * 0.6 })),
-              muda: (dif({ pctComprasMercadorias: ent.pctComprasMercadorias * 0.8 }) > 0) !== (s.diferenca > 0) ? 'Sim — basta 20% das entradas não creditar pra inverter' : 'Não com −20%' }
+              muda: mudaCom({ pctComprasMercadorias: ent.pctComprasMercadorias * 0.8 }) ? 'Sim — basta 20% das entradas não creditar pra mudar o resultado' : 'Não com −20%' }
           : { nome: 'Repasse da CBS ao cliente', hoje: 'não levantado',
               efeito: 'de ' + brl0(-s.diferenca) + ' (0% de repasse) a ' + brl0(m.debitoFora * 6 - s.diferenca) + ' (100%)',
               muda: viraEm != null && viraEm >= 0 && viraEm <= 100 ? 'Sim — inverte a partir de ' + Math.round(viraEm) + '%' : 'Sim' },
         // as estimativas em circulação são da REFERÊNCIA; em 2027 a CBS aplicada é a referência menos 0,1 ponto (ADCT art. 127)
         { nome: 'Alíquota final da CBS', hoje: p1(ent.cbs) + '% em 2027 (referência de ' + p1(ent.cbs + 0.1) + '% menos 0,1 ponto; não fixada)',
-          efeito: 'referência de 8,8% (Fazenda) → ' + sinal(dif({ cbs: 8.7 })) + ' · de 9,21% (CGIBS) → ' + sinal(dif({ cbs: 9.11 })), muda: [8.7, 9.11].some(v => inverteDif(dif({ cbs: v }))) ? 'Sim — alguma das estimativas inverte a conclusão' : 'Não — nas três estimativas a conclusão é a mesma' },
+          efeito: 'referência de 8,8% (Fazenda) → ' + sinal(dif({ cbs: 8.7 })) + ' · de 9,21% (CGIBS) → ' + sinal(dif({ cbs: 9.11 })), muda: cbsMuda ? 'Sim — com alguma das estimativas o resultado muda' : 'Não — nas três estimativas o resultado é o mesmo' },
         { nome: 'Base creditável de entradas', hoje: p1(ent.pctComprasMercadorias + ent.pctComprasDespesas) + '% da receita',
           efeito: '25% → ' + sinal(dif({ pctComprasMercadorias: 25 })) + ' · 60% → ' + sinal(dif({ pctComprasMercadorias: 60 })),
-          muda: [25, 60].some(v => inverteDif(dif({ pctComprasMercadorias: v }))) ? 'Sim — com menos crédito de entrada a conclusão inverte' + (empataCompras ? ' (empata a ~' + Math.round(empataCompras) + '%)' : '') : (empataCompras ? 'Não (empataria só a ~' + Math.round(empataCompras) + '%)' : 'Não') },
+          muda: [25, 60].some(v => mudaCom({ pctComprasMercadorias: v })) ? 'Sim — com outro crédito de entrada o resultado muda' + (empataCompras ? ' (empata a ~' + Math.round(empataCompras) + '%)' : '') : (empataCompras ? 'Não (empataria só a ~' + Math.round(empataCompras) + '%)' : 'Não') },
         { nome: 'Receita mensal', hoje: brl0(ent.receita),
           efeito: '−30% → ' + sinal(dif({ receita: ent.receita * 0.7 })) + ' · +30% → ' + sinal(dif({ receita: ent.receita * 1.3 })),
-          muda: [0.7, 1.3].some(f => inverteDif(dif({ receita: ent.receita * f }))) ? 'Sim — com outra receita a conclusão inverte' : 'Não — a diferença acompanha a receita' },
+          muda: [0.7, 1.3].some(f => mudaCom({ receita: ent.receita * f })) ? 'Sim — com outra receita o resultado muda' : 'Não — a diferença acompanha a receita' },
         barRest && !refeicaoEmpresas
           ? { nome: 'Redução de 40% (bar/restaurante)', hoje: p1(ent.mixRed40 || 0) + '% da receita',
               efeito: 'sem a redução (tudo à alíquota cheia) → ' + sinal(dif({ mixRed40: 0, mixCheia: (ent.mixCheia || 0) + (ent.mixRed40 || 0) })), muda: 'Não — sem ela, por fora fica ainda pior' }
           : b2c
-          ? { nome: 'Mix das vendas', hoje: mixMedido ? 'medido' : 'não medido — tudo à alíquota cheia',
-              efeito: 'metade com redução de 60% → ' + sinal(dif({ mixCheia: 50, mixRed60: 50, mixRed40: 0, mixRed30: 0, mixZero: 0 })),
-              muda: mixMedido ? 'Não' : 'Pode — redução nas vendas baixa o débito por fora; medir pelo NCM das notas' }
+          ? { nome: 'Mix das vendas', hoje: mixPorNotas ? 'medido pelo NCM das notas' : mixLegado ? 'origem não registrada' + (cheioMix ? ' — tudo à alíquota cheia' : '')
+                : mixInformado ? 'informado na ficha, sem as notas' + (cheioMix ? ' — tudo à alíquota cheia' : '') : mixMedido ? 'alíquota cheia pela lei' : 'não medido — tudo à alíquota cheia',
+              efeito: (perfil.tipo === 'alimentacao' ? '90% da venda como comida preparada (−40%) → ' : 'metade com redução de 60% → ') + sinal(dif(altMix)),
+              muda: mixMedido ? 'Não' : !podeReduzir ? 'Não — os produtos do ramo não estão nos anexos de redução da LC 214'
+                : mixMuda ? 'Sim — com redução nas vendas o resultado muda; medir pelo NCM das notas' : 'Não — mesmo com a redução nas vendas; medir pelo NCM afina o número' }
           : { nome: 'Regime dos clientes', hoje: pctPJ != null ? p1(pctPJ) + '% das vendas para CNPJ (' + fontePJ + ') — regime de cada um não consultado' : 'não levantado',
               efeito: 'cliente do Simples não aproveita o crédito gerado por fora', muda: optar ? 'Sim — enfraquece a opção' : 'Reforça manter no DAS' }
       ];
@@ -1665,14 +1845,14 @@
       if ((ent.creditoEstoqueMes || 0) > 0) {
         const v = dif({ creditoEstoqueMes: 0 });
         sensibilidade.push({ nome: 'Crédito de estoque (LC 214, art. 381)', hoje: brl0(ent.creditoEstoqueMes) + '/mês, de fevereiro em diante',
-          efeito: 'sem ele → ' + sinal(v), muda: inverteDif(v) ? 'Sim — a conclusão depende do crédito de estoque, que é provável, não garantido' : 'Não' });
+          efeito: 'sem ele → ' + sinal(v), muda: mudaCom({ creditoEstoqueMes: 0 }) ? 'Sim — o resultado depende do crédito de estoque, que é provável, não garantido' : 'Não' });
       }
       // ICMS/ISS FORA DA BASE (12/10/2026): o curso tira o ICMS/ISS do DAS da base do débito por fora (LC 214, art. 12,
       // §2º, V); pro optante ainda não há norma específica — a linha mostra a conta com a base cheia
       if ((m.exclusaoBase || 0) > 0.005) {
         const v = dif({ excluirIcmsIssDaBase: false });
         sensibilidade.push({ nome: (fat.icmsIss ? fat.icmsIss.tributo : 'ICMS/ISS') + ' do DAS fora da base do débito', hoje: 'excluído — ' + p1(m.exclusaoBase / ent.receita * 100) + '% da receita (LC 214, art. 12, §2º, V)',
-          efeito: 'com a base cheia (sem a exclusão) → ' + sinal(v), muda: inverteDif(v) ? 'Sim — a conclusão depende da exclusão, que pro optante do Simples ainda não tem norma específica' : 'Não' });
+          efeito: 'com a base cheia (sem a exclusão) → ' + sinal(v), muda: mudaCom({ excluirIcmsIssDaBase: false }) ? 'Sim — o resultado depende da exclusão, que pro optante do Simples ainda não tem norma específica' : 'Não' });
       }
       // PREÇO FINAL MANTIDO (03/10/2026): o método (o do curso) calcula o IBS/CBS sobre a receita de hoje; se o preço final
       // ficar igual — com o imposto dentro dele, na venda e na compra —, o imposto sai de dentro do preço: desde 12/10/2026,
@@ -1680,45 +1860,43 @@
       {
         const v = dif({ precoFinalMantido: true });
         sensibilidade.push({ nome: 'Preço final igual ao de hoje', hoje: 'imposto calculado sobre a receita atual',
-          efeito: 'com o IBS/CBS saindo de dentro do preço (na venda e na compra) → ' + sinal(v), muda: inverteDif(v) ? 'Sim — mantendo o preço final, a conclusão inverte' : 'Não' });
+          efeito: 'com o IBS/CBS saindo de dentro do preço (na venda e na compra) → ' + sinal(v), muda: mudaCom({ precoFinalMantido: true }) ? 'Sim — mantendo o preço final, o resultado muda' : 'Não' });
       }
 
+      // REGRAS E PREMISSAS (13/10/2026): os números da empresa — receita, apuração do Simples, compras, clientes PJ, mix,
+      // crédito das compras e a alíquota da CBS — saem da confiança (de onde veio, período, nível e por quê); aqui ficam
+      // a lei e as premissas que a conta usa
       const fontes = [];
-      if (dom && dom.faturamento) fontes.push({ o_que: 'Receita mensal e divisão serviço/mercadoria', origem: (dom.fonteFaturamento || 'Relatório de faturamento (Domínio)') + (dom.pgdas ? ', conferido contra a apuração do Simples' : ''), nivel: 'alta', rotulo: 'alta' });
-      else fontes.push({ o_que: 'Receita mensal', origem: 'Informada na ficha — o relatório de faturamento não está anexado a este caso', nivel: 'media', rotulo: 'a anexar' });
       if (dom && dom.pgdas) {
         // a partilha pode ter vindo da tabela 2027 (quando há ST/monofásico) ou do próprio PGDAS
         const razaoPgdas = dom.pgdas.dasTotal > 0 ? dom.pgdas.cbsNoDas / dom.pgdas.dasTotal * 100 : null;
         const daTabela = razaoPgdas != null && Math.abs(razaoPgdas - ent.partilha) > 0.3;
-        fontes.push({ o_que: 'RBT12, anexo e alíquota efetiva', origem: 'PGDAS ' + dom.pgdas.competencia, nivel: 'alta', rotulo: 'alta' });
         fontes.push({ o_que: 'Partilha CBS/IBS no DAS (' + p1(ent.partilha) + '%)', origem: daTabela
           ? 'Anexos de transição 2027-2028 da LC 123 (LC 214/2025 e LC 227/2026), por anexo e faixa; o PGDAS ' + dom.pgdas.competencia + ' mostra PIS+COFINS = ' + p1(razaoPgdas) + '% do DAS apurado porque parte da receita é monofásica hoje — em 2027 a CBS alcança essa parcela'
           : 'PGDAS ' + dom.pgdas.competencia + ' (PIS + COFINS ÷ DAS), igual à tabela 2027 por anexo e faixa', nivel: 'alta', rotulo: 'alta (norma)' });
       }
-      else fontes.push({ o_que: 'RBT12, anexo e partilha do DAS', origem: 'Informados na ficha — a apuração do Simples não está anexada a este caso', nivel: 'media', rotulo: 'a anexar' });
       if (fat.mudouAnexo) fontes.push({ o_que: 'Anexo de 2027 (' + fat.anexo2027 + ', no lugar do ' + fat.anexo + ' do PGDAS)', origem: 'LC 123, art. 18, §5º, na redação do art. 517 da LC 214 (efeitos a partir de 01/01/2027): a atividade industrial é tributada no Anexo I; só a venda de produto com IPI mantido (Zona Franca de Manaus) segue no Anexo II. Alíquota do PGDAS convertida pela tabela do Anexo I (' + p1(fat.aliqEfetiva2027 * 100) + '%) e partilha CBS/IBS de ' + p1(fat.partilha2027) + '%', nivel: 'alta', rotulo: 'alta (norma)', ressalva: '— confirmar que nenhum produto tem IPI mantido' });
       if ((m.exclusaoBase || 0) > 0.005) fontes.push({ o_que: (fat.icmsIss ? fat.icmsIss.tributo : 'ICMS/ISS') + ' do DAS fora da base do débito por fora (' + p1(m.exclusaoBase / ent.receita * 100) + '% da receita)', origem: 'LC 214, art. 12, §2º, V: de 2026 a 2032 ICMS e ISS não integram a base do IBS/CBS. No optante, sai o ' + (fat.icmsIss ? fat.icmsIss.tributo : 'ICMS/ISS') + ' do DAS (alíquota efetiva × fatia do tributo na faixa, Res. CGSN 190/2026) — método do curso; pro optante do Simples ainda sem norma específica (ver a seção 6)', nivel: 'media', rotulo: 'média' });
       if (fat.icmsIss && fat.icmsIss.issFixo) fontes.push({ o_que: 'ISS fixo por profissional', origem: 'LC 123, art. 18, §22-A: o ISS não está no DAS — nada do DAS sai da base do débito por fora', nivel: 'alta', rotulo: 'alta (norma)' });
       if (ent.pctDespesasComCredito != null && ent.pctDespesasComCredito !== '' && +ent.pctDespesasComCredito < 100) fontes.push({ o_que: 'Crédito das despesas (' + p1(ent.pctDespesasComCredito) + '% do cheio)', origem: 'Informado na ficha: o crédito é o IBS/CBS que o fornecedor destaca — serviço com redução (profissões do art. 127 da LC 214, −30%) e aluguel de imóvel (−70%, art. 261, parágrafo único; locador pessoa física não contribuinte não destaca nada) creditam menos; VR, VA e plano de saúde dos empregados creditam o débito do fornecedor (art. 57, §3º, IV)', nivel: 'media', rotulo: 'informado' });
-      if (xml) fontes.push({ o_que: (xml.clientes && xml.clientes.length && !consumidor ? '% de vendas para CNPJ e concentração de clientes' : '% de vendas para CNPJ'), origem: 'XML das notas fiscais de ' + (xml.periodoRotulo || ANO_XML) + (xml.cobertura != null ? ' (cobrem ' + (xml.cobertura >= 99.995 ? '100%' : p1(xml.cobertura) + '%') + ' do faturamento do período)' : ''), nivel: 'alta', rotulo: 'alta' });
+      if (xml && xml.clientes && xml.clientes.length && !consumidor) fontes.push({ o_que: 'Concentração de clientes', origem: 'XML das notas fiscais de ' + (xml.periodoRotulo || ANO_XML) + (xml.cobertura != null ? ' (cobrem ' + (xml.cobertura >= 99.995 ? '100%' : p1(xml.cobertura) + '%') + ' do faturamento do período)' : ''), nivel: 'alta', rotulo: 'alta' });
       if (dom && dom.fornecedoresRegime) fontes.push({ o_que: 'Regime dos fornecedores', origem: 'Receita Federal, pelos CNPJs das entradas: ' + p1(dom.fornecedoresRegime.simplesPct) + '% das compras consultadas vêm do Simples/MEI, que só dão crédito do IBS/CBS recolhido no DAS deles (LC 214, art. 47, §9º, II; LC 123, art. 23, §1º-A) — estimado em 15% do crédito cheio; consultados os maiores, ' + p1(dom.fornecedoresRegime.cobertura) + '% das compras', nivel: 'alta', rotulo: 'alta' });
       if (dom && dom.clientesRegime) fontes.push({ o_que: 'Regime dos clientes empresa', origem: 'Receita Federal, pelos CNPJs das saídas: ' + p1(100 - dom.clientesRegime.regularPct) + '% das vendas a empresas vão pra empresas do Simples, que não aproveitam o crédito', nivel: 'alta', rotulo: 'alta' });
-      if (dom && dom.pctPJDeduzido) fontes.push({ o_que: 'Clientes empresa × consumidor', origem: dom.pctPJDeduzido, nivel: 'baixa', rotulo: 'deduzido' });
-      if (pctPJ != null && !xml) fontes.push({ o_que: '% de vendas para CNPJ (' + p1(pctPJ) + '%)', origem: fontePJ, nivel: fontePJ === 'informado na ficha' ? 'baixa' : 'media', rotulo: fontePJ === 'informado na ficha' ? 'informado' : 'média' });
-      if (dom && dom.entradas) fontes.push({ o_que: 'Base creditável de entradas', origem: 'Acompanhamento de entradas, classificado por CFOP', nivel: 'media', rotulo: 'média', ressalva: '— regime dos fornecedores não verificado' });
       if (ent.mixCheia >= 99 && transporte && !perfil.passageiros) fontes.push({ o_que: 'Alíquota do frete (integralmente cheia)', origem: 'Transporte rodoviário de cargas não tem redução na LC 214 — as reduções de transporte são do coletivo de passageiros e do aéreo regional, de passageiros ou de carga (arts. 284 a 287; o aéreo regional com −40%, art. 287)', nivel: 'alta', rotulo: 'alta (norma)' });
       else if (ent.mixCheia >= 99 && transporte && perfil.passageiros) fontes.push({ o_que: 'Alíquota do transporte de passageiros (assumida cheia)', origem: 'Transporte coletivo de passageiros tem tratamento próprio: −40% no intermunicipal e interestadual (LC 214, art. 286) e no aéreo regional (art. 287); alíquota zero no ferroviário e hidroviário urbano e metropolitano (art. 285, I); isenção no rodoviário e metroviário urbano e metropolitano (art. 157) — conferir o enquadramento', nivel: 'baixa', rotulo: 'a conferir' });
       else if (ent.mixCheia >= 99 && prestador) fontes.push({ o_que: 'Mix de alíquotas (integralmente cheia)', origem: 'Serviço não consta dos anexos de redução da LC 214', nivel: 'alta', rotulo: 'alta (norma)' });
       else if (ent.mixCheia >= 99 && refeicaoEmpresas) fontes.push({ o_que: 'Mix de alíquotas (integralmente cheia)', origem: 'Refeição fornecida a empresas por contrato tratada fora do regime de bares: alíquota cheia, e o cliente credita (LC 214, art. 273, a conferir — no regime de bares seria −40% e sem crédito ao cliente, art. 276)', nivel: 'baixa', rotulo: 'a conferir' });
       else if (ent.mixCheia >= 99 && !mixMedido && vendeMercadoria && !podeReduzir) fontes.push({ o_que: 'Mix de alíquotas (integralmente cheia)', origem: 'Os produtos do ramo' + (cli && cli.cnae_principal ? ' (' + String(cli.cnae_principal).replace(/^[\d./-]+\s*-\s*/, '').toLowerCase() + ')' : '') + ' não estão nos anexos de redução da LC 214', nivel: 'media', rotulo: 'média (ramo)' });
-      else if (ent.mixCheia >= 99 && !mixMedido && podeReduzir) fontes.push({ o_que: 'Mix de alíquotas (assumido integralmente cheio)', origem: 'Não medido — sem notas de venda na base. Produtos com redução (insumos agropecuários, cesta básica, medicamentos e outros dos anexos da LC 214) baixariam o débito por fora', nivel: 'baixa', rotulo: 'a conferir' });
-      else if (ent.mixCheia >= 99) fontes.push({ o_que: 'Mix de alíquotas (integralmente cheia)', origem: 'NCM das notas de venda: nenhum item nos anexos de redução da LC 214', nivel: 'media', rotulo: 'média' });
+      else if (ent.mixCheia >= 99 && !mixMedido && podeReduzir) fontes.push({ o_que: 'Mix de alíquotas (assumido integralmente cheio)', origem: (mixLegado ? 'Origem não registrada (simulação anterior)'
+          : mixInformado ? 'Informado na ficha, sem as notas de venda'
+          : notasNaoUsadas ? 'Não medido — a simulação não usou as ' + xml.nNotas + ' notas da base (puxe das notas na ficha e refaça)'
+          : 'Não medido — sem notas de venda na base') + '. Produtos com redução (insumos agropecuários, cesta básica, medicamentos e outros dos anexos da LC 214) baixariam o débito por fora', nivel: 'baixa', rotulo: 'a conferir' });
+      else if (ent.mixCheia >= 99 && mixPorNotas) fontes.push({ o_que: 'Mix de alíquotas (integralmente cheia)', origem: 'NCM das notas de venda: nenhum item nos anexos de redução da LC 214', nivel: 'media', rotulo: 'média' });
+      else if (ent.mixCheia >= 99 && itemMix) fontes.push({ o_que: 'Mix de alíquotas (integralmente cheia)', origem: itemMix.fonte + ' — ' + itemMix.motivo, nivel: itemMix.nivel === 'nao_medido' ? 'baixa' : itemMix.nivel, rotulo: itemMix.selo });
       else if ((ent.mixRed40 || 0) > 0) fontes.push({ o_que: 'Mix de alíquotas (' + p1(ent.mixRed40) + '% com redução de 40%)', origem: 'LC 214/2025 arts. 273-276: alimentação preparada por bar/restaurante, inclusive com entrega por plataforma (art. 274, parágrafo único, II); bebidas alcoólicas e industrializados revendidos ficam na alíquota cheia (art. 273 §2º); o cliente não credita (art. 276)', nivel: refeicaoEmpresas ? 'baixa' : 'alta', rotulo: refeicaoEmpresas ? 'a conferir' : 'alta (norma)', ressalva: '— divisão entre preparado e revendido estimada pelas seções do PGDAS; refeição fornecida a empresas por contrato pode ficar fora do regime de bares (art. 273, a conferir)' });
-      if (ent.pctComprasComCredito != null) fontes.push({ o_que: 'Crédito das compras (' + p1(ent.pctComprasComCredito) + '% das mercadorias)', origem: 'NCM das notas de entrada classificado pela tabela de regimes da Reforma (cesta básica = zero)', nivel: 'media', rotulo: 'média', ressalva: '— classificação por NCM, sujeita a revisão item a item' });
       if ((ent.pctExcluidoST || 0) > 0) fontes.push({ o_que: 'DAS real abaixo da tabela (' + p1(ent.pctExcluidoST) + '% excluído)', origem: 'PGDAS: ICMS-ST, monofásico e/ou redução de base — DAS apurado ÷ DAS pela tabela do anexo'
         + ((ent.pctReceitaMonofasica || 0) > 0 ? '. Desse total, o PIS/COFINS monofásico (' + p1(ent.pctReceitaMonofasica) + '% da receita) deixa de ser excluído em 2027: a CBS alcança essa receita e o DAS por dentro sobe (Res. CGSN 140/2018, art. 25, §6º, na redação da Res. CGSN 190/2026); a exclusão do ICMS-ST e do ISS retido continua' : ''), nivel: 'alta', rotulo: 'alta' });
       if (xml && !consumidor) fontes.push({ o_que: 'Clientes serem do regime regular', origem: 'Porte das empresas atendidas', nivel: 'media', rotulo: 'média', ressalva: '— presunção, não consulta' });
-      fontes.push({ o_que: 'Alíquota de referência da CBS', origem: 'Não fixada: cabe ao Senado defini-la para 2027. A simulação usa referência de ' + p1(ent.cbs + 0.1) + '%, aplicada em 2027 com 0,1 ponto a menos (ADCT, art. 127, parágrafo único): CBS de ' + p1(ent.cbs) + '%. Em circulação há 8,8% (projeção do Ministério da Fazenda, dentro do teto de 26,5% da LC 214) e 9,21% (CGIBS, jul/2026, para fins orçamentários)', nivel: 'baixa', rotulo: 'estimativa' });
       fontes.push({ o_que: 'Alíquota do IBS em 2027', origem: 'LC 214/2025: 0,05% estadual + 0,05% municipal', nivel: 'alta', rotulo: 'alta (norma)' });
       if (!consumidor) fontes.push({ o_que: 'Crédito de PIS/COFINS que o cliente toma hoje', origem: 'ADI RFB nº 15/2007 — vale para o cliente no regime não cumulativo', nivel: 'media', rotulo: 'média', ressalva: '— depende do regime de cada cliente' });
       if (!consumidor) fontes.push({ o_que: 'Capacidade de repasse do preço', origem: 'Não levantado — depende dos contratos e da conversa com os clientes', nivel: 'baixa', rotulo: 'a levantar' });
@@ -1804,6 +1982,8 @@
       }
       // refeições para empresas: o contrato decide o enquadramento (LC 214, art. 273) — pergunta própria, antes das outras
       if (refeicaoEmpresas && !consumidor) perguntas.unshift('Como são os <b>contratos de refeição</b>: a refeição é preparada na cozinha da empresa ou no local do cliente, e o preço é por refeição ou fechado por período? O enquadramento no regime de bares (LC 214, art. 273, a conferir) muda a alíquota — −40% ou cheia — e se o cliente empresa credita.');
+      // sem conclusão: o que falta vem antes de qualquer outra pergunta — sem esses dados não há o que decidir
+      if (semConclusao && confianca.faltamCliente.length) perguntas.unshift('Pra concluir a análise, precisamos de: <b>' + confianca.faltamCliente.join('</b>; <b>') + '</b>. O que estiver com a empresa (ou com o contador anterior), pode nos enviar?');
 
       const pendencias = consumidor && !ehAlimentacao ? [
         ...(!mixMedido && podeReduzir ? [{ o_que: 'Mix das vendas por NCM', porque: 'A análise supôs tudo à alíquota cheia; produtos com redução baixam o débito por fora', onde: 'Notas de venda (XML) ou cadastro de produtos', quem: 'Fiscal', nivel: 'media', peso: 'médio' }] : [])
@@ -1846,19 +2026,22 @@
         if (limite < 100) alertaFornecedor = { texto: 'O regime dos fornecedores não foi consultado. Fornecedor do Simples só dá crédito do IBS/CBS que recolheu no DAS dele (LC 214, art. 47, §9º, II; LC 123, art. 23, §1º-A), cerca de 15% do crédito cheio: se ' + (limite < 1 ? 'menos de 1' : Math.round(limite)) + '% ou mais das compras vierem de empresas do Simples, a vantagem de recolher por fora some.', conferir: 'regime dos principais fornecedores' };
       }
       const testes = [
-        { nome: dom && dom.fornecedoresRegime ? 'crédito das entradas 20% menor (além do ajuste pelos fornecedores do Simples: crédito glosado, fornecedores menores)' : alertaFornecedor ? 'crédito das entradas 20% menor (crédito glosado, nota sem destaque)' : 'crédito das entradas 20% menor (fornecedores do Simples, crédito glosado)', v: dif({ pctComprasMercadorias: ent.pctComprasMercadorias * 0.8, pctComprasDespesas: (ent.pctComprasDespesas || 0) * 0.8 }), conferir: 'regime dos principais fornecedores' },
-        { nome: 'CBS de referência de 8,8% (projeção da Fazenda; 8,7% em 2027)', v: dif({ cbs: 8.7 }), conferir: 'alíquota oficial da CBS' },
-        { nome: 'receita 30% menor', v: dif({ receita: ent.receita * 0.7 }), conferir: 'receita esperada para 2027' },
-        { nome: 'receita 30% maior', v: dif({ receita: ent.receita * 1.3 }), conferir: 'receita esperada para 2027' }
+        { nome: dom && dom.fornecedoresRegime ? 'crédito das entradas 20% menor (além do ajuste pelos fornecedores do Simples: crédito glosado, fornecedores menores)' : alertaFornecedor ? 'crédito das entradas 20% menor (crédito glosado, nota sem destaque)' : 'crédito das entradas 20% menor (fornecedores do Simples, crédito glosado)', x: { pctComprasMercadorias: ent.pctComprasMercadorias * 0.8, pctComprasDespesas: (ent.pctComprasDespesas || 0) * 0.8 }, conferir: 'regime dos principais fornecedores' },
+        { nome: 'CBS de referência de 8,8% (projeção da Fazenda; 8,7% em 2027)', x: { cbs: 8.7 }, conferir: 'alíquota oficial da CBS' },
+        { nome: 'receita 30% menor', x: { receita: ent.receita * 0.7 }, conferir: 'receita esperada para 2027' },
+        { nome: 'receita 30% maior', x: { receita: ent.receita * 1.3 }, conferir: 'receita esperada para 2027' }
       ];
-      if (!mixMedido && podeReduzir && !barRest && !refeicaoEmpresas) testes.push({ nome: 'metade das vendas com redução de 60%', v: dif({ mixCheia: 50, mixRed60: 50, mixRed40: 0, mixRed30: 0, mixZero: 0 }), conferir: 'mix das vendas por NCM' });
+      // (o mix que a confiança já testou fica com ela: sem conclusão ou a confirmar, com o porquê — o teste não se repete)
+      if (!mixMedido && podeReduzir && !barRest && !refeicaoEmpresas && !(itemMix && itemMix.resultados && itemMix.resultados.length)) testes.push({ nome: 'metade das vendas com redução de 60%', x: { mixCheia: 50, mixRed60: 50, mixRed40: 0, mixRed30: 0, mixZero: 0 }, conferir: 'mix das vendas por NCM' });
       // o crédito de estoque é provável, não garantido (LC 214, art. 381): se a conclusão depende dele, o relatório diz
-      if ((ent.creditoEstoqueMes || 0) > 0) testes.push({ nome: 'o crédito de estoque fora da conta (LC 214, art. 381: provável, não garantido — depende da regulamentação do inventário)', v: dif({ creditoEstoqueMes: 0 }), conferir: 'crédito de estoque (inventário de 31/12/2026)' });
+      if ((ent.creditoEstoqueMes || 0) > 0) testes.push({ nome: 'o crédito de estoque fora da conta (LC 214, art. 381: provável, não garantido — depende da regulamentação do inventário)', x: { creditoEstoqueMes: 0 }, conferir: 'crédito de estoque (inventário de 31/12/2026)' });
       // a exclusão do ICMS/ISS da base (12/10/2026) é o método do curso, sem norma específica pro optante: se a conclusão
       // depende dela, o relatório diz
-      if ((m.exclusaoBase || 0) > 0.005) testes.push({ nome: 'o ' + (fat.icmsIss ? fat.icmsIss.tributo : 'ICMS/ISS') + ' do DAS na base do débito por fora (a exclusão do art. 12, §2º, V, da LC 214 ainda não tem norma específica para o optante do Simples)', v: dif({ excluirIcmsIssDaBase: false }), conferir: 'exclusão do ICMS/ISS da base do IBS/CBS por fora (regulamentação)' });
-      const viram = testes.filter(t => inverteDif(t.v));
-      const alertas = viram.map(t => ({ texto: 'Com ' + t.nome + ', o resultado se inverte (' + sinal(t.v) + ' no semestre apurando por fora).', conferir: t.conferir }));
+      if ((m.exclusaoBase || 0) > 0.005) testes.push({ nome: 'o ' + (fat.icmsIss ? fat.icmsIss.tributo : 'ICMS/ISS') + ' do DAS na base do débito por fora (a exclusão do art. 12, §2º, V, da LC 214 ainda não tem norma específica para o optante do Simples)', x: { excluirIcmsIssDaBase: false }, conferir: 'exclusão do ICMS/ISS da base do IBS/CBS por fora (regulamentação)' });
+      testes.forEach(t => { t.v = dif(t.x); t.decisao = decCom(t.x); });
+      // no empate a recomendação é não mudar e a nota da seção 6 já diz o que tira o caso dele: os testes não viram alerta
+      const viram = empate ? [] : testes.filter(t => t.decisao !== decBase);
+      const alertas = viram.map(t => ({ texto: 'Com ' + t.nome + ', o resultado passa a ser “' + ROT_DECISAO[t.decisao] + '” (' + sinal(t.v) + ' no semestre apurando por fora).', conferir: t.conferir }));
       if (alertaFornecedor) alertas.push(alertaFornecedor);
       const pEnt = (ent.pctComprasMercadorias || 0) + (ent.pctComprasDespesas || 0);
       if ((vendeMercadoria && pEnt > 90) || pEnt > 100) {
@@ -1868,15 +2051,18 @@
       // saídas × faturamento: se as saídas passam muito do faturamento, entrou coisa que não é venda (remessa pra marketplace,
       // consignação, retorno) — e o % de clientes empresa sai distorcido
       if (vendasDom && vendasDom.total > 0 && dom.faturamento && dom.faturamento.total > 0) {
-        const razaoSai = vendasDom.total / dom.faturamento.total;
-        if (razaoSai > 1.2 || razaoSai < 0.8) alertas.push({ texto: 'As saídas importadas somam ' + brl0(vendasDom.total) + ', ' + p1(razaoSai * 100) + '% do faturamento do período (' + brl0(dom.faturamento.total) + '). ' + (razaoSai > 1.2 ? 'Entrou nas saídas algo que não é venda — remessa pra depósito de marketplace (Mercado Livre Full, Amazon), consignação ou retorno —, e o % de vendas a empresas (' + p1(vendasDom.pctPJ || 0) + '%) está distorcido. Reimportar as saídas em XLS separa isso pelo CFOP.' : 'Faltam saídas no relatório importado — confira o período.'), conferir: 'saídas × faturamento (reimportar as saídas em XLS)', interno: true });
+        // só nos meses em que os dois relatórios existem (13/10/2026): saídas de um mês contra o faturamento de doze não dizem
+        // nada (nas simulações antigas, sem os meses, compara os totais como antes)
+        const mesesV = (vendasDom.meses || []).map(m => m.competencia);
+        const fatComuns = dom.meses && mesesV.length ? dom.meses.filter(m => mesesV.includes(m.competencia)) : null;
+        const totFat = fatComuns ? fatComuns.reduce((a, m) => a + (m.total || 0), 0) : dom.faturamento.total;
+        const totSai = fatComuns ? vendasDom.meses.filter(m => fatComuns.some(f => f.competencia === m.competencia)).reduce((a, m) => a + (m.total || 0), 0) : vendasDom.total;
+        const razaoSai = totFat > 0 ? totSai / totFat : 1;
+        if (razaoSai > 1.2 || razaoSai < 0.8) alertas.push({ texto: 'As saídas importadas somam ' + brl0(totSai) + ', ' + p1(razaoSai * 100) + '% do faturamento ' + (fatComuns ? 'dos mesmos meses' : 'do período') + ' (' + brl0(totFat) + '). ' + (razaoSai > 1.2 ? 'Entrou nas saídas algo que não é venda — remessa pra depósito de marketplace (Mercado Livre Full, Amazon), consignação ou retorno —, e o % de vendas a empresas (' + p1(vendasDom.pctPJ || 0) + '%) está distorcido. Reimportar as saídas em XLS separa isso pelo CFOP.' : 'Faltam saídas no relatório importado — confira o período.'), conferir: 'saídas × faturamento (reimportar as saídas em XLS)', interno: true });
       }
       const confRbt = conferirRbt12((dom && dom.meses) || (vendasDom && vendasDom.meses) || null, dom && dom.pgdas && dom.pgdas.competencia, ent.rbt12);
       if (confRbt && confRbt.alerta) alertas.push({ texto: confRbt.texto, conferir: 'receita dos relatórios × faturamento declarado no Simples', interno: true });
-      if (!(dom && dom.entradas) && !xml && ((ent.pctComprasMercadorias || 0) + (ent.pctComprasDespesas || 0)) === 0) {
-        const v = dif({ pctComprasDespesas: 20 });
-        if (inverteDif(v)) alertas.push({ texto: 'As compras da empresa não foram informadas, e a análise considerou zero crédito. Com compras de 20% da receita, o resultado se inverte.', conferir: 'acompanhamento de entradas' });
-      }
+      // (as compras não medidas, que antes viravam um alerta aqui, agora estão na confiança: "não medido", com a faixa e a virada)
       if (dom && dom.excecoes && dom.excecoes.length) alertas.push({ texto: 'Usado nesta análise por decisão manual, de outro CNPJ: ' + dom.excecoes.join('; ') + '.', conferir: null, interno: true });
       // mix não medido: observação sempre (dado faltando, com a direção do erro); vira alerta se puder inverter
       const observacoes = [];
@@ -1887,24 +2073,43 @@
         if (regime273.muda) alertas.push({ texto: t, conferir: 'enquadramento da refeição por contrato (LC 214, art. 273)' }); else observacoes.push(t);
       }
       const alimentacao = perfil.tipo === 'alimentacao' && !refeicaoEmpresas;
+      // o mix não medido: vira ou não pelo mesmo teste da confiança (o resultado muda de lado), pra texto e tabela dizerem o
+      // mesmo — mixMuda, lá em cima. Quando muda, a confiança já diz (sem conclusão ou a confirmar): o alerta não se repete
+      const mixNaConfianca = !!itemMix && (confianca.decisivos.includes(itemMix) || confianca.aConfirmar.includes(itemMix));
       if (!mixMedido && alimentacao) {
-        const v = dif({ mixCheia: 10, mixRed40: 90, mixRed60: 0, mixRed30: 0, mixZero: 0 });
-        const t = inverteDif(v)
+        const viraMix = mixMuda;
+        const t = viraMix
           ? 'Não usamos as notas fiscais de venda (NFC-e). Em restaurante, a comida paga o imposto novo com desconto de 40% e só a bebida em lata ou garrafa e a alcoólica pagam cheio; sem as notas, consideramos tudo sem desconto. Com esse desconto a conta pode virar a favor de recolher por fora — precisamos das notas pra fechar.'
           : 'Não usamos as notas fiscais de venda (NFC-e). Em restaurante, a comida paga o imposto novo com desconto de 40% e só a bebida em lata ou garrafa e a alcoólica pagam cheio; sem as notas, consideramos tudo sem desconto, então o custo "por fora" mostrado está um pouco acima do real. Mesmo com o desconto, a recomendação não muda.';
-        if (inverteDif(v)) alertas.push({ texto: t, conferir: 'notas de venda (NFC-e) — comida × bebida' }); else observacoes.push(t);
-      } else if (!mixMedido && podeReduzir && !refeicaoEmpresas && !viram.some(t => /mix|redução de 60/.test(t.nome))) {
+        if (viraMix) { if (!mixNaConfianca) alertas.push({ texto: t, conferir: 'notas de venda (NFC-e) — comida × bebida', muda: true }); }
+        else observacoes.push(t);
+      } else if (!mixMedido && podeReduzir && !refeicaoEmpresas && !mixMuda) {
         observacoes.push('Não usamos as notas fiscais de venda. Parte dos produtos do seu ramo (alimentos, ração, adubo, remédios, itens de higiene) pode pagar o imposto novo com desconto; sem as notas, consideramos tudo sem desconto, então o custo "por fora" mostrado pode estar acima do real. Mesmo com metade das vendas com desconto, a recomendação não muda.');
       }
       // a frase segue o lado da dedução: perfil de consumidor (bar, varejo) ou de empresas (indústria, refeições para empresas)
       if (dom && dom.pctPJDeduzido) observacoes.push('Não tínhamos a lista de clientes com CNPJ, então partimos do perfil da empresa (' + String(dom.pctPJDeduzido).replace(/^deduzido:\s*/, '').replace(/\s*—.*$/, '') + '). '
         + (pctPJ != null && pctPJ >= 50 ? 'Se boa parte das vendas for a consumidor final ou a empresas do Simples, que não aproveitam o crédito, nos avise — isso pode mudar a conta.' : 'Se boa parte das vendas for para empresas, nos avise — isso pode mudar a conta.'));
+      // CONFIANÇA (13/10/2026): número de confiança média que muda o resultado — ou os fracos que mudam juntos — vira alerta
+      // (a confirmar); os de confiança baixa que decidem sobem pro alto das pendências, com peso decisivo
+      const local = it => it.fonte + (it.periodo && it.periodo !== '—' ? ', ' + it.periodo : '');
+      // a versão do cliente leva as mesmas frases, sem os nomes internos (rt-analise.js usa textoCliente)
+      const localCli = it => (it.fonteCliente || it.fonte) + (it.periodo && it.periodo !== '—' ? ', ' + it.periodo : '');
+      confianca.aConfirmar.forEach(it => alertas.push({ texto: it.rotulo + ' — ' + it.valor + ' (' + local(it) + '; ' + it.confianca + '). ' + it.motivo + ' ' + (it.efeito || ''),
+        textoCliente: it.rotulo + ' — ' + it.valor + ' (' + localCli(it) + '; ' + it.confianca + '). ' + (it.motivoCliente || it.motivo) + ' ' + (it.efeito || ''), conferir: it.falta || it.curto, muda: true }));
+      // (no sem conclusão, o "juntos" já está na recomendação e no resumo)
+      if (confianca.conjunto && !confianca.conjunto.semConclusao) alertas.push({ texto: confianca.conjunto.texto, conferir: confianca.faltam.join('; ') || null, muda: true });
+      // nas pendências: os de confiança baixa que decidem vão no topo (sem eles não há conclusão); os de confiança média
+      // entram logo depois das outras pendências decisivas
+      const pendConf = it => ({ o_que: it.rotulo + ' (' + it.confianca + ')', porque: it.motivo + ' ' + (it.efeito || ''), onde: it.falta || '—', quem: 'Fiscal', nivel: it.nivel === 'media' ? 'media' : 'baixa', peso: 'decisivo' });
+      { const pos = pendencias.findIndex(pd => pd.peso !== 'decisivo'); pendencias.splice(pos < 0 ? pendencias.length : pos, 0, ...confianca.aConfirmar.map(pendConf)); }
+      pendencias.unshift(...confianca.decisivos.map(pendConf));
       const aConfirmar = alertas.length > 0;
       const conferirLista = [...new Set(alertas.map(a => a.conferir).filter(Boolean))];
       const listaAlertas = '<ul style="margin:6px 0 10px 18px;padding:0">' + alertas.map(a => '<li>' + a.texto + '</li>').join('') + '</ul>';
       let recomendacaoFinal = recomendacao;
       if (aConfirmar && (empate || condicional)) {
-        recomendacaoFinal = { decisao: recomendacao.decisao, titulo: recomendacao.titulo, corpo: recomendacao.corpo + '<p style="margin-bottom:0"><b>Dados a conferir</b> — ' + (empate ? 'não mudam a recomendação de manter' : 'conferir antes de decidir até ' + RT_PRAZO.cancelaAteDM) + ', mas o cliente deve saber:</p>' + listaAlertas };
+        const mudaEmpate = empate && alertas.some(a => a.muda);
+        recomendacaoFinal = { decisao: recomendacao.decisao, titulo: recomendacao.titulo, corpo: recomendacao.corpo + '<p style="margin-bottom:0"><b>Dados a conferir</b> — ' + (mudaEmpate ? 'há número que, confirmado de outro jeito, tira o caso do empate — o cliente deve saber' : empate ? 'não mudam a recomendação de manter, mas o cliente deve saber' : 'conferir antes de decidir até ' + RT_PRAZO.cancelaAteDM + ', mas o cliente deve saber') + ':</p>' + listaAlertas };
       } else if (aConfirmar) {
         const lado = optar ? 'apurar por fora' : 'manter dentro do DAS';
         recomendacaoFinal = {
@@ -1915,13 +2120,39 @@
             + (optar ? '<p style="margin-bottom:0">' + (janelaAberta ? 'Se não der pra conferir até ' + RT_PRAZO.opcao + ', é possível formalizar a opção e cancelá-la ' + RT_PRAZO.cancelamento + ' sem efeito, caso a conferência não confirme.' : 'A próxima janela é em março/2027 (efeito em julho): há tempo pra conferir antes.') + '</p>' : '<p style="margin-bottom:0">Enquanto não houver confirmação, manter é o caminho sem custo de mudança.</p>')
         };
       }
+      // SEM CONCLUSÃO (13/10/2026): número da empresa com confiança baixa (ou não medido) que, dentro do plausível, muda o
+      // resultado — a análise não recomenda nenhum lado: diz o que a conta daria, por que não vale e o que falta
+      if (semConclusao) {
+        const dP = Math.abs(s.diferenca);
+        recomendacaoFinal = {
+          decisao: 'sem_conclusao',
+          titulo: 'Sem recomendação por enquanto — faltam dados que decidem o resultado',
+          corpo: '<p>Com os números de hoje, a conta daria “' + confianca.rotuloDecisao + '” (' + (empate ? 'por fora sairia ' + brl0(dP) + ' mais barato no semestre, diferença pequena demais pra justificar a troca — empate técnico'
+              : condicional ? 'por dentro sai ' + brl0(dP) + ' mais barato no semestre, mas o crédito a mais dos clientes empresa passaria dessa diferença'
+              : (s.diferenca < 0 ? 'por fora sai ' : 'por dentro sai ') + brl0(dP) + ' mais barato no semestre') + '). Mas esse resultado não se sustenta: '
+            + (confianca.decisivos.length > 1 ? 'estes números têm pouca base (confiança baixa ou não medidos) e, dentro do que é plausível para eles, mudam a conclusão:' : 'este número tem pouca base (' + confianca.decisivos[0].confianca + ') e, dentro do que é plausível para ele, muda a conclusão:') + '</p>'
+            + '<ul style="margin:6px 0 10px 18px;padding:0">' + confianca.decisivos.map(it => '<li><b>' + it.rotulo + '</b> — ' + it.valor + ' (' + local(it) + '; ' + it.confianca + '). ' + it.motivo + ' ' + (it.efeito || '') + '</li>').join('') + '</ul>'
+            + (confianca.conjunto && confianca.conjunto.semConclusao ? '<p><b>Juntos:</b> ' + confianca.conjunto.texto + '</p>' : '')
+            + (confianca.faltam.length ? '<p><b>Para concluir, falta:</b> ' + confianca.faltam.join('; ') + '.</p>' : '')
+            + '<p style="margin-bottom:0">' + (janelaAberta
+              ? 'O prazo da opção vai até ' + RT_PRAZO.opcao + '. Se os dados não chegarem a tempo, as duas portas são estas: registrar a opção deixa a decisão em aberto até ' + RT_PRAZO.cancelaAte + ' (o cancelamento ' + RT_PRAZO.cancelamento + ' não tem efeito); não registrar mantém o IBS/CBS no DAS até ' + RT_PRAZO.proximaEfeito + '. Com a base de hoje, o escritório não recomenda nenhum dos dois lados.'
+              : 'A janela da opção para janeiro/2027 fechou em ' + RT_PRAZO.opcao + '; a próxima é em ' + RT_PRAZO.proxima + ' (efeito a partir de ' + RT_PRAZO.proximaEfeito + ') — há tempo de levantar os dados antes.') + '</p>'
+        };
+      }
       // o enquadramento da refeição por contrato muda o resultado (MANTENHA × "opte, se") sem trocar o sinal da diferença:
       // não passa pelos testes acima, mas entra na nota
       const virouNomes = viram.map(t => t.nome).concat(regime273 && regime273.muda ? ['o enquadramento da refeição por contrato (LC 214, art. 273)'] : []);
-      const sensibilidadeNotaFinal = !empate && virouNomes.length
-        ? 'Atenção: ' + virouNomes.join('; ') + ' — ' + (virouNomes.length > 1 ? 'cada uma dessas variáveis inverte' : 'essa variável inverte') + ' a conclusão. Por isso a recomendação é uma tendência, a confirmar.'
+      // e os números da confiança que mudam o resultado (média, ou os fracos juntos) — antes a nota dizia "nenhuma incerteza
+      // derruba" com a seção 7 e o resumo dizendo "a confirmar"
+      const confNomes = confianca.aConfirmar.map(it => (it.curto || it.rotulo.toLowerCase()) + ' (' + it.confianca + ')').concat(confianca.conjunto && !confianca.conjunto.semConclusao ? ['os números de confiança baixa juntos'] : []);
+      const sensibilidadeNotaFinal = semConclusao
+        ? 'Sem conclusão: ' + confianca.decisivos.map(it => (it.curto || it.rotulo) + ' (' + it.confianca + ')').join(' e ') + ' — ' + (confianca.decisivos.length > 1 ? 'mudam' : 'muda') + ' o resultado dentro do que é plausível (ver a seção 7). As variáveis acima valem para quando esses dados chegarem.'
+        : !empate && virouNomes.length + confNomes.length
+        ? 'Atenção: o resultado muda com ' + virouNomes.concat(confNomes).join('; ') + '. Por isso a recomendação é uma tendência, a confirmar' + (confNomes.length ? ' — os números da empresa estão na seção 7.' : '.')
         : null;
-      const pendenciasNota = viram.length || (aConfirmar && !empate)
+      const pendenciasNota = semConclusao
+        ? 'Em ordem de valor. Os primeiros, de confiança baixa, decidem o resultado: sem eles não há conclusão.'
+        : viram.length || (aConfirmar && !empate) || confNomes.length
         ? 'Em ordem de valor. Podem inverter a recomendação: ' + (conferirLista.length ? conferirLista.join(', ') : 'os itens marcados como decisivos') + '.'
         : consumidor ? 'Em ordem de valor — nenhum deles inverte a recomendação; servem para afinar o número.'
         : 'Em ordem de valor para a decisão — o item 1 é o único que pode inverter a recomendação.';
@@ -1944,19 +2175,26 @@
         hoje: new Date().toLocaleDateString('pt-BR'),
         origemReceita: dom && dom.faturamento ? 'média do faturamento ' + dom.periodoRotulo : 'informada na ficha',
         sensibilidade, sensibilidadeNota: sensibilidadeNotaFinal || (empate
-          ? 'A diferença de ' + brl0(Math.abs(s.diferenca)) + ' no semestre está abaixo do limiar de ' + brl0(sim.veredito.limiarEmpate) + ': qualquer das variáveis acima, isolada, já a apaga ou inverte. É empate técnico — e no empate a recomendação é não mudar.'
+          ? 'A diferença de ' + brl0(Math.abs(s.diferenca)) + ' no semestre está abaixo do limiar de ' + brl0(sim.veredito.limiarEmpate) + ': qualquer das variáveis acima, isolada, já a apaga ou inverte. É empate técnico — e no empate a recomendação é não mudar. “Sim” na última coluna: a variável, sozinha, tira o caso do empate (o resultado passa a ser outro).'
+            + (confNomes.length ? ' Número da empresa a confirmar que tira o caso do empate: ' + confNomes.join('; ') + ' (ver a seção 7).' : '')
           : consumidor
           ? 'Nenhuma incerteza técnica isolada derruba a diferença de ' + brl0(Math.abs(s.diferenca)) + ' do semestre, e não há variável comercial em jogo: ninguém credita o que compra desta empresa. A decisão é aritmética.'
           : 'Nenhuma incerteza técnica isolada derruba a diferença de ' + brl0(Math.abs(s.diferenca)) + ' do semestre. Só o repasse derruba — por isso a decisão é comercial, não fiscal.'),
         consumidor, empate, condicional, pctPJ, fontePJ, barRest, prestador, perfil,
-        fontes, recomendacao: recomendacaoFinal, perguntas, pendencias
+        fontes, recomendacao: recomendacaoFinal, perguntas, pendencias,
+        // de onde veio cada número, quanto dá pra confiar e se a conclusão se sustenta (13/10/2026)
+        confianca, semConclusao
       };
     }
 
+    // a confiança gravada com a simulação (13/10/2026) — null nas gravadas antes
+    const confiancaGravada = c => { try { const j = JSON.parse(c.sim_obs || 'null'); return (j && j.confianca) || null; } catch (e) { return null; } };
     $('dGerar').onclick = () => {
       const c = casoAtual(); if (!c) return;
       if (!c.decisao || c.decisao === 'pendente') { alert('Grave a decisão antes de gerar o comunicado.'); return; }
       if (c.decisao === 'por_fora' && c.sim_custo_fora == null) { alert('O comunicado por fora usa os números da simulação — grave a simulação antes.'); return; }
+      const cf = confiancaGravada(c);
+      if (cf && cf.conclusao === 'sem_conclusao' && !confirm('A simulação gravada está SEM CONCLUSÃO: ' + (cf.decisivos || []).join(', ') + ' — pouca base (confiança baixa ou não medido), e muda o resultado.' + (cf.faltam && cf.faltam.length ? ' Falta: ' + cf.faltam.join('; ') + '.' : '') + '\n\nGerar o comunicado com a decisão gravada mesmo assim?')) return;
       abrirJanelaComunicados([c]);
     };
 
@@ -2048,13 +2286,13 @@
       if (falta < 1) return 0;
       return Math.round(Math.min(100, falta / partilha * 100, pctST / partilha * 100) * 10) / 10;
     }
-    const ROT_RESULTADO = { OPTE: 'por fora', OPTE_SE: 'opte, se o comercial confirmar', MANTENHA: 'por dentro', EMPATE: 'empate técnico (manter)' };
+    const ROT_RESULTADO = { OPTE: 'por fora', OPTE_SE: 'opte, se o comercial confirmar', MANTENHA: 'por dentro', EMPATE: 'empate técnico (manter)', SEM: 'sem conclusão (faltam dados)' };
     $('btnRefazer').onclick = async () => {
       const alvo = casos.filter(c => c.sim_custo_dentro != null && c.sim_obs);
       if (!alvo.length) { alert('Nenhuma simulação gravada para refazer.'); return; }
       if (!confirm('Refazer as ' + alvo.length + ' simulações gravadas com o cálculo atual?\n\nOs valores e o resultado de cada uma são regravados. A decisão e o comunicado já gerado não mudam.')) return;
       const btn = $('btnRefazer'); btn.disabled = true;
-      const res = { refeitas: 0, iguais: 0, mudaram: [], erros: [], revisar: [] };
+      const res = { refeitas: 0, iguais: 0, mudaram: [], erros: [], revisar: [], semConclusao: [] };
       for (const [i, c] of alvo.entries()) {
         btn.textContent = 'Refazendo ' + (i + 1) + ' de ' + alvo.length + '…';
         const nome = (clientesMap[c.cliente_id] || {}).nome_principal || '—';
@@ -2070,17 +2308,23 @@
           sim_credito_cliente_dentro: +r.semestre.creditoClienteDentro.toFixed(2), sim_credito_cliente_fora: +r.semestre.creditoClienteFora.toFixed(2)
         };
         const empateAntes = j.empate === true || /^Empate técnico/.test(j.frase || '');
+        // confiança dos números (13/10/2026): pela procedência gravada, ou deduzida do resumo do Domínio nas antigas
+        let conf = null;
+        try { conf = resumoConfianca(avaliarConfianca(ent, j.procedencia || inferirProcedencia(ent, j.dominio), { ...contextoConfianca(ent, c), sim: r })); } catch (err) { conf = null; }
+        const semConc = !!(conf && conf.conclusao === 'sem_conclusao');
+        if (semConc) res.semConclusao.push({ nome, falta: conf.faltam.join('; ') });
         const igual = JSON.stringify(ent) === JSON.stringify(j.input) && j.veredito === r.veredito.tipo && empateAntes === empate
-          && (j.margem ?? null) === resumoVeredito(r).margem
+          && (j.margem ?? null) === resumoVeredito(r).margem && JSON.stringify(j.confianca || null) === JSON.stringify(conf)
           && Object.keys(upd).every(k => Math.abs((+c[k] || 0) - upd[k]) < 0.005);
         if (igual) { res.iguais++; continue; }
-        upd.sim_obs = JSON.stringify({ ...j, input: ent, veredito: r.veredito.tipo, empate, frase: r.veredito.frase, calculado_em: hojeISO(), ...resumoVeredito(r), recalculado: 'Refazer simulações, ' + fmtData(hojeISO()) });
+        upd.sim_obs = JSON.stringify({ ...j, input: ent, veredito: r.veredito.tipo, empate, frase: r.veredito.frase, calculado_em: hojeISO(), ...resumoVeredito(r), confianca: conf, recalculado: 'Refazer simulações, ' + fmtData(hojeISO()) });
         // o fundamento automático acompanha o resultado novo — salvo quando contradiz a decisão gravada (decidiu por dentro e
         // o resultado novo é por fora, ou o contrário): aí o texto antigo fica e o resumo pede revisão (12/10/2026)
         const contradiz = (c.decisao === 'por_dentro' && (r.veredito.tipo === 'OPTE' || r.veredito.tipo === 'OPTE_SE')) || (c.decisao === 'por_fora' && r.veredito.tipo === 'MANTENHA');
+        // sem conclusão, a frase da conta provisória não vira fundamento: o texto antigo fica e, com decisão gravada, pede revisão
         if (c.fundamento && c.fundamento === j.frase) {
-          if (!contradiz) upd.fundamento = r.veredito.frase;
-          else res.revisar.push({ nome, decisao: c.decisao === 'por_dentro' ? 'por dentro' : 'por fora', resultado: ROT_RESULTADO[empate ? 'EMPATE' : r.veredito.tipo] || r.veredito.tipo });
+          if (!contradiz && !semConc) upd.fundamento = r.veredito.frase;
+          else if (c.decisao === 'por_dentro' || c.decisao === 'por_fora') res.revisar.push({ nome, decisao: c.decisao === 'por_dentro' ? 'por dentro' : 'por fora', resultado: semConc ? ROT_RESULTADO.SEM : ROT_RESULTADO[empate ? 'EMPATE' : r.veredito.tipo] || r.veredito.tipo });
         }
         upd.atualizado_em = agoraISO();
         let qy = supabase.from('rt_casos').update(upd).eq('id', c.id);
@@ -2090,7 +2334,8 @@
         if (!data || !data.length) { res.erros.push({ nome, motivo: 'alterada por outra pessoa enquanto o lote rodava — abra a ficha e grave de novo' }); continue; }
         Object.assign(c, upd);
         res.refeitas++;
-        const antes = empateAntes ? 'EMPATE' : j.veredito, depois = empate ? 'EMPATE' : r.veredito.tipo;
+        const estado = (cf, tipo, emp) => cf && cf.conclusao === 'sem_conclusao' ? 'SEM' : emp ? 'EMPATE' : tipo;
+        const antes = estado(j.confianca, j.veredito, empateAntes), depois = estado(conf, r.veredito.tipo, empate);
         if (antes !== depois) res.mudaram.push({ nome, antes: ROT_RESULTADO[antes] || antes || '—', depois: ROT_RESULTADO[depois] || depois });
       }
       btn.disabled = false; btn.textContent = 'Refazer simulações';
@@ -2101,6 +2346,7 @@
         + (res.mudaram.length ? '<p style="margin:0"><b>Mudaram de resultado:</b></p>' + lista(res.mudaram.map(m => '<li>' + escapeHtml(m.nome) + ': ' + escapeHtml(m.antes) + ' → <b>' + escapeHtml(m.depois) + '</b></li>'))
           : '<p style="margin:0 0 10px">Nenhuma mudou de resultado.</p>')
         + (res.revisar.length ? '<p style="margin:0"><b>Decisão gravada diferente do resultado novo</b> — o fundamento ficou como estava, revise:</p>' + lista(res.revisar.map(x => '<li>' + escapeHtml(x.nome) + ': decidido ' + escapeHtml(x.decisao) + ', resultado novo <b>' + escapeHtml(x.resultado) + '</b></li>')) : '')
+        + (res.semConclusao.length ? '<p style="margin:0"><b>Sem conclusão</b> — dado decisivo com confiança baixa; falta:</p>' + lista(res.semConclusao.map(x => '<li>' + escapeHtml(x.nome) + ': ' + escapeHtml(x.falta) + '</li>')) : '')
         + (res.erros.length ? '<p style="margin:0"><b>Não refeitas</b> (ficaram como estavam):</p>' + lista(res.erros.map(e => '<li>' + escapeHtml(e.nome) + ': ' + escapeHtml(e.motivo) + '</li>')) : '');
       $('ovRefazer').classList.add('on');
     };

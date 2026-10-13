@@ -61,7 +61,14 @@ ENT_ATELIE = {'anexo': 'I', 'rbt12': 600000, 'receita': 50000, 'aliqEfetivaInfor
               'mixZero': 0, 'pctComprasMercadorias': 90.05, 'pctComprasDespesas': 0, 'pctImpostoEmbutido': 0, 'pctExcluidoST': 0, 'partilha': 15.5,
               'cbs': 9.3, 'ibs': 0.1, 'pctPJ': 0, 'creditoEstoqueMes': 0}
 FRASE_ATELIE = 'A simulação do primeiro semestre de 2027 indica custo tributário de R$ 48.300,00 dentro do Simples…'
-CASOS[0]['sim_obs'] = json.dumps({'v': 1, 'input': ENT_ATELIE, 'veredito': 'MANTENHA', 'frase': FRASE_ATELIE, 'calculado_em': '2026-09-27'}, ensure_ascii=False)
+# a origem de cada número, como a ficha grava desde 13/10/2026: tudo medido em 12 meses (sem ela, o 0% de clientes PJ do
+# ATELIÊ seria "não informado" e a conta ficaria sem conclusão — o caso é sobre o cálculo, não sobre a confiança)
+M12 = ['2025-09', '2025-10', '2025-11', '2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08']
+PROC_ATELIE = {'receita': {'fonte': 'faturamento', 'meses': M12}, 'rbt12': {'fonte': 'pgdas', 'meses': ['2026-08']}, 'anexo': {'fonte': 'pgdas', 'meses': ['2026-08']},
+               'pctMerc': {'fonte': 'entradas', 'meses': M12, 'mesesFaturamento': 12, 'regimeFornecedores': True},
+               'pctDesp': {'fonte': 'entradas', 'meses': M12, 'mesesFaturamento': 12, 'regimeFornecedores': True},
+               'pctPJ': {'fonte': 'saidas', 'meses': M12, 'porDocumento': True, 'regimeConsultado': True}, 'mix': {'fonte': 'padrao'}}
+CASOS[0]['sim_obs'] = json.dumps({'v': 1, 'input': ENT_ATELIE, 'veredito': 'MANTENHA', 'frase': FRASE_ATELIE, 'calculado_em': '2026-09-27', 'procedencia': PROC_ATELIE}, ensure_ascii=False)
 CASOS[0]['fundamento'] = FRASE_ATELIE
 
 # simulação gravada antes de 03/10/2026: CBS de referência cheia (9,30) com IBS 0,10 — a tela lê como a CBS de 2027 (9,20)

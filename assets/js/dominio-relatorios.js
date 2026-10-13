@@ -94,7 +94,27 @@ function cabecalho(paginas) {
     if (m2 && alvo(m2[1]).length > 4) { empresa = m2[1].trim(); break; }
   }
   const per = linhas.map(l => (l.match(/Per[íi]odo:\s*(.+?)(?:\s{2,}|$)/i) || [])[1]).find(Boolean) || null;
-  return { empresa, cnpj: doc ? docN(doc) : null, periodo: per ? per.trim() : null };
+  return { empresa, cnpj: doc ? docN(doc) : null, periodo: per ? per.trim() : null, ...periodoDoCabecalho(linhas) };
+}
+// o período declarado no cabeçalho em competências ("01/01/2026 até 31/03/2026", "01/01/2026  a  31/03/2026", "03/2026"
+// → periodoDe '2026-01', periodoAte '2026-03'): diz quais meses o relatório cobre, inclusive os que não têm lançamento
+function periodoDoCabecalho(linhas) {
+  const l = linhas.find(x => /Per[íi]odo/i.test(x || ''));
+  if (!l) return {};
+  const t = l.slice(l.search(/Per[íi]odo/i)).split(/Emiss|Emitid|Data|Hora|P[áa]gina|Folha/i)[0];
+  const ds = [...t.matchAll(/(?:\d{2}\/)?(\d{2})\/(\d{4})/g)].filter(m => +m[1] >= 1 && +m[1] <= 12).map(m => m[2] + '-' + m[1]);
+  return ds.length ? { periodoDe: ds[0], periodoAte: ds[ds.length - 1] } : {};
+}
+// aritmética de competências 'AAAA-MM'
+const idxMes = c => Number(c.slice(0, 4)) * 12 + Number(c.slice(5, 7)) - 1;
+const deIdxMes = i => Math.floor(i / 12) + '-' + String(i % 12 + 1).padStart(2, '0');
+const somaMeses = (c, n) => deIdxMes(idxMes(c) + n);
+const difMeses = (a, b) => idxMes(b) - idxMes(a);
+// competências de 'AAAA-MM' a 'AAAA-MM', inclusive
+function competenciasEntre(de, ate) {
+  const out = []; let [a, m] = de.split('-').map(Number); const [a2, m2] = ate.split('-').map(Number);
+  while ((a < a2 || (a === a2 && m <= m2)) && out.length < 240) { out.push(a + '-' + String(m).padStart(2, '0')); m++; if (m > 12) { m = 1; a++; } }
+  return out;
 }
 
 // ---------- 1) RELATÓRIO DE FATURAMENTO ----------
@@ -598,6 +618,9 @@ export function consolidar(rels, incluir, opcoes = {}) {
     ven = { vendas: [...porComp.values()].flat(), combinados: vens.length, tipos: [...new Set(vens.map(r => r.tipo))] };
   }
   const campos = {}, origem = {}, avisos = [];
+  // PROCEDÊNCIA (13/10/2026): de onde veio cada campo, em que meses foi medido e o que pesa contra — vai com a simulação
+  // e alimenta a confiança de cada número na ficha, na análise e no relatório (assets/js/rt-confianca.js)
+  const proc = {};
 
   // empresas diferentes no mesmo lote é erro de operação, não de leitura
   const docs = [...new Set(rels.filter(r => !r.outraEmpresa).map(r => r.cnpj).filter(Boolean))];
@@ -617,6 +640,7 @@ export function consolidar(rels, incluir, opcoes = {}) {
       const pctServ = totalBase ? servBase / totalBase * 100 : 0;
       origem.receita = 'faturamento Domínio: ' + brl(totalBase) + ' ÷ ' + comFat.length + ' mês(es) (' + comFat[0].competencia.slice(5) + '/' + comFat[0].competencia.slice(2, 4) + ' a ' + comFat[comFat.length - 1].competencia.slice(5) + '/' + comFat[comFat.length - 1].competencia.slice(2, 4) + ')'
         + (pctServ > 0 ? ' · ' + pct(pctServ) + '% serviço' : '');
+      proc.receita = { fonte: 'faturamento', meses: competencias.slice(), texto: origem.receita };
     }
   } else if (ven) {
     // sem o relatório de faturamento, saídas + serviços dão a receita por mês (até 12 meses)
@@ -629,6 +653,7 @@ export function consolidar(rels, incluir, opcoes = {}) {
       const pctServ = totalBase ? servBase / totalBase * 100 : 0;
       origem.receita = (ven.tipos.includes('servicos') ? 'saídas + serviços' : 'saídas') + ' Domínio: ' + brl(totalBase) + ' ÷ ' + comRec.length + ' mês(es) (' + comRec[0].competencia.slice(5) + '/' + comRec[0].competencia.slice(2, 4) + ' a ' + comRec[comRec.length - 1].competencia.slice(5) + '/' + comRec[comRec.length - 1].competencia.slice(2, 4) + ')'
         + (pctServ > 0 ? ' · ' + pct(pctServ) + '% serviço' : '');
+      proc.receita = { fonte: 'saidas', meses: competencias.slice(), servicos: ven.tipos.includes('servicos'), texto: origem.receita };
       if (!ven.tipos.includes('servicos')) avisos.push('Só o acompanhamento de saídas: se a empresa também presta serviço, suba o acompanhamento de serviços — senão a receita fica só de mercadoria.');
       if (sim && sim.rpa && comRec.some(m => m.competencia === sim.competencia)) {
         const mes = comRec.find(m => m.competencia === sim.competencia);
@@ -637,14 +662,18 @@ export function consolidar(rels, incluir, opcoes = {}) {
     }
   } else if (sim) {
     const h = sim.historico.filter(x => x.receita > 0);
-    if (sim.rpa) { campos.receita = sim.rpa; origem.receita = 'PGDAS ' + sim.competencia + ': receita do período'; }
+    if (sim.rpa) { campos.receita = sim.rpa; origem.receita = 'PGDAS ' + sim.competencia + ': receita do período'; proc.receita = { fonte: 'pgdas', meses: [sim.competencia], texto: origem.receita }; }
     if (h.length >= 12) avisos.push('Sem o relatório de faturamento, a receita vem de um mês só — suba o faturamento do ano para a média.');
   }
 
-  // % de vendas para PJ e parcela com ST, das saídas + serviços
-  let resVen = null;
+  // % de vendas para PJ e parcela com ST, das saídas + serviços — medidos nas PRÓPRIAS saídas, nos últimos 12 meses com
+  // venda delas (13/10/2026). O % é uma razão dentro das saídas: não precisa do período do faturamento. Antes valiam só os
+  // meses do faturamento, e saídas de um mês fora dessa janela eram descartadas sem aviso — o % de PJ caía no deduzido
+  // pelo perfil (cliente recém-chegado: saídas e entradas só de set/26, faturamento até ago/26)
+  let resVen = null, mesesVen = [];
   if (ven) {
-    resVen = resumirVendas(ven.vendas, competencias);
+    mesesVen = [...new Set(ven.vendas.filter(v => (v.grupo || 'receita') === 'receita' && (v.valor || 0) > 0).map(v => v.competencia))].sort().slice(-12);
+    resVen = resumirVendas(ven.vendas, mesesVen.length ? mesesVen : null);
     const foraV = Object.values(resVen.fora || {});
     if (foraV.length) avisos.push('Fora da receita, por não serem venda: ' + foraV.map(f => f.rotulo + ' ' + brl(f.valor) + ' (' + Object.keys(f.cfops).map(c => 'CFOP ' + c).join(', ') + ')').join('; ') + '.');
     if (resVen.total > 0) {
@@ -652,7 +681,7 @@ export function consolidar(rels, incluir, opcoes = {}) {
       campos.pctPJTotal = resVen.pctPJ;
       if (regimes && regimes.size) {
         let vReg = 0, vSim = 0, vDesc = 0;
-        ven.vendas.filter(v => (v.grupo || 'receita') === 'receita' && (!competencias.length || competencias.includes(v.competencia)) && ehCnpj(v.documento))
+        ven.vendas.filter(v => (v.grupo || 'receita') === 'receita' && (!mesesVen.length || mesesVen.includes(v.competencia)) && ehCnpj(v.documento))
           .forEach(v => { const r = regimes.get(docN(v.documento)); const x = v.valor || 0; if (!r || r.simples == null) vDesc += x; else if (r.simples) vSim += x; else vReg += x; });
         if (vReg + vSim > 0) {
           const propReg = vReg / (vReg + vSim);
@@ -667,15 +696,21 @@ export function consolidar(rels, incluir, opcoes = {}) {
         + (resVen.classes.consumidor.valor > 0 ? ' (' + brl(resVen.classes.consumidor.valor) + ' a consumidor não identificado)' : '');
       if (porDoc >= 0.99) resVen.porDocumento = true;
       else avisos.push((porDoc > 0 ? 'Parte das notas veio sem CNPJ/CPF do cliente: nessas, ' : 'O relatório em PDF não traz o CNPJ do cliente: ') + 'PJ foi reconhecida pelo nome (LTDA, ME, MUNICÍPIO, ESCOLA…). Confira a lista na prévia — quem estiver do lado errado muda o %. A planilha (XLS) da Domínio traz o CNPJ e resolve isso.');
+      proc.pctPJ = { fonte: 'saidas', meses: mesesVen.slice(), porDocumento: porDoc >= 0.99, regimeConsultado: !!campos.clientesRegime, texto: origem.pctPJ };
       if (resVen.mercadorias > 0 && resVen.st > 0) {
         const pctSt = resVen.st / resVen.mercadorias * 100;
         origem.stVendas = 'saídas Domínio: ' + brl(resVen.st) + ' com CFOP x405 (ST) = ' + pct(pctSt) + '% das vendas de mercadoria';
         if (campos.pctExcluidoST != null && Math.abs(pctSt - campos.pctExcluidoST) > 15) avisos.push('Parcela com ST nas saídas (' + pct(pctSt) + '%) e % excluído do DAS pelo PGDAS (' + pct(campos.pctExcluidoST) + '%) estão longe um do outro — vale entender por quê antes de calcular.');
       }
       if (fat) {
-        const mesesFat = fat.meses.filter(m => competencias.includes(m.competencia));
-        const totFat = mesesFat.reduce((a, m) => a + (m.total || 0), 0);
-        if (totFat > 0 && Math.abs(totFat - resVen.total) / totFat > 0.01) avisos.push('Saídas + serviços (' + brl(resVen.total) + ') e faturamento (' + brl(totFat) + ') não batem no período — o % de PJ foi medido sobre o que está nos acompanhamentos.');
+        // só nos meses em que os dois relatórios existem: com períodos diferentes, comparar os totais não diz nada
+        const comuns = mesesVen.filter(c => competencias.includes(c));
+        const totFat = fat.meses.filter(m => comuns.includes(m.competencia)).reduce((a, m) => a + (m.total || 0), 0);
+        const totVen = resVen.meses.filter(m => comuns.includes(m.competencia)).reduce((a, m) => a + (m.total || 0), 0);
+        if (totFat > 0 && Math.abs(totFat - totVen) / totFat > 0.01) avisos.push('Nos meses em que os dois relatórios existem (' + rotuloMeses(comuns) + '), saídas + serviços (' + brl(totVen) + ') e faturamento (' + brl(totFat) + ') não batem — o % de PJ foi medido sobre o que está nos acompanhamentos.');
+        if (mesesVen.some(c => !competencias.includes(c)) || mesesVen.length < competencias.length)
+          avisos.push('O % de vendas para PJ foi medido nas saídas de ' + rotuloMeses(mesesVen) + ' (' + nMeses(mesesVen.length) + '); a receita média vem do faturamento de ' + rotuloMeses(competencias) + ' (' + nMeses(competencias.length) + ').'
+            + (mesesVen.length <= 2 ? ' Com ' + (mesesVen.length === 1 ? 'um mês só' : 'dois meses') + ', o % pode não representar o ano — a análise mostra isso como confiança baixa.' : ''));
       }
     }
   }
@@ -700,6 +735,8 @@ export function consolidar(rels, incluir, opcoes = {}) {
     }
     campos.rbt12 = sim.rbt12;
     origem.rbt12 = 'PGDAS ' + sim.competencia;
+    // o PGDAS é a apuração declarada: anexo, RBT12, alíquota, partilha e exclusões medidos nele
+    ['anexo', 'rbt12', 'aliqEfetiva'].forEach(k => { if (campos[k] != null) proc[k] = { fonte: 'pgdas', meses: [sim.competencia], texto: origem[k] }; });
     // DAS pela tabela do anexo × DAS realmente apurado: a diferença é ICMS-ST, monofásico,
     // ISS retido ou redução de base — o que a ficha chama de "% do DAS já excluído"
     let dasTabela = null;
@@ -712,6 +749,7 @@ export function consolidar(rels, incluir, opcoes = {}) {
       if (sim.reducaoIcms) motivos.push('redução de ' + pct(sim.reducaoIcms) + '% na base do ICMS');
       origem.pctExcluidoST = 'PGDAS ' + sim.competencia + ': DAS apurado ' + brl(sim.dasTotal) + ' contra ' + brl(dasTabela) + ' pela tabela do Anexo ' + sim.anexoPredominante
         + (excl > 0.05 ? ' — ' + pct(excl) + '% a menos' + (motivos.length ? ' (' + motivos.join(' e ') + ')' : '') : ' — sem exclusão');
+      proc.pctExcluidoST = { fonte: 'pgdas', meses: [sim.competencia], texto: origem.pctExcluidoST };
     }
     if (sim.partilhaCbsPct != null) {
       // partilha medida sobre o DAS PELA TABELA (é sobre ele que o motor aplica a parcela CBS/IBS).
@@ -721,16 +759,68 @@ export function consolidar(rels, incluir, opcoes = {}) {
       campos.partilhaSobreDasApurado = sim.partilhaCbsPct;
       origem.partilha = 'PGDAS ' + sim.competencia + ': PIS + COFINS = ' + brl(sim.cbsNoDas)
         + (dasTabela > 0 ? ' = ' + pct(partilhaNominal) + '% do DAS pela tabela (' + pct(sim.partilhaCbsPct) + '% do DAS apurado)' : ' de ' + brl(sim.dasTotal) + ' do DAS');
+      proc.partilha = { fonte: 'pgdas', meses: [sim.competencia], texto: origem.partilha };
       if (sim.anexos.some(a => (a.secoes || []).length > 1)) avisos.push('Parte da receita é monofásica de PIS/COFINS hoje (sem PIS/COFINS no DAS). Em 2027 a CBS alcança essa parcela também: a partilha da tabela oficial de 2027 é a referência; o PGDAS serve de conferência.');
     }
     if (sim.aliquotaEfetiva != null) origem.aliquotaEfetiva = pct(sim.aliquotaEfetiva) + '% no PGDAS ' + sim.competencia;
   }
 
-  if (ent && campos.receita) {
-    const base = competencias.length ? competencias : [...new Set(ent.lancamentos.map(l => l.competencia))];
-    const receitaBase = fat
-      ? fat.meses.filter(m => base.includes(m.competencia)).reduce((a, m) => a + (m.total || 0), 0)
-      : campos.receita * base.length;
+  // COMPRAS ÷ RECEITA DOS MESMOS MESES (13/10/2026): a receita de cada mês das entradas vem do faturamento; no mês que ele
+  // não tem, da apuração do Simples (receita do período, ou o histórico do RBT12 que vem no PGDAS) ou das saídas +
+  // serviços. Antes as compras dos meses que o relatório de entradas cobre eram divididas pela receita de TODOS os meses
+  // do faturamento: entradas de 1 mês contra faturamento de 12 davam 1/12 do % real — e, com o mês das entradas fora da
+  // janela do faturamento, zero, como se a empresa não comprasse nada (cliente recém-chegado: entradas e saídas só de set/26,
+  // faturamento até ago/26). Mês de entrada sem receita conhecida fica fora da conta, com aviso.
+  let mesesEnt = [], foraDoPeriodo = [], declarados = new Set();
+  const receitaMes = new Map();   // competência → { valor, fonte }
+  if (ent) {
+    if (fat) fat.meses.forEach(m => { if ((m.total || 0) > 0) receitaMes.set(m.competencia, { valor: m.total, fonte: 'faturamento' }); });
+    sims.forEach(s => {
+      if (s.competencia && s.rpa > 0 && !receitaMes.has(s.competencia)) receitaMes.set(s.competencia, { valor: s.rpa, fonte: 'PGDAS ' + rotuloMeses([s.competencia]) });
+      (s.historico || []).forEach(h => { if (h.receita > 0 && !receitaMes.has(h.competencia)) receitaMes.set(h.competencia, { valor: h.receita, fonte: 'histórico do RBT12 no PGDAS ' + rotuloMeses([s.competencia]) }); });
+    });
+    if (resVen) resVen.meses.forEach(m => { if (m.total > 0 && !receitaMes.has(m.competencia)) receitaMes.set(m.competencia, { valor: m.total, fonte: 'saídas' }); });
+    // OS MESES QUE O RELATÓRIO DE ENTRADAS COBRE (13/10/2026): os que têm nota, os do meio entre a primeira e a última (o
+    // relatório passou por eles: mês sem nota é compra zero e fica na conta) e, do período do cabeçalho, os meses com saída
+    // lançada (a escrita existia). Sem o período no cabeçalho, contam os meses com saída lançada perto das notas (até 11
+    // meses antes da primeira ou depois da última): quem exporta as entradas exporta o mesmo período das saídas.
+    // Mês do cabeçalho sem nota de entrada nem de saída fica fora da conta — em cliente novo é o mês em que a escrita ainda
+    // não era do escritório, não um mês sem compra —, mas A DÚVIDA FICA REGISTRADA: a procedência leva esses meses e o %
+    // que daria se fossem compra zero, e a confiança testa os dois (rt-confianca.js)
+    const mesesLanc = [...new Set(ent.lancamentos.map(l => l.competencia))].sort();
+    const mesesSaida = new Set(ven ? ven.vendas.map(v => v.competencia) : []);
+    const cobertos = new Set();
+    ents.forEach(e => {
+      const lc = [...new Set(e.lancamentos.map(l => l.competencia))].sort();
+      if (lc.length) competenciasEntre(lc[0], lc[lc.length - 1]).forEach(c => cobertos.add(c));
+      if (e.periodoDe && e.periodoAte && e.periodoDe <= e.periodoAte) competenciasEntre(e.periodoDe, e.periodoAte).forEach(c => { declarados.add(c); if (mesesSaida.has(c)) cobertos.add(c); });
+      else if (lc.length) { const ini = somaMeses(lc[0], -11), fim = somaMeses(lc[lc.length - 1], 11); mesesSaida.forEach(c => { if (c >= ini && c <= fim) cobertos.add(c); }); }
+    });
+    mesesEnt = [...cobertos].filter(c => receitaMes.has(c)).sort().slice(-12);
+    const semReceita = mesesLanc.filter(c => !receitaMes.has(c));
+    if (semReceita.length) avisos.push('As entradas de ' + rotuloMeses(semReceita) + ' ficaram fora do % de compras: nenhum relatório traz a receita desse(s) mês(es) (faturamento, PGDAS ou saídas) — suba o faturamento ou o PGDAS do período.');
+    // mês que o relatório de saídas cobre, com faturamento, mas sem nenhuma saída lançada: a escrita do mês não era do
+    // escritório (cliente novo) — fica fora sem dúvida nenhuma
+    const declSaida = new Set();
+    vens.forEach(r => { if (r.periodoDe && r.periodoAte && r.periodoDe <= r.periodoAte) competenciasEntre(r.periodoDe, r.periodoAte).forEach(c => declSaida.add(c)); });
+    const semEscrita = [...declarados].filter(c => !cobertos.has(c) && receitaMes.has(c) && declSaida.has(c) && !mesesSaida.has(c)).sort();
+    if (semEscrita.length) avisos.push('O relatório de entradas vai de ' + rotuloMeses([...declarados]) + ', mas em ' + listaMeses(semEscrita) + ' não há nota de entrada nem de saída lançada, embora haja faturamento: a escrita ' + (semEscrita.length > 1 ? 'desses meses' : 'desse mês') + ' não era do escritório (cliente novo) — ' + (semEscrita.length > 1 ? 'ficaram' : 'ficou') + ' fora do % de compras.');
+    // os meses da dúvida: do cabeçalho, sem nota nenhuma e sem as saídas do mês pra dizer se a escrita existia — os mais
+    // perto dos medidos, até completar 12 com eles
+    if (mesesEnt.length && mesesEnt.length < 12) {
+      const ini = mesesEnt[0], fim = mesesEnt[mesesEnt.length - 1];
+      const dist = c => c < ini ? difMeses(c, ini) : c > fim ? difMeses(fim, c) : 0;
+      foraDoPeriodo = [...declarados].filter(c => !cobertos.has(c) && receitaMes.has(c) && !semEscrita.includes(c) && dist(c) <= 11)
+        .sort((a, b) => dist(a) - dist(b) || (a < b ? 1 : -1)).slice(0, 12 - mesesEnt.length).sort();
+    }
+    if (!mesesLanc.length) avisos.push('O relatório de entradas não tem lançamentos — o % de compras não foi calculado.');
+  } else {
+    avisos.push('Sem o relatório de entradas o % de compras não é calculado — é ele que decide o crédito no regime regular.');
+  }
+  if (mesesEnt.length) {
+    const base = mesesEnt;
+    const receitaBase = base.reduce((a, c) => a + receitaMes.get(c).valor, 0);
+    const fontesRec = [...new Set(base.map(c => receitaMes.get(c).fonte))];
     const res = resumirEntradas(ent, base);
     const somaSe = tipo => res.filter(g => (incluir ? incluir[g.grupo] : g.padrao) && g.credita === tipo).reduce((a, g) => a + g.valor, 0);
     let merc = somaSe('mercadoria'); let desp = somaSe('despesa');
@@ -759,26 +849,42 @@ export function consolidar(rels, incluir, opcoes = {}) {
       if (despAj != null) desp = desp * despAj;
       campos.pctMerc = Math.min(100, merc / receitaBase * 100);
       campos.pctDesp = Math.min(100, desp / receitaBase * 100);
-      origem.pctMerc = 'entradas Domínio: ' + brl(merc) + ' ÷ ' + brl(receitaBase) + ' de receita' + (campos.fornecedoresRegime ? ' — já descontado o crédito menor dos fornecedores do Simples (' + pct(campos.fornecedoresRegime.simplesPct) + '% das compras consultadas)' : '');
-      origem.pctDesp = 'entradas Domínio: ' + brl(desp) + ' ÷ receita do período';
+      const rotBase = rotuloMeses(base);
+      const per = /\(\d+ meses\)$/.test(rotBase) ? rotBase : rotBase + ' (' + nMeses(base.length) + ')';
+      origem.pctMerc = 'entradas Domínio de ' + per + ': ' + brl(merc) + ' ÷ ' + brl(receitaBase) + ' de receita no mesmo período (' + fontesRec.join(', ') + ')' + (campos.fornecedoresRegime ? ' — já descontado o crédito menor dos fornecedores do Simples (' + pct(campos.fornecedoresRegime.simplesPct) + '% das compras consultadas)' : '');
+      origem.pctDesp = 'entradas Domínio de ' + per + ': ' + brl(desp) + ' ÷ receita do mesmo período';
+      const pe = { fonte: 'entradas', meses: base.slice(), receitaDe: fontesRec, mesesFaturamento: competencias.length, regimeFornecedores: !!campos.fornecedoresRegime };
+      // meses do cabeçalho sem nota nenhuma (nem de saída): fora da conta, com o % que daria se fossem compra zero — no
+      // aviso e na procedência (a confiança testa os dois números)
+      if (foraDoPeriodo.length) {
+        const recFora = foraDoPeriodo.reduce((a, c) => a + receitaMes.get(c).valor, 0);
+        const alt = Math.min(100, (merc + desp) / (receitaBase + recFora) * 100);
+        pe.mesesIncertos = foraDoPeriodo.slice(); pe.pctSeZero = alt;
+        avisos.push('O relatório de entradas vai de ' + rotuloMeses([...declarados]) + ', mas ' + listaMeses(foraDoPeriodo) + (foraDoPeriodo.length > 1 ? ' não têm' : ' não tem') + ' nenhuma nota de entrada nem de saída lançada: '
+          + (foraDoPeriodo.length > 1 ? 'esses meses ficaram' : 'esse mês ficou') + ' fora do % de compras, porque não dá pra saber se a empresa não comprou nada ou se a escrita ainda não era do escritório (cliente novo). Se foram meses sem compra, o % seria ' + pct(alt) + '% (em vez de ' + pct(campos.pctMerc + campos.pctDesp) + '%) — a análise testa os dois. Subir as saídas do período resolve.');
+      }
+      proc.pctMerc = { ...pe, texto: origem.pctMerc };
+      proc.pctDesp = { ...pe, texto: origem.pctDesp };
+      // menos meses de entradas que de faturamento: o % é o desses meses — diz quais e de onde veio a receita
+      if (competencias.length && base.length < competencias.length) avisos.push('Compras medidas em ' + per + ', contra ' + competencias.length + ' meses do faturamento: '
+        + brl(merc + desp) + ' ÷ ' + brl(receitaBase) + ' de receita do mesmo período (' + fontesRec.join(', ') + ').'
+        + (base.length < 6 ? ' Com menos meses, o % pode não representar o ano — estoque, compra grande, sazonalidade; a análise mostra isso como confiança ' + (base.length <= 2 ? 'baixa' : 'média') + '.' : ''));
     }
     const fora = res.filter(g => g.credita === null && g.valor > 0);
     if (fora.length) avisos.push('Fora do cálculo, por não serem compra: ' + fora.map(g => g.rotulo.toLowerCase() + ' ' + brl(g.valor)).join(' · ') + '.');
-    const mesesEnt = [...new Set(ent.lancamentos.map(l => l.competencia))];
-    const faltando = base.filter(c => !mesesEnt.includes(c));
-    if (faltando.length) avisos.push('O relatório de entradas não cobre ' + faltando.length + ' mês(es) do faturamento (' + faltando.join(', ') + ') — o % de compras fica subestimado.');
-  } else if (!ent) {
-    avisos.push('Sem o relatório de entradas o % de compras não é calculado — é ele que decide o crédito no regime regular.');
   }
 
   if (campos.pctPJ == null && opcoes.perfil) {
     const pf = opcoes.perfil;
     const industrializacao = ven && ven.vendas.some(v => /^[56]12[45]$/.test(String(v.cfop || '')));
     // refeições para empresas (CNAE 5620-1/01): o cliente é empresa por definição — nunca "consumidor final"
-    if (pf.refeicaoEmpresas) { campos.pctPJ = 90; campos.pctPJDeduzido = true; origem.pctPJ = 'deduzido: CNAE 5620-1/01, refeições preparadas preponderantemente para empresas — confirme a carteira e o regime dos clientes (empresa do Simples não aproveita o crédito)'; }
-    else if (pf.tipo === 'alimentacao' || (pf.tipo === 'comercio' && opcoes.varejo)) { campos.pctPJ = 0; campos.pctPJDeduzido = true; origem.pctPJ = 'deduzido: ' + (pf.tipo === 'alimentacao' ? 'bar e restaurante' : 'varejo') + ' vende a consumidor final — confirme se houver venda relevante a empresas'; }
-    else if (industrializacao) { campos.pctPJ = 100; campos.pctPJDeduzido = true; origem.pctPJ = 'deduzido: industrialização por encomenda (CFOP x124/x125) é sempre para empresa'; }
-    else if (pf.tipo === 'industria') { campos.pctPJ = 90; campos.pctPJDeduzido = true; origem.pctPJ = 'deduzido: indústria vende essencialmente a empresas — confirme importando as saídas em XLS (trazem o CNPJ do cliente)'; }
+    let perfilPJ = null;
+    if (pf.refeicaoEmpresas) { campos.pctPJ = 90; perfilPJ = 'refeicao_empresas'; origem.pctPJ = 'deduzido: CNAE 5620-1/01, refeições preparadas preponderantemente para empresas — confirme a carteira e o regime dos clientes (empresa do Simples não aproveita o crédito)'; }
+    else if (pf.tipo === 'alimentacao' || (pf.tipo === 'comercio' && opcoes.varejo)) { campos.pctPJ = 0; perfilPJ = pf.tipo === 'alimentacao' ? 'alimentacao' : 'varejo'; origem.pctPJ = 'deduzido: ' + (pf.tipo === 'alimentacao' ? 'bar e restaurante' : 'varejo') + ' vende a consumidor final — confirme se houver venda relevante a empresas'; }
+    else if (industrializacao) { campos.pctPJ = 100; perfilPJ = 'industrializacao'; origem.pctPJ = 'deduzido: industrialização por encomenda (CFOP x124/x125) é sempre para empresa'; }
+    else if (pf.tipo === 'industria') { campos.pctPJ = 90; perfilPJ = 'industria'; origem.pctPJ = 'deduzido: indústria vende essencialmente a empresas — confirme importando as saídas em XLS (trazem o CNPJ do cliente)'; }
+    // deduzido pelo perfil, não medido: a análise trata como confiança baixa (rt-confianca.js)
+    if (perfilPJ) { campos.pctPJDeduzido = true; proc.pctPJ = { fonte: 'deduzido', perfil: perfilPJ, texto: origem.pctPJ }; }
   }
   // RBT12 × relatórios, MÊS COM MÊS (27/09/2026): o RBT12 é a soma dos 12 meses anteriores à competência do PGDAS.
   // Soma-se a receita dos relatórios nos meses dessa janela. Só há problema se os relatórios mostram MAIS receita que o
@@ -789,8 +895,34 @@ export function consolidar(rels, incluir, opcoes = {}) {
     campos.rbt12Conferencia = conf;
     if (conf.alerta) avisos.push(conf.texto);
   }
-  return { campos, origem, avisos, fat, sim, ent, ven, resVen, competencias };
+  // procedência dos campos e os meses em que compras e vendas foram medidos (podem não ser os do faturamento)
+  return { campos, origem, avisos, fat, sim, ent, ven, resVen, competencias, procedencia: proc, mesesEntradas: mesesEnt, mesesVendas: mesesVen };
 }
 
 const brl = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const pct = v => (Number(v) || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+
+// os meses em trechos seguidos — "set/25–out/25 e jun/26–ago/26", "set/25, out/25 e ago/26" —; com mais de 4 trechos,
+// "9 meses entre set/25 e ago/26"
+export function listaMeses(comps) {
+  const l = [...new Set((comps || []).filter(Boolean))].sort();
+  if (l.length < 2) return rotuloMeses(l);
+  const trechos = [];
+  l.forEach(c => { const t = trechos[trechos.length - 1]; if (t && difMeses(t[t.length - 1], c) === 1) t.push(c); else trechos.push([c]); });
+  if (trechos.length === 1) return rotuloMeses(l);
+  if (trechos.length > 4) return nMeses(l.length) + ' entre ' + rotuloMeses([l[0]]) + ' e ' + rotuloMeses([l[l.length - 1]]);
+  const txt = trechos.map(t => t.length === 1 ? rotuloMeses(t) : rotuloMeses([t[0]]) + '–' + rotuloMeses([t[t.length - 1]]));
+  return txt.slice(0, -1).join(', ') + ' e ' + txt[txt.length - 1];
+}
+// competências 'AAAA-MM' → "set/26", "jan/26–ago/26" ou, com buraco no meio, "jan/26–set/26 (3 meses)"
+const MES_CURTO = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+const nMeses = n => n + (n === 1 ? ' mês' : ' meses');
+export function rotuloMeses(comps) {
+  const l = [...new Set((comps || []).filter(Boolean))].sort();
+  if (!l.length) return '';
+  const r = c => MES_CURTO[Number(c.slice(5, 7)) - 1] + '/' + c.slice(2, 4);
+  if (l.length === 1) return r(l[0]);
+  const seguinte = c => { const [a, m] = c.split('-').map(Number); return m === 12 ? (a + 1) + '-01' : a + '-' + String(m + 1).padStart(2, '0'); };
+  const continuo = l.every((c, i) => i === 0 || seguinte(l[i - 1]) === c);
+  return r(l[0]) + '–' + r(l[l.length - 1]) + (continuo ? '' : ' (' + l.length + ' meses)');
+}
