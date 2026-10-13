@@ -391,7 +391,7 @@
     import { formatDocumento, normalizarDocumento } from './assets/js/utils.js';
     import { gerarAnalise } from './assets/js/rt-analise.js';
     import { simular, anexo2027 } from './assets/js/rt-motor.js';
-    import { avaliarConfianca, resumoConfianca, inferirProcedencia, ROT_DECISAO } from './assets/js/rt-confianca.js';
+    import { avaliarConfianca, resumoConfianca, inferirProcedencia, ROT_DECISAO, faltaParaCliente } from './assets/js/rt-confianca.js';
     import { RT_PRAZO, janelaAberta as janelaAbertaEm } from './assets/js/rt-prazos.js';
 
     const $ = id => document.getElementById(id);
@@ -618,24 +618,31 @@
 
     $('maComGerar').onclick = () => {
       const escolhidos = casos.filter(c => sel.has(c.id));
-      const aptos = escolhidos.filter(c => c.decisao === 'por_dentro' || (c.decisao === 'por_fora' && c.sim_custo_fora != null));
+      // (sem conclusão e sem decisão também é apto: sai o comunicado "faltam dados")
+      const aptos = escolhidos.filter(c => semConclusaoPendente(c) || c.decisao === 'por_dentro' || (c.decisao === 'por_fora' && c.sim_custo_fora != null));
       const pulados = escolhidos.length - aptos.length;
-      if (!aptos.length) { alert('Nenhum selecionado apto: o comunicado exige decisão definida (e simulação gravada, no caso por fora).'); return; }
+      if (!aptos.length) { alert('Nenhum selecionado apto: o comunicado exige decisão definida (e simulação gravada, no caso por fora) — ou simulação gravada sem conclusão.'); return; }
       if (pulados && !confirm(aptos.length + ' comunicado(s) serão gerados; ' + pulados + ' selecionado(s) ficam de fora (sem decisão, ou por fora sem simulação gravada). Continuar?')) return;
-      const semConc = aptos.filter(c => { const cf = confiancaGravada(c); return cf && cf.conclusao === 'sem_conclusao'; });
+      const semConc = aptos.filter(c => { const cf = confiancaGravada(c); return cf && cf.conclusao === 'sem_conclusao' && !semConclusaoPendente(c); });
       if (semConc.length && !confirm(semConc.length + ' dos comunicados é(são) de simulação SEM CONCLUSÃO (dado decisivo com confiança baixa): ' + semConc.map(c => (clientesMap[c.cliente_id] || {}).nome_principal || '?').join(', ') + '.\n\nGerar mesmo assim, com a decisão gravada?')) return;
       abrirJanelaComunicados(aptos);
     };
 
     $('maComMarcar').onclick = async () => {
       const ids = [...sel].filter(id => { const c = casos.find(x => x.id === id); return c && c.decisao && c.decisao !== 'pendente' && c.status !== 'opcao_registrada'; });
-      const pulados = sel.size - ids.length;
-      if (!ids.length) { alert('Nenhum selecionado apto: é preciso ter decisão definida (quem já tem a opção registrada não regride).'); return; }
-      if (!confirm('Marcar ' + ids.length + ' cliente(s) como comunicado(s) hoje?' + (pulados ? ' (' + pulados + ' ficam de fora: sem decisão ou com opção já registrada.)' : ''))) return;
+      // sem conclusão e sem decisão: só a data do comunicado (o caso segue com a decisão pendente)
+      const idsPend = [...sel].filter(id => { const c = casos.find(x => x.id === id); return c && semConclusaoPendente(c); });
+      const pulados = sel.size - ids.length - idsPend.length;
+      if (!ids.length && !idsPend.length) { alert('Nenhum selecionado apto: é preciso ter decisão definida, ou simulação gravada sem conclusão (quem já tem a opção registrada não regride).'); return; }
+      if (!confirm('Marcar ' + (ids.length + idsPend.length) + ' cliente(s) como comunicado(s) hoje?' + (idsPend.length ? ' (' + idsPend.length + ' sem conclusão: ficam com a data do comunicado e a decisão pendente.)' : '') + (pulados ? ' (' + pulados + ' ficam de fora: sem decisão ou com opção já registrada.)' : ''))) return;
       const upd = { comunicado_em: hojeISO(), status: 'comunicado', atualizado_em: agoraISO() };
-      const { error } = await supabase.from('rt_casos').update(upd).in('id', ids);
-      if (error) { alert('Erro: ' + error.message); return; }
-      casos.forEach(c => { if (ids.includes(c.id)) Object.assign(c, upd); });
+      const updPend = { comunicado_em: upd.comunicado_em, atualizado_em: upd.atualizado_em };
+      for (const [lista, u] of [[ids, upd], [idsPend, updPend]]) {
+        if (!lista.length) continue;
+        const { error } = await supabase.from('rt_casos').update(u).in('id', lista);
+        if (error) { alert('Erro: ' + error.message); return; }
+        casos.forEach(c => { if (lista.includes(c.id)) Object.assign(c, u); });
+      }
       sel.clear();
       render();
     };
@@ -1562,12 +1569,35 @@
       return seg || ('atividade registrada no CNAE ' + escapeHtml(c.cnae_base || '—'));
     }
 
+    // SEM CONCLUSÃO, SEM DECISÃO (13/10/2026): a simulação gravada não sustenta nenhum dos lados e a decisão está pendente — o
+    // comunicado sai assim mesmo, na versão "faltam dados", sem obrigar a marcar por dentro ou por fora
+    const semConclusaoPendente = c => { const cf = confiancaGravada(c); return !!(cf && cf.conclusao === 'sem_conclusao') && (!c.decisao || c.decisao === 'pendente'); };
+
     function comunicadoFolha(c) {
       const cli = clientesMap[c.cliente_id] || {};
       const contexto = 'A partir de janeiro de 2027 começam a valer a CBS e o IBS, os novos tributos criados pela reforma tributária. Para empresas do Simples Nacional, eles passam a compor o DAS junto dos demais tributos — e existe a possibilidade de optar por apurá-los separadamente, no chamado regime regular.';
       const perfilCli = PERFIL_CLI[+c.sinal_b2b || 0], perfilCompras = PERFIL_COMPRAS[+c.sinal_entradas || 0];
       let miolo;
-      if (c.decisao === 'por_fora') {
+      if (semConclusaoPendente(c)) {
+        const cf = confiancaGravada(c);
+        const decisivos = (cf.decisivos || []).map(t => String(t).charAt(0).toLowerCase() + String(t).slice(1));
+        const faltam = cf.faltamCliente || (cf.faltam || []).map(faltaParaCliente);
+        const aberta = janelaAbertaEm(hojeISO());
+        miolo =
+          '<h1>Reforma Tributária — a análise da sua empresa ainda depende de dados</h1>' +
+          '<div class="dados"><b>' + escapeHtml(cli.nome_principal || '') + '</b>' + (cli.documento ? ' · CNPJ ' + escapeHtml(fmtCnpj(cli.documento)) : '') + '</div>' +
+          '<p class="ctx">' + contexto + '</p>' +
+          '<p class="ctx">Simulamos os dois cenários com os números que temos hoje, mas <b>ainda não dá pra recomendar um dos lados</b>: ' + (decisivos.length > 1 ? 'estes números ainda têm pouca base e, dentro do que é plausível para eles, mudam o resultado' : 'este número ainda tem pouca base e, dentro do que é plausível para ele, muda o resultado') + (decisivos.length ? ' — ' + escapeHtml(decisivos.join('; ')) : '') + '. Escolher agora seria chute.</p>' +
+          (c.sim_custo_dentro != null && c.sim_custo_fora != null
+            ? '<table><thead><tr><th>Conta provisória (semestre) — não é recomendação</th><th class="num">Dentro do Simples</th><th class="num">Regime regular</th></tr></thead><tbody>' +
+              '<tr><td>Custo tributário estimado</td><td class="num">' + brl(c.sim_custo_dentro) + '</td><td class="num">' + brl(c.sim_custo_fora) + '</td></tr></tbody></table>' : '') +
+          (faltam.length ? '<h2>O que precisamos pra concluir</h2><ol class="passos">' + faltam.map(f => '<li>' + escapeHtml(f) + '</li>').join('') + '</ol>' : '') +
+          '<p class="ctx">' + (aberta
+            ? 'O prazo da opção vai até <b>' + RT_PRAZO.opcao + '</b>. Se os dados não chegarem a tempo, há duas portas: <b>registrar a opção</b> deixa a decisão em aberto até <b>' + RT_PRAZO.cancelaAte + '</b> — o cancelamento, ' + RT_PRAZO.cancelamento + ', não tem efeito nenhum —; <b>não registrar</b> mantém o IBS e a CBS no DAS, com nova janela em ' + RT_PRAZO.proxima + ' (efeito a partir de ' + RT_PRAZO.proximaEfeito + ').'
+            : 'A janela da opção para janeiro/2027 fechou em ' + RT_PRAZO.opcao + '; a próxima é em <b>' + RT_PRAZO.proxima + '</b>, com efeito a partir de ' + RT_PRAZO.proximaEfeito + ' — há tempo de levantar os dados antes.') + '</p>' +
+          '<p class="ctx">Uma mudança vale para todas as empresas do Simples, seja qual for a escolha: <b>a partir de 01/01/2027 as notas fiscais passam a sair no novo padrão, com os campos de IBS e CBS</b> (Ato Conjunto RFB/CGIBS nº 4/2026, art. 1º, § 1º). O escritório vai orientar o ajuste do sistema emissor de notas.</p>' +
+          '<div class="assina"><b>Situação: análise em andamento — faltam dados que decidem o resultado.</b><br>Manifestação do cliente: (&nbsp;&nbsp;) vou enviar os dados até ____/____/______' + (aberta ? ' &nbsp;&nbsp; (&nbsp;&nbsp;) registrem a opção, pra manter a decisão em aberto até ' + RT_PRAZO.cancelaAteDM : '') + ' &nbsp;&nbsp; (&nbsp;&nbsp;) prefiro manter no Simples<br><br>Data: ____/____/______ &nbsp;&nbsp;&nbsp; Assinatura: ___________________________________</div>';
+      } else if (c.decisao === 'por_fora') {
         const prazoConf = (() => { const d = new Date((c.prazo_opcao || RT_PRAZO.opcaoFim) + 'T12:00:00'); d.setDate(d.getDate() - 7); return d.toLocaleDateString('pt-BR'); })();
         miolo =
           '<h1>Reforma Tributária — recomendação de opção pelo regime regular de IBS/CBS</h1>' +
@@ -2191,6 +2221,8 @@
     const confiancaGravada = c => { try { const j = JSON.parse(c.sim_obs || 'null'); return (j && j.confianca) || null; } catch (e) { return null; } };
     $('dGerar').onclick = () => {
       const c = casoAtual(); if (!c) return;
+      // sem conclusão e sem decisão: sai o comunicado "faltam dados" (comunicadoFolha), sem pedir por dentro ou por fora
+      if (semConclusaoPendente(c)) { abrirJanelaComunicados([c]); return; }
       if (!c.decisao || c.decisao === 'pendente') { alert('Grave a decisão antes de gerar o comunicado.'); return; }
       if (c.decisao === 'por_fora' && c.sim_custo_fora == null) { alert('O comunicado por fora usa os números da simulação — grave a simulação antes.'); return; }
       const cf = confiancaGravada(c);
@@ -2200,13 +2232,15 @@
 
     $('dMarcar').onclick = async () => {
       const c = casoAtual(); if (!c) return;
-      if (!c.decisao || c.decisao === 'pendente') { alert('Grave a decisão antes de marcar como comunicado.'); return; }
+      // sem conclusão e sem decisão: registra a data do comunicado, mas o caso não vira "Comunicado" — a decisão segue pendente
+      const pend = semConclusaoPendente(c);
+      if (!pend && (!c.decisao || c.decisao === 'pendente')) { alert('Grave a decisão antes de marcar como comunicado.'); return; }
       const upd = { comunicado_em: hojeISO(), atualizado_em: agoraISO() };
-      if (c.status !== 'opcao_registrada') upd.status = 'comunicado';
+      if (!pend && c.status !== 'opcao_registrada') upd.status = 'comunicado';
       const { error } = await supabase.from('rt_casos').update(upd).eq('id', c.id);
       if (error) { $('dMsg').style.color = 'var(--err)'; $('dMsg').textContent = 'Erro: ' + error.message; return; }
       Object.assign(c, upd);
-      $('dMsg').style.color = 'var(--ok)'; $('dMsg').textContent = '✓ Comunicado em ' + fmtData(upd.comunicado_em);
+      $('dMsg').style.color = 'var(--ok)'; $('dMsg').textContent = '✓ Comunicado em ' + fmtData(upd.comunicado_em) + (pend ? ' — sem conclusão, decisão pendente' : '');
       atualizarChips();
     };
 

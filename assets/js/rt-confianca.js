@@ -63,6 +63,9 @@ const FALTA_CLIENTE = {
   'as notas de venda (XML ou ZIP)': 'as notas de venda',
   'a revisão do NCM das compras nos maiores fornecedores': 'a revisão da classificação (NCM) das compras dos maiores fornecedores'
 };
+// o que falta, nas palavras do cliente (o comunicado lê o resumo gravado, que nas simulações gravadas antes desta tradução
+// só tem o texto do escritório)
+export const faltaParaCliente = t => FALTA_CLIENTE[t] || t;
 const FONTE_LEGADO_CLIENTE = 'Levantamento anterior do escritório';
 const MOTIVO_LEGADO_CLIENTE = 'Número de um levantamento anterior do escritório, que vamos confirmar com os relatórios atualizados.';
 
@@ -456,8 +459,8 @@ export function avaliarConfianca(ent, procedencia, ctx = {}) {
 // o que vai gravado com a simulação: dá pra lista e pro "refazer" saberem a conclusão sem refazer a conta toda
 export function resumoConfianca(av) {
   return { conclusao: av.conclusao, decisao: av.decisao,
-    decisivos: av.decisivos.map(it => it.rotulo), aConfirmar: av.aConfirmar.map(it => it.rotulo).concat(av.conjunto ? [av.conjunto.texto] : []), faltam: av.faltam,
-    niveis: Object.fromEntries(av.itens.map(it => [it.chave, it.nivel])) };
+    decisivos: av.decisivos.map(it => it.rotulo), aConfirmar: av.aConfirmar.map(it => it.rotulo).concat(av.conjunto && !av.conjunto.semConclusao ? [av.conjunto.texto] : []), faltam: av.faltam,
+    faltamCliente: av.faltamCliente, niveis: Object.fromEntries(av.itens.map(it => [it.chave, it.nivel])) };
 }
 
 // ============================================================

@@ -16,7 +16,9 @@ Confere:
      lista mostra "Simulado: sem conclusão", com o filtro;
   4. a análise técnica e o relatório do cliente saem como "SEM CONCLUSÃO — FALTAM DADOS", com a seção 7 (fonte, período,
      confiança e por quê) e o pedido dos dados;
-  5. o comunicado de decisão gravada sobre simulação sem conclusão pede confirmação antes de abrir;
+  5. sem conclusão e sem decisão, o comunicado sai na versão "faltam dados" (o que falta, a conta só como provisória,
+     o prazo), sem pedir por dentro ou por fora, e "Marcar como comunicado" grava a data com a decisão pendente; com a
+     decisão gravada sobre simulação sem conclusão, o comunicado pede confirmação antes de abrir;
   6. digitando as compras e o % de PJ, a origem vira "informado na ficha" (confiança média) e a conclusão volta — o 0
      digitado também (consultoria que não compra nada): deixa de ser "não medido";
   7. simulação gravada antes de 13/10/2026 (sem a procedência): a origem é deduzida do resumo do Domínio e aparece como
@@ -187,7 +189,30 @@ def main():
         ok('Pra concluir a análise, precisamos de' in t and 'Com que segurança:' in t, 'relatório do cliente: o pedido dos dados e a segurança de cada número')
         cl.close()
 
-        # 5) comunicado de decisão sobre simulação sem conclusão: pede confirmação
+        # 5a) sem conclusão e sem decisão: o comunicado sai na versão "faltam dados", sem pedir por dentro ou por fora
+        dlg = []
+        def pega(d):
+            dlg.append(d.message); d.dismiss()
+        p.on('dialog', pega)
+        with p.expect_popup() as pop:
+            p.click('#dGerar')
+        cm = pop.value; cm.wait_for_load_state(); cm.wait_for_timeout(200)
+        p.remove_listener('dialog', pega)
+        t = br(cm.inner_text('body'))
+        ok(not dlg and 'a análise da sua empresa ainda depende de dados' in t and 'ainda não dá pra recomendar um dos lados' in t,
+           f'sem decisão: o comunicado sai sem pedir a decisão ({(dlg or [""])[0][:50]})')
+        # (o cabeçalho da tabela sai em maiúsculas pelo CSS: compara sem caixa)
+        ok('O que precisamos pra concluir' in t and 'as notas de compra (entradas) do período' in t and 'conta provisória' in t.lower() and 'não é recomendação' in t.lower(),
+           'diz o que falta, nas palavras do cliente, e a conta só como provisória')
+        ok('Nossa recomendação' not in t and 'vou enviar os dados até' in t and 'registrem a opção, pra manter a decisão em aberto' in t, 'sem recomendação: a manifestação é sobre os dados e o prazo')
+        ok('Domínio' not in t and 'XLS' not in t, 'sem nomes internos no comunicado')
+        cm.close()
+        p.click('#dMarcar'); p.wait_for_timeout(500)
+        k1 = p.evaluate("window.__mockDb.rt_casos.find(c => c.id === 'cfk1')")
+        ok(k1.get('comunicado_em') and k1.get('status') == 'simulado' and k1.get('decisao') == 'pendente' and 'decisão pendente' in p.inner_text('#dMsg'),
+           f'marcar como comunicado sem decisão: grava a data e a decisão segue pendente ({k1.get("status")}, {k1.get("decisao")})')
+
+        # 5b) comunicado de decisão sobre simulação sem conclusão: pede confirmação
         p.check('input[name="cDec"][value="por_dentro"]'); p.wait_for_timeout(100)
         p.click('#cGravar'); p.wait_for_timeout(500)
         msgs = []
