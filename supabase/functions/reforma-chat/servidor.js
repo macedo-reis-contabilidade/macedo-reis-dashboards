@@ -16,7 +16,7 @@
 
 import { criarIndice } from './busca.js';
 import { montarSistema, preambulo } from './prompt.js';
-import { DEFINICOES, CAMPOS, BOOLS, criarFerramentas, nomeDoCaso } from './ferramentas.js';
+import { DEFINICOES, CAMPOS, BOOLS, criarFerramentas, nomeDoCaso, descreverEtapa } from './ferramentas.js';
 import { criarChamador, responder, fontesDaResposta } from './agente.js';
 import { aliquotas2027 } from '../../../assets/js/rt-motor.js';
 
@@ -178,7 +178,7 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
       }
       const ferramentas = criarFerramentas({ base, carregarCasos, params: base.params, contexto: ctx });
       const mensagem = preambulo({ hoje: hojeBR(agora()), caso: nomeFicha, telaNaoGravada: !!ctx.tela }) + pergunta;
-      res = await responder({ chamar: chamarModelo, sistema: base.sistema, definicoes: DEFINICOES, ferramentas, historico, mensagem, aoEtapa, prazoMs });
+      res = await responder({ chamar: chamarModelo, sistema: base.sistema, definicoes: DEFINICOES, ferramentas, historico, mensagem, aoEtapa, prazoMs, descrever: descreverEtapa });
     } catch (e) { erro = e || new Error('erro'); }
     const fs = res && base ? fontesDaResposta(res.texto, base.codMateriais, base.codRegras) : { fontes: [], desconhecidas: [] };
     const detalhe = erro ? String((erro && erro.message) || erro).slice(0, 1000) : null;

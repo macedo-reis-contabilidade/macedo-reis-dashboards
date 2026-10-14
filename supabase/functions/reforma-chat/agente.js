@@ -4,9 +4,10 @@
 // prazo do servidor, 70 s; na última, sem ferramenta). Cada chamada à API tem prazo próprio (a que começa perto do fim
 // ainda tem 30 s): a pergunta inteira cabe no limite de tempo da Edge Function. O contexto fixo (instruções, índice, Base
 // legal, sínteses) e a conversa até a última mensagem vão com cache. Puro: o "chamar" é injetado (testes roteirizados).
+// Também é o laço do assistente do escritório (função assistente). Quem chama passa a descrição das próprias ferramentas
+// ("descrever": o texto da etapa na tela) e uma ferramenta pode encerrar a pergunta com a resposta pronta ({ final: true, texto }) — é o
+// perguntar_reforma, que devolve a resposta do chat da Reforma direto ao usuário.
 // ============================================================
-
-import { descreverEtapa } from './ferramentas.js';
 
 export const MODELOS = ['claude-sonnet-5-5', 'claude-sonnet-4-6'];
 const API = 'https://api.anthropic.com/v1/messages';
@@ -58,15 +59,17 @@ export function comCache(msgs) {
 }
 
 // ============================================================
-// responder({ chamar, sistema, definicoes, ferramentas, historico, mensagem, aoEtapa }) →
-//   { texto, etapas, uso: { entrada, saida, cacheLeitura, cacheEscrita }, modelo, rodadas, cortada }
+// responder({ chamar, sistema, definicoes, ferramentas, historico, mensagem, aoEtapa, descrever }) →
+//   { texto, etapas, uso: { entrada, saida, cacheLeitura, cacheEscrita }, modelo, rodadas, cortada, final? }
 // historico: [{ pergunta, resposta }] das perguntas anteriores da conversa (só o texto)
+// a ferramenta devolve texto (o modelo lê) ou { final: true, texto, cortada? } (a resposta da pergunta, sem outra rodada,
+// quando é a única ferramenta pedida na rodada)
 // ============================================================
 // o que fazer quando a saída de uma ferramenta passa do tamanho
 const DICA_CORTE = { ler_material: 'leia a seção seguinte com ler_material', buscar_base: 'refine a busca', listar_casos: 'use filtro, busca ou a página seguinte (pagina)' };
 
 export async function responder({ chamar, sistema, definicoes, ferramentas, historico = [], mensagem, aoEtapa = () => {},
-  maxRodadas = 6, prazoMs = 70000, agora = () => Date.now(), maxTokens = 2500 }) {
+  maxRodadas = 6, prazoMs = 70000, agora = () => Date.now(), maxTokens = 2500, descrever = nome => String(nome) }) {
   const inicio = agora();
   const ate = inicio + prazoMs + 30000;   // a chamada que começa perto do prazo ainda tem 30 s pra terminar
   const msgs = [];
@@ -95,13 +98,20 @@ export async function responder({ chamar, sistema, definicoes, ferramentas, hist
     for (const b of pedidos) {
       const entrada = b.input && typeof b.input === 'object' && !Array.isArray(b.input) ? b.input : {};
       let desc = String(b.name);
-      try { desc = descreverEtapa(b.name, entrada); } catch (e) { /* entrada estranha: fica o nome */ }
+      try { desc = descrever(b.name, entrada); } catch (e) { /* entrada estranha: fica o nome */ }
       try { aoEtapa(desc); } catch (e) { /* quem pediu fechou a janela */ }
       const fn = Object.hasOwn(ferramentas, b.name) ? ferramentas[b.name] : null;
       let saida, erro = false;
       try { saida = fn ? await fn(entrada) : 'Ferramenta desconhecida: ' + b.name; erro = !fn; }
       catch (e) { saida = 'Erro na ferramenta: ' + ((e && e.message) || e); erro = true; }
-      saida = String(saida);
+      if (saida && typeof saida === 'object' && saida.final === true && pedidos.length === 1) {
+        // a resposta já pronta (ex.: a do chat da Reforma), quando é a única coisa pedida na rodada: encerra aqui, sem outra
+        // rodada do modelo (pedida junto com outras ferramentas, volta como texto e o modelo junta tudo)
+        const texto = String(saida.texto || '').trim();
+        etapas.push({ ferramenta: b.name, entrada, descricao: desc, caracteres: texto.length, erro: false, final: true });
+        return { texto: texto || 'Não consegui montar a resposta. Tente perguntar de outro jeito.', etapas, uso, modelo, rodadas: rodada, cortada: !!saida.cortada, final: true };
+      }
+      saida = String(saida && typeof saida === 'object' ? (saida.texto || '') : saida);
       if (saida.length > 14000) saida = saida.slice(0, 14000) + '\n…(cortado: a saída passou de 14 mil caracteres' + (DICA_CORTE[b.name] ? ' — ' + DICA_CORTE[b.name] : '') + ')';
       etapas.push({ ferramenta: b.name, entrada, descricao: desc, caracteres: saida.length, erro });
       resultados.push({ type: 'tool_result', tool_use_id: b.id, content: saida, ...(erro ? { is_error: true } : {}) });

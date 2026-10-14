@@ -156,7 +156,7 @@ const roteiro = [
 ];
 const etapasVistas = [];
 const res = await responder({ chamar: async c => { chamadas.push(JSON.parse(JSON.stringify(c))); return { ...roteiro[chamadas.length - 1], _modelo: 'modelo-teste' }; },
-  sistema: sis, definicoes: DEFINICOES, ferramentas: fe, historico: [{ pergunta: 'Oi?', resposta: 'Olá.' }], mensagem: pre + 'Ônibus urbano tem alíquota zero?', aoEtapa: t => etapasVistas.push(t) });
+  sistema: sis, definicoes: DEFINICOES, ferramentas: fe, historico: [{ pergunta: 'Oi?', resposta: 'Olá.' }], mensagem: pre + 'Ônibus urbano tem alíquota zero?', aoEtapa: t => etapasVistas.push(t), descrever: descreverEtapa });
 chk('a ferramenta pedida roda e a resposta final volta', res.texto.startsWith('É isenção') && res.etapas.length === 1 && res.etapas[0].ferramenta === 'buscar_base' && etapasVistas[0] === 'Buscando na base: "isenção transporte"');
 chk('o resultado da ferramenta vai de volta ao modelo', chamadas[1].messages.at(-1).content[0].type === 'tool_result' && /TST-LEI/.test(chamadas[1].messages.at(-1).content[0].content));
 chk('histórico da conversa antes da pergunta', chamadas[0].messages[0].content === 'Oi?' && chamadas[0].messages[1].content === 'Olá.');
@@ -178,7 +178,7 @@ chk('comCache não mexe nas mensagens originais', (() => { const m = [{ role: 'u
   chk('cada chamada leva o fim do prazo (+30 s pra última)', opcoes.every(o => o && o.ate === 70000 + 30000));
   const etapasEstranhas = [];
   const res4 = await responder({ chamar: (() => { let n = 0; return async () => ++n === 1 ? { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'q', name: 'listar_casos', input: { filtro: ['sem_conclusao'] } }, { type: 'tool_use', id: 'r', name: 'constructor', input: {} }], usage: {} } : { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Ok.' }], usage: {} }; })(),
-    sistema: sis, definicoes: DEFINICOES, ferramentas: fe, mensagem: 'x', aoEtapa: t => etapasEstranhas.push(t) });
+    sistema: sis, definicoes: DEFINICOES, ferramentas: fe, mensagem: 'x', aoEtapa: t => etapasEstranhas.push(t), descrever: descreverEtapa });
   chk('entrada estranha de ferramenta e nome herdado não derrubam a pergunta', res4.texto === 'Ok.' && res4.etapas.length === 2 && res4.etapas[1].erro === true, JSON.stringify(res4.etapas.map(e => e.descricao)));
   const longa = 'x'.repeat(20000);
   const res5 = await responder({ chamar: (() => { let n = 0; return async c => { if (++n === 2) res5vista = c.messages.at(-1).content[0].content; return n === 1 ? { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'z', name: 'listar_casos', input: {} }], usage: {} } : { stop_reason: 'max_tokens', content: [{ type: 'text', text: 'Começo da resposta' }], usage: {} }; }; })(),
