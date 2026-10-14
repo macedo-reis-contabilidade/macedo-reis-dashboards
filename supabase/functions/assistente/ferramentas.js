@@ -658,6 +658,7 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
         linhas.push('  · por mês do prazo: ' + meses.map(g => g.rotulo + ' ' + g.n).join(' · '));
         linhas.push('  · por tarefa: ' + topo(porTarefa, 10));
         linhas.push('  · por empresa: ' + topo(porEmpresa, 10));
+        linhas.push('  · por situação: ' + topo(contarPor(atras, t => ({ id: t.status || '—', rotulo: situacao(t.status) })), 6));
         const porSetor = contarPor(atras, t => ({ id: t.setor || '—', rotulo: t.setor || '—' }));
         if (porSetor.length > 1) linhas.push('  · por setor: ' + topo(porSetor, 10));
         if (todos) linhas.push('  · por pessoa: ' + topo(contarPor(atras, t => { const p = rotuloPessoa(t.responsavel); return { id: p, rotulo: p }; }), 10));

@@ -184,7 +184,7 @@ function bancoFalso({ tarefas = [], rotinas = [], extras = {} } = {}) {
     && /por setor: dp 600 · fiscal 600/.test(a) && log.filter(x => x.caminho.includes('prazo=lt.2026-10-14')).length === 2, a.split('\n').slice(0, 8).join(' | '));
   const lista = (a.split('as 25 primeiras')[1] || '').split('\n');
   chk('a lista: as 25 primeiras, a de prioridade alta na frente, e quantas faltam', /prazo 01\/10\/2026 · Urgente/.test(lista[1]) && /… mais 1175 atrasadas/.test(a), lista[1]);
-  chk('a situação por extenso na linha (em andamento, média)', /em andamento · prioridade média/.test(a) && !/em_andamento/.test(a));
+  chk('a situação por extenso, no resumo e na linha (em andamento, média)', /por situação: pendente 1199 · em andamento 1/.test(a) && /em andamento · prioridade média/.test(a) && !/em_andamento/.test(a));
 }
 {
   // ver_empresa: as contas de todas as tarefas abertas e a situação por extenso
