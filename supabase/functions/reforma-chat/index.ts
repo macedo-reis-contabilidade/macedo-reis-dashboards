@@ -7,6 +7,6 @@
 // commit fixado ficou pra trás. verify_jwt = true · segredo: ANTHROPIC_API_KEY (o mesmo do leitor de documentos e do DRE).
 // ============================================================
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { criarServidor } from "https://raw.githubusercontent.com/macedo-reis-contabilidade/macedo-reis-dashboards/06d95c431e8a1de7dc1ea95f8d0e8bb4bfc2e434/supabase/functions/reforma-chat/servidor.js";
+import { criarServidor } from "https://raw.githubusercontent.com/macedo-reis-contabilidade/macedo-reis-dashboards/1b7e0b8d012566ae94a590f93eedfa2157f34315/supabase/functions/reforma-chat/servidor.js";
 
 Deno.serve(criarServidor({ env: (k: string) => Deno.env.get(k) }));
