@@ -16,7 +16,7 @@
 // ============================================================
 
 import { simular } from './rt-motor.js';
-import { rotuloMeses, listaMeses } from './dominio-relatorios.js';
+import { rotuloMeses, listaMeses, perfilAtividade, cnaeMaisCompleto, reducaoServicoPorCnae, ramoComZero, ramoComReducao } from './dominio-relatorios.js';
 
 const p1 = v => (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const brl0 = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
@@ -587,6 +587,21 @@ function testar(it, base) {
   };
   it.efeito = efeitoCom(x => x.rotulo);
   if (it.resultados.some(x => x.rotuloCliente)) it.efeitoCliente = efeitoCom(x => x.rotuloCliente || x.rotulo);
+}
+
+// ============================================================
+// contextoDoCaso({ ent, cnaeCaso, cnaeCadastro, dominio }) → o ctx de avaliarConfianca: o perfil da atividade (o que é
+// plausível pra cada número depende do que a empresa faz), pelo CNAE mais completo entre o do caso (rt_casos.cnae_base) e o
+// do cadastro (clientes.cnae_principal) e pela natureza das vendas do resumo do Domínio gravado na simulação. A ficha, o
+// "Refazer simulações" e o chat da Reforma montam o contexto por aqui (até 14/10/2026 ficava dentro da ficha).
+// ============================================================
+export function contextoDoCaso({ ent, cnaeCaso, cnaeCadastro, dominio } = {}) {
+  const e = ent || {};
+  const cnae = String(cnaeMaisCompleto(cnaeCaso, cnaeCadastro));
+  const pf = perfilAtividade({ natureza: dominio && dominio.vendas && dominio.vendas.natureza, cnae, anexo: e.anexo, restaurante: (e.mixRed40 || 0) > 0 });
+  return { tipo: pf.tipo, vendeMercadoria: pf.vendeMercadoria, refeicaoEmpresas: pf.refeicaoEmpresas, passageiros: pf.passageiros, passageirosOutros: pf.passageirosOutros,
+    trilhos: pf.trilhos, fretamentoIntermunicipal: pf.fretamentoIntermunicipal, reducaoServico: reducaoServicoPorCnae(cnae), ramoZero: ramoComZero(cnae),
+    podeReduzir: pf.vendeMercadoria && (pf.tipo === 'alimentacao' || ramoComReducao(cnaeCadastro || cnae)) };
 }
 
 // ============================================================

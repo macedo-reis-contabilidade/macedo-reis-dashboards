@@ -73,6 +73,19 @@ export function anexo2027(anexo, ipiMantido) {
   return a === 'II' && !ipiMantido ? 'I' : a;
 }
 
+// ALÍQUOTAS DE 2027 (rt_parametros.aliq_ref_2027 = { cbs: referência, cbs_aplicada?, ibs? }): a CBS aplicada é a referência
+// menos 0,1 ponto (ADCT, art. 127, parágrafo único), salvo cbs_aplicada informada, e o IBS é 0,1%. A ficha, o "Refazer
+// simulações" e o chat da Reforma leem daqui.
+export function aliquotas2027(valor) {
+  const v = valor || {};
+  const cbsRef = +v.cbs || 9.30;
+  return { cbsRef, cbs: v.cbs_aplicada != null ? +v.cbs_aplicada : Math.round((cbsRef - 0.1) * 100) / 100, ibs: v.ibs != null ? +v.ibs : 0.10 };
+}
+// simulação gravada com a CBS da referência cheia (antes de 03/10/2026, sem o −0,1 ponto): passa a usar a aplicada
+export function entradaComAliquotas(e, p) {
+  return (e && +e.cbs === p.cbsRef && +e.ibs === p.ibs) ? { ...e, cbs: p.cbs } : e;
+}
+
 const num = (v, def) => {
   if (v == null || v === '') return def;
   const n = Number(v);
