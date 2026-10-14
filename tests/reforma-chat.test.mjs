@@ -1,6 +1,6 @@
 // Chat da Reforma ("Perguntar à base"): a busca na base, as ferramentas (com o motor e a confiança da ficha), o laço com o
 // modelo (respostas roteirizadas, sem rede), o servidor da Edge Function (login, limite, avaliação, histórico, etapas em
-// fluxo) e a trava do commit: a função importa o código do repositório pelo jsDelivr num commit fixado — se um dos arquivos
+// fluxo) e a trava do commit: a função importa o código do repositório (o arquivo cru do GitHub) num commit fixado — se um dos arquivos
 // mudou depois dele, o teste avisa pra fixar o commit novo e reimplantar.
 // Dados todos inventados (o repositório é público): nada de material de curso nem de cliente.
 // Rodar com: node tests/reforma-chat.test.mjs
@@ -246,9 +246,9 @@ chk('tela sem receita ou sem caso não vale', limparTela({ input: { anexo: 'I' }
 chk('histórico: até 6 perguntas, texto cortado', limparHistorico(Array.from({ length: 9 }, (_, i) => ({ pergunta: 'p' + i, resposta: 'r'.repeat(7000) }))).length === 6 && limparHistorico([{ pergunta: 'a', resposta: 'r'.repeat(7000) }])[0].resposta.length === 6000);
 chk('a data de hoje no fuso de Brasília', hojeBR(new Date('2026-10-15T02:30:00Z')) === '14/10/2026');
 
-console.log('Commit fixado na função (jsDelivr):');
+console.log('Commit fixado na função (o código cru do GitHub):');
 const idx = readFileSync(raiz + 'supabase/functions/reforma-chat/index.ts', 'utf8');
-const m = /cdn\.jsdelivr\.net\/gh\/macedo-reis-contabilidade\/macedo-reis-dashboards@([0-9a-f]{40})\/supabase\/functions\/reforma-chat\/servidor\.js/.exec(idx);
+const m = /raw\.githubusercontent\.com\/macedo-reis-contabilidade\/macedo-reis-dashboards\/([0-9a-f]{40})\/supabase\/functions\/reforma-chat\/servidor\.js/.exec(idx);
 chk('index.ts importa o servidor do repositório num commit fixado', !!m);
 const ARQS = ['supabase/functions/reforma-chat/servidor.js', 'supabase/functions/reforma-chat/agente.js', 'supabase/functions/reforma-chat/ferramentas.js', 'supabase/functions/reforma-chat/prompt.js',
   'supabase/functions/reforma-chat/busca.js', 'assets/js/rt-motor.js', 'assets/js/rt-confianca.js', 'assets/js/dominio-relatorios.js', 'assets/js/utils.js'];
