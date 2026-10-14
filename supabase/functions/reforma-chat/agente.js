@@ -55,7 +55,7 @@ export async function responder({ chamar, sistema, definicoes, ferramentas, hist
   let modelo = null;
   for (let rodada = 1; ; rodada++) {
     const ultima = rodada >= maxRodadas || agora() - inicio > prazoMs;
-    const corpo = { max_tokens: maxTokens, temperature: 0.2, system: sistema, tools: definicoes, messages: comCache(msgs) };
+    const corpo = { max_tokens: maxTokens, system: sistema, tools: definicoes, messages: comCache(msgs) };
     if (ultima) corpo.tool_choice = { type: 'none' };
     const r = await chamar(corpo);
     modelo = r._modelo || modelo;
