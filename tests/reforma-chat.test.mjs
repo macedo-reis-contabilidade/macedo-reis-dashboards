@@ -102,6 +102,7 @@ chk('ler_material: código que não existe avisa', /não existe na base/.test(aw
 const lc = await fe.listar_casos({});
 chk('listar_casos: resumo e um caso por linha', /^3 casos na campanha/.test(lc) && lc.split('\n').filter(l => l.startsWith('- ')).length === 3 && /LOJINHA/.test(lc), lc.split('\n')[0]);
 chk('listar_casos: filtro "sem conclusão" e busca', (await fe.listar_casos({ filtro: 'sem_conclusao' })).split('\n').filter(l => l.startsWith('- ')).length === 1 && /ESCRITORIO/.test(await fe.listar_casos({ busca: 'escritorio' })));
+chk('listar_casos filtrada: as contas por decisão vão prontas', /\nCom esse filtro: 2 casos \(1 decidido por fora, 1 pendente\)\.\n/.test(await fe.listar_casos({ filtro: 'simulados' })) && !/Com esse filtro/.test(lc));
 const vc = br(await fe.ver_caso({}));
 chk('ver_caso sem nome: a ficha aberta', /^Caso: LOJA DE TESTE UM LTDA · CNAE 4754-7\/01/.test(vc), vc.slice(0, 80));
 chk('ver_caso: entradas, semestre, resultado e a confiança', /SIMULAÇÃO GRAVADA/.test(vc) && /receita R\$ 50\.000,00\/mês/.test(vc) && /custo por dentro R\$ /.test(vc) && /Resultado do simulador:/.test(vc) && /Confiança dos números:/.test(vc));
@@ -132,8 +133,8 @@ chk('nome herdado (constructor, valueOf, toString) não é campo do "e se"', her
 const MUITOS = Array.from({ length: 120 }, (_, i) => ({ ...CASOS[2], cnae_base: '4711', id: 'caso-' + i, cliente_id: 'cli-' + i, cliente: { nome_principal: 'EMPRESA DE TESTE ' + String(i + 1).padStart(3, '0') + ' LTDA', cnae_principal: '4711-3/02 - Comércio varejista de mercadorias em geral, com predominância de produtos alimentícios - minimercados, mercearias e armazéns', cidade: 'Três Coroas' } }));
 const feMuitos = criarFerramentas({ base, carregarCasos: async () => MUITOS, params });
 const p1 = await feMuitos.listar_casos({}), p3 = await feMuitos.listar_casos({ pagina: 3 });
-chk('listar_casos em páginas de 40: diz quantos, qual página e a seguinte', /mostrando 1 a 40 \(página 1 de 3; a seguinte: pagina 2\)/.test(p1) && p1.split('\n').filter(l => l.startsWith('- ')).length === 40 && p1.length < 14000, p1.split('\n')[1]);
-chk('a última página não fala em seguinte; o CNAE vai só com o código', /mostrando 81 a 120 \(página 3 de 3\)/.test(p3) && !/a seguinte/.test(p3) && /CNAE 4711-3\/02 ·/.test(p3) && !/minimercados/.test(p3));
+chk('listar_casos em páginas de 40: diz quantos, qual página e a seguinte', /Mostrando 1 a 40 de 120 \(página 1 de 3; a seguinte: pagina 2\)/.test(p1) && p1.split('\n').filter(l => l.startsWith('- ')).length === 40 && p1.length < 14000, p1.split('\n')[1]);
+chk('a última página não fala em seguinte; o CNAE vai só com o código', /Mostrando 81 a 120 de 120 \(página 3 de 3\)/.test(p3) && !/a seguinte/.test(p3) && /CNAE 4711-3\/02 ·/.test(p3) && !/minimercados/.test(p3));
 chk('a busca acha pelo CNAE com a descrição', (await feMuitos.listar_casos({ busca: 'minimercados', limite: 80 })).split('\n').filter(l => l.startsWith('- ')).length === 80);
 const comFalta = [{ ...CASOS[1], sim_obs: JSON.stringify({ input: ENT, veredito: 'OPTE', confianca: { conclusao: 'sem_conclusao', faltam: ['as notas de compra (XML de entrada)'] } }) }];
 chk('sem conclusão na lista: o que falta medir', /· falta: as notas de compra \(XML de entrada\)$/.test((await criarFerramentas({ base, carregarCasos: async () => comFalta, params }).listar_casos({})).split('\n').at(-1)));

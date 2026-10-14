@@ -219,7 +219,7 @@ export function criarFerramentas({ base, carregarCasos, params, contexto = {} })
       const fl = FILTROS.includes(String(filtro)) ? String(filtro) : 'todos';
       const nb = busca ? normalizar(String(busca)) : null;
       const linhas = [];
-      const cont = {};
+      const cont = {}, contDec = {};
       casos.forEach(c => {
         const s = situacaoDoCaso(c);
         const chave = s.simulado ? s.r : 'nao_simulado';
@@ -230,6 +230,8 @@ export function criarFerramentas({ base, carregarCasos, params, contexto = {} })
         if (!ok) return;
         if (nb && !normalizar(nomeDoCaso(c) + ' ' + cnaeDoCaso(c)).includes(nb)) return;
         const v = s.j || {};
+        const d = c.decisao && c.decisao !== 'pendente' ? c.decisao : 'pendente';
+        contDec[d] = (contDec[d] || 0) + 1;
         const faltam = v.confianca && Array.isArray(v.confianca.faltam) ? v.confianca.faltam.filter(Boolean).map(String) : [];
         const falta = (s.r === 'sem_conclusao' || s.aConfirmar) && faltam.length ? ' · falta: ' + (faltam.join('; ').length > 140 ? faltam.join('; ').slice(0, 137) + '…' : faltam.join('; ')) : '';
         linhas.push('- ' + nomeDoCaso(c) + ' · CNAE ' + cnaeCurto(c) + ' · ' + s.rotulo + (v.margem != null ? ' (margem ' + pct(v.margem) + ')' : '')
@@ -240,8 +242,13 @@ export function criarFerramentas({ base, carregarCasos, params, contexto = {} })
       const por = Math.min(80, Math.max(5, Math.round(+limite) || 40));
       const paginas = Math.ceil(linhas.length / por);
       const pg = Math.min(paginas, Math.max(1, Math.round(+pagina) || 1));
-      const cab = paginas > 1 ? 'Com esse filtro: ' + linhas.length + ' casos · mostrando ' + ((pg - 1) * por + 1) + ' a ' + Math.min(linhas.length, pg * por)
-        + ' (página ' + pg + ' de ' + paginas + (pg < paginas ? '; a seguinte: pagina ' + (pg + 1) : '') + ').\n' : '';
+      // as contas da lista filtrada vão prontas (o modelo erra somando nomes)
+      const filtrada = fl !== 'todos' || nb;
+      const decs = [['por_fora', 'decidido', 'por fora'], ['por_dentro', 'decidido', 'por dentro'], ['pendente', 'pendente', '']].filter(([k]) => contDec[k])
+        .map(([k, r, l]) => contDec[k] + ' ' + r + (contDec[k] > 1 ? 's' : '') + (l ? ' ' + l : '')).join(', ');
+      const cab = (filtrada ? 'Com esse filtro: ' + linhas.length + (linhas.length === 1 ? ' caso' : ' casos') + (decs ? ' (' + decs + ')' : '') + '.\n' : '')
+        + (paginas > 1 ? 'Mostrando ' + ((pg - 1) * por + 1) + ' a ' + Math.min(linhas.length, pg * por) + ' de ' + linhas.length
+        + ' (página ' + pg + ' de ' + paginas + (pg < paginas ? '; a seguinte: pagina ' + (pg + 1) : '') + ').\n' : '');
       return resumo + '\n' + cab + linhas.slice((pg - 1) * por, pg * por).join('\n');
     },
     async ver_caso({ caso: termo } = {}) {
