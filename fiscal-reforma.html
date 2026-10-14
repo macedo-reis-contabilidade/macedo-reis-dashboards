@@ -276,16 +276,18 @@
           <label>% clientes PJ (regime regular)<input id="sPctPJ" placeholder="0"></label>
           <label>% compras de mercadorias/insumos <span class="hint">seguem o mix de vendas</span><input id="sPctMerc" placeholder="ex.: 60"></label>
           <label title="Despesas da atividade com IBS/CBS destacado na nota. Despesa de uso ou consumo pessoal dos sócios não dá crédito (CF, art. 156-A, §1º, VIII) e fica de fora. O % de crédito delas vai no campo seguinte.">% compras de despesas <span class="hint">energia, frete, serviços contratados — sem despesa de uso pessoal dos sócios, que não credita</span><input id="sPctDesp" placeholder="0"></label>
-          <label title="O crédito é o IBS/CBS que o fornecedor destaca. Misture pelo peso de cada despesa: 30 mil de energia (cheio) + 10 mil de contabilidade (70%) = 92,5. Aluguel de imóvel: o locador do regime regular destaca com redução de 70% (LC 214, art. 261, parágrafo único), então o crédito é 30% do cheio; o locador pessoa física que não é contribuinte não destaca nada. VR, VA e plano de saúde dos empregados creditam só o que o fornecedor debitou (LC 214, art. 57, §3º, IV, alíneas f e h, na redação da LC 227), não o cheio.">Crédito das despesas (% do cheio) <span class="hint">contabilidade, advocacia, engenharia (−30%, LC 214, art. 127): 70%; aluguel de imóvel: 30% se o locador for do regime regular, nada se for pessoa física não contribuinte; VR, VA e plano de saúde: só o débito do fornecedor; misture pelo peso</span><input id="sPctDespCred" placeholder="100 = cheio"></label>
+          <label title="O crédito é o IBS/CBS que o fornecedor destaca. Misture pelo peso de cada despesa: 30 mil de energia (cheio) + 10 mil de contabilidade (70%) = 92,5. Serviço de profissão do art. 127 da LC 214 (contabilidade, advocacia, engenharia…): os 70% valem quando o prestador está no regime regular — ou é optante do Simples por fora — e cumpre os requisitos do art. 127; prestador do Simples por dentro destaca só a parcela de IBS/CBS do DAS dele, cerca de 15% do cheio (LC 214, art. 47, §9º, II; LC 123, art. 23, §1º-A); prestador do regime regular sem os requisitos destaca o cheio. Serviço com redução de 60% (saúde humana e educação dos Anexos III e II — exame ocupacional, curso) credita 40% do cheio. Aluguel de imóvel: o locador do regime regular destaca com redução de 70% (LC 214, art. 261, parágrafo único), então o crédito é 30% do cheio; o locador pessoa física que não é contribuinte não destaca nada. VR, VA e plano de saúde dos empregados creditam só o que o fornecedor debitou (LC 214, art. 57, §3º, IV, alíneas f e h, na redação da LC 227), não o cheio.">Crédito das despesas (% do cheio) <span class="hint">contabilidade, advocacia, engenharia (−30%, LC 214, art. 127): 70% se o prestador for do regime regular e cumprir os requisitos do art. 127; prestador do Simples por dentro: só o IBS/CBS do DAS dele (cerca de 15% do cheio); serviço com −60% (saúde, educação): 40%; aluguel de imóvel: 30% se o locador for do regime regular, nada se for pessoa física não contribuinte; VR, VA e plano de saúde: só o débito do fornecedor; misture pelo peso</span><input id="sPctDespCred" placeholder="100 = cheio"></label>
           <label>% das compras de mercadorias com crédito <span class="hint" id="sPctCredHint">pelo NCM das entradas (cesta básica = zero); vazio = segue o mix de vendas</span><input id="sPctCred" placeholder="vazio = mix das vendas"></label>
           <label>% imposto embutido nas compras<input id="sPctEmb" placeholder="0 (ex.: 18 p/ ICMS)"></label>
           <label>% do DAS excluído hoje <span class="hint">ICMS-ST, ISS retido e PIS/COFINS monofásico, como sai do PGDAS</span><input id="sPctST" placeholder="0"></label>
           <label>% da receita monofásica de PIS/COFINS <span class="hint" id="sPctMonoHint">medicamentos, perfumaria, autopeças, bebidas frias — essa exclusão acaba em 2027 e o DAS por dentro sobe</span><input id="sPctMono" placeholder="0"></label>
           <label>Mix: % alíquota cheia<input id="sMixCheia" placeholder="100"></label>
-          <label>Mix: % redução 60%<input id="sMixRed60" placeholder="0"></label>
+          <label title="LC 214, arts. 128 a 142 — redução de 60% do IBS e da CBS, só por fora (por dentro, a parcela do DAS é a da tabela). Entram: alimentos do Anexo VII; produtos de higiene pessoal e limpeza do Anexo VIII; medicamentos registrados na Anvisa ou manipulados (art. 133), salvo os da lista com alíquota zero; nutrição enteral e parenteral e fórmulas para erros inatos do metabolismo do Anexo VI (art. 133, §1º — zero só a órgão público ou entidade com CEBAS); dispositivos médicos do Anexo IV (regularizados na Anvisa) e de acessibilidade do Anexo V; insumos agropecuários e aquícolas do Anexo IX (registrados no MAPA, quando exigido); produto agropecuário, aquícola, pesqueiro, florestal e extrativista vegetal in natura (art. 137 — sem industrialização nem embalagem de apresentação); serviços de educação (Anexo II) e de saúde humana (Anexo III), pela NBS; educação desportiva (NBS 1.2205.12.00) e gestão do desporto por clube filiado (art. 141); eventos e produções artísticas, culturais, jornalísticas e audiovisuais nacionais (Anexo X, art. 139); comunicação institucional só quando vendida à administração pública direta, autarquia ou fundação pública (art. 140 — ao comprador privado, alíquota cheia); soberania e segurança da informação (Anexo XI, art. 142). O cliente PJ do regime regular credita 40% do cheio. Se o item também estiver na alíquota zero (cesta básica, hortícolas, frutas e ovos, comprador público ou com CEBAS), vale a zero (art. 7º-A, incluído pela LC 227): lance-o no campo da alíquota zero.">Mix: % redução 60% <span class="hint">só por fora: alimentos (Anexo VII), higiene pessoal e limpeza (Anexo VIII), medicamentos (salvo os da lista com alíquota zero), dispositivos médicos e de acessibilidade, insumos agropecuários (Anexo IX), produto agropecuário in natura; educação e saúde humana (Anexos II e III), educação desportiva, eventos e produções culturais nacionais (Anexo X), comunicação institucional só a órgão público; o cliente PJ credita 40% do cheio; se o item também tem alíquota zero, vale a zero</span><input id="sMixRed60" placeholder="0"></label>
           <label>Mix: % redução 40% <span class="hint">bares e restaurantes: alimentação preparada no local (LC 214 art. 275) — só por fora</span><input id="sMixRed40" placeholder="0"></label>
-          <label id="sMixRed30Box" title="LC 214, art. 127: só as 18 profissões do rol, fiscalizadas por conselho — administradores, advogados, arquitetos e urbanistas, assistentes sociais, bibliotecários, biólogos, contabilistas, economistas, economistas domésticos, profissionais de educação física, engenheiros e agrônomos, estatísticos, médicos veterinários e zootecnistas, museólogos, químicos, profissionais de relações públicas, técnicos industriais e técnicos agrícolas. Na sociedade, os cinco requisitos do §1º, II, todos juntos: (a) sócios com habilitação ligada ao objeto e fiscalizados pelo conselho; (b) nenhum sócio pessoa jurídica; (c) a sociedade não é sócia de outra empresa; (d) nenhuma atividade fora das habilitações dos sócios; (e) o serviço da atividade-fim prestado pelos sócios (auxiliares podem ajudar). O tipo de sociedade, sócios de profissões diferentes do rol e a distribuição de lucros não atrapalham (§2º). Academia registrada no conselho tem a redução sem os cinco requisitos (§3º). Sem eles, a alíquota é a cheia.">Mix: % redução 30% <span class="hint">profissão do art. 127 da LC 214 (contador, advogado, engenheiro…); na sociedade, só com os 5 requisitos: sócios habilitados no conselho, nenhum sócio PJ, a sociedade não é sócia de outra, nada fora das habilitações e o serviço feito pelos sócios</span><input id="sMixRed30" placeholder="0"></label>
-          <label>Mix: % alíquota zero<input id="sMixZero" placeholder="0"></label>
+          <label id="sMixRed30Box" title="LC 214, art. 127: só as 18 profissões do rol, fiscalizadas por conselho — administradores, advogados, arquitetos e urbanistas, assistentes sociais, bibliotecários, biólogos, contabilistas, economistas, economistas domésticos, profissionais de educação física, engenheiros e agrônomos, estatísticos, médicos veterinários e zootecnistas, museólogos, químicos, profissionais de relações públicas, técnicos industriais e técnicos agrícolas. Na sociedade, os cinco requisitos do §1º, II, todos juntos: (a) sócios com habilitação ligada ao objeto e fiscalizados pelo conselho; (b) nenhum sócio pessoa jurídica; (c) a sociedade não é sócia de outra pessoa jurídica; (d) nenhuma atividade fora das habilitações dos sócios — pela leitura da alínea d (o requisito é da sociedade, não de cada serviço), qualquer atividade fora delas tira a redução de toda a receita, não só dessa parte, a conferir no regulamento; (e) o serviço da atividade-fim prestado pelos sócios (auxiliares podem ajudar). Sem eles, a alíquota é a cheia. Não atrapalham (§2º): o tipo de sociedade, sócios de profissões diferentes, todas do rol, cada um atuando na sua habilitação, e a distribuição de lucros. Academia registrada no conselho tem a redução sem os cinco requisitos (§3º); se a aula estiver na NBS 1.2205.12.00 (educação desportiva, art. 141, I), cabe o −60%, e vale a maior redução — a conferir.">Mix: % redução 30% <span class="hint">profissão do art. 127 da LC 214 (contador, advogado, engenheiro…); na sociedade, só com os 5 requisitos: sócios habilitados no conselho, nenhum sócio PJ, a sociedade não é sócia de outra PJ, nada fora das habilitações (pela leitura da lei, senão toda a receita vai à cheia) e o serviço feito pelos sócios</span><input id="sMixRed30" placeholder="0"></label>
+          <label title="LC 214, art. 125 e arts. 143 a 156 — alíquota zero do IBS e da CBS, só por fora (por dentro, a parcela do DAS é a da tabela). Para qualquer comprador: cesta básica (Anexo I); hortícolas, frutas e ovos (Anexo XV, mesmo cortados, lavados, embalados, resfriados ou congelados, pela classificação na NCM); absorvente, tampão, coletor menstrual e calcinha absorvente (art. 147 — a fralda não); medicamentos da lista do Ministério da Fazenda e do CGIBS (doenças raras e negligenciadas, oncologia, diabetes, HIV/aids e outras IST, cardiovasculares e Farmácia Popular) e soros e vacinas (art. 146, na redação da LC 227 — o Anexo XIV não vale mais); dispositivos médicos do Anexo XII e de acessibilidade do Anexo XIII; automóvel nacional vendido a taxista ou a pessoa com deficiência ou TEA (art. 149; para pessoa com deficiência ou TEA, preço até R$ 200.000,00 e benefício até R$ 100.000,00, na redação da LC 227). Só conforme quem compra — órgão da administração pública direta, autarquia, fundação pública ou entidade de saúde imune com CEBAS: dispositivos dos Anexos IV e V, nutrição do Anexo VI e os demais medicamentos. Nesse caso as compras NÃO têm zero (o fornecedor vende com −60% ou cheio): preencha “% das compras de mercadorias com crédito” — sem ele, as compras seguem o mix das vendas e a conta perde crédito. O cliente não credita nada da venda com alíquota zero.">Mix: % alíquota zero <span class="hint">só por fora: cesta básica (Anexo I), hortícolas, frutas e ovos (Anexo XV), absorvente, tampão, coletor e calcinha absorvente, medicamentos da lista do MF/CGIBS e soros e vacinas, dispositivos dos Anexos XII e XIII, carro a taxista ou pessoa com deficiência/TEA; zero só pelo comprador (Anexos IV, V e VI e demais medicamentos a órgão público ou hospital com CEBAS): as compras não têm zero — preencha “% das compras de mercadorias com crédito”; o cliente não credita</span><input id="sMixZero" placeholder="0"></label>
+          <!-- aviso da alínea d (13/10/2026, Módulo 07): mix com parte em −30% e parte em outra faixa — só aviso, a conta não muda -->
+          <p class="rt-nota" id="sMixAviso" style="grid-column:1/-1;margin:0;color:var(--warn)" hidden>⚠ Na sociedade, pela leitura da alínea d (LC 214, art. 127, §1º, II, d — o requisito é da sociedade, não de cada serviço), atividade fora das habilitações dos sócios tira a redução de 30% de toda a receita, a conferir no regulamento: confira se a parte nas outras faixas é mesmo dessa empresa. Academia registrada no conselho não tem essa exigência (§3º).</p>
           <label>CBS de 2027 (%) <span class="hint" id="sCbsHint">referência menos 0,1 ponto (ADCT, art. 127)</span><input id="sCbs"></label>
           <label>IBS de 2027 (%) <span class="hint">0,05 estadual + 0,05 municipal</span><input id="sIbs"></label>
           <label>Partilha CBS/IBS no DAS (%) <span class="hint" id="sPartilhaHint">manual — ler no PGDAS</span><input id="sPartilha"></label>
@@ -385,13 +387,13 @@
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { carregarOperacao, MESES_ABREV, avisosVendasEspeciais } from './assets/js/operacao-xml.js';
-    import { lerRelatorio, consolidar, resumirEntradas, GRUPOS, lerPlanilha, perfilAtividade, cnaeMaisCompleto, cnpjsParaConsultar, ramoComReducao, conferirRbt12, CREDITO_FORNECEDOR_SIMPLES, rotuloMeses } from './assets/js/dominio-relatorios.js';
+    import { lerRelatorio, consolidar, resumirEntradas, GRUPOS, lerPlanilha, perfilAtividade, cnaeMaisCompleto, cnpjsParaConsultar, ramoComReducao, ramoComZero, reducaoServicoPorCnae, conferirRbt12, CREDITO_FORNECEDOR_SIMPLES, rotuloMeses } from './assets/js/dominio-relatorios.js';
     import { lerXls } from './assets/js/xls-biff.js';
     import { importarLote, separarNaoXml } from './assets/js/importar-xml.js';
     import { formatDocumento, normalizarDocumento } from './assets/js/utils.js';
     import { gerarAnalise } from './assets/js/rt-analise.js';
     import { simular, anexo2027 } from './assets/js/rt-motor.js';
-    import { avaliarConfianca, resumoConfianca, inferirProcedencia, ROT_DECISAO, faltaParaCliente } from './assets/js/rt-confianca.js';
+    import { avaliarConfianca, resumoConfianca, inferirProcedencia, ROT_DECISAO, faltaParaCliente, textoReducaoServico } from './assets/js/rt-confianca.js';
     import { RT_PRAZO, janelaAberta as janelaAbertaEm } from './assets/js/rt-prazos.js';
 
     const $ = id => document.getElementById(id);
@@ -693,6 +695,7 @@
       $('sPctCred').value = ent && ent.pctComprasComCredito != null ? brPct(ent.pctComprasComCredito) : '';
       $('sMixRed30').value = brPct(ent ? ent.mixRed30 : null);
       $('sMixZero').value = brPct(ent ? ent.mixZero : null);
+      avisoMixRed30();   // a simulação gravada com −30% e outra faixa já abre com o aviso da alínea d
       $('sCbs').value = brPct(ent ? ent.cbs : params.cbs);
       $('sIbs').value = brPct(ent ? ent.ibs : params.ibs);
       $('sPartilha').value = brPct(ent ? ent.partilha : null);
@@ -770,12 +773,13 @@
       sPctCred: 'pctCred', sPctDespCred: 'pctDespCred', sPctEmb: 'pctEmb', sEstoque: 'estoque' };
     const MIX_IDS = ['sMixCheia', 'sMixRed60', 'sMixRed40', 'sMixRed30', 'sMixZero'];
     let procCampos = {};
-    // manterDominio: o que veio dos relatórios do Domínio sobrevive ao "Puxar das notas"
-    function limparOrigemXml(manterDominio) {
-      document.querySelectorAll('.xml-origem').forEach(e => { if (!(manterDominio && e.dataset.fonte === 'dominio')) e.remove(); });
+    // manterDominio: o que veio dos relatórios do Domínio sobrevive ao "Puxar das notas"; manterIds: campos que as notas não
+    // tocam (o mix do serviço com redução, 13/10/2026) — a etiqueta e a origem ficam
+    function limparOrigemXml(manterDominio, manterIds = []) {
+      document.querySelectorAll('.xml-origem').forEach(e => { if (!(manterDominio && e.dataset.fonte === 'dominio') && !manterIds.includes(e.previousElementSibling && e.previousElementSibling.id)) e.remove(); });
       if (!manterDominio) document.querySelectorAll('[data-fonte]').forEach(e => { delete e.dataset.fonte; });
       // a origem guardada acompanha a etiqueta: some junto (a do Domínio fica quando pedido)
-      Object.keys(procCampos).forEach(id => { if (!(manterDominio && procCampos[id] && procCampos[id].dominio)) delete procCampos[id]; });
+      Object.keys(procCampos).forEach(id => { if (!(manterDominio && procCampos[id] && procCampos[id].dominio) && !manterIds.includes(id)) delete procCampos[id]; });
       $('bXmlInfo').hidden = true; $('bXmlInfo').textContent = '';
     }
     // proc: a procedência estruturada ({ fonte, meses, … }); sem ela, o que a etiqueta diz (Domínio ou notas)
@@ -862,14 +866,24 @@
     async function prepararPuxarXml(clienteId) { limparOrigemXml(); domEstado.notas = clienteId ? await contarNotas(clienteId) : 0; }
     // preenche % PJ, mix e (se o Domínio não deu) receita e compras com as notas da base.
     // Devolve o texto de fonte para a nota da ficha; lança se não houver venda.
-    async function puxarDasNotas(c) {
+    // mixDasNotas: o mix da ficha veio de notas (o Aplicar lê antes de limpar as origens) — esse as notas novas atualizam
+    async function puxarDasNotas(c, mixDasNotas = false) {
       {
         const { error, modelo } = await carregarOperacao(supabase, c.cliente_id, ANO_XML);
         if (error) throw error;
         const p = modelo.ponte;
         if (!p.nSaidas) throw new Error('há notas importadas, mas nenhuma de saída autorizada em ' + ANO_XML + ' — sem venda não dá pra puxar % PJ e mix');
         const r1 = v => Math.round(v * 10) / 10;
-        limparOrigemXml(true);
+        // SERVIÇO COM REDUÇÃO E PASSAGEIROS (13/10/2026, Módulo 07): a nota de serviço não mostra a redução do serviço (−30%
+        // das profissões do art. 127, −60% de saúde e educação, a isenção ou o −40% do transporte de passageiros) e conta tudo
+        // na cheia. Com a receita quase toda em NFS-e — ou com CNAE de serviço com redução ou de passageiros — e uma redução na
+        // ficha que não veio das notas, o mix fica como está: antes as notas apagavam a redução digitada
+        const cliN = clientesMap[c.cliente_id];
+        const cnaeN = cnaeMaisCompleto(c.cnae_base, cliN && cliN.cnae_principal);
+        const candidatoN = !!reducaoServicoPorCnae(cnaeN) || perfilAtividade({ cnae: cnaeN }).passageiros;
+        const reducaoNaFicha = MIX_IDS.slice(1).some(id => (parseNum($(id).value) || 0) > 0);
+        const mixFicaDaFicha = reducaoNaFicha && !mixDasNotas && ((p.pctServicos || 0) >= 50 || candidatoN);
+        limparOrigemXml(true, mixFicaDaFicha ? MIX_IDS : []);
         // o Domínio manda no que os dois sabem (receita e compras): o XML só tem o que a empresa
         // EMITIU, então nunca conhece as compras e perde o serviço sem XML. Preserva e avisa.
         const preservados = [];
@@ -884,10 +898,12 @@
         $('sPctPJ').value = brPct(r1(p.pctPJ)); origemXml('sPctPJ', 'da operação: ' + brPct(r1(p.pctPJ)) + '% das vendas para PJ', undefined, { ...pn, porDocumento: true, regimeConsultado: false });
         seLivre('sPctMerc', brPct(r1(p.pctMerc)), 'da operação: compras de mercadoria ÷ vendas', '% compras de mercadorias');
         seLivre('sPctDesp', brPct(r1(p.pctDesp)), 'da operação: demais entradas ÷ vendas', '% compras de despesas');
-        $('sMixZero').value = brPct(r1(p.mixZero)); origemXml('sMixZero', 'da operação: NCM em alíquota zero', undefined, pn);
-        $('sMixRed60').value = brPct(r1(p.mixRed60)); origemXml('sMixRed60', 'da operação: NCM com redução 60%', undefined, pn);
-        $('sMixRed30').value = brPct(r1(p.mixRed30)); origemXml('sMixRed30', 'da operação: NCM com redução 30%', undefined, pn);
-        $('sMixCheia').value = brPct(r1(Math.max(0, 100 - r1(p.mixZero) - r1(p.mixRed60) - r1(p.mixRed30)))); origemXml('sMixCheia', 'da operação: 100 − zero − reduções' + (p.nServicos ? ' (serviços contam na cheia)' : ''), undefined, pn);
+        if (!mixFicaDaFicha) {
+          $('sMixZero').value = brPct(r1(p.mixZero)); origemXml('sMixZero', 'da operação: NCM em alíquota zero', undefined, pn);
+          $('sMixRed60').value = brPct(r1(p.mixRed60)); origemXml('sMixRed60', 'da operação: NCM com redução 60%', undefined, pn);
+          $('sMixRed30').value = brPct(r1(p.mixRed30)); origemXml('sMixRed30', 'da operação: NCM com redução 30%', undefined, pn);
+          $('sMixCheia').value = brPct(r1(Math.max(0, 100 - r1(p.mixZero) - r1(p.mixRed60) - r1(p.mixRed30)))); origemXml('sMixCheia', 'da operação: 100 − zero − reduções' + (p.nServicos ? ' (serviços contam na cheia)' : ''), undefined, pn);
+        }
         if (p.pctComprasComCredito != null) {
           $('sPctCred').value = brPct(r1(p.pctComprasComCredito));
           origemXml('sPctCred', 'da operação, pelo NCM das compras: ' + brPct(r1(p.mixCompras.cheia)) + '% à alíquota cheia · ' + brPct(r1(p.mixCompras.reducao_60)) + '% redução 60% · ' + brPct(r1(p.mixCompras.zero)) + '% alíquota zero' + (p.comprasSemNcm ? ' · ' + p.comprasSemNcm + ' item(ns) sem NCM' : ''), undefined, pn);
@@ -899,6 +915,7 @@
           : '';
         // avisos ficam na nota das notas (bXmlInfo), que não some quando a ficha calcula
         const avisos = [];
+        if (mixFicaDaFicha) avisos.push('As notas de serviço (NFS-e) não mostram a redução do serviço — −30% das profissões do art. 127, −60% de saúde e educação, isenção ou −40% do transporte de passageiros: o mix ficou como estava na ficha.');
         if (p.comprasSuperamVendas) avisos.push('No período as compras superam as vendas (estoque sendo montado?) — % de compras limitado a 100; confira antes de calcular.');
         // exportação e Zona Franca (12/10/2026): entram pelo NCM, como venda tributada — o simulador ainda não separa
         avisos.push(...avisosVendasEspeciais(p.vendasEspeciais));
@@ -1184,10 +1201,16 @@
       if (docFicha && docRel && docFicha !== docRel) cons.avisos.unshift('Os relatórios são do CNPJ ' + docRel + ', e esta ficha é de ' + docFicha + ' — confira se pegou o cliente certo.');
       { // mix de alíquotas só sai das notas de venda: alimentação (redução de 40% na comida) e comércio precisam delas
         const cF = casoAtual(); const cliF = cF ? clientesMap[cF.cliente_id] : null;
-        const cnae = String(cnaeMaisCompleto(cF && cF.cnae_base, cliF && cliF.cnae_principal)).replace(/\D/g, '');
+        const cnae = String(cnaeMaisCompleto(cF && cF.cnae_base, cliF && cliF.cnae_principal));
         const temNotas = (domEstado.notas || 0) > 0;
         const perfilImp = perfilAtividade({ natureza: cons.resVen && cons.resVen.natureza, cnae, anexo: cons.sim && cons.sim.anexoPredominante });
         const servicoPuro = !perfilImp.vendeMercadoria;
+        // serviço com redução e transporte de passageiros (13/10/2026, Módulo 07): a nota de serviço não mostra a redução — o
+        // enquadramento é do escritório; a análise roda os dois sentidos
+        const redServ = servicoPuro ? reducaoServicoPorCnae(cnae) : null;
+        if (redServ) cons.avisos.push(textoReducaoServico(redServ) + ' A conta parte de tudo à alíquota cheia: se a empresa se enquadrar, preencha o mix — a análise testa os dois sentidos.');
+        if (perfilImp.passageiros) cons.avisos.push('Transporte coletivo de passageiros: a linha regular aberta ao público, sob autorização, permissão ou concessão do poder público, é isenta no urbano, semiurbano e metropolitano (LC 214, art. 157 — isenção: sem débito e sem crédito das compras; na ficha, alíquota zero com o crédito das despesas e o % das compras com crédito em 0) e tem −40% no intermunicipal e interestadual (art. 286). Preencha o mix conforme o enquadramento — a análise testa os dois.');
+        if (perfilImp.fretamentoIntermunicipal) cons.avisos.push('Fretamento entre cidades: não tem a isenção do transporte público (LC 214, art. 157); se o −40% do transporte coletivo intermunicipal e interestadual (art. 286) alcança o fretamento, está a conferir — a análise testa os dois.');
         if (perfilImp.refeicaoEmpresas) cons.avisos.push('Refeições para empresas (CNAE 5620-1/01): se o fornecimento por contrato ficar no regime de bares, a refeição tem redução de 40% e o cliente empresa não credita; fora dele, alíquota cheia e o cliente credita (LC 214, art. 273, a conferir). Preencha o mix conforme o enquadramento — a análise mostra o resultado pelo enquadramento contrário.' + (temNotas ? '' : ' Importe as notas de venda (XML ou ZIP) pra medir o que é refeição e o que é revenda.'));
         else if (!temNotas && perfilImp.tipo === 'alimentacao') cons.avisos.push('Bar/restaurante sem notas de venda na base: a comida preparada tem redução de 40% no IBS/CBS e as bebidas revendidas pagam cheio. Importe as NFC-e (XML ou ZIP) aqui mesmo pra medir essa divisão — sem elas o cálculo põe tudo na alíquota cheia e o custo "por fora" sai maior que o real.');
         else if (!temNotas && !servicoPuro && ramoComReducao(cnae)) cons.avisos.push('Sem notas de venda na base, o mix de alíquotas fica 100% cheio. Se a empresa vende produtos com redução (insumos agropecuários, cesta básica, medicamentos…), importe as notas (XML ou ZIP) pra medir.');
@@ -1206,13 +1229,14 @@
       try {
         // a origem de antes (gravada ou de outra importação): campo que esta importação não tocar continua com ela
         const antes = { ...procCampos };
+        const mixDasNotas = !!(antes.sMixCheia && antes.sMixCheia.fonte === 'notas');
         const valorAntes = Object.fromEntries(Object.keys(CAMPO_PROC).map(id => [id, $(id) ? $(id).value : '']));
         // sem relatórios novos, preserva o que o Domínio já tinha posto nesta sessão
         if (cons && Object.keys(cons.campos).length) { limparOrigemXml(); aplicarDominio(cons); }
         else limparOrigemXml(true);
         let notasFonte = null;
         if ((domEstado.notas || 0) > 0) {
-          try { notasFonte = await puxarDasNotas(c); }
+          try { notasFonte = await puxarDasNotas(c, mixDasNotas); }
           catch (e) { notasFonte = { fonte: null, avisos: ['Notas: ' + (e.message || e)] }; }
         }
         Object.entries(antes).forEach(([id, pc]) => {
@@ -1355,6 +1379,17 @@
     $('sRbt12').oninput = () => { if ($('sPartilha').dataset.auto || !$('sPartilha').value) preencherPartilhaAuto(); };
     $('sPartilha').oninput = () => { $('sPartilha').dataset.auto = ''; $('sPartilhaHint').textContent = 'manual — ler no PGDAS'; };
 
+    // AVISO DA ALÍNEA D (13/10/2026, Módulo 07): na sociedade de profissionais do art. 127, qualquer atividade fora das
+    // habilitações dos sócios tira a redução de 30% de TODA a receita (LC 214, art. 127, §1º, II, d) — mix com parte em −30% e
+    // parte em outra faixa só é coerente na academia do §3º ou se a outra receita for mesmo desta empresa. Só aviso: a conta
+    // não muda. Aparece ao digitar, ao abrir a simulação gravada e ao calcular (o Domínio e as notas regravam o mix sem evento).
+    const MIX_OUTRAS_FAIXAS = ['sMixCheia', 'sMixRed60', 'sMixRed40', 'sMixZero'];
+    function avisoMixRed30() {
+      const v = id => parseNum($(id).value) || 0;
+      $('sMixAviso').hidden = !(v('sMixRed30') > 0 && MIX_OUTRAS_FAIXAS.some(id => v(id) > 0));
+    }
+    ['sMixRed30', ...MIX_OUTRAS_FAIXAS].forEach(id => $(id).addEventListener('input', avisoMixRed30));
+
     function entradaDaTela() {
       // mix todo em branco = 100% à alíquota cheia (é o caso comum sem notas na base); a tela avisa
       const mixVazio = ['sMixCheia', 'sMixRed60', 'sMixRed40', 'sMixRed30', 'sMixZero'].every(id => $(id).value.trim() === '');
@@ -1404,7 +1439,9 @@
       const cnae = String(cnaeMaisCompleto(c && c.cnae_base, cli && cli.cnae_principal));
       const dom = c ? dominioDoCaso(c) : null;
       const pf = perfilAtividade({ natureza: dom && dom.vendas && dom.vendas.natureza, cnae, anexo: ent.anexo, restaurante: (ent.mixRed40 || 0) > 0 });
-      return { tipo: pf.tipo, vendeMercadoria: pf.vendeMercadoria, refeicaoEmpresas: pf.refeicaoEmpresas, passageiros: pf.passageiros,
+      // serviço com redução, ramos com alíquota zero e passageiros (13/10/2026, Módulo 07): pelo CNAE mais completo
+      return { tipo: pf.tipo, vendeMercadoria: pf.vendeMercadoria, refeicaoEmpresas: pf.refeicaoEmpresas, passageiros: pf.passageiros, passageirosOutros: pf.passageirosOutros,
+        trilhos: pf.trilhos, fretamentoIntermunicipal: pf.fretamentoIntermunicipal, reducaoServico: reducaoServicoPorCnae(cnae), ramoZero: ramoComZero(cnae),
         podeReduzir: pf.vendeMercadoria && (pf.tipo === 'alimentacao' || ramoComReducao((cli && cli.cnae_principal) || cnae)) };
     }
     // SEM CONCLUSÃO / A CONFIRMAR (13/10/2026): o que a tela diz da confiança dos números que a conta usou
@@ -1414,11 +1451,16 @@
         ? '<span class="conf">⚠ <b>A confirmar</b> — o resultado depende de número que não é firme:</span><ul style="margin:4px 0 4px 18px;padding:0;font-size:12px">' + conf.aConfirmar.map(li).join('')
           + (conf.conjunto ? '<li>' + escapeHtml(conf.conjunto.texto) + '</li>' : '') + '</ul>' : '';
       const dados = conf.itens.filter(it => it.categoria === 'dado');
-      return confirmar + '<span class="conf">Confiança dos dados: ' + dados.map(it => escapeHtml(it.curto || it.rotulo) + ' <b>' + escapeHtml(it.selo) + '</b>' + (it.periodo && it.periodo !== '—' ? ' (' + escapeHtml(it.periodo) + ')' : '')).join(' · ')
+      // enquadramento da lei a conferir que muda o resultado (lista de serviços com redução, fretamento entre cidades — 13/10/2026)
+      const lei = (conf.premissas || []).filter(it => it.selo === 'a conferir');
+      const leiHtml = lei.length ? '<span class="conf">⚠ <b>Enquadramento a conferir na lei</b> — muda o resultado:</span><ul style="margin:4px 0 4px 18px;padding:0;font-size:12px">'
+        + lei.map(it => '<li><b>' + escapeHtml(it.rotulo) + '</b> — ' + escapeHtml(it.valor) + '. ' + escapeHtml(it.motivo) + ' ' + escapeHtml(it.efeito || '') + '</li>').join('') + '</ul>' : '';
+      return confirmar + leiHtml + '<span class="conf">Confiança dos dados: ' + dados.map(it => escapeHtml(it.curto || it.rotulo) + ' <b>' + escapeHtml(it.selo) + '</b>' + (it.periodo && it.periodo !== '—' ? ' (' + escapeHtml(it.periodo) + ')' : '')).join(' · ')
         + '. De onde veio cada número e por quê: na análise técnica.</span>';
     }
     function calcular() {
       const ent = entradaDaTela();
+      avisoMixRed30();   // o mix pode ter vindo do Domínio ou das notas, sem evento de digitação
       const r = simular(ent);
       marcarNaoMedidos();
       const conf = avaliarConfianca(ent, procedenciaDaTela(), { ...contextoConfianca(ent), sim: r });
@@ -1758,7 +1800,8 @@
       // ATIVIDADE — serviço x comércio, pelo faturamento ou pelas saídas/serviços
       const servShare = dom && dom.faturamento && dom.faturamento.total > 0 ? dom.faturamento.servicos / dom.faturamento.total * 100
         : vendasDom && vendasDom.total > 0 ? (vendasDom.servicos || 0) / vendasDom.total * 100 : null;
-      const perfil = perfilAtividade({ natureza: vendasDom && vendasDom.natureza, cnae: cnaeMaisCompleto(c.cnae_base, cli && cli.cnae_principal), anexo: ent.anexo, restaurante: barRest });
+      const cnaeAnalise = cnaeMaisCompleto(c.cnae_base, cli && cli.cnae_principal);
+      const perfil = perfilAtividade({ natureza: vendasDom && vendasDom.natureza, cnae: cnaeAnalise, anexo: ent.anexo, restaurante: barRest });
       // REFEIÇÕES PARA EMPRESAS (CNAE 5620-1/01, 13/10/2026): vende a empresas por contrato — perfil B2B, nunca os textos e
       // premissas de restaurante; o enquadramento no regime de bares (LC 214, art. 273) fica a conferir e vira teste abaixo
       const refeicaoEmpresas = !!perfil.refeicaoEmpresas;
@@ -1774,7 +1817,12 @@
       // CONFIANÇA DOS NÚMEROS (13/10/2026): de onde veio cada número, em que período, quanto dá pra confiar e se muda o
       // resultado (assets/js/rt-confianca.js). Dado da empresa com confiança baixa que muda o resultado = SEM CONCLUSÃO:
       // a análise e o relatório do cliente não recomendam e dizem o que falta. Média que muda = a confirmar.
-      const confianca = avaliarConfianca(ent, proc || inferirProcedencia(ent, dom), { tipo: perfil.tipo, vendeMercadoria, refeicaoEmpresas, passageiros: perfil.passageiros, podeReduzir, sim });
+      // SERVIÇO COM REDUÇÃO E TRANSPORTE DE PASSAGEIROS (13/10/2026, Módulo 07): pelo CNAE — profissões do art. 127 (−30% com
+      // os requisitos da sociedade), saúde, educação e eventos (−60% pela lista de NBS), academia (os dois) e a linha regular de
+      // passageiros (isenção ou −40%). A confiança testa o enquadramento nos dois sentidos; mercado e hortifrúti, com zero
+      const reducaoServico = !vendeMercadoria ? reducaoServicoPorCnae(cnaeAnalise) : null;
+      const confianca = avaliarConfianca(ent, proc || inferirProcedencia(ent, dom), { tipo: perfil.tipo, vendeMercadoria, refeicaoEmpresas, passageiros: perfil.passageiros,
+        passageirosOutros: perfil.passageirosOutros, trilhos: perfil.trilhos, fretamentoIntermunicipal: perfil.fretamentoIntermunicipal, reducaoServico, ramoZero: ramoComZero(cnaeAnalise), podeReduzir, sim });
       const semConclusao = confianca.conclusao === 'sem_conclusao';
       // o % de PJ da ficha (sem notas nem saídas no resumo): a origem é a da confiança — deduzido, informado, simulação anterior
       { const itPJ = confianca.itens.find(it => it.chave === 'pj'); if (fontePJ === 'informado na ficha' && itPJ && itPJ.fonte) fontePJ = itPJ.fonte.charAt(0).toLowerCase() + itPJ.fonte.slice(1); }
@@ -1799,12 +1847,48 @@
       const mixPorNotas = !!itemMix && /^NCM das notas/.test(itemMix.fonte);
       const mixLegado = !!itemMix && /origem não registrada/.test(itemMix.fonte);
       const mixInformado = !!itemMix && itemMix.fonte === 'Informado, sem relatório';
-      const mixMedido = mixPorNotas || !cheioMix || (!!itemMix && itemMix.nivel === 'alta');
+      // serviço com redução e transporte de passageiros (13/10/2026): o enquadramento a conferir não é medido, nem com a redução
+      // digitada — a confiança testa os dois sentidos
+      const mixEnquadramento = !!itemMix && !refeicaoEmpresas && itemMix.selo === 'a conferir' && !!(itemMix.resultados && itemMix.resultados.length);
+      const mixMedido = !mixEnquadramento && (mixPorNotas || !cheioMix || (!!itemMix && itemMix.nivel === 'alta'));
       const notasNaoUsadas = !mixMedido && !!(xml && xml.nNotas);
       // o mix testado: o da confiança, quando ela testou; senão a mesma conta aqui (restaurante: a comida a −40%; os demais,
       // metade das vendas com −60%)
       const altMix = perfil.tipo === 'alimentacao' ? { mixCheia: 10, mixRed40: 90, mixRed60: 0, mixRed30: 0, mixZero: 0 } : { mixCheia: 50, mixRed60: 50, mixRed40: 0, mixRed30: 0, mixZero: 0 };
       const mixMuda = itemMix && itemMix.resultados && itemMix.resultados.length ? !!itemMix.muda : mudaCom(altMix);
+      // O ENQUADRAMENTO A CONFERIR (13/10/2026, Módulo 07), por tipo: os textos da seção 6, das perguntas e das pendências.
+      // Os requisitos da sociedade, o registro no conselho e a linha regular de passageiros são dado da empresa (a confiança
+      // decide: sem conclusão ou a confirmar); a lista de NBS dos anexos é da lei (premissa: alerta aqui, como o art. 273)
+      const anexoServ = reducaoServico && reducaoServico.anexo ? String(reducaoServico.anexo).split(' (')[0] : '';
+      const enq = !mixEnquadramento ? null : perfil.passageiros ? {
+          nome: 'Enquadramento do transporte de passageiros (LC 214, arts. 157 e 286)',
+          pend: { o_que: 'Enquadramento do transporte de passageiros (LC 214, arts. 157 e 286)', porque: 'Linha regular aberta ao público, sob autorização, permissão ou concessão, no urbano, semiurbano ou metropolitano é isenta (sem débito e sem o crédito das compras, art. 157); no intermunicipal e interestadual, −40% (art. 286); fretamento não é transporte público', onde: 'Ato de autorização, permissão ou concessão e itinerário das linhas' },
+          pergunta: 'O transporte é <b>linha regular sob autorização, permissão ou concessão</b> do poder público (aberta ao público, itinerário e preço fixados por ele, passagem cobrada de cada passageiro)? Dentro da cidade, entre cidades vizinhas de característica urbana e na região metropolitana, é isento por fora (LC 214, art. 157 — e a isenção anula o crédito das compras); entre cidades, fora disso, tem −40% (art. 286). Fretamento não é transporte público: não tem a isenção.' }
+        : perfil.passageirosOutros ? {
+          nome: 'Fretamento entre cidades e o −40% do art. 286 (LC 214)',
+          pend: { o_que: 'Alcance do art. 286 da LC 214 no fretamento intermunicipal', porque: 'Fretamento não tem a isenção do transporte público (art. 157); se o −40% do transporte coletivo intermunicipal e interestadual (art. 286) o alcança, está a conferir — o texto do artigo não está na nossa base', onde: 'Texto dos arts. 284 a 287 da LC 214 e regulamento' },
+          pergunta: 'O fretamento é <b>entre cidades</b> (intermunicipal ou interestadual) ou dentro do município? Entre cidades, pode ter redução de 40% por fora, conforme a aplicação da lei ao fretamento; dentro do município, paga a alíquota cheia.',
+          alerta: base => 'Fretamento entre cidades: a simulação considera ' + base + '. ' + itemMix.efeito + ' Se o −40% do art. 286 da LC 214 alcança o fretamento, está a conferir.',
+          virou: 'o alcance do art. 286 da LC 214 no fretamento' }
+        : !reducaoServico ? null
+        : reducaoServico.tipo === 'profissao' ? {
+          nome: 'Requisitos da redução de 30% (LC 214, art. 127)',
+          pend: { o_que: 'Requisitos da redução de 30% (LC 214, art. 127, §1º, II)', porque: 'Na sociedade, a redução de 30% depende dos cinco requisitos, todos juntos — pela leitura da alínea d, atividade fora das habilitações dos sócios tira a redução de toda a receita (a conferir no regulamento)', onde: 'Contrato social e registro dos sócios no conselho da profissão' },
+          pergunta: 'A sociedade cumpre os <b>cinco requisitos do art. 127 da LC 214</b> pra ter a redução de 30% por fora? Todos os sócios habilitados e registrados no conselho da profissão, nenhum sócio pessoa jurídica, a empresa não é sócia de outra pessoa jurídica, nenhuma atividade fora das habilitações dos sócios (pela leitura da lei, outra atividade — emissão de certificado digital, locação de sala, revenda de software — tira a redução de toda a receita) e o serviço prestado pelos próprios sócios, com a ajuda da equipe.' }
+        : reducaoServico.tipo === 'desporto' ? {
+          nome: 'Registro no conselho e tipo das aulas (LC 214, arts. 127, §3º, e 141, I)',
+          pend: { o_que: 'Registro no conselho de educação física e tipo das aulas', porque: 'Registrada no conselho, a empresa tem −30% sem os requisitos de sociedade (art. 127, §3º); a aula de educação desportiva (NBS 1.2205.12.00) tem −60% (art. 141, I) — vale a maior', onde: 'Registro no CREF e descrição das aulas' },
+          pergunta: 'A empresa é <b>registrada no conselho de educação física (CREF)</b>? Registrada, tem redução de 30% por fora sem os requisitos de sociedade (LC 214, art. 127, §3º). E as aulas são de <b>educação desportiva</b> (NBS 1.2205.12.00)? Aí a redução é de 60% (art. 141, I) — vale a maior.',
+          alerta: base => (reducaoServico.ramo === 'academia' ? 'Academia' : 'Ensino de esportes') + ': a simulação considera ' + base + '. ' + itemMix.efeito + ' A redução de 60% depende de a aula ser a educação desportiva da NBS 1.2205.12.00 (LC 214, art. 141, I), a conferir.',
+          virou: 'o enquadramento da aula na educação desportiva (NBS 1.2205.12.00)' }
+        : {
+          nome: 'Serviço na lista de redução de 60% (' + anexoServ + ')',
+          pend: { o_que: 'Serviços na lista de redução de 60% (' + anexoServ + ')', porque: 'Só os serviços da lista, por código da NBS, têm a redução de 60% — a lista não está na nossa base', onde: 'Relação dos serviços prestados × lista do ' + anexoServ },
+          pergunta: 'Quais <b>serviços</b> a empresa presta, um a um? Os de ' + reducaoServico.ramo + ' têm redução de 60% por fora se estiverem na lista da lei (' + anexoServ + ', por código da NBS) — com a relação, a gente confere.',
+          alerta: base => 'Serviço de ' + reducaoServico.ramo + ': a simulação considera ' + base + '. ' + itemMix.efeito + ' A redução de 60% depende de o serviço estar na lista do ' + anexoServ + ' (por código da NBS), a conferir.',
+          virou: 'o enquadramento do serviço na lista do ' + anexoServ };
+      const enqPremissaMuda = !!enq && !!enq.alerta && itemMix.categoria === 'premissa' && !!itemMix.muda;
+      const valorEnq = enq ? (cheioMix ? null : itemMix.valor) : null;
       // a alíquota oficial de 2027 muda o resultado? (estimativas em circulação: referência de 8,8% e de 9,21%, menos 0,1 ponto)
       const cbsMuda = [8.7, 9.11].some(v => mudaCom({ cbs: v }));
       // ENQUADRAMENTO DA REFEIÇÃO POR CONTRATO (13/10/2026): no regime de bares, −40% e o cliente não credita a refeição
@@ -1861,9 +1945,13 @@
               efeito: 'sem a redução (tudo à alíquota cheia) → ' + sinal(dif({ mixRed40: 0, mixCheia: (ent.mixCheia || 0) + (ent.mixRed40 || 0) })), muda: 'Não — sem ela, por fora fica ainda pior' }
           : b2c
           ? { nome: 'Mix das vendas', hoje: mixPorNotas ? 'medido pelo NCM das notas' : mixLegado ? 'origem não registrada' + (cheioMix ? ' — tudo à alíquota cheia' : '')
+                : mixEnquadramento ? (cheioMix ? 'assumido tudo à alíquota cheia — enquadramento a conferir' : valorEnq + ' — enquadramento a conferir')
                 : mixInformado ? 'informado na ficha, sem as notas' + (cheioMix ? ' — tudo à alíquota cheia' : '') : mixMedido ? 'alíquota cheia pela lei' : 'não medido — tudo à alíquota cheia',
-              efeito: (perfil.tipo === 'alimentacao' ? '90% da venda como comida preparada (−40%) → ' : 'metade com redução de 60% → ') + sinal(dif(altMix)),
-              muda: mixMedido ? 'Não' : !podeReduzir ? 'Não — os produtos do ramo não estão nos anexos de redução da LC 214'
+              efeito: itemMix && itemMix.resultados && itemMix.resultados.length ? itemMix.resultados.map(r => r.rotulo + ' → ' + sinal(r.diferenca)).join(' · ')
+                : itemMix && itemMix.selo === 'alta (norma)' ? 'sem faixa a testar — a lei não dá redução a essa atividade'
+                : (perfil.tipo === 'alimentacao' ? '90% da venda como comida preparada (−40%) → ' : 'metade com redução de 60% → ') + sinal(dif(altMix)),
+              muda: mixMedido ? 'Não' : mixEnquadramento ? (mixMuda ? 'Sim — o enquadramento muda o resultado; conferir ' + (itemMix.falta || 'o enquadramento') : 'Não — nos dois enquadramentos a conclusão é a mesma')
+                : !podeReduzir ? 'Não — os produtos do ramo não estão nos anexos de redução da LC 214'
                 : mixMuda ? 'Sim — com redução nas vendas o resultado muda; medir pelo NCM das notas' : 'Não — mesmo com a redução nas vendas; medir pelo NCM afina o número' }
           : { nome: 'Regime dos clientes', hoje: pctPJ != null ? p1(pctPJ) + '% das vendas para CNPJ (' + fontePJ + ') — regime de cada um não consultado' : 'não levantado',
               efeito: 'cliente do Simples não aproveita o crédito gerado por fora', muda: optar ? 'Sim — enfraquece a opção' : 'Reforça manter no DAS' }
@@ -1871,6 +1959,9 @@
       if (regime273) sensibilidade.push({ nome: 'Enquadramento da refeição por contrato (LC 214, art. 273)', hoje: regime273.hoje,
         efeito: regime273.contrario + ' → ' + sinal(regime273.r2.semestre.diferenca) + ' · resultado: ' + veredTxt(regime273.r2.veredito.tipo),
         muda: regime273.muda ? 'Sim — o enquadramento muda o resultado; conferir o art. 273 antes de decidir' : 'Não — nos dois enquadramentos a conclusão é a mesma' });
+      if (enq && !b2c) sensibilidade.push({ nome: enq.nome, hoje: cheioMix ? 'assumido tudo à alíquota cheia' : valorEnq + ' (informado)',
+        efeito: itemMix.resultados.map(r => r.rotulo + ' → ' + sinal(r.diferenca)).join(' · '),
+        muda: itemMix.muda ? 'Sim — o enquadramento muda o resultado; conferir ' + (itemMix.falta || 'o enquadramento') + ' antes de decidir' : 'Não — nos enquadramentos possíveis a conclusão é a mesma' });
       // CRÉDITO DE ESTOQUE (03/10/2026): provável, não garantido — depende da regulamentação do inventário (LC 214, art. 381)
       if ((ent.creditoEstoqueMes || 0) > 0) {
         const v = dif({ creditoEstoqueMes: 0 });
@@ -1908,12 +1999,15 @@
       if (fat.mudouAnexo) fontes.push({ o_que: 'Anexo de 2027 (' + fat.anexo2027 + ', no lugar do ' + fat.anexo + ' do PGDAS)', origem: 'LC 123, art. 18, §5º, na redação do art. 517 da LC 214 (efeitos a partir de 01/01/2027): a atividade industrial é tributada no Anexo I; só a venda de produto com IPI mantido (Zona Franca de Manaus) segue no Anexo II. Alíquota do PGDAS convertida pela tabela do Anexo I (' + p1(fat.aliqEfetiva2027 * 100) + '%) e partilha CBS/IBS de ' + p1(fat.partilha2027) + '%', nivel: 'alta', rotulo: 'alta (norma)', ressalva: '— confirmar que nenhum produto tem IPI mantido' });
       if ((m.exclusaoBase || 0) > 0.005) fontes.push({ o_que: (fat.icmsIss ? fat.icmsIss.tributo : 'ICMS/ISS') + ' do DAS fora da base do débito por fora (' + p1(m.exclusaoBase / ent.receita * 100) + '% da receita)', origem: 'LC 214, art. 12, §2º, V: de 2026 a 2032 ICMS e ISS não integram a base do IBS/CBS. No optante, sai o ' + (fat.icmsIss ? fat.icmsIss.tributo : 'ICMS/ISS') + ' do DAS (alíquota efetiva × fatia do tributo na faixa, Res. CGSN 190/2026) — método do curso; pro optante do Simples ainda sem norma específica (ver a seção 6)', nivel: 'media', rotulo: 'média' });
       if (fat.icmsIss && fat.icmsIss.issFixo) fontes.push({ o_que: 'ISS fixo por profissional', origem: 'LC 123, art. 18, §22-A: o ISS não está no DAS — nada do DAS sai da base do débito por fora', nivel: 'alta', rotulo: 'alta (norma)' });
-      if (ent.pctDespesasComCredito != null && ent.pctDespesasComCredito !== '' && +ent.pctDespesasComCredito < 100) fontes.push({ o_que: 'Crédito das despesas (' + p1(ent.pctDespesasComCredito) + '% do cheio)', origem: 'Informado na ficha: o crédito é o IBS/CBS que o fornecedor destaca — serviço com redução (profissões do art. 127 da LC 214, −30%) e aluguel de imóvel (−70%, art. 261, parágrafo único; locador pessoa física não contribuinte não destaca nada) creditam menos; VR, VA e plano de saúde dos empregados creditam o débito do fornecedor (art. 57, §3º, IV)', nivel: 'media', rotulo: 'informado' });
+      if (ent.pctDespesasComCredito != null && ent.pctDespesasComCredito !== '' && +ent.pctDespesasComCredito < 100) fontes.push({ o_que: 'Crédito das despesas (' + p1(ent.pctDespesasComCredito) + '% do cheio)', origem: perfil.passageiros && (ent.mixZero || 0) >= 99 && +ent.pctDespesasComCredito === 0 ? 'Isenção do transporte público coletivo (LC 214, art. 157): a isenção anula o crédito das compras (CF, art. 156-A, §7º)' : 'Informado na ficha: o crédito é o IBS/CBS que o fornecedor destaca — serviço com redução (profissões do art. 127 da LC 214, −30%) e aluguel de imóvel (−70%, art. 261, parágrafo único; locador pessoa física não contribuinte não destaca nada) creditam menos; VR, VA e plano de saúde dos empregados creditam o débito do fornecedor (art. 57, §3º, IV)', nivel: 'media', rotulo: 'informado' });
       if (xml && xml.clientes && xml.clientes.length && !consumidor) fontes.push({ o_que: 'Concentração de clientes', origem: 'XML das notas fiscais de ' + (xml.periodoRotulo || ANO_XML) + (xml.cobertura != null ? ' (cobrem ' + (xml.cobertura >= 99.995 ? '100%' : p1(xml.cobertura) + '%') + ' do faturamento do período)' : ''), nivel: 'alta', rotulo: 'alta' });
       if (dom && dom.fornecedoresRegime) fontes.push({ o_que: 'Regime dos fornecedores', origem: 'Receita Federal, pelos CNPJs das entradas: ' + p1(dom.fornecedoresRegime.simplesPct) + '% das compras consultadas vêm do Simples/MEI, que só dão crédito do IBS/CBS recolhido no DAS deles (LC 214, art. 47, §9º, II; LC 123, art. 23, §1º-A) — estimado em 15% do crédito cheio; consultados os maiores, ' + p1(dom.fornecedoresRegime.cobertura) + '% das compras', nivel: 'alta', rotulo: 'alta' });
       if (dom && dom.clientesRegime) fontes.push({ o_que: 'Regime dos clientes empresa', origem: 'Receita Federal, pelos CNPJs das saídas: ' + p1(100 - dom.clientesRegime.regularPct) + '% das vendas a empresas vão pra empresas do Simples, que não aproveitam o crédito', nivel: 'alta', rotulo: 'alta' });
-      if (ent.mixCheia >= 99 && transporte && !perfil.passageiros) fontes.push({ o_que: 'Alíquota do frete (integralmente cheia)', origem: 'Transporte rodoviário de cargas não tem redução na LC 214 — as reduções de transporte são do coletivo de passageiros e do aéreo regional, de passageiros ou de carga (arts. 284 a 287; o aéreo regional com −40%, art. 287)', nivel: 'alta', rotulo: 'alta (norma)' });
-      else if (ent.mixCheia >= 99 && transporte && perfil.passageiros) fontes.push({ o_que: 'Alíquota do transporte de passageiros (assumida cheia)', origem: 'Transporte coletivo de passageiros tem tratamento próprio: −40% no intermunicipal e interestadual (LC 214, art. 286) e no aéreo regional (art. 287); alíquota zero no ferroviário e hidroviário urbano e metropolitano (art. 285, I); isenção no rodoviário e metroviário urbano e metropolitano (art. 157) — conferir o enquadramento', nivel: 'baixa', rotulo: 'a conferir' });
+      // serviço com redução e passageiros (13/10/2026, Módulo 07): o enquadramento a conferir, com o texto da confiança
+      if (enq) fontes.push({ o_que: (perfil.passageiros || perfil.passageirosOutros ? 'Alíquota do transporte de passageiros' : 'Mix de alíquotas do serviço') + ' (' + (cheioMix ? 'assumida integralmente cheia' : valorEnq) + ')', origem: itemMix.fonte + '. ' + itemMix.motivo, nivel: itemMix.nivel === 'nao_medido' ? 'baixa' : itemMix.nivel, rotulo: 'a conferir' });
+      // fretamento, táxi e escolar — também quando faturam com nota de serviço (o perfil sai "serviço"): o texto da confiança
+      else if (ent.mixCheia >= 99 && perfil.passageirosOutros && itemMix) fontes.push({ o_que: 'Alíquota do transporte de passageiros (integralmente cheia)', origem: itemMix.motivo, nivel: itemMix.nivel === 'nao_medido' ? 'baixa' : itemMix.nivel, rotulo: itemMix.selo });
+      else if (ent.mixCheia >= 99 && transporte && !perfil.passageiros) fontes.push({ o_que: 'Alíquota do frete (integralmente cheia)', origem: 'Transporte rodoviário de cargas não tem redução na LC 214 — as reduções de transporte são do coletivo de passageiros e do aéreo regional, de passageiros ou de carga (arts. 284 a 287; o aéreo regional com −40%, art. 287)', nivel: 'alta', rotulo: 'alta (norma)' });
       else if (ent.mixCheia >= 99 && prestador) fontes.push({ o_que: 'Mix de alíquotas (integralmente cheia)', origem: 'Serviço não consta dos anexos de redução da LC 214', nivel: 'alta', rotulo: 'alta (norma)' });
       else if (ent.mixCheia >= 99 && refeicaoEmpresas) fontes.push({ o_que: 'Mix de alíquotas (integralmente cheia)', origem: 'Refeição fornecida a empresas por contrato tratada fora do regime de bares: alíquota cheia, e o cliente credita (LC 214, art. 273, a conferir — no regime de bares seria −40% e sem crédito ao cliente, art. 276)', nivel: 'baixa', rotulo: 'a conferir' });
       else if (ent.mixCheia >= 99 && !mixMedido && vendeMercadoria && !podeReduzir) fontes.push({ o_que: 'Mix de alíquotas (integralmente cheia)', origem: 'Os produtos do ramo' + (cli && cli.cnae_principal ? ' (' + String(cli.cnae_principal).replace(/^[\d./-]+\s*-\s*/, '').toLowerCase() + ')' : '') + ' não estão nos anexos de redução da LC 214', nivel: 'media', rotulo: 'média (ramo)' });
@@ -1923,6 +2017,7 @@
           : 'Não medido — sem notas de venda na base') + '. Produtos com redução (insumos agropecuários, cesta básica, medicamentos e outros dos anexos da LC 214) baixariam o débito por fora', nivel: 'baixa', rotulo: 'a conferir' });
       else if (ent.mixCheia >= 99 && mixPorNotas) fontes.push({ o_que: 'Mix de alíquotas (integralmente cheia)', origem: 'NCM das notas de venda: nenhum item nos anexos de redução da LC 214', nivel: 'media', rotulo: 'média' });
       else if (ent.mixCheia >= 99 && itemMix) fontes.push({ o_que: 'Mix de alíquotas (integralmente cheia)', origem: itemMix.fonte + ' — ' + itemMix.motivo, nivel: itemMix.nivel === 'nao_medido' ? 'baixa' : itemMix.nivel, rotulo: itemMix.selo });
+      else if (!vendeMercadoria && !transporte && itemMix && ((ent.mixRed30 || 0) > 0 || (ent.mixRed60 || 0) > 0 || (ent.mixZero || 0) > 0)) fontes.push({ o_que: 'Mix de alíquotas do serviço (' + itemMix.valor + ')', origem: itemMix.fonte + ' — conferir o enquadramento: −30% só nas profissões do art. 127 da LC 214, com os requisitos da sociedade; −60% só nos serviços das listas de NBS (saúde, educação, eventos e produções nacionais, desporto)', nivel: 'media', rotulo: 'informado' });
       else if ((ent.mixRed40 || 0) > 0) fontes.push({ o_que: 'Mix de alíquotas (' + p1(ent.mixRed40) + '% com redução de 40%)', origem: 'LC 214/2025 arts. 273-276: alimentação preparada por bar/restaurante, inclusive com entrega por plataforma (art. 274, parágrafo único, II); bebidas alcoólicas e industrializados revendidos ficam na alíquota cheia (art. 273 §2º); o cliente não credita (art. 276)', nivel: refeicaoEmpresas ? 'baixa' : 'alta', rotulo: refeicaoEmpresas ? 'a conferir' : 'alta (norma)', ressalva: '— divisão entre preparado e revendido estimada pelas seções do PGDAS; refeição fornecida a empresas por contrato pode ficar fora do regime de bares (art. 273, a conferir)' });
       if ((ent.pctExcluidoST || 0) > 0) fontes.push({ o_que: 'DAS real abaixo da tabela (' + p1(ent.pctExcluidoST) + '% excluído)', origem: 'PGDAS: ICMS-ST, monofásico e/ou redução de base — DAS apurado ÷ DAS pela tabela do anexo'
         + ((ent.pctReceitaMonofasica || 0) > 0 ? '. Desse total, o PIS/COFINS monofásico (' + p1(ent.pctReceitaMonofasica) + '% da receita) deixa de ser excluído em 2027: a CBS alcança essa receita e o DAS por dentro sobe (Res. CGSN 140/2018, art. 25, §6º, na redação da Res. CGSN 190/2026); a exclusão do ICMS-ST e do ISS retido continua' : ''), nivel: 'alta', rotulo: 'alta' });
@@ -2002,7 +2097,7 @@
         'Quanto da venda é <b>bebida em lata ou garrafa</b> e <b>bebida alcoólica</b>? Por fora, elas pagam o imposto cheio; a comida e a bebida preparada na casa (suco, refrigerante de máquina) têm desconto de 40% — com as notas (NFC-e) a gente mede isso direto.'
       ] : [
         'Os contratos com os maiores clientes têm <b>preço fechado</b> ou permitem repasse de tributo? Há cláusula de revisão?',
-        prestador ? 'Como o preço é negociado hoje — por hora técnica, por serviço, por contrato mensal?' : transporte ? 'Como o frete é cobrado hoje — tabela, contrato com o embarcador, por viagem? Há cláusula de reajuste?' : 'Como o preço é formado hoje — tabela, negociação por pedido, contrato de fornecimento?',
+        perfil.passageiros || perfil.passageirosOutros ? 'Como a passagem ou o fretamento é cobrado hoje — tarifa fixada pelo poder público, contrato com a empresa ou a escola, por viagem? Há cláusula de reajuste?' : prestador ? 'Como o preço é negociado hoje — por hora técnica, por serviço, por contrato mensal?' : transporte ? 'Como o frete é cobrado hoje — tabela, contrato com o embarcador, por viagem? Há cláusula de reajuste?' : 'Como o preço é formado hoje — tabela, negociação por pedido, contrato de fornecimento?',
         'Algum cliente <b>já perguntou</b> sobre crédito de IBS/CBS em 2027?',
         'Há previsão de <b>investimento em máquinas ou equipamentos</b>? Compra de ativo gera crédito integral no regime regular e melhora a conta.'
       ];
@@ -2012,6 +2107,8 @@
       }
       // refeições para empresas: o contrato decide o enquadramento (LC 214, art. 273) — pergunta própria, antes das outras
       if (refeicaoEmpresas && !consumidor) perguntas.unshift('Como são os <b>contratos de refeição</b>: a refeição é preparada na cozinha da empresa ou no local do cliente, e o preço é por refeição ou fechado por período? O enquadramento no regime de bares (LC 214, art. 273, a conferir) muda a alíquota — −40% ou cheia — e se o cliente empresa credita.');
+      // serviço com redução e passageiros: o enquadramento é a primeira pergunta quando muda o resultado; senão, a última
+      if (enq) { if (itemMix.muda) perguntas.unshift(enq.pergunta); else perguntas.push(enq.pergunta); }
       // sem conclusão: o que falta vem antes de qualquer outra pergunta — sem esses dados não há o que decidir
       if (semConclusao && confianca.faltamCliente.length) perguntas.unshift('Pra concluir a análise, precisamos de: <b>' + confianca.faltamCliente.join('</b>; <b>') + '</b>. O que estiver com a empresa (ou com o contador anterior), pode nos enviar?');
 
@@ -2027,6 +2124,12 @@
       if (regime273) {
         const p273 = { o_que: 'Enquadramento da refeição por contrato (LC 214, art. 273)', porque: 'No regime de bares, −40% e o cliente não credita a refeição; fora dele, alíquota cheia e o cliente credita' + (regime273.muda ? ' — muda o resultado desta análise' : ' — nesta análise o resultado não muda'), onde: 'Texto do art. 273 da LC 214 e regulamento; contratos de fornecimento', quem: 'Fiscal', nivel: 'baixa', peso: regime273.muda ? 'decisivo' : 'médio' };
         if (regime273.muda) pendencias.unshift(p273); else pendencias.push(p273);
+      }
+      // o enquadramento do serviço ou dos passageiros: o dado que muda já sobe pelas pendências da confiança (lá embaixo);
+      // aqui, a lista de NBS que muda (premissa) e o que não muda (afina o número)
+      if (enq && !(confianca.decisivos.includes(itemMix) || confianca.aConfirmar.includes(itemMix))) {
+        const pE = { ...enq.pend, porque: enq.pend.porque + (itemMix.muda ? ' — muda o resultado desta análise' : ' — nesta análise o resultado não muda'), quem: 'Fiscal', nivel: 'baixa', peso: itemMix.muda ? 'decisivo' : 'médio' };
+        if (itemMix.muda) pendencias.unshift(pE); else pendencias.push(pE);
       }
       if (dom && dom.entradas && dom.entradas.grupos) {
         const duvida = dom.entradas.grupos.find(g => g.grupo === 'outras' && g.valor > 0 && !g.incluido);
@@ -2102,6 +2205,10 @@
           : 'Pelo enquadramento contrário a recomendação não muda.') + ' O enquadramento depende do art. 273 da LC 214, a conferir.';
         if (regime273.muda) alertas.push({ texto: t, conferir: 'enquadramento da refeição por contrato (LC 214, art. 273)' }); else observacoes.push(t);
       }
+      // o enquadramento pela lista de NBS (premissa) que muda o resultado vira alerta, como o art. 273; o que não muda, observação
+      if (enqPremissaMuda) alertas.push({ texto: enq.alerta(cheioMix ? 'tudo à alíquota cheia' : itemMix.valor),
+        textoCliente: itemMix.motivoCliente + ' ' + (itemMix.efeitoCliente || itemMix.efeito), conferir: itemMix.falta, muda: true });
+      else if (enq && !itemMix.muda) observacoes.push(String(itemMix.motivoCliente || '').replace(/\s*—\s*ainda (não conferido|a conferir)\.?$/, '') + '. Testamos os enquadramentos possíveis e a recomendação não muda.');
       const alimentacao = perfil.tipo === 'alimentacao' && !refeicaoEmpresas;
       // o mix não medido: vira ou não pelo mesmo teste da confiança (o resultado muda de lado), pra texto e tabela dizerem o
       // mesmo — mixMuda, lá em cima. Quando muda, a confiança já diz (sem conclusão ou a confirmar): o alerta não se repete
@@ -2114,7 +2221,10 @@
         if (viraMix) { if (!mixNaConfianca) alertas.push({ texto: t, conferir: 'notas de venda (NFC-e) — comida × bebida', muda: true }); }
         else observacoes.push(t);
       } else if (!mixMedido && podeReduzir && !refeicaoEmpresas && !mixMuda) {
-        observacoes.push('Não usamos as notas fiscais de venda. Parte dos produtos do seu ramo (alimentos, ração, adubo, remédios, itens de higiene) pode pagar o imposto novo com desconto; sem as notas, consideramos tudo sem desconto, então o custo "por fora" mostrado pode estar acima do real. Mesmo com metade das vendas com desconto, a recomendação não muda.');
+        const rz = ramoComZero(cnaeAnalise);
+        observacoes.push(rz === 'hortifruti' ? 'Não usamos as notas fiscais de venda. Hortaliças, frutas e ovos não pagam o imposto novo (alíquota zero); sem as notas, consideramos tudo com o imposto cheio, então o custo "por fora" mostrado pode estar acima do real. Mesmo com quase toda a venda sem imposto, a recomendação não muda.'
+          : rz === 'mercado' ? 'Não usamos as notas fiscais de venda. No mercado, a cesta básica, o hortifrúti e os ovos não pagam o imposto novo, e outros alimentos e produtos de limpeza podem pagar com desconto de 60%; sem as notas, consideramos tudo sem desconto, então o custo "por fora" mostrado pode estar acima do real. Mesmo com boa parte das vendas sem imposto ou com desconto, a recomendação não muda.'
+          : 'Não usamos as notas fiscais de venda. Parte dos produtos do seu ramo (alimentos, ração, adubo, remédios, itens de higiene) pode pagar o imposto novo com desconto; sem as notas, consideramos tudo sem desconto, então o custo "por fora" mostrado pode estar acima do real. Mesmo com metade das vendas com desconto, a recomendação não muda.');
       }
       // a frase segue o lado da dedução: perfil de consumidor (bar, varejo) ou de empresas (indústria, refeições para empresas)
       if (dom && dom.pctPJDeduzido) observacoes.push('Não tínhamos a lista de clientes com CNPJ, então partimos do perfil da empresa (' + String(dom.pctPJDeduzido).replace(/^deduzido:\s*/, '').replace(/\s*—.*$/, '') + '). '
@@ -2125,7 +2235,7 @@
       // a versão do cliente leva as mesmas frases, sem os nomes internos (rt-analise.js usa textoCliente)
       const localCli = it => (it.fonteCliente || it.fonte) + (it.periodo && it.periodo !== '—' ? ', ' + it.periodo : '');
       confianca.aConfirmar.forEach(it => alertas.push({ texto: it.rotulo + ' — ' + it.valor + ' (' + local(it) + '; ' + it.confianca + '). ' + it.motivo + ' ' + (it.efeito || ''),
-        textoCliente: it.rotulo + ' — ' + it.valor + ' (' + localCli(it) + '; ' + it.confianca + '). ' + (it.motivoCliente || it.motivo) + ' ' + (it.efeito || ''), conferir: it.falta || it.curto, muda: true }));
+        textoCliente: it.rotulo + ' — ' + (it.valorCliente || it.valor) + ' (' + localCli(it) + '; ' + it.confianca + '). ' + (it.motivoCliente || it.motivo) + ' ' + (it.efeitoCliente || it.efeito || ''), conferir: it.falta || it.curto, muda: true }));
       // (no sem conclusão, o "juntos" já está na recomendação e no resumo)
       if (confianca.conjunto && !confianca.conjunto.semConclusao) alertas.push({ texto: confianca.conjunto.texto, conferir: confianca.faltam.join('; ') || null, muda: true });
       // nas pendências: os de confiança baixa que decidem vão no topo (sem eles não há conclusão); os de confiança média
@@ -2171,7 +2281,8 @@
       }
       // o enquadramento da refeição por contrato muda o resultado (MANTENHA × "opte, se") sem trocar o sinal da diferença:
       // não passa pelos testes acima, mas entra na nota
-      const virouNomes = viram.map(t => t.nome).concat(regime273 && regime273.muda ? ['o enquadramento da refeição por contrato (LC 214, art. 273)'] : []);
+      const virouNomes = viram.map(t => t.nome).concat(regime273 && regime273.muda ? ['o enquadramento da refeição por contrato (LC 214, art. 273)'] : [])
+        .concat(enqPremissaMuda ? [enq.virou] : []);
       // e os números da confiança que mudam o resultado (média, ou os fracos juntos) — antes a nota dizia "nenhuma incerteza
       // derruba" com a seção 7 e o resumo dizendo "a confirmar"
       const confNomes = confianca.aConfirmar.map(it => (it.curto || it.rotulo.toLowerCase()) + ' (' + it.confianca + ')').concat(confianca.conjunto && !confianca.conjunto.semConclusao ? ['os números de confiança baixa juntos'] : []);

@@ -168,6 +168,12 @@ export function gerarAnalise(d, opts = {}) {
     const decisao = { manter: 'Manter como está', optar: 'Recolher o IBS/CBS por fora do DAS', optar_marco: 'Recolher o IBS/CBS por fora do DAS a partir de julho/2027',
       formalizar: 'Registrar a opção até ' + RT_PRAZO.opcaoDM + ' — e decidir até ' + RT_PRAZO.cancelaAteDM, manter_reavaliar: 'Manter por ora — e reavaliar em março/2027',
       sem_conclusao: 'Ainda não dá pra recomendar um dos lados' }[dec] || 'Manter como está';
+    // CARTEIRA QUE PERDE CRÉDITO (13/10/2026): por dentro o cliente empresa credita o IBS/CBS que está no DAS; por fora, a
+    // venda com alíquota zero (hortifrúti, cesta básica) não dá crédito nenhum a quem compra, e a alimentação preparada no
+    // regime de bares também não (LC 214, art. 276) — o resumo diz quanto a carteira perde, nunca "passam a aproveitar R$ 0"
+    const motivoPerdaCli = [(e.mixZero || 0) > 0 ? 'venda com alíquota zero não dá crédito a quem compra' : null,
+      (e.mixRed40 || 0) > 0 ? 'a alimentação preparada (regime de bares e restaurantes) não dá crédito a quem compra (LC 214, art. 276)' : null].filter(Boolean);
+    const perdaCli = (fora, dentro) => 'aproveitariam ' + brl0(fora) + ' por fora, contra ' + brl0(dentro) + ' por dentro' + (motivoPerdaCli.length ? ' — ' + motivoPerdaCli.join(', e ') + '.' : '.');
     const selo = semConc ? 'SEM CONCLUSÃO — FALTAM DADOS' : aConf ? 'TENDÊNCIA — A CONFIRMAR' : empate ? 'RECOMENDAÇÃO · EMPATE TÉCNICO' : condicional ? 'RECOMENDAÇÃO · SE O COMERCIAL CONFIRMAR' : 'RECOMENDAÇÃO';
     const oQue = semConc
       ? 'Alguns números que decidem a conta ainda não foram medidos com base suficiente. Com eles como estão, escolher um dos lados seria chute — abaixo, o que falta e por quê.'
@@ -182,7 +188,9 @@ export function gerarAnalise(d, opts = {}) {
         : (foraMaisBarato ? 'por fora sai ' : 'por dentro sai ') + brl0(dif) + ' mais barato no semestre') + '), mas '
       + (conf && conf.decisivos.length > 1 ? 'estes números têm pouca base e, dentro do que é plausível para eles, mudam o resultado:' : 'este número tem pouca base e, dentro do que é plausível para ele, muda o resultado:');
     else if (empate) porque = 'Os dois caminhos custam praticamente o mesmo: a diferença é de ' + brl0(dif) + ' no semestre (' + pct2(pctRec) + '% do faturamento). Quando dá empate, mudar só traz trabalho e risco.';
-    else if (optar) porque = 'Pagar por fora sai ' + brl0(dif) + ' mais barato no primeiro semestre de 2027 (' + pct2(pctRec) + '% do faturamento)' + (d.consumidor ? ', porque a empresa desconta o imposto das compras e paga só sobre a margem.' : ', e os clientes empresa passam a aproveitar ' + brl0(s.aproveitadoFora) + ' de crédito do imposto.');
+    else if (optar) porque = 'Pagar por fora sai ' + brl0(dif) + ' mais barato no primeiro semestre de 2027 (' + pct2(pctRec) + '% do faturamento)' + (d.consumidor ? ', porque a empresa desconta o imposto das compras e paga só sobre a margem.'
+        : s.aproveitadoFora < s.aproveitadoDentro - 0.005 ? '. Mas os clientes empresa perdem crédito: ' + perdaCli(s.aproveitadoFora, s.aproveitadoDentro)
+        : ', e os clientes empresa passam a aproveitar ' + brl0(s.aproveitadoFora) + ' de crédito do imposto.');
     else {
       const ganhoCli = s.aproveitadoFora - s.aproveitadoDentro;
       const apertadaTxt = ver.apertada && ver.carteiraVirada != null;
@@ -191,6 +199,7 @@ export function gerarAnalise(d, opts = {}) {
             + (apertadaTxt ? ' A margem é apertada: se as vendas a clientes que aproveitam o crédito caírem abaixo de ' + pct1(ver.carteiraVirada) + '%, deixa de compensar.' : '')
           : d.consumidor ? ' A maioria das vendas é para pessoa física, que não aproveita o imposto destacado — então não há ganho para o cliente.'
           : ganhoCli > dif ? ' O crédito a mais dos seus clientes empresa (' + brl0(ganhoCli) + ') passa desse custo, mas os dois valores são pequenos demais pra justificar a mudança.'
+          : ganhoCli < -0.005 ? ' E os seus clientes empresa ainda perderiam crédito: ' + perdaCli(s.aproveitadoFora, s.aproveitadoDentro)
           : ' O crédito a mais que os clientes empresa aproveitariam (' + brl0(Math.max(0, ganhoCli)) + ') não cobre esse custo.'
             + (apertadaTxt ? ' A margem é apertada: com ' + pct1(ver.carteiraVirada) + '% ou mais das vendas a clientes que aproveitam o crédito, passaria a compensar.' : ''));
     }
@@ -198,7 +207,9 @@ export function gerarAnalise(d, opts = {}) {
     const barra = (rot, v, win) => '<div class="rs-b"><span class="rs-bl">' + rot + '</span><span class="rs-bt"><span class="rs-bf' + (win ? ' win' : '') + '" style="width:' + (v / maxV * 100).toFixed(1) + '%"></span></span><b>' + brl0(v) + '</b></div>';
     // o que pesa contra cada número da empresa (fora os que já decidem e aparecem acima): em todo resumo, firme ou não
     // (a versão do cliente troca os nomes internos — simulação antiga, relatório do Domínio — pelos textos do cliente)
-    const itemConf = it => '<li><b>' + esc(it.rotulo) + '</b> — ' + esc(it.valor) + ', ' + esc(it.confianca || 'confiança ' + it.selo) + (it.periodo && it.periodo !== '—' ? ' (' + esc(it.periodo) + ')' : '') + '. ' + esc(versaoCliente && it.motivoCliente ? it.motivoCliente : it.motivo) + (it.efeito ? ' ' + esc(it.efeito) : '') + '</li>';
+    // (o cliente lê o valor e o efeito sem artigo de lei quando o item tem a versão dele — 13/10/2026)
+    const itemConf = it => '<li><b>' + esc(it.rotulo) + '</b> — ' + esc(versaoCliente && it.valorCliente ? it.valorCliente : it.valor) + ', ' + esc(it.confianca || 'confiança ' + it.selo) + (it.periodo && it.periodo !== '—' ? ' (' + esc(it.periodo) + ')' : '') + '. ' + esc(versaoCliente && it.motivoCliente ? it.motivoCliente : it.motivo)
+      + ((versaoCliente && it.efeitoCliente) || it.efeito ? ' ' + esc(versaoCliente && it.efeitoCliente ? it.efeitoCliente : it.efeito) : '') + '</li>';
     const outrosFracos = conf ? conf.itens.filter(it => it.categoria === 'dado' && it.nivel !== 'alta' && !conf.decisivos.includes(it) && !conf.aConfirmar.includes(it)) : [];
     // os que decidem (sem conclusão) e os de confiança média que mudam o resultado (nos alertas) já aparecem acima
     const jaAcima = conf ? conf.decisivos.length + conf.aConfirmar.length > 0 : false;
@@ -274,7 +285,7 @@ export function gerarAnalise(d, opts = {}) {
   P('<table><thead><tr><th>Indicador</th><th class="num">Valor</th><th>Fonte</th></tr></thead><tbody>'
     + (dominio && dominio.faturamento ? '<tr><td>Faturamento ' + dominio.periodoRotulo + '</td><td class="num">' + brl(dominio.faturamento.total) + '</td><td>' + esc(dominio.fonteFaturamento || 'Relatório de faturamento (Domínio)') + '</td></tr>'
       + '<tr><td>— serviços</td><td class="num">' + brl(dominio.faturamento.servicos) + ' · ' + pct1(pctServ) + '%</td><td>idem</td></tr>'
-      + '<tr><td>— ' + (d.perfil && d.perfil.tipo === 'transporte' ? 'fretes (CT-e)' : d.perfil && !d.perfil.vendeMercadoria && d.perfil.tipo !== 'servico' ? esc(d.perfil.rotulo) : 'mercadorias') + '</td><td class="num">' + brl(dominio.faturamento.saidas) + ' · ' + pct1(100 - pctServ) + '%</td><td>idem</td></tr>' : '')
+      + '<tr><td>— ' + (d.perfil && d.perfil.tipo === 'transporte' ? (d.perfil.passageiros || d.perfil.passageirosOutros ? 'passagens e fretamentos (BP-e, CT-e OS)' : 'fretes (CT-e)') : d.perfil && !d.perfil.vendeMercadoria && d.perfil.tipo !== 'servico' ? esc(d.perfil.rotulo) : 'mercadorias') + '</td><td class="num">' + brl(dominio.faturamento.saidas) + ' · ' + pct1(100 - pctServ) + '%</td><td>idem</td></tr>' : '')
       + (d.perfil ? '<tr><td>Atividade</td><td class="num">' + esc(d.perfil.rotulo) + '</td><td>' + esc(d.perfil.fonte || '') + '</td></tr>' : '')
     + '<tr><td>Receita mensal usada na simulação</td><td class="num">' + brl(receita) + '</td><td>' + esc(d.origemReceita || 'informado na ficha') + '</td></tr>'
     + '<tr><td>RBT12</td><td class="num">' + brl(e.rbt12) + '</td><td>' + (dominio && dominio.pgdas ? 'PGDAS ' + esc(dominio.pgdas.competencia) : 'ficha') + '</td></tr>'
@@ -407,8 +418,14 @@ export function gerarAnalise(d, opts = {}) {
   } else if (!optar && semConclusaoDoc) {
     P('<p class="fonte">Na conta provisória, por fora a empresa debitaria ' + pct1(aliqVendas) + '% sobre o que fatura e creditaria sobre compras de ' + pct1(e.pctComprasMercadorias + e.pctComprasDespesas) + '% do que fatura — números que ainda não têm base suficiente pra sustentar o resultado (ver a seção 7).</p>');
   } else if (!optar) {
+    // o % das compras com crédito vem do NCM das notas de entrada (operacao-xml.js, ponte.pctComprasComCredito): alíquota zero
+    // não credita nada, item a −60% credita 40% e a −30% credita 70% — o que falta não é só cesta básica. O crédito menor
+    // de fornecedor do Simples não entra nesse %: quando o regime foi consultado, já saiu do % de compras (dominio-relatorios)
+    const fornSimples = dominio && dominio.fornecedoresRegime && dominio.fornecedoresRegime.simplesPct > 0 ? dominio.fornecedoresRegime : null;
     P('<p>O motivo é aritmético: <b>por fora a empresa debita ' + pct1(aliqVendas) + '% sobre o que fatura' + (notasDebito.length ? ' (' + notasDebito.join('; ') + ')' : '') + ' e credita ' + (fat.compras < 0.5 ? 'pouco' : 'menos') + ' na entrada</b>: compra ' + pct1(e.pctComprasMercadorias + e.pctComprasDespesas) + '% do que fatura'
-      + (fat.comprasMedido ? ', e só ' + pct1(fat.compras * 100) + '% dessas compras carregam IBS/CBS pra creditar — o resto é cesta básica, alíquota zero (medido pelo NCM das notas de entrada)' : '') + '. O regime regular favorece quem compra muito e compra tributado.</p>');
+      + (fat.comprasMedido ? ', e só ' + pct1(fat.compras * 100) + '% dessas compras carregam IBS/CBS pra creditar — o resto é produto com alíquota zero (cesta básica, hortifrúti) ou a parte sem imposto dos itens com redução de 60% ou 30% (medido pelo NCM das notas de entrada)' : '')
+      + (fornSimples ? (fat.comprasMedido ? '; e' : ', e') + ' o crédito menor de fornecedor do Simples (' + pct1(fornSimples.simplesPct) + '% das compras consultadas) já está descontado nesse % de compras' : '')
+      + '. O regime regular favorece quem compra muito e compra tributado.</p>');
   } else if (mixTxt.length || fat.comprasMedido || exclPct > 0) {
     P('<p class="fonte">Por fora: ' + pct1(aliqVendas) + '% sobre as vendas (' + (notasDebito.length ? notasDebito.join('; ') : pct1(e.cbs + e.ibs) + '% de referência') + ')' + (fat.comprasMedido ? '; crédito sobre ' + pct1(fat.compras * 100) + '% das compras de mercadorias, pelo NCM das entradas' : '') + '.</p>');
   }

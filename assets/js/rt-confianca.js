@@ -61,7 +61,13 @@ const FALTA_CLIENTE = {
   'o acompanhamento de saídas em XLS (traz o CNPJ dos clientes)': 'a relação das vendas com o CNPJ de cada cliente',
   'as notas de venda (XML ou ZIP) pra medir pelo NCM': 'as notas de venda (pra ver quais produtos têm redução)',
   'as notas de venda (XML ou ZIP)': 'as notas de venda',
-  'a revisão do NCM das compras nos maiores fornecedores': 'a revisão da classificação (NCM) das compras dos maiores fornecedores'
+  'a revisão do NCM das compras nos maiores fornecedores': 'a revisão da classificação (NCM) das compras dos maiores fornecedores',
+  'o enquadramento do transporte de passageiros (urbano, metropolitano, intermunicipal ou interestadual)': 'como é o transporte de passageiros: linha aberta ao público, com itinerário e tarifa fixados pelo poder público (dentro da cidade, entre cidades vizinhas ou na região metropolitana), linha entre cidades ou fretamento',
+  'o enquadramento do transporte de passageiros (linha regular sob autorização, permissão ou concessão · urbano, semiurbano, metropolitano, intermunicipal ou interestadual)': 'como é o transporte de passageiros: linha aberta ao público, com itinerário e tarifa fixados pelo poder público (dentro da cidade, entre cidades vizinhas ou na região metropolitana), linha entre cidades ou fretamento',
+  'o alcance do art. 286 da LC 214 no fretamento intermunicipal': 'como a lei se aplica ao fretamento entre cidades',
+  'os requisitos do art. 127 da LC 214 (contrato social e registro dos sócios no conselho)': 'o contrato social e o registro dos sócios no conselho profissional (CRC, OAB, CREA, CRMV…)',
+  'o registro no conselho de educação física e o enquadramento da aula na NBS 1.2205.12.00': 'o registro da empresa no conselho de educação física (CREF) e a descrição das aulas',
+  'o enquadramento do serviço na lista de redução da LC 214 (NBS)': 'a relação dos serviços que a empresa presta (pra conferir na lista de serviços com redução)'
 };
 // o que falta, nas palavras do cliente (o comunicado lê o resumo gravado, que nas simulações gravadas antes desta tradução
 // só tem o texto do escritório)
@@ -259,6 +265,128 @@ function textoMix(ent) {
   return partes.join(' · ') || '—';
 }
 
+// o mix inteiro numa faixa só (o resto zerado) — as variantes do enquadramento
+const SEM_MIX = { mixCheia: 0, mixRed60: 0, mixRed40: 0, mixRed30: 0, mixZero: 0 };
+const mixSo = (faixa, extra) => ({ ...SEM_MIX, [faixa]: 100, ...(extra || {}) });
+const ehSo = (ent, faixa) => (+ent[faixa] || 0) >= 99;
+
+// SERVIÇO COM REDUÇÃO (13/10/2026, Módulo 07): o texto de cada candidato — a ficha usa no aviso da importação, a confiança
+// no motivo. rs vem de reducaoServicoPorCnae (dominio-relatorios.js)
+export function textoReducaoServico(rs) {
+  if (!rs) return '';
+  if (rs.tipo === 'profissao') return 'Serviço de ' + rs.quem + ': tem redução de 30% por fora se a sociedade cumprir os cinco requisitos do art. 127 da LC 214 — sócios habilitados e fiscalizados pelo conselho, nenhum sócio pessoa jurídica, não ser sócia de outra pessoa jurídica, nada fora das habilitações dos sócios e o serviço prestado pelos sócios.';
+  if (rs.tipo === 'desporto') return (rs.ramo === 'academia' ? 'Academia' : 'Ensino de esportes') + ': tem redução de 30% por fora se a pessoa jurídica for registrada no conselho de educação física (LC 214, art. 127, §3º — sem os requisitos da sociedade), e de 60% se a aula for a educação desportiva da NBS 1.2205.12.00 (art. 141, I) — vale a maior.';
+  return 'Serviço de ' + rs.ramo + ': tem redução de 60% por fora se estiver na lista do ' + rs.anexo + ' — a lista, por código da NBS, não está na nossa base.';
+}
+const FALTA_SERVICO = {
+  profissao: ['os requisitos do art. 127 da LC 214 (contrato social e registro dos sócios no conselho)', 'o contrato social e o registro dos sócios no conselho profissional (CRC, OAB, CREA, CRMV…)'],
+  desporto: ['o registro no conselho de educação física e o enquadramento da aula na NBS 1.2205.12.00', 'o registro da empresa no conselho de educação física (CREF) e a descrição das aulas'],
+  anexo: ['o enquadramento do serviço na lista de redução da LC 214 (NBS)', 'a relação dos serviços que a empresa presta (pra conferir na lista de serviços com redução)']
+};
+const FALTA_PASSAGEIROS = 'o enquadramento do transporte de passageiros (linha regular sob autorização, permissão ou concessão · urbano, semiurbano, metropolitano, intermunicipal ou interestadual)';
+
+function itemMixServico(ent, pc, rs, it, cheio) {
+  // as profissões do art. 127 e o desporto: os requisitos são da empresa (contrato social, conselho) — dado; a lista de
+  // NBS dos Anexos II, III e X é da lei — premissa (como o enquadramento da refeição por contrato, art. 273)
+  it.categoria = rs.tipo === 'anexo' ? 'premissa' : 'dado';
+  it.periodo = '—';
+  const comReducao = rs.faixas.some(f => (+ent[f] || 0) > 0);
+  const informado = pc.fonte === 'manual' && !pc.legado;
+  if (informado || pc.legado) {
+    it.fonte = pc.legado ? ORIGEM_LEGADO : 'Informado, sem relatório'; it.nivel = 'media';
+  } else {
+    // padrão (tudo cheio, ninguém conferiu) ou das notas — a nota de serviço não mostra a redução do serviço
+    it.fonte = pc.fonte === 'notas' ? 'Notas de venda — a nota de serviço não mostra a redução' : rs.tipo === 'profissao' ? 'Assumido tudo à alíquota cheia — os requisitos do art. 127 não foram conferidos' : 'Assumido tudo à alíquota cheia — enquadramento a conferir';
+    it.nivel = 'baixa';
+  }
+  it.selo = 'a conferir';
+  it.motivo = textoReducaoServico(rs) + (cheio ? ' A conta considera tudo à alíquota cheia.' : comReducao ? ' A conta usa a redução informada.' : ' A conta usa o mix informado.');
+  it.motivoCliente = (rs.tipo === 'anexo' ? 'Serviço de ' + rs.ramo + ' pode ter redução de 60% por fora, conforme a lista da lei' : rs.tipo === 'desporto' ? 'A aula de esporte pode ter redução de 30% ou de 60% por fora, conforme o registro no conselho e a lista da lei' : 'Serviço de profissão regulamentada pode ter redução de 30% por fora, se a sociedade cumprir os requisitos da lei') + ' — ainda não conferido.';
+  [it.falta, it.faltaCliente] = FALTA_SERVICO[rs.tipo];
+  // o plausível: tudo cheio (sem os requisitos, ou o serviço fora da lista) e cada redução possível na receita toda —
+  // menos o que já está na conta. Na academia, o −30% depende do registro no conselho (dado da empresa) e o −60%, de a aula
+  // ser a educação desportiva da NBS 1.2205.12.00 (questão da lei): se só o −60% muda o resultado, o item vira premissa
+  const rot = f => f === 'mixRed30'
+    ? (rs.tipo === 'desporto' ? 'toda a receita com −30% (academia registrada no conselho, art. 127, §3º)' : 'toda a receita com −30% (se a sociedade cumprir os requisitos do art. 127)')
+    : (rs.tipo === 'desporto' ? 'toda a receita com −60% (aula na NBS 1.2205.12.00, art. 141, I)' : 'toda a receita com −60% (se o serviço estiver no ' + String(rs.anexo || 'anexo').split(' (')[0] + ')');
+  const rotCli = f => f === 'mixRed30'
+    ? (rs.tipo === 'desporto' ? 'desconto de 30% em toda a receita (empresa registrada no conselho de educação física)' : 'desconto de 30% em toda a receita (se a sociedade cumprir os requisitos da lei)')
+    : (rs.tipo === 'desporto' ? 'desconto de 60% em toda a receita (se a aula estiver na lista da lei)' : 'desconto de 60% em toda a receita (se o serviço estiver na lista da lei)');
+  const cand = [];
+  if (!cheio) cand.push({ rotulo: rs.tipo === 'profissao' ? 'tudo à alíquota cheia (se a sociedade não cumprir os requisitos do art. 127)' : rs.tipo === 'desporto' ? 'tudo à alíquota cheia (sem o registro no conselho e fora da educação desportiva)' : 'tudo à alíquota cheia (se o serviço não estiver na lista)',
+    rotuloCliente: rs.tipo === 'profissao' ? 'o imposto cheio em toda a receita (se a sociedade não cumprir os requisitos da lei)' : rs.tipo === 'desporto' ? 'o imposto cheio em toda a receita (sem o registro no conselho)' : 'o imposto cheio em toda a receita (se o serviço não estiver na lista da lei)',
+    ent: { ...ent, ...mixSo('mixCheia') } });
+  rs.faixas.filter(f => !ehSo(ent, f)).forEach(f => cand.push({ rotulo: rot(f), rotuloCliente: rotCli(f), premissa: rs.tipo === 'desporto' && f === 'mixRed60', ent: { ...ent, ...mixSo(f) } }));
+  it.variantes = cand;
+  return it;
+}
+
+function itemMixPassageiros(ent, pc, it, cheio, ctx) {
+  // TRANSPORTE COLETIVO DE PASSAGEIROS (13/10/2026, revisto com o Módulo 07): isenção no rodoviário e metroviário urbano,
+  // semiurbano e metropolitano sob autorização, permissão ou concessão (LC 214, art. 157) — e isenção não é alíquota zero:
+  // anula o crédito das compras (CF, art. 156-A, §7º); −40% no intermunicipal e interestadual (art. 286) e no aéreo
+  // regional (art. 287); zero no ferroviário e hidroviário urbano e metropolitano (art. 285, I). Por dentro, a parcela de
+  // CBS/IBS do DAS segue a tabela. Pelo CNAE, mesmo quando a empresa fatura com nota de serviço
+  // digitado na ficha (inclusive tudo cheio, de quem conferiu que não é linha regular): média; simulação anterior: média,
+  // origem não registrada; o padrão, sem ninguém conferir: não medido
+  if (pc.fonte === 'manual' && !pc.legado) { it.fonte = 'Informado, sem relatório'; it.nivel = 'media'; }
+  else if (pc.legado) { it.fonte = ORIGEM_LEGADO; it.nivel = 'media'; }
+  else { it.fonte = 'Assumido tudo à alíquota cheia — enquadramento a conferir'; it.nivel = 'nao_medido'; }
+  it.selo = 'a conferir'; it.periodo = '—';
+  // a isenção na ficha é "alíquota zero" com o crédito das despesas zerado; zero com o crédito mantido é outra coisa (art. 285)
+  const isentoNaFicha = ehSo(ent, 'mixZero') && ent.pctDespesasComCredito != null && ent.pctDespesasComCredito !== '' && +ent.pctDespesasComCredito === 0;
+  if (isentoNaFicha) { it.valor = 'isento pelo art. 157 — sem débito e sem o crédito das compras'; it.valorCliente = 'isento — sem imposto na venda e sem crédito nas compras'; }
+  it.motivo = 'Transporte coletivo de passageiros tem tratamento próprio: isenção no rodoviário e metroviário urbano, semiurbano e metropolitano, aberto ao público e sob autorização, permissão ou concessão do poder público (LC 214, art. 157 — isenção não é alíquota zero: o crédito das compras é anulado), −40% no intermunicipal e interestadual (art. 286) e no aéreo regional (art. 287), alíquota zero no ferroviário e hidroviário urbano, semiurbano e metropolitano (art. 285, I) — os arts. 285 a 287 pelo sumário da lei, com o texto a conferir. ' + (cheio ? 'A conta considera tudo à alíquota cheia.' : 'A conta usa o enquadramento informado.')
+    + (ehSo(ent, 'mixZero') && !isentoNaFicha ? ' Atenção: a conta usa alíquota zero com o crédito das compras mantido — se for a isenção do art. 157, zere na ficha o crédito das despesas e o % das compras de mercadorias com crédito.' : '');
+  it.motivoCliente = 'O transporte de passageiros pode ser isento por fora (linha aberta ao público, autorizada pelo poder público, dentro da cidade, entre cidades vizinhas ou na região metropolitana) ou ter redução de 40% (linhas entre cidades, fora disso) — ainda não conferido.';
+  it.falta = FALTA_PASSAGEIROS;
+  // isenção na ficha: as variantes fora dela voltam ao crédito padrão (o zero do crédito das compras e das despesas é da isenção)
+  const semIsencao = isentoNaFicha ? { pctComprasComCredito: null, pctDespesasComCredito: null } : {};
+  const isento = { ...mixSo('mixZero'), pctComprasComCredito: 0, pctDespesasComCredito: 0 };
+  const cand = [];
+  if (!cheio) cand.push({ rotulo: 'tudo à alíquota cheia (sem linha regular sob autorização, permissão ou concessão)', rotuloCliente: 'o imposto cheio em todo o transporte (se não for linha regular autorizada pelo poder público)', ent: { ...ent, ...semIsencao, ...mixSo('mixCheia') } });
+  if (!ehSo(ent, 'mixRed40')) cand.push({ rotulo: 'todo o transporte com −40% (intermunicipal ou interestadual, art. 286)', rotuloCliente: 'desconto de 40% em todo o transporte (linhas entre cidades)', ent: { ...ent, ...semIsencao, ...mixSo('mixRed40') } });
+  if (!isentoNaFicha) cand.push({ rotulo: 'isenção do transporte público urbano, semiurbano ou metropolitano (sem débito e sem crédito das compras, art. 157)', rotuloCliente: 'isenção do transporte público dentro da cidade, entre cidades vizinhas ou na região metropolitana (sem imposto na venda e sem crédito nas compras)', ent: { ...ent, ...isento } });
+  // trem e metrô: o zero do ferroviário urbano, semiurbano e metropolitano (art. 285, I) prevalece sobre a isenção (art. 7º-A)
+  // e mantém o crédito das compras
+  if (ctx && ctx.trilhos && !(ehSo(ent, 'mixZero') && !isentoNaFicha)) cand.push({ rotulo: 'alíquota zero do ferroviário urbano, semiurbano ou metropolitano, com o crédito das compras (art. 285, I — prevalece sobre a isenção, art. 7º-A)', rotuloCliente: 'alíquota zero do trem urbano ou metropolitano, com o crédito das compras', ent: { ...ent, ...semIsencao, ...mixSo('mixZero') } });
+  it.variantes = cand;
+  return it;
+}
+
+function itemMixFretamento(ent, it, cheio, ctx) {
+  // FRETAMENTO, TÁXI E ESCOLAR (13/10/2026, revisto na revisão do Módulo 07): não são transporte público coletivo (LC 214,
+  // art. 157, parágrafo único, I) — sem a isenção. Dentro do município, táxi e escolar: alíquota cheia. O fretamento entre
+  // cidades pode estar no −40% do transporte coletivo intermunicipal e interestadual (art. 286) — o texto dos arts. 284 a 287
+  // não está na base: premissa da lei, testada nos dois sentidos
+  it.periodo = '—';
+  if (ctx.fretamentoIntermunicipal) {
+    it.categoria = 'premissa'; it.fonte = 'Lei (LC 214) — a conferir'; it.nivel = 'media'; it.selo = 'a conferir';
+    it.motivo = 'Fretamento não é transporte público coletivo (LC 214, art. 157, parágrafo único, I: aberto a todos, com itinerário e preço fixados pelo poder público): não tem a isenção. Se o −40% do transporte coletivo intermunicipal e interestadual (art. 286) alcança o fretamento entre cidades, está a conferir — o texto do artigo não está na nossa base. ' + (cheio ? 'A conta considera tudo à alíquota cheia.' : 'A conta usa o mix informado.');
+    it.motivoCliente = 'O fretamento entre cidades pode ter redução de 40% por fora, conforme a aplicação da lei ao fretamento — ainda a conferir.';
+    it.falta = 'o alcance do art. 286 da LC 214 no fretamento intermunicipal';
+    const cand = [];
+    if (!cheio) cand.push({ rotulo: 'tudo à alíquota cheia (se o −40% do art. 286 não alcançar o fretamento)', rotuloCliente: 'o imposto cheio em todo o fretamento', ent: { ...ent, ...mixSo('mixCheia') } });
+    if (!ehSo(ent, 'mixRed40')) cand.push({ rotulo: 'todo o fretamento com −40% (se o art. 286 o alcançar)', rotuloCliente: 'desconto de 40% em todo o fretamento', ent: { ...ent, ...mixSo('mixRed40') } });
+    it.variantes = cand;
+  } else {
+    it.fonte = 'Lei (LC 214)'; it.nivel = 'alta'; it.selo = 'alta (norma)';
+    it.motivo = 'Fretamento dentro do município, táxi e transporte escolar não são transporte público coletivo (LC 214, art. 157, parágrafo único, I: aberto a todos, com itinerário e preço fixados pelo poder público) e não estão nas reduções do transporte coletivo intermunicipal e interestadual: alíquota cheia.';
+  }
+  return it;
+}
+
+// o mix alternativo de quem vende mercadoria sem as notas: restaurante (a comida a −40%), mercado (cesta básica e hortifrúti a
+// zero, mais −60%), hortifrúti (quase tudo zero) e os demais (metade a −60%)
+function variantesRamo(ent, ctx) {
+  if (ctx.tipo === 'alimentacao') return [{ rotulo: '90% da venda como comida preparada (−40%)', ent: { ...ent, ...SEM_MIX, mixCheia: 10, mixRed40: 90 } }];
+  if (ctx.ramoZero === 'hortifruti') return [{ rotulo: '90% da venda com alíquota zero (hortícolas, frutas e ovos do Anexo XV)', ent: { ...ent, ...SEM_MIX, mixCheia: 10, mixZero: 90 } }];
+  const metade = { rotulo: 'metade das vendas com redução de 60%', ent: { ...ent, ...SEM_MIX, mixCheia: 50, mixRed60: 50 } };
+  // (a divisão do mercado é a do minimercado de um exercício do curso — o texto que sai na análise não cita o material)
+  if (ctx.ramoZero === 'mercado') return [metade, { rotulo: '40% da venda com alíquota zero (cesta básica, hortifrúti e ovos) e 30% com −60%', ent: { ...ent, ...SEM_MIX, mixCheia: 30, mixRed60: 30, mixZero: 40 } }];
+  return [metade];
+}
+
 function itemMix(ent, proc, ctx) {
   const pc = proc.mix || {};
   const it = { chave: 'mix', rotulo: 'Mix de alíquotas das vendas', curto: 'mix das vendas', categoria: 'dado', valor: textoMix(ent), periodo: periodoDe(pc) };
@@ -271,6 +399,11 @@ function itemMix(ent, proc, ctx) {
     it.falta = 'o enquadramento da refeição por contrato (LC 214, art. 273)';
     return it;
   }
+  // serviço com redução pelo CNAE e transporte de passageiros: o enquadramento vem antes das notas — a nota de serviço não
+  // mostra a redução, e o "cheio pela lei" só vale pra serviço fora do rol (13/10/2026, Módulo 07)
+  if (ctx.reducaoServico && !ctx.vendeMercadoria) return itemMixServico(ent, pc, ctx.reducaoServico, it, cheio);
+  if (ctx.passageiros) return itemMixPassageiros(ent, pc, it, cheio, ctx);
+  if (ctx.passageirosOutros && (ctx.fretamentoIntermunicipal || cheio)) return itemMixFretamento(ent, it, cheio, ctx);
   if (pc.fonte === 'notas') {
     const n = nMed(pc);
     it.fonte = 'NCM das notas de venda (XML)'; it.nivel = n != null && n < 3 ? 'media' : 'alta';
@@ -281,21 +414,12 @@ function itemMix(ent, proc, ctx) {
     it.motivo = pc.legado ? 'Não ficou registrado se a divisão veio das notas de venda ou foi informada na ficha.' : 'Sem as notas de venda que comprovem a divisão.';
     it.falta = 'as notas de venda (XML ou ZIP)';
     // tudo à alíquota cheia, informado, num ramo com produtos de redução: o mesmo teste do não medido (confiança média)
-    if (cheio && (ctx.podeReduzir || (ctx.tipo === 'transporte' && ctx.passageiros))) {
-      const alt = ctx.tipo === 'alimentacao' ? { mixCheia: 10, mixRed40: 90, mixRed60: 0, mixRed30: 0, mixZero: 0 }
-        : ctx.tipo === 'transporte' ? { mixCheia: 0, mixRed40: 100, mixRed60: 0, mixRed30: 0, mixZero: 0 } : { mixCheia: 50, mixRed60: 50, mixRed40: 0, mixRed30: 0, mixZero: 0 };
-      it.variantes = [{ rotulo: ctx.tipo === 'alimentacao' ? '90% da venda como comida preparada (−40%)' : ctx.tipo === 'transporte' ? 'todo o transporte com −40% (intermunicipal ou interestadual)' : 'metade das vendas com redução de 60%', ent: { ...ent, ...alt } }];
-    }
-  } else if (ctx.tipo === 'transporte' && ctx.passageiros) {
-    // TRANSPORTE DE PASSAGEIROS (13/10/2026): a redução depende do serviço — −40% no intermunicipal e interestadual, zero
-    // ou isenção no urbano e metropolitano (LC 214, arts. 157, 285, 286 e 287). A conta assume alíquota cheia; testa o −40%
-    it.fonte = 'Assumido tudo à alíquota cheia — enquadramento a conferir'; it.nivel = 'nao_medido'; it.selo = 'a conferir'; it.periodo = '—';
-    it.motivo = 'Transporte coletivo de passageiros tem tratamento próprio: −40% no intermunicipal e interestadual (LC 214, art. 286) e no aéreo regional (art. 287), alíquota zero no ferroviário e hidroviário urbano e metropolitano (art. 285, I) e isenção no rodoviário e metroviário urbano e metropolitano (art. 157). A conta considera tudo à alíquota cheia.';
-    it.falta = 'o enquadramento do transporte de passageiros (urbano, metropolitano, intermunicipal ou interestadual)';
-    it.variantes = [{ rotulo: 'todo o transporte com −40% (intermunicipal ou interestadual)', ent: { ...ent, mixCheia: 0, mixRed40: 100, mixRed60: 0, mixRed30: 0, mixZero: 0 } }];
-  } else if (ctx.tipo === 'servico' || (ctx.tipo === 'transporte' && !ctx.passageiros)) {
+    if (cheio && ctx.podeReduzir) it.variantes = variantesRamo(ent, ctx);
+  } else if (ctx.tipo === 'servico' || ctx.tipo === 'transporte') {
     it.fonte = 'Lei (LC 214)'; it.nivel = 'alta'; it.selo = 'alta (norma)'; it.periodo = '—';
-    it.motivo = ctx.tipo === 'servico' ? 'Serviço que não consta dos anexos de redução da LC 214: alíquota cheia.' : 'Transporte de cargas não tem redução na LC 214.';
+    it.motivo = ctx.tipo === 'servico' ? 'Serviço que não consta dos anexos de redução da LC 214: alíquota cheia.'
+      : ctx.passageirosOutros ? 'Fretamento, táxi e transporte escolar não são transporte público coletivo (LC 214, art. 157): alíquota cheia — no fretamento intermunicipal, se entra nos −40% do art. 286, a conferir.'
+      : 'Transporte de cargas não tem redução na LC 214.';
   } else if (ctx.podeReduzir) {
     // simulação anterior com tudo à alíquota cheia: pode ter vindo das notas (que mediram 100% cheia) ou ser o padrão de
     // quem não tinha as notas — não ficou registrado; fica "média" (a confirmar), não "não medido"
@@ -306,11 +430,12 @@ function itemMix(ent, proc, ctx) {
       it.fonte = 'Não medido — assumido tudo à alíquota cheia'; it.nivel = 'nao_medido'; it.periodo = '—';
       it.motivo = ctx.tipo === 'alimentacao'
         ? 'Sem as notas de venda (NFC-e), tudo foi considerado sem desconto; em restaurante a comida preparada tem −40% e só a bebida em lata ou garrafa e a alcoólica pagam cheio.'
+        : ctx.ramoZero === 'mercado' ? 'Sem as notas de venda, tudo foi considerado sem desconto; no mercado, a cesta básica, o hortifrúti e os ovos têm alíquota zero e outros alimentos e produtos de limpeza têm −60% — baixariam o débito por fora.'
+        : ctx.ramoZero === 'hortifruti' ? 'Sem as notas de venda, tudo foi considerado sem desconto; hortícolas, frutas e ovos têm alíquota zero (LC 214, art. 148, Anexo XV).'
         : 'Sem as notas de venda, tudo foi considerado sem desconto; produtos com redução (alimentos, insumos agropecuários, medicamentos) baixariam o débito por fora.';
     }
     it.falta = 'as notas de venda (XML ou ZIP) pra medir pelo NCM';
-    const alt = ctx.tipo === 'alimentacao' ? { mixCheia: 10, mixRed40: 90, mixRed60: 0, mixRed30: 0, mixZero: 0 } : { mixCheia: 50, mixRed60: 50, mixRed40: 0, mixRed30: 0, mixZero: 0 };
-    it.variantes = [{ rotulo: ctx.tipo === 'alimentacao' ? '90% da venda como comida preparada (−40%)' : 'metade das vendas com redução de 60%', ent: { ...ent, ...alt } }];
+    it.variantes = variantesRamo(ent, ctx);
   } else {
     it.fonte = 'Assumido pelo ramo'; it.nivel = 'media'; it.periodo = '—';
     it.motivo = 'Tudo à alíquota cheia: os produtos do ramo não estão nos anexos de redução da LC 214 — sem as notas de venda, não dá pra descartar item com redução.';
@@ -319,9 +444,17 @@ function itemMix(ent, proc, ctx) {
   return it;
 }
 
-function itensComplementares(ent, proc) {
+function itensComplementares(ent, proc, ctx = {}) {
   const out = [];
-  if (ent.pctComprasComCredito != null && ent.pctComprasComCredito !== '') {
+  // transporte de passageiros isento na ficha (13/10/2026): o crédito zerado das compras e das despesas é da isenção — o
+  // enquadramento é testado no mix, não aqui
+  const isentoPass = !!ctx.passageiros && ehSo(ent, 'mixZero') && ent.pctDespesasComCredito != null && ent.pctDespesasComCredito !== '' && +ent.pctDespesasComCredito === 0;
+  const ISENCAO = { fonte: 'Isenção informada na ficha', periodo: '—', nivel: 'media', selo: 'conforme a isenção', falta: null,
+    motivo: 'Zerado pela isenção do transporte público coletivo (LC 214, art. 157): a isenção anula o crédito das compras (CF, art. 156-A, §7º). O enquadramento é testado no mix das vendas.',
+    motivoCliente: 'Sem crédito nas compras: a isenção do transporte público não dá crédito do imposto pago nas compras.' };
+  if (isentoPass && ent.pctComprasComCredito != null && ent.pctComprasComCredito !== '' && +ent.pctComprasComCredito === 0) {
+    out.push({ chave: 'credCompras', rotulo: 'Compras de mercadorias que dão crédito (pelo NCM)', curto: 'compras que dão crédito', categoria: 'dado', valor: '0,0% das compras', ...ISENCAO });
+  } else if (ent.pctComprasComCredito != null && ent.pctComprasComCredito !== '') {
     const pc = proc.pctCred || {};
     const v0 = +ent.pctComprasComCredito;
     const e = v => ({ ...ent, pctComprasComCredito: v });
@@ -332,7 +465,9 @@ function itensComplementares(ent, proc) {
       falta: 'a revisão do NCM das compras nos maiores fornecedores',
       variantes: vs.map(v => ({ rotulo: p1(v) + '% das compras', ent: e(v), valor: v })), bissecao: { atual: v0, ent: e, fmt: v => p1(v) + '% das compras' } });
   }
-  if (ent.pctDespesasComCredito != null && ent.pctDespesasComCredito !== '' && +ent.pctDespesasComCredito < 100) {
+  if (isentoPass) {
+    out.push({ chave: 'credDespesas', rotulo: 'Crédito das despesas (% do cheio)', categoria: 'dado', valor: '0,0% do cheio', ...ISENCAO });
+  } else if (ent.pctDespesasComCredito != null && ent.pctDespesasComCredito !== '' && +ent.pctDespesasComCredito < 100) {
     out.push({ chave: 'credDespesas', rotulo: 'Crédito das despesas (% do cheio)', categoria: 'dado', valor: p1(ent.pctDespesasComCredito) + '% do cheio',
       fonte: 'Estimativa informada na ficha', periodo: '—', nivel: 'media', motivo: 'Estimativa de quem preencheu: o crédito é o IBS/CBS que cada fornecedor destaca (serviço com redução, aluguel, VR e VA creditam menos).', falta: null });
   }
@@ -364,7 +499,7 @@ function testar(it, base) {
   for (const v of it.variantes) {
     let r = null; try { r = simular(v.ent); } catch (e) { r = null; }
     if (!r) continue;
-    it.resultados.push({ rotulo: v.rotulo, valor: v.valor, decisao: decisaoDe(r), diferenca: r.semestre.diferenca });
+    it.resultados.push({ rotulo: v.rotulo, rotuloCliente: v.rotuloCliente, valor: v.valor, premissa: !!v.premissa, decisao: decisaoDe(r), diferenca: r.semestre.diferenca });
   }
   const vira = it.resultados.filter(x => x.decisao !== base);
   it.muda = vira.length > 0;
@@ -378,35 +513,46 @@ function testar(it, base) {
     }
     it.virada = { valor: b, texto: it.bissecao.fmt(b), decisao: vira[0].decisao };
   }
-  const rotLista = it.resultados.map(x => x.rotulo);
   // "Com 30% da receita, …" · "Sem o crédito de estoque, …" (a variante que já começa com "sem" não leva o "com")
   const com = r => /^sem /i.test(r) ? r.charAt(0).toUpperCase() + r.slice(1) : 'Com ' + r;
-  it.efeito = it.muda
-    ? com(vira[0].rotulo) + ', o resultado passa a ser “' + ROT_DECISAO[vira[0].decisao] + '”' + (it.virada ? ' — vira a partir de ' + it.virada.texto : '') + '.'
-    : rotLista.length === 2 ? 'Entre ' + rotLista[0] + ' e ' + rotLista[1] + ', o resultado continua “' + ROT_DECISAO[base] + '”.'
-    : com(rotLista[0]) + ', o resultado continua “' + ROT_DECISAO[base] + '”.';
+  // o texto com os rótulos do escritório e, quando a variante tem, com os do cliente (sem artigo de lei — 13/10/2026)
+  const efeitoCom = rot => {
+    const lista = it.resultados.map(rot);
+    return it.muda
+      ? com(rot(vira[0])) + ', o resultado passa a ser “' + ROT_DECISAO[vira[0].decisao] + '”' + (it.virada ? ' — vira a partir de ' + it.virada.texto : '') + '.'
+      : lista.length === 2 ? 'Entre ' + lista[0] + ' e ' + lista[1] + ', o resultado continua “' + ROT_DECISAO[base] + '”.'
+      : lista.length > 2 ? 'Nos ' + lista.length + ' cenários testados — ' + lista.join('; ') + ' —, o resultado continua “' + ROT_DECISAO[base] + '”.'
+      : com(lista[0]) + ', o resultado continua “' + ROT_DECISAO[base] + '”.';
+  };
+  it.efeito = efeitoCom(x => x.rotulo);
+  if (it.resultados.some(x => x.rotuloCliente)) it.efeitoCliente = efeitoCom(x => x.rotuloCliente || x.rotulo);
 }
 
 // ============================================================
 // avaliarConfianca(ent, procedencia, ctx) → a tabela de confiança e a conclusão
 //   ent: a entrada do motor (simular) · procedencia: { receita, rbt12, anexo, aliqEfetiva, partilha, pctExcluidoST,
 //   pctReceitaMonofasica, pctMerc, pctDesp, pctPJ, mix, pctCred, … } cada um { fonte, meses, texto, … }
-//   ctx: { tipo, vendeMercadoria, podeReduzir, refeicaoEmpresas, passageiros } (perfil da atividade), sim (opcional)
+//   ctx: { tipo, vendeMercadoria, podeReduzir, refeicaoEmpresas, passageiros, passageirosOutros, trilhos, fretamentoIntermunicipal,
+//   reducaoServico, ramoZero }
+//   (perfil da atividade — dominio-relatorios.js), sim (opcional)
 // ============================================================
 export function avaliarConfianca(ent, procedencia, ctx = {}) {
   const proc = procedencia || {};
   const sim = ctx.sim || simular(ent);
   const base = decisaoDe(sim);
-  const itens = [itemReceita(ent, proc.receita), itemSimples(ent, proc), itemCompras(ent, proc, ctx), itemPJ(ent, proc, ctx), itemMix(ent, proc, ctx), ...itensComplementares(ent, proc)];
+  const itens = [itemReceita(ent, proc.receita), itemSimples(ent, proc), itemCompras(ent, proc, ctx), itemPJ(ent, proc, ctx), itemMix(ent, proc, ctx), ...itensComplementares(ent, proc, ctx)];
   itens.forEach(it => {
     // o que o relatório do cliente mostra no lugar dos textos do escritório (rt-analise.js, versão do cliente)
-    if (it.falta) it.faltaCliente = FALTA_CLIENTE[it.falta] || it.falta;
+    if (it.falta) it.faltaCliente = it.faltaCliente || FALTA_CLIENTE[it.falta] || it.falta;
     if (it.fonte === ORIGEM_LEGADO) { it.fonteCliente = FONTE_LEGADO_CLIENTE; it.motivoCliente = it.motivoCliente || MOTIVO_LEGADO_CLIENTE; }
     it.selo = it.selo || SELO_NIVEL[it.nivel];
     // o que se escreve no texto corrido: "confiança baixa", "não medido", "deduzido, não medido", "estimativa"
     it.confianca = it.nivel === 'nao_medido' ? (it.selo === 'deduzido' ? 'deduzido, não medido' : 'não medido')
       : String(it.selo).startsWith(SELO_NIVEL[it.nivel]) ? 'confiança ' + it.selo : it.selo;
     testar(it, base);
+    // só a variante que depende da lei muda o resultado (a aula na educação desportiva, por exemplo): o número vira premissa —
+    // a lei não tira a conclusão (13/10/2026)
+    if (it.categoria === 'dado' && it.muda && it.resultados.filter(x => x.decisao !== base).every(x => x.premissa)) it.categoria = 'premissa';
   });
   const fraco = it => it.nivel === 'baixa' || it.nivel === 'nao_medido';
   const decisivos = itens.filter(it => it.categoria === 'dado' && it.muda && fraco(it));
@@ -417,7 +563,8 @@ export function avaliarConfianca(ent, procedencia, ctx = {}) {
   // plausível): número que não é preciso pra virar não entra. Antes, toda combinação levava os 4 primeiros fracos, e um
   // "não medido" que nem mexia no resultado virava decisivo. No mesmo tamanho, os grupos com número não medido vêm primeiro
   let conjunto = null, doConjunto = [];
-  const soltos = itens.filter(it => it.categoria === 'dado' && fraco(it) && !it.muda && it.variantes && it.variantes.length);
+  const varsDado = it => (it.variantes || []).filter(v => !v.premissa);
+  const soltos = itens.filter(it => it.categoria === 'dado' && fraco(it) && !it.muda && varsDado(it).length);
   if (!decisivos.length && soltos.length >= 2) {
     const delta = e => Object.fromEntries(Object.keys(e).filter(k => e[k] !== ent[k]).map(k => [k, e[k]]));
     const pool = soltos.slice(0, 6);
@@ -426,7 +573,7 @@ export function avaliarConfianca(ent, procedencia, ctx = {}) {
     for (let k = 2; k <= Math.min(4, pool.length) && !conjunto; k++) {
       for (const g of grupos(k).sort((a, b) => temNM(b) - temNM(a))) {
         let combos = [[]];
-        g.forEach(it => { combos = combos.flatMap(c => it.variantes.map(v => c.concat({ it, v, d: delta(v.ent) }))); });
+        g.forEach(it => { combos = combos.flatMap(c => varsDado(it).map(v => c.concat({ it, v, d: delta(v.ent) }))); });
         for (const c of combos) {
           let r = null; try { r = simular(Object.assign({}, ent, ...c.map(o => o.d))); } catch (e) { r = null; }
           if (r && decisaoDe(r) !== base) {

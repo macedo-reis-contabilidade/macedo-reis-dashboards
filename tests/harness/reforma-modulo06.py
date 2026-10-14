@@ -10,7 +10,9 @@ nos bares, transporte e a fonte do crédito das despesas — em tests/rt-analise
 
 Confere:
   1. a dica do campo diz quanto credita o aluguel (30% se o locador for do regime regular; nada se for pessoa física não
-     contribuinte) e que VR, VA e plano de saúde creditam só o débito do fornecedor, sem perder a linha do −30%;
+     contribuinte) e que VR, VA e plano de saúde creditam só o débito do fornecedor, sem perder a linha do −30% — que,
+     desde o Módulo 07 (13/10/2026), vale só com prestador do regime regular que cumpre os requisitos do art. 127
+     (prestador do Simples por dentro dá só o IBS/CBS do DAS dele, cerca de 15% do cheio; serviço com −60% credita 40%);
   2. o título do campo cita os artigos (LC 214, art. 261, parágrafo único, e art. 57, §3º, IV, na redação da LC 227);
   3. numa cozinha de refeições para empresas — o caso só com 4 dígitos do CNAE (5620) e o cadastro com a subclasse
      5620-1/01 —, a ficha calcula "opte, se o comercial confirmar" e a análise sai como venda a empresas: atividade
@@ -84,11 +86,19 @@ def main():
         dica = br(p.inner_text('label:has(#sPctDespCred) .hint'))
         titulo = br(p.get_attribute('label:has(#sPctDespCred)', 'title') or '')
         ok('art. 127' in dica and '70%' in dica, f'a dica mantém o −30% das profissões (70% do cheio) ({dica[:70]}…)')
+        # Módulo 07 (13/10/2026): os 70% só com prestador do regime regular que cumpre os requisitos; Simples por dentro e −60%
+        ok('70% se o prestador for do regime regular e cumprir os requisitos do art. 127' in dica,
+           'a dica condiciona os 70% ao prestador do regime regular que cumpre os requisitos do art. 127')
+        ok('prestador do Simples por dentro: só o IBS/CBS do DAS dele (cerca de 15% do cheio)' in dica,
+           'a dica diz que o prestador do Simples por dentro dá só o IBS/CBS do DAS dele (cerca de 15% do cheio)')
+        ok('serviço com −60% (saúde, educação): 40%' in dica, 'a dica diz que serviço com −60% (saúde, educação) credita 40%')
         ok('aluguel de imóvel: 30% se o locador for do regime regular' in dica and 'nada se for pessoa física não contribuinte' in dica,
            'a dica diz quanto credita o aluguel: 30% (locador do regime regular) ou nada (pessoa física não contribuinte)')
         ok('VR, VA e plano de saúde: só o débito do fornecedor' in dica, 'a dica diz que VR, VA e plano de saúde creditam só o débito do fornecedor')
         ok('art. 261, parágrafo único' in titulo and 'redução de 70%' in titulo and 'art. 57, §3º, IV' in titulo and 'LC 227' in titulo,
            'o título cita a redução de 70% da locação (art. 261, parágrafo único) e o art. 57, §3º, IV, na redação da LC 227')
+        ok('cumpre os requisitos do art. 127' in titulo and 'art. 47, §9º, II' in titulo and 'credita 40% do cheio' in titulo,
+           'o título traz a condição dos 70%, o crédito limitado do Simples por dentro (art. 47, §9º, II) e os 40% do serviço com −60%')
         ok(p.get_attribute('#sPctDespCred', 'placeholder') == '100 = cheio', 'o campo continua com o mesmo id e o mesmo padrão')
         p.click('#fiFechar'); p.wait_for_timeout(300)
 

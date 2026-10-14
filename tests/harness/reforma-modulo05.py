@@ -8,7 +8,10 @@ armadilha em window.__mockDb, só nesta página — o supabase.mock.js compartil
 
 Confere:
   1. o campo "Mix: % redução 30%" mostra que a redução é só das profissões do art. 127 e, na sociedade, só com os cinco
-     requisitos do §1º, II (dica e título);
+     requisitos do §1º, II (dica e título); desde o Módulo 07 (13/10/2026), o título diz "profissões diferentes, todas do
+     rol, cada um atuando na sua habilitação" (§2º, II), "não é sócia de outra pessoa jurídica" (alínea c), que atividade
+     fora das habilitações tira a redução de toda a receita (alínea d) e que a academia pode ter o −60% da educação
+     desportiva (NBS 1.2205.12.00, art. 141, I);
   2. numa empresa com exportação (CFOP 7.101), venda à Zona Franca (CFOP 6.109) e venda a comercial exportadora (CFOP
      6.501), "Importar" → "Aplicar" preenche a ficha pelas notas, calcula e deixa na nota das notas um aviso por tipo, com
      o valor e o artigo da LC 214; o aviso continua lá depois do cálculo e a mensagem manda ler o aviso;
@@ -110,8 +113,15 @@ def main():
         titulo = p.get_attribute('#sMixRed30Box', 'title') or ''
         ok('art. 127' in dica and '5 requisitos' in dica and 'nenhum sócio PJ' in dica and 'serviço feito pelos sócios' in dica,
            f'dica do −30%: profissão do art. 127 e os 5 requisitos da sociedade ({dica[:80]}…)')
-        ok('§1º, II' in titulo and 'contabilistas' in titulo and 'advogados' in titulo and 'não é sócia de outra empresa' in titulo and '(§3º)' in titulo,
+        ok('§1º, II' in titulo and 'contabilistas' in titulo and 'advogados' in titulo and 'não é sócia de outra pessoa jurídica' in titulo and '(§3º)' in titulo,
            'o título traz as 18 profissões, os cinco requisitos do §1º, II, o §2º e a academia do §3º')
+        # Módulo 07 (13/10/2026): o §2º, II, sem ambiguidade; a alínea c como a lei diz; a alínea d em toda a receita; a academia e o −60%
+        ok('sócios de profissões diferentes, todas do rol, cada um atuando na sua habilitação' in titulo and 'profissões diferentes do rol' not in titulo,
+           'o título diz "profissões diferentes, todas do rol, cada um atuando na sua habilitação" (§2º, II), sem a frase ambígua')
+        ok('outra empresa' not in titulo and 'tira a redução de toda a receita' in titulo,
+           'alínea c como a lei ("outra pessoa jurídica") e a alínea d tirando a redução de toda a receita')
+        ok('NBS 1.2205.12.00' in titulo and 'art. 141, I' in titulo and 'vale a maior redução' in titulo,
+           'a academia pode ter o −60% da educação desportiva (NBS 1.2205.12.00, art. 141, I) — vale a maior, a conferir')
         p.click('#fiFechar'); p.wait_for_timeout(300)
 
         # 2) exportação, Zona Franca e comercial exportadora nas notas

@@ -2179,7 +2179,8 @@
         if (resp.status === 404) throw new Error('CNPJ não encontrado na base da Receita');
         if (!resp.ok) throw new Error('a consulta respondeu HTTP ' + resp.status + (resp.status === 429 ? ' (limite de consultas — tente em instantes)' : ''));
         const j = await resp.json();
-        const fmtCnae = c => { const dg = String(c ?? '').replace(/\D/g, ''); return dg.length === 7 ? dg.slice(0, 4) + '-' + dg.slice(4, 5) + '/' + dg.slice(5) : String(c ?? ''); };
+        // a BrasilAPI manda o CNAE como número: a subclasse 0121-1/01 chega 121101, sem o zero da frente — 6 dígitos ganham o zero antes de formatar
+        const fmtCnae = c => { let dg = String(c ?? '').replace(/\D/g, ''); if (dg.length === 6) dg = '0' + dg; return dg.length === 7 ? dg.slice(0, 4) + '-' + dg.slice(4, 5) + '/' + dg.slice(5) : String(c ?? ''); };
         const porte = (() => { const t = String(j.porte || '').toUpperCase(); if (j.opcao_pelo_mei) return 'MEI'; if (t.includes('MICRO')) return 'ME'; if (t.includes('PEQUENO')) return 'EPP'; if (t.includes('DEMAIS')) return 'Demais'; return null; })();
         const d = {
           documento: j.cnpj, nome_principal: j.razao_social, nome_fantasia: j.nome_fantasia || null,

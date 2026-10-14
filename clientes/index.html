@@ -542,7 +542,8 @@
     function fecharRcv(){ if (rcvRodando) return; rcvOverlay.classList.remove('is-open'); }
 
     const limpaDoc = s => String(s || '').replace(/[^0-9A-Za-z]/g, '').toUpperCase();
-    const fmtCnaeCod = c => { const d = String(c ?? '').replace(/\D/g,''); return d.length === 7 ? `${d.slice(0,4)}-${d.slice(4,5)}/${d.slice(5)}` : String(c ?? ''); };
+    // A BrasilAPI manda o CNAE como número: a subclasse 0121-1/01 chega 121101, sem o zero da frente — 6 dígitos ganham o zero antes de formatar
+    const fmtCnaeCod = c => { let d = String(c ?? '').replace(/\D/g,''); if (d.length === 6) d = '0' + d; return d.length === 7 ? `${d.slice(0,4)}-${d.slice(4,5)}/${d.slice(5)}` : String(c ?? ''); };
     const vazio = v => v == null || (typeof v === 'string' && v.trim() === '') || (Array.isArray(v) && v.length === 0);
     const espera = ms => new Promise(r => setTimeout(r, ms));
 

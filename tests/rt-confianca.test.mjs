@@ -176,14 +176,143 @@ console.log('Meses em dúvida, parte informada e transporte de passageiros:');
   const ano = { fonte: 'entradas', meses: M12, mesesFaturamento: 12, regimeFornecedores: true };
   const avP = avaliarConfianca({ ...BASE, pctComprasMercadorias: 3, pctComprasDespesas: 2, pctPJ: 85 }, { ...PROC_BASE, pctMerc: ano, pctDesp: { fonte: 'manual' }, pctPJ: { fonte: 'saidas', meses: M12, porDocumento: true, regimeConsultado: true } }, INDUSTRIA);
   ok(item(avP, 'compras').nivel === 'media' && /despesas foram informadas sem relatório/.test(item(avP, 'compras').motivo) && item(avP, 'compras').efeito, 'parte medida e parte digitada: média, diz qual parte, e é testada');
-  // transporte de passageiros: a redução depende do serviço (LC 214, arts. 157, 285 a 287) — não medido, testado com −40%
+  // transporte de passageiros: a redução depende do serviço (LC 214, arts. 157, 285 a 287) — não medido, testado com o −40% e
+  // com a isenção (13/10/2026, Módulo 07: antes só o −40%)
   const pass = avaliarConfianca({ ...BASE, anexo: 'III', pctPJ: 10 }, { ...PROC_BASE, pctPJ: { fonte: 'manual' } }, { tipo: 'transporte', passageiros: true, vendeMercadoria: false, podeReduzir: false });
-  ok(item(pass, 'mix').nivel === 'nao_medido' && /art\. 286/.test(item(pass, 'mix').motivo) && /−40%/.test(item(pass, 'mix').efeito || ''), 'transporte de passageiros: mix não medido, testado com −40% (nunca "produtos do ramo")');
+  const pm = item(pass, 'mix');
+  ok(pm.nivel === 'nao_medido' && /art\. 286/.test(pm.motivo) && /art\. 157/.test(pm.motivo) && pm.resultados.length === 2 && pm.resultados.some(r => /−40%/.test(r.rotulo)) && pm.resultados.some(r => /isenção/.test(r.rotulo)),
+    'transporte de passageiros: mix não medido, testado com o −40% e com a isenção (nunca "produtos do ramo")');
   // o relatório do cliente: o que falta, sem os nomes do escritório
   const nv = avaliarConfianca(BASE, { ...PROC_BASE, pctMerc: { fonte: 'vazio' }, pctDesp: { fonte: 'vazio' }, pctPJ: { fonte: 'deduzido', perfil: 'industria' } }, INDUSTRIA);
   ok(nv.faltamCliente.length === nv.faltam.length && !nv.faltamCliente.some(f => /Domínio|XLS|XML|acompanhamento|consulta de CNPJ/.test(f)), 'o que falta, pro cliente: ' + nv.faltamCliente.join('; '));
   const leg = avaliarConfianca({ ...BASE, pctPJ: 95 }, inferirProcedencia({ ...BASE, pctPJ: 95 }, null), INDUSTRIA);
   ok(item(leg, 'pj').fonteCliente === 'Levantamento anterior do escritório' && /levantamento anterior/.test(item(leg, 'pj').motivoCliente), 'simulação antiga: pro cliente, "levantamento anterior do escritório"');
+}
+
+// ---------- Módulo 07 (13/10/2026): serviço com redução, transporte de passageiros, mercado e hortifrúti ----------
+const M12_ALTA = { ...PROC_BASE, pctMerc: { fonte: 'entradas', meses: M12, mesesFaturamento: 12, regimeFornecedores: true }, pctDesp: { fonte: 'entradas', meses: M12, mesesFaturamento: 12, regimeFornecedores: true },
+  pctPJ: { fonte: 'saidas', meses: M12, porDocumento: true, regimeConsultado: true } };
+const SERVICO = { tipo: 'servico', vendeMercadoria: false, podeReduzir: false };
+const SV = { anexo: 'III', rbt12: 1200000, receita: 100000, mixCheia: 100, mixRed60: 0, mixRed40: 0, mixRed30: 0, mixZero: 0, pctComprasMercadorias: 0, pctComprasDespesas: 10, pctImpostoEmbutido: 0,
+  pctExcluidoST: 0, partilha: 15.6, cbs: 9.2, ibs: 0.1, pctPJ: 80 };
+const CONTAB = { tipo: 'profissao', faixas: ['mixRed30'], ramo: 'contabilidade', quem: 'contabilistas (art. 127, VII)' };
+
+console.log('Serviço com redução pelo CNAE — profissões do art. 127, lista de NBS e academia:');
+{
+  // escritório de contabilidade, 80% de clientes PJ: tudo cheio dá "manter"; com o −30% da sociedade, "opte, se"
+  const av = avaliarConfianca(SV, M12_ALTA, { ...SERVICO, reducaoServico: CONTAB });
+  const mx = item(av, 'mix');
+  ok(av.decisao === 'manter' && mx.categoria === 'dado' && mx.nivel === 'baixa' && mx.selo === 'a conferir' && /requisitos do art\. 127 não foram conferidos/.test(mx.fonte), 'contabilidade sem conferir os requisitos: tudo cheio, confiança baixa, "a conferir" (antes, "alta (norma)")');
+  ok(mx.muda && /−30%/.test(mx.efeito) && /opte, se o comercial confirmar/.test(mx.efeito) && av.conclusao === 'sem_conclusao' && av.decisivos.includes(mx), 'com o −30% o resultado vira "opte, se": sem conclusão');
+  ok(av.faltamCliente.some(f => /contrato social e o registro dos sócios no conselho/.test(f)) && !av.faltamCliente.some(f => /art\. 127/.test(f)), 'o que falta, pro cliente: o contrato social e o registro no conselho (sem o número do artigo)');
+  // o −30% digitado na ficha: média, e testa o contrário (sem os requisitos, tudo cheio)
+  const inf = avaliarConfianca({ ...SV, mixCheia: 0, mixRed30: 100 }, { ...M12_ALTA, mix: { fonte: 'manual' } }, { ...SERVICO, reducaoServico: CONTAB });
+  const mi = item(inf, 'mix');
+  ok(inf.decisao === 'se' && mi.nivel === 'media' && mi.resultados.length === 1 && /tudo à alíquota cheia \(se a sociedade não cumprir os requisitos/.test(mi.resultados[0].rotulo) && inf.conclusao === 'a_confirmar', 'com o −30% informado: média, testado sem os requisitos — a confirmar');
+  // clínica: a lista de NBS do Anexo III é da lei — premissa, não tira a conclusão
+  const CLIN = { tipo: 'anexo', faixas: ['mixRed60'], ramo: 'saúde humana', anexo: 'Anexo III da LC 214 (serviços de saúde, art. 130)' };
+  const cl = avaliarConfianca({ ...SV, pctComprasDespesas: 20, pctPJ: 5 }, M12_ALTA, { ...SERVICO, reducaoServico: CLIN });
+  const mc = item(cl, 'mix');
+  ok(mc.categoria === 'premissa' && mc.muda && cl.premissas.includes(mc) && !cl.decisivos.includes(mc) && /Anexo III/.test(mc.motivo), 'clínica: o −60% do Anexo III muda o resultado, mas é premissa da lei (não decide a conclusão)');
+  ok(cl.conclusao === 'firme' && /toda a receita com −60% \(se o serviço estiver no Anexo III da LC 214\)/.test(mc.resultados[0].rotulo), 'e o teste diz qual anexo');
+  // academia: os dois — −30% (registrada no conselho, §3º) e −60% (educação desportiva, NBS 1.2205.12.00)
+  const ACAD = { tipo: 'desporto', faixas: ['mixRed30', 'mixRed60'], ramo: 'academia' };
+  const ac = avaliarConfianca({ ...SV, pctPJ: 5, pctComprasDespesas: 20 }, M12_ALTA, { ...SERVICO, reducaoServico: ACAD });
+  const ma = item(ac, 'mix');
+  ok(ma.resultados.length === 2 && /art\. 127, §3º/.test(ma.resultados[0].rotulo) && /NBS 1\.2205\.12\.00/.test(ma.resultados[1].rotulo) && /vale a maior/.test(ma.motivo), 'academia: testa o −30% e o −60% — vale a maior');
+  // quem também vende mercadoria não entra aqui (o CNAE de serviço não decide o mix de quem vende produto)
+  const vet = avaliarConfianca({ ...SV, anexo: 'I' }, M12_ALTA, { tipo: 'comercio', vendeMercadoria: true, podeReduzir: false, reducaoServico: { tipo: 'profissao', faixas: ['mixRed30'], ramo: 'veterinária', quem: 'médicos veterinários' } });
+  ok(item(vet, 'mix').selo !== 'a conferir', 'empresa que vende mercadoria: o mix segue a regra do ramo, não a do serviço');
+  // das notas: a nota de serviço não mostra a redução — continua baixa
+  const nt = avaliarConfianca(SV, { ...M12_ALTA, mix: { fonte: 'notas', meses: M12 } }, { ...SERVICO, reducaoServico: CONTAB });
+  ok(item(nt, 'mix').nivel === 'baixa' && /a nota de serviço não mostra a redução/.test(item(nt, 'mix').fonte), 'mix puxado das NFS-e: a nota não mostra a redução, confiança baixa');
+  // serviço fora do rol continua alíquota cheia pela lei
+  ok(item(avaliarConfianca(SV, M12_ALTA, SERVICO), 'mix').selo === 'alta (norma)', 'serviço sem redução pelo CNAE: alíquota cheia pela lei, como antes');
+}
+
+console.log('Transporte de passageiros — isenção do art. 157 e −40% do art. 286:');
+{
+  // ônibus urbano com permissão, o exemplo da leitura do Módulo 07: cheio dá "manter", −40% empata, isento dá "optar por fora"
+  const onibus = { anexo: 'III', rbt12: 1800000, receita: 150000, mixCheia: 100, mixRed60: 0, mixRed40: 0, mixRed30: 0, mixZero: 0, pctComprasMercadorias: 0, pctComprasDespesas: 35,
+    pctImpostoEmbutido: 0, pctExcluidoST: 0, partilha: 16.6, cbs: 9.2, ibs: 0.1, pctPJ: 0 };
+  // fatura com NFS-e: o perfil sai "serviço" pelas saídas, mas é passageiros pelo CNAE
+  const av = avaliarConfianca(onibus, M12_ALTA, { tipo: 'servico', passageiros: true, vendeMercadoria: false, podeReduzir: false });
+  const mx = item(av, 'mix');
+  const r40 = mx.resultados.find(r => /−40%/.test(r.rotulo)), ris = mx.resultados.find(r => /isenção/.test(r.rotulo));
+  ok(av.decisao === 'manter' && mx.nivel === 'nao_medido' && mx.selo === 'a conferir', 'ônibus que fatura com NFS-e: o mix é dos passageiros (não "serviço, alíquota cheia pela lei")');
+  ok(r40 && r40.decisao === 'manter' && Math.abs(r40.diferenca - (-2309.15)) < 0.01, '−40%: ainda "manter" (empate), −R$ 2.309,15 no semestre');
+  ok(ris && ris.decisao === 'fora' && Math.abs(ris.diferenca - (-20945.88)) < 0.01, 'isento: "optar por fora", −R$ 20.945,88 — sem o crédito das despesas (alíquota zero com crédito daria −R$ 50.240,88)');
+  ok(av.conclusao === 'sem_conclusao' && av.faltamCliente.some(f => /linha aberta ao público, com itinerário e tarifa fixados pelo poder público/.test(f)) && !av.faltamCliente.some(f => /art\.|LC 214/.test(f)),
+    'sem conclusão; pro cliente, falta saber se é linha aberta ao público com tarifa fixada pelo poder público (sem artigo de lei)');
+  ok(/sob autorização, permissão ou concessão/.test(mx.motivo) && /urbano, semiurbano e metropolitano \(art\. 285, I\)/.test(mx.motivo), 'o motivo traz a "autorização" do art. 157 e o semiurbano do art. 285, I');
+  ok(/art\. 157/.test(mx.efeito) && !/art\.|LC 214/.test(mx.efeitoCliente || 'art.'), 'o efeito do escritório cita o artigo; o do cliente, não');
+  // isenção informada na ficha: média, testa o cheio e o −40%
+  const isento = { ...onibus, mixCheia: 0, mixZero: 100, pctDespesasComCredito: 0 };
+  const ai = avaliarConfianca(isento, { ...M12_ALTA, mix: { fonte: 'manual' } }, { tipo: 'servico', passageiros: true, vendeMercadoria: false, podeReduzir: false });
+  const mi = item(ai, 'mix');
+  ok(ai.decisao === 'fora' && mi.nivel === 'media' && mi.resultados.length === 2 && mi.resultados.some(r => /tudo à alíquota cheia/.test(r.rotulo)) && ai.conclusao === 'a_confirmar', 'isenção informada: média, testa o cheio e o −40% — a confirmar');
+  // fretamento, táxi e escolar: não é transporte público coletivo — alíquota cheia, e não "transporte de cargas"
+  const fr = avaliarConfianca(onibus, M12_ALTA, { tipo: 'transporte', passageirosOutros: true, vendeMercadoria: false, podeReduzir: false });
+  ok(item(fr, 'mix').selo === 'alta (norma)' && /Fretamento dentro do município, táxi e transporte escolar/.test(item(fr, 'mix').motivo) && !/cargas/.test(item(fr, 'mix').motivo), 'fretamento municipal, táxi e escolar: alíquota cheia pela lei, com o motivo certo');
+  ok(/cargas/.test(item(avaliarConfianca(onibus, M12_ALTA, { tipo: 'transporte', vendeMercadoria: false, podeReduzir: false }), 'mix').motivo), 'transporte de cargas continua "sem redução"');
+}
+
+console.log('Revisão do Módulo 07 — isenção na ficha, trem urbano, fretamento entre cidades e a aula de academia:');
+{
+  const onibus = { anexo: 'III', rbt12: 1800000, receita: 150000, mixCheia: 100, mixRed60: 0, mixRed40: 0, mixRed30: 0, mixZero: 0, pctComprasMercadorias: 0, pctComprasDespesas: 60,
+    pctImpostoEmbutido: 0, pctExcluidoST: 0, partilha: 16.6, cbs: 9.2, ibs: 0.1, pctPJ: 0 };
+  const PASS = { tipo: 'servico', passageiros: true, vendeMercadoria: false, podeReduzir: false };
+  // isenção na ficha: as variantes fora dela voltam ao crédito padrão — antes herdavam o crédito zerado da isenção
+  const isento = { ...onibus, mixCheia: 0, mixZero: 100, pctDespesasComCredito: 0, pctComprasComCredito: 0 };
+  const ai = avaliarConfianca(isento, { ...M12_ALTA, mix: { fonte: 'manual' } }, PASS);
+  const r40 = item(ai, 'mix').resultados.find(r => /−40%/.test(r.rotulo));
+  const certo = simular({ ...onibus, mixCheia: 0, mixRed40: 100 }).semestre.diferenca;
+  ok(r40 && Math.abs(r40.diferenca - certo) < 0.01 && r40.decisao === 'fora', 'isento na ficha: o −40% é testado com o crédito das despesas (' + Math.round(certo) + ', "optar por fora") — antes, sem crédito, dava custo');
+  const ai80 = avaliarConfianca({ ...isento, pctComprasDespesas: 80 }, { ...M12_ALTA, mix: { fonte: 'manual' } }, PASS);
+  ok(ai80.conclusao === 'firme' && !item(ai80, 'mix').muda, 'com despesas de 80%, cheio e −40% também dão "optar por fora": conclusão firme (antes, "a confirmar" falso)');
+  ok(item(ai, 'mix').valor === 'isento pelo art. 157 — sem débito e sem o crédito das compras' && item(ai, 'mix').valorCliente === 'isento — sem imposto na venda e sem crédito nas compras', 'o valor diz "isento" (e, pro cliente, sem o artigo)');
+  ok(/Zerado pela isenção/.test(item(ai, 'credDespesas').motivo) && !item(ai, 'credDespesas').efeito && /Zerado pela isenção/.test(item(ai, 'credCompras').motivo) && !item(ai, 'credCompras').efeito,
+    'crédito das despesas e das compras zerados pela isenção: o motivo é a isenção, sem faixa a testar');
+  // alíquota zero com o crédito mantido (não é a isenção): a isenção é testada e o motivo avisa como lançar
+  const zc = avaliarConfianca({ ...onibus, mixCheia: 0, mixZero: 100 }, { ...M12_ALTA, mix: { fonte: 'manual' } }, PASS);
+  ok(item(zc, 'mix').resultados.some(r => /isenção/.test(r.rotulo)) && /zere na ficha o crédito das despesas e o % das compras de mercadorias com crédito/.test(item(zc, 'mix').motivo), 'zero com crédito: testa a isenção e diz que campos zerar');
+  // trem e metrô: o zero do art. 285, I (com crédito) entra no teste; com despesas de 80% nenhum cenário vira — o texto cita os três
+  const tr = avaliarConfianca({ ...onibus, pctComprasDespesas: 80 }, M12_ALTA, { ...PASS, tipo: 'transporte', trilhos: true });
+  const mt = item(tr, 'mix');
+  ok(mt.resultados.length === 3 && mt.resultados.some(r => /art\. 285, I/.test(r.rotulo)) && !mt.muda && /^Nos 3 cenários testados — /.test(mt.efeito), 'trem urbano: −40%, isenção e zero com crédito; nenhum vira — "Nos 3 cenários testados — …"');
+  // fretamento entre cidades: o −40% do art. 286 é questão da lei — premissa, testada, não tira a conclusão
+  const FRET = { tipo: 'transporte', passageirosOutros: true, fretamentoIntermunicipal: true, vendeMercadoria: false, podeReduzir: false };
+  const fi = avaliarConfianca({ ...onibus, pctComprasDespesas: 50 }, M12_ALTA, FRET);
+  const mf = item(fi, 'mix');
+  ok(mf.categoria === 'premissa' && mf.selo === 'a conferir' && mf.muda && fi.premissas.includes(mf) && !fi.decisivos.includes(mf) && /art\. 286/.test(mf.motivo), 'fretamento entre cidades: o −40% muda o resultado, mas é premissa da lei (a conferir)');
+  // academia: o −30% (registro no conselho) é dado; só o −60% (educação desportiva, lista da lei) mudando, vira premissa
+  const ACAD = { tipo: 'desporto', faixas: ['mixRed30', 'mixRed60'], ramo: 'academia' };
+  const ac = avaliarConfianca({ ...SV, pctPJ: 5, pctComprasDespesas: 20 }, M12_ALTA, { ...SERVICO, reducaoServico: ACAD });
+  const ma = item(ac, 'mix');
+  ok(ma.categoria === 'premissa' && ma.resultados.find(r => /−30%/.test(r.rotulo)).decisao === 'manter' && ma.resultados.find(r => /−60%/.test(r.rotulo)).decisao === 'fora' && ac.conclusao !== 'sem_conclusao',
+    'academia: só o −60% (lista da lei) vira — premissa, sem "sem conclusão"');
+  const ac2 = avaliarConfianca({ ...SV, pctPJ: 30, pctComprasDespesas: 40 }, M12_ALTA, { ...SERVICO, reducaoServico: ACAD });
+  ok(item(ac2, 'mix').categoria === 'dado' && ac2.conclusao === 'sem_conclusao', 'academia em que o −30% (registro no conselho) também vira: dado da empresa — sem conclusão');
+  // o texto da conta segue o mix: −60% informado numa contabilidade não é "tudo à alíquota cheia"
+  const mx6 = avaliarConfianca({ ...SV, mixCheia: 80, mixRed60: 20 }, { ...M12_ALTA, mix: { fonte: 'manual' } }, { ...SERVICO, reducaoServico: CONTAB });
+  ok(/A conta usa o mix informado\.$/.test(item(mx6, 'mix').motivo), 'mix informado sem o −30%: "A conta usa o mix informado." (antes, "tudo à alíquota cheia")');
+}
+
+console.log('Mercado e hortifrúti sem as notas de venda — a alíquota zero entra no teste:');
+{
+  // minimercado: com metade a −60% ainda é "manter"; com 40% a zero e 30% a −60% (o exercício do curso), "optar por fora"
+  const mm = { anexo: 'I', rbt12: 900000, receita: 75000, mixCheia: 100, mixRed60: 0, mixRed40: 0, mixRed30: 0, mixZero: 0, pctComprasMercadorias: 70, pctComprasDespesas: 3, pctImpostoEmbutido: 0,
+    pctExcluidoST: 10, partilha: 15.5, cbs: 9.2, ibs: 0.1, pctPJ: 5 };
+  const COM = { tipo: 'comercio', vendeMercadoria: true, podeReduzir: true };
+  const av = avaliarConfianca(mm, M12_ALTA, { ...COM, ramoZero: 'mercado' });
+  const mx = item(av, 'mix');
+  ok(mx.nivel === 'nao_medido' && /cesta básica, o hortifrúti e os ovos têm alíquota zero/.test(mx.motivo), 'mercado sem as notas: não medido, e o motivo fala da alíquota zero');
+  ok(mx.resultados.length === 2 && mx.resultados[0].decisao === 'manter' && mx.resultados[1].decisao === 'fora' && /40% da venda com alíquota zero/.test(mx.resultados[1].rotulo), 'metade a −60% não muda; 40% a zero e 30% a −60% muda');
+  ok(av.conclusao === 'sem_conclusao' && av.decisivos.includes(mx), 'sem conclusão — antes, só com a metade a −60%, a conta ficava "manter" firme');
+  const antes = avaliarConfianca(mm, M12_ALTA, COM);
+  ok(antes.conclusao === 'firme' && item(antes, 'mix').resultados.length === 1, '(o mesmo caso sem o ramo de alíquota zero: só a metade a −60%, conclusão firme)');
+  const hf = avaliarConfianca(mm, M12_ALTA, { ...COM, ramoZero: 'hortifruti' });
+  ok(item(hf, 'mix').resultados.length === 1 && /90% da venda com alíquota zero/.test(item(hf, 'mix').resultados[0].rotulo) && /Anexo XV/.test(item(hf, 'mix').motivo), 'hortifrúti: testa 90% da venda a zero (Anexo XV), não "metade a −60%"');
 }
 
 console.log('O motor não é chamado com entrada inválida:');

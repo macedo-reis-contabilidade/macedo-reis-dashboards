@@ -317,14 +317,75 @@ export function naturezaReceita(v) {
   if (n === 933) return 'servico';
   return 'mercadoria';
 }
+// OS DÍGITOS DO CNAE (13/10/2026): só o código ("0121-1/01 - Horticultura…" → "0121101"; a descrição não entra) e, com 6
+// dígitos, o zero da frente de volta — a consulta à Receita (BrasilAPI) manda o CNAE como número, e a subclasse 0121-1/01
+// chegava "121101": o sistema lia divisão 12 (fumo) e o produtor de hortícolas virava comércio sem redução
+export function digitosCnae(cnae) {
+  const cod = String(cnae || '').split(/\s+-\s+/)[0];
+  let d = cod.replace(/\D/g, '');
+  if (d.length === 6) d = '0' + d;
+  return d;
+}
 // Ramos que vendem produto com alíquota reduzida ou zero na LC 214 (alimentos/cesta básica, medicamentos, higiene,
-// insumos agropecuários). Nos outros (eletro, móveis, vestuário, construção, autopeças…) o mix cheio é o correto pela norma,
-// não dado faltando. Pelo CNAE principal (7 dígitos ou prefixo).
-const RAMOS_COM_REDUCAO = ['01', '02', '03', '10', '4623', '4631', '4632', '4633', '4634', '4637', '4639', '4644', '4646', '4683', '4692',
-  '4711', '4712', '4721', '4722', '4724', '4729', '4771', '4772', '4789004'];
+// insumos agropecuários, dispositivos médicos e de acessibilidade, plantas). Nos outros (eletro, móveis, vestuário,
+// construção, autopeças…) o mix cheio é o correto pela norma, não dado faltando. Pelo CNAE principal (7 dígitos ou prefixo).
+// Módulo 07 (13/10/2026): entram material médico, odontológico e ortopédico (fabricação 3250-7/01 a 7/05, atacado 4645 e
+// 4664, varejo 4773 — Anexos IV, V, XII e XIII), plantas e flores (4789-0/02), limpeza (4649-4/08, 4789-0/05 — Anexo VIII),
+// café e soja em grão (4621, 4622 — in natura) e o atacado com predominância de alimentos (4691)
+const RAMOS_COM_REDUCAO = ['01', '02', '03', '10', '3250701', '3250702', '3250703', '3250704', '3250705', '4621', '4622', '4623', '4631', '4632',
+  '4633', '4634', '4637', '4639', '4644', '4645', '4646', '4649408', '4664', '4683', '4691', '4692',
+  '4711', '4712', '4721', '4722', '4724', '4729', '4771', '4772', '4773', '4789002', '4789004', '4789005'];
 export function ramoComReducao(cnae) {
-  const d = String(cnae || '').replace(/\D/g, '');
+  const d = digitosCnae(cnae);
   return !!d && RAMOS_COM_REDUCAO.some(p => d.startsWith(p));
+}
+// RAMOS COM ALÍQUOTA ZERO (13/10/2026, Módulo 07): no mercado, parte da venda é cesta básica (Anexo I) e hortifrúti e ovos
+// (Anexo XV), com alíquota zero — testar só "metade com −60%" não pega a virada; no hortifrúti e no produtor de hortícolas,
+// frutas e ovos, quase tudo é zero (LC 214, arts. 125 e 148)
+export function ramoComZero(cnae) {
+  const d = digitosCnae(cnae);
+  if (/^(4711|4712)/.test(d)) return 'mercado';
+  if (/^(4724|4633801|4633802|0121|0131|0132|0133|0155505)/.test(d)) return 'hortifruti';
+  return null;
+}
+// SERVIÇO COM REDUÇÃO PELO CNAE (13/10/2026, Módulo 07): candidato, não enquadramento. Profissões do art. 127 da LC 214
+// (−30% se a sociedade cumprir os requisitos do §1º, II — dado da empresa, no contrato social); serviços de educação e de
+// saúde humana (−60% pela lista de NBS dos Anexos II e III, arts. 129 e 130), eventos e produções nacionais (Anexo X,
+// art. 139) — as listas de NBS não estão na base; academia e escola de esporte (−30% sem os requisitos, se registrada no
+// conselho, art. 127, §3º, e −60% se a aula for a educação desportiva da NBS 1.2205.12.00, art. 141, I — vale a maior)
+const SERVICO_RED30 = [
+  ['6911701', 'advocacia', 'advogados (art. 127, II)'],
+  ['6920', 'contabilidade', 'contabilistas (art. 127, VII)'],
+  ['7111', 'arquitetura', 'arquitetos e urbanistas (art. 127, III)'],
+  ['7112', 'engenharia', 'engenheiros e agrônomos (art. 127, XI)'],
+  // 7119-7: topografia, desenho técnico, perícia de segurança do trabalho e outras atividades técnicas — os estudos geológicos
+  // (7119-7/02) ficam fora: geólogo não está no rol do art. 127
+  ['7119701', 'serviços técnicos de engenharia', 'engenheiros, agrônomos e técnicos industriais (art. 127, XI e XVII)'],
+  ['7119703', 'serviços técnicos de engenharia', 'engenheiros, agrônomos e técnicos industriais (art. 127, XI e XVII)'],
+  ['7119704', 'serviços técnicos de engenharia', 'engenheiros, agrônomos e técnicos industriais (art. 127, XI e XVII)'],
+  ['7119799', 'serviços técnicos de engenharia', 'engenheiros, agrônomos e técnicos industriais (art. 127, XI e XVII)'],
+  ['7490103', 'agronomia', 'agrônomos e técnicos agrícolas (art. 127, XI e XVIII)'],
+  ['7500', 'veterinária', 'médicos veterinários e zootecnistas (art. 127, XIII)'],
+  ['7020', 'consultoria em gestão', 'administradores e economistas (art. 127, I e VIII), só com os sócios registrados no conselho']
+];
+const SERVICO_RED60 = [
+  ['85', 'educação', 'Anexo II da LC 214 (serviços de educação, art. 129)'],
+  ['86', 'saúde humana', 'Anexo III da LC 214 (serviços de saúde, art. 130)'],
+  // (8230-0/02, casas de festas e eventos, fica fora: aluguel de salão e bufê não são produção de evento)
+  ['8230001', 'eventos', 'Anexo X da LC 214 (feiras, congressos e eventos nacionais, art. 139)'],
+  ['9001', 'espetáculos', 'Anexo X da LC 214 (espetáculos e shows nacionais, art. 139)'],
+  ['5911', 'produção audiovisual', 'Anexo X da LC 214 (produção audiovisual nacional, art. 139)'],
+  ['5912', 'pós-produção audiovisual', 'Anexo X da LC 214 (produção audiovisual nacional, art. 139)']
+];
+export function reducaoServicoPorCnae(cnae) {
+  const d = digitosCnae(cnae);
+  if (!d) return null;
+  if (/^(9313|8591)/.test(d)) return { tipo: 'desporto', faixas: ['mixRed30', 'mixRed60'], ramo: d.startsWith('9313') ? 'academia' : 'ensino de esportes' };
+  const r30 = SERVICO_RED30.find(([p]) => d.startsWith(p));
+  if (r30) return { tipo: 'profissao', faixas: ['mixRed30'], ramo: r30[1], quem: r30[2] };
+  const r60 = SERVICO_RED60.find(([p]) => d.startsWith(p));
+  if (r60) return { tipo: 'anexo', faixas: ['mixRed60'], ramo: r60[1], anexo: r60[2] };
+  return null;
 }
 
 // O CNAE do caso (rt_casos.cnae_base) às vezes tem só 4 dígitos; o do cadastro vem completo. Quando um é o começo do
@@ -332,7 +393,7 @@ export function ramoComReducao(cnae) {
 // consumo domiciliar). Se divergem, vale o do caso, como sempre.
 export function cnaeMaisCompleto(base, cadastro) {
   const b = String(base || ''), c = String(cadastro || '');
-  const db = b.replace(/\D/g, ''), dc = c.replace(/\D/g, '');
+  const db = digitosCnae(b), dc = digitosCnae(c);
   if (!db) return c;
   if (!dc) return b;
   return dc.length > db.length && dc.startsWith(db) ? c : b;
@@ -344,9 +405,10 @@ export function cnaeMaisCompleto(base, cadastro) {
 // "alimentação", mas vende a empresas por contrato — o fornecimento pode até ficar fora do regime de bares (LC 214,
 // art. 273, a conferir). Marcado em refeicaoEmpresas, pra não cair nos textos e premissas de restaurante.
 export function perfilAtividade({ natureza, cnae, anexo, restaurante } = {}) {
-  const div = parseInt(String(cnae || '').replace(/\D/g, '').slice(0, 2), 10);
-  const cnae4 = String(cnae || '').replace(/\D/g, '').slice(0, 4);
-  const cnae7 = String(cnae || '').replace(/\D/g, '').slice(0, 7);
+  const dg = digitosCnae(cnae);
+  const div = parseInt(dg.slice(0, 2), 10);
+  const cnae4 = dg.slice(0, 4);
+  const cnae7 = dg.slice(0, 7);
   const tot = natureza ? Object.values(natureza).reduce((a, x) => a + (x || 0), 0) : 0;
   const maior = tot > 0 ? Object.entries(natureza).sort((a, b) => b[1] - a[1])[0] : null;
   const decisivo = maior && maior[1] / tot >= 0.6 ? maior[0] : null;
@@ -366,12 +428,24 @@ export function perfilAtividade({ natureza, cnae, anexo, restaurante } = {}) {
   else if (div >= 10 && div <= 32) { tipo = 'industria'; fonte = 'CNAE'; }
   else if (div >= 1 && div <= 3) { tipo = 'agro'; fonte = 'CNAE'; }
   else { tipo = 'servico'; fonte = 'CNAE'; }
-  const passageiros = ['4921', '4922'].includes(cnae4);
+  // TRANSPORTE DE PASSAGEIROS (13/10/2026, Módulo 07): linha regular de ônibus (4921, 4922) e trem ou metrô (4912) têm
+  // tratamento próprio na LC 214 (isenção, alíquota zero ou −40%) — pelo CNAE, mesmo quando faturam com nota de serviço
+  // (as saídas dizem "serviço"). Fretamento, táxi e escolar (4923, 4924, 4929) não são transporte público coletivo (art. 157):
+  // alíquota cheia — e não "transporte de cargas", como o rótulo dizia
+  const passageiros = ['4921', '4922', '4912'].includes(cnae4);
+  const passageirosOutros = ['4923', '4924', '4929'].includes(cnae4);
+  // trem e metrô (4912): o ferroviário urbano, semiurbano e metropolitano também tem alíquota zero (art. 285, I), que prevalece
+  // sobre a isenção (art. 7º-A) — a confiança testa as duas. Fretamento entre cidades (4929 fora das subclasses municipais
+  // 9/01 e 9/03): se o −40% do art. 286 o alcança, a conferir (o texto dos arts. 284 a 287 não está na base)
+  const trilhos = cnae4 === '4912';
+  const fretamentoIntermunicipal = cnae4 === '4929' && !['4929901', '4929903'].includes(cnae7);
   const refeicaoEmpresas = tipo === 'alimentacao' && cnae7 === '5620101';
   return {
-    tipo, fonte, passageiros, refeicaoEmpresas,
+    tipo, fonte, passageiros, passageirosOutros, trilhos, fretamentoIntermunicipal, refeicaoEmpresas,
     vendeMercadoria: ['comercio', 'industria', 'alimentacao', 'agro'].includes(tipo),
-    rotulo: { transporte: passageiros ? 'transporte de passageiros' : 'transporte de cargas', comercio: 'comércio', industria: 'indústria', alimentacao: refeicaoEmpresas ? 'refeições para empresas' : 'bar e restaurante', agro: 'produção agropecuária', servico: 'prestação de serviços', comunicacao: 'comunicação', energia: 'energia' }[tipo] || tipo
+    // o transporte de passageiros que fatura com nota de serviço sai "serviço" pelas saídas, mas o rótulo é o do transporte
+    rotulo: passageiros && tipo === 'servico' ? 'transporte de passageiros' : passageirosOutros && tipo === 'servico' ? 'transporte de passageiros (fretamento, táxi ou escolar)'
+      : { transporte: passageiros ? 'transporte de passageiros' : passageirosOutros ? 'transporte de passageiros (fretamento, táxi ou escolar)' : 'transporte de cargas', comercio: 'comércio', industria: 'indústria', alimentacao: refeicaoEmpresas ? 'refeições para empresas' : 'bar e restaurante', agro: 'produção agropecuária', servico: 'prestação de serviços', comunicacao: 'comunicação', energia: 'energia' }[tipo] || tipo
   };
 }
 

@@ -304,6 +304,17 @@ export function simular(input) {
   // bar e restaurante: o adquirente não credita a alimentação preparada (LC 214 art. 276); a parte à alíquota cheia
   // (bebida em lata ou garrafa, alcoólica) credita — o ponto de equilíbrio já sai só dela
   const notaBar = mixRed40 > 0 ? ' Só conta a parte vendida à alíquota cheia (bebida em lata ou garrafa, bebida alcoólica): a alimentação preparada no bar ou restaurante não gera crédito ao adquirente (LC 214, art. 276).' : '';
+  // CARTEIRA QUE PERDE CRÉDITO (13/10/2026): por dentro o cliente PJ credita o IBS/CBS que está no DAS; por fora, a venda
+  // com alíquota zero (hortifrúti, cesta básica) não dá crédito nenhum a quem compra, e a alimentação preparada no bar ou
+  // restaurante também não (art. 276) — o crédito da carteira pode CAIR com a mudança. Até 13/10/2026 a frase dizia só
+  // "não ganha crédito" e escondia a perda; as de empate diziam "ganharia só R$ 0,00". Só texto: nenhuma conta muda.
+  const motivosPerda = [];
+  if (mixZero > 0) motivosPerda.push('venda com alíquota zero não dá crédito a quem compra');
+  if (mixRed40 > 0) motivosPerda.push('a alimentação preparada no bar ou restaurante não gera crédito ao adquirente (LC 214, art. 276)');
+  const txtMotivoPerda = motivosPerda.length ? ' — ' + motivosPerda.join(', e ') + '.' : '.';
+  // "os clientes aproveitariam R$ X por fora, contra R$ Y por dentro" — cada frase passa a medida que já usava: a carteira
+  // inteira (crédito que o cliente leva) ou só os % de PJ informados (crédito aproveitado)
+  const txtPerdaCarteira = (fora, dentro) => 'os clientes aproveitariam ' + brl(fora) + ' por fora, contra ' + brl(dentro) + ' por dentro' + txtMotivoPerda;
   const base = { limiarEmpate, ganhoAproveitado, carteiraVirada: pe, margem, apertada };
   let veredito;
   if (economiaFora > 0 && empate) {
@@ -314,8 +325,11 @@ export function simular(input) {
       frase: 'Empate técnico: pelo regime regular o custo do primeiro semestre de 2027 seria ' + brl(economiaFora) +
         ' menor (' + pct2(economiaFora / (receita * 6) * 100) + '% da receita), abaixo do limiar de ' + brl(limiarEmpate) +
         ' que justifica a mudança. Essa margem é menor que a incerteza das premissas — crédito cheio sobre todas as entradas, ' +
-        'fornecedores do regime regular — e que o custo de apurar IBS/CBS fora do DAS; e a carteira PJ ganharia só ' + brl(Math.max(0, ganhoAproveitado)) +
-        ' de crédito aproveitado. Mantém-se a apuração dentro do Simples.'
+        'fornecedores do regime regular — e que o custo de apurar IBS/CBS fora do DAS; ' +
+        (ganhoAproveitado < -0.005
+          ? 'e a carteira PJ perderia ' + brl(-ganhoAproveitado) + ' de crédito aproveitado: ' + txtPerdaCarteira(semestre.aproveitadoFora, semestre.aproveitadoDentro)
+          : 'e a carteira PJ ganharia só ' + brl(Math.max(0, ganhoAproveitado)) + ' de crédito aproveitado.') +
+        ' Mantém-se a apuração dentro do Simples.'
     };
   } else if (semestre.custoFora < semestre.custoDentro) {
     veredito = {
@@ -323,8 +337,10 @@ export function simular(input) {
       pontoEquilibrioPJ: null,
       frase: 'A simulação do primeiro semestre de 2027 indica custo tributário de ' + brl(semestre.custoFora) +
         ' pelo regime regular contra ' + brl(semestre.custoDentro) + ' dentro do Simples — economia estimada de ' +
-        brl(-semestre.diferenca) + ' no semestre' + (semestre.creditoClienteFora > semestre.creditoClienteDentro
+        brl(-semestre.diferenca) + ' no semestre' + (ganhoCarteira > 0.005
           ? ', além de os clientes PJ passarem a aproveitar ' + brl(semestre.creditoClienteFora) + ' de crédito (contra ' + brl(semestre.creditoClienteDentro) + ' por dentro).'
+          : ganhoCarteira < -0.005 && pctPJ > 0   // sem clientes PJ não há carteira que perca (13/10/2026)
+          ? '. Mas a carteira PJ perde crédito: ' + txtPerdaCarteira(semestre.creditoClienteFora, semestre.creditoClienteDentro)
           : '. A carteira PJ não ganha crédito com a mudança' + (mixRed40 > 0 ? ': a alimentação preparada no bar ou restaurante não gera crédito ao adquirente (LC 214, art. 276).' : '.'))
     };
   } else if (!empate && ganhoAproveitado - semestre.diferenca > 0.005) {   // meio centavo: sem compras e com 100% de PJ os dois são iguais por construção
@@ -354,6 +370,11 @@ export function simular(input) {
     } else if (pe != null && pe === 100) {
       // serviço sem compras: o crédito a mais da carteira inteira é exatamente o custo a mais — no máximo empata
       complemento = ' A carteira PJ levaria ' + brl(ganhoCarteira) + ' a mais de crédito por fora — o mesmo que a empresa pagaria a mais: nem com toda a receita vinda de clientes PJ que aproveitam o crédito a opção compensaria, no máximo empataria (informado hoje: ' + pct(pctPJ) + '%' + (txtMargem ? '; ' + txtMargem : '') + ').' + notaBar;
+    } else if (ganhoCarteira < -0.005 && pctPJ > 0) {
+      // a carteira também perde crédito (venda com alíquota zero, bar e restaurante): não há % de clientes PJ que inverta —
+      // e sem clientes PJ não há carteira que perca (a frase não aparece)
+      complemento = ' E a carteira PJ ainda perderia crédito: ' + txtPerdaCarteira(semestre.creditoClienteFora, semestre.creditoClienteDentro)
+        + ' Nem com toda a receita vindo de clientes PJ a mudança compensaria: a decisão é de custo próprio.';
     } else if (mixRed40 > 0) {
       complemento = ' O adquirente não credita a alimentação preparada no bar ou restaurante (LC 214, art. 276); só a parte vendida à alíquota cheia (bebida em lata ou garrafa, bebida alcoólica) gera crédito ao cliente PJ — e nem com toda a receita vindo de clientes PJ isso inverteria o resultado: a decisão é de custo próprio.';
     }

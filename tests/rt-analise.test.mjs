@@ -6,10 +6,10 @@ import { gerarAnalise } from '../assets/js/rt-analise.js';
 const page = fs.readFileSync(new URL('../fiscal-reforma.html', import.meta.url), 'utf8');
 const i = page.indexOf('    function montarDadosAnalise('); const j = page.indexOf("\n    $('dGerar').onclick");
 const src = page.slice(i, j);
-import { perfilAtividade, cnaeMaisCompleto, ramoComReducao, conferirRbt12, CREDITO_FORNECEDOR_SIMPLES } from '../assets/js/dominio-relatorios.js';
+import { perfilAtividade, cnaeMaisCompleto, ramoComReducao, ramoComZero, reducaoServicoPorCnae, conferirRbt12, CREDITO_FORNECEDOR_SIMPLES } from '../assets/js/dominio-relatorios.js';
 import { RT_PRAZO, janelaAberta as janelaAbertaEm } from '../assets/js/rt-prazos.js';
 import { avaliarConfianca, inferirProcedencia, decisaoDe, ROT_DECISAO } from '../assets/js/rt-confianca.js';
-const montarDadosAnalise = new Function('simular', 'ANO_XML', 'location', 'perfilAtividade', 'cnaeMaisCompleto', 'ramoComReducao', 'conferirRbt12', 'RT_PRAZO', 'janelaAbertaEm', 'CREDITO_FORNECEDOR_SIMPLES', 'avaliarConfianca', 'inferirProcedencia', 'decisaoDe', 'ROT_DECISAO', src + '\nreturn montarDadosAnalise;')(simular, 2026, { href: 'http://x/' }, perfilAtividade, cnaeMaisCompleto, ramoComReducao, conferirRbt12, RT_PRAZO, janelaAbertaEm, CREDITO_FORNECEDOR_SIMPLES, avaliarConfianca, inferirProcedencia, decisaoDe, ROT_DECISAO);
+const montarDadosAnalise = new Function('simular', 'ANO_XML', 'location', 'perfilAtividade', 'cnaeMaisCompleto', 'ramoComReducao', 'ramoComZero', 'reducaoServicoPorCnae', 'conferirRbt12', 'RT_PRAZO', 'janelaAbertaEm', 'CREDITO_FORNECEDOR_SIMPLES', 'avaliarConfianca', 'inferirProcedencia', 'decisaoDe', 'ROT_DECISAO', src + '\nreturn montarDadosAnalise;')(simular, 2026, { href: 'http://x/' }, perfilAtividade, cnaeMaisCompleto, ramoComReducao, ramoComZero, reducaoServicoPorCnae, conferirRbt12, RT_PRAZO, janelaAbertaEm, CREDITO_FORNECEDOR_SIMPLES, avaliarConfianca, inferirProcedencia, decisaoDe, ROT_DECISAO);
 // data fixa dentro da janela (até 30/10/2026, Res. CGSN 194/2026): o teste não pode depender do relógio de quem roda
 // (os casos que testam a janela fechada fixam globalThis.__HOJE_ISO__ antes de chamar)
 // proc: a procedência gravada com a simulação (13/10/2026); sem ela a análise deduz do resumo do Domínio (simulação antiga)
@@ -281,6 +281,102 @@ console.log('Seção 6, alertas e seção 7 com o mesmo critério:');
   const b = caso('COMÉRCIO TESTE', alvo({ ...base0, pctPJ: 0 }, 80), domPg, null, '4744-0/99', undefined, { ...procPg, receita: { fonte: 'faturamento', meses: M12 } });
   const sensCbs = b.d.sensibilidade.find(x => x.nome === 'Alíquota final da CBS');
   chk('"manter" perto da virada: CBS de 8,7% não vira alerta nem "Sim" na seção 6, como na seção 7', b.sim.veredito.tipo === 'MANTENHA' && !b.d.alertas.some(x => /CBS de referência de 8,8%/.test(x.texto)) && /^Não/.test(sensCbs.muda) && !b.d.confianca.itens.find(i => i.chave === 'cbs').muda);
+}
+
+// 11) Carteira que perde crédito e compras medidas pelo NCM (13/10/2026): por fora, a venda com alíquota zero não dá crédito
+//     a quem compra (e a alimentação preparada no regime de bares também não) — o resumo diz quanto a carteira perde, nunca
+//     "passam a aproveitar R$ 0"; e o que não credita nas compras não é só cesta básica
+console.log('Carteira que perde crédito e compras pelo NCM:');
+{
+  const PROC_NCM = { ...PROC_MEDIDO, mix: { fonte: 'notas', meses: M8 }, pctCred: { fonte: 'notas', meses: M8 } };
+  const domB2B = { faturamento: { total: 800000, servicos: 0, saidas: 800000 }, periodoRotulo: 'jan/26–ago/26', pgdas: { competencia: '2026-08', dasTotal: 9000, cbsNoDas: 1395, aliquotaEfetiva: 9 },
+    entradas: { grupos: [{ rotulo: 'Compra para comercialização', grupo: 'mercadoria', credita: 'mercadoria', incluido: true, valor: 320000, notas: 400 }] }, periodoEntradas: 'jan/26–ago/26 (8 meses)',
+    vendas: { total: 800000, mercadorias: 800000, servicos: 0, st: 0, pctPJ: 95, pj: 760000, pf: 40000, consumidor: 0, nPJ: 40, fonte: 'acompanhamento de saídas (Domínio), PJ pelo CNPJ do cliente' },
+    clientesRegime: { regularPct: 100 } };
+  // atacado B2B com 40% das vendas em alíquota zero e 30% a −60%; 45% das compras creditam (pelo NCM); fornecedores consultados
+  const entAt = { anexo:'I', rbt12:1200000, receita:100000, mixCheia:30, mixRed60:30, mixZero:40, pctComprasMercadorias:40, pctComprasDespesas:0, pctImpostoEmbutido:0, pctExcluidoST:0, partilha:15.5, cbs:9.2, ibs:0.1, pctPJ:95, aliqEfetivaInformada:9, pctComprasComCredito:45 };
+  const atF = caso('ATACADO TESTE', entAt, { ...domB2B, fornecedoresRegime: { simplesPct: 30, cobertura: 80, fator: 0.74, maiores: [{ nome: 'FORNECEDOR EXEMPLO LTDA', valor: 50000 }] } }, null, '4639-7/01', undefined, PROC_NCM);
+  chk('atacado: "opte, se" sem conclusão pendente (' + atF.sim.veredito.tipo + ')', atF.sim.veredito.tipo === 'OPTE_SE' && !atF.d.semConclusao);
+  chk('seção 4: o que não credita é alíquota zero (cesta básica, hortifrúti) ou a parte sem imposto dos itens com redução — não "o resto é cesta básica"',
+    /e só 45,0% dessas compras carregam IBS\/CBS pra creditar — o resto é produto com alíquota zero \(cesta básica, hortifrúti\) ou a parte sem imposto dos itens com redução de 60% ou 30% \(medido pelo NCM das notas de entrada\)/.test(atF.txt) && !/o resto é cesta básica, alíquota zero/.test(atF.txt));
+  chk('seção 4: fornecedores consultados — o crédito menor do Simples já está descontado no % de compras', /; e o crédito menor de fornecedor do Simples \(30,0% das compras consultadas\) já está descontado nesse % de compras\. O regime regular favorece/.test(atF.txt));
+  const atS = caso('ATACADO TESTE', entAt, domB2B, null, '4639-7/01', undefined, PROC_NCM);
+  chk('seção 4: sem a consulta dos fornecedores, nada sobre fornecedor do Simples nessa frase', /\(medido pelo NCM das notas de entrada\)\. O regime regular favorece/.test(atS.txt) && !/já está descontado nesse % de compras/.test(atS.txt));
+  // hortifrúti B2B (100% alíquota zero): por fora sai mais barato, mas os clientes perdem o crédito que tinham por dentro
+  const entHf = { anexo:'I', rbt12:1200000, receita:100000, mixZero:100, pctComprasMercadorias:40, pctComprasDespesas:0, pctImpostoEmbutido:0, pctExcluidoST:0, partilha:15.5, cbs:9.2, ibs:0.1, pctPJ:95, aliqEfetivaInformada:9 };
+  const hf = caso('HORTIFRUTI TESTE', entHf, domB2B, null, '4633-8/01', undefined, { ...PROC_MEDIDO, mix: { fonte: 'notas', meses: M8 } });
+  chk('hortifrúti: OPTE firme (' + hf.sim.veredito.tipo + ')', hf.sim.veredito.tipo === 'OPTE' && !hf.d.semConclusao && hf.d.recomendacao.decisao === 'optar');
+  chk('resumo: "os clientes empresa perdem crédito: aproveitariam R$ 0 por fora, contra R$ 7.952 por dentro — venda com alíquota zero…"',
+    /Mas os clientes empresa perdem crédito: aproveitariam R\$ 0 por fora, contra R\$ 7\.952 por dentro — venda com alíquota zero não dá crédito a quem compra\./.test(hf.txt) && !/passam a aproveitar R\$ 0 de crédito/.test(hf.txt));
+  chk('motor: a frase do veredito também diz a perda', /Mas a carteira PJ perde crédito/.test(hf.sim.veredito.frase));
+  // refeições para empresas no regime de bares (90% a −40%): MANTENHA, e os clientes ainda perderiam crédito (art. 276)
+  const entRb = { anexo:'I', rbt12:1200000, receita:100000, mixCheia:10, mixRed40:90, pctComprasMercadorias:40, pctComprasDespesas:0, pctImpostoEmbutido:0, pctExcluidoST:0, partilha:15.5, cbs:9.2, ibs:0.1, pctPJ:90, pctComprasComCredito:50 };
+  const rb = caso('COZINHA TESTE', entRb, domB2B, null, '5620-1/01', undefined, { ...PROC_MEDIDO, pctMerc: { fonte: 'manual' }, pctDesp: { fonte: 'manual' }, pctCred: { fonte: 'manual' } });
+  chk('cozinha no regime de bares: MANTENHA com a carteira perdendo (' + rb.sim.veredito.tipo + ')', rb.sim.veredito.tipo === 'MANTENHA' && rb.sim.semestre.aproveitadoFora < rb.sim.semestre.aproveitadoDentro);
+  chk('resumo: "ainda perderiam crédito: aproveitariam R$ X por fora, contra R$ Y por dentro — a alimentação preparada… (art. 276)", sem "(R$ 0) não cobre"',
+    /E os seus clientes empresa ainda perderiam crédito: aproveitariam R\$ [\d.]+ por fora, contra R\$ [\d.]+ por dentro — a alimentação preparada \(regime de bares e restaurantes\) não dá crédito a quem compra \(LC 214, art\. 276\)\./.test(rb.txt) && !/aproveitariam \(R\$ 0\) não cobre/.test(rb.txt));
+}
+
+// 12) Serviço com redução e transporte de passageiros (13/10/2026, Módulo 07): o enquadramento a conferir na seção 6, nas
+//     regras, nas perguntas, nas pendências e nos alertas — nunca "serviço não consta dos anexos" pra profissão do art. 127,
+//     nunca "transporte de cargas" pra fretamento
+console.log('Serviço com redução e transporte de passageiros (Módulo 07):');
+{
+  const domServ = { faturamento: { total: 800000, servicos: 800000, saidas: 0 }, periodoRotulo: 'jan/26–ago/26' };
+  // escritório de contabilidade, 80% de clientes PJ: com o −30% da sociedade, "opte, se"
+  const entCt = { anexo:'III', rbt12:1200000, receita:100000, mixCheia:100, pctComprasMercadorias:0, pctComprasDespesas:10, pctImpostoEmbutido:0, pctExcluidoST:0, partilha:15.6, cbs:9.2, ibs:0.1, pctPJ:80 };
+  const ct = caso('CONTABILIDADE TESTE', entCt, domServ, null, '6920-6/01', undefined, PROC_MEDIDO);
+  chk('contabilidade sem os requisitos conferidos: SEM CONCLUSÃO pelo mix', ct.d.semConclusao && ct.d.confianca.decisivos.some(i => i.chave === 'mix') && /Sem recomendação por enquanto/.test(ct.txt));
+  chk('regras: nunca "Serviço não consta dos anexos" — o mix do serviço, a conferir, com os cinco requisitos', !/Serviço não consta dos anexos/.test(ct.txt) && ct.d.fontes.some(f => /^Mix de alíquotas do serviço/.test(f.o_que) && f.rotulo === 'a conferir' && /cinco requisitos/.test(f.origem)));
+  const sCt = ct.d.sensibilidade.find(x => /Requisitos da redução de 30%/.test(x.nome));
+  chk('seção 6 (vende a empresas): a linha dos requisitos, com o efeito e "Sim"', sCt && /−30%/.test(sCt.efeito) && /^Sim — o enquadramento muda o resultado/.test(sCt.muda));
+  chk('perguntas: "pra concluir" e logo depois os cinco requisitos', /^Pra concluir a análise, precisamos de: <b>o contrato social e o registro dos sócios no conselho profissional/.test(ct.d.perguntas[0]) && /cinco requisitos do art\. 127/.test(ct.d.perguntas[1]));
+  chk('pendências: a do mix sobe da confiança (decisiva) e não se repete', ct.d.pendencias[0].peso === 'decisivo' && /^Mix de alíquotas/.test(ct.d.pendencias[0].o_que) && !ct.d.pendencias.some(p => /Requisitos da redução/.test(p.o_que)));
+  // com 20% de clientes PJ o −30% não muda nada: observação pro cliente e pendência de peso médio
+  const ct2 = caso('CONTABILIDADE TESTE', { ...entCt, pctPJ: 20 }, domServ, null, '6920-6/01', undefined, PROC_MEDIDO);
+  chk('quando não muda: observação ("testamos os enquadramentos possíveis") e pendência média, sem SEM CONCLUSÃO',
+    !ct2.d.semConclusao && ct2.d.observacoes.some(o => /profissão regulamentada pode ter redução de 30%.*Testamos os enquadramentos possíveis e a recomendação não muda/.test(o)) && ct2.d.pendencias.some(p => /Requisitos da redução de 30%/.test(p.o_que) && p.peso === 'médio'));
+  // clínica a consumidor: o −60% do Anexo III vira "optar por fora" — premissa da lei: tendência a confirmar, com alerta
+  const cl = caso('CLÍNICA TESTE', { ...entCt, pctComprasDespesas: 20, pctPJ: 5 }, domServ, null, '8630-5/03', undefined, PROC_MEDIDO);
+  chk('clínica: premissa da lei — tendência a confirmar, não "sem conclusão"', !cl.d.semConclusao && /TENDÊNCIA — A CONFIRMAR/.test(cl.txt) && cl.d.alertas.some(a => /Serviço de saúde humana: a simulação considera tudo à alíquota cheia\. Com toda a receita com −60%/.test(a.texto)));
+  chk('clínica: pendência decisiva da lista de serviços, a pergunta da relação dos serviços e a nota da seção 6',
+    /lista de redução de 60% \(Anexo III da LC 214\)/.test(cl.d.pendencias[0].o_que) && cl.d.pendencias[0].peso === 'decisivo' && /^Quais <b>serviços<\/b>/.test(cl.d.perguntas[0]) && /enquadramento do serviço na lista do Anexo III/.test(cl.d.sensibilidadeNota));
+  const clCli = gerarAnalise(cl.d, { versao: 'cliente' }).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  chk('clínica, relatório do cliente: o alerta nas palavras do cliente (sem "a simulação considera")', /Serviço de saúde humana pode ter redução de 60% por fora, conforme a lista da lei/.test(clCli));
+  // ônibus urbano que fatura com NFS-e (o exemplo da leitura do Módulo 07): isento, a conta vira "optar por fora"
+  const entOn = { anexo:'III', rbt12:1800000, receita:150000, mixCheia:100, pctComprasMercadorias:0, pctComprasDespesas:35, pctImpostoEmbutido:0, pctExcluidoST:0, partilha:16.6, cbs:9.2, ibs:0.1, pctPJ:0 };
+  const on = caso('ÔNIBUS TESTE', entOn, domServ, null, '4921-3/01', undefined, PROC_MEDIDO);
+  const sOn = on.d.sensibilidade.find(x => x.nome === 'Mix das vendas');
+  chk('ônibus: SEM CONCLUSÃO, e a seção 6 mostra o −40% e a isenção', on.d.semConclusao && /−40%.*economia de R\$\s2\.309.*isenção.*economia de R\$\s20\.946/.test(sOn.efeito));
+  chk('ônibus: a regra do transporte de passageiros a conferir (art. 157, com o semiurbano) e a pergunta da linha regular',
+    on.d.fontes.some(f => /^Alíquota do transporte de passageiros/.test(f.o_que) && /semiurbano/.test(f.origem) && f.rotulo === 'a conferir') && on.d.perguntas.some(p => /linha regular sob autorização, permissão ou concessão/.test(p)));
+  const onI = caso('ÔNIBUS TESTE', { ...entOn, mixCheia: 0, mixZero: 100, pctDespesasComCredito: 0 }, domServ, null, '4921-3/01', undefined, { ...PROC_MEDIDO, mix: { fonte: 'manual' } });
+  chk('isenção informada: "isento pelo art. 157" e o crédito das despesas zerado pela isenção (CF, art. 156-A, §7º)',
+    onI.d.fontes.some(f => /isento pelo art\. 157/.test(f.o_que)) && onI.d.fontes.some(f => /^Crédito das despesas/.test(f.o_que) && /156-A, §7º/.test(f.origem)) && /TENDÊNCIA — A CONFIRMAR/.test(onI.txt));
+  // fretamento: alíquota cheia pela lei — nunca "transporte de cargas", "frete" ou "embarcador"
+  const fr = caso('FRETAMENTO TESTE', { ...entOn, pctPJ: 60 }, null, null, '4929-9/01', undefined, PROC_MEDIDO);
+  chk('fretamento municipal: alíquota cheia pela lei, sem texto de carga', fr.d.fontes.some(f => /Fretamento dentro do município, táxi e transporte escolar/.test(f.origem) && f.rotulo === 'alta (norma)') && !/cargas|embarcador/.test(fr.txt) && fr.d.perguntas.some(p => /passagem ou o fretamento/.test(p)));
+  // fretamento entre cidades que fatura com NFS-e: o −40% do art. 286 é questão da lei — muda o resultado: tendência a confirmar
+  const fi = caso('FRETAMENTO TESTE', { ...entOn, pctComprasDespesas: 50 }, domServ, null, '4929-9/02', undefined, PROC_MEDIDO);
+  chk('fretamento entre cidades: o −40% vira o resultado — alerta, pendência decisiva e tendência a confirmar (não "sem conclusão")',
+    !fi.d.semConclusao && /TENDÊNCIA — A CONFIRMAR/.test(fi.txt) && fi.d.alertas.some(a => /^Fretamento entre cidades: a simulação considera tudo à alíquota cheia\./.test(a.texto)) && /art\. 286/.test(fi.d.pendencias[0].o_que) && fi.d.pendencias[0].peso === 'decisivo');
+  // o mesmo fretamento vendendo a empresas, com as saídas todas em nota de serviço: o perfil sai "serviço" pelas saídas
+  const domNfse = { ...domServ, vendas: { total: 800000, mercadorias: 0, servicos: 800000, st: 0, pctPJ: 60, natureza: { servico: 800000 }, fonte: 'acompanhamento de serviços (Domínio), PJ pelo CNPJ do cliente' } };
+  const fb = caso('FRETAMENTO TESTE', { ...entOn, pctComprasDespesas: 50, pctPJ: 60 }, domNfse, null, '4929-9/02', undefined, PROC_MEDIDO);
+  chk('fretamento com NFS-e vendendo a empresas: a pergunta é da passagem ou do fretamento, nunca "hora técnica"; a atividade é transporte de passageiros',
+    fb.d.perfil.tipo === 'servico' && fb.d.perguntas.some(p => /passagem ou o fretamento/.test(p)) && !fb.d.perguntas.some(p => /hora técnica/.test(p)) && fb.d.perfil.rotulo === 'transporte de passageiros (fretamento, táxi ou escolar)'
+    && fb.d.fontes.some(f => /^Alíquota do transporte de passageiros/.test(f.o_que) && /art\. 286/.test(f.origem)) && !/Serviço não consta dos anexos/.test(fb.txt));
+  // academia em que só o −60% (aula na lista da lei) vira: premissa — alerta com a NBS da educação desportiva
+  const ac = caso('ACADEMIA TESTE', { ...entCt, pctComprasDespesas: 20, pctPJ: 5 }, domServ, null, '9313-1/00', undefined, PROC_MEDIDO);
+  chk('academia: só o −60% vira — tendência a confirmar, com o alerta da educação desportiva', !ac.d.semConclusao && ac.d.alertas.some(a => /^Academia: .*educação desportiva da NBS 1\.2205\.12\.00/.test(a.texto)) && /educação desportiva/.test(ac.d.sensibilidadeNota));
+  // a versão do cliente: o alerta da clínica sem "Anexo III" e sem artigo
+  chk('clínica, relatório do cliente: "desconto de 60% em toda a receita (se o serviço estiver na lista da lei)", sem anexo nem artigo', /Com desconto de 60% em toda a receita \(se o serviço estiver na lista da lei\), o resultado passa a ser/.test(clCli) && !/Anexo III/.test(clCli.slice(clCli.indexOf('Serviço de saúde humana pode ter'), clCli.indexOf('Serviço de saúde humana pode ter') + 400)));
+  const frB2c = caso('FRETAMENTO TESTE', entOn, null, null, '4929-9/01', undefined, PROC_MEDIDO);
+  // minimercado sem as notas em que nem a divisão com alíquota zero muda: a observação fala da cesta básica, não de "metade"
+  const mm = caso('MERCADO TESTE', { anexo:'I', rbt12:900000, receita:75000, mixCheia:100, pctComprasMercadorias:55, pctComprasDespesas:3, pctImpostoEmbutido:0, pctExcluidoST:10, partilha:15.5, cbs:9.2, ibs:0.1, pctPJ:2 }, null, null, '4712-1/00', undefined, PROC_MEDIDO);
+  chk('minimercado: testa as duas divisões e, sem mudar, a observação fala de cesta básica e hortifrúti', !mm.d.semConclusao && mm.d.confianca.itens.find(i => i.chave === 'mix').resultados.length === 2
+    && mm.d.observacoes.some(o => /No mercado, a cesta básica, o hortifrúti e os ovos não pagam o imposto novo/.test(o)) && !mm.d.observacoes.some(o => /Mesmo com metade das vendas com desconto/.test(o)));
+  chk('fretamento a consumidor: a seção 6 não testa "metade com redução de 60%"', /sem faixa a testar/.test(frB2c.d.sensibilidade.find(x => x.nome === 'Mix das vendas').efeito) && !/metade com redução de 60%/.test(frB2c.txt));
 }
 
 console.log(falhas ? '\n' + falhas + ' FALHA(S)' : '\nTudo certo.');

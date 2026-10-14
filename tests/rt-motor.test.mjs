@@ -396,4 +396,71 @@ console.log('\nApuração do mês (curso): serviço contábil com redução de 3
   linha('custo por fora = o do curso', 75843.17, g.semestre.custoFora);
 }
 
+// ---- carteira PJ que PERDE crédito (13/10/2026): venda com alíquota zero não dá crédito a quem compra ----
+// Por dentro o cliente PJ credita o IBS/CBS do DAS (6 × 100.000 × 9% × 15,5% = 8.370,00); por fora, com tudo à alíquota
+// zero, nada. Até 13/10 a frase dizia "A carteira PJ não ganha crédito com a mudança" e escondia a perda.
+console.log('\nCarteira PJ que perde crédito (hortifrúti: 100% alíquota zero, 95% de clientes PJ):');
+{
+  const horti = { anexo: 'I', rbt12: 1200000, receita: 100000, aliqEfetivaInformada: 9, partilha: 15.5, pctPJ: 95,
+    pctComprasMercadorias: 40, pctComprasComCredito: null, cbs: 9.2, ibs: 0.1 };
+  const z = sim({ ...horti, mixZero: 100 });
+  linha('crédito do cliente por dentro (6 × DAS × partilha)', 8370.00, z.semestre.creditoClienteDentro);
+  linha('crédito do cliente por fora (alíquota zero)', 0, z.semestre.creditoClienteFora);
+  const brlT = v => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const okZ = z.veredito.tipo === 'OPTE' && /Mas a carteira PJ perde crédito: os clientes aproveitariam /.test(z.veredito.frase)
+    && z.veredito.frase.includes(brlT(0) + ' por fora, contra ' + brlT(8370) + ' por dentro')
+    && /venda com alíquota zero não dá crédito a quem compra/.test(z.veredito.frase) && !/não ganha crédito/.test(z.veredito.frase);
+  if (!okZ) falhas++;
+  console.log(okZ ? '  ✓ OPTE, e a frase diz quanto a carteira perde (os dois valores) e por quê (alíquota zero)' : '  ✗ ' + z.veredito.tipo + ': ' + z.veredito.frase);
+  // o mesmo caso com tudo à alíquota cheia: a carteira ganha, e a frase é a de ganho (como antes)
+  const c = sim({ ...horti, mixCheia: 100 });
+  const okC = c.veredito.tipo === 'OPTE_SE' && /Mas a carteira PJ aproveitaria .* a mais de crédito/.test(c.veredito.frase) && !/perde/.test(c.veredito.frase);
+  if (!okC) falhas++;
+  console.log(okC ? '  ✓ mix 100% cheio: "opte, se o comercial confirmar", com a frase de ganho da carteira' : '  ✗ ' + c.veredito.tipo + ': ' + c.veredito.frase);
+  const c90 = sim({ ...horti, mixCheia: 100, pctComprasMercadorias: 90 });
+  const okC90 = c90.veredito.tipo === 'OPTE' && c90.veredito.frase.includes(', além de os clientes PJ passarem a aproveitar ' + brlT(c90.semestre.creditoClienteFora) + ' de crédito (contra ' + brlT(8370) + ' por dentro).');
+  if (!okC90) falhas++;
+  console.log(okC90 ? '  ✓ mix 100% cheio com 90% de compras: OPTE com "além de os clientes PJ passarem a aproveitar…" (como antes)' : '  ✗ ' + c90.veredito.tipo + ': ' + c90.veredito.frase);
+  // bar e restaurante (100% alimentação preparada): MANTENHA, e a carteira perde — com o art. 276 e sem "ganharia"
+  const bar = sim({ ...horti, mixRed40: 100 });
+  const okBar = bar.veredito.tipo === 'MANTENHA' && !bar.veredito.empate && /E a carteira PJ ainda perderia crédito: os clientes aproveitariam /.test(bar.veredito.frase)
+    && /art\. 276/.test(bar.veredito.frase) && /a decisão é de custo próprio/.test(bar.veredito.frase) && !/ganharia|R\$[\s ]*-|-R\$/.test(bar.veredito.frase);
+  if (!okBar) falhas++;
+  console.log(okBar ? '  ✓ bar 100% preparado: MANTENHA diz que a carteira também perderia, com o art. 276' : '  ✗ ' + bar.veredito.tipo + ': ' + bar.veredito.frase);
+  // sem clientes PJ não há carteira que perca: nem no OPTE, nem no MANTENHA
+  const z0 = sim({ ...horti, mixZero: 100, pctPJ: 0 }), bar0 = sim({ ...horti, mixRed40: 100, pctPJ: 0 });
+  const okZ0 = !/perde|perderia/.test(z0.veredito.frase) && !/perde|perderia/.test(bar0.veredito.frase);
+  if (!okZ0) falhas++;
+  console.log(okZ0 ? '  ✓ sem clientes PJ: nenhuma frase de perda da carteira' : '  ✗ ' + z0.veredito.frase + ' | ' + bar0.veredito.frase);
+  // alíquota zero + bar, os dois motivos na mesma frase
+  const dois = sim({ ...horti, mixZero: 50, mixRed40: 50 });
+  const okDois = /alíquota zero não dá crédito a quem compra, e a alimentação preparada no bar ou restaurante não gera crédito ao adquirente \(LC 214, art\. 276\)/.test(dois.veredito.frase);
+  if (!okDois) falhas++;
+  console.log(okDois ? '  ✓ alíquota zero + bar: os dois motivos' : '  ✗ ' + dois.veredito.frase);
+}
+
+// ---- empate técnico com a carteira perdendo: nunca "ganharia só R$ -…" nem "ganharia só R$ 0,00" ----
+console.log('\nEmpate técnico com ganho negativo (receita 2.000/mês, RBT12 30.000, 100% PJ, 100% alíquota zero):');
+{
+  // o toLocaleString põe espaço inflexível entre "R$" e o número: os valores esperados são montados pela mesma função
+  const brlT = v => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const negativo = /R\$[\s ]*-|-R\$/;
+  const e = sim({ anexo: 'I', rbt12: 30000, receita: 2000, mixZero: 100, pctPJ: 100, partilha: 15.5, cbs: 9.2, ibs: 0.1 });
+  linha('aproveitado a mais pela carteira (negativo)', -74.40, e.veredito.ganhoAproveitado);
+  const okE = e.veredito.tipo === 'MANTENHA' && e.veredito.empate && !negativo.test(e.veredito.frase) && !/ganharia/.test(e.veredito.frase)
+    && e.veredito.frase.includes('e a carteira PJ perderia ' + brlT(74.40) + ' de crédito aproveitado: os clientes aproveitariam ' + brlT(0) + ' por fora, contra ' + brlT(74.40) + ' por dentro — venda com alíquota zero não dá crédito a quem compra. Mantém-se');
+  if (!okE) falhas++;
+  console.log(okE ? '  ✓ empate: "perderia R$ 74,40 de crédito aproveitado", com os dois valores e o motivo' : '  ✗ ' + e.veredito.frase);
+  // sem clientes PJ não há perda a contar: a frase de antes continua, sem valor negativo
+  const e0 = sim({ anexo: 'I', rbt12: 30000, receita: 2000, mixZero: 100, pctPJ: 0, partilha: 15.5, cbs: 9.2, ibs: 0.1 });
+  const okE0 = e0.veredito.empate && e0.veredito.frase.includes('ganharia só ' + brlT(0) + ' de crédito aproveitado') && !negativo.test(e0.veredito.frase) && !/perderia/.test(e0.veredito.frase);
+  if (!okE0) falhas++;
+  console.log(okE0 ? '  ✓ empate sem clientes PJ: "ganharia só R$ 0,00", sem perda nem valor negativo' : '  ✗ ' + e0.veredito.frase);
+  // MANTENHA em empate pelo lado de dentro (por dentro um pouco mais barato) com a carteira perdendo
+  const m = sim({ anexo: 'I', rbt12: 30000, receita: 2000, mixZero: 50, mixRed40: 50, pctPJ: 100, partilha: 15.5, cbs: 9.2, ibs: 0.1 });
+  const okM = m.veredito.tipo === 'MANTENHA' && m.veredito.empate && m.semestre.diferenca > 0 && /ainda perderia crédito/.test(m.veredito.frase) && !negativo.test(m.veredito.frase) && !/ganharia/.test(m.veredito.frase);
+  if (!okM) falhas++;
+  console.log(okM ? '  ✓ empate pelo lado de dentro: a frase diz que a carteira perderia' : '  ✗ ' + m.veredito.tipo + ' ' + m.veredito.empate + ': ' + m.veredito.frase);
+}
+
 process.exit(falhas ? 1 : 0);

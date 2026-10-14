@@ -11,7 +11,7 @@
 // acompanhamento de entradas de 686 lançamentos): totais fechando ao
 // centavo e alíquota efetiva batendo com a do PGDAS na quarta casa.
 
-import { lerRelatorio, detectarTipo, grupoDoCfop, resumirEntradas, consolidar, numBR, classificarCliente, resumirVendas, lerPlanilha, detectarTipoPlanilha, grupoSaida, cnpjsParaConsultar, perfilAtividade, cnaeMaisCompleto, conferirRbt12, rotuloMeses } from '../assets/js/dominio-relatorios.js';
+import { lerRelatorio, detectarTipo, grupoDoCfop, resumirEntradas, consolidar, numBR, classificarCliente, resumirVendas, lerPlanilha, detectarTipoPlanilha, grupoSaida, cnpjsParaConsultar, perfilAtividade, cnaeMaisCompleto, conferirRbt12, rotuloMeses, digitosCnae, ramoComReducao, ramoComZero, reducaoServicoPorCnae } from '../assets/js/dominio-relatorios.js';
 import { aliqEfetiva } from '../assets/js/rt-motor.js';
 
 let falhas = 0;
@@ -346,6 +346,45 @@ console.log('\nRefeições para empresas e o CNAE mais completo:');
   ok(cnaeMaisCompleto('5620-1/01', '5620-1/01') === '5620-1/01', 'os dois iguais: vale o do caso');
   ok(cnaeMaisCompleto('5611', '5620-1/04') === '5611', 'caso e cadastro divergem: vale o do caso, como sempre');
   ok(cnaeMaisCompleto(null, cad) === cad && cnaeMaisCompleto('5620', null) === '5620' && cnaeMaisCompleto(null, null) === '', 'sem um dos dois, vale o outro');
+}
+
+console.log('\nCNAE sem o zero da frente, ramos com alíquota zero, serviço com redução e passageiros (Módulo 07):');
+{
+  // a consulta à Receita mandava a subclasse como número: 0121-1/01 chegava 121101 (divisão 12 = fumo)
+  ok(digitosCnae('121101 - Horticultura, exceto morango') === '0121101' && digitosCnae('0121-1/01') === '0121101' && digitosCnae(121101) === '0121101', '6 dígitos ganham o zero da frente: 121101 → 0121101');
+  ok(digitosCnae('4711-3/02 - Supermercados 24 horas') === '4711302' && digitosCnae('5620') === '5620' && digitosCnae(null) === '', 'a descrição não entra nos dígitos; 4 dígitos ficam como estão; vazio, vazio');
+  const hort = perfilAtividade({ cnae: '121101 - Horticultura, exceto morango' });
+  ok(hort.tipo === 'agro' && hort.vendeMercadoria, 'horticultura gravada sem o zero: produção agropecuária (antes, indústria)');
+  ok(ramoComReducao('121101 - Horticultura, exceto morango') && ramoComZero('121101') === 'hortifruti', 'e é ramo com redução, com alíquota zero (hortifrúti)');
+  ok(cnaeMaisCompleto('0121', '121101 - Horticultura, exceto morango') === '121101 - Horticultura, exceto morango', 'caso com 0121 e cadastro sem o zero: vale o cadastro, mais completo');
+  ok(ramoComZero('4711-3/02') === 'mercado' && ramoComZero('4712-1/00') === 'mercado' && ramoComZero('4724-5/00') === 'hortifruti' && ramoComZero('4633-8/01') === 'hortifruti', 'mercado e minimercado; hortifrúti no varejo e no atacado');
+  ok(ramoComZero('4771-7/01') === null && ramoComZero('4744-0/01') === null && ramoComZero('') === null, 'farmácia e material de construção: sem o teste de alíquota zero');
+  // serviço com redução pelo CNAE (LC 214, art. 127 — profissões, −30%; Anexos II, III e X — −60%; academia, os dois)
+  const cont = reducaoServicoPorCnae('6920-6/01 - Atividades de contabilidade');
+  ok(cont && cont.tipo === 'profissao' && cont.faixas.join() === 'mixRed30' && /contabilistas \(art\. 127, VII\)/.test(cont.quem), 'contabilidade: profissão do art. 127, −30%');
+  ok(reducaoServicoPorCnae('6911-7/01').tipo === 'profissao' && reducaoServicoPorCnae('6911-7/02') === null, 'advocacia sim; cartório (6911-7/02) não');
+  const clin = reducaoServicoPorCnae('8630-5/03');
+  ok(clin && clin.tipo === 'anexo' && clin.faixas.join() === 'mixRed60' && /Anexo III/.test(clin.anexo), 'clínica: −60% pelo Anexo III');
+  ok(reducaoServicoPorCnae('8513-9/00').tipo === 'anexo' && /Anexo II/.test(reducaoServicoPorCnae('8513-9/00').anexo), 'escola: −60% pelo Anexo II');
+  const acad = reducaoServicoPorCnae('9313-1/00');
+  ok(acad && acad.tipo === 'desporto' && acad.faixas.join() === 'mixRed30,mixRed60' && acad.ramo === 'academia', 'academia: −30% (registrada no conselho) e −60% (educação desportiva) — vale a maior');
+  ok(reducaoServicoPorCnae('8591-1/00').tipo === 'desporto' && reducaoServicoPorCnae('8591-1/00').ramo === 'ensino de esportes', 'ensino de esportes (8591) é desporto, não o −60% da educação');
+  ok(reducaoServicoPorCnae('7490-1/04') === null && reducaoServicoPorCnae('6201-5/01') === null && reducaoServicoPorCnae('') === null, 'intermediação e software: sem redução de serviço');
+  // passageiros: linha regular (4921, 4922, 4912) × fretamento, táxi e escolar (4923, 4924, 4929) — pelo CNAE, mesmo com NFS-e
+  const urb = perfilAtividade({ cnae: '4921-3/01', natureza: { servico: 100 } });
+  ok(urb.tipo === 'servico' && urb.passageiros && !urb.passageirosOutros, 'ônibus urbano que fatura com NFS-e: serviço pelas saídas, mas passageiros pelo CNAE');
+  const fret = perfilAtividade({ cnae: '4929-9/01' });
+  ok(fret.tipo === 'transporte' && !fret.passageiros && fret.passageirosOutros && fret.rotulo === 'transporte de passageiros (fretamento, táxi ou escolar)', 'fretamento: não é "transporte de cargas"');
+  ok(perfilAtividade({ cnae: '4930-2/02' }).rotulo === 'transporte de cargas' && perfilAtividade({ cnae: '4922-1/01' }).rotulo === 'transporte de passageiros', 'carga e linha intermunicipal com os rótulos certos');
+  // revisão: trem e metrô (zero do art. 285, I), fretamento entre cidades (−40% do art. 286 a conferir), rótulo com NFS-e
+  ok(perfilAtividade({ cnae: '4912-4/02' }).trilhos && !perfilAtividade({ cnae: '4921-3/01' }).trilhos, 'trem e metrô (4912) marcados como trilhos; ônibus não');
+  ok(perfilAtividade({ cnae: '4929-9/02' }).fretamentoIntermunicipal && perfilAtividade({ cnae: '4929-9/04' }).fretamentoIntermunicipal && perfilAtividade({ cnae: '4929' }).fretamentoIntermunicipal
+    && !perfilAtividade({ cnae: '4929-9/01' }).fretamentoIntermunicipal && !perfilAtividade({ cnae: '4929-9/03' }).fretamentoIntermunicipal && !perfilAtividade({ cnae: '4923-0/01' }).fretamentoIntermunicipal,
+    'fretamento entre cidades (9/02, 9/04 e só "4929") a conferir; municipal (9/01, 9/03) e táxi não');
+  ok(urb.rotulo === 'transporte de passageiros' && perfilAtividade({ cnae: '4929-9/01', natureza: { servico: 100 } }).rotulo === 'transporte de passageiros (fretamento, táxi ou escolar)', 'com NFS-e, o rótulo continua o do transporte de passageiros');
+  ok(reducaoServicoPorCnae('7490-1/03').tipo === 'profissao' && /XVIII/.test(reducaoServicoPorCnae('7490-1/03').quem), 'agronomia e consultoria agropecuária (7490-1/03): agrônomos e técnicos agrícolas');
+  ok(reducaoServicoPorCnae('7119-7/02') === null && reducaoServicoPorCnae('7119-7/01').tipo === 'profissao', 'estudos geológicos fora (geólogo não está no rol); topografia dentro');
+  ok(reducaoServicoPorCnae('8230-0/02') === null && reducaoServicoPorCnae('8230-0/01').tipo === 'anexo', 'casa de festas fora; organização de feiras e eventos dentro');
 }
 
 console.log('\nRBT12 × relatórios, mês com mês:');
