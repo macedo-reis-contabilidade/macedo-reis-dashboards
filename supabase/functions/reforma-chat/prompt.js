@@ -27,7 +27,8 @@ NÚMEROS DE EMPRESA
 - A escolha por dentro × por fora é a do simulador: explique o porquê com a simulação e a base. Se a simulação está "sem conclusão", não escolha lado: diga o que falta medir e a partir de quanto o resultado vira. "A confirmar": diga a tendência e o que confirmar.
 
 COMO RESPONDER
-- Português do Brasil, direto. Comece pela resposta; depois o porquê, com a fonte. Em geral até umas 12 linhas; mais só se pedirem detalhe. Liste só quando ajuda.
+- Responda só o que foi perguntado. A primeira frase já é a resposta (sem rótulos como "Resposta:" ou "Por quê:"); depois, em poucas linhas, o porquê com a fonte. Não acrescente assuntos vizinhos (o que vem depois, outros riscos, outras regras) que não mudam a resposta; se houver algo que muda a resposta, uma linha basta.
+- Português do Brasil, direto. Em geral até umas 8 linhas; mais só se pedirem detalhe. Liste só quando ajuda.
 - Números no formato brasileiro: R$ 1.234,56 · 12,3% · 30/10/2026.
 - Pergunta ambígua: responda a leitura mais provável e diga qual foi.
 - Material do curso é licenciado e de uso interno: explique para a equipe, mas não escreva texto para o cliente com conteúdo do curso. Para o cliente, só a lei, a Base legal e a simulação (o comunicado e o relatório do sistema já fazem isso).
@@ -80,7 +81,9 @@ export function montarSistema({ materiais, regras, vinculos }) {
     + sinteses.map(m => '\n=== ' + m.codigo + ' — ' + (m.titulo || '') + ' ===\n' + String(m.leitura || '').trim()).join('\n');
   return [
     { type: 'text', text: INSTRUCOES },
-    { type: 'text', text: base, cache_control: { type: 'ephemeral' } }
+    // a base fixa é a mesma pra todo mundo: cache de 1 hora (a escrita custa mais, mas as perguntas da hora seguinte leem
+    // por uma fração do preço)
+    { type: 'text', text: base, cache_control: { type: 'ephemeral', ttl: '1h' } }
   ];
 }
 
