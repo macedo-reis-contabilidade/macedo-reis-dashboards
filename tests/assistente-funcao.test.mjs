@@ -9,7 +9,7 @@ import { execFileSync } from 'node:child_process';
 import { posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TABELAS, OPS, DEFINICOES, filtroUrl, montarConsulta, criarFerramentas, descreverEtapa, normalizarBusca } from '../supabase/functions/assistente/ferramentas.js';
-import { montarSistema, preambulo, dicionario } from '../supabase/functions/assistente/prompt.js';
+import { montarSistema, preambulo, dicionario, INSTRUCOES } from '../supabase/functions/assistente/prompt.js';
 import { criarServidor, limparContexto, limparPagina, limparHistorico, diaBR, LIMITE_DIA } from '../supabase/functions/assistente/servidor.js';
 import { responder, erroDoChat } from '../supabase/functions/reforma-chat/agente.js';
 
@@ -29,6 +29,8 @@ chk('o financeiro do escritório marcado como só dos sócios', TABELAS.ca_parce
 chk('o dicionário do prompt lista as tabelas e não tem credenciais', Object.keys(TABELAS).every(t => dicionario().includes('## ' + t + ' ')) && !/credenciais/.test(dicionario()));
 chk('as definições: as cinco ferramentas, consultar só com as tabelas da lista', DEFINICOES.map(d => d.name).join() === 'buscar_empresa,ver_empresa,agenda,consultar,perguntar_reforma'
   && JSON.stringify(DEFINICOES.find(d => d.name === 'consultar').input_schema.properties.tabela.enum) === JSON.stringify(Object.keys(TABELAS)));
+chk('o prompt: a Reforma sozinha na rodada (a resposta dela vai direto, com as fontes); a tela pelo nome e a situação por extenso',
+  /Chame sozinha na rodada/.test(INSTRUCOES) && /mantenha as fontes dele entre colchetes/.test(INSTRUCOES) && /não financeiro-boletos\.html/.test(INSTRUCOES) && /não em_transicao/.test(INSTRUCOES));
 
 console.log('Montagem das consultas:');
 chk('coluna fora da lista: erro com as colunas que existem', /não é lida em clientes/.test(erroDe(() => filtroUrl('clientes', { coluna: 'credenciais', op: '=', valor: 'x' }))));
@@ -171,10 +173,39 @@ function bancoFalso({ tarefas = [], rotinas = [], extras = {} } = {}) {
   chk('agenda de nome fora da equipe: diz', /nome fora da equipe atual/.test(await fs.agenda({ pessoa: 'Luana' })));
 }
 {
+  // muitas atrasadas: o resumo conta todas (lidas em páginas de mil), a lista mostra as primeiras
+  const muitas = Array.from({ length: 1200 }, (_, i) => ({ id: 'x' + String(i).padStart(4, '0'), cliente_id: i % 3 ? ID_A : ID_B, setor: i % 2 ? 'fiscal' : 'dp',
+    titulo: i === 1100 ? 'Urgente' : i % 4 ? 'EFD CONTRIBUIÇÕES' : 'Gia', responsavel: 'Thalia', prazo: i < 200 ? '2026-08-10' : '2026-10-01', status: i === 5 ? 'em_andamento' : 'pendente',
+    prioridade: i === 1100 ? 'alta' : 'media' }));
+  const { banco, log } = bancoFalso({ tarefas: muitas });
+  const a = await criarFerramentas({ banco, hoje: '2026-10-14', usuario: { nome: 'Thalia' } }).agenda({});
+  chk('agenda com muitas atrasadas: o total e o resumo de todas (mês, tarefa, empresa, setor), lidas em páginas de mil', /Atrasadas \(prazo antes de 14\/10\/2026\): 1200/.test(a) && /resumo de todas/.test(a)
+    && /por mês do prazo: 08\/2026 200 · 10\/2026 1000/.test(a) && /por tarefa: EFD CONTRIBUIÇÕES 900 · Gia 299 · Urgente 1/.test(a) && /por empresa: LOJA DA ESQUINA LTDA 800 · ESQUINA DO PÃO LTDA 400/.test(a)
+    && /por setor: dp 600 · fiscal 600/.test(a) && log.filter(x => x.caminho.includes('prazo=lt.2026-10-14')).length === 2, a.split('\n').slice(0, 8).join(' | '));
+  const lista = (a.split('as 25 primeiras')[1] || '').split('\n');
+  chk('a lista: as 25 primeiras, a de prioridade alta na frente, e quantas faltam', /prazo 01\/10\/2026 · Urgente/.test(lista[1]) && /… mais 1175 atrasadas/.test(a), lista[1]);
+  chk('a situação por extenso na linha (em andamento, média)', /em andamento · prioridade média/.test(a) && !/em_andamento/.test(a));
+}
+{
+  // ver_empresa: as contas de todas as tarefas abertas e a situação por extenso
+  const tarefas = [
+    { id: 'v1', cliente_id: ID_A, setor: 'fiscal', titulo: 'DCTF', responsavel: 'THALIA', prazo: '2026-10-01', status: 'pendente', prioridade: 'media' },
+    { id: 'v2', cliente_id: ID_A, setor: 'fiscal', titulo: 'GIA', responsavel: 'Thalia', prazo: '2026-10-16', status: 'em_andamento', prioridade: 'alta' },
+    { id: 'v3', cliente_id: ID_A, setor: 'dp', titulo: 'Folha', responsavel: 'Vitória', prazo: '2026-11-05', status: 'pendente' },
+    { id: 'v4', cliente_id: ID_A, setor: 'societario', titulo: 'Alvará', responsavel: null, prazo: null, status: 'aguardando' },
+    { id: 'v5', cliente_id: ID_A, setor: 'fiscal', titulo: 'Feita', responsavel: 'Thalia', prazo: '2026-10-01', status: 'concluida' }];
+  const clientes = CLIENTES.map(c => (c.id === ID_A ? { ...c, status: 'em_transicao' } : c));
+  const v = await criarFerramentas({ banco: bancoFalso({ tarefas, extras: { clientes } }).banco, hoje: '2026-10-14', usuario: {} }).ver_empresa({ empresa: ID_A });
+  chk('ver_empresa: as contas de todas as tarefas abertas (atrasadas, da semana, depois, sem prazo, por setor e pessoa)',
+    /Tarefas abertas: 4 — atrasadas 1 · vencem de hoje a 21\/10\/2026: 1 · depois: 1 · sem prazo: 1 · por setor: fiscal \(Thalia\) 2 · dp \(Vitória\) 1 · societario \(sem responsável\) 1/.test(v), v);
+  chk('ver_empresa: a situação por extenso (em transição, em andamento)', /situação no cadastro: em transição/.test(v) && /em andamento · alta/.test(v) && !/em_transicao|em_andamento/.test(v), v);
+}
+{
   const perguntas = [];
   const fs = criarFerramentas({ banco: bancoFalso().banco, hoje: '2026-10-14', perguntarReforma: async p => { perguntas.push(p); return { texto: 'Sim, por fora [regra X].', cortada: false }; } });
   const r = await fs.perguntar_reforma({ pergunta: 'A LOJA pode optar por fora?' });
   chk('perguntar_reforma: a resposta dela vai direto (final), com a pergunta completa', r && r.final === true && r.texto === 'Sim, por fora [regra X].' && perguntas[0] === 'A LOJA pode optar por fora?');
+  chk('perguntar_reforma: o texto pra quando não encerra (pedida junto com outra) pede pra manter as fontes', /mantenha as fontes dele entre colchetes/.test(r.comoTexto) && r.comoTexto.endsWith('\nSim, por fora [regra X].'), r.comoTexto);
   chk('a Reforma responde uma vez por pergunta', /já respondeu nesta pergunta/.test(await fs.perguntar_reforma({ pergunta: 'De novo?' })) && perguntas.length === 1);
   const fs2 = criarFerramentas({ banco: bancoFalso().banco, hoje: '2026-10-14', perguntarReforma: async () => ({ texto: 'Texto da Reforma.' }) });
   chk('perguntar_reforma pra cruzar com outros dados: volta como texto', /^Resposta do assistente da Reforma/.test(await fs2.perguntar_reforma({ pergunta: 'x', devolver_direto: false })));
@@ -198,6 +229,12 @@ console.log('O laço do modelo com resposta pronta:');
     visto = c.messages.at(-1).content.map(x => x.content).join('|'); return { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Juntei as duas.' }], usage: {} }; };
   const res2 = await responder({ chamar: chamar2, sistema: [], definicoes: [], ferramentas: { perguntar_reforma: async () => ({ final: true, texto: 'Parte da Reforma.' }), agenda: async () => 'Parte da agenda.' }, mensagem: 'oi' });
   chk('pedida junto com outra ferramenta, a resposta pronta volta como texto e o modelo junta tudo', n2 === 2 && !res2.final && res2.texto === 'Juntei as duas.' && visto === 'Parte da Reforma.|Parte da agenda.', visto);
+  let n3 = 0, visto3 = null;
+  const chamar3 = async c => { n3++; if (n3 === 1) return { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'a', name: 'perguntar_reforma', input: {} }, { type: 'tool_use', id: 'b', name: 'agenda', input: {} }], usage: {} };
+    visto3 = c.messages.at(-1).content[0].content; return { stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' }], usage: {} }; };
+  await responder({ chamar: chamar3, sistema: [], definicoes: [], mensagem: 'oi',
+    ferramentas: { perguntar_reforma: async () => ({ final: true, texto: 'R [regra X].', comoTexto: 'Mantenha as fontes:\nR [regra X].' }), agenda: async () => 'A.' } });
+  chk('com o comoTexto, é ele que o modelo lê (o recado de manter as fontes)', visto3 === 'Mantenha as fontes:\nR [regra X].', visto3);
 }
 
 console.log('O servidor:');

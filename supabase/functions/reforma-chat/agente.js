@@ -62,8 +62,8 @@ export function comCache(msgs) {
 // responder({ chamar, sistema, definicoes, ferramentas, historico, mensagem, aoEtapa, descrever }) →
 //   { texto, etapas, uso: { entrada, saida, cacheLeitura, cacheEscrita }, modelo, rodadas, cortada, final? }
 // historico: [{ pergunta, resposta }] das perguntas anteriores da conversa (só o texto)
-// a ferramenta devolve texto (o modelo lê) ou { final: true, texto, cortada? } (a resposta da pergunta, sem outra rodada,
-// quando é a única ferramenta pedida na rodada)
+// a ferramenta devolve texto (o modelo lê) ou { final: true, texto, cortada?, comoTexto? } (a resposta da pergunta, sem
+// outra rodada, quando é a única ferramenta pedida na rodada; pedida junto com outras, o modelo lê o comoTexto — ou o texto)
 // ============================================================
 // o que fazer quando a saída de uma ferramenta passa do tamanho
 const DICA_CORTE = { ler_material: 'leia a seção seguinte com ler_material', buscar_base: 'refine a busca', listar_casos: 'use filtro, busca ou a página seguinte (pagina)' };
@@ -111,7 +111,7 @@ export async function responder({ chamar, sistema, definicoes, ferramentas, hist
         etapas.push({ ferramenta: b.name, entrada, descricao: desc, caracteres: texto.length, erro: false, final: true });
         return { texto: texto || 'Não consegui montar a resposta. Tente perguntar de outro jeito.', etapas, uso, modelo, rodadas: rodada, cortada: !!saida.cortada, final: true };
       }
-      saida = String(saida && typeof saida === 'object' ? (saida.texto || '') : saida);
+      saida = String(saida && typeof saida === 'object' ? (saida.comoTexto || saida.texto || '') : saida);
       if (saida.length > 14000) saida = saida.slice(0, 14000) + '\n…(cortado: a saída passou de 14 mil caracteres' + (DICA_CORTE[b.name] ? ' — ' + DICA_CORTE[b.name] : '') + ')';
       etapas.push({ ferramenta: b.name, entrada, descricao: desc, caracteres: saida.length, erro });
       resultados.push({ type: 'tool_result', tool_use_id: b.id, content: saida, ...(erro ? { is_error: true } : {}) });

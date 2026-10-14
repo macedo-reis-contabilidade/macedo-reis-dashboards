@@ -198,7 +198,7 @@ export const DEFINICOES = [
       agrupar: { type: 'string', description: 'opcional: conta (e soma) por valor desta coluna — ou de "empresa.<coluna>" —, em todas as linhas que batem com os filtros' },
       somar: { type: 'array', items: { type: 'string' }, description: 'opcional: colunas numéricas a somar em todas as linhas que batem com os filtros' } }, required: ['tabela'] } },
   { name: 'perguntar_reforma',
-    description: 'Pergunta ao assistente da Reforma Tributária, que responde com a base do escritório (Base legal, materiais, casos da campanha e o simulador), com as fontes. Use para tudo da Reforma (IBS/CBS, opção por dentro × por fora em 2027, resultado e simulação dos casos da campanha). Uma vez por pergunta: junte tudo o que precisa saber dela numa pergunta só, que faça sentido sozinha (ele não vê esta conversa). Com a ficha da Reforma aberta na tela, ele já sabe qual é a empresa.',
+    description: 'Pergunta ao assistente da Reforma Tributária, que responde com a base do escritório (Base legal, materiais, casos da campanha e o simulador), com as fontes. Use para tudo da Reforma (IBS/CBS, opção por dentro × por fora em 2027, resultado e simulação dos casos da campanha). Uma vez por pergunta: junte tudo o que precisa saber dela numa pergunta só, que faça sentido sozinha (ele não vê esta conversa). Chame sozinha na rodada e sem procurar a empresa antes (ele acha pelo nome): assim a resposta dele, com as fontes, vai direto pro usuário. Com a ficha da Reforma aberta na tela, ele já sabe qual é a empresa.',
     input_schema: { type: 'object', properties: {
       pergunta: { type: 'string', description: 'a pergunta completa (a do usuário, completada com o que faltar: nome da empresa, período)' },
       devolver_direto: { type: 'boolean', description: 'padrão sim: a resposta dele vai direto pro usuário. Não, quando você ainda precisa cruzar com outros dados do sistema' } },
@@ -219,8 +219,21 @@ export function valorCurto(v, n = 280) {
 export const normalizarBusca = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const fmtDoc = d => { const x = String(d || '').replace(/\D/g, ''); return x.length === 14 ? x.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')
   : x.length === 11 ? x.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4') : (d || '—'); };
-const diaSeguinte = iso => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + 1); return d.toISOString().slice(0, 10); };
+const maisDias = (iso, n) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const diaSeguinte = iso => maisDias(iso, 1);
 const inicioBR = iso => iso + 'T00:00:00-03:00';
+// a situação como a equipe fala (o banco grava em_transicao, a_emitir...)
+const SITUACAO = { em_transicao: 'em transição', a_emitir: 'a emitir', em_andamento: 'em andamento', em_registro: 'em registro', concluida: 'concluída',
+  em_preparacao: 'em preparação', opcao_registrada: 'opção registrada', por_dentro: 'por dentro', por_fora: 'por fora', a_confirmar: 'a confirmar', sem_acordo: 'sem acordo',
+  aguardando_empresa: 'aguardando a empresa', a_faturar: 'a faturar', lancado: 'lançado', cnpj_novo: 'CNPJ novo', experiencia: 'experiência', media: 'média' };
+export const situacao = v => (v == null || v === '' ? '—' : SITUACAO[v] || String(v).replace(/_/g, ' '));
+// contagem por grupo ({ id, rotulo } de cada linha), do maior pro menor; topo: os n primeiros e "outras"
+function contarPor(lista, chave) {
+  const m = new Map();
+  lista.forEach(x => { const k = chave(x); const g = m.get(k.id) || { id: k.id, rotulo: k.rotulo, n: 0 }; g.n++; m.set(k.id, g); });
+  return [...m.values()].sort((a, b) => b.n - a.n || String(a.rotulo).localeCompare(String(b.rotulo), 'pt-BR'));
+}
+const topo = (grupos, n) => grupos.slice(0, n).map(g => g.rotulo + ' ' + g.n).join(' · ') + (grupos.length > n ? ' · outras ' + grupos.slice(n).reduce((s, g) => s + g.n, 0) : '');
 // o nome da equipe pelo nome digitado (sem maiúscula e sem acento); "ambos" é Samuel e Diego
 const equipePorNome = n => EQUIPE.find(x => normalizarBusca(x) === normalizarBusca(n)) || null;
 function rotuloPessoa(v) {
@@ -440,7 +453,7 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
       q('servicos_contratados?select=setor,responsavel_escritorio,data_inicio,data_fim,ativo&cliente_id=eq.' + id),
       q('cobrancas_config?select=valor_base,dia_vencimento,canal,contato_envio,destino,responsavel,ativo,observacao_fixa&cliente_id=eq.' + id),
       q('cobrancas_mensais?select=competencia,valor,vencimento,status,canal&cliente_id=eq.' + id + '&order=competencia.desc&limit=6'),
-      q('tarefas?select=setor,titulo,responsavel,prazo,status,prioridade&cliente_id=eq.' + id + '&status=neq.concluida&order=prazo.asc.nullslast,id.asc&limit=20', { contar: true }),
+      q('tarefas?select=setor,titulo,responsavel,prazo,status,prioridade&cliente_id=eq.' + id + '&status=neq.concluida&order=prazo.asc.nullslast,id.asc&limit=500', { contar: true }),
       q('tarefas_recorrentes?select=setor,titulo,periodicidade,dia_vencimento,mes_vencimento,responsavel&cliente_id=eq.' + id + '&ativo=eq.true&order=setor.asc,id.asc&limit=40', { contar: true }),
       q('cliente_obrigacoes?select=obrigacao_id,responsavel,dia_prazo_override&cliente_id=eq.' + id + '&ativo=eq.true'),
       q('alvaras?select=tipo,numero,vencimento,status,responsavel&cliente_id=eq.' + id + '&order=vencimento.asc.nullslast'),
@@ -465,7 +478,7 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     };
     partes.push('EMPRESA: ' + c.nome_principal + (c.nome_fantasia ? ' (fantasia: ' + c.nome_fantasia + ')' : '') + ' · id ' + c.id);
     partes.push('Cadastro: ' + c.tipo_pessoa + ' ' + fmtDoc(c.documento) + ' · regime ' + (c.regime_tributario || 'não cadastrado') + (c.porte_empresa ? ' · porte ' + c.porte_empresa : '')
-      + ' · situação no cadastro: ' + c.status + (c.cnae_principal ? ' · CNAE ' + c.cnae_principal : '') + (Array.isArray(c.cnaes_secundarios) && c.cnaes_secundarios.length ? ' (+' + c.cnaes_secundarios.length + ' secundários)' : '')
+      + ' · situação no cadastro: ' + situacao(c.status) + (c.cnae_principal ? ' · CNAE ' + c.cnae_principal : '') + (Array.isArray(c.cnaes_secundarios) && c.cnaes_secundarios.length ? ' (+' + c.cnaes_secundarios.length + ' secundários)' : '')
       + (c.natureza_juridica ? ' · ' + c.natureza_juridica : '') + (c.data_abertura ? ' · aberta em ' + dataBR(c.data_abertura) : '') + (fin(c.capital_social) ? ' · capital ' + brl(c.capital_social) : '')
       + (c.inscricao_estadual ? ' · IE ' + c.inscricao_estadual : '') + (c.inscricao_municipal ? ' · IM ' + c.inscricao_municipal : ''));
     partes.push('Endereço e contato: ' + [c.logradouro && (c.logradouro + (c.numero ? ', ' + c.numero : '') + (c.complemento ? ' ' + c.complemento : '')), c.bairro, [c.cidade, c.uf].filter(Boolean).join('/'), c.cep].filter(Boolean).join(' · ')
@@ -481,9 +494,18 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     sec('Serviços contratados', serv, ls => ls.map(s => s.setor + (s.responsavel_escritorio ? ' (' + s.responsavel_escritorio + ')' : '') + (s.ativo === false || s.data_fim ? ' — encerrado' + (s.data_fim ? ' em ' + dataBR(s.data_fim) : '') : '')).join(' · '), 'nenhum registrado');
     sec('Honorários (base de cobrança)', cobC, ls => ls.map(b => brl(b.valor_base) + ' · vence dia ' + (b.dia_vencimento || '—') + ' · ' + (b.canal || '—') + (b.ativo === false ? ' · PARADA (não é mais cobrada)' : '')
       + (b.responsavel ? ' · ' + b.responsavel : '') + (b.observacao_fixa ? ' · ' + valorCurto(b.observacao_fixa, 120) : '')).join(' | '), 'sem cobrança cadastrada');
-    sec('Últimos boletos', cobM, ls => ls.map(b => b.competencia + ': ' + brl(b.valor) + ', vence ' + dataBR(b.vencimento) + ', ' + b.status).join(' · '));
-    sec('Tarefas abertas', tar, (ls, total) => (total || ls.length) + ' — ' + ls.map(t => dataBR(t.prazo) + (t.prazo && String(t.prazo) < hoje ? ' (ATRASADA)' : '') + ' · ' + t.setor + ' · ' + valorCurto(t.titulo, 90)
-      + ' · ' + (t.responsavel || 'sem responsável') + ' · ' + t.status + (t.prioridade ? ' · ' + t.prioridade : '')).join(' | ') + ((total || 0) > ls.length ? ' | … mais ' + (total - ls.length) + ' (consultar tarefas)' : ''), 'nenhuma');
+    sec('Últimos boletos', cobM, ls => ls.map(b => b.competencia + ': ' + brl(b.valor) + ', vence ' + dataBR(b.vencimento) + ', ' + situacao(b.status)).join(' · '));
+    // as tarefas abertas: as contas de todas (atrasadas, da semana, por setor e pessoa) e as primeiras por prazo
+    sec('Tarefas abertas', tar, (ls, total) => {
+      const n = Math.max(total || 0, ls.length), semana = maisDias(hoje, 7);
+      const atr = ls.filter(t => t.prazo && String(t.prazo) < hoje).length, sem = ls.filter(t => !t.prazo).length;
+      const proximas = ls.filter(t => t.prazo && String(t.prazo) >= hoje && String(t.prazo) <= semana).length;
+      const porSetor = contarPor(ls, t => { const p = rotuloPessoa(t.responsavel); return { id: t.setor + '|' + p, rotulo: (t.setor || '—') + (p.startsWith('(') ? ' ' + p : ' (' + p + ')') }; });
+      return n + (ls.length < n ? ' (as contas são das ' + ls.length + ' primeiras por prazo)' : '') + ' — atrasadas ' + atr + ' · vencem de hoje a ' + dataBR(semana) + ': ' + proximas
+        + ' · depois: ' + (ls.length - atr - proximas - sem) + (sem ? ' · sem prazo: ' + sem : '') + ' · por setor: ' + topo(porSetor, 8)
+        + '\n  as primeiras por prazo: ' + ls.slice(0, 20).map(t => dataBR(t.prazo) + (t.prazo && String(t.prazo) < hoje ? ' (ATRASADA)' : '') + ' · ' + t.setor + ' · ' + valorCurto(t.titulo, 90)
+          + ' · ' + (t.responsavel || 'sem responsável') + ' · ' + situacao(t.status) + (t.prioridade ? ' · ' + situacao(t.prioridade) : '')).join(' | ') + (n > 20 ? ' | … mais ' + (n - 20) + ' (as contas acima incluem todas)' : '');
+    }, 'nenhuma');
     sec('Tarefas recorrentes', rec, (ls, total) => (total || ls.length) + ' — ' + ls.map(r => r.setor + ': ' + valorCurto(r.titulo, 60) + ' (' + r.periodicidade + (r.dia_vencimento ? ', dia ' + r.dia_vencimento : '') + ')').join(' · '), 'nenhuma');
     if (obr.erro) partes.push('Obrigações: não consegui ler.');
     else if (!obr.linhas.length) partes.push('Obrigações: nenhuma vinculada.');
@@ -493,19 +515,20 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
       const nomes = new Map(cat.map(o => [o.id, o]));
       partes.push('Obrigações: ' + obr.linhas.map(o => { const x = nomes.get(o.obrigacao_id) || {}; return (x.nome || 'obrigação') + ' (' + (x.periodicidade || '—') + ', dia ' + (o.dia_prazo_override || x.dia_prazo || '—') + (o.responsavel ? ', ' + o.responsavel : '') + ')'; }).join(' · '));
     }
-    sec('Alvarás', alv, ls => ls.map(x => x.tipo + (x.numero ? ' nº ' + x.numero : '') + ', vence ' + dataBR(x.vencimento) + (x.vencimento && String(x.vencimento) < hoje ? ' (VENCIDO)' : '') + ', ' + x.status).join(' · '), 'nenhum');
-    sec('Admissões', adm, (ls, total) => (total || ls.length) + ' — ' + ls.map(x => x.funcionario_nome + ' (início ' + dataBR(x.data_inicio) + ', ' + x.status + ')').join(' · '), 'nenhuma');
-    sec('Rescisões', res, (ls, total) => (total || ls.length) + ' — ' + ls.map(x => x.funcionario_nome + ' (' + x.tipo + ', último dia ' + dataBR(x.ultimo_dia) + ', pagar até ' + dataBR(x.data_acerto) + ', ' + x.status + ')').join(' · '), 'nenhuma');
+    sec('Alvarás', alv, ls => ls.map(x => x.tipo + (x.numero ? ' nº ' + x.numero : '') + ', vence ' + dataBR(x.vencimento) + (x.vencimento && String(x.vencimento) < hoje ? ' (VENCIDO)' : '') + ', ' + situacao(x.status)).join(' · '), 'nenhum');
+    sec('Admissões', adm, (ls, total) => (total || ls.length) + ' — ' + ls.map(x => x.funcionario_nome + ' (início ' + dataBR(x.data_inicio) + ', ' + (x.status === 'respondida' ? 'recebida, a registrar' : situacao(x.status)) + ')').join(' · '), 'nenhuma');
+    sec('Rescisões', res, (ls, total) => (total || ls.length) + ' — ' + ls.map(x => x.funcionario_nome + ' (' + situacao(x.tipo) + ', último dia ' + dataBR(x.ultimo_dia) + ', pagar até ' + dataBR(x.data_acerto) + ', '
+      + (x.status === 'recebida' ? 'recebida, a calcular' : situacao(x.status)) + ')').join(' · '), 'nenhuma');
     // da Reforma, só a situação: o resultado da simulação (com a confiança e o porquê) quem diz é o assistente da Reforma
-    sec('Reforma Tributária', rt, ls => ls.map(x => 'caso ' + x.status + ', decisão gravada: ' + x.decisao + (x.triagem ? ', triagem ' + x.triagem : '') + (x.comunicado_em ? ', comunicado em ' + dataBR(x.comunicado_em) : '')
+    sec('Reforma Tributária', rt, ls => ls.map(x => 'caso ' + situacao(x.status) + ', decisão gravada: ' + situacao(x.decisao) + (x.triagem ? ', triagem ' + situacao(x.triagem) : '') + (x.comunicado_em ? ', comunicado em ' + dataBR(x.comunicado_em) : '')
       + (fin(x.sim_custo_dentro) ? ', já simulado' : ', sem simulação')).join(' · ') + ' — o resultado da simulação e o porquê: perguntar_reforma', 'não está na campanha');
-    sec('Reuniões', reu, ls => ls.map(x => dataBR(x.data_reuniao) + (x.hora ? ' ' + String(x.hora).slice(0, 5) : '') + ' · ' + valorCurto(x.titulo, 70) + ' · ' + x.status).join(' | '), 'nenhuma');
+    sec('Reuniões', reu, ls => ls.map(x => dataBR(x.data_reuniao) + (x.hora ? ' ' + String(x.hora).slice(0, 5) : '') + ' · ' + valorCurto(x.titulo, 70) + ' · ' + situacao(x.status)).join(' | '), 'nenhuma');
     if (!trE.erro && trE.linhas.length) {
       const { linhas: trs = [] } = await q('transicoes?select=titulo,tipo,status,inicio,previsao_fim,padrinho&id=in.(' + trE.linhas.map(x => x.transicao_id).filter(Boolean).join(',') + ')');
-      if (trs.length) partes.push('Transições: ' + trs.map(x => valorCurto(x.titulo, 60) + ' (' + x.tipo + ', ' + x.status + ', início ' + dataBR(x.inicio) + (x.previsao_fim ? ', previsão ' + dataBR(x.previsao_fim) : '') + (x.padrinho ? ', padrinho ' + x.padrinho : '') + ')').join(' · '));
+      if (trs.length) partes.push('Transições: ' + trs.map(x => valorCurto(x.titulo, 60) + ' (' + situacao(x.tipo) + ', ' + situacao(x.status) + ', início ' + dataBR(x.inicio) + (x.previsao_fim ? ', previsão ' + dataBR(x.previsao_fim) : '') + (x.padrinho ? ', padrinho ' + x.padrinho : '') + ')').join(' · '));
     }
-    if (!reg.erro && reg.linhas.length) partes.push('Regularizações: ' + reg.linhas.map(x => (x.campanha || 'regularização') + ' (' + x.status + ', débitos ' + brl(x.total_debitos) + (x.prazo_final ? ', prazo ' + dataBR(x.prazo_final) : '') + ')').join(' · '));
-    if (!prec.erro && prec.linhas.length) partes.push('Propostas de honorários: ' + prec.linhas.map(x => x.status + ' em ' + dataBR(x.criado_em) + ' (' + brl(x.honorario) + '/mês' + (fin(x.taxa_unica) && +x.taxa_unica ? ' + ' + brl(x.taxa_unica) + ' de taxa' : '') + ')').join(' · '));
+    if (!reg.erro && reg.linhas.length) partes.push('Regularizações: ' + reg.linhas.map(x => (x.campanha || 'regularização') + ' (' + situacao(x.status) + ', débitos ' + brl(x.total_debitos) + (x.prazo_final ? ', prazo ' + dataBR(x.prazo_final) : '') + ')').join(' · '));
+    if (!prec.erro && prec.linhas.length) partes.push('Propostas de honorários: ' + prec.linhas.map(x => situacao(x.status) + ' em ' + dataBR(x.criado_em) + ' (' + brl(x.honorario) + '/mês' + (fin(x.taxa_unica) && +x.taxa_unica ? ' + ' + brl(x.taxa_unica) + ' de taxa' : '') + ')').join(' · '));
     if (!fat.erro && fat.linhas.length) partes.push('Faturáveis a cobrar: ' + fat.linhas.map(x => valorCurto(x.descricao, 60) + ' ' + brl(x.valor) + ' (' + dataBR(x.executado_em) + ')').join(' · '));
     if (!dre.erro && dre.linhas.length) partes.push('DRE: ' + dre.linhas.map(x => x.periodo).join(', '));
     if (!fr.erro && fr.linhas.length) partes.push('Fator R: acompanhada' + (fr.linhas.some(x => x.ativo === false) ? ' (inativa)' : ''));
@@ -598,22 +621,51 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     // atrasada é o que venceu antes de hoje (num período futuro, o que vence antes dele e depois de hoje não é atraso)
     const corteAtraso = de < hoje ? de : hoje;
     const cols = 'select=id,cliente_id,setor,titulo,responsavel,prazo,hora,status,prioridade';
+    // as atrasadas: todas (até 5 mil), pro resumo contar tudo — a lista mostra só as primeiras
+    async function atrasadasTodas() {
+      const base = 'tarefas?' + cols + '&status=neq.concluida&prazo=lt.' + corteAtraso + filtroResp + setor + '&order=prazo.asc,id.asc&limit=1000';
+      const p1 = await ler(base + '&offset=0', { contar: true });
+      const ls = [...p1.linhas];
+      const total = p1.total == null ? ls.length : p1.total;
+      for (let p = 1; p < 5 && ls.length < Math.min(total, 5000); p++) {
+        const r = await ler(base + '&offset=' + p * 1000);
+        if (!r.linhas.length) break;
+        ls.push(...r.linhas);
+      }
+      return { linhas: ls, total: Math.max(total, ls.length) };
+    }
     const [noPeriodo, atrasadas, rotinas] = await Promise.all([
       ler('tarefas?' + cols + '&status=neq.concluida&prazo=gte.' + de + '&prazo=lte.' + ate + filtroResp + setor + '&order=prazo.asc,hora.asc.nullslast,id.asc&limit=400', { contar: true }),
-      comAtrasadas ? ler('tarefas?' + cols + '&status=neq.concluida&prazo=lt.' + corteAtraso + filtroResp + setor + '&order=prazo.asc,id.asc&limit=60', { contar: true }) : Promise.resolve({ linhas: [], total: 0 }),
+      comAtrasadas ? atrasadasTodas() : Promise.resolve({ linhas: [], total: 0 }),
       ler('rotinas?select=id,setor,titulo,descricao,responsavel,periodicidade,dia_semana,dia_mes,dia_anual,dia_util,ultima_execucao,adiada_para&ativo=eq.true' + setor)
     ]);
     const [periodo, atras] = await Promise.all([comEmpresa(noPeriodo.linhas), comEmpresa(atrasadas.linhas)]);
     const PRIO = { alta: 0, media: 1, 'média': 1, baixa: 2 };
     const tarefaTxt = t => '  - ' + (t.hora ? String(t.hora).slice(0, 5) + ' · ' : '') + valorCurto(t.titulo, 110) + (t.empresa && t.cliente_id ? ' · ' + t.empresa : '') + ' · ' + t.setor
-      + (todos ? ' · ' + (t.responsavel || 'sem responsável') : '') + ' · ' + t.status + (t.prioridade ? ' · prioridade ' + t.prioridade : '');
+      + (todos ? ' · ' + (t.responsavel || 'sem responsável') : '') + ' · ' + situacao(t.status) + (t.prioridade ? ' · prioridade ' + situacao(t.prioridade) : '');
     const daPessoa = r => todos || (r.responsavel && (normalizarBusca(r.responsavel) === normalizarBusca(nome) || (ehSocio && normalizarBusca(r.responsavel) === 'ambos')));
     const linhas = [];
     linhas.push('Agenda de ' + (todos ? 'todos' : nome + (foraDaEquipe ? ' (nome fora da equipe atual: ' + EQUIPE.join(', ') + ')' : '')) + (de === ate ? ' em ' + DIAS[d0.getDay()] + ', ' + dataBR(de) : ' de ' + dataBR(de) + ' a ' + dataBR(ate)) + (e.setor ? ' (setor ' + e.setor + ')' : '') + ':');
     if (comAtrasadas) {
-      linhas.push('Atrasadas (prazo antes de ' + dataBR(corteAtraso) + '): ' + (atrasadas.total ?? atras.length));
-      atras.slice(0, 40).forEach(t => linhas.push(tarefaTxt(t).replace('  - ', '  - prazo ' + dataBR(t.prazo) + ' · ')));
-      if ((atrasadas.total || 0) > 40) linhas.push('  … mais ' + (atrasadas.total - 40) + ' atrasadas');
+      const total = atrasadas.total;
+      linhas.push('Atrasadas (prazo antes de ' + dataBR(corteAtraso) + '): ' + total);
+      // muitas: o resumo de todas (por mês do prazo, tarefa, empresa, setor e pessoa), pra não tirar conclusão de uma amostra
+      if (atras.length > 10) {
+        const meses = contarPor(atras, t => ({ id: String(t.prazo).slice(0, 7), rotulo: String(t.prazo).slice(5, 7) + '/' + String(t.prazo).slice(0, 4) })).sort((a, b) => a.id.localeCompare(b.id));
+        const porTarefa = contarPor(atras, t => ({ id: normalizarBusca(t.titulo).replace(/\s+/g, ' ').trim(), rotulo: valorCurto(t.titulo, 60) }));
+        const porEmpresa = contarPor(atras, t => ({ id: t.cliente_id || '-', rotulo: t.cliente_id ? t.empresa : 'sem empresa' }));
+        linhas.push('  resumo de ' + (atras.length < total ? 'as ' + atras.length + ' primeiras por prazo' : 'todas') + ':');
+        linhas.push('  · por mês do prazo: ' + meses.map(g => g.rotulo + ' ' + g.n).join(' · '));
+        linhas.push('  · por tarefa: ' + topo(porTarefa, 10));
+        linhas.push('  · por empresa: ' + topo(porEmpresa, 10));
+        const porSetor = contarPor(atras, t => ({ id: t.setor || '—', rotulo: t.setor || '—' }));
+        if (porSetor.length > 1) linhas.push('  · por setor: ' + topo(porSetor, 10));
+        if (todos) linhas.push('  · por pessoa: ' + topo(contarPor(atras, t => { const p = rotuloPessoa(t.responsavel); return { id: p, rotulo: p }; }), 10));
+      }
+      const mostrar = atras.slice().sort((a, b) => (PRIO[a.prioridade] ?? 3) - (PRIO[b.prioridade] ?? 3) || String(a.prazo).localeCompare(String(b.prazo))).slice(0, 25);
+      if (total > mostrar.length) linhas.push('  as ' + mostrar.length + ' primeiras (prioridade alta antes, depois o prazo mais antigo):');
+      mostrar.forEach(t => linhas.push(tarefaTxt(t).replace('  - ', '  - prazo ' + dataBR(t.prazo) + ' · ')));
+      if (total > mostrar.length) linhas.push('  … mais ' + (total - mostrar.length) + ' atrasadas (no resumo acima)');
     }
     for (let d = new Date(d0); d <= d1; d.setDate(d.getDate() + 1)) {
       const s = ymd(d);
@@ -644,9 +696,11 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     if (reformaUsada) return 'A Reforma já respondeu nesta pergunta: use a resposta que veio (uma consulta à Reforma por pergunta).';
     reformaUsada = true;
     const r = await perguntarReforma(pergunta.slice(0, 2000));
-    // pra cruzar com outros dados, volta como texto — salvo se o tempo da pergunta está acabando: aí vai direto
-    if (e.devolver_direto === false && !deveFinalizar()) return 'Resposta do assistente da Reforma (com as fontes dele):\n' + r.texto;
-    return { final: true, texto: r.texto, cortada: !!r.cortada };
+    // pra cruzar com outros dados, volta como texto — salvo se o tempo da pergunta está acabando: aí vai direto. Pedida
+    // junto com outra ferramenta, também volta como texto (o comoTexto): nos dois casos, com o recado de manter as fontes
+    const comoTexto = 'Resposta do assistente da Reforma — ao usar, mantenha as fontes dele entre colchetes exatamente como vieram ([regra CODIGO], [CODIGO, onde]): na tela elas viram links.\n' + r.texto;
+    if (e.devolver_direto === false && !deveFinalizar()) return comoTexto;
+    return { final: true, texto: r.texto, cortada: !!r.cortada, comoTexto };
   }
 
   return { buscar_empresa, ver_empresa, agenda, consultar, perguntar_reforma };
