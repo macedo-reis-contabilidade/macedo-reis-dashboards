@@ -18,5 +18,7 @@ document.documentElement.style.visibility = 'hidden';
     window.location.href = '/macedo-reis-dashboards/login.html?redirect=' + redirect;
   } else {
     document.documentElement.style.visibility = 'visible';
+    // o assistente do escritório: o mesmo balão em todas as telas com login (sem ele, a tela segue igual)
+    import('./assistente-escritorio.js').then(m => m.iniciarAssistente({ email: session.user && session.user.email })).catch(() => {});
   }
 })();

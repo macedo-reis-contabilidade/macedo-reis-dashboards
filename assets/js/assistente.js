@@ -7,11 +7,15 @@
 // página não apaga; "Sair" apaga (signOut, em supabase.js). Cada pergunta guarda o contexto em que foi feita (ex.: a
 // ficha aberta): o histórico que vai junto é só o do mesmo contexto, e uma nota marca na conversa quando ele muda.
 // Cada tela passa o que é dela (montarAssistente): o nome, a saudação, as perguntas de exemplo, o contexto, como
-// perguntar (perguntarFuncao — Edge Function que responde em eventos "data: {...}") e como formatar as fontes.
+// perguntar (perguntarFuncao — Edge Function que responde em eventos "data: {...}"), como formatar as fontes e como
+// retomar uma resposta depois de trocar de página. Os olhos seguem o mouse; reagir() faz a carinha comemorar e avisar()
+// mostra um recado (o assistente do escritório, assets/js/assistente-escritorio.js, usa os dois).
 // Estilos em assets/css/style.css (prefixo .as-). Os auxiliares puros (textoParaHtml, lerEventos, mensagemDoErro,
 // perguntarFuncao, lerEstado, primeiraFrase) têm teste próprio em tests/assistente.test.mjs; a tela, em
 // tests/harness/reforma-chat.py.
 // ============================================================
+
+import { lerEventos } from './eventos-sse.js';
 
 export const escapeHtml = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -49,27 +53,8 @@ export function textoParaHtml(texto, { fontes } = {}) {
   return html;
 }
 
-// ------------------------------------------------------------
-// lerEventos(data, cb) — o que a função devolve: o Response em fluxo (o supabase-js devolve o próprio Response pra
-// text/event-stream), o texto inteiro dos eventos ou o JSON de quem não pediu fluxo. Cada "data: {...}" vira cb(objeto)
-// ------------------------------------------------------------
-export async function lerEventos(data, cb) {
-  const processar = bloco => bloco.split('\n').forEach(l => { if (l.startsWith('data: ')) { try { cb(JSON.parse(l.slice(6))); } catch (e) { /* linha quebrada */ } } });
-  if (data && data.body && typeof data.body.getReader === 'function') {
-    const leitor = data.body.getReader(), dec = new TextDecoder();
-    let buf = '';
-    for (;;) {
-      const { value, done } = await leitor.read();
-      if (done) break;
-      buf += dec.decode(value, { stream: true });
-      let i;
-      while ((i = buf.indexOf('\n\n')) >= 0) { processar(buf.slice(0, i)); buf = buf.slice(i + 2); }
-    }
-    buf += dec.decode();
-    if (buf.trim()) processar(buf);
-  } else if (typeof data === 'string') processar(data);
-  else if (data && (data.resposta || data.erro)) cb(data.erro ? { tipo: 'erro', texto: data.erro } : { tipo: 'resposta', texto: data.resposta, fontes: data.fontes, cortada: data.cortada });
-}
+// lerEventos (os eventos "data: {...}" que a função manda) mora em eventos-sse.js: a função do assistente usa o mesmo
+export { lerEventos };
 
 // o erro do supabase-js: a mensagem que a função mandou ou, sem ela, uma frase em português pelo código
 export async function mensagemDoErro(error) {
@@ -124,7 +109,7 @@ export function lerEstado(texto) {
   const msgs = (Array.isArray(j.msgs) ? j.msgs : [])
     .filter(m => m && typeof m === 'object' && TIPOS_MSG.includes(m.tipo) && str(m.texto))
     .map(m => ({ tipo: m.tipo, texto: m.texto.slice(0, 20000), em: str(m.em) ? m.em.slice(0, 40) : '', ctxId: id(m.ctxId),
-      etapas: Array.isArray(m.etapas) ? m.etapas.filter(str).map(e => e.slice(0, 300)).slice(0, 20) : [] }));
+      etapas: Array.isArray(m.etapas) ? m.etapas.filter(str).map(e => e.slice(0, 300)).slice(0, 20) : [], ...(id(m.pedido) ? { pedido: id(m.pedido) } : {}) }));
   const historico = (Array.isArray(j.historico) ? j.historico : [])
     .filter(h => h && typeof h === 'object' && str(h.pergunta) && str(h.resposta))
     .map(h => ({ pergunta: h.pergunta.slice(0, 2000), resposta: h.resposta.slice(0, 20000), ctxId: id(h.ctxId) }));
@@ -146,12 +131,12 @@ export const primeiraFrase = t => {
 const hora = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); };
 
 // ------------------------------------------------------------
-// a carinha: cabeça na cor da marca, dois olhos (piscam; "leem" enquanto ele consulta) e o sorriso de olhos (^ ^)
-// quando a resposta chega
+// a carinha: cabeça na cor da marca, dois olhos (piscam; seguem o mouse; "leem" enquanto ele consulta) e o sorriso de
+// olhos (^ ^) quando a resposta chega ou quando alguém conclui uma tarefa
 // ------------------------------------------------------------
 const ROSTO = '<svg class="as-rosto" viewBox="0 0 56 56" aria-hidden="true" focusable="false">'
   + '<rect class="as-cabeca" x="2" y="2" width="52" height="52" rx="18"/>'
-  + '<g class="as-olhos"><rect class="as-olho" x="16" y="19.5" width="8" height="15" rx="4"/><rect class="as-olho" x="32" y="19.5" width="8" height="15" rx="4"/></g>'
+  + '<g class="as-mira"><g class="as-olhos"><rect class="as-olho" x="16" y="19.5" width="8" height="15" rx="4"/><rect class="as-olho" x="32" y="19.5" width="8" height="15" rx="4"/></g></g>'
   + '<path class="as-sorri" d="M16 29.5q4-6.5 8 0M32 29.5q4-6.5 8 0"/></svg>';
 const ICONE = {
   nova: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
@@ -160,21 +145,27 @@ const ICONE = {
   fechar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>',
   enviar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>'
 };
+const valorOuFuncao = v => (typeof v === 'function' ? v() : v);
 
 // ============================================================
-// montarAssistente(op) → { abrir, fechar, enviar, definirContexto, atualizar, novaConversa }
+// montarAssistente(op) → { abrir, fechar, enviar, definirContexto, atualizar, redesenhar, novaConversa, reagir, avisar, raiz }
 //   op.id            chave da conversa guardada (sessionStorage "mr_assistente:<id>")
-//   op.nome          nome no topo do painel · op.status: a frase embaixo do nome · op.rotulo: o nome do balão (leitor de tela)
-//   op.saudacao      HTML da primeira mensagem (texto fixo da tela)
+//   op.nome          nome no topo do painel · op.status: a frase embaixo do nome (texto ou função) · op.rotulo: o nome do
+//                    balão (leitor de tela) · op.placeholder: o texto da caixa vazia
+//   op.saudacao      HTML da primeira mensagem (texto fixo da tela, ou função)
 //   op.exemplos(ctx) perguntas de exemplo (conversa nova, ou contexto novo) · op.seguintes(ctx): depois de cada resposta
-//   op.recado        { texto, exemplos } — o recado da primeira visita na sessão
+//   op.recado        { texto, exemplos } — o recado da primeira visita na sessão (opcional)
 //   op.recadoContexto(ctx) { texto, exemplos } — o recado na primeira vez que um contexto (ex.: a ficha) aparece na sessão
-//   op.contexto(ctx) o que vai junto da pergunta quando o contexto está marcado (ex.: { caso_id, tela })
-//   op.perguntar(corpo, aoEtapa) → { texto, fontes, cortada } (perguntarFuncao)
+//   op.contexto(ctx) o que vai junto de toda pergunta (ctx = null sem nada aberto ou com a caixa desmarcada)
+//   op.perguntar(corpo, aoEtapa) → { texto, fontes, cortada } (perguntarFuncao). O corpo leva "pedido": o id da pergunta
+//   op.retomar(pedido, aoEtapa) → { texto, cortada } | null: a página recarregou (trocou de tela) com a pergunta no ar —
+//                    busca a resposta pelo id; null = a pergunta não chegou. Sem retomar, a pergunta volta pra caixa
 //   op.formatar(texto) → HTML da resposta · op.antes(): preparo antes de mostrar/enviar (ex.: carregar os códigos)
-//   op.aoClicar(ev) clique dentro de uma resposta (ex.: a regra abre a Base legal); true = tratado
-// ctx (definirContexto): { id, nome, ... } ou null — os outros campos podem ser getters (são lidos na hora); atualizar()
-// redesenha as perguntas prontas quando a tela muda o que elas leem (ex.: a ficha acabou de ser simulada)
+//   op.aoClicar(ev)  clique dentro de uma resposta (ex.: a regra abre a Base legal); true = tratado
+// ctx (definirContexto): { id, nome, rotulo?, nota?, ... } ou null — rotulo: a faixa ("Sobre a ficha aberta"); nota: o
+// começo da nota na conversa ("Sobre a ficha de "); os outros campos podem ser getters (são lidos na hora).
+// atualizar() redesenha as perguntas prontas (a tela mudou o que elas leem); redesenhar() refaz a conversa (ex.: os códigos
+// das fontes chegaram); reagir() faz a carinha comemorar; avisar({ texto | html, exemplos, ms }) mostra um recado.
 // ============================================================
 export function montarAssistente(op) {
   const temMedia = q => typeof matchMedia === 'function' && matchMedia(q).matches;
@@ -192,6 +183,7 @@ export function montarAssistente(op) {
   const ctxAtual = () => (ctx && usarCtx ? ctx : null);
   const idDe = c => (c ? String(c.id) : null);
   const ultimaPergunta = () => { for (let i = est.msgs.length - 1; i >= 0; i--) if (est.msgs[i].tipo === 'eu') return est.msgs[i]; return null; };
+  const novoId = () => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : null);
 
   // ---------- DOM ----------
   const raiz = document.createElement('div');
@@ -207,9 +199,9 @@ export function montarAssistente(op) {
     + '<div class="as-acoes"><button type="button" class="as-acao" data-a="nova" title="Começar uma conversa nova" aria-label="Conversa nova">' + ICONE.nova + '</button>'
     + '<button type="button" class="as-acao" data-a="largo" title="Aumentar o painel" aria-label="Aumentar o painel">' + ICONE.maior + '</button>'
     + '<button type="button" class="as-acao" data-a="fechar" data-janela-fechar title="Minimizar" aria-label="Minimizar">' + ICONE.fechar + '</button></div></header>'
-    + '<div class="as-ctx" hidden><label><input type="checkbox" checked> <span>Sobre a ficha aberta: <b></b></span></label></div>'
+    + '<div class="as-ctx" hidden><label><input type="checkbox" checked> <span><span class="as-ctx-rot">Sobre a ficha aberta</span>: <b></b></span></label></div>'
     + '<div class="as-msgs"><div class="as-lista"></div><div class="as-cauda"></div></div>'
-    + '<form class="as-entrada"><textarea rows="1" maxlength="2000" data-no-autogrow placeholder="Pergunte à base…" aria-label="Sua pergunta" title="Enter envia; Shift+Enter quebra a linha"></textarea>'
+    + '<form class="as-entrada"><textarea rows="1" maxlength="2000" data-no-autogrow placeholder="' + escapeHtml(op.placeholder || 'Pergunte à base…') + '" aria-label="Sua pergunta" title="Enter envia; Shift+Enter quebra a linha"></textarea>'
     + '<button type="submit" class="as-enviar" aria-label="Enviar">' + ICONE.enviar + '</button></form>'
     + '</section>'
     + '<div class="as-vivo" role="status" aria-live="polite"></div>';
@@ -218,7 +210,7 @@ export function montarAssistente(op) {
   const lancador = q('.as-lancador'), selo = q('.as-selo'), recado = q('.as-recado'), painel = q('.as-painel');
   const msgs = q('.as-msgs'), lista = q('.as-lista'), cauda = q('.as-cauda'), vivo = q('.as-vivo');
   const texto = q('.as-entrada textarea'), enviarBtn = q('.as-enviar'), novaBtn = q('[data-a="nova"]'), statusTxt = q('.as-status-txt');
-  const ctxBox = q('.as-ctx'), ctxCheck = q('.as-ctx input'), ctxNome = q('.as-ctx b');
+  const ctxBox = q('.as-ctx'), ctxCheck = q('.as-ctx input'), ctxNome = q('.as-ctx b'), ctxRot = q('.as-ctx-rot');
 
   // a "?" da ajuda (tour) mora no mesmo canto: o balão sobe pra cima dela
   const conferirAjuda = () => raiz.classList.toggle('as-com-ajuda', !!document.querySelector('.mrt-help'));
@@ -237,9 +229,35 @@ export function montarAssistente(op) {
   setTimeout(piscar, 2000 + Math.random() * 2000);
   const sorrir = () => { raiz.classList.add('as-sorrindo'); setTimeout(() => raiz.classList.remove('as-sorrindo'), 1100); };
   const chamarAtencao = () => { if (reduzido) return; raiz.classList.remove('as-atencao'); void raiz.offsetWidth; raiz.classList.add('as-atencao'); setTimeout(() => raiz.classList.remove('as-atencao'), 800); };
+  // comemora (alguém concluiu uma tarefa): sorri e dá um pulinho
+  function reagir() {
+    sorrir();
+    if (reduzido) return;
+    raiz.classList.remove('as-pulo'); void raiz.offsetWidth; raiz.classList.add('as-pulo');
+    setTimeout(() => raiz.classList.remove('as-pulo'), 700);
+  }
+  // os olhos seguem o mouse (de leve; parado por um tempo, olham pra frente)
+  if (!reduzido) {
+    const miras = [...raiz.querySelectorAll('.as-mira')];
+    let px = 0, py = 0, pendente = false, ultimoMov = 0;
+    const mirar = () => {
+      pendente = false;
+      const r = (est.aberto && !estreito() ? q('.as-avatar') : lancador).getBoundingClientRect();
+      if (!r.width) return;
+      const dx = px - (r.left + r.width / 2), dy = py - (r.top + r.height / 2), dist = Math.hypot(dx, dy) || 1;
+      const k = Math.min(1, dist / 360);
+      const t = 'translate(' + (dx / dist * 3.2 * k).toFixed(2) + 'px,' + (dy / dist * 2.6 * k).toFixed(2) + 'px)';
+      miras.forEach(m => { m.style.transform = t; });
+    };
+    document.addEventListener('pointermove', ev => {
+      px = ev.clientX; py = ev.clientY; ultimoMov = Date.now();
+      if (!pendente) { pendente = true; requestAnimationFrame(mirar); }
+    }, { passive: true });
+    setInterval(() => { if (ultimoMov && Date.now() - ultimoMov > 7000) { ultimoMov = 0; miras.forEach(m => { m.style.transform = ''; }); } }, 2500);
+  }
 
   // ---------- status, selo, botões travados enquanto ele responde ----------
-  const statusPadrao = () => { statusTxt.textContent = op.status || ''; raiz.classList.remove('as-ocupado'); };
+  const statusPadrao = () => { statusTxt.textContent = valorOuFuncao(op.status) || ''; raiz.classList.remove('as-ocupado'); };
   statusPadrao();
   const atualizarSelo = () => {
     selo.hidden = !est.naoLidas;
@@ -251,7 +269,7 @@ export function montarAssistente(op) {
 
   // ---------- recado (o balãozinho ao lado da carinha) ----------
   function mostrarRecado({ html, chips = [], ms = 16000 }) {
-    if (est.aberto) return;
+    if (est.aberto) return false;
     clearTimeout(timerRecado);
     q('.as-recado-txt').innerHTML = html;
     const cx = recado.querySelector('.as-chips');
@@ -266,6 +284,7 @@ export function montarAssistente(op) {
     recado.classList.remove('as-surge'); void recado.offsetWidth; recado.classList.add('as-surge');
     chamarAtencao();
     if (ms) timerRecado = setTimeout(() => { if (!recado.matches(':hover') && !recado.contains(document.activeElement)) esconderRecado(); }, ms);
+    return true;
   }
   function esconderRecado() { clearTimeout(timerRecado); recado.hidden = true; }
   q('.as-recado-x').onclick = () => { esconderRecado(); lancador.focus({ preventScroll: true }); };
@@ -274,6 +293,12 @@ export function montarAssistente(op) {
     abrir();
     if (ocupado) { texto.value = p; ajustarAltura(); } else enviar(p);
   } }));
+  // um recado da tela (o assistente do escritório: a saudação do dia, o que a tela tem de novo). Não aparece com o painel
+  // aberto, com outro recado na tela ou com uma pergunta no ar; true = apareceu
+  function avisar({ texto: t, html, exemplos, ms = 16000 } = {}) {
+    if (est.aberto || ocupado || !recado.hidden) return false;
+    return mostrarRecado({ html: html || '<p>' + escapeHtml(t || '') + '</p>', chips: chipsDe(exemplos), ms });
+  }
 
   // ---------- mensagens: a lista cresce no fim (o que já está na tela fica como está); a cauda tem o "digitando…" e as
   // perguntas prontas ----------
@@ -294,7 +319,7 @@ export function montarAssistente(op) {
     return '<div class="as-msg ia' + (erro ? ' erro' : '') + n + '"><div class="as-resposta">' + (erro ? '<p>' + escapeHtml(m.texto) + '</p>' : op.formatar(m.texto)) + '</div>'
       + '<div class="as-meta"><time>' + hora(m.em) + '</time>' + consultas + '</div></div>';
   }
-  const htmlSaudacao = () => '<div class="as-msg ia as-saudacao"><div class="as-resposta">' + (op.saudacao || '') + '</div></div>';
+  const htmlSaudacao = () => '<div class="as-msg ia as-saudacao"><div class="as-resposta">' + (valorOuFuncao(op.saudacao) || '') + '</div></div>';
   // as perguntas prontas: conversa nova, ou contexto diferente do da última pergunta → os exemplos do contexto de agora;
   // depois de uma resposta → as seguintes (menos as já feitas no mesmo contexto)
   function chipsDaConversa() {
@@ -304,7 +329,7 @@ export function montarAssistente(op) {
     if (!ultimaP || ultimaP.ctxId !== atual) lst = op.exemplos ? op.exemplos(ctxAtual()) : [];
     else if (ultimo && ultimo.tipo === 'ia' && op.seguintes) {
       const feitas = new Set(est.msgs.filter(m => m.tipo === 'eu' && m.ctxId === atual).map(m => m.texto));
-      lst = op.seguintes(ctxAtual()).filter(p => !feitas.has(p));
+      lst = (op.seguintes(ctxAtual()) || []).filter(p => !feitas.has(p));
     }
     if (!lst || !lst.length) return '';
     return '<div class="as-chips as-chips-conversa">' + lst.map(p => '<button type="button" class="as-chip" data-pergunta="' + escapeHtml(p) + '">' + escapeHtml(p) + '</button>').join('') + '</div>';
@@ -363,7 +388,7 @@ export function montarAssistente(op) {
   // ---------- contexto (ex.: a ficha aberta) ----------
   function mostrarContexto() {
     ctxBox.hidden = !ctx;
-    if (ctx) ctxNome.textContent = ctx.nome || '';
+    if (ctx) { ctxNome.textContent = ctx.nome || ''; ctxRot.textContent = ctx.rotulo || 'Sobre a ficha aberta'; }
   }
   ctxCheck.onchange = () => { usarCtx = ctxCheck.checked; desenharCauda(); };
   function definirContexto(novo) {
@@ -453,50 +478,30 @@ export function montarAssistente(op) {
   texto.addEventListener('input', ajustarAltura);
   texto.addEventListener('keydown', ev => { if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) { ev.preventDefault(); enviar(); } });
   q('.as-entrada').onsubmit = ev => { ev.preventDefault(); enviar(); };
+  const agoraIso = () => new Date().toISOString();
 
-  async function enviar(pergunta) {
-    const t = String(pergunta != null ? pergunta : texto.value).trim();
-    if (!t || ocupado) return;
-    const g = geracao, c = ctxAtual(), cid = idDe(c), agora = () => new Date().toISOString();
-    ocupado = true; travar(true); ultimaEtapa = '';
-    if (!est.conversa && typeof crypto !== 'undefined' && crypto.randomUUID) est.conversa = crypto.randomUUID();
-    // a pergunta muda de contexto (outra ficha, ou nenhuma): uma nota marca a troca na conversa
-    const anterior = ultimaPergunta();
-    if ((anterior ? anterior.ctxId : null) !== cid) {
-      const nota = { tipo: 'nota', texto: c ? 'Sobre a ficha de ' + (c.nome || '—') : 'Pergunta geral', em: agora(), ctxId: cid };
-      est.msgs.push(nota); acrescentar(nota);
-    }
-    const eu = { tipo: 'eu', texto: t, em: agora(), ctxId: cid };
-    est.msgs.push(eu); acrescentar(eu);
-    if (pergunta == null) { texto.value = ''; ajustarAltura(); }
-    guardar();
+  // "pensando": a carinha lê, o digitando aparece, enviar e conversa nova travam
+  function comecarEspera(etapa) {
+    ocupado = true; travar(true); ultimaEtapa = etapa || '';
     raiz.classList.add('as-pensando', 'as-ocupado');
     desenharCauda(); atualizarDigitando(); rolar();
-    anunciar('Pergunta enviada. Consultando a base.');
-    const etapas = [];
-    let res = null, erro = null;
-    try {
-      // o histórico que vai junto é só o do mesmo contexto: a conversa sobre uma empresa não entra na de outra
-      const historico = est.historico.filter(h => h.ctxId === cid).slice(-6).map(h => ({ pergunta: h.pergunta, resposta: h.resposta }));
-      const corpo = { pergunta: t, historico, conversa: est.conversa, contexto: (c && op.contexto ? op.contexto(c) : null) || {} };
-      if (op.antes) await Promise.resolve().then(op.antes).catch(() => {});
-      res = await op.perguntar(corpo, e => { if (g !== geracao) return; etapas.push(e); ultimaEtapa = e; atualizarDigitando(); });
-    } catch (e) { erro = (e && e.message) || 'Erro no assistente.'; }
-    if (g !== geracao) return;   // a conversa mudou enquanto esperava
+  }
+  // a resposta (ou o erro) entra na conversa; com o painel fechado, o selo e o recado "Respondi"
+  function concluir({ t, cid, res, erro, etapas, devolver = true }) {
     ocupado = false; travar(false);
     raiz.classList.remove('as-pensando'); statusPadrao();
     let el = null;
     if (res) {
-      const nova = { tipo: 'ia', texto: res.texto, etapas: etapas.slice(0, 20), em: agora(), ctxId: cid };
+      const nova = { tipo: 'ia', texto: res.texto, etapas: (etapas || []).slice(0, 20), em: agoraIso(), ctxId: cid };
       est.msgs.push(nova); el = acrescentar(nova);
-      if (res.cortada) { const n = { tipo: 'nota', texto: 'A resposta passou do tamanho máximo e foi cortada — peça a continuação.', em: agora(), ctxId: cid }; est.msgs.push(n); acrescentar(n); }
+      if (res.cortada) { const n = { tipo: 'nota', texto: 'A resposta passou do tamanho máximo e foi cortada — peça a continuação.', em: agoraIso(), ctxId: cid }; est.msgs.push(n); acrescentar(n); }
       est.historico.push({ pergunta: t, resposta: res.texto, ctxId: cid });
       sorrir();
       anunciar('Resposta: ' + primeiraFrase(res.texto));
     } else {
-      const falha = { tipo: 'erro', texto: erro, em: agora(), ctxId: cid };
+      const falha = { tipo: 'erro', texto: erro, em: agoraIso(), ctxId: cid };
       est.msgs.push(falha); el = acrescentar(falha);
-      if (!texto.value.trim()) { texto.value = t; ajustarAltura(); }
+      if (devolver && !texto.value.trim()) { texto.value = t; ajustarAltura(); }
       anunciar('Não consegui responder: ' + erro);
     }
     if (!est.aberto) {
@@ -512,19 +517,65 @@ export function montarAssistente(op) {
     }
   }
 
-  // ---------- começo ----------
-  // a página recarregou com uma pergunta sem resposta: avisa e devolve a pergunta pra caixa
-  const ultima = est.msgs[est.msgs.length - 1];
-  if (ultima && ultima.tipo === 'eu') {
-    est.msgs.push({ tipo: 'erro', texto: 'A página recarregou antes da resposta. Pergunte de novo.', em: new Date().toISOString(), ctxId: ultima.ctxId });
-    texto.value = ultima.texto;
+  async function enviar(pergunta) {
+    const t = String(pergunta != null ? pergunta : texto.value).trim();
+    if (!t || ocupado) return;
+    const g = geracao, c = ctxAtual(), cid = idDe(c);
+    if (!est.conversa) est.conversa = novoId();
+    // a pergunta muda de contexto (outra ficha, ou nenhuma): uma nota marca a troca na conversa
+    const anterior = ultimaPergunta();
+    if ((anterior ? anterior.ctxId : null) !== cid) {
+      const nota = { tipo: 'nota', texto: c ? (c.nota || 'Sobre a ficha de ') + (c.nome || '—') : 'Pergunta geral', em: agoraIso(), ctxId: cid };
+      est.msgs.push(nota); acrescentar(nota);
+    }
+    const pedido = novoId();
+    const eu = { tipo: 'eu', texto: t, em: agoraIso(), ctxId: cid, ...(pedido ? { pedido } : {}) };
+    est.msgs.push(eu); acrescentar(eu);
+    if (pergunta == null) { texto.value = ''; ajustarAltura(); }
     guardar();
+    comecarEspera('');
+    anunciar('Pergunta enviada. Consultando.');
+    const etapas = [];
+    let res = null, erro = null;
+    try {
+      // o histórico que vai junto é só o do mesmo contexto: a conversa sobre uma empresa não entra na de outra
+      const historico = est.historico.filter(h => h.ctxId === cid).slice(-6).map(h => ({ pergunta: h.pergunta, resposta: h.resposta }));
+      const corpo = { pergunta: t, historico, conversa: est.conversa, ...(pedido ? { pedido } : {}), contexto: (op.contexto ? op.contexto(c) : null) || {} };
+      if (op.antes) await Promise.resolve().then(op.antes).catch(() => {});
+      res = await op.perguntar(corpo, e => { if (g !== geracao) return; etapas.push(e); ultimaEtapa = e; atualizarDigitando(); });
+    } catch (e) { erro = (e && e.message) || 'Erro no assistente.'; }
+    if (g !== geracao) return;   // a conversa mudou enquanto esperava
+    concluir({ t, cid, res, erro, etapas });
   }
+
+  // a página recarregou (trocou de tela) com uma pergunta no ar: busca a resposta pelo id da pergunta
+  async function retomar(eu) {
+    const g = geracao;
+    comecarEspera('Terminando a resposta…');
+    let res = null, erro = null;
+    try {
+      res = await op.retomar(eu.pedido, e => { if (g === geracao) { ultimaEtapa = e; atualizarDigitando(); } });
+      if (!res) erro = 'A página mudou antes de a pergunta chegar. Pergunte de novo.';
+    } catch (e) { erro = (e && e.message) || 'Erro no assistente.'; }
+    if (g !== geracao) return;
+    concluir({ t: eu.texto, cid: eu.ctxId, res, erro, devolver: true });
+  }
+
+  // ---------- começo ----------
   aplicarLargo();
   atualizarSelo();
+  const ultima = est.msgs[est.msgs.length - 1];
+  const pendente = ultima && ultima.tipo === 'eu' ? ultima : null;
+  if (pendente && !(op.retomar && pendente.pedido)) {
+    // sem como retomar: avisa e devolve a pergunta pra caixa
+    est.msgs.push({ tipo: 'erro', texto: 'A página recarregou antes da resposta. Pergunte de novo.', em: agoraIso(), ctxId: pendente.ctxId });
+    texto.value = pendente.texto;
+    guardar();
+  }
   desenharTudo();
   // o painel aberto continua aberto depois de recarregar — no computador; no celular ele cobriria a tela toda
   if (est.aberto) { if (estreito()) { est.aberto = false; guardar(); } else abrir(false); }
+  if (pendente && op.retomar && pendente.pedido) retomar(pendente);
   // as fontes viram link quando os códigos chegam
   if (op.antes) Promise.resolve().then(op.antes).then(() => { if (est.msgs.some(m => m.tipo === 'ia')) desenharTudo({ manterRolagem: true }); }).catch(() => {});
   if (!est.recadoVisto && !est.msgs.length && !est.aberto && op.recado) {
@@ -535,5 +586,6 @@ export function montarAssistente(op) {
     }, 2500);
   }
 
-  return { abrir, fechar, enviar, definirContexto, atualizar: desenharCauda, novaConversa };
+  return { abrir, fechar, enviar, definirContexto, atualizar: desenharCauda, redesenhar: () => desenharTudo({ manterRolagem: true }), novaConversa, reagir, avisar,
+    get aberto() { return est.aberto; }, get ocupado() { return ocupado; }, raiz };
 }

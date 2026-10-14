@@ -43,8 +43,10 @@ function camada(el) {
   return Number.isFinite(z) ? z : 0;
 }
 
-function janelaDeCima() {
-  const abertas = [...document.body.querySelectorAll('div, dialog, section, aside')].filter(ehJanela);
+// exportada: o assistente do escritório (assistente-escritorio.js) fica discreto com uma janela aberta — "fora" é o
+// próprio assistente (no celular o painel dele também cobre a tela)
+export function janelaDeCima(fora = null) {
+  const abertas = [...document.body.querySelectorAll('div, dialog, section, aside')].filter(el => ehJanela(el) && !(fora && fora.contains(el)));
   if (!abertas.length) return null;
   // a de cima é a de maior z-index; empatou, vale a última que entrou na página
   return abertas.reduce((a, b) => (camada(b) >= camada(a) ? b : a));

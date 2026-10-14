@@ -171,3 +171,6 @@ supabase.functions = { invoke: async (nome, opts) => (typeof window.__mockInvoke
 supabase.todasLinhas = async function (montar) { const tudo = []; for (let i = 0; ; i += 1000) { const { data, error } = await montar().range(i, i + 999); if (error) return { data: tudo, error }; tudo.push(...(data || [])); if (!data || data.length < 1000) return { data: tudo, error: null }; } };
 export async function getCurrentUser(){ return { email:'financeiro@macedoereis.com.br' }; }
 export async function signOut(){}
+// o assistente do escritório (assets/js/assistente-escritorio.js) mostra um recado do dia na primeira tela: nos testes de
+// tela ele ficaria por cima dos cliques — aqui fica quieto, salvo no teste dele (window.__assistenteRecados = true)
+(() => { const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { return !window.__assistenteRecados && String(k).startsWith('mr_assistente_dia:') ? '1' : g.call(this, k); }; })();

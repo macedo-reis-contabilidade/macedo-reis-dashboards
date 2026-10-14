@@ -396,7 +396,7 @@
     import { simular, anexo2027, aliquotas2027, entradaComAliquotas } from './assets/js/rt-motor.js';
     import { avaliarConfianca, resumoConfianca, inferirProcedencia, contextoDoCaso, ROT_DECISAO, faltaParaCliente, textoReducaoServico } from './assets/js/rt-confianca.js';
     import { RT_PRAZO, janelaAberta as janelaAbertaEm } from './assets/js/rt-prazos.js';
-    import { montarAssistente, perguntarFuncao, textoParaHtml } from './assets/js/assistente.js';
+    import { assistenteDaTela } from './assets/js/assistente-escritorio.js';
 
     const $ = id => document.getElementById(id);
     const escapeHtml = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -727,7 +727,7 @@
       $('dMsg').textContent = c.comunicado_em ? 'Comunicado em ' + fmtData(c.comunicado_em) : '';
 
       $('ovFicha').classList.add('on');
-      assistente.definirContexto({ id: c.id, nome: cli.nome_principal || '?', get simulado() { return casoComResultado(c.id); } });
+      assistente.definirContexto({ id: 'caso:' + c.id, casoId: c.id, nome: cli.nome_principal || '?', get simulado() { return casoComResultado(c.id); } });
     }
     $('fiFechar').onclick = () => { $('ovFicha').classList.remove('on'); assistente.definirContexto(null); render(); };
 
@@ -2553,81 +2553,38 @@
     };
     $('refazerFechar').onclick = () => $('ovRefazer').classList.remove('on');
 
-    // ---------- ASSISTENTE DA REFORMA (14/10/2026): o chat de canto de tela ----------
-    // A peça é única do sistema (assets/js/assistente.js): o balão com a carinha, o recado, o painel, o "digitando…" e a
-    // conversa guardada na aba. Aqui fica o que é da Reforma: a Edge Function reforma-chat (a busca na base, as ferramentas
-    // e o simulador rodam lá; cada pergunta vai pro histórico, rt_chat), as fontes clicáveis (material → Drive, regra →
-    // Base legal) e o contexto da ficha aberta (o caso e, depois de "Calcular" e antes de "Gravar", os números da tela).
-    const fontesChat = { materiais: null, regras: null };
-    async function codigosDoChat() {
-      if (fontesChat.materiais) return;
-      const [{ data: ms }, { data: rs }] = await Promise.all([
-        supabase.from('rt_materiais').select('codigo, titulo, tipo, drive_url').eq('ativo', true),
-        supabase.from('rt_regras').select('codigo, titulo').eq('ativo', true)
-      ]);
-      fontesChat.materiais = new Map((ms || []).map(m => [m.codigo, m]));
-      fontesChat.regras = new Map((rs || []).map(r => [r.codigo, r]));
-    }
-    // uma fonte citada ("CODIGO, onde", "regra CODIGO", "regras A e B"): todo código da base vira link — o material abre o
-    // original no Drive, a regra abre a Base legal. Código que não existe fica como texto. Chega aqui já escapado
-    function fonteDoChat(parte) {
-      const temRegra = c => !!(fontesChat.regras && fontesChat.regras.has(c)), temMaterial = c => !!(fontesChat.materiais && fontesChat.materiais.has(c));
-      const regra = (cod, texto) => '<a class="fonte" href="#regra-' + cod + '" data-regra="' + cod + '" title="' + escapeHtml('Base legal — ' + (fontesChat.regras.get(cod).titulo || cod)) + '">' + texto + '</a>';
-      const material = cod => {
-        const m = fontesChat.materiais.get(cod), url = linkDrive(m.drive_url);
-        const tit = escapeHtml((m.titulo || cod) + (url ? ' — abre o original no Drive' : ''));
-        return url ? '<a class="fonte" href="' + escapeHtml(url) + '" target="_blank" rel="noopener" title="' + tit + '">' + cod + '</a>' : '<span class="fonte" title="' + tit + '">' + cod + '</span>';
-      };
-      // "regra CODIGO" no começo: o link leva a palavra junto (o código pode ter vindo em minúsculas)
-      const rg = /^(\s*)(regras?\s+)([A-Za-z0-9][A-Za-z0-9-]*)/i.exec(parte);
-      let inicio = '', resto = parte;
-      if (rg && temRegra(rg[3].toUpperCase())) { inicio = rg[1] + regra(rg[3].toUpperCase(), 'regra ' + rg[3].toUpperCase()); resto = parte.slice(rg[0].length); }
-      return inicio + resto.replace(/\b[A-Z0-9]{2,}(?:-[A-Z0-9]+)+\b/g, cod =>
-        temRegra(cod) && (rg || !temMaterial(cod)) ? regra(cod, cod) : temMaterial(cod) ? material(cod) : cod);
-    }
-    const fontesDoColchete = dentro => dentro.split(/([;·])/).map((p, i) => i % 2 ? p : fonteDoChat(p)).join('');
+    // ---------- ASSISTENTE (14/10/2026): o do escritório, o mesmo de todas as telas ----------
+    // O balão é montado pelo auth-guard (assets/js/assistente-escritorio.js); a pergunta da Reforma ele repassa pro chat da
+    // Reforma, com a base e o simulador. Aqui fica o que é desta tela: a ficha aberta (o caso e, depois de "Calcular" e
+    // antes de "Gravar", os números da tela), as perguntas prontas da Reforma e a regra citada abrindo a Base legal aqui
+    // mesmo, por cima do painel (nas outras telas, a regra leva pra cá: fiscal-reforma.html#regra-COD).
     // os números calculados na ficha aberta e ainda não gravados (o retrato do último "Calcular": números, procedência e a
     // natureza das vendas) — o chat compara com a simulação gravada. Gravou: não vai nada, o chat lê a gravada
     function telaParaChat() {
       if (!simAtual || simAtual.gravada || !$('ovFicha').classList.contains('on')) return null;
       return { input: simAtual.input, procedencia: simAtual.proc, natureza: simAtual.natureza };
     }
-    // o assistente nunca derruba a tela: se a montagem falhar, a página segue sem ele
-    let assistente;
-    try {
-      assistente = montarAssistente({
-        id: 'reforma',
-        nome: 'Assistente da Reforma',
-        rotulo: 'Perguntar à base da Reforma',
-        status: 'Responde com a base do escritório',
-        saudacao: '<p>Oi! Respondo só com a base do escritório: a Base legal, os materiais e os casos da campanha. Cada resposta traz a fonte — clique nela pra abrir. Números de empresa saem do mesmo simulador da ficha.</p>'
-          + '<p>Material do curso é de uso interno: confira a fonte antes de levar algo ao cliente.</p>',
-        recado: { texto: 'Oi! Pergunte o que precisar da Reforma — respondo com a base do escritório e mostro a fonte.',
-          exemplos: ['Até quando dá pra optar e até quando dá pra cancelar?', 'Quais casos estão sem conclusão e o que falta em cada um?'] },
-        recadoContexto: c => c.simulado
-          ? { texto: 'Quer entender o resultado de ' + c.nome + '?', exemplos: ['Por que esta empresa deu esse resultado?'] }
-          : { texto: c.nome + ' ainda não foi simulada. Quer saber o que falta?', exemplos: ['O que falta pra simular esta empresa?'] },
-        exemplos: c => !c ? ['O cliente que fica por dentro gera crédito pra quem compra dele?', 'Até quando dá pra optar e até quando dá pra cancelar?', 'Quais casos estão sem conclusão e o que falta em cada um?']
-          : c.simulado ? ['Por que esta empresa deu esse resultado?', 'O que falta medir e a partir de quanto o resultado vira?', 'E se o imposto embutido nas compras for 12%?']
-          : ['O que falta pra simular esta empresa?', 'Qual a triagem desta empresa e por quê?'],
-        seguintes: c => c && c.simulado ? ['O que falta medir e a partir de quanto o resultado vira?', 'E se o imposto embutido nas compras for 12%?'] : [],
-        contexto: c => ({ caso_id: c.id, tela: telaParaChat() }),
-        perguntar: perguntarFuncao(supabase, 'reforma-chat'),
-        formatar: texto => textoParaHtml(texto, { fontes: fontesDoColchete }),
-        antes: codigosDoChat,
-        // a regra citada abre a Base legal por cima do assistente
-        aoClicar: ev => {
-          const a = ev.target.closest('a.fonte[data-regra]');
-          if (!a) return false;
-          ev.preventDefault();
-          abrirBaseLegal(a.dataset.regra, { voltarFoco: a });
-          return true;
-        }
-      });
-    } catch (err) {
-      console.error('Assistente da Reforma fora do ar:', err);
-      assistente = { definirContexto() {}, atualizar() {} };
-    }
+    const assistente = assistenteDaTela({
+      saudacaoExtra: '<p>Nesta tela, as perguntas da Reforma vão com a ficha aberta. Material do curso é de uso interno: confira a fonte antes de levar algo ao cliente.</p>',
+      recadoContexto: c => c.simulado
+        ? { texto: 'Quer entender o resultado de ' + c.nome + '?', exemplos: ['Por que esta empresa deu esse resultado?'] }
+        : { texto: c.nome + ' ainda não foi simulada. Quer saber o que falta?', exemplos: ['O que falta pra simular esta empresa?'] },
+      exemplos: c => !c ? ['O cliente que fica por dentro gera crédito pra quem compra dele?', 'Até quando dá pra optar e até quando dá pra cancelar?', 'Quais casos estão sem conclusão e o que falta em cada um?']
+        : c.simulado ? ['Por que esta empresa deu esse resultado?', 'O que falta medir e a partir de quanto o resultado vira?', 'E se o imposto embutido nas compras for 12%?']
+        : ['O que falta pra simular esta empresa?', 'Qual a triagem desta empresa e por quê?'],
+      seguintes: c => c && c.simulado ? ['O que falta medir e a partir de quanto o resultado vira?', 'E se o imposto embutido nas compras for 12%?'] : [],
+      contexto: c => (c ? { caso_id: c.casoId, tela: telaParaChat() } : {}),
+      // a regra citada abre a Base legal aqui mesmo, por cima do assistente
+      aoClicar: ev => {
+        const a = ev.target.closest('a.fonte[data-regra]');
+        if (!a) return false;
+        ev.preventDefault();
+        abrirBaseLegal(a.dataset.regra, { voltarFoco: a });
+        return true;
+      }
+    });
+    // a regra citada numa resposta de outra tela chega aqui: fiscal-reforma.html#regra-COD abre a Base legal nela
+    { const m = /^#regra-([A-Za-z0-9-]+)$/.exec(location.hash); if (m) abrirBaseLegal(m[1].toUpperCase()); }
 
     // ---------- importação Domínio ----------
     load();

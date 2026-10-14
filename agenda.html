@@ -358,6 +358,7 @@
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { abrirNovaTarefa } from './assets/js/nova-tarefa.js';
     import { formatDocumento, normalizarDocumento } from './assets/js/utils.js';
+    import { rotinaDoDia, rotinaFeita } from './assets/js/rotinas-dia.js';
 
     // ---- identidade visual por setor ----
     const SETOR_INFO = {
@@ -403,36 +404,8 @@
 
     // ---- rótulo de rotina (campo varia) ----
     function rotuloRotina(r){ return r.titulo || r.descricao || r.nome || r.tarefa || r.atividade || 'Rotina'; }
-    function caiNoDia(r, d){
-      const p = r.periodicidade || 'diaria';
-      if (p==='diaria') return true;
-      if (p==='semanal') return diaSemanaISO(d) === (r.dia_semana||1);
-      if (p==='mensal'){
-        const alvo = Math.min(r.dia_mes||1, diasNoMes(d.getFullYear(), d.getMonth()));
-        if (!r.dia_util) return d.getDate() === alvo;
-        const dt = new Date(d.getFullYear(), d.getMonth(), alvo);
-        while (dt.getDay() === 0 || dt.getDay() === 6) dt.setDate(dt.getDate() + 1);
-        return d.getDate() === dt.getDate() && d.getMonth() === dt.getMonth();
-      }
-      if (p==='anual'){
-        const a=String(r.dia_anual||'01-01').split('-').map(Number); const mm=(a[0]||1)-1, dd=a[1]||1;
-        const dt = new Date(d.getFullYear(), mm, Math.min(dd, diasNoMes(d.getFullYear(), mm)));
-        if (r.dia_util) while (dt.getDay() === 0 || dt.getDay() === 6) dt.setDate(dt.getDate() + 1);
-        return d.getMonth() === dt.getMonth() && d.getDate() === dt.getDate();
-      }
-      return false;
-    }
-    // rotina "feita" para o dia exibido — espelha feitaNoPeriodo do painel
-    function rotinaFeita(r, d){
-      if (!r.ultima_execucao) return false;
-      const u = new Date(String(r.ultima_execucao).slice(0,10) + 'T00:00:00');
-      const p = r.periodicidade || 'diaria';
-      if (p==='diaria')  return String(r.ultima_execucao).slice(0,10) === ymd(d);
-      if (p==='semanal') return segundaDaSemana(u).getTime() === segundaDaSemana(d).getTime();
-      if (p==='mensal')  return u.getFullYear()===d.getFullYear() && u.getMonth()===d.getMonth();
-      if (p==='anual')   return u.getFullYear()===d.getFullYear();
-      return String(r.ultima_execucao).slice(0,10) === ymd(d);
-    }
+    // caiNoDia, rotinaDoDia e rotinaFeita: a regra das rotinas mora em assets/js/rotinas-dia.js (a mesma das telas dos
+    // setores e do assistente do escritório)
 
     // ---- filtros (responsável) ----
     const norm = (s)=> String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
@@ -567,16 +540,8 @@
       const s = ymd(d);
       return cacheTarefas.filter(t => t.prazo === s && passaFiltro(t));
     }
-    function rotinasDoDia(d){
-      if (d.getDay() === 0 || d.getDay() === 6) return []; // escritório é seg–sex: fim de semana zero rotinas
-      return cacheRotinas.filter(r => {
-        if (r.adiada_para) {
-          if (ymd(d) < r.adiada_para) return false;
-          if (ymd(d) === r.adiada_para) return passaFiltro(r);
-        }
-        return caiNoDia(r, d) && passaFiltro(r);
-      });
-    }
+    // escritório é seg–sex (fim de semana sem rotina); "adiada pra" manda — a regra é a de rotinas-dia.js
+    function rotinasDoDia(d){ return cacheRotinas.filter(r => rotinaDoDia(r, d) && passaFiltro(r)); }
 
     // ---- busca global (todas as datas) ----
     // A busca acha em qualquer data, mas mostra só o que passa no filtro de setor e de responsável (o mesmo
@@ -676,6 +641,7 @@
         if (loteModo === 'concluir') {
           const { error } = await supabase.from('tarefas').update({ status: 'concluida', concluida_em: new Date().toISOString(), concluida_por: usuarioEmail }).in('id', ids);
           if (error) { alert('Erro ao concluir: ' + error.message); return; }
+          window.dispatchEvent(new CustomEvent('mr:feito', { detail: { n: n } }));   // o assistente comemora
         }
         const texto = loteModo === 'concluir'
           ? 'Tarefa concluída em lote pela Agenda (' + n + ' tarefas).' + (obs ? ' ' + obs : '')
@@ -1086,6 +1052,7 @@
           const { error } = await supabase.from('rotinas').update({ ultima_execucao: novoValor, adiada_para: null }).eq('id', id);
           btn.disabled = false;
           if (error){ alert('Erro ao atualizar rotina: ' + error.message); return; }
+          if (novoValor) window.dispatchEvent(new CustomEvent('mr:feito', { detail: { n: 1 } }));   // o assistente comemora
           const r = cacheRotinas.find(x => String(x.id) === String(id)); if (r) { r.ultima_execucao = novoValor; r.adiada_para = null; }
           render();
         });
@@ -1313,6 +1280,7 @@
       if (!confirm('Concluir esta tarefa?')) return;
       const { error } = await supabase.from('tarefas').update({ status:'concluida', concluida_em:new Date().toISOString(), concluida_por:usuarioEmail }).eq('id', procAtual.id);
       if (error){ alert('Erro: '+error.message); return; }
+      window.dispatchEvent(new CustomEvent('mr:feito', { detail: { n: 1 } }));   // o assistente comemora
       await supabase.from('tarefa_historico').insert({ tarefa_id:procAtual.id, descricao:'Tarefa concluída.', autor:usuarioEmail });
       fecharDetalhe();
       await recarregarERenderizar();

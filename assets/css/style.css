@@ -779,7 +779,7 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(4px); 
    quando a resposta chega. O resto segue o painel: superfícies, linhas e azul da casa.
    ============================================================ */
 .as-lancador { position:fixed; right:22px; bottom:22px; z-index:8000; width:58px; height:58px; padding:0; border:none; background:none;
-  cursor:pointer; border-radius:19px; filter:drop-shadow(0 8px 18px rgba(0,0,0,.35)); transition:transform .18s ease; -webkit-tap-highlight-color:transparent; }
+  cursor:pointer; border-radius:19px; filter:drop-shadow(0 8px 18px rgba(0,0,0,.35)); transform-origin:100% 100%; transition:transform .18s ease, opacity .18s ease; -webkit-tap-highlight-color:transparent; }
 .as-lancador:hover { transform:translateY(-2px); }
 .as-lancador:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
 .as-lancador .as-rosto { width:100%; height:100%; display:block; }
@@ -799,6 +799,13 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(4px); 
 .as-atencao .as-lancador { animation:as-oi .7s ease; }
 @keyframes as-ler { 0%,100% { transform:translateX(-3px); } 50% { transform:translateX(3px); } }
 @keyframes as-oi { 0%,100% { transform:rotate(0); } 25% { transform:rotate(-9deg); } 60% { transform:rotate(6deg); } }
+/* os olhos seguem o mouse (assistente.js põe o deslocamento em .as-mira); a comemoração é um pulinho */
+.as-rosto .as-mira { transition:transform .16s ease-out; }
+.as-pulo .as-lancador { animation:as-pulo .62s cubic-bezier(.3,1.5,.5,1); }
+@keyframes as-pulo { 0%,100% { transform:none; } 35% { transform:translateY(-11px) scale(1.05); } 62% { transform:translateY(0) scale(.98); } 80% { transform:translateY(-3px); } }
+/* com uma janela aberta, o balão fica discreto pra não cobrir o canto dela; passando o mouse, volta ao normal */
+.as-sob-janela .as-lancador { transform:scale(.72); opacity:.78; }
+.as-sob-janela .as-lancador:hover, .as-sob-janela .as-lancador:focus-visible, .as-sob-janela.as-aberto .as-lancador { transform:none; opacity:1; }
 
 /* o recado: aparece sozinho ao lado da carinha, sem abrir o painel */
 .as-recado { position:fixed; right:22px; bottom:92px; z-index:8000; width:min(300px, calc(100vw - 44px)); background:var(--surface); color:var(--text);
@@ -910,7 +917,8 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(4px); 
   html.as-painel-aberto .mrt-help, html.as-painel-aberto .mrt-menu { display:none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .as-painel, .as-recado.as-surge, .as-nova, .as-digitando-msg, .as-atencao .as-lancador { animation:none; }
+  .as-painel, .as-recado.as-surge, .as-nova, .as-digitando-msg, .as-atencao .as-lancador, .as-pulo .as-lancador { animation:none; }
+  .as-rosto .as-mira { transition:none; }
   .as-lancador, .as-rosto .as-olho { transition:none; }
   .as-pensando .as-olhos, .as-pontos i, .as-ocupado .as-ponto { animation:none; }
   .as-pal { opacity:1; transition:none; }

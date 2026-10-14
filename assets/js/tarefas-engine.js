@@ -11,6 +11,7 @@
 import { supabase, getCurrentUser, signOut } from './supabase.js';
 import { formatDate } from './utils.js';
 import { abrirNovaTarefa } from './nova-tarefa.js';
+import { rotinaDoDia, rotinaFeita } from './rotinas-dia.js';
 
 const CSS = `
   .fa-focus { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:22px; }
@@ -838,6 +839,7 @@ export function initTarefas(userCfg) {
       // a trava só sai depois da recarga: antes dela, o botão vizinho da barra (ou uma caixa reaberta)
       // deixaria começar outro lote em cima da barra que o render() está pra descartar
       await carregarTarefas();   // re-renderiza; o resumo entra no grupo pelo título
+      if (feitas) window.dispatchEvent(new CustomEvent('mr:feito', { detail: { n: feitas } }));   // o assistente comemora
     } finally {
       loteRodando = false;
       travados.forEach(el => { if (el.isConnected && el !== btn && el !== limpar) { el.disabled = el.dataset.loteTrava === '1'; delete el.dataset.loteTrava; } });
@@ -1135,6 +1137,7 @@ export function initTarefas(userCfg) {
     try {
       const { error } = await supabase.from('tarefas').update({ status:'concluida', concluida_em:new Date().toISOString(), concluida_por:usuarioEmail }).eq('id', id);
       if (error){ alert('Erro: '+error.message); return; }
+      window.dispatchEvent(new CustomEvent('mr:feito', { detail: { n: 1 } }));   // o assistente comemora
       await supabase.from('tarefa_historico').insert({ tarefa_id:id, descricao:C.historicoConcluida, autor:usuarioEmail });
       try { await _avisarDependentes(t); } catch (e) { console.warn('dependentes', e); }
       if (cob) {
@@ -1204,35 +1207,8 @@ export function initTarefas(userCfg) {
   function segundaDaSemana(d){ const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - (diaSemanaISO(x) - 1)); return x; }
   function periDe(r){ return r.periodicidade || 'diaria'; }
 
-  function caiNoDia(r, d){
-    const p = periDe(r);
-    if (p === 'diaria') return true;
-    if (p === 'semanal') return diaSemanaISO(d) === (r.dia_semana || 1);
-    if (p === 'mensal'){
-      const alvo = Math.min(r.dia_mes || 1, diasNoMes(d.getFullYear(), d.getMonth()));
-      if (!r.dia_util) return d.getDate() === alvo;
-      const dt = new Date(d.getFullYear(), d.getMonth(), alvo);
-      while (dt.getDay() === 0 || dt.getDay() === 6) dt.setDate(dt.getDate() + 1);
-      return d.getDate() === dt.getDate() && d.getMonth() === dt.getMonth();
-    }
-    if (p === 'anual'){
-      const a = String(r.dia_anual || '01-01').split('-').map(Number); const mm = (a[0] || 1) - 1, dd = a[1] || 1;
-      const dt = new Date(d.getFullYear(), mm, Math.min(dd, diasNoMes(d.getFullYear(), mm)));
-      if (r.dia_util) while (dt.getDay() === 0 || dt.getDay() === 6) dt.setDate(dt.getDate() + 1);
-      return d.getMonth() === dt.getMonth() && d.getDate() === dt.getDate();
-    }
-    return false;
-  }
-  function feitaNoPeriodo(r){
-    if (!r.ultima_execucao) return false;
-    const u = new Date(String(r.ultima_execucao).slice(0,10) + 'T00:00:00');
-    const p = periDe(r);
-    if (p === 'diaria') return String(r.ultima_execucao).slice(0,10) === hojeStr;
-    if (p === 'semanal') return segundaDaSemana(u).getTime() === segundaDaSemana(hojeD).getTime();
-    if (p === 'mensal') return u.getFullYear() === hojeD.getFullYear() && u.getMonth() === hojeD.getMonth();
-    if (p === 'anual') return u.getFullYear() === hojeD.getFullYear();
-    return String(r.ultima_execucao).slice(0,10) === hojeStr;
-  }
+  // a regra do ciclo e do "feita" mora em assets/js/rotinas-dia.js (a mesma da agenda e do assistente do escritório)
+  function feitaNoPeriodo(r){ return rotinaFeita(r, hojeD); }
   function dataGatilho(r){
     const ano = hojeD.getFullYear(), mes0 = hojeD.getMonth();
     const p = periDe(r);
@@ -1252,16 +1228,7 @@ export function initTarefas(userCfg) {
   function fmtDia(d){ return d.toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' }); }
 
   // devidas hoje = semântica da agenda (fim de semana zera; adiada_para manda)
-  function rotinasDevidasHoje(){
-    if (hojeD.getDay() === 0 || hojeD.getDay() === 6) return [];
-    return rotinas.filter(r => r.ativo).filter(r => {
-      if (r.adiada_para) {
-        if (hojeStr < r.adiada_para) return false;
-        if (hojeStr === r.adiada_para) return true;
-      }
-      return caiNoDia(r, hojeD);
-    });
-  }
+  function rotinasDevidasHoje(){ return rotinas.filter(r => r.ativo && rotinaDoDia(r, hojeD)); }
 
   let rotinasErro = null;
   async function carregarRotinas(){
@@ -1309,6 +1276,7 @@ export function initTarefas(userCfg) {
     refreshGerenciar();        // a lista (inline ou modal aberto) acompanha na hora — antes só depois do round-trip
     const { error } = await supabase.from('rotinas').update(patch).eq('id', r.id);
     if (error) { alert('Erro ao salvar: ' + error.message); await carregarRotinas(); }
+    else window.dispatchEvent(new CustomEvent('mr:feito', { detail: { n: 1 } }));   // o assistente comemora
     refreshGerenciar();
   }
 
@@ -1453,6 +1421,7 @@ export function initTarefas(userCfg) {
     renderRotinasFaixa();
     const { error } = await supabase.from('rotinas').update(patch).eq('id', r.id);
     if (error) { alert('Erro ao salvar: ' + error.message); await carregarRotinas(); renderRotinasGerenciar(); }
+    else if (!done) window.dispatchEvent(new CustomEvent('mr:feito', { detail: { n: 1 } }));   // o assistente comemora
   }
 
   async function moverRotina(id, dir){
