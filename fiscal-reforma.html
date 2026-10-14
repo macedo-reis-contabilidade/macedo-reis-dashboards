@@ -278,7 +278,7 @@
           <label title="Despesas da atividade com IBS/CBS destacado na nota. Despesa de uso ou consumo pessoal dos sócios não dá crédito (CF, art. 156-A, §1º, VIII) e fica de fora. O % de crédito delas vai no campo seguinte.">% compras de despesas <span class="hint">energia, frete, serviços contratados — sem despesa de uso pessoal dos sócios, que não credita</span><input id="sPctDesp" placeholder="0"></label>
           <label title="O crédito é o IBS/CBS que o fornecedor destaca. Misture pelo peso de cada despesa: 30 mil de energia (cheio) + 10 mil de contabilidade (70%) = 92,5. Serviço de profissão do art. 127 da LC 214 (contabilidade, advocacia, engenharia…): os 70% valem quando o prestador está no regime regular — ou é optante do Simples por fora — e cumpre os requisitos do art. 127; prestador do Simples por dentro destaca só a parcela de IBS/CBS do DAS dele, cerca de 15% do cheio (LC 214, art. 47, §9º, II; LC 123, art. 23, §1º-A); prestador do regime regular sem os requisitos destaca o cheio. Serviço com redução de 60% (saúde humana e educação dos Anexos III e II — exame ocupacional, curso) credita 40% do cheio. Aluguel de imóvel: o locador do regime regular destaca com redução de 70% (LC 214, art. 261, parágrafo único), então o crédito é 30% do cheio; o locador pessoa física que não é contribuinte não destaca nada. VR, VA e plano de saúde dos empregados creditam só o que o fornecedor debitou (LC 214, art. 57, §3º, IV, alíneas f e h, na redação da LC 227), não o cheio.">Crédito das despesas (% do cheio) <span class="hint">contabilidade, advocacia, engenharia (−30%, LC 214, art. 127): 70% se o prestador for do regime regular e cumprir os requisitos do art. 127; prestador do Simples por dentro: só o IBS/CBS do DAS dele (cerca de 15% do cheio); serviço com −60% (saúde, educação): 40%; aluguel de imóvel: 30% se o locador for do regime regular, nada se for pessoa física não contribuinte; VR, VA e plano de saúde: só o débito do fornecedor; misture pelo peso</span><input id="sPctDespCred" placeholder="100 = cheio"></label>
           <label>% das compras de mercadorias com crédito <span class="hint" id="sPctCredHint">pelo NCM das entradas (cesta básica = zero); vazio = segue o mix de vendas</span><input id="sPctCred" placeholder="vazio = mix das vendas"></label>
-          <label>% imposto embutido nas compras<input id="sPctEmb" placeholder="0 (ex.: 18 p/ ICMS)"></label>
+          <label title="O fornecedor do regime normal destaca o IBS/CBS sobre o valor sem o ICMS e sem o IPI (LC 214, art. 12, §2º, II e V): o ICMS próprio está dentro do preço e o IPI vem por cima do produto; o ICMS-ST, também por cima, fica fora pela regra de cálculo da NF-e (a confirmar na orientação normativa). Nada disso entra no crédito de quem compra. Aqui vai quanto eles pesam no valor das notas de compra — o “Puxar das notas” mede nas notas de entrada (XML) de fornecedor do regime normal (o ICMS do combustível, monofásico, não vem nelas). Na conta, o preço do produto fica o de hoje: o IPI, zerado em 2027 (salvo Zona Franca), sai do valor da nota. Não ponha PIS e COFINS: acabam em 2027. Serviço tomado: o ISS da nota. Em branco, a conta usa 0 — credita sobre o valor cheio da nota, o que deixa o “por fora” mais barato do que é — e a confiança testa o imposto que costuma vir no preço.">% imposto embutido nas compras <span class="hint">ICMS, ICMS-ST e IPI das notas de compra, em % do valor delas — o crédito é sobre o valor sem eles; sem PIS/COFINS; serviço tomado: o ISS</span><input id="sPctEmb" placeholder="vazio = não medido (ex.: 12 ou 18)"></label>
           <label>% do DAS excluído hoje <span class="hint">ICMS-ST, ISS retido e PIS/COFINS monofásico, como sai do PGDAS</span><input id="sPctST" placeholder="0"></label>
           <label>% da receita monofásica de PIS/COFINS <span class="hint" id="sPctMonoHint">medicamentos, perfumaria, autopeças, bebidas frias — essa exclusão acaba em 2027 e o DAS por dentro sobe</span><input id="sPctMono" placeholder="0"></label>
           <label>Mix: % alíquota cheia<input id="sMixCheia" placeholder="100"></label>
@@ -763,7 +763,7 @@
 
     // ---------- ponte com as notas importadas (XML) ----------
     const ANO_XML = 2026;
-    const XML_CAMPOS = ['sReceita', 'sPctPJ', 'sPctMerc', 'sPctDesp', 'sMixZero', 'sMixRed60', 'sMixRed30', 'sMixCheia', 'sPctCred'];
+    const XML_CAMPOS = ['sReceita', 'sPctPJ', 'sPctMerc', 'sPctDesp', 'sMixZero', 'sMixRed60', 'sMixRed30', 'sMixCheia', 'sPctCred', 'sPctEmb'];
     // PROCEDÊNCIA DE CADA CAMPO (13/10/2026): quem preencheu e de onde — relatório do Domínio e os meses medidos, notas,
     // dedução pelo perfil, tabela da lei, padrão do sistema ou digitado na ficha. Vai gravada com a simulação e decide a
     // confiança de cada número na ficha, na análise e no relatório do cliente (assets/js/rt-confianca.js). Editar o campo à
@@ -836,6 +836,13 @@
         if ((pc && pc.fonte !== 'vazio') || (el.value.trim() !== '' && parseNum(el.value) !== 0)) return;
         origemXml(id, 'não medido: sem relatório, a conta considera 0% — se é 0 mesmo, digite 0', undefined, { fonte: 'vazio' });
       });
+      // imposto embutido (14/10/2026, Imersão): com compras e sem as notas de compra, o 0 não foi medido — a confiança testa o
+      // ICMS que costuma vir no preço; sem compras o campo não pesa, e a etiqueta sai
+      const emb = $('sPctEmb'), pe = procCampos.sPctEmb;
+      const temCompras = (parseNum($('sPctMerc').value) || 0) + (parseNum($('sPctDesp').value) || 0) > 0;
+      const embVazio = !(pe && pe.fonte !== 'vazio') && !(emb.value.trim() !== '' && parseNum(emb.value) !== 0);
+      if (temCompras && embVazio) origemXml('sPctEmb', 'não medido: sem as notas de compra (XML), a conta considera 0% e a confiança testa o imposto que costuma vir no preço (ICMS; no serviço, o ISS) — se é 0 mesmo, digite 0', undefined, { fonte: 'vazio' });
+      else if (!temCompras && pe && pe.fonte === 'vazio') { const s = emb.nextElementSibling; if (s && s.classList.contains('xml-origem')) s.remove(); delete procCampos.sPctEmb; }
     }
     // ao abrir a ficha: a origem de cada campo volta com a simulação gravada (nas antigas, deduzida do resumo do Domínio)
     function restaurarProcedencia(c) {
@@ -867,7 +874,8 @@
     // preenche % PJ, mix e (se o Domínio não deu) receita e compras com as notas da base.
     // Devolve o texto de fonte para a nota da ficha; lança se não houver venda.
     // mixDasNotas: o mix da ficha veio de notas (o Aplicar lê antes de limpar as origens) — esse as notas novas atualizam
-    async function puxarDasNotas(c, mixDasNotas = false) {
+    // embDigitado: o % de imposto embutido digitado na ficha antes do Aplicar (null se não foi digitado)
+    async function puxarDasNotas(c, mixDasNotas = false, embDigitado = null) {
       {
         const { error, modelo } = await carregarOperacao(supabase, c.cliente_id, ANO_XML);
         if (error) throw error;
@@ -908,6 +916,24 @@
           $('sPctCred').value = brPct(r1(p.pctComprasComCredito));
           origemXml('sPctCred', 'da operação, pelo NCM das compras: ' + brPct(r1(p.mixCompras.cheia)) + '% à alíquota cheia · ' + brPct(r1(p.mixCompras.reducao_60)) + '% redução 60% · ' + brPct(r1(p.mixCompras.zero)) + '% alíquota zero' + (p.comprasSemNcm ? ' · ' + p.comprasSemNcm + ' item(ns) sem NCM' : ''), undefined, pn);
         }
+        // IMPOSTO EMBUTIDO NAS COMPRAS (14/10/2026, Imersão): o ICMS, o ICMS-ST e o IPI destacados nas notas de compra de
+        // fornecedor do regime normal, em % do valor delas — o crédito é sobre o valor sem eles (LC 214, art. 12, §2º, II e V).
+        // Sem nota de fornecedor do regime normal, o campo fica como está. Com o % digitado: as notas o trocam (e avisam) —
+        // salvo quando cobrem menos de 80% das compras com nota (o resto é serviço tomado, com o ISS, que as notas importadas
+        // não trazem): aí o digitado fica e o aviso diz o que as notas mediram
+        let avisoEmb = null;
+        if (p.pctImpostoEmbutido != null) {
+          const medido = r1(p.pctImpostoEmbutido), cob = p.coberturaEmbutido != null ? r1(p.coberturaEmbutido) : 100;
+          if (embDigitado != null && cob < 80) {
+            avisoEmb = 'O % de imposto embutido digitado na ficha (' + brPct(embDigitado) + '%) ficou: as notas de compra de fornecedor do regime normal mediram ' + brPct(medido) + '%, mas são só ' + brPct(cob) + '% das compras com nota — o resto é serviço tomado, e o ISS dele não vem nas notas importadas.';
+          } else {
+            $('sPctEmb').value = brPct(medido);
+            origemXml('sPctEmb', 'das notas de compra: ICMS, ICMS-ST e IPI ÷ valor de ' + p.nComprasEmbutido + (p.nComprasEmbutido === 1 ? ' nota' : ' notas') + ' de fornecedor do regime normal'
+              + (cob < 99.95 ? ' — ' + brPct(cob) + '% das compras com nota (o resto é serviço tomado, sem o ISS nas notas)' : ''), undefined,
+              { fonte: 'notas', meses: p.mesesEmbutido, notas: p.nComprasEmbutido, cobertura: cob });
+            if (embDigitado != null && Math.abs(embDigitado - medido) > 0.05) avisoEmb = 'O % de imposto embutido digitado na ficha (' + brPct(embDigitado) + '%) foi trocado pelo medido nas notas de compra (' + brPct(medido) + '%).';
+          }
+        }
         const mi = p.mesesComVenda[0], mf = p.mesesComVenda[p.mesesComVenda.length - 1];
         const periodo = (mi === mf ? MESES_ABREV[mi - 1] : MESES_ABREV[mi - 1] + '–' + MESES_ABREV[mf - 1]) + '/' + ANO_XML;
         const notaPreservados = preservados.length
@@ -917,6 +943,7 @@
         const avisos = [];
         if (mixFicaDaFicha) avisos.push('As notas de serviço (NFS-e) não mostram a redução do serviço — −30% das profissões do art. 127, −60% de saúde e educação, isenção ou −40% do transporte de passageiros: o mix ficou como estava na ficha.');
         if (p.comprasSuperamVendas) avisos.push('No período as compras superam as vendas (estoque sendo montado?) — % de compras limitado a 100; confira antes de calcular.');
+        if (avisoEmb) avisos.push(avisoEmb);
         // exportação e Zona Franca (12/10/2026): entram pelo NCM, como venda tributada — o simulador ainda não separa
         avisos.push(...avisosVendasEspeciais(p.vendasEspeciais));
         return {
@@ -1236,7 +1263,8 @@
         else limparOrigemXml(true);
         let notasFonte = null;
         if ((domEstado.notas || 0) > 0) {
-          try { notasFonte = await puxarDasNotas(c, mixDasNotas); }
+          const embDigitado = antes.sPctEmb && antes.sPctEmb.fonte === 'manual' && valorAntes.sPctEmb.trim() !== '' ? parseNum(valorAntes.sPctEmb) : null;
+          try { notasFonte = await puxarDasNotas(c, mixDasNotas, embDigitado); }
           catch (e) { notasFonte = { fonte: null, avisos: ['Notas: ' + (e.message || e)] }; }
         }
         Object.entries(antes).forEach(([id, pc]) => {
@@ -2000,6 +2028,10 @@
       if ((m.exclusaoBase || 0) > 0.005) fontes.push({ o_que: (fat.icmsIss ? fat.icmsIss.tributo : 'ICMS/ISS') + ' do DAS fora da base do débito por fora (' + p1(m.exclusaoBase / ent.receita * 100) + '% da receita)', origem: 'LC 214, art. 12, §2º, V: de 2026 a 2032 ICMS e ISS não integram a base do IBS/CBS. No optante, sai o ' + (fat.icmsIss ? fat.icmsIss.tributo : 'ICMS/ISS') + ' do DAS (alíquota efetiva × fatia do tributo na faixa, Res. CGSN 190/2026) — método do curso; pro optante do Simples ainda sem norma específica (ver a seção 6)', nivel: 'media', rotulo: 'média' });
       if (fat.icmsIss && fat.icmsIss.issFixo) fontes.push({ o_que: 'ISS fixo por profissional', origem: 'LC 123, art. 18, §22-A: o ISS não está no DAS — nada do DAS sai da base do débito por fora', nivel: 'alta', rotulo: 'alta (norma)' });
       if (ent.pctDespesasComCredito != null && ent.pctDespesasComCredito !== '' && +ent.pctDespesasComCredito < 100) fontes.push({ o_que: 'Crédito das despesas (' + p1(ent.pctDespesasComCredito) + '% do cheio)', origem: perfil.passageiros && (ent.mixZero || 0) >= 99 && +ent.pctDespesasComCredito === 0 ? 'Isenção do transporte público coletivo (LC 214, art. 157): a isenção anula o crédito das compras (CF, art. 156-A, §7º)' : 'Informado na ficha: o crédito é o IBS/CBS que o fornecedor destaca — serviço com redução (profissões do art. 127 da LC 214, −30%) e aluguel de imóvel (−70%, art. 261, parágrafo único; locador pessoa física não contribuinte não destaca nada) creditam menos; VR, VA e plano de saúde dos empregados creditam o débito do fornecedor (art. 57, §3º, IV)', nivel: 'media', rotulo: 'informado' });
+      // a base do crédito das compras (14/10/2026, Imersão): o IBS/CBS que o fornecedor destaca é sobre o valor sem o ICMS, o
+      // ICMS-ST, o IPI e (no serviço) o ISS — o % tirado das compras é o "imposto embutido" (de onde veio, na tabela de confiança)
+      const itEmbFonte = confianca.itens.find(it => it.chave === 'embutido');
+      if (itEmbFonte) fontes.push({ o_que: 'Crédito das compras sobre o valor sem o imposto embutido (' + p1(ent.pctImpostoEmbutido || 0) + '% tirado do valor das notas)', origem: 'LC 214, art. 12, §2º, II e V: o IBS/CBS que o fornecedor do regime normal destaca não tem na base o ICMS e o ISS (de 2026 a 2032) nem o IPI; o ICMS-ST vem por cima do produto e fica fora pela regra de cálculo da NF-e (a confirmar na orientação normativa) — o crédito de quem compra é sobre esse valor. O % tirado é o do campo "imposto embutido nas compras" (de onde veio, na tabela acima)', nivel: 'alta', rotulo: 'alta (norma)', ressalva: itEmbFonte.nivel === 'nao_medido' ? '— o % não foi medido (tabela acima)' : undefined });
       if (xml && xml.clientes && xml.clientes.length && !consumidor) fontes.push({ o_que: 'Concentração de clientes', origem: 'XML das notas fiscais de ' + (xml.periodoRotulo || ANO_XML) + (xml.cobertura != null ? ' (cobrem ' + (xml.cobertura >= 99.995 ? '100%' : p1(xml.cobertura) + '%') + ' do faturamento do período)' : ''), nivel: 'alta', rotulo: 'alta' });
       if (dom && dom.fornecedoresRegime) fontes.push({ o_que: 'Regime dos fornecedores', origem: 'Receita Federal, pelos CNPJs das entradas: ' + p1(dom.fornecedoresRegime.simplesPct) + '% das compras consultadas vêm do Simples/MEI, que só dão crédito do IBS/CBS recolhido no DAS deles (LC 214, art. 47, §9º, II; LC 123, art. 23, §1º-A) — estimado em 15% do crédito cheio; consultados os maiores, ' + p1(dom.fornecedoresRegime.cobertura) + '% das compras', nivel: 'alta', rotulo: 'alta' });
       if (dom && dom.clientesRegime) fontes.push({ o_que: 'Regime dos clientes empresa', origem: 'Receita Federal, pelos CNPJs das saídas: ' + p1(100 - dom.clientesRegime.regularPct) + '% das vendas a empresas vão pra empresas do Simples, que não aproveitam o crédito', nivel: 'alta', rotulo: 'alta' });
@@ -2156,7 +2188,9 @@
       let alertaFornecedor = null;
       if (!(dom && dom.fornecedoresRegime) && optar && !empate && m.creditoEntradas > 0) {
         const limite = (-s.diferenca / 6) / (m.creditoEntradas * (1 - CREDITO_FORNECEDOR_SIMPLES)) * 100;
-        if (limite < 100) alertaFornecedor = { texto: 'O regime dos fornecedores não foi consultado. Fornecedor do Simples só dá crédito do IBS/CBS que recolheu no DAS dele (LC 214, art. 47, §9º, II; LC 123, art. 23, §1º-A), cerca de 15% do crédito cheio: se ' + (limite < 1 ? 'menos de 1' : Math.round(limite)) + '% ou mais das compras vierem de empresas do Simples, a vantagem de recolher por fora some.', conferir: 'regime dos principais fornecedores' };
+        if (limite < 100) alertaFornecedor = { texto: 'O regime dos fornecedores não foi consultado. Fornecedor do Simples só dá crédito do IBS/CBS que recolheu no DAS dele (LC 214, art. 47, §9º, II; LC 123, art. 23, §1º-A), cerca de 15% do crédito cheio: se ' + (limite < 1 ? 'menos de 1' : Math.round(limite)) + '% ou mais das compras vierem de empresas do Simples, a vantagem de recolher por fora some.',
+          // (14/10/2026) a versão do cliente, sem artigo de lei
+          textoCliente: 'Não consultamos o regime dos seus fornecedores. Fornecedor do Simples só dá crédito de parte do imposto novo (cerca de 15% do crédito cheio): se ' + (limite < 1 ? 'menos de 1' : Math.round(limite)) + '% ou mais das compras vierem de empresas do Simples, a vantagem de recolher por fora some.', conferir: 'regime dos principais fornecedores' };
       }
       const testes = [
         { nome: dom && dom.fornecedoresRegime ? 'crédito das entradas 20% menor (além do ajuste pelos fornecedores do Simples: crédito glosado, fornecedores menores)' : alertaFornecedor ? 'crédito das entradas 20% menor (crédito glosado, nota sem destaque)' : 'crédito das entradas 20% menor (fornecedores do Simples, crédito glosado)', x: { pctComprasMercadorias: ent.pctComprasMercadorias * 0.8, pctComprasDespesas: (ent.pctComprasDespesas || 0) * 0.8 }, conferir: 'regime dos principais fornecedores' },

@@ -190,8 +190,9 @@ console.log('Meses em dúvida, parte informada e transporte de passageiros:');
 }
 
 // ---------- Módulo 07 (13/10/2026): serviço com redução, transporte de passageiros, mercado e hortifrúti ----------
+// (14/10/2026: o imposto embutido nas compras também medido — nas notas de compra — pra o teste ser só do mix)
 const M12_ALTA = { ...PROC_BASE, pctMerc: { fonte: 'entradas', meses: M12, mesesFaturamento: 12, regimeFornecedores: true }, pctDesp: { fonte: 'entradas', meses: M12, mesesFaturamento: 12, regimeFornecedores: true },
-  pctPJ: { fonte: 'saidas', meses: M12, porDocumento: true, regimeConsultado: true } };
+  pctPJ: { fonte: 'saidas', meses: M12, porDocumento: true, regimeConsultado: true }, pctEmb: { fonte: 'notas', meses: M12, notas: 40 } };
 const SERVICO = { tipo: 'servico', vendeMercadoria: false, podeReduzir: false };
 const SV = { anexo: 'III', rbt12: 1200000, receita: 100000, mixCheia: 100, mixRed60: 0, mixRed40: 0, mixRed30: 0, mixZero: 0, pctComprasMercadorias: 0, pctComprasDespesas: 10, pctImpostoEmbutido: 0,
   pctExcluidoST: 0, partilha: 15.6, cbs: 9.2, ibs: 0.1, pctPJ: 80 };
@@ -313,6 +314,62 @@ console.log('Mercado e hortifrúti sem as notas de venda — a alíquota zero en
   ok(antes.conclusao === 'firme' && item(antes, 'mix').resultados.length === 1, '(o mesmo caso sem o ramo de alíquota zero: só a metade a −60%, conclusão firme)');
   const hf = avaliarConfianca(mm, M12_ALTA, { ...COM, ramoZero: 'hortifruti' });
   ok(item(hf, 'mix').resultados.length === 1 && /90% da venda com alíquota zero/.test(item(hf, 'mix').resultados[0].rotulo) && /Anexo XV/.test(item(hf, 'mix').motivo), 'hortifrúti: testa 90% da venda a zero (Anexo XV), não "metade a −60%"');
+}
+
+// ---------- Imersão (14/10/2026): o imposto embutido nas compras ----------
+// O fornecedor do regime normal destaca o IBS/CBS sobre o valor sem o ICMS (LC 214, art. 12, §2º, V): com o campo em 0 a
+// conta credita sobre o valor cheio da nota. Varejo inventado: OPTE com 0%, vira entre 6% e 8%.
+console.log('Imposto embutido nas compras:');
+{
+  const V = { anexo: 'I', rbt12: 1200000, receita: 100000, mixCheia: 100, mixRed60: 0, mixRed40: 0, mixRed30: 0, mixZero: 0, pctComprasComCredito: null,
+    pctComprasMercadorias: 90, pctComprasDespesas: 2, pctDespesasComCredito: null, pctImpostoEmbutido: 0, pctExcluidoST: 0, pctReceitaMonofasica: 0,
+    partilha: 15.5, cbs: 9.2, ibs: 0.1, pctPJ: 2, creditoEstoqueMes: 0 };
+  const VAREJO = { tipo: 'comercio', vendeMercadoria: true, podeReduzir: false };
+  const MED = { ...M12_ALTA, mix: { fonte: 'notas', meses: M12 } };
+  const { pctEmb, ...SEM_EMB } = MED;
+  // não medido (campo em 0, sem as notas de compra): testa 12% e 18% — vira → sem conclusão
+  const nm = avaliarConfianca(V, SEM_EMB, VAREJO);
+  const e = item(nm, 'embutido');
+  ok(nm.decisao === 'fora' && e.nivel === 'nao_medido' && e.categoria === 'dado' && e.confianca === 'não medido', 'campo em 0 sem as notas de compra: não medido (a conta dá "optar por fora")');
+  ok(e.resultados.length === 2 && e.resultados.map(r => r.valor).join() === '12,18' && e.muda && nm.decisivos.includes(e) && nm.conclusao === 'sem_conclusao', 'testa 12% e 18% do valor das notas, muda o resultado: sem conclusão');
+  ok(e.virada && e.virada.valor > 6 && e.virada.valor < 8 && /vira a partir de [67],\d% do valor das notas/.test(e.efeito), 'diz a partir de quanto vira: ' + e.efeito);
+  ok(/LC 214, art\. 12, §2º, II e V/.test(e.motivo) && !/LC 214|art\./.test(e.motivoCliente) && /% de imposto embutido no valor das compras/.test(e.efeitoCliente), 'o motivo do escritório cita a lei; o do cliente, não — e o efeito do cliente fala em imposto embutido no valor das compras');
+  ok(nm.faltam.includes('as notas de compra (XML de entrada) dos fornecedores do regime normal') && nm.faltamCliente.includes('as notas de compra (os arquivos XML das notas fiscais de entrada)'), 'o que falta: as notas de compra em XML (e, pro cliente, sem "regime normal")');
+  // medido nas notas de compra, um ano: alta, sem faixa — o número vale
+  const ms = avaliarConfianca({ ...V, pctImpostoEmbutido: 15 }, MED, VAREJO);
+  const em = item(ms, 'embutido');
+  ok(em.nivel === 'alta' && !em.resultados.length && /Notas fiscais de compra \(XML\)/.test(em.fonte) && /40 notas/.test(em.motivo) && ms.decisao === 'manter', 'medido nas notas de compra (12 meses): alta, sem faixa a testar — e com 15% a conta é "manter"');
+  ok(em.fonteCliente === 'Suas notas fiscais de compra' && /combustível \(monofásico\)/.test(em.motivo), 'pro cliente, "suas notas fiscais de compra"; o motivo avisa o que fica fora (Simples, combustível)');
+  // COBERTURA: as notas medidas são só parte das compras com nota (o resto é serviço tomado, com o ISS, que não vem nas notas)
+  const c60 = avaliarConfianca({ ...V, pctImpostoEmbutido: 15 }, { ...MED, pctEmb: { fonte: 'notas', meses: M12, notas: 40, cobertura: 60 } }, VAREJO);
+  const e60 = item(c60, 'embutido');
+  ok(e60.nivel === 'media' && /60,0% das compras com nota/.test(e60.motivo) && e60.resultados.map(r => r.valor.toFixed(1)).join('|') === '10.2|19.0', 'notas que cobrem 60% das compras com nota: média, testa o misturado (15 × 60% + 3 × 40% = 10,2%, abaixo de 15 − 4) e 19%');
+  const c20 = avaliarConfianca({ ...V, pctImpostoEmbutido: 18 }, { ...MED, pctEmb: { fonte: 'notas', meses: M12, notas: 3, cobertura: 20 } }, VAREJO);
+  const e20 = item(c20, 'embutido');
+  ok(e20.nivel === 'baixa' && e20.resultados[0].valor.toFixed(1) === '6.0' && e20.falta === 'o imposto embutido no serviço tomado (o ISS da nota) — informe na ficha o % de todas as compras', 'notas que cobrem só 20%: baixa, testa o % misturado (18 × 20% + 3 × 80% = 6%) e pede o % de todas as compras');
+  ok(c20.decisao === 'manter' && e20.muda && c20.conclusao === 'sem_conclusao' && c20.faltamCliente.includes('o ISS das notas dos serviços que a empresa contrata'), 'e se o misturado muda o resultado: sem conclusão (pro cliente: o ISS das notas dos serviços que contrata)');
+  // medido em dois meses: média, testa ±4 pontos
+  const m2 = avaliarConfianca({ ...V, pctImpostoEmbutido: 9 }, { ...MED, pctEmb: { fonte: 'notas', meses: ['2026-07', '2026-08'], notas: 6 } }, VAREJO);
+  const e2 = item(m2, 'embutido');
+  ok(e2.nivel === 'media' && e2.resultados.map(r => r.valor).join() === '5,13' && /dois meses/.test(e2.motivo) && e2.falta === 'as notas de compra (XML de entrada) dos outros meses', 'medido em dois meses: média, testa 5% e 13%, falta o resto das notas');
+  ok(e2.muda && m2.conclusao === 'a_confirmar' && m2.aConfirmar.includes(e2), 'e se a faixa muda o resultado: a confirmar (não sem conclusão)');
+  // digitado na ficha: média, ±5 — o 0 digitado também (só testa 5%)
+  const dg = avaliarConfianca({ ...V, pctImpostoEmbutido: 10 }, { ...MED, pctEmb: { fonte: 'manual' } }, VAREJO);
+  ok(item(dg, 'embutido').nivel === 'media' && item(dg, 'embutido').fonte === 'Informado, sem as notas de compra' && item(dg, 'embutido').fonteCliente === 'Estimativa do escritório' && item(dg, 'embutido').resultados.map(r => r.valor).join() === '5,15', 'digitado: média, "Informado, sem as notas de compra" (pro cliente, "estimativa do escritório"), testa 5% e 15%');
+  const d0 = avaliarConfianca(V, { ...MED, pctEmb: { fonte: 'manual' } }, VAREJO);
+  ok(item(d0, 'embutido').nivel === 'media' && item(d0, 'embutido').resultados.map(r => r.valor).join() === '5' && d0.conclusao !== 'sem_conclusao', 'o 0 digitado é informado (média): testa só 5%, nunca sem conclusão');
+  // simulação antiga: em 0, não medido (é o campo vazio); preenchido, origem não registrada
+  ok(item(avaliarConfianca(V, inferirProcedencia(V, null), VAREJO), 'embutido').nivel === 'nao_medido', 'simulação antiga com o campo em 0: não medido');
+  const lg = avaliarConfianca({ ...V, pctImpostoEmbutido: 18 }, inferirProcedencia({ ...V, pctImpostoEmbutido: 18 }, null), VAREJO);
+  ok(item(lg, 'embutido').fonte === 'Simulação anterior — origem não registrada' && item(lg, 'embutido').nivel === 'media' && item(lg, 'embutido').fonteCliente === 'Levantamento anterior do escritório', 'simulação antiga com o campo preenchido: média, origem não registrada (pro cliente, levantamento anterior)');
+  // só despesas (serviço): testa 5% e 12% · sem compras: o item não aparece
+  const sv = avaliarConfianca({ ...V, anexo: 'III', pctComprasMercadorias: 0, pctComprasDespesas: 12, pctPJ: 90 }, SEM_EMB, { tipo: 'servico', vendeMercadoria: false, podeReduzir: false });
+  ok(item(sv, 'embutido').resultados.map(r => r.valor).join() === '5,12', 'só despesas (sem mercadoria): testa 5% e 12%');
+  ok(!avaliarConfianca({ ...V, pctComprasMercadorias: 0, pctComprasDespesas: 0 }, SEM_EMB, VAREJO).itens.some(it => it.chave === 'embutido'), 'sem compras: o imposto embutido não entra na tabela');
+  // na isenção do transporte público o crédito das compras já é zero: o item não aparece
+  const PASS = { tipo: 'transporte', vendeMercadoria: false, podeReduzir: false, passageiros: true };
+  const isento = { ...V, anexo: 'III', mixCheia: 0, mixZero: 100, pctComprasMercadorias: 20, pctComprasDespesas: 5, pctComprasComCredito: 0, pctDespesasComCredito: 0, pctPJ: 0 };
+  ok(!avaliarConfianca(isento, SEM_EMB, PASS).itens.some(it => it.chave === 'embutido'), 'transporte público isento na ficha: sem o item (o crédito das compras já é zero)');
 }
 
 console.log('O motor não é chamado com entrada inválida:');

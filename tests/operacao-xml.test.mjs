@@ -135,6 +135,32 @@ ok(av.some(a => /fim específico de exportação \(CFOP 6\.501\).*art\. 82/.test
 ok(av.some(a => /^Serviço para tomador no exterior \(NFS-e\): R\$ 200,00 em 1 nota, 2% das vendas.*arts\. 79 e 80/.test(a)), 'aviso do serviço ao exterior (arts. 79 e 80)');
 ok(avisosVendasEspeciais(m9619.ponte.vendasEspeciais).length === 0 && m9619.ponte.vendasEspeciais.length === 0, 'sem exportação nem Zona Franca, nenhum aviso');
 
+// Imposto embutido nas compras (14/10/2026, Imersão da Reforma): o fornecedor do regime normal destaca o IBS/CBS sobre o valor
+// sem o ICMS (LC 214, art. 12, §2º, V); o ICMS-ST e o IPI vêm por cima. A ponte mede ICMS + ICMS-ST + IPI ÷ valor das notas
+// de compra de fornecedor do regime normal (CRT 3) — sem a NFS-e tomada e sem o fornecedor do Simples
+console.log('\nImposto embutido nas compras (ICMS, ICMS-ST e IPI das notas de fornecedor do regime normal):');
+const ent = (id, data, valor, extra = {}) => ({ id, modelo: '55', data_emissao: data, tipo: 'entrada', finalidade: 1, emit_doc: '44444444000144',
+  emit_nome: 'FORNECEDOR TESTE', emit_uf: 'RS', emit_crt: 3, dest_doc: '11111111000111', dest_tipo: 'PJ', dest_nome: 'EMPRESA TESTE', dest_uf: 'RS',
+  valor_total: valor, cfop_principal: '5102', icms: 0, icms_st: 0, ipi: 0, ...extra });
+const docsEmb = [
+  nf('55555555000155', 'CLIENTE', 20000, '5102', { data_emissao: '2026-06-10' }),
+  ent('c1', '2026-06-05', 10000, { icms: 1530 }),                          // ICMS próprio de 17% sobre 9.000 de produto + 1.000 de IPI
+  ent('c2', '2026-07-05', 5000, { icms: 600, icms_st: 400, ipi: 0 }),      // com substituição tributária
+  ent('c3', '2026-07-06', 3000, { emit_crt: 1, icms: 0 }),                  // fornecedor do Simples: fora da medida
+  { ...ent('c4', '2026-07-07', 2000), modelo: 'nfse', cfop_principal: null }, // serviço tomado: fora da medida
+  ent('c5', '2026-07-08', 1000, { finalidade: 4, icms: 170 }),             // devolução: fora
+  ent('c6', '2026-07-09', 800, { cfop_principal: '5915', icms: 136 })      // remessa pra conserto: não é compra
+];
+docsEmb[1].ipi = 1000;
+const mEmb = agregar(docsEmb, [], new Map(), { ano: 2026, mesIni: 6, mesFim: 7 });
+perto(mEmb.ponte.pctImpostoEmbutido, (1530 + 1000 + 600 + 400) / 15000 * 100, 0.001, 'ICMS + ICMS-ST + IPI ÷ valor das 2 notas de fornecedor do regime normal');
+ok(mEmb.ponte.nComprasEmbutido === 2 && mEmb.ponte.mesesEmbutido.join() === '2026-06,2026-07', 'conta as 2 notas e os meses delas (jun e jul)');
+perto(mEmb.ponte.coberturaEmbutido, 15000 / (15000 + 2000) * 100, 0.001, 'cobertura: as 2 notas são 88% das compras com nota (o resto é o serviço tomado; o fornecedor do Simples fica fora da conta)');
+const mSoSimples = agregar([docsEmb[0], docsEmb[3], docsEmb[4]], [], new Map(), { ano: 2026, mesIni: 6, mesFim: 7 });
+ok(mSoSimples.ponte.pctImpostoEmbutido === null && mSoSimples.ponte.nComprasEmbutido === 0, 'sem nota de fornecedor do regime normal: não mede (null) — a ficha não mexe no campo');
+const mTexto = agregar([docsEmb[0], ent('c7', '2026-06-08', 2000, { icms: '340.00', ipi: null })], [], new Map(), { ano: 2026, mesIni: 6, mesFim: 7 });
+perto(mTexto.ponte.pctImpostoEmbutido, 17, 0.001, 'valor do banco em texto ou nulo não quebra a conta');
+
 
 console.log(falhas ? '\n' + falhas + ' FALHA(S)' : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);

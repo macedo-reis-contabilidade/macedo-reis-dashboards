@@ -98,7 +98,7 @@ export async function carregarOperacao(supabase, clienteId, ano, mesIni = 1, mes
   const fim = ano + '-' + String(mesFim).padStart(2, '0') + '-' + String(fimD).padStart(2, '0');
   const [docsR, itensR, regrasR] = await Promise.all([
     supabase.todasLinhas(() => supabase.from('nf_documentos')
-      .select('id, modelo, data_emissao, tipo, finalidade, emit_doc, emit_nome, emit_uf, emit_crt, dest_doc, dest_tipo, dest_nome, dest_uf, valor_total, cfop_principal')
+      .select('id, modelo, data_emissao, tipo, finalidade, emit_doc, emit_nome, emit_uf, emit_crt, dest_doc, dest_tipo, dest_nome, dest_uf, valor_total, cfop_principal, icms, icms_st, ipi')
       .eq('cliente_id', clienteId).eq('status', 'autorizada').gte('data_emissao', ini).lte('data_emissao', fim)
       .order('data_emissao').order('id')),
     // itens filtrados pelo documento embutido (!inner): não existe cliente_id no item
@@ -269,6 +269,18 @@ export function agregar(docs, itens, regras, periodo) {
   const pctDespBruto = totV ? (totC - comprasMerc) / totV * 100 : 0;
   // NFS-e de saída entra na receita (serviço prestado); NFS-e de entrada entra como despesa (serviço tomado, sem CFOP → não é mercadoria)
   const servPrestados = vendas.filter(d => d.modelo === 'nfse');
+  // IMPOSTO EMBUTIDO NAS COMPRAS (14/10/2026, Imersão da Reforma): o fornecedor do regime normal destaca o IBS/CBS sobre o
+  // valor sem o ICMS (LC 214, art. 12, §2º, V) — o ICMS próprio está dentro do valor do produto, o ICMS-ST e o IPI vêm por
+  // cima, e nenhum dos três entra na base do crédito de quem compra. Medido nas notas de compra de fornecedor do regime
+  // normal (CRT 3), em % do valor das notas (a mesma medida das compras). Ficam fora a NFS-e tomada (o ISS não vem nos
+  // campos importados) e o fornecedor do Simples, que não destaca o ICMS. Sem nota desse tipo, null: a ficha não mexe no campo
+  const comprasRegNormal = compras.filter(d => d.emit_crt === 3 && d.modelo !== 'nfse');
+  const vRegNormal = soma(comprasRegNormal);
+  const embRegNormal = comprasRegNormal.reduce((s, d) => s + n(d.icms) + n(d.icms_st) + n(d.ipi), 0);
+  // quanto das compras com nota a medida cobre (as de fornecedor do regime normal mais os serviços tomados): o resto é serviço,
+  // e o ISS dele não vem nas notas importadas — a confiança testa o % misturado. O fornecedor do Simples fica fora das duas
+  // contas (o crédito dele é outro: só a parcela do DAS)
+  const vServTomados = soma(compras.filter(d => d.modelo === 'nfse'));
   const ponte = {
     receitaMensal: mesesComVenda.length ? totV / mesesComVenda.length : 0,
     nServicos: servPrestados.length, pctServicos: totV ? soma(servPrestados) / totV * 100 : 0,
@@ -285,6 +297,11 @@ export function agregar(docs, itens, regras, periodo) {
     mixCompras: { zero: comprados.mix.zero, reducao_60: comprados.mix.reducao_60, reducao_30: comprados.mix.reducao_30, cheia: comprados.mix.cheia },
     pctComprasComCredito: comprados.total > 0 ? Math.max(0, Math.min(100, comprados.mix.cheia + 0.40 * comprados.mix.reducao_60 + 0.70 * comprados.mix.reducao_30)) : null,
     comprasSemNcm: comprados.semNcm,
+    // imposto embutido nas compras (ICMS + ICMS-ST + IPI ÷ valor das notas de fornecedor do regime normal) e de onde veio
+    pctImpostoEmbutido: vRegNormal > 0 ? Math.max(0, Math.min(100, embRegNormal / vRegNormal * 100)) : null,
+    nComprasEmbutido: comprasRegNormal.length,
+    coberturaEmbutido: vRegNormal > 0 ? vRegNormal / (vRegNormal + vServTomados) * 100 : null,
+    mesesEmbutido: [...new Set(comprasRegNormal.map(d => String(d.data_emissao).slice(0, 7)))].sort(),
     nSaidas: vendas.length, nEntradas: compras.length,
     // vendas que o simulador ainda não separa (exterior, Zona Franca): a ficha avisa (avisosVendasEspeciais)
     vendasEspeciais

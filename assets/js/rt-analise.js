@@ -282,6 +282,7 @@ export function gerarAnalise(d, opts = {}) {
   }
   // compras não medidas (sem o relatório de entradas): a linha diz isso, em vez de "R$ 0,00 · ficha"
   const comprasNaoMedidas = !(dominio && dominio.entradas) && !!(d.confianca && d.confianca.itens.some(it => it.chave === 'compras' && it.nivel === 'nao_medido'));
+  const itemEmb = d.confianca ? d.confianca.itens.find(it => it.chave === 'embutido') : null;
   P('<table><thead><tr><th>Indicador</th><th class="num">Valor</th><th>Fonte</th></tr></thead><tbody>'
     + (dominio && dominio.faturamento ? '<tr><td>Faturamento ' + dominio.periodoRotulo + '</td><td class="num">' + brl(dominio.faturamento.total) + '</td><td>' + esc(dominio.fonteFaturamento || 'Relatório de faturamento (Domínio)') + '</td></tr>'
       + '<tr><td>— serviços</td><td class="num">' + brl(dominio.faturamento.servicos) + ' · ' + pct1(pctServ) + '%</td><td>idem</td></tr>'
@@ -299,6 +300,9 @@ export function gerarAnalise(d, opts = {}) {
     + (comprasNaoMedidas
         ? '<tr class="tot"><td>Entradas que geram crédito</td><td class="num">não medido</td><td>sem o relatório de entradas — a conta considerou ' + pct1(e.pctComprasMercadorias + e.pctComprasDespesas) + '% da receita</td></tr>'
         : '<tr class="tot"><td>Entradas que geram crédito</td><td class="num">' + (dominio && dominio.entradas ? brl(dominio.entradas.grupos.filter(g => g.incluido).reduce((a, g) => a + g.valor, 0)) + (dominio.periodoEntradas ? ' em ' + perTxt(dominio.periodoEntradas) : ' no período') : brl(receita * (e.pctComprasMercadorias + e.pctComprasDespesas) / 100) + '/mês') + ' · ' + pct1(e.pctComprasMercadorias + e.pctComprasDespesas) + '% da receita</td><td>' + (dominio && dominio.entradas ? 'Acompanhamento de entradas' + (dominio.periodoEntradas ? ' (' + perTxt(dominio.periodoEntradas) + ', ÷ receita dos mesmos meses)' : '') : 'ficha') + '</td></tr>')
+    // o imposto embutido nas compras (14/10/2026, Imersão): o crédito é sobre o valor das notas sem o ICMS, o ICMS-ST e o IPI
+    + (itemEmb ? '<tr><td>Imposto embutido nas compras (fora do crédito)</td><td class="num">' + (itemEmb.nivel === 'nao_medido' ? 'não medido' : pct1(e.pctImpostoEmbutido || 0) + '% do valor das notas') + '</td><td>'
+        + (itemEmb.nivel === 'nao_medido' ? 'sem as notas de compra — a conta considerou ' + pct1(e.pctImpostoEmbutido || 0) + '%: crédito sobre o valor cheio das notas' : esc(itemEmb.fonte)) + '</td></tr>' : '')
     + '</tbody></table>');
 
   // ---------- 2. clientes ----------
@@ -425,6 +429,8 @@ export function gerarAnalise(d, opts = {}) {
     P('<p>O motivo é aritmético: <b>por fora a empresa debita ' + pct1(aliqVendas) + '% sobre o que fatura' + (notasDebito.length ? ' (' + notasDebito.join('; ') + ')' : '') + ' e credita ' + (fat.compras < 0.5 ? 'pouco' : 'menos') + ' na entrada</b>: compra ' + pct1(e.pctComprasMercadorias + e.pctComprasDespesas) + '% do que fatura'
       + (fat.comprasMedido ? ', e só ' + pct1(fat.compras * 100) + '% dessas compras carregam IBS/CBS pra creditar — o resto é produto com alíquota zero (cesta básica, hortifrúti) ou a parte sem imposto dos itens com redução de 60% ou 30% (medido pelo NCM das notas de entrada)' : '')
       + (fornSimples ? (fat.comprasMedido ? '; e' : ', e') + ' o crédito menor de fornecedor do Simples (' + pct1(fornSimples.simplesPct) + '% das compras consultadas) já está descontado nesse % de compras' : '')
+      // (14/10/2026) o crédito é sobre o valor das notas sem o imposto embutido (ICMS, ICMS-ST e IPI; no serviço, o ISS)
+      + ((e.pctImpostoEmbutido || 0) > 0 ? ' — e o crédito é sobre o valor das notas sem o imposto embutido (' + pct1(e.pctImpostoEmbutido) + '%)' : '')
       + '. O regime regular favorece quem compra muito e compra tributado.</p>');
   } else if (mixTxt.length || fat.comprasMedido || exclPct > 0) {
     P('<p class="fonte">Por fora: ' + pct1(aliqVendas) + '% sobre as vendas (' + (notasDebito.length ? notasDebito.join('; ') : pct1(e.cbs + e.ibs) + '% de referência') + ')' + (fat.comprasMedido ? '; crédito sobre ' + pct1(fat.compras * 100) + '% das compras de mercadorias, pelo NCM das entradas' : '') + '.</p>');

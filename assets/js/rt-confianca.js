@@ -67,7 +67,10 @@ const FALTA_CLIENTE = {
   'o alcance do art. 286 da LC 214 no fretamento intermunicipal': 'como a lei se aplica ao fretamento entre cidades',
   'os requisitos do art. 127 da LC 214 (contrato social e registro dos sócios no conselho)': 'o contrato social e o registro dos sócios no conselho profissional (CRC, OAB, CREA, CRMV…)',
   'o registro no conselho de educação física e o enquadramento da aula na NBS 1.2205.12.00': 'o registro da empresa no conselho de educação física (CREF) e a descrição das aulas',
-  'o enquadramento do serviço na lista de redução da LC 214 (NBS)': 'a relação dos serviços que a empresa presta (pra conferir na lista de serviços com redução)'
+  'o enquadramento do serviço na lista de redução da LC 214 (NBS)': 'a relação dos serviços que a empresa presta (pra conferir na lista de serviços com redução)',
+  'as notas de compra (XML de entrada) dos fornecedores do regime normal': 'as notas de compra (os arquivos XML das notas fiscais de entrada)',
+  'as notas de compra (XML de entrada) dos outros meses': 'as notas de compra dos outros meses (os arquivos XML das notas fiscais de entrada)',
+  'o imposto embutido no serviço tomado (o ISS da nota) — informe na ficha o % de todas as compras': 'o ISS das notas dos serviços que a empresa contrata'
 };
 // o que falta, nas palavras do cliente (o comunicado lê o resumo gravado, que nas simulações gravadas antes desta tradução
 // só tem o texto do escritório)
@@ -444,6 +447,66 @@ function itemMix(ent, proc, ctx) {
   return it;
 }
 
+// IMPOSTO EMBUTIDO NAS COMPRAS (14/10/2026, Imersão da Reforma): o fornecedor do regime normal destaca o IBS/CBS sobre o
+// valor sem o ICMS (LC 214, art. 12, §2º, V) e sem o IPI (inciso II) — o ICMS próprio está dentro do preço, o IPI vem por
+// cima do produto e o ICMS-ST, também por cima, fica fora pela regra de cálculo da NF-e (NT 2025.002, UB16-10, a confirmar
+// na orientação normativa); nada disso entra no crédito de quem compra. Com o campo em 0, a conta credita sobre o valor
+// cheio da nota e pende para o "por fora": nas 34 simulações da campanha, todas em 0, com 18% os 8 casos que davam OPTE
+// mudavam de lado. Medido nas notas de compra (operacao-xml.js, ponte.pctImpostoEmbutido): alta com 3 meses ou mais e as
+// notas cobrindo 80% ou mais das compras com nota; média com menos meses ou cobertura de 50% a 80%; baixa abaixo de 50% (o
+// resto é serviço tomado, com o ISS, que as notas importadas não trazem) — testada ±4 pontos e, com o resto a ~3% de ISS,
+// o % misturado. Informado na ficha, ou simulação antiga com o campo preenchido: média, testada ±5 pontos. Não medido:
+// testa 12% e 18% (só despesas, sem mercadoria: 5% e 12%) e diz a partir de quanto o resultado vira
+const EMB_NAO_MEDIDO_MERC = [12, 18], EMB_NAO_MEDIDO_DESP = [5, 12];
+const limitaEmb = v => Math.max(0, Math.min(40, v));
+function itemEmbutido(ent, pc) {
+  const m0 = +ent.pctComprasMercadorias || 0, d0 = +ent.pctComprasDespesas || 0;
+  if (!(m0 + d0 > 0)) return null;            // sem compras, o campo não pesa
+  pc = pc || {};
+  const v0 = +ent.pctImpostoEmbutido || 0;
+  const it = { chave: 'embutido', rotulo: 'Imposto embutido nas compras', curto: 'imposto embutido nas compras', categoria: 'dado',
+    valor: p1(v0) + '% do valor das notas de compra', periodo: periodoDe(pc) };
+  let alvo = null;
+  if (pc.fonte === 'notas') {
+    const n = nMed(pc);
+    // cobertura: quanto das compras com nota (fornecedor do regime normal + serviço tomado) as notas medidas são
+    const cob = pc.cobertura != null && isFinite(+pc.cobertura) ? +pc.cobertura : 100;
+    it.fonte = 'Notas fiscais de compra (XML), fornecedores do regime normal'; it.fonteCliente = 'Suas notas fiscais de compra';
+    it.nivel = cob < 50 ? 'baixa' : cob < 80 || (n != null && n < 3) ? 'media' : 'alta';
+    const partes = ['ICMS, ICMS-ST e IPI destacados ÷ valor das notas' + (pc.notas ? ' (' + pc.notas + (pc.notas === 1 ? ' nota' : ' notas') + ')' : '') + '.'];
+    if (cob < 99.95) partes.push('As notas medidas são ' + p1(cob) + '% das compras com nota: o resto é serviço tomado, e o ISS dele não vem nas notas importadas' + (cob < 80 ? ' — o % de todas as compras pode ser menor.' : '.'));
+    if (n != null && n < 3) partes.push('Só ' + (n === 1 ? 'um mês' : 'dois meses') + ' de notas: uma compra grande muda o %.');
+    partes.push('Fora da medida também: o fornecedor do Simples (o crédito dele é outro, só a parcela do DAS) e o ICMS do combustível (monofásico), que não vem nos campos importados.');
+    it.motivo = partes.join(' ');
+    it.motivoCliente = 'Medido nas suas notas de compra: o ICMS, o ICMS-ST e o IPI que vêm nelas não entram no crédito do imposto novo.'
+      + (cob < 80 ? ' Mas as notas medidas são só parte das compras: nas de serviço, o imposto que vem no preço é outro (o ISS).' : '');
+    it.falta = it.nivel === 'alta' ? null : cob < 80 ? 'o imposto embutido no serviço tomado (o ISS da nota) — informe na ficha o % de todas as compras' : 'as notas de compra (XML de entrada) dos outros meses';
+    // fora do "alta": ±4 pontos e, se a cobertura é parcial, o % misturado com o resto (serviço) a ~3% de ISS
+    if (it.nivel !== 'alta') alvo = [limitaEmb(Math.min(v0 - 4, (v0 * cob + 3 * (100 - cob)) / 100)), limitaEmb(v0 + 4)];
+  } else if (pc.fonte === 'manual' || (!pc.fonte && v0 > 0)) {
+    // digitado na ficha (inclusive o 0), ou simulação antiga com o campo preenchido (legado)
+    it.fonte = pc.legado ? ORIGEM_LEGADO : 'Informado, sem as notas de compra'; it.nivel = 'media';
+    if (!pc.legado) it.fonteCliente = 'Estimativa do escritório';
+    it.motivo = pc.legado ? 'Não ficou registrado se o % veio das notas de compra ou foi informado na ficha.' : 'Estimativa informada na ficha, sem as notas de compra que comprovem.';
+    if (!pc.legado) it.motivoCliente = 'Estimativa do escritório, sem as notas de compra que comprovem: o imposto de hoje que vem no preço das compras não entra no crédito do imposto novo.';
+    it.falta = 'as notas de compra (XML de entrada) dos fornecedores do regime normal';
+    alvo = [limitaEmb(v0 - 5), limitaEmb(v0 + 5)];
+  } else {
+    it.fonte = 'Não medido'; it.nivel = 'nao_medido'; it.periodo = '—';
+    it.motivo = 'Sem as notas de compra, a conta considera ' + p1(v0) + '%: credita o IBS/CBS sobre o valor cheio das notas — mas o fornecedor destaca sobre o valor sem o ICMS, o IPI e, no serviço, o ISS (LC 214, art. 12, §2º, II e V), e o ICMS-ST vem por cima do produto (fora pela regra de cálculo da NF-e, a confirmar); a conta fica mais favorável ao “por fora” do que é.';
+    it.motivoCliente = 'Sem as suas notas de compra, a conta considerou que todo o valor das compras gera crédito do imposto novo. Mas o fornecedor calcula o imposto novo sem o ICMS que vem no preço — o crédito real é menor, e a conta por fora fica pior.';
+    it.falta = 'as notas de compra (XML de entrada) dos fornecedores do regime normal';
+    alvo = m0 > 0 ? EMB_NAO_MEDIDO_MERC : EMB_NAO_MEDIDO_DESP;
+  }
+  if (alvo) {
+    const e = v => ({ ...ent, pctImpostoEmbutido: v });
+    it.variantes = alvo.filter((v, i, a) => Math.abs(v - v0) > 0.05 && a.indexOf(v) === i)
+      .map(v => ({ rotulo: p1(v) + '% do valor das notas', rotuloCliente: p1(v) + '% de imposto embutido no valor das compras', ent: e(v), valor: v }));
+    it.bissecao = { atual: v0, ent: e, fmt: v => p1(v) + '% do valor das notas' };
+  }
+  return it;
+}
+
 function itensComplementares(ent, proc, ctx = {}) {
   const out = [];
   // transporte de passageiros isento na ficha (13/10/2026): o crédito zerado das compras e das despesas é da isenção — o
@@ -471,10 +534,8 @@ function itensComplementares(ent, proc, ctx = {}) {
     out.push({ chave: 'credDespesas', rotulo: 'Crédito das despesas (% do cheio)', categoria: 'dado', valor: p1(ent.pctDespesasComCredito) + '% do cheio',
       fonte: 'Estimativa informada na ficha', periodo: '—', nivel: 'media', motivo: 'Estimativa de quem preencheu: o crédito é o IBS/CBS que cada fornecedor destaca (serviço com redução, aluguel, VR e VA creditam menos).', falta: null });
   }
-  if ((+ent.pctImpostoEmbutido || 0) > 0) {
-    out.push({ chave: 'embutido', rotulo: 'Imposto embutido nas compras', categoria: 'dado', valor: p1(ent.pctImpostoEmbutido) + '%',
-      fonte: 'Estimativa informada na ficha', periodo: '—', nivel: 'media', motivo: 'Estimativa de quem preencheu.', falta: null });
-  }
+  // o imposto embutido nas compras (14/10/2026): na isenção do transporte público o crédito das compras já é zero
+  if (!isentoPass) { const emb = itemEmbutido(ent, proc.pctEmb); if (emb) out.push(emb); }
   if ((+ent.creditoEstoqueMes || 0) > 0) {
     out.push({ chave: 'estoque', rotulo: 'Crédito de estoque', categoria: 'premissa', valor: brl0(ent.creditoEstoqueMes) + '/mês',
       fonte: 'Estimativa informada na ficha', periodo: '—', nivel: 'media', selo: 'provável',
@@ -531,7 +592,7 @@ function testar(it, base) {
 // ============================================================
 // avaliarConfianca(ent, procedencia, ctx) → a tabela de confiança e a conclusão
 //   ent: a entrada do motor (simular) · procedencia: { receita, rbt12, anexo, aliqEfetiva, partilha, pctExcluidoST,
-//   pctReceitaMonofasica, pctMerc, pctDesp, pctPJ, mix, pctCred, … } cada um { fonte, meses, texto, … }
+//   pctReceitaMonofasica, pctMerc, pctDesp, pctPJ, mix, pctCred, pctEmb, … } cada um { fonte, meses, texto, … }
 //   ctx: { tipo, vendeMercadoria, podeReduzir, refeicaoEmpresas, passageiros, passageirosOutros, trilhos, fretamentoIntermunicipal,
 //   reducaoServico, ramoZero }
 //   (perfil da atividade — dominio-relatorios.js), sim (opcional)
@@ -640,5 +701,8 @@ export function inferirProcedencia(ent, dom) {
   // tudo à alíquota cheia pode ser o padrão (sem as notas) ou o que as notas mediram; com redução, veio das notas ou foi digitado
   p.mix = (+ent.mixCheia || 0) >= 99 ? { fonte: 'padrao', legado: true } : { fonte: 'manual', legado: true };
   if (ent.pctComprasComCredito != null && ent.pctComprasComCredito !== '') p.pctCred = { fonte: 'manual', legado: true };
+  // imposto embutido preenchido numa simulação antiga: veio das notas ou foi digitado, não ficou registrado. Em 0, é o campo
+  // vazio — não medido (14/10/2026)
+  if ((+ent.pctImpostoEmbutido || 0) > 0) p.pctEmb = { fonte: 'manual', legado: true };
   return p;
 }

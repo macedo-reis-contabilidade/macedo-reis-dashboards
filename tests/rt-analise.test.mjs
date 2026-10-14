@@ -30,11 +30,12 @@ function caso(nome, ent, dom, xml, cnae, hojeISO = globalThis.__HOJE_ISO__ || '2
 //    empate — o teste é do texto do empate, não desses números
 let falhas = 0;
 const chk = (rot, ok) => { if (!ok) falhas++; console.log((ok ? '  ✓ ' : '  ✗ ') + rot); };
-// procedência de um caso todo medido: 8 meses de faturamento, entradas e saídas (CNPJ e regime dos clientes consultado)
+// procedência de um caso todo medido: 8 meses de faturamento, entradas e saídas (CNPJ e regime dos clientes consultado) e,
+// desde 14/10/2026, o imposto embutido nas compras medido nas notas de compra
 const M8 = ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08'];
 const PROC_MEDIDO = { receita: { fonte: 'faturamento', meses: M8 }, rbt12: { fonte: 'pgdas', meses: ['2026-08'] }, anexo: { fonte: 'pgdas', meses: ['2026-08'] },
   pctMerc: { fonte: 'entradas', meses: M8, mesesFaturamento: 8, regimeFornecedores: true }, pctDesp: { fonte: 'entradas', meses: M8, mesesFaturamento: 8, regimeFornecedores: true },
-  pctPJ: { fonte: 'saidas', meses: M8, porDocumento: true, regimeConsultado: true }, mix: { fonte: 'padrao' } };
+  pctPJ: { fonte: 'saidas', meses: M8, porDocumento: true, regimeConsultado: true }, mix: { fonte: 'padrao' }, pctEmb: { fonte: 'notas', meses: M8, notas: 120 } };
 const vn = caso('VAREJO TESTE', { anexo:'I', rbt12:2484930.98, receita:205256.49, mixCheia:100, pctComprasMercadorias:79.5, pctComprasDespesas:2.35, pctImpostoEmbutido:0, pctExcluidoST:8.5, partilha:15.5, cbs:9.3, ibs:0.1, pctPJ:2.6, aliqEfetivaInformada:9.87 },
   { faturamento: { total: 1642051.92, servicos: 0, saidas: 1642051.92 }, periodoRotulo: 'jan/26–ago/26', pgdas: { competencia: '2026-08', dasTotal: 22003.93, cbsNoDas: 3718, aliquotaEfetiva: 9.87 }, vendas: { total: 1642051.92, mercadorias: 1642051.92, servicos: 0, st: 0, pctPJ: 2.6, pj: 42693, pf: 60000, consumidor: 1539358, nPJ: 31, fonte: 'acompanhamento de saídas (Domínio), PJ pelo CNPJ do cliente' } }, null, '4789-0/04', undefined, PROC_MEDIDO);
 console.log('Varejo PF:'); chk('veredito MANTENHA/empate', vn.sim.veredito.tipo === 'MANTENHA' && vn.sim.veredito.empate);
@@ -183,6 +184,27 @@ chk('veredito OPTE (' + fs1.sim.veredito.tipo + ')', fs1.sim.veredito.tipo === '
 const alF = fs1.d.alertas.find(a => /regime dos fornecedores não foi consultado/.test(a.texto));
 chk('alerta com o limite de compras do Simples e a base legal', !!alF && /se \d+% ou mais das compras/.test(alF.texto) && /LC 123, art\. 23, §1º-A/.test(alF.texto));
 chk('o teste de 20% não repete "fornecedores do Simples"', !fs1.d.alertas.some(a => /20% menor \(fornecedores do Simples/.test(a.texto)));
+// Imersão (14/10/2026): o imposto embutido nas compras — o crédito é sobre o valor das notas sem o ICMS, o ICMS-ST e o IPI
+console.log('Imposto embutido nas compras:');
+const embFs1 = fs1.d.confianca.itens.find(it => it.chave === 'embutido');
+chk('simulação antiga com o campo em 0: o imposto embutido não foi medido e decide — sem conclusão', !!embFs1 && embFs1.nivel === 'nao_medido' && fs1.d.confianca.decisivos.includes(embFs1) && fs1.d.confianca.conclusao === 'sem_conclusao');
+chk('a tabela da seção 1 diz que não foi medido e o que a conta considerou', /Imposto embutido nas compras \(fora do crédito\) não medido sem as notas de compra — a conta considerou 0,0%: crédito sobre o valor cheio das notas/.test(fs1.txt));
+chk('a recomendação pede as notas de compra em XML', /Para concluir, falta:.*as notas de compra \(XML de entrada\) dos fornecedores do regime normal/.test(fs1.txt));
+const fs1Cli = gerarAnalise({ ...fs1.d, hojeISO: fs1.d.hojeISO }, { versao: 'cliente' }).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+chk('o relatório do cliente pede as notas de compra (os XML), sem artigo de lei no item', /as notas de compra \(os arquivos XML das notas fiscais de entrada\)/.test(fs1Cli) && /Sem as suas notas de compra, a conta considerou que todo o valor das compras gera crédito/.test(fs1Cli) && !/regime normal/.test(fs1Cli));
+// o mesmo varejo com o % medido em dois meses de notas: média, e a faixa muda o resultado — a confirmar; o cliente lê a fonte
+// dele ("suas notas fiscais de compra"), sem "XML" nem "regime normal"
+// (com 3% medido a conta ainda dá "optar por fora"; com 7%, o teto da faixa, vira empate técnico)
+const fs2Ent = { ...fs1.args[1], pctImpostoEmbutido: 3 };
+const fs2b = caso(fs1.args[0], fs2Ent, fs1.args[2], fs1.args[3], fs1.args[4], undefined, { ...PROC_MEDIDO, pctEmb: { fonte: 'notas', meses: ['2026-07', '2026-08'], notas: 6 } });
+const embFs2 = fs2b.d.confianca.itens.find(it => it.chave === 'embutido');
+chk('medido em dois meses e a faixa muda o resultado: a confirmar', !!embFs2 && embFs2.nivel === 'media' && fs2b.d.confianca.aConfirmar.includes(embFs2) && fs2b.d.confianca.conclusao === 'a_confirmar');
+const fs2Cli = gerarAnalise({ ...fs2b.d }, { versao: 'cliente' }).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+chk('o alerta do cliente usa a fonte do cliente: "Suas notas fiscais de compra", sem "XML" nem "regime normal"', /Imposto embutido nas compras — 3,0% do valor das notas de compra \(Suas notas fiscais de compra, jul\/26–ago\/26, 2 meses; confiança média\)/.test(fs2Cli) && !/regime normal|\(XML\)/.test(fs2Cli));
+chk('o alerta do regime dos fornecedores, na versão do cliente, sai sem artigo de lei', /Não consultamos o regime dos seus fornecedores/.test(fs2Cli) && !/art\. 47, §9º|art\. 23, §1º-A/.test(fs2Cli));
+chk('medido nas notas de compra: a tabela mostra o % e a fonte', /Imposto embutido nas compras \(fora do crédito\) 0,0% do valor das notas Notas fiscais de compra \(XML\), fornecedores do regime normal/.test(vn.txt));
+chk('fontes: o crédito das compras sobre o valor sem o imposto embutido (LC 214, art. 12, §2º, II e V)', vn.d.fontes.some(f => /^Crédito das compras sobre o valor sem o imposto embutido \(0,0% tirado/.test(f.o_que) && /art\. 12, §2º, II e V/.test(f.origem) && /a confirmar na orientação normativa/.test(f.origem) && !f.ressalva));
+chk('fontes: com o % não medido, a linha da lei avisa', fs1.d.fontes.some(f => /^Crédito das compras sobre o valor sem o imposto embutido/.test(f.o_que) && f.ressalva === '— o % não foi medido (tabela acima)'));
 const rest = caso('RESTAURANTE TESTE', { anexo:'I', rbt12:1200000, receita:100000, mixCheia:20, mixRed40:80, pctComprasMercadorias:40, pctComprasDespesas:0, pctImpostoEmbutido:0, pctExcluidoST:10, partilha:15.5, cbs:9.2, ibs:0.1, pctPJ:5 },
   null, { pctPJ: 5, nNotas: 900, periodoRotulo: 'jan–ago/2026', cobertura: 100, clientes: [] }, '5611-2/01');
 console.log('Bar e restaurante (art. 276):');
@@ -216,6 +238,7 @@ console.log('Consultoria — não opte, decisão apertada:');
 chk('motor: MANTENHA com margem apertada', con.sim.veredito.tipo === 'MANTENHA' && con.sim.veredito.apertada);
 chk('resumo avisa a margem apertada', /A margem é apertada: com 78,1% ou mais das vendas/.test(con.txt));
 chk('ISS do DAS fora da base nas fontes', con.d.fontes.some(f => /ISS do DAS fora da base/.test(f.o_que)));
+chk('o motivo aritmético diz que o crédito é sobre o valor das notas sem o imposto embutido (5%)', /o crédito é sobre o valor das notas sem o imposto embutido \(5,0%\)/.test(con.txt));
 const ctb = caso('CONTABILIDADE TESTE', { anexo:'III', rbt12:1800000, receita:150000, mixRed30:100, pctComprasMercadorias:0, pctComprasDespesas:8, pctImpostoEmbutido:5, pctExcluidoST:32.5, partilha:16.6, cbs:9.2, ibs:0.1, pctPJ:45, issFixo:true, pctDespesasComCredito:70 },
   null, null, '6920-6/01');
 console.log('Contabilidade — ISS fixo e crédito das despesas:');
