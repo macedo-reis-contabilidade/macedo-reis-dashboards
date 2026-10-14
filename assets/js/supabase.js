@@ -16,6 +16,9 @@ export async function getCurrentUser() {
 }
 
 export async function signOut() {
+  // a conversa do assistente de canto guardada na aba (assets/js/assistente.js, "mr_assistente:<id>") não passa pra quem
+  // entrar depois na mesma aba
+  try { Object.keys(sessionStorage).filter(k => k.startsWith('mr_assistente:')).forEach(k => sessionStorage.removeItem(k)); } catch (e) { /* sem armazenamento */ }
   await supabase.auth.signOut();
   window.location.href = '/macedo-reis-dashboards/login.html';
 }

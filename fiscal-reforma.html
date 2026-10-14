@@ -50,7 +50,7 @@
     .rt-massa { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:var(--surface); border-radius:14px; padding:10px 16px; display:none; gap:10px; align-items:center; z-index:70; box-shadow:0 10px 30px rgba(0,0,0,.5); flex-wrap:wrap; justify-content:center; }
     .rt-massa.on { display:flex; }
     .rt-massa .qtd { font-size:12.5px; color:var(--text-muted); margin-right:4px; }
-    .rg-ov { position:fixed; inset:0; background:var(--overlay); display:none; align-items:flex-start; justify-content:center; overflow:auto; padding:34px 16px; z-index:60; }
+    .rg-ov { position:fixed; inset:0; background:var(--overlay); display:none; align-items:flex-start; justify-content:center; overflow:auto; padding:34px 16px 110px; z-index:60; }   /* 110px embaixo: o fim da janela não fica atrás do balão do assistente */
     .rg-ov.on { display:flex; }
     .rg-card { background:var(--surface); border-radius:16px; max-width:1060px; width:100%; padding:22px 24px 26px; }
     .rg-card h2 { margin:0 0 2px; font-size:1.25rem; color:var(--text); }
@@ -112,26 +112,7 @@
     .rt-regra .mats a:hover { text-decoration:underline; }
     .rt-regra .mats .tp { display:inline-block; font-size:10px; font-weight:600; border-radius:5px; padding:0 5px; margin-left:5px; background:var(--fill-2); color:var(--text-dim); }
     .rt-regra.alvo { box-shadow:0 0 0 2px var(--brand-light); }
-    /* PERGUNTAR À BASE (14/10/2026): o chat da Reforma */
-    .rt-chat { display:flex; flex-direction:column; height:calc(100vh - 68px); max-height:920px; max-width:820px; padding:18px 20px 16px; }
-    .rt-chat-topo { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
-    .rt-chat-sub { font-size:12px; color:var(--text-muted); margin:4px 0 0; line-height:1.45; }
-    .rt-chat-ctx { font-size:12.5px; color:var(--text-muted); margin:10px 0 0; }
-    .rt-chat-msgs { flex:1; overflow:auto; margin:12px 0 10px; padding-right:4px; display:flex; flex-direction:column; gap:10px; }
-    .rt-chat-msg { border-radius:12px; padding:10px 13px; font-size:13.5px; line-height:1.55; max-width:94%; color:var(--text); overflow-wrap:anywhere; }
-    .rt-chat-msg.eu { align-self:flex-end; background:rgba(91,130,166,.22); white-space:pre-wrap; }
-    .rt-chat-msg.ia { align-self:flex-start; background:var(--fill-1); border:1px solid var(--line); }
-    .rt-chat-msg.erro { color:var(--err); }
-    .rt-chat-msg p { margin:0 0 8px; } .rt-chat-msg p:last-child { margin-bottom:0; }
-    .rt-chat-msg ul, .rt-chat-msg ol { margin:2px 0 8px 18px; padding:0; } .rt-chat-msg li { margin:2px 0; }
-    .rt-chat-msg a.fonte { display:inline-block; background:rgba(91,130,166,.2); color:var(--brand-light); border-radius:6px; padding:0 6px; font-size:11px; font-weight:700; text-decoration:none; cursor:pointer; }
-    .rt-chat-msg a.fonte:hover { text-decoration:underline; }
-    .rt-chat-etapas { font-size:11.5px; color:var(--text-dim); margin-top:8px; line-height:1.5; }
-    .rt-chat-ex { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
-    .rt-chat-ex button { background:var(--fill-2); border:1px solid var(--line); color:var(--text-muted); border-radius:8px; padding:5px 9px; font-size:12px; cursor:pointer; text-align:left; }
-    .rt-chat-ex button:hover { color:var(--text); }
-    .rt-chat-botoes { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:8px; }
-    .rt-chat-botoes .nota { font-size:11px; color:var(--text-dim); }
+    .rt-regra:focus { outline:none; }   /* a regra aberta por uma fonte recebe o foco; o destaque é o .alvo */
     .rt-refs .ref { color:var(--brand-light); text-decoration:none; }
     .rt-refs .ref:hover { text-decoration:underline; }
     .dom-drop { border:1px dashed var(--line-strong); border-radius:12px; padding:18px; text-align:center; color:var(--text-muted); font-size:12.5px; cursor:pointer; }
@@ -221,7 +202,6 @@
         </select>
         <div class="apoio">
           <button class="btn btn-ghost" id="btnRefazer" title="Recalcula as simulações gravadas com o motor atual — use quando o cálculo ou um parâmetro mudar">Refazer simulações</button>
-          <button class="btn btn-ghost" id="btnChat" title="Pergunte à base da Reforma: materiais, Base legal e os casos da campanha, com a fonte de cada resposta">Perguntar à base</button>
           <button class="btn btn-ghost" id="btnBase">Base legal</button>
         </div>
       </div>
@@ -261,7 +241,6 @@
         <span id="fiTriagem"></span>
         <span id="fiStatus"></span>
         <span>Prazo da opção: <b id="fiPrazo" style="color:var(--warn)"></b></span>
-        <button class="btn btn-ghost" id="fiChat" style="margin-left:auto;padding:5px 11px;font-size:12px" title="Abre o chat da Reforma com este caso: o resultado, os números, o que falta e o &quot;e se&quot;">Perguntar sobre este caso</button>
       </div>
 
       <div class="rt-bloco">
@@ -367,28 +346,6 @@
   </div>
 
   <!-- BASE LEGAL -->
-  <!-- PERGUNTAR À BASE (14/10/2026): o chat da Reforma — fica entre a ficha e a Base legal (abre por cima da ficha; a Base
-       legal aberta de uma fonte abre por cima dele) -->
-  <div class="rg-ov" id="ovChat">
-    <div class="rg-card rt-chat">
-      <div class="rt-chat-topo">
-        <div>
-          <h2>Perguntar à base da Reforma</h2>
-          <p class="rt-chat-sub">Responde só com a base do escritório — os materiais, a Base legal e os casos da campanha — e mostra a fonte de cada afirmação (clique pra abrir). Números de empresa saem do mesmo simulador da ficha. Conteúdo de curso é de uso interno: não vai pra texto de cliente.</p>
-        </div>
-        <button class="btn btn-ghost" id="chatFechar" data-janela-fechar>Fechar</button>
-      </div>
-      <div class="rt-chat-ctx" id="chatCtx" hidden><label><input type="checkbox" id="chatUsarFicha" checked> Perguntando sobre <b id="chatFichaNome"></b> (a ficha aberta)</label></div>
-      <div class="rt-chat-msgs" id="chatMsgs"></div>
-      <textarea class="textarea" id="chatTexto" rows="2" maxlength="2000" style="min-height:58px" placeholder="Escreva a pergunta (Enter envia; Shift+Enter quebra a linha)"></textarea>
-      <div class="rt-chat-botoes">
-        <button class="btn btn-ghost" id="chatNova" title="Começa uma conversa nova (o chat esquece as perguntas anteriores)">Nova conversa</button>
-        <span class="nota" id="chatNota"></span>
-        <button class="btn btn-primary" id="chatEnviar">Perguntar</button>
-      </div>
-    </div>
-  </div>
-
   <div class="rg-ov" id="ovBase">
     <div class="rg-card" style="max-width:760px">
       <h2>Base legal da campanha</h2>
@@ -439,6 +396,7 @@
     import { simular, anexo2027, aliquotas2027, entradaComAliquotas } from './assets/js/rt-motor.js';
     import { avaliarConfianca, resumoConfianca, inferirProcedencia, contextoDoCaso, ROT_DECISAO, faltaParaCliente, textoReducaoServico } from './assets/js/rt-confianca.js';
     import { RT_PRAZO, janelaAberta as janelaAbertaEm } from './assets/js/rt-prazos.js';
+    import { montarAssistente, perguntarFuncao, textoParaHtml } from './assets/js/assistente.js';
 
     const $ = id => document.getElementById(id);
     const escapeHtml = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -693,6 +651,11 @@
 
     // ---------- ficha ----------
     function casoAtual() { return casos.find(x => x.id === fichaId); }
+    // tem resultado pro assistente explicar: simulação gravada ou, na ficha aberta, um "Calcular" ainda não gravado
+    function casoComResultado(id) {
+      const c = casos.find(x => x.id === id);
+      return !!(c && c.sim_custo_dentro != null) || (!!simAtual && fichaId === id && $('ovFicha').classList.contains('on'));
+    }
 
     function abrirFicha(id) {
       fichaId = id; simAtual = null;
@@ -764,8 +727,9 @@
       $('dMsg').textContent = c.comunicado_em ? 'Comunicado em ' + fmtData(c.comunicado_em) : '';
 
       $('ovFicha').classList.add('on');
+      assistente.definirContexto({ id: c.id, nome: cli.nome_principal || '?', get simulado() { return casoComResultado(c.id); } });
     }
-    $('fiFechar').onclick = () => { $('ovFicha').classList.remove('on'); render(); };
+    $('fiFechar').onclick = () => { $('ovFicha').classList.remove('on'); assistente.definirContexto(null); render(); };
 
     function atualizarChips() {
       const c = casoAtual(); if (!c) return;
@@ -1602,12 +1566,13 @@
         r.meses.map((m, i) => '<tr><td>' + MESES[i] + '</td><td>' + brl(m.caixaDentro) + '</td><td>' + brl(r.mes.dasSobra) + '</td><td>' + brl(m.aRecolher) + '</td><td>' + brl(m.estoque) + '</td><td>' + brl(m.custoDentro) + '</td><td>' + brl(m.custoFora) + '</td></tr>').join('') +
         '<tr class="tot"><td>Semestre</td><td>' + brl(s.caixaDentro) + '</td><td>' + brl(r.mes.dasSobra * 6) + '</td><td>' + brl(r.meses.reduce((a, m) => a + m.aRecolher, 0)) + '</td><td>' + brl(r.meses.reduce((a, m) => a + m.estoque, 0)) + '</td><td>' + brl(s.custoDentro) + '</td><td>' + brl(s.custoFora) + '</td></tr></tbody>';
       $('bSaida').hidden = false;
+      assistente.atualizar();   // as perguntas prontas do assistente passam a ser as de quem tem resultado
       return r;
     }
 
     $('bCalcular').onclick = () => {
       try { $('bMsg').textContent = ''; calcular(); }
-      catch (err) { simAtual = null; $('bSaida').hidden = true; $('bMsg').style.color = 'var(--err)'; $('bMsg').textContent = err.message; }
+      catch (err) { simAtual = null; $('bSaida').hidden = true; $('bMsg').style.color = 'var(--err)'; $('bMsg').textContent = err.message; assistente.atualizar(); }
     };
 
     // o que a lista e a análise leem do resultado sem refazer a conta (12/10/2026)
@@ -2483,17 +2448,29 @@
       return true;
     }
     // abre a Base legal; com um código, destaca e rola até a regra (os códigos da simulação, na ficha, chamam assim)
-    async function abrirBaseLegal(codigo) {
+    // por cima do assistente de canto (z-index 8000), aberta de onde for. "voltarFoco": quem abriu (a fonte no chat) — o
+    // foco vai pra regra e volta pra quem abriu ao fechar
+    let baseVoltarFoco = null;
+    async function abrirBaseLegal(codigo, { voltarFoco } = {}) {
+      $('ovBase').style.zIndex = '8500';
       $('ovBase').classList.add('on');
+      baseVoltarFoco = voltarFoco || null;
       if (!regrasCarregadas) regrasCarregadas = await carregarBaseLegal();
       document.querySelectorAll('#baseLista .rt-regra.alvo').forEach(el => el.classList.remove('alvo'));
       if (!codigo) return;
       const alvo = [...document.querySelectorAll('#baseLista .rt-regra')].find(el => el.dataset.regra === codigo);
-      if (alvo) { alvo.classList.add('alvo'); alvo.scrollIntoView({ block: 'center' }); }
+      if (alvo) {
+        alvo.classList.add('alvo'); alvo.scrollIntoView({ block: 'center' });
+        if (voltarFoco) { alvo.tabIndex = -1; alvo.focus({ preventScroll: true }); }
+      }
     }
     $('btnBase').onclick = () => abrirBaseLegal();
     document.querySelectorAll('.rt-refs .ref').forEach(a => { a.onclick = ev => { ev.preventDefault(); abrirBaseLegal(a.dataset.regra); }; });
-    $('baseFechar').onclick = () => $('ovBase').classList.remove('on');
+    $('baseFechar').onclick = () => {
+      $('ovBase').classList.remove('on'); $('ovBase').style.zIndex = '';
+      const f = baseVoltarFoco; baseVoltarFoco = null;
+      if (f && f.isConnected) f.focus({ preventScroll: true });
+    };
 
     // ---------- refazer simulações (03/10/2026) ----------
     // Recalcula as simulações gravadas com o motor atual e grava pelo login de quem clicou — pra quando o cálculo ou um
@@ -2576,29 +2553,30 @@
     };
     $('refazerFechar').onclick = () => $('ovRefazer').classList.remove('on');
 
-    // ---------- PERGUNTAR À BASE (14/10/2026): o chat da Reforma ----------
-    // Fala com a Edge Function reforma-chat: a busca na base, as ferramentas e o simulador rodam lá, e cada pergunta vai pro
-    // histórico (rt_chat). As etapas chegam enquanto ela trabalha (text/event-stream). A conversa fica só nesta tela —
-    // "Nova conversa" esquece. Com a ficha aberta, o chat recebe o caso (e os números calculados e ainda não gravados).
-    const chat = { historico: [], conversa: null, casoId: null, ocupado: false, geracao: 0, materiais: null, regras: null };
+    // ---------- ASSISTENTE DA REFORMA (14/10/2026): o chat de canto de tela ----------
+    // A peça é única do sistema (assets/js/assistente.js): o balão com a carinha, o recado, o painel, o "digitando…" e a
+    // conversa guardada na aba. Aqui fica o que é da Reforma: a Edge Function reforma-chat (a busca na base, as ferramentas
+    // e o simulador rodam lá; cada pergunta vai pro histórico, rt_chat), as fontes clicáveis (material → Drive, regra →
+    // Base legal) e o contexto da ficha aberta (o caso e, depois de "Calcular" e antes de "Gravar", os números da tela).
+    const fontesChat = { materiais: null, regras: null };
     async function codigosDoChat() {
-      if (chat.materiais) return;
+      if (fontesChat.materiais) return;
       const [{ data: ms }, { data: rs }] = await Promise.all([
         supabase.from('rt_materiais').select('codigo, titulo, tipo, drive_url').eq('ativo', true),
         supabase.from('rt_regras').select('codigo, titulo').eq('ativo', true)
       ]);
-      chat.materiais = new Map((ms || []).map(m => [m.codigo, m]));
-      chat.regras = new Map((rs || []).map(r => [r.codigo, r]));
+      fontesChat.materiais = new Map((ms || []).map(m => [m.codigo, m]));
+      fontesChat.regras = new Map((rs || []).map(r => [r.codigo, r]));
     }
     // uma fonte citada ("CODIGO, onde", "regra CODIGO", "regras A e B"): todo código da base vira link — o material abre o
     // original no Drive, a regra abre a Base legal. Código que não existe fica como texto. Chega aqui já escapado
     function fonteDoChat(parte) {
-      const temRegra = c => !!(chat.regras && chat.regras.has(c)), temMaterial = c => !!(chat.materiais && chat.materiais.has(c));
-      const regra = (cod, texto) => '<a class="fonte" data-regra="' + cod + '" title="' + escapeHtml('Base legal — ' + (chat.regras.get(cod).titulo || cod)) + '">' + texto + '</a>';
+      const temRegra = c => !!(fontesChat.regras && fontesChat.regras.has(c)), temMaterial = c => !!(fontesChat.materiais && fontesChat.materiais.has(c));
+      const regra = (cod, texto) => '<a class="fonte" href="#regra-' + cod + '" data-regra="' + cod + '" title="' + escapeHtml('Base legal — ' + (fontesChat.regras.get(cod).titulo || cod)) + '">' + texto + '</a>';
       const material = cod => {
-        const m = chat.materiais.get(cod), url = linkDrive(m.drive_url);
+        const m = fontesChat.materiais.get(cod), url = linkDrive(m.drive_url);
         const tit = escapeHtml((m.titulo || cod) + (url ? ' — abre o original no Drive' : ''));
-        return (url ? '<a class="fonte" href="' + escapeHtml(url) + '" target="_blank" rel="noopener" title="' + tit + '">' : '<a class="fonte" title="' + tit + '">') + cod + '</a>';
+        return url ? '<a class="fonte" href="' + escapeHtml(url) + '" target="_blank" rel="noopener" title="' + tit + '">' + cod + '</a>' : '<span class="fonte" title="' + tit + '">' + cod + '</span>';
       };
       // "regra CODIGO" no começo: o link leva a palavra junto (o código pode ter vindo em minúsculas)
       const rg = /^(\s*)(regras?\s+)([A-Za-z0-9][A-Za-z0-9-]*)/i.exec(parte);
@@ -2607,160 +2585,49 @@
       return inicio + resto.replace(/\b[A-Z0-9]{2,}(?:-[A-Z0-9]+)+\b/g, cod =>
         temRegra(cod) && (rg || !temMaterial(cod)) ? regra(cod, cod) : temMaterial(cod) ? material(cod) : cod);
     }
-    // a resposta em HTML seguro: o texto é escapado antes de tudo; daí em diante só entra marcação daqui (parágrafo,
-    // negrito, lista e as fontes)
-    function htmlDoChat(texto) {
-      const inline = s => s.replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>')
-        .replace(/\[([^\]\n]{2,240})\]/g, (todo, dentro) => {
-          const out = dentro.split(/([;·])/).map((p, i) => i % 2 ? p : fonteDoChat(p)).join('');
-          return out !== dentro ? '[' + out + ']' : todo;
-        });
-      let html = '', lista = null, par = [];
-      const fecharPar = () => { if (par.length) { html += '<p>' + par.join('<br>') + '</p>'; par = []; } };
-      const fecharLista = () => { if (lista) { html += '</' + lista + '>'; lista = null; } };
-      escapeHtml(texto).split('\n').forEach(l => {
-        const t = l.trim();
-        const ul = /^[-*•]\s+(.*)$/.exec(t), ol = /^\d+[.)]\s+(.*)$/.exec(t);
-        if (ul || ol) {
-          fecharPar();
-          const tipo = ul ? 'ul' : 'ol';
-          if (lista !== tipo) { fecharLista(); html += '<' + tipo + '>'; lista = tipo; }
-          html += '<li>' + inline((ul || ol)[1]) + '</li>';
-          return;
-        }
-        fecharLista();
-        if (!t) { fecharPar(); return; }
-        const h = /^#{1,4}\s+(.*)$/.exec(t);
-        if (h) { fecharPar(); html += '<p><b>' + inline(h[1]) + '</b></p>'; return; }
-        par.push(inline(t));
-      });
-      fecharPar(); fecharLista();
-      return html;
-    }
-    function msgDoChat(classe, html) {
-      const d = document.createElement('div');
-      d.className = 'rt-chat-msg ' + classe;
-      d.innerHTML = html;
-      $('chatMsgs').appendChild(d);
-      $('chatMsgs').scrollTop = $('chatMsgs').scrollHeight;
-      return d;
-    }
-    function boasVindasDoChat() {
-      const c = chat.casoId ? casos.find(x => x.id === chat.casoId) : null;
-      const nome = c ? (clientesMap[c.cliente_id] || {}).nome_principal || '' : '';
-      const ex = c ? ['Por que esta empresa deu esse resultado?', 'O que falta medir e a partir de quanto o resultado vira?', 'E se o imposto embutido nas compras for 12%?']
-        : ['O cliente que fica por dentro gera crédito pra quem compra dele?', 'Até quando dá pra optar e até quando dá pra cancelar?', 'Quais casos estão sem conclusão e o que falta em cada um?'];
-      const d = msgDoChat('ia', '<p>Pergunte sobre a Reforma: o que a lei diz e o que o curso ensina, a Base legal do escritório e os casos da campanha'
-        + (c ? ' — por exemplo, sobre <b>' + escapeHtml(nome) + '</b>' : '') + '.</p><div class="rt-chat-ex">' + ex.map(t => '<button type="button">' + escapeHtml(t) + '</button>').join('') + '</div>');
-      d.querySelectorAll('.rt-chat-ex button').forEach(b => { b.onclick = () => { $('chatTexto').value = b.textContent; $('chatTexto').focus(); }; });
-    }
-    // começa do zero; uma resposta que ainda estava a caminho não entra na conversa nova (geração)
-    function novaConversaDoChat() {
-      chat.geracao++; chat.ocupado = false; $('chatEnviar').disabled = false; $('chatNova').disabled = false;
-      chat.historico = []; chat.conversa = null;
-      $('chatMsgs').innerHTML = ''; $('chatNota').textContent = '';
-      boasVindasDoChat();
-    }
-    // com o caso de uma ficha, ou sem caso (pela lista); trocou o caso, começa outra conversa
-    function abrirChat(casoId) {
-      const novo = casoId || null;
-      if (novo !== chat.casoId || !$('chatMsgs').children.length) { chat.casoId = novo; novaConversaDoChat(); }
-      const c = chat.casoId ? casos.find(x => x.id === chat.casoId) : null;
-      $('chatCtx').hidden = !c;
-      if (c) { $('chatFichaNome').textContent = (clientesMap[c.cliente_id] || {}).nome_principal || '—'; $('chatUsarFicha').checked = true; }
-      $('ovChat').classList.add('on');
-      $('chatTexto').focus();
-      codigosDoChat().catch(() => {});
-    }
+    const fontesDoColchete = dentro => dentro.split(/([;·])/).map((p, i) => i % 2 ? p : fonteDoChat(p)).join('');
     // os números calculados na ficha aberta e ainda não gravados (o retrato do último "Calcular": números, procedência e a
     // natureza das vendas) — o chat compara com a simulação gravada. Gravou: não vai nada, o chat lê a gravada
     function telaParaChat() {
-      if (!simAtual || simAtual.gravada || fichaId !== chat.casoId || !$('ovFicha').classList.contains('on')) return null;
+      if (!simAtual || simAtual.gravada || !$('ovFicha').classList.contains('on')) return null;
       return { input: simAtual.input, procedencia: simAtual.proc, natureza: simAtual.natureza };
     }
-    async function lerEventosDoChat(data, cb) {
-      const processar = bloco => bloco.split('\n').forEach(l => { if (l.startsWith('data: ')) { try { cb(JSON.parse(l.slice(6))); } catch (e) { /* linha quebrada */ } } });
-      if (data && data.body && typeof data.body.getReader === 'function') {
-        const leitor = data.body.getReader(), dec = new TextDecoder();
-        let buf = '';
-        for (;;) {
-          const { value, done } = await leitor.read();
-          if (done) break;
-          buf += dec.decode(value, { stream: true });
-          let i;
-          while ((i = buf.indexOf('\n\n')) >= 0) { processar(buf.slice(0, i)); buf = buf.slice(i + 2); }
+    // o assistente nunca derruba a tela: se a montagem falhar, a página segue sem ele
+    let assistente;
+    try {
+      assistente = montarAssistente({
+        id: 'reforma',
+        nome: 'Assistente da Reforma',
+        rotulo: 'Perguntar à base da Reforma',
+        status: 'Responde com a base do escritório',
+        saudacao: '<p>Oi! Respondo só com a base do escritório: a Base legal, os materiais e os casos da campanha. Cada resposta traz a fonte — clique nela pra abrir. Números de empresa saem do mesmo simulador da ficha.</p>'
+          + '<p>Material do curso é de uso interno: confira a fonte antes de levar algo ao cliente.</p>',
+        recado: { texto: 'Oi! Pergunte o que precisar da Reforma — respondo com a base do escritório e mostro a fonte.',
+          exemplos: ['Até quando dá pra optar e até quando dá pra cancelar?', 'Quais casos estão sem conclusão e o que falta em cada um?'] },
+        recadoContexto: c => c.simulado
+          ? { texto: 'Quer entender o resultado de ' + c.nome + '?', exemplos: ['Por que esta empresa deu esse resultado?'] }
+          : { texto: c.nome + ' ainda não foi simulada. Quer saber o que falta?', exemplos: ['O que falta pra simular esta empresa?'] },
+        exemplos: c => !c ? ['O cliente que fica por dentro gera crédito pra quem compra dele?', 'Até quando dá pra optar e até quando dá pra cancelar?', 'Quais casos estão sem conclusão e o que falta em cada um?']
+          : c.simulado ? ['Por que esta empresa deu esse resultado?', 'O que falta medir e a partir de quanto o resultado vira?', 'E se o imposto embutido nas compras for 12%?']
+          : ['O que falta pra simular esta empresa?', 'Qual a triagem desta empresa e por quê?'],
+        seguintes: c => c && c.simulado ? ['O que falta medir e a partir de quanto o resultado vira?', 'E se o imposto embutido nas compras for 12%?'] : [],
+        contexto: c => ({ caso_id: c.id, tela: telaParaChat() }),
+        perguntar: perguntarFuncao(supabase, 'reforma-chat'),
+        formatar: texto => textoParaHtml(texto, { fontes: fontesDoColchete }),
+        antes: codigosDoChat,
+        // a regra citada abre a Base legal por cima do assistente
+        aoClicar: ev => {
+          const a = ev.target.closest('a.fonte[data-regra]');
+          if (!a) return false;
+          ev.preventDefault();
+          abrirBaseLegal(a.dataset.regra, { voltarFoco: a });
+          return true;
         }
-        if (buf.trim()) processar(buf);
-      } else if (typeof data === 'string') processar(data);
-      else if (data && (data.resposta || data.erro)) cb(data.erro ? { tipo: 'erro', texto: data.erro } : { tipo: 'resposta', texto: data.resposta, fontes: data.fontes });
+      });
+    } catch (err) {
+      console.error('Assistente da Reforma fora do ar:', err);
+      assistente = { definirContexto() {}, atualizar() {} };
     }
-    async function erroDoChat(error) {
-      const r = error && error.context;
-      try { if (r && typeof r.json === 'function') { const j = await r.clone().json(); if (j && j.erro) return j.erro; } } catch (e) { /* sem corpo */ }
-      const st = r && r.status;
-      if (st === 401) return 'Sua sessão expirou: saia e entre de novo no sistema.';
-      if (st === 403) return 'O chat é só da equipe do escritório.';
-      if (st === 413) return 'A pergunta (com a conversa) ficou grande demais: comece uma conversa nova.';
-      if (st === 429) return 'Muitas perguntas agora: espere um pouco e tente de novo.';
-      if (st === 502 || st === 503 || st === 504 || st === 546) return 'O chat demorou demais ou está fora do ar. Tente de novo em instantes.';
-      if (st) return 'O chat não respondeu (código ' + st + '). Tente de novo em instantes.';
-      return 'Não consegui falar com o chat. Confira a internet e tente de novo.';
-    }
-    async function enviarChat() {
-      const texto = $('chatTexto').value.trim();
-      if (!texto || chat.ocupado) return;
-      const g = chat.geracao;
-      chat.ocupado = true; $('chatEnviar').disabled = true; $('chatNova').disabled = true;
-      if (!chat.conversa && window.crypto && crypto.randomUUID) chat.conversa = crypto.randomUUID();
-      msgDoChat('eu', escapeHtml(texto));
-      $('chatTexto').value = '';
-      const caixa = msgDoChat('ia', '<div class="rt-chat-etapas">Pensando…</div>');
-      const usarFicha = !!chat.casoId && $('chatUsarFicha').checked;
-      const corpo = { pergunta: texto, historico: chat.historico.slice(-6), conversa: chat.conversa, fluxo: true,
-        contexto: usarFicha ? { caso_id: chat.casoId, tela: telaParaChat() } : {} };
-      const etapas = [];
-      let resposta = null, erro = null;
-      const t0 = Date.now();
-      try {
-        await codigosDoChat().catch(() => {});
-        const { data, error } = await supabase.functions.invoke('reforma-chat', { body: corpo });
-        if (error) erro = await erroDoChat(error);
-        else await lerEventosDoChat(data, ev => {
-          if (g !== chat.geracao) return;
-          if (ev.tipo === 'etapa') {
-            etapas.push(ev.texto);
-            caixa.innerHTML = '<div class="rt-chat-etapas">' + etapas.map(e => '· ' + escapeHtml(e)).join('<br>') + '<br>· escrevendo a resposta…</div>';
-            $('chatMsgs').scrollTop = $('chatMsgs').scrollHeight;
-          } else if (ev.tipo === 'resposta') resposta = ev;
-          else if (ev.tipo === 'erro') erro = ev.texto;
-        });
-        if (!resposta && !erro) erro = 'O chat não devolveu resposta. Tente de novo.';
-      } catch (e) { erro = 'Não consegui falar com o chat (' + ((e && e.message) || e) + ').'; }
-      if (g !== chat.geracao) return;   // a conversa mudou enquanto esperava
-      if (resposta) {
-        caixa.innerHTML = htmlDoChat(resposta.texto)
-          + (etapas.length ? '<div class="rt-chat-etapas">' + etapas.length + (etapas.length === 1 ? ' consulta' : ' consultas') + ': ' + etapas.map(escapeHtml).join(' · ') + '</div>' : '')
-          + (resposta.cortada ? '<div class="rt-chat-etapas">A resposta passou do tamanho máximo e foi cortada — peça a continuação.</div>' : '');
-        chat.historico.push({ pergunta: texto, resposta: resposta.texto });
-        $('chatNota').textContent = 'Respondida em ' + Math.max(1, Math.round((Date.now() - t0) / 1000)) + ' s';
-      } else {
-        caixa.classList.add('erro');
-        caixa.innerHTML = '<p>' + escapeHtml(erro) + '</p>';
-        $('chatTexto').value = texto;
-      }
-      chat.ocupado = false; $('chatEnviar').disabled = false; $('chatNova').disabled = false;
-      $('chatMsgs').scrollTop = $('chatMsgs').scrollHeight;
-    }
-    $('btnChat').onclick = () => abrirChat(null);
-    $('fiChat').onclick = () => abrirChat(fichaId);
-    $('chatFechar').onclick = () => $('ovChat').classList.remove('on');
-    $('chatNova').onclick = novaConversaDoChat;
-    $('chatEnviar').onclick = enviarChat;
-    $('chatTexto').addEventListener('keydown', ev => { if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) { ev.preventDefault(); enviarChat(); } });
-    $('chatMsgs').addEventListener('click', ev => {
-      const a = ev.target.closest('a.fonte[data-regra]');
-      if (a) { ev.preventDefault(); abrirBaseLegal(a.dataset.regra); }
-    });
 
     // ---------- importação Domínio ----------
     load();

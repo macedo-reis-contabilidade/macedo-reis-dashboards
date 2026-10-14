@@ -772,3 +772,149 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(4px); 
   .dialog-card { padding: 24px; }
   .extract-actions { flex-direction: column; align-items: stretch; }
 }
+
+/* ============================================================
+   ASSISTENTE (assets/js/assistente.js, 14/10/2026) — o chat de canto de tela, peça única do sistema.
+   A carinha é o único elemento com personalidade: pisca, "lê" enquanto consulta (os olhos vão e voltam) e sorri
+   quando a resposta chega. O resto segue o painel: superfícies, linhas e azul da casa.
+   ============================================================ */
+.as-lancador { position:fixed; right:22px; bottom:22px; z-index:8000; width:58px; height:58px; padding:0; border:none; background:none;
+  cursor:pointer; border-radius:19px; filter:drop-shadow(0 8px 18px rgba(0,0,0,.35)); transition:transform .18s ease; -webkit-tap-highlight-color:transparent; }
+.as-lancador:hover { transform:translateY(-2px); }
+.as-lancador:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+.as-lancador .as-rosto { width:100%; height:100%; display:block; }
+:root[data-theme="light"] .as-lancador { filter:drop-shadow(0 8px 18px rgba(15,23,42,.18)); }
+.as-selo { position:absolute; top:-5px; right:-5px; min-width:20px; height:20px; padding:0 6px; border-radius:10px; background:var(--accent);
+  color:var(--bg); font:700 11px/20px var(--font-body); text-align:center; box-shadow:0 0 0 3px var(--bg); }
+.as-selo[hidden] { display:none; }
+
+.as-rosto .as-cabeca { fill:var(--brand-primary); }
+.as-rosto .as-olho { fill:#F4F8FB; transform-box:fill-box; transform-origin:center; transition:transform .1s ease; }
+.as-rosto .as-olhos { transition:opacity .15s; }
+.as-rosto .as-sorri { fill:none; stroke:#F4F8FB; stroke-width:2.8; stroke-linecap:round; opacity:0; transition:opacity .15s; }
+.as-piscar .as-olho { transform:scaleY(.12); }
+.as-pensando .as-olhos { animation:as-ler 1.6s ease-in-out infinite; }
+.as-sorrindo .as-olhos { opacity:0; }
+.as-sorrindo .as-sorri { opacity:1; }
+.as-atencao .as-lancador { animation:as-oi .7s ease; }
+@keyframes as-ler { 0%,100% { transform:translateX(-3px); } 50% { transform:translateX(3px); } }
+@keyframes as-oi { 0%,100% { transform:rotate(0); } 25% { transform:rotate(-9deg); } 60% { transform:rotate(6deg); } }
+
+/* o recado: aparece sozinho ao lado da carinha, sem abrir o painel */
+.as-recado { position:fixed; right:22px; bottom:92px; z-index:8000; width:min(300px, calc(100vw - 44px)); background:var(--surface); color:var(--text);
+  border:1px solid var(--line); border-radius:16px 16px 4px 16px; padding:12px 14px; box-shadow:var(--shadow-lg); font-size:13px; line-height:1.5; transform-origin:100% 100%; }
+.as-recado[hidden] { display:none; }
+.as-recado.as-surge { animation:as-surge .32s cubic-bezier(.2,1.25,.4,1); }
+.as-recado p { margin:0; padding-right:16px; }
+.as-recado .as-chips { margin-top:9px; }
+.as-recado .as-chips:empty { display:none; }
+.as-recado-x { position:absolute; top:5px; right:7px; background:none; border:none; color:var(--text-muted); font-size:18px; line-height:1; cursor:pointer; padding:2px 4px; }
+.as-recado-x:hover { color:var(--text); }
+@keyframes as-surge { from { opacity:0; transform:translateY(8px) scale(.94); } to { opacity:1; transform:none; } }
+
+/* o painel da conversa */
+.as-painel { position:fixed; right:22px; bottom:92px; z-index:8000; width:min(410px, calc(100vw - 32px)); height:min(640px, calc(100vh - 116px));
+  display:flex; flex-direction:column; background:var(--surface); border:1px solid var(--line); border-radius:18px; box-shadow:var(--shadow-lg);
+  overflow:hidden; transform-origin:100% 100%; animation:as-abre .2s ease-out; }
+.as-painel[hidden] { display:none; }
+.as-painel.as-largo { width:min(720px, calc(100vw - 32px)); height:calc(100vh - 116px); }
+@keyframes as-abre { from { opacity:0; transform:translateY(10px) scale(.97); } to { opacity:1; transform:none; } }
+.as-com-ajuda .as-lancador { bottom:72px; }
+.as-com-ajuda .as-recado, .as-com-ajuda .as-painel { bottom:142px; }
+.as-com-ajuda .as-painel { height:min(640px, calc(100vh - 166px)); }
+.as-com-ajuda .as-painel.as-largo { height:calc(100vh - 166px); }
+
+.as-topo { display:flex; align-items:center; gap:11px; padding:12px 10px 12px 14px; background:var(--surface-2); border-bottom:1px solid var(--line); }
+.as-avatar { width:36px; height:36px; flex:none; }
+.as-avatar .as-rosto { width:100%; height:100%; display:block; }
+.as-quem { display:flex; flex-direction:column; gap:1px; min-width:0; flex:1; }
+.as-nome { font-family:var(--font-display); font-weight:600; font-size:16px; color:var(--text); line-height:1.2; }
+.as-status { display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--text-muted); white-space:nowrap; overflow:hidden; }
+.as-status-txt { overflow:hidden; text-overflow:ellipsis; }
+.as-ponto { width:7px; height:7px; border-radius:50%; background:var(--ok); flex:none; }
+.as-ocupado .as-ponto { background:var(--warn); animation:as-pulso 1.2s ease-in-out infinite; }
+@keyframes as-pulso { 50% { opacity:.3; } }
+.as-acoes { display:flex; gap:2px; flex:none; }
+.as-acao { width:32px; height:32px; border-radius:9px; border:none; background:transparent; color:var(--text-muted); cursor:pointer; display:inline-flex; align-items:center; justify-content:center; }
+.as-acao:hover { background:var(--fill-2); color:var(--text); }
+.as-acao:disabled { opacity:.35; cursor:default; background:transparent; color:var(--text-muted); }
+.as-acao:focus-visible, .as-chip:focus-visible, .as-enviar:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.as-acao svg { width:17px; height:17px; }
+
+.as-ctx { padding:8px 14px; font-size:12.5px; color:var(--text-muted); border-bottom:1px solid var(--line); background:var(--fill-1); }
+.as-ctx[hidden] { display:none; }
+.as-ctx label { display:flex; align-items:center; gap:8px; cursor:pointer; }
+.as-ctx b { color:var(--text); font-weight:600; }
+
+.as-msgs { flex:1; overflow-y:auto; overscroll-behavior:contain; padding:16px 16px 10px; display:flex; flex-direction:column; gap:14px; }
+.as-lista, .as-cauda { display:flex; flex-direction:column; gap:14px; }
+.as-cauda:empty { display:none; }
+.as-msg { display:flex; flex-direction:column; gap:4px; }
+/* só o que acabou de chegar anima: a conversa que já estava na tela fica parada */
+.as-nova, .as-digitando-msg { animation:as-chega .18s ease-out; }
+@keyframes as-chega { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
+.as-msg.eu { align-items:flex-end; }
+.as-bolha { max-width:86%; background:rgba(91,130,166,.24); color:var(--text); border-radius:14px 14px 4px 14px; padding:8px 12px; font-size:13.5px; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere; }
+.as-resposta { font-size:13.5px; line-height:1.6; color:var(--text); border-left:2px solid var(--brand-primary); padding:1px 0 1px 12px; overflow-wrap:anywhere; }
+.as-resposta p { margin:0 0 8px; }
+.as-resposta p:last-child { margin-bottom:0; }
+.as-resposta ul, .as-resposta ol { margin:2px 0 8px 18px; padding:0; }
+.as-resposta li { margin:3px 0; }
+.as-resposta .fonte { display:inline-block; background:rgba(91,130,166,.2); color:var(--brand-light); border-radius:6px; padding:0 6px; font-size:11px; font-weight:700; text-decoration:none; }
+.as-resposta a.fonte { cursor:pointer; }
+.as-resposta a.fonte:hover { text-decoration:underline; }
+.as-resposta a.fonte:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+.as-msg.erro .as-resposta { border-left-color:var(--err); color:var(--err); }
+.as-meta { display:flex; flex-wrap:wrap; gap:4px 10px; align-items:baseline; font-size:11px; color:var(--text-muted); padding-left:14px; }
+.as-msg.eu .as-meta { padding-left:0; }
+.as-consultas summary { cursor:pointer; list-style:none; }
+.as-consultas summary::-webkit-details-marker { display:none; }
+.as-consultas summary:hover { color:var(--text-2); text-decoration:underline; }
+.as-consultas ol { margin:4px 0 2px 16px; padding:0; line-height:1.5; }
+.as-nota { align-self:center; font-size:11.5px; color:var(--text-muted); background:var(--fill-1); border-radius:999px; padding:3px 11px; text-align:center; }
+.as-pal { opacity:0; transition:opacity .2s ease; }
+.as-pal.on { opacity:1; }
+
+.as-digitando { display:flex; align-items:center; gap:10px; padding:2px 0 2px 12px; border-left:2px solid var(--brand-primary); min-height:22px; }
+.as-pontos { display:inline-flex; gap:4px; flex:none; }
+.as-pontos i { width:6px; height:6px; border-radius:50%; background:var(--brand-light); animation:as-pula 1.1s ease-in-out infinite; }
+.as-pontos i:nth-child(2) { animation-delay:.15s; }
+.as-pontos i:nth-child(3) { animation-delay:.3s; }
+@keyframes as-pula { 0%,60%,100% { transform:translateY(0); opacity:.45; } 30% { transform:translateY(-4px); opacity:1; } }
+.as-lendo { font-size:12px; color:var(--text-muted); }
+
+.as-chips { display:flex; flex-wrap:wrap; gap:6px; }
+.as-chip { background:transparent; border:1px solid var(--line-strong); color:var(--text-2); border-radius:999px; padding:5px 11px; font:500 12px/1.35 var(--font-body);
+  cursor:pointer; text-align:left; transition:background .15s, border-color .15s, color .15s; }
+.as-chip:hover { background:var(--fill-2); border-color:var(--brand-primary); color:var(--text); }
+
+.as-entrada { display:flex; align-items:flex-end; gap:8px; padding:10px 12px 12px; border-top:1px solid var(--line); background:var(--surface); }
+.as-entrada textarea { flex:1; resize:none; min-height:40px; max-height:140px; padding:9px 12px; border-radius:12px; border:1px solid var(--border); background:var(--surface-2);
+  color:var(--text); font:13.5px/1.45 var(--font-body); overflow-y:auto; }
+.as-entrada textarea:focus { outline:none; border-color:var(--brand-primary); box-shadow:0 0 0 3px var(--sel); }
+.as-enviar { width:40px; height:40px; flex:none; border:none; border-radius:12px; background:var(--brand-primary); color:#fff; cursor:pointer; display:inline-flex;
+  align-items:center; justify-content:center; transition:filter .15s, opacity .15s; }
+.as-enviar:hover { filter:brightness(1.12); }
+.as-enviar:disabled { opacity:.45; cursor:default; filter:none; }
+.as-enviar svg { width:18px; height:18px; }
+
+@media (max-width:560px) {
+  .as-lancador { right:16px; bottom:16px; }
+  .as-com-ajuda .as-lancador { bottom:66px; }
+  .as-recado { right:16px; bottom:84px; }
+  .as-com-ajuda .as-recado { bottom:134px; }
+  .as-painel, .as-painel.as-largo, .as-com-ajuda .as-painel, .as-com-ajuda .as-painel.as-largo { inset:0; width:100%; height:100%; border-radius:0; border:none; }
+  .as-aberto .as-lancador { display:none; }
+  .as-acao[data-a="largo"] { display:none; }
+  /* a "?" do tour não fica por cima da conversa em tela cheia */
+  html.as-painel-aberto .mrt-help, html.as-painel-aberto .mrt-menu { display:none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .as-painel, .as-recado.as-surge, .as-nova, .as-digitando-msg, .as-atencao .as-lancador { animation:none; }
+  .as-lancador, .as-rosto .as-olho { transition:none; }
+  .as-pensando .as-olhos, .as-pontos i, .as-ocupado .as-ponto { animation:none; }
+  .as-pal { opacity:1; transition:none; }
+}
+/* o que o leitor de tela anuncia (pergunta enviada, resposta, erro): fora da vista */
+.as-vivo { position:fixed; width:1px; height:1px; margin:-1px; padding:0; border:0; overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap; }
+@media print { .as-raiz { display:none; } }

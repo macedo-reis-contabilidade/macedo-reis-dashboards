@@ -1,27 +1,36 @@
-"""Teste do chat da Reforma ("Perguntar à base", 14/10/2026) na tela (fiscal-reforma.html). A Edge Function reforma-chat entra
-como dublê, por window.__mockInvoke: devolve as etapas e a resposta no mesmo formato da função de verdade (text/event-stream,
-"data: {...}"). A busca, as ferramentas e o laço com o modelo têm teste próprio em tests/reforma-chat.test.mjs.
+"""Teste do assistente da Reforma na tela (fiscal-reforma.html + assets/js/assistente.js, 14/10/2026): o chat de canto de
+tela. A Edge Function reforma-chat entra como dublê, por window.__mockInvoke: devolve as etapas e a resposta no mesmo formato
+da função de verdade (eventos "data: {...}"; numa das perguntas, o próprio Response em pedaços, como o supabase-js devolve
+pra text/event-stream). A busca, as ferramentas e o laço com o modelo têm teste próprio em tests/reforma-chat.test.mjs; os
+auxiliares do assistente (texto → HTML, leitura dos eventos, erros), em tests/assistente.test.mjs.
 Sem login e sem banco: mesmo mock do conferir.py. Clientes, casos, materiais e regras (inventados) entram no banco falso por
 uma armadilha em window.__mockDb, só nesta página.
 
     python tests/harness/reforma-chat.py
 
 Confere:
-  1. o botão "Perguntar à base" da lista abre o chat sem caso: boas-vindas com perguntas de exemplo (o clique preenche a caixa);
-  2. Enter envia: a função recebe a pergunta, a conversa, "fluxo" e nenhum caso; a resposta aparece com negrito, lista e as
-     fontes clicáveis — o material abre o original no Drive (nova aba), a regra abre a Base legal por cima do chat; texto da
-     resposta nunca vira HTML (uma tag no meio sai como texto); embaixo, as consultas que o chat fez;
-  3. a segunda pergunta leva a primeira como histórico; "Nova conversa" esquece;
-  4. na ficha, "Perguntar sobre este caso" abre o chat com o caso (o nome aparece em cima) e a conversa começa de novo; depois
-     de "Calcular", a pergunta leva os números da tela; desmarcando o caso, a pergunta vai sem ele;
-  5. erro da função (limite do dia): a mensagem dela aparece em vermelho e a pergunta volta pra caixa; erro sem o texto
-     da função (sessão vencida, 401): a mensagem em português pelo código;
-  6. a resposta em fluxo de verdade (o Response que o supabase-js devolve pra text/event-stream, em pedaços de 7 bytes, com
-     acento partido no meio) aparece igual; "[regras A e B]" vira dois links; endereço do Drive que não é do Google não vira
-     link;
-  7. o que vai ao chat é o retrato do último "Calcular" (campo mudado depois não entra), com a natureza das vendas do
-     Domínio; depois de "Gravar", não vai mais nada da tela (o chat lê a gravada);
-  8. a tela não dá erro de JavaScript.
+  1. o balão com a carinha no canto; o recado aparece sozinho (sem abrir o painel), uma vez por sessão;
+  2. o balão abre o painel: saudação com perguntas de exemplo, sem ficha; Enter envia — enquanto espera, o "digitando…"
+     com a carinha lendo e os botões de enviar e de conversa nova travados; a resposta aparece aos poucos e fica com
+     negrito, lista e as fontes clicáveis (material → Drive em outra aba; regra → Base legal por cima do painel, com o
+     foco nela; código que não existe fica texto; tag no meio nunca vira HTML); embaixo, as consultas que ele fez; Esc com
+     a Base legal por cima fecha a Base legal (o foco volta pra fonte), não o painel;
+  3. a segunda pergunta leva a primeira como histórico; a conversa que já estava na tela não é redesenhada (a lista de
+     consultas aberta continua aberta); o leitor de tela ouve a resposta; a resposta em fluxo de verdade (acento partido
+     entre pedaços) sai igual; "[regras A e B]" vira dois links; endereço do Drive que não é do Google não vira link;
+  4. resposta que chega com o painel fechado: selo no balão e recado "Respondi"; Esc no balão fecha o recado; abrir limpa
+     o selo;
+  5. "Conversa nova" esquece; recarregar a página mantém a conversa e o painel aberto;
+  6. ficha aberta: recado sobre a empresa, a faixa "Sobre a ficha aberta" e as perguntas sobre ela; a nota "Sobre a ficha
+     de …" entra na conversa quando a pergunta muda de contexto (e "Pergunta geral" na volta), sem encher a conversa;
+     o histórico que vai é só o do mesmo contexto; pergunta pronta clicada devolve o foco à caixa; vai o caso e, depois de
+     "Calcular", o retrato do cálculo (números, procedência e natureza das vendas); campo mudado sem calcular não entra;
+     depois de "Gravar", só o caso; desmarcando, a pergunta vai sem ele; Esc no painel fecha o painel e deixa a ficha;
+  7. erro da função (limite do dia) em vermelho, com a pergunta de volta na caixa; erro sem texto (401) em português;
+  8. conversa guardada fora do formato (JSON quebrado, campos estranhos) não derruba a tela: começa do zero ou fica com o
+     que presta;
+  9. no celular, o painel ocupa a tela e não reabre sozinho ao recarregar;
+ 10. a tela não dá erro de JavaScript e nada do texto das respostas roda como código.
 Termina com código 1 se alguma checagem falhar.
 Pré-requisito: pip install playwright e python -m playwright install chromium
 """
@@ -68,6 +77,7 @@ SEMEAR = """
   window.__chamadas = [];
   window.__mockInvoke = async (nome, opts) => {
     window.__chamadas.push({ nome, body: JSON.parse(JSON.stringify(opts.body || {})) });
+    await new Promise(r => setTimeout(r, window.__demora || 0));
     if (/limite/.test(opts.body.pergunta)) return { data: null, error: { message: 'Edge Function returned a non-2xx status code',
       context: new Response(JSON.stringify({ erro: 'Você chegou ao limite de 60 perguntas por dia. Amanhã libera de novo.' }), { status: 429 }) } };
     if (/sessão/.test(opts.body.pergunta)) return { data: null, error: { message: 'Edge Function returned a non-2xx status code', context: new Response('', { status: 401 }) } };
@@ -100,113 +110,212 @@ def main():
         p.on('pageerror', lambda e: erros.append(str(e)))
         p.add_init_script("(() => { const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { return String(k).startsWith('mr_tour_') ? 'ok' : g.call(this, k); }; })()")
         p.add_init_script(SEMEAR)
-        p.goto(base + 'fiscal-reforma.html'); p.wait_for_timeout(1500)
+        p.goto(base + 'fiscal-reforma.html'); p.wait_for_timeout(1200)
         chamadas = lambda: p.evaluate('window.__chamadas')
+        raiz = '.as-raiz'
+        ultima = '.as-msgs .as-msg.ia:not(.as-saudacao):last-of-type'
+        # espera a chamada seguinte à função e a resposta terminar de aparecer; devolve o corpo que foi
+        def esperar_resposta(antes):
+            p.wait_for_function(f'() => window.__chamadas.length === {antes + 1}', timeout=4000)
+            p.wait_for_function("() => !document.querySelector('.as-raiz').classList.contains('as-ocupado') && !document.querySelector('.as-pal')", timeout=6000)
+            p.wait_for_timeout(150)
+            return chamadas()[-1]['body']
+        def perguntar(texto):
+            antes = len(chamadas())
+            p.fill('.as-entrada textarea', texto); p.press('.as-entrada textarea', 'Enter')
+            return esperar_resposta(antes)
+        def ultima_ia():
+            return p.evaluate("() => { const ms = [...document.querySelectorAll('.as-msgs .as-msg.ia:not(.as-saudacao)')]; const m = ms[ms.length - 1]; return m ? { html: m.querySelector('.as-resposta').innerHTML, texto: m.innerText, classe: m.className } : null; }")
 
-        # 1) abre pela lista, sem caso
-        p.click('#btnChat'); p.wait_for_selector('#ovChat.on', timeout=3000)
-        ok(p.is_hidden('#chatCtx'), 'aberto pela lista: sem caso (a barra do caso fica escondida)')
-        exemplos = p.eval_on_selector_all('#chatMsgs .rt-chat-ex button', 'bs => bs.map(b => b.textContent)')
-        ok(len(exemplos) == 3 and any('fica por dentro' in e for e in exemplos), f'boas-vindas com 3 perguntas de exemplo ({exemplos})')
-        p.click('#chatMsgs .rt-chat-ex button >> nth=1')
-        ok(p.input_value('#chatTexto') == exemplos[1], 'o exemplo clicado vai pra caixa')
+        # 1) o balão e o recado
+        ok(p.is_visible('.as-lancador') and p.is_hidden('.as-painel') and p.is_hidden('.as-recado'), 'o balão com a carinha no canto; painel e recado fechados')
+        p.wait_for_selector('.as-recado:not([hidden])', timeout=4000)
+        rc = p.eval_on_selector_all('.as-recado .as-chip', 'bs => bs.map(b => b.textContent)')
+        ok('respondo com a base' in p.inner_text('.as-recado') and len(rc) == 2 and p.is_hidden('.as-painel'), f'o recado aparece sozinho, com 2 perguntas, sem abrir o painel ({rc})')
+        p.click('.as-recado-x'); p.wait_for_timeout(150)
+        ok(p.is_hidden('.as-recado'), 'o × fecha o recado')
+        p.reload(); p.wait_for_timeout(3300)
+        ok(p.is_hidden('.as-recado'), 'recarregando, o recado não volta (uma vez por sessão)')
 
-        # 2) Enter envia; a resposta aparece com as fontes
-        p.fill('#chatTexto', 'Ônibus urbano tem alíquota zero?')
-        p.press('#chatTexto', 'Enter')
-        p.wait_for_function("() => document.querySelectorAll('#chatMsgs .rt-chat-msg.ia').length >= 2 && !/escrevendo/.test(document.querySelector('#chatMsgs .rt-chat-msg.ia:last-child').textContent)", timeout=5000)
-        c = chamadas()
-        ok(len(c) == 1 and c[0]['nome'] == 'reforma-chat', 'Enter chama a função reforma-chat')
-        corpo = c[0]['body']
-        ok(corpo.get('pergunta') == 'Ônibus urbano tem alíquota zero?' and corpo.get('fluxo') is True and corpo.get('historico') == [] and corpo.get('contexto') == {} and len(corpo.get('conversa') or '') == 36,
+        # 2) abre, pergunta, digitando, resposta
+        p.click('.as-lancador'); p.wait_for_selector('.as-painel:not([hidden])', timeout=3000)
+        ok(p.get_attribute('.as-lancador', 'aria-expanded') == 'true' and p.is_hidden('.as-ctx'), 'o balão abre o painel; sem ficha, sem a faixa do caso')
+        exemplos = p.eval_on_selector_all('.as-msgs .as-chip', 'bs => bs.map(b => b.textContent)')
+        ok(len(exemplos) == 3 and any('fica por dentro' in e for e in exemplos) and 'Respondo só com a base' in p.inner_text('.as-msgs'), f'saudação com 3 perguntas de exemplo ({exemplos})')
+        p.evaluate('window.__demora = 700')
+        antes = len(chamadas())
+        p.fill('.as-entrada textarea', 'Ônibus urbano tem alíquota zero?'); p.press('.as-entrada textarea', 'Enter')
+        p.wait_for_timeout(250)
+        est = p.evaluate("() => ({ dig: !!document.querySelector('.as-digitando'), cls: document.querySelector('.as-raiz').className, travado: document.querySelector('.as-enviar').disabled, nova: document.querySelector('.as-acao[data-a=nova]').disabled, caixa: document.querySelector('.as-entrada textarea').value, status: document.querySelector('.as-status-txt').textContent })")
+        ok(est['dig'] and 'as-pensando' in est['cls'] and 'as-ocupado' in est['cls'] and est['travado'] and est['nova'] and est['caixa'] == '' and 'Lendo' in est['status'],
+           f'enquanto espera: "digitando…", a carinha lendo, enviar e "conversa nova" travados e a caixa limpa ({est["status"]})')
+        corpo = esperar_resposta(antes)
+        ok(chamadas()[-1]['nome'] == 'reforma-chat' and corpo.get('pergunta') == 'Ônibus urbano tem alíquota zero?' and corpo.get('fluxo') is True and corpo.get('historico') == [] and corpo.get('contexto') == {} and len(corpo.get('conversa') or '') == 36,
            f'vai a pergunta, a conversa, "fluxo", sem histórico e sem caso ({ {k: corpo.get(k) for k in ("fluxo", "historico", "contexto")} })')
-        ok(p.input_value('#chatTexto') == '', 'a caixa esvazia')
-        ultima = '#chatMsgs .rt-chat-msg.ia:last-child'
-        ok(p.inner_html(ultima).startswith('<p>Não: é <b>isenção</b>, não alíquota zero'), 'a resposta com negrito')
-        lei = p.eval_on_selector(ultima + ' a.fonte[href]', 'a => ({ t: a.textContent, href: a.getAttribute("href"), alvo: a.target, rel: a.rel, tit: a.title })')
+        r1 = ultima_ia()
+        ok(r1 and r1['html'].startswith('<p>Não: é <b>isenção</b>, não alíquota zero'), 'a resposta, com negrito, depois de aparecer aos poucos')
+        lei = p.eval_on_selector('.as-msgs .as-msg.ia:not(.as-saudacao) a.fonte[href]', 'a => ({ t: a.textContent, href: a.getAttribute("href"), alvo: a.target, rel: a.rel, tit: a.title })')
         ok(lei['t'] == 'TST-LEI' and lei['href'] == 'https://drive.google.com/file/d/teste/view' and lei['alvo'] == '_blank' and 'noopener' in lei['rel'] and 'Lei de teste' in lei['tit'],
            f'o material citado abre o original no Drive, em outra aba ({lei})')
-        ok(p.eval_on_selector_all(ultima + ' a.fonte[data-regra]', 'as => as.map(a => a.textContent + "|" + a.dataset.regra)') == ['regra TST-REGRA|TST-REGRA'], 'a regra citada vira link pra Base legal')
-        ok(p.eval_on_selector_all(ultima + ' li', 'ls => ls.length') == 3 and p.eval_on_selector_all(ultima + ' a.fonte', 'as => as.map(a => a.textContent)') == ['TST-LEI', 'regra TST-REGRA', 'TST-AULA'],
-           'a lista e a fonte dentro dela (o material sem link do Drive aparece como fonte, sem endereço)')
-        ok('[M99-NADA, p. 1]' in p.inner_text(ultima) and p.eval_on_selector_all(ultima + ' a.fonte', 'as => as.filter(a => a.textContent === "M99-NADA").length') == 0,
-           'código que não existe na base fica como texto, sem link')
-        ok(p.eval_on_selector_all(ultima + ' img', 'is => is.length') == 0 and '<img src=x' in p.inner_text(ultima) and not p.evaluate('window.__xss'),
-           'tag no meio da resposta sai como texto (nunca vira HTML)')
-        ok('2 consultas: Buscando na base: "isenção" · Lendo TST-LEI' in p.inner_text(ultima), 'embaixo, as consultas que o chat fez')
-        p.click(ultima + ' a.fonte[data-regra]'); p.wait_for_selector('#ovBase.on', timeout=3000)
-        sobre = p.evaluate("() => { const o = [...document.querySelectorAll('.rg-ov.on')]; return o.map(x => x.id); }")
-        ok(sobre[-1] == 'ovBase' and 'ovChat' in sobre, f'a Base legal abre por cima do chat ({sobre})')
-        p.click('#baseFechar'); p.wait_for_timeout(200)
-        ok(p.is_visible('#ovChat'), 'fechando a Base legal, o chat continua lá')
+        regras1 = p.eval_on_selector_all('.as-msgs .as-msg.ia:not(.as-saudacao) a.fonte[data-regra]', 'as => as.map(a => a.textContent + "|" + a.dataset.regra + "|" + a.getAttribute("href"))')
+        ok(regras1 == ['regra TST-REGRA|TST-REGRA|#regra-TST-REGRA'], f'a regra citada vira link pra Base legal, que o Tab alcança ({regras1})')
+        ok(p.eval_on_selector_all('.as-msgs .as-msg.ia:not(.as-saudacao) .as-resposta li', 'ls => ls.length') == 3
+           and p.eval_on_selector_all('.as-msgs .as-msg.ia:not(.as-saudacao) .fonte', 'as => as.map(a => a.tagName + ":" + a.textContent)') == ['A:TST-LEI', 'A:regra TST-REGRA', 'SPAN:TST-AULA'],
+           'a lista e a fonte dentro dela (o material sem link do Drive aparece como fonte, sem ser link)')
+        ok('[M99-NADA, p. 1]' in r1['texto'] and '<img src=x' in r1['texto'] and p.eval_on_selector_all('.as-msgs img', 'is => is.length') == 0 and not p.evaluate('window.__xss'),
+           'código que não existe fica texto; tag no meio da resposta sai como texto')
+        ok('2 consultas' in r1['texto'], 'embaixo, quantas consultas ele fez')
+        p.click('.as-msgs .as-consultas summary'); p.wait_for_timeout(100)
+        cons = p.eval_on_selector_all('.as-msgs .as-consultas li', 'ls => ls.map(l => l.textContent)')
+        ok(cons == ['Buscando na base: "isenção"', 'Lendo TST-LEI'], f'e quais, abrindo a lista ({cons})')
+        p.click('.as-msgs a.fonte[data-regra]'); p.wait_for_selector('#ovBase.on', timeout=3000); p.wait_for_timeout(250)
+        cima = p.evaluate("() => { const r = document.querySelector('.as-painel').getBoundingClientRect(); const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!(el && el.closest('#ovBase')); }")
+        foco = p.evaluate("() => { const a = document.activeElement; return a && a.matches('#baseLista .rt-regra.alvo') ? a.dataset.regra : (a && a.className); }")
+        ok(cima and foco == 'TST-REGRA', f'a Base legal abre por cima do painel, com o foco na regra ({foco})')
+        p.keyboard.press('Escape'); p.wait_for_timeout(200)
+        volta = p.evaluate("() => document.activeElement && document.activeElement.matches('.as-msgs a.fonte[data-regra]')")
+        ok(not p.is_visible('#ovBase') and p.is_visible('.as-painel') and p.evaluate("() => document.getElementById('ovBase').style.zIndex === ''") and volta,
+           'Esc fecha a Base legal (não o painel) e o foco volta pra fonte')
+        p.click('.as-msgs a.fonte[data-regra]'); p.wait_for_selector('#ovBase.on', timeout=3000); p.wait_for_timeout(250)
+        p.focus('.as-entrada textarea'); p.keyboard.press('Escape'); p.wait_for_timeout(200)
+        ok(not p.is_visible('#ovBase') and p.is_visible('.as-painel'), 'com o foco no painel e a Base legal por cima, Esc também fecha a de cima')
 
-        # 3) histórico e "Nova conversa"
-        p.fill('#chatTexto', 'E o intermunicipal?'); p.click('#chatEnviar'); p.wait_for_function('() => window.__chamadas.length === 2', timeout=3000); p.wait_for_timeout(300)
-        h = chamadas()[1]['body']
-        ok(len(h['historico']) == 1 and h['historico'][0]['pergunta'] == 'Ônibus urbano tem alíquota zero?' and h['historico'][0]['resposta'].startswith('Não: é **isenção**')
-           and h['conversa'] == corpo['conversa'], 'a segunda pergunta leva a primeira (pergunta e resposta) e a mesma conversa')
-        p.wait_for_function("() => /crédito só com destaque/.test(document.querySelector('#chatMsgs .rt-chat-msg.ia:last-child').textContent)", timeout=3000)
-        ok('Por fora, crédito só com destaque — sim' in p.inner_text(ultima) and '1 consulta: Lendo a regra — ação' in p.inner_text(ultima),
-           'resposta em fluxo de verdade (Response lido em pedaços, acento partido): igual, com a consulta')
-        ok(p.eval_on_selector_all(ultima + ' a.fonte[data-regra]', 'as => as.map(a => a.textContent + "|" + a.dataset.regra)') == ['regra TST-REGRA|TST-REGRA', 'TST-OUTRA|TST-OUTRA'],
-           '"[regras A e B]": as duas regras viram link')
-        mau = p.eval_on_selector_all(ultima + ' a.fonte', 'as => as.filter(a => a.textContent === "TST-MAU").map(a => a.getAttribute("href"))')
-        ok(mau == [None], f'endereço do Drive que não é do Google: a fonte aparece, sem link ({mau})')
-        p.click('#chatNova'); p.wait_for_timeout(200)
-        ok(p.eval_on_selector_all('#chatMsgs .rt-chat-msg', 'ms => ms.length') == 1, '"Nova conversa" limpa a tela (fica só a boas-vindas)')
-        p.fill('#chatTexto', 'Do zero?'); p.press('#chatTexto', 'Enter'); p.wait_for_function('() => window.__chamadas.length === 3', timeout=3000); p.wait_for_timeout(300)
-        n = chamadas()[2]['body']
+        # 3) histórico e resposta em fluxo de verdade
+        p.evaluate('window.__demora = 0')
+        p.evaluate("() => { document.querySelector('.as-lista .as-msg.ia:not(.as-saudacao)').__marca = 1; }")
+        h = perguntar('E o intermunicipal?')
+        ok(len(h['historico']) == 1 and h['historico'][0]['pergunta'] == 'Ônibus urbano tem alíquota zero?' and h['historico'][0]['resposta'].startswith('Não: é **isenção**') and h['conversa'] == corpo['conversa'],
+           'a segunda pergunta leva a primeira (pergunta e resposta) e a mesma conversa')
+        ficou = p.evaluate("() => { const m = document.querySelector('.as-lista .as-msg.ia:not(.as-saudacao)'); return !!m.__marca && m.querySelector('details').open; }")
+        ok(ficou, 'a conversa que já estava na tela não é redesenhada: a lista de consultas aberta continua aberta')
+        vivo = p.inner_text('.as-vivo')
+        ok(vivo.startswith('Resposta: Por fora, crédito só com destaque') and p.get_attribute('.as-msgs', 'aria-live') is None,
+           f'o leitor de tela ouve só a resposta nova, não a conversa inteira ({vivo[:50]})')
+        r2 = ultima_ia()
+        ok(r2 and 'Por fora, crédito só com destaque — sim' in r2['texto'] and '1 consulta' in r2['texto'], 'resposta em fluxo de verdade (Response lido em pedaços, acento partido): igual, com a consulta')
+        regras2 = p.evaluate("() => { const ms = [...document.querySelectorAll('.as-msgs .as-msg.ia:not(.as-saudacao)')]; return [...ms[ms.length - 1].querySelectorAll('a.fonte[data-regra]')].map(a => a.textContent + '|' + a.dataset.regra); }")
+        ok(regras2 == ['regra TST-REGRA|TST-REGRA', 'TST-OUTRA|TST-OUTRA'], f'"[regras A e B]": as duas regras viram link ({regras2})')
+        mau = p.evaluate("() => [...document.querySelectorAll('.as-msgs .fonte')].filter(a => a.textContent === 'TST-MAU').map(a => a.tagName + ':' + a.getAttribute('href'))")
+        ok(mau == ['SPAN:null'], f'endereço do Drive que não é do Google: a fonte aparece, sem link ({mau})')
+
+        # 4) resposta com o painel fechado
+        p.evaluate('window.__demora = 900')
+        p.fill('.as-entrada textarea', 'Pergunta com o painel fechado?'); p.press('.as-entrada textarea', 'Enter'); p.wait_for_timeout(120)
+        p.click('.as-acao[data-a="fechar"]'); p.wait_for_timeout(1400)
+        selo = p.evaluate("() => { const s = document.querySelector('.as-selo'); return s.hidden ? '' : s.textContent; }")
+        ok(p.is_hidden('.as-painel') and selo == '1' and 'Respondi' in p.inner_text('.as-recado'), f'resposta com o painel fechado: selo no balão ({selo}) e o recado "Respondi"')
+        ok('as-pensando' not in p.get_attribute(raiz, 'class'), 'a carinha para de ler quando a resposta chega')
+        p.focus('.as-lancador'); p.keyboard.press('Escape'); p.wait_for_timeout(150)
+        ok(p.is_hidden('.as-recado') and p.is_hidden('.as-painel') and not p.evaluate("() => document.querySelector('.as-selo').hidden"), 'Esc no balão fecha o recado (o selo fica)')
+        p.click('.as-lancador'); p.wait_for_timeout(250)
+        ok(p.evaluate("() => document.querySelector('.as-selo').hidden") and p.is_hidden('.as-recado') and 'Pergunta com o painel fechado?' in p.inner_text('.as-msgs'), 'abrindo, o selo some e a resposta está lá')
+        p.evaluate('window.__demora = 0')
+
+        # 5) conversa nova e a conversa guardada
+        p.click('.as-acao[data-a="nova"]'); p.wait_for_timeout(200)
+        ok(p.eval_on_selector_all('.as-msgs .as-msg', 'ms => ms.length') == 1 and 'Respondo só com a base' in p.inner_text('.as-msgs'), '"Conversa nova" limpa (fica só a saudação)')
+        n = perguntar('Do zero?')
         ok(n['historico'] == [] and n['conversa'] != corpo['conversa'], 'e a pergunta seguinte vai sem histórico, noutra conversa')
-        p.click('#chatFechar'); p.wait_for_timeout(200)
+        p.reload(); p.wait_for_timeout(1500)
+        ok(p.is_visible('.as-painel') and 'Do zero?' in p.inner_text('.as-msgs') and p.eval_on_selector_all('.as-msgs .as-msg', 'ms => ms.length') == 2,
+           'recarregando a página, a conversa e o painel aberto continuam')
+        ok(p.eval_on_selector_all('.as-msgs a.fonte[data-regra]', 'as => as.length') >= 1, 'e as fontes voltam como link')
+        p.click('.as-acao[data-a="fechar"]'); p.wait_for_timeout(150)
 
-        # 4) pela ficha: com o caso e os números da tela
-        p.click('#rtLista tr:has-text("LOJA DO CHAT DE TESTE LTDA")'); p.wait_for_selector('#ovFicha.on', timeout=3000); p.wait_for_timeout(300)
-        p.click('#fiChat'); p.wait_for_selector('#ovChat.on', timeout=3000)
-        ok(p.is_visible('#chatCtx') and p.inner_text('#chatFichaNome') == 'LOJA DO CHAT DE TESTE LTDA' and p.is_checked('#chatUsarFicha'), 'da ficha: o caso aparece em cima, marcado')
-        ok(p.eval_on_selector_all('#chatMsgs .rt-chat-msg', 'ms => ms.length') == 1 and 'LOJA DO CHAT DE TESTE LTDA' in p.inner_text('#chatMsgs'), 'a conversa começa de novo, com exemplos sobre a empresa')
-        p.fill('#chatTexto', 'Por que deu esse resultado?'); p.press('#chatTexto', 'Enter'); p.wait_for_function('() => window.__chamadas.length === 4', timeout=3000); p.wait_for_timeout(300)
-        f1 = chamadas()[3]['body']['contexto']
-        ok(f1.get('caso_id') == 'chk1' and f1.get('tela') is None, f'vai o caso; sem "Calcular", sem números da tela ({f1})')
-        p.click('#chatFechar'); p.wait_for_timeout(200)
+        # 6) a ficha aberta
+        p.click('#rtLista tr:has-text("LOJA DO CHAT DE TESTE LTDA")'); p.wait_for_selector('#ovFicha.on', timeout=3000); p.wait_for_timeout(400)
+        ok(p.is_visible('.as-recado') and 'Quer entender o resultado de LOJA DO CHAT DE TESTE LTDA?' in p.inner_text('.as-recado'), 'abrindo a ficha: recado sobre a empresa')
+        antes = len(chamadas())
+        p.click('.as-recado .as-chip'); f1 = esperar_resposta(antes)
+        ok(f1['pergunta'] == 'Por que esta empresa deu esse resultado?' and f1['contexto'].get('caso_id') == 'chk1' and f1['contexto'].get('tela') is None,
+           f'a pergunta do recado abre o painel e vai com o caso, sem números da tela ({f1["contexto"]})')
+        ok(p.is_visible('.as-ctx') and p.inner_text('.as-ctx b') == 'LOJA DO CHAT DE TESTE LTDA' and p.is_checked('.as-ctx input'), 'em cima, "Sobre a ficha aberta" com o nome, marcado')
+        ok(p.eval_on_selector_all('.as-msgs .as-nota', 'ns => ns.map(n => n.textContent)') == ['Sobre a ficha de LOJA DO CHAT DE TESTE LTDA'] and f1['historico'] == [],
+           'a conversa marca a troca para a ficha; o histórico de antes (sem ficha) não vai junto')
+        seg = p.eval_on_selector_all('.as-msgs .as-chips-conversa .as-chip', 'bs => bs.map(b => b.textContent)')
+        ok('O que falta medir e a partir de quanto o resultado vira?' in seg and 'Por que esta empresa deu esse resultado?' not in seg, f'depois da resposta, as perguntas seguintes sobre a empresa ({seg})')
+        antes = len(chamadas())
+        p.click('.as-msgs .as-chips-conversa .as-chip:has-text("O que falta medir")'); f2 = esperar_resposta(antes)
+        ok([x['pergunta'] for x in f2['historico']] == ['Por que esta empresa deu esse resultado?'] and p.evaluate("() => document.activeElement === document.querySelector('.as-entrada textarea')"),
+           'a pergunta pronta vai com o histórico da mesma ficha, e o foco volta pra caixa')
+        p.click('.as-acao[data-a="fechar"]'); p.wait_for_timeout(100)
         p.click('#bCalcular'); p.wait_for_timeout(500)
-        p.click('#fiChat'); p.wait_for_selector('#ovChat.on', timeout=3000)
-        ok(p.eval_on_selector_all('#chatMsgs .rt-chat-msg', 'ms => ms.length') >= 3, 'reabrindo no mesmo caso, a conversa continua')
-        p.fill('#chatTexto', 'E agora?'); p.press('#chatTexto', 'Enter'); p.wait_for_function('() => window.__chamadas.length === 5', timeout=3000); p.wait_for_timeout(300)
-        f2 = chamadas()[4]['body']['contexto']
-        tela = f2.get('tela') or {}
-        ok(f2.get('caso_id') == 'chk1' and (tela.get('input') or {}).get('receita') == 50000 and (tela.get('input') or {}).get('pctImpostoEmbutido') == 12 and isinstance(tela.get('procedencia'), dict),
+        p.click('.as-lancador'); p.wait_for_timeout(200)
+        fa = perguntar('E agora?')
+        tela = fa['contexto'].get('tela') or {}
+        ok([x['pergunta'] for x in fa['historico']] == ['Por que esta empresa deu esse resultado?', 'O que falta medir e a partir de quanto o resultado vira?'],
+           f'na mesma ficha, o histórico é o dela ({[x["pergunta"][:20] for x in fa["historico"]]})')
+        ok((tela.get('input') or {}).get('receita') == 50000 and (tela.get('input') or {}).get('pctImpostoEmbutido') == 12 and isinstance(tela.get('procedencia'), dict),
            f'depois de "Calcular", vão os números da tela e a procedência (receita {(tela.get("input") or {}).get("receita")})')
         ok(tela.get('natureza') == {'mercadoria': 45000, 'servico': 5000}, f'e a natureza das vendas do Domínio da ficha ({tela.get("natureza")})')
-        # campo mudado depois do "Calcular": vai o retrato do cálculo (o resultado que está na tela), não o campo novo
-        p.click('#chatFechar'); p.wait_for_timeout(150)
-        p.fill('#sPctPJ', '55'); p.dispatch_event('#sPctPJ', 'input'); p.wait_for_timeout(150)
-        p.click('#fiChat'); p.wait_for_selector('#ovChat.on', timeout=3000)
-        p.fill('#chatTexto', 'E com o campo mudado?'); p.press('#chatTexto', 'Enter'); p.wait_for_function('() => window.__chamadas.length === 6', timeout=3000); p.wait_for_timeout(300)
-        t3 = chamadas()[5]['body']['contexto'].get('tela') or {}
+        p.click('.as-acao[data-a="fechar"]'); p.wait_for_timeout(100)
+        p.fill('#sPctPJ', '55'); p.dispatch_event('#sPctPJ', 'input'); p.wait_for_timeout(100)
+        p.click('.as-lancador'); p.wait_for_timeout(200)
+        t3 = perguntar('E com o campo mudado?')['contexto'].get('tela') or {}
         ok((t3.get('input') or {}).get('pctPJ') == 10 and (t3.get('procedencia') or {}).get('pctPJ') == (tela.get('procedencia') or {}).get('pctPJ'),
-           f'campo mudado sem "Calcular": vai o retrato do último cálculo (% PJ {(t3.get("input") or {}).get("pctPJ")}, procedência igual)')
-        # gravada: o chat lê a simulação gravada, nada da tela
-        p.click('#chatFechar'); p.wait_for_timeout(150)
+           f'campo mudado sem "Calcular": vai o retrato do último cálculo (% PJ {(t3.get("input") or {}).get("pctPJ")})')
+        p.click('.as-acao[data-a="fechar"]'); p.wait_for_timeout(100)
         p.click('#bGravar'); p.wait_for_function("() => /gravada/.test(document.querySelector('#bMsg').textContent)", timeout=4000)
-        p.click('#fiChat'); p.wait_for_selector('#ovChat.on', timeout=3000)
-        p.fill('#chatTexto', 'E depois de gravar?'); p.press('#chatTexto', 'Enter'); p.wait_for_function('() => window.__chamadas.length === 7', timeout=3000); p.wait_for_timeout(300)
-        f4 = chamadas()[6]['body']['contexto']
-        ok(f4.get('caso_id') == 'chk1' and f4.get('tela') is None, f'depois de "Gravar", vai só o caso (o chat lê a gravada) ({f4})')
-        p.uncheck('#chatUsarFicha')
-        p.fill('#chatTexto', 'Sem o caso?'); p.press('#chatTexto', 'Enter'); p.wait_for_function('() => window.__chamadas.length === 8', timeout=3000); p.wait_for_timeout(300)
-        ok(chamadas()[7]['body']['contexto'] == {}, 'desmarcando o caso, a pergunta vai sem ele')
+        p.click('.as-lancador'); p.wait_for_timeout(200)
+        f4 = perguntar('E depois de gravar?')['contexto']
+        ok(f4.get('caso_id') == 'chk1' and f4.get('tela') is None, f'depois de "Gravar", vai só o caso (o assistente lê a gravada) ({f4})')
+        p.uncheck('.as-ctx input')
+        sc = perguntar('Sem o caso?')
+        ok(sc['contexto'] == {} and [x['pergunta'] for x in sc['historico']] == ['Do zero?'], 'desmarcando o caso, a pergunta vai sem ele, com o histórico de fora da ficha')
+        notas = p.eval_on_selector_all('.as-msgs .as-nota', 'ns => ns.map(n => n.textContent)')
+        ok(notas == ['Sobre a ficha de LOJA DO CHAT DE TESTE LTDA', 'Pergunta geral'], f'as notas marcam só as trocas de contexto ({notas})')
+        p.check('.as-ctx input')
+        p.focus('.as-entrada textarea'); p.keyboard.press('Escape'); p.wait_for_timeout(200)
+        ok(p.is_hidden('.as-painel') and p.is_visible('#ovFicha'), 'Esc no painel fecha o painel e deixa a ficha aberta')
+        p.click('#fiFechar'); p.wait_for_timeout(200)
+        p.click('.as-lancador'); p.wait_for_timeout(200)
+        ok(p.is_hidden('.as-ctx'), 'fechando a ficha, a faixa do caso some')
 
-        # 5) erro da função
-        p.fill('#chatTexto', 'teste de limite'); p.press('#chatTexto', 'Enter'); p.wait_for_function('() => window.__chamadas.length === 9', timeout=3000); p.wait_for_timeout(400)
-        err = p.eval_on_selector('#chatMsgs .rt-chat-msg.ia:last-child', 'd => ({ c: d.className, t: d.textContent })')
-        ok('erro' in err['c'] and 'limite de 60 perguntas por dia' in err['t'], f'erro da função: a mensagem dela em vermelho ({err["t"][:60]})')
-        ok(p.input_value('#chatTexto') == 'teste de limite' and not p.is_disabled('#chatEnviar'), 'a pergunta volta pra caixa e o botão libera')
-        p.fill('#chatTexto', 'teste de sessão vencida'); p.press('#chatTexto', 'Enter'); p.wait_for_function('() => window.__chamadas.length === 10', timeout=3000); p.wait_for_timeout(400)
-        e401 = p.inner_text('#chatMsgs .rt-chat-msg.ia:last-child')
-        ok('Sua sessão expirou' in e401 and 'non-2xx' not in e401, f'erro sem o texto da função (401): em português, pelo código ({e401[:60]})')
+        # 7) erros
+        perguntar('teste de limite')
+        err = ultima_ia()
+        ok(err and 'erro' in err['classe'] and 'limite de 60 perguntas por dia' in err['texto'], f'erro da função: a mensagem dela em vermelho ({(err or {}).get("texto", "").split(chr(10))[0][:60]})')
+        ok(p.input_value('.as-entrada textarea') == 'teste de limite' and not p.is_disabled('.as-enviar'), 'a pergunta volta pra caixa e o botão libera')
+        perguntar('teste de sessão vencida')
+        e401 = ultima_ia()
+        ok(e401 and 'Sua sessão expirou' in e401['texto'] and 'non-2xx' not in e401['texto'], f'erro sem o texto da função (401): em português, pelo código ({(e401 or {}).get("texto", "").split(chr(10))[0][:60]})')
 
         ok(not p.evaluate('window.__xss'), 'nada do texto das respostas ou dos endereços rodou como código')
         ok(not erros, f'sem erro de JavaScript ({erros[:2]})')
+
+        # 8) conversa guardada fora do formato
+        p2 = b.new_page(viewport={'width': 1400, 'height': 950}); erros2 = []
+        p2.on('pageerror', lambda e: erros2.append(str(e)))
+        p2.add_init_script("(() => { const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { return String(k).startsWith('mr_tour_') ? 'ok' : g.call(this, k); }; })()")
+        p2.add_init_script(SEMEAR)
+        p2.goto(base + 'fiscal-reforma.html'); p2.wait_for_timeout(800)
+        for guardado in ['{quebrado', '[1,2,3]', '{"msgs":[{"tipo":"eu","texto":"versão sem v"}]}', '{"v":1,"msgs":"x","historico":{"a":1},"naoLidas":"abc","aberto":"sim"}']:
+            p2.evaluate('t => sessionStorage.setItem("mr_assistente:reforma", t)', guardado); p2.reload(); p2.wait_for_timeout(700)
+            p2.click('.as-lancador'); p2.wait_for_timeout(150)
+            vazio = p2.is_visible('.as-painel') and 'Respondo só com a base' in p2.inner_text('.as-msgs')
+            p2.click('.as-lancador'); p2.wait_for_timeout(100)
+            ok(vazio and not erros2, f'guardado fora do formato ({guardado[:28]}): a tela sobe e o assistente começa do zero ({erros2[:1]})')
+        p2.evaluate('t => sessionStorage.setItem("mr_assistente:reforma", t)', json.dumps({'v': 1, 'msgs': [None, {'tipo': 'eu', 'texto': 5}, {'tipo': 'ia', 'texto': 'Resposta guardada.', 'etapas': 'x'}], 'historico': [{'pergunta': 1}]}))
+        p2.reload(); p2.wait_for_timeout(700); p2.click('.as-lancador'); p2.wait_for_timeout(150)
+        ok(p2.eval_on_selector_all('.as-msgs .as-msg', 'ms => ms.map(m => m.innerText.split(String.fromCharCode(10))[0])') == ['Resposta guardada.'] and not erros2,
+           'mensagens estranhas no meio: fica com as que prestam')
+        p2.close()
+
+        # 9) no celular
+        p3 = b.new_page(viewport={'width': 390, 'height': 800}); erros3 = []
+        p3.on('pageerror', lambda e: erros3.append(str(e)))
+        p3.add_init_script("(() => { const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { return String(k).startsWith('mr_tour_') ? 'ok' : g.call(this, k); }; })()")
+        p3.add_init_script(SEMEAR)
+        p3.goto(base + 'fiscal-reforma.html'); p3.wait_for_timeout(800)
+        p3.click('.as-lancador'); p3.wait_for_timeout(250)
+        cx = p3.eval_on_selector('.as-painel', 'e => { const r = e.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)]; }')
+        ok(cx == [0, 0, 390, 800] and p3.is_hidden('.as-lancador') and p3.evaluate("() => document.documentElement.classList.contains('as-painel-aberto')")
+           and p3.evaluate("() => document.activeElement !== document.querySelector('.as-entrada textarea')"),
+           f'no celular, o painel ocupa a tela, o balão some e o teclado não sobe sozinho ({cx})')
+        p3.reload(); p3.wait_for_timeout(800)
+        ok(p3.is_hidden('.as-painel') and p3.is_visible('.as-lancador') and not p3.evaluate("() => document.documentElement.classList.contains('as-painel-aberto')") and not erros3,
+           'recarregando no celular, o painel não reabre sozinho por cima da tela')
+        p3.close()
         b.close()
     srv.shutdown()
     print('\n' + ('Tudo certo.' if not falhas else f'{falhas} falha(s).'))
