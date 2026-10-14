@@ -1529,8 +1529,12 @@
       avisoMixRed30();   // o mix pode ter vindo do Domínio ou das notas, sem evento de digitação
       const r = simular(ent);
       marcarNaoMedidos();
-      const conf = avaliarConfianca(ent, procedenciaDaTela(), { ...contextoConfianca(ent), sim: r });
-      simAtual = { input: ent, r, conf };
+      const proc = procedenciaDaTela();
+      const conf = avaliarConfianca(ent, proc, { ...contextoConfianca(ent), sim: r });
+      // o retrato deste cálculo (números, procedência e a natureza das vendas do Domínio da tela): é o que o chat recebe,
+      // igual ao resultado mostrado — mesmo que um campo mude depois, até o próximo "Calcular"
+      const c = casoAtual(), dm = c ? dominioDoCaso(c) : null;
+      simAtual = { input: ent, r, conf, proc, natureza: (dm && dm.vendas && dm.vendas.natureza) || null, gravada: false };
       const s = r.semestre;
       // sem conclusão: nenhum dos dois lados aparece como o recomendado
       const semConc = conf.conclusao === 'sem_conclusao';
@@ -1638,6 +1642,7 @@
       const { error } = await supabase.from('rt_casos').update(upd).eq('id', c.id);
       if (error) { $('bMsg').style.color = 'var(--err)'; $('bMsg').textContent = 'Erro: ' + error.message; return; }
       Object.assign(c, upd);
+      simAtual.gravada = true;   // o chat passa a ler a simulação gravada (que é esta)
       const semConc = simAtual.conf.conclusao === 'sem_conclusao';
       $('bMsg').style.color = semConc ? 'var(--warn)' : 'var(--ok)';
       $('bMsg').textContent = semConc ? '✓ Simulação gravada — sem conclusão: falta ' + simAtual.conf.faltam.join('; ') : '✓ Simulação gravada';
@@ -2443,6 +2448,8 @@
     // em 12/10/2026): título, onde (artigo, página ou slide) e link pro original no Drive. Só na tela — nunca em relatório,
     // análise ou comunicado (material de curso é licenciado e de uso interno). Sem os vínculos, a regra aparece como antes.
     let regrasCarregadas = false;
+    // o endereço do original vem do banco: só vira link se for do Google Drive/Docs (defesa a mais; também no chat)
+    function linkDrive(u) { return /^https:\/\/(drive|docs)\.google\.com\//.test(String(u || '')) ? String(u) : null; }
     const TIPO_MATERIAL = { norma: 'norma', orientacao: 'orientação oficial', nota_tecnica: 'nota técnica', aula: 'aula do curso',
       exercicio: 'exercício do curso', planilha: 'planilha do curso', perguntas: 'P&R, não oficial', sintese: 'leitura do escritório',
       relatorio: 'relatório legislativo, não é norma', artigo: 'artigo, opinião do autor' };
@@ -2459,8 +2466,8 @@
         const m = materiais.get(v.material_codigo);
         if (m) (porRegra[v.regra_codigo] ||= []).push({ onde: v.onde, ordem: v.ordem || 0, m });
       });
-      const linhaMaterial = x => (x.m.drive_url
-          ? '<a href="' + escapeHtml(x.m.drive_url) + '" target="_blank" rel="noopener">' + escapeHtml(x.m.titulo) + '</a>'
+      const linhaMaterial = x => (linkDrive(x.m.drive_url)
+          ? '<a href="' + escapeHtml(linkDrive(x.m.drive_url)) + '" target="_blank" rel="noopener">' + escapeHtml(x.m.titulo) + '</a>'
           : escapeHtml(x.m.titulo)) +
         '<span class="tp">' + escapeHtml(TIPO_MATERIAL[x.m.tipo] || x.m.tipo) + '</span>' + (x.onde ? ' — ' + escapeHtml(x.onde) : '');
       $('baseLista').innerHTML = (rg.data || []).map(r => {
@@ -2583,30 +2590,30 @@
       chat.materiais = new Map((ms || []).map(m => [m.codigo, m]));
       chat.regras = new Map((rs || []).map(r => [r.codigo, r]));
     }
-    // uma fonte citada ("CODIGO, onde" ou "regra CODIGO"): o código vira link — o material abre o original no Drive, a
-    // regra abre a Base legal. Código que não existe fica como texto. Chega aqui já escapado
+    // uma fonte citada ("CODIGO, onde", "regra CODIGO", "regras A e B"): todo código da base vira link — o material abre o
+    // original no Drive, a regra abre a Base legal. Código que não existe fica como texto. Chega aqui já escapado
     function fonteDoChat(parte) {
-      const p = parte.trim();
-      const regra = cod => '<a class="fonte" data-regra="' + cod + '" title="' + escapeHtml('Base legal — ' + (chat.regras.get(cod).titulo || cod)) + '">regra ' + cod + '</a>';
-      const rg = /^(regras?\s+)([A-Za-z0-9][A-Za-z0-9-]*)(.*)$/i.exec(p);
-      if (rg && chat.regras && chat.regras.has(rg[2].toUpperCase())) return regra(rg[2].toUpperCase()) + rg[3];
-      const cm = /^([A-Z0-9]{2,}(?:-[A-Z0-9]+)+)(.*)$/.exec(p);
-      if (cm && chat.materiais && chat.materiais.has(cm[1])) {
-        const m = chat.materiais.get(cm[1]);
-        const tit = escapeHtml((m.titulo || cm[1]) + (m.drive_url ? ' — abre o original no Drive' : ''));
-        return (m.drive_url ? '<a class="fonte" href="' + escapeHtml(m.drive_url) + '" target="_blank" rel="noopener" title="' + tit + '">' : '<a class="fonte" title="' + tit + '">') + cm[1] + '</a>' + cm[2];
-      }
-      if (cm && chat.regras && chat.regras.has(cm[1])) return regra(cm[1]) + cm[2];
-      return p;
+      const temRegra = c => !!(chat.regras && chat.regras.has(c)), temMaterial = c => !!(chat.materiais && chat.materiais.has(c));
+      const regra = (cod, texto) => '<a class="fonte" data-regra="' + cod + '" title="' + escapeHtml('Base legal — ' + (chat.regras.get(cod).titulo || cod)) + '">' + texto + '</a>';
+      const material = cod => {
+        const m = chat.materiais.get(cod), url = linkDrive(m.drive_url);
+        const tit = escapeHtml((m.titulo || cod) + (url ? ' — abre o original no Drive' : ''));
+        return (url ? '<a class="fonte" href="' + escapeHtml(url) + '" target="_blank" rel="noopener" title="' + tit + '">' : '<a class="fonte" title="' + tit + '">') + cod + '</a>';
+      };
+      // "regra CODIGO" no começo: o link leva a palavra junto (o código pode ter vindo em minúsculas)
+      const rg = /^(\s*)(regras?\s+)([A-Za-z0-9][A-Za-z0-9-]*)/i.exec(parte);
+      let inicio = '', resto = parte;
+      if (rg && temRegra(rg[3].toUpperCase())) { inicio = rg[1] + regra(rg[3].toUpperCase(), 'regra ' + rg[3].toUpperCase()); resto = parte.slice(rg[0].length); }
+      return inicio + resto.replace(/\b[A-Z0-9]{2,}(?:-[A-Z0-9]+)+\b/g, cod =>
+        temRegra(cod) && (rg || !temMaterial(cod)) ? regra(cod, cod) : temMaterial(cod) ? material(cod) : cod);
     }
     // a resposta em HTML seguro: o texto é escapado antes de tudo; daí em diante só entra marcação daqui (parágrafo,
     // negrito, lista e as fontes)
     function htmlDoChat(texto) {
       const inline = s => s.replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>')
         .replace(/\[([^\]\n]{2,240})\]/g, (todo, dentro) => {
-          const partes = dentro.split(/\s*[;·]\s*/);
-          const out = partes.map(fonteDoChat);
-          return out.some((x, i) => x !== partes[i].trim()) ? '[' + out.join('; ') + ']' : todo;
+          const out = dentro.split(/([;·])/).map((p, i) => i % 2 ? p : fonteDoChat(p)).join('');
+          return out !== dentro ? '[' + out + ']' : todo;
         });
       let html = '', lista = null, par = [];
       const fecharPar = () => { if (par.length) { html += '<p>' + par.join('<br>') + '</p>'; par = []; } };
@@ -2665,10 +2672,11 @@
       $('chatTexto').focus();
       codigosDoChat().catch(() => {});
     }
-    // os números calculados na ficha aberta (gravados ou não) — o chat compara com a simulação gravada
+    // os números calculados na ficha aberta e ainda não gravados (o retrato do último "Calcular": números, procedência e a
+    // natureza das vendas) — o chat compara com a simulação gravada. Gravou: não vai nada, o chat lê a gravada
     function telaParaChat() {
-      if (!simAtual || fichaId !== chat.casoId || !$('ovFicha').classList.contains('on')) return null;
-      return { input: simAtual.input, procedencia: procedenciaDaTela() };
+      if (!simAtual || simAtual.gravada || fichaId !== chat.casoId || !$('ovFicha').classList.contains('on')) return null;
+      return { input: simAtual.input, procedencia: simAtual.proc, natureza: simAtual.natureza };
     }
     async function lerEventosDoChat(data, cb) {
       const processar = bloco => bloco.split('\n').forEach(l => { if (l.startsWith('data: ')) { try { cb(JSON.parse(l.slice(6))); } catch (e) { /* linha quebrada */ } } });
@@ -2687,8 +2695,16 @@
       else if (data && (data.resposta || data.erro)) cb(data.erro ? { tipo: 'erro', texto: data.erro } : { tipo: 'resposta', texto: data.resposta, fontes: data.fontes });
     }
     async function erroDoChat(error) {
-      try { const r = error && error.context; if (r && typeof r.json === 'function') { const j = await r.json(); if (j && j.erro) return j.erro; } } catch (e) { /* sem corpo */ }
-      return (error && error.message) || 'Erro no chat.';
+      const r = error && error.context;
+      try { if (r && typeof r.json === 'function') { const j = await r.clone().json(); if (j && j.erro) return j.erro; } } catch (e) { /* sem corpo */ }
+      const st = r && r.status;
+      if (st === 401) return 'Sua sessão expirou: saia e entre de novo no sistema.';
+      if (st === 403) return 'O chat é só da equipe do escritório.';
+      if (st === 413) return 'A pergunta (com a conversa) ficou grande demais: comece uma conversa nova.';
+      if (st === 429) return 'Muitas perguntas agora: espere um pouco e tente de novo.';
+      if (st === 502 || st === 503 || st === 504 || st === 546) return 'O chat demorou demais ou está fora do ar. Tente de novo em instantes.';
+      if (st) return 'O chat não respondeu (código ' + st + '). Tente de novo em instantes.';
+      return 'Não consegui falar com o chat. Confira a internet e tente de novo.';
     }
     async function enviarChat() {
       const texto = $('chatTexto').value.trim();

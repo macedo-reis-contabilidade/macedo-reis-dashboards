@@ -14,8 +14,14 @@ Confere:
   3. a segunda pergunta leva a primeira como histórico; "Nova conversa" esquece;
   4. na ficha, "Perguntar sobre este caso" abre o chat com o caso (o nome aparece em cima) e a conversa começa de novo; depois
      de "Calcular", a pergunta leva os números da tela; desmarcando o caso, a pergunta vai sem ele;
-  5. erro da função (limite do dia): a mensagem dela aparece em vermelho e a pergunta volta pra caixa;
-  6. a tela não dá erro de JavaScript.
+  5. erro da função (limite do dia): a mensagem dela aparece em vermelho e a pergunta volta pra caixa; erro sem o texto
+     da função (sessão vencida, 401): a mensagem em português pelo código;
+  6. a resposta em fluxo de verdade (o Response que o supabase-js devolve pra text/event-stream, em pedaços de 7 bytes, com
+     acento partido no meio) aparece igual; "[regras A e B]" vira dois links; endereço do Drive que não é do Google não vira
+     link;
+  7. o que vai ao chat é o retrato do último "Calcular" (campo mudado depois não entra), com a natureza das vendas do
+     Domínio; depois de "Gravar", não vai mais nada da tela (o chat lê a gravada);
+  8. a tela não dá erro de JavaScript.
 Termina com código 1 se alguma checagem falhar.
 Pré-requisito: pip install playwright e python -m playwright install chromium
 """
@@ -33,10 +39,14 @@ ENT = {'anexo': 'I', 'rbt12': 600000, 'receita': 50000, 'aliqEfetivaInformada': 
 CASOS = [{'id': 'chk1', 'cliente_id': 'chc1', 'campanha': 'opcao_2027', 'prazo_opcao': '2026-10-30', 'cnae_base': '4754', 'segmento': 'comercio',
           'sinal_b2b': 0, 'sinal_entradas': 2, 'sinal_reducao': 0, 'sinal_aliquota': 1, 'score': 3, 'triagem': 'simular', 'perfil_validado': False,
           'decisao': 'pendente', 'status': 'simulado', 'comunicado_em': None, 'atualizado_em': '2026-10-14T10:00:00Z', 'sim_custo_dentro': 20000, 'sim_custo_fora': 25000,
-          'sim_obs': json.dumps({'input': ENT, 'veredito': 'MANTENHA', 'frase': 'Frase de teste.', 'calculado_em': '2026-10-14'}), 'fundamento': None, 'obs': 'teste'}]
+          'sim_obs': json.dumps({'input': ENT, 'veredito': 'MANTENHA', 'frase': 'Frase de teste.', 'calculado_em': '2026-10-14',
+                                 'dominio': {'vendas': {'natureza': {'mercadoria': 45000, 'servico': 5000}}}}), 'fundamento': None, 'obs': 'teste'}]
 MATERIAIS = [{'id': 'm1', 'codigo': 'TST-LEI', 'titulo': 'Lei de teste', 'tipo': 'norma', 'drive_url': 'https://drive.google.com/file/d/teste/view', 'ativo': True},
-             {'id': 'm2', 'codigo': 'TST-AULA', 'titulo': 'Aula de teste', 'tipo': 'aula', 'drive_url': None, 'ativo': True}]
+             {'id': 'm2', 'codigo': 'TST-AULA', 'titulo': 'Aula de teste', 'tipo': 'aula', 'drive_url': None, 'ativo': True},
+             {'id': 'm3', 'codigo': 'TST-MAU', 'titulo': 'Material com endereço estranho', 'tipo': 'aula', 'drive_url': 'javascript:window.__xss=2', 'ativo': True}]
 REGRAS = [{'id': 'r1', 'codigo': 'TST-REGRA', 'titulo': 'Regra de teste', 'dispositivo': 'art. 1º', 'regra': 'Texto da regra de teste.', 'aplica_a': 'todos', 'efeito': '—',
+           'fonte': '—', 'verificado_em': '2026-10-14', 'ativo': True},
+          {'id': 'r2', 'codigo': 'TST-OUTRA', 'titulo': 'Outra regra de teste', 'dispositivo': 'art. 2º', 'regra': 'Texto da outra regra.', 'aplica_a': 'todos', 'efeito': '—',
            'fonte': '—', 'verificado_em': '2026-10-14', 'ativo': True}]
 def faixas(pcts):
     lims = [180000, 360000, 720000, 1800000, 3600000, 4800000]
@@ -46,9 +56,10 @@ PARAMS = [{'chave': 'aliq_ref_2027', 'valor': {'cbs': 9.3, 'ibs': 0.1, 'cbs_apli
            'III': faixas([15.6, 17.1, 16.6, 16.6, 15.6, 19.29]), 'IV': faixas([21.5, 25, 24, 23, 22, 24.7]), 'V': faixas([17.15, 17.15, 18.15, 19.15, 17.15, 19.78])}}}]
 RESPOSTA = ('Não: é **isenção**, não alíquota zero [TST-LEI, art. 157] · [regra TST-REGRA].\n\n- primeiro ponto [TST-AULA, slide 3]\n- texto com <img src=x onerror="window.__xss=1"> no meio\n'
             '- código que não existe [M99-NADA, p. 1]')
+RESPOSTA2 = 'Por fora, crédito só com destaque — sim [regras TST-REGRA e TST-OUTRA; TST-MAU, slide 2].'
 SEMEAR = """
 (() => {
-  const CLIENTES = %s, CASOS = %s, PARAMS = %s, MATERIAIS = %s, REGRAS = %s, RESPOSTA = %s;
+  const CLIENTES = %s, CASOS = %s, PARAMS = %s, MATERIAIS = %s, REGRAS = %s, RESPOSTA = %s, RESPOSTA2 = %s;
   let db;
   Object.defineProperty(window, '__mockDb', { configurable: true, get() { return db; }, set(v) {
     db = v; v.clientes.push(...CLIENTES); (v.rt_casos || (v.rt_casos = [])).push(...CASOS); v.rt_parametros = PARAMS;
@@ -59,11 +70,18 @@ SEMEAR = """
     window.__chamadas.push({ nome, body: JSON.parse(JSON.stringify(opts.body || {})) });
     if (/limite/.test(opts.body.pergunta)) return { data: null, error: { message: 'Edge Function returned a non-2xx status code',
       context: new Response(JSON.stringify({ erro: 'Você chegou ao limite de 60 perguntas por dia. Amanhã libera de novo.' }), { status: 429 }) } };
+    if (/sessão/.test(opts.body.pergunta)) return { data: null, error: { message: 'Edge Function returned a non-2xx status code', context: new Response('', { status: 401 }) } };
     const ev = o => 'data: ' + JSON.stringify(o) + '\\n\\n';
+    // como o supabase-js devolve text/event-stream: o próprio Response, lido em pedaços (aqui de 7 bytes, partindo acentos)
+    if (/intermunicipal/.test(opts.body.pergunta)) {
+      const bytes = new TextEncoder().encode(ev({ tipo: 'etapa', texto: 'Lendo a regra — ação' }) + ev({ tipo: 'resposta', texto: RESPOSTA2, fontes: [] }));
+      const corpo = new ReadableStream({ start(ctrl) { for (let i = 0; i < bytes.length; i += 7) ctrl.enqueue(bytes.slice(i, i + 7)); ctrl.close(); } });
+      return { data: new Response(corpo, { headers: { 'Content-Type': 'text/event-stream' } }), error: null };
+    }
     return { data: ev({ tipo: 'etapa', texto: 'Buscando na base: "isenção"' }) + ev({ tipo: 'etapa', texto: 'Lendo TST-LEI' }) + ev({ tipo: 'resposta', texto: RESPOSTA, fontes: [] }), error: null };
   };
 })();
-""" % tuple(json.dumps(x, ensure_ascii=False) for x in (CLIENTES, CASOS, PARAMS, MATERIAIS, REGRAS, RESPOSTA))
+""" % tuple(json.dumps(x, ensure_ascii=False) for x in (CLIENTES, CASOS, PARAMS, MATERIAIS, REGRAS, RESPOSTA, RESPOSTA2))
 
 falhas = 0
 def ok(cond, msg):
@@ -127,6 +145,13 @@ def main():
         h = chamadas()[1]['body']
         ok(len(h['historico']) == 1 and h['historico'][0]['pergunta'] == 'Ônibus urbano tem alíquota zero?' and h['historico'][0]['resposta'].startswith('Não: é **isenção**')
            and h['conversa'] == corpo['conversa'], 'a segunda pergunta leva a primeira (pergunta e resposta) e a mesma conversa')
+        p.wait_for_function("() => /crédito só com destaque/.test(document.querySelector('#chatMsgs .rt-chat-msg.ia:last-child').textContent)", timeout=3000)
+        ok('Por fora, crédito só com destaque — sim' in p.inner_text(ultima) and '1 consulta: Lendo a regra — ação' in p.inner_text(ultima),
+           'resposta em fluxo de verdade (Response lido em pedaços, acento partido): igual, com a consulta')
+        ok(p.eval_on_selector_all(ultima + ' a.fonte[data-regra]', 'as => as.map(a => a.textContent + "|" + a.dataset.regra)') == ['regra TST-REGRA|TST-REGRA', 'TST-OUTRA|TST-OUTRA'],
+           '"[regras A e B]": as duas regras viram link')
+        mau = p.eval_on_selector_all(ultima + ' a.fonte', 'as => as.filter(a => a.textContent === "TST-MAU").map(a => a.getAttribute("href"))')
+        ok(mau == [None], f'endereço do Drive que não é do Google: a fonte aparece, sem link ({mau})')
         p.click('#chatNova'); p.wait_for_timeout(200)
         ok(p.eval_on_selector_all('#chatMsgs .rt-chat-msg', 'ms => ms.length') == 1, '"Nova conversa" limpa a tela (fica só a boas-vindas)')
         p.fill('#chatTexto', 'Do zero?'); p.press('#chatTexto', 'Enter'); p.wait_for_function('() => window.__chamadas.length === 3', timeout=3000); p.wait_for_timeout(300)
@@ -151,16 +176,36 @@ def main():
         tela = f2.get('tela') or {}
         ok(f2.get('caso_id') == 'chk1' and (tela.get('input') or {}).get('receita') == 50000 and (tela.get('input') or {}).get('pctImpostoEmbutido') == 12 and isinstance(tela.get('procedencia'), dict),
            f'depois de "Calcular", vão os números da tela e a procedência (receita {(tela.get("input") or {}).get("receita")})')
+        ok(tela.get('natureza') == {'mercadoria': 45000, 'servico': 5000}, f'e a natureza das vendas do Domínio da ficha ({tela.get("natureza")})')
+        # campo mudado depois do "Calcular": vai o retrato do cálculo (o resultado que está na tela), não o campo novo
+        p.click('#chatFechar'); p.wait_for_timeout(150)
+        p.fill('#sPctPJ', '55'); p.dispatch_event('#sPctPJ', 'input'); p.wait_for_timeout(150)
+        p.click('#fiChat'); p.wait_for_selector('#ovChat.on', timeout=3000)
+        p.fill('#chatTexto', 'E com o campo mudado?'); p.press('#chatTexto', 'Enter'); p.wait_for_function('() => window.__chamadas.length === 6', timeout=3000); p.wait_for_timeout(300)
+        t3 = chamadas()[5]['body']['contexto'].get('tela') or {}
+        ok((t3.get('input') or {}).get('pctPJ') == 10 and (t3.get('procedencia') or {}).get('pctPJ') == (tela.get('procedencia') or {}).get('pctPJ'),
+           f'campo mudado sem "Calcular": vai o retrato do último cálculo (% PJ {(t3.get("input") or {}).get("pctPJ")}, procedência igual)')
+        # gravada: o chat lê a simulação gravada, nada da tela
+        p.click('#chatFechar'); p.wait_for_timeout(150)
+        p.click('#bGravar'); p.wait_for_function("() => /gravada/.test(document.querySelector('#bMsg').textContent)", timeout=4000)
+        p.click('#fiChat'); p.wait_for_selector('#ovChat.on', timeout=3000)
+        p.fill('#chatTexto', 'E depois de gravar?'); p.press('#chatTexto', 'Enter'); p.wait_for_function('() => window.__chamadas.length === 7', timeout=3000); p.wait_for_timeout(300)
+        f4 = chamadas()[6]['body']['contexto']
+        ok(f4.get('caso_id') == 'chk1' and f4.get('tela') is None, f'depois de "Gravar", vai só o caso (o chat lê a gravada) ({f4})')
         p.uncheck('#chatUsarFicha')
-        p.fill('#chatTexto', 'Sem o caso?'); p.press('#chatTexto', 'Enter'); p.wait_for_function('() => window.__chamadas.length === 6', timeout=3000); p.wait_for_timeout(300)
-        ok(chamadas()[5]['body']['contexto'] == {}, 'desmarcando o caso, a pergunta vai sem ele')
+        p.fill('#chatTexto', 'Sem o caso?'); p.press('#chatTexto', 'Enter'); p.wait_for_function('() => window.__chamadas.length === 8', timeout=3000); p.wait_for_timeout(300)
+        ok(chamadas()[7]['body']['contexto'] == {}, 'desmarcando o caso, a pergunta vai sem ele')
 
         # 5) erro da função
-        p.fill('#chatTexto', 'teste de limite'); p.press('#chatTexto', 'Enter'); p.wait_for_function('() => window.__chamadas.length === 7', timeout=3000); p.wait_for_timeout(400)
+        p.fill('#chatTexto', 'teste de limite'); p.press('#chatTexto', 'Enter'); p.wait_for_function('() => window.__chamadas.length === 9', timeout=3000); p.wait_for_timeout(400)
         err = p.eval_on_selector('#chatMsgs .rt-chat-msg.ia:last-child', 'd => ({ c: d.className, t: d.textContent })')
         ok('erro' in err['c'] and 'limite de 60 perguntas por dia' in err['t'], f'erro da função: a mensagem dela em vermelho ({err["t"][:60]})')
         ok(p.input_value('#chatTexto') == 'teste de limite' and not p.is_disabled('#chatEnviar'), 'a pergunta volta pra caixa e o botão libera')
+        p.fill('#chatTexto', 'teste de sessão vencida'); p.press('#chatTexto', 'Enter'); p.wait_for_function('() => window.__chamadas.length === 10', timeout=3000); p.wait_for_timeout(400)
+        e401 = p.inner_text('#chatMsgs .rt-chat-msg.ia:last-child')
+        ok('Sua sessão expirou' in e401 and 'non-2xx' not in e401, f'erro sem o texto da função (401): em português, pelo código ({e401[:60]})')
 
+        ok(not p.evaluate('window.__xss'), 'nada do texto das respostas ou dos endereços rodou como código')
         ok(not erros, f'sem erro de JavaScript ({erros[:2]})')
         b.close()
     srv.shutdown()

@@ -6,12 +6,13 @@
 // Rodar com: node tests/reforma-chat.test.mjs
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { normalizar, radical, tokens, secoesDe, criarIndice, buscar, lerMaterial } from '../supabase/functions/reforma-chat/busca.js';
 import { montarSistema, preambulo, INSTRUCOES } from '../supabase/functions/reforma-chat/prompt.js';
 import { DEFINICOES, criarFerramentas, aplicarAlteracoes, acharCaso, situacaoDoCaso, descreverEtapa } from '../supabase/functions/reforma-chat/ferramentas.js';
-import { responder, criarChamador, comCache, fontesDaResposta } from '../supabase/functions/reforma-chat/agente.js';
-import { criarServidor, limparTela, limparHistorico, hojeBR, LIMITE_DIA } from '../supabase/functions/reforma-chat/servidor.js';
+import { responder, criarChamador, comCache, fontesDaResposta, erroDoChat } from '../supabase/functions/reforma-chat/agente.js';
+import { criarServidor, limparTela, limparHistorico, hojeBR, LIMITE_DIA, SIMULTANEAS, mensagemDeErro } from '../supabase/functions/reforma-chat/servidor.js';
 import { simular, aliquotas2027, entradaComAliquotas } from '../assets/js/rt-motor.js';
 
 const raiz = fileURLToPath(new URL('..', import.meta.url));
@@ -123,6 +124,28 @@ chk('ver_caso com números na tela: mostra a gravada e a da tela', /SIMULAÇÃO 
 chk('simular com a ficha calculada parte da tela', /base: simulação da tela, não gravada/.test(await feTela.simular({ alteracoes: { pctImpostoEmbutido: 5 } })));
 chk('etapas legíveis pra tela', descreverEtapa('buscar_base', { consulta: 'art. 47' }) === 'Buscando na base: "art. 47"' && descreverEtapa('ver_caso', {}) === 'Abrindo o caso da ficha'
   && /^Rodando o simulador: pctPJ = 50/.test(descreverEtapa('simular', { alteracoes: { pctPJ: 50 } })));
+chk('etapa com entrada estranha (lista, número, nulo) não quebra', (() => { try { return /^Listando os casos \(\["sem conclusao"\]\): "5"$/.test(descreverEtapa('listar_casos', { filtro: ['sem_conclusao'], busca: 5 }))
+  && descreverEtapa('buscar_base', null) === 'Buscando na base: ""' && /^Rodando o simulador/.test(descreverEtapa('simular', { alteracoes: { pctPJ: { a: 1 } } })); } catch (e) { return false; } })());
+const herdado = aplicarAlteracoes(ENT, JSON.parse('{"constructor": 1, "valueOf": 2, "toString": 3}'));
+chk('nome herdado (constructor, valueOf, toString) não é campo do "e se"', herdado.trocados.length === 0 && herdado.erros.length === 3 && herdado.erros.every(x => /campo desconhecido/.test(x)), herdado.erros.join(' | '));
+// a lista em páginas: com muitos casos, cabe e diz como seguir
+const MUITOS = Array.from({ length: 120 }, (_, i) => ({ ...CASOS[2], cnae_base: '4711', id: 'caso-' + i, cliente_id: 'cli-' + i, cliente: { nome_principal: 'EMPRESA DE TESTE ' + String(i + 1).padStart(3, '0') + ' LTDA', cnae_principal: '4711-3/02 - Comércio varejista de mercadorias em geral, com predominância de produtos alimentícios - minimercados, mercearias e armazéns', cidade: 'Três Coroas' } }));
+const feMuitos = criarFerramentas({ base, carregarCasos: async () => MUITOS, params });
+const p1 = await feMuitos.listar_casos({}), p3 = await feMuitos.listar_casos({ pagina: 3 });
+chk('listar_casos em páginas de 40: diz quantos, qual página e a seguinte', /mostrando 1 a 40 \(página 1 de 3; a seguinte: pagina 2\)/.test(p1) && p1.split('\n').filter(l => l.startsWith('- ')).length === 40 && p1.length < 14000, p1.split('\n')[1]);
+chk('a última página não fala em seguinte; o CNAE vai só com o código', /mostrando 81 a 120 \(página 3 de 3\)/.test(p3) && !/a seguinte/.test(p3) && /CNAE 4711-3\/02 ·/.test(p3) && !/minimercados/.test(p3));
+chk('a busca acha pelo CNAE com a descrição', (await feMuitos.listar_casos({ busca: 'minimercados', limite: 80 })).split('\n').filter(l => l.startsWith('- ')).length === 80);
+const comFalta = [{ ...CASOS[1], sim_obs: JSON.stringify({ input: ENT, veredito: 'OPTE', confianca: { conclusao: 'sem_conclusao', faltam: ['as notas de compra (XML de entrada)'] } }) }];
+chk('sem conclusão na lista: o que falta medir', /· falta: as notas de compra \(XML de entrada\)$/.test((await criarFerramentas({ base, carregarCasos: async () => comFalta, params }).listar_casos({})).split('\n').at(-1)));
+const vcSem = await criarFerramentas({ base, carregarCasos: async () => CASOS, params }).ver_caso({ caso: 'lojinha' });
+chk('ver_caso sem conclusão: nenhum lado sustentado, nem o da decisão gravada', /SEM CONCLUSÃO: o simulador não escolhe lado — nem a simulação nem a decisão gravada \(decidido por fora\)/.test(vcSem), vcSem.split('\n').slice(0, 4).join(' / '));
+const diverge = [{ ...CASOS[0], decisao: 'por_fora', sim_obs: JSON.stringify({ input: ENT, veredito: 'MANTENHA', procedencia: PROC, confianca: { conclusao: 'firme' } }) }];
+chk('ver_caso: decisão gravada contra a simulação vira DIVERGÊNCIA', /DIVERGÊNCIA: a decisão gravada \(decidido por fora\) é contrária ao resultado da simulação \(por dentro\)/.test(await criarFerramentas({ base, carregarCasos: async () => diverge, params }).ver_caso({ caso: 'loja de teste um' })));
+const telaNat = limparTela({ input: { anexo: 'I', receita: 1000 }, natureza: { servico: '900', mercadoria: 100, malicioso: 5, energia: -1, comunicacao: 'x' } }, 'c1');
+chk('tela: a natureza das vendas só com os tipos conhecidos e números', JSON.stringify(telaNat.natureza) === JSON.stringify({ mercadoria: 100, servico: 900 }), JSON.stringify(telaNat && telaNat.natureza));
+chk('tela: nome herdado não entra', JSON.stringify(limparTela(JSON.parse('{"input": {"anexo": "I", "receita": 1, "constructor": 5, "toString": 1, "hasOwnProperty": 1}}'), 'c1').input) === JSON.stringify({ anexo: 'I', receita: 1 }));
+const feNat = criarFerramentas({ base, carregarCasos: async () => CASOS, params, contexto: { caso_id: CASOS[0].id, tela: { caso_id: CASOS[0].id, input: { ...ENT, cbs: 9.2 }, procedencia: PROC, natureza: { servico: 900, mercadoria: 100 } } } });
+chk('ver_caso com a natureza da tela roda (o perfil da atividade vem dela)', /NA TELA AGORA/.test(await feNat.ver_caso({})));
 
 console.log('Conversa com o modelo (roteirizada):');
 const chamadas = [];
@@ -144,6 +167,25 @@ const res2 = await responder({ chamar: async c => { ch2.push(c); return c.tool_c
   sistema: sis, definicoes: DEFINICOES, ferramentas: fe, mensagem: 'x', maxRodadas: 3 });
 chk('na última rodada, sem ferramenta (tool_choice none) e responde com o que tem', res2.texto === 'Final.' && ch2.length === 3 && ch2[2].tool_choice && ch2[2].tool_choice.type === 'none' && !ch2[1].tool_choice);
 chk('comCache não mexe nas mensagens originais', (() => { const m = [{ role: 'user', content: 'a' }]; comCache(m); return m[0].content === 'a'; })());
+{
+  // o prazo: passou dele, a rodada seguinte já é a última (sem ferramenta); cada chamada recebe o fim do prazo
+  let relogio = 0;
+  const ch3 = [], opcoes = [];
+  const res3 = await responder({ chamar: async (c, o) => { ch3.push(c); opcoes.push(o); relogio += 80000; return c.tool_choice ? { stop_reason: 'end_turn', content: [{ type: 'text', text: 'No prazo.' }], usage: {} } : sempre; },
+    agora: () => relogio, sistema: sis, definicoes: DEFINICOES, ferramentas: fe, mensagem: 'x', prazoMs: 70000 });
+  chk('passou do prazo: a rodada seguinte responde sem ferramenta', res3.texto === 'No prazo.' && ch3.length === 2 && ch3[1].tool_choice && ch3[1].tool_choice.type === 'none');
+  chk('cada chamada leva o fim do prazo (+30 s pra última)', opcoes.every(o => o && o.ate === 70000 + 30000));
+  const etapasEstranhas = [];
+  const res4 = await responder({ chamar: (() => { let n = 0; return async () => ++n === 1 ? { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'q', name: 'listar_casos', input: { filtro: ['sem_conclusao'] } }, { type: 'tool_use', id: 'r', name: 'constructor', input: {} }], usage: {} } : { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Ok.' }], usage: {} }; })(),
+    sistema: sis, definicoes: DEFINICOES, ferramentas: fe, mensagem: 'x', aoEtapa: t => etapasEstranhas.push(t) });
+  chk('entrada estranha de ferramenta e nome herdado não derrubam a pergunta', res4.texto === 'Ok.' && res4.etapas.length === 2 && res4.etapas[1].erro === true, JSON.stringify(res4.etapas.map(e => e.descricao)));
+  const longa = 'x'.repeat(20000);
+  const res5 = await responder({ chamar: (() => { let n = 0; return async c => { if (++n === 2) res5vista = c.messages.at(-1).content[0].content; return n === 1 ? { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'z', name: 'listar_casos', input: {} }], usage: {} } : { stop_reason: 'max_tokens', content: [{ type: 'text', text: 'Começo da resposta' }], usage: {} }; }; })(),
+    sistema: sis, definicoes: DEFINICOES, ferramentas: { listar_casos: async () => longa }, mensagem: 'x' });
+  chk('saída longa de ferramenta: cortada com a dica da própria ferramenta', /…\(cortado: a saída passou de 14 mil caracteres — use filtro, busca ou a página seguinte \(pagina\)\)$/.test(res5vista) && res5vista.length < 14200);
+  chk('resposta que bateu no máximo de tokens: marcada como cortada', res5.cortada === true && res5.texto === 'Começo da resposta');
+}
+var res5vista;
 const fsr = fontesDaResposta('Veja [TST-LEI, art. 12; regra TST-REGRA] e [M99-INVENTADO, p. 3] e [nota solta].', new Set(['TST-LEI']), new Set(['TST-REGRA']));
 chk('fontes citadas: material e regra; código que não existe vai à parte', fsr.fontes.map(f => f.tipo + ':' + f.codigo).join() === 'material:TST-LEI,regra:TST-REGRA' && fsr.desconhecidas.join() === 'M99-INVENTADO');
 let tent = 0;
@@ -151,15 +193,40 @@ const chamador = criarChamador({ fetch: async (url, o) => { tent++; const m = JS
   chave: 'k', modelos: ['modelo-a', 'modelo-b'], esperar: async () => {} });
 const rc = await chamador({});
 chk('modelo que a conta não tem: usa o próximo; sobrecarga: tenta de novo', rc._modelo === 'modelo-b' && tent === 3);
+const rc2 = await chamador({});
+chk('a chamada seguinte já começa no modelo que existe (uma ida só à API)', rc2._modelo === 'modelo-b' && tent === 4);
+{
+  let idas = 0;
+  const semPrazo = criarChamador({ fetch: async () => { idas++; return new Response('{}', { status: 200 }); }, chave: 'k', agora: () => 1000 });
+  let erro = null;
+  try { await semPrazo({}, { ate: 2000 }); } catch (e) { erro = e; }
+  chk('sem prazo pra chamada: erro "tempo", sem ir à API', erro && erro.tipo === 'tempo' && idas === 0);
+  let pedidos = 0;
+  const sobre = criarChamador({ fetch: async (u, o) => { pedidos++; chk.sinal = chk.sinal || o.signal; return new Response('carregado', { status: 529, headers: { 'retry-after': '1' } }); }, chave: 'k', esperar: async () => {} });
+  let e2 = null;
+  try { await sobre({}); } catch (e) { e2 = e; }
+  chk('sobrecarga que não passa: 3 tentativas, erro "sobrecarga"', pedidos === 3 && e2 && e2.tipo === 'sobrecarga' && /API 529/.test(e2.message));
+  chk('a chamada à API tem prazo (sinal de abortar)', chk.sinal && typeof chk.sinal.aborted === 'boolean');
+}
+chk('fontes: "[regras A e B]" conta as duas; data no colchete não vira fonte desconhecida no meio',
+  fontesDaResposta('Veja [regras TST-REGRA e TST-OUTRA] e [TST-LEI, de 2025-01-16].', new Set(['TST-LEI']), new Set(['TST-REGRA', 'TST-OUTRA'])).fontes.map(f => f.codigo).join() === 'TST-REGRA,TST-OUTRA,TST-LEI'
+  && fontesDaResposta('[TST-LEI, de 2025-01-16]', new Set(['TST-LEI']), new Set()).desconhecidas.length === 0);
+chk('mensagens de erro pro usuário: em português e sem detalhe interno', /sobrecarregado/.test(mensagemDeErro(erroDoChat('sobrecarga', 'API 529'))) && /demorou demais/.test(mensagemDeErro(erroDoChat('tempo', 'x')))
+  && mensagemDeErro(new Error('banco 500: {segredo}')) === 'Não consegui responder agora. Tente de novo em instantes.');
 
 console.log('Servidor da função:');
 const AGORA = new Date('2026-10-14T15:00:00Z');
-function falsoBanco({ usuarioEmail = 'equipe@macedoereis.com.br', contagem = 0, reivindicada = null } = {}) {
-  const log = [];
+const NOVO_ID = '66666666-6666-4666-8666-666666666666';
+// banco falso: o rt_chat guarda as linhas de verdade (a contagem do limite sai delas, com o criado_em de cada uma)
+function falsoBanco({ usuarioEmail = 'equipe@macedoereis.com.br', contagem = 0, reivindicada = null, carteira = [], demora = 0 } = {}) {
+  const log = [], linhas = [];
+  let relogio = 0, novos = 0;
+  for (let i = 0; i < contagem; i++) linhas.push({ id: 'antiga-' + i, usuario: usuarioEmail, situacao: 'ok', tokens_saida: 10, criado_em: '2026-10-14T12:00:00.' + String(100000 + i) + '+00:00' });
+  const espera = () => new Promise(r => setTimeout(r, demora));
   const f = async (url, o = {}) => {
     const u = String(url); const metodo = o.method || 'GET';
     log.push({ url: u, metodo, corpo: o.body ? JSON.parse(o.body) : null, headers: o.headers || {} });
-    const json = (x, h = {}) => new Response(JSON.stringify(x), { status: 200, headers: { 'Content-Type': 'application/json', ...h } });
+    const json = (x, h = {}, status = 200) => new Response(JSON.stringify(x), { status, headers: { 'Content-Type': 'application/json', ...h } });
     if (u.includes('/auth/v1/user')) return (o.headers.Authorization === 'Bearer jwt-bom') ? json({ email: usuarioEmail }) : new Response('{}', { status: 401 });
     if (u.includes('/rest/v1/rt_materiais')) return json(MATERIAIS);
     if (u.includes('/rest/v1/rt_regras')) return json(REGRAS);
@@ -167,16 +234,35 @@ function falsoBanco({ usuarioEmail = 'equipe@macedoereis.com.br', contagem = 0, 
     if (u.includes('/rest/v1/rt_parametros')) return json([{ chave: 'aliq_ref_2027', valor: { cbs: 9.3, ibs: 0.1, cbs_aplicada: 9.2 } }]);
     if (u.includes('/rest/v1/rt_casos')) return json(CASOS.map(({ cliente, ...c }) => c));
     if (u.includes('/rest/v1/clientes')) return json(CASOS.map(c => ({ id: c.cliente_id, ...c.cliente })));
-    if (u.includes('/rest/v1/rt_chat') && metodo === 'GET') return json([], { 'Content-Range': contagem ? '0-0/' + contagem : '*/0' });
+    if (u.includes('/rest/v1/carteira_info')) return json(carteira);
+    if (u.includes('/rest/v1/rt_chat') && metodo === 'GET') {
+      await espera();
+      const q = new URL(u).searchParams;
+      const ate = (q.getAll('criado_em').find(x => x.startsWith('lte.')) || 'lte.9999').slice(4);
+      const n = linhas.filter(l => l.usuario === decodeURIComponent(q.get('usuario').slice(3)) && l.criado_em <= ate
+        && (q.get('situacao') === 'eq.rodando' ? l.situacao === 'rodando' : (l.situacao !== 'erro' || l.tokens_saida > 0))).length;
+      return json([], { 'Content-Range': (n ? '0-0/' : '*/') + n });
+    }
+    if (u.includes('/rest/v1/rt_chat') && metodo === 'POST') {
+      await espera();
+      const l = { ...JSON.parse(o.body), id: novos++ === 0 ? NOVO_ID : NOVO_ID.slice(0, -4) + String(1000 + novos), criado_em: '2026-10-14T15:00:00.' + String(100000 + relogio++) + '+00:00' };
+      linhas.push(l);
+      return json([{ id: l.id, criado_em: l.criado_em }], {}, 201);
+    }
     if (u.includes('/rest/v1/rt_chat') && metodo === 'PATCH' && o.body && JSON.parse(o.body).situacao === 'rodando') return json(reivindicada ? [reivindicada] : []);
-    if (u.includes('/rest/v1/rt_chat')) return new Response(null, { status: 201 });
+    if (u.includes('/rest/v1/rt_chat') && metodo === 'PATCH') {
+      const id = new URL(u).searchParams.get('id').slice(3);
+      const l = linhas.find(x => x.id === id); if (l) Object.assign(l, JSON.parse(o.body));
+      return new Response(null, { status: 204 });
+    }
     return new Response('?', { status: 404 });
   };
-  return { f, log };
+  return { f, log, linhas };
 }
 const ENV = { SUPABASE_URL: 'https://banco.teste', SUPABASE_SERVICE_ROLE_KEY: 'servico', SUPABASE_ANON_KEY: 'anon', ANTHROPIC_API_KEY: 'k' };
 const chamarFinal = async () => ({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'Resposta de teste [TST-LEI, art. 47].' }], usage: { input_tokens: 10, output_tokens: 5 }, _modelo: 'modelo-teste' });
-const pedido = (corpo, jwt = 'jwt-bom') => new Request('https://funcao.teste/reforma-chat', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(jwt ? { Authorization: 'Bearer ' + jwt } : {}), origin: 'https://site.teste' }, body: JSON.stringify(corpo) });
+const pedido = (corpo, jwt = 'jwt-bom', extra = {}) => new Request('https://funcao.teste/reforma-chat', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(jwt ? { Authorization: 'Bearer ' + jwt } : {}), origin: 'https://site.teste', ...extra }, body: JSON.stringify(corpo) });
+const fechamento = (log, id = NOVO_ID) => log.find(x => x.metodo === 'PATCH' && x.url.endsWith('rt_chat?id=eq.' + id) && x.corpo && x.corpo.situacao !== 'rodando');
 {
   const { f } = falsoBanco();
   const srv = criarServidor({ env: k => ENV[k], fetch: f, agora: () => AGORA, chamar: chamarFinal });
@@ -185,32 +271,69 @@ const pedido = (corpo, jwt = 'jwt-bom') => new Request('https://funcao.teste/ref
   chk('sem login: 401', (await srv(pedido({ pergunta: 'oi' }, null))).status === 401);
   chk('chave pública (sem usuário): 401', (await srv(pedido({ pergunta: 'oi' }, 'anon'))).status === 401);
   chk('pergunta vazia: 400', (await srv(pedido({ pergunta: '  ' }))).status === 400);
+  chk('pedido grande demais: 413, antes de ler', (await srv(pedido({ pergunta: 'oi' }, 'jwt-bom', { 'content-length': '300000' }))).status === 413
+    && (await srv(pedido({ pergunta: 'x'.repeat(250000) }))).status === 413);
 }
 {
   const { f } = falsoBanco({ usuarioEmail: 'alguem@gmail.com' });
   chk('e-mail de fora do escritório: 403', (await criarServidor({ env: k => ENV[k], fetch: f, agora: () => AGORA, chamar: chamarFinal })(pedido({ pergunta: 'oi' }))).status === 403);
 }
 {
-  const { f } = falsoBanco({ contagem: LIMITE_DIA });
-  const r = await criarServidor({ env: k => ENV[k], fetch: f, agora: () => AGORA, chamar: chamarFinal })(pedido({ pergunta: 'oi' }));
-  chk('limite de perguntas do dia: 429 com o aviso', r.status === 429 && /limite de 60 perguntas por dia/.test((await r.json()).erro));
+  const { f, log } = falsoBanco({ contagem: LIMITE_DIA });
+  let chamou = 0;
+  const r = await criarServidor({ env: k => ENV[k], fetch: f, agora: () => AGORA, chamar: async () => { chamou++; return chamarFinal(); } })(pedido({ pergunta: 'oi' }));
+  chk('limite de perguntas do dia: 429 com o aviso, sem chamar o modelo', r.status === 429 && /limite de 60 perguntas por dia/.test((await r.json()).erro) && chamou === 0);
+  const fx = fechamento(log);
+  chk('a pergunta barrada fica no histórico como erro, sem tokens (não gasta cota)', fx && fx.corpo.situacao === 'erro' && fx.corpo.erro === 'limite do dia' && !fx.corpo.tokens_saida);
+}
+{
+  // corrida: faltando 1 pergunta no dia, 10 pedidos ao mesmo tempo — passa só o primeiro
+  const { f, linhas } = falsoBanco({ contagem: LIMITE_DIA - 1, demora: 2 });
+  let chamou = 0;
+  const srv = criarServidor({ env: k => ENV[k], fetch: f, agora: () => AGORA, chamar: async () => { chamou++; await new Promise(r => setTimeout(r, 10)); return chamarFinal(); } });
+  const sts = await Promise.all(Array.from({ length: 10 }, () => srv(pedido({ pergunta: 'Em paralelo?' })).then(r => r.status)));
+  chk('10 pedidos ao mesmo tempo com 1 pergunta sobrando: o modelo roda no máximo uma vez', chamou <= 1 && sts.filter(s => s === 200).length === chamou && sts.filter(s => s === 429).length === 10 - chamou
+    && linhas.filter(l => l.situacao === 'ok').length <= LIMITE_DIA, sts.join(',') + ' · modelo ' + chamou);
+}
+{
+  // a mesma pessoa com várias perguntas rodando: passam as SIMULTANEAS primeiras
+  const { f } = falsoBanco({ demora: 2 });
+  let chamou = 0;
+  const srv = criarServidor({ env: k => ENV[k], fetch: f, agora: () => AGORA, chamar: async () => { chamou++; await new Promise(r => setTimeout(r, 30)); return chamarFinal(); } });
+  const rs = await Promise.all(Array.from({ length: 5 }, () => srv(pedido({ pergunta: 'Junto?' }))));
+  const barrada = rs.find(r => r.status === 429);
+  chk('mais de ' + SIMULTANEAS + ' perguntas da mesma pessoa ao mesmo tempo: as seguintes esperam', chamou === SIMULTANEAS && rs.filter(r => r.status === 200).length === SIMULTANEAS
+    && barrada && /Espere a resposta da pergunta anterior/.test((await barrada.json()).erro), rs.map(r => r.status).join(','));
 }
 {
   const { f, log } = falsoBanco();
   const srv = criarServidor({ env: k => ENV[k], fetch: f, agora: () => AGORA, chamar: chamarFinal });
   const r = await srv(pedido({ pergunta: 'Qual a regra do crédito?', conversa: '44444444-4444-4444-8444-444444444444', contexto: { caso_id: CASOS[0].id } }));
   const j = await r.json();
-  chk('pergunta respondida (JSON), com as fontes', r.status === 200 && /Resposta de teste/.test(j.resposta) && j.fontes.length === 1 && j.fontes[0].codigo === 'TST-LEI');
-  const g = log.find(x => x.url.endsWith('/rest/v1/rt_chat') && x.metodo === 'POST');
-  chk('histórico gravado: quem, pergunta, resposta, caso, conversa, fontes, uso, modelo', g && g.corpo.usuario === 'equipe@macedoereis.com.br' && g.corpo.pergunta === 'Qual a regra do crédito?' && /Resposta de teste/.test(g.corpo.resposta)
-    && g.corpo.caso_id === CASOS[0].id && g.corpo.conversa === '44444444-4444-4444-8444-444444444444' && g.corpo.fontes.citadas.length === 1 && g.corpo.tokens_entrada === 10 && g.corpo.modelo === 'modelo-teste' && g.corpo.situacao === 'ok');
+  chk('pergunta respondida (JSON), com as fontes', r.status === 200 && /Resposta de teste/.test(j.resposta) && j.fontes.length === 1 && j.fontes[0].codigo === 'TST-LEI' && j.cortada === false);
+  const ab = log.find(x => x.url.includes('/rest/v1/rt_chat') && x.metodo === 'POST');
+  chk('a pergunta nasce no histórico "rodando", antes do modelo', ab && ab.corpo.situacao === 'rodando' && ab.corpo.usuario === 'equipe@macedoereis.com.br' && ab.corpo.pergunta === 'Qual a regra do crédito?'
+    && ab.corpo.caso_id === CASOS[0].id && ab.corpo.conversa === '44444444-4444-4444-8444-444444444444' && /select=id,criado_em/.test(ab.url));
+  const g = fechamento(log);
+  chk('e fecha com a resposta: fontes, uso, modelo', g && /Resposta de teste/.test(g.corpo.resposta) && g.corpo.fontes.citadas.length === 1 && g.corpo.tokens_entrada === 10 && g.corpo.modelo === 'modelo-teste' && g.corpo.situacao === 'ok');
+  const contagens = log.filter(x => x.url.includes('/rest/v1/rt_chat') && x.metodo === 'GET');
+  chk('o limite conta só até a pergunta nova (criado_em), sem as que deram erro sem tokens', contagens.length === 2 && contagens.every(x => /criado_em=lte\./.test(x.url))
+    && contagens.some(x => /or=\(situacao\.neq\.erro,tokens_saida\.gt\.0\)/.test(x.url)) && contagens.some(x => /situacao=eq\.rodando/.test(x.url)));
   chk('lê o banco com a chave de servidor; o login, com a chave pública', log.filter(x => x.url.includes('/rest/v1/')).every(x => x.headers.Authorization === 'Bearer servico') && log.find(x => x.url.includes('/auth/v1/user')).headers.apikey === 'anon');
   chk('do cadastro do cliente, só nome, fantasia, CNAE e cidade (nunca credenciais)', log.filter(x => x.url.includes('/rest/v1/clientes')).every(x => /select=id,nome_principal,nome_fantasia,cnae_principal,cidade&/.test(x.url)));
+  chk('a ordem dos vínculos da Base legal é estável (o texto fixo não muda à toa)', log.some(x => /rt_regra_materiais\?.*order=regra_codigo\.asc,ordem\.asc,material_codigo\.asc/.test(x.url)));
   await srv(pedido({ pergunta: 'De novo?' }));
   chk('a base fica em memória (uma leitura pra duas perguntas)', log.filter(x => x.url.includes('/rest/v1/rt_materiais')).length === 1);
   const rf = await srv(pedido({ pergunta: 'Em fluxo?', fluxo: true }));
   const txt = await rf.text();
   chk('com "fluxo": text/event-stream com a resposta no fim', rf.headers.get('Content-Type') === 'text/event-stream' && /^data: \{"tipo":"resposta","texto":"Resposta de teste/m.test(txt));
+}
+{
+  // duas perguntas ao mesmo tempo com a base vencida: uma carga só
+  const { f, log } = falsoBanco();
+  const srv = criarServidor({ env: k => ENV[k], fetch: f, agora: () => AGORA, chamar: chamarFinal });
+  await Promise.all([srv(pedido({ pergunta: 'Um?' })), srv(pedido({ pergunta: 'Dois?' }))]);
+  chk('pedidos ao mesmo tempo esperam a mesma carga da base', log.filter(x => x.url.includes('/rest/v1/rt_materiais')).length === 1);
 }
 {
   const { f, log } = falsoBanco();
@@ -224,22 +347,38 @@ const pedido = (corpo, jwt = 'jwt-bom') => new Request('https://funcao.teste/ref
   chk('o caso da ficha é lido do banco uma vez por pergunta', log.filter(x => x.url.includes('/rest/v1/rt_casos')).length === 1);
 }
 {
+  // quem saiu da carteira não entra nos casos do chat (como na lista da tela)
+  const { f } = falsoBanco({ carteira: [{ cliente_id: CASOS[2].cliente_id, saida: '2026-09-30' }, { cliente_id: CASOS[1].cliente_id, saida: '2026-12-31' }] });
+  const vistas = [];
+  const chamarLista = (() => { let n = 0; return async c => { vistas.push(c); return ++n === 1 ? { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'l', name: 'listar_casos', input: {} }], usage: {} } : { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Lista.' }], usage: {} }; }; })();
+  await criarServidor({ env: k => ENV[k], fetch: f, agora: () => AGORA, chamar: chamarLista })(pedido({ pergunta: 'Quais casos?' }));
+  const lista = vistas[1].messages.at(-1).content[0].content;
+  chk('quem saiu da carteira (saída até hoje) fica fora; saída futura fica', /^2 casos na campanha/.test(lista) && !/ESCRITORIO DE TESTE TRES/.test(lista) && /LOJINHA/.test(lista), lista.split('\n')[0]);
+}
+{
   const linha = { id: '55555555-5555-4555-8555-555555555555', usuario: 'avaliacao', pergunta: 'Pergunta da avaliação?', caso_id: null, conversa: null, situacao: 'rodando' };
   const { f, log } = falsoBanco({ reivindicada: linha });
-  const r = await criarServidor({ env: k => ENV[k], fetch: f, agora: () => AGORA, chamar: chamarFinal })(pedido({ avaliacao: linha.id }, 'anon'));
-  chk('avaliação: a linha criada pelo banco vale uma vez, sem login', r.status === 200 && /Resposta de teste/.test((await r.json()).resposta));
+  const r = await criarServidor({ env: k => ENV[k], fetch: f, agora: () => AGORA, chamar: async () => ({ ...(await chamarFinal()), stop_reason: 'max_tokens' }) })(pedido({ avaliacao: linha.id }, 'anon'));
+  const j = await r.json();
+  chk('avaliação: a linha criada pelo banco vale uma vez, sem login', r.status === 200 && /Resposta de teste/.test(j.resposta));
+  chk('avaliação: a resposta cortada vem marcada', j.cortada === true);
   const claim = log.find(x => x.metodo === 'PATCH' && x.corpo && x.corpo.situacao === 'rodando');
   chk('avaliação: só linha "avaliacao" pendente e recente', claim && /usuario=eq\.avaliacao&situacao=eq\.pendente&criado_em=gte\./.test(claim.url));
-  const fim = log.find(x => x.metodo === 'PATCH' && x.url.endsWith('rt_chat?id=eq.' + linha.id));
-  chk('avaliação: a resposta volta pra mesma linha', fim && fim.corpo.situacao === 'ok' && /Resposta de teste/.test(fim.corpo.resposta));
+  const fim = fechamento(log, linha.id);
+  chk('avaliação: a resposta volta pra mesma linha (com o corte anotado nas fontes)', fim && fim.corpo.situacao === 'ok' && /Resposta de teste/.test(fim.corpo.resposta) && fim.corpo.fontes.cortada === true);
+  chk('avaliação não abre linha nova nem conta limite', !log.some(x => x.url.includes('/rest/v1/rt_chat') && (x.metodo === 'POST' || x.metodo === 'GET')));
   const { f: f2 } = falsoBanco({ reivindicada: null });
   chk('avaliação com id usado, velho ou inventado: 403', (await criarServidor({ env: k => ENV[k], fetch: f2, agora: () => AGORA, chamar: chamarFinal })(pedido({ avaliacao: linha.id }, 'anon'))).status === 403);
 }
 {
   const { f, log } = falsoBanco();
-  const r = await criarServidor({ env: k => ENV[k], fetch: f, agora: () => AGORA, chamar: async () => { throw new Error('API 500: fora'); } })(pedido({ pergunta: 'Quebra?' }));
-  const g = log.find(x => x.url.endsWith('/rest/v1/rt_chat') && x.metodo === 'POST');
-  chk('erro do modelo: avisa e grava o erro no histórico', r.status === 500 && /Não consegui responder agora/.test((await r.json()).erro) && g && g.corpo.situacao === 'erro' && /API 500/.test(g.corpo.erro));
+  const r = await criarServidor({ env: k => ENV[k], fetch: f, agora: () => AGORA, chamar: async () => { throw new Error('API 500: fora {"request_id":"x"}'); } })(pedido({ pergunta: 'Quebra?' }));
+  const g = fechamento(log);
+  const msg = (await r.json()).erro;
+  chk('erro do modelo: avisa em português, sem o detalhe, e grava o detalhe no histórico', r.status === 500 && msg === 'Não consegui responder agora. Tente de novo em instantes.' && g && g.corpo.situacao === 'erro' && /API 500/.test(g.corpo.erro));
+  const { f: f3 } = falsoBanco();
+  const r3 = await criarServidor({ env: k => ENV[k], fetch: f3, agora: () => AGORA, chamar: async () => { throw erroDoChat('sobrecarga', 'API 529: x'); } })(pedido({ pergunta: 'Cheio?', fluxo: true }));
+  chk('em fluxo, o erro chega como evento, com a mensagem do tipo', /"tipo":"erro","texto":"O serviço de IA está sobrecarregado agora/.test(await r3.text()));
 }
 chk('tela: só os campos da entrada do motor (o resto cai)', JSON.stringify(limparTela({ input: { anexo: 'i', receita: '1000', pctPJ: 10, malicioso: '<script>', issFixo: 1 } }, 'x').input) === JSON.stringify({ anexo: 'I', receita: 1000, pctPJ: 10, issFixo: true }));
 chk('tela sem receita ou sem caso não vale', limparTela({ input: { anexo: 'I' } }, 'x') === null && limparTela({ input: { anexo: 'I', receita: 1 } }, null) === null);
@@ -250,8 +389,21 @@ console.log('Commit fixado na função (o código cru do GitHub):');
 const idx = readFileSync(raiz + 'supabase/functions/reforma-chat/index.ts', 'utf8');
 const m = /raw\.githubusercontent\.com\/macedo-reis-contabilidade\/macedo-reis-dashboards\/([0-9a-f]{40})\/supabase\/functions\/reforma-chat\/servidor\.js/.exec(idx);
 chk('index.ts importa o servidor do repositório num commit fixado', !!m);
-const ARQS = ['supabase/functions/reforma-chat/servidor.js', 'supabase/functions/reforma-chat/agente.js', 'supabase/functions/reforma-chat/ferramentas.js', 'supabase/functions/reforma-chat/prompt.js',
-  'supabase/functions/reforma-chat/busca.js', 'assets/js/rt-motor.js', 'assets/js/rt-confianca.js', 'assets/js/dominio-relatorios.js', 'assets/js/utils.js'];
+// os arquivos que a função roda: o servidor e tudo o que ele importa (seguindo os imports relativos)
+function importados(inicio) {
+  const vistos = new Set(), fila = [inicio];
+  while (fila.length) {
+    const a = fila.shift();
+    if (vistos.has(a)) continue;
+    vistos.add(a);
+    const fonte = readFileSync(raiz + a, 'utf8');
+    for (const im of fonte.matchAll(/(?:import|export)\s[^'"]*?from\s*['"](\.{1,2}\/[^'"]+)['"]/g)) fila.push(posix.normalize(posix.join(posix.dirname(a), im[1])));
+  }
+  return [...vistos];
+}
+const ARQS = importados('supabase/functions/reforma-chat/servidor.js');
+chk('a trava segue os imports: o servidor, os módulos do chat e a conta da ficha', ['supabase/functions/reforma-chat/agente.js', 'supabase/functions/reforma-chat/ferramentas.js', 'supabase/functions/reforma-chat/prompt.js',
+  'supabase/functions/reforma-chat/busca.js', 'assets/js/rt-motor.js', 'assets/js/rt-confianca.js', 'assets/js/dominio-relatorios.js'].every(a => ARQS.includes(a)), ARQS.join(', '));
 if (m) {
   const atrasados = ARQS.filter(a => {
     let noCommit = null;
