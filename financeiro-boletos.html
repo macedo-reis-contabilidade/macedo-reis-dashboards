@@ -478,6 +478,15 @@ async function salvarLinha(r){
   }
 }
 
+// o assistente do escritório marcou (ou desfez) boletos como pagos: a grade troca a situação, sem recarregar o que está
+// sendo editado
+window.addEventListener('mr:boletos-mudaram', ev => {
+  const mud = ev.detail && Array.isArray(ev.detail.mudancas) ? ev.detail.mudancas : [];
+  let algum = false;
+  mud.forEach(m => { const r = rows.find(x => x.id === m.id); if (r && m.status) { r.status = m.status; algum = true; } });
+  if (algum) { updateCards(); render(); }
+});
+
 function abrirAdd(){ $('ovBusca').value=''; renderAddList(); $('ov').classList.add('open'); $('ovBusca').focus(); }
 function renderAddList(){
   const q=($('ovBusca').value||'').toLowerCase().trim();

@@ -9,7 +9,10 @@
 // Cada tela passa o que é dela (montarAssistente): o nome, a saudação, as perguntas de exemplo, o contexto, como
 // perguntar (perguntarFuncao — Edge Function que responde em eventos "data: {...}"), como formatar as fontes e como
 // retomar uma resposta depois de trocar de página. Os olhos seguem o mouse; reagir() faz a carinha comemorar e avisar()
-// mostra um recado (o assistente do escritório, assets/js/assistente-escritorio.js, usa os dois).
+// mostra um recado (o assistente do escritório, assets/js/assistente-escritorio.js, usa os dois). A resposta pode trazer
+// uma ação proposta ("acao": concluir tarefas, criar, marcar pago, revisar): a tela desenha o cartão dela embaixo da
+// resposta (op.cartao) e o estado do cartão (feito, desfeito…) fica guardado na conversa; mostrarAcao() põe um cartão
+// sem passar pela IA (ex.: "Revisar as atrasadas", da saudação do dia).
 // Estilos em assets/css/style.css (prefixo .as-). Os auxiliares puros (textoParaHtml, lerEventos, mensagemDoErro,
 // perguntarFuncao, lerEstado, primeiraFrase) têm teste próprio em tests/assistente.test.mjs; a tela, em
 // tests/harness/reforma-chat.py.
@@ -91,8 +94,15 @@ export function perguntarFuncao(supabase, nome) {
     } catch (e) { caiu = true; }
     if (erro) throw new Error(erro);
     if (!resposta) throw new Error(caiu ? 'A conexão caiu no meio da resposta. Tente de novo.' : 'O assistente não devolveu resposta. Tente de novo.');
-    return { texto: String(resposta.texto || ''), fontes: resposta.fontes || [], cortada: !!resposta.cortada };
+    return { texto: String(resposta.texto || ''), fontes: resposta.fontes || [], cortada: !!resposta.cortada, acao: acaoValida(resposta.acao) };
   };
+}
+
+// a ação proposta (o cartão embaixo da resposta): um objeto com "tipo"; o resto quem confere é o cartão (op.cartao).
+// Grande demais ou fora do formato fica de fora
+export function acaoValida(a) {
+  if (!a || typeof a !== 'object' || Array.isArray(a) || typeof a.tipo !== 'string' || !a.tipo || a.tipo.length > 40) return null;
+  try { return JSON.stringify(a).length <= 64000 ? a : null; } catch (e) { return null; }
 }
 
 // ------------------------------------------------------------
@@ -109,7 +119,8 @@ export function lerEstado(texto) {
   const msgs = (Array.isArray(j.msgs) ? j.msgs : [])
     .filter(m => m && typeof m === 'object' && TIPOS_MSG.includes(m.tipo) && str(m.texto))
     .map(m => ({ tipo: m.tipo, texto: m.texto.slice(0, 20000), em: str(m.em) ? m.em.slice(0, 40) : '', ctxId: id(m.ctxId),
-      etapas: Array.isArray(m.etapas) ? m.etapas.filter(str).map(e => e.slice(0, 300)).slice(0, 20) : [], ...(id(m.pedido) ? { pedido: id(m.pedido) } : {}) }));
+      etapas: Array.isArray(m.etapas) ? m.etapas.filter(str).map(e => e.slice(0, 300)).slice(0, 20) : [], ...(id(m.pedido) ? { pedido: id(m.pedido) } : {}),
+      ...(m.tipo === 'ia' && id(m.id) && acaoValida(m.acao) ? { id: id(m.id), acao: m.acao } : {}) }));
   const historico = (Array.isArray(j.historico) ? j.historico : [])
     .filter(h => h && typeof h === 'object' && str(h.pergunta) && str(h.resposta))
     .map(h => ({ pergunta: h.pergunta.slice(0, 2000), resposta: h.resposta.slice(0, 20000), ctxId: id(h.ctxId) }));
@@ -162,10 +173,14 @@ const valorOuFuncao = v => (typeof v === 'function' ? v() : v);
 //                    busca a resposta pelo id; null = a pergunta não chegou. Sem retomar, a pergunta volta pra caixa
 //   op.formatar(texto) → HTML da resposta · op.antes(): preparo antes de mostrar/enviar (ex.: carregar os códigos)
 //   op.aoClicar(ev)  clique dentro de uma resposta (ex.: a regra abre a Base legal); true = tratado
+//   op.cartao(acao, ajuda) → Element: o cartão da ação proposta, embaixo da resposta; ajuda = { salvar(acao): guarda o
+//                    estado do cartão na conversa, anunciar(texto): o leitor de tela, reagir() }. Sem op.cartao, sem cartão
 // ctx (definirContexto): { id, nome, rotulo?, nota?, ... } ou null — rotulo: a faixa ("Sobre a ficha aberta"); nota: o
 // começo da nota na conversa ("Sobre a ficha de "); os outros campos podem ser getters (são lidos na hora).
 // atualizar() redesenha as perguntas prontas (a tela mudou o que elas leem); redesenhar() refaz a conversa (ex.: os códigos
-// das fontes chegaram); reagir() faz a carinha comemorar; avisar({ texto | html, exemplos, ms }) mostra um recado.
+// das fontes chegaram); reagir() faz a carinha comemorar; avisar({ texto | html, exemplos, botoes, ms }) mostra um recado
+// (botoes: [{ rotulo, acao }] — o que acontece na tela, sem perguntar à IA); mostrarAcao({ texto, acao }) põe na conversa
+// uma mensagem com o cartão, sem passar pela IA, e abre o painel.
 // ============================================================
 export function montarAssistente(op) {
   const temMedia = q => typeof matchMedia === 'function' && matchMedia(q).matches;
@@ -276,7 +291,7 @@ export function montarAssistente(op) {
     cx.innerHTML = '';
     chips.forEach(c => {
       const b = document.createElement('button');
-      b.type = 'button'; b.className = 'as-chip'; b.textContent = c.rotulo;
+      b.type = 'button'; b.className = 'as-chip' + (c.principal ? ' as-chip-acao' : ''); b.textContent = c.rotulo;
       b.onclick = () => { esconderRecado(); c.acao(); };
       cx.appendChild(b);
     });
@@ -295,9 +310,10 @@ export function montarAssistente(op) {
   } }));
   // um recado da tela (o assistente do escritório: a saudação do dia, o que a tela tem de novo). Não aparece com o painel
   // aberto, com outro recado na tela ou com uma pergunta no ar; true = apareceu
-  function avisar({ texto: t, html, exemplos, ms = 16000 } = {}) {
+  function avisar({ texto: t, html, exemplos, botoes, ms = 16000 } = {}) {
     if (est.aberto || ocupado || !recado.hidden) return false;
-    return mostrarRecado({ html: html || '<p>' + escapeHtml(t || '') + '</p>', chips: chipsDe(exemplos), ms });
+    const acoes = (botoes || []).filter(b => b && b.rotulo && typeof b.acao === 'function').map(b => ({ rotulo: b.rotulo, acao: b.acao, principal: true }));
+    return mostrarRecado({ html: html || '<p>' + escapeHtml(t || '') + '</p>', chips: [...acoes, ...chipsDe(exemplos)], ms });
   }
 
   // ---------- mensagens: a lista cresce no fim (o que já está na tela fica como está); a cauda tem o "digitando…" e as
@@ -316,8 +332,28 @@ export function montarAssistente(op) {
     const etapas = m.etapas || [];
     const consultas = etapas.length ? '<details class="as-consultas"><summary>' + etapas.length + (etapas.length === 1 ? ' consulta' : ' consultas') + '</summary><ol>'
       + etapas.map(e => '<li>' + escapeHtml(e) + '</li>').join('') + '</ol></details>' : '';
+    // o cartão da ação proposta entra depois (montarCartoes): aqui fica só o lugar dele
+    const lugar = !erro && m.acao && m.id && op.cartao ? '<div class="as-cartao-lugar" data-msg="' + escapeHtml(m.id) + '"></div>' : '';
     return '<div class="as-msg ia' + (erro ? ' erro' : '') + n + '"><div class="as-resposta">' + (erro ? '<p>' + escapeHtml(m.texto) + '</p>' : op.formatar(m.texto)) + '</div>'
-      + '<div class="as-meta"><time>' + hora(m.em) + '</time>' + consultas + '</div></div>';
+      + lugar + '<div class="as-meta"><time>' + hora(m.em) + '</time>' + consultas + '</div></div>';
+  }
+  // os cartões: um elemento por mensagem, guardado — redesenhar a conversa não perde o que a pessoa marcou nele
+  const cartoes = new Map();
+  function montarCartoes(dentro) {
+    if (!op.cartao) return;
+    dentro.querySelectorAll('.as-cartao-lugar').forEach(lugar => {
+      const id = lugar.dataset.msg, m = est.msgs.find(x => x.id === id);
+      if (!m || !m.acao) { lugar.remove(); return; }
+      let el = cartoes.get(id);
+      if (!el) {
+        try {
+          el = op.cartao(m.acao, { salvar: a => { const v = acaoValida(a); if (v) { m.acao = v; guardar(); } }, anunciar, reagir });
+        } catch (e) { el = null; }
+        if (!el) { lugar.remove(); return; }
+        cartoes.set(id, el);
+      }
+      lugar.replaceWith(el);
+    });
   }
   const htmlSaudacao = () => '<div class="as-msg ia as-saudacao"><div class="as-resposta">' + (valorOuFuncao(op.saudacao) || '') + '</div></div>';
   // as perguntas prontas: conversa nova, ou contexto diferente do da última pergunta → os exemplos do contexto de agora;
@@ -340,13 +376,16 @@ export function montarAssistente(op) {
   function desenharTudo({ manterRolagem = false } = {}) {
     const topo = msgs.scrollTop, noFim = msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 40;
     lista.innerHTML = (est.msgs.length ? '' : htmlSaudacao()) + est.msgs.map(m => htmlDaMsg(m, false)).join('');
+    montarCartoes(lista);
     desenharCauda();
     if (manterRolagem && !noFim) msgs.scrollTop = topo; else rolar();
   }
   function acrescentar(m) {
     const s = lista.querySelector('.as-saudacao'); if (s) s.remove();
     lista.insertAdjacentHTML('beforeend', htmlDaMsg(m, true));
-    return lista.lastElementChild;
+    const el = lista.lastElementChild;
+    montarCartoes(el);
+    return el;
   }
   const atualizarDigitando = () => {
     const t = ultimaEtapa || 'Lendo a base…';
@@ -444,6 +483,7 @@ export function montarAssistente(op) {
     if (ocupado) return;
     geracao++; ultimaEtapa = '';
     est.conversa = null; est.historico = []; est.msgs = [];
+    cartoes.clear();
     guardar(); statusPadrao();
     desenharTudo();
     anunciar('Conversa nova.');
@@ -493,6 +533,9 @@ export function montarAssistente(op) {
     let el = null;
     if (res) {
       const nova = { tipo: 'ia', texto: res.texto, etapas: (etapas || []).slice(0, 20), em: agoraIso(), ctxId: cid };
+      // a ação proposta vem junto: a mensagem ganha um id (o estado do cartão fica nela)
+      const acao = acaoValida(res.acao), mid = acao ? novoId() : null;
+      if (acao && mid) { nova.id = mid; nova.acao = acao; }
       est.msgs.push(nova); el = acrescentar(nova);
       if (res.cortada) { const n = { tipo: 'nota', texto: 'A resposta passou do tamanho máximo e foi cortada — peça a continuação.', em: agoraIso(), ctxId: cid }; est.msgs.push(n); acrescentar(n); }
       est.historico.push({ pergunta: t, resposta: res.texto, ctxId: cid });
@@ -561,6 +604,20 @@ export function montarAssistente(op) {
     concluir({ t: eu.texto, cid: eu.ctxId, res, erro, devolver: true });
   }
 
+  // uma mensagem com o cartão de uma ação, sem passar pela IA (ex.: "Revisar as atrasadas", da saudação do dia); não entra
+  // no histórico que vai pra IA. Com uma pergunta no ar, espera ela acabar
+  function mostrarAcao({ texto: t, acao, abrirPainel = true } = {}) {
+    const a = acaoValida(acao), mid = novoId();
+    if (!a || !mid || ocupado) return false;
+    const m = { tipo: 'ia', texto: String(t || ''), etapas: [], em: agoraIso(), ctxId: idDe(ctxAtual()), id: mid, acao: a };
+    est.msgs.push(m);
+    const el = acrescentar(m);
+    guardar(); desenharCauda();
+    if (abrirPainel) { if (!est.aberto) abrir(false); mostrarComeco(el); }
+    else if (!est.aberto) { est.naoLidas++; atualizarSelo(); guardar(); }
+    return true;
+  }
+
   // ---------- começo ----------
   aplicarLargo();
   atualizarSelo();
@@ -586,6 +643,6 @@ export function montarAssistente(op) {
     }, 2500);
   }
 
-  return { abrir, fechar, enviar, definirContexto, atualizar: desenharCauda, redesenhar: () => desenharTudo({ manterRolagem: true }), novaConversa, reagir, avisar,
+  return { abrir, fechar, enviar, definirContexto, atualizar: desenharCauda, redesenhar: () => desenharTudo({ manterRolagem: true }), novaConversa, reagir, avisar, mostrarAcao,
     get aberto() { return est.aberto; }, get ocupado() { return ocupado; }, raiz };
 }

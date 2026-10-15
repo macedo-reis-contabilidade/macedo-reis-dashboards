@@ -1321,6 +1321,11 @@
       await carregarFoco();
       render();
     }
+    // o assistente do escritório concluiu, criou ou desfez tarefas: a agenda se atualiza
+    window.addEventListener('mr:tarefas-mudaram', async () => {
+      if (modoBusca) { await carregarDados(...rangeAtual()); await carregarFoco(); await executarBusca(termoBusca); }
+      else await recarregarERenderizar();
+    });
 
     // ---- navegação ----
     function passo(dir){

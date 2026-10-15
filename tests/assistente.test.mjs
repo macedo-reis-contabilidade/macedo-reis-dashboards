@@ -4,7 +4,7 @@
 // guardada na aba conferida campo a campo e a primeira frase do recado. O balão, o recado e o painel têm teste de tela em
 // tests/harness/reforma-chat.py.
 // Rodar com: node tests/assistente.test.mjs
-import { escapeHtml, textoParaHtml, lerEventos, mensagemDoErro, perguntarFuncao, lerEstado, primeiraFrase } from '../assets/js/assistente.js';
+import { escapeHtml, textoParaHtml, lerEventos, mensagemDoErro, perguntarFuncao, lerEstado, primeiraFrase, acaoValida } from '../assets/js/assistente.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + extra : '')); };
@@ -81,6 +81,18 @@ const sujo = lerEstado(JSON.stringify({ v: 1, conversa: 7, msgs: [null, 5, { tip
 chk('campos estranhos são descartados um a um (a tela segue com o que presta)', sujo && sujo.msgs.length === 1 && sujo.msgs[0].texto === 'ok' && sujo.msgs[0].etapas.length === 0
   && sujo.msgs[0].ctxId === null && sujo.historico.length === 0 && sujo.naoLidas === 0 && sujo.aberto === false && sujo.conversa === null, JSON.stringify(sujo));
 chk('msgs e historico que não são lista viram lista vazia', (() => { const e = lerEstado('{"v":1,"msgs":"x","historico":"y"}'); return e && e.msgs.length === 0 && e.historico.length === 0; })());
+const acao = { tipo: 'concluir_tarefas', ids: ['a', 'b'], estado: 'feita', resultado: { concluidas: [{ id: 'a', status_antes: 'pendente' }], em: '2026-10-14T12:00:00Z' } };
+const comAcao = lerEstado(JSON.stringify({ v: 1, msgs: [
+  { tipo: 'ia', texto: 'Separei 2 tarefas.', id: 'm-1', acao },
+  { tipo: 'ia', texto: 'Sem id.', acao },
+  { tipo: 'ia', texto: 'Ação sem tipo.', id: 'm-2', acao: { ids: ['x'] } },
+  { tipo: 'ia', texto: 'Ação grande demais.', id: 'm-3', acao: { tipo: 'x', lixo: 'a'.repeat(70000) } },
+  { tipo: 'eu', texto: 'Pergunta com ação?', id: 'm-4', acao }] }));
+chk('a ação proposta (o cartão) volta com a mensagem e o estado dela; sem id, sem tipo, grande demais ou na pergunta, fica de fora',
+  comAcao.msgs.length === 5 && comAcao.msgs[0].id === 'm-1' && canon(comAcao.msgs[0].acao) === canon(acao) && comAcao.msgs.slice(1).every(m => !('acao' in m) && !('id' in m)), JSON.stringify(comAcao.msgs.map(m => Object.keys(m))));
+chk('acaoValida: objeto com tipo; o resto não', acaoValida({ tipo: 'criar_tarefa', tarefa: {} }) !== null && [null, 'x', [], {}, { tipo: '' }, { tipo: 5 }, { tipo: 'x'.repeat(41) }].every(a => acaoValida(a) === null));
+const rAcao = await perguntarFuncao(falso({ data: ev({ tipo: 'resposta', texto: 'Confirme no cartão.', acao: { tipo: 'revisar_atrasadas', pessoa: 'Thalia' } }), error: null }), 'f')({});
+chk('a resposta da função traz a ação proposta (e sem ela, null)', rAcao.acao && rAcao.acao.pessoa === 'Thalia' && r.acao === null);
 
 console.log('Primeira frase (recado "Respondi" e leitor de tela):');
 const f1 = primeiraFrase('Não: é **isenção**, não alíquota zero [TST-LEI, art. 157] · [regra X]. Depois.');

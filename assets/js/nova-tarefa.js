@@ -13,6 +13,7 @@
 // ============================================================
 import { supabase } from './supabase.js';
 import { dataLocal } from './utils.js';
+import { criarTarefasAvulsas } from './tarefas-acoes.js';
 
 export const SETORES = [
   ['clientes', 'Clientes'], ['dp', 'DP'], ['fiscal', 'Fiscal'], ['contabil', 'Contábil'],
@@ -155,12 +156,11 @@ async function salvar() {
   const btn = $('ntSalvar'); btn.disabled = true;
   try {
     if (rep === 'nao') {
-      const base = { setor, titulo, descricao, responsavel, prazo: $('ntPrazo').value || null, prioridade: $('ntPri').value, tipo: 'tarefa', status: 'pendente', origem: 'avulsa', faturavel: $('ntFat').checked };
-      const ids = clis.length ? clis.map(c => c.id) : [null];
-      const { data: ins, error } = await supabase.from('tarefas').insert(ids.map(cliente_id => ({ ...base, cliente_id }))).select('id');
-      if (error) { alert('Erro ao criar: ' + error.message); return; }
-      if (ins?.length) await supabase.from('tarefa_historico').insert(ins.map(t => ({ tarefa_id: t.id, descricao: (cfg.historico || 'Tarefa cadastrada.') + (ids.length > 1 ? ` (lote de ${ids.length} clientes)` : ''), autor })));
-      fechar(); await cfg.aoSalvar?.('tarefa', ins?.length || 0); return;
+      // a mesma criação do assistente do escritório (tarefas-acoes.js)
+      const r = await criarTarefasAvulsas(supabase, { setor, titulo, descricao, responsavel, prazo: $('ntPrazo').value || null, prioridade: $('ntPri').value,
+        faturavel: $('ntFat').checked, clientes: clis.map(c => c.id), autor, historico: cfg.historico || 'Tarefa cadastrada.' });
+      if (r.erro) { alert('Erro ao criar: ' + r.erro); return; }
+      fechar(); await cfg.aoSalvar?.('tarefa', r.ids.length); return;
     }
     if (rep === 'anual' && !/^\d{2}-\d{2}$/.test($('ntAnual').value.trim())) { alert('Data anual no formato MM-DD, ex.: 01-15'); return; }
     const diaMes = Math.min(31, Math.max(1, parseInt($('ntDiaMes').value || '1', 10)));

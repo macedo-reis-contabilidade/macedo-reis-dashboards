@@ -9,6 +9,9 @@
 // de quem entrou). A carinha comemora quando alguém conclui tarefa ou rotina (evento "mr:feito", da agenda e das telas de
 // tarefas) e fica discreta quando uma janela está aberta. Na ficha da empresa (clientes/editar.html?id=…), "esta empresa"
 // é ela. Uma tela com coisa própria (a Reforma: a ficha, o cálculo, a Base legal) chama assistenteDaTela({...}).
+// Ações (concluir tarefas, marcar boleto pago, criar tarefa): a resposta traz a proposta e o cartão dela
+// (assets/js/assistente-acoes.js) pede a confirmação; a saudação do dia e o recado da Agenda perguntam pelas atrasadas
+// ("Revisar as atrasadas": o assistente pergunta, grupo por grupo, o que já foi feito).
 // As fontes da Reforma ([CODIGO]) viram link: material → o original no Drive; regra → a Base legal (na tela da Reforma,
 // por cima; nas outras, fiscal-reforma.html#regra-COD). Testes de tela: tests/harness/assistente-escritorio.py.
 // ============================================================
@@ -17,6 +20,7 @@ import { supabase } from './supabase.js';
 import { montarAssistente, perguntarFuncao, textoParaHtml, escapeHtml } from './assistente.js';
 import { nomePorEmail, SOCIOS } from './equipe.js';
 import { janelaDeCima } from './janelas.js';
+import { cartaoDaAcao } from './assistente-acoes.js';
 
 const RAIZ = new URL('../../', import.meta.url);   // a raiz do site (este arquivo mora em assets/js/)
 
@@ -47,6 +51,9 @@ const qtd = (n, um, varios) => n + ' ' + (n === 1 ? um : varios);
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 const contar = async q => { try { const { count, error } = await q; return error ? null : (count || 0); } catch (e) { return null; } };
 const tarefasAbertas = () => supabase.from('tarefas').select('id', { count: 'exact', head: true }).neq('status', 'concluida');
+// as tarefas de quem entrou (Samuel e Diego com o "Ambos"); o nome no filtro como na função: a letra acentuada vira "_"
+// (Vit_ria pega Vitória, Vitoria e VITÓRIA)
+const daPessoa = q => { const padrao = String(nomePessoa || '').replace(/[^\x00-\x7F]/g, '_'); return socio ? q.or('responsavel.ilike.' + padrao + ',responsavel.ilike.ambos') : q.ilike('responsavel', padrao); };
 
 // ---------- as perguntas prontas, por setor e por tela ----------
 const EXEMPLOS_SETOR = {
@@ -72,7 +79,13 @@ const dicaSetor = setor => async () => {
 };
 const TELAS = {
   'index.html': { nome: 'Painel central', exemplos: EXEMPLOS_GERAIS },
-  'agenda.html': { nome: 'Agenda', exemplos: ['O que tenho pra hoje?', 'O que tenho esta semana?', 'O que está atrasado, por pessoa?'] },
+  'agenda.html': { nome: 'Agenda', exemplos: ['O que tenho pra hoje?', 'O que tenho esta semana?', 'O que está atrasado, por pessoa?'],
+    // na Agenda, ele pergunta pelas atrasadas de quem entrou
+    dica: async () => {
+      if (!nomePessoa) return null;
+      const n = await contar(daPessoa(tarefasAbertas().lt('prazo', hojeISO())));
+      return n ? { texto: 'Você tem ' + qtd(n, 'tarefa atrasada', 'tarefas atrasadas') + '. Alguma já foi feita?', botoes: [{ rotulo: 'Revisar as atrasadas', acao: () => iniciarRevisao() }] } : null;
+    } },
   'ajuda.html': { nome: 'Ajuda', exemplos: ['O que mudou no sistema esta semana?', 'Onde vejo os boletos do mês?'] },
   'clientes/index.html': { nome: 'Clientes' },
   'clientes/editar.html': { nome: 'Ficha da empresa' },
@@ -217,7 +230,7 @@ async function retomar(pedido, aoEtapa) {
   while (Date.now() < fim) {
     const { data, error } = await supabase.from('assistente_chat').select('situacao, resposta, aviso, fontes').eq('id', pedido).maybeSingle();
     if (!error && data) {
-      if (data.situacao === 'ok') return { texto: data.resposta || '', cortada: !!(data.fontes && data.fontes.cortada) };
+      if (data.situacao === 'ok') return { texto: data.resposta || '', cortada: !!(data.fontes && data.fontes.cortada), acao: (data.fontes && data.fontes.acao) || null };
       if (data.situacao === 'erro') throw new Error(data.aviso || 'Não consegui responder agora. Tente de novo em instantes.');
     } else if (!error && ++semLinha >= 5) return null;   // a pergunta não chegou a sair da tela anterior
     await espera(2000);
@@ -273,6 +286,8 @@ function montar() {
     perguntar: perguntarFuncao(supabase, 'assistente'),
     retomar,
     formatar,
+    // a ação proposta na resposta: o cartão pede a confirmação (e grava com o login de quem está na tela)
+    cartao: (acao, ajuda) => cartaoDaAcao(acao, { ...ajuda, email, nome: nomePessoa }),
     // na tela da Reforma as respostas citam a base: os códigos vêm antes (nas outras, só quando uma resposta cita)
     antes: () => (caminho === 'fiscal-reforma.html' ? carregarFontes() : null),
     aoClicar: ev => (tela.aoClicar ? tela.aoClicar(ev) : false)
@@ -301,13 +316,13 @@ async function recadoDoDia() {
     if (!guardado.ler(base + 'saudacao')) {
       const r = await saudacaoDoDia();
       guardado.gravar(base + 'saudacao', '1');
-      if (r) { api.avisar({ texto: r.texto, exemplos: r.exemplos, ms: 15000 }); return; }
+      if (r) { api.avisar({ texto: r.texto, exemplos: r.exemplos, botoes: r.botoes, ms: r.botoes ? 20000 : 15000 }); return; }
     }
     const dica = cfg.dica || null;
     if (!dica || guardado.ler(base + caminho)) return;
     guardado.gravar(base + caminho, '1');
     const r = await dica();
-    if (r && !api.aberto) api.avisar({ texto: r.texto, exemplos: r.exemplos, ms: 14000 });
+    if (r && !api.aberto) api.avisar({ texto: r.texto, exemplos: r.exemplos, botoes: r.botoes, ms: 14000 });
   } catch (e) { /* o recado é enfeite: erro aqui não atrapalha a tela */ }
 }
 async function saudacaoDoDia() {
@@ -315,15 +330,20 @@ async function saudacaoDoDia() {
   const oi = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite';
   if (!nomePessoa) return { texto: oi + '! Eu vejo tudo do sistema, em qualquer tela — é só perguntar.', exemplos: EXEMPLOS_GERAIS.slice(0, 2) };
   const hoje = hojeISO();
-  // o nome no filtro como na função: a letra acentuada vira "_" (Vit_ria pega Vitória, Vitoria e VITÓRIA)
-  const padrao = nomePessoa.replace(/[^\x00-\x7F]/g, '_');
-  const daPessoa = q => (socio ? q.or('responsavel.ilike.' + padrao + ',responsavel.ilike.ambos') : q.ilike('responsavel', padrao));
   const [nHoje, nAtras] = await Promise.all([contar(daPessoa(tarefasAbertas().eq('prazo', hoje))), contar(daPessoa(tarefasAbertas().lt('prazo', hoje)))]);
   let t = oi + ', ' + nomePessoa + '! ';
   if (nHoje == null || nAtras == null) t += 'Eu vejo tudo do sistema, em qualquer tela — é só perguntar.';
   else if (!nHoje && !nAtras) t += 'Nenhuma tarefa sua pra hoje nem atrasada.';
-  else t += 'Hoje você tem ' + qtd(nHoje, 'tarefa', 'tarefas') + (nAtras ? ', e ' + qtd(nAtras, 'atrasada', 'atrasadas') : '') + '.';
-  return { texto: t, exemplos: nAtras ? ['O que tenho pra hoje?', 'O que está atrasado comigo?'] : ['O que tenho pra hoje?'] };
+  else t += 'Hoje você tem ' + qtd(nHoje, 'tarefa', 'tarefas') + (nAtras ? ', e ' + qtd(nAtras, 'atrasada', 'atrasadas') + '. Alguma delas já foi feita?' : '.');
+  // com atrasadas, ele pergunta: "Revisar as atrasadas" abre a revisão (grupo por grupo, o que já foi feito)
+  return nAtras ? { texto: t, botoes: [{ rotulo: 'Revisar as atrasadas', acao: () => iniciarRevisao() }], exemplos: ['O que tenho pra hoje?'] }
+    : { texto: t, exemplos: ['O que tenho pra hoje?'] };
+}
+// a revisão das atrasadas de quem está na tela (ou de outra pessoa da equipe), sem passar pela IA
+function iniciarRevisao(pessoa = nomePessoa) {
+  if (!api || !pessoa) return;
+  const texto = pessoa === nomePessoa ? 'Vamos passar as suas atrasadas a limpo: eu pergunto, grupo por grupo, o que já foi feito.' : 'As atrasadas de ' + pessoa + ', grupo por grupo:';
+  if (!api.mostrarAcao({ texto, acao: { tipo: 'revisar_atrasadas', pessoa } })) api.abrir();
 }
 
 function ligarVida() {

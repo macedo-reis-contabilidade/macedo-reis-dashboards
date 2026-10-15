@@ -12,6 +12,7 @@ import { supabase, getCurrentUser, signOut } from './supabase.js';
 import { formatDate } from './utils.js';
 import { abrirNovaTarefa } from './nova-tarefa.js';
 import { rotinaDoDia, rotinaFeita } from './rotinas-dia.js';
+import { avisarDependentes } from './tarefas-acoes.js';
 
 const CSS = `
   .fa-focus { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:22px; }
@@ -802,6 +803,8 @@ export function initTarefas(userCfg) {
   // Conclusão simples, uma a uma, sem cobrança à parte (decisão do Samuel): update + histórico,
   // erro checado em cada passo; falha numa não interrompe as outras; resumo honesto no fim.
   let loteRodando = false;
+  // o assistente do escritório concluiu, criou ou desfez tarefas: a lista se atualiza (no meio de um lote, ele recarrega no fim)
+  window.addEventListener('mr:tarefas-mudaram', () => { if (!loteRodando) carregarTarefas(); });
   async function concluirLote(det, ids, barra, obs) {   // confirmação e observação vêm da janela do lote
     if (!ids.length) return;
     if (loteRodando) { alert('Já tem um lote em andamento — espere ele terminar.'); return; }
@@ -1514,19 +1517,5 @@ export function initTarefas(userCfg) {
 }
 
 // ---- dependências entre tarefas geradas pelo mesmo processo ----
-// Hoje só uma regra: no kit de Transformação, a escrituração contábil espera a precificação do
-// honorário do novo porte. Quando a tarefa comercial é concluída, a contábil irmã (mesmo cliente,
-// ainda aberta) recebe uma linha no histórico e um sufixo no título dizendo que pode iniciar.
-async function _avisarDependentes(t) {
-  if (!t || !t.cliente_id || !/^precificar honor[áa]rios do novo porte/i.test(String(t.titulo || ''))) return;
-  const { data: irmas } = await supabase.from('tarefas').select('id, titulo')
-    .eq('cliente_id', t.cliente_id).neq('status', 'concluida')
-    .or('titulo.ilike.Iniciar escrituração contábil do novo enquadramento%,titulo.ilike.Transformação registrada — escrituração aguarda%');
-  if (!irmas || !irmas.length) return;
-  const hoje = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-  for (const s of irmas) {
-    const titulo = /honorário fechado em/i.test(s.titulo) ? s.titulo : ('Iniciar escrituração contábil do novo enquadramento (honorário fechado em ' + hoje + ')');
-    await supabase.from('tarefas').update({ titulo }).eq('id', s.id);
-    await supabase.from('tarefa_historico').insert({ tarefa_id: s.id, descricao: 'Honorário do novo porte precificado em ' + hoje + ' (tarefa comercial concluída) — a escrituração pode iniciar.', autor: 'sistema' });
-  }
-}
+// A regra mora em tarefas-acoes.js (o assistente do escritório, ao concluir, usa a mesma)
+async function _avisarDependentes(t) { return avisarDependentes(supabase, t); }
