@@ -13,6 +13,7 @@ import { montarSistema, preambulo, INSTRUCOES } from '../supabase/functions/refo
 import { DEFINICOES, criarFerramentas, aplicarAlteracoes, acharCaso, situacaoDoCaso, descreverEtapa } from '../supabase/functions/reforma-chat/ferramentas.js';
 import { responder, criarChamador, comCache, fontesDaResposta, erroDoChat } from '../supabase/functions/reforma-chat/agente.js';
 import { criarServidor, limparTela, limparHistorico, hojeBR, LIMITE_DIA, SIMULTANEAS, mensagemDeErro } from '../supabase/functions/reforma-chat/servidor.js';
+import { linhaDaBase, categoriasDaBase, comLinhaDaBase, semLinhaDaBase, diaDaLeitura } from '../supabase/functions/reforma-chat/procedencia.js';
 import { simular, aliquotas2027, entradaComAliquotas } from '../assets/js/rt-motor.js';
 
 const raiz = fileURLToPath(new URL('..', import.meta.url));
@@ -66,6 +67,10 @@ chk('só as sínteses vão inteiras (a leitura completa é pelas ferramentas)', 
 chk('nada que muda de uma pergunta pra outra no fixo (a data de hoje, a ficha)', !/Hoje:|Ficha aberta/.test(sis[0].text + sis[1].text));
 chk('instruções: só a base, fonte em toda afirmação, números só pelo simulador, curso fora do texto pro cliente',
   /só da base/.test(INSTRUCOES) && /FONTE EM TODA AFIRMAÇÃO/.test(INSTRUCOES) && /Nunca calcule de cabeça/.test(INSTRUCOES) && /não escreva texto para o cliente com conteúdo do curso/.test(INSTRUCOES));
+chk('instruções: as leituras OF- são fontes oficiais de fora do curso e valem sobre ele (com a divergência dita); a linha "Base da resposta" é do sistema',
+  /Base legal > norma oficial, orientação oficial e nota técnica \(inclusive as leituras OF-\) > síntese do escritório > material do curso/.test(INSTRUCOES)
+  && /divergem, vale a oficial: diga a divergência/.test(INSTRUCOES) && /cópia não oficial ou notícia, diga assim/.test(INSTRUCOES)
+  && /Não escreva a linha "Base da resposta": o sistema acrescenta no fim/.test(INSTRUCOES));
 const pre = preambulo({ hoje: '14/10/2026', caso: 'LOJA DE TESTE UM LTDA', telaNaoGravada: true });
 chk('a data e a ficha aberta vão na mensagem do usuário', /Hoje: 14\/10\/2026/.test(pre) && /Ficha aberta: LOJA DE TESTE UM LTDA/.test(pre) && /não gravados/.test(pre));
 
@@ -215,11 +220,43 @@ chk('fontes: "[regras A e B]" conta as duas; data no colchete não vira fonte de
 chk('mensagens de erro pro usuário: em português e sem detalhe interno', /sobrecarregado/.test(mensagemDeErro(erroDoChat('sobrecarga', 'API 529'))) && /demorou demais/.test(mensagemDeErro(erroDoChat('tempo', 'x')))
   && mensagemDeErro(new Error('banco 500: {segredo}')) === 'Não consegui responder agora. Tente de novo em instantes.');
 
+console.log('De onde veio a resposta (a linha "Base da resposta", calculada pelo servidor):');
+{
+  // curso = todo código que não começa por OF-; OF- = fontes oficiais de fora do curso, com a data da leitura (lido_em)
+  const MATS = [{ codigo: 'TST-AULA', lido_em: '2026-10-12' }, { codigo: 'OF-TST-LEI', lido_em: '2026-10-15' }, { codigo: 'OF-TST-RECEITA', lido_em: '2026-10-14T13:00:00+00:00' },
+    { codigo: 'OF-TST-NAO-CITADA', lido_em: '2026-10-20' }, { codigo: 'OF-TST-SEM-DATA', lido_em: null }];
+  const mat = c => ({ tipo: 'material', codigo: c }), reg = c => ({ tipo: 'regra', codigo: c });
+  const sel = (fontes, etapas = []) => linhaDaBase({ fontes, etapas, materiais: new Map(MATS.map(x => [x.codigo, x])) });
+  const CURSO = 'Base da resposta: materiais do curso do Prof. Fellipe Guerra';
+  chk('só material do curso', sel([mat('TST-AULA')]) === CURSO + '.', sel([mat('TST-AULA')]));
+  chk('só fontes OF-: fora do curso, com a data da conferência', sel([mat('OF-TST-LEI')]) === 'Base da resposta: fora dos materiais do curso — fontes oficiais conferidas pelo escritório em 15/10/2026.', sel([mat('OF-TST-LEI')]));
+  chk('curso e OF- juntos', sel([mat('TST-AULA'), mat('OF-TST-RECEITA')]) === CURSO + ' e fontes oficiais de fora do curso (conferidas pelo escritório em 14/10/2026).', sel([mat('TST-AULA'), mat('OF-TST-RECEITA')]));
+  chk('a data é a da leitura mais recente entre as OF- citadas (a não citada não conta); sem data, sem data',
+    / em 15\/10\/2026\.$/.test(sel([mat('OF-TST-RECEITA'), mat('OF-TST-LEI'), mat('OF-TST-SEM-DATA')]))
+    && sel([mat('OF-TST-SEM-DATA')]) === 'Base da resposta: fora dos materiais do curso — fontes oficiais conferidas pelo escritório.', sel([mat('OF-TST-SEM-DATA')]));
+  chk('com a Base legal citada: "e a Base legal do escritório"; só ela, só ela', sel([mat('TST-AULA'), reg('TST-REGRA')]) === CURSO + ' e a Base legal do escritório.'
+    && sel([reg('TST-REGRA')]) === 'Base da resposta: a Base legal do escritório.'
+    && sel([mat('OF-TST-LEI'), reg('TST-REGRA')]) === 'Base da resposta: fora dos materiais do curso — fontes oficiais conferidas pelo escritório em 15/10/2026 e a Base legal do escritório.', sel([mat('OF-TST-LEI'), reg('TST-REGRA')]));
+  chk('com ver_caso, simular ou listar_casos: "e o simulador do sistema"; só ele, só ele', sel([mat('TST-AULA')], [{ ferramenta: 'buscar_base' }, { ferramenta: 'ver_caso' }]) === CURSO + ' e o simulador do sistema.'
+    && sel([], [{ ferramenta: 'simular' }]) === 'Base da resposta: o simulador do sistema.' && sel([], [{ ferramenta: 'listar_casos' }]) === 'Base da resposta: o simulador do sistema.');
+  const tudo = sel([mat('TST-AULA'), mat('OF-TST-LEI'), reg('TST-REGRA')], [{ ferramenta: 'ver_caso' }]);
+  chk('tudo junto, em lista', tudo === CURSO + ', fontes oficiais de fora do curso (conferidas pelo escritório em 15/10/2026), a Base legal do escritório e o simulador do sistema.', tudo);
+  chk('nada citado e nenhum caso consultado: a base não cobre (buscar e ler sem citar não contam)', sel([], [{ ferramenta: 'buscar_base' }, { ferramenta: 'ler_material' }]) === 'Base da resposta: nenhuma fonte da base (a base não cobre a pergunta).'
+    && sel([]) === sel([], [{ ferramenta: 'ver_caso', erro: true }]), sel([], [{ ferramenta: 'ver_caso', erro: true }]));
+  chk('as categorias gravadas, na ordem curso, oficial, regra, simulador', JSON.stringify(categoriasDaBase({ fontes: [reg('TST-REGRA'), mat('OF-TST-LEI'), mat('TST-AULA')], etapas: [{ ferramenta: 'listar_casos' }] })) === '["curso","oficial","regra","simulador"]'
+    && JSON.stringify(categoriasDaBase({ fontes: [], etapas: [] })) === '[]');
+  chk('o dia da leitura: data, data e hora sem fuso, e com fuso (o dia em Brasília)', diaDaLeitura('2026-10-15') === '2026-10-15' && diaDaLeitura('2026-10-16T01:30:00.123456+00:00') === '2026-10-15'
+    && diaDaLeitura('2026-10-16 02:00:00+00') === '2026-10-15' && diaDaLeitura('2026-10-16T02:00:00') === '2026-10-16' && diaDaLeitura('ontem') === null && diaDaLeitura(null) === null);
+  chk('a linha vai no fim, depois de uma linha em branco; a que o modelo escreveu sai (fica só a do servidor)',
+    comLinhaDaBase('Texto [TST-AULA, p. 1].\n\n**Base da resposta:** a que o modelo inventou.', 'Base da resposta: X.') === 'Texto [TST-AULA, p. 1].\n\nBase da resposta: X.'
+    && comLinhaDaBase('Só texto.', 'Base da resposta: X.') === 'Só texto.\n\nBase da resposta: X.' && semLinhaDaBase('Linha 1\n\n\nLinha 2') === 'Linha 1\n\n\nLinha 2');
+}
+
 console.log('Servidor da função:');
 const AGORA = new Date('2026-10-14T15:00:00Z');
 const NOVO_ID = '66666666-6666-4666-8666-666666666666';
 // banco falso: o rt_chat guarda as linhas de verdade (a contagem do limite sai delas, com o criado_em de cada uma)
-function falsoBanco({ usuarioEmail = 'equipe@macedoereis.com.br', contagem = 0, reivindicada = null, carteira = [], demora = 0 } = {}) {
+function falsoBanco({ usuarioEmail = 'equipe@macedoereis.com.br', contagem = 0, reivindicada = null, carteira = [], demora = 0, materiais = MATERIAIS } = {}) {
   const log = [], linhas = [];
   let relogio = 0, novos = 0;
   for (let i = 0; i < contagem; i++) linhas.push({ id: 'antiga-' + i, usuario: usuarioEmail, situacao: 'ok', tokens_saida: 10, criado_em: '2026-10-14T12:00:00.' + String(100000 + i) + '+00:00' });
@@ -229,7 +266,7 @@ function falsoBanco({ usuarioEmail = 'equipe@macedoereis.com.br', contagem = 0, 
     log.push({ url: u, metodo, corpo: o.body ? JSON.parse(o.body) : null, headers: o.headers || {} });
     const json = (x, h = {}, status = 200) => new Response(JSON.stringify(x), { status, headers: { 'Content-Type': 'application/json', ...h } });
     if (u.includes('/auth/v1/user')) return (o.headers.Authorization === 'Bearer jwt-bom') ? json({ email: usuarioEmail }) : new Response('{}', { status: 401 });
-    if (u.includes('/rest/v1/rt_materiais')) return json(MATERIAIS);
+    if (u.includes('/rest/v1/rt_materiais')) return json(materiais);
     if (u.includes('/rest/v1/rt_regras')) return json(REGRAS);
     if (u.includes('/rest/v1/rt_regra_materiais')) return json(VINCULOS);
     if (u.includes('/rest/v1/rt_parametros')) return json([{ chave: 'aliq_ref_2027', valor: { cbs: 9.3, ibs: 0.1, cbs_aplicada: 9.2 } }]);
@@ -317,6 +354,10 @@ const fechamento = (log, id = NOVO_ID) => log.find(x => x.metodo === 'PATCH' && 
     && ab.corpo.caso_id === CASOS[0].id && ab.corpo.conversa === '44444444-4444-4444-8444-444444444444' && /select=id,criado_em/.test(ab.url));
   const g = fechamento(log);
   chk('e fecha com a resposta: fontes, uso, modelo', g && /Resposta de teste/.test(g.corpo.resposta) && g.corpo.fontes.citadas.length === 1 && g.corpo.tokens_entrada === 10 && g.corpo.modelo === 'modelo-teste' && g.corpo.situacao === 'ok');
+  const comBase = 'Resposta de teste [TST-LEI, art. 47].\n\nBase da resposta: materiais do curso do Prof. Fellipe Guerra.';
+  chk('a linha "Base da resposta" vai no fim da resposta devolvida e da gravada; as categorias em fontes.base', j.resposta === comBase && g && g.corpo.resposta === comBase
+    && JSON.stringify(g.corpo.fontes.base) === '["curso"]', JSON.stringify(j.resposta) + ' · ' + JSON.stringify(g && g.corpo.fontes));
+  chk('a base é lida com a data da leitura de cada material (lido_em)', log.some(x => /\/rest\/v1\/rt_materiais\?select=[^&]*\blido_em\b/.test(x.url)));
   const contagens = log.filter(x => x.url.includes('/rest/v1/rt_chat') && x.metodo === 'GET');
   chk('o limite conta só até a pergunta nova (criado_em), sem as que deram erro sem tokens', contagens.length === 2 && contagens.every(x => /criado_em=lte\./.test(x.url))
     && contagens.some(x => /or=\(situacao\.neq\.erro,tokens_saida\.gt\.0\)/.test(x.url)) && contagens.some(x => /situacao=eq\.rodando/.test(x.url)));
@@ -328,6 +369,30 @@ const fechamento = (log, id = NOVO_ID) => log.find(x => x.metodo === 'PATCH' && 
   const rf = await srv(pedido({ pergunta: 'Em fluxo?', fluxo: true }));
   const txt = await rf.text();
   chk('com "fluxo": text/event-stream com a resposta no fim', rf.headers.get('Content-Type') === 'text/event-stream' && /^data: \{"tipo":"resposta","texto":"Resposta de teste/m.test(txt));
+  const evResp = [...txt.matchAll(/data: (.*)\n\n/g)].map(x => JSON.parse(x[1])).find(e => e.tipo === 'resposta');
+  chk('em fluxo, a resposta também termina com a linha "Base da resposta"', evResp && evResp.texto === comBase, evResp && JSON.stringify(evResp.texto));
+}
+{
+  // fonte oficial (OF-) + Base legal + simulador; a linha que o modelo escreveu por conta própria é trocada pela do servidor
+  const OFICIAL = { codigo: 'OF-TST-LEI', modulo: 'Fontes oficiais (fora dos cursos)', titulo: 'Lei oficial de teste', tipo: 'norma', oficial: true, autor: null, data_ref: '2026-01-13',
+    lido_em: '2026-10-15', ordem: 1, leitura: '# Lei oficial de teste\n\n## Art. 1\nTexto oficial de teste.' };
+  const { f, log } = falsoBanco({ materiais: MATERIAIS.concat(OFICIAL) });
+  const chamarOficial = (() => { let n = 0; return async () => ++n === 1 ? { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'v', name: 'ver_caso', input: { caso: 'loja de teste um' } }], usage: {} }
+    : { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Pela lei, sim [OF-TST-LEI, art. 1] · [regra TST-REGRA].\n\nBase da resposta: materiais do curso do Prof. Fellipe Guerra.' }], usage: {} }; })();
+  const j = await (await criarServidor({ env: k => ENV[k], fetch: f, agora: () => AGORA, chamar: chamarOficial })(pedido({ pergunta: 'A lei oficial permite?' }))).json();
+  const g = fechamento(log);
+  const esperada = 'Pela lei, sim [OF-TST-LEI, art. 1] · [regra TST-REGRA].\n\nBase da resposta: fora dos materiais do curso — fontes oficiais conferidas pelo escritório em 15/10/2026, a Base legal do escritório e o simulador do sistema.';
+  chk('fonte OF- com a Base legal e o simulador: a linha diz "fora dos materiais do curso", com a data; a do modelo sai (uma linha só)', j.resposta === esperada && g && g.corpo.resposta === esperada
+    && (j.resposta.match(/Base da resposta/g) || []).length === 1, JSON.stringify(j.resposta));
+  chk('e grava as categorias (oficial, regra, simulador)', g && JSON.stringify(g.corpo.fontes.base) === '["oficial","regra","simulador"]', JSON.stringify(g && g.corpo.fontes));
+}
+{
+  // nada citado e nenhum caso consultado
+  const { f, log } = falsoBanco();
+  const j = await (await criarServidor({ env: k => ENV[k], fetch: f, agora: () => AGORA, chamar: async () => ({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'A base não cobre esse ponto.' }], usage: {} }) })(pedido({ pergunta: 'E o IPTU?' }))).json();
+  const g = fechamento(log);
+  chk('sem fonte citada: "nenhuma fonte da base (a base não cobre a pergunta)", devolvida e gravada', j.resposta === 'A base não cobre esse ponto.\n\nBase da resposta: nenhuma fonte da base (a base não cobre a pergunta).'
+    && g && g.corpo.resposta === j.resposta && JSON.stringify(g.corpo.fontes.base) === '[]', JSON.stringify(j.resposta));
 }
 {
   // duas perguntas ao mesmo tempo com a base vencida: uma carga só
@@ -367,6 +432,9 @@ const fechamento = (log, id = NOVO_ID) => log.find(x => x.metodo === 'PATCH' && 
   chk('avaliação: só linha "avaliacao" pendente e recente', claim && /usuario=eq\.avaliacao&situacao=eq\.pendente&criado_em=gte\./.test(claim.url));
   const fim = fechamento(log, linha.id);
   chk('avaliação: a resposta volta pra mesma linha (com o corte anotado nas fontes)', fim && fim.corpo.situacao === 'ok' && /Resposta de teste/.test(fim.corpo.resposta) && fim.corpo.fontes.cortada === true);
+  const cortadaComBase = 'Resposta de teste [TST-LEI, art. 47].\n\nBase da resposta: materiais do curso do Prof. Fellipe Guerra.';
+  chk('resposta cortada também leva a linha "Base da resposta" (devolvida e gravada, com fontes.cortada e fontes.base)', j.resposta === cortadaComBase && fim && fim.corpo.resposta === cortadaComBase
+    && JSON.stringify(fim.corpo.fontes.base) === '["curso"]', JSON.stringify(j.resposta));
   chk('avaliação não abre linha nova nem conta limite', !log.some(x => x.url.includes('/rest/v1/rt_chat') && (x.metodo === 'POST' || x.metodo === 'GET')));
   const { f: f2 } = falsoBanco({ reivindicada: null });
   chk('avaliação com id usado, velho ou inventado: 403', (await criarServidor({ env: k => ENV[k], fetch: f2, agora: () => AGORA, chamar: chamarFinal })(pedido({ avaliacao: linha.id }, 'anon'))).status === 403);
@@ -404,7 +472,7 @@ function importados(inicio) {
 }
 const ARQS = importados('supabase/functions/reforma-chat/servidor.js');
 chk('a trava segue os imports: o servidor, os módulos do chat e a conta da ficha', ['supabase/functions/reforma-chat/agente.js', 'supabase/functions/reforma-chat/ferramentas.js', 'supabase/functions/reforma-chat/prompt.js',
-  'supabase/functions/reforma-chat/busca.js', 'assets/js/rt-motor.js', 'assets/js/rt-confianca.js', 'assets/js/dominio-relatorios.js'].every(a => ARQS.includes(a)), ARQS.join(', '));
+  'supabase/functions/reforma-chat/busca.js', 'supabase/functions/reforma-chat/procedencia.js', 'assets/js/rt-motor.js', 'assets/js/rt-confianca.js', 'assets/js/dominio-relatorios.js'].every(a => ARQS.includes(a)), ARQS.join(', '));
 if (m) {
   const atrasados = ARQS.filter(a => {
     let noCommit = null;

@@ -9,6 +9,10 @@
 // pedidos em paralelo não furam o limite, e no máximo 2 perguntas da mesma pessoa rodam ao mesmo tempo. Pergunta que deu
 // erro antes de chegar ao modelo (sem tokens) não gasta a cota. Erro pro usuário sai em português, sem detalhe interno
 // (o detalhe fica no rt_chat e no log).
+// Toda resposta termina com a linha "Base da resposta" (procedencia.js): materiais do curso do Prof. Fellipe Guerra, fontes
+// oficiais de fora do curso (os códigos OF-), a Base legal, o simulador — ou nenhuma fonte. Quem calcula é o servidor, pelas
+// fontes citadas e pelas ferramentas usadas; vai no texto gravado (rt_chat.resposta, com as categorias em fontes.base) e no
+// devolvido, inclusive na resposta cortada.
 // Avaliação automática: o banco cria a linha da pergunta em rt_chat (usuario "avaliacao", situacao "pendente") e chama a
 // função com o id dela — vale uma vez só, por 30 minutos; ninguém de fora cria essa linha (a tabela só tem leitura).
 // Puro: env, fetch, relógio e chamador injetados — testes em tests/reforma-chat.test.mjs.
@@ -18,6 +22,7 @@ import { criarIndice } from './busca.js';
 import { montarSistema, preambulo } from './prompt.js';
 import { DEFINICOES, CAMPOS, BOOLS, criarFerramentas, nomeDoCaso, descreverEtapa } from './ferramentas.js';
 import { criarChamador, responder, fontesDaResposta } from './agente.js';
+import { linhaDaBase, categoriasDaBase, comLinhaDaBase, semLinhaDaBase } from './procedencia.js';
 import { aliquotas2027 } from '../../../assets/js/rt-motor.js';
 
 export const DOMINIO = '@macedoereis.com.br';
@@ -90,7 +95,7 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
     if (cacheBase && agora().getTime() - cacheBase.em < TTL_BASE) return cacheBase;
     if (!carregando) carregando = (async () => {
       const [materiais, regras, vinculos, prm] = await Promise.all([
-        lista('rt_materiais?select=codigo,modulo,titulo,tipo,oficial,autor,data_ref,leitura,ordem&ativo=eq.true&order=modulo.asc,ordem.asc,codigo.asc'),
+        lista('rt_materiais?select=codigo,modulo,titulo,tipo,oficial,autor,data_ref,lido_em,leitura,ordem&ativo=eq.true&order=modulo.asc,ordem.asc,codigo.asc'),
         lista('rt_regras?select=codigo,titulo,dispositivo,regra,aplica_a,efeito,fonte,verificado_em&ativo=eq.true&order=codigo.asc'),
         lista('rt_regra_materiais?select=regra_codigo,material_codigo,onde,ordem&order=regra_codigo.asc,ordem.asc,material_codigo.asc'),
         lista('rt_parametros?select=chave,valor')
@@ -180,16 +185,21 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
       const mensagem = preambulo({ hoje: hojeBR(agora()), caso: nomeFicha, telaNaoGravada: !!ctx.tela }) + pergunta;
       res = await responder({ chamar: chamarModelo, sistema: base.sistema, definicoes: DEFINICOES, ferramentas, historico, mensagem, aoEtapa, prazoMs, descrever: descreverEtapa });
     } catch (e) { erro = e || new Error('erro'); }
-    const fs = res && base ? fontesDaResposta(res.texto, base.codMateriais, base.codRegras) : { fontes: [], desconhecidas: [] };
+    // de onde veio a resposta: a linha "Base da resposta" sai das fontes citadas e das ferramentas usadas (a que o modelo
+    // tenha escrito sai) e vai no fim do texto gravado e do devolvido — também na resposta cortada
+    const corpo = res ? semLinhaDaBase(res.texto) : null;
+    const fs = res && base ? fontesDaResposta(corpo, base.codMateriais, base.codRegras) : { fontes: [], desconhecidas: [] };
+    const texto = res ? comLinhaDaBase(corpo, linhaDaBase({ fontes: fs.fontes, etapas: res.etapas, materiais: base ? base.porCodigo : null })) : null;
     const detalhe = erro ? String((erro && erro.message) || erro).slice(0, 1000) : null;
-    const linha = { usuario, conversa: conversa || null, caso_id: ctx.caso_id || null, pergunta, resposta: res ? res.texto : null,
-      fontes: res ? { citadas: fs.fontes, desconhecidas: fs.desconhecidas, ...(res.cortada ? { cortada: true } : {}) } : null, etapas: res ? res.etapas : null, modelo: res ? res.modelo : null,
+    const linha = { usuario, conversa: conversa || null, caso_id: ctx.caso_id || null, pergunta, resposta: texto,
+      fontes: res ? { citadas: fs.fontes, desconhecidas: fs.desconhecidas, base: categoriasDaBase({ fontes: fs.fontes, etapas: res.etapas }), ...(res.cortada ? { cortada: true } : {}) } : null,
+      etapas: res ? res.etapas : null, modelo: res ? res.modelo : null,
       tokens_entrada: res ? res.uso.entrada : null, tokens_saida: res ? res.uso.saida : null, tokens_cache_leitura: res ? res.uso.cacheLeitura : null,
       tokens_cache_escrita: res ? res.uso.cacheEscrita : null, duracao_ms: agora().getTime() - t0, situacao: erro ? 'erro' : 'ok', erro: detalhe };
     try { await fecharLinha(id, linha); }
     catch (e) { console.error('reforma-chat: histórico não gravado —', e && e.message); }
     if (erro) { console.error('reforma-chat: pergunta sem resposta —', detalhe); return { ok: false, erro: mensagemDeErro(erro) }; }
-    return { ok: true, texto: res.texto, fontes: fs.fontes, cortada: !!res.cortada };
+    return { ok: true, texto, fontes: fs.fontes, cortada: !!res.cortada };
   }
 
   return async function atender(req) {

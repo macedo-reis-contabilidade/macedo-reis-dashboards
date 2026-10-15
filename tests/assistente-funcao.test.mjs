@@ -30,7 +30,8 @@ chk('o dicionário do prompt lista as tabelas e não tem credenciais', Object.ke
 chk('as definições: as cinco de ler e as quatro propostas, consultar só com as tabelas da lista', DEFINICOES.map(d => d.name).join() === 'buscar_empresa,ver_empresa,agenda,consultar,perguntar_reforma,propor_concluir_tarefas,propor_marcar_pago,propor_criar_tarefa,propor_revisao_atrasadas'
   && JSON.stringify(DEFINICOES.find(d => d.name === 'consultar').input_schema.properties.tabela.enum) === JSON.stringify(Object.keys(TABELAS)));
 chk('o prompt: a Reforma sozinha na rodada (a resposta dela vai direto, com as fontes); a tela pelo nome e a situação por extenso',
-  /Chame sozinha na rodada/.test(INSTRUCOES) && /mantenha as fontes dele entre colchetes/.test(INSTRUCOES) && /não financeiro-boletos\.html/.test(INSTRUCOES) && /não em_transicao/.test(INSTRUCOES));
+  /Chame sozinha na rodada/.test(INSTRUCOES) && /mantenha as fontes dele entre colchetes/.test(INSTRUCOES) && /não financeiro-boletos\.html/.test(INSTRUCOES) && /não em_transicao/.test(INSTRUCOES)
+  && /a última linha dele \("Base da resposta: …"/.test(INSTRUCOES) && /não a escreva por conta própria/.test(INSTRUCOES));
 
 console.log('Montagem das consultas:');
 chk('coluna fora da lista: erro com as colunas que existem', /não é lida em clientes/.test(erroDe(() => filtroUrl('clientes', { coluna: 'credenciais', op: '=', valor: 'x' }))));
@@ -209,7 +210,8 @@ function bancoFalso({ tarefas = [], rotinas = [], extras = {} } = {}) {
   const fs = criarFerramentas({ banco: bancoFalso().banco, hoje: '2026-10-14', perguntarReforma: async p => { perguntas.push(p); return { texto: 'Sim, por fora [regra X].', cortada: false }; } });
   const r = await fs.perguntar_reforma({ pergunta: 'A LOJA pode optar por fora?' });
   chk('perguntar_reforma: a resposta dela vai direto (final), com a pergunta completa', r && r.final === true && r.texto === 'Sim, por fora [regra X].' && perguntas[0] === 'A LOJA pode optar por fora?');
-  chk('perguntar_reforma: o texto pra quando não encerra (pedida junto com outra) pede pra manter as fontes', /mantenha as fontes dele entre colchetes/.test(r.comoTexto) && r.comoTexto.endsWith('\nSim, por fora [regra X].'), r.comoTexto);
+  chk('perguntar_reforma: o texto pra quando não encerra (pedida junto com outra) pede pra manter as fontes e a linha "Base da resposta"', /mantenha as fontes dele entre colchetes/.test(r.comoTexto)
+    && /Mantenha também a última linha dele \("Base da resposta: …"\) como veio/.test(r.comoTexto) && r.comoTexto.endsWith('\nSim, por fora [regra X].'), r.comoTexto);
   chk('a Reforma responde uma vez por pergunta', /já respondeu nesta pergunta/.test(await fs.perguntar_reforma({ pergunta: 'De novo?' })) && perguntas.length === 1);
   const fs2 = criarFerramentas({ banco: bancoFalso().banco, hoje: '2026-10-14', perguntarReforma: async () => ({ texto: 'Texto da Reforma.' }) });
   chk('perguntar_reforma pra cruzar com outros dados: volta como texto', /^Resposta do assistente da Reforma/.test(await fs2.perguntar_reforma({ pergunta: 'x', devolver_direto: false })));

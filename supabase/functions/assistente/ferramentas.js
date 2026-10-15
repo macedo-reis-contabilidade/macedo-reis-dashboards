@@ -735,7 +735,9 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     const r = await perguntarReforma(pergunta.slice(0, 2000));
     // pra cruzar com outros dados, volta como texto — salvo se o tempo da pergunta está acabando: aí vai direto. Pedida
     // junto com outra ferramenta, também volta como texto (o comoTexto): nos dois casos, com o recado de manter as fontes
-    const comoTexto = 'Resposta do assistente da Reforma — ao usar, mantenha as fontes dele entre colchetes exatamente como vieram ([regra CODIGO], [CODIGO, onde]): na tela elas viram links.\n' + r.texto;
+    // e a última linha, "Base da resposta" (de onde veio: o curso ou fontes de fora — quem escreve é a função da Reforma)
+    const comoTexto = 'Resposta do assistente da Reforma — ao usar, mantenha as fontes dele entre colchetes exatamente como vieram ([regra CODIGO], [CODIGO, onde]): na tela elas viram links.'
+      + ' Mantenha também a última linha dele ("Base da resposta: …") como veio, no fim da sua resposta.\n' + r.texto;
     if (e.devolver_direto === false && !deveFinalizar()) return comoTexto;
     return { final: true, texto: r.texto, cortada: !!r.cortada, comoTexto };
   }
