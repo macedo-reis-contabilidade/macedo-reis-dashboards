@@ -104,7 +104,8 @@ SEMEAR = """
 
 AVISO = ('⚠ Na sociedade, pela leitura da alínea d (LC 214, art. 127, §1º, II, d — o requisito é da sociedade, não de cada serviço), atividade fora das '
          'habilitações dos sócios tira a redução de 30% de toda a receita, a conferir no regulamento: confira se a parte nas outras faixas é mesmo dessa '
-         'empresa. Academia registrada no conselho não tem essa exigência (§3º).')
+         'empresa. Academia registrada no conselho não tem essa exigência (§3º), e o serviço agronômico ou veterinário com −60% do Anexo IX é da '
+         'própria habilitação dos sócios.')
 
 falhas = 0
 def ok(cond, msg):

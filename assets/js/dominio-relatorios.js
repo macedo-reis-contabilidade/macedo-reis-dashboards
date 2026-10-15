@@ -351,8 +351,15 @@ export function ramoComZero(cnae) {
 // SERVIÇO COM REDUÇÃO PELO CNAE (13/10/2026, Módulo 07): candidato, não enquadramento. Profissões do art. 127 da LC 214
 // (−30% se a sociedade cumprir os requisitos do §1º, II — dado da empresa, no contrato social); serviços de educação e de
 // saúde humana (−60% pela lista de NBS dos Anexos II e III, arts. 129 e 130), eventos e produções nacionais (Anexo X,
-// art. 139) — as listas de NBS não estão na base; academia e escola de esporte (−30% sem os requisitos, se registrada no
-// conselho, art. 127, §3º, e −60% se a aula for a educação desportiva da NBS 1.2205.12.00, art. 141, I — vale a maior)
+// art. 139); academia e escola de esporte (−30% sem os requisitos, se registrada no conselho, art. 127, §3º, e −60% se a
+// aula for a educação desportiva da NBS 1.2205.12.00, art. 141, I — vale a maior).
+// Pelas listas oficiais de NBS (15/10/2026, checagem oficial — OF-NBS-ANEXOS): a educação do Anexo II é só o ensino
+// regular (infantil, fundamental, médio, técnico e superior — idiomas, arte e cultura, autoescola, treinamento,
+// preparatório e apoio à educação ficam na alíquota cheia); a saúde do Anexo III não tem práticas integrativas,
+// acupuntura, podologia, terapia ocupacional nem a gestão de saúde, e tem o acolhimento de idosos e de pessoas com
+// deficiência (item 27), o apoio domiciliar e a funerária (item 30); o Anexo IX dá −60% aos serviços agronômicos e de
+// técnico agrícola (itens 22 e 23), veterinários para produção animal (24), inseminação (26), pulverização (28) e
+// preparo de solo, plantio e colheita (29), sem os requisitos da sociedade do art. 127 — vale a maior (art. 7º-A)
 const SERVICO_RED30 = [
   ['6911701', 'advocacia', 'advogados (art. 127, II)'],
   ['6920', 'contabilidade', 'contabilistas (art. 127, VII)'],
@@ -364,13 +371,34 @@ const SERVICO_RED30 = [
   ['7119703', 'serviços técnicos de engenharia', 'engenheiros, agrônomos e técnicos industriais (art. 127, XI e XVII)'],
   ['7119704', 'serviços técnicos de engenharia', 'engenheiros, agrônomos e técnicos industriais (art. 127, XI e XVII)'],
   ['7119799', 'serviços técnicos de engenharia', 'engenheiros, agrônomos e técnicos industriais (art. 127, XI e XVII)'],
-  ['7490103', 'agronomia', 'agrônomos e técnicos agrícolas (art. 127, XI e XVIII)'],
-  ['7500', 'veterinária', 'médicos veterinários e zootecnistas (art. 127, XIII)'],
   ['7020', 'consultoria em gestão', 'administradores e economistas (art. 127, I e VIII), só com os sócios registrados no conselho']
 ];
+// agronomia e veterinária: −60% do Anexo IX sem os requisitos da sociedade e, fora dele, −30% do art. 127 com os requisitos.
+// Na agronomia, o −60% depende de o serviço estar na lista (premissa da lei); na veterinária, de quanto da receita é
+// atendimento a animais de produção (o animal de estimação fica fora do Anexo IX — dado da empresa)
+const SERVICO_AGRO = [
+  ['7490103', 'agronomia', 'agrônomos e técnicos agrícolas (art. 127, XI e XVIII)', 'Anexo IX da LC 214 (serviços agronômicos e de técnico agrícola, itens 22 e 23, art. 138)', true],
+  ['7500', 'veterinária', 'médicos veterinários e zootecnistas (art. 127, XIII)', 'Anexo IX da LC 214 (serviços veterinários para produção animal, item 24, art. 138)', false]
+];
+// na divisão 86, o que o Anexo III não tem: terapia ocupacional, gestão de saúde, práticas integrativas, acupuntura e podologia
+const SAUDE_FORA_DO_ANEXO = ['8650005', '8660', '8690901', '8690903', '8690904'];
+const ENSINO_REGULAR = 'Anexo II da LC 214 (ensino regular, art. 129)';
+const SAUDE = 'Anexo III da LC 214 (serviços de saúde, art. 130)';
+const FUNERARIA = 'Anexo III da LC 214 (serviços funerários, de cremação e de embalsamamento, item 30, art. 130)';
 const SERVICO_RED60 = [
-  ['85', 'educação', 'Anexo II da LC 214 (serviços de educação, art. 129)'],
-  ['86', 'saúde humana', 'Anexo III da LC 214 (serviços de saúde, art. 130)'],
+  ['8511', 'educação infantil', ENSINO_REGULAR], ['8512', 'educação infantil', ENSINO_REGULAR],
+  ['8513', 'ensino fundamental', ENSINO_REGULAR], ['8520', 'ensino médio', ENSINO_REGULAR],
+  ['8531', 'ensino superior', ENSINO_REGULAR], ['8532', 'ensino superior', ENSINO_REGULAR], ['8533', 'ensino superior', ENSINO_REGULAR],
+  ['8541', 'ensino técnico', ENSINO_REGULAR], ['8542', 'ensino tecnológico', ENSINO_REGULAR],
+  ['86', 'saúde humana', SAUDE],
+  ['8711', 'acolhimento de idosos e de pessoas com deficiência', 'Anexo III da LC 214 (unidades de acolhimento, item 27, art. 130)'],
+  ['8712', 'apoio a paciente no domicílio', SAUDE],
+  // 9603-3/01, gestão e manutenção de cemitérios, fica fora
+  ['9603302', 'funeral e cremação', FUNERARIA], ['9603303', 'funeral e cremação', FUNERARIA], ['9603304', 'funeral e cremação', FUNERARIA],
+  ['9603305', 'funeral e cremação', FUNERARIA], ['9603399', 'funeral e cremação', FUNERARIA],
+  ['0161001', 'pulverização e controle de pragas', 'Anexo IX da LC 214 (pulverização e controle de pragas, item 28, art. 138)'],
+  ['0161003', 'preparo de solo, plantio e colheita', 'Anexo IX da LC 214 (semeadura, adubação, plantio e colheita, item 29, art. 138)'],
+  ['0162801', 'inseminação artificial', 'Anexo IX da LC 214 (inseminação de animais de criação, item 26, art. 138)'],
   // (8230-0/02, casas de festas e eventos, fica fora: aluguel de salão e bufê não são produção de evento)
   ['8230001', 'eventos', 'Anexo X da LC 214 (feiras, congressos e eventos nacionais, art. 139)'],
   ['9001', 'espetáculos', 'Anexo X da LC 214 (espetáculos e shows nacionais, art. 139)'],
@@ -381,8 +409,11 @@ export function reducaoServicoPorCnae(cnae) {
   const d = digitosCnae(cnae);
   if (!d) return null;
   if (/^(9313|8591)/.test(d)) return { tipo: 'desporto', faixas: ['mixRed30', 'mixRed60'], ramo: d.startsWith('9313') ? 'academia' : 'ensino de esportes' };
+  const ag = SERVICO_AGRO.find(([p]) => d.startsWith(p));
+  if (ag) return { tipo: 'agro', faixas: ['mixRed60', 'mixRed30'], ramo: ag[1], quem: ag[2], anexo: ag[3], premissa60: ag[4] };
   const r30 = SERVICO_RED30.find(([p]) => d.startsWith(p));
   if (r30) return { tipo: 'profissao', faixas: ['mixRed30'], ramo: r30[1], quem: r30[2] };
+  if (SAUDE_FORA_DO_ANEXO.some(p => d.startsWith(p))) return null;
   const r60 = SERVICO_RED60.find(([p]) => d.startsWith(p));
   if (r60) return { tipo: 'anexo', faixas: ['mixRed60'], ramo: r60[1], anexo: r60[2] };
   return null;

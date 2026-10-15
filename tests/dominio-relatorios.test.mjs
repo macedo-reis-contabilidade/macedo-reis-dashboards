@@ -382,9 +382,28 @@ console.log('\nCNAE sem o zero da frente, ramos com alíquota zero, serviço com
     && !perfilAtividade({ cnae: '4929-9/01' }).fretamentoIntermunicipal && !perfilAtividade({ cnae: '4929-9/03' }).fretamentoIntermunicipal && !perfilAtividade({ cnae: '4923-0/01' }).fretamentoIntermunicipal,
     'fretamento entre cidades (9/02, 9/04 e só "4929") a conferir; municipal (9/01, 9/03) e táxi não');
   ok(urb.rotulo === 'transporte de passageiros' && perfilAtividade({ cnae: '4929-9/01', natureza: { servico: 100 } }).rotulo === 'transporte de passageiros (fretamento, táxi ou escolar)', 'com NFS-e, o rótulo continua o do transporte de passageiros');
-  ok(reducaoServicoPorCnae('7490-1/03').tipo === 'profissao' && /XVIII/.test(reducaoServicoPorCnae('7490-1/03').quem), 'agronomia e consultoria agropecuária (7490-1/03): agrônomos e técnicos agrícolas');
   ok(reducaoServicoPorCnae('7119-7/02') === null && reducaoServicoPorCnae('7119-7/01').tipo === 'profissao', 'estudos geológicos fora (geólogo não está no rol); topografia dentro');
   ok(reducaoServicoPorCnae('8230-0/02') === null && reducaoServicoPorCnae('8230-0/01').tipo === 'anexo', 'casa de festas fora; organização de feiras e eventos dentro');
+  // pelas listas oficiais de NBS (15/10/2026, checagem oficial): educação só no ensino regular; saúde sem o que o Anexo III não
+  // tem; acolhimento, apoio domiciliar e funerária dentro; agronomia e veterinária com o −60% do Anexo IX e o −30% do art. 127
+  ok(['8511-2/00', '8512-1/00', '8513-9/00', '8520-1/00', '8531-7/00', '8532-5/00', '8533-3/00', '8541-4/00', '8542-2/00'].every(c => { const r = reducaoServicoPorCnae(c); return r && r.tipo === 'anexo' && /Anexo II da LC 214 \(ensino regular/.test(r.anexo); }),
+    'creche, pré-escola, fundamental, médio, superior, técnico e tecnológico: −60% do Anexo II (ensino regular)');
+  ok(['8550-3/02', '8592-9/01', '8593-7/00', '8599-6/01', '8599-6/04', '8599-6/99', '85'].every(c => reducaoServicoPorCnae(c) === null),
+    'apoio à educação, arte e cultura, idiomas, autoescola, treinamento e outros cursos: alíquota cheia (fora do Anexo II)');
+  ok(['8690-9/01', '8690-9/03', '8690-9/04', '8650-0/05', '8660-7/00'].every(c => reducaoServicoPorCnae(c) === null),
+    'práticas integrativas, acupuntura, podologia, terapia ocupacional e gestão de saúde: fora do Anexo III');
+  ok(['8650-0/01', '8650-0/02', '8650-0/03', '8650-0/04', '8650-0/06', '8690-9/02', '8690-9/99', '8610-1/01', '8640-2/02'].every(c => reducaoServicoPorCnae(c).tipo === 'anexo'),
+    'enfermagem, nutrição, psicologia, fisioterapia, fonoaudiologia, banco de leite, hospital e laboratório: candidatos do Anexo III');
+  const acol = reducaoServicoPorCnae('8711-5/02'), fun = reducaoServicoPorCnae('9603-3/04');
+  ok(acol && acol.tipo === 'anexo' && /item 27/.test(acol.anexo) && reducaoServicoPorCnae('8712-3/00').tipo === 'anexo', 'acolhimento de idosos (item 27) e apoio a paciente no domicílio: Anexo III');
+  ok(fun && fun.tipo === 'anexo' && /item 30/.test(fun.anexo) && reducaoServicoPorCnae('9603-3/02').tipo === 'anexo' && reducaoServicoPorCnae('9603-3/01') === null, 'funerária e cremação: Anexo III (item 30); cemitério fora');
+  const agr = reducaoServicoPorCnae('7490-1/03'), vet = reducaoServicoPorCnae('7500-1/00');
+  ok(agr && agr.tipo === 'agro' && agr.faixas.join() === 'mixRed60,mixRed30' && /XVIII/.test(agr.quem) && /Anexo IX/.test(agr.anexo) && agr.premissa60 === true,
+    'agronomia (7490-1/03): −60% do Anexo IX (lista da lei, premissa) e −30% do art. 127 (agrônomos e técnicos agrícolas)');
+  ok(vet && vet.tipo === 'agro' && vet.ramo === 'veterinária' && vet.faixas.join() === 'mixRed60,mixRed30' && /item 24/.test(vet.anexo) && vet.premissa60 === false,
+    'veterinária (7500): −60% no atendimento a animais de produção (dado da empresa) e −30% do art. 127');
+  ok(['0161-0/01', '0161-0/03', '0162-8/01'].every(c => { const r = reducaoServicoPorCnae(c); return r && r.tipo === 'anexo' && /Anexo IX/.test(r.anexo); })
+    && reducaoServicoPorCnae('0161-0/02') === null, 'pulverização, preparo de solo, plantio e colheita e inseminação: −60% do Anexo IX; poda de árvores fora');
 }
 
 console.log('\nRBT12 × relatórios, mês com mês:');

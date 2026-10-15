@@ -279,18 +279,28 @@ export function textoReducaoServico(rs) {
   if (!rs) return '';
   if (rs.tipo === 'profissao') return 'Serviço de ' + rs.quem + ': tem redução de 30% por fora se a sociedade cumprir os cinco requisitos do art. 127 da LC 214 — sócios habilitados e fiscalizados pelo conselho, nenhum sócio pessoa jurídica, não ser sócia de outra pessoa jurídica, nada fora das habilitações dos sócios e o serviço prestado pelos sócios.';
   if (rs.tipo === 'desporto') return (rs.ramo === 'academia' ? 'Academia' : 'Ensino de esportes') + ': tem redução de 30% por fora se a pessoa jurídica for registrada no conselho de educação física (LC 214, art. 127, §3º — sem os requisitos da sociedade), e de 60% se a aula for a educação desportiva da NBS 1.2205.12.00 (art. 141, I) — vale a maior.';
-  return 'Serviço de ' + rs.ramo + ': tem redução de 60% por fora se estiver na lista do ' + rs.anexo + ' — a lista, por código da NBS, não está na nossa base.';
+  if (rs.tipo === 'agro') return rs.ramo === 'veterinária'
+    ? 'Veterinária: o atendimento a animais de produção tem redução de 60% por fora, sem os requisitos da sociedade (serviços veterinários para produção animal, ' + String(rs.anexo).split(' (')[0] + ', item 24, art. 138); o de animais de estimação tem 30% só se a sociedade cumprir os requisitos do art. 127 — vale a maior.'
+    : 'Serviço de ' + rs.ramo + ': os serviços agronômicos e de técnico agrícola da lista do ' + String(rs.anexo).split(' (')[0] + ' (itens 22 e 23, art. 138) têm redução de 60% por fora, sem os requisitos da sociedade; fora da lista, 30% se a sociedade cumprir os requisitos do art. 127 — vale a maior.';
+  return 'Serviço de ' + rs.ramo + ': tem redução de 60% por fora se estiver na lista do ' + rs.anexo + ' — confira cada serviço na lista, por código da NBS.';
 }
 const FALTA_SERVICO = {
   profissao: ['os requisitos do art. 127 da LC 214 (contrato social e registro dos sócios no conselho)', 'o contrato social e o registro dos sócios no conselho profissional (CRC, OAB, CREA, CRMV…)'],
   desporto: ['o registro no conselho de educação física e o enquadramento da aula na NBS 1.2205.12.00', 'o registro da empresa no conselho de educação física (CREF) e a descrição das aulas'],
   anexo: ['o enquadramento do serviço na lista de redução da LC 214 (NBS)', 'a relação dos serviços que a empresa presta (pra conferir na lista de serviços com redução)']
 };
+// agronomia e veterinária (15/10/2026, checagem oficial): o −60% do Anexo IX sem os requisitos da sociedade e o −30% do
+// art. 127 com eles — vale a maior
+const FALTA_AGRO = {
+  agronomia: ['o enquadramento dos serviços no Anexo IX da LC 214 (serviços agronômicos, NBS 1.1410.90.00) e, fora dele, os requisitos do art. 127', 'a relação dos serviços que a empresa presta e o contrato social, com o registro dos sócios no conselho (CREA)'],
+  'veterinária': ['quanto da receita é atendimento a animais de produção (Anexo IX da LC 214, item 24) e, no resto, os requisitos do art. 127', 'quanto do faturamento vem do atendimento a animais de produção (gado, aves, suínos) e quanto de animais de estimação, e o contrato social, com o registro dos sócios no conselho (CRMV)']
+};
 const FALTA_PASSAGEIROS = 'o enquadramento do transporte de passageiros (linha regular sob autorização, permissão ou concessão · urbano, semiurbano, metropolitano, intermunicipal ou interestadual)';
 
 function itemMixServico(ent, pc, rs, it, cheio) {
-  // as profissões do art. 127 e o desporto: os requisitos são da empresa (contrato social, conselho) — dado; a lista de
-  // NBS dos Anexos II, III e X é da lei — premissa (como o enquadramento da refeição por contrato, art. 273)
+  // as profissões do art. 127, o desporto, a agronomia e a veterinária: os requisitos são da empresa (contrato social,
+  // conselho, quanto é animal de produção) — dado; a lista de NBS dos Anexos II, III, IX e X é da lei — premissa (como o
+  // enquadramento da refeição por contrato, art. 273)
   it.categoria = rs.tipo === 'anexo' ? 'premissa' : 'dado';
   it.periodo = '—';
   const comReducao = rs.faixas.some(f => (+ent[f] || 0) > 0);
@@ -304,22 +314,31 @@ function itemMixServico(ent, pc, rs, it, cheio) {
   }
   it.selo = 'a conferir';
   it.motivo = textoReducaoServico(rs) + (cheio ? ' A conta considera tudo à alíquota cheia.' : comReducao ? ' A conta usa a redução informada.' : ' A conta usa o mix informado.');
-  it.motivoCliente = (rs.tipo === 'anexo' ? 'Serviço de ' + rs.ramo + ' pode ter redução de 60% por fora, conforme a lista da lei' : rs.tipo === 'desporto' ? 'A aula de esporte pode ter redução de 30% ou de 60% por fora, conforme o registro no conselho e a lista da lei' : 'Serviço de profissão regulamentada pode ter redução de 30% por fora, se a sociedade cumprir os requisitos da lei') + ' — ainda não conferido.';
-  [it.falta, it.faltaCliente] = FALTA_SERVICO[rs.tipo];
+  const vet = rs.tipo === 'agro' && rs.ramo === 'veterinária';
+  it.motivoCliente = (rs.tipo === 'anexo' ? 'Serviço de ' + rs.ramo + ' pode ter redução de 60% por fora, conforme a lista da lei' : rs.tipo === 'desporto' ? 'A aula de esporte pode ter redução de 30% ou de 60% por fora, conforme o registro no conselho e a lista da lei'
+    : vet ? 'Serviço veterinário pode ter redução de 60% por fora no atendimento a animais de produção e de 30% no de animais de estimação, se a sociedade cumprir os requisitos da lei'
+    : rs.tipo === 'agro' ? 'Serviço agronômico pode ter redução de 60% por fora, conforme a lista da lei, ou de 30%, se a sociedade cumprir os requisitos da lei'
+    : 'Serviço de profissão regulamentada pode ter redução de 30% por fora, se a sociedade cumprir os requisitos da lei') + ' — ainda não conferido.';
+  [it.falta, it.faltaCliente] = rs.tipo === 'agro' ? (FALTA_AGRO[rs.ramo] || FALTA_AGRO.agronomia) : FALTA_SERVICO[rs.tipo];
   // o plausível: tudo cheio (sem os requisitos, ou o serviço fora da lista) e cada redução possível na receita toda —
   // menos o que já está na conta. Na academia, o −30% depende do registro no conselho (dado da empresa) e o −60%, de a aula
   // ser a educação desportiva da NBS 1.2205.12.00 (questão da lei): se só o −60% muda o resultado, o item vira premissa
   const rot = f => f === 'mixRed30'
     ? (rs.tipo === 'desporto' ? 'toda a receita com −30% (academia registrada no conselho, art. 127, §3º)' : 'toda a receita com −30% (se a sociedade cumprir os requisitos do art. 127)')
-    : (rs.tipo === 'desporto' ? 'toda a receita com −60% (aula na NBS 1.2205.12.00, art. 141, I)' : 'toda a receita com −60% (se o serviço estiver no ' + String(rs.anexo || 'anexo').split(' (')[0] + ')');
+    : (rs.tipo === 'desporto' ? 'toda a receita com −60% (aula na NBS 1.2205.12.00, art. 141, I)' : vet ? 'toda a receita com −60% (atendimento a animais de produção, Anexo IX, art. 138)' : 'toda a receita com −60% (se o serviço estiver no ' + String(rs.anexo || 'anexo').split(' (')[0] + ')');
   const rotCli = f => f === 'mixRed30'
     ? (rs.tipo === 'desporto' ? 'desconto de 30% em toda a receita (empresa registrada no conselho de educação física)' : 'desconto de 30% em toda a receita (se a sociedade cumprir os requisitos da lei)')
-    : (rs.tipo === 'desporto' ? 'desconto de 60% em toda a receita (se a aula estiver na lista da lei)' : 'desconto de 60% em toda a receita (se o serviço estiver na lista da lei)');
+    : (rs.tipo === 'desporto' ? 'desconto de 60% em toda a receita (se a aula estiver na lista da lei)' : vet ? 'desconto de 60% em toda a receita (atendimento a animais de produção)' : 'desconto de 60% em toda a receita (se o serviço estiver na lista da lei)');
   const cand = [];
-  if (!cheio) cand.push({ rotulo: rs.tipo === 'profissao' ? 'tudo à alíquota cheia (se a sociedade não cumprir os requisitos do art. 127)' : rs.tipo === 'desporto' ? 'tudo à alíquota cheia (sem o registro no conselho e fora da educação desportiva)' : 'tudo à alíquota cheia (se o serviço não estiver na lista)',
-    rotuloCliente: rs.tipo === 'profissao' ? 'o imposto cheio em toda a receita (se a sociedade não cumprir os requisitos da lei)' : rs.tipo === 'desporto' ? 'o imposto cheio em toda a receita (sem o registro no conselho)' : 'o imposto cheio em toda a receita (se o serviço não estiver na lista da lei)',
+  if (!cheio) cand.push({ rotulo: rs.tipo === 'profissao' ? 'tudo à alíquota cheia (se a sociedade não cumprir os requisitos do art. 127)' : rs.tipo === 'desporto' ? 'tudo à alíquota cheia (sem o registro no conselho e fora da educação desportiva)'
+      : vet ? 'tudo à alíquota cheia (animais de estimação, sem os requisitos do art. 127)' : rs.tipo === 'agro' ? 'tudo à alíquota cheia (fora da lista do Anexo IX e sem os requisitos do art. 127)' : 'tudo à alíquota cheia (se o serviço não estiver na lista)',
+    rotuloCliente: rs.tipo === 'profissao' ? 'o imposto cheio em toda a receita (se a sociedade não cumprir os requisitos da lei)' : rs.tipo === 'desporto' ? 'o imposto cheio em toda a receita (sem o registro no conselho)'
+      : vet ? 'o imposto cheio em toda a receita (animais de estimação, sem os requisitos da sociedade)' : rs.tipo === 'agro' ? 'o imposto cheio em toda a receita (fora da lista da lei e sem os requisitos da sociedade)' : 'o imposto cheio em toda a receita (se o serviço não estiver na lista da lei)',
     ent: { ...ent, ...mixSo('mixCheia') } });
-  rs.faixas.filter(f => !ehSo(ent, f)).forEach(f => cand.push({ rotulo: rot(f), rotuloCliente: rotCli(f), premissa: rs.tipo === 'desporto' && f === 'mixRed60', ent: { ...ent, ...mixSo(f) } }));
+  // o −60% que é questão da lei (a aula de academia na NBS, o serviço agronômico na lista do Anexo IX) é premissa; o da
+  // veterinária depende de quanto é animal de produção — dado da empresa
+  const premissa = f => f === 'mixRed60' && (rs.tipo === 'desporto' || (rs.tipo === 'agro' && !!rs.premissa60));
+  rs.faixas.filter(f => !ehSo(ent, f)).forEach(f => cand.push({ rotulo: rot(f), rotuloCliente: rotCli(f), premissa: premissa(f), ent: { ...ent, ...mixSo(f) } }));
   it.variantes = cand;
   return it;
 }

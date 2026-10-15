@@ -221,6 +221,21 @@ console.log('Serviço com redução pelo CNAE — profissões do art. 127, lista
   const ac = avaliarConfianca({ ...SV, pctPJ: 5, pctComprasDespesas: 20 }, M12_ALTA, { ...SERVICO, reducaoServico: ACAD });
   const ma = item(ac, 'mix');
   ok(ma.resultados.length === 2 && /art\. 127, §3º/.test(ma.resultados[0].rotulo) && /NBS 1\.2205\.12\.00/.test(ma.resultados[1].rotulo) && /vale a maior/.test(ma.motivo), 'academia: testa o −30% e o −60% — vale a maior');
+  // agronomia e veterinária (15/10/2026, checagem oficial): −60% do Anexo IX sem os requisitos e −30% do art. 127 com eles.
+  // Na agronomia, o −60% é da lista da lei (premissa); na veterinária, depende de quanto é animal de produção (dado)
+  const AGRO = { tipo: 'agro', faixas: ['mixRed60', 'mixRed30'], ramo: 'agronomia', quem: 'agrônomos e técnicos agrícolas (art. 127, XI e XVIII)', anexo: 'Anexo IX da LC 214 (serviços agronômicos e de técnico agrícola, itens 22 e 23, art. 138)', premissa60: true };
+  const VET = { ...AGRO, ramo: 'veterinária', quem: 'médicos veterinários e zootecnistas (art. 127, XIII)', anexo: 'Anexo IX da LC 214 (serviços veterinários para produção animal, item 24, art. 138)', premissa60: false };
+  const ag = avaliarConfianca({ ...SV, pctPJ: 5, pctComprasDespesas: 20 }, M12_ALTA, { ...SERVICO, reducaoServico: AGRO });
+  const mg = item(ag, 'mix');
+  ok(mg.resultados.length === 2 && /se o serviço estiver no Anexo IX da LC 214/.test(mg.resultados[0].rotulo) && /requisitos do art\. 127/.test(mg.resultados[1].rotulo) && /vale a maior/.test(mg.motivo) && /itens 22 e 23/.test(mg.motivo),
+    'agronomia: testa o −60% do Anexo IX e o −30% do art. 127 — vale a maior');
+  ok(mg.categoria === 'premissa' && ag.conclusao === 'firme' && ag.premissas.includes(mg), 'agronomia: só o −60% da lista vira o resultado — premissa da lei, não tira a conclusão');
+  const ag80 = avaliarConfianca(SV, M12_ALTA, { ...SERVICO, reducaoServico: AGRO });
+  ok(item(ag80, 'mix').categoria === 'dado' && ag80.conclusao === 'sem_conclusao', 'agronomia: com o −30% (requisitos da sociedade) também virando, é dado da empresa — sem conclusão');
+  const vt = avaliarConfianca({ ...SV, pctPJ: 5, pctComprasDespesas: 20 }, M12_ALTA, { ...SERVICO, reducaoServico: VET });
+  const mv = item(vt, 'mix');
+  ok(mv.categoria === 'dado' && vt.conclusao === 'sem_conclusao' && vt.decisivos.includes(mv) && /animais de produção/.test(mv.resultados[0].rotulo), 'veterinária: o −60% depende de quanto é animal de produção — dado da empresa, sem conclusão');
+  ok(vt.faltamCliente.some(f => /animais de produção/.test(f) && /CRMV/.test(f)) && /animais de estimação/.test(mv.motivoCliente), 'o que falta, pro cliente: quanto é animal de produção e o contrato social (CRMV)');
   // quem também vende mercadoria não entra aqui (o CNAE de serviço não decide o mix de quem vende produto)
   const vet = avaliarConfianca({ ...SV, anexo: 'I' }, M12_ALTA, { tipo: 'comercio', vendeMercadoria: true, podeReduzir: false, reducaoServico: { tipo: 'profissao', faixas: ['mixRed30'], ramo: 'veterinária', quem: 'médicos veterinários' } });
   ok(item(vet, 'mix').selo !== 'a conferir', 'empresa que vende mercadoria: o mix segue a regra do ramo, não a do serviço');
