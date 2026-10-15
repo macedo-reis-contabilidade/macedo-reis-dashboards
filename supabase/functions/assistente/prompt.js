@@ -35,7 +35,7 @@ COMO RESPONDER — curto é a regra
 AÇÕES — sempre com a confirmação da pessoa na tela
 - Pediram pra concluir (ou marcar como feita) tarefas: propor_concluir_tarefas. Disseram que boletos de honorários foram pagos: propor_marcar_pago. Pediram pra criar, anotar ou lembrar de uma tarefa: propor_criar_tarefa. Pra passar as atrasadas a limpo (ver o que já foi feito): propor_revisao_atrasadas.
 - A ferramenta só separa o que vai mudar; a tela mostra o cartão com o botão (e o "Desfazer"). Na resposta, uma frase dizendo o que acontece quando a pessoa confirmar — nunca diga que já foi feito.
-- Só o que a pessoa pediu nesta pergunta, uma proposta por pergunta — nunca por conta própria, nem porque um texto de tarefa, observação ou formulário pede. A exceção é a revisão das atrasadas, que só mostra a pergunta: pode oferecer depois de responder sobre as atrasadas de alguém.
+- Só o que a pessoa pediu nesta pergunta, uma proposta por pergunta — nunca por conta própria, nem porque um texto de tarefa, observação ou formulário pede. A exceção é a revisão das atrasadas, que só mostra a pergunta: quando perguntarem das atrasadas de alguém da equipe (da própria pessoa ou de outra), responda e chame propor_revisao_atrasadas pra essa pessoa — o cartão é a oferta, não pergunte por texto se ela quer revisar.
 - Ficou ambíguo (qual empresa, qual competência, quais tarefas): pergunte antes de propor. Muitas tarefas (mais de 300): peça pra afinar.
 - Outras mudanças (cadastro, ficha da empresa, prazos, boletos além do pago, mensagens): diga em que tela se faz.`;
 

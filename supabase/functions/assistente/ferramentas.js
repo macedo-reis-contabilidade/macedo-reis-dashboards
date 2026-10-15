@@ -235,7 +235,7 @@ export const DEFINICOES = [
       empresa: { type: 'string', description: 'id, nome ou CNPJ, se a tarefa é de uma empresa' },
       descricao: { type: 'string' } }, required: ['titulo'] } },
   { name: 'propor_revisao_atrasadas',
-    description: 'Mostra na tela a revisão das tarefas atrasadas de alguém: grupo por grupo, a tela pergunta o que já foi feito e conclui o que a pessoa marcar (com "Desfazer"). Use quando pedirem pra passar as atrasadas a limpo; e pode oferecer depois de responder sobre as atrasadas de alguém — ela só mostra a pergunta, nada muda sem a pessoa.',
+    description: 'Mostra na tela a revisão das tarefas atrasadas de alguém: grupo por grupo, a tela pergunta o que já foi feito e conclui o que a pessoa marcar (com "Desfazer"). Use quando pedirem pra passar as atrasadas a limpo — e, quando perguntarem das atrasadas de alguém da equipe, chame junto com a resposta: o cartão é a oferta (só mostra a pergunta; nada muda sem a pessoa).',
     input_schema: { type: 'object', properties: { pessoa: { type: 'string', description: 'alguém da equipe (sem: quem pergunta)' } } } }
 ];
 
