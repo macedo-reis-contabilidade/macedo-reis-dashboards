@@ -63,7 +63,7 @@
   </div>
 
 <script type="module">
-  import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+  import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm';
   const supabase = createClient('https://ltsujjgzlhaxosbeudgg.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx0c3Vqamd6bGhheG9zYmV1ZGdnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4NTk1NDksImV4cCI6MjA5NDQzNTU0OX0.vShdPB7s30hsD6609909UrzjyQzFargV9R9BAk2rPhI');
 
   const PERFIL = new URLSearchParams(location.search).get('perfil') === 'nova' ? 'nova' : 'constituida';

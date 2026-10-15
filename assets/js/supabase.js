@@ -3,7 +3,27 @@
 // Usando legacy anon key (JWT) — compatibilidade máxima com Auth
 // ============================================================
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+// supabase-js com a versão fixa. O "@2" sem versão pegava sempre a última publicada: em 15/10/2026, às 09:57, saiu a
+// 2.118.0 e o sistema inteiro parou de carregar. Troca de versão só de propósito, testando antes.
+// Primeiro o esm.sh; se ele falhar ou demorar mais de 10 s, o jsDelivr, com a mesma versão.
+const VERSAO_SUPABASE = '2.117.3';
+const FONTES_SUPABASE = [
+  'https://esm.sh/@supabase/supabase-js@' + VERSAO_SUPABASE,
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@' + VERSAO_SUPABASE + '/+esm',
+];
+async function carregarSupabase() {
+  let ultimoErro = null;
+  for (const url of FONTES_SUPABASE) {
+    try {
+      return await Promise.race([
+        import(url),
+        new Promise((_, falhar) => setTimeout(() => falhar(new Error('tempo esgotado: ' + url)), 10000)),
+      ]);
+    } catch (e) { ultimoErro = e; }
+  }
+  throw ultimoErro;
+}
+const { createClient } = await carregarSupabase();
 
 const SUPABASE_URL = 'https://ltsujjgzlhaxosbeudgg.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx0c3Vqamd6bGhheG9zYmV1ZGdnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4NTk1NDksImV4cCI6MjA5NDQzNTU0OX0.vShdPB7s30hsD6609909UrzjyQzFargV9R9BAk2rPhI';
