@@ -1,8 +1,12 @@
 // ============================================================
-// MACEDO & REIS — Assistente do escritório: as ferramentas que o modelo chama (só leitura)
+// MACEDO & REIS — Assistente do escritório: as ferramentas que o modelo chama (só leem; mudar, só propondo)
 // buscar_empresa e ver_empresa (o cadastro e tudo o que o sistema tem da empresa), consultar (qualquer tabela da lista
 // abaixo, com filtros, contagem, totais e agrupamento), agenda (tarefas e rotinas de uma pessoa, com a regra da agenda —
 // assets/js/rotinas-dia.js) e perguntar_reforma (a pergunta vai pro chat da Reforma, que responde com a base dele).
+// As propostas (propor_concluir_tarefas, propor_marcar_pago, propor_criar_tarefa, propor_revisao_atrasadas) não gravam
+// nada: separam o que identifica a mudança (ids, a pessoa, os campos da tarefa nova) e o servidor manda junto com a
+// resposta; a tela mostra o cartão e quem grava é ela, com o login da pessoa, depois que ela confirma
+// (assets/js/assistente-acoes.js + assets/js/tarefas-acoes.js). Uma proposta por pergunta.
 // Lista branca: só as tabelas e colunas daqui são lidas. Ficam fora a senha/credencial do cadastro, o RG e o nascimento
 // das pessoas físicas do cadastro (o CPF e o endereço do cadastro entram: são o dado de trabalho do IRPF), os documentos
 // pessoais dos sócios (CPF, RG, endereço, nascimento), as respostas dos formulários de admissão e rescisão, as
@@ -202,7 +206,37 @@ export const DEFINICOES = [
     input_schema: { type: 'object', properties: {
       pergunta: { type: 'string', description: 'a pergunta completa (a do usuário, completada com o que faltar: nome da empresa, período)' },
       devolver_direto: { type: 'boolean', description: 'padrão sim: a resposta dele vai direto pro usuário. Não, quando você ainda precisa cruzar com outros dados do sistema' } },
-      required: ['pergunta'] } }
+      required: ['pergunta'] } },
+  // as propostas: nada muda aqui — a tela mostra o cartão, a pessoa confirma (e pode desfazer)
+  { name: 'propor_concluir_tarefas',
+    description: 'Prepara a conclusão de tarefas pra pessoa confirmar na tela — nada é concluído aqui: a tela mostra a lista (ela pode desmarcar alguma) com o botão "Concluir" e, depois, o "Desfazer". Só quando a pessoa pedir pra concluir ou marcar como feita(s). Diga quais: ids (de consultar), ou empresa, pessoa e/ou parte do título — prazo, setor e "atrasadas" afinam. Só tarefas abertas; até 300.',
+    input_schema: { type: 'object', properties: {
+      ids: { type: 'array', items: { type: 'string' }, description: 'ids das tarefas (de consultar)' },
+      empresa: { type: 'string', description: 'id, nome ou CNPJ da empresa' },
+      pessoa: { type: 'string', description: 'o responsável (alguém da equipe)' },
+      titulo: { type: 'string', description: 'parte do título (ex.: "EFD CONTRIBUIÇÕES")' },
+      setor: { type: 'string', description: 'dp, fiscal, contabil, financeiro, comercial, societario, irpf, gestao, clientes ou geral' },
+      prazo_de: { type: 'string', description: 'AAAA-MM-DD' }, prazo_ate: { type: 'string', description: 'AAAA-MM-DD' },
+      atrasadas: { type: 'boolean', description: 'só as com prazo antes de hoje' } } } },
+  { name: 'propor_marcar_pago',
+    description: 'Prepara boletos de honorários pra pessoa marcar como pagos na tela — nada muda aqui: a tela mostra os boletos com o botão "Marcar como pago" e, depois, o "Desfazer". Só quando a pessoa disser que foram pagos. Diga quais: a empresa (uma ou várias) e a competência, ou os ids. Só os em aberto (a emitir, emitido, enviado); até 100.',
+    input_schema: { type: 'object', properties: {
+      empresas: { type: 'array', items: { type: 'string' }, description: 'id, nome ou CNPJ de cada empresa' },
+      competencia: { type: 'string', description: "'AAAA-MM'" },
+      ids: { type: 'array', items: { type: 'string' }, description: 'ids dos boletos (de consultar)' } } } },
+  { name: 'propor_criar_tarefa',
+    description: 'Prepara uma tarefa nova pra pessoa conferir e criar na tela — nada é criado aqui: a tela mostra a tarefa já preenchida (título, responsável, prazo, prioridade, setor) com o botão "Criar tarefa". Só quando a pessoa pedir pra criar, anotar ou lembrar de fazer algo.',
+    input_schema: { type: 'object', properties: {
+      titulo: { type: 'string', description: 'o que precisa ser feito' },
+      responsavel: { type: 'string', description: 'alguém da equipe (sem: ninguém ainda)' },
+      prazo: { type: 'string', description: 'AAAA-MM-DD (sem: hoje)' },
+      setor: { type: 'string', description: 'clientes, dp, fiscal, contabil, societario, financeiro, comercial, irpf, gestao ou geral' },
+      prioridade: { type: 'string', enum: ['alta', 'media', 'baixa'] },
+      empresa: { type: 'string', description: 'id, nome ou CNPJ, se a tarefa é de uma empresa' },
+      descricao: { type: 'string' } }, required: ['titulo'] } },
+  { name: 'propor_revisao_atrasadas',
+    description: 'Mostra na tela a revisão das tarefas atrasadas de alguém: grupo por grupo, a tela pergunta o que já foi feito e conclui o que a pessoa marcar (com "Desfazer"). Use quando pedirem pra passar as atrasadas a limpo; e pode oferecer depois de responder sobre as atrasadas de alguém — ela só mostra a pergunta, nada muda sem a pessoa.',
+    input_schema: { type: 'object', properties: { pessoa: { type: 'string', description: 'alguém da equipe (sem: quem pergunta)' } } } }
 ];
 
 // ---------- formatação ----------
@@ -295,6 +329,9 @@ export function montarFiltro(t, f) {
     default: throw new Error('operação "' + op + '" não existe (use: ' + OPS.join(', ') + ')');
   }
 }
+// o filtro do responsável nas tarefas: sem maiúscula e sem acento; Samuel e Diego levam junto o "Ambos"
+export const filtroPessoa = nome => (['samuel', 'diego'].includes(normalizarBusca(nome))
+  ? 'or=' + enc('(responsavel.ilike.' + padraoPessoa(nome) + ',responsavel.ilike.ambos)') : 'responsavel=ilike.' + enc(padraoPessoa(nome)));
 // o filtro em texto de URL (o != vira "and=(...)")
 export function filtroUrl(t, f) {
   const r = montarFiltro(t, f);
@@ -344,7 +381,7 @@ export function montarConsulta(e, { hoje = null } = {}) {
 // contexto: { cliente_id, caso_id, pagina }; usuario: { email, nome, socio }; hoje: 'AAAA-MM-DD' (Brasília)
 // perguntarReforma(pergunta) → { texto, cortada } (erro com a frase pro usuário); deveFinalizar(): o tempo da pergunta
 // está acabando (a resposta da Reforma vai direto, sem outra rodada)
-export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, perguntarReforma, deveFinalizar = () => false }) {
+export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, perguntarReforma, deveFinalizar = () => false, aoPropor = () => {} }) {
   const ler = (caminho, op) => banco.ler(caminho, op);
 
   // o cadastro das empresas dos ids (o nome sempre; as outras colunas, quando pedidas)
@@ -614,8 +651,7 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     if (!todos && !nome) return 'Diga de quem é a agenda (ou "todos").';
     const foraDaEquipe = !todos && !equipePorNome(nome);
     const ehSocio = !todos && ['samuel', 'diego'].includes(normalizarBusca(nome));
-    const padrao = todos ? '' : padraoPessoa(nome);
-    const filtroResp = todos ? '' : '&' + (ehSocio ? 'or=' + enc('(responsavel.ilike.' + padrao + ',responsavel.ilike.ambos)') : 'responsavel=ilike.' + enc(padrao));
+    const filtroResp = todos ? '' : '&' + filtroPessoa(nome);
     const setor = e.setor ? '&setor=eq.' + enc(String(e.setor).toLowerCase()) : '';
     const comAtrasadas = e.atrasadas !== false;
     // atrasada é o que venceu antes de hoje (num período futuro, o que vence antes dele e depois de hoje não é atraso)
@@ -704,7 +740,107 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     return { final: true, texto: r.texto, cortada: !!r.cortada, comoTexto };
   }
 
-  return { buscar_empresa, ver_empresa, agenda, consultar, perguntar_reforma };
+  // ---------- as propostas de ação: nada muda aqui — a tela mostra o cartão e a pessoa confirma (e pode desfazer) ----------
+  // A proposta leva só o que identifica (ids, a pessoa, os campos da tarefa nova); a tela lê de novo o que vai mostrar.
+  // Uma por pergunta
+  let proposta = null;
+  const jaProposto = () => (proposta ? 'Já há uma proposta nesta pergunta (uma por pergunta): diga na resposta o que a tela vai mostrar.' : null);
+  const registrar = a => { proposta = a; try { aoPropor(a); } catch (e) { /* quem chama não guardou */ } };
+  const idsDe = v => (Array.isArray(v) ? v : v == null ? [] : [v]).map(String).filter(x => UUID.test(x));
+  const plural = (n, um, varios) => n + ' ' + (n === 1 ? um : varios);
+
+  async function propor_concluir_tarefas(e) {
+    const ja = jaProposto(); if (ja) return ja;
+    const f = ['status=neq.concluida'];
+    let criterio = false;
+    const ids = idsDe(e.ids);
+    if (Array.isArray(e.ids) && e.ids.length && !ids.length) return 'Esses ids não são de tarefas (use os de consultar).';
+    if (ids.length) { if (ids.length > 300) return 'Até 300 tarefas por vez.'; f.push('id=in.(' + ids.join(',') + ')'); criterio = true; }
+    if (e.empresa && String(e.empresa).trim()) { const a = await acharEmpresa(e.empresa); if (a.erro) return a.erro; f.push('cliente_id=eq.' + a.id); criterio = true; }
+    if (e.pessoa && String(e.pessoa).trim()) {
+      const nome = equipePorNome(String(e.pessoa));
+      if (!nome) return 'Pessoa fora da equipe (' + EQUIPE.join(', ') + ').';
+      f.push(filtroPessoa(nome)); criterio = true;
+    }
+    if (e.titulo && String(e.titulo).trim()) { f.push('titulo=ilike.' + enc('*' + semCuringa(String(e.titulo).trim().slice(0, 120)) + '*')); criterio = true; }
+    if (!criterio) return 'Diga quais tarefas: ids, empresa, pessoa ou parte do título (prazo, setor e "atrasadas" afinam).';
+    if (e.setor) f.push('setor=eq.' + enc(String(e.setor).toLowerCase()));
+    if (DATA.test(String(e.prazo_de || ''))) f.push('prazo=gte.' + e.prazo_de);
+    if (DATA.test(String(e.prazo_ate || ''))) f.push('prazo=lte.' + e.prazo_ate);
+    if (e.atrasadas === true) f.push('prazo=lt.' + hoje);
+    const { linhas, total } = await ler('tarefas?select=id,cliente_id,titulo,responsavel,prazo&' + f.join('&') + '&order=prazo.asc.nullslast,id.asc&limit=300', { contar: true });
+    if (!linhas.length) return 'Nenhuma tarefa aberta com esses critérios — nada foi proposto.';
+    if ((total || 0) > 300) return 'São ' + total + ' tarefas abertas com esses critérios: afine (prazo, empresa, título) até 300 — nada foi proposto.';
+    registrar({ tipo: 'concluir_tarefas', ids: linhas.map(t => String(t.id)) });
+    const com = await comEmpresa(linhas);
+    return 'Proposta pronta: a tela mostra ' + plural(linhas.length, 'tarefa', 'tarefas') + ' com o botão "Concluir" (a pessoa confirma e pode desmarcar alguma). Nada foi concluído ainda.\n'
+      + com.slice(0, 12).map(t => '- ' + valorCurto(t.titulo, 80) + (t.cliente_id ? ' · ' + t.empresa : '') + ' · prazo ' + dataBR(t.prazo) + ' · ' + (t.responsavel || 'sem responsável')).join('\n')
+      + (linhas.length > 12 ? '\n… e mais ' + (linhas.length - 12) : '') + '\nNa resposta: uma frase dizendo o que será concluído quando ela confirmar (não diga que já foi).';
+  }
+
+  async function propor_marcar_pago(e) {
+    const ja = jaProposto(); if (ja) return ja;
+    const f = ['status=in.(a_emitir,emitido,enviado)'];
+    let criterio = false;
+    const ids = idsDe(e.ids);
+    if (Array.isArray(e.ids) && e.ids.length && !ids.length) return 'Esses ids não são de boletos (use os de consultar).';
+    if (ids.length) { if (ids.length > 100) return 'Até 100 boletos por vez.'; f.push('id=in.(' + ids.join(',') + ')'); criterio = true; }
+    const nomes = (Array.isArray(e.empresas) ? e.empresas : e.empresas ? [e.empresas] : []).map(String).filter(s => s.trim()).slice(0, 20);
+    if (nomes.length) {
+      const cli = [];
+      for (const n of nomes) { const a = await acharEmpresa(n); if (a.erro) return a.erro; cli.push(a.id); }
+      f.push('cliente_id=in.(' + [...new Set(cli)].join(',') + ')'); criterio = true;
+    }
+    if (!criterio) return 'Diga quais boletos: a empresa (uma ou várias) e a competência, ou os ids.';
+    if (e.competencia) { if (!/^\d{4}-\d{2}$/.test(String(e.competencia))) return "A competência vai em 'AAAA-MM'."; f.push('competencia=eq.' + e.competencia); }
+    const { linhas, total } = await ler('cobrancas_mensais?select=id,cliente_id,competencia,valor,vencimento,status&' + f.join('&') + '&order=competencia.desc,id.asc&limit=100', { contar: true });
+    if (!linhas.length) return 'Nenhum boleto em aberto (a emitir, emitido ou enviado) com esses critérios — nada foi proposto.';
+    if ((total || 0) > 100) return 'São ' + total + ' boletos em aberto com esses critérios: afine (empresa, competência) até 100 — nada foi proposto.';
+    registrar({ tipo: 'marcar_pago', ids: linhas.map(b => String(b.id)) });
+    const com = await comEmpresa(linhas);
+    return 'Proposta pronta: a tela mostra ' + plural(linhas.length, 'boleto', 'boletos') + ' com o botão "Marcar como pago" (a pessoa confirma e pode desmarcar algum). Nada mudou ainda.\n'
+      + com.map(b => '- ' + b.empresa + ' · ' + b.competencia + ' · ' + brl(b.valor) + ' · vence ' + dataBR(b.vencimento) + ' · ' + situacao(b.status)).join('\n')
+      + '\nNa resposta: uma frase dizendo o que será marcado como pago quando ela confirmar (não diga que já foi).';
+  }
+
+  const SETORES_TAREFA = ['clientes', 'dp', 'fiscal', 'contabil', 'societario', 'financeiro', 'comercial', 'irpf', 'gestao', 'geral'];
+  async function propor_criar_tarefa(e) {
+    const ja = jaProposto(); if (ja) return ja;
+    const titulo = String(e.titulo || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+    if (!titulo) return 'Diga o que precisa ser feito (o título da tarefa).';
+    let responsavel = null;
+    if (e.responsavel && String(e.responsavel).trim()) { responsavel = equipePorNome(String(e.responsavel)); if (!responsavel) return 'Responsável fora da equipe (' + EQUIPE.join(', ') + ').'; }
+    let prazo = null;
+    if (e.prazo) { const p = String(e.prazo); if (!DATA.test(p) || isNaN(new Date(p + 'T12:00:00Z'))) return 'O prazo vai em AAAA-MM-DD.'; prazo = p; }
+    const setor = e.setor ? String(e.setor).toLowerCase() : 'geral';
+    if (!SETORES_TAREFA.includes(setor)) return 'Setor: ' + SETORES_TAREFA.join(', ') + '.';
+    const prioridade = ['alta', 'media', 'baixa'].includes(e.prioridade) ? e.prioridade : 'media';
+    let empresa = null;
+    if (e.empresa && String(e.empresa).trim()) {
+      const a = await acharEmpresa(e.empresa);
+      if (a.erro) return a.erro;
+      const { linhas } = await ler('clientes?select=id,nome_principal&id=eq.' + a.id);
+      if (!linhas[0]) return 'Nenhuma empresa no cadastro com o id ' + a.id + '.';
+      empresa = { id: String(linhas[0].id), nome: linhas[0].nome_principal };
+    }
+    const descricao = e.descricao && String(e.descricao).trim() ? String(e.descricao).trim().slice(0, 1000) : null;
+    registrar({ tipo: 'criar_tarefa', tarefa: { titulo, responsavel, prazo, setor, prioridade, descricao, empresa } });
+    return 'Proposta pronta: a tela mostra a tarefa já preenchida (' + titulo + (responsavel ? ' · ' + responsavel : ' · sem responsável') + ' · prazo ' + (prazo ? dataBR(prazo) : 'hoje') + ' · ' + setor
+      + (empresa ? ' · ' + empresa.nome : '') + ') com o botão "Criar tarefa": a pessoa confere, ajusta se quiser e cria. Nada foi criado ainda. Na resposta: uma frase (não diga que já foi criada).';
+  }
+
+  async function propor_revisao_atrasadas(e) {
+    const ja = jaProposto(); if (ja) return ja;
+    const pedida = e.pessoa && String(e.pessoa).trim() ? String(e.pessoa) : null;
+    const nome = pedida ? equipePorNome(pedida) : usuario.nome ? equipePorNome(usuario.nome) : null;
+    if (!nome) return pedida ? 'Pessoa fora da equipe (' + EQUIPE.join(', ') + ').' : 'Diga de quem são as atrasadas (alguém da equipe).';
+    const { total } = await ler('tarefas?select=id&status=neq.concluida&prazo=lt.' + hoje + '&' + filtroPessoa(nome) + '&limit=1', { contar: true });
+    if (!total) return nome + ' não tem tarefa atrasada — nada a revisar.';
+    registrar({ tipo: 'revisar_atrasadas', pessoa: nome });
+    return 'Proposta pronta: a tela mostra a revisão das ' + plural(total, 'atrasada', 'atrasadas') + ' de ' + nome + ' — grupo por grupo, a pessoa marca o que já foi feito. Nada muda sem ela. Na resposta: uma frase convidando.';
+  }
+
+  return { buscar_empresa, ver_empresa, agenda, consultar, perguntar_reforma, propor_concluir_tarefas, propor_marcar_pago, propor_criar_tarefa, propor_revisao_atrasadas };
 }
 
 // a etapa que aparece no "digitando…" da tela
@@ -716,5 +852,9 @@ export function descreverEtapa(nome, e = {}) {
   if (nome === 'agenda') return 'Olhando a agenda' + (x.pessoa ? ' de ' + s(x.pessoa, 30) : '');
   if (nome === 'consultar') { const T = TABELAS[x.tabela]; return 'Consultando ' + (T ? T.rotulo : s(x.tabela, 40)); }
   if (nome === 'perguntar_reforma') return 'Perguntando à base da Reforma';
+  if (nome === 'propor_concluir_tarefas') return 'Separando as tarefas pra você confirmar';
+  if (nome === 'propor_marcar_pago') return 'Separando os boletos pra você confirmar';
+  if (nome === 'propor_criar_tarefa') return 'Preparando a tarefa pra você conferir';
+  if (nome === 'propor_revisao_atrasadas') return 'Preparando a revisão das atrasadas';
   return s(nome, 40);
 }

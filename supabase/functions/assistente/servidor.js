@@ -2,8 +2,10 @@
 // MACEDO & REIS — Assistente do escritório: o servidor (Edge Function assistente)
 // O balão que aparece em todas as telas com login (assets/js/assistente-escritorio.js) pergunta aqui. Só a equipe: o
 // login do sistema (e-mail @macedoereis.com.br, conferido no Auth). O modelo lê os dados pelas ferramentas
-// (ferramentas.js), com o login de quem pergunta — as regras de acesso do banco valem; nada é gravado nos dados. Pergunta
-// da Reforma vai pro chat da Reforma (função reforma-chat, com o mesmo login: conta no limite e no histórico de lá).
+// (ferramentas.js), com o login de quem pergunta — as regras de acesso do banco valem; nada é gravado nos dados: o que
+// muda (concluir, marcar pago, criar tarefa, revisar as atrasadas) sai como proposta ("acao", junto com a resposta e no
+// histórico, fontes.acao) e quem grava é a tela, depois que a pessoa confirma. Pergunta da Reforma vai pro chat da
+// Reforma (função reforma-chat, com o mesmo login: conta no limite e no histórico de lá).
 // O histórico é o assistente_chat: a linha da pergunta nasce "rodando" ANTES da conta do limite do dia (pedidos em
 // paralelo não furam o limite; no máximo 2 rodando por pessoa) e com o id que a tela mandou — trocou de tela no meio, a
 // pergunta segue (EdgeRuntime.waitUntil) e a tela nova pega a resposta pela linha. Erro pro usuário em português, sem
@@ -157,7 +159,7 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
   }
 
   async function executar({ usuario, pergunta, historico, contexto, conversa, id, t0, aoEtapa = () => {}, avaliacao = false }) {
-    let res = null, erro = null;
+    let res = null, erro = null, acao = null;
     const ctx = { ...contexto };
     try {
       const banco = bancoDe(avaliacao ? null : usuario.jwt);
@@ -180,20 +182,25 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
       const ferramentas = criarFerramentas({ banco, contexto: ctx, usuario: { email: usuario.email, nome: usuario.nome, socio: !!usuario.socio }, hoje,
         perguntarReforma: pr => perguntarReforma({ pergunta: pr, contexto: ctx, jwt: usuario.jwt, conversa, aoEtapa, avaliacao, t0 }),
         // passou do tempo de outra rodada do modelo: a resposta da Reforma vai direto pro usuário
-        deveFinalizar: () => agora().getTime() - t0 > prazoMs - 15000 });
+        deveFinalizar: () => agora().getTime() - t0 > prazoMs - 15000,
+        // a proposta de ação (uma por pergunta) vai junto com a resposta: a tela mostra o cartão
+        aoPropor: a => { acao = a; } });
       const mensagem = preambulo({ hoje, quem, tela, empresa, ficha }) + pergunta;
       res = await responder({ chamar: chamarModelo, sistema, definicoes: DEFINICOES, ferramentas, historico, mensagem, aoEtapa, prazoMs, descrever: descreverEtapa });
     } catch (e) { erro = e || new Error('erro'); }
     const detalhe = erro ? String((erro && erro.message) || erro).slice(0, 1000) : null;
     const aviso = erro ? mensagemDeErro(erro) : null;
-    const linha = { resposta: res ? res.texto : null, aviso, etapas: res ? res.etapas : null, fontes: res ? { reforma: !!res.final, ...(res.cortada ? { cortada: true } : {}) } : null,
+    if (erro) acao = null;
+    const linha = { resposta: res ? res.texto : null, aviso, etapas: res ? res.etapas : null, fontes: res ? { reforma: !!res.final, ...(res.cortada ? { cortada: true } : {}), ...(acao ? { acao } : {}) } : null,
       modelo: res ? res.modelo : null, tokens_entrada: res ? res.uso.entrada : null, tokens_saida: res ? res.uso.saida : null, tokens_cache_leitura: res ? res.uso.cacheLeitura : null,
       tokens_cache_escrita: res ? res.uso.cacheEscrita : null, duracao_ms: agora().getTime() - t0, situacao: erro ? 'erro' : 'ok', erro: detalhe };
     try { await fecharLinha(id, linha); }
     catch (e) { console.error('assistente: histórico não gravado —', e && e.message); }
     if (erro) { console.error('assistente: pergunta sem resposta —', detalhe); return { ok: false, erro: aviso }; }
-    return { ok: true, texto: res.texto, cortada: !!res.cortada, reforma: !!res.final };
+    return { ok: true, texto: res.texto, cortada: !!res.cortada, reforma: !!res.final, acao };
   }
+  // a resposta pra tela (com a proposta, quando tem)
+  const corpoResposta = res => ({ resposta: res.texto, cortada: res.cortada, reforma: res.reforma, ...(res.acao ? { acao: res.acao } : {}) });
 
   return async function atender(req) {
     const cors = { 'Access-Control-Allow-Origin': req.headers.get('origin') || '*', 'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -218,7 +225,7 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
         const contexto = limparContexto({ pagina: linha.pagina ? { caminho: linha.pagina } : null, cliente_id: linha.cliente_id, caso_id: linha.caso_id });
         const res = await executar({ usuario: { email: 'avaliacao', nome: null, socio: false, jwt: null }, pergunta: linha.pergunta, historico: [], contexto,
           conversa: linha.conversa, id: linha.id, t0, avaliacao: true });
-        return json(res.ok ? { resposta: res.texto, cortada: res.cortada, reforma: res.reforma } : { erro: res.erro }, res.ok ? 200 : 500);
+        return json(res.ok ? corpoResposta(res) : { erro: res.erro }, res.ok ? 200 : 500);
       }
       const u = await usuarioDe(req);
       if (!u) return json({ erro: 'Entre no sistema pra usar o assistente.' }, 401);
@@ -250,7 +257,7 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
       const pedido = { usuario, pergunta, historico: limparHistorico(body.historico), contexto, conversa, id: nova.id, t0 };
       if (!body.fluxo) {
         const res = await executar(pedido);
-        return json(res.ok ? { resposta: res.texto, cortada: res.cortada, reforma: res.reforma } : { erro: res.erro }, res.ok ? 200 : 500);
+        return json(res.ok ? corpoResposta(res) : { erro: res.erro }, res.ok ? 200 : 500);
       }
       // em fluxo: as etapas vão saindo; se a tela fechar (trocou de página), a pergunta segue até o fim e a resposta fica
       // na linha do histórico, que a tela nova lê
@@ -260,7 +267,7 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
           let aberto = true;
           const enviar = o => { if (!aberto) return; try { ctrl.enqueue(enc.encode('data: ' + JSON.stringify(o) + '\n\n')); } catch (e) { aberto = false; } };
           const trabalho = executar({ ...pedido, aoEtapa: texto => enviar({ tipo: 'etapa', texto }) }).then(res => {
-            enviar(res.ok ? { tipo: 'resposta', texto: res.texto, cortada: res.cortada, reforma: res.reforma } : { tipo: 'erro', texto: res.erro });
+            enviar(res.ok ? { tipo: 'resposta', texto: res.texto, cortada: res.cortada, reforma: res.reforma, ...(res.acao ? { acao: res.acao } : {}) } : { tipo: 'erro', texto: res.erro });
             if (aberto) { try { ctrl.close(); } catch (e) { /* já fechada */ } }
           });
           try { aguardar(trabalho); } catch (e) { /* fora do Edge Runtime */ }

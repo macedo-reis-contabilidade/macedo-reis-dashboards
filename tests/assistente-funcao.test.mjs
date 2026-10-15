@@ -27,7 +27,7 @@ chk('tabelas fora: configurações, chats, tokens e o backup pessoal', ['configu
 chk('as colunas que vêm sem pedir estão entre as lidas', Object.values(TABELAS).every(T => T.padrao.every(c => T.cols.includes(c))));
 chk('o financeiro do escritório marcado como só dos sócios', TABELAS.ca_parcelas.socios === true && TABELAS.ca_categorias.socios === true);
 chk('o dicionário do prompt lista as tabelas e não tem credenciais', Object.keys(TABELAS).every(t => dicionario().includes('## ' + t + ' ')) && !/credenciais/.test(dicionario()));
-chk('as definições: as cinco ferramentas, consultar só com as tabelas da lista', DEFINICOES.map(d => d.name).join() === 'buscar_empresa,ver_empresa,agenda,consultar,perguntar_reforma'
+chk('as definições: as cinco de ler e as quatro propostas, consultar só com as tabelas da lista', DEFINICOES.map(d => d.name).join() === 'buscar_empresa,ver_empresa,agenda,consultar,perguntar_reforma,propor_concluir_tarefas,propor_marcar_pago,propor_criar_tarefa,propor_revisao_atrasadas'
   && JSON.stringify(DEFINICOES.find(d => d.name === 'consultar').input_schema.properties.tabela.enum) === JSON.stringify(Object.keys(TABELAS)));
 chk('o prompt: a Reforma sozinha na rodada (a resposta dela vai direto, com as fontes); a tela pelo nome e a situação por extenso',
   /Chame sozinha na rodada/.test(INSTRUCOES) && /mantenha as fontes dele entre colchetes/.test(INSTRUCOES) && /não financeiro-boletos\.html/.test(INSTRUCOES) && /não em_transicao/.test(INSTRUCOES));
@@ -83,7 +83,11 @@ function bancoFalso({ tarefas = [], rotinas = [], extras = {} } = {}) {
       if (op2 === 'lt') linhas = linhas.filter(l => String(l[k]) < val);
       if (op2 === 'lte') linhas = linhas.filter(l => String(l[k]) <= val);
       if (op2 === 'gte') linhas = linhas.filter(l => String(l[k]) >= val);
-      if (op2 === 'ilike' && k !== 'nome_busca') linhas = linhas.filter(l => normalizarBusca(l[k]) === normalizarBusca(val));
+      if (op2 === 'ilike' && k !== 'nome_busca') {
+        // como no banco: * é qualquer trecho e _ qualquer letra; sem maiúscula (e, aqui, sem acento)
+        const rx = new RegExp('^' + normalizarBusca(val).replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/_/g, '.') + '$');
+        linhas = linhas.filter(l => rx.test(normalizarBusca(l[k])));
+      }
     }
     if (q.get('or')) { const nomes = [...q.get('or').matchAll(/responsavel\.ilike\.([^,)]+)/g)].map(m => normalizarBusca(m[1])); linhas = linhas.filter(l => nomes.includes(normalizarBusca(l.responsavel))); }
     const offset = +(q.get('offset') || 0), limit = +(q.get('limit') || 1e9);
@@ -213,6 +217,54 @@ function bancoFalso({ tarefas = [], rotinas = [], extras = {} } = {}) {
   const r3 = await fs3.perguntar_reforma({ pergunta: 'x', devolver_direto: false });
   chk('com o tempo acabando, a resposta da Reforma vai direto mesmo pra cruzar', r3 && r3.final === true && r3.texto === 'Texto da Reforma.');
 }
+console.log('As propostas (nada muda aqui: a tela mostra e a pessoa confirma):');
+{
+  const U = n => '7a000000-0000-4000-8000-' + String(n).padStart(12, '0');
+  const tarefas = [
+    { id: U(1), cliente_id: ID_A, setor: 'fiscal', titulo: 'EFD CONTRIBUIÇÕES', responsavel: 'Thalia', prazo: '2026-09-15', status: 'pendente' },
+    { id: U(2), cliente_id: ID_A, setor: 'fiscal', titulo: 'EFD CONTRIBUIÇÕES', responsavel: 'THALIA', prazo: '2026-10-14', status: 'pendente' },
+    { id: U(3), cliente_id: ID_B, setor: 'fiscal', titulo: 'EFD CONTRIBUIÇÕES', responsavel: 'Thalia', prazo: '2026-09-15', status: 'concluida' },
+    { id: U(4), cliente_id: ID_A, setor: 'fiscal', titulo: 'GIA', responsavel: 'Thalia', prazo: '2026-09-10', status: 'em_andamento' },
+    { id: U(5), cliente_id: ID_A, setor: 'dp', titulo: 'Folha', responsavel: 'Vitória', prazo: '2026-09-05', status: 'pendente' }];
+  const cobrancas_mensais = [
+    { id: U(11), cliente_id: ID_A, competencia: '2026-09', valor: 450, vencimento: '2026-10-10', status: 'enviado' },
+    { id: U(12), cliente_id: ID_A, competencia: '2026-09', valor: 450, vencimento: '2026-10-10', status: 'pago' },
+    { id: U(13), cliente_id: ID_B, competencia: '2026-09', valor: 300, vencimento: '2026-10-10', status: 'emitido' },
+    { id: U(14), cliente_id: ID_A, competencia: '2026-08', valor: 450, vencimento: '2026-09-10', status: 'enviado' }];
+  const { banco, log } = bancoFalso({ tarefas, extras: { cobrancas_mensais } });
+  const propostas = [];
+  const nova = (usuario = { email: 'fiscal@macedoereis.com.br', nome: 'Thalia' }) => criarFerramentas({ banco, hoje: '2026-10-14', usuario, aoPropor: a => propostas.push(a) });
+  const fs = nova();
+  const c = await fs.propor_concluir_tarefas({ empresa: ID_A, titulo: 'efd', atrasadas: true });
+  chk('concluir: só as abertas que batem (empresa, parte do título, atrasadas), com os ids; diz que nada foi concluído', propostas.length === 1 && propostas[0].tipo === 'concluir_tarefas'
+    && JSON.stringify(propostas[0].ids) === JSON.stringify([U(1)]) && /a tela mostra 1 tarefa com o botão "Concluir"/.test(c) && /Nada foi concluído ainda/.test(c) && /LOJA DA ESQUINA LTDA · prazo 15\/09\/2026 · Thalia/.test(c), c);
+  chk('uma proposta por pergunta', /Já há uma proposta nesta pergunta/.test(await fs.propor_marcar_pago({ empresas: [ID_A] })) && propostas.length === 1);
+  const fs2 = nova();
+  chk('concluir sem dizer quais: pede o critério e não propõe', /Diga quais tarefas/.test(await fs2.propor_concluir_tarefas({ atrasadas: true })) && propostas.length === 1);
+  chk('concluir de alguém fora da equipe ou com ids que não são de tarefa: não propõe', /fora da equipe/.test(await fs2.propor_concluir_tarefas({ pessoa: 'Luana' }))
+    && /não são de tarefas/.test(await fs2.propor_concluir_tarefas({ ids: ['x'] })) && propostas.length === 1);
+  const pe = await fs2.propor_concluir_tarefas({ pessoa: 'thalia', setor: 'fiscal', prazo_ate: '2026-09-30' });
+  chk('concluir pela pessoa (sem maiúscula), setor e prazo: GIA em andamento entra, a concluída não', propostas.length === 2 && JSON.stringify([...propostas[1].ids].sort()) === JSON.stringify([U(1), U(4)])
+    && log.some(x => x.caminho.startsWith('tarefas?') && x.caminho.includes('responsavel=ilike.Thalia') && x.caminho.includes('prazo=lte.2026-09-30')), pe);
+  const muitas = Array.from({ length: 301 }, (_, i) => ({ id: U(1000 + i), cliente_id: ID_A, setor: 'fiscal', titulo: 'PGDAS', responsavel: 'Thalia', prazo: '2026-09-20', status: 'pendente' }));
+  const fsm = criarFerramentas({ banco: bancoFalso({ tarefas: muitas }).banco, hoje: '2026-10-14', usuario: { nome: 'Thalia' }, aoPropor: a => propostas.push(a) });
+  chk('mais de 300: pede pra afinar e não propõe', /São 301 tarefas abertas/.test(await fsm.propor_concluir_tarefas({ titulo: 'PGDAS' })) && propostas.length === 2);
+  const p = await nova().propor_marcar_pago({ empresas: ['LOJA DA ESQUINA LTDA'], competencia: '2026-09' });
+  chk('marcar pago: só os em aberto da empresa e competência', propostas.length === 3 && propostas[2].tipo === 'marcar_pago' && JSON.stringify(propostas[2].ids) === JSON.stringify([U(11)])
+    && /1 boleto com o botão "Marcar como pago"/.test(p) && /2026-09 · R\$\s?450,00 · vence 10\/10\/2026 · enviado/.test(p), p);
+  chk('marcar pago: competência fora do formato não propõe', /'AAAA-MM'/.test(await nova().propor_marcar_pago({ empresas: [ID_A], competencia: '09/2026' })) && propostas.length === 3);
+  const t = await nova().propor_criar_tarefa({ titulo: '  Ligar   pra   empresa ', responsavel: 'vitoria', prazo: '2026-10-15', setor: 'DP', prioridade: 'alta', empresa: 'LOJA DA ESQUINA LTDA', descricao: 'Sobre a admissão' });
+  chk('criar: os campos arrumados (título, responsável da equipe, setor, empresa do cadastro)', propostas.length === 4 && JSON.stringify(propostas[3]) === JSON.stringify({ tipo: 'criar_tarefa',
+    tarefa: { titulo: 'Ligar pra empresa', responsavel: 'Vitória', prazo: '2026-10-15', setor: 'dp', prioridade: 'alta', descricao: 'Sobre a admissão', empresa: { id: ID_A, nome: 'LOJA DA ESQUINA LTDA' } } })
+    && /Nada foi criado ainda/.test(t), JSON.stringify(propostas[3]));
+  chk('criar: responsável fora da equipe, prazo fora do formato e setor que não existe não propõem', /fora da equipe/.test(await nova().propor_criar_tarefa({ titulo: 'x', responsavel: 'Luana' }))
+    && /AAAA-MM-DD/.test(await nova().propor_criar_tarefa({ titulo: 'x', prazo: '15/10' })) && /Setor:/.test(await nova().propor_criar_tarefa({ titulo: 'x', setor: 'compras' })) && propostas.length === 4);
+  const r1 = await nova().propor_revisao_atrasadas({});
+  chk('revisão: sem pessoa, as de quem pergunta', propostas.length === 5 && JSON.stringify(propostas[4]) === JSON.stringify({ tipo: 'revisar_atrasadas', pessoa: 'Thalia' }) && /revisão das 2 atrasadas de Thalia/.test(r1), r1);
+  chk('revisão: de outra pessoa; sem atrasadas não propõe; sem saber de quem, pergunta', JSON.stringify((await nova().propor_revisao_atrasadas({ pessoa: 'vitória' }), propostas[5])) === JSON.stringify({ tipo: 'revisar_atrasadas', pessoa: 'Vitória' })
+    && /não tem tarefa atrasada/.test(await nova().propor_revisao_atrasadas({ pessoa: 'Adaini' })) && /Diga de quem/.test(await nova({}).propor_revisao_atrasadas({})) && propostas.length === 6);
+  chk('etapas das propostas, em português', descreverEtapa('propor_concluir_tarefas', {}) === 'Separando as tarefas pra você confirmar' && descreverEtapa('propor_revisao_atrasadas', {}) === 'Preparando a revisão das atrasadas');
+}
 chk('etapas da tela: o que ele está fazendo, em português', descreverEtapa('consultar', { tabela: 'cobrancas_mensais' }) === 'Consultando os boletos' && descreverEtapa('agenda', { pessoa: 'Thalia' }) === 'Olhando a agenda de Thalia'
   && descreverEtapa('buscar_empresa', { termo: 'Loja' }) === 'Procurando "Loja" no cadastro' && descreverEtapa('perguntar_reforma', {}) === 'Perguntando à base da Reforma');
 
@@ -280,6 +332,7 @@ function servidorFalso({ contagem = 0, rodando = 0, reformaSse = null, avaliacao
     if (u.includes('/rest/v1/rt_casos')) return json([{ id: CASO, cliente_id: ID_A }]);
     if (u.includes('/rest/v1/cobrancas_mensais')) return json([{ competencia: '2026-10', valor: 450, status: 'enviado', cliente_id: ID_A }], { 'Content-Range': '0-0/1' });
     if (u.includes('/rest/v1/ca_parcelas')) return json([{ descricao: 'Honorários', total: 100 }], { 'Content-Range': '0-0/1' });
+    if (u.includes('/rest/v1/tarefas')) return json([{ id: '7a000000-0000-4000-8000-000000000001' }], { 'Content-Range': '0-0/3' });
     return new Response('?', { status: 404 });
   };
   return { f, log, linhas };
@@ -346,6 +399,20 @@ const usarFerramenta = (name, input) => ({ stop_reason: 'tool_use', content: [{ 
   chk('o chat da Reforma recebe o login de quem pergunta, a ficha e o cálculo da tela', ida && ida.headers.Authorization === 'Bearer jwt-thalia' && ida.corpo.contexto.caso_id === CASO
     && ida.corpo.contexto.tela.input.receita === 1000 && ida.corpo.fluxo === true && ida.corpo.pergunta === 'A LOJA DA ESQUINA pode optar por fora?');
   chk('a pergunta segue no Edge Runtime (waitUntil) e a linha fecha com a resposta da Reforma', trabalhos.length === 1 && linhas[0].situacao === 'ok' && linhas[0].resposta === 'Por fora [regra X] — ação.' && linhas[0].fontes.reforma === true);
+}
+{
+  // a proposta vai junto com a resposta (no evento e na linha do histórico); a função não grava nada nos dados
+  const { f, log, linhas } = servidorFalso();
+  const chamar = roteiro([usarFerramenta('propor_revisao_atrasadas', { pessoa: 'Thalia' }), { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Quer passar as 3 atrasadas a limpo?' }], usage: { input_tokens: 10, output_tokens: 5 }, _modelo: 'modelo-teste' }]);
+  const srv = criarServidor({ env: k => ENV[k], fetch: f, agora: () => AGORA, chamar, aguardar: p => p });
+  const txt = await (await srv(pedido({ pergunta: 'Vamos ver as atrasadas da Thalia?', fluxo: true, pedido: PEDIDO }))).text();
+  const ev = [...txt.matchAll(/data: (.*)\n\n/g)].map(m => JSON.parse(m[1])).find(e => e.tipo === 'resposta');
+  chk('a proposta sai no evento da resposta e fica na linha (fontes.acao)', ev && JSON.stringify(ev.acao) === JSON.stringify({ tipo: 'revisar_atrasadas', pessoa: 'Thalia' })
+    && JSON.stringify(linhas[0].fontes.acao) === JSON.stringify(ev.acao) && ev.texto === 'Quer passar as 3 atrasadas a limpo?', txt);
+  chk('a função não grava nos dados: só lê (GET) fora do histórico', log.filter(x => x.url.includes('/rest/v1/') && !x.url.includes('assistente_chat')).every(x => x.metodo === 'GET'));
+  const { f: f2 } = servidorFalso();
+  const j = await (await criarServidor({ env: k => ENV[k], fetch: f2, agora: () => AGORA, chamar: final('Sem ação.') })(pedido({ pergunta: 'Oi' }))).json();
+  chk('sem proposta, a resposta vai sem "acao"', j.resposta === 'Sem ação.' && !('acao' in j));
 }
 {
   // a tela fechou no meio (trocou de página): a pergunta segue e a resposta fica na linha
