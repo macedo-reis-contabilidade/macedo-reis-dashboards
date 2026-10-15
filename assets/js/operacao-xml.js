@@ -35,6 +35,17 @@ export function normDesc(s) {
 // o NCM 9619.00.00 com a fralda (higiene, −60%) — só a descrição do item separa os dois
 const ITEM_MENSTRUAL = /\b(ABSORV|TAMPAO|TAMPOES|COLETOR|CALCINHA|PROTETOR)/;
 const NAO_MENSTRUAL = /\b(FRALDA|GERIATR|INCONTIN|SEIO|AMAMENT)/;
+// LC 214, Anexo I, itens 16 e 18 (15/10/2026, anexos conferidos no texto oficial): a alíquota zero é de um produto nomeado
+// dentro de um código que tem outros — o pão francês no 1905.90.90 (bolo, salgado e o resto do código: cheia), a
+// pré-mistura ou massa dele no 1901.20.10 e no 1901.20.90 (mistura para bolo e o resto: cheia) e a farinha de aveia no
+// 1102.90.00 (as outras farinhas: redução de 60%, Anexo VII, item 4). A tabela dá ao código o regime do resto e só a
+// descrição do item separa, como no 9619
+const ZERO_PELA_DESCRICAO = [
+  { ncms: ['19059090', '19012010', '19012090'], sim: /\bPAO.*\bFRANC(ES|EZ|ESINHO)?\b|\bP FRANCES\b|\bCACETINHO/, nao: /\b(TORRAD|RECHE|CHAPA\b)/,
+    regra: { regime: 'zero', descricao: 'Pão francês, ou a pré-mistura ou massa dele — alíquota zero (LC 214, Anexo I, item 16)' } },
+  { ncms: ['11029000'], sim: /\bAVEIA\b/, nao: null,
+    regra: { regime: 'zero', descricao: 'Farinha de aveia — alíquota zero (LC 214, Anexo I, item 18)' } }
+];
 
 // VENDAS QUE O SIMULADOR AINDA NÃO SEPARA (12/10/2026, Módulo 05 do curso): a venda ao exterior é imune e mantém o
 // crédito (LC 214, art. 79); o serviço a tomador no exterior também, se o resultado se verifica lá fora (art. 80); a
@@ -67,7 +78,9 @@ export function avisosVendasEspeciais(lista) {
   });
 }
 
-// regra de NCM pelo prefixo mais longo (8 → 6 → 4 → 2); sem match = alíquota cheia
+// regra de NCM pelo prefixo mais longo que casa, de 8 a 2 dígitos (15/10/2026): a lei usa subposição de 5 dígitos (0407.2,
+// 0709.5, 1902.1, 2101.1, 9021.3) e de 7 (0210.99.1), e a regra mais específica registra a exceção, inclusive com a
+// alíquota cheia (o foie gras dentro das aves, as nozes dentro das frutas). Até 15/10/2026 só 8, 6, 4 e 2. Sem regra = cheia
 export function regimeDoNcm(ncm, regras, descricao) {
   const d = String(ncm || '').replace(/\D/g, '');
   if (d.startsWith('9619') && descricao) {
@@ -76,8 +89,12 @@ export function regimeDoNcm(ncm, regras, descricao) {
       return { regime: 'zero', descricao: 'Absorvente, tampão, coletor menstrual ou calcinha absorvente — alíquota zero (LC 214, art. 147)' };
     }
   }
-  for (const len of [8, 6, 4, 2]) {
-    if (d.length < len) continue;
+  const pelaDescricao = descricao ? ZERO_PELA_DESCRICAO.find(z => z.ncms.includes(d)) : null;
+  if (pelaDescricao) {
+    const t = normDesc(descricao);
+    if (pelaDescricao.sim.test(t) && !(pelaDescricao.nao && pelaDescricao.nao.test(t))) return pelaDescricao.regra;
+  }
+  for (let len = Math.min(8, d.length); len >= 2; len--) {
     const r = regras.get(d.slice(0, len));
     if (r) return r;
   }
