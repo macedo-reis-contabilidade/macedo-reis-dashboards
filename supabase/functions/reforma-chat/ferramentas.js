@@ -39,7 +39,7 @@ export const DEFINICOES = [
     description: 'Busca nas leituras completas dos materiais da base da Reforma (o texto integral de cada leitura, por seção). Devolve os trechos mais relevantes com o código do material, o tipo e a seção. Termos específicos (artigo, assunto, código do material) funcionam melhor.',
     input_schema: { type: 'object', properties: {
       consulta: { type: 'string', description: 'o que procurar, em português' },
-      modulo: { type: 'string', description: 'opcional: parte do nome do módulo (ex.: "Módulo 05", "Imersão", "Atualizações")' },
+      modulo: { type: 'string', description: 'opcional: parte do nome do módulo (ex.: "Módulo 05", "Imersão", "Atualizações", "Renda")' },
       tipo: { type: 'string', enum: TIPOS, description: 'opcional: só materiais deste tipo' },
       limite: { type: 'integer', minimum: 1, maximum: 10, description: 'quantos trechos (padrão 6)' } }, required: ['consulta'] } },
   { name: 'ler_material',
