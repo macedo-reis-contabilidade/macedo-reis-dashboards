@@ -3,16 +3,21 @@
 // Quem cria a transição — a Precificação (a partir da proposta fechada) e a tela da Transição (nova transição) — monta as
 // tarefas por aqui, e a Transição completa o kit por aqui quando passa a ter funcionários:
 //  • item com so_com_funcionarios só entra com tera_funcionarios = true. Sem saber (null), fica de fora e nasce a tarefa
-//    "Confirmar se a empresa terá funcionários" pro dono desses itens: marcado "Sim" na transição, eles entram sozinhos
-//    (tarefasQueFaltam); marcado "Não", a confirmação se conclui;
+//    "Confirmar se a empresa terá funcionários" (na saída, "… tem funcionários": quem sabe é o próprio escritório) pro
+//    dono desses itens: marcado "Sim" na transição, eles entram sozinhos (tarefasQueFaltam); marcado "Não", a confirmação
+//    se conclui;
 //  • itens com o mesmo agrupar_em viram UMA tarefa, com a lista na descrição (☐ por item, assets/js/checklist.js), no
-//    maior prazo do grupo — os 13 documentos do escritório anterior do DP eram 13 tarefas.
+//    maior prazo do grupo — no DP, os 13 documentos do escritório anterior (entrada) e os 13 que vão pro novo escritório
+//    (saída) eram 13 tarefas cada.
 // Quantos funcionários a proposta diz (C1 ativos, C2 a registrar em 90 dias) decide o tera_funcionarios de quem nasce dela.
 // ============================================================
 import { textoDoChecklist, acrescentarItens, itensDoChecklist } from './checklist.js';
 
 export const CONFIRMAR_FUNCIONARIOS = 'Confirmar se a empresa terá funcionários';
+export const CONFIRMAR_FUNCIONARIOS_SAIDA = 'Confirmar se a empresa tem funcionários';
 export const SUFIXO_FUNCIONARIOS = ' — funcionários';
+/** O nome do campo na tela da Transição: na saída, a empresa já é cliente — "tem"; na entrada e no CNPJ novo, "terá". */
+export const rotuloFuncionarios = tipo => tipo === 'saida' ? 'Tem funcionários?' : 'Terá funcionários?';
 
 const numero = v => {
   if (v == null || String(v).trim() === '') return null;
@@ -67,24 +72,32 @@ export function tarefasDoKit(kit, { inicio, teraFuncionarios = null, transicaoId
   return tarefas;
 }
 
-// uma confirmação por setor que tem item só com funcionários (o dono é o desses itens)
+// uma confirmação por setor que tem item só com funcionários (o dono é o desses itens). Na saída a empresa ainda é
+// cliente: o escritório confere na folha dela, sem perguntar
 function confirmacoes(itens, { inicio, transicaoId, clienteId }) {
   const porSetor = new Map();
   itens.filter(k => k.so_com_funcionarios).forEach(k => { if (!porSetor.has(k.setor)) porSetor.set(k.setor, []); porSetor.get(k.setor).push(k); });
-  return [...porSetor.values()].map(ks => tarefa(ks[0], {
-    titulo: CONFIRMAR_FUNCIONARIOS,
-    descricao: 'Pergunte à empresa se ela tem (ou terá) funcionários e marque em Comercial › Transição › Editar › "Terá funcionários". '
-      + 'Com "Sim", entram sozinhas: ' + ks.map(k => k.titulo).join(' · ') + '.',
-    prazo: diaMais(inicio, 5), transicaoId, clienteId
-  }));
+  return [...porSetor.values()].map(ks => {
+    const saida = ks[0].tipo === 'saida', lista = ks.map(k => k.titulo).join(' · ');
+    return tarefa(ks[0], {
+      titulo: saida ? CONFIRMAR_FUNCIONARIOS_SAIDA : CONFIRMAR_FUNCIONARIOS,
+      descricao: saida
+        ? 'Confira na folha se a empresa tem funcionários e marque em Comercial › Transição › Editar › "Tem funcionários". '
+          + 'Com "Sim", entram sozinhos: ' + lista + '.'
+        : 'Pergunte à empresa se ela tem (ou terá) funcionários e marque em Comercial › Transição › Editar › "Terá funcionários". '
+          + 'Com "Sim", entram sozinhas: ' + lista + '.',
+      prazo: diaMais(inicio, 5), transicaoId, clienteId
+    });
+  });
 }
+const ehConfirmacao = titulo => [CONFIRMAR_FUNCIONARIOS, CONFIRMAR_FUNCIONARIOS_SAIDA].some(c => normal(c) === normal(titulo));
 
 /** A transição passou a ter funcionários (ou deixou de não saber): o que falta do kit, sem repetir o que ela já tem.
  *  existentes = as tarefas dela ({ id, setor, titulo, descricao, status }). Devolve { novas, atualizar: [{ id, descricao }],
  *  concluir: [ids das confirmações abertas] }. Com teraFuncionarios false, só conclui as confirmações. */
 export function tarefasQueFaltam(kit, existentes, { teraFuncionarios, inicio, hoje, transicaoId = null, clienteId = null }) {
   const lista = existentes || [];
-  const concluir = lista.filter(t => normal(t.titulo) === normal(CONFIRMAR_FUNCIONARIOS) && t.status !== 'concluida').map(t => t.id);
+  const concluir = lista.filter(t => ehConfirmacao(t.titulo) && t.status !== 'concluida').map(t => t.id);
   if (teraFuncionarios !== true) return { novas: [], atualizar: [], concluir };
   const base = String(hoje || inicio) > String(inicio) ? String(hoje) : String(inicio);   // o que entra agora conta o prazo a partir de hoje
   const tem = (setor, titulo) => lista.find(t => t.setor === setor && normal(t.titulo) === normal(titulo));

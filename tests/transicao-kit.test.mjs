@@ -1,8 +1,9 @@
 // O kit da transição (assets/js/transicao-kit.js) e a lista na descrição da tarefa (assets/js/checklist.js), 16/10/2026:
 // o DP de uma entrada sem funcionários não ganha as tarefas de funcionários; sem saber, ganha a confirmação; os 13
 // documentos do escritório anterior viram uma tarefa só, com a lista; marcando "Sim" depois, o que falta entra sem repetir.
+// Na saída, o mesmo com os 13 que vão pro novo escritório (e a confirmação "tem funcionários", que o escritório confere).
 // Rodar com: node tests/transicao-kit.test.mjs
-import { tarefasDoKit, tarefasQueFaltam, teraFuncionariosDaProposta, diaMais, CONFIRMAR_FUNCIONARIOS, SUFIXO_FUNCIONARIOS } from '../assets/js/transicao-kit.js';
+import { tarefasDoKit, tarefasQueFaltam, teraFuncionariosDaProposta, diaMais, CONFIRMAR_FUNCIONARIOS, CONFIRMAR_FUNCIONARIOS_SAIDA, SUFIXO_FUNCIONARIOS, rotuloFuncionarios } from '../assets/js/transicao-kit.js';
 import { itensDoChecklist, progressoDoChecklist, marcarItem, textoDoChecklist, acrescentarItens, rotuloDoProgresso, ABERTO, FEITO } from '../assets/js/checklist.js';
 
 let falhas = 0;
@@ -90,6 +91,49 @@ const f4 = tarefasQueFaltam(KIT, existentes, { teraFuncionarios: false, inicio: 
 chk('marcou "Não": só conclui a confirmação', f4.novas.length === 0 && f4.atualizar.length === 0 && f4.concluir.length === 1);
 const comLista = tarefasQueFaltam(KIT, com.map((t, i) => ({ ...t, id: 'w' + i })), { teraFuncionarios: true, inicio: '2026-10-16', hoje: '2026-10-16' });
 chk('quem já nasceu com funcionários não ganha nada', comLista.novas.length === 0 && comLista.atualizar.length === 0 && comLista.concluir.length === 0);
+
+// a saída do DP como está no banco (16/10/2026): os 13 que vão pro novo escritório numa lista, 5 só com funcionários
+console.log('A saída:');
+const NOVO = 'Documentos e acessos pro novo escritório';
+const S = (ordem, titulo, func = false) => ({ ordem, setor: 'dp', titulo, prazo_dias: ordem === 41 ? 5 : 10, fase: F, so_com_funcionarios: func, agrupar_em: NOVO,
+  responsavel_padrao: 'Vitória', ativo: true, tipo: 'saida' });
+const KIT_SAIDA = [
+  S(40, 'Extrato mensal da folha desde a abertura até o mês atual — enviar'), S(41, 'Login e senha do Empregador Web — enviar', true),
+  S(42, 'Ficha dos empregados com quadro de horários — enviar', true), S(43, 'Relatório de férias com detalhamento — enviar', true),
+  S(44, 'Relatório de dependentes com detalhamento — enviar'), S(45, 'Relatório de validados do eSocial — enviar'), S(46, 'Relatório de contribuintes — enviar'),
+  S(47, 'FGTS em aberto/ativo ou pago de um funcionário — informar', true), S(48, 'Todas as GFIPs — enviar'), S(49, 'Cópia da DIRF entregue — enviar'),
+  S(50, 'Cópia da RAIS — enviar'), S(51, 'Vínculo com clínica (medicina do trabalho) — informar', true),
+  S(52, 'Informações complementares que facilitem a transição — enviar'),
+  { ...S(10, 'Encerrar o acesso ao sistema do cliente'), setor: 'fiscal', agrupar_em: null, responsavel_padrao: 'Thalia' }
+];
+const sCom = tarefasDoKit(KIT_SAIDA, { ...op, teraFuncionarios: true });
+const sLista = sCom.find(t => t.titulo === NOVO);
+chk('com funcionários: o DP ganha uma tarefa só, com os 13 na ordem do kit, no maior prazo (10 dias); o fiscal fica como está',
+  sCom.map(t => t.titulo).join('|') === 'Encerrar o acesso ao sistema do cliente|' + NOVO && itensDoChecklist(sLista.descricao).length === 13
+  && itensDoChecklist(sLista.descricao)[1].texto === 'Login e senha do Empregador Web — enviar' && sLista.prazo === '2026-10-26' && sLista.responsavel === 'Vitória' && sLista.fase === F,
+  sCom.map(t => t.titulo + ' ' + t.prazo).join('|'));
+const sSem = tarefasDoKit(KIT_SAIDA, { ...op, teraFuncionarios: false });
+chk('sem funcionários: a lista com os 8 que não dependem de funcionário (o relatório de dependentes fica: o sócio também tem dependente no IR)',
+  itensDoChecklist(sSem.find(t => t.titulo === NOVO).descricao).map(i => i.texto).join('|') === ['Extrato mensal da folha desde a abertura até o mês atual — enviar',
+    'Relatório de dependentes com detalhamento — enviar', 'Relatório de validados do eSocial — enviar', 'Relatório de contribuintes — enviar', 'Todas as GFIPs — enviar',
+    'Cópia da DIRF entregue — enviar', 'Cópia da RAIS — enviar', 'Informações complementares que facilitem a transição — enviar'].join('|') && sSem.length === 2);
+const sNsei = tarefasDoKit(KIT_SAIDA, { ...op, teraFuncionarios: null });
+const sConf = sNsei.filter(t => t.titulo === CONFIRMAR_FUNCIONARIOS_SAIDA);
+chk('sem saber: a lista dos 8 e "Confirmar se a empresa tem funcionários" pro DP, em 5 dias (sem o "terá" da entrada)',
+  sNsei.length === 3 && sConf.length === 1 && sConf[0].responsavel === 'Vitória' && sConf[0].prazo === '2026-10-21' && !sNsei.some(t => t.titulo === CONFIRMAR_FUNCIONARIOS));
+chk('a confirmação da saída manda conferir na folha e marcar no "Tem funcionários"', /^Confira na folha/.test(sConf[0].descricao) && /Editar › "Tem funcionários"/.test(sConf[0].descricao)
+  && /Login e senha do Empregador Web/.test(sConf[0].descricao) && !/Pergunte à empresa/.test(sConf[0].descricao), sConf[0].descricao);
+const sExist = sNsei.map((t, i) => ({ ...t, id: 's' + i }));
+const sF1 = tarefasQueFaltam(KIT_SAIDA, sExist, { teraFuncionarios: true, inicio: '2026-10-16', hoje: '2026-10-19' });
+chk('marcou "Sim": a lista ganha os 5 de funcionários no fim, nenhuma tarefa nova, e a confirmação da saída se conclui',
+  sF1.novas.length === 0 && sF1.atualizar.length === 1 && itensDoChecklist(sF1.atualizar[0].descricao).slice(8).map(i => i.texto).join('|') === ['Login e senha do Empregador Web — enviar',
+    'Ficha dos empregados com quadro de horários — enviar', 'Relatório de férias com detalhamento — enviar', 'FGTS em aberto/ativo ou pago de um funcionário — informar',
+    'Vínculo com clínica (medicina do trabalho) — informar'].join('|') && sF1.concluir.length === 1 && sF1.concluir[0] === sExist.find(t => t.titulo === CONFIRMAR_FUNCIONARIOS_SAIDA).id,
+  JSON.stringify(sF1));
+const sF2 = tarefasQueFaltam(KIT_SAIDA, sExist, { teraFuncionarios: false, inicio: '2026-10-16', hoje: '2026-10-19' });
+chk('marcou "Não": só conclui a confirmação da saída', sF2.novas.length === 0 && sF2.atualizar.length === 0 && sF2.concluir.length === 1);
+chk('o nome do campo: "Tem funcionários?" na saída, "Terá funcionários?" na entrada e no CNPJ novo',
+  rotuloFuncionarios('saida') === 'Tem funcionários?' && rotuloFuncionarios('entrada') === 'Terá funcionários?' && rotuloFuncionarios('cnpj_novo') === 'Terá funcionários?');
 
 console.log(falhas ? '\n' + falhas + ' falha(s).' : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);

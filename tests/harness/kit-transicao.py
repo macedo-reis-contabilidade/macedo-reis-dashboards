@@ -15,6 +15,9 @@ Confere:
      FGTS Digital nem a confirmação, e com a lista dos 8;
   5. a Agenda: o cartão da tarefa com lista mostra o progresso, a janela mostra as caixas e marcar grava (e o cartão muda);
   6. as tarefas do DP (tarefas-engine.js): a janela mostra as caixas e marcar grava;
+  7. Nova transição de saída: o campo vira "Tem funcionários?"; sem saber, o DP ganha "Documentos e acessos pro novo
+     escritório" com os 8 que não dependem de funcionário e "Confirmar se a empresa tem funcionários"; Editar › Sim → a
+     lista ganha os 5 de funcionários (13), a confirmação se conclui e o detalhe diz "com funcionários";
 e nenhum erro de JavaScript.
 Termina com código 1 se alguma checagem falhar. Pré-requisito: pip install playwright e python -m playwright install chromium
 """
@@ -35,6 +38,16 @@ KIT = [K(40, 'Cadastro no Domínio', 5, C), K(41, 'Cadastro no FGTS Digital', 7,
        K(51, 'Cópia da DIRF entregue', 15, F, False, DOC), K(52, 'Cópia da RAIS', 15, F, False, DOC),
        K(53, 'Vínculo da empresa com clínica (medicina do trabalho) — verificar', 12, F, True, DOC), K(54, 'Informes de rendimentos', 15, F, False, DOC),
        K(55, 'Informações complementares que facilitem a transição', 15, F, False, DOC)]
+NOVO = 'Documentos e acessos pro novo escritório'
+def S(ordem, titulo, func=False):
+    return {'id': 'ks%d' % ordem, 'tipo': 'saida', 'setor': 'dp', 'titulo': titulo, 'responsavel_padrao': 'Vitória', 'prazo_dias': 5 if ordem == 41 else 10, 'fase': F,
+            'ordem': ordem, 'ativo': True, 'so_com_funcionarios': func, 'agrupar_em': NOVO}
+KIT_SAIDA = [S(40, 'Extrato mensal da folha desde a abertura até o mês atual — enviar'), S(41, 'Login e senha do Empregador Web — enviar', True),
+             S(42, 'Ficha dos empregados com quadro de horários — enviar', True), S(43, 'Relatório de férias com detalhamento — enviar', True),
+             S(44, 'Relatório de dependentes com detalhamento — enviar'), S(45, 'Relatório de validados do eSocial — enviar'), S(46, 'Relatório de contribuintes — enviar'),
+             S(47, 'FGTS em aberto/ativo ou pago de um funcionário — informar', True), S(48, 'Todas as GFIPs — enviar'), S(49, 'Cópia da DIRF entregue — enviar'),
+             S(50, 'Cópia da RAIS — enviar'), S(51, 'Vínculo com clínica (medicina do trabalho) — informar', True),
+             S(52, 'Informações complementares que facilitem a transição — enviar')]
 LISTA = 'Marque cada item quando estiver resolvido.\n☑ Contrato social\n☐ Cartão CNPJ\n☐ Alvará'
 SEMEAR = """
 (() => {
@@ -51,7 +64,7 @@ SEMEAR = """
       descricao: LISTA, cliente_id: null, proposta_id: null, hora: null, transicao_id: null, posicao: 1, competencia: null, clientes: null, concluida_em: null, concluida_por: null });
   } });
 })();
-""" % (json.dumps(KIT, ensure_ascii=False), json.dumps(LISTA, ensure_ascii=False))
+""" % (json.dumps(KIT + KIT_SAIDA, ensure_ascii=False), json.dumps(LISTA, ensure_ascii=False))
 
 falhas = 0
 def ok(cond, msg):
@@ -165,6 +178,33 @@ def main():
         caixas.nth(2).check(); p.wait_for_timeout(500)
         desc = p.evaluate("() => window.__mockDb.tarefas.find(t => t.id === 'tl1').descricao")
         ok(desc.endswith('☑ Alvará'), '6. marcar grava a descrição na hora')
+        p.close()
+
+        print('7. Nova transição de saída')
+        p = abrir(b, base, 'comercial-transicao.html', erros)
+        p.click('#btnNova'); p.wait_for_timeout(300)
+        ok(p.inner_text('#nvFuncRot') == 'Terá funcionários?', '7. a nova transição abre como entrada: "Terá funcionários?"')
+        p.fill('#nvTitulo', 'CLIENTE QUE SAI LTDA'); p.select_option('#nvTipo', 'saida')
+        ok(p.inner_text('#nvFuncRot') == 'Tem funcionários?', '7. na saída o campo vira "Tem funcionários?"')
+        p.select_option('#nvFunc', ''); p.click('#nvCriar'); p.wait_for_timeout(1200)
+        tid = p.evaluate("() => (window.__mockDb.transicoes.find(t => t.titulo === 'CLIENTE QUE SAI LTDA') || {}).id")
+        ts = tarefas_da(p, tid)
+        titulos = [t['titulo'] for t in ts]
+        ok(sorted(titulos) == sorted([NOVO, 'Confirmar se a empresa tem funcionários']), f'7. o DP: a lista e a confirmação, no lugar de 13 tarefas ({titulos})')
+        lista = next((t for t in ts if t['titulo'] == NOVO), {})
+        ok(len(itens(lista.get('descricao'))) == 8 and 'Login e senha do Empregador Web — enviar' not in itens(lista.get('descricao'))
+           and 'Relatório de dependentes com detalhamento — enviar' in itens(lista.get('descricao')), '7. a lista com os 8 que não dependem de funcionário')
+        ok('☑ 0/8' in p.locator(f'.tcard[data-tid="{lista.get("id")}"]').inner_text(), '7. o cartão mostra "☑ 0/8"')
+        p.click('#btnEditar'); p.wait_for_timeout(300)
+        ok(p.inner_text('#edtFuncRot') == 'Tem funcionários?', '7. o Editar da saída também diz "Tem funcionários?"')
+        p.select_option('#edtFunc', 'true'); p.click('#edtSalvar'); p.wait_for_timeout(1500)
+        ts = tarefas_da(p, tid)
+        lista = next((t for t in ts if t['titulo'] == NOVO), {})
+        conf = next((t for t in ts if t['titulo'] == 'Confirmar se a empresa tem funcionários'), {})
+        ok(len(ts) == 2 and len(itens(lista.get('descricao'))) == 13 and itens(lista.get('descricao'))[-1] == 'Vínculo com clínica (medicina do trabalho) — informar',
+           f'7. Sim: a lista ganhou os 5 de funcionários (13), sem tarefa nova ({[t["titulo"] for t in ts]})')
+        ok(conf.get('status') == 'concluida', '7. a confirmação da saída se concluiu')
+        ok('com funcionários' in p.inner_text('#detMeta'), '7. o detalhe diz "com funcionários"')
         p.close()
 
         b.close()

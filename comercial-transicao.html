@@ -142,7 +142,7 @@
         </select></label>
       <div class="duas">
         <label class="campo"><span>Início</span><input type="date" id="nvInicio"></label>
-        <label class="campo"><span>Terá funcionários?</span>
+        <label class="campo"><span id="nvFuncRot">Terá funcionários?</span>
           <select id="nvFunc"><option value="">—</option><option value="true">Sim</option><option value="false">Não</option></select></label>
       </div>
       <label class="campo"><span>Empresas (uma ou mais — e dá pra criar sem nenhuma e vincular depois, quando cadastradas)</span>
@@ -168,7 +168,7 @@
       <label class="campo"><span>Título</span><input id="edtTitulo"></label>
       <div class="duas">
         <label class="campo"><span>Início</span><input type="date" id="edtInicio"></label>
-        <label class="campo"><span>Terá funcionários?</span>
+        <label class="campo"><span id="edtFuncRot">Terá funcionários?</span>
           <select id="edtFunc"><option value="">—</option><option value="true">Sim</option><option value="false">Não</option></select></label>
       </div>
       <label class="campo"><span>Empresas vinculadas (do cadastro de clientes)</span>
@@ -223,7 +223,7 @@
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { hojeLocal, dataLocal } from './assets/js/utils.js';   // dia no fuso local (toISOString é UTC)
-    import { tarefasDoKit, tarefasQueFaltam } from './assets/js/transicao-kit.js';
+    import { tarefasDoKit, tarefasQueFaltam, rotuloFuncionarios } from './assets/js/transicao-kit.js';
     import { montarChecklist, rotuloDoProgresso } from './assets/js/checklist.js';
     import { concluirTarefas } from './assets/js/tarefas-acoes.js';
     const escHtml = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));   // texto do banco nunca vira HTML (o nome que veio do formulário público, por exemplo)
@@ -293,12 +293,15 @@
       empSelecionadas = [];
       ['nvTitulo','nvContato','nvObs','nvEmpBusca'].forEach(id => document.getElementById(id).value = '');
       document.getElementById('nvTipo').value = 'entrada';
+      document.getElementById('nvFuncRot').textContent = rotuloFuncionarios('entrada');
       document.getElementById('nvFunc').value = '';
       document.getElementById('nvInicio').value = hojeISO();
       renderEmpChips();
       ovNova.classList.add('aberto');
     });
     document.getElementById('nvCancelar').addEventListener('click', () => ovNova.classList.remove('aberto'));
+    // na saída a empresa ainda é cliente: "Tem funcionários?"; na entrada e no CNPJ novo, "Terá"
+    document.getElementById('nvTipo').addEventListener('change', e => { document.getElementById('nvFuncRot').textContent = rotuloFuncionarios(e.target.value); });
 
     const empBusca = document.getElementById('nvEmpBusca');
     const empSug = document.getElementById('nvEmpSug');
@@ -339,7 +342,7 @@
       if (error) { alert('Erro ao criar: ' + error.message); return; }
       if (empSelecionadas.length) await supabase.from('transicao_empresas').insert(empSelecionadas.map(c => ({ transicao_id: tr.id, cliente_id: c.id })));
       // o kit (assets/js/transicao-kit.js): o que é só de quem tem funcionários entra conforme o "Terá funcionários", e os
-      // documentos do escritório anterior do DP viram uma tarefa só, com a lista
+      // documentos do DP (do escritório anterior, na entrada; pro novo escritório, na saída) viram uma tarefa só, com a lista
       const { data: kit } = await supabase.from('transicao_kit').select('*').eq('tipo', tipo).eq('ativo', true).order('ordem');
       const doKit = tarefasDoKit(kit, { inicio, teraFuncionarios: funcV === '' ? null : funcV === 'true', transicaoId: tr.id, clienteId: null });
       if (doKit.length) await supabase.from('tarefas').insert(doKit);
@@ -365,7 +368,7 @@
       const t = atual;
       document.getElementById('detTitulo').textContent = t.titulo;
       const dia = Math.max(1, Math.floor((new Date(hojeISO()) - new Date(t.inicio)) / 864e5) + 1);
-      document.getElementById('detMeta').innerHTML = `<span class="tr-chip tipo">${TIPO_LABEL[t.tipo] || t.tipo}</span> início ${fmtData(t.inicio)}${t.tera_funcionarios === true ? ' · terá funcionários' : t.tera_funcionarios === false ? ' · sem funcionários' : ''}${t.contato ? ' · ' + escHtml(t.contato) : ''}`;
+      document.getElementById('detMeta').innerHTML = `<span class="tr-chip tipo">${TIPO_LABEL[t.tipo] || t.tipo}</span> início ${fmtData(t.inicio)}${t.tera_funcionarios === true ? (t.tipo === 'saida' ? ' · com funcionários' : ' · terá funcionários') : t.tera_funcionarios === false ? ' · sem funcionários' : ''}${t.contato ? ' · ' + escHtml(t.contato) : ''}`;
       document.getElementById('detEmpresas').innerHTML = empresasAtual.map(e => `<span class="emp-chip">${escHtml(e.clientes?.nome_principal || '?')}${e.clientes?.cidade ? ` · ${escHtml(e.clientes.cidade)}` : ''}</span>`).join('') || '<span class="aviso">nenhuma empresa vinculada ainda — use o ✎ Editar quando o cadastro existir</span>';
       document.getElementById('detDias').innerHTML = t.status === 'concluida' ? '🏁' : `Dia ${Math.min(dia, 999)} <span style="color:var(--text-dim);font-size:13px;">de 90</span>`;
       document.getElementById('detPrev').textContent = t.status === 'concluida' ? `concluída em ${fmtData((t.concluida_em || '').slice(0, 10))}` : `previsão de conclusão: ${fmtData(t.previsao_fim)}`;
@@ -467,6 +470,7 @@
     document.getElementById('btnEditar').addEventListener('click', () => {
       document.getElementById('edtTitulo').value = atual.titulo || '';
       document.getElementById('edtInicio').value = atual.inicio || '';
+      document.getElementById('edtFuncRot').textContent = rotuloFuncionarios(atual.tipo);
       document.getElementById('edtFunc').value = atual.tera_funcionarios === true ? 'true' : atual.tera_funcionarios === false ? 'false' : '';
       document.getElementById('edtContato').value = atual.contato || '';
       document.getElementById('edtObs').value = atual.observacao || '';
@@ -509,8 +513,8 @@
       };
       const { error } = await supabase.from('transicoes').update(campos).eq('id', atual.id);
       if (error) { alert('Erro ao salvar: ' + error.message); return; }
-      // "Terá funcionários" mudou pra Sim ou Não: o kit completa o que é só de quem tem funcionários (sem repetir) e a
-      // tarefa "Confirmar se a empresa terá funcionários" se conclui — assets/js/transicao-kit.js
+      // "Terá funcionários" ("Tem", na saída) mudou pra Sim ou Não: o kit completa o que é só de quem tem funcionários (sem
+      // repetir) e a tarefa "Confirmar se a empresa terá/tem funcionários" se conclui — assets/js/transicao-kit.js
       let avisoKit = '';
       if (campos.tera_funcionarios !== null && campos.tera_funcionarios !== atual.tera_funcionarios) {
         const { data: kit } = await supabase.from('transicao_kit').select('*').eq('tipo', atual.tipo).eq('ativo', true).order('ordem');
