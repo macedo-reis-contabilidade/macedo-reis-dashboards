@@ -136,7 +136,7 @@ function q(table){
     if (self._out) return self._out;
     if (self._err) return (self._out = { data:null, error:self._err, count:0 });
     const data = self._ins || rows.filter(passa);
-    if (self._patch) { data.forEach(r => Object.assign(r, self._patch)); console.log('MOCK UPDATE', table, data.length); }
+    if (self._patch) { data.forEach(r => Object.assign(r, self._patch)); console.log('MOCK UPDATE', table, data.length); emitir(table, 'UPDATE', data); }
     if (self._del) { data.forEach(r => rows.splice(rows.indexOf(r), 1)); console.log('MOCK DELETE', table, data.length); }
     return (self._out = { data: self._head ? null : copia(data), error:null, count: data.length });
   };
@@ -148,9 +148,11 @@ function q(table){
     if (k==='in') return (col, vals) => { (self._f ||= []).push(['in',col,vals]); return chain; };
     if (k==='insert') return (payload) => {
       const arr = (Array.isArray(payload)?payload:[payload]).map(r => ({ id: 'n'+(seq++), ...r }));
+      // o que o banco de verdade preenche sozinho (o chat: quem e quando), o teste preenche aqui
+      if (typeof window.__mockAntesDeInserir === 'function') arr.forEach(r => window.__mockAntesDeInserir(table, r));
       const dup = (UNICOS[table] || []).some(cols => arr.some(n => rows.some(r => cols.every(c => r[c] === n[c]))));
       if (dup) { self._err = { code:'23505', message:'duplicate key value violates unique constraint' }; return chain; }
-      rows.push(...arr); self._ins = arr; console.log('MOCK INSERT', table, JSON.stringify(arr)); return chain;
+      rows.push(...arr); self._ins = arr; console.log('MOCK INSERT', table, JSON.stringify(arr)); emitir(table, 'INSERT', arr); return chain;
     };
     if (['lt','lte','gt','gte','eq','neq','is','not'].includes(k)) return (col, v, v2) => { (self._f ||= []).push([k,col,v,v2]); return chain; };
     if (k==='single' || k==='maybeSingle') return () => { const out = executar(); return responder({ data: out.error ? null : ((out.data || [])[0] ?? null), error: out.error }); };
@@ -158,10 +160,53 @@ function q(table){
   }});
   return chain;
 }
+// o tempo real (o chat da equipe, assets/js/chat-equipe.js): os canais guardam quem escuta; o que o banco falso insere ou
+// muda nas tabelas do chat chega aos canais, como no Supabase; o teste manda o que "outra pessoa" fez por
+// window.__mockEmitir(tabela, evento, linha) e quem está online por window.__mockOnline(emails)
+const CANAIS = [];
+const TEMPO_REAL = ['chat_mensagens', 'chat_membros', 'chat_conversas'];
+function emitir(tabela, evento, linhas) {
+  if (!TEMPO_REAL.includes(tabela)) return;
+  (Array.isArray(linhas) ? linhas : [linhas]).forEach(l => setTimeout(() => entregar(tabela, evento, copia(l)), 20));
+}
+function entregar(tabela, evento, linha) {
+  CANAIS.forEach(c => c.ouvintes.filter(o => o.tipo === 'postgres_changes' && o.filtro.table === tabela && (o.filtro.event === '*' || o.filtro.event === evento)).forEach(o => {
+    const f = /^(\w+)=eq\.(.*)$/.exec(o.filtro.filter || '');
+    if (f && String(linha[f[1]]) !== f[2]) return;
+    try { o.cb({ eventType: evento, new: linha, old: {} }); } catch (e) { console.error(e); }
+  }));
+}
+window.__mockEmitir = (tabela, evento, linha) => entregar(tabela, evento, copia(linha));
+window.__mockCanais = CANAIS;
+let ONLINE = [];
+window.__mockOnline = emails => { ONLINE = emails.slice(); CANAIS.forEach(c => c.ouvintes.filter(o => o.tipo === 'presence').forEach(o => o.cb({}))); };
+function canal(nome, opcoes) {
+  const c = { nome, opcoes, ouvintes: [], eu: null,
+    on(tipo, filtro, cb) { c.ouvintes.push({ tipo, filtro: filtro || {}, cb }); return c; },
+    subscribe(cb) { setTimeout(() => { if (cb) cb('SUBSCRIBED'); }, 10); return c; },
+    async track(meta) { c.eu = (opcoes && opcoes.config && opcoes.config.presence && opcoes.config.presence.key) || 'eu'; setTimeout(() => c.ouvintes.filter(o => o.tipo === 'presence').forEach(o => o.cb({})), 10); return 'ok'; },
+    presenceState() { const s = {}; [...ONLINE, ...(c.eu ? [c.eu] : [])].forEach(e => { s[e] = [{}]; }); return s; },
+    async unsubscribe() { return 'ok'; } };
+  CANAIS.push(c);
+  return c;
+}
+// os arquivos (a pasta "chat" do Storage): guardados em window.__mockDb.__arquivos; o link assinado é um endereço falso
+const ARQUIVOS = () => (DATA.__arquivos ||= {});
+const storageFalso = { from: pasta => ({
+  async upload(caminho, arquivo, op = {}) { if (ARQUIVOS()[pasta + '/' + caminho]) return { data: null, error: { message: 'The resource already exists' } };
+    ARQUIVOS()[pasta + '/' + caminho] = { tamanho: arquivo && arquivo.size, tipo: op.contentType || null }; console.log('MOCK UPLOAD', pasta, caminho); return { data: { path: caminho }, error: null }; },
+  async createSignedUrl(caminho, s, op = {}) { return { data: { signedUrl: 'https://arquivos.teste/' + pasta + '/' + encodeURI(caminho) + (op && op.download ? '?download=' + encodeURIComponent(op.download) : '') }, error: null }; },
+  async createSignedUrls(caminhos) { return { data: caminhos.map(c => ({ path: c, signedUrl: 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="80"><rect width="120" height="80" fill="#5B82A6"/></svg>'), error: null })), error: null }; },
+  async remove(caminhos) { caminhos.forEach(c => delete ARQUIVOS()[pasta + '/' + c]); console.log('MOCK REMOVE', pasta, caminhos.length); return { data: [], error: null }; }
+}) };
 // rpc: quem responde é o teste, por window.__mockRpc(nome, args) (o admissoes.py usa pro link público); sem ele, lista vazia
 export const supabase = { from: q, auth: { getUser: async () => ({ data: { user: { email:'financeiro@macedoereis.com.br' } } }), getSession: async () => ({ data: { session: { user: { email:'financeiro@macedoereis.com.br' } } } }) },
   rpc: async (nome, args) => (typeof window.__mockRpc === 'function' ? window.__mockRpc(nome, args || {}) : { data: [], error:null }) };
 supabase.todosClientes = async () => ({ data: DATA.clientes, error:null });
+supabase.channel = canal;
+supabase.removeChannel = async () => 'ok';
+supabase.realtime = { setAuth: async () => {} };
+supabase.storage = storageFalso;
 // Edge Functions: quem responde é o teste, por window.__mockInvoke(nome, { body }) (o cadastro-socios.py usa pra
 // devolver uma leitura de contrato inventada). Sem ele, a chamada volta com erro — o harness nunca chama função de verdade
 supabase.functions = { invoke: async (nome, opts) => (typeof window.__mockInvoke === 'function'

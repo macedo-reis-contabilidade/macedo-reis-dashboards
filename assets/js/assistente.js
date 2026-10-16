@@ -13,6 +13,9 @@
 // uma ação proposta ("acao": concluir tarefas, criar, marcar pago, revisar): a tela desenha o cartão dela embaixo da
 // resposta (op.cartao) e o estado do cartão (feito, desfeito…) fica guardado na conversa; mostrarAcao() põe um cartão
 // sem passar pela IA (ex.: "Revisar as atrasadas", da saudação do dia).
+// Abas (16/10/2026): op.abas põe outras abas no mesmo painel, ao lado da do assistente (hoje, a "Equipe" — o chat da
+// equipe, assets/js/chat-equipe.js). Cada aba monta o que é dela num lugar próprio do painel e conta as novidades dela,
+// que somam no número do balão; a aba aberta fica guardada com a conversa.
 // Estilos em assets/css/style.css (prefixo .as-). Os auxiliares puros (textoParaHtml, lerEventos, mensagemDoErro,
 // perguntarFuncao, lerEstado, primeiraFrase) têm teste próprio em tests/assistente.test.mjs; a tela, em
 // tests/harness/reforma-chat.py.
@@ -137,9 +140,9 @@ export function lerEstado(texto) {
   const n = Number(j.naoLidas);
   return { v: 1, conversa: id(j.conversa), historico, msgs, aberto: j.aberto === true, largo: j.largo === true,
     naoLidas: Number.isFinite(n) ? Math.max(0, Math.min(99, Math.round(n))) : 0,
-    recadoVisto: j.recadoVisto === true, recadoContextoVisto: j.recadoContextoVisto === true };
+    recadoVisto: j.recadoVisto === true, recadoContextoVisto: j.recadoContextoVisto === true, aba: (str(j.aba) && /^[a-z0-9-]{1,40}$/.test(j.aba) ? j.aba : 'assistente') };
 }
-const estadoNovo = () => ({ v: 1, conversa: null, historico: [], msgs: [], aberto: false, largo: false, naoLidas: 0, recadoVisto: false, recadoContextoVisto: false });
+const estadoNovo = () => ({ v: 1, conversa: null, historico: [], msgs: [], aberto: false, largo: false, naoLidas: 0, recadoVisto: false, recadoContextoVisto: false, aba: 'assistente' });
 
 // a primeira frase da resposta (sem as fontes e os separadores delas), pro recado "Respondi" e pro leitor de tela; frase
 // curta demais ("Sim.") leva a seguinte junto
@@ -191,6 +194,10 @@ const valorOuFuncao = v => (typeof v === 'function' ? v() : v);
 // das fontes chegaram); reagir() faz a carinha comemorar; avisar({ texto | html, exemplos, botoes, ms }) mostra um recado
 // (botoes: [{ rotulo, acao }] — o que acontece na tela, sem perguntar à IA); mostrarAcao({ texto, acao }) põe na conversa
 // uma mensagem com o cartão, sem passar pela IA, e abre o painel.
+//   op.abas          [{ id, rotulo, nome?, montar(lugar, ctl) → { aoMostrar({ foco }), aoEsconder(), status() } }] — as outras
+//                    abas do painel. ctl: { ativa(): o painel aberto nesta aba · mostrar(): abre o painel nela · contador(n):
+//                    as novidades dela (somam no balão) · status(): redesenha a linha do topo · avisar(msg) · anunciar(t) ·
+//                    reagir() · largo(): o painel aumentado }. mostrarAba(id) troca de aba
 // ============================================================
 export function montarAssistente(op) {
   const temMedia = q => typeof matchMedia === 'function' && matchMedia(q).matches;
@@ -224,10 +231,13 @@ export function montarAssistente(op) {
     + '<div class="as-acoes"><button type="button" class="as-acao" data-a="nova" title="Começar uma conversa nova" aria-label="Conversa nova">' + ICONE.nova + '</button>'
     + '<button type="button" class="as-acao" data-a="largo" title="Aumentar o painel" aria-label="Aumentar o painel">' + ICONE.maior + '</button>'
     + '<button type="button" class="as-acao" data-a="fechar" data-janela-fechar title="Minimizar" aria-label="Minimizar">' + ICONE.fechar + '</button></div></header>'
+    + '<div class="as-abas" role="tablist" aria-label="Abas do painel" hidden></div>'
+    + '<div class="as-vista" data-aba="assistente" role="tabpanel">'
     + '<div class="as-ctx" hidden><label><input type="checkbox" checked> <span><span class="as-ctx-rot">Sobre a ficha aberta</span>: <b></b></span></label></div>'
     + '<div class="as-msgs"><div class="as-lista"></div><div class="as-cauda"></div></div>'
     + '<form class="as-entrada"><textarea rows="1" maxlength="2000" data-no-autogrow placeholder="' + escapeHtml(op.placeholder || 'Pergunte à base…') + '" aria-label="Sua pergunta" title="Enter envia; Shift+Enter quebra a linha"></textarea>'
     + '<button type="submit" class="as-enviar" aria-label="Enviar">' + ICONE.enviar + '</button></form>'
+    + '</div>'
     + '</section>'
     + '<div class="as-vivo" role="status" aria-live="polite"></div>';
   document.body.appendChild(raiz);
@@ -281,13 +291,36 @@ export function montarAssistente(op) {
     setInterval(() => { if (ultimoMov && Date.now() - ultimoMov > 7000) { ultimoMov = 0; miras.forEach(m => { m.style.transform = ''; }); } }, 2500);
   }
 
+  // ---------- as abas (op.abas: o chat da equipe, por exemplo) ----------
+  const abas = (Array.isArray(op.abas) ? op.abas : []).filter(a => a && /^[a-z0-9-]{1,40}$/.test(String(a.id)) && a.id !== 'assistente' && typeof a.montar === 'function');
+  const barra = q('.as-abas'), nomeTopo = q('.as-nome');
+  const contagens = {}, instancias = {};
+  const abaAtual = () => (abas.some(a => a.id === est.aba) ? est.aba : 'assistente');
+  const abaDe = id => abas.find(a => a.id === id) || null;
+
   // ---------- status, selo, botões travados enquanto ele responde ----------
-  const statusPadrao = () => { statusTxt.textContent = valorOuFuncao(op.status) || ''; raiz.classList.remove('as-ocupado'); };
+  // o topo: o nome e a frase de quem está na frente (o assistente ou a aba aberta)
+  function atualizarTopo() {
+    const a = abaDe(abaAtual());
+    nomeTopo.textContent = a ? a.nome || a.rotulo : op.nome;
+    if (a) { let t = ''; try { t = instancias[a.id] && instancias[a.id].status ? instancias[a.id].status() || '' : ''; } catch (e) { t = ''; } statusTxt.textContent = t; }
+    else if (!raiz.classList.contains('as-ocupado')) statusTxt.textContent = valorOuFuncao(op.status) || '';
+  }
+  const statusPadrao = () => { raiz.classList.remove('as-ocupado'); atualizarTopo(); };
   statusPadrao();
+  const totalAbas = () => abas.reduce((n, a) => n + (contagens[a.id] || 0), 0);
   const atualizarSelo = () => {
-    selo.hidden = !est.naoLidas;
-    selo.textContent = est.naoLidas > 9 ? '9+' : String(est.naoLidas || '');
-    lancador.setAttribute('aria-label', (op.rotulo || op.nome) + (est.naoLidas ? ' — ' + est.naoLidas + (est.naoLidas === 1 ? ' resposta nova' : ' respostas novas') : ''));
+    const n = est.naoLidas + totalAbas();
+    selo.hidden = !n;
+    selo.textContent = n > 9 ? '9+' : String(n || '');
+    const partes = [est.naoLidas ? est.naoLidas + (est.naoLidas === 1 ? ' resposta nova' : ' respostas novas') : '',
+      ...abas.filter(a => contagens[a.id]).map(a => contagens[a.id] + ' em ' + a.rotulo)].filter(Boolean);
+    lancador.setAttribute('aria-label', (op.rotulo || op.nome) + (partes.length ? ' — ' + partes.join(', ') : ''));
+    // o número de cada aba, na barra (o do assistente: as respostas que chegaram com outra aba na frente)
+    barra.querySelectorAll('.as-aba').forEach(b => {
+      const k = b.dataset.aba === 'assistente' ? est.naoLidas : contagens[b.dataset.aba] || 0;
+      const el = b.querySelector('.as-aba-n'); el.hidden = !k; el.textContent = k > 99 ? '99+' : String(k || '');
+    });
   };
   // "Conversa nova" também trava: a pergunta no ar continuaria rodando na função (e contando no limite do dia)
   const travar = sim => { enviarBtn.disabled = sim; novaBtn.disabled = sim; };
@@ -315,6 +348,7 @@ export function montarAssistente(op) {
   q('.as-recado-x').onclick = () => { esconderRecado(); lancador.focus({ preventScroll: true }); };
   // pergunta pronta do recado: abre e envia; com outra pergunta no ar, deixa na caixa
   const chipsDe = perguntas => (perguntas || []).map(p => ({ rotulo: p, acao: () => {
+    mostrarAba('assistente');
     abrir();
     if (ocupado) { texto.value = p; ajustarAltura(); } else enviar(p);
   } }));
@@ -400,7 +434,7 @@ export function montarAssistente(op) {
   const atualizarDigitando = () => {
     const t = ultimaEtapa || 'Lendo a base…';
     const el = cauda.querySelector('.as-lendo'); if (el) el.textContent = t;
-    statusTxt.textContent = t;
+    if (abaAtual() === 'assistente') statusTxt.textContent = t;
   };
 
   // a resposta aparece aos poucos (palavra por palavra, ~1,5 s no total); clique completa na hora
@@ -460,13 +494,15 @@ export function montarAssistente(op) {
   // ---------- abrir, fechar ----------
   const ajustarAltura = () => { texto.style.height = 'auto'; texto.style.height = Math.min(140, texto.scrollHeight + 2) + 'px'; };
   function abrir(foco = true) {
-    const tinhaNova = est.naoLidas > 0;
+    const naAssistente = abaAtual() === 'assistente';
+    const tinhaNova = naAssistente && est.naoLidas > 0;
     esconderRecado();
-    est.aberto = true; est.naoLidas = 0; guardar(); atualizarSelo();
+    est.aberto = true; if (naAssistente) est.naoLidas = 0; guardar(); atualizarSelo();
     painel.hidden = false;
     raiz.classList.add('as-aberto');
     document.documentElement.classList.add('as-painel-aberto');
     lancador.setAttribute('aria-expanded', 'true');
+    if (!naAssistente) { chamarAba(abaAtual(), 'aoMostrar', { foco: foco && !estreito() }); return; }
     ajustarAltura();
     const respostas = lista.querySelectorAll('.as-msg.ia:not(.as-saudacao)');
     if (tinhaNova && respostas.length) mostrarComeco(respostas[respostas.length - 1]); else rolar();
@@ -475,6 +511,7 @@ export function montarAssistente(op) {
   }
   function fechar() {
     const tinhaFoco = raiz.contains(document.activeElement);
+    if (abaAtual() !== 'assistente') chamarAba(abaAtual(), 'aoEsconder');
     est.aberto = false; guardar();
     painel.hidden = true;
     raiz.classList.remove('as-aberto');
@@ -504,7 +541,7 @@ export function montarAssistente(op) {
     const b = ev.target.closest('.as-acao'); if (!b || b.disabled) return;
     if (b.dataset.a === 'fechar') fechar();
     else if (b.dataset.a === 'nova') novaConversa();
-    else if (b.dataset.a === 'largo') { est.largo = !est.largo; guardar(); aplicarLargo(); rolar(); }
+    else if (b.dataset.a === 'largo') { est.largo = !est.largo; guardar(); aplicarLargo(); rolar(); if (abaAtual() !== 'assistente') chamarAba(abaAtual(), 'aoMostrar', { foco: false }); }
   };
   // Esc dentro do assistente (painel, balão, recado) fecha o painel ou o recado — salvo quando outra janela está por cima
   // do painel (ex.: a Base legal aberta por uma fonte): aí o Esc é dela (janelas.js fecha a de cima)
@@ -560,8 +597,8 @@ export function montarAssistente(op) {
     if (!est.aberto) {
       est.naoLidas++; atualizarSelo();
       mostrarRecado({ html: res ? '<p><b>Respondi.</b> ' + escapeHtml(primeiraFrase(res.texto)) + '</p>' : '<p><b>Não consegui responder.</b> ' + escapeHtml(erro) + '</p>',
-        chips: [{ rotulo: 'Ver a resposta', acao: () => abrir() }], ms: 30000 });
-    }
+        chips: [{ rotulo: 'Ver a resposta', acao: () => { mostrarAba('assistente'); abrir(); } }], ms: 30000 });
+    } else if (abaAtual() !== 'assistente') { est.naoLidas++; atualizarSelo(); }
     guardar();
     desenharCauda();
     if (est.aberto) {
@@ -624,9 +661,70 @@ export function montarAssistente(op) {
     est.msgs.push(m);
     const el = acrescentar(m);
     guardar(); desenharCauda();
-    if (abrirPainel) { if (!est.aberto) abrir(false); mostrarComeco(el); }
-    else if (!est.aberto) { est.naoLidas++; atualizarSelo(); guardar(); }
+    if (abrirPainel) { mostrarAba('assistente'); if (!est.aberto) abrir(false); mostrarComeco(el); }
+    else if (!est.aberto || abaAtual() !== 'assistente') { est.naoLidas++; atualizarSelo(); guardar(); }
     return true;
+  }
+
+  // ---------- as outras abas ----------
+  function chamarAba(id, metodo, ...args) {
+    const inst = instancias[id];
+    if (!inst || typeof inst[metodo] !== 'function') return;
+    try { inst[metodo](...args); } catch (e) { /* a aba com problema não derruba o painel */ }
+  }
+  // troca a aba da frente (a barra, o lugar de cada uma, o topo e o número de cada aba)
+  function mostrarAba(id, { foco = false } = {}) {
+    if (!abas.length) return;
+    const destino = id === 'assistente' || abaDe(id) ? id : 'assistente';
+    const antes = abaAtual();
+    est.aba = destino;
+    if (destino === 'assistente' && est.aberto) est.naoLidas = 0;
+    guardar();
+    barra.querySelectorAll('.as-aba').forEach(b => {
+      const on = b.dataset.aba === destino;
+      b.setAttribute('aria-selected', on ? 'true' : 'false'); b.tabIndex = on ? 0 : -1; b.classList.toggle('as-aba-atual', on);
+    });
+    painel.querySelectorAll('.as-vista').forEach(v => { v.hidden = v.dataset.aba !== destino; });
+    novaBtn.hidden = destino !== 'assistente';
+    raiz.classList.toggle('as-outra-aba', destino !== 'assistente');
+    if (antes !== destino && antes !== 'assistente') chamarAba(antes, 'aoEsconder');
+    atualizarTopo(); atualizarSelo();
+    if (est.aberto) {
+      if (destino === 'assistente') { desenharCauda(); rolar(); if (foco && !estreito()) setTimeout(() => texto.focus({ preventScroll: true }), 30); }
+      else chamarAba(destino, 'aoMostrar', { foco });
+    }
+  }
+  if (abas.length) {
+    barra.hidden = false;
+    barra.innerHTML = [{ id: 'assistente', rotulo: op.rotuloAba || 'Assistente' }, ...abas].map(a => '<button type="button" role="tab" class="as-aba" data-aba="' + a.id + '" id="as-aba-' + op.id + '-' + a.id
+      + '" aria-controls="as-vista-' + op.id + '-' + a.id + '"><span>' + escapeHtml(a.rotulo) + '</span><span class="as-aba-n" hidden></span></button>').join('');
+    q('.as-vista[data-aba="assistente"]').id = 'as-vista-' + op.id + '-assistente';
+    barra.onclick = ev => { const b = ev.target.closest('.as-aba'); if (b) mostrarAba(b.dataset.aba, { foco: true }); };
+    barra.addEventListener('keydown', ev => {
+      if (ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight') return;
+      const bs = [...barra.querySelectorAll('.as-aba')], i = bs.findIndex(b => b.dataset.aba === abaAtual());
+      const prox = bs[(i + (ev.key === 'ArrowRight' ? 1 : bs.length - 1)) % bs.length];
+      ev.preventDefault(); mostrarAba(prox.dataset.aba); prox.focus();
+    });
+    abas.forEach(a => {
+      const lugar = document.createElement('div');
+      lugar.className = 'as-vista'; lugar.dataset.aba = a.id; lugar.id = 'as-vista-' + op.id + '-' + a.id;
+      lugar.setAttribute('role', 'tabpanel'); lugar.setAttribute('aria-labelledby', 'as-aba-' + op.id + '-' + a.id); lugar.hidden = true;
+      painel.appendChild(lugar);
+      const ctl = {
+        ativa: () => est.aberto && abaAtual() === a.id,
+        mostrar: (foco = true) => { mostrarAba(a.id); if (!est.aberto) abrir(foco); else chamarAba(a.id, 'aoMostrar', { foco }); },
+        contador: n => { const v = Math.max(0, Math.round(Number(n) || 0)); if (contagens[a.id] !== v) { contagens[a.id] = v; atualizarSelo(); } },
+        status: () => { if (abaAtual() === a.id) atualizarTopo(); },
+        avisar: msg => avisar(msg),
+        anunciar: t => anunciar(t),
+        reagir: () => reagir(),
+        largo: () => !!est.largo
+      };
+      contagens[a.id] = 0;
+      try { instancias[a.id] = a.montar(lugar, ctl) || {}; } catch (e) { instancias[a.id] = {}; }
+    });
+    mostrarAba(abaAtual());
   }
 
   // ---------- começo ----------
@@ -654,6 +752,6 @@ export function montarAssistente(op) {
     }, 2500);
   }
 
-  return { abrir, fechar, enviar, definirContexto, atualizar: desenharCauda, redesenhar: () => desenharTudo({ manterRolagem: true }), novaConversa, reagir, avisar, mostrarAcao,
-    get aberto() { return est.aberto; }, get ocupado() { return ocupado; }, raiz };
+  return { abrir, fechar, enviar, definirContexto, atualizar: desenharCauda, redesenhar: () => desenharTudo({ manterRolagem: true }), novaConversa, reagir, avisar, mostrarAcao, mostrarAba,
+    get aberto() { return est.aberto; }, get ocupado() { return ocupado; }, get aba() { return abaAtual(); }, raiz };
 }

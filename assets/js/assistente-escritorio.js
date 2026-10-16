@@ -17,6 +17,8 @@
 // pessoa resolveu no cartão (16/10/2026) não conta nesta máquina até a conferência seguinte, que tira do banco.
 // As fontes da Reforma ([CODIGO]) viram link: material → o original no Drive; regra → a Base legal (na tela da Reforma,
 // por cima; nas outras, fiscal-reforma.html#regra-COD). Testes de tela: tests/harness/assistente-escritorio.py.
+// O chat da equipe (16/10/2026, no lugar do Beep) é a aba "Equipe" do mesmo painel (assets/js/chat-equipe.js): as
+// mensagens chegam em qualquer tela, e o número delas soma no balão.
 // ============================================================
 
 import { supabase } from './supabase.js';
@@ -25,6 +27,7 @@ import { nomePorEmail, SOCIOS } from './equipe.js';
 import { janelaDeCima } from './janelas.js';
 import { cartaoDaAcao } from './assistente-acoes.js';
 import { lerAchados, filtrarAchados, eDaTela, novosDesde, lerVisto, semResolvidosAgora } from './vigia.js';
+import { montarChatEquipe } from './chat-equipe.js';
 
 const RAIZ = new URL('../../', import.meta.url);   // a raiz do site (este arquivo mora em assets/js/)
 
@@ -295,7 +298,9 @@ function montar() {
     cartao: (acao, ajuda) => cartaoDaAcao(acao, { ...ajuda, email, nome: nomePessoa }),
     // na tela da Reforma as respostas citam a base: os códigos vêm antes (nas outras, só quando uma resposta cita)
     antes: () => (caminho === 'fiscal-reforma.html' ? carregarFontes() : null),
-    aoClicar: ev => (tela.aoClicar ? tela.aoClicar(ev) : false)
+    aoClicar: ev => (tela.aoClicar ? tela.aoClicar(ev) : false),
+    // a aba do chat da equipe: conversas a dois e grupos, com o aviso no computador
+    abas: [{ id: 'equipe', rotulo: 'Equipe', nome: 'Equipe', montar: (lugar, ctl) => montarChatEquipe({ supabase, email, el: lugar, ctl }) }]
   });
 }
 

@@ -66,7 +66,7 @@ chk('a conexão cai depois da resposta: a resposta vale', r2.texto === 'Chegou i
 chk('a conexão cai depois de um evento de erro: a frase da função', await erroDe(() => perguntarFuncao(falso({ data: quebrado(ev({ tipo: 'erro', texto: 'Limite do dia.' })), error: null }), 'f')({})) === 'Limite do dia.');
 
 console.log('Conversa guardada na aba:');
-const valido = { v: 1, conversa: '6f1c2b0e-1d2a-4c3b-8e9f-0a1b2c3d4e5f', aberto: true, largo: false, naoLidas: 2, recadoVisto: true, recadoContextoVisto: false,
+const valido = { v: 1, conversa: '6f1c2b0e-1d2a-4c3b-8e9f-0a1b2c3d4e5f', aberto: true, largo: false, naoLidas: 2, recadoVisto: true, recadoContextoVisto: false, aba: 'equipe',
   msgs: [{ tipo: 'nota', texto: 'Sobre a ficha de X', em: '2026-10-14T12:00:00Z', ctxId: 'k1' }, { tipo: 'eu', texto: 'Pergunta?', em: '2026-10-14T12:00:00Z', ctxId: 'k1' },
     { tipo: 'ia', texto: 'Resposta.', etapas: ['Lendo A'], em: '2026-10-14T12:00:05Z', ctxId: 'k1' }],
   historico: [{ pergunta: 'Pergunta?', resposta: 'Resposta.', ctxId: 'k1', em: '2026-10-14T12:00:00Z' }] };
@@ -74,6 +74,9 @@ const lido = lerEstado(JSON.stringify(valido));
 // comparação sem depender da ordem das chaves
 const canon = x => Array.isArray(x) ? '[' + x.map(canon).join(',') + ']' : x && typeof x === 'object' ? '{' + Object.keys(x).sort().map(k => JSON.stringify(k) + ':' + canon(x[k])).join(',') + '}' : JSON.stringify(x);
 chk('a guardada no formato volta igual', canon(lido) === canon({ ...valido, msgs: valido.msgs.map(m => ({ ...m, etapas: m.etapas || [] })) }), JSON.stringify(lido));
+// a aba aberta do painel (16/10/2026, a Equipe): a guardada antes disso volta na do assistente; fora do formato também
+chk('a aba aberta: a de antes de 16/10 volta na do assistente; nome fora do formato também', lerEstado(JSON.stringify({ ...valido, aba: undefined })).aba === 'assistente'
+  && lerEstado(JSON.stringify({ ...valido, aba: '<script>' })).aba === 'assistente' && lerEstado(JSON.stringify({ ...valido, aba: 'equipe' })).aba === 'equipe');
 chk('fora do formato (JSON quebrado, lista, sem versão, versão antiga): começa do zero',
   [null, '', '{quebrado', '[1,2]', '"texto"', '{"msgs":[]}', '{"v":2,"msgs":[]}'].every(t => lerEstado(t) === null));
 const sujo = lerEstado(JSON.stringify({ v: 1, conversa: 7, msgs: [null, 5, { tipo: 'eu', texto: 9 }, { tipo: 'outro', texto: 'x' }, { tipo: 'ia', texto: 'ok', etapas: 'x', ctxId: { a: 1 } }],
