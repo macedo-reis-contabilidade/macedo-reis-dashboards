@@ -207,6 +207,8 @@
         <label class="campo"><span>Fase</span><input id="edFase" list="dlFases"></label>
       </div>
       <label class="campo"><span>Situação (anotação livre — ex.: "solicitado 18/07, reiterado 25/07")</span><textarea id="edSituacao" rows="2"></textarea></label>
+      <label class="campo"><span>Descrição (linhas com ☐ viram a lista abaixo)</span><textarea id="edDescricao" rows="3"></textarea></label>
+      <div id="edChecklist" hidden></div>
       <div class="ov-acoes">
         <button class="btn btn-ghost" id="edExcluir" style="color:var(--err);">Excluir</button>
         <button class="btn btn-ghost" id="edCancelar">Cancelar</button>
@@ -221,6 +223,9 @@
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { hojeLocal, dataLocal } from './assets/js/utils.js';   // dia no fuso local (toISOString é UTC)
+    import { tarefasDoKit, tarefasQueFaltam } from './assets/js/transicao-kit.js';
+    import { montarChecklist, rotuloDoProgresso } from './assets/js/checklist.js';
+    import { concluirTarefas } from './assets/js/tarefas-acoes.js';
     const escHtml = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));   // texto do banco nunca vira HTML (o nome que veio do formulário público, por exemplo)
 
     const SETORES = [['societario','Societário'],['fiscal','Fiscal'],['dp','DP'],['contabil','Contábil'],['financeiro','Financeiro'],['comercial','Comercial']];
@@ -231,9 +236,11 @@
     let transicoes = [], clientes = [], atual = null, tarefasAtual = [], empresasAtual = [];
     let empSelecionadas = [];
     let tarefaEd = null;
+    let usuarioEmail = null;
 
     (async () => {
       const user = await getCurrentUser();
+      usuarioEmail = user?.email || null;
       if (user) {
         const n = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário';
         const nome = n.charAt(0).toUpperCase() + n.slice(1);
@@ -331,17 +338,11 @@
       }).select('id').single();
       if (error) { alert('Erro ao criar: ' + error.message); return; }
       if (empSelecionadas.length) await supabase.from('transicao_empresas').insert(empSelecionadas.map(c => ({ transicao_id: tr.id, cliente_id: c.id })));
+      // o kit (assets/js/transicao-kit.js): o que é só de quem tem funcionários entra conforme o "Terá funcionários", e os
+      // documentos do escritório anterior do DP viram uma tarefa só, com a lista
       const { data: kit } = await supabase.from('transicao_kit').select('*').eq('tipo', tipo).eq('ativo', true).order('ordem');
-      if (kit && kit.length) {
-        const base = new Date(inicio + 'T12:00:00').getTime();
-        await supabase.from('tarefas').insert(kit.map(k => ({
-          setor: k.setor, tipo: 'tarefa', titulo: k.titulo,
-          responsavel: k.responsavel_padrao || null,
-          prazo: dataLocal(new Date(base + (k.prazo_dias || 0) * 864e5)),
-          status: 'pendente', origem: 'transicao',
-          transicao_id: tr.id, fase: k.fase || null, cliente_id: null
-        })));
-      }
+      const doKit = tarefasDoKit(kit, { inicio, teraFuncionarios: funcV === '' ? null : funcV === 'true', transicaoId: tr.id, clienteId: null });
+      if (doKit.length) await supabase.from('tarefas').insert(doKit);
       ovNova.classList.remove('aberto');
       abrirDetalhe(tr.id);
     });
@@ -393,7 +394,7 @@
             : x.status === 'concluida' ? `<span class="st-tag">✓ ${fmtData(x.concluida_em ? x.concluida_em.slice(0, 10) : x.prazo)}</span>` : '';
           return `<div class="tcard ${cls} ${atrasada ? 'atrasada' : ''}" data-tid="${x.id}">
             <div class="tt">${escHtml(x.titulo)}</div>
-            <div class="mm">${atrasada ? '<span class="st-tag at">⚠ atrasada</span>' : ''}${tag}${x.prazo && x.status !== 'concluida' ? `<span class="st-tag">prazo ${fmtData(x.prazo)}</span>` : ''}${x.responsavel ? `<span class="st-tag">${escHtml(x.responsavel)}</span>` : ''}</div>
+            <div class="mm">${atrasada ? '<span class="st-tag at">⚠ atrasada</span>' : ''}${tag}${x.prazo && x.status !== 'concluida' ? `<span class="st-tag">prazo ${fmtData(x.prazo)}</span>` : ''}${x.responsavel ? `<span class="st-tag">${escHtml(x.responsavel)}</span>` : ''}${rotuloDoProgresso(x.descricao) ? `<span class="st-tag" title="Itens da lista feitos">${rotuloDoProgresso(x.descricao)}</span>` : ''}</div>
             ${x.situacao ? `<div class="sit">${escHtml(x.situacao)}</div>` : ''}
           </div>`;
         }).join('');
@@ -508,6 +509,24 @@
       };
       const { error } = await supabase.from('transicoes').update(campos).eq('id', atual.id);
       if (error) { alert('Erro ao salvar: ' + error.message); return; }
+      // "Terá funcionários" mudou pra Sim ou Não: o kit completa o que é só de quem tem funcionários (sem repetir) e a
+      // tarefa "Confirmar se a empresa terá funcionários" se conclui — assets/js/transicao-kit.js
+      let avisoKit = '';
+      if (campos.tera_funcionarios !== null && campos.tera_funcionarios !== atual.tera_funcionarios) {
+        const { data: kit } = await supabase.from('transicao_kit').select('*').eq('tipo', atual.tipo).eq('ativo', true).order('ordem');
+        const clis = [...new Set(tarefasAtual.map(x => x.cliente_id).filter(Boolean))];
+        const falta = tarefasQueFaltam(kit, tarefasAtual, { teraFuncionarios: campos.tera_funcionarios, inicio: campos.inicio, hoje: hojeISO(),
+          transicaoId: atual.id, clienteId: clis.length === 1 ? clis[0] : null });
+        let erroKit = null;
+        if (falta.novas.length) { const { error: e1 } = await supabase.from('tarefas').insert(falta.novas); erroKit = erroKit || e1; }
+        for (const a of falta.atualizar) { const { error: e2 } = await supabase.from('tarefas').update({ descricao: a.descricao }).eq('id', a.id); erroKit = erroKit || e2; }
+        if (falta.concluir.length) await concluirTarefas(supabase, falta.concluir, { autor: usuarioEmail,
+          historico: 'Concluída: a transição foi marcada ' + (campos.tera_funcionarios ? 'com' : 'sem') + ' funcionários.' });
+        const n = falta.novas.length + falta.atualizar.length;
+        if (erroKit) avisoKit = 'A transição foi salva, mas as tarefas de funcionários do kit não entraram: ' + (erroKit.message || erroKit) + '.';
+        else if (n) avisoKit = (falta.novas.length ? falta.novas.length + ' tarefa(s) de funcionários do kit entraram' : '') + (falta.novas.length && falta.atualizar.length ? ' e ' : '')
+          + (falta.atualizar.length ? 'a lista de documentos ganhou os de funcionários' : '') + '.';
+      }
       const antes = empresasAtual.map(e => e.cliente_id);
       const agora = edtSel.map(e => e.id);
       const tirar = antes.filter(id => !agora.includes(id));
@@ -515,7 +534,8 @@
       if (tirar.length) await supabase.from('transicao_empresas').delete().eq('transicao_id', atual.id).in('cliente_id', tirar);
       if (por.length) await supabase.from('transicao_empresas').insert(por.map(id => ({ transicao_id: atual.id, cliente_id: id })));
       ovEditar.classList.remove('aberto');
-      abrirDetalhe(atual.id);
+      await abrirDetalhe(atual.id);
+      if (avisoKit) alert(avisoKit);
     });
 
     // ---------- edição de tarefa ----------
@@ -530,6 +550,16 @@
       document.getElementById('edStatus').value = ['pendente','em_andamento','aguardando','bloqueada','concluida'].includes(tarefaEd.status) ? tarefaEd.status : 'pendente';
       document.getElementById('edFase').value = tarefaEd.fase || '';
       document.getElementById('edSituacao').value = tarefaEd.situacao || '';
+      document.getElementById('edDescricao').value = tarefaEd.descricao || '';
+      // a lista da descrição: cada marcação grava na hora (sem precisar do Salvar)
+      const alvo = tarefaEd;
+      montarChecklist(document.getElementById('edChecklist'), { area: document.getElementById('edDescricao'), salvar: async v => {
+        const descricao = v.trim() || null;
+        const { error } = await supabase.from('tarefas').update({ descricao }).eq('id', alvo.id);
+        if (error) throw error;
+        alvo.descricao = descricao;
+        renderDetalhe();
+      } });
       ovTarefa.classList.add('aberto');
     }
     async function novaTarefa(setor){
@@ -553,6 +583,7 @@
         status,
         fase: document.getElementById('edFase').value.trim() || null,
         situacao: document.getElementById('edSituacao').value.trim() || null,
+        descricao: document.getElementById('edDescricao').value.trim() || null,
         concluida_em: status === 'concluida' ? (tarefaEd.concluida_em || new Date().toISOString()) : null
       };
       const { error } = await supabase.from('tarefas').update(campos).eq('id', tarefaEd.id);

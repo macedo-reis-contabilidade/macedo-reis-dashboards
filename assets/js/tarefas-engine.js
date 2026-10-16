@@ -13,6 +13,7 @@ import { formatDate } from './utils.js';
 import { abrirNovaTarefa } from './nova-tarefa.js';
 import { rotinaDoDia, rotinaFeita } from './rotinas-dia.js';
 import { avisarDependentes } from './tarefas-acoes.js';
+import { montarChecklist, rotuloDoProgresso } from './checklist.js';
 
 const CSS = `
   .fa-focus { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:22px; }
@@ -343,6 +344,7 @@ export function initTarefas(userCfg) {
             <label class="fa-field"><span>Faturável</span><label style="display:flex;align-items:center;gap:8px;height:38px;cursor:pointer;color:var(--text);font-size:13px;"><input type="checkbox" id="dFaturavel"> 💰 serviço avulso — ao concluir, gera "Faturar:" pro Samuel</label></label>
           </div>
           <label class="fa-field"><span>Descrição</span><textarea id="dDescricao" class="input" rows="2"></textarea></label>
+          <div id="dChecklist" hidden></div>
           <div><button class="btn btn-primary btn-sm" id="dSalvar">Salvar alterações</button></div>
           <div class="te-cob" id="dCob" style="display:none;">
             <label class="fa-checkline"><input type="checkbox" id="dCobChk"> Cobrar este serviço à parte</label>
@@ -738,7 +740,7 @@ export function initTarefas(userCfg) {
         const caixa = t.status === 'concluida' ? '' : '<input type="checkbox" class="fa-chk" data-sel="'+t.id+'" aria-label="Selecionar">';
         return '<tr class="fa-row-proc '+(t.status==='concluida'?'fa-row-done':'')+'" data-id="'+t.id+'">'+
           '<td class="fa-chk-td" data-label="">'+caixa+'</td>'+
-          '<td data-label="'+escA(C.clienteLabel)+'">'+(t.faturavel ? '<span title="Faturável: ao concluir, gera a tarefa Faturar: pro Samuel">💰</span> ' : '')+cli+'</td>'+
+          '<td data-label="'+escA(C.clienteLabel)+'">'+(t.faturavel ? '<span title="Faturável: ao concluir, gera a tarefa Faturar: pro Samuel">💰</span> ' : '')+cli+(rotuloDoProgresso(t.descricao) ? ' <small style="color:var(--text-muted);white-space:nowrap" title="Itens da lista feitos">'+rotuloDoProgresso(t.descricao)+'</small>' : '')+'</td>'+
           '<td data-label="Responsável">'+(t.responsavel?esc(t.responsavel):'—')+'</td>'+
           '<td data-label="Prazo">'+(t.prazo?'<span class="'+(atrasada?'fa-atrasada':'')+'">'+formatDate(t.prazo)+'</span>':'—')+'</td>'+
           '<td data-label="Status">'+statusPill(t.status)+'</td></tr>';
@@ -1061,6 +1063,14 @@ export function initTarefas(userCfg) {
     { const ds = $('dSetor'); ds.innerHTML = Object.keys(SETOR_LBL).map(x => '<option value="'+x+'">'+SETOR_LBL[x]+'</option>').join(''); if (t.setor && !SETOR_LBL[t.setor]) ds.insertAdjacentHTML('beforeend', '<option value="'+escA(t.setor)+'">'+esc(t.setor)+'</option>'); ds.value = t.setor || 'geral'; }
     $('dStatus').value = concl ? 'em_andamento' : (t.status || 'pendente');
     $('dDescricao').value = t.descricao || '';
+    // a lista da descrição (☐/☑, checklist.js): cada marcação grava na hora, sem precisar do Salvar
+    montarChecklist($('dChecklist'), { area: $('dDescricao'), salvar: async v => {
+      const descricao = v.trim() || null;
+      const { error } = await supabase.from('tarefas').update({ descricao }).eq('id', t.id);
+      if (error) throw error;
+      t.descricao = descricao;
+      render();
+    } });
     const banner = $('dConcBanner');
     banner.style.display = concl ? 'block' : 'none';
     if (concl) banner.textContent = 'Concluído em ' + fmtDataHora(t.concluida_em) + (t.concluida_por ? ' por ' + t.concluida_por : '');

@@ -1180,3 +1180,15 @@ button.ch-arq:hover { border-color:var(--brand-primary); }
 /* o que o leitor de tela anuncia (pergunta enviada, resposta, erro): fora da vista */
 .as-vivo { position:fixed; width:1px; height:1px; margin:-1px; padding:0; border:0; overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap; }
 @media print { .as-raiz { display:none; } }
+
+/* ---------- a lista na descrição da tarefa (assets/js/checklist.js, 16/10/2026): Agenda, tarefas dos setores, Transição ---------- */
+.ck-lista { margin:4px 0 10px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--fill-2); }
+.ck-lista[hidden] { display:none; }
+.ck-topo { display:flex; justify-content:space-between; gap:10px; font-size:12.5px; color:var(--brand-light); margin-bottom:6px; }
+.ck-status { color:var(--text-muted); }
+.ck-lista ul { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:2px; }
+.ck-lista label { display:flex; align-items:flex-start; gap:8px; padding:3px 2px; font-size:13px; line-height:1.35; color:var(--text); cursor:pointer; border-radius:6px; }
+.ck-lista label:hover { background:var(--fill-2); }
+.ck-lista input[type="checkbox"] { margin-top:2px; flex:0 0 auto; accent-color:var(--ok); }
+.ck-lista input[type="checkbox"]:focus-visible { outline:2px solid var(--brand-light); outline-offset:2px; }
+.ck-lista li.ck-feito span { color:var(--text-muted); text-decoration:line-through; }

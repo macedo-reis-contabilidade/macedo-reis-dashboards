@@ -265,6 +265,7 @@
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { hojeLocal, dataLocal, normalizarDocumento, cnpjValido } from './assets/js/utils.js';   // dia no fuso local (toISOString é UTC)
+    import { tarefasDoKit, teraFuncionariosDaProposta } from './assets/js/transicao-kit.js';
     const escHtml = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));   // texto do banco nunca vira HTML (o nome que veio do formulário público, por exemplo)
     const user = await getCurrentUser();
     if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; const av = document.getElementById('userAvatar'); if (av) av.textContent = (user.email || '?').charAt(0).toUpperCase(); }
@@ -1119,26 +1120,22 @@
         if (clienteId && !p.cliente_id) await supabase.from('precificacoes').update({ cliente_id: clienteId, atualizado_em: new Date().toISOString() }).eq('id', p.id);
         const hoje = hojeLocal();
         const prev = dataLocal(new Date(Date.now() + 90 * 864e5));
+        // terá funcionários: o que a proposta respondeu (C1 ativos, C2 a registrar) — decide o kit do DP
+        const tera = teraFuncionariosDaProposta(p.respostas, tipo);
         const { data: tr, error: eTr } = await supabase.from('transicoes').insert({
-          titulo: p.cliente_nome, tipo, inicio: hoje, previsao_fim: prev,
+          titulo: p.cliente_nome, tipo, inicio: hoje, previsao_fim: prev, tera_funcionarios: tera,
           contato: p.contato || null, proposta_id: p.id,
           observacao: 'Aberta a partir da proposta fechada' + (p.honorario != null ? ' (honorário ' + fmt(p.honorario) + '/mês)' : '') + '.' + (clienteId ? '' : ' Cliente ainda sem cadastro — vincule a empresa na tela de transição quando o contrato social chegar.')
         }).select('id').single();
         if (eTr) throw eTr;
         if (clienteId) await supabase.from('transicao_empresas').insert({ transicao_id: tr.id, cliente_id: clienteId });
+        // o kit (assets/js/transicao-kit.js): o que é só de quem tem funcionários entra conforme a proposta, e os documentos
+        // do escritório anterior do DP viram uma tarefa só, com a lista
         const { data: kit } = await supabase.from('transicao_kit').select('*').eq('tipo', tipo).eq('ativo', true).order('ordem');
-        if (kit && kit.length) {
-          const base = new Date(hoje + 'T12:00:00').getTime();
-          await supabase.from('tarefas').insert(kit.map(k => ({
-            setor: k.setor, tipo: 'tarefa', titulo: k.titulo,
-            responsavel: k.responsavel_padrao || null,
-            prazo: dataLocal(new Date(base + (k.prazo_dias || 0) * 864e5)),
-            status: 'pendente', origem: 'transicao',
-            transicao_id: tr.id, fase: k.fase || null, cliente_id: clienteId
-          })));
-        }
+        const doKit = tarefasDoKit(kit, { inicio: hoje, teraFuncionarios: tera, transicaoId: tr.id, clienteId });
+        if (doKit.length) await supabase.from('tarefas').insert(doKit);
         msg.style.color = 'var(--ok)';
-        msg.textContent = '✓ Transição criada' + (kit && kit.length ? ' com ' + kit.length + ' tarefa(s) do kit' : '') + (clienteId ? ' e cliente vinculado' : '') + '.' + pastaInfo + ' Abrindo a transição…';
+        msg.textContent = '✓ Transição criada' + (doKit.length ? ' com ' + doKit.length + ' tarefa(s) do kit' : '') + (clienteId ? ' e cliente vinculado' : '') + '.' + pastaInfo + ' Abrindo a transição…';
         setTimeout(() => { location.href = 'comercial-transicao.html?transicao=' + tr.id; }, 1400);
       } catch (ex) {
         msg.style.color = 'var(--err)';
