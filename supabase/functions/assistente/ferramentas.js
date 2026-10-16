@@ -20,6 +20,7 @@
 import { rotinaDoDia, rotinaFeita, ymd } from '../../../assets/js/rotinas-dia.js';
 import { EQUIPE } from '../../../assets/js/equipe.js';
 import { ficaDeFora, mudancaDe, proximasNascemCom, PRIORIDADES } from '../../../assets/js/tarefas-acoes.js';
+import { rotuloDaRegra } from '../../../assets/js/vigia.js';
 
 // ---------- a lista branca: tabela → colunas lidas, as que vêm sem pedir, o que é cada coisa ----------
 // notas: o que o modelo precisa saber da coluna (valores possíveis, unidade); enums: colunas de tipo enumerado no banco
@@ -959,11 +960,15 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     const setor = e.setor ? String(e.setor).toLowerCase() : null;
     if (setor && !SETORES_VIGIA.includes(setor)) return 'Setor: ' + SETORES_VIGIA.join(', ') + '.';
     const f = ['situacao=eq.aberto', ...(usuario.socio ? [] : [TABELAS.vigia_achados.fixoNaoSocio]), ...(setor ? ['setor=eq.' + enc(setor)] : []), ...(nome ? [filtroPessoaVigia(nome)] : [])];
-    const { total } = await ler('vigia_achados?select=id&' + f.join('&') + '&limit=1', { contar: true });
+    const { linhas, total } = await ler('vigia_achados?select=regra&' + f.join('&') + '&limit=1000', { contar: true });
     const de = (nome ? ' de ' + nome : '') + (setor ? ' no setor ' + setor : '');
     if (!total) return 'O vigia não tem nada aberto' + de + ' — nada a mostrar.';
     registrar({ tipo: 'vigia', ver: nome ? 'meus' : 'todos', ...(nome ? { pessoa: nome } : {}), ...(setor ? { setor } : {}) });
-    return 'Proposta pronta: a tela mostra o cartão do vigia com ' + plural(total, 'achado aberto', 'achados abertos') + de + ' — por grupo, cada um com "Abrir" (a tela onde se resolve) e "Ignorar"; no responsável que falta, na proposta e no boleto parados, na admissão a registrar, na rescisão com o pagamento chegando, na ficha sem empresa vinculada, no alvará vencendo e no que é de ex-cliente (cobrança, obrigação), também o botão que resolve ali. Nada muda sem a pessoa. Na resposta: o resumo do que mais pesa e uma frase convidando a abrir o cartão.';
+    // os grupos do cartão (o nome de cada regra, como a tela mostra): a resposta fala do que não leu pelo grupo, sem supor
+    const porRegra = new Map();
+    (linhas || []).forEach(l => porRegra.set(l.regra, (porRegra.get(l.regra) || 0) + 1));
+    const grupos = [...porRegra].map(([r, n]) => [rotuloDaRegra(r), n]).sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0], 'pt-BR')).map(([r, n]) => r + ': ' + n).join(' · ');
+    return 'Proposta pronta: a tela mostra o cartão do vigia com ' + plural(total, 'achado aberto', 'achados abertos') + de + (grupos ? ' (' + grupos + ')' : '') + ' — por grupo, cada um com "Abrir" (a tela onde se resolve) e "Ignorar"; no responsável que falta, na proposta e no boleto parados, na admissão a registrar, na rescisão com o pagamento chegando, na ficha sem empresa vinculada, no alvará vencendo e no que é de ex-cliente (cobrança, obrigação), também o botão que resolve ali. Nada muda sem a pessoa. Na resposta: o resumo do que mais pesa e uma frase convidando a abrir o cartão; do que você não leu, diga só o grupo (acima), sem supor de que empresa ou pessoa é.';
   }
 
   return { buscar_empresa, ver_empresa, agenda, consultar, perguntar_reforma, propor_concluir_tarefas, propor_alterar_tarefas, propor_marcar_pago, propor_criar_tarefa, propor_revisao_atrasadas, propor_ver_vigia };

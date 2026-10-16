@@ -335,6 +335,8 @@ console.log('O vigia (o que o banco achou de desencontrado ou parado):');
     && decodeURIComponent(filtroSocio).includes('responsavel.ilike.ambos,responsavel.ilike.edna,responsavel.is.null') && !filtroSocio.includes('so_socios') && /2 achados abertos de Samuel/.test(r2), r2);
   const r3 = await nova(THALIA).propor_ver_vigia({ pessoa: 'todos', setor: 'fiscal' });
   chk('vigia: de todos num setor', JSON.stringify(propostas[2]) === JSON.stringify({ tipo: 'vigia', ver: 'todos', setor: 'fiscal' }) && /2 achados abertos no setor fiscal/.test(r3), r3);
+  chk('vigia: a resposta leva os grupos do cartão (o nome de cada regra), pra falar do que não leu sem supor',
+    r3.includes('(Clientes sem obrigação fiscal: 1 · Prazo da opção da Reforma: 1)') && /sem supor de que empresa ou pessoa/.test(r3), r3);
   chk('vigia: pessoa fora da equipe, setor que não existe e nada aberto não propõem', /fora da equipe/.test(await nova(THALIA).propor_ver_vigia({ pessoa: 'Luana' }))
     && /Setor:/.test(await nova(THALIA).propor_ver_vigia({ setor: 'compras' })) && /nada a mostrar/.test(await nova(THALIA).propor_ver_vigia({ pessoa: 'Adaini' })) && propostas.length === 3);
   const c = await nova(THALIA).consultar({ tabela: 'vigia_achados', filtros: [{ coluna: 'situacao', op: '=', valor: 'aberto' }] });
