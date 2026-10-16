@@ -19,7 +19,11 @@ Confere:
   4. as abas: de todos (com de quem é cada um), os ignorados (quem ignorou e "Voltar a mostrar");
   5. o recado da tela (Admissões: os dois dali), "Ver quais" com o recorte e "Ver tudo"; o hub do DP; a ficha da empresa
      (o que é dela, depois do recado do resumo);
-  6. o cartão proposto pela função, embaixo da resposta (o vigia no Fiscal); e sem erro de JavaScript.
+  6. o cartão proposto pela função, embaixo da resposta (o vigia no Fiscal);
+  7. resolver ali mesmo (16/10/2026): quem vai cuidar da obrigação (leva a tarefa aberta junto, como em Obrigações
+     fiscais), da tarefa e da rotina, descartar a proposta parada, o boleto enviado ou pago — com "Desfazer", o aviso às
+     telas abertas e, passados os 10 minutos, fora da lista, da saudação e dos recados até a conferência seguinte;
+  e sem erro de JavaScript.
 Termina com código 1 se alguma checagem falhar.
 Pré-requisito: pip install playwright e python -m playwright install chromium
 """
@@ -53,14 +57,40 @@ ACHADOS = [
     A('8', 'proposta_parada', 'Proposta de CLIENTE DE TESTE parada sem resposta', 'Está "apresentada" e sem mudança.', 'comercial', 'Samuel', 'baixa', 'comercial-precificacao.html',
       situacao='ignorado', ignorado_por='diego@macedoereis.com.br', ignorado_em=ISO(AGORA - datetime.timedelta(days=1))),
     A('9', 'alvara_vencendo', 'Alvará de PADARIA DO TESTE LTDA venceu', 'Já renovado.', 'societario', 'Adaini', 'alta', 'societario-alvaras.html', situacao='resolvido', cliente_id=E1)]
-ACOES = {'O que o vigia achou no fiscal?': {'tipo': 'vigia', 'ver': 'todos', 'setor': 'fiscal'}}
+# o 7: os achados que se resolvem no cartão (com o registro de onde se resolve: ref_tabela/ref_id) e as linhas deles — a
+# obrigação usa o vínculo sem responsável do banco falso (c1 · o1, com a tarefa aberta t71 e a repassada à mão t72) e a
+# proposta, a apresentada pp1
+DIA = lambda n: (HOJE + datetime.timedelta(days=n)).isoformat()
+EXTRA = {
+    'achados': [
+        A('11', 'obrigacao_sem_responsavel', 'COMÉRCIO MODELO ME: obrigação sem responsável', 'EFD TESTE MENSAL sem ninguém da equipe.', 'fiscal', 'Thalia', 'media',
+          'fiscal-obrigacoes.html', cliente_id='c1', ref_tabela='clientes', ref_id='c1'),
+        A('12', 'tarefa_responsavel', 'Tarefa com responsável fora da equipe: DCTF DE TESTE', 'Está com "Fulano".', 'fiscal', 'Thalia', 'baixa', 'fiscal-tarefas.html',
+          ref_tabela='tarefas', ref_id='t91'),
+        A('13', 'rotina_sem_responsavel', 'Rotina sem responsável: BACKUP DE TESTE', 'Rotina da Gestão.', 'gestao', 'Ambos', 'baixa', 'gestao-rotinas.html', ref_tabela='rotinas', ref_id='r9'),
+        A('14', 'proposta_parada', 'Proposta de PADARIA FICTÍCIA LTDA parada', 'Está "apresentada" e sem mudança.', 'comercial', 'Samuel', 'baixa', 'comercial-precificacao.html',
+          ref_tabela='precificacoes', ref_id='pp1'),
+        A('15', 'boleto_parado', 'Boleto de OFICINA DE TESTE LTDA (09/2026) ainda a emitir', 'Vence amanhã.', 'financeiro', 'Samuel', 'media', 'financeiro-boletos.html',
+          cliente_id=E2, ref_tabela='cobrancas_mensais', ref_id='cb9')],
+    'tabelas': {
+        'tarefas': [{'id': 't91', 'titulo': 'DCTF DE TESTE', 'setor': 'fiscal', 'responsavel': 'Fulano', 'prazo': DIA(3), 'status': 'pendente', 'prioridade': 'media', 'cliente_id': None,
+                     'proposta_id': None, 'hora': None, 'transicao_id': None, 'posicao': 910, 'concluida_em': None, 'concluida_por': None}],
+        'rotinas': [{'id': 'r9', 'titulo': 'BACKUP DE TESTE', 'setor': 'gestao', 'responsavel': None, 'ativo': True, 'periodicidade': 'semanal', 'dia_semana': 1,
+                     'ultima_execucao': None, 'adiada_para': None}],
+        'cobrancas_mensais': [{'id': 'cb9', 'cliente_id': E2, 'competencia': '2026-09', 'valor': 350, 'vencimento': DIA(1), 'status': 'a_emitir', 'canal': None, 'responsavel': 'Samuel'}]}}
+ACOES = {'O que o vigia achou no fiscal?': {'tipo': 'vigia', 'ver': 'todos', 'setor': 'fiscal'}, 'O que dá pra resolver do vigia?': {'tipo': 'vigia', 'ver': 'todos'}}
 SEMEAR = """
 (() => {
   const CLIENTES = %s, ACHADOS = %s, ACOES = %s;
+  const X = window.__vigiaExtra || {};
   let db;
   Object.defineProperty(window, '__mockDb', { configurable: true, get() { return db; }, set(v) {
-    db = v; v.clientes.push(...CLIENTES); v.vigia_achados = ACHADOS; v.assistente_chat = []; v.admissoes = [];
+    db = v; v.clientes.push(...CLIENTES); v.vigia_achados = ACHADOS.concat(X.achados || []); v.assistente_chat = []; v.admissoes = [];
+    Object.entries(X.tabelas || {}).forEach(([t, linhas]) => { v[t] = (v[t] || []).concat(linhas); });
   } });
+  // o que o cartão avisa às telas abertas
+  window.__eventos = [];
+  ['mr:tarefas-mudaram', 'mr:boletos-mudaram'].forEach(n => window.addEventListener(n, e => window.__eventos.push([n, e.detail])));
   window.__chamadas = [];
   window.__mockInvoke = async (nome, opts) => {
     window.__chamadas.push({ nome, body: JSON.parse(JSON.stringify(opts.body || {})) });
@@ -175,6 +205,86 @@ def main():
         p.fill('.as-entrada textarea', 'O que o vigia achou no fiscal?'); p.press('.as-entrada textarea', 'Enter')
         p.wait_for_selector('.as-lista .as-msg.ia:last-child ' + card + ' .as-vigia-grupo', timeout=6000)
         ok(p.inner_text('.as-lista .as-msg.ia:last-child ' + card + ' .as-cartao-tit') == 'O que o vigia achou no Fiscal: 3', 'a proposta da função: o cartão embaixo da resposta, com o recorte do setor')
+
+        # 7) resolver ali mesmo (outra página: os achados com o registro de onde se resolvem e as linhas deles)
+        p2 = b.new_page(viewport={'width': 1400, 'height': 900})
+        p2.on('pageerror', lambda e: erros.append(str(e)))
+        p2.add_init_script(TOUR); p2.add_init_script('window.__vigiaExtra = ' + json.dumps(EXTRA, ensure_ascii=False)); p2.add_init_script(SEMEAR)
+        linha = lambda t, i: p2.evaluate('([t, i]) => window.__mockDb[t].find(x => x.id === i)', [t, i])
+        historico = lambda: p2.evaluate("() => window.__mockDb.tarefa_historico.map(h => h.tarefa_id + ': ' + h.descricao)")
+        guardados = lambda: p2.evaluate("() => Object.keys(JSON.parse(localStorage.getItem('mr_vigia_resolvidos:financeiro@macedoereis.com.br') || '{}'))")
+        it2 = lambda trecho: card + ' li.as-vigia-item:has-text("' + trecho + '")'
+        tit2 = lambda: p2.inner_text(card + ' .as-cartao-tit')
+        abrir_grupos = lambda: p2.evaluate("() => document.querySelectorAll('.as-cartao-vigia details').forEach(d => { d.open = true; })")
+        def clicar_e_esperar(trecho, botao, depois):
+            p2.click(it2(trecho) + ' button:has-text("' + botao + '")')
+            p2.wait_for_selector(it2(trecho) + ' button:has-text("' + depois + '")', timeout=5000)
+        p2.goto(base + 'index.html'); p2.wait_for_selector('.as-lancador', timeout=5000)
+        p2.click('.as-lancador'); p2.wait_for_timeout(200)
+        p2.fill('.as-entrada textarea', 'O que dá pra resolver do vigia?'); p2.press('.as-entrada textarea', 'Enter')
+        p2.wait_for_selector(card + ' .as-vigia-grupo', timeout=6000); abrir_grupos(); p2.wait_for_timeout(100)
+        sel_obr = it2('COMÉRCIO MODELO ME: obrigação') + ' .as-vigia-resolver select'
+        nomes = p2.eval_on_selector(sel_obr, 's => [...s.options].map(o => o.value)')
+        boleto = p2.eval_on_selector_all(it2('Boleto de OFICINA') + ' .as-vigia-resolver button', 'bs => bs.map(b => b.textContent)')
+        ok(tit2() == 'O que o vigia achou: 12' and p2.input_value(sel_obr) == 'Thalia' and 'Ambos' not in nomes and p2.input_value(it2('BACKUP DE TESTE') + ' .as-vigia-resolver select') == 'Ambos'
+           and p2.is_visible(it2('Proposta de PADARIA') + ' button:has-text("Descartar proposta")') and boleto == ['Marcar como enviado', 'Marcar como pago']
+           and not p2.query_selector(it2('Boleto de PADARIA') + ' .as-vigia-resolver') and not p2.query_selector(it2('GIA DE TESTE') + ' .as-vigia-resolver'),
+           f'os botões: quem vai cuidar (com o dono do setor já escolhido; na obrigação, sem "Ambos"), descartar a proposta, o boleto enviado ou pago; achado sem o registro, sem botão ({tit2()!r}, {nomes}, {boleto})')
+
+        clicar_e_esperar('COMÉRCIO MODELO ME: obrigação', 'Definir responsável', 'Desfazer')
+        ok(linha('cliente_obrigacoes', 'v1')['responsavel'] == 'Thalia' and linha('tarefas', 't71')['responsavel'] == 'Thalia' and linha('tarefas', 't72')['responsavel'] == 'Adaini'
+           and historico() == ['t71: Responsável definido pela obrigação: Thalia — pelo assistente do escritório (vigia).']
+           and '✓ 1 obrigação passada pra Thalia (e 1 tarefa aberta).' in p2.inner_text(it2('COMÉRCIO MODELO ME: obrigação')) and tit2() == 'O que o vigia achou: 11' and guardados() == ['vg-11'],
+           f'obrigação: o vínculo e a tarefa aberta dele vão pra Thalia (a repassada à mão fica), com o histórico; o achado fica resolvido, com "Desfazer", e a conta baixa ({tit2()!r}, {historico()})')
+        clicar_e_esperar('COMÉRCIO MODELO ME: obrigação', 'Desfazer', 'Definir responsável')
+        ok(linha('cliente_obrigacoes', 'v1')['responsavel'] is None and linha('tarefas', 't71')['responsavel'] is None and tit2() == 'O que o vigia achou: 12' and guardados() == [],
+           'desfazer: o vínculo e a tarefa voltam a sem ninguém, e o achado volta pra lista')
+
+        p2.select_option(it2('DCTF DE TESTE') + ' .as-vigia-resolver select', 'Vitória')
+        clicar_e_esperar('DCTF DE TESTE', 'Definir responsável', 'Desfazer')
+        ok(linha('tarefas', 't91')['responsavel'] == 'Vitória' and '✓ Tarefa passada pra Vitória.' in p2.inner_text(it2('DCTF DE TESTE'))
+           and 't91: Responsável alterado de Fulano para Vitória — pelo assistente do escritório (vigia).' in historico(),
+           'tarefa: com quem foi escolhido (a regra do "passar" do assistente, com o histórico)')
+        clicar_e_esperar('BACKUP DE TESTE', 'Definir responsável', 'Desfazer')
+        ok(linha('rotinas', 'r9')['responsavel'] == 'Ambos' and '✓ Rotina passada pra Ambos.' in p2.inner_text(it2('BACKUP DE TESTE')), 'rotina: com quem o vigia sugeriu ("Ambos")')
+
+        data_pp1 = linha('precificacoes', 'pp1')['atualizado_em']
+        clicar_e_esperar('Proposta de PADARIA', 'Descartar proposta', 'Desfazer')
+        ok(linha('precificacoes', 'pp1')['status'] == 'descartada' and '✓ Proposta descartada.' in p2.inner_text(it2('Proposta de PADARIA')), 'proposta: descartada, como no seletor da Precificação')
+        clicar_e_esperar('Proposta de PADARIA', 'Desfazer', 'Descartar proposta')
+        ok(linha('precificacoes', 'pp1')['status'] == 'apresentada' and linha('precificacoes', 'pp1')['atualizado_em'] == data_pp1,
+           'desfazer: volta a "apresentada" com a mesma data (pro vigia, parada desde o mesmo dia)')
+
+        clicar_e_esperar('Boleto de OFICINA', 'Marcar como enviado', 'Desfazer')
+        eventos = p2.evaluate('() => window.__eventos')
+        ok(linha('cobrancas_mensais', 'cb9')['status'] == 'enviado' and ['mr:boletos-mudaram', {'mudancas': [{'id': 'cb9', 'status': 'enviado'}]}] in eventos
+           and any(e[0] == 'mr:tarefas-mudaram' for e in eventos) and tit2() == 'O que o vigia achou: 9',
+           f'boleto: enviado; as telas abertas ficam sabendo (a grade de boletos, a Agenda) ({tit2()!r})')
+        # a conferência de hora em hora roda dentro dos 10 minutos e tira o achado do banco: o "Desfazer" continua no cartão
+        p2.evaluate("() => { window.__mockDb.vigia_achados.find(a => a.id === 'vg-15').situacao = 'resolvido'; }")
+        p2.click(card + ' .as-vigia-abas button:has-text("De todos")'); p2.wait_for_timeout(500); abrir_grupos(); p2.wait_for_timeout(100)
+        ok(p2.is_visible(it2('Boleto de OFICINA') + ' button:has-text("Desfazer")') and tit2() == 'O que o vigia achou: 9',
+           f'a conferência rodou dentro dos 10 minutos: o resolvido continua no cartão, com o "Desfazer" ({tit2()!r})')
+        p2.click(it2('Boleto de OFICINA') + ' button:has-text("Desfazer")')
+        p2.wait_for_selector(it2('Desfeito. O vigia já tinha conferido'), timeout=5000)
+        ok(linha('cobrancas_mensais', 'cb9')['status'] == 'a_emitir' and 'vg-15' not in guardados(),
+           'desfazer depois da conferência: o boleto volta a "a emitir" e o cartão diz que o achado volta na conferência seguinte')
+
+        # (o banco falso nasce de novo a cada página: o boleto volta aberto, como na conferência seguinte)
+        p2.reload(); p2.wait_for_selector('.as-painel:not([hidden]) ' + card + ' .as-vigia-grupo', timeout=6000); abrir_grupos(); p2.wait_for_timeout(100)
+        ok(p2.is_visible(it2('DCTF DE TESTE') + ' button:has-text("Desfazer")') and tit2() == 'O que o vigia achou: 10', f'recarregou: os resolvidos voltam com o "Desfazer" ({tit2()!r})')
+        # passados os 10 minutos do "Desfazer" (a hora de cada um, na conversa guardada, vai 11 minutos pra trás)
+        p2.evaluate("""() => { const k = 'mr_assistente:escritorio', j = JSON.parse(sessionStorage.getItem(k)), antes = new Date(Date.now() - 11 * 60e3).toISOString();
+          j.msgs.forEach(m => { if (m.acao && m.acao.resolvidos) Object.values(m.acao.resolvidos).forEach(x => { x.em = antes; }); });
+          sessionStorage.setItem(k, JSON.stringify(j)); }""")
+        p2.reload(); p2.wait_for_selector('.as-painel:not([hidden]) ' + card + ' .as-vigia-grupo', timeout=6000); abrir_grupos(); p2.wait_for_timeout(100)
+        ok(not p2.query_selector(it2('DCTF DE TESTE')) and not p2.query_selector(it2('BACKUP DE TESTE')) and p2.is_visible(it2('Boleto de OFICINA') + ' button:has-text("Marcar como enviado")')
+           and tit2() == 'O que o vigia achou: 10', f'passados os 10 minutos: os resolvidos saem da lista até a conferência seguinte (o desfeito, não) ({tit2()!r})')
+        p2.click('.as-acao[data-a="fechar"]'); p2.wait_for_timeout(150)
+        p2.add_init_script('window.__assistenteRecados = true')
+        p2.goto(base + 'index.html'); p2.wait_for_selector('.as-recado:not([hidden])', timeout=6000)
+        sauda2 = p2.inner_text('.as-recado-txt')
+        ok('O vigia achou 5 coisas pra você conferir (1 urgente).' in sauda2, f'a saudação do dia também não conta o resolvido (a rotina; o boleto foi desfeito) ({sauda2[-70:]!r})')
 
         ok(not erros, f'sem erro de JavaScript ({erros[:2]})')
         b.close()

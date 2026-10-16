@@ -950,6 +950,13 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(4px); 
 .as-vigia-ignorado b, .as-vigia-ignorado small { opacity:.6; }
 .as-vigia-abas { gap:2px 12px; }
 .as-vigia-abas .as-vigia-aba-atual { color:var(--text); text-decoration:none; font-weight:600; }
+/* resolver ali mesmo (16/10/2026): quem vai cuidar, descartar a proposta, o boleto enviado ou pago */
+.as-vigia-resolver { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:7px; }
+.as-vigia-resolver select { font:12.5px/1.2 var(--font-body); color:var(--text); background:var(--surface); border:1px solid var(--border); border-radius:8px;
+  padding:5px 8px; min-width:0; max-width:100%; }
+.as-vigia-resolver select:focus { outline:none; border-color:var(--brand-primary); box-shadow:0 0 0 3px var(--sel); }
+.as-vigia-resolver .as-botao { padding:5px 10px; }
+.as-vigia-item .as-cartao-erro { margin-top:4px; }
 
 .as-entrada { display:flex; align-items:flex-end; gap:8px; padding:10px 12px 12px; border-top:1px solid var(--line); background:var(--surface); }
 .as-entrada textarea { flex:1; resize:none; min-height:40px; max-height:140px; padding:9px 12px; border-radius:12px; border:1px solid var(--border); background:var(--surface-2);

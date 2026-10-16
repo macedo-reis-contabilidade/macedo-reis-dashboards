@@ -13,16 +13,20 @@
 // Depois de mudar, avisa as telas abertas: "mr:feito" (a carinha comemora), "mr:tarefas-mudaram" (a Agenda e as telas de
 // tarefas recarregam) e "mr:boletos-mudaram" (a grade de boletos troca a situação).
 // O cartão do vigia (15/10/2026) mostra o que o vigia do sistema achou (assets/js/vigia.js), por grupo, com "Abrir" (a
-// tela onde se resolve) e "Ignorar" (com "Desfazer" por 10 minutos; os ignorados voltam pela aba "Ignorados").
+// tela onde se resolve) e "Ignorar" (com "Desfazer" por 10 minutos; os ignorados voltam pela aba "Ignorados") e, desde
+// 16/10/2026, o que dá pra resolver ali mesmo: o responsável que falta, a proposta parada, o boleto enviado ou pago.
 // Testes de tela: tests/harness/assistente-acoes.py e tests/harness/assistente-vigia.py.
 // ============================================================
 
 import { supabase } from './supabase.js';
 import { concluirTarefas, desfazerConclusao, marcarPagos, desfazerPagos, criarTarefasAvulsas, excluirTarefasCriadas,
-  alterarTarefas, desfazerAlteracao, limparMudanca, mudancaDe, fichaDeOrigem, ficaDeFora, proximasNascemCom } from './tarefas-acoes.js';
+  alterarTarefas, desfazerAlteracao, limparMudanca, mudancaDe, fichaDeOrigem, ficaDeFora, proximasNascemCom,
+  pessoaDaEquipe, definirResponsavelObrigacoes, desfazerResponsavelObrigacoes, definirResponsavelRotina, desfazerResponsavelRotina,
+  descartarProposta, desfazerDescarte, avancarBoletos, voltarBoletos } from './tarefas-acoes.js';
 import { EQUIPE, SOCIOS, nomePorEmail } from './equipe.js';
 import { SETORES } from './nova-tarefa.js';
-import { lerAchados, ignorarAchado, reabrirAchado, filtrarAchados, agruparAchados, linkSeguro, ehSocioPeloNome, marcarVisto } from './vigia.js';
+import { lerAchados, ignorarAchado, reabrirAchado, filtrarAchados, agruparAchados, linkSeguro, ehSocioPeloNome, marcarVisto,
+  resolvidosAgora, marcarResolvidoAgora, desmarcarResolvidoAgora, COLUNAS } from './vigia.js';
 
 const RAIZ = new URL('../../', import.meta.url);   // a raiz do site (este arquivo mora em assets/js/)
 const PRAZO_DESFAZER = 10 * 60e3;   // o "Desfazer" vale por 10 minutos
@@ -639,14 +643,93 @@ function cartaoRevisao({ raiz, estado, salvar, ajuda, anunciar }) {
   desenhar();
 }
 
-// ---------- o vigia: o que ele achou, por grupo, com "Abrir" e "Ignorar" ----------
+// ---------- o vigia: o que ele achou, por grupo, com "Abrir", "Ignorar" e o que dá pra resolver ali ----------
 // estado (guardado na conversa): ver ('meus' | 'todos' | 'ignorados'); pessoa (de quem — sem: quem está na tela); o
-// recorte — setor, tela (o caminho da página) ou cliente_id (a ficha da empresa); e os ignorados agora há pouco
-// (feitos: { id: quando }), que continuam na lista com o "Desfazer" por 10 minutos. Ignorar só tira da lista: quem e
-// quando o banco grava, e a aba "Ignorados" traz de volta. O que for arrumado na tela some sozinho na conferência seguinte
+// recorte — setor, tela (o caminho da página) ou cliente_id (a ficha da empresa); os ignorados agora há pouco
+// (feitos: { id: quando }) e os resolvidos agora há pouco (resolvidos: { id: { em, texto, desfazer } }), que continuam na
+// lista com o "Desfazer" por 10 minutos. Ignorar só tira da lista: quem e quando o banco grava, e a aba "Ignorados" traz
+// de volta. O que for arrumado na tela (ou aqui) some sozinho na conferência seguinte
 const NOME_SETOR = { dp: 'DP', fiscal: 'Fiscal', contabil: 'Contábil', financeiro: 'Financeiro', comercial: 'Comercial', societario: 'Societário', irpf: 'IRPF', gestao: 'Gestão', clientes: 'Clientes', geral: 'Geral' };
 const diaDe = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
 const horaDe = iso => { const d = new Date(iso); return isNaN(d) ? '' : pad(d.getHours()) + 'h' + pad(d.getMinutes()); };
+
+// ---------- resolver no próprio cartão do vigia (16/10/2026) ----------
+// O que dá pra resolver com um clique, pela mesma regra das telas (assets/js/tarefas-acoes.js): o responsável que falta
+// (obrigação — leva as tarefas abertas junto, como em Obrigações fiscais —, tarefa e rotina), a proposta parada
+// (descartar) e o boleto parado (emitido, enviado, pago). O achado só sai do banco na conferência seguinte (de hora em
+// hora): aqui ele fica "resolvido", com o "Desfazer" por 10 minutos, e depois some desta máquina até a conferência
+const ORIGEM_VIGIA = 'assistente do escritório (vigia)';
+const RESOLVE_RESPONSAVEL = ['obrigacao_sem_responsavel', 'tarefa_responsavel', 'rotina_sem_responsavel'];
+const resolvivel = a => !!a && ID.test(String(a.ref_id || '')) && (RESOLVE_RESPONSAVEL.includes(a.regra) || a.regra === 'proposta_parada' || a.regra === 'boleto_parado');
+// resolve e devolve { texto, desfazer } (o que o cartão guarda pro "Desfazer") ou { erro }
+async function resolverAchado(a, escolha, ajuda) {
+  const autor = ajuda.email || null;
+  const quem = pessoaDaEquipe(escolha);
+  if (RESOLVE_RESPONSAVEL.includes(a.regra) && !quem) return { erro: 'Escolha quem vai cuidar.' };
+  if (a.regra === 'obrigacao_sem_responsavel') {
+    const r = await definirResponsavelObrigacoes(supabase, a.ref_id, quem, { autor, origem: ORIGEM_VIGIA });
+    if (r.erro && !r.vinculos.length) return { erro: r.erro };
+    if (!r.vinculos.length) return { erro: 'As obrigações dela já têm responsável: confira na tela Obrigações fiscais.' };
+    if (r.tarefas.length) avisarTelas('mr:tarefas-mudaram', { ids: r.tarefas.map(t => t.id) });
+    return { texto: qtd(r.vinculos.length, 'obrigação passada', 'obrigações passadas') + ' pra ' + quem + (r.tarefas.length ? ' (e ' + qtd(r.tarefas.length, 'tarefa aberta', 'tarefas abertas') + ')' : '') + '.',
+      aviso: r.erro || null, desfazer: { tipo: 'obrigacoes', responsavel: quem, vinculos: r.vinculos, tarefas: r.tarefas } };
+  }
+  if (a.regra === 'tarefa_responsavel') {
+    const r = await alterarTarefas(supabase, [a.ref_id], { responsavel: quem }, { autor, origem: ORIGEM_VIGIA });
+    if (r.erro && !r.alteradas.length) return { erro: r.erro };
+    if (r.daFicha.length) return { erro: 'O responsável dela vem da ficha de origem: mude na tela ' + r.daFicha[0].tela + '.' };
+    if (!r.alteradas.length) return { erro: r.fechadas.length ? 'A tarefa já foi concluída (ou não existe mais).' : 'A tarefa já está com alguém da equipe.' };
+    avisarTelas('mr:tarefas-mudaram', { ids: [String(a.ref_id)] });
+    return { texto: 'Tarefa passada pra ' + quem + '.', desfazer: { tipo: 'tarefa', alteradas: resumoAlteradas(r) } };
+  }
+  if (a.regra === 'rotina_sem_responsavel') {
+    const r = await definirResponsavelRotina(supabase, a.ref_id, quem);
+    if (r.erro) return { erro: r.erro };
+    if (!r.rotina) return { erro: r.jaTinha ? 'A rotina já está com ' + r.jaTinha + '.' : 'A rotina mudou no meio do caminho: confira na tela.' };
+    return { texto: 'Rotina passada pra ' + quem + '.', desfazer: { tipo: 'rotina', responsavel: quem, rotina: r.rotina } };
+  }
+  if (a.regra === 'proposta_parada') {
+    const r = await descartarProposta(supabase, a.ref_id);
+    if (r.erro) return { erro: r.erro };
+    if (!r.proposta) return { erro: r.ja ? 'A proposta já está "' + r.ja + '".' : 'A proposta mudou no meio do caminho: confira na tela Precificação.' };
+    if (r.proposta.tarefas.length) avisarTelas('mr:tarefas-mudaram', { ids: r.proposta.tarefas });
+    return { texto: 'Proposta descartada' + (r.proposta.tarefas.length ? ' (e a tarefa dela, concluída)' : '') + '.', desfazer: { tipo: 'proposta', proposta: r.proposta } };
+  }
+  if (a.regra === 'boleto_parado') {
+    const r = await avancarBoletos(supabase, [a.ref_id], escolha);
+    if (r.erro) return { erro: r.erro };
+    if (!r.mudados.length) return { erro: 'O boleto já estava assim (ou mais à frente).' };
+    avisarTelas('mr:boletos-mudaram', { mudancas: r.mudados.map(b => ({ id: b.id, status: escolha })) });
+    return { texto: 'Boleto marcado como ' + (SITUACAO_BOLETO[escolha] || escolha) + '.', desfazer: { tipo: 'boleto', status: escolha, mudados: r.mudados } };
+  }
+  return { erro: 'Esse achado se resolve na tela dele.' };
+}
+async function desfazerResolucao(d, ajuda) {
+  const autor = ajuda.email || null;
+  if (!d || typeof d !== 'object') return { erro: 'Não há o que desfazer.' };
+  if (d.tipo === 'obrigacoes') {
+    const r = await desfazerResponsavelObrigacoes(supabase, d, d.responsavel, { autor, origem: ORIGEM_VIGIA });
+    if (r.tarefas.length) avisarTelas('mr:tarefas-mudaram', { ids: r.tarefas });
+    return { erro: r.erro };
+  }
+  if (d.tipo === 'tarefa') {
+    const r = await desfazerAlteracao(supabase, d.alteradas || [], { autor, origem: ORIGEM_VIGIA });
+    if (r.desfeitas.length) avisarTelas('mr:tarefas-mudaram', { ids: r.desfeitas });
+    return { erro: r.erro };
+  }
+  if (d.tipo === 'rotina') return { erro: (await desfazerResponsavelRotina(supabase, d.rotina, d.responsavel)).erro };
+  if (d.tipo === 'proposta') {
+    const r = await desfazerDescarte(supabase, d.proposta);
+    if (r.tarefas.length) avisarTelas('mr:tarefas-mudaram', { ids: r.tarefas });
+    return { erro: r.erro };
+  }
+  if (d.tipo === 'boleto') {
+    const r = await voltarBoletos(supabase, d.mudados || [], d.status);
+    if (r.desfeitos.length) avisarTelas('mr:boletos-mudaram', { mudancas: r.desfeitos });
+    return { erro: r.erro };
+  }
+  return { erro: 'Não há o que desfazer.' };
+}
 
 function cartaoVigia({ raiz, estado, salvar, ajuda, anunciar }) {
   raiz.setAttribute('aria-label', 'O que o vigia achou');
@@ -658,8 +741,10 @@ function cartaoVigia({ raiz, estado, salvar, ajuda, anunciar }) {
   const abertos = new Set();   // os grupos que a pessoa abriu (redesenhar não fecha)
   let primeira = true;         // ao abrir e ao trocar de aba: o primeiro grupo aberto (todos, com até 6 achados)
   const modo = () => (['meus', 'todos', 'ignorados'].includes(estado.ver) && !(estado.ver === 'meus' && !pessoa) ? estado.ver : pessoa ? 'meus' : 'todos');
-  // os "Desfazer" que ainda valem (os de mais de 10 minutos saem)
+  // os "Desfazer" que ainda valem (os de mais de 10 minutos saem): os ignorados e os resolvidos agora
   const feitos = () => Object.fromEntries(Object.entries(estado.feitos && typeof estado.feitos === 'object' ? estado.feitos : {}).filter(([id, em]) => ID.test(id) && podeDesfazer(em)));
+  const resolvidos = () => Object.fromEntries(Object.entries(estado.resolvidos && typeof estado.resolvidos === 'object' ? estado.resolvidos : {})
+    .filter(([id, x]) => ID.test(id) && x && typeof x === 'object' && podeDesfazer(x.em)));
   const recorte = () => ({ setor: NOME_SETOR[estado.setor] ? estado.setor : null, tela: !estado.cliente_id && typeof estado.tela === 'string' ? estado.tela.slice(0, 120) : null,
     clienteId: ID.test(String(estado.cliente_id || '')) ? String(estado.cliente_id) : null });
   const nomeRecorte = r => (r.clienteId ? 'desta empresa' : r.tela ? 'nesta tela' : r.setor ? 'no ' + NOME_SETOR[r.setor] : '');
@@ -670,14 +755,22 @@ function cartaoVigia({ raiz, estado, salvar, ajuda, anunciar }) {
     try { lista = await lerAchados(supabase); }
     catch (e) { return trocar(raiz, h('div', { class: 'as-cartao-erro', text: 'Não consegui ler o que o vigia achou agora.' }), h('div', { class: 'as-cartao-botoes' }, botao('Tentar de novo', desenhar))); }
     marcarVisto(email);
-    const r = recorte(), f = feitos(), m = modo(), onde = nomeRecorte(r);
-    const base = lista.map(a => (a.situacao === 'ignorado' && f[a.id] ? { ...a, _agora: true } : a));
+    const r = recorte(), f = feitos(), rs = resolvidos(), ja = resolvidosAgora(email), m = modo(), onde = nomeRecorte(r);
+    // resolvido aqui e já tirado do banco pela conferência (de hora em hora) dentro dos 10 minutos: continua com o "Desfazer"
+    const faltam = Object.keys(rs).filter(id => !lista.some(a => String(a.id) === id));
+    if (faltam.length) {
+      try { lista = lista.concat((await lerPorIds('vigia_achados', COLUNAS, faltam)).filter(a => a.situacao === 'resolvido').map(a => ({ ...a, situacao: 'aberto', _conferido: true }))); }
+      catch (e) { /* sem eles: o "Desfazer" some antes da hora */ }
+    }
+    // o resolvido agora: com o "Desfazer" nos primeiros 10 minutos; depois (ou resolvido em outra tela), fora até a conferência
+    const base = lista.filter(a => !(a.situacao === 'aberto' && ja.has(String(a.id)) && !rs[a.id]))
+      .map(a => (a.situacao === 'ignorado' && f[a.id] ? { ...a, _agora: true } : a.situacao === 'aberto' && rs[a.id] ? { ...a, _resolvido: rs[a.id] } : a));
     const doModo = md => filtrarAchados(base, { nome: pessoa, socio, todos: md !== 'meus', ...r, situacao: null })
       .filter(a => (md === 'ignorados' ? a.situacao === 'ignorado' && !a._agora : a.situacao === 'aberto' || a._agora));
-    const conta = md => doModo(md).filter(a => !a._agora).length;
+    const conta = md => doModo(md).filter(a => !a._agora && !a._resolvido).length;
     const itens = doModo(m);
     const titulo = (m === 'ignorados' ? 'Ignorados' : m === 'todos' ? 'O que o vigia achou' : minha ? 'O que o vigia achou pra você' : 'O que o vigia achou pra ' + pessoa) + (onde ? ' ' + onde : '') + ': ';
-    const topo = h('div', { class: 'as-cartao-tit' }, titulo, h('span', { class: 'as-cartao-cont', text: String(itens.filter(a => !a._agora).length) }));
+    const topo = h('div', { class: 'as-cartao-tit' }, titulo, h('span', { class: 'as-cartao-cont', text: String(itens.filter(a => !a._agora && !a._resolvido).length) }));
     const ultimo = lista.reduce((x, a) => (String(a.ultimo_visto || '') > x ? String(a.ultimo_visto) : x), '');
     const quando = ultimo ? sub('Conferido ' + (diaDe(ultimo) === hojeISO() ? 'hoje' : 'em ' + dataBR(diaDe(ultimo))) + ' às ' + horaDe(ultimo)
       + '. O que for arrumado some na conferência seguinte (de hora em hora).') : null;
@@ -713,7 +806,7 @@ function cartaoVigia({ raiz, estado, salvar, ajuda, anunciar }) {
   function itemAchado(a, m) {
     const href = linkSeguro(a.link);
     const linhas = [h('b', {}, a.titulo || 'Achado', a.gravidade === 'alta' && m !== 'ignorados' && !a._agora ? h('span', { class: 'as-tag', text: 'urgente' }) : null),
-      a.detalhe ? h('small', { text: a.detalhe }) : null, m !== 'meus' && a.responsavel ? h('small', { text: 'Com ' + a.responsavel + '.' }) : null];
+      a.detalhe ? h('small', { text: a.detalhe }) : null, m !== 'meus' && a.responsavel && !a._resolvido ? h('small', { text: 'Com ' + a.responsavel + '.' }) : null];
     let acoes;
     if (m === 'ignorados') {
       const quem = a.ignorado_por ? nomePorEmail(a.ignorado_por) || a.ignorado_por : null;
@@ -721,10 +814,67 @@ function cartaoVigia({ raiz, estado, salvar, ajuda, anunciar }) {
         botao('Voltar a mostrar', ev => reabrir(a, ev.currentTarget), 'link')];
     } else if (a._agora) {
       acoes = [h('span', { class: 'as-cartao-sub', text: 'Ignorado.' }), botao('Desfazer', ev => reabrir(a, ev.currentTarget), 'link')];
+    } else if (a._resolvido) {
+      acoes = [h('span', { class: 'as-cartao-ok', text: '✓ ' + String(a._resolvido.texto || 'Resolvido.') }),
+        h('span', { class: 'as-cartao-sub', text: 'Sai da lista na conferência seguinte.' }), botao('Desfazer', ev => desfazerUm(a, ev.currentTarget), 'link')];
     } else {
       acoes = [href ? h('a', { class: 'as-botao as-botao-link', href: new URL(href, RAIZ).href, text: 'Abrir' }) : null, botao('Ignorar', ev => ignorar(a, ev.currentTarget), 'link')];
     }
-    return h('li', { class: 'as-vigia-item' + (a._agora ? ' as-vigia-ignorado' : '') }, linhas, h('div', { class: 'as-vigia-acoes' }, acoes));
+    const controles = m !== 'ignorados' && !a._agora && !a._resolvido && resolvivel(a) ? controlesDeResolver(a) : null;
+    return h('li', { class: 'as-vigia-item' + (a._agora || a._resolvido ? ' as-vigia-ignorado' : '') }, linhas, controles, h('div', { class: 'as-vigia-acoes' }, acoes));
+  }
+  // os botões que resolvem ali mesmo: quem vai cuidar (o dono do setor já marcado), descartar a proposta, o boleto enviado
+  // ou pago (o vigia pega o "a emitir" e o "emitido" — marcar como emitido não tiraria o achado)
+  function controlesDeResolver(a) {
+    const linha = h('div', { class: 'as-vigia-resolver' });
+    if (RESOLVE_RESPONSAVEL.includes(a.regra)) {
+      // a obrigação é de uma pessoa (como em Obrigações fiscais); a tarefa e a rotina aceitam "Ambos" (os sócios)
+      const nomes = a.regra === 'obrigacao_sem_responsavel' ? EQUIPE : [...EQUIPE, 'Ambos'];
+      const sel = h('select', { 'aria-label': 'Quem vai cuidar' }, h('option', { value: '', text: 'Quem vai cuidar…' }), nomes.map(n => h('option', { value: n, text: n })));
+      sel.value = pessoaDaEquipe(a.responsavel) || '';
+      const ok = botao('Definir responsável', ev => resolver(a, sel.value, ev.currentTarget), 'pri');
+      ok.disabled = !sel.value;
+      sel.addEventListener('change', () => { ok.disabled = !sel.value; });
+      linha.append(sel, ok);
+    } else if (a.regra === 'proposta_parada') {
+      linha.append(botao('Descartar proposta', ev => resolver(a, 'descartar', ev.currentTarget)));
+    } else if (a.regra === 'boleto_parado') {
+      ['enviado', 'pago'].forEach(st => linha.append(botao('Marcar como ' + SITUACAO_BOLETO[st], ev => resolver(a, st, ev.currentTarget))));
+    }
+    return linha;
+  }
+  async function resolver(a, escolha, b) {
+    const rotulo = b.textContent;
+    const li = b.closest('li');
+    if (li) li.querySelectorAll('.as-cartao-erro').forEach(x => x.remove());
+    b.disabled = true; b.textContent = 'Gravando…';
+    let r;
+    try { r = await resolverAchado(a, escolha, ajuda); } catch (e) { r = { erro: (e && e.message) || 'erro' }; }
+    if (r.erro) return falhou(b, rotulo, r.erro);
+    salvar({ resolvidos: { ...resolvidos(), [a.id]: { em: new Date().toISOString(), texto: r.texto + (r.aviso ? ' ' + r.aviso : ''), desfazer: r.desfazer } } });
+    marcarResolvidoAgora(email, String(a.id));
+    try { ajuda.reagir && ajuda.reagir(); } catch (e) { /* sem carinha */ }
+    anunciar(r.texto + ' Dá pra desfazer por 10 minutos.');
+    desenhar();
+  }
+  async function desfazerUm(a, b) {
+    const x = resolvidos()[a.id];
+    if (!x) { desenhar(); return; }
+    b.disabled = true; b.textContent = 'Desfazendo…';
+    let r;
+    try { r = await desfazerResolucao(x.desfazer, ajuda); } catch (e) { r = { erro: (e && e.message) || 'erro' }; }
+    if (r.erro) return falhou(b, 'Desfazer', 'Não consegui desfazer: ' + r.erro);
+    const rs = resolvidos(); delete rs[a.id];
+    salvar({ resolvidos: rs });
+    desmarcarResolvidoAgora(email, String(a.id));
+    // a conferência já tinha tirado o achado do banco: ele volta na seguinte (a tela não reabre achado)
+    if (a._conferido) {
+      anunciar('Desfeito. O vigia já tinha conferido: o achado volta na próxima conferência.');
+      trocar(b.closest('li') || raiz, h('div', { class: 'as-cartao-sub', text: 'Desfeito. O vigia já tinha conferido: o achado volta na próxima conferência (de hora em hora).' }));
+      return;
+    }
+    anunciar('Desfeito: voltou pra lista.');
+    desenhar();
   }
   const falhou = (b, rotulo, msg) => { b.disabled = false; b.textContent = rotulo; const li = b.closest('li'); if (li) li.append(h('div', { class: 'as-cartao-erro', text: msg })); };
   async function ignorar(a, b) {

@@ -264,7 +264,7 @@ export const DEFINICOES = [
     description: 'Mostra na tela a revisão das tarefas atrasadas de alguém: grupo por grupo, a tela pergunta o que já foi feito e conclui o que a pessoa marcar (com "Desfazer"). Use quando pedirem pra passar as atrasadas a limpo — e, quando perguntarem das atrasadas de alguém da equipe, chame junto com a resposta: o cartão é a oferta (só mostra a pergunta; nada muda sem a pessoa).',
     input_schema: { type: 'object', properties: { pessoa: { type: 'string', description: 'alguém da equipe (sem: quem pergunta)' } } } },
   { name: 'propor_ver_vigia',
-    description: 'Mostra na tela o cartão do vigia: o que ele achou, por grupo, cada achado com "Abrir" (a tela onde se resolve) e "Ignorar". Use quando perguntarem o que o vigia achou, o que está desencontrado, esquecido ou pedindo atenção no sistema (de alguém, de um setor ou de todos) — chame junto com a resposta: o cartão é a oferta (só mostra; nada muda sem a pessoa).',
+    description: 'Mostra na tela o cartão do vigia: o que ele achou, por grupo, cada achado com "Abrir" (a tela onde se resolve) e "Ignorar" — e, no que se resolve com um clique, o botão ali mesmo, com "Desfazer": o responsável que falta (obrigação sem responsável, que leva as tarefas abertas junto; tarefa e rotina sem responsável), descartar a proposta parada, marcar o boleto parado como enviado ou pago. Use quando perguntarem o que o vigia achou, o que está desencontrado, esquecido ou pedindo atenção no sistema (de alguém, de um setor ou de todos), ou pedirem pra resolver um desses achados — chame junto com a resposta: o cartão é a oferta (só mostra; nada muda sem a pessoa).',
     input_schema: { type: 'object', properties: {
       pessoa: { type: 'string', description: 'alguém da equipe, ou "todos" (sem: quem pergunta)' },
       setor: { type: 'string', description: 'opcional: só um setor (dp, fiscal, contabil, financeiro, comercial, societario, irpf, gestao, clientes, geral)' } } } }
@@ -963,7 +963,7 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     const de = (nome ? ' de ' + nome : '') + (setor ? ' no setor ' + setor : '');
     if (!total) return 'O vigia não tem nada aberto' + de + ' — nada a mostrar.';
     registrar({ tipo: 'vigia', ver: nome ? 'meus' : 'todos', ...(nome ? { pessoa: nome } : {}), ...(setor ? { setor } : {}) });
-    return 'Proposta pronta: a tela mostra o cartão do vigia com ' + plural(total, 'achado aberto', 'achados abertos') + de + ' — por grupo, cada um com "Abrir" (a tela onde se resolve) e "Ignorar". Nada muda sem a pessoa. Na resposta: o resumo do que mais pesa e uma frase convidando a abrir o cartão.';
+    return 'Proposta pronta: a tela mostra o cartão do vigia com ' + plural(total, 'achado aberto', 'achados abertos') + de + ' — por grupo, cada um com "Abrir" (a tela onde se resolve) e "Ignorar"; no responsável que falta, na proposta parada e no boleto parado, também o botão que resolve ali. Nada muda sem a pessoa. Na resposta: o resumo do que mais pesa e uma frase convidando a abrir o cartão.';
   }
 
   return { buscar_empresa, ver_empresa, agenda, consultar, perguntar_reforma, propor_concluir_tarefas, propor_alterar_tarefas, propor_marcar_pago, propor_criar_tarefa, propor_revisao_atrasadas, propor_ver_vigia };

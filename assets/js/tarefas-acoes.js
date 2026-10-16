@@ -16,6 +16,10 @@
 //                     histórico; as de admissão, rescisão e alvará ficam de fora do prazo e do responsável (o banco refaz
 //                     os dois a partir da ficha de origem; a prioridade, não). Desfazer volta ao que era, só onde ninguém
 //                     mexeu depois.
+//   Resolver no cartão do vigia (16/10/2026) — definirResponsavelObrigacoes (como a tela Obrigações fiscais: os vínculos
+//                     sem ninguém da equipe e as tarefas abertas deles), definirResponsavelRotina, descartarProposta (como o
+//                     seletor da Precificação) e avancarBoletos (a emitir → emitido → enviado → pago, como a grade de
+//                     Boletos), cada uma com o desfazer que só volta onde ninguém mexeu depois.
 // ============================================================
 
 const LOTE = 100;   // ids por chamada: o filtro vai no endereço
@@ -280,6 +284,171 @@ export async function desfazerAlteracao(sb, alteradas, { autor = null, origem = 
     }));
   }
   return fim();
+}
+
+// ---- resolver no cartão do vigia (16/10/2026) ----
+// quem é da equipe pelo nome gravado (o banco tem "SAMUEL", "Vitoria"…): a mesma conta do vigia_pessoa do banco — fora
+// disso (vazio ou um nome que não é da equipe), "sem responsável"
+const DA_EQUIPE = { thalia: 'Thalia', vitoria: 'Vitória', adaini: 'Adaini', samuel: 'Samuel', diego: 'Diego', edna: 'Edna', ambos: 'Ambos' };
+export const pessoaDaEquipe = n => DA_EQUIPE[semAcento(n)] || null;
+const VAZIO = '\u0000';   // a chave do "sem ninguém" nos grupos por responsável de antes
+const porAntes = (lista, campo = 'antes') => {
+  const m = new Map();
+  lista.forEach(x => { const k = x[campo] == null ? VAZIO : String(x[campo]); if (!m.has(k)) m.set(k, []); m.get(k).push(x); });
+  return m;
+};
+const deVolta = k => (k === VAZIO ? null : k);
+
+// obrigação sem responsável (o achado é da empresa): o responsável vai pros vínculos ativos dela sem ninguém da equipe e,
+// como na tela Obrigações fiscais, pras tarefas abertas desses vínculos que estavam com o de antes (ou sem ninguém) — a
+// tarefa repassada à mão pra outra pessoa fica como está. → { vinculos: [{ id, antes }], tarefas: [{ id, antes }], erro }
+export async function definirResponsavelObrigacoes(sb, clienteId, responsavel, { autor = null, origem = null } = {}) {
+  const res = { vinculos: [], tarefas: [], erro: null };
+  const para = pessoaDaEquipe(responsavel);
+  if (!clienteId || !para) return { ...res, erro: 'Escolha alguém da equipe.' };
+  const { data, error } = await sb.from('cliente_obrigacoes').select('id, obrigacao_id, responsavel').eq('cliente_id', clienteId).eq('ativo', true);
+  if (error) return { ...res, erro: msg(error) };
+  const sem = (data || []).filter(v => !pessoaDaEquipe(v.responsavel)).map(v => ({ ...v, antes: v.responsavel ?? null }));
+  for (const [k, vs] of porAntes(sem)) {
+    const antes = deVolta(k);
+    // o update confere que o vínculo continua com o mesmo de antes (ninguém trocou no meio)
+    let q = sb.from('cliente_obrigacoes').update({ responsavel: para }).in('id', vs.map(v => v.id));
+    q = antes == null ? q.is('responsavel', null) : q.eq('responsavel', antes);
+    const { data: foram, error: e1 } = await q.select('id, obrigacao_id');
+    if (e1) return { ...res, erro: msg(e1) };
+    (foram || []).forEach(v => res.vinculos.push({ id: String(v.id), antes }));
+    const obrig = [...new Set((foram || []).map(v => v.obrigacao_id).filter(Boolean).map(String))];
+    if (!obrig.length) continue;
+    let qt = sb.from('tarefas').update({ responsavel: para }).eq('cliente_id', clienteId).in('obrigacao_id', obrig).neq('status', 'concluida');
+    qt = antes == null ? qt.is('responsavel', null) : qt.eq('responsavel', antes);
+    const { data: ts, error: e2 } = await qt.select('id');
+    if (e2) return { ...res, erro: 'O responsável das obrigações foi gravado, mas o das tarefas abertas não: ' + msg(e2) };
+    (ts || []).forEach(t => res.tarefas.push({ id: String(t.id), antes }));
+  }
+  if (res.tarefas.length) {
+    await sb.from('tarefa_historico').insert(res.tarefas.map(t => ({ tarefa_id: t.id, descricao: 'Responsável definido pela obrigação: ' + para + (origem ? ' — pelo ' + origem : '') + '.', autor })));
+  }
+  return res;
+}
+// desfazer: cada vínculo e cada tarefa voltam ao de antes — só os que continuam com quem foi definido (e a tarefa aberta)
+export async function desfazerResponsavelObrigacoes(sb, feito, responsavel, { autor = null, origem = null } = {}) {
+  const out = { vinculos: 0, tarefas: [], erro: null };
+  const para = pessoaDaEquipe(responsavel);
+  if (!para || !feito) return out;
+  for (const [k, vs] of porAntes(Array.isArray(feito.vinculos) ? feito.vinculos : [])) {
+    for (const p of partes(vs.map(v => String(v.id)))) {
+      const { data, error } = await sb.from('cliente_obrigacoes').update({ responsavel: deVolta(k) }).in('id', p).eq('responsavel', para).select('id');
+      if (error) return { ...out, erro: msg(error) };
+      out.vinculos += (data || []).length;
+    }
+  }
+  for (const [k, ts] of porAntes(Array.isArray(feito.tarefas) ? feito.tarefas : [])) {
+    for (const p of partes(ts.map(t => String(t.id)))) {
+      const { data, error } = await sb.from('tarefas').update({ responsavel: deVolta(k) }).in('id', p).eq('responsavel', para).neq('status', 'concluida').select('id');
+      if (error) return { ...out, erro: msg(error) };
+      (data || []).forEach(x => out.tarefas.push(String(x.id)));
+    }
+  }
+  if (out.tarefas.length) {
+    await sb.from('tarefa_historico').insert(out.tarefas.map(id => ({ tarefa_id: id, descricao: 'Responsável definido pela obrigação desfeito' + (origem ? ' no ' + origem : '') + '.', autor })));
+  }
+  return out;
+}
+
+// rotina do escritório sem responsável: como o editor das rotinas (o campo responsável) → { rotina: { id, antes }, jaTinha, erro }
+export async function definirResponsavelRotina(sb, id, responsavel) {
+  const para = pessoaDaEquipe(responsavel);
+  if (!id || !para) return { rotina: null, erro: 'Escolha alguém da equipe.' };
+  const { data, error } = await sb.from('rotinas').select('id, responsavel').eq('id', id);
+  if (error) return { rotina: null, erro: msg(error) };
+  const r = (data || [])[0];
+  if (!r) return { rotina: null, erro: 'A rotina não existe mais.' };
+  if (pessoaDaEquipe(r.responsavel)) return { rotina: null, jaTinha: pessoaDaEquipe(r.responsavel), erro: null };
+  let q = sb.from('rotinas').update({ responsavel: para }).eq('id', id);
+  q = r.responsavel == null ? q.is('responsavel', null) : q.eq('responsavel', r.responsavel);
+  const { data: foi, error: e2 } = await q.select('id');
+  if (e2) return { rotina: null, erro: msg(e2) };
+  return { rotina: (foi || []).length ? { id: String(id), antes: r.responsavel ?? null } : null, erro: null };
+}
+export async function desfazerResponsavelRotina(sb, rotina, responsavel) {
+  const para = pessoaDaEquipe(responsavel);
+  if (!rotina || !rotina.id || !para) return { desfeita: false, erro: null };
+  const { data, error } = await sb.from('rotinas').update({ responsavel: rotina.antes ?? null }).eq('id', rotina.id).eq('responsavel', para).select('id');
+  return { desfeita: !error && (data || []).length > 0, erro: error ? msg(error) : null };
+}
+
+// proposta parada: descartar, como o seletor de situação da tela Precificação (a situação e o "atualizado em"); desfazer
+// volta os dois — pro vigia, a proposta continua parada desde a mesma data. A proposta "recebida" (a do formulário
+// público) tem a tarefa de olhar a proposta, que o banco conclui quando ela sai de "recebida" (fn_proposta_externa_concluir):
+// o desfazer reabre essa tarefa → { proposta: { id, status_antes, atualizado_antes, tarefas }, ja, erro }
+const PROPOSTA_EM_ABERTO = ['recebida', 'rascunho', 'calculada', 'apresentada'];
+const CONCLUIDA_PELA_PROPOSTA = 'sistema (proposta em andamento)';
+export async function descartarProposta(sb, id) {
+  const { data, error } = await sb.from('precificacoes').select('id, status, atualizado_em').eq('id', id);
+  if (error) return { proposta: null, erro: msg(error) };
+  const p = (data || [])[0];
+  if (!p) return { proposta: null, erro: 'A proposta não existe mais.' };
+  if (!PROPOSTA_EM_ABERTO.includes(p.status)) return { proposta: null, ja: p.status, erro: null };
+  let tarefas = [];
+  if (p.status === 'recebida') {
+    const { data: ts, error: e0 } = await sb.from('tarefas').select('id').eq('proposta_id', id).eq('origem', 'proposta_externa').eq('status', 'pendente');
+    if (e0) return { proposta: null, erro: msg(e0) };
+    tarefas = (ts || []).map(t => String(t.id));
+  }
+  const { data: foi, error: e2 } = await sb.from('precificacoes').update({ status: 'descartada', atualizado_em: new Date().toISOString() }).eq('id', id).eq('status', p.status).select('id');
+  if (e2) return { proposta: null, erro: msg(e2) };
+  return { proposta: (foi || []).length ? { id: String(id), status_antes: p.status, atualizado_antes: p.atualizado_em ?? null, tarefas } : null, erro: null };
+}
+// → { desfeita, tarefas: [ids reabertas], erro }
+export async function desfazerDescarte(sb, proposta) {
+  if (!proposta || !proposta.id || !PROPOSTA_EM_ABERTO.includes(proposta.status_antes)) return { desfeita: false, tarefas: [], erro: null };
+  const { data, error } = await sb.from('precificacoes').update({ status: proposta.status_antes, atualizado_em: proposta.atualizado_antes }).eq('id', proposta.id).eq('status', 'descartada').select('id');
+  if (error) return { desfeita: false, tarefas: [], erro: msg(error) };
+  if (!(data || []).length) return { desfeita: false, tarefas: [], erro: null };
+  const ids = unicos(proposta.tarefas);
+  if (!ids.length) return { desfeita: true, tarefas: [], erro: null };
+  const { data: ts, error: e2 } = await sb.from('tarefas').update({ status: 'pendente', concluida_em: null, concluida_por: null })
+    .in('id', ids).eq('status', 'concluida').eq('concluida_por', CONCLUIDA_PELA_PROPOSTA).select('id');
+  if (e2) return { desfeita: true, tarefas: [], erro: 'A proposta voltou, mas a tarefa dela continua concluída: ' + msg(e2) };
+  return { desfeita: true, tarefas: (ts || []).map(t => String(t.id)), erro: null };
+}
+
+// o boleto pra frente: a emitir → emitido → enviado → pago (como a grade da tela Boletos); o cancelado e o que já está
+// lá na frente ficam → { mudados: [{ id, status_antes }], jaEstavam: [ids], erro }
+export const ORDEM_BOLETO = ['a_emitir', 'emitido', 'enviado', 'pago'];
+export async function avancarBoletos(sb, ids, status) {
+  const lista = unicos(ids);
+  const res = { mudados: [], jaEstavam: [], erro: null };
+  const alvo = ORDEM_BOLETO.indexOf(status);
+  if (alvo < 1) return { ...res, erro: 'Situação inválida.' };
+  const antes = new Map();
+  for (const p of partes(lista)) {
+    const { data, error } = await sb.from('cobrancas_mensais').select('id, status').in('id', p);
+    if (error) return { ...res, erro: msg(error) };
+    (data || []).forEach(b => antes.set(String(b.id), b.status));
+  }
+  const vao = [];
+  lista.forEach(id => { const i = ORDEM_BOLETO.indexOf(antes.get(id)); if (i < 0 || i >= alvo) res.jaEstavam.push(id); else vao.push({ id, antes: antes.get(id) }); });
+  for (const [k, bs] of porAntes(vao)) {
+    for (const p of partes(bs.map(b => b.id))) {
+      const { data, error } = await sb.from('cobrancas_mensais').update({ status }).in('id', p).eq('status', deVolta(k)).select('id');
+      if (error) return { ...res, erro: msg(error) };
+      (data || []).forEach(x => res.mudados.push({ id: String(x.id), status_antes: deVolta(k) }));
+    }
+  }
+  return res;
+}
+// desfazer: volta à situação de antes, só de quem continua na nova → { desfeitos: [{ id, status }], erro }
+export async function voltarBoletos(sb, mudados, status) {
+  const desfeitos = [];
+  for (const [k, bs] of porAntes((Array.isArray(mudados) ? mudados : []).filter(b => b && b.id && ORDEM_BOLETO.includes(b.status_antes)), 'status_antes')) {
+    for (const p of partes(bs.map(b => String(b.id)))) {
+      const { data, error } = await sb.from('cobrancas_mensais').update({ status: deVolta(k) }).in('id', p).eq('status', status).select('id');
+      if (error) return { desfeitos, erro: msg(error) };
+      (data || []).forEach(x => desfeitos.push({ id: String(x.id), status: deVolta(k) }));
+    }
+  }
+  return { desfeitos, erro: null };
 }
 
 // desfazerPagos(sb, pagos) → { desfeitos: [ids], erro } — volta à situação de antes, só de quem continua pago

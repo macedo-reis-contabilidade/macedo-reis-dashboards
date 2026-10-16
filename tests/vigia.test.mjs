@@ -1,10 +1,10 @@
 // O vigia do sistema, do lado da tela (assets/js/vigia.js): de quem é cada achado (os sócios levam "Ambos", o da Edna e o
 // sem dono), de qual tela (na ficha da empresa, o que é dela), o recorte (pessoa, todos, setor, tela, empresa, situação),
 // os grupos do cartão (o urgente e o prazo mais perto primeiro), os novos desde a última olhada, o link que vira endereço
-// (só página do sistema), o nome de cada regra (as da função do assistente, todas com nome) e a leitura e o "ignorar" com
-// um banco falso. Rodar com: node tests/vigia.test.mjs
+// (só página do sistema), o nome de cada regra (as da função do assistente, todas com nome), o resolvido agora pelo cartão
+// (fora da lista até a conferência seguinte) e a leitura e o "ignorar" com um banco falso. Rodar com: node tests/vigia.test.mjs
 import { ROTULOS, rotuloDaRegra, eDaPessoa, ehSocioPeloNome, caminhoDoLink, eDaTela, filtrarAchados, agruparAchados, novosDesde, linkSeguro,
-  lerAchados, ignorarAchado, reabrirAchado, lerVisto, marcarVisto } from '../assets/js/vigia.js';
+  lerAchados, ignorarAchado, reabrirAchado, lerVisto, marcarVisto, resolvidosAgora, marcarResolvidoAgora, desmarcarResolvidoAgora, semResolvidosAgora } from '../assets/js/vigia.js';
 import { TABELAS } from '../supabase/functions/assistente/ferramentas.js';
 
 let falhas = 0;
@@ -60,6 +60,25 @@ chk('toda regra que a função do assistente conhece tem nome no cartão (e vice
   regrasDaFuncao.filter(r => !ROTULOS[r]).join() + ' / ' + Object.keys(ROTULOS).filter(r => !regrasDaFuncao.includes(r)).join());
 chk('nome da regra', rotuloDaRegra('boleto_parado') === 'Boletos parados' && rotuloDaRegra('xyz') === 'Outros achados');
 chk('a última olhada fora do navegador: sem erro, sem valor', (marcarVisto('a@b'), lerVisto('a@b')) === null);
+
+console.log('O resolvido agora pelo cartão (até a conferência seguinte):');
+chk('fora do navegador: sem erro, nada fica de fora', (marcarResolvidoAgora('a@b', 'a1'), resolvidosAgora('a@b').size) === 0 && semResolvidosAgora(LISTA, 'a@b').length === LISTA.length);
+{
+  const guardado = new Map();
+  globalThis.localStorage = { getItem: k => (guardado.has(k) ? guardado.get(k) : null), setItem: (k, v) => guardado.set(k, String(v)), removeItem: k => guardado.delete(k) };
+  const t0 = Date.parse('2026-10-16T10:00:00Z'), EU = 'fiscal@macedoereis.com.br';
+  marcarResolvidoAgora('Fiscal@MacedoeReis.com.br', 'a1', t0);
+  marcarResolvidoAgora(EU, 'a3', t0 + 60e3);
+  chk('o resolvido sai da lista, por e-mail (sem maiúscula); pra outra pessoa, não', ids(semResolvidosAgora(LISTA, EU, t0 + 120e3)) === 'a2,a4,a5,a6,a7,a8,a9'
+    && semResolvidosAgora(LISTA, 'rh@macedoereis.com.br', t0).length === LISTA.length);
+  chk('vale 75 minutos (a conferência é de hora em hora): depois, volta', resolvidosAgora(EU, t0 + 74 * 60e3).has('a1') && !resolvidosAgora(EU, t0 + 75 * 60e3).has('a1')
+    && resolvidosAgora(EU, t0 + 75 * 60e3).has('a3'));
+  desmarcarResolvidoAgora(EU, 'a3', t0 + 120e3);
+  chk('o desfazer põe de volta', !resolvidosAgora(EU, t0 + 120e3).has('a3') && resolvidosAgora(EU, t0 + 120e3).has('a1'));
+  guardado.set('mr_vigia_resolvidos:' + EU, '{quebrado');
+  chk('guardado fora do formato: começa do zero, sem erro', resolvidosAgora(EU, t0).size === 0);
+  delete globalThis.localStorage;
+}
 
 console.log('Leitura e "ignorar" (banco falso):');
 {

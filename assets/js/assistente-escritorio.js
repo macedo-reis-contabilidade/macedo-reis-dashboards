@@ -13,7 +13,8 @@
 // (assets/js/assistente-acoes.js) pede a confirmação; a saudação do dia e o recado da Agenda perguntam pelas atrasadas
 // ("Revisar as atrasadas": o assistente pergunta, grupo por grupo, o que já foi feito).
 // O vigia do sistema (15/10/2026, assets/js/vigia.js): a saudação do dia diz quanto ele achou pra pessoa conferir e o
-// recado de cada tela, o que ele achou ali (na ficha da empresa, o que é dela) — "Ver" abre o cartão do vigia.
+// recado de cada tela, o que ele achou ali (na ficha da empresa, o que é dela) — "Ver" abre o cartão do vigia. O que a
+// pessoa resolveu no cartão (16/10/2026) não conta nesta máquina até a conferência seguinte, que tira do banco.
 // As fontes da Reforma ([CODIGO]) viram link: material → o original no Drive; regra → a Base legal (na tela da Reforma,
 // por cima; nas outras, fiscal-reforma.html#regra-COD). Testes de tela: tests/harness/assistente-escritorio.py.
 // ============================================================
@@ -23,7 +24,7 @@ import { montarAssistente, perguntarFuncao, textoParaHtml, escapeHtml } from './
 import { nomePorEmail, SOCIOS } from './equipe.js';
 import { janelaDeCima } from './janelas.js';
 import { cartaoDaAcao } from './assistente-acoes.js';
-import { lerAchados, filtrarAchados, eDaTela, novosDesde, lerVisto } from './vigia.js';
+import { lerAchados, filtrarAchados, eDaTela, novosDesde, lerVisto, semResolvidosAgora } from './vigia.js';
 
 const RAIZ = new URL('../../', import.meta.url);   // a raiz do site (este arquivo mora em assets/js/)
 
@@ -361,7 +362,8 @@ function abrirVigia(acao, texto) {
   if (!api) return;
   if (!api.mostrarAcao({ texto, acao: { tipo: 'vigia', ...acao } })) api.abrir();
 }
-const lerAbertos = () => lerAchados(supabase, { ignorados: false }).catch(() => null);
+// (sem os resolvidos agora pelo cartão, que só saem do banco na conferência seguinte)
+const lerAbertos = () => lerAchados(supabase, { ignorados: false }).then(l => semResolvidosAgora(l, email)).catch(() => null);
 // pra saudação do dia: quantos são de quem entrou (dos sócios, também os de "Ambos" e os sem dono)
 async function vigiaDaPessoa() {
   const lista = await lerAbertos();

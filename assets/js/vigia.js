@@ -27,7 +27,7 @@ export const ROTULOS = {
 export const rotuloDaRegra = r => ROTULOS[r] || 'Outros achados';
 const PESO = { alta: 0, media: 1, baixa: 2 };
 const peso = a => PESO[a && a.gravidade] ?? 1;
-export const COLUNAS = 'id, regra, titulo, detalhe, setor, responsavel, gravidade, cliente_id, link, prazo, situacao, primeiro_visto, ultimo_visto, ignorado_em, ignorado_por';
+export const COLUNAS = 'id, regra, titulo, detalhe, setor, responsavel, gravidade, cliente_id, ref_tabela, ref_id, link, prazo, situacao, primeiro_visto, ultimo_visto, ignorado_em, ignorado_por';
 
 const normal = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 
@@ -86,6 +86,29 @@ export const linkSeguro = link => (/^[a-z0-9][a-z0-9\-/]*\.html(\?[a-z0-9_=&.\-]
 const CHAVE_VISTO = email => 'mr_vigia_visto:' + String(email || '').toLowerCase();
 export function lerVisto(email) { try { return localStorage.getItem(CHAVE_VISTO(email)); } catch (e) { return null; } }
 export function marcarVisto(email, quando = new Date().toISOString()) { try { localStorage.setItem(CHAVE_VISTO(email), quando); } catch (e) { /* sem armazenamento */ } }
+
+// o resolvido agora pelo cartão (16/10/2026): o achado só sai do banco na conferência seguinte (de hora em hora, a do
+// minuto 10) — até lá, nesta máquina, ele não entra na saudação, nos recados nem na lista. No navegador, por e-mail, por
+// 75 minutos (a conferência seguinte com folga); o desfazer tira de volta
+const CHAVE_RESOLVIDOS = email => 'mr_vigia_resolvidos:' + String(email || '').toLowerCase();
+const VALE_RESOLVIDO = 75 * 60e3;
+function lerResolvidos(email, agora) {
+  try {
+    const j = JSON.parse(localStorage.getItem(CHAVE_RESOLVIDOS(email)) || '{}');
+    return Object.fromEntries(Object.entries(j && typeof j === 'object' ? j : {}).filter(([, em]) => agora - new Date(em).getTime() < VALE_RESOLVIDO));
+  } catch (e) { return {}; }
+}
+export const resolvidosAgora = (email, agora = Date.now()) => new Set(Object.keys(lerResolvidos(email, agora)));
+export function marcarResolvidoAgora(email, id, agora = Date.now()) {
+  try { localStorage.setItem(CHAVE_RESOLVIDOS(email), JSON.stringify({ ...lerResolvidos(email, agora), [id]: new Date(agora).toISOString() })); } catch (e) { /* sem armazenamento */ }
+}
+export function desmarcarResolvidoAgora(email, id, agora = Date.now()) {
+  try { const j = lerResolvidos(email, agora); delete j[id]; localStorage.setItem(CHAVE_RESOLVIDOS(email), JSON.stringify(j)); } catch (e) { /* sem armazenamento */ }
+}
+export const semResolvidosAgora = (lista, email, agora = Date.now()) => {
+  const r = resolvidosAgora(email, agora);
+  return (Array.isArray(lista) ? lista : []).filter(a => a && !r.has(String(a.id)));
+};
 
 // ---------- banco (quem chama passa o cliente do Supabase) ----------
 // as abertas e as ignoradas que a pessoa pode ver (o que usa o Conta Azul, só os sócios: a regra é do banco)

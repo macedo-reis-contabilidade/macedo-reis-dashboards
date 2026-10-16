@@ -1,10 +1,14 @@
 // Ações nas tarefas e nos boletos (assets/js/tarefas-acoes.js): concluir só o que está aberto (sem sobrescrever a conclusão
 // de outra pessoa), com a linha no histórico e a regra das dependências; desfazer volta à situação de antes, só de quem
-// concluiu e sem a faturável; criar a tarefa avulsa do formulário e desfazer; marcar boleto pago e desfazer; em lotes de 100.
+// concluiu e sem a faturável; criar a tarefa avulsa do formulário e desfazer; marcar boleto pago e desfazer; em lotes de 100;
+// alterar prazo, responsável e prioridade; e o que o cartão do vigia resolve ali mesmo (o responsável que falta, a proposta
+// parada, o boleto enviado ou pago), com o desfazer.
 // Sem rede: o cliente do Supabase é um dublê em memória.
 // Rodar com: node tests/tarefas-acoes.test.mjs
 import { concluirTarefas, desfazerConclusao, criarTarefasAvulsas, excluirTarefasCriadas, marcarPagos, desfazerPagos, avisarDependentes,
-  alterarTarefas, desfazerAlteracao, limparMudanca, descreverMudanca, fichaDeOrigem, proximasNascemCom } from '../assets/js/tarefas-acoes.js';
+  alterarTarefas, desfazerAlteracao, limparMudanca, descreverMudanca, fichaDeOrigem, proximasNascemCom,
+  pessoaDaEquipe, definirResponsavelObrigacoes, desfazerResponsavelObrigacoes, definirResponsavelRotina, desfazerResponsavelRotina,
+  descartarProposta, desfazerDescarte, avancarBoletos, voltarBoletos } from '../assets/js/tarefas-acoes.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + extra : '')); };
@@ -204,6 +208,81 @@ console.log('Alterar prazo, responsável e prioridade:');
     && st('a').prazo === '2026-10-15' && st('a').responsavel === 'Thalia' && st('d').prazo === null && st('d').responsavel === 'Thalia' && st('b').prazo === '2026-10-30' && st('b').responsavel === 'Vitória' && st('c').prazo === '2026-10-16', JSON.stringify(d));
   const desfeitas = db.tarefa_historico.filter(h => /desfeita/.test(h.descricao)).map(h => h.tarefa_id + ': ' + h.descricao);
   chk('a linha no histórico das desfeitas', desfeitas.join(' | ') === 'a: Prazo alterado de 16/10/2026 para 15/10/2026; responsável alterado de Vitória para Thalia — alteração desfeita no assistente do escritório. | d: Prazo retirado (era 16/10/2026); responsável alterado de Vitória para Thalia — alteração desfeita no assistente do escritório.', desfeitas.join(' | '));
+}
+
+console.log('Resolver no cartão do vigia:');
+chk('quem é da equipe pelo nome gravado (como o vigia do banco)', pessoaDaEquipe('VITÓRIA') === 'Vitória' && pessoaDaEquipe(' samuel ') === 'Samuel' && pessoaDaEquipe('ambos') === 'Ambos'
+  && pessoaDaEquipe('Fulano') === null && pessoaDaEquipe('') === null && pessoaDaEquipe(null) === null);
+{
+  const db = { cliente_obrigacoes: [
+      { id: 'v1', cliente_id: 'c1', obrigacao_id: 'o1', responsavel: null, ativo: true }, { id: 'v2', cliente_id: 'c1', obrigacao_id: 'o2', responsavel: 'Fulano', ativo: true },
+      { id: 'v3', cliente_id: 'c1', obrigacao_id: 'o3', responsavel: 'THALIA', ativo: true }, { id: 'v4', cliente_id: 'c1', obrigacao_id: 'o4', responsavel: null, ativo: false },
+      { id: 'v5', cliente_id: 'c2', obrigacao_id: 'o1', responsavel: null, ativo: true }],
+    tarefas: [T('t1', { obrigacao_id: 'o1', responsavel: null }), T('t2', { obrigacao_id: 'o1', responsavel: 'Adaini' }), T('t3', { obrigacao_id: 'o2', responsavel: 'Fulano' }),
+      T('t4', { obrigacao_id: 'o1', responsavel: null, status: 'concluida' }), T('t5', { cliente_id: 'c2', obrigacao_id: 'o1', responsavel: null }), T('t6', { obrigacao_id: 'o3', responsavel: null })],
+    tarefa_historico: [] };
+  const sb = dubla(db);
+  const v = id => db.cliente_obrigacoes.find(x => x.id === id).responsavel, t = id => db.tarefas.find(x => x.id === id).responsavel;
+  const r = await definirResponsavelObrigacoes(sb, 'c1', 'thalia', { autor: EU, origem: 'assistente do escritório (vigia)' });
+  chk('obrigação: os vínculos ativos da empresa sem ninguém da equipe (vazio ou nome de fora) ganham o responsável; o que já tinha, o inativo e o de outra empresa ficam',
+    v('v1') === 'Thalia' && v('v2') === 'Thalia' && v('v3') === 'THALIA' && v('v4') === null && v('v5') === null && r.vinculos.map(x => x.id + ':' + x.antes).sort().join() === 'v1:null,v2:Fulano', JSON.stringify(r));
+  chk('obrigação: as tarefas abertas desses vínculos que estavam com o de antes vão junto (como na tela); a repassada à mão, a concluída e as de outros vínculos ficam',
+    t('t1') === 'Thalia' && t('t3') === 'Thalia' && t('t2') === 'Adaini' && t('t4') === null && t('t5') === null && t('t6') === null && r.tarefas.map(x => x.id).sort().join() === 't1,t3');
+  chk('obrigação: a linha no histórico das tarefas que mudaram', db.tarefa_historico.map(h => h.tarefa_id + ': ' + h.descricao).sort().join(' | ')
+    === 't1: Responsável definido pela obrigação: Thalia — pelo assistente do escritório (vigia). | t3: Responsável definido pela obrigação: Thalia — pelo assistente do escritório (vigia).');
+  db.tarefas.find(x => x.id === 't3').responsavel = 'Vitória';   // depois, alguém passou a t3 pra Vitória: fica com ela
+  const d = await desfazerResponsavelObrigacoes(sb, r, 'Thalia', { autor: EU, origem: 'assistente do escritório (vigia)' });
+  chk('desfazer: vínculos e tarefas voltam ao de antes (vazio, "Fulano"); a mexida depois fica', v('v1') === null && v('v2') === 'Fulano' && t('t1') === null && t('t3') === 'Vitória'
+    && d.vinculos === 2 && d.tarefas.join() === 't1', JSON.stringify(d));
+  chk('obrigação sem alguém da equipe escolhido: não grava', (await definirResponsavelObrigacoes(sb, 'c1', 'Fulano')).erro === 'Escolha alguém da equipe.' && v('v1') === null);
+}
+{
+  const db = { rotinas: [{ id: 'r1', responsavel: null }, { id: 'r2', responsavel: 'samuel' }, { id: 'r3', responsavel: 'Contábil' }] };
+  const sb = dubla(db);
+  const a = await definirResponsavelRotina(sb, 'r1', 'Vitória'), b = await definirResponsavelRotina(sb, 'r2', 'Vitória'), c = await definirResponsavelRotina(sb, 'r3', 'Adaini');
+  chk('rotina: sem ninguém (ou com nome de fora) ganha o responsável; a que já tem fica', db.rotinas[0].responsavel === 'Vitória' && a.rotina.antes === null && b.jaTinha === 'Samuel' && !b.rotina
+    && db.rotinas[1].responsavel === 'samuel' && db.rotinas[2].responsavel === 'Adaini' && c.rotina.antes === 'Contábil');
+  const d = await desfazerResponsavelRotina(sb, a.rotina, 'Vitória'), e = await desfazerResponsavelRotina(sb, c.rotina, 'Adaini');
+  chk('rotina: desfazer volta ao de antes', d.desfeita && e.desfeita && db.rotinas[0].responsavel === null && db.rotinas[2].responsavel === 'Contábil');
+}
+{
+  const db = { precificacoes: [{ id: 'p1', status: 'apresentada', atualizado_em: '2026-09-01T10:00:00Z' }, { id: 'p2', status: 'fechada', atualizado_em: '2026-09-02T10:00:00Z' }] };
+  const sb = dubla(db);
+  const a = await descartarProposta(sb, 'p1'), b = await descartarProposta(sb, 'p2');
+  chk('proposta: descartar a parada (situação e "atualizado em", como o seletor da tela); a fechada fica', db.precificacoes[0].status === 'descartada' && db.precificacoes[0].atualizado_em !== '2026-09-01T10:00:00Z'
+    && a.proposta.status_antes === 'apresentada' && b.ja === 'fechada' && db.precificacoes[1].status === 'fechada');
+  const d = await desfazerDescarte(sb, a.proposta);
+  chk('proposta: desfazer volta a situação e a data de antes (pro vigia, parada desde a mesma data)', d.desfeita && db.precificacoes[0].status === 'apresentada' && db.precificacoes[0].atualizado_em === '2026-09-01T10:00:00Z');
+}
+{
+  // a proposta "recebida" (do formulário público): o banco conclui a tarefa dela quando sai de "recebida"; o desfazer reabre
+  const db = { precificacoes: [{ id: 'p3', status: 'recebida', atualizado_em: '2026-09-05T10:00:00Z' }],
+    tarefas: [T('tp', { proposta_id: 'p3', origem: 'proposta_externa' }), T('tq', { proposta_id: 'p3', origem: 'manual' }),
+      T('tr', { proposta_id: 'p3', origem: 'proposta_externa', status: 'concluida', concluida_por: EU })] };
+  const sb = dubla(db);
+  // o gatilho do banco (fn_proposta_externa_concluir), no dublê
+  sb.antes = t => { if (t === 'precificacoes') db.tarefas.filter(x => x.proposta_id === 'p3' && x.origem === 'proposta_externa' && x.status === 'pendente')
+    .forEach(x => Object.assign(x, { status: 'concluida', concluida_em: 'agora', concluida_por: 'sistema (proposta em andamento)' })); };
+  const tk = id => db.tarefas.find(x => x.id === id);
+  const a = await descartarProposta(sb, 'p3');
+  chk('proposta recebida: guarda a tarefa dela, que o banco conclui', a.proposta && a.proposta.tarefas.join() === 'tp' && tk('tp').status === 'concluida', JSON.stringify(a));
+  sb.antes = null;
+  const d = await desfazerDescarte(sb, a.proposta);
+  chk('proposta recebida: desfazer volta a "recebida" e reabre a tarefa dela; a concluída por alguém e a de outra origem ficam', d.desfeita && d.tarefas.join() === 'tp'
+    && db.precificacoes[0].status === 'recebida' && tk('tp').status === 'pendente' && tk('tp').concluida_por === null && tk('tr').status === 'concluida' && tk('tq').status === 'pendente', JSON.stringify(d));
+}
+{
+  const B = (id, status) => ({ id, status, cliente_id: 'c1', competencia: '2026-09', valor: 100 });
+  const db = { cobrancas_mensais: [B('b1', 'a_emitir'), B('b2', 'emitido'), B('b3', 'enviado'), B('b4', 'pago'), B('b5', 'cancelado')] };
+  const sb = dubla(db);
+  const r = await avancarBoletos(sb, ['b1', 'b2', 'b3', 'b4', 'b5', 'bx'], 'enviado');
+  const st = id => db.cobrancas_mensais.find(b => b.id === id).status;
+  chk('boleto: pra frente (a emitir e emitido viram enviado); o enviado, o pago, o cancelado e o que não existe ficam', r.mudados.map(m => m.id + ':' + m.status_antes).sort().join() === 'b1:a_emitir,b2:emitido'
+    && r.jaEstavam.sort().join() === 'b3,b4,b5,bx' && st('b1') === 'enviado' && st('b2') === 'enviado' && st('b5') === 'cancelado', JSON.stringify(r));
+  db.cobrancas_mensais.find(b => b.id === 'b2').status = 'pago';   // alguém marcou pago no meio: fica pago
+  const v = await voltarBoletos(sb, r.mudados, 'enviado');
+  chk('boleto: desfazer volta à situação de antes, só de quem continua na nova', v.desfeitos.map(x => x.id + ':' + x.status).join() === 'b1:a_emitir' && st('b1') === 'a_emitir' && st('b2') === 'pago');
+  chk('boleto: voltar pra "a emitir" não é avançar', (await avancarBoletos(sb, ['b1'], 'a_emitir')).erro === 'Situação inválida.' && st('b1') === 'a_emitir');
 }
 
 if (falhas) { console.log('\n' + falhas + ' falha(s)'); process.exit(1); }
