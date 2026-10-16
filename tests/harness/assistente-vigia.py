@@ -78,6 +78,31 @@ EXTRA = {
         'rotinas': [{'id': 'r9', 'titulo': 'BACKUP DE TESTE', 'setor': 'gestao', 'responsavel': None, 'ativo': True, 'periodicidade': 'semanal', 'dia_semana': 1,
                      'ultima_execucao': None, 'adiada_para': None}],
         'cobrancas_mensais': [{'id': 'cb9', 'cliente_id': E2, 'competencia': '2026-09', 'valor': 350, 'vencimento': DIA(1), 'status': 'a_emitir', 'canal': None, 'responsavel': 'Samuel'}]}}
+# o 8: a segunda leva — a admissão registrada, a rescisão concluída, a empresa da admissão sem vínculo (com a busca), o
+# alvará renovado e o que segue ativo de quem saiu da carteira; e um achado com o registro de outra tabela (sem botão)
+EXTRA2 = {
+    'achados': [
+        A('21', 'admissao_nao_registrada', 'Admissão de CICLANA DE TESTE (PADARIA DO TESTE LTDA) ainda não registrada', 'Começou a trabalhar e segue "em registro".', 'dp', 'Vitória', 'alta',
+          'dp-admissoes.html?admissao=ad21', cliente_id=E1, ref_tabela='admissoes', ref_id='ad21'),
+        A('22', 'admissao_sem_vinculo', 'Admissão de BELTRANA SEM EMPRESA sem empresa vinculada', 'A empresa digitou "OFICINA TESTE" e o nome não bateu com o cadastro.', 'dp', 'Vitória', 'media',
+          'dp-admissoes.html?admissao=ad22', ref_tabela='admissoes', ref_id='ad22'),
+        A('23', 'rescisao_pagamento', 'Rescisão de FULANO DE TESTE (OFICINA DE TESTE LTDA): pagamento chegando', 'Faltam 2 dias.', 'dp', 'Vitória', 'media',
+          'dp-rescisoes.html?rescisao=rs23', cliente_id=E2, ref_tabela='rescisoes', ref_id='rs23'),
+        A('24', 'alvara_vencendo', 'Alvará de funcionamento de PADARIA DO TESTE LTDA vence logo', 'Faltam 10 dias.', 'societario', 'Adaini', 'media', 'societario-alvaras.html',
+          cliente_id=E1, ref_tabela='alvaras', ref_id='al24'),
+        A('25', 'cobranca_ex_cliente', 'Cobrança ativa de ex-cliente: ANTIGA DE TESTE LTDA', 'Saiu da carteira e a cobrança segue ativa.', 'financeiro', 'Samuel', 'baixa',
+          'financeiro-boletos.html', ref_tabela='cobrancas_config', ref_id='cc25'),
+        A('26', 'obrigacao_ex_cliente', 'Obrigação ativa de ex-cliente: EFD TESTE MENSAL de ANTIGA DE TESTE LTDA', 'Saiu da carteira e a obrigação segue ativa.', 'fiscal', 'Thalia', 'media',
+          'fiscal-obrigacoes.html', ref_tabela='cliente_obrigacoes', ref_id='v9'),
+        A('27', 'alvara_vencendo', 'Alvará apontando pra outra tabela', 'Registro de outra tabela.', 'societario', 'Adaini', 'media', 'societario-alvaras.html',
+          ref_tabela='clientes', ref_id='c1')],
+    'tabelas': {
+        'admissoes': [{'id': 'ad21', 'status': 'em_registro', 'cliente_id': E1, 'empresa_nome': 'PADARIA DO TESTE', 'funcionario_nome': 'CICLANA DE TESTE', 'registrada_em': None, 'registrada_por': None},
+                      {'id': 'ad22', 'status': 'respondida', 'cliente_id': None, 'empresa_nome': 'OFICINA TESTE', 'funcionario_nome': 'BELTRANA SEM EMPRESA', 'registrada_em': None, 'registrada_por': None}],
+        'rescisoes': [{'id': 'rs23', 'status': 'em_andamento', 'cliente_id': E2, 'funcionario_nome': 'FULANO DE TESTE', 'concluida_em': None, 'concluida_por': None}],
+        'alvaras': [{'id': 'al24', 'status': 'vigente', 'vencimento': DIA(10), 'cliente_id': E1, 'tipo': 'Alvará de funcionamento'}],
+        'cobrancas_config': [{'id': 'cc25', 'cliente_id': 'c9', 'ativo': True}],
+        'cliente_obrigacoes': [{'id': 'v9', 'cliente_id': 'c9', 'obrigacao_id': 'o1', 'responsavel': 'Thalia', 'ativo': True}]}}
 ACOES = {'O que o vigia achou no fiscal?': {'tipo': 'vigia', 'ver': 'todos', 'setor': 'fiscal'}, 'O que dá pra resolver do vigia?': {'tipo': 'vigia', 'ver': 'todos'}}
 SEMEAR = """
 (() => {
@@ -285,6 +310,80 @@ def main():
         p2.goto(base + 'index.html'); p2.wait_for_selector('.as-recado:not([hidden])', timeout=6000)
         sauda2 = p2.inner_text('.as-recado-txt')
         ok('O vigia achou 5 coisas pra você conferir (1 urgente).' in sauda2, f'a saudação do dia também não conta o resolvido (a rotina; o boleto foi desfeito) ({sauda2[-70:]!r})')
+
+        # 8) a segunda leva (outra página: os achados e as linhas deles)
+        p3 = b.new_page(viewport={'width': 1400, 'height': 900})
+        p3.on('pageerror', lambda e: erros.append(str(e)))
+        p3.add_init_script(TOUR); p3.add_init_script('window.__vigiaExtra = ' + json.dumps(EXTRA2, ensure_ascii=False)); p3.add_init_script(SEMEAR)
+        l3 = lambda t, i: p3.evaluate('([t, i]) => window.__mockDb[t].find(x => x.id === i)', [t, i])
+        it3 = lambda trecho: card + ' li.as-vigia-item:has-text("' + trecho + '")'
+        tit3 = lambda: p3.inner_text(card + ' .as-cartao-tit')
+        abrir3 = lambda: p3.evaluate("() => document.querySelectorAll('.as-cartao-vigia details').forEach(d => { d.open = true; })")
+        def clicar3(trecho, botao, depois):
+            p3.click(it3(trecho) + ' button:has-text("' + botao + '")')
+            p3.wait_for_selector(it3(trecho) + ' button:has-text("' + depois + '")', timeout=5000)
+        p3.goto(base + 'index.html'); p3.wait_for_selector('.as-lancador', timeout=5000)
+        p3.click('.as-lancador'); p3.wait_for_timeout(200)
+        p3.fill('.as-entrada textarea', 'O que dá pra resolver do vigia?'); p3.press('.as-entrada textarea', 'Enter')
+        p3.wait_for_selector(card + ' .as-vigia-grupo', timeout=6000); abrir3(); p3.wait_for_timeout(100)
+        rot = lambda trecho: p3.eval_on_selector_all(it3(trecho) + ' .as-vigia-resolver button', 'bs => bs.map(b => b.textContent)')
+        ok(tit3() == 'O que o vigia achou: 14' and rot('CICLANA') == ['Marcar como registrada'] and rot('FULANO DE TESTE') == ['Marcar como concluída']
+           and rot('BELTRANA') == ['Vincular a empresa'] and rot('Alvará de funcionamento') == ['Renovar'] and p3.is_disabled(it3('Alvará de funcionamento') + ' button:has-text("Renovar")')
+           and rot('Cobrança ativa de ex-cliente') == ['Parar a cobrança'] and rot('EFD TESTE MENSAL de ANTIGA') == ['Desativar a obrigação']
+           and not p3.query_selector(it3('Alvará apontando pra outra tabela') + ' .as-vigia-resolver'),
+           f'os botões da segunda leva; o achado que aponta pra outra tabela fica sem botão ({tit3()!r})')
+
+        clicar3('CICLANA', 'Marcar como registrada', 'Desfazer')
+        ad21 = l3('admissoes', 'ad21')
+        ok(ad21['status'] == 'registrada' and ad21['registrada_por'] == 'financeiro@macedoereis.com.br' and bool(ad21['registrada_em'])
+           and any(e[0] == 'mr:tarefas-mudaram' for e in p3.evaluate('() => window.__eventos'))
+           and '✓ Admissão registrada (e a tarefa dela, concluída).' in p3.inner_text(it3('CICLANA')), 'admissão: registrada, com quando e quem (como o seletor da tela); a Agenda fica sabendo')
+        clicar3('CICLANA', 'Desfazer', 'Marcar como registrada')
+        ad21 = l3('admissoes', 'ad21')
+        ok(ad21['status'] == 'em_registro' and ad21['registrada_por'] is None and ad21['registrada_em'] is None, 'desfazer: volta a "em registro", sem o quando e o quem')
+        clicar3('FULANO DE TESTE', 'Marcar como concluída', 'Desfazer')
+        ok(l3('rescisoes', 'rs23')['status'] == 'concluida' and l3('rescisoes', 'rs23')['concluida_por'] == 'financeiro@macedoereis.com.br', 'rescisão: concluída, com quando e quem')
+
+        p3.click(it3('BELTRANA') + ' button:has-text("Vincular a empresa")')
+        p3.wait_for_selector(it3('BELTRANA') + ' .as-vigia-empresa:has-text("OFICINA DE TESTE LTDA")', timeout=5000)
+        busca = p3.input_value(it3('BELTRANA') + ' .as-vigia-busca input')
+        p3.click(it3('BELTRANA') + ' .as-vigia-empresa:has-text("OFICINA DE TESTE LTDA")')
+        p3.wait_for_selector(it3('BELTRANA') + ' button:has-text("Desfazer")', timeout=5000)
+        ok(busca == 'OFICINA TESTE' and l3('admissoes', 'ad22')['cliente_id'] == E2 and '✓ Vinculada a OFICINA DE TESTE LTDA.' in p3.inner_text(it3('BELTRANA')),
+           f'vínculo: a busca começa pelo nome que a empresa digitou; escolher a empresa vincula ({busca!r})')
+
+        data_al = it3('Alvará de funcionamento') + ' input[type=date]'
+        p3.fill(data_al, DIA(0)); p3.click(it3('Alvará de funcionamento') + ' button:has-text("Renovar")')
+        p3.wait_for_selector(it3('Alvará de funcionamento') + ' .as-cartao-erro', timeout=5000)
+        ok('depois de hoje' in p3.inner_text(it3('Alvará de funcionamento') + ' .as-cartao-erro') and p3.is_visible(it3('Alvará de funcionamento') + ' button:has-text("Renovar")')
+           and l3('alvaras', 'al24')['vencimento'] == DIA(10), 'alvará: a data de hoje não renova — o erro aparece e o botão volta')
+        p3.fill(data_al, DIA(20)); clicar3('Alvará de funcionamento', 'Renovar', 'Desfazer')
+        guardados3 = p3.evaluate("() => Object.keys(JSON.parse(localStorage.getItem('mr_vigia_resolvidos:financeiro@macedoereis.com.br') || '{}'))")
+        ok(l3('alvaras', 'al24')['vencimento'] == DIA(20) and 'o vigia continua avisando' in p3.inner_text(it3('Alvará de funcionamento')) and 'vg-24' not in guardados3,
+           'alvará renovado por pouco tempo (vence em até 30 dias): o vigia continua avisando, e ele não sai desta máquina')
+        clicar3('Alvará de funcionamento', 'Desfazer', 'Renovar')
+        p3.fill(data_al, DIA(400)); clicar3('Alvará de funcionamento', 'Renovar', 'Desfazer')
+        hist_al = p3.evaluate("() => window.__mockDb.alvara_historico.map(h => h.descricao)")
+        dbr = lambda n: (HOJE + datetime.timedelta(days=n)).strftime('%d/%m/%Y')
+        ok(l3('alvaras', 'al24')['vencimento'] == DIA(400) and l3('alvaras', 'al24')['status'] == 'vigente' and len(hist_al) == 3
+           and hist_al[-1] == 'Renovado: vencimento ' + dbr(10) + ' → ' + dbr(400) + ' — pelo assistente do escritório (vigia).'
+           and '✓ Renovado até ' + dbr(400) + '.' in p3.inner_text(it3('Alvará de funcionamento')),
+           f'alvará: renovado, vigente, com a linha na linha do tempo (como o "Renovar" da tela) ({hist_al})')
+
+        clicar3('Cobrança ativa de ex-cliente', 'Parar a cobrança', 'Desfazer')
+        ok(l3('cobrancas_config', 'cc25')['ativo'] is False, 'ex-cliente: a cobrança sai da base de boletos')
+        clicar3('EFD TESTE MENSAL de ANTIGA', 'Desativar a obrigação', 'Desfazer')
+        ok(l3('cliente_obrigacoes', 'v9')['ativo'] is False, 'ex-cliente: a obrigação desativa')
+        clicar3('EFD TESTE MENSAL de ANTIGA', 'Desfazer', 'Desativar a obrigação')
+        ok(l3('cliente_obrigacoes', 'v9')['ativo'] is True, 'desfazer: a obrigação volta ativa')
+        # alguém reativou a cobrança na tela de Boletos: o "Desfazer" daqui não tem o que voltar
+        p3.evaluate("() => { const c = window.__mockDb.cobrancas_config.find(x => x.id === 'cc25'); c.ativo = true; }")
+        p3.click(it3('Cobrança ativa de ex-cliente') + ' button:has-text("Desfazer")')
+        p3.wait_for_selector(it3('Nada voltou'), timeout=5000)
+        ok(l3('cobrancas_config', 'cc25')['ativo'] is True, 'desfazer depois de mexerem na tela: "nada voltou", sem gravar por cima')
+        p3.click(card + ' .as-vigia-abas button:has-text("De todos")'); p3.wait_for_timeout(500); abrir3(); p3.wait_for_timeout(100)
+        ok(tit3() == 'O que o vigia achou: 10' and p3.is_visible(it3('CICLANA') + ' button:has-text("Marcar como registrada")'),
+           f'a conta: os resolvidos saem; os desfeitos voltam com o botão ({tit3()!r})')
 
         ok(not erros, f'sem erro de JavaScript ({erros[:2]})')
         b.close()

@@ -14,7 +14,9 @@
 // tarefas recarregam) e "mr:boletos-mudaram" (a grade de boletos troca a situação).
 // O cartão do vigia (15/10/2026) mostra o que o vigia do sistema achou (assets/js/vigia.js), por grupo, com "Abrir" (a
 // tela onde se resolve) e "Ignorar" (com "Desfazer" por 10 minutos; os ignorados voltam pela aba "Ignorados") e, desde
-// 16/10/2026, o que dá pra resolver ali mesmo: o responsável que falta, a proposta parada, o boleto enviado ou pago.
+// 16/10/2026, o que dá pra resolver ali mesmo: o responsável que falta, a proposta parada, o boleto enviado ou pago, a
+// admissão registrada, a rescisão concluída, a empresa da ficha sem vínculo, o alvará renovado, a cobrança e a obrigação
+// de quem saiu da carteira.
 // Testes de tela: tests/harness/assistente-acoes.py e tests/harness/assistente-vigia.py.
 // ============================================================
 
@@ -22,7 +24,8 @@ import { supabase } from './supabase.js';
 import { concluirTarefas, desfazerConclusao, marcarPagos, desfazerPagos, criarTarefasAvulsas, excluirTarefasCriadas,
   alterarTarefas, desfazerAlteracao, limparMudanca, mudancaDe, fichaDeOrigem, ficaDeFora, proximasNascemCom,
   pessoaDaEquipe, definirResponsavelObrigacoes, desfazerResponsavelObrigacoes, definirResponsavelRotina, desfazerResponsavelRotina,
-  descartarProposta, desfazerDescarte, avancarBoletos, voltarBoletos } from './tarefas-acoes.js';
+  descartarProposta, desfazerDescarte, avancarBoletos, voltarBoletos, fecharFicha, reabrirFicha, vincularEmpresa, desvincularEmpresa, buscarEmpresas,
+  renovarAlvara, desfazerRenovacao, desativarRegistro, reativarRegistro } from './tarefas-acoes.js';
 import { EQUIPE, SOCIOS, nomePorEmail } from './equipe.js';
 import { SETORES } from './nova-tarefa.js';
 import { lerAchados, ignorarAchado, reabrirAchado, filtrarAchados, agruparAchados, linkSeguro, ehSocioPeloNome, marcarVisto,
@@ -656,12 +659,24 @@ const horaDe = iso => { const d = new Date(iso); return isNaN(d) ? '' : pad(d.ge
 // ---------- resolver no próprio cartão do vigia (16/10/2026) ----------
 // O que dá pra resolver com um clique, pela mesma regra das telas (assets/js/tarefas-acoes.js): o responsável que falta
 // (obrigação — leva as tarefas abertas junto, como em Obrigações fiscais —, tarefa e rotina), a proposta parada
-// (descartar) e o boleto parado (emitido, enviado, pago). O achado só sai do banco na conferência seguinte (de hora em
-// hora): aqui ele fica "resolvido", com o "Desfazer" por 10 minutos, e depois some desta máquina até a conferência
+// (descartar), o boleto parado (enviado, pago) e, na segunda leva, a admissão registrada, a rescisão concluída, a empresa
+// da admissão e da rescisão sem vínculo (com a busca das fichas), o alvará renovado (com a data nova) e o que segue ativo
+// de quem saiu da carteira (a cobrança, a obrigação). O achado só sai do banco na conferência seguinte (de hora em hora):
+// aqui ele fica "resolvido", com o "Desfazer" por 10 minutos, e depois some desta máquina até a conferência
 const ORIGEM_VIGIA = 'assistente do escritório (vigia)';
 const RESOLVE_RESPONSAVEL = ['obrigacao_sem_responsavel', 'tarefa_responsavel', 'rotina_sem_responsavel'];
-const resolvivel = a => !!a && ID.test(String(a.ref_id || '')) && (RESOLVE_RESPONSAVEL.includes(a.regra) || a.regra === 'proposta_parada' || a.regra === 'boleto_parado');
-// resolve e devolve { texto, desfazer } (o que o cartão guarda pro "Desfazer") ou { erro }
+// a regra e a tabela do registro que o achado aponta: só resolve aqui o que bate (o resto é "Abrir")
+const REF_DA_REGRA = { obrigacao_sem_responsavel: 'clientes', tarefa_responsavel: 'tarefas', rotina_sem_responsavel: 'rotinas', proposta_parada: 'precificacoes',
+  boleto_parado: 'cobrancas_mensais', admissao_nao_registrada: 'admissoes', admissao_sem_vinculo: 'admissoes', rescisao_pagamento: 'rescisoes',
+  rescisao_sem_vinculo: 'rescisoes', alvara_vencendo: 'alvaras', cobranca_ex_cliente: 'cobrancas_config', obrigacao_ex_cliente: 'cliente_obrigacoes' };
+const resolvivel = a => !!a && ID.test(String(a.ref_id || '')) && !!REF_DA_REGRA[a.regra] && REF_DA_REGRA[a.regra] === a.ref_tabela;
+const SITUACAO_FICHA = { respondida: 'recebida — a registrar', em_registro: 'em registro', registrada: 'registrada', recebida: 'recebida — a calcular',
+  em_andamento: 'em andamento', concluida: 'concluída', cancelada: 'cancelada', aguardando_empresa: 'aguardando a empresa' };
+const maisDias = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+const docBR = v => { const s = String(v || '').replace(/\D/g, ''); return s.length === 14 ? s.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')
+  : s.length === 11 ? s.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4') : String(v || ''); };
+const NADA_VOLTOU = 'nada-voltou';   // o desfazer não achou o que voltar: alguém mexeu depois
+// resolve e devolve { texto, desfazer, segue? } (o que o cartão guarda pro "Desfazer"; segue = o vigia continua avisando) ou { erro }
 async function resolverAchado(a, escolha, ajuda) {
   const autor = ajuda.email || null;
   const quem = pessoaDaEquipe(escolha);
@@ -702,32 +717,75 @@ async function resolverAchado(a, escolha, ajuda) {
     avisarTelas('mr:boletos-mudaram', { mudancas: r.mudados.map(b => ({ id: b.id, status: escolha })) });
     return { texto: 'Boleto marcado como ' + (SITUACAO_BOLETO[escolha] || escolha) + '.', desfazer: { tipo: 'boleto', status: escolha, mudados: r.mudados } };
   }
+  if (a.regra === 'admissao_nao_registrada' || a.regra === 'rescisao_pagamento') {
+    const adm = a.ref_tabela === 'admissoes';
+    const r = await fecharFicha(supabase, a.ref_tabela, a.ref_id, { autor });
+    if (r.erro) return { erro: r.erro };
+    if (!r.ficha) return { erro: r.ja ? 'Ela já está "' + (SITUACAO_FICHA[r.ja] || r.ja) + '".' : 'Ela mudou no meio do caminho: confira na tela ' + (adm ? 'Admissões' : 'Rescisões') + '.' };
+    avisarTelas('mr:feito', { n: 1 });
+    avisarTelas('mr:tarefas-mudaram', { ids: [] });
+    return { texto: adm ? 'Admissão registrada (e a tarefa dela, concluída).' : 'Rescisão concluída (e a tarefa dela também).', desfazer: { tipo: 'ficha', ficha: r.ficha } };
+  }
+  if (a.regra === 'admissao_sem_vinculo' || a.regra === 'rescisao_sem_vinculo') {
+    const c = escolha && typeof escolha === 'object' && ID.test(String(escolha.id || '')) ? escolha : null;
+    if (!c) return { erro: 'Escolha a empresa.' };
+    const r = await vincularEmpresa(supabase, a.ref_tabela, a.ref_id, c.id);
+    if (r.erro) return { erro: r.erro };
+    if (!r.ficha) return { erro: r.ja ? 'Ela já foi vinculada a uma empresa: confira na tela.' : 'Ela mudou no meio do caminho: confira na tela.' };
+    avisarTelas('mr:tarefas-mudaram', { ids: [] });
+    return { texto: 'Vinculada a ' + String(c.nome || 'empresa do cadastro') + '.', desfazer: { tipo: 'vinculo', ficha: r.ficha } };
+  }
+  if (a.regra === 'alvara_vencendo') {
+    const r = await renovarAlvara(supabase, a.ref_id, escolha, { autor, origem: ORIGEM_VIGIA, hoje: hojeISO() });
+    if (r.erro) return { erro: r.erro };
+    avisarTelas('mr:tarefas-mudaram', { ids: [] });
+    // a renovação curta (vence em até 30 dias) continua no vigia: não sai desta máquina
+    const segue = r.alvara.vencimento <= maisDias(hojeISO(), 30);
+    return { texto: 'Renovado até ' + dataBR(r.alvara.vencimento) + '.' + (segue ? ' Vence em menos de 30 dias: o vigia continua avisando.' : ''), segue,
+      desfazer: { tipo: 'alvara', alvara: r.alvara } };
+  }
+  if (a.regra === 'cobranca_ex_cliente' || a.regra === 'obrigacao_ex_cliente') {
+    const r = await desativarRegistro(supabase, a.ref_tabela, a.ref_id);
+    if (r.erro) return { erro: r.erro };
+    if (!r.desativado) return { erro: 'Já estava desativada: confira na tela.' };
+    return { texto: a.regra === 'cobranca_ex_cliente' ? 'Cobrança parada: sai da base de boletos.' : 'Obrigação desativada (as tarefas já criadas ficam).',
+      desfazer: { tipo: 'desativado', feito: r.desativado } };
+  }
   return { erro: 'Esse achado se resolve na tela dele.' };
 }
+// desfaz e devolve { erro } — erro também quando nada voltou (alguém mexeu depois)
 async function desfazerResolucao(d, ajuda) {
   const autor = ajuda.email || null;
+  const nada = (r, voltou) => ({ erro: r.erro || (voltou ? null : NADA_VOLTOU) });
   if (!d || typeof d !== 'object') return { erro: 'Não há o que desfazer.' };
   if (d.tipo === 'obrigacoes') {
     const r = await desfazerResponsavelObrigacoes(supabase, d, d.responsavel, { autor, origem: ORIGEM_VIGIA });
     if (r.tarefas.length) avisarTelas('mr:tarefas-mudaram', { ids: r.tarefas });
-    return { erro: r.erro };
+    return nada(r, r.vinculos > 0 || r.tarefas.length > 0);
   }
   if (d.tipo === 'tarefa') {
     const r = await desfazerAlteracao(supabase, d.alteradas || [], { autor, origem: ORIGEM_VIGIA });
     if (r.desfeitas.length) avisarTelas('mr:tarefas-mudaram', { ids: r.desfeitas });
-    return { erro: r.erro };
+    return nada(r, r.desfeitas.length > 0);
   }
-  if (d.tipo === 'rotina') return { erro: (await desfazerResponsavelRotina(supabase, d.rotina, d.responsavel)).erro };
+  if (d.tipo === 'rotina') { const r = await desfazerResponsavelRotina(supabase, d.rotina, d.responsavel); return nada(r, r.desfeita); }
   if (d.tipo === 'proposta') {
     const r = await desfazerDescarte(supabase, d.proposta);
     if (r.tarefas.length) avisarTelas('mr:tarefas-mudaram', { ids: r.tarefas });
-    return { erro: r.erro };
+    return nada(r, r.desfeita);
   }
   if (d.tipo === 'boleto') {
     const r = await voltarBoletos(supabase, d.mudados || [], d.status);
     if (r.desfeitos.length) avisarTelas('mr:boletos-mudaram', { mudancas: r.desfeitos });
-    return { erro: r.erro };
+    return nada(r, r.desfeitos.length > 0);
   }
+  if (d.tipo === 'ficha' || d.tipo === 'vinculo' || d.tipo === 'alvara') {
+    const r = d.tipo === 'ficha' ? await reabrirFicha(supabase, d.ficha) : d.tipo === 'vinculo' ? await desvincularEmpresa(supabase, d.ficha)
+      : await desfazerRenovacao(supabase, d.alvara, { autor, origem: ORIGEM_VIGIA });
+    if (r.desfeita) avisarTelas('mr:tarefas-mudaram', { ids: [] });
+    return nada(r, r.desfeita);
+  }
+  if (d.tipo === 'desativado') { const r = await reativarRegistro(supabase, d.feito); return nada(r, r.desfeita); }
   return { erro: 'Não há o que desfazer.' };
 }
 
@@ -840,19 +898,69 @@ function cartaoVigia({ raiz, estado, salvar, ajuda, anunciar }) {
       linha.append(botao('Descartar proposta', ev => resolver(a, 'descartar', ev.currentTarget)));
     } else if (a.regra === 'boleto_parado') {
       ['enviado', 'pago'].forEach(st => linha.append(botao('Marcar como ' + SITUACAO_BOLETO[st], ev => resolver(a, st, ev.currentTarget))));
+    } else if (a.regra === 'admissao_nao_registrada' || a.regra === 'rescisao_pagamento') {
+      linha.append(botao(a.regra === 'admissao_nao_registrada' ? 'Marcar como registrada' : 'Marcar como concluída', ev => resolver(a, null, ev.currentTarget)));
+    } else if (a.regra === 'admissao_sem_vinculo' || a.regra === 'rescisao_sem_vinculo') {
+      linha.append(botao('Vincular a empresa', () => abrirBusca(a, linha)));
+    } else if (a.regra === 'alvara_vencendo') {
+      const quando = h('input', { type: 'date', 'aria-label': 'Novo vencimento do alvará' });
+      quando.min = maisDias(hojeISO(), 1);
+      const ok = botao('Renovar', ev => resolver(a, quando.value, ev.currentTarget), 'pri');
+      ok.disabled = true;
+      ['input', 'change'].forEach(t => quando.addEventListener(t, () => { ok.disabled = !quando.value; }));
+      linha.append(h('label', { class: 'as-vigia-campo' }, h('span', { text: 'Renovado até' }), quando), ok);
+    } else if (a.regra === 'cobranca_ex_cliente' || a.regra === 'obrigacao_ex_cliente') {
+      linha.append(botao(a.regra === 'cobranca_ex_cliente' ? 'Parar a cobrança' : 'Desativar a obrigação', ev => resolver(a, null, ev.currentTarget)));
     }
     return linha;
   }
+  // a busca da empresa (a mesma das fichas de Admissões e Rescisões), começando pelo nome que a empresa digitou no link;
+  // escolher a empresa já vincula (o "Desfazer" tira)
+  function abrirBusca(a, linha) {
+    const campo = h('input', { type: 'search', 'aria-label': 'Buscar a empresa no cadastro', placeholder: 'Nome, fantasia ou CNPJ' });
+    const lista = h('div', { class: 'as-vigia-empresas' });
+    let vez = 0, timer = null;
+    const buscar = async () => {
+      const esta = ++vez;
+      if (campo.value.trim().length < 3) { lista.replaceChildren(sub('Digite pelo menos 3 letras.')); return; }
+      lista.replaceChildren(sub('Buscando…'));
+      let r;
+      try { r = await buscarEmpresas(supabase, campo.value, 6); } catch (e) { r = { empresas: [], erro: (e && e.message) || 'erro' }; }
+      if (esta !== vez) return;   // a resposta de uma busca que já ficou pra trás
+      if (r.erro) { lista.replaceChildren(h('div', { class: 'as-cartao-erro', text: 'Não consegui buscar: ' + r.erro })); return; }
+      if (!r.empresas.length) { lista.replaceChildren(sub('Nada encontrado no cadastro.')); return; }
+      lista.replaceChildren(...r.empresas.map(c => {
+        const b = h('button', { type: 'button', class: 'as-vigia-empresa' }, h('b', { text: c.nome_principal || 'Sem nome' }),
+          h('small', { text: [c.nome_fantasia, c.documento ? docBR(c.documento) : '', c.cidade].filter(Boolean).join(' · ') || ' ' }));
+        b.addEventListener('click', () => resolver(a, { id: String(c.id), nome: c.nome_principal }, b));
+        return b;
+      }));
+    };
+    campo.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(buscar, 300); });
+    const caixa = h('div', { class: 'as-vigia-resolver as-vigia-busca' },
+      h('div', { class: 'as-vigia-busca-linha' }, campo, botao('Cancelar', () => caixa.replaceWith(controlesDeResolver(a)), 'link')), lista);
+    linha.replaceWith(caixa);
+    campo.focus({ preventScroll: true });
+    try { caixa.scrollIntoView({ block: 'nearest' }); } catch (e) { /* sem rolagem */ }
+    supabase.from(a.ref_tabela).select('empresa_nome').eq('id', a.ref_id).then(({ data }) => {
+      const n = data && data[0] && data[0].empresa_nome;
+      if (n && !campo.value) { campo.value = String(n).trim(); buscar(); }
+    }, () => { /* sem o nome digitado: a pessoa digita */ });
+  }
   async function resolver(a, escolha, b) {
-    const rotulo = b.textContent;
+    const conteudo = [...b.childNodes].map(n => n.cloneNode(true));   // o rótulo (na busca, o nome e o CNPJ) pra voltar se der erro
     const li = b.closest('li');
     if (li) li.querySelectorAll('.as-cartao-erro').forEach(x => x.remove());
     b.disabled = true; b.textContent = 'Gravando…';
     let r;
     try { r = await resolverAchado(a, escolha, ajuda); } catch (e) { r = { erro: (e && e.message) || 'erro' }; }
-    if (r.erro) return falhou(b, rotulo, r.erro);
+    if (r.erro) {
+      b.disabled = false; b.replaceChildren(...conteudo);
+      if (li) li.append(h('div', { class: 'as-cartao-erro', text: r.erro }));
+      return;
+    }
     salvar({ resolvidos: { ...resolvidos(), [a.id]: { em: new Date().toISOString(), texto: r.texto + (r.aviso ? ' ' + r.aviso : ''), desfazer: r.desfazer } } });
-    marcarResolvidoAgora(email, String(a.id));
+    if (!r.segue) marcarResolvidoAgora(email, String(a.id));   // o que o vigia continua avisando não sai desta máquina
     try { ajuda.reagir && ajuda.reagir(); } catch (e) { /* sem carinha */ }
     anunciar(r.texto + ' Dá pra desfazer por 10 minutos.');
     desenhar();
@@ -863,6 +971,14 @@ function cartaoVigia({ raiz, estado, salvar, ajuda, anunciar }) {
     b.disabled = true; b.textContent = 'Desfazendo…';
     let r;
     try { r = await desfazerResolucao(x.desfazer, ajuda); } catch (e) { r = { erro: (e && e.message) || 'erro' }; }
+    if (r.erro === NADA_VOLTOU) {
+      // alguém mexeu depois: o "Desfazer" não tem mais o que voltar
+      const rs = resolvidos(); delete rs[a.id];
+      salvar({ resolvidos: rs });
+      anunciar('Nada voltou: isso mudou depois, na tela ou por outra pessoa.');
+      trocar(b.closest('li') || raiz, h('div', { class: 'as-cartao-sub', text: 'Nada voltou: depois daqui, isso mudou na tela ou por outra pessoa. Confira na tela.' }));
+      return;
+    }
     if (r.erro) return falhou(b, 'Desfazer', 'Não consegui desfazer: ' + r.erro);
     const rs = resolvidos(); delete rs[a.id];
     salvar({ resolvidos: rs });

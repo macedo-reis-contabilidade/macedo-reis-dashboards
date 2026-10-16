@@ -8,7 +8,8 @@
 import { concluirTarefas, desfazerConclusao, criarTarefasAvulsas, excluirTarefasCriadas, marcarPagos, desfazerPagos, avisarDependentes,
   alterarTarefas, desfazerAlteracao, limparMudanca, descreverMudanca, fichaDeOrigem, proximasNascemCom,
   pessoaDaEquipe, definirResponsavelObrigacoes, desfazerResponsavelObrigacoes, definirResponsavelRotina, desfazerResponsavelRotina,
-  descartarProposta, desfazerDescarte, avancarBoletos, voltarBoletos } from '../assets/js/tarefas-acoes.js';
+  descartarProposta, desfazerDescarte, avancarBoletos, voltarBoletos, fecharFicha, reabrirFicha, vincularEmpresa, desvincularEmpresa, buscarEmpresas,
+  renovarAlvara, desfazerRenovacao, desativarRegistro, reativarRegistro } from '../assets/js/tarefas-acoes.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + extra : '')); };
@@ -33,7 +34,7 @@ function dubla(tabelas) {
       return { data: alvo.map(r => ({ ...r })), error: null };
     };
     const q = {
-      select() { return q; }, or() { return q; },
+      select() { return q; }, or(s) { sb.ultimoOr = s; return q; }, limit() { return q; },
       in(c, v) { st.f.push(['in', c, v]); return q; }, eq(c, v) { st.f.push(['eq', c, v]); return q; }, neq(c, v) { st.f.push(['neq', c, v]); return q; }, is(c, v) { st.f.push(['is', c, v]); return q; },
       update(p) { st.patch = p; return q; }, delete() { st.del = true; return q; },
       insert(p) { st.ins = (Array.isArray(p) ? p : [p]).map(r => ({ id: 'novo' + (seq++), ...r })); return q; },
@@ -283,6 +284,64 @@ chk('quem é da equipe pelo nome gravado (como o vigia do banco)', pessoaDaEquip
   const v = await voltarBoletos(sb, r.mudados, 'enviado');
   chk('boleto: desfazer volta à situação de antes, só de quem continua na nova', v.desfeitos.map(x => x.id + ':' + x.status).join() === 'b1:a_emitir' && st('b1') === 'a_emitir' && st('b2') === 'pago');
   chk('boleto: voltar pra "a emitir" não é avançar', (await avancarBoletos(sb, ['b1'], 'a_emitir')).erro === 'Situação inválida.' && st('b1') === 'a_emitir');
+}
+
+console.log('Resolver no cartão do vigia, a segunda leva:');
+{
+  const db = { admissoes: [{ id: 'a1', status: 'em_registro', cliente_id: null, registrada_em: null, registrada_por: null }, { id: 'a2', status: 'registrada', cliente_id: 'c9' }],
+    rescisoes: [{ id: 'r1', status: 'recebida', cliente_id: null, concluida_em: null, concluida_por: null }] };
+  const sb = dubla(db);
+  const ad = id => db.admissoes.find(x => x.id === id), rs = id => db.rescisoes.find(x => x.id === id);
+  const a = await fecharFicha(sb, 'admissoes', 'a1', { autor: EU }), b = await fecharFicha(sb, 'admissoes', 'a2', { autor: EU }), r = await fecharFicha(sb, 'rescisoes', 'r1', { autor: EU });
+  chk('ficha: a admissão aberta vira registrada e a rescisão, concluída, com quando e quem (como o seletor das telas); a já registrada fica',
+    ad('a1').status === 'registrada' && ad('a1').registrada_por === EU && ad('a1').registrada_em && a.ficha.status_antes === 'em_registro' && b.ja === 'registrada'
+    && rs('r1').status === 'concluida' && rs('r1').concluida_por === EU && r.ficha.status_antes === 'recebida', JSON.stringify([a, b, r]));
+  const da = await reabrirFicha(sb, a.ficha), dr = await reabrirFicha(sb, r.ficha);
+  chk('ficha: desfazer volta à situação de antes, sem o quando e o quem', da.desfeita && dr.desfeita && ad('a1').status === 'em_registro' && ad('a1').registrada_em === null
+    && ad('a1').registrada_por === null && rs('r1').status === 'recebida' && rs('r1').concluida_por === null);
+  chk('ficha: tabela de fora não grava', (await fecharFicha(sb, 'tarefas', 'a1')).erro === 'Ficha inválida.');
+  const v = await vincularEmpresa(sb, 'admissoes', 'a1', 'c1'), w = await vincularEmpresa(sb, 'admissoes', 'a2', 'c1');
+  chk('vínculo: a ficha sem empresa ganha a escolhida; a que já tinha empresa fica', ad('a1').cliente_id === 'c1' && v.ficha.cliente_id === 'c1' && w.ja === 'c9' && ad('a2').cliente_id === 'c9');
+  ad('a1').cliente_id = 'c1';
+  const dv = await desvincularEmpresa(sb, v.ficha);
+  chk('vínculo: desfazer tira a empresa, só se continua a mesma', dv.desfeita && ad('a1').cliente_id === null);
+}
+{
+  const db = { clientes: [{ id: 'c1', nome_principal: 'PADARIA TESTE LTDA' }] };
+  const sb = dubla(db);
+  const r = await buscarEmpresas(sb, ' Padaria (Teste), "Ltda" ');
+  chk('busca de empresa: como a das fichas, sem o que quebraria o filtro (vírgula, parênteses, aspas)',
+    sb.ultimoOr === 'nome_principal.ilike.*Padaria Teste Ltda*,nome_fantasia.ilike.*Padaria Teste Ltda*,nome_busca.ilike.*padariatesteltda*,documento.ilike.*padariatesteltda*'
+    && r.empresas.length === 1, sb.ultimoOr);
+  chk('busca de empresa: com menos de 3 letras, nem consulta', (await buscarEmpresas(sb, 'pa')).empresas.length === 0 && !sb.log.some(l => l.t === 'clientes' && l.op === 'select' && sb.log.indexOf(l) > 0));
+}
+{
+  const db = { alvaras: [{ id: 'al1', status: 'vigente', vencimento: '2026-10-10' }, { id: 'al2', status: 'a_confirmar', vencimento: null }], alvara_historico: [] };
+  const sb = dubla(db);
+  const al = id => db.alvaras.find(x => x.id === id);
+  const HOJE = '2026-10-16', ORIG = { autor: EU, origem: 'assistente do escritório (vigia)', hoje: HOJE };
+  chk('alvará: a data nova vem depois de hoje e do vencimento de agora', (await renovarAlvara(sb, 'al1', '2026-10-16', ORIG)).erro === 'A nova data de vencimento precisa ser depois de hoje.'
+    && (await renovarAlvara(sb, 'al1', '16/10/2027', ORIG)).erro === 'Informe a nova data de vencimento.' && al('al1').vencimento === '2026-10-10');
+  const r = await renovarAlvara(sb, 'al1', '2027-10-10', ORIG), s = await renovarAlvara(sb, 'al2', '2027-03-01', ORIG);
+  chk('alvará: renovado — vigente, com o vencimento novo e a linha na linha do tempo (como o "Renovar" da tela)', al('al1').status === 'vigente' && al('al1').vencimento === '2027-10-10'
+    && r.alvara.vencimento_antes === '2026-10-10' && al('al2').status === 'vigente' && s.alvara.status_antes === 'a_confirmar'
+    && db.alvara_historico[0].descricao === 'Renovado: vencimento 10/10/2026 → 10/10/2027 — pelo assistente do escritório (vigia).' && db.alvara_historico[0].autor === EU
+    && db.alvara_historico[1].descricao === 'Renovado: vencimento — → 01/03/2027 — pelo assistente do escritório (vigia).', JSON.stringify(db.alvara_historico));
+  const d = await desfazerRenovacao(sb, r.alvara, ORIG), e = await desfazerRenovacao(sb, s.alvara, ORIG);
+  chk('alvará: desfazer volta o vencimento e a situação de antes, com a linha', d.desfeita && e.desfeita && al('al1').vencimento === '2026-10-10' && al('al1').status === 'vigente'
+    && al('al2').vencimento === null && al('al2').status === 'a_confirmar' && db.alvara_historico[2].descricao === 'Renovação desfeita: vencimento 10/10/2027 → 10/10/2026 — no assistente do escritório (vigia).');
+  chk('alvará: a data nova antes do vencimento de agora não grava', (await renovarAlvara(sb, 'al1', '2026-10-05', { ...ORIG, hoje: '2026-10-01' })).erro === 'A nova data precisa ser depois do vencimento de agora (10/10/2026).'
+    && al('al1').vencimento === '2026-10-10');
+}
+{
+  const db = { cobrancas_config: [{ id: 'cc1', ativo: true }, { id: 'cc2', ativo: false }], cliente_obrigacoes: [{ id: 'co1', ativo: true }] };
+  const sb = dubla(db);
+  const a = await desativarRegistro(sb, 'cobrancas_config', 'cc1'), b = await desativarRegistro(sb, 'cobrancas_config', 'cc2'), c = await desativarRegistro(sb, 'cliente_obrigacoes', 'co1');
+  chk('ex-cliente: a cobrança e a obrigação ativas desativam; a que já estava parada fica', db.cobrancas_config[0].ativo === false && a.desativado.id === 'cc1' && !b.desativado
+    && db.cliente_obrigacoes[0].ativo === false && c.desativado.tabela === 'cliente_obrigacoes');
+  const d = await reativarRegistro(sb, a.desativado), e = await reativarRegistro(sb, c.desativado);
+  chk('ex-cliente: desfazer reativa', d.desfeita && e.desfeita && db.cobrancas_config[0].ativo === true && db.cliente_obrigacoes[0].ativo === true);
+  chk('ex-cliente: outra tabela não', (await desativarRegistro(sb, 'clientes', 'c1')).erro === 'Registro inválido.');
 }
 
 if (falhas) { console.log('\n' + falhas + ' falha(s)'); process.exit(1); }

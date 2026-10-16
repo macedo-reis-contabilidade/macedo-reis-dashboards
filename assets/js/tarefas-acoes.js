@@ -19,7 +19,11 @@
 //   Resolver no cartão do vigia (16/10/2026) — definirResponsavelObrigacoes (como a tela Obrigações fiscais: os vínculos
 //                     sem ninguém da equipe e as tarefas abertas deles), definirResponsavelRotina, descartarProposta (como o
 //                     seletor da Precificação) e avancarBoletos (a emitir → emitido → enviado → pago, como a grade de
-//                     Boletos), cada uma com o desfazer que só volta onde ninguém mexeu depois.
+//                     Boletos), cada uma com o desfazer que só volta onde ninguém mexeu depois. E a segunda leva:
+//                     fecharFicha (admissão registrada, rescisão concluída, como o seletor das telas do DP — a tarefa o
+//                     banco acompanha), vincularEmpresa (a admissão ou a rescisão sem vínculo, com buscarEmpresas, a busca
+//                     das fichas), renovarAlvara (como o "Renovar" da tela Alvarás) e desativarRegistro (a cobrança e a
+//                     obrigação de quem saiu da carteira).
 // ============================================================
 
 const LOTE = 100;   // ids por chamada: o filtro vai no endereço
@@ -449,6 +453,118 @@ export async function voltarBoletos(sb, mudados, status) {
     }
   }
   return { desfeitos, erro: null };
+}
+
+// ---- resolver no cartão do vigia, a segunda leva (16/10/2026) ----
+// a ficha da admissão e da rescisão: registrada / concluída, como o seletor de situação das telas Admissões e Rescisões
+// (o quando e o quem); a tarefa dela o banco acompanha, nos dois sentidos (admissao_/rescisao_sincronizar_tarefa)
+export const FICHAS_DP = {
+  admissoes: { abertas: ['respondida', 'em_registro'], fim: 'registrada', em: 'registrada_em', por: 'registrada_por' },
+  rescisoes: { abertas: ['recebida', 'em_andamento'], fim: 'concluida', em: 'concluida_em', por: 'concluida_por' } };
+// → { ficha: { tabela, id, status_antes }, ja: a situação de agora (quando já não estava aberta), erro }
+export async function fecharFicha(sb, tabela, id, { autor = null } = {}) {
+  const f = FICHAS_DP[tabela];
+  if (!f || !id) return { ficha: null, erro: 'Ficha inválida.' };
+  const { data, error } = await sb.from(tabela).select('id, status').eq('id', id);
+  if (error) return { ficha: null, erro: msg(error) };
+  const r = (data || [])[0];
+  if (!r) return { ficha: null, erro: 'A ficha não existe mais.' };
+  if (!f.abertas.includes(r.status)) return { ficha: null, ja: r.status, erro: null };
+  const agora = new Date().toISOString();
+  const { data: foi, error: e2 } = await sb.from(tabela).update({ status: f.fim, [f.em]: agora, [f.por]: autor, atualizado_em: agora })
+    .eq('id', id).eq('status', r.status).select('id');
+  if (e2) return { ficha: null, erro: msg(e2) };
+  return { ficha: (foi || []).length ? { tabela, id: String(id), status_antes: r.status } : null, erro: null };
+}
+// desfazer: volta à situação de antes (sem o quando e o quem), só se continua como ficou → { desfeita, erro }
+export async function reabrirFicha(sb, ficha) {
+  const f = ficha && FICHAS_DP[ficha.tabela];
+  if (!f || !ficha.id || !f.abertas.includes(ficha.status_antes)) return { desfeita: false, erro: null };
+  const { data, error } = await sb.from(ficha.tabela).update({ status: ficha.status_antes, [f.em]: null, [f.por]: null, atualizado_em: new Date().toISOString() })
+    .eq('id', ficha.id).eq('status', f.fim).select('id');
+  return { desfeita: !error && (data || []).length > 0, erro: error ? msg(error) : null };
+}
+
+// a empresa da admissão ou da rescisão que entrou sem vínculo (o nome digitado não bateu com o cadastro): como a ficha da
+// tela — o banco leva a empresa pra tarefa → { ficha: { tabela, id, cliente_id }, ja: a empresa que já estava, erro }
+export async function vincularEmpresa(sb, tabela, id, clienteId) {
+  if (!FICHAS_DP[tabela] || !id || !clienteId) return { ficha: null, erro: 'Escolha a empresa.' };
+  const { data, error } = await sb.from(tabela).select('id, cliente_id').eq('id', id);
+  if (error) return { ficha: null, erro: msg(error) };
+  const r = (data || [])[0];
+  if (!r) return { ficha: null, erro: 'A ficha não existe mais.' };
+  if (r.cliente_id) return { ficha: null, ja: String(r.cliente_id), erro: null };
+  const { data: foi, error: e2 } = await sb.from(tabela).update({ cliente_id: clienteId, atualizado_em: new Date().toISOString() })
+    .eq('id', id).is('cliente_id', null).select('id');
+  if (e2) return { ficha: null, erro: msg(e2) };
+  return { ficha: (foi || []).length ? { tabela, id: String(id), cliente_id: String(clienteId) } : null, erro: null };
+}
+export async function desvincularEmpresa(sb, ficha) {
+  if (!ficha || !FICHAS_DP[ficha.tabela] || !ficha.id || !ficha.cliente_id) return { desfeita: false, erro: null };
+  const { data, error } = await sb.from(ficha.tabela).update({ cliente_id: null, atualizado_em: new Date().toISOString() })
+    .eq('id', ficha.id).eq('cliente_id', ficha.cliente_id).select('id');
+  return { desfeita: !error && (data || []).length > 0, erro: error ? msg(error) : null };
+}
+// a busca de empresa das fichas de Admissões e Rescisões (razão social, fantasia, o nome sem pontuação ou o CNPJ), sem o
+// que quebraria o filtro (vírgula, parênteses, asterisco) → { empresas: [{ id, nome_principal, nome_fantasia, documento, cidade }], erro }
+export async function buscarEmpresas(sb, termo, limite = 8) {
+  const t = String(termo || '').replace(/[,()*%\\:"']/g, ' ').replace(/\s+/g, ' ').trim();
+  if (t.length < 3) return { empresas: [], erro: null };
+  const chave = t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+  const { data, error } = await sb.from('clientes').select('id, nome_principal, nome_fantasia, documento, cidade')
+    .or('nome_principal.ilike.*' + t + '*,nome_fantasia.ilike.*' + t + '*' + (chave ? ',nome_busca.ilike.*' + chave + '*,documento.ilike.*' + chave + '*' : '')).limit(limite);
+  if (error) return { empresas: [], erro: msg(error) };
+  return { empresas: data || [], erro: null };
+}
+
+// alvará renovado: como o "Renovar" da tela Alvarás — vigente, com o vencimento novo, e a linha na linha do tempo dele; a
+// tarefa de renovação o banco refaz pro vencimento novo (alvara_sincronizar_tarefa). A data nova vem depois de hoje e do
+// vencimento de agora → { alvara: { id, status_antes, vencimento_antes, vencimento }, erro }
+const hojeLocal = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+export async function renovarAlvara(sb, id, vencimento, { autor = null, origem = null, hoje = hojeLocal() } = {}) {
+  const v = String(vencimento || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v) || isNaN(new Date(v + 'T12:00:00').getTime())) return { alvara: null, erro: 'Informe a nova data de vencimento.' };
+  if (v <= hoje) return { alvara: null, erro: 'A nova data de vencimento precisa ser depois de hoje.' };
+  const { data, error } = await sb.from('alvaras').select('id, status, vencimento').eq('id', id);
+  if (error) return { alvara: null, erro: msg(error) };
+  const a = (data || [])[0];
+  if (!a) return { alvara: null, erro: 'O alvará não existe mais.' };
+  const antes = a.vencimento ? String(a.vencimento).slice(0, 10) : null;
+  if (antes && v <= antes) return { alvara: null, erro: 'A nova data precisa ser depois do vencimento de agora (' + dataBR(antes) + ').' };
+  let q = sb.from('alvaras').update({ status: 'vigente', vencimento: v }).eq('id', id);
+  q = antes == null ? q.is('vencimento', null) : q.eq('vencimento', antes);
+  const { data: foi, error: e2 } = await q.select('id');
+  if (e2) return { alvara: null, erro: msg(e2) };
+  if (!(foi || []).length) return { alvara: null, erro: 'O alvará mudou no meio do caminho: confira na tela Alvarás.' };
+  await sb.from('alvara_historico').insert({ alvara_id: String(id), autor,
+    descricao: 'Renovado: vencimento ' + (antes ? dataBR(antes) : '—') + ' → ' + dataBR(v) + (origem ? ' — pelo ' + origem : '') + '.' });
+  return { alvara: { id: String(id), status_antes: a.status ?? null, vencimento_antes: antes, vencimento: v }, erro: null };
+}
+// desfazer: o vencimento e a situação de antes, só se o vencimento continua o da renovação → { desfeita, erro }
+export async function desfazerRenovacao(sb, alvara, { autor = null, origem = null } = {}) {
+  if (!alvara || !alvara.id || !alvara.vencimento) return { desfeita: false, erro: null };
+  const { data, error } = await sb.from('alvaras').update({ status: alvara.status_antes ?? null, vencimento: alvara.vencimento_antes ?? null })
+    .eq('id', alvara.id).eq('vencimento', alvara.vencimento).select('id');
+  if (error) return { desfeita: false, erro: msg(error) };
+  if (!(data || []).length) return { desfeita: false, erro: null };
+  await sb.from('alvara_historico').insert({ alvara_id: String(alvara.id), autor,
+    descricao: 'Renovação desfeita: vencimento ' + dataBR(alvara.vencimento) + ' → ' + (alvara.vencimento_antes ? dataBR(alvara.vencimento_antes) : '—') + (origem ? ' — no ' + origem : '') + '.' });
+  return { desfeita: true, erro: null };
+}
+
+// o que segue ativo de quem saiu da carteira: a cobrança na base de boletos (como o "parar de vez" da tela Boletos) e a
+// obrigação fiscal (como a chave da tela Obrigações fiscais — as tarefas já criadas ficam) → { desativado: { tabela, id }, erro }
+export const DESATIVAVEIS = ['cobrancas_config', 'cliente_obrigacoes'];
+export async function desativarRegistro(sb, tabela, id) {
+  if (!DESATIVAVEIS.includes(tabela) || !id) return { desativado: null, erro: 'Registro inválido.' };
+  const { data, error } = await sb.from(tabela).update({ ativo: false }).eq('id', id).eq('ativo', true).select('id');
+  if (error) return { desativado: null, erro: msg(error) };
+  return { desativado: (data || []).length ? { tabela, id: String(id) } : null, erro: null };
+}
+export async function reativarRegistro(sb, feito) {
+  if (!feito || !DESATIVAVEIS.includes(feito.tabela) || !feito.id) return { desfeita: false, erro: null };
+  const { data, error } = await sb.from(feito.tabela).update({ ativo: true }).eq('id', feito.id).eq('ativo', false).select('id');
+  return { desfeita: !error && (data || []).length > 0, erro: error ? msg(error) : null };
 }
 
 // desfazerPagos(sb, pagos) → { desfeitos: [ids], erro } — volta à situação de antes, só de quem continua pago
