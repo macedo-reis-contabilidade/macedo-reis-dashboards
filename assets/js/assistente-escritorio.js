@@ -12,6 +12,8 @@
 // Ações (concluir tarefas, marcar boleto pago, criar tarefa): a resposta traz a proposta e o cartão dela
 // (assets/js/assistente-acoes.js) pede a confirmação; a saudação do dia e o recado da Agenda perguntam pelas atrasadas
 // ("Revisar as atrasadas": o assistente pergunta, grupo por grupo, o que já foi feito).
+// O vigia do sistema (15/10/2026, assets/js/vigia.js): a saudação do dia diz quanto ele achou pra pessoa conferir e o
+// recado de cada tela, o que ele achou ali (na ficha da empresa, o que é dela) — "Ver" abre o cartão do vigia.
 // As fontes da Reforma ([CODIGO]) viram link: material → o original no Drive; regra → a Base legal (na tela da Reforma,
 // por cima; nas outras, fiscal-reforma.html#regra-COD). Testes de tela: tests/harness/assistente-escritorio.py.
 // ============================================================
@@ -21,6 +23,7 @@ import { montarAssistente, perguntarFuncao, textoParaHtml, escapeHtml } from './
 import { nomePorEmail, SOCIOS } from './equipe.js';
 import { janelaDeCima } from './janelas.js';
 import { cartaoDaAcao } from './assistente-acoes.js';
+import { lerAchados, filtrarAchados, eDaTela, novosDesde, lerVisto } from './vigia.js';
 
 const RAIZ = new URL('../../', import.meta.url);   // a raiz do site (este arquivo mora em assets/js/)
 
@@ -91,17 +94,18 @@ const TELAS = {
   'clientes/editar.html': { nome: 'Ficha da empresa' },
   'clientes/novo.html': { nome: 'Novo cliente' },
   'financeiro-boletos.html': { nome: 'Boletos', exemplos: ['Quais boletos deste mês ainda não foram pagos?', 'Quanto vamos cobrar este mês no total?', 'Quem está inadimplente e desde quando?'],
+    // os boletos que vencem este mês são os da competência do mês passado (gerados no começo do mês). O "pago" quase
+    // nunca é marcado (a baixa não vem do Inter pela planilha), então "vencido sem pago" não entra: seria quase tudo
     dica: async () => {
-      const hoje = hojeISO(), comp = hoje.slice(0, 7), mes = MESES[+comp.slice(5) - 1];
+      const hoje = hojeISO(), d = new Date(hoje.slice(0, 8) + '01T12:00:00');
+      d.setMonth(d.getMonth() - 1);
+      const comp = ymd(d).slice(0, 7), mes = MESES[d.getMonth()];
       const { data, error } = await supabase.from('cobrancas_mensais').select('status, vencimento').eq('competencia', comp);
       if (error) return null;
-      if (!data.length) return { texto: 'Os boletos de ' + mes + ' ainda não foram gerados.', exemplos: ['Quanto vamos cobrar este mês no total?'] };
+      if (!data.length) return +hoje.slice(8) >= 8 ? { texto: 'Os boletos de ' + mes + ' (que vencem este mês) ainda não foram gerados.', exemplos: ['Quanto vamos cobrar este mês no total?'] } : null;
       const aEmitir = data.filter(x => x.status === 'a_emitir').length;
-      const abertos = data.filter(x => x.status === 'emitido' || x.status === 'enviado');
-      const vencidos = abertos.filter(x => x.vencimento && x.vencimento < hoje).length;
-      const semana = abertos.filter(x => x.vencimento && x.vencimento >= hoje && x.vencimento <= maisDias(hoje, 7)).length;
-      const partes = [aEmitir ? qtd(aEmitir, 'boleto a emitir', 'boletos a emitir') : '', semana ? qtd(semana, 'vence nos próximos 7 dias', 'vencem nos próximos 7 dias') : '',
-        vencidos ? qtd(vencidos, 'vencido ainda sem "pago"', 'vencidos ainda sem "pago"') : ''].filter(Boolean);
+      const semana = data.filter(x => (x.status === 'emitido' || x.status === 'enviado') && x.vencimento && x.vencimento >= hoje && x.vencimento <= maisDias(hoje, 7)).length;
+      const partes = [aEmitir ? qtd(aEmitir, 'boleto a emitir', 'boletos a emitir') : '', semana ? qtd(semana, 'vence nos próximos 7 dias', 'vencem nos próximos 7 dias') : ''].filter(Boolean);
       return partes.length ? { texto: 'Boletos de ' + mes + ': ' + partes.join(', ') + '.', exemplos: ['Quais boletos deste mês ainda não foram pagos?'] } : null;
     } },
   'financeiro-faturaveis.html': { nome: 'Faturáveis', exemplos: ['O que tem a faturar e de quem?', 'Quanto tem a faturar no total?'],
@@ -308,7 +312,7 @@ const guardado = {
   gravar(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* sem armazenamento */ } }
 };
 // o recado do dia: na primeira tela do dia, a saudação com a agenda de quem entrou; depois, uma vez por dia em cada tela, o
-// que ela tem de novo. Nunca com o painel aberto, com pergunta no ar ou com a aba escondida
+// que ela tem de novo (e o que o vigia achou ali). Nunca com o painel aberto, com pergunta no ar ou com a aba escondida
 async function recadoDoDia() {
   if (!api || api.aberto || api.ocupado || document.visibilityState === 'hidden') return;
   const hoje = hojeISO(), base = 'mr_assistente_dia:' + email + ':' + hoje + ':';
@@ -316,28 +320,75 @@ async function recadoDoDia() {
     if (!guardado.ler(base + 'saudacao')) {
       const r = await saudacaoDoDia();
       guardado.gravar(base + 'saudacao', '1');
-      if (r) { api.avisar({ texto: r.texto, exemplos: r.exemplos, botoes: r.botoes, ms: r.botoes ? 20000 : 15000 }); return; }
+      if (r) { mostrarRecado({ texto: r.texto, exemplos: r.exemplos, botoes: r.botoes, ms: r.botoes ? 20000 : 15000 }); return; }
     }
-    const dica = cfg.dica || null;
-    if (!dica || guardado.ler(base + caminho)) return;
+    if (guardado.ler(base + caminho)) return;
     guardado.gravar(base + caminho, '1');
-    const r = await dica();
-    if (r && !api.aberto) api.avisar({ texto: r.texto, exemplos: r.exemplos, botoes: r.botoes, ms: 14000 });
+    const [r, v] = await Promise.all([cfg.dica ? cfg.dica().catch(() => null) : null, vigiaDaTela()]);
+    const texto = [r && r.texto, v && v.texto].filter(Boolean).join(' ');
+    const botoes = [...((r && r.botoes) || []), ...((v && v.botoes) || [])];
+    if (texto) mostrarRecado({ texto, exemplos: r && r.exemplos, botoes, ms: botoes.length ? 18000 : 14000 });
   } catch (e) { /* o recado é enfeite: erro aqui não atrapalha a tela */ }
+}
+// mostra o recado; com outro recado na tela (o da empresa aberta, por exemplo) ou uma pergunta no ar, tenta de novo daqui
+// a pouco — com o painel aberto, desiste (a pessoa já está conversando)
+function mostrarRecado(msg, tentativas = 4) {
+  if (!api || api.aberto || document.visibilityState === 'hidden') return;
+  if (api.avisar(msg)) return;
+  if (tentativas > 1) setTimeout(() => mostrarRecado(msg, tentativas - 1), 9000);
 }
 async function saudacaoDoDia() {
   const h = new Date().getHours();
   const oi = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite';
   if (!nomePessoa) return { texto: oi + '! Eu vejo tudo do sistema, em qualquer tela — é só perguntar.', exemplos: EXEMPLOS_GERAIS.slice(0, 2) };
   const hoje = hojeISO();
-  const [nHoje, nAtras] = await Promise.all([contar(daPessoa(tarefasAbertas().eq('prazo', hoje))), contar(daPessoa(tarefasAbertas().lt('prazo', hoje)))]);
+  const [nHoje, nAtras, vig] = await Promise.all([contar(daPessoa(tarefasAbertas().eq('prazo', hoje))), contar(daPessoa(tarefasAbertas().lt('prazo', hoje))), vigiaDaPessoa()]);
   let t = oi + ', ' + nomePessoa + '! ';
   if (nHoje == null || nAtras == null) t += 'Eu vejo tudo do sistema, em qualquer tela — é só perguntar.';
   else if (!nHoje && !nAtras) t += 'Nenhuma tarefa sua pra hoje nem atrasada.';
   else t += 'Hoje você tem ' + qtd(nHoje, 'tarefa', 'tarefas') + (nAtras ? ', e ' + qtd(nAtras, 'atrasada', 'atrasadas') + '. Alguma delas já foi feita?' : '.');
-  // com atrasadas, ele pergunta: "Revisar as atrasadas" abre a revisão (grupo por grupo, o que já foi feito)
-  return nAtras ? { texto: t, botoes: [{ rotulo: 'Revisar as atrasadas', acao: () => iniciarRevisao() }], exemplos: ['O que tenho pra hoje?'] }
-    : { texto: t, exemplos: ['O que tenho pra hoje?'] };
+  // com atrasadas, ele pergunta: "Revisar as atrasadas" abre a revisão (grupo por grupo, o que já foi feito); com achados
+  // do vigia, diz quantos e "Ver o que o vigia achou" abre o cartão
+  const botoes = [];
+  if (nAtras) botoes.push({ rotulo: 'Revisar as atrasadas', acao: () => iniciarRevisao() });
+  if (vig) { t += ' ' + vig.texto; botoes.push(vig.botao); }
+  return { texto: t, exemplos: ['O que tenho pra hoje?'], ...(botoes.length ? { botoes } : {}) };
+}
+
+// ---------- o vigia (o que ficou pra trás ou desencontrado no sistema: assets/js/vigia.js) ----------
+// o cartão do vigia na conversa, sem passar pela IA; acao = o recorte (ver, tela, cliente_id, setor)
+function abrirVigia(acao, texto) {
+  if (!api) return;
+  if (!api.mostrarAcao({ texto, acao: { tipo: 'vigia', ...acao } })) api.abrir();
+}
+const lerAbertos = () => lerAchados(supabase, { ignorados: false }).catch(() => null);
+// pra saudação do dia: quantos são de quem entrou (dos sócios, também os de "Ambos" e os sem dono)
+async function vigiaDaPessoa() {
+  const lista = await lerAbertos();
+  const meus = lista ? filtrarAchados(lista, { nome: nomePessoa, socio }) : [];
+  if (!meus.length) return null;
+  const urg = meus.filter(a => a.gravidade === 'alta').length, novos = novosDesde(meus, lerVisto(email));
+  const extra = [urg ? qtd(urg, 'urgente', 'urgentes') : '', novos ? qtd(novos, 'nova', 'novas') : ''].filter(Boolean).join(', ');
+  return { texto: 'O vigia achou ' + qtd(meus.length, 'coisa', 'coisas') + ' pra você conferir' + (extra ? ' (' + extra + ')' : '') + '.',
+    botao: { rotulo: 'Ver o que o vigia achou', acao: () => abrirVigia({ ver: 'meus' }, 'O que o vigia achou pra você conferir:') } };
+}
+// pro recado da tela: o que o vigia achou aqui — na tela onde se resolve, no hub do setor (o setor todo) e, na ficha da
+// empresa, o que é dela. De quem entrou; os sócios e a ficha da empresa, de todos
+async function vigiaDaTela() {
+  if (!nomePessoa && !socio) return null;
+  const hub = /^(dp|fiscal|contabil|financeiro|comercial|societario|irpf|gestao)\.html$/.exec(caminho);
+  const naFicha = caminho === 'clientes/editar.html';
+  const lista = await lerAbertos();
+  if (!lista) return null;
+  const vistos = filtrarAchados(lista, { nome: nomePessoa, socio, todos: socio || naFicha });
+  const daqui = hub ? vistos.filter(a => a.setor === hub[1]) : vistos.filter(a => eDaTela(a, caminho, location.search));
+  if (!daqui.length) return null;
+  const n = daqui.length, urg = daqui.filter(a => a.gravidade === 'alta').length;
+  const onde = naFicha ? 'desta empresa' : hub ? 'no ' + NOME_SETOR[hub[1]] : 'nesta tela';
+  const recorte = naFicha ? { cliente_id: new URLSearchParams(location.search).get('id') } : hub ? { setor: hub[1] } : { tela: caminho };
+  const texto = n === 1 ? 'O vigia achou uma coisa ' + onde + ': ' + daqui[0].titulo + '.'
+    : 'O vigia achou ' + n + ' coisas pra conferir ' + onde + (urg ? ' (' + qtd(urg, 'urgente', 'urgentes') + ')' : '') + '.';
+  return { texto, botoes: [{ rotulo: n === 1 ? 'Ver' : 'Ver quais', acao: () => abrirVigia({ ver: socio || naFicha ? 'todos' : 'meus', ...recorte }, 'O que o vigia achou ' + onde + ':') }] };
 }
 // a revisão das atrasadas de quem está na tela (ou de outra pessoa da equipe), sem passar pela IA
 function iniciarRevisao(pessoa = nomePessoa) {

@@ -27,7 +27,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from conferir import montar_site, servir
 
 HOJE = datetime.date.today()
-COMP = HOJE.strftime('%Y-%m')
+# os boletos que vencem este mês são os da competência do mês passado (gerados no começo do mês)
+COMP = (HOJE.replace(day=1) - datetime.timedelta(days=1)).strftime('%Y-%m')
 EMPRESA = '9a1b2c3d-0000-4000-8000-00000000c0de'
 CLIENTES = [{'id': EMPRESA, 'nome_principal': 'PADARIA DO TESTE LTDA', 'nome_fantasia': 'PADARIA TESTE', 'documento': '10000000000272', 'status': 'ativo', 'tipo_pessoa': 'PJ'}]
 COBRANCAS = [{'id': 'cb1', 'cliente_id': EMPRESA, 'competencia': COMP, 'valor': 450, 'vencimento': (HOJE + datetime.timedelta(days=3)).isoformat(), 'status': 'enviado'},

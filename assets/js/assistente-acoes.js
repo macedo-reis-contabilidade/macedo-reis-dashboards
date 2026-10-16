@@ -9,15 +9,19 @@
 // primeiro; as avulsas juntas no fim) — "todas feitas", "escolher quais" ou "ainda não". Começa pelo botão da saudação do
 // dia, pelo recado da Agenda ou pela IA (quando pedem pra passar as atrasadas a limpo).
 // Depois de mudar, avisa as telas abertas: "mr:feito" (a carinha comemora), "mr:tarefas-mudaram" (a Agenda e as telas de
-// tarefas recarregam) e "mr:boletos-mudaram" (a grade de boletos troca a situação). Testes de tela:
-// tests/harness/assistente-acoes.py.
+// tarefas recarregam) e "mr:boletos-mudaram" (a grade de boletos troca a situação).
+// O cartão do vigia (15/10/2026) mostra o que o vigia do sistema achou (assets/js/vigia.js), por grupo, com "Abrir" (a
+// tela onde se resolve) e "Ignorar" (com "Desfazer" por 10 minutos; os ignorados voltam pela aba "Ignorados").
+// Testes de tela: tests/harness/assistente-acoes.py e tests/harness/assistente-vigia.py.
 // ============================================================
 
 import { supabase } from './supabase.js';
 import { concluirTarefas, desfazerConclusao, marcarPagos, desfazerPagos, criarTarefasAvulsas, excluirTarefasCriadas } from './tarefas-acoes.js';
-import { EQUIPE } from './equipe.js';
+import { EQUIPE, SOCIOS, nomePorEmail } from './equipe.js';
 import { SETORES } from './nova-tarefa.js';
+import { lerAchados, ignorarAchado, reabrirAchado, filtrarAchados, agruparAchados, linkSeguro, ehSocioPeloNome, marcarVisto } from './vigia.js';
 
+const RAIZ = new URL('../../', import.meta.url);   // a raiz do site (este arquivo mora em assets/js/)
 const PRAZO_DESFAZER = 10 * 60e3;   // o "Desfazer" vale por 10 minutos
 const pad = n => String(n).padStart(2, '0');
 const hojeISO = () => { const d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
@@ -107,7 +111,7 @@ const resumoConcluidas = r => (r.concluidas || []).map(c => ({ id: c.id, status_
 //   ajuda: { salvar(acao), anunciar(texto), reagir(), email, nome } — salvar guarda o estado do cartão na conversa
 // ============================================================
 export function cartaoDaAcao(acao, ajuda = {}) {
-  const fazer = { concluir_tarefas: cartaoConcluir, marcar_pago: cartaoPago, criar_tarefa: cartaoCriar, revisar_atrasadas: cartaoRevisao }[acao && acao.tipo];
+  const fazer = { concluir_tarefas: cartaoConcluir, marcar_pago: cartaoPago, criar_tarefa: cartaoCriar, revisar_atrasadas: cartaoRevisao, vigia: cartaoVigia }[acao && acao.tipo];
   if (!fazer) return null;
   const raiz = h('div', { class: 'as-cartao', role: 'group' });
   const estado = { ...acao };
@@ -425,6 +429,113 @@ function cartaoRevisao({ raiz, estado, salvar, ajuda, anunciar }) {
       pulados: pulados().filter(k => k !== u.chave) });   // o grupo volta pra revisão
     if (d.desfeitas.length) avisarTelas('mr:tarefas-mudaram', { ids: d.desfeitas });
     anunciar('Desfeito.');
+    desenhar();
+  }
+  desenhar();
+}
+
+// ---------- o vigia: o que ele achou, por grupo, com "Abrir" e "Ignorar" ----------
+// estado (guardado na conversa): ver ('meus' | 'todos' | 'ignorados'); pessoa (de quem — sem: quem está na tela); o
+// recorte — setor, tela (o caminho da página) ou cliente_id (a ficha da empresa); e os ignorados agora há pouco
+// (feitos: { id: quando }), que continuam na lista com o "Desfazer" por 10 minutos. Ignorar só tira da lista: quem e
+// quando o banco grava, e a aba "Ignorados" traz de volta. O que for arrumado na tela some sozinho na conferência seguinte
+const NOME_SETOR = { dp: 'DP', fiscal: 'Fiscal', contabil: 'Contábil', financeiro: 'Financeiro', comercial: 'Comercial', societario: 'Societário', irpf: 'IRPF', gestao: 'Gestão', clientes: 'Clientes', geral: 'Geral' };
+const diaDe = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+const horaDe = iso => { const d = new Date(iso); return isNaN(d) ? '' : pad(d.getHours()) + 'h' + pad(d.getMinutes()); };
+
+function cartaoVigia({ raiz, estado, salvar, ajuda, anunciar }) {
+  raiz.setAttribute('aria-label', 'O que o vigia achou');
+  raiz.classList.add('as-cartao-vigia');
+  const email = String(ajuda.email || '').toLowerCase();
+  const pessoa = EQUIPE.find(n => normal(n) === normal(estado.pessoa || ajuda.nome)) || null;
+  const minha = !!pessoa && !!ajuda.nome && normal(pessoa) === normal(ajuda.nome);
+  const socio = pessoa ? ehSocioPeloNome(pessoa) : SOCIOS.includes(email);
+  const abertos = new Set();   // os grupos que a pessoa abriu (redesenhar não fecha)
+  let primeira = true;         // ao abrir e ao trocar de aba: o primeiro grupo aberto (todos, com até 6 achados)
+  const modo = () => (['meus', 'todos', 'ignorados'].includes(estado.ver) && !(estado.ver === 'meus' && !pessoa) ? estado.ver : pessoa ? 'meus' : 'todos');
+  // os "Desfazer" que ainda valem (os de mais de 10 minutos saem)
+  const feitos = () => Object.fromEntries(Object.entries(estado.feitos && typeof estado.feitos === 'object' ? estado.feitos : {}).filter(([id, em]) => ID.test(id) && podeDesfazer(em)));
+  const recorte = () => ({ setor: NOME_SETOR[estado.setor] ? estado.setor : null, tela: !estado.cliente_id && typeof estado.tela === 'string' ? estado.tela.slice(0, 120) : null,
+    clienteId: ID.test(String(estado.cliente_id || '')) ? String(estado.cliente_id) : null });
+  const nomeRecorte = r => (r.clienteId ? 'desta empresa' : r.tela ? 'nesta tela' : r.setor ? 'no ' + NOME_SETOR[r.setor] : '');
+
+  async function desenhar() {
+    if (!raiz.childNodes.length) trocar(raiz, sub('Lendo o que o vigia achou…'));
+    let lista;
+    try { lista = await lerAchados(supabase); }
+    catch (e) { return trocar(raiz, h('div', { class: 'as-cartao-erro', text: 'Não consegui ler o que o vigia achou agora.' }), h('div', { class: 'as-cartao-botoes' }, botao('Tentar de novo', desenhar))); }
+    marcarVisto(email);
+    const r = recorte(), f = feitos(), m = modo(), onde = nomeRecorte(r);
+    const base = lista.map(a => (a.situacao === 'ignorado' && f[a.id] ? { ...a, _agora: true } : a));
+    const doModo = md => filtrarAchados(base, { nome: pessoa, socio, todos: md !== 'meus', ...r, situacao: null })
+      .filter(a => (md === 'ignorados' ? a.situacao === 'ignorado' && !a._agora : a.situacao === 'aberto' || a._agora));
+    const conta = md => doModo(md).filter(a => !a._agora).length;
+    const itens = doModo(m);
+    const titulo = (m === 'ignorados' ? 'Ignorados' : m === 'todos' ? 'O que o vigia achou' : minha ? 'O que o vigia achou pra você' : 'O que o vigia achou pra ' + pessoa) + (onde ? ' ' + onde : '') + ': ';
+    const topo = h('div', { class: 'as-cartao-tit' }, titulo, h('span', { class: 'as-cartao-cont', text: String(itens.filter(a => !a._agora).length) }));
+    const ultimo = lista.reduce((x, a) => (String(a.ultimo_visto || '') > x ? String(a.ultimo_visto) : x), '');
+    const quando = ultimo ? sub('Conferido ' + (diaDe(ultimo) === hojeISO() ? 'hoje' : 'em ' + dataBR(diaDe(ultimo))) + ' às ' + horaDe(ultimo)
+      + '. O que for arrumado some na conferência seguinte (de hora em hora).') : null;
+    // as abas, logo abaixo do título (os meus, de todos, os ignorados) e, num recorte, "Ver tudo"
+    const aba = (md, rotulo) => {
+      const b = botao(rotulo, () => { salvar({ ver: md }); primeira = true; desenhar(); }, 'link');
+      b.setAttribute('aria-pressed', String(m === md));
+      if (m === md) b.classList.add('as-vigia-aba-atual');
+      return b;
+    };
+    const abas = h('div', { class: 'as-cartao-botoes as-vigia-abas' },
+      pessoa ? aba('meus', (minha ? 'Os meus' : 'De ' + pessoa) + ' (' + conta('meus') + ')') : null,
+      aba('todos', 'De todos (' + conta('todos') + ')'), aba('ignorados', 'Ignorados (' + conta('ignorados') + ')'),
+      onde ? botao('Ver tudo', () => { salvar({ tela: null, cliente_id: null, setor: null }); primeira = true; desenhar(); }, 'link') : null);
+    if (!itens.length) {
+      const vazio = m === 'ignorados' ? sub('Nada ignorado' + (onde ? ' ' + onde : '') + '.') : h('div', { class: 'as-cartao-ok', text: '✓ Nada pra conferir' + (onde ? ' ' + onde : '') + '.' });
+      return trocar(raiz, topo, abas, vazio, quando);
+    }
+    const blocos = agruparAchados(itens).map((g, i) => {
+      const det = h('details', { class: 'as-vigia-grupo' },
+        h('summary', {}, g.rotulo, ' ', h('span', { class: 'as-cartao-cont', text: '· ' + g.itens.length }),
+          g.urgentes && m !== 'ignorados' ? h('span', { class: 'as-tag', text: g.urgentes === 1 ? 'urgente' : g.urgentes + ' urgentes' }) : null),
+        h('ul', { class: 'as-cartao-lista' }, g.itens.map(a => itemAchado(a, m))));
+      det.open = abertos.has(g.regra) || (primeira && (itens.length <= 6 || i === 0));
+      if (det.open) abertos.add(g.regra);
+      det.addEventListener('toggle', () => { if (det.open) abertos.add(g.regra); else abertos.delete(g.regra); });
+      return det;
+    });
+    primeira = false;
+    trocar(raiz, topo, abas, blocos, quando);
+  }
+  // um achado: o que é, o porquê, de quem (fora dos meus) e o que fazer
+  function itemAchado(a, m) {
+    const href = linkSeguro(a.link);
+    const linhas = [h('b', {}, a.titulo || 'Achado', a.gravidade === 'alta' && m !== 'ignorados' && !a._agora ? h('span', { class: 'as-tag', text: 'urgente' }) : null),
+      a.detalhe ? h('small', { text: a.detalhe }) : null, m !== 'meus' && a.responsavel ? h('small', { text: 'Com ' + a.responsavel + '.' }) : null];
+    let acoes;
+    if (m === 'ignorados') {
+      const quem = a.ignorado_por ? nomePorEmail(a.ignorado_por) || a.ignorado_por : null;
+      acoes = [h('span', { class: 'as-cartao-sub', text: 'Ignorado' + (quem ? ' por ' + quem : '') + (a.ignorado_em ? ' em ' + dataBR(diaDe(a.ignorado_em)) : '') + '.' }),
+        botao('Voltar a mostrar', ev => reabrir(a, ev.currentTarget), 'link')];
+    } else if (a._agora) {
+      acoes = [h('span', { class: 'as-cartao-sub', text: 'Ignorado.' }), botao('Desfazer', ev => reabrir(a, ev.currentTarget), 'link')];
+    } else {
+      acoes = [href ? h('a', { class: 'as-botao as-botao-link', href: new URL(href, RAIZ).href, text: 'Abrir' }) : null, botao('Ignorar', ev => ignorar(a, ev.currentTarget), 'link')];
+    }
+    return h('li', { class: 'as-vigia-item' + (a._agora ? ' as-vigia-ignorado' : '') }, linhas, h('div', { class: 'as-vigia-acoes' }, acoes));
+  }
+  const falhou = (b, rotulo, msg) => { b.disabled = false; b.textContent = rotulo; const li = b.closest('li'); if (li) li.append(h('div', { class: 'as-cartao-erro', text: msg })); };
+  async function ignorar(a, b) {
+    b.disabled = true; b.textContent = 'Ignorando…';
+    try { await ignorarAchado(supabase, a.id); } catch (e) { return falhou(b, 'Ignorar', 'Não consegui ignorar: ' + e.message); }
+    salvar({ feitos: { ...feitos(), [a.id]: new Date().toISOString() } });
+    anunciar('Ignorado. Dá pra desfazer por 10 minutos.');
+    desenhar();
+  }
+  async function reabrir(a, b) {
+    const rotulo = b.textContent;
+    b.disabled = true; b.textContent = 'Voltando…';
+    try { await reabrirAchado(supabase, a.id); } catch (e) { return falhou(b, rotulo, 'Não consegui: ' + e.message); }
+    const f = feitos(); delete f[a.id];
+    salvar({ feitos: f });
+    anunciar('Voltou pra lista.');
     desenhar();
   }
   desenhar();

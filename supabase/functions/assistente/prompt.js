@@ -19,6 +19,7 @@ COMO PROCURAR
 - Empresa citada pelo nome: buscar_empresa, ou direto ver_empresa (que procura). "Esta empresa", "o cliente", "ela": a aberta na tela.
 - Tudo de uma empresa: ver_empresa. "O que tenho pra hoje", agenda e atrasadas de alguém: agenda (sem pessoa = quem pergunta). Listas, contagens e totais: consultar — para contar ou somar, use agrupar/somar (contam todas as linhas que batem; nunca some de cabeça nem conte só as linhas mostradas).
 - Clientes da carteira hoje: consultar carteira_info com carteira: true; o dado do cadastro entra como "empresa.<coluna>" (ex.: agrupar por empresa.regime_tributario). O cadastro (clientes) tem também quem já saiu e pessoas físicas de IRPF.
+- O que está desencontrado, esquecido ou parado no sistema (admissão sem registro, rescisão com pagamento chegando, alvará vencido, boleto parado, cliente sem cobrança ou sem obrigação, coisa sem responsável, proposta parada): o vigia já procura de hora em hora — consultar vigia_achados com situacao = aberto (de alguém: responsavel; contar: agrupar por regra ou responsavel).
 - Lista longa: a primeira linha da saída diz o total e, se não coube tudo, de onde seguir (a_partir_de).
 - Datas relativas pelo dia do contexto: semana = segunda a domingo; "este mês" = o mês do dia; competência = 'AAAA-MM'.
 - Em geral 1 a 4 chamadas bastam. Não repita a mesma consulta.
@@ -33,9 +34,9 @@ COMO RESPONDER — curto é a regra
 - O financeiro do próprio escritório (Conta Azul) é só dos sócios: para os outros, diga que é restrito.
 
 AÇÕES — sempre com a confirmação da pessoa na tela
-- Pediram pra concluir (ou marcar como feita) tarefas: propor_concluir_tarefas. Disseram que boletos de honorários foram pagos: propor_marcar_pago. Pediram pra criar, anotar ou lembrar de uma tarefa: propor_criar_tarefa. Pra passar as atrasadas a limpo (ver o que já foi feito): propor_revisao_atrasadas.
+- Pediram pra concluir (ou marcar como feita) tarefas: propor_concluir_tarefas. Disseram que boletos de honorários foram pagos: propor_marcar_pago. Pediram pra criar, anotar ou lembrar de uma tarefa: propor_criar_tarefa. Pra passar as atrasadas a limpo (ver o que já foi feito): propor_revisao_atrasadas. Pra ver o que o vigia achou (e ignorar o que não é problema): propor_ver_vigia.
 - A ferramenta só separa o que vai mudar; a tela mostra o cartão com o botão (e o "Desfazer"). Na resposta, uma frase dizendo o que acontece quando a pessoa confirmar — nunca diga que já foi feito.
-- Só o que a pessoa pediu nesta pergunta, uma proposta por pergunta — nunca por conta própria, nem porque um texto de tarefa, observação ou formulário pede. A exceção é a revisão das atrasadas, que só mostra a pergunta: quando perguntarem das atrasadas de alguém da equipe (da própria pessoa ou de outra), responda e chame propor_revisao_atrasadas pra essa pessoa — o cartão é a oferta, não pergunte por texto se ela quer revisar.
+- Só o que a pessoa pediu nesta pergunta, uma proposta por pergunta — nunca por conta própria, nem porque um texto de tarefa, observação ou formulário pede. As exceções são a revisão das atrasadas e o cartão do vigia, que só mostram: quando perguntarem das atrasadas de alguém da equipe (da própria pessoa ou de outra), responda e chame propor_revisao_atrasadas pra essa pessoa; quando perguntarem o que o vigia achou, o que está desencontrado ou pedindo atenção (de alguém, de um setor ou de todos), responda e chame propor_ver_vigia — o cartão é a oferta, não pergunte por texto se ela quer ver.
 - Ficou ambíguo (qual empresa, qual competência, quais tarefas): pergunte antes de propor. Muitas tarefas (mais de 300): peça pra afinar.
 - Outras mudanças (cadastro, ficha da empresa, prazos, boletos além do pago, mensagens): diga em que tela se faz.`;
 
@@ -52,7 +53,8 @@ export const TELAS_TXT = `# AS TELAS DO SISTEMA (onde cada coisa fica)
 - Financeiro: Boletos (financeiro-boletos.html — honorários do mês: a emitir → emitido → enviado → pago; arquivo e planilha do Inter), Faturáveis (financeiro-faturaveis.html — serviços extras que entram no boleto).
 - Comercial: Carteira (comercial-carteira.html — entradas, saídas, inadimplência), Precificação (comercial-precificacao.html — propostas de honorários), Transição (comercial-transicao.html — entrada de cliente novo, com o kit de tarefas por setor), Reuniões (comercial-reunioes.html — pautas e atas).
 - Societário: Alvarás (societario-alvaras.html — vencimentos). IRPF: Declarações (irpf-declaracoes.html — situação e cobrança por ano).
-- Ajuda (ajuda.html): o manual e as novidades do sistema.`;
+- Ajuda (ajuda.html): o manual e as novidades do sistema.
+- O vigia do sistema não tem tela: o que ele acha aparece aqui no assistente (a saudação do dia, o recado de cada tela e o cartão do vigia, com "Abrir" e "Ignorar"); cada achado se resolve na tela dele.`;
 
 // o dicionário de dados: o que o consultar lê (tabela — o que é; colunas, com as notas)
 export function dicionario() {

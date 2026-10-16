@@ -27,7 +27,7 @@ chk('tabelas fora: configurações, chats, tokens e o backup pessoal', ['configu
 chk('as colunas que vêm sem pedir estão entre as lidas', Object.values(TABELAS).every(T => T.padrao.every(c => T.cols.includes(c))));
 chk('o financeiro do escritório marcado como só dos sócios', TABELAS.ca_parcelas.socios === true && TABELAS.ca_categorias.socios === true);
 chk('o dicionário do prompt lista as tabelas e não tem credenciais', Object.keys(TABELAS).every(t => dicionario().includes('## ' + t + ' ')) && !/credenciais/.test(dicionario()));
-chk('as definições: as cinco de ler e as quatro propostas, consultar só com as tabelas da lista', DEFINICOES.map(d => d.name).join() === 'buscar_empresa,ver_empresa,agenda,consultar,perguntar_reforma,propor_concluir_tarefas,propor_marcar_pago,propor_criar_tarefa,propor_revisao_atrasadas'
+chk('as definições: as cinco de ler e as cinco propostas, consultar só com as tabelas da lista', DEFINICOES.map(d => d.name).join() === 'buscar_empresa,ver_empresa,agenda,consultar,perguntar_reforma,propor_concluir_tarefas,propor_marcar_pago,propor_criar_tarefa,propor_revisao_atrasadas,propor_ver_vigia'
   && JSON.stringify(DEFINICOES.find(d => d.name === 'consultar').input_schema.properties.tabela.enum) === JSON.stringify(Object.keys(TABELAS)));
 chk('o prompt: a Reforma sozinha na rodada (a resposta dela vai direto, com as fontes); a tela pelo nome e a situação por extenso',
   /Chame sozinha na rodada/.test(INSTRUCOES) && /mantenha as fontes dele entre colchetes/.test(INSTRUCOES) && /não financeiro-boletos\.html/.test(INSTRUCOES) && /não em_transicao/.test(INSTRUCOES)
@@ -265,7 +265,37 @@ console.log('As propostas (nada muda aqui: a tela mostra e a pessoa confirma):')
   chk('revisão: sem pessoa, as de quem pergunta', propostas.length === 5 && JSON.stringify(propostas[4]) === JSON.stringify({ tipo: 'revisar_atrasadas', pessoa: 'Thalia' }) && /revisão das 2 atrasadas de Thalia/.test(r1), r1);
   chk('revisão: de outra pessoa; sem atrasadas não propõe; sem saber de quem, pergunta', JSON.stringify((await nova().propor_revisao_atrasadas({ pessoa: 'vitória' }), propostas[5])) === JSON.stringify({ tipo: 'revisar_atrasadas', pessoa: 'Vitória' })
     && /não tem tarefa atrasada/.test(await nova().propor_revisao_atrasadas({ pessoa: 'Adaini' })) && /Diga de quem/.test(await nova({}).propor_revisao_atrasadas({})) && propostas.length === 6);
-  chk('etapas das propostas, em português', descreverEtapa('propor_concluir_tarefas', {}) === 'Separando as tarefas pra você confirmar' && descreverEtapa('propor_revisao_atrasadas', {}) === 'Preparando a revisão das atrasadas');
+  chk('etapas das propostas, em português', descreverEtapa('propor_concluir_tarefas', {}) === 'Separando as tarefas pra você confirmar' && descreverEtapa('propor_revisao_atrasadas', {}) === 'Preparando a revisão das atrasadas'
+    && descreverEtapa('propor_ver_vigia', {}) === 'Separando o que o vigia achou');
+}
+console.log('O vigia (o que o banco achou de desencontrado ou parado):');
+{
+  const V = n => '7b000000-0000-4000-8000-' + String(n).padStart(12, '0');
+  const vigia_achados = [
+    { id: V(1), regra: 'cliente_sem_obrigacao', titulo: 'LOJA DA ESQUINA LTDA sem nenhuma obrigação fiscal cadastrada', detalhe: 'Cliente da carteira (Simples Nacional) sem obrigação ativa.', setor: 'fiscal', responsavel: 'Thalia', gravidade: 'media', so_socios: false, cliente_id: ID_A, situacao: 'aberto' },
+    { id: V(2), regra: 'admissao_nao_registrada', titulo: 'Admissão de FULANA (LOJA DA ESQUINA LTDA) ainda não registrada', detalhe: 'Começou a trabalhar em 01/10/2026.', setor: 'dp', responsavel: 'Vitória', gravidade: 'alta', so_socios: false, cliente_id: ID_A, situacao: 'aberto' },
+    { id: V(3), regra: 'cliente_sem_cobranca', titulo: 'LOJA DA ESQUINA LTDA está na carteira e não tem cobrança', detalhe: 'Conta Azul sem receita.', setor: 'financeiro', responsavel: 'Samuel', gravidade: 'media', so_socios: true, cliente_id: ID_A, situacao: 'aberto' },
+    { id: V(4), regra: 'reforma_prazo', titulo: 'Opção do IBS/CBS por fora: faltam 15 dias', detalhe: 'Prazo 30/10/2026.', setor: 'fiscal', responsavel: 'Ambos', gravidade: 'media', so_socios: false, cliente_id: null, situacao: 'aberto' },
+    { id: V(5), regra: 'tarefa_responsavel', titulo: 'Tarefa sem responsável: GIA', detalhe: 'prazo 10/10/2026', setor: 'fiscal', responsavel: 'Thalia', gravidade: 'baixa', so_socios: false, cliente_id: null, situacao: 'resolvido' }];
+  const { banco, log } = bancoFalso({ extras: { vigia_achados } });
+  const propostas = [];
+  const nova = usuario => criarFerramentas({ banco, hoje: '2026-10-15', usuario, aoPropor: a => propostas.push(a) });
+  const THALIA = { email: 'fiscal@macedoereis.com.br', nome: 'Thalia', socio: false }, SAMUEL = { email: 'financeiro@macedoereis.com.br', nome: 'Samuel', socio: true };
+  const r1 = await nova(THALIA).propor_ver_vigia({});
+  chk('vigia: sem pessoa, o cartão de quem pergunta (só as abertas dela), sem o que é dos sócios', JSON.stringify(propostas[0]) === JSON.stringify({ tipo: 'vigia', ver: 'meus', pessoa: 'Thalia' })
+    && /1 achado aberto de Thalia/.test(r1) && log.some(x => x.caminho.startsWith('vigia_achados?') && x.caminho.includes('so_socios=eq.false') && x.caminho.includes('responsavel=ilike.Thalia')), r1);
+  const r2 = await nova(SAMUEL).propor_ver_vigia({});
+  const filtroSocio = log.filter(x => x.caminho.startsWith('vigia_achados?')).pop().caminho;
+  chk('vigia: o sócio leva o "Ambos", o da Edna e o sem dono, e vê o do Conta Azul', JSON.stringify(propostas[1]) === JSON.stringify({ tipo: 'vigia', ver: 'meus', pessoa: 'Samuel' })
+    && decodeURIComponent(filtroSocio).includes('responsavel.ilike.ambos,responsavel.ilike.edna,responsavel.is.null') && !filtroSocio.includes('so_socios') && /2 achados abertos de Samuel/.test(r2), r2);
+  const r3 = await nova(THALIA).propor_ver_vigia({ pessoa: 'todos', setor: 'fiscal' });
+  chk('vigia: de todos num setor', JSON.stringify(propostas[2]) === JSON.stringify({ tipo: 'vigia', ver: 'todos', setor: 'fiscal' }) && /2 achados abertos no setor fiscal/.test(r3), r3);
+  chk('vigia: pessoa fora da equipe, setor que não existe e nada aberto não propõem', /fora da equipe/.test(await nova(THALIA).propor_ver_vigia({ pessoa: 'Luana' }))
+    && /Setor:/.test(await nova(THALIA).propor_ver_vigia({ setor: 'compras' })) && /nada a mostrar/.test(await nova(THALIA).propor_ver_vigia({ pessoa: 'Adaini' })) && propostas.length === 3);
+  const c = await nova(THALIA).consultar({ tabela: 'vigia_achados', filtros: [{ coluna: 'situacao', op: '=', valor: 'aberto' }] });
+  chk('consultar o vigia: quem não é sócio não lê o que usa o Conta Azul (filtro fixo, mesmo sem login)', /3 linha\(s\)/.test(c) && !/não tem cobrança/.test(c), c);
+  const v = await nova(SAMUEL).ver_empresa({ empresa: ID_A });
+  chk('ver_empresa: o que o vigia achou dela, aberto, com o urgente marcado', /O vigia \(a conferir\): .*Admissão de FULANA .*\(URGENTE\)/.test(v) && /não tem cobrança/.test(v) && !/GIA/.test(v), v.split('\n').pop());
 }
 chk('etapas da tela: o que ele está fazendo, em português', descreverEtapa('consultar', { tabela: 'cobrancas_mensais' }) === 'Consultando os boletos' && descreverEtapa('agenda', { pessoa: 'Thalia' }) === 'Olhando a agenda de Thalia'
   && descreverEtapa('buscar_empresa', { termo: 'Loja' }) === 'Procurando "Loja" no cadastro' && descreverEtapa('perguntar_reforma', {}) === 'Perguntando à base da Reforma');

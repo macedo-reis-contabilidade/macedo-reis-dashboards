@@ -3,10 +3,11 @@
 // buscar_empresa e ver_empresa (o cadastro e tudo o que o sistema tem da empresa), consultar (qualquer tabela da lista
 // abaixo, com filtros, contagem, totais e agrupamento), agenda (tarefas e rotinas de uma pessoa, com a regra da agenda —
 // assets/js/rotinas-dia.js) e perguntar_reforma (a pergunta vai pro chat da Reforma, que responde com a base dele).
-// As propostas (propor_concluir_tarefas, propor_marcar_pago, propor_criar_tarefa, propor_revisao_atrasadas) não gravam
-// nada: separam o que identifica a mudança (ids, a pessoa, os campos da tarefa nova) e o servidor manda junto com a
-// resposta; a tela mostra o cartão e quem grava é ela, com o login da pessoa, depois que ela confirma
-// (assets/js/assistente-acoes.js + assets/js/tarefas-acoes.js). Uma proposta por pergunta.
+// As propostas (propor_concluir_tarefas, propor_marcar_pago, propor_criar_tarefa, propor_revisao_atrasadas e
+// propor_ver_vigia, o cartão do vigia) não gravam nada: separam o que identifica a mudança (ids, a pessoa, os campos da
+// tarefa nova) e o servidor manda junto com a resposta; a tela mostra o cartão e quem grava é ela, com o login da pessoa,
+// depois que ela confirma (assets/js/assistente-acoes.js + assets/js/tarefas-acoes.js). Uma proposta por pergunta.
+// O vigia do sistema (vigia_achados) entra na lista e no ver_empresa: o que o banco achou de desencontrado ou parado.
 // Lista branca: só as tabelas e colunas daqui são lidas. Ficam fora a senha/credencial do cadastro, o RG e o nascimento
 // das pessoas físicas do cadastro (o CPF e o endereço do cadastro entram: são o dado de trabalho do IRPF), os documentos
 // pessoais dos sócios (CPF, RG, endereço, nascimento), as respostas dos formulários de admissão e rescisão, as
@@ -150,11 +151,21 @@ export const TABELAS = {
   sugestoes: { rotulo: 'as sugestões de melhoria', desc: 'Sugestões de melhoria dos setores.',
     cols: ['id', 'setor', 'titulo', 'autor', 'melhoria', 'como_atual', 'como_melhorar', 'cenario_ideal', 'status', 'created_at', 'concluida_em'], padrao: ['setor', 'titulo', 'autor', 'status', 'created_at'] },
   mei_planos: { rotulo: 'os planos de MEI', desc: 'Planos de MEI da precificação.', cols: ['id', 'nome', 'slogan', 'valor_mensal', 'ativo'], padrao: ['nome', 'valor_mensal', 'ativo'] },
+  // o vigia do sistema (15/10/2026): o banco roda as regras de hora em hora e guarda aqui o que achou. O
+  // achado de "cliente sem cobrança" usa o Conta Azul: só os sócios leem (a regra é do banco; sem login — a avaliação —,
+  // o filtro fixo tira)
+  vigia_achados: { rotulo: 'o que o vigia achou', fixoNaoSocio: 'so_socios=eq.false',
+    desc: 'O vigia do sistema: regras que rodam de hora em hora e acham o que ficou pra trás ou desencontrado (admissão sem registro, rescisão com pagamento chegando, alvará vencido, boleto parado, cliente da carteira sem cobrança ou sem obrigação fiscal, obrigação, tarefa ou rotina sem responsável, proposta parada, cadastro desencontrado da carteira...). Cada achado diz quem cuida e a tela onde se resolve. Arrumou na tela, ele some sozinho na rodada seguinte (resolvido); ignorado = alguém marcou que não é problema. O que precisa de atenção agora: situacao = aberto.',
+    cols: ['id', 'regra', 'titulo', 'detalhe', 'setor', 'responsavel', 'gravidade', 'cliente_id', 'link', 'prazo', 'situacao', 'primeiro_visto', 'ultimo_visto', 'resolvido_em', 'ignorado_em', 'ignorado_por', 'motivo_ignorado'],
+    padrao: ['regra', 'titulo', 'detalhe', 'responsavel', 'gravidade', 'situacao', 'primeiro_visto'],
+    notas: { situacao: 'aberto (a conferir) | resolvido | ignorado', gravidade: 'alta (urgente) | media | baixa', responsavel: 'quem cuida; "Ambos" = Samuel e Diego',
+      link: 'a tela onde se resolve', primeiro_visto: 'quando o vigia achou', ignorado_por: 'e-mail de quem ignorou',
+      regra: 'admissao_nao_registrada | admissao_sem_vinculo | rescisao_pagamento | rescisao_sem_vinculo | alvara_vencendo | cliente_sem_cobranca | boletos_nao_gerados | boleto_parado | cobranca_ex_cliente | faturavel_parado | cadastro_desencontrado | carteira_sem_cadastro | proposta_parada | transicao_atrasada | cliente_sem_obrigacao | obrigacao_sem_responsavel | obrigacao_ex_cliente | reforma_prazo | tarefa_responsavel | tarefa_repetida | tarefa_ex_cliente | recorrente_ex_cliente | rotina_sem_responsavel' } },
   ca_parcelas: { rotulo: 'o financeiro do escritório', socios: true,
     desc: 'Contas a receber e a pagar do próprio escritório (Conta Azul). Só os sócios leem.',
     cols: ['id', 'natureza', 'descricao', 'data_vencimento', 'data_competencia', 'data_pagamento', 'mes_pagamento', 'status', 'status_traduzido', 'total', 'pago', 'nao_pago', 'fornecedor_cliente_nome', 'categorias'],
     padrao: ['natureza', 'descricao', 'data_vencimento', 'data_pagamento', 'status_traduzido', 'total', 'pago', 'nao_pago', 'fornecedor_cliente_nome'],
-    notas: { natureza: 'RECEITA | DESPESA', categorias: 'lista das categorias do Conta Azul' } },
+    notas: { natureza: 'receita | despesa (minúsculo)', categorias: 'lista das categorias do Conta Azul' } },
   ca_categorias: { rotulo: 'as categorias do Conta Azul', socios: true, desc: 'Categorias do financeiro do escritório. Só os sócios leem.', cols: ['id', 'nome', 'tipo', 'id_pai', 'ativo'], padrao: ['nome', 'tipo', 'ativo'] }
 };
 
@@ -236,7 +247,12 @@ export const DEFINICOES = [
       descricao: { type: 'string' } }, required: ['titulo'] } },
   { name: 'propor_revisao_atrasadas',
     description: 'Mostra na tela a revisão das tarefas atrasadas de alguém: grupo por grupo, a tela pergunta o que já foi feito e conclui o que a pessoa marcar (com "Desfazer"). Use quando pedirem pra passar as atrasadas a limpo — e, quando perguntarem das atrasadas de alguém da equipe, chame junto com a resposta: o cartão é a oferta (só mostra a pergunta; nada muda sem a pessoa).',
-    input_schema: { type: 'object', properties: { pessoa: { type: 'string', description: 'alguém da equipe (sem: quem pergunta)' } } } }
+    input_schema: { type: 'object', properties: { pessoa: { type: 'string', description: 'alguém da equipe (sem: quem pergunta)' } } } },
+  { name: 'propor_ver_vigia',
+    description: 'Mostra na tela o cartão do vigia: o que ele achou, por grupo, cada achado com "Abrir" (a tela onde se resolve) e "Ignorar". Use quando perguntarem o que o vigia achou, o que está desencontrado, esquecido ou pedindo atenção no sistema (de alguém, de um setor ou de todos) — chame junto com a resposta: o cartão é a oferta (só mostra; nada muda sem a pessoa).',
+    input_schema: { type: 'object', properties: {
+      pessoa: { type: 'string', description: 'alguém da equipe, ou "todos" (sem: quem pergunta)' },
+      setor: { type: 'string', description: 'opcional: só um setor (dp, fiscal, contabil, financeiro, comercial, societario, irpf, gestao, clientes, geral)' } } } }
 ];
 
 // ---------- formatação ----------
@@ -332,6 +348,9 @@ export function montarFiltro(t, f) {
 // o filtro do responsável nas tarefas: sem maiúscula e sem acento; Samuel e Diego levam junto o "Ambos"
 export const filtroPessoa = nome => (['samuel', 'diego'].includes(normalizarBusca(nome))
   ? 'or=' + enc('(responsavel.ilike.' + padraoPessoa(nome) + ',responsavel.ilike.ambos)') : 'responsavel=ilike.' + enc(padraoPessoa(nome)));
+// no vigia, os sócios levam também o que é da Edna (que não tem login) e o que não tem dono — como no cartão (assets/js/vigia.js)
+export const filtroPessoaVigia = nome => (['samuel', 'diego'].includes(normalizarBusca(nome))
+  ? 'or=' + enc('(responsavel.ilike.' + padraoPessoa(nome) + ',responsavel.ilike.ambos,responsavel.ilike.edna,responsavel.is.null)') : 'responsavel=ilike.' + enc(padraoPessoa(nome)));
 // o filtro em texto de URL (o != vira "and=(...)")
 export function filtroUrl(t, f) {
   const r = montarFiltro(t, f);
@@ -482,7 +501,7 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     if (a.erro) return a.erro;
     const id = a.id;
     const q = (caminho, op) => ler(caminho, op).then(r => r, err => ({ erro: (err && err.message) || 'erro' }));
-    const [cad, cart, soc, cont, serv, cobC, cobM, tar, rec, obr, alv, adm, res, rt, reu, trE, reg, prec, fat, dre, fr] = await Promise.all([
+    const [cad, cart, soc, cont, serv, cobC, cobM, tar, rec, obr, alv, adm, res, rt, reu, trE, reg, prec, fat, dre, fr, vig] = await Promise.all([
       q('clientes?select=' + TABELAS.clientes.cols.join(',') + '&id=eq.' + id),
       q('carteira_info?select=entrada,saida,motivo_saida,segmento,sistemas,contab_digital,contato,ramo,observacao,inadimplente_desde&cliente_id=eq.' + id),
       q('socios?select=nome,qualificacao,participacao_percentual,eh_administrador,telefone,email&cliente_id=eq.' + id + '&order=participacao_percentual.desc.nullslast'),
@@ -503,7 +522,8 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
       q('precificacoes?select=status,honorario,taxa_unica,criado_em&cliente_id=eq.' + id + '&order=criado_em.desc&limit=3'),
       q('faturaveis?select=descricao,valor,executado_em&cliente_id=eq.' + id + '&status=eq.a_faturar'),
       q('dre_simples?select=periodo,criado_em&cliente_id=eq.' + id + '&order=criado_em.desc&limit=3'),
-      q('fr_empresas?select=nome,ativo&cliente_id=eq.' + id)
+      q('fr_empresas?select=nome,ativo&cliente_id=eq.' + id),
+      q('vigia_achados?select=titulo,detalhe,responsavel,gravidade&cliente_id=eq.' + id + '&situacao=eq.aberto' + (usuario.socio ? '' : '&' + TABELAS.vigia_achados.fixoNaoSocio) + '&limit=20')
     ]);
     if (cad.erro) throw new Error(cad.erro);
     const c = cad.linhas[0];
@@ -569,6 +589,9 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     if (!fat.erro && fat.linhas.length) partes.push('Faturáveis a cobrar: ' + fat.linhas.map(x => valorCurto(x.descricao, 60) + ' ' + brl(x.valor) + ' (' + dataBR(x.executado_em) + ')').join(' · '));
     if (!dre.erro && dre.linhas.length) partes.push('DRE: ' + dre.linhas.map(x => x.periodo).join(', '));
     if (!fr.erro && fr.linhas.length) partes.push('Fator R: acompanhada' + (fr.linhas.some(x => x.ativo === false) ? ' (inativa)' : ''));
+    // o que o vigia achou dela e ainda está aberto (desencontro, coisa parada)
+    if (!vig.erro && vig.linhas.length) partes.push('O vigia (a conferir): ' + vig.linhas.map(x => valorCurto(x.titulo, 140) + (x.gravidade === 'alta' ? ' (URGENTE)' : '')
+      + (x.detalhe ? ' — ' + valorCurto(x.detalhe, 180) : '') + ' · com ' + (x.responsavel || '—')).join(' | '));
     return partes.join('\n');
   }
 
@@ -576,7 +599,7 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     const m = montarConsulta(e || {}, { hoje });
     const { t, T } = m;
     if (T.socios && !usuario.socio) return 'Sem acesso: ' + T.rotulo + ' só os sócios veem.';
-    const params = [...m.filtros, ...(m.arvore.length ? ['and=' + enc('(' + m.arvore.join(',') + ')')] : [])];
+    const params = [...(T.fixoNaoSocio && !usuario.socio ? [T.fixoNaoSocio] : []), ...m.filtros, ...(m.arvore.length ? ['and=' + enc('(' + m.arvore.join(',') + ')')] : [])];
     const base = t + '?' + (params.length ? params.join('&') + '&' : '');
     const pk = (T.pk || 'id').split(',');
     const agruparEmpresa = e.agrupar ? colunaDaEmpresa(t, e.agrupar) : null;
@@ -842,7 +865,25 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     return 'Proposta pronta: a tela mostra a revisão das ' + plural(total, 'atrasada', 'atrasadas') + ' de ' + nome + ' — grupo por grupo, a pessoa marca o que já foi feito. Nada muda sem ela. Na resposta: uma frase convidando.';
   }
 
-  return { buscar_empresa, ver_empresa, agenda, consultar, perguntar_reforma, propor_concluir_tarefas, propor_marcar_pago, propor_criar_tarefa, propor_revisao_atrasadas };
+  // o cartão do vigia: de alguém (sem: quem pergunta), de todos, de um setor — a tela lê de novo, com o login da pessoa
+  const SETORES_VIGIA = ['dp', 'fiscal', 'contabil', 'financeiro', 'comercial', 'societario', 'irpf', 'gestao', 'clientes', 'geral'];
+  async function propor_ver_vigia(e) {
+    const ja = jaProposto(); if (ja) return ja;
+    const pedida = e.pessoa && String(e.pessoa).trim() ? String(e.pessoa).trim() : null;
+    const todos = !!pedida && normalizarBusca(pedida) === 'todos';
+    const nome = todos ? null : pedida ? equipePorNome(pedida) : usuario.nome ? equipePorNome(usuario.nome) : null;
+    if (pedida && !todos && !nome) return 'Pessoa fora da equipe (' + EQUIPE.join(', ') + ').';
+    const setor = e.setor ? String(e.setor).toLowerCase() : null;
+    if (setor && !SETORES_VIGIA.includes(setor)) return 'Setor: ' + SETORES_VIGIA.join(', ') + '.';
+    const f = ['situacao=eq.aberto', ...(usuario.socio ? [] : [TABELAS.vigia_achados.fixoNaoSocio]), ...(setor ? ['setor=eq.' + enc(setor)] : []), ...(nome ? [filtroPessoaVigia(nome)] : [])];
+    const { total } = await ler('vigia_achados?select=id&' + f.join('&') + '&limit=1', { contar: true });
+    const de = (nome ? ' de ' + nome : '') + (setor ? ' no setor ' + setor : '');
+    if (!total) return 'O vigia não tem nada aberto' + de + ' — nada a mostrar.';
+    registrar({ tipo: 'vigia', ver: nome ? 'meus' : 'todos', ...(nome ? { pessoa: nome } : {}), ...(setor ? { setor } : {}) });
+    return 'Proposta pronta: a tela mostra o cartão do vigia com ' + plural(total, 'achado aberto', 'achados abertos') + de + ' — por grupo, cada um com "Abrir" (a tela onde se resolve) e "Ignorar". Nada muda sem a pessoa. Na resposta: o resumo do que mais pesa e uma frase convidando a abrir o cartão.';
+  }
+
+  return { buscar_empresa, ver_empresa, agenda, consultar, perguntar_reforma, propor_concluir_tarefas, propor_marcar_pago, propor_criar_tarefa, propor_revisao_atrasadas, propor_ver_vigia };
 }
 
 // a etapa que aparece no "digitando…" da tela
@@ -858,5 +899,6 @@ export function descreverEtapa(nome, e = {}) {
   if (nome === 'propor_marcar_pago') return 'Separando os boletos pra você confirmar';
   if (nome === 'propor_criar_tarefa') return 'Preparando a tarefa pra você conferir';
   if (nome === 'propor_revisao_atrasadas') return 'Preparando a revisão das atrasadas';
+  if (nome === 'propor_ver_vigia') return 'Separando o que o vigia achou';
   return s(nome, 40);
 }
