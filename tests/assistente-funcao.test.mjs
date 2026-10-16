@@ -12,6 +12,7 @@ import { TABELAS, OPS, DEFINICOES, filtroUrl, montarConsulta, criarFerramentas, 
 import { montarSistema, preambulo, dicionario, INSTRUCOES, marcaOutroDia } from '../supabase/functions/assistente/prompt.js';
 import { criarServidor, limparContexto, limparPagina, limparHistorico, diaBR, LIMITE_DIA } from '../supabase/functions/assistente/servidor.js';
 import { responder, erroDoChat } from '../supabase/functions/reforma-chat/agente.js';
+import { criarDrive, filtrarArquivos, palavrasDe, pastaDaUrl } from '../supabase/functions/assistente/drive.js';
 
 const raiz = fileURLToPath(new URL('..', import.meta.url));
 let falhas = 0;
@@ -27,7 +28,7 @@ chk('tabelas fora: configurações, chats, tokens e o backup pessoal', ['configu
 chk('as colunas que vêm sem pedir estão entre as lidas', Object.values(TABELAS).every(T => T.padrao.every(c => T.cols.includes(c))));
 chk('o financeiro do escritório marcado como só dos sócios', TABELAS.ca_parcelas.socios === true && TABELAS.ca_categorias.socios === true);
 chk('o dicionário do prompt lista as tabelas e não tem credenciais', Object.keys(TABELAS).every(t => dicionario().includes('## ' + t + ' ')) && !/credenciais/.test(dicionario()));
-chk('as definições: as cinco de ler e as seis propostas, consultar só com as tabelas da lista', DEFINICOES.map(d => d.name).join() === 'buscar_empresa,ver_empresa,agenda,consultar,perguntar_reforma,propor_concluir_tarefas,propor_alterar_tarefas,propor_marcar_pago,propor_criar_tarefa,propor_revisao_atrasadas,propor_ver_vigia'
+chk('as definições: as seis de ler e as seis propostas, consultar só com as tabelas da lista', DEFINICOES.map(d => d.name).join() === 'buscar_empresa,ver_empresa,agenda,consultar,perguntar_reforma,buscar_arquivos,propor_concluir_tarefas,propor_alterar_tarefas,propor_marcar_pago,propor_criar_tarefa,propor_revisao_atrasadas,propor_ver_vigia'
   && JSON.stringify(DEFINICOES.find(d => d.name === 'consultar').input_schema.properties.tabela.enum) === JSON.stringify(Object.keys(TABELAS)));
 chk('o prompt: a Reforma sozinha na rodada (a resposta dela vai direto, com as fontes); a tela pelo nome e a situação por extenso',
   /Chame sozinha na rodada/.test(INSTRUCOES) && /mantenha as fontes dele entre colchetes/.test(INSTRUCOES) && /não financeiro-boletos\.html/.test(INSTRUCOES) && /não em_transicao/.test(INSTRUCOES)
@@ -560,6 +561,82 @@ chk('marca de outro dia: de um dia anterior, com o dia da semana, a data e a hor
   && marcaOutroDia('', '2026-10-16') === '' && marcaOutroDia(undefined, '2026-10-16') === '' && marcaOutroDia('x', '2026-10-16') === '', marcaOutroDia('2026-10-15T01:44:57Z', '2026-10-16'));
 chk('o dia no fuso de Brasília', diaBR(new Date('2026-10-15T02:30:00Z')) === '2026-10-14');
 chk('o preâmbulo sem tela nem pessoa (avaliação)', preambulo({ hoje: '2026-10-18' }) === '[Contexto do sistema] Hoje: domingo, 18/10/2026 (semana de 12/10/2026 a 18/10/2026).\n\n');
+
+console.log('Os arquivos da empresa (o Drive, só leitura):');
+{
+  chk('a pasta pelo endereço do cadastro', pastaDaUrl('https://drive.google.com/drive/folders/1AbC_def-GHIjkl?usp=sharing') === '1AbC_def-GHIjkl' && pastaDaUrl('https://exemplo.com/x') === null && pastaDaUrl(null) === null);
+  chk('as palavras: sem acento, sem as miúdas (o "das" fica), o mês também pelo número', JSON.stringify(palavrasDe('Guia do DAS de Setembro')) === JSON.stringify([['guia'], ['das'], ['setembro', 'set', '09']]));
+  const A = (nome, pasta, modificado) => ({ nome, pasta, modificado, link: 'https://drive.google.com/file/d/' + nome.replace(/\W/g, '') });
+  const lista = [A('Contrato Social.pdf', '', '2026-03-01T10:00:00Z'), A('DAS 09-2026.pdf', 'FISCAL / 2026', '2026-10-05T10:00:00Z'), A('RG.jpg', 'DOC SÓCIO', '2026-01-10T10:00:00Z'),
+    A('Alteração contratual - contrato.pdf', 'PROCESSOS', '2026-06-01T10:00:00Z'), A('Planilha.xlsx', 'CONTÁBIL / contratos', '2026-09-01T10:00:00Z')];
+  const nomes = r => r.achados.map(a => a.nome).join(' | ');
+  chk('a busca: sem acento e sem maiúscula; o mês por extenso acha o número', nomes(filtrarArquivos(lista, 'CONTRATO social')) === 'Contrato Social.pdf' && nomes(filtrarArquivos(lista, 'das setembro 2026')) === 'DAS 09-2026.pdf');
+  chk('a busca: o caminho conta (a pasta DOC SÓCIO)', nomes(filtrarArquivos(lista, 'socio')) === 'RG.jpg');
+  chk('a busca: quem tem a palavra no nome vem antes de quem só tem na pasta', nomes(filtrarArquivos(lista, 'contrato')) === 'Alteração contratual - contrato.pdf | Contrato Social.pdf | Planilha.xlsx', nomes(filtrarArquivos(lista, 'contrato')));
+  chk('sem palavra: os mais recentes, até o limite', nomes(filtrarArquivos(lista, '', { limite: 2 })) === 'DAS 09-2026.pdf | Planilha.xlsx' && filtrarArquivos(lista, '').total === 5);
+  // o Drive falso: a raiz com 45 subpastas (2 consultas no segundo nível), uma delas com uma sub-subpasta, arquivos e um XML
+  const PASTA = 'application/vnd.google-apps.folder';
+  const R = 'RAIZ_DA_EMPRESA_1', sub = i => 'SUBPASTA_' + String(i).padStart(4, '0');
+  const itens = [...Array.from({ length: 45 }, (_, i) => ({ id: sub(i), name: i === 0 ? 'FISCAL' : 'PASTA ' + i, mimeType: PASTA, parents: [R] })),
+    { id: 'NETA_DA_RAIZ_1', name: '2026', mimeType: PASTA, parents: [sub(0)] },
+    { id: 'ARQUIVO_RAIZ_1', name: 'Contrato Social.pdf', mimeType: 'application/pdf', parents: [R], modifiedTime: '2026-03-01T10:00:00Z', size: '1200', webViewLink: 'https://drive.google.com/file/d/ARQUIVO_RAIZ_1/view' },
+    { id: 'ARQUIVO_NETA_1', name: 'DAS 09-2026.pdf', mimeType: 'application/pdf', parents: ['NETA_DA_RAIZ_1'], modifiedTime: '2026-10-05T10:00:00Z', webViewLink: 'https://drive.google.com/file/d/ARQUIVO_NETA_1/view' },
+    { id: 'NOTA_XML_000001', name: 'NFe123.xml', mimeType: 'text/xml', parents: ['NETA_DA_RAIZ_1'] }];
+  const pedidos = [];
+  const fetchFalso = async (url, op = {}) => {
+    if (String(url).startsWith('https://oauth2.googleapis.com/token')) { pedidos.push({ token: true, corpo: String(op.body) }); return { ok: true, json: async () => ({ access_token: 'acesso-1', expires_in: 3600 }) }; }
+    const q = new URL(url).searchParams.get('q');
+    const pais = [...q.matchAll(/'([^']+)' in parents/g)].map(m => m[1]);
+    const soPastas = q.includes("mimeType = '" + PASTA + "'");
+    pedidos.push({ q, pais: pais.length, auth: op.headers && op.headers.Authorization });
+    const files = itens.filter(x => x.parents.some(p => pais.includes(p)) && (soPastas ? x.mimeType === PASTA : x.mimeType !== PASTA && !q.includes("mimeType != '" + x.mimeType + "'")));
+    return { ok: true, json: async () => ({ files }) };
+  };
+  const env = k => ({ GOOGLE_OAUTH_CLIENT_ID: 'cliente', GOOGLE_OAUTH_CLIENT_SECRET: 'segredo', GOOGLE_OAUTH_REFRESH_TOKEN: 'renovar' })[k];
+  const dr = criarDrive({ fetch: fetchFalso, env });
+  const arv = await dr.arvore(R);
+  const listas = pedidos.filter(p => !p.token);
+  chk('o Drive: a autorização uma vez só (o token do "Registrar processo"), o acesso em cada consulta', pedidos.filter(p => p.token).length === 1 && /refresh_token=renovar/.test(pedidos[0].corpo)
+    && listas.every(p => p.auth === 'Bearer acesso-1'), JSON.stringify(pedidos.slice(0, 2)));
+  chk('o Drive: as subpastas nível por nível, até 40 por consulta', listas.every(p => p.pais <= 40) && listas.filter(p => p.q.includes("mimeType = '")).length === 4 && arv.pastas === 47,
+    listas.map(p => p.pais + (p.q.includes("mimeType = '") ? 'p' : 'a')).join(','));
+  chk('o Drive: os arquivos com o caminho da pasta, sem as notas em XML', arv.arquivos.map(a => a.nome + '@' + (a.pasta || 'raiz')).sort().join() === 'Contrato Social.pdf@raiz,DAS 09-2026.pdf@FISCAL / 2026'
+    && arv.arquivos.find(a => a.nome === 'Contrato Social.pdf').tamanho === 1200, JSON.stringify(arv.arquivos));
+  chk('o Drive: sem os segredos, não está configurado; pasta inválida não consulta', !criarDrive({ fetch: fetchFalso, env: () => null }).configurado() && dr.configurado()
+    && /inválida/.test(await erroAsync(() => dr.arvore("x' or 1=1"))));
+
+  // a ferramenta: a pasta do cadastro, as guias arquivadas e o cartão
+  const CL = [{ ...CLIENTES[0], drive_folder_url: 'https://drive.google.com/drive/folders/' + R }, CLIENTES[1]];
+  const OBR = '44444444-4444-4444-8444-444444444444';
+  const { banco } = bancoFalso({ extras: { clientes: CL, obrigacoes_fiscais: [{ id: OBR, nome: 'PGDAS' }], vigia_achados: [{ regra: 'tarefa_sem_responsavel', situacao: 'aberto', so_socios: false, responsavel: 'Thalia', setor: 'fiscal' }],
+    guias_arquivadas: [{ cliente_id: ID_A, obrigacao_id: OBR, competencia: '09/2026', nome_arquivo: 'PGDAS 09-2026 LOJA.pdf', drive_file_url: 'https://drive.google.com/file/d/GUIA1/view', criado_em: '2026-10-08T12:00:00Z' }] } });
+  let raizPedida = null;
+  const driveFalso = { configurado: () => true, arvore: async r => { raizPedida = r; return { arquivos: arv.arquivos, pastas: 47, cortada: false }; } };
+  const propostas = [];
+  const nova = (extra = {}) => criarFerramentas({ banco, hoje: '2026-10-16', usuario: { email: 'fiscal@macedoereis.com.br', nome: 'Thalia', socio: false }, aoPropor: a => propostas.push(a), drive: driveFalso, ...extra });
+  const t1 = await nova().buscar_arquivos({ empresa: 'Esquina', termo: 'setembro' });
+  const c1 = propostas[0];
+  chk('buscar arquivos: a pasta que o cadastro aponta; o arquivo do Drive e a guia arquivada, com a pasta e a data', raizPedida === R && /2 achados/.test(t1) && /DAS 09-2026\.pdf · FISCAL \/ 2026 · 05\/10\/2026/.test(t1)
+    && /PGDAS 09-2026 LOJA\.pdf · Guias arquivadas \/ PGDAS \/ 09\/2026/.test(t1) && !/https?:/.test(t1.split('\n').slice(0, 3).join(' ')), t1);
+  chk('buscar arquivos: o cartão com a empresa, os links e a pasta dela', c1 && c1.tipo === 'arquivos' && c1.empresa === 'LOJA DA ESQUINA LTDA' && c1.itens.length === 2 && c1.total === 2
+    && c1.itens.every(i => /^https:\/\/drive\.google\.com\//.test(i.link)) && c1.pasta === CL[0].drive_folder_url && c1.termo === 'setembro', JSON.stringify(c1));
+  const t2 = await nova().buscar_arquivos({ empresa: ID_B });
+  chk('buscar arquivos: sem a pasta no cadastro e sem guia, diz onde vincular e não mostra cartão', /não tem a pasta do Drive no cadastro/.test(t2) && propostas.length === 1, t2);
+  const t3 = await nova({ drive: { configurado: () => true, arvore: async () => { throw new Error('o Drive recusou a busca (403)'); } } }).buscar_arquivos({ empresa: ID_A, termo: 'pgdas' });
+  chk('buscar arquivos: o Drive fora do ar não derruba — as guias vêm e o aviso diz', /Não consegui ler o Drive agora \(o Drive recusou a busca \(403\)\)/.test(t3) && /PGDAS 09-2026 LOJA\.pdf/.test(t3) && propostas.length === 2, t3);
+  // procurar de novo na mesma pergunta (outras palavras): o cartão é trocado e o Drive não é lido outra vez
+  let leituras = 0;
+  const fs4 = nova({ drive: { configurado: () => true, arvore: async () => { leituras++; return { arquivos: arv.arquivos, pastas: 47, cortada: false }; } } });
+  const antes = propostas.length;
+  const r4a = await fs4.buscar_arquivos({ empresa: ID_A, termo: 'procuração' });
+  const r4b = await fs4.buscar_arquivos({ empresa: ID_A, termo: 'contrato' });
+  chk('buscar arquivos: nada achado, tenta outras palavras — o último cartão vale e o Drive é lido uma vez', /nada encontrado/.test(r4a) && /Contrato Social\.pdf/.test(r4b) && leituras === 1
+    && propostas.length === antes + 2 && propostas[propostas.length - 1].termo === 'contrato' && propostas[propostas.length - 1].itens.length === 1, r4a + ' || ' + r4b);
+  const fs5 = nova();
+  await fs5.propor_ver_vigia({});
+  chk('buscar arquivos: com outra proposta já feita, uma por pergunta', /Já há uma proposta nesta pergunta/.test(await fs5.buscar_arquivos({ empresa: ID_A })) && descreverEtapa('buscar_arquivos', { empresa: 'Loja' }) === 'Procurando no Drive de Loja');
+  chk('o prompt: arquivo de empresa pelo buscar_arquivos, sem colar link e sem inventar', /buscar_arquivos, com as palavras do nome do arquivo/.test(INSTRUCOES) && /sem colar link e sem inventar arquivo/.test(INSTRUCOES));
+}
 
 console.log('Commit fixado na função (o código cru do GitHub):');
 const idx = readFileSync(raiz + 'supabase/functions/assistente/index.ts', 'utf8');

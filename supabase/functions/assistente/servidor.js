@@ -17,6 +17,7 @@
 
 import { montarSistema, preambulo, marcaOutroDia } from './prompt.js';
 import { DEFINICOES, criarFerramentas, descreverEtapa } from './ferramentas.js';
+import { criarDrive } from './drive.js';
 import { criarChamador, responder } from '../reforma-chat/agente.js';
 import { lerEventos } from '../../../assets/js/eventos-sse.js';
 import { SOCIOS, nomePorEmail } from '../../../assets/js/equipe.js';
@@ -73,6 +74,8 @@ export function limparContexto(c) {
 export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => new Date(), chamar = null, prazoMs = 70000, aguardar = p => p }) {
   const URLB = env('SUPABASE_URL'), SERVICO = env('SUPABASE_SERVICE_ROLE_KEY'), ANON = env('SUPABASE_ANON_KEY');
   const chamarModelo = chamar || criarChamador({ fetch: f, chave: env('ANTHROPIC_API_KEY') });
+  // o Drive (só leitura, a pasta da empresa): a mesma autorização do Google do "Registrar processo"
+  const drive = criarDrive({ fetch: f, env, agora: () => agora().getTime() });
   const sistema = montarSistema();
 
   // o histórico (assistente_chat) e a linha de avaliação da Reforma: com a chave de servidor
@@ -190,7 +193,7 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
         // passou do tempo de outra rodada do modelo: a resposta da Reforma vai direto pro usuário
         deveFinalizar: () => agora().getTime() - t0 > prazoMs - 15000,
         // a proposta de ação (uma por pergunta) vai junto com a resposta: a tela mostra o cartão
-        aoPropor: a => { acao = a; } });
+        aoPropor: a => { acao = a; }, drive });
       const mensagem = preambulo({ hoje, quem, tela, empresa, ficha }) + pergunta;
       // a pergunta anterior de outro dia leva a data em que foi feita (a aba pode ter ficado aberta de um dia pro outro)
       const anteriores = historico.map(h => ({ pergunta: marcaOutroDia(h.em, hoje) + h.pergunta, resposta: h.resposta }));

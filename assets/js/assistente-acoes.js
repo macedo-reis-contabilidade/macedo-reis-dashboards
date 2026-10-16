@@ -16,7 +16,10 @@
 // tela onde se resolve) e "Ignorar" (com "Desfazer" por 10 minutos; os ignorados voltam pela aba "Ignorados") e, desde
 // 16/10/2026, o que dá pra resolver ali mesmo: o responsável que falta, a proposta parada, o boleto enviado ou pago, a
 // admissão registrada, a rescisão concluída, a empresa da ficha sem vínculo, o alvará renovado, a cobrança e a obrigação
-// de quem saiu da carteira.
+// de quem saiu da carteira, as obrigações do regime de quem não tem nenhuma, a cobrança de quem não está nela e o cadastro
+// desencontrado da carteira.
+// O cartão dos arquivos (16/10/2026) só mostra: o que a função achou na pasta da empresa no Drive e nas guias arquivadas,
+// o nome como link (abre no Drive, numa aba nova) e, embaixo, a pasta da empresa.
 // Testes de tela: tests/harness/assistente-acoes.py e tests/harness/assistente-vigia.py.
 // ============================================================
 
@@ -25,7 +28,8 @@ import { concluirTarefas, desfazerConclusao, marcarPagos, desfazerPagos, criarTa
   alterarTarefas, desfazerAlteracao, limparMudanca, mudancaDe, fichaDeOrigem, ficaDeFora, proximasNascemCom,
   pessoaDaEquipe, definirResponsavelObrigacoes, desfazerResponsavelObrigacoes, definirResponsavelRotina, desfazerResponsavelRotina,
   descartarProposta, desfazerDescarte, avancarBoletos, voltarBoletos, fecharFicha, reabrirFicha, vincularEmpresa, desvincularEmpresa, buscarEmpresas,
-  renovarAlvara, desfazerRenovacao, desativarRegistro, reativarRegistro } from './tarefas-acoes.js';
+  renovarAlvara, desfazerRenovacao, desativarRegistro, reativarRegistro, obrigacoesParaVincular, vincularObrigacoes, desfazerVinculoObrigacoes,
+  dadosDaCobranca, porNaCobranca, desfazerCobranca, acertarCadastro, desfazerCadastro } from './tarefas-acoes.js';
 import { EQUIPE, SOCIOS, nomePorEmail } from './equipe.js';
 import { SETORES } from './nova-tarefa.js';
 import { lerAchados, ignorarAchado, reabrirAchado, filtrarAchados, agruparAchados, linkSeguro, ehSocioPeloNome, marcarVisto,
@@ -95,7 +99,7 @@ async function lerPorIds(tabela, colunas, ids) {
 function listaComCaixas(itens, { marcadas = true, aoMudar = () => {} } = {}) {
   const caixas = [];
   const ul = h('ul', { class: 'as-cartao-lista' }, itens.map(it => {
-    const cx = h('input', { type: 'checkbox', checked: marcadas, onchange: aoMudar });
+    const cx = h('input', { type: 'checkbox', checked: 'marcada' in it ? !!it.marcada : marcadas, onchange: aoMudar });
     cx.dataset.id = it.id;
     caixas.push(cx);
     return h('li', {}, h('label', { class: 'as-cartao-item' }, cx,
@@ -121,7 +125,8 @@ const resumoConcluidas = r => (r.concluidas || []).map(c => ({ id: c.id, status_
 //   ajuda: { salvar(acao), anunciar(texto), reagir(), email, nome } — salvar guarda o estado do cartão na conversa
 // ============================================================
 export function cartaoDaAcao(acao, ajuda = {}) {
-  const fazer = { concluir_tarefas: cartaoConcluir, alterar_tarefas: cartaoAlterar, marcar_pago: cartaoPago, criar_tarefa: cartaoCriar, revisar_atrasadas: cartaoRevisao, vigia: cartaoVigia }[acao && acao.tipo];
+  const fazer = { concluir_tarefas: cartaoConcluir, alterar_tarefas: cartaoAlterar, marcar_pago: cartaoPago, criar_tarefa: cartaoCriar, revisar_atrasadas: cartaoRevisao, vigia: cartaoVigia,
+    arquivos: cartaoArquivos }[acao && acao.tipo];
   if (!fazer) return null;
   const raiz = h('div', { class: 'as-cartao', role: 'group' });
   const estado = { ...acao };
@@ -646,6 +651,47 @@ function cartaoRevisao({ raiz, estado, salvar, ajuda, anunciar }) {
   desenhar();
 }
 
+// ---------- os arquivos da empresa (16/10/2026): a pasta dela no Drive e as guias arquivadas ----------
+// Só mostra o que a função achou (o nome, a pasta, a data e o tamanho — o conteúdo ninguém leu): o nome é o link, que abre
+// o arquivo no Drive numa aba nova (só endereço do Google Drive ou Docs; o resto sai sem link). Embaixo, a pasta da empresa
+const TIPO_GOOGLE = { 'application/vnd.google-apps.document': 'Documento Google', 'application/vnd.google-apps.spreadsheet': 'Planilha Google',
+  'application/vnd.google-apps.presentation': 'Apresentação Google', 'application/vnd.google-apps.form': 'Formulário Google' };
+export function linkDoDrive(link) {
+  try {
+    const u = new URL(String(link || ''));
+    return u.protocol === 'https:' && ['drive.google.com', 'docs.google.com'].includes(u.hostname) && !u.username && !u.password && !u.port ? u.href : null;
+  } catch (e) { return null; }
+}
+const diaLocal = iso => { const d = new Date(iso); return iso && !isNaN(d) ? pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear() : ''; };
+const tamanhoBR = n => {
+  const v = Number(n);
+  if (n == null || !Number.isFinite(v) || v <= 0) return '';
+  if (v < 1024) return v + ' bytes';
+  return v < 1024 * 1024 ? Math.max(1, Math.round(v / 1024)) + ' KB' : (v / 1024 / 1024).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' MB';
+};
+function cartaoArquivos({ raiz, estado }) {
+  raiz.setAttribute('aria-label', 'Arquivos da empresa');
+  const itens = (Array.isArray(estado.itens) ? estado.itens : []).filter(x => x && typeof x === 'object' && typeof x.nome === 'string' && x.nome).slice(0, 50);
+  const total = Math.max(itens.length, Math.floor(Number(estado.total)) || 0);
+  const empresa = typeof estado.empresa === 'string' && estado.empresa ? estado.empresa.slice(0, 200) : 'a empresa';
+  const termo = typeof estado.termo === 'string' ? estado.termo.trim().slice(0, 120) : '';
+  const pasta = linkDoDrive(estado.pasta);
+  const titulo = h('div', { class: 'as-cartao-tit' }, 'Arquivos de ' + empresa + (termo ? ' com “' + termo + '”' : ', os mais recentes') + ': ',
+    h('span', { class: 'as-cartao-cont', text: String(total) }));
+  const linha = x => {
+    const link = linkDoDrive(x.link);
+    const meta = [typeof x.pasta === 'string' && x.pasta ? x.pasta.slice(0, 300) : 'pasta da empresa', diaLocal(x.modificado), TIPO_GOOGLE[x.tipo] || tamanhoBR(x.tamanho), link ? '' : 'sem link']
+      .filter(Boolean).join(' · ');
+    const corpo = [h('b', { text: x.nome.slice(0, 300) }), h('small', { text: meta })];
+    return h('li', {}, link ? h('a', { class: 'as-arquivo', href: link, target: '_blank', rel: 'noopener noreferrer' }, corpo) : h('div', { class: 'as-arquivo as-arquivo-sem' }, corpo));
+  };
+  const nada = !itens.length ? h('div', { class: 'as-cartao-pergunta', text: termo ? 'Nada com “' + termo + '” nos arquivos de ' + empresa + '. Tente outras palavras do nome do arquivo.' : 'Nenhum arquivo nos arquivos de ' + empresa + '.' }) : null;
+  const mais = total > itens.length && itens.length ? sub('E mais ' + qtd(total - itens.length, 'arquivo', 'arquivos') + ': diga mais palavras do nome pra afinar.') : null;
+  const rodape = pasta ? h('div', { class: 'as-cartao-botoes as-cartao-rodape' }, h('a', { class: 'as-botao as-botao-link', href: pasta, target: '_blank', rel: 'noopener noreferrer', text: 'Abrir a pasta da empresa no Drive' }))
+    : sub('A empresa não tem a pasta do Drive no cadastro: crie ou vincule no cadastro da empresa.');
+  trocar(raiz, titulo, nada, itens.length ? h('ul', { class: 'as-cartao-lista as-arquivos' }, itens.map(linha)) : null, mais, rodape);
+}
+
 // ---------- o vigia: o que ele achou, por grupo, com "Abrir", "Ignorar" e o que dá pra resolver ali ----------
 // estado (guardado na conversa): ver ('meus' | 'todos' | 'ignorados'); pessoa (de quem — sem: quem está na tela); o
 // recorte — setor, tela (o caminho da página) ou cliente_id (a ficha da empresa); os ignorados agora há pouco
@@ -668,7 +714,8 @@ const RESOLVE_RESPONSAVEL = ['obrigacao_sem_responsavel', 'tarefa_responsavel', 
 // a regra e a tabela do registro que o achado aponta: só resolve aqui o que bate (o resto é "Abrir")
 const REF_DA_REGRA = { obrigacao_sem_responsavel: 'clientes', tarefa_responsavel: 'tarefas', rotina_sem_responsavel: 'rotinas', proposta_parada: 'precificacoes',
   boleto_parado: 'cobrancas_mensais', admissao_nao_registrada: 'admissoes', admissao_sem_vinculo: 'admissoes', rescisao_pagamento: 'rescisoes',
-  rescisao_sem_vinculo: 'rescisoes', alvara_vencendo: 'alvaras', cobranca_ex_cliente: 'cobrancas_config', obrigacao_ex_cliente: 'cliente_obrigacoes' };
+  rescisao_sem_vinculo: 'rescisoes', alvara_vencendo: 'alvaras', cobranca_ex_cliente: 'cobrancas_config', obrigacao_ex_cliente: 'cliente_obrigacoes',
+  cliente_sem_obrigacao: 'clientes', cliente_sem_cobranca: 'clientes', cadastro_desencontrado: 'clientes' };
 const resolvivel = a => !!a && ID.test(String(a.ref_id || '')) && !!REF_DA_REGRA[a.regra] && REF_DA_REGRA[a.regra] === a.ref_tabela;
 const SITUACAO_FICHA = { respondida: 'recebida — a registrar', em_registro: 'em registro', registrada: 'registrada', recebida: 'recebida — a calcular',
   em_andamento: 'em andamento', concluida: 'concluída', cancelada: 'cancelada', aguardando_empresa: 'aguardando a empresa' };
@@ -751,6 +798,30 @@ async function resolverAchado(a, escolha, ajuda) {
     return { texto: a.regra === 'cobranca_ex_cliente' ? 'Cobrança parada: sai da base de boletos.' : 'Obrigação desativada (as tarefas já criadas ficam).',
       desfazer: { tipo: 'desativado', feito: r.desativado } };
   }
+  if (a.regra === 'cliente_sem_obrigacao') {
+    const e = escolha && typeof escolha === 'object' ? escolha : {};
+    const r = await vincularObrigacoes(supabase, a.ref_id, e.ids || [], e.responsavel);
+    if (r.erro && !r.feitos.length) return { erro: r.erro };
+    if (!r.feitos.length) return { erro: 'Ela já tinha essas obrigações: confira na tela Obrigações fiscais.' };
+    const quem = pessoaDaEquipe(e.responsavel);
+    return { texto: qtd(r.feitos.length, 'obrigação vinculada', 'obrigações vinculadas') + ', com ' + quem + '. As tarefas saem na próxima geração do mês, em Obrigações fiscais.',
+      aviso: r.erro || null, desfazer: { tipo: 'obrigacoes_vinc', cliente_id: String(a.ref_id), feitos: r.feitos } };
+  }
+  if (a.regra === 'cliente_sem_cobranca') {
+    const e = escolha && typeof escolha === 'object' ? escolha : {};
+    const r = await porNaCobranca(supabase, a.ref_id, { valor: e.valor, dia: e.dia });
+    if (r.erro) return { erro: r.erro };
+    if (!r.feito) return { erro: r.ja ? 'Ela já está na base de boletos.' : 'A base de boletos mudou no meio do caminho: confira na tela Boletos.' };
+    return { texto: 'Na cobrança: ' + brl(r.feito.valor) + ', vencimento dia ' + r.feito.dia + ' (canal WhatsApp — o contato e o destino se acertam na grade de Boletos).',
+      desfazer: { tipo: 'cobranca', feito: r.feito } };
+  }
+  if (a.regra === 'cadastro_desencontrado') {
+    const r = await acertarCadastro(supabase, a.ref_id, { hoje: hojeISO() });
+    if (r.erro) return { erro: r.erro };
+    if (!r.cliente) return { erro: 'O cadastro já está "' + (r.ja || '') + '".' };
+    return { texto: 'Cadastro marcado como ' + r.cliente.para + (r.cliente.para === 'inativo' && r.cliente.fim && r.cliente.fim !== r.cliente.fim_antes ? ' (fim como cliente: ' + dataBR(r.cliente.fim) + ')' : '') + '.',
+      desfazer: { tipo: 'cadastro', cliente: r.cliente } };
+  }
   return { erro: 'Esse achado se resolve na tela dele.' };
 }
 // desfaz e devolve { erro } — erro também quando nada voltou (alguém mexeu depois)
@@ -786,6 +857,9 @@ async function desfazerResolucao(d, ajuda) {
     return nada(r, r.desfeita);
   }
   if (d.tipo === 'desativado') { const r = await reativarRegistro(supabase, d.feito); return nada(r, r.desfeita); }
+  if (d.tipo === 'obrigacoes_vinc') { const r = await desfazerVinculoObrigacoes(supabase, d.cliente_id, d.feitos); return nada(r, r.desfeitos > 0); }
+  if (d.tipo === 'cobranca') { const r = await desfazerCobranca(supabase, d.feito); return nada(r, r.desfeita); }
+  if (d.tipo === 'cadastro') { const r = await desfazerCadastro(supabase, d.cliente); return nada(r, r.desfeita); }
   return { erro: 'Não há o que desfazer.' };
 }
 
@@ -911,8 +985,74 @@ function cartaoVigia({ raiz, estado, salvar, ajuda, anunciar }) {
       linha.append(h('label', { class: 'as-vigia-campo' }, h('span', { text: 'Renovado até' }), quando), ok);
     } else if (a.regra === 'cobranca_ex_cliente' || a.regra === 'obrigacao_ex_cliente') {
       linha.append(botao(a.regra === 'cobranca_ex_cliente' ? 'Parar a cobrança' : 'Desativar a obrigação', ev => resolver(a, null, ev.currentTarget)));
+    } else if (a.regra === 'cliente_sem_obrigacao') {
+      linha.append(botao('Vincular obrigações', () => abrirObrigacoes(a, linha)));
+    } else if (a.regra === 'cliente_sem_cobranca') {
+      linha.append(botao('Pôr na cobrança', () => abrirCobranca(a, linha)));
+    } else if (a.regra === 'cadastro_desencontrado') {
+      // o título diz o lado: saiu da carteira (o cadastro vira inativo) ou está nela (vira ativo); a regra confere de novo
+      linha.append(botao('Marcar o cadastro como ' + (/saiu da carteira/i.test(String(a.titulo || '')) ? 'inativo' : 'ativo'), ev => resolver(a, null, ev.currentTarget)));
     }
     return linha;
+  }
+  // as obrigações do regime da empresa, com as sugeridas já marcadas (as que a maioria das empresas do regime tem e o DEISS
+  // da cidade dela) e as outras num "ver as outras"; quem vai cuidar e "Vincular as marcadas"
+  async function abrirObrigacoes(a, linha) {
+    const caixa = h('div', { class: 'as-vigia-resolver as-vigia-busca' }, sub('Lendo as obrigações do regime…'));
+    linha.replaceWith(caixa);
+    const voltar = () => caixa.replaceWith(controlesDeResolver(a));
+    let r;
+    try { r = await obrigacoesParaVincular(supabase, a.ref_id); } catch (e) { r = { erro: (e && e.message) || 'erro', opcoes: [] }; }
+    if (r.erro || !r.opcoes.length) {
+      caixa.replaceChildren(h('div', { class: 'as-cartao-erro', text: r.erro || 'Nenhuma obrigação do regime dela está cadastrada: vincule na tela Obrigações fiscais.' }), botao('Voltar', voltar, 'link'));
+      return;
+    }
+    const reg = r.cliente.regime;
+    const item = o => ({ id: o.id, marcada: o.sugerida, titulo: o.nome, sub: o.cidade ? 'o DEISS da cidade dela' : o.total ? o.n + ' de ' + o.total + ' empresas do ' + reg + ' têm' : '' });
+    const sug = r.opcoes.filter(o => o.sugerida), outras = r.opcoes.filter(o => !o.sugerida);
+    const sel = h('select', { 'aria-label': 'Quem vai cuidar' }, h('option', { value: '', text: 'Quem vai cuidar…' }), EQUIPE.map(n => h('option', { value: n, text: n })));
+    const dono = pessoaDaEquipe(a.responsavel);
+    sel.value = dono && dono !== 'Ambos' ? dono : '';
+    const ok = botao('Vincular', ev => resolver(a, { ids: marcadas(), responsavel: sel.value }, ev.currentTarget), 'pri');
+    const atualizar = () => {
+      const n = marcadas().length;
+      ok.textContent = n ? 'Vincular ' + (n === 1 ? 'a marcada' : 'as ' + n + ' marcadas') : 'Marque as obrigações';
+      ok.disabled = !n || !sel.value;
+    };
+    const l1 = sug.length ? listaComCaixas(sug.map(item), { aoMudar: () => atualizar() }) : null;
+    const l2 = outras.length ? listaComCaixas(outras.map(item), { aoMudar: () => atualizar() }) : null;
+    const marcadas = () => [...(l1 ? l1.marcadas() : []), ...(l2 ? l2.marcadas() : [])];
+    sel.addEventListener('change', atualizar);
+    caixa.replaceChildren(
+      sub(sug.length ? 'Já marcadas: as que a maioria das empresas do ' + reg + ' tem' + (sug.some(o => o.cidade) ? ' e o DEISS da cidade dela' : '') + '. Confira antes de vincular.'
+        : 'Nenhuma é comum à maioria das empresas do ' + reg + ': marque as dela.'),
+      l1 ? l1.el : null,
+      l2 ? h('details', { class: 'as-vigia-outras' }, h('summary', { text: (sug.length ? 'As outras do ' : 'As do ') + reg + ' (' + outras.length + ')' }), l2.el) : null,
+      h('div', { class: 'as-vigia-busca-linha' }, sel, ok, botao('Cancelar', voltar, 'link')));
+    atualizar();
+    try { caixa.scrollIntoView({ block: 'nearest' }); } catch (e) { /* sem rolagem */ }
+  }
+  // a empresa na base de boletos: o valor e o dia (sugeridos pela cobrança parada ou pela proposta fechada)
+  async function abrirCobranca(a, linha) {
+    const caixa = h('div', { class: 'as-vigia-resolver' }, sub('Lendo a base de boletos…'));
+    linha.replaceWith(caixa);
+    const voltar = () => caixa.replaceWith(controlesDeResolver(a));
+    let d;
+    try { d = await dadosDaCobranca(supabase, a.ref_id); } catch (e) { d = { erro: (e && e.message) || 'erro' }; }
+    if (d.erro) { caixa.replaceChildren(h('div', { class: 'as-cartao-erro', text: 'Não consegui ler a base de boletos: ' + d.erro }), botao('Voltar', voltar, 'link')); return; }
+    const valor = h('input', { type: 'number', class: 'as-vigia-valor', 'aria-label': 'Valor da cobrança, em reais', placeholder: '0,00' });
+    valor.min = '0.01'; valor.step = '0.01';
+    if (d.valor) valor.value = String(d.valor);
+    const dia = h('input', { type: 'number', class: 'as-vigia-dia', 'aria-label': 'Dia do vencimento' });
+    dia.min = '1'; dia.max = '31'; dia.step = '1'; dia.value = String(d.dia || 10);
+    const ok = botao('Pôr na cobrança', ev => resolver(a, { valor: valor.value, dia: Number(dia.value) }, ev.currentTarget), 'pri');
+    const conferir = () => { ok.disabled = !(Number(valor.value) > 0) || !(Number.isInteger(Number(dia.value)) && Number(dia.value) >= 1 && Number(dia.value) <= 31); };
+    [valor, dia].forEach(x => ['input', 'change'].forEach(t => x.addEventListener(t, conferir)));
+    caixa.replaceChildren(h('label', { class: 'as-vigia-campo' }, h('span', { text: 'Valor (R$)' }), valor),
+      h('label', { class: 'as-vigia-campo' }, h('span', { text: 'Vence dia' }), dia), ok, botao('Cancelar', voltar, 'link'),
+      d.config ? sub('Ela já teve cobrança na base, parada: volta a valer com estes dados.') : null);
+    conferir();
+    valor.focus({ preventScroll: true });
   }
   // a busca da empresa (a mesma das fichas de Admissões e Rescisões), começando pelo nome que a empresa digitou no link;
   // escolher a empresa já vincula (o "Desfazer" tira)

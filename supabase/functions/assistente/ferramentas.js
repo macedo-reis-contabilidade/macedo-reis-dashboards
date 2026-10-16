@@ -21,6 +21,7 @@ import { rotinaDoDia, rotinaFeita, ymd } from '../../../assets/js/rotinas-dia.js
 import { EQUIPE } from '../../../assets/js/equipe.js';
 import { ficaDeFora, mudancaDe, proximasNascemCom, PRIORIDADES } from '../../../assets/js/tarefas-acoes.js';
 import { rotuloDaRegra } from '../../../assets/js/vigia.js';
+import { pastaDaUrl, filtrarArquivos } from './drive.js';
 
 // ---------- a lista branca: tabela → colunas lidas, as que vêm sem pedir, o que é cada coisa ----------
 // notas: o que o modelo precisa saber da coluna (valores possíveis, unidade); enums: colunas de tipo enumerado no banco
@@ -221,6 +222,11 @@ export const DEFINICOES = [
       pergunta: { type: 'string', description: 'a pergunta completa (a do usuário, completada com o que faltar: nome da empresa, período)' },
       devolver_direto: { type: 'boolean', description: 'padrão sim: a resposta dele vai direto pro usuário. Não, quando você ainda precisa cruzar com outros dados do sistema' } },
       required: ['pergunta'] } },
+  { name: 'buscar_arquivos',
+    description: 'Busca os arquivos de uma empresa: na pasta dela no Google Drive (com as subpastas — FISCAL, CONTÁBIL, DEPARTAMENTO PESSOAL, PROCESSOS, ALVARÁS, CERTIFICADO DIGITAL, DOC SÓCIO…; sem as notas em XML) e nas guias que o sistema arquivou (tela Obrigações fiscais). Devolve o nome, a pasta e a data de cada um, e a tela mostra o cartão com os links pra abrir. Use quando pedirem um arquivo, documento, guia, contrato, alvará, certificado, comprovante ou "o que tem no Drive" de uma empresa. Sem termo: os mais recentes. Só lê a lista: não abre o conteúdo dos arquivos.',
+    input_schema: { type: 'object', properties: {
+      empresa: { type: 'string', description: 'id, nome ou CNPJ (sem: a empresa aberta na tela)' },
+      termo: { type: 'string', description: 'palavras do nome do arquivo ou da pasta, sem o nome da empresa (ex.: "contrato social", "alvará", "DAS setembro 2026"); sem: os mais recentes' } } } },
   // as propostas: nada muda aqui — a tela mostra o cartão, a pessoa confirma (e pode desfazer)
   { name: 'propor_concluir_tarefas',
     description: 'Prepara a conclusão de tarefas pra pessoa confirmar na tela — nada é concluído aqui: a tela mostra a lista (ela pode desmarcar alguma) com o botão "Concluir" e, depois, o "Desfazer". Só quando a pessoa pedir pra concluir ou marcar como feita(s). Diga quais: ids (de consultar), ou empresa, pessoa e/ou parte do título — prazo, setor e "atrasadas" afinam. Só tarefas abertas; até 300.',
@@ -265,7 +271,7 @@ export const DEFINICOES = [
     description: 'Mostra na tela a revisão das tarefas atrasadas de alguém: grupo por grupo, a tela pergunta o que já foi feito e conclui o que a pessoa marcar (com "Desfazer"). Use quando pedirem pra passar as atrasadas a limpo — e, quando perguntarem das atrasadas de alguém da equipe, chame junto com a resposta: o cartão é a oferta (só mostra a pergunta; nada muda sem a pessoa).',
     input_schema: { type: 'object', properties: { pessoa: { type: 'string', description: 'alguém da equipe (sem: quem pergunta)' } } } },
   { name: 'propor_ver_vigia',
-    description: 'Mostra na tela o cartão do vigia: o que ele achou, por grupo, cada achado com "Abrir" (a tela onde se resolve) e "Ignorar" — e, no que se resolve com um clique, o botão ali mesmo, com "Desfazer": o responsável que falta (obrigação sem responsável, que leva as tarefas abertas junto; tarefa e rotina sem responsável), descartar a proposta parada, marcar o boleto parado como enviado ou pago, marcar a admissão como registrada e a rescisão como concluída, vincular a empresa da admissão ou da rescisão sem vínculo (com a busca do cadastro), renovar o alvará (com a data nova), parar a cobrança e desativar a obrigação de ex-cliente. Use quando perguntarem o que o vigia achou, o que está desencontrado, esquecido ou pedindo atenção no sistema (de alguém, de um setor ou de todos), ou pedirem pra resolver um desses achados — chame junto com a resposta: o cartão é a oferta (só mostra; nada muda sem a pessoa).',
+    description: 'Mostra na tela o cartão do vigia: o que ele achou, por grupo, cada achado com "Abrir" (a tela onde se resolve) e "Ignorar" — e, no que se resolve com um clique, o botão ali mesmo, com "Desfazer": o responsável que falta (obrigação sem responsável, que leva as tarefas abertas junto; tarefa e rotina sem responsável), descartar a proposta parada, marcar o boleto parado como enviado ou pago, marcar a admissão como registrada e a rescisão como concluída, vincular a empresa da admissão ou da rescisão sem vínculo (com a busca do cadastro), renovar o alvará (com a data nova), parar a cobrança e desativar a obrigação de ex-cliente, vincular as obrigações do regime ao cliente sem obrigação, pôr na cobrança o cliente sem cobrança e acertar o cadastro que não bate com a carteira. Use quando perguntarem o que o vigia achou, o que está desencontrado, esquecido ou pedindo atenção no sistema (de alguém, de um setor ou de todos), ou pedirem pra resolver um desses achados — chame junto com a resposta: o cartão é a oferta (só mostra; nada muda sem a pessoa).',
     input_schema: { type: 'object', properties: {
       pessoa: { type: 'string', description: 'alguém da equipe, ou "todos" (sem: quem pergunta)' },
       setor: { type: 'string', description: 'opcional: só um setor (dp, fiscal, contabil, financeiro, comercial, societario, irpf, gestao, clientes, geral)' } } } }
@@ -416,7 +422,7 @@ export function montarConsulta(e, { hoje = null } = {}) {
 // contexto: { cliente_id, caso_id, pagina }; usuario: { email, nome, socio }; hoje: 'AAAA-MM-DD' (Brasília)
 // perguntarReforma(pergunta) → { texto, cortada } (erro com a frase pro usuário); deveFinalizar(): o tempo da pergunta
 // está acabando (a resposta da Reforma vai direto, sem outra rodada)
-export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, perguntarReforma, deveFinalizar = () => false, aoPropor = () => {} }) {
+export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, perguntarReforma, deveFinalizar = () => false, aoPropor = () => {}, drive = null }) {
   const ler = (caminho, op) => banco.ler(caminho, op);
 
   // o cadastro das empresas dos ids (o nome sempre; as outras colunas, quando pedidas)
@@ -968,10 +974,58 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     const porRegra = new Map();
     (linhas || []).forEach(l => porRegra.set(l.regra, (porRegra.get(l.regra) || 0) + 1));
     const grupos = [...porRegra].map(([r, n]) => [rotuloDaRegra(r), n]).sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0], 'pt-BR')).map(([r, n]) => r + ': ' + n).join(' · ');
-    return 'Proposta pronta: a tela mostra o cartão do vigia com ' + plural(total, 'achado aberto', 'achados abertos') + de + (grupos ? ' (' + grupos + ')' : '') + ' — por grupo, cada um com "Abrir" (a tela onde se resolve) e "Ignorar"; no responsável que falta, na proposta e no boleto parados, na admissão a registrar, na rescisão com o pagamento chegando, na ficha sem empresa vinculada, no alvará vencendo e no que é de ex-cliente (cobrança, obrigação), também o botão que resolve ali. Nada muda sem a pessoa. Na resposta: o resumo do que mais pesa e uma frase convidando a abrir o cartão; do que você não leu, diga só o grupo (acima), sem supor de que empresa ou pessoa é.';
+    return 'Proposta pronta: a tela mostra o cartão do vigia com ' + plural(total, 'achado aberto', 'achados abertos') + de + (grupos ? ' (' + grupos + ')' : '') + ' — por grupo, cada um com "Abrir" (a tela onde se resolve) e "Ignorar"; no responsável que falta, na proposta e no boleto parados, na admissão a registrar, na rescisão com o pagamento chegando, na ficha sem empresa vinculada, no alvará vencendo, no que é de ex-cliente (cobrança, obrigação), no cliente sem obrigação ou sem cobrança e no cadastro desencontrado, também o botão que resolve ali. Nada muda sem a pessoa. Na resposta: o resumo do que mais pesa e uma frase convidando a abrir o cartão; do que você não leu, diga só o grupo (acima), sem supor de que empresa ou pessoa é.';
   }
 
-  return { buscar_empresa, ver_empresa, agenda, consultar, perguntar_reforma, propor_concluir_tarefas, propor_alterar_tarefas, propor_marcar_pago, propor_criar_tarefa, propor_revisao_atrasadas, propor_ver_vigia };
+  // ---------- os arquivos da empresa: a pasta dela no Drive e as guias arquivadas ----------
+  // A pasta é só a que o cadastro aponta (drive_folder_url): nada de procurar a pasta pelo nome (casaria com a de outro
+  // cliente). O cartão "arquivos" mostra os links; aqui volta a lista pro modelo, sem link. Procurar de novo com outras
+  // palavras na mesma pergunta troca o cartão (o último vale) e não lê o Drive outra vez (a pasta fica guardada)
+  const arvores = new Map();
+  const diaBR = iso => { const d = new Date(iso); return iso && !isNaN(d) ? new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric' }).format(d) : '—'; };
+  async function buscar_arquivos(e) {
+    const ja = proposta && proposta.tipo !== 'arquivos' ? jaProposto() : null; if (ja) return ja;
+    const a = await acharEmpresa(e.empresa);
+    if (a.erro) return a.erro;
+    const { linhas } = await ler('clientes?select=id,nome_principal,drive_folder_url&id=eq.' + a.id);
+    const c = linhas[0];
+    if (!c) return 'Empresa não encontrada no cadastro.';
+    const termo = String(e.termo || '').trim().slice(0, 120);
+    const raiz = pastaDaUrl(c.drive_folder_url);
+    const avisos = [];
+    // as guias que o sistema arquivou ficam na pasta do setor fiscal, fora da pasta da empresa: vêm do banco
+    let guias = [];
+    try {
+      const { linhas: gs } = await ler('guias_arquivadas?select=nome_arquivo,competencia,drive_file_url,criado_em,obrigacao_id&cliente_id=eq.' + a.id + '&order=criado_em.desc&limit=200');
+      const obr = [...new Set(gs.map(g => g.obrigacao_id).filter(x => UUID.test(String(x))))];
+      const nomes = new Map();
+      if (obr.length) (await ler('obrigacoes_fiscais?select=id,nome&id=in.(' + obr.join(',') + ')')).linhas.forEach(o => nomes.set(o.id, o.nome));
+      guias = gs.map(g => ({ nome: String(g.nome_arquivo || 'guia'), pasta: 'Guias arquivadas / ' + (nomes.get(g.obrigacao_id) || 'obrigação') + (g.competencia ? ' / ' + g.competencia : ''),
+        modificado: g.criado_em || null, tamanho: null, link: g.drive_file_url || null, tipo: 'guia' }));
+    } catch (err) { avisos.push('As guias arquivadas não vieram (' + ((err && err.message) || 'erro') + ').'); }
+    let doDrive = [];
+    if (!raiz) avisos.push('A empresa não tem a pasta do Drive no cadastro: crie ou vincule no cadastro da empresa (Base mestre).');
+    else if (!drive || !drive.configurado()) avisos.push('O acesso ao Drive não está configurado no assistente.');
+    else {
+      try {
+        if (!arvores.has(raiz)) arvores.set(raiz, drive.arvore(raiz));
+        const arv = await arvores.get(raiz).catch(err => { arvores.delete(raiz); throw err; });
+        doDrive = arv.arquivos;
+        if (arv.cortada) avisos.push('A pasta é grande: olhei ' + arv.pastas + ' subpastas e ' + arv.arquivos.length + ' arquivos (sem as notas em XML).');
+      } catch (err) { avisos.push('Não consegui ler o Drive agora (' + ((err && err.message) || 'erro') + ').'); }
+    }
+    const { achados, total } = filtrarArquivos([...doDrive, ...guias], termo, { limite: 20 });
+    if (!raiz && !guias.length) return avisos.join(' ');
+    registrar({ tipo: 'arquivos', empresa: String(c.nome_principal || ''), cliente_id: String(c.id), pasta: raiz ? String(c.drive_folder_url) : null, termo: termo || null, total,
+      itens: achados.map(x => ({ nome: x.nome, pasta: x.pasta || '', modificado: x.modificado || null, tamanho: x.tamanho == null ? null : x.tamanho, link: x.link || null, tipo: x.tipo || null })) });
+    const de = 'Arquivos de ' + c.nome_principal + (termo ? ' com "' + termo + '"' : ' (os mais recentes)');
+    const lista = achados.map(x => '- ' + x.nome + ' · ' + (x.pasta || 'pasta da empresa') + ' · ' + diaBR(x.modificado)).join('\n');
+    return de + ': ' + (total ? plural(total, 'achado', 'achados') + (total > achados.length ? ', aqui os ' + achados.length + ' primeiros' : '') + '.\n' + lista : 'nada encontrado.')
+      + (avisos.length ? '\n' + avisos.join(' ') : '')
+      + '\nA tela mostra o cartão com os links pra abrir (e o link da pasta da empresa). Na resposta: o que achou — o nome, a pasta e a data do que mais interessa —, sem colar link e sem inventar arquivo; nada encontrado, diga e sugira outras palavras.';
+  }
+
+  return { buscar_empresa, ver_empresa, agenda, consultar, perguntar_reforma, buscar_arquivos, propor_concluir_tarefas, propor_alterar_tarefas, propor_marcar_pago, propor_criar_tarefa, propor_revisao_atrasadas, propor_ver_vigia };
 }
 
 // a etapa que aparece no "digitando…" da tela
@@ -983,6 +1037,7 @@ export function descreverEtapa(nome, e = {}) {
   if (nome === 'agenda') return 'Olhando a agenda' + (x.pessoa ? ' de ' + s(x.pessoa, 30) : '');
   if (nome === 'consultar') { const T = TABELAS[x.tabela]; return 'Consultando ' + (T ? T.rotulo : s(x.tabela, 40)); }
   if (nome === 'perguntar_reforma') return 'Perguntando à base da Reforma';
+  if (nome === 'buscar_arquivos') return 'Procurando no Drive' + (x.empresa && !UUID.test(String(x.empresa)) ? ' de ' + s(x.empresa, 60) : ' da empresa');
   if (nome === 'propor_concluir_tarefas') return 'Separando as tarefas pra você confirmar';
   if (nome === 'propor_alterar_tarefas') return 'Separando o que muda pra você confirmar';
   if (nome === 'propor_marcar_pago') return 'Separando os boletos pra você confirmar';

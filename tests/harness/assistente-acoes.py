@@ -22,7 +22,10 @@ Confere:
   7. o "Remarcar" da revisão (16/10/2026): hoje, o próximo dia útil ou outra data, "Voltar", desfazer (o grupo volta) e as
      marcadas, com a tarefa da admissão de fora (o prazo dela vem da ficha);
   8. o cartão de alterar: passar pra outra pessoa e mudar a prioridade, com o antes e o depois e o que fica de fora (a
-     concluída, a que já está assim, a da admissão), desmarcar, gravar com o histórico, desfazer; remarcar; recarregar.
+     concluída, a que já está assim, a da admissão), desmarcar, gravar com o histórico, desfazer; remarcar; recarregar;
+  9. o cartão dos arquivos (16/10/2026): o nome é o link (só endereço do Drive, numa aba nova; o resto sai sem link), a
+     pasta, a data, o tamanho ou o tipo do Google, o "e mais" e a pasta da empresa embaixo; nada achado e sem pasta no
+     cadastro; recarregar.
 Termina com código 1 se alguma checagem falhar.
 Pré-requisito: pip install playwright e python -m playwright install chromium
 """
@@ -74,7 +77,13 @@ ACOES = {
                                     'prioridade': 'alta', 'descricao': 'Confirmar a data de início.', 'empresa': {'id': E1, 'nome': 'PADARIA DO TESTE LTDA'}}},
     'Revisa as minhas atrasadas': {'tipo': 'revisar_atrasadas', 'pessoa': 'Samuel'},
     'Passa as DCTFWEB pra Vitória e deixa urgente': {'tipo': 'alterar_tarefas', 'ids': ['xa-r1', 'xa-r2', 'xa-r3', 'xa-ad1', 'xa-c3'], 'mudar': {'responsavel': 'Vitória', 'prioridade': 'alta'}},
-    'Remarca a DCTFWEB pra amanhã': {'tipo': 'alterar_tarefas', 'ids': ['xa-r1'], 'mudar': {'prazo': D(1)}}}
+    'Remarca a DCTFWEB pra amanhã': {'tipo': 'alterar_tarefas', 'ids': ['xa-r1'], 'mudar': {'prazo': D(1)}},
+    'Acha o contrato da padaria': {'tipo': 'arquivos', 'empresa': 'PADARIA DO TESTE LTDA', 'cliente_id': E1, 'pasta': 'https://drive.google.com/drive/folders/PASTA_DA_PADARIA_1',
+        'termo': 'contrato', 'total': 23, 'itens': [
+            {'nome': 'Contrato Social.pdf', 'pasta': 'PROCESSOS / ABERTURA', 'modificado': '2026-03-01T15:00:00Z', 'tamanho': 1258291, 'link': 'https://drive.google.com/file/d/ARQ_CONTRATO_1/view', 'tipo': 'application/pdf'},
+            {'nome': 'Contrato de honorários', 'pasta': '', 'modificado': '2026-02-10T15:00:00Z', 'tamanho': None, 'link': 'https://docs.google.com/document/d/DOC_HONORARIOS_1/edit', 'tipo': 'application/vnd.google-apps.document'},
+            {'nome': 'Contrato antigo.pdf', 'pasta': 'PROCESSOS', 'modificado': '2025-05-02T15:00:00Z', 'tamanho': 2048, 'link': 'javascript:alert(1)', 'tipo': 'application/pdf'}]},
+    'Acha a procuração da oficina': {'tipo': 'arquivos', 'empresa': 'OFICINA DE TESTE LTDA', 'cliente_id': E2, 'pasta': None, 'termo': 'procuração', 'total': 0, 'itens': []}}
 SEMEAR = """
 (() => {
   const CLIENTES = %s, TAREFAS = %s, COBRANCAS = %s, ACOES = %s;
@@ -309,6 +318,26 @@ def main():
            and hist('xa-r1')[-1] == 'Prazo alterado de ' + br(D(-2)) + ' para ' + br(D(1)) + ' — pelo assistente do escritório.', 'remarcou, com o histórico')
         p.reload(); p.wait_for_selector('.as-painel:not([hidden])', timeout=5000); p.wait_for_selector(ultimo + ' .as-cartao-ok', timeout=5000)
         ok(p.inner_text(ultimo).startswith('✓ 1 tarefa remarcada') and p.is_visible(ultimo + ' .as-botao-link'), 'recarregou: o cartão volta como ficou, com o "Desfazer"')
+
+        # 9) o cartão dos arquivos: só mostra (o nome é o link pro Drive, numa aba nova); a pasta da empresa embaixo
+        perguntar('Acha o contrato da padaria'); p.wait_for_selector(ultimo + ' .as-arquivos', timeout=5000)
+        card = p.inner_text(ultimo)
+        ok(card.startswith('Arquivos de PADARIA DO TESTE LTDA com “contrato”: 23'), f'arquivos: o título com a empresa, as palavras e quantos ({card[:90]!r})')
+        links = p.eval_on_selector_all(ultimo + ' a.as-arquivo', 'as => as.map(a => [a.querySelector("b").textContent, a.href, a.target, a.rel, a.querySelector("small").textContent])')
+        ok(links == [['Contrato Social.pdf', 'https://drive.google.com/file/d/ARQ_CONTRATO_1/view', '_blank', 'noopener noreferrer', 'PROCESSOS / ABERTURA · 01/03/2026 · 1,2 MB'],
+                     ['Contrato de honorários', 'https://docs.google.com/document/d/DOC_HONORARIOS_1/edit', '_blank', 'noopener noreferrer', 'pasta da empresa · 10/02/2026 · Documento Google']],
+           f'o nome é o link (aba nova), com a pasta, a data e o tamanho ou o tipo ({links})')
+        sem = p.eval_on_selector_all(ultimo + ' .as-arquivo-sem', 'as => as.map(a => a.innerText)')
+        ok(sem == ['Contrato antigo.pdf\nPROCESSOS · 02/05/2025 · 2 KB · sem link'] and not p.query_selector(ultimo + ' a[href^="javascript"]'), f'endereço que não é do Drive sai sem link ({sem})')
+        pasta = p.eval_on_selector(ultimo + ' .as-cartao-rodape a', 'a => [a.textContent, a.href, a.target]')
+        ok('E mais 20 arquivos: diga mais palavras do nome pra afinar.' in card and pasta == ['Abrir a pasta da empresa no Drive', 'https://drive.google.com/drive/folders/PASTA_DA_PADARIA_1', '_blank'],
+           f'o "e mais" e a pasta da empresa embaixo ({pasta})')
+        perguntar('Acha a procuração da oficina'); p.wait_for_selector(ultimo + ' .as-cartao-pergunta', timeout=5000)
+        card = p.inner_text(ultimo)
+        ok('Nada com “procuração” nos arquivos de OFICINA DE TESTE LTDA. Tente outras palavras do nome do arquivo.' in card and 'não tem a pasta do Drive no cadastro' in card
+           and not p.query_selector(ultimo + ' a'), f'nada achado e sem pasta no cadastro: diz, sem link ({card[:200]!r})')
+        p.reload(); p.wait_for_selector('.as-painel:not([hidden])', timeout=5000); p.wait_for_selector('.as-arquivos', timeout=5000)
+        ok(len(p.query_selector_all('.as-lista a.as-arquivo')) == 2 and 'Nada com “procuração”' in p.inner_text(ultimo), 'recarregou: os dois cartões voltam como estavam')
 
         ok(not erros, f'sem erro de JavaScript ({erros[:2]})')
         b.close()

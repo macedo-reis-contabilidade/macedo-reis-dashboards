@@ -9,7 +9,8 @@ import { concluirTarefas, desfazerConclusao, criarTarefasAvulsas, excluirTarefas
   alterarTarefas, desfazerAlteracao, limparMudanca, descreverMudanca, fichaDeOrigem, proximasNascemCom,
   pessoaDaEquipe, definirResponsavelObrigacoes, desfazerResponsavelObrigacoes, definirResponsavelRotina, desfazerResponsavelRotina,
   descartarProposta, desfazerDescarte, avancarBoletos, voltarBoletos, fecharFicha, reabrirFicha, vincularEmpresa, desvincularEmpresa, buscarEmpresas,
-  renovarAlvara, desfazerRenovacao, desativarRegistro, reativarRegistro } from '../assets/js/tarefas-acoes.js';
+  renovarAlvara, desfazerRenovacao, desativarRegistro, reativarRegistro, sugerirObrigacoes, obrigacoesParaVincular, vincularObrigacoes, desfazerVinculoObrigacoes,
+  dadosDaCobranca, porNaCobranca, desfazerCobranca, acertarCadastro, desfazerCadastro } from '../assets/js/tarefas-acoes.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + extra : '')); };
@@ -34,7 +35,7 @@ function dubla(tabelas) {
       return { data: alvo.map(r => ({ ...r })), error: null };
     };
     const q = {
-      select() { return q; }, or(s) { sb.ultimoOr = s; return q; }, limit() { return q; },
+      select() { return q; }, or(s) { sb.ultimoOr = s; return q; }, limit() { return q; }, order() { return q; }, range() { return q; },
       in(c, v) { st.f.push(['in', c, v]); return q; }, eq(c, v) { st.f.push(['eq', c, v]); return q; }, neq(c, v) { st.f.push(['neq', c, v]); return q; }, is(c, v) { st.f.push(['is', c, v]); return q; },
       update(p) { st.patch = p; return q; }, delete() { st.del = true; return q; },
       insert(p) { st.ins = (Array.isArray(p) ? p : [p]).map(r => ({ id: 'novo' + (seq++), ...r })); return q; },
@@ -342,6 +343,69 @@ console.log('Resolver no cartão do vigia, a segunda leva:');
   const d = await reativarRegistro(sb, a.desativado), e = await reativarRegistro(sb, c.desativado);
   chk('ex-cliente: desfazer reativa', d.desfeita && e.desfeita && db.cobrancas_config[0].ativo === true && db.cliente_obrigacoes[0].ativo === true);
   chk('ex-cliente: outra tabela não', (await desativarRegistro(sb, 'clientes', 'c1')).erro === 'Registro inválido.');
+}
+
+console.log('Resolver no cartão do vigia, a terceira leva:');
+{
+  const O = (id, nome, regimes, extra = {}) => ({ id, nome, periodicidade: 'mensal', regimes_aplicaveis: regimes, ativo: true, ...extra });
+  const obrigacoes = [O('o1', 'PGDAS', ['SIMPLES NACIONAL']), O('o2', 'SITUAÇÃO FISCAL - FEDERAL', ['SIMPLES NACIONAL', 'LUCRO PRESUMIDO']), O('o3', 'DEISS - TRES COROAS', ['SIMPLES NACIONAL']),
+    O('o4', 'DEISS - IGREJINHA', ['SIMPLES NACIONAL']), O('o5', 'NFS-E FULANO', ['SIMPLES NACIONAL']), O('o6', 'EFD CONTRIBUIÇÕES', ['LUCRO PRESUMIDO']), O('o7', 'VELHA', ['SIMPLES NACIONAL'], { ativo: false })];
+  const vinculos = [['s1', 'o1'], ['s1', 'o2'], ['s1', 'o3'], ['s2', 'o1'], ['s2', 'o2'], ['s3', 'o1'], ['s3', 'o5'], ['s4', 'o1'], ['s4', 'o4'], ['p1', 'o2'], ['p1', 'o6']]
+    .map(([cliente_id, obrigacao_id]) => ({ cliente_id, obrigacao_id }));
+  const regimeDe = { s1: 'Simples Nacional', s2: 'Simples Nacional', s3: 'Simples Nacional', s4: 'Simples Nacional', p1: 'Lucro Presumido' };
+  const s = sugerirObrigacoes({ obrigacoes, vinculos, regimeDe, regime: 'Simples Nacional', cidade: 'Três Coroas' });
+  chk('obrigações do regime: sugeridas as que metade ou mais das empresas do regime têm e o DEISS da cidade; o de outra cidade, a de um cliente só, a de outro regime e a desligada, não',
+    s.map(o => o.id + (o.sugerida ? '*' : '') + ':' + o.n + '/' + o.total).join() === 'o1*:4/4,o2*:2/4,o3*:1/4,o4:1/4,o5:1/4', s.map(o => o.id + (o.sugerida ? '*' : '') + ':' + o.n + '/' + o.total).join());
+  chk('obrigações do regime: a que a empresa já tem não aparece', !sugerirObrigacoes({ obrigacoes, vinculos, regimeDe, regime: 'Simples Nacional', cidade: 'Três Coroas', jaTem: ['o1'] }).some(o => o.id === 'o1'));
+  const db = { clientes: [{ id: 'k1', nome_principal: 'NOVA DE TESTE LTDA', regime_tributario: 'Simples Nacional', cidade: 'Três Coroas' },
+      ...Object.entries(regimeDe).map(([id, regime_tributario]) => ({ id, nome_principal: id, regime_tributario }))],
+    obrigacoes_fiscais: obrigacoes, cliente_obrigacoes: [...vinculos.map((v, i) => ({ id: 'v' + i, ...v, ativo: true, responsavel: 'Thalia' })),
+      { id: 'vk2', cliente_id: 'k1', obrigacao_id: 'o2', ativo: false, responsavel: null }, { id: 'vk4', cliente_id: 'k1', obrigacao_id: 'o4', ativo: true, responsavel: 'Thalia' }], tarefas: [] };
+  const sb = dubla(db);
+  const r = await obrigacoesParaVincular(sb, 'k1');
+  chk('obrigações do regime, lidas do banco: a empresa, as do regime dela (sem a que já tem ativa) e as sugeridas', r.cliente.nome === 'NOVA DE TESTE LTDA'
+    && r.opcoes.map(o => o.id + (o.sugerida ? '*' : '')).join() === 'o1*,o2*,o3*,o5', JSON.stringify(r.opcoes.map(o => o.id + (o.sugerida ? '*' : ''))));
+  chk('vincular: sem quem cuide (ou "Ambos") não grava', (await vincularObrigacoes(sb, 'k1', ['o1'], 'ambos')).erro === 'Escolha quem vai cuidar.');
+  const vo = await vincularObrigacoes(sb, 'k1', ['o1', 'o2', 'o3', 'o4'], 'thalia');
+  const vk = o => db.cliente_obrigacoes.find(v => v.cliente_id === 'k1' && v.obrigacao_id === o);
+  chk('vincular: as novas entram com quem cuida (como o "Vincular" da tela); a desligada volta a valer; a que já tinha fica',
+    vk('o1').ativo && vk('o1').responsavel === 'Thalia' && vk('o3').ativo && vk('o2').ativo && vk('o2').responsavel === 'Thalia' && vo.jaTinha.join() === 'o4'
+    && vo.feitos.map(f => f.obrigacao_id + (f.novo ? '+' : '~')).sort().join() === 'o1+,o2~,o3+', JSON.stringify(vo));
+  db.tarefas.push(T('tx', { cliente_id: 'k1', obrigacao_id: 'o1' }));   // alguém gerou as tarefas do mês no meio do caminho
+  const dv = await desfazerVinculoObrigacoes(sb, 'k1', vo.feitos);
+  chk('desfazer: a nova sem tarefa sai; a que já ganhou tarefa fica desligada; a religada volta a desligada, com quem cuidava antes',
+    dv.desfeitos === 3 && !vk('o3') && vk('o1').ativo === false && vk('o2').ativo === false && vk('o2').responsavel === null && vk('o4').ativo, JSON.stringify(dv));
+}
+{
+  const db = { cobrancas_config: [{ id: 'cc2', cliente_id: 'c2', ativo: false, valor_base: 300, dia_vencimento: 5 }],
+    precificacoes: [{ id: 'p1', cliente_id: 'c1', status: 'fechada', honorario: 450 }] };
+  const sb = dubla(db);
+  const cc = c => db.cobrancas_config.find(x => x.cliente_id === c);
+  const d1 = await dadosDaCobranca(sb, 'c1'), d2 = await dadosDaCobranca(sb, 'c2');
+  chk('cobrança: a sugestão vem da cobrança parada (valor e dia) ou do honorário da proposta fechada', d1.valor === 450 && d1.dia === 10 && !d1.config && d2.valor === 300 && d2.dia === 5);
+  chk('cobrança: sem valor ou com dia fora de 1 a 31 não grava', (await porNaCobranca(sb, 'c1', { valor: 0, dia: 10 })).erro === 'Informe o valor da cobrança.'
+    && (await porNaCobranca(sb, 'c1', { valor: 450, dia: 40 })).erro === 'Informe o dia do vencimento (1 a 31).' && !cc('c1'));
+  const a = await porNaCobranca(sb, 'c1', { valor: 450, dia: 12 }), b = await porNaCobranca(sb, 'c2', { valor: '320.50', dia: 5 });
+  chk('cobrança: a nova entra como o "+ empresa" da tela (WhatsApp, o resto em branco) e a parada volta a valer com o valor e o dia',
+    cc('c1').ativo && cc('c1').valor_base === 450 && cc('c1').dia_vencimento === 12 && cc('c1').canal === 'whatsapp' && cc('c1').contato_envio === '' && a.feito.novo
+    && cc('c2').ativo && cc('c2').valor_base === 320.5 && !b.feito.novo && b.feito.antes.valor_base === 300, JSON.stringify(db.cobrancas_config));
+  chk('cobrança: a que já está ativa não grava de novo', (await porNaCobranca(sb, 'c1', { valor: 999, dia: 1 })).ja === true && cc('c1').valor_base === 450);
+  const x = await desfazerCobranca(sb, a.feito), y = await desfazerCobranca(sb, b.feito);
+  chk('cobrança: desfazer tira a nova da base e devolve a parada ao valor e ao dia de antes', x.desfeita && y.desfeita && !cc('c1') && cc('c2').ativo === false && cc('c2').valor_base === 300 && cc('c2').dia_vencimento === 5);
+}
+{
+  const db = { clientes: [{ id: 'k1', status: 'ativo', data_fim_cliente: null }, { id: 'k2', status: 'inativo', data_fim_cliente: '2025-01-31' }, { id: 'k3', status: 'ativo', data_fim_cliente: null }],
+    carteira_info: [{ cliente_id: 'k1', entrada: '2025-01-01', saida: '2025-05-31' }, { cliente_id: 'k2', entrada: '2026-02-01', saida: null }] };
+  const sb = dubla(db);
+  const k = id => db.clientes.find(x => x.id === id);
+  const a = await acertarCadastro(sb, 'k1', { hoje: '2026-10-16' }), b = await acertarCadastro(sb, 'k2', { hoje: '2026-10-16' }), c = await acertarCadastro(sb, 'k3', { hoje: '2026-10-16' });
+  chk('cadastro: segue a carteira — saiu vira inativo (o fim como cliente vazio ganha a data da saída); na carteira vira ativo; sem carteira não grava',
+    k('k1').status === 'inativo' && k('k1').data_fim_cliente === '2025-05-31' && a.cliente.para === 'inativo' && k('k2').status === 'ativo' && k('k2').data_fim_cliente === '2025-01-31'
+    && /não diz se ela é cliente/.test(c.erro) && k('k3').status === 'ativo', JSON.stringify([a, b, c]));
+  chk('cadastro: o que já segue a carteira não grava', (await acertarCadastro(sb, 'k1', { hoje: '2026-10-16' })).ja === 'inativo');
+  const d = await desfazerCadastro(sb, a.cliente), e = await desfazerCadastro(sb, b.cliente);
+  chk('cadastro: desfazer volta a situação e o fim como cliente de antes', d.desfeita && e.desfeita && k('k1').status === 'ativo' && k('k1').data_fim_cliente === null
+    && k('k2').status === 'inativo' && k('k2').data_fim_cliente === '2025-01-31');
 }
 
 if (falhas) { console.log('\n' + falhas + ' falha(s)'); process.exit(1); }

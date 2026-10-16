@@ -973,6 +973,22 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(4px); 
 .as-vigia-empresa:disabled { opacity:.6; cursor:default; }
 .as-vigia-item .as-vigia-empresa b { font-size:12.5px; }
 .as-vigia-item .as-vigia-empresa small { margin-top:1px; }
+/* vincular obrigações (as sugeridas marcadas, as outras do regime num "ver") e pôr na cobrança (valor e dia) */
+.as-vigia-resolver .as-cartao-lista { max-height:none; overflow:visible; border-top:1px solid var(--line); }
+.as-vigia-outras > summary { cursor:pointer; font-size:12px; color:var(--brand-light); padding:4px 0; }
+.as-vigia-outras > summary:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.as-vigia-outras[open] .as-cartao-lista { max-height:220px; overflow-y:auto; overscroll-behavior:contain; }
+.as-vigia-resolver input.as-vigia-valor { width:8em; }
+.as-vigia-resolver input.as-vigia-dia { width:4.5em; }
+/* os arquivos da empresa (16/10/2026): o nome é o link (abre no Drive, numa aba nova); embaixo, a pasta, a data e o tamanho */
+.as-arquivo { display:block; padding:7px 2px; color:var(--text); text-decoration:none; border-radius:6px; }
+.as-arquivo b { display:block; font-weight:600; color:var(--brand-light); text-decoration:underline; text-underline-offset:2px; overflow-wrap:anywhere; }
+.as-arquivo:hover b { color:var(--text); }
+.as-arquivo small { display:block; margin-top:1px; font-size:11.5px; color:var(--text-muted); overflow-wrap:anywhere; }
+.as-arquivo:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.as-arquivo-sem b { color:var(--text); text-decoration:none; }
+a.as-botao { display:inline-block; text-decoration:none; }
+a.as-botao-link { text-decoration:underline; text-underline-offset:2px; }
 
 .as-entrada { display:flex; align-items:flex-end; gap:8px; padding:10px 12px 12px; border-top:1px solid var(--line); background:var(--surface); }
 .as-entrada textarea { flex:1; resize:none; min-height:40px; max-height:140px; padding:9px 12px; border-radius:12px; border:1px solid var(--border); background:var(--surface-2);

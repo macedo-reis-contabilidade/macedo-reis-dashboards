@@ -23,7 +23,8 @@
 //                     fecharFicha (admissão registrada, rescisão concluída, como o seletor das telas do DP — a tarefa o
 //                     banco acompanha), vincularEmpresa (a admissão ou a rescisão sem vínculo, com buscarEmpresas, a busca
 //                     das fichas), renovarAlvara (como o "Renovar" da tela Alvarás) e desativarRegistro (a cobrança e a
-//                     obrigação de quem saiu da carteira).
+//                     obrigação de quem saiu da carteira). E a terceira: vincularObrigacoes (as do regime, com a sugestão
+//                     de sugerirObrigacoes), porNaCobranca (a base de boletos) e acertarCadastro (o cadastro segue a carteira).
 // ============================================================
 
 const LOTE = 100;   // ids por chamada: o filtro vai no endereço
@@ -564,6 +565,194 @@ export async function desativarRegistro(sb, tabela, id) {
 export async function reativarRegistro(sb, feito) {
   if (!feito || !DESATIVAVEIS.includes(feito.tabela) || !feito.id) return { desfeita: false, erro: null };
   const { data, error } = await sb.from(feito.tabela).update({ ativo: true }).eq('id', feito.id).eq('ativo', false).select('id');
+  return { desfeita: !error && (data || []).length > 0, erro: error ? msg(error) : null };
+}
+
+// ---- resolver no cartão do vigia, a terceira leva (16/10/2026) ----
+const maiusSemAcento = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
+const DEISS = /^DEISS\s*-\s*(.+)$/;
+
+// as obrigações do regime da empresa, pra vincular: as que metade ou mais das empresas do mesmo regime já têm e o DEISS da
+// cidade dela vêm sugeridas; as outras do regime (de um cliente só, de parcelamento, de um canal de envio) ficam pra quem
+// confere marcar. vinculos: [{ cliente_id, obrigacao_id }] ativos; regimeDe: { cliente_id: regime }; jaTem: as que a
+// empresa já tem ativas; clienteId: ela, fora da conta → [{ id, nome, periodicidade, sugerida, n, total, cidade }] (n de total
+// empresas do regime têm)
+export function sugerirObrigacoes({ obrigacoes, vinculos, regimeDe, regime, cidade, jaTem = [], clienteId = null }) {
+  const reg = maiusSemAcento(regime), cid = maiusSemAcento(cidade), tem = new Set(unicos(jaTem));
+  // as outras empresas do regime com obrigação (a própria fica de fora da conta)
+  const doRegime = new Set((Array.isArray(vinculos) ? vinculos : []).map(v => String(v.cliente_id)).filter(c => c !== String(clienteId) && maiusSemAcento((regimeDe || {})[c]) === reg));
+  const total = doRegime.size;
+  const quem = new Map();
+  (Array.isArray(vinculos) ? vinculos : []).forEach(v => {
+    const c = String(v.cliente_id), o = String(v.obrigacao_id);
+    if (!doRegime.has(c)) return;
+    if (!quem.has(o)) quem.set(o, new Set());
+    quem.get(o).add(c);
+  });
+  return (Array.isArray(obrigacoes) ? obrigacoes : [])
+    .filter(o => o && o.ativo !== false && !tem.has(String(o.id)) && (Array.isArray(o.regimes_aplicaveis) ? o.regimes_aplicaveis : []).some(r => maiusSemAcento(r) === reg))
+    .map(o => {
+      const n = (quem.get(String(o.id)) || new Set()).size;
+      const d = DEISS.exec(maiusSemAcento(o.nome));
+      const daCidade = !!d && !!cid && d[1].trim() === cid;
+      return { id: String(o.id), nome: o.nome, periodicidade: o.periodicidade || null, n, total, cidade: daCidade, sugerida: d ? daCidade : total > 0 && n * 2 >= total };
+    })
+    .sort((x, y) => Number(y.sugerida) - Number(x.sugerida) || y.n - x.n || String(x.nome).localeCompare(String(y.nome), 'pt-BR'));
+}
+// lê o que a sugestão precisa: a empresa, as obrigações ativas, os vínculos ativos de todas e o regime de cada empresa
+// → { cliente: { id, nome, regime, cidade }, opcoes: sugerirObrigacoes(...), erro }
+export async function obrigacoesParaVincular(sb, clienteId) {
+  const fim = (erro, extra = {}) => ({ cliente: null, opcoes: [], erro, ...extra });
+  const { data: cs, error: e1 } = await sb.from('clientes').select('id, nome_principal, regime_tributario, cidade').eq('id', clienteId);
+  if (e1) return fim(msg(e1));
+  const c = (cs || [])[0];
+  if (!c) return fim('A empresa não existe mais no cadastro.');
+  if (!c.regime_tributario) return fim('A empresa está sem regime no cadastro: acerte o regime e vincule na tela Obrigações fiscais.');
+  const { data: obr, error: e2 } = await sb.from('obrigacoes_fiscais').select('id, nome, periodicidade, regimes_aplicaveis, ativo').eq('ativo', true);
+  if (e2) return fim(msg(e2));
+  const vinculos = [];
+  for (let i = 0; ; i += 1000) {
+    const { data, error } = await sb.from('cliente_obrigacoes').select('cliente_id, obrigacao_id').eq('ativo', true).range(i, i + 999);
+    if (error) return fim(msg(error));
+    vinculos.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  const regimeDe = {};
+  for (const p of partes(unicos(vinculos.map(v => v.cliente_id)))) {
+    const { data, error } = await sb.from('clientes').select('id, regime_tributario').in('id', p);
+    if (error) return fim(msg(error));
+    (data || []).forEach(x => { regimeDe[String(x.id)] = x.regime_tributario; });
+  }
+  const jaTem = vinculos.filter(v => String(v.cliente_id) === String(clienteId)).map(v => v.obrigacao_id);
+  const cliente = { id: String(c.id), nome: c.nome_principal, regime: c.regime_tributario, cidade: c.cidade || null };
+  return { cliente, opcoes: sugerirObrigacoes({ obrigacoes: obr, vinculos, regimeDe, regime: c.regime_tributario, cidade: c.cidade, jaTem, clienteId }), erro: null };
+}
+// vincula as escolhidas, como o "Vincular" da tela Obrigações fiscais (com quem cuida; o dia do prazo, o da obrigação); a
+// que já teve vínculo e foi desligada volta a valer (como a chave da tela). As tarefas saem na geração do mês, na tela
+// → { feitos: [{ id, obrigacao_id, novo, antes }], jaTinha: [obrigacao_id], erro }
+export async function vincularObrigacoes(sb, clienteId, obrigacaoIds, responsavel) {
+  const para = pessoaDaEquipe(responsavel);
+  const res = { feitos: [], jaTinha: [], erro: null };
+  if (!para || para === 'Ambos') return { ...res, erro: 'Escolha quem vai cuidar.' };
+  const ids = unicos(obrigacaoIds);
+  if (!clienteId || !ids.length) return { ...res, erro: 'Marque pelo menos uma obrigação.' };
+  const { data: ex, error } = await sb.from('cliente_obrigacoes').select('id, obrigacao_id, ativo, responsavel').eq('cliente_id', clienteId).in('obrigacao_id', ids);
+  if (error) return { ...res, erro: msg(error) };
+  const porObr = new Map((ex || []).map(v => [String(v.obrigacao_id), v]));
+  const novos = ids.filter(o => !porObr.has(o));
+  ids.filter(o => porObr.has(o) && porObr.get(o).ativo).forEach(o => res.jaTinha.push(o));
+  if (novos.length) {
+    const { data: ins, error: e2 } = await sb.from('cliente_obrigacoes')
+      .insert(novos.map(o => ({ cliente_id: clienteId, obrigacao_id: o, responsavel: para, dia_prazo_override: null, ativo: true }))).select('id, obrigacao_id');
+    if (e2) return { ...res, erro: msg(e2) };
+    (ins || []).forEach(v => res.feitos.push({ id: String(v.id), obrigacao_id: String(v.obrigacao_id), novo: true, antes: null }));
+  }
+  for (const o of ids.filter(x => porObr.has(x) && !porObr.get(x).ativo)) {
+    const v = porObr.get(o);
+    const { data, error: e3 } = await sb.from('cliente_obrigacoes').update({ ativo: true, responsavel: para }).eq('id', v.id).eq('ativo', false).select('id');
+    if (e3) return { ...res, erro: msg(e3) };
+    if ((data || []).length) res.feitos.push({ id: String(v.id), obrigacao_id: o, novo: false, antes: { responsavel: v.responsavel ?? null } });
+  }
+  return res;
+}
+// desfazer: o vínculo novo sai — se já ganhou tarefa no meio do caminho, fica desligado; o que voltou a valer volta a
+// desligado, com quem cuidava antes → { desfeitos: n, erro }
+export async function desfazerVinculoObrigacoes(sb, clienteId, feitos) {
+  const lista = (Array.isArray(feitos) ? feitos : []).filter(f => f && f.id && f.obrigacao_id);
+  let desfeitos = 0;
+  const novos = lista.filter(f => f.novo), religados = lista.filter(f => !f.novo);
+  if (novos.length) {
+    const { data: ts, error } = await sb.from('tarefas').select('obrigacao_id').eq('cliente_id', clienteId).in('obrigacao_id', novos.map(f => f.obrigacao_id));
+    if (error) return { desfeitos, erro: msg(error) };
+    const comTarefa = new Set((ts || []).map(t => String(t.obrigacao_id)));
+    const apagar = novos.filter(f => !comTarefa.has(String(f.obrigacao_id))).map(f => f.id), desligar = novos.filter(f => comTarefa.has(String(f.obrigacao_id))).map(f => f.id);
+    if (apagar.length) {
+      const { data, error: e2 } = await sb.from('cliente_obrigacoes').delete().in('id', apagar).eq('cliente_id', clienteId).select('id');
+      if (e2) return { desfeitos, erro: msg(e2) };
+      desfeitos += (data || []).length;
+    }
+    if (desligar.length) {
+      const { data, error: e3 } = await sb.from('cliente_obrigacoes').update({ ativo: false }).in('id', desligar).eq('ativo', true).select('id');
+      if (e3) return { desfeitos, erro: msg(e3) };
+      desfeitos += (data || []).length;
+    }
+  }
+  for (const f of religados) {
+    const { data, error } = await sb.from('cliente_obrigacoes').update({ ativo: false, responsavel: f.antes ? f.antes.responsavel ?? null : null }).eq('id', f.id).eq('ativo', true).select('id');
+    if (error) return { desfeitos, erro: msg(error) };
+    desfeitos += (data || []).length;
+  }
+  return { desfeitos, erro: null };
+}
+
+// a empresa da carteira sem cobrança: na base de boletos, como o "+ empresa" da tela Boletos (canal WhatsApp; contato,
+// destino e responsável em branco, pra acertar na grade), com o valor e o dia do vencimento; a que tinha a cobrança parada
+// volta a valer com eles. A sugestão: o valor e o dia da cobrança parada, senão o honorário da proposta fechada
+export async function dadosDaCobranca(sb, clienteId) {
+  const { data: cs, error } = await sb.from('cobrancas_config').select('id, ativo, valor_base, dia_vencimento').eq('cliente_id', clienteId);
+  if (error) return { config: null, valor: null, dia: 10, erro: msg(error) };
+  const config = (cs || [])[0] || null;
+  let valor = config && Number(config.valor_base) > 0 ? Number(config.valor_base) : null;
+  if (valor == null) {
+    const { data: ps } = await sb.from('precificacoes').select('honorario').eq('cliente_id', clienteId).eq('status', 'fechada').order('atualizado_em', { ascending: false }).limit(1);
+    const hon = ps && ps[0] ? Number(ps[0].honorario) : null;
+    if (hon > 0) valor = hon;
+  }
+  const dia = config && Number(config.dia_vencimento) >= 1 && Number(config.dia_vencimento) <= 31 ? Number(config.dia_vencimento) : 10;
+  return { config, valor, dia, erro: null };
+}
+// → { feito: { id, novo, antes }, ja: true quando já está ativa, erro }
+export async function porNaCobranca(sb, clienteId, { valor, dia } = {}) {
+  const v = Math.round(Number(valor) * 100) / 100, d = Number(dia);
+  if (!clienteId || !(v > 0)) return { feito: null, erro: 'Informe o valor da cobrança.' };
+  if (!Number.isInteger(d) || d < 1 || d > 31) return { feito: null, erro: 'Informe o dia do vencimento (1 a 31).' };
+  const { data: cs, error } = await sb.from('cobrancas_config').select('id, ativo, valor_base, dia_vencimento').eq('cliente_id', clienteId);
+  if (error) return { feito: null, erro: msg(error) };
+  const c = (cs || [])[0];
+  if (c && c.ativo) return { feito: null, ja: true, erro: null };
+  if (c) {
+    const { data, error: e2 } = await sb.from('cobrancas_config').update({ ativo: true, valor_base: v, dia_vencimento: d }).eq('id', c.id).eq('ativo', false).select('id');
+    if (e2) return { feito: null, erro: msg(e2) };
+    return { feito: (data || []).length ? { id: String(c.id), novo: false, valor: v, dia: d, antes: { valor_base: c.valor_base ?? null, dia_vencimento: c.dia_vencimento ?? null } } : null, erro: null };
+  }
+  const { data, error: e3 } = await sb.from('cobrancas_config').insert({ cliente_id: clienteId, valor_base: v, dia_vencimento: d, canal: 'whatsapp', contato_envio: '', destino: '', responsavel: '', ativo: true }).select('id');
+  if (e3) return { feito: null, erro: msg(e3) };
+  const id = data && data[0] ? String(data[0].id) : null;
+  return { feito: id ? { id, novo: true, valor: v, dia: d, antes: null } : null, erro: id ? null : 'A base de boletos não confirmou a gravação.' };
+}
+// desfazer: a nova sai da base; a que voltou a valer volta a parada, com o valor e o dia de antes → { desfeita, erro }
+export async function desfazerCobranca(sb, feito) {
+  if (!feito || !feito.id) return { desfeita: false, erro: null };
+  const q = feito.novo ? sb.from('cobrancas_config').delete().eq('id', feito.id).eq('ativo', true)
+    : sb.from('cobrancas_config').update({ ativo: false, valor_base: feito.antes ? feito.antes.valor_base : null, dia_vencimento: feito.antes ? feito.antes.dia_vencimento : null }).eq('id', feito.id).eq('ativo', true);
+  const { data, error } = await q.select('id');
+  return { desfeita: !error && (data || []).length > 0, erro: error ? msg(error) : null };
+}
+
+// o cadastro que não bate com a carteira passa a seguir a carteira, como a situação na ficha da empresa: saiu = inativo (o
+// "fim como cliente" vazio ganha a data da saída); na carteira = ativo → { cliente: { id, para, status_antes, fim_antes, fim }, ja, erro }
+export async function acertarCadastro(sb, clienteId, { hoje = hojeLocal() } = {}) {
+  const { data: cs, error } = await sb.from('clientes').select('id, status, data_fim_cliente').eq('id', clienteId);
+  if (error) return { cliente: null, erro: msg(error) };
+  const k = (cs || [])[0];
+  if (!k) return { cliente: null, erro: 'A empresa não existe mais no cadastro.' };
+  const { data: cart, error: e2 } = await sb.from('carteira_info').select('entrada, saida').eq('cliente_id', clienteId);
+  if (e2) return { cliente: null, erro: msg(e2) };
+  const c = (cart || [])[0];
+  const saida = c && c.saida ? String(c.saida).slice(0, 10) : null, entrada = c && c.entrada ? String(c.entrada).slice(0, 10) : null;
+  const para = saida && saida <= hoje ? 'inativo' : entrada && entrada <= hoje ? 'ativo' : null;
+  if (!para) return { cliente: null, erro: 'A carteira não diz se ela é cliente hoje: confira na tela Carteira.' };
+  if (k.status === para) return { cliente: null, ja: para, erro: null };
+  const fimAntes = k.data_fim_cliente ? String(k.data_fim_cliente).slice(0, 10) : null;
+  const patch = { status: para, ...(para === 'inativo' && !fimAntes ? { data_fim_cliente: saida } : {}) };
+  const { data, error: e3 } = await sb.from('clientes').update(patch).eq('id', clienteId).eq('status', k.status).select('id');
+  if (e3) return { cliente: null, erro: msg(e3) };
+  if (!(data || []).length) return { cliente: null, erro: 'O cadastro mudou no meio do caminho: confira na ficha da empresa.' };
+  return { cliente: { id: String(clienteId), para, status_antes: k.status, fim_antes: fimAntes, fim: 'data_fim_cliente' in patch ? patch.data_fim_cliente : fimAntes }, erro: null };
+}
+export async function desfazerCadastro(sb, cliente) {
+  if (!cliente || !cliente.id || !cliente.para || !cliente.status_antes) return { desfeita: false, erro: null };
+  const { data, error } = await sb.from('clientes').update({ status: cliente.status_antes, data_fim_cliente: cliente.fim_antes ?? null }).eq('id', cliente.id).eq('status', cliente.para).select('id');
   return { desfeita: !error && (data || []).length > 0, erro: error ? msg(error) : null };
 }
 

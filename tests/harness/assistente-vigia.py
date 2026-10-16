@@ -23,6 +23,9 @@ Confere:
   7. resolver ali mesmo (16/10/2026): quem vai cuidar da obrigação (leva a tarefa aberta junto, como em Obrigações
      fiscais), da tarefa e da rotina, descartar a proposta parada, o boleto enviado ou pago — com "Desfazer", o aviso às
      telas abertas e, passados os 10 minutos, fora da lista, da saudação e dos recados até a conferência seguinte;
+  8. a segunda leva: admissão registrada, rescisão concluída, a empresa da ficha sem vínculo (com a busca), o alvará
+     renovado e o que é de ex-cliente (cobrança, obrigação), com o "nada voltou" quando mexeram depois;
+  9. a terceira: vincular as obrigações do regime (as sugeridas marcadas), pôr na cobrança, o cadastro que segue a carteira;
   e sem erro de JavaScript.
 Termina com código 1 se alguma checagem falhar.
 Pré-requisito: pip install playwright e python -m playwright install chromium
@@ -103,6 +106,28 @@ EXTRA2 = {
         'alvaras': [{'id': 'al24', 'status': 'vigente', 'vencimento': DIA(10), 'cliente_id': E1, 'tipo': 'Alvará de funcionamento'}],
         'cobrancas_config': [{'id': 'cc25', 'cliente_id': 'c9', 'ativo': True}],
         'cliente_obrigacoes': [{'id': 'v9', 'cliente_id': 'c9', 'obrigacao_id': 'o1', 'responsavel': 'Thalia', 'ativo': True}]}}
+# o 9: a terceira leva — vincular as obrigações do regime (as sugeridas marcadas), pôr na cobrança, o cadastro que segue a
+# carteira. Três empresas do Simples com obrigação (s41–s43) dão a conta da sugestão: o PGDAS de teste as três têm; o DEISS
+# de Três Coroas é o da cidade da NOVA; a NFS-e de um cliente só fica nas outras
+EXTRA3 = {
+    'achados': [
+        A('31', 'cliente_sem_obrigacao', 'NOVA DE TESTE LTDA sem nenhuma obrigação fiscal cadastrada', 'Cliente da carteira (Simples Nacional) sem obrigação ativa.', 'fiscal', 'Thalia', 'media',
+          'fiscal-obrigacoes.html', cliente_id='k31', ref_tabela='clientes', ref_id='k31'),
+        A('32', 'cliente_sem_cobranca', 'NOVA DE TESTE LTDA está na carteira e não tem cobrança', 'Nenhuma cobrança ativa na base de boletos.', 'financeiro', 'Samuel', 'media',
+          'financeiro-boletos.html', cliente_id='k31', ref_tabela='clientes', ref_id='k31', so_socios=True),
+        A('33', 'cadastro_desencontrado', 'ANTIGA DE TESTE LTDA saiu da carteira e o cadastro segue ativo', 'Saída em 31/05/2025 na carteira.', 'comercial', 'Samuel', 'baixa',
+          'clientes/editar.html?id=k33', cliente_id='k33', ref_tabela='clientes', ref_id='k33')],
+    'tabelas': {
+        'clientes': [{'id': 'k31', 'nome_principal': 'NOVA DE TESTE LTDA', 'regime_tributario': 'Simples Nacional', 'cidade': 'Três Coroas', 'status': 'ativo', 'documento': '10000000000999'},
+                     {'id': 'k33', 'nome_principal': 'ANTIGA DE TESTE LTDA', 'status': 'ativo', 'data_fim_cliente': None, 'documento': '10000000000888'},
+                     *[{'id': s, 'nome_principal': 'SIMPLES ' + s, 'regime_tributario': 'Simples Nacional', 'status': 'ativo'} for s in ('s41', 's42', 's43')]],
+        'obrigacoes_fiscais': [{'id': 'o41', 'nome': 'DEISS - TRES COROAS', 'periodicidade': 'mensal', 'regimes_aplicaveis': ['SIMPLES NACIONAL'], 'ativo': True},
+                               {'id': 'o42', 'nome': 'PGDAS DE TESTE', 'periodicidade': 'mensal', 'regimes_aplicaveis': ['SIMPLES NACIONAL'], 'ativo': True},
+                               {'id': 'o43', 'nome': 'NFS-E DE UM CLIENTE', 'periodicidade': 'mensal', 'regimes_aplicaveis': ['SIMPLES NACIONAL'], 'ativo': True}],
+        'cliente_obrigacoes': [{'id': 'v4' + str(i), 'cliente_id': c, 'obrigacao_id': o, 'responsavel': 'Thalia', 'ativo': True}
+                               for i, (c, o) in enumerate([('s41', 'o42'), ('s41', 'o41'), ('s42', 'o42'), ('s42', 'o43'), ('s43', 'o42')])],
+        'precificacoes': [{'id': 'pp9', 'cliente_id': 'k31', 'cliente_nome': 'NOVA DE TESTE LTDA', 'status': 'fechada', 'honorario': 480, 'atualizado_em': DIA(-20) + 'T12:00:00Z'}],
+        'carteira_info': [{'cliente_id': 'k33', 'entrada': '2025-01-01', 'saida': '2025-05-31'}]}}
 ACOES = {'O que o vigia achou no fiscal?': {'tipo': 'vigia', 'ver': 'todos', 'setor': 'fiscal'}, 'O que dá pra resolver do vigia?': {'tipo': 'vigia', 'ver': 'todos'}}
 SEMEAR = """
 (() => {
@@ -384,6 +409,59 @@ def main():
         p3.click(card + ' .as-vigia-abas button:has-text("De todos")'); p3.wait_for_timeout(500); abrir3(); p3.wait_for_timeout(100)
         ok(tit3() == 'O que o vigia achou: 10' and p3.is_visible(it3('CICLANA') + ' button:has-text("Marcar como registrada")'),
            f'a conta: os resolvidos saem; os desfeitos voltam com o botão ({tit3()!r})')
+
+        # 9) a terceira leva: vincular obrigações, pôr na cobrança, o cadastro que segue a carteira
+        p4 = b.new_page(viewport={'width': 1400, 'height': 900})
+        p4.on('pageerror', lambda e: erros.append(str(e)))
+        p4.add_init_script(TOUR); p4.add_init_script('window.__vigiaExtra = ' + json.dumps(EXTRA3, ensure_ascii=False)); p4.add_init_script(SEMEAR)
+        l4 = lambda t, i: p4.evaluate('([t, i]) => window.__mockDb[t].find(x => x.id === i)', [t, i])
+        it4 = lambda trecho: card + ' li.as-vigia-item:has-text("' + trecho + '")'
+        abrir4 = lambda: p4.evaluate("() => document.querySelectorAll('.as-cartao-vigia details.as-vigia-grupo').forEach(d => { d.open = true; })")
+        vinc = lambda: p4.evaluate("() => window.__mockDb.cliente_obrigacoes.filter(v => v.cliente_id === 'k31').map(v => v.obrigacao_id + ':' + v.responsavel + ':' + v.ativo).sort()")
+        p4.goto(base + 'index.html'); p4.wait_for_selector('.as-lancador', timeout=5000)
+        p4.click('.as-lancador'); p4.wait_for_timeout(200)
+        p4.fill('.as-entrada textarea', 'O que dá pra resolver do vigia?'); p4.press('.as-entrada textarea', 'Enter')
+        p4.wait_for_selector(card + ' .as-vigia-grupo', timeout=6000); abrir4(); p4.wait_for_timeout(100)
+        rot4 = lambda trecho: p4.eval_on_selector_all(it4(trecho) + ' .as-vigia-resolver button', 'bs => bs.map(b => b.textContent)')
+        ok(rot4('sem nenhuma obrigação') == ['Vincular obrigações'] and rot4('não tem cobrança') == ['Pôr na cobrança'] and rot4('ANTIGA DE TESTE') == ['Marcar o cadastro como inativo'],
+           'os botões da terceira leva: vincular obrigações, pôr na cobrança, o cadastro como inativo (saiu da carteira)')
+
+        p4.click(it4('sem nenhuma obrigação') + ' button:has-text("Vincular obrigações")')
+        p4.wait_for_selector(it4('sem nenhuma obrigação') + ' .as-vigia-busca .as-cartao-lista', timeout=5000)
+        marcadas = p4.eval_on_selector_all(it4('sem nenhuma obrigação') + ' .as-vigia-busca input[type=checkbox]:checked', 'cs => cs.map(c => c.closest("label").querySelector("b").textContent).sort()')
+        outras = p4.eval_on_selector_all(it4('sem nenhuma obrigação') + ' .as-vigia-outras input[type=checkbox]', 'cs => cs.map(c => c.closest("label").querySelector("b").textContent + (c.checked ? "*" : "")).sort()')
+        botao_v = p4.inner_text(it4('sem nenhuma obrigação') + ' .as-vigia-busca button.as-botao-pri')
+        ok(marcadas == ['DEISS - TRES COROAS', 'PGDAS DE TESTE'] and 'NFS-E DE UM CLIENTE' in outras and all(not x.endswith('*') for x in outras)
+           and p4.input_value(it4('sem nenhuma obrigação') + ' .as-vigia-busca select') == 'Thalia' and botao_v == 'Vincular as 2 marcadas',
+           f'vincular obrigações: as do regime, com as sugeridas marcadas (a que as empresas do Simples têm e o DEISS da cidade); as outras sem marcar ({marcadas}, {outras}, {botao_v!r})')
+        p4.click(it4('sem nenhuma obrigação') + ' .as-vigia-busca button.as-botao-pri')
+        p4.wait_for_selector(it4('sem nenhuma obrigação') + ' button:has-text("Desfazer")', timeout=5000)
+        ok(vinc() == ['o41:Thalia:true', 'o42:Thalia:true'] and '✓ 2 obrigações vinculadas, com Thalia.' in p4.inner_text(it4('sem nenhuma obrigação')),
+           f'vincular: as marcadas entram com quem cuida, como o "Vincular" da tela ({vinc()})')
+        p4.click(it4('sem nenhuma obrigação') + ' button:has-text("Desfazer")')
+        p4.wait_for_selector(it4('sem nenhuma obrigação') + ' button:has-text("Vincular obrigações")', timeout=5000)
+        ok(vinc() == [], 'desfazer: os vínculos novos saem (ainda sem tarefa)')
+
+        p4.click(it4('não tem cobrança') + ' button:has-text("Pôr na cobrança")')
+        p4.wait_for_selector(it4('não tem cobrança') + ' input.as-vigia-valor', timeout=5000)
+        valor_sug = p4.input_value(it4('não tem cobrança') + ' input.as-vigia-valor')
+        p4.fill(it4('não tem cobrança') + ' input.as-vigia-dia', '15')
+        p4.click(it4('não tem cobrança') + ' .as-vigia-resolver button.as-botao-pri')
+        p4.wait_for_selector(it4('não tem cobrança') + ' button:has-text("Desfazer")', timeout=5000)
+        cfg = p4.evaluate("() => window.__mockDb.cobrancas_config.find(c => c.cliente_id === 'k31')")
+        txt_cob = p4.inner_text(it4('não tem cobrança')).replace('\xa0', ' ')
+        ok(valor_sug == '480' and cfg and cfg['valor_base'] == 480 and cfg['dia_vencimento'] == 15 and cfg['ativo'] is True and cfg['canal'] == 'whatsapp'
+           and 'R$ 480,00, vencimento dia 15' in txt_cob, f'pôr na cobrança: o valor sugerido pela proposta fechada, o dia escolhido, na base de boletos ({valor_sug!r}, {cfg})')
+
+        p4.click(it4('ANTIGA DE TESTE') + ' button:has-text("Marcar o cadastro como inativo")')
+        p4.wait_for_selector(it4('ANTIGA DE TESTE') + ' button:has-text("Desfazer")', timeout=5000)
+        k33 = l4('clientes', 'k33')
+        ok(k33['status'] == 'inativo' and k33['data_fim_cliente'] == '2025-05-31' and '✓ Cadastro marcado como inativo (fim como cliente: 31/05/2025).' in p4.inner_text(it4('ANTIGA DE TESTE')),
+           f'o cadastro segue a carteira: inativo, com o fim como cliente na data da saída ({k33})')
+        p4.click(it4('ANTIGA DE TESTE') + ' button:has-text("Desfazer")')
+        p4.wait_for_selector(it4('ANTIGA DE TESTE') + ' button:has-text("Marcar o cadastro como inativo")', timeout=5000)
+        k33 = l4('clientes', 'k33')
+        ok(k33['status'] == 'ativo' and k33['data_fim_cliente'] is None, 'desfazer: o cadastro volta como estava')
 
         ok(not erros, f'sem erro de JavaScript ({erros[:2]})')
         b.close()
