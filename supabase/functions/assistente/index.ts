@@ -5,7 +5,8 @@
 // função importa esse código do repositório (o arquivo cru do GitHub), no commit fixado abaixo: roda exatamente o que
 // estava naquele commit. Mudou algum desses arquivos? Publique, troque o commit daqui pelo novo, publique de novo e
 // reimplante a função — o teste avisa quando o commit fixado ficou pra trás.
-// verify_jwt = true · segredo: ANTHROPIC_API_KEY (o mesmo do chat da Reforma).
+// verify_jwt = true · segredos: ANTHROPIC_API_KEY (o mesmo do chat da Reforma) e, pra ler a lista dos arquivos da empresa no
+// Drive (16/10/2026), GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET e GOOGLE_OAUTH_REFRESH_TOKEN (os do "Registrar processo").
 // EdgeRuntime.waitUntil: trocou de tela no meio da resposta, a pergunta segue até o fim e a resposta fica no histórico.
 // ============================================================
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
