@@ -19,7 +19,7 @@
 
 import { supabase } from './supabase.js';
 import { concluirTarefas, desfazerConclusao, marcarPagos, desfazerPagos, criarTarefasAvulsas, excluirTarefasCriadas,
-  alterarTarefas, desfazerAlteracao, limparMudanca, mudancaDe, fichaDeOrigem, ficaDeFora } from './tarefas-acoes.js';
+  alterarTarefas, desfazerAlteracao, limparMudanca, mudancaDe, fichaDeOrigem, ficaDeFora, proximasNascemCom } from './tarefas-acoes.js';
 import { EQUIPE, SOCIOS, nomePorEmail } from './equipe.js';
 import { SETORES } from './nova-tarefa.js';
 import { lerAchados, ignorarAchado, reabrirAchado, filtrarAchados, agruparAchados, linkSeguro, ehSocioPeloNome, marcarVisto } from './vigia.js';
@@ -253,7 +253,7 @@ function cartaoAlterar({ raiz, estado, salvar, ajuda, anunciar }) {
     trocar(raiz, sub('Lendo as tarefas…'));
     let tarefas, nomes;
     try {
-      tarefas = (await lerPorIds('tarefas', 'id, titulo, prazo, responsavel, prioridade, status, cliente_id, admissao_id, rescisao_id, alvara_id', ids)).filter(t => t.status !== 'concluida');
+      tarefas = (await lerPorIds('tarefas', 'id, titulo, prazo, responsavel, prioridade, status, cliente_id, origem, obrigacao_id, admissao_id, rescisao_id, alvara_id', ids)).filter(t => t.status !== 'concluida');
       nomes = await nomesDe(tarefas.map(t => t.cliente_id));
     } catch (e) { return trocar(raiz, h('div', { class: 'as-cartao-erro', text: 'Não consegui ler as tarefas agora.' }), h('div', { class: 'as-cartao-botoes' }, botao('Tentar de novo', desenhar))); }
     const daFicha = tarefas.filter(t => ficaDeFora(t, mudar));
@@ -270,7 +270,12 @@ function cartaoAlterar({ raiz, estado, salvar, ajuda, anunciar }) {
     const atualizar = () => { const n = lista.marcadas().length; ok.textContent = n ? verbo + ' ' + n : verbo; ok.disabled = !n; };
     const lista = listaComCaixas(mudam.map(x => itemAlterar(x.t, x.d, nomes)), { aoMudar: () => atualizar() });
     atualizar();
-    trocar(raiz, tit, Object.keys(mudar).length > 1 ? sub(resumoMudanca(mudar)) : null, avisos.length ? sub(avisos.join('. ') + '.') : null, lista.el,
+    // o responsável novo na que nasce de obrigação ou de tarefa recorrente: a próxima vem com o de lá
+    const px = proximasNascemCom(mudam.map(x => x.t), mudar);
+    const proximas = [px.obrigacao ? qtd(px.obrigacao, 'vem', 'vêm') + ' de obrigação fiscal: a próxima nasce com o responsável da obrigação — pra ficar de vez, troque em Obrigações fiscais' : null,
+      px.recorrente ? qtd(px.recorrente, 'vem', 'vêm') + ' de tarefa recorrente: a próxima nasce com o responsável de lá — pra ficar de vez, troque em Tarefas recorrentes do setor' : null].filter(Boolean);
+    trocar(raiz, tit, Object.keys(mudar).length > 1 ? sub(resumoMudanca(mudar)) : null, avisos.length ? sub(avisos.join('. ') + '.') : null,
+      proximas.length ? h('div', { class: 'as-cartao-aviso', text: proximas.join('. ') + '.' }) : null, lista.el,
       h('div', { class: 'as-cartao-botoes' }, ok, nao, alternarTodas(lista, mudam.length)), erro);
   }
   async function confirmar(marcados, ok, nao, erro) {

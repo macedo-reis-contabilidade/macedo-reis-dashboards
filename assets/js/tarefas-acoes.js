@@ -155,6 +155,13 @@ export const VINCULOS_DA_FICHA = [['admissao_id', 'admissão', 'Admissões'], ['
 export const fichaDeOrigem = t => { const v = VINCULOS_DA_FICHA.find(([c]) => t && t[c]); return v ? { coluna: v[0], nome: v[1], tela: v[2] } : null; };
 // a ficha de origem refaz o prazo e o responsável (a prioridade, não): mudar só a prioridade vale pra ela também
 export const ficaDeFora = (t, mudar) => (mudar && ('prazo' in mudar || 'responsavel' in mudar) ? fichaDeOrigem(t) : null);
+// trocar o responsável da tarefa que nasce de obrigação fiscal (obrigacao_id) ou de tarefa recorrente (origem
+// "recorrente") não muda a de origem: a próxima nasce com o responsável de lá — quem chama avisa onde trocar de vez
+export function proximasNascemCom(tarefas, mudar) {
+  if (!mudar || !('responsavel' in mudar)) return { obrigacao: 0, recorrente: 0 };
+  const l = Array.isArray(tarefas) ? tarefas : [];
+  return { obrigacao: l.filter(t => t && t.obrigacao_id).length, recorrente: l.filter(t => t && !t.obrigacao_id && t.origem === 'recorrente').length };
+}
 export const PRIORIDADES = ['alta', 'media', 'baixa'];
 const ROTULO_PRIORIDADE = { alta: 'alta', media: 'média', baixa: 'baixa' };
 const DATA_ISO = /^\d{4}-\d{2}-\d{2}$/;

@@ -279,8 +279,8 @@ console.log('As propostas (nada muda aqui: a tela mostra e a pessoa confirma):')
   const tarefas = [
     { id: U(1), cliente_id: ID_A, setor: 'financeiro', titulo: 'Faturar: 2 EMISSÕES DE NOTAS FISCAIS — LOJA DA ESQUINA LTDA', responsavel: 'Samuel', prazo: '2026-10-13', status: 'pendente', prioridade: 'media' },
     { id: U(2), cliente_id: ID_A, setor: 'dp', titulo: 'Admissão de FULANA', responsavel: 'Vitória', prazo: '2026-10-10', status: 'pendente', prioridade: 'alta', admissao_id: 'a1' },
-    { id: U(3), cliente_id: ID_A, setor: 'fiscal', titulo: 'EFD', responsavel: 'Thalia', prazo: '2026-10-10', status: 'pendente', prioridade: 'media' },
-    { id: U(4), cliente_id: ID_A, setor: 'fiscal', titulo: 'EFD', responsavel: 'Thalia', prazo: '2026-10-14', status: 'pendente', prioridade: 'media' },
+    { id: U(3), cliente_id: ID_A, setor: 'fiscal', titulo: 'EFD', responsavel: 'Thalia', prazo: '2026-10-10', status: 'pendente', prioridade: 'media', origem: 'recorrente', obrigacao_id: 'ob1' },
+    { id: U(4), cliente_id: ID_A, setor: 'fiscal', titulo: 'EFD', responsavel: 'Thalia', prazo: '2026-10-14', status: 'pendente', prioridade: 'media', origem: 'recorrente' },
     { id: U(5), cliente_id: ID_B, setor: 'fiscal', titulo: 'EFD', responsavel: 'Thalia', prazo: '2026-10-09', status: 'concluida', prioridade: 'media' }];
   const propostas = [];
   const nova = () => criarFerramentas({ banco: bancoFalso({ tarefas }).banco, hoje: '2026-10-14', usuario: { email: 'financeiro@macedoereis.com.br', nome: 'Samuel', socio: true }, aoPropor: a => propostas.push(a) });
@@ -291,6 +291,8 @@ console.log('As propostas (nada muda aqui: a tela mostra e a pessoa confirma):')
   chk('passar e deixar urgente: a da admissão fica de fora (vem da ficha), com a tela onde mudar', propostas.length === 2 && JSON.stringify([...propostas[1].ids].sort()) === JSON.stringify([U(1), U(3), U(4)].sort())
     && JSON.stringify(propostas[1].mudar) === JSON.stringify({ responsavel: 'Vitória', prioridade: 'alta' }) && /1 tarefa de admissão fica de fora/.test(r2) && /tela Admissões/.test(r2)
     && /Thalia → Vitória/.test(r2) && /prioridade média → alta/.test(r2), r2);
+  chk('responsável novo na que nasce de obrigação e de tarefa recorrente: diz onde trocar de vez', /1 vem de obrigação fiscal: a próxima nasce com o responsável da obrigação — pra ficar com Vitória de vez, troque na tela Obrigações fiscais/.test(r2)
+    && /1 vem de tarefa recorrente: a próxima nasce com o responsável de lá/.test(r2) && !/obrigação fiscal/.test(r1), r2);
   const r3 = await nova().propor_alterar_tarefas({ titulo: 'Admissão', novo_prazo: '2026-10-20' });
   chk('só a da admissão: não propõe e diz onde mudar', /fica de fora/.test(r3) && /Nada foi proposto/.test(r3) && propostas.length === 2, r3);
   await nova().propor_alterar_tarefas({ titulo: 'Admissão', nova_prioridade: 'baixa' });

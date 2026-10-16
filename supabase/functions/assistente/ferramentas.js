@@ -19,7 +19,7 @@
 
 import { rotinaDoDia, rotinaFeita, ymd } from '../../../assets/js/rotinas-dia.js';
 import { EQUIPE } from '../../../assets/js/equipe.js';
-import { ficaDeFora, mudancaDe, PRIORIDADES } from '../../../assets/js/tarefas-acoes.js';
+import { ficaDeFora, mudancaDe, proximasNascemCom, PRIORIDADES } from '../../../assets/js/tarefas-acoes.js';
 
 // ---------- a lista branca: tabela → colunas lidas, as que vêm sem pedir, o que é cada coisa ----------
 // notas: o que o modelo precisa saber da coluna (valores possíveis, unidade); enums: colunas de tipo enumerado no banco
@@ -852,7 +852,7 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
       mudar.prioridade = p;
     }
     if (!Object.keys(mudar).length) return 'Diga o que muda: novo_prazo (AAAA-MM-DD), novo_responsavel e/ou nova_prioridade.';
-    const sel = await tarefasDoPedido(e, 'id,cliente_id,titulo,responsavel,prazo,prioridade,admissao_id,rescisao_id,alvara_id');
+    const sel = await tarefasDoPedido(e, 'id,cliente_id,titulo,responsavel,prazo,prioridade,origem,obrigacao_id,admissao_id,rescisao_id,alvara_id');
     if (sel.erro) return sel.erro;
     const { linhas, total } = sel;
     if (!linhas.length) return 'Nenhuma tarefa aberta com esses critérios — nada foi proposto.';
@@ -874,10 +874,15 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     // o "amanhã" de sexta cai no sábado: a resposta avisa (a tela também mostra o dia da semana)
     const dsem = mudar.prazo ? new Date(mudar.prazo + 'T12:00:00Z').getUTCDay() : null;
     const fds = dsem === 6 ? 'sábado' : dsem === 0 ? 'domingo' : null;
+    // o responsável novo nas que nascem de obrigação ou de tarefa recorrente: a próxima vem com o de lá
+    const px = proximasNascemCom(mudam, mudar);
+    const proximas = [px.obrigacao ? px.obrigacao + (px.obrigacao === 1 ? ' vem' : ' vêm') + ' de obrigação fiscal: a próxima nasce com o responsável da obrigação — pra ficar com ' + mudar.responsavel + ' de vez, troque na tela Obrigações fiscais (lá a troca leva as abertas junto)' : null,
+      px.recorrente ? px.recorrente + (px.recorrente === 1 ? ' vem' : ' vêm') + ' de tarefa recorrente: a próxima nasce com o responsável de lá — pra ficar de vez, troque em Tarefas recorrentes do setor' : null].filter(Boolean);
     return 'Proposta pronta: a tela mostra ' + plural(mudam.length, 'tarefa', 'tarefas') + ' com o antes e o depois e o botão pra confirmar (a pessoa pode desmarcar alguma; depois, "Desfazer"). Nada mudou ainda.\n'
       + com.slice(0, 12).map(t => '- ' + valorCurto(t.titulo, 80) + (t.cliente_id ? ' · ' + t.empresa : '') + ' · ' + comoFica(t)).join('\n')
       + (mudam.length > 12 ? '\n… e mais ' + (mudam.length - 12) : '') + (ja2 ? '\n' + ja2 : '') + (fora ? '\n' + fora : '')
       + (fds ? '\nAtenção: o novo prazo (' + dataBR(mudar.prazo) + ') cai num ' + fds + ' — diga isso na resposta.' : '')
+      + (proximas.length ? '\nDas que mudam, ' + proximas.join('; ') + '. Diga isso numa frase na resposta.' : '')
       + '\nNa resposta: uma frase dizendo o que muda quando ela confirmar (não diga que já mudou)' + (fora ? ' e o que fica de fora' : '') + '.';
   }
 

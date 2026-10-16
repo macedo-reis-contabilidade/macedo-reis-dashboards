@@ -60,7 +60,7 @@ TAREFAS = [
     # na revisão, uma do Samuel que é da admissão: o "Remarcar" deixa de fora (o banco refaz o prazo dela pela ficha)
     T('ad2', 'ADMISSÃO DE BELTRANO (REVISÃO)', 'Samuel', D(-3), E2, admissao_id='adm-2'),
     # o cartão de alterar (prazo, responsável, prioridade): da Thalia, uma já do jeito pedido e uma da admissão
-    T('r1', 'DCTFWEB (ALTERAR)', 'Thalia', D(-2), E1), T('r2', 'DCTFWEB (ALTERAR)', 'THALIA', D(-1), E2, prioridade='baixa'),
+    T('r1', 'DCTFWEB (ALTERAR)', 'Thalia', D(-2), E1, origem='recorrente', obrigacao_id='ob-1'), T('r2', 'DCTFWEB (ALTERAR)', 'THALIA', D(-1), E2, prioridade='baixa'),
     T('r3', 'DCTFWEB (ALTERAR)', 'Vitória', D(-1), E3, prioridade='alta'), T('ad1', 'ADMISSÃO DE FULANA (ALTERAR)', 'Thalia', D(-1), E1, admissao_id='adm-1')]
 COBRANCAS = [{'id': 'xb-1', 'cliente_id': E1, 'competencia': COMP, 'valor': 450, 'vencimento': D(5), 'status': 'enviado', 'canal': 'whatsapp', 'destino': '', 'observacao': '', 'itens_extras': []},
              {'id': 'xb-2', 'cliente_id': E2, 'competencia': COMP, 'valor': 300.5, 'vencimento': D(5), 'status': 'a_emitir', 'canal': 'whatsapp', 'destino': '', 'observacao': '', 'itens_extras': []},
@@ -284,6 +284,8 @@ def main():
            f'alterar: o título, o que muda e o que fica de fora — a concluída, a que já está assim, a da admissão ({card[:300]!r})')
         ok('Thalia → Vitória · prioridade média → alta' in card and 'THALIA → Vitória · prioridade baixa → alta' in card and p.inner_text(ultimo + ' .as-botao-pri') == 'Alterar 2',
            'cada tarefa com o antes e o depois; o botão diz quantas')
+        ok('1 vem de obrigação fiscal: a próxima nasce com o responsável da obrigação — pra ficar de vez, troque em Obrigações fiscais.' in card,
+           'a que nasce de obrigação fiscal: o aviso de que a próxima vem com o responsável de lá')
         p.uncheck(ultimo + ' input[data-id="xa-r2"]')
         ok(p.inner_text(ultimo + ' .as-botao-pri') == 'Alterar 1', 'desmarcar uma: o botão acompanha')
         p.click(ultimo + ' .as-botao-pri'); p.wait_for_selector(ultimo + ' .as-cartao-ok', timeout=5000)

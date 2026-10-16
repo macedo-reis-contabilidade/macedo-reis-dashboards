@@ -4,7 +4,7 @@
 // Sem rede: o cliente do Supabase é um dublê em memória.
 // Rodar com: node tests/tarefas-acoes.test.mjs
 import { concluirTarefas, desfazerConclusao, criarTarefasAvulsas, excluirTarefasCriadas, marcarPagos, desfazerPagos, avisarDependentes,
-  alterarTarefas, desfazerAlteracao, limparMudanca, descreverMudanca, fichaDeOrigem } from '../assets/js/tarefas-acoes.js';
+  alterarTarefas, desfazerAlteracao, limparMudanca, descreverMudanca, fichaDeOrigem, proximasNascemCom } from '../assets/js/tarefas-acoes.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + extra : '')); };
@@ -171,6 +171,9 @@ console.log('Alterar prazo, responsável e prioridade:');
   chk('só a prioridade: vale também na tarefa da admissão', r3.alteradas.map(a => a.id).join() === 'm' && db3.tarefas[0].prioridade === 'alta' && !r3.daFicha.length, JSON.stringify(r3));
   const r4 = await alterarTarefas(dubla(db3), ['m'], { prioridade: 'baixa', prazo: '2026-10-20' }, { autor: EU });
   chk('com o prazo junto, a da admissão fica de fora inteira', !r4.alteradas.length && r4.daFicha.length === 1 && db3.tarefas[0].prazo === '2026-10-10' && db3.tarefas[0].prioridade === 'alta');
+  const lista = [{ obrigacao_id: 'o1', origem: 'recorrente' }, { origem: 'recorrente' }, { origem: 'avulsa' }, { obrigacao_id: 'o2' }];
+  chk('responsável novo: quantas nascem de obrigação fiscal e de tarefa recorrente (a próxima vem com o de lá); sem trocar o responsável, nenhuma',
+    JSON.stringify(proximasNascemCom(lista, { responsavel: 'Thalia' })) === '{"obrigacao":2,"recorrente":1}' && JSON.stringify(proximasNascemCom(lista, { prazo: '2026-10-20' })) === '{"obrigacao":0,"recorrente":0}');
 }
 {
   // concluída por outra pessoa entre a leitura e o clique: não muda e vem em "fechadas"
