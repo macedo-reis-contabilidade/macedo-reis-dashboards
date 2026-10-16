@@ -222,6 +222,7 @@
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { hojeLocal, dataLocal, formatDocumento } from './assets/js/utils.js';   // dia no fuso local (toISOString é UTC)
+    const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));   // texto do banco nunca vira HTML (o nome que veio do formulário público, por exemplo)
     const user = await getCurrentUser();
     if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; const av = document.getElementById('userAvatar'); if (av) av.textContent = (user.email || '?').charAt(0).toUpperCase(); }
     document.getElementById('btnLogout')?.addEventListener('click', signOut);
@@ -277,7 +278,7 @@
     function preencherFiltros(){
       const opt = (sel, vals) => {
         const s = document.getElementById(sel); const atual = s.value;
-        s.innerHTML = s.options[0].outerHTML + [...vals].sort().map(v => `<option>${v}</option>`).join('');
+        s.innerHTML = s.options[0].outerHTML + [...vals].sort().map(v => `<option>${esc(v)}</option>`).join('');
         s.value = atual;
       };
       opt('fRegime', new Set(rows.map(r => r.clientes.regime_tributario).filter(Boolean)));
@@ -298,7 +299,7 @@
       return true;
     }
 
-    const ed = (r, campo, val, tipo) => `<span class="ed ${val ? '' : 'vazio'}" data-ed="${campo}" data-cid="${r.cliente_id}" data-tipo="${tipo || 'texto'}">${val || '—'}</span>`;
+    const ed = (r, campo, val, tipo) => `<span class="ed ${val ? '' : 'vazio'}" data-ed="${campo}" data-cid="${r.cliente_id}" data-tipo="${tipo || 'texto'}">${val ? esc(val) : '—'}</span>`;
 
     function render(){
       const vis = rows.filter(passa);
@@ -322,17 +323,17 @@
         const inad = !!r.inadimplente_desde;
         const estilo = r.saida ? ' style="opacity:.55;"' : (inad ? ' style="background:rgba(208,113,90,.07); box-shadow:inset 3px 0 0 #D0715A;"' : '');
         return `<tr${estilo}>
-          <td class="ct-emp"><span data-inad="${r.cliente_id}" title="${inad ? 'Marcar como em dia' : 'Marcar como inadimplente'}" style="cursor:pointer; margin-right:6px; opacity:${inad ? '1' : '.35'};">${inad ? '⚠' : '💰'}</span><a href="clientes/editar.html?id=${c.id}" target="_blank" rel="noopener"${nomeVis(c) !== c.nome_principal ? ` title="Nome oficial: ${c.nome_principal}"` : ''}>${nomeVis(c)}</a>${/^https?:\/\//i.test(c.drive_folder_url || '') ? ` <a href="${String(c.drive_folder_url).replace(/"/g, '&quot;')}" target="_blank" rel="noopener" title="Abrir a pasta do cliente no Drive" style="text-decoration:none;">📁</a>` : ''}
-            ${c.nome_fantasia ? `<small>${c.nome_fantasia}</small>` : ''}${emTransicao ? ' <span class="chip" style="background:rgba(91,130,166,.16); color:var(--brand-light);">em transição</span>' : ''}${inativo ? ' <span class="chip c-ama">inativo no cadastro</span>' : ''}${inad ? ` <span class="chip c-verm">⚠ inadimplente desde ${dBR(r.inadimplente_desde)}</span>` : ''}</td>
-          <td><span class="chip" data-reg="${r.cliente_id}" style="cursor:pointer;" title="Clique para definir o regime — grava direto no cadastro">${c.regime_tributario || '—'}</span></td>
-          <td>${c.cidade ? c.cidade : '<span class="chip c-ama" title="Preencha a cidade no cadastro do cliente">sem cidade</span>'}</td>
+          <td class="ct-emp"><span data-inad="${r.cliente_id}" title="${inad ? 'Marcar como em dia' : 'Marcar como inadimplente'}" style="cursor:pointer; margin-right:6px; opacity:${inad ? '1' : '.35'};">${inad ? '⚠' : '💰'}</span><a href="clientes/editar.html?id=${c.id}" target="_blank" rel="noopener"${nomeVis(c) !== c.nome_principal ? ` title="Nome oficial: ${esc(c.nome_principal)}"` : ''}>${esc(nomeVis(c))}</a>${/^https?:\/\//i.test(c.drive_folder_url || '') ? ` <a href="${String(c.drive_folder_url).replace(/"/g, '&quot;')}" target="_blank" rel="noopener" title="Abrir a pasta do cliente no Drive" style="text-decoration:none;">📁</a>` : ''}
+            ${c.nome_fantasia ? `<small>${esc(c.nome_fantasia)}</small>` : ''}${emTransicao ? ' <span class="chip" style="background:rgba(91,130,166,.16); color:var(--brand-light);">em transição</span>' : ''}${inativo ? ' <span class="chip c-ama">inativo no cadastro</span>' : ''}${inad ? ` <span class="chip c-verm">⚠ inadimplente desde ${dBR(r.inadimplente_desde)}</span>` : ''}</td>
+          <td><span class="chip" data-reg="${r.cliente_id}" style="cursor:pointer;" title="Clique para definir o regime — grava direto no cadastro">${esc(c.regime_tributario || '—')}</span></td>
+          <td>${c.cidade ? esc(c.cidade) : '<span class="chip c-ama" title="Preencha a cidade no cadastro do cliente">sem cidade</span>'}</td>
           <td>${ed(r, 'entrada', dBR(r.entrada), 'data')}</td>
           <td>${ed(r, 'segmento', r.segmento)}</td>
           <td>${ed(r, 'sistemas', r.sistemas)}</td>
           <td>${ed(r, 'contato', r.contato)}</td>
           <td>${ed(r, 'ramo', r.ramo)}</td>
           <td>${r.saida
-            ? `<span class="chip c-verm" style="cursor:pointer;" data-sai="${r.cliente_id}" title="${r.motivo_saida || ''}">✕ ${dBR(r.saida)}</span>`
+            ? `<span class="chip c-verm" style="cursor:pointer;" data-sai="${r.cliente_id}" title="${esc(r.motivo_saida || '')}">✕ ${dBR(r.saida)}</span>`
             : `<button class="btn-mini" data-sai="${r.cliente_id}">Registrar</button>`}</td>
         </tr>`;
       }).join('');
@@ -494,8 +495,8 @@
       const jaIds = new Set(rows.map(r => r.cliente_id));
       const livres = (data || []).filter(c => !jaIds.has(c.id));
       el.innerHTML = (livres.length
-        ? livres.map(c => `<button data-add="${c.id}">${c.nome_principal}
-            <small>${[c.nome_fantasia, c.regime_tributario, c.cidade].filter(Boolean).join(' · ') || '&nbsp;'}</small></button>`).join('')
+        ? livres.map(c => `<button data-add="${c.id}">${esc(c.nome_principal)}
+            <small>${esc([c.nome_fantasia, c.regime_tributario, c.cidade].filter(Boolean).join(' · ')) || '&nbsp;'}</small></button>`).join('')
         : '<button disabled style="color:var(--text-dim);cursor:default;">Nada livre encontrado com esse termo.</button>')
         + `<button data-criar style="color:var(--brand-light);">➕ Criar pré-cadastro "${t.toUpperCase()}" — dados a completar — e adicionar à carteira</button>`
         + `<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;font-size:12.5px;color:var(--text-2);cursor:pointer;"><input type="checkbox" data-pasta checked> 📁 criar a pasta no Drive junto com o pré-cadastro</label>`;
@@ -545,9 +546,9 @@
         const c = r.clientes;
         const dia = String(sai ? r.saida : r.entrada).slice(8, 10);
         return `<div class="mov-item${sai ? ' sai' : ''}">
-          <a href="clientes/editar.html?id=${c.id}" target="_blank" rel="noopener">${nomeVis(c)}</a>
-          ${c.nome_fantasia ? `<small>${c.nome_fantasia}</small>` : ''}
-          <span class="mt">dia ${dia}${sai ? ' · ' + (r.motivo_saida || 'sem motivo') : ''}</span>
+          <a href="clientes/editar.html?id=${c.id}" target="_blank" rel="noopener">${esc(nomeVis(c))}</a>
+          ${c.nome_fantasia ? `<small>${esc(c.nome_fantasia)}</small>` : ''}
+          <span class="mt">dia ${dia}${sai ? ' · ' + esc(r.motivo_saida || 'sem motivo') : ''}</span>
         </div>`;
       };
       const mov = document.getElementById('anaMov');
@@ -567,7 +568,7 @@
         const itens = Object.entries(mapa).sort((a, b) => b[1] - a[1]);
         const max = itens[0]?.[1] || 1;
         document.getElementById(el).innerHTML = itens.map(([k, v]) =>
-          `<div class="barra"><span class="bl" title="${k}">${k}</span><span class="bt"><span class="bf" style="width:${v / max * 100}%"></span></span><span class="bn">${v}</span></div>`
+          `<div class="barra"><span class="bl" title="${esc(k)}">${esc(k)}</span><span class="bt"><span class="bf" style="width:${v / max * 100}%"></span></span><span class="bn">${v}</span></div>`
         ).join('') || '<span style="color:var(--text-dim);font-size:12.5px;">Sem dados.</span>';
       };
       const conta = (arr, fn) => arr.reduce((m, r) => { const k = fn(r); if (k) m[k] = (m[k] || 0) + 1; return m; }, {});
@@ -597,10 +598,10 @@
       const ins = [];
       const munMap = conta(ativos, r => r.clientes.cidade);
       const topMun = Object.entries(munMap).sort((a, b) => b[1] - a[1])[0];
-      if (topMun) ins.push(`<b>${topMun[0]}</b> concentra ${Math.round(topMun[1] / ativos.length * 100)}% da carteira (${topMun[1]} clientes).`);
+      if (topMun) ins.push(`<b>${esc(topMun[0])}</b> concentra ${Math.round(topMun[1] / ativos.length * 100)}% da carteira (${topMun[1]} clientes).`);
       const regMap = conta(ativos, r => r.clientes.regime_tributario);
       const topReg = Object.entries(regMap).sort((a, b) => b[1] - a[1])[0];
-      if (topReg) ins.push(`Regime dominante: <b>${topReg[0]}</b> (${Math.round(topReg[1] / ativos.length * 100)}%).`);
+      if (topReg) ins.push(`Regime dominante: <b>${esc(topReg[0])}</b> (${Math.round(topReg[1] / ativos.length * 100)}%).`);
       const ult3 = meses.slice(-3).reduce((acc, ym) =>
         acc + rows.filter(r => ymDe(r.entrada) === ym).length - rows.filter(r => ymDe(r.saida) === ym).length, 0);
       ins.push(ult3 >= 0 ? `Últimos 3 meses: carteira <b>cresceu ${ult3}</b> cliente${ult3 === 1 ? '' : 's'} no líquido.`
@@ -638,10 +639,10 @@
         ? `<p style="font-size:12.5px;color:var(--text-muted);margin:0 0 10px;">Quem não é cliente mensal, inative no cadastro; quem é, adicione à carteira com a data de entrada.</p>
           <table class="pr-tab"><thead><tr><th>Empresa</th><th>CNPJ</th><th>Cidade</th><th>Status</th><th></th></tr></thead><tbody>` +
           foraCarteira.map(c => `<tr>
-            <td class="ct-emp"><a href="clientes/editar.html?id=${c.id}" target="_blank" rel="noopener">${c.nome_principal || '?'}</a>${c.nome_fantasia ? `<small>${c.nome_fantasia}</small>` : ''}</td>
-            <td style="white-space:nowrap;">${c.documento || '—'}</td>
-            <td>${c.cidade || '—'}</td>
-            <td><span class="chip">${c.status}</span></td>
+            <td class="ct-emp"><a href="clientes/editar.html?id=${c.id}" target="_blank" rel="noopener">${esc(c.nome_principal || '?')}</a>${c.nome_fantasia ? `<small>${esc(c.nome_fantasia)}</small>` : ''}</td>
+            <td style="white-space:nowrap;">${esc(c.documento || '—')}</td>
+            <td>${esc(c.cidade || '—')}</td>
+            <td><span class="chip">${esc(c.status)}</span></td>
             <td style="white-space:nowrap;"><button class="btn-mini" data-fora-inativar="${c.id}">Inativar no cadastro</button>
               <button class="btn-mini" data-fora-add="${c.id}" style="margin-left:6px;">Adicionar à carteira</button></td>
           </tr>`).join('') + '</tbody></table>'
@@ -665,8 +666,8 @@
         document.getElementById('addBusca').value = c.nome_principal || '';
         document.getElementById('addEntrada').value = hojeLocal();
         const res = document.getElementById('addRes');
-        res.innerHTML = `<button data-add="${c.id}">${c.nome_principal}
-          <small>${[c.nome_fantasia, c.cidade].filter(Boolean).join(' · ') || 'confirme a data de entrada e clique pra adicionar'}</small></button>`;
+        res.innerHTML = `<button data-add="${c.id}">${esc(c.nome_principal)}
+          <small>${esc([c.nome_fantasia, c.cidade].filter(Boolean).join(' · ')) || 'confirme a data de entrada e clique pra adicionar'}</small></button>`;
         res.querySelector('[data-add]').addEventListener('click', async () => {
           const { error } = await supabase.from('carteira_info').insert({ cliente_id: c.id, entrada: document.getElementById('addEntrada').value || null });
           if (error) { alert('Erro: ' + error.message); return; }

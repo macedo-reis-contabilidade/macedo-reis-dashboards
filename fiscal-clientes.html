@@ -73,6 +73,7 @@
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { formatDocumento, formatDate } from './assets/js/utils.js';
+    const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));   // texto do banco nunca vira HTML (o nome que veio do formulário público, por exemplo)
 
     const tbody = document.getElementById('tbody');
     const searchInput = document.getElementById('searchInput');
@@ -161,11 +162,11 @@
         return `
         <tr class="is-clickable" data-id="${c.id}">
           <td data-label="Nome">
-            <div class="table-name">${c.nome_principal}</div>
-            ${c.nome_fantasia ? `<div class="table-sub">${c.nome_fantasia}</div>` : ''}
+            <div class="table-name">${esc(c.nome_principal)}</div>
+            ${c.nome_fantasia ? `<div class="table-sub">${esc(c.nome_fantasia)}</div>` : ''}
           </td>
           <td data-label="Documento">${formatDocumento(c.documento)}</td>
-          <td data-label="Localização">${c.cidade ? `${c.cidade}${c.uf ? '/' + c.uf : ''}` : '—'}</td>
+          <td data-label="Localização">${c.cidade ? `${esc(c.cidade)}${c.uf ? '/' + esc(c.uf) : ''}` : '—'}</td>
           <td data-label="Análise"><span class="fa-pill ${st.cls}">${st.label}</span></td>
           <td data-label="Última análise">${a ? formatDate(a.created_at) : '—'}</td>
           <td data-label="" style="text-align:right;">

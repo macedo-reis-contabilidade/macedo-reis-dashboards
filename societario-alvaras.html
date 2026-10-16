@@ -197,7 +197,9 @@
     function toYMD(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
     function fmtData(ymd){ if(!ymd) return '—'; const p = String(ymd).slice(0,10).split('-'); return p.length===3 ? `${p[2]}/${p[1]}/${p[0]}` : '—'; }
     function fmtDataHora(iso){ try { return new Date(iso).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); } catch(e){ return ''; } }
-    function escapeHtml(t){ return String(t==null?'':t).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
+    function escapeHtml(t){ return String(t==null?'':t).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+    // o link do documento: endereço da web; o que vier sem http(s) ganha o https:// (um javascript: digitado vira um endereço sem efeito)
+    function hrefWeb(u) { u = String(u || '').trim(); return /^https?:\/\//i.test(u) ? u : 'https://' + u.replace(/^\/+/, ''); }
 
     const hojeStr = toYMD(new Date());
     const em30 = new Date(); em30.setDate(em30.getDate()+30); const em30Str = toYMD(em30);
@@ -308,7 +310,7 @@
             <span>${escapeHtml(a.cidade||'—')}</span>
             <span>${escapeHtml(a.responsavel||'Sem responsável')}</span>
             <span class="${vencCls}">${vencTxt}</span>
-            ${a.link_drive ? `<a class="alv-doc-flag" href="${escapeHtml(a.link_drive)}" target="_blank" rel="noopener">abrir documento ↗</a>` : ''}
+            ${a.link_drive ? `<a class="alv-doc-flag" href="${escapeHtml(hrefWeb(a.link_drive))}" target="_blank" rel="noopener">abrir documento ↗</a>` : ''}
           </div>
         </div>`;
       }).join('');
@@ -499,7 +501,7 @@
       document.getElementById('dLink').value = a.link_drive || '';
       document.getElementById('dObs').value = a.observacoes || '';
       const dLinkAbrir = document.getElementById('dLinkAbrir');
-      if (a.link_drive) { dLinkAbrir.href = a.link_drive; dLinkAbrir.style.display = 'inline-block'; }
+      if (a.link_drive) { dLinkAbrir.href = hrefWeb(a.link_drive); dLinkAbrir.style.display = 'inline-block'; }
       else { dLinkAbrir.removeAttribute('href'); dLinkAbrir.style.display = 'none'; }
 
       const banner = document.getElementById('dConcBanner');

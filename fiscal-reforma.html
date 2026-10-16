@@ -2287,7 +2287,7 @@
       ];
       if (!consumidor && xml && xml.clientes && xml.clientes.length) {
         const maior = xml.clientes[0];
-        perguntas.splice(3, 0, '<b>' + maior.nome + ' representa ' + p1(maior.pct) + '% da receita.</b> O que acontece se pedir desconto equivalente ao crédito que deixará de tomar?');
+        perguntas.splice(3, 0, '<b>' + escapeHtml(maior.nome) + ' representa ' + p1(maior.pct) + '% da receita.</b> O que acontece se pedir desconto equivalente ao crédito que deixará de tomar?');
       }
       // refeições para empresas: o contrato decide o enquadramento (LC 214, art. 273) — pergunta própria, antes das outras
       if (refeicaoEmpresas && !consumidor) perguntas.unshift('Como são os <b>contratos de refeição</b>: a refeição é preparada na cozinha da empresa ou no local do cliente, e o preço é por refeição ou fechado por período? O enquadramento no regime de bares (LC 214, art. 273, a conferir) muda a alíquota — −40% ou cheia — e se o cliente empresa credita.');

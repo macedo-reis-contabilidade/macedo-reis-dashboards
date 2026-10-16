@@ -93,8 +93,17 @@
       }
 
       const urlParams = new URLSearchParams(window.location.search);
-      const redirect = urlParams.get('redirect');
-      window.location.href = redirect || 'index.html';
+      window.location.href = destinoSeguro(urlParams.get('redirect'));
+    }
+
+    // a volta depois do login: só pra uma tela do próprio sistema — um link com ?redirect= pra outro site,
+    // ou com javascript:, rodaria código (ou abriria uma página falsa) logo depois de a pessoa entrar
+    function destinoSeguro(r) {
+      if (!r) return 'index.html';
+      try {
+        const u = new URL(r, window.location.href);
+        return u.origin === window.location.origin ? u.pathname + u.search + u.hash : 'index.html';
+      } catch (e) { return 'index.html'; }
     }
 
     btnLogin.addEventListener('click', doLogin);

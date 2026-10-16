@@ -265,6 +265,7 @@
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { hojeLocal, dataLocal, normalizarDocumento, cnpjValido } from './assets/js/utils.js';   // dia no fuso local (toISOString é UTC)
+    const escHtml = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));   // texto do banco nunca vira HTML (o nome que veio do formulário público, por exemplo)
     const user = await getCurrentUser();
     if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; const av = document.getElementById('userAvatar'); if (av) av.textContent = (user.email || '?').charAt(0).toUpperCase(); }
     const btnOut = document.getElementById('btnLogout');
@@ -481,7 +482,7 @@
       const anuais = r.lista.filter(o => o.periodicidade === 'anual');
       const nM = mensais.filter(o => o.st === 'aplicavel').length;
       const nA = anuais.filter(o => o.st === 'aplicavel').length;
-      el.innerHTML = `<div class="pr-ob-card"><h3>Obrigações do regime — ${r.regime}</h3>
+      el.innerHTML = `<div class="pr-ob-card"><h3>Obrigações do regime — ${escHtml(r.regime)}</h3>
         <div class="pr-ob-nota" style="margin:0 0 4px;">Ao lado de cada obrigação: a <b>multa</b> por atraso ou omissão.</div>
         <div class="pr-ob-grupo">Mensais · ${nM} aplicáve${nM === 1 ? 'l' : 'is'}</div>${mensais.map(linha).join('')}
         <div class="pr-ob-grupo">Anuais · ${nA} aplicáve${nA === 1 ? 'l' : 'is'}</div>${anuais.map(linha).join('')}
@@ -959,13 +960,13 @@
       }
       tb.innerHTML = lista.map(p => `
         <tr class="prop ${p.status === 'fechada' ? 'prop-fechada' : p.status === 'descartada' ? 'prop-descartada' : ''}" data-pid="${p.id}">
-          <td><b>${p.cliente_nome}</b>${(p.respostas && p.respostas._tipo === 'mei') ? ' <span class="chip" style="background:rgba(82,180,198,.15);color:var(--accent);">MEI</span>' : ''}${p.contato ? `<br><small style="color:var(--text-muted);">${p.contato}</small>` : ''}</td>
+          <td><b>${escHtml(p.cliente_nome)}</b>${(p.respostas && p.respostas._tipo === 'mei') ? ' <span class="chip" style="background:rgba(82,180,198,.15);color:var(--accent);">MEI</span>' : ''}${p.contato ? `<br><small style="color:var(--text-muted);">${escHtml(p.contato)}</small>` : ''}</td>
           <td>${p.honorario != null ? fmt(p.honorario) : '—'}</td>
           <td>${p.taxa_unica ? fmt(p.taxa_unica) : '—'}</td>
-          <td><span class="chip ${p.origem === 'externa' ? 'c-ama' : ''}">${p.origem}</span></td>
+          <td><span class="chip ${p.origem === 'externa' ? 'c-ama' : ''}">${escHtml(p.origem)}</span></td>
           <td><select class="st-sel" data-st="${p.id}">${ST_PROP.map(s => `<option${s === p.status ? ' selected' : ''}>${s}</option>`).join('')}</select></td>
           <td style="color:var(--text-muted);">${new Date(p.criado_em).toLocaleDateString('pt-BR')}</td>
-          <td style="color:var(--text-muted);">${p.criado_por ? p.criado_por.split('@')[0] : '—'}</td>
+          <td style="color:var(--text-muted);">${p.criado_por ? escHtml(p.criado_por.split('@')[0]) : '—'}</td>
           <td style="white-space:nowrap;text-align:right;">${transPorProp[p.id]
             ? `<a href="comercial-transicao.html?transicao=${transPorProp[p.id]}" data-vertrans="${p.id}" title="Abrir a transição desta proposta" style="display:inline-block;margin-right:10px;border:1px solid var(--line-strong);border-radius:8px;padding:3px 10px;font-size:12px;font-weight:600;color:var(--text-muted);text-decoration:none;">Ver transição →</a>`
             : p.status === 'fechada'
@@ -1248,14 +1249,14 @@
       const linhaServ = s => {
         const on = mei.marcados.has(s.id);
         const extraTag = on && !preset.has(s.id) ? ` <i class="mei-extra">adicional · ${fmt(Number(s.valor_avulso || 0))}</i>` : '';
-        const xNfs = s.id === 'nfs_plano' && on ? ` — até <input type="number" min="0" class="input mei-x" id="meiX" value="${mei.nfsInclusas}" placeholder="X"> NFs/mês` : '';
+        const xNfs = s.id === 'nfs_plano' && on ? ` — até <input type="number" min="0" class="input mei-x" id="meiX" value="${escHtml(mei.nfsInclusas)}" placeholder="X"> NFs/mês` : '';
         return `<label class="mei-serv ${on ? 'on' : ''}"><input type="checkbox" data-serv="${s.id}" ${on ? 'checked' : ''}> <span>${s.nome.replace(' (até X/mês)','')}${xNfs}${extraTag}</span></label>`;
       };
       const linhaSep = s => {
         const on = mei.marcados.has(s.id);
         const un = Number(s.valor_avulso || 0);
         const cauda = s.tipo === 'quantidade'
-          ? ` <input type="number" min="0" class="input mei-x" data-qtd="${s.id}" value="${mei.qtd[s.id] || ''}" placeholder="qtd"> × ${fmt(un)}`
+          ? ` <input type="number" min="0" class="input mei-x" data-qtd="${s.id}" value="${escHtml(mei.qtd[s.id] || '')}" placeholder="qtd"> × ${fmt(un)}`
           : ` <i class="mei-extra">${fmt(un)}</i>`;
         return `<label class="mei-serv ${on ? 'on' : ''}"><input type="checkbox" data-serv="${s.id}" ${on ? 'checked' : ''}> <span>${s.nome}${cauda}</span></label>`;
       };

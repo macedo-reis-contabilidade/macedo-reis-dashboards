@@ -171,7 +171,7 @@ export function initRelatoriosSetor(cfg) {
       .order('prazo', { ascending: false, nullsFirst: false });
 
     if (error) {
-      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--err);padding:40px;">Erro ao carregar: ${error.message}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--err);padding:40px;">Erro ao carregar: ${esc(error.message)}</td></tr>`;
       return;
     }
     all = data || [];
@@ -208,13 +208,13 @@ export function initRelatoriosSetor(cfg) {
     tbody.innerHTML = filtered.map(t => {
       const s = situacao(t);
       return `<tr>
-          <td data-label="Empresa">${t.clientes?.nome_principal || '—'}</td>
-          <td data-label="Tarefa">${t.titulo || '—'}</td>
-          <td data-label="Competência">${compLabel(t.competencia)}</td>
+          <td data-label="Empresa">${esc(t.clientes?.nome_principal || '—')}</td>
+          <td data-label="Tarefa">${esc(t.titulo || '—')}</td>
+          <td data-label="Competência">${esc(compLabel(t.competencia))}</td>
           <td data-label="Prazo">${t.prazo ? formatDate(t.prazo) : '—'}</td>
           <td data-label="Situação"><span class="sit sit-${s}">${SIT_LABELS[s]}</span></td>
           <td data-label="Concluída em">${t.concluida_em ? formatDate(t.concluida_em) : '—'}</td>
-          <td data-label="Por quem">${t.concluida_por || '—'}</td>
+          <td data-label="Por quem">${esc(t.concluida_por || '—')}</td>
         </tr>`;
     }).join('');
   }

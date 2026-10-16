@@ -227,7 +227,7 @@
       if (!search) return '';
       const linhas = [c.cnae_principal || '', ...(Array.isArray(c.cnaes_secundarios) ? c.cnaes_secundarios : [])];
       const hit = linhas.find(l => l && norm(l).includes(search));
-      return hit ? `<div class="table-sub">CNAE: ${hit}</div>` : '';
+      return hit ? `<div class="table-sub">CNAE: ${esc(hit)}</div>` : '';
     }
 
     (async () => {
@@ -304,14 +304,14 @@
       tbody.innerHTML = filtered.map(c => `
         <tr class="is-clickable" data-id="${c.id}">
           <td data-label="Nome">
-            <div class="table-name">${c.nome_principal}</div>
-            ${c.nome_fantasia ? `<div class="table-sub">${c.nome_fantasia}</div>` : ''}
+            <div class="table-name">${esc(c.nome_principal)}</div>
+            ${c.nome_fantasia ? `<div class="table-sub">${esc(c.nome_fantasia)}</div>` : ''}
             ${cnaeMatchHtml(c, search)}
           </td>
-          <td data-label="Documento">${formatDocumento(c.documento)}</td>
-          <td data-label="Tipo">${c.tipo_pessoa}</td>
-          <td data-label="Status"><span class="status-pill status-${c.status}">${STATUS_LABELS[c.status] || c.status}</span></td>
-          <td data-label="Localização">${c.cidade ? `${c.cidade}${c.uf ? '/' + c.uf : ''}` : '—'}</td>
+          <td data-label="Documento">${esc(formatDocumento(c.documento))}</td>
+          <td data-label="Tipo">${esc(c.tipo_pessoa)}</td>
+          <td data-label="Status"><span class="status-pill status-${esc(c.status)}">${esc(STATUS_LABELS[c.status] || c.status)}</span></td>
+          <td data-label="Localização">${c.cidade ? `${esc(c.cidade)}${c.uf ? '/' + esc(c.uf) : ''}` : '—'}</td>
           <td data-label="Cadastrado">${formatDate(c.created_at)}</td>
           <td data-label="" style="text-align: right; white-space:nowrap;">
             ${temPasta(c) ? `<a class="lnk-pasta" href="${esc(urlPasta(c))}" target="_blank" rel="noopener" data-pasta title="Abrir a pasta do cliente no Drive">📁</a>` : ''}
@@ -593,11 +593,11 @@
         document.getElementById('rcvAtual').textContent = `Consultando: ${c.nome_principal}`;
         const cnpj = limpaDoc(c.documento);
         if (cnpj.length !== 14){
-          falhas++; logLinha(`<span class="rcv-err">✗ ${c.nome_principal}: documento inválido (${c.documento || 'vazio'})</span>`);
+          falhas++; logLinha(`<span class="rcv-err">✗ ${esc(c.nome_principal)}: documento inválido (${esc(c.documento || 'vazio')})</span>`);
         } else {
           const r = await consultaBrasilAPI(cnpj);
           if (r.erro){
-            falhas++; logLinha(`<span class="rcv-err">✗ ${c.nome_principal}: ${r.erro}</span>`);
+            falhas++; logLinha(`<span class="rcv-err">✗ ${esc(c.nome_principal)}: ${esc(r.erro)}</span>`);
           } else {
             const d = r.dados; const upd = {};
             if (vazio(c.cnae_principal) && d.cnae_fiscal) upd.cnae_principal = `${fmtCnaeCod(d.cnae_fiscal)}${d.cnae_fiscal_descricao ? ' - ' + d.cnae_fiscal_descricao : ''}`;
@@ -611,10 +611,10 @@
 
             if (Object.keys(upd).length){
               const { error: eUp } = await supabase.from('clientes').update(upd).eq('id', c.id);
-              if (eUp){ falhas++; logLinha(`<span class="rcv-err">✗ ${c.nome_principal}: erro ao salvar (${eUp.message})</span>`); }
-              else { ok++; logLinha(`<span class="rcv-ok">✓ ${c.nome_principal}: ${Object.keys(upd).length} campo(s) preenchido(s)</span>`); }
+              if (eUp){ falhas++; logLinha(`<span class="rcv-err">✗ ${esc(c.nome_principal)}: erro ao salvar (${esc(eUp.message)})</span>`); }
+              else { ok++; logLinha(`<span class="rcv-ok">✓ ${esc(c.nome_principal)}: ${Object.keys(upd).length} campo(s) preenchido(s)</span>`); }
             } else {
-              semNada++; logLinha(`<span class="rcv-skip">– ${c.nome_principal}: Receita não trouxe nada além do que já tem</span>`);
+              semNada++; logLinha(`<span class="rcv-skip">– ${esc(c.nome_principal)}: Receita não trouxe nada além do que já tem</span>`);
             }
           }
         }

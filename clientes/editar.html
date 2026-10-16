@@ -784,7 +784,7 @@
       if (!s.estado_civil) faltas.push('estado civil');
       if (!s.data_nascimento) faltas.push('nascimento');
       const dados = [s.rg ? 'RG ' + s.rg : null, s.data_nascimento ? 'nasc. ' + String(s.data_nascimento).split('-').reverse().join('/') : null, s.estado_civil || null, s.profissao || null, s.endereco_residencial || null].filter(Boolean).join(' · ');
-      return `<div style="margin-bottom:8px;"><b style="color:var(--text);">${rotulo}: ${s.nome}</b><br><span style="color:var(--text-muted);">${dados || 'sem dados documentais no cadastro'}</span>${faltas.length ? `<br><span style="color:var(--warn);">⚠ faltam: ${faltas.join(', ')} — complete na seção Sócios desta página e reabra o kit</span>` : ''}</div>`;
+      return `<div style="margin-bottom:8px;"><b style="color:var(--text);">${escH(rotulo)}: ${escH(s.nome)}</b><br><span style="color:var(--text-muted);">${escH(dados) || 'sem dados documentais no cadastro'}</span>${faltas.length ? `<br><span style="color:var(--warn);">⚠ faltam: ${faltas.join(', ')} — complete na seção Sócios desta página e reabra o kit</span>` : ''}</div>`;
     }
     function resumoSociosKit(){
       const s1 = socios.find(x => x.id === document.getElementById('kitSocio').value);
@@ -1035,11 +1035,11 @@
     document.getElementById('btnKitBoasVindas').addEventListener('click', () => {
       if (!socios.length) { alert('Cadastre ao menos um sócio antes de gerar o kit.'); return; }
       const sel = document.getElementById('kitSocio');
-      sel.innerHTML = socios.map(s => `<option value="${s.id}">${s.nome}${s.eh_administrador ? ' (administrador)' : ''}</option>`).join('');
+      sel.innerHTML = socios.map(s => `<option value="${s.id}">${escH(s.nome)}${s.eh_administrador ? ' (administrador)' : ''}</option>`).join('');
       const adm = socios.find(s => s.eh_administrador);
       if (adm) sel.value = adm.id;
       const sel2 = document.getElementById('kitSocio2');
-      sel2.innerHTML = '<option value="">— só um assinante</option>' + socios.map(s => `<option value="${s.id}">${s.nome}${s.eh_administrador ? ' (administrador)' : ''}</option>`).join('');
+      sel2.innerHTML = '<option value="">— só um assinante</option>' + socios.map(s => `<option value="${s.id}">${escH(s.nome)}${s.eh_administrador ? ' (administrador)' : ''}</option>`).join('');
       const admins = socios.filter(s => s.eh_administrador);
       sel2.value = admins.length === 2 ? (admins.find(a => a.id !== sel.value)?.id || '') : '';
       resumoSociosKit();
@@ -1245,6 +1245,8 @@
     // ============================================================
     // PASTA NO DRIVE
     // ============================================================
+    // o link da pasta: endereço da web; o que vier sem http(s) ganha o https:// (um javascript: digitado vira um endereço sem efeito)
+    function hrefWeb(u) { u = String(u || '').trim(); return /^https?:\/\//i.test(u) ? u : 'https://' + u.replace(/^\/+/, ''); }
     function atualizaBotoesDrive() {
       const url = document.getElementById('drive_folder_url').value.trim();
       const btnAbrir = document.getElementById('btnAbrirDrive');
@@ -1252,7 +1254,7 @@
       const status = document.getElementById('drivePastaStatus');
       if (url) {
         btnAbrir.hidden = false;
-        btnAbrir.href = url;
+        btnAbrir.href = hrefWeb(url);
         btnCriar.hidden = true;
         status.textContent = 'Pasta vinculada. Clique em "Abrir" para acessar no Drive.';
       } else {
@@ -1276,7 +1278,7 @@
       const url = document.getElementById('drive_folder_url').value.trim() || (cliente.drive_folder_url || '').trim();
       if (url) {
         caminho.textContent = 'Clientes Ativos › ' + (cliente.nome_principal || '');
-        abrir.href = url;
+        abrir.href = hrefWeb(url);
         abrir.hidden = false;
         loc.hidden = true;
       } else {
@@ -1374,13 +1376,13 @@
       wrap.innerHTML = socios.map(s => `
         <div class="list-item">
           <div class="list-item-info">
-            <div class="list-item-name">${s.nome}${s.eh_administrador ? '<span class="list-item-meta-tag">Administrador</span>' : ''}</div>
+            <div class="list-item-name">${escH(s.nome)}${s.eh_administrador ? '<span class="list-item-meta-tag">Administrador</span>' : ''}</div>
             <div class="list-item-meta">
               ${s.cpf ? `<span>CPF: ${formatCPF(s.cpf)}</span>` : ''}
               ${s.participacao_percentual ? `<span>${s.participacao_percentual}%</span>` : ''}
-              ${s.qualificacao ? `<span>${s.qualificacao}</span>` : ''}
+              ${s.qualificacao ? `<span>${escH(s.qualificacao)}</span>` : ''}
               ${s.telefone ? `<span>${formatTelefone(s.telefone)}</span>` : ''}
-              ${s.email ? `<span>${s.email}</span>` : ''}
+              ${s.email ? `<span>${escH(s.email)}</span>` : ''}
             </div>
           </div>
           <div class="list-item-actions">
@@ -1399,11 +1401,11 @@
       wrap.innerHTML = contatos.map(c => `
         <div class="list-item">
           <div class="list-item-info">
-            <div class="list-item-name">${c.nome}${c.eh_principal ? '<span class="list-item-meta-tag">Principal</span>' : ''}</div>
+            <div class="list-item-name">${escH(c.nome)}${c.eh_principal ? '<span class="list-item-meta-tag">Principal</span>' : ''}</div>
             <div class="list-item-meta">
-              ${c.papel ? `<span>${c.papel}</span>` : ''}
+              ${c.papel ? `<span>${escH(c.papel)}</span>` : ''}
               ${c.telefone ? `<span>${formatTelefone(c.telefone)}</span>` : ''}
-              ${c.email ? `<span>${c.email}</span>` : ''}
+              ${c.email ? `<span>${escH(c.email)}</span>` : ''}
             </div>
           </div>
           <div class="list-item-actions">
@@ -1722,7 +1724,7 @@
       row.className = 'proc-task';
       row.innerHTML =
         `<label class="proc-task-chk"><input type="checkbox" class="pt-on"${t.on!==false?' checked':''}><span></span></label>`+
-        `<input type="text" class="input pt-titulo" value="${(t.titulo||'').replace(/"/g,'&quot;')}" placeholder="Título da tarefa">`+
+        `<input type="text" class="input pt-titulo" value="${escH(t.titulo||'')}" placeholder="Título da tarefa">`+
         `<select class="select pt-setor">${selSetorHtml(t.setor||'societario')}</select>`+
         `<input type="text" class="input pt-resp" value="${(t.responsavel||'').replace(/"/g,'&quot;')}" placeholder="Responsável">`+
         `<button type="button" class="rm-task" title="Remover">&times;</button>`;
@@ -1939,9 +1941,9 @@
         const subs = data?.subpastas || [];
         if (!subs.length) { selP.innerHTML = '<option value="">Nenhum processo anterior em PROCESSOS</option>'; return; }
         selP.innerHTML = '<option value="">Selecione…</option>' + subs.map(s =>
-          `<option value="${s.id}">${s.name}${s.modifiedTime ? ' — ' + fmtData(s.modifiedTime) : ''}</option>`).join('');
+          `<option value="${escH(s.id)}">${escH(s.name)}${s.modifiedTime ? ' — ' + fmtData(s.modifiedTime) : ''}</option>`).join('');
       } catch (e) {
-        selP.innerHTML = `<option value="">Erro: ${e.message || e}</option>`;
+        selP.innerHTML = `<option value="">Erro: ${escH(e.message || e)}</option>`;
       }
     });
 
@@ -1956,9 +1958,9 @@
         if (error) throw error;
         const pdfs = data?.pdfs || [];
         if (!pdfs.length) { selA.innerHTML = '<option value="">Nenhum PDF nessa pasta</option>'; return; }
-        selA.innerHTML = '<option value="">Selecione o contrato…</option>' + pdfs.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+        selA.innerHTML = '<option value="">Selecione o contrato…</option>' + pdfs.map(p => `<option value="${escH(p.id)}">${escH(p.name)}</option>`).join('');
       } catch (err) {
-        selA.innerHTML = `<option value="">Erro: ${err.message || err}</option>`;
+        selA.innerHTML = `<option value="">Erro: ${escH(err.message || err)}</option>`;
       }
     });
 
@@ -2034,9 +2036,9 @@
       for (let i = 0; i < ca.length; i++){
         const dif = String(ca[i][1]) !== String(cn[i][1]);
         linhas += `<tr class="${dif ? 'mudou' : ''}">
-          <td class="cmp-campo">${ca[i][0]}${dif ? ' <span class="cmp-flag">●</span>' : ''}</td>
-          <td>${ca[i][1]}</td>
-          <td>${cn[i][1]}</td></tr>`;
+          <td class="cmp-campo">${escH(ca[i][0])}${dif ? ' <span class="cmp-flag">●</span>' : ''}</td>
+          <td>${escH(ca[i][1])}</td>
+          <td>${escH(cn[i][1])}</td></tr>`;
       }
       return `<table class="cmp-tbl"><thead><tr><th>Campo</th><th>Antes</th><th>Depois</th></tr></thead><tbody>${linhas}</tbody></table>
         <div class="field-help" style="margin-top:6px;">As linhas em amarelo (●) são as que mudaram. Confira — a extração é automática e pode falhar em PDF escaneado.</div>`;
@@ -2083,7 +2085,7 @@
       document.getElementById('voLista').innerHTML = aplicaveis.map(a => `
         <label class="vo-item">
           <input type="checkbox" data-oid="${a.r.id}" ${a.marcada ? 'checked' : ''}>
-          <span>${a.r.nome}</span>
+          <span>${escH(a.r.nome)}</span>
           <span class="vv-dia">dia ${a.r.dia_prazo}</span>
           <span class="vv-freq">${a.n ? a.n + ' cliente(s) do regime usam' : 'nenhum ainda'}</span>
         </label>`).join('') || '';
@@ -2586,7 +2588,7 @@
     function nomePorEmail(e){ if (!e) return null; return EMAIL_NOME[String(e).toLowerCase()] || String(e).split('@')[0]; }
     function fmtH(d){ if (!d) return '—'; try { const x = new Date(String(d).length <= 10 ? d + 'T00:00:00' : d); return x.toLocaleDateString('pt-BR'); } catch { return d; } }
     function chipSetor(s){ const i = SETOR_INFO[s] || [s || '—', '#8A93A6', 'var(--fill-2)']; return `<span class="setor-chip" style="color:${i[1]};background:${i[2]};border-color:${i[1]}55;">${i[0]}</span>`; }
-    function escH(t){ return String(t == null ? '' : t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    function escH(t){ return String(t == null ? '' : t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
     function _tabelaHist(arr, concluida){
       const rows = arr.map(t => {

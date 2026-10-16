@@ -9,7 +9,9 @@ const src = page.slice(i, j);
 import { perfilAtividade, cnaeMaisCompleto, ramoComReducao, ramoComZero, reducaoServicoPorCnae, conferirRbt12, CREDITO_FORNECEDOR_SIMPLES } from '../assets/js/dominio-relatorios.js';
 import { RT_PRAZO, janelaAberta as janelaAbertaEm } from '../assets/js/rt-prazos.js';
 import { avaliarConfianca, inferirProcedencia, decisaoDe, ROT_DECISAO } from '../assets/js/rt-confianca.js';
-const montarDadosAnalise = new Function('simular', 'ANO_XML', 'location', 'perfilAtividade', 'cnaeMaisCompleto', 'ramoComReducao', 'ramoComZero', 'reducaoServicoPorCnae', 'conferirRbt12', 'RT_PRAZO', 'janelaAbertaEm', 'CREDITO_FORNECEDOR_SIMPLES', 'avaliarConfianca', 'inferirProcedencia', 'decisaoDe', 'ROT_DECISAO', src + '\nreturn montarDadosAnalise;')(simular, 2026, { href: 'http://x/' }, perfilAtividade, cnaeMaisCompleto, ramoComReducao, ramoComZero, reducaoServicoPorCnae, conferirRbt12, RT_PRAZO, janelaAbertaEm, CREDITO_FORNECEDOR_SIMPLES, avaliarConfianca, inferirProcedencia, decisaoDe, ROT_DECISAO);
+// o escapeHtml da página (fiscal-reforma.html), o mesmo: o nome do maior cliente vem das notas e entra na análise como texto
+const escapeHtml = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const montarDadosAnalise = new Function('simular', 'ANO_XML', 'location', 'perfilAtividade', 'cnaeMaisCompleto', 'ramoComReducao', 'ramoComZero', 'reducaoServicoPorCnae', 'conferirRbt12', 'RT_PRAZO', 'janelaAbertaEm', 'CREDITO_FORNECEDOR_SIMPLES', 'avaliarConfianca', 'inferirProcedencia', 'decisaoDe', 'ROT_DECISAO', 'escapeHtml', src + '\nreturn montarDadosAnalise;')(simular, 2026, { href: 'http://x/' }, perfilAtividade, cnaeMaisCompleto, ramoComReducao, ramoComZero, reducaoServicoPorCnae, conferirRbt12, RT_PRAZO, janelaAbertaEm, CREDITO_FORNECEDOR_SIMPLES, avaliarConfianca, inferirProcedencia, decisaoDe, ROT_DECISAO, escapeHtml);
 // data fixa dentro da janela (até 30/10/2026, Res. CGSN 194/2026): o teste não pode depender do relógio de quem roda
 // (os casos que testam a janela fechada fixam globalThis.__HOJE_ISO__ antes de chamar)
 // proc: a procedência gravada com a simulação (13/10/2026); sem ela a análise deduz do resumo do Domínio (simulação antiga)
@@ -280,6 +282,11 @@ const cozXml = caso('COZINHA EMPRESAS TESTE', { ...entCoz, mixCheia:10, mixRed40
     clientes: [{ nome: 'CALÇADOS EXEMPLO S.A.', uf: 'RS', valor: 300000, pct: 37.5, cnpjs: 1 }, { nome: 'FÁBRICA EXEMPLO LTDA', uf: 'RS', valor: 200000, pct: 25, cnpjs: 1 }] }, '5620-1/01');
 chk('com notas e mix de 40%: a seção de clientes é a de venda a empresas, não a de "ninguém credita"', /por que isso decide a conta/.test(cozXml.txt) && !/fecha a porta também para o cliente pessoa jurídica/.test(cozXml.txt) && !/Apurar por fora não devolve crédito relevante a ninguém/i.test(cozXml.txt));
 chk('o mix de 40% aparece como regime de bares a conferir (art. 273)', /refeição no regime de bares, LC 214 art\. 275 — enquadramento a conferir no art\. 273/.test(cozXml.txt));
+const cozHtml = caso('COZINHA EMPRESAS TESTE', { ...entCoz, mixCheia:10, mixRed40:90 }, null,
+  { pctPJ: 90, nNotas: 400, periodoRotulo: 'jan–ago/2026', cobertura: 100, nClientes: 6, totalVendas: 800000, top20: 100,
+    clientes: [{ nome: '<img src=x onerror="alert(1)">CALÇADOS EXEMPLO S.A.', uf: 'RS', valor: 300000, pct: 37.5, cnpjs: 1 }] }, '5620-1/01');
+const htmlCoz = gerarAnalise(cozHtml.d);
+chk('o nome do maior cliente (das notas) entra na análise como texto, nunca como marcação', htmlCoz.includes('&lt;img src=x onerror=&quot;alert(1)&quot;&gt;CALÇADOS EXEMPLO S.A. representa') && !htmlCoz.includes('<img src=x'));
 
 // "MUDA O RESULTADO" É UM CRITÉRIO SÓ (13/10/2026): a recomendação muda de lado — o critério da confiança (seção 7). Antes
 // a seção 6 e os alertas olhavam o sinal da diferença e o mesmo documento dizia "muda" e "não muda" da mesma variável

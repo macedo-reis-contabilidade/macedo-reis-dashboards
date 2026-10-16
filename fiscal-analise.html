@@ -117,7 +117,7 @@
         .single();
 
       if (error || !data) {
-        resultado.innerHTML = `<div class="fa-empty" style="color:var(--danger)">Erro ao carregar cliente: ${error?.message || 'não encontrado'}</div>`;
+        resultado.innerHTML = `<div class="fa-empty" style="color:var(--danger)">Erro ao carregar cliente: ${esc(error?.message || 'não encontrado')}</div>`;
         return;
       }
       cliente = data;
@@ -199,7 +199,7 @@
         // A função já gravou na tabela; recarrega a versão persistida
         await carregarAnaliseMaisRecente();
       } catch (e) {
-        resultado.innerHTML = `<div class="fa-empty" style="color:var(--danger)">Não foi possível gerar a análise: ${e.message}</div>`;
+        resultado.innerHTML = `<div class="fa-empty" style="color:var(--danger)">Não foi possível gerar a análise: ${esc(e.message)}</div>`;
       } finally {
         btnGerar.disabled = false;
         btnGerarLabel.textContent = analiseAtual ? 'Gerar nova análise' : 'Gerar análise';
@@ -210,7 +210,7 @@
     function confBadge(c) {
       const map = { alta: 'fa-c-alta', media: 'fa-c-media', baixa: 'fa-c-baixa' };
       const label = { alta: 'Confiança alta', media: 'Confiança média', baixa: 'Confiança baixa' };
-      return `<span class="fa-conf ${map[c] || 'fa-c-media'}">${label[c] || 'Confiança ' + (c || '—')}</span>`;
+      return `<span class="fa-conf ${map[c] || 'fa-c-media'}">${label[c] || 'Confiança ' + esc(c || '—')}</span>`;
     }
 
     function sevClass(s) {
@@ -219,7 +219,7 @@
 
     function esc(t) {
       if (t === null || t === undefined) return '';
-      return String(t).replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]));
+      return String(t).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
     }
 
     function renderTributo(t) {
@@ -518,7 +518,7 @@
       const a = registro.analise || {};
       const enq = a.enquadramento || {};
       const trib = a.tributos || {};
-      const E = s => String(s==null?'':s).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
+      const E = s => String(s==null?'':s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
       const docTitulo = interno ? 'Análise Tributária — Uso Interno' : 'Diagnóstico Tributário';
       const cnpj = cli.documento ? formatDocumento(cli.documento) : '';
       const cidade = cli.cidade ? (cli.cidade + (cli.uf ? '/' + cli.uf : '')) : '';

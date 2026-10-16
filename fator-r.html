@@ -170,6 +170,7 @@
 
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    const escHtml = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));   // texto do banco nunca vira HTML (o nome que veio do formulário público, por exemplo)
 
     const el = (id) => document.getElementById(id);
     const brl = (v) => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -333,7 +334,7 @@
         }).join('');
         const margem = c && c.r != null ? c.r - 0.28 : null;
         return '<tr class="clicavel" data-id="' + e.id + '">' +
-          '<td><b>' + e.nome + '</b>' + (c && c.proporcional ? ' <span class="fr-dim" title="Empresa com menos de 13 meses — cálculo proporcionalizado (art. 26 §4º)">· proporcional</span>' : '') + '</td>' +
+          '<td><b>' + escHtml(e.nome) + '</b>' + (c && c.proporcional ? ' <span class="fr-dim" title="Empresa com menos de 13 meses — cálculo proporcionalizado (art. 26 §4º)">· proporcional</span>' : '') + '</td>' +
           '<td>' + mesRot(mesIso(e.inicio_atividade)) + '</td>' +
           '<td class="fr-num"><b>' + (c && c.r != null ? pct(c.r) : '—') + '</b></td>' +
           '<td><span class="fr-badge ' + fx.cls + '">' + fx.rot + '</span></td>' +
@@ -365,7 +366,7 @@
         '<div class="fr-hero-fator"><div class="fr-dim" style="font-size:12px;">Fator r · ' + mesRot(paAtual) + '</div>' +
         '<div class="r">' + (c && c.r != null ? pct(c.r) : '—') + '</div>' +
         '<span class="fr-badge ' + fx.cls + '">' + fx.rot + '</span></div>' +
-        '<div class="fr-hero-info"><b>' + e.nome + '</b>' + (e.documento ? ' · ' + e.documento : '') + '<br>' +
+        '<div class="fr-hero-info"><b>' + escHtml(e.nome) + '</b>' + (e.documento ? ' · ' + escHtml(e.documento) : '') + '<br>' +
         'Início de atividade: <b>' + mesRot(mesIso(e.inicio_atividade)) + '</b> (' + idadeMeses + ' meses)' +
         (c && c.proporcional ? ' · <span class="fr-alerta">cálculo proporcionalizado (menos de 13 meses — art. 26 §4º)</span>' : '') + '<br>' +
         (c ? 'RBT12: <b>' + brl(c.rbt12) + '</b> · FS12: <b>' + brl(c.fs12) + '</b> · Alvo 28%: <b>' + brl(0.28 * c.rbt12) + '</b>' : '') +
@@ -596,11 +597,11 @@
         const { data, error } = await supabase.functions.invoke('extract-document', {
           body: { modo: 'fator_r', documents: docs }
         });
-        if (error || !data || data.error) { box.innerHTML = '<span class="fr-erro">Extração falhou: ' + (error?.message || data?.error || 'erro desconhecido') + '</span>'; return; }
+        if (error || !data || data.error) { box.innerHTML = '<span class="fr-erro">Extração falhou: ' + escHtml(error?.message || data?.error || 'erro desconhecido') + '</span>'; return; }
         const d = data.data || {};
         const brutos = Array.isArray(d.meses) ? d.meses.filter(m => /^\d{4}-\d{2}$/.test(m.competencia || '')) : [];
         const brutosCaixa = Array.isArray(d.meses_caixa) ? d.meses_caixa.filter(m => /^\d{4}-\d{2}$/.test(m.competencia || '')) : [];
-        if (!brutos.length && !brutosCaixa.length) { box.innerHTML = '<span class="fr-erro">Nenhuma competência reconhecida.' + (d.avisos && d.avisos.length ? ' Avisos: ' + [].concat(d.avisos).join(' · ') : '') + '</span>'; return; }
+        if (!brutos.length && !brutosCaixa.length) { box.innerHTML = '<span class="fr-erro">Nenhuma competência reconhecida.' + (d.avisos && d.avisos.length ? ' Avisos: ' + escHtml([].concat(d.avisos).join(' · ')) : '') + '</span>'; return; }
         const serie = lancPorEmpresa.get(e.id) || new Map();
         const camposFolha = ['folha_salarios', 'prolabore', 'inss_patronal', 'fgts', 'folha_outros'];
         const campos = ['receita'].concat(camposFolha);
@@ -641,8 +642,8 @@
             });
           });
           const linhas = Array.from(dest.entries()).sort((a, b) => a[0] < b[0] ? -1 : 1);
-          let html = '<b>Prévia da importação</b> — tipo: <b>' + (d.tipo || '?') + '</b>' + (d.empresa ? ' · empresa no PDF: <b>' + d.empresa + '</b>' : '') + ' · confiança: ' + (d.confianca || '?') +
-            (d.avisos && d.avisos.length ? '<br><span class="fr-alerta">Avisos: ' + [].concat(d.avisos).join(' · ') + '</span>' : '');
+          let html = '<b>Prévia da importação</b> — tipo: <b>' + escHtml(d.tipo || '?') + '</b>' + (d.empresa ? ' · empresa no PDF: <b>' + escHtml(d.empresa) + '</b>' : '') + ' · confiança: ' + escHtml(d.confianca || '?') +
+            (d.avisos && d.avisos.length ? '<br><span class="fr-alerta">Avisos: ' + escHtml([].concat(d.avisos).join(' · ')) + '</span>' : '');
           if (temFolha) html += '<p style="margin:10px 0 4px;"><label style="cursor:pointer;"><input type="checkbox" id="impDesloca"' + (deslocar ? ' checked' : '') + '> <b>Regime de caixa:</b> lançar folha e CPP do DAS no mês seguinte à competência (folha e DAS de 06/26 → pagos em jul/26, lado a lado com o faturamento de jul/26)</label></p>';
           html += '<p class="fr-dim" style="font-size:12px;margin:6px 0 8px;">A coluna <b>Lançar em</b> é o mês que entra no cálculo do fator — e é <b>ajustável linha a linha</b>: se algum valor cair no mês errado, corrija no seletor antes de gravar. Valores marcados <b>já em caixa (PGDAS)</b> vêm da folha oficial da apuração e entram direto no mês indicado, sem deslocar. Campo <b>vazio preserva</b> o que já está gravado; preenchido sobrescreve. Divergência com valor já gravado fica em amarelo, com o gravado indicado embaixo. E se a importação for <b>dobrar a folha</b> de um mês já lançado (mesma verba entrando por outra rubrica), o sistema pede confirmação antes de gravar.</p>' +
             '<table class="fr-tab" style="font-size:13px;"><thead><tr><th></th><th>Lançar em</th>' + rots.map(r => '<th>' + r + '</th>').join('') + '</tr></thead><tbody>';
@@ -734,7 +735,7 @@
         const l = (lancPorEmpresa.get(e.id) || new Map()).get(compIso) || {};
         const tds = campos.map(c => '<td><input class="input" type="number" step="0.01" data-emp="' + e.id + '" data-campo="' + c + '" value="' + (l[c] != null ? Number(l[c]) : '') + '"></td>').join('');
         const fT = folhaTotal(l);
-        return '<tr data-emp="' + e.id + '"><td><b>' + e.nome + '</b></td>' + tds +
+        return '<tr data-emp="' + e.id + '"><td><b>' + escHtml(e.nome) + '</b></td>' + tds +
           '<td class="fr-num" id="tot-' + e.id + '">' + (fT != null ? brl(fT) : '—') + '</td>' +
           '<td><button class="btn btn-primary btn-sm" data-salvar="' + e.id + '">Salvar</button> <span id="msg-' + e.id + '"></span></td></tr>';
       }).join('');
@@ -764,7 +765,7 @@
     async function renderCadastro() {
       mostrar('vCadastro');
       el('cadCorpo').innerHTML = empresas.map(e =>
-        '<tr><td><b>' + e.nome + '</b></td><td>' + (e.documento || '—') + '</td><td>' + mesRot(mesIso(e.inicio_atividade)) + '</td>' +
+        '<tr><td><b>' + escHtml(e.nome) + '</b></td><td>' + escHtml(e.documento || '—') + '</td><td>' + mesRot(mesIso(e.inicio_atividade)) + '</td>' +
         '<td>' + (e.ativo ? '<span class="fr-badge fr-ok">ativa</span>' : '<span class="fr-badge fr-nd">inativa</span>') + '</td>' +
         '<td><button class="btn btn-ghost btn-sm" data-toggle="' + e.id + '">' + (e.ativo ? 'Desativar' : 'Reativar') + '</button></td></tr>'
       ).join('') || '<tr><td colspan="5" class="fr-dim" style="text-align:center;padding:20px;">Nenhuma empresa ainda.</td></tr>';
@@ -863,7 +864,7 @@
         if (criadas.length) {
           const faixa = el('frAlertas');
           faixa.innerHTML = '⚡ <b>' + criadas.length + ' alerta(s) do radar virou(aram) tarefa agora</b> — sem responsável definido; quem pega, pega: ' +
-            criadas.map(x => '<span class="fr-chip-emp">' + x.nome + ' · ' + x.rotulo + '</span>').join('') +
+            criadas.map(x => '<span class="fr-chip-emp">' + escHtml(x.nome) + ' · ' + escHtml(x.rotulo) + '</span>').join('') +
             ' <a href="fiscal-tarefas.html">abrir as Tarefas do Fiscal →</a>';
           faixa.style.display = 'block';
         }

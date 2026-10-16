@@ -359,6 +359,7 @@
     import { abrirNovaTarefa } from './assets/js/nova-tarefa.js';
     import { formatDocumento, normalizarDocumento } from './assets/js/utils.js';
     import { rotinaDoDia, rotinaFeita } from './assets/js/rotinas-dia.js';
+    import { NOME_POR_EMAIL } from './assets/js/equipe.js';
 
     // ---- identidade visual por setor ----
     const SETOR_INFO = {
@@ -1186,7 +1187,7 @@
         const { data } = await supabase.from('clientes')
           .select('id, nome_principal, nome_fantasia, cidade')
           .or(`nome_principal.ilike.*${t}*,nome_fantasia.ilike.*${t}*,nome_busca.ilike.*${t.toLowerCase().replace(/[^a-z0-9]/g, '') || t}*`).limit(8);
-        el.innerHTML = (data || []).map(c => `<button data-id="${c.id}">${c.nome_principal}<small>${[c.nome_fantasia, c.cidade].filter(Boolean).join(' · ') || '&nbsp;'}</small></button>`).join('')
+        el.innerHTML = (data || []).map(c => `<button data-id="${c.id}">${esc(c.nome_principal)}<small>${esc([c.nome_fantasia, c.cidade].filter(Boolean).join(' · ')) || '&nbsp;'}</small></button>`).join('')
           || '<button disabled style="color:var(--text-dim);cursor:default;">Nada encontrado.</button>';
         el.style.display = 'block';
         el.querySelectorAll('[data-id]').forEach(b => b.addEventListener('click', () => {
@@ -1438,6 +1439,10 @@
     // ---------- lateral (telas largas): radar do escritório ----------
     async function montarRadar() {
       const box = document.getElementById('agRadarBox'); if (!box) return;
+      // as minhas: o nome com a letra acentuada como "_" (Vit_ria pega Vitória e Vitoria); os sócios levam também o "Ambos"
+      const meuNome = String(NOME_POR_EMAIL[String(usuarioEmail || '').toLowerCase()] || '').replace(/[^\x00-\x7F]/g, '_');
+      const minhas = q => !meuNome ? q.eq('responsavel', '~ninguém~')
+        : SOCIOS.includes(String(usuarioEmail || '').toLowerCase()) ? q.or('responsavel.ilike.' + meuNome + ',responsavel.ilike.ambos') : q.ilike('responsavel', meuNome);
       try {
         const hj = ymd(new Date());
         const em60 = ymd(new Date(Date.now() + 60 * 864e5));
@@ -1449,9 +1454,11 @@
           supabase.from('precificacoes').select('id').eq('status', 'fechada'),
           supabase.from('transicoes').select('proposta_id').not('proposta_id', 'is', null),
           supabase.from('precificacoes').select('id', { count: 'exact', head: true }).eq('status', 'apresentada').lt('atualizado_em', seteDias),
-          supabase.from('carteira_info').select('cliente_id', { count: 'exact', head: true }).eq('inadimplente', true).is('saida', null),
-          supabase.from('tarefas').select('id', { count: 'exact', head: true }).eq('status', 'pendente').lt('prazo', hj),
-          supabase.from('tarefas').select('id', { count: 'exact', head: true }).eq('status', 'pendente').lt('prazo', hj).ilike('responsavel', nomePorEmail(usuarioEmail) || '~nada~'),
+          // inadimplente = carteira_info.inadimplente_desde preenchido, de quem ainda está na carteira (como a dica do assistente)
+          supabase.from('carteira_info').select('cliente_id', { count: 'exact', head: true }).not('inadimplente_desde', 'is', null).or('saida.is.null,saida.gt.' + hj),
+          // atrasada = aberta (tudo que não está concluído, inclusive "aguardando") com prazo vencido — a mesma conta do assistente
+          supabase.from('tarefas').select('id', { count: 'exact', head: true }).neq('status', 'concluida').lt('prazo', hj),
+          minhas(supabase.from('tarefas').select('id', { count: 'exact', head: true }).neq('status', 'concluida').lt('prazo', hj)),
           supabase.from('rt_casos').select('prazo_opcao').eq('decisao', 'pendente'),
           supabase.from('faturaveis').select('valor').eq('status', 'a_faturar')
         ]);
