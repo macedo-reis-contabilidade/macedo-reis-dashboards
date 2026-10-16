@@ -27,11 +27,14 @@ chk('tabelas fora: configurações, chats, tokens e o backup pessoal', ['configu
 chk('as colunas que vêm sem pedir estão entre as lidas', Object.values(TABELAS).every(T => T.padrao.every(c => T.cols.includes(c))));
 chk('o financeiro do escritório marcado como só dos sócios', TABELAS.ca_parcelas.socios === true && TABELAS.ca_categorias.socios === true);
 chk('o dicionário do prompt lista as tabelas e não tem credenciais', Object.keys(TABELAS).every(t => dicionario().includes('## ' + t + ' ')) && !/credenciais/.test(dicionario()));
-chk('as definições: as cinco de ler e as cinco propostas, consultar só com as tabelas da lista', DEFINICOES.map(d => d.name).join() === 'buscar_empresa,ver_empresa,agenda,consultar,perguntar_reforma,propor_concluir_tarefas,propor_marcar_pago,propor_criar_tarefa,propor_revisao_atrasadas,propor_ver_vigia'
+chk('as definições: as cinco de ler e as seis propostas, consultar só com as tabelas da lista', DEFINICOES.map(d => d.name).join() === 'buscar_empresa,ver_empresa,agenda,consultar,perguntar_reforma,propor_concluir_tarefas,propor_alterar_tarefas,propor_marcar_pago,propor_criar_tarefa,propor_revisao_atrasadas,propor_ver_vigia'
   && JSON.stringify(DEFINICOES.find(d => d.name === 'consultar').input_schema.properties.tabela.enum) === JSON.stringify(Object.keys(TABELAS)));
 chk('o prompt: a Reforma sozinha na rodada (a resposta dela vai direto, com as fontes); a tela pelo nome e a situação por extenso',
   /Chame sozinha na rodada/.test(INSTRUCOES) && /mantenha as fontes dele entre colchetes/.test(INSTRUCOES) && /não financeiro-boletos\.html/.test(INSTRUCOES) && /não em_transicao/.test(INSTRUCOES)
   && /a última linha dele \("Base da resposta: …"/.test(INSTRUCOES) && /não a escreva por conta própria/.test(INSTRUCOES));
+chk('o prompt: remarcar, passar e mudar a prioridade com propor_alterar_tarefas; a tarefa da ficha de origem não muda por aqui; prazo não é mais "outra tela"',
+  /remarcar, adiar ou antecipar tarefas, passar pra outra pessoa ou mudar a prioridade: propor_alterar_tarefas/.test(INSTRUCOES) && /O prazo e o responsável da tarefa de admissão, rescisão ou alvará não mudam por aqui/.test(INSTRUCOES)
+  && !/ficha da empresa, prazos,/.test(INSTRUCOES) && /adiar rotina é na Agenda/.test(INSTRUCOES));
 chk('o prompt: a pergunta antiga de outro dia vem com a data, e o "amanhã" dela não é erro',
   /a pergunta antiga de outro dia vem com a data e a hora em que foi feita/.test(INSTRUCOES) && /não é erro e não precisa de desculpa/.test(INSTRUCOES));
 
@@ -268,7 +271,45 @@ console.log('As propostas (nada muda aqui: a tela mostra e a pessoa confirma):')
   chk('revisão: de outra pessoa; sem atrasadas não propõe; sem saber de quem, pergunta', JSON.stringify((await nova().propor_revisao_atrasadas({ pessoa: 'vitória' }), propostas[5])) === JSON.stringify({ tipo: 'revisar_atrasadas', pessoa: 'Vitória' })
     && /não tem tarefa atrasada/.test(await nova().propor_revisao_atrasadas({ pessoa: 'Adaini' })) && /Diga de quem/.test(await nova({}).propor_revisao_atrasadas({})) && propostas.length === 6);
   chk('etapas das propostas, em português', descreverEtapa('propor_concluir_tarefas', {}) === 'Separando as tarefas pra você confirmar' && descreverEtapa('propor_revisao_atrasadas', {}) === 'Preparando a revisão das atrasadas'
-    && descreverEtapa('propor_ver_vigia', {}) === 'Separando o que o vigia achou');
+    && descreverEtapa('propor_ver_vigia', {}) === 'Separando o que o vigia achou' && descreverEtapa('propor_alterar_tarefas', {}) === 'Separando o que muda pra você confirmar');
+}
+{
+  // remarcar, passar pra outra pessoa e mudar a prioridade (16/10/2026)
+  const U = n => '7c000000-0000-4000-8000-' + String(n).padStart(12, '0');
+  const tarefas = [
+    { id: U(1), cliente_id: ID_A, setor: 'financeiro', titulo: 'Faturar: 2 EMISSÕES DE NOTAS FISCAIS — LOJA DA ESQUINA LTDA', responsavel: 'Samuel', prazo: '2026-10-13', status: 'pendente', prioridade: 'media' },
+    { id: U(2), cliente_id: ID_A, setor: 'dp', titulo: 'Admissão de FULANA', responsavel: 'Vitória', prazo: '2026-10-10', status: 'pendente', prioridade: 'alta', admissao_id: 'a1' },
+    { id: U(3), cliente_id: ID_A, setor: 'fiscal', titulo: 'EFD', responsavel: 'Thalia', prazo: '2026-10-10', status: 'pendente', prioridade: 'media' },
+    { id: U(4), cliente_id: ID_A, setor: 'fiscal', titulo: 'EFD', responsavel: 'Thalia', prazo: '2026-10-14', status: 'pendente', prioridade: 'media' },
+    { id: U(5), cliente_id: ID_B, setor: 'fiscal', titulo: 'EFD', responsavel: 'Thalia', prazo: '2026-10-09', status: 'concluida', prioridade: 'media' }];
+  const propostas = [];
+  const nova = () => criarFerramentas({ banco: bancoFalso({ tarefas }).banco, hoje: '2026-10-14', usuario: { email: 'financeiro@macedoereis.com.br', nome: 'Samuel', socio: true }, aoPropor: a => propostas.push(a) });
+  const r1 = await nova().propor_alterar_tarefas({ titulo: 'Faturar: 2 EMISSÕES', pessoa: 'Samuel', atrasadas: true, novo_prazo: '2026-10-14' });
+  chk('remarcar: a atrasada que bate, com o prazo novo; diz o antes e o depois e que nada mudou ainda', propostas.length === 1 && JSON.stringify(propostas[0]) === JSON.stringify({ tipo: 'alterar_tarefas', ids: [U(1)], mudar: { prazo: '2026-10-14' } })
+    && /prazo 13\/10\/2026 → 14\/10\/2026/.test(r1) && /Nada mudou ainda/.test(r1) && /LOJA DA ESQUINA LTDA/.test(r1), r1);
+  const r2 = await nova().propor_alterar_tarefas({ empresa: ID_A, novo_responsavel: 'vitoria', nova_prioridade: 'urgente' });
+  chk('passar e deixar urgente: a da admissão fica de fora (vem da ficha), com a tela onde mudar', propostas.length === 2 && JSON.stringify([...propostas[1].ids].sort()) === JSON.stringify([U(1), U(3), U(4)].sort())
+    && JSON.stringify(propostas[1].mudar) === JSON.stringify({ responsavel: 'Vitória', prioridade: 'alta' }) && /1 tarefa de admissão fica de fora/.test(r2) && /tela Admissões/.test(r2)
+    && /Thalia → Vitória/.test(r2) && /prioridade média → alta/.test(r2), r2);
+  const r3 = await nova().propor_alterar_tarefas({ titulo: 'Admissão', novo_prazo: '2026-10-20' });
+  chk('só a da admissão: não propõe e diz onde mudar', /fica de fora/.test(r3) && /Nada foi proposto/.test(r3) && propostas.length === 2, r3);
+  await nova().propor_alterar_tarefas({ titulo: 'Admissão', nova_prioridade: 'baixa' });
+  chk('só a prioridade: a da admissão entra (a ficha refaz só o prazo e o responsável)', propostas.length === 3 && JSON.stringify(propostas[2].ids) === JSON.stringify([U(2)]));
+  propostas.pop();
+  const r4 = await nova().propor_alterar_tarefas({ pessoa: 'Thalia', titulo: 'EFD', novo_prazo: '2026-10-14' });
+  chk('a que já está com o prazo novo não entra; a concluída também não', propostas.length === 3 && JSON.stringify(propostas[2].ids) === JSON.stringify([U(3)]) && /1 tarefa já está assim/.test(r4), r4);
+  chk('sem dizer o que muda, data que não existe, pessoa ou prioridade fora da lista, sem dizer quais: não propõe',
+    /Diga o que muda/.test(await nova().propor_alterar_tarefas({ titulo: 'EFD' })) && /AAAA-MM-DD/.test(await nova().propor_alterar_tarefas({ titulo: 'EFD', novo_prazo: '2026-02-30' }))
+    && /fora da equipe/.test(await nova().propor_alterar_tarefas({ titulo: 'EFD', novo_responsavel: 'Luana' })) && /alta, media ou baixa/.test(await nova().propor_alterar_tarefas({ titulo: 'EFD', nova_prioridade: 'máxima' }))
+    && /Diga quais tarefas/.test(await nova().propor_alterar_tarefas({ novo_prazo: '2026-10-20' })) && propostas.length === 3);
+  chk('prazo novo num sábado: a resposta avisa', /cai num sábado/.test(await nova().propor_alterar_tarefas({ titulo: 'EFD', pessoa: 'Thalia', novo_prazo: '2026-10-17' }))
+    && !/cai num/.test(r1) && propostas.length === 4, '');
+  propostas.pop();
+  const r5 = await nova().propor_alterar_tarefas({ titulo: 'EFD', pessoa: 'Thalia', novo_responsavel: 'ambos' });
+  chk('"Ambos" vale como responsável novo (Samuel e Diego)', propostas.length === 4 && propostas[3].mudar.responsavel === 'Ambos', r5);
+  const fs = nova();
+  await fs.propor_alterar_tarefas({ titulo: 'EFD', pessoa: 'Thalia', nova_prioridade: 'baixa' });
+  chk('uma proposta por pergunta também aqui', /Já há uma proposta nesta pergunta/.test(await fs.propor_concluir_tarefas({ titulo: 'EFD' })) && propostas.length === 5);
 }
 console.log('O vigia (o que o banco achou de desencontrado ou parado):');
 {

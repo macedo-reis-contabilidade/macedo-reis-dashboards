@@ -3,7 +3,8 @@
 // concluiu e sem a faturável; criar a tarefa avulsa do formulário e desfazer; marcar boleto pago e desfazer; em lotes de 100.
 // Sem rede: o cliente do Supabase é um dublê em memória.
 // Rodar com: node tests/tarefas-acoes.test.mjs
-import { concluirTarefas, desfazerConclusao, criarTarefasAvulsas, excluirTarefasCriadas, marcarPagos, desfazerPagos, avisarDependentes } from '../assets/js/tarefas-acoes.js';
+import { concluirTarefas, desfazerConclusao, criarTarefasAvulsas, excluirTarefasCriadas, marcarPagos, desfazerPagos, avisarDependentes,
+  alterarTarefas, desfazerAlteracao, limparMudanca, descreverMudanca, fichaDeOrigem } from '../assets/js/tarefas-acoes.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + extra : '')); };
@@ -16,7 +17,7 @@ function dubla(tabelas) {
   const sb = { log, antes: null, falhar: null, from(t) {
     const rows = tabelas[t] || (tabelas[t] = []);
     const st = { f: [], patch: null, del: false, ins: null };
-    const passa = r => st.f.every(([k, c, v]) => (k === 'in' ? v.map(String).includes(String(r[c])) : k === 'eq' ? r[c] === v : r[c] !== v));
+    const passa = r => st.f.every(([k, c, v]) => (k === 'in' ? v.map(String).includes(String(r[c])) : k === 'eq' ? r[c] === v : k === 'is' ? r[c] == v : r[c] !== v));
     const exec = () => {
       log.push({ t, op: st.ins ? 'insert' : st.patch ? 'update' : st.del ? 'delete' : 'select', f: st.f.map(x => x.slice()), n: st.f.find(x => x[0] === 'in') ? st.f.find(x => x[0] === 'in')[2].length : null });
       if (sb.falhar === t) { sb.falhar = null; return { data: null, error: { message: 'falhou de propósito' } }; }
@@ -29,7 +30,7 @@ function dubla(tabelas) {
     };
     const q = {
       select() { return q; }, or() { return q; },
-      in(c, v) { st.f.push(['in', c, v]); return q; }, eq(c, v) { st.f.push(['eq', c, v]); return q; }, neq(c, v) { st.f.push(['neq', c, v]); return q; },
+      in(c, v) { st.f.push(['in', c, v]); return q; }, eq(c, v) { st.f.push(['eq', c, v]); return q; }, neq(c, v) { st.f.push(['neq', c, v]); return q; }, is(c, v) { st.f.push(['is', c, v]); return q; },
       update(p) { st.patch = p; return q; }, delete() { st.del = true; return q; },
       insert(p) { st.ins = (Array.isArray(p) ? p : [p]).map(r => ({ id: 'novo' + (seq++), ...r })); return q; },
       then(res, rej) { return Promise.resolve(exec()).then(res, rej); }
@@ -133,6 +134,73 @@ console.log('Boletos:');
   const d = await desfazerPagos(sb, r.pagos);
   const st = id => db.cobrancas_mensais.find(b => b.id === id).status;
   chk('desfazer volta à situação de antes, só de quem continua pago', d.desfeitos.sort().join() === 'b1,b5' && st('b1') === 'enviado' && st('b5') === 'a_emitir' && st('b2') === 'cancelado' && st('b3') === 'pago');
+}
+
+console.log('Alterar prazo, responsável e prioridade:');
+{
+  const db = { tarefas: [T('a', { prazo: '2026-10-15', responsavel: 'Thalia', prioridade: 'media' }), T('b', { status: 'em_andamento', prazo: '2026-10-10', responsavel: 'THALIA', prioridade: 'baixa' }),
+    T('c', { status: 'concluida', prazo: '2026-10-01' }), T('d', { prazo: '2026-10-12', admissao_id: 'adm1' }), T('e', { prazo: '2026-10-16' }), T('g', { prazo: null, responsavel: null })], tarefa_historico: [] };
+  const sb = dubla(db);
+  const r = await alterarTarefas(sb, ['a', 'b', 'c', 'd', 'e', 'x', 'g', 'a'], { prazo: '2026-10-16' }, { autor: EU, origem: 'assistente do escritório' });
+  const st = id => db.tarefas.find(t => t.id === id);
+  chk('remarca só as abertas e fora da ficha de origem; as outras vêm à parte (já assim, concluída/inexistente, da admissão), sem repetir',
+    r.alteradas.map(a => a.id).join() === 'a,b,g' && r.iguais.join() === 'e' && r.fechadas.join() === 'c,x' && r.daFicha.map(f => f.id + ':' + f.nome + ':' + f.tela).join() === 'd:admissão:Admissões' && !r.erro, JSON.stringify(r));
+  chk('o prazo novo gravado; a concluída e a da admissão ficam como estavam', ['a', 'b', 'g'].every(id => st(id).prazo === '2026-10-16') && st('c').prazo === '2026-10-01' && st('d').prazo === '2026-10-12');
+  chk('o antes e o depois de cada uma (pra desfazer), só do que mudou', JSON.stringify(r.alteradas.find(a => a.id === 'b')) === JSON.stringify({ id: 'b', titulo: 'Tarefa b', antes: { prazo: '2026-10-10' }, depois: { prazo: '2026-10-16' } })
+    && r.alteradas.find(a => a.id === 'g').antes.prazo === null);
+  const linhas = db.tarefa_historico.map(h => h.tarefa_id + ': ' + h.descricao);
+  chk('a linha no histórico, com o antes, o depois e por onde', linhas.join(' | ') === 'a: Prazo alterado de 15/10/2026 para 16/10/2026 — pelo assistente do escritório. | b: Prazo alterado de 10/10/2026 para 16/10/2026 — pelo assistente do escritório. | g: Prazo definido: 16/10/2026 — pelo assistente do escritório.'
+    && db.tarefa_historico.every(h => h.autor === EU), linhas.join(' | '));
+  chk('o update vai com a trava "só quem não está concluída", num lote só', sb.log.filter(l => l.t === 'tarefas' && l.op === 'update').length === 1 && sb.log.some(l => l.op === 'update' && l.f.some(f => f[0] === 'neq' && f[1] === 'status' && f[2] === 'concluida')));
+
+  // passar pra Vitória e deixar urgente: o responsável sem diferença de maiúscula ou acento
+  const db2 = { tarefas: [T('h', { responsavel: 'VITÓRIA', prioridade: 'media' }), T('i', { responsavel: 'Adaini', prioridade: 'alta' }), T('j', { responsavel: 'Vitoria', prioridade: 'alta' })], tarefa_historico: [] };
+  const r2 = await alterarTarefas(dubla(db2), ['h', 'i', 'j'], { responsavel: 'Vitória', prioridade: 'alta' }, { autor: EU, origem: 'assistente do escritório' });
+  chk('responsável e prioridade: "VITÓRIA" e "Vitoria" já são a Vitória; só o que muda entra no depois', r2.alteradas.map(a => a.id + ':' + Object.keys(a.depois).join('+')).join() === 'h:prioridade,i:responsavel' && r2.iguais.join() === 'j', JSON.stringify(r2));
+  chk('o histórico: "prioridade alterada de média para alta", "responsável alterado de Adaini para Vitória"', db2.tarefa_historico.map(h => h.descricao).join(' | ')
+    === 'Prioridade alterada de média para alta — pelo assistente do escritório. | Responsável alterado de Adaini para Vitória — pelo assistente do escritório.', db2.tarefa_historico.map(h => h.descricao).join(' | '));
+  chk('com os dois campos mudando, a linha junta os dois', descreverMudanca({ prazo: '2026-10-15', responsavel: 'Thalia' }, { prazo: '2026-10-16', responsavel: 'Vitória' }) === 'Prazo alterado de 15/10/2026 para 16/10/2026; responsável alterado de Thalia para Vitória');
+
+  chk('mudança que não vale: data inexistente, prioridade fora da lista, nada → erro, sem tocar no banco', (await alterarTarefas(dubla({ tarefas: [T('k')] }), ['k'], { prazo: '2026-02-30', prioridade: 'urgente' })).erro === 'Nada a mudar: diga o prazo, o responsável ou a prioridade.'
+    && limparMudanca({ prazo: '2026-10-16', responsavel: ' Vitória ', prioridade: 'alta', outro: 1 }) && JSON.stringify(limparMudanca({ prazo: '2026-10-16', responsavel: ' Vitória ', prioridade: 'alta', outro: 1 })) === '{"prazo":"2026-10-16","responsavel":"Vitória","prioridade":"alta"}'
+    && limparMudanca({}) === null && limparMudanca(null) === null);
+  chk('a tarefa da ficha de origem: admissão, rescisão, alvará', fichaDeOrigem({ rescisao_id: 'r' }).tela === 'Rescisões' && fichaDeOrigem({ alvara_id: 'v' }).nome === 'alvará' && fichaDeOrigem({ obrigacao_id: 'o' }) === null);
+  // a ficha refaz o prazo e o responsável, não a prioridade
+  const db3 = { tarefas: [T('m', { admissao_id: 'adm', prioridade: 'media', prazo: '2026-10-10' })], tarefa_historico: [] };
+  const r3 = await alterarTarefas(dubla(db3), ['m'], { prioridade: 'alta' }, { autor: EU });
+  chk('só a prioridade: vale também na tarefa da admissão', r3.alteradas.map(a => a.id).join() === 'm' && db3.tarefas[0].prioridade === 'alta' && !r3.daFicha.length, JSON.stringify(r3));
+  const r4 = await alterarTarefas(dubla(db3), ['m'], { prioridade: 'baixa', prazo: '2026-10-20' }, { autor: EU });
+  chk('com o prazo junto, a da admissão fica de fora inteira', !r4.alteradas.length && r4.daFicha.length === 1 && db3.tarefas[0].prazo === '2026-10-10' && db3.tarefas[0].prioridade === 'alta');
+}
+{
+  // concluída por outra pessoa entre a leitura e o clique: não muda e vem em "fechadas"
+  const db = { tarefas: [T('a', { prazo: '2026-10-15' }), T('b', { prazo: '2026-10-15' })], tarefa_historico: [] };
+  const sb = dubla(db);
+  sb.antes = (t, rows) => { if (t === 'tarefas') { const a = rows.find(x => x.id === 'a'); if (a.status !== 'concluida') a.status = 'concluida'; } };
+  const r = await alterarTarefas(sb, ['a', 'b'], { prazo: '2026-10-20' }, { autor: EU });
+  chk('concluída no meio do caminho: fica como estava e vem em "fechadas"', r.alteradas.map(a => a.id).join() === 'b' && r.fechadas.join() === 'a' && db.tarefas.find(t => t.id === 'a').prazo === '2026-10-15' && db.tarefa_historico.length === 1);
+}
+{
+  const db = { tarefas: Array.from({ length: 250 }, (_, i) => T('t' + i, { prazo: '2026-10-01' })), tarefa_historico: [] };
+  const sb = dubla(db);
+  const r = await alterarTarefas(sb, db.tarefas.map(t => t.id), { prazo: '2026-10-20' }, { autor: EU });
+  const updates = sb.log.filter(l => l.t === 'tarefas' && l.op === 'update').map(l => l.n);
+  chk('250 de uma vez: em lotes de 100', r.alteradas.length === 250 && updates.join() === '100,100,50', updates.join());
+  const d = await desfazerAlteracao(sb, r.alteradas, { autor: EU });
+  chk('desfazer as 250 (o mesmo antes): também em lotes', d.desfeitas.length === 250 && db.tarefas.every(t => t.prazo === '2026-10-01'));
+}
+{
+  const db = { tarefas: [T('a', { prazo: '2026-10-15', responsavel: 'Thalia' }), T('b', { prazo: '2026-10-10', responsavel: 'Thalia' }), T('c', { prazo: '2026-10-11', responsavel: 'Thalia' }), T('d', { prazo: null, responsavel: 'Thalia' })], tarefa_historico: [] };
+  const sb = dubla(db);
+  const r = await alterarTarefas(sb, ['a', 'b', 'c', 'd'], { prazo: '2026-10-16', responsavel: 'Vitória' }, { autor: EU, origem: 'assistente do escritório' });
+  const st = id => db.tarefas.find(t => t.id === id);
+  // depois: "b" foi remarcada de novo por outra pessoa e "c" foi concluída — ficam como estão
+  st('b').prazo = '2026-10-30'; st('c').status = 'concluida';
+  const d = await desfazerAlteracao(sb, r.alteradas, { autor: EU, origem: 'assistente do escritório' });
+  chk('desfazer: volta ao que era (prazo e responsável; "sem prazo" volta sem prazo); a mexida depois e a concluída ficam', d.desfeitas.sort().join() === 'a,d' && d.ficaram.sort().join() === 'b,c'
+    && st('a').prazo === '2026-10-15' && st('a').responsavel === 'Thalia' && st('d').prazo === null && st('d').responsavel === 'Thalia' && st('b').prazo === '2026-10-30' && st('b').responsavel === 'Vitória' && st('c').prazo === '2026-10-16', JSON.stringify(d));
+  const desfeitas = db.tarefa_historico.filter(h => /desfeita/.test(h.descricao)).map(h => h.tarefa_id + ': ' + h.descricao);
+  chk('a linha no histórico das desfeitas', desfeitas.join(' | ') === 'a: Prazo alterado de 16/10/2026 para 15/10/2026; responsável alterado de Vitória para Thalia — alteração desfeita no assistente do escritório. | d: Prazo retirado (era 16/10/2026); responsável alterado de Vitória para Thalia — alteração desfeita no assistente do escritório.', desfeitas.join(' | '));
 }
 
 if (falhas) { console.log('\n' + falhas + ' falha(s)'); process.exit(1); }

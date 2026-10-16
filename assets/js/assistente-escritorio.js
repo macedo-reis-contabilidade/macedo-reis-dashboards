@@ -9,7 +9,7 @@
 // de quem entrou). A carinha comemora quando alguém conclui tarefa ou rotina (evento "mr:feito", da agenda e das telas de
 // tarefas) e fica discreta quando uma janela está aberta. Na ficha da empresa (clientes/editar.html?id=…), "esta empresa"
 // é ela. Uma tela com coisa própria (a Reforma: a ficha, o cálculo, a Base legal) chama assistenteDaTela({...}).
-// Ações (concluir tarefas, marcar boleto pago, criar tarefa): a resposta traz a proposta e o cartão dela
+// Ações (concluir, remarcar ou passar tarefas, marcar boleto pago, criar tarefa): a resposta traz a proposta e o cartão dela
 // (assets/js/assistente-acoes.js) pede a confirmação; a saudação do dia e o recado da Agenda perguntam pelas atrasadas
 // ("Revisar as atrasadas": o assistente pergunta, grupo por grupo, o que já foi feito).
 // O vigia do sistema (15/10/2026, assets/js/vigia.js): a saudação do dia diz quanto ele achou pra pessoa conferir e o

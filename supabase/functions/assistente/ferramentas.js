@@ -3,10 +3,11 @@
 // buscar_empresa e ver_empresa (o cadastro e tudo o que o sistema tem da empresa), consultar (qualquer tabela da lista
 // abaixo, com filtros, contagem, totais e agrupamento), agenda (tarefas e rotinas de uma pessoa, com a regra da agenda —
 // assets/js/rotinas-dia.js) e perguntar_reforma (a pergunta vai pro chat da Reforma, que responde com a base dele).
-// As propostas (propor_concluir_tarefas, propor_marcar_pago, propor_criar_tarefa, propor_revisao_atrasadas e
-// propor_ver_vigia, o cartão do vigia) não gravam nada: separam o que identifica a mudança (ids, a pessoa, os campos da
-// tarefa nova) e o servidor manda junto com a resposta; a tela mostra o cartão e quem grava é ela, com o login da pessoa,
-// depois que ela confirma (assets/js/assistente-acoes.js + assets/js/tarefas-acoes.js). Uma proposta por pergunta.
+// As propostas (propor_concluir_tarefas, propor_alterar_tarefas — prazo, responsável e prioridade, desde 16/10/2026 —,
+// propor_marcar_pago, propor_criar_tarefa, propor_revisao_atrasadas e propor_ver_vigia, o cartão do vigia) não gravam
+// nada: separam o que identifica a mudança (ids, a pessoa, os campos da tarefa nova) e o servidor manda junto com a
+// resposta; a tela mostra o cartão e quem grava é ela, com o login da pessoa, depois que ela confirma
+// (assets/js/assistente-acoes.js + assets/js/tarefas-acoes.js, a mesma regra). Uma proposta por pergunta.
 // O vigia do sistema (vigia_achados) entra na lista e no ver_empresa: o que o banco achou de desencontrado ou parado.
 // Lista branca: só as tabelas e colunas daqui são lidas. Ficam fora a senha/credencial do cadastro, o RG e o nascimento
 // das pessoas físicas do cadastro (o CPF e o endereço do cadastro entram: são o dado de trabalho do IRPF), os documentos
@@ -18,6 +19,7 @@
 
 import { rotinaDoDia, rotinaFeita, ymd } from '../../../assets/js/rotinas-dia.js';
 import { EQUIPE } from '../../../assets/js/equipe.js';
+import { ficaDeFora, mudancaDe, PRIORIDADES } from '../../../assets/js/tarefas-acoes.js';
 
 // ---------- a lista branca: tabela → colunas lidas, as que vêm sem pedir, o que é cada coisa ----------
 // notas: o que o modelo precisa saber da coluna (valores possíveis, unidade); enums: colunas de tipo enumerado no banco
@@ -229,6 +231,19 @@ export const DEFINICOES = [
       setor: { type: 'string', description: 'dp, fiscal, contabil, financeiro, comercial, societario, irpf, gestao, clientes ou geral' },
       prazo_de: { type: 'string', description: 'AAAA-MM-DD' }, prazo_ate: { type: 'string', description: 'AAAA-MM-DD' },
       atrasadas: { type: 'boolean', description: 'só as com prazo antes de hoje' } } } },
+  { name: 'propor_alterar_tarefas',
+    description: 'Prepara a mudança de prazo, de responsável e/ou de prioridade de tarefas pra pessoa confirmar na tela — nada muda aqui: a tela mostra cada tarefa com o antes e o depois (ela pode desmarcar alguma), o botão pra confirmar e, depois, o "Desfazer". Só quando a pessoa pedir pra remarcar, adiar, antecipar, passar pra outra pessoa ou mudar a prioridade. Diga quais — ids (de consultar), ou empresa, pessoa (o responsável de agora) e/ou parte do título; prazo, setor e "atrasadas" afinam — e o que muda: novo_prazo, novo_responsavel e/ou nova_prioridade. Só tarefas abertas; até 300. Nas de admissão, rescisão e alvará, o prazo e o responsável vêm da ficha de origem e não mudam por aqui (a prioridade, sim).',
+    input_schema: { type: 'object', properties: {
+      ids: { type: 'array', items: { type: 'string' }, description: 'ids das tarefas (de consultar)' },
+      empresa: { type: 'string', description: 'id, nome ou CNPJ da empresa' },
+      pessoa: { type: 'string', description: 'o responsável de agora (alguém da equipe)' },
+      titulo: { type: 'string', description: 'parte do título (ex.: "EFD CONTRIBUIÇÕES")' },
+      setor: { type: 'string', description: 'dp, fiscal, contabil, financeiro, comercial, societario, irpf, gestao, clientes ou geral' },
+      prazo_de: { type: 'string', description: 'o prazo de agora, a partir de (AAAA-MM-DD)' }, prazo_ate: { type: 'string', description: 'o prazo de agora, até (AAAA-MM-DD)' },
+      atrasadas: { type: 'boolean', description: 'só as com prazo antes de hoje' },
+      novo_prazo: { type: 'string', description: 'AAAA-MM-DD, pelo dia do contexto ("hoje", "amanhã", "sexta")' },
+      novo_responsavel: { type: 'string', description: 'alguém da equipe, ou "Ambos" (Samuel e Diego)' },
+      nova_prioridade: { type: 'string', enum: ['alta', 'media', 'baixa'], description: '"urgente" é alta' } } } },
   { name: 'propor_marcar_pago',
     description: 'Prepara boletos de honorários pra pessoa marcar como pagos na tela — nada muda aqui: a tela mostra os boletos com o botão "Marcar como pago" e, depois, o "Desfazer". Só quando a pessoa disser que foram pagos. Diga quais: a empresa (uma ou várias) e a competência, ou os ids. Só os em aberto (a emitir, emitido, enviado); até 100.',
     input_schema: { type: 'object', properties: {
@@ -774,33 +789,96 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
   const idsDe = v => (Array.isArray(v) ? v : v == null ? [] : [v]).map(String).filter(x => UUID.test(x));
   const plural = (n, um, varios) => n + ' ' + (n === 1 ? um : varios);
 
-  async function propor_concluir_tarefas(e) {
-    const ja = jaProposto(); if (ja) return ja;
+  // as tarefas abertas que a pessoa disse: ids, ou empresa, pessoa (o responsável de agora) e/ou parte do título; prazo,
+  // setor e "atrasadas" afinam. → { linhas, total } ou { erro }
+  async function tarefasDoPedido(e, colunas) {
     const f = ['status=neq.concluida'];
     let criterio = false;
     const ids = idsDe(e.ids);
-    if (Array.isArray(e.ids) && e.ids.length && !ids.length) return 'Esses ids não são de tarefas (use os de consultar).';
-    if (ids.length) { if (ids.length > 300) return 'Até 300 tarefas por vez.'; f.push('id=in.(' + ids.join(',') + ')'); criterio = true; }
-    if (e.empresa && String(e.empresa).trim()) { const a = await acharEmpresa(e.empresa); if (a.erro) return a.erro; f.push('cliente_id=eq.' + a.id); criterio = true; }
+    if (Array.isArray(e.ids) && e.ids.length && !ids.length) return { erro: 'Esses ids não são de tarefas (use os de consultar).' };
+    if (ids.length) { if (ids.length > 300) return { erro: 'Até 300 tarefas por vez.' }; f.push('id=in.(' + ids.join(',') + ')'); criterio = true; }
+    if (e.empresa && String(e.empresa).trim()) { const a = await acharEmpresa(e.empresa); if (a.erro) return { erro: a.erro }; f.push('cliente_id=eq.' + a.id); criterio = true; }
     if (e.pessoa && String(e.pessoa).trim()) {
       const nome = equipePorNome(String(e.pessoa));
-      if (!nome) return 'Pessoa fora da equipe (' + EQUIPE.join(', ') + ').';
+      if (!nome) return { erro: 'Pessoa fora da equipe (' + EQUIPE.join(', ') + ').' };
       f.push(filtroPessoa(nome)); criterio = true;
     }
     if (e.titulo && String(e.titulo).trim()) { f.push('titulo=ilike.' + enc('*' + semCuringa(String(e.titulo).trim().slice(0, 120)) + '*')); criterio = true; }
-    if (!criterio) return 'Diga quais tarefas: ids, empresa, pessoa ou parte do título (prazo, setor e "atrasadas" afinam).';
+    if (!criterio) return { erro: 'Diga quais tarefas: ids, empresa, pessoa ou parte do título (prazo, setor e "atrasadas" afinam).' };
     if (e.setor) f.push('setor=eq.' + enc(String(e.setor).toLowerCase()));
     if (DATA.test(String(e.prazo_de || ''))) f.push('prazo=gte.' + e.prazo_de);
     if (DATA.test(String(e.prazo_ate || ''))) f.push('prazo=lte.' + e.prazo_ate);
     if (e.atrasadas === true) f.push('prazo=lt.' + hoje);
-    const { linhas, total } = await ler('tarefas?select=id,cliente_id,titulo,responsavel,prazo&' + f.join('&') + '&order=prazo.asc.nullslast,id.asc&limit=300', { contar: true });
+    const { linhas, total } = await ler('tarefas?select=' + colunas + '&' + f.join('&') + '&order=prazo.asc.nullslast,id.asc&limit=300', { contar: true });
+    return { linhas, total: total || 0 };
+  }
+
+  async function propor_concluir_tarefas(e) {
+    const ja = jaProposto(); if (ja) return ja;
+    const sel = await tarefasDoPedido(e, 'id,cliente_id,titulo,responsavel,prazo');
+    if (sel.erro) return sel.erro;
+    const { linhas, total } = sel;
     if (!linhas.length) return 'Nenhuma tarefa aberta com esses critérios — nada foi proposto.';
-    if ((total || 0) > 300) return 'São ' + total + ' tarefas abertas com esses critérios: afine (prazo, empresa, título) até 300 — nada foi proposto.';
+    if (total > 300) return 'São ' + total + ' tarefas abertas com esses critérios: afine (prazo, empresa, título) até 300 — nada foi proposto.';
     registrar({ tipo: 'concluir_tarefas', ids: linhas.map(t => String(t.id)) });
     const com = await comEmpresa(linhas);
     return 'Proposta pronta: a tela mostra ' + plural(linhas.length, 'tarefa', 'tarefas') + ' com o botão "Concluir" (a pessoa confirma e pode desmarcar alguma). Nada foi concluído ainda.\n'
       + com.slice(0, 12).map(t => '- ' + valorCurto(t.titulo, 80) + (t.cliente_id ? ' · ' + t.empresa : '') + ' · prazo ' + dataBR(t.prazo) + ' · ' + (t.responsavel || 'sem responsável')).join('\n')
       + (linhas.length > 12 ? '\n… e mais ' + (linhas.length - 12) : '') + '\nNa resposta: uma frase dizendo o que será concluído quando ela confirmar (não diga que já foi).';
+  }
+
+  // remarcar, passar pra outra pessoa, mudar a prioridade: a mesma regra da tela (assets/js/tarefas-acoes.js) separa o que
+  // muda em cada uma; as de admissão, rescisão e alvará ficam de fora do prazo e do responsável (o banco refaz os dois a
+  // partir da ficha de origem; só a prioridade muda nelas)
+  async function propor_alterar_tarefas(e) {
+    const ja = jaProposto(); if (ja) return ja;
+    const mudar = {};
+    const np = e.novo_prazo != null ? String(e.novo_prazo).trim() : '';
+    if (np) {
+      const d = new Date(np + 'T12:00:00Z');
+      if (!DATA.test(np) || isNaN(d) || d.toISOString().slice(0, 10) !== np) return 'O novo prazo vai em AAAA-MM-DD (uma data que existe).';
+      mudar.prazo = np;
+    }
+    const nr = e.novo_responsavel != null ? String(e.novo_responsavel).trim() : '';
+    if (nr) {
+      const n = normalizarBusca(nr) === 'ambos' ? 'Ambos' : equipePorNome(nr);
+      if (!n) return 'Novo responsável fora da equipe (' + EQUIPE.join(', ') + ', ou Ambos — Samuel e Diego).';
+      mudar.responsavel = n;
+    }
+    const npr = e.nova_prioridade != null ? normalizarBusca(String(e.nova_prioridade)).trim() : '';
+    if (npr) {
+      const p = npr === 'urgente' ? 'alta' : npr;
+      if (!PRIORIDADES.includes(p)) return 'A prioridade é alta, media ou baixa.';
+      mudar.prioridade = p;
+    }
+    if (!Object.keys(mudar).length) return 'Diga o que muda: novo_prazo (AAAA-MM-DD), novo_responsavel e/ou nova_prioridade.';
+    const sel = await tarefasDoPedido(e, 'id,cliente_id,titulo,responsavel,prazo,prioridade,admissao_id,rescisao_id,alvara_id');
+    if (sel.erro) return sel.erro;
+    const { linhas, total } = sel;
+    if (!linhas.length) return 'Nenhuma tarefa aberta com esses critérios — nada foi proposto.';
+    if (total > 300) return 'São ' + total + ' tarefas abertas com esses critérios: afine (prazo, empresa, título) até 300 — nada foi proposto.';
+    const daFicha = linhas.filter(t => ficaDeFora(t, mudar));
+    const mudam = linhas.filter(t => !ficaDeFora(t, mudar) && mudancaDe(t, mudar));
+    const iguais = linhas.length - daFicha.length - mudam.length;
+    const telas = [...new Set(daFicha.map(t => ficaDeFora(t, mudar).tela))];
+    const fora = daFicha.length ? plural(daFicha.length, 'tarefa', 'tarefas') + ' de ' + [...new Set(daFicha.map(t => ficaDeFora(t, mudar).nome))].join(', ')
+      + (daFicha.length === 1 ? ' fica' : ' ficam') + ' de fora: o prazo e o responsável vêm da ficha de origem — muda na tela ' + telas.join(', ') + '.' : '';
+    const ja2 = iguais ? plural(iguais, 'tarefa já está', 'tarefas já estão') + ' assim.' : '';
+    if (!mudam.length) return [fora, ja2, 'Nada foi proposto.'].filter(Boolean).join(' ');
+    registrar({ tipo: 'alterar_tarefas', ids: mudam.map(t => String(t.id)), mudar });
+    const com = await comEmpresa(mudam);
+    const PRIO = { alta: 'alta', media: 'média', baixa: 'baixa' };
+    const comoFica = t => { const d = mudancaDe(t, mudar) || {};
+      return ['prazo' in d ? 'prazo ' + (t.prazo ? dataBR(t.prazo) : 'sem prazo') + ' → ' + dataBR(d.prazo) : null, 'responsavel' in d ? (t.responsavel || 'sem responsável') + ' → ' + d.responsavel : null,
+        'prioridade' in d ? 'prioridade ' + (PRIO[t.prioridade] || t.prioridade || '—') + ' → ' + PRIO[d.prioridade] : null].filter(Boolean).join(' · '); };
+    // o "amanhã" de sexta cai no sábado: a resposta avisa (a tela também mostra o dia da semana)
+    const dsem = mudar.prazo ? new Date(mudar.prazo + 'T12:00:00Z').getUTCDay() : null;
+    const fds = dsem === 6 ? 'sábado' : dsem === 0 ? 'domingo' : null;
+    return 'Proposta pronta: a tela mostra ' + plural(mudam.length, 'tarefa', 'tarefas') + ' com o antes e o depois e o botão pra confirmar (a pessoa pode desmarcar alguma; depois, "Desfazer"). Nada mudou ainda.\n'
+      + com.slice(0, 12).map(t => '- ' + valorCurto(t.titulo, 80) + (t.cliente_id ? ' · ' + t.empresa : '') + ' · ' + comoFica(t)).join('\n')
+      + (mudam.length > 12 ? '\n… e mais ' + (mudam.length - 12) : '') + (ja2 ? '\n' + ja2 : '') + (fora ? '\n' + fora : '')
+      + (fds ? '\nAtenção: o novo prazo (' + dataBR(mudar.prazo) + ') cai num ' + fds + ' — diga isso na resposta.' : '')
+      + '\nNa resposta: uma frase dizendo o que muda quando ela confirmar (não diga que já mudou)' + (fora ? ' e o que fica de fora' : '') + '.';
   }
 
   async function propor_marcar_pago(e) {
@@ -883,7 +961,7 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     return 'Proposta pronta: a tela mostra o cartão do vigia com ' + plural(total, 'achado aberto', 'achados abertos') + de + ' — por grupo, cada um com "Abrir" (a tela onde se resolve) e "Ignorar". Nada muda sem a pessoa. Na resposta: o resumo do que mais pesa e uma frase convidando a abrir o cartão.';
   }
 
-  return { buscar_empresa, ver_empresa, agenda, consultar, perguntar_reforma, propor_concluir_tarefas, propor_marcar_pago, propor_criar_tarefa, propor_revisao_atrasadas, propor_ver_vigia };
+  return { buscar_empresa, ver_empresa, agenda, consultar, perguntar_reforma, propor_concluir_tarefas, propor_alterar_tarefas, propor_marcar_pago, propor_criar_tarefa, propor_revisao_atrasadas, propor_ver_vigia };
 }
 
 // a etapa que aparece no "digitando…" da tela
@@ -896,6 +974,7 @@ export function descreverEtapa(nome, e = {}) {
   if (nome === 'consultar') { const T = TABELAS[x.tabela]; return 'Consultando ' + (T ? T.rotulo : s(x.tabela, 40)); }
   if (nome === 'perguntar_reforma') return 'Perguntando à base da Reforma';
   if (nome === 'propor_concluir_tarefas') return 'Separando as tarefas pra você confirmar';
+  if (nome === 'propor_alterar_tarefas') return 'Separando o que muda pra você confirmar';
   if (nome === 'propor_marcar_pago') return 'Separando os boletos pra você confirmar';
   if (nome === 'propor_criar_tarefa') return 'Preparando a tarefa pra você conferir';
   if (nome === 'propor_revisao_atrasadas') return 'Preparando a revisão das atrasadas';

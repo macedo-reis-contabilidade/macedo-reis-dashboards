@@ -1,13 +1,15 @@
 // ============================================================
 // MACEDO & REIS — Assistente do escritório: os cartões das ações (14/10/2026)
-// A função "assistente" não grava nada. Quando a pessoa pede pra concluir tarefas, marcar boletos como pagos ou criar uma
-// tarefa, a resposta traz a proposta ("acao") e este módulo desenha o cartão embaixo dela: o que vai mudar, lido de novo
-// do banco (com caixas pra desmarcar, ou o formulário curto da tarefa nova), o botão pra confirmar e, depois, o
+// A função "assistente" não grava nada. Quando a pessoa pede pra concluir tarefas, remarcar, passar pra outra pessoa ou
+// mudar a prioridade (16/10/2026), marcar boletos como pagos ou criar uma tarefa, a resposta traz a proposta ("acao") e
+// este módulo desenha o cartão embaixo dela: o que vai mudar, lido de novo do banco (com caixas pra desmarcar e, no
+// alterar, o antes e o depois de cada uma; ou o formulário curto da tarefa nova), o botão pra confirmar e, depois, o
 // "Desfazer" (por 10 minutos). Quem grava é a tela, com o login da pessoa, pela mesma regra das telas
 // (assets/js/tarefas-acoes.js).
 // A revisão das atrasadas é o assistente perguntando o que já foi feito: grupo por grupo (as tarefas que mais se repetem
-// primeiro; as avulsas juntas no fim) — "todas feitas", "escolher quais" ou "ainda não". Começa pelo botão da saudação do
-// dia, pelo recado da Agenda ou pela IA (quando pedem pra passar as atrasadas a limpo).
+// primeiro; as avulsas juntas no fim) — "todas feitas", "escolher quais", "remarcar" (hoje, o próximo dia útil ou outra
+// data) ou "ainda não". Começa pelo botão da saudação do dia, pelo recado da Agenda ou pela IA (quando pedem pra passar
+// as atrasadas a limpo).
 // Depois de mudar, avisa as telas abertas: "mr:feito" (a carinha comemora), "mr:tarefas-mudaram" (a Agenda e as telas de
 // tarefas recarregam) e "mr:boletos-mudaram" (a grade de boletos troca a situação).
 // O cartão do vigia (15/10/2026) mostra o que o vigia do sistema achou (assets/js/vigia.js), por grupo, com "Abrir" (a
@@ -16,7 +18,8 @@
 // ============================================================
 
 import { supabase } from './supabase.js';
-import { concluirTarefas, desfazerConclusao, marcarPagos, desfazerPagos, criarTarefasAvulsas, excluirTarefasCriadas } from './tarefas-acoes.js';
+import { concluirTarefas, desfazerConclusao, marcarPagos, desfazerPagos, criarTarefasAvulsas, excluirTarefasCriadas,
+  alterarTarefas, desfazerAlteracao, limparMudanca, mudancaDe, fichaDeOrigem, ficaDeFora } from './tarefas-acoes.js';
 import { EQUIPE, SOCIOS, nomePorEmail } from './equipe.js';
 import { SETORES } from './nova-tarefa.js';
 import { lerAchados, ignorarAchado, reabrirAchado, filtrarAchados, agruparAchados, linkSeguro, ehSocioPeloNome, marcarVisto } from './vigia.js';
@@ -111,7 +114,7 @@ const resumoConcluidas = r => (r.concluidas || []).map(c => ({ id: c.id, status_
 //   ajuda: { salvar(acao), anunciar(texto), reagir(), email, nome } — salvar guarda o estado do cartão na conversa
 // ============================================================
 export function cartaoDaAcao(acao, ajuda = {}) {
-  const fazer = { concluir_tarefas: cartaoConcluir, marcar_pago: cartaoPago, criar_tarefa: cartaoCriar, revisar_atrasadas: cartaoRevisao, vigia: cartaoVigia }[acao && acao.tipo];
+  const fazer = { concluir_tarefas: cartaoConcluir, alterar_tarefas: cartaoAlterar, marcar_pago: cartaoPago, criar_tarefa: cartaoCriar, revisar_atrasadas: cartaoRevisao, vigia: cartaoVigia }[acao && acao.tipo];
   if (!fazer) return null;
   const raiz = h('div', { class: 'as-cartao', role: 'group' });
   const estado = { ...acao };
@@ -184,6 +187,144 @@ function cartaoConcluir({ raiz, estado, salvar, ajuda, anunciar }) {
       d.ficaram ? h('span', { class: 'as-cartao-sub', text: qtd(d.ficaram, 'ficou concluída', 'ficaram concluídas') + ' (cobrável, ou concluída de novo por outra pessoa): reabra na tela de tarefas do setor.' }) : null));
   }
   desenhar();
+}
+
+// ---------- remarcar, passar pra outra pessoa, mudar a prioridade (16/10/2026) ----------
+// A proposta diz quais (ids) e o que muda (mudar: prazo, responsável, prioridade); o cartão lê de novo, mostra o antes e o
+// depois de cada uma e deixa de fora a concluída, a que já está assim e, quando muda o prazo ou o responsável, a da ficha
+// de origem (admissão, rescisão, alvará: o banco refaz os dois a partir da ficha; a prioridade, não)
+const ORIGEM = 'assistente do escritório';
+const PRIORIDADE_TXT = { alta: 'alta', media: 'média', baixa: 'baixa' };
+const RESPONSAVEIS = [...EQUIPE, 'Ambos'];
+const DIA_SEMANA = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+// o que a proposta pede, conferido: prazo de verdade, responsável da equipe (ou "Ambos"), prioridade da lista
+function mudancaDaAcao(m) {
+  const x = limparMudanca(m);
+  if (!x) return null;
+  if (x.responsavel) { const n = RESPONSAVEIS.find(r => normal(r) === normal(x.responsavel)); if (n) x.responsavel = n; else delete x.responsavel; }
+  return Object.keys(x).length ? x : null;
+}
+const soMuda = (m, campo) => Object.keys(m).length === 1 && campo in m;
+// "sábado, 17/10/2026": com o dia da semana, o "amanhã" que cai no fim de semana não passa batido
+const comSemana = iso => { const d = new Date(String(iso).slice(0, 10) + 'T12:00:00'); return isNaN(d) ? dataBR(iso) : DIA_SEMANA[d.getDay()] + ', ' + dataBR(iso); };
+const verboAlterar = m => (soMuda(m, 'prazo') ? 'Remarcar' : soMuda(m, 'responsavel') ? 'Passar' : 'Alterar');
+const resumoMudanca = m => [m.prazo ? 'prazo → ' + comSemana(m.prazo) : null, m.responsavel ? 'responsável → ' + m.responsavel : null,
+  m.prioridade ? 'prioridade → ' + PRIORIDADE_TXT[m.prioridade] : null].filter(Boolean).join(' · ');
+function tituloAlterar(m, n) {
+  const t = qtd(n, 'tarefa', 'tarefas');
+  if (soMuda(m, 'prazo')) return 'Remarcar ' + t + ' pra ' + comSemana(m.prazo) + '?';
+  if (soMuda(m, 'responsavel')) return 'Passar ' + t + ' pra ' + m.responsavel + '?';
+  if (soMuda(m, 'prioridade')) return 'Mudar a prioridade de ' + t + ' pra ' + PRIORIDADE_TXT[m.prioridade] + '?';
+  return 'Alterar ' + t + '?';
+}
+function feitoAlterar(m, n) {
+  if (soMuda(m, 'prazo')) return qtd(n, 'tarefa remarcada', 'tarefas remarcadas') + ' pra ' + comSemana(m.prazo);
+  if (soMuda(m, 'responsavel')) return qtd(n, 'tarefa passada', 'tarefas passadas') + ' pra ' + m.responsavel;
+  if (soMuda(m, 'prioridade')) return qtd(n, 'tarefa', 'tarefas') + ' com prioridade ' + PRIORIDADE_TXT[m.prioridade];
+  return qtd(n, 'tarefa alterada', 'tarefas alteradas') + ' (' + resumoMudanca(m) + ')';
+}
+// a tarefa com o antes e o depois do que muda nela (o resto como está)
+function itemAlterar(t, d, nomes) {
+  const prazo = 'prazo' in d ? 'prazo ' + (t.prazo ? dataBR(t.prazo) : 'sem prazo') + ' → ' + dataBR(d.prazo) : 'prazo ' + dataBR(t.prazo);
+  const quem = 'responsavel' in d ? (t.responsavel || 'sem responsável') + ' → ' + d.responsavel : t.responsavel || 'sem responsável';
+  const prio = 'prioridade' in d ? 'prioridade ' + (PRIORIDADE_TXT[t.prioridade] || t.prioridade || '—') + ' → ' + PRIORIDADE_TXT[d.prioridade] : '';
+  return { id: String(t.id), titulo: t.titulo || 'Sem título', sub: [t.cliente_id ? nomes.get(String(t.cliente_id)) || 'empresa' : '', prazo, quem, prio].filter(Boolean).join(' · ') };
+}
+// "1 é de admissão e fica de fora: o prazo e o responsável dela vêm da ficha (tela Admissões)"
+function avisoDaFicha(lista) {
+  if (!lista.length) return null;
+  const um = lista.length === 1;
+  const nomes = [...new Set(lista.map(t => fichaDeOrigem(t).nome))], telas = [...new Set(lista.map(t => fichaDeOrigem(t).tela))];
+  return lista.length + (um ? ' é de ' : ' são de ') + nomes.join(', ') + (um ? ' e fica' : ' e ficam') + ' de fora: o prazo e o responsável ' + (um ? 'dela' : 'delas')
+    + ' vêm da ficha (tela ' + telas.join(', ') + ')';
+}
+// o que fica guardado pra desfazer (curto: a conversa guarda o cartão)
+const resumoAlteradas = r => (r.alteradas || []).map(a => ({ id: a.id, antes: a.antes, depois: a.depois }));
+
+function cartaoAlterar({ raiz, estado, salvar, ajuda, anunciar }) {
+  raiz.setAttribute('aria-label', 'Alterar tarefas');
+  const mudar = mudancaDaAcao(estado.mudar);
+  const ids = idsDe(estado.ids).slice(0, 300);
+  async function desenhar() {
+    if (!mudar) return trocar(raiz, sub('Não entendi o que mudar nessas tarefas: peça de novo, com o prazo, o responsável ou a prioridade.'));
+    if (estado.estado === 'feita') return desenharFeita();
+    if (estado.estado === 'cancelada') return trocar(raiz, sub('Deixei como estava.'));
+    if (estado.estado === 'desfeita') return desenharDesfeita();
+    trocar(raiz, sub('Lendo as tarefas…'));
+    let tarefas, nomes;
+    try {
+      tarefas = (await lerPorIds('tarefas', 'id, titulo, prazo, responsavel, prioridade, status, cliente_id, admissao_id, rescisao_id, alvara_id', ids)).filter(t => t.status !== 'concluida');
+      nomes = await nomesDe(tarefas.map(t => t.cliente_id));
+    } catch (e) { return trocar(raiz, h('div', { class: 'as-cartao-erro', text: 'Não consegui ler as tarefas agora.' }), h('div', { class: 'as-cartao-botoes' }, botao('Tentar de novo', desenhar))); }
+    const daFicha = tarefas.filter(t => ficaDeFora(t, mudar));
+    const mudam = tarefas.filter(t => !ficaDeFora(t, mudar)).map(t => ({ t, d: mudancaDe(t, mudar) })).filter(x => x.d)
+      .sort((a, b) => String(a.t.prazo || '9').localeCompare(String(b.t.prazo || '9')));
+    const fechadas = ids.length - tarefas.length, iguais = tarefas.length - daFicha.length - mudam.length;
+    const avisos = [fechadas ? qtd(fechadas, 'já foi concluída', 'já foram concluídas') : null, iguais ? qtd(iguais, 'já está assim', 'já estão assim') : null, avisoDaFicha(daFicha)].filter(Boolean);
+    if (!mudam.length) return trocar(raiz, sub('Nada a mudar' + (avisos.length ? ': ' + avisos.join('; ') : '') + '.'));
+    const verbo = verboAlterar(mudar);
+    const tit = h('div', { class: 'as-cartao-tit', text: tituloAlterar(mudar, mudam.length) });
+    const erro = h('div', { class: 'as-cartao-erro', hidden: true });
+    const ok = botao(verbo, () => confirmar(lista.marcadas(), ok, nao, erro), 'pri');
+    const nao = botao('Agora não', () => { salvar({ estado: 'cancelada' }); desenhar(); });
+    const atualizar = () => { const n = lista.marcadas().length; ok.textContent = n ? verbo + ' ' + n : verbo; ok.disabled = !n; };
+    const lista = listaComCaixas(mudam.map(x => itemAlterar(x.t, x.d, nomes)), { aoMudar: () => atualizar() });
+    atualizar();
+    trocar(raiz, tit, Object.keys(mudar).length > 1 ? sub(resumoMudanca(mudar)) : null, avisos.length ? sub(avisos.join('. ') + '.') : null, lista.el,
+      h('div', { class: 'as-cartao-botoes' }, ok, nao, alternarTodas(lista, mudam.length)), erro);
+  }
+  async function confirmar(marcados, ok, nao, erro) {
+    if (!marcados.length) return;
+    const verbo = verboAlterar(mudar);
+    ok.disabled = true; nao.disabled = true; ok.textContent = 'Gravando…'; erro.hidden = true;
+    const r = await alterarTarefas(supabase, marcados, mudar, { autor: ajuda.email || null, origem: ORIGEM });
+    if (r.erro && !r.alteradas.length) { erro.textContent = 'Não consegui gravar: ' + r.erro; erro.hidden = false; ok.disabled = false; nao.disabled = false; ok.textContent = verbo + ' ' + marcados.length; return; }
+    // os ids saem do estado (o resultado já diz quais mudaram): a conversa guarda o cartão, e 300 tarefas com o antes e o
+    // depois de três campos passariam do tamanho que ela aceita
+    salvar({ estado: 'feita', ids: [], resultado: { alteradas: resumoAlteradas(r), ficaram: r.fechadas.length + r.iguais.length + r.daFicha.length, semHistorico: !!r.semHistorico, em: new Date().toISOString() } });
+    if (r.alteradas.length) avisarTelas('mr:tarefas-mudaram', { ids: r.alteradas.map(a => a.id) });
+    anunciar(feitoAlterar(mudar, r.alteradas.length) + '.');
+    desenhar();
+  }
+  function desenharFeita() {
+    const r = estado.resultado || {};
+    const n = (r.alteradas || []).length;
+    const linha = h('div', { class: 'as-cartao-feito' }, h('span', { class: 'as-cartao-ok', text: '✓ ' + (n ? feitoAlterar(mudar, n) : 'Nada mudou') + '.' }));
+    if (r.ficaram) linha.append(h('span', { class: 'as-cartao-sub', text: qtd(r.ficaram, 'ficou como estava', 'ficaram como estavam') + ' (concluída ou mudada no meio do caminho).' }));
+    if (r.semHistorico) linha.append(h('span', { class: 'as-cartao-aviso', text: 'A linha no histórico não foi gravada.' }));
+    if (n && podeDesfazer(r.em)) linha.append(botao('Desfazer', desfazer, 'link'));
+    trocar(raiz, linha);
+  }
+  async function desfazer(ev) {
+    const b = ev.currentTarget, r = estado.resultado || {};
+    if (!podeDesfazer(r.em)) { trocar(raiz, sub('Passou o tempo de desfazer por aqui: mude a tarefa na Agenda ou na tela do setor.')); return; }
+    b.disabled = true; b.textContent = 'Desfazendo…';
+    const d = await desfazerAlteracao(supabase, r.alteradas || [], { autor: ajuda.email || null, origem: ORIGEM });
+    if (d.erro && !d.desfeitas.length) { b.disabled = false; b.textContent = 'Desfazer'; raiz.append(h('div', { class: 'as-cartao-erro', text: 'Não consegui desfazer: ' + d.erro })); return; }
+    salvar({ estado: 'desfeita', desfeito: { n: d.desfeitas.length, ficaram: d.ficaram.length } });
+    if (d.desfeitas.length) avisarTelas('mr:tarefas-mudaram', { ids: d.desfeitas });
+    anunciar('Desfeito.');
+    desenhar();
+  }
+  function desenharDesfeita() {
+    const d = estado.desfeito || {};
+    trocar(raiz, h('div', { class: 'as-cartao-feito' }, h('span', { text: '↺ Desfeito: ' + qtd(d.n || 0, 'tarefa voltou como era', 'tarefas voltaram como eram') + '.' }),
+      d.ficaram ? h('span', { class: 'as-cartao-sub', text: qtd(d.ficaram, 'mudou de novo depois (ou foi concluída) e ficou como está', 'mudaram de novo depois (ou foram concluídas) e ficaram como estão') + '.' }) : null));
+  }
+  desenhar();
+}
+
+// o próximo dia útil (sem sábado e domingo) e o nome dele no botão: "Amanhã" ou "Segunda, 19/10"
+function proximoDiaUtil(iso) {
+  const d = new Date(iso + 'T12:00:00');
+  do d.setDate(d.getDate() + 1); while (d.getDay() === 0 || d.getDay() === 6);
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+}
+function rotuloDia(iso, hoje) {
+  const d = new Date(iso + 'T12:00:00'), h0 = new Date(hoje + 'T12:00:00');
+  if (Math.round((d - h0) / 864e5) === 1) return 'Amanhã';
+  const n = DIA_SEMANA[d.getDay()];
+  return n.charAt(0).toUpperCase() + n.slice(1) + ', ' + pad(d.getDate()) + '/' + pad(d.getMonth() + 1);
 }
 
 // ---------- marcar boletos como pagos ----------
@@ -351,7 +492,8 @@ function cartaoRevisao({ raiz, estado, salvar, ajuda, anunciar }) {
   async function desenhar() {
     if (!pessoa) return trocar(raiz, sub('Não sei de quem são as atrasadas: pergunte com o nome de alguém da equipe.'));
     if (estado.estado === 'encerrada') {
-      return trocar(raiz, sub('Revisão parada' + (estado.feitas ? ' — ' + qtd(estado.feitas, 'tarefa concluída', 'tarefas concluídas') + ' nela' : '') + '.'),
+      const fez = [estado.feitas ? qtd(estado.feitas, 'tarefa concluída', 'tarefas concluídas') : null, estado.remarcadas ? qtd(estado.remarcadas, 'remarcada', 'remarcadas') : null].filter(Boolean);
+      return trocar(raiz, sub('Revisão parada' + (fez.length ? ' — ' + fez.join(' e ') + ' nela' : '') + '.'),
         h('div', { class: 'as-cartao-botoes' }, botao('Continuar a revisão', () => { salvar({ estado: 'ativa' }); desenhar(); })));
     }
     trocar(raiz, sub('Lendo as atrasadas…'));
@@ -359,7 +501,8 @@ function cartaoRevisao({ raiz, estado, salvar, ajuda, anunciar }) {
     try { lista = await atrasadasDe(pessoa); nomes = await nomesDe(lista.map(t => t.cliente_id)); }
     catch (e) { return trocar(raiz, h('div', { class: 'as-cartao-erro', text: 'Não consegui ler as atrasadas agora.' }), h('div', { class: 'as-cartao-botoes' }, botao('Tentar de novo', desenhar))); }
     const topo = h('div', { class: 'as-cartao-tit' }, (minhas ? 'Suas atrasadas' : 'Atrasadas de ' + pessoa) + ': ', h('span', { class: 'as-cartao-cont', text: String(lista.length) }));
-    const feitas = estado.feitas ? sub(qtd(estado.feitas, 'concluída', 'concluídas') + ' nesta revisão.') : null;
+    const conta = [estado.feitas ? qtd(estado.feitas, 'concluída', 'concluídas') : null, estado.remarcadas ? qtd(estado.remarcadas, 'remarcada', 'remarcadas') : null].filter(Boolean);
+    const feitas = conta.length ? sub(conta.join(' e ') + ' nesta revisão.') : null;
     const ultimo = linhaUltimo();
     if (!lista.length) return trocar(raiz, topo, h('div', { class: 'as-cartao-ok', text: '✓ Nada atrasado.' }), feitas, ultimo);
     const grupos = agruparAtrasadas(lista, pulados());
@@ -370,7 +513,7 @@ function cartaoRevisao({ raiz, estado, salvar, ajuda, anunciar }) {
     }
     trocar(raiz, topo, feitas, ultimo, blocoDoGrupo(grupos[0], nomes, grupos.length), h('div', { class: 'as-cartao-botoes as-cartao-rodape' }, parar));
   }
-  // o grupo da vez: "já foram feitas?" — todas, escolher quais, ou ainda não
+  // o grupo da vez: "já foram feitas?" — todas, escolher quais, remarcar ou ainda não
   function blocoDoGrupo(g, nomes, quantos) {
     const n = g.itens.length;
     const prazos = n > 1 && g.itens[0].prazo !== g.itens[n - 1].prazo ? 'prazos de ' + dataBR(g.itens[0].prazo) + ' a ' + dataBR(g.itens[n - 1].prazo) : 'prazo ' + dataBR(g.itens[0].prazo);
@@ -381,20 +524,41 @@ function cartaoRevisao({ raiz, estado, salvar, ajuda, anunciar }) {
     const info = sub([prazos, quem].filter(Boolean).join(' · ') + (quantos > 1 ? ' · grupo 1 de ' + quantos : ''));
     const erro = h('div', { class: 'as-cartao-erro', hidden: true });
     const pular = botao(g.avulsas ? 'Pular estas' : 'Ainda não', () => { salvar({ pulados: [...pulados(), g.chave] }); desenhar(); });
-    const escolher = (marcadas) => {
-      const lista = listaComCaixas(g.itens.map(t => itemTarefa(t, nomes)), { marcadas, aoMudar: () => { const k = lista.marcadas().length; ok.textContent = k ? 'Concluir ' + k : 'Concluir as marcadas'; ok.disabled = !k; } });
-      const ok = botao('Concluir as marcadas', () => concluir(lista.marcadas(), g, [ok, pular], erro), 'pri');
-      ok.disabled = !marcadas;
-      return [sub('Marque as que já foram feitas:'), lista.el, h('div', { class: 'as-cartao-botoes' }, ok, pular)];
+    const todosIds = () => g.itens.map(t => String(t.id));
+    // remarcar (16/10/2026): hoje, o próximo dia útil ou outra data — todas do grupo, ou só as marcadas
+    const quando = (ids, voltar) => {
+      const hoje = hojeISO(), prox = proximoDiaUtil(hoje);
+      const data = h('input', { type: 'date', value: prox, min: hoje });
+      const vai = iso => remarcar(ids, iso, g, botoes, erro);
+      const bHoje = botao('Hoje', () => vai(hoje), 'pri');
+      const bProx = botao(rotuloDia(prox, hoje), () => vai(prox));
+      const bData = botao('Remarcar', () => { if (/^\d{4}-\d{2}-\d{2}$/.test(data.value)) vai(data.value); else { erro.textContent = 'Escolha a data.'; erro.hidden = false; data.focus(); } });
+      const bVoltar = botao('Voltar', voltar, 'link');
+      const botoes = [bHoje, bProx, bData, bVoltar];
+      trocarDentro(box, cab, info, h('div', { class: 'as-cartao-pergunta', text: ids.length === 1 ? 'Remarcar pra quando?' : 'Remarcar as ' + ids.length + ' pra quando?' }),
+        h('div', { class: 'as-cartao-botoes' }, bHoje, bProx), h('div', { class: 'as-cartao-botoes' }, h('label', { class: 'as-cartao-campo' }, 'Outra data', data), bData, bVoltar), erro);
     };
-    if (g.avulsas) { box.append(cab, info, ...escolher(false), erro); return box; }
-    const pergunta = h('div', { class: 'as-cartao-pergunta', text: n === 1 ? 'Já foi feita?' : 'Já foram feitas?' });
-    const todas = botao(n === 1 ? 'Já fiz' : 'Todas feitas (' + n + ')', () => concluir(g.itens.map(t => String(t.id)), g, [todas, maisBtn, pular], erro), 'pri');
-    const maisBtn = botao('Escolher quais', () => { trocarDentro(box, cab, info, ...escolher(false), erro); });
-    box.append(cab, info, pergunta, h('div', { class: 'as-cartao-botoes' }, todas, maisBtn, pular), erro);
+    const escolher = () => {
+      const lista = listaComCaixas(g.itens.map(t => itemTarefa(t, nomes)), { marcadas: false, aoMudar: () => { const k = lista.marcadas().length; ok.textContent = k ? 'Concluir ' + k : 'Concluir as marcadas'; ok.disabled = !k; rem.disabled = !k; } });
+      const ok = botao('Concluir as marcadas', () => concluir(lista.marcadas(), g, [ok, rem, pular], erro), 'pri');
+      const rem = botao('Remarcar as marcadas', () => quando(lista.marcadas(), () => trocarDentro(box, cab, info, ...escolher(), erro)));
+      ok.disabled = true; rem.disabled = true;
+      return [sub('Marque as que já foram feitas (ou as que quer remarcar):'), lista.el, h('div', { class: 'as-cartao-botoes' }, ok, rem, pular)];
+    };
+    if (g.avulsas) { box.append(cab, info, ...escolher(), erro); return box; }
+    const principal = (montar = false) => {
+      const pergunta = h('div', { class: 'as-cartao-pergunta', text: n === 1 ? 'Já foi feita?' : 'Já foram feitas?' });
+      const todas = botao(n === 1 ? 'Já fiz' : 'Todas feitas (' + n + ')', () => concluir(todosIds(), g, [todas, maisBtn, remBtn, pular], erro), 'pri');
+      const maisBtn = botao('Escolher quais', () => { trocarDentro(box, cab, info, ...escolher(), erro); });
+      const remBtn = botao('Remarcar', () => quando(todosIds(), () => principal()));
+      const filhos = [cab, info, pergunta, h('div', { class: 'as-cartao-botoes' }, todas, maisBtn, remBtn, pular), erro];
+      if (montar) box.append(...filhos); else trocarDentro(box, ...filhos);
+    };
+    principal(true);
     return box;
   }
-  function trocarDentro(box, ...filhos) { box.replaceChildren(...filhos.filter(Boolean)); const c = box.querySelector('input'); if (c) c.focus({ preventScroll: true }); }
+  // troca o que está no grupo e leva o foco pro primeiro campo (ou botão) — quem usa o teclado não se perde
+  function trocarDentro(box, ...filhos) { box.replaceChildren(...filhos.filter(Boolean)); const c = box.querySelector('input, button:not([disabled])'); if (c) c.focus({ preventScroll: true }); }
   async function concluir(ids, g, botoes, erro) {
     if (!ids.length) return;
     botoes.forEach(b => { b.disabled = true; });
@@ -409,9 +573,35 @@ function cartaoRevisao({ raiz, estado, salvar, ajuda, anunciar }) {
     anunciar(qtd(n, 'tarefa concluída', 'tarefas concluídas') + '. Próximo grupo.');
     desenhar();
   }
-  // a última conclusão da revisão, com o "Desfazer" (10 minutos)
+  // remarcar o grupo (ou as marcadas): o grupo sai da revisão, como no concluir; a tarefa da ficha de origem fica (o banco
+  // refaria o prazo dela)
+  const ORIGEM_REVISAO = 'assistente do escritório (revisão das atrasadas)';
+  async function remarcar(ids, prazo, g, botoes, erro) {
+    if (!ids.length) return;
+    botoes.forEach(b => { b.disabled = true; });
+    erro.hidden = true;
+    const r = await alterarTarefas(supabase, ids, { prazo }, { autor: ajuda.email || null, origem: ORIGEM_REVISAO });
+    if (r.erro && !r.alteradas.length) { erro.textContent = 'Não consegui remarcar: ' + r.erro; erro.hidden = false; botoes.forEach(b => { b.disabled = false; }); return; }
+    const n = r.alteradas.length;
+    salvar({ remarcadas: (estado.remarcadas || 0) + n, pulados: [...pulados(), g.chave],
+      ultimo: { tipo: 'remarcar', rotulo: g.avulsas ? 'Avulsas' : g.rotulo, chave: g.chave, prazo, alteradas: resumoAlteradas(r),
+        daFicha: r.daFicha.length, telas: [...new Set(r.daFicha.map(f => f.tela))], em: new Date().toISOString() } });
+    if (n) avisarTelas('mr:tarefas-mudaram', { ids: r.alteradas.map(a => a.id) });
+    anunciar(qtd(n, 'tarefa remarcada', 'tarefas remarcadas') + ' pra ' + dataBR(prazo) + '. Próximo grupo.');
+    desenhar();
+  }
+  // a última conclusão (ou remarcação) da revisão, com o "Desfazer" (10 minutos)
   function linhaUltimo() {
     const u = estado.ultimo;
+    if (u && u.tipo === 'remarcar') {
+      const n = (u.alteradas || []).length;
+      if (u.desfeito) return sub('↺ ' + u.rotulo + ': remarcação desfeita.');
+      if (!n && !u.daFicha) return null;
+      const linha = h('div', { class: 'as-cartao-feito' }, h('span', { class: n ? 'as-cartao-ok' : 'as-cartao-sub', text: (n ? '✓ ' : '') + u.rotulo + ': ' + qtd(n, 'remarcada', 'remarcadas') + ' pra ' + dataBR(u.prazo) + '.' }));
+      if (u.daFicha) linha.append(h('span', { class: 'as-cartao-sub', text: qtd(u.daFicha, 'ficou', 'ficaram') + ' como estava' + (u.daFicha === 1 ? '' : 'm') + ': o prazo vem da ficha de origem' + ((u.telas || []).length ? ' (tela ' + u.telas.join(', ') + ')' : '') + '.' }));
+      if (n && podeDesfazer(u.em)) linha.append(botao('Desfazer', desfazerUltimo, 'link'));
+      return linha;
+    }
     if (!u || !(u.concluidas || []).length) return null;
     const n = u.concluidas.length;
     if (u.desfeito) return sub('↺ ' + u.rotulo + ': conclusão desfeita.');
@@ -423,6 +613,16 @@ function cartaoRevisao({ raiz, estado, salvar, ajuda, anunciar }) {
     const b = ev.currentTarget, u = estado.ultimo || {};
     if (!podeDesfazer(u.em)) { desenhar(); return; }
     b.disabled = true; b.textContent = 'Desfazendo…';
+    if (u.tipo === 'remarcar') {
+      const d = await desfazerAlteracao(supabase, u.alteradas || [], { autor: ajuda.email || null, origem: ORIGEM_REVISAO });
+      if (d.erro && !d.desfeitas.length) { b.disabled = false; b.textContent = 'Desfazer'; return; }
+      salvar({ remarcadas: Math.max(0, (estado.remarcadas || 0) - d.desfeitas.length), ultimo: { ...u, desfeito: true },
+        pulados: pulados().filter(k => k !== u.chave) });   // o grupo volta pra revisão (as que voltaram a estar atrasadas)
+      if (d.desfeitas.length) avisarTelas('mr:tarefas-mudaram', { ids: d.desfeitas });
+      anunciar('Desfeito.');
+      desenhar();
+      return;
+    }
     const d = await desfazerConclusao(supabase, u.concluidas || [], { autor: ajuda.email || null, historico: 'Conclusão desfeita na revisão das atrasadas (assistente do escritório).' });
     if (d.erro && !d.desfeitas.length) { b.disabled = false; b.textContent = 'Desfazer'; return; }
     salvar({ feitas: Math.max(0, (estado.feitas || 0) - d.desfeitas.length), ultimo: { ...u, desfeito: true },

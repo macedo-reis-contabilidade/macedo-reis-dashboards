@@ -18,7 +18,11 @@ Confere:
      (tarefa avulsa da empresa, com histórico), desfazer (apaga);
   5. a revisão das atrasadas pela saudação do dia: só as de quem entrou (com as de "Ambos"), o grupo que mais se repete
      primeiro, "Todas feitas", "Escolher quais", desfazer a última, "Ainda não", as avulsas no fim e "Começar de novo";
-  6. o recado da Agenda pergunta pelas atrasadas; a revisão proposta pela IA aparece embaixo da resposta.
+  6. o recado da Agenda pergunta pelas atrasadas; a revisão proposta pela IA aparece embaixo da resposta;
+  7. o "Remarcar" da revisão (16/10/2026): hoje, o próximo dia útil ou outra data, "Voltar", desfazer (o grupo volta) e as
+     marcadas, com a tarefa da admissão de fora (o prazo dela vem da ficha);
+  8. o cartão de alterar: passar pra outra pessoa e mudar a prioridade, com o antes e o depois e o que fica de fora (a
+     concluída, a que já está assim, a da admissão), desmarcar, gravar com o histórico, desfazer; remarcar; recarregar.
 Termina com código 1 se alguma checagem falhar.
 Pré-requisito: pip install playwright e python -m playwright install chromium
 """
@@ -52,7 +56,12 @@ TAREFAS = [
     # a revisão: PGDAS x3 e GIA x2 do Samuel, uma de "Ambos", e uma PGDAS da Thalia (que não é dele)
     T('p1', 'PGDAS (REVISÃO)', 'Samuel', D(-40), E1), T('p2', 'PGDAS (REVISÃO)', 'SAMUEL', D(-12), E2), T('p3', 'PGDAS (REVISÃO)', 'Samuel', D(-12), E3),
     T('g1', 'GIA (REVISÃO)', 'Samuel', D(-20), E1), T('g2', 'GIA (REVISÃO)', 'Samuel', D(-6), E2),
-    T('a1', 'ASSINAR CONTRATO (REVISÃO)', 'Ambos', D(-4)), T('o1', 'PGDAS (REVISÃO)', 'Thalia', D(-12), E1)]
+    T('a1', 'ASSINAR CONTRATO (REVISÃO)', 'Ambos', D(-4)), T('o1', 'PGDAS (REVISÃO)', 'Thalia', D(-12), E1),
+    # na revisão, uma do Samuel que é da admissão: o "Remarcar" deixa de fora (o banco refaz o prazo dela pela ficha)
+    T('ad2', 'ADMISSÃO DE BELTRANO (REVISÃO)', 'Samuel', D(-3), E2, admissao_id='adm-2'),
+    # o cartão de alterar (prazo, responsável, prioridade): da Thalia, uma já do jeito pedido e uma da admissão
+    T('r1', 'DCTFWEB (ALTERAR)', 'Thalia', D(-2), E1), T('r2', 'DCTFWEB (ALTERAR)', 'THALIA', D(-1), E2, prioridade='baixa'),
+    T('r3', 'DCTFWEB (ALTERAR)', 'Vitória', D(-1), E3, prioridade='alta'), T('ad1', 'ADMISSÃO DE FULANA (ALTERAR)', 'Thalia', D(-1), E1, admissao_id='adm-1')]
 COBRANCAS = [{'id': 'xb-1', 'cliente_id': E1, 'competencia': COMP, 'valor': 450, 'vencimento': D(5), 'status': 'enviado', 'canal': 'whatsapp', 'destino': '', 'observacao': '', 'itens_extras': []},
              {'id': 'xb-2', 'cliente_id': E2, 'competencia': COMP, 'valor': 300.5, 'vencimento': D(5), 'status': 'a_emitir', 'canal': 'whatsapp', 'destino': '', 'observacao': '', 'itens_extras': []},
              {'id': 'xb-3', 'cliente_id': E3, 'competencia': COMP, 'valor': 200, 'vencimento': D(5), 'status': 'pago', 'canal': 'whatsapp', 'destino': '', 'observacao': '', 'itens_extras': []}]
@@ -63,7 +72,9 @@ ACOES = {
     'De novo os boletos': {'tipo': 'marcar_pago', 'ids': ['xb-1', 'xb-2']},
     'Cria uma tarefa pra Vitória': {'tipo': 'criar_tarefa', 'tarefa': {'titulo': 'Ligar pra padaria sobre a admissão', 'responsavel': 'Vitória', 'prazo': D(1), 'setor': 'dp',
                                     'prioridade': 'alta', 'descricao': 'Confirmar a data de início.', 'empresa': {'id': E1, 'nome': 'PADARIA DO TESTE LTDA'}}},
-    'Revisa as minhas atrasadas': {'tipo': 'revisar_atrasadas', 'pessoa': 'Samuel'}}
+    'Revisa as minhas atrasadas': {'tipo': 'revisar_atrasadas', 'pessoa': 'Samuel'},
+    'Passa as DCTFWEB pra Vitória e deixa urgente': {'tipo': 'alterar_tarefas', 'ids': ['xa-r1', 'xa-r2', 'xa-r3', 'xa-ad1', 'xa-c3'], 'mudar': {'responsavel': 'Vitória', 'prioridade': 'alta'}},
+    'Remarca a DCTFWEB pra amanhã': {'tipo': 'alterar_tarefas', 'ids': ['xa-r1'], 'mudar': {'prazo': D(1)}}}
 SEMEAR = """
 (() => {
   const CLIENTES = %s, TAREFAS = %s, COBRANCAS = %s, ACOES = %s;
@@ -203,7 +214,7 @@ def main():
         p.click(rev + ' .as-cartao-grupo .as-botao:has-text("Ainda não")')
         p.wait_for_function("() => document.querySelector('.as-cartao-revisao').innerText.includes('As outras atrasadas')", timeout=6000)
         avulsas = p.inner_text(rev + ' .as-cartao-grupo')
-        ok(all(x in avulsas for x in ('ASSINAR CONTRATO (REVISÃO)', 'Renovar alvará', 'Cobrar honorários atrasados', 'Marque as que já foram feitas:')),
+        ok(all(x in avulsas for x in ('ASSINAR CONTRATO (REVISÃO)', 'Renovar alvará', 'Cobrar honorários atrasados', 'Marque as que já foram feitas (ou as que quer remarcar):')),
            f'as avulsas juntas no fim (com a de "Ambos"), pra marcar o que já foi feito ({avulsas[:140]!r})')
         p.click(rev + ' .as-cartao-grupo .as-botao:has-text("Pular estas")')
         p.wait_for_function("() => document.querySelector('.as-cartao-revisao').innerText.includes('Passamos por todas')", timeout=6000)
@@ -223,6 +234,79 @@ def main():
         p.click('.as-recado-x'); p.click('.as-lancador'); p.wait_for_timeout(200)
         perguntar('Revisa as minhas atrasadas'); p.wait_for_selector(ultimo + '.as-cartao-revisao .as-cartao-grupo', timeout=6000)
         ok('Suas atrasadas' in p.inner_text(ultimo), 'a revisão proposta pela IA aparece embaixo da resposta')
+
+        # 7) o "Remarcar" da revisão (16/10/2026): hoje, o próximo dia útil ou outra data; "Voltar"; desfazer; as marcadas,
+        # com a da admissão de fora
+        br = lambda iso: '/'.join(reversed(iso.split('-')))
+        semana = lambda iso: ['segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado', 'domingo'][datetime.date.fromisoformat(iso).weekday()] + ', ' + br(iso)
+        rv = ultimo + '.as-cartao-revisao'
+        rvjs = ".as-lista .as-msg.ia:last-child .as-cartao.as-cartao-revisao"
+        prox = HOJE + datetime.timedelta(days=1)
+        while prox.weekday() >= 5: prox += datetime.timedelta(days=1)
+        rot = 'Amanhã' if (prox - HOJE).days == 1 else ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta'][prox.weekday()] + ', ' + prox.strftime('%d/%m')
+        # (a Agenda abriu de novo: o banco de mentira voltou ao começo, com o PGDAS em aberto)
+        ok('PGDAS (REVISÃO) · 3' in p.inner_text(rv), 'a revisão pela IA começa pelo grupo que mais se repete')
+        p.click(rv + ' .as-cartao-grupo .as-botao:text-is("Remarcar")'); p.wait_for_selector(rv + ' .as-cartao-grupo input[type="date"]', timeout=3000)
+        grupo = p.inner_text(rv + ' .as-cartao-grupo')
+        ok('Remarcar as 3 pra quando?' in grupo and p.is_visible(rv + ' .as-botao:text-is("Hoje")') and p.is_visible(rv + f' .as-botao:text-is("{rot}")')
+           and p.get_attribute(rv + ' input[type="date"]', 'min') == HOJE.isoformat(), f'"Remarcar": hoje, {rot} (o próximo dia útil) ou outra data ({grupo[:140]!r})')
+        p.click(rv + ' .as-botao:text-is("Voltar")'); p.wait_for_selector(rv + ' .as-cartao-pergunta:text-is("Já foram feitas?")', timeout=3000)
+        ok(True, '"Voltar" volta pra pergunta')
+        p.click(rv + ' .as-cartao-grupo .as-botao:text-is("Remarcar")'); p.click(rv + ' .as-botao:text-is("Hoje")')
+        p.wait_for_function(f"() => document.querySelector('{rvjs}').innerText.includes('GIA (REVISÃO) · 2')", timeout=6000)
+        texto = p.inner_text(rv)
+        ok(all(tarefa(i)['prazo'] == HOJE.isoformat() for i in ('xa-p1', 'xa-p2', 'xa-p3')) and '✓ PGDAS (REVISÃO): 3 remarcadas pra ' + br(HOJE.isoformat()) + '.' in texto
+           and '3 remarcadas nesta revisão.' in texto and tarefa('xa-o1')['prazo'] == D(-12), f'"Hoje": as 3 dele remarcadas pra hoje (a da Thalia não); o grupo sai e vem o próximo ({texto[:160]!r})')
+        ok(hist('xa-p1')[-1] == 'Prazo alterado de ' + br(D(-40)) + ' para ' + br(HOJE.isoformat()) + ' — pelo assistente do escritório (revisão das atrasadas).', f'o histórico ({hist("xa-p1")[-1:]})')
+        p.click(rv + ' .as-cartao-feito .as-botao-link')
+        p.wait_for_function(f"() => document.querySelector('{rvjs}').innerText.includes('PGDAS (REVISÃO) · 3')", timeout=6000)
+        ok(tarefa('xa-p1')['prazo'] == D(-40) and tarefa('xa-p2')['prazo'] == D(-12) and tarefa('xa-p3')['prazo'] == D(-12) and 'remarcação desfeita' in p.inner_text(rv),
+           'desfazer: cada prazo volta ao de antes e o grupo volta pra revisão')
+        p.click(rv + ' .as-cartao-grupo .as-botao:text-is("Ainda não")')
+        p.wait_for_function(f"() => document.querySelector('{rvjs}').innerText.includes('GIA (REVISÃO) · 2')", timeout=6000)
+        p.click(rv + ' .as-cartao-grupo .as-botao:text-is("Ainda não")')
+        p.wait_for_function(f"() => document.querySelector('{rvjs}').innerText.includes('As outras atrasadas')", timeout=6000)
+        ok(p.is_disabled(rv + ' .as-botao:text-is("Remarcar as marcadas")'), 'nas avulsas, "Remarcar as marcadas" só depois de marcar')
+        p.check(rv + ' input[data-id="xa-a1"]'); p.check(rv + ' input[data-id="xa-ad2"]')
+        p.click(rv + ' .as-botao:text-is("Remarcar as marcadas")'); p.wait_for_selector(rv + ' input[type="date"]', timeout=3000)
+        ok('Remarcar as 2 pra quando?' in p.inner_text(rv + ' .as-cartao-grupo'), 'as marcadas: a pergunta da data')
+        p.fill(rv + ' input[type="date"]', D(7)); p.click(rv + ' .as-botao:text-is("Remarcar")')
+        p.wait_for_function(f"() => document.querySelector('{rvjs}').innerText.includes('Avulsas: 1 remarcada')", timeout=6000)
+        texto = p.inner_text(rv)
+        ok(tarefa('xa-a1')['prazo'] == D(7) and tarefa('xa-ad2')['prazo'] == D(-3) and '✓ Avulsas: 1 remarcada pra ' + br(D(7)) + '.' in texto
+           and '1 ficou como estava: o prazo vem da ficha de origem (tela Admissões).' in texto, f'outra data: a de "Ambos" remarcada; a da admissão fica ({texto[:220]!r})')
+
+        # 8) o cartão de alterar: passar pra Vitória e deixar urgente (o antes e o depois), desfazer; remarcar
+        perguntar('Passa as DCTFWEB pra Vitória e deixa urgente'); p.wait_for_selector(ultimo + ' .as-cartao-lista', timeout=5000)
+        card = p.inner_text(ultimo)
+        ok(card.startswith('Alterar 2 tarefas?') and 'responsável → Vitória · prioridade → alta' in card
+           and '1 já foi concluída. 1 já está assim. 1 é de admissão e fica de fora: o prazo e o responsável dela vêm da ficha (tela Admissões).' in card,
+           f'alterar: o título, o que muda e o que fica de fora — a concluída, a que já está assim, a da admissão ({card[:300]!r})')
+        ok('Thalia → Vitória · prioridade média → alta' in card and 'THALIA → Vitória · prioridade baixa → alta' in card and p.inner_text(ultimo + ' .as-botao-pri') == 'Alterar 2',
+           'cada tarefa com o antes e o depois; o botão diz quantas')
+        p.uncheck(ultimo + ' input[data-id="xa-r2"]')
+        ok(p.inner_text(ultimo + ' .as-botao-pri') == 'Alterar 1', 'desmarcar uma: o botão acompanha')
+        p.click(ultimo + ' .as-botao-pri'); p.wait_for_selector(ultimo + ' .as-cartao-ok', timeout=5000)
+        r1, r2 = tarefa('xa-r1'), tarefa('xa-r2')
+        ok(r1['responsavel'] == 'Vitória' and r1['prioridade'] == 'alta' and r2['responsavel'] == 'THALIA' and r2['prioridade'] == 'baixa' and tarefa('xa-ad1')['responsavel'] == 'Thalia',
+           'mudou só a marcada; a da admissão ficou como estava')
+        ok(hist('xa-r1') == ['Responsável alterado de Thalia para Vitória; prioridade alterada de média para alta — pelo assistente do escritório.']
+           and p.inner_text(ultimo).startswith('✓ 1 tarefa alterada (responsável → Vitória · prioridade → alta).') and p.evaluate('window.__mudou')[-1] == 'tarefas:1',
+           f'o histórico, o cartão e as telas avisadas ({hist("xa-r1")})')
+        p.click(ultimo + ' .as-botao-link'); p.wait_for_function(f"() => document.querySelector('{ultimo}').innerText.startsWith('↺ Desfeito')", timeout=5000)
+        r1 = tarefa('xa-r1')
+        ok(r1['responsavel'] == 'Thalia' and r1['prioridade'] == 'media' and p.inner_text(ultimo).startswith('↺ Desfeito: 1 tarefa voltou como era.')
+           and hist('xa-r1')[-1] == 'Responsável alterado de Vitória para Thalia; prioridade alterada de alta para média — alteração desfeita no assistente do escritório.',
+           f'desfazer: volta ao que era, com a linha no histórico ({hist("xa-r1")[-1:]})')
+        perguntar('Remarca a DCTFWEB pra amanhã'); p.wait_for_selector(ultimo + ' .as-botao-pri', timeout=5000)
+        card = p.inner_text(ultimo)
+        ok(card.startswith('Remarcar 1 tarefa pra ' + semana(D(1)) + '?') and 'prazo ' + br(D(-2)) + ' → ' + br(D(1)) in card and p.inner_text(ultimo + ' .as-botao-pri') == 'Remarcar 1',
+           f'remarcar: o título com a data nova; o prazo de antes → o novo ({card[:160]!r})')
+        p.click(ultimo + ' .as-botao-pri'); p.wait_for_selector(ultimo + ' .as-cartao-ok', timeout=5000)
+        ok(tarefa('xa-r1')['prazo'] == D(1) and p.inner_text(ultimo).startswith('✓ 1 tarefa remarcada pra ' + semana(D(1)) + '.')
+           and hist('xa-r1')[-1] == 'Prazo alterado de ' + br(D(-2)) + ' para ' + br(D(1)) + ' — pelo assistente do escritório.', 'remarcou, com o histórico')
+        p.reload(); p.wait_for_selector('.as-painel:not([hidden])', timeout=5000); p.wait_for_selector(ultimo + ' .as-cartao-ok', timeout=5000)
+        ok(p.inner_text(ultimo).startswith('✓ 1 tarefa remarcada') and p.is_visible(ultimo + ' .as-botao-link'), 'recarregou: o cartão volta como ficou, com o "Desfazer"')
 
         ok(not erros, f'sem erro de JavaScript ({erros[:2]})')
         b.close()
