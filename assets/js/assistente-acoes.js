@@ -663,6 +663,7 @@ export function linkDoDrive(link) {
   } catch (e) { return null; }
 }
 const diaLocal = iso => { const d = new Date(iso); return iso && !isNaN(d) ? pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear() : ''; };
+const horaLocal = iso => { const d = new Date(iso); return iso && !isNaN(d) ? pad(d.getHours()) + 'h' + pad(d.getMinutes()) : ''; };
 const tamanhoBR = n => {
   const v = Number(n);
   if (n == null || !Number.isFinite(v) || v <= 0) return '';
@@ -673,14 +674,19 @@ function cartaoArquivos({ raiz, estado }) {
   raiz.setAttribute('aria-label', 'Arquivos da empresa');
   const itens = (Array.isArray(estado.itens) ? estado.itens : []).filter(x => x && typeof x === 'object' && typeof x.nome === 'string' && x.nome).slice(0, 50);
   const total = Math.max(itens.length, Math.floor(Number(estado.total)) || 0);
-  const empresa = typeof estado.empresa === 'string' && estado.empresa ? estado.empresa.slice(0, 200) : 'a empresa';
+  const empresa = (typeof estado.empresa === 'string' && estado.empresa ? estado.empresa.slice(0, 200) : 'a empresa')
+    + (typeof estado.fantasia === 'string' && estado.fantasia ? ' (' + estado.fantasia.slice(0, 120) + ')' : '');
   const termo = typeof estado.termo === 'string' ? estado.termo.trim().slice(0, 120) : '';
   const pasta = linkDoDrive(estado.pasta);
   const titulo = h('div', { class: 'as-cartao-tit' }, 'Arquivos de ' + empresa + (termo ? ' com “' + termo + '”' : ', os mais recentes') + ': ',
     h('span', { class: 'as-cartao-cont', text: String(total) }));
+  // o mesmo nome mais de uma vez (a guia enviada de novo, uma cópia): a data com a hora, pra saber qual é a mais recente
+  const vezes = new Map();
+  itens.forEach(x => { const k = normal(x.nome); vezes.set(k, (vezes.get(k) || 0) + 1); });
   const linha = x => {
     const link = linkDoDrive(x.link);
-    const meta = [typeof x.pasta === 'string' && x.pasta ? x.pasta.slice(0, 300) : 'pasta da empresa', diaLocal(x.modificado), TIPO_GOOGLE[x.tipo] || tamanhoBR(x.tamanho), link ? '' : 'sem link']
+    const quando = diaLocal(x.modificado) + (vezes.get(normal(x.nome)) > 1 && horaLocal(x.modificado) ? ', ' + horaLocal(x.modificado) : '');
+    const meta = [typeof x.pasta === 'string' && x.pasta ? x.pasta.slice(0, 300) : 'pasta da empresa', quando, TIPO_GOOGLE[x.tipo] || tamanhoBR(x.tamanho), link ? '' : 'sem link']
       .filter(Boolean).join(' · ');
     const corpo = [h('b', { text: x.nome.slice(0, 300) }), h('small', { text: meta })];
     return h('li', {}, link ? h('a', { class: 'as-arquivo', href: link, target: '_blank', rel: 'noopener noreferrer' }, corpo) : h('div', { class: 'as-arquivo as-arquivo-sem' }, corpo));

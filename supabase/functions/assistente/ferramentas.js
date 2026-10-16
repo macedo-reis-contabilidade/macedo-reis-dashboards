@@ -159,6 +159,7 @@ export const TABELAS = {
   // achado de "cliente sem cobrança" usa o Conta Azul: só os sócios leem (a regra é do banco; sem login — a avaliação —,
   // o filtro fixo tira)
   vigia_achados: { rotulo: 'o que o vigia achou', fixoNaoSocio: 'so_socios=eq.false',
+    notaNaoSocio: 'Pra quem não é sócio, os achados só dos sócios (o cliente da carteira sem cobrança, que usa o financeiro do escritório) não entram nesta leitura: desses, não diga que não há nenhum — diga que só os sócios veem.',
     desc: 'O vigia do sistema: regras que rodam de hora em hora e acham o que ficou pra trás ou desencontrado (admissão sem registro, rescisão com pagamento chegando, alvará vencido, boleto parado, cliente da carteira sem cobrança ou sem obrigação fiscal, obrigação, tarefa ou rotina sem responsável, proposta parada, cadastro desencontrado da carteira...). Cada achado diz quem cuida e a tela onde se resolve. Arrumou na tela, ele some sozinho na rodada seguinte (resolvido); ignorado = alguém marcou que não é problema. O que precisa de atenção agora: situacao = aberto.',
     cols: ['id', 'regra', 'titulo', 'detalhe', 'setor', 'responsavel', 'gravidade', 'cliente_id', 'link', 'prazo', 'situacao', 'primeiro_visto', 'ultimo_visto', 'resolvido_em', 'ignorado_em', 'ignorado_por', 'motivo_ignorado'],
     padrao: ['regra', 'titulo', 'detalhe', 'responsavel', 'gravidade', 'situacao', 'primeiro_visto'],
@@ -617,7 +618,14 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     return partes.join('\n');
   }
 
+  // pra quem não é sócio, a leitura com o filtro fixo (o vigia sem os achados só dos sócios) leva a nota: o que ficou de
+  // fora não é "nenhum"
   async function consultar(e) {
+    const r = await consultarTabela(e);
+    const T = TABELAS[e && e.tabela];
+    return T && T.fixoNaoSocio && T.notaNaoSocio && !usuario.socio && typeof r === 'string' && !r.startsWith('Sem acesso') ? r + '\n' + T.notaNaoSocio : r;
+  }
+  async function consultarTabela(e) {
     const m = montarConsulta(e || {}, { hoje });
     const { t, T } = m;
     if (T.socios && !usuario.socio) return 'Sem acesso: ' + T.rotulo + ' só os sócios veem.';
@@ -968,26 +976,30 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     const f = ['situacao=eq.aberto', ...(usuario.socio ? [] : [TABELAS.vigia_achados.fixoNaoSocio]), ...(setor ? ['setor=eq.' + enc(setor)] : []), ...(nome ? [filtroPessoaVigia(nome)] : [])];
     const { linhas, total } = await ler('vigia_achados?select=regra&' + f.join('&') + '&limit=1000', { contar: true });
     const de = (nome ? ' de ' + nome : '') + (setor ? ' no setor ' + setor : '');
-    if (!total) return 'O vigia não tem nada aberto' + de + ' — nada a mostrar.';
+    const nota = usuario.socio ? '' : ' ' + TABELAS.vigia_achados.notaNaoSocio;
+    if (!total) return 'O vigia não tem nada aberto' + de + ' — nada a mostrar.' + nota;
     registrar({ tipo: 'vigia', ver: nome ? 'meus' : 'todos', ...(nome ? { pessoa: nome } : {}), ...(setor ? { setor } : {}) });
     // os grupos do cartão (o nome de cada regra, como a tela mostra): a resposta fala do que não leu pelo grupo, sem supor
     const porRegra = new Map();
     (linhas || []).forEach(l => porRegra.set(l.regra, (porRegra.get(l.regra) || 0) + 1));
     const grupos = [...porRegra].map(([r, n]) => [rotuloDaRegra(r), n]).sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0], 'pt-BR')).map(([r, n]) => r + ': ' + n).join(' · ');
-    return 'Proposta pronta: a tela mostra o cartão do vigia com ' + plural(total, 'achado aberto', 'achados abertos') + de + (grupos ? ' (' + grupos + ')' : '') + ' — por grupo, cada um com "Abrir" (a tela onde se resolve) e "Ignorar"; no responsável que falta, na proposta e no boleto parados, na admissão a registrar, na rescisão com o pagamento chegando, na ficha sem empresa vinculada, no alvará vencendo, no que é de ex-cliente (cobrança, obrigação), no cliente sem obrigação ou sem cobrança e no cadastro desencontrado, também o botão que resolve ali. Nada muda sem a pessoa. Na resposta: o resumo do que mais pesa e uma frase convidando a abrir o cartão; do que você não leu, diga só o grupo (acima), sem supor de que empresa ou pessoa é.';
+    return 'Proposta pronta: a tela mostra o cartão do vigia com ' + plural(total, 'achado aberto', 'achados abertos') + de + (grupos ? ' (' + grupos + ')' : '') + ' — por grupo, cada um com "Abrir" (a tela onde se resolve) e "Ignorar"; no responsável que falta, na proposta e no boleto parados, na admissão a registrar, na rescisão com o pagamento chegando, na ficha sem empresa vinculada, no alvará vencendo, no que é de ex-cliente (cobrança, obrigação), no cliente sem obrigação ou sem cobrança e no cadastro desencontrado, também o botão que resolve ali. Nada muda sem a pessoa. Na resposta: o resumo do que mais pesa e uma frase convidando a abrir o cartão; do que você não leu, diga só o grupo (acima), sem supor de que empresa ou pessoa é.' + nota;
   }
 
   // ---------- os arquivos da empresa: a pasta dela no Drive e as guias arquivadas ----------
   // A pasta é só a que o cadastro aponta (drive_folder_url): nada de procurar a pasta pelo nome (casaria com a de outro
-  // cliente). O cartão "arquivos" mostra os links; aqui volta a lista pro modelo, sem link. Procurar de novo com outras
-  // palavras na mesma pergunta troca o cartão (o último vale) e não lê o Drive outra vez (a pasta fica guardada)
+  // cliente). O cartão "arquivos" mostra os links; aqui volta a lista pro modelo, sem link. Procurar de novo na mesma
+  // pergunta não lê o Drive outra vez (a pasta fica guardada) e troca o cartão — salvo quando o de antes era melhor: a
+  // busca com palavras que achou algo vale mais que "os mais recentes", que vale mais que a busca que não achou nada
   const arvores = new Map();
+  let pesoCartao = -1, termoCartao = null;
   const diaBR = iso => { const d = new Date(iso); return iso && !isNaN(d) ? new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric' }).format(d) : '—'; };
+  const horaBR = iso => { const d = new Date(iso); return iso && !isNaN(d) ? new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d).replace(':', 'h') : ''; };
   async function buscar_arquivos(e) {
     const ja = proposta && proposta.tipo !== 'arquivos' ? jaProposto() : null; if (ja) return ja;
     const a = await acharEmpresa(e.empresa);
     if (a.erro) return a.erro;
-    const { linhas } = await ler('clientes?select=id,nome_principal,drive_folder_url&id=eq.' + a.id);
+    const { linhas } = await ler('clientes?select=id,nome_principal,nome_fantasia,drive_folder_url&id=eq.' + a.id);
     const c = linhas[0];
     if (!c) return 'Empresa não encontrada no cadastro.';
     const termo = String(e.termo || '').trim().slice(0, 120);
@@ -1016,13 +1028,24 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     }
     const { achados, total } = filtrarArquivos([...doDrive, ...guias], termo, { limite: 20 });
     if (!raiz && !guias.length) return avisos.join(' ');
-    registrar({ tipo: 'arquivos', empresa: String(c.nome_principal || ''), cliente_id: String(c.id), pasta: raiz ? String(c.drive_folder_url) : null, termo: termo || null, total,
+    const fantasia = c.nome_fantasia && normalizarBusca(c.nome_fantasia) !== normalizarBusca(c.nome_principal) ? String(c.nome_fantasia) : null;
+    const peso = termo ? (total ? 2 : 0) : 1;
+    const ficaOutro = peso < pesoCartao;
+    if (!ficaOutro) { pesoCartao = peso; termoCartao = termo || null; }
+    if (!ficaOutro) registrar({ tipo: 'arquivos', empresa: String(c.nome_principal || ''), ...(fantasia ? { fantasia } : {}), cliente_id: String(c.id), pasta: raiz ? String(c.drive_folder_url) : null, termo: termo || null, total,
       itens: achados.map(x => ({ nome: x.nome, pasta: x.pasta || '', modificado: x.modificado || null, tamanho: x.tamanho == null ? null : x.tamanho, link: x.link || null, tipo: x.tipo || null })) });
-    const de = 'Arquivos de ' + c.nome_principal + (termo ? ' com "' + termo + '"' : ' (os mais recentes)');
-    const lista = achados.map(x => '- ' + x.nome + ' · ' + (x.pasta || 'pasta da empresa') + ' · ' + diaBR(x.modificado)).join('\n');
+    const de = 'Arquivos de ' + c.nome_principal + (fantasia ? ' (' + fantasia + ')' : '') + (termo ? ' com "' + termo + '"' : ' (os mais recentes)');
+    // o mesmo nome mais de uma vez (a guia enviada de novo, uma cópia): com a hora, pra dizer qual é a mais recente
+    const vezes = new Map();
+    achados.forEach(x => { const k = normalizarBusca(x.nome); vezes.set(k, (vezes.get(k) || 0) + 1); });
+    const lista = achados.map(x => '- ' + x.nome + ' · ' + (x.pasta || 'pasta da empresa') + ' · ' + diaBR(x.modificado)
+      + (vezes.get(normalizarBusca(x.nome)) > 1 && horaBR(x.modificado) ? ', ' + horaBR(x.modificado) : '')).join('\n');
     return de + ': ' + (total ? plural(total, 'achado', 'achados') + (total > achados.length ? ', aqui os ' + achados.length + ' primeiros' : '') + '.\n' + lista : 'nada encontrado.')
       + (avisos.length ? '\n' + avisos.join(' ') : '')
-      + '\nA tela mostra o cartão com os links pra abrir (e o link da pasta da empresa). Na resposta: o que achou — o nome, a pasta e a data do que mais interessa —, sem colar link e sem inventar arquivo; nada encontrado, diga e sugira outras palavras.';
+      + (!ficaOutro ? '\nA tela mostra o cartão com os links pra abrir (e o link da pasta da empresa).'
+        : peso === 0 ? '\nEsta busca não achou nada: o cartão da tela continua com a anterior (' + (termoCartao ? '"' + termoCartao + '"' : 'os mais recentes') + ').'
+        : '\nO cartão da tela continua com a busca anterior ("' + termoCartao + '"), que achou o que foi pedido: os links dela é que aparecem.')
+      + ' Na resposta: o que achou — o nome, a pasta e a data do que mais interessa —, sem colar link e sem inventar arquivo; nada encontrado, diga e sugira outras palavras.';
   }
 
   return { buscar_empresa, ver_empresa, agenda, consultar, perguntar_reforma, buscar_arquivos, propor_concluir_tarefas, propor_alterar_tarefas, propor_marcar_pago, propor_criar_tarefa, propor_revisao_atrasadas, propor_ver_vigia };

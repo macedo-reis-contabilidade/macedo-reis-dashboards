@@ -342,6 +342,10 @@ console.log('O vigia (o que o banco achou de desencontrado ou parado):');
     && /Setor:/.test(await nova(THALIA).propor_ver_vigia({ setor: 'compras' })) && /nada a mostrar/.test(await nova(THALIA).propor_ver_vigia({ pessoa: 'Adaini' })) && propostas.length === 3);
   const c = await nova(THALIA).consultar({ tabela: 'vigia_achados', filtros: [{ coluna: 'situacao', op: '=', valor: 'aberto' }] });
   chk('consultar o vigia: quem não é sócio não lê o que usa o Conta Azul (filtro fixo, mesmo sem login)', /3 linha\(s\)/.test(c) && !/não tem cobrança/.test(c), c);
+  chk('consultar o vigia: e a nota de que os só dos sócios ficaram de fora (não é "nenhum"); o sócio não leva a nota', /só os sócios veem\.$/.test(c)
+    && !/só os sócios veem/.test(await nova(SAMUEL).consultar({ tabela: 'vigia_achados', filtros: [{ coluna: 'situacao', op: '=', valor: 'aberto' }] }))
+    && !/só os sócios veem/.test(await nova(THALIA).consultar({ tabela: 'tarefas' })), c.split('\n').pop());
+  chk('o cartão do vigia pra quem não é sócio: a mesma nota', /só os sócios veem\.$/.test(r1) && /só os sócios veem\.$/.test(r3) && !/só os sócios veem/.test(r2));
   const v = await nova(SAMUEL).ver_empresa({ empresa: ID_A });
   chk('ver_empresa: o que o vigia achou dela, aberto, com o urgente marcado', /O vigia \(a conferir\): .*Admissão de FULANA .*\(URGENTE\)/.test(v) && /não tem cobrança/.test(v) && !/GIA/.test(v), v.split('\n').pop());
 }
@@ -609,16 +613,16 @@ console.log('Os arquivos da empresa (o Drive, só leitura):');
   const CL = [{ ...CLIENTES[0], drive_folder_url: 'https://drive.google.com/drive/folders/' + R }, CLIENTES[1]];
   const OBR = '44444444-4444-4444-8444-444444444444';
   const { banco } = bancoFalso({ extras: { clientes: CL, obrigacoes_fiscais: [{ id: OBR, nome: 'PGDAS' }], vigia_achados: [{ regra: 'tarefa_sem_responsavel', situacao: 'aberto', so_socios: false, responsavel: 'Thalia', setor: 'fiscal' }],
-    guias_arquivadas: [{ cliente_id: ID_A, obrigacao_id: OBR, competencia: '09/2026', nome_arquivo: 'PGDAS 09-2026 LOJA.pdf', drive_file_url: 'https://drive.google.com/file/d/GUIA1/view', criado_em: '2026-10-08T12:00:00Z' }] } });
+    guias_arquivadas: [{ cliente_id: ID_A, obrigacao_id: OBR, competencia: '09-2026', nome_arquivo: 'PGDAS 09-2026 LOJA.pdf', drive_file_url: 'https://drive.google.com/file/d/GUIA1/view', criado_em: '2026-10-08T12:00:00Z' }] } });
   let raizPedida = null;
   const driveFalso = { configurado: () => true, arvore: async r => { raizPedida = r; return { arquivos: arv.arquivos, pastas: 47, cortada: false }; } };
   const propostas = [];
   const nova = (extra = {}) => criarFerramentas({ banco, hoje: '2026-10-16', usuario: { email: 'fiscal@macedoereis.com.br', nome: 'Thalia', socio: false }, aoPropor: a => propostas.push(a), drive: driveFalso, ...extra });
   const t1 = await nova().buscar_arquivos({ empresa: 'Esquina', termo: 'setembro' });
   const c1 = propostas[0];
-  chk('buscar arquivos: a pasta que o cadastro aponta; o arquivo do Drive e a guia arquivada, com a pasta e a data', raizPedida === R && /2 achados/.test(t1) && /DAS 09-2026\.pdf · FISCAL \/ 2026 · 05\/10\/2026/.test(t1)
-    && /PGDAS 09-2026 LOJA\.pdf · Guias arquivadas \/ PGDAS \/ 09\/2026/.test(t1) && !/https?:/.test(t1.split('\n').slice(0, 3).join(' ')), t1);
-  chk('buscar arquivos: o cartão com a empresa, os links e a pasta dela', c1 && c1.tipo === 'arquivos' && c1.empresa === 'LOJA DA ESQUINA LTDA' && c1.itens.length === 2 && c1.total === 2
+  chk('buscar arquivos: a pasta que o cadastro aponta; o arquivo do Drive e a guia arquivada, com a pasta e a data', raizPedida === R && /^Arquivos de LOJA DA ESQUINA LTDA \(ESQUINA\) com "setembro": 2 achados/.test(t1)
+    && /DAS 09-2026\.pdf · FISCAL \/ 2026 · 05\/10\/2026\n/.test(t1) && /PGDAS 09-2026 LOJA\.pdf · Guias arquivadas \/ PGDAS \/ 09-2026 · 08\/10\/2026\n/.test(t1) && !/https?:/.test(t1.split('\n').slice(0, 3).join(' ')), t1);
+  chk('buscar arquivos: o cartão com a empresa (e a fantasia), os links e a pasta dela', c1 && c1.tipo === 'arquivos' && c1.empresa === 'LOJA DA ESQUINA LTDA' && c1.fantasia === 'ESQUINA' && c1.itens.length === 2 && c1.total === 2
     && c1.itens.every(i => /^https:\/\/drive\.google\.com\//.test(i.link)) && c1.pasta === CL[0].drive_folder_url && c1.termo === 'setembro', JSON.stringify(c1));
   const t2 = await nova().buscar_arquivos({ empresa: ID_B });
   chk('buscar arquivos: sem a pasta no cadastro e sem guia, diz onde vincular e não mostra cartão', /não tem a pasta do Drive no cadastro/.test(t2) && propostas.length === 1, t2);
@@ -632,6 +636,25 @@ console.log('Os arquivos da empresa (o Drive, só leitura):');
   const r4b = await fs4.buscar_arquivos({ empresa: ID_A, termo: 'contrato' });
   chk('buscar arquivos: nada achado, tenta outras palavras — o último cartão vale e o Drive é lido uma vez', /nada encontrado/.test(r4a) && /Contrato Social\.pdf/.test(r4b) && leituras === 1
     && propostas.length === antes + 2 && propostas[propostas.length - 1].termo === 'contrato' && propostas[propostas.length - 1].itens.length === 1, r4a + ' || ' + r4b);
+  // a guia enviada duas vezes (o mesmo nome): com a hora (de Brasília), pra dizer qual é a mais recente
+  const { banco: b6 } = bancoFalso({ extras: { clientes: CL, obrigacoes_fiscais: [{ id: OBR, nome: 'PGDAS' }], guias_arquivadas: [
+    { cliente_id: ID_A, obrigacao_id: OBR, competencia: '06-2026', nome_arquivo: 'PGDAS 06-2026.pdf', drive_file_url: 'https://drive.google.com/file/d/G2/view', criado_em: '2026-07-13T18:30:17Z' },
+    { cliente_id: ID_A, obrigacao_id: OBR, competencia: '06-2026', nome_arquivo: 'PGDAS 06-2026.pdf', drive_file_url: 'https://drive.google.com/file/d/G1/view', criado_em: '2026-07-13T17:10:41Z' }] } });
+  const t6 = await criarFerramentas({ banco: b6, hoje: '2026-10-16', usuario: {}, drive: { configurado: () => true, arvore: async () => ({ arquivos: [], pastas: 1, cortada: false }) } }).buscar_arquivos({ empresa: ID_A, termo: 'pgdas junho' });
+  chk('buscar arquivos: o mesmo nome duas vezes vem com a hora', /PGDAS 06-2026\.pdf · Guias arquivadas \/ PGDAS \/ 06-2026 · 13\/07\/2026, 15h30\n- PGDAS 06-2026\.pdf · Guias arquivadas \/ PGDAS \/ 06-2026 · 13\/07\/2026, 14h10/.test(t6), t6);
+  // a busca certeira não é trocada pelos "mais recentes" (nem pela que não achou nada) na mesma pergunta
+  const fs7 = nova();
+  const n7 = propostas.length;
+  await fs7.buscar_arquivos({ empresa: ID_A, termo: 'contrato' });
+  const r7b = await fs7.buscar_arquivos({ empresa: ID_A });
+  const r7c = await fs7.buscar_arquivos({ empresa: ID_A, termo: 'procuração' });
+  chk('buscar arquivos: o cartão fica com a busca que achou o pedido; os mais recentes e a busca vazia não o trocam', propostas.length === n7 + 1 && propostas[n7].termo === 'contrato'
+    && /O cartão da tela continua com a busca anterior \("contrato"\), que achou o que foi pedido/.test(r7b) && /Esta busca não achou nada: o cartão da tela continua com a anterior \("contrato"\)/.test(r7c), r7b + ' || ' + r7c);
+  const fs8 = nova();
+  const n8 = propostas.length;
+  await fs8.buscar_arquivos({ empresa: ID_A });
+  const r8 = await fs8.buscar_arquivos({ empresa: ID_A, termo: 'procuração' });
+  chk('buscar arquivos: depois dos mais recentes, a busca que não achou nada também não troca', propostas.length === n8 + 1 && propostas[n8].termo === null && /continua com a anterior \(os mais recentes\)/.test(r8), r8);
   const fs5 = nova();
   await fs5.propor_ver_vigia({});
   chk('buscar arquivos: com outra proposta já feita, uma por pergunta', /Já há uma proposta nesta pergunta/.test(await fs5.buscar_arquivos({ empresa: ID_A })) && descreverEtapa('buscar_arquivos', { empresa: 'Loja' }) === 'Procurando no Drive de Loja');

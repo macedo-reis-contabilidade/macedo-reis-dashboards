@@ -83,7 +83,11 @@ ACOES = {
             {'nome': 'Contrato Social.pdf', 'pasta': 'PROCESSOS / ABERTURA', 'modificado': '2026-03-01T15:00:00Z', 'tamanho': 1258291, 'link': 'https://drive.google.com/file/d/ARQ_CONTRATO_1/view', 'tipo': 'application/pdf'},
             {'nome': 'Contrato de honorários', 'pasta': '', 'modificado': '2026-02-10T15:00:00Z', 'tamanho': None, 'link': 'https://docs.google.com/document/d/DOC_HONORARIOS_1/edit', 'tipo': 'application/vnd.google-apps.document'},
             {'nome': 'Contrato antigo.pdf', 'pasta': 'PROCESSOS', 'modificado': '2025-05-02T15:00:00Z', 'tamanho': 2048, 'link': 'javascript:alert(1)', 'tipo': 'application/pdf'}]},
-    'Acha a procuração da oficina': {'tipo': 'arquivos', 'empresa': 'OFICINA DE TESTE LTDA', 'cliente_id': E2, 'pasta': None, 'termo': 'procuração', 'total': 0, 'itens': []}}
+    'Acha a procuração da oficina': {'tipo': 'arquivos', 'empresa': 'OFICINA DE TESTE LTDA', 'cliente_id': E2, 'pasta': None, 'termo': 'procuração', 'total': 0, 'itens': []},
+    'Acha a guia de junho do mercado': {'tipo': 'arquivos', 'empresa': 'MERCADO DE TESTE LTDA', 'fantasia': 'MERCADINHO', 'cliente_id': E3, 'pasta': 'https://drive.google.com/drive/folders/PASTA_DO_MERCADO_1',
+        'termo': 'guia junho', 'total': 2, 'itens': [
+            {'nome': 'PGDAS 06-2026.pdf', 'pasta': 'Guias arquivadas / PGDAS / 06-2026', 'modificado': '2026-07-13T18:30:17Z', 'tamanho': None, 'link': 'https://drive.google.com/file/d/G2/view', 'tipo': 'guia'},
+            {'nome': 'PGDAS 06-2026.pdf', 'pasta': 'Guias arquivadas / PGDAS / 06-2026', 'modificado': '2026-07-13T17:10:41Z', 'tamanho': None, 'link': 'https://drive.google.com/file/d/G1/view', 'tipo': 'guia'}]}}
 SEMEAR = """
 (() => {
   const CLIENTES = %s, TAREFAS = %s, COBRANCAS = %s, ACOES = %s;
@@ -336,8 +340,14 @@ def main():
         card = p.inner_text(ultimo)
         ok('Nada com “procuração” nos arquivos de OFICINA DE TESTE LTDA. Tente outras palavras do nome do arquivo.' in card and 'não tem a pasta do Drive no cadastro' in card
            and not p.query_selector(ultimo + ' a'), f'nada achado e sem pasta no cadastro: diz, sem link ({card[:200]!r})')
+        perguntar('Acha a guia de junho do mercado'); p.wait_for_selector(ultimo + ' .as-arquivos', timeout=5000)
+        hora = lambda iso: p.evaluate("iso => { const d = new Date(iso); return String(d.getHours()).padStart(2, '0') + 'h' + String(d.getMinutes()).padStart(2, '0'); }", iso)
+        metas = p.eval_on_selector_all(ultimo + ' a.as-arquivo small', 'ss => ss.map(s => s.textContent)')
+        ok(p.inner_text(ultimo).startswith('Arquivos de MERCADO DE TESTE LTDA (MERCADINHO) com “guia junho”: 2')
+           and metas == ['Guias arquivadas / PGDAS / 06-2026 · 13/07/2026, ' + hora('2026-07-13T18:30:17Z'), 'Guias arquivadas / PGDAS / 06-2026 · 13/07/2026, ' + hora('2026-07-13T17:10:41Z')],
+           f'a fantasia no título; o mesmo nome duas vezes vem com a hora ({metas})')
         p.reload(); p.wait_for_selector('.as-painel:not([hidden])', timeout=5000); p.wait_for_selector('.as-arquivos', timeout=5000)
-        ok(len(p.query_selector_all('.as-lista a.as-arquivo')) == 2 and 'Nada com “procuração”' in p.inner_text(ultimo), 'recarregou: os dois cartões voltam como estavam')
+        ok(len(p.query_selector_all('.as-lista a.as-arquivo')) == 4 and 'Nada com “procuração”' in p.inner_text('.as-lista .as-msg.ia:nth-last-child(3) .as-cartao'), 'recarregou: os cartões voltam como estavam')
 
         ok(not erros, f'sem erro de JavaScript ({erros[:2]})')
         b.close()
