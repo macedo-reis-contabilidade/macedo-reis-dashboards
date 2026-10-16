@@ -9,7 +9,7 @@ import { execFileSync } from 'node:child_process';
 import { posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TABELAS, OPS, DEFINICOES, filtroUrl, montarConsulta, criarFerramentas, descreverEtapa, normalizarBusca } from '../supabase/functions/assistente/ferramentas.js';
-import { montarSistema, preambulo, dicionario, INSTRUCOES } from '../supabase/functions/assistente/prompt.js';
+import { montarSistema, preambulo, dicionario, INSTRUCOES, marcaOutroDia } from '../supabase/functions/assistente/prompt.js';
 import { criarServidor, limparContexto, limparPagina, limparHistorico, diaBR, LIMITE_DIA } from '../supabase/functions/assistente/servidor.js';
 import { responder, erroDoChat } from '../supabase/functions/reforma-chat/agente.js';
 
@@ -32,6 +32,8 @@ chk('as definições: as cinco de ler e as cinco propostas, consultar só com as
 chk('o prompt: a Reforma sozinha na rodada (a resposta dela vai direto, com as fontes); a tela pelo nome e a situação por extenso',
   /Chame sozinha na rodada/.test(INSTRUCOES) && /mantenha as fontes dele entre colchetes/.test(INSTRUCOES) && /não financeiro-boletos\.html/.test(INSTRUCOES) && /não em_transicao/.test(INSTRUCOES)
   && /a última linha dele \("Base da resposta: …"/.test(INSTRUCOES) && /não a escreva por conta própria/.test(INSTRUCOES));
+chk('o prompt: a pergunta antiga de outro dia vem com a data, e o "amanhã" dela não é erro',
+  /a pergunta antiga de outro dia vem com a data e a hora em que foi feita/.test(INSTRUCOES) && /não é erro e não precisa de desculpa/.test(INSTRUCOES));
 
 console.log('Montagem das consultas:');
 chk('coluna fora da lista: erro com as colunas que existem', /não é lida em clientes/.test(erroDe(() => filtroUrl('clientes', { coluna: 'credenciais', op: '=', valor: 'x' }))));
@@ -404,6 +406,21 @@ const usarFerramenta = (name, input) => ({ stop_reason: 'tool_use', content: [{ 
     && linhas[0].situacao === 'ok' && linhas[0].resposta === 'Um boleto em aberto.' && linhas[0].tokens_saida === 10 && linhas[0].etapas[0].ferramenta === 'consultar');
 }
 {
+  // a conversa que passou de um dia pro outro (a aba ficou aberta): a pergunta de outro dia vai com a data em que foi feita,
+  // pro modelo não tomar o "amanhã" dela por erro (16/10/2026)
+  const { f } = servidorFalso();
+  let corpoModelo = null;
+  const srv = criarServidor({ env: k => ENV[k], fetch: f, agora: () => AGORA, chamar: async c => { corpoModelo = c; return final('Hoje é 14/10/2026.')(); } });
+  const r = await srv(pedido({ pergunta: 'Que dia é hoje?', historico: [
+    { pergunta: 'Coloque essa tarefa para amanhã', resposta: 'Amanhã, 13/10/2026.', em: '2026-10-13T01:44:57Z' },
+    { pergunta: 'E agora?', resposta: 'Nada.', em: '2026-10-14T13:10:00Z' },
+    { pergunta: 'Sem hora', resposta: 'ok' }] }));
+  const ms = corpoModelo ? corpoModelo.messages : [];
+  chk('pergunta anterior de outro dia: vai com a data e a hora em que foi feita (Brasília); a do mesmo dia e a sem hora, como vieram',
+    r.status === 200 && ms[0].content === '[Pergunta feita em segunda-feira, 12/10/2026, às 22:44] Coloque essa tarefa para amanhã' && ms[1].content === 'Amanhã, 13/10/2026.'
+    && ms[2].content === 'E agora?' && ms[4].content === 'Sem hora', JSON.stringify(ms.slice(0, 5).map(m => m.content)));
+}
+{
   const { f } = servidorFalso({ contagem: LIMITE_DIA + 1 });
   const r = await criarServidor({ env: k => ENV[k], fetch: f, agora: () => AGORA, chamar: final('x') })(pedido({ pergunta: 'Mais uma?' }));
   chk('limite do dia: 429, com a mensagem pro usuário', r.status === 429 && /limite de 80 perguntas por dia/.test((await r.json()).erro));
@@ -488,6 +505,14 @@ chk('página: caminho de tela do sistema, nome sem marcação, setor da lista', 
   === JSON.stringify({ caminho: 'clientes/editar.html', nome: 'Ficha b x /b', setor: null }));
 chk('cálculo da tela só com a ficha da Reforma', limparContexto({ tela: { input: {} } }).tela === null);
 chk('histórico: até 6, cortado', limparHistorico(Array.from({ length: 9 }, () => ({ pergunta: 'p', resposta: 'r'.repeat(7000) }))).length === 6);
+chk('histórico: a hora de cada pergunta, só quando é uma data ISO', (() => {
+  const h = limparHistorico([{ pergunta: 'p', resposta: 'r', em: '2026-10-14T22:44:57.123Z' }, { pergunta: 'p', resposta: 'r', em: 'ontem' }, { pergunta: 'p', resposta: 'r', em: 1760000000000 },
+    { pergunta: 'p', resposta: 'r', em: '2026-13-45T99:99' }, { pergunta: 'p', resposta: 'r', em: '2026-10-14T22:44:57Z' + ' '.repeat(40) }]);
+  return h.length === 5 && h[0].em === '2026-10-14T22:44:57.123Z' && h.slice(1).every(x => !('em' in x)); })());
+chk('marca de outro dia: de um dia anterior, com o dia da semana, a data e a hora de Brasília; do mesmo dia, de um dia adiante ou sem hora, nada',
+  marcaOutroDia('2026-10-15T01:44:57Z', '2026-10-16') === '[Pergunta feita em quarta-feira, 14/10/2026, às 22:44] '
+  && marcaOutroDia('2026-10-16T12:00:00Z', '2026-10-16') === '' && marcaOutroDia('2026-10-17T12:00:00Z', '2026-10-16') === ''
+  && marcaOutroDia('', '2026-10-16') === '' && marcaOutroDia(undefined, '2026-10-16') === '' && marcaOutroDia('x', '2026-10-16') === '', marcaOutroDia('2026-10-15T01:44:57Z', '2026-10-16'));
 chk('o dia no fuso de Brasília', diaBR(new Date('2026-10-15T02:30:00Z')) === '2026-10-14');
 chk('o preâmbulo sem tela nem pessoa (avaliação)', preambulo({ hoje: '2026-10-18' }) === '[Contexto do sistema] Hoje: domingo, 18/10/2026 (semana de 12/10/2026 a 18/10/2026).\n\n');
 

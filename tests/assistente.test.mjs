@@ -69,7 +69,7 @@ console.log('Conversa guardada na aba:');
 const valido = { v: 1, conversa: '6f1c2b0e-1d2a-4c3b-8e9f-0a1b2c3d4e5f', aberto: true, largo: false, naoLidas: 2, recadoVisto: true, recadoContextoVisto: false,
   msgs: [{ tipo: 'nota', texto: 'Sobre a ficha de X', em: '2026-10-14T12:00:00Z', ctxId: 'k1' }, { tipo: 'eu', texto: 'Pergunta?', em: '2026-10-14T12:00:00Z', ctxId: 'k1' },
     { tipo: 'ia', texto: 'Resposta.', etapas: ['Lendo A'], em: '2026-10-14T12:00:05Z', ctxId: 'k1' }],
-  historico: [{ pergunta: 'Pergunta?', resposta: 'Resposta.', ctxId: 'k1' }] };
+  historico: [{ pergunta: 'Pergunta?', resposta: 'Resposta.', ctxId: 'k1', em: '2026-10-14T12:00:00Z' }] };
 const lido = lerEstado(JSON.stringify(valido));
 // comparação sem depender da ordem das chaves
 const canon = x => Array.isArray(x) ? '[' + x.map(canon).join(',') + ']' : x && typeof x === 'object' ? '{' + Object.keys(x).sort().map(k => JSON.stringify(k) + ':' + canon(x[k])).join(',') + '}' : JSON.stringify(x);
@@ -81,6 +81,17 @@ const sujo = lerEstado(JSON.stringify({ v: 1, conversa: 7, msgs: [null, 5, { tip
 chk('campos estranhos são descartados um a um (a tela segue com o que presta)', sujo && sujo.msgs.length === 1 && sujo.msgs[0].texto === 'ok' && sujo.msgs[0].etapas.length === 0
   && sujo.msgs[0].ctxId === null && sujo.historico.length === 0 && sujo.naoLidas === 0 && sujo.aberto === false && sujo.conversa === null, JSON.stringify(sujo));
 chk('msgs e historico que não são lista viram lista vazia', (() => { const e = lerEstado('{"v":1,"msgs":"x","historico":"y"}'); return e && e.msgs.length === 0 && e.historico.length === 0; })());
+// a conversa guardada antes de 16/10/2026: o histórico sem a hora da pergunta pega a da mensagem dela (de trás pra frente —
+// a pergunta repetida casa com a mais recente; outro contexto não casa)
+const antiga = lerEstado(JSON.stringify({ v: 1, msgs: [
+  { tipo: 'eu', texto: 'O que tenho pra hoje?', em: '2026-10-14T13:00:00Z', ctxId: null }, { tipo: 'ia', texto: 'Uma tarefa.', em: '2026-10-14T13:00:04Z', ctxId: null },
+  { tipo: 'eu', texto: 'Coloque para amanhã', em: '2026-10-15T01:44:57Z', ctxId: null }, { tipo: 'ia', texto: 'Amanhã, 15/10.', em: '2026-10-15T01:45:00Z', ctxId: null },
+  { tipo: 'eu', texto: 'O que tenho pra hoje?', em: '2026-10-16T12:00:00Z', ctxId: 'k9' }, { tipo: 'ia', texto: 'Da ficha.', ctxId: 'k9' },
+  { tipo: 'eu', texto: 'O que tenho pra hoje?', em: '2026-10-16T12:00:17Z', ctxId: null }, { tipo: 'ia', texto: 'Nada.', em: '2026-10-16T12:00:20Z', ctxId: null }],
+  historico: [{ pergunta: 'O que tenho pra hoje?', resposta: 'Uma tarefa.', ctxId: null }, { pergunta: 'Coloque para amanhã', resposta: 'Amanhã, 15/10.', ctxId: null },
+    { pergunta: 'O que tenho pra hoje?', resposta: 'Da ficha.', ctxId: 'k9' }, { pergunta: 'O que tenho pra hoje?', resposta: 'Nada.', ctxId: null }] }));
+chk('conversa guardada sem a hora no histórico: cada pergunta pega a hora da mensagem dela (a repetida, a certa; outro contexto não casa)',
+  antiga.historico.map(h => h.em).join() === '2026-10-14T13:00:00Z,2026-10-15T01:44:57Z,2026-10-16T12:00:00Z,2026-10-16T12:00:17Z', JSON.stringify(antiga.historico.map(h => h.em)));
 const acao = { tipo: 'concluir_tarefas', ids: ['a', 'b'], estado: 'feita', resultado: { concluidas: [{ id: 'a', status_antes: 'pendente' }], em: '2026-10-14T12:00:00Z' } };
 const comAcao = lerEstado(JSON.stringify({ v: 1, msgs: [
   { tipo: 'ia', texto: 'Separei 2 tarefas.', id: 'm-1', acao },

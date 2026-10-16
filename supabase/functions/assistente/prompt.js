@@ -22,6 +22,7 @@ COMO PROCURAR
 - O que está desencontrado, esquecido ou parado no sistema (admissão sem registro, rescisão com pagamento chegando, alvará vencido, boleto parado, cliente sem cobrança ou sem obrigação, coisa sem responsável, proposta parada): o vigia já procura de hora em hora — consultar vigia_achados com situacao = aberto (de alguém: responsavel; contar: agrupar por regra ou responsavel).
 - Lista longa: a primeira linha da saída diz o total e, se não coube tudo, de onde seguir (a_partir_de).
 - Datas relativas pelo dia do contexto: semana = segunda a domingo; "este mês" = o mês do dia; competência = 'AAAA-MM'.
+- A conversa pode ter começado em outro dia: a pergunta antiga de outro dia vem com a data e a hora em que foi feita, entre colchetes. O "hoje" e o "amanhã" dela, e da resposta a ela, eram os daquele dia: não é erro e não precisa de desculpa. Agora vale o dia do contexto.
 - Em geral 1 a 4 chamadas bastam. Não repita a mesma consulta.
 
 COMO RESPONDER — curto é a regra
@@ -79,4 +80,16 @@ export function preambulo({ hoje, quem, tela, empresa, ficha }) {
   if (empresa) t += ' Empresa aberta na tela: ' + empresa + ' — "esta empresa" é ela.';
   if (ficha) t += ' Ficha da Reforma aberta: ' + ficha + ' (perguntar_reforma já vai sobre ela).';
   return t + '\n\n';
+}
+
+// a conversa pode vir de outro dia (a aba ficou aberta de um dia pro outro): a pergunta antiga de um dia anterior vai com
+// a data e a hora em que foi feita — o "amanhã" de anteontem não vira erro hoje (16/10/2026). em = a hora da pergunta
+// (ISO, a tela manda); hoje = 'AAAA-MM-DD' em Brasília. Do mesmo dia, sem hora ou de um dia adiante (relógio da máquina
+// errado): sem marca
+export function marcaOutroDia(em, hoje) {
+  const d = new Date(em || '');
+  if (!em || isNaN(d)) return '';
+  const local = new Date(d.getTime() - 3 * 3600e3), dia = local.toISOString().slice(0, 10);
+  if (!(dia < String(hoje || ''))) return '';
+  return '[Pergunta feita em ' + DIAS[local.getUTCDay()] + ', ' + dia.split('-').reverse().join('/') + ', às ' + local.toISOString().slice(11, 16) + '] ';
 }

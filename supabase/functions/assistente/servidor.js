@@ -15,7 +15,7 @@
 // Puro: env, fetch, relógio, chamador e o waitUntil injetados — testes em tests/assistente-funcao.test.mjs.
 // ============================================================
 
-import { montarSistema, preambulo } from './prompt.js';
+import { montarSistema, preambulo, marcaOutroDia } from './prompt.js';
 import { DEFINICOES, criarFerramentas, descreverEtapa } from './ferramentas.js';
 import { criarChamador, responder } from '../reforma-chat/agente.js';
 import { lerEventos } from '../../../assets/js/eventos-sse.js';
@@ -39,9 +39,15 @@ export function mensagemDeErro(e) {
   return 'Não consegui responder agora. Tente de novo em instantes.';
 }
 
+// a hora de cada pergunta anterior (ISO), quando a tela manda: a de outro dia vai marcada pro modelo (marcaOutroDia)
+const quandoValido = v => {
+  const s = typeof v === 'string' ? v : '', d = new Date(s);
+  return s.length <= 40 && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s) && !isNaN(d) ? d.toISOString() : null;
+};
 export function limparHistorico(h) {
   return (Array.isArray(h) ? h : []).slice(-6)
-    .map(x => ({ pergunta: String((x && x.pergunta) || '').slice(0, 2000), resposta: String((x && x.resposta) || '').slice(0, 6000) }))
+    .map(x => { const em = quandoValido(x && x.em);
+      return { pergunta: String((x && x.pergunta) || '').slice(0, 2000), resposta: String((x && x.resposta) || '').slice(0, 6000), ...(em ? { em } : {}) }; })
     .filter(x => x.pergunta.trim() && x.resposta.trim());
 }
 
@@ -186,7 +192,9 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
         // a proposta de ação (uma por pergunta) vai junto com a resposta: a tela mostra o cartão
         aoPropor: a => { acao = a; } });
       const mensagem = preambulo({ hoje, quem, tela, empresa, ficha }) + pergunta;
-      res = await responder({ chamar: chamarModelo, sistema, definicoes: DEFINICOES, ferramentas, historico, mensagem, aoEtapa, prazoMs, descrever: descreverEtapa });
+      // a pergunta anterior de outro dia leva a data em que foi feita (a aba pode ter ficado aberta de um dia pro outro)
+      const anteriores = historico.map(h => ({ pergunta: marcaOutroDia(h.em, hoje) + h.pergunta, resposta: h.resposta }));
+      res = await responder({ chamar: chamarModelo, sistema, definicoes: DEFINICOES, ferramentas, historico: anteriores, mensagem, aoEtapa, prazoMs, descrever: descreverEtapa });
     } catch (e) { erro = e || new Error('erro'); }
     const detalhe = erro ? String((erro && erro.message) || erro).slice(0, 1000) : null;
     const aviso = erro ? mensagemDeErro(erro) : null;

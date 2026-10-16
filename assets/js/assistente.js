@@ -123,7 +123,17 @@ export function lerEstado(texto) {
       ...(m.tipo === 'ia' && id(m.id) && acaoValida(m.acao) ? { id: id(m.id), acao: m.acao } : {}) }));
   const historico = (Array.isArray(j.historico) ? j.historico : [])
     .filter(h => h && typeof h === 'object' && str(h.pergunta) && str(h.resposta))
-    .map(h => ({ pergunta: h.pergunta.slice(0, 2000), resposta: h.resposta.slice(0, 20000), ctxId: id(h.ctxId) }));
+    .map(h => ({ pergunta: h.pergunta.slice(0, 2000), resposta: h.resposta.slice(0, 20000), ctxId: id(h.ctxId), ...(str(h.em) && h.em ? { em: h.em.slice(0, 40) } : {}) }));
+  // a hora de cada pergunta (a conversa pode passar de um dia pro outro, e a função precisa saber quando foi cada uma).
+  // Na conversa guardada antes de 16/10/2026, sem ela: vem da mensagem da pergunta, de trás pra frente (o mesmo texto no
+  // mesmo contexto — a pergunta repetida casa com a mais recente que ainda não casou)
+  for (let i = historico.length - 1, k = msgs.length - 1; i >= 0; i--) {
+    const h = historico[i];
+    while (k >= 0 && !(msgs[k].tipo === 'eu' && msgs[k].ctxId === h.ctxId && msgs[k].texto.slice(0, 2000) === h.pergunta)) k--;
+    if (k < 0) break;
+    if (!h.em && msgs[k].em) h.em = msgs[k].em;
+    k--;
+  }
   const n = Number(j.naoLidas);
   return { v: 1, conversa: id(j.conversa), historico, msgs, aberto: j.aberto === true, largo: j.largo === true,
     naoLidas: Number.isFinite(n) ? Math.max(0, Math.min(99, Math.round(n))) : 0,
@@ -527,7 +537,7 @@ export function montarAssistente(op) {
     desenharCauda(); atualizarDigitando(); rolar();
   }
   // a resposta (ou o erro) entra na conversa; com o painel fechado, o selo e o recado "Respondi"
-  function concluir({ t, cid, res, erro, etapas, devolver = true }) {
+  function concluir({ t, cid, res, erro, etapas, devolver = true, em = '' }) {
     ocupado = false; travar(false);
     raiz.classList.remove('as-pensando'); statusPadrao();
     let el = null;
@@ -538,7 +548,7 @@ export function montarAssistente(op) {
       if (acao && mid) { nova.id = mid; nova.acao = acao; }
       est.msgs.push(nova); el = acrescentar(nova);
       if (res.cortada) { const n = { tipo: 'nota', texto: 'A resposta passou do tamanho máximo e foi cortada — peça a continuação.', em: agoraIso(), ctxId: cid }; est.msgs.push(n); acrescentar(n); }
-      est.historico.push({ pergunta: t, resposta: res.texto, ctxId: cid });
+      est.historico.push({ pergunta: t, resposta: res.texto, ctxId: cid, em: em || agoraIso() });
       sorrir();
       anunciar('Resposta: ' + primeiraFrase(res.texto));
     } else {
@@ -582,13 +592,14 @@ export function montarAssistente(op) {
     let res = null, erro = null;
     try {
       // o histórico que vai junto é só o do mesmo contexto: a conversa sobre uma empresa não entra na de outra
-      const historico = est.historico.filter(h => h.ctxId === cid).slice(-6).map(h => ({ pergunta: h.pergunta, resposta: h.resposta }));
+      // com a hora de cada pergunta: a de outro dia vai marcada pra IA ("amanhã", dito ontem, não vira erro hoje)
+      const historico = est.historico.filter(h => h.ctxId === cid).slice(-6).map(h => ({ pergunta: h.pergunta, resposta: h.resposta, ...(h.em ? { em: h.em } : {}) }));
       const corpo = { pergunta: t, historico, conversa: est.conversa, ...(pedido ? { pedido } : {}), contexto: (op.contexto ? op.contexto(c) : null) || {} };
       if (op.antes) await Promise.resolve().then(op.antes).catch(() => {});
       res = await op.perguntar(corpo, e => { if (g !== geracao) return; etapas.push(e); ultimaEtapa = e; atualizarDigitando(); });
     } catch (e) { erro = (e && e.message) || 'Erro no assistente.'; }
     if (g !== geracao) return;   // a conversa mudou enquanto esperava
-    concluir({ t, cid, res, erro, etapas });
+    concluir({ t, cid, res, erro, etapas, em: eu.em });
   }
 
   // a página recarregou (trocou de tela) com uma pergunta no ar: busca a resposta pelo id da pergunta
@@ -601,7 +612,7 @@ export function montarAssistente(op) {
       if (!res) erro = 'A página mudou antes de a pergunta chegar. Pergunte de novo.';
     } catch (e) { erro = (e && e.message) || 'Erro no assistente.'; }
     if (g !== geracao) return;
-    concluir({ t: eu.texto, cid: eu.ctxId, res, erro, devolver: true });
+    concluir({ t: eu.texto, cid: eu.ctxId, res, erro, devolver: true, em: eu.em });
   }
 
   // uma mensagem com o cartão de uma ação, sem passar pela IA (ex.: "Revisar as atrasadas", da saudação do dia); não entra
