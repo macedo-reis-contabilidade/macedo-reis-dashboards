@@ -13,12 +13,17 @@ Conferência visual das telas nos dois temas — roda em Windows, Mac ou Linux, 
 --sem-sessao: mesmo banco falso, mas sem ninguém logado. Serve pro login.html, que com sessão
 manda direto pro painel e por isso nunca aparecia nas fotos.
 
+HARNESS_SITE (variável de ambiente): a pasta da cópia do site, no lugar de .harness/site. O tests/rodar-tudo.py dá
+uma pasta a cada teste pra eles rodarem ao mesmo tempo (o montar_site() apaga e recria a pasta — na mesma pasta, um
+teste apagaria o site do outro). Tem de ficar dentro de .harness/ (é apagada inteira). Sem a variável, .harness/site,
+como sempre.
+
 Pré-requisito (uma vez): pip install playwright  e  python -m playwright install chromium
 """
-import sys, re, shutil, threading, http.server, socketserver, functools, pathlib, time
+import os, sys, re, shutil, threading, http.server, socketserver, functools, pathlib, time
 
 RAIZ = pathlib.Path(__file__).resolve().parents[2]
-SITE = RAIZ / '.harness' / 'site'
+SITE = RAIZ / pathlib.Path(os.environ['HARNESS_SITE']) if os.environ.get('HARNESS_SITE') else RAIZ / '.harness' / 'site'
 FOTOS = RAIZ / '.harness' / 'fotos'
 
 SEM_SESSAO = '''
@@ -29,6 +34,9 @@ getCurrentUser = async () => null;
 '''
 
 def montar_site(sem_sessao=False):
+    # a pasta é apagada inteira: só dentro de .harness/ (um HARNESS_SITE errado não apaga o repositório nem nada fora)
+    if (RAIZ / '.harness').resolve() not in SITE.resolve().parents:
+        sys.exit(f'HARNESS_SITE tem de ser uma pasta dentro de .harness/ (veio {SITE})')
     if SITE.exists(): shutil.rmtree(SITE)
     SITE.mkdir(parents=True)
     for f in RAIZ.glob('*.html'): shutil.copy2(f, SITE / f.name)

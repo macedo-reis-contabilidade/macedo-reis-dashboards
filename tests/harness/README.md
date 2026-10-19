@@ -13,6 +13,24 @@ Roda sozinho todos os `tests/*.test.mjs` (no node) e todos os testes de comporta
 e aí mostra a saída inteira do que quebrou. Teste novo não precisa ser inscrito em lugar nenhum: basta o
 arquivo estar na pasta. O `conferir.py` fica de fora — é ferramenta, não teste.
 
+**Em paralelo** (19/10/2026): roda **4 testes ao mesmo tempo** por padrão — o conjunto, que levava ~13 minutos um
+atrás do outro (788 s em 19/10), cai pra ~4 (222 a 289 s nas três rodadas de 19/10, todas verdes). As opções:
+
+```
+python tests/rodar-tudo.py --paralelo 6    # quantos ao mesmo tempo
+python tests/rodar-tudo.py --um-por-vez    # um atrás do outro, como era antes
+```
+
+A lista continua na ordem alfabética (cada linha aparece quando o teste e os de cima dele terminaram), a saída
+inteira de quem falhou vem no fim e a última linha é sempre `Resumo: N testes · X ok · Y falharam` (há monitores
+que leem essa linha); antes dela, a linha `Tempo:` diz quanto levou. O código de saída é o mesmo. Em paralelo, cada
+teste de tela monta a cópia do site numa pasta só dele, `.harness/site-<nome do teste>`, apagada no fim — o
+`montar_site()` do `conferir.py` usa a pasta da variável de ambiente `HARNESS_SITE` (sempre dentro de `.harness/`)
+e, sem ela, a `.harness/site` de sempre. Os mais demorados começam primeiro, pelo tempo da última vez
+(`.harness/tempos-dos-testes.json`). Teste que só passa sozinho entra na lista `SOZINHOS` do `rodar-tudo.py`
+(roda depois dos outros, um por vez) — antes disso, troque a espera fixa (`wait_for_timeout`) por esperar a
+condição (`wait_for_function`, `wait_for_selector`).
+
 ## Fotografar telas (ferramenta)
 
 ```
@@ -43,7 +61,9 @@ Como o assistente do escritório aparece em todas as telas com login, o mock dei
 | `importar-xml.py` | o parser de notas (`assets/js/importar-xml.js`): NF-e, evento de cancelamento, NFS-e nacional, descontos, CNPJ alfanumérico na chave e nos documentos, CT-e e MDF-e ignorados (inclusive os que citam a NF-e transportada num grupo infNFe, que davam "chave de acesso inválida"), XML mal formado. Roda no navegador porque o Node não tem `DOMParser` |
 | `lote-setores.py` | concluir e registrar andamento em lote nas telas de tarefas dos setores |
 | `obrigacoes-responsavel.py` | responsável obrigatório no vínculo de obrigação fiscal |
-| `rotinas-setor.py` | o módulo único de tarefas recorrentes por setor (`assets/js/rotinas-setor.js`) |
+| `rotinas-setor.py` | o módulo único de tarefas recorrentes por setor (`assets/js/rotinas-setor.js`); as regras sem rotina que vieram todas da Análise fiscal saem "· da Análise fiscal" (19/10), as outras, "· criada pela Nova tarefa" |
+| `analise-recorrentes.py` | a janela "Gerar tarefas recorrentes" da Análise fiscal (`fiscal-analise.html`, 19/10/2026): só mensal, semestral e anual; a trimestral vem desmarcada, com o aviso pra cadastrar em Obrigações fiscais; o campo Mês só na semestral e na anual, e sem ele nada é gravado; o responsável da lista da equipe (já em Thalia); as regras gravadas com o mês, `origem: 'analise'` e o responsável; nenhuma tarefa criada pela tela e o gerador do banco (`gerar_tarefas_recorrentes`, com `p_hoje`) chamado uma vez, respondido por `window.__mockRpc` |
+| `selos-hubs.py` | os números dos cards da Transição (`comercial.html`: "N em andamento") e das Regularizações (`fiscal.html`: "N em aberto", sem as regularizadas e as sem acordo), que antes ficavam no "·" de carregando (19/10/2026) |
 | `rotinas-excluir.py` | excluir rotina nas Tarefas recorrentes só depois de desvincular as empresas (`assets/js/rotinas-setor.js`) |
 | `rotinas-tres-setores.py` | as Tarefas recorrentes do Fiscal, do Comercial e do Societário (páginas finas do módulo): cada tela com o seu setor, a equipe na ordem certa e o card no hub |
 | `obrigacoes-mes-concluido.py` | Obrigações fiscais: obrigação com o mês todo concluído não some do filtro "Pendentes do mês" |
