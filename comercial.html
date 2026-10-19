@@ -156,6 +156,9 @@
         const { count: cart } = await supabase.from('carteira_info')
           .select('cliente_id', { count: 'exact', head: true }).is('saida', null);
         setBadge('comercial-carteira.html', (cart ?? 0) + ' ativos');
+        const { count: trans } = await supabase.from('transicoes')
+          .select('id', { count: 'exact', head: true }).eq('status', 'em_andamento');
+        setBadge('comercial-transicao.html', (trans ?? 0) + ' em andamento');
         ["comercial-regras.html", "comercial-relatorios.html", "comercial-reunioes.html"].forEach(h => setBadge(h, '—'));
       } catch (e) { console.error(e); }
     }

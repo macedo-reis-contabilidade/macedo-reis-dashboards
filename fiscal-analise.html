@@ -73,7 +73,8 @@
 
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
-    import { formatDocumento, formatDate } from './assets/js/utils.js';
+    import { formatDocumento, formatDate, hojeLocal } from './assets/js/utils.js';
+    import { EQUIPE } from './assets/js/equipe.js';
 
     const params = new URLSearchParams(window.location.search);
     const clienteId = params.get('id');
@@ -428,23 +429,39 @@
     }
 
     // ---------- Tarefas recorrentes a partir da análise ----------
-    const PERIODOS = ['mensal','bimestral','trimestral','semestral','anual'];
+    // A janela só cria as regras (tarefas_recorrentes, origem 'analise'); quem cria as tarefas é o gerador do banco,
+    // gerar_tarefas_recorrentes, que só conhece mensal, semestral e anual — e, na semestral e na anual, precisa do mês.
+    // Bimestral e trimestral têm meses próprios: são de Obrigações fiscais (fiscal-obrigacoes.html).
+    const PERIODOS = ['mensal','semestral','anual'];
+    const COM_MES = ['semestral','anual'];
+    const MESES = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
     const recOverlay = document.getElementById('recOverlay');
     const recLista = document.getElementById('recLista');
+    const recResp = document.getElementById('recResp');
+    recResp.innerHTML = EQUIPE.map(n => `<option value="${esc(n)}" ${n === 'Thalia' ? 'selected' : ''}>${esc(n)}</option>`).join('')
+      + '<option value="">sem responsável</option>';
 
     function extrairDia(prazo) {
       if (!prazo) return '';
       const m = String(prazo).match(/\b([0-2]?[0-9]|3[01])\b/);
       return m ? m[1] : '';
     }
+    const periodoDaAnalise = p => String(p || '').trim().toLowerCase();
     function periodoValido(p) { return PERIODOS.includes(p) ? p : 'mensal'; }
+    function mostrarMes(i) {
+      const per = recLista.querySelector(`.rec-periodo[data-i="${i}"]`).value;
+      recLista.querySelector(`.rec-mes[data-i="${i}"]`).style.visibility = COM_MES.includes(per) ? 'visible' : 'hidden';
+    }
 
     function abrirModalRecorrentes(obrs) {
       if (!obrs.length) { alert('Esta análise não tem obrigações para gerar tarefas.'); return; }
+      recResp.value = 'Thalia';
       recLista.innerHTML = obrs.map((o, i) => {
-        const periodo = periodoValido(o.periodicidade);
+        const daAnalise = periodoDaAnalise(o.periodicidade);
+        const periodo = periodoValido(daAnalise);
         const dia = extrairDia(o.prazo);
-        const recorrente = PERIODOS.includes(o.periodicidade);
+        const recorrente = PERIODOS.includes(daAnalise);
+        const fora = ['bimestral','trimestral'].includes(daAnalise);
         return `
           <div class="rec-item">
             <input type="checkbox" class="rec-inc" data-i="${i}" ${recorrente ? 'checked' : ''}>
@@ -453,51 +470,73 @@
               ${PERIODOS.map(p => `<option value="${p}" ${p===periodo?'selected':''}>${p}</option>`).join('')}
             </select>
             <input type="number" class="input rec-dia" data-i="${i}" min="1" max="31" placeholder="dia" value="${dia}">
+            <select class="select rec-mes" data-i="${i}" title="Na semestral, o primeiro dos dois meses (o segundo é 6 meses depois)">
+              <option value="">mês</option>
+              ${MESES.map((m, k) => `<option value="${k + 1}">${m}</option>`).join('')}
+            </select>
+            ${fora ? `<div class="rec-aviso">${daAnalise}: cadastre em Obrigações fiscais, que aceita os meses certos</div>` : ''}
           </div>`;
       }).join('');
+      obrs.forEach((o, i) => mostrarMes(i));
+      recLista.querySelectorAll('.rec-periodo').forEach(s => s.addEventListener('change', () => mostrarMes(s.dataset.i)));
       recOverlay.classList.add('is-open');
     }
 
     document.getElementById('recClose').addEventListener('click', () => recOverlay.classList.remove('is-open'));
     document.getElementById('recCancelar').addEventListener('click', () => recOverlay.classList.remove('is-open'));
     recOverlay.addEventListener('click', e => { if (e.target === recOverlay) recOverlay.classList.remove('is-open'); });
-    document.getElementById('recSalvar').addEventListener('click', criarRecorrentes);
+    // o botão trava enquanto grava: o duplo clique gravava as regras em dobro (e cada uma punha a sua tarefa na agenda)
+    document.getElementById('recSalvar').addEventListener('click', async e => {
+      const btn = e.currentTarget; if (btn.disabled) return;
+      btn.disabled = true;
+      try { await criarRecorrentes(); } finally { btn.disabled = false; }
+    });
 
     async function criarRecorrentes() {
-      const respGeral = document.getElementById('recResp').value.trim() || null;
+      const responsavel = recResp.value || null;
       const incs = [...recLista.querySelectorAll('.rec-inc')].filter(c => c.checked);
       if (incs.length === 0) { alert('Selecione ao menos uma obrigação.'); return; }
 
-      const hoje = new Date();
-      const competencia = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
-      let criadas = 0;
-
+      const regras = [], semMes = [], semDia = [];
+      let semTitulo = 0;
       for (const chk of incs) {
         const i = chk.dataset.i;
         const titulo = recLista.querySelector(`.rec-titulo[data-i="${i}"]`).value.trim();
         const periodicidade = recLista.querySelector(`.rec-periodo[data-i="${i}"]`).value;
         const diaVal = recLista.querySelector(`.rec-dia[data-i="${i}"]`).value;
-        const dia = diaVal ? parseInt(diaVal, 10) : null;
-        if (!titulo) continue;
-
-        const { data: regra, error: e1 } = await supabase.from('tarefas_recorrentes').insert({
+        const mesVal = recLista.querySelector(`.rec-mes[data-i="${i}"]`).value;
+        if (!titulo) { semTitulo++; continue; }
+        // sem o dia, o gerador do banco poria a tarefa no dia 1 (a regra das Tarefas recorrentes também pede o dia)
+        const dia = diaVal ? parseInt(diaVal, 10) : NaN;
+        if (!(dia >= 1 && dia <= 31)) { semDia.push(titulo); continue; }
+        const comMes = COM_MES.includes(periodicidade);
+        if (comMes && !mesVal) { semMes.push(`${titulo} (${periodicidade})`); continue; }
+        regras.push({
           cliente_id: cliente.id, setor: 'fiscal', titulo, periodicidade,
-          dia_vencimento: dia, responsavel: respGeral, origem: 'analise', ativo: true
-        }).select('id').single();
-        if (e1) { alert('Erro ao criar regra: ' + e1.message); return; }
-
-        let prazo = null;
-        if (dia) prazo = `${competencia}-${String(dia).padStart(2,'0')}`;
-        const { error: e2 } = await supabase.from('tarefas').insert({
-          cliente_id: cliente.id, setor: 'fiscal', titulo, responsavel: respGeral,
-          prazo, status: 'pendente', prioridade: 'media', origem: 'recorrente',
-          regra_id: regra.id, competencia
+          dia_vencimento: dia,
+          mes_vencimento: comMes ? parseInt(mesVal, 10) : null,
+          responsavel, origem: 'analise', ativo: true
         });
-        if (e2) { alert('Erro ao criar tarefa: ' + e2.message); return; }
-        criadas++;
       }
+      // sem o mês o gerador do banco nunca cria a tarefa da semestral nem da anual: não grava nada até completar
+      if (semTitulo) { alert((semTitulo === 1 ? 'Uma linha marcada está' : semTitulo + ' linhas marcadas estão') + ' sem o nome da tarefa. Escreva o nome ou desmarque. Nada foi gravado.'); return; }
+      if (semDia.length) { alert('Informe o dia (1 a 31) de: ' + semDia.join(', ') + '. Nada foi gravado.'); return; }
+      if (semMes.length) { alert('Escolha o mês de: ' + semMes.join(', ') + '. Nada foi gravado.'); return; }
+
+      const { error: e1 } = await supabase.from('tarefas_recorrentes').insert(regras);
+      if (e1) { alert('Erro ao criar as regras: ' + e1.message); return; }
+      // a tarefa nasce pelo gerador do banco (o mesmo das Tarefas recorrentes): a ocorrência dos próximos 31 dias, no
+      // mês certo, com a competência fiscal; as outras nascem sozinhas perto do vencimento
+      const { data, error: e2 } = await supabase.rpc('gerar_tarefas_recorrentes', { p_hoje: hojeLocal() });
       recOverlay.classList.remove('is-open');
-      alert(criadas + ' tarefa(s) recorrente(s) criada(s). Veja na aba Tarefas.');
+      const n = regras.length;
+      const txtRegras = n + (n === 1 ? ' regra criada' : ' regras criadas') + ' em Tarefas recorrentes do Fiscal';
+      if (e2) { alert(txtRegras + '; as tarefas nascem sozinhas perto do vencimento (o gerador não respondeu agora: ' + e2.message + ').'); return; }
+      const criadas = Array.isArray(data) && data[0] ? (data[0].criadas || 0) : 0;
+      const txtTarefas = !criadas ? 'as tarefas nascem perto do vencimento'
+        : (criadas === 1 ? '1 tarefa já está na agenda' : criadas + ' tarefas já estão na agenda')
+          + (criadas < n ? ', as outras nascem perto do vencimento' : ', as próximas nascem perto do vencimento');
+      alert(txtRegras + '; ' + txtTarefas + '.');
     }
 
     // ---------- Relatório em PDF (interno / cliente) ----------
@@ -671,8 +710,9 @@
     .fa-field { display:flex; flex-direction:column; gap:6px; }
     .fa-field > span { font-size:13px; color:var(--brand-light); }
     .fa-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid var(--line); }
-    .rec-head { display:grid; grid-template-columns:28px 1fr 130px 70px; gap:8px; font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.4px; padding:4px 2px 0; }
-    .rec-item { display:grid; grid-template-columns:28px 1fr 130px 70px; gap:8px; align-items:center; margin-bottom:8px; }
+    .rec-head { display:grid; grid-template-columns:28px 1fr 116px 64px 116px; gap:8px; font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.4px; padding:4px 2px 0; }
+    .rec-item { display:grid; grid-template-columns:28px 1fr 116px 64px 116px; gap:8px; align-items:center; margin-bottom:8px; }
+    .rec-aviso { grid-column:2 / -1; font-size:12px; color:var(--warn); margin-top:-2px; }
     .rec-item .input, .rec-item .select { padding:7px 9px; font-size:13px; }
     .rec-inc { width:18px; height:18px; cursor:pointer; }
 
@@ -775,12 +815,12 @@
         <button class="fa-modal-close" id="recClose">&times;</button>
       </div>
       <div class="fa-modal-body">
-        <p style="color:var(--text-2);font-size:13px;margin:0;">Revise as obrigações abaixo. Marque as que devem virar tarefas recorrentes, ajuste o dia de vencimento e confirme. Elas viram regras e já aparecem como tarefas do mês atual na aba Tarefas.</p>
+        <p style="color:var(--text-2);font-size:13px;margin:0;">Revise as obrigações abaixo. Marque as que devem virar tarefas recorrentes, ajuste o dia de vencimento (e o mês, na semestral e na anual) e confirme. Elas viram regras em Tarefas recorrentes do Fiscal: a tarefa que vence nos próximos 31 dias já entra na agenda, e as outras nascem sozinhas perto do vencimento.</p>
         <label class="fa-field">
           <span>Responsável (aplica a todas)</span>
-          <input type="text" id="recResp" class="input" placeholder="Ex.: Thalia">
+          <select id="recResp" class="select"></select>
         </label>
-        <div class="rec-head"><span></span><span>Tarefa</span><span>Periodicidade</span><span>Dia</span></div>
+        <div class="rec-head"><span></span><span>Tarefa</span><span>Periodicidade</span><span>Dia</span><span>Mês</span></div>
         <div id="recLista"></div>
       </div>
       <div class="fa-modal-foot">
