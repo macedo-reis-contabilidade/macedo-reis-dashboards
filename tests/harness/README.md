@@ -33,6 +33,10 @@ Como o assistente do escritório aparece em todas as telas com login, o mock dei
 (a saudação e o recado de cada tela) pra não cobrir o que os outros testes clicam; quem testa os recados liga com
 `window.__assistenteRecados = true` (`assistente-escritorio.py`, `reforma-chat.py`).
 
+Quem está logado é o Samuel (sócio); o teste troca por `window.__mockEmail` (o `precificacao-carteira.py` entra como a
+Thalia). O `upsert` do banco falso segue o de verdade: com `ignoreDuplicates`, a linha que já existe (pelo `onConflict`)
+fica como está; sem ele, é atualizada.
+
 ## O que cada teste cobre
 
 | Teste | Cobre |
@@ -48,6 +52,7 @@ Como o assistente do escritório aparece em todas as telas com login, o mock dei
 | `rotinas-tres-setores.py` | as Tarefas recorrentes do Fiscal, do Comercial e do Societário (páginas finas do módulo): cada tela com o seu setor, a equipe na ordem certa e o card no hub |
 | `obrigacoes-mes-concluido.py` | Obrigações fiscais: obrigação com o mês todo concluído não some do filtro "Pendentes do mês" |
 | `proposta-transicao.py` | Precificação: proposta fechada pergunta pela transição (aba Propostas) |
+| `precificacao-carteira.py` | Precificação › Carteira, a revisão do honorário dos clientes da casa (19/10/2026, `assets/js/precificacao-carteira.js` e `assets/js/precificacao-motor.js`): o resumo com os clientes de hoje (o ex-cliente fora) e a soma; o de hoje pelo boleto da última competência, sem boleto pelo Conta Azul (a parcela de honorários pelo nome, sem os extras), o MEI com o plano e quem não tem cobrança; o piso do motor com a diferença e a lista começando pelo mais abaixo; as tarefas dos 90 dias; os filtros e a busca. Revisar: o questionário preenchido pelo sistema, com a etiqueta de onde veio (some ao mudar a resposta), a lista do que falta e o painel comparando com o de hoje, sem o orçamento. Salvar grava em `revisoes_honorario`, nada em Propostas. Reajuste proposto e aceito: o boleto a emitir do mês troca na hora (o pago, não), com a base; pro mês não gerado, o valor entra na geração da tela Boletos (o combinado no lugar do copiado). O MEI na aba MEI. "Nova" sai da revisão. O sócio com `?aba=carteira` cai na Carteira; quem não é sócio não vê a aba, nem pelo link |
 | `relatorios-sugestoes.py` | os módulos únicos de Relatórios e Sugestões de melhoria (`assets/js/relatorios-setor.js`, `assets/js/sugestoes-setor.js`): cada tela mostra o seu setor e só os seus dados |
 | `carteira-analise.py` | Carteira de clientes: a Análise mostra todos os municípios (antes cortava nos 8 maiores), o MEI aparece sem o CPF do nome oficial na lista, no PDF e no Excel, e o CNPJ sai formatado no Excel (jsPDF e SheetJS entram como dublês — o teste não depende do CDN) |
 | `cadastro-socios.py` | Novo cliente pelo contrato social (`clientes/novo.html`): os sócios são gravados com RG, nascimento, estado civil, nacionalidade, profissão e endereço residencial (antes só nome, CPF e participação, e o kit de boas-vindas nascia pedindo esses dados); o aviso da leitura diz o que faltou de cada sócio; data em dd/mm/aaaa vira aaaa-mm-dd e data impossível ou participação ilegível ficam vazias em vez de derrubar a gravação; CNPJ alfanumérico é mascarado com letras, validado e gravado com elas. A leitura do contrato (Edge Function) entra como dublê, por `window.__mockInvoke` |

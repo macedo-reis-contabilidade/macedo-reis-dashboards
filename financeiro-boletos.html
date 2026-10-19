@@ -174,6 +174,8 @@ import { textoCnab, problemasBoleto, montarRemessa, seuNumero, controleDe, lerCo
   lerRetorno, emAberto, codigoBarras, nossoNumeroImpresso, ONDE_RETORNO } from './assets/js/cnab-inter.js';
 import { MODELO, ONDE_IMPORTAR_PLANILHA, ONDE_PDFS, XLSX_MIME, problemasPlanilha, montarPlanilha } from './assets/js/inter-planilha.js';
 import { boletoPdf, nomeArquivoBoleto } from './assets/js/boleto-pdf.js';
+// o reajuste aceito na Precificação › Carteira (revisoes_honorario, só os sócios) entra na geração do mês
+import { reajustesDoMes, marcarAplicados } from './assets/js/precificacao-carteira.js';
 
 const $ = id => document.getElementById(id);
 const BRL = n => 'R$ ' + (Number(n)||0).toLocaleString('pt-BR',{minimumFractionDigits:2, maximumFractionDigits:2});
@@ -206,12 +208,14 @@ let clientesMap={};      // id -> {nome, doc}
 let clientesList=[];     // [{id,nome,doc}]
 let configMap={};        // cliente_id -> config
 let rows=[];             // linhas da competência (objetos editáveis)
+let emailUsuario='';     // quem gera (marca o reajuste aplicado)
 
 const STATUS=[['a_emitir','A emitir'],['emitido','Emitido'],['enviado','Enviado'],['pago','Pago'],['cancelado','Cancelado']];
 
 async function init(){
   try{
     const u=await getCurrentUser();
+    emailUsuario = (u && u.email) || '';
     if(u){ const n=u.user_metadata?.full_name || u.email?.split('@')[0] || 'Usuário';
       $('userName').textContent=n; $('userAvatar').textContent=n.charAt(0).toUpperCase(); }
   }catch(e){}
@@ -303,15 +307,26 @@ async function gerarMes(){
         daBase++;
       }
     });
+    // o reajuste combinado na Carteira (aceito, com a vigência até este mês e ainda não aplicado): o valor novo no lugar do
+    // copiado. Só os sócios leem as revisões (a regra é do banco): pra quem não é, fica o copiado
+    let reajustados = [];
     if(novos.length){
+      let reaj = new Map();
+      try {
+        const { data: rv, error: eR } = await supabase.from('revisoes_honorario').select('id, cliente_id, status, honorario_novo, vigencia, aplicado_em, atualizado_em').eq('status','aceito').is('aplicado_em', null).lte('vigencia', comp);
+        if(!eR) reaj = reajustesDoMes(rv, comp);
+      } catch(e) { /* sem as revisões: fica o copiado */ }
+      novos.forEach(n => { const r = reaj.get(n.cliente_id); if(r){ n.valor = Number(r.honorario_novo); reajustados.push(r); } });
       const { error: e2 } = await supabase.from('cobrancas_mensais').upsert(novos,{onConflict:'cliente_id,competencia',ignoreDuplicates:true});
       if(e2) throw e2;
+      if(reajustados.length) await marcarAplicados(supabase, reajustados, emailUsuario);
     }
     await carregarMes();
     const [fa, fm] = fonteComp ? fonteComp.split('-') : [];
     const nomeFonte = fonteComp ? new Date(Number(fa), Number(fm)-1, 1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'}) : null;
     msg(novos.length
-      ? `${novos.length} empresa(s) adicionada(s)` + (copiados ? ` — ${copiados} copiada(s) de ${nomeFonte}` : '') + (daBase ? `, ${daBase} da base (sem histórico)` : '') + (puladasSaida ? `; ${puladasSaida} pulada(s) por saída na carteira` : '') + '.'
+      ? `${novos.length} empresa(s) adicionada(s)` + (copiados ? ` — ${copiados} copiada(s) de ${nomeFonte}` : '') + (daBase ? `, ${daBase} da base (sem histórico)` : '') + (puladasSaida ? `; ${puladasSaida} pulada(s) por saída na carteira` : '')
+        + (reajustados.length ? `; ${reajustados.length} com o reajuste combinado na Carteira (Precificação)` : '') + '.'
       : 'Mês já estava completo (nada novo a gerar)' + (puladasSaida ? ` — ${puladasSaida} pulada(s) por saída na carteira.` : '.'));
   }catch(e){ msg('Erro ao gerar: '+(e.message||e)); }
   finally{ btn.disabled=false; btn.textContent='Gerar mês a partir da base'; }

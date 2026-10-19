@@ -109,6 +109,39 @@
     .input-inline { font:inherit; font-size:12.5px; padding:3px 8px; background:var(--surface-2); border:1px solid rgba(91,130,166,.55); border-radius:6px; color:var(--text); width:90px; }
     .pr-vazio { color:var(--text-muted); padding:24px; text-align:center; }
 
+    /* Carteira (19/10/2026): a revisão do honorário dos clientes da casa */
+    .ct-resumo { display:flex; flex-wrap:wrap; gap:6px 22px; align-items:baseline; margin:0 0 8px; padding:12px 16px; background:var(--fill-1); border:1px solid var(--fill-3); border-radius:12px; font-size:13px; color:var(--text-2); }
+    .ct-resumo b { color:var(--text); font-size:15px; }
+    .ct-resumo small { color:var(--text-muted); font-size:11.5px; }
+    .ct-resumo .ct-alerta b { color:var(--warn); }
+    .ct-nota { font-size:12.5px; color:var(--text-muted); margin:0 0 12px; max-width:900px; line-height:1.5; }
+    .ct-filtros { display:flex; flex-wrap:wrap; gap:10px 18px; align-items:center; margin:0 0 8px; font-size:13px; color:var(--text-2); }
+    .ct-filtros label { display:inline-flex; gap:6px; align-items:center; cursor:pointer; }
+    .ct-filtros .input { width:220px; font-size:13px; padding:6px 10px; }
+    #vCarteira .pr-tab td small { color:var(--text-muted); font-size:11.5px; }
+    #vCarteira .pr-tab td { vertical-align:top; }
+    .ct-acima { color:var(--warn); font-weight:600; }
+    .ct-abaixo { color:var(--text-muted); }
+    tr.ct-revisado td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
+    .ct-revisar { background:none; border:1px solid rgba(138,174,200,.4); border-radius:8px; padding:3px 10px; font:inherit; font-size:12px; color:var(--brand-light); cursor:pointer; white-space:nowrap; }
+    .ct-revisar:hover { background:rgba(138,174,200,.12); }
+    .ct-revisar:focus-visible, .pr-cart-faltam button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+    .pr-cart-banner { margin:0 0 8px; padding:12px 16px; border:1px solid rgba(82,180,198,.35); background:rgba(82,180,198,.08); border-radius:12px; font-size:13px; color:var(--text-2); }
+    .pr-cart-banner .ct-topo { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; justify-content:space-between; }
+    .pr-cart-banner b { color:var(--text); }
+    .pr-cart-banner small { color:var(--text-muted); }
+    .pr-cart-faltam { margin-top:8px; font-size:12.5px; line-height:1.6; }
+    .pr-cart-faltam button { background:none; border:0; padding:0; font:inherit; color:var(--brand-light); text-decoration:underline; text-underline-offset:2px; cursor:pointer; }
+    .pr-chip-sis { display:inline-block; vertical-align:1px; margin-left:6px; padding:1px 7px; border-radius:999px; font-size:10.5px; color:var(--ok); border:1px solid rgba(63,176,122,.4); background:rgba(63,176,122,.1); }
+    .pr-chip-sis[hidden] { display:none; }
+    .pr-q.ct-falta label { color:var(--warn); }
+    .ct-comp { margin:0 0 10px; padding:10px 12px; border-radius:10px; background:rgba(82,180,198,.08); border:1px solid rgba(82,180,198,.3); font-size:13px; color:var(--text-2); line-height:1.5; }
+    .ct-comp[hidden] { display:none; }
+    .ct-comp b { color:var(--text); }
+    .ct-rolagem { overflow-x:auto; }
+    .ct-rolagem .pr-tab { min-width:760px; }
+    @media (max-width: 640px) { .seg { flex-wrap:wrap; } .ct-filtros .input { width:100%; } }
+
     /* Status no rodapé: backlog de tarefas abertas (ou "em dia") */
     .badge.card-status { font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.03em; }
     .card-status.st-open  { background:rgba(138,174,200,.14); border:1px solid rgba(138,174,200,.38); color:var(--text-2); }
@@ -153,6 +186,7 @@
             <button type="button" data-v="form" class="is-on">Simulação</button>
             <button type="button" data-v="mei">MEI</button>
             <button type="button" data-v="props">Propostas</button>
+            <button type="button" data-v="carteira" id="segCarteira" hidden title="O honorário dos clientes da casa: hoje × o motor (só os sócios)">Carteira</button>
             <button type="button" data-v="params">Parâmetros</button>
           </div>
           <button type="button" class="btn-mini" id="btnObrigRegimes" style="margin-left:auto;">📋 Obrigações por regime</button>
@@ -167,6 +201,7 @@
           <div id="prQuestionario">Carregando questionário…</div>
           <div class="pr-col-lateral"><div class="pr-painel" id="prPainel">
             <h3>Cálculo ao vivo</h3>
+            <div id="prCartComp" class="ct-comp" hidden></div>
             <div id="prLinhas"></div>
             <div class="pr-total"><div class="num" id="prTotal">R$ 0</div><div class="lbl">honorário mensal sugerido</div></div>
             <div class="pr-taxa" id="prTaxa" style="display:none;"></div>
@@ -190,13 +225,15 @@
         </div>
 
         <div id="vMei" style="display:none;">
+          <div id="meiCartBanner" class="pr-cart-banner" hidden></div>
           <div class="pr-layout">
             <div>
               <div id="meiCards" class="mei-cards"></div>
               <div id="meiServicos">Carregando planos…</div>
             </div>
             <div class="pr-col-lateral"><div class="pr-painel">
-              <h3>Proposta MEI</h3>
+              <h3 id="meiTitulo">Proposta MEI</h3>
+              <div id="meiCartComp" class="ct-comp" hidden></div>
               <label class="pr-obs-orc"><span>Cliente</span><input id="meiCliente" class="input" style="width:100%;" placeholder="nome do MEI"></label>
               <label class="pr-obs-orc"><span>CNPJ</span><input id="meiCnpj" class="input" style="width:100%;" maxlength="18" placeholder="00.000.000/0001-00"></label>
               <label class="pr-obs-orc"><span>Endereço completo</span><input id="meiEndereco" class="input" style="width:100%;" placeholder="rua, nº, bairro, cidade/UF"></label>
@@ -221,6 +258,20 @@
           <table class="pr-tab"><thead><tr><th>Cliente</th><th>Honorário</th><th>Taxa única</th><th>Origem</th><th>Status</th><th>Quando</th><th>Por</th><th></th></tr></thead>
           <tbody id="prProps"></tbody></table>
           <div class="pr-vazio" id="prPropsVazio" style="display:none;">Nenhuma proposta salva ainda.</div>
+        </div>
+
+        <div id="vCarteira" style="display:none;">
+          <div class="ct-resumo" id="ctResumo" aria-live="polite"></div>
+          <p class="ct-nota">Cada cliente da carteira com o que paga <b>hoje</b> (o boleto; sem boleto, o Conta Azul) e o <b>piso do motor</b>: o que o motor cobra só com o que o sistema já sabe dele — regime, faturamento da ficha da Reforma, obrigações vinculadas, o sistema que usa, parcelamentos, Fator R. O que falta responder quase sempre soma, por isso é piso. A lista começa por quem está mais abaixo dele; clique no cliente pra revisar.</p>
+          <div class="ct-filtros">
+            <select id="ctRegime" class="st-sel" aria-label="Regime"><option value="">Todos os regimes</option></select>
+            <label><input type="checkbox" id="ctAbaixo"> Só quem paga menos que o piso</label>
+            <label><input type="checkbox" id="ctSemRev"> Só sem revisão</label>
+            <input type="search" id="ctBusca" class="input" placeholder="Buscar empresa" aria-label="Buscar empresa">
+          </div>
+          <div class="ct-rolagem"><table class="pr-tab"><thead><tr><th>Empresa</th><th>Hoje</th><th title="O motor só com o que o sistema já sabe do cliente">Piso do motor</th><th>Tarefas (90 dias)</th><th>Revisão</th><th>Situação</th></tr></thead>
+          <tbody id="ctLista"></tbody></table></div>
+          <div class="pr-vazio" id="ctMsg">Lendo a carteira…</div>
         </div>
 
         <div id="vParams" style="display:none;">
@@ -264,8 +315,13 @@
 
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
-    import { hojeLocal, dataLocal, normalizarDocumento, cnpjValido } from './assets/js/utils.js';   // dia no fuso local (toISOString é UTC)
+    import { hojeLocal, dataLocal, normalizarDocumento, cnpjValido, formatDocumento } from './assets/js/utils.js';   // dia no fuso local (toISOString é UTC)
     import { tarefasDoKit, teraFuncionariosDaProposta } from './assets/js/transicao-kit.js';
+    // o motor (o mesmo da aba Carteira) e a Carteira: o que o sistema já sabe de cada cliente da casa
+    import { indexarParams as indexarParametros, calcularMotor, faturamentoAnual } from './assets/js/precificacao-motor.js';
+    import { respostasDoSistema, regimesDasQuestoes, ehMei, honorarioDeHoje, parcelasDeHonorario, parcelaDoCliente, faltamResponder, ultimaPorCliente, mesesDaVigencia,
+      mesesLivres, mesBR, diferenca, SITUACOES, rotuloSituacao, FONTES, aplicarReajusteAgora } from './assets/js/precificacao-carteira.js';
+    import { SOCIOS } from './assets/js/equipe.js';
     const escHtml = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));   // texto do banco nunca vira HTML (o nome que veio do formulário público, por exemplo)
     const user = await getCurrentUser();
     if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; const av = document.getElementById('userAvatar'); if (av) av.textContent = (user.email || '?').charAt(0).toUpperCase(); }
@@ -293,7 +349,15 @@
     document.getElementById('obsIntSalvar').addEventListener('click', async () => {
       respostas._obs_interna = document.getElementById('obsIntTexto').value.trim();
       const st = document.getElementById('obsIntStatus');
-      if (editandoId) {
+      if (cart && !cart.mei && cart.revisaoId) {
+        // a revisão da carteira guarda as anotações nas respostas dela
+        st.style.color = 'var(--text-dim)'; st.textContent = 'salvando…';
+        const { error } = await supabase.from('revisoes_honorario').update({ respostas }).eq('id', cart.revisaoId);
+        if (error) { st.style.color = 'var(--err)'; st.textContent = 'erro: ' + error.message; return; }
+        st.style.color = 'var(--ok)'; st.textContent = 'salvo na revisão ✓';
+      } else if (cart && !cart.mei) {
+        st.style.color = 'var(--warn)'; st.textContent = 'guardado — salva a revisão pra fixar no banco';
+      } else if (editandoId) {
         st.style.color = 'var(--text-dim)'; st.textContent = 'salvando…';
         const { error } = await supabase.from('precificacoes').update({ respostas }).eq('id', editandoId);
         if (error) { st.style.color = 'var(--err)'; st.textContent = 'erro: ' + error.message; return; }
@@ -305,110 +369,13 @@
     });
 
 
-    function indexarParams(){
-      P = {};
-      params.forEach(p => {
-        const g = p.grupo.slice(0, 3);
-        (P[g] = P[g] || []).push(p);
-      });
-      for (const g in P) P[g].sort((a, b) => (a.ordem || 0) - (b.ordem || 0));
-    }
-    const pv = (g, chave) => { const it = (P[g] || []).find(x => x.chave === chave); return it ? Number(it.valor) : 0; };
-    const pFaixa = (g, faixa) => pv(g, String(faixa));
-    function baseFaturamento(anual){
-      let base = 0;
-      (P['p01'] || []).forEach(it => { if (Number(anual || 0) >= Number(it.limite_inferior ?? it.chave)) base = Number(it.valor); });
-      return base;
-    }
-    const num = id => Number(respostas[id]) || 0;
+    // o motor de honorários (assets/js/precificacao-motor.js): o mesmo cálculo da Simulação e do piso da aba Carteira
+    function indexarParams(){ P = indexarParametros(params); }
     // faturamento: desde 25/09/2026 o formulário pergunta a média MENSAL (A2M); A2 (anual) só nas precificações antigas;
     // empresa em constituição responde a projeção mensal (A2N). As faixas de preço continuam anuais.
-    const fatAnual = () => num('A2M') * 12 || num('A2') || num('A2N') * 12;
-    const sim = id => respostas[id] === 'Sim';
-    const R = id => respostas[id] ?? '';
-
+    const fatAnual = () => faturamentoAnual(respostas);
     function calcular(){
-      const linhas = [];
-      const L = (label, valor, sub) => linhas.push({ label, valor, sub: !!sub });
-
-      const base = baseFaturamento(fatAnual());
-      const multReg = pv('p02', R('A10')) || 1;
-      const baseAj = base * multReg;
-      const socios = Math.max(0, num('A5') - 1) * pv('p03', 'Valor por sócio adicional (além do 1º)');
-      const filiais = num('A8') * pv('p03', 'Valor por filial (mesmo município)');
-      const filiaisFora = R('A9') === 'Sim' ? num('A8') * pv('p03', 'Valor extra por filial em município/estado diferente') : 0;
-      const forasede = sim('A7') ? pv('p03', 'Valor por atendimento fora do município-sede') : 0;
-      L('Base (faturamento) × regime ' + (multReg + '×'), baseAj);
-      if (socios) L('Sócios adicionais', socios);
-      if (filiais) L('Filiais (mesmo município)', filiais);
-      if (filiaisFora) L('Filiais (outro município/UF)', filiaisFora);
-      if (forasede) L('Atendimento fora da sede', forasede);
-      const sub1 = baseAj + socios + filiais + filiaisFora + forasede;
-      L('Subtotal estrutura', sub1, true);
-
-      const nfE = pFaixa('p04', R('B1'));
-      const nfR = pFaixa('p04', R('B2'));
-      const estoque = (sim('B4') && R('B5') === 'O escritório contábil') ? pv('p05', 'Adicional - controle de estoque pelo escritório') : 0;
-      const lanc = pFaixa('p06', R('B7'));
-      const contas = Math.max(0, num('B6') - 1) * pv('p06', 'Valor por conta bancária adicional (além da 1ª)');
-      const erp = pv('p07', R('B8'));
-      if (nfE) L('NF emitidas', nfE);
-      if (nfR) L('NF recebidas', nfR);
-      if (estoque) L('Estoque pelo escritório', estoque);
-      if (lanc) L('Lançamentos bancários', lanc);
-      if (contas) L('Contas bancárias adicionais', contas);
-      if (erp) L('ERP', erp);
-      const sub2 = nfE + nfR + estoque + lanc + contas + erp;
-      L('Subtotal operacional', sub2, true);
-
-      const folhaItens = num('C1') * pv('p08', 'Valor por funcionário registrado')
-        + num('C2') * pv('p08', 'Valor por funcionário a registrar (setup)')
-        + num('C3') * pv('p08', 'Valor por funcionário afastado')
-        + pFaixa('p09', R('C4'))
-        + (sim('C5') ? num('C6') * pv('p08', 'Pró-labore por sócio recebendo') : 0)
-        + num('C7') * pv('p08', 'Valor por terceirizado com retenção')
-        + (sim('C8') ? pv('p08', 'Adicional insalubridade/periculosidade/noturno') : 0);
-      const multTrab = pv('p10', R('C9')) || 1;
-      const sub3 = folhaItens * multTrab;
-      if (folhaItens) L('Folha (itens)', folhaItens);
-      if (multTrab !== 1) L('× risco trabalhista ' + multTrab + '×', sub3 - folhaItens);
-      L('Subtotal folha', sub3, true);
-
-      const OB = [['D1','SPED Fiscal'],['D2','SPED Contribuições'],['D3','ECD'],['D4','ECF'],['D5','DCTF'],
-        ['D6','eSocial/EFD-Reinf'],['D7','RAIS/CAGED'],['D8','GIA/ICMS'],['D9','ISS'],
-        ['D10','Reforma Tributária (transição/apuração dual)'],['D11','Passivo tributário em aberto'],
-        ['A11B','Fator R (monitoramento e planejamento)']];
-      let obr = 0;
-      OB.forEach(([id, chave]) => { if (sim(id)) { const v = pv('p11', chave); obr += v; if (v) L(chave, v); } });
-      const parc = num('D12') * pv('p11', 'Valor por parcelamento ativo');
-      if (parc) { obr += parc; L('Parcelamentos ativos', parc); }
-      const multFiscal = R('D13') === 'Sim' ? pv('p12', 'Multiplicador - setor de risco elevado (Sim)') : pv('p12', 'Multiplicador - setor sem risco elevado (Não)') || 1;
-      const sub4 = obr * (multFiscal || 1);
-      if ((multFiscal || 1) !== 1) L('× setor de risco ' + multFiscal + '×', sub4 - obr);
-      L('Subtotal obrigações', sub4, true);
-
-      const subGeral = sub1 + sub2 + sub3 + sub4;
-      const ajQual = pv('p13', R('E2')) || 0;
-      const aposQual = subGeral * (1 + ajQual);
-      const seguro = sim('E4') ? pv('p15', 'Adicional - seguro de responsabilidade civil profissional') : 0;
-      if (ajQual) L('Ajuste qualidade docs (' + (ajQual > 0 ? '+' : '') + (ajQual * 100) + '%)', aposQual - subGeral);
-      if (seguro) L('Seguro RC profissional', seguro);
-      const terce = R('D20') === 'Sim' ? num('D21') : 0;
-      if (terce) L('Terceirização de serviço (informado)', terce);
-      const emiteNF = R('B3') === 'O escritório contábil' ? pv('p04', 'Adicional - escritório emite as notas fiscais') : 0;
-      if (emiteNF) L('Emissão de notas fiscais pelo escritório', emiteNF);
-      const semFin = R('E1') === 'Não possui' ? pv('p15', 'Adicional - cliente sem responsável financeiro') : 0;
-      if (semFin) L('Cliente sem responsável financeiro', semFin);
-
-      const bruto = aposQual + seguro + terce + emiteNF + semFin;
-      const passo = pv('p16', 'Arredondar honorário final para múltiplo de (R$)') || 10;
-      let honorario = Math.round(bruto / passo) * passo;
-      const ajusteHon = Number(respostas['ajuste_honorario'] || 0);
-      if (ajusteHon) { L('Ajuste comercial', ajusteHon); honorario += ajusteHon; }
-      const taxaUnica = (R('A12') === 'Sim' && R('A13') === 'Desorganizada/inexistente')
-        ? pv('p15', 'Taxa única de organização inicial (migração desorganizada)') : 0;
-
-      calcAtual = { linhas, honorario, bruto, taxaUnica };
+      calcAtual = calcularMotor(respostas, P);
       return calcAtual;
     }
 
@@ -523,6 +490,8 @@
       const aa = document.getElementById('prAjusteHon');
       if (aa && document.activeElement !== aa && aa.value !== (respostas['ajuste_honorario'] || '')) aa.value = respostas['ajuste_honorario'] || '';
       renderObrigacoes();
+      atualizarComparacao();
+      atualizarMarcasCarteira();
     }
     function renderRef(){
       const ref = Number(document.getElementById('prRef').value) || 0;
@@ -550,11 +519,15 @@
 
     function renderForm(){
       const el = document.getElementById('prQuestionario');
-      let html = '', bloco = '';
+      // na revisão de um cliente da carteira: o aviso em cima e, em cada resposta que veio do sistema, de onde veio
+      const rev = cart && !cart.mei ? cart : null;
+      let html = rev ? bannerRevisao() : '', bloco = '';
       questoes.forEach(qd => {
         if (!questaoVisivel(qd)) return;
         if (qd.bloco !== bloco) { bloco = qd.bloco; html += `<div class="pr-bloco"><h2>${bloco}</h2></div>`; }
-        html += `<div class="pr-q"><label>${qd.id} · ${qd.pergunta}${qd.externa ? '<span class="pr-chip-cli">cliente</span>' : ''}${qd.ajuda ? `<small>${qd.ajuda}</small>` : ''}</label>${campoDe(qd)}</div>`;
+        const fonte = rev && rev.linha.pre.origem[qd.id];
+        const sis = fonte ? `<span class="pr-chip-sis" title="Veio do sistema (${escHtml(FONTES[fonte] || fonte)}) — confira">${escHtml(FONTES[fonte] || fonte)}</span>` : '';
+        html += `<div class="pr-q" data-qid="${qd.id}"><label>${qd.id} · ${qd.pergunta}${qd.externa ? '<span class="pr-chip-cli">cliente</span>' : ''}${sis}${qd.ajuda ? `<small>${qd.ajuda}</small>` : ''}</label>${campoDe(qd)}</div>`;
       });
       el.innerHTML = html;
       el.querySelectorAll('[data-q]').forEach(inp => {
@@ -585,11 +558,17 @@
 
     // ---------- propostas ----------
     function atualizarBotoesSalvar(){
-      document.getElementById('prSalvar').textContent = editandoId ? 'Atualizar proposta' : 'Salvar proposta';
-      document.getElementById('prSalvarNova').style.display = editandoId ? 'inline-flex' : 'none';
+      // na revisão de um cliente da carteira, o botão grava a revisão (fora das Propostas) e o orçamento pro cliente sai de cena
+      const rev = !!(cart && !cart.mei);
+      document.getElementById('prSalvar').textContent = rev ? (cart.revisaoId ? 'Atualizar revisão' : 'Salvar revisão') : editandoId ? 'Atualizar proposta' : 'Salvar proposta';
+      const nova = document.getElementById('prSalvarNova');
+      nova.style.display = (rev ? cart.revisaoId : editandoId) ? 'inline-flex' : 'none';
+      nova.textContent = rev ? 'Salvar como nova revisão' : 'Salvar como nova';
+      document.getElementById('prOrc').style.display = rev ? 'none' : '';
     }
 
     async function salvar(comoNova){
+      if (cart && !cart.mei) return salvarRevisao(comoNova);
       const c = calcular();
       const nome = String(respostas['A1'] || '').trim();
       if (!nome) { alert('Preencha o nome da empresa/cliente (A1).'); return; }
@@ -618,7 +597,7 @@
     document.getElementById('prSalvar').addEventListener('click', () => salvar(false));
     document.getElementById('prSalvarNova').addEventListener('click', () => salvar(true));
     document.getElementById('prLimpar').addEventListener('click', () => {
-      respostas = {}; editandoId = null;
+      respostas = {}; editandoId = null; cart = null;
       document.getElementById('prSalvoMsg').textContent = '';
       atualizarBotoesSalvar();
       renderForm();
@@ -977,6 +956,7 @@
       tb.querySelectorAll('tr.prop').forEach(tr => tr.addEventListener('click', e => {
         if (e.target.closest('.st-sel') || e.target.closest('[data-del]') || e.target.closest('[data-dup]') || e.target.closest('[data-trans]') || e.target.closest('[data-vertrans]')) return;
         const p = lista.find(x => x.id === tr.dataset.pid);
+        cart = null;   // a proposta aberta da lista não é revisão da carteira
         if (p.respostas && p.respostas._tipo === 'mei') { carregarPropostaMei(p); return; }
         respostas = p.respostas || {}; editandoId = p.id;
         document.getElementById('prSalvoMsg').textContent = '';
@@ -999,6 +979,7 @@
       tb.querySelectorAll('[data-dup]').forEach(b => b.addEventListener('click', () => {
         const p = lista.find(x => x.id === b.dataset.dup);
         if (!p) return;
+        cart = null;
         if (p.respostas && p.respostas._tipo === 'mei') {
           carregarPropostaMei(p);
           meiEditandoId = null;
@@ -1280,6 +1261,7 @@
       if (r) r.innerHTML = linhas.map(([n, v]) => `<div class="pr-ob"><span class="nome">${n}</span><span class="multa">${fmt(v)}</span></div>`).join('') || '<div class="pr-ob-nota">Escolha um plano base ou marque serviços avulsos.</div>';
       const t = document.getElementById('meiTotal');
       if (t) t.textContent = fmt(total);
+      atualizarComparacaoMei(total);
     }
     function ligarMeiPainel(){
       [['meiCliente','cliente'],['meiCnpj','cnpj'],['meiEndereco','endereco'],['meiTelefone','telefone'],['meiVenc','venc'],['meiMsg','msg'],['meiAjuste','ajuste']].forEach(([id, k]) => {
@@ -1291,7 +1273,7 @@
       const bs = document.getElementById('meiSalvar');
       if (bs) bs.addEventListener('click', () => salvarMei(false));
       const bn = document.getElementById('meiNova');
-      if (bn) bn.addEventListener('click', novaMei);
+      if (bn) bn.addEventListener('click', () => { cart = null; novaMei(); });
     }
     async function gerarOrcamentoMei(){
       if (!window.jspdf) { alert('Gerador de PDF ainda carregando — tenta de novo em 2 segundos.'); return; }
@@ -1424,6 +1406,7 @@
     }
     let meiEditandoId = null;
     async function salvarMei(comoNova){
+      if (cart && cart.mei) return salvarRevisaoMei(comoNova);
       const { linhas, total } = calcMei();
       const nome = String(mei.cliente || '').trim();
       if (!nome) { alert('Preencha o nome do cliente MEI.'); return; }
@@ -1453,8 +1436,24 @@
       m.textContent = erro ? ('Erro: ' + erro.message) : (atualizou ? 'Proposta MEI atualizada \u2713' : 'Proposta MEI salva \u2713');
     }
     function atualizarBotoesMei(){
+      const rev = !!(cart && cart.mei);
       const b = document.getElementById('meiSalvar');
-      if (b) b.textContent = meiEditandoId ? 'Atualizar proposta MEI' : 'Salvar proposta MEI';
+      if (b) b.textContent = rev ? (cart.revisaoId ? 'Atualizar revisão (MEI)' : 'Salvar revisão (MEI)') : meiEditandoId ? 'Atualizar proposta MEI' : 'Salvar proposta MEI';
+      const o = document.getElementById('meiOrc');
+      if (o) o.style.display = rev ? 'none' : '';
+      const tit = document.getElementById('meiTitulo');
+      if (tit) tit.textContent = rev ? 'Revisão do honorário (MEI)' : 'Proposta MEI';
+      const ban = document.getElementById('meiCartBanner');
+      if (ban) {
+        ban.hidden = !rev;
+        if (rev) {
+          const l = cart.linha;
+          ban.innerHTML = '<div class="ct-topo"><span><b>Revisão de honorário</b> · ' + escHtml(l.cliente.nome_principal) + ' · hoje ' + (l.hoje ? fmt(l.hoje.valor) + '/mês <small>(' + escHtml(fonteTxt(l.hoje)) + ')</small>' : 'sem cobrança no sistema') + '</span>'
+            + '<button type="button" class="ct-revisar" data-cart="sair">Voltar à carteira</button></div>'
+            + '<div class="ct-nota" style="margin:6px 0 0;">Marque o plano e os serviços que ele usa: o painel compara com o de hoje. A revisão fica na aba Carteira.</div>';
+        }
+      }
+      atualizarComparacaoMei(calcMei().total);
     }
     function novaMei(){
       meiEditandoId = null;
@@ -1526,6 +1525,362 @@
     document.getElementById('modalObrigX').addEventListener('click', () => { document.getElementById('modalObrig').style.display = 'none'; });
     document.getElementById('modalObrig').addEventListener('click', e => { if (e.target.id === 'modalObrig') e.target.style.display = 'none'; });
 
+    // ---------- Carteira (19/10/2026, pedido do Samuel): a revisão do honorário dos clientes da casa — só os sócios ----------
+    // A lista: os clientes de hoje da carteira, o honorário de hoje (o boleto; sem boleto, o Conta Azul), o piso do motor —
+    // o cálculo só com o que o sistema já sabe (assets/js/precificacao-carteira.js) —, as tarefas dos últimos 90 dias e a
+    // última revisão, com a situação. "Revisar" abre o questionário (o MEI, a aba MEI) já preenchido, com a etiqueta de onde
+    // veio cada resposta e o que falta; a revisão grava em revisoes_honorario (só os sócios), fora das Propostas. Aceito: o
+    // valor combinado entra no boleto a partir do mês escolhido — o a emitir já gerado troca agora; o resto, na geração do
+    // mês (financeiro-boletos.html)
+    const ehSocio = !!user && SOCIOS.includes(String(user.email || '').toLowerCase());
+    if (ehSocio) document.getElementById('segCarteira').hidden = false;
+    let cart = null;                         // a revisão aberta: { linha, revisaoId, mei }
+    let carteira = [], carteiraLida = false;
+    const filtrosCart = { regime: '', abaixo: false, semRevisao: false, busca: '' };
+    const NOME_REGIME = { 'Simples Nacional': 'Simples', 'Lucro Presumido': 'Presumido', 'Lucro Real': 'Real', 'MEI': 'MEI', 'Imune': 'Imune', 'Isento': 'Isento' };
+    const semAcento = s => String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    const pct = x => (x == null ? '' : (x > 0 ? '+' : '') + Math.round(x * 100) + '%');
+    const fonteTxt = h => (!h ? '' : h.fonte === 'conta_azul' ? 'Conta Azul' + (h.competencia ? ', ' + mesBR(h.competencia) : '') : h.competencia ? 'boleto de ' + mesBR(h.competencia) : 'base de cobrança');
+    const diaBR = iso => (iso ? new Date(iso).toLocaleDateString('pt-BR') : '');
+    const rotuloCurto = id => { const qd = questoes.find(q => q.id === id); return qd ? qd.pergunta.replace(/\s*\([^)]*\)/g, '').replace(/\?$/, '').replace(/\s+/g, ' ').trim() : id; };
+
+    async function carregarCarteira(){
+      const msg = document.getElementById('ctMsg'), tb = document.getElementById('ctLista');
+      tb.innerHTML = ''; msg.style.display = 'block';
+      if (!ehSocio) { msg.textContent = 'A revisão de honorários da carteira é dos sócios.'; return; }
+      msg.textContent = 'Lendo a carteira…';
+      for (let i = 0; i < 50 && !questoes.length; i++) await new Promise(r => setTimeout(r, 150));   // os parâmetros do motor
+      try {
+        const hoje = hojeLocal();
+        const dia = n => dataLocal(new Date(Date.now() + n * 864e5));
+        const { data: cs, error: e0 } = await supabase.from('carteira_info').select('cliente_id, entrada, saida, segmento, sistemas, ramo').not('entrada', 'is', null);
+        if (e0) throw e0;
+        // cliente de hoje: entrou e não saiu (ou a saída é no futuro)
+        const ativos = (cs || []).filter(k => k.cliente_id && (!k.saida || String(k.saida) > hoje));
+        const ids = [...new Set(ativos.map(k => k.cliente_id))];
+        const emLotes = async montar => { const out = []; for (let i = 0; i < ids.length; i += 100) { const { data, error } = await montar(ids.slice(i, i + 100)); if (error) throw error; out.push(...(data || [])); } return out; };
+        const tudo = async montar => { const { data, error } = await supabase.todasLinhas(montar); if (error) throw error; return data || []; };
+        const [clis, socs, vincs, obrF, frs, regs, rts, cobM, cobC, revs, tars, parcelas] = await Promise.all([
+          emLotes(l => supabase.from('clientes').select('id, nome_principal, nome_fantasia, documento, tipo_pessoa, regime_tributario, natureza_juridica, cnae_principal, logradouro, numero, bairro, cidade, uf, cep, telefone_principal').in('id', l)),
+          emLotes(l => supabase.from('socios').select('cliente_id').in('cliente_id', l)),
+          emLotes(l => supabase.from('cliente_obrigacoes').select('cliente_id, obrigacao_id').eq('ativo', true).in('cliente_id', l)),
+          tudo(() => supabase.from('obrigacoes_fiscais').select('id, nome').order('id')),
+          emLotes(l => supabase.from('fr_empresas').select('cliente_id').eq('ativo', true).in('cliente_id', l)),
+          emLotes(l => supabase.from('regularizacoes').select('cliente_id, status').in('cliente_id', l)),
+          emLotes(l => supabase.from('rt_casos').select('cliente_id, receita_mensal, rbt12, decisao').in('cliente_id', l)),
+          emLotes(l => supabase.from('cobrancas_mensais').select('cliente_id, competencia, valor, status').in('cliente_id', l)),
+          emLotes(l => supabase.from('cobrancas_config').select('cliente_id, valor_base, ativo').in('cliente_id', l)),
+          tudo(() => supabase.from('revisoes_honorario').select('*').order('id')),
+          tudo(() => supabase.from('tarefas').select('cliente_id, origem').gte('created_at', dia(-90)).not('cliente_id', 'is', null).order('id')),
+          // o Conta Azul, só os sócios leem (a regra é do banco); sem ele, fica o boleto
+          tudo(() => supabase.from('ca_parcelas').select('natureza, fornecedor_cliente_nome, total, data_vencimento, categorias').eq('natureza', 'receita')
+            .gte('data_vencimento', dia(-120)).lte('data_vencimento', dia(5)).order('id')).catch(() => [])
+        ]);
+        const porCli = lista => { const m = new Map(); lista.forEach(x => { const a = m.get(x.cliente_id) || []; a.push(x); m.set(x.cliente_id, a); }); return m; };
+        const mSoc = porCli(socs), mVinc = porCli(vincs), mFr = porCli(frs), mReg = porCli(regs), mRt = porCli(rts), mCobM = porCli(cobM), mCobC = porCli(cobC), mTar = porCli(tars);
+        const nomeObr = new Map(obrF.map(o => [o.id, o.nome]));
+        const ultima = ultimaPorCliente(revs);
+        const prep = parcelasDeHonorario(parcelas);
+        const regQ = regimesDasQuestoes(obrigacoes);
+        const cliMap = new Map(clis.map(c => [c.id, c]));
+        const ate = dia(5);
+        carteira = ativos.map(k => {
+          const c = cliMap.get(k.cliente_id);
+          if (!c) return null;
+          const boletos = (mCobM.get(c.id) || []).sort((a, b) => String(b.competencia).localeCompare(String(a.competencia)));
+          const cfgs = (mCobC.get(c.id) || []).filter(x => x.ativo !== false);
+          const base = cfgs.reduce((m, x) => Math.max(m, Number(x.valor_base) || 0), 0);
+          const hojeH = honorarioDeHoje({ boleto: boletos[0] || null, base, contaAzul: parcelaDoCliente(c, prep, ate) });
+          const dados = { cliente: c, socios: (mSoc.get(c.id) || []).length, obrigacoes: (mVinc.get(c.id) || []).map(v => nomeObr.get(v.obrigacao_id)).filter(Boolean),
+            fatorR: (mFr.get(c.id) || []).length > 0, regularizacoes: (mReg.get(c.id) || []).map(r => r.status), reforma: (mRt.get(c.id) || [])[0] || null,
+            carteira: { sistemas: k.sistemas, ramo: k.ramo }, hoje: hojeH };
+          const pre = respostasDoSistema(dados, { regimesDaQuestao: regQ });
+          const mei = ehMei(c);
+          const ts = mTar.get(c.id) || [];
+          return { cliente: c, pre, hoje: hojeH, mei, piso: mei ? null : calcularMotor(pre.respostas, P).honorario, boletos, temCobranca: cfgs.length > 0,
+            tarefas: ts.length, avulsas: ts.filter(t => t.origem === 'avulsa').length, revisao: ultima.get(c.id) || null };
+        }).filter(Boolean);
+        carteiraLida = true;
+        desenharCarteira();
+      } catch (e) {
+        msg.style.display = 'block';
+        msg.textContent = 'Não consegui ler a carteira agora: ' + ((e && e.message) || e) + '. Tente de novo.';
+      }
+    }
+
+    function linhasDaCarteira(){
+      const f = filtrosCart, b = semAcento(f.busca).trim();
+      const abaixo = l => !!(l.hoje && l.piso != null && l.piso > l.hoje.valor);
+      const lista = carteira.filter(l => (!f.regime || l.cliente.regime_tributario === f.regime) && (!f.abaixo || abaixo(l)) && (!f.semRevisao || !l.revisao)
+        && (!b || semAcento(l.cliente.nome_principal + ' ' + (l.cliente.nome_fantasia || '')).includes(b)));
+      // quem está mais abaixo do piso primeiro; sem como comparar (sem o de hoje, MEI), no fim, por nome
+      const chave = l => (l.hoje && l.piso != null ? l.piso - l.hoje.valor : null);
+      return lista.sort((x, y) => { const a = chave(x), z = chave(y);
+        if (a != null && z != null && a !== z) return z - a;
+        if ((a == null) !== (z == null)) return a == null ? 1 : -1;
+        return String(x.cliente.nome_principal).localeCompare(String(y.cliente.nome_principal), 'pt-BR'); });
+    }
+
+    function desenharCarteira(){
+      const tb = document.getElementById('ctLista'), msg = document.getElementById('ctMsg');
+      const comHoje = carteira.filter(l => l.hoje);
+      const somaHoje = comHoje.reduce((s, l) => s + l.hoje.valor, 0);
+      const abaixo = carteira.filter(l => l.hoje && l.piso != null && l.piso > l.hoje.valor);
+      const falta = abaixo.reduce((s, l) => s + (l.piso - l.hoje.valor), 0);
+      const revisados = carteira.filter(l => l.revisao);
+      const aceitos = revisados.filter(l => l.revisao.status === 'aceito' && Number(l.revisao.honorario_novo) > 0);
+      const ganho = aceitos.reduce((s, l) => s + Number(l.revisao.honorario_novo) - (Number(l.revisao.honorario_atual) || (l.hoje ? l.hoje.valor : 0)), 0);
+      document.getElementById('ctResumo').innerHTML = '<span><b>' + carteira.length + '</b> clientes na carteira</span>'
+        + '<span>Hoje: <b>' + fmt(somaHoje) + '</b>/mês <small>(' + comHoje.length + ' com valor)</small></span>'
+        + '<span class="ct-alerta"><b>' + abaixo.length + '</b> pagam menos que o piso' + (abaixo.length ? ' · <b>+' + fmt(falta) + '</b>/mês até ele' : '') + '</span>'
+        + '<span><b>' + revisados.length + '</b> revisado' + (revisados.length === 1 ? '' : 's') + (aceitos.length ? ' · ' + aceitos.length + ' reajuste' + (aceitos.length === 1 ? ' aceito' : 's aceitos') + ' · <b>' + (ganho >= 0 ? '+' : '') + fmt(ganho) + '</b>/mês' : '') + '</span>';
+      const sel = document.getElementById('ctRegime');
+      if (sel.options.length <= 1) [...new Set(carteira.map(l => l.cliente.regime_tributario).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')).forEach(r => sel.add(new Option(r, r)));
+      const lista = linhasDaCarteira();
+      msg.style.display = lista.length ? 'none' : 'block';
+      msg.textContent = carteira.length ? 'Nenhum cliente com esses filtros.' : 'Nenhum cliente na carteira.';
+      tb.innerHTML = lista.map(linhaDaCarteira).join('');
+    }
+
+    function linhaDaCarteira(l){
+      const c = l.cliente, r = l.revisao, id = escHtml(c.id);
+      const dif = l.hoje && l.piso != null ? diferenca(l.piso, l.hoje.valor) : null;
+      const hojeTd = l.hoje ? '<b>' + fmt(l.hoje.valor) + '</b><br><small>' + escHtml(fonteTxt(l.hoje)) + '</small>' : '—<br><small>sem cobrança no sistema</small>';
+      const pisoTd = l.mei ? '<small>plano MEI, na aba MEI</small>' : fmt(l.piso) + (dif != null ? ' <span class="' + (dif > 0 ? 'ct-acima' : 'ct-abaixo') + '">' + pct(dif) + '</span>' : '');
+      const tarTd = l.tarefas + (l.avulsas ? '<br><small>' + l.avulsas + (l.avulsas > 1 ? ' avulsas' : ' avulsa') + '</small>' : '');
+      let revTd, sitTd;
+      if (r) {
+        const aceito = r.status === 'aceito' && Number(r.honorario_novo) > 0;
+        const det = aceito && r.vigencia ? 'combinado, a partir de ' + mesBR(r.vigencia) : (r.respostas && r.respostas._tipo === 'mei' ? 'plano MEI' : 'motor') + ' · ' + diaBR(r.atualizado_em || r.criado_em);
+        revTd = '<b>' + fmt(aceito ? r.honorario_novo : r.honorario_sugerido) + '</b><br><small>' + escHtml(det) + '</small><br><button type="button" class="ct-revisar" data-abrir="' + id + '">Abrir a revisão</button>';
+        sitTd = r.aplicado_em ? '<span class="chip c-verde" title="' + escHtml('Entrou no boleto em ' + diaBR(r.aplicado_em)) + '">Aceito · no boleto</span>'
+          : '<select class="st-sel" data-sit="' + id + '" aria-label="' + escHtml('Situação da revisão de ' + c.nome_principal) + '">' + SITUACOES.map(([v, t]) => '<option value="' + v + '"' + (v === r.status ? ' selected' : '') + '>' + t + '</option>').join('') + '</select>';
+      } else {
+        revTd = '<small>não revisado</small>';
+        sitTd = '<button type="button" class="ct-revisar" data-abrir="' + id + '">Revisar</button>';
+      }
+      return '<tr class="prop' + (r ? ' ct-revisado' : '') + '" data-cli="' + id + '">'
+        + '<td><b>' + escHtml(c.nome_principal) + '</b> <span class="chip">' + escHtml(NOME_REGIME[c.regime_tributario] || c.regime_tributario || 'sem regime') + '</span>'
+        + (c.nome_fantasia && c.nome_fantasia !== c.nome_principal ? '<br><small>' + escHtml(c.nome_fantasia) + '</small>' : '') + '</td>'
+        + '<td>' + hojeTd + '</td><td>' + pisoTd + '</td><td>' + tarTd + '</td><td>' + revTd + '</td><td>' + sitTd + '</td></tr>';
+    }
+    const linhaPorId = id => carteira.find(x => String(x.cliente.id) === String(id));
+    const tbCart = document.getElementById('ctLista');
+    tbCart.addEventListener('click', e => {
+      if (e.target.closest('select')) return;
+      const alvo = e.target.closest('[data-abrir]') || e.target.closest('tr[data-cli]');
+      const l = alvo && linhaPorId(alvo.dataset.abrir || alvo.dataset.cli);
+      if (l) abrirRevisao(l);
+    });
+    tbCart.addEventListener('change', e => {
+      const sel = e.target.closest('select[data-sit]');
+      const l = sel && linhaPorId(sel.dataset.sit);
+      if (l) mudarSituacao(l, sel.value, sel);
+    });
+    document.getElementById('ctRegime').addEventListener('change', e => { filtrosCart.regime = e.target.value; desenharCarteira(); });
+    document.getElementById('ctAbaixo').addEventListener('change', e => { filtrosCart.abaixo = e.target.checked; desenharCarteira(); });
+    document.getElementById('ctSemRev').addEventListener('change', e => { filtrosCart.semRevisao = e.target.checked; desenharCarteira(); });
+    document.getElementById('ctBusca').addEventListener('input', e => { filtrosCart.busca = e.target.value; desenharCarteira(); });
+
+    // ---------- a revisão de um cliente: o questionário (ou a aba MEI) já preenchido ----------
+    function abrirRevisao(l){
+      if (l.mei) return abrirRevisaoMei(l);
+      const rev = l.revisao && !(l.revisao.respostas && l.revisao.respostas._tipo === 'mei') ? l.revisao : null;
+      cart = { linha: l, revisaoId: rev ? rev.id : null, mei: false };
+      // a revisão salva volta como ficou; sem ela, o que o sistema sabe (com o honorário de hoje)
+      respostas = JSON.parse(JSON.stringify(rev ? rev.respostas || {} : l.pre.respostas));
+      editandoId = null;
+      document.getElementById('prSalvoMsg').textContent = '';
+      atualizarBotoesSalvar();
+      trocarVisao('form'); renderForm();
+      window.scrollTo({ top: 0 });
+    }
+    function abrirRevisaoMei(l){
+      const rev = l.revisao && l.revisao.respostas && l.revisao.respostas._tipo === 'mei' ? l.revisao : null;
+      cart = null;
+      if (rev) carregarPropostaMei({ respostas: rev.respostas, cliente_nome: l.cliente.nome_principal, id: null });
+      else {
+        novaMei();
+        const c = l.cliente;
+        mei.cliente = c.nome_principal || '';
+        mei.cnpj = c.documento ? formatDocumento(c.documento) : '';
+        mei.endereco = [[c.logradouro, c.numero].filter(Boolean).join(', '), c.bairro, [c.cidade, c.uf].filter(Boolean).join('/')].filter(Boolean).join(' · ');
+        mei.telefone = c.telefone_principal || '';
+        const setv = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+        setv('meiCliente', mei.cliente); setv('meiCnpj', mei.cnpj); setv('meiEndereco', mei.endereco); setv('meiTelefone', mei.telefone);
+      }
+      meiEditandoId = null;
+      cart = { linha: l, revisaoId: rev ? rev.id : null, mei: true };
+      const m = document.getElementById('meiSalvoMsg'); if (m) m.textContent = '';
+      atualizarBotoesMei();
+      trocarVisao('mei');
+      window.scrollTo({ top: 0 });
+    }
+    function sairDaRevisao(){
+      const eraMei = !!(cart && cart.mei);
+      cart = null;
+      if (eraMei) novaMei();
+      else { respostas = {}; editandoId = null; document.getElementById('prSalvoMsg').textContent = ''; atualizarBotoesSalvar(); renderForm(); }
+      trocarVisao('carteira');
+    }
+    function bannerRevisao(){
+      const l = cart.linha;
+      const hoje = l.hoje ? fmt(l.hoje.valor) + '/mês <small>(' + escHtml(fonteTxt(l.hoje)) + ')</small>' : 'sem cobrança no sistema';
+      return '<div class="pr-cart-banner"><div class="ct-topo"><span><b>Revisão de honorário</b> · ' + escHtml(l.cliente.nome_principal) + ' · hoje ' + hoje + '</span>'
+        + '<button type="button" class="ct-revisar" data-cart="sair">Voltar à carteira</button></div>'
+        + '<div class="pr-cart-faltam" id="prCartFaltam"></div>'
+        + '<div class="ct-nota" style="margin:6px 0 0;">A etiqueta verde marca o que veio do sistema — confira. Complete o que falta: o painel compara o motor com o de hoje.</div></div>';
+    }
+    // o que falta responder (o que mexe no preço e está em branco) e as etiquetas do que veio do sistema
+    function atualizarMarcasCarteira(){
+      if (!cart || cart.mei) return;
+      const visivel = id => { const qd = questoes.find(q => q.id === id); return !!qd && questaoVisivel(qd); };
+      const faltam = faltamResponder(respostas, visivel);
+      const el = document.getElementById('prCartFaltam');
+      if (el) el.innerHTML = faltam.length
+        ? 'Falta' + (faltam.length > 1 ? 'm' : '') + ' ' + faltam.length + ' resposta' + (faltam.length > 1 ? 's' : '') + ' que mexe' + (faltam.length > 1 ? 'm' : '') + ' no preço: '
+          + faltam.map(id => '<button type="button" data-ir="' + id + '">' + escHtml(rotuloCurto(id)) + '</button>').join(' · ')
+        : '✓ Tudo o que mexe no preço está respondido.';
+      const pre = cart.linha.pre.respostas;
+      document.querySelectorAll('#prQuestionario .pr-q[data-qid]').forEach(d => {
+        const id = d.dataset.qid;
+        d.classList.toggle('ct-falta', faltam.includes(id));
+        const chip = d.querySelector('.pr-chip-sis');
+        if (chip) chip.hidden = String(respostas[id] ?? '') !== String(pre[id] ?? '');
+      });
+    }
+    function atualizarComparacao(){
+      const box = document.getElementById('prCartComp');
+      if (!box) return;
+      if (!cart || cart.mei || !calcAtual) { box.hidden = true; return; }
+      const hoje = Number(respostas['A12B']) > 0 ? Number(respostas['A12B']) : null;
+      const d = hoje ? diferenca(calcAtual.honorario, hoje) : null;
+      box.hidden = false;
+      box.innerHTML = hoje ? 'Hoje <b>' + fmt(hoje) + '</b> → motor <b>' + fmt(calcAtual.honorario) + '</b> <span class="' + (d > 0 ? 'ct-acima' : 'ct-abaixo') + '">' + pct(d) + ' (' + (d >= 0 ? '+' : '') + fmt(calcAtual.honorario - hoje) + '/mês)</span>'
+        : 'Motor <b>' + fmt(calcAtual.honorario) + '</b> · sem o honorário de hoje (responda A12B pra comparar)';
+    }
+    function atualizarComparacaoMei(total){
+      const box = document.getElementById('meiCartComp');
+      if (!box) return;
+      if (!cart || !cart.mei) { box.hidden = true; return; }
+      const hoje = cart.linha.hoje ? cart.linha.hoje.valor : null;
+      const d = hoje ? diferenca(total, hoje) : null;
+      box.hidden = false;
+      box.innerHTML = hoje ? 'Hoje <b>' + fmt(hoje) + '</b> → plano <b>' + fmt(total) + '</b> <span class="' + (d > 0 ? 'ct-acima' : 'ct-abaixo') + '">' + pct(d) + '</span>'
+        : 'Plano <b>' + fmt(total) + '</b> · sem o honorário de hoje no sistema';
+    }
+    document.getElementById('prQuestionario').addEventListener('click', e => {
+      const ir = e.target.closest('[data-ir]');
+      if (ir) { const inp = document.querySelector('#prQuestionario [data-q="' + ir.dataset.ir + '"]'); if (inp) { inp.scrollIntoView({ block: 'center' }); inp.focus({ preventScroll: true }); } return; }
+      if (e.target.closest('[data-cart="sair"]')) sairDaRevisao();
+    });
+    document.getElementById('meiCartBanner').addEventListener('click', e => { if (e.target.closest('[data-cart="sair"]')) sairDaRevisao(); });
+
+    // gravar: a revisão (nova, ou a aberta); a situação começa em "estudo"
+    async function gravarRevisao(payload, comoNova){
+      const agora = new Date().toISOString();
+      if (cart.revisaoId && !comoNova) {
+        const { error } = await supabase.from('revisoes_honorario').update({ ...payload, atualizado_em: agora }).eq('id', cart.revisaoId);
+        return { erro: error, nova: false };
+      }
+      const { data, error } = await supabase.from('revisoes_honorario').insert({ ...payload, cliente_id: cart.linha.cliente.id, status: 'estudo', criado_por: user ? user.email : null, atualizado_em: agora }).select('id').single();
+      if (data) cart.revisaoId = data.id;
+      return { erro: error, nova: true };
+    }
+    async function salvarRevisao(comoNova){
+      const c = calcular();
+      const btn = document.getElementById('prSalvar');
+      btn.disabled = true;
+      const l = cart.linha;
+      const atual = Number(respostas['A12B']) > 0 ? Number(respostas['A12B']) : null;
+      const fonte = atual == null ? null : l.hoje && Number(l.hoje.valor) === atual ? l.hoje.fonte : 'informado';
+      const r = await gravarRevisao({ respostas, resultado: c, honorario_sugerido: c.honorario, honorario_atual: atual, fonte_atual: fonte }, comoNova);
+      btn.disabled = false;
+      atualizarBotoesSalvar();
+      document.getElementById('prSalvoMsg').innerHTML = r.erro ? '<span style="color:var(--err);">✗ ' + escHtml(r.erro.message) + '</span>'
+        : '<span style="color:var(--ok);">✓ ' + (r.nova ? 'Revisão salva' : 'Revisão atualizada') + ' — motor ' + fmt(c.honorario) + '/mês' + (atual ? ' (hoje ' + fmt(atual) + ')' : '') + '. Ela fica na aba Carteira.</span>';
+      if (!r.erro) carteiraLida = false;
+    }
+    async function salvarRevisaoMei(comoNova){
+      const { linhas, total } = calcMei();
+      if (!linhas.length) { alert('Escolha um plano base ou marque serviços.'); return; }
+      const btn = document.getElementById('meiSalvar');
+      btn.disabled = true;
+      const l = cart.linha;
+      const atual = l.hoje ? l.hoje.valor : null;
+      const resp = { _tipo: 'mei', bases: [...mei.bases], marcados: [...mei.marcados], qtd: mei.qtd, nfsInclusas: mei.nfsInclusas, cliente: mei.cliente, cnpj: mei.cnpj,
+        endereco: mei.endereco, telefone: mei.telefone, msg: mei.msg, venc: mei.venc, ajuste: mei.ajuste };
+      const r = await gravarRevisao({ respostas: resp, resultado: { linhas, total }, honorario_sugerido: total, honorario_atual: atual, fonte_atual: atual ? l.hoje.fonte : null }, comoNova);
+      btn.disabled = false;
+      atualizarBotoesMei();
+      const m = document.getElementById('meiSalvoMsg');
+      m.style.color = r.erro ? 'var(--err)' : 'var(--ok)';
+      m.textContent = r.erro ? 'Erro: ' + r.erro.message : '✓ ' + (r.nova ? 'Revisão salva' : 'Revisão atualizada') + ' — ' + fmt(total) + '/mês' + (atual ? ' (hoje ' + fmt(atual) + ')' : '') + '. Ela fica na aba Carteira.';
+      if (!r.erro) carteiraLida = false;
+    }
+
+    // ---------- a situação da revisão; o aceito pergunta o valor combinado e o mês ----------
+    async function mudarSituacao(l, novo, sel){
+      const r = l.revisao;
+      if (!r || novo === r.status) return;
+      if (novo === 'aceito') { sel.value = r.status; abrirAceite(l); return; }
+      sel.disabled = true;
+      const agora = new Date().toISOString();
+      const { error } = await supabase.from('revisoes_honorario').update({ status: novo, atualizado_em: agora }).eq('id', r.id);
+      sel.disabled = false;
+      if (error) { sel.value = r.status; alert('Não consegui mudar a situação: ' + error.message); return; }
+      Object.assign(r, { status: novo, atualizado_em: agora });
+      desenharCarteira();
+    }
+    let aceiteAtual = null;
+    const fecharAceite = () => { document.getElementById('ovAceite').style.display = 'none'; aceiteAtual = null; };
+    function abrirAceite(l){
+      aceiteAtual = l;
+      const r = l.revisao;
+      document.getElementById('acNome').textContent = l.cliente.nome_principal + (l.hoje ? ' · hoje ' + fmt(l.hoje.valor) + '/mês' : '') + ' · revisão ' + fmt(r.honorario_sugerido) + '/mês';
+      document.getElementById('acValor').value = Number(r.honorario_novo) > 0 ? r.honorario_novo : Math.round(Number(r.honorario_sugerido) || 0) || '';
+      const livres = mesesLivres(mesesDaVigencia(hojeLocal()), l.boletos);
+      const sel = document.getElementById('acMes');
+      sel.innerHTML = livres.map(m => '<option value="' + m.mes + '"' + (m.livre ? '' : ' disabled') + '>' + mesBR(m.mes) + (m.livre ? '' : ' — esse boleto já saiu') + '</option>').join('');
+      const proximo = livres.find((m, i) => i > 0 && m.livre) || livres.find(m => m.livre);
+      sel.value = r.vigencia && livres.some(m => m.mes === r.vigencia && m.livre) ? r.vigencia : proximo ? proximo.mes : '';
+      document.getElementById('acComo').textContent = l.temCobranca
+        ? 'O valor novo entra no boleto desse mês e segue nos seguintes: se o mês já foi gerado e o boleto está a emitir, ele é trocado agora; senão, entra quando o mês for gerado na tela Boletos.'
+        : 'A cobrança dele não está na base de boletos' + (l.hoje && l.hoje.fonte === 'conta_azul' ? ' (é pelo Conta Azul)' : '') + ': aqui fica registrado o combinado, e a troca do valor é com você lá.';
+      const msg = document.getElementById('acMsg'); msg.textContent = '';
+      const ok = document.getElementById('acConfirmar'); ok.disabled = false; ok.style.display = '';
+      document.getElementById('acCancelar').textContent = 'Cancelar';
+      document.getElementById('ovAceite').style.display = 'flex';
+      document.getElementById('acValor').focus();
+    }
+    document.getElementById('acCancelar').addEventListener('click', fecharAceite);
+    document.getElementById('ovAceite').addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); fecharAceite(); } });
+    document.getElementById('acConfirmar').addEventListener('click', async () => {
+      const l = aceiteAtual;
+      if (!l) return;
+      const msg = document.getElementById('acMsg'), btn = document.getElementById('acConfirmar');
+      const valor = Math.round(Number(document.getElementById('acValor').value) * 100) / 100;
+      const mes = document.getElementById('acMes').value;
+      if (!(valor > 0)) { msg.style.color = 'var(--err)'; msg.textContent = 'Diga o valor combinado.'; return; }
+      if (!/^\d{4}-\d{2}$/.test(mes)) { msg.style.color = 'var(--err)'; msg.textContent = 'Escolha o mês.'; return; }
+      btn.disabled = true; msg.style.color = 'var(--text-muted)'; msg.textContent = 'Gravando…';
+      const r = l.revisao, agora = new Date().toISOString();
+      const { error } = await supabase.from('revisoes_honorario').update({ status: 'aceito', honorario_novo: valor, vigencia: mes, atualizado_em: agora }).eq('id', r.id);
+      if (error) { btn.disabled = false; msg.style.color = 'var(--err)'; msg.textContent = 'Não consegui gravar: ' + error.message; return; }
+      Object.assign(r, { status: 'aceito', honorario_novo: valor, vigencia: mes, atualizado_em: agora });
+      let texto = '✓ Reajuste aceito: ' + fmt(valor) + '/mês a partir de ' + mesBR(mes) + '.';
+      if (l.temCobranca) {
+        const a = await aplicarReajusteAgora(supabase, { revisao: r, email: user ? user.email : null });
+        if (a.erro) texto += ' Não consegui trocar o boleto agora (' + a.erro + '): o valor novo entra quando o mês for gerado.';
+        else if (a.trocados) { r.aplicado_em = new Date().toISOString(); texto += ' O boleto a emitir de ' + a.meses.map(mesBR).join(', ') + ' já está com o valor novo.'; }
+        else texto += ' Ele entra quando ' + mesBR(mes) + ' for gerado na tela Boletos.';
+      } else texto += ' A cobrança dele é fora da base de boletos: troque o valor lá.';
+      msg.style.color = 'var(--ok)'; msg.textContent = texto;
+      btn.style.display = 'none';
+      document.getElementById('acCancelar').textContent = 'Fechar';
+      desenharCarteira();
+    });
+
     // ---------- visões ----------
     function trocarVisao(v){
       document.querySelectorAll('#prSeg button').forEach(b => b.classList.toggle('is-on', b.dataset.v === v));
@@ -1533,9 +1888,11 @@
       document.getElementById('vMei').style.display = v === 'mei' ? 'block' : 'none';
       document.getElementById('vProps').style.display = v === 'props' ? 'block' : 'none';
       document.getElementById('vParams').style.display = v === 'params' ? 'block' : 'none';
+      document.getElementById('vCarteira').style.display = v === 'carteira' ? 'block' : 'none';
       if (v === 'props') carregarProps();
       if (v === 'params') renderParams();
       if (v === 'mei') renderMei();
+      if (v === 'carteira') { if (carteiraLida) desenharCarteira(); else carregarCarteira(); }
     }
     document.querySelectorAll('#prSeg button').forEach(b => b.addEventListener('click', () => trocarVisao(b.dataset.v)));
 
@@ -1555,7 +1912,7 @@
       indexarParams();
       renderForm();
       if (window.MRTour) MRTour.iniciar([
-        { el: '#prSeg', titulo: 'Três visões', texto: 'Simulação (o motor), Propostas (o histórico salvo) e Parâmetros (os preços — calibráveis sem código).' },
+        { el: '#prSeg', titulo: 'As abas', texto: 'Simulação (o motor), MEI (os planos), Propostas (o histórico salvo), Carteira (os clientes da casa: o que pagam hoje × o motor — só os sócios) e Parâmetros (os preços — calibráveis sem código).' },
         { el: '#btnConvite', titulo: 'Convite pro cliente', texto: 'Um clique copia a mensagem pronta com o link do questionário público — cola no WhatsApp do prospecto e a resposta dele cai sozinha na aba Propostas, como "recebida".' },
         { el: '#prQuestionario', titulo: 'O questionário', texto: 'Responda os blocos — cada resposta mexe no cálculo na hora. Não precisa preencher tudo: o painel mostra o efeito do que já foi respondido. O selo azul \'cliente\' marca as perguntas que também aparecem no questionário público. Trocou o regime (A10), o bloco D se enxuga sozinho pras perguntas daquele regime.' },
         { el: '#prObrigacoes', titulo: 'Obrigações e multas', texto: 'Com o regime (A10) respondido, acendem aqui as obrigações mensais e anuais dele — as condicionais dependem do bloco D — com a multa de cada uma e as somas das fixas separadas em mensal e anual — DEISS e ISS aceitam multa do município informada na mão. Tudo isso sai no PDF do estudo.' },
@@ -1563,6 +1920,8 @@
         { el: '#prSalvar', titulo: 'Salvar proposta', texto: 'Grava respostas + resultado com nome, status e autor. Reabra depois na aba Propostas pra revisar ou recalcular.' },
         { el: '#prOrc', titulo: 'Orçamento do cliente', texto: 'Gera o PDF que VAI pro cliente: timbre, a mensagem personalizada de abertura (campo acima — escreva com suas palavras, ou deixe vazio), honorário, forma de pagamento e os serviços cobrados separadamente. Observações específicas também saem só nesse PDF. O Estudo continua interno: nunca vai pro cliente.' }
       ], 'precificacao_v2', new URLSearchParams(location.search).has('tour'), user ? (user.id || user.email) : '');
+      // ?aba=carteira abre direto na Carteira (só os sócios)
+      if (ehSocio && new URLSearchParams(location.search).get('aba') === 'carteira') trocarVisao('carteira');
     }
     iniciar();
   
@@ -1573,6 +1932,7 @@
       for (let i = 0; i < 50 && !questoes.length; i++) await new Promise(r => setTimeout(r, 150));
       const { data: p } = await supabase.from('precificacoes').select('*').eq('id', pid).single();
       if (!p) return;
+      cart = null;
       if (p.respostas && p.respostas._tipo === 'mei') { carregarPropostaMei(p); return; }
       respostas = p.respostas || {}; editandoId = p.id;
       atualizarBotoesSalvar();
@@ -1597,6 +1957,23 @@
       <button id="tpConfirmar" style="background:var(--ok);color:#0B1017;border:none;border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer;">Criar transição</button>
     </div>
     <p id="tpMsg" style="margin:10px 0 0;font-size:13px;"></p>
+  </div>
+</div>
+<!-- Carteira: o reajuste aceito (o valor combinado e o mês em que começa) -->
+<div id="ovAceite" style="display:none;position:fixed;inset:0;background:var(--overlay);z-index:80;align-items:center;justify-content:center;">
+  <div role="dialog" aria-modal="true" aria-labelledby="acTitulo" style="background:var(--surface);border:1px solid rgba(91,130,166,.35);border-radius:12px;padding:22px;max-width:480px;width:92%;">
+    <h3 id="acTitulo" style="margin:0 0 6px;">Reajuste aceito</h3>
+    <p id="acNome" style="margin:0 0 14px;color:var(--text-muted);font-size:14px;"></p>
+    <label style="display:block;margin-bottom:10px;font-size:13px;">Valor combinado (R$ por mês)<br>
+      <input id="acValor" type="number" min="1" step="0.01" class="input" style="width:100%;margin-top:4px;"></label>
+    <label style="display:block;margin-bottom:6px;font-size:13px;">A partir do boleto de<br>
+      <select id="acMes" class="input" style="width:100%;margin-top:4px;"></select></label>
+    <p id="acComo" style="margin:8px 0 14px;font-size:12.5px;color:var(--text-muted);line-height:1.5;"></p>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button id="acCancelar" type="button" style="background:none;border:1px solid var(--line-strong);color:var(--text-muted);border-radius:8px;padding:8px 14px;cursor:pointer;">Cancelar</button>
+      <button id="acConfirmar" type="button" style="background:var(--ok);color:#0B1017;border:none;border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer;">Confirmar o reajuste</button>
+    </div>
+    <p id="acMsg" style="margin:10px 0 0;font-size:13px;"></p>
   </div>
 </div>
 </body>

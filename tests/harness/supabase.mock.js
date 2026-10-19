@@ -154,6 +154,18 @@ function q(table){
       if (dup) { self._err = { code:'23505', message:'duplicate key value violates unique constraint' }; return chain; }
       rows.push(...arr); self._ins = arr; console.log('MOCK INSERT', table, JSON.stringify(arr)); emitir(table, 'INSERT', arr); return chain;
     };
+    // upsert (a geração do mês da tela Boletos): com ignoreDuplicates, quem já existe pela chave do onConflict fica como está;
+    // sem ele, a linha que já existe é atualizada
+    if (k==='upsert') return (payload, o = {}) => {
+      const cols = String(o.onConflict || 'id').split(',').map(s => s.trim());
+      const novos = [];
+      (Array.isArray(payload)?payload:[payload]).forEach(n => {
+        const ja = rows.find(r => cols.every(c => r[c] === n[c]));
+        if (ja) { if (!o.ignoreDuplicates) Object.assign(ja, n); return; }
+        novos.push({ id: 'n'+(seq++), ...n });
+      });
+      rows.push(...novos); self._ins = novos; console.log('MOCK UPSERT', table, novos.length); emitir(table, 'INSERT', novos); return chain;
+    };
     if (['lt','lte','gt','gte','eq','neq','is','not'].includes(k)) return (col, v, v2) => { (self._f ||= []).push([k,col,v,v2]); return chain; };
     if (k==='single' || k==='maybeSingle') return () => { const out = executar(); return responder({ data: out.error ? null : ((out.data || [])[0] ?? null), error: out.error }); };
     return () => chain;
@@ -200,7 +212,9 @@ const storageFalso = { from: pasta => ({
   async remove(caminhos) { caminhos.forEach(c => delete ARQUIVOS()[pasta + '/' + c]); console.log('MOCK REMOVE', pasta, caminhos.length); return { data: [], error: null }; }
 }) };
 // rpc: quem responde é o teste, por window.__mockRpc(nome, args) (o admissoes.py usa pro link público); sem ele, lista vazia
-export const supabase = { from: q, auth: { getUser: async () => ({ data: { user: { email:'financeiro@macedoereis.com.br' } } }), getSession: async () => ({ data: { session: { user: { email:'financeiro@macedoereis.com.br' } } } }) },
+// quem está logado: o Samuel (sócio); o teste troca por window.__mockEmail (o precificacao-carteira.py entra como a Thalia)
+const EMAIL = () => (typeof window !== 'undefined' && window.__mockEmail) || 'financeiro@macedoereis.com.br';
+export const supabase = { from: q, auth: { getUser: async () => ({ data: { user: { email: EMAIL() } } }), getSession: async () => ({ data: { session: { user: { email: EMAIL() } } } }) },
   rpc: async (nome, args) => (typeof window.__mockRpc === 'function' ? window.__mockRpc(nome, args || {}) : { data: [], error:null }) };
 supabase.todosClientes = async () => ({ data: DATA.clientes, error:null });
 supabase.channel = canal;
@@ -214,7 +228,7 @@ supabase.functions = { invoke: async (nome, opts) => (typeof window.__mockInvoke
   : { data: null, error: { message: 'função ' + nome + ' fora do harness' } }) };
 // igual ao helper de verdade (assets/js/supabase.js): busca em lotes de mil até o fim
 supabase.todasLinhas = async function (montar) { const tudo = []; for (let i = 0; ; i += 1000) { const { data, error } = await montar().range(i, i + 999); if (error) return { data: tudo, error }; tudo.push(...(data || [])); if (!data || data.length < 1000) return { data: tudo, error: null }; } };
-export async function getCurrentUser(){ return { email:'financeiro@macedoereis.com.br' }; }
+export async function getCurrentUser(){ return { email: EMAIL() }; }
 export async function signOut(){}
 // o assistente do escritório (assets/js/assistente-escritorio.js) mostra um recado do dia na primeira tela: nos testes de
 // tela ele ficaria por cima dos cliques — aqui fica quieto, salvo no teste dele (window.__assistenteRecados = true)
