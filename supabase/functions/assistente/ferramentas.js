@@ -4,10 +4,12 @@
 // abaixo, com filtros, contagem, totais e agrupamento), agenda (tarefas e rotinas de uma pessoa, com a regra da agenda —
 // assets/js/rotinas-dia.js) e perguntar_reforma (a pergunta vai pro chat da Reforma, que responde com a base dele).
 // As propostas (propor_concluir_tarefas, propor_alterar_tarefas — prazo, responsável e prioridade, desde 16/10/2026 —,
-// propor_marcar_pago, propor_criar_tarefa, propor_revisao_atrasadas e propor_ver_vigia, o cartão do vigia) não gravam
-// nada: separam o que identifica a mudança (ids, a pessoa, os campos da tarefa nova) e o servidor manda junto com a
-// resposta; a tela mostra o cartão e quem grava é ela, com o login da pessoa, depois que ela confirma
-// (assets/js/assistente-acoes.js + assets/js/tarefas-acoes.js, a mesma regra). Uma proposta por pergunta.
+// propor_marcar_pago, propor_criar_tarefa, propor_revisao_atrasadas, propor_ver_vigia, o cartão do vigia, e, desde
+// 19/10/2026, propor_enviar_mensagem, a mensagem no chat da equipe) não gravam nada: separam o que identifica a mudança
+// (ids, a pessoa, os campos da tarefa nova, quem recebe a mensagem e o texto) e o servidor manda junto com a resposta; a
+// tela mostra o cartão e quem grava é ela, com o login da pessoa, depois que ela confirma (assets/js/assistente-acoes.js
+// + assets/js/tarefas-acoes.js — a mensagem, assets/js/chat-equipe.js —, a mesma regra das telas). Uma proposta por
+// pergunta (a mensagem com arquivo toma o lugar do cartão dos arquivos que a buscou).
 // O vigia do sistema (vigia_achados) entra na lista e no ver_empresa: o que o banco achou de desencontrado ou parado.
 // Lista branca: só as tabelas e colunas daqui são lidas. Ficam fora a senha/credencial do cadastro, o RG e o nascimento
 // das pessoas físicas do cadastro (o CPF e o endereço do cadastro entram: são o dado de trabalho do IRPF), os documentos
@@ -18,7 +20,7 @@
 // ============================================================
 
 import { rotinaDoDia, rotinaFeita, ymd } from '../../../assets/js/rotinas-dia.js';
-import { EQUIPE } from '../../../assets/js/equipe.js';
+import { EQUIPE, NOME_POR_EMAIL } from '../../../assets/js/equipe.js';
 import { ficaDeFora, mudancaDe, proximasNascemCom, PRIORIDADES } from '../../../assets/js/tarefas-acoes.js';
 import { rotuloDaRegra } from '../../../assets/js/vigia.js';
 import { pastaDaUrl, filtrarArquivos } from './drive.js';
@@ -268,6 +270,13 @@ export const DEFINICOES = [
       prioridade: { type: 'string', enum: ['alta', 'media', 'baixa'] },
       empresa: { type: 'string', description: 'id, nome ou CNPJ, se a tarefa é de uma empresa' },
       descricao: { type: 'string' } }, required: ['titulo'] } },
+  { name: 'propor_enviar_mensagem',
+    description: 'Prepara uma mensagem no chat da equipe (a aba Equipe do balão) pra pessoa conferir e enviar — nada é enviado aqui: a tela mostra a mensagem (dá pra editar) com o botão "Enviar" e, depois, o "Desfazer" (apaga a mensagem; quem já leu, leu). Só quando a pessoa pedir pra mandar, avisar, perguntar ou passar algo a alguém da equipe ou a um grupo do chat. A mensagem sai em nome de quem pede: escreva como ela escreveria — na primeira pessoa, curta e direta, sem assinatura. Pra mandar arquivo da empresa, chame buscar_arquivos antes e diga os arquivos pelo nome, como vieram na lista: a mensagem leva o link do Drive (o arquivo fica lá).',
+    input_schema: { type: 'object', properties: {
+      para: { type: 'array', items: { type: 'string' }, description: 'quem recebe: pessoas da equipe (cada uma na conversa a dois), "Escritório" (o grupo de todos) ou o nome de outro grupo do chat; até 6' },
+      texto: { type: 'string', description: 'a mensagem, como a pessoa escreveria' },
+      arquivos: { type: 'array', items: { type: 'string' }, description: 'opcional: os nomes dos arquivos que buscar_arquivos trouxe nesta pergunta (até 10)' } },
+      required: ['para', 'texto'] } },
   { name: 'propor_revisao_atrasadas',
     description: 'Mostra na tela a revisão das tarefas atrasadas de alguém: grupo por grupo, a tela pergunta o que já foi feito e conclui o que a pessoa marcar (com "Desfazer"). Use quando pedirem pra passar as atrasadas a limpo — e, quando perguntarem das atrasadas de alguém da equipe, chame junto com a resposta: o cartão é a oferta (só mostra a pergunta; nada muda sem a pessoa).',
     input_schema: { type: 'object', properties: { pessoa: { type: 'string', description: 'alguém da equipe (sem: quem pergunta)' } } } },
@@ -290,6 +299,11 @@ export function valorCurto(v, n = 280) {
   return corte(String(v).replace(/\s+/g, ' ').trim(), n);
 }
 export const normalizarBusca = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+// só endereço do Google Drive ou Docs, https, sem usuário e porta (o mesmo filtro da tela: linkDoDrive, em assets/js/chat-equipe.js)
+export function linkDrive(l) {
+  try { const u = new URL(String(l || '')); return u.protocol === 'https:' && ['drive.google.com', 'docs.google.com'].includes(u.hostname) && !u.username && !u.password && !u.port ? u.href : null; }
+  catch (e) { return null; }
+}
 const fmtDoc = d => { const x = String(d || '').replace(/\D/g, ''); return x.length === 14 ? x.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')
   : x.length === 11 ? x.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4') : (d || '—'); };
 const maisDias = (iso, n) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
@@ -952,6 +966,63 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
       + (empresa ? ' · ' + empresa.nome : '') + ') com o botão "Criar tarefa": a pessoa confere, ajusta se quiser e cria. Nada foi criado ainda. Na resposta: uma frase (não diga que já foi criada).';
   }
 
+  // ---------- a mensagem no chat da equipe: a tela mostra (dá pra editar) e a pessoa envia, em nome dela ----------
+  // Quem recebe: alguém da equipe com login (a conversa a dois, que a tela abre se não existe), o grupo de todos
+  // ("Escritório") ou outro grupo pelo nome — a tela procura entre os grupos de quem pede: aqui o chat não é lido. Os
+  // arquivos: só os que buscar_arquivos trouxe nesta pergunta, pelo nome; vai o link do Drive (o arquivo fica lá)
+  const EMAIL_DE = new Map(Object.entries(NOME_POR_EMAIL).map(([e, n]) => [normalizarBusca(n), e]));
+  const GRUPO_TODOS = new Set(['escritorio', 'o escritorio', 'grupo do escritorio', 'grupo escritorio', 'todos', 'todo mundo', 'a equipe', 'equipe', 'pessoal', 'geral']);
+  const SOCIOS_TXT = new Set(['ambos', 'os socios', 'socios', 'os dois socios']);
+  async function propor_enviar_mensagem(e) {
+    const ja = proposta && proposta.tipo !== 'arquivos' ? jaProposto() : null; if (ja) return ja;
+    const pedidos = (Array.isArray(e.para) ? e.para : e.para ? [e.para] : []).map(x => String(x).replace(/\s+/g, ' ').trim()).filter(Boolean);
+    if (!pedidos.length) return 'Diga pra quem vai a mensagem: alguém da equipe, "Escritório" (o grupo de todos) ou o nome de um grupo do chat.';
+    if (pedidos.length > 6) return 'Até 6 destinos por mensagem.';
+    const eu = String(usuario.email || '').toLowerCase();
+    const para = [], chaves = new Set();
+    const pessoa = (email, nome) => { if (email === eu) return 'A mensagem é sua: não dá pra mandar pra você mesmo.'; if (!chaves.has(email)) { chaves.add(email); para.push({ email, nome }); } return null; };
+    for (const p of pedidos) {
+      const n = normalizarBusca(p).trim();
+      if (GRUPO_TODOS.has(n)) { if (!chaves.has('g:escritorio')) { chaves.add('g:escritorio'); para.push({ grupo: 'escritorio', nome: 'Escritório' }); } continue; }
+      if (SOCIOS_TXT.has(n)) { ['Samuel', 'Diego'].forEach(s => { const em = EMAIL_DE.get(normalizarBusca(s)); if (em && em !== eu) pessoa(em, s); }); continue; }
+      const nome = equipePorNome(p);
+      if (nome) {
+        const email = EMAIL_DE.get(normalizarBusca(nome));
+        if (!email) return nome + ' não tem login no sistema: não está no chat. Diga isso na resposta (dá pra deixar uma tarefa pra ela).';
+        const erro = pessoa(email, nome); if (erro) return erro;
+        continue;
+      }
+      // outro grupo, pelo nome (sem o "grupo" da frente): a tela procura entre os de quem pede
+      const g = p.replace(/^(o\s+)?grupo\s+(d[oa]s?\s+)?/i, '').trim().slice(0, 80);
+      if (!g) return 'Diga o nome do grupo.';
+      if (!chaves.has('g:' + normalizarBusca(g))) { chaves.add('g:' + normalizarBusca(g)); para.push({ grupo: g, nome: g }); }
+    }
+    if (!para.length) return 'Não sobrou ninguém pra receber (a mensagem é sua: não vai pra você mesmo).';
+    const texto = String(e.texto || '').replace(/\r\n/g, '\n').replace(/[ \t]+\n/g, '\n').trim().slice(0, 4000);
+    if (!texto) return 'Escreva a mensagem (como a pessoa escreveria).';
+    const nomes = (Array.isArray(e.arquivos) ? e.arquivos : e.arquivos ? [e.arquivos] : []).map(x => String(x).trim()).filter(Boolean);
+    if (nomes.length > 10) return 'Até 10 arquivos por mensagem.';
+    const arquivos = [];
+    for (const nome of nomes) {
+      if (!vistosNoDrive.size) return 'Pra mandar arquivo, chame buscar_arquivos antes (a mensagem leva o link do Drive) — nada foi proposto.';
+      const k = normalizarBusca(nome).trim();
+      let lista = vistosNoDrive.get(k);
+      if (!lista) { const parecidos = [...vistosNoDrive.keys()].filter(x => x.includes(k) || k.includes(x)); if (parecidos.length === 1) lista = vistosNoDrive.get(parecidos[0]); }
+      if (!lista) return 'O arquivo "' + nome.slice(0, 120) + '" não veio nas buscas desta pergunta (vieram: ' + [...new Set([...vistosNoDrive.values()].map(l => l[0].nome))].slice(0, 12).join('; ')
+        + '). Use o nome exatamente como veio — nada foi proposto.';
+      const x = lista.find(i => linkDrive(i.link));
+      if (!x) return 'O arquivo "' + lista[0].nome + '" não tem link do Drive: não dá pra mandar por aqui — nada foi proposto.';
+      if (!arquivos.some(a => a.link === linkDrive(x.link))) arquivos.push({ nome: String(x.nome).slice(0, 200), link: linkDrive(x.link), pasta: String(x.pasta || '').slice(0, 300) });
+    }
+    registrar({ tipo: 'enviar_mensagem', para, texto, ...(arquivos.length ? { arquivos } : {}) });
+    const quem = para.map(d => d.grupo ? 'o grupo ' + d.nome : d.nome);
+    return 'Proposta pronta: a tela mostra a mensagem pra ' + (quem.length > 1 ? quem.slice(0, -1).join(', ') + ' e ' + quem[quem.length - 1] : quem[0])
+      + (arquivos.length ? ', com o link do Drive de ' + plural(arquivos.length, 'arquivo', 'arquivos') + ' (' + arquivos.map(a => a.nome).join('; ') + ')' : '')
+      + ', com o botão "Enviar": a pessoa confere, pode editar e envia em nome dela. Nada foi enviado ainda.'
+      + (para.some(d => d.grupo && d.grupo !== 'escritorio') ? ' O grupo a tela procura entre os grupos dela no chat.' : '')
+      + '\nNa resposta: uma frase dizendo que a mensagem está pronta pra ela conferir e enviar (não diga que já foi; não repita o texto da mensagem).';
+  }
+
   async function propor_revisao_atrasadas(e) {
     const ja = jaProposto(); if (ja) return ja;
     const pedida = e.pessoa && String(e.pessoa).trim() ? String(e.pessoa) : null;
@@ -993,6 +1064,8 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
   // busca com palavras que achou algo vale mais que "os mais recentes", que vale mais que a busca que não achou nada
   const arvores = new Map();
   let pesoCartao = -1, termoCartao = null;
+  // os arquivos que as buscas desta pergunta mostraram ao modelo (pelo nome sem acento): a mensagem do chat leva o link deles
+  const vistosNoDrive = new Map();
   const diaBR = iso => { const d = new Date(iso); return iso && !isNaN(d) ? new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric' }).format(d) : '—'; };
   const horaBR = iso => { const d = new Date(iso); return iso && !isNaN(d) ? new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d).replace(':', 'h') : ''; };
   async function buscar_arquivos(e) {
@@ -1028,6 +1101,7 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     }
     const { achados, total } = filtrarArquivos([...doDrive, ...guias], termo, { limite: 20 });
     if (!raiz && !guias.length) return avisos.join(' ');
+    achados.forEach(x => { const k = normalizarBusca(x.nome).trim(); if (!k) return; if (!vistosNoDrive.has(k)) vistosNoDrive.set(k, []); vistosNoDrive.get(k).push(x); });
     const fantasia = c.nome_fantasia && normalizarBusca(c.nome_fantasia) !== normalizarBusca(c.nome_principal) ? String(c.nome_fantasia) : null;
     const peso = termo ? (total ? 2 : 0) : 1;
     const ficaOutro = peso < pesoCartao;
@@ -1048,7 +1122,7 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
       + ' Na resposta: o que achou — o nome, a pasta e a data do que mais interessa —, sem colar link e sem inventar arquivo; nada encontrado, diga e sugira outras palavras.';
   }
 
-  return { buscar_empresa, ver_empresa, agenda, consultar, perguntar_reforma, buscar_arquivos, propor_concluir_tarefas, propor_alterar_tarefas, propor_marcar_pago, propor_criar_tarefa, propor_revisao_atrasadas, propor_ver_vigia };
+  return { buscar_empresa, ver_empresa, agenda, consultar, perguntar_reforma, buscar_arquivos, propor_concluir_tarefas, propor_alterar_tarefas, propor_marcar_pago, propor_criar_tarefa, propor_enviar_mensagem, propor_revisao_atrasadas, propor_ver_vigia };
 }
 
 // a etapa que aparece no "digitando…" da tela
@@ -1065,6 +1139,7 @@ export function descreverEtapa(nome, e = {}) {
   if (nome === 'propor_alterar_tarefas') return 'Separando o que muda pra você confirmar';
   if (nome === 'propor_marcar_pago') return 'Separando os boletos pra você confirmar';
   if (nome === 'propor_criar_tarefa') return 'Preparando a tarefa pra você conferir';
+  if (nome === 'propor_enviar_mensagem') return 'Escrevendo a mensagem pra você conferir';
   if (nome === 'propor_revisao_atrasadas') return 'Preparando a revisão das atrasadas';
   if (nome === 'propor_ver_vigia') return 'Separando o que o vigia achou';
   return s(nome, 40);

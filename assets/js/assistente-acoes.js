@@ -20,7 +20,10 @@
 // desencontrado da carteira.
 // O cartão dos arquivos (16/10/2026) só mostra: o que a função achou na pasta da empresa no Drive e nas guias arquivadas,
 // o nome como link (abre no Drive, numa aba nova) e, embaixo, a pasta da empresa.
-// Testes de tela: tests/harness/assistente-acoes.py e tests/harness/assistente-vigia.py.
+// O cartão da mensagem (19/10/2026): a IA escreve, em nome de quem pede, a mensagem pra alguém da equipe ou um grupo do
+// chat (com o link do Drive dos arquivos que buscou); a pessoa confere, edita e envia — pela regra do chat
+// (assets/js/chat-equipe.js) —, abre a conversa e tem o "Desfazer" (apaga a mensagem) por 10 minutos.
+// Testes de tela: tests/harness/assistente-acoes.py, tests/harness/assistente-vigia.py e tests/harness/assistente-mensagem.py.
 // ============================================================
 
 import { supabase } from './supabase.js';
@@ -34,6 +37,7 @@ import { EQUIPE, SOCIOS, nomePorEmail } from './equipe.js';
 import { SETORES } from './nova-tarefa.js';
 import { lerAchados, ignorarAchado, reabrirAchado, filtrarAchados, agruparAchados, linkSeguro, ehSocioPeloNome, marcarVisto,
   resolvidosAgora, marcarResolvidoAgora, desmarcarResolvidoAgora, COLUNAS } from './vigia.js';
+import { linkDoDrive, conversaDe, enviarMensagem, apagarMensagem, MAX_TEXTO } from './chat-equipe.js';
 
 const RAIZ = new URL('../../', import.meta.url);   // a raiz do site (este arquivo mora em assets/js/)
 const PRAZO_DESFAZER = 10 * 60e3;   // o "Desfazer" vale por 10 minutos
@@ -126,7 +130,7 @@ const resumoConcluidas = r => (r.concluidas || []).map(c => ({ id: c.id, status_
 // ============================================================
 export function cartaoDaAcao(acao, ajuda = {}) {
   const fazer = { concluir_tarefas: cartaoConcluir, alterar_tarefas: cartaoAlterar, marcar_pago: cartaoPago, criar_tarefa: cartaoCriar, revisar_atrasadas: cartaoRevisao, vigia: cartaoVigia,
-    arquivos: cartaoArquivos }[acao && acao.tipo];
+    arquivos: cartaoArquivos, enviar_mensagem: cartaoMensagem }[acao && acao.tipo];
   if (!fazer) return null;
   const raiz = h('div', { class: 'as-cartao', role: 'group' });
   const estado = { ...acao };
@@ -656,12 +660,8 @@ function cartaoRevisao({ raiz, estado, salvar, ajuda, anunciar }) {
 // o arquivo no Drive numa aba nova (só endereço do Google Drive ou Docs; o resto sai sem link). Embaixo, a pasta da empresa
 const TIPO_GOOGLE = { 'application/vnd.google-apps.document': 'Documento Google', 'application/vnd.google-apps.spreadsheet': 'Planilha Google',
   'application/vnd.google-apps.presentation': 'Apresentação Google', 'application/vnd.google-apps.form': 'Formulário Google' };
-export function linkDoDrive(link) {
-  try {
-    const u = new URL(String(link || ''));
-    return u.protocol === 'https:' && ['drive.google.com', 'docs.google.com'].includes(u.hostname) && !u.username && !u.password && !u.port ? u.href : null;
-  } catch (e) { return null; }
-}
+// o filtro do link (só Google Drive ou Docs) é o do chat, que mostra o link que o assistente manda
+export { linkDoDrive };
 const diaLocal = iso => { const d = new Date(iso); return iso && !isNaN(d) ? pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear() : ''; };
 const horaLocal = iso => { const d = new Date(iso); return iso && !isNaN(d) ? pad(d.getHours()) + 'h' + pad(d.getMinutes()) : ''; };
 const tamanhoBR = n => {
@@ -696,6 +696,117 @@ function cartaoArquivos({ raiz, estado }) {
   const rodape = pasta ? h('div', { class: 'as-cartao-botoes as-cartao-rodape' }, h('a', { class: 'as-botao as-botao-link', href: pasta, target: '_blank', rel: 'noopener noreferrer', text: 'Abrir a pasta da empresa no Drive' }))
     : sub('A empresa não tem a pasta do Drive no cadastro: crie ou vincule no cadastro da empresa.');
   trocar(raiz, titulo, nada, itens.length ? h('ul', { class: 'as-cartao-lista as-arquivos' }, itens.map(linha)) : null, mais, rodape);
+}
+
+// ---------- a mensagem no chat da equipe ----------
+// A IA escreveu em nome de quem pede; aqui a pessoa confere, edita e envia — pra cada destino, na conversa a dois (que
+// nasce se não existe) ou no grupo —, pela regra do chat (assets/js/chat-equipe.js). Os arquivos vão como o link do
+// Drive (o arquivo fica lá). Cada destino tem o id da mensagem guardado no estado: tentar de novo não duplica. Depois:
+// "Abrir a conversa" e o "Desfazer" por 10 minutos (apaga a mensagem — quem já leu, leu)
+const chaveDestino = d => (d.grupo ? 'g:' + normal(d.grupo) : d.email);
+const novoIdMsg = () => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : null);
+// "pra Thalia", "pro grupo Escritório", "pra Diego e o grupo Escritório"
+function pra(nomes) {
+  const lista = nomes.length > 1 ? nomes.slice(0, -1).join(', ') + ' e ' + nomes[nomes.length - 1] : nomes[0] || '';
+  return /^o /.test(lista) ? 'pr' + lista : 'pra ' + lista;
+}
+function cartaoMensagem({ raiz, estado, salvar, ajuda, anunciar }) {
+  raiz.setAttribute('aria-label', 'Mensagem no chat da equipe');
+  const destinos = (Array.isArray(estado.para) ? estado.para : []).filter(d => d && typeof d === 'object' && (typeof d.email === 'string' && /@/.test(d.email) || typeof d.grupo === 'string' && d.grupo.trim()))
+    .slice(0, 6).map(d => d.grupo ? { grupo: d.grupo.trim().slice(0, 80), nome: String(d.nome || d.grupo).slice(0, 80) }
+      : { email: d.email.trim().toLowerCase().slice(0, 120), nome: String(d.nome || nomePorEmail(d.email) || d.email).slice(0, 80) });
+  const arquivos = (Array.isArray(estado.arquivos) ? estado.arquivos : []).filter(a => a && typeof a.nome === 'string' && a.nome && linkDoDrive(a.link)).slice(0, 10)
+    .map(a => ({ nome: a.nome.slice(0, 200), link: linkDoDrive(a.link), pasta: typeof a.pasta === 'string' ? a.pasta.slice(0, 300) : '' }));
+  const rotulo = d => (d.grupo ? 'o grupo ' + d.nome : d.nome);
+  const listaArquivos = () => (arquivos.length ? h('ul', { class: 'as-cartao-lista as-arquivos' }, arquivos.map(a => h('li', {},
+    h('a', { class: 'as-arquivo', href: a.link, target: '_blank', rel: 'noopener noreferrer' }, h('b', { text: a.nome }), h('small', { text: (a.pasta || 'pasta da empresa') + ' · vai o link do Drive' }))))) : null);
+
+  // manda pros destinos que faltam (com o texto já conferido); o que der certo fica guardado
+  async function mandar(texto) {
+    const ids = estado.ids && typeof estado.ids === 'object' ? { ...estado.ids } : {};
+    const feitas = Array.isArray(estado.feitas) ? estado.feitas.slice() : [];
+    const faltam = [];
+    for (const d of destinos) {
+      const k = chaveDestino(d);
+      if (feitas.some(f => f.chave === k)) continue;
+      if (!ids[k]) ids[k] = novoIdMsg();
+      if (!ids[k]) { faltam.push({ chave: k, nome: rotulo(d), erro: 'este navegador não gera o código da mensagem' }); continue; }
+      const c = await conversaDe(supabase, d, ajuda.email || '');
+      if (c.erro) { faltam.push({ chave: k, nome: rotulo(d), erro: c.erro }); continue; }
+      const r = await enviarMensagem(supabase, { id: ids[k], conversaId: c.id, texto: texto || null, anexos: arquivos.map(a => ({ nome: a.nome, link: a.link, pasta: a.pasta })) });
+      if (r.erro) { faltam.push({ chave: k, nome: rotulo(d), erro: r.erro.replace(/\.$/, '').toLowerCase() }); continue; }
+      feitas.push({ chave: k, id: ids[k], conversa_id: c.id, nome: d.grupo ? c.nome || d.nome : d.nome, grupo: !!d.grupo });
+    }
+    const novas = feitas.length > (Array.isArray(estado.feitas) ? estado.feitas.length : 0);
+    salvar({ texto, ids, feitas, faltam, ...(feitas.length ? { estado: 'enviada' } : {}), ...(novas ? { em: new Date().toISOString() } : {}) });
+    if (novas) {
+      try { ajuda.reagir && ajuda.reagir(); } catch (e) { /* sem carinha */ }
+      anunciar(faltam.length ? 'Parte da mensagem foi.' : 'Mensagem enviada.');
+    }
+    return { feitas, faltam };
+  }
+
+  function desenhar() {
+    if (!destinos.length) return trocar(raiz, sub('A mensagem veio sem destino: diga pra quem é.'));
+    if (estado.estado === 'cancelada') return trocar(raiz, sub('Não enviei.'));
+    if (estado.estado === 'desfeita') {
+      const n = (estado.desfeito || {}).n || 0;
+      return trocar(raiz, h('span', { text: n ? '↺ Desfeito: ' + (n === 1 ? 'a mensagem foi apagada' : 'as mensagens foram apagadas') + ' (quem já tinha lido, leu).' : 'A mensagem já tinha mudado e ficou como estava.' }));
+    }
+    if (estado.estado === 'enviada') return desenharEnviada();
+    const caixa = h('textarea', { rows: '4', maxlength: String(MAX_TEXTO) });
+    caixa.value = typeof estado.texto === 'string' ? estado.texto.slice(0, MAX_TEXTO) : '';
+    const erro = h('div', { class: 'as-cartao-erro', hidden: true });
+    const ok = botao('Enviar', enviar, 'pri');
+    const nao = botao('Agora não', () => { salvar({ estado: 'cancelada' }); desenhar(); });
+    async function enviar() {
+      const t = caixa.value.replace(/\r\n/g, '\n').trim().slice(0, MAX_TEXTO);
+      if (!t && !arquivos.length) { erro.textContent = 'Escreva a mensagem.'; erro.hidden = false; caixa.focus(); return; }
+      ok.disabled = true; nao.disabled = true; ok.textContent = 'Enviando…'; erro.hidden = true;
+      const r = await mandar(t);
+      if (!r.feitas.length) {
+        erro.textContent = 'Não foi: ' + r.faltam.map(f => f.nome + ' — ' + f.erro).join(' · ') + '.';
+        erro.hidden = false; ok.disabled = false; nao.disabled = false; ok.textContent = 'Enviar';
+        return;
+      }
+      desenhar();
+    }
+    trocar(raiz, h('div', { class: 'as-cartao-tit', text: 'Mensagem ' + pra(destinos.map(rotulo)) }),
+      h('div', { class: 'as-cartao-campos' }, h('label', { class: 'as-cartao-campo largo' }, 'A mensagem — sai em seu nome; confira antes de enviar', caixa)),
+      listaArquivos(), h('div', { class: 'as-cartao-botoes' }, ok, nao), erro);
+  }
+
+  function desenharEnviada() {
+    const feitas = Array.isArray(estado.feitas) ? estado.feitas : [];
+    const faltam = Array.isArray(estado.faltam) ? estado.faltam : [];
+    const linha = h('div', { class: 'as-cartao-feito' }, h('span', { class: 'as-cartao-ok', text: '✓ Enviada ' + pra(feitas.map(f => (f.grupo ? 'o grupo ' + f.nome : f.nome))) + '.' }));
+    if (typeof ajuda.abrirConversa === 'function') feitas.forEach(f => linha.append(botao(feitas.length === 1 ? 'Abrir a conversa' : 'Abrir: ' + f.nome, () => ajuda.abrirConversa(f.conversa_id), 'link')));
+    if (feitas.length && podeDesfazer(estado.em)) linha.append(botao('Desfazer', desfazer, 'link'));
+    const partes = [linha];
+    if (faltam.length) {
+      const erro = h('div', { class: 'as-cartao-erro', text: 'Não foi ' + faltam.map(f => pra([f.nome]) + ' (' + f.erro + ')').join(', ') + '.' });
+      const tentar = botao('Tentar de novo', async () => { tentar.disabled = true; tentar.textContent = 'Enviando…'; await mandar(typeof estado.texto === 'string' ? estado.texto : ''); desenhar(); }, 'link');
+      partes.push(erro, h('div', { class: 'as-cartao-botoes' }, tentar));
+    }
+    trocar(raiz, ...partes);
+  }
+
+  async function desfazer(ev) {
+    const b = ev.currentTarget;
+    if (!podeDesfazer(estado.em)) { trocar(raiz, sub('Passou o tempo de desfazer por aqui: apague a mensagem na conversa (aba Equipe).')); return; }
+    b.disabled = true; b.textContent = 'Desfazendo…';
+    let n = 0;
+    const ficaram = [];
+    for (const f of (Array.isArray(estado.feitas) ? estado.feitas : [])) {
+      const r = await apagarMensagem(supabase, f.id, ajuda.email || '');
+      if (r.erro) ficaram.push(f.nome); else n++;
+    }
+    if (ficaram.length && !n) { b.disabled = false; b.textContent = 'Desfazer'; raiz.append(h('div', { class: 'as-cartao-erro', text: 'Não consegui apagar agora. Tente de novo ou apague na conversa.' })); return; }
+    salvar({ estado: 'desfeita', desfeito: { n, ficaram } });
+    anunciar('Desfeito.');
+    desenhar();
+  }
+  desenhar();
 }
 
 // ---------- o vigia: o que ele achou, por grupo, com "Abrir", "Ignorar" e o que dá pra resolver ali ----------

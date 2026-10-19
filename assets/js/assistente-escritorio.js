@@ -248,6 +248,7 @@ async function retomar(pedido, aoEtapa) {
 
 // ---------- a montagem ----------
 let api = null, email = '', socio = false, nomePessoa = null, ctxPendente;
+let chat = null;   // a aba Equipe (o chat): o cartão da mensagem abre a conversa nela
 const tela = {};   // o que a tela registrou (assistenteDaTela)
 const caminho = caminhoDaTela();
 const setor = setorDaTela(caminho);
@@ -294,13 +295,14 @@ function montar() {
     perguntar: perguntarFuncao(supabase, 'assistente'),
     retomar,
     formatar,
-    // a ação proposta na resposta: o cartão pede a confirmação (e grava com o login de quem está na tela)
-    cartao: (acao, ajuda) => cartaoDaAcao(acao, { ...ajuda, email, nome: nomePessoa }),
+    // a ação proposta na resposta: o cartão pede a confirmação (e grava com o login de quem está na tela); a mensagem
+    // enviada pelo cartão abre a conversa na aba Equipe
+    cartao: (acao, ajuda) => cartaoDaAcao(acao, { ...ajuda, email, nome: nomePessoa, abrirConversa: id => { if (chat && chat.abrirConversa) chat.abrirConversa(id); } }),
     // na tela da Reforma as respostas citam a base: os códigos vêm antes (nas outras, só quando uma resposta cita)
     antes: () => (caminho === 'fiscal-reforma.html' ? carregarFontes() : null),
     aoClicar: ev => (tela.aoClicar ? tela.aoClicar(ev) : false),
     // a aba do chat da equipe: conversas a dois e grupos, com o aviso no computador
-    abas: [{ id: 'equipe', rotulo: 'Equipe', nome: 'Equipe', montar: (lugar, ctl) => montarChatEquipe({ supabase, email, el: lugar, ctl }) }]
+    abas: [{ id: 'equipe', rotulo: 'Equipe', nome: 'Equipe', montar: (lugar, ctl) => (chat = montarChatEquipe({ supabase, email, el: lugar, ctl })) }]
   });
 }
 

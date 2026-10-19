@@ -112,6 +112,15 @@ export function conferirArquivos(novos, jaTem = 0) {
   return { ok, recusados };
 }
 export const ehImagem = tipo => /^image\/(png|jpe?g|gif|webp)$/i.test(String(tipo || ''));
+// o link do Drive (19/10/2026: o arquivo que o assistente manda pelo chat fica no Drive; a mensagem leva o link): só
+// endereço do Google Drive ou Docs, https, sem usuário e porta — o resto não vira link. O cartão dos arquivos do
+// assistente usa o mesmo (assets/js/assistente-acoes.js)
+export function linkDoDrive(link) {
+  try {
+    const u = new URL(String(link || ''));
+    return u.protocol === 'https:' && ['drive.google.com', 'docs.google.com'].includes(u.hostname) && !u.username && !u.password && !u.port ? u.href : null;
+  } catch (e) { return null; }
+}
 // a lista: as conversas pela última mensagem; quem ainda não tem conversa a dois comigo vem depois, em ordem de nome
 export function linhasDaLista(convs, pessoas, eu) {
   const lista = [...(convs || [])].sort((a, b) => String(b.ultima_em || '').localeCompare(String(a.ultima_em || '')));
@@ -151,6 +160,55 @@ export function textoDoAviso(c, m, eu) {
     : m && Array.isArray(m.anexos) && m.anexos.length ? 'Arquivo: ' + (m.anexos[0].nome || 'arquivo') + (m.anexos.length > 1 ? ' e mais ' + (m.anexos.length - 1) : '') : 'Mensagem nova';
   if (c && c.tipo === 'grupo') return { titulo: tituloDaConversa(c, eu), corpo: quem + ': ' + corpo, quem };
   return { titulo: quem, corpo, quem };
+}
+
+// ---------- mandar e apagar: a regra do chat, a da tela e a do cartão do assistente (assets/js/assistente-acoes.js) ----------
+const COLUNAS_MSG = 'id, conversa_id, autor, texto, anexos, criada_em, apagada_em';
+// enviarMensagem(sb, { id, conversaId, texto, anexos }) → { mensagem } | { erro }: com o id gerado na tela — mandar de novo
+// com o mesmo id não duplica (23505 = já tinha entrado: lê de volta). Quem manda e quando, o banco põe
+export async function enviarMensagem(sb, { id, conversaId, texto = null, anexos = [] } = {}) {
+  const an = Array.isArray(anexos) ? anexos.slice(0, MAX_ARQUIVOS) : [];
+  const t = texto ? String(texto).slice(0, MAX_TEXTO) : null;
+  if (!id || !conversaId) return { erro: 'Mensagem sem conversa.' };
+  if (!t && !an.length) return { erro: 'Mensagem vazia.' };
+  let { data, error } = await sb.from('chat_mensagens').insert({ id, conversa_id: conversaId, texto: t, anexos: an }).select(COLUNAS_MSG).single();
+  if (error && error.code === '23505') ({ data, error } = await sb.from('chat_mensagens').select(COLUNAS_MSG).eq('id', id).single());
+  if (error || !data) return { erro: 'A mensagem não foi.' };
+  return { mensagem: data };
+}
+// apagarMensagem(sb, id, eu) → { mensagem } | { erro }: só a própria; o banco tira o texto e os arquivos da mensagem (os da
+// pasta "chat", quem chama tira antes; o link do Drive aponta pro arquivo, que fica lá)
+export async function apagarMensagem(sb, id, eu) {
+  const { data, error } = await sb.from('chat_mensagens').update({ apagada_em: new Date().toISOString() }).eq('id', id).eq('autor', eu).select(COLUNAS_MSG).single();
+  if (error || !data) return { erro: 'Não consegui apagar agora.' };
+  return { mensagem: data };
+}
+// conversaDe(sb, destino, eu) → { id, nome } | { erro }: pra onde vai — { email } (a conversa a dois, que nasce se não
+// existe), { grupo: 'escritorio' } (o grupo de todos) ou { grupo: nome } (entre os grupos de quem está na tela; sem grupo
+// com esse nome, a pessoa do chat com esse nome)
+export async function conversaDe(sb, destino, eu) {
+  const d = destino || {};
+  if (d.email) {
+    const email = String(d.email).toLowerCase();
+    if (email === String(eu || '').toLowerCase()) return { erro: 'não dá pra mandar pra você mesmo' };
+    const { data, error } = await sb.rpc('chat_abrir_direta', { outro: email });
+    if (error || !data) return { erro: /login/i.test(String((error && error.message) || '')) ? nomeDe(email) + ' não tem login no sistema' : 'não consegui abrir a conversa' };
+    return { id: String(data), nome: nomeDe(email) };
+  }
+  const g = normal(d.grupo);
+  if (!g) return { erro: 'sem destino' };
+  if (g === 'escritorio') { try { await sb.rpc('chat_preparar'); } catch (e) { /* o grupo de todos já existe */ } }
+  const { data, error } = await sb.rpc('chat_resumo');
+  if (error) return { erro: 'não consegui ler as conversas' };
+  const grupos = (data || []).filter(c => c && c.tipo === 'grupo');
+  const parecidos = grupos.filter(c => normal(c.titulo).includes(g));
+  const achado = g === 'escritorio' ? grupos.find(c => c.chave === 'escritorio') : grupos.find(c => normal(c.titulo) === g) || (parecidos.length === 1 ? parecidos[0] : null);
+  if (achado) return { id: String(achado.conversa_id), nome: achado.chave === 'escritorio' ? 'Escritório' : achado.titulo || 'Grupo' };
+  // não é grupo: alguém do chat com esse nome
+  const { data: pessoas } = await sb.rpc('chat_pessoas');
+  const p = (Array.isArray(pessoas) ? pessoas : []).map(x => (typeof x === 'string' ? x : x && x.email)).filter(Boolean).find(e => normal(nomeDe(e)) === g);
+  if (p) return conversaDe(sb, { email: p }, eu);
+  return { erro: 'você não está em nenhum grupo chamado "' + String(d.grupo).slice(0, 80) + '"' };
 }
 
 // ---------- os ícones (traço, como os do balão) ----------
@@ -469,6 +527,13 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
   }
   const arquivosDe = m => (Array.isArray(m.anexos) ? m.anexos : []).filter(a => a && typeof a === 'object' && a.nome);
   function htmlAnexo(a, m) {
+    // o arquivo do Drive (o assistente manda o link; o arquivo fica lá): abre numa aba nova
+    if (a.link) {
+      const l = linkDoDrive(a.link);
+      const corpo = ICONE.arquivo + '<span>' + escapeHtml(a.nome) + '</span><small>' + (l ? 'Drive' : 'sem link') + '</small>';
+      return l ? '<a class="ch-arq ch-arq-link" href="' + escapeHtml(l) + '" target="_blank" rel="noopener noreferrer" title="' + escapeHtml('Abrir ' + a.nome + ' no Drive' + (a.pasta ? ' (' + a.pasta + ')' : '')) + '">' + corpo + '</a>'
+        : '<span class="ch-arq ch-arq-sem">' + corpo + '</span>';
+    }
     const caminho = typeof a.caminho === 'string' ? a.caminho : '';
     if (!caminho) return '<span class="ch-arq ch-arq-indo">' + ICONE.arquivo + '<span>' + escapeHtml(a.nome) + '</span><small>' + (m._erro ? 'não foi' : 'enviando…') + '</small></span>';
     if (ehImagem(a.tipo)) {
@@ -655,10 +720,10 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
         }
         anexos.push({ caminho, nome: p.nome, tamanho: p.tamanho, tipo: p.tipo });
       }
-      let { data, error } = await supabase.from('chat_mensagens').insert({ id, conversa_id: conversaId, texto: texto || null, anexos }).select(COLS).single();
-      // a mensagem já tinha entrado (a resposta é que se perdeu): lê de volta
-      if (error && error.code === '23505') ({ data, error } = await supabase.from('chat_mensagens').select(COLS).eq('id', id).single());
-      if (error || !data) throw new Error('A mensagem não foi.');
+      // a regra do chat (a mesma do cartão do assistente): a que já tinha entrado — a resposta é que se perdeu — volta lida
+      const r = await enviarMensagem(supabase, { id, conversaId, texto: texto || null, anexos });
+      if (r.erro) throw new Error(r.erro);
+      const data = r.mensagem;
       Object.assign(m, { autor: eu, criada_em: new Date().toISOString(), ...data, anexos: data.anexos || anexos, _enviando: false, _erro: null, _pendentes: null });
       const c = conv(conversaId);
       if (c) { Object.assign(c, { ultima_em: m.criada_em, ultima_autor: eu, ultima_texto: m.texto, ultima_anexos: anexos.length, ultima_apagada: false, lido_ate: m.criada_em }); }
@@ -676,8 +741,9 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     const caminhos = arquivosDe(m).map(a => a.caminho).filter(Boolean);
     try {
       if (caminhos.length && supabase.storage) await supabase.storage.from('chat').remove(caminhos).catch(() => {});
-      const { data, error } = await supabase.from('chat_mensagens').update({ apagada_em: new Date().toISOString() }).eq('id', id).eq('autor', eu).select(COLS).single();
-      if (error) throw error;
+      const r = await apagarMensagem(supabase, id, eu);
+      if (r.erro) throw new Error(r.erro);
+      const data = r.mensagem;
       Object.assign(m, data || {}, { apagada_em: (data && data.apagada_em) || new Date().toISOString(), texto: null, anexos: [] });
       const c = conv(m.conversa_id), ultima = st.msgs[st.msgs.length - 1];
       if (c && ultima && ultima.id === id) c.ultima_apagada = true;

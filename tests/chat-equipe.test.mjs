@@ -4,7 +4,8 @@
 // mensagem), a ordem da lista (as conversas pela última mensagem, depois quem ainda não tem conversa comigo), o "visto",
 // o total do balão (sem as silenciadas), o celular (sem aviso) e o texto do aviso. Rodar com: node tests/chat-equipe.test.mjs
 import { nomeDe, iniciais, outroDa, tituloDaConversa, previaDaUltima, horaDaLista, rotuloDoDia, linkificar, tamanhoBR, nomeSeguro, caminhoDoArquivo,
-  conferirArquivos, ehImagem, linhasDaLista, vistoPor, textoDoVisto, naoLidasTotal, ehCelular, textoDoAviso, LIMITE_ARQUIVO } from '../assets/js/chat-equipe.js';
+  conferirArquivos, ehImagem, linhasDaLista, vistoPor, textoDoVisto, naoLidasTotal, ehCelular, textoDoAviso, LIMITE_ARQUIVO,
+  linkDoDrive, enviarMensagem, apagarMensagem, conversaDe } from '../assets/js/chat-equipe.js';
 import { escapeHtml } from '../assets/js/assistente.js';
 
 let falhas = 0;
@@ -67,6 +68,81 @@ chk('celular e tablet não avisam; o computador sim', ehCelular(nav('Mozilla/5.0
 const a1 = textoDoAviso(D, { autor: TH, texto: 'manda a guia\nda Adega?' }, EU), a2 = textoDoAviso(G, { autor: VI, texto: null, anexos: [{ nome: 'folha.pdf' }, { nome: 'x' }] }, EU);
 chk('o aviso: a dois, o nome e o texto; no grupo, o grupo e "quem: texto"; arquivo pelo nome', a1.titulo === 'Thalia' && a1.corpo === 'manda a guia da Adega?'
   && a2.titulo === 'Fiscal e DP' && a2.corpo === 'Vitória: Arquivo: folha.pdf e mais 1', JSON.stringify([a1, a2]));
+
+// ---------- mandar e apagar (19/10/2026): a regra da tela e do cartão do assistente, com um banco de mentira ----------
+console.log('Mandar, apagar e pra onde vai:');
+chk('o link do Drive: só https do Google Drive ou Docs, sem usuário nem porta', linkDoDrive('https://drive.google.com/file/d/X/view') === 'https://drive.google.com/file/d/X/view'
+  && linkDoDrive('https://docs.google.com/document/d/Y/edit') === 'https://docs.google.com/document/d/Y/edit' && linkDoDrive('http://drive.google.com/x') === null
+  && linkDoDrive('javascript:alert(1)') === null && linkDoDrive('https://drive.google.com.exemplo.com/x') === null && linkDoDrive('https://eu:senha@drive.google.com/x') === null
+  && linkDoDrive('https://drive.google.com:8443/x') === null && linkDoDrive(null) === null);
+function sbFalso({ jaTinha = false, falhaRpc = null, grupos = [], pessoas = [] } = {}) {
+  const log = [], linhas = [];
+  const tabela = nome => {
+    const q = { _f: [] };
+    q.insert = r => { q._ins = r; return q; };
+    q.update = r => { q._upd = r; return q; };
+    q.select = () => q;
+    q.eq = (k, v) => { q._f.push([k, v]); return q; };
+    q.single = async () => {
+      if (q._ins) {
+        log.push(['insert', nome, q._ins]);
+        if (jaTinha || linhas.some(l => l.id === q._ins.id)) return { data: null, error: { code: '23505', message: 'duplicate key' } };
+        const l = { ...q._ins, autor: EU, criada_em: '2026-10-19T20:00:00Z', apagada_em: null }; linhas.push(l); return { data: l, error: null };
+      }
+      if (q._upd) {
+        log.push(['update', nome, q._upd, q._f]);
+        const l = linhas.find(x => q._f.every(([k, v]) => x[k] === v));
+        if (!l) return { data: null, error: { code: 'PGRST116', message: 'no rows' } };
+        Object.assign(l, q._upd, { texto: null, anexos: [] }); return { data: l, error: null };
+      }
+      log.push(['select', nome, q._f]);
+      const l = linhas.find(x => q._f.every(([k, v]) => x[k] === v)) || (jaTinha ? { id: q._f[0][1], conversa_id: 'c1', autor: EU, texto: 'já tinha', anexos: [], criada_em: '2026-10-19T19:59:00Z' } : null);
+      return { data: l, error: l ? null : { message: 'no rows' } };
+    };
+    return q;
+  };
+  const rpc = async (nome, a) => {
+    log.push(['rpc', nome, a]);
+    if (falhaRpc === nome) return { data: null, error: { message: 'essa pessoa não tem login no sistema' } };
+    if (nome === 'chat_abrir_direta') return { data: 'conv-' + a.outro.split('@')[0], error: null };
+    if (nome === 'chat_resumo') return { data: grupos, error: null };
+    if (nome === 'chat_pessoas') return { data: pessoas, error: null };
+    return { data: 'c-esc', error: null };
+  };
+  return { sb: { from: tabela, rpc }, log, linhas };
+}
+{
+  const { sb, log, linhas } = sbFalso();
+  const r = await enviarMensagem(sb, { id: 'm1', conversaId: 'conv-x', texto: 'Segue o contrato.', anexos: [{ nome: 'Contrato.pdf', link: 'https://drive.google.com/file/d/A/view', pasta: '' }] });
+  chk('mandar: com o id da tela, o texto e o link do arquivo; quem e quando, o banco põe', r.mensagem && r.mensagem.autor === EU && linhas.length === 1 && linhas[0].id === 'm1'
+    && linhas[0].anexos[0].link === 'https://drive.google.com/file/d/A/view' && log[0][0] === 'insert', JSON.stringify(r));
+  const r2 = await enviarMensagem(sb, { id: 'm1', conversaId: 'conv-x', texto: 'Segue o contrato.' });
+  chk('mandar de novo com o mesmo id: não duplica (lê a que já tinha entrado)', r2.mensagem && r2.mensagem.id === 'm1' && linhas.length === 1, JSON.stringify(r2));
+  chk('mandar vazio ou sem conversa: não manda', (await enviarMensagem(sb, { id: 'm2', conversaId: 'conv-x', texto: '' })).erro === 'Mensagem vazia.'
+    && (await enviarMensagem(sb, { id: 'm3', texto: 'oi' })).erro === 'Mensagem sem conversa.' && linhas.length === 1);
+  const a = await apagarMensagem(sb, 'm1', EU);
+  chk('apagar: só a própria (o filtro do autor); o banco tira o texto e o arquivo', a.mensagem && a.mensagem.apagada_em && a.mensagem.texto === null && a.mensagem.anexos.length === 0
+    && JSON.stringify(log.find(l => l[0] === 'update')[3]) === JSON.stringify([['id', 'm1'], ['autor', EU]]));
+  chk('apagar a de outra pessoa (o banco não acha): erro, sem fingir', (await apagarMensagem(sb, 'm1', TH)).erro === 'Não consegui apagar agora.');
+}
+{
+  const GR = [{ conversa_id: 'c-esc', tipo: 'grupo', titulo: 'Escritório', chave: 'escritorio' }, { conversa_id: 'c-g1', tipo: 'grupo', titulo: 'Fiscal e DP', chave: null },
+    { conversa_id: 'c-g2', tipo: 'grupo', titulo: 'Fiscal — fechamento', chave: null }, { conversa_id: 'c-d1', tipo: 'direta', titulo: null, chave: EU + '|' + TH }];
+  const { sb, log } = sbFalso({ grupos: GR, pessoas: [AD, EU, TH, VI] });
+  const p = await conversaDe(sb, { email: 'RH@macedoereis.com.br' }, EU);
+  chk('pra uma pessoa: a conversa a dois (que o banco abre se não existe)', p.id === 'conv-rh' && p.nome === 'Vitória' && log.some(l => l[1] === 'chat_abrir_direta' && l[2].outro === VI), JSON.stringify(p));
+  chk('pra si mesmo, não', /você mesmo/.test((await conversaDe(sb, { email: EU }, EU)).erro));
+  const e = await conversaDe(sb, { grupo: 'escritorio' }, EU);
+  chk('o grupo de todos: prepara (se ninguém abriu o chat ainda) e acha pela chave', e.id === 'c-esc' && e.nome === 'Escritório' && log.some(l => l[1] === 'chat_preparar'), JSON.stringify(e));
+  chk('outro grupo: pelo nome, sem acento e maiúscula', (await conversaDe(sb, { grupo: 'fiscal e dp' }, EU)).id === 'c-g1' && (await conversaDe(sb, { grupo: 'FECHAMENTO' }, EU)).id === 'c-g2');
+  const amb = await conversaDe(sb, { grupo: 'Fiscal' }, EU);
+  chk('nome que bate com dois grupos: não chuta', /nenhum grupo chamado "Fiscal"/.test(amb.erro), JSON.stringify(amb));
+  const pessoa = await conversaDe(sb, { grupo: 'Adaini' }, EU);
+  chk('sem grupo com o nome, a pessoa do chat com esse nome (a conversa a dois)', pessoa.id === 'conv-contabil' && pessoa.nome === 'Adaini', JSON.stringify(pessoa));
+  chk('nem grupo nem pessoa: diz', /nenhum grupo chamado "Diretoria"/.test((await conversaDe(sb, { grupo: 'Diretoria' }, EU)).erro));
+  const { sb: sb2 } = sbFalso({ falhaRpc: 'chat_abrir_direta' });
+  chk('a pessoa sem login: o banco recusa e o motivo vem em português', /Vitória não tem login no sistema/.test((await conversaDe(sb2, { email: VI }, EU)).erro));
+}
 
 console.log(falhas ? '\n' + falhas + ' falha(s).' : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);

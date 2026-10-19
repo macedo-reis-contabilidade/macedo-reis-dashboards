@@ -28,7 +28,7 @@ chk('tabelas fora: configurações, chats, tokens e o backup pessoal', ['configu
 chk('as colunas que vêm sem pedir estão entre as lidas', Object.values(TABELAS).every(T => T.padrao.every(c => T.cols.includes(c))));
 chk('o financeiro do escritório marcado como só dos sócios', TABELAS.ca_parcelas.socios === true && TABELAS.ca_categorias.socios === true);
 chk('o dicionário do prompt lista as tabelas e não tem credenciais', Object.keys(TABELAS).every(t => dicionario().includes('## ' + t + ' ')) && !/credenciais/.test(dicionario()));
-chk('as definições: as seis de ler e as seis propostas, consultar só com as tabelas da lista', DEFINICOES.map(d => d.name).join() === 'buscar_empresa,ver_empresa,agenda,consultar,perguntar_reforma,buscar_arquivos,propor_concluir_tarefas,propor_alterar_tarefas,propor_marcar_pago,propor_criar_tarefa,propor_revisao_atrasadas,propor_ver_vigia'
+chk('as definições: as seis de ler e as sete propostas, consultar só com as tabelas da lista', DEFINICOES.map(d => d.name).join() === 'buscar_empresa,ver_empresa,agenda,consultar,perguntar_reforma,buscar_arquivos,propor_concluir_tarefas,propor_alterar_tarefas,propor_marcar_pago,propor_criar_tarefa,propor_enviar_mensagem,propor_revisao_atrasadas,propor_ver_vigia'
   && JSON.stringify(DEFINICOES.find(d => d.name === 'consultar').input_schema.properties.tabela.enum) === JSON.stringify(Object.keys(TABELAS)));
 chk('o prompt: a Reforma sozinha na rodada (a resposta dela vai direto, com as fontes); a tela pelo nome e a situação por extenso',
   /Chame sozinha na rodada/.test(INSTRUCOES) && /mantenha as fontes dele entre colchetes/.test(INSTRUCOES) && /não financeiro-boletos\.html/.test(INSTRUCOES) && /não em_transicao/.test(INSTRUCOES)
@@ -659,6 +659,56 @@ console.log('Os arquivos da empresa (o Drive, só leitura):');
   await fs5.propor_ver_vigia({});
   chk('buscar arquivos: com outra proposta já feita, uma por pergunta', /Já há uma proposta nesta pergunta/.test(await fs5.buscar_arquivos({ empresa: ID_A })) && descreverEtapa('buscar_arquivos', { empresa: 'Loja' }) === 'Procurando no Drive de Loja');
   chk('o prompt: arquivo de empresa pelo buscar_arquivos, sem colar link e sem inventar', /buscar_arquivos, com as palavras do nome do arquivo/.test(INSTRUCOES) && /sem colar link e sem inventar arquivo/.test(INSTRUCOES));
+
+  // ---------- a mensagem no chat da equipe (19/10/2026): quem recebe, o texto e o link do Drive dos arquivos buscados ----------
+  console.log('A mensagem no chat da equipe:');
+  const props = [];
+  const thalia = (extra = {}) => criarFerramentas({ banco, hoje: '2026-10-19', usuario: { email: 'fiscal@macedoereis.com.br', nome: 'Thalia', socio: false }, aoPropor: a => props.push(a), drive: driveFalso, ...extra });
+  const m1 = await thalia().propor_enviar_mensagem({ para: ['Vitória'], texto: '  Vitória, a admissão do Fulano chegou.  ' });
+  chk('pra alguém da equipe: o e-mail dela (a conversa a dois), o texto aparado e nada enviado', JSON.stringify(props[0]) === JSON.stringify({ tipo: 'enviar_mensagem', para: [{ email: 'rh@macedoereis.com.br', nome: 'Vitória' }], texto: 'Vitória, a admissão do Fulano chegou.' })
+    && /Nada foi enviado ainda/.test(m1) && /não diga que já foi/.test(m1), m1);
+  await thalia().propor_enviar_mensagem({ para: ['vitoria', 'Escritório', 'grupo do Fiscal e DP', 'VITÓRIA'], texto: 'Reunião às 15h.' });
+  chk('o nome sem acento, o grupo de todos e outro grupo pelo nome (sem o "grupo do"), sem repetir', JSON.stringify(props[1].para) === JSON.stringify([{ email: 'rh@macedoereis.com.br', nome: 'Vitória' }, { grupo: 'escritorio', nome: 'Escritório' }, { grupo: 'Fiscal e DP', nome: 'Fiscal e DP' }]), JSON.stringify(props[1].para));
+  await thalia().propor_enviar_mensagem({ para: ['os sócios'], texto: 'Fechei a DCTFWeb.' });
+  chk('"os sócios": Samuel e Diego, cada um na conversa a dois', JSON.stringify(props[2].para.map(p => p.email)) === '["financeiro@macedoereis.com.br","diego@macedoereis.com.br"]');
+  const samuel = criarFerramentas({ banco, hoje: '2026-10-19', usuario: { email: 'financeiro@macedoereis.com.br', nome: 'Samuel', socio: true }, aoPropor: a => props.push(a) });
+  await samuel.propor_enviar_mensagem({ para: ['ambos'], texto: 'Diego, olha a proposta.' });
+  chk('"Ambos" pedido pelo Samuel: só o Diego (não vai pra ele mesmo)', JSON.stringify(props[3].para) === JSON.stringify([{ email: 'diego@macedoereis.com.br', nome: 'Diego' }]), JSON.stringify(props[3].para));
+  const n0 = props.length;
+  const edna = await thalia().propor_enviar_mensagem({ para: ['Edna'], texto: 'oi' });
+  const eu = await thalia().propor_enviar_mensagem({ para: ['Thalia'], texto: 'oi' });
+  const sem = await thalia().propor_enviar_mensagem({ para: [], texto: 'oi' });
+  const vazio = await thalia().propor_enviar_mensagem({ para: ['Vitória'], texto: '   ' });
+  const muitos = await thalia().propor_enviar_mensagem({ para: ['a', 'b', 'c', 'd', 'e', 'f', 'g'], texto: 'oi' });
+  chk('sem login (Edna), pra si mesma, sem destino, sem texto, destinos demais: nada proposto, o motivo dito', props.length === n0 && /Edna não tem login no sistema/.test(edna) && /não dá pra mandar pra você mesmo/.test(eu)
+    && /Diga pra quem vai a mensagem/.test(sem) && /Escreva a mensagem/.test(vazio) && /Até 6 destinos/.test(muitos), [edna, eu, sem, vazio, muitos].join(' | '));
+  const semBusca = await thalia().propor_enviar_mensagem({ para: ['Vitória'], texto: 'Segue o contrato.', arquivos: ['Contrato Social.pdf'] });
+  chk('arquivo sem ter buscado: pede o buscar_arquivos antes', /chame buscar_arquivos antes/.test(semBusca) && props.length === n0, semBusca);
+  // buscou o contrato e manda: a mensagem leva o link e toma o lugar do cartão dos arquivos
+  const fsM = thalia();
+  await fsM.buscar_arquivos({ empresa: ID_A, termo: 'contrato' });
+  const nBusca = props.length;
+  const naoAchou = await fsM.propor_enviar_mensagem({ para: ['Vitória'], texto: 'Segue.', arquivos: ['Procuração.pdf'] });
+  chk('arquivo que a busca não trouxe: diz quais vieram e não propõe', /não veio nas buscas desta pergunta \(vieram: Contrato Social\.pdf\)/.test(naoAchou) && props.length === nBusca, naoAchou);
+  const comArq = await fsM.propor_enviar_mensagem({ para: ['Vitória'], texto: 'Segue o contrato social da Esquina.', arquivos: ['contrato social.PDF'] });
+  const pm = props[props.length - 1];
+  chk('com o arquivo buscado: o link do Drive (o nome sem diferenciar maiúscula), a pasta, e a mensagem no lugar do cartão dos arquivos',
+    props[nBusca - 1].tipo === 'arquivos' && pm.tipo === 'enviar_mensagem' && JSON.stringify(pm.arquivos) === JSON.stringify([{ nome: 'Contrato Social.pdf', link: 'https://drive.google.com/file/d/ARQUIVO_RAIZ_1/view', pasta: '' }])
+    && /com o link do Drive de 1 arquivo \(Contrato Social\.pdf\)/.test(comArq), JSON.stringify(pm) + ' || ' + comArq);
+  chk('depois da mensagem, outra busca na mesma pergunta já não troca o cartão (uma proposta por pergunta)', /Já há uma proposta nesta pergunta/.test(await fsM.buscar_arquivos({ empresa: ID_A, termo: 'das' })));
+  // a guia arquivada com link de fora do Drive: não vai
+  const { banco: bLink } = bancoFalso({ extras: { clientes: CL, obrigacoes_fiscais: [{ id: OBR, nome: 'PGDAS' }],
+    guias_arquivadas: [{ cliente_id: ID_A, obrigacao_id: OBR, competencia: '09-2026', nome_arquivo: 'PGDAS 09-2026 LOJA.pdf', drive_file_url: 'http://exemplo.com/guia.pdf', criado_em: '2026-10-08T12:00:00Z' }] } });
+  const fsL = criarFerramentas({ banco: bLink, hoje: '2026-10-19', usuario: { email: 'fiscal@macedoereis.com.br', nome: 'Thalia' }, aoPropor: a => props.push(a), drive: { configurado: () => true, arvore: async () => ({ arquivos: [], pastas: 1, cortada: false }) } });
+  await fsL.buscar_arquivos({ empresa: ID_A, termo: 'pgdas' });
+  const nL = props.length;
+  const foraDrive = await fsL.propor_enviar_mensagem({ para: ['Vitória'], texto: 'Segue a guia.', arquivos: ['PGDAS 09-2026 LOJA.pdf'] });
+  chk('o arquivo sem link do Google Drive: não vai, e diz', /não tem link do Drive/.test(foraDrive) && props.length === nL, foraDrive);
+  const fsO = thalia();
+  await fsO.propor_criar_tarefa({ titulo: 'Ligar pro cliente' });
+  chk('com outra proposta já feita (a tarefa), a mensagem espera: uma por pergunta', /Já há uma proposta nesta pergunta/.test(await fsO.propor_enviar_mensagem({ para: ['Vitória'], texto: 'oi' })));
+  chk('a etapa e o prompt: a mensagem sai em nome de quem pede, o arquivo pelo buscar_arquivos antes; mensagem pra cliente não', descreverEtapa('propor_enviar_mensagem') === 'Escrevendo a mensagem pra você conferir'
+    && /propor_enviar_mensagem\. A mensagem sai em nome de quem pede/.test(INSTRUCOES) && /buscar_arquivos antes, e os nomes como vieram/.test(INSTRUCOES) && /mensagem pra cliente ou fora do chat da equipe/.test(INSTRUCOES));
 }
 
 console.log('Commit fixado na função (o código cru do GitHub):');
