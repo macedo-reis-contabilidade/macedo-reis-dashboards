@@ -20,12 +20,27 @@ Confere, nos temas escuro e claro:
     8. caminho aponta pro Financeiro; não mostra rotinas de outros setores; "+ Rotina" cria no setor 'financeiro';
        a lista de responsável começa pelo Samuel;
     9. o hub do Financeiro tem o card "Tarefas recorrentes".
+  Fiscal (fiscal-regras.html, com regras sem rotina semeadas só aqui)
+   10. grupo em que todas as regras vieram da Análise fiscal (origem 'analise') sai "· da Análise fiscal"; o grupo
+       misturado (Análise + Nova tarefa) continua "· criada pela Nova tarefa".
 Termina com código 1 se alguma checagem falhar. Pré-requisito: pip install playwright e python -m playwright install chromium
 """
-import sys, pathlib
+import sys, json, pathlib
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from conferir import montar_site, servir, FOTOS
+
+# regras do Fiscal sem rotina (avulsas): duas só da Análise fiscal e um grupo misturado — semeadas por uma armadilha em
+# window.__mockDb, só no passo 10
+def R(i, titulo, cli, origem):
+    return {'id': 'tra%d' % i, 'modelo_id': None, 'setor': 'fiscal', 'titulo': titulo, 'cliente_id': cli, 'clientes': {'nome_principal': 'EMPRESA %d (TESTE)' % i},
+            'periodicidade': 'mensal', 'dia_vencimento': 20, 'mes_vencimento': None, 'dia_util': True, 'responsavel': 'Thalia', 'observacao': None, 'origem': origem, 'ativo': True}
+SEMEAR_ANALISE = """
+(() => { const REGRAS = %s; let db;
+  Object.defineProperty(window, '__mockDb', { configurable: true, get() { return db; }, set(v) { db = v; v.tarefas_recorrentes.push(...REGRAS); } });
+})();
+""" % json.dumps([R(1, 'DCTFWEB (TESTE ANÁLISE)', 'c1', 'analise'), R(2, 'DCTFWEB (TESTE ANÁLISE)', 'c2', 'analise'),
+                   R(3, 'GIA (TESTE MISTA)', 'c1', 'analise'), R(4, 'GIA (TESTE MISTA)', 'c2', 'manual')], ensure_ascii=False)
 
 falhas = 0
 def ok(cond, msg):
@@ -33,7 +48,7 @@ def ok(cond, msg):
     print(('  ✓ ' if cond else '  ✗ ') + msg)
     if not cond: falhas += 1
 
-def abrir(b, base, tema, pagina, erros, respostas=None):
+def abrir(b, base, tema, pagina, erros, respostas=None, semear=None):
     p = b.new_page(viewport={'width': 1400, 'height': 900})
     p.on('pageerror', lambda e: erros.append(f'{tema} {pagina}: {e}'))
     dialogos = []
@@ -43,6 +58,7 @@ def abrir(b, base, tema, pagina, erros, respostas=None):
         else: d.accept()
     p.on('dialog', trata)
     p.add_init_script(f"localStorage.setItem('mr_tema', '{tema}'); (() => {{ const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) {{ return String(k).startsWith('mr_tour_') ? 'ok' : g.call(this, k); }}; }})()")
+    if semear: p.add_init_script(semear)
     p.goto(base + pagina); p.wait_for_timeout(1500)
     return p, dialogos
 
@@ -122,6 +138,14 @@ def main():
             card = p.locator('a.dashboard-card[href="financeiro-regras.html"]')
             ok(card.count() == 1 and 'Tarefas recorrentes' in card.inner_text(), '9. card "Tarefas recorrentes" no hub do Financeiro')
             p.screenshot(path=str(FOTOS / f'hub-financeiro-{tema}.png'))
+            p.close()
+
+            print(f'[{tema}] Fiscal: regras da Análise fiscal')
+            p, _ = abrir(b, base, tema, 'fiscal-regras.html', erros, semear=SEMEAR_ANALISE)
+            item = lambda nome: (p.locator('.rv-item', has_text=nome).all_inner_texts() or [''])[0]
+            so, mista = item('DCTFWEB (TESTE ANÁLISE)'), item('GIA (TESTE MISTA)')
+            ok('da Análise fiscal' in so and 'Nova tarefa' not in so, f'10. grupo só da Análise: "· da Análise fiscal" ({so!r})')
+            ok('criada pela Nova tarefa' in mista and 'Análise' not in mista, f'10. grupo misturado: continua "· criada pela Nova tarefa" ({mista!r})')
             p.close()
         b.close()
     srv.shutdown()

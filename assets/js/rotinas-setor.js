@@ -6,8 +6,8 @@
 //
 // A rotina é só um nome (rotinas_modelo). Cada empresa vinculada (tarefas_recorrentes) tem a sua
 // periodicidade, data e responsável. As tarefas nascem sozinhas: gerar_tarefas_recorrentes() no banco,
-// pg_cron diário — vale pra qualquer setor. Recorrências criadas pela Nova tarefa ("Repetir") aparecem
-// como rotinas "avulsas", com a opção "transformar em rotina".
+// pg_cron diário — vale pra qualquer setor. Recorrências criadas pela Nova tarefa ("Repetir") ou pela Análise fiscal
+// ("Gerar tarefas recorrentes") aparecem como rotinas "avulsas", com a opção "transformar em rotina".
 // =====================================================================
 import { supabase, getCurrentUser, signOut } from './supabase.js';
 import { hojeLocal } from './utils.js';
@@ -150,13 +150,14 @@ export function initRotinasSetor(cfg) {
       const { data: vs } = await supabase.from('tarefas_recorrentes').select('*, clientes(nome_principal)').in('modelo_id', ids).eq('ativo', true);
       vinculos = vs || [];
     }
-    // regras do setor sem rotina (criadas pela Nova tarefa): agrupadas pelo título, como rotinas "avulsas"
+    // regras do setor sem rotina (criadas pela Nova tarefa ou pela Análise fiscal): agrupadas pelo título, como rotinas
+    // "avulsas"; o rótulo diz de onde vieram (origem 'analise' em todas = da Análise fiscal)
     const { data: soltas } = await supabase.from('tarefas_recorrentes').select('*, clientes(nome_principal)').eq('setor', SETOR).is('modelo_id', null).eq('ativo', true);
     const porTitulo = {};
     (soltas || []).forEach(v => { (porTitulo[v.titulo] = porTitulo[v.titulo] || []).push(v); });
     Object.entries(porTitulo).forEach(([titulo, vs]) => {
       const id = 'avulsa:' + titulo;
-      rotinas.push({ id, nome: titulo, avulsa: true });
+      rotinas.push({ id, nome: titulo, avulsa: true, daAnalise: vs.every(v => v.origem === 'analise') });
       vs.forEach(v => vinculos.push({ ...v, modelo_id: id }));
     });
     proximas = {};
@@ -172,7 +173,7 @@ export function initRotinasSetor(cfg) {
   function renderLista() {
     $('rvRotinas').innerHTML = rotinas.length ? rotinas.map(r => {
       const n = vinculos.filter(v => v.modelo_id === r.id).length;
-      return `<button class="rv-item ${r.id === sel ? 'on' : ''}" data-r="${esc(r.id)}"><span>${esc(r.nome)}${r.avulsa ? ' <span class="dim" style="font-size:11px">· criada pela Nova tarefa</span>' : ''}</span><span class="n">${n}</span></button>`;
+      return `<button class="rv-item ${r.id === sel ? 'on' : ''}" data-r="${esc(r.id)}"><span>${esc(r.nome)}${r.avulsa ? ` <span class="dim" style="font-size:11px">· ${r.daAnalise ? 'da Análise fiscal' : 'criada pela Nova tarefa'}</span>` : ''}</span><span class="n">${n}</span></button>`;
     }).join('') : '<div class="rv-vazio">Nenhuma rotina ainda.</div>';
     $('rvRotinas').querySelectorAll('[data-r]').forEach(b => b.addEventListener('click', () => { sel = b.dataset.r; marcados = new Set(); renderLista(); renderPainel(); }));
   }
