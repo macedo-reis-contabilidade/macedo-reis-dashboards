@@ -485,7 +485,12 @@
     document.getElementById('recClose').addEventListener('click', () => recOverlay.classList.remove('is-open'));
     document.getElementById('recCancelar').addEventListener('click', () => recOverlay.classList.remove('is-open'));
     recOverlay.addEventListener('click', e => { if (e.target === recOverlay) recOverlay.classList.remove('is-open'); });
-    document.getElementById('recSalvar').addEventListener('click', criarRecorrentes);
+    // o botão trava enquanto grava: o duplo clique gravava as regras em dobro (e cada uma punha a sua tarefa na agenda)
+    document.getElementById('recSalvar').addEventListener('click', async e => {
+      const btn = e.currentTarget; if (btn.disabled) return;
+      btn.disabled = true;
+      try { await criarRecorrentes(); } finally { btn.disabled = false; }
+    });
 
     async function criarRecorrentes() {
       const responsavel = recResp.value || null;
@@ -493,13 +498,14 @@
       if (incs.length === 0) { alert('Selecione ao menos uma obrigação.'); return; }
 
       const regras = [], semMes = [];
+      let semTitulo = 0;
       for (const chk of incs) {
         const i = chk.dataset.i;
         const titulo = recLista.querySelector(`.rec-titulo[data-i="${i}"]`).value.trim();
         const periodicidade = recLista.querySelector(`.rec-periodo[data-i="${i}"]`).value;
         const diaVal = recLista.querySelector(`.rec-dia[data-i="${i}"]`).value;
         const mesVal = recLista.querySelector(`.rec-mes[data-i="${i}"]`).value;
-        if (!titulo) continue;
+        if (!titulo) { semTitulo++; continue; }
         const comMes = COM_MES.includes(periodicidade);
         if (comMes && !mesVal) { semMes.push(`${titulo} (${periodicidade})`); continue; }
         regras.push({
@@ -510,8 +516,8 @@
         });
       }
       // sem o mês o gerador do banco nunca cria a tarefa da semestral nem da anual: não grava nada até completar
+      if (semTitulo) { alert((semTitulo === 1 ? 'Uma linha marcada está' : semTitulo + ' linhas marcadas estão') + ' sem o nome da tarefa. Escreva o nome ou desmarque. Nada foi gravado.'); return; }
       if (semMes.length) { alert('Escolha o mês de: ' + semMes.join(', ') + '. Nada foi gravado.'); return; }
-      if (!regras.length) { alert('Selecione ao menos uma obrigação.'); return; }
 
       const { error: e1 } = await supabase.from('tarefas_recorrentes').insert(regras);
       if (e1) { alert('Erro ao criar as regras: ' + e1.message); return; }

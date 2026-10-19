@@ -10,10 +10,12 @@ Uma análise de 4 obrigações (mensal, trimestral, semestral, anual). Confere:
      ("trimestral: cadastre em Obrigações fiscais, que aceita os meses certos"); a periodicidade só oferece mensal,
      semestral e anual; o campo Mês aparece só na semestral e na anual (e na mensal que vira anual);
   2. o Responsável é a lista da equipe, já em Thalia, com "sem responsável";
-  3. gravar com a anual sem mês avisa qual falta e não grava nada (nem chama o gerador);
-  4. com o mês: as 3 regras gravadas com mes_vencimento certo (mensal sem mês, semestral janeiro, anual março),
-     origem 'analise', setor fiscal e o responsável escolhido; nenhuma tarefa inserida pela tela; o gerador do banco
-     chamado uma vez, com p_hoje = hoje; o recado diz quantas regras e quantas tarefas;
+  3. gravar com a anual sem mês avisa qual falta e não grava nada (nem chama o gerador); linha marcada sem o nome
+     da tarefa, o mesmo;
+  4. com o mês, num duplo clique com o banco lento: as 3 regras gravadas uma vez só, com mes_vencimento certo
+     (mensal sem mês, semestral janeiro, anual março), origem 'analise', setor fiscal e o responsável escolhido;
+     nenhuma tarefa inserida pela tela; o gerador do banco chamado uma vez, com p_hoje = hoje; o recado diz quantas
+     regras e quantas tarefas;
 e nenhum erro de JavaScript. Fotos da janela em .harness/fotos/analise-recorrentes-<tema>.png.
 Termina com código 1 se alguma checagem falhar. Pré-requisito: pip install playwright e python -m playwright install chromium
 """
@@ -116,16 +118,22 @@ def main():
         ok(p.evaluate("() => window.__mockDb.tarefas_recorrentes.length") == regras_antes, '3. nenhuma regra gravada')
         ok(p.evaluate("() => window.__rpcs.length") == 0, '3. o gerador não foi chamado')
         ok(p.locator('#recOverlay.is-open').count() == 1, '3. a janela continua aberta')
+        p.fill('.rec-titulo[data-i="0"]', '  ')
+        p.click('#recSalvar'); p.wait_for_timeout(400)
+        ok('sem o nome da tarefa' in (dialogos[-1] if dialogos else '') and p.evaluate("() => window.__mockDb.tarefas_recorrentes.length") == regras_antes,
+           f'3. linha marcada sem nome: avisa e não grava nada ({dialogos[-1:]!r})')
+        p.fill('.rec-titulo[data-i="0"]', 'PGDAS-D (TESTE)')
 
         print('4. Gravar com o mês')
         p.select_option('.rec-mes[data-i="3"]', '3')
         p.select_option('#recResp', 'Adaini')
         dialogos.clear()
-        p.click('#recSalvar')
+        p.evaluate("() => { window.__mockDelay = 300; }")   # o banco lento: o segundo clique chega com a gravação no meio
+        p.dblclick('#recSalvar')
         p.wait_for_function("() => !document.querySelector('#recOverlay.is-open')", timeout=5000); p.wait_for_timeout(300)
         novas = p.evaluate("n => window.__mockDb.tarefas_recorrentes.slice(n)", regras_antes)
         por = {r['titulo']: r for r in novas}
-        ok(len(novas) == 3 and set(por) == {'PGDAS-D (TESTE)', 'RELATÓRIO SEMESTRAL (TESTE)', 'DEFIS (TESTE)'}, f'4. as 3 regras marcadas, sem a trimestral ({list(por)})')
+        ok(len(novas) == 3 and set(por) == {'PGDAS-D (TESTE)', 'RELATÓRIO SEMESTRAL (TESTE)', 'DEFIS (TESTE)'}, f'4. as 3 regras marcadas, uma vez só (duplo clique), sem a trimestral ({[r["titulo"] for r in novas]})')
         ok(por.get('PGDAS-D (TESTE)', {}).get('periodicidade') == 'mensal' and por.get('PGDAS-D (TESTE)', {}).get('mes_vencimento') is None
            and por.get('PGDAS-D (TESTE)', {}).get('dia_vencimento') == 20, '4. a mensal: dia 20, mes_vencimento vazio')
         ok(por.get('RELATÓRIO SEMESTRAL (TESTE)', {}).get('periodicidade') == 'semestral' and por.get('RELATÓRIO SEMESTRAL (TESTE)', {}).get('mes_vencimento') == 1,
