@@ -419,6 +419,26 @@ console.log('Resolver no cartão do vigia, a terceira leva:');
     dv.desfeitos === 3 && !vk('o3') && vk('o1').ativo === false && vk('o2').ativo === false && vk('o2').responsavel === null && vk('o4').ativo, JSON.stringify(dv));
 }
 {
+  // o dia do prazo (20/10/2026, o vincular da tela Obrigações fiscais): o novo nasce com ele; o religado troca pro
+  // escolhido e o desfazer devolve o de antes; sem passar o dia (o cartão do vigia), o religado fica com o que tinha
+  const db = { cliente_obrigacoes: [{ id: 'va', cliente_id: 'k9', obrigacao_id: 'oa', ativo: false, responsavel: 'Adaini', dia_prazo_override: 12 },
+    { id: 'vb', cliente_id: 'k9', obrigacao_id: 'ob', ativo: false, responsavel: null, dia_prazo_override: 8 },
+    { id: 'vd', cliente_id: 'k9', obrigacao_id: 'od', ativo: false, responsavel: null, dia_prazo_override: 9 }], tarefas: [] };
+  const sb = dubla(db);
+  const vk = o => db.cliente_obrigacoes.find(v => v.cliente_id === 'k9' && v.obrigacao_id === o);
+  const r1 = await vincularObrigacoes(sb, 'k9', ['oa', 'oc'], 'Thalia', { dia: 20 });
+  chk('vincular com o dia: o novo nasce com ele; o religado troca pro escolhido, com o responsável novo',
+    vk('oc').ativo && vk('oc').dia_prazo_override === 20 && vk('oa').ativo && vk('oa').dia_prazo_override === 20 && vk('oa').responsavel === 'Thalia', JSON.stringify(db.cliente_obrigacoes));
+  const r2 = await vincularObrigacoes(sb, 'k9', ['ob'], 'Thalia', { dia: null });
+  chk('o dia null: o religado volta pro dia da obrigação', vk('ob').ativo && vk('ob').dia_prazo_override === null);
+  const d = await desfazerVinculoObrigacoes(sb, 'k9', [...r1.feitos, ...r2.feitos]);
+  chk('desfazer: o novo sai; o religado volta desligado, com o responsável e o dia de antes', d.desfeitos === 3 && !vk('oc')
+    && vk('oa').ativo === false && vk('oa').responsavel === 'Adaini' && vk('oa').dia_prazo_override === 12 && vk('ob').ativo === false && vk('ob').dia_prazo_override === 8, JSON.stringify(db.cliente_obrigacoes));
+  const r3 = await vincularObrigacoes(sb, 'k9', ['od', 'oe'], 'Thalia', { dia: 40 });
+  chk('sem o dia (ou fora de 1 a 31): o religado fica com o dia que tinha e o novo nasce com o da obrigação',
+    vk('od').ativo && vk('od').dia_prazo_override === 9 && vk('oe').dia_prazo_override === null && !('dia_prazo_override' in r3.feitos.find(f => f.obrigacao_id === 'od').antes), JSON.stringify(r3));
+}
+{
   const db = { cobrancas_config: [{ id: 'cc2', cliente_id: 'c2', ativo: false, valor_base: 300, dia_vencimento: 5 }],
     precificacoes: [{ id: 'p1', cliente_id: 'c1', status: 'fechada', honorario: 450 }] };
   const sb = dubla(db);

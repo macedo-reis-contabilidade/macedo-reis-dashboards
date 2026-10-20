@@ -165,6 +165,10 @@
           <datalist id="respList"></datalist>
           <label for="vincDia">Dia do prazo (vazio = padrão da obrigação)</label>
           <input type="number" id="vincDia" class="input" min="1" max="31" placeholder="padrão" style="width:140px;">
+          <div id="vincTarefaWrap" style="display:none;gap:8px;align-items:flex-start;margin-top:14px;">
+            <input type="checkbox" id="vincTarefa" checked style="margin:2px 0 0;flex:none;width:16px;height:16px;">
+            <label for="vincTarefa" id="vincTarefaTxt" style="margin:0;font-size:13px;color:var(--text);cursor:pointer;"></label>
+          </div>
         </div>
       </div>
       <div class="fa-modal-foot">
@@ -311,6 +315,7 @@
   <script src="assets/js/tour.js"></script>
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { vincularObrigacoes, pessoaDaEquipe } from './assets/js/tarefas-acoes.js';
 
     const user = await getCurrentUser();
     if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; const av = document.getElementById('userAvatar'); if (av) av.textContent = (user.email || '?').charAt(0).toUpperCase(); }
@@ -553,7 +558,7 @@
     function etapaVinculo(n){
       document.getElementById('vincEtapa1').hidden = n === 2;
       document.getElementById('vincEtapa2').hidden = n !== 2;
-      document.getElementById('vincSalvar').hidden = n !== 2;
+      document.getElementById('vincSalvar').style.display = n === 2 ? '' : 'none';   // o "hidden" não vale com o display do .btn
       document.getElementById('vincVoltar').textContent = n === 2 ? 'Voltar' : 'Cancelar';
     }
 
@@ -577,6 +582,8 @@
         b.placeholder = 'Buscar obrigação…';
       }
       b.value = '';
+      document.getElementById('vincSalvar').textContent = 'Vincular';
+      document.getElementById('vincTarefaWrap').style.display = 'none';
       etapaVinculo(1);
       preencherRespList();
       vincOverlay.classList.add('is-open');
@@ -590,18 +597,21 @@
       const q = norm(document.getElementById('vincBusca').value.trim());
       const el = document.getElementById('vincLista');
       let html = '';
+      // o vínculo que já existe: ligado = "já vinculado"; desligado = escolher religa (20/10/2026 — antes aparecia "já
+      // vinculado" e o vínculo desligado não gerava tarefa: caso da Pizzaria Arsenal no DEISS)
+      const religar = '<span class="vm-extra" style="color:var(--warn);font-weight:600;">';
       if (vincCtx.modo === 'addCliente') {
         if (!clientesTodos) { el.textContent = 'Carregando…'; return; }
-        const ja = new Set(vinculos.filter(v => v.obrigacao_id === vincCtx.obrigacaoId).map(v => v.cliente_id));
+        const ja = new Map(vinculos.filter(v => v.obrigacao_id === vincCtx.obrigacaoId).map(v => [v.cliente_id, v]));
         html = clientesTodos.filter(c => !q || norm(c.nome_principal).includes(q)).map(c => {
-          const off = ja.has(c.id);
-          return `<div class="vm-item ${off ? 'off' : ''}" data-id="${off ? '' : c.id}">${escR(c.nome_principal)}<span class="vm-extra">${off ? 'já vinculado' : escR(c.tipo_pessoa)}</span></div>`;
+          const v = ja.get(c.id), off = !!(v && v.ativo);
+          return `<div class="vm-item ${off ? 'off' : ''}" data-id="${off ? '' : c.id}">${escR(c.nome_principal)}${off ? '<span class="vm-extra">já vinculado</span>' : v ? religar + 'desligado · religar</span>' : '<span class="vm-extra">' + escR(c.tipo_pessoa) + '</span>'}</div>`;
         }).join('');
       } else {
-        const ja = new Set(vinculos.filter(v => v.cliente_id === vincCtx.clienteId).map(v => v.obrigacao_id));
+        const ja = new Map(vinculos.filter(v => v.cliente_id === vincCtx.clienteId).map(v => [v.obrigacao_id, v]));
         html = regras.filter(r => r.ativo && (!q || norm(r.nome).includes(q))).map(r => {
-          const off = ja.has(r.id);
-          return `<div class="vm-item ${off ? 'off' : ''}" data-id="${off ? '' : r.id}">${escR(r.nome)}<span class="vm-extra">${off ? 'já vinculada' : PER_LBL[r.periodicidade] + ' · dia ' + r.dia_prazo}</span></div>`;
+          const v = ja.get(r.id), off = !!(v && v.ativo);
+          return `<div class="vm-item ${off ? 'off' : ''}" data-id="${off ? '' : r.id}">${escR(r.nome)}${off ? '<span class="vm-extra">já vinculada</span>' : v ? religar + 'desligada · religar</span>' : '<span class="vm-extra">' + PER_LBL[r.periodicidade] + ' · dia ' + r.dia_prazo + '</span>'}</div>`;
         }).join('');
       }
       el.innerHTML = html || '<p style="color:var(--text-muted);padding:8px;">Nada encontrado.</p>';
@@ -611,45 +621,107 @@
     function escolherVinculo(id, rotulo){
       if (!id) return;
       vincCtx.escolhidoId = id;
-      const r = vincCtx.modo === 'addCliente' ? regras.find(x => x.id === vincCtx.obrigacaoId) : regras.find(x => x.id === id);
-      document.getElementById('vincEscolha').innerHTML = '<b>' + escR(rotulo) + '</b>';   // o rótulo vem do textContent: já é o texto cru
-      document.getElementById('vincDia').value = '';
+      const clienteId = vincCtx.modo === 'addCliente' ? id : vincCtx.clienteId;
+      const obrigacaoId = vincCtx.modo === 'addCliente' ? vincCtx.obrigacaoId : id;
+      const r = regras.find(x => x.id === obrigacaoId);
+      // o vínculo desligado que vai ser religado: vem com o responsável e o dia que tinha
+      const antigo = vinculos.find(v => v.cliente_id === clienteId && v.obrigacao_id === obrigacaoId && !v.ativo) || null;
+      document.getElementById('vincEscolha').innerHTML = '<b>' + escR(rotulo) + '</b>'   // o rótulo vem do textContent: já é o texto cru
+        + (antigo ? ' <span style="color:var(--warn);font-weight:600;">· estava desligado: vai ser religado</span>' : '');
+      document.getElementById('vincDia').value = antigo && antigo.dia_prazo_override ? antigo.dia_prazo_override : '';
       document.getElementById('vincDia').placeholder = 'padrão: dia ' + (r ? r.dia_prazo : '');
-      document.getElementById('vincResp').innerHTML = opcoesResp('');
-      document.getElementById('vincResp').value = '';
+      const sel = document.getElementById('vincResp');
+      sel.innerHTML = opcoesResp(antigo && antigo.responsavel ? antigo.responsavel : '');
+      const doAntigo = antigo && antigo.responsavel ? [...sel.options].find(o => o.value && o.value.toLowerCase() === String(antigo.responsavel).trim().toLowerCase()) : null;
+      sel.value = doAntigo ? doAntigo.value : '';
+      document.getElementById('vincSalvar').textContent = antigo ? 'Religar' : 'Vincular';
       etapaVinculo(2);
+      prepararTarefaDoMes(r, clienteId);
     }
 
-    async function salvarVinculo(){
-      if (!vincCtx || !vincCtx.escolhidoId) return;
-      const clienteId = vincCtx.modo === 'addCliente' ? vincCtx.escolhidoId : vincCtx.clienteId;
-      const obrigacaoId = vincCtx.modo === 'addCliente' ? vincCtx.obrigacaoId : vincCtx.escolhidoId;
-      const r = regras.find(x => x.id === obrigacaoId);
+    // a tarefa do mês da tela (20/10/2026): vincular — ou religar — depois do "Gerar rotinas do mês" deixava o cliente
+    // sem a tarefa do mês, e ela não aparecia na agenda. Se a obrigação cai no mês escolhido e o cliente ainda não tem a
+    // tarefa dele, o vincular já cria (a caixa vem marcada; dá pra desmarcar)
+    async function prepararTarefaDoMes(r, clienteId){
+      const ctx = vincCtx;
+      ctx.ocorrencias = [];
+      document.getElementById('vincTarefaWrap').style.display = 'none';
+      const mv = document.getElementById('mesRef').value;
+      if (!r || !/^\d{4}-\d{2}$/.test(mv)) return;
+      const [ano, mes] = mv.split('-').map(Number);
+      const occ = ocorrenciasPara(ano, mes).filter(o => o.r.id === r.id);
+      if (!occ.length) return;
+      const { data, error } = await supabase.from('tarefas').select('competencia')
+        .eq('obrigacao_id', r.id).eq('cliente_id', clienteId).in('competencia', occ.map(o => o.anoOcc + '-' + pad(o.M)));
+      if (error || vincCtx !== ctx) return;
+      const tem = new Set((data || []).map(t => t.competencia));
+      ctx.ocorrencias = occ.filter(o => !tem.has(o.anoOcc + '-' + pad(o.M)));
+      ctx.regraTarefa = r; ctx.clienteTarefa = clienteId;
+      if (!ctx.ocorrencias.length) return;
+      document.getElementById('vincTarefa').checked = true;
+      textoTarefaDoMes();
+      document.getElementById('vincTarefaWrap').style.display = 'flex';
+    }
+    // "Criar já a tarefa de 10/2026 (competência 09/2026, prazo 06/10/2026 — já vencido)", com o dia que estiver no campo
+    function textoTarefaDoMes(){
+      const ctx = vincCtx;
+      if (!ctx || !(ctx.ocorrencias || []).length) return;
+      const r = ctx.regraTarefa, d = diaDoCampo(r);
+      const hoje = toYMD(new Date());
+      document.getElementById('vincTarefaTxt').textContent = 'Criar já a ' + ctx.ocorrencias.map(o => {
+        const t = tarefaDaObrigacao(r, { cliente_id: ctx.clienteTarefa, responsavel: null, dia_prazo_override: d }, o.anoOcc, o.M);
+        return 'tarefa de ' + pad(o.M) + '/' + o.anoOcc + ' (competência ' + t.competencia_fiscal + ', prazo ' + t.prazo.split('-').reverse().join('/') + (t.prazo < hoje ? ' — já vencido' : '') + ')';
+      }).join(' e a ') + ', pra ela ir pra agenda';
+    }
+    document.getElementById('vincDia').addEventListener('input', textoTarefaDoMes);
+    // o dia do campo, quando é diferente do da obrigação (o vínculo guarda só a exceção)
+    function diaDoCampo(r){
       const dia = parseInt(document.getElementById('vincDia').value, 10);
+      return (dia >= 1 && dia <= 31 && r && dia !== r.dia_prazo) ? dia : null;
+    }
+
+    let salvandoVinc = false;
+    async function salvarVinculo(){
+      if (!vincCtx || !vincCtx.escolhidoId || salvandoVinc) return;
+      const ctx = vincCtx;
+      const clienteId = ctx.modo === 'addCliente' ? ctx.escolhidoId : ctx.clienteId;
+      const obrigacaoId = ctx.modo === 'addCliente' ? ctx.obrigacaoId : ctx.escolhidoId;
+      const r = regras.find(x => x.id === obrigacaoId);
       const resp = document.getElementById('vincResp').value.trim();
       if (!resp) { alert('Escolha o responsável — sem ele, as tarefas desta obrigação não aparecem na agenda de ninguém.'); document.getElementById('vincResp').focus(); return; }
-      const linha = {
-        cliente_id: clienteId, obrigacao_id: obrigacaoId,
-        responsavel: resp,
-        dia_prazo_override: (dia >= 1 && dia <= 31 && r && dia !== r.dia_prazo) ? dia : null,
-        ativo: true
-      };
+      const dia = diaDoCampo(r);
+      const criarTarefa = (ctx.ocorrencias || []).length > 0 && document.getElementById('vincTarefa').checked;
       const btn = document.getElementById('vincSalvar');
-      btn.disabled = true;
-      const { data, error } = await supabase.from('cliente_obrigacoes').insert(linha).select('id').single();
-      btn.disabled = false;
-      if (error) {
-        alert(error.code === '23505' ? 'Esse cliente já está vinculado a essa obrigação.' : 'Erro: ' + error.message);
-        return;
+      btn.disabled = true; salvandoVinc = true;
+      // a regra do vincular (assets/js/tarefas-acoes.js, a mesma do vigia e da ficha da empresa): o vínculo novo entra; o
+      // desligado volta a ligar, com o responsável e o dia escolhidos; o que já está ligado fica como está
+      const res = await vincularObrigacoes(supabase, clienteId, [obrigacaoId], resp, { dia });
+      if (res.erro || !res.feitos.length) {
+        btn.disabled = false; salvandoVinc = false;
+        if (res.erro) { alert('Erro: ' + res.erro); return; }
+        // já estava ligado (outra pessoa vinculou ou religou com esta tela aberta): a tela lê de novo
+        alert('Esse cliente já está vinculado a essa obrigação, e o vínculo está ligado.');
+        fecharVinculo(); await carregar(); return;
       }
-      let nomeCliente = vinculos.find(v => v.cliente_id === clienteId)?.clientes?.nome_principal
+      const f = res.feitos[0];
+      const nomeCliente = vinculos.find(v => v.cliente_id === clienteId)?.clientes?.nome_principal
         || clientesTodos?.find(c => c.id === clienteId)?.nome_principal || '';
-      vinculos.push({ id: data.id, cliente_id: clienteId, obrigacao_id: obrigacaoId,
-        responsavel: linha.responsavel, dia_prazo_override: linha.dia_prazo_override,
-        ativo: true, clientes: { nome_principal: nomeCliente } });
+      const atual = { responsavel: pessoaDaEquipe(resp) || resp, dia_prazo_override: dia, ativo: true };
+      let v = vinculos.find(x => x.id === f.id);
+      if (v) Object.assign(v, atual);
+      else { v = { id: f.id, cliente_id: clienteId, obrigacao_id: obrigacaoId, ...atual, clientes: { nome_principal: nomeCliente } }; vinculos.push(v); }
+      let erroTarefa = null;
+      if (criarTarefa && r) {
+        const { data, error } = await supabase.from('tarefas').insert(ctx.ocorrencias.map(o => tarefaDaObrigacao(r, v, o.anoOcc, o.M))).select('obrigacao_id, cliente_id, competencia');
+        if (error) erroTarefa = error.message;
+        else (data || []).filter(t => t.competencia === document.getElementById('mesRef').value).forEach(t => { statusMes[t.obrigacao_id + '|' + t.cliente_id] = 'pendente'; });
+      }
+      btn.disabled = false; salvandoVinc = false;
       fecharVinculo();
       atualizarContadores();
       render();
+      atualizarGeradas();
+      if (erroTarefa) alert('O vínculo foi gravado, mas a tarefa do mês não: ' + erroTarefa + ' — gere pelo "Gerar rotinas do mês".');
     }
 
     // ===================== GUIAS NO DRIVE =====================
@@ -838,17 +910,9 @@
       if (!/^\d{4}-\d{2}$/.test(comp)) { alert('Escolha o mês na tela.'); return; }
       const [ano, mes] = comp.split('-').map(Number);
       const r = guiaCtx.r, v = guiaCtx.v;
-      const dia = Math.min(v.dia_prazo_override || r.dia_prazo, ultimoDia(ano, mes));
-      const prazoD = proximoUtil(new Date(ano, mes - 1, dia));
       const btn = document.getElementById('utCriar');
       btn.disabled = true;
-      const { data, error } = await supabase.from('tarefas').insert({
-        setor: 'fiscal', titulo: r.nome, cliente_id: v.cliente_id,
-        responsavel: v.responsavel || null, prazo: toYMD(prazoD),
-        status: 'pendente', prioridade: 'media', origem: 'recorrente',
-        obrigacao_id: r.id, competencia: comp, competencia_fiscal: compFiscal(r, ano, mes),
-        descricao: 'Competência ' + compFiscal(r, ano, mes) + ' · Gerada pelo módulo Obrigações'
-      }).select('*').single();
+      const { data, error } = await supabase.from('tarefas').insert(tarefaDaObrigacao(r, v, ano, mes)).select('*').single();
       btn.disabled = false;
       if (error) { alert('Erro: ' + error.message); return; }
       utTarefa = data;
@@ -1199,6 +1263,21 @@
       return pad(m) + '/' + a;
     }
 
+    // a tarefa da obrigação de um vínculo no mês M de anoOcc: uma só montagem pro "Gerar rotinas do mês", o "Gerar a
+    // deste mês" e o vincular (20/10/2026)
+    function tarefaDaObrigacao(r, v, anoOcc, M){
+      const dia = Math.min(v.dia_prazo_override || r.dia_prazo, ultimoDia(anoOcc, M));
+      const prazoD = proximoUtil(new Date(anoOcc, M - 1, dia));
+      const cf = compFiscal(r, anoOcc, M);
+      return {
+        setor: 'fiscal', titulo: r.nome, cliente_id: v.cliente_id,
+        responsavel: v.responsavel || null, prazo: toYMD(prazoD),
+        status: 'pendente', prioridade: 'media', origem: 'recorrente',
+        obrigacao_id: r.id, competencia: anoOcc + '-' + pad(M), competencia_fiscal: cf,
+        descricao: 'Competência ' + cf + ' · Gerada pelo módulo Obrigações'
+      };
+    }
+
     async function montarPlano(){
       const mv = document.getElementById('mesRef').value;
       if (!mv) { alert('Escolha o mês.'); return; }
@@ -1231,15 +1310,7 @@
         let criar = 0, pular = 0;
         for (const v of vs) {
           if (jaTem.has(r.id + '|' + v.cliente_id + '|' + chaveComp)) { pular++; continue; }
-          const dia = Math.min(v.dia_prazo_override || r.dia_prazo, ultimoDia(anoOcc, M));
-          const prazoD = proximoUtil(new Date(anoOcc, M - 1, dia));
-          novas.push({
-            setor: 'fiscal', titulo: r.nome, cliente_id: v.cliente_id,
-            responsavel: v.responsavel || null, prazo: toYMD(prazoD),
-            status: 'pendente', prioridade: 'media', origem: 'recorrente',
-            obrigacao_id: r.id, competencia: chaveComp, competencia_fiscal: compFiscal(r, anoOcc, M),
-            descricao: 'Competência ' + compFiscal(r, anoOcc, M) + ' · Gerada pelo módulo Obrigações'
-          });
+          novas.push(tarefaDaObrigacao(r, v, anoOcc, M));
           criar++;
         }
         if (vs.length) resumo.push({ nome: r.nome, criar, pular });

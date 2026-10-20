@@ -684,29 +684,37 @@ export async function obrigacoesParaVincular(sb, clienteId) {
 }
 // vincula as escolhidas, como o "Vincular" da tela Obrigações fiscais (com quem cuida; o dia do prazo, o da obrigação); a
 // que já teve vínculo e foi desligada volta a valer (como a chave da tela). As tarefas saem na geração do mês, na tela
+// (ou, na tela Obrigações fiscais, já no vincular: a do mês escolhido). Desde 20/10/2026 é a regra do vincular nas três
+// telas — o cartão do vigia, Obrigações fiscais e a ficha da empresa —: antes, o vínculo desligado aparecia na tela como
+// "já vinculado" (caso da Pizzaria Arsenal), e na ficha a escolha dele derrubava o lote inteiro (a chave única).
+// dia: o dia do prazo do vínculo (1 a 31; null = o da obrigação) — sem passar, o novo nasce com o da obrigação e o
+// religado fica com o que tinha
 // → { feitos: [{ id, obrigacao_id, novo, antes }], jaTinha: [obrigacao_id], erro }
-export async function vincularObrigacoes(sb, clienteId, obrigacaoIds, responsavel) {
+export async function vincularObrigacoes(sb, clienteId, obrigacaoIds, responsavel, { dia } = {}) {
   const para = pessoaDaEquipe(responsavel);
   const res = { feitos: [], jaTinha: [], erro: null };
   if (!para || para === 'Ambos') return { ...res, erro: 'Escolha quem vai cuidar.' };
   const ids = unicos(obrigacaoIds);
   if (!clienteId || !ids.length) return { ...res, erro: 'Marque pelo menos uma obrigação.' };
-  const { data: ex, error } = await sb.from('cliente_obrigacoes').select('id, obrigacao_id, ativo, responsavel').eq('cliente_id', clienteId).in('obrigacao_id', ids);
+  const comDia = dia === null || (Number.isInteger(dia) && dia >= 1 && dia <= 31);
+  const { data: ex, error } = await sb.from('cliente_obrigacoes').select('id, obrigacao_id, ativo, responsavel, dia_prazo_override').eq('cliente_id', clienteId).in('obrigacao_id', ids);
   if (error) return { ...res, erro: msg(error) };
   const porObr = new Map((ex || []).map(v => [String(v.obrigacao_id), v]));
   const novos = ids.filter(o => !porObr.has(o));
   ids.filter(o => porObr.has(o) && porObr.get(o).ativo).forEach(o => res.jaTinha.push(o));
   if (novos.length) {
     const { data: ins, error: e2 } = await sb.from('cliente_obrigacoes')
-      .insert(novos.map(o => ({ cliente_id: clienteId, obrigacao_id: o, responsavel: para, dia_prazo_override: null, ativo: true }))).select('id, obrigacao_id');
+      .insert(novos.map(o => ({ cliente_id: clienteId, obrigacao_id: o, responsavel: para, dia_prazo_override: comDia ? dia : null, ativo: true }))).select('id, obrigacao_id');
     if (e2) return { ...res, erro: msg(e2) };
     (ins || []).forEach(v => res.feitos.push({ id: String(v.id), obrigacao_id: String(v.obrigacao_id), novo: true, antes: null }));
   }
   for (const o of ids.filter(x => porObr.has(x) && !porObr.get(x).ativo)) {
     const v = porObr.get(o);
-    const { data, error: e3 } = await sb.from('cliente_obrigacoes').update({ ativo: true, responsavel: para }).eq('id', v.id).eq('ativo', false).select('id');
+    const { data, error: e3 } = await sb.from('cliente_obrigacoes').update({ ativo: true, responsavel: para, ...(comDia ? { dia_prazo_override: dia } : {}) })
+      .eq('id', v.id).eq('ativo', false).select('id');
     if (e3) return { ...res, erro: msg(e3) };
-    if ((data || []).length) res.feitos.push({ id: String(v.id), obrigacao_id: o, novo: false, antes: { responsavel: v.responsavel ?? null } });
+    if ((data || []).length) res.feitos.push({ id: String(v.id), obrigacao_id: o, novo: false,
+      antes: { responsavel: v.responsavel ?? null, ...(comDia ? { dia_prazo_override: v.dia_prazo_override ?? null } : {}) } });
   }
   return res;
 }
@@ -733,7 +741,9 @@ export async function desfazerVinculoObrigacoes(sb, clienteId, feitos) {
     }
   }
   for (const f of religados) {
-    const { data, error } = await sb.from('cliente_obrigacoes').update({ ativo: false, responsavel: f.antes ? f.antes.responsavel ?? null : null }).eq('id', f.id).eq('ativo', true).select('id');
+    const volta = { ativo: false, responsavel: f.antes ? f.antes.responsavel ?? null : null };
+    if (f.antes && 'dia_prazo_override' in f.antes) volta.dia_prazo_override = f.antes.dia_prazo_override ?? null;
+    const { data, error } = await sb.from('cliente_obrigacoes').update(volta).eq('id', f.id).eq('ativo', true).select('id');
     if (error) return { desfeitos, erro: msg(error) };
     desfeitos += (data || []).length;
   }

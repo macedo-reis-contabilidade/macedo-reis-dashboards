@@ -715,6 +715,7 @@
 
   <script type="module">
     import { supabase, getCurrentUser, signOut } from '../assets/js/supabase.js';
+    import { vincularObrigacoes } from '../assets/js/tarefas-acoes.js';
     import {
       bindMask, maskCNPJ, maskCPF, maskTelefone, maskCEP,
       formatCNPJ, formatCPF, formatDocumento, formatTelefone,
@@ -2065,6 +2066,9 @@
       ]);
       if (!regras || !regras.length) { alert('Não há obrigações cadastradas em Fiscal → Obrigações.'); return; }
       const jaTem = new Set((vincs || []).filter(v => v.cliente_id === clienteId && v.ativo).map(v => v.obrigacao_id));
+      // as desligadas deste cliente aparecem na lista sem marcar: escolhida, a obrigação volta a ligar (20/10/2026 —
+      // antes, escolher uma delas derrubava o vincular inteiro pela chave única)
+      const desligadas = new Set((vincs || []).filter(v => v.cliente_id === clienteId && !v.ativo).map(v => v.obrigacao_id));
       const doRegime = (vincs || []).filter(v => v.ativo && normVo(v.clientes?.regime_tributario) === normVo(regime));
       const baseClientes = new Set(doRegime.map(v => v.cliente_id)).size || 1;
       const freq = {};
@@ -2075,7 +2079,7 @@
           const n = (freq[r.id] || new Set()).size;
           const ehDeiss = /^DEISS - /i.test(r.nome);
           const cidadeRegra = ehDeiss ? r.nome.replace(/^DEISS - /i, '') : null;
-          const marcada = ehDeiss ? (cidade && normVo(cidadeRegra) === normVo(cidade)) : (n / baseClientes >= 0.6);
+          const marcada = !desligadas.has(r.id) && (ehDeiss ? (cidade && normVo(cidadeRegra) === normVo(cidade)) : (n / baseClientes >= 0.6));
           return { r, n, marcada };
         })
         .sort((a, b) => b.n - a.n || a.r.nome.localeCompare(b.r.nome));
@@ -2085,7 +2089,7 @@
       document.getElementById('voLista').innerHTML = aplicaveis.map(a => `
         <label class="vo-item">
           <input type="checkbox" data-oid="${a.r.id}" ${a.marcada ? 'checked' : ''}>
-          <span>${escH(a.r.nome)}</span>
+          <span>${escH(a.r.nome)}${desligadas.has(a.r.id) ? ' <small style="color:var(--warning);font-weight:600;">· desligada, marque pra religar</small>' : ''}</span>
           <span class="vv-dia">dia ${a.r.dia_prazo}</span>
           <span class="vv-freq">${a.n ? a.n + ' cliente(s) do regime usam' : 'nenhum ainda'}</span>
         </label>`).join('') || '';
@@ -2106,10 +2110,13 @@
       const resp = document.getElementById('voResp').value.trim();
       if (!resp) { msg.textContent = 'Escolha o responsável — sem ele, as tarefas destas obrigações não aparecem na agenda de ninguém.'; msg.style.color = 'var(--warning)'; document.getElementById('voResp').focus(); return; }
       const btn = document.getElementById('voVincular'); btn.disabled = true; btn.textContent = 'Vinculando…';
-      const { error } = await supabase.from('cliente_obrigacoes').insert(marcadas.map(oid => ({ cliente_id: clienteId, obrigacao_id: oid, responsavel: resp, ativo: true })));
+      // a regra do vincular (assets/js/tarefas-acoes.js, a mesma de Obrigações fiscais e do vigia): a nova entra, a
+      // desligada volta a ligar, a que já está ligada fica como está
+      const r = await vincularObrigacoes(supabase, clienteId, marcadas, resp);
       btn.disabled = false; btn.textContent = 'Vincular selecionadas';
-      if (error) { msg.textContent = 'Erro ao vincular: ' + error.message; msg.style.color = 'var(--danger)'; return; }
-      msg.textContent = '✓ ' + marcadas.length + ' obrigação(ões) vinculada(s).'; msg.style.color = 'var(--success)';
+      if (r.erro) { msg.textContent = 'Erro ao vincular: ' + r.erro; msg.style.color = 'var(--danger)'; return; }
+      const religadas = r.feitos.filter(f => !f.novo).length;
+      msg.textContent = '✓ ' + r.feitos.length + ' obrigação(ões) vinculada(s)' + (religadas ? ', ' + religadas + ' delas religada(s)' : '') + '.'; msg.style.color = 'var(--success)';
       setTimeout(() => document.getElementById('voOverlay').classList.remove('is-open'), 1400);
     });
 
