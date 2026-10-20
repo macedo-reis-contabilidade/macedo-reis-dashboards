@@ -35,7 +35,7 @@ chk('o prompt: as notícias (triadas, a principal do grupo, a leitura da IA a co
   /as que valem são as triadas \(situacao = triada\)/.test(INSTRUCOES) && /consultar noticias com clientes contem o id dela/.test(INSTRUCOES) && /são a leitura da IA do feed/.test(INSTRUCOES)
   && /as revisões de honorário são só dos sócios/.test(INSTRUCOES));
 chk('o dicionário do prompt lista as tabelas e não tem credenciais', Object.keys(TABELAS).every(t => dicionario().includes('## ' + t + ' ')) && !/credenciais/.test(dicionario()));
-chk('as definições: as seis de ler e as sete propostas, consultar só com as tabelas da lista', DEFINICOES.map(d => d.name).join() === 'buscar_empresa,ver_empresa,agenda,consultar,perguntar_reforma,buscar_arquivos,propor_concluir_tarefas,propor_alterar_tarefas,propor_marcar_pago,propor_criar_tarefa,propor_enviar_mensagem,propor_revisao_atrasadas,propor_ver_vigia'
+chk('as definições: as seis de ler e as oito propostas, consultar só com as tabelas da lista', DEFINICOES.map(d => d.name).join() === 'buscar_empresa,ver_empresa,agenda,consultar,perguntar_reforma,buscar_arquivos,propor_concluir_tarefas,propor_alterar_tarefas,propor_registrar_historico,propor_marcar_pago,propor_criar_tarefa,propor_enviar_mensagem,propor_revisao_atrasadas,propor_ver_vigia'
   && JSON.stringify(DEFINICOES.find(d => d.name === 'consultar').input_schema.properties.tabela.enum) === JSON.stringify(Object.keys(TABELAS)));
 chk('o prompt: a Reforma sozinha na rodada (a resposta dela vai direto, com as fontes); a tela pelo nome e a situação por extenso',
   /Chame sozinha na rodada/.test(INSTRUCOES) && /mantenha as fontes dele entre colchetes/.test(INSTRUCOES) && /não financeiro-boletos\.html/.test(INSTRUCOES) && /não em_transicao/.test(INSTRUCOES)
@@ -366,6 +366,39 @@ console.log('As propostas (nada muda aqui: a tela mostra e a pessoa confirma):')
   const fs = nova();
   await fs.propor_alterar_tarefas({ titulo: 'EFD', pessoa: 'Thalia', nova_prioridade: 'baixa' });
   chk('uma proposta por pergunta também aqui', /Já há uma proposta nesta pergunta/.test(await fs.propor_concluir_tarefas({ titulo: 'EFD' })) && propostas.length === 5);
+  const r6 = await nova().propor_alterar_tarefas({ titulo: 'Faturar: 2 EMISSÕES', novo_prazo: '2026-10-16', mensagem: '  Cliente pediu\n prazo.  ' });
+  chk('remarcar com a mensagem no histórico (20/10/2026): vai na proposta, numa linha, e a resposta diz', propostas.length === 6
+    && JSON.stringify(propostas[5]) === JSON.stringify({ tipo: 'alterar_tarefas', ids: [U(1)], mudar: { prazo: '2026-10-16' }, mensagem: 'Cliente pediu prazo.' }) && /Com a mensagem no histórico de cada uma .*“Cliente pediu prazo\.”/.test(r6), r6);
+}
+{
+  // a mensagem no histórico (20/10/2026, pedido da Thalia): junto da conclusão, ou sozinha (o "Registrar andamento" da Agenda)
+  const U = n => '7d000000-0000-4000-8000-' + String(n).padStart(12, '0');
+  const tarefas = [
+    { id: U(1), cliente_id: ID_A, setor: 'fiscal', titulo: 'PGDAS', responsavel: 'Thalia', prazo: '2026-10-01', status: 'pendente' },
+    { id: U(2), cliente_id: ID_B, setor: 'fiscal', titulo: 'PGDAS', responsavel: 'Thalia', prazo: '2026-10-01', status: 'pendente' },
+    { id: U(3), cliente_id: ID_A, setor: 'fiscal', titulo: 'PGDAS', responsavel: 'Thalia', prazo: '2026-09-01', status: 'concluida' }];
+  const propostas = [];
+  const nova = () => criarFerramentas({ banco: bancoFalso({ tarefas }).banco, hoje: '2026-10-20', usuario: { email: 'fiscal@macedoereis.com.br', nome: 'Thalia' }, aoPropor: a => propostas.push(a) });
+  const c = await nova().propor_concluir_tarefas({ empresa: ID_A, titulo: 'PGDAS', mensagem: 'DAS enviado por WhatsApp.' });
+  chk('concluir com a mensagem: vai na proposta; a resposta diz que vai no histórico (e que nada foi concluído)', propostas.length === 1
+    && JSON.stringify(propostas[0]) === JSON.stringify({ tipo: 'concluir_tarefas', ids: [U(1)], mensagem: 'DAS enviado por WhatsApp.' })
+    && /“DAS enviado por WhatsApp\.”/.test(c) && /com a mensagem no histórico \(não diga que já foi\)/.test(c) && /Nada foi concluído ainda/.test(c), c);
+  await nova().propor_concluir_tarefas({ empresa: ID_A, titulo: 'PGDAS', mensagem: '   ' });
+  chk('mensagem em branco: a proposta vai sem ela', propostas.length === 2 && !('mensagem' in propostas[1]), JSON.stringify(propostas[1]));
+  const r = await nova().propor_registrar_historico({ titulo: 'pgdas', atrasadas: true, mensagem: ' Aguardando o\nfaturamento ' });
+  chk('registrar: as abertas que batem, com a mensagem numa linha; diz que nenhuma tarefa muda', propostas.length === 3
+    && JSON.stringify(propostas[2]) === JSON.stringify({ tipo: 'registrar_historico', ids: [U(1), U(2)], mensagem: 'Aguardando o faturamento' })
+    && /botão "Registrar"/.test(r) && /nenhuma tarefa muda/.test(r) && /A mensagem: “Aguardando o faturamento”/.test(r) && /LOJA DA ESQUINA LTDA · prazo 01\/10\/2026 · Thalia/.test(r), r);
+  chk('registrar sem a mensagem, sem dizer quais ou sem tarefa aberta: não propõe', /Diga a mensagem/.test(await nova().propor_registrar_historico({ titulo: 'PGDAS' }))
+    && /Diga quais tarefas/.test(await nova().propor_registrar_historico({ mensagem: 'x' })) && /Nenhuma tarefa aberta/.test(await nova().propor_registrar_historico({ titulo: 'GIA', mensagem: 'x' }))
+    && propostas.length === 3);
+  const fs = nova();
+  await fs.propor_registrar_historico({ ids: [U(2)], mensagem: 'Cliente não mandou as notas.' });
+  chk('uma proposta por pergunta', /Já há uma proposta nesta pergunta/.test(await fs.propor_concluir_tarefas({ ids: [U(2)] })) && propostas.length === 4);
+  chk('a etapa e o prompt: junto da conclusão ou da mudança, a mensagem; sem mudar nada, o registrar; anotar uma tarefa nova é criar',
+    descreverEtapa('propor_registrar_historico') === 'Preparando a mensagem pro histórico'
+    && /junto da conclusão ou da mudança, vai em mensagem, na mesma proposta; sem concluir nem mudar nada, propor_registrar_historico/.test(INSTRUCOES)
+    && /só com o que ela disse — sem inventar detalhe/.test(INSTRUCOES) && /Pediram pra criar uma tarefa nova \(anotar ou lembrar de fazer algo\): propor_criar_tarefa/.test(INSTRUCOES));
 }
 console.log('O vigia (o que o banco achou de desencontrado ou parado):');
 {

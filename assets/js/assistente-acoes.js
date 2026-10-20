@@ -23,6 +23,10 @@
 // O cartão da mensagem (19/10/2026): a IA escreve, em nome de quem pede, a mensagem pra alguém da equipe ou um grupo do
 // chat (com o link do Drive dos arquivos que buscou); a pessoa confere, edita e envia — pela regra do chat
 // (assets/js/chat-equipe.js) —, abre a conversa e tem o "Desfazer" (apaga a mensagem) por 10 minutos.
+// A mensagem no histórico (20/10/2026, pedido da Thalia): ao concluir ou mudar tarefas — no cartão e na revisão das
+// atrasadas —, o "✎ Mensagem no histórico" abre o campo, e o que a pessoa escrever vai no fim da linha do histórico de cada
+// uma (com o que ela pediu pra anotar, a IA já manda preenchido). E o cartão de só registrar (o "Registrar andamento" da
+// Agenda): a mensagem no histórico, sem concluir nem mudar a tarefa, com o "Desfazer" que tira as linhas.
 // Testes de tela: tests/harness/assistente-acoes.py, tests/harness/assistente-vigia.py e tests/harness/assistente-mensagem.py.
 // ============================================================
 
@@ -32,7 +36,8 @@ import { concluirTarefas, desfazerConclusao, marcarPagos, desfazerPagos, criarTa
   pessoaDaEquipe, definirResponsavelObrigacoes, desfazerResponsavelObrigacoes, definirResponsavelRotina, desfazerResponsavelRotina,
   descartarProposta, desfazerDescarte, avancarBoletos, voltarBoletos, fecharFicha, reabrirFicha, vincularEmpresa, desvincularEmpresa, buscarEmpresas,
   renovarAlvara, desfazerRenovacao, desativarRegistro, reativarRegistro, obrigacoesParaVincular, vincularObrigacoes, desfazerVinculoObrigacoes,
-  dadosDaCobranca, porNaCobranca, desfazerCobranca, acertarCadastro, desfazerCadastro } from './tarefas-acoes.js';
+  dadosDaCobranca, porNaCobranca, desfazerCobranca, acertarCadastro, desfazerCadastro,
+  registrarNoHistorico, desfazerRegistro, limparMensagem, MAX_MENSAGEM } from './tarefas-acoes.js';
 import { EQUIPE, SOCIOS, nomePorEmail } from './equipe.js';
 import { SETORES } from './nova-tarefa.js';
 import { lerAchados, ignorarAchado, reabrirAchado, filtrarAchados, agruparAchados, linkSeguro, ehSocioPeloNome, marcarVisto,
@@ -124,13 +129,32 @@ const itemTarefa = (t, nomes) => ({ id: String(t.id), titulo: t.titulo || 'Sem t
   sub: [t.cliente_id ? nomes.get(String(t.cliente_id)) || 'empresa' : '', 'prazo ' + dataBR(t.prazo), t.responsavel || 'sem responsável'].filter(Boolean).join(' · ') });
 const resumoConcluidas = r => (r.concluidas || []).map(c => ({ id: c.id, status_antes: c.status_antes, faturavel: !!c.faturavel }));
 
+// ---------- a mensagem no histórico (20/10/2026, pedido da Thalia) ----------
+// O link "✎ Mensagem no histórico" abre o campo; com a mensagem que a IA preparou (o que a pessoa pediu pra anotar), ele já
+// vem aberto e preenchido. O que estiver escrito vai no fim da linha do histórico de cada tarefa (tarefas-acoes.js).
+// aoMudar(texto): a pessoa editou (o cartão guarda, pra voltar igual depois de recarregar)
+const textoDaAcao = v => (typeof v === 'string' ? limparMensagem(v) : '');
+const trecho = (s, n = 200) => { const a = [...String(s || '')]; return a.length > n ? a.slice(0, n - 1).join('') + '…' : a.join(''); };
+function campoMensagem({ valor = '', rotulo = 'Mensagem no histórico (opcional)', aberto = false, aoMudar = null } = {}) {
+  const caixa = h('textarea', { rows: '2', maxlength: String(MAX_MENSAGEM) });
+  caixa.value = textoDaAcao(valor);
+  if (aoMudar) caixa.addEventListener('change', () => { try { aoMudar(limparMensagem(caixa.value)); } catch (e) { /* sem onde guardar */ } });
+  const campo = h('div', { class: 'as-cartao-campos' }, h('label', { class: 'as-cartao-campo largo' }, rotulo, caixa));
+  const el = h('div', {});
+  const abrir = () => { el.replaceChildren(campo); caixa.focus({ preventScroll: true }); };
+  el.append(aberto || caixa.value ? campo : botao('✎ Mensagem no histórico', abrir, 'link'));
+  return { el, caixa, valor: () => limparMensagem(caixa.value), travar: v => { caixa.disabled = !!v; } };
+}
+// depois de gravar: a mensagem que foi pro histórico, embaixo do que o cartão fez
+const linhaDaMensagem = m => (m ? sub('No histórico: “' + trecho(m) + '”') : null);
+
 // ============================================================
 // cartaoDaAcao(acao, ajuda) → Element | null
 //   ajuda: { salvar(acao), anunciar(texto), reagir(), email, nome } — salvar guarda o estado do cartão na conversa
 // ============================================================
 export function cartaoDaAcao(acao, ajuda = {}) {
-  const fazer = { concluir_tarefas: cartaoConcluir, alterar_tarefas: cartaoAlterar, marcar_pago: cartaoPago, criar_tarefa: cartaoCriar, revisar_atrasadas: cartaoRevisao, vigia: cartaoVigia,
-    arquivos: cartaoArquivos, enviar_mensagem: cartaoMensagem }[acao && acao.tipo];
+  const fazer = { concluir_tarefas: cartaoConcluir, alterar_tarefas: cartaoAlterar, registrar_historico: cartaoRegistrar, marcar_pago: cartaoPago, criar_tarefa: cartaoCriar,
+    revisar_atrasadas: cartaoRevisao, vigia: cartaoVigia, arquivos: cartaoArquivos, enviar_mensagem: cartaoMensagem }[acao && acao.tipo];
   if (!fazer) return null;
   const raiz = h('div', { class: 'as-cartao', role: 'group' });
   const estado = { ...acao };
@@ -144,6 +168,7 @@ export function cartaoDaAcao(acao, ajuda = {}) {
 function cartaoConcluir({ raiz, estado, salvar, ajuda, anunciar }) {
   raiz.setAttribute('aria-label', 'Concluir tarefas');
   const ids = idsDe(estado.ids).slice(0, 300);
+  const msg = campoMensagem({ valor: estado.mensagem, aoMudar: m => salvar({ mensagem: m }) });
   async function desenhar() {
     if (estado.estado === 'feita') return desenharFeita();
     if (estado.estado === 'cancelada') return trocar(raiz, sub('Deixei como estava.'));
@@ -164,15 +189,16 @@ function cartaoConcluir({ raiz, estado, salvar, ajuda, anunciar }) {
     const lista = listaComCaixas(tarefas.map(t => itemTarefa(t, nomes)), { aoMudar: () => atualizar() });
     atualizar();
     const faltam = ids.length - tarefas.length;
-    trocar(raiz, tit, faltam > 0 ? sub(qtd(faltam, 'outra já estava concluída', 'outras já estavam concluídas') + '.') : null, lista.el,
+    trocar(raiz, tit, faltam > 0 ? sub(qtd(faltam, 'outra já estava concluída', 'outras já estavam concluídas') + '.') : null, lista.el, msg.el,
       h('div', { class: 'as-cartao-botoes' }, ok, nao, alternarTodas(lista, tarefas.length)), erro);
   }
   async function confirmar(marcados, ok, nao, erro) {
     if (!marcados.length) return;
-    ok.disabled = true; nao.disabled = true; ok.textContent = 'Concluindo…'; erro.hidden = true;
-    const r = await concluirTarefas(supabase, marcados, { autor: ajuda.email || null, historico: 'Tarefa concluída pelo assistente do escritório.' });
-    if (r.erro && !r.concluidas.length) { erro.textContent = 'Não consegui concluir: ' + r.erro; erro.hidden = false; ok.disabled = false; nao.disabled = false; ok.textContent = 'Concluir ' + marcados.length; return; }
-    salvar({ estado: 'feita', resultado: { concluidas: resumoConcluidas(r), ja: r.jaEstavam.length, semHistorico: !!r.semHistorico, em: new Date().toISOString() } });
+    const mensagem = msg.valor();
+    ok.disabled = true; nao.disabled = true; msg.travar(true); ok.textContent = 'Concluindo…'; erro.hidden = true;
+    const r = await concluirTarefas(supabase, marcados, { autor: ajuda.email || null, historico: 'Tarefa concluída pelo assistente do escritório.', mensagem });
+    if (r.erro && !r.concluidas.length) { erro.textContent = 'Não consegui concluir: ' + r.erro; erro.hidden = false; ok.disabled = false; nao.disabled = false; msg.travar(false); ok.textContent = 'Concluir ' + marcados.length; return; }
+    salvar({ estado: 'feita', resultado: { concluidas: resumoConcluidas(r), ja: r.jaEstavam.length, semHistorico: !!r.semHistorico, ...(mensagem ? { mensagem } : {}), em: new Date().toISOString() } });
     if (r.concluidas.length) { avisarTelas('mr:feito', { n: r.concluidas.length }); avisarTelas('mr:tarefas-mudaram', { ids: r.concluidas.map(c => c.id) }); }
     anunciar(qtd(r.concluidas.length, 'tarefa concluída', 'tarefas concluídas') + '.');
     desenhar();
@@ -182,9 +208,9 @@ function cartaoConcluir({ raiz, estado, salvar, ajuda, anunciar }) {
     const n = (r.concluidas || []).length;
     const linha = h('div', { class: 'as-cartao-feito' }, h('span', { class: 'as-cartao-ok', text: '✓ ' + (n ? qtd(n, 'tarefa concluída', 'tarefas concluídas') : 'Nada foi concluído') + '.' }));
     if (r.ja) linha.append(h('span', { class: 'as-cartao-sub', text: qtd(r.ja, 'já estava concluída', 'já estavam concluídas') + ' antes.' }));
-    if (r.semHistorico) linha.append(h('span', { class: 'as-cartao-aviso', text: 'A linha no histórico não foi gravada.' }));
+    if (r.semHistorico) linha.append(h('span', { class: 'as-cartao-aviso', text: r.mensagem ? 'A linha no histórico (com a mensagem) não foi gravada.' : 'A linha no histórico não foi gravada.' }));
     if ((r.concluidas || []).some(c => !c.faturavel) && podeDesfazer(r.em)) linha.append(botao('Desfazer', desfazer, 'link'));
-    trocar(raiz, linha);
+    trocar(raiz, linha, n && !r.semHistorico ? linhaDaMensagem(r.mensagem) : null);
   }
   async function desfazer(ev) {
     const b = ev.currentTarget, r = estado.resultado || {};
@@ -261,6 +287,7 @@ function cartaoAlterar({ raiz, estado, salvar, ajuda, anunciar }) {
   raiz.setAttribute('aria-label', 'Alterar tarefas');
   const mudar = mudancaDaAcao(estado.mudar);
   const ids = idsDe(estado.ids).slice(0, 300);
+  const msg = campoMensagem({ valor: estado.mensagem, aoMudar: m => salvar({ mensagem: m }) });
   async function desenhar() {
     if (!mudar) return trocar(raiz, sub('Não entendi o que mudar nessas tarefas: peça de novo, com o prazo, o responsável ou a prioridade.'));
     if (estado.estado === 'feita') return desenharFeita();
@@ -291,18 +318,20 @@ function cartaoAlterar({ raiz, estado, salvar, ajuda, anunciar }) {
     const proximas = [px.obrigacao ? qtd(px.obrigacao, 'vem', 'vêm') + ' de obrigação fiscal: a próxima nasce com o responsável da obrigação — pra ficar de vez, troque em Obrigações fiscais' : null,
       px.recorrente ? qtd(px.recorrente, 'vem', 'vêm') + ' de tarefa recorrente: a próxima nasce com o responsável de lá — pra ficar de vez, troque em Tarefas recorrentes do setor' : null].filter(Boolean);
     trocar(raiz, tit, Object.keys(mudar).length > 1 ? sub(resumoMudanca(mudar)) : null, avisos.length ? sub(avisos.join('. ') + '.') : null,
-      proximas.length ? h('div', { class: 'as-cartao-aviso', text: proximas.join('. ') + '.' }) : null, lista.el,
+      proximas.length ? h('div', { class: 'as-cartao-aviso', text: proximas.join('. ') + '.' }) : null, lista.el, msg.el,
       h('div', { class: 'as-cartao-botoes' }, ok, nao, alternarTodas(lista, mudam.length)), erro);
   }
   async function confirmar(marcados, ok, nao, erro) {
     if (!marcados.length) return;
     const verbo = verboAlterar(mudar);
-    ok.disabled = true; nao.disabled = true; ok.textContent = 'Gravando…'; erro.hidden = true;
-    const r = await alterarTarefas(supabase, marcados, mudar, { autor: ajuda.email || null, origem: ORIGEM });
-    if (r.erro && !r.alteradas.length) { erro.textContent = 'Não consegui gravar: ' + r.erro; erro.hidden = false; ok.disabled = false; nao.disabled = false; ok.textContent = verbo + ' ' + marcados.length; return; }
+    const mensagem = msg.valor();
+    ok.disabled = true; nao.disabled = true; msg.travar(true); ok.textContent = 'Gravando…'; erro.hidden = true;
+    const r = await alterarTarefas(supabase, marcados, mudar, { autor: ajuda.email || null, origem: ORIGEM, mensagem });
+    if (r.erro && !r.alteradas.length) { erro.textContent = 'Não consegui gravar: ' + r.erro; erro.hidden = false; ok.disabled = false; nao.disabled = false; msg.travar(false); ok.textContent = verbo + ' ' + marcados.length; return; }
     // os ids saem do estado (o resultado já diz quais mudaram): a conversa guarda o cartão, e 300 tarefas com o antes e o
     // depois de três campos passariam do tamanho que ela aceita
-    salvar({ estado: 'feita', ids: [], resultado: { alteradas: resumoAlteradas(r), ficaram: r.fechadas.length + r.iguais.length + r.daFicha.length, semHistorico: !!r.semHistorico, em: new Date().toISOString() } });
+    salvar({ estado: 'feita', ids: [], resultado: { alteradas: resumoAlteradas(r), ficaram: r.fechadas.length + r.iguais.length + r.daFicha.length, semHistorico: !!r.semHistorico,
+      ...(mensagem ? { mensagem } : {}), em: new Date().toISOString() } });
     if (r.alteradas.length) avisarTelas('mr:tarefas-mudaram', { ids: r.alteradas.map(a => a.id) });
     anunciar(feitoAlterar(mudar, r.alteradas.length) + '.');
     desenhar();
@@ -312,9 +341,9 @@ function cartaoAlterar({ raiz, estado, salvar, ajuda, anunciar }) {
     const n = (r.alteradas || []).length;
     const linha = h('div', { class: 'as-cartao-feito' }, h('span', { class: 'as-cartao-ok', text: '✓ ' + (n ? feitoAlterar(mudar, n) : 'Nada mudou') + '.' }));
     if (r.ficaram) linha.append(h('span', { class: 'as-cartao-sub', text: qtd(r.ficaram, 'ficou como estava', 'ficaram como estavam') + ' (concluída ou mudada no meio do caminho).' }));
-    if (r.semHistorico) linha.append(h('span', { class: 'as-cartao-aviso', text: 'A linha no histórico não foi gravada.' }));
+    if (r.semHistorico) linha.append(h('span', { class: 'as-cartao-aviso', text: r.mensagem ? 'A linha no histórico (com a mensagem) não foi gravada.' : 'A linha no histórico não foi gravada.' }));
     if (n && podeDesfazer(r.em)) linha.append(botao('Desfazer', desfazer, 'link'));
-    trocar(raiz, linha);
+    trocar(raiz, linha, n && !r.semHistorico ? linhaDaMensagem(r.mensagem) : null);
   }
   async function desfazer(ev) {
     const b = ev.currentTarget, r = estado.resultado || {};
@@ -331,6 +360,79 @@ function cartaoAlterar({ raiz, estado, salvar, ajuda, anunciar }) {
     const d = estado.desfeito || {};
     trocar(raiz, h('div', { class: 'as-cartao-feito' }, h('span', { text: '↺ Desfeito: ' + qtd(d.n || 0, 'tarefa voltou como era', 'tarefas voltaram como eram') + '.' }),
       d.ficaram ? h('span', { class: 'as-cartao-sub', text: qtd(d.ficaram, 'mudou de novo depois (ou foi concluída) e ficou como está', 'mudaram de novo depois (ou foram concluídas) e ficaram como estão') + '.' }) : null));
+  }
+  desenhar();
+}
+
+// ---------- só a mensagem no histórico (20/10/2026): o "Registrar andamento" da Agenda, pelo assistente ----------
+// A IA separou as tarefas e escreveu o que a pessoa pediu pra registrar; aqui ela confere (edita a mensagem, desmarca
+// alguma) e registra, sem concluir nem mudar a tarefa. O "Desfazer" (10 minutos) tira do histórico as linhas que entraram
+const sobreTarefas = n => (n === 1 ? 'da tarefa' : 'de ' + n + ' tarefas');
+function cartaoRegistrar({ raiz, estado, salvar, ajuda, anunciar }) {
+  raiz.setAttribute('aria-label', 'Mensagem no histórico das tarefas');
+  const ids = idsDe(estado.ids).slice(0, 300);
+  const msg = campoMensagem({ valor: estado.mensagem, rotulo: 'A mensagem — vai pro histórico de cada uma, em seu nome', aberto: true, aoMudar: m => salvar({ mensagem: m }) });
+  async function desenhar() {
+    if (estado.estado === 'feita') return desenharFeita();
+    if (estado.estado === 'cancelada') return trocar(raiz, sub('Não registrei nada.'));
+    if (estado.estado === 'desfeita') return desenharDesfeita();
+    trocar(raiz, sub('Lendo as tarefas…'));
+    let tarefas, nomes;
+    try {
+      tarefas = await lerPorIds('tarefas', 'id, titulo, prazo, responsavel, status, cliente_id', ids);
+      nomes = await nomesDe(tarefas.map(t => t.cliente_id));
+    } catch (e) { return trocar(raiz, h('div', { class: 'as-cartao-erro', text: 'Não consegui ler as tarefas agora.' }), h('div', { class: 'as-cartao-botoes' }, botao('Tentar de novo', desenhar))); }
+    if (!tarefas.length) return trocar(raiz, sub(ids.length === 1 ? 'Essa tarefa não existe mais.' : 'Essas tarefas não existem mais.'));
+    tarefas.sort((a, b) => String(a.prazo || '9').localeCompare(String(b.prazo || '9')));
+    const erro = h('div', { class: 'as-cartao-erro', hidden: true });
+    const ok = botao('Registrar', () => confirmar(lista.marcadas(), ok, nao, erro), 'pri');
+    const nao = botao('Agora não', () => { salvar({ estado: 'cancelada' }); desenhar(); });
+    const atualizar = () => { const n = lista.marcadas().length; ok.textContent = n > 1 ? 'Registrar em ' + n : 'Registrar'; ok.disabled = !n; };
+    const lista = listaComCaixas(tarefas.map(t => ({ ...itemTarefa(t, nomes), tag: t.status === 'concluida' ? 'concluída' : '' })), { aoMudar: () => atualizar() });
+    atualizar();
+    const faltam = ids.length - tarefas.length;
+    trocar(raiz, h('div', { class: 'as-cartao-tit', text: 'Registrar no histórico ' + sobreTarefas(tarefas.length) + '?' }), msg.el,
+      faltam > 0 ? sub(qtd(faltam, 'outra não existe mais', 'outras não existem mais') + '.') : null, lista.el,
+      h('div', { class: 'as-cartao-botoes' }, ok, nao, alternarTodas(lista, tarefas.length)), erro);
+  }
+  async function confirmar(marcados, ok, nao, erro) {
+    if (!marcados.length) return;
+    const mensagem = msg.valor();
+    if (!mensagem) { erro.textContent = 'Escreva a mensagem.'; erro.hidden = false; msg.caixa.focus(); return; }
+    ok.disabled = true; nao.disabled = true; msg.travar(true); ok.textContent = 'Registrando…'; erro.hidden = true;
+    const r = await registrarNoHistorico(supabase, marcados, { autor: ajuda.email || null, mensagem, origem: ORIGEM });
+    if (r.erro && !r.registradas.length) {
+      erro.textContent = 'Não consegui registrar: ' + r.erro; erro.hidden = false; ok.disabled = false; nao.disabled = false; msg.travar(false);
+      ok.textContent = marcados.length > 1 ? 'Registrar em ' + marcados.length : 'Registrar';
+      return;
+    }
+    // os ids saem do estado (o resultado diz onde entrou, com a linha de cada uma pro "Desfazer")
+    salvar({ estado: 'feita', ids: [], mensagem, resultado: { registradas: r.registradas, faltam: r.faltam.length, em: new Date().toISOString() } });
+    try { ajuda.reagir && ajuda.reagir(); } catch (e) { /* sem carinha */ }
+    anunciar('Mensagem registrada no histórico ' + sobreTarefas(r.registradas.length) + '.');
+    desenhar();
+  }
+  function desenharFeita() {
+    const r = estado.resultado || {};
+    const n = (r.registradas || []).length;
+    const linha = h('div', { class: 'as-cartao-feito' }, h('span', { class: 'as-cartao-ok', text: '✓ ' + (n ? 'Mensagem registrada no histórico ' + sobreTarefas(n) : 'Nada foi registrado') + '.' }));
+    if (r.faltam) linha.append(h('span', { class: 'as-cartao-sub', text: qtd(r.faltam, 'não existia mais', 'não existiam mais') + '.' }));
+    if (n && podeDesfazer(r.em)) linha.append(botao('Desfazer', desfazer, 'link'));
+    trocar(raiz, linha, n ? linhaDaMensagem(textoDaAcao(estado.mensagem)) : null);
+  }
+  async function desfazer(ev) {
+    const b = ev.currentTarget, r = estado.resultado || {};
+    if (!podeDesfazer(r.em)) { trocar(raiz, sub('Passou o tempo de desfazer por aqui: a mensagem fica no histórico.')); return; }
+    b.disabled = true; b.textContent = 'Desfazendo…';
+    const d = await desfazerRegistro(supabase, r.registradas || [], { autor: ajuda.email || null });
+    if (d.erro && !d.desfeitas.length) { b.disabled = false; b.textContent = 'Desfazer'; raiz.append(h('div', { class: 'as-cartao-erro', text: 'Não consegui desfazer: ' + d.erro })); return; }
+    salvar({ estado: 'desfeita', desfeito: { n: d.desfeitas.length } });
+    anunciar('Desfeito.');
+    desenhar();
+  }
+  function desenharDesfeita() {
+    const n = (estado.desfeito || {}).n || 0;
+    trocar(raiz, h('span', { text: n ? '↺ Desfeito: a mensagem saiu do histórico ' + sobreTarefas(n) + '.' : 'A mensagem já não estava no histórico.' }));
   }
   desenhar();
 }
@@ -546,50 +648,60 @@ function cartaoRevisao({ raiz, estado, salvar, ajuda, anunciar }) {
     const erro = h('div', { class: 'as-cartao-erro', hidden: true });
     const pular = botao(g.avulsas ? 'Pular estas' : 'Ainda não', () => { salvar({ pulados: [...pulados(), g.chave] }); desenhar(); });
     const todosIds = () => g.itens.map(t => String(t.id));
+    // a mensagem no histórico do grupo (20/10/2026): a mesma em todas as telas do grupo (escolher quais, remarcar), e vai
+    // junto ao concluir ou remarcar
+    const msg = campoMensagem({ rotulo: 'Mensagem no histórico — vai junto ao concluir ou remarcar' });
     // remarcar (16/10/2026): hoje, o próximo dia útil ou outra data — todas do grupo, ou só as marcadas
     const quando = (ids, voltar) => {
       const hoje = hojeISO(), prox = proximoDiaUtil(hoje);
       const data = h('input', { type: 'date', value: prox, min: hoje });
-      const vai = iso => remarcar(ids, iso, g, botoes, erro);
+      const vai = iso => remarcar(ids, iso, g, botoes, erro, msg);
       const bHoje = botao('Hoje', () => vai(hoje), 'pri');
       const bProx = botao(rotuloDia(prox, hoje), () => vai(prox));
       const bData = botao('Remarcar', () => { if (/^\d{4}-\d{2}-\d{2}$/.test(data.value)) vai(data.value); else { erro.textContent = 'Escolha a data.'; erro.hidden = false; data.focus(); } });
       const bVoltar = botao('Voltar', voltar, 'link');
       const botoes = [bHoje, bProx, bData, bVoltar];
-      trocarDentro(box, cab, info, h('div', { class: 'as-cartao-pergunta', text: ids.length === 1 ? 'Remarcar pra quando?' : 'Remarcar as ' + ids.length + ' pra quando?' }),
+      trocarDentro(box, cab, info, h('div', { class: 'as-cartao-pergunta', text: ids.length === 1 ? 'Remarcar pra quando?' : 'Remarcar as ' + ids.length + ' pra quando?' }), msg.el,
         h('div', { class: 'as-cartao-botoes' }, bHoje, bProx), h('div', { class: 'as-cartao-botoes' }, h('label', { class: 'as-cartao-campo' }, 'Outra data', data), bData, bVoltar), erro);
     };
     const escolher = () => {
       const lista = listaComCaixas(g.itens.map(t => itemTarefa(t, nomes)), { marcadas: false, aoMudar: () => { const k = lista.marcadas().length; ok.textContent = k ? 'Concluir ' + k : 'Concluir as marcadas'; ok.disabled = !k; rem.disabled = !k; } });
-      const ok = botao('Concluir as marcadas', () => concluir(lista.marcadas(), g, [ok, rem, pular], erro), 'pri');
+      const ok = botao('Concluir as marcadas', () => concluir(lista.marcadas(), g, [ok, rem, pular], erro, msg), 'pri');
       const rem = botao('Remarcar as marcadas', () => quando(lista.marcadas(), () => trocarDentro(box, cab, info, ...escolher(), erro)));
       ok.disabled = true; rem.disabled = true;
-      return [sub('Marque as que já foram feitas (ou as que quer remarcar):'), lista.el, h('div', { class: 'as-cartao-botoes' }, ok, rem, pular)];
+      return [sub('Marque as que já foram feitas (ou as que quer remarcar):'), lista.el, msg.el, h('div', { class: 'as-cartao-botoes' }, ok, rem, pular)];
     };
     if (g.avulsas) { box.append(cab, info, ...escolher(), erro); return box; }
     const principal = (montar = false) => {
       const pergunta = h('div', { class: 'as-cartao-pergunta', text: n === 1 ? 'Já foi feita?' : 'Já foram feitas?' });
-      const todas = botao(n === 1 ? 'Já fiz' : 'Todas feitas (' + n + ')', () => concluir(todosIds(), g, [todas, maisBtn, remBtn, pular], erro), 'pri');
+      const todas = botao(n === 1 ? 'Já fiz' : 'Todas feitas (' + n + ')', () => concluir(todosIds(), g, [todas, maisBtn, remBtn, pular], erro, msg), 'pri');
       const maisBtn = botao('Escolher quais', () => { trocarDentro(box, cab, info, ...escolher(), erro); });
       const remBtn = botao('Remarcar', () => quando(todosIds(), () => principal()));
-      const filhos = [cab, info, pergunta, h('div', { class: 'as-cartao-botoes' }, todas, maisBtn, remBtn, pular), erro];
+      const filhos = [cab, info, pergunta, msg.el, h('div', { class: 'as-cartao-botoes' }, todas, maisBtn, remBtn, pular), erro];
       if (montar) box.append(...filhos); else trocarDentro(box, ...filhos);
     };
     principal(true);
     return box;
   }
-  // troca o que está no grupo e leva o foco pro primeiro campo (ou botão) — quem usa o teclado não se perde
-  function trocarDentro(box, ...filhos) { box.replaceChildren(...filhos.filter(Boolean)); const c = box.querySelector('input, button:not([disabled])'); if (c) c.focus({ preventScroll: true }); }
-  async function concluir(ids, g, botoes, erro) {
+  // troca o que está no grupo e leva o foco pra caixa da primeira tarefa, senão pro botão principal, senão pro primeiro
+  // campo ou botão — quem usa o teclado não se perde (e não cai no "✎ Mensagem no histórico", que vem antes dos botões)
+  function trocarDentro(box, ...filhos) {
+    box.replaceChildren(...filhos.filter(Boolean));
+    const c = box.querySelector('input[type="checkbox"]') || box.querySelector('.as-botao-pri:not([disabled])') || box.querySelector('input, button:not([disabled])');
+    if (c) c.focus({ preventScroll: true });
+  }
+  async function concluir(ids, g, botoes, erro, msg) {
     if (!ids.length) return;
+    const mensagem = msg ? msg.valor() : '';
     botoes.forEach(b => { b.disabled = true; });
+    if (msg) msg.travar(true);
     erro.hidden = true;
-    const r = await concluirTarefas(supabase, ids, { autor: ajuda.email || null, historico: 'Tarefa concluída na revisão das atrasadas (assistente do escritório).' });
-    if (r.erro && !r.concluidas.length) { erro.textContent = 'Não consegui concluir: ' + r.erro; erro.hidden = false; botoes.forEach(b => { b.disabled = false; }); return; }
+    const r = await concluirTarefas(supabase, ids, { autor: ajuda.email || null, historico: 'Tarefa concluída na revisão das atrasadas (assistente do escritório).', mensagem });
+    if (r.erro && !r.concluidas.length) { erro.textContent = 'Não consegui concluir: ' + r.erro; erro.hidden = false; botoes.forEach(b => { b.disabled = false; }); if (msg) msg.travar(false); return; }
     const n = r.concluidas.length;
     // o grupo sai da revisão: as que ficaram (escolhendo quais) ainda não foram feitas
     salvar({ feitas: (estado.feitas || 0) + n, pulados: [...pulados(), g.chave],
-      ultimo: { rotulo: g.avulsas ? 'Avulsas' : g.rotulo, chave: g.chave, concluidas: resumoConcluidas(r), em: new Date().toISOString() } });
+      ultimo: { rotulo: g.avulsas ? 'Avulsas' : g.rotulo, chave: g.chave, concluidas: resumoConcluidas(r), ...(mensagem && !r.semHistorico ? { comMensagem: true } : {}), em: new Date().toISOString() } });
     if (n) { avisarTelas('mr:feito', { n }); avisarTelas('mr:tarefas-mudaram', { ids: r.concluidas.map(c => c.id) }); }
     anunciar(qtd(n, 'tarefa concluída', 'tarefas concluídas') + '. Próximo grupo.');
     desenhar();
@@ -597,16 +709,18 @@ function cartaoRevisao({ raiz, estado, salvar, ajuda, anunciar }) {
   // remarcar o grupo (ou as marcadas): o grupo sai da revisão, como no concluir; a tarefa da ficha de origem fica (o banco
   // refaria o prazo dela)
   const ORIGEM_REVISAO = 'assistente do escritório (revisão das atrasadas)';
-  async function remarcar(ids, prazo, g, botoes, erro) {
+  async function remarcar(ids, prazo, g, botoes, erro, msg) {
     if (!ids.length) return;
+    const mensagem = msg ? msg.valor() : '';
     botoes.forEach(b => { b.disabled = true; });
+    if (msg) msg.travar(true);
     erro.hidden = true;
-    const r = await alterarTarefas(supabase, ids, { prazo }, { autor: ajuda.email || null, origem: ORIGEM_REVISAO });
-    if (r.erro && !r.alteradas.length) { erro.textContent = 'Não consegui remarcar: ' + r.erro; erro.hidden = false; botoes.forEach(b => { b.disabled = false; }); return; }
+    const r = await alterarTarefas(supabase, ids, { prazo }, { autor: ajuda.email || null, origem: ORIGEM_REVISAO, mensagem });
+    if (r.erro && !r.alteradas.length) { erro.textContent = 'Não consegui remarcar: ' + r.erro; erro.hidden = false; botoes.forEach(b => { b.disabled = false; }); if (msg) msg.travar(false); return; }
     const n = r.alteradas.length;
     salvar({ remarcadas: (estado.remarcadas || 0) + n, pulados: [...pulados(), g.chave],
       ultimo: { tipo: 'remarcar', rotulo: g.avulsas ? 'Avulsas' : g.rotulo, chave: g.chave, prazo, alteradas: resumoAlteradas(r),
-        daFicha: r.daFicha.length, telas: [...new Set(r.daFicha.map(f => f.tela))], em: new Date().toISOString() } });
+        daFicha: r.daFicha.length, telas: [...new Set(r.daFicha.map(f => f.tela))], ...(mensagem && n && !r.semHistorico ? { comMensagem: true } : {}), em: new Date().toISOString() } });
     if (n) avisarTelas('mr:tarefas-mudaram', { ids: r.alteradas.map(a => a.id) });
     anunciar(qtd(n, 'tarefa remarcada', 'tarefas remarcadas') + ' pra ' + dataBR(prazo) + '. Próximo grupo.');
     desenhar();
@@ -618,7 +732,8 @@ function cartaoRevisao({ raiz, estado, salvar, ajuda, anunciar }) {
       const n = (u.alteradas || []).length;
       if (u.desfeito) return sub('↺ ' + u.rotulo + ': remarcação desfeita.');
       if (!n && !u.daFicha) return null;
-      const linha = h('div', { class: 'as-cartao-feito' }, h('span', { class: n ? 'as-cartao-ok' : 'as-cartao-sub', text: (n ? '✓ ' : '') + u.rotulo + ': ' + qtd(n, 'remarcada', 'remarcadas') + ' pra ' + dataBR(u.prazo) + '.' }));
+      const linha = h('div', { class: 'as-cartao-feito' }, h('span', { class: n ? 'as-cartao-ok' : 'as-cartao-sub', text: (n ? '✓ ' : '') + u.rotulo + ': ' + qtd(n, 'remarcada', 'remarcadas') + ' pra ' + dataBR(u.prazo)
+        + (u.comMensagem ? ', com a mensagem no histórico' : '') + '.' }));
       if (u.daFicha) linha.append(h('span', { class: 'as-cartao-sub', text: qtd(u.daFicha, 'ficou', 'ficaram') + ' como estava' + (u.daFicha === 1 ? '' : 'm') + ': o prazo vem da ficha de origem' + ((u.telas || []).length ? ' (tela ' + u.telas.join(', ') + ')' : '') + '.' }));
       if (n && podeDesfazer(u.em)) linha.append(botao('Desfazer', desfazerUltimo, 'link'));
       return linha;
@@ -626,7 +741,7 @@ function cartaoRevisao({ raiz, estado, salvar, ajuda, anunciar }) {
     if (!u || !(u.concluidas || []).length) return null;
     const n = u.concluidas.length;
     if (u.desfeito) return sub('↺ ' + u.rotulo + ': conclusão desfeita.');
-    const linha = h('div', { class: 'as-cartao-feito' }, h('span', { class: 'as-cartao-ok', text: '✓ ' + u.rotulo + ': ' + qtd(n, 'concluída', 'concluídas') + '.' }));
+    const linha = h('div', { class: 'as-cartao-feito' }, h('span', { class: 'as-cartao-ok', text: '✓ ' + u.rotulo + ': ' + qtd(n, 'concluída', 'concluídas') + (u.comMensagem ? ', com a mensagem no histórico' : '') + '.' }));
     if (u.concluidas.some(c => !c.faturavel) && podeDesfazer(u.em)) linha.append(botao('Desfazer', desfazerUltimo, 'link'));
     return linha;
   }

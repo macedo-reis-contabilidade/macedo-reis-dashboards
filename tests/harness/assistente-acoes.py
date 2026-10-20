@@ -25,7 +25,13 @@ Confere:
      concluída, a que já está assim, a da admissão), desmarcar, gravar com o histórico, desfazer; remarcar; recarregar;
   9. o cartão dos arquivos (16/10/2026): o nome é o link (só endereço do Drive, numa aba nova; o resto sai sem link), a
      pasta, a data, o tamanho ou o tipo do Google, o "e mais" e a pasta da empresa embaixo; nada achado e sem pasta no
-     cadastro; recarregar.
+     cadastro; recarregar;
+ 10. a mensagem no histórico (20/10/2026, pedido da Thalia): na revisão das atrasadas, o "✎ Mensagem no histórico" abre o
+     campo, a mensagem segue pro "Escolher quais" e pro "Remarcar" e vai no fim da linha do histórico de cada uma (o grupo
+     seguinte começa sem ela; o "Voltar" devolve o foco ao botão principal); no cartão de concluir, a mensagem que a IA
+     preparou já vem no campo (editável, gravada como texto); sem ela, o "✎" abre o campo; no de alterar também; e o
+     cartão de só registrar (sem mudar a tarefa): mensagem em branco não vai, desmarcar uma, registrar, desfazer (tira a
+     linha); recarregar.
 Termina com código 1 se alguma checagem falhar.
 Pré-requisito: pip install playwright e python -m playwright install chromium
 """
@@ -64,7 +70,9 @@ TAREFAS = [
     T('ad2', 'ADMISSÃO DE BELTRANO (REVISÃO)', 'Samuel', D(-3), E2, admissao_id='adm-2'),
     # o cartão de alterar (prazo, responsável, prioridade): da Thalia, uma já do jeito pedido e uma da admissão
     T('r1', 'DCTFWEB (ALTERAR)', 'Thalia', D(-2), E1, origem='recorrente', obrigacao_id='ob-1'), T('r2', 'DCTFWEB (ALTERAR)', 'THALIA', D(-1), E2, prioridade='baixa'),
-    T('r3', 'DCTFWEB (ALTERAR)', 'Vitória', D(-1), E3, prioridade='alta'), T('ad1', 'ADMISSÃO DE FULANA (ALTERAR)', 'Thalia', D(-1), E1, admissao_id='adm-1')]
+    T('r3', 'DCTFWEB (ALTERAR)', 'Vitória', D(-1), E3, prioridade='alta'), T('ad1', 'ADMISSÃO DE FULANA (ALTERAR)', 'Thalia', D(-1), E1, admissao_id='adm-1'),
+    # a mensagem no histórico (no prazo: fora da revisão das atrasadas)
+    T('m1', 'CONFERIR EXTRATO (MENSAGEM)', 'Samuel', D(1), E1), T('m2', 'DCTFWEB (MENSAGEM)', 'Samuel', D(2), E2), T('m3', 'DCTFWEB (MENSAGEM)', 'Samuel', D(3), E3)]
 COBRANCAS = [{'id': 'xb-1', 'cliente_id': E1, 'competencia': COMP, 'valor': 450, 'vencimento': D(5), 'status': 'enviado', 'canal': 'whatsapp', 'destino': '', 'observacao': '', 'itens_extras': []},
              {'id': 'xb-2', 'cliente_id': E2, 'competencia': COMP, 'valor': 300.5, 'vencimento': D(5), 'status': 'a_emitir', 'canal': 'whatsapp', 'destino': '', 'observacao': '', 'itens_extras': []},
              {'id': 'xb-3', 'cliente_id': E3, 'competencia': COMP, 'valor': 200, 'vencimento': D(5), 'status': 'pago', 'canal': 'whatsapp', 'destino': '', 'observacao': '', 'itens_extras': []}]
@@ -78,6 +86,10 @@ ACOES = {
     'Revisa as minhas atrasadas': {'tipo': 'revisar_atrasadas', 'pessoa': 'Samuel'},
     'Passa as DCTFWEB pra Vitória e deixa urgente': {'tipo': 'alterar_tarefas', 'ids': ['xa-r1', 'xa-r2', 'xa-r3', 'xa-ad1', 'xa-c3'], 'mudar': {'responsavel': 'Vitória', 'prioridade': 'alta'}},
     'Remarca a DCTFWEB pra amanhã': {'tipo': 'alterar_tarefas', 'ids': ['xa-r1'], 'mudar': {'prazo': D(1)}},
+    'Conclui o extrato e anota': {'tipo': 'concluir_tarefas', 'ids': ['xa-m1'], 'mensagem': 'Extrato conferido <b>sem</b> pendências'},
+    'Conclui a DCTFWEB da oficina': {'tipo': 'concluir_tarefas', 'ids': ['xa-m2']},
+    'Registra nas DCTFWEB que falta a folha': {'tipo': 'registrar_historico', 'ids': ['xa-m2', 'xa-m3'], 'mensagem': 'Aguardando a folha do cliente.'},
+    'Remarca a DCTFWEB do mercado e anota': {'tipo': 'alterar_tarefas', 'ids': ['xa-m3'], 'mudar': {'prazo': D(4)}, 'mensagem': 'Cliente pediu mais prazo.'},
     'Acha o contrato da padaria': {'tipo': 'arquivos', 'empresa': 'PADARIA DO TESTE LTDA', 'cliente_id': E1, 'pasta': 'https://drive.google.com/drive/folders/PASTA_DA_PADARIA_1',
         'termo': 'contrato', 'total': 23, 'itens': [
             {'nome': 'Contrato Social.pdf', 'pasta': 'PROCESSOS / ABERTURA', 'modificado': '2026-03-01T15:00:00Z', 'tamanho': 1258291, 'link': 'https://drive.google.com/file/d/ARQ_CONTRATO_1/view', 'tipo': 'application/pdf'},
@@ -215,7 +227,7 @@ def main():
         ok(all(tarefa(i)['status'] == 'concluida' for i in ('xa-p1', 'xa-p2', 'xa-p3')) and tarefa('xa-o1')['status'] == 'pendente', '"Todas feitas": concluiu as 3 dele; a da Thalia não')
         ok(hist('xa-p1') == ['Tarefa concluída na revisão das atrasadas (assistente do escritório).'] and '✓ PGDAS (REVISÃO): 3 concluídas.' in p.inner_text(rev)
            and '3 concluídas nesta revisão.' in p.inner_text(rev), 'o histórico, a linha do que fez e a conta da revisão')
-        p.click(rev + ' .as-cartao-grupo .as-botao:not(.as-botao-pri)')   # Escolher quais
+        p.click(rev + ' .as-cartao-grupo .as-botao:text-is("Escolher quais")')
         p.wait_for_selector(rev + ' .as-cartao-grupo input[type="checkbox"]', timeout=3000)
         ok(p.eval_on_selector_all(rev + ' .as-cartao-grupo input[type="checkbox"]', 'cs => cs.map(c => c.checked)') == [False, False], '"Escolher quais": a lista, sem nada marcado')
         p.check(rev + ' input[data-id="xa-g1"]')
@@ -348,6 +360,78 @@ def main():
            f'a fantasia no título; o mesmo nome duas vezes vem com a hora ({metas})')
         p.reload(); p.wait_for_selector('.as-painel:not([hidden])', timeout=5000); p.wait_for_selector('.as-arquivos', timeout=5000)
         ok(len(p.query_selector_all('.as-lista a.as-arquivo')) == 4 and 'Nada com “procuração”' in p.inner_text('.as-lista .as-msg.ia:nth-last-child(3) .as-cartao'), 'recarregou: os cartões voltam como estavam')
+
+        # 10) a mensagem no histórico (20/10/2026, pedido da Thalia). Na revisão das atrasadas (o banco de mentira volta ao
+        # começo com a página nova: o PGDAS em aberto)
+        p.goto(base + 'index.html'); p.wait_for_selector('.as-painel:not([hidden])', timeout=5000)
+        perguntar('Revisa as minhas atrasadas'); p.wait_for_selector(rv + ' .as-cartao-grupo', timeout=6000)
+        lapis = rv + ' .as-cartao-grupo .as-botao-link:text-is("✎ Mensagem no histórico")'
+        ok('PGDAS (REVISÃO) · 3' in p.inner_text(rv) and p.is_visible(lapis) and not p.query_selector(rv + ' .as-cartao-grupo textarea'), 'revisão: o grupo com o "✎ Mensagem no histórico", fechado')
+        p.click(lapis); p.wait_for_selector(rv + ' .as-cartao-grupo textarea', timeout=3000)
+        ok(p.evaluate('() => document.activeElement && document.activeElement.tagName') == 'TEXTAREA' and 'Mensagem no histórico — vai junto ao concluir ou remarcar' in p.inner_text(rv + ' .as-cartao-grupo'),
+           'clicou: o campo abre, com o foco nele')
+        p.fill(rv + ' .as-cartao-grupo textarea', 'Guias enviadas por WhatsApp.')
+        p.click(rv + ' .as-cartao-grupo .as-botao:text-is("Escolher quais")'); p.wait_for_selector(rv + ' .as-cartao-grupo input[type="checkbox"]', timeout=3000)
+        ok(p.input_value(rv + ' .as-cartao-grupo textarea') == 'Guias enviadas por WhatsApp.', '"Escolher quais": a mensagem continua lá')
+        p.check(rv + ' input[data-id="xa-p1"]'); p.click(rv + ' .as-cartao-grupo .as-botao-pri')
+        p.wait_for_function(f"() => document.querySelector('{rvjs}').innerText.includes('GIA (REVISÃO) · 2')", timeout=6000)
+        ok(hist('xa-p1') == ['Tarefa concluída na revisão das atrasadas (assistente do escritório). Guias enviadas por WhatsApp.'] and tarefa('xa-p2')['status'] == 'pendente'
+           and '✓ PGDAS (REVISÃO): 1 concluída, com a mensagem no histórico.' in p.inner_text(rv), f'concluiu a marcada, com a mensagem no fim da linha do histórico ({hist("xa-p1")})')
+        ok(not p.query_selector(rv + ' .as-cartao-grupo textarea') and p.is_visible(lapis), 'o grupo seguinte começa sem mensagem')
+        p.click(rv + ' .as-cartao-grupo .as-botao:text-is("Remarcar")'); p.click(rv + ' .as-botao:text-is("Voltar")')
+        ok(p.evaluate('() => document.activeElement && document.activeElement.textContent') == 'Todas feitas (2)', '"Voltar": o foco no botão principal (não no "✎", que vem antes)')
+        p.click(lapis); p.fill(rv + ' .as-cartao-grupo textarea', 'Cliente pediu prazo.')
+        p.click(rv + ' .as-cartao-grupo .as-botao:text-is("Remarcar")'); p.wait_for_selector(rv + ' .as-cartao-grupo input[type="date"]', timeout=3000)
+        ok(p.input_value(rv + ' .as-cartao-grupo textarea') == 'Cliente pediu prazo.', '"Remarcar": a mensagem vai junto')
+        p.click(rv + ' .as-botao:text-is("Hoje")')
+        p.wait_for_function(f"() => document.querySelector('{rvjs}').innerText.includes('GIA (REVISÃO): 2 remarcadas')", timeout=6000)
+        ok(hist('xa-g1')[-1] == 'Prazo alterado de ' + br(D(-20)) + ' para ' + br(HOJE.isoformat()) + ' — pelo assistente do escritório (revisão das atrasadas). Cliente pediu prazo.'
+           and '✓ GIA (REVISÃO): 2 remarcadas pra ' + br(HOJE.isoformat()) + ', com a mensagem no histórico.' in p.inner_text(rv), f'remarcou, com a mensagem no histórico ({hist("xa-g1")[-1:]})')
+        p.click(rv + ' .as-botao:has-text("Parar a revisão")'); p.wait_for_timeout(150)
+
+        # o cartão de só registrar: a mensagem (editável) e as tarefas; nada muda nelas
+        perguntar('Registra nas DCTFWEB que falta a folha'); p.wait_for_selector(ultimo + ' .as-cartao-lista', timeout=5000)
+        card = p.inner_text(ultimo)
+        ok(card.startswith('Registrar no histórico de 2 tarefas?') and p.input_value(ultimo + ' textarea') == 'Aguardando a folha do cliente.' and 'A mensagem — vai pro histórico de cada uma, em seu nome' in card
+           and p.inner_text(ultimo + ' .as-botao-pri') == 'Registrar em 2', f'registrar: a mensagem já no campo e as tarefas ({card[:160]!r})')
+        p.uncheck(ultimo + ' input[data-id="xa-m3"]')
+        ok(p.inner_text(ultimo + ' .as-botao-pri') == 'Registrar', 'desmarcar uma: o botão acompanha')
+        p.fill(ultimo + ' textarea', '   '); p.click(ultimo + ' .as-botao-pri'); p.wait_for_timeout(150)
+        ok(p.inner_text(ultimo + ' .as-cartao-erro') == 'Escreva a mensagem.' and hist('xa-m2') == [], 'mensagem em branco: pede a mensagem e não grava')
+        p.fill(ultimo + ' textarea', 'Aguardando a folha do cliente.'); p.click(ultimo + ' .as-botao-pri'); p.wait_for_selector(ultimo + ' .as-cartao-ok', timeout=5000)
+        ok(hist('xa-m2') == ['Aguardando a folha do cliente. (registrado pelo assistente do escritório)'] and hist('xa-m3') == [] and tarefa('xa-m2')['status'] == 'pendente'
+           and tarefa('xa-m2')['prazo'] == D(2), f'registrou só na marcada, sem mudar a tarefa ({hist("xa-m2")})')
+        ok(p.inner_text(ultimo).startswith('✓ Mensagem registrada no histórico da tarefa.') and 'No histórico: “Aguardando a folha do cliente.”' in p.inner_text(ultimo)
+           and p.is_visible(ultimo + ' .as-botao-link:text-is("Desfazer")'), 'o cartão diz o que foi pro histórico e oferece "Desfazer"')
+        p.click(ultimo + ' .as-botao-link:text-is("Desfazer")'); p.wait_for_function(f"() => document.querySelector('{ultimo}').innerText.startsWith('↺ Desfeito')", timeout=5000)
+        ok(hist('xa-m2') == [] and p.inner_text(ultimo) == '↺ Desfeito: a mensagem saiu do histórico da tarefa.', 'desfazer: a linha sai do histórico')
+
+        # o cartão de concluir: sem a mensagem da IA, o "✎" abre o campo
+        perguntar('Conclui a DCTFWEB da oficina'); p.wait_for_selector(ultimo + ' .as-botao-pri', timeout=5000)
+        ok(not p.query_selector(ultimo + ' textarea') and p.is_visible(ultimo + ' .as-botao-link:text-is("✎ Mensagem no histórico")'), 'concluir sem mensagem: o "✎ Mensagem no histórico", fechado')
+        p.click(ultimo + ' .as-botao-link:text-is("✎ Mensagem no histórico")'); p.fill(ultimo + ' textarea', 'Folha recebida,\nDCTFWeb transmitida.')
+        p.click(ultimo + ' .as-botao-pri'); p.wait_for_selector(ultimo + ' .as-cartao-ok', timeout=5000)
+        ok(hist('xa-m2') == ['Tarefa concluída pelo assistente do escritório. Folha recebida, DCTFWeb transmitida.'] and tarefa('xa-m2')['status'] == 'concluida'
+           and 'No histórico: “Folha recebida, DCTFWeb transmitida.”' in p.inner_text(ultimo), f'concluiu, com a mensagem numa linha no histórico ({hist("xa-m2")})')
+        # com a mensagem que a IA preparou: já no campo; editar; vai como texto (nunca como HTML)
+        perguntar('Conclui o extrato e anota'); p.wait_for_selector(ultimo + ' textarea', timeout=5000)
+        ok(p.input_value(ultimo + ' textarea') == 'Extrato conferido <b>sem</b> pendências' and not p.query_selector(ultimo + ' .as-botao-link:text-is("✎ Mensagem no histórico")'),
+           'concluir com a mensagem da IA: já no campo, aberto')
+        p.fill(ultimo + ' textarea', 'Extrato conferido <b>sem</b> pendências, enviado ao cliente')
+        p.click(ultimo + ' .as-botao-pri'); p.wait_for_selector(ultimo + ' .as-cartao-ok', timeout=5000)
+        ok(hist('xa-m1') == ['Tarefa concluída pelo assistente do escritório. Extrato conferido <b>sem</b> pendências, enviado ao cliente'] and tarefa('xa-m1')['status'] == 'concluida',
+           f'a mensagem editada é a que vai pro histórico ({hist("xa-m1")})')
+        ok('No histórico: “Extrato conferido <b>sem</b> pendências, enviado ao cliente”' in p.inner_text(ultimo) and not p.query_selector(ultimo + ' b:text-is("sem")'),
+           'o cartão mostra a mensagem como texto (o <b> não vira negrito)')
+        # o de alterar: a mensagem vai no fim da linha da mudança
+        perguntar('Remarca a DCTFWEB do mercado e anota'); p.wait_for_selector(ultimo + ' textarea', timeout=5000)
+        ok(p.input_value(ultimo + ' textarea') == 'Cliente pediu mais prazo.', 'alterar: a mensagem da IA no campo')
+        p.click(ultimo + ' .as-botao-pri'); p.wait_for_selector(ultimo + ' .as-cartao-ok', timeout=5000)
+        ok(hist('xa-m3') == ['Prazo alterado de ' + br(D(3)) + ' para ' + br(D(4)) + ' — pelo assistente do escritório. Cliente pediu mais prazo.'] and tarefa('xa-m3')['prazo'] == D(4)
+           and 'No histórico: “Cliente pediu mais prazo.”' in p.inner_text(ultimo), f'remarcou, com a mensagem no histórico ({hist("xa-m3")})')
+        p.reload(); p.wait_for_selector('.as-painel:not([hidden])', timeout=5000); p.wait_for_selector(ultimo + ' .as-cartao-ok', timeout=5000)
+        ok('No histórico: “Cliente pediu mais prazo.”' in p.inner_text(ultimo) and 'No histórico: “Extrato conferido <b>sem</b> pendências, enviado ao cliente”' in p.inner_text('.as-lista .as-msg.ia:nth-last-child(3) .as-cartao'),
+           'recarregou: os cartões voltam com a mensagem que foi')
 
         ok(not erros, f'sem erro de JavaScript ({erros[:2]})')
         b.close()

@@ -5,7 +5,8 @@
 // assets/js/rotinas-dia.js) e perguntar_reforma (a pergunta vai pro chat da Reforma, que responde com a base dele).
 // As propostas (propor_concluir_tarefas, propor_alterar_tarefas — prazo, responsável e prioridade, desde 16/10/2026 —,
 // propor_marcar_pago, propor_criar_tarefa, propor_revisao_atrasadas, propor_ver_vigia, o cartão do vigia, e, desde
-// 19/10/2026, propor_enviar_mensagem, a mensagem no chat da equipe) não gravam nada: separam o que identifica a mudança
+// 19/10/2026, propor_enviar_mensagem, a mensagem no chat da equipe; desde 20/10/2026, a mensagem no histórico das tarefas —
+// junto da conclusão e da mudança, ou sozinha, propor_registrar_historico) não gravam nada: separam o que identifica a mudança
 // (ids, a pessoa, os campos da tarefa nova, quem recebe a mensagem e o texto) e o servidor manda junto com a resposta; a
 // tela mostra o cartão e quem grava é ela, com o login da pessoa, depois que ela confirma (assets/js/assistente-acoes.js
 // + assets/js/tarefas-acoes.js — a mensagem, assets/js/chat-equipe.js —, a mesma regra das telas). Uma proposta por
@@ -23,7 +24,7 @@
 
 import { rotinaDoDia, rotinaFeita, ymd } from '../../../assets/js/rotinas-dia.js';
 import { EQUIPE, NOME_POR_EMAIL } from '../../../assets/js/equipe.js';
-import { ficaDeFora, mudancaDe, proximasNascemCom, PRIORIDADES } from '../../../assets/js/tarefas-acoes.js';
+import { ficaDeFora, mudancaDe, proximasNascemCom, PRIORIDADES, limparMensagem } from '../../../assets/js/tarefas-acoes.js';
 import { rotuloDaRegra } from '../../../assets/js/vigia.js';
 import { ROTULO_SETOR, ROTULO_RELEVANCIA } from '../../../assets/js/noticias.js';
 import { pastaDaUrl, filtrarArquivos } from './drive.js';
@@ -258,7 +259,7 @@ export const DEFINICOES = [
       termo: { type: 'string', description: 'palavras do nome do arquivo ou da pasta, sem o nome da empresa (ex.: "contrato social", "alvará", "DAS setembro 2026"); sem: os mais recentes' } } } },
   // as propostas: nada muda aqui — a tela mostra o cartão, a pessoa confirma (e pode desfazer)
   { name: 'propor_concluir_tarefas',
-    description: 'Prepara a conclusão de tarefas pra pessoa confirmar na tela — nada é concluído aqui: a tela mostra a lista (ela pode desmarcar alguma) com o botão "Concluir" e, depois, o "Desfazer". Só quando a pessoa pedir pra concluir ou marcar como feita(s). Diga quais: ids (de consultar), ou empresa, pessoa e/ou parte do título — prazo, setor e "atrasadas" afinam. Só tarefas abertas; até 300.',
+    description: 'Prepara a conclusão de tarefas pra pessoa confirmar na tela — nada é concluído aqui: a tela mostra a lista (ela pode desmarcar alguma) com o botão "Concluir" e, depois, o "Desfazer". Só quando a pessoa pedir pra concluir ou marcar como feita(s). Diga quais: ids (de consultar), ou empresa, pessoa e/ou parte do título — prazo, setor e "atrasadas" afinam. Só tarefas abertas; até 300. Pediu pra deixar escrito no histórico o que foi feito ("conclui e anota que…"): mensagem — vai no histórico de cada uma, junto com a conclusão (a pessoa confere e edita no cartão).',
     input_schema: { type: 'object', properties: {
       ids: { type: 'array', items: { type: 'string' }, description: 'ids das tarefas (de consultar)' },
       empresa: { type: 'string', description: 'id, nome ou CNPJ da empresa' },
@@ -266,9 +267,10 @@ export const DEFINICOES = [
       titulo: { type: 'string', description: 'parte do título (ex.: "EFD CONTRIBUIÇÕES")' },
       setor: { type: 'string', description: 'dp, fiscal, contabil, financeiro, comercial, societario, irpf, gestao, clientes ou geral' },
       prazo_de: { type: 'string', description: 'AAAA-MM-DD' }, prazo_ate: { type: 'string', description: 'AAAA-MM-DD' },
-      atrasadas: { type: 'boolean', description: 'só as com prazo antes de hoje' } } } },
+      atrasadas: { type: 'boolean', description: 'só as com prazo antes de hoje' },
+      mensagem: { type: 'string', description: 'opcional, só quando a pessoa pedir: o que ela quer deixar escrito no histórico de cada uma (o que foi feito, como, quando), nas palavras dela, curto' } } } },
   { name: 'propor_alterar_tarefas',
-    description: 'Prepara a mudança de prazo, de responsável e/ou de prioridade de tarefas pra pessoa confirmar na tela — nada muda aqui: a tela mostra cada tarefa com o antes e o depois (ela pode desmarcar alguma), o botão pra confirmar e, depois, o "Desfazer". Só quando a pessoa pedir pra remarcar, adiar, antecipar, passar pra outra pessoa ou mudar a prioridade. Diga quais — ids (de consultar), ou empresa, pessoa (o responsável de agora) e/ou parte do título; prazo, setor e "atrasadas" afinam — e o que muda: novo_prazo, novo_responsavel e/ou nova_prioridade. Só tarefas abertas; até 300. Nas de admissão, rescisão e alvará, o prazo e o responsável vêm da ficha de origem e não mudam por aqui (a prioridade, sim).',
+    description: 'Prepara a mudança de prazo, de responsável e/ou de prioridade de tarefas pra pessoa confirmar na tela — nada muda aqui: a tela mostra cada tarefa com o antes e o depois (ela pode desmarcar alguma), o botão pra confirmar e, depois, o "Desfazer". Só quando a pessoa pedir pra remarcar, adiar, antecipar, passar pra outra pessoa ou mudar a prioridade. Diga quais — ids (de consultar), ou empresa, pessoa (o responsável de agora) e/ou parte do título; prazo, setor e "atrasadas" afinam — e o que muda: novo_prazo, novo_responsavel e/ou nova_prioridade. Só tarefas abertas; até 300. Nas de admissão, rescisão e alvará, o prazo e o responsável vêm da ficha de origem e não mudam por aqui (a prioridade, sim). Pediu pra deixar escrito no histórico o porquê ou o que aconteceu: mensagem — vai no histórico de cada uma, junto com a mudança.',
     input_schema: { type: 'object', properties: {
       ids: { type: 'array', items: { type: 'string' }, description: 'ids das tarefas (de consultar)' },
       empresa: { type: 'string', description: 'id, nome ou CNPJ da empresa' },
@@ -279,7 +281,19 @@ export const DEFINICOES = [
       atrasadas: { type: 'boolean', description: 'só as com prazo antes de hoje' },
       novo_prazo: { type: 'string', description: 'AAAA-MM-DD, pelo dia do contexto ("hoje", "amanhã", "sexta")' },
       novo_responsavel: { type: 'string', description: 'alguém da equipe, ou "Ambos" (Samuel e Diego)' },
-      nova_prioridade: { type: 'string', enum: ['alta', 'media', 'baixa'], description: '"urgente" é alta' } } } },
+      nova_prioridade: { type: 'string', enum: ['alta', 'media', 'baixa'], description: '"urgente" é alta' },
+      mensagem: { type: 'string', description: 'opcional, só quando a pessoa pedir: o que ela quer deixar escrito no histórico de cada uma, nas palavras dela, curto' } } } },
+  { name: 'propor_registrar_historico',
+    description: 'Prepara uma mensagem no histórico de tarefas, sem concluir nem mudar nada nelas (o "Registrar andamento" da Agenda), pra pessoa conferir na tela — nada é gravado aqui: a tela mostra a mensagem (dá pra editar) e as tarefas (ela pode desmarcar alguma), com o botão "Registrar" e, depois, o "Desfazer". Só quando a pessoa pedir pra registrar, anotar ou escrever algo no histórico de tarefas que já existem (o que aconteceu, o que está esperando). Pra concluir junto: propor_concluir_tarefas com a mensagem; pra remarcar ou passar junto: propor_alterar_tarefas com a mensagem; pra uma tarefa nova: propor_criar_tarefa. Diga quais — ids (de consultar), ou empresa, pessoa e/ou parte do título; prazo, setor e "atrasadas" afinam — e a mensagem. Só tarefas abertas; até 300.',
+    input_schema: { type: 'object', properties: {
+      ids: { type: 'array', items: { type: 'string' }, description: 'ids das tarefas (de consultar)' },
+      empresa: { type: 'string', description: 'id, nome ou CNPJ da empresa' },
+      pessoa: { type: 'string', description: 'o responsável (alguém da equipe)' },
+      titulo: { type: 'string', description: 'parte do título (ex.: "PGDAS")' },
+      setor: { type: 'string', description: 'dp, fiscal, contabil, financeiro, comercial, societario, irpf, gestao, clientes ou geral' },
+      prazo_de: { type: 'string', description: 'AAAA-MM-DD' }, prazo_ate: { type: 'string', description: 'AAAA-MM-DD' },
+      atrasadas: { type: 'boolean', description: 'só as com prazo antes de hoje' },
+      mensagem: { type: 'string', description: 'o que vai no histórico de cada uma, nas palavras da pessoa, curto' } }, required: ['mensagem'] } },
   { name: 'propor_marcar_pago',
     description: 'Prepara boletos de honorários pra pessoa marcar como pagos na tela — nada muda aqui: a tela mostra os boletos com o botão "Marcar como pago" e, depois, o "Desfazer". Só quando a pessoa disser que foram pagos. Diga quais: a empresa (uma ou várias) e a competência, ou os ids. Só os em aberto (a emitir, emitido, enviado); até 100.',
     input_schema: { type: 'object', properties: {
@@ -933,6 +947,13 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     return { linhas, total: total || 0 };
   }
 
+  // a lista das tarefas da proposta, pro modelo (as 12 primeiras)
+  const listaTarefas = com => com.slice(0, 12).map(t => '- ' + valorCurto(t.titulo, 80) + (t.cliente_id ? ' · ' + t.empresa : '') + ' · prazo ' + dataBR(t.prazo) + ' · ' + (t.responsavel || 'sem responsável')).join('\n')
+    + (com.length > 12 ? '\n… e mais ' + (com.length - 12) : '');
+  // a mensagem no histórico (20/10/2026): a da pessoa, numa linha, até 1000 caracteres (a regra da tela, limparMensagem)
+  const comMsg = (acao, m) => (m ? { ...acao, mensagem: m } : acao);
+  const avisoMsg = m => (m ? '\nCom a mensagem no histórico de cada uma (a pessoa confere e edita no cartão): “' + m + '”' : '');
+
   async function propor_concluir_tarefas(e) {
     const ja = jaProposto(); if (ja) return ja;
     const sel = await tarefasDoPedido(e, 'id,cliente_id,titulo,responsavel,prazo');
@@ -940,11 +961,27 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     const { linhas, total } = sel;
     if (!linhas.length) return 'Nenhuma tarefa aberta com esses critérios — nada foi proposto.';
     if (total > 300) return 'São ' + total + ' tarefas abertas com esses critérios: afine (prazo, empresa, título) até 300 — nada foi proposto.';
-    registrar({ tipo: 'concluir_tarefas', ids: linhas.map(t => String(t.id)) });
+    const m = limparMensagem(e.mensagem);
+    registrar(comMsg({ tipo: 'concluir_tarefas', ids: linhas.map(t => String(t.id)) }, m));
     const com = await comEmpresa(linhas);
     return 'Proposta pronta: a tela mostra ' + plural(linhas.length, 'tarefa', 'tarefas') + ' com o botão "Concluir" (a pessoa confirma e pode desmarcar alguma). Nada foi concluído ainda.\n'
-      + com.slice(0, 12).map(t => '- ' + valorCurto(t.titulo, 80) + (t.cliente_id ? ' · ' + t.empresa : '') + ' · prazo ' + dataBR(t.prazo) + ' · ' + (t.responsavel || 'sem responsável')).join('\n')
-      + (linhas.length > 12 ? '\n… e mais ' + (linhas.length - 12) : '') + '\nNa resposta: uma frase dizendo o que será concluído quando ela confirmar (não diga que já foi).';
+      + listaTarefas(com) + avisoMsg(m) + '\nNa resposta: uma frase dizendo o que será concluído quando ela confirmar' + (m ? ', com a mensagem no histórico' : '') + ' (não diga que já foi).';
+  }
+
+  // só a mensagem no histórico, sem concluir nem mudar nada (o "Registrar andamento" da Agenda)
+  async function propor_registrar_historico(e) {
+    const ja = jaProposto(); if (ja) return ja;
+    const m = limparMensagem(e.mensagem);
+    if (!m) return 'Diga a mensagem que vai no histórico (o que a pessoa pediu pra registrar) — nada foi proposto.';
+    const sel = await tarefasDoPedido(e, 'id,cliente_id,titulo,responsavel,prazo');
+    if (sel.erro) return sel.erro;
+    const { linhas, total } = sel;
+    if (!linhas.length) return 'Nenhuma tarefa aberta com esses critérios — nada foi proposto.';
+    if (total > 300) return 'São ' + total + ' tarefas abertas com esses critérios: afine (prazo, empresa, título) até 300 — nada foi proposto.';
+    registrar({ tipo: 'registrar_historico', ids: linhas.map(t => String(t.id)), mensagem: m });
+    const com = await comEmpresa(linhas);
+    return 'Proposta pronta: a tela mostra a mensagem (dá pra editar) e ' + plural(linhas.length, 'tarefa', 'tarefas') + ' com o botão "Registrar" (a pessoa confirma e pode desmarcar alguma). Nada foi gravado ainda, e nenhuma tarefa muda.\n'
+      + 'A mensagem: “' + m + '”\n' + listaTarefas(com) + '\nNa resposta: uma frase dizendo o que vai pro histórico quando ela confirmar (não diga que já foi).';
   }
 
   // remarcar, passar pra outra pessoa, mudar a prioridade: a mesma regra da tela (assets/js/tarefas-acoes.js) separa o que
@@ -985,7 +1022,8 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
       + (daFicha.length === 1 ? ' fica' : ' ficam') + ' de fora: o prazo e o responsável vêm da ficha de origem — muda na tela ' + telas.join(', ') + '.' : '';
     const ja2 = iguais ? plural(iguais, 'tarefa já está', 'tarefas já estão') + ' assim.' : '';
     if (!mudam.length) return [fora, ja2, 'Nada foi proposto.'].filter(Boolean).join(' ');
-    registrar({ tipo: 'alterar_tarefas', ids: mudam.map(t => String(t.id)), mudar });
+    const msgH = limparMensagem(e.mensagem);
+    registrar(comMsg({ tipo: 'alterar_tarefas', ids: mudam.map(t => String(t.id)), mudar }, msgH));
     const com = await comEmpresa(mudam);
     const PRIO = { alta: 'alta', media: 'média', baixa: 'baixa' };
     const comoFica = t => { const d = mudancaDe(t, mudar) || {};
@@ -1000,7 +1038,7 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
       px.recorrente ? px.recorrente + (px.recorrente === 1 ? ' vem' : ' vêm') + ' de tarefa recorrente: a próxima nasce com o responsável de lá — pra ficar de vez, troque em Tarefas recorrentes do setor' : null].filter(Boolean);
     return 'Proposta pronta: a tela mostra ' + plural(mudam.length, 'tarefa', 'tarefas') + ' com o antes e o depois e o botão pra confirmar (a pessoa pode desmarcar alguma; depois, "Desfazer"). Nada mudou ainda.\n'
       + com.slice(0, 12).map(t => '- ' + valorCurto(t.titulo, 80) + (t.cliente_id ? ' · ' + t.empresa : '') + ' · ' + comoFica(t)).join('\n')
-      + (mudam.length > 12 ? '\n… e mais ' + (mudam.length - 12) : '') + (ja2 ? '\n' + ja2 : '') + (fora ? '\n' + fora : '')
+      + (mudam.length > 12 ? '\n… e mais ' + (mudam.length - 12) : '') + (ja2 ? '\n' + ja2 : '') + (fora ? '\n' + fora : '') + avisoMsg(msgH)
       + (fds ? '\nAtenção: o novo prazo (' + dataBR(mudar.prazo) + ') cai num ' + fds + ' — diga isso na resposta.' : '')
       + (proximas.length ? '\nDas que mudam, ' + proximas.join('; ') + '. Diga isso numa frase na resposta.' : '')
       + '\nNa resposta: uma frase dizendo o que muda quando ela confirmar (não diga que já mudou)' + (fora ? ' e o que fica de fora' : '') + '.';
@@ -1213,7 +1251,8 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
       + ' Na resposta: o que achou — o nome, a pasta e a data do que mais interessa —, sem colar link e sem inventar arquivo; nada encontrado, diga e sugira outras palavras.';
   }
 
-  return { buscar_empresa, ver_empresa, agenda, consultar, perguntar_reforma, buscar_arquivos, propor_concluir_tarefas, propor_alterar_tarefas, propor_marcar_pago, propor_criar_tarefa, propor_enviar_mensagem, propor_revisao_atrasadas, propor_ver_vigia };
+  return { buscar_empresa, ver_empresa, agenda, consultar, perguntar_reforma, buscar_arquivos, propor_concluir_tarefas, propor_alterar_tarefas, propor_registrar_historico,
+    propor_marcar_pago, propor_criar_tarefa, propor_enviar_mensagem, propor_revisao_atrasadas, propor_ver_vigia };
 }
 
 // a etapa que aparece no "digitando…" da tela
@@ -1228,6 +1267,7 @@ export function descreverEtapa(nome, e = {}) {
   if (nome === 'buscar_arquivos') return 'Procurando no Drive' + (x.empresa && !UUID.test(String(x.empresa)) ? ' de ' + s(x.empresa, 60) : ' da empresa');
   if (nome === 'propor_concluir_tarefas') return 'Separando as tarefas pra você confirmar';
   if (nome === 'propor_alterar_tarefas') return 'Separando o que muda pra você confirmar';
+  if (nome === 'propor_registrar_historico') return 'Preparando a mensagem pro histórico';
   if (nome === 'propor_marcar_pago') return 'Separando os boletos pra você confirmar';
   if (nome === 'propor_criar_tarefa') return 'Preparando a tarefa pra você conferir';
   if (nome === 'propor_enviar_mensagem') return 'Escrevendo a mensagem pra você conferir';

@@ -25,12 +25,24 @@
 //                     das fichas), renovarAlvara (como o "Renovar" da tela Alvarás) e desativarRegistro (a cobrança e a
 //                     obrigação de quem saiu da carteira). E a terceira: vincularObrigacoes (as do regime, com a sugestão
 //                     de sugerirObrigacoes), porNaCobranca (a base de boletos) e acertarCadastro (o cadastro segue a carteira).
+//   A mensagem no histórico (20/10/2026, pedido da Thalia) — o que a pessoa escreve vai no fim da linha da conclusão e da
+//                     mudança (concluirTarefas e alterarTarefas com "mensagem", como a observação do concluir em lote da
+//                     Agenda) ou sozinha, sem mudar a tarefa: registrarNoHistorico (o "Registrar andamento" da Agenda) e
+//                     desfazerRegistro (tira as linhas que entraram, só as de quem registrou).
 // ============================================================
 
 const LOTE = 100;   // ids por chamada: o filtro vai no endereço
 const partes = lista => { const out = []; for (let i = 0; i < lista.length; i += LOTE) out.push(lista.slice(i, i + LOTE)); return out; };
 const unicos = ids => [...new Set((Array.isArray(ids) ? ids : []).filter(x => x != null && x !== '').map(String))];
 const msg = e => String((e && e.message) || e || 'erro');
+
+// ---- a mensagem no histórico ----
+// limparMensagem: numa linha só (o histórico das telas mostra o texto corrido), sem espaço sobrando, até 1000 caracteres
+// (contados por caractere de verdade: o corte não parte um emoji ao meio)
+export const MAX_MENSAGEM = 1000;
+export const limparMensagem = s => [...String(s == null ? '' : s).replace(/\s+/g, ' ').trim()].slice(0, MAX_MENSAGEM).join('').trim();
+// a linha do histórico com a mensagem no fim, como a da Agenda ("Tarefa concluída em lote pela Agenda (3 tarefas). <obs>")
+export const comMensagem = (texto, mensagem) => { const m = limparMensagem(mensagem); return m ? texto + ' ' + m : texto; };
 
 // ---- dependências entre tarefas geradas pelo mesmo processo ----
 // Hoje só uma regra: no kit de Transformação, a escrituração contábil espera a precificação do honorário do novo porte.
@@ -50,9 +62,10 @@ export async function avisarDependentes(sb, t) {
   }
 }
 
-// concluirTarefas(sb, ids, { autor, historico }) → { concluidas: [{ id, titulo, cliente_id, status_antes, faturavel }],
+// concluirTarefas(sb, ids, { autor, historico, mensagem }) → { concluidas: [{ id, titulo, cliente_id, status_antes, faturavel }],
 //   jaEstavam: [ids que não estavam abertos — concluídos por outra pessoa, ou que não existem mais], semHistorico, erro }
-export async function concluirTarefas(sb, ids, { autor = null, historico = 'Tarefa concluída.' } = {}) {
+// mensagem: o que a pessoa escreveu, no fim da linha do histórico de cada uma (vazia: só o histórico)
+export async function concluirTarefas(sb, ids, { autor = null, historico = 'Tarefa concluída.', mensagem = '' } = {}) {
   const lista = unicos(ids);
   const concluidas = [];
   const fim = (erro = null, semHistorico = false) => {
@@ -80,7 +93,8 @@ export async function concluirTarefas(sb, ids, { autor = null, historico = 'Tare
   }
   if (!concluidas.length) return fim();
   // a conclusão vale mesmo sem a linha no histórico (como nas telas): quem chama avisa
-  const { error: eh } = await sb.from('tarefa_historico').insert(concluidas.map(c => ({ tarefa_id: c.id, descricao: historico, autor })));
+  const descricao = comMensagem(historico, mensagem);
+  const { error: eh } = await sb.from('tarefa_historico').insert(concluidas.map(c => ({ tarefa_id: c.id, descricao, autor })));
   for (const c of concluidas) { try { await avisarDependentes(sb, c); } catch (e) { /* dependentes: melhor esforço, como nas telas */ } }
   return fim(null, !!eh);
 }
@@ -108,6 +122,46 @@ export async function desfazerConclusao(sb, concluidas, { autor = null, historic
   }
   if (desfeitas.length) await sb.from('tarefa_historico').insert(desfeitas.map(id => ({ tarefa_id: id, descricao: historico, autor })));
   return fim();
+}
+
+// registrarNoHistorico(sb, ids, { autor, mensagem, origem }) → { registradas: [{ id, linha }], faltam: [ids que não existem], erro }
+// Só a mensagem, sem mudar a tarefa (o "Registrar andamento" da Agenda): "<mensagem> (registrado pelo <origem>)" no histórico
+// de cada uma. linha = o id da linha que entrou (pro desfazer). A tarefa que não existe mais fica de fora
+export async function registrarNoHistorico(sb, ids, { autor = null, mensagem = '', origem = null } = {}) {
+  const lista = unicos(ids);
+  const m = limparMensagem(mensagem);
+  const res = { registradas: [], faltam: [], erro: null };
+  if (!m) return { ...res, erro: 'Escreva a mensagem.' };
+  if (!lista.length) return res;
+  const existem = new Set();
+  for (const p of partes(lista)) {
+    const { data, error } = await sb.from('tarefas').select('id').in('id', p);
+    if (error) return { ...res, erro: msg(error) };
+    (data || []).forEach(t => existem.add(String(t.id)));
+  }
+  res.faltam = lista.filter(id => !existem.has(id));
+  const descricao = m + (origem ? ' (registrado pelo ' + origem + ')' : '');
+  for (const p of partes(lista.filter(id => existem.has(id)))) {
+    const { data, error } = await sb.from('tarefa_historico').insert(p.map(id => ({ tarefa_id: id, descricao, autor }))).select('id, tarefa_id');
+    if (error) return { ...res, erro: msg(error) };
+    (data || []).forEach(x => res.registradas.push({ id: String(x.tarefa_id), linha: String(x.id) }));
+  }
+  return res;
+}
+
+// desfazerRegistro(sb, registradas, { autor }) → { desfeitas: [ids das tarefas], erro } — tira do histórico as linhas que
+// registrarNoHistorico pôs (só as de quem registrou)
+export async function desfazerRegistro(sb, registradas, { autor = null } = {}) {
+  const porLinha = new Map((Array.isArray(registradas) ? registradas : []).filter(r => r && r.linha).map(r => [String(r.linha), String(r.id)]));
+  const desfeitas = [];
+  for (const p of partes([...porLinha.keys()])) {
+    let qy = sb.from('tarefa_historico').delete().in('id', p);
+    if (autor) qy = qy.eq('autor', autor);
+    const { data, error } = await qy.select('id');
+    if (error) return { desfeitas, erro: msg(error) };
+    (data || []).forEach(x => desfeitas.push(porLinha.get(String(x.id))));
+  }
+  return { desfeitas, erro: null };
 }
 
 // criarTarefasAvulsas(sb, dados) → { ids, erro } — a tarefa avulsa do formulário "Nova tarefa": uma por cliente (sem
@@ -210,10 +264,11 @@ export function descreverMudanca(antes, depois) {
   return partes.map((p, i) => (i ? p.charAt(0).toLowerCase() + p.slice(1) : p)).join('; ');
 }
 
-// alterarTarefas(sb, ids, mudar, { autor, origem }) → { alteradas: [{ id, titulo, antes, depois }], iguais: [ids já assim],
+// alterarTarefas(sb, ids, mudar, { autor, origem, mensagem }) → { alteradas: [{ id, titulo, antes, depois }], iguais: [ids já assim],
 //   fechadas: [ids concluídos ou que não existem], daFicha: [{ id, nome, tela }], semHistorico, erro }
-// mudar: { prazo?, responsavel?, prioridade? } (limparMudanca). Só tarefa aberta e fora das da ficha de origem
-export async function alterarTarefas(sb, ids, mudar, { autor = null, origem = null } = {}) {
+// mudar: { prazo?, responsavel?, prioridade? } (limparMudanca). Só tarefa aberta e fora das da ficha de origem. mensagem: o
+// que a pessoa escreveu, no fim da linha do histórico
+export async function alterarTarefas(sb, ids, mudar, { autor = null, origem = null, mensagem = '' } = {}) {
   const lista = unicos(ids);
   const m = limparMudanca(mudar);
   const res = { alteradas: [], iguais: [], fechadas: [], daFicha: [], semHistorico: false, erro: null };
@@ -250,7 +305,7 @@ export async function alterarTarefas(sb, ids, mudar, { autor = null, origem = nu
   }
   if (!res.alteradas.length) return res;
   const fim = origem ? ' — pelo ' + origem + '.' : '.';
-  const { error: eh } = await sb.from('tarefa_historico').insert(res.alteradas.map(a => ({ tarefa_id: a.id, descricao: descreverMudanca(a.antes, a.depois) + fim, autor })));
+  const { error: eh } = await sb.from('tarefa_historico').insert(res.alteradas.map(a => ({ tarefa_id: a.id, descricao: comMensagem(descreverMudanca(a.antes, a.depois) + fim, mensagem), autor })));
   res.semHistorico = !!eh;
   return res;
 }

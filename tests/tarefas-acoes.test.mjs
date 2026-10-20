@@ -2,7 +2,8 @@
 // de outra pessoa), com a linha no histórico e a regra das dependências; desfazer volta à situação de antes, só de quem
 // concluiu e sem a faturável; criar a tarefa avulsa do formulário e desfazer; marcar boleto pago e desfazer; em lotes de 100;
 // alterar prazo, responsável e prioridade; e o que o cartão do vigia resolve ali mesmo (o responsável que falta, a proposta
-// parada, o boleto enviado ou pago), com o desfazer.
+// parada, o boleto enviado ou pago), com o desfazer. E a mensagem no histórico (20/10/2026): junto da conclusão e da
+// mudança, ou sozinha (registrar e desfazer o registro).
 // Sem rede: o cliente do Supabase é um dublê em memória.
 // Rodar com: node tests/tarefas-acoes.test.mjs
 import { concluirTarefas, desfazerConclusao, criarTarefasAvulsas, excluirTarefasCriadas, marcarPagos, desfazerPagos, avisarDependentes,
@@ -10,7 +11,8 @@ import { concluirTarefas, desfazerConclusao, criarTarefasAvulsas, excluirTarefas
   pessoaDaEquipe, definirResponsavelObrigacoes, desfazerResponsavelObrigacoes, definirResponsavelRotina, desfazerResponsavelRotina,
   descartarProposta, desfazerDescarte, avancarBoletos, voltarBoletos, fecharFicha, reabrirFicha, vincularEmpresa, desvincularEmpresa, buscarEmpresas,
   renovarAlvara, desfazerRenovacao, desativarRegistro, reativarRegistro, sugerirObrigacoes, obrigacoesParaVincular, vincularObrigacoes, desfazerVinculoObrigacoes,
-  dadosDaCobranca, porNaCobranca, desfazerCobranca, acertarCadastro, desfazerCadastro } from '../assets/js/tarefas-acoes.js';
+  dadosDaCobranca, porNaCobranca, desfazerCobranca, acertarCadastro, desfazerCadastro,
+  limparMensagem, comMensagem, MAX_MENSAGEM, registrarNoHistorico, desfazerRegistro } from '../assets/js/tarefas-acoes.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + extra : '')); };
@@ -111,6 +113,46 @@ console.log('Desfazer:');
   chk('volta à situação de antes (pendente, aguardando), sem quem e quando', st('a').status === 'pendente' && st('b').status === 'aguardando' && st('a').concluida_por === null && st('a').concluida_em === null, JSON.stringify(d));
   chk('a concluída por outra pessoa e a faturável ficam concluídas', st('c').status === 'concluida' && st('f').status === 'concluida' && d.ficaram.sort().join() === 'c,f' && d.desfeitas.sort().join() === 'a,b');
   chk('a linha no histórico das desfeitas', db.tarefa_historico.filter(h => h.descricao === 'Conclusão desfeita no assistente.').map(h => h.tarefa_id).sort().join() === 'a,b');
+}
+
+console.log('A mensagem no histórico (20/10/2026):');
+{
+  chk('limparMensagem: numa linha, sem espaço sobrando; vazio e o que não é texto viram ""', limparMensagem('  DAS enviado\n por   WhatsApp \t') === 'DAS enviado por WhatsApp'
+    && limparMensagem(null) === '' && limparMensagem('   ') === '' && limparMensagem(undefined) === '');
+  const longa = '😀'.repeat(MAX_MENSAGEM + 5);
+  chk('até 1000 caracteres, sem partir o emoji ao meio', MAX_MENSAGEM === 1000 && [...limparMensagem(longa)].length === 1000 && limparMensagem(longa) === '😀'.repeat(1000));
+  chk('comMensagem: a mensagem no fim da linha; sem mensagem, a linha como era', comMensagem('Tarefa concluída.', ' DAS enviado. ') === 'Tarefa concluída. DAS enviado.'
+    && comMensagem('Tarefa concluída.', '') === 'Tarefa concluída.' && comMensagem('Tarefa concluída.', null) === 'Tarefa concluída.');
+  const db = { tarefas: [T('a'), T('b')], tarefa_historico: [] };
+  const r = await concluirTarefas(dubla(db), ['a', 'b'], { autor: EU, historico: 'Tarefa concluída pelo assistente.', mensagem: 'DAS enviado\npor WhatsApp.' });
+  chk('concluir com mensagem: no fim da linha do histórico de cada uma', r.concluidas.length === 2 && db.tarefa_historico.length === 2
+    && db.tarefa_historico.every(h => h.descricao === 'Tarefa concluída pelo assistente. DAS enviado por WhatsApp.' && h.autor === EU), JSON.stringify(db.tarefa_historico));
+  const db2 = { tarefas: [T('a', { prazo: '2026-10-01', responsavel: 'Thalia', prioridade: 'media' })], tarefa_historico: [] };
+  const r2 = await alterarTarefas(dubla(db2), ['a'], { prazo: '2026-10-24' }, { autor: EU, origem: 'assistente do escritório', mensagem: 'Cliente pediu prazo.' });
+  chk('alterar com mensagem: no fim da linha da mudança', r2.alteradas.length === 1 && db2.tarefa_historico[0].descricao === 'Prazo alterado de 01/10/2026 para 24/10/2026 — pelo assistente do escritório. Cliente pediu prazo.', db2.tarefa_historico[0] && db2.tarefa_historico[0].descricao);
+}
+{
+  const db = { tarefas: [T('a'), T('b', { status: 'concluida' })], tarefa_historico: [{ id: 'h0', tarefa_id: 'a', descricao: 'Tarefa cadastrada.', autor: EU }] };
+  const sb = dubla(db);
+  chk('registrar sem mensagem: erro, sem tocar no banco', (await registrarNoHistorico(sb, ['a'], { autor: EU, mensagem: '  ' })).erro === 'Escreva a mensagem.' && !sb.log.length);
+  const r = await registrarNoHistorico(sb, ['a', 'b', 'x', 'a'], { autor: EU, mensagem: ' Aguardando o faturamento ', origem: 'assistente do escritório' });
+  chk('registrar: a linha em cada uma (a concluída também), sem mudar a tarefa; a que não existe fica de fora', !r.erro && r.registradas.map(x => x.id).join() === 'a,b' && r.faltam.join() === 'x'
+    && db.tarefa_historico.filter(h => h.descricao === 'Aguardando o faturamento (registrado pelo assistente do escritório)' && h.autor === EU).length === 2
+    && db.tarefas.find(t => t.id === 'a').status === 'pendente' && db.tarefas.find(t => t.id === 'b').status === 'concluida' && !sb.log.some(l => l.t === 'tarefas' && l.op === 'update'), JSON.stringify(r));
+  chk('registrar: devolve a linha de cada uma (pro desfazer)', r.registradas.every(x => db.tarefa_historico.some(h => h.id === x.linha && h.tarefa_id === x.id)));
+  // alguém com outro login registrou na mesma linha? Não: o desfazer só tira as linhas de quem registrou
+  db.tarefa_historico.find(h => h.id === r.registradas[1].linha).autor = 'outra@macedoereis.com.br';
+  const d = await desfazerRegistro(sb, r.registradas, { autor: EU });
+  chk('desfazer: tira só as linhas que entraram, de quem registrou; o resto do histórico fica', !d.erro && d.desfeitas.join() === 'a' && db.tarefa_historico.length === 2
+    && db.tarefa_historico.some(h => h.id === 'h0') && db.tarefa_historico.some(h => h.id === r.registradas[1].linha), JSON.stringify(d));
+  const muitas = { tarefas: Array.from({ length: 250 }, (_, i) => T('m' + i)), tarefa_historico: [] };
+  const sbm = dubla(muitas);
+  const rm = await registrarNoHistorico(sbm, muitas.tarefas.map(t => t.id), { autor: EU, mensagem: 'Conferido.' });
+  const ins = sbm.log.filter(l => l.t === 'tarefa_historico' && l.op === 'insert').length;
+  chk('250 de uma vez: em lotes de 100; sem origem, só a mensagem', rm.registradas.length === 250 && ins === 3 && muitas.tarefa_historico.every(h => h.descricao === 'Conferido.'), String(ins));
+  const sbe = dubla({ tarefas: [T('a')], tarefa_historico: [] }); sbe.falhar = 'tarefa_historico';
+  const re = await registrarNoHistorico(sbe, ['a'], { autor: EU, mensagem: 'x' });
+  chk('erro do banco: devolve o erro', re.erro === 'falhou de propósito' && !re.registradas.length);
 }
 
 console.log('Criar:');
