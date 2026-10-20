@@ -196,8 +196,9 @@ const valorOuFuncao = v => (typeof v === 'function' ? v() : v);
 // uma mensagem com o cartão, sem passar pela IA, e abre o painel.
 //   op.abas          [{ id, rotulo, nome?, montar(lugar, ctl) → { aoMostrar({ foco }), aoEsconder(), status() } }] — as outras
 //                    abas do painel. ctl: { ativa(): o painel aberto nesta aba · mostrar(): abre o painel nela · contador(n):
-//                    as novidades dela (somam no balão) · status(): redesenha a linha do topo · avisar(msg) · anunciar(t) ·
-//                    reagir() · largo(): o painel aumentado }. mostrarAba(id) troca de aba
+//                    as novidades dela (somam no balão; contador(n, { balao: false }) = só na barra das abas — as notícias,
+//                    que não podem esconder a mensagem do chat no número do balão) · status(): redesenha a linha do topo ·
+//                    avisar(msg) · anunciar(t) · reagir() · largo(): o painel aumentado }. mostrarAba(id) troca de aba
 // ============================================================
 export function montarAssistente(op) {
   const temMedia = q => typeof matchMedia === 'function' && matchMedia(q).matches;
@@ -294,7 +295,7 @@ export function montarAssistente(op) {
   // ---------- as abas (op.abas: o chat da equipe, por exemplo) ----------
   const abas = (Array.isArray(op.abas) ? op.abas : []).filter(a => a && /^[a-z0-9-]{1,40}$/.test(String(a.id)) && a.id !== 'assistente' && typeof a.montar === 'function');
   const barra = q('.as-abas'), nomeTopo = q('.as-nome');
-  const contagens = {}, instancias = {};
+  const contagens = {}, instancias = {}, soNaBarra = new Set();   // soNaBarra: as abas cujo número não soma no balão
   const abaAtual = () => (abas.some(a => a.id === est.aba) ? est.aba : 'assistente');
   const abaDe = id => abas.find(a => a.id === id) || null;
 
@@ -308,13 +309,13 @@ export function montarAssistente(op) {
   }
   const statusPadrao = () => { raiz.classList.remove('as-ocupado'); atualizarTopo(); };
   statusPadrao();
-  const totalAbas = () => abas.reduce((n, a) => n + (contagens[a.id] || 0), 0);
+  const totalAbas = () => abas.reduce((n, a) => n + (soNaBarra.has(a.id) ? 0 : contagens[a.id] || 0), 0);
   const atualizarSelo = () => {
     const n = est.naoLidas + totalAbas();
     selo.hidden = !n;
     selo.textContent = n > 9 ? '9+' : String(n || '');
     const partes = [est.naoLidas ? est.naoLidas + (est.naoLidas === 1 ? ' resposta nova' : ' respostas novas') : '',
-      ...abas.filter(a => contagens[a.id]).map(a => contagens[a.id] + ' em ' + a.rotulo)].filter(Boolean);
+      ...abas.filter(a => contagens[a.id] && !soNaBarra.has(a.id)).map(a => contagens[a.id] + ' em ' + a.rotulo)].filter(Boolean);
     lancador.setAttribute('aria-label', (op.rotulo || op.nome) + (partes.length ? ' — ' + partes.join(', ') : ''));
     // o número de cada aba, na barra (o do assistente: as respostas que chegaram com outra aba na frente)
     barra.querySelectorAll('.as-aba').forEach(b => {
@@ -714,7 +715,10 @@ export function montarAssistente(op) {
       const ctl = {
         ativa: () => est.aberto && abaAtual() === a.id,
         mostrar: (foco = true) => { mostrarAba(a.id); if (!est.aberto) abrir(foco); else chamarAba(a.id, 'aoMostrar', { foco }); },
-        contador: n => { const v = Math.max(0, Math.round(Number(n) || 0)); if (contagens[a.id] !== v) { contagens[a.id] = v; atualizarSelo(); } },
+        contador: (n, { balao = true } = {}) => {
+          const v = Math.max(0, Math.round(Number(n) || 0)), quieta = balao === false;
+          if (contagens[a.id] !== v || soNaBarra.has(a.id) !== quieta) { contagens[a.id] = v; if (quieta) soNaBarra.add(a.id); else soNaBarra.delete(a.id); atualizarSelo(); }
+        },
         status: () => { if (abaAtual() === a.id) atualizarTopo(); },
         avisar: msg => avisar(msg),
         anunciar: t => anunciar(t),

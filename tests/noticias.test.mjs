@@ -5,7 +5,7 @@ import { lerFeed, lerListaHtml, semTags, decodificar, dataIso, linkLimpo } from 
 import { textoDaPagina } from '../supabase/functions/noticias/pagina.js';
 import { montarClientes, perfilDaCarteira, clientesDosCriterios, cnaeDe } from '../supabase/functions/noticias/perfil.js';
 import { lerClassificacao, mensagemDaNoticia, montarSistema, criarChamador } from '../supabase/functions/noticias/triagem.js';
-import { decodificarCorpo, feedsAnunciados, coletarFontes, triarPendentes, ehArquivo } from '../supabase/functions/noticias/coleta.js';
+import { decodificarCorpo, feedsAnunciados, coletarFontes, triarPendentes, ehArquivo, melhorQue } from '../supabase/functions/noticias/coleta.js';
 import { SOCIOS as SOCIOS_FUNCAO } from '../supabase/functions/noticias/servidor.js';
 import { SOCIOS } from '../assets/js/equipe.js';
 import * as tela from '../assets/js/noticias.js';
@@ -113,7 +113,12 @@ console.log('A classificação da IA:');
   const sis = montarSistema('PERFIL');
   chk('o sistema leva o retrato, com cache de 1 hora', sis.length === 1 && sis[0].text.endsWith('Retrato da carteira hoje:\nPERFIL') && sis[0].cache_control.ttl === '1h');
   const msg = mensagemDaNoticia({ titulo: 'T', fonte: 'STF', tipoFonte: 'tribunal', publicada_em: '2026-10-19T23:00:00Z', link: 'https://x', trecho: 'tr', pagina: { descricao: 'desc', texto: 'corpo' } });
-  chk('a mensagem: fonte, data em dd/mm/aaaa, título, endereço, trecho, descrição e texto', msg === 'Fonte: STF (tribunal)\nPublicada: 19/10/2026\nTítulo: T\nEndereço: https://x\nTrecho do RSS: tr\nDescrição da página: desc\nTexto da página: corpo', msg);
+  chk('a mensagem: fonte, data em dd/mm/aaaa, título, endereço, trecho, descrição e texto', msg === 'Fonte: STF (tribunal)\nPublicada: 19/10/2026\nTítulo: T\nEndereço: https://x\nTrecho do RSS: tr\nDescrição da página: desc\nTexto da página: corpo\n\nNotícias que já estão no feed: nenhuma.', msg);
+  const msg2 = mensagemDaNoticia({ titulo: 'T', fonte: 'F', publicada_em: null, link: 'https://x' }, [{ titulo: 'Fim da escala 6x1', fonte: 'Fenacon', data: '2026-10-19T12:00:00Z' }, { titulo: 'Sem fonte', data: null }]);
+  chk('a mensagem leva as que já estão no feed, numeradas (pra mesma_que)', msg2.endsWith('Notícias que já estão no feed (pra mesma_que):\n[1] Fim da escala 6x1 — Fenacon, 19/10/2026\n[2] Sem fonte, sem data'), msg2);
+  const comMesma = q => lerClassificacao({ content: [{ type: 'tool_use', name: 'classificar', input: { relevante: true, relevancia: 'media', resumo: 'x', mesma_que: q } }] }, 2).mesma_que;
+  chk('mesma_que: só o número de uma das que foram na mensagem', comMesma(2) === 2 && comMesma('1') === 1 && comMesma(3) === null && comMesma(0) === null && comMesma(1.5) === null && comMesma(undefined) === null);
+  chk('descartada não entra em grupo', lerClassificacao({ content: [{ type: 'tool_use', name: 'classificar', input: { relevante: false, resumo: 'x', mesma_que: 1 } }] }, 2).mesma_que === null);
 }
 
 console.log('O chamador da API:');
@@ -133,7 +138,8 @@ function bancoFalso(tabelas) {
   const q = nome => {
     const st = { filtros: [], op: 'select', payload: null, opcoes: {}, head: false, count: null, lim: null };
     const linhas = () => (t[nome] = t[nome] || []);
-    const passa = r => st.filtros.every(([op, c, v]) => op === 'eq' ? r[c] === v : op === 'in' ? v.includes(r[c]) : op === 'lt' ? (r[c] != null && r[c] < v) : op === 'notnull' ? r[c] != null : true);
+    const passa = r => st.filtros.every(([op, c, v]) => op === 'eq' ? r[c] === v : op === 'in' ? v.includes(r[c]) : op === 'lt' ? (r[c] != null && r[c] < v)
+      : op === 'gte' ? (r[c] != null && r[c] >= v) : op === 'is' ? (v === null ? r[c] == null : r[c] === v) : op === 'notnull' ? r[c] != null : true);
     const exec = () => {
       if (st.op === 'upsert') {
         const novos = [];
@@ -149,6 +155,7 @@ function bancoFalso(tabelas) {
       select(_c, o) { if (o && o.head) st.head = true; return b; },
       eq(c, v) { st.filtros.push(['eq', c, v]); return b; }, in(c, v) { st.filtros.push(['in', c, v]); return b; },
       lt(c, v) { st.filtros.push(['lt', c, v]); return b; }, not(c) { st.filtros.push(['notnull', c]); return b; },
+      gte(c, v) { st.filtros.push(['gte', c, v]); return b; }, is(c, v) { st.filtros.push(['is', c, v]); return b; },
       order() { return b; }, limit(n) { st.lim = n; return b; },
       upsert(p, o) { st.op = 'upsert'; st.payload = p; st.opcoes = o || {}; return b; }, update(p) { st.op = 'update'; st.payload = p; return b; },
       maybeSingle() { const r = exec(); return Promise.resolve({ data: (r.data || [])[0] || null, error: null }); },
@@ -191,6 +198,10 @@ function bancoFalso(tabelas) {
     rg.novas === 1 && db.tabelas.noticias.some(n => n.url === 'https://gov.exemplo/noticias/pec-da-jornada') && !db.tabelas.noticias.some(n => /gov\.exemplo\/(imagens|arquivos|doc|agenda)/.test(n.url)), JSON.stringify(rg));
   chk('arquivo × página: o endereço .html da notícia continua notícia', !ehArquivo({ link: 'https://www.agro.exemplo/noticias/stf-funrural_519899.html', titulo: 'STF reconhece inconstitucionalidade do Funrural' })
     && ehArquivo({ link: 'https://x.gov.br/a/Relatorio.PDF', titulo: 'Relatório de Efetividade' }) && !ehArquivo({ link: 'https://x.gov.br/a/norma', titulo: 'Receita publica a norma sobre o arquivo do SPED em formato .txt e outras mudanças no leiaute' }));
+  chk('o endereço do gov.br que termina em ".jpg/view" é arquivo; o PDF de norma (portaria) entra, o relatório em PDF não',
+    ehArquivo({ link: 'https://www.gov.br/fazenda/pt-br/imagens/noticias/continuidade-infracional.jpg/view', titulo: 'Continuidade infracional no âmbito do CRSNSP.jpg' })
+    && !ehArquivo({ link: 'https://www.gov.br/trabalho-e-emprego/pt-br/sst-portarias/portaria-mte-no-1-758-altera-a-nr-28.pdf/view', titulo: 'Portaria MTE nº 1.758 (Altera a NR-28).pdf' })
+    && ehArquivo({ link: 'https://www.gov.br/trabalho-e-emprego/pt-br/pnmpo/relatorio-de-efetividade-pnmpo-2025.pdf/view', titulo: 'Relatório de Efetividade PNMPO 2025.pdf' }));
   db.tabelas.noticias = db.tabelas.noticias.filter(n => n.url !== 'https://gov.exemplo/noticias/pec-da-jornada');
   db.tabelas.noticias_fontes.pop();
   db.tabelas.noticias_fontes[1].ativo = true; db.tabelas.noticias_fontes.pop();
@@ -223,6 +234,37 @@ function bancoFalso(tabelas) {
   n9.tentativas = 0;
   const semPrazo = await triarPendentes({ db, fetch: fetchFalso, chamar, agora: () => agora, ate: agora + 10000 });
   chk('sem prazo pra mais uma, fica pra próxima coleta', semPrazo.puladas === 1 && n9.situacao === 'erro');
+  n9.tentativas = 3;
+
+  // a mesma notícia em outra fonte: o grupo
+  const principalDestda = db.tabelas.noticias.find(x => x.url === 'https://um.exemplo/destda');
+  db.tabelas.noticias_fontes.push({ id: 'f5', nome: 'Imprensa', url: 'https://imp.exemplo/rss', tipo: 'imprensa', formato: 'rss', ativo: false });
+  const nova = (id, titulo, fonte_id) => ({ id, url: 'https://imp.exemplo/' + id, titulo, fonte_id, situacao: 'nova', tentativas: 0, publicada_em: '2026-10-19T13:00:00Z' });
+  // a IA falsa: a relevância pedida e o mesma_que pelo título da principal, procurado na lista numerada da mensagem
+  const iaGrupo = (relevancia, titulo) => async corpo => {
+    const m = titulo ? new RegExp('\\[(\\d+)\\] ' + titulo).exec(corpo.messages[0].content) : null;
+    return { _modelo: 'm', usage: {}, content: [{ type: 'tool_use', name: 'classificar', input: { relevante: true, relevancia, setores: ['fiscal'], resumo: 'r', mesma_que: m ? Number(m[1]) : undefined } }] };
+  };
+  db.tabelas.noticias.push(nova('g1', 'DeSTDA tem novo prazo', 'f5'));
+  const vistosG = [];
+  const g = await triarPendentes({ db, fetch: fetchFalso, chamar: async c => { vistosG.push(c); return iaGrupo('media', 'Nova do DeSTDA')(c); }, agora: () => agora, ate: agora + 120000 });
+  const g1 = db.tabelas.noticias.find(x => x.id === 'g1');
+  chk('a mesma notícia de outra fonte, menos importante: entra no grupo da principal', g.agrupadas === 1 && g1.situacao === 'triada' && g1.grupo === principalDestda.id
+    && vistosG[0].messages[0].content.includes('[1] Nova do DeSTDA — Fonte Um, 19/10/2026'), JSON.stringify({ g, g1, msg: vistosG[0] && vistosG[0].messages[0].content.slice(-200) }));
+  // mais importante: vira a principal e leva o grupo; com a mesma importância, a da fonte oficial vira a principal e fica com o triada_em da antiga
+  db.tabelas.noticias.push({ id: 'p1', url: 'https://imp.exemplo/p1', titulo: 'Projeto do MEI avança', fonte_id: 'f5', situacao: 'triada', relevancia: 'media', triada_em: new Date(agora - 3600e3).toISOString(), grupo: null },
+    { id: 'd1', url: 'https://imp.exemplo/d1', titulo: 'Projeto do MEI avança (outra)', fonte_id: 'f5', situacao: 'triada', relevancia: 'media', triada_em: new Date(agora - 1800e3).toISOString(), grupo: 'p1' },
+    nova('g2', 'MEI: projeto aprovado muda o limite', 'f5'));
+  await triarPendentes({ db, fetch: fetchFalso, chamar: iaGrupo('alta', 'Projeto do MEI avança'), agora: () => agora, ate: agora + 120000 });
+  const [p1, d1, g2] = ['p1', 'd1', 'g2'].map(id => db.tabelas.noticias.find(x => x.id === id));
+  chk('mais importante: a nova vira a principal e leva o grupo (e conta como nova: o triada_em é o de agora)', g2.grupo === null && p1.grupo === 'g2' && d1.grupo === 'g2' && g2.triada_em === new Date(agora).toISOString(), JSON.stringify([p1, d1, g2]));
+  db.tabelas.noticias.push({ id: 'p2', url: 'https://imp.exemplo/p2', titulo: 'Receita muda o MAT', fonte_id: 'f5', situacao: 'triada', relevancia: 'media', triada_em: '2026-10-19T20:00:00.000Z', grupo: null },
+    { ...nova('g3', 'Receita Federal implanta o novo MAT', 'f1'), url: 'https://um.exemplo/g3' });
+  await triarPendentes({ db, fetch: fetchFalso, chamar: iaGrupo('media', 'Receita muda o MAT'), agora: () => agora, ate: agora + 120000 });
+  const [p2, g3] = ['p2', 'g3'].map(id => db.tabelas.noticias.find(x => x.id === id));
+  chk('mesma importância, da fonte oficial: vira a principal sem voltar a ser "nova"', g3.grupo === null && p2.grupo === 'g3' && g3.triada_em === '2026-10-19T20:00:00.000Z', JSON.stringify([p2, g3]));
+  chk('melhorQue: importância primeiro, depois a fonte oficial', melhorQue({ relevancia: 'alta', tipo: 'imprensa' }, { relevancia: 'media', tipo: 'oficial' }) === 'importancia'
+    && melhorQue({ relevancia: 'media', tipo: 'imprensa' }, { relevancia: 'alta', tipo: 'imprensa' }) === null && melhorQue({ relevancia: 'media', tipo: 'oficial' }, { relevancia: 'media', tipo: 'oficial' }) === null);
 }
 
 console.log('O corpo e os RSS anunciados:');

@@ -4,7 +4,8 @@
 //   1. lê o RSS de cada fonte ativa (noticias_fontes; sem RSS, os links da página de notícias pelo "padrao") e grava as
 //      notícias novas (noticias, endereço único; só as dos últimos dias — a primeira coleta não traz o arquivo inteiro);
 //   2. faz a triagem das que esperam (as mais novas primeiro, dentro do prazo da função): abre a página, a IA classifica
-//      (triagem.js) e os critérios viram os clientes pelo banco (perfil.js). Descartada = sem efeito pro escritório.
+//      (triagem.js) e os critérios viram os clientes pelo banco (perfil.js). Descartada = sem efeito pro escritório. A mesma
+//      notícia de outra fonte entra no grupo da principal (noticias.grupo; melhorQue decide quem é a principal).
 // A que dá erro volta pra fila (até 3 tentativas); a que parou no meio (função cortada) volta depois de 20 minutos.
 // diagnosticar({ fetch, urls }) — pra escolher as fontes: o que cada endereço devolve, quantos itens e, numa página
 // comum, os RSS que ela anuncia (<link rel="alternate">).
@@ -73,16 +74,19 @@ export async function diagnosticar({ fetch: f, urls = [] }) {
 }
 
 // o item que é arquivo — a imagem, a folha de estilo, o PDF anexado que o RSS geral dos portais gov.br lista junto com as
-// notícias ("esocial-full.png", "Cirruculo LUANA.pdf", "regras.html") — não é notícia: pelo endereço (termina em extensão
-// de arquivo) ou pelo título (o nome do arquivo)
-const EXT_ARQUIVO = /\.(pdf|jpe?g|png|gif|svg|webp|bmp|ico|css|js|json|xml|zip|rar|7z|docx?|xlsx?|pptx?|odt|ods|odp|csv|txt|mp3|mp4|avi|mov|wav)$/i;
-const TITULO_ARQUIVO = /\.(html?|pdf|jpe?g|png|gif|svg|webp|ico|css|js|docx?|xlsx?|pptx?|odt|ods|csv|zip|txt)$/i;
+// notícias ("esocial-full.png", "Cirruculo LUANA.pdf", "regras.html"; o endereço termina em ".png/view") — não é notícia,
+// pelo endereço ou pelo título. O documento (PDF, Word) entra só quando o título é de norma (portaria, IN, resolução…)
+const RE_ARQUIVO = /\.(jpe?g|png|gif|svg|webp|bmp|ico|css|js|json|xml|zip|rar|7z|xlsx?|pptx?|ods|odp|csv|txt|mp3|mp4|avi|mov|wav)$/i;
+const RE_DOCUMENTO = /\.(pdf|docx?|odt|rtf)$/i;
+const RE_NORMA = /\b(portaria|instru[cç][aã]o normativa|resolu[cç][aã]o|decreto|lei|nota t[eé]cnica|ato declarat[oó]rio|solu[cç][aã]o de consulta|conv[eê]nio|ajuste sinief|medida provis[oó]ria|emenda constitucional|manual|leiaute)\b/i;
 export function ehArquivo(item) {
   let caminho = '';
   try { caminho = new URL(item.link).pathname; } catch { caminho = String(item.link || ''); }
-  if (EXT_ARQUIVO.test(caminho)) return true;
+  caminho = caminho.replace(/\/(view|download|@@download(\/.*)?|at_download(\/.*)?)$/i, '');
   const t = String(item.titulo || '').trim();
-  return TITULO_ARQUIVO.test(t) && t.split(/\s+/).length <= 4;
+  if (RE_ARQUIVO.test(caminho) || RE_ARQUIVO.test(t)) return true;
+  if (RE_DOCUMENTO.test(caminho) || RE_DOCUMENTO.test(t)) return !RE_NORMA.test(t);
+  return /\.html?$/i.test(t) && t.split(/\s+/).length <= 3;
 }
 
 const iso = ms => new Date(ms).toISOString();
@@ -150,6 +154,18 @@ export async function lerCarteira(db, hojeISO) {
   });
 }
 
+// a mesma notícia em várias fontes (o fim da escala 6x1 em cinco sites) vira um grupo: a IA diz se a nova é o mesmo fato
+// de uma das que já estão no feed (as principais dos últimos dias) e ela entra no grupo da principal (grupo = id dela).
+// A nova vira a principal quando é mais importante (aí volta a contar como nova) ou, com a mesma importância, quando é da
+// fonte oficial e a principal não (aí fica com o triada_em da antiga: quem já viu a história não a vê "nova" de novo)
+export const RECENTES_DIAS = 5, MAX_RECENTES = 60;
+const PESO = { baixa: 1, media: 2, alta: 3 };
+export function melhorQue(nova, principal) {
+  const a = PESO[nova.relevancia] || 0, b = PESO[principal.relevancia] || 0;
+  if (a !== b) return a > b ? 'importancia' : null;
+  return nova.tipo === 'oficial' && principal.tipo !== 'oficial' ? 'oficial' : null;
+}
+
 // 2. a triagem das que esperam, dentro do prazo
 export async function triarPendentes({ db, fetch: f, chamar, agora = () => Date.now(), ate, max = 40, paralelas = 3 }) {
   // a que parou no meio (a função foi cortada) volta pra fila
@@ -163,7 +179,12 @@ export async function triarPendentes({ db, fetch: f, chamar, agora = () => Date.
   const hoje = new Date(agora() - 3 * 3600e3).toISOString().slice(0, 10);
   const carteira = await lerCarteira(db, hoje);
   const perfil = perfilDaCarteira(carteira);
-  const conta = { triadas: 0, descartadas: 0, erros: 0, puladas: 0 };
+  // as principais que já estão no feed (a lista cresce durante a triagem: a que acabou de entrar já vale pra próxima)
+  const { data: rec } = await db.from('noticias').select('id, titulo, fonte_id, publicada_em, triada_em, relevancia')
+    .eq('situacao', 'triada').is('grupo', null).gte('triada_em', iso(agora() - RECENTES_DIAS * 864e5)).order('triada_em', { ascending: false }).limit(MAX_RECENTES);
+  const recentes = (rec || []).map(r => ({ id: r.id, titulo: r.titulo, fonte: (fonteDe.get(r.fonte_id) || {}).nome || null, tipo: (fonteDe.get(r.fonte_id) || {}).tipo || null,
+    data: r.publicada_em || r.triada_em, relevancia: r.relevancia, triada_em: r.triada_em }));
+  const conta = { triadas: 0, descartadas: 0, erros: 0, puladas: 0, agrupadas: 0 };
   await emPartes(fila, paralelas, async n => {
     if (agora() > ate - 40000) { conta.puladas++; return; }   // sem prazo pra mais uma: fica pra próxima
     const { data: peguei } = await db.from('noticias').update({ situacao: 'triando', tentativas: n.tentativas + 1, triagem_inicio: iso(agora()) })
@@ -176,15 +197,33 @@ export async function triarPendentes({ db, fetch: f, chamar, agora = () => Date.
         if (r.ok && /html/i.test(r.tipo || 'text/html')) pagina = textoDaPagina(r.texto);
       } catch { /* sem a página: a IA lê o título e o trecho */ }
       const fonte = fonteDe.get(n.fonte_id) || {};
-      const { classificacao: c, modelo, uso } = await triar({ chamar, perfil,
+      const lista = recentes.slice(0, MAX_RECENTES);
+      const { classificacao: c, modelo, uso } = await triar({ chamar, perfil, recentes: lista,
         noticia: { titulo: n.titulo, fonte: fonte.nome, tipoFonte: fonte.tipo, publicada_em: n.publicada_em || (pagina && pagina.data), link: n.url, trecho: n.trecho, pagina } });
       const clientes = c.relevante ? clientesDosCriterios(c.criterios, carteira) : [];
       const mud = { situacao: c.relevante ? 'triada' : 'descartada', relevancia: c.relevancia, setores: c.setores, resumo: c.resumo, por_que: c.por_que, acao: c.acao,
-        criterios: c.criterios, clientes, modelo, tokens_entrada: uso.entrada, tokens_saida: uso.saida, tokens_cache: uso.cache, triada_em: iso(agora()), erro: null };
+        criterios: c.criterios, clientes, modelo, tokens_entrada: uso.entrada, tokens_saida: uso.saida, tokens_cache: uso.cache, triada_em: iso(agora()), erro: null, grupo: null };
       if (!n.publicada_em && pagina && pagina.data) mud.publicada_em = pagina.data;
+      // a mesma notícia de outra fonte: entra no grupo da principal, ou vira a principal (melhorQue)
+      const principal = c.mesma_que ? lista[c.mesma_que - 1] : null;
+      const troca = principal && principal.id !== n.id ? melhorQue({ relevancia: c.relevancia, tipo: fonte.tipo }, principal) : null;
+      if (principal && principal.id !== n.id && !troca) mud.grupo = principal.id;
+      if (troca === 'oficial' && principal.triada_em) mud.triada_em = principal.triada_em;
       const { error: e } = await db.from('noticias').update(mud).eq('id', n.id);
       if (e) throw new Error('gravar: ' + e.message);
       conta[c.relevante ? 'triadas' : 'descartadas']++;
+      if (mud.grupo) conta.agrupadas++;
+      else if (c.relevante) {
+        if (troca) {
+          // a antiga principal e o grupo dela passam pra nova (depois de gravar a nova: se isto falhar, ficam duas principais)
+          await db.from('noticias').update({ grupo: n.id }).eq('grupo', principal.id);
+          await db.from('noticias').update({ grupo: n.id }).eq('id', principal.id);
+          const k = recentes.findIndex(r => r.id === principal.id);
+          if (k >= 0) recentes.splice(k, 1);
+          conta.agrupadas++;
+        }
+        recentes.unshift({ id: n.id, titulo: n.titulo, fonte: fonte.nome || null, tipo: fonte.tipo || null, data: n.publicada_em || mud.publicada_em || mud.triada_em, relevancia: c.relevancia, triada_em: mud.triada_em });
+      }
     } catch (e) {
       conta.erros++;
       await db.from('noticias').update({ situacao: 'erro', erro: String((e && e.message) || e).slice(0, 400) }).eq('id', n.id);
