@@ -108,10 +108,14 @@ export function lerListaHtml(html, { base, padrao, max = 40 } = {}) {
     const href = atributo(m[1], 'href');
     const link = linkLimpo(href, base);
     if (!link || !re.test(link) || vistos.has(link)) continue;
-    const titulo = (semTags(m[2]) || atributo(m[1], 'title') || '').replace(/\s+/g, ' ').trim();
+    let titulo = (semTags(m[2]) || atributo(m[1], 'title') || '').replace(/\s+/g, ' ').trim();
+    // o aviso que começa com a data ("19/10/2026 - Atenção aos emissores…", o da Receita Estadual): a data vira a do item
+    const d = /^(\d{1,2}\/\d{1,2}\/\d{4})\s*[-–—:]\s*/.exec(titulo);
+    const data = d ? dataIso(d[1]) : null;
+    if (d) titulo = titulo.slice(d[0].length);
     if (titulo.length < 15) continue;
     vistos.add(link);
-    itens.push({ titulo: titulo.slice(0, 400), link, data: null, trecho: null });
+    itens.push({ titulo: titulo.slice(0, 400), link, data, trecho: null });
     if (itens.length >= max) break;
   }
   return itens;

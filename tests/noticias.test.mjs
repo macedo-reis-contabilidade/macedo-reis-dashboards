@@ -48,6 +48,10 @@ console.log('O RSS e o Atom:');
   const lista = lerListaHtml('<a href="/noticias/stf-funrural_519899.html">STF reconhece inconstitucionalidade de cobrança do Funrural</a><a href="/cotacoes">Cotações</a><a href="/noticias/x_1.html">Curta</a>',
     { base: 'https://www.agro.exemplo/', padrao: '/noticias/.+_\\d+\\.html$' });
   chk('página sem RSS: os links de notícia pelo padrão (o curto e o de fora do padrão ficam de fora)', lista.length === 1 && lista[0].link === 'https://www.agro.exemplo/noticias/stf-funrural_519899.html', JSON.stringify(lista));
+  const avisos = lerListaHtml('<a href="/19-10-2026-atencao-aos-emissores-de-contranota-de-produtor-rural">19/10/2026 - Aten&ccedil;&atilde;o aos emissores de contranota de produtor rural</a><a href="/icms">ICMS</a>',
+    { base: 'https://receita.exemplo.rs.gov.br/inicial', padrao: '^https://receita\\.exemplo\\.rs\\.gov\\.br/\\d{2}-\\d{2}-\\d{4}-' });
+  chk('o aviso que começa com a data: a data vira a do item, o título sem ela, as entidades decodificadas', avisos.length === 1 && avisos[0].titulo === 'Atenção aos emissores de contranota de produtor rural'
+    && avisos[0].data === '2026-10-19T15:00:00.000Z', JSON.stringify(avisos));
 }
 
 console.log('A página da notícia:');
