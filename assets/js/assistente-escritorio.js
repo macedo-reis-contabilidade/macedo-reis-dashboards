@@ -97,6 +97,8 @@ const TELAS = {
       return n ? { texto: 'Você tem ' + qtd(n, 'tarefa atrasada', 'tarefas atrasadas') + '. Alguma já foi feita?', botoes: [{ rotulo: 'Revisar as atrasadas', acao: () => iniciarRevisao() }] } : null;
     } },
   'ajuda.html': { nome: 'Ajuda', exemplos: ['O que mudou no sistema esta semana?', 'Onde vejo os boletos do mês?'] },
+  // o feed (20/10/2026): o recado da notícia importante nova é da aba Notícias (assets/js/noticias.js)
+  'noticias.html': { nome: 'Notícias', exemplos: ['O que saiu de importante esta semana?', 'O que saiu hoje pro meu setor?', 'Quais clientes a notícia mais importante de hoje alcança?'] },
   'clientes/index.html': { nome: 'Clientes' },
   'clientes/editar.html': { nome: 'Ficha da empresa' },
   'clientes/novo.html': { nome: 'Novo cliente' },
