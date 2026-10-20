@@ -2,7 +2,9 @@
 (as não lidas, quem está online, quem ainda não tem conversa), abrir e ler (o "visto"), enviar e receber na hora (o tempo
 real), o aviso só no computador (com a tela na frente, o recado e o bipe; atrás, o aviso do Windows; silenciada, nada; no
 celular, nada), arquivos e imagens (a pasta "chat"), apagar a própria mensagem, grupo novo, pôr alguém no grupo, a busca nas
-mensagens, as duas colunas com o painel aumentado e o que fica guardado ao recarregar. O banco do chat entra como dublê, no
+mensagens, as duas colunas com o painel aumentado, o que fica guardado ao recarregar e os emojis (20/10/2026: o botão da
+carinha abre o painel, clicar põe no lugar do cursor, os usados por último, Esc e clicar fora fecham, a mensagem só de emoji
+sai maior). O banco do chat entra como dublê, no
 window.__mockRpc (as funções chat_*) e nas tabelas do banco falso (tests/harness/supabase.mock.js, que entrega o que muda
 nelas aos canais de tempo real); o SQL do chat tem teste próprio (Postgres local) e as regras puras, em
 tests/chat-equipe.test.mjs. Quem está na tela é o Samuel (financeiro@).
@@ -158,6 +160,47 @@ def main():
         p.evaluate("([id]) => { const m = window.__mockDb.chat_membros.find(x => x.conversa_id === 'c-th' && x.email === '" + TH + "'); m.lido_ate = new Date(Date.now() + 1000).toISOString(); window.__mockEmitir('chat_membros', 'UPDATE', m); }", ['x'])
         p.wait_for_selector('.ch-visto', timeout=3000)
         ok(p.inner_text('.ch-msg.eu:last-of-type .ch-visto') == 'Visto', 'ela leu: "Visto" na minha última')
+
+        # 3b) os emojis: o botão da carinha abre o painel; clicar põe no lugar do cursor e o painel fica; Esc fecha só ele;
+        # na próxima vez, os usados por último; a mensagem só de emoji sai maior; enviar e clicar fora fecham
+        caixa = '.ch-entrada textarea'
+        p.fill(caixa, 'Bom dia ')
+        p.click('[data-ch="emojis"]'); p.wait_for_selector('.ch-emojis:not([hidden]) .ch-emoji', timeout=2000)
+        abas_e = p.eval_on_selector_all('.ch-emoji-aba', 'bs => bs.map(b => b.getAttribute("aria-label"))')
+        ok(p.get_attribute('[data-ch="emojis"]', 'aria-expanded') == 'true' and p.inner_text('.ch-emoji-tit') == 'Carinhas' and abas_e == ['Carinhas', 'Gestos', 'Trabalho', 'Símbolos', 'Festa e lazer'],
+           f'a carinha abre os emojis nas carinhas, com os grupos (ainda sem os usados por último) ({abas_e})')
+        p.click('.ch-emoji-aba[aria-label="Gestos"]'); p.click('.ch-emoji[data-emoji="👍"]')
+        ok(p.input_value(caixa) == 'Bom dia 👍' and p.is_visible('.ch-emojis') and p.get_attribute('.ch-emoji[data-emoji="👍"]', 'aria-label') == 'joinha',
+           f'clicar põe o emoji no texto e o painel continua aberto ({p.input_value(caixa)!r})')
+        p.evaluate("() => { const t = document.querySelector('.ch-entrada textarea'); t.focus(); t.setSelectionRange(3, 3); }")
+        p.click('.ch-emoji-aba[aria-label="Carinhas"]'); p.click('.ch-emoji[data-emoji="😀"]')
+        ok(p.input_value(caixa) == 'Bom😀 dia 👍', f'no lugar do cursor ({p.input_value(caixa)!r})')
+        p.press(caixa, 'Escape')
+        ok(p.is_hidden('.ch-emojis') and p.is_visible('.ch-v-conversa') and p.get_attribute('[data-ch="emojis"]', 'aria-expanded') == 'false', 'Esc fecha só os emojis (a conversa fica aberta)')
+        p.press(caixa, 'Enter')
+        p.wait_for_function("() => window.__mockDb.chat_mensagens.some(m => m.texto === 'Bom😀 dia 👍')", timeout=3000)
+        p.click('[data-ch="emojis"]'); p.wait_for_selector('.ch-emojis:not([hidden]) .ch-emoji', timeout=2000)
+        ult = p.eval_on_selector_all('.ch-emoji', 'bs => bs.map(b => b.dataset.emoji)')
+        ok(p.inner_text('.ch-emoji-tit') == 'Usados por último' and ult[:2] == ['😀', '👍'] and db("localStorage.getItem('mr_chat_emojis:" + EU + "')") == json.dumps(['😀', '👍'], ensure_ascii=False).replace(', ', ','),
+           f'na próxima vez abre nos usados por último, o mais recente primeiro, guardados neste navegador ({ult[:3]})')
+        p.click('.ch-emoji[data-emoji="👍"]'); p.press(caixa, 'Enter')
+        p.wait_for_function("() => window.__mockDb.chat_mensagens.some(m => m.texto === '👍')", timeout=3000); p.wait_for_timeout(200)
+        grandes = p.eval_on_selector_all('.ch-msg.eu .ch-bolha.ch-so-emoji', 'bs => bs.map(b => b.textContent)')
+        normais = p.eval_on_selector_all('.ch-msg.eu .ch-bolha:not(.ch-so-emoji)', 'bs => bs.map(b => b.textContent)')
+        ok(grandes == ['👍'] and 'Bom😀 dia 👍' in normais and p.is_hidden('.ch-emojis'), f'a mensagem só de emoji sai maior (a com texto, normal); enviar fecha os emojis ({grandes})')
+        p.click('[data-ch="emojis"]'); p.click('.ch-msgs')
+        ok(p.is_hidden('.ch-emojis'), 'clicar fora fecha os emojis')
+        p.focus('[data-ch="emojis"]'); p.keyboard.press('Enter')
+        p.wait_for_selector('.ch-emojis:not([hidden])', timeout=2000)
+        foco1 = p.evaluate('() => document.activeElement && document.activeElement.dataset.emoji')
+        p.keyboard.press('ArrowRight'); foco2 = p.evaluate('() => document.activeElement && document.activeElement.dataset.emoji')
+        p.keyboard.press('Enter')
+        # os usados por último agora: o 👍 (o da mensagem grande) e o 😀
+        ok(foco1 == '👍' and foco2 == '😀' and p.input_value(caixa) == '😀' and p.evaluate('() => document.activeElement.dataset.emoji') == '😀',
+           f'pelo teclado: o foco entra no painel, as setas andam e o Enter põe o emoji sem tirar o foco dele ({foco1!r}, {foco2!r})')
+        p.keyboard.press('Escape')
+        ok(p.is_hidden('.ch-emojis') and p.evaluate('() => document.activeElement.dataset.ch') == 'emojis', 'Esc no painel fecha e o foco volta pro botão da carinha')
+        p.fill(caixa, '')
 
         # 4) chega da Thalia com a conversa aberta e a tela na frente: entra na hora, sem aviso, lida
         avisos0 = len(db('window.__avisos'))

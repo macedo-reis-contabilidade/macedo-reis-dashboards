@@ -2,10 +2,11 @@
 // última mensagem de cada conversa na lista, a hora da lista e o separador do dia, os endereços que viram link (só http e
 // https, com o texto já escapado), o tamanho e o nome seguro do arquivo na pasta, a conferência dos arquivos (25 MB, 10 por
 // mensagem), a ordem da lista (as conversas pela última mensagem, depois quem ainda não tem conversa comigo), o "visto",
-// o total do balão (sem as silenciadas), o celular (sem aviso) e o texto do aviso. Rodar com: node tests/chat-equipe.test.mjs
+// o total do balão (sem as silenciadas), o celular (sem aviso) e o texto do aviso; e os emojis (20/10/2026): os grupos do
+// painel, os usados por último, o emoji no lugar do cursor e a mensagem só de emoji. Rodar com: node tests/chat-equipe.test.mjs
 import { nomeDe, iniciais, outroDa, tituloDaConversa, previaDaUltima, horaDaLista, rotuloDoDia, linkificar, tamanhoBR, nomeSeguro, caminhoDoArquivo,
   conferirArquivos, ehImagem, linhasDaLista, vistoPor, textoDoVisto, naoLidasTotal, ehCelular, textoDoAviso, LIMITE_ARQUIVO,
-  linkDoDrive, enviarMensagem, apagarMensagem, conversaDe } from '../assets/js/chat-equipe.js';
+  linkDoDrive, enviarMensagem, apagarMensagem, conversaDe, EMOJIS, nomeDoEmoji, recentesCom, lerRecentes, inserirNoTexto, soEmojis, MAX_RECENTES, MAX_TEXTO } from '../assets/js/chat-equipe.js';
 import { escapeHtml } from '../assets/js/assistente.js';
 
 let falhas = 0;
@@ -142,6 +143,32 @@ function sbFalso({ jaTinha = false, falhaRpc = null, grupos = [], pessoas = [] }
   chk('nem grupo nem pessoa: diz', /nenhum grupo chamado "Diretoria"/.test((await conversaDe(sb, { grupo: 'Diretoria' }, EU)).erro));
   const { sb: sb2 } = sbFalso({ falhaRpc: 'chat_abrir_direta' });
   chk('a pessoa sem login: o banco recusa e o motivo vem em português', /Vitória não tem login no sistema/.test((await conversaDe(sb2, { email: VI }, EU)).erro));
+}
+
+console.log('Os emojis:');
+{
+  const todos = EMOJIS.flatMap(g => g.itens.map(([e]) => e));
+  chk('os grupos do painel: carinhas, gestos, trabalho, símbolos, festa e lazer', EMOJIS.map(g => g.id).join() === 'carinhas,gestos,trabalho,simbolos,festa');
+  chk('cada emoji com o nome em português, sem repetir entre os grupos', EMOJIS.every(g => g.itens.length >= 20 && g.itens.every(([e, n]) => e && n && n === n.toLowerCase()))
+    && new Set(todos).size === todos.length, todos.length);
+  chk('cada um é um emoji só (o que o painel põe é o que a mensagem grande reconhece)', todos.every(e => soEmojis(e, 1)), todos.filter(e => !soEmojis(e, 1)).join(' '));
+  // os mais novos que o Emoji 12 (2019) virariam quadradinho nos computadores antigos
+  const novos = ['🫡', '🥹', '🫶', '🫠', '🥲', '🤌', '🫂', '🥸'];
+  chk('nada além do Emoji 12', !todos.some(e => novos.includes(e)));
+  chk('o nome pelo emoji (o dos usados por último)', nomeDoEmoji('👍') === 'joinha' && nomeDoEmoji('🧉') === 'chimarrão' && nomeDoEmoji('x') === '');
+  const r1 = recentesCom([], '👍'), r2 = recentesCom(r1, '😀'), r3 = recentesCom(r2, '👍');
+  chk('os usados por último: o mais recente primeiro, sem repetir', r1.join() === '👍' && r2.join() === '😀,👍' && r3.join() === '👍,😀');
+  const muitos = todos.slice(0, 30).reduce((l, e) => recentesCom(l, e), []);
+  chk('no máximo ' + MAX_RECENTES, muitos.length === MAX_RECENTES && muitos[0] === todos[29]);
+  chk('o guardado no navegador: só emoji, sem repetir; o que não for, fica de fora', lerRecentes('["👍","😀","👍","oi",3,"<b>"]').join() === '👍,😀' && lerRecentes('{x') .length === 0
+    && lerRecentes(null).length === 0 && lerRecentes('{"a":1}').length === 0 && lerRecentes(JSON.stringify(todos)).length === MAX_RECENTES);
+  const i1 = inserirNoTexto('Bom dia', 3, 3, '😀'), i2 = inserirNoTexto('Bom dia', 0, 3, '👋'), i3 = inserirNoTexto('', undefined, undefined, '👍'), i4 = inserirNoTexto('fim', null, null, '✅');
+  chk('o emoji no lugar do cursor (e no lugar da seleção), com o cursor depois dele', i1.valor === 'Bom😀 dia' && i1.cursor === 5 && i2.valor === '👋 dia' && i2.cursor === 2
+    && i3.valor === '👍' && i4.valor === 'fim✅', JSON.stringify([i1, i2, i3, i4]));
+  chk('não passa do limite da mensagem', inserirNoTexto('a'.repeat(MAX_TEXTO - 1), MAX_TEXTO - 1, MAX_TEXTO - 1, '👍') === null && inserirNoTexto('a'.repeat(MAX_TEXTO - 2), 0, 0, '👍').valor.length === MAX_TEXTO);
+  chk('a mensagem só de emoji (até três): sai maior', soEmojis('👍') && soEmojis(' 👍👍 ') && soEmojis('🎉🎉🎉') && soEmojis('❤️') && soEmojis('✌️ 😀'));
+  chk('o tom de pele, a família e a bandeira contam como um', soEmojis('👋🏽', 1) && soEmojis('👨‍👩‍👧', 1) && soEmojis('🇧🇷', 1));
+  chk('com texto, número ou quatro emojis: o balão normal', !soEmojis('ok 👍') && !soEmojis('👍👍👍👍') && !soEmojis('123') && !soEmojis('#') && !soEmojis('') && !soEmojis(null) && !soEmojis('😀'.repeat(30)));
 }
 
 console.log(falhas ? '\n' + falhas + ' falha(s).' : '\nTudo certo.');

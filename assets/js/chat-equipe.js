@@ -8,6 +8,8 @@
 // O aviso é só no computador: com a tela do sistema na frente, o recado da carinha e um bipe curto; com ela atrás (outra
 // janela na frente, minimizada), o aviso do Windows (a notificação do navegador, com o som do sistema) — sem ele ligado, o
 // bipe. No celular, nada: só o número no balão. Com várias abas do sistema abertas, uma avisa (a da frente, se houver).
+// Os emojis (20/10/2026): o botão da carinha ao lado do clipe abre o painel (os usados por último e os grupos); a mensagem
+// só de emoji sai maior.
 // Os auxiliares puros têm teste em tests/chat-equipe.test.mjs; a tela, em tests/harness/chat-equipe.py.
 // ============================================================
 
@@ -211,11 +213,76 @@ export async function conversaDe(sb, destino, eu) {
   return { erro: 'você não está em nenhum grupo chamado "' + String(d.grupo).slice(0, 80) + '"' };
 }
 
+// ---------- os emojis (20/10/2026, pedido do Samuel) ----------
+// O painel da caixa de mensagem: os grupos, cada emoji com o nome em português (o leitor de tela lê e a dica mostra). Sem
+// fonte de fora: sai o emoji do sistema (no Windows, o Segoe UI Emoji) — por isso nada além do Emoji 12 (2019); os mais
+// novos virariam um quadradinho nos computadores mais antigos
+export const EMOJIS = [
+  { id: 'carinhas', nome: 'Carinhas', icone: '😀', itens: [['😀', 'sorriso'], ['😃', 'sorrisão'], ['😄', 'rindo'], ['😁', 'sorriso largo'], ['😆', 'gargalhada'],
+    ['😅', 'riso nervoso'], ['😂', 'chorando de rir'], ['🤣', 'rolando de rir'], ['🙂', 'sorrisinho'], ['😉', 'piscadinha'], ['😊', 'feliz'], ['😇', 'anjinho'],
+    ['🥰', 'apaixonado'], ['😍', 'olhos de coração'], ['😘', 'beijo'], ['😋', 'delícia'], ['😛', 'língua de fora'], ['😜', 'brincadeira'], ['🤪', 'maluquinho'],
+    ['😎', 'de óculos escuros'], ['🤩', 'maravilhado'], ['🥳', 'comemorando'], ['🤗', 'abraço'], ['🤭', 'risadinha'], ['🤫', 'segredo'], ['🤔', 'pensando'],
+    ['🧐', 'analisando'], ['🤨', 'desconfiado'], ['😐', 'sem expressão'], ['😑', 'sem paciência'], ['🙄', 'revirando os olhos'], ['😏', 'sorriso de lado'],
+    ['😬', 'eita'], ['😌', 'aliviado'], ['😴', 'com sono'], ['🤯', 'cabeça explodindo'], ['😮', 'surpreso'], ['😱', 'apavorado'], ['😳', 'envergonhado'],
+    ['🥺', 'por favor'], ['😢', 'triste'], ['😭', 'chorando'], ['😤', 'bufando'], ['😡', 'bravo'], ['🤐', 'boca fechada'], ['🤓', 'nerd']] },
+  { id: 'gestos', nome: 'Gestos', icone: '👍', itens: [['👍', 'joinha'], ['👎', 'não curti'], ['👌', 'certinho'], ['✌️', 'paz'], ['🤞', 'dedos cruzados'],
+    ['🤟', 'te amo'], ['🤙', 'me liga'], ['👏', 'palmas'], ['🙌', 'mãos pro alto'], ['🤝', 'aperto de mão'], ['🙏', 'obrigado'], ['💪', 'força'], ['👋', 'tchau'],
+    ['✋', 'mão levantada'], ['👊', 'soquinho'], ['✍️', 'escrevendo'], ['👀', 'olhando'], ['👉', 'olha isso'], ['👆', 'aqui em cima'], ['👇', 'aqui embaixo'],
+    ['🙋', 'eu'], ['🤷', 'sei lá'], ['🤦', 'mão na testa'], ['🙆', 'tudo certo'], ['🙅', 'não'], ['💁', 'informação']] },
+  { id: 'trabalho', nome: 'Trabalho', icone: '💼', itens: [['💼', 'maleta'], ['📁', 'pasta'], ['📂', 'pasta aberta'], ['🗂️', 'fichário'], ['📄', 'documento'],
+    ['📑', 'páginas'], ['📋', 'prancheta'], ['🧾', 'recibo'], ['📝', 'anotação'], ['✏️', 'lápis'], ['🖊️', 'caneta'], ['📌', 'alfinete'], ['📎', 'clipe'],
+    ['📅', 'calendário'], ['🗓️', 'agenda'], ['⏰', 'despertador'], ['⏳', 'ampulheta'], ['⌛', 'prazo'], ['💻', 'notebook'], ['🖥️', 'computador'],
+    ['🖨️', 'impressora'], ['📞', 'telefone'], ['📱', 'celular'], ['📧', 'e-mail'], ['📨', 'mensagem chegando'], ['📤', 'enviado'], ['📥', 'recebido'],
+    ['📦', 'caixa'], ['💰', 'dinheiro'], ['💸', 'dinheiro voando'], ['💳', 'cartão'], ['🏦', 'banco'], ['🧮', 'ábaco'], ['📈', 'subiu'], ['📉', 'caiu'],
+    ['📊', 'gráfico'], ['🔒', 'cadeado'], ['🔑', 'chave'], ['🏢', 'empresa'], ['☕', 'café']] },
+  { id: 'simbolos', nome: 'Símbolos', icone: '✅', itens: [['✅', 'feito'], ['☑️', 'marcado'], ['✔️', 'certo'], ['❌', 'errado'], ['⚠️', 'atenção'],
+    ['❗', 'importante'], ['❓', 'dúvida'], ['‼️', 'urgente'], ['⭐', 'estrela'], ['🌟', 'brilhando'], ['✨', 'brilho'], ['🔥', 'pegando fogo'], ['⚡', 'rápido'],
+    ['💡', 'ideia'], ['🎯', 'no alvo'], ['🚀', 'foguete'], ['🔄', 'de novo'], ['⬆️', 'pra cima'], ['⬇️', 'pra baixo'], ['➡️', 'pra frente'], ['🔴', 'vermelho'],
+    ['🔵', 'azul'], ['🆗', 'ok'], ['🆕', 'novo'], ['💯', 'cem por cento'], ['❤️', 'coração'], ['💙', 'coração azul'], ['💚', 'coração verde'],
+    ['💛', 'coração amarelo'], ['💜', 'coração roxo'], ['🖤', 'coração preto'], ['💔', 'coração partido']] },
+  { id: 'festa', nome: 'Festa e lazer', icone: '🎉', itens: [['🎉', 'festa'], ['🎊', 'confete'], ['🎂', 'bolo de aniversário'], ['🍰', 'fatia de bolo'],
+    ['🎁', 'presente'], ['🎈', 'balão'], ['🍾', 'champanhe'], ['🥂', 'brinde'], ['🍻', 'cerveja'], ['🧉', 'chimarrão'], ['🍕', 'pizza'], ['🍔', 'hambúrguer'],
+    ['🥩', 'churrasco'], ['🍫', 'chocolate'], ['🍩', 'rosquinha'], ['☀️', 'sol'], ['🌧️', 'chuva'], ['❄️', 'frio'], ['⚽', 'futebol'], ['🏆', 'troféu'],
+    ['🥇', 'medalha'], ['👑', 'coroa'], ['🌷', 'flor'], ['🌻', 'girassol'], ['🐶', 'cachorro'], ['🐱', 'gato'], ['🎶', 'música'], ['🏖️', 'praia'], ['✈️', 'viagem']] }
+];
+const NOME_DO_EMOJI = new Map(EMOJIS.flatMap(g => g.itens));
+export const nomeDoEmoji = e => NOME_DO_EMOJI.get(e) || '';
+export const MAX_RECENTES = 16;
+// os usados por último (o mais recente primeiro, sem repetir)
+export const recentesCom = (lista, emoji, max = MAX_RECENTES) => [emoji, ...(Array.isArray(lista) ? lista : []).filter(e => e !== emoji)].slice(0, max);
+// o que estava guardado no navegador: só texto curto, sem repetir — o resto (guardado errado, outro formato) fica de fora
+export function lerRecentes(guardado, max = MAX_RECENTES) {
+  let l;
+  try { l = JSON.parse(guardado || '[]'); } catch (e) { return []; }
+  if (!Array.isArray(l)) return [];
+  return [...new Set(l.filter(e => typeof e === 'string' && e.length > 0 && e.length <= 16 && soEmojis(e, 1)))].slice(0, max);
+}
+// o emoji no lugar do cursor (ou da seleção) → { valor, cursor } — null se passar do limite da mensagem
+export function inserirNoTexto(valor, ini, fim, emoji, max = MAX_TEXTO) {
+  const v = String(valor == null ? '' : valor);
+  const a = Math.max(0, Math.min(Number.isInteger(ini) ? ini : v.length, v.length)), b = Math.max(a, Math.min(Number.isInteger(fim) ? fim : a, v.length));
+  const novo = v.slice(0, a) + emoji + v.slice(b);
+  if (novo.length > max) return null;
+  return { valor: novo, cursor: a + emoji.length };
+}
+// a mensagem é só emoji (até max, como no WhatsApp): sai maior, sem o balão. A pessoa com tom de pele, a família (o ZWJ) e a
+// bandeira contam como um
+export function soEmojis(texto, max = 3) {
+  const t = String(texto == null ? '' : texto).replace(/\s+/g, '');
+  if (!t || t.length > 40) return false;
+  if (!/^(?:\p{Extended_Pictographic}|\p{Emoji_Modifier}|\p{Regional_Indicator}|[\u200d\ufe0f\u20e3])+$/u.test(t) || !/\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(t)) return false;
+  let n;
+  try { n = [...new Intl.Segmenter('pt', { granularity: 'grapheme' }).segment(t)].length; }
+  catch (e) { n = (t.match(/\p{Extended_Pictographic}(?!\u200d)/gu) || []).length; }
+  return n >= 1 && n <= max;
+}
+
 // ---------- os ícones (traço, como os do balão) ----------
 const SVG = d => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + d + '</svg>';
 const ICONE = {
   voltar: SVG('<path d="M15 18l-6-6 6-6"/>'),
   clipe: SVG('<path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>'),
+  carinha: SVG('<circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01M15 9h.01"/>'),
   enviar: SVG('<path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>'),
   mais: SVG('<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>'),
   sino: SVG('<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>'),
@@ -242,7 +309,7 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     convs: new Map(), pessoas: [], online: new Set(), aberta: typeof salvo.aberta === 'string' ? salvo.aberta : null,
     vista: ['lista', 'conversa', 'novo', 'grupo'].includes(salvo.vista) ? salvo.vista : 'lista',
     msgs: [], membros: [], temAntigas: false, carregando: false, pendentes: [], busca: '', achadas: null, lidoAoAbrir: null,
-    pronto: false, erro: '', caiu: false, confirmarApagar: null, menu: false
+    pronto: false, erro: '', caiu: false, confirmarApagar: null, menu: false, emojis: false, abaEmoji: null
   };
   const urls = new Map();   // os links assinados dos arquivos (valem 1 hora)
   const avisa = (nome, detail) => { try { window.dispatchEvent(new CustomEvent(nome, { detail })); } catch (e) { /* fora do navegador */ } };
@@ -270,7 +337,9 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     + '<div class="ch-rolar ch-msgs" role="log" aria-live="off" aria-label="Mensagens"></div>'
     + '<div class="ch-pendentes" hidden></div>'
     + '<div class="ch-erro" role="alert" hidden></div>'
-    + '<form class="ch-entrada"><label class="ch-icone ch-clipe" title="Anexar arquivo (até 25 MB cada)"><input type="file" multiple hidden aria-label="Anexar arquivo">' + ICONE.clipe + '</label>'
+    + '<form class="ch-entrada"><div class="ch-emojis" role="dialog" aria-label="Emojis" hidden></div>'
+    + '<label class="ch-icone ch-clipe" title="Anexar arquivo (até 25 MB cada)"><input type="file" multiple hidden aria-label="Anexar arquivo">' + ICONE.clipe + '</label>'
+    + '<button type="button" class="ch-icone ch-emoji-btn" data-ch="emojis" aria-haspopup="dialog" aria-expanded="false" aria-label="Emojis" title="Emojis">' + ICONE.carinha + '</button>'
     + '<textarea rows="1" maxlength="' + MAX_TEXTO + '" data-no-autogrow placeholder="Escreva uma mensagem…" aria-label="Mensagem" title="Enter envia; Shift+Enter quebra a linha"></textarea>'
     + '<button type="submit" class="as-enviar ch-enviar" aria-label="Enviar">' + ICONE.enviar + '</button></form>'
     + '</div>'
@@ -291,6 +360,7 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
   const vConversa = q('.ch-v-conversa'), vNovo = q('.ch-v-novo'), vGrupo = q('.ch-v-grupo'), vazioDir = q('.ch-vazio-dir');
   const msgsEl = q('.ch-msgs'), ta = q('.ch-entrada textarea'), arquivoInput = q('.ch-clipe input'), pendEl = q('.ch-pendentes'), erroEl = q('.ch-v-conversa .ch-erro');
   const cabNome = q('.ch-v-conversa .ch-cab-quem b'), cabSub = q('.ch-v-conversa .ch-cab-quem small'), menuBtn = q('[data-ch="menu"]'), menuEl = q('.ch-menu');
+  const emojiBtn = q('[data-ch="emojis"]'), emojisEl = q('.ch-emojis');
   if (celular) q('[data-ch="avisos"]').hidden = true;
 
   // duas colunas com o painel aumentado (a lista ao lado da conversa); uma só no painel pequeno e no celular
@@ -558,7 +628,7 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     else {
       const arqs = arquivosDe(m);
       corpo = (arqs.length ? '<div class="ch-anexos">' + arqs.map(a => htmlAnexo(a, m)).join('') + '</div>' : '')
-        + (m.texto ? '<div class="ch-bolha">' + linkificar(escapeHtml(m.texto)) + '</div>' : '');
+        + (m.texto ? '<div class="ch-bolha' + (soEmojis(m.texto) ? ' ch-so-emoji' : '') + '">' + linkificar(escapeHtml(m.texto)) + '</div>' : '');
     }
     let meta = '<time>' + escapeHtml(horaCurta(m.criada_em)) + '</time>';
     if (minha && m._enviando) meta += '<span>enviando…</span>';
@@ -620,7 +690,7 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     const g = ++geracao;
     const trocou = st.aberta !== id;
     st.aberta = id; st.vista = 'conversa'; st.menu = false; st.confirmarApagar = null;
-    if (trocou) { st.msgs = []; st.membros = []; st.temAntigas = false; st.pendentes = []; desenharPendentes(); ta.value = ''; ajustar(); }
+    if (trocou) { st.msgs = []; st.membros = []; st.temAntigas = false; st.pendentes = []; desenharPendentes(); ta.value = ''; ajustar(); fecharEmojis(); }
     st.lidoAoAbrir = c.nao_lidas ? c.lido_ate : null;
     guardarAba(); aplicarColunas(); desenharLista(); desenharCabecalho(); fecharMenu();
     if (mostrar) { try { ctl.mostrar(false); } catch (e) { /* sem balão */ } }
@@ -697,6 +767,60 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
   vConversa.addEventListener('dragleave', ev => { if (!vConversa.contains(ev.relatedTarget)) vConversa.classList.remove('ch-soltar'); });
   vConversa.addEventListener('drop', ev => { vConversa.classList.remove('ch-soltar'); if (ev.dataTransfer && ev.dataTransfer.files.length) { ev.preventDefault(); adicionarArquivos(ev.dataTransfer.files); } });
 
+  // ---------- os emojis (20/10/2026) ----------
+  // o botão da carinha abre o painel por cima da caixa: os usados por último (guardados neste navegador) e os grupos; clicar
+  // põe o emoji no lugar do cursor e o painel fica aberto pra pôr outros; Esc, clicar fora ou enviar fecha
+  const CHAVE_EMOJIS = 'mr_chat_emojis:' + eu;
+  let recentes = lerRecentes(lerLocal(CHAVE_EMOJIS));
+  function gruposDeEmoji() {
+    return (recentes.length ? [{ id: 'recentes', nome: 'Usados por último', icone: '🕘', itens: recentes.map(e => [e, nomeDoEmoji(e)]) }] : []).concat(EMOJIS);
+  }
+  function desenharEmojis() {
+    const grupos = gruposDeEmoji();
+    const atual = grupos.find(g => g.id === st.abaEmoji) || grupos[0];
+    st.abaEmoji = atual.id;
+    emojisEl.innerHTML = '<div class="ch-emoji-abas" role="toolbar" aria-label="Grupos de emojis">'
+      + grupos.map(g => '<button type="button" class="ch-emoji-aba" data-aba-emoji="' + g.id + '" aria-pressed="' + (g.id === atual.id) + '" aria-label="' + escapeHtml(g.nome) + '" title="' + escapeHtml(g.nome) + '">' + g.icone + '</button>').join('')
+      + '</div><div class="ch-emoji-tit">' + escapeHtml(atual.nome) + '</div>'
+      + '<div class="ch-emoji-grade" role="group" aria-label="' + escapeHtml(atual.nome) + '">'
+      + atual.itens.map(([e, n]) => '<button type="button" class="ch-emoji" data-emoji="' + escapeHtml(e) + '" aria-label="' + escapeHtml(n || e) + '"' + (n ? ' title="' + escapeHtml(n) + '"' : '') + '>' + escapeHtml(e) + '</button>').join('')
+      + '</div>';
+  }
+  function abrirEmojis() {
+    st.emojis = true; st.abaEmoji = null;   // abre nos usados por último (sem eles, nas carinhas)
+    desenharEmojis(); emojisEl.hidden = false;
+    emojiBtn.setAttribute('aria-expanded', 'true'); emojiBtn.classList.add('ch-ligado');
+  }
+  function fecharEmojis() {
+    if (!st.emojis) return;
+    st.emojis = false; emojisEl.hidden = true;
+    emojiBtn.setAttribute('aria-expanded', 'false'); emojiBtn.classList.remove('ch-ligado');
+  }
+  // pelo mouse, o cursor volta pra caixa; pelo teclado, o foco fica no emoji (pra pôr outro sem voltar ao painel)
+  function inserirEmoji(e, peloTeclado) {
+    const fim = ta.selectionEnd, ini = ta.selectionStart;
+    const r = inserirNoTexto(ta.value, ini, fim, e);
+    if (!r) { mostrarErro('A mensagem chegou no limite de ' + MAX_TEXTO.toLocaleString('pt-BR') + ' caracteres.'); return; }
+    ta.value = r.valor; ajustar();
+    try { ta.setSelectionRange(r.cursor, r.cursor); } catch (er) { /* sem seleção */ }
+    if (!peloTeclado) ta.focus({ preventScroll: true });
+    recentes = recentesCom(recentes, e);
+    gravarLocal(CHAVE_EMOJIS, JSON.stringify(recentes));
+  }
+  // as setas andam pela grade
+  emojisEl.addEventListener('keydown', ev => {
+    const b = ev.target.closest('.ch-emoji');
+    if (!b) return;
+    const todos = [...emojisEl.querySelectorAll('.ch-emoji')], i = todos.indexOf(b);
+    const grade = emojisEl.querySelector('.ch-emoji-grade');
+    const cols = Math.max(1, String(getComputedStyle(grade).gridTemplateColumns || '').split(' ').filter(Boolean).length);
+    const d = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: cols, ArrowUp: -cols }[ev.key];
+    if (d == null) return;
+    ev.preventDefault();
+    const alvo = todos[Math.min(todos.length - 1, Math.max(0, i + d))];
+    if (alvo) alvo.focus({ preventScroll: false });
+  });
+
   async function enviar(reenvio = null) {
     const id = reenvio ? reenvio.id : novoId(), conversaId = reenvio ? reenvio.conversa_id : st.aberta;
     const texto = reenvio ? reenvio.texto || '' : ta.value.trim().slice(0, MAX_TEXTO);
@@ -706,7 +830,7 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     if (!m) {
       m = { id, conversa_id: conversaId, autor: eu, texto: texto || null, anexos: pendentes.map(p => ({ nome: p.nome, tamanho: p.tamanho, tipo: p.tipo })), criada_em: new Date().toISOString(), apagada_em: null, _enviando: true, _pendentes: pendentes };
       st.msgs.push(m);
-      ta.value = ''; ajustar(); st.pendentes = []; desenharPendentes();
+      ta.value = ''; ajustar(); st.pendentes = []; desenharPendentes(); fecharEmojis();
     } else { m._enviando = true; m._erro = null; }
     desenharMensagens({ fim: true });
     try {
@@ -831,6 +955,16 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
 
   // ---------- os cliques (um ouvinte só) ----------
   el.addEventListener('click', async ev => {
+    const emo = ev.target.closest('.ch-emoji');
+    if (emo && el.contains(emo)) { inserirEmoji(emo.dataset.emoji, ev.detail === 0); return; }
+    const abaE = ev.target.closest('.ch-emoji-aba');
+    if (abaE && el.contains(abaE)) {
+      st.abaEmoji = abaE.dataset.abaEmoji; desenharEmojis();
+      const nova = emojisEl.querySelector('.ch-emoji-aba[aria-pressed="true"]');
+      if (nova && ev.detail === 0) nova.focus({ preventScroll: true });
+      return;
+    }
+    if (st.emojis && !ev.target.closest('.ch-emojis') && !ev.target.closest('[data-ch="emojis"]') && ev.target !== ta) fecharEmojis();
     const alvo = ev.target.closest('[data-ch], .ch-linha, .ch-achada, .ch-img, .ch-arq[data-caminho]');
     if (!alvo || !el.contains(alvo)) { if (st.menu && !ev.target.closest('.ch-menu-lugar')) fecharMenu(); return; }
     if (st.menu && !alvo.closest('.ch-menu-lugar')) fecharMenu();
@@ -852,6 +986,10 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     if (k === 'voltar') { st.vista = 'lista'; st.menu = false; guardarAba(); aplicarColunas(); desenharLista(); setTimeout(() => { const b = ul.querySelector('.ch-linha'); if (b && !celular) b.focus({ preventScroll: true }); }, 20); }
     else if (k === 'voltar-conversa') { st.vista = 'conversa'; guardarAba(); aplicarColunas(); }
     else if (k === 'menu') { if (st.menu) fecharMenu(); else abrirMenu(); }
+    else if (k === 'emojis') {
+      if (st.emojis) fecharEmojis();
+      else { abrirEmojis(); if (ev.detail === 0) { const b = emojisEl.querySelector('.ch-emoji'); if (b) b.focus({ preventScroll: true }); } }
+    }
     else if (k === 'silenciar') { fecharMenu(); silenciar(); }
     else if (k === 'pessoas') { fecharMenu(); st.vista = 'grupo'; st.confirmarSair = false; guardarAba(); if (!st.pessoas.length) await carregarPessoas(); desenharGrupo(); aplicarColunas(); }
     else if (k === 'por' || k === 'renomear' || k === 'sair-sim') acaoNoGrupo(k === 'sair-sim' ? 'sair' : k);
@@ -880,6 +1018,7 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     else if (k === 'tentar') { st.erro = ''; desenharLista(); await carregarPessoas(); sincronizar(); }
   });
   el.addEventListener('keydown', ev => {
+    if (ev.key === 'Escape' && st.emojis) { ev.preventDefault(); ev.stopPropagation(); const naCaixa = ev.target === ta; fecharEmojis(); if (!naCaixa) emojiBtn.focus({ preventScroll: true }); return; }
     if (ev.key === 'Escape' && st.menu) { ev.preventDefault(); ev.stopPropagation(); fecharMenu(); menuBtn.focus({ preventScroll: true }); }
   });
 
@@ -999,7 +1138,7 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
         msgsEl.scrollTop = msgsEl.scrollHeight;
       }
     },
-    aoEsconder() { fecharMenu(); },
+    aoEsconder() { fecharMenu(); fecharEmojis(); },
     status() {
       const outros = [...st.online].filter(e => e !== eu).map(nomeDe);
       if (!st.pronto) return 'Abrindo…';
