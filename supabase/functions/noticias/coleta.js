@@ -72,6 +72,19 @@ export async function diagnosticar({ fetch: f, urls = [] }) {
   }));
 }
 
+// o item que é arquivo — a imagem, a folha de estilo, o PDF anexado que o RSS geral dos portais gov.br lista junto com as
+// notícias ("esocial-full.png", "Cirruculo LUANA.pdf", "regras.html") — não é notícia: pelo endereço (termina em extensão
+// de arquivo) ou pelo título (o nome do arquivo)
+const EXT_ARQUIVO = /\.(pdf|jpe?g|png|gif|svg|webp|bmp|ico|css|js|json|xml|zip|rar|7z|docx?|xlsx?|pptx?|odt|ods|odp|csv|txt|mp3|mp4|avi|mov|wav)$/i;
+const TITULO_ARQUIVO = /\.(html?|pdf|jpe?g|png|gif|svg|webp|ico|css|js|docx?|xlsx?|pptx?|odt|ods|csv|zip|txt)$/i;
+export function ehArquivo(item) {
+  let caminho = '';
+  try { caminho = new URL(item.link).pathname; } catch { caminho = String(item.link || ''); }
+  if (EXT_ARQUIVO.test(caminho)) return true;
+  const t = String(item.titulo || '').trim();
+  return TITULO_ARQUIVO.test(t) && t.split(/\s+/).length <= 4;
+}
+
 const iso = ms => new Date(ms).toISOString();
 async function emPartes(itens, n, fn) {
   const out = []; let i = 0;
@@ -92,6 +105,7 @@ export async function coletarFontes({ db, fetch: f, agora = () => Date.now() }) 
       if (!r.ok) throw new Error('HTTP ' + r.status);
       let itens = fonte.formato === 'html' ? lerListaHtml(r.texto, { base: r.url, padrao: fonte.padrao }) : lerFeed(r.texto, { base: fonte.site || r.url }).itens;
       if (fonte.formato !== 'html' && !itens.length && !lerFeed(r.texto).tipo) throw new Error('não é RSS/Atom');
+      itens = itens.filter(i => !ehArquivo(i));
       // fonte de muito volume: só o que bate com o filtro (no título ou no trecho), o resto nem vai pra triagem
       if (fonte.filtro) { const re = new RegExp(fonte.filtro, 'i'); itens = itens.filter(i => re.test(i.titulo + ' ' + (i.trecho || ''))); }
       let semData = 0;

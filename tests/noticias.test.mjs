@@ -5,9 +5,10 @@ import { lerFeed, lerListaHtml, semTags, decodificar, dataIso, linkLimpo } from 
 import { textoDaPagina } from '../supabase/functions/noticias/pagina.js';
 import { montarClientes, perfilDaCarteira, clientesDosCriterios, cnaeDe } from '../supabase/functions/noticias/perfil.js';
 import { lerClassificacao, mensagemDaNoticia, montarSistema, criarChamador } from '../supabase/functions/noticias/triagem.js';
-import { decodificarCorpo, feedsAnunciados, coletarFontes, triarPendentes } from '../supabase/functions/noticias/coleta.js';
+import { decodificarCorpo, feedsAnunciados, coletarFontes, triarPendentes, ehArquivo } from '../supabase/functions/noticias/coleta.js';
 import { SOCIOS as SOCIOS_FUNCAO } from '../supabase/functions/noticias/servidor.js';
 import { SOCIOS } from '../assets/js/equipe.js';
+import * as tela from '../assets/js/noticias.js';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { posix } from 'node:path';
@@ -179,6 +180,19 @@ function bancoFalso(tabelas) {
   const rf = await coletarFontes({ db, fetch: async url => url === 'https://agro.exemplo/rss' ? resposta(200, RSS3) : fetchFalso(url), agora: () => agora });
   chk('fonte com filtro: só a do Funrural entra (a da soja nem vai pra triagem)', rf.novas === 1 && db.tabelas.noticias.some(n => n.url === 'https://agro.exemplo/funrural') && !db.tabelas.noticias.some(n => n.url === 'https://agro.exemplo/soja'), JSON.stringify(rf));
   db.tabelas.noticias = db.tabelas.noticias.filter(n => n.url !== 'https://agro.exemplo/funrural');
+  // o RSS geral dos portais gov.br: os arquivos (imagem, PDF anexado, folha de estilo) e a agenda ficam de fora
+  db.tabelas.noticias_fontes.push({ id: 'f4', nome: 'Ministério', url: 'https://gov.exemplo/RSS', tipo: 'oficial', formato: 'rss', ativo: true, filtro: '^(?!agenda d[eo] )' });
+  const RSS4 = '<rss><channel>'
+    + ['https://gov.exemplo/noticias/pec-da-jornada|Congresso promulga PEC da jornada de trabalho', 'https://gov.exemplo/imagens/esocial-full.png|esocial-full.png',
+      'https://gov.exemplo/arquivos/curriculo|Cirruculo LUANA.pdf', 'https://gov.exemplo/doc/regras.html|regras.html', 'https://gov.exemplo/agenda/fulano|Agenda de Fulano de Tal para 20/10/2026']
+      .map(x => '<item><title>' + x.split('|')[1] + '</title><link>' + x.split('|')[0] + '</link><pubDate>Mon, 19 Oct 2026 11:00:00 -0300</pubDate></item>').join('') + '</channel></rss>';
+  const rg = await coletarFontes({ db, fetch: async url => url === 'https://gov.exemplo/RSS' ? resposta(200, RSS4) : fetchFalso(url), agora: () => agora });
+  chk('RSS geral do gov.br: só a notícia (o arquivo pelo endereço ou pelo título, e a agenda pelo filtro, ficam de fora)',
+    rg.novas === 1 && db.tabelas.noticias.some(n => n.url === 'https://gov.exemplo/noticias/pec-da-jornada') && !db.tabelas.noticias.some(n => /gov\.exemplo\/(imagens|arquivos|doc|agenda)/.test(n.url)), JSON.stringify(rg));
+  chk('arquivo × página: o endereço .html da notícia continua notícia', !ehArquivo({ link: 'https://www.agro.exemplo/noticias/stf-funrural_519899.html', titulo: 'STF reconhece inconstitucionalidade do Funrural' })
+    && ehArquivo({ link: 'https://x.gov.br/a/Relatorio.PDF', titulo: 'Relatório de Efetividade' }) && !ehArquivo({ link: 'https://x.gov.br/a/norma', titulo: 'Receita publica a norma sobre o arquivo do SPED em formato .txt e outras mudanças no leiaute' }));
+  db.tabelas.noticias = db.tabelas.noticias.filter(n => n.url !== 'https://gov.exemplo/noticias/pec-da-jornada');
+  db.tabelas.noticias_fontes.pop();
   db.tabelas.noticias_fontes[1].ativo = true; db.tabelas.noticias_fontes.pop();
   chk('a fonte que respondeu fica com o "último ok"; a que falhou, com o erro', f1.ultimo_ok && f1.itens_ultima === 2 && !f1.ultimo_erro && f2.ultimo_erro === 'HTTP 500' && !f2.ultimo_ok, JSON.stringify([f1, f2]));
   // a triagem: a carteira do banco falso + a IA falsa
@@ -218,6 +232,32 @@ console.log('O corpo e os RSS anunciados:');
   chk('o charset da declaração XML', decodificarCorpo(new Uint8Array([...new TextEncoder().encode('<?xml version="1.0" encoding="ISO-8859-1"?>'), 0xe7]), '') .endsWith('ç'));
   const anun = feedsAnunciados('<link rel="alternate" type="application/rss+xml" href="/feed/"><link rel="stylesheet" href="/a.css"><link type="application/atom+xml" rel="alternate" href="https://x.com/atom">', 'https://x.com/noticias');
   chk('os RSS que a página anuncia', JSON.stringify(anun) === '["https://x.com/feed/","https://x.com/atom"]', JSON.stringify(anun));
+}
+
+console.log('A tela (assets/js/noticias.js):');
+{
+  const T = '2026-10-20T12:00:00.000Z', agora = Date.parse(T);
+  const n = (id, o = {}) => ({ id, situacao: 'triada', relevancia: 'alta', setores: ['fiscal'], titulo: 'Notícia ' + id, triada_em: '2026-10-20T10:00:00Z', publicada_em: '2026-10-19T10:00:00Z', clientes: [], ...o });
+  chk('os sócios veem todos os setores; o DP, o fiscal e o contábil, o seu', tela.setoresDe('financeiro@macedoereis.com.br') === null && tela.setoresDe('DIEGO@macedoereis.com.br') === null
+    && JSON.stringify(tela.setoresDe('rh@macedoereis.com.br')) === '["dp"]' && JSON.stringify(tela.setoresDe('fiscal@macedoereis.com.br')) === '["fiscal"]'
+    && JSON.stringify(tela.setoresDe('contabil@macedoereis.com.br')) === '["contabil"]' && tela.setoresDe('novo@macedoereis.com.br') === null);
+  chk('"pra mim": do meu setor, Importante ou Vale saber, triada', tela.paraMim(n(1), 'fiscal@macedoereis.com.br') && !tela.paraMim(n(1), 'rh@macedoereis.com.br')
+    && tela.paraMim(n(1), 'diego@macedoereis.com.br') && !tela.paraMim(n(2, { relevancia: 'baixa' }), 'fiscal@macedoereis.com.br')
+    && !tela.paraMim(n(3, { situacao: 'descartada' }), 'financeiro@macedoereis.com.br') && tela.paraMim(n(4, { setores: ['dp', 'fiscal'], relevancia: 'media' }), 'rh@macedoereis.com.br'));
+  const lista = [n('a'), n('b', { triada_em: '2026-10-18T10:00:00Z' }), n('c', { setores: ['dp'] })];
+  chk('novas: triadas depois do meu "visto"', JSON.stringify(tela.novasPraMim(lista, 'fiscal@macedoereis.com.br', '2026-10-19T00:00:00Z').map(x => x.id)) === '["a"]'
+    && tela.novasPraMim(lista, 'financeiro@macedoereis.com.br', '2026-10-17T00:00:00Z').length === 3);
+  chk('sem "visto" ainda: os últimos 3 dias', tela.vistoPadrao(agora) === '2026-10-17T12:00:00.000Z');
+  const av = tela.paraAvisar([n('x'), n('velha', { publicada_em: '2026-10-10T10:00:00Z' }), n('media', { relevancia: 'media' }), n('ja', {})], 'fiscal@macedoereis.com.br', '2026-10-19T00:00:00Z', ['ja'], agora);
+  chk('o recado: só a Importante nova e recente que esta máquina ainda não avisou', JSON.stringify(av.map(x => x.id)) === '["x"]', JSON.stringify(av.map(x => x.id)));
+  const html = tela.cartaoHtml(n('<i>', { titulo: '<img src=x onerror=alert(1)>', url: 'javascript:alert(1)', resumo: 'A & B', por_que: '<b>x</b>', clientes: ['k1', 'k2', 'k3'], fonte: { nome: 'Fonte <s>' } }), { agora: new Date(T) });
+  chk('o cartão escapa o que vem de fora e não faz link que não é http(s)', !/<img|<b>x|<s>|<i>/.test(html) && html.includes('&lt;img src=x onerror=alert(1)&gt;') && !/href="javascript/.test(html) && html.includes('A &amp; B'));
+  chk('o cartão diz quantos clientes a notícia alcança', html.includes('Alcança 3 clientes da carteira') && tela.cartaoHtml(n('u', { clientes: [] })).includes('Nenhum cliente em particular'));
+  chk('o link da notícia abre em outra aba', tela.cartaoHtml(n('l', { url: 'https://www.gov.br/x' })).includes('href="https://www.gov.br/x" target="_blank" rel="noopener noreferrer"'));
+  const hoje = new Date(2026, 9, 20, 15, 0);
+  chk('a data curta: hoje com a hora, ontem, dd/mm e o ano quando é outro', tela.dataCurta(new Date(2026, 9, 20, 9, 5).toISOString(), hoje) === 'hoje, 09:05' && tela.dataCurta(new Date(2026, 9, 19, 23, 0).toISOString(), hoje) === 'ontem'
+    && tela.dataCurta(new Date(2026, 9, 3, 8, 0).toISOString(), hoje) === '03/10' && tela.dataCurta(new Date(2025, 11, 31, 8, 0).toISOString(), hoje) === '31/12/2025');
+  chk('a ordem: a publicação mais nova primeiro (sem data, a da coleta)', JSON.stringify(tela.ordenar([n('p1', { publicada_em: '2026-10-01T00:00:00Z' }), n('p2', { publicada_em: null, coletada_em: '2026-10-19T00:00:00Z' }), n('p3', { publicada_em: '2026-10-18T00:00:00Z' })]).map(x => x.id)) === '["p2","p3","p1"]');
 }
 
 console.log('A função:');
