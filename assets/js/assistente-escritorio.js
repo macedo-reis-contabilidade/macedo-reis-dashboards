@@ -18,7 +18,8 @@
 // As fontes da Reforma ([CODIGO]) viram link: material → o original no Drive; regra → a Base legal (na tela da Reforma,
 // por cima; nas outras, fiscal-reforma.html#regra-COD). Testes de tela: tests/harness/assistente-escritorio.py.
 // O chat da equipe (16/10/2026, no lugar do Beep) é a aba "Equipe" do mesmo painel (assets/js/chat-equipe.js): as
-// mensagens chegam em qualquer tela, e o número delas soma no balão.
+// mensagens chegam em qualquer tela, e o número delas soma no balão. As notícias (20/10/2026) são a aba "Notícias"
+// (assets/js/noticias.js): o número das novas fica na barra das abas, e a Importante nova vira um recado da carinha.
 // ============================================================
 
 import { supabase } from './supabase.js';
@@ -28,6 +29,7 @@ import { janelaDeCima } from './janelas.js';
 import { cartaoDaAcao } from './assistente-acoes.js';
 import { lerAchados, filtrarAchados, eDaTela, novosDesde, lerVisto, semResolvidosAgora } from './vigia.js';
 import { montarChatEquipe } from './chat-equipe.js';
+import { montarNoticias } from './noticias.js';
 
 const RAIZ = new URL('../../', import.meta.url);   // a raiz do site (este arquivo mora em assets/js/)
 
@@ -301,8 +303,10 @@ function montar() {
     // na tela da Reforma as respostas citam a base: os códigos vêm antes (nas outras, só quando uma resposta cita)
     antes: () => (caminho === 'fiscal-reforma.html' ? carregarFontes() : null),
     aoClicar: ev => (tela.aoClicar ? tela.aoClicar(ev) : false),
-    // a aba do chat da equipe: conversas a dois e grupos, com o aviso no computador
-    abas: [{ id: 'equipe', rotulo: 'Equipe', nome: 'Equipe', montar: (lugar, ctl) => (chat = montarChatEquipe({ supabase, email, el: lugar, ctl })) }]
+    // a aba do chat da equipe: conversas a dois e grupos, com o aviso no computador; a das notícias: o feed (o número dela
+    // fica só na barra das abas, o do balão é do chat)
+    abas: [{ id: 'equipe', rotulo: 'Equipe', nome: 'Equipe', montar: (lugar, ctl) => (chat = montarChatEquipe({ supabase, email, el: lugar, ctl })) },
+      { id: 'noticias', rotulo: 'Notícias', nome: 'Notícias', montar: (lugar, ctl) => montarNoticias({ supabase, email, el: lugar, ctl }) }]
   });
 }
 

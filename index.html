@@ -15,6 +15,7 @@
     a[href="clientes/index.html"] .dashboard-card-icon { background: rgba(91,192,190,.15);  color:#7FD4D2; }
     a[href="setores.html"]        .dashboard-card-icon { background: rgba(133,151,224,.15); color:#8597E0; }
     a[href="ajuda.html"]          .dashboard-card-icon { background: rgba(224,143,168,.15); color:#E08FA8; }
+    a[href="noticias.html"]       .dashboard-card-icon { background: rgba(227,179,65,.15);  color:#E3B341; }
 
     /* Selo "hoje" (urgência do dia) — canto superior direito */
     .badge-hoje { position:absolute; top:14px; right:14px; background:rgba(227,179,65,.18); border:1px solid rgba(227,179,65,.5); color:var(--warn); font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.04em; text-transform:uppercase; box-shadow:0 0 0 3px rgba(227,179,65,.06); }
@@ -96,6 +97,21 @@
           </div>
         </a>
 
+        <a href="noticias.html" class="dashboard-card">
+          <div class="dashboard-card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/>
+              <path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/>
+            </svg>
+          </div>
+          <h3>Notícias</h3>
+          <p>O que muda pros clientes: fontes oficiais, tribunais e imprensa contábil, lidas pela IA de hora em hora.</p>
+          <div class="dashboard-card-footer">
+            <span>Acessar →</span>
+            <span class="badge card-status st-load">·</span>
+          </div>
+        </a>
+
         <a href="ajuda.html" class="dashboard-card">
           <div class="dashboard-card-icon">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -149,8 +165,31 @@
         document.getElementById('userName').textContent = displayName;
         document.getElementById('userAvatar').textContent = displayName.charAt(0).toUpperCase();
       }
+      pintarNoticias(user);
       await pintarSelosDoDia(user);
     })();
+
+    // o card das Notícias: as novas pra quem entrou (as mesmas regras da aba do balão) e as importantes em destaque
+    async function pintarNoticias(user) {
+      const card = document.querySelector('a.dashboard-card[href="noticias.html"]');
+      const st = card && card.querySelector('.card-status');
+      if (!st || !user) return;
+      try {
+        const { lerNoticias, lerVisto, novasPraMim, vistoPadrao, CAMPOS_LEVES, NOVA_DIAS } = await import('./assets/js/noticias.js');
+        const email = String(user.email || '').toLowerCase();
+        const [r, visto] = await Promise.all([lerNoticias(supabase, { dias: NOVA_DIAS + 1, campos: CAMPOS_LEVES, limite: 300 }), lerVisto(supabase, email)]);
+        const novas = novasPraMim(r.noticias.filter(n => n.situacao === 'triada'), email, visto || vistoPadrao());
+        const alta = novas.filter(n => n.relevancia === 'alta').length;
+        if (alta) {
+          const pill = document.createElement('span');
+          pill.className = 'badge-hoje';
+          pill.textContent = alta + (alta === 1 ? ' importante' : ' importantes');
+          card.appendChild(pill);
+        }
+        if (novas.length) { st.textContent = novas.length + (novas.length === 1 ? ' nova' : ' novas'); st.className = 'badge card-status st-open'; }
+        else { st.textContent = 'Em dia'; st.className = 'badge card-status st-clear'; }
+      } catch (e) { st.remove(); }
+    }
 
     document.getElementById('btnLogout').addEventListener('click', signOut);
 

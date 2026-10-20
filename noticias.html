@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Notícias — Macedo & Reis</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip">
+          <div class="user-avatar" id="userAvatar">—</div>
+          <span id="userName">Carregando…</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Notícias</span>
+        </div>
+        <div class="eyebrow">Acompanhamento</div>
+        <h1>Notícias</h1>
+        <p>O que saiu nas fontes oficiais, nos tribunais e na imprensa contábil, lido pela IA e ligado aos clientes da carteira. A coleta roda sozinha, de hora em hora.</p>
+      </div>
+
+      <div class="fd-pagina">
+        <section class="fd-feed" aria-label="Notícias">
+          <p class="fd-desde" id="fdDesde">Lendo as notícias…</p>
+          <div class="fd-filtros">
+            <div class="fd-chips" id="fdSetor" role="group" aria-label="Setor">
+              <button type="button" data-s="" aria-pressed="true">Todos os setores</button>
+              <button type="button" data-s="dp" aria-pressed="false">DP</button>
+              <button type="button" data-s="fiscal" aria-pressed="false">Fiscal</button>
+              <button type="button" data-s="contabil" aria-pressed="false">Contábil</button>
+              <button type="button" data-s="societario" aria-pressed="false">Societário</button>
+              <button type="button" data-s="irpf" aria-pressed="false">IRPF</button>
+            </div>
+            <select class="select" id="fdRel" aria-label="Quais notícias">
+              <option value="ab">Importantes e vale saber</option>
+              <option value="a">Só as importantes</option>
+              <option value="abc">Com as de pouco efeito</option>
+              <option value="fora">As que a IA descartou</option>
+            </select>
+            <select class="select" id="fdFonte" aria-label="Fonte"><option value="">Todas as fontes</option></select>
+            <select class="select" id="fdPeriodo" aria-label="Período">
+              <option value="7">Últimos 7 dias</option>
+              <option value="30" selected>Últimos 30 dias</option>
+              <option value="90">Últimos 90 dias</option>
+            </select>
+            <label class="fd-marcar"><input type="checkbox" id="fdComClientes"> Só as que alcançam clientes</label>
+            <input class="input" id="fdBusca" type="search" placeholder="Buscar no título e no resumo" aria-label="Buscar nas notícias">
+          </div>
+          <p class="fd-contagem" id="fdContagem" role="status"></p>
+          <div id="fdLista"></div>
+          <button type="button" class="btn btn-ghost btn-sm fd-mais" id="fdMais" hidden>Mostrar mais</button>
+        </section>
+
+        <aside class="fd-lado">
+          <section class="fd-bloco" id="fdColetaBloco" hidden>
+            <h2>Coletar agora</h2>
+            <p>A coleta roda sozinha de hora em hora. Pra não esperar, busque agora: leva até dois minutos, uma vez a cada dez.</p>
+            <button type="button" class="btn btn-primary btn-sm" id="fdColetar">Coletar agora</button>
+            <p class="fd-msg" id="fdColetaMsg" role="status"></p>
+          </section>
+          <section class="fd-bloco">
+            <h2>Como a IA separa</h2>
+            <ul class="fd-legenda">
+              <li class="fd-alta"><b>Importante</b>: muda imposto, prazo, obrigação ou regra que alcança clientes e pede ação.</li>
+              <li class="fd-media"><b>Vale saber</b>: é da área e alcança clientes, mas não pede ação já.</li>
+              <li class="fd-baixa"><b>Pouco efeito</b>: efeito pequeno nos clientes, ou matéria sem fato novo.</li>
+            </ul>
+            <p>Cada setor vê o que é dele (DP, Fiscal, Contábil); os sócios veem tudo. A mesma notícia em várias fontes aparece uma vez só, com as outras em "Também em". Quem a notícia alcança vem do cadastro: regime, atividade, cidade, obrigações e folha.</p>
+          </section>
+          <section class="fd-bloco">
+            <h2>As fontes</h2>
+            <ul class="fd-fontes" id="fdFontes"><li><small>Lendo…</small></li></ul>
+          </section>
+        </aside>
+      </div>
+    </main>
+  </div>
+
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { lerNoticias, lerVisto, marcarVisto, novasPraMim, vistoPadrao, setoresDe, cartaoHtml, escHtml, rotuloDoDia, chaveDoDia,
+      quando, plural, dataCurta, linkSeguro, ROTULO_TIPO_FONTE } from './assets/js/noticias.js';
+    import { SOCIOS } from './assets/js/equipe.js';
+
+    const $ = id => document.getElementById(id);
+    const POR_PAGINA = 60;
+    const est = { email: '', dados: null, visto: null, novas: new Set(), setor: '', rel: 'ab', fonte: '', dias: 30, comClientes: false, busca: '', mostrar: POR_PAGINA };
+    const nomes = new Map();   // id do cliente → nome (lidos sob demanda, ao abrir a lista)
+    const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    const alvo = new URLSearchParams(location.search).get('n');
+
+    $('btnLogout').addEventListener('click', signOut);
+
+    function filtradas() {
+      const d = est.dados;
+      if (!d) return [];
+      let l = d.noticias.filter(n => (est.rel === 'fora' ? n.situacao === 'descartada' : n.situacao === 'triada'));
+      if (est.rel === 'a') l = l.filter(n => n.relevancia === 'alta');
+      else if (est.rel === 'ab') l = l.filter(n => n.relevancia === 'alta' || n.relevancia === 'media');
+      if (est.setor) l = l.filter(n => (n.setores || []).includes(est.setor));
+      if (est.fonte) l = l.filter(n => n.fonte_id === est.fonte || (n.tambem || []).some(t => t.fonte_id === est.fonte));
+      if (est.comClientes) l = l.filter(n => (n.clientes || []).length);
+      const q = norm(est.busca.trim());
+      if (q) l = l.filter(n => norm([n.titulo, n.resumo, n.por_que, n.acao].concat((n.tambem || []).map(t => t.titulo)).join(' ')).includes(q));
+      return l;
+    }
+
+    function desenhar() {
+      const l = filtradas();
+      const vs = l.slice(0, est.mostrar);
+      let html = '', dia = null;
+      for (const n of vs) {
+        const k = chaveDoDia(quando(n));
+        if (k !== dia) { dia = k; html += '<h2 class="fd-dia">' + escHtml(rotuloDoDia(quando(n))) + '</h2>'; }
+        html += cartaoHtml(n, { nova: est.novas.has(n.id) });
+      }
+      $('fdLista').innerHTML = html || '<div class="fd-vazio">' + (est.dados ? 'Nenhuma notícia com esses filtros.' : 'Lendo as notícias…') + '</div>';
+      $('fdContagem').textContent = est.dados ? (l.length ? plural(l.length, 'notícia', 'notícias') + (l.length > vs.length ? ', mostrando ' + vs.length : '') : '') : '';
+      $('fdMais').hidden = l.length <= vs.length;
+      // as listas de clientes que estavam abertas continuam abertas
+      document.querySelectorAll('.fd-ver-clientes').forEach(b => { if (abertas.has(b.dataset.clientes)) abrirClientes(b, true); });
+    }
+
+    function desenharDesde() {
+      const meus = setoresDe(est.email);
+      const l = est.dados ? est.dados.noticias.filter(n => est.novas.has(n.id)) : [];
+      const a = l.filter(n => n.relevancia === 'alta').length, m = l.length - a;
+      const quem = meus === null ? '' : ' pro seu setor';
+      $('fdDesde').textContent = !est.dados ? 'Lendo as notícias…'
+        : !l.length ? 'Nada novo' + quem + ' desde a sua última visita.'
+        : 'Desde a sua última visita: ' + [a ? plural(a, 'importante', 'importantes') : '', m ? plural(m, 'que vale saber', 'que valem saber') : ''].filter(Boolean).join(' e ') + quem + '.';
+    }
+
+    function desenharFontes() {
+      const fs = est.dados ? est.dados.fontes.filter(f => f.ativo) : [];
+      const sel = $('fdFonte'), atual = sel.value;
+      sel.innerHTML = '<option value="">Todas as fontes</option>' + fs.map(f => '<option value="' + escHtml(f.id) + '">' + escHtml(f.nome) + '</option>').join('');
+      sel.value = fs.some(f => f.id === atual) ? atual : '';
+      $('fdFontes').innerHTML = fs.map(f => {
+        const site = linkSeguro(f.site || f.url);
+        const nome = site ? '<a href="' + escHtml(site) + '" target="_blank" rel="noopener noreferrer">' + escHtml(f.nome) + '</a>' : '<b>' + escHtml(f.nome) + '</b>';
+        const estado = f.ultimo_erro
+          ? '<small class="fd-erro">' + escHtml('Falhou na última coleta' + (f.ultima_coleta ? ' (' + dataCurta(f.ultima_coleta) + ')' : '') + ': ' + String(f.ultimo_erro).slice(0, 90)) + '</small>'
+          : '<small>' + escHtml((ROTULO_TIPO_FONTE[f.tipo] || 'Fonte') + (f.ultimo_ok ? ', lida ' + dataCurta(f.ultimo_ok) : ', ainda não lida')) + '</small>';
+        return '<li>' + nome + estado + '</li>';
+      }).join('') || '<li><small>Nenhuma fonte ativa.</small></li>';
+    }
+
+    // os clientes que a notícia alcança: a lista abre na própria notícia, com o link pra ficha de cada um
+    const abertas = new Set();
+    async function abrirClientes(botao, manter = false) {
+      const id = botao.dataset.clientes;
+      const caixa = document.querySelector('.fd-lista-clientes[data-de="' + CSS.escape(id) + '"]');
+      if (!caixa) return;
+      const abrir = manter || botao.getAttribute('aria-expanded') !== 'true';
+      botao.setAttribute('aria-expanded', abrir ? 'true' : 'false');
+      caixa.hidden = !abrir;
+      if (!abrir) { abertas.delete(id); return; }
+      abertas.add(id);
+      const n = est.dados && est.dados.noticias.find(x => x.id === id);
+      const ids = n ? (n.clientes || []) : [];
+      const faltam = ids.filter(c => !nomes.has(c));
+      if (faltam.length) {
+        caixa.innerHTML = '<span>Lendo os clientes…</span>';
+        for (let i = 0; i < faltam.length; i += 100) {
+          const { data } = await supabase.from('clientes').select('id, nome_principal, nome_fantasia').in('id', faltam.slice(i, i + 100));
+          (data || []).forEach(c => nomes.set(c.id, c.nome_fantasia || c.nome_principal || 'Cliente sem nome'));
+        }
+      }
+      const lista = ids.filter(c => nomes.has(c)).map(c => ({ id: c, nome: nomes.get(c) })).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+      caixa.innerHTML = lista.map(c => '<a href="clientes/editar.html?id=' + encodeURIComponent(c.id) + '">' + escHtml(c.nome) + '</a>').join('')
+        || '<span>Os clientes desta notícia saíram do cadastro.</span>';
+    }
+    $('fdLista').addEventListener('click', ev => { const b = ev.target.closest('.fd-ver-clientes'); if (b) abrirClientes(b); });
+
+    // filtros
+    function marcarChips() { document.querySelectorAll('#fdSetor [data-s]').forEach(b => b.setAttribute('aria-pressed', b.dataset.s === est.setor ? 'true' : 'false')); }
+    $('fdSetor').addEventListener('click', ev => { const b = ev.target.closest('[data-s]'); if (!b) return; est.setor = b.dataset.s; est.mostrar = POR_PAGINA; marcarChips(); desenhar(); });
+    $('fdRel').addEventListener('change', async () => {
+      const antes = est.rel; est.rel = $('fdRel').value; est.mostrar = POR_PAGINA;
+      if ((antes === 'fora') !== (est.rel === 'fora')) await carregar(); else desenhar();
+    });
+    $('fdFonte').addEventListener('change', () => { est.fonte = $('fdFonte').value; est.mostrar = POR_PAGINA; desenhar(); });
+    $('fdPeriodo').addEventListener('change', () => { est.dias = Number($('fdPeriodo').value) || 30; est.mostrar = POR_PAGINA; carregar(); });
+    $('fdComClientes').addEventListener('change', () => { est.comClientes = $('fdComClientes').checked; est.mostrar = POR_PAGINA; desenhar(); });
+    let tBusca = null;
+    $('fdBusca').addEventListener('input', () => { clearTimeout(tBusca); tBusca = setTimeout(() => { est.busca = $('fdBusca').value; est.mostrar = POR_PAGINA; desenhar(); }, 200); });
+    $('fdMais').addEventListener('click', () => { est.mostrar += POR_PAGINA; desenhar(); });
+
+    async function carregar() {
+      try {
+        est.dados = await lerNoticias(supabase, { dias: est.dias, descartadas: est.rel === 'fora' });
+      } catch (e) {
+        $('fdLista').innerHTML = '<div class="fd-vazio">Não consegui ler as notícias agora. Recarregue a página em instantes.</div>';
+        return;
+      }
+      desenharFontes(); desenharDesde(); desenhar();
+    }
+
+    // "Coletar agora" (só os sócios; a função também confere)
+    $('fdColetar').addEventListener('click', async () => {
+      const b = $('fdColetar'), msg = $('fdColetaMsg');
+      b.disabled = true; msg.textContent = 'Coletando e lendo as notícias… leva até dois minutos.';
+      try {
+        const { data, error } = await supabase.functions.invoke('noticias', { body: { coletar: true } });
+        if (error || !data || data.erro) throw new Error((data && data.erro) || 'erro');
+        if (data.pulou) msg.textContent = 'A última coleta foi ' + dataCurta(data.ultima) + '. Dá pra pedir de novo dez minutos depois dela.';
+        else {
+          const t = data.triagem || {};
+          msg.textContent = 'Pronto: ' + plural(data.novas || 0, 'notícia nova', 'notícias novas') + ', ' + plural((t.triadas || 0) + (t.descartadas || 0), 'lida pela IA', 'lidas pela IA')
+            + (t.restam ? '. ' + plural(t.restam, 'ficou', 'ficaram') + ' pra próxima rodada.' : '.');
+        }
+        await carregar();
+      } catch (e) {
+        msg.textContent = 'Não consegui coletar agora. Tente de novo em alguns minutos.';
+      } finally { b.disabled = false; }
+    });
+
+    (async () => {
+      const user = await getCurrentUser();
+      if (user) {
+        const nome = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário';
+        $('userName').textContent = nome;
+        $('userAvatar').textContent = nome.charAt(0).toUpperCase();
+        est.email = String(user.email || '').toLowerCase();
+      }
+      $('fdColetaBloco').hidden = !SOCIOS.includes(est.email);
+      // o setor de quem entrou já vem marcado (os sócios: todos)
+      const meus = setoresDe(est.email);
+      if (meus && meus.length === 1 && !alvo) { est.setor = meus[0]; marcarChips(); }
+      est.visto = await lerVisto(supabase, est.email).catch(() => null);
+      await carregar();
+      if (est.dados) {
+        est.novas = new Set(novasPraMim(est.dados.noticias.filter(n => n.situacao === 'triada'), est.email, est.visto || vistoPadrao()).map(n => n.id));
+        desenharDesde(); desenhar();
+        // o que está na tela já foi visto (a aba do balão zera junto)
+        setTimeout(() => marcarVisto(supabase, est.email), 2000);
+      }
+      if (alvo) mostrarAlvo(alvo);
+    })();
+
+    // ?n=<id>: a notícia (ou a principal do grupo dela) aberta, com os clientes
+    async function mostrarAlvo(id) {
+      let n = est.dados && est.dados.noticias.find(x => x.id === id || (x.tambem || []).some(t => t.id === id));
+      if (!n && est.dados) {
+        est.dias = 90; $('fdPeriodo').value = '90'; await carregar();
+        n = est.dados && est.dados.noticias.find(x => x.id === id || (x.tambem || []).some(t => t.id === id));
+      }
+      if (!n) { $('fdContagem').textContent = 'A notícia do link não está mais no feed.'; return; }
+      if (n.situacao === 'descartada') { est.rel = 'fora'; $('fdRel').value = 'fora'; await carregar(); }
+      else if (n.relevancia === 'baixa') { est.rel = 'abc'; $('fdRel').value = 'abc'; }
+      est.setor = ''; marcarChips();
+      const pos = filtradas().findIndex(x => x.id === n.id);
+      if (pos >= est.mostrar) est.mostrar = pos + 1;
+      desenhar();
+      const el = document.querySelector('.fd-item[data-id="' + CSS.escape(n.id) + '"]');
+      if (!el) return;
+      el.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      el.classList.add('fd-alvo');
+      const b = el.querySelector('.fd-ver-clientes');
+      if (b) abrirClientes(b, true);
+    }
+  </script>
+</body>
+</html>

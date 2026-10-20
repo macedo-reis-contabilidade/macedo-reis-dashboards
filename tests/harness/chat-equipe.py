@@ -125,7 +125,7 @@ def main():
         ok(p.inner_text('.as-selo') == '2' and p.title().startswith('(2) '), f'o balão e o título da aba com as 2 não lidas (a do grupo silenciado não conta) ({p.inner_text(".as-selo")!r}, {p.title()!r})')
         p.click('.as-lancador'); p.wait_for_selector('.as-abas .as-aba', timeout=3000)
         abas = p.eval_on_selector_all('.as-aba', 'bs => bs.map(b => b.innerText.replace(/\\s+/g, " ").trim())')
-        ok(abas == ['Assistente', 'Equipe 2'], f'as abas Assistente e Equipe, com o número ({abas})')
+        ok(abas == ['Assistente', 'Equipe 2', 'Notícias'], f'as abas Assistente, Equipe (com o número) e Notícias ({abas})')
         p.evaluate("window.__mockOnline(['" + TH + "'])")
         p.click('.as-aba[data-aba="equipe"]'); p.wait_for_selector('.ch-linha', timeout=3000)
         linhas = p.eval_on_selector_all('.ch-conversas .ch-linha b', 'bs => bs.map(b => b.textContent)')

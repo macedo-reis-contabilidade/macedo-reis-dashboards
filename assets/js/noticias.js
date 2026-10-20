@@ -96,10 +96,12 @@ const hora = iso => { const d = new Date(iso); return iso && !isNaN(d) ? pad(d.g
 
 // ---------- o banco ----------
 const CAMPOS = 'id, fonte_id, url, titulo, publicada_em, coletada_em, triada_em, situacao, relevancia, setores, resumo, por_que, acao, clientes, grupo';
+// o leve: o que o número da aba, o recado e o card do Painel precisam (os últimos dias, sem o texto todo) — toda tela lê
+export const CAMPOS_LEVES = 'id, fonte_id, url, titulo, publicada_em, coletada_em, triada_em, situacao, relevancia, setores, por_que, grupo';
 // as triadas da janela (e as descartadas, pra conferir a IA), já agrupadas; as fontes com o estado da última coleta
-export async function lerNoticias(supabase, { dias = JANELA_DIAS, descartadas = false, limite = 1000 } = {}) {
+export async function lerNoticias(supabase, { dias = JANELA_DIAS, descartadas = false, limite = 1000, campos = CAMPOS } = {}) {
   const desde = new Date(Date.now() - dias * 864e5).toISOString();
-  let q = supabase.from('noticias').select(CAMPOS).gte('coletada_em', desde).order('coletada_em', { ascending: false }).limit(limite);
+  let q = supabase.from('noticias').select(campos).gte('coletada_em', desde).order('coletada_em', { ascending: false }).limit(limite);
   q = descartadas ? q.in('situacao', ['triada', 'descartada']) : q.eq('situacao', 'triada');
   const [r1, r2] = await Promise.all([q, supabase.from('noticias_fontes').select('id, nome, tipo, site, url, ativo, ultima_coleta, ultimo_ok, ultimo_erro, itens_ultima')]);
   if (r1.error) throw r1.error;
@@ -159,8 +161,11 @@ export function paraAvisar(lista, email, vistoAte, avisadas = [], agora = Date.n
 }
 
 // ---------- a aba "Notícias" do balão ----------
-export function montarNoticias({ supabase, email, el, ctl, intervaloMs = 10 * 60e3, esperaRecadoMs = 25000 }) {
-  let noticias = [], visto = null, filtro = 'mim', carregadoEm = 0, erro = null, timerVisto = null, novasNaTela = new Set(), ultimaColeta = null;
+// Toda tela lê só o leve dos últimos dias (o número e o recado); a lista inteira, só quando a aba abre.
+// O recado espera 25 s depois da tela abrir (o teste de tela encurta por window.__noticiasEsperaMs).
+export function montarNoticias({ supabase, email, el, ctl, intervaloMs = 10 * 60e3,
+  esperaRecadoMs = typeof globalThis.__noticiasEsperaMs === 'number' ? globalThis.__noticiasEsperaMs : 25000 }) {
+  let leves = [], noticias = [], visto = null, filtro = 'mim', carregadoEm = 0, listaEm = 0, erro = null, timerVisto = null, novasNaTela = new Set(), ultimaColeta = null;
   const montadoEm = Date.now();
   const pagina = new URL('noticias.html', RAIZ).href;
   el.classList.add('fd-aba');
@@ -176,19 +181,27 @@ export function montarNoticias({ supabase, email, el, ctl, intervaloMs = 10 * 60
     el.querySelectorAll('.fd-filtro [data-f]').forEach(x => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
     desenhar(); rolar.scrollTop = 0;
   });
-  const triadas = () => noticias.filter(n => n.situacao === 'triada');
-  const visiveis = () => (filtro === 'mim' ? triadas().filter(n => paraMim(n, email)) : triadas()).slice(0, 60);
-  const novas = () => novasPraMim(triadas(), email, visto || vistoPadrao());
+  const so = l => l.filter(n => n.situacao === 'triada');
+  const visiveis = () => (filtro === 'mim' ? so(noticias).filter(n => paraMim(n, email)) : so(noticias)).slice(0, 60);
+  const novas = () => novasPraMim(so(leves), email, visto || vistoPadrao());
   function desenhar() {
-    if (erro && !noticias.length) { lista.innerHTML = '<div class="fd-vazio">Não consegui ler as notícias agora. Tento de novo daqui a pouco.</div>'; return; }
+    if (erro && !listaEm) { lista.innerHTML = '<div class="fd-vazio">Não consegui ler as notícias agora. Tento de novo daqui a pouco.</div>'; return; }
+    if (!listaEm) { lista.innerHTML = '<div class="fd-vazio">Lendo as notícias…</div>'; return; }
     const vs = visiveis();
     if (!vs.length) {
-      lista.innerHTML = '<div class="fd-vazio">' + (!carregadoEm ? 'Lendo as notícias…' : filtro === 'mim'
+      lista.innerHTML = '<div class="fd-vazio">' + (filtro === 'mim'
         ? 'Nada importante pro seu setor nos últimos ' + JANELA_DIAS + ' dias. Em "Todas" estão as outras.'
         : 'Nenhuma notícia nos últimos ' + JANELA_DIAS + ' dias.') + '</div>';
       return;
     }
     lista.innerHTML = vs.map(n => cartaoHtml(n, { nova: novasNaTela.has(n.id), compacto: true, linkClientes: pagina + '?n=' + encodeURIComponent(n.id) })).join('');
+  }
+  // a lista inteira (a aba aberta): relê se tem mais de 2 minutos
+  async function carregarLista(forcar = false) {
+    if (!forcar && listaEm && Date.now() - listaEm < 2 * 60e3) return;
+    try { const r = await lerNoticias(supabase, { limite: 150 }); noticias = r.noticias; ultimaColeta = r.ultimaColeta || ultimaColeta; listaEm = Date.now(); erro = null; }
+    catch (e) { erro = e; }
+    desenhar(); ctl.status();
   }
   function contar() {
     ctl.contador(ctl.ativa() ? 0 : novas().length, { balao: false });
@@ -200,17 +213,19 @@ export function montarNoticias({ supabase, email, el, ctl, intervaloMs = 10 * 60
     timerVisto = setTimeout(async () => {
       if (!ctl.ativa()) return;
       const agora = new Date().toISOString();
-      if (await marcarVisto(supabase, email, agora)) { visto = agora; guardarAvisadas(email, [...lerAvisadas(email), ...triadas().filter(n => n.relevancia === 'alta').map(n => n.id)]); contar(); }
+      if (await marcarVisto(supabase, email, agora)) { visto = agora; guardarAvisadas(email, [...lerAvisadas(email), ...so(leves).filter(n => n.relevancia === 'alta').map(n => n.id)]); contar(); }
     }, 1500);
   }
+  // o leve (toda tela, a cada 10 minutos): o número da aba e o recado
   async function carregar() {
     try {
-      const [r, v] = await Promise.all([lerNoticias(supabase), lerVisto(supabase, email)]);
-      noticias = r.noticias; ultimaColeta = r.ultimaColeta; visto = v; erro = null; carregadoEm = Date.now();
+      const [r, v] = await Promise.all([lerNoticias(supabase, { dias: NOVA_DIAS + 1, campos: CAMPOS_LEVES, limite: 300 }), lerVisto(supabase, email)]);
+      leves = r.noticias; ultimaColeta = r.ultimaColeta; visto = v; erro = null; carregadoEm = Date.now();
     } catch (e) { erro = e; }
-    novasNaTela = new Set(novas().map(n => n.id));
-    desenhar(); contar();
-    if (ctl.ativa()) verAgora();
+    // com a aba aberta, a que chegou agora também ganha o "nova" (as de antes ficam marcadas até a aba fechar)
+    novasNaTela = ctl.ativa() ? new Set([...novasNaTela, ...novas().map(n => n.id)]) : new Set(novas().map(n => n.id));
+    contar();
+    if (ctl.ativa()) { carregarLista(true); verAgora(); }
     // o recado: nunca nos primeiros segundos da tela (o recado do dia vem antes)
     const falta = montadoEm + esperaRecadoMs - Date.now();
     if (falta > 0) setTimeout(avisarImportantes, falta); else avisarImportantes();
@@ -218,7 +233,7 @@ export function montarNoticias({ supabase, email, el, ctl, intervaloMs = 10 * 60
   function avisarImportantes() {
     if (ctl.ativa() || document.visibilityState === 'hidden') return;
     const avisadas = lerAvisadas(email);
-    const lista = paraAvisar(triadas(), email, visto || vistoPadrao(), avisadas);
+    const lista = paraAvisar(so(leves), email, visto || vistoPadrao(), avisadas);
     if (!lista.length) return;
     const n = lista[0];
     const ok = ctl.avisar({
@@ -233,7 +248,7 @@ export function montarNoticias({ supabase, email, el, ctl, intervaloMs = 10 * 60
   const timer = setInterval(carregar, intervaloMs);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Date.now() - carregadoEm > 2 * 60e3) carregar(); });
   return {
-    aoMostrar() { desenhar(); verAgora(); contar(); },
+    aoMostrar() { desenhar(); carregarLista(); verAgora(); contar(); },
     aoEsconder() { clearTimeout(timerVisto); novasNaTela = new Set(novas().map(n => n.id)); desenhar(); },
     status() {
       const k = novasNaTela.size || novas().length;
