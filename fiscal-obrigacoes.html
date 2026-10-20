@@ -178,6 +178,17 @@
     </div>
   </div>
 
+  <div class="fa-modal-overlay" id="przOverlay">
+    <div class="fa-modal" style="max-width:600px;">
+      <div class="fa-modal-head"><h3 id="przTitulo">Mudar o prazo do mês</h3><button class="fa-modal-close" id="przClose">&times;</button></div>
+      <div class="fa-modal-body"><div id="przCorpo">Carregando…</div></div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-ghost" id="przFechar">Cancelar</button>
+        <button class="btn btn-primary" id="przAplicar" style="display:none;">Mudar os prazos</button>
+      </div>
+    </div>
+  </div>
+
   <div class="fa-modal-overlay" id="genOverlay">
     <div class="fa-modal" style="max-width:640px;">
       <div class="fa-modal-head"><h3 id="genTitulo">Gerar rotinas do mês</h3><button class="fa-modal-close" id="genClose">&times;</button></div>
@@ -315,7 +326,7 @@
   <script src="assets/js/tour.js"></script>
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
-    import { vincularObrigacoes, pessoaDaEquipe } from './assets/js/tarefas-acoes.js';
+    import { vincularObrigacoes, pessoaDaEquipe, alterarTarefas, desfazerAlteracao } from './assets/js/tarefas-acoes.js';
 
     const user = await getCurrentUser();
     if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; const av = document.getElementById('userAvatar'); if (av) av.textContent = (user.email || '?').charAt(0).toUpperCase(); }
@@ -436,6 +447,7 @@
       vinculos.forEach(v => { (porRegra[v.obrigacao_id] = porRegra[v.obrigacao_id] || []).push(v); });
       const vis = regras.filter(r => !q || norm(r.nome).includes(q));
       if (!vis.length) { el.innerHTML = '<p style="color:var(--text-muted);">Nenhuma obrigação encontrada.</p>'; return; }
+      const prazoMes = botaoPrazoDoMes();
       // Pendentes do mês esconde os clientes concluídos, nunca a obrigação: a zerada (tudo concluído, ou sem vínculo
       // ativo) desce pro grupo "sem pendência", com o "+ Vincular cliente" à mão — antes ela sumia inteira e não dava
       // pra vincular empresa nova (PGDAS com setembro todo concluído, relato da Thalia em 30/09/2026)
@@ -461,7 +473,7 @@
               zerada && ativos ? '✓ Tudo concluído no mês — os feitos aparecem em <b>Todos</b>.'
               : zerada && todos.length ? 'Nenhum vínculo ativo — os desligados aparecem em <b>Todos</b>.'
               : 'Nenhum cliente vinculado.'}</p>`}
-            <button class="btn-add" data-add-rid="${r.id}">+ Vincular cliente</button>
+            <button class="btn-add" data-add-rid="${r.id}">+ Vincular cliente</button>${prazoMes(r)}
           </div>
         </div>` };
       });
@@ -530,6 +542,7 @@
       el.querySelectorAll('.obr-cli .nm').forEach(nm => nm.addEventListener('click', () => abrirGuia(nm.closest('.obr-cli').dataset.vid)));
       el.querySelectorAll('.obr-cli .nm').forEach(nm => nm.title = 'Clique para arquivar/ver guias no Drive');
       el.querySelectorAll('[data-add-rid]').forEach(b => b.addEventListener('click', () => abrirVinculo({ modo: 'addCliente', obrigacaoId: b.dataset.addRid })));
+      el.querySelectorAll('[data-prazo-rid]').forEach(b => b.addEventListener('click', () => abrirPrazo(b.dataset.prazoRid)));
       el.querySelectorAll('[data-add-cid]').forEach(b => b.addEventListener('click', () => abrirVinculo({ modo: 'addObrigacao', clienteId: b.dataset.addCid })));
     }
 
@@ -722,6 +735,145 @@
       render();
       atualizarGeradas();
       if (erroTarefa) alert('O vínculo foi gravado, mas a tarefa do mês não: ' + erroTarefa + ' — gere pelo "Gerar rotinas do mês".');
+    }
+
+    // ===================== PRAZO DO MÊS (20/10/2026, pedido da Thalia) =====================
+    // Muda de uma vez o prazo das tarefas abertas de uma obrigação no mês escolhido na tela (o DEISS de outubro de todos
+    // os clientes pro dia 8, por exemplo), sem abrir uma a uma — pela regra das telas e do assistente (alterarTarefas,
+    // assets/js/tarefas-acoes.js): a linha no histórico de cada uma e o "Desfazer". Só o mês: o dia do vínculo e os
+    // próximos meses ficam como estão; a concluída também
+    const przOverlay = document.getElementById('przOverlay');
+    const ORIGEM_PRAZO = 'módulo Obrigações (prazo do mês)';
+    const DIAS_SEM = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+    const dataBR = iso => String(iso || '').slice(0, 10).split('-').reverse().join('/');
+    const comDiaSem = iso => { const d = new Date(String(iso).slice(0, 10) + 'T12:00:00'); return isNaN(d) ? dataBR(iso) : DIAS_SEM[d.getDay()] + ', ' + dataBR(iso); };
+    const fimDeSemana = iso => { const d = new Date(String(iso).slice(0, 10) + 'T12:00:00'); return !isNaN(d) && (d.getDay() === 0 || d.getDay() === 6); };
+    let przCtx = null;
+    document.getElementById('przClose').addEventListener('click', fecharPrazo);
+    document.getElementById('przFechar').addEventListener('click', fecharPrazo);
+    przOverlay.addEventListener('click', e => { if (e.target === przOverlay) fecharPrazo(); });
+    document.getElementById('przAplicar').addEventListener('click', aplicarPrazo);
+    function fecharPrazo(){ if (przCtx && przCtx.gravando) return; przOverlay.classList.remove('is-open'); przCtx = null; }
+
+    // o botão no cartão da obrigação: só quando ela vence no mês da tela e tem tarefa aberta nele (ou aparece antes do
+    // mês do prazo — a tarefa é de outro mês e a tela não a conta)
+    function botaoPrazoDoMes(){
+      const mv = document.getElementById('mesRef').value;
+      if (!/^\d{4}-\d{2}$/.test(mv)) return () => '';
+      const [ano, mes] = mv.split('-').map(Number);
+      const doMes = new Set(ocorrenciasPara(ano, mes).map(o => o.r.id));
+      const abertas = new Set(Object.entries(statusMes).filter(([, s]) => s !== 'concluida').map(([k]) => k.split('|')[0]));
+      return r => (doMes.has(r.id) && (abertas.has(r.id) || r.gatilho_dias_antes > 0)
+        ? `<button class="btn-add" data-prazo-rid="${r.id}" style="margin-left:6px;">📅 Mudar o prazo de ${pad(mes)}/${ano}</button>` : '');
+    }
+
+    async function abrirPrazo(rid){
+      const r = regras.find(x => x.id === rid);
+      const mv = document.getElementById('mesRef').value;
+      if (!r || !/^\d{4}-\d{2}$/.test(mv)) return;
+      const [ano, mes] = mv.split('-').map(Number);
+      const chaves = ocorrenciasPara(ano, mes).filter(o => o.r.id === r.id).map(o => o.anoOcc + '-' + pad(o.M));
+      const ctx = przCtx = { r, rotuloMes: pad(mes) + '/' + ano };
+      const corpo = document.getElementById('przCorpo'), ap = document.getElementById('przAplicar');
+      document.getElementById('przTitulo').textContent = 'Prazo de ' + ctx.rotuloMes + ' — ' + r.nome;
+      document.getElementById('przFechar').textContent = 'Cancelar';
+      ap.style.display = 'none'; ap.disabled = false;
+      corpo.textContent = 'Lendo as tarefas do mês…';
+      przOverlay.classList.add('is-open');
+      if (!chaves.length) { corpo.textContent = 'Esta obrigação não vence em ' + ctx.rotuloMes + '.'; return; }
+      const { data, error } = await supabase.todasLinhas(() => supabase.from('tarefas').select('id, cliente_id, prazo, responsavel, status, clientes(nome_principal)')
+        .eq('obrigacao_id', r.id).in('competencia', chaves).order('id'));
+      if (przCtx !== ctx) return;
+      if (error) { corpo.textContent = 'Não consegui ler as tarefas do mês: ' + error.message; return; }
+      const todas = data || [];
+      const abertas = todas.filter(t => t.status !== 'concluida')
+        .sort((a, b) => String(a.clientes?.nome_principal || '').localeCompare(String(b.clientes?.nome_principal || '')));
+      const concl = todas.length - abertas.length;
+      const sobre = concl ? ' · ' + concl + (concl === 1 ? ' concluída fica como está' : ' concluídas ficam como estão') : '';
+      if (!abertas.length) {
+        corpo.textContent = todas.length ? 'Todas as tarefas de ' + ctx.rotuloMes + ' desta obrigação já foram concluídas.'
+          : 'Nenhuma tarefa desta obrigação em ' + ctx.rotuloMes + ': gere o mês pelo "Gerar rotinas do mês".';
+        return;
+      }
+      const prazos = [...new Set(abertas.map(t => String(t.prazo || '').slice(0, 10)).filter(Boolean))].sort();
+      const hoje = prazos.length === 1 ? 'prazo de hoje: ' + dataBR(prazos[0]) : prazos.length ? 'prazos de ' + dataBR(prazos[0]) + ' a ' + dataBR(prazos[prazos.length - 1]) : 'sem prazo';
+      corpo.innerHTML = `
+        <p style="margin:0 0 12px;font-size:13.5px;"><b>${abertas.length}</b> tarefa${abertas.length === 1 ? '' : 's'} aberta${abertas.length === 1 ? '' : 's'} · ${hoje}${sobre}</p>
+        <label for="przData" style="display:block;font-size:12.5px;color:var(--text-muted);margin:0 0 4px;">Novo prazo</label>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <input type="date" id="przData" class="input" style="width:170px;" value="${prazos.length ? prazos[prazos.length - 1] : toYMD(new Date())}">
+          <span id="przDia" style="font-size:13px;"></span>
+        </div>
+        <div style="margin:14px 0 6px;display:flex;justify-content:space-between;align-items:center;gap:10px;">
+          <span style="font-size:12.5px;color:var(--text-muted);">Mudam as marcadas:</span>
+          ${abertas.length > 3 ? '<button type="button" class="btn-mini" id="przTodas">Desmarcar todas</button>' : ''}
+        </div>
+        <div class="vm-lista" id="przLista">${abertas.map(t => `
+          <label class="vm-item" style="cursor:pointer;"><input type="checkbox" data-id="${escR(t.id)}" checked style="margin:0;flex:none;width:15px;height:15px;">
+            <span>${escR(t.clientes?.nome_principal || 'cliente')}</span><span class="vm-extra">prazo ${dataBR(t.prazo) || '—'} · ${escR(t.responsavel || 'sem responsável')}</span></label>`).join('')}</div>
+        <p style="margin:12px 0 0;font-size:12.5px;color:var(--text-muted);">Só neste mês: o dia de cada vínculo e os próximos meses não mudam. Cada tarefa ganha a linha no histórico.</p>
+        <div id="przMsg" style="margin-top:10px;font-size:13px;"></div>`;
+      const data_ = document.getElementById('przData');
+      const caixas = () => [...document.querySelectorAll('#przLista input[type="checkbox"]')];
+      const atualizar = () => {
+        const n = caixas().filter(c => c.checked).length, v = data_.value;
+        const dia = document.getElementById('przDia');
+        dia.textContent = /^\d{4}-\d{2}-\d{2}$/.test(v) ? comDiaSem(v) + (fimDeSemana(v) ? ' — cai no fim de semana' : '') : '';
+        dia.style.color = fimDeSemana(v) ? 'var(--warn)' : 'var(--text-muted)';
+        dia.style.fontWeight = fimDeSemana(v) ? '600' : '';
+        ap.textContent = n ? 'Mudar ' + n + (n === 1 ? ' prazo' : ' prazos') : 'Mudar os prazos';
+        ap.disabled = !n || !/^\d{4}-\d{2}-\d{2}$/.test(v);
+      };
+      data_.addEventListener('input', atualizar);
+      caixas().forEach(c => c.addEventListener('change', atualizar));
+      const todasBtn = document.getElementById('przTodas');
+      if (todasBtn) todasBtn.addEventListener('click', () => {
+        const marcar = !caixas().some(c => c.checked) ? true : false;
+        caixas().forEach(c => { c.checked = marcar; });
+        todasBtn.textContent = marcar ? 'Desmarcar todas' : 'Marcar todas';
+        atualizar();
+      });
+      ap.style.display = '';
+      atualizar();
+    }
+
+    async function aplicarPrazo(){
+      const ctx = przCtx;
+      if (!ctx || ctx.gravando || ctx.feito) return;
+      const ap = document.getElementById('przAplicar'), msg = document.getElementById('przMsg');
+      const prazo = document.getElementById('przData').value;
+      const ids = [...document.querySelectorAll('#przLista input:checked')].map(c => c.dataset.id);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(prazo)) { msg.textContent = 'Escolha a data do novo prazo.'; msg.style.color = 'var(--warn)'; return; }
+      if (!ids.length) return;
+      ctx.gravando = true; ap.disabled = true; ap.textContent = 'Gravando…';
+      const r = await alterarTarefas(supabase, ids, { prazo }, { autor: user?.email || null, origem: ORIGEM_PRAZO });
+      ctx.gravando = false;
+      if (r.erro && !r.alteradas.length) {
+        msg.textContent = 'Não consegui mudar: ' + r.erro; msg.style.color = 'var(--err)';
+        ap.disabled = false; ap.textContent = 'Mudar ' + ids.length + (ids.length === 1 ? ' prazo' : ' prazos');
+        return;
+      }
+      const n = r.alteradas.length;
+      ctx.feito = { alteradas: r.alteradas.map(a => ({ id: a.id, antes: a.antes, depois: a.depois })), prazo };
+      const fora = [r.iguais.length ? r.iguais.length + (r.iguais.length === 1 ? ' já estava' : ' já estavam') + ' com esse prazo' : '',
+        r.fechadas.length ? r.fechadas.length + (r.fechadas.length === 1 ? ' foi concluída' : ' foram concluídas') + ' no meio do caminho e ficou como estava' : '',
+        r.semHistorico ? 'a linha no histórico não foi gravada' : ''].filter(Boolean);
+      const corpo = document.getElementById('przCorpo');
+      corpo.innerHTML = `<p style="margin:0;font-size:14px;" class="${n ? 'gen-ok' : 'gen-skip'}">${n ? '✓ ' + n + (n === 1 ? ' prazo mudado' : ' prazos mudados') + ' pra ' + escR(comDiaSem(prazo)) + '.' : 'Nenhum prazo mudou.'}</p>`
+        + (fora.length ? `<p style="margin:8px 0 0;font-size:12.5px;color:var(--text-muted);">${escR(fora.join(' · '))}.</p>` : '')
+        + (n ? '<p style="margin:12px 0 0;"><button type="button" class="btn-mini" id="przDesfazer">Desfazer</button></p>' : '');
+      ap.style.display = 'none';
+      document.getElementById('przFechar').textContent = 'Fechar';
+      const desf = document.getElementById('przDesfazer');
+      if (desf) desf.addEventListener('click', async () => {
+        if (!przCtx || przCtx !== ctx || ctx.gravando) return;
+        ctx.gravando = true; desf.disabled = true; desf.textContent = 'Desfazendo…';
+        const d = await desfazerAlteracao(supabase, ctx.feito.alteradas, { autor: user?.email || null, origem: ORIGEM_PRAZO });
+        ctx.gravando = false;
+        if (d.erro && !d.desfeitas.length) { desf.disabled = false; desf.textContent = 'Desfazer'; corpo.insertAdjacentHTML('beforeend', '<p class="gen-err" style="margin:8px 0 0;font-size:13px;">Não consegui desfazer: ' + escR(d.erro) + '</p>'); return; }
+        corpo.innerHTML = '<p style="margin:0;font-size:14px;">↺ Desfeito: ' + d.desfeitas.length + (d.desfeitas.length === 1 ? ' voltou' : ' voltaram') + ' pro prazo de antes.'
+          + (d.ficaram.length ? ' ' + d.ficaram.length + (d.ficaram.length === 1 ? ' mudou de novo depois (ou foi concluída) e ficou como está.' : ' mudaram de novo depois (ou foram concluídas) e ficaram como estão.') : '') + '</p>';
+      });
     }
 
     // ===================== GUIAS NO DRIVE =====================
