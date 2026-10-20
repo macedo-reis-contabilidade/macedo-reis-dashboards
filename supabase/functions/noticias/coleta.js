@@ -200,7 +200,7 @@ export async function triarPendentes({ db, fetch: f, chamar, agora = () => Date.
       } catch { /* sem a página: a IA lê o título e o trecho */ }
       const fonte = fonteDe.get(n.fonte_id) || {};
       const lista = recentes.slice(0, MAX_RECENTES);
-      const { classificacao: c, modelo, uso } = await triar({ chamar, perfil, recentes: lista,
+      const { classificacao: c, modelo, uso } = await triar({ chamar, perfil, recentes: lista, hoje,
         noticia: { titulo: n.titulo, fonte: fonte.nome, tipoFonte: fonte.tipo, publicada_em: n.publicada_em || (pagina && pagina.data), link: n.url, trecho: n.trecho, pagina } });
       const clientes = c.relevante ? clientesDosCriterios(c.criterios, carteira) : [];
       const mud = { situacao: c.relevante ? 'triada' : 'descartada', relevancia: c.relevancia, setores: c.setores, resumo: c.resumo, por_que: c.por_que, acao: c.acao,
@@ -245,7 +245,7 @@ export async function provarTriagem({ db, fetch: f, chamar, id, agora = () => Da
   const carteira = await lerCarteira(db, new Date(agora() - 3 * 3600e3).toISOString().slice(0, 10));
   let pagina = null;
   try { const r = await buscar(f, n.url, { ms: 12000, max: 2_000_000 }); if (r.ok && /html/i.test(r.tipo || 'text/html')) pagina = textoDaPagina(r.texto); } catch { /* sem a página */ }
-  const pedido = pedidoDaTriagem({ perfil: perfilDaCarteira(carteira),
+  const pedido = pedidoDaTriagem({ perfil: perfilDaCarteira(carteira), hoje: new Date(agora() - 3 * 3600e3).toISOString().slice(0, 10),
     noticia: { titulo: n.titulo, fonte: fonte.nome, tipoFonte: fonte.tipo, publicada_em: n.publicada_em || (pagina && pagina.data), link: n.url, trecho: n.trecho, pagina } });
   const resp = await chamar(pedido);
   let leitura = null;

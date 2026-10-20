@@ -51,7 +51,7 @@ Para cada notícia, decida com base SÓ no texto que vier (título, trecho e tex
 
 relevante = false quando a notícia não tem efeito prático pra um escritório contábil nem pros clientes: agenda de autoridade, evento, curso, congresso, posse, homenagem, institucional, balanço de arrecadação, operação policial, política, esporte, saúde, notícia de outro estado ou município que não alcança o RS nem os clientes, assunto de grandes empresas que nenhum cliente da carteira tem (por exemplo, só Lucro Real de grande porte, comércio exterior, mercado financeiro), finanças pessoais, carreira e autoajuda, benefício pago ao cidadão (Bolsa Família, abono salarial, saque do FGTS, aposentadoria) quando não muda nada na empresa nem na folha.
 Quando relevante, a relevância:
-- alta: muda imposto, alíquota, obrigação, prazo, multa, regra ou benefício que alcança clientes da carteira (ou o próprio escritório) e pede ação ou atenção agora ou nos próximos meses; decisão de STF ou STJ com efeito prático em clientes da carteira; prazo que vence logo.
+- alta: muda imposto, alíquota, obrigação, prazo, multa, regra ou benefício que alcança clientes da carteira (ou o próprio escritório) e pede ação ou atenção agora ou nos próximos meses; decisão de STF ou STJ com efeito prático em clientes da carteira; prazo que vence logo. Compare as datas com o "Hoje" da mensagem: prazo que já passou não é alta (baixa, ou media se ainda há o que fazer, como regularizar ou pagar com multa).
 - media: é da área e alcança clientes da carteira, mas não pede ação já (projeto em tramitação, consulta pública, orientação, mudança com data distante, sistema que mudou de tela).
 - baixa: é da área, mas o efeito nos clientes da carteira é pequeno ou incerto; e a matéria sem fato novo — explicação, dicas, "saiba como", "entenda", opinião, análise de algo que já foi noticiado —, mesmo que o assunto seja importante.
 
@@ -99,8 +99,10 @@ export const FERRAMENTA = {
 
 const fmtDia = iso => { if (!iso) return 'sem data'; const d = new Date(iso); return Number.isFinite(d.getTime()) ? d.toISOString().slice(0, 10).split('-').reverse().join('/') : 'sem data'; };
 // a mensagem com a notícia (o que a coleta tem dela) e, numeradas, as que já estão no feed (pra mesma_que)
-export function mensagemDaNoticia({ titulo, fonte, tipoFonte, publicada_em, link, trecho, pagina }, recentes = []) {
+// hoje ('aaaa-mm-dd', o dia em Brasília): sem ele a IA não sabe se o prazo da notícia já passou
+export function mensagemDaNoticia({ titulo, fonte, tipoFonte, publicada_em, link, trecho, pagina }, recentes = [], hoje = null) {
   const partes = [`Fonte: ${fonte || 'desconhecida'}${tipoFonte ? ' (' + tipoFonte + ')' : ''}`, `Publicada: ${fmtDia(publicada_em)}`, `Título: ${titulo}`, `Endereço: ${link}`];
+  if (hoje) partes.unshift('Hoje: ' + String(hoje).slice(0, 10).split('-').reverse().join('/'));
   if (trecho) partes.push('Trecho do RSS: ' + trecho);
   if (pagina && pagina.descricao && pagina.descricao !== trecho) partes.push('Descrição da página: ' + pagina.descricao);
   partes.push('Texto da página: ' + (pagina && pagina.texto ? pagina.texto : '(não foi possível ler a página)'));
@@ -141,15 +143,15 @@ export function lerClassificacao(resposta, nRecentes = 0) {
 // o pedido à API (o mesmo na triagem e no "provar" da função, que devolve a resposta crua pra acertar as regras)
 // tool_choice "auto": o modelo novo não aceita forçar a ferramenta ("tool"/"any" → 400); as regras pedem a chamada e a
 // resposta sem ela é erro de formato (volta pra fila)
-export function pedidoDaTriagem({ perfil, noticia, recentes = [], maxTokens = 2500 }) {
+export function pedidoDaTriagem({ perfil, noticia, recentes = [], hoje = null, maxTokens = 2500 }) {
   return { max_tokens: maxTokens, system: montarSistema(perfil), tools: [FERRAMENTA], tool_choice: { type: 'auto' },
-    messages: [{ role: 'user', content: mensagemDaNoticia(noticia, recentes) }] };
+    messages: [{ role: 'user', content: mensagemDaNoticia(noticia, recentes, hoje) }] };
 }
 // triar({ chamar, perfil, noticia, recentes }) → { classificacao, modelo, uso }
 // recentes: [{ titulo, fonte, data }] — as que já estão no feed (classificacao.mesma_que é o número de uma delas, de 1 em diante)
 // A resposta cortada no limite de tokens é erro (a classificação pela metade vinha sem setores e sem critérios): volta pra fila.
-export async function triar({ chamar, perfil, noticia, recentes = [], maxTokens = 2500 }) {
-  const resp = await chamar(pedidoDaTriagem({ perfil, noticia, recentes, maxTokens }));
+export async function triar({ chamar, perfil, noticia, recentes = [], hoje = null, maxTokens = 2500 }) {
+  const resp = await chamar(pedidoDaTriagem({ perfil, noticia, recentes, hoje, maxTokens }));
   if (resp.stop_reason === 'max_tokens') throw erroDaIa('formato', 'a resposta da IA veio cortada no limite de tokens');
   const u = resp.usage || {};
   return { classificacao: lerClassificacao(resp, recentes.length), modelo: resp._modelo || null,

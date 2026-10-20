@@ -125,6 +125,7 @@ console.log('A classificação da IA:');
   chk('a mensagem: fonte, data em dd/mm/aaaa, título, endereço, trecho, descrição e texto', msg === 'Fonte: STF (tribunal)\nPublicada: 19/10/2026\nTítulo: T\nEndereço: https://x\nTrecho do RSS: tr\nDescrição da página: desc\nTexto da página: corpo\n\nNotícias que já estão no feed: nenhuma.', msg);
   const msg2 = mensagemDaNoticia({ titulo: 'T', fonte: 'F', publicada_em: null, link: 'https://x' }, [{ titulo: 'Fim da escala 6x1', fonte: 'Fenacon', data: '2026-10-19T12:00:00Z' }, { titulo: 'Sem fonte', data: null }]);
   chk('a mensagem leva as que já estão no feed, numeradas (pra mesma_que)', msg2.endsWith('Notícias que já estão no feed (pra mesma_que):\n[1] Fim da escala 6x1 — Fenacon, 19/10/2026\n[2] Sem fonte, sem data'), msg2);
+  chk('a mensagem começa pelo dia de hoje (a IA compara o prazo da notícia com ele)', mensagemDaNoticia({ titulo: 'T', link: 'https://x' }, [], '2026-10-20').startsWith('Hoje: 20/10/2026\nFonte: '));
   const comMesma = q => lerClassificacao({ content: [{ type: 'tool_use', name: 'classificar', input: { relevante: true, relevancia: 'media', resumo: 'x', mesma_que: q } }] }, 2).mesma_que;
   chk('mesma_que: só o número de uma das que foram na mensagem', comMesma(2) === 2 && comMesma('1') === 1 && comMesma(3) === null && comMesma(0) === null && comMesma(1.5) === null && comMesma(undefined) === null);
   chk('descartada não entra em grupo', lerClassificacao({ content: [{ type: 'tool_use', name: 'classificar', input: { relevante: false, resumo: 'x', mesma_que: 1 } }] }, 2).mesma_que === null);
@@ -239,7 +240,7 @@ function bancoFalso(tabelas) {
   chk('triada: a classificação gravada e os clientes pelo critério (só os da carteira de hoje)', t.triadas === 1 && n.situacao === 'triada' && n.relevancia === 'alta' && JSON.stringify(n.clientes) === '["a"]'
     && n.resumo === 'Mudou o prazo do DeSTDA.' && n.tentativas === 1 && n.triada_em && n.modelo === 'm' && n.tokens_entrada === 100, JSON.stringify(n));
   chk('a IA recebeu o retrato (sem nome de cliente) e o texto da página', vistos.length === 1 && vistos[0].system[0].text.includes('SEDIF/DESTDA') && !vistos[0].system[0].text.includes('PADARIA')
-    && vistos[0].messages[0].content.includes('A Receita Estadual mudou o prazo do DeSTDA'), vistos[0] && vistos[0].messages[0].content.slice(0, 300));
+    && vistos[0].messages[0].content.includes('A Receita Estadual mudou o prazo do DeSTDA') && vistos[0].messages[0].content.startsWith('Hoje: 20/10/2026\n'), vistos[0] && vistos[0].messages[0].content.slice(0, 300));
   chk('a que já foi triada não volta pra IA', (await triarPendentes({ db, fetch: fetchFalso, chamar, agora: () => agora, ate: agora + 120000 })).triadas === 0 && vistos.length === 1);
   // erro da IA: volta pra fila com o erro, até 3 tentativas
   db.tabelas.noticias.push({ id: 'n9', url: 'https://um.exemplo/outra', titulo: 'Outra', situacao: 'nova', tentativas: 0, publicada_em: '2026-10-19T12:00:00Z' });
