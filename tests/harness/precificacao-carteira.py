@@ -121,6 +121,15 @@ SEMEAR = """
       'OBRIG': OBRIG, 'VINCULOS': VINCULOS, 'COBRANCAS': COBRANCAS, 'CONFIG': CONFIG, 'PARCELAS': PARCELAS, 'TAREFAS': TAREFAS, 'REVISOES': REVISOES}, ensure_ascii=False), CA, CA, CA, CA, PROX)
 TOUR = "(() => { const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { return String(k).startsWith('mr_tour_') ? 'ok' : g.call(this, k); }; })()"
 
+def brl(v):
+    return 'R$ ' + format(v, ',.0f').replace(',', '.')
+
+def espera(p, js, ms=5000):
+    try:
+        p.wait_for_function(js, timeout=ms); return True
+    except Exception:
+        return False
+
 falhas = 0
 def ok(cond, msg):
     global falhas
@@ -146,7 +155,9 @@ def main():
         ok(p.is_visible('#segCarteira'), 'o sócio vê a aba Carteira')
         p.click('#segCarteira'); p.wait_for_selector(linha(CA), timeout=8000)
         resumo = txt('#ctResumo')
-        ok('5 clientes na carteira' in resumo and 'R$ 1.700/mês' in resumo and '(4 com valor)' in resumo, f'o resumo: os clientes de hoje (o ex-cliente fora) e a soma de hoje ({resumo!r})')
+        ok('5 clientes na carteira' in resumo and 'R$ 1.700/mês' in resumo and '(4 com valor)' in resumo and '1 de 5 revisado' in resumo, f'o resumo: os clientes de hoje (o ex-cliente fora), a soma de hoje e os revisados ({resumo!r})')
+        # quem paga menos que o motor: a padaria pelo piso (650 − 300) e o mercado pela revisão dele (520 − 400), não pelo piso
+        ok('2 pagam menos que o motor · +R$ 470/mês até ele (R$ 120 nos revisados)' in resumo, f'o que falta até o motor: o piso de quem não foi revisado, a revisão de quem foi ({resumo!r})')
         ordem = p.eval_on_selector_all('#ctLista tr', 'trs => trs.map(t => t.dataset.cli)')
         ok(ordem[0] == CA and ordem[-1] == CD and CX not in ordem, f'o mais abaixo do piso primeiro; quem não tem como comparar no fim ({ordem})')
         la = txt(linha(CA))
@@ -160,10 +171,12 @@ def main():
         ok('plano MEI' in lc and 'R$ 100' in lc, f'o MEI: hoje pelo boleto, o plano na aba MEI ({lc!r})')
         ok('sem cobrança no sistema' in ld and 'Revisar' in ld, f'sem cobrança nenhuma ({ld!r})')
         lf = txt(linha(CF))
-        ok('R$ 520' in lf and p.input_value(linha(CF) + ' select[data-sit]') == 'proposto', f'a revisão de antes, com a situação ({lf!r})')
+        ok('R$ 520' in lf and '+30%' in lf and 'revisado em' in lf and 'piso' not in lf and p.input_value(linha(CF) + ' select[data-sit]') == 'proposto' and 'Abrir a revisão' in lf,
+           f'revisado: a coluna do motor mostra a revisão (não o piso), com a situação ({lf!r})')
+        ok('piso, só com o sistema' in la and p.inner_text('#ctLista').count('Revisar') >= 3, 'quem não foi revisado: o piso e o "Revisar"')
         p.check('#ctAbaixo')
         so = p.eval_on_selector_all('#ctLista tr', 'trs => trs.map(t => t.dataset.cli)')
-        ok(so == [CA], f'filtro: só quem paga menos que o piso ({so})')
+        ok(so == [CA, CF], f'filtro: só quem paga menos que o motor — o mercado entra pela revisão ({so})')
         p.uncheck('#ctAbaixo'); p.fill('#ctBusca', 'oficina')
         so = p.eval_on_selector_all('#ctLista tr', 'trs => trs.map(t => t.dataset.cli)')
         ok(so == [CB], f'a busca pelo nome ({so})')
@@ -182,24 +195,36 @@ def main():
         faltam = txt('#prCartFaltam')
         ok('Funcionários registrados' in faltam and 'Qualidade da organização dos documentos recebidos' in faltam and 'Regime' not in faltam, f'o que falta responder (que mexe no preço) ({faltam!r})')
         comp = txt('#prCartComp')
-        ok('Hoje R$ 300 → motor R$ 650' in comp and '+117%' in comp and p.is_hidden('#prOrc') and p.inner_text('#prSalvar') == 'Salvar revisão', f'o painel compara com o de hoje; o orçamento pro cliente sai de cena ({comp!r})')
+        ok('Hoje R$ 300 → motor R$ 650' in comp and '+117%' in comp and p.is_hidden('#prOrc'), f'o painel compara com o de hoje; o orçamento pro cliente sai de cena ({comp!r})')
+        ok(p.is_hidden('#prSalvar') and p.is_hidden('#prSalvarNova') and 'A revisão grava sozinha' in txt('#prSalvoMsg') and db('window.__mockDb.revisoes_honorario.length') == 1,
+           f'sem o botão de salvar: a revisão grava sozinha — e abrir não grava nada ({txt("#prSalvoMsg")!r})')
         p.fill('#prQuestionario [data-q="C1"]', '4'); p.wait_for_timeout(150)
         ok('Funcionários registrados' not in txt('#prCartFaltam') and 'R$ 700' in txt('#prCartComp'), 'responder tira da lista do que falta e o motor sobe')
         p.select_option('#prQuestionario [data-q="B8"]', 'Possui integrado à contabilidade'); p.wait_for_timeout(150)
         ok(chip('B8') is None, 'mudar a resposta que veio do sistema tira a etiqueta')
         motor = p.inner_text('#prTotal').replace('\xa0', ' ')
 
-        print('3. Salvar a revisão')
+        print('3. A revisão grava sozinha')
         n_prop = db('window.__mockDb.precificacoes.length')
-        p.click('#prSalvar'); p.wait_for_function("() => document.getElementById('prSalvoMsg').textContent.includes('Revisão salva')", timeout=5000)
+        ok(espera(p, "() => document.getElementById('prSalvoMsg').textContent.includes('Gravada às')"), f'um instante depois da mudança, "Gravada às…" ({txt("#prSalvoMsg")!r})')
         rv = db(f"window.__mockDb.revisoes_honorario.find(r => r.cliente_id === '{CA}')")
         ok(rv and rv['status'] == 'estudo' and rv['honorario_atual'] == 300 and rv['fonte_atual'] == 'boletos' and rv['criado_por'] == 'financeiro@macedoereis.com.br'
            and 'R$ ' + format(rv['honorario_sugerido'], ',.0f').replace(',', '.') == motor and rv['respostas']['C1'] == '4', f'gravou a revisão: estudo, o motor ({motor}), o de hoje e de onde veio ({ {k: (rv or {}).get(k) for k in ("status", "honorario_sugerido", "honorario_atual", "fonte_atual")} })')
-        ok(db('window.__mockDb.precificacoes.length') == n_prop and p.inner_text('#prSalvar') == 'Atualizar revisão', 'nada em Propostas; o botão vira "Atualizar revisão"')
+        ok(db('window.__mockDb.precificacoes.length') == n_prop and rv['respostas'].get('B8') == 'Possui integrado à contabilidade', 'nada em Propostas; a resposta mudada foi junto')
+        p.fill('#prObsOrc', 'conversar com o cliente')
+        ok(espera(p, f"() => {{ const rs = window.__mockDb.revisoes_honorario.filter(r => r.cliente_id === '{CA}'); return rs.length === 1 && rs[0].respostas.obs_orcamento === 'conversar com o cliente'; }}"),
+           'a mudança seguinte atualiza a mesma revisão (uma só)')
+        p.fill('#prObsOrc', 'conversar com o cliente amanhã')
         p.click('#prQuestionario [data-cart="sair"]'); p.wait_for_selector(linha(CA) + ' select[data-sit]', timeout=8000)
+        ok(db(f"window.__mockDb.revisoes_honorario.find(r => r.cliente_id === '{CA}').respostas.obs_orcamento") == 'conversar com o cliente amanhã',
+           '"Voltar à carteira" logo depois de mudar: grava antes de sair')
         la = txt(linha(CA))
-        ok(motor in la and p.input_value(linha(CA) + ' select[data-sit]') == 'estudo' and '1 revisado' not in txt('#ctResumo') and '2 revisados' in txt('#ctResumo'),
-           f'de volta à carteira: a revisão na linha, em estudo ({la!r})')
+        ok(motor in la and 'revisado em' in la and 'piso, só com o sistema' not in la and p.input_value(linha(CA) + ' select[data-sit]') == 'estudo',
+           f'de volta à carteira: a linha mostra a revisão no lugar do piso, em estudo ({la!r})')
+        m = int(motor.replace('R$ ', '').replace('.', ''))
+        resumo = txt('#ctResumo')
+        ok('2 de 5 revisados' in resumo and f'+{brl(m - 300 + 120)}/mês até ele ({brl(m - 300 + 120)} nos revisados)' in resumo,
+           f'o resumo acompanha a revisão: a padaria entra pelo motor revisado ({motor}), não mais pelo piso ({resumo!r})')
 
         print('4. A situação: proposto e aceito (o boleto a emitir do mês troca na hora)')
         p.select_option(linha(CA) + ' select[data-sit]', 'proposto'); p.wait_for_timeout(300)
@@ -220,11 +245,23 @@ def main():
            'o boleto a emitir do mês já está com o valor novo, a base também; o mês passado (pago) não muda')
         ok('já está com o valor novo' in msg, f'o aviso diz ({msg!r})')
         p.click('#acCancelar'); p.wait_for_timeout(150)
-        ok('Aceito · no boleto' in txt(linha(CA)) and 'combinado, a partir de ' + MES_BR(COMP) in txt(linha(CA)) and 'R$ 640' in txt(linha(CA)), 'a linha diz que entrou no boleto')
+        la = txt(linha(CA))
+        ok('Aceito · no boleto' in la and 'combinado, a partir de ' + MES_BR(COMP) in la and la.count('R$ 640') == 2, f'a linha diz que entrou no boleto, e o de hoje já é o novo ({la!r})')
+        resumo = txt('#ctResumo')
+        ok('R$ 2.040/mês' in resumo and '1 reajuste aceito · +R$ 340/mês' in resumo and '1 paga menos que o motor · +R$ 120/mês' in resumo,
+           f'o resumo: o de hoje com o boleto novo, o reajuste aceito, e a padaria sai do que falta ({resumo!r})')
+        p.click(linha(CA) + ' [data-abrir]'); p.wait_for_selector('#prQuestionario .pr-cart-banner', timeout=5000)
+        ok('está como Aceito' in txt('#prSalvoMsg') and 'começa uma revisão nova' in txt('#prSalvoMsg'), f'reabrir a aceita avisa ({txt("#prSalvoMsg")!r})')
+        p.fill('#prObsOrc', 'rever no ano que vem')
+        ok(espera(p, f"() => window.__mockDb.revisoes_honorario.filter(r => r.cliente_id === '{CA}').length === 2"), 'mudar a aceita começa uma revisão nova')
+        rs = db(f"window.__mockDb.revisoes_honorario.filter(r => r.cliente_id === '{CA}').map(r => [r.status, r.honorario_novo, r.respostas.obs_orcamento])")
+        ok(['aceito', 640, 'conversar com o cliente amanhã'] in rs and ['estudo', None, 'rever no ano que vem'] in rs, f'a aceita fica como estava ({rs})')
+        p.click('#prQuestionario [data-cart="sair"]'); p.wait_for_selector(linha(CA) + ' select[data-sit]', timeout=8000)
         lb = linha(CB)
         p.click(lb + ' [data-abrir]'); p.wait_for_selector('#prQuestionario .pr-cart-banner', timeout=5000)
         ok(chip('A12B') == 'Conta Azul' and val('A12B') == '900', 'na revisão de quem paga pelo Conta Azul, o de hoje vem de lá')
-        p.click('#prSalvar'); p.wait_for_function("() => document.getElementById('prSalvoMsg').textContent.includes('Revisão salva')", timeout=5000)
+        p.fill('#prQuestionario [data-q="C1"]', '2')
+        ok(espera(p, "() => document.getElementById('prSalvoMsg').textContent.includes('Gravada às')"), 'respondeu: gravou')
         p.click('#prQuestionario [data-cart="sair"]'); p.wait_for_selector(lb + ' select[data-sit]', timeout=8000)
         p.select_option(lb + ' select[data-sit]', 'aceito'); p.wait_for_selector('#ovAceite[style*="flex"]', timeout=3000)
         ok('não está na base de boletos (é pelo Conta Azul)' in txt('#acComo'), 'quem paga pelo Conta Azul: o aceite avisa que a troca é lá')
@@ -256,17 +293,20 @@ def main():
         p.click('#segCarteira'); p.wait_for_selector(linha(CC), timeout=8000)
         p.click(linha(CC) + ' [data-abrir]'); p.wait_for_selector('#vMei #meiCartBanner:not([hidden])', timeout=5000)
         ok('FULANO DE TESTE 12345678901' in txt('#meiCartBanner') and p.input_value('#meiCliente') == 'FULANO DE TESTE 12345678901' and p.input_value('#meiCnpj') == '10.000.000/0003-53'
-           and p.is_hidden('#meiOrc') and p.inner_text('#meiSalvar') == 'Salvar revisão (MEI)', 'a revisão na aba MEI, com os dados do cadastro, sem o orçamento')
+           and p.is_hidden('#meiOrc') and p.is_hidden('#meiSalvar') and 'grava sozinha' in txt('#meiSalvoMsg'), 'a revisão na aba MEI, com os dados do cadastro, sem o orçamento e sem o botão de salvar')
         p.click('#meiCards [data-base="mp1"]'); p.wait_for_timeout(200)
         ok('Hoje R$ 100 → plano R$ 120' in txt('#meiCartComp'), 'o plano comparado com o de hoje')
-        p.click('#meiSalvar'); p.wait_for_function("() => document.getElementById('meiSalvoMsg').textContent.includes('Revisão salva')", timeout=5000)
+        ok(espera(p, "() => document.getElementById('meiSalvoMsg').textContent.includes('Gravada às')"), f'escolher o plano grava a revisão ({txt("#meiSalvoMsg")!r})')
         rm = db(f"window.__mockDb.revisoes_honorario.find(r => r.cliente_id === '{CC}')")
         ok(rm and rm['respostas']['_tipo'] == 'mei' and rm['honorario_sugerido'] == 120 and rm['honorario_atual'] == 100 and db('window.__mockDb.precificacoes.length') == 0,
            'gravou a revisão do MEI com o plano, fora das Propostas')
+        p.click('#meiCartBanner [data-cart="sair"]'); p.wait_for_selector(linha(CC) + ' select[data-sit]', timeout=8000)
+        lc = txt(linha(CC))
+        ok('R$ 120' in lc and '+20%' in lc and 'plano MEI, revisado em' in lc, f'de volta à carteira: o MEI com o plano revisado ({lc!r})')
 
         print('7. "Nova" sai da revisão')
         p.click('#prSeg button[data-v="form"]'); p.click('#prLimpar'); p.wait_for_timeout(150)
-        ok(p.inner_text('#prSalvar') == 'Salvar proposta' and not p.query_selector('#prQuestionario .pr-cart-banner') and p.is_hidden('#prCartComp') and p.is_visible('#prOrc'),
+        ok(p.is_visible('#prSalvar') and p.inner_text('#prSalvar') == 'Salvar proposta' and not p.query_selector('#prQuestionario .pr-cart-banner') and p.is_hidden('#prCartComp') and p.is_visible('#prOrc'),
            'o formulário volta a ser de proposta')
 
         print('8. O link direto e quem não é sócio')

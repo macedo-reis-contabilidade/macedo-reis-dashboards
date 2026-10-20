@@ -139,6 +139,7 @@
     .ct-comp[hidden] { display:none; }
     .ct-comp b { color:var(--text); }
     .ct-rolagem { overflow-x:auto; }
+    .ct-acoes { display:flex; flex-direction:column; align-items:flex-start; gap:6px; }
     .ct-rolagem .pr-tab { min-width:760px; }
     @media (max-width: 640px) { .seg { flex-wrap:wrap; } .ct-filtros .input { width:100%; } }
 
@@ -262,14 +263,14 @@
 
         <div id="vCarteira" style="display:none;">
           <div class="ct-resumo" id="ctResumo" aria-live="polite"></div>
-          <p class="ct-nota">Cada cliente da carteira com o que paga <b>hoje</b> (o boleto; sem boleto, o Conta Azul) e o <b>piso do motor</b>: o que o motor cobra só com o que o sistema já sabe dele — regime, faturamento da ficha da Reforma, obrigações vinculadas, o sistema que usa, parcelamentos, Fator R. O que falta responder quase sempre soma, por isso é piso. A lista começa por quem está mais abaixo dele; clique no cliente pra revisar.</p>
+          <p class="ct-nota">Cada cliente da carteira com o que paga <b>hoje</b> (o boleto; sem boleto, o Conta Azul) e o <b>motor</b>. Antes da revisão, o motor é o <b>piso</b>: o cálculo só com o que o sistema já sabe dele — regime, faturamento da ficha da Reforma, obrigações vinculadas, o sistema que usa, parcelamentos, Fator R; o que falta responder quase sempre soma. Depois de revisado, vale o valor da revisão (e, aceito, o combinado). A lista começa por quem está mais abaixo do motor; clique no cliente pra revisar — a revisão grava sozinha.</p>
           <div class="ct-filtros">
             <select id="ctRegime" class="st-sel" aria-label="Regime"><option value="">Todos os regimes</option></select>
-            <label><input type="checkbox" id="ctAbaixo"> Só quem paga menos que o piso</label>
+            <label><input type="checkbox" id="ctAbaixo"> Só quem paga menos que o motor</label>
             <label><input type="checkbox" id="ctSemRev"> Só sem revisão</label>
             <input type="search" id="ctBusca" class="input" placeholder="Buscar empresa" aria-label="Buscar empresa">
           </div>
-          <div class="ct-rolagem"><table class="pr-tab"><thead><tr><th>Empresa</th><th>Hoje</th><th title="O motor só com o que o sistema já sabe do cliente">Piso do motor</th><th>Tarefas (90 dias)</th><th>Revisão</th><th>Situação</th></tr></thead>
+          <div class="ct-rolagem"><table class="pr-tab"><thead><tr><th>Empresa</th><th>Hoje</th><th title="Revisado: o valor da revisão (aceito: o combinado). Sem revisão: o piso — o motor só com o que o sistema já sabe do cliente">Motor</th><th>Tarefas (90 dias)</th><th>Situação</th></tr></thead>
           <tbody id="ctLista"></tbody></table></div>
           <div class="pr-vazio" id="ctMsg">Lendo a carteira…</div>
         </div>
@@ -320,7 +321,7 @@
     // o motor (o mesmo da aba Carteira) e a Carteira: o que o sistema já sabe de cada cliente da casa
     import { indexarParams as indexarParametros, calcularMotor, faturamentoAnual } from './assets/js/precificacao-motor.js';
     import { respostasDoSistema, regimesDasQuestoes, ehMei, honorarioDeHoje, parcelasDeHonorario, parcelaDoCliente, faltamResponder, ultimaPorCliente, mesesDaVigencia,
-      mesesLivres, mesBR, diferenca, SITUACOES, rotuloSituacao, FONTES, aplicarReajusteAgora } from './assets/js/precificacao-carteira.js';
+      mesesLivres, mesBR, diferenca, SITUACOES, rotuloSituacao, FONTES, aplicarReajusteAgora, referenciaDaLinha, pagaMenosQueOMotor, resumoDaCarteira } from './assets/js/precificacao-carteira.js';
     import { SOCIOS } from './assets/js/equipe.js';
     const escHtml = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));   // texto do banco nunca vira HTML (o nome que veio do formulário público, por exemplo)
     const user = await getCurrentUser();
@@ -349,14 +350,12 @@
     document.getElementById('obsIntSalvar').addEventListener('click', async () => {
       respostas._obs_interna = document.getElementById('obsIntTexto').value.trim();
       const st = document.getElementById('obsIntStatus');
-      if (cart && !cart.mei && cart.revisaoId) {
-        // a revisão da carteira guarda as anotações nas respostas dela
+      if (cart && !cart.mei) {
+        // a revisão da carteira guarda as anotações nas respostas dela (grava na hora, com o resto da revisão)
         st.style.color = 'var(--text-dim)'; st.textContent = 'salvando…';
-        const { error } = await supabase.from('revisoes_honorario').update({ respostas }).eq('id', cart.revisaoId);
-        if (error) { st.style.color = 'var(--err)'; st.textContent = 'erro: ' + error.message; return; }
+        await gravarRevisaoJa();
+        if (revFoto === '') { st.style.color = 'var(--err)'; st.textContent = 'não gravou — veja o aviso embaixo do painel'; return; }
         st.style.color = 'var(--ok)'; st.textContent = 'salvo na revisão ✓';
-      } else if (cart && !cart.mei) {
-        st.style.color = 'var(--warn)'; st.textContent = 'guardado — salva a revisão pra fixar no banco';
       } else if (editandoId) {
         st.style.color = 'var(--text-dim)'; st.textContent = 'salvando…';
         const { error } = await supabase.from('precificacoes').update({ respostas }).eq('id', editandoId);
@@ -558,17 +557,19 @@
 
     // ---------- propostas ----------
     function atualizarBotoesSalvar(){
-      // na revisão de um cliente da carteira, o botão grava a revisão (fora das Propostas) e o orçamento pro cliente sai de cena
+      // na revisão de um cliente da carteira, a revisão grava sozinha (sem o botão Salvar) e o orçamento pro cliente sai de cena
       const rev = !!(cart && !cart.mei);
-      document.getElementById('prSalvar').textContent = rev ? (cart.revisaoId ? 'Atualizar revisão' : 'Salvar revisão') : editandoId ? 'Atualizar proposta' : 'Salvar proposta';
+      const bs = document.getElementById('prSalvar');
+      bs.textContent = editandoId ? 'Atualizar proposta' : 'Salvar proposta';
+      bs.style.display = rev ? 'none' : '';
       const nova = document.getElementById('prSalvarNova');
-      nova.style.display = (rev ? cart.revisaoId : editandoId) ? 'inline-flex' : 'none';
-      nova.textContent = rev ? 'Salvar como nova revisão' : 'Salvar como nova';
+      nova.style.display = !rev && editandoId ? 'inline-flex' : 'none';
+      nova.textContent = 'Salvar como nova';
       document.getElementById('prOrc').style.display = rev ? 'none' : '';
     }
 
     async function salvar(comoNova){
-      if (cart && !cart.mei) return salvarRevisao(comoNova);
+      if (cart && !cart.mei) return gravarRevisaoJa();
       const c = calcular();
       const nome = String(respostas['A1'] || '').trim();
       if (!nome) { alert('Preencha o nome da empresa/cliente (A1).'); return; }
@@ -597,7 +598,8 @@
     document.getElementById('prSalvar').addEventListener('click', () => salvar(false));
     document.getElementById('prSalvarNova').addEventListener('click', () => salvar(true));
     document.getElementById('prLimpar').addEventListener('click', () => {
-      respostas = {}; editandoId = null; cart = null;
+      fecharRevisao();
+      respostas = {}; editandoId = null;
       document.getElementById('prSalvoMsg').textContent = '';
       atualizarBotoesSalvar();
       renderForm();
@@ -956,7 +958,7 @@
       tb.querySelectorAll('tr.prop').forEach(tr => tr.addEventListener('click', e => {
         if (e.target.closest('.st-sel') || e.target.closest('[data-del]') || e.target.closest('[data-dup]') || e.target.closest('[data-trans]') || e.target.closest('[data-vertrans]')) return;
         const p = lista.find(x => x.id === tr.dataset.pid);
-        cart = null;   // a proposta aberta da lista não é revisão da carteira
+        fecharRevisao();   // a proposta aberta da lista não é revisão da carteira
         if (p.respostas && p.respostas._tipo === 'mei') { carregarPropostaMei(p); return; }
         respostas = p.respostas || {}; editandoId = p.id;
         document.getElementById('prSalvoMsg').textContent = '';
@@ -979,7 +981,7 @@
       tb.querySelectorAll('[data-dup]').forEach(b => b.addEventListener('click', () => {
         const p = lista.find(x => x.id === b.dataset.dup);
         if (!p) return;
-        cart = null;
+        fecharRevisao();
         if (p.respostas && p.respostas._tipo === 'mei') {
           carregarPropostaMei(p);
           meiEditandoId = null;
@@ -1273,7 +1275,7 @@
       const bs = document.getElementById('meiSalvar');
       if (bs) bs.addEventListener('click', () => salvarMei(false));
       const bn = document.getElementById('meiNova');
-      if (bn) bn.addEventListener('click', () => { cart = null; novaMei(); });
+      if (bn) bn.addEventListener('click', () => { fecharRevisao(); novaMei(); });
     }
     async function gerarOrcamentoMei(){
       if (!window.jspdf) { alert('Gerador de PDF ainda carregando — tenta de novo em 2 segundos.'); return; }
@@ -1406,7 +1408,7 @@
     }
     let meiEditandoId = null;
     async function salvarMei(comoNova){
-      if (cart && cart.mei) return salvarRevisaoMei(comoNova);
+      if (cart && cart.mei) return gravarRevisaoJa();
       const { linhas, total } = calcMei();
       const nome = String(mei.cliente || '').trim();
       if (!nome) { alert('Preencha o nome do cliente MEI.'); return; }
@@ -1438,7 +1440,7 @@
     function atualizarBotoesMei(){
       const rev = !!(cart && cart.mei);
       const b = document.getElementById('meiSalvar');
-      if (b) b.textContent = rev ? (cart.revisaoId ? 'Atualizar revisão (MEI)' : 'Salvar revisão (MEI)') : meiEditandoId ? 'Atualizar proposta MEI' : 'Salvar proposta MEI';
+      if (b) { b.textContent = meiEditandoId ? 'Atualizar proposta MEI' : 'Salvar proposta MEI'; b.style.display = rev ? 'none' : ''; }   // na revisão, grava sozinha
       const o = document.getElementById('meiOrc');
       if (o) o.style.display = rev ? 'none' : '';
       const tit = document.getElementById('meiTitulo');
@@ -1450,7 +1452,7 @@
           const l = cart.linha;
           ban.innerHTML = '<div class="ct-topo"><span><b>Revisão de honorário</b> · ' + escHtml(l.cliente.nome_principal) + ' · hoje ' + (l.hoje ? fmt(l.hoje.valor) + '/mês <small>(' + escHtml(fonteTxt(l.hoje)) + ')</small>' : 'sem cobrança no sistema') + '</span>'
             + '<button type="button" class="ct-revisar" data-cart="sair">Voltar à carteira</button></div>'
-            + '<div class="ct-nota" style="margin:6px 0 0;">Marque o plano e os serviços que ele usa: o painel compara com o de hoje. A revisão fica na aba Carteira.</div>';
+            + '<div class="ct-nota" style="margin:6px 0 0;">Marque o plano e os serviços que ele usa: o painel compara com o de hoje. A revisão grava sozinha e fica na aba Carteira.</div>';
         }
       }
       atualizarComparacaoMei(calcMei().total);
@@ -1610,11 +1612,11 @@
 
     function linhasDaCarteira(){
       const f = filtrosCart, b = semAcento(f.busca).trim();
-      const abaixo = l => !!(l.hoje && l.piso != null && l.piso > l.hoje.valor);
-      const lista = carteira.filter(l => (!f.regime || l.cliente.regime_tributario === f.regime) && (!f.abaixo || abaixo(l)) && (!f.semRevisao || !l.revisao)
+      const lista = carteira.filter(l => (!f.regime || l.cliente.regime_tributario === f.regime) && (!f.abaixo || pagaMenosQueOMotor(l)) && (!f.semRevisao || !l.revisao)
         && (!b || semAcento(l.cliente.nome_principal + ' ' + (l.cliente.nome_fantasia || '')).includes(b)));
-      // quem está mais abaixo do piso primeiro; sem como comparar (sem o de hoje, MEI), no fim, por nome
-      const chave = l => (l.hoje && l.piso != null ? l.piso - l.hoje.valor : null);
+      // quem está mais abaixo do motor primeiro (o piso; depois de revisado, a revisão; aceito, o combinado); sem como
+      // comparar (sem o de hoje, o MEI sem revisão), no fim, por nome
+      const chave = l => { const ref = referenciaDaLinha(l); return l.hoje && ref ? ref.valor - l.hoje.valor : null; };
       return lista.sort((x, y) => { const a = chave(x), z = chave(y);
         if (a != null && z != null && a !== z) return z - a;
         if ((a == null) !== (z == null)) return a == null ? 1 : -1;
@@ -1623,17 +1625,13 @@
 
     function desenharCarteira(){
       const tb = document.getElementById('ctLista'), msg = document.getElementById('ctMsg');
-      const comHoje = carteira.filter(l => l.hoje);
-      const somaHoje = comHoje.reduce((s, l) => s + l.hoje.valor, 0);
-      const abaixo = carteira.filter(l => l.hoje && l.piso != null && l.piso > l.hoje.valor);
-      const falta = abaixo.reduce((s, l) => s + (l.piso - l.hoje.valor), 0);
-      const revisados = carteira.filter(l => l.revisao);
-      const aceitos = revisados.filter(l => l.revisao.status === 'aceito' && Number(l.revisao.honorario_novo) > 0);
-      const ganho = aceitos.reduce((s, l) => s + Number(l.revisao.honorario_novo) - (Number(l.revisao.honorario_atual) || (l.hoje ? l.hoje.valor : 0)), 0);
-      document.getElementById('ctResumo').innerHTML = '<span><b>' + carteira.length + '</b> clientes na carteira</span>'
-        + '<span>Hoje: <b>' + fmt(somaHoje) + '</b>/mês <small>(' + comHoje.length + ' com valor)</small></span>'
-        + '<span class="ct-alerta"><b>' + abaixo.length + '</b> pagam menos que o piso' + (abaixo.length ? ' · <b>+' + fmt(falta) + '</b>/mês até ele' : '') + '</span>'
-        + '<span><b>' + revisados.length + '</b> revisado' + (revisados.length === 1 ? '' : 's') + (aceitos.length ? ' · ' + aceitos.length + ' reajuste' + (aceitos.length === 1 ? ' aceito' : 's aceitos') + ' · <b>' + (ganho >= 0 ? '+' : '') + fmt(ganho) + '</b>/mês' : '') + '</span>';
+      // o resumo segue as revisões: quem ainda não foi revisado entra pelo piso; o revisado, pelo valor da revisão
+      const z = resumoDaCarteira(carteira);
+      document.getElementById('ctResumo').innerHTML = '<span><b>' + z.clientes + '</b> clientes na carteira</span>'
+        + '<span>Hoje: <b>' + fmt(z.somaHoje) + '</b>/mês <small>(' + z.comHoje + ' com valor)</small></span>'
+        + '<span><b>' + z.revisados + '</b> de ' + z.clientes + ' revisado' + (z.revisados === 1 ? '' : 's') + '</span>'
+        + '<span class="ct-alerta"><b>' + z.abaixo + '</b> paga' + (z.abaixo === 1 ? '' : 'm') + ' menos que o motor' + (z.abaixo ? ' · <b>+' + fmt(z.falta) + '</b>/mês até ele' + (z.faltaRevisados ? ' <small>(' + fmt(z.faltaRevisados) + ' nos revisados)</small>' : '') : '') + '</span>'
+        + (z.aceitos ? '<span>' + z.aceitos + ' reajuste' + (z.aceitos === 1 ? ' aceito' : 's aceitos') + ' · <b>' + (z.ganho >= 0 ? '+' : '') + fmt(z.ganho) + '</b>/mês</span>' : '');
       const sel = document.getElementById('ctRegime');
       if (sel.options.length <= 1) [...new Set(carteira.map(l => l.cliente.regime_tributario).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')).forEach(r => sel.add(new Option(r, r)));
       const lista = linhasDaCarteira();
@@ -1644,25 +1642,33 @@
 
     function linhaDaCarteira(l){
       const c = l.cliente, r = l.revisao, id = escHtml(c.id);
-      const dif = l.hoje && l.piso != null ? diferenca(l.piso, l.hoje.valor) : null;
+      const ref = referenciaDaLinha(l);
+      const dif = l.hoje && ref ? diferenca(ref.valor, l.hoje.valor) : null;
       const hojeTd = l.hoje ? '<b>' + fmt(l.hoje.valor) + '</b><br><small>' + escHtml(fonteTxt(l.hoje)) + '</small>' : '—<br><small>sem cobrança no sistema</small>';
-      const pisoTd = l.mei ? '<small>plano MEI, na aba MEI</small>' : fmt(l.piso) + (dif != null ? ' <span class="' + (dif > 0 ? 'ct-acima' : 'ct-abaixo') + '">' + pct(dif) + '</span>' : '');
+      // o motor: o piso até a revisão; depois, a revisão (o piso fica só no título); aceito, o combinado; mantido, o de hoje
+      let motorTd = l.mei ? '<small>plano MEI, na aba MEI</small>' : '—';
+      if (ref) {
+        const det = ref.tipo === 'piso' ? 'piso, só com o sistema'
+          : ref.tipo === 'revisado' ? (r && r.respostas && r.respostas._tipo === 'mei' ? 'plano MEI, revisado em ' : 'revisado em ') + diaBR(ref.em)
+          : ref.tipo === 'combinado' ? 'combinado, a partir de ' + mesBR(ref.vigencia)
+          : 'mantido' + (ref.motor ? ' (motor ' + fmt(ref.motor) + ')' : '');
+        const tit = ref.tipo !== 'piso' && l.piso != null ? ' title="' + escHtml('Antes da revisão, o piso (só com o sistema) era ' + fmt(l.piso)) + '"' : '';
+        motorTd = '<span' + tit + '><b>' + fmt(ref.valor) + '</b>' + (dif != null && Math.round(dif * 100) !== 0 ? ' <span class="' + (dif > 0 ? 'ct-acima' : 'ct-abaixo') + '">' + pct(dif) + '</span>' : '')
+          + '<br><small>' + escHtml(det) + '</small></span>';
+      }
       const tarTd = l.tarefas + (l.avulsas ? '<br><small>' + l.avulsas + (l.avulsas > 1 ? ' avulsas' : ' avulsa') + '</small>' : '');
-      let revTd, sitTd;
+      let sitTd;
       if (r) {
-        const aceito = r.status === 'aceito' && Number(r.honorario_novo) > 0;
-        const det = aceito && r.vigencia ? 'combinado, a partir de ' + mesBR(r.vigencia) : (r.respostas && r.respostas._tipo === 'mei' ? 'plano MEI' : 'motor') + ' · ' + diaBR(r.atualizado_em || r.criado_em);
-        revTd = '<b>' + fmt(aceito ? r.honorario_novo : r.honorario_sugerido) + '</b><br><small>' + escHtml(det) + '</small><br><button type="button" class="ct-revisar" data-abrir="' + id + '">Abrir a revisão</button>';
-        sitTd = r.aplicado_em ? '<span class="chip c-verde" title="' + escHtml('Entrou no boleto em ' + diaBR(r.aplicado_em)) + '">Aceito · no boleto</span>'
+        const sit = r.aplicado_em ? '<span class="chip c-verde" title="' + escHtml('Entrou no boleto em ' + diaBR(r.aplicado_em)) + '">Aceito · no boleto</span>'
           : '<select class="st-sel" data-sit="' + id + '" aria-label="' + escHtml('Situação da revisão de ' + c.nome_principal) + '">' + SITUACOES.map(([v, t]) => '<option value="' + v + '"' + (v === r.status ? ' selected' : '') + '>' + t + '</option>').join('') + '</select>';
+        sitTd = '<div class="ct-acoes">' + sit + '<button type="button" class="ct-revisar" data-abrir="' + id + '">Abrir a revisão</button></div>';
       } else {
-        revTd = '<small>não revisado</small>';
         sitTd = '<button type="button" class="ct-revisar" data-abrir="' + id + '">Revisar</button>';
       }
       return '<tr class="prop' + (r ? ' ct-revisado' : '') + '" data-cli="' + id + '">'
         + '<td><b>' + escHtml(c.nome_principal) + '</b> <span class="chip">' + escHtml(NOME_REGIME[c.regime_tributario] || c.regime_tributario || 'sem regime') + '</span>'
         + (c.nome_fantasia && c.nome_fantasia !== c.nome_principal ? '<br><small>' + escHtml(c.nome_fantasia) + '</small>' : '') + '</td>'
-        + '<td>' + hojeTd + '</td><td>' + pisoTd + '</td><td>' + tarTd + '</td><td>' + revTd + '</td><td>' + sitTd + '</td></tr>';
+        + '<td>' + hojeTd + '</td><td>' + motorTd + '</td><td>' + tarTd + '</td><td>' + sitTd + '</td></tr>';
     }
     const linhaPorId = id => carteira.find(x => String(x.cliente.id) === String(id));
     const tbCart = document.getElementById('ctLista');
@@ -1685,17 +1691,21 @@
     // ---------- a revisão de um cliente: o questionário (ou a aba MEI) já preenchido ----------
     function abrirRevisao(l){
       if (l.mei) return abrirRevisaoMei(l);
+      gravarRevisaoJa(); revFoto = null;   // a revisão que estava aberta grava antes o que faltava
       const rev = l.revisao && !(l.revisao.respostas && l.revisao.respostas._tipo === 'mei') ? l.revisao : null;
-      cart = { linha: l, revisaoId: rev ? rev.id : null, mei: false };
-      // a revisão salva volta como ficou; sem ela, o que o sistema sabe (com o honorário de hoje)
+      // a aceita ou mantida fica como está: a primeira mudança começa uma revisão nova
+      cart = { linha: l, revisaoId: rev && !revisaoFechada(rev) ? rev.id : null, mei: false };
+      // a revisão gravada volta como ficou; sem ela, o que o sistema sabe (com o honorário de hoje)
       respostas = JSON.parse(JSON.stringify(rev ? rev.respostas || {} : l.pre.respostas));
       editandoId = null;
-      document.getElementById('prSalvoMsg').textContent = '';
       atualizarBotoesSalvar();
       trocarVisao('form'); renderForm();
+      revFoto = fotoRevisao();
+      statusRevisao(cart, avisoAoAbrir(rev));
       window.scrollTo({ top: 0 });
     }
     function abrirRevisaoMei(l){
+      gravarRevisaoJa(); revFoto = null;
       const rev = l.revisao && l.revisao.respostas && l.revisao.respostas._tipo === 'mei' ? l.revisao : null;
       cart = null;
       if (rev) carregarPropostaMei({ respostas: rev.respostas, cliente_nome: l.cliente.nome_principal, id: null });
@@ -1710,16 +1720,21 @@
         setv('meiCliente', mei.cliente); setv('meiCnpj', mei.cnpj); setv('meiEndereco', mei.endereco); setv('meiTelefone', mei.telefone);
       }
       meiEditandoId = null;
-      cart = { linha: l, revisaoId: rev ? rev.id : null, mei: true };
-      const m = document.getElementById('meiSalvoMsg'); if (m) m.textContent = '';
+      cart = { linha: l, revisaoId: rev && !revisaoFechada(rev) ? rev.id : null, mei: true };
       atualizarBotoesMei();
       trocarVisao('mei');
+      revFoto = fotoRevisao();
+      statusRevisao(cart, avisoAoAbrir(rev));
       window.scrollTo({ top: 0 });
     }
-    function sairDaRevisao(){
-      const eraMei = !!(cart && cart.mei);
-      cart = null;
-      if (eraMei) novaMei();
+    // "Voltar à carteira": grava o que faltava e volta (não gravou: fica, com o "Tentar de novo")
+    async function sairDaRevisao(){
+      const alvo = cart;
+      if (!alvo) return trocarVisao('carteira');
+      await gravarRevisaoJa();
+      if (cart !== alvo || revFoto === '') return;
+      cart = null; revFoto = null;
+      if (alvo.mei) novaMei();
       else { respostas = {}; editandoId = null; document.getElementById('prSalvoMsg').textContent = ''; atualizarBotoesSalvar(); renderForm(); }
       trocarVisao('carteira');
     }
@@ -1729,7 +1744,7 @@
       return '<div class="pr-cart-banner"><div class="ct-topo"><span><b>Revisão de honorário</b> · ' + escHtml(l.cliente.nome_principal) + ' · hoje ' + hoje + '</span>'
         + '<button type="button" class="ct-revisar" data-cart="sair">Voltar à carteira</button></div>'
         + '<div class="pr-cart-faltam" id="prCartFaltam"></div>'
-        + '<div class="ct-nota" style="margin:6px 0 0;">A etiqueta verde marca o que veio do sistema — confira. Complete o que falta: o painel compara o motor com o de hoje.</div></div>';
+        + '<div class="ct-nota" style="margin:6px 0 0;">A etiqueta verde marca o que veio do sistema — confira. Complete o que falta: o painel compara o motor com o de hoje, e a revisão grava sozinha.</div></div>';
     }
     // o que falta responder (o que mexe no preço e está em branco) e as etiquetas do que veio do sistema
     function atualizarMarcasCarteira(){
@@ -1776,48 +1791,109 @@
     });
     document.getElementById('meiCartBanner').addEventListener('click', e => { if (e.target.closest('[data-cart="sair"]')) sairDaRevisao(); });
 
-    // gravar: a revisão (nova, ou a aberta); a situação começa em "estudo"
-    async function gravarRevisao(payload, comoNova){
-      const agora = new Date().toISOString();
-      if (cart.revisaoId && !comoNova) {
-        const { error } = await supabase.from('revisoes_honorario').update({ ...payload, atualizado_em: agora }).eq('id', cart.revisaoId);
-        return { erro: error, nova: false };
+    // ---------- a revisão grava sozinha (19/10/2026, pedido do Samuel) ----------
+    // Cada mudança na revisão aberta (o questionário, o painel, as anotações; no MEI, o plano e os serviços) grava em
+    // revisoes_honorario um instante depois, sem botão; sair da revisão, trocar de aba ou esconder a tela grava na hora o que
+    // faltava. As gravações vão uma atrás da outra (a primeira cria a revisão, em "estudo"; as seguintes a atualizam) e a linha
+    // da Carteira acompanha, sem ler tudo de novo. A revisão aceita ou mantida fica como está: a primeira mudança começa outra
+    const ESPERA_REVISAO = 700;
+    let revFoto = null, revTimer = null, revFila = Promise.resolve({});
+    const revisaoFechada = r => !!r && (r.status === 'aceito' || r.status === 'mantido');
+    const respostasDaMei = () => ({ _tipo: 'mei', bases: [...mei.bases], marcados: [...mei.marcados], qtd: mei.qtd, nfsInclusas: mei.nfsInclusas, cliente: mei.cliente, cnpj: mei.cnpj,
+      endereco: mei.endereco, telefone: mei.telefone, msg: mei.msg, venc: mei.venc, ajuste: mei.ajuste });
+    const fotoRevisao = () => (!cart ? null : JSON.stringify(cart.mei ? respostasDaMei() : respostas));
+    function statusRevisao(alvo, html, cor){
+      if (!alvo || cart !== alvo) return;
+      const el = document.getElementById(alvo.mei ? 'meiSalvoMsg' : 'prSalvoMsg');
+      if (!el) return;
+      el.style.color = cor || 'var(--text-muted)';
+      el.innerHTML = html;
+    }
+    function avisoAoAbrir(rev){
+      if (!rev) return 'A revisão grava sozinha: é só responder ou mudar o que precisar.';
+      if (revisaoFechada(rev)) return 'Esta revisão está como <b>' + escHtml(rotuloSituacao(rev.status)) + '</b>'
+        + (rev.status === 'aceito' && rev.vigencia ? ' (' + fmt(rev.honorario_novo) + '/mês a partir de ' + mesBR(rev.vigencia) + ')' : '')
+        + '. Mudar alguma resposta começa uma revisão nova, e esta fica no histórico.';
+      return 'Revisão de ' + diaBR(rev.atualizado_em || rev.criado_em) + ': o que você mudar grava sozinho.';
+    }
+    // depois de cada mudança na tela da revisão: grava um instante depois (o que não mudou não grava)
+    function aposMudanca(){
+      if (!cart || revFoto == null || fotoRevisao() === revFoto) return;
+      clearTimeout(revTimer);
+      revTimer = setTimeout(gravarRevisaoJa, ESPERA_REVISAO);
+      statusRevisao(cart, 'Gravando…');
+    }
+    // grava agora o que mudou; a promessa termina quando as gravações da fila terminam ({ erro? } da que entrou agora)
+    function gravarRevisaoJa(){
+      clearTimeout(revTimer); revTimer = null;
+      const esperar = () => revFila.then(() => ({}), () => ({}));
+      if (!cart || revFoto == null) return esperar();
+      const foto = fotoRevisao();
+      if (foto === revFoto) return esperar();
+      const alvo = cart;
+      // aceita ou mantida na lista enquanto estava aberta (pelas abas): a mudança começa outra, a decidida fica como está
+      if (alvo.revisaoId) {
+        const daLista = carteira.find(x => String(x.cliente.id) === String(alvo.linha.cliente.id));
+        const r = [daLista && daLista.revisao, alvo.linha.revisao].find(x => x && x.id === alvo.revisaoId);
+        if (revisaoFechada(r)) alvo.revisaoId = null;
       }
-      const { data, error } = await supabase.from('revisoes_honorario').insert({ ...payload, cliente_id: cart.linha.cliente.id, status: 'estudo', criado_por: user ? user.email : null, atualizado_em: agora }).select('id').single();
-      if (data) cart.revisaoId = data.id;
-      return { erro: error, nova: true };
+      let dados;
+      if (alvo.mei) {
+        const { linhas, total } = calcMei();
+        if (!linhas.length) { statusRevisao(alvo, 'Escolha um plano ou marque os serviços pra gravar a revisão.'); return esperar(); }
+        const atual = alvo.linha.hoje ? alvo.linha.hoje.valor : null;
+        dados = { respostas: respostasDaMei(), resultado: { linhas, total }, honorario_sugerido: total, honorario_atual: atual, fonte_atual: atual ? alvo.linha.hoje.fonte : null };
+      } else {
+        const c = calcular(), l = alvo.linha;
+        const atual = Number(respostas['A12B']) > 0 ? Number(respostas['A12B']) : null;
+        dados = { respostas: JSON.parse(foto), resultado: c, honorario_sugerido: c.honorario, honorario_atual: atual,
+          fonte_atual: atual == null ? null : l.hoje && Number(l.hoje.valor) === atual ? l.hoje.fonte : 'informado' };
+      }
+      revFoto = foto;
+      revFila = revFila.catch(() => ({})).then(() => gravarRevisaoEm(alvo, dados));
+      return revFila;
     }
-    async function salvarRevisao(comoNova){
-      const c = calcular();
-      const btn = document.getElementById('prSalvar');
-      btn.disabled = true;
-      const l = cart.linha;
-      const atual = Number(respostas['A12B']) > 0 ? Number(respostas['A12B']) : null;
-      const fonte = atual == null ? null : l.hoje && Number(l.hoje.valor) === atual ? l.hoje.fonte : 'informado';
-      const r = await gravarRevisao({ respostas, resultado: c, honorario_sugerido: c.honorario, honorario_atual: atual, fonte_atual: fonte }, comoNova);
-      btn.disabled = false;
-      atualizarBotoesSalvar();
-      document.getElementById('prSalvoMsg').innerHTML = r.erro ? '<span style="color:var(--err);">✗ ' + escHtml(r.erro.message) + '</span>'
-        : '<span style="color:var(--ok);">✓ ' + (r.nova ? 'Revisão salva' : 'Revisão atualizada') + ' — motor ' + fmt(c.honorario) + '/mês' + (atual ? ' (hoje ' + fmt(atual) + ')' : '') + '. Ela fica na aba Carteira.</span>';
-      if (!r.erro) carteiraLida = false;
+    async function gravarRevisaoEm(alvo, dados){
+      const agora = new Date().toISOString();
+      let erro = null;
+      try {
+        if (alvo.revisaoId) {
+          ({ error: erro } = await supabase.from('revisoes_honorario').update({ ...dados, atualizado_em: agora }).eq('id', alvo.revisaoId));
+        } else {
+          const nova = { ...dados, cliente_id: alvo.linha.cliente.id, status: 'estudo', criado_por: user ? user.email : null, atualizado_em: agora };
+          const { data, error } = await supabase.from('revisoes_honorario').insert(nova).select('id').single();
+          erro = error || (data ? null : { message: 'o banco não devolveu a revisão' });
+          if (data) alvo.revisaoId = data.id;
+        }
+      } catch (e) { erro = { message: (e && e.message) || String(e) }; }
+      if (erro) {
+        if (cart === alvo) {
+          revFoto = '';   // a próxima mudança (ou o "Tentar de novo") grava de novo
+          statusRevisao(alvo, '✗ A revisão não gravou: ' + escHtml(erro.message) + ' <button type="button" class="ct-revisar" data-rev="tentar">Tentar de novo</button>', 'var(--err)');
+        } else alert('A revisão de ' + alvo.linha.cliente.nome_principal + ' não gravou: ' + erro.message);
+        return { erro };
+      }
+      // a linha da Carteira acompanha (e a que está na lista agora, se a lista foi lida de novo)
+      const atual = carteira.find(x => String(x.cliente.id) === String(alvo.linha.cliente.id));
+      [alvo.linha, atual].filter((x, i, a) => x && a.indexOf(x) === i).forEach(l => {
+        if (l.revisao && l.revisao.id === alvo.revisaoId) Object.assign(l.revisao, dados, { atualizado_em: agora });
+        else l.revisao = { ...dados, id: alvo.revisaoId, cliente_id: alvo.linha.cliente.id, status: 'estudo', criado_por: user ? user.email : null, criado_em: agora,
+          atualizado_em: agora, honorario_novo: null, vigencia: null, aplicado_em: null, aplicado_por: null, observacao: null };
+      });
+      const hora = new Date(agora).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      statusRevisao(alvo, '✓ Gravada às ' + hora + ' — ' + (alvo.mei ? 'plano ' : 'motor ') + fmt(dados.honorario_sugerido) + '/mês'
+        + (dados.honorario_atual ? ' (hoje ' + fmt(dados.honorario_atual) + ')' : '') + '. Ela fica na aba Carteira.', 'var(--ok)');
+      return {};
     }
-    async function salvarRevisaoMei(comoNova){
-      const { linhas, total } = calcMei();
-      if (!linhas.length) { alert('Escolha um plano base ou marque serviços.'); return; }
-      const btn = document.getElementById('meiSalvar');
-      btn.disabled = true;
-      const l = cart.linha;
-      const atual = l.hoje ? l.hoje.valor : null;
-      const resp = { _tipo: 'mei', bases: [...mei.bases], marcados: [...mei.marcados], qtd: mei.qtd, nfsInclusas: mei.nfsInclusas, cliente: mei.cliente, cnpj: mei.cnpj,
-        endereco: mei.endereco, telefone: mei.telefone, msg: mei.msg, venc: mei.venc, ajuste: mei.ajuste };
-      const r = await gravarRevisao({ respostas: resp, resultado: { linhas, total }, honorario_sugerido: total, honorario_atual: atual, fonte_atual: atual ? l.hoje.fonte : null }, comoNova);
-      btn.disabled = false;
-      atualizarBotoesMei();
-      const m = document.getElementById('meiSalvoMsg');
-      m.style.color = r.erro ? 'var(--err)' : 'var(--ok)';
-      m.textContent = r.erro ? 'Erro: ' + r.erro.message : '✓ ' + (r.nova ? 'Revisão salva' : 'Revisão atualizada') + ' — ' + fmt(total) + '/mês' + (atual ? ' (hoje ' + fmt(atual) + ')' : '') + '. Ela fica na aba Carteira.';
-      if (!r.erro) carteiraLida = false;
-    }
+    // fechar a revisão aberta (abrir uma proposta, "Nova"): grava antes o que faltava
+    function fecharRevisao(){ gravarRevisaoJa(); cart = null; revFoto = null; }
+    ['prSalvoMsg', 'meiSalvoMsg'].forEach(id => document.getElementById(id).addEventListener('click', e => { if (e.target.closest('[data-rev="tentar"]')) gravarRevisaoJa(); }));
+    // o que muda na tela da revisão: o questionário e o painel; no MEI, também os cliques nos planos e nos serviços
+    ['input', 'change'].forEach(ev => document.getElementById('vForm').addEventListener(ev, aposMudanca));
+    ['input', 'change', 'click'].forEach(ev => document.getElementById('vMei').addEventListener(ev, aposMudanca));
+    // esconder a tela (outra aba do navegador, minimizar, fechar) grava na hora
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') gravarRevisaoJa(); });
+    window.addEventListener('pagehide', () => { gravarRevisaoJa(); });
 
     // ---------- a situação da revisão; o aceito pergunta o valor combinado e o mês ----------
     async function mudarSituacao(l, novo, sel){
@@ -1872,7 +1948,13 @@
       if (l.temCobranca) {
         const a = await aplicarReajusteAgora(supabase, { revisao: r, email: user ? user.email : null });
         if (a.erro) texto += ' Não consegui trocar o boleto agora (' + a.erro + '): o valor novo entra quando o mês for gerado.';
-        else if (a.trocados) { r.aplicado_em = new Date().toISOString(); texto += ' O boleto a emitir de ' + a.meses.map(mesBR).join(', ') + ' já está com o valor novo.'; }
+        else if (a.trocados) {
+          r.aplicado_em = new Date().toISOString();
+          // a linha acompanha: o boleto a emitir trocado vira o de hoje
+          (l.boletos || []).forEach(b => { if (a.meses.includes(b.competencia) && b.status === 'a_emitir') b.valor = valor; });
+          if (l.hoje && l.hoje.fonte === 'boletos' && l.hoje.competencia && a.meses.includes(l.hoje.competencia)) l.hoje = { ...l.hoje, valor };
+          texto += ' O boleto a emitir de ' + a.meses.map(mesBR).join(', ') + ' já está com o valor novo.';
+        }
         else texto += ' Ele entra quando ' + mesBR(mes) + ' for gerado na tela Boletos.';
       } else texto += ' A cobrança dele é fora da base de boletos: troque o valor lá.';
       msg.style.color = 'var(--ok)'; msg.textContent = texto;
@@ -1883,6 +1965,11 @@
 
     // ---------- visões ----------
     function trocarVisao(v){
+      // saindo da tela da revisão aberta pelas abas: grava na hora o que faltava; na Carteira, a linha acompanha quando gravar
+      if (cart && v !== (cart.mei ? 'mei' : 'form')) {
+        const p = gravarRevisaoJa();
+        if (v === 'carteira') p.then(() => { if (carteiraLida && document.getElementById('vCarteira').style.display === 'block') desenharCarteira(); });
+      }
       document.querySelectorAll('#prSeg button').forEach(b => b.classList.toggle('is-on', b.dataset.v === v));
       document.getElementById('vForm').style.display = v === 'form' ? 'grid' : 'none';
       document.getElementById('vMei').style.display = v === 'mei' ? 'block' : 'none';
@@ -1932,7 +2019,7 @@
       for (let i = 0; i < 50 && !questoes.length; i++) await new Promise(r => setTimeout(r, 150));
       const { data: p } = await supabase.from('precificacoes').select('*').eq('id', pid).single();
       if (!p) return;
-      cart = null;
+      fecharRevisao();
       if (p.respostas && p.respostas._tipo === 'mei') { carregarPropostaMei(p); return; }
       respostas = p.respostas || {}; editandoId = p.id;
       atualizarBotoesSalvar();

@@ -197,6 +197,46 @@ export const mesBR = comp => (comp ? String(comp).slice(5, 7) + '/' + String(com
 // a diferença em % (do motor pra hoje)
 export const diferenca = (motor, hoje) => (Number(hoje) > 0 && Number.isFinite(Number(motor)) ? (Number(motor) - Number(hoje)) / Number(hoje) : null);
 
+// ---------- o número que vale na lista e no resumo (19/10/2026, pedido do Samuel) ----------
+// referenciaDaLinha({ piso, revisao, hoje }) → { valor, tipo, ... } | null: o combinado (aceito, com a vigência), o de hoje
+// (mantido — com o motor da revisão), a revisão (o motor com as respostas conferidas, com a data) ou, sem revisão, o piso
+// (o motor só com o que o sistema sabe). Depois de revisado, o piso sai de cena
+export function referenciaDaLinha({ piso = null, revisao = null, hoje = null } = {}) {
+  const r = revisao;
+  if (r && r.status === 'aceito' && Number(r.honorario_novo) > 0) return { valor: Number(r.honorario_novo), tipo: 'combinado', vigencia: r.vigencia || null };
+  if (r && r.status === 'mantido') {
+    const v = hoje && Number(hoje.valor) > 0 ? Number(hoje.valor) : Number(r.honorario_atual) > 0 ? Number(r.honorario_atual) : null;
+    return v ? { valor: v, tipo: 'mantido', motor: Number(r.honorario_sugerido) > 0 ? Number(r.honorario_sugerido) : null } : null;
+  }
+  if (r && Number(r.honorario_sugerido) > 0) return { valor: Number(r.honorario_sugerido), tipo: 'revisado', em: r.atualizado_em || r.criado_em || null };
+  if (piso != null && Number.isFinite(Number(piso))) return { valor: Number(piso), tipo: 'piso' };
+  return null;
+}
+// paga menos que o motor: ainda sem decisão (o piso ou a revisão em estudo/proposta) e abaixo dele. O combinado e o
+// mantido já estão decididos — o combinado conta nos reajustes aceitos
+export function pagaMenosQueOMotor(linha) {
+  const ref = referenciaDaLinha(linha || {});
+  const hoje = linha && linha.hoje ? Number(linha.hoje.valor) : 0;
+  return !!ref && (ref.tipo === 'piso' || ref.tipo === 'revisado') && hoje > 0 && ref.valor > hoje;
+}
+// resumoDaCarteira(linhas) → os números do alto da aba: o de hoje, quantos revisados, quem paga menos que o motor e quanto
+// falta até ele (e quanto disso já vem de revisões conferidas), os reajustes aceitos e o ganho deles
+export function resumoDaCarteira(linhas) {
+  const ls = linhas || [];
+  const comHoje = ls.filter(l => l.hoje && Number(l.hoje.valor) > 0);
+  const r2 = x => Math.round(x * 100) / 100;
+  let abaixo = 0, falta = 0, abaixoRevisados = 0, faltaRevisados = 0;
+  ls.filter(pagaMenosQueOMotor).forEach(l => {
+    const ref = referenciaDaLinha(l), d = ref.valor - Number(l.hoje.valor);
+    abaixo++; falta += d;
+    if (ref.tipo === 'revisado') { abaixoRevisados++; faltaRevisados += d; }
+  });
+  const aceitos = ls.filter(l => l.revisao && l.revisao.status === 'aceito' && Number(l.revisao.honorario_novo) > 0);
+  const ganho = aceitos.reduce((s, l) => s + Number(l.revisao.honorario_novo) - (Number(l.revisao.honorario_atual) || (l.hoje ? Number(l.hoje.valor) : 0)), 0);
+  return { clientes: ls.length, comHoje: comHoje.length, somaHoje: r2(comHoje.reduce((s, l) => s + Number(l.hoje.valor), 0)), revisados: ls.filter(l => l.revisao).length,
+    abaixo, falta: r2(falta), abaixoRevisados, faltaRevisados: r2(faltaRevisados), aceitos: aceitos.length, ganho: r2(ganho) };
+}
+
 // ---------- o reajuste aceito entra no boleto ----------
 // Os meses que o reajuste pode começar: não o que já tem boleto emitido, enviado ou pago (aquele valor já saiu)
 export function mesesLivres(meses, boletos) {

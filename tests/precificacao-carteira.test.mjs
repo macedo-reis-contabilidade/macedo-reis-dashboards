@@ -5,7 +5,8 @@
 // Rodar com: node tests/precificacao-carteira.test.mjs
 import { indexarParams, calcularMotor, faturamentoAnual } from '../assets/js/precificacao-motor.js';
 import { respostasDoSistema, regimesDasQuestoes, tipoSocietario, erpDaCarteira, honorarioDeHoje, nomeBase, nomesBatem, parcelasDeHonorario, parcelaDoCliente,
-  faltamResponder, ultimaPorCliente, mesesDaVigencia, mesBR, diferenca, ehMei, rotuloSituacao, mesesLivres, reajustesDoMes, aplicarReajusteAgora } from '../assets/js/precificacao-carteira.js';
+  faltamResponder, ultimaPorCliente, mesesDaVigencia, mesBR, diferenca, ehMei, rotuloSituacao, mesesLivres, reajustesDoMes, aplicarReajusteAgora,
+  referenciaDaLinha, pagaMenosQueOMotor, resumoDaCarteira } from '../assets/js/precificacao-carteira.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + extra : '')); };
@@ -157,6 +158,49 @@ function sbReajuste({ boletos = [], cfg = [] } = {}) {
   chk('aplicado: a revisão marcada (quando e quem) e a base de cobrança com o valor novo', log.some(l => l[0] === 'revisoes_honorario' && l[1].aplicado_por === 'socio@teste' && !!l[1].aplicado_em && JSON.stringify(l[2]) === JSON.stringify([['eq', 'id', 'r2'], ['is', 'aplicado_em', null]])) && cfg[0].valor_base === 720, JSON.stringify(log));
   const { sb: sb2 } = sbReajuste({ boletos: [{ id: 'b9', cliente_id: 'a', competencia: '2026-11', status: 'enviado', valor: 600 }] });
   chk('sem boleto a emitir do mês: nada trocado agora (entra quando o mês for gerado)', (await aplicarReajusteAgora(sb2, { revisao: { id: 'r2', cliente_id: 'a', honorario_novo: 720, vigencia: '2026-11' } })).trocados === 0);
+}
+
+console.log('O número que vale na lista e no resumo:');
+{
+  const hoje = v => ({ valor: v, fonte: 'boletos', competencia: '2026-10' });
+  const r = (o) => ({ id: 'r', cliente_id: 'x', status: 'estudo', honorario_sugerido: 480, honorario_atual: 300, atualizado_em: '2026-10-19T12:00:00Z', ...o });
+  const sem = referenciaDaLinha({ piso: 650, revisao: null, hoje: hoje(300) });
+  chk('sem revisão: o piso', sem && sem.valor === 650 && sem.tipo === 'piso', JSON.stringify(sem));
+  const rev = referenciaDaLinha({ piso: 650, revisao: r(), hoje: hoje(300) });
+  chk('revisado: o valor da revisão no lugar do piso, com a data', rev.valor === 480 && rev.tipo === 'revisado' && rev.em === '2026-10-19T12:00:00Z', JSON.stringify(rev));
+  chk('reajuste proposto também é a revisão', referenciaDaLinha({ piso: 650, revisao: r({ status: 'proposto', honorario_sugerido: 520 }), hoje: hoje(300) }).valor === 520);
+  const ac = referenciaDaLinha({ piso: 650, revisao: r({ status: 'aceito', honorario_novo: 640, vigencia: '2026-11' }), hoje: hoje(300) });
+  chk('aceito: o combinado, com o mês', ac.valor === 640 && ac.tipo === 'combinado' && ac.vigencia === '2026-11', JSON.stringify(ac));
+  const mt = referenciaDaLinha({ piso: 650, revisao: r({ status: 'mantido' }), hoje: hoje(300) });
+  chk('mantido: o de hoje, com o motor da revisão', mt.valor === 300 && mt.tipo === 'mantido' && mt.motor === 480, JSON.stringify(mt));
+  chk('mantido sem o de hoje no sistema: o de hoje da revisão', referenciaDaLinha({ piso: null, revisao: r({ status: 'mantido' }), hoje: null }).valor === 300);
+  chk('o MEI sem revisão: sem número (o plano é na aba MEI)', referenciaDaLinha({ piso: null, revisao: null, hoje: hoje(100) }) === null);
+  chk('o MEI revisado: o plano', referenciaDaLinha({ piso: null, revisao: r({ honorario_sugerido: 120, respostas: { _tipo: 'mei' } }), hoje: hoje(100) }).valor === 120);
+  chk('revisão sem valor (o MEI sem plano): volta ao piso', referenciaDaLinha({ piso: 650, revisao: r({ honorario_sugerido: 0 }), hoje: hoje(300) }).tipo === 'piso');
+
+  chk('paga menos que o piso', pagaMenosQueOMotor({ piso: 650, revisao: null, hoje: hoje(300) }));
+  chk('depois de revisado, vale a revisão: acima dela, não paga menos', !pagaMenosQueOMotor({ piso: 650, revisao: r({ honorario_sugerido: 280 }), hoje: hoje(300) }));
+  chk('o combinado e o mantido já estão decididos', !pagaMenosQueOMotor({ piso: 650, revisao: r({ status: 'aceito', honorario_novo: 640, vigencia: '2026-11' }), hoje: hoje(300) })
+    && !pagaMenosQueOMotor({ piso: 650, revisao: r({ status: 'mantido' }), hoje: hoje(300) }));
+  chk('sem o de hoje, não compara', !pagaMenosQueOMotor({ piso: 650, revisao: null, hoje: null }));
+
+  const linhas = [
+    { cliente: { id: 'a' }, piso: 650, revisao: null, hoje: hoje(300) },                                         // piso: falta 350
+    { cliente: { id: 'b' }, piso: 900, revisao: r({ cliente_id: 'b', honorario_sugerido: 520, honorario_atual: 400 }), hoje: hoje(400) },   // revisado: falta 120
+    { cliente: { id: 'c' }, piso: 700, revisao: r({ cliente_id: 'c', honorario_sugerido: 250 }), hoje: hoje(300) },   // revisado acima: nada
+    { cliente: { id: 'd' }, piso: 800, revisao: r({ cliente_id: 'd', status: 'aceito', honorario_novo: 640, honorario_atual: 300, vigencia: '2026-11' }), hoje: hoje(300) },
+    { cliente: { id: 'e' }, piso: 500, revisao: null, hoje: null },                                              // sem cobrança
+    { cliente: { id: 'f' }, piso: null, revisao: null, hoje: hoje(100) },                                        // MEI sem revisão
+  ];
+  const z = resumoDaCarteira(linhas);
+  chk('o resumo: clientes, o de hoje e quantos revisados', z.clientes === 6 && z.comHoje === 5 && z.somaHoje === 1400 && z.revisados === 3, JSON.stringify(z));
+  chk('quem paga menos que o motor e quanto falta: o piso de quem não foi revisado, a revisão de quem foi', z.abaixo === 2 && z.falta === 470, JSON.stringify(z));
+  chk('quanto disso já vem dos revisados', z.abaixoRevisados === 1 && z.faltaRevisados === 120, JSON.stringify(z));
+  chk('o aceito conta nos reajustes aceitos (o combinado menos o de hoje da revisão), não no que falta', z.aceitos === 1 && z.ganho === 340, JSON.stringify(z));
+  // revisar o primeiro: o resumo acompanha
+  linhas[0].revisao = r({ cliente_id: 'a', honorario_sugerido: 480 });
+  const z2 = resumoDaCarteira(linhas);
+  chk('revisou: o que falta passa a ser o da revisão (480 − 300 = 180, não mais 350)', z2.falta === 300 && z2.faltaRevisados === 300 && z2.revisados === 4, JSON.stringify(z2));
 }
 
 console.log(falhas ? '\n' + falhas + ' falha(s).' : '\nTudo certo.');
