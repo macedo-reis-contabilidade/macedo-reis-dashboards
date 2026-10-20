@@ -51,15 +51,23 @@ export function feedsAnunciados(html, base) {
   return out;
 }
 
+// cada pedido: o endereço, ou { url, padrao } (a página sem RSS: os links de notícia pelo padrão). Página comum sem padrão:
+// os RSS que ela anuncia e os links com texto, pra montar o padrão
 export async function diagnosticar({ fetch: f, urls = [] }) {
-  const lista = urls.slice(0, 40);
-  return Promise.all(lista.map(async url => {
+  const lista = urls.slice(0, 40).map(u => (typeof u === 'string' ? { url: u } : u || {}));
+  return Promise.all(lista.map(async ({ url, padrao = null, ms = 15000 }) => {
     try {
-      const r = await buscar(f, url, { ms: 15000 });
+      const r = await buscar(f, url, { ms: Math.min(Number(ms) || 15000, 40000) });
       const feed = lerFeed(r.texto, { base: r.url });
-      return { url, final: r.url !== url ? r.url : undefined, status: r.status, tipo: r.tipo.slice(0, 60), bytes: r.texto.length, formato: feed.tipo,
-        itens: feed.itens.length, exemplos: feed.itens.slice(0, 4).map(i => (i.data ? i.data.slice(0, 10) + ' ' : '') + i.titulo.slice(0, 90)),
-        anuncia: feed.tipo ? undefined : feedsAnunciados(r.texto, r.url).slice(0, 8) };
+      const base = { url, final: r.url !== url ? r.url : undefined, status: r.status, tipo: r.tipo.slice(0, 60), bytes: r.texto.length, formato: feed.tipo };
+      if (feed.tipo) return { ...base, itens: feed.itens.length, exemplos: feed.itens.slice(0, 5).map(i => (i.data ? i.data.slice(0, 10) + ' ' : '') + i.titulo.slice(0, 90)) };
+      if (padrao) { const it = lerListaHtml(r.texto, { base: r.url, padrao }); return { ...base, itens: it.length, exemplos: it.slice(0, 8).map(i => i.titulo.slice(0, 80) + ' | ' + i.link) }; }
+      const links = [];
+      for (const m of r.texto.matchAll(/<a\b[^>]*href\s*=\s*["']([^"'#]+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
+        const t = m[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        if (t.length >= 25 && links.length < 30) links.push(t.slice(0, 70) + ' | ' + m[1].slice(0, 140));
+      }
+      return { ...base, anuncia: feedsAnunciados(r.texto, r.url).slice(0, 8), links };
     } catch (e) { return { url, erro: String((e && e.message) || e).slice(0, 200) }; }
   }));
 }
@@ -73,7 +81,7 @@ async function emPartes(itens, n, fn) {
 
 // 1. as fontes → as notícias novas
 export async function coletarFontes({ db, fetch: f, agora = () => Date.now() }) {
-  const { data: fontes, error } = await db.from('noticias_fontes').select('id, nome, url, site, tipo, formato, padrao').eq('ativo', true);
+  const { data: fontes, error } = await db.from('noticias_fontes').select('id, nome, url, site, tipo, formato, padrao, filtro').eq('ativo', true);
   if (error) throw new Error('fontes: ' + error.message);
   const limite = agora() - JANELA_DIAS * 864e5;
   let novas = 0;
@@ -84,6 +92,8 @@ export async function coletarFontes({ db, fetch: f, agora = () => Date.now() }) 
       if (!r.ok) throw new Error('HTTP ' + r.status);
       let itens = fonte.formato === 'html' ? lerListaHtml(r.texto, { base: r.url, padrao: fonte.padrao }) : lerFeed(r.texto, { base: fonte.site || r.url }).itens;
       if (fonte.formato !== 'html' && !itens.length && !lerFeed(r.texto).tipo) throw new Error('não é RSS/Atom');
+      // fonte de muito volume: só o que bate com o filtro (no título ou no trecho), o resto nem vai pra triagem
+      if (fonte.filtro) { const re = new RegExp(fonte.filtro, 'i'); itens = itens.filter(i => re.test(i.titulo + ' ' + (i.trecho || ''))); }
       let semData = 0;
       itens = itens.filter(i => (i.data ? Date.parse(i.data) >= limite : semData++ < SEM_DATA_MAX));
       let gravadas = 0;

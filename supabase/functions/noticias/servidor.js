@@ -50,7 +50,7 @@ export function criarServidor({ env, fetch: f = fetch, criarDb, agora = () => Da
     try {
       if (Array.isArray(corpo.diagnosticar)) {
         if (!admin) return resposta(origin, { erro: 'Sem permissão.' }, 403);
-        return resposta(origin, { diagnostico: await diagnosticar({ fetch: f, urls: corpo.diagnosticar.map(String) }) });
+        return resposta(origin, { diagnostico: await diagnosticar({ fetch: f, urls: corpo.diagnosticar }) });
       }
       const chamar = criarChamador({ fetch: f, chave: env('ANTHROPIC_API_KEY') });
       if (corpo.triar) {

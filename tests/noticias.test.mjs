@@ -167,6 +167,15 @@ function bancoFalso(tabelas) {
   const r = await coletarFontes({ db, fetch: fetchFalso, agora: () => agora });
   chk('grava só a nova dos últimos 7 dias (a que já tinha e a velha ficam de fora)', r.novas === 1 && db.tabelas.noticias.length === 2 && db.tabelas.noticias[1].url === 'https://um.exemplo/destda', JSON.stringify(r));
   const f1 = db.tabelas.noticias_fontes[0], f2 = db.tabelas.noticias_fontes[1];
+  // o filtro da fonte de muito volume: só o que bate entra
+  db.tabelas.noticias_fontes[1].ativo = false;
+  db.tabelas.noticias_fontes.push({ id: 'f3', nome: 'Agro', url: 'https://agro.exemplo/rss', tipo: 'imprensa', formato: 'rss', ativo: true, filtro: 'funrural|tribut' });
+  const RSS3 = '<rss><channel><item><title>Cotação da soja sobe</title><link>https://agro.exemplo/soja</link><pubDate>Mon, 19 Oct 2026 10:00:00 -0300</pubDate></item>'
+    + '<item><title>STF decide sobre o Funrural</title><link>https://agro.exemplo/funrural</link><pubDate>Mon, 19 Oct 2026 11:00:00 -0300</pubDate></item></channel></rss>';
+  const rf = await coletarFontes({ db, fetch: async url => url === 'https://agro.exemplo/rss' ? resposta(200, RSS3) : fetchFalso(url), agora: () => agora });
+  chk('fonte com filtro: só a do Funrural entra (a da soja nem vai pra triagem)', rf.novas === 1 && db.tabelas.noticias.some(n => n.url === 'https://agro.exemplo/funrural') && !db.tabelas.noticias.some(n => n.url === 'https://agro.exemplo/soja'), JSON.stringify(rf));
+  db.tabelas.noticias = db.tabelas.noticias.filter(n => n.url !== 'https://agro.exemplo/funrural');
+  db.tabelas.noticias_fontes[1].ativo = true; db.tabelas.noticias_fontes.pop();
   chk('a fonte que respondeu fica com o "último ok"; a que falhou, com o erro', f1.ultimo_ok && f1.itens_ultima === 2 && !f1.ultimo_erro && f2.ultimo_erro === 'HTTP 500' && !f2.ultimo_ok, JSON.stringify([f1, f2]));
   // a triagem: a carteira do banco falso + a IA falsa
   Object.assign(db.tabelas, {
