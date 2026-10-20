@@ -11,6 +11,8 @@
 // + assets/js/tarefas-acoes.js — a mensagem, assets/js/chat-equipe.js —, a mesma regra das telas). Uma proposta por
 // pergunta (a mensagem com arquivo toma o lugar do cartão dos arquivos que a buscou).
 // O vigia do sistema (vigia_achados) entra na lista e no ver_empresa: o que o banco achou de desencontrado ou parado.
+// Desde 20/10/2026, o feed de notícias (noticias, com a fonte pelo nome e as empresas que cada uma alcança pelo nome) e a
+// revisão do honorário dos clientes (revisoes_honorario, só dos sócios) também — e as duas no ver_empresa.
 // Lista branca: só as tabelas e colunas daqui são lidas. Ficam fora a senha/credencial do cadastro, o RG e o nascimento
 // das pessoas físicas do cadastro (o CPF e o endereço do cadastro entram: são o dado de trabalho do IRPF), os documentos
 // pessoais dos sócios (CPF, RG, endereço, nascimento), as respostas dos formulários de admissão e rescisão, as
@@ -23,11 +25,14 @@ import { rotinaDoDia, rotinaFeita, ymd } from '../../../assets/js/rotinas-dia.js
 import { EQUIPE, NOME_POR_EMAIL } from '../../../assets/js/equipe.js';
 import { ficaDeFora, mudancaDe, proximasNascemCom, PRIORIDADES } from '../../../assets/js/tarefas-acoes.js';
 import { rotuloDaRegra } from '../../../assets/js/vigia.js';
+import { ROTULO_SETOR, ROTULO_RELEVANCIA } from '../../../assets/js/noticias.js';
 import { pastaDaUrl, filtrarArquivos } from './drive.js';
 
 // ---------- a lista branca: tabela → colunas lidas, as que vêm sem pedir, o que é cada coisa ----------
 // notas: o que o modelo precisa saber da coluna (valores possíveis, unidade); enums: colunas de tipo enumerado no banco
-// (só aceitam =, != e "em"); pk: a ordem estável pra paginar; socios: só os sócios leem (a regra é do banco)
+// (só aceitam =, != e "em"); pk: a ordem estável pra paginar; socios: só os sócios leem (a regra é do banco); arrays:
+// colunas de lista (=/contem = a lista tem o valor; "em" = tem algum deles); empresas: a coluna de lista de empresas, que
+// sai com quantas e os nomes; fonte: o fonte_id sai como o nome da fonte do feed
 export const TABELAS = {
   clientes: { rotulo: 'o cadastro das empresas',
     desc: 'Cadastro ("Base mestre"): empresas (PJ) e pessoas físicas (PF), inclusive quem já saiu. Quem é cliente hoje: carteira_info.',
@@ -162,12 +167,33 @@ export const TABELAS = {
   // o filtro fixo tira)
   vigia_achados: { rotulo: 'o que o vigia achou', fixoNaoSocio: 'so_socios=eq.false',
     notaNaoSocio: 'Pra quem não é sócio, os achados só dos sócios (o cliente da carteira sem cobrança, que usa o financeiro do escritório) não entram nesta leitura: desses, não diga que não há nenhum — diga que só os sócios veem.',
-    desc: 'O vigia do sistema: regras que rodam de hora em hora e acham o que ficou pra trás ou desencontrado (admissão sem registro, rescisão com pagamento chegando, alvará vencido, boleto parado, cliente da carteira sem cobrança ou sem obrigação fiscal, obrigação, tarefa ou rotina sem responsável, proposta parada, cadastro desencontrado da carteira...). Cada achado diz quem cuida e a tela onde se resolve. Arrumou na tela, ele some sozinho na rodada seguinte (resolvido); ignorado = alguém marcou que não é problema. O que precisa de atenção agora: situacao = aberto.',
+    desc: 'O vigia do sistema: regras que rodam de hora em hora e acham o que ficou pra trás ou desencontrado (admissão sem registro, rescisão com pagamento chegando, alvará vencido, boleto parado, cliente da carteira sem cobrança ou sem obrigação fiscal, reajuste aceito na Precificação que não entrou no boleto ou no Conta Azul, obrigação, tarefa ou rotina sem responsável, proposta parada, cadastro desencontrado da carteira...). Cada achado diz quem cuida e a tela onde se resolve. Arrumou na tela, ele some sozinho na rodada seguinte (resolvido); ignorado = alguém marcou que não é problema. O que precisa de atenção agora: situacao = aberto.',
     cols: ['id', 'regra', 'titulo', 'detalhe', 'setor', 'responsavel', 'gravidade', 'cliente_id', 'link', 'prazo', 'situacao', 'primeiro_visto', 'ultimo_visto', 'resolvido_em', 'ignorado_em', 'ignorado_por', 'motivo_ignorado'],
     padrao: ['regra', 'titulo', 'detalhe', 'responsavel', 'gravidade', 'situacao', 'primeiro_visto'],
     notas: { situacao: 'aberto (a conferir) | resolvido | ignorado', gravidade: 'alta (urgente) | media | baixa', responsavel: 'quem cuida; "Ambos" = Samuel e Diego',
       link: 'a tela onde se resolve', primeiro_visto: 'quando o vigia achou', ignorado_por: 'e-mail de quem ignorou',
-      regra: 'admissao_nao_registrada | admissao_sem_vinculo | rescisao_pagamento | rescisao_sem_vinculo | alvara_vencendo | cliente_sem_cobranca | boletos_nao_gerados | boleto_parado | cobranca_ex_cliente | faturavel_parado | cadastro_desencontrado | carteira_sem_cadastro | proposta_parada | transicao_atrasada | cliente_sem_obrigacao | obrigacao_sem_responsavel | obrigacao_ex_cliente | reforma_prazo | tarefa_responsavel | tarefa_repetida | tarefa_ex_cliente | recorrente_ex_cliente | rotina_sem_responsavel' } },
+      regra: 'admissao_nao_registrada | admissao_sem_vinculo | rescisao_pagamento | rescisao_sem_vinculo | alvara_vencendo | cliente_sem_cobranca | boletos_nao_gerados | boleto_parado | cobranca_ex_cliente | faturavel_parado | reajuste_nao_aplicado | cadastro_desencontrado | carteira_sem_cadastro | proposta_parada | transicao_atrasada | cliente_sem_obrigacao | obrigacao_sem_responsavel | obrigacao_ex_cliente | reforma_prazo | tarefa_responsavel | tarefa_repetida | tarefa_ex_cliente | recorrente_ex_cliente | rotina_sem_responsavel' } },
+  // o feed de notícias (20/10/2026): de hora em hora a função noticias lê as fontes e a IA diz se interessa, a importância,
+  // os setores, o resumo, por que importa, o que fazer e quais clientes da carteira a notícia alcança (pelo cadastro)
+  noticias: { rotulo: 'as notícias do feed', arrays: ['setores', 'clientes'], empresas: 'clientes', fonte: true,
+    desc: 'O feed de notícias (tela Notícias e a aba Notícias do balão): de hora em hora o sistema lê as fontes (Receita Federal, PGFN, Fazenda, MTE e eSocial, Receita Estadual e Sefaz RS, JucisRS, STF, imprensa contábil, CFC e CRCRS) e a IA lê cada notícia: se interessa ao escritório, a importância, os setores, o resumo, por que importa, o que fazer e quais clientes da carteira ela alcança. As que valem: situacao = triada. A mesma notícia de outras fontes fica no grupo da principal: grupo vazio = a principal (use pra não contar duas vezes).',
+    cols: ['id', 'titulo', 'url', 'fonte_id', 'publicada_em', 'coletada_em', 'triada_em', 'situacao', 'relevancia', 'setores', 'resumo', 'por_que', 'acao', 'clientes', 'grupo'],
+    padrao: ['titulo', 'fonte_id', 'publicada_em', 'relevancia', 'setores', 'resumo', 'acao', 'clientes'],
+    notas: { situacao: 'triada (a IA leu e interessa) | descartada (não interessa ao escritório) | nova | triando | erro', relevancia: 'alta (Importante) | media (Vale saber) | baixa (Pouco efeito)',
+      setores: 'lista (dp | fiscal | contabil | societario | irpf): "=" ou "contem" acha quem tem o setor', clientes: 'lista das empresas da carteira que a notícia alcança: "contem" e o id da empresa acha as dela; sai com quantas e os nomes',
+      fonte_id: 'sai como o nome da fonte', grupo: 'vazio = a principal; preenchido = a mesma notícia de outra fonte (o id da principal)', url: 'o link da notícia', publicada_em: 'quando a fonte publicou (sem data, vale coletada_em)', acao: 'o que fazer, na leitura da IA' } },
+  noticias_fontes: { rotulo: 'as fontes do feed', desc: 'De onde as notícias do feed vêm, e como foi a última coleta de cada uma.',
+    cols: ['id', 'nome', 'tipo', 'site', 'ativo', 'ultima_coleta', 'ultimo_ok', 'ultimo_erro', 'itens_ultima'], padrao: ['nome', 'tipo', 'ativo', 'ultima_coleta', 'ultimo_erro'],
+    notas: { tipo: 'oficial | tribunal | imprensa | classe', ultimo_erro: 'o erro da última coleta (vazio = foi bem)' } },
+  // a revisão do honorário dos clientes da carteira (Precificação › Carteira, 19/10/2026): só os sócios leem (a regra é do
+  // banco); as respostas do questionário e o cálculo do motor ficam de fora
+  revisoes_honorario: { rotulo: 'as revisões de honorário', socios: true,
+    desc: 'A revisão do honorário dos clientes da carteira (Precificação › Carteira): o motor de preço com o que o sistema sabe e as respostas conferidas, o honorário de hoje e o sugerido, a situação (estudo → reajuste proposto → aceito ou mantido) e, no aceito, o valor combinado e o mês em que ele começa. Vale a mais recente de cada empresa. Só os sócios leem.',
+    cols: ['id', 'cliente_id', 'status', 'honorario_atual', 'fonte_atual', 'honorario_sugerido', 'honorario_novo', 'vigencia', 'observacao', 'criado_por', 'criado_em', 'atualizado_em', 'aplicado_em', 'aplicado_por'],
+    padrao: ['cliente_id', 'status', 'honorario_atual', 'honorario_sugerido', 'honorario_novo', 'vigencia', 'atualizado_em', 'aplicado_em'],
+    notas: { status: 'estudo | proposto (reajuste proposto) | aceito | mantido', honorario_atual: 'o de hoje quando revisou (R$/mês)', fonte_atual: 'boletos | conta_azul | informado',
+      honorario_sugerido: 'o do motor na revisão (R$/mês)', honorario_novo: 'o combinado (no aceito) ou o proposto (R$/mês)', vigencia: "'AAAA-MM': o mês em que o valor novo começa",
+      aplicado_em: 'quando o valor novo entrou no boleto (vazio no aceito = ainda não entrou)', criado_por: 'e-mail de quem revisou' } },
   ca_parcelas: { rotulo: 'o financeiro do escritório', socios: true,
     desc: 'Contas a receber e a pagar do próprio escritório (Conta Azul). Só os sócios leem.',
     cols: ['id', 'natureza', 'descricao', 'data_vencimento', 'data_competencia', 'data_pagamento', 'mes_pagamento', 'status', 'status_traduzido', 'total', 'pago', 'nao_pago', 'fornecedor_cliente_nome', 'categorias'],
@@ -196,7 +222,7 @@ export const DEFINICOES = [
     input_schema: { type: 'object', properties: { termo: { type: 'string', description: 'nome, parte do nome ou CNPJ/CPF' },
       limite: { type: 'integer', minimum: 1, maximum: 15, description: 'quantas (padrão 8)' } }, required: ['termo'] } },
   { name: 'ver_empresa',
-    description: 'Tudo o que o sistema tem de uma empresa num lugar só: cadastro, carteira, sócios, contatos, serviços contratados, honorários (base e últimos boletos), tarefas abertas, tarefas recorrentes, obrigações, alvarás, admissões e rescisões, Reforma (situação do caso), reuniões, transições, regularizações, propostas, faturáveis, DRE e Fator R. Sem "empresa", usa a empresa aberta na tela.',
+    description: 'Tudo o que o sistema tem de uma empresa num lugar só: cadastro, carteira, sócios, contatos, serviços contratados, honorários (base e últimos boletos), tarefas abertas, tarefas recorrentes, obrigações, alvarás, admissões e rescisões, Reforma (situação do caso), reuniões, transições, regularizações, propostas, faturáveis, DRE, Fator R, o que o vigia achou dela, as notícias do feed que a alcançam (30 dias) e, pros sócios, a revisão do honorário. Sem "empresa", usa a empresa aberta na tela.',
     input_schema: { type: 'object', properties: { empresa: { type: 'string', description: 'id, nome ou CNPJ; vazio = a empresa aberta na tela' } } } },
   { name: 'agenda',
     description: 'A agenda de uma pessoa da equipe (ou de todos) num dia ou período: as tarefas não concluídas com prazo no período, as atrasadas (prazo antes de hoje) e as rotinas do escritório que caem no período (com a regra da agenda: dia útil, adiamento, fim de semana sem rotina). Sem "pessoa", é a agenda de quem pergunta.',
@@ -291,6 +317,8 @@ export const DEFINICOES = [
 const fin = v => v != null && v !== '' && Number.isFinite(+v);
 export const brl = v => fin(v) ? (+v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—';
 export const dataBR = iso => iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '—';
+// data e hora (timestamptz) → o dia em Brasília (UTC−3, sem horário de verão)
+export const diaDoMomento = iso => { const d = new Date(iso || ''); return !iso || isNaN(d) ? '—' : dataBR(new Date(d.getTime() - 3 * 3600e3).toISOString()); };
 const DIAS = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
 const corte = (s, n) => { const t = String(s); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
 export function valorCurto(v, n = 280) {
@@ -349,6 +377,22 @@ export function montarFiltro(t, f) {
   const v = f.valor;
   if (enumCol && ['contem', 'comeca_com', '>', '>=', '<', '<='].includes(op)) throw new Error('a coluna "' + c + '" só aceita =, != ou "em"');
   if (['=', '!=', '>', '>=', '<', '<=', 'contem', 'comeca_com'].includes(op) && (v == null || typeof v === 'object')) throw new Error('o filtro "' + op + '" em ' + c + ' precisa de um valor');
+  // coluna de lista (os setores e as empresas de uma notícia): "=" e "contem" = a lista tem o valor; "em" = tem algum
+  // deles; vazio = a lista vazia
+  if ((T.arrays || []).includes(c)) {
+    const lista = xs => enc('{' + xs.map(x => aspas(valorDe(x))).join(',') + '}');
+    if (op === '=' || op === 'contem') return { params: [c + '=cs.' + lista([v])], arvore: null };
+    if (op === '!=') return { params: [c + '=not.cs.' + lista([v])], arvore: null };
+    if (op === 'em') {
+      const xs = (Array.isArray(v) ? v : [v]).filter(x => x != null && typeof x !== 'object');
+      if (!xs.length) throw new Error('o filtro "em" em ' + c + ' precisa de uma lista de valores');
+      if (xs.length > MAX_EM) throw new Error('lista longa demais no "em" de ' + c + ' (' + xs.length + ' valores; até ' + MAX_EM + ')');
+      return { params: [c + '=ov.' + lista(xs)], arvore: null };
+    }
+    if (op === 'vazio') return { params: [c + '=eq.' + enc('{}')], arvore: null };
+    if (op === 'preenchido') return { params: [c + '=neq.' + enc('{}')], arvore: null };
+    throw new Error('a coluna "' + c + '" é uma lista: só aceita =, contem, !=, em, vazio e preenchido');
+  }
   const pessoa = typeof v === 'string' && PESSOA.has(c);
   // data sozinha numa coluna de data e hora: o dia inteiro em Brasília
   if (MOMENTO.test(c) && typeof v === 'string' && DATA.test(v) && ['=', '!=', '>', '>=', '<', '<='].includes(op)) {
@@ -468,6 +512,25 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     });
   }
   const linhaTexto = l => Object.entries(l).map(([k, v]) => k + ': ' + valorCurto(v)).join(' · ');
+  // a fonte da notícia pelo nome (no lugar do fonte_id) e a lista de empresas (as que a notícia alcança) com quantas e os
+  // nomes — sem isso, a saída seria uma fila de ids
+  const MAX_NOMES = 8;
+  async function comNomes(T, linhas) {
+    let out = linhas;
+    if (T.fonte && out.some(l => l && l.fonte_id)) {
+      const ids = [...new Set(out.map(l => l && l.fonte_id).filter(x => UUID.test(String(x))))];
+      const { linhas: fs } = ids.length ? await ler('noticias_fontes?select=id,nome&id=in.(' + ids.join(',') + ')') : { linhas: [] };
+      const nomes = new Map(fs.map(f => [f.id, f.nome]));
+      out = out.map(l => { if (!l || !('fonte_id' in l)) return l; const o = {}; Object.entries(l).forEach(([k, v]) => { if (k === 'fonte_id') o.fonte = nomes.get(v) || '—'; else o[k] = v; }); return o; });
+    }
+    const c = T.empresas;
+    if (c && out.some(l => l && Array.isArray(l[c]) && l[c].length)) {
+      const cad = await cadastroDe(out.flatMap(l => (l && Array.isArray(l[c]) ? l[c] : [])));
+      out = out.map(l => (!l || !Array.isArray(l[c]) ? l : { ...l, [c]: !l[c].length ? 'nenhuma' : l[c].length + ' — ' + l[c].slice(0, MAX_NOMES).map(id => (cad.get(id) || {}).nome_principal || '(cadastro não encontrado)').join(', ')
+        + (l[c].length > MAX_NOMES ? ' e mais ' + (l[c].length - MAX_NOMES) : '') }));
+    }
+    return out;
+  }
 
   // a empresa pelo id, nome ou CNPJ (uma só; várias → lista pra escolher)
   async function acharEmpresa(termo) {
@@ -538,7 +601,8 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     if (a.erro) return a.erro;
     const id = a.id;
     const q = (caminho, op) => ler(caminho, op).then(r => r, err => ({ erro: (err && err.message) || 'erro' }));
-    const [cad, cart, soc, cont, serv, cobC, cobM, tar, rec, obr, alv, adm, res, rt, reu, trE, reg, prec, fat, dre, fr, vig] = await Promise.all([
+    const desde30 = inicioBR(maisDias(hoje, -30));
+    const [cad, cart, soc, cont, serv, cobC, cobM, tar, rec, obr, alv, adm, res, rt, reu, trE, reg, prec, fat, dre, fr, vig, nots, rev] = await Promise.all([
       q('clientes?select=' + TABELAS.clientes.cols.join(',') + '&id=eq.' + id),
       q('carteira_info?select=entrada,saida,motivo_saida,segmento,sistemas,contab_digital,contato,ramo,observacao,inadimplente_desde&cliente_id=eq.' + id),
       q('socios?select=nome,qualificacao,participacao_percentual,eh_administrador,telefone,email&cliente_id=eq.' + id + '&order=participacao_percentual.desc.nullslast'),
@@ -560,7 +624,13 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
       q('faturaveis?select=descricao,valor,executado_em&cliente_id=eq.' + id + '&status=eq.a_faturar'),
       q('dre_simples?select=periodo,criado_em&cliente_id=eq.' + id + '&order=criado_em.desc&limit=3'),
       q('fr_empresas?select=nome,ativo&cliente_id=eq.' + id),
-      q('vigia_achados?select=titulo,detalhe,responsavel,gravidade&cliente_id=eq.' + id + '&situacao=eq.aberto' + (usuario.socio ? '' : '&' + TABELAS.vigia_achados.fixoNaoSocio) + '&limit=20')
+      q('vigia_achados?select=titulo,detalhe,responsavel,gravidade&cliente_id=eq.' + id + '&situacao=eq.aberto' + (usuario.socio ? '' : '&' + TABELAS.vigia_achados.fixoNaoSocio) + '&limit=20'),
+      // as notícias do feed que a alcançam (as principais, dos últimos 30 dias)
+      q('noticias?select=titulo,publicada_em,coletada_em,relevancia,setores,acao&situacao=eq.triada&grupo=is.null&clientes=cs.' + enc('{' + id + '}')
+        + '&coletada_em=gte.' + enc(desde30) + '&order=coletada_em.desc&limit=8', { contar: true }),
+      // a revisão do honorário (Precificação › Carteira): só os sócios
+      usuario.socio ? q('revisoes_honorario?select=status,honorario_atual,fonte_atual,honorario_sugerido,honorario_novo,vigencia,criado_em,atualizado_em,aplicado_em&cliente_id=eq.' + id + '&order=atualizado_em.desc.nullslast&limit=1')
+        : Promise.resolve({ linhas: [] })
     ]);
     if (cad.erro) throw new Error(cad.erro);
     const c = cad.linhas[0];
@@ -629,6 +699,19 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     // o que o vigia achou dela e ainda está aberto (desencontro, coisa parada)
     if (!vig.erro && vig.linhas.length) partes.push('O vigia (a conferir): ' + vig.linhas.map(x => valorCurto(x.titulo, 140) + (x.gravidade === 'alta' ? ' (URGENTE)' : '')
       + (x.detalhe ? ' — ' + valorCurto(x.detalhe, 180) : '') + ' · com ' + (x.responsavel || '—')).join(' | '));
+    // o feed: as notícias que a IA disse que a alcançam (pelo cadastro: regime, atividade, cidade, obrigações, folha)
+    if (!nots.erro && nots.linhas.length) partes.push('Notícias do feed que a alcançam (30 dias' + ((nots.total || 0) > nots.linhas.length ? ', as ' + nots.linhas.length + ' mais novas de ' + nots.total : '') + '): '
+      + nots.linhas.map(x => diaDoMomento(x.publicada_em || x.coletada_em) + ' · ' + (ROTULO_RELEVANCIA[x.relevancia] || 'Pouco efeito')
+        + ((x.setores || []).length ? ' · ' + x.setores.map(k => ROTULO_SETOR[k] || k).join(' e ') : '') + ' · ' + valorCurto(x.titulo, 140) + (x.acao ? ' — o que fazer: ' + valorCurto(x.acao, 160) : '')).join(' | '));
+    else if (!nots.erro) partes.push('Notícias do feed que a alcançam (30 dias): nenhuma.');
+    // a revisão do honorário (só os sócios veem)
+    if (usuario.socio && !rev.erro && rev.linhas.length) {
+      const r = rev.linhas[0];
+      partes.push('Revisão do honorário (Precificação › Carteira): ' + (r.status === 'proposto' ? 'reajuste proposto' : situacao(r.status)) + ' em ' + diaDoMomento(r.atualizado_em || r.criado_em)
+        + (fin(r.honorario_atual) ? ' · hoje ' + brl(r.honorario_atual) + (r.fonte_atual === 'conta_azul' ? ' (Conta Azul)' : '') : '') + (fin(r.honorario_sugerido) ? ' · motor ' + brl(r.honorario_sugerido) : '')
+        + (fin(r.honorario_novo) ? ' · ' + (r.status === 'aceito' ? 'combinado ' : 'proposto ') + brl(r.honorario_novo) + (r.vigencia ? ' a partir de ' + String(r.vigencia).slice(5, 7) + '/' + String(r.vigencia).slice(0, 4) : '') : '')
+        + (r.status === 'aceito' ? (r.aplicado_em ? ' · já no boleto desde ' + diaDoMomento(r.aplicado_em) : ' · ainda não entrou no boleto') : ''));
+    }
     return partes.join('\n');
   }
 
@@ -696,7 +779,7 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     const { linhas, total } = await ler(base + 'select=' + m.colunas.join(',') + '&order=' + ord + '&limit=' + limite + '&offset=' + inicio, { contar: true });
     const tot = total == null ? inicio + linhas.length : total;
     if (!linhas.length) return T.rotulo + ' — nenhuma linha com esses filtros' + (inicio ? ' a partir da ' + (inicio + 1) + 'ª' : '') + ' (total: ' + tot + ').';
-    const com = await comEmpresa(linhas, m.extras);
+    const com = await comNomes(T, await comEmpresa(linhas, m.extras));
     // a saída tem tamanho: entram as linhas que cabem, e a primeira linha diz de onde seguir
     const corpo = []; let tam = 0;
     for (const l of com) { const s = '- ' + linhaTexto(l); if (corpo.length && tam + s.length > MAX_SAIDA) break; corpo.push(s); tam += s.length + 1; }

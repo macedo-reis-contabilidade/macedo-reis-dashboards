@@ -16,7 +16,7 @@ export const ROTULOS = {
   rescisao_pagamento: 'Rescisões com pagamento chegando', rescisao_sem_vinculo: 'Rescisões sem empresa vinculada',
   alvara_vencendo: 'Alvarás vencidos ou vencendo',
   cliente_sem_cobranca: 'Clientes sem cobrança', boletos_nao_gerados: 'Boletos do mês não gerados', boleto_parado: 'Boletos parados',
-  cobranca_ex_cliente: 'Cobrança de ex-cliente', faturavel_parado: 'Serviços a faturar parados',
+  cobranca_ex_cliente: 'Cobrança de ex-cliente', faturavel_parado: 'Serviços a faturar parados', reajuste_nao_aplicado: 'Reajustes aceitos fora da cobrança',
   cadastro_desencontrado: 'Carteira e cadastro desencontrados', carteira_sem_cadastro: 'Na carteira sem cadastro', proposta_parada: 'Propostas paradas',
   transicao_atrasada: 'Transições atrasadas',
   cliente_sem_obrigacao: 'Clientes sem obrigação fiscal', obrigacao_sem_responsavel: 'Obrigações sem responsável', obrigacao_ex_cliente: 'Obrigações de ex-cliente',

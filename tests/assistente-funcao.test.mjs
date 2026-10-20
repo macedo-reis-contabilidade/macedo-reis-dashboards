@@ -27,6 +27,13 @@ chk('o que nunca é lido: credenciais, documentos pessoais e as respostas dos fo
 chk('tabelas fora: configurações, chats, tokens e o backup pessoal', ['configuracoes_escritorio', 'rt_chat', 'assistente_chat', 'ca_tokens', 'financeiro_backup', 'ca_sync_log'].every(t => !TABELAS[t]));
 chk('as colunas que vêm sem pedir estão entre as lidas', Object.values(TABELAS).every(T => T.padrao.every(c => T.cols.includes(c))));
 chk('o financeiro do escritório marcado como só dos sócios', TABELAS.ca_parcelas.socios === true && TABELAS.ca_categorias.socios === true);
+chk('as revisões de honorário só dos sócios, sem as respostas do questionário e o cálculo do motor', TABELAS.revisoes_honorario.socios === true
+  && !['respostas', 'resultado'].some(c => TABELAS.revisoes_honorario.cols.includes(c)));
+chk('as notícias do feed: sem os critérios, o trecho e o custo da triagem; setores e clientes como listas', TABELAS.noticias && !['criterios', 'trecho', 'tokens_entrada', 'erro', 'modelo'].some(c => TABELAS.noticias.cols.includes(c))
+  && JSON.stringify(TABELAS.noticias.arrays) === '["setores","clientes"]' && TABELAS.noticias.empresas === 'clientes' && !TABELAS.noticias_fontes.cols.includes('filtro'));
+chk('o prompt: as notícias (triadas, a principal do grupo, a leitura da IA a conferir) e as revisões só dos sócios',
+  /as que valem são as triadas \(situacao = triada\)/.test(INSTRUCOES) && /consultar noticias com clientes contem o id dela/.test(INSTRUCOES) && /são a leitura da IA do feed/.test(INSTRUCOES)
+  && /as revisões de honorário são só dos sócios/.test(INSTRUCOES));
 chk('o dicionário do prompt lista as tabelas e não tem credenciais', Object.keys(TABELAS).every(t => dicionario().includes('## ' + t + ' ')) && !/credenciais/.test(dicionario()));
 chk('as definições: as seis de ler e as sete propostas, consultar só com as tabelas da lista', DEFINICOES.map(d => d.name).join() === 'buscar_empresa,ver_empresa,agenda,consultar,perguntar_reforma,buscar_arquivos,propor_concluir_tarefas,propor_alterar_tarefas,propor_marcar_pago,propor_criar_tarefa,propor_enviar_mensagem,propor_revisao_atrasadas,propor_ver_vigia'
   && JSON.stringify(DEFINICOES.find(d => d.name === 'consultar').input_schema.properties.tabela.enum) === JSON.stringify(Object.keys(TABELAS)));
@@ -62,6 +69,12 @@ chk('"vazio" e "preenchido"', filtroUrl('carteira_info', { coluna: 'saida', op: 
 chk('coluna de tipo enumerado não aceita "contem"', /só aceita =, != ou "em"/.test(erroDe(() => filtroUrl('clientes', { coluna: 'status', op: 'contem', valor: 'at' }))));
 chk('filtro sem valor: erro claro', /precisa de um valor/.test(erroDe(() => filtroUrl('tarefas', { coluna: 'prazo', op: '<' }))));
 chk('booleano vira true/false', filtroUrl('cobrancas_config', { coluna: 'ativo', op: '=', valor: false }) === 'ativo=eq.false');
+chk('coluna de lista: "=" e "contem" = a lista tem o valor; "em" = tem algum; != e vazio', decodeURIComponent(filtroUrl('noticias', { coluna: 'setores', op: 'contem', valor: 'dp' })) === 'setores=cs.{"dp"}'
+  && decodeURIComponent(filtroUrl('noticias', { coluna: 'setores', op: '=', valor: 'fiscal' })) === 'setores=cs.{"fiscal"}'
+  && decodeURIComponent(filtroUrl('noticias', { coluna: 'setores', op: 'em', valor: ['dp', 'fiscal'] })) === 'setores=ov.{"dp","fiscal"}'
+  && decodeURIComponent(filtroUrl('noticias', { coluna: 'setores', op: '!=', valor: 'dp' })) === 'setores=not.cs.{"dp"}'
+  && decodeURIComponent(filtroUrl('noticias', { coluna: 'clientes', op: 'vazio' })) === 'clientes=eq.{}'
+  && /só aceita =, contem, !=, em, vazio e preenchido/.test(erroDe(() => filtroUrl('noticias', { coluna: 'setores', op: 'comeca_com', valor: 'd' }))));
 chk('as operações documentadas são as aceitas', OPS.every(op => { try { filtroUrl('tarefas', { coluna: 'prazo', op, valor: op === 'em' ? ['2026-10-14'] : '2026-10-14' }); return true; } catch (e) { return false; } }));
 
 // ---------- as ferramentas, com um banco de mentira ----------
@@ -90,6 +103,8 @@ function bancoFalso({ tarefas = [], rotinas = [], extras = {} } = {}) {
       if (op2 === 'lt') linhas = linhas.filter(l => String(l[k]) < val);
       if (op2 === 'lte') linhas = linhas.filter(l => String(l[k]) <= val);
       if (op2 === 'gte') linhas = linhas.filter(l => String(l[k]) >= val);
+      if (op2 === 'is' && val === 'null') linhas = linhas.filter(l => l[k] == null);
+      if (op2 === 'cs') { const xs = val.replace(/^\{|\}$/g, '').split(',').filter(Boolean).map(x => x.replace(/^"|"$/g, '')); linhas = linhas.filter(l => Array.isArray(l[k]) && xs.every(x => l[k].map(String).includes(x))); }
       if (op2 === 'ilike' && k !== 'nome_busca') {
         // como no banco: * é qualquer trecho e _ qualquer letra; sem maiúscula (e, aqui, sem acento)
         const rx = new RegExp('^' + normalizarBusca(val).replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/_/g, '.') + '$');
@@ -225,6 +240,37 @@ function bancoFalso({ tarefas = [], rotinas = [], extras = {} } = {}) {
   const r3 = await fs3.perguntar_reforma({ pergunta: 'x', devolver_direto: false });
   chk('com o tempo acabando, a resposta da Reforma vai direto mesmo pra cruzar', r3 && r3.final === true && r3.texto === 'Texto da Reforma.');
 }
+console.log('As notícias do feed e a revisão do honorário (20/10/2026):');
+{
+  const FONTE = '44444444-4444-4444-8444-444444444444', N1 = '55555555-5555-4555-8555-555555555555', N2 = '66666666-6666-4666-8666-666666666666', N3 = '77777777-7777-4777-8777-777777777777';
+  const noticias = [
+    { id: N1, titulo: 'eSocial muda o leiaute (teste)', url: 'https://noticia.exemplo/1', fonte_id: FONTE, publicada_em: '2026-10-20T02:30:00Z', coletada_em: '2026-10-20T03:00:00Z', situacao: 'triada', relevancia: 'alta',
+      setores: ['dp'], resumo: 'Resumo 1', acao: 'Conferir os eventos', clientes: [ID_A, ID_B], grupo: null },
+    { id: N2, titulo: 'A mesma, de outra fonte (teste)', url: 'https://noticia.exemplo/2', fonte_id: FONTE, publicada_em: '2026-10-20T04:00:00Z', coletada_em: '2026-10-20T04:00:00Z', situacao: 'triada', relevancia: 'media',
+      setores: ['dp'], resumo: 'Resumo 2', acao: null, clientes: [ID_A], grupo: N1 },
+    { id: N3, titulo: 'Prazo do PGDAS (teste)', url: 'https://noticia.exemplo/3', fonte_id: FONTE, publicada_em: '2026-10-19T12:00:00Z', coletada_em: '2026-10-19T12:00:00Z', situacao: 'triada', relevancia: 'media',
+      setores: ['fiscal'], resumo: 'Resumo 3', acao: null, clientes: [ID_B], grupo: null }];
+  const revisoes = [{ cliente_id: ID_A, status: 'aceito', honorario_atual: 450, fonte_atual: 'boletos', honorario_sugerido: 640, honorario_novo: 600, vigencia: '2026-11',
+    criado_em: '2026-10-19T12:00:00Z', atualizado_em: '2026-10-20T13:00:00Z', aplicado_em: null }];
+  const { banco, log } = bancoFalso({ extras: { noticias, noticias_fontes: [{ id: FONTE, nome: 'Receita Federal (teste)' }], revisoes_honorario: revisoes } });
+  const thalia = criarFerramentas({ banco, hoje: '2026-10-20', usuario: { email: 'fiscal@macedoereis.com.br', nome: 'Thalia', socio: false } });
+  const r = await thalia.consultar({ tabela: 'noticias', filtros: [{ coluna: 'situacao', op: '=', valor: 'triada' }, { coluna: 'grupo', op: 'vazio' }, { coluna: 'setores', op: 'contem', valor: 'dp' }] });
+  chk('consultar as notícias: a principal do setor, com a fonte pelo nome e as empresas que ela alcança pelo nome (sem os ids)', /1 linha\(s\)/.test(r) && /fonte: Receita Federal \(teste\)/.test(r)
+    && /clientes: 2 — LOJA DA ESQUINA LTDA, ESQUINA DO PÃO LTDA/.test(r) && !r.includes(ID_A) && !r.includes(FONTE) && !/A mesma, de outra fonte/.test(r), r);
+  const v = await thalia.ver_empresa({ empresa: ID_A });
+  chk('ver_empresa: as notícias que a alcançam (só a principal, com a data em Brasília, a importância, o setor e o que fazer)', /Notícias do feed que a alcançam \(30 dias\): 19\/10\/2026 · Importante · DP · eSocial muda o leiaute \(teste\) — o que fazer: Conferir os eventos/.test(v)
+    && !/A mesma, de outra fonte/.test(v) && !/PGDAS/.test(v), v);
+  chk('ver_empresa pra quem não é sócio: sem a revisão do honorário (nem consulta)', !/Revisão do honorário/.test(v) && !log.some(x => x.caminho.startsWith('revisoes_honorario')));
+  chk('consultar as revisões pra quem não é sócio: sem acesso, sem consultar o banco', /só os sócios veem/.test(await thalia.consultar({ tabela: 'revisoes_honorario' })) && !log.some(x => x.caminho.startsWith('revisoes_honorario')));
+  const samuel = criarFerramentas({ banco, hoje: '2026-10-20', usuario: { email: 'financeiro@macedoereis.com.br', nome: 'Samuel', socio: true } });
+  const vs = await samuel.ver_empresa({ empresa: ID_A });
+  chk('ver_empresa pro sócio: a revisão do honorário (o de hoje, o motor, o combinado, o mês e se já entrou no boleto)',
+    /Revisão do honorário \(Precificação › Carteira\): aceito em 20\/10\/2026 · hoje R\$\s?450,00 · motor R\$\s?640,00 · combinado R\$\s?600,00 a partir de 11\/2026 · ainda não entrou no boleto/.test(vs), vs);
+  const sem = await samuel.ver_empresa({ empresa: ID_B });
+  chk('ver_empresa: cada empresa com as dela; sem notícia nos 30 dias, diz "nenhuma"', /Notícias do feed que a alcançam \(30 dias\): .*19\/10\/2026 · Vale saber · Fiscal · Prazo do PGDAS \(teste\)/.test(sem)
+    && /Notícias do feed que a alcançam \(30 dias\): nenhuma\./.test(await criarFerramentas({ banco: bancoFalso({ extras: { noticias: [] } }).banco, hoje: '2026-10-20', usuario: {} }).ver_empresa({ empresa: ID_A })), sem);
+}
+
 console.log('As propostas (nada muda aqui: a tela mostra e a pessoa confirma):');
 {
   const U = n => '7a000000-0000-4000-8000-' + String(n).padStart(12, '0');
