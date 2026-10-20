@@ -514,7 +514,8 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
   const linhaTexto = l => Object.entries(l).map(([k, v]) => k + ': ' + valorCurto(v)).join(' · ');
   // a fonte da notícia pelo nome (no lugar do fonte_id) e a lista de empresas (as que a notícia alcança) com quantas e os
   // nomes — sem isso, a saída seria uma fila de ids
-  const MAX_NOMES = 8;
+  const MAX_NOMES = 8, MAX_NOTICIAS_EMPRESA = 10;
+  const PESO_RELEVANCIA = { alta: 0, media: 1, baixa: 2 };
   async function comNomes(T, linhas) {
     let out = linhas;
     if (T.fonte && out.some(l => l && l.fonte_id)) {
@@ -625,9 +626,9 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
       q('dre_simples?select=periodo,criado_em&cliente_id=eq.' + id + '&order=criado_em.desc&limit=3'),
       q('fr_empresas?select=nome,ativo&cliente_id=eq.' + id),
       q('vigia_achados?select=titulo,detalhe,responsavel,gravidade&cliente_id=eq.' + id + '&situacao=eq.aberto' + (usuario.socio ? '' : '&' + TABELAS.vigia_achados.fixoNaoSocio) + '&limit=20'),
-      // as notícias do feed que a alcançam (as principais, dos últimos 30 dias)
-      q('noticias?select=titulo,publicada_em,coletada_em,relevancia,setores,acao&situacao=eq.triada&grupo=is.null&clientes=cs.' + enc('{' + id + '}')
-        + '&coletada_em=gte.' + enc(desde30) + '&order=coletada_em.desc&limit=8', { contar: true }),
+      // as notícias do feed que a alcançam (as principais, dos últimos 30 dias; a ordem é feita aqui)
+      q('noticias?select=titulo,publicada_em,coletada_em,relevancia,setores,acao,clientes&situacao=eq.triada&grupo=is.null&clientes=cs.' + enc('{' + id + '}')
+        + '&coletada_em=gte.' + enc(desde30) + '&order=coletada_em.desc&limit=60', { contar: true }),
       // a revisão do honorário (Precificação › Carteira): só os sócios
       usuario.socio ? q('revisoes_honorario?select=status,honorario_atual,fonte_atual,honorario_sugerido,honorario_novo,vigencia,criado_em,atualizado_em,aplicado_em&cliente_id=eq.' + id + '&order=atualizado_em.desc.nullslast&limit=1')
         : Promise.resolve({ linhas: [] })
@@ -699,11 +700,18 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     // o que o vigia achou dela e ainda está aberto (desencontro, coisa parada)
     if (!vig.erro && vig.linhas.length) partes.push('O vigia (a conferir): ' + vig.linhas.map(x => valorCurto(x.titulo, 140) + (x.gravidade === 'alta' ? ' (URGENTE)' : '')
       + (x.detalhe ? ' — ' + valorCurto(x.detalhe, 180) : '') + ' · com ' + (x.responsavel || '—')).join(' | '));
-    // o feed: as notícias que a IA disse que a alcançam (pelo cadastro: regime, atividade, cidade, obrigações, folha)
-    if (!nots.erro && nots.linhas.length) partes.push('Notícias do feed que a alcançam (30 dias' + ((nots.total || 0) > nots.linhas.length ? ', as ' + nots.linhas.length + ' mais novas de ' + nots.total : '') + '): '
-      + nots.linhas.map(x => diaDoMomento(x.publicada_em || x.coletada_em) + ' · ' + (ROTULO_RELEVANCIA[x.relevancia] || 'Pouco efeito')
-        + ((x.setores || []).length ? ' · ' + x.setores.map(k => ROTULO_SETOR[k] || k).join(' e ') : '') + ' · ' + valorCurto(x.titulo, 140) + (x.acao ? ' — o que fazer: ' + valorCurto(x.acao, 160) : '')).join(' | '));
-    else if (!nots.erro) partes.push('Notícias do feed que a alcançam (30 dias): nenhuma.');
+    // o feed: as notícias que a IA disse que a alcançam (pelo cadastro: regime, atividade, cidade, obrigações, folha) — as
+    // importantes primeiro e, dentro da importância, as que alcançam menos empresas (as específicas dela) antes das gerais
+    if (!nots.erro && nots.linhas.length) {
+      const qtd = x => (Array.isArray(x.clientes) ? x.clientes.length : 0), quando = x => String(x.publicada_em || x.coletada_em || '');
+      const ord = [...nots.linhas].sort((a, b) => (PESO_RELEVANCIA[a.relevancia] ?? 2) - (PESO_RELEVANCIA[b.relevancia] ?? 2) || qtd(a) - qtd(b) || quando(b).localeCompare(quando(a)));
+      const total = Math.max(nots.total || 0, nots.linhas.length), mostra = ord.slice(0, MAX_NOTICIAS_EMPRESA);
+      partes.push('Notícias do feed que a alcançam (30 dias: ' + total + (total > mostra.length ? '; aqui as ' + mostra.length + ' primeiras' : '')
+        + '; as importantes primeiro e, nelas, as que alcançam poucas empresas — as específicas dela — antes das gerais): '
+        + mostra.map(x => diaDoMomento(x.publicada_em || x.coletada_em) + ' · ' + (ROTULO_RELEVANCIA[x.relevancia] || 'Pouco efeito')
+          + ((x.setores || []).length ? ' · ' + x.setores.map(k => ROTULO_SETOR[k] || k).join(' e ') : '') + ' · ' + valorCurto(x.titulo, 140)
+          + ' (alcança ' + (qtd(x) === 1 ? 'só ela' : qtd(x) + ' empresas') + ')' + (x.acao ? ' — o que fazer: ' + valorCurto(x.acao, 160) : '')).join(' | '));
+    } else if (!nots.erro) partes.push('Notícias do feed que a alcançam (30 dias): nenhuma.');
     // a revisão do honorário (só os sócios veem)
     if (usuario.socio && !rev.erro && rev.linhas.length) {
       const r = rev.linhas[0];

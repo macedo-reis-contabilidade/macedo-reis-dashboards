@@ -258,16 +258,23 @@ console.log('As notícias do feed e a revisão do honorário (20/10/2026):');
   chk('consultar as notícias: a principal do setor, com a fonte pelo nome e as empresas que ela alcança pelo nome (sem os ids)', /1 linha\(s\)/.test(r) && /fonte: Receita Federal \(teste\)/.test(r)
     && /clientes: 2 — LOJA DA ESQUINA LTDA, ESQUINA DO PÃO LTDA/.test(r) && !r.includes(ID_A) && !r.includes(FONTE) && !/A mesma, de outra fonte/.test(r), r);
   const v = await thalia.ver_empresa({ empresa: ID_A });
-  chk('ver_empresa: as notícias que a alcançam (só a principal, com a data em Brasília, a importância, o setor e o que fazer)', /Notícias do feed que a alcançam \(30 dias\): 19\/10\/2026 · Importante · DP · eSocial muda o leiaute \(teste\) — o que fazer: Conferir os eventos/.test(v)
+  chk('ver_empresa: as notícias que a alcançam (só a principal, com a data em Brasília, a importância, o setor, quantas empresas e o que fazer)', /Notícias do feed que a alcançam \(30 dias: 1; .*\): 19\/10\/2026 · Importante · DP · eSocial muda o leiaute \(teste\) \(alcança 2 empresas\) — o que fazer: Conferir os eventos/.test(v)
     && !/A mesma, de outra fonte/.test(v) && !/PGDAS/.test(v), v);
   chk('ver_empresa pra quem não é sócio: sem a revisão do honorário (nem consulta)', !/Revisão do honorário/.test(v) && !log.some(x => x.caminho.startsWith('revisoes_honorario')));
   chk('consultar as revisões pra quem não é sócio: sem acesso, sem consultar o banco', /só os sócios veem/.test(await thalia.consultar({ tabela: 'revisoes_honorario' })) && !log.some(x => x.caminho.startsWith('revisoes_honorario')));
+  {
+    const outras = [3, 40, 2].map((n, i) => ({ id: 'aaaaaaaa-aaaa-4aaa-8aaa-00000000000' + i, titulo: 'Vale saber com ' + n + ' empresas (teste)', fonte_id: FONTE, publicada_em: '2026-10-1' + (5 + i) + 'T12:00:00Z',
+      coletada_em: '2026-10-1' + (5 + i) + 'T12:00:00Z', situacao: 'triada', relevancia: 'media', setores: ['fiscal'], clientes: [ID_A, ...Array.from({ length: n - 1 }, (_, k) => 'bbbbbbbb-bbbb-4bbb-8bbb-' + String(k).padStart(12, '0'))], grupo: null }));
+    const vo = await criarFerramentas({ banco: bancoFalso({ extras: { noticias: [...outras, noticias[0]] } }).banco, hoje: '2026-10-20', usuario: {} }).ver_empresa({ empresa: ID_A });
+    const ordem = [...vo.matchAll(/(eSocial muda o leiaute|Vale saber com \d+ empresas)/g)].map(m => m[1]);
+    chk('ver_empresa: a importante primeiro; nas que vale saber, a de menos empresas (a específica) antes da geral', JSON.stringify(ordem) === '["eSocial muda o leiaute","Vale saber com 2 empresas","Vale saber com 3 empresas","Vale saber com 40 empresas"]', JSON.stringify(ordem));
+  }
   const samuel = criarFerramentas({ banco, hoje: '2026-10-20', usuario: { email: 'financeiro@macedoereis.com.br', nome: 'Samuel', socio: true } });
   const vs = await samuel.ver_empresa({ empresa: ID_A });
   chk('ver_empresa pro sócio: a revisão do honorário (o de hoje, o motor, o combinado, o mês e se já entrou no boleto)',
     /Revisão do honorário \(Precificação › Carteira\): aceito em 20\/10\/2026 · hoje R\$\s?450,00 · motor R\$\s?640,00 · combinado R\$\s?600,00 a partir de 11\/2026 · ainda não entrou no boleto/.test(vs), vs);
   const sem = await samuel.ver_empresa({ empresa: ID_B });
-  chk('ver_empresa: cada empresa com as dela; sem notícia nos 30 dias, diz "nenhuma"', /Notícias do feed que a alcançam \(30 dias\): .*19\/10\/2026 · Vale saber · Fiscal · Prazo do PGDAS \(teste\)/.test(sem)
+  chk('ver_empresa: cada empresa com as dela, a importante antes; a que alcança só ela, "só ela"; sem notícia nos 30 dias, diz "nenhuma"', /Notícias do feed que a alcançam \(30 dias: 2; .*\): 19\/10\/2026 · Importante · DP · eSocial .* \| 19\/10\/2026 · Vale saber · Fiscal · Prazo do PGDAS \(teste\) \(alcança só ela\)/.test(sem)
     && /Notícias do feed que a alcançam \(30 dias\): nenhuma\./.test(await criarFerramentas({ banco: bancoFalso({ extras: { noticias: [] } }).banco, hoje: '2026-10-20', usuario: {} }).ver_empresa({ empresa: ID_A })), sem);
 }
 
