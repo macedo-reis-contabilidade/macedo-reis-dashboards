@@ -5,10 +5,11 @@
 //     cabeçalho x-chave (configuracoes_escritorio.noticias_chave, que só o servidor lê);
 //   - um sócio logado (o "Coletar agora" da tela Notícias): no máximo uma vez a cada 10 minutos.
 // Corpo: { coletar: true } | { diagnosticar: [urls] } (só a chave) | { triar: true } (só a triagem; só a chave) |
-// { pagina: url } (o que a triagem lê daquela página; só a chave).
+// { pagina: url } (o que a triagem lê daquela página; só a chave) | { provar: id } (a triagem de uma notícia sem gravar: a
+// resposta crua da IA; só a chave).
 // Puro: env, fetch, banco e chamador injetados (index.ts monta). O detalhe do erro fica no log e na resposta da chave.
 // ============================================================
-import { coletar, diagnosticar, triarPendentes, buscar } from './coleta.js';
+import { coletar, diagnosticar, triarPendentes, buscar, provarTriagem } from './coleta.js';
 import { criarChamador } from './triagem.js';
 import { textoDaPagina } from './pagina.js';
 
@@ -66,6 +67,10 @@ export function criarServidor({ env, fetch: f = fetch, criarDb, agora = () => Da
           perto: k >= 0 ? r.texto.slice(Math.max(0, k - 2500), k + 2500).replace(/\s+/g, ' ') : null });
       }
       const chamar = criarChamador({ fetch: f, chave: env('ANTHROPIC_API_KEY') });
+      if (typeof corpo.provar === 'string') {
+        if (!admin) return resposta(origin, { erro: 'Sem permissão.' }, 403);
+        return resposta(origin, await provarTriagem({ db, fetch: f, chamar, id: corpo.provar, agora }));
+      }
       if (corpo.triar) {
         if (!admin) return resposta(origin, { erro: 'Sem permissão.' }, 403);
         return resposta(origin, { triagem: await triarPendentes({ db, fetch: f, chamar, agora, ate: agora() + 120000 }) });

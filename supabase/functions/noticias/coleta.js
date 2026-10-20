@@ -13,7 +13,7 @@
 import { lerFeed, lerListaHtml, linkLimpo } from './rss.js';
 import { textoDaPagina } from './pagina.js';
 import { montarClientes, perfilDaCarteira, clientesDosCriterios } from './perfil.js';
-import { triar } from './triagem.js';
+import { triar, pedidoDaTriagem, lerClassificacao } from './triagem.js';
 
 export const JANELA_DIAS = 7;          // a coleta só traz o que saiu nos últimos 7 dias
 export const SEM_DATA_MAX = 12;        // da fonte sem data, só os primeiros
@@ -233,6 +233,26 @@ export async function triarPendentes({ db, fetch: f, chamar, agora = () => Date.
   });
   const { count } = await db.from('noticias').select('id', { count: 'exact', head: true }).in('situacao', ['nova', 'erro']).lt('tentativas', MAX_TENTATIVAS);
   return { ...conta, restam: count || 0 };
+}
+
+// a triagem de uma notícia sem gravar nada: a resposta crua da IA (os blocos, o uso, o motivo da parada) e a leitura dela —
+// pra acertar as regras (o { provar: id } da função, só com a chave)
+export async function provarTriagem({ db, fetch: f, chamar, id, agora = () => Date.now() }) {
+  const { data: n } = await db.from('noticias').select('id, url, titulo, publicada_em, trecho, fonte_id').eq('id', id).maybeSingle();
+  if (!n) return { erro: 'notícia não encontrada' };
+  const { data: fontes } = await db.from('noticias_fontes').select('id, nome, tipo');
+  const fonte = (fontes || []).find(x => x.id === n.fonte_id) || {};
+  const carteira = await lerCarteira(db, new Date(agora() - 3 * 3600e3).toISOString().slice(0, 10));
+  let pagina = null;
+  try { const r = await buscar(f, n.url, { ms: 12000, max: 2_000_000 }); if (r.ok && /html/i.test(r.tipo || 'text/html')) pagina = textoDaPagina(r.texto); } catch { /* sem a página */ }
+  const pedido = pedidoDaTriagem({ perfil: perfilDaCarteira(carteira),
+    noticia: { titulo: n.titulo, fonte: fonte.nome, tipoFonte: fonte.tipo, publicada_em: n.publicada_em || (pagina && pagina.data), link: n.url, trecho: n.trecho, pagina } });
+  const resp = await chamar(pedido);
+  let leitura = null;
+  try { leitura = lerClassificacao(resp); } catch (e) { leitura = { erro: String((e && e.message) || e) }; }
+  return { modelo: resp._modelo || null, stop_reason: resp.stop_reason || null, usage: resp.usage || null, retrato_chars: pedido.system[0].text.length,
+    blocos: (resp.content || []).map(b => (b.type === 'text' ? { type: 'text', text: b.text } : b.type === 'tool_use' ? { type: 'tool_use', input: b.input }
+      : { type: b.type, tamanho: JSON.stringify(b).length })), leitura };
 }
 
 export async function coletar({ db, fetch: f, chamar, agora = () => Date.now(), prazoMs = 120000, triar: comTriagem = true }) {

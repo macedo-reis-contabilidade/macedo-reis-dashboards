@@ -4,7 +4,7 @@
 import { lerFeed, lerListaHtml, semTags, decodificar, dataIso, linkLimpo } from '../supabase/functions/noticias/rss.js';
 import { textoDaPagina } from '../supabase/functions/noticias/pagina.js';
 import { montarClientes, perfilDaCarteira, clientesDosCriterios, cnaeDe } from '../supabase/functions/noticias/perfil.js';
-import { lerClassificacao, mensagemDaNoticia, montarSistema, criarChamador } from '../supabase/functions/noticias/triagem.js';
+import { lerClassificacao, mensagemDaNoticia, montarSistema, criarChamador, triar, pedidoDaTriagem } from '../supabase/functions/noticias/triagem.js';
 import { decodificarCorpo, feedsAnunciados, coletarFontes, triarPendentes, ehArquivo, melhorQue } from '../supabase/functions/noticias/coleta.js';
 import { SOCIOS as SOCIOS_FUNCAO } from '../supabase/functions/noticias/servidor.js';
 import { SOCIOS } from '../assets/js/equipe.js';
@@ -128,6 +128,16 @@ console.log('A classificação da IA:');
   const comMesma = q => lerClassificacao({ content: [{ type: 'tool_use', name: 'classificar', input: { relevante: true, relevancia: 'media', resumo: 'x', mesma_que: q } }] }, 2).mesma_que;
   chk('mesma_que: só o número de uma das que foram na mensagem', comMesma(2) === 2 && comMesma('1') === 1 && comMesma(3) === null && comMesma(0) === null && comMesma(1.5) === null && comMesma(undefined) === null);
   chk('descartada não entra em grupo', lerClassificacao({ content: [{ type: 'tool_use', name: 'classificar', input: { relevante: false, resumo: 'x', mesma_que: 1 } }] }, 2).mesma_que === null);
+  chk('o setor com maiúscula e acento vale ("DP", "Contábil", "Societário")', JSON.stringify(lerClassificacao({ content: [{ type: 'tool_use', name: 'classificar',
+    input: { relevante: true, relevancia: 'alta', resumo: 'x', setores: ['DP', 'Contábil', 'Societário', 'rh'] } }] }).setores) === '["dp","contabil","societario"]');
+}
+{
+  // a resposta cortada no limite de tokens (a classificação vinha pela metade, sem setores e sem critérios): erro, volta pra fila
+  const cortada = async () => ({ stop_reason: 'max_tokens', usage: { output_tokens: 2500 }, content: [{ type: 'tool_use', name: 'classificar', input: { relevante: true, relevancia: 'alta', resumo: 'x' } }] });
+  let erro = null; try { await triar({ chamar: cortada, perfil: 'P', noticia: { titulo: 'T', link: 'https://x' } }); } catch (e) { erro = e; }
+  chk('a resposta cortada no limite de tokens é erro (não grava a classificação pela metade)', erro && erro.tipo === 'formato');
+  const p = pedidoDaTriagem({ perfil: 'P', noticia: { titulo: 'T', link: 'https://x' } });
+  chk('o pedido: a ferramenta sem forçar (o modelo novo recusa) e folga de tokens', p.tool_choice.type === 'auto' && p.max_tokens >= 2000 && p.tools[0].name === 'classificar');
 }
 
 console.log('O chamador da API:');

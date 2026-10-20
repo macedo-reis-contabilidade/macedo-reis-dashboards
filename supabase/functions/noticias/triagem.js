@@ -128,7 +128,8 @@ export function lerClassificacao(resposta, nRecentes = 0) {
   return {
     relevante,
     relevancia: relevante ? (RELEVANCIAS.includes(i.relevancia) ? i.relevancia : 'baixa') : null,
-    setores: relevante ? [...new Set(strs(i.setores).filter(s => SETORES.includes(s)))] : [],
+    // "DP", "Contábil", "Societário" → dp, contabil, societario
+    setores: relevante ? [...new Set(strs(i.setores).map(s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()).filter(s => SETORES.includes(s)))] : [],
     resumo: texto(i.resumo, 1200) || '(sem resumo)',
     por_que: relevante ? texto(i.por_que, 800) : null,
     acao: relevante ? texto(i.acao, 800) : null,
@@ -137,15 +138,19 @@ export function lerClassificacao(resposta, nRecentes = 0) {
   };
 }
 
+// o pedido à API (o mesmo na triagem e no "provar" da função, que devolve a resposta crua pra acertar as regras)
+// tool_choice "auto": o modelo novo não aceita forçar a ferramenta ("tool"/"any" → 400); as regras pedem a chamada e a
+// resposta sem ela é erro de formato (volta pra fila)
+export function pedidoDaTriagem({ perfil, noticia, recentes = [], maxTokens = 2500 }) {
+  return { max_tokens: maxTokens, system: montarSistema(perfil), tools: [FERRAMENTA], tool_choice: { type: 'auto' },
+    messages: [{ role: 'user', content: mensagemDaNoticia(noticia, recentes) }] };
+}
 // triar({ chamar, perfil, noticia, recentes }) → { classificacao, modelo, uso }
 // recentes: [{ titulo, fonte, data }] — as que já estão no feed (classificacao.mesma_que é o número de uma delas, de 1 em diante)
-export async function triar({ chamar, perfil, noticia, recentes = [], maxTokens = 1200 }) {
-  const resp = await chamar({
-    // tool_choice "auto": o modelo novo não aceita forçar a ferramenta ("tool"/"any" → 400); as regras pedem a chamada e a
-    // resposta sem ela é erro de formato (volta pra fila)
-    max_tokens: maxTokens, system: montarSistema(perfil), tools: [FERRAMENTA], tool_choice: { type: 'auto' },
-    messages: [{ role: 'user', content: mensagemDaNoticia(noticia, recentes) }]
-  });
+// A resposta cortada no limite de tokens é erro (a classificação pela metade vinha sem setores e sem critérios): volta pra fila.
+export async function triar({ chamar, perfil, noticia, recentes = [], maxTokens = 2500 }) {
+  const resp = await chamar(pedidoDaTriagem({ perfil, noticia, recentes, maxTokens }));
+  if (resp.stop_reason === 'max_tokens') throw erroDaIa('formato', 'a resposta da IA veio cortada no limite de tokens');
   const u = resp.usage || {};
   return { classificacao: lerClassificacao(resp, recentes.length), modelo: resp._modelo || null,
     uso: { entrada: u.input_tokens || 0, saida: u.output_tokens || 0, cache: (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) } };
