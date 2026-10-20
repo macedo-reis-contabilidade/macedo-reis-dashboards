@@ -10,6 +10,6 @@
 // EdgeRuntime.waitUntil: trocou de tela no meio da resposta, a pergunta segue até o fim e a resposta fica no histórico.
 // ============================================================
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { criarServidor } from "https://raw.githubusercontent.com/macedo-reis-contabilidade/macedo-reis-dashboards/07e5e1684703fa5a83db175a2cfb30d5fb445776/supabase/functions/assistente/servidor.js";
+import { criarServidor } from "https://raw.githubusercontent.com/macedo-reis-contabilidade/macedo-reis-dashboards/873cbc78ca3cb1ff9471ec953f5a336254ff60ef/supabase/functions/assistente/servidor.js";
 
 Deno.serve(criarServidor({ env: (k: string) => Deno.env.get(k), aguardar: (p: Promise<unknown>) => EdgeRuntime.waitUntil(p) }));
