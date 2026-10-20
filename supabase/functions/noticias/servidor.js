@@ -59,8 +59,11 @@ export function criarServidor({ env, fetch: f = fetch, criarDb, agora = () => Da
         if (!admin) return resposta(origin, { erro: 'Sem permissão.' }, 403);
         const r = await buscar(f, corpo.pagina, { ms: 15000 });
         const p = textoDaPagina(r.texto);
+        // perto: o HTML em volta de um trecho do texto (pra ver onde o miolo está)
+        const k = typeof corpo.perto === 'string' && corpo.perto ? r.texto.indexOf(corpo.perto) : -1;
         return resposta(origin, { status: r.status, tipo: r.tipo, final: r.url, bytes: r.texto.length, titulo: p.titulo, descricao: p.descricao, data: p.data,
-          texto: p.texto.slice(0, 2500), inicio: r.texto.replace(/\s+/g, ' ').slice(0, 1200) });
+          texto: p.texto.slice(0, 2500), inicio: r.texto.replace(/\s+/g, ' ').slice(0, 1200),
+          perto: k >= 0 ? r.texto.slice(Math.max(0, k - 2500), k + 2500).replace(/\s+/g, ' ') : null });
       }
       const chamar = criarChamador({ fetch: f, chave: env('ANTHROPIC_API_KEY') });
       if (corpo.triar) {

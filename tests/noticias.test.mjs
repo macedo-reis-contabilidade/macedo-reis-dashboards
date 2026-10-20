@@ -67,6 +67,15 @@ console.log('A página da notícia:');
   chk('o título pelo og:title, a descrição e a data', p.titulo === 'STF decide sobre o Funrural' && p.descricao === 'Decisão do plenário.' && p.data === '2026-10-19T23:00:00.000Z', JSON.stringify([p.titulo, p.descricao, p.data]));
   chk('os parágrafos do <article>, sem menu, script, rodapé e o "Compartilhe"', p.texto.startsWith('O Supremo Tribunal Federal') && p.texto.includes('compram a produção rural') && !/Menu|Rodapé|Compartilhe|não/.test(p.texto), JSON.stringify(p.texto));
   chk('o texto longo é cortado', textoDaPagina('<body><p>' + 'palavra '.repeat(2000) + '</p></body>', { max: 500 }).texto.length <= 501);
+  // o portal com "leia também" e "mais lidas" em volta do texto (o que confundia a leitura da Contábeis e da Fenacon)
+  const rel = n => '<article class="card"><h3><a href="/x' + n + '">Notícia relacionada número ' + n + ' sobre outro assunto qualquer</a></h3><p>Resumo curto da relacionada ' + n + '.</p></article>';
+  const portal = '<body><div class="lista">' + [1, 2, 3, 4, 5, 6].map(rel).join('') + '</div>' + '<div style="x">' + 'x'.repeat(3500) + '</div>'
+    + '<div class="materia"><h2>Repouso semanal</h2><p>A Emenda Constitucional 141 prevê dois dias de repouso remunerado por semana, sem redução de salário.</p>'
+    + '<div class="anuncio">' + 'a'.repeat(800) + '</div><p>A jornada máxima cai para 40 horas semanais, com implementação gradual prevista no texto.</p>'
+    + '<p>Os acordos coletivos terão regras próprias de transição para os contratos em vigor.</p></div>'
+    + '<ul class="mais-lidas">' + [1, 2, 3].map(n => '<li><a href="/m' + n + '">Mais lida número ' + n + ' do portal de notícias</a></li>').join('') + '</ul></body>';
+  const pp = textoDaPagina(portal);
+  chk('o maior bloco de parágrafos é a notícia (sem as relacionadas e as mais lidas)', pp.texto.startsWith('A Emenda Constitucional 141') && pp.texto.includes('acordos coletivos') && !/relacionada|Mais lida/.test(pp.texto), JSON.stringify(pp.texto));
 }
 
 console.log('A carteira e os critérios:');
