@@ -10,6 +10,9 @@
 // bipe. No celular, nada: só o número no balão. Com várias abas do sistema abertas, uma avisa (a da frente, se houver).
 // Os emojis (20/10/2026): o botão da carinha ao lado do clipe abre o painel (os usados por último e os grupos); a mensagem
 // só de emoji sai maior.
+// A resposta (20/10/2026), como no WhatsApp: o "Responder" da mensagem põe a barra "Respondendo a…" em cima da caixa; a
+// mensagem enviada leva a citação (chat_mensagens.responde_a, só da mesma conversa — o banco confere), com quem e o trecho,
+// e clicar nela leva até a original (as páginas anteriores até ela); Esc ou o ✕ desiste.
 // Os auxiliares puros têm teste em tests/chat-equipe.test.mjs; a tela, em tests/harness/chat-equipe.py.
 // ============================================================
 
@@ -163,17 +166,35 @@ export function textoDoAviso(c, m, eu) {
   if (c && c.tipo === 'grupo') return { titulo: tituloDaConversa(c, eu), corpo: quem + ': ' + corpo, quem };
   return { titulo: quem, corpo, quem };
 }
+// a resposta (20/10/2026, pedido do Samuel: "marcar o que a pessoa falou no chat e responder, estilo whats"): o trecho da
+// mensagem citada — o texto numa linha só, até MAX_TRECHO caracteres; sem texto, o arquivo pelo nome; a apagada; e a que
+// ainda não chegou na tela (ausente)
+export const MAX_TRECHO = 120;
+export function trechoDaCitada(m) {
+  if (!m) return { texto: 'Mensagem anterior', apagada: false, ausente: true };
+  if (m.apagada_em) return { texto: 'Mensagem apagada', apagada: true, ausente: false };
+  const t = [...String(m.texto || '').replace(/\s+/g, ' ').trim()];
+  if (t.length) return { texto: t.length > MAX_TRECHO ? t.slice(0, MAX_TRECHO - 1).join('').trimEnd() + '…' : t.join(''), apagada: false, ausente: false };
+  const arqs = (Array.isArray(m.anexos) ? m.anexos : []).filter(a => a && typeof a === 'object' && a.nome);
+  if (!arqs.length) return { texto: 'Mensagem', apagada: false, ausente: false };
+  return { texto: arqs.length > 1 ? arqs.length + ' arquivos' : (ehImagem(arqs[0].tipo) ? 'Imagem: ' : 'Arquivo: ') + arqs[0].nome, apagada: false, ausente: false };
+}
+// quem escreveu a citada: "Você" na minha
+export const quemDaCitada = (m, eu) => (!m ? '' : String(m.autor || '').toLowerCase() === String(eu || '').toLowerCase() ? 'Você' : nomeDe(m.autor));
 
 // ---------- mandar e apagar: a regra do chat, a da tela e a do cartão do assistente (assets/js/assistente-acoes.js) ----------
-const COLUNAS_MSG = 'id, conversa_id, autor, texto, anexos, criada_em, apagada_em';
-// enviarMensagem(sb, { id, conversaId, texto, anexos }) → { mensagem } | { erro }: com o id gerado na tela — mandar de novo
-// com o mesmo id não duplica (23505 = já tinha entrado: lê de volta). Quem manda e quando, o banco põe
-export async function enviarMensagem(sb, { id, conversaId, texto = null, anexos = [] } = {}) {
+const COLUNAS_MSG = 'id, conversa_id, autor, texto, anexos, criada_em, apagada_em, responde_a';
+// enviarMensagem(sb, { id, conversaId, texto, anexos, respondeA }) → { mensagem } | { erro }: com o id gerado na tela —
+// mandar de novo com o mesmo id não duplica (23505 = já tinha entrado: lê de volta). Quem manda e quando, o banco põe;
+// respondeA = a mensagem citada (o banco só aceita uma da mesma conversa: outra, a resposta vai sem a citação)
+export async function enviarMensagem(sb, { id, conversaId, texto = null, anexos = [], respondeA = null } = {}) {
   const an = Array.isArray(anexos) ? anexos.slice(0, MAX_ARQUIVOS) : [];
   const t = texto ? String(texto).slice(0, MAX_TEXTO) : null;
   if (!id || !conversaId) return { erro: 'Mensagem sem conversa.' };
   if (!t && !an.length) return { erro: 'Mensagem vazia.' };
-  let { data, error } = await sb.from('chat_mensagens').insert({ id, conversa_id: conversaId, texto: t, anexos: an }).select(COLUNAS_MSG).single();
+  const linha = { id, conversa_id: conversaId, texto: t, anexos: an };
+  if (respondeA) linha.responde_a = String(respondeA);
+  let { data, error } = await sb.from('chat_mensagens').insert(linha).select(COLUNAS_MSG).single();
   if (error && error.code === '23505') ({ data, error } = await sb.from('chat_mensagens').select(COLUNAS_MSG).eq('id', id).single());
   if (error || !data) return { erro: 'A mensagem não foi.' };
   return { mensagem: data };
@@ -309,9 +330,10 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     convs: new Map(), pessoas: [], online: new Set(), aberta: typeof salvo.aberta === 'string' ? salvo.aberta : null,
     vista: ['lista', 'conversa', 'novo', 'grupo'].includes(salvo.vista) ? salvo.vista : 'lista',
     msgs: [], membros: [], temAntigas: false, carregando: false, pendentes: [], busca: '', achadas: null, lidoAoAbrir: null,
-    pronto: false, erro: '', caiu: false, confirmarApagar: null, menu: false, emojis: false, abaEmoji: null
+    pronto: false, erro: '', caiu: false, confirmarApagar: null, menu: false, emojis: false, abaEmoji: null, respondendo: null
   };
   const urls = new Map();   // os links assinados dos arquivos (valem 1 hora)
+  const citadas = new Map();   // as mensagens citadas que não estão na página aberta (null = não achou)
   const avisa = (nome, detail) => { try { window.dispatchEvent(new CustomEvent(nome, { detail })); } catch (e) { /* fora do navegador */ } };
   const espera = ms => new Promise(r => setTimeout(r, ms));
   const novoId = () => (crypto && crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx'.replace(/x/g, () => Math.floor(Math.random() * 16).toString(16)));
@@ -337,6 +359,7 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     + '<div class="ch-rolar ch-msgs" role="log" aria-live="off" aria-label="Mensagens"></div>'
     + '<div class="ch-pendentes" hidden></div>'
     + '<div class="ch-erro" role="alert" hidden></div>'
+    + '<div class="ch-respondendo" hidden></div>'
     + '<form class="ch-entrada"><div class="ch-emojis" role="dialog" aria-label="Emojis" hidden></div>'
     + '<label class="ch-icone ch-clipe" title="Anexar arquivo (até 25 MB cada)"><input type="file" multiple hidden aria-label="Anexar arquivo">' + ICONE.clipe + '</label>'
     + '<button type="button" class="ch-icone ch-emoji-btn" data-ch="emojis" aria-haspopup="dialog" aria-expanded="false" aria-label="Emojis" title="Emojis">' + ICONE.carinha + '</button>'
@@ -360,7 +383,7 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
   const vConversa = q('.ch-v-conversa'), vNovo = q('.ch-v-novo'), vGrupo = q('.ch-v-grupo'), vazioDir = q('.ch-vazio-dir');
   const msgsEl = q('.ch-msgs'), ta = q('.ch-entrada textarea'), arquivoInput = q('.ch-clipe input'), pendEl = q('.ch-pendentes'), erroEl = q('.ch-v-conversa .ch-erro');
   const cabNome = q('.ch-v-conversa .ch-cab-quem b'), cabSub = q('.ch-v-conversa .ch-cab-quem small'), menuBtn = q('[data-ch="menu"]'), menuEl = q('.ch-menu');
-  const emojiBtn = q('[data-ch="emojis"]'), emojisEl = q('.ch-emojis');
+  const emojiBtn = q('[data-ch="emojis"]'), emojisEl = q('.ch-emojis'), respEl = q('.ch-respondendo');
   if (celular) q('[data-ch="avisos"]').hidden = true;
 
   // duas colunas com o painel aumentado (a lista ao lado da conversa); uma só no painel pequeno e no celular
@@ -414,7 +437,7 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     try { const { data, error } = await supabase.rpc('chat_pessoas'); if (!error && Array.isArray(data)) st.pessoas = data.map(x => String(typeof x === 'string' ? x : (x && (x.chat_pessoas || x.email)) || '').toLowerCase()).filter(Boolean); }
     catch (e) { /* a lista sai só com as conversas */ }
   }
-  const COLS = 'id, conversa_id, autor, texto, anexos, criada_em, apagada_em';
+  const COLS = 'id, conversa_id, autor, texto, anexos, criada_em, apagada_em, responde_a';
   const porData = (a, b) => String(a.criada_em || '').localeCompare(String(b.criada_em || ''));
   async function carregarMensagens(id, { antesDe } = {}) {
     let qy = supabase.from('chat_mensagens').select(COLS).eq('conversa_id', id);
@@ -627,13 +650,18 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     if (m.apagada_em) corpo = '<div class="ch-bolha"><i>Mensagem apagada</i></div>';
     else {
       const arqs = arquivosDe(m);
-      corpo = (arqs.length ? '<div class="ch-anexos">' + arqs.map(a => htmlAnexo(a, m)).join('') + '</div>' : '')
-        + (m.texto ? '<div class="ch-bolha' + (soEmojis(m.texto) ? ' ch-so-emoji' : '') + '">' + linkificar(escapeHtml(m.texto)) + '</div>' : '');
+      // a citação vem em cima (com ela, o emoji sozinho fica no balão)
+      corpo = (m.responde_a ? htmlCitacao(m.responde_a) : '')
+        + (arqs.length ? '<div class="ch-anexos">' + arqs.map(a => htmlAnexo(a, m)).join('') + '</div>' : '')
+        + (m.texto ? '<div class="ch-bolha' + (soEmojis(m.texto) && !m.responde_a ? ' ch-so-emoji' : '') + '">' + linkificar(escapeHtml(m.texto)) + '</div>' : '');
     }
     let meta = '<time>' + escapeHtml(horaCurta(m.criada_em)) + '</time>';
     if (minha && m._enviando) meta += '<span>enviando…</span>';
     else if (minha && m._erro) meta += '<span class="ch-meta-erro">não foi</span><button type="button" class="as-botao as-botao-link" data-ch="reenviar" data-id="' + escapeHtml(m.id) + '">Tentar de novo</button>';
     else if (minha && m.id === ultimaMinha && !m.apagada_em) { const v = textoDoVisto(m, st.membros, c); if (v) meta += '<span class="ch-visto">' + escapeHtml(v) + '</span>'; }
+    // responder: a de qualquer um, menos a apagada e a que ainda não foi
+    if (!m.apagada_em && !m._enviando && !m._erro)
+      meta += '<button type="button" class="as-botao as-botao-link ch-responder" data-ch="responder" data-id="' + escapeHtml(m.id) + '" aria-label="Responder a esta mensagem">Responder</button>';
     if (minha && !m.apagada_em && !m._enviando && !m._erro) {
       meta += st.confirmarApagar === m.id
         ? '<span class="ch-confirma">Apagar pra todos? <button type="button" class="as-botao as-botao-link" data-ch="apagar-sim" data-id="' + escapeHtml(m.id) + '">Apagar</button> <button type="button" class="as-botao as-botao-link" data-ch="apagar-nao">Cancelar</button></span>'
@@ -652,6 +680,76 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     if (manter) msgsEl.scrollTop = msgsEl.scrollHeight - manter;
     else if (fim || perto) msgsEl.scrollTop = msgsEl.scrollHeight;
     preencherImagens();
+    buscarCitadas();
+  }
+
+  // ---------- a resposta (20/10/2026): a citação, a barra "Respondendo a…" e ir até a original ----------
+  const original = id => st.msgs.find(x => x.id === id) || citadas.get(id) || null;
+  function htmlCitacao(id) {
+    const o = original(id), t = trechoDaCitada(o), quem = quemDaCitada(o, eu);
+    return '<button type="button" class="ch-citacao' + (t.apagada ? ' ch-cit-apagada' : '') + '" data-ch="ir-citada" data-id="' + escapeHtml(id) + '"'
+      + ' aria-label="' + escapeHtml('Ir pra mensagem respondida' + (quem ? ', de ' + quem : '') + ': ' + t.texto) + '">'
+      + (quem ? '<b>' + escapeHtml(quem) + '</b>' : '') + '<span>' + escapeHtml(t.texto) + '</span></button>';
+  }
+  // as citadas que não estão na página aberta (respondem a uma mais antiga): numa leitura só; chegou, redesenha. A que não
+  // achou (o banco não deixa ler) fica guardada como null, pra não perguntar de novo
+  let lendoCitadas = false;
+  async function buscarCitadas() {
+    const faltam = [...new Set(st.msgs.map(m => m.responde_a).filter(id => id && !citadas.has(id) && !st.msgs.some(x => x.id === id)))].slice(0, 100);
+    if (!faltam.length || lendoCitadas) return;
+    lendoCitadas = true;
+    const aberta = st.aberta;
+    try {
+      const { data, error } = await supabase.from('chat_mensagens').select(COLS).in('id', faltam);
+      if (!error) { (data || []).forEach(m => citadas.set(m.id, m)); faltam.forEach(id => { if (!citadas.has(id)) citadas.set(id, null); }); }
+    } catch (e) { /* fica "Mensagem anterior" */ }
+    lendoCitadas = false;
+    if (st.aberta === aberta && st.vista === 'conversa' && faltam.some(id => citadas.get(id))) { desenharMensagens(); desenharRespondendo(); }
+  }
+  function desenharRespondendo() {
+    const r = st.respondendo;
+    respEl.hidden = !r;
+    if (!r) { respEl.innerHTML = ''; return; }
+    const o = original(r.id), t = trechoDaCitada(o);
+    const titulo = o && quemDaCitada(o, eu) === 'Você' ? 'Respondendo à sua mensagem' : 'Respondendo a ' + (o ? nomeDe(o.autor) : 'uma mensagem');
+    respEl.innerHTML = '<button type="button" class="ch-respondendo-txt" data-ch="ir-citada" data-id="' + escapeHtml(r.id) + '" title="Ver a mensagem"><b>' + escapeHtml(titulo) + '</b>'
+      + '<span' + (t.apagada ? ' class="ch-cit-apagada"' : '') + '>' + escapeHtml(t.texto) + '</span></button>'
+      + '<button type="button" class="ch-icone" data-ch="nao-responder" aria-label="Cancelar a resposta" title="Cancelar a resposta (Esc)">' + ICONE.x + '</button>';
+  }
+  function responder(id) {
+    const m = st.msgs.find(x => x.id === id);
+    if (!m || m.apagada_em || m._enviando || m._erro) return;
+    st.respondendo = { id };
+    fecharEmojis(); desenharRespondendo();
+    ta.focus({ preventScroll: true });
+    try { ctl.anunciar((quemDaCitada(m, eu) === 'Você' ? 'Respondendo à sua mensagem' : 'Respondendo a ' + nomeDe(m.autor)) + '. Esc desiste.'); } catch (e) { /* sem leitor */ }
+  }
+  function desistirDeResponder({ foco = false } = {}) {
+    if (!st.respondendo) return;
+    st.respondendo = null; desenharRespondendo();
+    if (foco) ta.focus({ preventScroll: true });
+  }
+  // clicar na citação: a original, com as páginas anteriores até ela (no máximo 20, mil mensagens), em destaque
+  async function irParaMensagem(id) {
+    const aberta = st.aberta;
+    let achou = st.msgs.some(m => m.id === id), carregou = false;
+    for (let i = 0; !achou && i < 20 && st.temAntigas; i++) {
+      const primeira = st.msgs.find(m => !m._enviando && !m._erro);
+      if (!primeira) break;
+      try {
+        const mais = await carregarMensagens(aberta, { antesDe: primeira.criada_em });
+        if (st.aberta !== aberta) return;
+        st.msgs = mesclar(st.msgs, mais); st.temAntigas = mais.length >= 50; carregou = true;
+      } catch (e) { mostrarErro(e.message); break; }
+      achou = st.msgs.some(m => m.id === id);
+    }
+    if (st.aberta !== aberta) return;
+    if (carregou) desenharMensagens({ manter: msgsEl.scrollHeight - msgsEl.scrollTop });
+    const alvo = achou ? msgsEl.querySelector('.ch-msg[data-id="' + CSS.escape(id) + '"]') : null;
+    if (!alvo) { mostrarErro('A mensagem respondida não está mais nesta conversa.'); return; }
+    alvo.scrollIntoView({ block: 'center' });
+    alvo.classList.add('ch-destaque');
+    setTimeout(() => alvo.classList.remove('ch-destaque'), 2500);
   }
   // as imagens: o link assinado (1 hora), em lote
   async function preencherImagens() {
@@ -690,7 +788,7 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     const g = ++geracao;
     const trocou = st.aberta !== id;
     st.aberta = id; st.vista = 'conversa'; st.menu = false; st.confirmarApagar = null;
-    if (trocou) { st.msgs = []; st.membros = []; st.temAntigas = false; st.pendentes = []; desenharPendentes(); ta.value = ''; ajustar(); fecharEmojis(); }
+    if (trocou) { st.msgs = []; st.membros = []; st.temAntigas = false; st.pendentes = []; desenharPendentes(); ta.value = ''; ajustar(); fecharEmojis(); st.respondendo = null; desenharRespondendo(); }
     st.lidoAoAbrir = c.nao_lidas ? c.lido_ate : null;
     guardarAba(); aplicarColunas(); desenharLista(); desenharCabecalho(); fecharMenu();
     if (mostrar) { try { ctl.mostrar(false); } catch (e) { /* sem balão */ } }
@@ -826,11 +924,13 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     const texto = reenvio ? reenvio.texto || '' : ta.value.trim().slice(0, MAX_TEXTO);
     const pendentes = reenvio ? reenvio._pendentes || [] : st.pendentes.slice();
     if (!conversaId || (!texto && !pendentes.length)) return;
+    // a resposta: a citada vai junto (e a barra sai); no "Tentar de novo", a mesma de antes
+    const respondeA = reenvio ? reenvio.responde_a || null : (st.respondendo && st.respondendo.id) || null;
     let m = reenvio;
     if (!m) {
-      m = { id, conversa_id: conversaId, autor: eu, texto: texto || null, anexos: pendentes.map(p => ({ nome: p.nome, tamanho: p.tamanho, tipo: p.tipo })), criada_em: new Date().toISOString(), apagada_em: null, _enviando: true, _pendentes: pendentes };
+      m = { id, conversa_id: conversaId, autor: eu, texto: texto || null, anexos: pendentes.map(p => ({ nome: p.nome, tamanho: p.tamanho, tipo: p.tipo })), criada_em: new Date().toISOString(), apagada_em: null, responde_a: respondeA, _enviando: true, _pendentes: pendentes };
       st.msgs.push(m);
-      ta.value = ''; ajustar(); st.pendentes = []; desenharPendentes(); fecharEmojis();
+      ta.value = ''; ajustar(); st.pendentes = []; desenharPendentes(); fecharEmojis(); st.respondendo = null; desenharRespondendo();
     } else { m._enviando = true; m._erro = null; }
     desenharMensagens({ fim: true });
     try {
@@ -845,7 +945,7 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
         anexos.push({ caminho, nome: p.nome, tamanho: p.tamanho, tipo: p.tipo });
       }
       // a regra do chat (a mesma do cartão do assistente): a que já tinha entrado — a resposta é que se perdeu — volta lida
-      const r = await enviarMensagem(supabase, { id, conversaId, texto: texto || null, anexos });
+      const r = await enviarMensagem(supabase, { id, conversaId, texto: texto || null, anexos, respondeA });
       if (r.erro) throw new Error(r.erro);
       const data = r.mensagem;
       Object.assign(m, { autor: eu, criada_em: new Date().toISOString(), ...data, anexos: data.anexos || anexos, _enviando: false, _erro: null, _pendentes: null });
@@ -1008,6 +1108,9 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     else if (k === 'apagar-nao') { st.confirmarApagar = null; desenharMensagens(); }
     else if (k === 'apagar-sim') apagar(alvo.dataset.id);
     else if (k === 'reenviar') { const m = st.msgs.find(x => x.id === alvo.dataset.id); if (m) enviar(m); }
+    else if (k === 'responder') responder(alvo.dataset.id);
+    else if (k === 'nao-responder') desistirDeResponder({ foco: true });
+    else if (k === 'ir-citada') irParaMensagem(alvo.dataset.id);
     else if (k === 'antigas') {
       const primeira = st.msgs.find(m => !m._enviando && !m._erro);
       if (!primeira) return;
@@ -1019,7 +1122,9 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
   });
   el.addEventListener('keydown', ev => {
     if (ev.key === 'Escape' && st.emojis) { ev.preventDefault(); ev.stopPropagation(); const naCaixa = ev.target === ta; fecharEmojis(); if (!naCaixa) emojiBtn.focus({ preventScroll: true }); return; }
-    if (ev.key === 'Escape' && st.menu) { ev.preventDefault(); ev.stopPropagation(); fecharMenu(); menuBtn.focus({ preventScroll: true }); }
+    if (ev.key === 'Escape' && st.menu) { ev.preventDefault(); ev.stopPropagation(); fecharMenu(); menuBtn.focus({ preventScroll: true }); return; }
+    // Esc na conversa com a resposta montada: desiste dela (o painel fica aberto)
+    if (ev.key === 'Escape' && st.respondendo && vConversa.contains(ev.target)) { ev.preventDefault(); ev.stopPropagation(); desistirDeResponder({ foco: true }); }
   });
 
   // ---------- o tempo real ----------
@@ -1044,6 +1149,10 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     if (!m || !m.id) return;
     const local = st.msgs.find(x => x.id === m.id);
     if (local) { Object.assign(local, m); if (st.vista === 'conversa') desenharMensagens(); }
+    // a citada de uma página antiga (apagaram a original): as citações e a barra acompanham
+    const fora = citadas.get(m.id);
+    if (fora) { Object.assign(fora, m); if (!local && st.vista === 'conversa' && st.msgs.some(x => x.responde_a === m.id)) desenharMensagens(); }
+    if (st.respondendo && st.respondendo.id === m.id) desenharRespondendo();
     const c = conv(m.conversa_id);
     if (c && m.apagada_em) {
       if (c.ultima_em && m.criada_em === c.ultima_em) c.ultima_apagada = true;

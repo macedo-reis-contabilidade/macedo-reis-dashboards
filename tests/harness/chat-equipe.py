@@ -4,7 +4,9 @@ real), o aviso só no computador (com a tela na frente, o recado e o bipe; atrá
 celular, nada), arquivos e imagens (a pasta "chat"), apagar a própria mensagem, grupo novo, pôr alguém no grupo, a busca nas
 mensagens, as duas colunas com o painel aumentado, o que fica guardado ao recarregar e os emojis (20/10/2026: o botão da
 carinha abre o painel, clicar põe no lugar do cursor, os usados por último, Esc e clicar fora fecham, a mensagem só de emoji
-sai maior). O banco do chat entra como dublê, no
+sai maior) e a resposta (20/10/2026, estilo WhatsApp: o "Responder" põe a barra "Respondendo a…" em cima da caixa, Esc e o ✕
+desistem, a enviada leva a citação com quem e o trecho, clicar nela leva até a original, a resposta a uma mensagem que não
+está na tela busca o trecho no banco e a original apagada vira "Mensagem apagada"). O banco do chat entra como dublê, no
 window.__mockRpc (as funções chat_*) e nas tabelas do banco falso (tests/harness/supabase.mock.js, que entrega o que muda
 nelas aos canais de tempo real); o SQL do chat tem teste próprio (Postgres local) e as regras puras, em
 tests/chat-equipe.test.mjs. Quem está na tela é o Samuel (financeiro@).
@@ -201,6 +203,39 @@ def main():
         p.keyboard.press('Escape')
         ok(p.is_hidden('.ch-emojis') and p.evaluate('() => document.activeElement.dataset.ch') == 'emojis', 'Esc no painel fecha e o foco volta pro botão da carinha')
         p.fill(caixa, '')
+
+        # 3c) responder (20/10/2026, estilo WhatsApp): o "Responder" da mensagem põe a barra em cima da caixa; Esc e o ✕ desistem;
+        # a enviada leva a citação (quem e o trecho) e clicar nela leva até a original; na minha, "Respondendo à sua mensagem";
+        # a resposta a uma que não está na tela busca o trecho no banco; apagaram a original: "Mensagem apagada"
+        cit_de = lambda i: '.ch-msg[data-id="' + i + '"] .ch-citacao'
+        p.hover('.ch-msg[data-id="m2"]'); p.click('.ch-msg[data-id="m2"] [data-ch="responder"]')
+        p.wait_for_selector('.ch-respondendo:not([hidden])', timeout=2000)
+        barra = p.inner_text('.ch-respondendo')
+        ok('Respondendo a Thalia' in barra and 'Saiu sim, te mando a guia.' in barra and p.evaluate("() => document.activeElement === document.querySelector('.ch-entrada textarea')"),
+           f'"Responder": a barra "Respondendo a Thalia" com o trecho, e o cursor na caixa ({barra!r})')
+        p.press(caixa, 'Escape')
+        ok(p.is_hidden('.ch-respondendo') and p.is_visible('.ch-v-conversa'), 'Esc desiste da resposta (a conversa fica aberta)')
+        p.hover('.ch-msg[data-id="m2"]'); p.click('.ch-msg[data-id="m2"] [data-ch="responder"]')
+        p.fill(caixa, 'Ótimo, aguardo'); p.press(caixa, 'Enter')
+        p.wait_for_function("() => window.__mockDb.chat_mensagens.some(m => m.texto === 'Ótimo, aguardo')", timeout=3000); p.wait_for_timeout(300)
+        resp = db("window.__mockDb.chat_mensagens.find(m => m.texto === 'Ótimo, aguardo')")
+        cit = cit_de(resp['id'])
+        ok(resp['responde_a'] == 'm2' and p.inner_text(cit + ' b') == 'Thalia' and p.inner_text(cit + ' span') == 'Saiu sim, te mando a guia.' and p.is_hidden('.ch-respondendo'),
+           f'a resposta vai com a citada (responde_a) e mostra quem e o trecho; a barra sai ({p.inner_text(cit)!r})')
+        p.click(cit)
+        ok(p.wait_for_selector('.ch-msg[data-id="m2"].ch-destaque', timeout=2000) is not None, 'clicar na citação leva até a original, em destaque')
+        p.hover('.ch-msg[data-id="m1"]'); p.click('.ch-msg[data-id="m1"] [data-ch="responder"]')
+        ok('Respondendo à sua mensagem' in p.inner_text('.ch-respondendo'), 'na minha mensagem: "Respondendo à sua mensagem"')
+        p.click('[data-ch="nao-responder"]')
+        ok(p.is_hidden('.ch-respondendo'), 'o ✕ desiste')
+        p.evaluate('l => window.__mockDb.chat_mensagens.push(l)', M('m0', 'c-th', EU, 'Thalia, lembra da guia da Adega amanhã?', 3000))
+        chegar('m9', 'c-th', TH, 'Lembrei sim!', responde_a='m0')
+        p.wait_for_function("s => { const c = document.querySelector(s); return !!c && c.innerText.includes('lembra da guia da Adega'); }", arg=cit_de('m9'), timeout=3000)
+        ok(p.inner_text(cit_de('m9') + ' b') == 'Você', 'a resposta da Thalia a uma mensagem que não estava na tela: o trecho vem do banco ("Você")')
+        p.evaluate("() => { const m = window.__mockDb.chat_mensagens.find(x => x.id === 'm2'); Object.assign(m, { apagada_em: new Date().toISOString(), texto: null }); window.__mockEmitir('chat_mensagens', 'UPDATE', m); }")
+        p.wait_for_timeout(300)
+        ok(p.inner_text(cit + ' span') == 'Mensagem apagada' and 'ch-cit-apagada' in (p.get_attribute(cit, 'class') or '') and p.locator('.ch-msg[data-id="m2"] [data-ch="responder"]').count() == 0,
+           'apagaram a original: a citação diz "Mensagem apagada", e a apagada não tem "Responder"')
 
         # 4) chega da Thalia com a conversa aberta e a tela na frente: entra na hora, sem aviso, lida
         avisos0 = len(db('window.__avisos'))

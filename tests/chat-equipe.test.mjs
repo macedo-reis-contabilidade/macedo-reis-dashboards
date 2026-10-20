@@ -6,7 +6,8 @@
 // painel, os usados por último, o emoji no lugar do cursor e a mensagem só de emoji. Rodar com: node tests/chat-equipe.test.mjs
 import { nomeDe, iniciais, outroDa, tituloDaConversa, previaDaUltima, horaDaLista, rotuloDoDia, linkificar, tamanhoBR, nomeSeguro, caminhoDoArquivo,
   conferirArquivos, ehImagem, linhasDaLista, vistoPor, textoDoVisto, naoLidasTotal, ehCelular, textoDoAviso, LIMITE_ARQUIVO,
-  linkDoDrive, enviarMensagem, apagarMensagem, conversaDe, EMOJIS, nomeDoEmoji, recentesCom, lerRecentes, inserirNoTexto, soEmojis, MAX_RECENTES, MAX_TEXTO } from '../assets/js/chat-equipe.js';
+  linkDoDrive, enviarMensagem, apagarMensagem, conversaDe, EMOJIS, nomeDoEmoji, recentesCom, lerRecentes, inserirNoTexto, soEmojis, MAX_RECENTES, MAX_TEXTO,
+  trechoDaCitada, quemDaCitada, MAX_TRECHO } from '../assets/js/chat-equipe.js';
 import { escapeHtml } from '../assets/js/assistente.js';
 
 let falhas = 0;
@@ -143,6 +144,29 @@ function sbFalso({ jaTinha = false, falhaRpc = null, grupos = [], pessoas = [] }
   chk('nem grupo nem pessoa: diz', /nenhum grupo chamado "Diretoria"/.test((await conversaDe(sb, { grupo: 'Diretoria' }, EU)).erro));
   const { sb: sb2 } = sbFalso({ falhaRpc: 'chat_abrir_direta' });
   chk('a pessoa sem login: o banco recusa e o motivo vem em português', /Vitória não tem login no sistema/.test((await conversaDe(sb2, { email: VI }, EU)).erro));
+}
+
+// ---------- a resposta (20/10/2026): o trecho da citada, quem escreveu e a citação que vai junto ----------
+console.log('A resposta:');
+{
+  const t1 = trechoDaCitada({ autor: TH, texto: 'Saiu sim,\n\n  te mando   a guia.' });
+  chk('o trecho: o texto numa linha só', t1.texto === 'Saiu sim, te mando a guia.' && !t1.apagada && !t1.ausente, JSON.stringify(t1));
+  const longo = trechoDaCitada({ texto: 'a'.repeat(300) }), acento = trechoDaCitada({ texto: 'é'.repeat(MAX_TRECHO) + '😀' });
+  chk('o trecho longo: até ' + MAX_TRECHO + ' caracteres, com reticências (sem partir o emoji)', [...longo.texto].length === MAX_TRECHO && longo.texto.endsWith('…')
+    && [...acento.texto].length === MAX_TRECHO && !acento.texto.includes('\uFFFD') && trechoDaCitada({ texto: 'x'.repeat(MAX_TRECHO) }).texto === 'x'.repeat(MAX_TRECHO), longo.texto.length);
+  chk('sem texto: o arquivo pelo nome (a imagem, como imagem) ou quantos', trechoDaCitada({ texto: null, anexos: [{ nome: 'Guia DAS.pdf', tipo: 'application/pdf' }] }).texto === 'Arquivo: Guia DAS.pdf'
+    && trechoDaCitada({ texto: '', anexos: [{ nome: 'print.png', tipo: 'image/png' }] }).texto === 'Imagem: print.png'
+    && trechoDaCitada({ anexos: [{ nome: 'a' }, { nome: 'b' }, { nome: 'c' }] }).texto === '3 arquivos' && trechoDaCitada({ anexos: [] }).texto === 'Mensagem');
+  const ap = trechoDaCitada({ autor: TH, texto: null, anexos: [], apagada_em: '2026-10-20T20:00:00Z' }), au = trechoDaCitada(null);
+  chk('a apagada diz que foi apagada (sem o texto); a que ainda não chegou, "Mensagem anterior"', ap.texto === 'Mensagem apagada' && ap.apagada && au.texto === 'Mensagem anterior' && au.ausente);
+  chk('quem escreveu: "Você" na minha; o nome nas outras', quemDaCitada({ autor: EU }, EU) === 'Você' && quemDaCitada({ autor: 'FINANCEIRO@macedoereis.com.br' }, EU) === 'Você'
+    && quemDaCitada({ autor: TH }, EU) === 'Thalia' && quemDaCitada(null, EU) === '');
+  const { sb, log, linhas } = sbFalso();
+  const r = await enviarMensagem(sb, { id: 'r1', conversaId: 'conv-x', texto: 'Ótimo, aguardo', respondeA: 'm2' });
+  const r2 = await enviarMensagem(sb, { id: 'r2', conversaId: 'conv-x', texto: 'sem citar' });
+  const ins = log.filter(l => l[0] === 'insert').map(l => l[2]);
+  chk('mandar respondendo: a citada vai junto (responde_a); sem resposta, nem a chave vai', r.mensagem && ins[0].responde_a === 'm2' && linhas[0].responde_a === 'm2'
+    && r2.mensagem && !('responde_a' in ins[1]), JSON.stringify(ins));
 }
 
 console.log('Os emojis:');
