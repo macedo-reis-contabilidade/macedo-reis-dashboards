@@ -145,7 +145,7 @@
     .ag-rot-check svg { width:13px; height:13px; }
     .ag-lote-ck { width:16px; height:16px; margin:0; flex:none; accent-color:var(--ok); cursor:pointer; }
     .ag-lote-vazio { width:16px; flex:none; }
-    .ag-lote-barra { display:flex; align-items:center; gap:14px; padding:6px 12px; margin:0 0 6px; background:var(--fill-1); border:1px solid var(--line); border-radius:var(--ag-r); font-size:12.5px; color:var(--text-muted); }
+    .ag-lote-barra { display:flex; flex-wrap:wrap; row-gap:6px; align-items:center; gap:14px; padding:6px 12px; margin:0 0 6px; background:var(--fill-1); border:1px solid var(--line); border-radius:var(--ag-r); font-size:12.5px; color:var(--text-muted); }
     .ag-lote-barra label { display:inline-flex; align-items:center; gap:7px; cursor:pointer; color:var(--text); }
     .ag-lote-barra input { accent-color:var(--ok); width:15px; height:15px; margin:0; }
     .ag-lote-n { flex:1; }
@@ -316,6 +316,7 @@
           <label class="fa-field"><span>Responsável</span><input type="text" id="dResp" class="input"></label>
           <label class="fa-field"><span>Prazo</span><input type="date" id="dPrazo" class="input"></label>
         </div>
+        <div id="dIrmas" style="display:none; margin:-4px 0 12px; font-size:12.5px;"><a href="#" id="dIrmasLink" style="color:var(--brand-light); text-decoration:none;"></a> <span id="dIrmasNota" style="color:var(--text-dim);"></span></div>
         <div class="fa-field-row">
           <label class="fa-field"><span>Hora <i style="font-style:normal;color:var(--text-dim);">(alimenta o 🕐)</i></span><input type="time" id="dHoraInp" class="input"></label>
           <label class="fa-field"><span>Setor</span><select id="dSetor" class="select"></select></label>
@@ -338,6 +339,18 @@
         <button class="btn btn-danger" id="dExcluir" style="margin-right:auto;">Excluir</button>
         <button class="btn btn-ghost" id="dBtnReabrir" style="display:none;">Reabrir</button>
         <button class="btn btn-primary" id="dBtnConcluir">Concluir</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- mudar o prazo de várias tarefas de uma vez (20/10/2026): pelo lote das listas e pelas "iguais" do editor; por cima do editor -->
+  <div class="fa-modal-overlay" id="lpOverlay" style="z-index:110; padding-bottom:110px;">
+    <div class="fa-modal" style="max-width:520px;" role="dialog" aria-modal="true" aria-labelledby="lpTitulo">
+      <div class="fa-modal-head"><h3 id="lpTitulo">Mudar o prazo</h3><button class="fa-modal-close" id="lpClose" aria-label="Fechar">&times;</button></div>
+      <div class="fa-modal-body" id="lpCorpo"></div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-ghost" id="lpCancelar">Cancelar</button>
+        <button class="btn btn-primary" id="lpAplicar">Mudar os prazos</button>
       </div>
     </div>
   </div>
@@ -377,6 +390,8 @@
     import { rotinaDoDia, rotinaFeita } from './assets/js/rotinas-dia.js';
     import { montarChecklist, rotuloDoProgresso } from './assets/js/checklist.js';
     import { lerNoticias, destaquesPraMim, CAMPOS_LEVES, ROTULO_SETOR, ROTULO_RELEVANCIA, setoresDe, dataCurta, quando } from './assets/js/noticias.js';
+    import { alterarTarefas, desfazerAlteracao } from './assets/js/tarefas-acoes.js';
+    import { feriado } from './assets/js/rescisao-datas.js';
 
     // ---- identidade visual por setor ----
     const SETOR_INFO = {
@@ -454,13 +469,13 @@
     async function carregarDados(ini, fim){
       const iniS = ymd(ini), fimS = ymd(fim);
       const { data: ts } = await supabase.from('tarefas')
-        .select('id, titulo, descricao, setor, responsavel, prazo, status, prioridade, cliente_id, proposta_id, hora, transicao_id, posicao, clientes(nome_principal, documento), concluida_em, concluida_por')
+        .select('id, titulo, descricao, setor, responsavel, prazo, status, prioridade, cliente_id, proposta_id, hora, transicao_id, posicao, obrigacao_id, origem, clientes(nome_principal, documento), concluida_em, concluida_por')
         .gte('prazo', iniS).lte('prazo', fimS);
       cacheTarefas = ts || [];
       const { data: rs } = await supabase.from('rotinas').select('*').eq('ativo', true);
       cacheRotinas = rs || [];
       const { data: sp } = await supabase.from('tarefas')
-        .select('id, titulo, descricao, setor, responsavel, prazo, status, prioridade, cliente_id, proposta_id, hora, transicao_id, posicao, clientes(nome_principal, documento), concluida_em, concluida_por')
+        .select('id, titulo, descricao, setor, responsavel, prazo, status, prioridade, cliente_id, proposta_id, hora, transicao_id, posicao, obrigacao_id, origem, clientes(nome_principal, documento), concluida_em, concluida_por')
         .is('prazo', null).neq('status', 'concluida');
       cacheSemPrazo = sp || [];
     }
@@ -471,7 +486,7 @@
       const fimMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
       const lim = ymd(addDias(hoje, 7) > fimMes ? addDias(hoje, 7) : fimMes);
       const { data } = await supabase.from('tarefas')
-        .select('id, titulo, descricao, setor, responsavel, prazo, status, prioridade, cliente_id, proposta_id, hora, transicao_id, posicao, clientes(nome_principal, documento)')
+        .select('id, titulo, descricao, setor, responsavel, prazo, status, prioridade, cliente_id, proposta_id, hora, transicao_id, posicao, obrigacao_id, origem, clientes(nome_principal, documento)')
         .neq('status', 'concluida').not('prazo', 'is', null).lte('prazo', lim)
         .order('prazo', { ascending: true }).limit(2000);
       cacheFoco = data || [];
@@ -559,7 +574,7 @@
     async function carregarProxDias(){
       const base = ymd(estado.cursor), dias = diasUteisDepois(estado.cursor, 5);
       const { data, error } = await supabase.from('tarefas')
-        .select('id, titulo, descricao, setor, responsavel, prazo, status, prioridade, cliente_id, proposta_id, hora, transicao_id, posicao, clientes(nome_principal, documento)')
+        .select('id, titulo, descricao, setor, responsavel, prazo, status, prioridade, cliente_id, proposta_id, hora, transicao_id, posicao, obrigacao_id, origem, clientes(nome_principal, documento)')
         .gt('prazo', base).lte('prazo', ymd(dias[dias.length - 1])).neq('status', 'concluida')
         .order('prazo', { ascending: true }).limit(2000);
       if (base === ymd(estado.cursor)) proxDias = { base, tarefas: data || [], erro: !!error };
@@ -608,7 +623,7 @@
     const loteAbertas = itens => itens.filter(t => t.status !== 'concluida');
     function loteCheck(t){
       if (t.status === 'concluida') return '<span class="ag-lote-vazio"></span>';
-      return `<input type="checkbox" class="ag-lote-ck" data-lote="${t.id}" ${loteSel.has(String(t.id)) ? 'checked' : ''} title="Selecionar pra concluir em lote">`;
+      return `<input type="checkbox" class="ag-lote-ck" data-lote="${t.id}" ${loteSel.has(String(t.id)) ? 'checked' : ''} title="Selecionar pra concluir ou remarcar em lote">`;
     }
     function loteBarra(itens){
       const abertas = loteAbertas(itens);
@@ -616,9 +631,10 @@
       const n = [...loteSel].filter(id => abertas.some(t => String(t.id) === id)).length;
       return `<div class="ag-lote-barra" id="agLoteBarra">
         <label><input type="checkbox" id="agLoteTodas" ${n && n === abertas.length ? 'checked' : ''}> Selecionar todas (${abertas.length})</label>
-        <span class="ag-lote-n" id="agLoteN">${n ? n + ' selecionada(s)' : 'Marque as tarefas que quer concluir'}</span>
+        <span class="ag-lote-n" id="agLoteN">${n ? n + ' selecionada(s)' : 'Marque as que quer concluir ou remarcar'}</span>
         ${ordemSelect()}
         <button class="btn btn-ghost btn-sm" id="agLoteAndamento" ${n ? '' : 'disabled'} title="Anota a mesma observação no histórico de todas as selecionadas, sem concluir">Registrar andamento</button>
+        <button class="btn btn-ghost btn-sm" id="agLotePrazo" ${n ? '' : 'disabled'} title="Passa todas as selecionadas pra mesma data">📅 Mudar prazo</button>
         <button class="btn btn-primary btn-sm" id="agLoteConcluir" ${n ? '' : 'disabled'}>Concluir ${n || ''} selecionada${n === 1 ? '' : 's'}</button>
       </div>`;
     }
@@ -626,8 +642,10 @@
       const abertas = loteAbertas(itens);
       const n = [...loteSel].filter(id => abertas.some(t => String(t.id) === id)).length;
       const nEl = document.getElementById('agLoteN'), b = document.getElementById('agLoteConcluir'), todas = document.getElementById('agLoteTodas'), ba = document.getElementById('agLoteAndamento');
+      const bp = document.getElementById('agLotePrazo');
       if (ba) ba.disabled = !n;
-      if (nEl) nEl.textContent = n ? n + ' selecionada(s)' : 'Marque as tarefas que quer concluir';
+      if (bp) bp.disabled = !n;
+      if (nEl) nEl.textContent = n ? n + ' selecionada(s)' : 'Marque as que quer concluir ou remarcar';
       if (b) { b.disabled = !n; b.textContent = 'Concluir ' + (n || '') + ' selecionada' + (n === 1 ? '' : 's'); }
       if (todas) todas.checked = !!n && n === abertas.length;
     }
@@ -644,6 +662,8 @@
       const idsSel = () => [...loteSel].filter(id => loteAbertas(itens).some(t => String(t.id) === id));
       document.getElementById('agLoteConcluir')?.addEventListener('click', () => abrirLote('concluir', idsSel()));
       document.getElementById('agLoteAndamento')?.addEventListener('click', () => abrirLote('andamento', idsSel()));
+      document.getElementById('agLotePrazo')?.addEventListener('click', () =>
+        abrirPrazoLote(idsSel().map(id => itens.find(t => String(t.id) === id)).filter(Boolean)));
     }
     // modal do lote: uma observação pra todas (opcional ao concluir, obrigatória no andamento)
     let loteModo = 'concluir', loteIds = [];
@@ -684,6 +704,213 @@
       } finally {
         b.disabled = false;
       }
+    });
+
+    // ---------- mudar o prazo de várias de uma vez (20/10/2026, pedido da Thalia: "alterar a data de uma rotina de um
+    // determinado mês, sem precisar alterar uma a uma" — as SEDIF/DESTDA de hoje pro dia 23). Dois caminhos, a mesma
+    // janela: o "📅 Mudar prazo" do lote (listas e busca) e o "Mudar o prazo das N iguais" do editor da tarefa (mesmo título
+    // e mesmo prazo). A regra é a do assistente e das Obrigações fiscais (alterarTarefas de tarefas-acoes.js: só as abertas,
+    // a linha no histórico, fora as da ficha de origem); o "Desfazer" vale enquanto a janela está aberta ----------
+    const ORIGEM_LOTE = 'lote da Agenda';
+    const DIA_SEM = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+    const isoOk = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''));
+    const dataBR = iso => (iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '');
+    const comDiaSem = iso => DIA_SEM[new Date(iso + 'T12:00:00').getDay()] + ', ' + dataBR(iso);
+    const fimDeSemana = iso => [0, 6].includes(new Date(iso + 'T12:00:00').getDay());
+    const plural = (n, um, varios) => n + ' ' + (n === 1 ? um : varios);
+    // "SEDIF/DESTDA (33), PGDAS (2)": os que mais aparecem primeiro, até 3
+    function contagem(valores, max = 3){
+      const m = new Map();
+      valores.forEach(v => m.set(v, (m.get(v) || 0) + 1));
+      const l = [...m.entries()].sort((a, b) => b[1] - a[1] || cmpTxt(a[0], b[0]));
+      return { n: l.length, texto: l.slice(0, max).map(([v, k]) => (l.length > 1 ? v + ' (' + k + ')' : v)).join(', ') + (l.length > max ? ' e mais ' + (l.length - max) : '') };
+    }
+    const lpOverlay = document.getElementById('lpOverlay');
+    let lpCtx = null;
+    document.getElementById('lpClose').addEventListener('click', fecharPrazoLote);
+    document.getElementById('lpCancelar').addEventListener('click', fecharPrazoLote);
+    lpOverlay.addEventListener('click', e => { if (e.target === lpOverlay) fecharPrazoLote(); });
+    document.getElementById('lpAplicar').addEventListener('click', aplicarPrazoLote);
+    function fecharPrazoLote(){
+      if (lpCtx && lpCtx.gravando) return;
+      const volta = lpCtx && lpCtx.voltar;
+      lpOverlay.classList.remove('is-open'); lpCtx = null;
+      if (volta && document.contains(volta)) volta.focus();
+    }
+
+    function abrirPrazoLote(tarefas, { data = '' } = {}){
+      const abertas = (tarefas || []).filter(t => t && t.status !== 'concluida');
+      if (!abertas.length) return;
+      const ctx = lpCtx = { mapa: new Map(abertas.map(t => [String(t.id), t])), gravando: false, feito: null, voltar: document.activeElement };
+      const n = abertas.length;
+      const prazos = [...new Set(abertas.map(t => String(t.prazo || '').slice(0, 10)).filter(Boolean))].sort();
+      const titulos = contagem(abertas.map(t => t.titulo || '(sem título)'));
+      const pessoas = contagem(abertas.map(t => t.responsavel || 'sem responsável'));
+      const prazoTxt = prazos.length === 1 ? 'prazo atual: ' + dataBR(prazos[0])
+        : prazos.length ? 'prazos atuais de ' + dataBR(prazos[0]) + ' a ' + dataBR(prazos[prazos.length - 1]) : 'sem prazo';
+      const quemTxt = pessoas.n === 1 && !abertas[0].responsavel ? 'sem responsável' : 'de ' + pessoas.texto;
+      const recorrentes = abertas.some(t => t.obrigacao_id || t.origem === 'recorrente');
+      const inicial = isoOk(data) ? data : (prazos.length ? prazos[prazos.length - 1] : HOJE_STR);
+      document.getElementById('lpTitulo').textContent = 'Mudar o prazo de ' + plural(n, 'tarefa', 'tarefas');
+      const ap = document.getElementById('lpAplicar');
+      ap.style.display = '';
+      document.getElementById('lpCancelar').textContent = 'Cancelar';
+      const corpo = document.getElementById('lpCorpo');
+      // um bloco só dentro do corpo (que é uma coluna flexível com altura máxima): a lista não encolhe, quem rola é a janela
+      corpo.innerHTML = `<div>
+        <p style="margin:0 0 2px; font-size:13.5px; font-weight:600; color:var(--text);">${esc(titulos.texto)}</p>
+        <p style="margin:0 0 14px; font-size:12.5px; color:var(--text-muted);">${esc(prazoTxt)} · ${esc(quemTxt)}</p>
+        <label for="lpData" style="display:block; font-size:12.5px; color:var(--text-muted); margin:0 0 4px;">Novo prazo</label>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <input type="date" id="lpData" class="input" style="width:170px;" value="${inicial}">
+          <span id="lpDia" style="font-size:13px;"></span>
+        </div>
+        <div style="margin:14px 0 6px; display:flex; justify-content:space-between; align-items:center; gap:10px;">
+          <span style="font-size:12.5px; color:var(--text-muted);">Mudam as marcadas:</span>
+          ${n > 3 ? '<button type="button" class="btn btn-ghost btn-sm" id="lpTodas">Desmarcar todas</button>' : ''}
+        </div>
+        <div id="lpLista" style="max-height:230px; overflow:auto; border:1px solid var(--line); border-radius:10px; padding:4px 0;">${abertas.map(t => `
+          <label style="display:flex; gap:10px; align-items:center; padding:6px 12px; cursor:pointer; font-size:13px; color:var(--text);">
+            <input type="checkbox" data-id="${esc(t.id)}" checked style="margin:0; flex:none; width:15px; height:15px; accent-color:var(--ok);">
+            <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(t.clientes?.nome_principal || 'Interno (sem empresa)')}${titulos.n > 1 ? ' · ' + esc(t.titulo || '(sem título)') : ''}</span>
+            <span style="flex:none; font-size:12px; color:var(--text-dim);">${dataBR(t.prazo) || 'sem prazo'} · ${esc(t.responsavel || 'sem responsável')}</span>
+          </label>`).join('')}
+        </div>
+        <label for="lpObs" style="display:block; font-size:12.5px; color:var(--text-muted); margin:14px 0 4px;">Observação (opcional) — vai pro histórico de cada uma</label>
+        <textarea id="lpObs" class="input" rows="2" style="width:100%; resize:vertical; font-family:inherit;" placeholder="Ex.: prazo prorrogado pela SEFAZ."></textarea>
+        <p style="margin:10px 0 0; font-size:12px; color:var(--text-dim);">${recorrentes ? 'Só estas tarefas: o dia da obrigação (ou da tarefa recorrente) nos próximos meses não muda. ' : ''}Cada uma ganha a linha no histórico, com o prazo de antes e o novo.</p>
+        <div id="lpMsg" style="margin-top:8px; font-size:13px;"></div></div>`;
+      const dataEl = document.getElementById('lpData'), diaEl = document.getElementById('lpDia');
+      const caixas = () => [...corpo.querySelectorAll('#lpLista input[type="checkbox"]')];
+      const todasBtn = document.getElementById('lpTodas');
+      const atualizar = () => {
+        if (lpCtx !== ctx || ctx.feito) return;
+        const v = dataEl.value, ok = isoOk(v);
+        const marcadas = caixas().filter(c => c.checked).map(c => c.dataset.id);
+        const mudam = ok ? marcadas.filter(id => String(ctx.mapa.get(id)?.prazo || '').slice(0, 10) !== v).length : 0;
+        const ja = ok ? marcadas.length - mudam : 0;
+        const fds = ok && fimDeSemana(v), fer = ok && !fds ? feriado(v) : null;
+        diaEl.textContent = ok ? comDiaSem(v) + (fds ? ' — cai no fim de semana' : fer ? ' — feriado: ' + fer : '')
+          + (ja ? ' · ' + plural(ja, 'já está', 'já estão') + ' nesse dia' : '') : '';
+        diaEl.style.color = fds || fer ? 'var(--warn)' : 'var(--text-muted)';
+        diaEl.style.fontWeight = fds || fer ? '600' : '';
+        ap.textContent = mudam ? 'Mudar ' + plural(mudam, 'prazo', 'prazos') : 'Mudar os prazos';
+        ap.disabled = !mudam;
+        if (todasBtn) todasBtn.textContent = marcadas.length ? 'Desmarcar todas' : 'Marcar todas';
+      };
+      ctx.atualizar = atualizar;
+      dataEl.addEventListener('input', atualizar);
+      dataEl.addEventListener('change', atualizar);
+      caixas().forEach(c => c.addEventListener('change', atualizar));
+      if (todasBtn) todasBtn.addEventListener('click', () => {
+        const marcar = !caixas().some(c => c.checked);
+        caixas().forEach(c => { c.checked = marcar; });
+        atualizar();
+      });
+      atualizar();
+      lpOverlay.classList.add('is-open');
+      setTimeout(() => { if (lpCtx === ctx) dataEl.focus(); }, 50);
+    }
+
+    async function aplicarPrazoLote(){
+      const ctx = lpCtx;
+      if (!ctx || ctx.gravando || ctx.feito) return;
+      const corpo = document.getElementById('lpCorpo'), ap = document.getElementById('lpAplicar'), msg = document.getElementById('lpMsg');
+      const prazo = document.getElementById('lpData').value;
+      const ids = [...corpo.querySelectorAll('#lpLista input:checked')].map(c => c.dataset.id);
+      if (!isoOk(prazo)) { msg.textContent = 'Escolha a data do novo prazo.'; msg.style.color = 'var(--warn)'; return; }
+      if (!ids.length) return;
+      ctx.gravando = true; ap.disabled = true; ap.textContent = 'Gravando…';
+      const r = await alterarTarefas(supabase, ids, { prazo }, { autor: usuarioEmail, origem: ORIGEM_LOTE, mensagem: document.getElementById('lpObs').value });
+      ctx.gravando = false;
+      if (r.erro && !r.alteradas.length) {
+        msg.textContent = 'Não consegui mudar: ' + r.erro; msg.style.color = 'var(--err)';
+        ctx.atualizar();
+        return;
+      }
+      const n = r.alteradas.length;
+      ctx.feito = { alteradas: r.alteradas.map(a => ({ id: a.id, antes: a.antes, depois: a.depois })) };
+      // a da admissão, da rescisão e do alvará: o prazo vem da ficha (o banco refaz) — diz onde mudar
+      const fichas = new Map();
+      r.daFicha.forEach(f => fichas.set(f.tela, { ...f, n: (fichas.get(f.tela)?.n || 0) + 1 }));
+      const fora = [
+        r.iguais.length ? plural(r.iguais.length, 'já estava', 'já estavam') + ' com esse prazo' : '',
+        r.fechadas.length ? plural(r.fechadas.length, 'foi concluída no meio do caminho e ficou como estava', 'foram concluídas no meio do caminho e ficaram como estavam') : '',
+        ...[...fichas.values()].map(f => plural(f.n, 'ficou', 'ficaram') + ' de fora: o prazo ' + (f.nome === 'alvará' ? 'do ' : 'da ') + f.nome + ' vem da ficha (mude em ' + f.tela + ')'),
+        r.semHistorico ? 'a linha no histórico não foi gravada' : '',
+        r.erro ? 'parte não foi: ' + r.erro : ''
+      ].filter(Boolean);
+      corpo.innerHTML = `<div><p style="margin:0; font-size:14px; color:var(--text);">${n ? '✓ ' + plural(n, 'prazo mudado', 'prazos mudados') + ' pra ' + esc(comDiaSem(prazo)) + '.' : 'Nenhum prazo mudou.'}</p>`
+        + (fora.length ? `<p style="margin:8px 0 0; font-size:12.5px; color:var(--text-muted);">${esc(fora.join(' · '))}.</p>` : '')
+        + (n ? '<p style="margin:12px 0 0;"><button type="button" class="btn btn-ghost btn-sm" id="lpDesfazer">Desfazer</button></p>' : '') + '</div>';
+      ap.style.display = 'none';
+      const fechar = document.getElementById('lpCancelar');
+      fechar.textContent = 'Fechar';
+      fechar.focus();
+      if (n) {
+        loteSel = new Set();
+        sincronizarDetalhe(ctx.feito.alteradas, 'depois');
+        window.dispatchEvent(new CustomEvent('mr:tarefas-mudaram', { detail: { ids: r.alteradas.map(a => a.id) } }));   // a Agenda se refaz
+        const desf = document.getElementById('lpDesfazer');
+        desf.addEventListener('click', () => desfazerPrazoLote(ctx, desf));
+      }
+    }
+
+    async function desfazerPrazoLote(ctx, desf){
+      if (lpCtx !== ctx || ctx.gravando || !ctx.feito || ctx.desfeito) return;
+      ctx.gravando = true; desf.disabled = true; desf.textContent = 'Desfazendo…';
+      const d = await desfazerAlteracao(supabase, ctx.feito.alteradas, { autor: usuarioEmail, origem: ORIGEM_LOTE });
+      ctx.gravando = false;
+      const corpo = document.getElementById('lpCorpo');
+      if (d.erro && !d.desfeitas.length) {
+        desf.disabled = false; desf.textContent = 'Desfazer';
+        corpo.insertAdjacentHTML('beforeend', `<p style="margin:8px 0 0; font-size:13px; color:var(--err);">Não consegui desfazer: ${esc(d.erro)}</p>`);
+        return;
+      }
+      ctx.desfeito = true;
+      const voltou = new Set(d.desfeitas.map(String));
+      sincronizarDetalhe(ctx.feito.alteradas.filter(a => voltou.has(String(a.id))), 'antes');
+      corpo.innerHTML = `<p style="margin:0; font-size:14px; color:var(--text);">↺ Desfeito: ${plural(d.desfeitas.length, 'voltou', 'voltaram')} pro prazo de antes.${d.ficaram.length
+        ? ' ' + plural(d.ficaram.length, 'mudou de novo depois (ou foi concluída) e ficou como está.', 'mudaram de novo depois (ou foram concluídas) e ficaram como estão.') : ''}</p>`;
+      document.getElementById('lpCancelar').focus();
+      if (d.desfeitas.length) window.dispatchEvent(new CustomEvent('mr:tarefas-mudaram', { detail: { ids: d.desfeitas } }));
+    }
+
+    // o editor da tarefa aberto por baixo: o campo do prazo acompanha (senão o "Salvar alterações" gravaria o de antes)
+    function sincronizarDetalhe(alteradas, lado){
+      if (!procAtual || !detOverlay.classList.contains('is-open')) return;
+      const a = alteradas.find(x => String(x.id) === String(procAtual.id));
+      if (!a || !a[lado] || !('prazo' in a[lado])) return;
+      procAtual.prazo = a[lado].prazo;
+      document.getElementById('dPrazo').value = a[lado].prazo ? String(a[lado].prazo).slice(0, 10) : '';
+      verIrmas(procAtual);
+    }
+
+    // as "iguais" à tarefa aberta no editor: as outras abertas com o mesmo título e o mesmo prazo, com os filtros de setor e
+    // responsável da tela — o atalho pra mudar o prazo de todas de uma vez (a obrigação de todos os clientes no mês)
+    let irmasCtx = null;
+    async function verIrmas(t){
+      const el = document.getElementById('dIrmas');
+      el.style.display = 'none'; irmasCtx = null;
+      if (!t || t.status === 'concluida' || !t.prazo || !t.titulo) return;
+      const prazo = String(t.prazo).slice(0, 10);
+      const { data, error } = await supabase.from('tarefas')
+        .select('id, titulo, prazo, status, responsavel, setor, cliente_id, obrigacao_id, origem, clientes(nome_principal)')
+        .eq('titulo', t.titulo).eq('prazo', prazo).neq('status', 'concluida').limit(1000);
+      if (error || procAtual !== t || String(t.prazo || '').slice(0, 10) !== prazo) return;
+      const lista = (data || []).filter(x => String(x.id) === String(t.id) || passaFiltro(x));
+      if (lista.length < 2 || !lista.some(x => String(x.id) === String(t.id))) return;
+      irmasCtx = { tarefas: lista, prazo, id: String(t.id) };
+      document.getElementById('dIrmasLink').textContent = '📅 Mudar o prazo das ' + lista.length + ' iguais a esta de uma vez';
+      document.getElementById('dIrmasNota').textContent = '· mesmo título, prazo ' + dataBR(prazo);
+      el.style.display = 'block';
+    }
+    // a data já escolhida no campo do editor vem pra janela
+    document.getElementById('dIrmasLink').addEventListener('click', e => {
+      e.preventDefault();
+      if (!irmasCtx || !procAtual || String(procAtual.id) !== irmasCtx.id) return;
+      const v = document.getElementById('dPrazo').value;
+      abrirPrazoLote(irmasCtx.tarefas, { data: isoOk(v) && v !== irmasCtx.prazo ? v : '' });
     });
 
     function renderBusca(){
@@ -1168,7 +1395,7 @@
     document.getElementById('dBtnReabrir').addEventListener('click', reabrirTarefa);
     document.getElementById('dExcluir').addEventListener('click', excluirTarefa);
 
-    function fecharDetalhe(){ detOverlay.classList.remove('is-open'); procAtual = null; document.getElementById('dNovoAnd').value = ''; }
+    function fecharDetalhe(){ detOverlay.classList.remove('is-open'); procAtual = null; irmasCtx = null; document.getElementById('dNovoAnd').value = ''; }
 
     async function abrirDetalhe(id){
       const t = [cacheTarefas, cacheSemPrazo, cacheBusca, cacheFoco, proxDias.tarefas].map(c => c.find(x => String(x.id) === String(id))).find(Boolean); // cacheFoco: lista de atrasadas/hoje/7 dias/mês; proxDias: a lista dos próximos dias
@@ -1254,6 +1481,7 @@
       document.getElementById('dBtnConcluir').style.display = concl ? 'none' : 'inline-flex';
       document.getElementById('dBtnReabrir').style.display = concl ? 'inline-flex' : 'none';
       detOverlay.classList.add('is-open');
+      verIrmas(t);   // "Mudar o prazo das N iguais a esta": chega sozinho, sem segurar o editor
       await renderTimeline(id);
     }
 
