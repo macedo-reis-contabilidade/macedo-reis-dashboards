@@ -140,6 +140,7 @@
     .ct-comp b { color:var(--text); }
     .ct-rolagem { overflow-x:auto; }
     .ct-acoes { display:flex; flex-direction:column; align-items:flex-start; gap:6px; }
+    .ct-botoes { display:flex; flex-wrap:wrap; gap:6px; }
     .ct-rolagem .pr-tab { min-width:760px; }
     @media (max-width: 640px) { .seg { flex-wrap:wrap; } .ct-filtros .input { width:100%; } }
 
@@ -263,7 +264,7 @@
 
         <div id="vCarteira" style="display:none;">
           <div class="ct-resumo" id="ctResumo" aria-live="polite"></div>
-          <p class="ct-nota">Cada cliente da carteira com o que paga <b>hoje</b> (o boleto; sem boleto, o Conta Azul) e o <b>motor</b>. Antes da revisão, o motor é o <b>piso</b>: o cálculo só com o que o sistema já sabe dele — regime, faturamento da ficha da Reforma, obrigações vinculadas, o sistema que usa, parcelamentos, Fator R; o que falta responder quase sempre soma. Depois de revisado, vale o valor da revisão (e, aceito, o combinado). A lista começa por quem está mais abaixo do motor; clique no cliente pra revisar — a revisão grava sozinha.</p>
+          <p class="ct-nota">Cada cliente da carteira com o que paga <b>hoje</b> (o boleto; sem boleto, o Conta Azul) e o <b>motor</b>. Antes da revisão, o motor é o <b>piso</b>: o cálculo só com o que o sistema já sabe dele — regime, faturamento da ficha da Reforma, obrigações vinculadas, o sistema que usa, parcelamentos, Fator R; o que falta responder quase sempre soma. Depois de revisado, vale o valor da revisão (e, aceito, o combinado). A lista começa por quem está mais abaixo do motor; clique no cliente pra revisar — a revisão grava sozinha. Na situação, <b>Reajuste proposto</b> pede o valor e o mês e baixa a carta pro cliente (o botão <b>Carta</b> baixa de novo).</p>
           <div class="ct-filtros">
             <select id="ctRegime" class="st-sel" aria-label="Regime"><option value="">Todos os regimes</option></select>
             <label><input type="checkbox" id="ctAbaixo"> Só quem paga menos que o motor</label>
@@ -322,6 +323,7 @@
     import { indexarParams as indexarParametros, calcularMotor, faturamentoAnual } from './assets/js/precificacao-motor.js';
     import { respostasDoSistema, regimesDasQuestoes, ehMei, honorarioDeHoje, parcelasDeHonorario, parcelaDoCliente, faltamResponder, ultimaPorCliente, mesesDaVigencia,
       mesesLivres, mesBR, diferenca, SITUACOES, rotuloSituacao, FONTES, aplicarReajusteAgora, referenciaDaLinha, pagaMenosQueOMotor, resumoDaCarteira } from './assets/js/precificacao-carteira.js';
+    import { cartaEmPdf } from './assets/js/carta-reajuste.js';   // a carta de reajuste pro cliente (só o de hoje, o novo e o mês)
     import { SOCIOS } from './assets/js/equipe.js';
     const escHtml = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));   // texto do banco nunca vira HTML (o nome que veio do formulário público, por exemplo)
     const user = await getCurrentUser();
@@ -1661,7 +1663,14 @@
       if (r) {
         const sit = r.aplicado_em ? '<span class="chip c-verde" title="' + escHtml('Entrou no boleto em ' + diaBR(r.aplicado_em)) + '">Aceito · no boleto</span>'
           : '<select class="st-sel" data-sit="' + id + '" aria-label="' + escHtml('Situação da revisão de ' + c.nome_principal) + '">' + SITUACOES.map(([v, t]) => '<option value="' + v + '"' + (v === r.status ? ' selected' : '') + '>' + t + '</option>').join('') + '</select>';
-        sitTd = '<div class="ct-acoes">' + sit + '<button type="button" class="ct-revisar" data-abrir="' + id + '">Abrir a revisão</button></div>';
+        // o proposto mostra o que foi pro cliente; no proposto e no aceito, a carta de reajuste baixa de novo
+        const temValor = Number(r.honorario_novo) > 0 && /^\d{4}-\d{2}$/.test(r.vigencia || '');
+        const proposto = r.status === 'proposto' && temValor ? '<small>' + escHtml('proposto ' + fmt(r.honorario_novo) + '/mês a partir de ' + mesBR(r.vigencia)) + '</small>' : '';
+        const carta = r.status === 'proposto' || r.status === 'aceito'
+          ? '<button type="button" class="ct-revisar" data-carta="' + id + '" aria-label="' + escHtml('Carta de reajuste de ' + c.nome_principal) + '" title="'
+            + escHtml(temValor ? 'Baixa de novo a carta pro cliente: ' + fmt(r.honorario_novo) + '/mês a partir de ' + mesBR(r.vigencia) : 'Gera a carta pro cliente (pede o valor e o mês)') + '">Carta</button>'
+          : '';
+        sitTd = '<div class="ct-acoes">' + sit + proposto + '<div class="ct-botoes"><button type="button" class="ct-revisar" data-abrir="' + id + '">Abrir a revisão</button>' + carta + '</div></div>';
       } else {
         sitTd = '<button type="button" class="ct-revisar" data-abrir="' + id + '">Revisar</button>';
       }
@@ -1674,6 +1683,8 @@
     const tbCart = document.getElementById('ctLista');
     tbCart.addEventListener('click', e => {
       if (e.target.closest('select')) return;
+      const bCarta = e.target.closest('[data-carta]');
+      if (bCarta) { const lc = linhaPorId(bCarta.dataset.carta); if (lc) baixarCarta(lc); return; }
       const alvo = e.target.closest('[data-abrir]') || e.target.closest('tr[data-cli]');
       const l = alvo && linhaPorId(alvo.dataset.abrir || alvo.dataset.cli);
       if (l) abrirRevisao(l);
@@ -1697,6 +1708,9 @@
       cart = { linha: l, revisaoId: rev && !revisaoFechada(rev) ? rev.id : null, mei: false };
       // a revisão gravada volta como ficou; sem ela, o que o sistema sabe (com o honorário de hoje)
       respostas = JSON.parse(JSON.stringify(rev ? rev.respostas || {} : l.pre.respostas));
+      // da aceita ou mantida nasce outra revisão: o de hoje vem do sistema de novo (o dela é o de antes do reajuste, e o
+      // boleto já pode estar com o valor novo)
+      if (rev && revisaoFechada(rev) && l.pre.respostas.A12B != null) respostas.A12B = l.pre.respostas.A12B;
       editandoId = null;
       atualizarBotoesSalvar();
       trocarVisao('form'); renderForm();
@@ -1895,18 +1909,30 @@
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') gravarRevisaoJa(); });
     window.addEventListener('pagehide', () => { gravarRevisaoJa(); });
 
-    // ---------- a situação da revisão; o aceito pergunta o valor combinado e o mês ----------
+    // ---------- a situação da revisão; o proposto pergunta o valor e o mês e gera a carta; o aceito, o valor combinado e o mês ----------
     async function mudarSituacao(l, novo, sel){
       const r = l.revisao;
       if (!r || novo === r.status) return;
+      if (novo === 'proposto') { sel.value = r.status; abrirProposta(l); return; }
       if (novo === 'aceito') { sel.value = r.status; abrirAceite(l); return; }
       sel.disabled = true;
       const agora = new Date().toISOString();
-      const { error } = await supabase.from('revisoes_honorario').update({ status: novo, atualizado_em: agora }).eq('id', r.id);
+      // de volta pro estudo, ou mantido: o valor e o mês do proposto (ou do aceito) não valem mais
+      const mudanca = { status: novo, atualizado_em: agora, ...(r.honorario_novo != null || r.vigencia != null ? { honorario_novo: null, vigencia: null } : {}) };
+      const { error } = await supabase.from('revisoes_honorario').update(mudanca).eq('id', r.id);
       sel.disabled = false;
       if (error) { sel.value = r.status; alert('Não consegui mudar a situação: ' + error.message); return; }
-      Object.assign(r, { status: novo, atualizado_em: agora });
+      Object.assign(r, mudanca);
       desenharCarteira();
+    }
+    // os meses em que o valor novo pode começar (o de hoje e os 12 seguintes; o que já tem boleto emitido fica travado): o da
+    // revisão (o proposto, quando vai pro aceito), se ainda dá; senão, o primeiro livre depois deste mês
+    function preencherMeses(sel, l){
+      const r = l.revisao;
+      const livres = mesesLivres(mesesDaVigencia(hojeLocal()), l.boletos);
+      sel.innerHTML = livres.map(m => '<option value="' + m.mes + '"' + (m.livre ? '' : ' disabled') + '>' + mesBR(m.mes) + (m.livre ? '' : ' — esse boleto já saiu') + '</option>').join('');
+      const proximo = livres.find((m, i) => i > 0 && m.livre) || livres.find(m => m.livre);
+      sel.value = r.vigencia && livres.some(m => m.mes === r.vigencia && m.livre) ? r.vigencia : proximo ? proximo.mes : '';
     }
     let aceiteAtual = null;
     const fecharAceite = () => { document.getElementById('ovAceite').style.display = 'none'; aceiteAtual = null; };
@@ -1915,11 +1941,7 @@
       const r = l.revisao;
       document.getElementById('acNome').textContent = l.cliente.nome_principal + (l.hoje ? ' · hoje ' + fmt(l.hoje.valor) + '/mês' : '') + ' · revisão ' + fmt(r.honorario_sugerido) + '/mês';
       document.getElementById('acValor').value = Number(r.honorario_novo) > 0 ? r.honorario_novo : Math.round(Number(r.honorario_sugerido) || 0) || '';
-      const livres = mesesLivres(mesesDaVigencia(hojeLocal()), l.boletos);
-      const sel = document.getElementById('acMes');
-      sel.innerHTML = livres.map(m => '<option value="' + m.mes + '"' + (m.livre ? '' : ' disabled') + '>' + mesBR(m.mes) + (m.livre ? '' : ' — esse boleto já saiu') + '</option>').join('');
-      const proximo = livres.find((m, i) => i > 0 && m.livre) || livres.find(m => m.livre);
-      sel.value = r.vigencia && livres.some(m => m.mes === r.vigencia && m.livre) ? r.vigencia : proximo ? proximo.mes : '';
+      preencherMeses(document.getElementById('acMes'), l);
       document.getElementById('acComo').textContent = l.temCobranca
         ? 'O valor novo entra no boleto desse mês e segue nos seguintes: se o mês já foi gerado e o boleto está a emitir, ele é trocado agora; senão, entra quando o mês for gerado na tela Boletos.'
         : 'A cobrança dele não está na base de boletos' + (l.hoje && l.hoje.fonte === 'conta_azul' ? ' (é pelo Conta Azul)' : '') + ': aqui fica registrado o combinado, e a troca do valor é com você lá.';
@@ -1960,6 +1982,103 @@
       msg.style.color = 'var(--ok)'; msg.textContent = texto;
       btn.style.display = 'none';
       document.getElementById('acCancelar').textContent = 'Fechar';
+      desenharCarteira();
+    });
+
+    // ---------- o reajuste proposto: o valor, o mês e a carta pro cliente (20/10/2026) ----------
+    // O valor e o mês ficam na revisão já no proposto (o aceite depois vem com eles; a geração dos boletos e o vigia só olham
+    // o aceito), com o honorário de hoje que foi na carta (honorario_atual). A carta (assets/js/carta-reajuste.js) leva só o
+    // de hoje, o novo e o mês — nunca o motor, as respostas nem as anotações
+    const r2 = v => Math.round(Number(v) * 100) / 100;
+    // o de hoje pra carta nova: o da linha (o boleto, a base, o Conta Azul — o da revisão pode ter ficado velho); depois do
+    // aceite aplicado o boleto já está com o novo, e vale o gravado na revisão
+    const hojeDaLinha = l => (l.hoje && !(l.revisao && l.revisao.aplicado_em) && Number(l.hoje.valor) > 0 ? r2(l.hoje.valor) : null);
+    const hojeGravado = l => (l.revisao && Number(l.revisao.honorario_atual) > 0 ? r2(l.revisao.honorario_atual) : null);
+    let propostaAtual = null, gravandoProposta = false;
+    const fecharProposta = () => { if (gravandoProposta) return; document.getElementById('ovProposta').style.display = 'none'; propostaAtual = null; };
+    // o boleto do mês escolhido já foi gerado, ou é o deste mês (gerado no começo do mês que vem): a proposta não muda o
+    // boleto, só o aceite — se ele sair antes, sai com o valor de hoje
+    function avisoDoMes(l, mes){
+      const aviso = document.getElementById('ppMesAviso');
+      const b = l.temCobranca && (l.boletos || []).find(x => String(x.competencia) === mes);
+      aviso.textContent = !l.temCobranca ? ''
+        : b ? 'O boleto de ' + mesBR(mes) + ' já foi gerado: o valor novo só entra nele se o cliente aceitar antes de ele ser emitido.'
+        : mes === hojeLocal().slice(0, 7) ? 'O boleto de ' + mesBR(mes) + ' é gerado no começo do mês que vem: o valor novo só entra nele se o cliente aceitar antes disso.'
+        : '';
+      aviso.hidden = !aviso.textContent;
+    }
+    function abrirProposta(l){
+      propostaAtual = l;
+      const r = l.revisao, daLinha = hojeDaLinha(l), gravado = hojeGravado(l), hoje = daLinha != null ? daLinha : gravado;
+      document.getElementById('ppNome').textContent = l.cliente.nome_principal + ' · revisão ' + fmt(r.honorario_sugerido) + '/mês';
+      document.getElementById('ppHoje').value = hoje != null ? hoje : '';
+      const nota = document.getElementById('ppHojeNota');
+      nota.textContent = gravado != null && hoje != null && gravado !== hoje ? 'Na revisão está ' + fmt(gravado) + '/mês: confira qual vai na carta.' : '';
+      nota.hidden = !nota.textContent;
+      document.getElementById('ppValor').value = Number(r.honorario_novo) > 0 ? r.honorario_novo : Math.round(Number(r.honorario_sugerido) || 0) || '';
+      const sel = document.getElementById('ppMes');
+      preencherMeses(sel, l);
+      avisoDoMes(l, sel.value);
+      document.getElementById('ppComo').textContent = 'A carta sai em PDF com o honorário de hoje (vazio, ela diz só o novo), o novo e a mensalidade em que ele começa'
+        + (l.temCobranca ? ', com o mês do vencimento.' : '. A cobrança dele não está na base de boletos: a carta não fala de boleto nem de vencimento.')
+        + ' O motor, as respostas e as anotações não vão na carta.';
+      const msg = document.getElementById('ppMsg'); msg.textContent = '';
+      const ok = document.getElementById('ppConfirmar'); ok.disabled = false; ok.style.display = '';
+      const cancelar = document.getElementById('ppCancelar'); cancelar.textContent = 'Cancelar'; cancelar.disabled = false;
+      document.getElementById('ovProposta').style.display = 'flex';
+      document.getElementById('ppValor').focus();
+    }
+    // a carta em PDF → { nome } ou { erro }; atual: o honorário de hoje que vai nela (null: ela diz só o novo)
+    function gerarCarta(l, { atual, novo, vigencia }){
+      if (!window.jspdf) return { erro: 'O gerador de PDF ainda está carregando: tente de novo em 2 segundos.' };
+      try {
+        const { doc, nome } = cartaEmPdf(window.jspdf.jsPDF, { cliente: l.cliente, atual, novo, vigencia, boleto: l.temCobranca, data: hojeLocal() });
+        doc.save(nome);
+        return { nome };
+      } catch (e) { return { erro: 'Não consegui gerar a carta: ' + ((e && e.message) || e) + '.' }; }
+    }
+    // o botão Carta da linha: a carta de novo, com o que ficou gravado na revisão (o de hoje que foi na carta, o novo e o
+    // mês); sem o valor e o mês (o proposto de antes da carta), pergunta
+    function baixarCarta(l){
+      const r = l.revisao;
+      if (!r) return;
+      if (!(Number(r.honorario_novo) > 0) || !/^\d{4}-\d{2}$/.test(r.vigencia || '')) { abrirProposta(l); return; }
+      const c = gerarCarta(l, { atual: hojeGravado(l), novo: Number(r.honorario_novo), vigencia: r.vigencia });
+      if (c.erro) alert(c.erro);
+    }
+    document.getElementById('ppCancelar').addEventListener('click', fecharProposta);
+    document.getElementById('ppMes').addEventListener('change', e => { if (propostaAtual) avisoDoMes(propostaAtual, e.target.value); });
+    document.getElementById('ovProposta').addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); fecharProposta(); } });
+    document.getElementById('ppConfirmar').addEventListener('click', async () => {
+      const l = propostaAtual;
+      if (!l || gravandoProposta) return;
+      const msg = document.getElementById('ppMsg'), btn = document.getElementById('ppConfirmar'), cancelar = document.getElementById('ppCancelar');
+      const erro = t => { msg.style.color = 'var(--err)'; msg.textContent = t; };
+      const valor = r2(document.getElementById('ppValor').value);
+      const campoHoje = String(document.getElementById('ppHoje').value).trim();
+      const hoje = campoHoje === '' ? null : r2(campoHoje);
+      const mes = document.getElementById('ppMes').value;
+      if (!(valor > 0)) return erro('Diga o valor proposto.');
+      if (hoje != null && !(hoje > 0)) return erro('O honorário de hoje tem de ser maior que zero (ou fica vazio, e a carta diz só o novo).');
+      if (!/^\d{4}-\d{2}$/.test(mes)) return erro('Escolha o mês.');
+      if (hoje != null && hoje === valor) return erro('É o mesmo valor de hoje: pra deixar como está, a situação é Mantido.');
+      if (!window.jspdf) return erro('O gerador de PDF ainda está carregando: tente de novo em 2 segundos.');
+      gravandoProposta = true; btn.disabled = true; cancelar.disabled = true;
+      msg.style.color = 'var(--text-muted)'; msg.textContent = 'Gravando…';
+      const r = l.revisao, agora = new Date().toISOString(), daLinha = hojeDaLinha(l);
+      // o de hoje que vai na carta fica na revisão (é o de antes do reajuste, pro aceite e pra carta de novo)
+      const mudanca = { status: 'proposto', honorario_novo: valor, vigencia: mes, atualizado_em: agora, honorario_atual: hoje,
+        fonte_atual: hoje == null ? null : daLinha != null && daLinha === hoje ? l.hoje.fonte : 'informado' };
+      const { error } = await supabase.from('revisoes_honorario').update(mudanca).eq('id', r.id);
+      gravandoProposta = false; cancelar.disabled = false;
+      if (error) { btn.disabled = false; erro('Não consegui gravar: ' + error.message); return; }
+      Object.assign(r, mudanca);
+      const c = gerarCarta(l, { atual: hoje, novo: valor, vigencia: mes });
+      msg.style.color = c.erro ? 'var(--warn)' : 'var(--ok)';
+      msg.textContent = '✓ Reajuste proposto: ' + fmt(valor) + '/mês a partir de ' + mesBR(mes) + '. '
+        + (c.erro ? c.erro + ' Ela sai pelo botão Carta da linha.' : 'A carta foi baixada: ' + c.nome + '.');
+      btn.style.display = 'none';
+      cancelar.textContent = 'Fechar';
       desenharCarteira();
     });
 
@@ -2061,6 +2180,27 @@
       <button id="acConfirmar" type="button" style="background:var(--ok);color:#0B1017;border:none;border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer;">Confirmar o reajuste</button>
     </div>
     <p id="acMsg" style="margin:10px 0 0;font-size:13px;"></p>
+  </div>
+</div>
+<!-- Carteira: o reajuste proposto (o valor e o mês em que começa) e a carta pro cliente -->
+<div id="ovProposta" style="display:none;position:fixed;inset:0;background:var(--overlay);z-index:80;align-items:center;justify-content:center;">
+  <div role="dialog" aria-modal="true" aria-labelledby="ppTitulo" style="background:var(--surface);border:1px solid rgba(91,130,166,.35);border-radius:12px;padding:22px;max-width:480px;width:92%;">
+    <h3 id="ppTitulo" style="margin:0 0 6px;">Reajuste proposto</h3>
+    <p id="ppNome" style="margin:0 0 14px;color:var(--text-muted);font-size:14px;"></p>
+    <label style="display:block;margin-bottom:4px;font-size:13px;">Honorário de hoje (R$ por mês, vai na carta)<br>
+      <input id="ppHoje" type="number" min="0" step="0.01" class="input" placeholder="vazio: a carta diz só o novo" style="width:100%;margin-top:4px;"></label>
+    <p id="ppHojeNota" hidden style="margin:0 0 6px;font-size:12px;color:var(--warn);"></p>
+    <label style="display:block;margin:8px 0 10px;font-size:13px;">Valor proposto (R$ por mês)<br>
+      <input id="ppValor" type="number" min="1" step="0.01" class="input" style="width:100%;margin-top:4px;"></label>
+    <label style="display:block;margin-bottom:6px;font-size:13px;">A partir do boleto de<br>
+      <select id="ppMes" class="input" style="width:100%;margin-top:4px;"></select></label>
+    <p id="ppMesAviso" hidden style="margin:4px 0 0;font-size:12px;color:var(--warn);line-height:1.45;"></p>
+    <p id="ppComo" style="margin:8px 0 14px;font-size:12.5px;color:var(--text-muted);line-height:1.5;"></p>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button id="ppCancelar" type="button" style="background:none;border:1px solid var(--line-strong);color:var(--text-muted);border-radius:8px;padding:8px 14px;cursor:pointer;">Cancelar</button>
+      <button id="ppConfirmar" type="button" style="background:var(--ok);color:#0B1017;border:none;border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer;">Propor e gerar a carta</button>
+    </div>
+    <p id="ppMsg" style="margin:10px 0 0;font-size:13px;"></p>
   </div>
 </div>
 </body>

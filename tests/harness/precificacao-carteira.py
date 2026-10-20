@@ -13,16 +13,21 @@ Confere:
      comparando com o de hoje; responder tira da lista do que falta; mudar a resposta do sistema tira a etiqueta;
   3. salvar a revisão: grava em revisoes_honorario (situação "estudo", o motor, o de hoje e de onde veio), nada em
      Propostas; volta à carteira com a revisão na linha;
-  4. a situação: reajuste proposto; aceito com o valor e o mês — o boleto a emitir do mês troca na hora (e a base), a
-     revisão fica aplicada e a linha diz "no boleto";
+  4. a situação: reajuste proposto pergunta o valor e o mês (o mesmo valor de hoje não vale), grava os dois na revisão e
+     baixa a carta pro cliente (assets/js/carta-reajuste.js, com um jsPDF de mentira que anota o que ela escreve: o de
+     hoje, o novo, o mês e o vencimento do primeiro boleto — nada do motor nem das observações; de quem paga pelo Conta
+     Azul, nenhuma frase de boleto); a linha mostra o proposto e o botão Carta, que baixa de novo (e, no proposto de antes
+     da carta, sem valor, pergunta); aceito já vem com o valor e o mês da proposta — o boleto a emitir do mês troca na
+     hora (e a base), a revisão fica aplicada, a linha diz "no boleto" e a carta do aceito sai com o combinado;
   5. o aceito pra um mês ainda não gerado: a tela Boletos, ao gerar o mês, põe o valor combinado no lugar do copiado e
      marca a revisão como aplicada;
-  6. o MEI: a revisão na aba MEI (os dados do cadastro, o plano comparado com o de hoje), gravada com o plano;
+  6. o MEI: a revisão na aba MEI (os dados do cadastro, o plano comparado com o de hoje), gravada com o plano; a carta
+     do MEI com o valor do plano e o nome sem o CPF;
   7. "Nova" sai da revisão (o botão volta a ser de proposta);
 e nenhum erro de JavaScript. Termina com código 1 se alguma checagem falhar.
 Pré-requisito: pip install playwright e python -m playwright install chromium
 """
-import sys, json, pathlib, datetime
+import sys, re, json, pathlib, datetime
 sys.dont_write_bytecode = True
 try: sys.stdout.reconfigure(encoding='utf-8')
 except Exception: pass
@@ -37,6 +42,9 @@ def mais_meses(comp, n):
 ANT, PROX = mais_meses(COMP, -1), mais_meses(COMP, 1)
 MES_BR = lambda c: c[5:7] + '/' + c[:4]
 D = lambda n: (HOJE + datetime.timedelta(days=n)).isoformat()
+MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
+EXT = lambda c: MESES[int(c[5:7]) - 1] + ' de ' + c[:4]   # 'novembro de 2026', como a carta escreve no meio da frase
+DATA_CARTA = f'Três Coroas, {HOJE.day} de {MESES[HOJE.month - 1].capitalize()} de {HOJE.year}.'
 
 def Q(id, bloco, tipo, pergunta, opcoes=None, ordem=0):
     return {'id': id, 'bloco': bloco, 'tipo': tipo, 'pergunta': pergunta, 'opcoes': opcoes, 'ajuda': '', 'externa': False, 'ativo': True, 'ordem': ordem}
@@ -120,6 +128,23 @@ SEMEAR = """
 """ % (json.dumps({'QUESTOES': QUESTOES, 'PARAMS': PARAMS, 'OBRIG_PREC': OBRIG_PREC, 'MEI_PLANOS': MEI_PLANOS, 'MEI_SERV': MEI_SERV, 'CLIENTES': CLIENTES, 'CARTEIRA': CARTEIRA,
       'OBRIG': OBRIG, 'VINCULOS': VINCULOS, 'COBRANCAS': COBRANCAS, 'CONFIG': CONFIG, 'PARCELAS': PARCELAS, 'TAREFAS': TAREFAS, 'REVISOES': REVISOES}, ensure_ascii=False), CA, CA, CA, CA, PROX)
 TOUR = "(() => { const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { return String(k).startsWith('mr_tour_') ? 'ok' : g.call(this, k); }; })()"
+# o jsPDF de mentira: anota o que a carta escreve e o nome do arquivo (o CDN fica fora do teste)
+DUBLE_PDF = r"""
+(() => {
+  window.__pdfTextos = []; window.__pdfSalvo = null;
+  class Doc {
+    constructor(){ this._n = 1; }
+    text(t){ (Array.isArray(t) ? t : [t]).forEach(x => window.__pdfTextos.push(String(x))); return this; }
+    splitTextToSize(t){ return [String(t)]; }
+    getNumberOfPages(){ return this._n; }
+    addPage(){ this._n++; return this; }
+    save(nome){ window.__pdfSalvo = nome; return this; }
+  }
+  for (const m of ['setFont', 'setFontSize', 'setTextColor', 'setDrawColor', 'setLineWidth', 'line', 'setPage', 'setProperties'])
+    Doc.prototype[m] = function () { return this; };
+  Object.defineProperty(window, 'jspdf', { value: { jsPDF: Doc }, writable: false });
+})();
+"""
 
 def brl(v):
     return 'R$ ' + format(v, ',.0f').replace(',', '.')
@@ -145,10 +170,15 @@ def main():
         erros = []
         p = b.new_page(viewport={'width': 1400, 'height': 950})
         p.on('pageerror', lambda e: erros.append(str(e)))
-        p.add_init_script(TOUR); p.add_init_script(SEMEAR)
+        p.route(re.compile(r'https://cdnjs\.cloudflare\.com/.*'), lambda r: r.fulfill(status=200, content_type='text/javascript', body='/* fora do teste */'))
+        p.add_init_script(TOUR); p.add_init_script(SEMEAR); p.add_init_script(DUBLE_PDF)
         db = lambda expr: p.evaluate('() => ' + expr)
         linha = lambda cli: f'#ctLista tr[data-cli="{cli}"]'
         txt = lambda sel: p.inner_text(sel).replace('\xa0', ' ')
+        # a carta que a tela mandou baixar: o nome do arquivo e o que ela escreveu (o espaço que não quebra vira espaço)
+        carta = lambda: p.evaluate("() => ({ salvo: window.__pdfSalvo, textos: window.__pdfTextos.join('\\n').replace(/\\u00a0/g, ' ') })")
+        sem_carta = lambda: p.evaluate("() => { window.__pdfTextos = []; window.__pdfSalvo = null; }")
+        proposta_ok = lambda: p.wait_for_function("() => document.getElementById('ppMsg').textContent.startsWith('✓')", timeout=5000)
 
         print('1. A aba Carteira')
         p.goto(base + 'comercial-precificacao.html'); p.wait_for_selector('#prQuestionario .pr-q', timeout=8000)
@@ -226,12 +256,41 @@ def main():
         ok('2 de 5 revisados' in resumo and f'+{brl(m - 300 + 120)}/mês até ele ({brl(m - 300 + 120)} nos revisados)' in resumo,
            f'o resumo acompanha a revisão: a padaria entra pelo motor revisado ({motor}), não mais pelo piso ({resumo!r})')
 
-        print('4. A situação: proposto e aceito (o boleto a emitir do mês troca na hora)')
-        p.select_option(linha(CA) + ' select[data-sit]', 'proposto'); p.wait_for_timeout(300)
-        ok(db(f"window.__mockDb.revisoes_honorario.find(r => r.cliente_id === '{CA}').status") == 'proposto', 'reajuste proposto: gravado')
+        print('4. A situação: proposto (o valor, o mês e a carta pro cliente) e aceito (o boleto a emitir do mês troca na hora)')
+        status_a = lambda: db(f"window.__mockDb.revisoes_honorario.find(r => r.cliente_id === '{CA}').status")
+        p.select_option(linha(CA) + ' select[data-sit]', 'proposto'); p.wait_for_selector('#ovProposta[style*="flex"]', timeout=3000)
+        ok(p.input_value(linha(CA) + ' select[data-sit]') == 'estudo' and p.input_value('#ppValor') == str(m) and p.input_value('#ppMes') == PROX,
+           f'o proposto pergunta antes: o valor da revisão ({m}) e o mês que vem já preenchidos; a situação fica como estava até confirmar')
+        ok('PADARIA DO TESTE LTDA · hoje R$ 300/mês' in txt('#ppNome') and 'quando vence o primeiro boleto' in txt('#ppComo') and 'não vão na carta' in txt('#ppComo'),
+           f'a janela diz quem, o de hoje e o que vai na carta ({txt("#ppNome")!r})')
+        p.click('#ppCancelar'); p.wait_for_timeout(150)
+        ok(p.is_hidden('#ovProposta') and status_a() == 'estudo' and carta()['salvo'] is None, 'cancelar não grava nem baixa a carta')
+        p.select_option(linha(CA) + ' select[data-sit]', 'proposto'); p.wait_for_selector('#ovProposta[style*="flex"]', timeout=3000)
+        p.fill('#ppValor', '300'); p.click('#ppConfirmar'); p.wait_for_timeout(150)
+        ok('mesmo valor de hoje' in txt('#ppMsg') and status_a() == 'estudo' and carta()['salvo'] is None, f'o mesmo valor de hoje não vira proposta ({txt("#ppMsg")!r})')
+        p.fill('#ppValor', '620'); p.click('#ppConfirmar'); proposta_ok()
+        rv = db(f"window.__mockDb.revisoes_honorario.find(r => r.cliente_id === '{CA}')")
+        ok(rv['status'] == 'proposto' and rv['honorario_novo'] == 620 and rv['vigencia'] == PROX and not rv.get('aplicado_em'),
+           f'proposto: o valor e o mês ficam na revisão ({ {k: rv.get(k) for k in ("status", "honorario_novo", "vigencia")} })')
+        c = carta()
+        ok(c['salvo'] == 'Carta de reajuste - PADARIA DO TESTE LTDA.pdf' and 'A carta foi baixada' in txt('#ppMsg'), f'e a carta baixa na hora ({c["salvo"]!r})')
+        ok(f'passam de R$ 300,00 para R$ 620,00 a partir de {EXT(PROX)}.' in c['textos'] and f'dos honorários de {EXT(PROX)}, com vencimento em {EXT(mais_meses(PROX, 1))}.' in c['textos']
+           and 'CNPJ 10.000.000/0001-91' in c['textos'] and DATA_CARTA in c['textos'] and 'Macedo & Reis Contabilidade Ltda' in c['textos'],
+           'a carta: o de hoje, o novo, o mês, o vencimento do primeiro boleto, o CNPJ, a data e o rodapé do escritório')
+        vazou = [x for x in (f'R$ {m},00', brl(m) + ',00', '%', 'conversar com o cliente', 'motor', 'piso', 'Conta Azul') if x in c['textos']]
+        ok(not vazou, f'nada de dentro na carta: o motor, percentual, as observações ({vazou})')
+        p.click('#ppCancelar'); p.wait_for_timeout(150)
+        la = txt(linha(CA))
+        ok(p.input_value(linha(CA) + ' select[data-sit]') == 'proposto' and 'proposto R$ 620/mês a partir de ' + MES_BR(PROX) in la and p.is_visible(linha(CA) + ' [data-carta]'),
+           f'a linha: proposto, com o valor e o mês, e o botão Carta ({la!r})')
+        sem_carta(); p.click(linha(CA) + ' [data-carta]'); p.wait_for_timeout(200)
+        c = carta()
+        ok(c['salvo'] == 'Carta de reajuste - PADARIA DO TESTE LTDA.pdf' and 'para R$ 620,00' in c['textos'] and p.is_hidden('#ovProposta') and p.is_visible('#vCarteira'),
+           'o botão Carta baixa de novo, sem perguntar e sem abrir a revisão')
         p.select_option(linha(CA) + ' select[data-sit]', 'aceito'); p.wait_for_selector('#ovAceite[style*="flex"]', timeout=3000)
         meses = p.eval_on_selector_all('#acMes option', 'os => os.map(o => [o.value, o.disabled])')
-        ok(meses[0] == [COMP, False] and p.input_value('#acMes') == PROX and len(meses) == 13, f'o aceite: o mês de hoje (boleto a emitir) e os seguintes, o próximo marcado ({meses[:3]})')
+        ok(meses[0] == [COMP, False] and len(meses) == 13, f'o aceite: o mês de hoje (boleto a emitir) e os seguintes ({meses[:3]})')
+        ok(p.input_value('#acValor') == '620' and p.input_value('#acMes') == PROX, 'o aceite já vem com o valor e o mês da proposta')
         ok(p.input_value(linha(CA) + ' select[data-sit]') == 'proposto', 'enquanto o aceite não é confirmado, a situação fica como estava')
         p.fill('#acValor', '640'); p.select_option('#acMes', COMP)
         p.click('#acConfirmar'); p.wait_for_function("() => document.getElementById('acMsg').textContent.startsWith('✓')", timeout=5000)
@@ -247,6 +306,10 @@ def main():
         p.click('#acCancelar'); p.wait_for_timeout(150)
         la = txt(linha(CA))
         ok('Aceito · no boleto' in la and 'combinado, a partir de ' + MES_BR(COMP) in la and la.count('R$ 640') == 2, f'a linha diz que entrou no boleto, e o de hoje já é o novo ({la!r})')
+        sem_carta(); p.click(linha(CA) + ' [data-carta]'); p.wait_for_timeout(200)
+        c = carta()
+        ok(f'passam de R$ 300,00 para R$ 640,00 a partir de {EXT(COMP)}.' in c['textos'],
+           'a carta do aceito: o combinado e o mês; o de antes continua o da revisão (o boleto já está com o novo)')
         resumo = txt('#ctResumo')
         ok('R$ 2.040/mês' in resumo and '1 reajuste aceito · +R$ 340/mês' in resumo and '1 paga menos que o motor · +R$ 120/mês' in resumo,
            f'o resumo: o de hoje com o boleto novo, o reajuste aceito, e a padaria sai do que falta ({resumo!r})')
@@ -263,9 +326,20 @@ def main():
         p.fill('#prQuestionario [data-q="C1"]', '2')
         ok(espera(p, "() => document.getElementById('prSalvoMsg').textContent.includes('Gravada às')"), 'respondeu: gravou')
         p.click('#prQuestionario [data-cart="sair"]'); p.wait_for_selector(lb + ' select[data-sit]', timeout=8000)
+        p.select_option(lb + ' select[data-sit]', 'proposto'); p.wait_for_selector('#ovProposta[style*="flex"]', timeout=3000)
+        ok('não está na base de boletos' in txt('#ppComo'), 'quem paga pelo Conta Azul: a janela avisa que a carta não fala de boleto')
+        sem_carta(); p.fill('#ppValor', '1000'); p.click('#ppConfirmar'); proposta_ok()
+        c = carta()
+        ok('passam de R$ 900,00 para R$ 1.000,00' in c['textos'] and 'boleto' not in c['textos'].lower() and 'Conta Azul' not in c['textos'],
+           'a carta de quem paga pelo Conta Azul: o de hoje de lá, nenhuma frase de boleto (e o Conta Azul não aparece)')
+        p.click('#ppCancelar'); p.wait_for_timeout(150)
         p.select_option(lb + ' select[data-sit]', 'aceito'); p.wait_for_selector('#ovAceite[style*="flex"]', timeout=3000)
-        ok('não está na base de boletos (é pelo Conta Azul)' in txt('#acComo'), 'quem paga pelo Conta Azul: o aceite avisa que a troca é lá')
+        ok('não está na base de boletos (é pelo Conta Azul)' in txt('#acComo') and p.input_value('#acValor') == '1000', 'quem paga pelo Conta Azul: o aceite (com o valor proposto) avisa que a troca é lá')
         p.click('#acCancelar'); p.wait_for_timeout(150)
+        # o proposto de antes da carta (sem valor nem mês): o botão Carta pergunta antes de gerar
+        sem_carta(); p.click(linha(CF) + ' [data-carta]'); p.wait_for_selector('#ovProposta[style*="flex"]', timeout=3000)
+        ok(p.input_value('#ppValor') == '520' and p.input_value('#ppMes') == PROX and carta()['salvo'] is None, 'o proposto sem valor nem mês: o botão Carta abre a janela, com o valor da revisão')
+        p.click('#ppCancelar'); p.wait_for_timeout(150)
 
         print('5. O aceito pra um mês ainda não gerado entra na geração da tela Boletos')
         lf = linha(CF)
@@ -303,6 +377,15 @@ def main():
         p.click('#meiCartBanner [data-cart="sair"]'); p.wait_for_selector(linha(CC) + ' select[data-sit]', timeout=8000)
         lc = txt(linha(CC))
         ok('R$ 120' in lc and '+20%' in lc and 'plano MEI, revisado em' in lc, f'de volta à carteira: o MEI com o plano revisado ({lc!r})')
+        p.select_option(linha(CC) + ' select[data-sit]', 'proposto'); p.wait_for_selector('#ovProposta[style*="flex"]', timeout=3000)
+        meses = p.eval_on_selector_all('#ppMes option', 'os => os.map(o => [o.value, o.disabled])')
+        ok(p.input_value('#ppValor') == '120' and meses[0] == [COMP, True] and p.input_value('#ppMes') == PROX,
+           f'o MEI: a proposta com o valor do plano; o mês com o boleto já enviado fica travado ({meses[:2]})')
+        sem_carta(); p.click('#ppConfirmar'); proposta_ok()
+        c = carta()
+        ok(c['salvo'] == 'Carta de reajuste - FULANO DE TESTE.pdf' and 'passam de R$ 100,00 para R$ 120,00' in c['textos'] and 'FULANO DE TESTE' in c['textos']
+           and '12345678901' not in c['textos'], f'a carta do MEI: o plano e o nome sem o CPF ({c["salvo"]!r})')
+        p.click('#ppCancelar'); p.wait_for_timeout(150)
 
         print('7. "Nova" sai da revisão')
         p.click('#prSeg button[data-v="form"]'); p.click('#prLimpar'); p.wait_for_timeout(150)
