@@ -17,8 +17,9 @@ Confere, com um nome e um contato que são HTML de propósito (e as aspas que fe
   3. Transição: o cartão da lista e a ficha (contato e a empresa vinculada) como texto;
   4. Carteira: o nome, o fantasia, o contato e o motivo da saída (no título) como texto;
   5. Clientes (base mestre) e Fiscal › Clientes: o nome e o fantasia como texto;
-  6. o Radar da Agenda conta o cliente inadimplente (carteira_info.inadimplente_desde — antes a consulta pedia uma coluna
-     que não existe e o cartão nunca aparecia) e as tarefas vencidas abertas, inclusive as "aguardando";
+  6. a Agenda: a tarefa da proposta (atrasada e "aguardando") conta nas atrasadas do Samuel na coluna "Seu dia" — as
+     abertas, inclusive as "aguardando" (20/10/2026: o Radar do escritório, que fazia essa conta, saiu) — e, na lista das
+     atrasadas, o título e a empresa saem como texto;
 e, em todas, que nenhum código rodou (window.__xss) e nenhum erro de JavaScript.
 Termina com código 1 se alguma checagem falhar. Pré-requisito: pip install playwright e python -m playwright install chromium
 """
@@ -148,16 +149,17 @@ def main():
             ok(NOME in corpo and CONTATO in corpo, f'5. {pagina}: o nome e o fantasia como texto')
             sem_codigo(p, f'5. {pagina}'); p.close()
 
-        print('6. Radar da Agenda')
+        print('6. Agenda')
         p = abrir(b, base, 'agenda.html', erros, largura=1700)
-        p.wait_for_timeout(800)
-        radar = p.inner_text('#agRadarBox') if p.locator('#agRadarBox').count() else ''
-        ok('cliente(s) inadimplente(s)' in radar, '6. o cartão do inadimplente aparece (a consulta usa inadimplente_desde)')
-        cartao = p.locator('#agRadarBox a[href="comercial-carteira.html"]')
-        ok(cartao.count() == 1 and cartao.inner_text().strip().startswith('1 '), '6. com 1 inadimplente (o que saiu não conta)')
-        abertas = p.evaluate("""() => { const h = new Date().toLocaleDateString('sv-SE');
-          return window.__mockDb.tarefas.filter(t => t.status !== 'concluida' && t.prazo && t.prazo < h).length; }""")
-        ok(('<b>%d</b> no escritório' % abertas) in p.inner_html('#agRadarBox'), f'6. as vencidas do escritório contam as abertas, inclusive "aguardando" ({abertas})')
+        p.wait_for_selector('#sdDia .sd-atras', timeout=6000)
+        minhas = p.evaluate("""() => { const h = new Date().toLocaleDateString('sv-SE');
+          return window.__mockDb.tarefas.filter(t => t.status !== 'concluida' && t.prazo && t.prazo < h && ['samuel', 'ambos'].includes(String(t.responsavel).toLowerCase())).map(t => t.id); }""")
+        txt = ' '.join(p.text_content('#sdDia .sd-atras').split())
+        ok('tx9' in minhas and txt.startswith('%d atrasadas suas' % len(minhas)), f'6. "Seu dia": as atrasadas do Samuel contam a "aguardando" da proposta ({len(minhas)}: "{txt}")')
+        p.click('.fa-focus-card[data-foco="atrasadas"]')
+        p.wait_for_selector('[data-bstask="tx9"]', timeout=4000)
+        cartao = p.text_content('[data-bstask="tx9"]')
+        ok(('Proposta externa recebida — ' + NOME) in cartao and NOME in cartao.replace('Proposta externa recebida — ' + NOME, ''), '6. na lista das atrasadas, o título e a empresa como texto')
         sem_codigo(p, '6'); p.close()
 
         b.close()

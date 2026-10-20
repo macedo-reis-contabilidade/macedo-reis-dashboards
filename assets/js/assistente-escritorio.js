@@ -11,7 +11,8 @@
 // é ela. Uma tela com coisa própria (a Reforma: a ficha, o cálculo, a Base legal) chama assistenteDaTela({...}).
 // Ações (concluir, remarcar ou passar tarefas, marcar boleto pago, criar tarefa): a resposta traz a proposta e o cartão dela
 // (assets/js/assistente-acoes.js) pede a confirmação; a saudação do dia e o recado da Agenda perguntam pelas atrasadas
-// ("Revisar as atrasadas": o assistente pergunta, grupo por grupo, o que já foi feito).
+// ("Revisar as atrasadas": o assistente pergunta, grupo por grupo, o que já foi feito) — e a coluna "Seu dia" da Agenda
+// pede a mesma revisão pelo evento "mr:revisar-atrasadas" ({ pessoa }; quem atende marca detail.atendido).
 // O vigia do sistema (15/10/2026, assets/js/vigia.js): a saudação do dia diz quanto ele achou pra pessoa conferir e o
 // recado de cada tela, o que ele achou ali (na ficha da empresa, o que é dela) — "Ver" abre o cartão do vigia. O que a
 // pessoa resolveu no cartão (16/10/2026) não conta nesta máquina até a conferência seguinte, que tira do banco.
@@ -420,6 +421,14 @@ function ligarVida() {
     const antes = +(guardado.ler(k) || 0), depois = antes + n;
     guardado.gravar(k, String(depois));
     if (Math.floor(depois / 5) > Math.floor(antes / 5)) api.avisar({ texto: 'Já são ' + Math.floor(depois / 5) * 5 + ' concluídas hoje. Bom ritmo!', ms: 6000 });
+  });
+  // a Agenda pede a revisão das atrasadas (o "Revisar com o assistente" da coluna Seu dia): de quem está no filtro, senão
+  // de quem entrou. Marca "atendido" pra Agenda não cair na lista dela
+  window.addEventListener('mr:revisar-atrasadas', ev => {
+    const pessoa = (ev && ev.detail && ev.detail.pessoa) || nomePessoa;
+    if (!api || !pessoa) return;
+    if (ev.detail) ev.detail.atendido = true;
+    iniciarRevisao(pessoa);
   });
   // com uma janela aberta, o balão fica discreto (menor e mais claro) pra não cobrir o canto dela
   let t1 = null, t2 = null;

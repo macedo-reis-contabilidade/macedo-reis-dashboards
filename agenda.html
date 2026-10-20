@@ -52,30 +52,63 @@
     .setor-chip { display:inline-block; padding:1px 7px; border-radius:999px; font-size:10.5px; font-weight:600; border:1px solid; white-space:nowrap; line-height:1.5; }
     .setor-dot { display:inline-block; width:8px; height:8px; border-radius:50%; flex:0 0 auto; }
 
-    /* ---------- DIA: layout em duas colunas ---------- */
-    .ag-dia-layout { display:grid; grid-template-columns:minmax(0,1.7fr) minmax(260px,1fr); gap:16px; align-items:start; }
+    /* ---------- DIA: a lista e a coluna "Seu dia" ----------
+       20/10/2026 (pedido do Samuel): saíram o Radar do escritório (a lateral fixa das telas largas) e o Resumo do dia; a
+       Agenda fica centrada, até 1700 px, e a coluna da direita mostra o dia, os próximos dias úteis e as notícias em destaque.
+       A coluna acompanha a rolagem só quando cabe inteira na tela (sd-fixa, posta pelo script) — senão o fim dela ficaria
+       escondido até a lista acabar. */
+    main.content.ag { max-width:1700px; padding-bottom:140px; }   /* o fim da página rola pra cima do balão do assistente */
+    .ag-dia-layout { display:grid; grid-template-columns:minmax(0,1fr) minmax(300px,384px); gap:24px; align-items:start; }
     .ag-dia-col { min-width:0; }
-    .ag-resumo-wrap { position:sticky; top:16px; min-width:0; }
-    .ag-resumo { background:var(--ag-fill); border:1px solid var(--ag-line); border-radius:var(--ag-r-lg); padding:14px; }
-
-    .ag-lateral { display:none; }
-    @media (min-width:1640px){
-      .ag-lateral { display:block; position:fixed; top:92px; width:248px; max-height:calc(100vh - 116px); overflow:auto; z-index:5; }
-      .ag-lateral.dir { right:24px; }
-      /* 01/10/2026: saíram os Atalhos da esquerda — a Agenda usa a largura até o Radar (alinhada à esquerda com o topo;
-         em monitor muito largo, centrada no espaço que sobra ao lado do Radar) */
-      main.content.ag { max-width:min(1700px, calc(100% - 272px)); margin-left:max(0px, calc((100% - 272px - 1700px) / 2)); margin-right:0; padding-right:32px; }
-      .ag-lat-tit { font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--text-dim); margin:0 0 8px; }
-      .ag-radar-card { display:block; padding:6px 10px; margin-bottom:4px; border-left:2px solid rgba(91,130,166,.55); color:var(--text-muted); font-size:12px; line-height:1.4; text-decoration:none; border-radius:0 var(--ag-r-sm) var(--ag-r-sm) 0; }
-      .ag-radar-card b { color:var(--text); }
-      .ag-radar-card:hover { background:var(--ag-fill); color:var(--brand-pale); }
-      .ag-radar-card.rc-alerta { border-left-color:var(--err); }
-      .ag-radar-card.rc-verde { border-left-color:var(--ok); }
-      .ag-lat-vazio { color:var(--text-dim); font-size:12px; }
-    }
+    .sd { display:flex; flex-direction:column; gap:18px; min-width:0; }
+    .sd.sd-fixa { position:sticky; top:16px; }
+    .sd .ag-dia-secao { font-family:var(--font-body); margin:0 0 6px; }
+    .sd-tit { display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin:0 0 6px; }
+    .sd-tit .ag-dia-secao { margin:0; }
+    .sd-tit a { font-size:12px; font-weight:600; }
+    .sd-bloco { background:var(--ag-fill); border:1px solid var(--ag-line); border-radius:var(--ag-r-lg); padding:14px 16px; }
+    .sd-linha { margin:0; font-size:13px; color:var(--text-muted); }
+    .sd-linha b { font-size:20px; color:var(--text); font-weight:700; font-variant-numeric:tabular-nums; }
+    .sd-barra { height:6px; border-radius:6px; background:var(--line); margin:10px 0 0; overflow:hidden; }
+    .sd-barra i { display:block; height:100%; background:var(--brand-light); border-radius:6px; transition:width .5s ease; }
+    .sd-barra.cheia i { background:var(--ok); }
+    .sd-festa { margin:10px 0 0; font-size:12.5px; font-weight:600; color:var(--ok); }
+    .sd-atras { display:flex; align-items:center; gap:10px; margin-top:14px; padding-top:12px; border-top:1px solid var(--ag-line); font-size:13px; color:var(--text-2); line-height:1.35; }
+    .sd-linha + .sd-atras, .sd-vazio + .sd-atras { margin-top:12px; }
+    .sd-atras .n { color:var(--err); font-weight:700; font-size:15px; font-variant-numeric:tabular-nums; margin-right:2px; }
+    .sd-atras small { display:block; font-size:11.5px; color:var(--text-muted); }
+    .sd-atras.zero { color:var(--text-muted); }
+    .sd-atras .btn { margin-left:auto; height:28px; padding:0 12px; font-size:12px; border-radius:var(--ag-r-sm); flex:none; }
+    .sd-semana { display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:6px; }
+    .sd-dia { display:block; border:1px solid var(--ag-line); border-radius:var(--ag-r); padding:7px 2px 8px; text-align:center; cursor:pointer; background:var(--surface); color:inherit; font:inherit; min-width:0; }
+    .sd-dia:hover { border-color:var(--line-strong); }
+    .sd-dia small { display:block; font-size:10.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--text-muted); white-space:nowrap; }
+    .sd-dia b { display:block; font-size:18px; color:var(--text); line-height:1.3; font-variant-numeric:tabular-nums; }
+    .sd-dia.vazio b { color:var(--text-dim); font-weight:400; }
+    .sd-dia.prox { background:rgba(91,130,166,.16); border-color:rgba(138,174,200,.45); }
+    .sd-lista-tit { margin:12px 0 0; font-size:11.5px; color:var(--text-muted); font-weight:600; }
+    .sd-lista { margin:8px 0 0; padding:0; list-style:none; display:flex; flex-direction:column; gap:3px; }
+    .sd-lista button { display:block; width:100%; text-align:left; background:none; border:none; border-left:2px solid var(--warn); border-radius:0 var(--ag-r-sm) var(--ag-r-sm) 0; padding:4px 8px 4px 10px; color:var(--text); font:inherit; font-size:12.5px; line-height:1.3; cursor:pointer; }
+    .sd-lista button:hover { background:var(--ag-fill-2); }
+    .sd-lista button.prio-alta { border-left-color:var(--err); }
+    .sd-lista button.prio-baixa { border-left-color:var(--brand-primary); }
+    .sd-lista small { display:block; color:var(--text-dim); font-size:11px; margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .sd-mais { display:inline-block; margin:6px 0 0 10px; padding:0; background:none; border:none; color:var(--brand-light); font:inherit; font-size:12px; font-weight:600; cursor:pointer; }
+    .sd-mais:hover { color:var(--brand-pale); }
+    .sd-vazio { margin:0; font-size:12.5px; color:var(--text-dim); }
+    .sd-lista-tit + .sd-vazio { margin-top:6px; }
+    .sd-nt { display:block; padding:6px 0 6px 12px; border-left:3px solid var(--warn); color:inherit; text-decoration:none; }
+    .sd-nt + .sd-nt { margin-top:10px; }
+    .sd-nt .m { display:block; font-size:11px; color:var(--text-muted); }
+    .sd-nt .m b { color:var(--warn); font-weight:700; }
+    .sd-nt .t { display:block; margin-top:2px; font-family:var(--font-display); font-size:14.5px; font-weight:600; line-height:1.3; color:var(--text); text-wrap:pretty; }
+    .sd-nt:hover .t { text-decoration:underline; text-decoration-color:var(--line-strong); text-underline-offset:3px; }
+    .sd-nt .c { display:block; margin-top:3px; font-size:11.5px; color:var(--brand-light); }
+    .sd-nt.media { border-left-color:var(--accent); }
+    .sd-nt.media .m b { color:var(--accent); }
+    .sd a:focus-visible, .sd button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
     @media (max-width:860px){
       .ag-dia-layout { grid-template-columns:1fr; }
-      .ag-resumo { position:static; order:-1; }
       .ag-toolbar .select { width:auto; flex:1 1 140px; }
     }
 
@@ -106,24 +139,6 @@
     .ag-card.feita { opacity:.55; }
     .ag-card.feita .ag-card-titulo { text-decoration:line-through; }
     .ag-rotina { border-left-style:dashed; }
-    #resumoPainel { display:flex; flex-direction:column; gap:8px; }
-    .rp-topo { display:flex; gap:12px; align-items:center; }
-    .rp-topo svg { width:64px; height:64px; flex:none; }
-    .rp-big { font-size:22px; font-weight:700; color:var(--text); line-height:1.1; }
-    .rp-big span { font-size:12.5px; font-weight:400; color:var(--text-muted); }
-    .rp-sub { font-size:12px; color:var(--text-muted); margin-top:2px; }
-    .rp-prios { display:flex; gap:6px; margin-top:6px; flex-wrap:wrap; }
-    .rp-prio { font-size:10.5px; font-weight:600; padding:1px 7px; border:1px solid; border-radius:999px; }
-    .rp-festa { text-align:center; padding:6px 8px; border-radius:var(--ag-r); background:rgba(63,176,122,.12); color:var(--ok); font-size:12.5px; font-weight:600; }
-    .rp-secao { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--text-muted); margin-top:2px; padding-top:8px; border-top:1px solid var(--ag-line); }
-    .rp-setores { display:flex; gap:8px; flex-wrap:wrap; }
-    .rp-setor { display:inline-flex; gap:5px; align-items:center; font-size:12px; color:var(--text-2); }
-    .rp-prazos { display:flex; flex-direction:column; gap:2px; }
-    .rp-prazo { display:flex; gap:8px; align-items:center; cursor:pointer; padding:4px 6px; border-radius:var(--ag-r-sm); }
-    .rp-prazo:hover { background:var(--ag-fill-2); }
-    .rp-selo { flex:none; width:62px; text-align:center; font-size:10px; font-weight:700; padding:2px 0; border-radius:var(--ag-r-sm); border:1px solid; letter-spacing:.03em; }
-    .rp-ptit { font-size:12.5px; color:var(--text); line-height:1.25; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .rp-ptit small { display:block; color:var(--text-dim); font-size:10.5px; overflow:hidden; text-overflow:ellipsis; }
     .ag-rot-check { width:22px; height:22px; flex:0 0 auto; border-radius:50%; border:2px solid var(--line-strong); background:none; cursor:pointer; display:flex; align-items:center; justify-content:center; color:#fff; padding:0; transition:background .15s, border-color .15s; }
     .ag-rot-check:hover { border-color:var(--ok); }
     .ag-rot-check.on { background:var(--ok); border-color:var(--ok); }
@@ -360,8 +375,8 @@
     import { abrirNovaTarefa } from './assets/js/nova-tarefa.js';
     import { formatDocumento, normalizarDocumento } from './assets/js/utils.js';
     import { rotinaDoDia, rotinaFeita } from './assets/js/rotinas-dia.js';
-    import { NOME_POR_EMAIL } from './assets/js/equipe.js';
     import { montarChecklist, rotuloDoProgresso } from './assets/js/checklist.js';
+    import { lerNoticias, destaquesPraMim, CAMPOS_LEVES, ROTULO_SETOR, ROTULO_RELEVANCIA, setoresDe, dataCurta, quando } from './assets/js/noticias.js';
 
     // ---- identidade visual por setor ----
     const SETOR_INFO = {
@@ -421,20 +436,20 @@
       if (!m) return null;
       return m[1] + 'h' + (m[2] && m[2] !== '00' ? m[2] : '');
     }
+    // a tarefa (ou a rotina) é da pessoa? "Ambos" é dos dois sócios — a mesma regra da revisão das atrasadas do assistente
+    function daPessoa(item, pessoa){
+      const r = norm(item.responsavel), f = norm(pessoa);
+      return r === f || (r === 'ambos' && (f === 'samuel' || f === 'diego'));
+    }
     function passaFiltro(item){
       if (estado.setor && item.setor !== estado.setor) return false;
-      if (estado.resp){
-        const r = norm(item.responsavel), f = norm(estado.resp);
-        const ehAmbos = r === 'ambos' && (f === 'samuel' || f === 'diego');
-        if (r !== f && !ehAmbos) return false;
-      }
+      if (estado.resp && !daPessoa(item, estado.resp)) return false;
       return true;
     }
 
     // ---- dados (cache simples por range) ----
     let cacheTarefas = [];
     let cacheRotinas = [];
-    let cacheProximos = [];
     let cacheSemPrazo = [];
     async function carregarDados(ini, fim){
       const iniS = ymd(ini), fimS = ymd(fim);
@@ -449,7 +464,6 @@
         .is('prazo', null).neq('status', 'concluida');
       cacheSemPrazo = sp || [];
     }
-    // próximos prazos (após hoje), para o slide do resumo — independe do dia exibido
     // ---- faixa de foco: atrasadas / hoje / 7 dias / este mês, respeitando setor e responsável ----
     let cacheFoco = [];
     async function carregarFoco(){
@@ -533,12 +547,22 @@
       render();
     }));
 
-    async function carregarProximos(){
-      const { data } = await supabase.from('tarefas')
-        .select('id, titulo, descricao, setor, responsavel, prazo, status, proposta_id, hora, transicao_id, posicao, clientes(nome_principal, documento)')
-        .gt('prazo', HOJE_STR).neq('status','concluida')
-        .order('prazo', { ascending:true }).limit(20);
-      cacheProximos = data || [];
+    // os próximos 5 dias úteis depois do dia aberto (coluna "Seu dia"): as abertas, sem filtro — o setor e o responsável
+    // entram na hora de desenhar (passaFiltro), pra trocar o filtro não pedir o banco de novo. Guarda de que dia é: a
+    // resposta que chega depois de a pessoa ir pra outro dia é descartada
+    let proxDias = { base: null, tarefas: [], erro: false };
+    function diasUteisDepois(d, n){
+      const out = [];
+      for (let x = addDias(d, 1); out.length < n; x = addDias(x, 1)) if (x.getDay() !== 0 && x.getDay() !== 6) out.push(x);
+      return out;
+    }
+    async function carregarProxDias(){
+      const base = ymd(estado.cursor), dias = diasUteisDepois(estado.cursor, 5);
+      const { data, error } = await supabase.from('tarefas')
+        .select('id, titulo, descricao, setor, responsavel, prazo, status, prioridade, cliente_id, proposta_id, hora, transicao_id, posicao, clientes(nome_principal, documento)')
+        .gt('prazo', base).lte('prazo', ymd(dias[dias.length - 1])).neq('status', 'concluida')
+        .order('prazo', { ascending: true }).limit(2000);
+      if (base === ymd(estado.cursor)) proxDias = { base, tarefas: data || [], erro: !!error };
     }
 
     function tarefasDoDia(d){
@@ -655,7 +679,7 @@
         if (eh) { alert('Histórico não gravado: ' + eh.message); }
         fecharLote();
         loteSel = new Set();
-        if (modoBusca) { await carregarDados(...rangeAtual()); await carregarFoco(); await executarBusca(termoBusca); }
+        if (modoBusca) { await recarregarCaches(); await executarBusca(termoBusca); }
         else await recarregarERenderizar();
       } finally {
         b.disabled = false;
@@ -763,83 +787,159 @@
       else if (estado.view==='semana') c.innerHTML = renderSemana();
       else c.innerHTML = renderMes();
       ligarInteracoes();
-      if (estado.view==='dia') { c.querySelector('.ag-dia-col')?.prepend(sp); montarResumo(); }
+      if (estado.view==='dia') { c.querySelector('.ag-dia-col')?.prepend(sp); montarSeuDia(); }
     }
 
-    // ===================== RESUMO DO DIA (rotativo) =====================
-    const fmtISO = dt => ymd(dt);   // ymd = dia no fuso local; toISOString é UTC e depois das 21h já era amanhã
-    function montarResumo(){
-      const painel = document.getElementById('resumoPainel');
-      if (!painel) return;
-
-      const d = estado.cursor;
-      const tarefas = tarefasDoDia(d);
-      const pend = tarefas.filter(t => t.status !== 'concluida');
-      const feitas = tarefas.length - pend.length;
-      const rotinasR = rotinasDoDia(d);
-      const rotFeitas = rotinasR.filter(r => rotinaFeita(r, d)).length;
-      const totalTudo = tarefas.length + rotinasR.length;
-      const feitasTudo = feitas + rotFeitas;
-      const pct = totalTudo ? Math.round(feitasTudo / totalTudo * 100) : 0;
-
-      // anel de progresso
-      const R = 34, C = 2 * Math.PI * R;
-      const corAnel = pct >= 100 ? 'var(--ok)' : pct >= 50 ? 'var(--brand-light)' : 'var(--brand-primary)';
-      const anel = `<svg width="86" height="86" viewBox="0 0 86 86">
-        <circle cx="43" cy="43" r="${R}" fill="none" stroke="var(--line)" stroke-width="8"/>
-        <circle cx="43" cy="43" r="${R}" fill="none" stroke="${corAnel}" stroke-width="8" stroke-linecap="round"
-          stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - pct / 100)}"
-          transform="rotate(-90 43 43)" style="transition:stroke-dashoffset .6s ease;"/>
-        <text x="43" y="49" text-anchor="middle" font-size="19" font-weight="700" fill="${corAnel}">${pct}%</text>
-      </svg>`;
-
-      // prioridades em aberto
-      const cnt = { alta: 0, media: 0, baixa: 0 };
-      pend.forEach(t => { const n = norm(t.prioridade); cnt[(n === 'alta' || n === 'baixa') ? n : 'media']++; });
-      const prio = (lab, v, cor) => v ? `<span class="rp-prio" style="border-color:${cor};color:${cor};">${lab} ${v}</span>` : '';
-
-      // setores do dia (pendentes)
-      const porSetor = {};
-      pend.forEach(t => { if (t.setor) porSetor[t.setor] = (porSetor[t.setor] || 0) + 1; });
-      const setoresHtml = Object.entries(porSetor).sort((a, b) => b[1] - a[1]).slice(0, 6)
-        .map(([s, v]) => `<span class="rp-setor">${chip(s)} <b>${v}</b></span>`).join('');
-
-      // próximos prazos com selo de urgência
-      const hojeS = fmtISO(estado.cursor ? new Date() : new Date());
-      const amanha = new Date(); amanha.setDate(amanha.getDate() + 1);
-      const amanhaS = fmtISO(amanha);
-      const selo = p => {
-        const s = String(p).slice(0, 10);
-        if (s < hojeS) return ['ATRASADA', 'var(--err)'];
-        if (s === hojeS) return ['HOJE', 'var(--ok)'];
-        if (s === amanhaS) return ['AMANHÃ', 'var(--warn)'];
-        return [s.split('-').reverse().slice(0, 2).join('/'), 'var(--brand-light)'];
-      };
-      const proximos = (cacheProximos || []).slice(0, 5).map(t => {
-        const [txt, cor] = selo(t.prazo);
-        const cli = t.clientes?.nome_principal ? `<small>${esc(t.clientes.nome_principal)}</small>` : '';
-        return `<div class="rp-prazo" data-rptask="${t.id}">
-          <span class="rp-selo" style="background:${cor}1f;color:${cor};border-color:${cor}55;">${txt}</span>
-          <span class="rp-ptit">${esc(t.titulo)}${t.competencia_fiscal ? ' · ' + esc(t.competencia_fiscal) : ''}${cli}</span>
-        </div>`;
-      }).join('') || '<div style="color:var(--text-dim);font-size:12px;padding:4px 0;">Nada no radar.</div>';
-
-      painel.innerHTML = `
-        <div class="rp-topo">
-          ${anel}
-          <div class="rp-nums">
-            <div class="rp-big">${feitasTudo}<span> de ${totalTudo}</span></div>
-            <div class="rp-sub">${totalTudo - feitasTudo} em aberto${rotinasR.length ? ` · rotinas ${rotFeitas}/${rotinasR.length} ✓` : ''}</div>
-            <div class="rp-prios">${prio('Alta', cnt.alta, 'var(--err)')}${prio('Média', cnt.media, 'var(--warn)')}${prio('Baixa', cnt.baixa, 'var(--brand-primary)')}</div>
-          </div>
-        </div>
-        ${pct >= 100 && totalTudo > 0 ? '<div class="rp-festa">🎉 Dia zerado — bora pro café!</div>' : ''}
-        ${setoresHtml ? `<div class="rp-secao">Setores do dia</div><div class="rp-setores">${setoresHtml}</div>` : ''}
-        <div class="rp-secao">⏰ Próximos prazos</div>
-        <div class="rp-prazos">${proximos}</div>`;
-      painel.querySelectorAll('[data-rptask]').forEach(el =>
-        el.addEventListener('click', () => abrirDetalhe(el.dataset.rptask)));
+    // ===================== A COLUNA "SEU DIA" (20/10/2026, pedido do Samuel) =====================
+    // No lugar do Radar do escritório e do Resumo do dia, três blocos:
+    //   - Seu dia: quanto do dia aberto já foi feito (tarefas e rotinas, com os filtros) e as atrasadas da pessoa do filtro
+    //     (sem filtro, de quem entrou), com "Revisar com o assistente" — a revisão do assistente, grupo por grupo;
+    //   - Próximos dias: os 5 dias úteis depois do dia aberto, quantas tarefas abertas cada um tem (com os filtros; clicar
+    //     abre o dia) e a lista do primeiro;
+    //   - Notícias em destaque: as importantes e as que vale saber do setor de quem entrou (assets/js/noticias.js).
+    // Tudo sai dos caches: redesenhar (filtro, prioridade, rotina marcada) não pede o banco de novo.
+    const DIA_CURTO = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    const DIA_NOME = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+    const ddmm = s => String(s).slice(8, 10) + '/' + String(s).slice(5, 7);
+    const ddmmaa = s => ddmm(s) + (String(s).slice(0, 4) !== HOJE_STR.slice(0, 4) ? '/' + String(s).slice(0, 4) : '');
+    const meuNome = () => FILTRO_PESSOAL[String(usuarioEmail || '').toLowerCase()] || null;
+    const doDa = nome => (['samuel', 'diego'].includes(norm(nome)) ? 'do ' : 'da ') + nome;
+    // a ordem das tarefas abertas do dia: a prioridade manda; dentro dela, a ordem arrastada e o título
+    function cmpDia(a, b){
+      const pa = PRIO_ORDEM[norm(a.prioridade)] ?? 1, pb = PRIO_ORDEM[norm(b.prioridade)] ?? 1;
+      if (pa !== pb) return pa - pb;
+      const ma = a.posicao ?? 1e9, mb = b.posicao ?? 1e9;
+      if (ma !== mb) return ma - mb;
+      return String(a.titulo || '').localeCompare(String(b.titulo || ''));
     }
+    // as atrasadas abertas de uma pessoa (as de "Ambos" com os sócios), de todos os setores — as mesmas que a revisão do
+    // assistente vai mostrar
+    const atrasadasDe = pessoa => cacheFoco.filter(t => t.prazo && t.prazo < HOJE_STR && daPessoa(t, pessoa));
+
+    function montarSeuDia(){
+      pintarDia(); pintarProximos(); pintarNoticias();
+    }
+    function pintarDia(){
+      const el = document.getElementById('sdDia');
+      if (!el) return;
+      const d = estado.cursor, ehHoje = ymd(d) === HOJE_STR;
+      const tarefas = tarefasDoDia(d), rotinas = rotinasDoDia(d);
+      const feitasR = rotinas.filter(r => rotinaFeita(r, d)).length;
+      const total = tarefas.length + rotinas.length;
+      const feitas = tarefas.filter(t => t.status === 'concluida').length + feitasR;
+      const pct = total ? Math.round(feitas / total * 100) : 0;
+      let html = '';
+      if (!total) html += `<p class="sd-vazio">Nada marcado pra ${ehHoje ? 'hoje' : 'este dia'}.</p>`;
+      else {
+        html += `<p class="sd-linha"><b>${feitas}</b> de ${total} feita${total === 1 ? '' : 's'}${rotinas.length ? ` · rotinas ${feitasR} de ${rotinas.length}` : ''}</p>`
+          + `<div class="sd-barra${pct >= 100 ? ' cheia' : ''}" role="progressbar" aria-label="Feitas no dia" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><i style="width:${pct}%"></i></div>`;
+        if (pct >= 100) html += '<p class="sd-festa">🎉 Dia zerado — bora pro café!</p>';
+      }
+      const pessoa = estado.resp || meuNome();
+      if (pessoa) {
+        const eu = norm(pessoa) === norm(meuNome());
+        const atr = atrasadasDe(pessoa), n = atr.length;
+        if (n) {
+          const antiga = atr.reduce((m, t) => (t.prazo < m ? t.prazo : m), atr[0].prazo);
+          const ontem = antiga === ymd(addDias(hojeMeiaNoite(), -1));
+          const desde = n === 1 ? (ontem ? 'de ontem' : 'de ' + ddmmaa(antiga)) : (ontem ? 'desde ontem' : 'desde ' + ddmmaa(antiga));
+          html += `<div class="sd-atras"><span><span class="n">${n}</span> ${n === 1 ? 'atrasada' : 'atrasadas'} ${esc(eu ? (n === 1 ? 'sua' : 'suas') : doDa(pessoa))} <small>${desde}</small></span>`
+            + `<button type="button" class="btn btn-ghost btn-sm" id="sdRevisar">Revisar com o assistente</button></div>`;
+        } else html += `<div class="sd-atras zero"><span>Nenhuma atrasada ${esc(eu ? 'sua' : doDa(pessoa))}.</span></div>`;
+      }
+      el.innerHTML = `<h2 class="ag-dia-secao">Seu dia</h2><div class="sd-bloco">${html}</div>`;
+      el.querySelector('#sdRevisar')?.addEventListener('click', () => revisarAtrasadas(pessoa));
+    }
+    // a revisão é do assistente do escritório (assets/js/assistente-escritorio.js, que ouve o pedido e marca "atendido");
+    // sem ele na tela, a lista das atrasadas
+    function revisarAtrasadas(pessoa){
+      const ev = new CustomEvent('mr:revisar-atrasadas', { detail: { pessoa, atendido: false } });
+      window.dispatchEvent(ev);
+      if (ev.detail.atendido) return;
+      estado.foco = 'atrasadas';
+      render();
+    }
+    function irParaDia(s){
+      const [y, m, dd] = String(s).split('-').map(Number);
+      estado.cursor = new Date(y, m - 1, dd); estado.view = 'dia'; estado.foco = null;
+      document.querySelectorAll('.ag-view-btn').forEach(b => b.classList.toggle('is-active', b.dataset.view === 'dia'));
+      recarregarERenderizar();
+    }
+    function pintarProximos(){
+      const el = document.getElementById('sdProximos');
+      if (!el) return;
+      const dias = diasUteisDepois(estado.cursor, 5);
+      let corpo;
+      if (proxDias.base !== ymd(estado.cursor)) corpo = '<p class="sd-vazio">Carregando…</p>';
+      else if (proxDias.erro) corpo = '<p class="sd-vazio">Não consegui ler os próximos dias agora.</p>';
+      else {
+        const porDia = new Map(dias.map(x => [ymd(x), []]));
+        proxDias.tarefas.filter(passaFiltro).forEach(t => porDia.get(String(t.prazo || '').slice(0, 10))?.push(t));
+        const celulas = dias.map((x, i) => {
+          const s = ymd(x), n = porDia.get(s).length, nome = DIA_NOME[x.getDay()] + ', ' + ddmm(s);
+          return `<button type="button" class="sd-dia${i === 0 ? ' prox' : ''}${n ? '' : ' vazio'}" data-sddia="${s}" title="Abrir ${nome}"`
+            + ` aria-label="${nome}: ${n ? n + (n === 1 ? ' tarefa' : ' tarefas') : 'nada marcado'}. Abrir o dia"><small>${DIA_CURTO[x.getDay()]} ${x.getDate()}</small><b>${n || '–'}</b></button>`;
+        }).join('');
+        const s0 = ymd(dias[0]), amanha = s0 === ymd(addDias(hojeMeiaNoite(), 1));
+        const nome = amanha ? 'Amanhã' : DIA_NOME[dias[0].getDay()].replace(/^./, c => c.toUpperCase()) + ', ' + ddmm(s0);
+        const lista = porDia.get(s0).sort(cmpDia);
+        const itens = lista.slice(0, 5).map(t => `<li><button type="button" class="${classePrio(t.prioridade)}" data-sdtask="${esc(t.id)}">${esc(t.titulo) || '(sem título)'}`
+          + `${t.clientes?.nome_principal ? `<small>${esc(t.clientes.nome_principal)}</small>` : ''}</button></li>`).join('');
+        corpo = `<div class="sd-semana">${celulas}</div><p class="sd-lista-tit">${nome}</p>`
+          + (lista.length ? `<ul class="sd-lista">${itens}</ul>` + (lista.length > 5 ? `<button type="button" class="sd-mais" data-sddia="${s0}">e mais ${lista.length - 5}</button>` : '')
+            : `<p class="sd-vazio">Nada marcado${amanha ? ' pra amanhã' : ''}.</p>`);
+      }
+      el.innerHTML = `<h2 class="ag-dia-secao">Próximos dias</h2><div class="sd-bloco">${corpo}</div>`;
+      el.querySelectorAll('[data-sddia]').forEach(b => b.addEventListener('click', () => irParaDia(b.dataset.sddia)));
+      el.querySelectorAll('[data-sdtask]').forEach(b => b.addEventListener('click', () => abrirDetalhe(b.dataset.sdtask)));
+      ajustarColuna();
+    }
+    // as notícias: lidas uma vez ao abrir a tela (e de novo ao voltar pra ela depois de 15 minutos); só o leve dos últimos
+    // 7 dias, com os clientes pra dizer quantos cada uma alcança
+    let destaques = { estado: 'carregando', lista: [], em: 0 };
+    async function carregarDestaques(){
+      try {
+        const { noticias } = await lerNoticias(supabase, { dias: 7, campos: CAMPOS_LEVES + ', clientes', limite: 300 });
+        destaques = { estado: 'ok', lista: destaquesPraMim(noticias, usuarioEmail, 3), em: Date.now() };
+      } catch (e) { destaques = { estado: 'erro', lista: [], em: Date.now() }; }
+      pintarNoticias();
+    }
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && destaques.em && Date.now() - destaques.em > 15 * 60e3) carregarDestaques();
+    });
+    function pintarNoticias(){
+      const el = document.getElementById('sdNoticias');
+      if (!el) return;
+      let corpo;
+      if (destaques.estado === 'carregando') corpo = '<p class="sd-vazio">Carregando…</p>';
+      else if (destaques.estado === 'erro') corpo = '<p class="sd-vazio">Não consegui ler as notícias agora.</p>';
+      else if (!destaques.lista.length) corpo = `<p class="sd-vazio">Nada importante${setoresDe(usuarioEmail) ? ' pro seu setor' : ''} nos últimos 7 dias.</p>`;
+      else corpo = destaques.lista.map(n => {
+        const setores = (n.setores || []).slice(0, 2).map(s => ROTULO_SETOR[s] || s).join(' e ');
+        const fonte = [n.fonte ? n.fonte.nome : '', dataCurta(quando(n))].filter(Boolean).join(', ');
+        const meta = [setores, fonte].filter(Boolean).join(' · ');
+        const qtd = (n.clientes || []).length;
+        return `<a class="sd-nt ${n.relevancia === 'alta' ? 'alta' : 'media'}" href="noticias.html?n=${encodeURIComponent(n.id)}">`
+          + `<span class="m"><b>${esc(ROTULO_RELEVANCIA[n.relevancia] || '')}</b>${meta ? ' · ' + esc(meta) : ''}</span>`
+          + `<span class="t">${esc(n.titulo)}</span>`
+          + (qtd ? `<span class="c">Alcança ${qtd} ${qtd === 1 ? 'cliente' : 'clientes'} da carteira</span>` : '')
+          + '</a>';
+      }).join('');
+      el.innerHTML = `<div class="sd-tit"><h2 class="ag-dia-secao">Notícias em destaque</h2><a href="noticias.html">Ver todas</a></div><div class="sd-bloco">${corpo}</div>`;
+      ajustarColuna();
+    }
+    // a coluna acompanha a rolagem só quando cabe inteira na tela — e acima do balão do assistente, quando ele fica na
+    // frente dela (até ~1780 px de largura), senão o fim dela ficaria escondido atrás dele. No celular ela vem depois da lista
+    function ajustarColuna(){
+      const a = document.getElementById('agSeuDia');
+      if (!a) return;
+      let fim = window.innerHeight - 16;
+      const bal = document.querySelector('.as-lancador'), rb = bal ? bal.getBoundingClientRect() : null;
+      if (rb && rb.width && rb.left < a.getBoundingClientRect().right) fim = Math.min(fim, rb.top - 12);
+      a.classList.toggle('sd-fixa', window.innerWidth > 860 && 16 + a.offsetHeight <= fim);
+    }
+    { let t = null; window.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(ajustarColuna, 150); }); }
+    setTimeout(ajustarColuna, 2500);   // o balão do assistente chega depois da tela
 
     function atualizarPeriodo(){
       const el = document.getElementById('agPeriodo');
@@ -859,13 +959,7 @@
       const d = estado.cursor;
       const tarefas = tarefasDoDia(d);
       const rotinas = rotinasDoDia(d);
-      const pend = tarefas.filter(t => t.status!=='concluida').sort((a,b)=>{
-        const pa=PRIO_ORDEM[norm(a.prioridade)] ?? 1, pb=PRIO_ORDEM[norm(b.prioridade)] ?? 1;
-        if (pa!==pb) return pa-pb;
-        const ma = a.posicao ?? 1e9, mb = b.posicao ?? 1e9;
-        if (ma !== mb) return ma - mb;
-        return String(a.titulo||'').localeCompare(String(b.titulo||''));
-      });
+      const pend = tarefas.filter(t => t.status!=='concluida').sort(cmpDia);
       const feitas = tarefas.filter(t => t.status==='concluida');
 
       let html = '';
@@ -925,11 +1019,10 @@
     function envolverDia(left){
       return `<div class="ag-dia-layout">
         <div class="ag-dia-col">${left}</div>
-        <aside class="ag-resumo-wrap">
-          <div class="ag-dia-secao"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#8FC0F0;"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> Resumo do dia</div>
-          <div class="ag-resumo" id="agResumo">
-            <div id="resumoPainel"></div>
-          </div>
+        <aside class="sd" id="agSeuDia" aria-label="Seu dia">
+          <section id="sdDia"></section>
+          <section id="sdProximos"></section>
+          <section id="sdNoticias"></section>
         </aside>
       </div>`;
     }
@@ -1027,10 +1120,7 @@
       document.querySelectorAll('[data-goto]').forEach(cel => {
         cel.addEventListener('click', (e) => {
           if (e.target.closest('.ag-prio')) return;
-          const [y,m,dd] = cel.dataset.goto.split('-').map(Number);
-          estado.cursor = new Date(y, m-1, dd); estado.view = 'dia';
-          document.querySelectorAll('.ag-view-btn').forEach(b => b.classList.toggle('is-active', b.dataset.view==='dia'));
-          recarregarERenderizar();
+          irParaDia(cel.dataset.goto);
         });
       });
       // clicar numa tarefa (visão dia) -> abre o modal de edição
@@ -1081,7 +1171,7 @@
     function fecharDetalhe(){ detOverlay.classList.remove('is-open'); procAtual = null; document.getElementById('dNovoAnd').value = ''; }
 
     async function abrirDetalhe(id){
-      const t = [cacheTarefas, cacheSemPrazo, cacheBusca, cacheFoco].map(c => c.find(x => String(x.id) === String(id))).find(Boolean); // cacheFoco: lista de atrasadas/hoje/7 dias/mês
+      const t = [cacheTarefas, cacheSemPrazo, cacheBusca, cacheFoco, proxDias.tarefas].map(c => c.find(x => String(x.id) === String(id))).find(Boolean); // cacheFoco: lista de atrasadas/hoje/7 dias/mês; proxDias: a lista dos próximos dias
       if (!t) return;
       // relê a tarefa fresca do banco — o modal nunca abre com foto velha
       const { data: fresca } = await supabase.from('tarefas').select('*, clientes(nome_principal, documento)').eq('id', id).single();
@@ -1328,15 +1418,17 @@
       const c = document.getElementById('agConteudo');
       { const sp = document.getElementById('agSemPrazo'); if (sp && sp.parentElement !== c.parentElement) c.before(sp); } // tira as sem-prazo da coluna antes de limpar
       c.innerHTML = '<div class="ag-vazio"><span class="spinner"></span> Carregando…</div>';
-      const [ini,fim] = rangeAtual();
-      await carregarDados(ini, fim);
-      if (estado.view==='dia') await carregarProximos();
-      await carregarFoco();
+      await recarregarCaches();
       render();
+    }
+    // o que a tela guarda: o período aberto, a faixa de foco (e as atrasadas) e, na visão Dia, os próximos dias
+    async function recarregarCaches(){
+      const [ini, fim] = rangeAtual();
+      await Promise.all([carregarDados(ini, fim), estado.view === 'dia' ? carregarProxDias() : null, carregarFoco()]);
     }
     // o assistente do escritório concluiu, criou ou desfez tarefas: a agenda se atualiza
     window.addEventListener('mr:tarefas-mudaram', async () => {
-      if (modoBusca) { await carregarDados(...rangeAtual()); await carregarFoco(); await executarBusca(termoBusca); }
+      if (modoBusca) { await recarregarCaches(); await executarBusca(termoBusca); }
       else await recarregarERenderizar();
     });
 
@@ -1370,6 +1462,7 @@
     (async () => {
       const user = await getCurrentUser();
       usuarioEmail = user?.email || null;
+      carregarDestaques();   // as notícias da coluna "Seu dia" chegam por conta própria (a agenda não espera por elas)
       if (user){
         const nome = FILTRO_PESSOAL[(user.email||'').toLowerCase()] || user.email?.split('@')[0] || 'Usuário';
         document.getElementById('userName').textContent = nome;
@@ -1444,62 +1537,9 @@
         { el: '#fSetor', titulo: 'Filtros', texto: 'Enxergue só um setor ou só um responsável — foco individual ou visão de reunião.' },
         { el: '#btnNovaAv', titulo: 'Tarefa rápida ★', texto: 'Novidade: crie avulsos direto daqui — juntar documentação, pendência pontual. Só o título é obrigatório; setor Geral, cliente, prazo e responsável são à la carte.' },
         { el: '.ag-dia-col', titulo: 'As tarefas do período', texto: 'Clique em qualquer cartão pra abrir o detalhe: andamento, histórico, concluir. As sem prazo moram no bloco próprio, no topo.' },
-        { el: '#agResumo', titulo: 'Resumo do dia', texto: 'O termômetro: concluídas, em aberto e o percentual do dia vencido.' }
+        { el: '#agSeuDia', titulo: 'Seu dia', texto: 'Quanto do dia já foi feito, as suas atrasadas (o assistente revisa com você, grupo por grupo), os próximos dias úteis — clique num dia pra abrir — e as notícias que mexem com o seu setor.' }
       ], 'agenda_v1', new URLSearchParams(location.search).has('tour'), au2?.data?.user?.email || '');
     }
-  
-    // ---------- lateral (telas largas): radar do escritório ----------
-    async function montarRadar() {
-      const box = document.getElementById('agRadarBox'); if (!box) return;
-      // as minhas: o nome com a letra acentuada como "_" (Vit_ria pega Vitória e Vitoria); os sócios levam também o "Ambos"
-      const meuNome = String(NOME_POR_EMAIL[String(usuarioEmail || '').toLowerCase()] || '').replace(/[^\x00-\x7F]/g, '_');
-      const minhas = q => !meuNome ? q.eq('responsavel', '~ninguém~')
-        : SOCIOS.includes(String(usuarioEmail || '').toLowerCase()) ? q.or('responsavel.ilike.' + meuNome + ',responsavel.ilike.ambos') : q.ilike('responsavel', meuNome);
-      try {
-        const hj = ymd(new Date());
-        const em60 = ymd(new Date(Date.now() + 60 * 864e5));
-        const seteDias = new Date(Date.now() - 7 * 864e5).toISOString();
-        const [alv, alvSemResp, trs, propF, trProp, propPar, inad, tVenc, tMinhas, rtPend, fat] = await Promise.all([
-          supabase.from('alvaras').select('vencimento').not('vencimento', 'is', null),
-          supabase.from('alvaras').select('id', { count: 'exact', head: true }).is('responsavel', null),
-          supabase.from('transicoes').select('id, status, previsao_fim'),
-          supabase.from('precificacoes').select('id').eq('status', 'fechada'),
-          supabase.from('transicoes').select('proposta_id').not('proposta_id', 'is', null),
-          supabase.from('precificacoes').select('id', { count: 'exact', head: true }).eq('status', 'apresentada').lt('atualizado_em', seteDias),
-          // inadimplente = carteira_info.inadimplente_desde preenchido, de quem ainda está na carteira (como a dica do assistente)
-          supabase.from('carteira_info').select('cliente_id', { count: 'exact', head: true }).not('inadimplente_desde', 'is', null).or('saida.is.null,saida.gt.' + hj),
-          // atrasada = aberta (tudo que não está concluído, inclusive "aguardando") com prazo vencido — a mesma conta do assistente
-          supabase.from('tarefas').select('id', { count: 'exact', head: true }).neq('status', 'concluida').lt('prazo', hj),
-          minhas(supabase.from('tarefas').select('id', { count: 'exact', head: true }).neq('status', 'concluida').lt('prazo', hj)),
-          supabase.from('rt_casos').select('prazo_opcao').eq('decisao', 'pendente'),
-          supabase.from('faturaveis').select('valor').eq('status', 'a_faturar')
-        ]);
-        const fatLista = fat.data || [];
-        const fatSoma = fatLista.reduce((s, x) => s + (Number(x.valor) || 0), 0);
-        const alvVencidos = (alv.data || []).filter(a => a.vencimento < hj).length;
-        const alvBreve = (alv.data || []).filter(a => a.vencimento >= hj && a.vencimento <= em60).length;
-        const trLista = (trs.data || []).filter(t => t.status !== 'concluida');
-        const trAtrasadas = trLista.filter(t => t.previsao_fim && t.previsao_fim < hj).length;
-        const comTrans = new Set((trProp.data || []).map(t => t.proposta_id));
-        const propSem = (propF.data || []).filter(p => !comTrans.has(p.id)).length;
-        const rtLista = rtPend.data || [];
-        const rtPrazo = rtLista.map(x => x.prazo_opcao).filter(Boolean).sort()[0];
-        const rtDias = rtPrazo ? Math.ceil((new Date(rtPrazo) - new Date(hj)) / 864e5) : null;
-        const cards = [];
-        if (rtLista.length) cards.push('<a class="ag-radar-card' + (rtDias != null && rtDias <= 10 ? ' rc-alerta' : '') + '" href="fiscal-reforma.html"><b>' + rtLista.length + '</b> cliente(s) do Simples sem decisão IBS/CBS · prazo ' + (rtPrazo ? rtPrazo.slice(5).split('-').reverse().join('/') : '30/10') + '</a>');
-        if (alvVencidos || alvBreve) cards.push('<a class="ag-radar-card' + (alvVencidos ? ' rc-alerta' : '') + '" href="societario-alvaras.html">' + (alvVencidos ? '<b>' + alvVencidos + '</b> alvará(s) vencido(s)' : '') + (alvVencidos && alvBreve ? ' · ' : '') + (alvBreve ? '<b>' + alvBreve + '</b> vence(m) em 60 dias' : '') + '</a>');
-        if (alvSemResp.count) cards.push('<a class="ag-radar-card" href="societario-alvaras.html"><b>' + alvSemResp.count + '</b> alvará(s) sem responsável — sem tarefa de renovação</a>');
-        if (trLista.length) cards.push('<a class="ag-radar-card' + (trAtrasadas ? ' rc-alerta' : '') + '" href="comercial-transicao.html"><b>' + trLista.length + '</b> transição(ões) em curso' + (trAtrasadas ? ' · <b>' + trAtrasadas + '</b> além dos 90 dias' : '') + '</a>');
-        if (propSem) cards.push('<a class="ag-radar-card rc-verde" href="comercial-precificacao.html"><b>' + propSem + '</b> proposta(s) fechada(s) sem transição 🚀</a>');
-        if (propPar.count) cards.push('<a class="ag-radar-card" href="comercial-precificacao.html"><b>' + propPar.count + '</b> proposta(s) apresentada(s) sem retorno há 7+ dias</a>');
-        if (inad.count) cards.push('<a class="ag-radar-card rc-alerta" href="comercial-carteira.html"><b>' + inad.count + '</b> cliente(s) inadimplente(s) na carteira</a>');
-        if (fatLista.length) cards.push('<a class="ag-radar-card rc-verde" href="financeiro-faturaveis.html"><b>' + fatLista.length + '</b> serviço(s) a faturar · R$ ' + fatSoma.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</a>');
-        if (tVenc.count) cards.push('<span class="ag-radar-card' + (tMinhas.count ? ' rc-alerta' : '') + '">' + (tMinhas.count ? '<b>' + tMinhas.count + '</b> tarefa(s) sua(s) vencida(s) · ' : '') + '<b>' + tVenc.count + '</b> no escritório</span>');
-        box.innerHTML = cards.length ? cards.join('') : '<span class="ag-lat-vazio">tudo em dia por aqui 🎉</span>';
-      } catch (e) { box.innerHTML = ''; }
-    }
-    montarRadar();
-</script>
-<aside class="ag-lateral dir ag"><p class="ag-lat-tit">Radar do escritório</p><div id="agRadarBox"></div></aside>
+  </script>
 </body>
 </html>

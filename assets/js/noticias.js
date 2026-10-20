@@ -52,6 +52,14 @@ export const vistoPadrao = (agora = Date.now()) => new Date(agora - NOVA_DIAS * 
 export const ehNova = (n, vistoAte, agora = Date.now()) => !!(n && n.triada_em && Date.parse(n.triada_em) > Date.parse(vistoAte || 0)
   && Date.parse(quando(n)) >= agora - NOVA_DIAS * 864e5);
 export const novasPraMim = (lista, email, vistoAte, agora = Date.now()) => (lista || []).filter(n => paraMim(n, email) && ehNova(n, vistoAte, agora));
+// os destaques da Agenda (a coluna "Seu dia", 20/10/2026): as minhas, as importantes antes das que vale saber e, dentro de
+// cada uma, as mais novas primeiro
+export function destaquesPraMim(lista, email, max = 3) {
+  const peso = n => (n.relevancia === 'alta' ? 0 : 1);
+  return (lista || []).filter(n => paraMim(n, email))
+    .sort((a, b) => peso(a) - peso(b) || String(quando(b)).localeCompare(String(quando(a))))
+    .slice(0, max);
+}
 
 // o grupo da mesma notícia: a principal (sem grupo) com as outras em .tambem; a que aponta pra uma que não veio (fora da
 // janela) fica sozinha; a corrente (a principal que virou de grupo depois) vai até a raiz

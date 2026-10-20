@@ -98,8 +98,6 @@
 /* chips e selos de setor/prioridade trazem a cor no próprio elemento (pastéis feitos pro escuro);
    no claro, escurecem em bloco pra manter o contraste sem reescrever cada cor */
 :root[data-theme="light"] .setor-chip,
-:root[data-theme="light"] .rp-prio,
-:root[data-theme="light"] .rp-selo,
 :root[data-theme="light"] .badge-setor,
 :root[data-theme="light"] .chip-setor,
 :root[data-theme="light"] .dashboard-card-icon,

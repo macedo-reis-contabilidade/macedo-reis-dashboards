@@ -311,6 +311,15 @@ console.log('A tela (assets/js/noticias.js):');
     && tela.novasPraMim(lista, 'financeiro@macedoereis.com.br', '2026-10-17T00:00:00Z', agora).length === 3);
   chk('a publicada há mais de 3 dias não chega como nova (a semana que a primeira coleta trouxe)', !tela.novasPraMim(lista, 'financeiro@macedoereis.com.br', '2026-10-01T00:00:00Z', agora).some(x => x.id === 'semana'));
   chk('sem "visto" ainda: os últimos 3 dias', tela.vistoPadrao(agora) === '2026-10-17T12:00:00.000Z');
+  {
+    const dl = [n('m1', { relevancia: 'media', publicada_em: '2026-10-20T09:00:00Z' }), n('a1', { publicada_em: '2026-10-18T10:00:00Z' }),
+      n('a2', { publicada_em: '2026-10-19T10:00:00Z' }), n('dp', { setores: ['dp'], publicada_em: '2026-10-20T11:00:00Z' }),
+      n('b1', { relevancia: 'baixa', publicada_em: '2026-10-20T11:30:00Z' }), n('m2', { relevancia: 'media', publicada_em: '2026-10-19T09:00:00Z' })];
+    const ids = (email, max) => JSON.stringify(tela.destaquesPraMim(dl, email, max).map(x => x.id));
+    chk('os destaques da Agenda: as importantes antes, as mais novas primeiro, até 3, sem a de pouco efeito', ids('financeiro@macedoereis.com.br') === '["dp","a2","a1"]', ids('financeiro@macedoereis.com.br'));
+    chk('e só as do meu setor (o fiscal não vê a do DP)', ids('fiscal@macedoereis.com.br', 4) === '["a2","a1","m1","m2"]' && ids('rh@macedoereis.com.br') === '["dp"]'
+      && ids('contabil@macedoereis.com.br') === '[]', ids('fiscal@macedoereis.com.br', 4));
+  }
   const av = tela.paraAvisar([n('x'), n('velha', { publicada_em: '2026-10-10T10:00:00Z' }), n('media', { relevancia: 'media' }), n('ja', {})], 'fiscal@macedoereis.com.br', '2026-10-19T00:00:00Z', ['ja'], agora);
   chk('o recado: só a Importante nova e recente que esta máquina ainda não avisou', JSON.stringify(av.map(x => x.id)) === '["x"]', JSON.stringify(av.map(x => x.id)));
   const g = tela.agrupar([n('p', { publicada_em: '2026-10-19T12:00:00Z' }), n('d1', { grupo: 'p', publicada_em: '2026-10-19T15:00:00Z' }), n('d2', { grupo: 'd1' }), n('solta', { grupo: 'nao-veio' }), n('q', { publicada_em: '2026-10-18T10:00:00Z' })]);
