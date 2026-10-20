@@ -286,12 +286,20 @@ console.log('A tela (assets/js/noticias.js):');
   chk('"pra mim": do meu setor, Importante ou Vale saber, triada', tela.paraMim(n(1), 'fiscal@macedoereis.com.br') && !tela.paraMim(n(1), 'rh@macedoereis.com.br')
     && tela.paraMim(n(1), 'diego@macedoereis.com.br') && !tela.paraMim(n(2, { relevancia: 'baixa' }), 'fiscal@macedoereis.com.br')
     && !tela.paraMim(n(3, { situacao: 'descartada' }), 'financeiro@macedoereis.com.br') && tela.paraMim(n(4, { setores: ['dp', 'fiscal'], relevancia: 'media' }), 'rh@macedoereis.com.br'));
-  const lista = [n('a'), n('b', { triada_em: '2026-10-18T10:00:00Z' }), n('c', { setores: ['dp'] })];
-  chk('novas: triadas depois do meu "visto"', JSON.stringify(tela.novasPraMim(lista, 'fiscal@macedoereis.com.br', '2026-10-19T00:00:00Z').map(x => x.id)) === '["a"]'
-    && tela.novasPraMim(lista, 'financeiro@macedoereis.com.br', '2026-10-17T00:00:00Z').length === 3);
+  const lista = [n('a'), n('b', { triada_em: '2026-10-18T10:00:00Z' }), n('c', { setores: ['dp'] }), n('semana', { publicada_em: '2026-10-14T10:00:00Z' })];
+  chk('novas: triadas depois do meu "visto"', JSON.stringify(tela.novasPraMim(lista, 'fiscal@macedoereis.com.br', '2026-10-19T00:00:00Z', agora).map(x => x.id)) === '["a"]'
+    && tela.novasPraMim(lista, 'financeiro@macedoereis.com.br', '2026-10-17T00:00:00Z', agora).length === 3);
+  chk('a publicada há mais de 3 dias não chega como nova (a semana que a primeira coleta trouxe)', !tela.novasPraMim(lista, 'financeiro@macedoereis.com.br', '2026-10-01T00:00:00Z', agora).some(x => x.id === 'semana'));
   chk('sem "visto" ainda: os últimos 3 dias', tela.vistoPadrao(agora) === '2026-10-17T12:00:00.000Z');
   const av = tela.paraAvisar([n('x'), n('velha', { publicada_em: '2026-10-10T10:00:00Z' }), n('media', { relevancia: 'media' }), n('ja', {})], 'fiscal@macedoereis.com.br', '2026-10-19T00:00:00Z', ['ja'], agora);
   chk('o recado: só a Importante nova e recente que esta máquina ainda não avisou', JSON.stringify(av.map(x => x.id)) === '["x"]', JSON.stringify(av.map(x => x.id)));
+  const g = tela.agrupar([n('p', { publicada_em: '2026-10-19T12:00:00Z' }), n('d1', { grupo: 'p', publicada_em: '2026-10-19T15:00:00Z' }), n('d2', { grupo: 'd1' }), n('solta', { grupo: 'nao-veio' }), n('q', { publicada_em: '2026-10-18T10:00:00Z' })]);
+  chk('o grupo: só a principal, com as outras em "também" (a corrente vai até a raiz; a que aponta pra fora fica sozinha)', JSON.stringify(g.map(x => x.id)) === '["p","solta","q"]'
+    && JSON.stringify(g[0].tambem.map(x => x.id).sort()) === '["d1","d2"]' && !g[1].tambem.length, JSON.stringify(g.map(x => [x.id, x.tambem.map(t => t.id)])));
+  const comGrupo = tela.cartaoHtml({ ...g[0], fonte: { nome: 'Receita' }, tambem: [{ ...g[0].tambem[0], url: 'https://contabeis.exemplo/x', fonte: { nome: 'Contábeis' } }, { id: 'z', url: 'javascript:x', fonte: { nome: 'Ruim' } }] });
+  chk('"Também em": as outras fontes com link (só http/https)', comGrupo.includes('Também em: <a href="https://contabeis.exemplo/x"') && comGrupo.includes('>Contábeis</a>') && !comGrupo.includes('Ruim'));
+  chk('o dia por extenso no separador', tela.rotuloDoDia(new Date(2026, 9, 16, 9).toISOString(), new Date(2026, 9, 20, 9)) === 'Sexta-feira, 16 de outubro'
+    && tela.rotuloDoDia(new Date(2026, 9, 20, 1).toISOString(), new Date(2026, 9, 20, 9)) === 'Hoje' && tela.rotuloDoDia(new Date(2026, 9, 19, 23).toISOString(), new Date(2026, 9, 20, 9)) === 'Ontem');
   const html = tela.cartaoHtml(n('<i>', { titulo: '<img src=x onerror=alert(1)>', url: 'javascript:alert(1)', resumo: 'A & B', por_que: '<b>x</b>', clientes: ['k1', 'k2', 'k3'], fonte: { nome: 'Fonte <s>' } }), { agora: new Date(T) });
   chk('o cartão escapa o que vem de fora e não faz link que não é http(s)', !/<img|<b>x|<s>|<i>/.test(html) && html.includes('&lt;img src=x onerror=alert(1)&gt;') && !/href="javascript/.test(html) && html.includes('A &amp; B'));
   chk('o cartão diz quantos clientes a notícia alcança', html.includes('Alcança 3 clientes da carteira') && tela.cartaoHtml(n('u', { clientes: [] })).includes('Nenhum cliente em particular'));

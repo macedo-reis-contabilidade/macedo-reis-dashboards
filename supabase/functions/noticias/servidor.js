@@ -4,11 +4,13 @@
 //   - a coleta de hora em hora (pg_cron, job noticias-coletar): a chave anônima no Authorization e a chave da coleta no
 //     cabeçalho x-chave (configuracoes_escritorio.noticias_chave, que só o servidor lê);
 //   - um sócio logado (o "Coletar agora" da tela Notícias): no máximo uma vez a cada 10 minutos.
-// Corpo: { coletar: true } | { diagnosticar: [urls] } (só a chave) | { triar: true } (só a triagem; só a chave).
+// Corpo: { coletar: true } | { diagnosticar: [urls] } (só a chave) | { triar: true } (só a triagem; só a chave) |
+// { pagina: url } (o que a triagem lê daquela página; só a chave).
 // Puro: env, fetch, banco e chamador injetados (index.ts monta). O detalhe do erro fica no log e na resposta da chave.
 // ============================================================
-import { coletar, diagnosticar, triarPendentes } from './coleta.js';
+import { coletar, diagnosticar, triarPendentes, buscar } from './coleta.js';
 import { criarChamador } from './triagem.js';
+import { textoDaPagina } from './pagina.js';
 
 export const DOMINIO = '@macedoereis.com.br';
 // os sócios (a mesma lista de assets/js/equipe.js — tests/noticias.test.mjs confere)
@@ -51,6 +53,14 @@ export function criarServidor({ env, fetch: f = fetch, criarDb, agora = () => Da
       if (Array.isArray(corpo.diagnosticar)) {
         if (!admin) return resposta(origin, { erro: 'Sem permissão.' }, 403);
         return resposta(origin, { diagnostico: await diagnosticar({ fetch: f, urls: corpo.diagnosticar }) });
+      }
+      // o que a triagem lê de uma página (pra acertar a leitura de um site)
+      if (typeof corpo.pagina === 'string') {
+        if (!admin) return resposta(origin, { erro: 'Sem permissão.' }, 403);
+        const r = await buscar(f, corpo.pagina, { ms: 15000 });
+        const p = textoDaPagina(r.texto);
+        return resposta(origin, { status: r.status, tipo: r.tipo, final: r.url, bytes: r.texto.length, titulo: p.titulo, descricao: p.descricao, data: p.data,
+          texto: p.texto.slice(0, 2500), inicio: r.texto.replace(/\s+/g, ' ').slice(0, 1200) });
       }
       const chamar = criarChamador({ fetch: f, chave: env('ANTHROPIC_API_KEY') });
       if (corpo.triar) {

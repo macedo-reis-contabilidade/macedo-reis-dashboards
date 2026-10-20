@@ -167,7 +167,9 @@ export function melhorQue(nova, principal) {
 }
 
 // 2. a triagem das que esperam, dentro do prazo
-export async function triarPendentes({ db, fetch: f, chamar, agora = () => Date.now(), ate, max = 40, paralelas = 3 }) {
+// uma de cada vez (paralelas = 1): a que acabou de entrar vale como "já no feed" pra próxima — com duas ao mesmo tempo, a
+// mesma notícia de duas fontes na mesma hora não se encontrava
+export async function triarPendentes({ db, fetch: f, chamar, agora = () => Date.now(), ate, max = 40, paralelas = 1 }) {
   // a que parou no meio (a função foi cortada) volta pra fila
   await db.from('noticias').update({ situacao: 'erro', erro: 'a triagem anterior parou no meio' }).eq('situacao', 'triando').lt('triagem_inicio', iso(agora() - 20 * 60e3));
   const { data: fila, error } = await db.from('noticias').select('id, url, titulo, publicada_em, trecho, tentativas, fonte_id, situacao')
