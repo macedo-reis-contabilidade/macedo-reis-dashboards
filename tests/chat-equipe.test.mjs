@@ -7,7 +7,7 @@
 import { nomeDe, iniciais, outroDa, tituloDaConversa, previaDaUltima, horaDaLista, rotuloDoDia, linkificar, tamanhoBR, nomeSeguro, caminhoDoArquivo,
   conferirArquivos, ehImagem, linhasDaLista, vistoPor, textoDoVisto, naoLidasTotal, ehCelular, textoDoAviso, LIMITE_ARQUIVO,
   linkDoDrive, enviarMensagem, apagarMensagem, conversaDe, EMOJIS, nomeDoEmoji, recentesCom, lerRecentes, inserirNoTexto, soEmojis, MAX_RECENTES, MAX_TEXTO,
-  trechoDaCitada, quemDaCitada, MAX_TRECHO } from '../assets/js/chat-equipe.js';
+  trechoDaCitada, quemDaCitada, MAX_TRECHO, ehAvisos, acaoDoAviso, TITULO_AVISOS } from '../assets/js/chat-equipe.js';
 import { escapeHtml } from '../assets/js/assistente.js';
 
 let falhas = 0;
@@ -193,6 +193,33 @@ console.log('Os emojis:');
   chk('a mensagem só de emoji (até três): sai maior', soEmojis('👍') && soEmojis(' 👍👍 ') && soEmojis('🎉🎉🎉') && soEmojis('❤️') && soEmojis('✌️ 😀'));
   chk('o tom de pele, a família e a bandeira contam como um', soEmojis('👋🏽', 1) && soEmojis('👨‍👩‍👧', 1) && soEmojis('🇧🇷', 1));
   chk('com texto, número ou quatro emojis: o balão normal', !soEmojis('ok 👍') && !soEmojis('👍👍👍👍') && !soEmojis('123') && !soEmojis('#') && !soEmojis('') && !soEmojis(null) && !soEmojis('😀'.repeat(30)));
+}
+
+console.log('Os avisos do sistema:');
+{
+  const AV = { conversa_id: 'a1', tipo: 'grupo', titulo: 'Avisos do sistema', chave: 'avisos|' + EU, membros: [EU], ultima_autor: 'sistema',
+    ultima_texto: 'Thalia te passou uma tarefa: Emitir a nota · prazo 22/10.', ultima_em: '2026-10-20T21:00:00Z', nao_lidas: 1 };
+  chk('a conversa de avisos é a da chave "avisos|" (o grupo de todos e os outros, não)', ehAvisos(AV) && !ehAvisos(ESC) && !ehAvisos(G) && !ehAvisos(D) && !ehAvisos(null) && !ehAvisos({ chave: null }));
+  chk('o título é "Avisos do sistema" e quem escreve, "Sistema"', tituloDaConversa(AV, EU) === TITULO_AVISOS && TITULO_AVISOS === 'Avisos do sistema' && nomeDe('sistema') === 'Sistema' && nomeDe('SISTEMA') === 'Sistema');
+  chk('na lista, o aviso sem "Sistema:" na frente; sem aviso ainda, o recado dele', previaDaUltima(AV, EU) === 'Thalia te passou uma tarefa: Emitir a nota · prazo 22/10.'
+    && previaDaUltima({ ...AV, ultima_autor: null }, EU) === 'Nenhum aviso ainda');
+  const av = textoDoAviso(AV, { autor: 'sistema', texto: 'Chegou uma admissão pelo link: Maria — Padaria X.' }, EU);
+  chk('a notificação: o título é a conversa, o corpo é o aviso (sem o nome na frente)', av.titulo === 'Avisos do sistema' && av.corpo === 'Chegou uma admissão pelo link: Maria — Padaria X.', JSON.stringify(av));
+  const RAIZ = 'https://exemplo.github.io/macedo-reis-dashboards/';
+  const M = (acao, x = {}) => ({ autor: 'sistema', texto: 'aviso', acao, apagada_em: null, ...x });
+  const a1 = acaoDoAviso(M({ rotulo: 'Abrir a admissão', link: 'dp-admissoes.html?admissao=4c28edc8-8b21-4e9a-90fd-53b1aa18abfb' }), RAIZ);
+  chk('o botão: a tela do sistema, a partir da raiz do site', a1 && a1.rotulo === 'Abrir a admissão' && a1.href === RAIZ + 'dp-admissoes.html?admissao=4c28edc8-8b21-4e9a-90fd-53b1aa18abfb', JSON.stringify(a1));
+  const a2 = acaoDoAviso(M({ link: 'clientes/editar.html?id=c1' }), RAIZ), a3 = acaoDoAviso(M({ rotulo: '  Abrir   a\ntarefa ', link: 'agenda.html?tarefa=t1' }), 'http://127.0.0.1:8000/');
+  chk('a tela de uma pasta (clientes/), sem rótulo vira "Abrir"; o rótulo numa linha só', a2 && a2.href === RAIZ + 'clientes/editar.html?id=c1' && a2.rotulo === 'Abrir'
+    && a3 && a3.href === 'http://127.0.0.1:8000/agenda.html?tarefa=t1' && a3.rotulo === 'Abrir a tarefa', JSON.stringify([a2, a3]));
+  const ruins = ['https://fora.com/x.html', '//fora.com/x.html', 'javascript:alert(1)', '../outro/x.html', 'x.html?a=<b>', 'x.html?a="1"', '/agenda.html',
+    'agenda.html?x=1 y', 'data:text/html,oi', 'agenda.htm', 'Agenda.html', 'a/b/c.html', ' agenda.html', ''];
+  chk('endereço de fora, "javascript:", "../", com caractere estranho ou que não é uma tela: sem botão', ruins.every(l => acaoDoAviso(M({ rotulo: 'x', link: l }), RAIZ) === null),
+    ruins.filter(l => acaoDoAviso(M({ rotulo: 'x', link: l }), RAIZ)).join(' | '));
+  chk('só na mensagem do sistema, não apagada, com o botão como objeto', acaoDoAviso(M({ link: 'agenda.html' }, { autor: TH }), RAIZ) === null
+    && acaoDoAviso(M({ link: 'agenda.html' }, { apagada_em: '2026-10-20T21:00:00Z' }), RAIZ) === null && acaoDoAviso(M(null), RAIZ) === null
+    && acaoDoAviso(M('agenda.html'), RAIZ) === null && acaoDoAviso(M(['agenda.html']), RAIZ) === null && acaoDoAviso(null, RAIZ) === null
+    && acaoDoAviso(M({ link: 'agenda.html' }), 'não é endereço') === null);
 }
 
 console.log(falhas ? '\n' + falhas + ' falha(s).' : '\nTudo certo.');

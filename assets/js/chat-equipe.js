@@ -13,7 +13,13 @@
 // A resposta (20/10/2026), como no WhatsApp: o "Responder" da mensagem põe a barra "Respondendo a…" em cima da caixa; a
 // mensagem enviada leva a citação (chat_mensagens.responde_a, só da mesma conversa — o banco confere), com quem e o trecho,
 // e clicar nela leva até a original (as páginas anteriores até ela); Esc ou o ✕ desiste.
-// Os auxiliares puros têm teste em tests/chat-equipe.test.mjs; a tela, em tests/harness/chat-equipe.py.
+// Os avisos do sistema (20/10/2026, pedido do Samuel: "sendo poucas coisas, as que interessam mesmo, e podendo silenciar"):
+// a conversa "Avisos do sistema" de cada um (um grupo só dele, chave 'avisos|<e-mail>', que o banco cria no primeiro aviso)
+// recebe a admissão e a rescisão que chegam pelo link, a proposta do formulário e a tarefa que alguém passa pra pessoa —
+// quem escreve é o banco (autor "sistema", com o botão que abre a tela da coisa, chat_mensagens.acao); ela só lê, e avisa
+// como qualquer conversa (silenciar é o de sempre).
+// Os auxiliares puros têm teste em tests/chat-equipe.test.mjs; a tela, em tests/harness/chat-equipe.py e
+// tests/harness/chat-avisos.py.
 // ============================================================
 
 import { nomePorEmail } from './equipe.js';
@@ -27,8 +33,32 @@ const pad = n => String(n).padStart(2, '0');
 const semAcento = s => String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '');
 export const normal = s => semAcento(s).toLowerCase().replace(/\s+/g, ' ').trim();
 
-// o nome de quem tem login: o da equipe (assets/js/equipe.js) ou, sem ele, o começo do e-mail
+// a raiz do site (as telas do sistema): o botão do aviso abre a tela a partir dela, de qualquer tela (as de clientes/ também)
+const RAIZ = (() => { try { return new URL('../../', import.meta.url).href; } catch (e) { return '/'; } })();
+
+// ---------- os avisos do sistema (20/10/2026) ----------
+export const TITULO_AVISOS = 'Avisos do sistema';
+export const AUTOR_SISTEMA = 'sistema';
+// a conversa de avisos de cada um: um grupo só dele, com a chave 'avisos|<e-mail>' (como o 'escritorio' é o de todos)
+export const ehAvisos = c => !!c && String(c.chave || '').startsWith('avisos|');
+// o botão do aviso → { rotulo, href } | null: só uma tela do sistema (o caminho relativo, como "dp-admissoes.html?admissao=…",
+// que fica dentro do site — endereço de fora, "javascript:" ou "../" não viram botão) e só na mensagem do sistema
+const LINK_DO_SISTEMA = /^[a-z0-9-]+(?:\/[a-z0-9-]+)?\.html(?:\?[A-Za-z0-9_=&%.-]*)?(?:#[A-Za-z0-9_-]*)?$/;
+export function acaoDoAviso(m, raiz = RAIZ) {
+  const a = m && m.autor === AUTOR_SISTEMA && !m.apagada_em ? m.acao : null;
+  if (!a || typeof a !== 'object' || Array.isArray(a)) return null;
+  const link = String(a.link || '');
+  if (!LINK_DO_SISTEMA.test(link)) return null;
+  let base, url;
+  try { base = new URL(raiz); url = new URL(link, base); } catch (e) { return null; }
+  if (url.origin !== base.origin || !url.pathname.startsWith(base.pathname)) return null;
+  const rotulo = String(a.rotulo || '').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Abrir';
+  return { rotulo, href: url.href };
+}
+
+// o nome de quem tem login: o da equipe (assets/js/equipe.js) ou, sem ele, o começo do e-mail; o autor dos avisos, "Sistema"
 export function nomeDe(email) {
+  if (String(email || '').toLowerCase() === AUTOR_SISTEMA) return 'Sistema';
   const n = nomePorEmail(email);
   if (n) return n;
   const p = String(email || '').split('@')[0].replace(/[._-]+/g, ' ').trim();
@@ -43,13 +73,14 @@ export function iniciais(nome) {
 export const outroDa = (c, eu) => (c && c.tipo === 'direta' ? (c.membros || []).find(e => e !== eu) || null : null);
 export function tituloDaConversa(c, eu) {
   if (!c) return '';
+  if (ehAvisos(c)) return TITULO_AVISOS;
   if (c.tipo === 'direta') { const o = outroDa(c, eu); return o ? nomeDe(o) : 'Conversa'; }
   return c.titulo || 'Grupo';
 }
-// a última mensagem, na linha da lista
+// a última mensagem, na linha da lista (nos avisos, sem "Sistema:" na frente)
 export function previaDaUltima(c, eu) {
-  if (!c || !c.ultima_autor) return c && c.chave === 'escritorio' ? 'O grupo de todo o escritório' : 'Sem mensagens ainda';
-  const quem = c.ultima_autor === eu ? 'Você: ' : c.tipo === 'grupo' ? nomeDe(c.ultima_autor) + ': ' : '';
+  if (!c || !c.ultima_autor) return c && c.chave === 'escritorio' ? 'O grupo de todo o escritório' : ehAvisos(c) ? 'Nenhum aviso ainda' : 'Sem mensagens ainda';
+  const quem = c.ultima_autor === eu ? 'Você: ' : c.tipo === 'grupo' && !ehAvisos(c) ? nomeDe(c.ultima_autor) + ': ' : '';
   if (c.ultima_apagada) return quem + 'mensagem apagada';
   const t = String(c.ultima_texto || '').replace(/\s+/g, ' ').trim();
   if (t) return quem + t;
@@ -163,6 +194,7 @@ export function textoDoAviso(c, m, eu) {
   const quem = nomeDe(m && m.autor);
   const corpo = m && m.texto ? String(m.texto).replace(/\s+/g, ' ').trim().slice(0, 140)
     : m && Array.isArray(m.anexos) && m.anexos.length ? 'Arquivo: ' + (m.anexos[0].nome || 'arquivo') + (m.anexos.length > 1 ? ' e mais ' + (m.anexos.length - 1) : '') : 'Mensagem nova';
+  if (ehAvisos(c)) return { titulo: TITULO_AVISOS, corpo, quem };
   if (c && c.tipo === 'grupo') return { titulo: tituloDaConversa(c, eu), corpo: quem + ': ' + corpo, quem };
   return { titulo: quem, corpo, quem };
 }
@@ -183,7 +215,7 @@ export function trechoDaCitada(m) {
 export const quemDaCitada = (m, eu) => (!m ? '' : String(m.autor || '').toLowerCase() === String(eu || '').toLowerCase() ? 'Você' : nomeDe(m.autor));
 
 // ---------- mandar e apagar: a regra do chat, a da tela e a do cartão do assistente (assets/js/assistente-acoes.js) ----------
-const COLUNAS_MSG = 'id, conversa_id, autor, texto, anexos, criada_em, apagada_em, responde_a';
+const COLUNAS_MSG = 'id, conversa_id, autor, texto, anexos, criada_em, apagada_em, responde_a, acao';
 // enviarMensagem(sb, { id, conversaId, texto, anexos, respondeA }) → { mensagem } | { erro }: com o id gerado na tela —
 // mandar de novo com o mesmo id não duplica (23505 = já tinha entrado: lê de volta). Quem manda e quando, o banco põe;
 // respondeA = a mensagem citada (o banco só aceita uma da mesma conversa: outra, a resposta vai sem a citação)
@@ -223,7 +255,7 @@ export async function conversaDe(sb, destino, eu) {
   if (g === 'escritorio') { try { await sb.rpc('chat_preparar'); } catch (e) { /* o grupo de todos já existe */ } }
   const { data, error } = await sb.rpc('chat_resumo');
   if (error) return { erro: 'não consegui ler as conversas' };
-  const grupos = (data || []).filter(c => c && c.tipo === 'grupo');
+  const grupos = (data || []).filter(c => c && c.tipo === 'grupo' && !ehAvisos(c));   // a de avisos é só pra ler
   const parecidos = grupos.filter(c => normal(c.titulo).includes(g));
   const achado = g === 'escritorio' ? grupos.find(c => c.chave === 'escritorio') : grupos.find(c => normal(c.titulo) === g) || (parecidos.length === 1 ? parecidos[0] : null);
   if (achado) return { id: String(achado.conversa_id), nome: achado.chave === 'escritorio' ? 'Escritório' : achado.titulo || 'Grupo' };
@@ -365,6 +397,7 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     + '<button type="button" class="ch-icone ch-emoji-btn" data-ch="emojis" aria-haspopup="dialog" aria-expanded="false" aria-label="Emojis" title="Emojis">' + ICONE.carinha + '</button>'
     + '<textarea rows="1" maxlength="' + MAX_TEXTO + '" data-no-autogrow placeholder="Escreva uma mensagem…" aria-label="Mensagem" title="Enter envia; Shift+Enter quebra a linha"></textarea>'
     + '<button type="submit" class="as-enviar ch-enviar" aria-label="Enviar">' + ICONE.enviar + '</button></form>'
+    + '<div class="ch-so-ler" hidden>' + ICONE.sino + '<span>Aqui chegam os avisos do sistema pra você; não dá pra responder. Pra ficar sem o bipe e o aviso do Windows, silencie no menu ⋯ do alto.</span></div>'
     + '</div>'
     + '<div class="ch-vista ch-v-novo" hidden>'
     + '<div class="ch-cab"><button type="button" class="ch-icone ch-voltar" data-ch="voltar" aria-label="Voltar às conversas" title="Voltar">' + ICONE.voltar + '</button><div class="ch-cab-quem"><b>Novo grupo</b><small>O nome e quem entra</small></div></div>'
@@ -384,7 +417,15 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
   const msgsEl = q('.ch-msgs'), ta = q('.ch-entrada textarea'), arquivoInput = q('.ch-clipe input'), pendEl = q('.ch-pendentes'), erroEl = q('.ch-v-conversa .ch-erro');
   const cabNome = q('.ch-v-conversa .ch-cab-quem b'), cabSub = q('.ch-v-conversa .ch-cab-quem small'), menuBtn = q('[data-ch="menu"]'), menuEl = q('.ch-menu');
   const emojiBtn = q('[data-ch="emojis"]'), emojisEl = q('.ch-emojis'), respEl = q('.ch-respondendo');
+  const formEl = q('.ch-entrada'), soLerEl = q('.ch-so-ler');
   if (celular) q('[data-ch="avisos"]').hidden = true;
+  // a conversa de avisos é só pra ler: no lugar da caixa, a nota
+  const soLer = () => ehAvisos(conv(st.aberta));
+  function aplicarSoLer() {
+    const so = soLer();
+    formEl.hidden = so; soLerEl.hidden = !so;
+    if (so) { pendEl.hidden = true; respEl.hidden = true; fecharEmojis(); }
+  }
 
   // duas colunas com o painel aumentado (a lista ao lado da conversa); uma só no painel pequeno e no celular
   const duas = () => el.clientWidth >= 600;
@@ -416,7 +457,11 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     try { ({ data, error } = await supabase.rpc('chat_resumo')); } catch (e) { error = e; }
     if (error || !Array.isArray(data)) { if (!st.pronto) { st.erro = 'Não consegui abrir o chat agora.'; desenharLista(); } return false; }
     const antes = st.convs;
-    st.convs = new Map(data.filter(r => r && r.conversa_id).map(r => [r.conversa_id, { ...r, membros: Array.isArray(r.membros) ? r.membros : [] }]));
+    // a conversa que acabou de aparecer (o grupo que alguém criou, a de avisos no primeiro aviso) fica marcada uns segundos: a
+    // mensagem dela que chegar pelo tempo real já está contada no número que veio do banco
+    const recem = st.pronto ? Date.now() : 0;
+    st.convs = new Map(data.filter(r => r && r.conversa_id).map(r => [r.conversa_id, { ...r, membros: Array.isArray(r.membros) ? r.membros : [],
+      ...(recem && !antes.has(r.conversa_id) ? { _recem: recem } : {}) }]));
     st.erro = '';
     // o que chegou sem o tempo real (a conexão caiu, o computador dormiu): avisa o que é novo
     if (avisar && st.pronto) {
@@ -437,7 +482,7 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     try { const { data, error } = await supabase.rpc('chat_pessoas'); if (!error && Array.isArray(data)) st.pessoas = data.map(x => String(typeof x === 'string' ? x : (x && (x.chat_pessoas || x.email)) || '').toLowerCase()).filter(Boolean); }
     catch (e) { /* a lista sai só com as conversas */ }
   }
-  const COLS = 'id, conversa_id, autor, texto, anexos, criada_em, apagada_em, responde_a';
+  const COLS = COLUNAS_MSG;
   const porData = (a, b) => String(a.criada_em || '').localeCompare(String(b.criada_em || ''));
   async function carregarMensagens(id, { antesDe } = {}) {
     let qy = supabase.from('chat_mensagens').select(COLS).eq('conversa_id', id);
@@ -523,11 +568,17 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
         try { aberto = ctl.ativa(); } catch (e) { aberto = false; }
         if (!aberto) {
           const { titulo, corpo } = textoDoAviso(c, m, eu);
-          try { ctl.avisar({ html: '<p><b>' + escapeHtml(titulo) + '</b><br>' + escapeHtml(corpo) + '</p>', botoes: [{ rotulo: 'Responder', acao: () => abrirConversa(c.conversa_id, { mostrar: true }) }], ms: 12000 }); } catch (e) { /* sem balão */ }
+          // o aviso do sistema traz o botão dele (abrir a admissão, a tarefa…); a mensagem de alguém, "Responder"
+          const acao = acaoDoAviso(m);
+          const botao = acao ? { rotulo: acao.rotulo, acao: () => irPara(acao.href) }
+            : { rotulo: ehAvisos(c) ? 'Ver o aviso' : 'Responder', acao: () => abrirConversa(c.conversa_id, { mostrar: true }) };
+          try { ctl.avisar({ html: '<p><b>' + escapeHtml(titulo) + '</b><br>' + escapeHtml(corpo) + '</p>', botoes: [botao], ms: 12000 }); } catch (e) { /* sem balão */ }
         }
       } else if (!notificar(c, m)) bipe();
     }).catch(() => {});
   }
+  // o botão do aviso (no recado da carinha): abre a tela nesta aba, como o link da mensagem
+  const irPara = href => { try { window.location.assign(href); } catch (e) { /* fora do navegador */ } };
   function textoDosAvisos() {
     if (celular) return '';
     if (typeof Notification === 'undefined') return 'Avisos: só o bipe';
@@ -552,8 +603,8 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
   }
 
   // ---------- a lista ----------
-  const avatar = (nome, { grupo = false, online = false, escritorio = false } = {}) => '<span class="ch-avatar' + (grupo ? ' ch-avatar-grupo' : '') + '" aria-hidden="true">'
-    + (escritorio ? ICONE.predio : grupo ? ICONE.grupo : escapeHtml(iniciais(nome))) + (online ? '<i class="ch-online"></i>' : '') + '</span>';
+  const avatar = (nome, { grupo = false, online = false, escritorio = false, avisos = false } = {}) => '<span class="ch-avatar' + (avisos ? ' ch-avatar-avisos' : grupo ? ' ch-avatar-grupo' : '') + '" aria-hidden="true">'
+    + (avisos ? ICONE.sino : escritorio ? ICONE.predio : grupo ? ICONE.grupo : escapeHtml(iniciais(nome))) + (online ? '<i class="ch-online"></i>' : '') + '</span>';
   function desenharLista() {
     if (!st.pronto && !st.erro) { ul.innerHTML = '<li class="ch-carregando">Abrindo o chat…</li>'; return; }
     if (st.erro && !st.convs.size) { ul.innerHTML = '<li class="ch-carregando">' + escapeHtml(st.erro) + ' <button type="button" class="as-botao as-botao-link" data-ch="tentar">Tentar de novo</button></li>'; return; }
@@ -574,7 +625,7 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
       const previa = previaDaUltima(c, eu);
       return '<li><button type="button" class="ch-linha' + (n ? ' ch-tem-novas' : '') + (atual ? ' ch-atual' : '') + '" data-conversa="' + escapeHtml(c.conversa_id) + '"'
         + (atual ? ' aria-current="true"' : '') + ' aria-label="' + escapeHtml(titulo + (online ? ', online' : '') + (n ? ', ' + n + (n === 1 ? ' mensagem nova' : ' mensagens novas') : '') + (c.silenciada ? ', silenciada' : '') + '. ' + previa) + '">'
-        + avatar(titulo, { grupo: c.tipo === 'grupo', online, escritorio: c.chave === 'escritorio' })
+        + avatar(titulo, { grupo: c.tipo === 'grupo', online, escritorio: c.chave === 'escritorio', avisos: ehAvisos(c) })
         + '<span class="ch-linha-txt"><span class="ch-linha-topo"><b>' + escapeHtml(titulo) + '</b><time>' + escapeHtml(horaDaLista(c.ultima_autor ? c.ultima_em : null)) + '</time></span>'
         + '<span class="ch-linha-baixo"><small>' + escapeHtml(previa) + '</small>' + (c.silenciada ? '<span class="ch-mudo" title="Silenciada: sem aviso">' + ICONE.sinoMudo + '</span>' : '')
         + (n ? '<span class="ch-n">' + (n > 99 ? '99+' : n) + '</span>' : '') + '</span></span></button></li>';
@@ -610,6 +661,8 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     const c = conv(st.aberta);
     if (!c) return;
     cabNome.textContent = tituloDaConversa(c, eu);
+    aplicarSoLer();
+    if (ehAvisos(c)) { cabSub.textContent = 'Só pra ler' + (c.silenciada ? ' · silenciada' : ''); return; }
     const o = outroDa(c, eu);
     if (o) cabSub.textContent = st.online.has(o) ? 'online' : 'fora do sistema agora';
     else {
@@ -644,23 +697,27 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     // onde começam as que eu não tinha lido quando abri a conversa
     if (m.id === primeiraNova) h += '<div class="ch-novas"><span>Novas</span></div>';
     const junta = !separa && anterior && anterior.autor === m.autor && new Date(m.criada_em) - new Date(anterior.criada_em) < 5 * 60e3;
-    const nomeAutor = !minha && c && c.tipo === 'grupo' && !junta ? '<div class="ch-autor">' + escapeHtml(nomeDe(m.autor)) + '</div>' : '';
-    const cls = 'ch-msg' + (minha ? ' eu' : '') + (junta ? ' ch-junta' : '') + (m.apagada_em ? ' ch-apagada' : '') + (m._enviando ? ' ch-indo' : '') + (m._erro ? ' ch-nao-foi' : '');
+    const avisos = ehAvisos(c);
+    const nomeAutor = !minha && c && c.tipo === 'grupo' && !avisos && !junta ? '<div class="ch-autor">' + escapeHtml(nomeDe(m.autor)) + '</div>' : '';
+    const cls = 'ch-msg' + (minha ? ' eu' : '') + (junta ? ' ch-junta' : '') + (m.apagada_em ? ' ch-apagada' : '') + (m._enviando ? ' ch-indo' : '') + (m._erro ? ' ch-nao-foi' : '') + (m.autor === AUTOR_SISTEMA ? ' ch-aviso' : '');
     let corpo;
     if (m.apagada_em) corpo = '<div class="ch-bolha"><i>Mensagem apagada</i></div>';
     else {
       const arqs = arquivosDe(m);
+      // o aviso do sistema: o botão que abre a tela da coisa, embaixo do texto
+      const acao = acaoDoAviso(m);
       // a citação vem em cima (com ela, o emoji sozinho fica no balão)
       corpo = (m.responde_a ? htmlCitacao(m.responde_a) : '')
         + (arqs.length ? '<div class="ch-anexos">' + arqs.map(a => htmlAnexo(a, m)).join('') + '</div>' : '')
-        + (m.texto ? '<div class="ch-bolha' + (soEmojis(m.texto) && !m.responde_a ? ' ch-so-emoji' : '') + '">' + linkificar(escapeHtml(m.texto)) + '</div>' : '');
+        + (m.texto ? '<div class="ch-bolha' + (soEmojis(m.texto) && !m.responde_a && !acao ? ' ch-so-emoji' : '') + '">' + linkificar(escapeHtml(m.texto)) + '</div>' : '')
+        + (acao ? '<a class="as-botao ch-acao" href="' + escapeHtml(acao.href) + '">' + escapeHtml(acao.rotulo) + '</a>' : '');
     }
     let meta = '<time>' + escapeHtml(horaCurta(m.criada_em)) + '</time>';
     if (minha && m._enviando) meta += '<span>enviando…</span>';
     else if (minha && m._erro) meta += '<span class="ch-meta-erro">não foi</span><button type="button" class="as-botao as-botao-link" data-ch="reenviar" data-id="' + escapeHtml(m.id) + '">Tentar de novo</button>';
     else if (minha && m.id === ultimaMinha && !m.apagada_em) { const v = textoDoVisto(m, st.membros, c); if (v) meta += '<span class="ch-visto">' + escapeHtml(v) + '</span>'; }
-    // responder: a de qualquer um, menos a apagada e a que ainda não foi
-    if (!m.apagada_em && !m._enviando && !m._erro)
+    // responder: a de qualquer um, menos a apagada e a que ainda não foi (e nos avisos, que são só pra ler)
+    if (!avisos && !m.apagada_em && !m._enviando && !m._erro)
       meta += '<button type="button" class="as-botao as-botao-link ch-responder" data-ch="responder" data-id="' + escapeHtml(m.id) + '" aria-label="Responder a esta mensagem">Responder</button>';
     if (minha && !m.apagada_em && !m._enviando && !m._erro) {
       meta += st.confirmarApagar === m.id
@@ -718,7 +775,7 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
   }
   function responder(id) {
     const m = st.msgs.find(x => x.id === id);
-    if (!m || m.apagada_em || m._enviando || m._erro) return;
+    if (!m || m.apagada_em || m._enviando || m._erro || soLer()) return;
     st.respondendo = { id };
     fecharEmojis(); desenharRespondendo();
     ta.focus({ preventScroll: true });
@@ -789,6 +846,7 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     const trocou = st.aberta !== id;
     st.aberta = id; st.vista = 'conversa'; st.menu = false; st.confirmarApagar = null;
     if (trocou) { st.msgs = []; st.membros = []; st.temAntigas = false; st.pendentes = []; desenharPendentes(); ta.value = ''; ajustar(); fecharEmojis(); st.respondendo = null; desenharRespondendo(); }
+    aplicarSoLer();
     st.lidoAoAbrir = c.nao_lidas ? c.lido_ate : null;
     guardarAba(); aplicarColunas(); desenharLista(); desenharCabecalho(); fecharMenu();
     if (mostrar) { try { ctl.mostrar(false); } catch (e) { /* sem balão */ } }
@@ -813,7 +871,7 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
       if (alvo) { alvo.classList.add('ch-destaque'); alvo.scrollIntoView({ block: 'center' }); setTimeout(() => alvo.classList.remove('ch-destaque'), 2500); }
     }
     if (vendo(id)) marcarLido();
-    if (!celular && (mostrar || ctl.ativa())) setTimeout(() => { if (st.aberta === id && conversaNaTela(id)) ta.focus({ preventScroll: true }); }, 30);
+    if (!celular && !soLer() && (mostrar || ctl.ativa())) setTimeout(() => { if (st.aberta === id && conversaNaTela(id)) ta.focus({ preventScroll: true }); }, 30);
   }
   const mesclar = (a, b) => { const m = new Map(); [...a, ...b].forEach(x => m.set(x.id, { ...(m.get(x.id) || {}), ...x })); return [...m.values()].sort(porData); };
   async function recarregarAberta() {
@@ -861,9 +919,9 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     adicionarArquivos(fs.map(f => (f.name && f.name !== 'image.png' ? f : new File([f], 'imagem ' + carimbo + '.' + ((f.type.split('/')[1] || 'png').replace('jpeg', 'jpg')), { type: f.type }))));
   });
   // arrastar arquivos pra conversa
-  vConversa.addEventListener('dragover', ev => { if (ev.dataTransfer && [...ev.dataTransfer.types].includes('Files')) { ev.preventDefault(); vConversa.classList.add('ch-soltar'); } });
+  vConversa.addEventListener('dragover', ev => { if (!soLer() && ev.dataTransfer && [...ev.dataTransfer.types].includes('Files')) { ev.preventDefault(); vConversa.classList.add('ch-soltar'); } });
   vConversa.addEventListener('dragleave', ev => { if (!vConversa.contains(ev.relatedTarget)) vConversa.classList.remove('ch-soltar'); });
-  vConversa.addEventListener('drop', ev => { vConversa.classList.remove('ch-soltar'); if (ev.dataTransfer && ev.dataTransfer.files.length) { ev.preventDefault(); adicionarArquivos(ev.dataTransfer.files); } });
+  vConversa.addEventListener('drop', ev => { vConversa.classList.remove('ch-soltar'); if (!soLer() && ev.dataTransfer && ev.dataTransfer.files.length) { ev.preventDefault(); adicionarArquivos(ev.dataTransfer.files); } });
 
   // ---------- os emojis (20/10/2026) ----------
   // o botão da carinha abre o painel por cima da caixa: os usados por último (guardados neste navegador) e os grupos; clicar
@@ -923,7 +981,7 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     const id = reenvio ? reenvio.id : novoId(), conversaId = reenvio ? reenvio.conversa_id : st.aberta;
     const texto = reenvio ? reenvio.texto || '' : ta.value.trim().slice(0, MAX_TEXTO);
     const pendentes = reenvio ? reenvio._pendentes || [] : st.pendentes.slice();
-    if (!conversaId || (!texto && !pendentes.length)) return;
+    if (!conversaId || (!texto && !pendentes.length) || ehAvisos(conv(conversaId))) return;
     // a resposta: a citada vai junto (e a barra sai); no "Tentar de novo", a mesma de antes
     const respondeA = reenvio ? reenvio.responde_a || null : (st.respondendo && st.respondendo.id) || null;
     let m = reenvio;
@@ -982,8 +1040,8 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     const c = conv(st.aberta);
     if (!c) return;
     st.menu = true;
-    const itens = [['silenciar', c.silenciada ? 'Voltar a avisar' : 'Silenciar os avisos desta conversa']];
-    if (c.tipo === 'grupo') itens.push(['pessoas', c.chave === 'escritorio' ? 'Quem está no grupo' : 'Pessoas e nome do grupo']);
+    const itens = [['silenciar', c.silenciada ? 'Voltar a avisar' : ehAvisos(c) ? 'Silenciar (sem bipe nem aviso do Windows)' : 'Silenciar os avisos desta conversa']];
+    if (c.tipo === 'grupo' && !ehAvisos(c)) itens.push(['pessoas', c.chave === 'escritorio' ? 'Quem está no grupo' : 'Pessoas e nome do grupo']);
     menuEl.innerHTML = itens.map(([k, t]) => '<button type="button" class="ch-menu-item" data-ch="' + k + '">' + escapeHtml(t) + '</button>').join('');
     menuEl.hidden = false; menuBtn.setAttribute('aria-expanded', 'true');
     menuEl.querySelector('button').focus({ preventScroll: true });
@@ -1128,10 +1186,16 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
   });
 
   // ---------- o tempo real ----------
-  function aoChegar(m) {
+  function aoChegar(m, { contada = false } = {}) {
     if (!m || !m.conversa_id || !m.id) return;
     const c = conv(m.conversa_id);
-    if (!c) { sincronizar({ avisar: true }); return; }   // conversa nova pra mim (o grupo que alguém criou)
+    // conversa nova pra mim (o grupo que alguém criou, a de avisos no primeiro aviso): o número vem do banco; depois segue
+    // como sempre, sem contar de novo — e o aviso sai com a mensagem de verdade (o botão do aviso do sistema vem nela)
+    if (!contada && (!c || (c._recem && Date.now() - c._recem < 30e3))) {
+      sincronizar().then(() => { if (conv(m.conversa_id)) aoChegar(m, { contada: true }); });
+      return;
+    }
+    if (!c) return;
     const ja = st.msgs.find(x => x.id === m.id);
     if (st.aberta === m.conversa_id) {
       if (ja) Object.assign(ja, m, { _enviando: false, _erro: null });
@@ -1142,7 +1206,7 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     if (novaUltima) Object.assign(c, { ultima_em: m.criada_em, ultima_autor: m.autor, ultima_texto: m.texto, ultima_anexos: arquivosDe(m).length, ultima_apagada: !!m.apagada_em });
     if (m.autor === eu) { if (!c.lido_ate || m.criada_em > c.lido_ate) c.lido_ate = m.criada_em; }
     else if (vendo(m.conversa_id)) { reivindicar(String(m.id), 0); marcarLido(); try { ctl.anunciar(nomeDe(m.autor) + ': ' + (m.texto || 'arquivo')); } catch (e) { /* sem leitor */ } }
-    else if (!ja) { c.nao_lidas = (c.nao_lidas || 0) + 1; avisarDe(c, m); }
+    else if (!ja) { if (!contada) c.nao_lidas = (c.nao_lidas || 0) + 1; avisarDe(c, m); }
     desenharLista(); contar();
   }
   function aoMudarMensagem(m) {
@@ -1230,7 +1294,7 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     ligarTempoReal();
     if (st.vista === 'conversa' && st.aberta && conv(st.aberta)) abrirConversa(st.aberta);
     else if (st.vista === 'novo') desenharNovo();
-    else if (st.vista === 'grupo' && conv(st.aberta)) desenharGrupo();
+    else if (st.vista === 'grupo' && conv(st.aberta) && !soLer()) desenharGrupo();
     else if (st.vista !== 'lista') { st.vista = 'lista'; guardarAba(); }
     aplicarColunas();
   }
@@ -1243,7 +1307,7 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
       if (st.vista === 'conversa' && st.aberta) {
         desenharCabecalho();
         if ((conv(st.aberta) || {}).nao_lidas) recarregarAberta(); else marcarLido();
-        if (foco && !celular) setTimeout(() => ta.focus({ preventScroll: true }), 30);
+        if (foco && !celular && !soLer()) setTimeout(() => ta.focus({ preventScroll: true }), 30);
         msgsEl.scrollTop = msgsEl.scrollHeight;
       }
     },

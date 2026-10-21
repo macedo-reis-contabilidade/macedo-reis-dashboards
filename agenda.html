@@ -466,6 +466,7 @@
     let cacheTarefas = [];
     let cacheRotinas = [];
     let cacheSemPrazo = [];
+    let cacheLink = [];   // a tarefa do link direto (?tarefa=<id>), que pode não estar no período na tela
     async function carregarDados(ini, fim){
       const iniS = ymd(ini), fimS = ymd(fim);
       const { data: ts } = await supabase.from('tarefas')
@@ -1398,7 +1399,7 @@
     function fecharDetalhe(){ detOverlay.classList.remove('is-open'); procAtual = null; irmasCtx = null; document.getElementById('dNovoAnd').value = ''; }
 
     async function abrirDetalhe(id){
-      const t = [cacheTarefas, cacheSemPrazo, cacheBusca, cacheFoco, proxDias.tarefas].map(c => c.find(x => String(x.id) === String(id))).find(Boolean); // cacheFoco: lista de atrasadas/hoje/7 dias/mês; proxDias: a lista dos próximos dias
+      const t = [cacheTarefas, cacheSemPrazo, cacheBusca, cacheFoco, proxDias.tarefas, cacheLink].map(c => c.find(x => String(x.id) === String(id))).find(Boolean); // cacheFoco: lista de atrasadas/hoje/7 dias/mês; proxDias: a lista dos próximos dias; cacheLink: a do link direto
       if (!t) return;
       // relê a tarefa fresca do banco — o modal nunca abre com foto velha
       const { data: fresca } = await supabase.from('tarefas').select('*, clientes(nome_principal, documento)').eq('id', id).single();
@@ -1740,6 +1741,17 @@
       };
       aplica(selS, alvoS);
       aplica(selR, alvoR);
+    }
+
+    // ---------- o link direto: ?tarefa=<id> abre a tarefa (o "Abrir a tarefa" dos avisos do sistema no chat, 20/10/2026) ----------
+    {
+      const tidLink = new URLSearchParams(location.search).get('tarefa');
+      if (tidLink && /^[\w-]{1,64}$/.test(tidLink)) {
+        const { data: tl } = await supabase.from('tarefas')
+          .select('id, titulo, descricao, setor, responsavel, prazo, status, prioridade, cliente_id, proposta_id, hora, transicao_id, posicao, obrigacao_id, origem, clientes(nome_principal, documento)')
+          .eq('id', tidLink).maybeSingle();
+        if (tl) { cacheLink = [tl]; abrirDetalhe(tl.id); }
+      }
     }
 
     document.getElementById('dDocCopy').addEventListener('click', async () => {
