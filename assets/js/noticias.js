@@ -103,7 +103,7 @@ export const plural = (n, um, varios) => n + ' ' + (n === 1 ? um : varios);
 const hora = iso => { const d = new Date(iso); return iso && !isNaN(d) ? pad(d.getHours()) + ':' + pad(d.getMinutes()) : ''; };
 
 // ---------- o banco ----------
-const CAMPOS = 'id, fonte_id, url, titulo, publicada_em, coletada_em, triada_em, situacao, relevancia, setores, resumo, por_que, acao, clientes, grupo';
+const CAMPOS = 'id, fonte_id, url, titulo, publicada_em, coletada_em, triada_em, situacao, relevancia, setores, resumo, por_que, acao, clientes, grupo, prazo, prazo_o_que';
 // o leve: o que o número da aba, o recado e o card do Painel precisam (os últimos dias, sem o texto todo) — toda tela lê
 export const CAMPOS_LEVES = 'id, fonte_id, url, titulo, publicada_em, coletada_em, triada_em, situacao, relevancia, setores, por_que, grupo';
 // as triadas da janela (e as descartadas, pra conferir a IA), já agrupadas; as fontes com o estado da última coleta
@@ -128,6 +128,17 @@ export async function lerVisto(supabase, email) {
 export async function marcarVisto(supabase, email, agora = new Date().toISOString()) {
   const { error } = await supabase.from('noticias_visto').upsert({ email: String(email || '').toLowerCase(), visto_ate: agora }, { onConflict: 'email' });
   return !error;
+}
+
+// o prazo da notícia (20/10/2026: a triagem tira a data que a notícia traz; o vigia avisa o setor uns dias antes): "Prazo:
+// 30/11/2026 (faltam 12 dias) — recadastramento na Sefaz RS"; o que já passou diz "venceu"
+export function textoDoPrazo(n, agora = new Date()) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String((n && n.prazo) || ''));
+  if (!m) return '';
+  const dias = Math.round((new Date(+m[1], +m[2] - 1, +m[3], 12) - new Date(agora.getFullYear(), agora.getMonth(), agora.getDate(), 12)) / 864e5);
+  const falta = dias < 0 ? 'venceu' : dias === 0 ? 'vence hoje' : dias === 1 ? 'vence amanhã' : 'faltam ' + dias + ' dias';
+  const oque = String((n && n.prazo_o_que) || '').replace(/\s+/g, ' ').trim();
+  return m[3] + '/' + m[2] + '/' + m[1] + ' (' + falta + ')' + (oque ? ' — ' + oque : '');
 }
 
 // ---------- o cartão de uma notícia (a aba e a página) ----------
@@ -156,6 +167,7 @@ export function cartaoHtml(n, { nova = false, compacto = false, linkClientes = n
     + (n.resumo ? '<p class="fd-resumo">' + escHtml(n.resumo) + '</p>' : '')
     + (n.por_que && !compacto ? '<p class="fd-porque"><b>Por que importa:</b> ' + escHtml(n.por_que) + '</p>' : '')
     + (n.acao ? '<p class="fd-acao"><b>O que fazer:</b> ' + escHtml(n.acao) + '</p>' : '')
+    + (textoDoPrazo(n, agora) ? '<p class="fd-prazo' + (String(n.prazo) < DIA(agora) ? ' fd-prazo-passou' : '') + '"><b>Prazo:</b> ' + escHtml(textoDoPrazo(n, agora)) + '</p>' : '')
     + clientes + linhaTambem + '</article>';
 }
 

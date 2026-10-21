@@ -4,6 +4,7 @@
 // escritório, quanto (alta, média, baixa), de que setor é, resume em português, diz por que importa e o que fazer, e
 // QUEM ela alcança — em critérios (regime, CNAE, cidade, obrigação…), que a coleta transforma nos clientes pelo banco —,
 // e se é o mesmo fato de uma das que já estão no feed (mesma_que: o número dela na lista da mensagem; a coleta agrupa).
+// Desde 20/10/2026, também o prazo que a notícia traz (prazo, prazo_o_que): o vigia avisa o setor uns dias antes.
 // A resposta vem pela ferramenta "classificar" (formato fixo, conferido por lerClassificacao). O chamador da API é o
 // mesmo jeito do chat da Reforma (supabase/functions/reforma-chat/agente.js): modelo que a conta não tem passa pro
 // próximo; sobrecarga e rede esperam e tentam de novo. Puro: fetch e chave injetados — testes em tests/noticias.test.mjs.
@@ -60,6 +61,7 @@ resumo: até 3 frases curtas (no máximo uns 400 caracteres), em português dire
 por_que: 1 frase (até uns 250 caracteres): por que importa pros clientes da carteira, dizendo o grupo alcançado com os números do retrato (ex.: "os 34 clientes com DeSTDA", "as 13 empresas de alimentação").
 acao: o que o escritório deve fazer (conferir, avisar os clientes, ajustar a apuração, acompanhar), em 1 ou 2 frases curtas (até uns 250 caracteres); vazio se nada.
 criterios: QUEM da carteira a notícia alcança, usando só valores do retrato abaixo — regimes (os nomes exatos), cnaes (prefixos de 2 a 7 dígitos dos códigos que aparecem no retrato), cidades (os nomes do retrato), obrigacoes (um trecho do nome da obrigação como está no retrato), naturezas (um trecho da natureza jurídica), com_funcionarios / com_prolabore (true quando é da folha). Entre os critérios vale todos ao mesmo tempo; dentro de cada lista, qualquer um. Use "todos": true quando alcança a carteira inteira (ou todo um regime — aí junto com regimes). Se alcança ninguém em particular, deixe os critérios vazios. Nunca cite nome de cliente. Os critérios são o que liga a notícia aos clientes na tela: o grupo que o por_que cita tem de estar nos critérios (folha, jornada, eSocial, FGTS → com_funcionarios: true; pró-labore → com_prolabore: true; MEI → regimes ["MEI"]). Quando o por_que cita um grupo e, dentro dele, um subgrupo em destaque (os 18 MEIs, em especial os 3 com parcelamento), os critérios pegam o grupo inteiro; o subgrupo fica só no texto.
+prazo e prazo_o_que (20/10/2026): quando a notícia traz uma data concreta em que quem ela alcança tem de fazer alguma coisa — entregar, aderir, optar, pagar, recadastrar, regularizar — ou em que uma obrigação ou regra nova passa a valer, prazo é essa data (aaaa-mm-dd) e prazo_o_que diz em poucas palavras o que vence nela (ex.: "recadastramento na Sefaz RS", "adesão ao Litígio Zero", "nova versão do leiaute do eSocial"). Só data que está no texto, com dia, mês e ano ("em breve", "no segundo semestre", "a partir de 2027" sem o dia: sem prazo); a que já passou em relação ao Hoje: sem prazo; mais de uma: a mais próxima que ainda não passou. Sem prazo, omita os dois.
 mesma_que: a mensagem traz as notícias que já estão no feed, numeradas. Se esta trata do MESMO fato que uma delas — o mesmo anúncio, a mesma decisão, a mesma norma, o mesmo projeto na mesma etapa, inclusive a matéria que explica ou analisa esse fato —, mesmo de outra fonte e com outro título, informe o número dela. Assunto parecido não basta: outra etapa (aprovado no Senado × sancionado), outra norma ou outra decisão é fato novo, sem mesma_que.`;
 
 export function montarSistema(perfil) {
@@ -91,6 +93,8 @@ export const FERRAMENTA = {
           com_prolabore: { type: 'boolean' }
         }
       },
+      prazo: { type: 'string', description: 'A data em que vence o que a notícia pede (aaaa-mm-dd). Omita sem data concreta e futura.' },
+      prazo_o_que: { type: 'string', description: 'O que vence nessa data, em poucas palavras. Omita sem prazo.' },
       mesma_que: { type: 'integer', description: 'O número da notícia já no feed que trata do mesmo fato. Omita quando é fato novo.' }
     },
     required: ['relevante', 'resumo']
@@ -113,6 +117,15 @@ export function mensagemDaNoticia({ titulo, fonte, tipoFonte, publicada_em, link
 }
 
 const texto = (v, max) => { const t = String(v == null ? '' : v).replace(/\s+/g, ' ').trim(); return t ? t.slice(0, max) : null; };
+// o prazo: só a data de verdade (aaaa-mm-dd, do ano passado ao daqui a 3 anos) — o resto fica sem prazo
+export function prazoValido(v, hoje = new Date()) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v == null ? '' : v).trim());
+  if (!m) return null;
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  if (d.getUTCFullYear() !== +m[1] || d.getUTCMonth() !== +m[2] - 1 || d.getUTCDate() !== +m[3]) return null;
+  const ano = hoje.getFullYear();
+  return +m[1] >= ano - 1 && +m[1] <= ano + 3 ? m[0] : null;
+}
 const strs = (v, max = 30) => (Array.isArray(v) ? v : []).map(x => String(x == null ? '' : x).trim()).filter(Boolean).slice(0, max);
 // a resposta do modelo → a triagem no formato da tabela (o que vier fora do formato é descartado, não gravado);
 // nRecentes: quantas notícias do feed foram na mensagem (o mesma_que fora delas é ignorado)
@@ -136,6 +149,9 @@ export function lerClassificacao(resposta, nRecentes = 0) {
     por_que: relevante ? texto(i.por_que, 800) : null,
     acao: relevante ? texto(i.acao, 800) : null,
     criterios: relevante ? criterios : null,
+    // o prazo (o vigia avisa uns dias antes, com o link da notícia): só da relevante, com o que vence nele
+    prazo: relevante ? prazoValido(i.prazo) : null,
+    prazo_o_que: relevante && prazoValido(i.prazo) ? texto(i.prazo_o_que, 160) : null,
     mesma_que: relevante && Number.isInteger(Number(i.mesma_que)) && Number(i.mesma_que) >= 1 && Number(i.mesma_que) <= nRecentes ? Number(i.mesma_que) : null
   };
 }

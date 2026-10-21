@@ -1260,6 +1260,11 @@ a.as-botao.ch-acao:hover { background:var(--fill-2); }
 a.fd-titulo:hover { color:var(--text); text-decoration:underline; text-decoration-color:var(--fd-cor); text-decoration-thickness:2px; text-underline-offset:4px; }
 .fd-resumo, .fd-porque, .fd-acao { margin:7px 0 0; max-width:68ch; font-size:13.5px; line-height:1.58; color:var(--text-2); }
 .fd-porque b, .fd-acao b { font-weight:600; color:var(--text); }
+/* o prazo que a notícia traz (20/10/2026): o vigia avisa o setor uns dias antes; o que já passou fica apagado */
+.fd-prazo { margin:7px 0 0; max-width:68ch; font-size:13.5px; line-height:1.58; color:var(--text); }
+.fd-prazo b { font-weight:600; color:var(--warn); }
+.fd-prazo-passou { color:var(--text-muted); }
+.fd-prazo-passou b { color:var(--text-muted); }
 .fd-clientes { margin-top:9px; font-size:12.5px; color:var(--text-muted); }
 .fd-clientes a, .fd-ver-clientes { font:600 12.5px/1.4 var(--font-body); color:var(--brand-light); }
 .fd-ver-clientes { padding:0; border:none; background:none; cursor:pointer; }
@@ -1286,7 +1291,7 @@ a.fd-titulo:hover { color:var(--text); text-decoration:underline; text-decoratio
 .fd-aba .fd-item { padding:12px 2px 13px 14px; }
 .fd-aba .fd-item::before { top:14px; bottom:15px; }
 .fd-aba .fd-titulo { font-size:14.5px; }
-.fd-aba .fd-resumo, .fd-aba .fd-acao { font-size:12.5px; line-height:1.5; }
+.fd-aba .fd-resumo, .fd-aba .fd-acao, .fd-aba .fd-prazo { font-size:12.5px; line-height:1.5; }
 
 /* a página */
 .fd-pagina { display:grid; grid-template-columns:minmax(0, 1fr) 300px; gap:44px; align-items:start; }

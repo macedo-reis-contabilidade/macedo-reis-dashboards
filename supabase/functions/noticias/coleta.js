@@ -182,10 +182,10 @@ export async function triarPendentes({ db, fetch: f, chamar, agora = () => Date.
   const carteira = await lerCarteira(db, hoje);
   const perfil = perfilDaCarteira(carteira);
   // as principais que já estão no feed (a lista cresce durante a triagem: a que acabou de entrar já vale pra próxima)
-  const { data: rec } = await db.from('noticias').select('id, titulo, fonte_id, publicada_em, triada_em, relevancia')
+  const { data: rec } = await db.from('noticias').select('id, titulo, fonte_id, publicada_em, triada_em, relevancia, prazo, prazo_o_que')
     .eq('situacao', 'triada').is('grupo', null).gte('triada_em', iso(agora() - RECENTES_DIAS * 864e5)).order('triada_em', { ascending: false }).limit(MAX_RECENTES);
   const recentes = (rec || []).map(r => ({ id: r.id, titulo: r.titulo, fonte: (fonteDe.get(r.fonte_id) || {}).nome || null, tipo: (fonteDe.get(r.fonte_id) || {}).tipo || null,
-    data: r.publicada_em || r.triada_em, relevancia: r.relevancia, triada_em: r.triada_em }));
+    data: r.publicada_em || r.triada_em, relevancia: r.relevancia, triada_em: r.triada_em, prazo: r.prazo || null, prazo_o_que: r.prazo_o_que || null }));
   const conta = { triadas: 0, descartadas: 0, erros: 0, puladas: 0, agrupadas: 0 };
   await emPartes(fila, paralelas, async n => {
     if (agora() > ate - 40000) { conta.puladas++; return; }   // sem prazo pra mais uma: fica pra próxima
@@ -204,6 +204,7 @@ export async function triarPendentes({ db, fetch: f, chamar, agora = () => Date.
         noticia: { titulo: n.titulo, fonte: fonte.nome, tipoFonte: fonte.tipo, publicada_em: n.publicada_em || (pagina && pagina.data), link: n.url, trecho: n.trecho, pagina } });
       const clientes = c.relevante ? clientesDosCriterios(c.criterios, carteira) : [];
       const mud = { situacao: c.relevante ? 'triada' : 'descartada', relevancia: c.relevancia, setores: c.setores, resumo: c.resumo, por_que: c.por_que, acao: c.acao,
+        prazo: c.prazo, prazo_o_que: c.prazo_o_que,
         criterios: c.criterios, clientes, modelo, tokens_entrada: uso.entrada, tokens_saida: uso.saida, tokens_cache: uso.cache, triada_em: iso(agora()), erro: null, grupo: null };
       if (!n.publicada_em && pagina && pagina.data) mud.publicada_em = pagina.data;
       // a mesma notícia de outra fonte: entra no grupo da principal, ou vira a principal (melhorQue)
@@ -213,6 +214,11 @@ export async function triarPendentes({ db, fetch: f, chamar, agora = () => Date.
       if (troca === 'oficial' && principal.triada_em) mud.triada_em = principal.triada_em;
       const { error: e } = await db.from('noticias').update(mud).eq('id', n.id);
       if (e) throw new Error('gravar: ' + e.message);
+      // o prazo que só esta fonte deu vai pra principal do grupo (o vigia olha a principal)
+      if (mud.grupo && c.prazo && !principal.prazo) {
+        await db.from('noticias').update({ prazo: c.prazo, prazo_o_que: c.prazo_o_que }).eq('id', mud.grupo).is('prazo', null);
+        Object.assign(principal, { prazo: c.prazo, prazo_o_que: c.prazo_o_que });
+      }
       conta[c.relevante ? 'triadas' : 'descartadas']++;
       if (mud.grupo) conta.agrupadas++;
       else if (c.relevante) {
@@ -220,11 +226,15 @@ export async function triarPendentes({ db, fetch: f, chamar, agora = () => Date.
           // a antiga principal e o grupo dela passam pra nova (depois de gravar a nova: se isto falhar, ficam duas principais)
           await db.from('noticias').update({ grupo: n.id }).eq('grupo', principal.id);
           await db.from('noticias').update({ grupo: n.id }).eq('id', principal.id);
+          // o prazo que a antiga tinha e a nova não deu fica com a nova principal
+          if (!c.prazo && principal.prazo) await db.from('noticias').update({ prazo: principal.prazo, prazo_o_que: principal.prazo_o_que }).eq('id', n.id).is('prazo', null);
           const k = recentes.findIndex(r => r.id === principal.id);
           if (k >= 0) recentes.splice(k, 1);
           conta.agrupadas++;
         }
-        recentes.unshift({ id: n.id, titulo: n.titulo, fonte: fonte.nome || null, tipo: fonte.tipo || null, data: n.publicada_em || mud.publicada_em || mud.triada_em, relevancia: c.relevancia, triada_em: mud.triada_em });
+        const herda = troca && !c.prazo && principal.prazo;
+        recentes.unshift({ id: n.id, titulo: n.titulo, fonte: fonte.nome || null, tipo: fonte.tipo || null, data: n.publicada_em || mud.publicada_em || mud.triada_em, relevancia: c.relevancia, triada_em: mud.triada_em,
+          prazo: herda ? principal.prazo : c.prazo || null, prazo_o_que: herda ? principal.prazo_o_que : c.prazo_o_que || null });
       }
     } catch (e) {
       conta.erros++;

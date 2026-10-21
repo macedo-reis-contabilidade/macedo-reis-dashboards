@@ -37,7 +37,7 @@ import { concluirTarefas, desfazerConclusao, marcarPagos, desfazerPagos, criarTa
   descartarProposta, desfazerDescarte, avancarBoletos, voltarBoletos, fecharFicha, reabrirFicha, vincularEmpresa, desvincularEmpresa, buscarEmpresas,
   renovarAlvara, desfazerRenovacao, desativarRegistro, reativarRegistro, obrigacoesParaVincular, vincularObrigacoes, desfazerVinculoObrigacoes,
   dadosDaCobranca, porNaCobranca, desfazerCobranca, acertarCadastro, desfazerCadastro,
-  registrarNoHistorico, desfazerRegistro, limparMensagem, MAX_MENSAGEM } from './tarefas-acoes.js';
+  registrarNoHistorico, desfazerRegistro, limparMensagem, MAX_MENSAGEM, tarefaDoMesDoVinculo, criarTarefaDoMes, religarVinculo } from './tarefas-acoes.js';
 import { EQUIPE, SOCIOS, nomePorEmail } from './equipe.js';
 import { SETORES } from './nova-tarefa.js';
 import { lerAchados, ignorarAchado, reabrirAchado, filtrarAchados, agruparAchados, linkSeguro, ehSocioPeloNome, marcarVisto,
@@ -947,8 +947,11 @@ const RESOLVE_RESPONSAVEL = ['obrigacao_sem_responsavel', 'tarefa_responsavel', 
 const REF_DA_REGRA = { obrigacao_sem_responsavel: 'clientes', tarefa_responsavel: 'tarefas', rotina_sem_responsavel: 'rotinas', proposta_parada: 'precificacoes',
   boleto_parado: 'cobrancas_mensais', admissao_nao_registrada: 'admissoes', admissao_sem_vinculo: 'admissoes', rescisao_pagamento: 'rescisoes',
   rescisao_sem_vinculo: 'rescisoes', alvara_vencendo: 'alvaras', cobranca_ex_cliente: 'cobrancas_config', obrigacao_ex_cliente: 'cliente_obrigacoes',
-  cliente_sem_obrigacao: 'clientes', cliente_sem_cobranca: 'clientes', cadastro_desencontrado: 'clientes' };
+  cliente_sem_obrigacao: 'clientes', cliente_sem_cobranca: 'clientes', cadastro_desencontrado: 'clientes',
+  obrigacao_desligada: 'cliente_obrigacoes', obrigacao_sem_tarefa: 'cliente_obrigacoes' };
 const resolvivel = a => !!a && ID.test(String(a.ref_id || '')) && !!REF_DA_REGRA[a.regra] && REF_DA_REGRA[a.regra] === a.ref_tabela;
+// o mês do achado "sem a tarefa do mês": o do prazo dele (o dia do vínculo naquele mês) → { ano, mes } | null
+const mesDoAchado = a => { const m = /^(\d{4})-(\d{2})/.exec(String((a && a.prazo) || '')); return m ? { ano: Number(m[1]), mes: Number(m[2]) } : null; };
 const SITUACAO_FICHA = { respondida: 'recebida — a registrar', em_registro: 'em registro', registrada: 'registrada', recebida: 'recebida — a calcular',
   em_andamento: 'em andamento', concluida: 'concluída', cancelada: 'cancelada', aguardando_empresa: 'aguardando a empresa' };
 const maisDias = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
@@ -1054,6 +1057,34 @@ async function resolverAchado(a, escolha, ajuda) {
     return { texto: 'Cadastro marcado como ' + r.cliente.para + (r.cliente.para === 'inativo' && r.cliente.fim && r.cliente.fim !== r.cliente.fim_antes ? ' (fim como cliente: ' + dataBR(r.cliente.fim) + ')' : '') + '.',
       desfazer: { tipo: 'cadastro', cliente: r.cliente } };
   }
+  // a quarta leva (20/10/2026): a obrigação comum desligada volta a ligar (com quem cuida e, se ela vence no mês, a tarefa
+  // dele), e o vínculo ligado que ficou sem a tarefa do mês ganha ela — a mesma montagem da tela Obrigações fiscais
+  if (a.regra === 'obrigacao_desligada') {
+    const e = escolha && typeof escolha === 'object' ? escolha : {};
+    const para = pessoaDaEquipe(e.responsavel);
+    if (!para || para === 'Ambos') return { erro: 'Escolha quem vai cuidar.' };
+    const r = await religarVinculo(supabase, a.ref_id, para);
+    if (r.erro && !r.feitos.length) return { erro: r.erro };
+    if (!r.feitos.length) return { erro: 'Ela já está ligada: confira na tela Obrigações fiscais.' };
+    let tarefa = null, aviso = r.erro || null;
+    if (e.mes) {
+      const t = await criarTarefaDoMes(supabase, a.ref_id, e.mes);
+      if (t.tarefa) { tarefa = t.tarefa; avisarTelas('mr:tarefas-mudaram', { ids: [t.tarefa.id] }); }
+      else if (t.erro) aviso = 'A tarefa do mês não foi criada: ' + t.erro;
+    }
+    return { texto: 'Religada, com ' + para + (tarefa ? ', e a tarefa de ' + mesBR(tarefa.competencia) + ' criada (prazo ' + dataBR(tarefa.prazo) + ')' : '') + '.',
+      aviso, desfazer: { tipo: 'religada', cliente_id: r.cliente_id, feitos: r.feitos, tarefas: tarefa ? [tarefa.id] : [] } };
+  }
+  if (a.regra === 'obrigacao_sem_tarefa') {
+    const mes = mesDoAchado(a);
+    if (!mes) return { erro: 'Não sei de que mês é: crie em Obrigações fiscais.' };
+    const t = await criarTarefaDoMes(supabase, a.ref_id, mes);
+    if (t.erro) return { erro: t.erro };
+    if (t.ja) return { erro: 'A tarefa de ' + pad(mes.mes) + '/' + mes.ano + ' já existe: confira na Agenda.' };
+    avisarTelas('mr:tarefas-mudaram', { ids: [t.tarefa.id] });
+    return { texto: 'Tarefa de ' + mesBR(t.tarefa.competencia) + ' criada' + (t.tarefa.responsavel ? ' pra ' + t.tarefa.responsavel : ' (sem responsável)') + ', prazo ' + dataBR(t.tarefa.prazo) + '.',
+      desfazer: { tipo: 'tarefa_mes', tarefas: [t.tarefa.id] } };
+  }
   return { erro: 'Esse achado se resolve na tela dele.' };
 }
 // desfaz e devolve { erro } — erro também quando nada voltou (alguém mexeu depois)
@@ -1092,6 +1123,21 @@ async function desfazerResolucao(d, ajuda) {
   if (d.tipo === 'obrigacoes_vinc') { const r = await desfazerVinculoObrigacoes(supabase, d.cliente_id, d.feitos); return nada(r, r.desfeitos > 0); }
   if (d.tipo === 'cobranca') { const r = await desfazerCobranca(supabase, d.feito); return nada(r, r.desfeita); }
   if (d.tipo === 'cadastro') { const r = await desfazerCadastro(supabase, d.cliente); return nada(r, r.desfeita); }
+  // a tarefa do mês criada aqui sai (só a que continua pendente); a obrigação religada desliga de novo, com quem cuidava
+  if (d.tipo === 'tarefa_mes' || d.tipo === 'religada') {
+    let voltou = false, erro = null;
+    if (idsDe(d.tarefas).length) {
+      const t = await excluirTarefasCriadas(supabase, idsDe(d.tarefas));
+      if (t.excluidas.length) { voltou = true; avisarTelas('mr:tarefas-mudaram', { ids: t.excluidas }); }
+      erro = t.erro;
+    }
+    if (d.tipo === 'religada') {
+      const r = await desfazerVinculoObrigacoes(supabase, d.cliente_id, d.feitos || []);
+      if (r.desfeitos > 0) voltou = true;
+      erro = erro || r.erro;
+    }
+    return { erro: erro || (voltou ? null : NADA_VOLTOU) };
+  }
   return { erro: 'Não há o que desfazer.' };
 }
 
@@ -1224,8 +1270,40 @@ function cartaoVigia({ raiz, estado, salvar, ajuda, anunciar }) {
     } else if (a.regra === 'cadastro_desencontrado') {
       // o título diz o lado: saiu da carteira (o cadastro vira inativo) ou está nela (vira ativo); a regra confere de novo
       linha.append(botao('Marcar o cadastro como ' + (/saiu da carteira/i.test(String(a.titulo || '')) ? 'inativo' : 'ativo'), ev => resolver(a, null, ev.currentTarget)));
+    } else if (a.regra === 'obrigacao_desligada') {
+      linha.append(botao('Religar', () => abrirReligar(a, linha)));
+    } else if (a.regra === 'obrigacao_sem_tarefa') {
+      const m = mesDoAchado(a);
+      linha.append(botao(m ? 'Criar a tarefa de ' + pad(m.mes) + '/' + m.ano : 'Criar a tarefa do mês', ev => resolver(a, null, ev.currentTarget)));
     }
     return linha;
+  }
+  // religar a obrigação desligada (a quarta leva, 20/10/2026): quem vai cuidar (o dono já escolhido) e, se ela vence neste
+  // mês e a empresa ainda não tem a tarefa dele, "Criar já a tarefa de MM/AAAA" marcada — como o religar da tela Obrigações
+  // fiscais
+  async function abrirReligar(a, linha) {
+    const caixa = h('div', { class: 'as-vigia-resolver as-vigia-busca' }, sub('Lendo a obrigação…'));
+    linha.replaceWith(caixa);
+    const voltar = () => caixa.replaceWith(controlesDeResolver(a));
+    const hoje = hojeISO(), mes = { ano: Number(hoje.slice(0, 4)), mes: Number(hoje.slice(5, 7)) };
+    let p;
+    try { p = await tarefaDoMesDoVinculo(supabase, a.ref_id, mes); } catch (e) { p = { erro: (e && e.message) || 'erro' }; }
+    // a obrigação que não vence neste mês ainda religa (só não cria a tarefa)
+    if (p.erro && !p.obrigacao) { caixa.replaceChildren(h('div', { class: 'as-cartao-erro', text: p.erro }), botao('Voltar', voltar, 'link')); return; }
+    if (p.vinculo && p.vinculo.ativo) { caixa.replaceChildren(h('div', { class: 'as-cartao-ok', text: '✓ Ela já está ligada de novo: some na conferência seguinte.' }), botao('Voltar', voltar, 'link')); return; }
+    const sel = h('select', { 'aria-label': 'Quem vai cuidar' }, h('option', { value: '', text: 'Quem vai cuidar…' }), EQUIPE.map(n => h('option', { value: n, text: n })));
+    const dono = pessoaDaEquipe((p.vinculo && p.vinculo.responsavel) || a.responsavel);
+    sel.value = dono && dono !== 'Ambos' ? dono : '';
+    const criar = !p.erro && p.tarefa && !p.ja ? h('input', { type: 'checkbox', checked: true }) : null;
+    const ok = botao('Religar', ev => resolver(a, { responsavel: sel.value, mes: criar && criar.checked ? mes : null }, ev.currentTarget), 'pri');
+    const conferir = () => { ok.disabled = !sel.value; };
+    sel.addEventListener('change', conferir);
+    caixa.replaceChildren(
+      criar ? h('label', { class: 'as-cartao-item' }, criar, h('span', { text: 'Criar já a tarefa de ' + pad(mes.mes) + '/' + mes.ano
+        + ' (prazo ' + dataBR(p.tarefa.prazo) + (p.tarefa.prazo < hoje ? ', já vencido' : '') + '), pra ela ir pra agenda' })) : null,
+      h('div', { class: 'as-vigia-busca-linha' }, sel, ok, botao('Cancelar', voltar, 'link')));
+    conferir();
+    try { caixa.scrollIntoView({ block: 'nearest' }); } catch (e) { /* sem rolagem */ }
   }
   // as obrigações do regime da empresa, com as sugeridas já marcadas (as que a maioria das empresas do regime tem e o DEISS
   // da cidade dela) e as outras num "ver as outras"; quem vai cuidar e "Vincular as marcadas"

@@ -3,7 +3,8 @@
 // concluiu e sem a faturável; criar a tarefa avulsa do formulário e desfazer; marcar boleto pago e desfazer; em lotes de 100;
 // alterar prazo, responsável e prioridade; e o que o cartão do vigia resolve ali mesmo (o responsável que falta, a proposta
 // parada, o boleto enviado ou pago), com o desfazer. E a mensagem no histórico (20/10/2026): junto da conclusão e da
-// mudança, ou sozinha (registrar e desfazer o registro).
+// mudança, ou sozinha (registrar e desfazer o registro). E a quarta leva do vigia (20/10/2026): a tarefa do mês da obrigação
+// (a montagem da tela Obrigações fiscais), criar a do vínculo que ficou sem e religar a obrigação desligada.
 // Sem rede: o cliente do Supabase é um dublê em memória.
 // Rodar com: node tests/tarefas-acoes.test.mjs
 import { concluirTarefas, desfazerConclusao, criarTarefasAvulsas, excluirTarefasCriadas, marcarPagos, desfazerPagos, avisarDependentes,
@@ -12,7 +13,8 @@ import { concluirTarefas, desfazerConclusao, criarTarefasAvulsas, excluirTarefas
   descartarProposta, desfazerDescarte, avancarBoletos, voltarBoletos, fecharFicha, reabrirFicha, vincularEmpresa, desvincularEmpresa, buscarEmpresas,
   renovarAlvara, desfazerRenovacao, desativarRegistro, reativarRegistro, sugerirObrigacoes, obrigacoesParaVincular, vincularObrigacoes, desfazerVinculoObrigacoes,
   dadosDaCobranca, porNaCobranca, desfazerCobranca, acertarCadastro, desfazerCadastro,
-  limparMensagem, comMensagem, MAX_MENSAGEM, registrarNoHistorico, desfazerRegistro } from '../assets/js/tarefas-acoes.js';
+  limparMensagem, comMensagem, MAX_MENSAGEM, registrarNoHistorico, desfazerRegistro,
+  competenciaFiscal, tarefaDaObrigacao, tarefaDoMesDoVinculo, criarTarefaDoMes, religarVinculo } from '../assets/js/tarefas-acoes.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + extra : '')); };
@@ -468,6 +470,50 @@ console.log('Resolver no cartão do vigia, a terceira leva:');
   const d = await desfazerCadastro(sb, a.cliente), e = await desfazerCadastro(sb, b.cliente);
   chk('cadastro: desfazer volta a situação e o fim como cliente de antes', d.desfeita && e.desfeita && k('k1').status === 'ativo' && k('k1').data_fim_cliente === null
     && k('k2').status === 'inativo' && k('k2').data_fim_cliente === '2025-01-31');
+}
+
+{
+  // a tarefa do mês da obrigação (20/10/2026): a mesma montagem da tela Obrigações fiscais, agora em tarefas-acoes.js
+  const mensal = { id: 'om', nome: 'PGDAS', dia_prazo: 20, meses_vencimento: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], competencia_offset_meses: 1, competencia_formato: 'MM/AAAA', ativo: true };
+  chk('a competência fiscal: o mês de antes (em janeiro, dezembro do ano anterior) e, na anual, o ano', competenciaFiscal(mensal, 2026, 10) === '09/2026'
+    && competenciaFiscal(mensal, 2026, 1) === '12/2025' && competenciaFiscal({ competencia_formato: 'AAAA', competencia_offset_meses: 1 }, 2026, 3) === '2025'
+    && competenciaFiscal({ competencia_formato: 'MM/AAAA', competencia_offset_meses: 0 }, 2026, 7) === '07/2026');
+  const t = tarefaDaObrigacao(mensal, { cliente_id: 'k1', responsavel: 'Thalia', dia_prazo_override: null }, 2026, 10);
+  chk('a tarefa do mês: fiscal, recorrente, com a obrigação, a competência, a descrição e o prazo no dia da obrigação',
+    t.setor === 'fiscal' && t.titulo === 'PGDAS' && t.cliente_id === 'k1' && t.responsavel === 'Thalia' && t.prazo === '2026-10-20' && t.status === 'pendente' && t.prioridade === 'media'
+    && t.origem === 'recorrente' && t.obrigacao_id === 'om' && t.competencia === '2026-10' && t.competencia_fiscal === '09/2026' && t.descricao === 'Competência 09/2026 · Gerada pelo módulo Obrigações', JSON.stringify(t));
+  chk('o prazo: o dia do vínculo vale; no sábado ou domingo, a segunda; o dia 31 em fevereiro, o último dia',
+    tarefaDaObrigacao(mensal, { cliente_id: 'k1', dia_prazo_override: 17 }, 2026, 10).prazo === '2026-10-19' && tarefaDaObrigacao(mensal, { cliente_id: 'k1', dia_prazo_override: 31 }, 2026, 2).prazo === '2026-03-02'
+    && tarefaDaObrigacao({ ...mensal, dia_prazo: 31 }, { cliente_id: 'k1' }, 2026, 4).prazo === '2026-04-30' && tarefaDaObrigacao(mensal, { cliente_id: 'k1' }, 2026, 10).responsavel === null);
+  const db = { obrigacoes_fiscais: [mensal, { id: 'oa', nome: 'DEFIS', dia_prazo: 31, meses_vencimento: [3], competencia_formato: 'AAAA', competencia_offset_meses: 1, ativo: true },
+      { id: 'ox', nome: 'Velha', dia_prazo: 10, meses_vencimento: [10], ativo: false }],
+    cliente_obrigacoes: [{ id: 'v1', cliente_id: 'k1', obrigacao_id: 'om', responsavel: 'Thalia', dia_prazo_override: 15, ativo: true },
+      { id: 'v2', cliente_id: 'k2', obrigacao_id: 'om', responsavel: null, dia_prazo_override: null, ativo: false },
+      { id: 'v3', cliente_id: 'k3', obrigacao_id: 'oa', responsavel: 'Thalia', ativo: true }, { id: 'v4', cliente_id: 'k4', obrigacao_id: 'ox', responsavel: 'Thalia', ativo: true }],
+    tarefas: [{ id: 'tk3', cliente_id: 'k9', obrigacao_id: 'om', competencia: '2026-10', status: 'pendente' }] };
+  const sb = dubla(db);
+  const p = await tarefaDoMesDoVinculo(sb, 'v1', { ano: 2026, mes: 10 });
+  chk('a tarefa que o vínculo teria no mês: montada, sem gravar, e ainda não existe', !p.erro && !p.ja && p.tarefa.prazo === '2026-10-15' && p.tarefa.responsavel === 'Thalia' && p.vinculo.id === 'v1' && db.tarefas.length === 1, JSON.stringify(p));
+  chk('não dá: o mês inválido, o vínculo que sumiu, a obrigação desligada no geral e o mês em que ela não vence',
+    (await tarefaDoMesDoVinculo(sb, 'v1', { ano: 2026, mes: 13 })).erro === 'Mês inválido.' && /não existe mais/.test((await tarefaDoMesDoVinculo(sb, 'vz', { ano: 2026, mes: 10 })).erro)
+    && /não está mais ativa/.test((await tarefaDoMesDoVinculo(sb, 'v4', { ano: 2026, mes: 10 })).erro) && (await tarefaDoMesDoVinculo(sb, 'v3', { ano: 2026, mes: 10 })).erro === 'A obrigação não vence em 10/2026.');
+  const c = await criarTarefaDoMes(sb, 'v1', { ano: 2026, mes: 10 });
+  const criada = db.tarefas.find(x => x.cliente_id === 'k1');
+  chk('criar a do mês: grava a tarefa montada e devolve o id, o prazo e quem cuida', !c.erro && !c.ja && c.tarefa.id === criada.id && c.tarefa.prazo === '2026-10-15' && criada.origem === 'recorrente'
+    && criada.competencia === '2026-10' && criada.obrigacao_id === 'om' && criada.status === 'pendente', JSON.stringify(c));
+  chk('criar de novo: já existe, não grava outra', (await criarTarefaDoMes(sb, 'v1', { ano: 2026, mes: 10 })).ja === true && db.tarefas.filter(x => x.cliente_id === 'k1').length === 1);
+  chk('a desligada não ganha tarefa: religue antes', /religue antes/.test((await criarTarefaDoMes(sb, 'v2', { ano: 2026, mes: 10 })).erro) && !db.tarefas.some(x => x.cliente_id === 'k2'));
+  const ex = await excluirTarefasCriadas(sb, [c.tarefa.id]);
+  chk('desfazer a criada: sai (ainda pendente)', !db.tarefas.some(x => x.cliente_id === 'k1'), JSON.stringify(ex));
+  const r = await religarVinculo(sb, 'v2', 'Adaini');
+  const v2 = db.cliente_obrigacoes.find(x => x.id === 'v2');
+  chk('religar: a desligada volta a valer com quem cuida, e diz de qual empresa', !r.erro && r.cliente_id === 'k2' && v2.ativo === true && v2.responsavel === 'Adaini' && r.feitos.length === 1 && !r.feitos[0].novo, JSON.stringify(r));
+  const c2 = await criarTarefaDoMes(sb, 'v2', { ano: 2026, mes: 10 });
+  chk('religada, a tarefa do mês sai com quem cuida agora', !c2.erro && db.tarefas.find(x => x.cliente_id === 'k2').responsavel === 'Adaini' && c2.tarefa.prazo === '2026-10-20');
+  await excluirTarefasCriadas(sb, [c2.tarefa.id]);
+  const d = await desfazerVinculoObrigacoes(sb, 'k2', r.feitos);
+  chk('desfazer o religar: desligada de novo, sem quem cuidava', d.desfeitos === 1 && v2.ativo === false && v2.responsavel === null, JSON.stringify(d));
+  chk('religar o vínculo que sumiu: diz', /não existe mais/.test((await religarVinculo(sb, 'vz', 'Thalia')).erro));
 }
 
 if (falhas) { console.log('\n' + falhas + ' falha(s)'); process.exit(1); }

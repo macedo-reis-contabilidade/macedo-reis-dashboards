@@ -26,6 +26,8 @@ Confere:
   8. a segunda leva: admissão registrada, rescisão concluída, a empresa da ficha sem vínculo (com a busca), o alvará
      renovado e o que é de ex-cliente (cobrança, obrigação), com o "nada voltou" quando mexeram depois;
   9. a terceira: vincular as obrigações do regime (as sugeridas marcadas), pôr na cobrança, o cadastro que segue a carteira;
+ 10. a quarta (20/10/2026): religar a obrigação comum desligada (quem cuida e, se ela vence no mês, a tarefa dele) e criar a
+     tarefa do mês do vínculo que ficou sem — a mesma montagem da tela Obrigações fiscais —, com o "Desfazer";
   e sem erro de JavaScript.
 Termina com código 1 se alguma checagem falhar.
 Pré-requisito: pip install playwright e python -m playwright install chromium
@@ -128,6 +130,31 @@ EXTRA3 = {
                                for i, (c, o) in enumerate([('s41', 'o42'), ('s41', 'o41'), ('s42', 'o42'), ('s42', 'o43'), ('s43', 'o42')])],
         'precificacoes': [{'id': 'pp9', 'cliente_id': 'k31', 'cliente_nome': 'NOVA DE TESTE LTDA', 'status': 'fechada', 'honorario': 480, 'atualizado_em': DIA(-20) + 'T12:00:00Z'}],
         'carteira_info': [{'cliente_id': 'k33', 'entrada': '2025-01-01', 'saida': '2025-05-31'}]}}
+# o 10: a quarta leva — a obrigação comum desligada (religar, com ou sem a tarefa do mês) e o vínculo ligado sem a tarefa do
+# mês. O PGDAS de teste vence todo mês (dia 20); a DEFIS de teste, em todos os meses menos este
+MES = HOJE.month; ANO = HOJE.year
+def util(d):
+    while d.weekday() >= 5: d += datetime.timedelta(days=1)
+    return d
+PRAZO_52 = util(datetime.date(ANO, MES, 15)); PRAZO_51 = util(datetime.date(ANO, MES, 20))
+MM = '%02d/%d' % (MES, ANO)
+EXTRA4 = {
+    'achados': [
+        A('41', 'obrigacao_desligada', 'EMPRESA 51 DE TESTE LTDA: PGDAS DE TESTE 51 desligada', '2 de 3 empresas do Simples Nacional têm ela ligada · nenhuma tarefa ainda. Desligada, a tarefa do mês não nasce.',
+          'fiscal', 'Thalia', 'media', 'fiscal-obrigacoes.html', cliente_id='k51', ref_tabela='cliente_obrigacoes', ref_id='v51'),
+        A('42', 'obrigacao_sem_tarefa', 'EMPRESA 52 DE TESTE LTDA: PGDAS DE TESTE 51 sem a tarefa de ' + MM, 'As outras empresas já têm a tarefa deste mês; esta ficou sem.',
+          'fiscal', 'Thalia', 'media', 'fiscal-obrigacoes.html', cliente_id='k52', ref_tabela='cliente_obrigacoes', ref_id='v52', prazo=datetime.date(ANO, MES, 15).isoformat()),
+        A('43', 'obrigacao_desligada', 'EMPRESA 53 DE TESTE LTDA: DEFIS DE TESTE desligada', '2 de 3 empresas do Simples Nacional têm ela ligada.',
+          'fiscal', 'Thalia', 'media', 'fiscal-obrigacoes.html', cliente_id='k53', ref_tabela='cliente_obrigacoes', ref_id='v53')],
+    'tabelas': {
+        'clientes': [{'id': k, 'nome_principal': 'EMPRESA ' + k[1:] + ' DE TESTE LTDA', 'regime_tributario': 'Simples Nacional', 'status': 'ativo'} for k in ('k51', 'k52', 'k53')],
+        'obrigacoes_fiscais': [{'id': 'o51', 'nome': 'PGDAS DE TESTE 51', 'periodicidade': 'mensal', 'dia_prazo': 20, 'meses_vencimento': list(range(1, 13)), 'competencia_offset_meses': 1,
+                                'competencia_formato': 'MM/AAAA', 'regimes_aplicaveis': ['SIMPLES NACIONAL'], 'ativo': True},
+                               {'id': 'o52', 'nome': 'DEFIS DE TESTE', 'periodicidade': 'anual', 'dia_prazo': 31, 'meses_vencimento': [m for m in range(1, 13) if m != MES],
+                                'competencia_offset_meses': 1, 'competencia_formato': 'AAAA', 'regimes_aplicaveis': ['SIMPLES NACIONAL'], 'ativo': True}],
+        'cliente_obrigacoes': [{'id': 'v51', 'cliente_id': 'k51', 'obrigacao_id': 'o51', 'responsavel': None, 'dia_prazo_override': None, 'ativo': False},
+                               {'id': 'v52', 'cliente_id': 'k52', 'obrigacao_id': 'o51', 'responsavel': 'Thalia', 'dia_prazo_override': 15, 'ativo': True},
+                               {'id': 'v53', 'cliente_id': 'k53', 'obrigacao_id': 'o52', 'responsavel': 'Adaini', 'dia_prazo_override': None, 'ativo': False}]}}
 ACOES = {'O que o vigia achou no fiscal?': {'tipo': 'vigia', 'ver': 'todos', 'setor': 'fiscal'}, 'O que dá pra resolver do vigia?': {'tipo': 'vigia', 'ver': 'todos'}}
 SEMEAR = """
 (() => {
@@ -462,6 +489,68 @@ def main():
         p4.wait_for_selector(it4('ANTIGA DE TESTE') + ' button:has-text("Marcar o cadastro como inativo")', timeout=5000)
         k33 = l4('clientes', 'k33')
         ok(k33['status'] == 'ativo' and k33['data_fim_cliente'] is None, 'desfazer: o cadastro volta como estava')
+
+        # 10) a quarta leva: religar a obrigação desligada e criar a tarefa do mês que ficou faltando
+        p5 = b.new_page(viewport={'width': 1400, 'height': 900})
+        p5.on('pageerror', lambda e: erros.append(str(e)))
+        p5.add_init_script(TOUR); p5.add_init_script('window.__vigiaExtra = ' + json.dumps(EXTRA4, ensure_ascii=False)); p5.add_init_script(SEMEAR)
+        l5 = lambda t, i: p5.evaluate('([t, i]) => window.__mockDb[t].find(x => x.id === i)', [t, i])
+        tarefas_de = lambda c: p5.evaluate('c => window.__mockDb.tarefas.filter(t => t.cliente_id === c)', c)
+        it5 = lambda trecho: card + ' li.as-vigia-item:has-text("' + trecho + '")'
+        abrir5 = lambda: p5.evaluate("() => document.querySelectorAll('.as-cartao-vigia details.as-vigia-grupo').forEach(d => { d.open = true; })")
+        def clicar5(trecho, botao, depois):
+            p5.click(it5(trecho) + ' button:has-text("' + botao + '")')
+            p5.wait_for_selector(it5(trecho) + ' button:has-text("' + depois + '")', timeout=5000)
+        p5.goto(base + 'index.html'); p5.wait_for_selector('.as-lancador', timeout=5000)
+        p5.click('.as-lancador'); p5.wait_for_timeout(200)
+        p5.fill('.as-entrada textarea', 'O que dá pra resolver do vigia?'); p5.press('.as-entrada textarea', 'Enter')
+        p5.wait_for_selector(card + ' .as-vigia-grupo', timeout=6000); abrir5(); p5.wait_for_timeout(100)
+        rot5 = lambda trecho: p5.eval_on_selector_all(it5(trecho) + ' .as-vigia-resolver button', 'bs => bs.map(b => b.textContent)')
+        grupos5 = p5.eval_on_selector_all(card + ' .as-vigia-grupo > summary', 'ss => ss.map(s => s.textContent)')
+        ok(rot5('EMPRESA 51') == ['Religar'] and rot5('EMPRESA 52') == ['Criar a tarefa de ' + MM] and rot5('EMPRESA 53') == ['Religar']
+           and any(g.startswith('Obrigações comuns desligadas · 2') for g in grupos5) and any(g.startswith('Obrigações sem a tarefa do mês · 1') for g in grupos5),
+           f'os botões da quarta leva, nos grupos com o nome das regras ({rot5("EMPRESA 52")}, {grupos5})')
+
+        clicar5('EMPRESA 52', 'Criar a tarefa de ' + MM, 'Desfazer')
+        t52 = tarefas_de('k52')
+        ok(len(t52) == 1 and t52[0]['obrigacao_id'] == 'o51' and t52[0]['competencia'] == '%d-%02d' % (ANO, MES) and t52[0]['prazo'] == PRAZO_52.isoformat()
+           and t52[0]['responsavel'] == 'Thalia' and t52[0]['origem'] == 'recorrente' and t52[0]['status'] == 'pendente'
+           and '✓ Tarefa de ' + MM + ' criada pra Thalia, prazo ' + PRAZO_52.strftime('%d/%m/%Y') + '.' in p5.inner_text(it5('EMPRESA 52'))
+           and any(e[0] == 'mr:tarefas-mudaram' for e in p5.evaluate('() => window.__eventos')),
+           f'criar a tarefa do mês: a do vínculo (o dia dele, no dia útil), com quem cuida, e a Agenda fica sabendo ({t52})')
+        clicar5('EMPRESA 52', 'Desfazer', 'Criar a tarefa de ' + MM)
+        ok(tarefas_de('k52') == [], 'desfazer: a tarefa criada sai (ainda pendente)')
+
+        p5.click(it5('EMPRESA 51') + ' button:has-text("Religar")')
+        p5.wait_for_selector(it5('EMPRESA 51') + ' .as-vigia-busca select', timeout=5000)
+        quem = p5.input_value(it5('EMPRESA 51') + ' .as-vigia-busca select')
+        caixa_txt = p5.inner_text(it5('EMPRESA 51') + ' .as-vigia-busca')
+        marcada = p5.is_checked(it5('EMPRESA 51') + ' .as-vigia-busca input[type=checkbox]')
+        ok(quem == 'Thalia' and marcada and 'Criar já a tarefa de ' + MM + ' (prazo ' + PRAZO_51.strftime('%d/%m/%Y') in caixa_txt,
+           f'religar: quem vai cuidar (o dono do setor) e "Criar já a tarefa do mês" marcada, com o prazo ({quem!r}, {caixa_txt!r})')
+        p5.click(it5('EMPRESA 51') + ' .as-vigia-busca button:has-text("Cancelar")')
+        p5.wait_for_selector(it5('EMPRESA 51') + ' .as-vigia-resolver button:has-text("Religar")', timeout=5000)
+        ok(l5('cliente_obrigacoes', 'v51')['ativo'] is False, '"Cancelar" volta pro botão, sem gravar nada')
+        p5.click(it5('EMPRESA 51') + ' button:has-text("Religar")')
+        p5.wait_for_selector(it5('EMPRESA 51') + ' .as-vigia-busca button.as-botao-pri', timeout=5000)
+        p5.click(it5('EMPRESA 51') + ' .as-vigia-busca button.as-botao-pri')
+        p5.wait_for_selector(it5('EMPRESA 51') + ' button:has-text("Desfazer")', timeout=5000)
+        v51, t51 = l5('cliente_obrigacoes', 'v51'), tarefas_de('k51')
+        ok(v51['ativo'] is True and v51['responsavel'] == 'Thalia' and len(t51) == 1 and t51[0]['prazo'] == PRAZO_51.isoformat() and t51[0]['responsavel'] == 'Thalia'
+           and '✓ Religada, com Thalia, e a tarefa de ' + MM + ' criada (prazo ' + PRAZO_51.strftime('%d/%m/%Y') + ').' in p5.inner_text(it5('EMPRESA 51')),
+           f'religar: a obrigação volta a valer com quem cuida e a tarefa do mês já nasce na agenda ({v51}, {t51})')
+        clicar5('EMPRESA 51', 'Desfazer', 'Religar')
+        v51 = l5('cliente_obrigacoes', 'v51')
+        ok(v51['ativo'] is False and v51['responsavel'] is None and tarefas_de('k51') == [], 'desfazer: desligada de novo, sem quem cuidava, e a tarefa sai')
+
+        p5.click(it5('EMPRESA 53') + ' button:has-text("Religar")')
+        p5.wait_for_selector(it5('EMPRESA 53') + ' .as-vigia-busca select', timeout=5000)
+        ok(p5.input_value(it5('EMPRESA 53') + ' .as-vigia-busca select') == 'Adaini' and not p5.query_selector(it5('EMPRESA 53') + ' .as-vigia-busca input[type=checkbox]'),
+           'religar a que não vence neste mês: quem cuidava antes já escolhido, sem a caixa da tarefa')
+        p5.click(it5('EMPRESA 53') + ' .as-vigia-busca button.as-botao-pri')
+        p5.wait_for_selector(it5('EMPRESA 53') + ' button:has-text("Desfazer")', timeout=5000)
+        ok(l5('cliente_obrigacoes', 'v53')['ativo'] is True and l5('cliente_obrigacoes', 'v53')['responsavel'] == 'Adaini' and tarefas_de('k53') == []
+           and '✓ Religada, com Adaini.' in p5.inner_text(it5('EMPRESA 53')), 'religada, sem tarefa (ela sai na geração do mês em que vence)')
 
         ok(not erros, f'sem erro de JavaScript ({erros[:2]})')
         b.close()

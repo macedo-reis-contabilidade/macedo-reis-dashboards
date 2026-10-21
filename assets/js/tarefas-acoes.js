@@ -25,6 +25,9 @@
 //                     das fichas), renovarAlvara (como o "Renovar" da tela Alvarás) e desativarRegistro (a cobrança e a
 //                     obrigação de quem saiu da carteira). E a terceira: vincularObrigacoes (as do regime, com a sugestão
 //                     de sugerirObrigacoes), porNaCobranca (a base de boletos) e acertarCadastro (o cadastro segue a carteira).
+//                     E a quarta (20/10/2026): tarefaDaObrigacao (a montagem da tarefa do mês, a mesma da tela Obrigações
+//                     fiscais), criarTarefaDoMes (o vínculo que ficou sem a tarefa do mês) e religarVinculo (a obrigação
+//                     comum desligada).
 //   A mensagem no histórico (20/10/2026, pedido da Thalia) — o que a pessoa escreve vai no fim da linha da conclusão e da
 //                     mudança (concluirTarefas e alterarTarefas com "mensagem", como a observação do concluir em lote da
 //                     Agenda) ou sozinha, sem mudar a tarefa: registrarNoHistorico (o "Registrar andamento" da Agenda) e
@@ -748,6 +751,77 @@ export async function desfazerVinculoObrigacoes(sb, clienteId, feitos) {
     desfeitos += (data || []).length;
   }
   return { desfeitos, erro: null };
+}
+
+// ---- a tarefa da obrigação de um vínculo num mês (20/10/2026) ----
+// A mesma montagem do "Gerar rotinas do mês", do "Gerar a deste mês" e do vincular da tela Obrigações fiscais — e do
+// cartão do vigia ("sem a tarefa do mês", "religar"). O prazo é o dia do vínculo (ou o da obrigação) naquele mês, no
+// próximo dia útil (sábado e domingo; feriado, não — como a tela sempre fez); a competência fiscal, pelo deslocamento da
+// obrigação ("09/2026", ou o ano, nas anuais)
+const pad2 = n => String(n).padStart(2, '0');
+const ultimoDiaDoMes = (a, m) => new Date(a, m, 0).getDate();
+const ymdLocal = d => d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+const proximoDiaUtil = d => { const x = new Date(d); while (x.getDay() === 0 || x.getDay() === 6) x.setDate(x.getDate() + 1); return x; };
+export function competenciaFiscal(r, anoOcc, M) {
+  if (r.competencia_formato === 'AAAA') return String(anoOcc - (r.competencia_offset_meses || 0));
+  let m = M - (r.competencia_offset_meses || 0), a = anoOcc;
+  while (m < 1) { m += 12; a -= 1; }
+  return pad2(m) + '/' + a;
+}
+export function tarefaDaObrigacao(r, v, anoOcc, M) {
+  const dia = Math.min(v.dia_prazo_override || r.dia_prazo, ultimoDiaDoMes(anoOcc, M));
+  const prazoD = proximoDiaUtil(new Date(anoOcc, M - 1, dia));
+  const cf = competenciaFiscal(r, anoOcc, M);
+  return {
+    setor: 'fiscal', titulo: r.nome, cliente_id: v.cliente_id,
+    responsavel: v.responsavel || null, prazo: ymdLocal(prazoD),
+    status: 'pendente', prioridade: 'media', origem: 'recorrente',
+    obrigacao_id: r.id, competencia: anoOcc + '-' + pad2(M), competencia_fiscal: cf,
+    descricao: 'Competência ' + cf + ' · Gerada pelo módulo Obrigações'
+  };
+}
+// o que a tarefa do mês do vínculo seria → { vinculo, obrigacao, tarefa, ja, erro }: tarefa = a montada (sem gravar), ja =
+// a do vínculo naquele mês já existe; erro quando não dá (o vínculo sumiu, a obrigação não vence no mês…)
+export async function tarefaDoMesDoVinculo(sb, vinculoId, { ano, mes } = {}) {
+  const fim = (erro, extra = {}) => ({ vinculo: null, obrigacao: null, tarefa: null, ja: false, erro, ...extra });
+  if (!vinculoId || !(Number(ano) >= 2000) || !(Number(mes) >= 1 && Number(mes) <= 12)) return fim('Mês inválido.');
+  const { data: vs, error: e1 } = await sb.from('cliente_obrigacoes').select('id, cliente_id, obrigacao_id, responsavel, dia_prazo_override, ativo').eq('id', vinculoId);
+  if (e1) return fim(msg(e1));
+  const v = (vs || [])[0];
+  if (!v) return fim('O vínculo não existe mais: confira na tela Obrigações fiscais.');
+  const { data: os, error: e2 } = await sb.from('obrigacoes_fiscais').select('id, nome, dia_prazo, meses_vencimento, competencia_offset_meses, competencia_formato, ativo').eq('id', v.obrigacao_id);
+  if (e2) return fim(msg(e2));
+  const r = (os || [])[0];
+  if (!r || r.ativo === false) return fim('A obrigação não está mais ativa: confira na tela Obrigações fiscais.', { vinculo: v });
+  if (!(Array.isArray(r.meses_vencimento) ? r.meses_vencimento : []).map(Number).includes(Number(mes)))
+    return fim('A obrigação não vence em ' + pad2(mes) + '/' + ano + '.', { vinculo: v, obrigacao: r });
+  const comp = ano + '-' + pad2(mes);
+  const { data: ex, error: e3 } = await sb.from('tarefas').select('id').eq('obrigacao_id', v.obrigacao_id).eq('cliente_id', v.cliente_id).eq('competencia', comp);
+  if (e3) return fim(msg(e3));
+  return { vinculo: v, obrigacao: r, tarefa: tarefaDaObrigacao(r, v, Number(ano), Number(mes)), ja: (ex || []).length > 0, erro: null };
+}
+// cria a tarefa do mês do vínculo (o "Gerar a deste mês" de um só) → { tarefa: { id, titulo, prazo, responsavel,
+// competencia }, ja, erro }: o vínculo tem de estar ligado e a tarefa ainda não existir. Desfazer: excluirTarefasCriadas
+// (só a que continua pendente)
+export async function criarTarefaDoMes(sb, vinculoId, { ano, mes } = {}) {
+  const p = await tarefaDoMesDoVinculo(sb, vinculoId, { ano, mes });
+  if (p.erro) return { tarefa: null, ja: false, erro: p.erro };
+  if (!p.vinculo.ativo) return { tarefa: null, ja: false, erro: 'A obrigação está desligada nessa empresa: religue antes.' };
+  if (p.ja) return { tarefa: null, ja: true, erro: null };
+  const { data, error } = await sb.from('tarefas').insert(p.tarefa).select('id, titulo, prazo, responsavel, competencia');
+  if (error) return { tarefa: null, ja: false, erro: msg(error) };
+  const t = (data || [])[0];
+  return { tarefa: t ? { ...t, id: String(t.id) } : null, ja: false, erro: t ? null : 'A tarefa não foi criada.' };
+}
+// o vínculo desligado volta a ligar, com quem cuida (a regra do vincular: o dia que ele tinha fica) → o retorno do
+// vincularObrigacoes, com o cliente_id (o desfazer é o desfazerVinculoObrigacoes, que o desliga de novo)
+export async function religarVinculo(sb, vinculoId, responsavel) {
+  const { data, error } = await sb.from('cliente_obrigacoes').select('id, cliente_id, obrigacao_id, ativo').eq('id', vinculoId);
+  if (error) return { feitos: [], jaTinha: [], cliente_id: null, erro: msg(error) };
+  const v = (data || [])[0];
+  if (!v) return { feitos: [], jaTinha: [], cliente_id: null, erro: 'O vínculo não existe mais: confira na tela Obrigações fiscais.' };
+  const r = await vincularObrigacoes(sb, v.cliente_id, [v.obrigacao_id], responsavel);
+  return { ...r, cliente_id: String(v.cliente_id) };
 }
 
 // a empresa da carteira sem cobrança: na base de boletos, como o "+ empresa" da tela Boletos (canal WhatsApp; contato,

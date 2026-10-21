@@ -326,7 +326,7 @@
   <script src="assets/js/tour.js"></script>
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
-    import { vincularObrigacoes, pessoaDaEquipe, alterarTarefas, desfazerAlteracao } from './assets/js/tarefas-acoes.js';
+    import { vincularObrigacoes, pessoaDaEquipe, alterarTarefas, desfazerAlteracao, tarefaDaObrigacao } from './assets/js/tarefas-acoes.js';
 
     const user = await getCurrentUser();
     if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; const av = document.getElementById('userAvatar'); if (av) av.textContent = (user.email || '?').charAt(0).toUpperCase(); }
@@ -336,7 +336,6 @@
     const pad = n => String(n).padStart(2, '0');
     const toYMD = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
     const ultimoDia = (a, m) => new Date(a, m, 0).getDate();
-    const proximoUtil = d => { const x = new Date(d); while (x.getDay() === 0 || x.getDay() === 6) x.setDate(x.getDate() + 1); return x; };
     const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     const PER_LBL = { mensal:'Mensal', trimestral:'Trimestral', quadrimestral:'Quadrimestral', anual:'Anual' };
     const MES3 = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
@@ -1408,27 +1407,9 @@
       return occ;
     }
 
-    function compFiscal(r, anoOcc, M){
-      if (r.competencia_formato === 'AAAA') return String(anoOcc - (r.competencia_offset_meses || 0));
-      let m = M - (r.competencia_offset_meses || 0), a = anoOcc;
-      while (m < 1) { m += 12; a -= 1; }
-      return pad(m) + '/' + a;
-    }
-
     // a tarefa da obrigação de um vínculo no mês M de anoOcc: uma só montagem pro "Gerar rotinas do mês", o "Gerar a
-    // deste mês" e o vincular (20/10/2026)
-    function tarefaDaObrigacao(r, v, anoOcc, M){
-      const dia = Math.min(v.dia_prazo_override || r.dia_prazo, ultimoDia(anoOcc, M));
-      const prazoD = proximoUtil(new Date(anoOcc, M - 1, dia));
-      const cf = compFiscal(r, anoOcc, M);
-      return {
-        setor: 'fiscal', titulo: r.nome, cliente_id: v.cliente_id,
-        responsavel: v.responsavel || null, prazo: toYMD(prazoD),
-        status: 'pendente', prioridade: 'media', origem: 'recorrente',
-        obrigacao_id: r.id, competencia: anoOcc + '-' + pad(M), competencia_fiscal: cf,
-        descricao: 'Competência ' + cf + ' · Gerada pelo módulo Obrigações'
-      };
-    }
+    // deste mês" e o vincular (20/10/2026) — desde a quarta leva do vigia, em assets/js/tarefas-acoes.js
+    // (tarefaDaObrigacao), a mesma do cartão do vigia
 
     async function montarPlano(){
       const mv = document.getElementById('mesRef').value;

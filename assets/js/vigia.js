@@ -20,7 +20,8 @@ export const ROTULOS = {
   cadastro_desencontrado: 'Carteira e cadastro desencontrados', carteira_sem_cadastro: 'Na carteira sem cadastro', proposta_parada: 'Propostas paradas',
   transicao_atrasada: 'Transições atrasadas',
   cliente_sem_obrigacao: 'Clientes sem obrigação fiscal', obrigacao_sem_responsavel: 'Obrigações sem responsável', obrigacao_ex_cliente: 'Obrigações de ex-cliente',
-  reforma_prazo: 'Prazo da opção da Reforma',
+  obrigacao_desligada: 'Obrigações comuns desligadas', obrigacao_sem_tarefa: 'Obrigações sem a tarefa do mês',
+  reforma_prazo: 'Prazo da opção da Reforma', noticia_prazo: 'Prazos das notícias chegando',
   tarefa_responsavel: 'Tarefas sem responsável', tarefa_repetida: 'Tarefas repetidas', tarefa_ex_cliente: 'Tarefas de ex-cliente',
   recorrente_ex_cliente: 'Tarefas recorrentes de ex-cliente', rotina_sem_responsavel: 'Rotinas sem responsável'
 };

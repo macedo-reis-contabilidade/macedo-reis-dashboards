@@ -4,7 +4,7 @@
 import { lerFeed, lerListaHtml, semTags, decodificar, dataIso, linkLimpo } from '../supabase/functions/noticias/rss.js';
 import { textoDaPagina } from '../supabase/functions/noticias/pagina.js';
 import { montarClientes, perfilDaCarteira, clientesDosCriterios, cnaeDe } from '../supabase/functions/noticias/perfil.js';
-import { lerClassificacao, mensagemDaNoticia, montarSistema, criarChamador, triar, pedidoDaTriagem } from '../supabase/functions/noticias/triagem.js';
+import { lerClassificacao, mensagemDaNoticia, montarSistema, criarChamador, triar, pedidoDaTriagem, prazoValido, FERRAMENTA } from '../supabase/functions/noticias/triagem.js';
 import { decodificarCorpo, feedsAnunciados, coletarFontes, triarPendentes, ehArquivo, melhorQue } from '../supabase/functions/noticias/coleta.js';
 import { SOCIOS as SOCIOS_FUNCAO } from '../supabase/functions/noticias/servidor.js';
 import { SOCIOS } from '../assets/js/equipe.js';
@@ -131,6 +131,20 @@ console.log('A classificação da IA:');
   chk('descartada não entra em grupo', lerClassificacao({ content: [{ type: 'tool_use', name: 'classificar', input: { relevante: false, resumo: 'x', mesma_que: 1 } }] }, 2).mesma_que === null);
   chk('o setor com maiúscula e acento vale ("DP", "Contábil", "Societário")', JSON.stringify(lerClassificacao({ content: [{ type: 'tool_use', name: 'classificar',
     input: { relevante: true, relevancia: 'alta', resumo: 'x', setores: ['DP', 'Contábil', 'Societário', 'rh'] } }] }).setores) === '["dp","contabil","societario"]');
+  // o prazo que a notícia traz (20/10/2026): o vigia avisa o setor uns dias antes, com o link da notícia
+  const H = new Date(2026, 9, 20, 15);
+  chk('o prazo: só a data de verdade, do ano passado a daqui a 3 anos', prazoValido('2026-11-30', H) === '2026-11-30' && prazoValido(' 2026-11-30 ', H) === '2026-11-30'
+    && prazoValido('2026-02-30', H) === null && prazoValido('30/11/2026', H) === null && prazoValido('2026-11', H) === null && prazoValido(null, H) === null
+    && prazoValido('2025-01-31', H) === '2025-01-31' && prazoValido('2024-12-31', H) === null && prazoValido('2029-12-31', H) === '2029-12-31' && prazoValido('2030-01-01', H) === null);
+  const comPrazo = (input) => lerClassificacao({ content: [{ type: 'tool_use', name: 'classificar', input: { relevante: true, relevancia: 'media', resumo: 'x', ...input } }] });
+  const cp = comPrazo({ prazo: '2026-11-30', prazo_o_que: '  adesão ao   programa  ' });
+  chk('a relevante com prazo: a data e o que vence nela', cp.prazo === '2026-11-30' && cp.prazo_o_que === 'adesão ao programa', JSON.stringify(cp));
+  const sp = comPrazo({ prazo: 'em breve', prazo_o_que: 'adesão' });
+  chk('o prazo fora do formato não entra (e o "o que" vai junto)', sp.prazo === null && sp.prazo_o_que === null);
+  const dp = lerClassificacao({ content: [{ type: 'tool_use', name: 'classificar', input: { relevante: false, resumo: 'x', prazo: '2026-11-30', prazo_o_que: 'y' } }] });
+  chk('a descartada não guarda prazo', dp.prazo === null && dp.prazo_o_que === null);
+  chk('a ferramenta pede o prazo e o que vence (sem obrigar)', !!FERRAMENTA.input_schema.properties.prazo && !!FERRAMENTA.input_schema.properties.prazo_o_que
+    && !FERRAMENTA.input_schema.required.includes('prazo') && montarSistema('P')[0].text.includes('prazo e prazo_o_que'));
 }
 {
   // a resposta cortada no limite de tokens (a classificação vinha pela metade, sem setores e sem critérios): erro, volta pra fila
@@ -285,6 +299,27 @@ function bancoFalso(tabelas) {
   chk('mesma importância, da fonte oficial: vira a principal sem voltar a ser "nova"', g3.grupo === null && p2.grupo === 'g3' && g3.triada_em === '2026-10-19T20:00:00.000Z', JSON.stringify([p2, g3]));
   chk('melhorQue: importância primeiro, depois a fonte oficial', melhorQue({ relevancia: 'alta', tipo: 'imprensa' }, { relevancia: 'media', tipo: 'oficial' }) === 'importancia'
     && melhorQue({ relevancia: 'media', tipo: 'imprensa' }, { relevancia: 'alta', tipo: 'imprensa' }) === null && melhorQue({ relevancia: 'media', tipo: 'oficial' }, { relevancia: 'media', tipo: 'oficial' }) === null);
+
+  // o prazo no grupo: o vigia olha a principal — o prazo que só a outra fonte deu vai pra ela; a principal que já tinha fica
+  // com o dela; e a nova que vira a principal sem prazo fica com o da antiga
+  const iaPrazo = (relevancia, titulo, prazo, prazo_o_que) => async corpo => {
+    const m = new RegExp('\\[(\\d+)\\] ' + titulo).exec(corpo.messages[0].content);
+    return { _modelo: 'm', usage: {}, content: [{ type: 'tool_use', name: 'classificar', input: { relevante: true, relevancia, setores: ['fiscal'], resumo: 'r', mesma_que: m ? Number(m[1]) : undefined, prazo, prazo_o_que } }] };
+  };
+  const recente = new Date(agora - 3600e3).toISOString();
+  db.tabelas.noticias.push({ id: 'p3', url: 'https://imp.exemplo/p3', titulo: 'Programa de regularização abre adesão', fonte_id: 'f5', situacao: 'triada', relevancia: 'alta', triada_em: recente, grupo: null },
+    nova('g4', 'Regularização: adesão vai até 30 de novembro', 'f5'));
+  await triarPendentes({ db, fetch: fetchFalso, chamar: iaPrazo('media', 'Programa de regularização abre adesão', '2026-11-30', 'adesão ao programa'), agora: () => agora, ate: agora + 120000 });
+  const [p3, g4] = ['p3', 'g4'].map(id => db.tabelas.noticias.find(x => x.id === id));
+  chk('o prazo que só a outra fonte deu vai pra principal do grupo', g4.grupo === 'p3' && g4.prazo === '2026-11-30' && p3.prazo === '2026-11-30' && p3.prazo_o_que === 'adesão ao programa', JSON.stringify([p3, g4]));
+  db.tabelas.noticias.push(nova('g5', 'Regularização: prazo da adesão em dezembro', 'f5'));
+  await triarPendentes({ db, fetch: fetchFalso, chamar: iaPrazo('media', 'Programa de regularização abre adesão', '2026-12-15', 'outra coisa'), agora: () => agora, ate: agora + 120000 });
+  chk('a principal que já tinha prazo fica com o dela', db.tabelas.noticias.find(x => x.id === 'g5').grupo === 'p3' && p3.prazo === '2026-11-30' && p3.prazo_o_que === 'adesão ao programa', JSON.stringify(p3));
+  db.tabelas.noticias.push({ id: 'p4', url: 'https://imp.exemplo/p4', titulo: 'Sefaz RS pede recadastramento', fonte_id: 'f5', situacao: 'triada', relevancia: 'media', triada_em: recente, grupo: null, prazo: '2026-11-10', prazo_o_que: 'recadastramento na Sefaz RS' },
+    nova('g6', 'Recadastramento obrigatório das empresas no RS', 'f5'));
+  await triarPendentes({ db, fetch: fetchFalso, chamar: iaPrazo('alta', 'Sefaz RS pede recadastramento', undefined, undefined), agora: () => agora, ate: agora + 120000 });
+  const [p4, g6] = ['p4', 'g6'].map(id => db.tabelas.noticias.find(x => x.id === id));
+  chk('a nova que vira a principal sem prazo fica com o da antiga', g6.grupo === null && p4.grupo === 'g6' && g6.prazo === '2026-11-10' && g6.prazo_o_que === 'recadastramento na Sefaz RS', JSON.stringify([p4, g6]));
 }
 
 console.log('O corpo e os RSS anunciados:');
@@ -336,6 +371,18 @@ console.log('A tela (assets/js/noticias.js):');
   const hoje = new Date(2026, 9, 20, 15, 0);
   chk('a data curta: hoje com a hora, ontem, dd/mm e o ano quando é outro', tela.dataCurta(new Date(2026, 9, 20, 9, 5).toISOString(), hoje) === 'hoje, 09:05' && tela.dataCurta(new Date(2026, 9, 19, 23, 0).toISOString(), hoje) === 'ontem'
     && tela.dataCurta(new Date(2026, 9, 3, 8, 0).toISOString(), hoje) === '03/10' && tela.dataCurta(new Date(2025, 11, 31, 8, 0).toISOString(), hoje) === '31/12/2025');
+  {
+    // o prazo da notícia no cartão (20/10/2026)
+    const H = new Date(2026, 9, 20, 15);
+    chk('o prazo por escrito: quanto falta, hoje, amanhã e o que já venceu', tela.textoDoPrazo({ prazo: '2026-10-30', prazo_o_que: ' adesão  ao programa ' }, H) === '30/10/2026 (faltam 10 dias) — adesão ao programa'
+      && tela.textoDoPrazo({ prazo: '2026-10-20' }, H) === '20/10/2026 (vence hoje)' && tela.textoDoPrazo({ prazo: '2026-10-21' }, H) === '21/10/2026 (vence amanhã)'
+      && tela.textoDoPrazo({ prazo: '2026-10-19', prazo_o_que: 'x' }, H) === '19/10/2026 (venceu) — x' && tela.textoDoPrazo({ prazo: null }, H) === '' && tela.textoDoPrazo({ prazo: 'logo' }, H) === '',
+      tela.textoDoPrazo({ prazo: '2026-10-30', prazo_o_que: ' adesão  ao programa ' }, H));
+    const cp = tela.cartaoHtml(n('pz', { prazo: '2026-10-30', prazo_o_que: '<b>adesão</b>' }), { agora: H });
+    chk('o cartão mostra o prazo, escapado', cp.includes('<p class="fd-prazo"><b>Prazo:</b> 30/10/2026 (faltam 10 dias) — &lt;b&gt;adesão&lt;/b&gt;</p>'), cp);
+    chk('o prazo que passou fica apagado; sem prazo, nada', tela.cartaoHtml(n('pv', { prazo: '2026-10-01' }), { agora: H }).includes('<p class="fd-prazo fd-prazo-passou">')
+      && !tela.cartaoHtml(n('sp'), { agora: H }).includes('fd-prazo'));
+  }
   chk('a ordem: a publicação mais nova primeiro (sem data, a da coleta)', JSON.stringify(tela.ordenar([n('p1', { publicada_em: '2026-10-01T00:00:00Z' }), n('p2', { publicada_em: null, coletada_em: '2026-10-19T00:00:00Z' }), n('p3', { publicada_em: '2026-10-18T00:00:00Z' })]).map(x => x.id)) === '["p2","p3","p1"]');
 }
 
