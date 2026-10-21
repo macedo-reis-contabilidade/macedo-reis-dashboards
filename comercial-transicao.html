@@ -120,6 +120,7 @@
           </div>
           <div style="flex-basis:100%; display:flex; gap:10px; align-items:center;">
             <button class="btn btn-ghost" id="btnEditar">✎ Editar</button>
+            <button class="btn btn-ghost" id="btnPedirDocs" style="display:none;">📨 Pedir documentos</button>
             <button class="btn" id="btnConcluir">🏁 Concluir transição</button>
             <span id="detMsg"></span>
           </div>
@@ -186,6 +187,27 @@
     </div>
   </div>
 
+  <!-- modal pedir documentos (21/10/2026, pedido do Samuel): o card de documentos (PDF) e a mensagem padrão com as datas de
+       cada setor, que antes ele procurava na última transição — assets/js/transicao-pedido.js; só na transição de entrada -->
+  <div class="ov" id="ovPedido">
+    <div class="ov-caixa" role="dialog" aria-modal="true" aria-labelledby="pdTitulo" style="max-width:640px;">
+      <h3 id="pdTitulo">Pedir documentos ao cliente</h3>
+      <p class="aviso" style="margin:0 0 12px;">Mande o card e a mensagem juntos, pelo WhatsApp ou e-mail. As datas já vêm contadas a partir de hoje; mude se precisar, que a mensagem acompanha.</p>
+      <a class="btn btn-ghost" id="pdPdf" href="assets/transicao/documentos-solicitados.pdf" download="Documentos solicitados - Macedo &amp; Reis.pdf">⬇ Baixar o card (PDF)</a>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-top:16px;">
+        <label class="campo"><span>Fiscal e DP até</span><input type="date" id="pdUrgente"><small id="pdUrgenteDia" style="display:block; margin-top:4px; font-size:11.5px; color:var(--text-dim);"></small></label>
+        <label class="campo"><span>Contábil até</span><input type="date" id="pdContabil"><small id="pdContabilDia" style="display:block; margin-top:4px; font-size:11.5px; color:var(--text-dim);"></small></label>
+        <label class="campo"><span>Demais documentos até</span><input type="date" id="pdDemais"><small id="pdDemaisDia" style="display:block; margin-top:4px; font-size:11.5px; color:var(--text-dim);"></small></label>
+      </div>
+      <label class="campo"><span>Mensagem (dá pra editar antes de copiar)</span><textarea id="pdMensagem" rows="16"></textarea></label>
+      <div class="ov-acoes" style="align-items:center;">
+        <span id="pdRetorno" class="aviso" role="status" aria-live="polite" style="margin-right:auto;"></span>
+        <button class="btn btn-ghost" id="pdFechar" data-janela-fechar>Fechar</button>
+        <button class="btn" id="pdCopiar">Copiar mensagem</button>
+      </div>
+    </div>
+  </div>
+
   <!-- modal edição de tarefa -->
   <div class="ov" id="ovTarefa">
     <div class="ov-caixa">
@@ -226,6 +248,7 @@
     import { tarefasDoKit, tarefasQueFaltam, rotuloFuncionarios } from './assets/js/transicao-kit.js';
     import { montarChecklist, rotuloDoProgresso } from './assets/js/checklist.js';
     import { concluirTarefas } from './assets/js/tarefas-acoes.js';
+    import { datasPadrao, mensagemDoPedido, rotuloDoDia, avisoDaData } from './assets/js/transicao-pedido.js';
     const escHtml = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));   // texto do banco nunca vira HTML (o nome que veio do formulário público, por exemplo)
 
     const SETORES = [['societario','Societário'],['fiscal','Fiscal'],['dp','DP'],['contabil','Contábil'],['financeiro','Financeiro'],['comercial','Comercial']];
@@ -383,6 +406,8 @@
 
       const bc = document.getElementById('btnConcluir');
       bc.textContent = t.status === 'concluida' ? '↩ Reabrir transição' : '🏁 Concluir transição';
+      // o card de documentos e a mensagem pro cliente: só na entrada (quem vem de outro escritório)
+      document.getElementById('btnPedirDocs').style.display = t.tipo === 'entrada' ? '' : 'none';
 
       const raias = document.getElementById('raias');
       raias.innerHTML = SETORES.map(([chave, rotulo]) => {
@@ -463,6 +488,42 @@
       renderDetalhe();
     });
 
+
+    // ---------- pedir documentos ao cliente (21/10/2026): o card (PDF) e a mensagem padrão, com as datas de cada setor ----------
+    const ovPedido = document.getElementById('ovPedido');
+    const PEDIDO = { urgente: 'pdUrgente', contabil: 'pdContabil', demais: 'pdDemais' };
+    const datasDoPedido = () => Object.fromEntries(Object.entries(PEDIDO).map(([k, id]) => [k, document.getElementById(id).value]));
+    // a data mudou: o dia da semana (com o aviso de fim de semana ou feriado) e a mensagem acompanham
+    function refazerPedido(){
+      const d = datasDoPedido();
+      Object.entries(PEDIDO).forEach(([k, id]) => {
+        const el = document.getElementById(id + 'Dia');
+        el.textContent = rotuloDoDia(d[k]);
+        el.style.color = avisoDaData(d[k]) ? 'var(--warn)' : 'var(--text-dim)';
+      });
+      document.getElementById('pdMensagem').value = mensagemDoPedido(d);
+      document.getElementById('pdRetorno').textContent = '';
+    }
+    document.getElementById('btnPedirDocs').addEventListener('click', () => {
+      const d = datasPadrao(hojeISO());
+      Object.entries(PEDIDO).forEach(([k, id]) => { document.getElementById(id).value = d[k]; });
+      refazerPedido();
+      ovPedido.classList.add('aberto');
+      document.getElementById('pdCopiar').focus();
+    });
+    Object.values(PEDIDO).forEach(id => document.getElementById(id).addEventListener('input', refazerPedido));
+    document.getElementById('pdFechar').addEventListener('click', () => ovPedido.classList.remove('aberto'));
+    document.getElementById('pdCopiar').addEventListener('click', async () => {
+      const area = document.getElementById('pdMensagem'), ret = document.getElementById('pdRetorno');
+      let copiou = false;
+      try { await navigator.clipboard.writeText(area.value); copiou = true; }
+      catch (e) {
+        // sem a área de transferência do navegador (permissão, página sem https): o jeito antigo, selecionando o texto
+        try { area.focus(); area.select(); copiou = document.execCommand('copy'); } catch (e2) { copiou = false; }
+      }
+      ret.style.color = copiou ? 'var(--ok)' : 'var(--err)';
+      ret.textContent = copiou ? 'Mensagem copiada.' : 'Não consegui copiar: selecione o texto e use Ctrl+C.';
+    });
 
     // ---------- editar transição (empresas vinculadas depois do cadastro) ----------
     const ovEditar = document.getElementById('ovEditar');
