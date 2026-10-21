@@ -414,6 +414,7 @@
       bindMask, maskCNPJ, maskCPF, maskTelefone, maskCEP,
       onlyDigits, normalizarDocumento, cnpjValido, buscarCEP, ESTADOS_BR
     } from '../assets/js/utils.js';
+    import { retirantesDe, sociosQueFicam, avisoDaSoma, textoDosRetirantes } from '../assets/js/leitura-socios.js';
 
     (async () => {
       const user = await getCurrentUser();
@@ -767,6 +768,7 @@
     }
 
     let sociosExtraidos = [];
+    let retirantesExtraidos = [];   // quem saiu da sociedade no documento lido: não entra no cadastro, só no aviso
     let arquivosDoc = [];
     const docFiles = document.getElementById('docFiles');
     const btnExtrair = document.getElementById('btnExtrair');
@@ -817,8 +819,10 @@
         const conf = d.confianca ? (' Confiança da leitura: ' + d.confianca + '.') : '';
         const obs = d.observacoes_extracao ? (' ' + d.observacoes_extracao) : '';
         const nSoc = sociosExtraidos.length ? (' ' + sociosExtraidos.length + ' sócio(s) detectado(s) — serão gravados ao cadastrar' + resumoKitSocios(sociosExtraidos)) : '';
-        extraiStatus.textContent = 'Campos preenchidos abaixo — confira antes de cadastrar.' + conf + nSoc + obs;
-        extraiStatus.style.color = 'var(--success)';
+        // quem saiu da sociedade no documento (fica fora do cadastro) e a soma das participações que não fecha 100%
+        const fora = textoDosRetirantes(retirantesExtraidos), soma = avisoDaSoma(sociosExtraidos);
+        extraiStatus.textContent = 'Campos preenchidos abaixo — confira antes de cadastrar.' + conf + nSoc + (fora ? ' ' + fora : '') + (soma ? ' ⚠ ' + soma : '') + obs;
+        extraiStatus.style.color = soma ? 'var(--warning)' : 'var(--success)';
       } catch (e) {
         extraiStatus.textContent = 'Não consegui extrair: ' + (e.message || e);
         extraiStatus.style.color = 'var(--warning)';
@@ -871,7 +875,10 @@
       setVal('profissao', d.profissao);
       setVal('estado_civil', d.estado_civil);
       setVal('nacionalidade', d.nacionalidade);
-      sociosExtraidos = Array.isArray(d.socios) ? d.socios.filter(s => s && String(s.nome ?? '').trim()) : [];
+      // só quem é sócio depois do ato: quem saiu da sociedade no documento (socios_retirantes da leitura, 21/10/2026)
+      // fica de fora, mesmo se vier também em socios — assets/js/leitura-socios.js
+      sociosExtraidos = sociosQueFicam(d);
+      retirantesExtraidos = retirantesDe(d);
     }
 
     document.getElementById('btnSalvar').addEventListener('click', cadastrar);
