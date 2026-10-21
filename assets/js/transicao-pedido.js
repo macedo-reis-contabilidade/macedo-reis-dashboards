@@ -28,7 +28,8 @@ export function proximoDiaUtil(iso) {
 
 // as datas que a mensagem já traz, contadas do dia em que ela sai: fiscal e DP (o urgente) em 2 dias úteis, o contábil em
 // 7 dias úteis e os demais documentos do card em 30 dias corridos, no dia útil se cair em fim de semana ou feriado. É a
-// conta do pedido da Ind Perin, mandado em 21/10/2026: 23/10, 30/10 e 20/11 — que é feriado (Consciência Negra), 23/11
+// conta que bate com o pedido da Ind Perin (23/10, 30/10 e 20/11): gerada em 21/10/2026, dá 23/10, 30/10 e 23/11 — o
+// 20/11 é feriado (Consciência Negra)
 export function datasPadrao(hojeIso) {
   if (!isoValida(hojeIso)) return { urgente: '', contabil: '', demais: '' };
   return { urgente: diasUteisDepois(hojeIso, 2), contabil: diasUteisDepois(hojeIso, 7), demais: proximoDiaUtil(somaDias(hojeIso, 30)) };
