@@ -11,8 +11,19 @@
 // nascimento, estado civil, nacionalidade, profissão, endereço residencial)
 // — o kit de boas-vindas e a carta de responsabilidade precisam deles; e o
 // titular de empresário individual entra em socios (100%, Titular, admin).
+// v29 (21/10/2026, Claude Code, pedido do Samuel — a leitura da alteração da Ind
+// Perin pôs como sócio quem tinha vendido todas as cotas no próprio ato): no
+// modo cadastro, "socios" é o quadro DEPOIS do ato (a consolidação; sem ela, a
+// redistribuição ou as cessões), o preâmbulo só dá os dados pessoais, e quem saiu
+// vai em "socios_retirantes" (nome, cpf, motivo) — e a função tira de "socios"
+// quem está em "socios_retirantes" e avisa quando as participações não somam 100.
+// Aceita também documento em texto (media_type text/plain).
+// O código fica no repositório (supabase/functions/extract-document/servidor.ts e quadro.js).
 // ============================================================
 
+
+// v29: a conferência do quadro de sócios depois da leitura (o modelo pode errar; a regra não)
+import { conferirQuadro } from "./quadro.js";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const CLAUDE_MODEL = "claude-sonnet-4-6";
@@ -66,6 +77,13 @@ Retorne APENAS um JSON válido, sem markdown, sem code blocks, sem nenhum texto 
       "endereco_residencial": string | null
     }
   ] | null,
+  "socios_retirantes": [
+    {
+      "nome": string,
+      "cpf": string | null,
+      "motivo": string | null
+    }
+  ] | null,
   "confianca": "alta" | "media" | "baixa",
   "observacoes_extracao": string | null
 }
@@ -88,9 +106,14 @@ REGRAS DE FORMATAÇÃO:
 15. Nos sócios: "rg" com o órgão expedidor quando constar (ex: "8044796012 SSP-RS"); "data_nascimento" em ISO; "estado_civil" como no documento (ex: "Solteiro", "Casado"); "nacionalidade" como no documento (ex: "Brasileira"); "profissao" como no documento; "endereco_residencial" em texto corrido: logradouro, número, complemento, bairro, cidade - UF, CEP (ex: "Rua Eduardo Willrich, 562, Casa, Centro, Três Coroas - RS, CEP 95660-000")
 
 REGRAS DE INTERPRETAÇÃO:
-- Em contrato social, alteração contratual ou requerimento de empresário: extrair TODOS os sócios com nome, CPF, participação e qualificação — e também os dados pessoais que aparecem na qualificação de cada um (nacionalidade, estado civil, nascimento, RG e órgão expedidor, profissão, endereço residencial). Esses dados costumam estar no preâmbulo ("FULANO, nacionalidade BRASILEIRA, Casado, nascido em ..., CPF ..., identidade ..., residente e domiciliado na ...") — leia com atenção e não confunda o endereço RESIDENCIAL do sócio com o endereço da SEDE da empresa
+- QUADRO DE SÓCIOS (a regra mais importante): "socios" são SOMENTE as pessoas que ficam sócias DEPOIS do ato do documento — o quadro que vale a partir dele. Em ALTERAÇÃO CONTRATUAL, o preâmbulo qualifica quem era sócio ANTES da alteração (e quem está entrando): NUNCA copie o preâmbulo como quadro de sócios. Tire o quadro, nesta ordem: (1) da cláusula do capital social na CONSOLIDAÇÃO ("Consolidação contratual", "consolida-se o contrato", "passa a ter a seguinte redação") — a tabela ou lista de quotas por sócio; (2) sem consolidação, da cláusula que redistribui o capital depois da alteração; (3) sem nenhuma das duas, do quadro anterior ajustado pelas cessões, vendas, transferências, retiradas, exclusões, admissões e aumentos ou reduções de capital das cláusulas
+- "participacao_percentual": quotas do sócio dividido pelo total de quotas DEPOIS do ato, vezes 100 (ex.: 100.000 de 100.000 quotas = 100). As participações devem somar 100 — se não somarem, explique em observacoes_extracao e use confianca "media" ou "baixa"
+- "socios_retirantes": quem DEIXOU de ser sócio no próprio ato — vendeu, cedeu ou transferiu TODAS as suas quotas, retirou-se, foi excluído ou faleceu —, com nome, CPF e "motivo" curto (ex.: "vendeu todas as cotas a FULANO DE TAL", "retirou-se da sociedade"). Essa pessoa NUNCA entra em "socios", mesmo que apareça qualificada no preâmbulo e assine o documento. Quem vendeu só PARTE das quotas continua em "socios", com a participação nova. Sem ninguém saindo, use null
+- Dados pessoais de cada sócio (nacionalidade, estado civil, nascimento, RG e órgão expedidor, profissão, endereço residencial): leia da qualificação dele onde ela estiver — normalmente o preâmbulo ("FULANO, nacionalidade BRASILEIRA, Casado, nascido em ..., CPF ..., identidade ..., residente e domiciliado na ...") ou a cláusula que admite o sócio novo — e não confunda o endereço RESIDENCIAL do sócio com o endereço da SEDE da empresa
+- Em alteração contratual, TODOS os dados da empresa (nome, sede, capital social, objeto, administração) são os que valem DEPOIS do ato: prefira a consolidação, quando houver
+- Contrato social de constituição (sem alteração): os sócios são os do contrato, com as quotas da cláusula do capital
 - Empresário individual (requerimento/instrumento de inscrição de empresário): o titular entra em "socios" com participacao_percentual 100, qualificacao "Titular" e eh_administrador true, com os mesmos dados pessoais
-- "eh_administrador": true se o sócio é nomeado administrador no contrato (ou assina como Sócio/Administrador)
+- "eh_administrador": true se o sócio é o administrador DEPOIS do ato (a cláusula da administração na consolidação, ou a que nomeia ou destitui o administrador na alteração; no contrato de constituição, quem é nomeado administrador ou assina como Sócio/Administrador). Quem foi destituído ou saiu da sociedade não é administrador
 - Cartão CNPJ: extrair regime, CNAEs, data de abertura, porte, natureza jurídica
 - RG/CPF de pessoa física: extrair nome, RG, CPF, data nascimento, naturalidade
 - Comprovante de endereço: priorizar este pro endereço
@@ -676,7 +699,7 @@ export async function atender(req: Request): Promise<Response> {
       };
     });
 
-    const txtCadastro = "Analise os documentos acima e extraia os dados cadastrais conforme as instruções do sistema — inclusive os dados pessoais de cada sócio ou titular (RG com órgão expedidor, nascimento, estado civil, nacionalidade, profissão e endereço residencial). Retorne APENAS o JSON, sem markdown nem comentários.";
+    const txtCadastro = "Analise os documentos acima e extraia os dados cadastrais conforme as instruções do sistema — inclusive os dados pessoais de cada sócio ou titular (RG com órgão expedidor, nascimento, estado civil, nacionalidade, profissão e endereço residencial). Os sócios são o quadro DEPOIS do ato (numa alteração, o da consolidação ou o que resulta das cessões); quem saiu da sociedade no ato vai em socios_retirantes, nunca em socios. Retorne APENAS o JSON, sem markdown nem comentários.";
     const txtAlvara = "Analise o(s) documento(s) de alvará/licença acima e extraia os campos conforme as instruções do sistema. Retorne APENAS o JSON, sem markdown nem comentários.";
     const txtConvencao = "Analise a convenção coletiva acima e extraia o cabeçalho e TODOS os pisos por função, conforme as instruções do sistema. Retorne APENAS o JSON, sem markdown nem comentários.";
     const txtFatorR = "Analise o(s) documento(s) acima (extrato da folha, relatório de faturamento e/ou apuração do Simples — pode haver mais de um) e extraia as séries mensais conforme as instruções do sistema: aplique a hierarquia de fontes para folha, CPP e receita (cada informação sai de uma única fonte) e mantenha cada valor na COMPETÊNCIA exatamente como consta nos documentos (as tabelas do PGDAS e do relatório da Domínio são por competência/PA — o deslocamento para o mês de pagamento é feito pelo sistema; use meses_caixa apenas para documentos que informem explicitamente a data de pagamento). Retorne APENAS o JSON, sem markdown nem comentários.";
@@ -734,6 +757,8 @@ export async function atender(req: Request): Promise<Response> {
         { status: 500, headers: cors(origin) },
       );
     }
+
+    if (modo === "cadastro") conferirQuadro(parsed);
 
     return new Response(
       JSON.stringify({
