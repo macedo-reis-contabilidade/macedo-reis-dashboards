@@ -28,11 +28,34 @@ const aqui = () => window.location.pathname + window.location.search;
     window.location.replace(u.href);
   } else {
     document.documentElement.style.visibility = 'visible';
+    vigiarSessao(session.user && session.user.email);
     // o assistente do escritório: o mesmo balão em todas as telas com login (sem ele, a tela segue igual)
     import('./assistente-escritorio.js').then(m => m.iniciarAssistente({ email: session.user && session.user.email })).catch(() => {});
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ligarTrocaDeSenha); else ligarTrocaDeSenha();
   }
 })();
+
+// a tela que perde o login com ela aberta (21/10/2026): o "Sair" em outra aba deste navegador, a sessão que não renova
+// mais (encerrada em outro lugar, a senha trocada em outro computador). Antes ela seguia aberta, parecendo normal, mas
+// sem o chat, os avisos e o bipe — o caso da tela da Adaini, que passou a manhã assim. Agora volta pro entrar, com o
+// aviso de que a sessão terminou, e de lá pra cá; outra pessoa entrou neste navegador: a tela recarrega com ela
+function vigiarSessao(email) {
+  const eu = String(email || '').toLowerCase();
+  try {
+    supabase.auth.onAuthStateChange((evento, sessao) => {
+      if (window.__mrSaindo) return;   // o "Sair" desta tela (signOut, em supabase.js) já leva pro entrar
+      if (evento === 'SIGNED_OUT') {
+        const u = new URL(LOGIN);
+        u.searchParams.set('saiu', '1');
+        u.searchParams.set('redirect', aqui());
+        window.location.replace(u.href);
+        return;
+      }
+      const quem = String((sessao && sessao.user && sessao.user.email) || '').toLowerCase();
+      if (quem && eu && quem !== eu) window.location.reload();
+    });
+  } catch (e) { /* sem o aviso da sessão, a tela segue como antes */ }
+}
 
 // trocar a própria senha (21/10/2026): o nome de quem entrou, no alto da tela, abre a troca e volta pra esta tela
 function ligarTrocaDeSenha() {

@@ -33,5 +33,17 @@ chk('troca: fraca', /fraca/.test(erroDaTroca({ code: 'weak_password', message: '
 chk('troca: reautenticação e sessão vencida', /entre de novo/.test(erroDaTroca({ code: 'reauthentication_needed' })) && /sessão expirou/.test(erroDaTroca({ message: 'Auth session missing!' })));
 chk('troca: o resto com o detalhe', erroDaTroca({ message: 'boom' }) === 'Não consegui trocar a senha agora (boom). Tente de novo.');
 
+// "Sair" só neste navegador (21/10/2026): o padrão do Supabase (scope global) derrubava as telas da mesma pessoa abertas
+// em outros computadores, que seguiam abertas sem login, sem o chat e sem os avisos. O supabase.js de verdade não roda no
+// node (carrega o supabase-js do CDN) nem nos testes de tela (lá entra o dublê): a conferência é no texto
+console.log('Sair:');
+const { readFileSync } = await import('node:fs');
+const fonte = f => readFileSync(new URL('../' + f, import.meta.url), 'utf8');
+const sairs = f => (fonte(f).match(/auth\.signOut\([^)]*\)/g) || []);
+chk('o Sair das telas e o do primeiro acesso encerram só neste navegador', ['assets/js/supabase.js', 'login.html'].every(f => sairs(f).length && sairs(f).every(s => /scope:\s*'local'/.test(s))),
+  JSON.stringify({ supabase: sairs('assets/js/supabase.js'), login: sairs('login.html') }));
+chk('a tela que perde o login com ela aberta volta pro entrar (o auth-guard ouve a sessão)', /onAuthStateChange/.test(fonte('assets/js/auth-guard.js')) && /'saiu', '1'/.test(fonte('assets/js/auth-guard.js'))
+  && /params\.get\('saiu'\)/.test(fonte('login.html')));
+
 console.log(falhas ? '\n' + falhas + ' falha(s).' : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);

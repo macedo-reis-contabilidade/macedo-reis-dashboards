@@ -5,7 +5,7 @@
 // o total do balão (sem as silenciadas), o celular (sem aviso) e o texto do aviso; e os emojis (20/10/2026): os grupos do
 // painel, os usados por último, o emoji no lugar do cursor e a mensagem só de emoji. Rodar com: node tests/chat-equipe.test.mjs
 import { nomeDe, iniciais, outroDa, tituloDaConversa, previaDaUltima, horaDaLista, rotuloDoDia, linkificar, tamanhoBR, nomeSeguro, caminhoDoArquivo,
-  conferirArquivos, ehImagem, linhasDaLista, vistoPor, textoDoVisto, naoLidasTotal, ehCelular, textoDoAviso, LIMITE_ARQUIVO,
+  conferirArquivos, ehImagem, linhasDaLista, vistoPor, textoDoVisto, naoLidasTotal, ehCelular, textoDoAviso, comoAvisar, esperaDoAviso, LIMITE_ARQUIVO,
   linkDoDrive, enviarMensagem, apagarMensagem, conversaDe, EMOJIS, nomeDoEmoji, recentesCom, lerRecentes, inserirNoTexto, soEmojis, MAX_RECENTES, MAX_TEXTO,
   trechoDaCitada, quemDaCitada, MAX_TRECHO, ehAvisos, acaoDoAviso, TITULO_AVISOS } from '../assets/js/chat-equipe.js';
 import { escapeHtml } from '../assets/js/assistente.js';
@@ -70,6 +70,20 @@ chk('celular e tablet não avisam; o computador sim', ehCelular(nav('Mozilla/5.0
 const a1 = textoDoAviso(D, { autor: TH, texto: 'manda a guia\nda Adega?' }, EU), a2 = textoDoAviso(G, { autor: VI, texto: null, anexos: [{ nome: 'folha.pdf' }, { nome: 'x' }] }, EU);
 chk('o aviso: a dois, o nome e o texto; no grupo, o grupo e "quem: texto"; arquivo pelo nome', a1.titulo === 'Thalia' && a1.corpo === 'manda a guia da Adega?'
   && a2.titulo === 'Fiscal e DP' && a2.corpo === 'Vitória: Arquivo: folha.pdf e mais 1', JSON.stringify([a1, a2]));
+// como avisar (21/10/2026): o bipe sempre; atrás, o aviso do Windows junto, sem o som dele quando o bipe toca
+const plano = op => JSON.stringify(comoAvisar(op));
+chk('na frente: o bipe e o recado, sem o aviso do Windows', plano({ frente: true, somPronto: true, podeNotificar: true }) === JSON.stringify({ bipe: true, recado: true, notificacao: false, semSom: true }));
+chk('atrás, com os avisos ligados: o bipe e o aviso do Windows sem o som dele (antes o aviso tomava o lugar do bipe)',
+  plano({ frente: false, somPronto: true, podeNotificar: true }) === JSON.stringify({ bipe: true, recado: false, notificacao: true, semSom: true }), plano({ frente: false, somPronto: true, podeNotificar: true }));
+chk('atrás, a tela sem nenhum clique (o navegador não deixa o bipe soar): o aviso do Windows com o som dele',
+  plano({ frente: false, somPronto: false, podeNotificar: true }) === JSON.stringify({ bipe: true, recado: false, notificacao: true, semSom: false }));
+chk('atrás, sem os avisos ligados: só o bipe', plano({ frente: false, somPronto: true, podeNotificar: false }) === JSON.stringify({ bipe: true, recado: false, notificacao: false, semSom: true }));
+chk('o bipe desligado no rodapé: sem bipe, e o aviso do Windows com o som dele', plano({ frente: false, somLigado: false, somPronto: true, podeNotificar: true }) === JSON.stringify({ bipe: false, recado: false, notificacao: true, semSom: false }));
+chk('no celular: nem bipe nem aviso do Windows (o recado, só com a tela na frente)', plano({ celular: true, frente: false, somPronto: true, podeNotificar: true }) === JSON.stringify({ bipe: false, recado: false, notificacao: false, semSom: false })
+  && comoAvisar({ celular: true, frente: true }).recado === true && comoAvisar({ celular: true, frente: true }).bipe === false);
+chk('quem avisa entre as abas: a da frente na hora; atrás, a que pode tocar o bipe antes da que não pode',
+  esperaDoAviso({ frente: true, somPronto: false }) === 0 && esperaDoAviso({ somPronto: true, sorte: 0 }) === 350 && esperaDoAviso({ somPronto: true, sorte: 1 }) === 600
+  && esperaDoAviso({ somPronto: false, sorte: 0 }) === 1600 && esperaDoAviso({ somPronto: true, sorte: 0.99 }) < esperaDoAviso({ somPronto: false, sorte: 0 }) && esperaDoAviso({ somPronto: true, sorte: 'x' }) === 350);
 
 // ---------- mandar e apagar (19/10/2026): a regra da tela e do cartão do assistente, com um banco de mentira ----------
 console.log('Mandar, apagar e pra onde vai:');

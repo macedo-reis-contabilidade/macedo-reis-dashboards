@@ -82,6 +82,8 @@
     let senhaDoLogin = null;
     let modoSenha = null;     // 'primeiro' (senha provisória: trocar é obrigatório) | 'trocar' (a pessoa pediu)
     let emailDaConta = '';
+    // a tela que perdeu o login com ela aberta volta pra cá com ?saiu=1 (assets/js/auth-guard.js): o porquê, no lugar do subtítulo
+    if (params.get('saiu') === '1') $('loginSub').textContent = 'A sessão terminou. Entre de novo.';
 
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -188,8 +190,8 @@
 
     $('btnSenhaVoltar').addEventListener('click', async () => {
       if (modoSenha !== 'primeiro') { window.location.href = destinoSeguro(params.get('redirect')); return; }
-      // no primeiro acesso não dá pra pular: "Sair" encerra a sessão e volta pro entrar
-      await supabase.auth.signOut();
+      // no primeiro acesso não dá pra pular: "Sair" encerra a sessão (só neste navegador) e volta pro entrar
+      await supabase.auth.signOut({ scope: 'local' });
       senhaDoLogin = null; modoSenha = null;
       passwordInput.value = '';
       ['senhaAtual', 'senhaNova', 'senhaRepete'].forEach(id => { $(id).value = ''; });

@@ -1,7 +1,7 @@
 """Teste do chat da equipe (assets/js/chat-equipe.js, a aba "Equipe" do balão do canto, 16/10/2026): a lista das conversas
 (as não lidas, quem está online, quem ainda não tem conversa), abrir e ler (o "visto"), enviar e receber na hora (o tempo
-real), o aviso só no computador (com a tela na frente, o recado e o bipe; atrás, o aviso do Windows; silenciada, nada; no
-celular, nada), arquivos e imagens (a pasta "chat"), apagar a própria mensagem, grupo novo, pôr alguém no grupo, a busca nas
+real), o aviso só no computador (com a tela na frente, o recado e o bipe; atrás, o bipe e o aviso do Windows sem o som dele —
+21/10/2026 —, ou com o som dele na tela que ainda não recebeu clique; silenciada, nada; no celular, nada), arquivos e imagens (a pasta "chat"), apagar a própria mensagem, grupo novo, pôr alguém no grupo, a busca nas
 mensagens, as duas colunas com o painel aumentado, o que fica guardado ao recarregar e os emojis (20/10/2026: o botão da
 carinha abre o painel, clicar põe no lugar do cursor, os usados por último, Esc e clicar fora fecham, a mensagem só de emoji
 sai maior) e a resposta (20/10/2026, estilo WhatsApp: o "Responder" põe a barra "Respondendo a…" em cima da caixa, Esc e o ✕
@@ -259,12 +259,17 @@ def main():
         p.wait_for_function("() => document.querySelector('.as-selo').hidden", timeout=3000)
         ok(p.inner_text('.ch-msgs').count('Alguém viu o malote?') == 1 and 'Adaini' in p.inner_text('.ch-msgs'), '"Responder" abre o Escritório, com quem mandou cada uma, e lê')
 
-        # 7) a tela atrás (outra janela na frente): o aviso do Windows; clicar nele abre a conversa
+        # 7) a tela atrás (outra janela na frente): o bipe e o aviso do Windows, sem o som dele (21/10/2026: antes o aviso
+        # tomava o lugar do bipe, e no Windows que não mostra o aviso a mensagem chegava muda); clicar nele abre a conversa
         p.evaluate('window.__naFrente = false')
+        av7 = len(db('window.__avisos'))
         chegar('m13', 'c-th', TH, 'Mandei a guia no seu e-mail também.')
         p.wait_for_function('() => window.__notificacoes.length > 0', timeout=3000)
         n = db('window.__notificacoes.slice(-1)[0]')
         ok(n['titulo'] == 'Thalia' and n['body'] == 'Mandei a guia no seu e-mail também.' and n['tag'] == 'mr-chat-c-th', f'atrás: o aviso do Windows com quem e o texto ({n})')
+        bipes7 = [a for a in db('window.__avisos')[av7:] if a.get('tipo') == 'bipe']
+        ok(len(bipes7) == 1 and bipes7[0].get('som') is True and n['silent'] is True,
+           f'atrás: o bipe toca também, e o aviso do Windows vai sem o som dele (um som só) ({bipes7}, silent={n.get("silent")})')
         p.evaluate('window.__naFrente = true'); p.evaluate('window.__ultimaNotificacao.onclick()')
         p.wait_for_function("() => document.querySelector('.ch-v-conversa .ch-cab-quem b').textContent === 'Thalia'", timeout=3000)
         ok('Mandei a guia no seu e-mail também.' in p.inner_text('.ch-msgs'), 'clicar no aviso abre a conversa dela')
@@ -336,6 +341,28 @@ def main():
         ok(p.is_visible('.as-entrada textarea') and p.is_hidden('.ch-raiz'), 'a aba do assistente volta com a caixa de perguntas')
         ok(not erros, f'sem erro de JavaScript ({erros[:3]})')
         p.close()
+
+        # 15b) a tela que ainda não recebeu nenhum clique, atrás (o navegador não deixa o bipe soar): o aviso do Windows vai
+        # com o som dele
+        cx = b.new_context(viewport={'width': 1400, 'height': 900})
+        r = cx.new_page(); errosr = []; r.on('pageerror', lambda e: errosr.append(str(e)))
+        r.add_init_script(TOUR); r.add_init_script(SEMEAR)
+        # o Chromium dos testes já abre a tela "ativada" e com o som liberado; aqui ele faz como o navegador de verdade sem
+        # nenhum clique: a tela sem ativação e o áudio parado
+        r.add_init_script("""(() => {
+          Object.defineProperty(Navigator.prototype, 'userActivation', { configurable: true, get: () => ({ hasBeenActive: false, isActive: false }) });
+          if (window.AudioContext) Object.defineProperty(AudioContext.prototype, 'state', { configurable: true, get: () => 'suspended' });
+        })()""")
+        r.goto(base + 'index.html'); r.wait_for_selector('.as-lancador', timeout=6000)
+        r.wait_for_function("() => !document.querySelector('.as-selo').hidden", timeout=6000)
+        r.evaluate('window.__naFrente = false')
+        r.evaluate("() => { const l = { id: 'ms1', conversa_id: 'c-esc', autor: '" + VI + "', texto: 'Chegou o malote.', anexos: [], criada_em: new Date().toISOString(), apagada_em: null }; window.__mockDb.chat_mensagens.push(l); window.__mockEmitir('chat_mensagens', 'INSERT', l); }")
+        r.wait_for_function('() => window.__notificacoes.length > 0', timeout=5000)
+        nr, avr = r.evaluate('window.__notificacoes.slice(-1)[0]'), r.evaluate('window.__avisos.filter(a => a.tipo === "bipe")')
+        ok(r.evaluate('navigator.userActivation.hasBeenActive') is False and nr['silent'] is False and len(avr) == 1 and avr[0].get('som') is False,
+           f'a tela sem nenhum clique, atrás: o bipe não soaria, e o aviso do Windows vai com o som dele ({avr}, silent={nr.get("silent")})')
+        ok(not errosr, f'sem erro de JavaScript na tela sem clique ({errosr[:3]})')
+        cx.close()
 
         # 16) no celular: nada de aviso nem do botão de avisos
         cel = b.new_context(viewport={'width': 390, 'height': 844}, user_agent='Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148', has_touch=True)

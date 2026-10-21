@@ -39,7 +39,12 @@ export async function signOut() {
   // a conversa do assistente de canto guardada na aba (assets/js/assistente.js, "mr_assistente:<id>") não passa pra quem
   // entrar depois na mesma aba
   try { Object.keys(sessionStorage).filter(k => k.startsWith('mr_assistente:')).forEach(k => sessionStorage.removeItem(k)); } catch (e) { /* sem armazenamento */ }
-  await supabase.auth.signOut();
+  // esta tela sai por conta própria: o auth-guard.js não a manda de novo pro entrar com o aviso da sessão encerrada
+  window.__mrSaindo = true;
+  // "Sair" encerra a sessão só neste navegador (21/10/2026). O padrão do Supabase é encerrar em todos: o Sair num
+  // computador derrubava as telas da mesma pessoa abertas nos outros, que seguiam abertas sem login — sem o chat e sem
+  // os avisos (a tela da Adaini no escritório, depois de um Sair fora dele)
+  await supabase.auth.signOut({ scope: 'local' });
   window.location.href = '/macedo-reis-dashboards/login.html';
 }
 

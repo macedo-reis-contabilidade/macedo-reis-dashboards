@@ -243,7 +243,14 @@ const authFalso = {
     gravarAuth(a);
     return { data: { user: quemAuth(a) }, error: null };
   },
-  signOut: async () => { if (AUTH_LIGADO()) { const a = lerAuth(); a.log.push(['sair']); a.logado = false; gravarAuth(a); } return { error: null }; }
+  signOut: async (op = {}) => { if (AUTH_LIGADO()) { const a = lerAuth(); a.log.push(['sair', (op && op.scope) || 'global']); a.logado = false; gravarAuth(a); } return { error: null }; },
+  // quem ouve a sessão (o auth-guard.js, 21/10/2026): o teste dispara o que o Supabase avisaria — a sessão encerrada
+  // ("SIGNED_OUT") ou outra pessoa que entrou neste navegador — por window.__mockAuthEvento(evento, sessao)
+  onAuthStateChange: cb => {
+    (window.__mockAuthOuvintes ||= []).push(cb);
+    window.__mockAuthEvento = (evento, sessao = null) => window.__mockAuthOuvintes.forEach(f => f(evento, sessao));
+    return { data: { subscription: { unsubscribe() { window.__mockAuthOuvintes = window.__mockAuthOuvintes.filter(f => f !== cb); } } } };
+  }
 };
 export const supabase = { from: q, auth: authFalso,
   rpc: async (nome, args) => (typeof window.__mockRpc === 'function' ? window.__mockRpc(nome, args || {}) : { data: [], error:null }) };

@@ -5,9 +5,11 @@
 // O banco guarda e manda na hora (tabelas chat_*, cada um lê só as conversas de que participa; conversa e grupo nascem
 // pelas funções chat_*; mensagem enviada só se apaga) — o tempo real do Supabase entrega a mensagem em todas as telas
 // abertas de quem participa.
-// O aviso é só no computador: com a tela do sistema na frente, o recado da carinha e um bipe curto; com ela atrás (outra
-// janela na frente, minimizada), o aviso do Windows (a notificação do navegador, com o som do sistema) — sem ele ligado, o
-// bipe. No celular, nada: só o número no balão. Com várias abas do sistema abertas, uma avisa (a da frente, se houver).
+// O aviso é só no computador: um bipe curto a cada mensagem nova; com a tela do sistema na frente, o recado da carinha;
+// com ela atrás (outra janela na frente, minimizada), também o aviso do Windows (a notificação do navegador), sem o som
+// dele quando o bipe toca (21/10/2026: antes o aviso do Windows tomava o lugar do bipe, e no Windows que não mostra o
+// aviso a mensagem chegava muda — comoAvisar). No celular, nada: só o número no balão. Com várias abas do sistema
+// abertas, uma avisa (a da frente, se houver; atrás, a que pode tocar o bipe).
 // Os emojis (20/10/2026): o botão da carinha ao lado do clipe abre o painel (os usados por último e os grupos); a mensagem
 // só de emoji sai maior.
 // A resposta (20/10/2026), como no WhatsApp: o "Responder" da mensagem põe a barra "Respondendo a…" em cima da caixa; a
@@ -189,6 +191,20 @@ export function ehCelular(nav = typeof navigator !== 'undefined' ? navigator : n
   if (nav && nav.userAgentData && nav.userAgentData.mobile) return true;
   try { return !!(mm && mm('(pointer: coarse)').matches && !mm('(pointer: fine)').matches); } catch (e) { return false; }
 }
+// como avisar a mensagem que ninguém está vendo (21/10/2026): o bipe sempre, com a tela na frente ou atrás; na frente, o
+// recado da carinha; atrás, com os avisos ligados, o aviso do Windows junto — sem o som dele quando o bipe vai tocar. Antes,
+// atrás, o aviso do Windows tomava o lugar do bipe, e no escritório o Windows não mostrava o aviso: a mensagem chegava
+// muda. Sem o som pronto (a tela ainda sem clique nem tecla, e o navegador não deixa tocar), o aviso do Windows leva o som
+// dele. No celular, nem bipe nem aviso do Windows
+export function comoAvisar({ frente = false, celular = false, somLigado = true, somPronto = false, podeNotificar = false } = {}) {
+  if (celular) return { bipe: false, recado: !!frente, notificacao: false, semSom: false };
+  const bipe = !!somLigado;
+  return { bipe, recado: !!frente, notificacao: !frente && !!podeNotificar, semSom: bipe && !!somPronto };
+}
+// quanto cada aba espera antes de avisar (uma aba só avisa cada mensagem): a da frente, nada; atrás, a que pode tocar o
+// bipe vem antes da que não pode — e um tanto ao acaso, pras abas não empatarem
+export const esperaDoAviso = ({ frente = false, somPronto = false, sorte = Math.random() } = {}) =>
+  frente ? 0 : (somPronto ? 350 : 1600) + Math.floor(Math.max(0, Math.min(1, Number(sorte) || 0)) * 250);
 // a mensagem na notificação: quem e o começo do texto (ou o arquivo)
 export function textoDoAviso(c, m, eu) {
   const quem = nomeDe(m && m.autor);
@@ -523,10 +539,16 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
   let audio = null;
   const destravarSom = () => { try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); if (audio.state === 'suspended') audio.resume().catch(() => {}); } catch (e) { audio = null; } };
   ['pointerdown', 'keydown'].forEach(t => document.addEventListener(t, destravarSom, { once: true, capture: true, passive: true }));
-  // o bipe: duas notas curtas e baixas
+  // o som pronto pra tocar: o áudio já ligado, ou a tela já recebeu um clique ou uma tecla (aí o navegador deixa ligar)
+  const somPronto = () => {
+    if (audio && audio.state === 'running') return true;
+    try { return !!(navigator.userActivation && navigator.userActivation.hasBeenActive); } catch (e) { return false; }
+  };
+  // o bipe: duas notas curtas e baixas; diz se vai soar
   function bipe() {
     if (celular || !somLigado()) return false;
-    avisa('mr:chat-aviso', { tipo: 'bipe' });
+    const pronto = somPronto();
+    avisa('mr:chat-aviso', { tipo: 'bipe', som: pronto });
     try {
       destravarSom();
       if (!audio) return false;
@@ -540,30 +562,33 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
         o.connect(g); g.connect(audio.destination);
         o.start(t + ini); o.stop(t + ini + dur + 0.03);
       });
-      return true;
+      return pronto;
     } catch (e) { return false; }
   }
   const podeNotificar = () => !celular && typeof Notification !== 'undefined' && Notification.permission === 'granted';
-  // o aviso do Windows (a notificação do navegador): clicar abre a conversa nesta aba
-  function notificar(c, m) {
+  // o aviso do Windows (a notificação do navegador): clicar abre a conversa nesta aba; sem o som dele quando o bipe toca
+  function notificar(c, m, { semSom = false } = {}) {
     if (!podeNotificar()) return false;
     const { titulo, corpo } = textoDoAviso(c, m, eu);
     try {
-      const n = new Notification(titulo, { body: corpo, tag: 'mr-chat-' + c.conversa_id, renotify: true, silent: false });
+      const n = new Notification(titulo, { body: corpo, tag: 'mr-chat-' + c.conversa_id, renotify: true, silent: !!semSom });
       n.onclick = () => { try { window.focus(); } catch (e) { /* foco */ } abrirConversa(c.conversa_id, { mostrar: true }); try { n.close(); } catch (e) { /* já fechou */ } };
-      avisa('mr:chat-aviso', { tipo: 'notificacao', conversa: c.conversa_id, titulo, corpo });
+      avisa('mr:chat-aviso', { tipo: 'notificacao', conversa: c.conversa_id, titulo, corpo, semSom: !!semSom });
       return true;
     } catch (e) { return false; }
   }
-  // a mensagem de outra pessoa que ninguém está vendo: na tela da frente, o recado e o bipe; atrás, o aviso do Windows
+  // a mensagem de outra pessoa que ninguém está vendo: o bipe; na tela da frente, o recado; atrás, o aviso do Windows junto
+  // (a regra em comoAvisar, lá em cima)
   function avisarDe(c, m) {
     if (!c || c.silenciada) return;
     avisa('mr:chat-mensagem', { conversa: c.conversa_id, autor: m.autor });
     const frente = naFrente();
-    reivindicar(String(m.id), frente ? 0 : 350 + Math.floor(Math.random() * 250)).then(ganhou => {
+    reivindicar(String(m.id), esperaDoAviso({ frente, somPronto: somPronto() })).then(ganhou => {
       if (!ganhou) return;
-      if (frente) {
-        bipe();
+      const plano = comoAvisar({ frente, celular, somLigado: somLigado(), somPronto: somPronto(), podeNotificar: podeNotificar() });
+      const tocou = plano.bipe ? bipe() : false;
+      if (plano.notificacao) notificar(c, m, { semSom: plano.semSom && tocou });
+      if (plano.recado) {
         let aberto = false;
         try { aberto = ctl.ativa(); } catch (e) { aberto = false; }
         if (!aberto) {
@@ -574,7 +599,7 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
             : { rotulo: ehAvisos(c) ? 'Ver o aviso' : 'Responder', acao: () => abrirConversa(c.conversa_id, { mostrar: true }) };
           try { ctl.avisar({ html: '<p><b>' + escapeHtml(titulo) + '</b><br>' + escapeHtml(corpo) + '</p>', botoes: [botao], ms: 12000 }); } catch (e) { /* sem balão */ }
         }
-      } else if (!notificar(c, m)) bipe();
+      }
     }).catch(() => {});
   }
   // o botão do aviso (no recado da carinha): abre a tela nesta aba, como o link da mensagem
@@ -590,9 +615,12 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     const b = q('[data-ch="avisos"]'), t = q('.ch-avisos-txt');
     if (!b || !t) return;
     t.textContent = textoDosAvisos();
-    b.title = typeof Notification !== 'undefined' && Notification.permission === 'denied'
+    const permissao = typeof Notification !== 'undefined' ? Notification.permission : '';
+    b.title = permissao === 'denied'
       ? 'O navegador bloqueou os avisos deste site: clique no cadeado ao lado do endereço e libere as notificações.'
-      : 'O aviso do Windows quando chegar mensagem com o sistema atrás de outra janela; clique pra ' + (somLigado() ? 'desligar' : 'ligar') + ' o bipe.';
+      : permissao === 'default'
+        ? 'Clique pra ligar o aviso do Windows, que aparece com o sistema atrás de outra janela. O bipe já toca a cada mensagem nova.'
+        : 'O bipe toca a cada mensagem nova e, com o sistema atrás de outra janela, vem também o aviso do Windows; clique pra ' + (somLigado() ? 'desligar' : 'ligar') + ' o bipe.';
     ativarEl.hidden = celular || typeof Notification === 'undefined' || Notification.permission !== 'default' || lerLocal(CHAVE_ATIVAR) === new Date().toISOString().slice(0, 10);
   }
   async function pedirAvisos() {

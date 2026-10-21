@@ -10,9 +10,12 @@ Confere:
   1. o erro do login em português; no primeiro acesso, depois de entrar, a tela "Crie a sua senha" (sem pedir de novo a
      provisória), as regras (8 caracteres, as duas iguais, diferente da provisória) e, salva, a marca apagada e o painel;
   2. com a marca, abrir uma tela manda pra senha nova (pedindo a provisória, que é conferida) e, salva, de volta à tela;
-  3. "Sair" no primeiro acesso encerra a sessão e volta pro entrar;
+  3. "Sair" no primeiro acesso encerra a sessão (só neste navegador, scope local) e volta pro entrar;
   4. o nome no alto da tela (clique e teclado) abre o "Trocar a senha", que confere a atual e volta pra tela de onde veio;
      "Voltar" volta sem trocar; e a tela de entrar com sessão e sem marca segue direto pro painel;
+  5. a tela que perde o login com ela aberta (o auth-guard ouvindo a sessão, 21/10/2026): a sessão renovada da mesma
+     pessoa não muda nada; o "Sair" da própria tela fica com ele; a sessão encerrada de fora leva pro entrar com "A sessão
+     terminou" e, entrando, de volta à tela; outra pessoa que entra neste navegador recarrega a tela;
   e sem erro de JavaScript.
 Termina com código 1 se alguma checagem falhar.
 Pré-requisito: pip install playwright e python -m playwright install chromium
@@ -104,6 +107,7 @@ def main():
         p3.click('#btnSenhaVoltar'); p3.wait_for_selector('#blocoEntrar:not([hidden])', timeout=5000)
         ok(estado(p3)['logado'] is False and p3.inner_text('#loginSub') == 'Dashboards internos' and p3.input_value('#password') == '',
            '"Sair" no primeiro acesso encerra a sessão e volta pro entrar, sem a senha digitada')
+        ok(['sair', 'local'] in estado(p3)['log'], f'"Sair" encerra só neste navegador, não nos outros computadores ({estado(p3)["log"]})')
 
         # 4) trocar a própria senha pelo nome no alto da tela
         SAM = 'financeiro@macedoereis.com.br'
@@ -128,6 +132,30 @@ def main():
         ok(erro(p4) == 'A senha atual não confere.', f'pelo teclado também; a atual errada não troca ({erro(p4)!r})')
         p4.fill('#senhaAtual', 'senha antiga 1'); p4.click('#btnSenha'); p4.wait_for_url('**/fiscal.html', timeout=8000)
         ok(estado(p4)['senhas'][SAM] == 'senha nova 2026', 'a atual certa: troca e volta pra tela de onde veio')
+
+        # 5) a tela que perde o login com ela aberta (o Sair em outra aba, a sessão encerrada em outro lugar)
+        p4.wait_for_selector(chip + '[role="link"]', timeout=8000)
+        p4.evaluate('window.__marca = 1')
+        p4.evaluate("() => window.__mockAuthEvento('TOKEN_REFRESHED', { user: { email: '%s' } })" % SAM)
+        p4.wait_for_timeout(400)
+        ok(p4.evaluate('window.__marca') == 1 and p4.url.endswith('/fiscal.html'), 'a sessão renovada da mesma pessoa: a tela segue')
+        p4.evaluate('window.__mrSaindo = true')
+        p4.evaluate("() => window.__mockAuthEvento('SIGNED_OUT', null)")
+        p4.wait_for_timeout(400)
+        ok(p4.evaluate('window.__marca') == 1 and p4.url.endswith('/fiscal.html'), 'o "Sair" da própria tela: o guarda não se mete (quem leva pro entrar é o Sair)')
+        p4.evaluate('window.__mrSaindo = false')
+        with p4.expect_navigation(timeout=8000):
+            p4.evaluate("""() => { const a = JSON.parse(sessionStorage.getItem('mock_auth')); a.logado = false; sessionStorage.setItem('mock_auth', JSON.stringify(a));
+                                   window.__mockAuthEvento('SIGNED_OUT', null); }""")
+        p4.wait_for_selector('#btnLogin', timeout=8000)
+        ok('login.html' in p4.url and 'saiu=1' in p4.url and 'redirect=%2Ffiscal.html' in p4.url and p4.inner_text('#loginSub') == 'A sessão terminou. Entre de novo.',
+           f'a sessão terminou com a tela aberta: volta pro entrar, dizendo o porquê ({p4.url}, {p4.inner_text("#loginSub")!r})')
+        p4.fill('#email', SAM); p4.fill('#password', 'senha nova 2026'); p4.click('#btnLogin'); p4.wait_for_url('**/fiscal.html', timeout=8000)
+        ok(True, 'entrou de novo: volta pra tela onde estava')
+        p4.wait_for_selector(chip + '[role="link"]', timeout=8000)
+        with p4.expect_navigation(timeout=8000):
+            p4.evaluate("() => window.__mockAuthEvento('SIGNED_IN', { user: { email: 'fiscal@macedoereis.com.br' } })")
+        ok(True, 'outra pessoa entrou neste navegador (em outra aba): a tela recarrega')
 
         ok(not erros, f'sem erro de JavaScript ({erros[:2]})')
         b.close()
