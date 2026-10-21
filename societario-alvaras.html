@@ -320,7 +320,7 @@
 
     /* ---------- MODAL NOVO ---------- */
     // responsável = alguém da equipe (a Agenda filtra pelo nome; texto livre com erro de digitação some da agenda)
-    const EQUIPE_ALV = ['Adaini', 'Thalia', 'Vitória', 'Samuel', 'Diego', 'Edna'];
+    const EQUIPE_ALV = ['Adaini', 'Thalia', 'Vitória', 'Samuel', 'Diego', 'Edna', 'Deize'];
     function preencherResp(sel, atual) {
       const opts = [...EQUIPE_ALV];
       if (atual && !opts.some(n => n.toLowerCase() === String(atual).trim().toLowerCase())) opts.push(String(atual).trim());

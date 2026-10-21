@@ -432,7 +432,7 @@ export function initTarefas(userCfg) {
   let usuarioEmail = null;
   let usuarioNome = 'Usuário';
   // as contas são de setor (rh@, fiscal@…) sem full_name — o nome da equipe vem daqui
-  const NOME_POR_EMAIL = { 'fiscal@macedoereis.com.br':'Thalia', 'rh@macedoereis.com.br':'Vitória', 'contabil@macedoereis.com.br':'Adaini', 'financeiro@macedoereis.com.br':'Samuel', 'diego@macedoereis.com.br':'Diego' };
+  const NOME_POR_EMAIL = { 'fiscal@macedoereis.com.br':'Thalia', 'rh@macedoereis.com.br':'Vitória', 'contabil@macedoereis.com.br':'Adaini', 'financeiro@macedoereis.com.br':'Samuel', 'diego@macedoereis.com.br':'Diego', 'atendimento@macedoereis.com.br':'Deize' };
   const nomePorEmail = e => NOME_POR_EMAIL[String(e || '').toLowerCase()] || null;
   let periodo = 'mes';
   let gruposAbertos = new Set();

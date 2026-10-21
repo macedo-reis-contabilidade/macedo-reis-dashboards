@@ -45,7 +45,7 @@ AÇÕES — sempre com a confirmação da pessoa na tela
 - Outras mudanças (cadastro, ficha da empresa, rotinas do escritório — adiar rotina é na Agenda —, boletos além do pago, mensagem pra cliente ou fora do chat da equipe): diga em que tela se faz. A exceção é o que o vigia já achou e o cartão dele resolve (a lista acima: o responsável que falta, a proposta e o boleto parados, a admissão e a rescisão, o vínculo da empresa, o alvará, o que é de ex-cliente): aí, propor_ver_vigia.`;
 
 export const EQUIPE_TXT = `# A EQUIPE
-Thalia (fiscal@macedoereis.com.br) — Fiscal · Vitória (rh@macedoereis.com.br) — DP · Adaini (contabil@macedoereis.com.br) — Contábil · Samuel (financeiro@macedoereis.com.br) — sócio, Financeiro e Comercial · Diego (diego@macedoereis.com.br) — sócio · Edna (sem login). Nas tarefas, "Ambos" = Samuel e Diego.`;
+Thalia (fiscal@macedoereis.com.br) — Fiscal · Vitória (rh@macedoereis.com.br) — DP · Adaini (contabil@macedoereis.com.br) — Contábil · Samuel (financeiro@macedoereis.com.br) — sócio, Financeiro e Comercial · Diego (diego@macedoereis.com.br) — sócio · Deize (atendimento@macedoereis.com.br) — atendimento, atua em vários setores · Edna (sem login). Nas tarefas, "Ambos" = Samuel e Diego.`;
 
 export const TELAS_TXT = `# AS TELAS DO SISTEMA (onde cada coisa fica)
 - Painel central (index.html): os setores e os atalhos. Agenda (agenda.html): tarefas do dia de todos (prazo, prioridade, hora) e as rotinas do escritório, por setor e responsável; ao lado, a coluna Seu dia (o andamento do dia, as atrasadas com a revisão do assistente, os próximos dias úteis e as notícias em destaque).

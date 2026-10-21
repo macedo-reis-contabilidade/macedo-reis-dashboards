@@ -20,7 +20,7 @@ export const SETORES = [
   ['societario', 'Societário'], ['financeiro', 'Financeiro'], ['comercial', 'Comercial'],
   ['irpf', 'IRPF'], ['gestao', 'Gestão'], ['geral', 'Geral'],
 ];
-const EQUIPE_PADRAO = ['Thalia', 'Vitória', 'Adaini', 'Samuel', 'Diego', 'Edna'];
+const EQUIPE_PADRAO = ['Thalia', 'Vitória', 'Adaini', 'Samuel', 'Diego', 'Edna', 'Deize'];
 const esc = t => String(t == null ? '' : t).replace(/[&<>"]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
 const ymd = d => dataLocal(d);   // dia no fuso local: toISOString é UTC e depois das 21h já era amanhã
 

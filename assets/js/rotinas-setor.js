@@ -54,7 +54,7 @@ const CSS = `
   @media (max-width:860px) { .rv { grid-template-columns:1fr; } #rvOv .row { grid-template-columns:1fr; } }
 `;
 
-const EQUIPE_PADRAO = ['Thalia', 'Vitória', 'Adaini', 'Samuel', 'Diego', 'Edna'];
+const EQUIPE_PADRAO = ['Thalia', 'Vitória', 'Adaini', 'Samuel', 'Diego', 'Edna', 'Deize'];
 const MESES = ['', 'jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
 export function initRotinasSetor(cfg) {

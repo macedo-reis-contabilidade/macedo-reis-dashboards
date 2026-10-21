@@ -104,7 +104,7 @@ def main():
         print('2. O responsável')
         opcoes = p.evaluate("() => [...document.querySelectorAll('#recResp option')].map(o => [o.value, o.textContent])")
         ok(p.input_value('#recResp') == 'Thalia', f'2. já vem em Thalia ({p.input_value("#recResp")!r})')
-        ok([o[0] for o in opcoes] == ['Thalia', 'Vitória', 'Adaini', 'Samuel', 'Diego', 'Edna', ''] and opcoes[-1][1] == 'sem responsável',
+        ok([o[0] for o in opcoes] == ['Thalia', 'Vitória', 'Adaini', 'Samuel', 'Diego', 'Edna', 'Deize', ''] and opcoes[-1][1] == 'sem responsável',
            f'2. a equipe e "sem responsável" ({opcoes})')
         p.wait_for_timeout(200)
         p.screenshot(path=str(FOTOS / 'analise-recorrentes-escuro.png'))

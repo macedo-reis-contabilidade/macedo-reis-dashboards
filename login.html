@@ -26,38 +26,69 @@
           </svg>
         </div>
         <h1>Macedo <span>&</span> Reis</h1>
-        <p>Dashboards internos</p>
+        <p id="loginSub">Dashboards internos</p>
       </div>
 
-      <div id="formError" class="form-error"></div>
+      <div id="formError" class="form-error" role="alert"></div>
 
-      <div class="form-group">
-        <label for="email">Email</label>
-        <input type="email" id="email" class="input" autocomplete="username" required>
+      <div id="blocoEntrar">
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input type="email" id="email" class="input" autocomplete="username" required>
+        </div>
+
+        <div class="form-group">
+          <label for="password">Senha</label>
+          <input type="password" id="password" class="input" autocomplete="current-password" required>
+        </div>
+
+        <button type="button" id="btnLogin" class="btn btn-primary">Entrar</button>
       </div>
 
-      <div class="form-group">
-        <label for="password">Senha</label>
-        <input type="password" id="password" class="input" autocomplete="current-password" required>
+      <!-- a senha nova (21/10/2026): obrigatória no primeiro acesso, com a senha provisória; ou quando a pessoa pede,
+           clicando no próprio nome no alto da tela (login.html?trocar=1). As regras ficam em assets/js/senha.js -->
+      <div id="blocoSenha" hidden>
+        <p id="senhaTexto" style="margin:0 0 20px;font-size:0.9rem;line-height:1.55;color:var(--text-2);"></p>
+        <div class="form-group" id="grupoAtual">
+          <label for="senhaAtual" id="rotuloAtual">Senha atual</label>
+          <input type="password" id="senhaAtual" class="input" autocomplete="current-password">
+        </div>
+        <div class="form-group">
+          <label for="senhaNova">Senha nova</label>
+          <input type="password" id="senhaNova" class="input" autocomplete="new-password" aria-describedby="senhaRegra">
+          <small id="senhaRegra" style="display:block;margin-top:6px;font-size:0.78rem;line-height:1.45;color:var(--text-muted);">Pelo menos 8 caracteres. Uma frase curta é fácil de lembrar e difícil de adivinhar.</small>
+        </div>
+        <div class="form-group">
+          <label for="senhaRepete">Repita a senha nova</label>
+          <input type="password" id="senhaRepete" class="input" autocomplete="new-password">
+        </div>
+        <button type="button" id="btnSenha" class="btn btn-primary">Salvar a senha nova</button>
+        <button type="button" id="btnSenhaVoltar" class="btn btn-ghost">Voltar</button>
       </div>
-
-      <button type="button" id="btnLogin" class="btn btn-primary">Entrar</button>
     </div>
   </div>
 
   <script type="module">
     import { supabase } from './assets/js/supabase.js';
+    import { precisaTrocar, problemaDaSenha, erroDoLogin, erroDaTroca } from './assets/js/senha.js';
 
-    const emailInput = document.getElementById('email');
-    const passwordInput = document.getElementById('password');
-    const btnLogin = document.getElementById('btnLogin');
-    const formError = document.getElementById('formError');
+    const $ = id => document.getElementById(id);
+    const emailInput = $('email');
+    const passwordInput = $('password');
+    const btnLogin = $('btnLogin');
+    const formError = $('formError');
+    const params = new URLSearchParams(window.location.search);
+    // a senha com que a pessoa acabou de entrar (só na memória desta página): na troca logo depois, não pede de novo
+    let senhaDoLogin = null;
+    let modoSenha = null;     // 'primeiro' (senha provisória: trocar é obrigatório) | 'trocar' (a pessoa pediu)
+    let emailDaConta = '';
 
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        window.location.href = 'index.html';
-      }
+      if (!session) return;
+      if (precisaTrocar(session.user)) mostrarSenha('primeiro', session.user);
+      else if (params.get('trocar') === '1') mostrarSenha('trocar', session.user);
+      else window.location.href = destinoSeguro(params.get('redirect'));
     })();
 
     function showError(msg) {
@@ -83,17 +114,20 @@
       btnLogin.disabled = true;
       btnLogin.textContent = 'Entrando...';
 
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
       if (error) {
-        showError('Erro: ' + error.message);
+        showError(erroDoLogin(error));
         btnLogin.disabled = false;
         btnLogin.textContent = 'Entrar';
         return;
       }
 
-      const urlParams = new URLSearchParams(window.location.search);
-      window.location.href = destinoSeguro(urlParams.get('redirect'));
+      senhaDoLogin = password;
+      const user = data && data.user;
+      if (precisaTrocar(user)) return mostrarSenha('primeiro', user);
+      if (params.get('trocar') === '1') return mostrarSenha('trocar', user);
+      window.location.href = destinoSeguro(params.get('redirect'));
     }
 
     // a volta depois do login: só pra uma tela do próprio sistema — um link com ?redirect= pra outro site,
@@ -106,12 +140,76 @@
       } catch (e) { return 'index.html'; }
     }
 
+    // ---------- a senha nova ----------
+    function mostrarSenha(modo, user) {
+      modoSenha = modo;
+      emailDaConta = String((user && user.email) || emailInput.value.trim() || '').toLowerCase();
+      emailInput.value = emailDaConta;   // o gerenciador de senhas do navegador guarda a nova com o e-mail certo
+      clearError();
+      $('blocoEntrar').hidden = true;
+      $('blocoSenha').hidden = false;
+      const primeiro = modo === 'primeiro';
+      $('loginSub').textContent = primeiro ? 'Crie a sua senha' : 'Trocar a senha';
+      $('senhaTexto').textContent = primeiro
+        ? 'Você entrou com uma senha provisória. Antes de começar, crie uma senha só sua para ' + emailDaConta + '.'
+        : 'A senha nova vale pra ' + emailDaConta + ' a partir de agora, em qualquer computador.';
+      // a senha atual: pedida, salvo logo depois de entrar com ela
+      $('grupoAtual').hidden = !!senhaDoLogin;
+      $('rotuloAtual').textContent = primeiro ? 'Senha provisória (a que você recebeu)' : 'Senha atual';
+      $('btnSenhaVoltar').textContent = primeiro ? 'Sair' : 'Voltar';
+      (senhaDoLogin ? $('senhaNova') : $('senhaAtual')).focus();
+    }
+
+    async function salvarSenha() {
+      clearError();
+      const atual = senhaDoLogin || $('senhaAtual').value;
+      const nova = $('senhaNova').value;
+      const problema = problemaDaSenha({ atual, nova, repete: $('senhaRepete').value, provisoria: modoSenha === 'primeiro' });
+      if (problema) { showError(problema); return; }
+      const b = $('btnSenha');
+      b.disabled = true; b.textContent = 'Salvando...';
+      const destravar = () => { b.disabled = false; b.textContent = 'Salvar a senha nova'; };
+      // confere a senha atual entrando de novo com ela — e a sessão fica recente, que o Supabase pode exigir pra trocar
+      if (!senhaDoLogin) {
+        const { error } = await supabase.auth.signInWithPassword({ email: emailDaConta, password: atual });
+        if (error) {
+          showError(modoSenha === 'primeiro' ? 'A senha provisória não confere.' : 'A senha atual não confere.');
+          destravar();
+          return;
+        }
+        senhaDoLogin = atual;
+      }
+      const { error } = await supabase.auth.updateUser({ password: nova, data: { trocar_senha: null } });
+      if (error) { showError(erroDaTroca(error)); destravar(); return; }
+      senhaDoLogin = null;
+      b.textContent = 'Senha trocada';
+      window.location.href = destinoSeguro(params.get('redirect'));
+    }
+
+    $('btnSenhaVoltar').addEventListener('click', async () => {
+      if (modoSenha !== 'primeiro') { window.location.href = destinoSeguro(params.get('redirect')); return; }
+      // no primeiro acesso não dá pra pular: "Sair" encerra a sessão e volta pro entrar
+      await supabase.auth.signOut();
+      senhaDoLogin = null; modoSenha = null;
+      passwordInput.value = '';
+      ['senhaAtual', 'senhaNova', 'senhaRepete'].forEach(id => { $(id).value = ''; });
+      clearError();
+      $('blocoSenha').hidden = true;
+      $('blocoEntrar').hidden = false;
+      $('loginSub').textContent = 'Dashboards internos';
+      passwordInput.focus();
+    });
+
     btnLogin.addEventListener('click', doLogin);
+    $('btnSenha').addEventListener('click', salvarSenha);
 
     [emailInput, passwordInput].forEach(input => {
       input.addEventListener('keypress', e => {
         if (e.key === 'Enter') doLogin();
       });
+    });
+    ['senhaAtual', 'senhaNova', 'senhaRepete'].forEach(id => {
+      $(id).addEventListener('keypress', e => { if (e.key === 'Enter') salvarSenha(); });
     });
   </script>
 </body>

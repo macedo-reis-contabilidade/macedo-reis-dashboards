@@ -381,7 +381,7 @@
     // que entrou pelo "Renomear em lote", que aceita nome livre — também aparece na lista.
     function escR(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
     function opcoesResp(atual){
-      const nomes = ['Thalia', 'Adaini', 'Vitória', 'Samuel', 'Diego', 'Edna'];
+      const nomes = ['Thalia', 'Adaini', 'Vitória', 'Samuel', 'Diego', 'Edna', 'Deize'];
       const tem = n => nomes.some(x => x.toLowerCase() === String(n).trim().toLowerCase());
       vinculos.forEach(v => { if (v.responsavel && !tem(v.responsavel)) nomes.push(v.responsavel.trim()); });
       if (atual && !tem(atual)) nomes.push(String(atual).trim());

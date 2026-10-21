@@ -214,7 +214,38 @@ const storageFalso = { from: pasta => ({
 // rpc: quem responde é o teste, por window.__mockRpc(nome, args) (o admissoes.py usa pro link público); sem ele, lista vazia
 // quem está logado: o Samuel (sócio); o teste troca por window.__mockEmail (o precificacao-carteira.py entra como a Thalia)
 const EMAIL = () => (typeof window !== 'undefined' && window.__mockEmail) || 'financeiro@macedoereis.com.br';
-export const supabase = { from: q, auth: { getUser: async () => ({ data: { user: { email: EMAIL() } } }), getSession: async () => ({ data: { session: { user: { email: EMAIL() } } } }) },
+// a sessão de verdade, só no teste que liga (o trocar-senha.py): sessionStorage "mock_auth" = { logado, email, meta, senhas,
+// log } — passa de uma tela pra outra como a sessão do Supabase; entrar confere a senha, updateUser troca a senha e o
+// user_metadata (null apaga a chave, como o Supabase) e recusa a senha igual; sair desliga. Sem ele, todo mundo logado
+const AUTH_LIGADO = () => { try { return !!sessionStorage.getItem('mock_auth'); } catch (e) { return false; } };
+const lerAuth = () => JSON.parse(sessionStorage.getItem('mock_auth'));
+const gravarAuth = a => sessionStorage.setItem('mock_auth', JSON.stringify(a));
+const quemAuth = a => ({ email: a.email, user_metadata: { ...(a.meta || {}) } });
+const authFalso = {
+  getUser: async () => { if (!AUTH_LIGADO()) return { data: { user: { email: EMAIL() } } }; const a = lerAuth(); return { data: { user: a.logado ? quemAuth(a) : null } }; },
+  getSession: async () => { if (!AUTH_LIGADO()) return { data: { session: { user: { email: EMAIL() } } } }; const a = lerAuth(); return { data: { session: a.logado ? { user: quemAuth(a) } : null } }; },
+  signInWithPassword: async ({ email, password }) => {
+    const a = lerAuth(), e = String(email || '').toLowerCase();
+    a.log.push(['entrar', e]);
+    if (!a.senhas || a.senhas[e] !== password) { gravarAuth(a); return { data: { user: null, session: null }, error: { code: 'invalid_credentials', message: 'Invalid login credentials' } }; }
+    a.logado = true; a.email = e; gravarAuth(a);
+    return { data: { user: quemAuth(a), session: { user: quemAuth(a) } }, error: null };
+  },
+  updateUser: async (attrs = {}) => {
+    const a = lerAuth();
+    a.log.push(['atualizar', attrs]);
+    if (!a.logado) { gravarAuth(a); return { data: { user: null }, error: { code: 'session_not_found', message: 'Auth session missing!' } }; }
+    if (attrs.password != null) {
+      if (a.senhas[a.email] === attrs.password) { gravarAuth(a); return { data: { user: null }, error: { code: 'same_password', message: 'New password should be different from the old password.' } }; }
+      a.senhas[a.email] = attrs.password;
+    }
+    if (attrs.data) { a.meta = a.meta || {}; Object.entries(attrs.data).forEach(([k, v]) => { if (v === null) delete a.meta[k]; else a.meta[k] = v; }); }
+    gravarAuth(a);
+    return { data: { user: quemAuth(a) }, error: null };
+  },
+  signOut: async () => { if (AUTH_LIGADO()) { const a = lerAuth(); a.log.push(['sair']); a.logado = false; gravarAuth(a); } return { error: null }; }
+};
+export const supabase = { from: q, auth: authFalso,
   rpc: async (nome, args) => (typeof window.__mockRpc === 'function' ? window.__mockRpc(nome, args || {}) : { data: [], error:null }) };
 supabase.todosClientes = async () => ({ data: DATA.clientes, error:null });
 supabase.channel = canal;
@@ -228,7 +259,7 @@ supabase.functions = { invoke: async (nome, opts) => (typeof window.__mockInvoke
   : { data: null, error: { message: 'função ' + nome + ' fora do harness' } }) };
 // igual ao helper de verdade (assets/js/supabase.js): busca em lotes de mil até o fim
 supabase.todasLinhas = async function (montar) { const tudo = []; for (let i = 0; ; i += 1000) { const { data, error } = await montar().range(i, i + 999); if (error) return { data: tudo, error }; tudo.push(...(data || [])); if (!data || data.length < 1000) return { data: tudo, error: null }; } };
-export async function getCurrentUser(){ return { email: EMAIL() }; }
+export async function getCurrentUser(){ return AUTH_LIGADO() ? (await authFalso.getUser()).data.user : { email: EMAIL() }; }
 export async function signOut(){}
 // o assistente do escritório (assets/js/assistente-escritorio.js) mostra um recado do dia na primeira tela: nos testes de
 // tela ele ficaria por cima dos cliques — aqui fica quieto, salvo no teste dele (window.__assistenteRecados = true)

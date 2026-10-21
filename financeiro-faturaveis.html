@@ -211,7 +211,7 @@ async function init(){
     if (u) {
       const n = u.user_metadata?.full_name || u.email?.split('@')[0] || 'Usuário';
       // as contas são de setor (rh@, fiscal@…) sem full_name — o nome da equipe vem do mapa
-      const NOME_POR_EMAIL = { 'fiscal@macedoereis.com.br':'Thalia', 'rh@macedoereis.com.br':'Vitória', 'contabil@macedoereis.com.br':'Adaini', 'financeiro@macedoereis.com.br':'Samuel', 'diego@macedoereis.com.br':'Diego' };
+      const NOME_POR_EMAIL = { 'fiscal@macedoereis.com.br':'Thalia', 'rh@macedoereis.com.br':'Vitória', 'contabil@macedoereis.com.br':'Adaini', 'financeiro@macedoereis.com.br':'Samuel', 'diego@macedoereis.com.br':'Diego', 'atendimento@macedoereis.com.br':'Deize' };
       usuarioNome = NOME_POR_EMAIL[String(u.email || '').toLowerCase()] || (n.charAt(0).toUpperCase() + n.slice(1));
       $('userName').textContent = n; $('userAvatar').textContent = n.charAt(0).toUpperCase();
     }

@@ -485,7 +485,7 @@
     // data local (Brasília): toISOString() é UTC e depois das 21h já devolve o dia seguinte (achado de 30/09/2026)
     const hojeISO = () => { const a = new Date(); return a.getFullYear() + '-' + String(a.getMonth() + 1).padStart(2, '0') + '-' + String(a.getDate()).padStart(2, '0'); };
     const agoraISO = () => new Date().toISOString();
-    const nomePorEmail = e => { if (!e) return ''; const inv = {'fiscal@macedoereis.com.br':'Thalia','rh@macedoereis.com.br':'Vitória','contabil@macedoereis.com.br':'Adaini','financeiro@macedoereis.com.br':'Samuel','diego@macedoereis.com.br':'Diego'}; return inv[String(e).toLowerCase()] || String(e).split('@')[0]; };
+    const nomePorEmail = e => { if (!e) return ''; const inv = {'fiscal@macedoereis.com.br':'Thalia','rh@macedoereis.com.br':'Vitória','contabil@macedoereis.com.br':'Adaini','financeiro@macedoereis.com.br':'Samuel','diego@macedoereis.com.br':'Diego','atendimento@macedoereis.com.br':'Deize'}; return inv[String(e).toLowerCase()] || String(e).split('@')[0]; };
 
     const ST_LBL = { triado:'Triado', validado:'Perfil validado', simulado:'Simulado', decidido:'Decidido', comunicado:'Comunicado', opcao_registrada:'Opção registrada' };
     const TRI_LBL = { candidato_por_fora:['Candidato por fora','t-fora'], simular:['Simular','t-sim'], tende_por_dentro:['Tende por dentro','t-dentro'] };

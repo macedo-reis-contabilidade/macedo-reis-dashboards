@@ -352,7 +352,7 @@ export async function desfazerAlteracao(sb, alteradas, { autor = null, origem = 
 // ---- resolver no cartão do vigia (16/10/2026) ----
 // quem é da equipe pelo nome gravado (o banco tem "SAMUEL", "Vitoria"…): a mesma conta do vigia_pessoa do banco — fora
 // disso (vazio ou um nome que não é da equipe), "sem responsável"
-const DA_EQUIPE = { thalia: 'Thalia', vitoria: 'Vitória', adaini: 'Adaini', samuel: 'Samuel', diego: 'Diego', edna: 'Edna', ambos: 'Ambos' };
+const DA_EQUIPE = { thalia: 'Thalia', vitoria: 'Vitória', adaini: 'Adaini', samuel: 'Samuel', diego: 'Diego', edna: 'Edna', deize: 'Deize', ambos: 'Ambos' };
 export const pessoaDaEquipe = n => DA_EQUIPE[semAcento(n)] || null;
 const VAZIO = '\u0000';   // a chave do "sem ninguém" nos grupos por responsável de antes
 const porAntes = (lista, campo = 'antes') => {

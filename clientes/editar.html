@@ -2095,7 +2095,7 @@
         </label>`).join('') || '';
       // responsável = alguém da equipe (vínculo sem responsável gera tarefa que não aparece na agenda de ninguém);
       // quem já é responsável em algum vínculo também entra na lista
-      const nomesVo = ['Thalia', 'Adaini', 'Vitória', 'Samuel', 'Diego', 'Edna'];
+      const nomesVo = ['Thalia', 'Adaini', 'Vitória', 'Samuel', 'Diego', 'Edna', 'Deize'];
       (vincs || []).forEach(v => { if (v.responsavel && !nomesVo.some(n => n.toLowerCase() === v.responsavel.trim().toLowerCase())) nomesVo.push(v.responsavel.trim()); });
       const escVo = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
       document.getElementById('voResp').innerHTML = '<option value="">— escolha —</option>' + nomesVo.map(n => '<option value="' + escVo(n) + '">' + escVo(n) + '</option>').join('');
@@ -2590,7 +2590,7 @@
     const EMAIL_NOME = {
       'fiscal@macedoereis.com.br':'Thalia', 'rh@macedoereis.com.br':'Vitória',
       'contabil@macedoereis.com.br':'Adaini', 'financeiro@macedoereis.com.br':'Samuel',
-      'diego@macedoereis.com.br':'Diego',
+      'diego@macedoereis.com.br':'Diego', 'atendimento@macedoereis.com.br':'Deize',
     };
     function nomePorEmail(e){ if (!e) return null; return EMAIL_NOME[String(e).toLowerCase()] || String(e).split('@')[0]; }
     function fmtH(d){ if (!d) return '—'; try { const x = new Date(String(d).length <= 10 ? d + 'T00:00:00' : d); return x.toLocaleDateString('pt-BR'); } catch { return d; } }
