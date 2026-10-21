@@ -716,6 +716,7 @@
   <script type="module">
     import { supabase, getCurrentUser, signOut } from '../assets/js/supabase.js';
     import { vincularObrigacoes } from '../assets/js/tarefas-acoes.js';
+    import { retirantesDe, sociosQueFicam, retiranteQueE, mesmaPessoa, avisoDaSoma, linhaDoRetirante } from '../assets/js/leitura-socios.js';
     import {
       bindMask, maskCNPJ, maskCPF, maskTelefone, maskCEP,
       formatCNPJ, formatCPF, formatDocumento, formatTelefone,
@@ -2282,10 +2283,13 @@
           rows.fiscal.push({ campo: 'CNAEs secundários', antes: secAtual.length ? secAtual.join(', ') : '—', depois: secDoc.join(', '), aplicar: { col: 'cnaes_secundarios', valor: secDoc.map(s => String(s).trim()).filter(Boolean) } });
       }
 
-      // Sócios — só quando o documento traz quadro societário (cartão CNPJ não lista sócios)
-      const sDoc = Array.isArray(d.socios) ? d.socios.filter(s => s && s.nome) : [];
+      // Sócios — só quando o documento traz quadro societário (cartão CNPJ não lista sócios). Quem saiu da sociedade no
+      // documento (socios_retirantes da leitura, 21/10/2026) nunca entra como incluído, mesmo se vier também em socios;
+      // no cadastro, a remoção dele vem com o porquê (assets/js/leitura-socios.js)
+      const retirantes = retirantesDe(d);
+      const sDoc = sociosQueFicam(d);
+      const usados = new Set();
       if (sDoc.length) {
-        const usados = new Set();
         sDoc.forEach(sd => {
           const cpf = atzDig(sd.cpf);
           let i = socios.findIndex((s, ix) => !usados.has(ix) && cpf && atzDig(s.cpf) === cpf);
@@ -2320,14 +2324,22 @@
             rows.socios.push({ campo: (sb.nome || 'Sócio') + ' — Administrador', antes: sb.eh_administrador ? 'Sim' : 'Não', depois: sd.eh_administrador ? 'Sim' : 'Não',
               aplicar: { tipo: 'alterado', socioId: sb.id, col: 'eh_administrador', valor: sd.eh_administrador } });
         });
-        socios.forEach((s, ix) => {
-          if (!usados.has(ix)) rows.socios.push({ campo: 'Sócio removido', antes: resumoSocioAtz(s), depois: '—',
-            aplicar: { tipo: 'removido', socioId: s.id, valor: resumoSocioAtz(s) } });
-        });
       }
+      // quem está no cadastro e não veio no documento: com o quadro completo, sai (o "Sócio removido" de sempre); quem o
+      // documento diz que saiu, sai com o porquê — mesmo quando a leitura não trouxe o quadro
+      socios.forEach((s, ix) => {
+        if (usados.has(ix)) return;
+        const r = retiranteQueE(s, retirantes);
+        if (!sDoc.length && !r) return;
+        rows.socios.push({ campo: 'Sócio removido', antes: resumoSocioAtz(s), depois: r ? 'saiu da sociedade' + (r.motivo ? ' — ' + r.motivo : '') : '—',
+          porRetirada: !!r, aplicar: { tipo: 'removido', socioId: s.id, valor: resumoSocioAtz(s) } });
+      });
 
       rows.total = rows.endereco.length + rows.fiscal.length + rows.socios.length;
       rows.temQuadro = sDoc.length > 0;
+      // quem saiu e não está no cadastro: só a informação, sem caixa; e a soma das participações lidas
+      rows.saiu = retirantes.filter(r => !socios.some(s => mesmaPessoa(s, r)));
+      rows.avisoSoma = avisoDaSoma(sDoc);
       return rows;
     }
 
@@ -2359,8 +2371,12 @@
         + secao('Endereço', difs.endereco, 'Sem diferenças de endereço.', 'endereco')
         + secao('Empresa · regime / porte / CNAEs', difs.fiscal, 'Sem diferenças de razão social, capital, natureza, regime, porte ou CNAEs.', 'fiscal')
         + secao('Sócios', difs.socios, difs.temQuadro ? 'Quadro societário confere.' : 'O documento não traz quadro societário (cartão CNPJ não lista sócios).', 'socios');
-      if (difs.socios.some(r => r.campo === 'Sócio removido'))
+      // quem saiu da sociedade no documento e não está no cadastro: só a informação (não entra como sócio)
+      (difs.saiu || []).forEach(r => { html += `<div class="field-help" style="margin-top:8px;">${atzEsc(linhaDoRetirante(r))}.</div>`; });
+      if (difs.socios.some(r => r.campo === 'Sócio removido' && !r.porRetirada))
         html += `<div class="field-help" style="margin-top:8px;">⚠ "Sócio removido" pressupõe que o documento traz o quadro societário <b>completo</b> (consolidação). Se anexou uma alteração parcial, desconsidere essas linhas.</div>`;
+      // as participações lidas que não somam 100%: confira antes de aplicar (não bloqueia)
+      if (difs.avisoSoma) html += `<div class="proc-warn" style="margin-top:8px;">⚠ ${atzEsc(difs.avisoSoma)}</div>`;
       if (d.observacoes_extracao) html += `<div class="field-help" style="margin-top:8px;">Obs. da leitura: ${atzEsc(d.observacoes_extracao)}</div>`;
       if (fonte === 'documento') html += `<div class="field-help" style="margin-top:8px;">Marque as linhas que quer gravar — só as marcadas serão aplicadas ao confirmar o registro; o resto do cadastro fica como está.</div>`;
       return html;
