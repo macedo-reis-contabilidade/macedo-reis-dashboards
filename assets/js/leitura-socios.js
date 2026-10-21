@@ -9,7 +9,7 @@
 // ============================================================
 
 const digitos = v => String(v ?? '').replace(/\D/g, '');
-const nomeNormal = v => String(v ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+const nomeNormal = v => String(v ?? '').normalize('NFD').replace(/\p{M}/gu, '')
   .replace(/[^a-zA-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
 const temNome = s => !!s && String(s.nome ?? '').trim() !== '';
 
