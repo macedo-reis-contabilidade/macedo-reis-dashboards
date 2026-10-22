@@ -5,11 +5,12 @@
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { posix } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { conferirQuadro, mesmaPessoa, nomeChave } from '../supabase/functions/extract-document/quadro.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + extra : '')); };
-const raiz = new URL('../', import.meta.url).pathname;
+const raiz = fileURLToPath(new URL('../', import.meta.url));   // .pathname dava C:\C:\… no Windows
 const nomes = d => (d.socios || []).map(s => s.nome).join(', ');
 
 console.log('A conferência do quadro de sócios:');
