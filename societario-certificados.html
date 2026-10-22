@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Societário — Certificados digitais — Macedo & Reis</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+</head>
+<body>
+  <!-- Certificados digitais dos clientes (22/10/2026, pedido do Samuel): o escritório não emite nem agenda — só avisa o
+       cliente antes de vencer. Quando avisar é a regra de assets/js/certificados.js, a mesma do vigia (certificado_vencendo),
+       que manda o recado pra Deize. A planilha de controle foi importada em 22/10/2026. -->
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip"><div class="user-avatar" id="userAvatar">—</div><span id="userName">Carregando…</span></div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <a href="societario.html">Societário</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Certificados digitais</span>
+        </div>
+        <div class="eyebrow">Controle de certificados</div>
+        <h1>Certificados digitais</h1>
+        <p>Os certificados A1 e A3 dos clientes e quando vencem. O escritório não emite nem agenda: avisa o cliente antes de vencer, pra ele renovar a tempo. A 30 dias do vencimento, e de novo a 7 se ainda não renovou, o certificado entra em "Avisar agora".</p>
+      </div>
+
+      <div class="fa-focus">
+        <button class="fa-focus-card fc-danger" data-f="avisar"><span class="fc-num" id="cAvisar">0</span><span class="fc-lbl">Avisar agora</span></button>
+        <button class="fa-focus-card" data-f="vence30"><span class="fc-num" id="cProx">0</span><span class="fc-lbl">Vencem em 30 dias</span></button>
+        <button class="fa-focus-card" data-f="vencido"><span class="fc-num" id="cVenc">0</span><span class="fc-lbl">Vencidos</span></button>
+        <button class="fa-focus-card" data-f="emdia"><span class="fc-num" id="cEmDia">0</span><span class="fc-lbl">Em dia</span></button>
+        <button class="fa-focus-card" data-f="parado"><span class="fc-num" id="cParado">0</span><span class="fc-lbl">Não acompanha</span></button>
+        <button class="fa-focus-card" data-f="todos"><span class="fc-num" id="cTodos">0</span><span class="fc-lbl">Todos</span></button>
+      </div>
+
+      <div class="toolbar">
+        <div class="toolbar-filters">
+          <input type="text" id="busca" class="input input-search" placeholder="Buscar por titular, empresa ou observação…" aria-label="Buscar certificado">
+        </div>
+        <div class="fa-toolbar-actions">
+          <button class="btn btn-primary" id="btnNovo">+ Novo certificado</button>
+        </div>
+      </div>
+
+      <div id="lista"></div>
+      <div id="vazio" class="empty-state" hidden>Nenhum certificado neste filtro.</div>
+    </main>
+  </div>
+
+  <!-- NOVO CERTIFICADO -->
+  <div class="fa-modal-overlay" id="ovNovo">
+    <div class="fa-modal" role="dialog" aria-modal="true" aria-labelledby="nTitulo">
+      <div class="fa-modal-head"><h3 id="nTitulo">Novo certificado</h3><button class="fa-modal-close" id="nClose" aria-label="Fechar">&times;</button></div>
+      <div class="fa-modal-body">
+        <label class="fa-field"><span>Titular *</span><input type="text" id="nTitular" class="input" placeholder="Como aparece no certificado (empresa ou pessoa)"></label>
+        <label class="fa-field"><span>Empresa do cadastro</span><select id="nCliente" class="input"><option value="">— sem empresa vinculada —</option></select></label>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Tipo</span>
+            <select id="nTipo" class="input"><option value="A1">A1 (arquivo)</option><option value="A3">A3 (cartão ou token)</option><option value="">Não informado</option></select>
+          </label>
+          <label class="fa-field"><span>Validade *</span><input type="date" id="nValidade" class="input"></label>
+        </div>
+        <label class="fa-field"><span>Observação</span><textarea id="nObs" class="input" rows="2" placeholder="Ex.: cliente providencia, só avisar"></textarea></label>
+        <div id="nErro" class="cd-erro" role="alert"></div>
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-ghost" id="nCancelar">Cancelar</button>
+        <button class="btn btn-primary" id="nSalvar">Cadastrar certificado</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- DETALHE -->
+  <div class="fa-modal-overlay" id="ovDet">
+    <div class="fa-modal" role="dialog" aria-modal="true" aria-labelledby="dTitulo" style="max-width:600px;">
+      <div class="fa-modal-head"><h3 id="dTitulo">Certificado</h3><button class="fa-modal-close" id="dClose" aria-label="Fechar">&times;</button></div>
+      <div class="fa-modal-body">
+        <div id="dBanner" class="cd-banner" hidden></div>
+        <label class="fa-field"><span>Titular *</span><input type="text" id="dTitular" class="input"></label>
+        <label class="fa-field"><span>Empresa do cadastro</span><select id="dCliente" class="input"><option value="">— sem empresa vinculada —</option></select></label>
+        <div class="fa-field-row">
+          <label class="fa-field"><span>Tipo</span>
+            <select id="dTipo" class="input"><option value="A1">A1 (arquivo)</option><option value="A3">A3 (cartão ou token)</option><option value="">Não informado</option></select>
+          </label>
+          <label class="fa-field"><span>Validade *</span><input type="date" id="dValidade" class="input"></label>
+        </div>
+        <label class="fa-field"><span>Observação</span><textarea id="dObs" class="input" rows="2"></textarea></label>
+        <label class="cd-check"><input type="checkbox" id="dAcompanhar"> Acompanhar este certificado (desmarcado, ele sai dos avisos)</label>
+        <div class="cd-aviso-info" id="dAvisoInfo"></div>
+        <div id="dErro" class="cd-erro" role="alert"></div>
+        <div class="cd-acoes">
+          <button class="btn btn-primary btn-sm" id="dAvisar">Avisar o cliente</button>
+          <button class="btn btn-sm cd-btn-ok" id="dRenovado">Renovado</button>
+          <button class="btn btn-ghost btn-sm" id="dSalvar">Salvar alterações</button>
+          <button class="btn btn-danger btn-sm cd-excluir" id="dExcluir">Excluir</button>
+        </div>
+        <p class="cd-dica">Renovado: troque a validade pela do certificado novo e clique em Renovado — os avisos recomeçam do zero.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- AVISAR O CLIENTE -->
+  <div class="fa-modal-overlay" id="ovAviso">
+    <div class="fa-modal" role="dialog" aria-modal="true" aria-labelledby="aTitulo" style="max-width:600px;">
+      <div class="fa-modal-head"><h3 id="aTitulo">Avisar o cliente</h3><button class="fa-modal-close" id="aClose" aria-label="Fechar">&times;</button></div>
+      <div class="fa-modal-body">
+        <div class="cd-aviso-quem" id="aQuem"></div>
+        <label class="fa-field"><span>WhatsApp do cliente</span><input type="text" id="aDestino" class="input" placeholder="buscando…"></label>
+        <label class="fa-field"><span>Mensagem (dá pra editar antes de mandar)</span><textarea id="aMsg" class="input" rows="7"></textarea></label>
+        <div id="aStatus" class="cd-status" role="status" aria-live="polite"></div>
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-ghost" id="aCopiar">Copiar mensagem</button>
+        <button class="btn btn-ghost" id="aWhats">Abrir no WhatsApp</button>
+        <button class="btn btn-primary" id="aMarcar">Marcar como avisado</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { hojeLocal, formatDocumento } from './assets/js/utils.js';
+    import { nomePorEmail } from './assets/js/equipe.js';
+    import { situacao, etapaDoAviso, prazoEmPalavras, mensagemDoAviso, numeroWhats, ordenar, fmtData, diaDoAviso } from './assets/js/certificados.js';
+
+    const HOJE = hojeLocal();
+    const COLS = 'id, cliente_id, titular, tipo, validade, acompanhar, avisado_em, avisado_por, observacao, atualizado_em';
+    let certs = [];
+    let clientes = {};
+    let filtro = null;
+    let atual = null;
+    let quem = null;
+
+    const $ = id => document.getElementById(id);
+    const elLista = $('lista'), elVazio = $('vazio'), busca = $('busca');
+    function escapeHtml(t) { return String(t == null ? '' : t).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
+
+    (async () => {
+      const user = await getCurrentUser();
+      if (user) {
+        quem = nomePorEmail(user.email) || user.user_metadata?.full_name || user.email || null;
+        const n = user.user_metadata?.full_name || nomePorEmail(user.email) || user.email?.split('@')[0] || 'Usuário';
+        $('userName').textContent = n;
+        $('userAvatar').textContent = n.charAt(0).toUpperCase();
+      }
+      await carregarClientes();
+      await carregar();
+      const pedido = new URLSearchParams(location.search).get('c');
+      if (pedido && certs.some(c => c.id === pedido)) abrirDetalhe(pedido);
+    })();
+    $('btnLogout').addEventListener('click', signOut);
+
+    async function carregarClientes() {
+      const { data } = await supabase.todosClientes('id, nome_principal, documento');
+      const opcoes = [];
+      (data || []).forEach(c => {
+        clientes[c.id] = c;
+        const doc = c.documento ? ' · ' + formatDocumento(c.documento) : '';
+        opcoes.push('<option value="' + escapeHtml(c.id) + '">' + escapeHtml((c.nome_principal || '') + doc) + '</option>');
+      });
+      ['nCliente', 'dCliente'].forEach(id => { $(id).insertAdjacentHTML('beforeend', opcoes.join('')); });
+    }
+
+    async function carregar() {
+      const { data, error } = await supabase.from('certificados_digitais').select(COLS);
+      if (error) { elLista.innerHTML = '<p class="cd-erro">Não consegui carregar os certificados: ' + escapeHtml(error.message) + '</p>'; return; }
+      certs = data || [];
+      contar();
+      if (!filtro) filtro = certs.some(c => etapaDoAviso(c, HOJE)) ? 'avisar' : 'todos';
+      marcarFiltro();
+      render();
+    }
+
+    const noFiltro = {
+      avisar: c => !!etapaDoAviso(c, HOJE),
+      vence30: c => situacao(c, HOJE) === 'vence30',
+      vencido: c => situacao(c, HOJE) === 'vencido',
+      emdia: c => situacao(c, HOJE) === 'emdia',
+      parado: c => situacao(c, HOJE) === 'parado',
+      todos: c => c.acompanhar !== false
+    };
+    function contar() {
+      $('cAvisar').textContent = certs.filter(noFiltro.avisar).length;
+      $('cProx').textContent = certs.filter(noFiltro.vence30).length;
+      $('cVenc').textContent = certs.filter(noFiltro.vencido).length;
+      $('cEmDia').textContent = certs.filter(noFiltro.emdia).length;
+      $('cParado').textContent = certs.filter(noFiltro.parado).length;
+      $('cTodos').textContent = certs.filter(noFiltro.todos).length;
+    }
+    function marcarFiltro() {
+      document.querySelectorAll('.fa-focus-card').forEach(b => { const ativo = b.dataset.f === filtro; b.classList.toggle('is-active', ativo); b.setAttribute('aria-pressed', ativo ? 'true' : 'false'); });
+    }
+    document.querySelectorAll('.fa-focus-card').forEach(b => b.addEventListener('click', () => { filtro = b.dataset.f; marcarFiltro(); render(); }));
+    busca.addEventListener('input', render);
+
+    const nomeEmpresa = c => (c.cliente_id && clientes[c.cliente_id] && clientes[c.cliente_id].nome_principal) || '';
+    function textoDoAviso(c) {
+      const dia = diaDoAviso(c.avisado_em);
+      if (!dia) return 'Ainda não avisado';
+      return 'Avisado em ' + fmtData(dia) + (c.avisado_por ? ' por ' + c.avisado_por : '');
+    }
+    function pillSituacao(c) {
+      const s = situacao(c, HOJE);
+      if (s === 'parado') return '<span class="pill pill-conf">Não acompanha</span>';
+      if (s === 'vencido') return '<span class="pill pill-venc">Vencido</span>';
+      if (s === 'vence30') return '<span class="pill pill-prox">' + escapeHtml(prazoEmPalavras(c, HOJE).replace(/^vence/, 'Vence')) + '</span>';
+      return '<span class="pill pill-vig">Em dia</span>';
+    }
+
+    function render() {
+      const q = busca.value.trim().toLowerCase();
+      let itens = certs.filter(noFiltro[filtro] || noFiltro.todos);
+      if (q) itens = itens.filter(c => (c.titular + ' ' + nomeEmpresa(c) + ' ' + (c.observacao || '')).toLowerCase().includes(q));
+      itens = ordenar(itens, HOJE);
+      if (!itens.length) { elLista.innerHTML = ''; elVazio.hidden = false; return; }
+      elVazio.hidden = true;
+      elLista.innerHTML = itens.map(c => {
+        const etapa = etapaDoAviso(c, HOJE);
+        const emp = nomeEmpresa(c);
+        const vencido = situacao(c, HOJE) === 'vencido';
+        return '<div class="cd-card" data-id="' + escapeHtml(c.id) + '" tabindex="0" role="button" aria-label="Abrir o certificado de ' + escapeHtml(c.titular) + '">'
+          + '<div class="cd-info">'
+          + '<div class="cd-top"><span class="cd-titular">' + escapeHtml(c.titular) + '</span>'
+          + (c.tipo ? ' <span class="pill pill-tipo">' + escapeHtml(c.tipo) + '</span>' : '') + ' ' + pillSituacao(c)
+          + (etapa ? ' <span class="pill pill-avisar">Avisar agora</span>' : '') + '</div>'
+          + '<div class="cd-empresa">' + (emp ? escapeHtml(emp) : '<span class="cd-sem">sem empresa vinculada</span>') + '</div>'
+          + '<div class="cd-meta"><span class="' + (vencido ? 'cd-venc-atras' : '') + '">' + (vencido ? 'Venceu em ' : 'Vence em ') + fmtData(c.validade) + '</span>'
+          + '<span>' + escapeHtml(textoDoAviso(c)) + '</span>'
+          + (c.observacao ? '<span class="cd-obs">' + escapeHtml(c.observacao) + '</span>' : '') + '</div>'
+          + '</div>'
+          + (c.acompanhar !== false ? '<button class="btn btn-sm ' + (etapa ? 'btn-primary' : 'btn-ghost') + ' cd-btn-avisar" data-id="' + escapeHtml(c.id) + '">Avisar</button>' : '')
+          + '</div>';
+      }).join('');
+      elLista.querySelectorAll('.cd-card').forEach(el => {
+        el.addEventListener('click', () => abrirDetalhe(el.dataset.id));
+        el.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === el) { e.preventDefault(); abrirDetalhe(el.dataset.id); } });
+      });
+      elLista.querySelectorAll('.cd-btn-avisar').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); abrirAviso(b.dataset.id); }));
+    }
+
+    function trocarLinha(nova) {
+      const i = certs.findIndex(c => c.id === nova.id);
+      if (i >= 0) certs[i] = { ...certs[i], ...nova }; else certs.push(nova);
+      contar(); render();
+    }
+
+    /* ---------- NOVO ---------- */
+    const ovNovo = $('ovNovo');
+    function fecharNovo() { ovNovo.classList.remove('is-open'); ['nTitular', 'nCliente', 'nValidade', 'nObs'].forEach(id => { $(id).value = ''; }); $('nTipo').value = 'A1'; $('nErro').textContent = ''; }
+    $('btnNovo').addEventListener('click', () => { ovNovo.classList.add('is-open'); $('nTitular').focus(); });
+    $('nClose').addEventListener('click', fecharNovo);
+    $('nCancelar').addEventListener('click', fecharNovo);
+    ovNovo.addEventListener('click', e => { if (e.target === ovNovo) fecharNovo(); });
+    $('nCliente').addEventListener('change', () => {
+      const c = clientes[$('nCliente').value];
+      if (c && !$('nTitular').value.trim()) $('nTitular').value = c.nome_principal || '';
+    });
+    $('nSalvar').addEventListener('click', async () => {
+      const titular = $('nTitular').value.trim(), validade = $('nValidade').value;
+      if (!titular) { $('nErro').textContent = 'Informe o titular.'; return; }
+      if (!validade) { $('nErro').textContent = 'Informe a validade.'; return; }
+      const btn = $('nSalvar'); btn.disabled = true;
+      const novo = { titular, validade, cliente_id: $('nCliente').value || null, tipo: $('nTipo').value || null, observacao: $('nObs').value.trim() || null };
+      const { data, error } = await supabase.from('certificados_digitais').insert(novo).select(COLS).single();
+      btn.disabled = false;
+      if (error) { $('nErro').textContent = 'Não consegui salvar: ' + error.message; return; }
+      fecharNovo();
+      trocarLinha(data || novo);
+    });
+
+    /* ---------- DETALHE ---------- */
+    const ovDet = $('ovDet');
+    function fecharDet() { ovDet.classList.remove('is-open'); atual = null; $('dErro').textContent = ''; }
+    $('dClose').addEventListener('click', fecharDet);
+    ovDet.addEventListener('click', e => { if (e.target === ovDet) fecharDet(); });
+    function abrirDetalhe(id) {
+      atual = certs.find(c => c.id === id);
+      if (!atual) return;
+      const c = atual;
+      $('dTitulo').textContent = 'Certificado de ' + c.titular;
+      $('dTitular').value = c.titular || '';
+      $('dCliente').value = c.cliente_id && clientes[c.cliente_id] ? c.cliente_id : '';
+      $('dTipo').value = c.tipo || '';
+      $('dValidade').value = String(c.validade || '').slice(0, 10);
+      $('dObs').value = c.observacao || '';
+      $('dAcompanhar').checked = c.acompanhar !== false;
+      $('dAvisoInfo').textContent = textoDoAviso(c) + '.';
+      const s = situacao(c, HOJE), banner = $('dBanner');
+      if (s === 'vencido' || s === 'vence30') {
+        banner.hidden = false;
+        banner.className = 'cd-banner ' + (s === 'vencido' ? 'cd-banner-venc' : 'cd-banner-prox');
+        banner.textContent = (s === 'vencido' ? 'Venceu em ' + fmtData(c.validade) + ' (' + prazoEmPalavras(c, HOJE) + ').' : 'Vence em ' + fmtData(c.validade) + ' (' + prazoEmPalavras(c, HOJE) + ').')
+          + (etapaDoAviso(c, HOJE) ? ' Hora de avisar o cliente.' : '');
+      } else banner.hidden = true;
+      $('dAvisar').hidden = c.acompanhar === false;
+      $('dErro').textContent = '';
+      ovDet.classList.add('is-open');
+    }
+    function camposDoDetalhe() {
+      return {
+        titular: $('dTitular').value.trim(),
+        cliente_id: $('dCliente').value || null,
+        tipo: $('dTipo').value || null,
+        validade: $('dValidade').value,
+        observacao: $('dObs').value.trim() || null,
+        acompanhar: $('dAcompanhar').checked
+      };
+    }
+    async function gravar(patch, btn) {
+      if (!patch.titular) { $('dErro').textContent = 'Informe o titular.'; return false; }
+      if (!patch.validade) { $('dErro').textContent = 'Informe a validade.'; return false; }
+      btn.disabled = true;
+      const { error } = await supabase.from('certificados_digitais').update({ ...patch, atualizado_em: new Date().toISOString() }).eq('id', atual.id);
+      btn.disabled = false;
+      if (error) { $('dErro').textContent = 'Não consegui salvar: ' + error.message; return false; }
+      trocarLinha({ id: atual.id, ...patch });
+      return true;
+    }
+    $('dSalvar').addEventListener('click', async () => {
+      if (!atual) return;
+      if (await gravar(camposDoDetalhe(), $('dSalvar'))) fecharDet();
+    });
+    $('dRenovado').addEventListener('click', async () => {
+      if (!atual) return;
+      const patch = camposDoDetalhe();
+      if (!patch.validade || patch.validade <= String(atual.validade || '').slice(0, 10)) {
+        $('dErro').textContent = 'Troque a validade pela do certificado novo (depois de ' + fmtData(atual.validade) + ') e clique em Renovado de novo.';
+        $('dValidade').focus();
+        return;
+      }
+      if (await gravar({ ...patch, acompanhar: true, avisado_em: null, avisado_por: null }, $('dRenovado'))) fecharDet();
+    });
+    $('dExcluir').addEventListener('click', async () => {
+      if (!atual) return;
+      if (!confirm('Excluir o certificado de ' + atual.titular + '? Se ele só não precisa mais de aviso, desmarque "Acompanhar este certificado".')) return;
+      const { error } = await supabase.from('certificados_digitais').delete().eq('id', atual.id);
+      if (error) { $('dErro').textContent = 'Não consegui excluir: ' + error.message; return; }
+      certs = certs.filter(c => c.id !== atual.id);
+      fecharDet(); contar(); render();
+    });
+    $('dAvisar').addEventListener('click', () => { if (atual) { const id = atual.id; fecharDet(); abrirAviso(id); } });
+
+    /* ---------- AVISAR O CLIENTE ---------- */
+    const ovAviso = $('ovAviso');
+    let avisoDe = null;
+    function fecharAviso() { ovAviso.classList.remove('is-open'); avisoDe = null; }
+    $('aClose').addEventListener('click', fecharAviso);
+    ovAviso.addEventListener('click', e => { if (e.target === ovAviso) fecharAviso(); });
+
+    // o WhatsApp do cliente: o da última cobrança, o dos contatos (o principal primeiro) ou o telefone do cadastro
+    async function resolverDestino(clienteId) {
+      if (!clienteId) return '';
+      const achados = [];
+      const { data: cob } = await supabase.from('cobrancas_mensais').select('destino, competencia').eq('cliente_id', clienteId).not('destino', 'is', null);
+      (cob || []).sort((a, b) => String(b.competencia || '').localeCompare(String(a.competencia || ''))).forEach(c => achados.push(c.destino));
+      const { data: cts } = await supabase.from('contatos').select('telefone, eh_principal').eq('cliente_id', clienteId);
+      (cts || []).sort((a, b) => (b.eh_principal ? 1 : 0) - (a.eh_principal ? 1 : 0)).forEach(c => achados.push(c.telefone));
+      const { data: cli } = await supabase.from('clientes').select('telefone_principal').eq('id', clienteId);
+      (cli || []).forEach(c => achados.push(c.telefone_principal));
+      return achados.find(t => numeroWhats(t)) || '';
+    }
+
+    async function abrirAviso(id) {
+      const c = certs.find(x => x.id === id);
+      if (!c) return;
+      avisoDe = c;
+      $('aQuem').innerHTML = '<strong>' + escapeHtml(c.titular) + '</strong>' + (c.tipo ? ' · ' + escapeHtml(c.tipo) : '')
+        + ' · ' + escapeHtml((situacao(c, HOJE) === 'vencido' ? 'venceu em ' : 'vence em ') + fmtData(c.validade)) + ' · ' + escapeHtml(textoDoAviso(c).toLowerCase());
+      $('aMsg').value = mensagemDoAviso(c, HOJE);
+      $('aStatus').textContent = '';
+      const dEl = $('aDestino');
+      dEl.value = ''; dEl.placeholder = 'buscando…';
+      ovAviso.classList.add('is-open');
+      const destino = await resolverDestino(c.cliente_id);
+      if (avisoDe !== c) return;
+      dEl.value = destino;
+      dEl.placeholder = c.cliente_id ? 'sem WhatsApp no cadastro: digite o número' : 'sem empresa vinculada: digite o número';
+    }
+
+    $('aCopiar').addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText($('aMsg').value); $('aStatus').textContent = '✓ Mensagem copiada.'; }
+      catch (e) { $('aStatus').textContent = 'Não deu pra copiar: selecione o texto e copie.'; }
+    });
+    $('aWhats').addEventListener('click', () => {
+      const num = numeroWhats($('aDestino').value);
+      if (!num) { $('aStatus').textContent = 'O número não parece um WhatsApp: confira o DDD e os dígitos.'; $('aDestino').focus(); return; }
+      window.open('https://wa.me/' + num + '?text=' + encodeURIComponent($('aMsg').value), '_blank', 'noopener');
+      $('aStatus').textContent = 'Mandou? Clique em "Marcar como avisado" pra registrar.';
+    });
+    $('aMarcar').addEventListener('click', async () => {
+      if (!avisoDe) return;
+      const c = avisoDe, btn = $('aMarcar');
+      btn.disabled = true;
+      const patch = { avisado_em: new Date().toISOString(), avisado_por: quem };
+      const { error } = await supabase.from('certificados_digitais').update({ ...patch, atualizado_em: new Date().toISOString() }).eq('id', c.id);
+      btn.disabled = false;
+      if (error) { $('aStatus').textContent = 'Não consegui registrar: ' + error.message; return; }
+      fecharAviso();
+      trocarLinha({ id: c.id, ...patch });
+    });
+  </script>
+
+  <style>
+    .fa-focus { display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin-bottom:22px; }
+    .fa-focus-card { background:var(--fill-1); border:1px solid var(--line); border-radius:14px; padding:14px 16px; cursor:pointer; text-align:left; transition:border-color .15s, background .15s; display:flex; flex-direction:column; gap:4px; color:inherit; font:inherit; }
+    .fa-focus-card:hover { border-color:rgba(138,174,200,.4); }
+    .fa-focus-card.is-active { border-color:var(--brand-primary); background:rgba(91,130,166,.10); }
+    .fc-num { font-size:24px; font-weight:700; color:var(--text); line-height:1; }
+    .fc-lbl { font-size:12px; color:var(--text-muted); }
+    .fa-focus-card.fc-danger .fc-num { color:var(--err); }
+    .fa-toolbar-actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+
+    .cd-card { display:flex; gap:14px; align-items:center; background:var(--fill-1); border:1px solid var(--line); border-radius:14px; padding:14px 18px; margin-bottom:10px; cursor:pointer; transition:border-color .15s; }
+    .cd-card:hover, .cd-card:focus-visible { border-color:rgba(138,174,200,.45); }
+    .cd-info { flex:1; min-width:0; }
+    .cd-top { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .cd-titular { font-weight:600; color:var(--text); font-size:15px; }
+    .cd-empresa { color:var(--brand-pale); font-size:14px; margin-top:3px; }
+    .cd-sem { color:var(--warn); }
+    .cd-meta { color:var(--text-muted); font-size:13px; margin-top:6px; display:flex; gap:16px; flex-wrap:wrap; }
+    .cd-venc-atras { color:var(--err); font-weight:600; }
+    .cd-obs { font-style:italic; }
+
+    .pill { font-size:12px; padding:2px 10px; border-radius:999px; border:1px solid; }
+    .pill-tipo { color:var(--brand-light); border-color:rgba(91,130,166,.35); }
+    .pill-conf { color:var(--text-muted); border-color:rgba(138,147,166,.45); }
+    .pill-vig { color:var(--ok); border-color:rgba(63,176,122,.45); }
+    .pill-prox { color:var(--warn); border-color:rgba(227,179,65,.45); }
+    .pill-venc { color:var(--err); border-color:rgba(224,108,108,.5); }
+    .pill-avisar { color:var(--err); border-color:rgba(224,108,108,.5); background:rgba(224,108,108,.10); font-weight:600; }
+
+    .fa-modal-overlay { position:fixed; inset:0; background:var(--overlay); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
+    .fa-modal-overlay.is-open { display:flex; }
+    .fa-modal { width:100%; max-width:520px; max-height:calc(100vh - 40px); overflow:auto; background:var(--surface); border:1px solid var(--fill-3); border-radius:16px; }
+    .fa-modal-head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid var(--line); }
+    .fa-modal-head h3 { margin:0; color:var(--text); font-size:18px; }
+    .fa-modal-close { background:none; border:none; color:var(--text-muted); font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }
+    .fa-modal-close:hover { color:var(--text); }
+    .fa-modal-body { padding:22px; display:flex; flex-direction:column; gap:14px; }
+    .fa-field { display:flex; flex-direction:column; gap:6px; }
+    .fa-field > span { font-size:13px; color:var(--brand-light); }
+    .fa-field-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .fa-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid var(--line); flex-wrap:wrap; }
+    .fa-modal textarea.input { resize:vertical; font-family:inherit; }
+
+    .cd-check { display:flex; gap:8px; align-items:center; font-size:14px; color:var(--text); cursor:pointer; }
+    .cd-aviso-info { font-size:13px; color:var(--text-muted); }
+    .cd-aviso-quem { font-size:14px; color:var(--text-muted); line-height:1.5; }
+    .cd-aviso-quem strong { color:var(--text); }
+    .cd-acoes { display:flex; gap:10px; flex-wrap:wrap; }
+    .cd-excluir { margin-left:auto; }
+    .cd-btn-ok { background:var(--ok); border-color:var(--ok); color:#0c1116; }
+    .cd-btn-ok:hover { filter:brightness(1.07); }
+    [data-theme="light"] .cd-btn-ok { color:#fff; }
+    .cd-dica { margin:0; font-size:12.5px; color:var(--text-dim); }
+    .cd-erro { color:var(--err); font-size:13px; }
+    .cd-erro:empty { display:none; }
+    .cd-status { font-size:13px; color:var(--text-muted); min-height:1em; }
+    .cd-banner { border-radius:10px; padding:8px 12px; font-size:13px; border:1px solid; }
+    .cd-banner-venc { background:rgba(224,108,108,.12); border-color:rgba(224,108,108,.4); color:var(--err); }
+    .cd-banner-prox { background:rgba(227,179,65,.12); border-color:rgba(227,179,65,.4); color:var(--warn); }
+
+    @media (max-width:720px) {
+      .fa-focus { grid-template-columns:repeat(2,1fr); }
+      .fa-field-row { grid-template-columns:1fr; }
+      .cd-card { flex-direction:column; align-items:stretch; }
+      .cd-excluir { margin-left:0; }
+    }
+  </style>
+</body>
+</html>
