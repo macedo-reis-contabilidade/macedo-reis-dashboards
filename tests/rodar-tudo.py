@@ -6,6 +6,7 @@
 
 Pega sozinho:
   - todos os `tests/*.test.mjs` (com o node);
+  - todos os `tests/*.test.py` (com o Python — ex.: o da ponte do Domínio, que não abre tela);
   - todos os testes de comportamento em `tests/harness/*.py` (o `conferir.py` fica de fora: é ferramenta
     de fotografar tela, não teste).
 Teste novo não precisa ser inscrito em lugar nenhum — basta o arquivo estar na pasta.
@@ -29,8 +30,9 @@ TEMPOS = RAIZ / '.harness' / 'tempos-dos-testes.json'
 
 def alvos():
     mjs = sorted((RAIZ / 'tests').glob('*.test.mjs'))
+    tpy = sorted((RAIZ / 'tests').glob('*.test.py'))
     py = sorted(p for p in (RAIZ / 'tests' / 'harness').glob('*.py') if p.name != 'conferir.py')
-    return [(['node', str(f)], f) for f in mjs] + [([sys.executable, str(f)], f) for f in py]
+    return [(['node', str(f)], f) for f in mjs] + [([sys.executable, str(f)], f) for f in tpy + py]
 
 def opcoes(args):
     if '--um-por-vez' in args: return 1
