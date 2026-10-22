@@ -106,7 +106,7 @@ export const TABELAS = {
     cols: ['id', 'cliente_id', 'titular', 'tipo', 'certificadora', 'validade', 'acompanhar', 'avisado_em', 'avisado_por', 'observacao', 'atualizado_em'],
     padrao: ['cliente_id', 'titular', 'tipo', 'certificadora', 'validade', 'avisado_em', 'avisado_por'],
     notas: { tipo: 'A1 (arquivo) | A3 (cartão ou token) | vazio = não informado', titular: 'o nome no certificado (empresa ou pessoa)', cliente_id: 'vazio = sem empresa vinculada',
-      certificadora: 'quem emitiu o certificado (obrigatória no cadastro desde 22/10/2026 · vazia = não informada: os que vieram da planilha de controle, que não tinha a coluna)',
+      certificadora: 'quem emitiu o certificado. Desde 22/10/2026 a tela a exige no certificado novo e no Renovado · vazia = não informada: os que vieram da planilha de controle, que não tinha a coluna (deles, a tela só pede a certificadora no Renovado · editar outro campo não exige)',
       acompanhar: 'false = não acompanha mais (fica fora dos avisos)', avisado_em: 'a última vez que o cliente foi avisado (vazio = ainda não, neste vencimento)' } },
   admissoes: { rotulo: 'as admissões', desc: 'Admissões de funcionários que as empresas mandam pelo link (tela Admissões). As respostas do formulário não são lidas.',
     cols: ['id', 'cliente_id', 'empresa_nome', 'contato_nome', 'origem', 'funcionario_nome', 'data_inicio', 'responsavel', 'status', 'documentos', 'drive_pasta_url', 'observacoes',
