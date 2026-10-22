@@ -103,9 +103,10 @@ export const TABELAS = {
   // os certificados digitais dos clientes (Societário › Certificados digitais, 22/10/2026): o escritório só avisa o cliente
   certificados_digitais: { rotulo: 'os certificados digitais dos clientes',
     desc: 'Os certificados digitais A1 e A3 dos clientes e a validade (tela Certificados digitais, no Societário). O escritório não emite nem agenda o certificado: só avisa o cliente antes de vencer (a 30 dias e, se não renovou, a 7), e quem avisa é a Deize. Renovado = a validade nova no lugar da antiga.',
-    cols: ['id', 'cliente_id', 'titular', 'tipo', 'validade', 'acompanhar', 'avisado_em', 'avisado_por', 'observacao', 'atualizado_em'],
-    padrao: ['cliente_id', 'titular', 'tipo', 'validade', 'avisado_em', 'avisado_por'],
+    cols: ['id', 'cliente_id', 'titular', 'tipo', 'certificadora', 'validade', 'acompanhar', 'avisado_em', 'avisado_por', 'observacao', 'atualizado_em'],
+    padrao: ['cliente_id', 'titular', 'tipo', 'certificadora', 'validade', 'avisado_em', 'avisado_por'],
     notas: { tipo: 'A1 (arquivo) | A3 (cartão ou token) | vazio = não informado', titular: 'o nome no certificado (empresa ou pessoa)', cliente_id: 'vazio = sem empresa vinculada',
+      certificadora: 'quem emitiu o certificado (obrigatória no cadastro desde 22/10/2026 · vazia = não informada: os que vieram da planilha de controle, que não tinha a coluna)',
       acompanhar: 'false = não acompanha mais (fica fora dos avisos)', avisado_em: 'a última vez que o cliente foi avisado (vazio = ainda não, neste vencimento)' } },
   admissoes: { rotulo: 'as admissões', desc: 'Admissões de funcionários que as empresas mandam pelo link (tela Admissões). As respostas do formulário não são lidas.',
     cols: ['id', 'cliente_id', 'empresa_nome', 'contato_nome', 'origem', 'funcionario_nome', 'data_inicio', 'responsavel', 'status', 'documentos', 'drive_pasta_url', 'observacoes',
@@ -637,7 +638,7 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
       q('tarefas_recorrentes?select=setor,titulo,periodicidade,dia_vencimento,mes_vencimento,responsavel&cliente_id=eq.' + id + '&ativo=eq.true&order=setor.asc,id.asc&limit=40', { contar: true }),
       q('cliente_obrigacoes?select=obrigacao_id,responsavel,dia_prazo_override&cliente_id=eq.' + id + '&ativo=eq.true'),
       q('alvaras?select=tipo,numero,vencimento,status,responsavel&cliente_id=eq.' + id + '&order=vencimento.asc.nullslast'),
-      q('certificados_digitais?select=titular,tipo,validade,acompanhar,avisado_em&cliente_id=eq.' + id + '&order=validade.asc'),
+      q('certificados_digitais?select=titular,tipo,certificadora,validade,acompanhar,avisado_em&cliente_id=eq.' + id + '&order=validade.asc'),
       q('admissoes?select=funcionario_nome,data_inicio,status,responsavel,criado_em&cliente_id=eq.' + id + '&order=criado_em.desc&limit=5', { contar: true }),
       q('rescisoes?select=funcionario_nome,tipo,ultimo_dia,data_acerto,status,responsavel&cliente_id=eq.' + id + '&order=criado_em.desc&limit=5', { contar: true }),
       q('rt_casos?select=id,triagem,decisao,status,comunicado_em,sim_custo_dentro&cliente_id=eq.' + id),
@@ -704,7 +705,7 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
       partes.push('Obrigações: ' + obr.linhas.map(o => { const x = nomes.get(o.obrigacao_id) || {}; return (x.nome || 'obrigação') + ' (' + (x.periodicidade || '—') + ', dia ' + (o.dia_prazo_override || x.dia_prazo || '—') + (o.responsavel ? ', ' + o.responsavel : '') + ')'; }).join(' · '));
     }
     sec('Alvarás', alv, ls => ls.map(x => x.tipo + (x.numero ? ' nº ' + x.numero : '') + ', vence ' + dataBR(x.vencimento) + (x.vencimento && String(x.vencimento) < hoje ? ' (VENCIDO)' : '') + ', ' + situacao(x.status)).join(' · '), 'nenhum');
-    sec('Certificados digitais', cert, ls => ls.map(x => (x.tipo ? x.tipo + ' ' : '') + 'de ' + x.titular + ', vence ' + dataBR(x.validade)
+    sec('Certificados digitais', cert, ls => ls.map(x => (x.tipo ? x.tipo + ' ' : '') + 'de ' + x.titular + (x.certificadora ? ' (certificadora ' + x.certificadora + ')' : '') + ', vence ' + dataBR(x.validade)
       + (x.validade && String(x.validade) < hoje ? ' (VENCIDO)' : '') + (x.acompanhar === false ? ', não acompanha mais' : '')
       + (x.avisado_em ? ', cliente avisado em ' + diaDoMomento(x.avisado_em) : '')).join(' · '), 'nenhum cadastrado');
     sec('Admissões', adm, (ls, total) => (total || ls.length) + ' — ' + ls.map(x => x.funcionario_nome + ' (início ' + dataBR(x.data_inicio) + ', ' + (x.status === 'respondida' ? 'recebida, a registrar' : situacao(x.status)) + ')').join(' · '), 'nenhuma');

@@ -7,11 +7,14 @@ conferir.py, com os certificados semeados só neste teste; nomes e números inve
 
 Confere:
   1. a tela abre em "Avisar agora" (há o que avisar), com os números de cada filtro e só quem precisa de aviso na lista;
+     a certificadora no card (ou "não informada"), as já usadas sugeridas ao digitar (uma vez cada) e a busca por ela;
   2. "Avisar": a janela traz o WhatsApp da última cobrança e a mensagem pronta; "Abrir no WhatsApp" abre o wa.me com o
      número e o texto; "Marcar como avisado" grava quando e quem, e o certificado sai de "Avisar agora";
-  3. o detalhe do vencido sem empresa: o aviso de vencido, ligar a empresa, "Renovado" sem trocar a validade não grava
-     (e diz o que fazer), com a validade nova grava, limpa o aviso antigo e o certificado vai pra "Em dia";
-  4. "+ Novo certificado": sem a validade, não grava; com ela, aparece na lista;
+  3. o detalhe do vencido sem empresa (veio da planilha, sem a certificadora): o aviso de vencido, ligar a empresa,
+     "Renovado" sem trocar a validade não grava (e diz o que fazer), sem a certificadora do certificado novo também não,
+     com as duas grava (a certificadora na grafia da já usada), limpa o aviso antigo e o certificado vai pra "Em dia";
+     editar um que veio sem a certificadora não trava; a certificadora informada não se apaga;
+  4. "+ Novo certificado": sem a certificadora e sem a validade, não grava; com elas, aparece na lista;
   5. o link do vigia (?c=…) abre o certificado; Esc fecha a janela;
   6. texto de fora entra como texto (o titular com <img onerror>);
   7. o card no Societário: "2 a avisar";
@@ -26,19 +29,20 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from conferir import montar_site, servir
 
 # 22/10/2026: a de 20 dias e a vencida há 5 precisam de aviso; a de 10 dias já foi avisada na janela; uma em dia; uma que
-# ninguém acompanha mais; e uma com o titular "perigoso" (em dia), pra conferir o escape
+# ninguém acompanha mais; e uma com o titular "perigoso" (em dia), pra conferir o escape. A vencida e a que ninguém
+# acompanha vieram da planilha, sem a certificadora; a Certisign aparece em duas grafias
 SEMEAR = """
 (() => {
   let db;
   Object.defineProperty(window, '__mockDb', { configurable: true, get() { return db; }, set(v) {
     db = v;
     v.certificados_digitais = [
-      { id: 'k1', cliente_id: 'c1', titular: 'COMÉRCIO MODELO', tipo: 'A1', validade: '2026-11-11', acompanhar: true, avisado_em: null, avisado_por: null, observacao: 'Repassado a CertPar', atualizado_em: null },
-      { id: 'k2', cliente_id: null, titular: 'OFICINA INVENTADA', tipo: 'A3', validade: '2026-10-17', acompanhar: true, avisado_em: null, avisado_por: null, observacao: null, atualizado_em: null },
-      { id: 'k3', cliente_id: 'c2', titular: 'EMPRESA EXEMPLO', tipo: 'A1', validade: '2026-11-01', acompanhar: true, avisado_em: '2026-10-05T15:00:00Z', avisado_por: 'Deize', observacao: null, atualizado_em: null },
-      { id: 'k4', cliente_id: 'c2', titular: 'EMPRESA EXEMPLO FILIAL', tipo: 'A1', validade: '2027-05-10', acompanhar: true, avisado_em: null, avisado_por: null, observacao: null, atualizado_em: null },
-      { id: 'k5', cliente_id: null, titular: 'ANTIGO CLIENTE', tipo: 'A1', validade: '2026-10-25', acompanhar: false, avisado_em: null, avisado_por: null, observacao: null, atualizado_em: null },
-      { id: 'k6', cliente_id: null, titular: '<img src=x onerror="window.__pego=1">', tipo: null, validade: '2027-08-01', acompanhar: true, avisado_em: null, avisado_por: null, observacao: null, atualizado_em: null },
+      { id: 'k1', cliente_id: 'c1', titular: 'COMÉRCIO MODELO', tipo: 'A1', certificadora: 'Certisign', validade: '2026-11-11', acompanhar: true, avisado_em: null, avisado_por: null, observacao: 'Repassado a CertPar', atualizado_em: null },
+      { id: 'k2', cliente_id: null, titular: 'OFICINA INVENTADA', tipo: 'A3', certificadora: null, validade: '2026-10-17', acompanhar: true, avisado_em: null, avisado_por: null, observacao: null, atualizado_em: null },
+      { id: 'k3', cliente_id: 'c2', titular: 'EMPRESA EXEMPLO', tipo: 'A1', certificadora: 'CERTISIGN', validade: '2026-11-01', acompanhar: true, avisado_em: '2026-10-05T15:00:00Z', avisado_por: 'Deize', observacao: null, atualizado_em: null },
+      { id: 'k4', cliente_id: 'c2', titular: 'EMPRESA EXEMPLO FILIAL', tipo: 'A1', certificadora: 'Serasa Experian', validade: '2027-05-10', acompanhar: true, avisado_em: null, avisado_por: null, observacao: null, atualizado_em: null },
+      { id: 'k5', cliente_id: null, titular: 'ANTIGO CLIENTE', tipo: 'A1', certificadora: null, validade: '2026-10-25', acompanhar: false, avisado_em: null, avisado_por: null, observacao: null, atualizado_em: null },
+      { id: 'k6', cliente_id: null, titular: '<img src=x onerror="window.__pego=1">', tipo: null, certificadora: 'Certisign', validade: '2027-08-01', acompanhar: true, avisado_em: null, avisado_por: null, observacao: null, atualizado_em: null },
     ];
     v.cobrancas_mensais = (v.cobrancas_mensais || []).concat([
       { id: 'cb1', cliente_id: 'c1', competencia: '2026-08', destino: '51 3333-0000', valor: 100 },
@@ -94,6 +98,13 @@ def main():
         p.click('.fa-focus-card[data-f="todos"]')
         ok(set(ids_na_lista(p)) == {'k1', 'k2', 'k3', 'k4', 'k6'}, f'"Todos" = os acompanhados ({ids_na_lista(p)})')
         ok('Avisado em 05/10/2026 por Deize' in p.inner_text('.cd-card[data-id="k3"]'), 'o já avisado mostra quando e quem')
+        ok('Certificadora: Certisign' in p.inner_text('.cd-card[data-id="k1"]') and 'Certificadora não informada' in p.inner_text('.cd-card[data-id="k2"]'),
+           'a certificadora no card; a que veio sem ela, "Certificadora não informada"')
+        sug = p.eval_on_selector_all('#listaCertificadoras option', 'els => els.map(e => e.value)')
+        ok(sug == ['Certisign', 'Serasa Experian'], f'as certificadoras já usadas, sugeridas uma vez cada, na grafia mais usada ({sug})')
+        p.fill('#busca', 'serasa')
+        ok(ids_na_lista(p) == ['k4'], f'a busca acha pela certificadora ({ids_na_lista(p)})')
+        p.fill('#busca', '')
 
         print('2. Avisar o cliente')
         p.click('.cd-card[data-id="k1"] .cd-btn-avisar')
@@ -122,15 +133,41 @@ def main():
         ok('Troque a validade' in p.inner_text('#dErro') and linha(p, 'k2')['validade'] == '2026-10-17', 'Renovado sem trocar a validade não grava e diz o que fazer')
         p.fill('#dValidade', '2027-10-17')
         p.click('#dRenovado')
+        foco = p.evaluate('() => document.activeElement && document.activeElement.id')
+        ok(p.inner_text('#dErro') == 'Informe a certificadora do certificado novo.' and foco == 'dCertificadora' and linha(p, 'k2')['validade'] == '2026-10-17',
+           f'veio sem a certificadora: o Renovado pede a do certificado novo, com o cursor nela, e não grava ({p.inner_text("#dErro")!r}, {foco})')
+        p.fill('#dCertificadora', '  serasa experian ')
+        p.click('#dRenovado')
         p.wait_for_selector('#ovDet:not(.is-open)', state='attached', timeout=3000)
         r = linha(p, 'k2')
         ok(r['validade'] == '2027-10-17' and r['cliente_id'] == 'c2' and r['avisado_em'] is None and r['acompanhar'] is True, f'renovado: validade nova, empresa ligada, aviso limpo ({r})')
+        ok(r['certificadora'] == 'Serasa Experian', f'a certificadora digitada fica com a grafia da já usada ({r["certificadora"]!r})')
         p.click('.fa-focus-card[data-f="emdia"]')
         ok('k2' in ids_na_lista(p) and 'EMPRESA EXEMPLO LTDA' in p.inner_text('.cd-card[data-id="k2"]'), 'foi pra "Em dia", com a empresa')
+
+        print('3b. A certificadora nos que já existem')
+        p.click('.fa-focus-card[data-f="parado"]')
+        p.click('.cd-card[data-id="k5"]'); p.wait_for_selector('#ovDet.is-open', timeout=3000)
+        p.fill('#dObs', 'Saiu da carteira')
+        p.click('#dSalvar')
+        p.wait_for_selector('#ovDet:not(.is-open)', state='attached', timeout=3000)
+        r = linha(p, 'k5')
+        ok(r['observacao'] == 'Saiu da carteira' and r['certificadora'] is None, f'veio sem a certificadora: editar sem ela não trava ({r})')
+        p.click('.fa-focus-card[data-f="emdia"]')
+        p.click('.cd-card[data-id="k4"]'); p.wait_for_selector('#ovDet.is-open', timeout=3000)
+        ok(p.input_value('#dCertificadora') == 'Serasa Experian', 'a ficha mostra a certificadora')
+        p.fill('#dCertificadora', '')
+        p.click('#dSalvar')
+        ok(p.inner_text('#dErro') == 'Informe a certificadora.' and linha(p, 'k4')['certificadora'] == 'Serasa Experian', 'a certificadora informada não se apaga')
+        p.click('#dClose')
 
         print('4. Novo certificado')
         p.click('#btnNovo'); p.wait_for_selector('#ovNovo.is-open', timeout=3000)
         p.fill('#nTitular', 'LOJA NOVA')
+        p.click('#nSalvar')
+        foco = p.evaluate('() => document.activeElement && document.activeElement.id')
+        ok(p.inner_text('#nErro') == 'Informe a certificadora.' and foco == 'nCertificadora', f'sem a certificadora, não grava, e o cursor vai pra ela ({p.inner_text("#nErro")!r}, {foco})')
+        p.fill('#nCertificadora', 'certisign')
         p.click('#nSalvar')
         ok(p.inner_text('#nErro') == 'Informe a validade.', 'sem a validade, não grava')
         p.fill('#nValidade', '2027-03-15'); p.select_option('#nTipo', 'A3')
@@ -138,7 +175,8 @@ def main():
         p.wait_for_selector('#ovNovo:not(.is-open)', state='attached', timeout=3000)
         nova = p.evaluate("() => window.__mockDb.certificados_digitais.find(x => x.titular === 'LOJA NOVA')")
         p.click('.fa-focus-card[data-f="todos"]')
-        ok(nova and nova['tipo'] == 'A3' and nova['validade'] == '2027-03-15' and 'LOJA NOVA' in p.inner_text('#lista'), 'com ela, grava e aparece na lista')
+        ok(nova and nova['tipo'] == 'A3' and nova['validade'] == '2027-03-15' and nova['certificadora'] == 'Certisign' and 'LOJA NOVA' in p.inner_text('#lista'),
+           f'com elas, grava (a certificadora na grafia da já usada) e aparece na lista ({nova and nova.get("certificadora")!r})')
 
         print('5. O link do vigia e o Esc')
         p.goto(base + 'societario-certificados.html?c=k3')

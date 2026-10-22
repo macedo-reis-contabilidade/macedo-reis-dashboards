@@ -6,7 +6,8 @@
 //   - a 30 dias ou menos do vencimento, sem aviso nessa janela;
 //   - a 7 dias ou menos, sem aviso depois dos 7 dias (o primeiro aviso não bastou: o certificado não foi renovado);
 //   - vencido há até 30 dias, sem aviso depois do vencimento (depois disso, só a lista mostra).
-// Renovou: a validade nova recomeça a conta. Testes no node: tests/certificados.test.mjs.
+// Renovou: a validade nova recomeça a conta. A certificadora é obrigatória no cadastro (abaixo).
+// Testes no node: tests/certificados.test.mjs.
 // ============================================================
 
 export const AVISO_DIAS = 30;
@@ -89,6 +90,49 @@ export function numeroWhats(texto) {
   const dig = String(texto || '').replace(/\D/g, '');
   if (dig.length < 10 || dig.length > 13) return null;
   return dig.length <= 11 ? '55' + dig : dig;
+}
+
+// ---------- a certificadora (22/10/2026, pedido da Adaini: obrigatória no cadastro) ----------
+// A planilha importada não tinha a coluna: os certificados que vieram dela estão sem a certificadora, que é pedida quando
+// o certificado é renovado (o Renovado é o cadastro do certificado novo). Só ligar a empresa, anotar ou deixar de
+// acompanhar um desses não trava; e a certificadora informada não se apaga.
+
+const chave = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+const limpo = t => String(t || '').replace(/\s+/g, ' ').trim();
+
+/** As certificadoras já usadas, pra sugerir ao digitar: cada uma uma vez (sem diferenciar maiúscula, acento e espaço),
+ *  na grafia mais usada, em ordem alfabética. */
+export function certificadorasDe(lista) {
+  const porChave = new Map();
+  (lista || []).forEach(c => {
+    const nome = limpo(c && c.certificadora);
+    if (!nome) return;
+    const grafias = porChave.get(chave(nome)) || new Map();
+    grafias.set(nome, (grafias.get(nome) || 0) + 1);
+    porChave.set(chave(nome), grafias);
+  });
+  return [...porChave.values()]
+    .map(g => [...g.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'pt-BR'))[0][0])
+    .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
+/** A certificadora digitada, na grafia de uma já usada quando é a mesma ("certisign" vira "Certisign"); '' se vazia. */
+export function grafiaDaCertificadora(texto, conhecidas) {
+  const nome = limpo(texto);
+  if (!nome) return '';
+  return (conhecidas || []).find(x => chave(x) === chave(nome)) || nome;
+}
+
+/** O primeiro campo obrigatório que falta no cadastro ({ campo, texto }) ou null: o titular, a certificadora e a validade.
+ *  antes = o certificado como estava (na edição); renovando = o Renovado. */
+export function faltaNoCadastro(c, { antes = null, renovando = false } = {}) {
+  if (!limpo(c && c.titular)) return { campo: 'titular', texto: 'Informe o titular.' };
+  const exige = !antes || renovando || !!limpo(antes.certificadora);
+  if (exige && !limpo(c && c.certificadora)) {
+    return { campo: 'certificadora', texto: renovando ? 'Informe a certificadora do certificado novo.' : 'Informe a certificadora.' };
+  }
+  if (!(c && c.validade)) return { campo: 'validade', texto: 'Informe a validade.' };
+  return null;
 }
 
 /** A ordem da lista: quem precisa de aviso primeiro, depois pela validade (a que vence antes em cima). */

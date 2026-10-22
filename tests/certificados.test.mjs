@@ -1,6 +1,7 @@
 // Os certificados digitais dos clientes (assets/js/certificados.js, 22/10/2026): quando avisar (a regra do vigia), a
-// situação na lista, a mensagem e o número do WhatsApp. Dados inventados. Rodar com: node tests/certificados.test.mjs
-import { diasEntre, somaDias, fmtData, situacao, etapaDoAviso, prazoEmPalavras, mensagemDoAviso, numeroWhats, ordenar, diaDoAviso } from '../assets/js/certificados.js';
+// situação na lista, a mensagem, o número do WhatsApp e a certificadora. Dados inventados. Rodar com: node tests/certificados.test.mjs
+import { diasEntre, somaDias, fmtData, situacao, etapaDoAviso, prazoEmPalavras, mensagemDoAviso, numeroWhats, ordenar, diaDoAviso,
+  certificadorasDe, grafiaDaCertificadora, faltaNoCadastro } from '../assets/js/certificados.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + JSON.stringify(extra) : '')); };
@@ -44,6 +45,22 @@ console.log('O número do WhatsApp:');
 chk('com DDD ganha o 55', numeroWhats('(51) 99876-5432') === '5551998765432' && numeroWhats('51 3546-1234') === '555135461234');
 chk('com o 55 fica como está', numeroWhats('+55 51 99876-5432') === '5551998765432');
 chk('curto ou longo demais, nada', numeroWhats('9876-5432') === null && numeroWhats('') === null && numeroWhats('12345678901234') === null);
+
+console.log('A certificadora:');
+const usadas = certificadorasDe([{ certificadora: 'Certisign' }, { certificadora: ' CERTISIGN ' }, { certificadora: 'Certisign' }, { certificadora: 'Serasa  Experian' },
+  { certificadora: 'Ácme' }, { certificadora: 'acme' }, { certificadora: null }, { certificadora: '  ' }, {}]);
+chk('as já usadas: uma vez cada, na grafia mais usada, em ordem', JSON.stringify(usadas) === JSON.stringify(['acme', 'Certisign', 'Serasa Experian']), usadas);
+chk('no empate de grafia, a primeira em ordem', certificadorasDe([{ certificadora: 'Ácme' }, { certificadora: 'acme' }]).length === 1);
+chk('a digitada fica com a grafia de uma já usada', grafiaDaCertificadora(' certisign ', usadas) === 'Certisign' && grafiaDaCertificadora('SERASA experian', usadas) === 'Serasa Experian');
+chk('nova fica como foi digitada (sem os espaços sobrando); vazia, nada', grafiaDaCertificadora('  Valid   Certificadora ', usadas) === 'Valid Certificadora' && grafiaDaCertificadora('   ', usadas) === '' && grafiaDaCertificadora(null) === '');
+const cheio = { titular: 'LOJA', certificadora: 'Certisign', validade: '2027-01-01' };
+chk('cadastro completo: nada falta', faltaNoCadastro(cheio) === null);
+chk('no novo, a ordem do formulário: titular, certificadora, validade', faltaNoCadastro({ ...cheio, titular: ' ' }).campo === 'titular'
+  && faltaNoCadastro({ ...cheio, certificadora: '' }).texto === 'Informe a certificadora.' && faltaNoCadastro({ ...cheio, validade: '' }).campo === 'validade');
+const legado = { titular: 'LOJA', certificadora: null, validade: '2026-01-01' };
+chk('o que veio sem a certificadora: editar não trava', faltaNoCadastro({ ...legado, observacao: 'x' }, { antes: legado }) === null);
+chk('o que veio sem a certificadora: o Renovado pede a do certificado novo', faltaNoCadastro({ ...legado, validade: '2027-01-01' }, { antes: legado, renovando: true }).texto === 'Informe a certificadora do certificado novo.');
+chk('a certificadora informada não se apaga', faltaNoCadastro({ ...cheio, certificadora: '' }, { antes: cheio }).campo === 'certificadora');
 
 console.log('A ordem:');
 const lista = ordenar([cert(200, { id: 'a' }), cert(-90, { id: 'b' }), cert(20, { id: 'c' }), avisado(cert(10, { id: 'd' }), 25)], HOJE);
