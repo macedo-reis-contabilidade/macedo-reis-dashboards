@@ -22,7 +22,8 @@ login do escritório. O texto é da Domínio e não vem pra cá; abaixo, o que i
   acesso "Externo", situação "Ativo") e **só lê** — nada se altera por ele.
 - A conexão: driver **SQL Anywhere 17** (ou 16, conforme o banco), autenticação do banco com o usuário externo,
   "conectar a um banco rodando em outro computador" pelo **nome do servidor** (o do "Gerenciar Servidor de Banco de
-  Dados" do Domínio). No padrão do Domínio, o servidor do banco usa 70% da memória da máquina pra cache.
+  Dados" do Domínio). Na configuração que a Domínio mostra, o servidor do banco reserva 70% da memória da máquina pra
+  cache.
 - O **Busca Tabelas** é a ferramenta da Domínio que mostra as tabelas, as colunas e a descrição de cada campo (o
   dicionário), com o mesmo usuário externo.
 - Nas telas de exemplo:
