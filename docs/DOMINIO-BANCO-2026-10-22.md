@@ -12,6 +12,26 @@ Conferido à mão em 22/10/2026, por amostra: a versão do banco, o esquema e as
 `forescisoes`, `fobasesserv` e `ctlancto` na F3; as de `geempre` no `00-CADASTROS.ps1` da F3; `stat_emp = 'A'`,
 `efservicos` e `VALOR_SERVICOS_SER` na F5; `cgce_emp` na F6.
 
+## O que diz a Central de Soluções da Domínio (solução 3227, lida em 22/10/2026)
+
+A solução "Como cadastrar usuário para acessar aplicativos externos e conectar banco de dados", aberta pelo Samuel com o
+login do escritório. O texto é da Domínio e não vem pra cá; abaixo, o que importa, com as nossas palavras:
+- **O Domínio Web não aceita a conexão direta no banco pelo usuário externo**: o banco fica num servidor remoto, e isso
+  é só do Domínio instalado ("Local"). É por isso que a Domínio oferece a cópia diária pro IP fixo.
+- O **usuário externo** é criado pelo usuário GERENTE no próprio Domínio (Controle › Permissões › Usuários: tipo de
+  acesso "Externo", situação "Ativo") e **só lê** — nada se altera por ele.
+- A conexão: driver **SQL Anywhere 17** (ou 16, conforme o banco), autenticação do banco com o usuário externo,
+  "conectar a um banco rodando em outro computador" pelo **nome do servidor** (o do "Gerenciar Servidor de Banco de
+  Dados" do Domínio). No padrão do Domínio, o servidor do banco usa 70% da memória da máquina pra cache.
+- O **Busca Tabelas** é a ferramenta da Domínio que mostra as tabelas, as colunas e a descrição de cada campo (o
+  dicionário), com o mesmo usuário externo.
+- Nas telas de exemplo:
+  - `foempregados` guarda **também os contribuintes**: a mesma consulta traz um empregado (cadastro de empregados,
+    "Trabalhando") e um diretor (cadastro de contribuinte). Os ativos têm que tirar os contribuintes, e é por eles que se
+    chega ao pró-labore (a coluna que separa um do outro, a conferir — `categoria`?).
+  - O cadastro de acumuladores tem `ifat_acu` (**incide sobre faturamento**, S/N) e `irec_acu` (incide sobre receita
+    bruta, S/N): a marca que faltava pro faturamento (seção 3).
+
 ## Fontes
 
 | Cód. | Fonte | O que traz | Último commit |
@@ -115,7 +135,7 @@ conferir.
 | `forescisoes.motivo` | Código sem tabela de descrição: 12/22 fim de contrato, 10/11 experiência antecipada, 5/6/27 transferência, 8/13/14/40/41/42 morte | média | F3, F9 |
 | `fobasesserv` (`codi_emp`, `i_empregados`, `competencia`, `dias_servico`, `proventos`) | Bases do cálculo mensal; cada empregado aparece duas vezes na competência, uma com `dias_servico = 0` | média | F3 |
 | `foafastamentos` (`data_real`, `data_fim`, `i_afastamentos`) | Afastamentos (colunas vistas num relatório, não no banco) | baixa | F8, F9 |
-| Pró-labore | Não achado; candidatos `FOCONTRBASES` (F3, sem colunas) e `focontrrpa` (F8, RPA) | baixa | F3, F8 |
+| Pró-labore | Os contribuintes ficam em `foempregados` (exemplo da solução 3227); a coluna que os separa e a do valor, a conferir; candidatos `FOCONTRBASES` (F3) e `focontrrpa` (F8, RPA) | média (onde) / baixa (como) | 3227, F3, F8 |
 
 ```sql
 -- 2a. Ativos no fim do mês, admissões e desligamentos
@@ -131,6 +151,7 @@ LEFT JOIN (SELECT codi_emp, i_empregados, MIN(demissao) AS demissao
        ON r.codi_emp = e.codi_emp AND r.i_empregados = e.i_empregados
 GROUP BY e.codi_emp;
 -- A decidir: transferência (motivo 5/6/27) conta como desligamento?
+-- Tirar os contribuintes, que também estão em foempregados (solução 3227): a coluna, a conferir.
 
 -- 2b. Afastados no último dia do mês (BAIXA: colunas deduzidas)
 SELECT a.codi_emp, COUNT(DISTINCT a.i_empregados) AS afastados_fim_mes
@@ -214,8 +235,10 @@ ORDER BY valor DESC;
 **O faturamento:** somar saídas e serviços é alta (F4 e F5 somam as duas). Divergências: a F5 não tira as canceladas
 (a F4 mediu que a cancelada vale R$ 0,00 — muda a contagem, não o valor); a F3 usa só `situacao_sai = 0`, o que pode
 tirar complementares e extemporâneas (dedução, baixa). A soma inclui CFOP que não é receita (remessa, devolução de
-compra, transferência): a regra "compõe faturamento" do Domínio não foi achada — calibrar com a 3d contra o relatório
-do próprio Domínio. No varejo, falta saber se o CF-e SAT também está em `efsaidas`. No Simples, dá pra comparar com
+compra, transferência). A marca da Domínio pra isso é o acumulador: `ifat_acu = 'S'` (incide sobre faturamento, na
+solução 3227) — somar só as notas cujo acumulador (`codi_acu`) incide sobre faturamento; a tabela e a vigência do
+acumulador, a conferir (`EFACUMULADORES`, `EFACUMULADOR_VIGENCIA`). Calibrar com a 3d contra o relatório do próprio
+Domínio. No varejo, falta saber se o CF-e SAT também está em `efsaidas`. No Simples, dá pra comparar com
 `efsdoimp.bcal_sim` do código 44 (baixa).
 
 ## 4. Contábil
@@ -271,15 +294,14 @@ contagem da tela do Domínio.
 
 - Dicionário oficial público das tabelas.
 - Onde está o regime tributário (coluna ou tabela).
-- Onde ficam os sócios e o pró-labore.
+- A coluna que separa empregado de contribuinte em `foempregados` e onde fica o valor do pró-labore.
 - As colunas reais de `foafastamentos`.
 - O sentido de `stat_emp 'B'`, `dina_emp`, `simples_emp`, `tins_emp`, `categoria`, `vinculo`; os outros valores de
   `orig_lan` e `situacao_sai`; a data de digitação do lançamento (só a contábil).
-- A marca "compõe faturamento" do acumulador (`EFACUMULADOR_VIGENCIA` só tem `LANCAR_SOMENTE_SAIDA`, `_SERVICO`,
-  `_CFE`, `_REDUCAO_Z` — F2) e a tabela da Redução Z.
+- A tabela da Redução Z. (A marca de faturamento do acumulador apareceu na solução 3227: `ifat_acu`.)
 
-**Pra abrir com o login do escritório** (a pesquisa não conseguiu): na Central de Soluções da Domínio, as soluções
-3227 (usuário externo), 7 (relação de empregados ativos no Gerador de Relatórios), 7082 e 6465 (relatórios da Folha),
+**Pra abrir com o login do escritório** (a pesquisa não conseguiu; a 3227 já foi lida, acima): na Central de Soluções
+da Domínio, as soluções 7 (relação de empregados ativos no Gerador de Relatórios), 7082 e 6465 (relatórios da Folha),
 6773 (faturamento), 10237 e 6464 — `https://suporte.dominioatendimento.com/central/faces/solucao.html?codigo=<número>`.
 
 ## Quando o acesso chegar
