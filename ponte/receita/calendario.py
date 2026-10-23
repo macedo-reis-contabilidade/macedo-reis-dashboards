@@ -1,9 +1,16 @@
 """Quando cada consulta roda (a tarefa "Ponte Receita" roda de segunda a sexta; dia útil = segunda a sexta —
 consultar num feriado não faz mal). O --so passa por cima de tudo isto.
 
-    autorizacao      todas as empresas: no primeiro dia útil do mês, e na empresa que nunca foi consultada
-    pgdas            Simples: no dia 21 (ou no próximo dia útil, se o 21 cair no fim de semana) e no último dia
-                     útil do mês — este, só pra quem ainda não tinha o mês anterior; em janeiro, o ano anterior também
+    autorizacao      todas as empresas: no primeiro dia útil do mês, na empresa que nunca foi consultada e, toda
+                     segunda-feira, nas que estavam sem a autorização (sem ou vencida) — o cliente autoriza e o
+                     escritório vê na mesma semana
+    pgdas            Simples: no primeiro dia útil DEPOIS do prazo do mês anterior e no último dia útil do mês — este,
+                     só pra quem ainda tinha algum mês sem declaração; em janeiro, o ano anterior também. O prazo é o
+                     dia 20 ou, sem expediente, o primeiro dia útil depois; aqui o dia útil é segunda a sexta SEM
+                     FERIADO (feriados_do_ano, a lista de assets/js/rescisao-datas.js portada — o teste compara as duas).
+                     Depois do prazo, e não no dia dele: o vigia do sistema avisa "PGDAS não transmitido" quando a
+                     consulta é depois do prazo e o mês não aparece — no próprio dia, de manhã, seria aviso falso pra
+                     quem transmite naquele dia
     faturamento      Simples: quando o pgdas mostra um mês declarado cuja declaração ainda não foi lida
                      (decidido depois do pgdas, em servicos.py)
     caixa_postal     todas: todo dia útil
@@ -11,6 +18,9 @@ consultar num feriado não faz mal). O --so passa por cima de tudo isto.
 """
 import calendar
 import datetime
+
+UM_DIA = datetime.timedelta(days=1)
+PRAZO_PGDAS = 20
 
 
 def dia_util(d):
@@ -20,7 +30,7 @@ def dia_util(d):
 def dia_ou_proximo_util(ano, mes, dia):
     d = datetime.date(ano, mes, dia)
     while not dia_util(d):
-        d += datetime.timedelta(days=1)
+        d += UM_DIA
     return d
 
 
@@ -31,13 +41,121 @@ def primeiro_dia_util(ano, mes):
 def ultimo_dia_util(ano, mes):
     d = datetime.date(ano, mes, calendar.monthrange(ano, mes)[1])
     while not dia_util(d):
-        d -= datetime.timedelta(days=1)
+        d -= UM_DIA
     return d
 
 
 def mes_anterior(hoje):
     primeiro = hoje.replace(day=1)
-    return (primeiro - datetime.timedelta(days=1)).strftime('%Y-%m')
+    return (primeiro - UM_DIA).strftime('%Y-%m')
+
+
+# ---------------------------------------------------------------- feriados (os de assets/js/rescisao-datas.js)
+
+def pascoa(ano):
+    """Domingo de Páscoa (Meeus/Jones/Butcher, calendário gregoriano) — o mesmo cálculo do JavaScript."""
+    a, b, c = ano % 19, ano // 100, ano % 100
+    d, e = b // 4, b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i, k = c // 4, c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    x = h + l - 7 * m + 114
+    return datetime.date(ano, x // 31, x % 31 + 1)
+
+
+FIXOS = (('01-01', 'Confraternização Universal'), ('04-21', 'Tiradentes'), ('05-01', 'Dia do Trabalho'),
+         ('09-07', 'Independência do Brasil'), ('09-20', 'Revolução Farroupilha'), ('10-12', 'Nossa Senhora Aparecida'),
+         ('11-02', 'Finados'), ('11-15', 'Proclamação da República'), ('11-20', 'Dia da Consciência Negra'),
+         ('12-25', 'Natal'))
+_POR_ANO = {}
+
+
+def feriados_do_ano(ano):
+    """{data: nome}: os nacionais (o 20/11 a partir de 2024), o 20/09 do RS, o Carnaval (segunda e terça), a
+    Sexta-feira Santa e o Corpus Christi. Municipal não entra."""
+    if ano not in _POR_ANO:
+        m = {datetime.date(ano, int(d[:2]), int(d[3:])): n for d, n in FIXOS if d != '11-20' or ano >= 2024}
+        p = pascoa(ano)
+        m[p - 48 * UM_DIA] = 'Carnaval'
+        m[p - 47 * UM_DIA] = 'Carnaval'
+        m[p - 2 * UM_DIA] = 'Sexta-feira Santa'
+        m[p + 60 * UM_DIA] = 'Corpus Christi'
+        _POR_ANO[ano] = m
+    return _POR_ANO[ano]
+
+
+def feriado(d):
+    return feriados_do_ano(d.year).get(d)
+
+
+def util(d):
+    """Dia útil do PGDAS: segunda a sexta, sem feriado."""
+    return dia_util(d) and not feriado(d)
+
+
+def util_ou_proximo(d):
+    while not util(d):
+        d += UM_DIA
+    return d
+
+
+def proximo_util(d):
+    """O primeiro dia útil DEPOIS de d."""
+    return util_ou_proximo(d + UM_DIA)
+
+
+def ultimo_util(ano, mes):
+    d = datetime.date(ano, mes, calendar.monthrange(ano, mes)[1])
+    while not util(d):
+        d -= UM_DIA
+    return d
+
+
+def _seguinte(competencia):
+    ano, mes = int(competencia[:4]), int(competencia[5:7])
+    return (ano + 1, 1) if mes == 12 else (ano, mes + 1)
+
+
+def prazo_pgdas(competencia):
+    """O prazo da declaração de 'AAAA-MM': o dia 20 do mês seguinte ou, sem expediente, o primeiro dia útil depois."""
+    ano, mes = _seguinte(competencia)
+    return util_ou_proximo(datetime.date(ano, mes, PRAZO_PGDAS))
+
+
+def consulta_pgdas(competencia):
+    """O dia em que a ponte consulta o PGDAS daquela competência: o primeiro dia útil depois do prazo."""
+    return proximo_util(prazo_pgdas(competencia))
+
+
+def ultima_competencia_vencida(hoje):
+    """A competência mais recente cujo prazo já passou (o prazo é antes de hoje)."""
+    c = mes_anterior(hoje)
+    while prazo_pgdas(c) >= hoje:
+        c = mes_anterior(datetime.date(int(c[:4]), int(c[5:7]), 1))
+    return c
+
+
+def _competencias(de, ate):
+    saida, c = [], de
+    while c <= ate:
+        saida.append(c)
+        ano, mes = _seguinte(c)
+        c = f'{ano:04d}-{mes:02d}'
+    return saida
+
+
+def falta_declaracao(hoje, declarados):
+    """Algum mês já vencido, dos anos que o pgdas consulta, sem declaração? Conta a partir do primeiro mês declarado
+    nesses anos (a empresa que abriu no meio do ano não fica "devendo" os meses de antes); sem nenhum declarado, sim."""
+    anos = anos_do_pgdas(hoje)
+    ate = ultima_competencia_vencida(hoje)
+    nos_anos = sorted(c for c in declarados if int(c[:4]) in anos)
+    if not nos_anos:
+        return True
+    return any(c not in declarados for c in _competencias(nos_anos[0], ate))
 
 
 def servicos_do_dia(hoje, empresa, estado):
@@ -46,12 +164,13 @@ def servicos_do_dia(hoje, empresa, estado):
         return set()
     doc, simples = empresa['documento'], empresa.get('regime') == 'simples'
     s = {'caixa_postal'}
-    if hoje == primeiro_dia_util(hoje.year, hoje.month) or not estado.autorizacao_consultada(doc):
+    if (hoje == primeiro_dia_util(hoje.year, hoje.month) or not estado.autorizacao_consultada(doc)
+            or (hoje.weekday() == 0 and estado.sem_autorizacao(doc, hoje))):
         s.add('autorizacao')
     if simples:
-        if hoje == dia_ou_proximo_util(hoje.year, hoje.month, 21):
+        if hoje == consulta_pgdas(mes_anterior(hoje)):
             s.add('pgdas')
-        elif hoje == ultimo_dia_util(hoje.year, hoje.month) and mes_anterior(hoje) not in estado.meses_declarados(doc):
+        elif hoje == ultimo_util(hoje.year, hoje.month) and falta_declaracao(hoje, estado.meses_declarados(doc)):
             s.add('pgdas')
     if hoje == dia_ou_proximo_util(hoje.year, hoje.month, 5):
         s.add('situacao_fiscal')

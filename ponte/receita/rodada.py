@@ -194,9 +194,9 @@ def executar(cli, empresas, est, hoje, so, pasta, reg):
                 continue
             com_novidade += 1
             try:
-                bloco = servicos.mensagens(cli, e, est)
+                bloco, lembrar, _sobrou, _velhas = servicos.mensagens(cli, e, est, hoje)
                 dados.setdefault(doc, {})['caixa_postal'] = bloco
-                est.guardar_mensagens(doc, [m['id'] for m in bloco['mensagens']])
+                est.guardar_mensagens(doc, lembrar)
                 est.guardar_evento(doc, v)
                 mensagens_novas += len(bloco['mensagens'])
             except servicos.Falta as f:

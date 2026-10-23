@@ -20,6 +20,9 @@ from .serpro import SerproFora
 
 EVENTO_CAIXA_POSTAL = 'E0601'      # o E0301 do cenário de demonstração é o da DCTFWeb
 LOTE_EVENTOS = 1000
+MAX_MENSAGENS = 100                # por empresa num pacote (as mais recentes)
+DIAS_PRIMEIRA = 90                 # na primeira leitura da empresa, só as enviadas nesses dias
+MAX_PENDENCIAS = 100               # por empresa (o limite da função do sistema)
 ORIGEM = {'1': 'Receita', '2': 'Estado', '3': 'Município'}
 
 
@@ -197,7 +200,12 @@ def _origem(m):
     return 'Receita' if 'RECEITA' in descricao else None
 
 
-def mensagens(cli, empresa, estado):
+def mensagens(cli, empresa, estado, hoje):
+    """As mensagens a mandar (o bloco) e o que lembrar delas ([(id, lida | 'antiga')]).
+
+    Vai: a que nunca foi mandada e a mandada como não lida que agora aparece lida (o sistema atualiza o "lida" e o
+    aviso some). Na primeira leitura da empresa, só as enviadas nos últimos DIAS_PRIMEIRA dias — as antigas ficam no
+    e-CAC e são lembradas como 'antiga', pra não irem depois. No máximo MAX_MENSAGENS (as mais recentes) por pacote."""
     doc = empresa['documento']
     r = consultar(cli, 'Consultar', 'CAIXAPOSTAL', 'MSGCONTRIBUINTE61', doc,
                   {'statusLeitura': '0', 'indicadorPagina': '0', 'ponteiroPagina': '00000000000000'})
@@ -206,18 +214,30 @@ def mensagens(cli, empresa, estado):
     conteudo = d.get('conteudo') if isinstance(d, dict) else None
     lista = (conteudo[0].get('listaMensagens') if conteudo and isinstance(conteudo[0], dict) else None) or []
     ja = estado.mensagens_mandadas(doc)
-    novas = []
+    primeira = not estado.conhece_mensagens(doc)
+    desde = (hoje - datetime.timedelta(days=DIAS_PRIMEIRA)).isoformat()
+    candidatas, lembrar = [], []
     for m in lista:
         if not isinstance(m, dict):
             continue
-        isn = str(m.get('isn') or '').strip()
-        if not isn or isn in ja:
+        isn = re.sub(r'\s+', '', str(m.get('isn') or ''))[:80]
+        if not isn:
+            continue
+        lida = str(m.get('indicadorLeitura') or '').strip() == '1'
+        enviada = _data8(m.get('dataEnvio'))
+        antes = ja.get(isn, 'nova')
+        if antes == 'antiga' or (antes != 'nova' and not (antes is False and lida)):
+            continue                                   # já mandada (e o "lida" não mudou pra lida), ou deixada antiga
+        if primeira and (not enviada or enviada < desde):
+            lembrar.append((isn, 'antiga'))
             continue
         assunto = str(m.get('assuntoModelo') or '').replace('++VARIAVEL++', str(m.get('valorParametroAssunto') or ''))
-        novas.append({'id': isn, 'assunto': re.sub(r'\s+', ' ', assunto).strip()[:300],
-                      'enviada_em': _data8(m.get('dataEnvio')), 'origem': _origem(m),
-                      'lida': str(m.get('indicadorLeitura') or '').strip() == '1'})
-    return {'mensagens': novas}
+        assunto = re.sub(r'\s+', ' ', assunto).strip()[:300] or '(sem assunto)'
+        candidatas.append({'id': isn, 'assunto': assunto, 'enviada_em': enviada, 'origem': _origem(m), 'lida': lida})
+    candidatas.sort(key=lambda x: x['enviada_em'] or '', reverse=True)
+    vao = candidatas[:MAX_MENSAGENS]
+    lembrar += [(x['id'], x['lida']) for x in vao]
+    return {'mensagens': vao}, lembrar, len(candidatas) - len(vao), sum(1 for _, v in lembrar if v == 'antiga')
 
 
 # ---------------------------------------------------------------- situação fiscal
@@ -268,4 +288,8 @@ def situacao_fiscal(cli, empresa, hoje, pasta, tentativas=6):
     bloco['pendencias'] = pdf.ler_situacao(pdf.texto(conteudo))
     if bloco['pendencias'] is None:
         return bloco, f'não consegui ler as pendências no texto do PDF (guardado em {guardado.name})'
+    if len(bloco['pendencias']) > MAX_PENDENCIAS:
+        n = len(bloco['pendencias'])
+        bloco['pendencias'] = bloco['pendencias'][:MAX_PENDENCIAS]
+        return bloco, f'{n} pendências no relatório: foram as {MAX_PENDENCIAS} primeiras (o PDF ficou em {guardado.name})'
     return bloco, None

@@ -53,6 +53,12 @@ class Estado:
     def guardar_autorizacao(self, doc, bloco, hoje):
         self.d['autorizacao'][doc] = {'consultada_em': hoje.isoformat(), **bloco}
 
+    def sem_autorizacao(self, doc, hoje):
+        """A última consulta disse sem procuração, ou vencida (ou ela venceu desde então)."""
+        a = self.d['autorizacao'].get(doc) or {}
+        ate = a.get('valida_ate')
+        return a.get('situacao') in ('sem', 'vencida') or bool(ate and str(ate) < hoje.isoformat())
+
     # — PGDAS e a declaração de cada mês
     def meses_declarados(self, doc):
         return {m['competencia']: m.get('transmitida_em') for m in self.d['pgdas_meses'].get(doc, [])}
@@ -80,12 +86,24 @@ class Estado:
     def guardar_evento(self, doc, data):
         self.d['eventos'][doc] = data
 
-    def mensagens_mandadas(self, doc):
-        return set(self.d['mensagens'].get(doc, []))
+    def conhece_mensagens(self, doc):
+        """Já houve uma leitura da Caixa Postal desta empresa (a primeira só manda as dos últimos 90 dias)."""
+        return doc in self.d['mensagens']
 
-    def guardar_mensagens(self, doc, ids):
-        lista = self.d['mensagens'].get(doc, []) + [i for i in ids if i not in self.d['mensagens'].get(doc, [])]
-        self.d['mensagens'][doc] = lista[-MENSAGENS_POR_EMPRESA:]
+    def mensagens_mandadas(self, doc):
+        """{id: lida} das mensagens já mandadas — 'antiga' = vista na primeira leitura e deixada no e-CAC."""
+        bruto = self.d['mensagens'].get(doc, {})
+        if isinstance(bruto, list):                    # o formato de antes: só os ids
+            return {str(i): None for i in bruto}
+        return {str(k): v for k, v in bruto.items()} if isinstance(bruto, dict) else {}
+
+    def guardar_mensagens(self, doc, vistas):
+        """vistas: [(id, lida | 'antiga')] — as últimas MENSAGENS_POR_EMPRESA, pra não crescer pra sempre."""
+        atuais = self.mensagens_mandadas(doc)
+        for i, lida in vistas:
+            atuais.pop(i, None)
+            atuais[i] = lida
+        self.d['mensagens'][doc] = dict(list(atuais.items())[-MENSAGENS_POR_EMPRESA:])
 
     # — situação fiscal
     def guardar_situacao(self, doc, hoje):
