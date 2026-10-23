@@ -8,17 +8,11 @@ Código de saída:
 import json
 import pathlib
 import traceback
-import urllib.parse
 
 from . import VERSAO, config, envio, pacote
 from .log import Registro
 
 OK, TENTAR_DE_NOVO, NAO_ADIANTA = 0, 1, 2
-
-
-def _endereco_local(url):
-    host = (urllib.parse.urlsplit(url).hostname or '').lower()
-    return host in ('localhost', '127.0.0.1', '::1')
 
 
 def rodar(falso=False, sem_enviar=False, saida=None, meses=None):
@@ -43,7 +37,7 @@ def rodar(falso=False, sem_enviar=False, saida=None, meses=None):
     if falta:
         reg('a configuração não deixa rodar; falta: ' + ', '.join(falta), 'erro')
         return NAO_ADIANTA
-    if falso and not sem_enviar and not _endereco_local(cfg.valor('sistema', 'url')):
+    if falso and not sem_enviar and not config.endereco_local(cfg.valor('sistema', 'url')):
         # o Domínio de mentira nunca manda empresa inventada pro sistema de verdade
         reg('--falso só manda pra um sistema de mentira (endereço local); use --falso --sem-enviar', 'erro')
         return NAO_ADIANTA
@@ -81,24 +75,43 @@ def rodar(falso=False, sem_enviar=False, saida=None, meses=None):
     reg('lido: ' + pacote.resumo(pac))
     corpo = json.dumps(pac, ensure_ascii=False).encode('utf-8')
     if saida:
+        # caminho solto vai pra pasta da ponte, nunca pra pasta de onde se roda: o pacote de verdade tem nome e CNPJ
+        # dos clientes, e rodado da pasta do repositório (que é público) ele cairia lá dentro
         destino = pathlib.Path(saida)
+        if not destino.is_absolute():
+            destino = base / destino
+        destino.parent.mkdir(parents=True, exist_ok=True)
         destino.write_bytes(json.dumps(pac, ensure_ascii=False, indent=1).encode('utf-8'))
         reg(f'pacote gravado em {destino}')
     if sem_enviar:
         reg('--sem-enviar: nada foi mandado')
         return OK
 
+    env = envio.Envio(cfg.valor('sistema', 'url'), cfg.valor('sistema', 'chave_publica'),
+                      cfg.valor('sistema', 'chave_ponte'), reg)
+    if falso:
+        # o Domínio de mentira não toca nos pendentes: nem manda os de verdade pro sistema de mentira, nem deixa
+        # pacote de empresa inventada na fila que a rodada de verdade manda
+        r = env.mandar(corpo, f'rodada {pac["rodada"]["id"][:8]} (Domínio de mentira)')
+        if r == envio.FOI:
+            return OK
+        if r == envio.FALHOU:
+            reg('com --falso nada é guardado em pendentes', 'aviso')
+            return TENTAR_DE_NOVO
+        return NAO_ADIANTA
+
     # ---- manda: primeiro os pendentes, do mais velho pro mais novo; depois o desta rodada
     pasta_pend = base / 'pendentes'
     envio.apagar_velhos(pasta_pend, reg)
-    env = envio.Envio(cfg.valor('sistema', 'url'), cfg.valor('sistema', 'chave_publica'),
-                      cfg.valor('sistema', 'chave_ponte'), reg)
     codigo = OK
     for arq in envio.listar(pasta_pend):
         r = env.mandar(arq.read_bytes(), f'pendente {arq.name}')
         if r == envio.FOI:
             arq.unlink()
             continue
+        if r == envio.CONFIG:
+            reg('paro aqui — os pendentes ficam guardados pra quando o config.ini for acertado', 'erro')
+            return NAO_ADIANTA
         if r == envio.RECUSADO:
             if env.ultimo_status in (401, 403):
                 reg('a chave foi recusada: paro aqui — os pendentes ficam guardados pra quando a chave for corrigida', 'erro')
@@ -114,7 +127,7 @@ def rodar(falso=False, sem_enviar=False, saida=None, meses=None):
     r = env.mandar(corpo, f'rodada {pac["rodada"]["id"][:8]}')
     if r == envio.FOI:
         return codigo
-    if r == envio.RECUSADO:
+    if r in (envio.RECUSADO, envio.CONFIG):
         return NAO_ADIANTA
     guardado = envio.guardar(pasta_pend, pac)
     reg(f'guardei em pendentes\\{guardado.name} pra mandar na próxima rodada', 'erro')

@@ -45,6 +45,11 @@ except Exception:
 RAIZ = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ))
 
+# o contrato da fila (2.4), escrito aqui e não importado da ponte: um campo a mais na ponte tem que derrubar o teste
+CONTRATO_EMPRESA = {'codigo', 'documento', 'nome', 'ativa'}
+CONTRATO_MENSAL = ['codigo', 'competencia', 'funcionarios_ativos', 'admissoes', 'desligamentos', 'afastados', 'pro_labore',
+                   'notas_saida', 'valor_saidas', 'notas_entrada', 'valor_entradas', 'lancamentos', 'ultimo_lancamento']
+
 SEGREDO = 'SEGREDO-DE-TESTE'
 SENHA = 'SENHA-DE-TESTE'
 CHAVE_PUBLICA = 'chave-publica-de-teste'
@@ -70,8 +75,9 @@ def titulo(t):
 
 class Sistema:
     def __init__(self):
-        self.respostas = []      # o que responder aos POST, na ordem (200, 401, 503, 'lento'…); acabou -> 200
+        self.respostas = []      # o que responder aos POST, na ordem (200, 302, 401, 503, 'lento'…); acabou -> 200
         self.recebidos = []
+        self.gets = []           # os GET que não são o do IP (um redirecionamento seguido apareceria aqui)
         self.trava = threading.Lock()
         dono = self
 
@@ -82,6 +88,8 @@ class Sistema:
             def _responder(self, codigo, corpo):
                 try:
                     self.send_response(codigo)
+                    if 300 <= codigo < 400:
+                        self.send_header('Location', '/outro-lugar')
                     self.send_header('Content-Type', 'application/json')
                     self.send_header('Content-Length', str(len(corpo)))
                     self.end_headers()
@@ -90,6 +98,9 @@ class Sistema:
                     pass   # o cliente desistiu (tempo esgotado)
 
             def do_GET(self):
+                if self.path != '/ip':
+                    with dono.trava:
+                        dono.gets.append({'caminho': self.path, 'cabecalhos': {k.lower(): v for k, v in self.headers.items()}})
                 self._responder(200, IP_DOC.encode())
 
             def do_POST(self):
@@ -114,6 +125,7 @@ class Sistema:
         with self.trava:
             self.respostas = list(respostas)
             self.recebidos = []
+            self.gets = []
 
     def fechar(self):
         self.srv.shutdown()
@@ -151,6 +163,32 @@ def ponte(pasta, *args, ip_url=None, timeout_req='5'):
     r = subprocess.run([sys.executable, '-m', 'ponte', *args], cwd=str(RAIZ), env=env, capture_output=True,
                        encoding='utf-8', errors='replace', timeout=180)
     return r.returncode, (r.stdout or '') + (r.stderr or '')
+
+
+def rodar_dentro(pasta, url, **opcoes):
+    """A rodada de verdade (sem --falso), aqui dentro do processo, com o Domínio trocado pelo de mentira — é o caminho
+    que mexe nos pendentes, que o --falso não toca. Devolve (código de saída, o que foi pra tela)."""
+    import contextlib
+    import io
+    from ponte import rodada, fonte_dominio
+    from ponte.fonte_falsa import FonteFalsa
+    escrever_config(pasta, url=url)
+    guardado = {k: os.environ.get(k) for k in ('PONTE_PASTA', 'PONTE_ESPERAS', 'PONTE_TIMEOUT')}
+    os.environ.update(PONTE_PASTA=str(pasta), PONTE_ESPERAS='0.05,0.05,0.05', PONTE_TIMEOUT='5')
+    original = fonte_dominio.FonteDominio
+    fonte_dominio.FonteDominio = lambda conexao, **k: FonteFalsa()
+    tela = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(tela):
+            cod = rodada.rodar(**opcoes)
+    finally:
+        fonte_dominio.FonteDominio = original
+        for k, v in guardado.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+    return cod, tela.getvalue()
 
 
 def pendentes(pasta):
@@ -193,8 +231,6 @@ class Anotador:
 
 def caso_pacote():
     titulo('1. rodar --falso --sem-enviar: o pacote')
-    from ponte.fonte import CAMPOS_EMPRESA
-    from ponte.pacote import ORDEM_MENSAL
     pasta = pasta_nova()                      # sem config.ini: --falso --sem-enviar não precisa de nenhum
     saida = pasta / 'pacote.json'
     cod, out = ponte(pasta, 'rodar', '--falso', '--sem-enviar', '--saida', str(saida))
@@ -217,7 +253,7 @@ def caso_pacote():
 
     emp = {e['codigo']: e for e in p['empresas']}
     ok(sorted(emp) == [101, 102, 103, 104], 'as 4 empresas inventadas, pelo código')
-    ok(all(set(e) == set(CAMPOS_EMPRESA) for e in p['empresas']), 'cada empresa só com codigo, documento, nome, ativa')
+    ok(all(set(e) == CONTRATO_EMPRESA for e in p['empresas']), 'cada empresa só com codigo, documento, nome, ativa (o contrato da fila)')
     ok(all(type(e['codigo']) is int and type(e['ativa']) is bool and isinstance(e['nome'], str)
            and re.fullmatch(r'[0-9A-Z]+', e['documento']) for e in p['empresas']),
        'tipos: codigo inteiro, ativa verdadeiro/falso, nome texto, documento sem pontuação')
@@ -227,7 +263,7 @@ def caso_pacote():
     comps = comps_esperadas(3)
     ok(len(p['mensal']) == 12, f"12 linhas mensais = 4 empresas × 3 meses (vieram {len(p['mensal'])})")
     ok(sorted({l['competencia'] for l in p['mensal']}) == comps, f'as 3 competências até o mês de ontem: {", ".join(comps)}')
-    ok(all(list(l) == list(ORDEM_MENSAL) for l in p['mensal']), 'cada linha mensal com os campos do contrato, nessa ordem')
+    ok(all(list(l) == CONTRATO_MENSAL for l in p['mensal']), 'cada linha mensal com os campos do contrato da fila, nessa ordem')
     inteiros = ('funcionarios_ativos', 'admissoes', 'desligamentos', 'afastados', 'pro_labore', 'notas_saida', 'notas_entrada', 'lancamentos')
     ok(all(l[c] is None or type(l[c]) is int for l in p['mensal'] for c in inteiros), 'contagens: inteiro ou null')
     ok(all(l[c] is None or type(l[c]) is float for l in p['mensal'] for c in ('valor_saidas', 'valor_entradas')),
@@ -248,6 +284,16 @@ def caso_pacote():
     ok(all(linhas[(102, c)]['notas_saida'] is None and linhas[(102, c)]['valor_saidas'] is None for c in sem_nota)
        and all(linhas[(102, c)]['notas_saida'] == 25 for c in com_nota),
        f'a 102 no mês sem nota ({", ".join(sem_nota)}): fiscal null; nos outros, com nota')
+    m = lambda c: int(c[5:])
+    ok(all(linhas[(101, c)]['valor_saidas'] == round(84211.50 + m(c), 2) and linhas[(101, c)]['valor_entradas'] == 51003.10
+           and linhas[(101, c)]['notas_saida'] == 300 + m(c) and linhas[(101, c)]['notas_entrada'] == 40 + m(c) for c in comps),
+       'os valores da 101 (o Decimal do ODBC) chegam com os centavos e cada um no seu campo')
+    ok(all(linhas[(104, c)]['valor_saidas'] == 18000.0 and linhas[(104, c)]['valor_entradas'] == 950.25 for c in comps)
+       and all(linhas[(102, c)]['valor_saidas'] == 7300.4 and linhas[(102, c)]['valor_entradas'] == 2100.0 for c in com_nota),
+       'os valores da 104 e da 102 (inteiro e número com casas) também')
+    ok(all(linhas[(101, c)]['funcionarios_ativos'] == 4 + m(c) % 3 and linhas[(101, c)]['admissoes'] == m(c) % 2
+           and linhas[(101, c)]['pro_labore'] == 2 and linhas[(102, c)]['pro_labore'] == 1 for c in comps),
+       'a folha: funcionários, admissões e pró-labore de cada empresa')
     ok(p['faltou'] == [], 'faltou vazio (o Domínio de mentira tem os quatro blocos)')
     ok('4 empresa(s)' in out and '12 linha(s)' in out, 'mostra o resumo na tela')
     ok(pendentes(pasta) == [], '--sem-enviar não deixa nada em pendentes')
@@ -406,34 +452,67 @@ def caso_envio(sis):
     ok(cod == 2 and len(sis.recebidos) == 1, f'401: não repete e sai com 2 (saiu {cod}, {len(sis.recebidos)} tentativa(s))')
     ok(pendentes(pasta) == [], '401: nada em pendentes')
 
+    sis.zerar('lento', 200)
+    cod, out = ponte(pasta, 'rodar', '--falso', timeout_req='0.5')
+    ok(cod == 0 and len(sis.recebidos) == 2, f'tempo esgotado na primeira: tenta de novo e vai (saiu {cod}, {len(sis.recebidos)} tentativa(s))')
+
+    print('   — o --falso não toca nos pendentes')
+    de_verdade = pasta / 'pendentes' / f'{(datetime.date.today() - datetime.timedelta(days=1)):%Y%m%d}-070000-cccccccc.json'
+    de_verdade.parent.mkdir(exist_ok=True)
+    de_verdade.write_text(json.dumps({'versao': 1, 'rodada': {'id': 'cccccccc-de-verdade'}}), encoding='utf-8')
+    sis.zerar()
+    cod, out = ponte(pasta, 'rodar', '--falso')
+    ok(cod == 0 and len(sis.recebidos) == 1 and sis.recebidos[0]['corpo']['rodada']['id'] != 'cccccccc-de-verdade'
+       and de_verdade.exists(), 'o pendente de verdade não vai pro sistema de mentira e continua na fila')
     escrever_config(pasta, url=porta_fechada())
     cod, out = ponte(pasta, 'rodar', '--falso')
+    ok(cod == 1 and pendentes(pasta) == [de_verdade],
+       f'rede fora no --falso: sai com 1 e não guarda empresa inventada em pendentes (saiu {cod})')
+    de_verdade.unlink()
+
+    print('   — a rodada de verdade (o Domínio trocado pelo de mentira, dentro do processo)')
+    pasta = pasta_nova()
+    cod, out = rodar_dentro(pasta, porta_fechada())
     pend = pendentes(pasta)
     ok(cod == 1 and len(pend) == 1, f'rede fora: guarda em pendentes e sai com 1 (saiu {cod}, {len(pend)} pendente(s))')
     id_pendente = json.loads(pend[0].read_text(encoding='utf-8'))['rodada']['id'] if pend else None
-    escrever_config(pasta, url=sis.url)
     sis.zerar()
-    cod, out = ponte(pasta, 'rodar', '--falso')
+    cod, out = rodar_dentro(pasta, sis.url)
     ids = [r['corpo']['rodada']['id'] for r in sis.recebidos]
     ok(cod == 0 and len(ids) == 2 and ids[0] == id_pendente and ids[1] != id_pendente,
        'a rodada seguinte manda o pendente primeiro, depois a dela')
     ok(pendentes(pasta) == [], 'e apaga o pendente que foi')
 
-    sis.zerar('lento', 200)
-    cod, out = ponte(pasta, 'rodar', '--falso', timeout_req='0.5')
-    ok(cod == 0 and len(sis.recebidos) == 2, f'tempo esgotado na primeira: tenta de novo e vai (saiu {cod}, {len(sis.recebidos)} tentativa(s))')
+    p1 = pasta / 'pendentes' / f'{(datetime.date.today() - datetime.timedelta(days=3)):%Y%m%d}-070000-dddddddd.json'
+    p2 = pasta / 'pendentes' / f'{(datetime.date.today() - datetime.timedelta(days=2)):%Y%m%d}-070000-eeeeeeee.json'
+    p1.parent.mkdir(exist_ok=True)
+    p2.write_text(json.dumps({'versao': 1, 'rodada': {'id': 'eeeeeeee-mais-novo'}}), encoding='utf-8')
+    p1.write_text(json.dumps({'versao': 1, 'rodada': {'id': 'dddddddd-mais-velho'}}), encoding='utf-8')
+    sis.zerar()
+    cod, out = rodar_dentro(pasta, sis.url)
+    ids = [r['corpo']['rodada']['id'] for r in sis.recebidos]
+    ok(ids[:2] == ['dddddddd-mais-velho', 'eeeeeeee-mais-novo'] and len(ids) == 3 and pendentes(pasta) == [],
+       'vários pendentes: do mais velho pro mais novo, depois a do dia, e todos apagados')
 
     velho = pasta / 'pendentes' / '20250101-070000-aaaaaaaa.json'
-    velho.parent.mkdir(exist_ok=True)
     velho.write_text('{"versao": 1}', encoding='utf-8')
     recusavel = pasta / 'pendentes' / f'{(datetime.date.today() - datetime.timedelta(days=2)):%Y%m%d}-070000-bbbbbbbb.json'
     recusavel.write_text(json.dumps({'versao': 1, 'rodada': {'id': 'bbbbbbbb-pendente'}}), encoding='utf-8')
     sis.zerar(400, 200)
-    cod, out = ponte(pasta, 'rodar', '--falso')
+    cod, out = rodar_dentro(pasta, sis.url)
     ok(not velho.exists() and 'tinha' in logs(pasta) and 'apagado sem ser mandado' in logs(pasta),
        'pendente de mais de 30 dias é apagado, com aviso no log')
     ok(not recusavel.exists() and len(sis.recebidos) == 2 and cod == 2,
        f'pendente recusado (400) é apagado, a rodada do dia vai, e sai com 2 pra alguém olhar (saiu {cod})')
+
+    print('   — redirecionamento')
+    guarda = pasta / 'pendentes' / f'{(datetime.date.today() - datetime.timedelta(days=1)):%Y%m%d}-070000-ffffffff.json'
+    guarda.write_text(json.dumps({'versao': 1, 'rodada': {'id': 'ffffffff-pendente'}}), encoding='utf-8')
+    sis.zerar(302)
+    cod, out = rodar_dentro(pasta, sis.url)
+    ok(cod == 2 and len(sis.recebidos) == 1 and sis.gets == [],
+       f'302: não segue (a chave não vai pro outro endereço), não repete e sai com 2 (saiu {cod}, {len(sis.recebidos)} POST, {len(sis.gets)} GET)')
+    ok(guarda.exists() and 'redireciona' in out, 'o pendente fica, e o log diz pra conferir a url')
 
     escrever_config(pasta, url='https://exemplo.invalid/functions/v1/ponte-dominio')
     cod, out = ponte(pasta, 'rodar', '--falso')
@@ -451,8 +530,7 @@ def caso_segredos(sis):
     saidas.append(ponte(pasta, 'conferir', ip_url=sis.ip_url)[1])
     sis.zerar()
     saidas.append(ponte(pasta, 'rodar', '--falso', '--saida', str(pasta / 'saida.json'))[1])
-    escrever_config(pasta, url=porta_fechada())
-    saidas.append(ponte(pasta, 'rodar', '--falso')[1])                 # rede fora: grava pendente
+    saidas.append(rodar_dentro(pasta, porta_fechada())[1])             # a rodada de verdade, rede fora: grava pendente
     escrever_config(pasta, url=sis.url, conexao=CONEXAO + ';LINKS=tcpip(host=srv-inexistente)')
     saidas.append(ponte(pasta, 'rodar')[1])                            # o Domínio de verdade (consultas a conferir)
     arquivos = [a for a in pasta.rglob('*') if a.is_file() and a.name != 'config.ini']
@@ -465,6 +543,31 @@ def caso_segredos(sis):
     from ponte.log import ocultar
     ok(ocultar(f'Falhou: Driver=X;Pwd={{outra senha}};UID=u') == 'Falhou: Driver=X;Pwd=***;UID=u',
        'senha de conexão que o log não conhecia (PWD= na mensagem de um erro) também vira ***')
+
+    # o Registro de verdade, com os segredos que ele mesmo tira do config.ini — a mensagem traz todos de propósito,
+    # como traria um erro do driver ou do urllib (as rodadas acima nunca chegam a escrever um segredo)
+    import contextlib
+    import io
+    from ponte import config
+    from ponte.log import Registro
+    guardado = os.environ.get('PONTE_PASTA')
+    os.environ['PONTE_PASTA'] = str(pasta)
+    try:
+        escrever_config(pasta, url=sis.url)
+        cfg = config.carregar()
+        tela = io.StringIO()
+        with contextlib.redirect_stdout(tela):
+            reg = Registro(pasta / 'logs-registro', cfg.segredos())
+            reg(f'erro do driver: {CONEXAO} · chave {SEGREDO} · pública {CHAVE_PUBLICA}', 'erro')
+            reg.tela(f'na tela: senha {SENHA} e chave {SEGREDO}')
+    finally:
+        if guardado is None:
+            os.environ.pop('PONTE_PASTA', None)
+        else:
+            os.environ['PONTE_PASTA'] = guardado
+    escrito = tela.getvalue() + ''.join(a.read_text(encoding='utf-8') for a in (pasta / 'logs-registro').glob('*.log'))
+    ok('***' in escrito and not any(s in escrito for s in (SEGREDO, SENHA, CHAVE_PUBLICA, 'ServerName=srvteste')),
+       'o Registro da ponte, com os segredos do config.ini, oculta todos na tela e no log')
 
 
 def caso_conferir(sis):
@@ -498,6 +601,32 @@ def caso_conferir(sis):
     ok(sorted(a.name for a in pasta.iterdir()) == ['config.ini'], 'conferir não grava nada (nem log)')
 
 
+def caso_config_invalida(sis):
+    titulo('+ configuração que não dá pra usar: url sem https://, chave em duas linhas')
+    pasta = pasta_nova()
+    for url, porque in (('exemplo.supabase.co/functions/v1/ponte', 'sem http(s)://'),
+                        ('http://exemplo.supabase.co/functions/v1/ponte', 'http:// fora do endereço local'),
+                        ('https://exemplo.supabase.co/funções/ponte', 'com acento')):
+        escrever_config(pasta, url=url)
+        cod, out = ponte(pasta, 'conferir', ip_url=sis.ip_url)
+        ok(cod == 1 and '[sistema] url: inválido' in out and url not in out and 'Traceback' not in out,
+           f'conferir: url {porque} sai "inválido", sem mostrar o endereço')
+        sis.zerar()
+        cod, out = ponte(pasta, 'rodar', '--falso')
+        ok(cod == 2 and 'Traceback' not in out and 'sistema.url (inválido' in out and len(sis.recebidos) == 0,
+           f'rodar: url {porque} para com 2, dizendo o que acertar, sem traceback e sem mandar nada')
+    linhas = ['[dominio]', f'conexao = {CONEXAO}', '[sistema]', f'url = {sis.url}', f'chave_publica = {CHAVE_PUBLICA}',
+              f'chave_ponte = {SEGREDO}', '    CONTINUACAO-DA-CHAVE']     # a chave colada em duas linhas
+    (pasta / 'config.ini').write_text('\n'.join(linhas) + '\n', encoding='utf-8')
+    cod, out = ponte(pasta, 'conferir', ip_url=sis.ip_url)
+    ok(cod == 1 and '[sistema] chave_ponte: inválido' in out and SEGREDO not in out and 'CONTINUACAO' not in out,
+       'conferir: chave colada em duas linhas sai "inválido", sem mostrar a chave')
+    sis.zerar()
+    cod, out = ponte(pasta, 'rodar', '--falso')
+    ok(cod == 2 and SEGREDO not in out and 'CONTINUACAO' not in out and 'Traceback' not in out and len(sis.recebidos) == 0,
+       'rodar: com a chave em duas linhas para com 2, sem a chave na tela e sem mandar')
+
+
 def caso_meses_e_logs(sis):
     titulo('+ --meses, [rodada] meses e a limpeza dos logs')
     pasta = pasta_nova()
@@ -518,13 +647,18 @@ def caso_meses_e_logs(sis):
     ponte(pasta, 'rodar', '--falso', '--sem-enviar')
     ok(not antigo.exists() and alheio.exists(), 'log de mais de 60 dias é apagado; arquivo que não é da ponte fica')
     ok((pasta / 'logs' / f'{datetime.date.today():%Y-%m-%d}.log').is_file(), 'um arquivo de log por dia, AAAA-MM-DD.log')
+    solto = 'pacote-teste-da-ponte.json'
+    cod, out = ponte(pasta, 'rodar', '--falso', '--sem-enviar', '--saida', solto)   # o programa roda da raiz do repositório
+    ok(cod == 0 and (pasta / solto).is_file() and not (RAIZ / solto).exists(),
+       '--saida sem pasta grava na pasta da ponte, nunca na pasta de onde se roda (o repositório é público)')
+    (RAIZ / solto).unlink(missing_ok=True)
 
 
 def main():
     sis = Sistema()
     try:
         for caso in (caso_pacote, lambda: caso_a_conferir(sis), lambda: caso_envio(sis), lambda: caso_segredos(sis),
-                     lambda: caso_conferir(sis), lambda: caso_meses_e_logs(sis)):
+                     lambda: caso_conferir(sis), lambda: caso_config_invalida(sis), lambda: caso_meses_e_logs(sis)):
             try:
                 caso()
             except Exception as e:   # um caso que quebra no meio não esconde os outros

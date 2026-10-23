@@ -5,12 +5,14 @@ A pasta é C:\\ponte-dominio\\ (ou a da variável PONTE_PASTA — os testes usam
     logs\\        um arquivo por dia; os de mais de 60 dias são apagados
     pendentes\\   os pacotes que não foram, pra mandar na próxima rodada
 
-Nada daqui mostra valor de campo: quem pergunta recebe "preenchido", "falta" ou "ainda é o do exemplo".
+Nada daqui mostra valor de campo: quem pergunta recebe "preenchido", "falta", "ainda é o do exemplo" ou
+"inválido (o porquê)" — a url tem que ser https:// (http só pra endereço local, nos testes).
 """
 import configparser
 import os
 import pathlib
 import re
+import urllib.parse
 
 CAMPOS = (
     ('dominio', 'conexao'),
@@ -65,13 +67,22 @@ class Config:
         return (self._cp.get(secao, campo, fallback='') or '').strip()
 
     def situacao(self, secao, campo):
-        """'preenchido', 'falta' ou 'ainda é o do exemplo' — nunca o valor."""
+        """'preenchido', 'falta', 'ainda é o do exemplo' ou 'inválido (…)' — nunca o valor."""
         v = self.valor(secao, campo)
         if not v:
             return 'falta'
+        if any(ord(c) < 32 for c in v):
+            # a chave colada em duas linhas: o configparser junta as duas, e o envio cairia mostrando o valor
+            return 'inválido (tem quebra de linha — o valor tem que estar numa linha só)'
         ex = (self._exemplo.get(secao, campo, fallback='') or '').strip()
         if ex and v == ex:
             return 'ainda é o do exemplo'
+        if secao == 'sistema' and campo == 'url':
+            problema = problema_da_url(v)
+            if problema:
+                return f'inválido ({problema})'
+        if secao == 'sistema' and campo.startswith('chave') and not v.isascii():
+            return 'inválido (tem acento ou caractere fora do padrão)'
         return 'preenchido'
 
     def falta(self, campos=CAMPOS):
@@ -98,6 +109,30 @@ class Config:
         for m in re.finditer(r'(?i)\b(?:pwd|password)\s*=\s*([^;]*)', conexao):
             lista.append(m.group(1).strip().strip('{}'))
         return [s for s in lista if s]
+
+
+def endereco_local(url):
+    try:
+        host = (urllib.parse.urlsplit(url).hostname or '').lower()
+    except ValueError:
+        return False
+    return host in ('localhost', '127.0.0.1', '::1')
+
+
+def problema_da_url(url):
+    """None quando dá pra mandar; senão, o problema (sem repetir o endereço)."""
+    if not url.isascii() or any(c.isspace() for c in url):
+        return 'tem acento ou espaço'
+    try:
+        partes = urllib.parse.urlsplit(url)
+        partes.port                       # porta que não é número levanta aqui
+    except ValueError:
+        return 'não é um endereço'
+    if partes.scheme not in ('http', 'https') or not partes.hostname:
+        return 'tem que começar com https://'
+    if partes.scheme != 'https' and not endereco_local(url):
+        return 'tem que ser https:// — a chave da ponte não pode ir sem criptografia'
+    return None
 
 
 def carregar():

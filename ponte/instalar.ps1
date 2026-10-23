@@ -55,13 +55,25 @@ if ($Remover) {
   return
 }
 
+# o instalador da cópia instalada apagaria a própria pasta antes de copiá-la (e a tarefa ficaria sem a ponte)
+$origem = [IO.Path]::GetFullPath($PSScriptRoot).TrimEnd('\')
+$appCheio = [IO.Path]::GetFullPath($App).TrimEnd('\')
+if ($origem -ieq $appCheio -or $origem.StartsWith($appCheio + '\', [StringComparison]::OrdinalIgnoreCase)) {
+  throw "Rode o instalar.ps1 da pasta do repositório, não da cópia instalada em $App (ela seria apagada antes de ser copiada)."
+}
+
 $py = (Get-Command py.exe -ErrorAction SilentlyContinue).Source
 if (-not $py) {
   throw 'Não achei o py.exe (o lançador do Python). Instale o Python 3.11 ou mais novo, com o lançador.'
 }
 
-# 1 e 2. as pastas
-foreach ($p in @($Base, $App, (Join-Path $Base 'logs'), (Join-Path $Base 'pendentes'))) {
+# 1 e 2. as pastas — a de cima só pro usuário, o SISTEMA e os administradores: embaixo de C:\ ela herdaria
+# "Usuários autenticados: Modificar", e qualquer conta do Windows poderia trocar o código que a tarefa roda (e, por
+# ele, ler o config.ini) ou ler os pendentes, que têm nome e CNPJ dos clientes
+New-Item -ItemType Directory -Force -Path $Base | Out-Null
+& icacls $Base /inheritance:r /grant:r "${Usuario}:(OI)(CI)(M)" "*S-1-5-18:(OI)(CI)(F)" "*S-1-5-32-544:(OI)(CI)(F)" | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "O icacls não conseguiu deixar $Base só pro usuário $Usuario, o SISTEMA e os administradores." }
+foreach ($p in @($App, (Join-Path $Base 'logs'), (Join-Path $Base 'pendentes'))) {
   New-Item -ItemType Directory -Force -Path $p | Out-Null
 }
 

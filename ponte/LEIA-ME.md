@@ -15,8 +15,8 @@ montar o pacote. A senha do banco e as chaves nunca vão pra tela nem pro log.
 3. **O driver ODBC da Domínio** (SQL Anywhere), com **os mesmos bits do Python** — o `pyodbc` só enxerga driver
    do mesmo tamanho. O `conferir` mostra os dois.
 4. **A configuração:** copie `ponte\config.exemplo.ini` pra `C:\ponte-dominio\config.ini` e preencha (a string de
-   conexão que a Domínio passar, o endereço da função do sistema e as duas chaves). Esse arquivo **nunca** entra no
-   repositório. O `instalar.ps1` cria a partir do modelo, se ainda não existir, e o deixa legível só pelo seu usuário.
+   conexão que a Domínio passar, o endereço da função do sistema — sempre `https://` — e as duas chaves, cada valor
+   numa linha só). Esse arquivo **nunca** entra no repositório. O `instalar.ps1` cria a partir do modelo, se ainda não existir, e o deixa legível só pelo seu usuário.
 
 ## Testar
 
@@ -25,7 +25,7 @@ Na pasta que tem a `ponte\` (a do repositório ou `C:\ponte-dominio\app`):
 ```
 py -3 -m ponte conferir                         # não grava nem manda nada: Python, configuração, IP, drivers, conexão, sistema
 py -3 -m ponte rodar --sem-enviar               # lê o Domínio e mostra o resumo, sem mandar
-py -3 -m ponte rodar --sem-enviar --saida p.json   # e grava o pacote pra olhar
+py -3 -m ponte rodar --sem-enviar --saida p.json   # e grava o pacote em C:\ponte-dominio\p.json pra olhar
 py -3 -m ponte rodar --falso --sem-enviar       # o mesmo, com o Domínio de mentira (empresas inventadas)
 ```
 
@@ -45,8 +45,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ponte\instalar.ps1 -Remover
 ```
 
 A tarefa "Ponte Domínio" roda a **cópia instalada** em `C:\ponte-dominio\app\ponte` — nunca a pasta do repositório,
-que muda de branch. Pra atualizar a ponte, rode o `instalar.ps1` de novo. O horário certo depende de quando a cópia
-da Domínio atualiza.
+que muda de branch. Pra atualizar a ponte, rode o `instalar.ps1` de novo — **o da pasta do repositório** (o da cópia
+instalada se recusa: apagaria a própria pasta antes de copiá-la). O horário certo depende de quando a cópia da Domínio
+atualiza. A pasta `C:\ponte-dominio` fica só pro seu usuário, o sistema e os administradores; o `config.ini`, só pro
+seu usuário.
 
 ## Onde ficam as coisas
 
@@ -63,6 +65,8 @@ rodada não manda nada. O que cada uma recebe e devolve está no começo de `pon
 contábil recebem o primeiro e o último dia do mês, nessa ordem, e devolvem **uma linha por empresa, já contada**).
 
 1. Escreva os `.sql` e tire a linha `-- A CONFERIR`.
-2. `py -3 -m ponte rodar --sem-enviar --saida conferencia.json`.
+2. `py -3 -m ponte rodar --sem-enviar --saida conferencia.json` — o arquivo cai em `C:\ponte-dominio\` (o `--saida`
+   sem pasta vai sempre pra lá) porque tem **nome e CNPJ dos clientes**: nunca o copie pra dentro do repositório, que
+   é público.
 3. **Confira 10 empresas à mão contra o Domínio** — funcionários, admissões, notas, valores, lançamentos — antes
    de ligar o envio. É o portão da fase 2 do plano: sem isso, não liga.

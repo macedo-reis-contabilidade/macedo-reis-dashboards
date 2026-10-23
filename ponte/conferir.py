@@ -100,6 +100,8 @@ def conferir():
         resultado, status, detalhe = env.uma_vez(corpo)
         if resultado == envio.FOI:
             tela(f'Sistema: respondeu ao ping (HTTP {status})')
+        elif resultado == envio.CONFIG:
+            tela(f'Sistema: {detalhe}' + (f' (HTTP {status})' if status else ''))
         elif status == 404:
             tela('Sistema: função do sistema ainda não publicada (HTTP 404) — normal até o sistema ficar pronto')
         elif status in (401, 403):

@@ -5,6 +5,8 @@ segredo da ponte). Respostas:
     2xx                            foi
     4xx                            recusado: não repete (chave errada, pacote inválido — repetir não adianta)
     5xx, tempo esgotado, rede fora tenta de novo 3 vezes, esperando 10 s, 60 s e 5 min; se não for, falhou
+    3xx, endereço que não dá pra usar  configuração: não repete e não mexe nos pendentes — redirecionamento NÃO é
+                                   seguido (o urllib reenviaria a chave pro outro endereço, e como GET, sem o pacote)
 
 Pacote que falhou vai pra pendentes\\ e é mandado antes, na rodada seguinte, do mais velho pro mais novo. Pendente
 com mais de 30 dias é apagado com aviso (a rodada manda os últimos meses de novo de qualquer jeito).
@@ -25,7 +27,7 @@ import urllib.request
 ESPERAS = (10, 60, 300)
 TIMEOUT = 60
 DIAS_PENDENTE = 30
-FOI, RECUSADO, FALHOU = 'foi', 'recusado', 'falhou'
+FOI, RECUSADO, FALHOU, CONFIG = 'foi', 'recusado', 'falhou', 'configuracao'
 
 
 def _esperas():
@@ -45,6 +47,16 @@ def _timeout():
         return TIMEOUT
 
 
+class _SemRedirecionar(urllib.request.HTTPRedirectHandler):
+    """3xx não é seguido: volta como HTTPError e vira CONFIG (a url está errada)."""
+
+    def redirect_request(self, *a, **k):
+        return None
+
+
+_ABRIR = urllib.request.build_opener(_SemRedirecionar())
+
+
 class Envio:
     def __init__(self, url, chave_publica, chave_ponte, registro):
         self.url = url
@@ -58,17 +70,22 @@ class Envio:
         self.ultimo_status = None
 
     def uma_vez(self, corpo):
-        """Uma tentativa: (FOI | RECUSADO | FALHOU, status ou None, detalhe curto)."""
-        req = urllib.request.Request(self.url, data=corpo, method='POST', headers=self.cabecalhos)
+        """Uma tentativa: (FOI | RECUSADO | FALHOU | CONFIG, status ou None, detalhe curto)."""
         try:
-            with urllib.request.urlopen(req, timeout=_timeout()) as r:
+            req = urllib.request.Request(self.url, data=corpo, method='POST', headers=self.cabecalhos)
+            with _ABRIR.open(req, timeout=_timeout()) as r:
                 return FOI, r.status, ''
+        except ValueError as e:
+            # url ou cabeçalho que não dá pra mandar (a mensagem pode trazer a chave: só o tipo)
+            return CONFIG, None, f'a configuração não deixa mandar ({type(e).__name__})'
         except urllib.error.HTTPError as e:
             try:
                 detalhe = e.read(300).decode('utf-8', 'replace')
             except Exception:
                 detalhe = ''
             detalhe = re.sub(r'\s+', ' ', detalhe).strip()
+            if 300 <= e.code < 400:
+                return CONFIG, e.code, 'o endereço redireciona pra outro lugar — confira a [sistema] url'
             if 400 <= e.code < 500:
                 return RECUSADO, e.code, detalhe
             return FALHOU, e.code, detalhe
@@ -88,6 +105,9 @@ class Envio:
             if resultado == RECUSADO:
                 self.registro(f'{quem} — o sistema recusou; não adianta repetir', 'erro')
                 return RECUSADO
+            if resultado == CONFIG:
+                self.registro(f'{quem} — não adianta repetir até acertar o config.ini', 'erro')
+                return CONFIG
             if tentativa < len(esperas):
                 self.registro(f'{quem} — tento de novo em {esperas[tentativa]:g} s', 'aviso')
                 time.sleep(esperas[tentativa])
