@@ -70,3 +70,96 @@ contábil recebem o primeiro e o último dia do mês, nessa ordem, e devolvem **
    é público.
 3. **Confira 10 empresas à mão contra o Domínio** — funcionários, admissões, notas, valores, lançamentos — antes
    de ligar o envio. É o portão da fase 2 do plano: sem isso, não liga.
+
+---
+
+# Ponte da Receita (Integra Contador)
+
+Módulo da mesma ponte (`ponte\receita\`), no mesmo PC, com a mesma pasta, o mesmo `config.ini` (seção `[integra]`),
+o mesmo log, os mesmos pendentes e o mesmo envio pro sistema. Fala com o **Integra Contador do Serpro**, a API da
+Receita: o que hoje se olha logado no e-CAC, sem tela. **Só consulta** — nada é transmitido à Receita.
+
+A lista de empresas vem do sistema (`{"versao": 1, "tipo": "receita", "pedir": "empresas"}` → documento e regime de
+cada uma). Sem ela, a rodada não consulta nada e sai com 1.
+
+## O que ela consulta, e quando
+
+| Consulta | No pacote | Quando (a tarefa roda de segunda a sexta) |
+|---|---|---|
+| A procuração do cliente pro escritório | `autorizacao`: `ativa`, `vencida` ou `sem`, e até quando | no primeiro dia útil do mês e na empresa que nunca foi consultada |
+| As declarações do PGDAS-D do ano | `pgdas`: cada mês declarado, quando, e se o DAS foi pago | Simples: no dia 21 (ou no próximo dia útil) e no último dia útil do mês — este, só pra quem ainda não tinha o mês anterior; em janeiro, o ano anterior também |
+| A última declaração de um mês (o PDF) | `faturamento`: a receita do mês (RPA) e a dos 12 meses (RBT12), com os centavos | Simples: quando o PGDAS mostra um mês novo (ou uma retificação) ainda não lido |
+| A Caixa Postal | `caixa_postal`: id, assunto, data, origem (Receita, Estado, Município) e se foi lida | todo dia útil: o "quem teve novidade" em lote (até 1.000 CNPJs por pedido) e as mensagens só de quem teve; a já mandada não vai de novo |
+| A situação fiscal (o relatório em PDF) | `situacao_fiscal`: o título de cada pendência e o órgão (Receita ou PGFN); sem pendência = lista vazia | no dia 5 (ou no próximo dia útil) |
+
+Sem procuração (ou vencida), as outras consultas da empresa nem são feitas: vão pro `faltou` como `sem_autorizacao`.
+O `faltou` diz também o que parou no `teto`, o que deu `erro` e o que ficou `a_conferir` (o PDF que a ponte não
+conseguiu ler: o valor vai `null` — nunca um número inventado — e o PDF fica guardado).
+
+**O que sai do PC:** só os campos do contrato (`ponte\receita\pacote.py`); o que vier a mais do Serpro é jogado fora
+antes de montar o pacote. **Não sai:** o PDF (nem em base64), o texto das mensagens, as chaves, a senha do
+certificado, os tokens. No log, das mensagens só quantas — nunca o assunto.
+
+## Montar
+
+1. **As bibliotecas:** `py -3 -m pip install cryptography pypdf` (o certificado e o texto dos PDFs).
+2. **O contrato do Integra Contador** (Loja do Serpro): a `consumer_key` e a `consumer_secret` ficam na Área do
+   Cliente. Cada cliente autoriza o escritório no e-CAC (procuração eletrônica pro CNPJ do escritório).
+3. **O certificado A1 do escritório** (`.pfx`, o mesmo do e-CAC): guarde dentro de `C:\ponte-dominio\` (só o seu
+   usuário, o sistema e os administradores leem essa pasta).
+4. **A `[integra]` do `config.ini`:** o `instalar.ps1 -Receita` pergunta o que falta numa janela — as chaves e a
+   senha sem aparecer na tela, o caminho do `.pfx` em texto — e grava direto no `config.ini`. **Nada disso passa por
+   chat, e-mail, tela ou log.** O `ambiente` fica `demonstracao` até a conferência das 5 empresas (abaixo); o
+   `teto_mes` (padrão 1.500) é o máximo de chamadas ao Serpro no mês — chegou, a rodada para e o resto vai pro
+   `faltou` como `teto` (o contrato cobra por consulta).
+
+## Testar
+
+```
+py -3 -m ponte receita conferir                                   # não grava nem manda nada
+py -3 -m ponte receita rodar --demonstracao --sem-enviar --so autorizacao,pgdas,faturamento,caixa_postal,situacao_fiscal --saida demo.json
+py -3 -m ponte receita rodar --falso --sem-enviar                 # o Serpro de mentira dos testes (da pasta do repositório)
+```
+
+- O **`conferir`** mostra se o `cryptography` e o `pypdf` estão instalados, cada campo da `[integra]` ("preenchido",
+  "falta", "ainda é o do exemplo" ou "inválido" — nunca o valor), o **titular do certificado e quantos dias faltam pra
+  vencer** (vencido ou a menos de 30 dias, em destaque), se o certificado do Serpro confere, o token (em produção,
+  pede um e diz "ok" ou o erro; em demonstração, "demonstração") e o ping do sistema.
+- O **`--demonstracao`** usa o ambiente de demonstração do Serpro: respostas fixas de exemplo, sem certificado, sem
+  contrato e sem custo — só o `cnpj_escritorio` é exigido (o do exemplo serve). Não conta no teto, não lembra nada no
+  `estado.json` e só manda pra um sistema de mentira (use `--sem-enviar`).
+- `--so servico,servico` roda esses agora, fora do calendário; `--empresas N`, só as N primeiras da lista;
+  `--saida arquivo.json` grava o pacote (sem pasta, em `C:\ponte-dominio\` — **tem CNPJ e dado dos clientes**: nunca
+  dentro do repositório).
+- Código de saída, como o do Domínio: **0** mandou (ou nada a mandar); **1** não conseguiu (a lista de empresas não
+  veio, ou o envio falhou e o pacote ficou em pendentes); **2** configuração ou recusa (repetir não adianta).
+
+## O primeiro uso (com o contrato)
+
+1. `py -3 -m ponte receita conferir` — tudo "preenchido", o certificado em dia e "Token: ok".
+2. Com o `ambiente = producao` no `config.ini`:
+   `py -3 -m ponte receita rodar --so autorizacao,pgdas,faturamento,situacao_fiscal --empresas 5 --sem-enviar --saida conferencia.json`
+3. **O Samuel confere as 5 empresas no e-CAC** (procuração, meses declarados, DAS pago, a receita do mês e dos 12
+   meses, as pendências) contra o `C:\ponte-dominio\conferencia.json`. Sem isso, não liga.
+4. Liga: `powershell -NoProfile -ExecutionPolicy Bypass -File ponte\instalar.ps1 -Receita` (como administrador) —
+   a tarefa **"Ponte Receita"**, de segunda a sexta às 08:30 (`-Hora` muda). `-Remover -Receita` tira só ela.
+
+## Onde ficam as coisas
+
+- `C:\ponte-dominio\receita\estado.json` — o que já foi consultado e mandado: a última procuração de cada empresa, os
+  meses declarados, a declaração já lida de cada mês, a última novidade da Caixa Postal e as mensagens já mandadas.
+  Só é gravado quando o pacote foi (ou ficou em pendentes) — um envio recusado não perde nada.
+- `C:\ponte-dominio\receita\chamadas-AAAA-MM.json` — as chamadas ao Serpro no mês, por serviço (o teto).
+- `C:\ponte-dominio\receita\pdfs\` — os PDFs da declaração e da situação fiscal, apagados depois de 30 dias. Nunca no
+  repositório, nunca no pacote.
+- Os logs e os pendentes são os mesmos da ponte do Domínio.
+
+## O certificado do Serpro
+
+O servidor do Serpro não manda o certificado intermediário dele; o Windows acha sozinho, o Python não. Ele vai junto,
+em `ponte\receita\ac-serpro-2025.pem` (público, emitido pela GlobalSign). Se o `conferir` disser que **o Python não
+reconheceu o certificado do Serpro**, o Serpro trocou de intermediário: no navegador, abra
+`https://gateway.apiserpro.serpro.gov.br`, veja o certificado (cadeado › Detalhes) e baixe o da autoridade
+intermediária (o endereço "Emissor da AC" do certificado do servidor); converta pra PEM
+(`certutil -encode intermediario.crt novo.pem`), troque o conteúdo do `ac-serpro-2025.pem` por ele e rode o
+`instalar.ps1` de novo. Nunca desligue a conferência do certificado.

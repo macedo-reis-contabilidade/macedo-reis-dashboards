@@ -1,0 +1,147 @@
+"""O que a ponte da Receita lembra de uma rodada pra outra, em C:\\ponte-dominio\\receita\\:
+
+    estado.json             o que já foi consultado e mandado: a última autorização de cada empresa, os meses
+                            declarados no PGDAS, a declaração já lida de cada mês, a última data de novidade na
+                            Caixa Postal e as mensagens já mandadas (pelo id), e a última situação fiscal
+    chamadas-AAAA-MM.json   quantas chamadas ao Serpro no mês, por serviço — o teto_mes
+    pdfs\\                   os PDFs da declaração e da situação fiscal (apagados depois de 30 dias)
+
+Nada disso sai do PC nem entra no repositório.
+"""
+import datetime
+import json
+import os
+import pathlib
+
+DIAS_PDF = 30
+MENSAGENS_POR_EMPRESA = 500   # as últimas, pra não crescer pra sempre
+
+
+def pasta_receita(base):
+    p = pathlib.Path(base) / 'receita'
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _ler_json(arq, padrao):
+    try:
+        return json.loads(arq.read_text(encoding='utf-8'))
+    except (FileNotFoundError, json.JSONDecodeError, UnicodeDecodeError):
+        return padrao
+
+
+def _gravar_json(arq, dados):
+    tmp = arq.with_suffix('.tmp')
+    tmp.write_text(json.dumps(dados, ensure_ascii=False, indent=1), encoding='utf-8')
+    os.replace(tmp, arq)
+
+
+class Estado:
+    VAZIO = {'autorizacao': {}, 'pgdas_meses': {}, 'declaracoes_lidas': {}, 'eventos': {}, 'mensagens': {},
+             'situacao_fiscal': {}}
+
+    def __init__(self, pasta, gravar=True):
+        self.arq = pasta / 'estado.json'
+        self.gravar_no_fim = gravar
+        lido = _ler_json(self.arq, {})
+        self.d = {k: dict(lido.get(k) or {}) for k in self.VAZIO}
+
+    # — autorização
+    def autorizacao_consultada(self, doc):
+        return doc in self.d['autorizacao']
+
+    def guardar_autorizacao(self, doc, bloco, hoje):
+        self.d['autorizacao'][doc] = {'consultada_em': hoje.isoformat(), **bloco}
+
+    # — PGDAS e a declaração de cada mês
+    def meses_declarados(self, doc):
+        return {m['competencia']: m.get('transmitida_em') for m in self.d['pgdas_meses'].get(doc, [])}
+
+    def guardar_meses(self, doc, meses):
+        atuais = {m['competencia']: m for m in self.d['pgdas_meses'].get(doc, [])}
+        for m in meses:
+            atuais[m['competencia']] = {'competencia': m['competencia'], 'transmitida_em': m.get('transmitida_em')}
+        self.d['pgdas_meses'][doc] = sorted(atuais.values(), key=lambda m: m['competencia'])
+
+    def declaracao_lida(self, doc, competencia):
+        return self.d['declaracoes_lidas'].get(doc, {}).get(competencia)
+
+    def declaracoes_lidas(self, doc):
+        """{competência: a transmissão que foi lida}."""
+        return dict(self.d['declaracoes_lidas'].get(doc, {}))
+
+    def guardar_declaracao_lida(self, doc, competencia, transmitida_em):
+        self.d['declaracoes_lidas'].setdefault(doc, {})[competencia] = transmitida_em
+
+    # — Caixa Postal
+    def ultimo_evento(self, doc):
+        return self.d['eventos'].get(doc)
+
+    def guardar_evento(self, doc, data):
+        self.d['eventos'][doc] = data
+
+    def mensagens_mandadas(self, doc):
+        return set(self.d['mensagens'].get(doc, []))
+
+    def guardar_mensagens(self, doc, ids):
+        lista = self.d['mensagens'].get(doc, []) + [i for i in ids if i not in self.d['mensagens'].get(doc, [])]
+        self.d['mensagens'][doc] = lista[-MENSAGENS_POR_EMPRESA:]
+
+    # — situação fiscal
+    def guardar_situacao(self, doc, hoje):
+        self.d['situacao_fiscal'][doc] = hoje.isoformat()
+
+    def gravar(self):
+        if self.gravar_no_fim:
+            _gravar_json(self.arq, self.d)
+
+
+class Contador:
+    """As chamadas ao Serpro no mês, por serviço. Demonstração e --falso não contam (contar=False)."""
+
+    def __init__(self, pasta, hoje, teto, contar=True):
+        self.arq = pasta / f'chamadas-{hoje:%Y-%m}.json'
+        self.teto = teto
+        self.contar = contar
+        self.d = _ler_json(self.arq, {}) if contar else {}
+
+    def total(self):
+        return sum(int(v) for v in self.d.values() if isinstance(v, int))
+
+    def acabou(self):
+        return self.contar and self.total() >= self.teto
+
+    def somar(self, servico):
+        if not self.contar:
+            return
+        self.d[servico] = int(self.d.get(servico, 0)) + 1
+        _gravar_json(self.arq, self.d)
+
+
+def pasta_pdfs(pasta):
+    p = pasta / 'pdfs'
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def guardar_pdf(pasta, nome, conteudo):
+    destino = pasta_pdfs(pasta) / nome
+    destino.write_bytes(conteudo)
+    return destino
+
+
+def apagar_pdfs_velhos(pasta, registro, dias=DIAS_PDF):
+    p = pasta / 'pdfs'
+    if not p.is_dir():
+        return
+    limite = datetime.datetime.now().timestamp() - dias * 86400
+    apagados = 0
+    for arq in p.glob('*.pdf'):
+        try:
+            if arq.stat().st_mtime < limite:
+                arq.unlink()
+                apagados += 1
+        except OSError as e:
+            registro(f'receita: não consegui apagar o PDF antigo {arq.name}: {type(e).__name__}', 'aviso')
+    if apagados:
+        registro(f'receita: {apagados} PDF(s) de mais de {dias} dias apagado(s)')

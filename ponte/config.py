@@ -22,6 +22,13 @@ CAMPOS = (
 )
 CAMPOS_DOMINIO = (('dominio', 'conexao'),)
 CAMPOS_SISTEMA = (('sistema', 'url'), ('sistema', 'chave_publica'), ('sistema', 'chave_ponte'))
+# a ponte da Receita (Integra Contador do Serpro) — 23/10/2026
+CAMPOS_INTEGRA = (('integra', 'ambiente'), ('integra', 'consumer_key'), ('integra', 'consumer_secret'),
+                  ('integra', 'certificado'), ('integra', 'senha_certificado'), ('integra', 'cnpj_escritorio'))
+SEGREDOS_INTEGRA = ('consumer_key', 'consumer_secret', 'certificado', 'senha_certificado')
+# o ambiente e o teto do exemplo são valores de verdade: igual ao exemplo não é "ainda é o do exemplo"
+VALEM_COMO_NO_EXEMPLO = (('integra', 'ambiente'), ('integra', 'teto_mes'))
+TETO_PADRAO = 1500
 MESES_PADRAO = 3
 MESES_MAX = 24
 EXEMPLO = pathlib.Path(__file__).with_name('config.exemplo.ini')
@@ -75,7 +82,7 @@ class Config:
             # a chave colada em duas linhas: o configparser junta as duas, e o envio cairia mostrando o valor
             return 'inválido (tem quebra de linha — o valor tem que estar numa linha só)'
         ex = (self._exemplo.get(secao, campo, fallback='') or '').strip()
-        if ex and v == ex:
+        if ex and v == ex and (secao, campo) not in VALEM_COMO_NO_EXEMPLO:
             return 'ainda é o do exemplo'
         if secao == 'sistema' and campo == 'url':
             problema = problema_da_url(v)
@@ -83,7 +90,34 @@ class Config:
                 return f'inválido ({problema})'
         if secao == 'sistema' and campo.startswith('chave') and not v.isascii():
             return 'inválido (tem acento ou caractere fora do padrão)'
+        if secao == 'integra':
+            problema = problema_da_integra(campo, v)
+            if problema:
+                return f'inválido ({problema})'
         return 'preenchido'
+
+    def ambiente_integra(self):
+        """'demonstracao' ou 'producao' — o que estiver no config.ini (em branco = demonstração)."""
+        return self.valor('integra', 'ambiente').lower() or 'demonstracao'
+
+    def campos_integra(self, ambiente):
+        """O que a [integra] precisa ter: em demonstração, só o CNPJ do escritório; em produção, tudo."""
+        if ambiente == 'demonstracao':
+            return (('integra', 'cnpj_escritorio'),)
+        return CAMPOS_INTEGRA
+
+    def teto(self):
+        """(teto de chamadas no mês, problema)."""
+        bruto = self.valor('integra', 'teto_mes')
+        if not bruto:
+            return TETO_PADRAO, None
+        try:
+            n = int(bruto)
+        except ValueError:
+            return TETO_PADRAO, f'[integra] teto_mes não é um número inteiro; usei {TETO_PADRAO}'
+        if n < 1:
+            return TETO_PADRAO, f'[integra] teto_mes tem que ser maior que zero; usei {TETO_PADRAO}'
+        return n, None
 
     def falta(self, campos=CAMPOS):
         """Os campos que não dá pra usar, como 'secao.campo (situação)'."""
@@ -108,6 +142,7 @@ class Config:
         lista = [conexao, self.valor('sistema', 'chave_ponte'), self.valor('sistema', 'chave_publica')]
         for m in re.finditer(r'(?i)\b(?:pwd|password)\s*=\s*([^;]*)', conexao):
             lista.append(m.group(1).strip().strip('{}'))
+        lista += [self.valor('integra', c) for c in SEGREDOS_INTEGRA]
         return [s for s in lista if s]
 
 
@@ -132,6 +167,42 @@ def problema_da_url(url):
         return 'tem que começar com https://'
     if partes.scheme != 'https' and not endereco_local(url):
         return 'tem que ser https:// — a chave da ponte não pode ir sem criptografia'
+    return None
+
+
+def documento_valido(doc):
+    """CNPJ de 14 posições (as 12 primeiras podem ter letra — o CNPJ alfanumérico de julho/2026) com os dois
+    dígitos verificadores certos, ou CPF de 11 dígitos com os dele."""
+    doc = (doc or '').upper()
+    if re.fullmatch(r'[0-9A-Z]{12}[0-9]{2}', doc):
+        valores = [ord(c) - 48 for c in doc]
+        for n in (12, 13):
+            pesos = list(range(n - 7, 1, -1)) + list(range(9, 1, -1))
+            resto = sum(v * p for v, p in zip(valores[:n], pesos)) % 11
+            if valores[n] != (0 if resto < 2 else 11 - resto):
+                return False
+        return True
+    if re.fullmatch(r'[0-9]{11}', doc):
+        nums = [int(c) for c in doc]
+        for n in (9, 10):
+            resto = sum(v * p for v, p in zip(nums[:n], range(n + 1, 1, -1))) * 10 % 11
+            if nums[n] != (0 if resto == 10 else resto):
+                return False
+        return True
+    return False
+
+
+def problema_da_integra(campo, v):
+    if campo == 'ambiente' and v.lower() not in ('demonstracao', 'producao'):
+        return 'tem que ser demonstracao ou producao'
+    if campo == 'cnpj_escritorio':
+        doc = re.sub(r'[./\s-]', '', v).upper()
+        if not re.fullmatch(r'[0-9A-Z]{12}[0-9]{2}', doc):
+            return 'tem que ter os 14 caracteres do CNPJ'
+    if campo == 'certificado' and not pathlib.Path(v).is_file():
+        return 'o arquivo .pfx não está nesse caminho'
+    if campo in ('consumer_key', 'consumer_secret') and not v.isascii():
+        return 'tem acento ou caractere fora do padrão'
     return None
 
 

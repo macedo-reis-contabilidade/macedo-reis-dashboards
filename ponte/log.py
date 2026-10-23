@@ -9,6 +9,9 @@ import sys
 
 DIAS_LOG = 60
 _SENHA_NA_CONEXAO = re.compile(r'(?i)\b(pwd|password)\s*=\s*[^;]*')
+# a ponte da Receita: o token do Serpro e a chave dele (Basic) que uma mensagem de erro repetir
+_CREDENCIAL_HTTP = re.compile(r'(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}')
+_TOKEN_EM_JSON = re.compile(r'(?i)("?(?:access_token|jwt_token|refresh_token)"?\s*[:=]\s*"?)[A-Za-z0-9._~+/=-]{8,}')
 
 
 def ocultar(texto, segredos=()):
@@ -16,6 +19,8 @@ def ocultar(texto, segredos=()):
     # do mais comprido pro mais curto: a conexão inteira antes da senha que está dentro dela
     for s in sorted({s for s in segredos if s and len(s) >= 4}, key=len, reverse=True):
         texto = texto.replace(s, '***')
+    texto = _CREDENCIAL_HTTP.sub(r'\1 ***', texto)
+    texto = _TOKEN_EM_JSON.sub(r'\1***', texto)
     return _SENHA_NA_CONEXAO.sub(r'\1=***', texto)
 
 
