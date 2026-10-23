@@ -23,7 +23,11 @@ export const ROTULOS = {
   obrigacao_desligada: 'Obrigações comuns desligadas', obrigacao_sem_tarefa: 'Obrigações sem a tarefa do mês',
   reforma_prazo: 'Prazo da opção da Reforma', noticia_prazo: 'Prazos das notícias chegando',
   tarefa_responsavel: 'Tarefas sem responsável', tarefa_repetida: 'Tarefas repetidas', tarefa_ex_cliente: 'Tarefas de ex-cliente',
-  recorrente_ex_cliente: 'Tarefas recorrentes de ex-cliente', rotina_sem_responsavel: 'Rotinas sem responsável'
+  recorrente_ex_cliente: 'Tarefas recorrentes de ex-cliente', rotina_sem_responsavel: 'Rotinas sem responsável',
+  // a Receita pela ponte (Integra Contador, 23/10/2026): vigia_regras_receita()
+  receita_sem_autorizacao: 'Empresas sem autorização da Receita pro escritório', receita_autorizacao_vencendo: 'Autorizações da Receita vencendo',
+  receita_pgdas_atrasado: 'PGDAS não transmitido, segundo a Receita', receita_mensagem: 'Mensagens na Caixa Postal da Receita',
+  receita_pendencia: 'Pendências na Receita', ponte_parada: 'Ponte da Receita parada'
 };
 export const rotuloDaRegra = r => ROTULOS[r] || 'Outros achados';
 const PESO = { alta: 0, media: 1, baixa: 2 };

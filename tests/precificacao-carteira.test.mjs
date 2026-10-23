@@ -6,7 +6,7 @@
 import { indexarParams, calcularMotor, faturamentoAnual } from '../assets/js/precificacao-motor.js';
 import { respostasDoSistema, regimesDasQuestoes, tipoSocietario, erpDaCarteira, honorarioDeHoje, nomeBase, nomesBatem, parcelasDeHonorario, parcelaDoCliente,
   faltamResponder, ultimaPorCliente, mesesDaVigencia, mesBR, diferenca, ehMei, rotuloSituacao, mesesLivres, reajustesDoMes, aplicarReajusteAgora,
-  referenciaDaLinha, pagaMenosQueOMotor, resumoDaCarteira } from '../assets/js/precificacao-carteira.js';
+  referenciaDaLinha, pagaMenosQueOMotor, resumoDaCarteira, ultimaDeclaracaoPorCliente, FONTES } from '../assets/js/precificacao-carteira.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + extra : '')); };
@@ -86,6 +86,16 @@ chk('o faturamento pelo RBT12 ÷ 12; sem sócios cadastrados, a pergunta fica; r
 const s3 = respostasDoSistema({ cliente: { ...SIMPLES, cnae_principal: '8630-5/03', logradouro: null }, obrigacoes: [], carteira: {} }, { regimesDaQuestao: REG });
 chk('sem obrigação vinculada: o bloco D e quem emite as notas ficam por responder; sem rua, sem endereço; saúde pelo CNAE (DMED)',
   !('D6' in s3.respostas) && !('D14' in s3.respostas) && !('B3' in s3.respostas) && !('D12' in s3.respostas) && !('A1C' in s3.respostas) && s3.respostas.D17 === 'Sim' && !('B8' in s3.respostas));
+// a ponte da Receita (23/10/2026): o faturamento da declaração do PGDAS vem antes do da Reforma
+const s4 = respostasDoSistema({ cliente: SIMPLES, obrigacoes: [], carteira: {}, reforma: { receita_mensal: 35000, rbt12: 0, decisao: 'pendente' },
+  receita: { competencia: '2026-09', receita_mes: 84211.5, receita_12_meses: 912000.07 } }, { regimesDaQuestao: REG });
+chk('com a declaração do PGDAS, o faturamento médio vem da Receita (os 12 meses ÷ 12, nos centavos)', s4.respostas.A2M === 76000.01 && s4.origem.A2M === 'receita' && FONTES.receita === 'Receita (PGDAS)', s4.respostas.A2M);
+const s5 = respostasDoSistema({ cliente: SIMPLES, obrigacoes: [], carteira: {}, reforma: { receita_mensal: 35000, rbt12: 0, decisao: 'pendente' },
+  receita: { competencia: '2026-09', receita_mes: null, receita_12_meses: null } }, { regimesDaQuestao: REG });
+chk('declaração sem os 12 meses: fica a Reforma', s5.respostas.A2M === 35000 && s5.origem.A2M === 'reforma');
+const ud = ultimaDeclaracaoPorCliente([{ cliente_id: 'a', competencia: '2026-08', receita_12_meses: 10 }, { cliente_id: 'a', competencia: '2026-09', receita_12_meses: 20 },
+  { cliente_id: 'a', competencia: '2026-10', receita_12_meses: null }, { cliente_id: 'b', competencia: '2026-07', receita_12_meses: 0 }]);
+chk('a última declaração de cada cliente, só com os 12 meses', ud.get('a').competencia === '2026-09' && !ud.has('b'));
 chk('MEI fica com a aba MEI', ehMei({ regime_tributario: 'MEI' }) && !ehMei({ regime_tributario: 'Simples Nacional' }) && !ehMei(null));
 chk('o que falta responder: só as que mexem no preço, em branco e visíveis', JSON.stringify(faltamResponder({ A2M: 1, B8: 'x', C1: '' }, id => id.startsWith('A') || id === 'C1'))
   === JSON.stringify(['A5', 'A7', 'A8', 'A9', 'A10', 'A11B', 'C1']));

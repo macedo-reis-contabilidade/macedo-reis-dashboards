@@ -12,7 +12,7 @@ const norm = s => semAcento(s).toUpperCase().replace(/\s+/g, ' ').trim();
 
 // de onde veio cada resposta (a etiqueta ao lado da pergunta)
 export const FONTES = { cadastro: 'cadastro', socios: 'sócios', obrigacoes: 'obrigações', carteira: 'carteira', reforma: 'Reforma', regularizacoes: 'regularizações',
-  fatorR: 'Fator R', boletos: 'boleto', conta_azul: 'Conta Azul' };
+  fatorR: 'Fator R', boletos: 'boleto', conta_azul: 'Conta Azul', receita: 'Receita (PGDAS)' };
 
 // o regime do cadastro → a opção da pergunta A10 (MEI fica com a aba MEI)
 export const REGIME_DO_CADASTRO = { 'Simples Nacional': 'Simples Nacional', 'Lucro Presumido': 'Lucro Presumido', 'Lucro Real': 'Lucro Real',
@@ -58,7 +58,8 @@ export function regimesDasQuestoes(obrigacoesPrec) {
 // respostasDoSistema(dados, { regimesDaQuestao }) → { respostas, origem }
 //   dados: { cliente (o cadastro), socios (quantos), obrigacoes ([nomes das vinculadas e ativas]), fatorR (bool),
 //            regularizacoes ([status]), reforma ({ receita_mensal, rbt12, decisao } | null), carteira ({ sistemas, ramo }),
-//            hoje ({ valor, fonte } | null) }
+//            hoje ({ valor, fonte } | null), receita ({ competencia, receita_mes, receita_12_meses } | null — a última
+//            declaração do PGDAS lida pela ponte da Receita, 23/10/2026: o faturamento dela vem antes do da Reforma) }
 //   origem: pergunta → a fonte (FONTES)
 // ============================================================
 export function respostasDoSistema(d, { regimesDaQuestao = new Map() } = {}) {
@@ -74,8 +75,12 @@ export function respostasDoSistema(d, { regimesDaQuestao = new Map() } = {}) {
   const end = [[c.logradouro, c.numero].filter(Boolean).join(', '), c.bairro, local].filter(Boolean).join(' · ') + (c.cep ? ' · CEP ' + c.cep : '');
   por('A1C', c.logradouro ? end : null, 'cadastro');
   const rf = d.reforma || null;
+  // o faturamento médio do mês: a declaração do PGDAS que a ponte da Receita leu (os 12 meses ÷ 12), senão a ficha da Reforma
+  const rc = d.receita || null;
+  const mensalRc = rc && Number(rc.receita_12_meses) > 0 ? Number(rc.receita_12_meses) / 12 : 0;
   const mensal = rf ? (Number(rf.receita_mensal) > 0 ? Number(rf.receita_mensal) : Number(rf.rbt12) > 0 ? Number(rf.rbt12) / 12 : 0) : 0;
-  por('A2M', mensal > 0 ? Math.round(mensal * 100) / 100 : null, 'reforma');
+  if (mensalRc > 0) por('A2M', Math.round(mensalRc * 100) / 100, 'receita');
+  else por('A2M', mensal > 0 ? Math.round(mensal * 100) / 100 : null, 'reforma');
   por('A4', tipoSocietario(c.natureza_juridica, c.regime_tributario), 'cadastro');
   por('A5', Number(d.socios) > 0 ? Number(d.socios) : null, 'socios');
   por('A6', c.cidade || null, 'cadastro');
@@ -112,6 +117,18 @@ export function respostasDoSistema(d, { regimesDaQuestao = new Map() } = {}) {
     if (aparece('D18') && /^682[12]/.test(cnae)) por('D18', 'Sim', 'cadastro');
   }
   return { respostas, origem };
+}
+
+/** A última declaração do PGDAS com o faturamento, por cliente (receita_pgdas: { cliente_id, competencia, receita_mes,
+ *  receita_12_meses }) → Map(cliente_id → a linha da competência mais recente que tem os 12 meses). */
+export function ultimaDeclaracaoPorCliente(linhas) {
+  const m = new Map();
+  (linhas || []).forEach(l => {
+    if (!l || !l.cliente_id || !(Number(l.receita_12_meses) > 0)) return;
+    const a = m.get(l.cliente_id);
+    if (!a || String(l.competencia) > String(a.competencia)) m.set(l.cliente_id, l);
+  });
+  return m;
 }
 
 const formatarDocumento = doc => {

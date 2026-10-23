@@ -472,6 +472,14 @@
           </div>
         </section>
 
+        <section class="form-section" id="sectionReceita" hidden>
+          <div class="form-section-head">
+            <h2>Receita</h2>
+            <span class="form-section-sub">O que a ponte da Receita consultou desta empresa</span>
+          </div>
+          <div id="receitaConteudo"></div>
+        </section>
+
         <section class="form-section" id="sectionProcessos">
           <div class="form-section-head">
             <h2>Processos / atualizações</h2>
@@ -718,6 +726,7 @@
     import { supabase, getCurrentUser, signOut } from '../assets/js/supabase.js';
     import { vincularObrigacoes } from '../assets/js/tarefas-acoes.js';
     import { retirantesDe, sociosQueFicam, retiranteQueE, mesmaPessoa, avisoDaSoma, linhaDoRetirante } from '../assets/js/leitura-socios.js';
+    import { carregarReceita, htmlDaReceita } from '../assets/js/receita-ficha.js';
     import {
       bindMask, maskCNPJ, maskCPF, maskTelefone, maskCEP,
       formatCNPJ, formatCPF, formatDocumento, formatTelefone,
@@ -1224,6 +1233,7 @@
         document.getElementById('capital_social').value = cliente.capital_social || '';
         document.getElementById('natureza_juridica').value = cliente.natureza_juridica || '';
         document.getElementById('cnaes_secundarios').value = Array.isArray(cliente.cnaes_secundarios) ? cliente.cnaes_secundarios.join('\n') : (cliente.cnaes_secundarios || '');
+        mostrarReceita();
       } else {
         document.getElementById('sectionPJ').hidden = true;
         document.getElementById('sectionPF').hidden = false;
@@ -2625,6 +2635,13 @@
         ? '<tr><th>Tarefa</th><th>Setor</th><th>Concluída por</th><th>Concluída em</th></tr>'
         : '<tr><th>Tarefa</th><th>Setor</th><th>Responsável</th><th>Prazo</th></tr>';
       return `<table class="hist-tbl"><thead>${head}</thead><tbody>${rows}</tbody></table>`;
+    }
+
+    // a Receita pela ponte (Integra Contador): a seção só aparece quando a ponte já consultou esta empresa
+    async function mostrarReceita(){
+      const html = htmlDaReceita(await carregarReceita(supabase, clienteId));
+      document.getElementById('receitaConteudo').innerHTML = html;
+      document.getElementById('sectionReceita').hidden = !html;
     }
 
     async function carregarHistorico(){
