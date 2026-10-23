@@ -108,6 +108,31 @@ export const TABELAS = {
     notas: { tipo: 'A1 (arquivo) | A3 (cartão ou token) | vazio = não informado', titular: 'o nome no certificado (empresa ou pessoa)', cliente_id: 'vazio = sem empresa vinculada',
       certificadora: 'quem emitiu o certificado. Desde 22/10/2026 a tela a exige no certificado novo e no Renovado · vazia = não informada: os que vieram da planilha de controle, que não tinha a coluna (deles, a tela só pede a certificadora no Renovado · editar outro campo não exige)',
       acompanhar: 'false = não acompanha mais (fica fora dos avisos)', avisado_em: 'a última vez que o cliente foi avisado (vazio = ainda não, neste vencimento)' } },
+  // a Receita pela ponte (Integra Contador, 23/10/2026): o que a ponte do PC do escritório consulta na Receita, por empresa.
+  // Só consulta: nada é transmitido. Vazio = a ponte ainda não consultou (ela começa depois de instalada no PC do escritório).
+  receita_empresas: { rotulo: 'a situação das empresas na Receita',
+    desc: 'O que a ponte da Receita (Integra Contador, do PC do escritório) consultou de cada empresa: se o escritório tem a autorização de acesso da empresa na Receita (sem ela, nada se consulta), quando o PGDAS foi consultado e as pendências do relatório de situação fiscal (Receita e PGFN). Uma linha por empresa; sem linha = ainda não consultada.',
+    cols: ['cliente_id', 'autorizacao', 'autorizacao_ate', 'autorizacao_em', 'pgdas_em', 'pendencias', 'situacao_fiscal_em', 'atualizado_em'],
+    padrao: ['cliente_id', 'autorizacao', 'autorizacao_ate', 'pendencias', 'situacao_fiscal_em'],
+    notas: { autorizacao: 'ativa | vencida | sem (a Receita recusou: o cliente não autorizou o escritório)', autorizacao_ate: 'até quando a autorização vale',
+      pendencias: 'lista [{orgao, titulo}] do relatório de situação fiscal · vazia = sem pendência · vazio = nunca consultada', situacao_fiscal_em: 'o dia do relatório de situação fiscal',
+      pgdas_em: 'a última consulta do PGDAS desta empresa' } },
+  receita_pgdas: { rotulo: 'o PGDAS das empresas segundo a Receita',
+    desc: 'O PGDAS de cada empresa do Simples por mês, segundo a Receita (pela ponte): quando a declaração foi transmitida, se o DAS foi pago e, lido da declaração, a receita do mês e a dos 12 meses anteriores (o RBT12, que é o faturamento usado na revisão do honorário). Mês sem linha = não aparece na Receita (ou ainda não consultado: veja receita_empresas.pgdas_em).',
+    cols: ['cliente_id', 'competencia', 'transmitida_em', 'das_pago', 'receita_mes', 'receita_12_meses', 'consultado_em', 'faturamento_em'],
+    padrao: ['cliente_id', 'competencia', 'transmitida_em', 'das_pago', 'receita_mes', 'receita_12_meses'],
+    notas: { competencia: 'AAAA-MM, o mês da declaração (o período de apuração)', das_pago: 'true pago · false não pago · vazio = sem DAS do mês',
+      receita_12_meses: 'a receita bruta dos 12 meses anteriores ao mês (RBT12), da declaração', receita_mes: 'a receita bruta do mês, da declaração' } },
+  receita_mensagens: { rotulo: 'as mensagens da Caixa Postal da Receita',
+    desc: 'As mensagens da Caixa Postal do e-CAC de cada empresa (pela ponte): só o assunto, a data, de onde veio (Receita, Estado ou Município — a exclusão do Simples vem do Estado ou do Município) e se foi lida. O texto fica no e-CAC.',
+    cols: ['cliente_id', 'assunto', 'enviada_em', 'origem', 'lida', 'recebida_em'],
+    padrao: ['cliente_id', 'assunto', 'enviada_em', 'origem', 'lida'],
+    notas: { recebida_em: 'quando o sistema recebeu da ponte', lida: 'se a mensagem já foi aberta no e-CAC' } },
+  receita_rodadas: { rotulo: 'as rodadas da ponte da Receita',
+    desc: 'Cada vez que a ponte da Receita (no PC do escritório) mandou o que consultou: quando, quantas chamadas no mês (o Integra é pago por chamada), quantas empresas, os CNPJs que não bateram com o cadastro e o que faltou (sem autorização, teto de chamadas, erro, a conferir).',
+    cols: ['inicio', 'fim', 'maquina', 'ambiente', 'chamadas_mes', 'empresas', 'sem_cadastro', 'faltou', 'recebida_em'],
+    padrao: ['recebida_em', 'chamadas_mes', 'empresas', 'sem_cadastro', 'faltou'],
+    notas: { faltou: 'lista [{documento, servico, motivo}] · motivo: sem_autorizacao | teto | erro | a_conferir' } },
   admissoes: { rotulo: 'as admissões', desc: 'Admissões de funcionários que as empresas mandam pelo link (tela Admissões). As respostas do formulário não são lidas.',
     cols: ['id', 'cliente_id', 'empresa_nome', 'contato_nome', 'origem', 'funcionario_nome', 'data_inicio', 'responsavel', 'status', 'documentos', 'drive_pasta_url', 'observacoes',
       'respondida_em', 'registrada_em', 'registrada_por', 'criado_em', 'atualizado_em'],
@@ -176,12 +201,12 @@ export const TABELAS = {
   // o filtro fixo tira)
   vigia_achados: { rotulo: 'o que o vigia achou', fixoNaoSocio: 'so_socios=eq.false',
     notaNaoSocio: 'Pra quem não é sócio, os achados só dos sócios (o cliente da carteira sem cobrança, que usa o financeiro do escritório) não entram nesta leitura: desses, não diga que não há nenhum — diga que só os sócios veem.',
-    desc: 'O vigia do sistema: regras que rodam de hora em hora e acham o que ficou pra trás ou desencontrado (admissão sem registro, rescisão com pagamento chegando, alvará vencido, certificado digital do cliente vencendo sem aviso, boleto parado, cliente da carteira sem cobrança ou sem obrigação fiscal, reajuste aceito na Precificação que não entrou no boleto ou no Conta Azul, obrigação, tarefa ou rotina sem responsável, a obrigação que as outras empresas do mesmo regime têm e esta tem desligada, a obrigação ligada que ficou sem a tarefa do mês, o prazo que uma notícia do feed traz chegando, proposta parada, cadastro desencontrado da carteira...). Cada achado diz quem cuida e a tela onde se resolve. Arrumou na tela, ele some sozinho na rodada seguinte (resolvido); ignorado = alguém marcou que não é problema. O que precisa de atenção agora: situacao = aberto.',
+    desc: 'O vigia do sistema: regras que rodam de hora em hora e acham o que ficou pra trás ou desencontrado (admissão sem registro, rescisão com pagamento chegando, alvará vencido, certificado digital do cliente vencendo sem aviso, boleto parado, cliente da carteira sem cobrança ou sem obrigação fiscal, reajuste aceito na Precificação que não entrou no boleto ou no Conta Azul, obrigação, tarefa ou rotina sem responsável, a obrigação que as outras empresas do mesmo regime têm e esta tem desligada, a obrigação ligada que ficou sem a tarefa do mês, o prazo que uma notícia do feed traz chegando, proposta parada, cadastro desencontrado da carteira e, pela ponte da Receita (Integra Contador), a empresa que não autorizou o escritório, o PGDAS não transmitido depois do prazo, mensagem nova na Caixa Postal do e-CAC e pendência na situação fiscal...). Cada achado diz quem cuida e a tela onde se resolve. Arrumou na tela, ele some sozinho na rodada seguinte (resolvido); ignorado = alguém marcou que não é problema. O que precisa de atenção agora: situacao = aberto.',
     cols: ['id', 'regra', 'titulo', 'detalhe', 'setor', 'responsavel', 'gravidade', 'cliente_id', 'link', 'prazo', 'situacao', 'primeiro_visto', 'ultimo_visto', 'resolvido_em', 'ignorado_em', 'ignorado_por', 'motivo_ignorado'],
     padrao: ['regra', 'titulo', 'detalhe', 'responsavel', 'gravidade', 'situacao', 'primeiro_visto'],
     notas: { situacao: 'aberto (a conferir) | resolvido | ignorado', gravidade: 'alta (urgente) | media | baixa', responsavel: 'quem cuida; "Ambos" = Samuel e Diego',
       link: 'a tela onde se resolve', primeiro_visto: 'quando o vigia achou', ignorado_por: 'e-mail de quem ignorou',
-      regra: 'admissao_nao_registrada | admissao_sem_vinculo | rescisao_pagamento | rescisao_sem_vinculo | alvara_vencendo | certificado_vencendo | cliente_sem_cobranca | boletos_nao_gerados | boleto_parado | cobranca_ex_cliente | faturavel_parado | reajuste_nao_aplicado | cadastro_desencontrado | carteira_sem_cadastro | proposta_parada | transicao_atrasada | cliente_sem_obrigacao | obrigacao_sem_responsavel | obrigacao_ex_cliente | obrigacao_desligada | obrigacao_sem_tarefa | reforma_prazo | noticia_prazo | tarefa_responsavel | tarefa_repetida | tarefa_ex_cliente | recorrente_ex_cliente | rotina_sem_responsavel' } },
+      regra: 'admissao_nao_registrada | admissao_sem_vinculo | rescisao_pagamento | rescisao_sem_vinculo | alvara_vencendo | certificado_vencendo | cliente_sem_cobranca | boletos_nao_gerados | boleto_parado | cobranca_ex_cliente | faturavel_parado | reajuste_nao_aplicado | cadastro_desencontrado | carteira_sem_cadastro | proposta_parada | transicao_atrasada | cliente_sem_obrigacao | obrigacao_sem_responsavel | obrigacao_ex_cliente | obrigacao_desligada | obrigacao_sem_tarefa | reforma_prazo | noticia_prazo | tarefa_responsavel | tarefa_repetida | tarefa_ex_cliente | recorrente_ex_cliente | rotina_sem_responsavel | receita_sem_autorizacao | receita_autorizacao_vencendo | receita_pgdas_atrasado | receita_mensagem | receita_pendencia | ponte_parada' } },
   // o feed de notícias (20/10/2026): de hora em hora a função noticias lê as fontes e a IA diz se interessa, a importância,
   // os setores, o resumo, por que importa, o que fazer e quais clientes da carteira a notícia alcança (pelo cadastro)
   noticias: { rotulo: 'as notícias do feed', arrays: ['setores', 'clientes'], empresas: 'clientes', fonte: true,
@@ -626,7 +651,7 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     const id = a.id;
     const q = (caminho, op) => ler(caminho, op).then(r => r, err => ({ erro: (err && err.message) || 'erro' }));
     const desde30 = inicioBR(maisDias(hoje, -30));
-    const [cad, cart, soc, cont, serv, cobC, cobM, tar, rec, obr, alv, cert, adm, res, rt, reu, trE, reg, prec, fat, dre, fr, vig, nots, rev] = await Promise.all([
+    const [cad, cart, soc, cont, serv, cobC, cobM, tar, rec, obr, alv, cert, adm, res, rt, reu, trE, reg, prec, fat, dre, fr, vig, nots, rev, rcE, rcP, rcM] = await Promise.all([
       q('clientes?select=' + TABELAS.clientes.cols.join(',') + '&id=eq.' + id),
       q('carteira_info?select=entrada,saida,motivo_saida,segmento,sistemas,contab_digital,contato,ramo,observacao,inadimplente_desde&cliente_id=eq.' + id),
       q('socios?select=nome,qualificacao,participacao_percentual,eh_administrador,telefone,email&cliente_id=eq.' + id + '&order=participacao_percentual.desc.nullslast'),
@@ -655,7 +680,11 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
         + '&coletada_em=gte.' + enc(desde30) + '&order=coletada_em.desc&limit=60', { contar: true }),
       // a revisão do honorário (Precificação › Carteira): só os sócios
       usuario.socio ? q('revisoes_honorario?select=status,honorario_atual,fonte_atual,honorario_sugerido,honorario_novo,vigencia,criado_em,atualizado_em,aplicado_em&cliente_id=eq.' + id + '&order=atualizado_em.desc.nullslast&limit=1')
-        : Promise.resolve({ linhas: [] })
+        : Promise.resolve({ linhas: [] }),
+      // a Receita pela ponte (Integra Contador): a autorização, a situação fiscal, o PGDAS e a Caixa Postal
+      q('receita_empresas?select=autorizacao,autorizacao_ate,autorizacao_em,pgdas_em,pendencias,situacao_fiscal_em&cliente_id=eq.' + id),
+      q('receita_pgdas?select=competencia,transmitida_em,das_pago,receita_mes,receita_12_meses&cliente_id=eq.' + id + '&order=competencia.desc&limit=6'),
+      q('receita_mensagens?select=assunto,enviada_em,origem,lida&cliente_id=eq.' + id + '&order=recebida_em.desc&limit=5')
     ]);
     if (cad.erro) throw new Error(cad.erro);
     const c = cad.linhas[0];
@@ -708,6 +737,18 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     sec('Certificados digitais', cert, ls => ls.map(x => (x.tipo ? x.tipo + ' ' : '') + 'de ' + x.titular + (x.certificadora ? ' (certificadora ' + x.certificadora + ')' : '') + ', vence ' + dataBR(x.validade)
       + (x.validade && String(x.validade) < hoje ? ' (VENCIDO)' : '') + (x.acompanhar === false ? ', não acompanha mais' : '')
       + (x.avisado_em ? ', cliente avisado em ' + diaDoMomento(x.avisado_em) : '')).join(' · '), 'nenhum cadastrado');
+    // a Receita pela ponte: sem linha nenhuma, a ponte ainda não consultou esta empresa
+    if (!rcE.erro && !rcP.erro && !rcM.erro && (rcE.linhas.length || rcP.linhas.length || rcM.linhas.length)) {
+      const r = rcE.linhas[0] || {};
+      const pend = Array.isArray(r.pendencias) ? r.pendencias : null;
+      const pedacos = [];
+      if (r.autorizacao) pedacos.push('autorização do escritório: ' + (r.autorizacao === 'ativa' ? 'ativa' + (r.autorizacao_ate ? ' até ' + dataBR(r.autorizacao_ate) : '') : r.autorizacao === 'vencida' ? 'VENCIDA' : 'NÃO TEM (a Receita recusou a consulta)'));
+      if (pend) pedacos.push('situação fiscal de ' + dataBR(r.situacao_fiscal_em) + ': ' + (pend.length ? pend.map(x => (x.orgao || 'Receita') + ', ' + x.titulo).join(' · ') : 'sem pendência'));
+      if (rcP.linhas.length) pedacos.push('PGDAS: ' + rcP.linhas.map(p => p.competencia + (p.transmitida_em ? ' transmitido em ' + diaDoMomento(p.transmitida_em) : ' sem transmissão')
+        + (p.das_pago === true ? ', DAS pago' : p.das_pago === false ? ', DAS NÃO pago' : '') + (fin(p.receita_12_meses) ? ', receita do mês ' + brl(p.receita_mes) + ' e dos 12 meses ' + brl(p.receita_12_meses) : '')).join(' · '));
+      if (rcM.linhas.length) pedacos.push('Caixa Postal: ' + rcM.linhas.map(m => valorCurto(m.assunto, 90) + (m.enviada_em ? ' (' + dataBR(m.enviada_em) + ')' : '') + (m.origem && m.origem !== 'Receita' ? ' [' + m.origem + ']' : '') + (m.lida ? '' : ', não lida')).join(' · '));
+      partes.push('Receita (pela ponte do Integra Contador, só consulta): ' + (pedacos.join(' | ') || 'consultada, sem dado') + (r.pgdas_em ? ' — PGDAS consultado em ' + diaDoMomento(r.pgdas_em) : ''));
+    }
     sec('Admissões', adm, (ls, total) => (total || ls.length) + ' — ' + ls.map(x => x.funcionario_nome + ' (início ' + dataBR(x.data_inicio) + ', ' + (x.status === 'respondida' ? 'recebida, a registrar' : situacao(x.status)) + ')').join(' · '), 'nenhuma');
     sec('Rescisões', res, (ls, total) => (total || ls.length) + ' — ' + ls.map(x => x.funcionario_nome + ' (' + situacao(x.tipo) + ', último dia ' + dataBR(x.ultimo_dia) + ', pagar até ' + dataBR(x.data_acerto) + ', '
       + (x.status === 'recebida' ? 'recebida, a calcular' : situacao(x.status)) + ')').join(' · '), 'nenhuma');

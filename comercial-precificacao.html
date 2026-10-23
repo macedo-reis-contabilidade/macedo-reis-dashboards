@@ -322,7 +322,8 @@
     // o motor (o mesmo da aba Carteira) e a Carteira: o que o sistema já sabe de cada cliente da casa
     import { indexarParams as indexarParametros, calcularMotor, faturamentoAnual } from './assets/js/precificacao-motor.js';
     import { respostasDoSistema, regimesDasQuestoes, ehMei, honorarioDeHoje, parcelasDeHonorario, parcelaDoCliente, faltamResponder, ultimaPorCliente, mesesDaVigencia,
-      mesesLivres, mesBR, diferenca, SITUACOES, rotuloSituacao, FONTES, aplicarReajusteAgora, referenciaDaLinha, pagaMenosQueOMotor, resumoDaCarteira } from './assets/js/precificacao-carteira.js';
+      mesesLivres, mesBR, diferenca, SITUACOES, rotuloSituacao, FONTES, aplicarReajusteAgora, referenciaDaLinha, pagaMenosQueOMotor, resumoDaCarteira,
+      ultimaDeclaracaoPorCliente } from './assets/js/precificacao-carteira.js';
     import { SOCIOS } from './assets/js/equipe.js';
     const escHtml = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));   // texto do banco nunca vira HTML (o nome que veio do formulário público, por exemplo)
     const user = await getCurrentUser();
@@ -1563,7 +1564,7 @@
         const ids = [...new Set(ativos.map(k => k.cliente_id))];
         const emLotes = async montar => { const out = []; for (let i = 0; i < ids.length; i += 100) { const { data, error } = await montar(ids.slice(i, i + 100)); if (error) throw error; out.push(...(data || [])); } return out; };
         const tudo = async montar => { const { data, error } = await supabase.todasLinhas(montar); if (error) throw error; return data || []; };
-        const [clis, socs, vincs, obrF, frs, regs, rts, cobM, cobC, revs, tars, parcelas] = await Promise.all([
+        const [clis, socs, vincs, obrF, frs, regs, rts, cobM, cobC, revs, tars, parcelas, rcs] = await Promise.all([
           emLotes(l => supabase.from('clientes').select('id, nome_principal, nome_fantasia, documento, tipo_pessoa, regime_tributario, natureza_juridica, cnae_principal, logradouro, numero, bairro, cidade, uf, cep, telefone_principal').in('id', l)),
           emLotes(l => supabase.from('socios').select('cliente_id').in('cliente_id', l)),
           emLotes(l => supabase.from('cliente_obrigacoes').select('cliente_id, obrigacao_id').eq('ativo', true).in('cliente_id', l)),
@@ -1577,12 +1578,15 @@
           tudo(() => supabase.from('tarefas').select('cliente_id, origem').gte('created_at', dia(-90)).not('cliente_id', 'is', null).order('id')),
           // o Conta Azul, só os sócios leem (a regra é do banco); sem ele, fica o boleto
           tudo(() => supabase.from('ca_parcelas').select('natureza, fornecedor_cliente_nome, total, data_vencimento, categorias').eq('natureza', 'receita')
-            .gte('data_vencimento', dia(-120)).lte('data_vencimento', dia(5)).order('id')).catch(() => [])
+            .gte('data_vencimento', dia(-120)).lte('data_vencimento', dia(5)).order('id')).catch(() => []),
+          // o faturamento do PGDAS, que a ponte da Receita lê (a última declaração com os 12 meses); sem ela, a Reforma
+          emLotes(l => supabase.from('receita_pgdas').select('cliente_id, competencia, receita_mes, receita_12_meses').not('receita_12_meses', 'is', null).in('cliente_id', l)).catch(() => [])
         ]);
         const porCli = lista => { const m = new Map(); lista.forEach(x => { const a = m.get(x.cliente_id) || []; a.push(x); m.set(x.cliente_id, a); }); return m; };
         const mSoc = porCli(socs), mVinc = porCli(vincs), mFr = porCli(frs), mReg = porCli(regs), mRt = porCli(rts), mCobM = porCli(cobM), mCobC = porCli(cobC), mTar = porCli(tars);
         const nomeObr = new Map(obrF.map(o => [o.id, o.nome]));
         const ultima = ultimaPorCliente(revs);
+        const mRc = ultimaDeclaracaoPorCliente(rcs);
         const prep = parcelasDeHonorario(parcelas);
         const regQ = regimesDasQuestoes(obrigacoes);
         const cliMap = new Map(clis.map(c => [c.id, c]));
@@ -1596,7 +1600,7 @@
           const hojeH = honorarioDeHoje({ boleto: boletos[0] || null, base, contaAzul: parcelaDoCliente(c, prep, ate) });
           const dados = { cliente: c, socios: (mSoc.get(c.id) || []).length, obrigacoes: (mVinc.get(c.id) || []).map(v => nomeObr.get(v.obrigacao_id)).filter(Boolean),
             fatorR: (mFr.get(c.id) || []).length > 0, regularizacoes: (mReg.get(c.id) || []).map(r => r.status), reforma: (mRt.get(c.id) || [])[0] || null,
-            carteira: { sistemas: k.sistemas, ramo: k.ramo }, hoje: hojeH };
+            carteira: { sistemas: k.sistemas, ramo: k.ramo }, hoje: hojeH, receita: mRc.get(c.id) || null };
           const pre = respostasDoSistema(dados, { regimesDaQuestao: regQ });
           const mei = ehMei(c);
           const ts = mTar.get(c.id) || [];
