@@ -31,6 +31,8 @@ const aqui = () => window.location.pathname + window.location.search;
     vigiarSessao(session.user && session.user.email);
     // o assistente do escritório: o mesmo balão em todas as telas com login (sem ele, a tela segue igual)
     import('./assistente-escritorio.js').then(m => m.iniciarAssistente({ email: session.user && session.user.email })).catch(() => {});
+    // os atalhos do alto (23/10/2026): Onvio, Drive e webmail, com a lista guardada no banco (assets/js/atalhos.js)
+    import('./atalhos.js').then(m => m.iniciarAtalhos(supabase)).catch(() => {});
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ligarTrocaDeSenha); else ligarTrocaDeSenha();
   }
 })();

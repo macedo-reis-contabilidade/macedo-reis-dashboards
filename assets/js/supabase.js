@@ -39,6 +39,8 @@ export async function signOut() {
   // a conversa do assistente de canto guardada na aba (assets/js/assistente.js, "mr_assistente:<id>") não passa pra quem
   // entrar depois na mesma aba
   try { Object.keys(sessionStorage).filter(k => k.startsWith('mr_assistente:')).forEach(k => sessionStorage.removeItem(k)); } catch (e) { /* sem armazenamento */ }
+  // e os atalhos do alto guardados na aba (assets/js/atalhos.js), que levam o endereço da pasta do Drive
+  try { sessionStorage.removeItem('mr_atalhos'); } catch (e) { /* sem armazenamento */ }
   // esta tela sai por conta própria: o auth-guard.js não a manda de novo pro entrar com o aviso da sessão encerrada
   window.__mrSaindo = true;
   // "Sair" encerra a sessão só neste navegador (21/10/2026). O padrão do Supabase é encerrar em todos: o Sair num
