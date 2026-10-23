@@ -55,9 +55,12 @@
     corrigida), a rodada do dia não é guardada (a regra do 4xx) e sai com 2;
   - outro 4xx num pendente (pacote inválido) → aquele pendente é **apagado** (repetir não adianta), a rodada do dia
     segue e, no fim, sai com **2** mesmo que ela tenha ido — pra alguém olhar o log.
-- **`--falso` só manda pra endereço local** (localhost/127.0.0.1). Não estava na fila: é a trava pra empresa inventada
-  nunca chegar no sistema de verdade por um `rodar --falso` esquecido no PC de produção. `--falso --sem-enviar` roda
-  sem config nenhum.
+- **`--falso` só manda pra endereço local** (localhost/127.0.0.1) **e não toca nos pendentes** (desde 23/10, achado da
+  revisão): não manda os pendentes de verdade pro sistema de mentira nem guarda pacote de empresa inventada na fila que
+  a rodada de verdade manda — falhou, sai com 1 sem guardar. Não estava na fila: é a trava pra empresa inventada nunca
+  chegar no sistema de verdade por um `rodar --falso` esquecido no PC de produção. `--falso --sem-enviar` roda sem
+  config nenhum. Por isso os testes de pendente rodam a rodada de verdade dentro do processo, com a fonte do Domínio
+  trocada pela de mentira (`rodar_dentro` no `tests/ponte.test.py`).
 - **`conferir` sai com 0** quando a configuração está completa e com 1 quando falta alguma coisa nela (a conexão e o
   ping só informam). Campo copiado do modelo e não trocado aparece como **"ainda é o do exemplo"**.
 - **A conexão abre com `readonly=True`** (além de `autocommit`, e 15 s pra conectar). Se o driver do SQL Anywhere não
@@ -77,16 +80,81 @@
   Domínio de mentira, a trava do dado pessoal, consultas a conferir, envio com novas tentativas e pendentes, cabeçalhos,
   segredo que nunca aparece e o `conferir`".
 
-## O `rodar-tudo.py` não ficou todo verde — por 3 testes que esta branch não toca
+## A revisão adversarial (23/10)
 
-`python tests/rodar-tudo.py` → **75 testes · 72 ok · 3 falharam**. O `tests/ponte.test.py` passou. Os três que falham
-falham também rodando sozinhos, e nenhum arquivo deles (nem o que eles leem) foi mexido aqui — a fila não deixa:
+Cinco revisores (fidelidade à fila, vazamento, envio e pendentes, ODBC, instalador e testes) e, pra cada achado,
+verificadores que tentaram derrubá-lo: **31 achados, 14 confirmados (9 defeitos distintos), 17 derrubados**. Os 9 foram
+corrigidos, e cada correção tem checagem no `tests/ponte.test.py` que falha se ela for desfeita (conferido desfazendo
+uma por uma):
+
+1. **O `instalar.ps1` rodado da cópia instalada apagava a ponte** — `Remove-Item` da pasta de onde ele mesmo copiava; a
+   tarefa ficava sem o módulo e falhava muda, todo dia. Agora ele se recusa quando a origem é a cópia em
+   `C:\ponte-dominio\app` (conferido em 6 caminhos, inclusive com maiúscula e barra no fim). O LEIA-ME diz pra rodar o do
+   repositório.
+2. **`--saida` com caminho solto gravava o pacote na pasta de onde se roda** — rodado do repositório, que é público, o
+   arquivo com nome e CNPJ dos clientes nascia lá dentro, sem `.gitignore`. Agora o caminho solto vai pra
+   `C:\ponte-dominio\` (ou `PONTE_PASTA`), e o LEIA-ME avisa que o arquivo tem dado de cliente.
+3. **URL sem `https://`, com acento ou com `http://` fora do endereço local** derrubava a rodada com traceback (e o
+   `http://` mandaria a chave sem criptografia). Agora é "inválido (o porquê)" no `conferir` e o `rodar` para com 2.
+4. **Chave colada em duas linhas** (o configparser junta a linha recuada): o envio caía mostrando a chave inteira na
+   tela. Agora o campo sai "inválido (tem quebra de linha…)", sem o valor.
+5. **Redirecionamento era seguido**: num 301/302/303 o urllib repetia o pedido como GET, sem o pacote, levando a chave
+   da ponte pro outro endereço, e contava como "foi". Agora 3xx não é seguido: é erro de configuração ("confira a
+   url"), não repete e os pendentes ficam.
+6. **`--falso` usava a fila de pendentes de produção** (item acima).
+7. **A pasta `C:\ponte-dominio` herdaria de `C:\` o "Usuários autenticados: Modificar"** — qualquer conta do Windows
+   poderia trocar o código que a tarefa roda (e, por ele, ler o `config.ini`) ou ler os pendentes. Agora o instalador
+   tira a herança e deixa só o usuário, o SISTEMA e os administradores; o `config.ini` continua só do usuário.
+8. **O teste do segredo não pegava a ocultação desligada** — nenhuma rodada do teste fazia um segredo chegar ao
+   registro. Agora o `Registro` de verdade, com os segredos que ele tira do `config.ini`, recebe todos de propósito.
+9. **O teste conferia o tipo dos valores e não o número**, e comparava os campos do pacote com as listas da própria
+   ponte. Agora confere os valores (com os centavos, cada um no seu campo) e o contrato da fila escrito no teste.
+
+Erro de configuração no envio (url, cabeçalho, redirecionamento) virou um resultado próprio, `CONFIG`: como a chave
+recusada, não repete, não apaga pendente e sai com 2.
+
+Derrubados por serem a regra da fila ou escolha já anotada aqui: o `pyodbc` importado dentro do `conferir` (pra listar
+os drivers, como a fila pede — o motivo da regra é os testes rodarem sem ele, e rodam), o 404 num pendente que o apaga
+(é o "outro 4xx" acima), a fila parada por um pendente que sempre falha (a regra da 2.4 ao pé da letra), duas rodadas
+ao mesmo tempo (a fila não pede trava; a tarefa tem `MultipleInstances IgnoreNew`), a consulta de empresas sem linha
+(a fila só para quando a consulta não existe), as variações da linha `-- A CONFERIR` (a ponte é quem a escreve) e o
+teste perto da meia-noite. Dois viraram teste mesmo assim: a ordem dos pendentes (mais velho primeiro) agora é
+conferida.
+
+**Quatro derrubados ficam pra conferir quando o driver e as consultas chegarem** — não são defeito do código de hoje,
+mas dependem do que a Domínio entregar:
+- **acento no texto que o driver devolve** (nome de empresa): não deu pra reproduzir sem o driver; se vier quebrado, é
+  acertar a codificação na conexão (`setdecoding` do pyodbc);
+- **CNPJ guardado como número no banco** perde o zero da frente (e um `float` ganharia `.0`): na consulta, trazer o
+  documento como texto (`CAST(... AS VARCHAR)`), com os zeros;
+- **coluna com o apelido errado na consulta** (`qtd_notas` em vez de `notas_saida`) sai `null` sem ir pro `faltou` — é o
+  "campo que não veio sai null" da fila; quem pega é a conferência das 10 empresas à mão (o portão da fase 2);
+- **consulta sem tempo-limite**: o `timeout` de 15 s é só pra conectar; uma consulta presa fica até o Agendador matar a
+  tarefa (2 h). Se acontecer, vale pôr o tempo-limite da consulta na conexão.
+
+## O `rodar-tudo.py` não ficou todo verde — por testes que esta branch não toca
+
+**23/10, com a main mesclada** (que trouxe a correção dos dois testes do caminho no Windows, abaixo): duas rodadas.
+- Antes das correções da revisão: **80 testes · 78 ok · 2 falharam** — `transicao-pedido.py` (a área de transferência,
+  abaixo) e `reforma-chat.py`.
+- Depois: **80 testes · 77 ok · 3 falharam** — `transicao-pedido.py`, `analise-recorrentes.py` e `texto-de-fora.py`.
+
+O `tests/ponte.test.py` passou nas duas (100 checagens). Fora o da área de transferência, os que falharam mudam de uma
+rodada pra outra e **passam rodando sozinhos** (`reforma-chat.py` 60 checagens, `analise-recorrentes.py` 28,
+`texto-de-fora.py` 35): em paralelo, com 4 navegadores ao mesmo tempo, eles esgotam a espera de um elemento da tela
+(`wait_for_selector` de 6 a 10 s). Este PC tem 7,9 GB de memória e pouca livre. Nenhum deles toca na ponte nem em
+arquivo que ela mexa. Sugestão pra quem cuida dos testes: subir essas esperas ou pôr os três na lista `SOZINHOS` do
+`rodar-tudo.py`.
+
+**22/10, antes da main de hoje:** `python tests/rodar-tudo.py` → **75 testes · 72 ok · 3 falharam**. Os três
+falhavam também rodando sozinhos, e nenhum arquivo deles foi mexido aqui:
 
 - **`tests/extract-document.test.mjs` e `tests/noticias.test.mjs`** — erro de caminho no Windows:
   `ENOENT: no such file or directory, open 'C:\C:\Users\…\supabase\functions\…'`. Os dois montam a raiz com
   `new URL('../', import.meta.url).pathname`, que no Windows dá `/C:/Users/…`; o `readFileSync` transforma isso em
   `C:\C:\…`. Passam no Linux, por isso ninguém viu. Correção de uma linha em cada:
   `import { fileURLToPath } from 'node:url'` e `const raiz = fileURLToPath(new URL('../', import.meta.url));`.
+  **Corrigido na main em 23/10** (veio com o merge; os dois passam).
 - **`tests/harness/transicao-pedido.py`**, checagem 3 ("a mensagem foi pra área de transferência"): lê a área de
   transferência de verdade do Windows (`navigator.clipboard.readText()`), que neste PC não volta com o texto copiado
   (o resto do teste passa, inclusive o "Mensagem copiada."). Depende da máquina; no PC do Samuel pode passar.
