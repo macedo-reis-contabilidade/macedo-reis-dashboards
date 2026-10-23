@@ -9,6 +9,7 @@ import { decodificarCorpo, feedsAnunciados, coletarFontes, triarPendentes, ehArq
 import { SOCIOS as SOCIOS_FUNCAO } from '../supabase/functions/noticias/servidor.js';
 import { SOCIOS } from '../assets/js/equipe.js';
 import * as tela from '../assets/js/noticias.js';
+import { fileURLToPath } from 'node:url';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { posix } from 'node:path';
@@ -389,7 +390,7 @@ console.log('A tela (assets/js/noticias.js):');
 console.log('A função:');
 chk('os sócios da função são os de assets/js/equipe.js', JSON.stringify(SOCIOS_FUNCAO) === JSON.stringify(SOCIOS));
 {
-  const raiz = new URL('..', import.meta.url).pathname;
+  const raiz = fileURLToPath(new URL('../', import.meta.url));   // .pathname dava C:\C:\… no Windows
   const idx = readFileSync(raiz + 'supabase/functions/noticias/index.ts', 'utf8');
   const m = /raw\.githubusercontent\.com\/macedo-reis-contabilidade\/macedo-reis-dashboards\/([0-9a-f]{40})\/supabase\/functions\/noticias\/servidor\.js/.exec(idx);
   chk('index.ts importa o servidor do repositório num commit fixado', !!m);

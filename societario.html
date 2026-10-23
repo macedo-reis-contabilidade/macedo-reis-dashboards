@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Societário — Macedo & Reis</title>
+  <link rel="icon" href="assets/favicon.ico">
   <link rel="stylesheet" href="assets/css/style.css">
   <script type="module" src="assets/js/auth-guard.js"></script>
   <style>
@@ -14,6 +15,7 @@
     a[href="societario-tarefas.html"] .dashboard-card-icon { background: rgba(138,174,200,.16); color:#8AAEC8; }
     a[href="societario-regras.html"] .dashboard-card-icon { background: rgba(63,176,122,.16); color:#3FB07A; }
     a[href="societario-alvaras.html"] .dashboard-card-icon { background: rgba(63,176,122,.16); color:#3FB07A; }
+    a[href="societario-certificados.html"] .dashboard-card-icon { background: rgba(227,179,65,.16); color:#E3B341; }
     a[href="societario-relatorios.html"] .dashboard-card-icon { background: rgba(133,151,224,.16); color:#8597E0; }
 
     /* Selo "hoje" (urgência do dia) — canto superior direito */
@@ -52,7 +54,7 @@
         </div>
         <div class="eyebrow">Setor</div>
         <h1>Societário</h1>
-        <p>Módulos do setor: processos, alvarás, relatórios.</p>
+        <p>Módulos do setor: processos, alvarás, certificados digitais, relatórios.</p>
       </div>
 
       <div class="dashboard-grid">
@@ -81,6 +83,15 @@
           <h3>Alvarás</h3>
           <p>Alvarás e licenças dos clientes: vencimentos e renovações.</p>
           <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="societario-alvaras.html">·</span></div>
+        </a>
+
+        <a href="societario-certificados.html" class="dashboard-card">
+          <div class="dashboard-card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M7 8h6M7 12h4"/><circle cx="17" cy="16" r="3"/><path d="M15.5 18.6 15 22l2-1 2 1-.5-3.4"/></svg>
+          </div>
+          <h3>Certificados digitais</h3>
+          <p>Certificados A1 e A3 dos clientes: quando vencem e o aviso pro cliente renovar a tempo.</p>
+          <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="societario-certificados.html">·</span></div>
         </a>
 
         <a href="societario-relatorios.html" class="dashboard-card">
@@ -121,6 +132,14 @@
         }
         ["societario-regras.html", "societario-alvaras.html", "societario-relatorios.html"].forEach(h => setBadge(h, '—'));
       } catch (e) { console.error(e); }
+      // certificados digitais: quantos clientes avisar agora (a regra do vigia, assets/js/certificados.js)
+      try {
+        const { etapaDoAviso } = await import('./assets/js/certificados.js');
+        const { data, error } = await supabase.from('certificados_digitais').select('id, validade, acompanhar, avisado_em');
+        if (error) throw error;
+        const n = (data || []).filter(c => etapaDoAviso(c, hojeLocal())).length;
+        setBadge('societario-certificados.html', n ? n + ' a avisar' : 'nenhum a avisar');
+      } catch (e) { setBadge('societario-certificados.html', '—'); }
     }
     pintar();
   </script>

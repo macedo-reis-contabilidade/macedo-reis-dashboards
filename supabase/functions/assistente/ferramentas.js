@@ -100,6 +100,14 @@ export const TABELAS = {
     cols: ['id', 'cliente_id', 'tipo', 'numero', 'orgao', 'cidade', 'responsavel', 'vencimento', 'status', 'recorrencia', 'observacoes', 'concluido_em', 'concluido_por', 'link_drive'],
     padrao: ['cliente_id', 'tipo', 'vencimento', 'status', 'responsavel'], notas: { status: 'vigente | a_confirmar' } },
   alvara_historico: { rotulo: 'o histórico dos alvarás', desc: 'O que aconteceu em cada alvará.', cols: ['alvara_id', 'descricao', 'autor', 'created_at'], padrao: ['alvara_id', 'descricao', 'autor', 'created_at'] },
+  // os certificados digitais dos clientes (Societário › Certificados digitais, 22/10/2026): o escritório só avisa o cliente
+  certificados_digitais: { rotulo: 'os certificados digitais dos clientes',
+    desc: 'Os certificados digitais A1 e A3 dos clientes e a validade (tela Certificados digitais, no Societário). O escritório não emite nem agenda o certificado: só avisa o cliente antes de vencer (a 30 dias e, se não renovou, a 7), e quem avisa é a Deize. Renovado = a validade nova no lugar da antiga.',
+    cols: ['id', 'cliente_id', 'titular', 'tipo', 'certificadora', 'validade', 'acompanhar', 'avisado_em', 'avisado_por', 'observacao', 'atualizado_em'],
+    padrao: ['cliente_id', 'titular', 'tipo', 'certificadora', 'validade', 'avisado_em', 'avisado_por'],
+    notas: { tipo: 'A1 (arquivo) | A3 (cartão ou token) | vazio = não informado', titular: 'o nome no certificado (empresa ou pessoa)', cliente_id: 'vazio = sem empresa vinculada',
+      certificadora: 'quem emitiu o certificado. Desde 22/10/2026 a tela a exige no certificado novo e no Renovado · vazia = não informada: os que vieram da planilha de controle, que não tinha a coluna (deles, a tela só pede a certificadora no Renovado · editar outro campo não exige)',
+      acompanhar: 'false = não acompanha mais (fica fora dos avisos)', avisado_em: 'a última vez que o cliente foi avisado (vazio = ainda não, neste vencimento)' } },
   admissoes: { rotulo: 'as admissões', desc: 'Admissões de funcionários que as empresas mandam pelo link (tela Admissões). As respostas do formulário não são lidas.',
     cols: ['id', 'cliente_id', 'empresa_nome', 'contato_nome', 'origem', 'funcionario_nome', 'data_inicio', 'responsavel', 'status', 'documentos', 'drive_pasta_url', 'observacoes',
       'respondida_em', 'registrada_em', 'registrada_por', 'criado_em', 'atualizado_em'],
@@ -168,12 +176,12 @@ export const TABELAS = {
   // o filtro fixo tira)
   vigia_achados: { rotulo: 'o que o vigia achou', fixoNaoSocio: 'so_socios=eq.false',
     notaNaoSocio: 'Pra quem não é sócio, os achados só dos sócios (o cliente da carteira sem cobrança, que usa o financeiro do escritório) não entram nesta leitura: desses, não diga que não há nenhum — diga que só os sócios veem.',
-    desc: 'O vigia do sistema: regras que rodam de hora em hora e acham o que ficou pra trás ou desencontrado (admissão sem registro, rescisão com pagamento chegando, alvará vencido, boleto parado, cliente da carteira sem cobrança ou sem obrigação fiscal, reajuste aceito na Precificação que não entrou no boleto ou no Conta Azul, obrigação, tarefa ou rotina sem responsável, a obrigação que as outras empresas do mesmo regime têm e esta tem desligada, a obrigação ligada que ficou sem a tarefa do mês, o prazo que uma notícia do feed traz chegando, proposta parada, cadastro desencontrado da carteira...). Cada achado diz quem cuida e a tela onde se resolve. Arrumou na tela, ele some sozinho na rodada seguinte (resolvido); ignorado = alguém marcou que não é problema. O que precisa de atenção agora: situacao = aberto.',
+    desc: 'O vigia do sistema: regras que rodam de hora em hora e acham o que ficou pra trás ou desencontrado (admissão sem registro, rescisão com pagamento chegando, alvará vencido, certificado digital do cliente vencendo sem aviso, boleto parado, cliente da carteira sem cobrança ou sem obrigação fiscal, reajuste aceito na Precificação que não entrou no boleto ou no Conta Azul, obrigação, tarefa ou rotina sem responsável, a obrigação que as outras empresas do mesmo regime têm e esta tem desligada, a obrigação ligada que ficou sem a tarefa do mês, o prazo que uma notícia do feed traz chegando, proposta parada, cadastro desencontrado da carteira...). Cada achado diz quem cuida e a tela onde se resolve. Arrumou na tela, ele some sozinho na rodada seguinte (resolvido); ignorado = alguém marcou que não é problema. O que precisa de atenção agora: situacao = aberto.',
     cols: ['id', 'regra', 'titulo', 'detalhe', 'setor', 'responsavel', 'gravidade', 'cliente_id', 'link', 'prazo', 'situacao', 'primeiro_visto', 'ultimo_visto', 'resolvido_em', 'ignorado_em', 'ignorado_por', 'motivo_ignorado'],
     padrao: ['regra', 'titulo', 'detalhe', 'responsavel', 'gravidade', 'situacao', 'primeiro_visto'],
     notas: { situacao: 'aberto (a conferir) | resolvido | ignorado', gravidade: 'alta (urgente) | media | baixa', responsavel: 'quem cuida; "Ambos" = Samuel e Diego',
       link: 'a tela onde se resolve', primeiro_visto: 'quando o vigia achou', ignorado_por: 'e-mail de quem ignorou',
-      regra: 'admissao_nao_registrada | admissao_sem_vinculo | rescisao_pagamento | rescisao_sem_vinculo | alvara_vencendo | cliente_sem_cobranca | boletos_nao_gerados | boleto_parado | cobranca_ex_cliente | faturavel_parado | reajuste_nao_aplicado | cadastro_desencontrado | carteira_sem_cadastro | proposta_parada | transicao_atrasada | cliente_sem_obrigacao | obrigacao_sem_responsavel | obrigacao_ex_cliente | obrigacao_desligada | obrigacao_sem_tarefa | reforma_prazo | noticia_prazo | tarefa_responsavel | tarefa_repetida | tarefa_ex_cliente | recorrente_ex_cliente | rotina_sem_responsavel' } },
+      regra: 'admissao_nao_registrada | admissao_sem_vinculo | rescisao_pagamento | rescisao_sem_vinculo | alvara_vencendo | certificado_vencendo | cliente_sem_cobranca | boletos_nao_gerados | boleto_parado | cobranca_ex_cliente | faturavel_parado | reajuste_nao_aplicado | cadastro_desencontrado | carteira_sem_cadastro | proposta_parada | transicao_atrasada | cliente_sem_obrigacao | obrigacao_sem_responsavel | obrigacao_ex_cliente | obrigacao_desligada | obrigacao_sem_tarefa | reforma_prazo | noticia_prazo | tarefa_responsavel | tarefa_repetida | tarefa_ex_cliente | recorrente_ex_cliente | rotina_sem_responsavel' } },
   // o feed de notícias (20/10/2026): de hora em hora a função noticias lê as fontes e a IA diz se interessa, a importância,
   // os setores, o resumo, por que importa, o que fazer e quais clientes da carteira a notícia alcança (pelo cadastro)
   noticias: { rotulo: 'as notícias do feed', arrays: ['setores', 'clientes'], empresas: 'clientes', fonte: true,
@@ -618,7 +626,7 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     const id = a.id;
     const q = (caminho, op) => ler(caminho, op).then(r => r, err => ({ erro: (err && err.message) || 'erro' }));
     const desde30 = inicioBR(maisDias(hoje, -30));
-    const [cad, cart, soc, cont, serv, cobC, cobM, tar, rec, obr, alv, adm, res, rt, reu, trE, reg, prec, fat, dre, fr, vig, nots, rev] = await Promise.all([
+    const [cad, cart, soc, cont, serv, cobC, cobM, tar, rec, obr, alv, cert, adm, res, rt, reu, trE, reg, prec, fat, dre, fr, vig, nots, rev] = await Promise.all([
       q('clientes?select=' + TABELAS.clientes.cols.join(',') + '&id=eq.' + id),
       q('carteira_info?select=entrada,saida,motivo_saida,segmento,sistemas,contab_digital,contato,ramo,observacao,inadimplente_desde&cliente_id=eq.' + id),
       q('socios?select=nome,qualificacao,participacao_percentual,eh_administrador,telefone,email&cliente_id=eq.' + id + '&order=participacao_percentual.desc.nullslast'),
@@ -630,6 +638,7 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
       q('tarefas_recorrentes?select=setor,titulo,periodicidade,dia_vencimento,mes_vencimento,responsavel&cliente_id=eq.' + id + '&ativo=eq.true&order=setor.asc,id.asc&limit=40', { contar: true }),
       q('cliente_obrigacoes?select=obrigacao_id,responsavel,dia_prazo_override&cliente_id=eq.' + id + '&ativo=eq.true'),
       q('alvaras?select=tipo,numero,vencimento,status,responsavel&cliente_id=eq.' + id + '&order=vencimento.asc.nullslast'),
+      q('certificados_digitais?select=titular,tipo,certificadora,validade,acompanhar,avisado_em&cliente_id=eq.' + id + '&order=validade.asc'),
       q('admissoes?select=funcionario_nome,data_inicio,status,responsavel,criado_em&cliente_id=eq.' + id + '&order=criado_em.desc&limit=5', { contar: true }),
       q('rescisoes?select=funcionario_nome,tipo,ultimo_dia,data_acerto,status,responsavel&cliente_id=eq.' + id + '&order=criado_em.desc&limit=5', { contar: true }),
       q('rt_casos?select=id,triagem,decisao,status,comunicado_em,sim_custo_dentro&cliente_id=eq.' + id),
@@ -696,6 +705,9 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
       partes.push('Obrigações: ' + obr.linhas.map(o => { const x = nomes.get(o.obrigacao_id) || {}; return (x.nome || 'obrigação') + ' (' + (x.periodicidade || '—') + ', dia ' + (o.dia_prazo_override || x.dia_prazo || '—') + (o.responsavel ? ', ' + o.responsavel : '') + ')'; }).join(' · '));
     }
     sec('Alvarás', alv, ls => ls.map(x => x.tipo + (x.numero ? ' nº ' + x.numero : '') + ', vence ' + dataBR(x.vencimento) + (x.vencimento && String(x.vencimento) < hoje ? ' (VENCIDO)' : '') + ', ' + situacao(x.status)).join(' · '), 'nenhum');
+    sec('Certificados digitais', cert, ls => ls.map(x => (x.tipo ? x.tipo + ' ' : '') + 'de ' + x.titular + (x.certificadora ? ' (certificadora ' + x.certificadora + ')' : '') + ', vence ' + dataBR(x.validade)
+      + (x.validade && String(x.validade) < hoje ? ' (VENCIDO)' : '') + (x.acompanhar === false ? ', não acompanha mais' : '')
+      + (x.avisado_em ? ', cliente avisado em ' + diaDoMomento(x.avisado_em) : '')).join(' · '), 'nenhum cadastrado');
     sec('Admissões', adm, (ls, total) => (total || ls.length) + ' — ' + ls.map(x => x.funcionario_nome + ' (início ' + dataBR(x.data_inicio) + ', ' + (x.status === 'respondida' ? 'recebida, a registrar' : situacao(x.status)) + ')').join(' · '), 'nenhuma');
     sec('Rescisões', res, (ls, total) => (total || ls.length) + ' — ' + ls.map(x => x.funcionario_nome + ' (' + situacao(x.tipo) + ', último dia ' + dataBR(x.ultimo_dia) + ', pagar até ' + dataBR(x.data_acerto) + ', '
       + (x.status === 'recebida' ? 'recebida, a calcular' : situacao(x.status)) + ')').join(' · '), 'nenhuma');
