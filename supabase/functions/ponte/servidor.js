@@ -7,7 +7,9 @@
 //   { versao: 1, ping: true }                                 → 200, sem gravar (o "conferir" da ponte)
 //   { versao: 1, tipo: 'receita', pedir: 'empresas' }        → os clientes de hoje da carteira que a ponte consulta
 //   { versao: 1, tipo: 'receita', rodada, empresas, faltou } → o pacote da Receita, gravado pelo banco (receita_gravar);
-//                                                              do ambiente de demonstração, nada é gravado
+//                                                              do ambiente de demonstração, nada é gravado; o bloco de
+//                                                              uma empresa fora do contrato fica de fora sozinho e volta
+//                                                              em `recusadas` (a rodada não trava por causa dele)
 //   o pacote do Domínio (sem tipo)                            → 422: o recebimento dele ainda não foi ligado
 // Respostas que a ponte entende (ponte/envio.py): 2xx foi · 4xx recusado (não repete) · 5xx tenta de novo.
 // Puro: env, banco e relógio injetados (index.ts monta). Testes: tests/ponte-funcao.test.mjs.
@@ -56,12 +58,13 @@ export function criarServidor({ criarDb, agora = () => Date.now() }) {
       if (corpo.tipo === 'receita') {
         const v = validarPacote(corpo);
         if (!v.ok) return resposta({ erro: 'Pacote da Receita recusado: ' + v.erro + ' (' + v.campo + ').' }, 422);
+        // o que ficou de fora (um bloco de uma empresa fora do contrato) volta pra ponte anotar no log; o resto segue
         if (v.pacote.rodada.ambiente !== 'producao') {
-          return resposta({ ok: true, gravado: false, motivo: 'Pacote do ambiente de demonstração: nada foi gravado.' });
+          return resposta({ ok: true, gravado: false, motivo: 'Pacote do ambiente de demonstração: nada foi gravado.', recusadas: v.recusadas });
         }
         const { data, error } = await db.rpc('receita_gravar', { p: v.pacote });
         if (error) throw error;
-        return resposta({ ok: true, gravado: true, ...(data || {}) });
+        return resposta({ ok: true, gravado: true, ...(data || {}), recusadas: v.recusadas });
       }
       if (corpo.tipo == null && Array.isArray(corpo.mensal)) {
         return resposta({ erro: 'O recebimento do Domínio ainda não foi ligado no sistema.' }, 422);

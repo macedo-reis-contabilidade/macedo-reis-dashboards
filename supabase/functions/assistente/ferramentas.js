@@ -684,7 +684,7 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
       // a Receita pela ponte (Integra Contador): a autorização, a situação fiscal, o PGDAS e a Caixa Postal
       q('receita_empresas?select=autorizacao,autorizacao_ate,autorizacao_em,pgdas_em,pendencias,situacao_fiscal_em&cliente_id=eq.' + id),
       q('receita_pgdas?select=competencia,transmitida_em,das_pago,receita_mes,receita_12_meses&cliente_id=eq.' + id + '&order=competencia.desc&limit=6'),
-      q('receita_mensagens?select=assunto,enviada_em,origem,lida&cliente_id=eq.' + id + '&order=recebida_em.desc&limit=5')
+      q('receita_mensagens?select=assunto,enviada_em,origem,lida&cliente_id=eq.' + id + '&order=enviada_em.desc.nullslast,recebida_em.desc&limit=5')
     ]);
     if (cad.erro) throw new Error(cad.erro);
     const c = cad.linhas[0];

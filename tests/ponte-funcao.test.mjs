@@ -40,20 +40,56 @@ chk('dinheiro com centavos', e && e.faturamento.receita_mes === 84211.5 && e.fat
 chk('texto numa linha, sem espaço sobrando', e && e.caixa_postal.mensagens[0].assunto === 'Termo de Exclusão');
 chk('pendência sem órgão é da Receita', e && e.situacao_fiscal.pendencias[0].orgao === 'Receita' && e.situacao_fiscal.pendencias[1].orgao === 'PGFN');
 chk('o que faltou vem com o motivo', v.ok && v.pacote.faltou[0].motivo === 'sem_autorizacao' && v.pacote.faltou[0].detalhe === 'AcessoNegado');
+chk('o pacote do contrato não tem recusa', v.ok && Array.isArray(v.recusadas) && v.recusadas.length === 0);
+// o que é da rodada recusa o pacote inteiro (422)
 const recusa = (mudar, campo) => { const p = BOM(); mudar(p); const r = validarPacote(p); return !r.ok && (!campo || r.campo === campo) ? r : null; };
-chk('versão desconhecida é recusada', !!recusa(p => { p.versao = 2; }, 'versao'));
-chk('rodada sem uuid é recusada', !!recusa(p => { p.rodada.id = 'abc'; }, 'rodada.id'));
-chk('competência fora do formato é recusada', !!recusa(p => { p.empresas[0].pgdas.meses[0].competencia = '2026-13'; }));
-chk('data que não existe é recusada', !!recusa(p => { p.empresas[0].autorizacao.valida_ate = '2027-02-30'; }));
-chk('data e hora sem fuso é recusada', !!recusa(p => { p.empresas[0].pgdas.meses[0].transmitida_em = '2026-10-18 10:02'; }));
-chk('receita negativa ou texto no lugar do número é recusada', !!recusa(p => { p.empresas[0].faturamento.receita_mes = -1; }) && !!recusa(p => { p.empresas[0].faturamento.receita_mes = 'muito'; }));
-chk('das_pago que não é true/false/null é recusado', !!recusa(p => { p.empresas[0].pgdas.meses[0].das_pago = 'sim'; }));
-chk('CNPJ inválido é recusado', !!recusa(p => { p.empresas[0].documento = '123'; }));
-chk('autorização com situação inventada é recusada', !!recusa(p => { p.empresas[0].autorizacao.situacao = 'talvez'; }));
-chk('motivo e serviço desconhecidos são recusados', !!recusa(p => { p.faltou[0].motivo = 'preguica'; }) && !!recusa(p => { p.faltou[0].servico = 'tudo'; }));
-chk('lista longa demais é recusada', !!recusa(p => { p.empresas = Array.from({ length: LIMITES.empresas + 1 }, () => ({ documento: '11222333000100' })); }, 'empresas'));
-chk('mensagem sem id ou sem assunto é recusada', !!recusa(p => { p.empresas[0].caixa_postal.mensagens[0].id = ' '; }) && !!recusa(p => { p.empresas[0].caixa_postal.mensagens[0].assunto = ''; }));
-chk('situação fiscal sem a data da consulta é recusada', !!recusa(p => { delete p.empresas[0].situacao_fiscal.consultada_em; }));
+chk('versão desconhecida recusa o pacote', !!recusa(p => { p.versao = 2; }, 'versao'));
+chk('rodada sem uuid recusa o pacote', !!recusa(p => { p.rodada.id = 'abc'; }, 'rodada.id'));
+chk('data e hora da rodada sem fuso recusa o pacote', !!recusa(p => { p.rodada.inicio = '2026-11-21 08:30'; }, 'rodada.inicio'));
+chk('lista de empresas longa demais recusa o pacote', !!recusa(p => { p.empresas = Array.from({ length: LIMITES.empresas + 1 }, () => ({ documento: '11222333000100' })); }, 'empresas'));
+chk('o faltou que não é lista recusa o pacote', !!recusa(p => { p.faltou = 'nada'; }, 'faltou'));
+// dentro de uma empresa, o bloco fora do contrato fica de fora sozinho: os outros blocos e as outras empresas seguem, e ele
+// vai pro faltou com 'erro' e pras recusadas (uma data esquisita numa empresa não trava a rodada inteira todo dia)
+const DOC = '11222333000100';
+const deFora = (mudar, servico, campo) => {
+  const p = BOM(); p.empresas.push({ documento: '22333444000100', autorizacao: { situacao: 'sem' } }); mudar(p);
+  const r = validarPacote(p);
+  if (!r.ok) return null;
+  const emp = r.pacote.empresas.find(x => x.documento === DOC);
+  const rec = r.recusadas.filter(x => x.documento === DOC);
+  const fal = r.pacote.faltou.filter(x => x.motivo === 'erro');
+  const outrosBlocos = ['autorizacao', 'pgdas', 'faturamento', 'caixa_postal', 'situacao_fiscal'].filter(s => s !== servico).every(s => emp && s in emp);
+  const ok = emp && !(servico in emp) && outrosBlocos && rec.length === 1 && rec[0].campo === campo && fal.length === 1 && fal[0].documento === DOC
+    && fal[0].servico === servico && fal[0].detalhe.startsWith('fora do contrato: ' + campo.slice('empresas[0].'.length))
+    && r.pacote.empresas.some(x => x.documento === '22333444000100' && x.autorizacao.situacao === 'sem');
+  return ok ? r : null;
+};
+chk('competência fora do formato: só o PGDAS da empresa fica de fora', !!deFora(p => { p.empresas[0].pgdas.meses[0].competencia = '2026-13'; }, 'pgdas', 'empresas[0].pgdas.meses[0].competencia'));
+chk('data que não existe: só a autorização fica de fora', !!deFora(p => { p.empresas[0].autorizacao.valida_ate = '2027-02-30'; }, 'autorizacao', 'empresas[0].autorizacao.valida_ate'));
+chk('data e hora sem fuso: só o PGDAS fica de fora', !!deFora(p => { p.empresas[0].pgdas.meses[0].transmitida_em = '2026-10-18 10:02'; }, 'pgdas', 'empresas[0].pgdas.meses[0].transmitida_em'));
+chk('receita negativa ou texto no lugar do número: só o faturamento fica de fora',
+  !!deFora(p => { p.empresas[0].faturamento.receita_mes = -1; }, 'faturamento', 'empresas[0].faturamento.receita_mes')
+  && !!deFora(p => { p.empresas[0].faturamento.receita_12_meses = 'muito'; }, 'faturamento', 'empresas[0].faturamento.receita_12_meses'));
+chk('das_pago que não é true/false/null: só o PGDAS fica de fora', !!deFora(p => { p.empresas[0].pgdas.meses[0].das_pago = 'sim'; }, 'pgdas', 'empresas[0].pgdas.meses[0].das_pago'));
+chk('autorização com situação inventada: só ela fica de fora', !!deFora(p => { p.empresas[0].autorizacao.situacao = 'talvez'; }, 'autorizacao', 'empresas[0].autorizacao.situacao'));
+chk('mensagem sem id ou sem assunto: só a Caixa Postal fica de fora',
+  !!deFora(p => { p.empresas[0].caixa_postal.mensagens[0].id = ' '; }, 'caixa_postal', 'empresas[0].caixa_postal.mensagens[0].id')
+  && !!deFora(p => { p.empresas[0].caixa_postal.mensagens[0].assunto = ''; }, 'caixa_postal', 'empresas[0].caixa_postal.mensagens[0].assunto'));
+chk('mensagens demais numa empresa: só a Caixa Postal dela fica de fora',
+  !!deFora(p => { p.empresas[0].caixa_postal.mensagens = Array.from({ length: LIMITES.mensagens + 1 }, (_, i) => ({ id: 'M' + i, assunto: 'x' })); }, 'caixa_postal', 'empresas[0].caixa_postal.mensagens'));
+chk('situação fiscal sem a data da consulta: só ela fica de fora', !!deFora(p => { delete p.empresas[0].situacao_fiscal.consultada_em; }, 'situacao_fiscal', 'empresas[0].situacao_fiscal.consultada_em'));
+{
+  const p = BOM(); p.empresas.unshift({ documento: '123', autorizacao: { situacao: 'ativa' } }, 'não é empresa');
+  const r = validarPacote(p);
+  chk('CNPJ inválido ou empresa que não é objeto: ela fica de fora inteira, as outras seguem', r.ok && r.pacote.empresas.length === 1 && r.pacote.empresas[0].documento === DOC
+    && r.recusadas.length === 2 && r.recusadas[0].campo === 'empresas[0].documento' && r.recusadas[1].campo === 'empresas[1]' && !r.pacote.faltou.some(x => x.motivo === 'erro'), r);
+}
+{
+  const p = BOM(); p.faltou.push({ documento: DOC, servico: 'tudo', motivo: 'erro' }, { documento: DOC, servico: 'pgdas', motivo: 'preguica' });
+  const r = validarPacote(p);
+  chk('item do faltou com motivo ou serviço desconhecido: ele fica de fora, o resto segue', r.ok && r.pacote.faltou.length === 1 && r.pacote.faltou[0].motivo === 'sem_autorizacao'
+    && r.recusadas.map(x => x.campo).join() === 'faltou[1].servico,faltou[2].motivo' && r.pacote.empresas.length === 1, r);
+}
 chk('empresa sem bloco nenhum passa (só o CNPJ)', validarPacote({ ...BOM(), empresas: [{ documento: '11222333000100' }] }).ok);
 
 console.log('A lista de empresas pra ponte:');
@@ -128,9 +164,18 @@ chk('o pacote da Receita vai pro banco já conferido (sem o que sobra)', r.statu
   && db.chamadas[0].nome === 'receita_gravar' && !('nome' in db.chamadas[0].args.p.empresas[0]) && db.chamadas[0].args.p.empresas[0].documento === '11222333000100', r);
 db = fakeDb();
 r = await pedir(db, { ...BOM(), rodada: { ...BOM().rodada, ambiente: 'demonstracao' } });
-chk('do ambiente de demonstração: 200 e nada gravado', r.status === 200 && r.corpo.gravado === false && db.chamadas.length === 0, r);
-r = await pedir(fakeDb(), { ...BOM(), empresas: [{ documento: '1' }] });
-chk('pacote fora do contrato: 422 com o campo (a ponte não repete)', r.status === 422 && /empresas\[0\]\.documento/.test(r.corpo.erro), r);
+chk('do ambiente de demonstração: 200 e nada gravado', r.status === 200 && r.corpo.gravado === false && db.chamadas.length === 0 && Array.isArray(r.corpo.recusadas), r);
+r = await pedir(fakeDb(), { ...BOM(), rodada: { ...BOM().rodada, id: 'x' } });
+chk('rodada fora do contrato: 422 com o campo (a ponte não repete)', r.status === 422 && /rodada\.id/.test(r.corpo.erro), r);
+db = fakeDb();
+{
+  const p = BOM(); p.empresas[0].pgdas.meses[0].transmitida_em = 'ontem'; p.empresas.push({ documento: '1' });
+  r = await pedir(db, p);
+  const g = db.chamadas[0] && db.chamadas[0].args.p;
+  chk('empresa com um bloco fora do contrato: 200, o resto gravado, o bloco no faltou com "erro" e as recusadas na resposta',
+    r.status === 200 && r.corpo.gravado === true && r.corpo.recusadas.length === 2 && g && g.empresas.length === 1 && !('pgdas' in g.empresas[0]) && 'faturamento' in g.empresas[0]
+    && g.faltou.some(x => x.servico === 'pgdas' && x.motivo === 'erro' && x.documento === DOC), r);
+}
 r = await pedir(fakeDb(), { versao: 1, rodada: { id: 'x' }, empresas: [], mensal: [] });
 chk('o pacote do Domínio: 422, ainda não ligado', r.status === 422 && /Domínio/.test(r.corpo.erro), r);
 r = await pedir(fakeDb({ rpcErro: { message: 'falhou' } }), BOM());

@@ -3,6 +3,8 @@
 // O pacote da Receita que a ponte do PC do escritório manda (o contrato está em docs/FILA-CODE-2026-10-23.md, 2.5) é
 // conferido campo a campo e montado de novo só com o que o contrato prevê: o que vier a mais fica de fora, texto é
 // cortado, número e data têm de ser de verdade. Quem grava é o banco (receita_gravar), com o pacote que sai daqui.
+// O bloco de uma empresa fora do contrato fica de fora sozinho (vai pro faltou com 'erro'); só o que é da rodada recusa
+// o pacote inteiro.
 // E a lista de empresas que a ponte consulta: os clientes de hoje da carteira, CNPJ, com o regime.
 // Sem import: testes no node em tests/ponte-funcao.test.mjs.
 // ============================================================
@@ -65,62 +67,81 @@ const objeto = (v, campo) => {
   return v;
 };
 
-function empresa(e, i) {
-  const onde = 'empresas[' + i + ']';
-  objeto(e, onde);
-  const doc = documento(e.documento);
-  if (!doc) recusar(onde + '.documento', 'CNPJ ou CPF inválido');
-  const out = { documento: doc };
-  if (e.autorizacao != null) {
-    const a = objeto(e.autorizacao, onde + '.autorizacao');
+// cada bloco de uma empresa: o que o contrato prevê, conferido (fora dele, Recusa com o campo)
+const BLOCOS = {
+  autorizacao(a, onde) {
+    objeto(a, onde);
     const sit = String(a.situacao || '');
-    if (!['ativa', 'vencida', 'sem'].includes(sit)) recusar(onde + '.autorizacao.situacao', 'tem que ser ativa, vencida ou sem');
-    out.autorizacao = { situacao: sit, valida_ate: dataDe(a.valida_ate, onde + '.autorizacao.valida_ate') };
-  }
-  if (e.pgdas != null) {
-    const p = objeto(e.pgdas, onde + '.pgdas');
+    if (!['ativa', 'vencida', 'sem'].includes(sit)) recusar(onde + '.situacao', 'tem que ser ativa, vencida ou sem');
+    return { situacao: sit, valida_ate: dataDe(a.valida_ate, onde + '.valida_ate') };
+  },
+  pgdas(p, onde) {
+    objeto(p, onde);
     const ano = p.ano == null ? null : Number(p.ano);
-    if (ano != null && !(Number.isInteger(ano) && ano >= 2007 && ano <= 2100)) recusar(onde + '.pgdas.ano', 'ano inválido');
-    out.pgdas = { ano, meses: lista(p.meses, LIMITES.meses, onde + '.pgdas.meses').map((m, j) => {
-      const w = onde + '.pgdas.meses[' + j + ']';
+    if (ano != null && !(Number.isInteger(ano) && ano >= 2007 && ano <= 2100)) recusar(onde + '.ano', 'ano inválido');
+    return { ano, meses: lista(p.meses, LIMITES.meses, onde + '.meses').map((m, j) => {
+      const w = onde + '.meses[' + j + ']';
       objeto(m, w);
       if (!COMPETENCIA.test(String(m.competencia || ''))) recusar(w + '.competencia', 'competência fora do formato AAAA-MM');
       return { competencia: m.competencia, transmitida_em: momentoDe(m.transmitida_em, w + '.transmitida_em'), das_pago: simNao(m.das_pago, w + '.das_pago') };
     }) };
-  }
-  if (e.faturamento != null) {
-    const f = objeto(e.faturamento, onde + '.faturamento');
-    if (!COMPETENCIA.test(String(f.competencia || ''))) recusar(onde + '.faturamento.competencia', 'competência fora do formato AAAA-MM');
-    out.faturamento = { competencia: f.competencia, receita_mes: valorDe(f.receita_mes, onde + '.faturamento.receita_mes'),
-      receita_12_meses: valorDe(f.receita_12_meses, onde + '.faturamento.receita_12_meses') };
-  }
-  if (e.caixa_postal != null) {
-    const c = objeto(e.caixa_postal, onde + '.caixa_postal');
-    out.caixa_postal = { mensagens: lista(c.mensagens, LIMITES.mensagens, onde + '.caixa_postal.mensagens').map((m, j) => {
-      const w = onde + '.caixa_postal.mensagens[' + j + ']';
+  },
+  faturamento(f, onde) {
+    objeto(f, onde);
+    if (!COMPETENCIA.test(String(f.competencia || ''))) recusar(onde + '.competencia', 'competência fora do formato AAAA-MM');
+    return { competencia: f.competencia, receita_mes: valorDe(f.receita_mes, onde + '.receita_mes'), receita_12_meses: valorDe(f.receita_12_meses, onde + '.receita_12_meses') };
+  },
+  caixa_postal(c, onde) {
+    objeto(c, onde);
+    return { mensagens: lista(c.mensagens, LIMITES.mensagens, onde + '.mensagens').map((m, j) => {
+      const w = onde + '.mensagens[' + j + ']';
       objeto(m, w);
       const id = texto(m.id, 80), assunto = texto(m.assunto, 300);
       if (!id) recusar(w + '.id', 'mensagem sem id');
       if (!assunto) recusar(w + '.assunto', 'mensagem sem assunto');
       return { id, assunto, enviada_em: dataDe(m.enviada_em, w + '.enviada_em'), origem: texto(m.origem, 30), lida: simNao(m.lida, w + '.lida') };
     }) };
-  }
-  if (e.situacao_fiscal != null) {
-    const s = objeto(e.situacao_fiscal, onde + '.situacao_fiscal');
-    const em = dataDe(s.consultada_em, onde + '.situacao_fiscal.consultada_em');
-    if (!em) recusar(onde + '.situacao_fiscal.consultada_em', 'falta a data da consulta');
-    out.situacao_fiscal = { consultada_em: em, pendencias: lista(s.pendencias, LIMITES.pendencias, onde + '.situacao_fiscal.pendencias').map((x, j) => {
-      const w = onde + '.situacao_fiscal.pendencias[' + j + ']';
+  },
+  situacao_fiscal(s, onde) {
+    objeto(s, onde);
+    const em = dataDe(s.consultada_em, onde + '.consultada_em');
+    if (!em) recusar(onde + '.consultada_em', 'falta a data da consulta');
+    return { consultada_em: em, pendencias: lista(s.pendencias, LIMITES.pendencias, onde + '.pendencias').map((x, j) => {
+      const w = onde + '.pendencias[' + j + ']';
       objeto(x, w);
       const titulo = texto(x.titulo, 200);
       if (!titulo) recusar(w + '.titulo', 'pendência sem título');
       return { orgao: texto(x.orgao, 30) || 'Receita', titulo };
     }) };
   }
+};
+
+// uma empresa: o bloco fora do contrato fica de fora sozinho (vai pro faltou com 'erro' e pras recusadas) e os outros
+// seguem; sem CNPJ ou CPF válido, a empresa inteira fica de fora (não há a quem ligar o resto)
+function empresa(e, i, recusadas, faltou) {
+  const onde = 'empresas[' + i + ']';
+  if (e == null || typeof e !== 'object' || Array.isArray(e)) { recusadas.push({ documento: null, campo: onde, erro: 'tem que ser um objeto' }); return null; }
+  const doc = documento(e.documento);
+  if (!doc) { recusadas.push({ documento: null, campo: onde + '.documento', erro: 'CNPJ ou CPF inválido' }); return null; }
+  const out = { documento: doc };
+  for (const nome of SERVICOS) {
+    if (e[nome] == null) continue;
+    try {
+      out[nome] = BLOCOS[nome](e[nome], onde + '.' + nome);
+    } catch (err) {
+      if (!(err instanceof Recusa)) throw err;
+      recusadas.push({ documento: doc, campo: err.campo, erro: err.message });
+      faltou.push({ documento: doc, servico: nome, motivo: 'erro', detalhe: texto('fora do contrato: ' + err.campo.slice(onde.length + 1) + ' (' + err.message + ')', 200) });
+    }
+  }
   return out;
 }
 
-/** O pacote da Receita conferido: { ok: true, pacote } (só o contrato) ou { ok: false, campo, erro }. */
+/** O pacote da Receita conferido: { ok: true, pacote, recusadas } (só o contrato) ou { ok: false, campo, erro }.
+ *  Recusa o pacote inteiro só o que é da rodada (versão, tipo, a rodada, as listas grandes demais). Dentro de uma empresa,
+ *  o bloco fora do contrato fica de fora sozinho — uma data esquisita numa empresa não trava a rodada inteira todo dia
+ *  (a ponte não repete o que voltou 4xx) —, vai pro `faltou` da rodada com o motivo 'erro' e volta na lista `recusadas`
+ *  ({ documento, campo, erro }), pra ponte anotar no log; o item do `faltou` fora do contrato também. */
 export function validarPacote(p) {
   try {
     objeto(p, 'pacote');
@@ -132,16 +153,20 @@ export function validarPacote(p) {
     if (chamadas != null && !(Number.isInteger(chamadas) && chamadas >= 0 && chamadas < 1e7)) recusar('rodada.chamadas_mes', 'número de chamadas inválido');
     const rodada = { id: String(r.id).toLowerCase(), inicio: momentoDe(r.inicio, 'rodada.inicio'), fim: momentoDe(r.fim, 'rodada.fim'),
       maquina: texto(r.maquina, 60), ponte: texto(r.ponte, 20), ambiente: texto(r.ambiente, 20), chamadas_mes: chamadas };
-    const empresas = lista(p.empresas, LIMITES.empresas, 'empresas').map(empresa);
-    const faltou = lista(p.faltou, LIMITES.faltou, 'faltou').map((f, i) => {
-      objeto(f, 'faltou[' + i + ']');
-      const motivo = String(f.motivo || '');
-      if (!MOTIVOS.includes(motivo)) recusar('faltou[' + i + '].motivo', 'motivo desconhecido');
-      const servico = String(f.servico || '');
-      if (!SERVICOS.includes(servico)) recusar('faltou[' + i + '].servico', 'serviço desconhecido');
-      return { documento: documento(f.documento), servico, motivo, ...(texto(f.detalhe, 200) ? { detalhe: texto(f.detalhe, 200) } : {}) };
+    const brutasEmpresas = lista(p.empresas, LIMITES.empresas, 'empresas');
+    const brutasFaltou = lista(p.faltou, LIMITES.faltou, 'faltou');
+    const recusadas = [], faltou = [];
+    brutasFaltou.forEach((f, i) => {
+      const onde = 'faltou[' + i + ']';
+      if (f == null || typeof f !== 'object' || Array.isArray(f)) { recusadas.push({ documento: null, campo: onde, erro: 'tem que ser um objeto' }); return; }
+      const motivo = String(f.motivo || ''), servico = String(f.servico || '');
+      if (!MOTIVOS.includes(motivo)) { recusadas.push({ documento: documento(f.documento), campo: onde + '.motivo', erro: 'motivo desconhecido' }); return; }
+      if (!SERVICOS.includes(servico)) { recusadas.push({ documento: documento(f.documento), campo: onde + '.servico', erro: 'serviço desconhecido' }); return; }
+      const detalhe = texto(f.detalhe, 200);
+      faltou.push({ documento: documento(f.documento), servico, motivo, ...(detalhe ? { detalhe } : {}) });
     });
-    return { ok: true, pacote: { versao: 1, tipo: 'receita', rodada, empresas, faltou } };
+    const empresas = brutasEmpresas.map((e, i) => empresa(e, i, recusadas, faltou)).filter(Boolean);
+    return { ok: true, pacote: { versao: 1, tipo: 'receita', rodada, empresas, faltou }, recusadas };
   } catch (e) {
     if (e instanceof Recusa) return { ok: false, campo: e.campo, erro: e.message };
     throw e;

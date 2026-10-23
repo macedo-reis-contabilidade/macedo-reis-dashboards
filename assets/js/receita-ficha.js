@@ -73,7 +73,8 @@ export async function carregarReceita(supabase, clienteId) {
     const [e, p, m] = await Promise.all([
       supabase.from('receita_empresas').select('autorizacao, autorizacao_ate, autorizacao_em, pgdas_em, pendencias, situacao_fiscal_em').eq('cliente_id', clienteId).maybeSingle(),
       supabase.from('receita_pgdas').select('competencia, transmitida_em, das_pago, receita_mes, receita_12_meses').eq('cliente_id', clienteId).order('competencia', { ascending: false }).limit(12),
-      supabase.from('receita_mensagens').select('assunto, enviada_em, origem, lida, recebida_em').eq('cliente_id', clienteId).order('recebida_em', { ascending: false }).limit(5)
+      supabase.from('receita_mensagens').select('assunto, enviada_em, origem, lida, recebida_em').eq('cliente_id', clienteId)
+        .order('enviada_em', { ascending: false, nullsFirst: false }).order('recebida_em', { ascending: false }).limit(5)
     ]);
     if (e.error || p.error || m.error) return null;
     return { empresa: e.data || null, pgdas: p.data || [], mensagens: m.data || [] };
