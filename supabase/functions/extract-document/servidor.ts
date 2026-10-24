@@ -389,6 +389,29 @@ interface DocumentInput {
   filename?: string;
 }
 
+// Quem chama (24/10/2026): só quem entrou no sistema com e-mail do escritório — ou o próprio servidor, com a chave de
+// servidor. O verify_jwt sozinho deixa passar a chave anônima, que é pública (está nas páginas e no repositório): sem
+// esta conferência, qualquer um na internet chamaria esta função. A mesma em todas as funções internas — o teste
+// tests/funcoes-login.test.mjs confere.
+async function quemChama(req: Request): Promise<string | null> {
+  const m = /^Bearer\s+(\S+)/i.exec(req.headers.get("authorization") || "");
+  const jwt = m ? m[1] : "";
+  if (!jwt) return null;
+  const servidor = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  if (servidor && jwt === servidor) return "servidor";
+  try {
+    const r = await fetch((Deno.env.get("SUPABASE_URL") || "") + "/auth/v1/user", {
+      headers: { apikey: Deno.env.get("SUPABASE_ANON_KEY") || servidor, Authorization: "Bearer " + jwt },
+    });
+    if (!r.ok) return null;
+    const u = await r.json().catch(() => null);
+    const email = String((u && u.email) || "").toLowerCase();
+    return email.endsWith("@macedoereis.com.br") ? email : null;
+  } catch (_e) {
+    return null;
+  }
+}
+
 function cors(origin: string | null) {
   return {
     "Access-Control-Allow-Origin": origin || "*",
@@ -411,6 +434,9 @@ export async function atender(req: Request): Promise<Response> {
       JSON.stringify({ error: "Method not allowed" }),
       { status: 405, headers: cors(origin) },
     );
+  }
+  if (!(await quemChama(req))) {
+    return new Response(JSON.stringify({ error: "Entre no sistema pra usar esta função." }), { status: 401, headers: cors(origin) });
   }
 
   try {

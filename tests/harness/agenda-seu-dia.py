@@ -146,7 +146,9 @@ def main():
           const feitas = col.querySelectorAll('.ag-card.feita').length, rotFeitas = col.querySelectorAll('.ag-card.feita[data-rotcard]').length;
           return { total: tarefas + rotinas, feitas, rotinas, rotFeitas }; }""")
         linha = p.inner_text('#sdDia .sd-linha')
-        esperado = f"{conta['feitas']} de {conta['total']} feitas · rotinas {conta['rotFeitas']} de {conta['rotinas']}"
+        # sem rotina no dia (o fim de semana não tem), a linha não fala delas
+        esperado = (f"{conta['feitas']} de {conta['total']} feita{'' if conta['total'] == 1 else 's'}"
+                    + (f" · rotinas {conta['rotFeitas']} de {conta['rotinas']}" if conta['rotinas'] else ''))
         ok(' '.join(linha.split()) == esperado, f'1. "{linha}" — a mesma conta da lista ({esperado})')
         pct = round(conta['feitas'] / conta['total'] * 100)
         ok(p.get_attribute('#sdDia .sd-barra', 'aria-valuenow') == str(pct), f'1. a barra em {pct}%')
