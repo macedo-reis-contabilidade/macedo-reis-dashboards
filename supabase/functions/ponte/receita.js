@@ -86,10 +86,14 @@ const BLOCOS = {
       return { competencia: m.competencia, transmitida_em: momentoDe(m.transmitida_em, w + '.transmitida_em'), das_pago: simNao(m.das_pago, w + '.das_pago') };
     }) };
   },
+  // sem os dois valores (a ponte não os achou no PDF da declaração): nada a gravar — gravar o vazio apagaria o que o
+  // mês tinha (a retificação lida antes) e a Carteira perderia o faturamento
   faturamento(f, onde) {
     objeto(f, onde);
     if (!COMPETENCIA.test(String(f.competencia || ''))) recusar(onde + '.competencia', 'competência fora do formato AAAA-MM');
-    return { competencia: f.competencia, receita_mes: valorDe(f.receita_mes, onde + '.receita_mes'), receita_12_meses: valorDe(f.receita_12_meses, onde + '.receita_12_meses') };
+    const mes = valorDe(f.receita_mes, onde + '.receita_mes'), doze = valorDe(f.receita_12_meses, onde + '.receita_12_meses');
+    if (mes == null || doze == null) return null;
+    return { competencia: f.competencia, receita_mes: mes, receita_12_meses: doze };
   },
   caixa_postal(c, onde) {
     objeto(c, onde);
@@ -102,10 +106,13 @@ const BLOCOS = {
       return { id, assunto, enviada_em: dataDe(m.enviada_em, w + '.enviada_em'), origem: texto(m.origem, 30), lida: simNao(m.lida, w + '.lida') };
     }) };
   },
+  // as pendências nulas = a ponte não conseguiu ler o relatório: nada a gravar (gravar a lista vazia diria "sem
+  // pendência" e tiraria o aviso do vigia); a lista vazia, essa sim, é "sem pendência"
   situacao_fiscal(s, onde) {
     objeto(s, onde);
     const em = dataDe(s.consultada_em, onde + '.consultada_em');
     if (!em) recusar(onde + '.consultada_em', 'falta a data da consulta');
+    if (s.pendencias == null) return null;
     return { consultada_em: em, pendencias: lista(s.pendencias, LIMITES.pendencias, onde + '.pendencias').map((x, j) => {
       const w = onde + '.pendencias[' + j + ']';
       objeto(x, w);
@@ -117,7 +124,9 @@ const BLOCOS = {
 };
 
 // uma empresa: o bloco fora do contrato fica de fora sozinho (vai pro faltou com 'erro' e pras recusadas) e os outros
-// seguem; sem CNPJ ou CPF válido, a empresa inteira fica de fora (não há a quem ligar o resto)
+// seguem; sem CNPJ ou CPF válido, a empresa inteira fica de fora (não há a quem ligar o resto). O bloco que veio sem o
+// que a ponte leu do PDF (o faturamento sem os valores, a situação fiscal sem as pendências) não é gravado e fica no
+// faltou como 'a_conferir' (a ponte já o põe lá; se não pôs, entra aqui)
 function empresa(e, i, recusadas, faltou) {
   const onde = 'empresas[' + i + ']';
   if (e == null || typeof e !== 'object' || Array.isArray(e)) { recusadas.push({ documento: null, campo: onde, erro: 'tem que ser um objeto' }); return null; }
@@ -127,7 +136,11 @@ function empresa(e, i, recusadas, faltou) {
   for (const nome of SERVICOS) {
     if (e[nome] == null) continue;
     try {
-      out[nome] = BLOCOS[nome](e[nome], onde + '.' + nome);
+      const bloco = BLOCOS[nome](e[nome], onde + '.' + nome);
+      if (bloco) out[nome] = bloco;
+      else if (!faltou.some(f => f.documento === doc && f.servico === nome)) {
+        faltou.push({ documento: doc, servico: nome, motivo: 'a_conferir', detalhe: 'veio sem o que a ponte leu do PDF: nada gravado' });
+      }
     } catch (err) {
       if (!(err instanceof Recusa)) throw err;
       recusadas.push({ documento: doc, campo: err.campo, erro: err.message });
@@ -165,7 +178,8 @@ export function validarPacote(p) {
       const detalhe = texto(f.detalhe, 200);
       faltou.push({ documento: documento(f.documento), servico, motivo, ...(detalhe ? { detalhe } : {}) });
     });
-    const empresas = brutasEmpresas.map((e, i) => empresa(e, i, recusadas, faltou)).filter(Boolean);
+    // a empresa que ficou sem bloco nenhum pra gravar não vai (só criaria a linha vazia dela no banco)
+    const empresas = brutasEmpresas.map((e, i) => empresa(e, i, recusadas, faltou)).filter(e => e && Object.keys(e).length > 1);
     return { ok: true, pacote: { versao: 1, tipo: 'receita', rodada, empresas, faltou }, recusadas };
   } catch (e) {
     if (e instanceof Recusa) return { ok: false, campo: e.campo, erro: e.message };
