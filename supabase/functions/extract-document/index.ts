@@ -6,6 +6,6 @@
 // verify_jwt = true · segredo: ANTHROPIC_API_KEY
 // ============================================================
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { atender } from "https://raw.githubusercontent.com/macedo-reis-contabilidade/macedo-reis-dashboards/ce1daeca54b850d26b1567a751f596ba332f271b/supabase/functions/extract-document/servidor.ts";
+import { atender } from "https://raw.githubusercontent.com/macedo-reis-contabilidade/macedo-reis-dashboards/d4a441012f39eeedd5d30cb9b52e680b64acd6aa/supabase/functions/extract-document/servidor.ts";
 
 Deno.serve(atender);
