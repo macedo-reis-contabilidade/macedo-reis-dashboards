@@ -5,9 +5,11 @@
       "empresas": [ { documento, autorizacao?, pgdas?, faturamento?, caixa_postal?, situacao_fiscal? } ],
       "faltou": [ { documento, servico, motivo } ] }
 
-Bloco que não está na empresa = não consultado nesta rodada (nunca um "vazio" inventado). Só os campos daqui saem do
-PC — a mesma trava do Domínio: o que vier a mais é descartado antes de montar (o PDF e o texto inteiro de uma
-mensagem nunca saem).
+Bloco que não está na empresa = não consultado nesta rodada (nunca um "vazio" inventado). O que a ponte não conseguiu
+ler do PDF não vai (24/10/2026): o faturamento sem os dois valores e a situação fiscal sem a lista de pendências ficam
+fora do pacote — vai só o `faltou` com `a_conferir` (no sistema, a lista nula virava "sem pendência" e o faturamento
+nulo apagava o do mês). Só os campos daqui saem do PC — a mesma trava do Domínio: o que vier a mais é descartado antes
+de montar (o PDF e o texto inteiro de uma mensagem nunca saem).
 """
 import socket
 import uuid
@@ -52,17 +54,21 @@ def limpar_bloco(servico, b):
         ano = b.get('ano')
         return {'ano': ano if isinstance(ano, int) and not isinstance(ano, bool) else None, 'meses': meses}
     if servico == 'faturamento':
-        return {'competencia': _texto(b.get('competencia'), 7), 'receita_mes': _num(b.get('receita_mes')),
-                'receita_12_meses': _num(b.get('receita_12_meses'))}
+        mes, doze = _num(b.get('receita_mes')), _num(b.get('receita_12_meses'))
+        if mes is None or doze is None:
+            return None                       # não lido: fica fora (o faltou diz a_conferir)
+        return {'competencia': _texto(b.get('competencia'), 7), 'receita_mes': mes, 'receita_12_meses': doze}
     if servico == 'caixa_postal':
-        return {'mensagens': [{'id': _texto(m.get('id'), 40), 'assunto': _texto(m.get('assunto')),
+        return {'mensagens': [{'id': _texto(m.get('id'), 80), 'assunto': _texto(m.get('assunto')),
                                'enviada_em': _texto(m.get('enviada_em'), 10), 'origem': _so(m.get('origem'), ORIGENS),
                                'lida': _bool(m.get('lida'))}
                               for m in (b.get('mensagens') or []) if isinstance(m, dict)]}
     if servico == 'situacao_fiscal':
         p = b.get('pendencias')
-        pend = None if p is None else [{'orgao': _so(x.get('orgao'), ORGAOS), 'titulo': _texto(x.get('titulo'), 200)}
-                                        for x in p if isinstance(x, dict)]
+        if not isinstance(p, list):
+            return None                       # não lida: fica fora (o faltou diz a_conferir)
+        pend = [{'orgao': _so(x.get('orgao'), ORGAOS), 'titulo': _texto(x.get('titulo'), 200)}
+                for x in p if isinstance(x, dict)]
         return {'consultada_em': _texto(b.get('consultada_em'), 10), 'pendencias': pend}
     return None
 

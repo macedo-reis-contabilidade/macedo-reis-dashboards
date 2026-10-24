@@ -1,6 +1,7 @@
 """py -3 -m ponte conferir | rodar [--falso] [--sem-enviar] [--saida arquivo.json] [--meses N]
    py -3 -m ponte receita conferir | rodar [--demonstracao | --falso] [--sem-enviar] [--saida arquivo.json]
-                                           [--so servico,servico] [--empresas N]   (a ponte da Receita)"""
+                                           [--so servico,servico] [--empresas N]   (a ponte da Receita)
+   py -3 -m ponte chave [--trocar]          (gera a chave da ponte no config.ini e mostra só a impressão digital)"""
 import argparse
 import sys
 
@@ -65,7 +66,13 @@ def main(argv=None):
     rr.add_argument('--so', type=_servicos, metavar='servico,servico',
                     help='roda só estes, agora, fora do calendário: autorizacao,pgdas,faturamento,caixa_postal,situacao_fiscal')
     rr.add_argument('--empresas', type=_empresas, metavar='N', help='só as N primeiras empresas da lista')
+    ch = sub.add_parser('chave', help='gera a chave da ponte (x-chave) no config.ini e mostra só a impressão digital')
+    ch.add_argument('--trocar', action='store_true', help='troca a chave que existe (pede confirmação)')
     args = p.parse_args(argv)
+
+    if args.comando == 'chave':
+        from .chave import chave
+        return chave(trocar=args.trocar)
 
     if args.comando == 'receita':
         if args.acao == 'conferir':

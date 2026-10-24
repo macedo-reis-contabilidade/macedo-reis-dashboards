@@ -10,23 +10,22 @@ Código de saída (como o do Domínio):
 (falso.py); os dois usam uma lista de empresas fixa, não contam no teto, não lembram nada no estado.json, não tocam
 nos pendentes e só mandam pra um sistema de mentira (endereço local). O estado.json só é gravado quando o pacote foi
 (ou ficou em pendentes) — assim nada lido se perde por um envio recusado.
+
+O que não deu pra ler do PDF (a declaração, o relatório da situação fiscal) não vai no pacote: vai só o `faltou` com
+`a_conferir` (24/10/2026). O estado.json guarda também o dia de cada consulta feita (o calendário "a partir do dia").
 """
 import datetime
-import http.client
 import json
 import os
 import pathlib
 import re
 import traceback
-import urllib.error
-import urllib.request
 
 from .. import config, envio
 from ..log import Registro
-from . import VERSAO, SERVICOS, calendario, demonstracao as demo_mod, estado as est_mod, pacote, serpro, servicos
+from . import VERSAO, calendario, demonstracao as demo_mod, estado as est_mod, pacote, serpro, servicos, sistema
 
 OK, TENTAR_DE_NOVO, NAO_ADIANTA = 0, 1, 2
-REGIMES = ('simples', 'mei', 'presumido', 'real')
 
 
 def hoje_local():
@@ -41,44 +40,6 @@ def hoje_local():
 
 def agora():
     return datetime.datetime.now().astimezone().isoformat(timespec='seconds')
-
-
-class _SemRedirecionar(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, *a, **k):
-        return None
-
-
-def pedir_empresas(cfg, reg):
-    """A lista de empresas vem do sistema: [{documento, regime}] — ou None (e o porquê no log)."""
-    url = cfg.valor('sistema', 'url')
-    chave = cfg.valor('sistema', 'chave_publica')
-    cab = {'apikey': chave, 'Authorization': f'Bearer {chave}', 'x-chave': cfg.valor('sistema', 'chave_ponte'),
-           'Content-Type': 'application/json'}
-    corpo = json.dumps({'versao': 1, 'tipo': 'receita', 'pedir': 'empresas'}).encode('utf-8')
-    try:
-        req = urllib.request.Request(url, data=corpo, method='POST', headers=cab)
-        abridor = urllib.request.build_opener(_SemRedirecionar())
-        with abridor.open(req, timeout=float(os.environ.get('PONTE_TIMEOUT') or 60)) as r:
-            resposta = json.loads(r.read().decode('utf-8'))
-    except urllib.error.HTTPError as e:
-        extra = ' — a função do sistema ainda não foi publicada' if e.code == 404 else ''
-        reg(f'receita: o sistema não deu a lista de empresas (HTTP {e.code}){extra}', 'erro')
-        return None
-    except (urllib.error.URLError, http.client.HTTPException, OSError, ValueError) as e:
-        reg(f'receita: o sistema não deu a lista de empresas ({type(getattr(e, "reason", e)).__name__})', 'erro')
-        return None
-    lista, vistos, fora = [], set(), 0
-    for e in (resposta.get('empresas') if isinstance(resposta, dict) else None) or []:
-        doc = re.sub(r'[./\s-]', '', str(e.get('documento') if isinstance(e, dict) else '')).upper()
-        if not re.fullmatch(r'[0-9]{11}|[0-9A-Z]{12}[0-9]{2}', doc) or doc in vistos:
-            fora += 1
-            continue
-        vistos.add(doc)
-        regime = str(e.get('regime') or '').lower()
-        lista.append({'documento': doc, 'regime': regime if regime in REGIMES else None})
-    if fora:
-        reg(f'receita: {fora} empresa(s) da lista sem documento válido ou repetida(s) ficaram de fora', 'aviso')
-    return lista
 
 
 def executar(cli, empresas, est, hoje, so, pasta, reg):
@@ -121,6 +82,9 @@ def executar(cli, empresas, est, hoje, so, pasta, reg):
                 negados.add(doc)
         except servicos.Falta as f:
             falta(doc, 'autorizacao', f)
+            if f.feita:
+                # o Serpro respondeu: até o próximo dia marcado não pergunta de novo ('sem' = toda segunda pergunta)
+                est.marcar_consulta('autorizacao', doc, hoje, situacao='sem' if f.motivo == 'sem_autorizacao' else None)
             if f.motivo == 'sem_autorizacao':
                 negados.add(doc)
 
@@ -131,6 +95,10 @@ def executar(cli, empresas, est, hoje, so, pasta, reg):
         if doc in negados:
             for s in sorted(plano - {'autorizacao', 'caixa_postal'} | ({'faturamento'} if quer_faturamento else set())):
                 faltou.append({'documento': doc, 'servico': s, 'motivo': 'sem_autorizacao'})
+            # a autorização de hoje já disse que não há procuração: até o próximo dia marcado não volta
+            for s in ('pgdas', 'situacao_fiscal'):
+                if s in plano:
+                    est.marcar_consulta(s, doc, hoje)
             continue
         meses = None
         if 'pgdas' in plano:
@@ -138,9 +106,12 @@ def executar(cli, empresas, est, hoje, so, pasta, reg):
                 bloco = servicos.pgdas(cli, e, hoje)
                 dados.setdefault(doc, {})['pgdas'] = bloco
                 est.guardar_meses(doc, bloco['meses'])
+                est.marcar_consulta('pgdas', doc, hoje)
                 meses = bloco['meses']
             except servicos.Falta as f:
                 falta(doc, 'pgdas', f)
+                if f.feita:
+                    est.marcar_consulta('pgdas', doc, hoje)
         if quer_faturamento:
             lista = meses if meses is not None else [
                 {'competencia': c, 'transmitida_em': t} for c, t in est.meses_declarados(doc).items()]
@@ -148,22 +119,28 @@ def executar(cli, empresas, est, hoje, so, pasta, reg):
             if mes:
                 try:
                     bloco, problema = servicos.faturamento(cli, e, mes, pasta)
-                    dados.setdefault(doc, {})['faturamento'] = bloco
                     if problema:
+                        # o que não deu pra ler não vai: só o faltou com a_conferir (o PDF fica guardado)
                         falta(doc, 'faturamento', servicos.Falta('a_conferir', problema))
                     else:
+                        dados.setdefault(doc, {})['faturamento'] = bloco
                         est.guardar_declaracao_lida(doc, mes['competencia'], mes['transmitida_em'])
                 except servicos.Falta as f:
                     falta(doc, 'faturamento', f)
         if 'situacao_fiscal' in plano:
             try:
-                bloco, problema = servicos.situacao_fiscal(cli, e, hoje, pasta)
-                dados.setdefault(doc, {})['situacao_fiscal'] = bloco
-                est.guardar_situacao(doc, hoje)
+                bloco, problema, aviso = servicos.situacao_fiscal(cli, e, hoje, pasta)
+                est.marcar_consulta('situacao_fiscal', doc, hoje)
                 if problema:
                     falta(doc, 'situacao_fiscal', servicos.Falta('a_conferir', problema))
+                else:
+                    dados.setdefault(doc, {})['situacao_fiscal'] = bloco
+                    if aviso:
+                        reg(f'receita: situacao_fiscal de {doc}: {aviso}', 'aviso')
             except servicos.Falta as f:
                 falta(doc, 'situacao_fiscal', f)
+                if f.feita:
+                    est.marcar_consulta('situacao_fiscal', doc, hoje)
 
     # 3. Caixa Postal: os eventos em lote e as mensagens só de quem teve novidade
     cp = [e for e in empresas if 'caixa_postal' in planos[e['documento']] and e['documento'] not in negados]
@@ -229,7 +206,8 @@ def mandar_com_pendentes(env, pac, corpo, base, reg):
             codigo = NAO_ADIANTA
             continue
         guardado = envio.guardar(pasta_pend, pac)
-        reg(f'o sistema não respondeu: a rodada da Receita ficou guardada em pendentes\\{guardado.name}', 'erro')
+        porque = 'o sistema ainda não tem a chave da ponte' if env.chave_nao_cadastrada else 'o sistema não respondeu'
+        reg(f'{porque}: a rodada da Receita ficou guardada em pendentes\\{guardado.name}', 'erro')
         return TENTAR_DE_NOVO, True
     r = env.mandar(corpo, f'receita {pac["rodada"]["id"][:8]}')
     if r == envio.FOI:
@@ -307,9 +285,9 @@ def rodar(demonstracao=False, falso=False, sem_enviar=False, saida=None, so=None
         elif ambiente == 'demonstracao':
             empresas = [dict(e) for e in demo_mod.EMPRESAS]
         else:
-            empresas = pedir_empresas(cfg, reg)
+            empresas, status = sistema.pedir_empresas(cfg, reg)
             if empresas is None:
-                return TENTAR_DE_NOVO
+                return NAO_ADIANTA if status in (401, 403) else TENTAR_DE_NOVO
         if empresas_max:
             empresas = empresas[:empresas_max]
         reg(f'receita: {len(empresas)} empresa(s) na lista')
@@ -352,8 +330,8 @@ def rodar(demonstracao=False, falso=False, sem_enviar=False, saida=None, so=None
         return OK
 
     corpo = json.dumps(pac, ensure_ascii=False).encode('utf-8')
-    env = envio.Envio(cfg.valor('sistema', 'url'), cfg.valor('sistema', 'chave_publica'),
-                      cfg.valor('sistema', 'chave_ponte'), reg)
+    env = sistema.EnvioReceita(cfg.valor('sistema', 'url'), cfg.valor('sistema', 'chave_publica'),
+                               cfg.valor('sistema', 'chave_ponte'), reg)
     if not real:
         # demonstração e --falso não tocam nos pendentes de verdade
         r = env.mandar(corpo, f'receita {pac["rodada"]["id"][:8]} ({rotulo})')

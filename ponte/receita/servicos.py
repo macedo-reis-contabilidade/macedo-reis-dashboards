@@ -9,7 +9,9 @@
     situacao_fiscal  SITFIS · SOLICITARPROTOCOLO91 (Apoiar) + RELATORIOSITFIS92 (Emitir) — do PDF, as pendências
 
 Toda consulta passa por consultar(): o teto do mês, o Serpro fora do ar, o acesso negado (= o cliente não autorizou)
-e a recusa viram Falta, que a rodada põe no `faltou` com o motivo (sem_autorizacao, teto, erro, a_conferir).
+e a recusa viram Falta, que a rodada põe no `faltou` com o motivo (sem_autorizacao, teto, erro, a_conferir). A Falta
+diz também se a consulta foi FEITA (o Serpro respondeu, mesmo que recusando — no calendário "a partir do dia", ela só
+volta no próximo dia marcado) ou não (o teto, o Serpro fora, o relatório que não ficou pronto — tenta na próxima rodada).
 """
 import base64
 import datetime
@@ -27,19 +29,20 @@ ORIGEM = {'1': 'Receita', '2': 'Estado', '3': 'Município'}
 
 
 class Falta(Exception):
-    def __init__(self, motivo, detalhe=''):
+    def __init__(self, motivo, detalhe='', feita=True):
         super().__init__(motivo)
         self.motivo = motivo
         self.detalhe = detalhe
+        self.feita = feita              # o Serpro respondeu (a consulta conta como feita no calendário)
 
 
 def consultar(cli, endpoint, sistema, servico, contribuinte, dados, versao='1.0', tipo=None):
     if cli.contador.acabou():
-        raise Falta('teto', 'o teto de chamadas do mês chegou')
+        raise Falta('teto', 'o teto de chamadas do mês chegou', feita=False)
     try:
         return cli.chamar(endpoint, sistema, servico, contribuinte, dados, versao, tipo)
     except SerproFora as e:
-        raise Falta('erro', str(e))
+        raise Falta('erro', str(e), feita=False)
 
 
 def _conferir_resposta(r):
@@ -252,6 +255,8 @@ def _espera_do_etag(cabecalhos):
 
 
 def situacao_fiscal(cli, empresa, hoje, pasta, tentativas=6):
+    """(bloco, problema, aviso): problema = o PDF não deu pra ler (o bloco não vai, fica a_conferir); aviso = a lista
+    foi lida mas cortada no limite (o bloco vai)."""
     doc = empresa['documento']
     r = consultar(cli, 'Apoiar', 'SITFIS', 'SOLICITARPROTOCOLO91', doc, '')
     _conferir_resposta(r)
@@ -276,20 +281,21 @@ def situacao_fiscal(cli, empresa, hoje, pasta, tentativas=6):
         pdf_b64 = d2.get('pdf') if isinstance(d2, dict) else None
         break
     else:
-        raise Falta('erro', 'o relatório de situação fiscal não ficou pronto a tempo')
+        raise Falta('erro', 'o relatório de situação fiscal não ficou pronto a tempo', feita=False)
     bloco = {'consultada_em': hoje.isoformat(), 'pendencias': None}
     if not pdf_b64:
-        return bloco, 'a resposta não trouxe o PDF do relatório'
+        return bloco, 'a resposta não trouxe o PDF do relatório', None
     try:
         conteudo = base64.b64decode(pdf_b64)
     except (ValueError, TypeError):
-        return bloco, 'o PDF do relatório veio estragado'
+        return bloco, 'o PDF do relatório veio estragado', None
     guardado = est_mod.guardar_pdf(pasta, f'{doc}-situacao-fiscal-{hoje.isoformat()}.pdf', conteudo)
     bloco['pendencias'] = pdf.ler_situacao(pdf.texto(conteudo))
     if bloco['pendencias'] is None:
-        return bloco, f'não consegui ler as pendências no texto do PDF (guardado em {guardado.name})'
+        return bloco, f'não consegui ler as pendências no texto do PDF (guardado em {guardado.name})', None
     if len(bloco['pendencias']) > MAX_PENDENCIAS:
+        # a lista foi lida: vai, cortada no limite da função do sistema — só o aviso no log
         n = len(bloco['pendencias'])
         bloco['pendencias'] = bloco['pendencias'][:MAX_PENDENCIAS]
-        return bloco, f'{n} pendências no relatório: foram as {MAX_PENDENCIAS} primeiras (o PDF ficou em {guardado.name})'
-    return bloco, None
+        return bloco, None, f'{n} pendências no relatório: vão as {MAX_PENDENCIAS} primeiras (o PDF ficou em {guardado.name})'
+    return bloco, None, None

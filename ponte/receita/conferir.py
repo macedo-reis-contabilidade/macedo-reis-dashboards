@@ -1,10 +1,12 @@
 """`py -3 -m ponte receita conferir` — não grava nem manda dado nenhum. Mostra:
 
     o cryptography e o pypdf (instalados?) · a seção [integra] (de cada campo, só "preenchido", "falta", "ainda é o do
-    exemplo" ou "inválido (o porquê)") · o certificado do escritório (o titular e quantos dias faltam pra vencer —
+    exemplo" ou "inválido (o porquê)") · a impressão digital da chave da ponte (o SHA-256 que o sistema guarda — não é
+    segredo; a chave nunca aparece) · o certificado do escritório (o titular e quantos dias faltam pra vencer —
     vencido ou a menos de 30 dias, em destaque) · a conexão com o Serpro (o certificado dele confere com o
     ac-serpro-2025.pem) · o token (em produção, pede um e diz "ok" ou o erro, sem mostrar o token; em demonstração,
-    "demonstração") · o ping pro sistema, como no conferir do Domínio
+    "demonstração") · o ping pro sistema, como no conferir do Domínio, com a mensagem da função como veio (o 503 da
+    chave ainda não cadastrada, o 401 da chave recusada)
 
 Código de saída: 0 com a configuração completa pro ambiente do config.ini; 1 quando falta alguma coisa.
 """
@@ -13,8 +15,9 @@ import json
 import re
 
 from .. import config, envio
+from ..chave import RECADO, impressao
 from ..log import Registro
-from . import VERSAO, serpro
+from . import VERSAO, serpro, sistema
 
 AVISO_DIAS = 30
 
@@ -84,6 +87,11 @@ def conferir():
         if situacao != 'preenchido':
             problemas += 1
         tela(f'  [{secao}] {campo}: {situacao}')
+    if cfg.situacao('sistema', 'chave_ponte') == 'preenchido':
+        tela(f"Chave da ponte: impressão digital {impressao(cfg.valor('sistema', 'chave_ponte'))}")
+        tela('  é o que o sistema confere (não é segredo); a chave mesmo nunca sai deste PC')
+    else:
+        tela('Chave da ponte: ainda não há — gere com py -3 -m ponte chave (mostra a impressão digital)')
     tela('Ambiente: ' + {'demonstracao': 'demonstração (o Serpro responde exemplos fixos, sem custo)',
                          'producao': 'produção (o Integra Contador de verdade, com o contrato)',
                          None: 'inválido — o [integra] ambiente tem que ser demonstracao ou producao'}[ambiente])
@@ -146,8 +154,8 @@ def conferir():
     if falta_sistema:
         tela('Sistema: não testei (falta ' + ', '.join(falta_sistema) + ')')
     else:
-        env = envio.Envio(cfg.valor('sistema', 'url'), cfg.valor('sistema', 'chave_publica'),
-                          cfg.valor('sistema', 'chave_ponte'), tela)
+        env = sistema.EnvioReceita(cfg.valor('sistema', 'url'), cfg.valor('sistema', 'chave_publica'),
+                                   cfg.valor('sistema', 'chave_ponte'), tela)
         resultado, status, detalhe = env.uma_vez(json.dumps({'versao': 1, 'ping': True}).encode('utf-8'))
         if resultado == envio.FOI:
             tela(f'Sistema: respondeu ao ping (HTTP {status})')
@@ -155,8 +163,12 @@ def conferir():
             tela(f'Sistema: {detalhe}' + (f' (HTTP {status})' if status else ''))
         elif status == 404:
             tela('Sistema: função do sistema ainda não publicada (HTTP 404) — normal até o sistema ficar pronto')
+        elif sistema.sem_chave(status, detalhe):
+            tela(f'Sistema: {detalhe} (HTTP {status})')
+            tela(f'  {RECADO}')
         elif status in (401, 403):
-            tela(f'Sistema: a chave foi recusada (HTTP {status}) — confira a chave_publica e a chave_ponte')
+            tela(f'Sistema: {detalhe or "a chave foi recusada"} (HTTP {status}) — a chave_ponte deste PC não é a que o '
+                 f'sistema tem (confira a impressão digital acima) ou a chave_publica está errada')
         elif status:
             tela(f'Sistema: respondeu HTTP {status}' + (f' — {detalhe}' if detalhe else ''))
         else:

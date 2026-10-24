@@ -3,11 +3,13 @@ a entrada (token) e o gateway com as respostas do ambiente de demonstração gua
 isso o --falso só roda da pasta do repositório. A lista de empresas também é de mentira (CNPJs com o dígito errado).
 
 O pedido de eventos devolve, pra os CNPJs pedidos, a novidade de hoje no primeiro e nenhuma nos outros — pra a Caixa
-Postal ter o que ler.
+Postal ter o que ler. As mensagens da demonstração são de 2022: a primeira leitura de uma empresa só manda as dos
+últimos 90 dias, então aqui elas vêm com datas recentes (a mais nova hoje, uma por dia pra trás, na mesma ordem).
 """
 import datetime
 import http.server
 import json
+import os
 import pathlib
 import threading
 
@@ -17,6 +19,24 @@ EMPRESAS = [
     {'documento': '22333444000100', 'regime': 'presumido'},
     {'documento': '33444555000100', 'regime': 'mei'},
 ]
+
+
+def _hoje():
+    try:
+        return datetime.date.fromisoformat(os.environ.get('PONTE_HOJE') or '')
+    except ValueError:
+        return datetime.date.today()
+
+
+def mensagens_recentes(resposta, ate):
+    """A resposta do MSGCONTRIBUINTE61 com as datas trocadas: a mensagem mais nova em `ate`, as outras um dia pra
+    trás cada, na mesma ordem (a mais nova da demonstração continua a mais nova)."""
+    d = json.loads(resposta['dados'])
+    lista = d['conteudo'][0]['listaMensagens']
+    ordem = sorted(range(len(lista)), key=lambda i: (lista[i].get('dataEnvio') or '', -i), reverse=True)
+    for pos, i in enumerate(ordem):
+        lista[i]['dataEnvio'] = (ate - datetime.timedelta(days=pos)).strftime('%Y%m%d')
+    return dict(resposta, dados=json.dumps(d, ensure_ascii=False))
 
 
 class ServidorFalso:
@@ -60,6 +80,8 @@ class ServidorFalso:
                 arq = FIXTURES / f"{pd.get('idSistema')}-{servico}.json"
                 if not arq.is_file():
                     return self._json(404, {'status': 404, 'mensagens': [{'codigo': 'ERRO', 'texto': 'serviço sem resposta guardada'}]})
+                if servico == 'MSGCONTRIBUINTE61':
+                    return self._json(200, mensagens_recentes(json.loads(arq.read_text(encoding='utf-8')), _hoje()))
                 corpo = arq.read_bytes()
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')

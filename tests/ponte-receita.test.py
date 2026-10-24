@@ -1,13 +1,17 @@
 """Teste da ponte da Receita (ponte/receita/) — sem o Serpro, sem o sistema e sem internet. Precisa do Python 3.11+
-com o cryptography e o pypdf (py -3 -m pip install cryptography pypdf).
+com o cryptography e o pypdf (py -3 -m pip install cryptography pypdf) e do node (o validarPacote e os feriados de
+verdade, em JavaScript).
 
     python tests/ponte-receita.test.py
 
 Um Serpro de mentira (a entrada, /authenticate, e o gateway, servindo as respostas do ambiente de demonstração
-guardadas em tests/fixtures/receita/) e um sistema de mentira (a lista de empresas e o recebimento dos pacotes), os
-dois em http.server numa thread, porta 0. Cada caso usa uma pasta temporária em PONTE_PASTA. Empresas, chaves, senhas
-e o certificado são todos inventados (os CNPJs das empresas com o dígito verificador errado; o do escritório, com
-letras, montado aqui).
+guardadas em tests/fixtures/receita/ — as mensagens da Caixa Postal com datas recentes, que as de 2022 cairiam no filtro
+dos 90 dias) e um sistema de mentira que responde como a função `ponte` de verdade (a chave pela impressão digital:
+sem ela, 503; outra, 401; o ping; a lista de empresas; e o pacote conferido pelo validarPacote de
+supabase/functions/ponte/receita.js, rodado no node — 422 se a rodada sair do contrato, 200 com as recusadas e, da
+demonstração e do --falso, "gravado": false), os dois em http.server numa thread, porta 0. Cada caso usa uma pasta
+temporária em PONTE_PASTA. Empresas, chaves, senhas e o certificado são todos inventados (os CNPJs das empresas com o
+dígito verificador errado; o do escritório, com letras, montado aqui).
 
   1. token: o Basic certo, role-type TERCEIROS, grant_type=client_credentials; renova antes de vencer e numa 401;
      duas 401 seguidas = sai com 2
@@ -15,18 +19,26 @@ letras, montado aqui).
      no meio); a chave vai cifrada pro disco; o conferir mostra o titular e os dias até vencer, o vencido em destaque
   3. cada serviço, com as respostas da demonstração, vira o bloco certo (os valores com os centavos)
   4. acesso negado = sem_autorizacao sem repetir; 503, 503, 200 = foi na terceira; o teto para com `teto`
-  5. o calendário: dia 21 o pgdas só do Simples; dia 5 a situação fiscal; sábado nada; --so passa por cima; a
-     mensagem e a declaração já lidas não voltam
+  5. o calendário "a partir do dia": o dia marcado ou a primeira rodada depois dele (o PC desligado no dia 5 → a
+     situação fiscal no 6, e no 7 não; o pgdas marcado pra terça 24/11/2026, o PC desligado → quarta 25); o pgdas
+     só do Simples; sábado nada; --so passa por cima; a mensagem e a declaração já lidas não voltam
   6. o que sai: só o contrato; o assunto não vai pro log; o PDF e o texto da mensagem nunca vão pro pacote
-  7. segredo nunca aparece (consumer key e secret, a senha do certificado, os tokens), com o Registro de verdade
-  8. PDF que não dá pra ler = null e a_conferir, o PDF guardado
+  7. segredo nunca aparece (uma senha longa e única do certificado, consumer key e secret, os tokens — depois de uma
+     rodada com a senha errada e outra com a certa); a senha curta ("2026") não apaga as datas do log
+  8. PDF que não dá pra ler: o bloco não vai — só o faltou com a_conferir, o PDF guardado; a lista de pendências
+     cortada em 100 vai, com o aviso no log
   9. o tests/ponte.test.py continua passando
-  +  a lista de empresas que não vem, os pendentes, o --falso, a demonstração e o --saida
+  10. o item 4: a chave (py -3 -m ponte chave e a impressão no conferir), os feriados iguais aos do JavaScript
+      (2023 a 2031), a autorização toda segunda pra quem estava sem, o limite da Caixa Postal (100 mais recentes, 90
+      dias na primeira leitura, a lida que vai de novo), as mensagens do 503 e do 401 e as recusadas
+  +  a lista de empresas que não vem, os pendentes, o --falso, a demonstração e o --saida — e todo pacote que a ponte
+     mandou passou pelo validarPacote de verdade sem nenhuma recusa
 Termina com código 1 se alguma checagem falhar.
 """
 import base64
 import copy
 import datetime
+import hashlib
 import http.server
 import json
 import os
@@ -53,6 +65,12 @@ try:
 except ImportError:
     print('O teste da ponte da Receita precisa do cryptography e do pypdf: py -3 -m pip install cryptography pypdf')
     sys.exit(1)
+NODE = shutil.which('node')
+if not NODE:
+    print('O teste da ponte da Receita precisa do node (o validarPacote da função e os feriados, em JavaScript).')
+    sys.exit(1)
+RECEITA_JS = RAIZ / 'supabase' / 'functions' / 'ponte' / 'receita.js'
+FERIADOS_JS = RAIZ / 'assets' / 'js' / 'rescisao-datas.js'
 
 # o contrato da fila (2.5), escrito aqui e não importado da ponte: um campo a mais na ponte tem que derrubar o teste
 CONTRATO_TOPO = {'versao', 'tipo', 'rodada', 'empresas', 'faltou'}
@@ -71,8 +89,11 @@ CONTRATO_FALTOU = {'documento', 'servico', 'motivo'}
 
 KEY = 'CONSUMER-KEY-DE-TESTE'
 SECRET = 'CONSUMER-SECRET-DE-TESTE'
-SENHA_PFX = 'SENHA-PFX-DE-TESTE'
+SENHA_PFX = 'Senha-Longa-E-Unica-Do-Pfx-7f3a9c2e'     # longa e única: procurada em tudo que a ponte escreve
 CHAVE_PONTE = 'SEGREDO-DA-PONTE-DE-TESTE'
+IMPRESSAO = hashlib.sha256(CHAVE_PONTE.encode('utf-8')).hexdigest()
+SEM_CHAVE = 'A chave da ponte ainda não foi cadastrada no sistema.'
+RECADO = 'Mande esta impressão pro Claude da sessão do Samuel (ela não é segredo).'
 CHAVE_PUBLICA = 'chave-publica-de-teste'
 TITULAR = 'Escritorio de Teste da Ponte'
 TEXTO_INTEIRO = 'TEXTO-INTEIRO-DA-MENSAGEM-QUE-NAO-SAI'
@@ -197,6 +218,9 @@ class Serpro:
             self.procuracao_ate = '20271231'   # None = a da demonstração (vencida em 2023)
             self.pgdas_ano = None              # ex.: '2026' = os meses da demonstração trocados pra esse ano
             self.extra_mensagem = False        # um campo a mais (o texto inteiro) em cada mensagem da lista
+            # as mensagens da demonstração são de 2022: com elas, a primeira leitura (só os últimos 90 dias) não mandaria
+            # nada — aqui a mais nova é desta data e as outras, um dia pra trás cada, na mesma ordem
+            self.mensagens_ate = datetime.date(2026, 10, 1)
 
     def padrao(self, servico):
         if servico == 'OBTEREVENTOSPJ134':
@@ -208,10 +232,15 @@ class Serpro:
             r['dados'] = r['dados'].replace('20230414', self.procuracao_ate)
         if servico == 'CONSDECLARACAO13' and self.pgdas_ano:
             r['dados'] = r['dados'].replace('2018', self.pgdas_ano)
-        if servico == 'MSGCONTRIBUINTE61' and self.extra_mensagem:
+        if servico == 'MSGCONTRIBUINTE61':
             d = json.loads(r['dados'])
-            for m in d['conteudo'][0]['listaMensagens']:
-                m['corpoMensagem'] = TEXTO_INTEIRO
+            lista = d['conteudo'][0]['listaMensagens']
+            ordem = sorted(range(len(lista)), key=lambda i: (lista[i]['dataEnvio'], -i), reverse=True)
+            for pos, i in enumerate(ordem):
+                lista[i]['dataEnvio'] = (self.mensagens_ate - datetime.timedelta(days=pos)).strftime('%Y%m%d')
+            if self.extra_mensagem:
+                for m in lista:
+                    m['corpoMensagem'] = TEXTO_INTEIRO
             r['dados'] = json.dumps(d, ensure_ascii=False)
         return r
 
@@ -224,11 +253,29 @@ class Serpro:
         self.srv.shutdown()
 
 
+VALIDADOR = None     # o .mjs que roda o validarPacote de verdade (escrito numa pasta temporária no começo)
+
+
+def validar_no_node(pac):
+    """O validarPacote de supabase/functions/ponte/receita.js, rodado no node: {ok, campo, erro, recusadas, empresas}."""
+    r = subprocess.run([NODE, str(VALIDADOR)], input=json.dumps(pac, ensure_ascii=False), capture_output=True,
+                       encoding='utf-8', errors='replace', timeout=60)
+    if r.returncode != 0:
+        raise RuntimeError('o validarPacote (node) quebrou: ' + (r.stderr or '')[-500:])
+    return json.loads(r.stdout)
+
+
 class Sistema:
-    """A função do sistema: devolve a lista de empresas e recebe os pacotes (com uma fila de respostas)."""
+    """A função `ponte` do sistema, como a de verdade (supabase/functions/ponte/servidor.js): a chave pela impressão
+    digital (sem impressão cadastrada, 503; chave que não bate, 401), o ping, a lista de empresas e o pacote conferido
+    pelo validarPacote de verdade (node) — 422 se a rodada sair do contrato; 200 com as recusadas; da demonstração e
+    do --falso, "gravado": false. Na frente, pra simular o sistema fora ou a função não publicada, uma fila de
+    respostas (o HTTP) pros pacotes e o empresas_status pra lista. `recusadas_extra` acrescenta recusadas à resposta
+    (a ponte nunca manda um bloco fora do contrato — é pra ver o que ela faz com elas)."""
 
     def __init__(self):
         self.trava = threading.Lock()
+        self.todas_validacoes = []          # todo pacote que a ponte mandou, conferido (nunca zerado)
         self.zerar()
         dono = self
 
@@ -237,7 +284,7 @@ class Sistema:
                 pass
 
             def _enviar(self, codigo, corpo):
-                bruto = json.dumps(corpo).encode('utf-8')
+                bruto = json.dumps(corpo, ensure_ascii=False).encode('utf-8')
                 try:
                     self.send_response(codigo)
                     self.send_header('Content-Type', 'application/json')
@@ -249,32 +296,68 @@ class Sistema:
 
             def do_POST(self):
                 n = int(self.headers.get('Content-Length') or 0)
-                corpo = json.loads(self.rfile.read(n).decode('utf-8'))
+                bruto = self.rfile.read(n)
                 cab = {k.lower(): v for k, v in self.headers.items()}
+                try:
+                    corpo = json.loads(bruto.decode('utf-8'))
+                except (ValueError, UnicodeDecodeError):
+                    corpo = None
                 with dono.trava:
-                    if corpo.get('pedir') == 'empresas':
+                    if isinstance(corpo, dict) and corpo.get('pedir') == 'empresas':
                         dono.pedidos_empresas.append(cab)
                         if dono.empresas_status != 200:
                             return self._enviar(dono.empresas_status, {'erro': 'teste'})
-                        return self._enviar(200, {'empresas': dono.empresas})
-                    if corpo.get('ping'):
+                    elif isinstance(corpo, dict) and not corpo.get('ping'):
+                        dono.pacotes.append({'cabecalhos': cab, 'corpo': corpo})
+                        fila = dono.respostas.pop(0) if dono.respostas else None
+                        if fila is not None:
+                            return self._enviar(fila, {'erro': f'HTTP {fila} do teste'})
+                    impressao, extra, empresas = dono.impressao, list(dono.recusadas_extra), copy.deepcopy(dono.empresas)
+                # daqui pra baixo, como a função
+                if not impressao:
+                    return self._enviar(503, {'erro': SEM_CHAVE})
+                if hashlib.sha256((cab.get('x-chave') or '').encode('utf-8')).hexdigest() != impressao:
+                    return self._enviar(401, {'erro': 'Chave da ponte recusada.'})
+                if not isinstance(corpo, dict):
+                    return self._enviar(400, {'erro': 'O corpo não é um JSON.'})
+                if corpo.get('versao') != 1:
+                    return self._enviar(422, {'erro': 'Versão do pacote desconhecida (esta função lê a 1).'})
+                if corpo.get('ping') is True:
+                    with dono.trava:
                         dono.pings += 1
-                        return self._enviar(200, {'ok': True})
-                    dono.pacotes.append({'cabecalhos': cab, 'corpo': corpo})
-                    resposta = dono.respostas.pop(0) if dono.respostas else 200
-                return self._enviar(resposta, {'ok': resposta < 300})
+                    return self._enviar(200, {'ok': True, 'ponte': 'ok'})
+                if corpo.get('tipo') == 'receita' and corpo.get('pedir') == 'empresas':
+                    return self._enviar(200, {'empresas': empresas})
+                if corpo.get('tipo') != 'receita':
+                    return self._enviar(422, {'erro': 'Nada pra fazer com este pacote.'})
+                v = validar_no_node(corpo)
+                ambiente = (corpo.get('rodada') or {}).get('ambiente')
+                with dono.trava:
+                    registro = {'ambiente': ambiente, 'ok': v['ok'], 'campo': v.get('campo'), 'recusadas': v['recusadas']}
+                    dono.validacoes.append(registro)
+                    dono.todas_validacoes.append(registro)
+                if not v['ok']:
+                    return self._enviar(422, {'erro': f"Pacote da Receita recusado: {v['erro']} ({v['campo']})."})
+                recusadas = v['recusadas'] + extra
+                if ambiente != 'producao':
+                    return self._enviar(200, {'ok': True, 'gravado': False, 'recusadas': recusadas,
+                                              'motivo': 'Pacote do ambiente de demonstração: nada foi gravado.'})
+                return self._enviar(200, {'ok': True, 'gravado': True, 'empresas': v['empresas'], 'sem_cadastro': 0,
+                                          'recusadas': recusadas})
 
         self.srv = http.server.ThreadingHTTPServer(('127.0.0.1', 0), H)
         threading.Thread(target=self.srv.serve_forever, daemon=True).start()
-        self.url = f'http://127.0.0.1:{self.srv.server_address[1]}/functions/v1/ponte-dominio'
+        self.url = f'http://127.0.0.1:{self.srv.server_address[1]}/functions/v1/ponte'
 
-    def zerar(self, *respostas, empresas=None, empresas_status=200):
+    def zerar(self, *respostas, empresas=None, empresas_status=200, impressao=IMPRESSAO, recusadas_extra=()):
         with self.trava:
             self.respostas = list(respostas)
-            self.pacotes, self.pedidos_empresas = [], []
+            self.pacotes, self.pedidos_empresas, self.validacoes = [], [], []
             self.pings = 0
             self.empresas = copy.deepcopy(EMPRESAS if empresas is None else empresas)
             self.empresas_status = empresas_status
+            self.impressao = impressao
+            self.recusadas_extra = list(recusadas_extra)
 
     def ultimo(self):
         with self.trava:
@@ -334,7 +417,7 @@ def escrever_config(pasta, sis, ambiente='producao', teto=None, pfx=None, url=No
 SAIDAS = []     # tudo o que foi pra tela, pro caso 7
 
 
-def ponte(pasta, srp, *args, hoje=None):
+def ponte(pasta, srp, *args, hoje=None, entrada=None):
     env = dict(os.environ, PONTE_PASTA=str(pasta), PONTE_ESPERAS='0.05,0.05,0.05', PONTE_TIMEOUT='5',
                PONTE_SERPRO_TOKEN_URL=srp.url_token, PONTE_SERPRO_GATEWAY=srp.url_gateway,
                PONTE_RECEITA_INTERVALO='0', PONTE_RECEITA_ESPERA_MAX='0', PYTHONIOENCODING='utf-8',
@@ -343,7 +426,7 @@ def ponte(pasta, srp, *args, hoje=None):
     if hoje:
         env['PONTE_HOJE'] = hoje
     r = subprocess.run([sys.executable, '-m', 'ponte', *args], cwd=str(RAIZ), env=env, capture_output=True,
-                       encoding='utf-8', errors='replace', timeout=300)
+                       encoding='utf-8', errors='replace', timeout=300, input=entrada if entrada is not None else '')
     saida = (r.stdout or '') + (r.stderr or '')
     SAIDAS.append(saida)
     return r.returncode, saida
@@ -377,7 +460,7 @@ def faltou(pac, doc=None):
                   if doc is None or f['documento'] == doc)
 
 
-def pdf_simples(linhas):
+def pdf_simples(linhas, tamanho=9, entrelinha=14):
     """Um PDF de uma página com estas linhas de texto (Helvetica, WinAnsi) — pros valores com centavos."""
     def esc(t):
         saida = b''
@@ -390,7 +473,8 @@ def pdf_simples(linhas):
             else:
                 saida += ch
         return saida
-    conteudo = b'BT /F1 9 Tf 14 TL 30 800 Td\n' + b''.join(b'(' + esc(lin) + b') Tj T*\n' for lin in linhas) + b'ET'
+    conteudo = (b'BT /F1 %d Tf %d TL 30 800 Td\n' % (tamanho, entrelinha)
+                + b''.join(b'(' + esc(lin) + b') Tj T*\n' for lin in linhas) + b'ET')
     objs = [b'<< /Type /Catalog /Pages 2 0 R >>',
             b'<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
             b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> '
@@ -649,8 +733,10 @@ def caso_servicos(srp, sis):
        'faturamento: pede o período 201812')
     msgs = (e.get('caixa_postal') or {}).get('mensagens') or []
     ok(len(msgs) == 50 and msgs[0] == {'id': '0001493189', 'assunto':
-       'Notificação de recebimento de mensagem e-MAC - Mensagem nº 083548 (complemento)', 'enviada_em': '2022-08-02',
+       'Notificação de recebimento de mensagem e-MAC - Mensagem nº 083548 (complemento)', 'enviada_em': '2026-10-01',
        'origem': 'Receita', 'lida': False}, 'caixa_postal: as 50 mensagens, com id, assunto, data, origem e lida')
+    ok(msgs[-1]['enviada_em'] == '2026-08-13' and all(m['enviada_em'] >= '2026-07-25' for m in msgs),
+       'caixa_postal: as datas recentes do mock (dentro dos 90 dias da primeira leitura)')
     lista = json.loads(srp.fixtures['MSGCONTRIBUINTE61']['dados'])['conteudo'][0]['listaMensagens']
     ok([m['lida'] for m in msgs] == [m['indicadorLeitura'] == '1' for m in lista]
        and 0 < sum(1 for m in msgs if m['lida']) < 50, 'caixa_postal: as lidas e as não lidas como vieram')
@@ -818,53 +904,58 @@ def caso_respostas(srp, sis):
 # ---------------------------------------------------------------- 5. o calendário
 
 def caso_calendario(srp, sis):
-    titulo('5. o calendário: dia 21, dia 5, último dia útil, sábado, --so; o já lido não volta')
+    titulo('5. o calendário "a partir do dia": o dia marcado ou a primeira rodada depois dele; sábado nada; --so')
     pasta = pasta_nova()
     escrever_config(pasta, sis)
     srp.zerar()
     srp.eventos = {A: '261001'}
     sis.zerar()
-    cod, saida = rodar(pasta, srp, hoje='2026-10-01')                 # quinta, primeiro dia útil
+    cod, saida = rodar(pasta, srp, hoje='2026-10-01')                 # quinta, primeiro dia útil — a primeira rodada
     ok(cod == 0 and sorted(srp.servicos('OBTERPROCURACAO41')) == sorted([A, B, C]),
        'primeiro dia útil: a autorização de todas')
-    ok(not srp.servicos('CONSDECLARACAO13') and not srp.servicos('SOLICITARPROTOCOLO91'),
-       'e nem pgdas nem situação fiscal')
+    ok(srp.servicos('CONSDECLARACAO13') == [A] and sorted(srp.servicos('SOLICITARPROTOCOLO91')) == sorted([A, B, C]),
+       'a primeira rodada (nada consultado ainda): os dias marcados de setembro já passaram — o pgdas do Simples e a '
+       'situação fiscal de todas')
+    ok(srp.servicos('CONSULTIMADECREC14') == [A], '  e a declaração do mês mais recente (o faturamento)')
     ok(srp.servicos('MSGCONTRIBUINTE61') == [A] and len((empresa(sis.ultimo(), A) or {}).get('caixa_postal', {})
                                                        .get('mensagens', [])) == 50,
        'caixa postal todo dia: as mensagens só de quem teve novidade')
     est = estado(pasta) or {}
     ok(len(est.get('mensagens', {}).get(A, [])) == 50 and est.get('eventos', {}).get(A) == '261001',
        'o estado.json guardou as mensagens mandadas e a data da novidade')
+    ok(est.get('pgdas_consultado', {}).get(A) == '2026-10-01' and est.get('situacao_fiscal', {}).get(B) == '2026-10-01'
+       and (est.get('autorizacao', {}).get(C) or {}).get('consultada_em') == '2026-10-01',
+       '  e o dia de cada consulta feita (autorização, pgdas, situação fiscal)')
 
     srp.zerar()
     srp.eventos = {A: '261001'}
     sis.zerar()
-    rodar(pasta, srp, hoje='2026-10-05')                              # segunda, dia 5
-    ok(sorted(srp.servicos('SOLICITARPROTOCOLO91')) == sorted([A, B, C]), 'dia 5: a situação fiscal de todas')
-    ok(not srp.servicos('OBTERPROCURACAO41') and not srp.servicos('CONSDECLARACAO13'),
-       'sem autorização (já consultada) e sem pgdas')
+    rodar(pasta, srp, hoje='2026-10-02')                              # sexta, nada marcado
+    ok(not srp.servicos('OBTERPROCURACAO41') and not srp.servicos('CONSDECLARACAO13')
+       and not srp.servicos('SOLICITARPROTOCOLO91'), 'no dia seguinte, sem dia marcado: nada além da caixa postal')
     ok(not srp.servicos('MSGCONTRIBUINTE61') and srp.servicos('SOLICEVENTOSPJ132'),
        'a mesma data de novidade: não pede as mensagens de novo')
 
     srp.zerar()
+    sis.zerar()
+    rodar(pasta, srp, hoje='2026-10-05')                              # segunda, dia 5
+    ok(sorted(srp.servicos('SOLICITARPROTOCOLO91')) == sorted([A, B, C]), 'dia 5: a situação fiscal de todas')
+    ok(not srp.servicos('OBTERPROCURACAO41') and not srp.servicos('CONSDECLARACAO13'),
+       'sem autorização (já feita no mês) e sem pgdas')
+
+    srp.zerar()
     srp.eventos = {A: '261021', B: '261021'}
     sis.zerar()
-    rodar(pasta, srp, hoje='2026-10-21')                              # quarta, dia 21
+    rodar(pasta, srp, hoje='2026-10-21')                              # quarta: o prazo de setembro foi terça, 20/10
     pac = sis.ultimo()
-    ok(srp.servicos('CONSDECLARACAO13') == [A], 'dia 21: o pgdas só do Simples')
-    ok(srp.servicos('CONSULTIMADECREC14') == [A] and (empresa(pac, A) or {}).get('faturamento'),
-       'e a declaração ainda não lida (o faturamento)')
+    ok(srp.servicos('CONSDECLARACAO13') == [A], 'o primeiro dia útil depois do prazo: o pgdas, só do Simples')
+    ok(not srp.servicos('CONSULTIMADECREC14'), 'a declaração já lida (a mesma transmissão) não é lida de novo')
     ok(not srp.servicos('SOLICITARPROTOCOLO91'), 'sem situação fiscal')
     ok(sorted(srp.servicos('MSGCONTRIBUINTE61')) == [A, B]
        and (empresa(pac, A) or {}).get('caixa_postal') == {'mensagens': []}
        and len((empresa(pac, B) or {}).get('caixa_postal', {}).get('mensagens', [])) == 50,
        'novidade de novo: a mensagem já mandada não volta (a da outra empresa vai)')
 
-    srp.zerar()
-    sis.zerar()
-    rodar(pasta, srp, '--so', 'pgdas,faturamento', hoje='2026-10-22')
-    ok(srp.servicos('CONSDECLARACAO13') == [A] and not srp.servicos('CONSULTIMADECREC14'),
-       'a declaração já lida (a mesma transmissão) não é lida de novo')
     srp.zerar()
     srp.pgdas_ano = '2026'
     sis.zerar()
@@ -876,19 +967,76 @@ def caso_calendario(srp, sis):
     srp.zerar()
     sis.zerar()
     rodar(pasta, srp, hoje='2026-10-30')                              # sexta, último dia útil
-    ok(not srp.servicos('CONSDECLARACAO13'), 'último dia útil: quem já tem o mês anterior não consulta o pgdas')
-    p2 = pasta_nova()
+    ok(not srp.servicos('CONSDECLARACAO13'), 'último dia útil: quem não tem mês sem declaração não consulta o pgdas')
+    p2 = pasta_nova()                       # os meses da demonstração são de 2018: nenhum de 2026 declarado
     escrever_config(p2, sis)
     srp.zerar()
     sis.zerar()
-    rodar(p2, srp, hoje='2026-10-30')
-    ok(srp.servicos('CONSDECLARACAO13') == [A], 'último dia útil: quem não tem o mês anterior consulta')
+    rodar(p2, srp, hoje='2026-10-22')
     srp.zerar()
     sis.zerar()
-    rodar(p2, srp, hoje='2026-01-21')                                 # janeiro: o ano anterior também
+    rodar(p2, srp, hoje='2026-10-29')
+    ok(not srp.servicos('CONSDECLARACAO13'), 'quem tem mês sem declaração: antes do último dia útil, nada')
+    srp.zerar()
+    sis.zerar()
+    rodar(p2, srp, hoje='2026-10-30')
+    ok(srp.servicos('CONSDECLARACAO13') == [A], '  e no último dia útil, o pgdas de novo')
+    p3 = pasta_nova()
+    escrever_config(p3, sis)
+    srp.zerar()
+    sis.zerar()
+    rodar(p3, srp, hoje='2026-01-21')                                 # janeiro: o ano anterior também
     anos = [json.loads(p['pedido']['pedidoDados']['dados'])['anoCalendario'] for p in srp.pedidos
             if p['servico'] == 'CONSDECLARACAO13']
     ok(anos == ['2025', '2026'], f'em janeiro, o ano anterior também ({anos})')
+
+    # 2.2: o PC desligado o dia inteiro no dia marcado — roda na primeira rodada depois, e só uma vez
+    p4 = pasta_nova()
+    escrever_config(p4, sis)
+    for dia in ('2026-10-02', '2026-10-22'):
+        srp.zerar()
+        srp.pgdas_ano = '2026'
+        sis.zerar()
+        rodar(p4, srp, hoje=dia)
+    srp.zerar()
+    sis.zerar()
+    rodar(p4, srp, hoje='2026-11-06')                                 # sexta: desligado no dia 5 (quinta)
+    ok(sorted(srp.servicos('SOLICITARPROTOCOLO91')) == sorted([A, B, C]),
+       'situação fiscal: o PC desligado no dia 5 — roda no dia 6')
+    srp.zerar()
+    sis.zerar()
+    rodar(p4, srp, hoje='2026-11-09')                                 # segunda seguinte
+    ok(not srp.servicos('SOLICITARPROTOCOLO91'), '  e na rodada seguinte não roda de novo')
+    p5 = pasta_nova()                       # o exemplo da fila: dia 5 numa segunda (outubro de 2026)
+    escrever_config(p5, sis)
+    srp.zerar()
+    sis.zerar()
+    rodar(p5, srp, hoje='2026-10-02')
+    srp.zerar()
+    sis.zerar()
+    rodar(p5, srp, hoje='2026-10-06')                                 # terça: desligado na segunda, dia 5
+    ok(sorted(srp.servicos('SOLICITARPROTOCOLO91')) == sorted([A, B, C]), 'desligado na segunda, dia 5: roda na terça, 6')
+    srp.zerar()
+    sis.zerar()
+    rodar(p5, srp, hoje='2026-10-07')
+    ok(not srp.servicos('SOLICITARPROTOCOLO91'), '  e na quarta, 7, não')
+    srp.zerar()
+    srp.pgdas_ano = '2026'
+    sis.zerar()
+    rodar(p4, srp, hoje='2026-11-23')                                 # segunda: o prazo de outubro (20/11 é feriado)
+    ok(not srp.servicos('CONSDECLARACAO13'), 'pgdas: no dia do prazo (segunda, 23/11/2026) não consulta')
+    srp.zerar()
+    srp.pgdas_ano = '2026'
+    sis.zerar()
+    rodar(p4, srp, hoje='2026-11-25')                                 # quarta: desligado na terça, 24/11
+    ok(srp.servicos('CONSDECLARACAO13') == [A],
+       'pgdas: a consulta marcada pra terça, 24/11, com o PC desligado — roda na quarta, 25/11')
+    ok((estado(p4) or {}).get('pgdas_consultado', {}).get(A) == '2026-11-25', '  e o estado.json guarda o dia do pgdas')
+    srp.zerar()
+    srp.pgdas_ano = '2026'
+    sis.zerar()
+    rodar(p4, srp, hoje='2026-11-26')
+    ok(not srp.servicos('CONSDECLARACAO13'), '  e na quinta, 26, não roda de novo')
 
     srp.zerar()
     sis.zerar()
@@ -988,9 +1136,19 @@ def caso_o_que_sai(srp, sis):
 # ---------------------------------------------------------------- 7. segredos
 
 def caso_segredos(srp, sis):
-    titulo('7. segredo nunca aparece: consumer key e secret, a senha do certificado, os tokens')
+    titulo('7. segredo nunca aparece (a senha longa e única, a consumer key e secret, os tokens); a senha curta não '
+           'apaga as datas')
     pasta = pasta_nova()
-    escrever_config(pasta, sis, pfx=gerar_pfx(pasta / 'escritorio.pfx'))
+    pfx = gerar_pfx(pasta / 'escritorio.pfx')
+    # uma rodada (e o conferir, que abre o .pfx) com a senha errada — que tem a de verdade dentro — e outra com a certa
+    escrever_config(pasta, sis, pfx=pfx, senha_certificado=SENHA_PFX + '-errada')
+    srp.zerar()
+    sis.zerar()
+    cod, saida = ponte(pasta, srp, 'receita', 'conferir')
+    ok('a senha está errada' in saida, 'o conferir com a senha errada diz que está errada')
+    srp.eventos = {A: '261022'}
+    rodar(pasta, srp, '--so', 'autorizacao,pgdas,faturamento,caixa_postal,situacao_fiscal', '--saida', 'errada.json')
+    escrever_config(pasta, sis, pfx=pfx)
     srp.zerar()
     sis.zerar()
     ponte(pasta, srp, 'receita', 'conferir')
@@ -1014,8 +1172,8 @@ def caso_segredos(srp, sis):
     basic = base64.b64encode(f'{KEY}:{SECRET}'.encode()).decode()
     tudo = '\n'.join(SAIDAS) + '\n'.join(a.read_text(encoding='utf-8', errors='replace') for a in arquivos)
     tudo += json.dumps([p['corpo'] for p in sis.pacotes])
-    for nome, s in (('a consumer_key', KEY), ('a consumer_secret', SECRET), ('o Basic', basic),
-                    ('a senha do certificado', SENHA_PFX), ('o access_token', 'ACCESS-TOKEN-DE-TESTE'),
+    for nome, s in (('a senha do certificado (longa e única)', SENHA_PFX), ('a consumer_key', KEY),
+                    ('a consumer_secret', SECRET), ('o Basic', basic), ('o access_token', 'ACCESS-TOKEN-DE-TESTE'),
                     ('o jwt_token', 'JWT-DE-TESTE'), ('a chave da ponte', CHAVE_PONTE)):
         ok(s not in tudo, f'{nome} não está na tela, no log, no pacote, na --saida nem nos pendentes')
 
@@ -1041,11 +1199,36 @@ def caso_segredos(srp, sis):
        and ocultar('{"access_token": "abcdefghij123456"}') == '{"access_token": "***"}',
        'token que o log não conhecia (Bearer, access_token) também vira ***')
 
+    # 2.3: a senha curta do certificado ("2026") não é procurada no meio do texto — apagaria as datas
+    p2 = pasta_nova()
+    escrever_config(p2, sis, pfx=gerar_pfx(p2 / 'curta.pfx', senha='2026'), senha_certificado='2026')
+    srp.zerar()
+    sis.zerar()
+    rodar(p2, srp, '--so', 'autorizacao', '--empresas', '1')
+    log = logs(p2)
+    ok('23/10/2026' in log and '***' not in log, 'com a senha "2026", a data do log da Receita fica inteira')
+    cod, saida = ponte(p2, srp, 'receita', 'conferir')
+    ok(f'Certificado: {TITULAR}' in saida and '***' not in saida, '  e o conferir abre o .pfx com ela, sem ***')
+    cod, saida = ponte(p2, srp, 'rodar', '--falso', '--sem-enviar')                 # a ponte do Domínio
+    ok(cod == 0 and re.search(r'dados até \d\d/\d\d/20\d\d', logs(p2)) and '***' not in logs(p2),
+       '  e a do Domínio também (o cfg.segredos() é um só)')
+
+    def registrar_curta():
+        reg = Registro(p2 / 'logs-curta', config.carregar().segredos())
+        reg('competência 2026-09, consulta em 23/10/2026, 2026 inteiro')
+        reg.tela('na tela: 2026')
+    _, tela = no_processo(p2, srp, registrar_curta)
+    escrito = tela + ''.join(a.read_text(encoding='utf-8') for a in (p2 / 'logs-curta').glob('*.log'))
+    ok('competência 2026-09, consulta em 23/10/2026, 2026 inteiro' in escrito and 'na tela: 2026' in escrito,
+       'o Registro de verdade, com a senha "2026" nos segredos: as datas e o "2026" ficam (tela e log)')
+    ok(ocultar('a senha 2026 e a chave Chave-Longa-De-Teste-123', ['2026', 'Chave-Longa-De-Teste-123'])
+       == 'a senha 2026 e a chave ***', 'só o segredo de 8 ou mais caracteres é trocado no meio do texto')
+
 
 # ---------------------------------------------------------------- 8. PDF ilegível
 
 def caso_pdf_ilegivel(srp, sis):
-    titulo('8. PDF que não dá pra ler = null e a_conferir, o PDF guardado')
+    titulo('8. PDF que não dá pra ler: o bloco não vai, só o faltou com a_conferir; o PDF guardado')
     pasta = pasta_nova()
     escrever_config(pasta, sis)
     srp.zerar()
@@ -1056,12 +1239,12 @@ def caso_pdf_ilegivel(srp, sis):
     cod, saida = rodar(pasta, srp, '--so', 'pgdas,faturamento,situacao_fiscal', '--empresas', '1')
     pac = sis.ultimo()
     e = empresa(pac, A) or {}
-    ok(cod == 0 and e.get('faturamento') == {'competencia': '2018-12', 'receita_mes': None, 'receita_12_meses': None},
-       f"a declaração ilegível: receita null, nunca um número inventado — {e.get('faturamento')}")
-    ok(e.get('situacao_fiscal') == {'consultada_em': '2026-10-23', 'pendencias': None},
-       'o relatório sem o que procurar: pendencias null')
+    ok(cod == 0 and 'faturamento' not in e and e.get('pgdas'),
+       f"a declaração ilegível: o faturamento não vai (nem com null) — o pgdas vai ({sorted(e)})")
+    ok('situacao_fiscal' not in e, 'o relatório sem o que procurar: a situação fiscal não vai (a lista nula seria '
+                                   '"sem pendência" no sistema)')
     ok(faltou(pac) == [(A, 'faturamento', 'a_conferir'), (A, 'situacao_fiscal', 'a_conferir')],
-       'os dois vão pro faltou com a_conferir')
+       'os dois vão só pro faltou, com a_conferir')
     pdfs = sorted(p.name for p in (pasta / 'receita' / 'pdfs').glob('*.pdf'))
     ok(pdfs == [f'{A}-declaracao-2018-12.pdf', f'{A}-situacao-fiscal-2026-10-23.pdf'],
        f'os PDFs ficam guardados pra ajustar a leitura ({pdfs})')
@@ -1070,6 +1253,11 @@ def caso_pdf_ilegivel(srp, sis):
     ok('a conferir' in logs(pasta), 'o log diz o que ficou a conferir')
     ok('2018-12' not in (estado(pasta) or {}).get('declaracoes_lidas', {}).get(A, {}),
        'a declaração não lida não fica marcada como lida (a próxima tenta de novo)')
+    from ponte.receita import pacote
+    p = pacote.montar({A: {'faturamento': {'competencia': '2026-09', 'receita_mes': None, 'receita_12_meses': 1},
+                           'situacao_fiscal': {'consultada_em': '2026-10-05', 'pendencias': None}}}, [],
+                      'i', 'f', 'producao', 0)
+    ok(p['empresas'] == [], 'e o pacote.montar também deixa de fora o faturamento sem os valores e as pendências nulas')
     # PDF velho é apagado
     velho = pasta / 'receita' / 'pdfs' / 'velho.pdf'
     velho.write_bytes(b'%PDF')
@@ -1080,6 +1268,19 @@ def caso_pdf_ilegivel(srp, sis):
     rodar(pasta, srp, '--so', 'autorizacao', '--empresas', '1')
     ok(not velho.exists() and len(list((pasta / 'receita' / 'pdfs').glob('*.pdf'))) == 2,
        'o PDF de mais de 30 dias é apagado (os novos ficam)')
+
+    # a lista de pendências cortada em 100: foi lida — vai, com o aviso no log, sem a_conferir
+    titulos = [f'Pendência - Débito (SIEF) nº {i:03d}' for i in range(1, 102)]
+    srp.zerar()
+    srp.filas['RELATORIOSITFIS92'] = [com_pdf(srp, 'RELATORIOSITFIS92', pdf_simples(
+        ['Diagnóstico Fiscal na Receita Federal'] + titulos, tamanho=5, entrelinha=7))]
+    sis.zerar()
+    rodar(pasta, srp, '--so', 'situacao_fiscal', '--empresas', '1')
+    pac = sis.ultimo()
+    pend = ((empresa(pac, A) or {}).get('situacao_fiscal') or {}).get('pendencias') or []
+    ok(len(pend) == 100 and pend[0]['titulo'] == titulos[0] and pend[-1]['titulo'] == titulos[99],
+       f'101 pendências no relatório: vão as 100 primeiras ({len(pend)})')
+    ok(faltou(pac) == [] and 'vão as 100 primeiras' in logs(pasta), '  sem a_conferir, com o aviso no log')
 
 
 # ---------------------------------------------------------------- + a lista, os pendentes, o --falso, a demonstração
@@ -1146,6 +1347,11 @@ def caso_envio(srp, sis):
        and not srp.pedidos and not sis.pedidos_empresas, f'--falso manda pro sistema local, sem o Serpro de verdade (saiu {cod})')
     ok(pend.exists() and estado(p3) is None and not (p3 / 'receita' / 'chamadas-2026-10.json').exists(),
        '  sem tocar nos pendentes, sem estado e sem contar no teto')
+    v = sis.validacoes[-1] if sis.validacoes else {'ok': False, 'recusadas': ['-']}
+    msgs = (sis.pacotes[0]['corpo']['empresas'][0].get('caixa_postal') or {}).get('mensagens', []) if sis.pacotes else []
+    ok(v['ok'] and v['recusadas'] == [] and len(msgs) == 50,
+       f"  o pacote do --falso passa pelo validarPacote de verdade sem nenhuma recusa, com as 50 mensagens ({v['recusadas']})")
+    ok('não gravou' in saida, '  e o log diz que o sistema recebeu e não gravou (não é produção)')
     escrever_config(p3, sis, url='https://sistema-de-verdade.example/functions/v1/ponte-dominio')
     cod, saida = rodar(p3, srp, '--falso')
     ok(cod == 2 and 'endereço local' in saida, '--falso com o sistema de verdade: recusa (sai com 2)')
@@ -1172,6 +1378,10 @@ def caso_envio(srp, sis):
     pac = sis.ultimo() or {'rodada': {}}
     ok(cod == 0 and pac['rodada'].get('ambiente') == 'demonstracao' and pac['rodada'].get('chamadas_mes') == 0
        and len(pac.get('empresas', [])) == 1, f'--demonstracao manda o pacote com ambiente "demonstracao" (saiu {cod})')
+    v = sis.validacoes[-1] if sis.validacoes else {'ok': False, 'recusadas': ['-']}
+    ok(v['ok'] and v['recusadas'] == [] and set(pac['empresas'][0]) == {'documento', 'autorizacao', 'pgdas', 'faturamento',
+                                                                        'caixa_postal', 'situacao_fiscal'},
+       f"  o pacote da demonstração (os cinco blocos) passa pelo validarPacote de verdade sem nenhuma recusa ({v['recusadas']})")
     ok(not srp.auth and srp.pedidos and all(p['cabecalhos'].get('authorization') == f'Bearer {demonstracao.TOKEN}'
                                             for p in srp.pedidos), '  com o token público, sem pedir token')
     ok(all(p['pedido'] == demonstracao.corpo(p['servico']) for p in srp.pedidos),
@@ -1193,6 +1403,231 @@ def caso_envio(srp, sis):
     ok(cod == 2 and 'dígito verificador' in saida, 'produção com o CNPJ do escritório errado: sai com 2')
 
 
+# ---------------------------------------------------------------- 10. o item 4: a chave
+
+def caso_chave(srp, sis):
+    titulo('10. a chave da ponte: py -3 -m ponte chave gera, grava e mostra só a impressão digital')
+    from ponte import chave as chave_mod
+    p = pasta_nova()
+    cod, saida = ponte(p, srp, 'chave')
+    ok(cod == 2 and 'Não achei' in saida, f'sem config.ini: diz o que fazer e sai com 2 (saiu {cod})')
+    exemplo = (RAIZ / 'ponte' / 'config.exemplo.ini').read_text(encoding='utf-8')
+    ok('url = https://exemplo.supabase.co/functions/v1/ponte\n' in exemplo and 'ponte-dominio' not in exemplo.split('[sistema]')[1].split('[')[0],
+       'o config.exemplo.ini aponta pra função ponte (/functions/v1/ponte)')
+    leia = (RAIZ / 'ponte' / 'LEIA-ME.md').read_text(encoding='utf-8')
+    ok('https://exemplo.supabase.co/functions/v1/ponte' in leia and '/functions/v1/ponte-dominio' not in leia,
+       '  e o LEIA-ME também')
+    original = ('﻿; config de teste — este comentário fica\r\n[sistema]\r\n'
+                f'url = {sis.url}\r\nchave_publica = {CHAVE_PUBLICA}\r\n; o segredo da ponte\r\n'
+                'chave_ponte = segredo-de-exemplo\r\n\r\n[integra]\r\nambiente = demonstracao\r\n'
+                'cnpj_escritorio = 99999999999999\r\n')
+    (p / 'config.ini').write_bytes(original.encode('utf-8'))
+    cod, saida = ponte(p, srp, 'chave')
+    texto = (p / 'config.ini').read_bytes().decode('utf-8')
+    nova = re.search(r'^chave_ponte = (.*)$', texto, re.M).group(1).strip()
+    marca = hashlib.sha256(nova.encode('utf-8')).hexdigest()
+    ok(cod == 0 and nova != 'segredo-de-exemplo' and len(nova) >= 40 and nova.isascii() and re.fullmatch(r'[A-Za-z0-9_-]+', nova),
+       f'a chave do exemplo vira uma chave nova (token_urlsafe, só ASCII) — saiu {cod}')
+    ok(f'Impressão digital: {marca}' in saida and RECADO in saida and len(marca) == 64,
+       'mostra a impressão digital (SHA-256 dos bytes UTF-8, 64 caracteres) e o recado')
+    ok(nova not in saida and nova not in logs(p) and marca in logs(p),
+       'a chave não aparece na tela nem no log (a impressão, sim)')
+    ok(texto.startswith('﻿') and texto.count('\r\n') == original.count('\r\n')
+       and texto.replace(nova, 'segredo-de-exemplo') == original,
+       'o config.ini muda só nessa linha: os comentários, o BOM e as quebras de linha ficam')
+    antes = (p / 'config.ini').read_bytes()
+    cod, saida = ponte(p, srp, 'chave')
+    ok(cod == 0 and 'já existe' in saida and f'Impressão digital: {marca}' in saida and (p / 'config.ini').read_bytes() == antes,
+       'de novo: a chave já existe — não muda nada e mostra a mesma impressão')
+    cod, saida = ponte(p, srp, 'chave', '--trocar', entrada='n\n')
+    ok(cod == 1 and (p / 'config.ini').read_bytes() == antes, f'--trocar sem o "s": não troca (saiu {cod})')
+    cod, saida = ponte(p, srp, 'chave', '--trocar', entrada='s\n')
+    outra = re.search(r'^chave_ponte = (.*)$', (p / 'config.ini').read_text(encoding='utf-8-sig'), re.M).group(1).strip()
+    ok(cod == 0 and outra != nova and f'Impressão digital: {hashlib.sha256(outra.encode()).hexdigest()}' in saida
+       and outra not in saida, '--trocar com o "s": troca e mostra a impressão nova')
+    cod, saida = ponte(p, srp, 'receita', 'conferir')
+    ok(f'Chave da ponte: impressão digital {hashlib.sha256(outra.encode()).hexdigest()}' in saida and outra not in saida,
+       'o receita conferir mostra a impressão digital (e não a chave)')
+    # o chave_ponte vazio, e sem a seção [sistema]
+    (p / 'config.ini').write_text('[sistema]\nurl = x\nchave_ponte =\n', encoding='utf-8')
+    cod, saida = ponte(p, srp, 'chave')
+    linhas = (p / 'config.ini').read_text(encoding='utf-8').splitlines()
+    ok(cod == 0 and linhas[:2] == ['[sistema]', 'url = x'] and linhas[2].startswith('chave_ponte = ') and len(linhas) == 3,
+       'o chave_ponte vazio: gera ali mesmo')
+    (p / 'config.ini').write_text('[integra]\nambiente = demonstracao\n', encoding='utf-8')
+    cod, saida = ponte(p, srp, 'chave')
+    from ponte import config
+    gerada = no_processo(p, srp, lambda: config.carregar().valor('sistema', 'chave_ponte'))[0]
+    ok(cod == 0 and gerada and '[integra]' in (p / 'config.ini').read_text(encoding='utf-8'),
+       'sem a seção [sistema]: acrescenta a seção com a chave')
+    ok(chave_mod.impressao('abc') == 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+       'a impressão é o SHA-256 em hexadecimal minúsculo (o do "abc")')
+
+
+# ---------------------------------------------------------------- 10. o item 4: os feriados
+
+def caso_feriados():
+    titulo('10. os feriados do pgdas iguais aos do JavaScript (assets/js/rescisao-datas.js), de 2023 a 2031')
+    from ponte.receita import calendario
+    js = (f"import {{ feriado }} from '{FERIADOS_JS.resolve().as_uri()}';"
+          "const out = []; for (let a = 2023; a <= 2031; a++) for (let d = new Date(Date.UTC(a, 0, 1)); "
+          "d.getUTCFullYear() === a; d.setUTCDate(d.getUTCDate() + 1)) { const iso = d.toISOString().slice(0, 10); "
+          "const f = feriado(iso); if (f) out.push([iso, f]); } console.log(JSON.stringify(out));")
+    r = subprocess.run([NODE, '--input-type=module', '-e', js], capture_output=True, encoding='utf-8', errors='replace',
+                       timeout=60)
+    do_js = [tuple(x) for x in json.loads(r.stdout)] if r.returncode == 0 else None
+    do_py = sorted((d.isoformat(), n) for a in range(2023, 2032) for d, n in calendario.feriados_do_ano(a).items())
+    ok(do_js is not None and do_js == do_py,
+       f'os mesmos dias e os mesmos nomes ({len(do_py)} feriados; o JavaScript deu {len(do_js) if do_js else r.stderr[-200:]})')
+    ok(('2023-11-20', 'Dia da Consciência Negra') not in do_py and ('2024-11-20', 'Dia da Consciência Negra') in do_py,
+       'o 20/11 a partir de 2024')
+    d = datetime.date
+    ok(calendario.prazo_pgdas('2026-10') == d(2026, 11, 23) and calendario.consulta_pgdas('2026-10') == d(2026, 11, 24),
+       '10/2026: o prazo é segunda, 23/11 (20/11 é feriado) e a consulta, terça, 24/11')
+    ok(calendario.consulta_pgdas('2026-11') == d(2026, 12, 22) and calendario.consulta_pgdas('2026-05') == d(2026, 6, 23),
+       '11/2026 → consulta 22/12; 05/2026 → consulta 23/06')
+
+
+# ---------------------------------------------------------------- 10. o item 4: a autorização toda segunda
+
+SEM_PROCURACAO = {'status': 200, 'dados': '', 'mensagens': [
+    {'codigo': '[Aviso-PROCURACOES-40400]', 'texto': 'Não possui procuração ativa.'}]}
+
+
+def caso_autorizacao_segunda(srp, sis):
+    titulo('10. a autorização: toda segunda pra quem estava sem (a partir do dia); o acesso negado não volta todo dia')
+    p = pasta_nova()
+    escrever_config(p, sis)
+    srp.zerar()
+    srp.por_doc[('OBTERPROCURACAO41', A)] = [SEM_PROCURACAO]
+    srp.por_doc[('OBTERPROCURACAO41', B)] = [403]
+    sis.zerar()
+    rodar(p, srp, hoje='2026-10-01')                                  # quinta: A sem procuração, B com acesso negado
+    est = estado(p) or {}
+    ok((est.get('autorizacao', {}).get(A) or {}).get('situacao') == 'sem'
+       and (est.get('autorizacao', {}).get(B) or {}).get('situacao') == 'sem'
+       and (est.get('autorizacao', {}).get(B) or {}).get('consultada_em') == '2026-10-01',
+       'o estado.json lembra quem está sem (também o acesso negado, que respondeu)')
+    srp.zerar()
+    sis.zerar()
+    rodar(p, srp, hoje='2026-10-02')
+    ok(not srp.servicos('OBTERPROCURACAO41'), 'sexta: não pergunta de novo (nem o do acesso negado)')
+    srp.zerar()
+    sis.zerar()
+    rodar(p, srp, hoje='2026-10-06')                                  # terça: desligado na segunda, dia 5
+    ok(sorted(srp.servicos('OBTERPROCURACAO41')) == sorted([A, B]),
+       'a segunda-feira com o PC desligado: na terça pergunta de novo, só de quem estava sem')
+    ok((empresa(sis.ultimo(), A) or {}).get('autorizacao', {}).get('situacao') == 'ativa',
+       '  e o cliente que autorizou aparece na mesma semana')
+    srp.zerar()
+    sis.zerar()
+    rodar(p, srp, hoje='2026-10-07')
+    ok(not srp.servicos('OBTERPROCURACAO41'), '  e na quarta não')
+
+
+# ---------------------------------------------------------------- 10. o item 4: o limite da Caixa Postal
+
+def _msg(isn, enviada, lida=False, assunto='Aviso de teste nº ++VARIAVEL++', valor='1'):
+    return {'isn': isn, 'dataEnvio': enviada.strftime('%Y%m%d'), 'indicadorLeitura': '1' if lida else '0',
+            'assuntoModelo': assunto, 'valorParametroAssunto': valor, 'tipoOrigem': '1',
+            'descricaoOrigem': 'RECEITA FEDERAL'}
+
+
+def _caixa(msgs):
+    return {'status': 200, 'mensagens': [{'codigo': '[Sucesso-CAIXAPOSTAL]', 'texto': 'ok'}],
+            'dados': json.dumps({'conteudo': [{'quantidadeMensagens': str(len(msgs)), 'listaMensagens': msgs}]})}
+
+
+def caso_caixa_postal(srp, sis):
+    titulo('10. a Caixa Postal: as 100 mais recentes; na primeira leitura, só os últimos 90 dias; a lida vai de novo')
+    hoje = datetime.date(2026, 10, 23)
+    recentes = [_msg(f'R{i:03d}', hoje - datetime.timedelta(days=1 + i % 80)) for i in range(120)]
+    sem_assunto = _msg('VAZIA', hoje, assunto='', valor='')
+    antigas = [_msg(f'V{i:03d}', hoje - datetime.timedelta(days=100 + i)) for i in range(10)]
+    p = pasta_nova()
+    escrever_config(p, sis)
+    srp.zerar()
+    srp.eventos = {A: '261022'}
+    srp.por_doc[('MSGCONTRIBUINTE61', A)] = [_caixa([sem_assunto] + recentes + antigas)]
+    sis.zerar()
+    rodar(p, srp, '--so', 'caixa_postal', '--empresas', '1')
+    msgs = ((empresa(sis.ultimo(), A) or {}).get('caixa_postal') or {}).get('mensagens', [])
+    ok(len(msgs) == 100 and msgs[0]['id'] == 'VAZIA', f'121 recentes: vão as 100 mais recentes ({len(msgs)})')
+    ok(msgs and msgs[0]['assunto'] == '(sem assunto)', 'mensagem sem assunto vai com "(sem assunto)" (a função recusaria o bloco)')
+    ok(not any(m['id'].startswith('V0') for m in msgs), 'na primeira leitura, as de mais de 90 dias ficam no e-CAC')
+    lembradas = (estado(p) or {}).get('mensagens', {}).get(A, {})
+    ok(sum(1 for v in lembradas.values() if v == 'antiga') == 10 and len(lembradas) == 110,
+       'o estado.json lembra as antigas (pra não irem depois) e as 100 mandadas')
+    v = sis.validacoes[-1] if sis.validacoes else {'ok': False, 'recusadas': ['-']}
+    ok(v['ok'] and v['recusadas'] == [], '  e o pacote passa pelo validarPacote de verdade sem recusa')
+    # a segunda leitura: a R000 (mandada como não lida) agora lida; as 21 que sobraram vão; as antigas não
+    srp.zerar()
+    srp.eventos = {A: '261023'}
+    lida = dict(recentes[0], indicadorLeitura='1')
+    srp.por_doc[('MSGCONTRIBUINTE61', A)] = [_caixa([sem_assunto, lida] + recentes[1:] + antigas)]
+    sis.zerar()
+    rodar(p, srp, '--so', 'caixa_postal', '--empresas', '1')
+    msgs2 = ((empresa(sis.ultimo(), A) or {}).get('caixa_postal') or {}).get('mensagens', [])
+    ids = {m['id'] for m in msgs2}
+    sobraram = {m['isn'] for m in [sem_assunto] + recentes} - {m['id'] for m in msgs}
+    ok(any(m['id'] == 'R000' and m['lida'] is True for m in msgs2), 'a mandada como não lida que aparece lida vai de novo')
+    ok(sobraram <= ids and not any(i.startswith('V0') for i in ids) and len(msgs2) == len(sobraram) + 1,
+       f'as que sobraram da primeira vão agora; as antigas, nunca ({len(msgs2)})')
+
+
+# ---------------------------------------------------------------- 10. o item 4: as respostas da função
+
+def caso_respostas_da_funcao(srp, sis):
+    titulo('10. as respostas da função: o 503 da chave não cadastrada, o 401 da chave recusada e as recusadas')
+    p = pasta_nova()
+    escrever_config(p, sis)
+    srp.zerar()
+    sis.zerar(impressao=None)
+    cod, saida = ponte(p, srp, 'receita', 'conferir')
+    ok(f'Sistema: {SEM_CHAVE} (HTTP 503)' in saida and RECADO in saida,
+       'o conferir mostra a mensagem do 503 como veio, com o recado da impressão')
+    cod, saida = rodar(p, srp, '--so', 'autorizacao')
+    ok(cod == 1 and SEM_CHAVE in saida and not srp.pedidos, f'a lista de empresas com o 503: a mensagem no log, sai com 1 (saiu {cod})')
+    sis.zerar(impressao='0' * 64)
+    cod, saida = ponte(p, srp, 'receita', 'conferir')
+    ok('Sistema: Chave da ponte recusada. (HTTP 401)' in saida and 'impressão digital' in saida,
+       'o conferir mostra a mensagem do 401 como veio')
+    cod, saida = rodar(p, srp, '--so', 'autorizacao')
+    ok(cod == 2 and 'Chave da ponte recusada.' in saida, f'a lista de empresas com o 401: sai com 2 (saiu {cod})')
+    # o 503 no envio (o --falso não pede a lista): não insiste — o mesmo dado voltaria igual até a impressão ser cadastrada
+    p3 = pasta_nova()
+    escrever_config(p3, sis)
+    sis.zerar(impressao=None)
+    cod, saida = rodar(p3, srp, '--falso')
+    ok(cod == 1 and len(sis.pacotes) == 1 and SEM_CHAVE in saida and 'Claude da sessão do Samuel' in saida
+       and 'tento de novo' not in saida, f'o 503 da chave no envio: uma tentativa só, com a mensagem e o recado (saiu {cod})')
+    # as recusadas: no log, o CNPJ, o campo e o erro (nunca o valor); o bloco não é reenviado
+    srp.zerar()
+    srp.eventos = {A: '261022'}
+    sis.zerar(recusadas_extra=[{'documento': A, 'campo': 'empresas[0].caixa_postal.mensagens[2].enviada_em',
+                                'erro': 'data que não existe'}])
+    cod, saida = rodar(p, srp, '--so', 'caixa_postal')
+    log = logs(p)
+    ok(cod == 0 and f'{A}: caixa_postal.mensagens[2].enviada_em — data que não existe' in log
+       and 'não reenvio' in log, 'as recusadas vão pro log: o CNPJ, o campo e o erro')
+    assuntos = [m['assunto'] for m in ((empresa(sis.ultimo(), A) or {}).get('caixa_postal') or {}).get('mensagens', [])]
+    ok(assuntos and not any(a in log for a in assuntos), '  nunca o valor (o assunto das mensagens não vai pro log)')
+    srp.zerar()
+    srp.eventos = {A: '261023'}
+    sis.zerar()
+    rodar(p, srp, '--so', 'caixa_postal')
+    ok((empresa(sis.ultimo(), A) or {}).get('caixa_postal') == {'mensagens': []},
+       '  e o bloco recusado não é reenviado (as mensagens contam como mandadas)')
+    ok('empresa(s) gravada(s)' in logs(p), 'o log diz quantas empresas o sistema gravou')
+
+
+def caso_validacoes(sis):
+    titulo('+ todo pacote que a ponte mandou passou pelo validarPacote de verdade (node) sem nenhuma recusa')
+    todas = sis.todas_validacoes
+    ruins = [v for v in todas if not v['ok'] or v['recusadas']]
+    ok(len(todas) >= 30 and not ruins, f'{len(todas)} pacotes conferidos; com recusa: {ruins[:3]}')
+
+
 # ---------------------------------------------------------------- 9. a ponte do Domínio
 
 def caso_dominio():
@@ -1211,12 +1646,23 @@ def caso_dominio():
 
 
 def main():
+    global VALIDADOR
+    pasta_js = pasta_nova()
+    VALIDADOR = pasta_js / 'validar.mjs'
+    VALIDADOR.write_text(
+        f"import {{ validarPacote }} from '{RECEITA_JS.resolve().as_uri()}';\n"
+        "let s = ''; process.stdin.setEncoding('utf8'); process.stdin.on('data', d => s += d);\n"
+        "process.stdin.on('end', () => { const r = validarPacote(JSON.parse(s)); process.stdout.write(JSON.stringify("
+        "{ ok: r.ok, campo: r.campo || null, erro: r.erro || null, recusadas: r.recusadas || [], "
+        "empresas: r.ok ? r.pacote.empresas.length : 0 })); });\n", encoding='utf-8')
     srp, sis = Serpro(), Sistema()
     try:
         for caso in (lambda: caso_token(srp, sis), lambda: caso_certificado(srp, sis), lambda: caso_servicos(srp, sis),
                      lambda: caso_respostas(srp, sis), lambda: caso_calendario(srp, sis),
                      lambda: caso_o_que_sai(srp, sis), lambda: caso_segredos(srp, sis),
-                     lambda: caso_pdf_ilegivel(srp, sis), lambda: caso_envio(srp, sis), caso_dominio):
+                     lambda: caso_pdf_ilegivel(srp, sis), lambda: caso_envio(srp, sis), lambda: caso_chave(srp, sis),
+                     caso_feriados, lambda: caso_autorizacao_segunda(srp, sis), lambda: caso_caixa_postal(srp, sis),
+                     lambda: caso_respostas_da_funcao(srp, sis), lambda: caso_validacoes(sis), caso_dominio):
             try:
                 caso()
             except Exception as e:   # um caso que quebra no meio não esconde os outros

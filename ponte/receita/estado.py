@@ -2,7 +2,8 @@
 
     estado.json             o que já foi consultado e mandado: a última autorização de cada empresa, os meses
                             declarados no PGDAS, a declaração já lida de cada mês, a última data de novidade na
-                            Caixa Postal e as mensagens já mandadas (pelo id), e a última situação fiscal
+                            Caixa Postal e as mensagens já mandadas (pelo id), e a data da última consulta da
+                            autorização, do PGDAS e da situação fiscal (o calendário "a partir do dia")
     chamadas-AAAA-MM.json   quantas chamadas ao Serpro no mês, por serviço — o teto_mes
     pdfs\\                   os PDFs da declaração e da situação fiscal (apagados depois de 30 dias)
 
@@ -37,8 +38,8 @@ def _gravar_json(arq, dados):
 
 
 class Estado:
-    VAZIO = {'autorizacao': {}, 'pgdas_meses': {}, 'declaracoes_lidas': {}, 'eventos': {}, 'mensagens': {},
-             'situacao_fiscal': {}}
+    VAZIO = {'autorizacao': {}, 'pgdas_meses': {}, 'pgdas_consultado': {}, 'declaracoes_lidas': {}, 'eventos': {},
+             'mensagens': {}, 'situacao_fiscal': {}}
 
     def __init__(self, pasta, gravar=True):
         self.arq = pasta / 'estado.json'
@@ -47,11 +48,31 @@ class Estado:
         self.d = {k: dict(lido.get(k) or {}) for k in self.VAZIO}
 
     # — autorização
-    def autorizacao_consultada(self, doc):
-        return doc in self.d['autorizacao']
-
     def guardar_autorizacao(self, doc, bloco, hoje):
         self.d['autorizacao'][doc] = {'consultada_em': hoje.isoformat(), **bloco}
+
+    # — a data da última consulta (o calendário "a partir do dia")
+    def consultada_em(self, servico, doc):
+        if servico == 'autorizacao':
+            return (self.d['autorizacao'].get(doc) or {}).get('consultada_em')
+        if servico == 'pgdas':
+            return self.d['pgdas_consultado'].get(doc)
+        if servico == 'situacao_fiscal':
+            return self.d['situacao_fiscal'].get(doc)
+        return None
+
+    def marcar_consulta(self, servico, doc, hoje, situacao=None):
+        """A consulta foi feita hoje (o Serpro respondeu, mesmo que com recusa, ou a autorização de hoje já disse que
+        não há procuração): não roda de novo até o próximo dia marcado. Na autorização que não veio, a `situacao` diz o
+        que lembrar ('sem' = a segunda-feira seguinte consulta de novo)."""
+        if servico == 'autorizacao':
+            antes = self.d['autorizacao'].get(doc) or {}
+            self.d['autorizacao'][doc] = {**antes, 'consultada_em': hoje.isoformat(),
+                                          **({'situacao': situacao} if situacao else {})}
+        elif servico == 'pgdas':
+            self.d['pgdas_consultado'][doc] = hoje.isoformat()
+        elif servico == 'situacao_fiscal':
+            self.d['situacao_fiscal'][doc] = hoje.isoformat()
 
     def sem_autorizacao(self, doc, hoje):
         """A última consulta disse sem procuração, ou vencida (ou ela venceu desde então)."""
@@ -104,10 +125,6 @@ class Estado:
             atuais.pop(i, None)
             atuais[i] = lida
         self.d['mensagens'][doc] = dict(list(atuais.items())[-MENSAGENS_POR_EMPRESA:])
-
-    # — situação fiscal
-    def guardar_situacao(self, doc, hoje):
-        self.d['situacao_fiscal'][doc] = hoje.isoformat()
 
     def gravar(self):
         if self.gravar_no_fim:

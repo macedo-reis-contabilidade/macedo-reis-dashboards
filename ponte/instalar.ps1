@@ -16,7 +16,9 @@
   Com -Receita, a ponte da Receita (Integra Contador do Serpro) em vez da do Domínio: os passos 1 a 3 iguais; se a
   seção [integra] do config.ini ainda não tem as chaves, a senha e o certificado, pergunta aqui mesmo (as chaves e a
   senha sem aparecer na tela, o caminho do .pfx em texto) e grava direto no config.ini — nada passa por chat, tela ou
-  log; e registra a tarefa "Ponte Receita": de segunda a sexta às 08:30, "py -3 -m ponte receita rodar".
+  log; registra a tarefa "Ponte Receita": de segunda a sexta às 08:30, "py -3 -m ponte receita rodar"; e, com a
+  [sistema] chave_ponte vazia (ou a do exemplo), gera a chave da ponte ("py -3 -m ponte chave") e mostra só a
+  impressão digital, pra mandar pro Claude da sessão do Samuel (ela não é segredo; a chave nunca aparece).
 
   Rode num PowerShell aberto como administrador (registrar a tarefa pede).
 
@@ -227,6 +229,18 @@ if ($Receita) {
   if ($ambiente -ne 'producao') {
     Write-Host "Atenção: o [integra] ambiente ainda não é producao — a tarefa não manda nada até você trocar, depois de"
     Write-Host '  conferir as 5 primeiras empresas no e-CAC (o LEIA-ME explica).'
+  }
+  # a chave da ponte nasce aqui: com o chave_ponte vazio (ou o do exemplo), o "ponte chave" gera e grava no config.ini
+  # e mostra só a impressão digital, que o sistema guarda — a chave mesmo não aparece
+  $chaveAtual = Ler-Ini @(Get-Content -Encoding UTF8 $config) 'sistema' 'chave_ponte'
+  if (-not $chaveAtual -or $chaveAtual -eq (Ler-Ini $exemplo 'sistema' 'chave_ponte')) {
+    $ErrorActionPreference = 'Continue'
+    Push-Location $App
+    try { & $py -3 -m ponte chave } finally { Pop-Location }
+    $ErrorActionPreference = 'Stop'
+    if ($LASTEXITCODE -ne 0) { Write-Host "Aviso: não consegui gerar a chave da ponte — rode, em $App : py -3 -m ponte chave" }
+  } else {
+    Write-Host 'A chave da ponte já existe no config.ini (py -3 -m ponte chave mostra a impressão digital).'
   }
   Write-Host "Antes de ligar, rode, em $App :"
   Write-Host '  py -3 -m ponte receita conferir'

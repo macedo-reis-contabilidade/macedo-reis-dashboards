@@ -1,10 +1,14 @@
 """Quando cada consulta roda (a tarefa "Ponte Receita" roda de segunda a sexta; dia útil = segunda a sexta —
 consultar num feriado não faz mal). O --so passa por cima de tudo isto.
 
-    autorizacao      todas as empresas: no primeiro dia útil do mês, na empresa que nunca foi consultada e, toda
-                     segunda-feira, nas que estavam sem a autorização (sem ou vencida) — o cliente autoriza e o
-                     escritório vê na mesma semana
-    pgdas            Simples: no primeiro dia útil DEPOIS do prazo do mês anterior e no último dia útil do mês — este,
+A PARTIR DO DIA (24/10/2026): cada consulta tem os seus dias marcados, e roda no dia marcado ou na primeira rodada
+depois dele, quando aquela consulta daquela empresa ainda não foi feita desde o dia marcado (o estado.json guarda a
+data de cada uma). Com o PC desligado o dia inteiro, a consulta do mês não fica pra trás: roda no dia seguinte. A
+empresa que nunca foi consultada roda na primeira rodada.
+
+    autorizacao      todas as empresas: o primeiro dia útil do mês e, pras que estavam sem a autorização (sem ou
+                     vencida), a segunda-feira de cada semana — o cliente autoriza e o escritório vê na mesma semana
+    pgdas            Simples: o primeiro dia útil DEPOIS do prazo do mês anterior e o último dia útil do mês — este,
                      só pra quem ainda tinha algum mês sem declaração; em janeiro, o ano anterior também. O prazo é o
                      dia 20 ou, sem expediente, o primeiro dia útil depois; aqui o dia útil é segunda a sexta SEM
                      FERIADO (feriados_do_ano, a lista de assets/js/rescisao-datas.js portada — o teste compara as duas).
@@ -14,7 +18,7 @@ consultar num feriado não faz mal). O --so passa por cima de tudo isto.
     faturamento      Simples: quando o pgdas mostra um mês declarado cuja declaração ainda não foi lida
                      (decidido depois do pgdas, em servicos.py)
     caixa_postal     todas: todo dia útil
-    situacao_fiscal  todas: no dia 5 (ou no próximo dia útil)
+    situacao_fiscal  todas: o dia 5 (ou o próximo dia útil)
 """
 import calendar
 import datetime
@@ -158,21 +162,64 @@ def falta_declaracao(hoje, declarados):
     return any(c not in declarados for c in _competencias(nos_anos[0], ate))
 
 
+# ---------------------------------------------------------------- os dias marcados ("a partir do dia")
+
+def _mes_antes(ano, mes):
+    return (ano - 1, 12) if mes == 1 else (ano, mes - 1)
+
+
+def segunda_da_semana(d):
+    return d - d.weekday() * UM_DIA
+
+
+def _ultima(marcas, hoje):
+    passadas = [m for m in marcas if m is not None and m <= hoje]
+    return max(passadas) if passadas else None
+
+
+def marca_autorizacao(hoje, sem_autorizacao):
+    """O último dia marcado da autorização até hoje: o primeiro dia útil do mês (o deste ou, antes dele, o do mês
+    passado) e, pra quem estava sem a autorização, a segunda-feira da semana."""
+    ano, mes = _mes_antes(hoje.year, hoje.month)
+    marcas = [primeiro_dia_util(hoje.year, hoje.month), primeiro_dia_util(ano, mes)]
+    if sem_autorizacao:
+        marcas.append(segunda_da_semana(hoje))
+    return _ultima(marcas, hoje)
+
+
+def marca_pgdas(hoje, declarados):
+    """O último dia marcado do pgdas até hoje: o primeiro dia útil depois do prazo (o deste mês ou o do mês passado) e,
+    pra quem ainda tem mês sem declaração, o último dia útil do mês (o deste ou o do mês passado)."""
+    ano, mes = _mes_antes(hoje.year, hoje.month)
+    marcas = [consulta_pgdas(mes_anterior(hoje)), consulta_pgdas(mes_anterior(datetime.date(ano, mes, 1)))]
+    if falta_declaracao(hoje, declarados):
+        marcas += [ultimo_util(hoje.year, hoje.month), ultimo_util(ano, mes)]
+    return _ultima(marcas, hoje)
+
+
+def marca_situacao(hoje):
+    """O último dia marcado da situação fiscal até hoje: o dia 5 (ou o próximo dia útil) deste mês ou do passado."""
+    ano, mes = _mes_antes(hoje.year, hoje.month)
+    return _ultima([dia_ou_proximo_util(hoje.year, hoje.month, 5), dia_ou_proximo_util(ano, mes, 5)], hoje)
+
+
+def pendente(consultada_em, marca):
+    """A consulta ainda não foi feita desde o dia marcado (nunca feita = pendente)."""
+    return marca is not None and (not consultada_em or str(consultada_em) < marca.isoformat())
+
+
 def servicos_do_dia(hoje, empresa, estado):
-    """O que roda hoje pra esta empresa (fora o faturamento, que depende do pgdas)."""
+    """O que roda hoje pra esta empresa (fora o faturamento, que depende do pgdas): cada consulta cujo último dia
+    marcado já chegou e que ainda não foi feita desde ele."""
     if not dia_util(hoje):
         return set()
     doc, simples = empresa['documento'], empresa.get('regime') == 'simples'
     s = {'caixa_postal'}
-    if (hoje == primeiro_dia_util(hoje.year, hoje.month) or not estado.autorizacao_consultada(doc)
-            or (hoje.weekday() == 0 and estado.sem_autorizacao(doc, hoje))):
+    if pendente(estado.consultada_em('autorizacao', doc), marca_autorizacao(hoje, estado.sem_autorizacao(doc, hoje))):
         s.add('autorizacao')
-    if simples:
-        if hoje == consulta_pgdas(mes_anterior(hoje)):
-            s.add('pgdas')
-        elif hoje == ultimo_util(hoje.year, hoje.month) and falta_declaracao(hoje, estado.meses_declarados(doc)):
-            s.add('pgdas')
-    if hoje == dia_ou_proximo_util(hoje.year, hoje.month, 5):
+    if simples and pendente(estado.consultada_em('pgdas', doc), marca_pgdas(hoje, estado.meses_declarados(doc))):
+        s.add('pgdas')
+    if pendente(estado.consultada_em('situacao_fiscal', doc), marca_situacao(hoje)):
         s.add('situacao_fiscal')
     return s
 
