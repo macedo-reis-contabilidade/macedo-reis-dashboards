@@ -167,6 +167,16 @@ def contexto_com_certificado(pfx_caminho, senha, pasta_tmp):
     return ctx
 
 
+def _certificado_nao_confere(e):
+    """O certificado do Serpro que o Python não reconhece não é o Serpro fora: é configuração (o intermediário mudou) —
+    tentar de novo não adianta e a rodada sai com 2, com o recado de como trocar o ac-serpro-2025.pem."""
+    razao = getattr(e, 'reason', e)
+    if isinstance(razao, ssl.SSLCertVerificationError):
+        porque = razao.verify_message or 'a cadeia não confere'
+        raise ErroConfig(f'o Python não reconheceu o certificado do Serpro ({porque}) — o intermediário dele pode ter '
+                         f'mudado: o LEIA-ME diz como trocar o ac-serpro-2025.pem')
+
+
 def _esperas():
     bruto = os.environ.get('PONTE_ESPERAS')
     if not bruto:
@@ -256,6 +266,7 @@ class Cliente:
             except (ValueError, json.JSONDecodeError) as e:
                 raise ErroConfig(f'a resposta do token não veio no formato esperado ({type(e).__name__})')
             except (urllib.error.URLError, http.client.HTTPException, OSError) as e:
+                _certificado_nao_confere(e)
                 motivo = type(getattr(e, 'reason', e)).__name__
             if tentativa < len(esperas):
                 self.registro(f'receita: o token não veio ({motivo}) — tento de novo em {esperas[tentativa]:g} s', 'aviso')
@@ -325,6 +336,7 @@ class Cliente:
             except ValueError as e:
                 raise ErroConfig(f'o pedido ao Serpro não pôde ser montado ({type(e).__name__})')
             except (urllib.error.URLError, http.client.HTTPException, OSError) as e:
+                _certificado_nao_confere(e)
                 status, texto, cabecalhos = None, b'', {}
                 motivo = type(getattr(e, 'reason', e)).__name__
             if status is not None:

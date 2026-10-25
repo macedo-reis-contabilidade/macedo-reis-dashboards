@@ -221,10 +221,11 @@ class Serpro:
             # as mensagens da demonstração são de 2022: com elas, a primeira leitura (só os últimos 90 dias) não mandaria
             # nada — aqui a mais nova é desta data e as outras, um dia pra trás cada, na mesma ordem
             self.mensagens_ate = datetime.date(2026, 10, 1)
+            self.fora_do_lote = set()          # CNPJs pedidos no lote de eventos que não voltam na resposta
 
     def padrao(self, servico):
         if servico == 'OBTEREVENTOSPJ134':
-            matriz = [[d, self.eventos.get(d, '')] for d in self.ultimo_lote if d]
+            matriz = [[d, self.eventos.get(d, '')] for d in self.ultimo_lote if d and d not in self.fora_do_lote]
             return {'status': 200, 'mensagens': [{'codigo': '[Sucesso-EVENTOSATUALIZACAO]', 'texto': 'ok'}],
                     'dados': json.dumps(matriz)}
         r = copy.deepcopy(self.fixtures[servico])
@@ -417,7 +418,7 @@ def escrever_config(pasta, sis, ambiente='producao', teto=None, pfx=None, url=No
 SAIDAS = []     # tudo o que foi pra tela, pro caso 7
 
 
-def ponte(pasta, srp, *args, hoje=None, entrada=None):
+def ponte(pasta, srp, *args, hoje=None, entrada=None, extra_env=None):
     env = dict(os.environ, PONTE_PASTA=str(pasta), PONTE_ESPERAS='0.05,0.05,0.05', PONTE_TIMEOUT='5',
                PONTE_SERPRO_TOKEN_URL=srp.url_token, PONTE_SERPRO_GATEWAY=srp.url_gateway,
                PONTE_RECEITA_INTERVALO='0', PONTE_RECEITA_ESPERA_MAX='0', PYTHONIOENCODING='utf-8',
@@ -425,6 +426,7 @@ def ponte(pasta, srp, *args, hoje=None, entrada=None):
     env.pop('PONTE_HOJE', None)
     if hoje:
         env['PONTE_HOJE'] = hoje
+    env.update(extra_env or {})
     r = subprocess.run([sys.executable, '-m', 'ponte', *args], cwd=str(RAIZ), env=env, capture_output=True,
                        encoding='utf-8', errors='replace', timeout=300, input=entrada if entrada is not None else '')
     saida = (r.stdout or '') + (r.stderr or '')
@@ -432,8 +434,22 @@ def ponte(pasta, srp, *args, hoje=None, entrada=None):
     return r.returncode, saida
 
 
-def rodar(pasta, srp, *args, hoje='2026-10-23'):
-    return ponte(pasta, srp, 'receita', 'rodar', *args, hoje=hoje)
+def rodar(pasta, srp, *args, hoje='2026-10-23', extra_env=None):
+    return ponte(pasta, srp, 'receita', 'rodar', *args, hoje=hoje, extra_env=extra_env)
+
+
+def pgdas_ate(srp, ano, ate_mes):
+    """A resposta da demonstração do CONSDECLARACAO13 com os meses trocados pro ano e só até o mês dado."""
+    r = copy.deepcopy(srp.fixtures['CONSDECLARACAO13'])
+    d = json.loads(r['dados'].replace('2018', ano))
+    d['periodos'] = [p for p in d['periodos'] if int(str(p['periodoApuracao'])[4:6]) <= ate_mes]
+    r['dados'] = json.dumps(d)
+    return r
+
+
+def periodos_lidos(srp):
+    return [json.loads(p['pedido']['pedidoDados']['dados'])['periodoApuracao'] for p in srp.pedidos
+            if p['servico'] == 'CONSULTIMADECREC14']
 
 
 def logs(pasta):
@@ -933,12 +949,16 @@ def caso_calendario(srp, sis):
     rodar(pasta, srp, hoje='2026-10-02')                              # sexta, nada marcado
     ok(not srp.servicos('OBTERPROCURACAO41') and not srp.servicos('CONSDECLARACAO13')
        and not srp.servicos('SOLICITARPROTOCOLO91'), 'no dia seguinte, sem dia marcado: nada além da caixa postal')
-    ok(not srp.servicos('MSGCONTRIBUINTE61') and srp.servicos('SOLICEVENTOSPJ132'),
-       'a mesma data de novidade: não pede as mensagens de novo')
+    ok(srp.servicos('MSGCONTRIBUINTE61') == [A]
+       and (empresa(sis.ultimo(), A) or {}).get('caixa_postal') == {'mensagens': []},
+       'a novidade do dia da leitura: lê de novo uma vez (pode ter chegado outra depois), sem repetir as mandadas')
 
     srp.zerar()
+    srp.eventos = {A: '261001'}
     sis.zerar()
     rodar(pasta, srp, hoje='2026-10-05')                              # segunda, dia 5
+    ok(not srp.servicos('MSGCONTRIBUINTE61') and srp.servicos('SOLICEVENTOSPJ132'),
+       'a mesma data de novidade, já lida depois dela: não pede as mensagens de novo')
     ok(sorted(srp.servicos('SOLICITARPROTOCOLO91')) == sorted([A, B, C]), 'dia 5: a situação fiscal de todas')
     ok(not srp.servicos('OBTERPROCURACAO41') and not srp.servicos('CONSDECLARACAO13'),
        'sem autorização (já feita no mês) e sem pgdas')
@@ -961,8 +981,8 @@ def caso_calendario(srp, sis):
     sis.zerar()
     rodar(pasta, srp, '--so', 'pgdas,faturamento', hoje='2026-10-22')
     ok(srp.servicos('CONSULTIMADECREC14') == [A]
-       and (empresa(sis.ultimo(), A) or {}).get('faturamento', {}).get('competencia') == '2026-12',
-       'um mês novo declarado: lê a declaração dele')
+       and (empresa(sis.ultimo(), A) or {}).get('faturamento', {}).get('competencia') == '2026-01',
+       'meses novos declarados: lê a declaração do mais antigo depois do último lido (um por rodada)')
 
     srp.zerar()
     sis.zerar()
@@ -1628,6 +1648,198 @@ def caso_validacoes(sis):
     ok(len(todas) >= 30 and not ruins, f'{len(todas)} pacotes conferidos; com recusa: {ruins[:3]}')
 
 
+
+# ---------------------------------------------------------------- a revisão de 24/10 (o ramo inteiro)
+
+def caso_faturamento_pendente(srp, sis):
+    titulo('+ revisão: a declaração que não veio volta na rodada seguinte, e o mês de antes não é pulado')
+    q = pasta_nova()
+    escrever_config(q, sis)
+    srp.zerar()
+    srp.filas['CONSDECLARACAO13'] = [pgdas_ate(srp, '2026', 7)]
+    sis.zerar()
+    rodar(q, srp, hoje='2026-10-01')
+    ok(periodos_lidos(srp) == ['202607'], f'a primeira vez: só o mês mais recente ({periodos_lidos(srp)})')
+    srp.zerar()
+    srp.filas['CONSDECLARACAO13'] = [pgdas_ate(srp, '2026', 9)]
+    sis.zerar()
+    rodar(q, srp, hoje='2026-10-21')
+    ok(periodos_lidos(srp) == ['202608'], f'dois meses novos (08 e 09): lê o mais antigo primeiro ({periodos_lidos(srp)})')
+    srp.zerar()
+    sis.zerar()
+    rodar(q, srp, hoje='2026-10-22')
+    ok(periodos_lidos(srp) == ['202609'] and not srp.servicos('CONSDECLARACAO13'),
+       f'  e no dia seguinte, sem o pgdas, o que ficou ({periodos_lidos(srp)})')
+    srp.zerar()
+    sis.zerar()
+    rodar(q, srp, hoje='2026-10-23')
+    ok(not periodos_lidos(srp), '  nada pendente: nenhuma chamada da declaração')
+    # o Serpro fora na hora da declaração
+    srp.zerar()
+    srp.filas['CONSDECLARACAO13'] = [pgdas_ate(srp, '2026', 10)]
+    srp.filas['CONSULTIMADECREC14'] = [503, 503, 503, 503]
+    sis.zerar()
+    rodar(q, srp, hoje='2026-11-24')
+    ok((A, 'faturamento', 'erro') in faltou(sis.ultimo()), 'o Serpro fora na declaração: o faturamento vai como erro')
+    srp.zerar()
+    sis.zerar()
+    rodar(q, srp, hoje='2026-11-25')
+    ok(periodos_lidos(srp) == ['202610'] and (empresa(sis.ultimo(), A) or {}).get('faturamento', {}).get('competencia')
+       == '2026-10', f'  e volta na rodada seguinte, mesmo sem o pgdas ({periodos_lidos(srp)})')
+    # o --so pgdas no dia marcado: a tarefa do mesmo dia lê a declaração
+    srp.zerar()
+    srp.filas['CONSDECLARACAO13'] = [pgdas_ate(srp, '2026', 11)]
+    sis.zerar()
+    rodar(q, srp, '--so', 'pgdas', hoje='2026-12-22')
+    ok(srp.servicos('CONSDECLARACAO13') == [A] and not periodos_lidos(srp), 'o --so pgdas não lê a declaração')
+    srp.zerar()
+    sis.zerar()
+    rodar(q, srp, hoje='2026-12-22')
+    ok(periodos_lidos(srp) == ['202611'] and not srp.servicos('CONSDECLARACAO13'),
+       f'  e a tarefa do mesmo dia lê, sem consultar o pgdas de novo ({periodos_lidos(srp)})')
+    # a declaração com o PDF ilegível não é pedida todo dia: volta no dia do pgdas
+    q2 = pasta_nova()
+    escrever_config(q2, sis)
+    srp.zerar()
+    srp.filas['CONSDECLARACAO13'] = [pgdas_ate(srp, '2026', 8)]
+    srp.filas['CONSULTIMADECREC14'] = [com_pdf(srp, 'CONSULTIMADECREC14', b'isto nao e um pdf')]
+    sis.zerar()
+    rodar(q2, srp, hoje='2026-10-01')
+    ok((A, 'faturamento', 'a_conferir') in faltou(sis.ultimo()), 'o PDF ilegível: a_conferir')
+    srp.zerar()
+    sis.zerar()
+    rodar(q2, srp, hoje='2026-10-02')
+    ok(not periodos_lidos(srp), '  no dia seguinte não pede de novo (nem o mês de antes no lugar)')
+    srp.zerar()
+    srp.filas['CONSDECLARACAO13'] = [pgdas_ate(srp, '2026', 8)]
+    sis.zerar()
+    rodar(q2, srp, hoje='2026-10-21')
+    ok(periodos_lidos(srp) == ['202608'] and (empresa(sis.ultimo(), A) or {}).get('faturamento'),
+       f'  e no dia do pgdas tenta de novo ({periodos_lidos(srp)})')
+
+
+def caso_virada_do_ano(srp, sis):
+    titulo('+ revisão: a consulta de dezembro recuperada em fevereiro vê dezembro; o feriado entre o prazo e a consulta')
+    from ponte.receita import calendario
+    d = datetime.date
+    ok(calendario.anos_do_pgdas(d(2027, 2, 1)) == [2026, 2027] and calendario.anos_do_pgdas(d(2027, 2, 24)) == [2027]
+       and calendario.anos_do_pgdas(d(2027, 1, 5)) == [2026, 2027],
+       'os anos do pgdas: em fevereiro, antes da consulta de janeiro, o anterior também')
+    em_dia_2026 = {f'2026-{m:02d}': 'x' for m in range(1, 13)}
+    ok(not calendario.falta_declaracao(d(2027, 2, 1), em_dia_2026)
+       and calendario.falta_declaracao(d(2027, 2, 1), {k: v for k, v in em_dia_2026.items() if k != '2026-12'}),
+       'fevereiro: quem declarou 2026 inteiro não tem "mês sem declaração" (sem o pgdas a mais); sem dezembro, tem')
+    ate_fev = {f'2027-{m:02d}': 'x' for m in (1, 2)}
+    ok(not calendario.falta_declaracao(d(2027, 4, 21), ate_fev),
+       'Tiradentes (21/04/2027, entre o prazo de março e a consulta de 22/04): março ainda não conta como sem declaração')
+
+    class Est:
+        def __init__(self, declarados, pgdas_em):
+            self.declarados, self.pgdas_em = declarados, pgdas_em
+
+        def consultada_em(self, servico, doc):
+            return {'pgdas': self.pgdas_em, 'autorizacao': '2027-04-01', 'situacao_fiscal': '2027-04-05'}[servico]
+
+        def sem_autorizacao(self, doc, hoje):
+            return False
+
+        def meses_declarados(self, doc):
+            return self.declarados
+    s = calendario.servicos_do_dia(d(2027, 4, 21), {'documento': A, 'regime': 'simples'}, Est(ate_fev, '2027-03-23'))
+    ok('pgdas' not in s, f'  e o pgdas não roda no feriado, só no dia 22 ({sorted(s)})')
+    r = pasta_nova()
+    escrever_config(r, sis)
+    srp.zerar()
+    sis.zerar()
+    rodar(r, srp, hoje='2027-01-04')
+    srp.zerar()
+    sis.zerar()
+    rodar(r, srp, hoje='2027-02-01')                                  # desligado de 21/01 (a consulta de 12/2026) a 29/01
+    anos = [json.loads(p['pedido']['pedidoDados']['dados'])['anoCalendario'] for p in srp.pedidos
+            if p['servico'] == 'CONSDECLARACAO13']
+    ok(anos == ['2026', '2027'], f'a consulta de dezembro recuperada em 01/02/2027 pede 2026 também ({anos})')
+
+
+def caso_certificado_do_serpro(srp, sis):
+    titulo('+ revisão: o certificado do Serpro que não confere é configuração (sai com 2), não o Serpro fora')
+    import ssl
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+    p = pasta_nova()
+    chave = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    nome = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, '127.0.0.1')])
+    agora = datetime.datetime.now(datetime.timezone.utc)
+    cert = (x509.CertificateBuilder().subject_name(nome).issuer_name(nome).public_key(chave.public_key())
+            .serial_number(x509.random_serial_number()).not_valid_before(agora - datetime.timedelta(days=1))
+            .not_valid_after(agora + datetime.timedelta(days=30)).sign(chave, hashes.SHA256()))
+    (p / 'c.pem').write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    (p / 'k.pem').write_bytes(chave.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                                                  serialization.NoEncryption()))
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.load_cert_chain(str(p / 'c.pem'), str(p / 'k.pem'))
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+    srv = http.server.ThreadingHTTPServer(('127.0.0.1', 0), H)
+    srv.socket = ctx.wrap_socket(srv.socket, server_side=True)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        escrever_config(p, sis)
+        srp.zerar()
+        sis.zerar()
+        cod, saida = rodar(p, srp, '--so', 'autorizacao', '--empresas', '1',
+                           extra_env={'PONTE_SERPRO_GATEWAY': f'https://127.0.0.1:{srv.server_address[1]}/v1/'})
+        ok(cod == 2 and 'não reconheceu o certificado do Serpro' in saida and 'ac-serpro-2025.pem' in saida
+           and 'tento de novo' not in saida, f'sai com 2 na primeira vez, com o recado de trocar o ac-serpro-2025.pem (saiu {cod})')
+        ok(not sis.pacotes, '  e não manda um pacote só de "erro" como se o Serpro estivesse fora')
+    finally:
+        srv.shutdown()
+
+
+def caso_caixa_postal_revisao(srp, sis):
+    titulo('+ revisão: a Caixa Postal do CNPJ com letras; a empresa que não volta no lote; a mensagem da tarde')
+    alfa = 'AB12CD34000155'                 # inventado, com letras (o CNPJ alfanumérico de julho/2026)
+    p = pasta_nova()
+    escrever_config(p, sis)
+    srp.zerar()
+    srp.eventos = {A: '261022', alfa: '261022'}
+    srp.fora_do_lote = {B}
+    sis.zerar(empresas=[{'documento': A, 'regime': 'simples'}, {'documento': alfa, 'regime': 'presumido'},
+                        {'documento': B, 'regime': 'presumido'}])
+    rodar(p, srp, '--so', 'caixa_postal')
+    pac = sis.ultimo()
+    ok(sorted(srp.servicos('MSGCONTRIBUINTE61')) == sorted([A, alfa])
+       and len(((empresa(pac, alfa) or {}).get('caixa_postal') or {}).get('mensagens', [])) == 50,
+       'o CNPJ com letras volta do lote com as letras: as mensagens dele são lidas')
+    ok((B, 'caixa_postal', 'erro') in faltou(pac) and 'não voltaram na resposta' in logs(p),
+       'a empresa pedida no lote que não volta na resposta vai pro faltou como erro, com o aviso no log')
+    # a mensagem que chega à tarde, no mesmo dia da que foi lida de manhã
+    q = pasta_nova()
+    escrever_config(q, sis)
+    m1 = _msg('M1', datetime.date(2026, 10, 22))
+    m2 = _msg('M2', datetime.date(2026, 10, 22))
+    srp.zerar()
+    srp.eventos = {A: '261022'}
+    srp.por_doc[('MSGCONTRIBUINTE61', A)] = [_caixa([m1])]
+    sis.zerar()
+    rodar(q, srp, '--so', 'caixa_postal', '--empresas', '1', hoje='2026-10-22')
+    srp.zerar()
+    srp.eventos = {A: '261022'}
+    srp.por_doc[('MSGCONTRIBUINTE61', A)] = [_caixa([m2, m1])]
+    sis.zerar()
+    rodar(q, srp, '--so', 'caixa_postal', '--empresas', '1', hoje='2026-10-23')
+    ids = [m['id'] for m in ((empresa(sis.ultimo(), A) or {}).get('caixa_postal') or {}).get('mensagens', [])]
+    ok(ids == ['M2'], f'a mensagem da tarde (o mesmo dia do evento) é lida no dia seguinte ({ids})')
+    srp.zerar()
+    srp.eventos = {A: '261022'}
+    sis.zerar()
+    rodar(q, srp, '--so', 'caixa_postal', '--empresas', '1', hoje='2026-10-26')
+    ok(not srp.servicos('MSGCONTRIBUINTE61'), '  e depois, com o mesmo evento, não lê mais')
+
+
 # ---------------------------------------------------------------- 9. a ponte do Domínio
 
 def caso_dominio():
@@ -1662,7 +1874,9 @@ def main():
                      lambda: caso_o_que_sai(srp, sis), lambda: caso_segredos(srp, sis),
                      lambda: caso_pdf_ilegivel(srp, sis), lambda: caso_envio(srp, sis), lambda: caso_chave(srp, sis),
                      caso_feriados, lambda: caso_autorizacao_segunda(srp, sis), lambda: caso_caixa_postal(srp, sis),
-                     lambda: caso_respostas_da_funcao(srp, sis), lambda: caso_validacoes(sis), caso_dominio):
+                     lambda: caso_respostas_da_funcao(srp, sis), lambda: caso_faturamento_pendente(srp, sis),
+                     lambda: caso_virada_do_ano(srp, sis), lambda: caso_certificado_do_serpro(srp, sis),
+                     lambda: caso_caixa_postal_revisao(srp, sis), lambda: caso_validacoes(sis), caso_dominio):
             try:
                 caso()
             except Exception as e:   # um caso que quebra no meio não esconde os outros

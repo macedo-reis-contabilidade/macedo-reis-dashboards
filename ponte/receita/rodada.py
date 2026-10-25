@@ -89,44 +89,56 @@ def executar(cli, empresas, est, hoje, so, pasta, reg):
                 negados.add(doc)
 
     # 2. por empresa: PGDAS, a declaração (faturamento) e a situação fiscal
+    def mes_pendente(doc, plano):
+        # o mês a ler sai do estado (todos os meses declarados já vistos), não só do pgdas de hoje — assim a declaração
+        # que não veio (Serpro fora, teto, um --so pgdas sem o faturamento) é pedida na rodada seguinte, sem custo
+        # nenhum quando não há o que ler; a tentada sem resposta boa só volta no dia do pgdas
+        lista = [{'competencia': c, 'transmitida_em': t} for c, t in est.meses_declarados(doc).items()]
+        return servicos.mes_a_ler(lista, est, doc, tentar_de_novo='pgdas' in plano)
+
     for e in empresas:
         doc, plano = e['documento'], planos[e['documento']]
-        quer_faturamento = e.get('regime') == 'simples' and ('faturamento' in plano or ('pgdas' in plano and not so))
+        # o faturamento não depende do dia: toda rodada do calendário confere se há declaração a ler (com o --so, só
+        # quando ele pede o faturamento)
+        quer_faturamento = e.get('regime') == 'simples' and ('faturamento' in plano if so else True)
         if doc in negados:
-            for s in sorted(plano - {'autorizacao', 'caixa_postal'} | ({'faturamento'} if quer_faturamento else set())):
+            for s in sorted(plano - {'autorizacao', 'caixa_postal', 'faturamento'}):
                 faltou.append({'documento': doc, 'servico': s, 'motivo': 'sem_autorizacao'})
             # a autorização de hoje já disse que não há procuração: até o próximo dia marcado não volta
             for s in ('pgdas', 'situacao_fiscal'):
                 if s in plano:
                     est.marcar_consulta(s, doc, hoje)
+            mes = mes_pendente(doc, plano) if quer_faturamento else None
+            if mes:
+                faltou.append({'documento': doc, 'servico': 'faturamento', 'motivo': 'sem_autorizacao'})
+                est.guardar_declaracao_tentada(doc, mes['competencia'], mes['transmitida_em'])
             continue
-        meses = None
         if 'pgdas' in plano:
             try:
                 bloco = servicos.pgdas(cli, e, hoje)
                 dados.setdefault(doc, {})['pgdas'] = bloco
                 est.guardar_meses(doc, bloco['meses'])
                 est.marcar_consulta('pgdas', doc, hoje)
-                meses = bloco['meses']
             except servicos.Falta as f:
                 falta(doc, 'pgdas', f)
                 if f.feita:
                     est.marcar_consulta('pgdas', doc, hoje)
         if quer_faturamento:
-            lista = meses if meses is not None else [
-                {'competencia': c, 'transmitida_em': t} for c, t in est.meses_declarados(doc).items()]
-            mes = servicos.mes_a_ler(lista, est, doc)
+            mes = mes_pendente(doc, plano)
             if mes:
                 try:
                     bloco, problema = servicos.faturamento(cli, e, mes, pasta)
                     if problema:
                         # o que não deu pra ler não vai: só o faltou com a_conferir (o PDF fica guardado)
                         falta(doc, 'faturamento', servicos.Falta('a_conferir', problema))
+                        est.guardar_declaracao_tentada(doc, mes['competencia'], mes['transmitida_em'])
                     else:
                         dados.setdefault(doc, {})['faturamento'] = bloco
                         est.guardar_declaracao_lida(doc, mes['competencia'], mes['transmitida_em'])
                 except servicos.Falta as f:
                     falta(doc, 'faturamento', f)
+                    if f.feita:              # o Serpro respondeu (recusa, acesso negado): volta só no dia do pgdas
+                        est.guardar_declaracao_tentada(doc, mes['competencia'], mes['transmitida_em'])
         if 'situacao_fiscal' in plano:
             try:
                 bloco, problema, aviso = servicos.situacao_fiscal(cli, e, hoje, pasta)
@@ -159,15 +171,24 @@ def executar(cli, empresas, est, hoje, so, pasta, reg):
                 falta(e['documento'], 'caixa_postal', f)
             cnpjs = []
         com_novidade = mensagens_novas = 0
+        sumidas = []
         for e in cnpjs:
             doc = e['documento']
             v = eventos.get(doc)
             if v is None:
+                # pedida no lote e não voltou na resposta: não some calada — vai pro faltou como erro
+                sumidas.append(doc)
+                faltou.append({'documento': doc, 'servico': 'caixa_postal', 'motivo': 'erro'})
                 continue
             if v.lower() == 'x':
                 falta(doc, 'caixa_postal', servicos.Falta('sem_autorizacao'))
                 continue
-            if not re.fullmatch(r'\d{6}', v) or v == est.ultimo_evento(doc):
+            if not re.fullmatch(r'\d{6}', v):
+                continue
+            # o evento é só o dia da última novidade: a mensagem que chega no mesmo dia depois da leitura não muda o
+            # dia — por isso o dia do evento igual (ou depois) ao da última leitura lê de novo; antes dela, não
+            leitura = est.leitura_mensagens(doc)
+            if v == est.ultimo_evento(doc) and leitura and f'20{v[:2]}-{v[2:4]}-{v[4:]}' < leitura:
                 continue
             com_novidade += 1
             try:
@@ -175,9 +196,13 @@ def executar(cli, empresas, est, hoje, so, pasta, reg):
                 dados.setdefault(doc, {})['caixa_postal'] = bloco
                 est.guardar_mensagens(doc, lembrar)
                 est.guardar_evento(doc, v)
+                est.guardar_leitura_mensagens(doc, hoje)
                 mensagens_novas += len(bloco['mensagens'])
             except servicos.Falta as f:
                 falta(doc, 'caixa_postal', f)
+        if sumidas:
+            reg(f'receita: caixa postal — {len(sumidas)} empresa(s) pedida(s) no lote não voltaram na resposta do Serpro '
+                f'(vão no faltou como erro): ' + ', '.join(sumidas[:10]) + (' …' if len(sumidas) > 10 else ''), 'aviso')
         reg(f'receita: caixa postal — {len(cnpjs)} empresa(s) no lote, {com_novidade} com novidade, '
             f'{mensagens_novas} mensagem(ns) nova(s)')
     return dados, faltou

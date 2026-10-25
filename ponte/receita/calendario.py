@@ -134,10 +134,12 @@ def consulta_pgdas(competencia):
     return proximo_util(prazo_pgdas(competencia))
 
 
-def ultima_competencia_vencida(hoje):
-    """A competência mais recente cujo prazo já passou (o prazo é antes de hoje)."""
+def ultima_competencia_consultada(hoje):
+    """A competência mais recente cujo dia de consulta já chegou (consulta_pgdas ≤ hoje). Não é a do prazo vencido: no
+    dia útil entre o prazo e a consulta (ex.: Tiradentes, quando o prazo de março cai na terça 20/04), a competência
+    ainda não foi consultada e não pode contar como "mês sem declaração"."""
     c = mes_anterior(hoje)
-    while prazo_pgdas(c) >= hoje:
+    while consulta_pgdas(c) > hoje:
         c = mes_anterior(datetime.date(int(c[:4]), int(c[5:7]), 1))
     return c
 
@@ -155,7 +157,7 @@ def falta_declaracao(hoje, declarados):
     """Algum mês já vencido, dos anos que o pgdas consulta, sem declaração? Conta a partir do primeiro mês declarado
     nesses anos (a empresa que abriu no meio do ano não fica "devendo" os meses de antes); sem nenhum declarado, sim."""
     anos = anos_do_pgdas(hoje)
-    ate = ultima_competencia_vencida(hoje)
+    ate = ultima_competencia_consultada(hoje)
     nos_anos = sorted(c for c in declarados if int(c[:4]) in anos)
     if not nos_anos:
         return True
@@ -225,5 +227,7 @@ def servicos_do_dia(hoje, empresa, estado):
 
 
 def anos_do_pgdas(hoje):
-    """Os anos-calendário que o pgdas consulta: o atual e, em janeiro, o anterior também."""
-    return [hoje.year - 1, hoje.year] if hoje.month == 1 else [hoje.year]
+    """Os anos-calendário que o pgdas consulta: o atual e o da competência mais recente cuja consulta já chegou — em
+    janeiro e em fevereiro antes da consulta de janeiro, o anterior também (a consulta de dezembro perdida em janeiro,
+    recuperada no começo de fevereiro, ainda vê dezembro)."""
+    return sorted({hoje.year, int(ultima_competencia_consultada(hoje)[:4])})

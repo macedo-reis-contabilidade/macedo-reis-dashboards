@@ -128,14 +128,37 @@ def pgdas(cli, empresa, hoje):
     return {'ano': max(anos) if anos else hoje.year, 'meses': [meses[k] for k in sorted(meses)]}
 
 
-def mes_a_ler(meses, estado, doc):
-    """O mês cuja declaração ler agora: o mais novo entre os que vieram depois do último lido e os já lidos que foram
-    retificados (a transmissão mudou). Na primeira vez, só o mês mais recente — o ano pra trás não é lido um a um."""
-    lidas = estado.declaracoes_lidas(doc)
-    ultimo = max(lidas) if lidas else None
-    pendentes = [m for m in meses if m.get('transmitida_em') and lidas.get(m['competencia']) != m['transmitida_em']
-                 and (ultimo is None or m['competencia'] in lidas or m['competencia'] > ultimo)]
-    return max(pendentes, key=lambda m: m['competencia']) if pendentes else None
+def mes_a_ler(meses, estado, doc, tentar_de_novo=False):
+    """O mês cuja declaração ler agora (um por rodada):
+      1. o MAIS ANTIGO dos que vieram depois do último lido — nenhum mês fica pra trás quando o de antes não veio;
+      2. senão, o mais novo dos já lidos que foram retificados (a transmissão mudou);
+      3. senão, e só no dia do pgdas (tentar_de_novo), o mais novo dos tentados sem resposta boa (o PDF ilegível, a recusa):
+         eles não são pedidos todo dia — custaria uma chamada por dia com a mesma resposta.
+    Na primeira vez (nada lido), só o mês mais recente — o ano pra trás não é lido um a um."""
+    lidas, tentadas = estado.declaracoes_lidas(doc), estado.declaracoes_tentadas(doc)
+    comp = lambda m: m['competencia']                                                     # noqa: E731
+    com = [m for m in meses if m.get('transmitida_em') and lidas.get(m['competencia']) != m['transmitida_em']]
+    novas = [m for m in com if tentadas.get(m['competencia']) != m['transmitida_em']]
+    if not lidas:
+        # a primeira vez: o mais recente (o tentado sem resposta boa espera o dia do pgdas — não lê o de antes no lugar)
+        if com:
+            m = max(com, key=comp)
+            if tentar_de_novo or tentadas.get(m['competencia']) != m['transmitida_em']:
+                return m
+        return None
+    else:
+        ultimo = max(lidas)
+        depois = [m for m in novas if m['competencia'] > ultimo and m['competencia'] not in lidas]
+        if depois:
+            return min(depois, key=comp)
+        retificadas = [m for m in novas if m['competencia'] in lidas]
+        if retificadas:
+            return max(retificadas, key=comp)
+    if tentar_de_novo:
+        de_novo = [m for m in com if tentadas.get(m['competencia']) == m['transmitida_em']]
+        if de_novo:
+            return max(de_novo, key=comp)
+    return None
 
 
 def faturamento(cli, empresa, mes, pasta):
@@ -191,7 +214,8 @@ def eventos_caixa_postal(cli, docs):
         _conferir_resposta(r2)
         for linha in r2.dados() or []:
             if isinstance(linha, list) and len(linha) >= 2:
-                resultado[re.sub(r'\D', '', str(linha[0]))] = str(linha[1] or '').strip()
+                # o CNPJ alfanumérico (desde julho/2026) volta com as letras: só a pontuação sai
+                resultado[re.sub(r'[^0-9A-Za-z]', '', str(linha[0])).upper()] = str(linha[1] or '').strip()
     return resultado
 
 

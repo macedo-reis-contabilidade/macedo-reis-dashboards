@@ -38,8 +38,8 @@ def _gravar_json(arq, dados):
 
 
 class Estado:
-    VAZIO = {'autorizacao': {}, 'pgdas_meses': {}, 'pgdas_consultado': {}, 'declaracoes_lidas': {}, 'eventos': {},
-             'mensagens': {}, 'situacao_fiscal': {}}
+    VAZIO = {'autorizacao': {}, 'pgdas_meses': {}, 'pgdas_consultado': {}, 'declaracoes_lidas': {},
+             'declaracoes_tentadas': {}, 'eventos': {}, 'mensagens_lidas_em': {}, 'mensagens': {}, 'situacao_fiscal': {}}
 
     def __init__(self, pasta, gravar=True):
         self.arq = pasta / 'estado.json'
@@ -99,6 +99,15 @@ class Estado:
 
     def guardar_declaracao_lida(self, doc, competencia, transmitida_em):
         self.d['declaracoes_lidas'].setdefault(doc, {})[competencia] = transmitida_em
+        self.d['declaracoes_tentadas'].get(doc, {}).pop(competencia, None)
+
+    def declaracoes_tentadas(self, doc):
+        """{competência: a transmissão} das declarações que o Serpro respondeu sem dar a receita (o PDF ilegível, a
+        recusa, o acesso negado): não são pedidas todo dia — voltam só no dia do pgdas."""
+        return dict(self.d['declaracoes_tentadas'].get(doc, {}))
+
+    def guardar_declaracao_tentada(self, doc, competencia, transmitida_em):
+        self.d['declaracoes_tentadas'].setdefault(doc, {})[competencia] = transmitida_em
 
     # — Caixa Postal
     def ultimo_evento(self, doc):
@@ -106,6 +115,13 @@ class Estado:
 
     def guardar_evento(self, doc, data):
         self.d['eventos'][doc] = data
+
+    def leitura_mensagens(self, doc):
+        """O dia da última leitura das mensagens da empresa ('AAAA-MM-DD')."""
+        return self.d['mensagens_lidas_em'].get(doc)
+
+    def guardar_leitura_mensagens(self, doc, hoje):
+        self.d['mensagens_lidas_em'][doc] = hoje.isoformat()
 
     def conhece_mensagens(self, doc):
         """Já houve uma leitura da Caixa Postal desta empresa (a primeira só manda as dos últimos 90 dias)."""
