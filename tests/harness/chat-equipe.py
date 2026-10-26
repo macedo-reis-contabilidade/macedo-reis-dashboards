@@ -1,7 +1,9 @@
 """Teste do chat da equipe (assets/js/chat-equipe.js, a aba "Equipe" do balão do canto, 16/10/2026): a lista das conversas
 (as não lidas, quem está online, quem ainda não tem conversa), abrir e ler (o "visto"), enviar e receber na hora (o tempo
-real), o aviso só no computador (com a tela na frente, o recado e o bipe; atrás, o bipe e o aviso do Windows sem o som dele —
-21/10/2026 —, ou com o som dele na tela que ainda não recebeu clique; silenciada, nada; no celular, nada), arquivos e imagens (a pasta "chat"), apagar a própria mensagem, grupo novo, pôr alguém no grupo, a busca nas
+real), o aviso só no computador (com a tela na frente, o recado e o bipe; atrás, o bipe e o aviso do Windows, sempre com o
+som dele — 26/10/2026; silenciada, nada; no celular, nada), o painel "Avisos deste computador" do sininho do rodapé (o que
+está ligado, o "Testar o aviso" e o que fazer pela resposta, o bipe que liga e desliga só ali) e a ligação ao vivo que volta
+sozinha quando o servidor a encerra (26/10/2026), arquivos e imagens (a pasta "chat"), apagar a própria mensagem, grupo novo, pôr alguém no grupo, a busca nas
 mensagens, as duas colunas com o painel aumentado, o que fica guardado ao recarregar e os emojis (20/10/2026: o botão da
 carinha abre o painel, clicar põe no lugar do cursor, os usados por último, Esc e clicar fora fecham, a mensagem só de emoji
 sai maior) e a resposta (20/10/2026, estilo WhatsApp: o "Responder" põe a barra "Respondendo a…" em cima da caixa, Esc e o ✕
@@ -259,8 +261,8 @@ def main():
         p.wait_for_function("() => document.querySelector('.as-selo').hidden", timeout=3000)
         ok(p.inner_text('.ch-msgs').count('Alguém viu o malote?') == 1 and 'Adaini' in p.inner_text('.ch-msgs'), '"Responder" abre o Escritório, com quem mandou cada uma, e lê')
 
-        # 7) a tela atrás (outra janela na frente): o bipe e o aviso do Windows, sem o som dele (21/10/2026: antes o aviso
-        # tomava o lugar do bipe, e no Windows que não mostra o aviso a mensagem chegava muda); clicar nele abre a conversa
+        # 7) a tela atrás (outra janela na frente): o bipe e o aviso do Windows, com o som dele (26/10/2026: até ali ia mudo
+        # quando o bipe tocava, e o bipe baixo passava batido); clicar nele abre a conversa
         p.evaluate('window.__naFrente = false')
         av7 = len(db('window.__avisos'))
         chegar('m13', 'c-th', TH, 'Mandei a guia no seu e-mail também.')
@@ -268,8 +270,8 @@ def main():
         n = db('window.__notificacoes.slice(-1)[0]')
         ok(n['titulo'] == 'Thalia' and n['body'] == 'Mandei a guia no seu e-mail também.' and n['tag'] == 'mr-chat-c-th', f'atrás: o aviso do Windows com quem e o texto ({n})')
         bipes7 = [a for a in db('window.__avisos')[av7:] if a.get('tipo') == 'bipe']
-        ok(len(bipes7) == 1 and bipes7[0].get('som') is True and n['silent'] is True,
-           f'atrás: o bipe toca também, e o aviso do Windows vai sem o som dele (um som só) ({bipes7}, silent={n.get("silent")})')
+        ok(len(bipes7) == 1 and bipes7[0].get('som') is True and n['silent'] is False,
+           f'atrás: o bipe e o aviso do Windows, com o som dele ({bipes7}, silent={n.get("silent")})')
         p.evaluate('window.__naFrente = true'); p.evaluate('window.__ultimaNotificacao.onclick()')
         p.wait_for_function("() => document.querySelector('.ch-v-conversa .ch-cab-quem b').textContent === 'Thalia'", timeout=3000)
         ok('Mandei a guia no seu e-mail também.' in p.inner_text('.ch-msgs'), 'clicar no aviso abre a conversa dela')
@@ -377,6 +379,73 @@ def main():
            'no celular, a mensagem conta na lista, sem bipe nem aviso')
         ok(not errosq, f'sem erro de JavaScript no celular ({errosq[:3]})')
         cel.close()
+
+        # 17) os avisos deste computador (26/10/2026, pedido do Samuel: "quero que funcione, com som e com aviso do windows"):
+        # o sininho do rodapé abre o painel (o que está ligado e o que falta); o "Testar o aviso" toca o bipe e manda um aviso
+        # do Windows de teste e, pela resposta, diz o que fazer; o bipe liga e desliga só ali (a chave velha, que um clique no
+        # sininho desligava, sai); e a ligação ao vivo que o servidor encerra volta sozinha. No Chrome do Windows (o do escritório)
+        WIN = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36'
+        cw = b.new_context(viewport={'width': 1400, 'height': 900}, user_agent=WIN)
+        w = cw.new_page(); errosw = []; w.on('pageerror', lambda e: errosw.append(str(e)))
+        w.add_init_script(TOUR); w.add_init_script(SEMEAR)
+        w.add_init_script("localStorage.setItem('mr_chat_som:" + EU + "', 'nao')")   # o bipe desligado pela chave velha
+        w.goto(base + 'index.html'); w.wait_for_selector('.as-lancador', timeout=6000)
+        w.click('.as-lancador'); w.click('.as-aba[data-aba="equipe"]'); w.wait_for_selector('.ch-linha', timeout=3000)
+        ok(w.evaluate("localStorage.getItem('mr_chat_som:" + EU + "')") is None and w.inner_text('.ch-avisos-txt') == 'Avisos ligados'
+           and w.get_attribute('[data-ch="avisos"]', 'aria-expanded') == 'false',
+           f'a chave velha do bipe (desligado por um clique no sininho) sai: o bipe volta ligado ({w.inner_text(".ch-avisos-txt")!r})')
+        w.click('[data-ch="avisos"]'); w.wait_for_selector('.ch-pa:not([hidden]) .ch-pa-item', timeout=2000)
+        itens = w.eval_on_selector_all('.ch-pa-item', 'ls => ls.map(l => l.dataset.item + ":" + (l.classList.contains("ch-pa-ok") ? "ok" : "falta"))')
+        ok(itens == ['windows:ok', 'bipe:ok', 'ligacao:ok'] and w.get_attribute('[data-ch="avisos"]', 'aria-expanded') == 'true' and 'Avisos deste computador' in w.inner_text('.ch-pa'),
+           f'o sininho abre "Avisos deste computador": tudo ligado e ao vivo ({itens})')
+        av0, no0 = len(w.evaluate('window.__avisos')), len(w.evaluate('window.__notificacoes'))
+        w.click('[data-ch="avisos-testar"]'); w.wait_for_selector('[data-ch="teste-sem-aviso"]', timeout=2000)
+        bip = [a for a in w.evaluate('window.__avisos')[av0:] if a.get('tipo') == 'bipe']
+        nt = w.evaluate('window.__notificacoes')[no0:]
+        ok(len(bip) == 1 and len(nt) == 1 and nt[0]['titulo'] == 'Teste do aviso do chat' and nt[0]['silent'] is False and 'Ouviu o bipe e viu o aviso?' in w.inner_text('.ch-pa-teste'),
+           f'"Testar o aviso": o bipe e um aviso do Windows de teste, com o som dele; e pergunta o que ouviu e viu ({bip}, {nt})')
+        w.click('[data-ch="teste-sem-aviso"]')
+        txt = w.inner_text('.ch-pa-teste')
+        ok('O Windows está escondendo os avisos do Google Chrome' in txt and 'Não incomodar' in txt and w.get_attribute('.ch-pa-teste a', 'href') == 'ms-settings:notifications'
+           and w.is_visible('[data-ch="avisos-testar"]'), f'"Não vi o aviso": o que mudar no Windows, o atalho pras notificações e o "Testar de novo" ({txt!r})')
+        w.click('[data-ch="avisos-testar"]'); w.click('[data-ch="teste-sem-bipe"]')
+        ok('O som do Google Chrome não está saindo' in w.inner_text('.ch-pa-teste') and w.get_attribute('.ch-pa-teste a', 'href') == 'ms-settings:apps-volume', '"Não ouvi o bipe": o Mixer de volume')
+        w.click('[data-ch="avisos-testar"]'); w.click('[data-ch="teste-tudo"]')
+        ok('Tudo certo neste computador' in w.inner_text('.ch-pa-teste'), '"Ouvi e vi": tudo certo')
+        # o bipe desliga só ali, com o nome escrito; a mensagem que chega com a tela atrás: sem bipe, e o aviso do Windows com o som dele
+        w.click('[data-ch="bipe-alternar"]')
+        ok(w.evaluate("localStorage.getItem('mr_chat_bipe:" + EU + "')") == 'nao' and w.inner_text('.ch-avisos-txt') == 'Avisos · sem bipe'
+           and 'ch-pa-falta' in w.get_attribute('.ch-pa-item[data-item="bipe"]', 'class') and w.inner_text('[data-ch="bipe-alternar"]') == 'Ligar o bipe'
+           and 'ch-falta' in w.get_attribute('[data-ch="avisos"]', 'class'), 'desligar o bipe: só no painel, e o sininho diz')
+        w.evaluate('window.__naFrente = false'); av1, no1 = len(w.evaluate('window.__avisos')), len(w.evaluate('window.__notificacoes'))
+        w.evaluate("() => { const l = { id: 'mw1', conversa_id: 'c-esc', autor: '" + VI + "', texto: 'Chegou o malote.', anexos: [], criada_em: new Date().toISOString(), apagada_em: null }; window.__mockDb.chat_mensagens.push(l); window.__mockEmitir('chat_mensagens', 'INSERT', l); }")
+        w.wait_for_function('n => window.__notificacoes.length > n', arg=no1, timeout=4000)
+        nw = w.evaluate('window.__notificacoes.slice(-1)[0]')
+        ok(not [a for a in w.evaluate('window.__avisos')[av1:] if a.get('tipo') == 'bipe'] and nw['body'] == 'Vitória: Chegou o malote.' and nw['silent'] is False,
+           f'sem bipe: a mensagem chega com o aviso do Windows, com o som dele ({nw})')
+        w.evaluate('window.__naFrente = true'); w.click('[data-ch="bipe-alternar"]')
+        ok(w.inner_text('.ch-avisos-txt') == 'Avisos ligados' and w.evaluate("localStorage.getItem('mr_chat_bipe:" + EU + "')") == 'sim', 'ligar o bipe de novo')
+        w.focus('[data-ch="bipe-alternar"]'); w.keyboard.press('Escape')
+        ok(w.is_hidden('.ch-pa') and w.evaluate('() => document.activeElement.dataset.ch') == 'avisos' and w.is_visible('.as-painel'),
+           'Esc fecha só os avisos (o painel do balão fica) e o foco volta pro sininho')
+        # a ligação que o servidor encerra (o login venceu com o computador dormindo): volta sozinha, com um canal novo
+        rpcs0 = len(w.evaluate('window.__rpcs'))
+        w.evaluate("window.__mockFecharCanal('chat-db:')")
+        w.click('[data-ch="avisos"]'); w.wait_for_selector('.ch-pa:not([hidden])', timeout=2000)
+        lig = w.inner_text('.ch-pa-item[data-item="ligacao"]')
+        ok('ch-pa-falta' in w.get_attribute('.ch-pa-item[data-item="ligacao"]', 'class') and 'voltando sozinha' in lig, f'o servidor encerrou a ligação: o painel diz que está voltando ({lig!r})')
+        w.wait_for_function("() => window.__mockCanais.some(c => c.nome === 'chat-db:" + EU + ":1')", timeout=6000)
+        w.wait_for_function("() => document.querySelector('.ch-pa-item[data-item=\"ligacao\"]').classList.contains('ch-pa-ok')", timeout=3000)
+        canais = [c for c in w.evaluate('window.__mockCanais.map(c => c.nome)') if c.startswith('chat-db:')]
+        voltou = [r['nome'] for r in w.evaluate('window.__rpcs')[rpcs0:]]
+        ok(canais == ['chat-db:' + EU + ':1'] and 'chat_resumo' in voltou, f'volta sozinha com um canal novo (um só) e confere o que chegou enquanto isso ({canais}, {voltou})')
+        w.click('[data-ch="avisos-fechar"]')
+        av2 = len(w.evaluate('window.__avisos'))
+        w.evaluate("() => { const l = { id: 'mw2', conversa_id: 'c-esc', autor: '" + AD + "', texto: 'Voltei.', anexos: [], criada_em: new Date().toISOString(), apagada_em: null }; window.__mockDb.chat_mensagens.push(l); window.__mockEmitir('chat_mensagens', 'INSERT', l); }")
+        w.wait_for_function('n => window.__avisos.length > n', arg=av2, timeout=3000)
+        ok([a for a in w.evaluate('window.__avisos')[av2:] if a.get('tipo') == 'bipe'] and w.is_hidden('.ch-pa'), 'depois de voltar, a mensagem nova chega na hora, com o bipe')
+        ok(not errosw, f'sem erro de JavaScript nos avisos ({errosw[:3]})')
+        cw.close()
         b.close()
     srv.shutdown()
     print('\n' + ('Tudo certo.' if not falhas else f'{falhas} falha(s).'))
