@@ -2,10 +2,12 @@
 // última mensagem de cada conversa na lista, a hora da lista e o separador do dia, os endereços que viram link (só http e
 // https, com o texto já escapado), o tamanho e o nome seguro do arquivo na pasta, a conferência dos arquivos (25 MB, 10 por
 // mensagem), a ordem da lista (as conversas pela última mensagem, depois quem ainda não tem conversa comigo), o "visto",
-// o total do balão (sem as silenciadas), o celular (sem aviso) e o texto do aviso; e os emojis (20/10/2026): os grupos do
+// o total do balão (sem as silenciadas), o celular (sem aviso), o texto do aviso, como avisar e, desde 26/10/2026, o bipe
+// mais forte, o religar da ligação ao vivo e o painel "Avisos deste computador"; e os emojis (20/10/2026): os grupos do
 // painel, os usados por último, o emoji no lugar do cursor e a mensagem só de emoji. Rodar com: node tests/chat-equipe.test.mjs
 import { nomeDe, iniciais, outroDa, tituloDaConversa, previaDaUltima, horaDaLista, rotuloDoDia, linkificar, tamanhoBR, nomeSeguro, caminhoDoArquivo,
   conferirArquivos, ehImagem, linhasDaLista, vistoPor, textoDoVisto, naoLidasTotal, ehCelular, textoDoAviso, comoAvisar, esperaDoAviso, LIMITE_ARQUIVO,
+  BIPE, esperaParaReligar, diagnosticoDosAvisos, rotuloDosAvisos,
   linkDoDrive, enviarMensagem, apagarMensagem, conversaDe, EMOJIS, nomeDoEmoji, recentesCom, lerRecentes, inserirNoTexto, soEmojis, MAX_RECENTES, MAX_TEXTO,
   trechoDaCitada, quemDaCitada, MAX_TRECHO, ehAvisos, acaoDoAviso, TITULO_AVISOS } from '../assets/js/chat-equipe.js';
 import { escapeHtml } from '../assets/js/assistente.js';
@@ -70,17 +72,35 @@ chk('celular e tablet não avisam; o computador sim', ehCelular(nav('Mozilla/5.0
 const a1 = textoDoAviso(D, { autor: TH, texto: 'manda a guia\nda Adega?' }, EU), a2 = textoDoAviso(G, { autor: VI, texto: null, anexos: [{ nome: 'folha.pdf' }, { nome: 'x' }] }, EU);
 chk('o aviso: a dois, o nome e o texto; no grupo, o grupo e "quem: texto"; arquivo pelo nome', a1.titulo === 'Thalia' && a1.corpo === 'manda a guia da Adega?'
   && a2.titulo === 'Fiscal e DP' && a2.corpo === 'Vitória: Arquivo: folha.pdf e mais 1', JSON.stringify([a1, a2]));
-// como avisar (21/10/2026): o bipe sempre; atrás, o aviso do Windows junto, sem o som dele quando o bipe toca
+// como avisar: o bipe sempre (21/10/2026); atrás, o aviso do Windows junto, sempre com o som dele (26/10/2026: até ali ia
+// mudo quando o bipe tocava, e o bipe baixo passava batido — a mensagem chegava sem som que se ouvisse)
 const plano = op => JSON.stringify(comoAvisar(op));
-chk('na frente: o bipe e o recado, sem o aviso do Windows', plano({ frente: true, somPronto: true, podeNotificar: true }) === JSON.stringify({ bipe: true, recado: true, notificacao: false, semSom: true }));
-chk('atrás, com os avisos ligados: o bipe e o aviso do Windows sem o som dele (antes o aviso tomava o lugar do bipe)',
-  plano({ frente: false, somPronto: true, podeNotificar: true }) === JSON.stringify({ bipe: true, recado: false, notificacao: true, semSom: true }), plano({ frente: false, somPronto: true, podeNotificar: true }));
-chk('atrás, a tela sem nenhum clique (o navegador não deixa o bipe soar): o aviso do Windows com o som dele',
-  plano({ frente: false, somPronto: false, podeNotificar: true }) === JSON.stringify({ bipe: true, recado: false, notificacao: true, semSom: false }));
-chk('atrás, sem os avisos ligados: só o bipe', plano({ frente: false, somPronto: true, podeNotificar: false }) === JSON.stringify({ bipe: true, recado: false, notificacao: false, semSom: true }));
-chk('o bipe desligado no rodapé: sem bipe, e o aviso do Windows com o som dele', plano({ frente: false, somLigado: false, somPronto: true, podeNotificar: true }) === JSON.stringify({ bipe: false, recado: false, notificacao: true, semSom: false }));
-chk('no celular: nem bipe nem aviso do Windows (o recado, só com a tela na frente)', plano({ celular: true, frente: false, somPronto: true, podeNotificar: true }) === JSON.stringify({ bipe: false, recado: false, notificacao: false, semSom: false })
+chk('na frente: o bipe e o recado, sem o aviso do Windows', plano({ frente: true, podeNotificar: true }) === JSON.stringify({ bipe: true, recado: true, notificacao: false }));
+chk('atrás, com os avisos ligados: o bipe e o aviso do Windows (que leva o som dele)',
+  plano({ frente: false, podeNotificar: true }) === JSON.stringify({ bipe: true, recado: false, notificacao: true }), plano({ frente: false, podeNotificar: true }));
+chk('o plano não tem mais o "sem som": o aviso do Windows nunca vai mudo', !('semSom' in comoAvisar({ frente: false, podeNotificar: true, somPronto: true })));
+chk('atrás, sem os avisos ligados: só o bipe', plano({ frente: false, podeNotificar: false }) === JSON.stringify({ bipe: true, recado: false, notificacao: false }));
+chk('o bipe desligado no painel dos avisos: sem bipe, e o aviso do Windows', plano({ frente: false, somLigado: false, podeNotificar: true }) === JSON.stringify({ bipe: false, recado: false, notificacao: true }));
+chk('no celular: nem bipe nem aviso do Windows (o recado, só com a tela na frente)', plano({ celular: true, frente: false, podeNotificar: true }) === JSON.stringify({ bipe: false, recado: false, notificacao: false })
   && comoAvisar({ celular: true, frente: true }).recado === true && comoAvisar({ celular: true, frente: true }).bipe === false);
+chk('o bipe (26/10/2026): mais forte e mais longo que o de antes (pico 0,11, notas de 0,09 e 0,13 s), sem estourar',
+  BIPE.volume >= 0.3 && BIPE.volume <= 0.5 && BIPE.notas.length === 2 && BIPE.notas.every(([f, , d]) => f >= 600 && f <= 2000 && d >= 0.2)
+  && Math.max(...BIPE.notas.map(([, i, d]) => i + d)) >= 0.5 && Math.max(...BIPE.notas.map(([, i, d]) => i + d)) <= 1 && Object.isFrozen(BIPE) && Object.isFrozen(BIPE.notas[0]), JSON.stringify(BIPE));
+chk('religar a ligação ao vivo: logo na primeira queda, depois cada vez mais devagar, até 1 minuto',
+  [0, 1, 2, 3, 4, 9].map(esperaParaReligar).join() === '2000,5000,15000,30000,60000,60000' && esperaParaReligar(-2) === 2000 && esperaParaReligar('x') === 2000 && esperaParaReligar(1.7) === 5000,
+  [0, 1, 2, 3, 4, 9].map(esperaParaReligar).join());
+const diag = op => diagnosticoDosAvisos(op).map(i => i.id + ':' + (i.ok ? 'ok' : 'falta')).join(' ');
+chk('o painel dos avisos: tudo ligado e ao vivo', diag({ permissao: 'granted', bipe: true, caiu: false }) === 'windows:ok bipe:ok ligacao:ok', diag({ permissao: 'granted', bipe: true, caiu: false }));
+const dd = diagnosticoDosAvisos({ permissao: 'default', bipe: false, caiu: true });
+chk('o painel dos avisos: o que falta, em palavras — o aviso do Windows a ligar (com o botão), o bipe desligado, a ligação voltando',
+  diag({ permissao: 'default', bipe: false, caiu: true }) === 'windows:falta bipe:falta ligacao:falta' && dd[0].ligar === true && /Ainda não ligado/.test(dd[0].texto)
+  && /Desligado/.test(dd[1].texto) && /voltando sozinha/.test(dd[2].texto) && /a cada minuto/.test(dd[2].texto), JSON.stringify(dd));
+const dBloq = diagnosticoDosAvisos({ permissao: 'denied' })[0], dSem = diagnosticoDosAvisos({ permissao: 'sem' })[0];
+chk('bloqueado: diz onde liberar (o cadeado do endereço), sem botão de ligar; sem o recurso no navegador: só o bipe',
+  !dBloq.ok && /cadeado/.test(dBloq.texto) && /Permitir/.test(dBloq.texto) && !dBloq.ligar && !dSem.ok && /só o bipe/.test(dSem.texto) && !dSem.ligar);
+chk('o sininho do rodapé diz o principal', rotuloDosAvisos({ permissao: 'granted', bipe: true }) === 'Avisos ligados' && rotuloDosAvisos({ permissao: 'granted', bipe: false }) === 'Avisos · sem bipe'
+  && rotuloDosAvisos({ permissao: 'default' }) === 'Ligar os avisos' && rotuloDosAvisos({ permissao: 'denied', bipe: true }) === 'Avisos bloqueados'
+  && rotuloDosAvisos({ permissao: 'sem', bipe: true }) === 'Avisos: só o bipe' && rotuloDosAvisos({ permissao: 'sem', bipe: false }) === 'Avisos desligados');
 chk('quem avisa entre as abas: a da frente na hora; atrás, a que pode tocar o bipe antes da que não pode',
   esperaDoAviso({ frente: true, somPronto: false }) === 0 && esperaDoAviso({ somPronto: true, sorte: 0 }) === 350 && esperaDoAviso({ somPronto: true, sorte: 1 }) === 600
   && esperaDoAviso({ somPronto: false, sorte: 0 }) === 1600 && esperaDoAviso({ somPronto: true, sorte: 0.99 }) < esperaDoAviso({ somPronto: false, sorte: 0 }) && esperaDoAviso({ somPronto: true, sorte: 'x' }) === 350);

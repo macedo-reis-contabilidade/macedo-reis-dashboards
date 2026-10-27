@@ -192,10 +192,19 @@ window.__mockEmitir = (tabela, evento, linha) => entregar(tabela, evento, copia(
 window.__mockCanais = CANAIS;
 let ONLINE = [];
 window.__mockOnline = emails => { ONLINE = emails.slice(); CANAIS.forEach(c => c.ouvintes.filter(o => o.tipo === 'presence').forEach(o => o.cb({}))); };
+// o canal guarda quem ouve a situação dele (o subscribe): o servidor encerrar a ligação é window.__mockFecharCanal(começo
+// do nome) — sai da lista e avisa "CLOSED", como a biblioteca; o removeChannel faz o mesmo (26/10/2026, o religar do chat)
+window.__mockFecharCanal = prefixo => {
+  const c = CANAIS.find(x => x.nome.startsWith(prefixo));
+  if (!c) return false;
+  CANAIS.splice(CANAIS.indexOf(c), 1); c.removido = true;
+  if (c.status) c.status('CLOSED');
+  return true;
+};
 function canal(nome, opcoes) {
-  const c = { nome, opcoes, ouvintes: [], eu: null,
+  const c = { nome, opcoes, ouvintes: [], eu: null, status: null, removido: false,
     on(tipo, filtro, cb) { c.ouvintes.push({ tipo, filtro: filtro || {}, cb }); return c; },
-    subscribe(cb) { setTimeout(() => { if (cb) cb('SUBSCRIBED'); }, 10); return c; },
+    subscribe(cb) { c.status = cb || null; setTimeout(() => { if (cb && !c.removido) cb('SUBSCRIBED'); }, 10); return c; },
     async track(meta) { c.eu = (opcoes && opcoes.config && opcoes.config.presence && opcoes.config.presence.key) || 'eu'; setTimeout(() => c.ouvintes.filter(o => o.tipo === 'presence').forEach(o => o.cb({})), 10); return 'ok'; },
     presenceState() { const s = {}; [...ONLINE, ...(c.eu ? [c.eu] : [])].forEach(e => { s[e] = [{}]; }); return s; },
     async unsubscribe() { return 'ok'; } };
@@ -256,7 +265,12 @@ export const supabase = { from: q, auth: authFalso,
   rpc: async (nome, args) => (typeof window.__mockRpc === 'function' ? window.__mockRpc(nome, args || {}) : { data: [], error:null }) };
 supabase.todosClientes = async () => ({ data: DATA.clientes, error:null });
 supabase.channel = canal;
-supabase.removeChannel = async () => 'ok';
+supabase.removeChannel = async c => {
+  const i = CANAIS.indexOf(c);
+  if (i >= 0) CANAIS.splice(i, 1);
+  if (c && !c.removido) { c.removido = true; if (c.status) c.status('CLOSED'); }
+  return 'ok';
+};
 supabase.realtime = { setAuth: async () => {} };
 supabase.storage = storageFalso;
 // Edge Functions: quem responde é o teste, por window.__mockInvoke(nome, { body }) (o cadastro-socios.py usa pra

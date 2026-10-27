@@ -5,11 +5,12 @@
 // O banco guarda e manda na hora (tabelas chat_*, cada um lê só as conversas de que participa; conversa e grupo nascem
 // pelas funções chat_*; mensagem enviada só se apaga) — o tempo real do Supabase entrega a mensagem em todas as telas
 // abertas de quem participa.
-// O aviso é só no computador: um bipe curto a cada mensagem nova; com a tela do sistema na frente, o recado da carinha;
-// com ela atrás (outra janela na frente, minimizada), também o aviso do Windows (a notificação do navegador), sem o som
-// dele quando o bipe toca (21/10/2026: antes o aviso do Windows tomava o lugar do bipe, e no Windows que não mostra o
-// aviso a mensagem chegava muda — comoAvisar). No celular, nada: só o número no balão. Com várias abas do sistema
-// abertas, uma avisa (a da frente, se houver; atrás, a que pode tocar o bipe).
+// O aviso é só no computador: o bipe a cada mensagem nova; com a tela do sistema na frente, o recado da carinha; com ela
+// atrás (outra janela na frente, minimizada), também o aviso do Windows (a notificação do navegador), sempre com o som dele
+// (26/10/2026 — comoAvisar). No celular, nada: só o número no balão. Com várias abas do sistema abertas, uma avisa (a da
+// frente, se houver; atrás, a que pode tocar o bipe). O sininho do rodapé abre "Avisos deste computador": o que está
+// ligado, o que falta e o "Testar o aviso" (diagnosticoDosAvisos). A ligação ao vivo que cai volta sozinha
+// (esperaParaReligar); até voltar, o chat confere a cada minuto.
 // Os emojis (20/10/2026): o botão da carinha ao lado do clipe abre o painel (os usados por último e os grupos); a mensagem
 // só de emoji sai maior.
 // A resposta (20/10/2026), como no WhatsApp: o "Responder" da mensagem põe a barra "Respondendo a…" em cima da caixa; a
@@ -191,15 +192,42 @@ export function ehCelular(nav = typeof navigator !== 'undefined' ? navigator : n
   if (nav && nav.userAgentData && nav.userAgentData.mobile) return true;
   try { return !!(mm && mm('(pointer: coarse)').matches && !mm('(pointer: fine)').matches); } catch (e) { return false; }
 }
-// como avisar a mensagem que ninguém está vendo (21/10/2026): o bipe sempre, com a tela na frente ou atrás; na frente, o
-// recado da carinha; atrás, com os avisos ligados, o aviso do Windows junto — sem o som dele quando o bipe vai tocar. Antes,
-// atrás, o aviso do Windows tomava o lugar do bipe, e no escritório o Windows não mostrava o aviso: a mensagem chegava
-// muda. Sem o som pronto (a tela ainda sem clique nem tecla, e o navegador não deixa tocar), o aviso do Windows leva o som
-// dele. No celular, nem bipe nem aviso do Windows
-export function comoAvisar({ frente = false, celular = false, somLigado = true, somPronto = false, podeNotificar = false } = {}) {
-  if (celular) return { bipe: false, recado: !!frente, notificacao: false, semSom: false };
-  const bipe = !!somLigado;
-  return { bipe, recado: !!frente, notificacao: !frente && !!podeNotificar, semSom: bipe && !!somPronto };
+// como avisar a mensagem que ninguém está vendo: o bipe sempre (21/10/2026), com a tela na frente ou atrás; na frente, o
+// recado da carinha; atrás, com os avisos ligados, o aviso do Windows junto — sempre com o som dele (26/10/2026, pedido do
+// Samuel: "quero que funcione, com som e com aviso do windows". Até ali ele ia mudo quando o bipe tocava, pra soar uma vez
+// só, e o bipe de antes, duas notas baixas de 0,1 s, passava batido: a mensagem chegava sem som que se ouvisse). No
+// celular, nem bipe nem aviso do Windows
+export function comoAvisar({ frente = false, celular = false, somLigado = true, podeNotificar = false } = {}) {
+  if (celular) return { bipe: false, recado: !!frente, notificacao: false };
+  return { bipe: !!somLigado, recado: !!frente, notificacao: !frente && !!podeNotificar };
+}
+// o bipe (26/10/2026: mais forte e mais longo): duas notas de sino, a segunda mais aguda, meio segundo no total — cada nota
+// [frequência em Hz, começo em s, duração em s] — e o volume do pico (o de antes: 0,11, notas de 0,09 e 0,13 s)
+export const BIPE = Object.freeze({ notas: Object.freeze([Object.freeze([880, 0, 0.24]), Object.freeze([1318.5, 0.2, 0.36])]), volume: 0.35, onda: 'triangle' });
+// quanto esperar pra religar a ligação ao vivo depois de n quedas seguidas (26/10/2026: quando o servidor encerrava a
+// ligação — o login venceu com o computador dormindo, a aba parada —, a tela ficava o resto do dia conferindo a cada
+// minuto): logo na primeira, depois cada vez mais devagar, até 1 minuto
+export const esperaParaReligar = n => [2000, 5000, 15000, 30000, 60000][Math.max(0, Math.min(4, Math.floor(Number(n) || 0)))];
+// os avisos deste computador (o sininho do rodapé, 26/10/2026): o que está certo e o que falta, em palavras.
+// permissao: a do navegador pro aviso do Windows ('granted', 'denied', 'default'; 'sem' = o navegador não tem), bipe: ligado
+// neste computador, caiu: a ligação ao vivo caiu (o chat confere a cada minuto até ela voltar)
+export function diagnosticoDosAvisos({ permissao = 'sem', bipe = true, caiu = false } = {}) {
+  const windows = permissao === 'granted' ? { ok: true, texto: 'Ligado neste navegador.' }
+    : permissao === 'denied' ? { ok: false, texto: 'Bloqueado neste navegador: clique no cadeado ao lado do endereço, em Notificações escolha Permitir e recarregue a tela.' }
+      : permissao === 'default' ? { ok: false, texto: 'Ainda não ligado neste computador.', ligar: true }
+        : { ok: false, texto: 'Este navegador não tem o aviso do Windows; fica só o bipe.' };
+  return [
+    { id: 'windows', titulo: 'Aviso do Windows', ...windows },
+    { id: 'bipe', titulo: 'Bipe', ok: !!bipe, texto: bipe ? 'Ligado.' : 'Desligado: a mensagem nova não toca.' },
+    { id: 'ligacao', titulo: 'Ligação com o chat', ok: !caiu, texto: caiu ? 'Caiu; está voltando sozinha. Enquanto isso, o chat confere a cada minuto.' : 'Ao vivo.' }
+  ];
+}
+// o que o sininho do rodapé diz
+export function rotuloDosAvisos({ permissao = 'sem', bipe = true } = {}) {
+  if (permissao === 'denied') return 'Avisos bloqueados';
+  if (permissao === 'default') return 'Ligar os avisos';
+  if (permissao !== 'granted') return bipe ? 'Avisos: só o bipe' : 'Avisos desligados';
+  return bipe ? 'Avisos ligados' : 'Avisos · sem bipe';
 }
 // quanto cada aba espera antes de avisar (uma aba só avisa cada mensagem): a da frente, nada; atrás, a que pode tocar o
 // bipe vem antes da que não pode — e um tanto ao acaso, pras abas não empatarem
@@ -378,7 +406,8 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     convs: new Map(), pessoas: [], online: new Set(), aberta: typeof salvo.aberta === 'string' ? salvo.aberta : null,
     vista: ['lista', 'conversa', 'novo', 'grupo'].includes(salvo.vista) ? salvo.vista : 'lista',
     msgs: [], membros: [], temAntigas: false, carregando: false, pendentes: [], busca: '', achadas: null, lidoAoAbrir: null,
-    pronto: false, erro: '', caiu: false, confirmarApagar: null, menu: false, emojis: false, abaEmoji: null, respondendo: null
+    pronto: false, erro: '', caiu: false, confirmarApagar: null, menu: false, emojis: false, abaEmoji: null, respondendo: null,
+    painelAvisos: false, teste: null
   };
   const urls = new Map();   // os links assinados dos arquivos (valem 1 hora)
   const citadas = new Map();   // as mensagens citadas que não estão na página aberta (null = não achou)
@@ -394,8 +423,10 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     + '<div class="ch-ativar-botoes"><button type="button" class="as-botao as-botao-pri" data-ch="ativar">Ativar avisos</button><button type="button" class="as-botao as-botao-link" data-ch="agora-nao">Agora não</button></div></div>'
     + '<div class="ch-busca"><input type="search" maxlength="80" placeholder="Buscar pessoa, grupo ou mensagem" aria-label="Buscar pessoa, grupo ou mensagem"></div>'
     + '<div class="ch-rolar ch-rolar-lista"><ul class="ch-conversas"></ul><div class="ch-achadas" hidden></div></div>'
+    + '<div class="ch-pa" id="ch-avisos-painel" role="region" aria-label="Avisos deste computador" hidden></div>'
     + '<div class="ch-rodape"><button type="button" class="ch-rodape-btn" data-ch="novo-grupo">' + ICONE.grupo + '<span>Novo grupo</span></button>'
-    + '<button type="button" class="ch-rodape-btn" data-ch="avisos">' + ICONE.sino + '<span class="ch-avisos-txt"></span></button></div>'
+    + '<button type="button" class="ch-rodape-btn" data-ch="avisos" aria-expanded="false" aria-controls="ch-avisos-painel" title="Ver e testar os avisos deste computador: o bipe e o aviso do Windows">'
+    + ICONE.sino + '<span class="ch-avisos-txt"></span></button></div>'
     + '</div>'
     + '<div class="ch-col ch-col-conversa">'
     + '<div class="ch-vazio-dir"><p>Escolha uma conversa ao lado.</p></div>'
@@ -518,10 +549,14 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
   const vendo = id => conversaNaTela(id) && naFrente();
 
   // ---------- os avisos ----------
-  const CHAVE_AVISADAS = 'mr_chat_avisadas:' + eu, CHAVE_SOM = 'mr_chat_som:' + eu, CHAVE_ATIVAR = 'mr_chat_ativar:' + eu;
+  // o bipe ligado ou não fica neste navegador. 26/10/2026: a chave nova, ligada pra todo mundo — com a de antes
+  // (mr_chat_som), um clique no sininho do rodapé desligava o bipe sem querer; agora o sininho abre o painel dos avisos e o
+  // bipe liga e desliga só lá, com o nome escrito
+  const CHAVE_AVISADAS = 'mr_chat_avisadas:' + eu, CHAVE_BIPE = 'mr_chat_bipe:' + eu, CHAVE_ATIVAR = 'mr_chat_ativar:' + eu;
   const lerLocal = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
   const gravarLocal = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* sem armazenamento */ } };
-  const somLigado = () => lerLocal(CHAVE_SOM) !== 'nao';
+  try { localStorage.removeItem('mr_chat_som:' + eu); } catch (e) { /* sem armazenamento */ }
+  const somLigado = () => lerLocal(CHAVE_BIPE) !== 'nao';
   // uma aba avisa por mensagem: quem chega primeiro marca (a da frente não espera; as outras esperam um pouco)
   async function reivindicar(id, atraso) {
     if (atraso) await espera(atraso);
@@ -544,7 +579,7 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     if (audio && audio.state === 'running') return true;
     try { return !!(navigator.userActivation && navigator.userActivation.hasBeenActive); } catch (e) { return false; }
   };
-  // o bipe: duas notas curtas e baixas; diz se vai soar
+  // o bipe (as notas e o volume em BIPE, lá em cima); diz se vai soar
   function bipe() {
     if (celular || !somLigado()) return false;
     const pronto = somPronto();
@@ -553,11 +588,11 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
       destravarSom();
       if (!audio) return false;
       const t = audio.currentTime + 0.02;
-      [[880, 0, 0.09], [1175, 0.11, 0.13]].forEach(([f, ini, dur]) => {
+      BIPE.notas.forEach(([f, ini, dur]) => {
         const o = audio.createOscillator(), g = audio.createGain();
-        o.type = 'sine'; o.frequency.value = f;
+        o.type = BIPE.onda; o.frequency.value = f;
         g.gain.setValueAtTime(0.0001, t + ini);
-        g.gain.exponentialRampToValueAtTime(0.11, t + ini + 0.015);
+        g.gain.exponentialRampToValueAtTime(BIPE.volume, t + ini + 0.012);
         g.gain.exponentialRampToValueAtTime(0.0001, t + ini + dur);
         o.connect(g); g.connect(audio.destination);
         o.start(t + ini); o.stop(t + ini + dur + 0.03);
@@ -565,15 +600,17 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
       return pronto;
     } catch (e) { return false; }
   }
-  const podeNotificar = () => !celular && typeof Notification !== 'undefined' && Notification.permission === 'granted';
-  // o aviso do Windows (a notificação do navegador): clicar abre a conversa nesta aba; sem o som dele quando o bipe toca
-  function notificar(c, m, { semSom = false } = {}) {
+  // a permissão do navegador pro aviso do Windows ('sem' no celular e no navegador que não tem)
+  const permissaoAgora = () => (celular || typeof Notification === 'undefined' ? 'sem' : Notification.permission);
+  const podeNotificar = () => permissaoAgora() === 'granted';
+  // o aviso do Windows (a notificação do navegador), sempre com o som dele: clicar abre a conversa nesta aba
+  function notificar(c, m) {
     if (!podeNotificar()) return false;
     const { titulo, corpo } = textoDoAviso(c, m, eu);
     try {
-      const n = new Notification(titulo, { body: corpo, tag: 'mr-chat-' + c.conversa_id, renotify: true, silent: !!semSom });
+      const n = new Notification(titulo, { body: corpo, tag: 'mr-chat-' + c.conversa_id, renotify: true, silent: false });
       n.onclick = () => { try { window.focus(); } catch (e) { /* foco */ } abrirConversa(c.conversa_id, { mostrar: true }); try { n.close(); } catch (e) { /* já fechou */ } };
-      avisa('mr:chat-aviso', { tipo: 'notificacao', conversa: c.conversa_id, titulo, corpo, semSom: !!semSom });
+      avisa('mr:chat-aviso', { tipo: 'notificacao', conversa: c.conversa_id, titulo, corpo });
       return true;
     } catch (e) { return false; }
   }
@@ -585,9 +622,9 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     const frente = naFrente();
     reivindicar(String(m.id), esperaDoAviso({ frente, somPronto: somPronto() })).then(ganhou => {
       if (!ganhou) return;
-      const plano = comoAvisar({ frente, celular, somLigado: somLigado(), somPronto: somPronto(), podeNotificar: podeNotificar() });
-      const tocou = plano.bipe ? bipe() : false;
-      if (plano.notificacao) notificar(c, m, { semSom: plano.semSom && tocou });
+      const plano = comoAvisar({ frente, celular, somLigado: somLigado(), podeNotificar: podeNotificar() });
+      if (plano.bipe) bipe();
+      if (plano.notificacao) notificar(c, m);
       if (plano.recado) {
         let aberto = false;
         try { aberto = ctl.ativa(); } catch (e) { aberto = false; }
@@ -604,24 +641,89 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
   }
   // o botão do aviso (no recado da carinha): abre a tela nesta aba, como o link da mensagem
   const irPara = href => { try { window.location.assign(href); } catch (e) { /* fora do navegador */ } };
-  function textoDosAvisos() {
-    if (celular) return '';
-    if (typeof Notification === 'undefined') return 'Avisos: só o bipe';
-    if (Notification.permission === 'granted') return 'Avisos ligados' + (somLigado() ? '' : ' · sem bipe');
-    if (Notification.permission === 'denied') return 'Avisos bloqueados';
-    return 'Ativar avisos';
-  }
+  // ---------- os avisos deste computador: o sininho do rodapé (26/10/2026) ----------
+  // o que está ligado e o que falta (diagnosticoDosAvisos, lá em cima) e o teste: o bipe e um aviso do Windows agora; a
+  // pessoa diz o que viu e ouviu, e o painel diz o que fazer
+  const painelEl = q('.ch-pa'), avisosBtn = q('[data-ch="avisos"]');
+  const navegador = () => { try { return /Edg\//.test(navigator.userAgent) ? 'Microsoft Edge' : 'Google Chrome'; } catch (e) { return 'navegador'; } };
+  const noWindows = () => { try { return /Windows/.test(navigator.userAgent); } catch (e) { return false; } };
   function desenharAvisos() {
-    const b = q('[data-ch="avisos"]'), t = q('.ch-avisos-txt');
-    if (!b || !t) return;
-    t.textContent = textoDosAvisos();
-    const permissao = typeof Notification !== 'undefined' ? Notification.permission : '';
-    b.title = permissao === 'denied'
-      ? 'O navegador bloqueou os avisos deste site: clique no cadeado ao lado do endereço e libere as notificações.'
-      : permissao === 'default'
-        ? 'Clique pra ligar o aviso do Windows, que aparece com o sistema atrás de outra janela. O bipe já toca a cada mensagem nova.'
-        : 'O bipe toca a cada mensagem nova e, com o sistema atrás de outra janela, vem também o aviso do Windows; clique pra ' + (somLigado() ? 'desligar' : 'ligar') + ' o bipe.';
-    ativarEl.hidden = celular || typeof Notification === 'undefined' || Notification.permission !== 'default' || lerLocal(CHAVE_ATIVAR) === new Date().toISOString().slice(0, 10);
+    const t = q('.ch-avisos-txt');
+    const permissao = permissaoAgora();
+    if (t) t.textContent = celular ? '' : rotuloDosAvisos({ permissao, bipe: somLigado() });
+    if (avisosBtn) avisosBtn.classList.toggle('ch-falta', !celular && (permissao !== 'granted' || !somLigado()));
+    ativarEl.hidden = celular || permissao !== 'default' || lerLocal(CHAVE_ATIVAR) === new Date().toISOString().slice(0, 10);
+    desenharPainelAvisos();
+  }
+  const botaoPa = (ch, rotulo, pri) => '<button type="button" class="as-botao' + (pri ? ' as-botao-pri' : '') + '" data-ch="' + ch + '">' + escapeHtml(rotulo) + '</button>';
+  function htmlDoTeste() {
+    const t = st.teste, nav = navegador();
+    if (!t) return '<p>Toca o bipe e manda um aviso do Windows de teste agora, pra conferir este computador.</p>'
+      + '<div class="ch-pa-botoes">' + botaoPa('avisos-testar', 'Testar o aviso', true) + '</div>';
+    if (!t.bipe && !t.aviso) return '<p class="ch-pa-forte">Nada pra testar: o bipe está desligado e o aviso do Windows não está ligado neste computador.</p>';
+    let h = '<p>' + (t.bipe && t.aviso ? 'Tocou o bipe e foi um aviso do Windows de teste' : t.bipe ? 'Tocou o bipe' : 'Foi um aviso do Windows de teste')
+      + (t.aviso ? ' (ele aparece no canto da tela, embaixo à direita)' : '') + '.</p>';
+    if (t.erro) h += '<p class="ch-pa-forte">O ' + nav + ' não conseguiu mostrar o aviso.</p>';
+    if (!t.resposta) {
+      const respostas = t.bipe && t.aviso ? [['teste-tudo', 'Ouvi e vi'], ['teste-sem-aviso', 'Não vi o aviso'], ['teste-sem-bipe', 'Não ouvi o bipe']]
+        : t.bipe ? [['teste-tudo', 'Ouvi'], ['teste-sem-bipe', 'Não ouvi']] : [['teste-tudo', 'Vi'], ['teste-sem-aviso', 'Não vi']];
+      return h + '<p>' + (t.bipe && t.aviso ? 'Ouviu o bipe e viu o aviso?' : t.bipe ? 'Ouviu o bipe?' : 'Viu o aviso?') + '</p>'
+        + '<div class="ch-pa-botoes">' + respostas.map(([ch, r]) => botaoPa(ch, r)).join('') + '</div>';
+    }
+    if (t.resposta === 'tudo') h += '<p class="ch-pa-forte">' + (t.bipe && t.aviso ? 'Tudo certo neste computador: a mensagem nova toca e, com o sistema atrás de outra janela, aparece o aviso do Windows.'
+      : t.bipe ? 'O bipe funciona. Falta ligar o aviso do Windows (acima).' : 'O aviso do Windows funciona. O bipe está desligado (acima).') + '</p>';
+    else if (t.resposta === 'sem-aviso') h += '<p class="ch-pa-forte">O Windows está escondendo os avisos do ' + nav + '.</p>'
+      + '<p>Em Configurações › Sistema › Notificações: deixe as notificações ligadas, ligue o ' + nav + ' (com as faixas e o som) e desligue o Não incomodar. Depois, teste de novo.</p>'
+      + (noWindows() ? '<p><a href="ms-settings:notifications">Abrir as notificações do Windows</a></p>' : '');
+    else if (t.resposta === 'sem-bipe') h += '<p class="ch-pa-forte">O som do ' + nav + ' não está saindo neste computador.</p>'
+      + '<p>Confira o ' + nav + ' no Mixer de volume do Windows e se a aba do sistema não está sem som (botão direito na aba). Depois, teste de novo.</p>'
+      + (noWindows() ? '<p><a href="ms-settings:apps-volume">Abrir o Mixer de volume</a></p>' : '');
+    return h + '<div class="ch-pa-botoes">' + botaoPa('avisos-testar', 'Testar de novo') + '</div>';
+  }
+  let painelHtml = '';
+  function desenharPainelAvisos() {
+    if (avisosBtn) avisosBtn.setAttribute('aria-expanded', String(!!st.painelAvisos && !celular));
+    if (!painelEl) return;
+    painelEl.hidden = !st.painelAvisos || celular;
+    if (painelEl.hidden) { painelHtml = ''; return; }
+    const extra = i => i.id === 'windows' && i.ligar ? '<button type="button" class="as-botao as-botao-link" data-ch="ativar-pa">Ligar o aviso do Windows</button>'
+      : i.id === 'bipe' ? '<button type="button" class="as-botao as-botao-link" data-ch="bipe-alternar">' + (somLigado() ? 'Desligar o bipe' : 'Ligar o bipe') + '</button>' : '';
+    const itens = diagnosticoDosAvisos({ permissao: permissaoAgora(), bipe: somLigado(), caiu: st.caiu });
+    const html = '<div class="ch-pa-topo"><b>Avisos deste computador</b><button type="button" class="ch-icone" data-ch="avisos-fechar" aria-label="Fechar os avisos" title="Fechar">' + ICONE.x + '</button></div>'
+      + '<ul class="ch-pa-itens">' + itens.map(i => '<li class="ch-pa-item ' + (i.ok ? 'ch-pa-ok' : 'ch-pa-falta') + '" data-item="' + i.id + '"><span class="ch-pa-marca" aria-hidden="true"></span>'
+        + '<div class="ch-pa-txt"><b>' + escapeHtml(i.titulo) + '</b><span>' + escapeHtml(i.texto) + '</span>' + extra(i) + '</div></li>').join('') + '</ul>'
+      + '<div class="ch-pa-teste">' + htmlDoTeste() + '</div>';
+    // só troca o que mudou: a lista redesenha toda hora, e o foco de quem está no painel não pode sumir
+    if (html !== painelHtml) { painelEl.innerHTML = html; painelHtml = html; }
+  }
+  // depois de um clique no painel: o foco no botão que faz sentido, se o de antes sumiu
+  const focarNoPainel = sel => { if (painelEl && !painelEl.hidden && !painelEl.contains(document.activeElement)) { const b = painelEl.querySelector(sel); if (b) b.focus({ preventScroll: true }); } };
+  // o resultado do teste fica no fim do painel: rola até ele
+  const rolarProTeste = () => { if (painelEl && !painelEl.hidden) painelEl.scrollTop = painelEl.scrollHeight; };
+  function abrirPainelAvisos(abrir, { foco = false } = {}) {
+    st.painelAvisos = !!abrir && !celular;
+    if (st.painelAvisos) st.teste = null;
+    desenharAvisos();
+    if (st.painelAvisos) { try { painelEl.scrollIntoView({ block: 'nearest' }); } catch (e) { /* sem rolar */ } if (foco) focarNoPainel('[data-ch="avisos-testar"]'); }
+  }
+  async function testarAviso() {
+    destravarSom();   // o clique no botão libera o som desta tela
+    if (permissaoAgora() === 'default') { try { await Notification.requestPermission(); } catch (e) { /* recusado */ } }
+    const comBipe = somLigado();
+    if (comBipe) bipe();
+    let comAviso = false;
+    if (podeNotificar()) {
+      try {
+        const n = new Notification('Teste do aviso do chat', { body: 'Se você está vendo isto, o aviso do Windows funciona neste computador.', tag: 'mr-chat-teste', renotify: true, silent: false });
+        n.onclick = () => { try { window.focus(); n.close(); } catch (e) { /* já fechou */ } };
+        n.onerror = () => { if (st.teste) { st.teste.erro = true; desenharPainelAvisos(); } };
+        avisa('mr:chat-aviso', { tipo: 'notificacao', teste: true, titulo: 'Teste do aviso do chat' });
+        comAviso = true;
+      } catch (e) { comAviso = false; }
+    }
+    st.teste = { bipe: comBipe, aviso: comAviso, resposta: null, erro: false };
+    desenharAvisos();
+    try { ctl.anunciar(comBipe || comAviso ? 'Teste feito. Responda no painel o que ouviu e viu.' : 'Nada pra testar: o bipe e o aviso do Windows estão desligados.'); } catch (e) { /* sem leitor */ }
   }
   async function pedirAvisos() {
     if (typeof Notification === 'undefined') return;
@@ -1183,9 +1285,20 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
     else if (k === 'sair-nao') { st.confirmarSair = false; desenharGrupo(); }
     else if (k === 'novo-grupo') { st.vista = 'novo'; guardarAba(); if (!st.pessoas.length) await carregarPessoas(); desenharNovo(); aplicarColunas(); setTimeout(() => vNovo.querySelector('[data-ch="nome-grupo"]').focus({ preventScroll: true }), 20); }
     else if (k === 'criar-grupo') criarGrupo();
-    else if (k === 'avisos') {
-      if (typeof Notification !== 'undefined' && Notification.permission === 'default') pedirAvisos();
-      else { gravarLocal(CHAVE_SOM, somLigado() ? 'nao' : 'sim'); desenharAvisos(); try { ctl.anunciar(somLigado() ? 'Bipe ligado.' : 'Bipe desligado.'); } catch (e) { /* sem leitor */ } if (somLigado()) bipe(); }
+    // o sininho do rodapé abre e fecha "Avisos deste computador" (até 26/10/2026, um clique nele desligava o bipe)
+    else if (k === 'avisos') abrirPainelAvisos(!st.painelAvisos, { foco: ev.detail === 0 });
+    else if (k === 'avisos-fechar') { abrirPainelAvisos(false); if (avisosBtn) avisosBtn.focus({ preventScroll: true }); }
+    else if (k === 'avisos-testar') { await testarAviso(); focarNoPainel('.ch-pa-teste .as-botao'); rolarProTeste(); }
+    else if (k === 'ativar-pa') { await pedirAvisos(); focarNoPainel('[data-ch="avisos-testar"]'); }
+    else if (k === 'bipe-alternar') {
+      gravarLocal(CHAVE_BIPE, somLigado() ? 'nao' : 'sim'); st.teste = null; desenharAvisos();
+      try { ctl.anunciar(somLigado() ? 'Bipe ligado.' : 'Bipe desligado.'); } catch (e) { /* sem leitor */ }
+      if (somLigado()) bipe();
+      focarNoPainel('[data-ch="bipe-alternar"]');
+    }
+    else if (k === 'teste-tudo' || k === 'teste-sem-aviso' || k === 'teste-sem-bipe') {
+      if (st.teste) st.teste.resposta = k.slice(6);
+      desenharPainelAvisos(); focarNoPainel('.ch-pa-teste .as-botao'); rolarProTeste();
     }
     else if (k === 'ativar') { gravarLocal(CHAVE_ATIVAR, new Date().toISOString().slice(0, 10)); pedirAvisos(); }
     else if (k === 'agora-nao') { gravarLocal(CHAVE_ATIVAR, new Date().toISOString().slice(0, 10)); desenharAvisos(); }
@@ -1209,6 +1322,10 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
   el.addEventListener('keydown', ev => {
     if (ev.key === 'Escape' && st.emojis) { ev.preventDefault(); ev.stopPropagation(); const naCaixa = ev.target === ta; fecharEmojis(); if (!naCaixa) emojiBtn.focus({ preventScroll: true }); return; }
     if (ev.key === 'Escape' && st.menu) { ev.preventDefault(); ev.stopPropagation(); fecharMenu(); menuBtn.focus({ preventScroll: true }); return; }
+    // Esc no painel dos avisos (ou no sininho): fecha só ele
+    if (ev.key === 'Escape' && st.painelAvisos && (painelEl.contains(ev.target) || ev.target === avisosBtn)) {
+      ev.preventDefault(); ev.stopPropagation(); abrirPainelAvisos(false); if (avisosBtn) avisosBtn.focus({ preventScroll: true }); return;
+    }
     // Esc na conversa com a resposta montada: desiste dela (o painel fica aberto)
     if (ev.key === 'Escape' && st.respondendo && vConversa.contains(ev.target)) { ev.preventDefault(); ev.stopPropagation(); desistirDeResponder({ foco: true }); }
   });
@@ -1271,49 +1388,98 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
       if (st.vista === 'conversa') desenharMensagens();
     }
   }
-  let canal = null, online = null;
-  async function ligarTempoReal() {
-    if (typeof supabase.channel !== 'function') return;
+  // A ligação ao vivo. 26/10/2026: quando o servidor encerra a ligação (o login venceu com o computador dormindo, a aba
+  // parada), a biblioteca não volta sozinha — e a tela ficava o resto do dia conferindo a cada minuto, com o aviso atrasado
+  // e em dobro com outra aba. Agora a tela troca o canal: logo depois de fechar (esperaParaReligar), ou, depois de um erro
+  // de que a biblioteca tenta voltar sozinha, se em 20 s ela não voltou; e na hora, quando a tela volta pra frente ou a
+  // internet volta. Cada canal novo tem um nome novo (a biblioteca devolve o canal velho com o mesmo nome se ele ainda
+  // estiver na lista dela), e o que vier de um canal já trocado não conta
+  let canal = null, online = null, nCanal = 0, religarTimer = null, religarEm = 0, quedas = 0;
+  const caiuAgora = () => { if (!st.caiu) { st.caiu = true; desenharPainelAvisos(); } };
+  function montarCanal() {
+    const c = supabase.channel('chat-db:' + eu + (nCanal ? ':' + nCanal : ''));
+    nCanal++;
+    canal = c;
+    const deste = f => p => { if (c === canal) f(p); };
+    c.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_mensagens' }, deste(p => aoChegar(p && p.new)))
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_mensagens' }, deste(p => aoMudarMensagem(p && p.new)))
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_membros', filter: 'email=eq.' + eu }, deste(() => sincronizar()))
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_membros' }, deste(p => aoMudarMembro(p && p.new)))
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_conversas' }, deste(p => { const r = p && p.new, cv = r && conv(r.id); if (cv && r.titulo !== cv.titulo) { cv.titulo = r.titulo; desenharLista(); desenharCabecalho(); } }))
+      .subscribe(status => {
+        if (c !== canal) return;
+        if (status === 'SUBSCRIBED') {
+          quedas = 0; pararReligar();
+          if (st.caiu) { st.caiu = false; desenharPainelAvisos(); sincronizar({ avisar: true }); if (st.aberta) recarregarAberta(); }
+        }
+        else if (status === 'CLOSED') { caiuAgora(); agendarReligar(esperaParaReligar(quedas++)); }
+        else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') { caiuAgora(); agendarReligar(Math.max(20000, esperaParaReligar(quedas++))); }
+      });
+    return c;
+  }
+  function pararReligar() { if (religarTimer) clearTimeout(religarTimer); religarTimer = null; religarEm = 0; }
+  // marca a troca do canal daqui a ms (se já tem uma marcada pra antes, fica a de antes)
+  function agendarReligar(ms) {
+    const quando = Date.now() + Math.max(0, ms);
+    if (religarTimer && religarEm <= quando) return;
+    pararReligar();
+    religarEm = quando;
+    religarTimer = setTimeout(() => { religarTimer = null; religarEm = 0; religar(); }, Math.max(0, ms));
+  }
+  async function religar() {
+    if (!st.caiu || typeof supabase.channel !== 'function') return;
+    const velho = canal;
+    canal = null;   // daqui em diante, o que vier do canal velho não conta
+    if (velho && typeof supabase.removeChannel === 'function') { try { await Promise.race([supabase.removeChannel(velho), espera(5000)]); } catch (e) { /* já tinha caído */ } }
     try { if (supabase.realtime && typeof supabase.realtime.setAuth === 'function') await supabase.realtime.setAuth(); } catch (e) { /* segue com o token da sessão */ }
+    try { montarCanal(); } catch (e) { canal = null; agendarReligar(esperaParaReligar(quedas++)); }
+    // a presença fechada (fora da lista da biblioteca) volta junto; com erro, a biblioteca tenta sozinha
+    if (online && online.state === 'closed') ligarPresenca();
+  }
+  // quem está com o sistema aberto: o canal privado "chat:online" (só com login)
+  function ligarPresenca() {
     try {
-      canal = supabase.channel('chat-db:' + eu)
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_mensagens' }, p => aoChegar(p && p.new))
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_mensagens' }, p => aoMudarMensagem(p && p.new))
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_membros', filter: 'email=eq.' + eu }, () => sincronizar())
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_membros' }, p => aoMudarMembro(p && p.new))
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_conversas' }, p => { const r = p && p.new, c = r && conv(r.id); if (c && r.titulo !== c.titulo) { c.titulo = r.titulo; desenharLista(); desenharCabecalho(); } })
-        .subscribe(status => {
-          if (status === 'SUBSCRIBED') { if (st.caiu) { st.caiu = false; sincronizar({ avisar: true }); if (st.aberta) recarregarAberta(); } }
-          else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') st.caiu = true;
-        });
-    } catch (e) { canal = null; }
-    // quem está com o sistema aberto: o canal privado "chat:online" (só com login)
-    try {
-      online = supabase.channel('chat:online', { config: { private: true, presence: { key: eu } } });
-      online.on('presence', { event: 'sync' }, () => {
+      const o = supabase.channel('chat:online', { config: { private: true, presence: { key: eu } } });
+      online = o;
+      o.on('presence', { event: 'sync' }, () => {
+        if (o !== online) return;
         let s = {};
-        try { s = online.presenceState() || {}; } catch (e) { s = {}; }
+        try { s = o.presenceState() || {}; } catch (e) { s = {}; }
         st.online = new Set(Object.keys(s).map(k => k.toLowerCase()));
         desenharLista(); if (st.vista === 'conversa') desenharCabecalho(); if (st.vista === 'grupo') desenharGrupo();
         try { ctl.status(); } catch (e) { /* sem balão */ }
-      }).subscribe(async status => { if (status === 'SUBSCRIBED') { try { await online.track({ desde: new Date().toISOString() }); } catch (e) { /* sem presença */ } } });
+      }).subscribe(async status => { if (o === online && status === 'SUBSCRIBED') { try { await o.track({ desde: new Date().toISOString() }); } catch (e) { /* sem presença */ } } });
     } catch (e) { online = null; }
+  }
+  async function ligarTempoReal() {
+    if (typeof supabase.channel !== 'function') return;
+    try { if (supabase.realtime && typeof supabase.realtime.setAuth === 'function') await supabase.realtime.setAuth(); } catch (e) { /* segue com o token da sessão */ }
+    try { montarCanal(); } catch (e) { canal = null; }
+    ligarPresenca();
   }
 
   // ---------- a vida da aba ----------
-  // voltou pra tela (o computador acordou, a janela veio pra frente): o que chegou enquanto isso e o lido da conversa aberta
+  // voltou pra tela (o computador acordou, a janela veio pra frente): a ligação, se caiu, o que chegou enquanto isso e o
+  // lido da conversa aberta
   let ultimaVolta = 0;
   const aoVoltar = () => {
     if (!st.pronto) return;
+    if (st.caiu) agendarReligar(0);
     if (st.aberta && vendo(st.aberta)) marcarLido();
     if (Date.now() - ultimaVolta > 30e3) { ultimaVolta = Date.now(); sincronizar({ avisar: true }); }
   };
   window.addEventListener('focus', aoVoltar);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') aoVoltar(); });
-  window.addEventListener('online', () => sincronizar({ avisar: true }));
+  window.addEventListener('online', () => { sincronizar({ avisar: true }); if (st.caiu) agendarReligar(1000); });
   // a conferência de garantia: a cada 5 minutos (a cada 1 com o tempo real fora)
   setInterval(() => { if (document.visibilityState === 'visible' || st.caiu) sincronizar({ avisar: true }); }, 60e3 * 5);
-  setInterval(() => { if (st.caiu) sincronizar({ avisar: true }); }, 60e3);
+  // a cada minuto: com a ligação fora, confere as mensagens; e o canal que parou sem avisar (fechado ou com erro, sem
+  // nada marcado pra religar) entra na fila de religar
+  setInterval(() => {
+    const est = canal && typeof canal.state === 'string' ? canal.state : '';
+    if (est && est !== 'joined' && est !== 'joining' && !religarTimer) { caiuAgora(); agendarReligar(esperaParaReligar(quedas++)); }
+    if (st.caiu) sincronizar({ avisar: true });
+  }, 60e3);
 
   async function comecar() {
     desenharLista();
@@ -1339,7 +1505,7 @@ export function montarChatEquipe({ supabase, email, el, ctl }) {
         msgsEl.scrollTop = msgsEl.scrollHeight;
       }
     },
-    aoEsconder() { fecharMenu(); fecharEmojis(); },
+    aoEsconder() { fecharMenu(); fecharEmojis(); if (st.painelAvisos) abrirPainelAvisos(false); },
     status() {
       const outros = [...st.online].filter(e => e !== eu).map(nomeDe);
       if (!st.pronto) return 'Abrindo…';

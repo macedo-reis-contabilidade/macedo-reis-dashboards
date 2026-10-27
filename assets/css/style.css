@@ -1068,6 +1068,23 @@ a.as-botao-link { text-decoration:underline; text-underline-offset:2px; }
 .ch-rodape-btn svg { width:15px; height:15px; flex:none; }
 .ch-rodape-btn[hidden] { display:none; }
 .ch-rodape-btn:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.ch-rodape-btn.ch-falta { color:var(--warn); }
+/* os avisos deste computador (26/10/2026): o painel do sininho do rodapé — o que está ligado, o que falta e o teste */
+.ch-pa { margin:0 10px 8px; padding:8px 12px 12px; border:1px solid var(--line); border-radius:12px; background:var(--fill-1); font-size:12.5px; line-height:1.45; color:var(--text-2); max-height:78%; overflow-y:auto; overscroll-behavior:contain; }
+.ch-pa[hidden] { display:none; }
+.ch-pa-topo { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px; }
+.ch-pa-topo b { font-size:13px; color:var(--text); }
+.ch-pa-itens { list-style:none; margin:0 0 10px; padding:0; display:flex; flex-direction:column; gap:8px; }
+.ch-pa-item { display:flex; gap:8px; align-items:flex-start; }
+.ch-pa-marca { flex:none; width:8px; height:8px; margin-top:5px; border-radius:50%; background:var(--ok); }
+.ch-pa-falta .ch-pa-marca { background:var(--warn); }
+.ch-pa-txt { display:flex; flex-direction:column; align-items:flex-start; gap:1px; min-width:0; }
+.ch-pa-txt b { font-weight:600; color:var(--text); }
+.ch-pa-teste { border-top:1px solid var(--line); padding-top:10px; display:flex; flex-direction:column; gap:8px; }
+.ch-pa-teste p { margin:0; }
+.ch-pa-forte { color:var(--text); font-weight:600; }
+.ch-pa-botoes { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.ch-pa a { color:var(--brand-light); text-underline-offset:2px; }
 .ch-vista { flex:1; min-height:0; display:flex; flex-direction:column; position:relative; }
 .ch-vista[hidden] { display:none; }
 .ch-vazio-dir { flex:1; display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-size:12.5px; }
