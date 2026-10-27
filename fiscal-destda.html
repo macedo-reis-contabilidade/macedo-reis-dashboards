@@ -48,7 +48,7 @@
     .ds-emp header a { font-size:12.5px; color:var(--brand-light); margin-left:auto; }
     .ds-emp h4 { margin:12px 0 6px; font-size:13px; color:var(--brand-light); font-weight:600; }
     .ds-tab { overflow-x:auto; }
-    table.ds { border-collapse:collapse; width:100%; font-size:12.5px; min-width:760px; }
+    table.ds { border-collapse:collapse; width:100%; font-size:12.5px; min-width:880px; }
     table.ds th { text-align:left; color:var(--brand-light); font-weight:600; font-size:11px; padding:6px 8px; border-bottom:1px solid var(--line); white-space:nowrap; }
     table.ds td { padding:6px 8px; border-bottom:1px solid var(--line); color:var(--text); vertical-align:top; }
     table.ds td.num, table.ds th.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
@@ -60,6 +60,8 @@
     .ds-conta { font-size:12.5px; color:var(--text-muted); margin:4px 0 0; }
     .ds-conta:empty { display:none; }
     .ds-sem { font-size:12px; color:var(--warn); }
+    .ds-muda { color:var(--text-muted); }
+    table.ds td small.ds-sem { color:var(--warn); }
     .ds-lista-curta { font-size:13px; color:var(--brand-pale); line-height:1.7; }
     .ds-lista-curta h3 { font-size:13.5px; margin:16px 0 4px; color:var(--text); }
     .ds-lista-curta p { margin:0; }
@@ -104,7 +106,7 @@
         </div>
         <div class="eyebrow">Fiscal</div>
         <h1>Conferência SEDIF/DeSTDA</h1>
-        <p>As notas de entrada do mês das empresas da SEDIF/DeSTDA: o que veio de fora do RS com ICMS destacado a 4%, com o diferencial de alíquota (DIFAL) de cada nota já calculado, e o que está nas regras de ICMS-ST na entrada, como a ração pet dos estados da lista. Exporte os XMLs do mês na Domínio e solte aqui uma vez só: cada nota vai pra empresa certa pelo CNPJ.</p>
+        <p>As notas de entrada do mês das empresas da SEDIF/DeSTDA: o que veio de fora do RS com ICMS destacado a 4%, com o diferencial de alíquota (DIFAL) de cada nota já calculado, e o que está nas regras de ICMS-ST na entrada, como a ração pet dos estados da lista, com o ST a recolher. Exporte os XMLs do mês na Domínio e solte aqui uma vez só: cada nota vai pra empresa certa pelo CNPJ.</p>
       </div>
 
       <section class="ds-sec" aria-labelledby="tImportar">
@@ -151,7 +153,7 @@ import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
 import { normalizarDocumento, hojeLocal } from './assets/js/utils.js';
 import { nomePorEmail } from './assets/js/equipe.js';
 import { importarLote } from './assets/js/importar-xml.js';
-import { conferirEmpresa, situacaoDaEmpresa, mesAnterior, limitesDoMes, rotuloDoMes, lerUfs, ncmDaRegra, ncmFormatado, ALIQUOTA_INTERNA_RS } from './assets/js/destda.js';
+import { conferirEmpresa, situacaoDaEmpresa, mesAnterior, limitesDoMes, rotuloDoMes, lerUfs, ncmDaRegra, ncmFormatado, ALIQUOTA_INTERNA_RS, stRetido, stSemBase } from './assets/js/destda.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -269,7 +271,7 @@ function desenharConferencia(){
     '<span class="ds-chip' + (semNotas.length ? ' alerta' : '') + '"><b>' + semNotas.length + '</b> sem notas de entrada de ' + esc(mes) + '</span>';
   $('lista').innerHTML = aConferir.length ? aConferir.map(cartaoDaEmpresa).join('')
     : '<div class="ds-vazio">Nenhuma empresa com nota de fora do RS a 4% nem com ICMS-ST na entrada em ' + esc(mes) + (semNotas.length ? ' — entre as que têm notas de entrada importadas' : '') + '.</div>';
-  $('conta').textContent = comDif ? textoDaConta() : '';
+  $('conta').innerHTML = [comDif ? textoDaConta() : '', comSt ? textoDaContaSt() : ''].filter(Boolean).map(esc).join('<br>');
   const nomes = l => l.map(x => esc(nomeDe(x.e)) + (x.e.nome_fantasia && x.e.nome_fantasia !== x.e.nome_principal ? ' <span class="ds-fant">(' + esc(x.e.nome_fantasia) + ')</span>' : '')).join(' · ');
   $('curtas').innerHTML =
     (nada.length ? '<h3>Sem nada a recolher em ' + esc(mes) + ' (' + nada.length + ')</h3><p>' + nomes(nada) + '</p>' : '') +
@@ -294,11 +296,17 @@ function cartaoDaEmpresa({ e, conf }){
   if (conf.st.length) {
     const nomesRegras = [...new Set(conf.st.flatMap(x => x.itens.map(i => i.regra.nome)))].join(', ');
     h += '<h4>ICMS-ST na entrada — ' + esc(nomesRegras) + ' · ' + qtd(ts.notas, 'nota', 'notas') + ', ' + qtd(ts.itens, 'item', 'itens')
-      + (ts.semRetencao ? ' · <span class="ds-sem">' + qtd(ts.semRetencao, 'item sem ST retida na nota', 'itens sem ST retida na nota') + '</span>' : '') + '</h4>'
-      + '<div class="ds-tab"><table class="ds ds-st"><thead><tr><th>Data</th><th>Nota</th><th>Fornecedor</th><th>Item</th><th class="num">Valor</th><th class="num">Alíq. do ICMS</th><th class="num">ST retida na nota</th></tr></thead><tbody>'
-      + conf.st.map(({ doc, itens }) => itens.map((i, k) => linhaDoItem(doc, i, k,
-          '<td class="num">' + BRL(i.valor_total) + '</td><td class="num">' + pct(i.icms_aliquota) + '</td><td class="num">' + (Number(i.icms_st_valor) > 0 ? BRL(i.icms_st_valor) : '<span class="ds-sem">sem retenção</span>') + '</td>')).join('')).join('')
-      + '</tbody><tfoot><tr><td colspan="4">Total</td><td class="num">' + BRL(ts.valor) + '</td><td></td><td class="num">' + BRL(ts.retido) + '</td></tr></tfoot></table></div>';
+      + ' · ST a recolher R$ ' + BRL(ts.recolher)
+      + (ts.semBase ? ' · <span class="ds-sem">' + qtd(ts.semBase, 'item fora da conta, sem a base do ICMS na nota', 'itens fora da conta, sem a base do ICMS na nota') + '</span>' : '') + '</h4>'
+      + '<div class="ds-tab"><table class="ds ds-st"><thead><tr><th>Data</th><th>Nota</th><th>Fornecedor</th><th>Item</th><th class="num">Valor</th><th class="num">Base do ICMS</th><th class="num">Alíq.</th><th class="num">ICMS destacado</th><th class="num">ST retida na nota</th>'
+      + '<th class="num" title="' + esc(textoDaContaSt()) + '">ST a recolher</th></tr></thead><tbody>'
+      // o ST a recolher é da nota, como o DIFAL: na linha do primeiro item
+      + conf.st.map(({ doc, itens, recolher }) => itens.map((i, k) => linhaDoItem(doc, i, k,
+          '<td class="num">' + BRL(i.valor_total) + '</td><td class="num">' + (i.icms_base == null || i.icms_base === '' ? '—' : BRL(i.icms_base)) + '</td><td class="num">' + pct(i.icms_aliquota) + '</td><td class="num">' + BRL(i.icms_valor) + '</td>'
+          + '<td class="num">' + (stRetido(i) ? BRL(i.icms_st_valor) : '<span class="ds-muda">sem retenção</span>') + '</td>'
+          + '<td class="num ds-difal">' + (k === 0 ? BRL(recolher) : '') + '</td>',
+          stSemBase(i) ? 'sem a base do ICMS na nota: fora da conta, confira' : '')).join('')).join('')
+      + '</tbody><tfoot><tr><td colspan="4">Total</td><td class="num">' + BRL(ts.valor) + '</td><td></td><td></td><td></td><td class="num">' + BRL(ts.retido) + '</td><td class="num ds-difal">' + BRL(ts.recolher) + '</td></tr></tfoot></table></div>';
   }
   if (conf.semAliquota.length) {
     h += '<p class="ds-aviso">' + (conf.semAliquota.length === 1 ? '1 nota de fora do RS foi importada' : conf.semAliquota.length + ' notas de fora do RS foram importadas')
@@ -307,20 +315,25 @@ function cartaoDaEmpresa({ e, conf }){
   }
   return h + '</article>';
 }
-// como o DIFAL é calculado (o rodapé da conferência e a dica da coluna)
+// como o DIFAL e o ST são calculados (o rodapé da conferência e a dica das colunas)
 function textoDaConta(){
   const dif = ALIQUOTA_INTERNA_RS - 4;
   return 'DIFAL = a base do ICMS dos itens a 4% × ' + dif + '% (os ' + ALIQUOTA_INTERNA_RS + '% do RS menos os 4% da nota), nota por nota, sem o IPI. '
     + 'Produto com outra alíquota interna no RS fica com a conta à parte.';
 }
-// a linha do item: a data, a nota e o fornecedor só no primeiro item da nota
-function linhaDoItem(doc, i, k, resto){
+function textoDaContaSt(){
+  return 'ICMS-ST = a base do ICMS dos itens da regra × ' + ALIQUOTA_INTERNA_RS + '% (a alíquota do RS) − o ICMS destacado neles, nota por nota, sem MVA. '
+    + 'O item com o ST já retido pelo fornecedor fica fora da conta.';
+}
+// a linha do item: a data, a nota e o fornecedor só no primeiro item da nota; `aviso` (texto da tela) embaixo do item
+function linhaDoItem(doc, i, k, resto, aviso){
   const nota = k === 0;
   return '<tr' + (nota ? '' : ' class="ds-segue"') + '>'
     + '<td class="ds-nota">' + (nota ? dataBR(doc.data_emissao) : '') + '</td>'
     + '<td class="ds-nota">' + (nota ? esc(doc.numero || '—') : '') + '</td>'
     + '<td class="ds-nota">' + (nota ? esc(doc.emit_nome || '—') + '<small>' + esc(doc.emit_uf || '') + '</small>' : '') + '</td>'
-    + '<td>' + esc(i.descricao || '—') + '<small>NCM ' + esc(ncmFormatado(i.ncm) || '—') + (i.cfop ? ' · CFOP ' + esc(i.cfop) : '') + '</small></td>'
+    + '<td>' + esc(i.descricao || '—') + '<small>NCM ' + esc(ncmFormatado(i.ncm) || '—') + (i.cfop ? ' · CFOP ' + esc(i.cfop) : '') + '</small>'
+    + (aviso ? '<small class="ds-sem">' + esc(aviso) + '</small>' : '') + '</td>'
     + resto + '</tr>';
 }
 
