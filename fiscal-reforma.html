@@ -1176,7 +1176,7 @@
         await consultarRegimesDom();
       } finally { domEstado.lendo = false; atualizarAplicar(); }
     }
-    // notas entram na base agora, pelo mesmo código do módulo de notas (lote atômico, duplicada não regrava)
+    // notas entram na base agora, pelo mesmo código do módulo de notas (lote atômico; a duplicada não entra de novo, só os itens dela são conferidos com o XML)
     async function importarNotasDom(arquivos) {
       const c = casoAtual(); const cli = clientesMap[c.cliente_id];
       if (!cli) { domMsgErro('Esta ficha não está vinculada a um cliente do cadastro — as notas não têm onde entrar.'); return; }

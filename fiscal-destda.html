@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fiscal — Conferência SEDIF/DeSTDA — Macedo & Reis</title>
+  <link rel="icon" href="assets/favicon.ico">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <style>
+    .content { max-width:none; }
+    .page-header { max-width:900px; }
+    .ds-sec { background:var(--fill-1); border:1px solid var(--line); border-radius:14px; padding:18px 20px; margin-bottom:18px; }
+    .ds-sec h2 { margin:0 0 12px; font-size:16px; color:var(--text); }
+    .ds-sec h2 small { color:var(--text-muted); font-weight:400; font-size:13px; margin-left:8px; }
+    .ds-drop { border:2px dashed var(--line-strong); border-radius:12px; padding:22px 20px; text-align:center; color:var(--text-muted); cursor:pointer; transition:border-color .15s, background .15s; font-size:14px; }
+    .ds-drop:hover, .ds-drop:focus-visible, .ds-drop.is-over { border-color:var(--brand-primary); background:rgba(91,130,166,.08); color:var(--brand-pale); outline:none; }
+    .ds-drop b { color:var(--text); }
+    .ds-arqs { margin-top:8px; font-size:13px; color:var(--text-muted); min-height:18px; }
+    .ds-arqs b { color:var(--text); }
+    .ds-acoes { display:flex; gap:10px; align-items:center; margin-top:12px; flex-wrap:wrap; }
+    .ds-msg { font-size:13px; min-height:18px; }
+    .ds-ok { color:var(--ok); } .ds-err { color:var(--err); } .ds-warn { color:var(--warn); }
+    .ds-prog { margin-top:12px; display:none; }
+    .ds-prog.is-on { display:block; }
+    .ds-bar { height:10px; background:var(--fill-2); border-radius:6px; overflow:hidden; }
+    .ds-fill { height:100%; width:0%; background:var(--brand-primary); border-radius:6px; transition:width .2s; }
+    .ds-prog-txt { margin-top:6px; font-size:12.5px; color:var(--text-muted); }
+    .ds-rel { margin-top:12px; font-size:13px; color:var(--brand-pale); }
+    .ds-rel:empty { display:none; }
+    .ds-rel details { margin-top:6px; }
+    .ds-rel summary { cursor:pointer; color:var(--brand-light); }
+    .ds-rel ul { margin:6px 0 0 18px; padding:0; color:var(--text-muted); font-size:12.5px; max-height:200px; overflow:auto; }
+    .ds-topo { display:flex; align-items:flex-end; gap:16px; flex-wrap:wrap; margin-bottom:14px; }
+    .ds-topo h2 { margin:0; }
+    .ds-mes label { display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px; }
+    .ds-mes input { width:170px; }
+    .ds-chips { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+    .ds-chip { font-size:12.5px; border-radius:999px; padding:5px 12px; border:1px solid var(--line); background:var(--fill-2); color:var(--brand-pale); }
+    .ds-chip b { color:var(--text); font-size:13px; }
+    .ds-chip.alerta { border-color:rgba(227,179,65,.4); color:var(--warn); }
+    .ds-chip.alerta b { color:var(--warn); }
+    .ds-emp { border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:12px; background:var(--surface); }
+    .ds-emp header { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:8px; }
+    .ds-emp h3 { margin:0; font-size:15px; color:var(--text); }
+    .ds-fant { font-size:12.5px; color:var(--text-muted); }
+    .ds-emp header a { font-size:12.5px; color:var(--brand-light); margin-left:auto; }
+    .ds-emp h4 { margin:12px 0 6px; font-size:13px; color:var(--brand-light); font-weight:600; }
+    .ds-tab { overflow-x:auto; }
+    table.ds { border-collapse:collapse; width:100%; font-size:12.5px; min-width:760px; }
+    table.ds th { text-align:left; color:var(--brand-light); font-weight:600; font-size:11px; padding:6px 8px; border-bottom:1px solid var(--line); white-space:nowrap; }
+    table.ds td { padding:6px 8px; border-bottom:1px solid var(--line); color:var(--text); vertical-align:top; }
+    table.ds td.num, table.ds th.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    table.ds td small { color:var(--text-muted); display:block; }
+    table.ds tr.ds-segue td.ds-nota { color:transparent; }
+    table.ds tfoot td { font-weight:600; border-bottom:none; }
+    .ds-aviso { font-size:12.5px; color:var(--warn); margin:10px 0 0; }
+    .ds-sem { font-size:12px; color:var(--warn); }
+    .ds-lista-curta { font-size:13px; color:var(--brand-pale); line-height:1.7; }
+    .ds-lista-curta h3 { font-size:13.5px; margin:16px 0 4px; color:var(--text); }
+    .ds-lista-curta p { margin:0; }
+    .ds-vazio { color:var(--text-muted); font-size:13px; padding:6px 0; }
+    details.ds-sec > summary { cursor:pointer; list-style:none; }
+    details.ds-sec > summary::-webkit-details-marker { display:none; }
+    details.ds-sec > summary h2 { display:inline; }
+    details.ds-sec > summary::before { content:'▸'; color:var(--brand-light); margin-right:8px; display:inline-block; transition:transform .15s; }
+    details.ds-sec[open] > summary::before { transform:rotate(90deg); }
+    .ds-regras-resumo { font-size:13px; color:var(--text-muted); margin:6px 0 0 18px; }
+    /* as duas últimas colunas com largura fixa: cada linha é uma grade, e assim o cabeçalho e as linhas se alinham */
+    .ds-regra { display:grid; grid-template-columns:minmax(180px,1.4fr) 130px minmax(180px,1.2fr) 72px 160px; gap:8px; align-items:center; padding:8px 0; border-bottom:1px solid var(--line); }
+    .ds-regra .input { width:100%; }
+    .ds-regra label.ds-ativa { font-size:12.5px; color:var(--brand-pale); display:flex; gap:6px; align-items:center; white-space:nowrap; }
+    .ds-regra .ds-botoes { display:flex; gap:6px; }
+    .ds-regra-msg { grid-column:1 / -1; font-size:12.5px; min-height:0; }
+    .ds-regra-cab { font-size:11px; color:var(--brand-light); font-weight:600; border-bottom:1px solid var(--line); padding-bottom:6px; }
+    @media (max-width:760px){ .ds-regra { grid-template-columns:1fr; } .ds-regra-cab { display:none; } }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip"><div class="user-avatar" id="userAvatar">—</div><span id="userName">Carregando…</span></div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <a href="fiscal.html">Fiscal</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Conferência SEDIF/DeSTDA</span>
+        </div>
+        <div class="eyebrow">Fiscal</div>
+        <h1>Conferência SEDIF/DeSTDA</h1>
+        <p>As notas de entrada do mês das empresas da SEDIF/DeSTDA: o que veio de fora do RS com ICMS destacado a 4% (o diferencial de alíquota) e o que está nas regras de ICMS-ST na entrada, como a ração pet dos estados da lista. Exporte os XMLs do mês na Domínio e solte aqui uma vez só: cada nota vai pra empresa certa pelo CNPJ.</p>
+      </div>
+
+      <section class="ds-sec" aria-labelledby="tImportar">
+        <h2 id="tImportar">Importar as notas do mês</h2>
+        <div class="ds-drop" id="drop" role="button" tabindex="0" aria-describedby="arqs">
+          <b>Arraste os XMLs ou ZIPs aqui</b><br>ou clique pra escolher — as empresas todas de uma vez; ZIP pode ter subpastas
+          <input type="file" id="fileInput" multiple accept=".xml,.zip,text/xml,application/xml,application/zip" style="display:none;">
+        </div>
+        <div class="ds-arqs" id="arqs"></div>
+        <div class="ds-acoes">
+          <button class="btn btn-primary" id="btnImportar" disabled>Importar</button>
+          <button class="btn btn-ghost btn-sm" id="btnLimpar" style="display:none;">Limpar seleção</button>
+          <span class="ds-msg" id="msgImp" role="status"></span>
+        </div>
+        <div class="ds-prog" id="prog">
+          <div class="ds-bar"><div class="ds-fill" id="progFill"></div></div>
+          <div class="ds-prog-txt" id="progTxt"></div>
+        </div>
+        <div class="ds-rel" id="rel"></div>
+      </section>
+
+      <section class="ds-sec" aria-labelledby="tConf">
+        <div class="ds-topo">
+          <h2 id="tConf">Conferência <span id="tMes"></span></h2>
+          <div class="ds-mes"><label for="mes">Mês das notas</label><input type="month" id="mes" class="input"></div>
+        </div>
+        <div class="ds-chips" id="chips"></div>
+        <div id="lista"><div class="ds-vazio"><span class="spinner spinner-sm"></span> Carregando…</div></div>
+        <div class="ds-lista-curta" id="curtas"></div>
+      </section>
+
+      <details class="ds-sec" id="secRegras">
+        <summary><h2>Regras de ICMS-ST na entrada</h2><div class="ds-regras-resumo" id="regrasResumo"></div></summary>
+        <p class="ds-vazio" style="margin-top:12px;">O NCM (pode ser só o começo dele) vindo destes estados entra na conferência com qualquer alíquota — o ICMS-ST é recolhido aqui, mesmo que a nota não traga. Vale pra todas as empresas da lista.</p>
+        <div id="regras"></div>
+        <div class="ds-acoes"><button class="btn btn-ghost btn-sm" id="btnNovaRegra">+ Nova regra</button></div>
+      </details>
+    </main>
+  </div>
+
+<script type="module">
+import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+import { normalizarDocumento, hojeLocal } from './assets/js/utils.js';
+import { nomePorEmail } from './assets/js/equipe.js';
+import { importarLote } from './assets/js/importar-xml.js';
+import { conferirEmpresa, situacaoDaEmpresa, mesAnterior, limitesDoMes, rotuloDoMes, lerUfs, ncmDaRegra, ncmFormatado } from './assets/js/destda.js';
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+const BRL = v => (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const pct = v => v == null || v === '' ? '—' : (Number(v) || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + '%';
+const dataBR = iso => /^\d{4}-\d{2}-\d{2}/.test(String(iso || '')) ? iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4) : '—';
+const qtd = (n, um, varios) => n + ' ' + (n === 1 ? um : varios);
+const fatias = (lista, t) => { const out = []; for (let i = 0; i < lista.length; i += t) out.push(lista.slice(i, i + t)); return out; };
+
+let usuario = null;
+let clientes = [];            // todas as empresas do cadastro (a importação acha a dona de cada nota pelo CNPJ)
+let empresas = [];            // as da obrigação SEDIF/DeSTDA (a conferência)
+let regras = [];              // destda_regras_st
+let comp = null;              // 'AAAA-MM' na tela
+let doMes = null;             // { comp, comNotas: Set(cliente_id), docs: [], itens: Map(id → itens) } — refaz a conferência sem ler de novo
+let arquivos = [];
+let rodando = false;
+
+// ---------- início ----------
+(async () => {
+  try {
+    const u = await getCurrentUser();
+    if (u) {
+      const nome = u.user_metadata?.full_name || u.email?.split('@')[0] || 'Usuário';
+      usuario = nomePorEmail(u.email) || nome;
+      $('userName').textContent = nome; $('userAvatar').textContent = nome.charAt(0).toUpperCase();
+    }
+  } catch (e) {}
+  $('btnLogout').addEventListener('click', signOut);
+  const pedido = new URLSearchParams(location.search).get('mes');
+  comp = /^\d{4}-(0[1-9]|1[0-2])$/.test(pedido || '') ? pedido : mesAnterior(hojeLocal());
+  $('mes').value = comp;
+  $('mes').addEventListener('change', () => { if (/^\d{4}-\d{2}$/.test($('mes').value)) { comp = $('mes').value; carregarMes(); } });
+  const ok = await carregarBase();
+  if (ok) await carregarMes();
+})();
+
+async function carregarBase(){
+  const [cs, os, rs] = await Promise.all([
+    supabase.todosClientes('id, nome_principal, nome_fantasia, documento'),
+    supabase.from('obrigacoes_fiscais').select('id, nome').ilike('nome', '%destda%'),
+    supabase.from('destda_regras_st').select('id, nome, ncm, ufs, ativo, observacao').order('nome')
+  ]);
+  const erro = cs.error || os.error || rs.error;
+  if (erro) { $('lista').innerHTML = '<div class="ds-vazio ds-err">Não consegui carregar: ' + esc(erro.message) + '</div>'; return false; }
+  clientes = cs.data || [];
+  regras = rs.data || [];
+  const obrigacoes = (os.data || []).filter(o => /destda/i.test(o.nome || ''));
+  let ids = [];
+  if (obrigacoes.length) {
+    const { data, error } = await supabase.from('cliente_obrigacoes').select('cliente_id').in('obrigacao_id', obrigacoes.map(o => o.id)).eq('ativo', true);
+    if (error) { $('lista').innerHTML = '<div class="ds-vazio ds-err">Não consegui carregar as empresas: ' + esc(error.message) + '</div>'; return false; }
+    ids = [...new Set((data || []).map(v => v.cliente_id))];
+  }
+  const porId = new Map(clientes.map(c => [c.id, c]));
+  empresas = ids.map(id => porId.get(id)).filter(Boolean).sort((a, b) => nomeDe(a).localeCompare(nomeDe(b), 'pt-BR'));
+  desenharRegras();
+  return true;
+}
+const nomeDe = c => (c && (c.nome_principal || c.nome_fantasia)) || 'Empresa sem nome';
+
+// ---------- o mês ----------
+async function carregarMes(){
+  const alvo = comp, lim = limitesDoMes(alvo);
+  $('tMes').textContent = 'de ' + rotuloDoMes(alvo);
+  $('chips').innerHTML = '';
+  $('curtas').innerHTML = '';
+  if (!empresas.length) {
+    $('lista').innerHTML = '<div class="ds-vazio">Nenhuma empresa ligada à obrigação SEDIF/DeSTDA em Obrigações fiscais.</div>';
+    return;
+  }
+  $('lista').innerHTML = '<div class="ds-vazio"><span class="spinner spinner-sm"></span> Carregando as notas de ' + esc(rotuloDoMes(alvo)) + '…</div>';
+  const ids = empresas.map(e => e.id);
+  // quais têm nota de entrada do mês na base (só a venda importada não diz nada sobre as compras)
+  const [cob, ent] = await Promise.all([
+    supabase.todasLinhas(() => supabase.from('nf_documentos').select('cliente_id').in('cliente_id', ids).eq('tipo', 'entrada').gte('data_emissao', lim.de).lte('data_emissao', lim.ate).order('id')),
+    supabase.todasLinhas(() => supabase.from('nf_documentos').select('id, cliente_id, tipo, status, emit_uf, emit_doc, emit_nome, dest_doc, data_emissao, numero')
+      .in('cliente_id', ids).eq('tipo', 'entrada').neq('emit_uf', 'RS').gte('data_emissao', lim.de).lte('data_emissao', lim.ate).order('data_emissao').order('id'))
+  ]);
+  if (alvo !== comp) return;                      // trocou de mês no meio
+  const erro = cob.error || ent.error;
+  if (erro) { $('lista').innerHTML = '<div class="ds-vazio ds-err">Não consegui ler as notas: ' + esc(erro.message) + '</div>'; return; }
+  const docs = ent.data || [];
+  const itens = new Map();
+  for (const f of fatias(docs.map(d => d.id), 150)) {
+    const { data, error } = await supabase.todasLinhas(() => supabase.from('nf_itens')
+      .select('documento_id, n_item, ncm, descricao, cfop, valor_total, icms_base, icms_aliquota, icms_valor, icms_st_base, icms_st_valor')
+      .in('documento_id', f).order('documento_id').order('n_item'));
+    if (error) { $('lista').innerHTML = '<div class="ds-vazio ds-err">Não consegui ler os itens das notas: ' + esc(error.message) + '</div>'; return; }
+    (data || []).forEach(i => { if (!itens.has(i.documento_id)) itens.set(i.documento_id, []); itens.get(i.documento_id).push(i); });
+  }
+  if (alvo !== comp) return;
+  doMes = { comp: alvo, comNotas: new Set((cob.data || []).map(d => d.cliente_id)), docs, itens };
+  desenharConferencia();
+}
+
+function desenharConferencia(){
+  if (!doMes) return;
+  const mes = rotuloDoMes(doMes.comp);
+  const porEmpresa = new Map();
+  doMes.docs.forEach(d => { if (!porEmpresa.has(d.cliente_id)) porEmpresa.set(d.cliente_id, []); porEmpresa.get(d.cliente_id).push(d); });
+  const linhas = empresas.map(e => {
+    const conf = conferirEmpresa(porEmpresa.get(e.id) || [], doMes.itens, regras, normalizarDocumento(e.documento));
+    return { e, conf, situacao: situacaoDaEmpresa(conf, doMes.comNotas.has(e.id)) };
+  });
+  const aConferir = linhas.filter(l => l.situacao === 'a_conferir');
+  const nada = linhas.filter(l => l.situacao === 'nada');
+  const semNotas = linhas.filter(l => l.situacao === 'sem_notas');
+  const comDif = aConferir.filter(l => l.conf.diferencial.length).length, comSt = aConferir.filter(l => l.conf.st.length).length;
+  $('chips').innerHTML =
+    '<span class="ds-chip"><b>' + comDif + '</b> com nota de fora do RS a 4%</span>' +
+    '<span class="ds-chip"><b>' + comSt + '</b> com ICMS-ST na entrada</span>' +
+    '<span class="ds-chip"><b>' + nada.length + '</b> sem nada a recolher</span>' +
+    '<span class="ds-chip' + (semNotas.length ? ' alerta' : '') + '"><b>' + semNotas.length + '</b> sem notas de entrada de ' + esc(mes) + '</span>';
+  $('lista').innerHTML = aConferir.length ? aConferir.map(cartaoDaEmpresa).join('')
+    : '<div class="ds-vazio">Nenhuma empresa com nota de fora do RS a 4% nem com ICMS-ST na entrada em ' + esc(mes) + (semNotas.length ? ' — entre as que têm notas de entrada importadas' : '') + '.</div>';
+  const nomes = l => l.map(x => esc(nomeDe(x.e)) + (x.e.nome_fantasia && x.e.nome_fantasia !== x.e.nome_principal ? ' <span class="ds-fant">(' + esc(x.e.nome_fantasia) + ')</span>' : '')).join(' · ');
+  $('curtas').innerHTML =
+    (nada.length ? '<h3>Sem nada a recolher em ' + esc(mes) + ' (' + nada.length + ')</h3><p>' + nomes(nada) + '</p>' : '') +
+    (semNotas.length ? '<h3 class="ds-warn">Sem notas de entrada importadas de ' + esc(mes) + ' (' + semNotas.length + ')</h3><p>' + nomes(semNotas) + '</p><p class="ds-vazio">Sem as notas de entrada a conferência não diz nada sobre elas: importe os XMLs do mês dessas empresas (a que não comprou nada no mês fica aqui mesmo).</p>' : '');
+}
+
+function cartaoDaEmpresa({ e, conf }){
+  const fant = e.nome_fantasia && e.nome_fantasia !== e.nome_principal ? '<span class="ds-fant">' + esc(e.nome_fantasia) + '</span>' : '';
+  const td = conf.totais.diferencial, ts = conf.totais.st;
+  let h = '<article class="ds-emp" data-empresa="' + esc(e.id) + '"><header><h3>' + esc(nomeDe(e)) + '</h3>' + fant
+    + '<a href="clientes/editar.html?id=' + encodeURIComponent(e.id) + '">abrir a ficha</a></header>';
+  if (conf.diferencial.length) {
+    h += '<h4>Diferencial de alíquota — ICMS a 4% de fora do RS · ' + qtd(td.notas, 'nota', 'notas') + ', ' + qtd(td.itens, 'item', 'itens') + '</h4>'
+      + '<div class="ds-tab"><table class="ds ds-dif"><thead><tr><th>Data</th><th>Nota</th><th>Fornecedor</th><th>Item</th><th class="num">Valor</th><th class="num">Base do ICMS</th><th class="num">Alíq.</th><th class="num">ICMS destacado</th></tr></thead><tbody>'
+      + conf.diferencial.map(({ doc, itens }) => itens.map((i, k) => linhaDoItem(doc, i, k,
+          '<td class="num">' + BRL(i.valor_total) + '</td><td class="num">' + (i.icms_base == null ? '—' : BRL(i.icms_base)) + '</td><td class="num">' + pct(i.icms_aliquota) + '</td><td class="num">' + BRL(i.icms_valor) + '</td>')).join('')).join('')
+      + '</tbody><tfoot><tr><td colspan="4">Total</td><td class="num">' + BRL(td.valor) + '</td><td class="num">' + BRL(td.base) + '</td><td></td><td class="num">' + BRL(td.icms) + '</td></tr></tfoot></table></div>';
+  }
+  if (conf.st.length) {
+    const nomesRegras = [...new Set(conf.st.flatMap(x => x.itens.map(i => i.regra.nome)))].join(', ');
+    h += '<h4>ICMS-ST na entrada — ' + esc(nomesRegras) + ' · ' + qtd(ts.notas, 'nota', 'notas') + ', ' + qtd(ts.itens, 'item', 'itens')
+      + (ts.semRetencao ? ' · <span class="ds-sem">' + qtd(ts.semRetencao, 'item sem ST retida na nota', 'itens sem ST retida na nota') + '</span>' : '') + '</h4>'
+      + '<div class="ds-tab"><table class="ds ds-st"><thead><tr><th>Data</th><th>Nota</th><th>Fornecedor</th><th>Item</th><th class="num">Valor</th><th class="num">Alíq. do ICMS</th><th class="num">ST retida na nota</th></tr></thead><tbody>'
+      + conf.st.map(({ doc, itens }) => itens.map((i, k) => linhaDoItem(doc, i, k,
+          '<td class="num">' + BRL(i.valor_total) + '</td><td class="num">' + pct(i.icms_aliquota) + '</td><td class="num">' + (Number(i.icms_st_valor) > 0 ? BRL(i.icms_st_valor) : '<span class="ds-sem">sem retenção</span>') + '</td>')).join('')).join('')
+      + '</tbody><tfoot><tr><td colspan="4">Total</td><td class="num">' + BRL(ts.valor) + '</td><td></td><td class="num">' + BRL(ts.retido) + '</td></tr></tfoot></table></div>';
+  }
+  if (conf.semAliquota.length) {
+    h += '<p class="ds-aviso">' + (conf.semAliquota.length === 1 ? '1 nota de fora do RS foi importada' : conf.semAliquota.length + ' notas de fora do RS foram importadas')
+      + ' antes de 27/10/2026, quando a alíquota do ICMS não era guardada (' + conf.semAliquota.slice(0, 6).map(d => 'nº ' + esc(d.numero || '?')).join(', ')
+      + (conf.semAliquota.length > 6 ? ' e mais ' + (conf.semAliquota.length - 6) : '') + '): importe os XMLs do mês de novo pra conferir.</p>';
+  }
+  return h + '</article>';
+}
+// a linha do item: a data, a nota e o fornecedor só no primeiro item da nota
+function linhaDoItem(doc, i, k, resto){
+  const nota = k === 0;
+  return '<tr' + (nota ? '' : ' class="ds-segue"') + '>'
+    + '<td class="ds-nota">' + (nota ? dataBR(doc.data_emissao) : '') + '</td>'
+    + '<td class="ds-nota">' + (nota ? esc(doc.numero || '—') : '') + '</td>'
+    + '<td class="ds-nota">' + (nota ? esc(doc.emit_nome || '—') + '<small>' + esc(doc.emit_uf || '') + '</small>' : '') + '</td>'
+    + '<td>' + esc(i.descricao || '—') + '<small>NCM ' + esc(ncmFormatado(i.ncm) || '—') + (i.cfop ? ' · CFOP ' + esc(i.cfop) : '') + '</small></td>'
+    + resto + '</tr>';
+}
+
+// ---------- importar ----------
+const drop = $('drop');
+drop.addEventListener('click', () => $('fileInput').click());
+drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('fileInput').click(); } });
+$('fileInput').addEventListener('change', () => { adicionar([...$('fileInput').files]); $('fileInput').value = ''; });
+['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('is-over'); }));
+['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('is-over'); }));
+drop.addEventListener('drop', e => adicionar([...(e.dataTransfer?.files || [])]));
+$('btnLimpar').addEventListener('click', () => { arquivos = []; desenharArquivos(); msgImp(''); });
+$('btnImportar').addEventListener('click', importar);
+
+function adicionar(lista){
+  if (rodando) { msgImp('Espere a importação terminar pra pôr mais arquivos.', 'err'); return; }
+  const aceitos = lista.filter(f => /\.(xml|zip)$/i.test(f.name));
+  arquivos.push(...aceitos.filter(f => !arquivos.some(a => a.name === f.name && a.size === f.size)));
+  desenharArquivos();
+  msgImp(lista.length > aceitos.length ? (lista.length - aceitos.length) + ' arquivo(s) fora do padrão (.xml ou .zip) não entraram.' : '', lista.length > aceitos.length ? 'err' : '');
+}
+function desenharArquivos(){
+  const xml = arquivos.filter(f => /\.xml$/i.test(f.name)).length, zip = arquivos.length - xml;
+  $('arqs').innerHTML = arquivos.length ? '<b>' + arquivos.length + '</b> arquivo(s) na fila: ' + xml + ' XML' + (zip ? ' · ' + zip + ' ZIP' : '') : '';
+  $('btnLimpar').style.display = arquivos.length ? 'inline-flex' : 'none';
+  $('btnImportar').disabled = rodando || !arquivos.length;
+}
+function msgImp(t, tipo){ const el = $('msgImp'); el.textContent = t || ''; el.className = 'ds-msg' + (tipo === 'ok' ? ' ds-ok' : tipo === 'err' ? ' ds-err' : ''); }
+
+async function importar(){
+  if (rodando || !arquivos.length) return;
+  rodando = true; desenharArquivos(); $('btnImportar').textContent = 'Importando…';
+  $('rel').innerHTML = ''; $('prog').classList.add('is-on'); msgImp('');
+  try {
+    const r = await importarLote({ supabase, clientes, arquivos, usuario, onProgresso: (n, m, t) => {
+      $('progFill').style.width = m ? Math.round(n / m * 100) + '%' : '0%'; $('progTxt').textContent = t;
+    } });
+    arquivos = []; desenharArquivos();
+    relatorio(r);
+    // a conferência abre no mês da maior parte das notas importadas
+    const principal = Object.entries(r.meses || {}).sort((a, b) => b[1] - a[1])[0];
+    if (principal && principal[0] !== comp) { comp = principal[0]; $('mes').value = comp; }
+    await carregarMes();
+  } catch (e) {
+    msgImp('Importação interrompida: ' + (e.message || e), 'err');
+    $('progTxt').textContent = 'Interrompida' + (e.total ? ' — ' + e.lidos + ' de ' + e.total + ' arquivos lidos.' : '.');
+  } finally {
+    rodando = false; $('btnImportar').textContent = 'Importar'; desenharArquivos();
+  }
+}
+function relatorio(r){
+  const daLista = new Set(empresas.map(e => e.id));
+  const fora = r.ignorados.filter(i => /fora do cadastro/.test(i.motivo));
+  const outros = r.ignorados.filter(i => !/fora do cadastro/.test(i.motivo));
+  const meses = Object.keys(r.meses || {}).sort().map(m => rotuloDoMes(m) + ' (' + r.meses[m] + ')').join(', ');
+  const li = t => '<li>' + t + '</li>';
+  msgImp(qtd(r.novas, 'nota nova', 'notas novas') + ' · ' + qtd(r.duplicadas, 'já estava na base', 'já estavam na base') + (meses ? ' · notas de ' + meses : ''), 'ok');
+  $('rel').innerHTML =
+    (r.porCliente.length ? '<details' + (r.porCliente.length <= 3 ? ' open' : '') + '><summary>' + qtd(r.porCliente.length, 'empresa', 'empresas') + ' nas notas</summary><ul>'
+      + r.porCliente.slice().sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR')).map(p => li(esc(p.nome || 'empresa') + ': ' + qtd(p.novas, 'nova', 'novas') + ', '
+        + qtd(p.duplicadas, 'já na base', 'já na base') + (daLista.has(p.cliente_id) ? '' : ' <span class="ds-warn">· não está na obrigação SEDIF/DeSTDA</span>'))).join('') + '</ul></details>' : '')
+    + (fora.length ? '<details><summary>' + qtd(fora.length, 'nota de empresa fora do cadastro (ignorada)', 'notas de empresas fora do cadastro (ignoradas)') + '</summary><ul>' + fora.slice(0, 200).map(i => li(esc(i.arquivo))).join('') + '</ul></details>' : '')
+    + (outros.length ? '<details><summary>' + qtd(outros.length, 'arquivo ignorado', 'arquivos ignorados') + '</summary><ul>' + outros.slice(0, 200).map(i => li(esc(i.arquivo) + ' — ' + esc(i.motivo))).join('') + '</ul></details>' : '')
+    + (r.erros.length ? '<details open><summary class="ds-err">' + qtd(r.erros.length, 'erro de leitura', 'erros de leitura') + '</summary><ul>' + r.erros.slice(0, 200).map(e => li(esc(e.arquivo) + ' — ' + esc(e.motivo))).join('') + '</ul></details>' : '')
+    + (r.canceladas ? '<div>' + qtd(r.canceladas, 'nota marcada como cancelada', 'notas marcadas como canceladas') + ' pelo evento.</div>' : '');
+}
+
+// ---------- as regras ----------
+$('btnNovaRegra').addEventListener('click', () => {
+  if (document.querySelector('.ds-regra[data-id=""]')) return;
+  regras.push({ id: '', nome: '', ncm: '', ufs: [], ativo: true });
+  desenharRegras();
+  const nova = document.querySelector('.ds-regra[data-id=""] input');
+  if (nova) nova.focus();
+});
+function desenharRegras(){
+  const ativas = regras.filter(r => r.id && r.ativo !== false);
+  $('regrasResumo').textContent = ativas.length
+    ? ativas.map(r => r.nome + ' · NCM ' + ncmFormatado(r.ncm) + ' · ' + (r.ufs || []).join(', ')).join(' — ')
+    : 'Nenhuma regra ativa.';
+  $('regras').innerHTML = '<div class="ds-regra ds-regra-cab"><span>Nome</span><span>NCM</span><span>Estados de origem</span><span></span><span></span></div>'
+    + regras.map((r, k) => '<div class="ds-regra" data-id="' + esc(r.id) + '" data-k="' + k + '">'
+      + '<input class="input" data-campo="nome" maxlength="120" value="' + esc(r.nome) + '" aria-label="Nome da regra" placeholder="Ex.: Ração pet">'
+      + '<input class="input" data-campo="ncm" maxlength="10" value="' + esc(ncmFormatado(r.ncm)) + '" aria-label="NCM" placeholder="2309.10.00">'
+      + '<input class="input" data-campo="ufs" value="' + esc((r.ufs || []).join(', ')) + '" aria-label="Estados de origem" placeholder="SC, BA, GO">'
+      + '<label class="ds-ativa"><input type="checkbox" data-campo="ativo"' + (r.ativo !== false ? ' checked' : '') + '> Ativa</label>'
+      + '<span class="ds-botoes"><button class="btn btn-primary btn-sm" data-salvar>Salvar</button>' + (r.id ? '<button class="btn btn-ghost btn-sm" data-excluir>Excluir</button>' : '<button class="btn btn-ghost btn-sm" data-cancelar>Cancelar</button>') + '</span>'
+      + '<span class="ds-regra-msg" role="status"></span></div>').join('');
+}
+$('regras').addEventListener('click', async ev => {
+  const linha = ev.target.closest('.ds-regra'); if (!linha || linha.classList.contains('ds-regra-cab')) return;
+  const k = Number(linha.dataset.k), r = regras[k], msg = linha.querySelector('.ds-regra-msg');
+  const aviso = (t, tipo) => { msg.textContent = t; msg.className = 'ds-regra-msg' + (tipo === 'err' ? ' ds-err' : tipo === 'ok' ? ' ds-ok' : ''); };
+  if (ev.target.closest('[data-cancelar]')) { regras.splice(k, 1); desenharRegras(); return; }
+  if (ev.target.closest('[data-excluir]')) {
+    if (!confirm('Excluir a regra "' + r.nome + '"? A conferência deixa de procurar esse NCM.')) return;
+    const { error } = await supabase.from('destda_regras_st').delete().eq('id', r.id);
+    if (error) { aviso('Não excluí: ' + error.message, 'err'); return; }
+    regras.splice(k, 1); desenharRegras(); desenharConferencia(); return;
+  }
+  if (!ev.target.closest('[data-salvar]')) return;
+  const valor = c => linha.querySelector('[data-campo="' + c + '"]');
+  const nome = valor('nome').value.trim(), ncm = ncmDaRegra(valor('ncm').value), { ufs, invalidas } = lerUfs(valor('ufs').value);
+  if (!nome) { aviso('Dê um nome à regra.', 'err'); valor('nome').focus(); return; }
+  if (!ncm) { aviso('O NCM tem de ter de 2 a 8 dígitos (pode ser só o começo dele).', 'err'); valor('ncm').focus(); return; }
+  if (invalidas.length) { aviso('Não é estado: ' + invalidas.join(', ') + '.', 'err'); valor('ufs').focus(); return; }
+  if (!ufs.length) { aviso('Ponha pelo menos um estado de origem.', 'err'); valor('ufs').focus(); return; }
+  const dados = { nome, ncm, ufs, ativo: valor('ativo').checked, atualizado_em: new Date().toISOString() };
+  const consulta = r.id ? supabase.from('destda_regras_st').update(dados).eq('id', r.id) : supabase.from('destda_regras_st').insert(dados);
+  const { data, error } = await consulta.select('id, nome, ncm, ufs, ativo, observacao');
+  if (error) { aviso('Não salvei: ' + error.message, 'err'); return; }
+  const salva = (data || [])[0] || { ...r, ...dados };
+  regras[k] = salva;
+  regras.sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
+  desenharRegras(); desenharConferencia();
+  const mesma = [...document.querySelectorAll('.ds-regra')].find(l => salva.id && l.dataset.id === String(salva.id));
+  if (mesma) { const m = mesma.querySelector('.ds-regra-msg'); m.textContent = 'Salva — a conferência já usa.'; m.className = 'ds-regra-msg ds-ok'; }
+});
+</script>
+</body>
+</html>

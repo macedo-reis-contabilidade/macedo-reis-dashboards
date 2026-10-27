@@ -256,7 +256,7 @@ function relatorio(r){
   $('rel').innerHTML = `
     <div class="xm-kpis">
       <div class="xm-kpi ok"><div class="n">${r.novas}</div><div class="l">notas novas · ${r.saidas} saída(s), ${r.entradas} entrada(s)${r.nfse ? ' · ' + r.nfse + ' NFS-e de serviço' : ''} · ${r.itens} itens</div></div>
-      <div class="xm-kpi dup"><div class="n">${r.duplicadas}</div><div class="l">duplicadas (já estavam na base — itens intactos)</div></div>
+      <div class="xm-kpi dup"><div class="n">${r.duplicadas}</div><div class="l">duplicadas (já estavam na base — os itens conferidos com o XML)</div></div>
       <div class="xm-kpi ign"><div class="n">${r.ignorados.length}</div><div class="l">ignorados</div></div>
       <div class="xm-kpi err"><div class="n">${r.erros.length}</div><div class="l">erros de leitura</div></div>
     </div>

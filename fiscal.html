@@ -21,6 +21,7 @@
     a[href="fiscal-relatorios.html"] .dashboard-card-icon { background: rgba(227,179,65,.15);  color:#E3B341; }
     a[href="fiscal-sugestoes.html"]  .dashboard-card-icon { background: rgba(224,143,168,.15); color:#E08FA8; }
     a[href="fator-r.html"]           .dashboard-card-icon { background: rgba(82,208,165,.16);  color:#52D0A5; }
+    a[href="fiscal-destda.html"]     .dashboard-card-icon { background: rgba(91,184,214,.15);  color:#5BB8D6; }
 
     /* Selo "hoje" (urgência do dia) — canto superior direito */
     .badge-hoje { position:absolute; top:14px; right:14px; background:rgba(227,179,65,.18); border:1px solid rgba(227,179,65,.5); color:var(--warn); font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.04em; text-transform:uppercase; box-shadow:0 0 0 3px rgba(227,179,65,.06); }
@@ -114,6 +115,15 @@
           <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="fiscal-obrigacoes.html">·</span></div>
         </a>
 
+        <a href="fiscal-destda.html" class="dashboard-card">
+          <div class="dashboard-card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h5"/><polyline points="13 2 13 8 19 8"/><path d="M19 8v3"/><circle cx="17" cy="17" r="3"/><line x1="21.5" y1="21.5" x2="19.2" y2="19.2"/></svg>
+          </div>
+          <h3>Conferência SEDIF/DeSTDA</h3>
+          <p>As notas de entrada do mês de todas as empresas de uma vez: as de fora do RS a 4% (diferencial de alíquota) e a ração pet com ICMS-ST na entrada.</p>
+          <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="fiscal-destda.html">·</span></div>
+        </a>
+
         <a href="fiscal-clientes.html" class="dashboard-card">
           <div class="dashboard-card-icon">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -170,6 +180,13 @@
         const { count: vinc } = await supabase.from('cliente_obrigacoes')
           .select('id', { count: 'exact', head: true }).eq('ativo', true);
         setBadge('fiscal-obrigacoes.html', (vinc ?? 0) + ' vínculos');
+
+        // a Conferência SEDIF/DeSTDA: quantas empresas estão na obrigação
+        const { data: obsDestda } = await supabase.from('obrigacoes_fiscais').select('id, nome').ilike('nome', '%destda%');
+        const idsDestda = (obsDestda || []).filter(o => /destda/i.test(o.nome || '')).map(o => o.id);
+        const { count: empDestda } = idsDestda.length ? await supabase.from('cliente_obrigacoes')
+          .select('id', { count: 'exact', head: true }).in('obrigacao_id', idsDestda).eq('ativo', true) : { count: 0 };
+        setBadge('fiscal-destda.html', (empDestda ?? 0) + ' empresas');
 
         const { count: rtPend } = await supabase.from('rt_casos')
           .select('id', { count: 'exact', head: true }).eq('decisao', 'pendente');

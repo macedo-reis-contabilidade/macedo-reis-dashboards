@@ -14,6 +14,8 @@ const chaveXml = s => String(s == null ? '' : s).toUpperCase().replace(/[^0-9A-Z
 const RX_CHAVE_NFE = /^\d{6}[0-9A-Z]{12}\d{26}$/;    // cUF + AAMM · CNPJ do emitente · modelo, série, número, tpEmis, cNF e DV
 const RX_CHAVE_NFSE = /^\d{9}[0-9A-Z]{12}\d{29}$/;   // município, ambiente e tipo · inscrição federal · número, AAMM, código e DV
 const num = v => { const n = Number(String(v == null ? '' : v).trim()); return isFinite(n) ? n : 0; };
+// o que o XML pode não trazer (a alíquota do fornecedor do Simples, a base da ST): ausente fica nulo, não zero
+const numOuNulo = v => { const t = String(v == null ? '' : v).trim(); if (!t) return null; const n = Number(t); return isFinite(n) ? n : null; };
 
 // ---------- parse ----------
 const byName = (el, name) => el ? el.getElementsByTagNameNS('*', name) : [];
@@ -86,7 +88,9 @@ export function parseXml(texto, nome){
       icms_origem: txt(icms, 'orig'), icms_cst: txt(icms, 'CST'), csosn: txt(icms, 'CSOSN'),
       pis_cst: txt(pis, 'CST'), cofins_cst: txt(cofins, 'CST'),
       icms_valor: num(txt(icms, 'vICMS')), icms_st_valor: num(txt(icms, 'vICMSST')), ipi_valor: num(txt(ipi, 'vIPI')),
-      pis_valor: num(txt(pis, 'vPIS')), cofins_valor: num(txt(cofins, 'vCOFINS'))
+      pis_valor: num(txt(pis, 'vPIS')), cofins_valor: num(txt(cofins, 'vCOFINS')),
+      // a base e a alíquota do ICMS e a base da ST (27/10/2026, a conferência SEDIF/DeSTDA: a nota de fora do RS a 4%)
+      icms_base: numOuNulo(txt(icms, 'vBC')), icms_aliquota: numOuNulo(txt(icms, 'pICMS')), icms_st_base: numOuNulo(txt(icms, 'vBCST'))
     });
   });
   const principal = itens.reduce((m, i) => (!m || i.valor_total > m.valor_total) ? i : m, null);
@@ -119,7 +123,8 @@ const itemServico = (codigo, descricao, vServ, desconto, pisCst, vPis, vCofins) 
   n_item: 1, codigo: codigo || null, descricao: descricao || 'Serviço', ncm: null, cest: null, cfop: null,
   unidade: 'SV', quantidade: 1, valor_unitario: vServ, valor_total: vServ, desconto,
   icms_origem: null, icms_cst: null, csosn: null, pis_cst: pisCst || null, cofins_cst: pisCst || null,
-  icms_valor: 0, icms_st_valor: 0, ipi_valor: 0, pis_valor: vPis, cofins_valor: vCofins
+  icms_valor: 0, icms_st_valor: 0, ipi_valor: 0, pis_valor: vPis, cofins_valor: vCofins,
+  icms_base: null, icms_aliquota: null, icms_st_base: null
 });
 
 // NFS-e padrão nacional (Sistema Nacional NFS-e): <NFSe><infNFSe Id="NFS + 50 dígitos"> … <DPS><infDPS> prestador/tomador/serviço/valores
@@ -285,21 +290,46 @@ export async function separarNaoXml(files) {
 }
 
 // ---------- lote ----------
-// Importa `arquivos` (File[] de .xml/.zip) para o cliente e devolve o relatório.
-// Atômico: se falhar no meio, desfaz o que gravou e relança o erro (nada fica pela metade).
+// Importa `arquivos` (File[] de .xml/.zip) e devolve o relatório. Dois jeitos:
+//  · `cliente` — uma empresa (a ficha da Reforma, o importador): o XML de outra empresa é ignorado e contado;
+//  · `clientes` — o lote do mês de várias empresas (a Conferência SEDIF/DeSTDA, 27/10/2026): cada nota vai pra empresa do
+//    cadastro pelo CNPJ do emitente ou do destinatário (a nota entre duas empresas do cadastro vai pras duas, como venda
+//    numa e compra na outra); a nota sem empresa do cadastro é ignorada e contada.
+// Cada empresa ganha o seu lote em nf_importacoes (o "Desfazer lote" do importador continua por empresa).
+// A nota que já estava na base não entra de novo, mas os itens dela são regravados com o que o XML traz — assim a nota
+// importada antes de 27/10/2026 ganha a base e a alíquota do ICMS quando o XML volta.
+// Atômico: se falhar no meio, desfaz as notas que entraram e relança o erro (nada fica pela metade).
 // `onProgresso(lidos, total, texto)` é opcional — a tela decide como mostrar.
-export async function importarLote({ supabase, cliente, arquivos, usuario, onProgresso }) {
+export async function importarLote({ supabase, cliente, clientes, arquivos, usuario, onProgresso }) {
   const progresso = (n, m, t) => { if (onProgresso) onProgresso(n, m, t); };
-  const cli = cliente;
-  const docCli = docXml(cli.documento);
-  if (docCli.length !== 14 && docCli.length !== 11) throw new Error('cliente sem CNPJ/CPF no cadastro — a importação precisa do documento pra saber o que é venda e o que é compra');
+  const multi = !cliente && Array.isArray(clientes);
+  let destinos;                         // a nota → [{ cli, tipo }]
+  if (multi) {
+    const porDoc = new Map();
+    clientes.forEach(c => { const d = docXml(c && c.documento); if ((d.length === 14 || d.length === 11) && !porDoc.has(d)) porDoc.set(d, c); });
+    if (!porDoc.size) throw new Error('nenhuma empresa do cadastro tem CNPJ/CPF — a importação precisa do documento pra saber de quem é cada nota');
+    destinos = d => {
+      const e = porDoc.get(d.emit_doc), t = porDoc.get(d.dest_doc), out = [];
+      if (e) out.push({ cli: e, tipo: d.tp_nf === 0 ? 'entrada' : 'saida' });
+      if (t && t !== e) out.push({ cli: t, tipo: 'entrada' });
+      return out;
+    };
+  } else {
+    const docCli = docXml(cliente && cliente.documento);
+    if (docCli.length !== 14 && docCli.length !== 11) throw new Error('cliente sem CNPJ/CPF no cadastro — a importação precisa do documento pra saber o que é venda e o que é compra');
+    // emitida pelo cliente com tpNF 0 é nota de ENTRADA emitida por ele (importação, produtor rural, devolução recebida);
+    // NFS-e: prestador = cliente → serviço prestado (saída); tomador = cliente → serviço tomado (entrada)
+    destinos = d => d.emit_doc === docCli ? [{ cli: cliente, tipo: d.tp_nf === 0 ? 'entrada' : 'saida' }]
+      : d.dest_doc === docCli ? [{ cli: cliente, tipo: 'entrada' }] : [];
+  }
   if (!arquivos || !arquivos.length) throw new Error('nenhum arquivo para importar');
   const ignorados = [], erros = [];
-  const porChave = new Map();           // chave → { doc, itens } (dedupe dentro do lote)
+  const grupos = new Map();             // id da empresa → { cli, porChave: Map(chave → { doc, itens }), dupNoLote }
+  const grupo = cli => { let g = grupos.get(cli.id); if (!g) grupos.set(cli.id, g = { cli, porChave: new Map(), dupNoLote: 0 }); return g; };
+  if (!multi) grupo(cliente);           // uma empresa: o lote é registrado mesmo sem nota nova (como sempre foi)
   const cancelamentos = new Set();
-  let duplicadasNoLote = 0;
   let lidos = 0, total = 0;
-  let impId = null;
+  const lotes = [];                     // os nf_importacoes desta importação (o desfazer, se falhar no meio)
   try {
     progresso(0, 0, 'Abrindo arquivos…');
     const xmls = await expandirArquivos(arquivos, erros);
@@ -321,78 +351,114 @@ export async function importarLote({ supabase, cliente, arquivos, usuario, onPro
         for (const item of lista) {
           const d = item.doc;
           const rot = x.nome + (lista.length > 1 ? ' (nota ' + (d.numero || '?') + ')' : '');
-          // emitida pelo cliente com tpNF 0 é nota de ENTRADA emitida por ele (importação, produtor rural, devolução recebida);
-          // NFS-e: prestador = cliente → serviço prestado (saída); tomador = cliente → serviço tomado (entrada)
-          if (d.emit_doc === docCli) d.tipo = d.tp_nf === 0 ? 'entrada' : 'saida';
-          else if (d.dest_doc === docCli) d.tipo = 'entrada';
-          else { ignorados.push({ arquivo: rot, motivo: 'XML de terceiro (nem emitente nem destinatário é o cliente)' }); continue; }
-          if (porChave.has(d.chave)) { duplicadasNoLote++; continue; }
-          porChave.set(d.chave, item);
+          const ds = destinos(d);
+          if (!ds.length) {
+            ignorados.push({ arquivo: rot, motivo: multi ? 'nota de empresa fora do cadastro (nem o emitente nem o destinatário é cliente)' : 'XML de terceiro (nem emitente nem destinatário é o cliente)' });
+            continue;
+          }
+          for (const { cli, tipo } of ds) {
+            const g = grupo(cli);
+            if (g.porChave.has(d.chave)) { g.dupNoLote++; continue; }
+            g.porChave.set(d.chave, { doc: { ...d, tipo }, itens: item.itens });
+          }
         }
       } catch (e) { erros.push({ arquivo: x.nome, motivo: e.message || String(e) }); }
       if (lidos % 25 === 0) await new Promise(r => setTimeout(r, 0));   // deixa a tela respirar em lotes grandes
     }
-    // cancelamento por evento no mesmo lote
-    porChave.forEach(r => { if (cancelamentos.has(r.doc.chave)) r.doc.status = 'cancelada'; });
 
-    // lote registrado primeiro (os documentos apontam pra ele)
-    const { data: imp, error: eImp } = await supabase.from('nf_importacoes')
-      .insert({ cliente_id: cli.id, usuario, arquivos: total, notas_novas: 0, notas_duplicadas: 0, ignorados: 0, erros: [] }).select('id').single();
-    if (eImp) throw new Error('não consegui registrar o lote: ' + eImp.message);
-    impId = imp.id;
+    let novas = 0, duplicadas = 0, itensGravados = 0, cancelNoLote = 0;
+    const porCliente = [];
+    const detalhe = [...erros.map(e => ({ tipo: 'erro', ...e })), ...ignorados.map(e => ({ tipo: 'ignorado', ...e }))];
+    let n = 0;
+    for (const g of grupos.values()) {
+      n++;
+      const nome = multi ? ' — ' + (g.cli.nome_principal || 'empresa') + ' (' + n + ' de ' + grupos.size + ')' : '';
+      // cancelamento por evento no mesmo lote
+      g.porChave.forEach(r => { if (cancelamentos.has(r.doc.chave)) r.doc.status = 'cancelada'; });
+      // lote registrado primeiro (os documentos apontam pra ele)
+      const { data: imp, error: eImp } = await supabase.from('nf_importacoes')
+        .insert({ cliente_id: g.cli.id, usuario, arquivos: total, notas_novas: 0, notas_duplicadas: 0, ignorados: 0, erros: [] }).select('id').single();
+      if (eImp) throw new Error('não consegui registrar o lote: ' + eImp.message);
+      lotes.push({ id: imp.id, cliente_id: g.cli.id });
 
-    const docs = [...porChave.values()];
-    let novas = 0, duplicadas = duplicadasNoLote, itensGravados = 0;
-    const idPorChave = new Map();
-    for (let i = 0; i < docs.length; i += 200) {
-      const fatia = docs.slice(i, i + 200).map(r => ({ ...r.doc, cliente_id: cli.id, importacao_id: imp.id }));
-      progresso(lidos, total, 'Gravando notas ' + Math.min(i + 200, docs.length) + ' de ' + docs.length + '…');
-      const { data: ins, error } = await supabase.from('nf_documentos')
-        .upsert(fatia, { onConflict: 'cliente_id,chave', ignoreDuplicates: true }).select('id, chave');
-      if (error) throw new Error('falha ao gravar notas: ' + error.message);
-      (ins || []).forEach(x => idPorChave.set(x.chave, x.id));
-      novas += (ins || []).length; duplicadas += fatia.length - (ins || []).length;
+      const docs = [...g.porChave.values()];
+      let gNovas = 0, gDup = g.dupNoLote;
+      const idPorChave = new Map();
+      for (let i = 0; i < docs.length; i += 200) {
+        const fatia = docs.slice(i, i + 200).map(r => ({ ...r.doc, cliente_id: g.cli.id, importacao_id: imp.id }));
+        progresso(lidos, total, 'Gravando notas ' + Math.min(i + 200, docs.length) + ' de ' + docs.length + nome + '…');
+        const { data: ins, error } = await supabase.from('nf_documentos')
+          .upsert(fatia, { onConflict: 'cliente_id,chave', ignoreDuplicates: true }).select('id, chave');
+        if (error) throw new Error('falha ao gravar notas: ' + error.message);
+        (ins || []).forEach(x => idPorChave.set(x.chave, x.id));
+        gNovas += (ins || []).length; gDup += fatia.length - (ins || []).length;
+      }
+      // itens das notas que entraram agora
+      const itens = [];
+      docs.forEach(r => { const id = idPorChave.get(r.doc.chave); if (id) r.itens.forEach(it => itens.push({ ...it, documento_id: id })); });
+      for (let i = 0; i < itens.length; i += 500) {
+        progresso(lidos, total, 'Gravando itens ' + Math.min(i + 500, itens.length) + ' de ' + itens.length + nome + '…');
+        const { error } = await supabase.from('nf_itens').upsert(itens.slice(i, i + 500), { onConflict: 'documento_id,n_item', ignoreDuplicates: true });
+        if (error) throw new Error('falha ao gravar itens: ' + error.message);
+        itensGravados += Math.min(500, itens.length - i);
+      }
+      // as que já estavam na base: os itens regravados com o que o XML traz (a mesma nota, os mesmos valores, mais a
+      // base e a alíquota do ICMS que a importação antiga não guardava)
+      const jaNaBase = docs.filter(r => !idPorChave.has(r.doc.chave));
+      const idDaBase = new Map();
+      for (let i = 0; i < jaNaBase.length; i += 200) {
+        const { data: ex, error } = await supabase.from('nf_documentos').select('id, chave').eq('cliente_id', g.cli.id).in('chave', jaNaBase.slice(i, i + 200).map(r => r.doc.chave));
+        if (error) throw new Error('falha ao conferir as notas que já estavam na base: ' + error.message);
+        (ex || []).forEach(x => idDaBase.set(x.chave, x.id));
+      }
+      const deNovo = [];
+      jaNaBase.forEach(r => { const id = idDaBase.get(r.doc.chave); if (id) r.itens.forEach(it => deNovo.push({ ...it, documento_id: id })); });
+      for (let i = 0; i < deNovo.length; i += 500) {
+        progresso(lidos, total, 'Completando os itens das notas que já estavam na base' + nome + '…');
+        const { error } = await supabase.from('nf_itens').upsert(deNovo.slice(i, i + 500), { onConflict: 'documento_id,n_item' });
+        if (error) throw new Error('falha ao completar os itens: ' + error.message);
+      }
+      cancelNoLote += docs.filter(r => cancelamentos.has(r.doc.chave) && idPorChave.has(r.doc.chave)).length;
+      await supabase.from('nf_importacoes').update(multi
+        ? { notas_novas: gNovas, notas_duplicadas: gDup }
+        : { notas_novas: gNovas, notas_duplicadas: gDup, ignorados: ignorados.length, erros: detalhe }).eq('id', imp.id);
+      novas += gNovas; duplicadas += gDup;
+      porCliente.push({ cliente_id: g.cli.id, nome: g.cli.nome_principal || null, novas: gNovas, duplicadas: gDup, importacao_id: imp.id,
+        entradas: docs.filter(r => r.doc.tipo === 'entrada').length, saidas: docs.filter(r => r.doc.tipo === 'saida').length });
     }
-    // itens só das notas que entraram agora (duplicada não regrava itens)
-    const itens = [];
-    docs.forEach(r => { const id = idPorChave.get(r.doc.chave); if (id) r.itens.forEach(it => itens.push({ ...it, documento_id: id })); });
-    for (let i = 0; i < itens.length; i += 500) {
-      progresso(lidos, total, 'Gravando itens ' + Math.min(i + 500, itens.length) + ' de ' + itens.length + '…');
-      const { error } = await supabase.from('nf_itens').upsert(itens.slice(i, i + 500), { onConflict: 'documento_id,n_item', ignoreDuplicates: true });
-      if (error) throw new Error('falha ao gravar itens: ' + error.message);
-      itensGravados += Math.min(500, itens.length - i);
-    }
-    // cancelamentos de chaves que já estavam na base (as que entraram agora já vieram canceladas;
-    // as duplicadas do lote também caem aqui, porque a linha que vale é a da base)
+    // cancelamentos de notas que já estavam na base (as que entraram agora já vieram canceladas); com várias empresas, a
+    // nota cancelada é a mesma em qualquer empresa que a tenha
     let canceladas = 0, naoAchadas = 0;
-    const chavesCancel = [...cancelamentos].filter(ch => !idPorChave.has(ch));
+    const chavesCancel = [...cancelamentos];
     for (let i = 0; i < chavesCancel.length; i += 200) {
       const fatia = chavesCancel.slice(i, i + 200);
-      const { data: ex, error: eEx } = await supabase.from('nf_documentos').select('chave, status').eq('cliente_id', cli.id).in('chave', fatia);
+      let consulta = supabase.from('nf_documentos').select('id, chave, status').in('chave', fatia);
+      if (!multi) consulta = consulta.eq('cliente_id', cliente.id);
+      const { data: ex, error: eEx } = await consulta;
       if (eEx) throw new Error('falha ao conferir cancelamentos: ' + eEx.message);
-      const achadas = (ex || []).map(x => x.chave);
-      naoAchadas += fatia.length - achadas.length;
-      const pendentes = (ex || []).filter(x => x.status !== 'cancelada').map(x => x.chave);
+      const achadas = new Set((ex || []).map(x => x.chave));
+      naoAchadas += fatia.filter(ch => !achadas.has(ch)).length;
+      const pendentes = (ex || []).filter(x => x.status !== 'cancelada').map(x => x.id);
       if (!pendentes.length) continue;
-      const { data: up, error } = await supabase.from('nf_documentos').update({ status: 'cancelada' })
-        .eq('cliente_id', cli.id).in('chave', pendentes).select('id');
+      const { data: up, error } = await supabase.from('nf_documentos').update({ status: 'cancelada' }).in('id', pendentes).select('id');
       if (error) throw new Error('falha ao aplicar cancelamentos: ' + error.message);
       canceladas += (up || []).length;
     }
-    const cancelNoLote = docs.filter(r => cancelamentos.has(r.doc.chave) && idPorChave.has(r.doc.chave)).length;
-
-    const detalhe = [...erros.map(e => ({ tipo: 'erro', ...e })), ...ignorados.map(e => ({ tipo: 'ignorado', ...e }))];
-    await supabase.from('nf_importacoes').update({ notas_novas: novas, notas_duplicadas: duplicadas, ignorados: ignorados.length, erros: detalhe }).eq('id', imp.id);
 
     progresso(total, total, 'Concluído.');
-    return { total, novas, duplicadas, ignorados, erros, itens: itensGravados, canceladas: canceladas + cancelNoLote, naoAchadas, saidas: docs.filter(r => r.doc.tipo === 'saida').length, entradas: docs.filter(r => r.doc.tipo === 'entrada').length, nfse: docs.filter(r => r.doc.modelo === 'nfse').length, importacao_id: imp.id };
+    const todas = [...grupos.values()].flatMap(g => [...g.porChave.values()]);
+    const meses = {};                   // quantas notas de cada mês de emissão ('AAAA-MM') — a conferência abre no mês delas
+    todas.forEach(r => { const m = String(r.doc.data_emissao || '').slice(0, 7); if (m) meses[m] = (meses[m] || 0) + 1; });
+    return { total, novas, duplicadas, ignorados, erros, itens: itensGravados, canceladas: canceladas + cancelNoLote, naoAchadas, meses,
+      saidas: todas.filter(r => r.doc.tipo === 'saida').length, entradas: todas.filter(r => r.doc.tipo === 'entrada').length,
+      nfse: todas.filter(r => r.doc.modelo === 'nfse').length, importacao_id: multi ? null : (lotes[0] ? lotes[0].id : null), porCliente };
   } catch (e) {
     // lote atômico: falhou no meio, nada fica pela metade (nota sem itens seria "duplicada" pra sempre)
-    if (impId) {
-      await supabase.from('nf_documentos').delete().eq('importacao_id', impId).eq('cliente_id', cli.id);
-      await supabase.from('nf_importacoes').delete().eq('id', impId);
+    for (const l of lotes) {
+      await supabase.from('nf_documentos').delete().eq('importacao_id', l.id).eq('cliente_id', l.cliente_id);
+      await supabase.from('nf_importacoes').delete().eq('id', l.id);
     }
-    const err = new Error((e.message || String(e)) + (impId ? ' — o lote foi desfeito, nada ficou pela metade; tente de novo.' : ''));
+    const err = new Error((e.message || String(e)) + (lotes.length ? ' — o lote foi desfeito, nada ficou pela metade; tente de novo.' : ''));
     err.lidos = lidos; err.total = total;
     throw err;
   }

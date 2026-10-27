@@ -177,6 +177,7 @@ const TELAS = {
     } },
   'fiscal-regularizacao.html': { nome: 'Regularizações', exemplos: ['Quais regularizações estão em aberto?'] },
   'fiscal-xml.html': { nome: 'Notas fiscais (XML)' }, 'fiscal-analise.html': { nome: 'Análise fiscal' }, 'fiscal-clientes.html': { nome: 'Fiscal por cliente' },
+  'fiscal-destda.html': { nome: 'Conferência SEDIF/DeSTDA' },
   'contabil-dre.html': { nome: 'DRE do cliente' }, 'fator-r.html': { nome: 'Fator R' },
   'societario-alvaras.html': { nome: 'Alvarás', exemplos: ['Quais alvarás vencem nos próximos 60 dias?', 'Algum alvará vencido?'],
     dica: async () => {

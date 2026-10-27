@@ -6,7 +6,8 @@ Antes este teste era `tests/importar-xml.test.mjs` e vivia pulado: o Node não t
 não permite npm (o `linkedom` nunca vai estar instalado). Aqui ele roda de verdade, no mesmo navegador
 que o `conferir.py` usa, com os mesmos XMLs inventados (repositório público — nada de nota de cliente).
 
-Confere: NF-e autorizada (chave, emitente/destinatário, status, CFOP, valor, item), NF-e rejeitada,
+Confere: NF-e autorizada (chave, emitente/destinatário, status, CFOP, valor, item), a base e a alíquota do ICMS e a base da
+ST de cada item (27/10/2026, a Conferência SEDIF/DeSTDA), NF-e rejeitada,
 evento de cancelamento (homologado e não homologado), NFS-e do padrão nacional, CNPJ alfanumérico na chave e
 nos documentos (IN RFB 2.229/2024), DPS solta, CT-e e MDF-e (inclusive os que citam a NF-e transportada) e XML mal
 formado. Termina com código 1 se alguma checagem falhar.
@@ -31,6 +32,25 @@ NFE = f'''<?xml version="1.0"?><nfeProc xmlns="http://www.portalfiscal.inf.br/nf
 <total><ICMSTot><vProd>100.00</vProd><vNF>100.00</vNF></ICMSTot></total>
 </infNFe></NFe>
 <protNFe><infProt><chNFe>{CHAVE}</chNFe><cStat>100</cStat></infProt></protNFe></nfeProc>'''
+
+# a base e a alíquota do ICMS e a base da ST de cada item (27/10/2026, a Conferência SEDIF/DeSTDA): compra de SC com um
+# item a 4% (importado), um a 12% com ST e um de fornecedor do Simples (sem alíquota no XML)
+CHAVE_ICMS = '42' + '2609' + '33333333000133' + '55' + '001' + '000000777' + '1' + '00000777' + '0'
+assert len(CHAVE_ICMS) == 44
+NFE_ICMS = f'''<?xml version="1.0"?><nfeProc xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">
+<NFe><infNFe Id="NFe{CHAVE_ICMS}" versao="4.00">
+<ide><cUF>42</cUF><nNF>777</nNF><serie>1</serie><dhEmi>2026-09-10T10:00:00-03:00</dhEmi><tpNF>1</tpNF><finNFe>1</finNFe></ide>
+<emit><CNPJ>33333333000133</CNPJ><xNome>FORNECEDOR TESTE SA</xNome><enderEmit><UF>SC</UF></enderEmit><CRT>3</CRT></emit>
+<dest><CNPJ>22222222000122</CNPJ><xNome>CLIENTE TESTE SA</xNome><enderDest><UF>RS</UF></enderDest></dest>
+<det nItem="1"><prod><cProd>1</cProd><xProd>SECADOR</xProd><NCM>85163100</NCM><CFOP>6102</CFOP><uCom>UN</uCom><qCom>10</qCom><vUnCom>100.00</vUnCom><vProd>1000.00</vProd></prod>
+<imposto><ICMS><ICMS00><orig>1</orig><CST>00</CST><modBC>3</modBC><vBC>1000.00</vBC><pICMS>4.0000</pICMS><vICMS>40.00</vICMS></ICMS00></ICMS></imposto></det>
+<det nItem="2"><prod><cProd>2</cProd><xProd>RACAO</xProd><NCM>23091000</NCM><CFOP>6403</CFOP><uCom>UN</uCom><qCom>5</qCom><vUnCom>100.00</vUnCom><vProd>500.00</vProd></prod>
+<imposto><ICMS><ICMS10><orig>0</orig><CST>10</CST><modBC>3</modBC><vBC>500.00</vBC><pICMS>12.00</pICMS><vICMS>60.00</vICMS><modBCST>4</modBCST><pMVAST>40.00</pMVAST><vBCST>700.00</vBCST><pICMSST>17.00</pICMSST><vICMSST>59.00</vICMSST></ICMS10></ICMS></imposto></det>
+<det nItem="3"><prod><cProd>3</cProd><xProd>CAIXA</xProd><NCM>48191000</NCM><CFOP>6102</CFOP><uCom>UN</uCom><qCom>1</qCom><vUnCom>20.00</vUnCom><vProd>20.00</vProd></prod>
+<imposto><ICMS><ICMSSN102><orig>0</orig><CSOSN>102</CSOSN></ICMSSN102></ICMS></imposto></det>
+<total><ICMSTot><vBC>1500.00</vBC><vICMS>100.00</vICMS><vBCST>700.00</vBCST><vST>59.00</vST><vProd>1520.00</vProd><vNF>1579.00</vNF></ICMSTot></total>
+</infNFe></NFe>
+<protNFe><infProt><chNFe>{CHAVE_ICMS}</chNFe><cStat>100</cStat></infProt></protNFe></nfeProc>'''
 
 EVENTO = f'''<procEventoNFe xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.00"><evento><infEvento><chNFe>{CHAVE}</chNFe><tpEvento>110111</tpEvento></infEvento></evento><retEvento><infEvento><cStat>135</cStat></infEvento></retEvento></procEventoNFe>'''
 
@@ -92,6 +112,20 @@ async (x) => {
     ok(Math.abs(r1.doc.valor_total - 100) < 0.005, 'valor total');
     ok(r1.itens.length === 1 && r1.itens[0].ncm === '84129000', 'um item com NCM');
   }
+
+  tit('A base e a alíquota do ICMS de cada item (a Conferência SEDIF/DeSTDA):');
+  const ri = parseXml(x.nfeIcms, 'nfe-icms.xml');
+  ok(ri.kind === 'nfe' && ri.itens.length === 3, 'a compra de SC com três itens');
+  if (ri.kind === 'nfe') {
+    const [a, b, c] = ri.itens;
+    ok(ri.doc.emit_uf === 'SC' && ri.doc.dest_doc === '22222222000122', 'o fornecedor de SC e o destinatário');
+    ok(a.icms_aliquota === 4 && a.icms_base === 1000 && Math.abs(a.icms_valor - 40) < 0.005 && a.icms_st_base === null, 'item a 4%: a alíquota, a base e o valor; sem ST, a base da ST fica vazia');
+    ok(b.icms_aliquota === 12 && b.icms_base === 500 && b.icms_st_base === 700 && Math.abs(b.icms_st_valor - 59) < 0.005, 'item com ST (ICMS10): a alíquota própria e a base e o valor da ST');
+    ok(c.icms_aliquota === null && c.icms_base === null && c.icms_st_base === null && c.csosn === '102', 'fornecedor do Simples (CSOSN 102): sem alíquota no XML, fica vazio (não zero)');
+    ok(r1.kind === 'nfe' && r1.itens[0].icms_aliquota === null && r1.itens[0].icms_base === null, 'item sem o grupo do ICMS: vazio');
+  }
+  const rs = parseXml(x.nfse, 'nfse.xml');
+  ok(rs.kind === 'nfse' && rs.lista[0].itens[0].icms_aliquota === null && 'icms_base' in rs.lista[0].itens[0], 'NFS-e: o item de serviço tem os campos novos, vazios');
 
   tit('NF-e rejeitada:');
   const r2 = parseXml(x.nfe.replace('<cStat>100</cStat>', '<cStat>204</cStat>'), 'rej.xml');
@@ -162,7 +196,7 @@ def main():
         p = b.new_page()
         p.on('pageerror', lambda e: erros.append(str(e)))
         p.goto(base + '_parser.html')
-        linhas = p.evaluate(CHECAGENS, { 'nfe': NFE, 'evento': EVENTO, 'nfse': NFSE, 'nfseDesc': NFSE_DESC, 'chave': CHAVE,
+        linhas = p.evaluate(CHECAGENS, { 'nfe': NFE, 'nfeIcms': NFE_ICMS, 'evento': EVENTO, 'nfse': NFSE, 'nfseDesc': NFSE_DESC, 'chave': CHAVE,
                                          'nfeAlfa': NFE_ALFA, 'nfseAlfa': NFSE_ALFA, 'chaveAlfa': CHAVE_ALFA, 'cnpjAlfa': CNPJ_ALFA,
                                          'cte': CTE, 'mdfe': MDFE, 'eventoCte': EVENTO_CTE })
         b.close()
