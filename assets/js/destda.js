@@ -15,6 +15,8 @@ export const ALIQUOTA_INTERNA_RS = 17;
 
 const n = v => { const x = Number(v); return isFinite(x) ? x : 0; };
 const centavos = v => Math.round(v * 100) / 100;
+// a soma de um campo dos itens em centavos inteiros: o total da nota bate com a soma das linhas da tela
+const soma = (itens, campo) => (itens || []).reduce((s, i) => s + Math.round(n(i && i[campo]) * 100), 0) / 100;
 export const digitos = s => String(s == null ? '' : s).replace(/\D/g, '');
 
 // o DIFAL de uma nota: a soma das bases do ICMS dos itens a 4% × (interna − 4) ÷ 100, arredondado no centavo (meio
@@ -89,12 +91,15 @@ export const semAliquota = i => n(i && i.icms_valor) > 0 && (i.icms_aliquota == 
 
 // a conferência de uma empresa no mês: docs [{ id, tipo, status, emit_uf, emit_doc, dest_doc, data_emissao, numero, … }],
 // itensPorDoc Map(id da nota → itens), regras (destda_regras_st) e o CNPJ da empresa (só dígitos e letras) →
-// { diferencial: [{ doc, itens, difal }], st: [{ doc, itens (com .regra), recolher }], semAliquota: [doc], totais }
+// { diferencial: [{ doc, itens, difal, valor, base, icms }], st: [{ doc, itens (com .regra), recolher, valor, base, icms,
+// retido }], semAliquota: [doc], totais } — cada nota com os totais dela (o totalizador por nota da tela, 27/10/2026,
+// pedido da Thalia: comparar nota a nota com a conferência dela sem somar produto por produto); no ST, a base e o ICMS
+// são os dos itens que entram na conta (sem o ST retido e com a base do ICMS)
 export function conferirEmpresa(docs, itensPorDoc, regras, docEmpresa) {
   const diferencial = [], st = [], incompletas = [];
   const totais = {
     diferencial: { notas: 0, itens: 0, valor: 0, base: 0, icms: 0, difal: 0 },
-    st: { notas: 0, itens: 0, valor: 0, retido: 0, semRetencao: 0, recolher: 0, semBase: 0 }
+    st: { notas: 0, itens: 0, valor: 0, base: 0, icms: 0, retido: 0, semRetencao: 0, recolher: 0, semBase: 0 }
   };
   [...(docs || [])].sort(ordemDasNotas).forEach(d => {
     if (!notaDeFora(d, docEmpresa)) return;
@@ -105,24 +110,23 @@ export function conferirEmpresa(docs, itensPorDoc, regras, docEmpresa) {
     // cobrado em dobro
     const a4 = itens.filter(i => ehQuatro(i.icms_aliquota) && !regraDoItem(i, d.emit_uf, regras));
     if (a4.length) {
-      const difal = difalDaNota(a4);
-      diferencial.push({ doc: d, itens: a4, difal });
-      const t = totais.diferencial; t.notas++; t.difal += difal;
-      a4.forEach(i => { t.itens++; t.valor += n(i.valor_total); t.base += n(i.icms_base); t.icms += n(i.icms_valor); });
+      const nota = { doc: d, itens: a4, difal: difalDaNota(a4), valor: soma(a4, 'valor_total'), base: soma(a4, 'icms_base'), icms: soma(a4, 'icms_valor') };
+      diferencial.push(nota);
+      const t = totais.diferencial; t.notas++; t.itens += a4.length;
+      ['valor', 'base', 'icms', 'difal'].forEach(k => { t[k] += nota[k]; });
     }
     if (comSt.length) {
-      const recolher = stDaNota(comSt);
-      st.push({ doc: d, itens: comSt, recolher });
-      const t = totais.st; t.notas++; t.recolher += recolher;
-      comSt.forEach(i => {
-        t.itens++; t.valor += n(i.valor_total); t.retido += n(i.icms_st_valor);
-        if (!stRetido(i)) t.semRetencao++;
-        if (stSemBase(i)) t.semBase++;
-      });
+      const naConta = comSt.filter(i => !stRetido(i) && !stSemBase(i));
+      const nota = { doc: d, itens: comSt, recolher: stDaNota(comSt), valor: soma(comSt, 'valor_total'), base: soma(naConta, 'icms_base'),
+        icms: soma(naConta, 'icms_valor'), retido: soma(comSt, 'icms_st_valor') };
+      st.push(nota);
+      const t = totais.st; t.notas++; t.itens += comSt.length;
+      ['valor', 'base', 'icms', 'retido', 'recolher'].forEach(k => { t[k] += nota[k]; });
+      comSt.forEach(i => { if (!stRetido(i)) t.semRetencao++; if (stSemBase(i)) t.semBase++; });
     }
   });
   ['valor', 'base', 'icms', 'difal'].forEach(k => { totais.diferencial[k] = centavos(totais.diferencial[k]); });
-  ['valor', 'retido', 'recolher'].forEach(k => { totais.st[k] = centavos(totais.st[k]); });
+  ['valor', 'base', 'icms', 'retido', 'recolher'].forEach(k => { totais.st[k] = centavos(totais.st[k]); });
   return { diferencial, st, semAliquota: incompletas, totais };
 }
 

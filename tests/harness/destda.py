@@ -240,6 +240,13 @@ def fluxo(b, base, tema, erros):
     ok(len(dif2) == 2 and dif2[0][8] == '136,51' and dif2[1][8] == '' and dif2[1][7] == '10,00',
        f'a nota de MG com dois itens a 4%: o DIFAL da nota inteira (13% de 1.050,05 = 136,51) na linha do primeiro item ({[l[7:] for l in dif2]})')
     ok(linhas(p, '.ds-emp[data-empresa="d2"] table.ds-dif tfoot tr')[0][-1] == '136,51', 'o total da empresa')
+    nota2 = linhas(p, '.ds-emp[data-empresa="d2"] table.ds-dif-nota tbody tr')
+    ok(len(nota2) == 1 and nota2[0][:2] == ['08/09/2026', '505'] and nota2[0][3:] == ['2', '1.050,05', '1.050,05', '42,00', '136,51']
+       and linhas(p, '.ds-emp[data-empresa="d2"] table.ds-dif-nota tfoot tr') == [['Total', '2', '1.050,05', '1.050,05', '42,00', '136,51']]
+       and p.inner_text('.ds-emp[data-empresa="d2"] table.ds-dif-nota caption') == 'Totais por nota',
+       f'o totalizador por nota (pedido da Thalia): a nota de MG numa linha só, com os itens somados ({nota2})')
+    nota1 = linhas(p, '.ds-emp[data-empresa="d1"] table.ds-dif-nota tbody tr')
+    ok(nota1 == [['05/09/2026', '101', 'FORNECEDOR SC TESTE SA SC', '1', '1.000,00', '1.000,00', '40,00', '130,00']], f'o totalizador da d1 ({nota1})')
     conta = p.inner_text('#conta').split('\n')
     ok(len(conta) == 2 and conta[0].startswith('DIFAL = a base do ICMS dos itens a 4% × 13% (os 17% do RS menos os 4% da nota), nota por nota, sem o IPI.')
        and conta[1].startswith('ICMS-ST = a base do ICMS dos itens da regra × 17% (a alíquota do RS) − o ICMS destacado neles, nota por nota, sem MVA.')
@@ -253,6 +260,10 @@ def fluxo(b, base, tema, erros):
     ok(linhas(p, '.ds-emp[data-empresa="d1"] table.ds-st tfoot tr') == [['Total', '900,00', '', '', '', '47,20', '25,00']], 'o total do ICMS-ST')
     ok('ICMS-ST na entrada — Ração pet (alimento para cães e gatos) · 1 nota, 2 itens · ST a recolher R$ 25,00' in c1, 'o título do ICMS-ST')
     ok('RACAO CAVALO' not in c1, 'a ração de cavalo (2309.90.10) não aparece: não é ração pet')
+    stn = linhas(p, '.ds-emp[data-empresa="d1"] table.ds-st-nota tbody tr')
+    ok(stn == [['12/09/2026', '202', 'PET FOODS SP TESTE SA SP', '2', '900,00', '500,00', '60,00', '47,20', '25,00']]
+       and linhas(p, '.ds-emp[data-empresa="d1"] table.ds-st-nota tfoot tr') == [['Total', '2', '900,00', '500,00', '60,00', '47,20', '25,00']],
+       f'o totalizador por nota do ST: a base e o ICMS dos itens da conta (a retida fora), o retido e o a recolher ({stn})')
     c2 = p.inner_text('.ds-emp[data-empresa="d2"]')
     ok(PERIGO_EMPRESA in c2 and '<b>NEGRITO</b>' in c2 and PERIGO_FORNECEDOR in c2 and PERIGO_ITEM in c2 and '32,00' in c2,
        'a compra de MG a 4%, com o nome da empresa, o fantasia, o fornecedor e o item como texto')
@@ -289,6 +300,9 @@ def fluxo(b, base, tema, erros):
     ok(len(st) == 3 and st[2][:3] == ['15/09/2026', '303', 'PET PR TESTE SA PR'] and st[2][-1] == '12,50'
        and linhas(p, '.ds-emp[data-empresa="d1"] table.ds-st tfoot tr')[0][-1] == '37,50',
        f'a nota do PR entra na conferência na hora, com o ST dela (17% de 250 − 30 = 12,50) no total ({[(l[1], l[-1]) for l in st]})')
+    stn = linhas(p, '.ds-emp[data-empresa="d1"] table.ds-st-nota tbody tr')
+    ok(len(stn) == 2 and stn[1][:2] == ['15/09/2026', '303'] and stn[1][3:] == ['1', '250,00', '250,00', '30,00', '0,00', '12,50'],
+       f'e no totalizador por nota ({stn})')
     p.click('#btnNovaRegra')
     ok(p.locator('.ds-regra[data-id=""]').count() == 1, '"+ Nova regra" abre uma linha')
     p.click('#btnNovaRegra')

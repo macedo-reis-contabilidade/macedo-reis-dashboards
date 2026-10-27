@@ -57,6 +57,8 @@
     table.ds tfoot td { font-weight:600; border-bottom:none; }
     .ds-aviso { font-size:12.5px; color:var(--warn); margin:10px 0 0; }
     table.ds td.ds-difal { font-weight:600; }
+    table.ds.ds-nota { min-width:720px; margin-top:4px; }
+    table.ds caption { caption-side:top; text-align:left; font-size:12px; font-weight:600; color:var(--brand-light); padding:12px 0 6px; }
     .ds-conta { font-size:12.5px; color:var(--text-muted); margin:4px 0 0; }
     .ds-conta:empty { display:none; }
     .ds-sem { font-size:12px; color:var(--warn); }
@@ -291,7 +293,11 @@ function cartaoDaEmpresa({ e, conf }){
       + conf.diferencial.map(({ doc, itens, difal }) => itens.map((i, k) => linhaDoItem(doc, i, k,
           '<td class="num">' + BRL(i.valor_total) + '</td><td class="num">' + (i.icms_base == null ? '—' : BRL(i.icms_base)) + '</td><td class="num">' + pct(i.icms_aliquota) + '</td><td class="num">' + BRL(i.icms_valor) + '</td>'
           + '<td class="num ds-difal">' + (k === 0 ? BRL(difal) : '') + '</td>')).join('')).join('')
-      + '</tbody><tfoot><tr><td colspan="4">Total</td><td class="num">' + BRL(td.valor) + '</td><td class="num">' + BRL(td.base) + '</td><td></td><td class="num">' + BRL(td.icms) + '</td><td class="num ds-difal">' + BRL(td.difal) + '</td></tr></tfoot></table></div>';
+      + '</tbody><tfoot><tr><td colspan="4">Total</td><td class="num">' + BRL(td.valor) + '</td><td class="num">' + BRL(td.base) + '</td><td></td><td class="num">' + BRL(td.icms) + '</td><td class="num ds-difal">' + BRL(td.difal) + '</td></tr></tfoot></table></div>'
+      // o totalizador por nota: uma linha por nota, pra comparar com a conferência sem somar os itens
+      + '<div class="ds-tab"><table class="ds ds-nota ds-dif-nota"><caption>Totais por nota</caption><thead><tr><th>Data</th><th>Nota</th><th>Fornecedor</th><th class="num">Itens a 4%</th><th class="num">Valor</th><th class="num">Base do ICMS</th><th class="num">ICMS destacado</th><th class="num">DIFAL</th></tr></thead><tbody>'
+      + conf.diferencial.map(x => linhaDaNota(x.doc, '<td class="num">' + x.itens.length + '</td><td class="num">' + BRL(x.valor) + '</td><td class="num">' + BRL(x.base) + '</td><td class="num">' + BRL(x.icms) + '</td><td class="num ds-difal">' + BRL(x.difal) + '</td>')).join('')
+      + '</tbody><tfoot><tr><td colspan="3">Total</td><td class="num">' + td.itens + '</td><td class="num">' + BRL(td.valor) + '</td><td class="num">' + BRL(td.base) + '</td><td class="num">' + BRL(td.icms) + '</td><td class="num ds-difal">' + BRL(td.difal) + '</td></tr></tfoot></table></div>';
   }
   if (conf.st.length) {
     const nomesRegras = [...new Set(conf.st.flatMap(x => x.itens.map(i => i.regra.nome)))].join(', ');
@@ -306,7 +312,12 @@ function cartaoDaEmpresa({ e, conf }){
           + '<td class="num">' + (stRetido(i) ? BRL(i.icms_st_valor) : '<span class="ds-muda">sem retenção</span>') + '</td>'
           + '<td class="num ds-difal">' + (k === 0 ? BRL(recolher) : '') + '</td>',
           stSemBase(i) ? 'sem a base do ICMS na nota: fora da conta, confira' : '')).join('')).join('')
-      + '</tbody><tfoot><tr><td colspan="4">Total</td><td class="num">' + BRL(ts.valor) + '</td><td></td><td></td><td></td><td class="num">' + BRL(ts.retido) + '</td><td class="num ds-difal">' + BRL(ts.recolher) + '</td></tr></tfoot></table></div>';
+      + '</tbody><tfoot><tr><td colspan="4">Total</td><td class="num">' + BRL(ts.valor) + '</td><td></td><td></td><td></td><td class="num">' + BRL(ts.retido) + '</td><td class="num ds-difal">' + BRL(ts.recolher) + '</td></tr></tfoot></table></div>'
+      // o totalizador por nota do ST: a base e o ICMS são os dos itens que entram na conta
+      + '<div class="ds-tab"><table class="ds ds-nota ds-st-nota"><caption>Totais por nota</caption><thead><tr><th>Data</th><th>Nota</th><th>Fornecedor</th><th class="num">Itens</th><th class="num">Valor</th>'
+      + '<th class="num" title="Só os itens que entram na conta: sem o ST retido e com a base do ICMS na nota">Base do ICMS</th><th class="num" title="Só os itens que entram na conta: sem o ST retido e com a base do ICMS na nota">ICMS destacado</th><th class="num">ST retida na nota</th><th class="num">ST a recolher</th></tr></thead><tbody>'
+      + conf.st.map(x => linhaDaNota(x.doc, '<td class="num">' + x.itens.length + '</td><td class="num">' + BRL(x.valor) + '</td><td class="num">' + BRL(x.base) + '</td><td class="num">' + BRL(x.icms) + '</td><td class="num">' + BRL(x.retido) + '</td><td class="num ds-difal">' + BRL(x.recolher) + '</td>')).join('')
+      + '</tbody><tfoot><tr><td colspan="3">Total</td><td class="num">' + ts.itens + '</td><td class="num">' + BRL(ts.valor) + '</td><td class="num">' + BRL(ts.base) + '</td><td class="num">' + BRL(ts.icms) + '</td><td class="num">' + BRL(ts.retido) + '</td><td class="num ds-difal">' + BRL(ts.recolher) + '</td></tr></tfoot></table></div>';
   }
   if (conf.semAliquota.length) {
     h += '<p class="ds-aviso">' + (conf.semAliquota.length === 1 ? '1 nota de fora do RS foi importada' : conf.semAliquota.length + ' notas de fora do RS foram importadas')
@@ -324,6 +335,10 @@ function textoDaConta(){
 function textoDaContaSt(){
   return 'ICMS-ST = a base do ICMS dos itens da regra × ' + ALIQUOTA_INTERNA_RS + '% (a alíquota do RS) − o ICMS destacado neles, nota por nota, sem MVA. '
     + 'O item com o ST já retido pelo fornecedor fica fora da conta.';
+}
+// a linha do totalizador por nota (27/10/2026, pedido da Thalia: achar a nota que diverge sem somar produto por produto)
+function linhaDaNota(doc, resto){
+  return '<tr><td>' + dataBR(doc.data_emissao) + '</td><td>' + esc(doc.numero || '—') + '</td><td>' + esc(doc.emit_nome || '—') + '<small>' + esc(doc.emit_uf || '') + '</small></td>' + resto + '</tr>';
 }
 // a linha do item: a data, a nota e o fornecedor só no primeiro item da nota; `aviso` (texto da tela) embaixo do item
 function linhaDoItem(doc, i, k, resto, aviso){

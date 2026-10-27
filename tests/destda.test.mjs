@@ -69,7 +69,14 @@ chk('os totais do diferencial, com o DIFAL (13% de 1.500)', JSON.stringify(c.tot
 chk('o DIFAL da nota: 13% da base dos itens a 4% (o item a 12% fica fora)', c.diferencial[0].difal === 195 && c.diferencial.length === 1, c.diferencial.map(x => x.difal));
 chk('o ST: a ração de SP (mesmo a 12%) e a de GO', c.st.map(x => x.doc.id).join(',') === 'n3,n4' && c.st[0].itens.length === 1 && c.st[0].itens[0].regra === RACAO);
 chk('o ST a recolher de cada nota: a de SP, 17% de 500 − 60 = 25; a de GO, com o ST retido pelo fornecedor, nada', c.st[0].recolher === 25 && c.st[1].recolher === 0, c.st.map(x => x.recolher));
-chk('os totais do ST, com o que o fornecedor reteve, quantos itens sem retenção e o a recolher', JSON.stringify(c.totais.st) === JSON.stringify({ notas: 2, itens: 2, valor: 700, retido: 35.5, semRetencao: 1, recolher: 25, semBase: 0 }), c.totais.st);
+chk('os totais do ST, com a base e o ICMS da conta, o que o fornecedor reteve, quantos itens sem retenção e o a recolher',
+  JSON.stringify(c.totais.st) === JSON.stringify({ notas: 2, itens: 2, valor: 700, base: 500, icms: 60, retido: 35.5, semRetencao: 1, recolher: 25, semBase: 0 }), c.totais.st);
+const porNota = x => JSON.stringify(Object.fromEntries(Object.entries(x).filter(([k]) => !['doc', 'itens'].includes(k))));
+chk('o totalizador por nota do diferencial: o valor, a base e o ICMS dos itens a 4% da nota e o DIFAL dela',
+  porNota(c.diferencial[0]) === JSON.stringify({ difal: 195, valor: 1500, base: 1500, icms: 60 }), porNota(c.diferencial[0]));
+chk('o totalizador por nota do ST: a de SP com a base e o ICMS da conta; a de GO, retida, sem base na conta e com o retido',
+  porNota(c.st[0]) === JSON.stringify({ recolher: 25, valor: 500, base: 500, icms: 60, retido: 0 })
+  && porNota(c.st[1]) === JSON.stringify({ recolher: 0, valor: 200, base: 0, icms: 0, retido: 35.5 }), [porNota(c.st[0]), porNota(c.st[1])]);
 chk('sem regra nenhuma, o ST fica vazio', conferirEmpresa(docs, itens, [], EMPRESA).st.length === 0);
 chk('nenhuma nota sem a alíquota aqui', c.semAliquota.length === 0);
 const antiga = conferirEmpresa([nota('v')], new Map([['v', [item(1, { icms_aliquota: null, icms_base: null, icms_valor: 40 })]]]), [RACAO], EMPRESA);
@@ -96,6 +103,8 @@ const daThalia = conferirEmpresa([nota('t', { emit_uf: 'SC' })], new Map([['t', 
   ...PETS.map((p, k) => item(k + 2, { ncm: '23091000', icms_aliquota: 12, valor_total: p.icms_base, ...p }))]]]), [RACAO], EMPRESA);
 chk('a nota inteira: só as três rações pet no ST, 143,25 a recolher; nada no diferencial', daThalia.st[0].itens.length === 3 && daThalia.st[0].recolher === 143.25
   && daThalia.totais.st.recolher === 143.25 && daThalia.diferencial.length === 0, daThalia.totais.st);
+chk('o totalizador da nota da Thalia: base 2.864,98 e ICMS 343,80 (a soma das três rações, sem somar à mão)',
+  daThalia.st[0].base === 2864.98 && daThalia.st[0].icms === 343.8, [daThalia.st[0].base, daThalia.st[0].icms]);
 chk('o item com o ST retido pelo fornecedor fica fora da conta', stRetido({ icms_st_valor: 5 }) && stDaNota([{ icms_base: 100, icms_valor: 12, icms_st_valor: 5 }]) === 0
   && stDaNota([{ icms_base: 100, icms_valor: 12, icms_st_valor: 5 }, { icms_base: 100, icms_valor: 12 }]) === 5);
 const semBase = conferirEmpresa([nota('b', { emit_uf: 'SP' })], new Map([['b', [item(1, { ncm: '23091000', icms_aliquota: null, icms_base: null, icms_valor: 0, valor_total: 300 })]]]), [RACAO], EMPRESA);
