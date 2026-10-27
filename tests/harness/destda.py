@@ -12,10 +12,11 @@ Confere, nos temas escuro e claro:
      CNPJ (a nota entre duas empresas do cadastro nas duas: venda numa, compra na outra), a de fora do cadastro ignorada
      e contada, o arquivo que não é nota fora; a que já estava na base não entra de novo, mas os itens dela ganham a
      alíquota; um lote por empresa; o resumo por empresa, com a que não está na obrigação marcada;
-  3. a conferência de 09/2026: as notas de fora do RS a 4% (a do RS a 4% e o item a 12% não), com os totais; a ração de
-     SP (mesmo a 12%) no ICMS-ST, com o que o fornecedor reteve e o item sem retenção; a ração do PR não; a empresa sem
-     nada a recolher e a sem notas de entrada;
-  4. trocar o mês: 08/2026 mostra só a nota de agosto;
+  3. a conferência de 09/2026: as notas de fora do RS a 4% (a do RS a 4% e o item a 12% não), com os totais e o DIFAL
+     de cada nota (13% da base dos itens a 4%, na nota inteira, na linha do primeiro item) e o total, e a linha da conta;
+     a ração de SP (mesmo a 12%) no ICMS-ST, com o que o fornecedor reteve e o item sem retenção; a ração do PR não; a
+     empresa sem nada a recolher e a sem notas de entrada;
+  4. trocar o mês: 08/2026 mostra só a nota de agosto, com o DIFAL dela;
   5. as regras: estado que não existe, NCM curto e regra sem nome não gravam; pôr o PR na ração grava e a nota do PR
      entra na hora; a regra nova grava e a excluída sai; a desligada tira o ICMS-ST da conferência;
   6. texto de fora entra como texto (o nome da empresa, do fornecedor, do item e do arquivo com <img onerror>);
@@ -66,15 +67,16 @@ def nfe(numero, uf, cnpj_emit, nome_emit, cnpj_dest, data, itens, tpnf=1):
 
 # setembro: d1 tem uma nota de SC já na base (item a 4% e outro a 12%), a ração de SP (uma sem e outra com o ST retido),
 # a ração do PR (fora da regra) e uma compra do RS a 4% de outra empresa do cadastro (d4, que não é da SEDIF); d2 compra
-# de MG a 4% (o fornecedor e o item com <img onerror>); d5 só compra a 12%; e uma nota entre dois de fora do cadastro.
-# Agosto: uma de GO a 4% pra d1
+# de MG com dois itens a 4% (o fornecedor e o item com <img onerror>; o DIFAL da nota, 13% de 1.050,05 = 136,5065 →
+# 136,51); d5 só compra a 12%; e uma nota entre dois de fora do cadastro. Agosto: uma de GO a 4% pra d1
 CH1, N1 = nfe(101, 'SC', '81000000000100', 'FORNECEDOR SC TESTE SA', EMP['d1'], '2026-09-05',
               [('85163100', 'SECADOR', '6102', 1000, icms00(4, 1000)), ('84145100', 'VENTILADOR', '6102', 300, icms00(12, 300))])
 _, N2 = nfe(202, 'SP', '82000000000100', 'PET FOODS SP TESTE SA', EMP['d1'], '2026-09-12',
             [('23091000', 'RACAO CAES 15KG', '6102', 500, icms00(12, 500)), ('23091000', 'RACAO GATOS 10KG', '6403', 400, icms10(12, 400, 560, 47.20))])
 _, N3 = nfe(303, 'PR', '83000000000100', 'PET PR TESTE SA', EMP['d1'], '2026-09-15', [('23091000', 'RACAO FILHOTES', '6102', 250, icms00(12, 250))])
 _, N4 = nfe(404, 'RS', EMP['d4'], 'DISTRIBUIDORA DO CADASTRO LTDA', EMP['d1'], '2026-09-20', [('85163100', 'SECADOR', '5102', 100, icms00(4, 100))])
-_, N5 = nfe(505, 'MG', '84000000000100', PERIGO_FORNECEDOR, EMP['d2'], '2026-09-08', [('85098090', PERIGO_ITEM, '6102', 800, icms00(4, 800))])
+_, N5 = nfe(505, 'MG', '84000000000100', PERIGO_FORNECEDOR, EMP['d2'], '2026-09-08',
+            [('85098090', PERIGO_ITEM, '6102', 800, icms00(4, 800)), ('85094050', 'LIQUIDIFICADOR', '6102', 250.05, icms00(4, 250.05))])
 _, N6 = nfe(606, 'SC', '81000000000100', 'FORNECEDOR SC TESTE SA', EMP['d5'], '2026-09-09', [('19052090', 'PAO', '6102', 200, icms00(12, 200))])
 _, N7 = nfe(707, 'SP', '86000000000100', 'TERCEIRO SA', '87000000000100', '2026-09-10', [('85163100', 'SECADOR', '6102', 90, icms00(4, 90))])
 _, N8 = nfe(808, 'GO', '88000000000100', 'GOIAS TESTE SA', EMP['d1'], '2026-08-20', [('85163100', 'SECADOR', '6102', 700, icms00(4, 700))])
@@ -227,9 +229,18 @@ def fluxo(b, base, tema, erros):
     c1 = p.inner_text('.ds-emp[data-empresa="d1"]')
     ok('foi importada antes' not in c1, 'a nota importada de novo não pede mais nada')
     dif = linhas(p, '.ds-emp[data-empresa="d1"] table.ds-dif tbody tr')
-    ok(dif == [['05/09/2026', '101', 'FORNECEDOR SC TESTE SA SC', 'SECADOR NCM 8516.31.00 · CFOP 6102', '1.000,00', '1.000,00', '4%', '40,00']],
-       f'o diferencial: só o item a 4% da nota de SC (a do RS a 4% e o item a 12%, não) ({dif})')
-    ok(linhas(p, '.ds-emp[data-empresa="d1"] table.ds-dif tfoot tr') == [['Total', '1.000,00', '1.000,00', '', '40,00']], 'o total do diferencial')
+    ok(dif == [['05/09/2026', '101', 'FORNECEDOR SC TESTE SA SC', 'SECADOR NCM 8516.31.00 · CFOP 6102', '1.000,00', '1.000,00', '4%', '40,00', '130,00']],
+       f'o diferencial: só o item a 4% da nota de SC (a do RS a 4% e o item a 12%, não), com o DIFAL de 13% ({dif})')
+    ok(linhas(p, '.ds-emp[data-empresa="d1"] table.ds-dif tfoot tr') == [['Total', '1.000,00', '1.000,00', '', '40,00', '130,00']], 'o total do diferencial, com o DIFAL')
+    ok('Diferencial de alíquota — ICMS a 4% de fora do RS · 1 nota, 1 item · DIFAL R$ 130,00' in c1, 'o título do diferencial, com o DIFAL')
+    dif2 = linhas(p, '.ds-emp[data-empresa="d2"] table.ds-dif tbody tr')
+    ok(len(dif2) == 2 and dif2[0][8] == '136,51' and dif2[1][8] == '' and dif2[1][7] == '10,00',
+       f'a nota de MG com dois itens a 4%: o DIFAL da nota inteira (13% de 1.050,05 = 136,51) na linha do primeiro item ({[l[7:] for l in dif2]})')
+    ok(linhas(p, '.ds-emp[data-empresa="d2"] table.ds-dif tfoot tr')[0][-1] == '136,51', 'o total da empresa')
+    conta = p.inner_text('#conta')
+    ok(conta.startswith('DIFAL = a base do ICMS dos itens a 4% × 13% (os 17% do RS menos os 4% da nota), nota por nota, sem o IPI.')
+       and p.get_attribute('.ds-emp[data-empresa="d1"] table.ds-dif th:last-child', 'title') == conta,
+       f'como o DIFAL é calculado, embaixo da lista e na dica da coluna ({conta!r})')
     st = linhas(p, '.ds-emp[data-empresa="d1"] table.ds-st tbody tr')
     ok(st == [['12/09/2026', '202', 'PET FOODS SP TESTE SA SP', 'RACAO CAES 15KG NCM 2309.10.00 · CFOP 6102', '500,00', '12%', 'sem retenção'],
               ['', '', '', 'RACAO GATOS 10KG NCM 2309.10.00 · CFOP 6403', '400,00', '12%', '47,20']],
@@ -248,8 +259,9 @@ def fluxo(b, base, tema, erros):
 
     print(f'[{tema}] 4. Trocar o mês')
     trocar_mes(p, '2026-08')
-    ok(cards(p) == ['d1'] and linhas(p, '.ds-emp[data-empresa="d1"] table.ds-dif tbody tr')[0][:3] == ['20/08/2026', '808', 'GOIAS TESTE SA GO'],
-       'agosto: só a nota de GO a 4%')
+    ago = linhas(p, '.ds-emp[data-empresa="d1"] table.ds-dif tbody tr')
+    ok(cards(p) == ['d1'] and len(ago) == 1 and ago[0][:3] == ['20/08/2026', '808', 'GOIAS TESTE SA GO'] and ago[0][-1] == '91,00',
+       f'agosto: só a nota de GO a 4%, com o DIFAL (13% de 700) ({ago})')
     ok(chips(p) == ['1 com nota de fora do RS a 4%', '0 com ICMS-ST na entrada', '0 sem nada a recolher', '3 sem notas de entrada de 08/2026'],
        f'os números de agosto ({chips(p)})')
     trocar_mes(p, '2026-09')

@@ -3,15 +3,26 @@
 //  1. o diferencial de alíquota — a nota de fora do RS com ICMS destacado a 4% (a empresa é a destinatária);
 //  2. o ICMS-ST na entrada — o NCM das regras (tabela destda_regras_st: a ração pet, 2309.10.00) vindo dos estados da
 //     regra, com qualquer alíquota (mesmo a 12%, o ST é recolhido aqui); a nota diz se o fornecedor já reteve.
-// O cálculo do valor a recolher fica com a Thalia por enquanto (o passo seguinte, com o jeito que ela calcula hoje).
+// O DIFAL da nota a 4% vem calculado (a conta da Thalia, abaixo); o ICMS-ST da ração ela ainda calcula.
 
 export const UFS = ['AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT', 'PA', 'PB', 'PE', 'PI', 'PR',
   'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO'];
 export const UF_DA_CASA = 'RS';
+// a alíquota interna geral do RS (a modal). O DIFAL da nota a 4% é a diferença, 17% − 4% = 13%, sobre a base do ICMS dos
+// itens a 4%, nota por nota — a conta da Thalia, conferida ao centavo com a nota dela (27/10/2026: base 18.038,16 a 4%,
+// sem o IPI, → DIFAL 2.344,96). Produto com outra alíquota interna no RS não tem a conta própria aqui
+export const ALIQUOTA_INTERNA_RS = 17;
 
 const n = v => { const x = Number(v); return isFinite(x) ? x : 0; };
 const centavos = v => Math.round(v * 100) / 100;
 export const digitos = s => String(s == null ? '' : s).replace(/\D/g, '');
+
+// o DIFAL de uma nota: a soma das bases do ICMS dos itens a 4% × (interna − 4) ÷ 100, arredondado no centavo (meio
+// centavo pra cima), na nota inteira — a conta em centavos inteiros, sem a sobra da vírgula flutuante
+export function difalDaNota(itens, interna = ALIQUOTA_INTERNA_RS) {
+  const base = (itens || []).reduce((s, i) => s + Math.round(n(i && i.icms_base) * 100), 0);
+  return Math.round(base * (interna - 4) / 100) / 100;
+}
 
 // "sc, ba; GO rn" → { ufs: ['SC','BA','GO','RN'], invalidas: [] }; o que não é UF volta em `invalidas`
 export function lerUfs(texto) {
@@ -62,11 +73,11 @@ export const semAliquota = i => n(i && i.icms_valor) > 0 && (i.icms_aliquota == 
 
 // a conferência de uma empresa no mês: docs [{ id, tipo, status, emit_uf, emit_doc, dest_doc, data_emissao, numero, … }],
 // itensPorDoc Map(id da nota → itens), regras (destda_regras_st) e o CNPJ da empresa (só dígitos e letras) →
-// { diferencial: [{ doc, itens }], st: [{ doc, itens (com .regra) }], semAliquota: [doc], totais }
+// { diferencial: [{ doc, itens, difal }], st: [{ doc, itens (com .regra) }], semAliquota: [doc], totais }
 export function conferirEmpresa(docs, itensPorDoc, regras, docEmpresa) {
   const diferencial = [], st = [], incompletas = [];
   const totais = {
-    diferencial: { notas: 0, itens: 0, valor: 0, base: 0, icms: 0 },
+    diferencial: { notas: 0, itens: 0, valor: 0, base: 0, icms: 0, difal: 0 },
     st: { notas: 0, itens: 0, valor: 0, retido: 0, semRetencao: 0 }
   };
   [...(docs || [])].sort(ordemDasNotas).forEach(d => {
@@ -76,8 +87,9 @@ export function conferirEmpresa(docs, itensPorDoc, regras, docEmpresa) {
     const a4 = itens.filter(i => ehQuatro(i.icms_aliquota));
     const comSt = itens.map(i => ({ ...i, regra: regraDoItem(i, d.emit_uf, regras) })).filter(i => i.regra);
     if (a4.length) {
-      diferencial.push({ doc: d, itens: a4 });
-      const t = totais.diferencial; t.notas++;
+      const difal = difalDaNota(a4);
+      diferencial.push({ doc: d, itens: a4, difal });
+      const t = totais.diferencial; t.notas++; t.difal += difal;
       a4.forEach(i => { t.itens++; t.valor += n(i.valor_total); t.base += n(i.icms_base); t.icms += n(i.icms_valor); });
     }
     if (comSt.length) {
@@ -86,7 +98,7 @@ export function conferirEmpresa(docs, itensPorDoc, regras, docEmpresa) {
       comSt.forEach(i => { t.itens++; t.valor += n(i.valor_total); t.retido += n(i.icms_st_valor); if (!(n(i.icms_st_valor) > 0)) t.semRetencao++; });
     }
   });
-  ['valor', 'base', 'icms'].forEach(k => { totais.diferencial[k] = centavos(totais.diferencial[k]); });
+  ['valor', 'base', 'icms', 'difal'].forEach(k => { totais.diferencial[k] = centavos(totais.diferencial[k]); });
   ['valor', 'retido'].forEach(k => { totais.st[k] = centavos(totais.st[k]); });
   return { diferencial, st, semAliquota: incompletas, totais };
 }

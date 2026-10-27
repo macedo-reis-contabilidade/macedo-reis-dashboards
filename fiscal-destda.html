@@ -56,6 +56,9 @@
     table.ds tr.ds-segue td.ds-nota { color:transparent; }
     table.ds tfoot td { font-weight:600; border-bottom:none; }
     .ds-aviso { font-size:12.5px; color:var(--warn); margin:10px 0 0; }
+    table.ds td.ds-difal { font-weight:600; }
+    .ds-conta { font-size:12.5px; color:var(--text-muted); margin:4px 0 0; }
+    .ds-conta:empty { display:none; }
     .ds-sem { font-size:12px; color:var(--warn); }
     .ds-lista-curta { font-size:13px; color:var(--brand-pale); line-height:1.7; }
     .ds-lista-curta h3 { font-size:13.5px; margin:16px 0 4px; color:var(--text); }
@@ -101,7 +104,7 @@
         </div>
         <div class="eyebrow">Fiscal</div>
         <h1>Conferência SEDIF/DeSTDA</h1>
-        <p>As notas de entrada do mês das empresas da SEDIF/DeSTDA: o que veio de fora do RS com ICMS destacado a 4% (o diferencial de alíquota) e o que está nas regras de ICMS-ST na entrada, como a ração pet dos estados da lista. Exporte os XMLs do mês na Domínio e solte aqui uma vez só: cada nota vai pra empresa certa pelo CNPJ.</p>
+        <p>As notas de entrada do mês das empresas da SEDIF/DeSTDA: o que veio de fora do RS com ICMS destacado a 4%, com o diferencial de alíquota (DIFAL) de cada nota já calculado, e o que está nas regras de ICMS-ST na entrada, como a ração pet dos estados da lista. Exporte os XMLs do mês na Domínio e solte aqui uma vez só: cada nota vai pra empresa certa pelo CNPJ.</p>
       </div>
 
       <section class="ds-sec" aria-labelledby="tImportar">
@@ -130,6 +133,7 @@
         </div>
         <div class="ds-chips" id="chips"></div>
         <div id="lista"><div class="ds-vazio"><span class="spinner spinner-sm"></span> Carregando…</div></div>
+        <p class="ds-conta" id="conta"></p>
         <div class="ds-lista-curta" id="curtas"></div>
       </section>
 
@@ -147,7 +151,7 @@ import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
 import { normalizarDocumento, hojeLocal } from './assets/js/utils.js';
 import { nomePorEmail } from './assets/js/equipe.js';
 import { importarLote } from './assets/js/importar-xml.js';
-import { conferirEmpresa, situacaoDaEmpresa, mesAnterior, limitesDoMes, rotuloDoMes, lerUfs, ncmDaRegra, ncmFormatado } from './assets/js/destda.js';
+import { conferirEmpresa, situacaoDaEmpresa, mesAnterior, limitesDoMes, rotuloDoMes, lerUfs, ncmDaRegra, ncmFormatado, ALIQUOTA_INTERNA_RS } from './assets/js/destda.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -215,6 +219,7 @@ async function carregarMes(){
   $('tMes').textContent = 'de ' + rotuloDoMes(alvo);
   $('chips').innerHTML = '';
   $('curtas').innerHTML = '';
+  $('conta').textContent = '';
   if (!empresas.length) {
     $('lista').innerHTML = '<div class="ds-vazio">Nenhuma empresa ligada à obrigação SEDIF/DeSTDA em Obrigações fiscais.</div>';
     return;
@@ -264,6 +269,7 @@ function desenharConferencia(){
     '<span class="ds-chip' + (semNotas.length ? ' alerta' : '') + '"><b>' + semNotas.length + '</b> sem notas de entrada de ' + esc(mes) + '</span>';
   $('lista').innerHTML = aConferir.length ? aConferir.map(cartaoDaEmpresa).join('')
     : '<div class="ds-vazio">Nenhuma empresa com nota de fora do RS a 4% nem com ICMS-ST na entrada em ' + esc(mes) + (semNotas.length ? ' — entre as que têm notas de entrada importadas' : '') + '.</div>';
+  $('conta').textContent = comDif ? textoDaConta() : '';
   const nomes = l => l.map(x => esc(nomeDe(x.e)) + (x.e.nome_fantasia && x.e.nome_fantasia !== x.e.nome_principal ? ' <span class="ds-fant">(' + esc(x.e.nome_fantasia) + ')</span>' : '')).join(' · ');
   $('curtas').innerHTML =
     (nada.length ? '<h3>Sem nada a recolher em ' + esc(mes) + ' (' + nada.length + ')</h3><p>' + nomes(nada) + '</p>' : '') +
@@ -276,11 +282,14 @@ function cartaoDaEmpresa({ e, conf }){
   let h = '<article class="ds-emp" data-empresa="' + esc(e.id) + '"><header><h3>' + esc(nomeDe(e)) + '</h3>' + fant
     + '<a href="clientes/editar.html?id=' + encodeURIComponent(e.id) + '">abrir a ficha</a></header>';
   if (conf.diferencial.length) {
-    h += '<h4>Diferencial de alíquota — ICMS a 4% de fora do RS · ' + qtd(td.notas, 'nota', 'notas') + ', ' + qtd(td.itens, 'item', 'itens') + '</h4>'
-      + '<div class="ds-tab"><table class="ds ds-dif"><thead><tr><th>Data</th><th>Nota</th><th>Fornecedor</th><th>Item</th><th class="num">Valor</th><th class="num">Base do ICMS</th><th class="num">Alíq.</th><th class="num">ICMS destacado</th></tr></thead><tbody>'
-      + conf.diferencial.map(({ doc, itens }) => itens.map((i, k) => linhaDoItem(doc, i, k,
-          '<td class="num">' + BRL(i.valor_total) + '</td><td class="num">' + (i.icms_base == null ? '—' : BRL(i.icms_base)) + '</td><td class="num">' + pct(i.icms_aliquota) + '</td><td class="num">' + BRL(i.icms_valor) + '</td>')).join('')).join('')
-      + '</tbody><tfoot><tr><td colspan="4">Total</td><td class="num">' + BRL(td.valor) + '</td><td class="num">' + BRL(td.base) + '</td><td></td><td class="num">' + BRL(td.icms) + '</td></tr></tfoot></table></div>';
+    h += '<h4>Diferencial de alíquota — ICMS a 4% de fora do RS · ' + qtd(td.notas, 'nota', 'notas') + ', ' + qtd(td.itens, 'item', 'itens') + ' · DIFAL R$ ' + BRL(td.difal) + '</h4>'
+      + '<div class="ds-tab"><table class="ds ds-dif"><thead><tr><th>Data</th><th>Nota</th><th>Fornecedor</th><th>Item</th><th class="num">Valor</th><th class="num">Base do ICMS</th><th class="num">Alíq.</th><th class="num">ICMS destacado</th>'
+      + '<th class="num" title="' + esc(textoDaConta()) + '">DIFAL da nota</th></tr></thead><tbody>'
+      // o DIFAL é da nota: na linha do primeiro item, como a data, o número e o fornecedor
+      + conf.diferencial.map(({ doc, itens, difal }) => itens.map((i, k) => linhaDoItem(doc, i, k,
+          '<td class="num">' + BRL(i.valor_total) + '</td><td class="num">' + (i.icms_base == null ? '—' : BRL(i.icms_base)) + '</td><td class="num">' + pct(i.icms_aliquota) + '</td><td class="num">' + BRL(i.icms_valor) + '</td>'
+          + '<td class="num ds-difal">' + (k === 0 ? BRL(difal) : '') + '</td>')).join('')).join('')
+      + '</tbody><tfoot><tr><td colspan="4">Total</td><td class="num">' + BRL(td.valor) + '</td><td class="num">' + BRL(td.base) + '</td><td></td><td class="num">' + BRL(td.icms) + '</td><td class="num ds-difal">' + BRL(td.difal) + '</td></tr></tfoot></table></div>';
   }
   if (conf.st.length) {
     const nomesRegras = [...new Set(conf.st.flatMap(x => x.itens.map(i => i.regra.nome)))].join(', ');
@@ -297,6 +306,12 @@ function cartaoDaEmpresa({ e, conf }){
       + (conf.semAliquota.length > 6 ? ' e mais ' + (conf.semAliquota.length - 6) : '') + '): importe os XMLs do mês de novo pra conferir.</p>';
   }
   return h + '</article>';
+}
+// como o DIFAL é calculado (o rodapé da conferência e a dica da coluna)
+function textoDaConta(){
+  const dif = ALIQUOTA_INTERNA_RS - 4;
+  return 'DIFAL = a base do ICMS dos itens a 4% × ' + dif + '% (os ' + ALIQUOTA_INTERNA_RS + '% do RS menos os 4% da nota), nota por nota, sem o IPI. '
+    + 'Produto com outra alíquota interna no RS fica com a conta à parte.';
 }
 // a linha do item: a data, a nota e o fornecedor só no primeiro item da nota
 function linhaDoItem(doc, i, k, resto){

@@ -2,7 +2,7 @@
 // ração pet dos estados da regra (o ICMS-ST na entrada), a leitura dos estados e o mês. Dados inventados (CNPJ com o
 // dígito errado, nada de cliente). Rodar com: node tests/destda.test.mjs
 import { lerUfs, ncmDaRegra, ncmFormatado, ehQuatro, regraDoItem, notaDeFora, conferirEmpresa, mesAnterior, limitesDoMes,
-  rotuloDoMes, situacaoDaEmpresa, UFS } from '../assets/js/destda.js';
+  rotuloDoMes, situacaoDaEmpresa, difalDaNota, ALIQUOTA_INTERNA_RS, UFS } from '../assets/js/destda.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + JSON.stringify(extra) : '')); };
@@ -64,7 +64,8 @@ const itens = new Map([
 const c = conferirEmpresa(docs, itens, [RACAO], EMPRESA);
 chk('o diferencial: as notas de fora a 4%, por data e número (a do RS e a cancelada não)', c.diferencial.map(x => x.doc.id).join(',') === 'n1,n4', c.diferencial.map(x => x.doc.id));
 chk('na nota, só os itens a 4%, em ordem', c.diferencial[0].itens.map(i => i.n_item).join(',') === '1,2');
-chk('os totais do diferencial', JSON.stringify(c.totais.diferencial) === JSON.stringify({ notas: 2, itens: 3, valor: 1700, base: 1700, icms: 68 }), c.totais.diferencial);
+chk('os totais do diferencial, com o DIFAL (13% de 1.700)', JSON.stringify(c.totais.diferencial) === JSON.stringify({ notas: 2, itens: 3, valor: 1700, base: 1700, icms: 68, difal: 221 }), c.totais.diferencial);
+chk('o DIFAL de cada nota: 13% da base dos itens a 4% (o item a 12% fica fora)', c.diferencial[0].difal === 195 && c.diferencial[1].difal === 26, c.diferencial.map(x => x.difal));
 chk('o ST: a ração de SP (mesmo a 12%) e a de GO', c.st.map(x => x.doc.id).join(',') === 'n3,n4' && c.st[0].itens.length === 1 && c.st[0].itens[0].regra === RACAO);
 chk('os totais do ST, com o que o fornecedor reteve e quantos itens sem retenção', JSON.stringify(c.totais.st) === JSON.stringify({ notas: 2, itens: 2, valor: 700, retido: 35.5, semRetencao: 1 }), c.totais.st);
 chk('sem regra nenhuma, o ST fica vazio', conferirEmpresa(docs, itens, [], EMPRESA).st.length === 0);
@@ -74,6 +75,14 @@ chk('a nota importada antes de 27/10 (ICMS destacado sem a alíquota) é apontad
   antiga.semAliquota.map(d => d.id).join(',') === 'v' && antiga.diferencial.length === 0 && situacaoDaEmpresa(antiga, true) === 'a_conferir');
 chk('o item sem ICMS nenhum (fornecedor do Simples) não é nota incompleta', conferirEmpresa([nota('s')], new Map([['s', [item(1, { icms_aliquota: null, icms_base: null, icms_valor: 0 })]]]), [], EMPRESA).semAliquota.length === 0);
 chk('os centavos somam certo', conferirEmpresa([nota('x')], new Map([['x', [item(1, { valor_total: 0.1, icms_base: 0.1, icms_valor: 0.1 }), item(2, { valor_total: 0.2, icms_base: 0.2, icms_valor: 0.2 })]]]), [], EMPRESA).totais.diferencial.valor === 0.3);
+
+console.log('O DIFAL:');
+chk('a nota que a Thalia calculou (27/10/2026): base 18.038,16 a 4%, sem o IPI → DIFAL 2.344,96 (17% − 4%)',
+  ALIQUOTA_INTERNA_RS === 17 && difalDaNota([{ icms_base: 18038.16, icms_aliquota: 4 }]) === 2344.96);
+chk('a base de vários itens soma antes de arredondar: na nota inteira (2 × 0,10 → 0,03; item a item daria 0,02)', difalDaNota([{ icms_base: 0.1 }, { icms_base: 0.1 }]) === 0.03);
+chk('meio centavo arredonda pra cima (0,50 × 13% = 0,065 → 0,07)', difalDaNota([{ icms_base: 0.5 }]) === 0.07);
+chk('sem a base, zero', difalDaNota([{ icms_base: null }]) === 0 && difalDaNota([]) === 0 && difalDaNota(null) === 0);
+chk('outra alíquota interna, outra diferença (25% − 4% = 21%)', difalDaNota([{ icms_base: 1000 }], 25) === 210);
 
 console.log('A situação e o mês:');
 chk('sem notas no mês, com algo a conferir, nada', situacaoDaEmpresa(c, false) === 'sem_notas' && situacaoDaEmpresa(c, true) === 'a_conferir'
