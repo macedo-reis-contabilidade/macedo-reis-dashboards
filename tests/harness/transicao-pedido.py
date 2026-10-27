@@ -9,7 +9,9 @@ Confere:
   1. a transição de entrada tem o "📨 Pedir documentos"; a janela abre com as datas padrão (fiscal e DP 23/10, contábil
      30/10, demais 23/11 — 20/11 é feriado), o dia da semana de cada uma e a mensagem padrão com elas;
   2. mudar uma data troca o dia da semana (com o aviso de feriado) e a mensagem;
-  3. "Copiar mensagem" põe o texto na área de transferência e diz "Mensagem copiada.";
+  3. "Copiar mensagem" põe o texto na área de transferência e diz "Mensagem copiada." (a área de transferência do
+     navegador é trocada por uma de mentira: a de verdade, no Windows, é a do PC inteiro, e o teste falhava nos PCs dos
+     pedreiros quando outro programa mexia nela — 27/10/2026);
   4. o "Baixar o card (PDF)" aponta pro PDF, com o nome do download, e o PDF responde no servidor;
   5. Esc fecha a janela;
   6. a transição de CNPJ novo não tem o botão;
@@ -34,6 +36,13 @@ SEMEAR = """
 })();
 """
 TOUR = "(() => { const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { return String(k).startsWith('mr_tour_') ? 'ok' : g.call(this, k); }; })()"
+# a área de transferência de mentira: guarda o que a tela copiou (a do Windows é a do PC inteiro)
+COPIA = """
+(() => {
+  const area = { writeText: async t => { window.__copiado = String(t); }, readText: async () => window.__copiado ?? '' };
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, get: () => area });
+})();
+"""
 
 falhas = 0
 def ok(cond, msg):
@@ -49,10 +58,9 @@ def main():
     with sync_playwright() as pw:
         b = pw.chromium.launch()
         cx = b.new_context(viewport={'width': 1400, 'height': 900})
-        cx.grant_permissions(['clipboard-read', 'clipboard-write'], origin=base.rstrip('/'))
         p = cx.new_page()
         p.on('pageerror', lambda e: erros.append(str(e)))
-        p.add_init_script(TOUR); p.add_init_script(SEMEAR)
+        p.add_init_script(TOUR); p.add_init_script(SEMEAR); p.add_init_script(COPIA)
         p.clock.set_fixed_time('2026-10-21T12:00:00')
 
         print('1. A transição de entrada')
@@ -82,7 +90,7 @@ def main():
 
         print('3. Copiar')
         p.click('#pdCopiar'); p.wait_for_timeout(200)
-        copiado = p.evaluate('() => navigator.clipboard.readText()')
+        copiado = p.evaluate('() => window.__copiado')
         ok(copiado == p.input_value('#pdMensagem') and 'encaminhados até 20/11/2026.' in copiado, 'a mensagem foi pra área de transferência, como está na caixa')
         ok(p.inner_text('#pdRetorno') == 'Mensagem copiada.' and p.get_attribute('#pdRetorno', 'aria-live') == 'polite', 'o retorno "Mensagem copiada." (lido pelo leitor de tela)')
 
