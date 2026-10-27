@@ -11,7 +11,8 @@ let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + extra : '')); };
 const raiz = fileURLToPath(new URL('../', import.meta.url));
 const pasta = raiz + 'supabase/functions/';
-const ler = (f, a) => readFileSync(pasta + f + '/' + a, 'utf8');
+// as quebras de linha do Windows (CRLF, o git do PC do escritório) viram LF: o recorte da quemChama procura '\n}\n'
+const ler = (f, a) => readFileSync(pasta + f + '/' + a, 'utf8').replace(/\r\n/g, '\n');
 const arquivos = f => readdirSync(pasta + f).filter(a => /\.(ts|js)$/.test(a));
 const tudo = f => arquivos(f).map(a => ler(f, a)).join('\n');
 
