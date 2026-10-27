@@ -6,8 +6,9 @@ errado — e notas inventados). O relógio fica parado em 27/10/2026, meio-dia: 
     python tests/harness/destda.py
 
 Confere, nos temas escuro e claro:
-  1. a tela abre no mês anterior com as empresas da obrigação SEDIF/DeSTDA (o vínculo desligado fica de fora); a nota
-     importada antes de 27/10 (sem a alíquota nos itens) pede pra importar de novo; as outras, "sem notas de entrada";
+  1. a tela abre no mês anterior, na aba "Todas", com as empresas da obrigação SEDIF/DeSTDA (o vínculo desligado fica de
+     fora); a nota importada antes de 27/10 (sem a alíquota nos itens) pede pra importar de novo; as outras, "sem notas de
+     entrada"; a aba "Falta importar" lista as duas coisas (e fica marcada durante a importação, com a lista encolhendo);
   2. a importação de um ZIP com subpastas e de um XML solto, com as notas de várias empresas: cada nota na empresa do
      CNPJ (a nota entre duas empresas do cadastro nas duas: venda numa, compra na outra), a de fora do cadastro ignorada
      e contada, o arquivo que não é nota fora; a que já estava na base não entra de novo, mas os itens dela ganham a
@@ -17,7 +18,9 @@ Confere, nos temas escuro e claro:
      a ração de SP (mesmo a 12%) no ICMS-ST, com o que o fornecedor reteve, o item sem retenção e o ST a recolher da nota
      (17% da base − o ICMS destacado, a retida fora); a ração do PR e a de cavalo (2309.90.10) não; a
      empresa sem nada a recolher e a sem notas de entrada;
-  4. trocar o mês: 08/2026 mostra só a nota de agosto, com o DIFAL dela;
+  3b. as abas (pedido da Thalia): "Com DIFAL" com só o diferencial nos cartões, "Com ICMS-ST" com só o ST, "Sem nada a
+     recolher" e "Falta importar" com os nomes, cada uma com a conta dela embaixo; pelo teclado (Enter e espaço);
+  4. trocar o mês na aba "Com DIFAL": 08/2026 mostra só a nota de agosto, com o DIFAL dela, e a aba fica;
   5. as regras: estado que não existe, NCM curto e regra sem nome não gravam; pôr o PR na ração grava e a nota do PR
      entra na hora; a regra nova grava e a excluída sai; a desligada tira o ICMS-ST da conferência;
   6. texto de fora entra como texto (o nome da empresa, do fornecedor, do item e do arquivo com <img onerror>);
@@ -141,8 +144,14 @@ def ok(cond, msg):
     print(('  ✓ ' if cond else '  ✗ ') + msg)
     if not cond: falhas += 1
 
-def chips(p):
-    return p.eval_on_selector_all('#chips .ds-chip', 'els => els.map(e => e.textContent.trim())')
+def abas(p):   # o número de cada aba
+    return p.eval_on_selector_all('#abas [data-aba]', 'els => Object.fromEntries(els.map(e => [e.dataset.aba, e.querySelector(".fc-num").textContent]))')
+
+def aba_ativa(p):
+    return p.eval_on_selector_all('#abas [data-aba]', 'els => els.filter(e => e.getAttribute("aria-pressed") === "true").map(e => e.dataset.aba)')
+
+def abrir_aba(p, k):
+    p.click(f'#abas [data-aba="{k}"]')
 
 def cards(p):
     return p.eval_on_selector_all('#lista .ds-emp', 'els => els.map(e => e.dataset.empresa)')
@@ -184,12 +193,22 @@ def fluxo(b, base, tema, erros):
     c1 = p.inner_text('.ds-emp[data-empresa="d1"]')
     ok('foi importada antes de 27/10/2026' in c1 and 'nº 101' in c1 and 'importe os XMLs do mês de novo' in c1,
        'a nota importada antes (itens sem a alíquota) pede pra importar de novo')
-    ok(chips(p) == ['0 com nota de fora do RS a 4%', '0 com ICMS-ST na entrada', '0 sem nada a recolher', '3 sem notas de entrada de 09/2026'],
-       f'os números ({chips(p)})')
+    ok(abas(p) == {'difal': '0', 'st': '0', 'nada': '0', 'importar': '4', 'todas': '4'} and aba_ativa(p) == ['todas'],
+       f'os números das abas: as 3 sem notas e a da nota importada antes em "Falta importar"; abre em "Todas" ({abas(p)}, {aba_ativa(p)})')
+    ok('fc-warn' in p.get_attribute('#abas [data-aba="importar"]', 'class'), '"Falta importar" em amarelo')
     curtas = p.inner_text('#curtas')
     ok('MERCADO SEM NOTAS LTDA' in curtas and 'PADARIA NADA A RECOLHER LTDA' in curtas and 'EX-CLIENTE' not in curtas and 'DISTRIBUIDORA' not in curtas,
        'as sem notas de entrada listadas; o vínculo desligado e a empresa fora da obrigação, não')
     ok('Ração pet (alimento para cães e gatos) · NCM 2309.10.00 · SC, BA, GO, RN, RO, SP' in p.inner_text('#regrasResumo'), 'o resumo das regras')
+    abrir_aba(p, 'importar')
+    imp = p.inner_text('#lista')
+    ok(aba_ativa(p) == ['importar'] and cards(p) == [] and p.inner_text('#curtas').strip() == '' and p.inner_text('#conta').strip() == '',
+       'a aba "Falta importar": só ela marcada, sem os cartões e sem as listas de baixo')
+    ok('Sem notas de entrada importadas de 09/2026 (3)' in imp and 'MERCADO SEM NOTAS LTDA' in imp and 'PADARIA NADA A RECOLHER LTDA' in imp and PERIGO_EMPRESA in imp
+       and 'Com nota de fora do RS importada antes de 27/10/2026, sem a alíquota do ICMS (1)' in imp and 'AGROPECUÁRIA TESTE LTDA (AGRO TESTE)\nnota 101' in imp,
+       f'as sem notas de entrada e a da nota importada antes, com o número da nota ({imp!r})')
+    FOTOS.mkdir(parents=True, exist_ok=True)
+    p.screenshot(path=str(FOTOS / f'{tema}-destda-importar.png'), full_page=True)
 
     print(f'[{tema}] 2. A importação')
     p.set_input_files('#fileInput', files=[
@@ -224,11 +243,15 @@ def fluxo(b, base, tema, erros):
     ok(sorted(l['cliente_id'] for l in lotes) == ['d1', 'd2', 'd4', 'd5'] and all(l['usuario'] == 'Samuel' for l in lotes),
        f'um lote por empresa, com quem importou ({sorted(l["cliente_id"] for l in lotes)})')
     ok(p.inner_text('#arqs').strip() == '' and p.is_disabled('#btnImportar'), 'a fila esvazia')
+    imp = p.inner_text('#lista')
+    ok(aba_ativa(p) == ['importar'] and 'Sem notas de entrada importadas de 09/2026 (1)' in imp and 'MERCADO SEM NOTAS LTDA' in imp
+       and 'PADARIA' not in imp and 'AGROPECUÁRIA' not in imp and 'antes de 27/10/2026' not in imp,
+       f'a aba fica marcada depois da importação, e a lista encolhe: só a que segue sem notas ({imp!r})')
 
     print(f'[{tema}] 3. A conferência de 09/2026')
+    abrir_aba(p, 'todas')
     ok(cards(p) == ['d1', 'd2'], f'as empresas com o que conferir, pelo nome ({cards(p)})')
-    ok(chips(p) == ['2 com nota de fora do RS a 4%', '1 com ICMS-ST na entrada', '1 sem nada a recolher', '1 sem notas de entrada de 09/2026'],
-       f'os números ({chips(p)})')
+    ok(abas(p) == {'difal': '2', 'st': '1', 'nada': '1', 'importar': '1', 'todas': '4'}, f'os números ({abas(p)})')
     c1 = p.inner_text('.ds-emp[data-empresa="d1"]')
     ok('foi importada antes' not in c1, 'a nota importada de novo não pede mais nada')
     dif = linhas(p, '.ds-emp[data-empresa="d1"] table.ds-dif tbody tr')
@@ -271,18 +294,41 @@ def fluxo(b, base, tema, erros):
     curtas = p.inner_text('#curtas')
     ok('Sem nada a recolher em 09/2026 (1)' in curtas and 'PADARIA NADA A RECOLHER LTDA' in curtas
        and 'Sem notas de entrada importadas de 09/2026 (1)' in curtas and 'MERCADO SEM NOTAS LTDA' in curtas, 'a sem nada a recolher e a sem notas')
-    FOTOS.mkdir(parents=True, exist_ok=True)
     p.screenshot(path=str(FOTOS / f'{tema}-destda.png'), full_page=True)
 
-    print(f'[{tema}] 4. Trocar o mês')
+    print(f'[{tema}] 3b. As abas (pedido da Thalia)')
+    abrir_aba(p, 'difal')
+    ok(aba_ativa(p) == ['difal'] and cards(p) == ['d1', 'd2'], f'"Com DIFAL": as duas empresas com nota de fora do RS a 4% ({cards(p)})')
+    ok(p.locator('.ds-emp[data-empresa="d1"] table.ds-dif').count() == 1 and p.locator('.ds-emp table.ds-st').count() == 0
+       and p.locator('.ds-emp[data-empresa="d1"] table.ds-dif-nota').count() == 1,
+       'no cartão, só o diferencial (com os totais por nota): o ICMS-ST da d1 fica na aba dele')
+    conta = p.inner_text('#conta').strip()
+    ok(conta.startswith('DIFAL = ') and 'ICMS-ST =' not in conta and p.inner_text('#curtas').strip() == '', 'embaixo, só a conta do DIFAL; sem as listas')
+    abrir_aba(p, 'st')
+    ok(aba_ativa(p) == ['st'] and cards(p) == ['d1'] and p.locator('.ds-emp table.ds-dif').count() == 0
+       and linhas(p, '.ds-emp[data-empresa="d1"] table.ds-st tfoot tr') == [['Total', '900,00', '', '', '', '47,20', '25,00']],
+       f'"Com ICMS-ST": só a d1, só com o ST ({cards(p)})')
+    ok(p.inner_text('#conta').strip().startswith('ICMS-ST = ') and 'DIFAL =' not in p.inner_text('#conta'), 'embaixo, só a conta do ST')
+    abrir_aba(p, 'nada')
+    nada = p.inner_text('#lista')
+    ok(aba_ativa(p) == ['nada'] and cards(p) == [] and 'Sem nada a recolher em 09/2026 (1)' in nada and 'PADARIA NADA A RECOLHER LTDA' in nada
+       and 'MERCADO' not in nada and 'Têm notas de entrada do mês na base' in nada,
+       f'"Sem nada a recolher": só a padaria, com o porquê ({nada!r})')
+    p.focus('#abas [data-aba="importar"]'); p.keyboard.press('Enter')
+    ok(aba_ativa(p) == ['importar'] and 'MERCADO SEM NOTAS LTDA' in p.inner_text('#lista'), 'pelo teclado: Enter na aba abre')
+    p.focus('#abas [data-aba="difal"]'); p.keyboard.press(' ')
+    ok(aba_ativa(p) == ['difal'], 'e espaço também')
+
+    print(f'[{tema}] 4. Trocar o mês (na aba "Com DIFAL")')
     trocar_mes(p, '2026-08')
     ago = linhas(p, '.ds-emp[data-empresa="d1"] table.ds-dif tbody tr')
-    ok(cards(p) == ['d1'] and len(ago) == 1 and ago[0][:3] == ['20/08/2026', '808', 'GOIAS TESTE SA GO'] and ago[0][-1] == '91,00',
-       f'agosto: só a nota de GO a 4%, com o DIFAL (13% de 700) ({ago})')
-    ok(chips(p) == ['1 com nota de fora do RS a 4%', '0 com ICMS-ST na entrada', '0 sem nada a recolher', '3 sem notas de entrada de 08/2026'],
-       f'os números de agosto ({chips(p)})')
+    ok(aba_ativa(p) == ['difal'] and cards(p) == ['d1'] and len(ago) == 1 and ago[0][:3] == ['20/08/2026', '808', 'GOIAS TESTE SA GO'] and ago[0][-1] == '91,00',
+       f'agosto, na mesma aba: só a nota de GO a 4%, com o DIFAL (13% de 700) ({ago})')
+    ok(abas(p) == {'difal': '1', 'st': '0', 'nada': '0', 'importar': '3', 'todas': '4'}, f'os números de agosto ({abas(p)})')
     trocar_mes(p, '2026-09')
-    ok(cards(p) == ['d1', 'd2'], 'de volta a setembro')
+    ok(aba_ativa(p) == ['difal'] and cards(p) == ['d1', 'd2'], 'de volta a setembro')
+    abrir_aba(p, 'todas')
+    ok(cards(p) == ['d1', 'd2'] and p.locator('.ds-emp[data-empresa="d1"] table.ds-st').count() == 1, '"Todas": a tela inteira de novo')
 
     print(f'[{tema}] 5. As regras')
     p.click('#secRegras > summary')
@@ -333,7 +379,7 @@ def fluxo(b, base, tema, erros):
     salvar_regra(p, 'rg1')
     p.wait_for_function("() => /Salva/.test(document.querySelector('.ds-regra[data-id=\"rg1\"] .ds-regra-msg').textContent)", timeout=3000)
     ok(db(p, "window.__mockDb.destda_regras_st[0].ativo") is False and p.locator('.ds-emp[data-empresa="d1"] table.ds-st').count() == 0
-       and chips(p)[1] == '0 com ICMS-ST na entrada' and p.inner_text('#regrasResumo').strip() == 'Nenhuma regra ativa.',
+       and abas(p)['st'] == '0' and p.inner_text('#regrasResumo').strip() == 'Nenhuma regra ativa.',
        'a regra desligada tira o ICMS-ST da conferência')
 
     print(f'[{tema}] 6. Texto de fora')
