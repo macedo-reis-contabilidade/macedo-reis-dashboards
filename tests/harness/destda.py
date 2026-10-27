@@ -6,20 +6,24 @@ errado — e notas inventados). O relógio fica parado em 27/10/2026, meio-dia: 
     python tests/harness/destda.py
 
 Confere, nos temas escuro e claro:
-  1. a tela abre no mês anterior, na aba "Todas", com as empresas da obrigação SEDIF/DeSTDA (o vínculo desligado fica de
-     fora); a nota importada antes de 27/10 (sem a alíquota nos itens) pede pra importar de novo; as outras, "sem notas de
-     entrada"; a aba "Falta importar" lista as duas coisas (e fica marcada durante a importação, com a lista encolhendo);
+  1. a tela abre no mês anterior, na aba "Todas", recolhida (uma linha por empresa), com as empresas da obrigação
+     SEDIF/DeSTDA (o vínculo desligado fica de fora); a nota importada antes de 27/10 (sem a alíquota nos itens) pede pra
+     importar de novo, já na linha da empresa; as outras, "sem notas de entrada", numa lista que abre e recolhe; a aba
+     "Falta importar" lista as duas coisas (e fica marcada durante a importação, com a lista encolhendo);
   2. a importação de um ZIP com subpastas e de um XML solto, com as notas de várias empresas: cada nota na empresa do
      CNPJ (a nota entre duas empresas do cadastro nas duas: venda numa, compra na outra), a de fora do cadastro ignorada
      e contada, o arquivo que não é nota fora; a que já estava na base não entra de novo, mas os itens dela ganham a
      alíquota; um lote por empresa; o resumo por empresa, com a que não está na obrigação marcada;
-  3. a conferência de 09/2026: as notas de fora do RS a 4% (a do RS a 4% e o item a 12% não), com os totais e o DIFAL
-     de cada nota (13% da base dos itens a 4%, na nota inteira, na linha do primeiro item) e o total, e a linha da conta;
+  3. a conferência de 09/2026: na linha da empresa, o DIFAL e o ST do mês; aberta, as notas de fora do RS a 4% (a do RS
+     a 4% e o item a 12% não), cada nota numa linha com o total dela e o DIFAL (13% da base dos itens a 4%, na nota
+     inteira), os itens abrindo embaixo, o total e a linha da conta; o diferencial, a nota e a empresa recolhem;
      a ração de SP (mesmo a 12%) no ICMS-ST, com o que o fornecedor reteve, o item sem retenção e o ST a recolher da nota
      (17% da base − o ICMS destacado, a retida fora); a ração do PR e a de cavalo (2309.90.10) não; a
      empresa sem nada a recolher e a sem notas de entrada;
-  3b. as abas (pedido da Thalia): "Com DIFAL" com só o diferencial nos cartões, "Com ICMS-ST" com só o ST, "Sem nada a
-     recolher" e "Falta importar" com os nomes, cada uma com a conta dela embaixo; pelo teclado (Enter e espaço);
+  3b. as abas (pedido da Thalia): "Com DIFAL" com só o diferencial, "Com ICMS-ST" com só o ST, "Sem nada a recolher" e
+     "Falta importar" com os nomes, cada uma com a conta dela embaixo; pelo teclado (Enter e espaço);
+  3c. o recolher (pedido do Samuel): agrupar as notas por fornecedor e por data, com o subtotal e guardado no navegador;
+     Expandir tudo e Recolher tudo;
   4. trocar o mês na aba "Com DIFAL": 08/2026 mostra só a nota de agosto, com o DIFAL dela, e a aba fica;
   5. as regras: estado que não existe, NCM curto e regra sem nome não gravam; pôr o PR na ração grava e a nota do PR
      entra na hora; a regra nova grava e a excluída sai; a desligada tira o ICMS-ST da conferência;
@@ -156,8 +160,24 @@ def abrir_aba(p, k):
 def cards(p):
     return p.eval_on_selector_all('#lista .ds-emp', 'els => els.map(e => e.dataset.empresa)')
 
-def linhas(p, sel):
-    return p.eval_on_selector_all(sel, 'trs => trs.map(t => [...t.cells].map(c => c.innerText.replace(/\\s+/g, " ").trim()))')
+def linhas(p, sel):   # as linhas que estão na tela (as recolhidas ficam de fora)
+    return p.eval_on_selector_all(sel, 'trs => trs.filter(t => !t.closest("[hidden]")).map(t => [...t.cells].map(c => c.innerText.replace(/\\s+/g, " ").trim()))')
+
+def valores(p, id_):   # o DIFAL e o ST na linha da empresa
+    return p.eval_on_selector_all(f'.ds-emp[data-empresa="{id_}"] > .ds-emp-linha .ds-emp-val', 'els => els.map(e => e.innerText.replace(/\\s+/g, " ").trim())')
+
+def aberta(p, id_):
+    return p.get_attribute(f'.ds-emp[data-empresa="{id_}"] > .ds-emp-linha h3 button', 'aria-expanded') == 'true'
+
+def abrir_empresa(p, id_, abrir=True):
+    if aberta(p, id_) != abrir:
+        p.click(f'.ds-emp[data-empresa="{id_}"] > .ds-emp-linha h3 button')
+
+def abrir_nota(p, id_, tabela, numero):
+    p.locator(f'.ds-emp[data-empresa="{id_}"] table.{tabela} tr.ds-n').filter(has=p.locator(f'td:nth-child(2):text-is("{numero}")')).locator('button').click()
+
+def abertas(p):
+    return p.locator('.ds-emp-corpo:not([hidden])').count()
 
 def db(p, expr):
     return p.evaluate('() => JSON.parse(JSON.stringify(' + expr + '))')
@@ -190,20 +210,29 @@ def fluxo(b, base, tema, erros):
     esperar_mes(p, '09/2026')
     ok(p.input_value('#mes') == '2026-09', f'abre no mês anterior ({p.input_value("#mes")})')
     ok(cards(p) == ['d1'], f'só a empresa com nota de fora na base aparece ({cards(p)})')
+    ok(not aberta(p, 'd1') and p.is_hidden('#det-d1') and p.is_visible('#ferr'), 'o mês abre recolhido: a empresa numa linha só')
+    ok('1 nota de fora do RS sem a alíquota: importe de novo' in p.inner_text('.ds-emp[data-empresa="d1"] > .ds-emp-linha'),
+       'a nota importada antes (itens sem a alíquota) aparece já na linha da empresa')
+    abrir_empresa(p, 'd1')
     c1 = p.inner_text('.ds-emp[data-empresa="d1"]')
-    ok('foi importada antes de 27/10/2026' in c1 and 'nº 101' in c1 and 'importe os XMLs do mês de novo' in c1,
-       'a nota importada antes (itens sem a alíquota) pede pra importar de novo')
+    ok(p.is_visible('#det-d1') and 'foi importada antes de 27/10/2026' in c1 and 'nº 101' in c1 and 'importe os XMLs do mês de novo' in c1,
+       'aberta, ela pede pra importar de novo')
+    abrir_empresa(p, 'd1', False)
+    ok(p.is_hidden('#det-d1') and not aberta(p, 'd1'), 'e recolhe de novo')
     ok(abas(p) == {'difal': '0', 'st': '0', 'nada': '0', 'importar': '4', 'todas': '4'} and aba_ativa(p) == ['todas'],
        f'os números das abas: as 3 sem notas e a da nota importada antes em "Falta importar"; abre em "Todas" ({abas(p)}, {aba_ativa(p)})')
     ok('fc-warn' in p.get_attribute('#abas [data-aba="importar"]', 'class'), '"Falta importar" em amarelo')
     curtas = p.inner_text('#curtas')
+    ok('Sem notas de entrada importadas de 09/2026 (3)' in curtas and 'MERCADO SEM NOTAS LTDA' not in curtas, 'a lista das sem notas vem recolhida, só com o título')
+    p.click('#curtas h3[data-alterna="l:semNotas"] button')
+    curtas = p.inner_text('#curtas')
     ok('MERCADO SEM NOTAS LTDA' in curtas and 'PADARIA NADA A RECOLHER LTDA' in curtas and 'EX-CLIENTE' not in curtas and 'DISTRIBUIDORA' not in curtas,
-       'as sem notas de entrada listadas; o vínculo desligado e a empresa fora da obrigação, não')
+       'aberta: as sem notas de entrada; o vínculo desligado e a empresa fora da obrigação, não')
     ok('Ração pet (alimento para cães e gatos) · NCM 2309.10.00 · SC, BA, GO, RN, RO, SP' in p.inner_text('#regrasResumo'), 'o resumo das regras')
     abrir_aba(p, 'importar')
     imp = p.inner_text('#lista')
-    ok(aba_ativa(p) == ['importar'] and cards(p) == [] and p.inner_text('#curtas').strip() == '' and p.inner_text('#conta').strip() == '',
-       'a aba "Falta importar": só ela marcada, sem os cartões e sem as listas de baixo')
+    ok(aba_ativa(p) == ['importar'] and cards(p) == [] and p.inner_text('#curtas').strip() == '' and p.inner_text('#conta').strip() == '' and p.is_hidden('#ferr'),
+       'a aba "Falta importar": só ela marcada, sem as empresas, sem as listas de baixo e sem o agrupar')
     ok('Sem notas de entrada importadas de 09/2026 (3)' in imp and 'MERCADO SEM NOTAS LTDA' in imp and 'PADARIA NADA A RECOLHER LTDA' in imp and PERIGO_EMPRESA in imp
        and 'Com nota de fora do RS importada antes de 27/10/2026, sem a alíquota do ICMS (1)' in imp and 'AGROPECUÁRIA TESTE LTDA (AGRO TESTE)\nnota 101' in imp,
        f'as sem notas de entrada e a da nota importada antes, com o número da nota ({imp!r})')
@@ -252,24 +281,29 @@ def fluxo(b, base, tema, erros):
     abrir_aba(p, 'todas')
     ok(cards(p) == ['d1', 'd2'], f'as empresas com o que conferir, pelo nome ({cards(p)})')
     ok(abas(p) == {'difal': '2', 'st': '1', 'nada': '1', 'importar': '1', 'todas': '4'}, f'os números ({abas(p)})')
+    ok(not aberta(p, 'd1') and not aberta(p, 'd2') and abertas(p) == 0, 'recolhidas: uma linha por empresa')
+    ok(valores(p, 'd1') == ['DIFAL: R$ 130,00 1 nota', 'ICMS-ST a recolher: R$ 25,00 1 nota'] and valores(p, 'd2') == ['DIFAL: R$ 136,51 1 nota', 'ICMS-ST a recolher: —'],
+       f'na linha, o DIFAL e o ST do mês de cada empresa ({valores(p, "d1")}, {valores(p, "d2")})')
+    ok('sem a alíquota' not in p.inner_text('.ds-emp[data-empresa="d1"] > .ds-emp-linha'), 'a nota importada de novo não pede mais nada')
+    abrir_empresa(p, 'd1')
     c1 = p.inner_text('.ds-emp[data-empresa="d1"]')
-    ok('foi importada antes' not in c1, 'a nota importada de novo não pede mais nada')
+    ok('foi importada antes' not in c1, 'nem no detalhe')
     dif = linhas(p, '.ds-emp[data-empresa="d1"] table.ds-dif tbody tr')
-    ok(dif == [['05/09/2026', '101', 'FORNECEDOR SC TESTE SA SC', 'SECADOR NCM 8516.31.00 · CFOP 6102', '1.000,00', '1.000,00', '4%', '40,00', '130,00']],
-       f'o diferencial: só o item a 4% da nota de SC (a do RS a 4% e o item a 12%, não), com o DIFAL de 13% ({dif})')
-    ok(linhas(p, '.ds-emp[data-empresa="d1"] table.ds-dif tfoot tr') == [['Total', '1.000,00', '1.000,00', '', '40,00', '130,00']], 'o total do diferencial, com o DIFAL')
+    ok(dif == [['05/09/2026', '101', 'FORNECEDOR SC TESTE SA SC', '1', '1.000,00', '1.000,00', '', '40,00', '130,00']],
+       f'aberta: o diferencial numa linha por nota, com o total dela e o DIFAL de 13% (a do RS a 4% e o item a 12%, não); os itens recolhidos ({dif})')
+    abrir_nota(p, 'd1', 'ds-dif', '101')
+    dif = linhas(p, '.ds-emp[data-empresa="d1"] table.ds-dif tbody tr')
+    ok(dif[1:] == [['', '', 'SECADOR NCM 8516.31.00 · CFOP 6102', '', '1.000,00', '1.000,00', '4%', '40,00', '']], f'clicar na nota abre os itens dela ({dif})')
+    ok(linhas(p, '.ds-emp[data-empresa="d1"] table.ds-dif tfoot tr') == [['Total', '1', '1.000,00', '1.000,00', '', '40,00', '130,00']], 'o total do diferencial, com o DIFAL')
     ok('Diferencial de alíquota — ICMS a 4% de fora do RS · 1 nota, 1 item · DIFAL R$ 130,00' in c1, 'o título do diferencial, com o DIFAL')
+    abrir_empresa(p, 'd2')
     dif2 = linhas(p, '.ds-emp[data-empresa="d2"] table.ds-dif tbody tr')
-    ok(len(dif2) == 2 and dif2[0][8] == '136,51' and dif2[1][8] == '' and dif2[1][7] == '10,00',
-       f'a nota de MG com dois itens a 4%: o DIFAL da nota inteira (13% de 1.050,05 = 136,51) na linha do primeiro item ({[l[7:] for l in dif2]})')
+    ok(len(dif2) == 1 and dif2[0][:2] == ['08/09/2026', '505'] and dif2[0][3:] == ['2', '1.050,05', '1.050,05', '', '42,00', '136,51'],
+       f'a nota de MG com dois itens a 4%: numa linha só (o totalizador por nota, pedido da Thalia), com o DIFAL da nota inteira — 13% de 1.050,05 = 136,51 ({dif2})')
+    abrir_nota(p, 'd2', 'ds-dif', '505')
+    dif2 = linhas(p, '.ds-emp[data-empresa="d2"] table.ds-dif tbody tr')
+    ok(len(dif2) == 3 and [l[7:] for l in dif2[1:]] == [['32,00', ''], ['10,00', '']], f'aberta, os dois itens embaixo, sem o DIFAL — ele é da nota ({[l[7:] for l in dif2]})')
     ok(linhas(p, '.ds-emp[data-empresa="d2"] table.ds-dif tfoot tr')[0][-1] == '136,51', 'o total da empresa')
-    nota2 = linhas(p, '.ds-emp[data-empresa="d2"] table.ds-dif-nota tbody tr')
-    ok(len(nota2) == 1 and nota2[0][:2] == ['08/09/2026', '505'] and nota2[0][3:] == ['2', '1.050,05', '1.050,05', '42,00', '136,51']
-       and linhas(p, '.ds-emp[data-empresa="d2"] table.ds-dif-nota tfoot tr') == [['Total', '2', '1.050,05', '1.050,05', '42,00', '136,51']]
-       and p.inner_text('.ds-emp[data-empresa="d2"] table.ds-dif-nota caption') == 'Totais por nota',
-       f'o totalizador por nota (pedido da Thalia): a nota de MG numa linha só, com os itens somados ({nota2})')
-    nota1 = linhas(p, '.ds-emp[data-empresa="d1"] table.ds-dif-nota tbody tr')
-    ok(nota1 == [['05/09/2026', '101', 'FORNECEDOR SC TESTE SA SC', '1', '1.000,00', '1.000,00', '40,00', '130,00']], f'o totalizador da d1 ({nota1})')
     conta = p.inner_text('#conta').split('\n')
     ok(len(conta) == 2 and conta[0].startswith('DIFAL = a base do ICMS dos itens a 4% × 13% (os 17% do RS menos os 4% da nota), nota por nota, sem o IPI.')
        and conta[1].startswith('ICMS-ST = a base do ICMS dos itens da regra × 17% (a alíquota do RS) − o ICMS destacado neles, nota por nota, sem MVA.')
@@ -277,58 +311,98 @@ def fluxo(b, base, tema, erros):
        and p.get_attribute('.ds-emp[data-empresa="d1"] table.ds-st th:last-child', 'title') == conta[1],
        f'como o DIFAL e o ST são calculados, embaixo da lista e na dica das colunas ({conta!r})')
     st = linhas(p, '.ds-emp[data-empresa="d1"] table.ds-st tbody tr')
-    ok(st == [['12/09/2026', '202', 'PET FOODS SP TESTE SA SP', 'RACAO CAES 15KG NCM 2309.10.00 · CFOP 6102', '500,00', '500,00', '12%', '60,00', 'sem retenção', '25,00'],
-              ['', '', '', 'RACAO GATOS 10KG NCM 2309.10.00 · CFOP 6403', '400,00', '400,00', '12%', '48,00', '47,20', '']],
-       f'o ICMS-ST: a ração de SP a 12%, a sem e a com a retenção, e o a recolher da nota (17% de 500 − 60; a retida fora); a do PR e a de cavalo não ({st})')
-    ok(linhas(p, '.ds-emp[data-empresa="d1"] table.ds-st tfoot tr') == [['Total', '900,00', '', '', '', '47,20', '25,00']], 'o total do ICMS-ST')
-    ok('ICMS-ST na entrada — Ração pet (alimento para cães e gatos) · 1 nota, 2 itens · ST a recolher R$ 25,00' in c1, 'o título do ICMS-ST')
-    ok('RACAO CAVALO' not in c1, 'a ração de cavalo (2309.90.10) não aparece: não é ração pet')
-    stn = linhas(p, '.ds-emp[data-empresa="d1"] table.ds-st-nota tbody tr')
-    ok(stn == [['12/09/2026', '202', 'PET FOODS SP TESTE SA SP', '2', '900,00', '500,00', '60,00', '47,20', '25,00']]
-       and linhas(p, '.ds-emp[data-empresa="d1"] table.ds-st-nota tfoot tr') == [['Total', '2', '900,00', '500,00', '60,00', '47,20', '25,00']],
-       f'o totalizador por nota do ST: a base e o ICMS dos itens da conta (a retida fora), o retido e o a recolher ({stn})')
+    ok(st == [['12/09/2026', '202', 'PET FOODS SP TESTE SA SP', '2', '900,00', '500,00', '', '60,00', '47,20', '25,00']],
+       f'o ICMS-ST: a nota da ração de SP numa linha, com a base e o ICMS só dos itens da conta (a retida fora), o retido e o a recolher (17% de 500 − 60) ({st})')
+    abrir_nota(p, 'd1', 'ds-st', '202')
+    st = linhas(p, '.ds-emp[data-empresa="d1"] table.ds-st tbody tr')
+    ok(st[1:] == [['', '', 'RACAO CAES 15KG NCM 2309.10.00 · CFOP 6102', '', '500,00', '500,00', '12%', '60,00', 'sem retenção', ''],
+                  ['', '', 'RACAO GATOS 10KG NCM 2309.10.00 · CFOP 6403', '', '400,00', '400,00', '12%', '48,00', '47,20', '']],
+       f'os itens: a ração de SP a 12%, a sem e a com a retenção; a do PR e a de cavalo não ({st})')
+    ok(linhas(p, '.ds-emp[data-empresa="d1"] table.ds-st tfoot tr') == [['Total', '2', '900,00', '500,00', '', '60,00', '47,20', '25,00']], 'o total do ICMS-ST')
+    ok('ICMS-ST na entrada — Ração pet (alimento para cães e gatos) · 1 nota, 2 itens · ST a recolher R$ 25,00' in p.inner_text('.ds-emp[data-empresa="d1"]'), 'o título do ICMS-ST')
+    ok('RACAO CAVALO' not in p.text_content('.ds-emp[data-empresa="d1"]'), 'a ração de cavalo (2309.90.10) não aparece: não é ração pet')
     c2 = p.inner_text('.ds-emp[data-empresa="d2"]')
     ok(PERIGO_EMPRESA in c2 and '<b>NEGRITO</b>' in c2 and PERIGO_FORNECEDOR in c2 and PERIGO_ITEM in c2 and '32,00' in c2,
        'a compra de MG a 4%, com o nome da empresa, o fantasia, o fornecedor e o item como texto')
-    ok(p.get_attribute('.ds-emp[data-empresa="d1"] header a', 'href') == 'clientes/editar.html?id=d1', 'o link da ficha')
+    ok(p.get_attribute('.ds-emp[data-empresa="d1"] > .ds-emp-linha > a', 'href') == 'clientes/editar.html?id=d1', 'o link da ficha')
+    p.click('.ds-emp[data-empresa="d1"] .ds-cat[data-cat="dif"] h4 button')
+    ok(p.is_hidden('.ds-emp[data-empresa="d1"] .ds-cat[data-cat="dif"] .ds-tab') and p.is_visible('.ds-emp[data-empresa="d1"] .ds-cat[data-cat="st"] .ds-tab'),
+       'o diferencial recolhe sozinho; o ICMS-ST continua aberto')
+    p.click('.ds-emp[data-empresa="d1"] .ds-cat[data-cat="dif"] h4 button')
+    ok(p.is_visible('.ds-emp[data-empresa="d1"] .ds-cat[data-cat="dif"] .ds-tab'), 'e abre de novo')
+    p.click('.ds-emp[data-empresa="d1"] table.ds-st tr.ds-n td:nth-child(5)')
+    ok(len(linhas(p, '.ds-emp[data-empresa="d1"] table.ds-st tbody tr')) == 1, 'clicar em qualquer lugar da linha da nota recolhe os itens')
+    p.focus('.ds-emp[data-empresa="d2"] > .ds-emp-linha h3 button'); p.keyboard.press('Enter')
+    ok(not aberta(p, 'd2') and p.is_hidden('#det-d2'), 'pelo teclado: Enter na empresa recolhe')
     curtas = p.inner_text('#curtas')
-    ok('Sem nada a recolher em 09/2026 (1)' in curtas and 'PADARIA NADA A RECOLHER LTDA' in curtas
-       and 'Sem notas de entrada importadas de 09/2026 (1)' in curtas and 'MERCADO SEM NOTAS LTDA' in curtas, 'a sem nada a recolher e a sem notas')
+    ok('Sem nada a recolher em 09/2026 (1)' in curtas and 'PADARIA' not in curtas and 'Sem notas de entrada importadas de 09/2026 (1)' in curtas and 'MERCADO SEM NOTAS LTDA' in curtas,
+       'embaixo, a sem nada a recolher recolhida e a sem notas aberta, como ficou antes')
+    p.click('#curtas h3[data-alterna="l:nada"] button')
+    ok('PADARIA NADA A RECOLHER LTDA' in p.inner_text('#curtas'), 'abrir a lista das sem nada a recolher')
     p.screenshot(path=str(FOTOS / f'{tema}-destda.png'), full_page=True)
 
     print(f'[{tema}] 3b. As abas (pedido da Thalia)')
+    p.click('#btnFecharTudo')
+    ok(abertas(p) == 0 and 'PADARIA' not in p.inner_text('#curtas') and 'MERCADO' not in p.inner_text('#curtas'), '"Recolher tudo" fecha as empresas e as listas')
     abrir_aba(p, 'difal')
-    ok(aba_ativa(p) == ['difal'] and cards(p) == ['d1', 'd2'], f'"Com DIFAL": as duas empresas com nota de fora do RS a 4% ({cards(p)})')
-    ok(p.locator('.ds-emp[data-empresa="d1"] table.ds-dif').count() == 1 and p.locator('.ds-emp table.ds-st').count() == 0
-       and p.locator('.ds-emp[data-empresa="d1"] table.ds-dif-nota').count() == 1,
-       'no cartão, só o diferencial (com os totais por nota): o ICMS-ST da d1 fica na aba dele')
+    ok(aba_ativa(p) == ['difal'] and cards(p) == ['d1', 'd2'] and valores(p, 'd1') == ['DIFAL: R$ 130,00 1 nota'],
+       f'"Com DIFAL": as duas empresas, a linha só com o DIFAL ({cards(p)}, {valores(p, "d1")})')
+    abrir_empresa(p, 'd1')
+    ok(p.locator('.ds-emp[data-empresa="d1"] table.ds-dif').count() == 1 and p.locator('.ds-emp table.ds-st').count() == 0,
+       'aberta, só o diferencial: o ICMS-ST da d1 fica na aba dele')
     conta = p.inner_text('#conta').strip()
     ok(conta.startswith('DIFAL = ') and 'ICMS-ST =' not in conta and p.inner_text('#curtas').strip() == '', 'embaixo, só a conta do DIFAL; sem as listas')
     abrir_aba(p, 'st')
-    ok(aba_ativa(p) == ['st'] and cards(p) == ['d1'] and p.locator('.ds-emp table.ds-dif').count() == 0
-       and linhas(p, '.ds-emp[data-empresa="d1"] table.ds-st tfoot tr') == [['Total', '900,00', '', '', '', '47,20', '25,00']],
-       f'"Com ICMS-ST": só a d1, só com o ST ({cards(p)})')
+    ok(aba_ativa(p) == ['st'] and cards(p) == ['d1'] and valores(p, 'd1') == ['ICMS-ST a recolher: R$ 25,00 1 nota'] and aberta(p, 'd1')
+       and p.locator('.ds-emp table.ds-dif').count() == 0
+       and linhas(p, '.ds-emp[data-empresa="d1"] table.ds-st tfoot tr') == [['Total', '2', '900,00', '500,00', '', '60,00', '47,20', '25,00']],
+       f'"Com ICMS-ST": só a d1, aberta como estava, só com o ST ({cards(p)})')
     ok(p.inner_text('#conta').strip().startswith('ICMS-ST = ') and 'DIFAL =' not in p.inner_text('#conta'), 'embaixo, só a conta do ST')
     abrir_aba(p, 'nada')
     nada = p.inner_text('#lista')
     ok(aba_ativa(p) == ['nada'] and cards(p) == [] and 'Sem nada a recolher em 09/2026 (1)' in nada and 'PADARIA NADA A RECOLHER LTDA' in nada
-       and 'MERCADO' not in nada and 'Têm notas de entrada do mês na base' in nada,
+       and 'MERCADO' not in nada and 'Têm notas de entrada do mês na base' in nada and p.is_hidden('#ferr'),
        f'"Sem nada a recolher": só a padaria, com o porquê ({nada!r})')
     p.focus('#abas [data-aba="importar"]'); p.keyboard.press('Enter')
     ok(aba_ativa(p) == ['importar'] and 'MERCADO SEM NOTAS LTDA' in p.inner_text('#lista'), 'pelo teclado: Enter na aba abre')
     p.focus('#abas [data-aba="difal"]'); p.keyboard.press(' ')
     ok(aba_ativa(p) == ['difal'], 'e espaço também')
 
+    print(f'[{tema}] 3c. Agrupar por data e por fornecedor, expandir e recolher tudo (pedido do Samuel)')
+    abrir_aba(p, 'todas')
+    ok(aberta(p, 'd1') and not aberta(p, 'd2'), 'em "Todas", a d1 continua aberta')
+    p.click('#agrupar [data-agrupar="fornecedor"]')
+    dif = linhas(p, '.ds-emp[data-empresa="d1"] table.ds-dif tbody tr')
+    ok(dif == [['FORNECEDOR SC TESTE SA (SC) 1 nota', '1', '1.000,00', '1.000,00', '', '40,00', '130,00']] and p.get_attribute('#agrupar [data-agrupar="fornecedor"]', 'aria-pressed') == 'true',
+       f'por fornecedor: o subtotal de cada fornecedor, com as notas recolhidas ({dif})')
+    p.click('.ds-emp[data-empresa="d1"] table.ds-dif tr.ds-g button')
+    dif = linhas(p, '.ds-emp[data-empresa="d1"] table.ds-dif tbody tr')
+    ok(len(dif) == 2 and dif[1][:2] == ['05/09/2026', '101'], f'abrir o fornecedor mostra as notas dele ({dif})')
+    p.click('#agrupar [data-agrupar="data"]')
+    st = linhas(p, '.ds-emp[data-empresa="d1"] table.ds-st tbody tr')
+    ok(st == [['12/09/2026 1 nota', '2', '900,00', '500,00', '', '60,00', '47,20', '25,00']], f'por data: o subtotal do dia ({st})')
+    ok(p.evaluate("() => localStorage.getItem('mr_destda_agrupar')") == 'data', 'o agrupar fica guardado neste navegador')
+    p.click('#btnAbrirTudo')
+    ok(aberta(p, 'd1') and aberta(p, 'd2') and len(linhas(p, '.ds-emp[data-empresa="d1"] table.ds-st tbody tr')) == 4
+       and len(linhas(p, '.ds-emp[data-empresa="d2"] table.ds-dif tbody tr')) == 4 and 'PADARIA NADA A RECOLHER LTDA' in p.inner_text('#curtas'),
+       '"Expandir tudo": as empresas, os dias, as notas, os itens e as listas de baixo')
+    p.click('#btnFecharTudo')
+    ok(abertas(p) == 0 and 'PADARIA' not in p.inner_text('#curtas'), '"Recolher tudo": tudo fechado de novo')
+    p.click('#agrupar [data-agrupar="nota"]')
+
     print(f'[{tema}] 4. Trocar o mês (na aba "Com DIFAL")')
+    abrir_aba(p, 'difal')
     trocar_mes(p, '2026-08')
+    abrir_empresa(p, 'd1')
     ago = linhas(p, '.ds-emp[data-empresa="d1"] table.ds-dif tbody tr')
-    ok(aba_ativa(p) == ['difal'] and cards(p) == ['d1'] and len(ago) == 1 and ago[0][:3] == ['20/08/2026', '808', 'GOIAS TESTE SA GO'] and ago[0][-1] == '91,00',
+    ok(aba_ativa(p) == ['difal'] and cards(p) == ['d1'] and ago == [['20/08/2026', '808', 'GOIAS TESTE SA GO', '1', '700,00', '700,00', '', '28,00', '91,00']],
        f'agosto, na mesma aba: só a nota de GO a 4%, com o DIFAL (13% de 700) ({ago})')
     ok(abas(p) == {'difal': '1', 'st': '0', 'nada': '0', 'importar': '3', 'todas': '4'}, f'os números de agosto ({abas(p)})')
     trocar_mes(p, '2026-09')
     ok(aba_ativa(p) == ['difal'] and cards(p) == ['d1', 'd2'], 'de volta a setembro')
     abrir_aba(p, 'todas')
-    ok(cards(p) == ['d1', 'd2'] and p.locator('.ds-emp[data-empresa="d1"] table.ds-st').count() == 1, '"Todas": a tela inteira de novo')
+    ok(cards(p) == ['d1', 'd2'] and aberta(p, 'd1') and p.locator('.ds-emp[data-empresa="d1"] table.ds-st').count() == 1,
+       '"Todas": a tela inteira de novo, com a d1 aberta como ficou')
 
     print(f'[{tema}] 5. As regras')
     p.click('#secRegras > summary')
@@ -342,13 +416,10 @@ def fluxo(b, base, tema, erros):
     salvar_regra(p, 'rg1')
     p.wait_for_function("() => /Salva/.test(document.querySelector('.ds-regra[data-id=\"rg1\"] .ds-regra-msg').textContent)", timeout=3000)
     ok(db(p, "window.__mockDb.destda_regras_st.find(r => r.id === 'rg1').ufs") == ['SC', 'BA', 'GO', 'RN', 'RO', 'SP', 'PR'], 'o PR entra na regra')
-    st = linhas(p, '.ds-emp[data-empresa="d1"] table.ds-st tbody tr')
-    ok(len(st) == 3 and st[2][:3] == ['15/09/2026', '303', 'PET PR TESTE SA PR'] and st[2][-1] == '12,50'
-       and linhas(p, '.ds-emp[data-empresa="d1"] table.ds-st tfoot tr')[0][-1] == '37,50',
-       f'a nota do PR entra na conferência na hora, com o ST dela (17% de 250 − 30 = 12,50) no total ({[(l[1], l[-1]) for l in st]})')
-    stn = linhas(p, '.ds-emp[data-empresa="d1"] table.ds-st-nota tbody tr')
-    ok(len(stn) == 2 and stn[1][:2] == ['15/09/2026', '303'] and stn[1][3:] == ['1', '250,00', '250,00', '30,00', '0,00', '12,50'],
-       f'e no totalizador por nota ({stn})')
+    st = linhas(p, '.ds-emp[data-empresa="d1"] table.ds-st tbody tr.ds-n')
+    ok(len(st) == 2 and st[1][:3] == ['15/09/2026', '303', 'PET PR TESTE SA PR'] and st[1][3:] == ['1', '250,00', '250,00', '', '30,00', '0,00', '12,50']
+       and linhas(p, '.ds-emp[data-empresa="d1"] table.ds-st tfoot tr')[0][-1] == '37,50' and aberta(p, 'd1'),
+       f'a nota do PR entra na conferência na hora, com o ST dela (17% de 250 − 30 = 12,50) no total, e a empresa segue aberta ({st})')
     p.click('#btnNovaRegra')
     ok(p.locator('.ds-regra[data-id=""]').count() == 1, '"+ Nova regra" abre uma linha')
     p.click('#btnNovaRegra')

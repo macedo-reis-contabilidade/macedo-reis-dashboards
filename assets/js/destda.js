@@ -130,6 +130,33 @@ export function conferirEmpresa(docs, itensPorDoc, regras, docEmpresa) {
   return { diferencial, st, semAliquota: incompletas, totais };
 }
 
+// as notas de uma empresa (o diferencial ou o ST de conferirEmpresa) agrupadas por data ou por fornecedor (o "Agrupar"
+// da tela, 27/10/2026, pedido do Samuel: recolher por data e por fornecedor) → [{ chave, doc (o da primeira nota, pro
+// rótulo), notas, total: { notas, itens, e os valores que as notas têm — valor, base, icms, difal, retido, recolher —
+// somados em centavos inteiros } }]; por data na ordem das datas, por fornecedor (o CNPJ, ou o nome sem ele) na do nome;
+// dentro do grupo, as notas na ordem em que vieram
+const VALORES_DA_NOTA = ['valor', 'base', 'icms', 'difal', 'retido', 'recolher'];
+export function agruparNotas(notas, por) {
+  const grupos = new Map();
+  (notas || []).forEach(x => {
+    const d = (x && x.doc) || {};
+    const chave = por === 'data' ? String(d.data_emissao || '').slice(0, 10)
+      : (String(d.emit_doc || '').toUpperCase().replace(/[^0-9A-Z]/g, '') || String(d.emit_nome || '').trim().toUpperCase());
+    if (!grupos.has(chave)) grupos.set(chave, { chave, doc: d, notas: [] });
+    grupos.get(chave).notas.push(x);
+  });
+  const lista = [...grupos.values()].map(gr => {
+    const total = { notas: gr.notas.length, itens: gr.notas.reduce((s, x) => s + ((x && x.itens) || []).length, 0) };
+    VALORES_DA_NOTA.forEach(k => {
+      if (gr.notas.some(x => x && x[k] != null)) total[k] = gr.notas.reduce((s, x) => s + Math.round(n(x && x[k]) * 100), 0) / 100;
+    });
+    return { ...gr, total };
+  });
+  return por === 'data'
+    ? lista.sort((a, b) => a.chave.localeCompare(b.chave))
+    : lista.sort((a, b) => String(a.doc.emit_nome || '').localeCompare(String(b.doc.emit_nome || ''), 'pt-BR') || a.chave.localeCompare(b.chave));
+}
+
 // o mês da DeSTDA que vence agora: a do mês anterior (a de setembro vence em 20 de outubro)
 export function mesAnterior(hojeIso) {
   const [a, m] = String(hojeIso || '').split('-').map(Number);

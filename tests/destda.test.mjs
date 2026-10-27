@@ -2,7 +2,7 @@
 // ração pet dos estados da regra (o ICMS-ST na entrada), a leitura dos estados e o mês. Dados inventados (CNPJ com o
 // dígito errado, nada de cliente). Rodar com: node tests/destda.test.mjs
 import { lerUfs, ncmDaRegra, ncmFormatado, ehQuatro, regraDoItem, notaDeFora, conferirEmpresa, mesAnterior, limitesDoMes,
-  rotuloDoMes, situacaoDaEmpresa, difalDaNota, stDaNota, stRetido, stSemBase, ALIQUOTA_INTERNA_RS, UFS } from '../assets/js/destda.js';
+  rotuloDoMes, situacaoDaEmpresa, difalDaNota, stDaNota, stRetido, stSemBase, agruparNotas, ALIQUOTA_INTERNA_RS, UFS } from '../assets/js/destda.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + JSON.stringify(extra) : '')); };
@@ -113,6 +113,30 @@ chk('o item sem a base do ICMS (fornecedor do Simples) fica fora da conta e é c
 chk('ICMS destacado acima dos 17%: nada a recolher, sem valor negativo', stDaNota([{ icms_base: 100, icms_valor: 20 }]) === 0);
 const pet4 = conferirEmpresa([nota('p', { emit_uf: 'SP' })], new Map([['p', [item(1, { ncm: '23091000', icms_aliquota: 4, icms_base: 1000, icms_valor: 40, valor_total: 1000 })]]]), [RACAO], EMPRESA);
 chk('a ração pet a 4% de SP vai só pro ST (17% de 1.000 − 40 = 130), sem o DIFAL em dobro', pet4.diferencial.length === 0 && pet4.st[0].recolher === 130);
+
+console.log('Agrupar as notas por data e por fornecedor (pedido do Samuel):');
+const ag = conferirEmpresa([
+  nota('a1', { numero: '10', data_emissao: '2026-09-12', emit_nome: 'ZETA SA', emit_doc: '77000000000100' }),
+  nota('a2', { numero: '11', data_emissao: '2026-09-05', emit_nome: 'ALFA SA', emit_doc: '88000000000100' }),
+  nota('a3', { numero: '12', data_emissao: '2026-09-12', emit_nome: 'ALFA SA', emit_doc: '88.000.000/0001-00' }),
+  nota('a4', { numero: '13', data_emissao: '2026-09-20', emit_nome: 'ÁGUA SEM CNPJ', emit_doc: null })
+], new Map([['a1', [item(1, { icms_base: 0.05, valor_total: 0.05, icms_valor: 0 })]], ['a2', [item(1, { icms_base: 0.05, valor_total: 0.05, icms_valor: 0 }), item(2)]],
+  ['a3', [item(1, { icms_base: 100.10, valor_total: 100.10, icms_valor: 4 })]], ['a4', [item(1, { icms_base: 200, valor_total: 200, icms_valor: 8 })]]]), [], EMPRESA);
+const porData = agruparNotas(ag.diferencial, 'data');
+chk('por data: na ordem das datas, as notas do mesmo dia juntas', JSON.stringify(porData.map(gr => [gr.chave, gr.notas.map(x => x.doc.numero)]))
+  === JSON.stringify([['2026-09-05', ['11']], ['2026-09-12', ['10', '12']], ['2026-09-20', ['13']]]), porData.map(gr => [gr.chave, gr.notas.map(x => x.doc.numero)]));
+const dia12 = porData[1].total;
+chk('o subtotal do dia soma o DIFAL de cada nota (já arredondado), em centavos: 0,01 + 13,01 = 13,02', dia12.notas === 2 && dia12.itens === 2
+  && dia12.difal === 13.02 && dia12.base === 100.15 && dia12.icms === 4 && dia12.valor === 100.15 && !('recolher' in dia12), dia12);
+const porForn = agruparNotas(ag.diferencial, 'fornecedor');
+chk('por fornecedor: o mesmo CNPJ com e sem pontuação é um fornecedor só, na ordem do nome; sem CNPJ, pelo nome', JSON.stringify(porForn.map(gr => [gr.doc.emit_nome, gr.notas.map(x => x.doc.numero)]))
+  === JSON.stringify([['ÁGUA SEM CNPJ', ['13']], ['ALFA SA', ['11', '12']], ['ZETA SA', ['10']]]), porForn.map(gr => [gr.doc.emit_nome, gr.notas.map(x => x.doc.numero)]));
+chk('o subtotal do fornecedor: 3 itens, o DIFAL de 130,01 + 13,01', porForn[1].total.itens === 3 && porForn[1].total.difal === 143.02, porForn[1].total);
+const stAg = agruparNotas(conferirEmpresa([nota('s1', { emit_uf: 'SP' }), nota('s2', { emit_uf: 'SP', numero: '101' })],
+  new Map([['s1', [item(1, { ncm: '23091000', icms_aliquota: 12, icms_base: 500, icms_valor: 60 })]], ['s2', [item(1, { ncm: '23091000', icms_aliquota: 12, icms_base: 250, icms_valor: 30, icms_st_valor: 7.5 })]]]),
+  [RACAO], EMPRESA).st, 'fornecedor');
+chk('no ST, o subtotal leva o retido e o a recolher', stAg.length === 1 && stAg[0].total.recolher === 25 && stAg[0].total.retido === 7.5 && !('difal' in stAg[0].total), stAg[0] && stAg[0].total);
+chk('sem notas, nenhum grupo', agruparNotas([], 'data').length === 0 && agruparNotas(null, 'fornecedor').length === 0);
 
 console.log('A situação e o mês:');
 chk('sem notas no mês, com algo a conferir, nada', situacaoDaEmpresa(c, false) === 'sem_notas' && situacaoDaEmpresa(c, true) === 'a_conferir'

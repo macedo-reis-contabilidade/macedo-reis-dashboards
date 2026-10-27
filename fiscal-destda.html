@@ -9,12 +9,13 @@
   <script type="module" src="assets/js/auth-guard.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <style>
-    .content { max-width:none; }
     .page-header { max-width:900px; }
     .ds-sec { background:var(--fill-1); border:1px solid var(--line); border-radius:14px; padding:18px 20px; margin-bottom:18px; }
     .ds-sec h2 { margin:0 0 12px; font-size:16px; color:var(--text); }
     .ds-sec h2 small { color:var(--text-muted); font-weight:400; font-size:13px; margin-left:8px; }
-    .ds-drop { border:2px dashed var(--line-strong); border-radius:12px; padding:22px 20px; text-align:center; color:var(--text-muted); cursor:pointer; transition:border-color .15s, background .15s; font-size:14px; }
+    /* a importação é de uma vez por mês: um cartão estreito, do tamanho do texto do alto (27/10/2026, pedido do Samuel) */
+    .ds-sec-imp { max-width:760px; }
+    .ds-drop { border:2px dashed var(--line-strong); border-radius:12px; padding:16px 20px; text-align:center; color:var(--text-muted); cursor:pointer; transition:border-color .15s, background .15s; font-size:14px; }
     .ds-drop:hover, .ds-drop:focus-visible, .ds-drop.is-over { border-color:var(--brand-primary); background:rgba(91,130,166,.08); color:var(--brand-pale); outline:none; }
     .ds-drop b { color:var(--text); }
     .ds-arqs { margin-top:8px; font-size:13px; color:var(--text-muted); min-height:18px; }
@@ -46,26 +47,68 @@
     .fc-num { font-size:22px; font-weight:700; color:var(--text); line-height:1; font-variant-numeric:tabular-nums; }
     .fc-lbl { font-size:12.5px; color:var(--text-muted); }
     .fa-focus-card.fc-warn .fc-num { color:var(--warn); }
-    @media (max-width:720px){ .fa-focus { grid-template-columns:repeat(2,1fr); } }
-    .ds-emp { border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:12px; background:var(--surface); }
-    .ds-emp header { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:8px; }
-    .ds-emp h3 { margin:0; font-size:15px; color:var(--text); }
-    .ds-fant { font-size:12.5px; color:var(--text-muted); }
-    .ds-emp header a { font-size:12.5px; color:var(--brand-light); margin-left:auto; }
-    .ds-emp h4 { margin:12px 0 6px; font-size:13px; color:var(--brand-light); font-weight:600; }
+    /* recolher e abrir (27/10/2026, pedido do Samuel: o mês abre recolhido) — a empresa, o diferencial e o ICMS-ST dela, a
+       data ou o fornecedor, a nota; a seta aponta pra baixo quando abre */
+    .ds-abre { display:inline-flex; align-items:baseline; gap:6px; background:none; border:0; padding:0; margin:0; font:inherit; color:inherit; text-align:left; cursor:pointer; }
+    .ds-abre:focus-visible { outline:2px solid var(--text); outline-offset:2px; border-radius:4px; }
+    .ds-seta::before { content:'▸'; display:inline-block; width:12px; color:var(--brand-light); }
+    .ds-abre[aria-expanded="true"] .ds-seta::before { content:'▾'; }
+    .ds-ferr { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:10px; }
+    .ds-ferr[hidden] { display:none; }
+    .ds-agrupar { display:flex; align-items:center; gap:6px 10px; flex-wrap:wrap; font-size:12.5px; color:var(--text-muted); }
+    .ds-agrupar .fd-filtro button { white-space:nowrap; }
+    .ds-ferr-acoes { display:flex; gap:8px; }
+    /* a lista das empresas: uma linha por empresa, com o DIFAL e o ST alinhados; o detalhe abre embaixo */
+    .ds-emps { border:1px solid var(--line); border-radius:12px; background:var(--surface); }
+    .ds-emp-linha { display:grid; grid-template-columns:minmax(0,1fr) 160px 160px 96px; gap:14px; align-items:center; padding:10px 16px; }
+    .ds-emps[data-modo="difal"] .ds-emp-linha, .ds-emps[data-modo="st"] .ds-emp-linha { grid-template-columns:minmax(0,1fr) 160px 96px; }
+    .ds-emps-cab { font-size:11px; font-weight:600; color:var(--brand-light); padding-top:9px; padding-bottom:9px; border-bottom:1px solid var(--line); }
+    .ds-emps-cab .num, .ds-emp-val { text-align:right; }
+    .ds-emp + .ds-emp { border-top:1px solid var(--line); }
+    .ds-emp > .ds-emp-linha { cursor:pointer; }
+    .ds-emp > .ds-emp-linha:hover, .ds-emp.is-open > .ds-emp-linha { background:var(--fill-1); }
+    .ds-emp-linha h3 { margin:0; font-size:14px; font-weight:600; color:var(--text); min-width:0; }
+    .ds-emp-linha h3 .ds-abre { display:flex; }
+    .ds-emp-nome { min-width:0; }
+    .ds-emp-nome small { display:block; font-size:11.5px; font-weight:400; margin-top:1px; }
+    .ds-fant { font-size:12.5px; font-weight:400; color:var(--text-muted); }
+    .ds-emp-val { font-variant-numeric:tabular-nums; font-weight:600; color:var(--text); font-size:13.5px; }
+    .ds-emp-val small { display:block; font-weight:400; font-size:11.5px; color:var(--text-muted); }
+    .ds-emp-val small.ds-sem { color:var(--warn); }
+    .ds-emp-linha > a { justify-self:end; font-size:12.5px; color:var(--brand-light); white-space:nowrap; }
+    .ds-emp-corpo { padding:2px 16px 16px 34px; background:var(--fill-1); border-top:1px dashed var(--line); }
+    .ds-cat h4 { margin:14px 0 6px; font-size:13px; color:var(--brand-light); font-weight:600; }
     .ds-tab { overflow-x:auto; }
     table.ds { border-collapse:collapse; width:100%; font-size:12.5px; min-width:880px; }
     table.ds th { text-align:left; color:var(--brand-light); font-weight:600; font-size:11px; padding:6px 8px; border-bottom:1px solid var(--line); white-space:nowrap; }
     table.ds td { padding:6px 8px; border-bottom:1px solid var(--line); color:var(--text); vertical-align:top; }
     table.ds td.num, table.ds th.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
     table.ds td small { color:var(--text-muted); display:block; }
-    table.ds tr.ds-segue td.ds-nota { color:transparent; }
     table.ds tfoot td { font-weight:600; border-bottom:none; }
-    .ds-aviso { font-size:12.5px; color:var(--warn); margin:10px 0 0; }
     table.ds td.ds-difal { font-weight:600; }
-    table.ds.ds-nota { min-width:720px; margin-top:4px; }
-    table.ds caption { caption-side:top; text-align:left; font-size:12px; font-weight:600; color:var(--brand-light); padding:12px 0 6px; }
-    .ds-conta { font-size:12.5px; color:var(--text-muted); margin:4px 0 0; }
+    /* a nota é a linha do total dela; os itens abrem embaixo; com "Agrupar" por data ou fornecedor, o grupo vem por cima */
+    table.ds tr.ds-n, table.ds tr.ds-g { cursor:pointer; }
+    table.ds tr.ds-n:hover td, table.ds tr.ds-g:hover td { background:var(--fill-2); }
+    table.ds tr.ds-n td:first-child { white-space:nowrap; }
+    table.ds tr.ds-n[data-g] td:first-child { padding-left:26px; }
+    table.ds tr.ds-g td { font-weight:600; background:var(--fill-1); }
+    table.ds tr.ds-g td small { display:inline; font-weight:400; margin-left:8px; }
+    table.ds tr.ds-i td { font-size:12px; color:var(--brand-pale); }
+    table.ds tr.ds-i td:nth-child(3) { padding-left:22px; }
+    table.ds tr.ds-i td.num { color:var(--brand-pale); }
+    .ds-aviso { font-size:12.5px; color:var(--warn); margin:10px 0 0; }
+    .ds-so-leitor { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+    .ds-conta { font-size:12.5px; color:var(--text-muted); margin:8px 0 0; }
+    /* no celular: os números das abas em duas colunas; a linha da empresa em duas, com o nome em cima e o rótulo de cada valor */
+    @media (max-width:720px){
+      .fa-focus { grid-template-columns:repeat(2,1fr); }
+      .ds-emp-linha, .ds-emps[data-modo] .ds-emp-linha { grid-template-columns:1fr 1fr; gap:6px 12px; }
+      .ds-emp-linha h3, .ds-emp-linha > a { grid-column:1 / -1; justify-self:start; }
+      .ds-emps .ds-emps-cab { display:none; }
+      .ds-emps .ds-emp-val { text-align:left; }
+      .ds-emp-val::before { content:attr(data-rotulo); content:attr(data-rotulo) / ""; display:block; font-size:11px; font-weight:600; color:var(--brand-light); }
+      .ds-emp-corpo { padding-left:16px; }
+    }
     .ds-conta:empty { display:none; }
     .ds-sem { font-size:12px; color:var(--warn); }
     .ds-muda { color:var(--text-muted); }
@@ -73,8 +116,10 @@
     .ds-lista-curta { font-size:13px; color:var(--brand-pale); line-height:1.7; }
     .ds-lista-curta h3 { font-size:13.5px; margin:16px 0 4px; color:var(--text); }
     .ds-lista-curta h3.ds-warn { color:var(--warn); }
+    .ds-lista-curta h3 .ds-seta::before { color:inherit; }
     .ds-aba-nomes > h3:first-child { margin-top:0; }
     .ds-lista-curta p { margin:0; }
+    .ds-bloco > div { padding-left:18px; }
     /* os nomes em colunas: a lista de quem falta importar passa de 30 */
     ul.ds-nomes { columns:280px; column-gap:28px; margin:2px 0 6px; padding-left:18px; }
     ul.ds-nomes li { break-inside:avoid; }
@@ -123,7 +168,7 @@
         <p>As notas de entrada do mês das empresas da SEDIF/DeSTDA: o que veio de fora do RS com ICMS destacado a 4%, com o diferencial de alíquota (DIFAL) de cada nota já calculado, e o que está nas regras de ICMS-ST na entrada, como a ração pet dos estados da lista, com o ST a recolher. Exporte os XMLs do mês na Domínio e solte aqui uma vez só: cada nota vai pra empresa certa pelo CNPJ.</p>
       </div>
 
-      <section class="ds-sec" aria-labelledby="tImportar">
+      <section class="ds-sec ds-sec-imp" aria-labelledby="tImportar">
         <h2 id="tImportar">Importar as notas do mês</h2>
         <div class="ds-drop" id="drop" role="button" tabindex="0" aria-describedby="arqs">
           <b>Arraste os XMLs ou ZIPs aqui</b><br>ou clique pra escolher — as empresas todas de uma vez; ZIP pode ter subpastas
@@ -142,7 +187,7 @@
         <div class="ds-rel" id="rel"></div>
       </section>
 
-      <section class="ds-sec" aria-labelledby="tConf">
+      <section class="ds-sec" id="secConf" aria-labelledby="tConf">
         <div class="ds-topo">
           <h2 id="tConf">Conferência <span id="tMes"></span></h2>
           <div class="ds-mes"><label for="mes">Mês das notas</label><input type="month" id="mes" class="input"></div>
@@ -153,6 +198,19 @@
           <button type="button" class="fa-focus-card" data-aba="nada" aria-pressed="false" title="Com notas de entrada do mês, nenhuma de fora do RS a 4% nem das regras de ICMS-ST"><span class="fc-num">—</span><span class="fc-lbl">Sem nada a recolher</span></button>
           <button type="button" class="fa-focus-card" data-aba="importar" aria-pressed="false" title="Sem notas de entrada do mês na base, ou com nota importada antes de 27/10/2026, sem a alíquota"><span class="fc-num">—</span><span class="fc-lbl">Falta importar</span></button>
           <button type="button" class="fa-focus-card is-active" data-aba="todas" aria-pressed="true" title="Todas as empresas da obrigação SEDIF/DeSTDA"><span class="fc-num">—</span><span class="fc-lbl">Todas</span></button>
+        </div>
+        <div class="ds-ferr" id="ferr" hidden>
+          <div class="ds-agrupar"><span id="tAgrupar">Agrupar as notas</span>
+            <div class="fd-filtro" id="agrupar" role="group" aria-labelledby="tAgrupar">
+              <button type="button" data-agrupar="nota" aria-pressed="true">Por nota</button>
+              <button type="button" data-agrupar="data" aria-pressed="false">Por data</button>
+              <button type="button" data-agrupar="fornecedor" aria-pressed="false">Por fornecedor</button>
+            </div>
+          </div>
+          <div class="ds-ferr-acoes">
+            <button type="button" class="btn btn-ghost btn-sm" id="btnAbrirTudo">Expandir tudo</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btnFecharTudo">Recolher tudo</button>
+          </div>
         </div>
         <div id="lista"><div class="ds-vazio"><span class="spinner spinner-sm"></span> Carregando…</div></div>
         <p class="ds-conta" id="conta"></p>
@@ -173,7 +231,7 @@ import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
 import { normalizarDocumento, hojeLocal } from './assets/js/utils.js';
 import { nomePorEmail } from './assets/js/equipe.js';
 import { importarLote } from './assets/js/importar-xml.js';
-import { conferirEmpresa, situacaoDaEmpresa, mesAnterior, limitesDoMes, rotuloDoMes, lerUfs, ncmDaRegra, ncmFormatado, ALIQUOTA_INTERNA_RS, stRetido, stSemBase } from './assets/js/destda.js';
+import { conferirEmpresa, situacaoDaEmpresa, agruparNotas, mesAnterior, limitesDoMes, rotuloDoMes, lerUfs, ncmDaRegra, ncmFormatado, ALIQUOTA_INTERNA_RS, stRetido, stSemBase } from './assets/js/destda.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -274,6 +332,19 @@ async function carregarMes(){
   desenharConferencia();
 }
 
+// o que está aberto (27/10/2026, pedido do Samuel: "recolher cada categoria, por empresa, por data, por nota e por
+// fornecedor" — o mês abre recolhido): a chave → aberta ou fechada; o que ninguém mexeu segue o padrão do nível —
+//   e:<empresa> a empresa (fechada: a linha com o DIFAL e o ST do mês) · c:<empresa>:<dif|st> o diferencial e o ICMS-ST
+//   dela (abertos) · g:<empresa>:<dif|st>:<data|fornecedor>:<grupo> o dia ou o fornecedor (fechado: a linha do subtotal)
+//   · n:<empresa>:<dif|st>:<nota> a nota (fechada: a linha do total dela) · l:<nada|semNotas> as listas de "Todas" (fechadas)
+const PADRAO = { e: false, c: true, g: false, n: false, l: false };
+const aberto = new Map();
+let tudoAberto = false;                     // "Expandir tudo": todos os níveis abertos; "Recolher tudo" volta ao padrão
+const estaAberto = k => aberto.has(k) ? aberto.get(k) : (tudoAberto || PADRAO[k[0]]);
+const AGRUPAR = ['nota', 'data', 'fornecedor'];
+let agrupar = (() => { try { const v = localStorage.getItem('mr_destda_agrupar'); return AGRUPAR.includes(v) ? v : 'nota'; } catch (e) { return 'nota'; } })();
+const montadas = new Map();                 // empresa → { l, modo }: o detalhe da empresa fechada é montado quando ela abre
+
 function desenharConferencia(){
   if (!doMes) return;
   const mes = rotuloDoMes(doMes.comp);
@@ -296,25 +367,29 @@ function desenharConferencia(){
   marcarAbas({ difal: g.difal.length, st: g.st.length, nada: g.nada.length, importar: g.semNotas.length + g.deNovo.length, todas: linhas.length });
   const entreAsImportadas = g.semNotas.length ? ' — entre as que têm notas de entrada importadas' : '';
   const vazio = t => '<div class="ds-vazio">' + t + '</div>';
+  // o mês sem nenhuma nota de entrada na base: o recado é importar, não "nenhuma empresa"
+  const semImportar = vazio('Nenhuma nota de entrada de ' + esc(mes) + ' importada ainda: exporte os XMLs do mês na Domínio e solte em "Importar as notas do mês", aqui em cima.');
+  const nenhuma = !doMes.comNotas.size;
   const soNomes = h => '<div class="ds-lista-curta ds-aba-nomes">' + h + '</div>';
-  let lista, conta = [], curtas = '';
-  if (aba === 'difal') {
-    lista = g.difal.length ? g.difal.map(l => cartaoDaEmpresa(l, 'difal')).join('') : vazio('Nenhuma empresa com nota de fora do RS a 4% em ' + esc(mes) + entreAsImportadas + '.');
-    if (g.difal.length) conta = [textoDaConta()];
-  } else if (aba === 'st') {
-    lista = g.st.length ? g.st.map(l => cartaoDaEmpresa(l, 'st')).join('') : vazio('Nenhuma empresa com ICMS-ST na entrada em ' + esc(mes) + entreAsImportadas + '.');
-    if (g.st.length) conta = [textoDaContaSt()];
+  montadas.clear();
+  let lista, conta = [], curtas = '', comEmpresas = false;
+  if (aba === 'difal' || aba === 'st' || aba === 'todas') {
+    const ls = aba === 'difal' ? g.difal : aba === 'st' ? g.st : aConferir;
+    comEmpresas = ls.length > 0;
+    lista = ls.length ? listaDeEmpresas(ls, aba) : nenhuma ? semImportar
+      : vazio((aba === 'difal' ? 'Nenhuma empresa com nota de fora do RS a 4% em ' : aba === 'st' ? 'Nenhuma empresa com ICMS-ST na entrada em '
+        : 'Nenhuma empresa com nota de fora do RS a 4% nem com ICMS-ST na entrada em ') + esc(mes) + entreAsImportadas + '.');
+    if (aba !== 'st' && g.difal.length) conta.push(textoDaConta());
+    if (aba !== 'difal' && g.st.length) conta.push(textoDaContaSt());
+    if (aba === 'todas') curtas = recolhivel('l:nada', blocoNada(g.nada, mes)) + recolhivel('l:semNotas', blocoSemNotas(g.semNotas, mes));
   } else if (aba === 'nada') {
-    lista = g.nada.length ? soNomes(blocoNada(g.nada, mes)) : vazio('Nenhuma empresa ficou sem nada a recolher em ' + esc(mes) + entreAsImportadas + '.');
-  } else if (aba === 'importar') {
-    lista = g.semNotas.length || g.deNovo.length ? soNomes(blocoSemNotas(g.semNotas, mes) + blocoDeNovo(g.deNovo))
-      : vazio('Todas as empresas têm notas de entrada de ' + esc(mes) + ' importadas.');
+    lista = g.nada.length ? soNomes(aberta(blocoNada(g.nada, mes))) : nenhuma ? semImportar
+      : vazio('Nenhuma empresa ficou sem nada a recolher em ' + esc(mes) + entreAsImportadas + '.');
   } else {
-    lista = aConferir.length ? aConferir.map(l => cartaoDaEmpresa(l, 'todas')).join('')
-      : vazio('Nenhuma empresa com nota de fora do RS a 4% nem com ICMS-ST na entrada em ' + esc(mes) + entreAsImportadas + '.');
-    conta = [g.difal.length ? textoDaConta() : '', g.st.length ? textoDaContaSt() : ''].filter(Boolean);
-    curtas = blocoNada(g.nada, mes) + blocoSemNotas(g.semNotas, mes);
+    lista = g.semNotas.length || g.deNovo.length ? soNomes(aberta(blocoSemNotas(g.semNotas, mes)) + aberta(blocoDeNovo(g.deNovo)))
+      : vazio('Todas as empresas têm notas de entrada de ' + esc(mes) + ' importadas.');
   }
+  $('ferr').hidden = !comEmpresas;
   $('lista').innerHTML = lista;
   $('conta').innerHTML = conta.map(esc).join('<br>');
   $('curtas').innerHTML = curtas;
@@ -337,73 +412,177 @@ $('abas').addEventListener('click', ev => {
   if (doMes) desenharConferencia(); else marcarAbas(null);
 });
 
-// as listas de nomes: as sem nada a recolher, as sem notas de entrada e as da nota importada antes de 27/10/2026
+// agrupar as notas por data ou por fornecedor (fica guardado neste navegador), expandir e recolher tudo
+function marcarAgrupar(){ document.querySelectorAll('#agrupar [data-agrupar]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.agrupar === agrupar))); }
+marcarAgrupar();
+$('agrupar').addEventListener('click', ev => {
+  const b = ev.target.closest('[data-agrupar]');
+  if (!b || b.dataset.agrupar === agrupar) return;
+  agrupar = b.dataset.agrupar;
+  try { localStorage.setItem('mr_destda_agrupar', agrupar); } catch (e) {}
+  marcarAgrupar();
+  desenharConferencia();
+});
+$('btnAbrirTudo').addEventListener('click', () => { aberto.clear(); tudoAberto = true; desenharConferencia(); });
+$('btnFecharTudo').addEventListener('click', () => { aberto.clear(); tudoAberto = false; desenharConferencia(); });
+
+// clicar na linha (ou Enter e espaço no botão dela) abre e recolhe, sem desenhar a tela de novo; o link da ficha não, e
+// quem está selecionando um valor pra copiar também não
+$('secConf').addEventListener('click', ev => {
+  const alvo = ev.target.closest('[data-alterna]');
+  if (!alvo || ev.target.closest('a')) return;
+  if (!ev.target.closest('button') && String(window.getSelection ? window.getSelection() : '')) return;
+  const k = alvo.dataset.alterna;
+  aberto.set(k, !estaAberto(k));
+  mostrar(alvo, k);
+});
+function mostrar(alvo, k){
+  const abre = estaAberto(k), botao = alvo.querySelector('.ds-abre');
+  if (botao) botao.setAttribute('aria-expanded', String(abre));
+  if (k[0] === 'e') {
+    const art = alvo.closest('.ds-emp'), corpo = art.querySelector('.ds-emp-corpo');
+    if (abre && !corpo.childElementCount) { const m = montadas.get(art.dataset.empresa); if (m) corpo.innerHTML = detalheDaEmpresa(m.l, m.modo); }
+    corpo.hidden = !abre;
+    art.classList.toggle('is-open', abre);
+  } else if (k[0] === 'c' || k[0] === 'l') {
+    alvo.nextElementSibling.hidden = !abre;
+  } else {
+    // o dia ou o fornecedor mostra as notas; a nota, os itens (se o grupo dela estiver aberto)
+    alvo.closest('table').querySelectorAll('tr.ds-n, tr.ds-i').forEach(tr => {
+      const noGrupo = !tr.dataset.g || estaAberto(tr.dataset.g);
+      tr.hidden = tr.classList.contains('ds-n') ? !noGrupo : !(noGrupo && estaAberto(tr.dataset.n));
+    });
+  }
+}
+
+// as listas de nomes: as sem nada a recolher, as sem notas de entrada e as da nota importada antes de 27/10/2026 — abertas
+// nas abas delas, recolhíveis em "Todas"
 const nomeDaEmpresa = e => esc(nomeDe(e)) + (e.nome_fantasia && e.nome_fantasia !== e.nome_principal ? ' <span class="ds-fant">(' + esc(e.nome_fantasia) + ')</span>' : '');
 const listaDeNomes = (l, extra) => '<ul class="ds-nomes">' + l.map(x => '<li>' + nomeDaEmpresa(x.e) + (extra ? extra(x) : '') + '</li>').join('') + '</ul>';
 function blocoNada(l, mes){
-  return l.length ? '<h3>Sem nada a recolher em ' + esc(mes) + ' (' + l.length + ')</h3>' + listaDeNomes(l)
-    + '<p class="ds-vazio">Têm notas de entrada do mês na base, e nenhuma de fora do RS a 4% nem das regras de ICMS-ST.</p>' : '';
+  return l.length ? { titulo: 'Sem nada a recolher em ' + esc(mes) + ' (' + l.length + ')', classe: '',
+    corpo: listaDeNomes(l) + '<p class="ds-vazio">Têm notas de entrada do mês na base, e nenhuma de fora do RS a 4% nem das regras de ICMS-ST.</p>' } : null;
 }
 function blocoSemNotas(l, mes){
-  return l.length ? '<h3 class="ds-warn">Sem notas de entrada importadas de ' + esc(mes) + ' (' + l.length + ')</h3>' + listaDeNomes(l)
-    + '<p class="ds-vazio">Sem as notas de entrada a conferência não diz nada sobre elas: importe os XMLs do mês dessas empresas (a que não comprou nada no mês fica aqui mesmo).</p>' : '';
+  return l.length ? { titulo: 'Sem notas de entrada importadas de ' + esc(mes) + ' (' + l.length + ')', classe: 'ds-warn',
+    corpo: listaDeNomes(l) + '<p class="ds-vazio">Sem as notas de entrada a conferência não diz nada sobre elas: importe os XMLs do mês dessas empresas (a que não comprou nada no mês fica aqui mesmo).</p>' } : null;
 }
 function blocoDeNovo(l){
   const notas = docs => (docs.length === 1 ? 'nota ' : 'notas ') + docs.slice(0, 6).map(d => esc(d.numero || '?')).join(', ') + (docs.length > 6 ? ' e mais ' + (docs.length - 6) : '');
-  return l.length ? '<h3 class="ds-warn">Com nota de fora do RS importada antes de 27/10/2026, sem a alíquota do ICMS (' + l.length + ')</h3>'
-    + listaDeNomes(l, x => '<small>' + notas(x.conf.semAliquota) + '</small>')
-    + '<p class="ds-vazio">Importe os XMLs do mês dessas empresas de novo: a importação completa a base e a alíquota, e a nota entra na conferência.</p>' : '';
+  return l.length ? { titulo: 'Com nota de fora do RS importada antes de 27/10/2026, sem a alíquota do ICMS (' + l.length + ')', classe: 'ds-warn',
+    corpo: listaDeNomes(l, x => '<small>' + notas(x.conf.semAliquota) + '</small>')
+      + '<p class="ds-vazio">Importe os XMLs do mês dessas empresas de novo: a importação completa a base e a alíquota, e a nota entra na conferência.</p>' } : null;
+}
+const aberta = b => b ? '<h3' + (b.classe ? ' class="' + b.classe + '"' : '') + '>' + b.titulo + '</h3>' + b.corpo : '';
+function recolhivel(k, b){
+  if (!b) return '';
+  const abre = estaAberto(k);
+  return '<section class="ds-bloco"><h3' + (b.classe ? ' class="' + b.classe + '"' : '') + ' data-alterna="' + k + '">'
+    + '<button type="button" class="ds-abre" aria-expanded="' + abre + '"><span class="ds-seta" aria-hidden="true"></span><span>' + b.titulo + '</span></button></h3>'
+    + '<div' + (abre ? '' : ' hidden') + '>' + b.corpo + '</div></section>';
 }
 
-// o cartão da empresa: na aba Com DIFAL, só o diferencial; na Com ICMS-ST, só o ST; em Todas, os dois
-function cartaoDaEmpresa({ e, conf }, modo){
-  const verDif = modo !== 'st', verSt = modo !== 'difal';
-  const fant = e.nome_fantasia && e.nome_fantasia !== e.nome_principal ? '<span class="ds-fant">' + esc(e.nome_fantasia) + '</span>' : '';
+// a lista das empresas: uma linha por empresa com o DIFAL e o ST a recolher do mês (na aba Com DIFAL, só o DIFAL; na Com
+// ICMS-ST, só o ST); clicar abre o detalhe embaixo
+function listaDeEmpresas(ls, modo){
+  return '<div class="ds-emps" data-modo="' + modo + '">'
+    + '<div class="ds-emp-linha ds-emps-cab" aria-hidden="true"><span>Empresa</span>' + (modo !== 'st' ? '<span class="num">DIFAL</span>' : '')
+    + (modo !== 'difal' ? '<span class="num">ICMS-ST a recolher</span>' : '') + '<span></span></div>'
+    + ls.map(l => linhaDaEmpresa(l, modo)).join('') + '</div>';
+}
+// a nota importada antes de 27/10/2026, sem a alíquota: na aba Com ICMS-ST, só a que tem item da regra
+const notasIncompletas = (conf, modo) => modo === 'st' ? conf.semAliquota.filter(d => conf.st.some(x => x.doc.id === d.id)) : conf.semAliquota;
+function linhaDaEmpresa(l, modo){
+  const { e, conf } = l, k = 'e:' + e.id, abre = estaAberto(k), id = 'det-' + e.id;
+  const td = conf.totais.diferencial, ts = conf.totais.st, incompletas = notasIncompletas(conf, modo);
+  montadas.set(String(e.id), { l, modo });
+  const valor = (rotulo, tem, total, notas, extra) => '<span class="ds-emp-val" data-rotulo="' + rotulo + '"><span class="ds-so-leitor">' + rotulo + ': </span>'
+    + (tem ? 'R$ ' + BRL(total) + '<small>' + qtd(notas, 'nota', 'notas') + '</small>' + (extra || '') : '<span class="ds-muda">—</span>') + '</span>';
+  return '<article class="ds-emp' + (abre ? ' is-open' : '') + '" data-empresa="' + esc(e.id) + '">'
+    + '<div class="ds-emp-linha" data-alterna="' + esc(k) + '">'
+    + '<h3><button type="button" class="ds-abre" aria-expanded="' + abre + '" aria-controls="' + esc(id) + '"><span class="ds-seta" aria-hidden="true"></span>'
+    + '<span class="ds-emp-nome">' + esc(nomeDe(e)) + (e.nome_fantasia && e.nome_fantasia !== e.nome_principal ? ' <span class="ds-fant">' + esc(e.nome_fantasia) + '</span>' : '')
+    + (incompletas.length ? '<small class="ds-sem">' + qtd(incompletas.length, 'nota de fora do RS sem a alíquota: importe de novo', 'notas de fora do RS sem a alíquota: importe de novo') + '</small>' : '')
+    + '</span></button></h3>'
+    + (modo !== 'st' ? valor('DIFAL', conf.diferencial.length, td.difal, td.notas) : '')
+    + (modo !== 'difal' ? valor('ICMS-ST a recolher', conf.st.length, ts.recolher, ts.notas,
+        ts.semBase ? '<small class="ds-sem">' + qtd(ts.semBase, 'item fora da conta', 'itens fora da conta') + '</small>' : '') : '')
+    + '<a href="clientes/editar.html?id=' + encodeURIComponent(e.id) + '">abrir a ficha</a></div>'
+    + '<div class="ds-emp-corpo" id="' + esc(id) + '"' + (abre ? '>' + detalheDaEmpresa(l, modo) : ' hidden>') + '</div>'
+    + '</article>';
+}
+// o detalhe: o diferencial e o ICMS-ST, cada um recolhível, com uma linha por nota (o total dela; os itens abrem embaixo)
+function detalheDaEmpresa({ e, conf }, modo){
   const td = conf.totais.diferencial, ts = conf.totais.st;
-  let h = '<article class="ds-emp" data-empresa="' + esc(e.id) + '"><header><h3>' + esc(nomeDe(e)) + '</h3>' + fant
-    + '<a href="clientes/editar.html?id=' + encodeURIComponent(e.id) + '">abrir a ficha</a></header>';
-  if (verDif && conf.diferencial.length) {
-    h += '<h4>Diferencial de alíquota — ICMS a 4% de fora do RS · ' + qtd(td.notas, 'nota', 'notas') + ', ' + qtd(td.itens, 'item', 'itens') + ' · DIFAL R$ ' + BRL(td.difal) + '</h4>'
-      + '<div class="ds-tab"><table class="ds ds-dif"><thead><tr><th>Data</th><th>Nota</th><th>Fornecedor</th><th>Item</th><th class="num">Valor</th><th class="num">Base do ICMS</th><th class="num">Alíq.</th><th class="num">ICMS destacado</th>'
-      + '<th class="num" title="' + esc(textoDaConta()) + '">DIFAL da nota</th></tr></thead><tbody>'
-      // o DIFAL é da nota: na linha do primeiro item, como a data, o número e o fornecedor
-      + conf.diferencial.map(({ doc, itens, difal }) => itens.map((i, k) => linhaDoItem(doc, i, k,
-          '<td class="num">' + BRL(i.valor_total) + '</td><td class="num">' + (i.icms_base == null ? '—' : BRL(i.icms_base)) + '</td><td class="num">' + pct(i.icms_aliquota) + '</td><td class="num">' + BRL(i.icms_valor) + '</td>'
-          + '<td class="num ds-difal">' + (k === 0 ? BRL(difal) : '') + '</td>')).join('')).join('')
-      + '</tbody><tfoot><tr><td colspan="4">Total</td><td class="num">' + BRL(td.valor) + '</td><td class="num">' + BRL(td.base) + '</td><td></td><td class="num">' + BRL(td.icms) + '</td><td class="num ds-difal">' + BRL(td.difal) + '</td></tr></tfoot></table></div>'
-      // o totalizador por nota: uma linha por nota, pra comparar com a conferência sem somar os itens
-      + '<div class="ds-tab"><table class="ds ds-nota ds-dif-nota"><caption>Totais por nota</caption><thead><tr><th>Data</th><th>Nota</th><th>Fornecedor</th><th class="num">Itens a 4%</th><th class="num">Valor</th><th class="num">Base do ICMS</th><th class="num">ICMS destacado</th><th class="num">DIFAL</th></tr></thead><tbody>'
-      + conf.diferencial.map(x => linhaDaNota(x.doc, '<td class="num">' + x.itens.length + '</td><td class="num">' + BRL(x.valor) + '</td><td class="num">' + BRL(x.base) + '</td><td class="num">' + BRL(x.icms) + '</td><td class="num ds-difal">' + BRL(x.difal) + '</td>')).join('')
-      + '</tbody><tfoot><tr><td colspan="3">Total</td><td class="num">' + td.itens + '</td><td class="num">' + BRL(td.valor) + '</td><td class="num">' + BRL(td.base) + '</td><td class="num">' + BRL(td.icms) + '</td><td class="num ds-difal">' + BRL(td.difal) + '</td></tr></tfoot></table></div>';
+  let h = '';
+  if (modo !== 'st' && conf.diferencial.length) {
+    h += categoria(e.id, 'dif', 'Diferencial de alíquota — ICMS a 4% de fora do RS · ' + qtd(td.notas, 'nota', 'notas') + ', ' + qtd(td.itens, 'item', 'itens') + ' · DIFAL R$ ' + BRL(td.difal),
+      '<table class="ds ds-dif"><thead><tr><th>Data</th><th>Nota</th><th>Fornecedor / item</th><th class="num">Itens</th><th class="num">Valor</th><th class="num">Base do ICMS</th><th class="num">Alíq.</th><th class="num">ICMS destacado</th>'
+      + '<th class="num" title="' + esc(textoDaConta()) + '">DIFAL</th></tr></thead><tbody>'
+      + linhasDasNotas(e.id, 'dif', conf.diferencial, { soma: celulasDif, item: i => '<td></td>' + celulasDoItem(i) + '<td></td>' })
+      + '</tbody><tfoot><tr><td colspan="3">Total</td>' + celulasDif(td, td.itens) + '</tr></tfoot></table>');
   }
-  if (verSt && conf.st.length) {
+  if (modo !== 'difal' && conf.st.length) {
     const nomesRegras = [...new Set(conf.st.flatMap(x => x.itens.map(i => i.regra.nome)))].join(', ');
-    h += '<h4>ICMS-ST na entrada — ' + esc(nomesRegras) + ' · ' + qtd(ts.notas, 'nota', 'notas') + ', ' + qtd(ts.itens, 'item', 'itens')
-      + ' · ST a recolher R$ ' + BRL(ts.recolher)
-      + (ts.semBase ? ' · <span class="ds-sem">' + qtd(ts.semBase, 'item fora da conta, sem a base do ICMS na nota', 'itens fora da conta, sem a base do ICMS na nota') + '</span>' : '') + '</h4>'
-      + '<div class="ds-tab"><table class="ds ds-st"><thead><tr><th>Data</th><th>Nota</th><th>Fornecedor</th><th>Item</th><th class="num">Valor</th><th class="num">Base do ICMS</th><th class="num">Alíq.</th><th class="num">ICMS destacado</th><th class="num">ST retida na nota</th>'
+    const soDaConta = 'Na linha da nota e no total, só os itens que entram na conta: sem o ST retido e com a base do ICMS na nota';
+    h += categoria(e.id, 'st', 'ICMS-ST na entrada — ' + esc(nomesRegras) + ' · ' + qtd(ts.notas, 'nota', 'notas') + ', ' + qtd(ts.itens, 'item', 'itens') + ' · ST a recolher R$ ' + BRL(ts.recolher)
+        + (ts.semBase ? ' · <span class="ds-sem">' + qtd(ts.semBase, 'item fora da conta, sem a base do ICMS na nota', 'itens fora da conta, sem a base do ICMS na nota') + '</span>' : ''),
+      '<table class="ds ds-st"><thead><tr><th>Data</th><th>Nota</th><th>Fornecedor / item</th><th class="num">Itens</th><th class="num">Valor</th>'
+      + '<th class="num" title="' + soDaConta + '">Base do ICMS</th><th class="num">Alíq.</th><th class="num" title="' + soDaConta + '">ICMS destacado</th><th class="num">ST retida na nota</th>'
       + '<th class="num" title="' + esc(textoDaContaSt()) + '">ST a recolher</th></tr></thead><tbody>'
-      // o ST a recolher é da nota, como o DIFAL: na linha do primeiro item
-      + conf.st.map(({ doc, itens, recolher }) => itens.map((i, k) => linhaDoItem(doc, i, k,
-          '<td class="num">' + BRL(i.valor_total) + '</td><td class="num">' + (i.icms_base == null || i.icms_base === '' ? '—' : BRL(i.icms_base)) + '</td><td class="num">' + pct(i.icms_aliquota) + '</td><td class="num">' + BRL(i.icms_valor) + '</td>'
-          + '<td class="num">' + (stRetido(i) ? BRL(i.icms_st_valor) : '<span class="ds-muda">sem retenção</span>') + '</td>'
-          + '<td class="num ds-difal">' + (k === 0 ? BRL(recolher) : '') + '</td>',
-          stSemBase(i) ? 'sem a base do ICMS na nota: fora da conta, confira' : '')).join('')).join('')
-      + '</tbody><tfoot><tr><td colspan="4">Total</td><td class="num">' + BRL(ts.valor) + '</td><td></td><td></td><td></td><td class="num">' + BRL(ts.retido) + '</td><td class="num ds-difal">' + BRL(ts.recolher) + '</td></tr></tfoot></table></div>'
-      // o totalizador por nota do ST: a base e o ICMS são os dos itens que entram na conta
-      + '<div class="ds-tab"><table class="ds ds-nota ds-st-nota"><caption>Totais por nota</caption><thead><tr><th>Data</th><th>Nota</th><th>Fornecedor</th><th class="num">Itens</th><th class="num">Valor</th>'
-      + '<th class="num" title="Só os itens que entram na conta: sem o ST retido e com a base do ICMS na nota">Base do ICMS</th><th class="num" title="Só os itens que entram na conta: sem o ST retido e com a base do ICMS na nota">ICMS destacado</th><th class="num">ST retida na nota</th><th class="num">ST a recolher</th></tr></thead><tbody>'
-      + conf.st.map(x => linhaDaNota(x.doc, '<td class="num">' + x.itens.length + '</td><td class="num">' + BRL(x.valor) + '</td><td class="num">' + BRL(x.base) + '</td><td class="num">' + BRL(x.icms) + '</td><td class="num">' + BRL(x.retido) + '</td><td class="num ds-difal">' + BRL(x.recolher) + '</td>')).join('')
-      + '</tbody><tfoot><tr><td colspan="3">Total</td><td class="num">' + ts.itens + '</td><td class="num">' + BRL(ts.valor) + '</td><td class="num">' + BRL(ts.base) + '</td><td class="num">' + BRL(ts.icms) + '</td><td class="num">' + BRL(ts.retido) + '</td><td class="num ds-difal">' + BRL(ts.recolher) + '</td></tr></tfoot></table></div>';
+      + linhasDasNotas(e.id, 'st', conf.st, {
+          soma: celulasSt,
+          item: i => '<td></td>' + celulasDoItem(i) + '<td class="num">' + (stRetido(i) ? BRL(i.icms_st_valor) : '<span class="ds-muda">sem retenção</span>') + '</td><td></td>',
+          aviso: i => stSemBase(i) ? 'sem a base do ICMS na nota: fora da conta, confira' : ''
+        })
+      + '</tbody><tfoot><tr><td colspan="3">Total</td>' + celulasSt(ts, ts.itens) + '</tr></tfoot></table>');
   }
-  // a nota importada antes de 27/10/2026, sem a alíquota: na aba Com ICMS-ST, só a que tem item da regra
-  const incompletas = modo === 'st' ? conf.semAliquota.filter(d => conf.st.some(x => x.doc.id === d.id)) : conf.semAliquota;
+  const incompletas = notasIncompletas(conf, modo);
   if (incompletas.length) {
     h += '<p class="ds-aviso">' + (incompletas.length === 1 ? '1 nota de fora do RS foi importada' : incompletas.length + ' notas de fora do RS foram importadas')
       + ' antes de 27/10/2026, quando a alíquota do ICMS não era guardada (' + incompletas.slice(0, 6).map(d => 'nº ' + esc(d.numero || '?')).join(', ')
       + (incompletas.length > 6 ? ' e mais ' + (incompletas.length - 6) : '') + '): importe os XMLs do mês de novo pra conferir.</p>';
   }
-  return h + '</article>';
+  return h;
+}
+function categoria(empId, cat, titulo, tabela){
+  const k = 'c:' + empId + ':' + cat, abre = estaAberto(k);
+  return '<section class="ds-cat" data-cat="' + cat + '"><h4 data-alterna="' + esc(k) + '"><button type="button" class="ds-abre" aria-expanded="' + abre + '">'
+    + '<span class="ds-seta" aria-hidden="true"></span><span>' + titulo + '</span></button></h4>'
+    + '<div class="ds-tab"' + (abre ? '' : ' hidden') + '>' + tabela + '</div></section>';
+}
+// as células de valor: a nota, o grupo e o total têm as mesmas (o "Itens" é a quantidade); o item, as dele
+const celulasDif = (o, itens) => '<td class="num">' + itens + '</td><td class="num">' + BRL(o.valor) + '</td><td class="num">' + BRL(o.base) + '</td><td></td>'
+  + '<td class="num">' + BRL(o.icms) + '</td><td class="num ds-difal">' + BRL(o.difal) + '</td>';
+const celulasSt = (o, itens) => '<td class="num">' + itens + '</td><td class="num">' + BRL(o.valor) + '</td><td class="num">' + BRL(o.base) + '</td><td></td>'
+  + '<td class="num">' + BRL(o.icms) + '</td><td class="num">' + BRL(o.retido) + '</td><td class="num ds-difal">' + BRL(o.recolher) + '</td>';
+const celulasDoItem = i => '<td class="num">' + BRL(i.valor_total) + '</td><td class="num">' + (i.icms_base == null || i.icms_base === '' ? '—' : BRL(i.icms_base)) + '</td>'
+  + '<td class="num">' + pct(i.icms_aliquota) + '</td><td class="num">' + BRL(i.icms_valor) + '</td>';
+// as linhas das notas de uma categoria: a da nota (data, número, fornecedor e o total dela) e, embaixo, os itens; com
+// "Agrupar" por data ou fornecedor, a linha do grupo (o subtotal) vem por cima das notas dele
+function linhasDasNotas(empId, cat, notas, cel){
+  const daNota = (x, kg) => {
+    const k = 'n:' + empId + ':' + cat + ':' + x.doc.id, abre = estaAberto(k), noGrupo = !kg || estaAberto(kg);
+    const g = kg ? ' data-g="' + esc(kg) + '"' : '', data = dataBR(x.doc.data_emissao);
+    return '<tr class="ds-n" data-alterna="' + esc(k) + '"' + g + (noGrupo ? '' : ' hidden') + '>'
+      + '<td><button type="button" class="ds-abre" aria-expanded="' + abre + '" aria-label="' + esc(data + ', nota ' + (x.doc.numero || '—') + ': os itens') + '"><span class="ds-seta" aria-hidden="true"></span>' + data + '</button></td>'
+      + '<td>' + esc(x.doc.numero || '—') + '</td><td>' + esc(x.doc.emit_nome || '—') + '<small>' + esc(x.doc.emit_uf || '') + '</small></td>'
+      + cel.soma(x, x.itens.length) + '</tr>'
+      + x.itens.map(i => {
+          const aviso = cel.aviso ? cel.aviso(i) : '';
+          return '<tr class="ds-i" data-n="' + esc(k) + '"' + g + (noGrupo && abre ? '' : ' hidden') + '><td></td><td></td>'
+            + '<td>' + esc(i.descricao || '—') + '<small>NCM ' + esc(ncmFormatado(i.ncm) || '—') + (i.cfop ? ' · CFOP ' + esc(i.cfop) : '') + '</small>'
+            + (aviso ? '<small class="ds-sem">' + esc(aviso) + '</small>' : '') + '</td>' + cel.item(i) + '</tr>';
+        }).join('');
+  };
+  if (agrupar !== 'data' && agrupar !== 'fornecedor') return notas.map(x => daNota(x, null)).join('');
+  return agruparNotas(notas, agrupar).map(gr => {
+    const kg = 'g:' + empId + ':' + cat + ':' + agrupar + ':' + gr.chave, abre = estaAberto(kg);
+    const rotulo = agrupar === 'data' ? dataBR(gr.doc.data_emissao) : esc(gr.doc.emit_nome || '—') + (gr.doc.emit_uf ? ' (' + esc(gr.doc.emit_uf) + ')' : '');
+    return '<tr class="ds-g" data-alterna="' + esc(kg) + '"><td colspan="3"><button type="button" class="ds-abre" aria-expanded="' + abre + '"><span class="ds-seta" aria-hidden="true"></span>' + rotulo + '</button>'
+      + ' <small>' + qtd(gr.total.notas, 'nota', 'notas') + '</small></td>' + cel.soma(gr.total, gr.total.itens) + '</tr>'
+      + gr.notas.map(x => daNota(x, kg)).join('');
+  }).join('');
 }
 // como o DIFAL e o ST são calculados (o rodapé da conferência e a dica das colunas)
 function textoDaConta(){
@@ -414,21 +593,6 @@ function textoDaConta(){
 function textoDaContaSt(){
   return 'ICMS-ST = a base do ICMS dos itens da regra × ' + ALIQUOTA_INTERNA_RS + '% (a alíquota do RS) − o ICMS destacado neles, nota por nota, sem MVA. '
     + 'O item com o ST já retido pelo fornecedor fica fora da conta.';
-}
-// a linha do totalizador por nota (27/10/2026, pedido da Thalia: achar a nota que diverge sem somar produto por produto)
-function linhaDaNota(doc, resto){
-  return '<tr><td>' + dataBR(doc.data_emissao) + '</td><td>' + esc(doc.numero || '—') + '</td><td>' + esc(doc.emit_nome || '—') + '<small>' + esc(doc.emit_uf || '') + '</small></td>' + resto + '</tr>';
-}
-// a linha do item: a data, a nota e o fornecedor só no primeiro item da nota; `aviso` (texto da tela) embaixo do item
-function linhaDoItem(doc, i, k, resto, aviso){
-  const nota = k === 0;
-  return '<tr' + (nota ? '' : ' class="ds-segue"') + '>'
-    + '<td class="ds-nota">' + (nota ? dataBR(doc.data_emissao) : '') + '</td>'
-    + '<td class="ds-nota">' + (nota ? esc(doc.numero || '—') : '') + '</td>'
-    + '<td class="ds-nota">' + (nota ? esc(doc.emit_nome || '—') + '<small>' + esc(doc.emit_uf || '') + '</small>' : '') + '</td>'
-    + '<td>' + esc(i.descricao || '—') + '<small>NCM ' + esc(ncmFormatado(i.ncm) || '—') + (i.cfop ? ' · CFOP ' + esc(i.cfop) : '') + '</small>'
-    + (aviso ? '<small class="ds-sem">' + esc(aviso) + '</small>' : '') + '</td>'
-    + resto + '</tr>';
 }
 
 // ---------- importar ----------
@@ -466,6 +630,7 @@ async function importar(){
       $('progFill').style.width = m ? Math.round(n / m * 100) + '%' : '0%'; $('progTxt').textContent = t;
     } });
     arquivos = []; desenharArquivos();
+    $('progFill').style.width = '100%';
     relatorio(r);
     // a conferência abre no mês da maior parte das notas importadas
     const principal = Object.entries(r.meses || {}).sort((a, b) => b[1] - a[1])[0];
