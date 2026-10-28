@@ -282,6 +282,8 @@
           <button class="btn btn-ghost" id="btnBase">Base legal</button>
         </div>
       </div>
+      <!-- as simulações gravadas com a CBS de antes (28/10/2026: a referência do TCU no lugar da de estudo) pedem o Refazer -->
+      <p class="rt-nota" id="avisoRefazer" style="margin:0 0 10px;font-size:12.5px;color:var(--warn)" hidden></p>
 
       <table class="rg-tabela">
         <thead><tr>
@@ -382,7 +384,7 @@
           <div class="rt-retratos" id="bRetratos"></div>
           <div class="rt-verd" id="bVeredito"></div>
           <table class="rt-tm" id="bMeses"></table>
-          <p class="rt-nota">Simulação com alíquotas de referência de 2027 (CBS pendente de Resolução do Senado, fixada no ano anterior e que pode sair depois do prazo da opção). Valores estimativos, calculados com os dados informados; a decisão é do cliente.</p>
+          <p class="rt-nota" id="bNotaAliq">Simulação com as alíquotas de 2027. Valores estimativos, calculados com os dados informados; a decisão é do cliente.</p>
           <p class="rt-refs">Base legal: <a class="ref" href="#" data-regra="CRED-ENTRADAS">[CRED-ENTRADAS]</a> <a class="ref" href="#" data-regra="CRED-DESTACADO">[CRED-DESTACADO]</a> <a class="ref" href="#" data-regra="CRED-CLIENTE">[CRED-CLIENTE]</a> <a class="ref" href="#" data-regra="PARTILHA-DAS-2027">[PARTILHA-DAS-2027]</a> <a class="ref" href="#" data-regra="ANEXO-INDUSTRIA-2027">[ANEXO-INDUSTRIA-2027]</a> <a class="ref" href="#" data-regra="BASE-SEM-ICMS-ISS">[BASE-SEM-ICMS-ISS]</a> <a class="ref" href="#" data-regra="RED-SO-POR-FORA">[RED-SO-POR-FORA]</a> <a class="ref" href="#" data-regra="ALIQ-REF-2027">[ALIQ-REF-2027]</a> — clique pra ver a regra e os materiais de onde ela veio.</p>
         </div>
       </div>
@@ -470,7 +472,7 @@
     import { importarLote, separarNaoXml } from './assets/js/importar-xml.js';
     import { formatDocumento, normalizarDocumento } from './assets/js/utils.js';
     import { gerarAnalise } from './assets/js/rt-analise.js';
-    import { simular, anexo2027, aliquotas2027, entradaComAliquotas } from './assets/js/rt-motor.js';
+    import { simular, anexo2027, aliquotas2027, entradaComAliquotas, comCbsAnterior, REFERENCIA_CBS_2027 } from './assets/js/rt-motor.js';
     import { avaliarConfianca, resumoConfianca, inferirProcedencia, contextoDoCaso, ROT_DECISAO, faltaParaCliente, textoReducaoServico } from './assets/js/rt-confianca.js';
     import { RT_PRAZO, janelaAberta as janelaAbertaEm } from './assets/js/rt-prazos.js';
     import { assistenteDaTela } from './assets/js/assistente-escritorio.js';
@@ -497,12 +499,16 @@
     const FUND_PADRAO_DENTRO = 'Perfil de vendas ao consumidor final, baixo volume de compras com IBS/CBS destacado e sem redução setorial aplicável — a permanência no Simples é a alternativa mais simples e sem custo adicional.';
     const FUND_PADRAO_FORA = 'A recuperação do imposto pago nas compras e o crédito integral repassado aos clientes tornam o regime regular mais vantajoso para a empresa.';
 
-    // CBS de 2027 = referência − 0,1 ponto (ADCT, art. 127, parágrafo único): 9,30 − 0,10 = 9,20; IBS 0,10 (0,05 + 0,05).
-    // Até 03/10/2026 a tela somava a referência cheia (9,30 + 0,10 = 9,40%); o caso do curso usa 9,30% no total.
-    let casos = [], clientesMap = {}, params = { cbs: 9.20, cbsRef: 9.30, ibs: 0.10, partilha: null };
-    // simulação gravada antes de 03/10/2026 (ou por uma aba aberta com a versão antiga) traz a CBS de referência cheia
-    // (9,30 com IBS 0,10): lida como a CBS de 2027 (9,20), pra tela e análise não somarem 9,40% de novo
+    // CBS de 2027 = referência − 0,1 ponto (ADCT, art. 127, parágrafo único) e IBS 0,10 (0,05 + 0,05). Desde 28/10/2026, a
+    // referência que o TCU calculou: 11,30 − 0,10 = 11,20 (até ali, a de estudo do curso: 9,30 − 0,10 = 9,20). O número vem do
+    // rt_parametros.aliq_ref_2027; sem ele, o de REFERENCIA_CBS_2027 (rt-motor.js), que também diz de onde ele veio.
+    let casos = [], clientesMap = {}, params = { ...aliquotas2027(null), partilha: null };
+    // a simulação gravada com a CBS de antes (9,20 — ou a referência cheia, antes de 03/10/2026) é lida com a de agora: a
+    // ficha, a análise e o "Refazer simulações" usam a mesma (entradaComAliquotas, rt-motor.js)
     const entradaAtual = e => entradaComAliquotas(e, params);
+    const R27 = REFERENCIA_CBS_2027;
+    const ehDoTcu = cbsRef => Math.abs(+cbsRef - R27.valor) < 0.005;
+    $('bNotaAliq').textContent = 'Simulação com as alíquotas de 2027: a referência da CBS ' + R27.origem + (R27.fixada ? '' : ' (' + R27.pendente + ')') + '. Valores estimativos, calculados com os dados informados; a decisão é do cliente.';
     let filtroStatus = 'todos', busca = '', fTri = '', fSeg = '', fDec = '';
     let sel = new Set(), fichaId = null, simAtual = null, usuarioEmail = '';
 
@@ -521,7 +527,7 @@
         }
         if (p.chave === 'partilha_cbs_ibs' && p.valor && p.valor.anexos && Object.keys(p.valor.anexos).length) params.partilha = p.valor.anexos;
       });
-      $('sCbsHint').textContent = 'referência ' + Number(params.cbsRef).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) + ' menos 0,1 ponto (ADCT, art. 127)';
+      $('sCbsHint').textContent = 'referência de ' + Number(params.cbsRef).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) + '%' + (ehDoTcu(params.cbsRef) ? ', ' + R27.origem : '') + ', menos 0,1 ponto (ADCT, art. 127)';
       const ids = casos.map(c => c.cliente_id);
       if (ids.length) {
         const [{ data: clis }, { data: cart }] = await Promise.all([
@@ -538,6 +544,22 @@
       const segs = [...new Set(casos.map(c => c.segmento).filter(Boolean))].sort();
       $('rtFseg').innerHTML = '<option value="">Segmento: todos</option>' + segs.map(s => '<option value="' + escapeHtml(s) + '">' + escapeHtml(SEG_LBL[s] || s) + '</option>').join('');
       render();
+    }
+
+    // quantas simulações gravadas seguem com a CBS de antes: o "Refazer simulações" as recalcula com a de agora (28/10/2026)
+    function avisarRefazer() {
+      const antigas = casos.filter(c => {
+        if (c.sim_custo_dentro == null || !c.sim_obs) return false;
+        try { const j = JSON.parse(c.sim_obs); return !!(j && j.input) && comCbsAnterior(j.input, params); } catch (e) { return false; }
+      });
+      const el = $('avisoRefazer');
+      el.hidden = !antigas.length;
+      if (!antigas.length) return;
+      const de = [...new Set(antigas.map(c => { try { return +JSON.parse(c.sim_obs).input.cbs; } catch (e) { return null; } }).filter(v => v != null))]
+        .map(v => brPct(v) + '%').join(' e ');
+      el.textContent = '⚠ ' + (antigas.length === 1 ? '1 simulação gravada usa' : antigas.length + ' simulações gravadas usam') + ' a CBS de antes (' + de + ' em 2027). A de agora é '
+        + brPct(params.cbs) + '% (referência de ' + brPct(params.cbsRef) + '%' + (ehDoTcu(params.cbsRef) ? ', ' + R27.origem : '') + '): clique em “Refazer simulações” pra recalcular '
+        + (antigas.length === 1 ? 'ela' : 'todas') + ' com ela — o resumo mostra o que mudou de resultado.';
     }
 
     function scoreDe(c) { return SINAIS.reduce((a, s) => a + (+c[s] || 0), 0); }
@@ -631,6 +653,7 @@
 
     function render() {
       renderPainel();
+      avisarRefazer();
 
       const cont = { triado:0, validado:0, simulado:0, decidido:0, comunicado:0, opcao_registrada:0 };
       casos.forEach(c => { if (cont[c.status] != null) cont[c.status]++; });
@@ -1672,11 +1695,11 @@
       const das2027 = Math.abs(r.mes.das2027 - r.mes.dasHoje) > 0.005 && motivosDas.length
         ? '<br><span style="font-size:11.5px">DAS por dentro em 2027: ' + brl(r.mes.das2027) + '/mês, contra ' + brl(r.mes.dasHoje) + ' hoje — ' + motivosDas.join('; ') + '.</span>' : '';
       // 12/10/2026 (Módulo 01): no "opte, se", a margem precisa comportar o imposto por cima do preço pra quem não credita;
-      // na decisão apertada, a alíquota oficial (fixada no ano anterior, ADCT art. 130) pode chegar depois do prazo da opção
+      // na decisão apertada, a resolução do Senado (até 15/12/2026, sobre o cálculo do TCU de 28/10/2026) chega depois do prazo da opção
       const notaMargem = condicional
         ? '<br><span style="font-size:11.5px">Antes de confirmar, veja a margem de contribuição: o cliente do regime regular credita o IBS/CBS destacado por cima do preço, mas o consumidor final e o cliente do Simples pagam mais — se eles não aceitarem, a empresa absorve essa parte.</span>' : '';
-      const notaAliquota = r.veredito.apertada
-        ? '<br><span style="font-size:11.5px">A alíquota oficial de 2027 é fixada no ano anterior, com base em cálculo do TCU (ADCT, art. 130), e pode sair depois de ' + RT_PRAZO.opcaoDM + '. Numa decisão apertada, refaça a conta com o número oficial: quem optou pode cancelar ' + RT_PRAZO.cancelamento + ', sem efeito.</span>' : '';
+      const notaAliquota = r.veredito.apertada && !R27.fixada
+        ? '<br><span style="font-size:11.5px">A referência da CBS de 2027 (' + brPct(R27.valor) + '%) foi ' + R27.origem + ', e ' + R27.pendente + '. Numa decisão apertada, confira a conta com o número do Senado: quem optou pode cancelar ' + RT_PRAZO.cancelamento + ', sem efeito.</span>' : '';
       $('bVeredito').className = 'rt-verd ' + (semConc ? 'semconc' : venceu ? 'opte' : condicional ? 'ambar' : 'mantenha');
       $('bVeredito').innerHTML = (semConc
           // o dado que decide tem confiança baixa: a tela não recomenda — diz o que daria, por que não vale e o que falta
@@ -1841,7 +1864,7 @@
       return '<div class="folha">' +
         '<header class="cab"><img src="' + logoUrl + '" alt="Macedo & Reis"><div class="firma"><strong>Macedo &amp; Reis Contabilidade</strong><span>CRC/RS 006418/O</span><span>Três Coroas – RS</span></div></header>' +
         '<hr class="reg">' + miolo +
-        '<div class="rodape">Simulações com as alíquotas de 2027: CBS ' + pc(params.cbs) + ' (referência de ' + pc(params.cbsRef) + ' menos 0,1 ponto; a referência é fixada por Resolução do Senado no ano anterior e pode sair depois do prazo da opção) e IBS ' + pc(params.ibs) + '. Valores estimativos. Emitido em ' + new Date().toLocaleDateString('pt-BR') + ' · Macedo &amp; Reis Contabilidade · CRC/RS 006418/O</div>' +
+        '<div class="rodape">Simulações com as alíquotas de 2027: CBS ' + pc(params.cbs) + ' (referência de ' + pc(params.cbsRef) + ' menos 0,1 ponto; a referência ' + (ehDoTcu(params.cbsRef) ? R27.origem + (R27.fixada ? '' : ', e ' + R27.pendente) : 'é fixada por resolução do Senado') + ') e IBS ' + pc(params.ibs) + '. Valores estimativos. Emitido em ' + new Date().toLocaleDateString('pt-BR') + ' · Macedo &amp; Reis Contabilidade · CRC/RS 006418/O</div>' +
         '</div>';
     }
 
@@ -1954,6 +1977,7 @@
     // sensibilidade, fontes, recomendação e pendências: tudo derivado do caso
     // proc: a procedência de cada campo gravada com a simulação (13/10/2026); null nas gravadas antes — aí é deduzida
     function montarDadosAnalise(c, cli, ent, sim, dom, xml, proc) {
+      const R27 = REFERENCIA_CBS_2027;   // a referência da CBS de 2027 e de onde ela veio (rt-motor.js)
       const s = sim.semestre, m = sim.mes, optar = sim.veredito.tipo === 'OPTE';
       const empate = !!sim.veredito.empate && s.diferenca < 0;   // por fora mais barato, mas abaixo do limiar
       // OPTE, SE O COMERCIAL CONFIRMAR (12/10/2026): por fora custa mais, mas o crédito a mais da carteira PJ cobre a alta
@@ -2070,8 +2094,10 @@
           virou: 'o enquadramento do serviço na lista do ' + anexoServ };
       const enqPremissaMuda = !!enq && !!enq.alerta && itemMix.categoria === 'premissa' && !!itemMix.muda;
       const valorEnq = enq ? (cheioMix ? null : itemMix.valor) : null;
-      // a alíquota oficial de 2027 muda o resultado? (estimativas em circulação: referência de 8,8% e de 9,21%, menos 0,1 ponto)
-      const cbsMuda = [8.7, 9.11].some(v => mudaCom({ cbs: v }));
+      // a CBS de 2027 (28/10/2026): a conta usa a referência que o TCU calculou (as estimativas que circulavam antes, 8,8% e
+      // 9,21%, ficaram superadas); a sensibilidade mostra o que dava com a referência de estudo usada até ali (9,30%, CBS de
+      // 9,20%) — se o número do TCU mudou a conclusão deste caso
+      const cbsDoTcu = Math.abs(ent.cbs - (R27.valor - 0.1)) < 0.005, cbsAntesMuda = mudaCom({ cbs: 9.2 });
       // ENQUADRAMENTO DA REFEIÇÃO POR CONTRATO (13/10/2026): no regime de bares, −40% e o cliente não credita a refeição
       // (LC 214, arts. 275 e 276); fora dele, alíquota cheia e o cliente credita. Sem o texto do art. 273 na base, a análise
       // roda o enquadramento contrário ao da ficha e diz se o resultado muda
@@ -2112,9 +2138,10 @@
           : { nome: 'Repasse da CBS ao cliente', hoje: 'não levantado',
               efeito: 'de ' + brl0(-s.diferenca) + ' (0% de repasse) a ' + brl0(m.debitoFora * 6 - s.diferenca) + ' (100%)',
               muda: viraEm != null && viraEm >= 0 && viraEm <= 100 ? 'Sim — inverte a partir de ' + Math.round(viraEm) + '%' : 'Sim' },
-        // as estimativas em circulação são da REFERÊNCIA; em 2027 a CBS aplicada é a referência menos 0,1 ponto (ADCT art. 127)
-        { nome: 'Alíquota final da CBS', hoje: p1(ent.cbs) + '% em 2027 (referência de ' + p1(ent.cbs + 0.1) + '% menos 0,1 ponto; não fixada)',
-          efeito: 'referência de 8,8% (Fazenda) → ' + sinal(dif({ cbs: 8.7 })) + ' · de 9,21% (CGIBS) → ' + sinal(dif({ cbs: 9.11 })), muda: cbsMuda ? 'Sim — com alguma das estimativas o resultado muda' : 'Não — nas três estimativas o resultado é o mesmo' },
+        // em 2027 a CBS aplicada é a referência menos 0,1 ponto (ADCT art. 127)
+        { nome: 'Alíquota da CBS', hoje: p1(ent.cbs) + '% em 2027 (referência de ' + p1(ent.cbs + 0.1) + '% menos 0,1 ponto' + (cbsDoTcu ? ', ' + R27.origem : ', informada na ficha') + ')',
+          efeito: 'com a referência de estudo usada até 28/10/2026 (9,30%, CBS de 9,20%) → ' + sinal(dif({ cbs: 9.2 })),
+          muda: cbsAntesMuda ? 'Sim — com a referência de estudo o resultado era outro: o número do TCU mudou a conclusão' : 'Não — com a referência de estudo o resultado era o mesmo' },
         { nome: 'Base creditável de entradas', hoje: p1(ent.pctComprasMercadorias + ent.pctComprasDespesas) + '% da receita',
           efeito: '25% → ' + sinal(dif({ pctComprasMercadorias: 25 })) + ' · 60% → ' + sinal(dif({ pctComprasMercadorias: 60 })),
           muda: [25, 60].some(v => mudaCom({ pctComprasMercadorias: v })) ? 'Sim — com outro crédito de entrada o resultado muda' + (empataCompras ? ' (empata a ~' + Math.round(empataCompras) + '%)' : '') : (empataCompras ? 'Não (empataria só a ~' + Math.round(empataCompras) + '%)' : 'Não') },
@@ -2253,8 +2280,8 @@
                 : 'O crédito a mais que os clientes empresa aproveitariam por fora (' + brl0(Math.max(0, aprovGanho)) + ') não cobre esse custo — nem com parte do imposto repassada no preço a conta fecha a favor de optar.'
                   + (sim.veredito.apertada && sim.veredito.carteiraVirada != null ? ' A margem é apertada (' + p1(sim.veredito.margem) + '%): com ' + p1(sim.veredito.carteiraVirada) + '% ou mais das vendas a clientes que aproveitam o crédito, a conta passaria a compensar.' : '') + '</p>')
               + '<p style="margin-bottom:0">' + (janelaAberta
-                ? (sim.veredito.apertada
-                  ? 'Não formalizar a opção até ' + RT_PRAZO.opcaoDM + ' — ou, como a decisão é apertada e a alíquota oficial de 2027 (fixada no ano anterior, com base em cálculo do TCU — ADCT, art. 130) pode sair depois desse prazo, formalizar e decidir até ' + RT_PRAZO.cancelaAteDM + ' com o número oficial: o cancelamento ' + RT_PRAZO.cancelamento + ' não tem efeito.'
+                ? (sim.veredito.apertada && !R27.fixada
+                  ? 'Não formalizar a opção até ' + RT_PRAZO.opcaoDM + ' — ou, como a decisão é apertada e a referência da CBS de 2027 ainda não está fixada (foi ' + R27.origem + ', e ' + R27.pendente + '), formalizar e decidir até ' + RT_PRAZO.cancelaAteDM + ' com o número do Senado: o cancelamento ' + RT_PRAZO.cancelamento + ' não tem efeito.'
                   : 'Não formalizar a opção até ' + RT_PRAZO.opcaoDM + '.')
                 : 'A janela da opção para janeiro/2027 já fechou; nada a fazer.') + ' Se o quadro mudar — mais vendas a empresas do regime regular, contratos que aceitem o destaque do imposto —, há nova janela em março/2027, com efeito a partir de julho.</p>' }
         : !janelaAberta
@@ -2268,7 +2295,7 @@
               + '<li><b>A variável que decide ainda não foi levantada.</b> ' + (viraEm != null && viraEm <= 100 ? 'A partir de ' + Math.round(viraEm) + '% de repasse da CBS o resultado inverte. ' : '') + 'Isso é conversa comercial com os maiores clientes — e daqui a dezembro é exatamente o tempo de tê-la.' + (fraseCarteira ? ' ' + fraseCarteira : '') + '</li>'
               + '<li><b>O cliente vai perguntar antes.</b> A queda no crédito aparece na planilha de compras dele em janeiro de 2027. É melhor chegar com a proposta do que receber a cobrança.</li>'
               + '<li><b>A margem precisa comportar.</b> O cliente do regime regular credita o IBS/CBS destacado por cima do preço; o consumidor final e o cliente do Simples, não. Se esses não aceitarem o preço com o imposto, a empresa absorve essa parte — conferir a margem de contribuição antes de confirmar.</li></ol>'
-              + '<p style="margin-bottom:0">Se até ' + RT_PRAZO.cancelaAte + ' ficar claro que os contratos não comportam o destaque da CBS, cancela-se a opção e tudo segue como está — com a economia preservada e nenhum custo pela tentativa. A alíquota oficial de 2027 é fixada no ano anterior, com base em cálculo do TCU (ADCT, art. 130), e pode sair depois de ' + RT_PRAZO.opcaoDM + ': se vier diferente da usada aqui, refazer a simulação com ela antes de decidir.</p>' };
+              + '<p style="margin-bottom:0">Se até ' + RT_PRAZO.cancelaAte + ' ficar claro que os contratos não comportam o destaque da CBS, cancela-se a opção e tudo segue como está — com a economia preservada e nenhum custo pela tentativa.' + (R27.fixada ? '' : ' A referência da CBS de 2027 foi ' + R27.origem + ', e ' + R27.pendente + ': se o número do Senado vier diferente, refazer a simulação com ele antes de decidir.') + '</p>' };
 
       const perguntas = consumidor && !ehAlimentacao ? [
         'A receita passa <b>toda</b> por nota (NF-e/NFC-e)? Há venda fora das notas? A simulação usa o faturamento registrado na contabilidade.',
@@ -2322,14 +2349,12 @@
       }
       if (!(dom && dom.fornecedoresRegime)) pendencias.push({ o_que: 'Regime dos fornecedores creditáveis', porque: 'Fornecedor do Simples só dá crédito do IBS/CBS recolhido no DAS dele (LC 123, art. 23, §1º-A) — cerca de 15% do crédito cheio', onde: 'Consulta de CNPJ', quem: 'Fiscal', nivel: 'media', peso: 'médio' });
       if (!consumidor && temServico) pendencias.push({ o_que: 'ISS retido e município de prestação', porque: 'Retenção reduz o DAS por dentro e muda a comparação', onde: 'NFS-e e apurações do Simples', quem: 'Fiscal', nivel: 'media', peso: 'médio' });
-      pendencias.push(
-        { o_que: 'Receita esperada para 2027', porque: 'A simulação usa a média do período apurado', onde: 'Contratos e expectativa do cliente', quem: 'Direção', nivel: 'media', peso: 'médio' },
-        { o_que: 'Alíquota oficial da CBS',
-          porque: 'Fixada pelo Senado no ano anterior, com base em cálculo do TCU (ADCT, art. 130, §1º): pode sair perto ou depois de ' + RT_PRAZO.opcaoDM + '. '
-            + (cbsMuda ? 'Alguma das estimativas em circulação muda o resultado — refazer a simulação com o número oficial.' : 'Nas estimativas em circulação o resultado não muda.')
-            + (sim.veredito.apertada ? ' Decisão apertada: refazer a conta com o número oficial' + (janelaAberta ? ' — quem optou pode cancelar ' + RT_PRAZO.cancelamento + ', sem efeito.' : '.') : ''),
-          onde: 'Resolução do Senado', quem: 'Acompanhar', nivel: 'alta', peso: cbsMuda ? 'alto' : 'baixo' }
-      );
+      pendencias.push({ o_que: 'Receita esperada para 2027', porque: 'A simulação usa a média do período apurado', onde: 'Contratos e expectativa do cliente', quem: 'Direção', nivel: 'media', peso: 'médio' });
+      // a CBS de 2027 (28/10/2026): o TCU calculou, falta a resolução do Senado — se não sair até 22/12, vale o cálculo do TCU
+      if (!R27.fixada) pendencias.push({ o_que: 'Resolução do Senado com a alíquota da CBS',
+          porque: 'A referência de 2027 foi ' + R27.origem + ' (' + p1(R27.valor) + '%)' + (cbsDoTcu ? ', a que a conta usa' : ' — a conta usa ' + p1(ent.cbs + 0.1) + '%, informada na ficha') + ', e ' + R27.pendente + '. Se não fixar até 22/12, vale o cálculo do TCU (LC 214, art. 349, §2º).'
+            + (sim.veredito.apertada ? ' Decisão apertada: conferir a conta com o número do Senado' + (janelaAberta ? ' — quem optou pode cancelar ' + RT_PRAZO.cancelamento + ', sem efeito.' : '.') : ''),
+          onde: 'Resolução do Senado', quem: 'Acompanhar', nivel: 'alta', peso: 'baixo' });
 
       // ---------- REVISOR (24/09/2026): o relatório confere a si mesmo antes de recomendar ----------
       // Não buscamos definição 100%: se algum dado sustenta a conclusão sem certeza, o relatório diz
@@ -2347,7 +2372,6 @@
       }
       const testes = [
         { nome: dom && dom.fornecedoresRegime ? 'crédito das entradas 20% menor (além do ajuste pelos fornecedores do Simples: crédito glosado, fornecedores menores)' : alertaFornecedor ? 'crédito das entradas 20% menor (crédito glosado, nota sem destaque)' : 'crédito das entradas 20% menor (fornecedores do Simples, crédito glosado)', x: { pctComprasMercadorias: ent.pctComprasMercadorias * 0.8, pctComprasDespesas: (ent.pctComprasDespesas || 0) * 0.8 }, conferir: 'regime dos principais fornecedores' },
-        { nome: 'CBS de referência de 8,8% (projeção da Fazenda; 8,7% em 2027)', x: { cbs: 8.7 }, conferir: 'alíquota oficial da CBS' },
         { nome: 'receita 30% menor', x: { receita: ent.receita * 0.7 }, conferir: 'receita esperada para 2027' },
         { nome: 'receita 30% maior', x: { receita: ent.receita * 1.3 }, conferir: 'receita esperada para 2027' }
       ];

@@ -54,9 +54,10 @@ CASOS = [
     caso(5, 'rx5', 'tende_por_dentro', 1, status='triado'),
     caso(6, 'rx6', 'simular', 3, 34150, 33100, obs('MANTENHA', 'Texto qualquer do veredito', empate=True)),
 ]
-# Refazer simulações (03/10/2026): o ATELIÊ ganha uma entrada completa, inventada, gravada com a CBS antiga (9,30 + 0,10).
-# Por R$ 15,90 no semestre dava "manter"; com a CBS de 2027 (9,20 + 0,10) a conta vira empate técnico (R$ 13,95 a favor de
-# por fora, abaixo do limiar de R$ 1.000). O fundamento é a frase automática antiga, então é trocado pela nova.
+# Refazer simulações (03/10/2026): o ATELIÊ ganha uma entrada completa, inventada, gravada com a CBS antiga (9,30 + 0,10) e
+# "manter"; com a CBS de 2027 de agora (11,20 + 0,10, a referência que o TCU calculou em 28/10/2026 — o padrão da tela, sem o
+# parâmetro no banco) a conta vira empate técnico (por fora sai uns R$ 98 mais barato no semestre, abaixo do limiar de
+# R$ 1.000). O fundamento é a frase automática antiga, então é trocado pela nova.
 ENT_ATELIE = {'anexo': 'I', 'rbt12': 600000, 'receita': 50000, 'aliqEfetivaInformada': 6, 'mixCheia': 100, 'mixRed60': 0, 'mixRed40': 0, 'mixRed30': 0,
               'mixZero': 0, 'pctComprasMercadorias': 90.05, 'pctComprasDespesas': 0, 'pctImpostoEmbutido': 0, 'pctExcluidoST': 0, 'partilha': 15.5,
               'cbs': 9.3, 'ibs': 0.1, 'pctPJ': 0, 'creditoEstoqueMes': 0}
@@ -71,7 +72,7 @@ PROC_ATELIE = {'receita': {'fonte': 'faturamento', 'meses': M12}, 'rbt12': {'fon
 CASOS[0]['sim_obs'] = json.dumps({'v': 1, 'input': ENT_ATELIE, 'veredito': 'MANTENHA', 'frase': FRASE_ATELIE, 'calculado_em': '2026-09-27', 'procedencia': PROC_ATELIE}, ensure_ascii=False)
 CASOS[0]['fundamento'] = FRASE_ATELIE
 
-# simulação gravada antes de 03/10/2026: CBS de referência cheia (9,30) com IBS 0,10 — a tela lê como a CBS de 2027 (9,20)
+# simulação gravada antes de 03/10/2026: CBS de referência cheia (9,30) com IBS 0,10 — a tela lê com a CBS de 2027 de agora (11,20)
 CASOS[1]['sim_obs'] = json.dumps({'v': 1, 'input': {'anexo': 'II', 'receita': 100000, 'cbs': 9.3, 'ibs': 0.1}, 'veredito': 'OPTE',
     'frase': 'A simulação do primeiro semestre de 2027 indica custo tributário de R$ 55.000,00 pelo regime regular…', 'calculado_em': '2026-09-27'}, ensure_ascii=False)
 SEMEAR = """
@@ -108,6 +109,10 @@ def main():
         p.add_init_script("(() => { const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { return String(k).startsWith('mr_tour_') ? 'ok' : g.call(this, k); }; })()")
         p.add_init_script(SEMEAR)
         p.goto(base + 'fiscal-reforma.html'); p.wait_for_timeout(1500)
+        # as gravadas com a CBS de antes pedem o Refazer (28/10/2026): o ATELIÊ e o COMÉRCIO, com 9,30 (as outras não têm a CBS)
+        aviso = p.inner_text('#avisoRefazer') if p.is_visible('#avisoRefazer') else ''
+        ok(aviso.startswith('⚠ 2 simulações gravadas usam a CBS de antes (9,3% em 2027). A de agora é 11,2% (referência de 11,3%, calculada pelo TCU em 28/10/2026): clique em “Refazer simulações”'),
+           f'o aviso das simulações com a CBS de antes, com a de agora e de onde ela veio ({aviso!r})')
 
         por_nome = {l['nome']: l for l in linhas(p)}
         ok(len(por_nome) == 6, f'a lista mostra os 6 casos ({len(por_nome)})')
@@ -138,7 +143,8 @@ def main():
         # simulador (03/10/2026): CBS de 2027 = referência − 0,1; receita monofásica; resultado sem o crédito de estoque
         p.click('#fiFechar'); p.wait_for_timeout(300)
         p.click('#rtLista tr:has-text("OFICINA DE TESTE LTDA")'); p.wait_for_timeout(500)
-        ok(p.input_value('#sCbs') == '9,2' and p.input_value('#sIbs') == '0,1', f'CBS de 2027 = 9,2 e IBS 0,1 ({p.input_value("#sCbs")} + {p.input_value("#sIbs")})')
+        ok(p.input_value('#sCbs') == '11,2' and p.input_value('#sIbs') == '0,1', f'CBS de 2027 = 11,2 (a referência do TCU, 11,3, menos 0,1) e IBS 0,1 ({p.input_value("#sCbs")} + {p.input_value("#sIbs")})')
+        ok(p.inner_text('#sCbsHint') == 'referência de 11,30%, calculada pelo TCU em 28/10/2026, menos 0,1 ponto (ADCT, art. 127)', f'a dica da CBS diz de onde vem a referência ({p.inner_text("#sCbsHint")!r})')
         p.select_option('#sAnexo', 'I')
         for campo, valor in [('#sRbt12', '1.800.000,00'), ('#sReceita', '150.000,00'), ('#sMixCheia', '20'), ('#sMixRed60', '70'), ('#sMixRed40', '0'), ('#sMixRed30', '0'),
                              ('#sMixZero', '10'), ('#sPctMerc', '60'), ('#sPctDesp', '5,333333'), ('#sPctEmb', '18'), ('#sPctST', '49'), ('#sPctMono', '100'),
@@ -152,7 +158,7 @@ def main():
         ok(jan == 'R$ 9.426,38', f'DAS por dentro de janeiro/2027 = R$ 9.426,38, o do caso do curso ({jan})')
         p.click('#fiFechar'); p.wait_for_timeout(300)
         p.click('#rtLista tr:has-text("COMÉRCIO DE TESTE LTDA")'); p.wait_for_timeout(500)
-        ok(p.input_value('#sCbs') == '9,2', f'simulação antiga (CBS 9,30 + IBS 0,10) abre com a CBS de 2027 = 9,2 ({p.input_value("#sCbs")})')
+        ok(p.input_value('#sCbs') == '11,2', f'simulação antiga (CBS 9,30 + IBS 0,10) abre com a CBS de 2027 de agora = 11,2 ({p.input_value("#sCbs")})')
 
         # Refazer simulações: recalcula as gravadas com o cálculo atual, grava e mostra o que mudou
         p.click('#fiFechar'); p.wait_for_timeout(300)
@@ -166,13 +172,15 @@ def main():
         ok('3 não refeita(s)' in resumo and 'RBT12 não informado' in resumo, 'as entradas incompletas não são regravadas, com o motivo')
         rc1 = p.evaluate("window.__mockDb.rt_casos.find(c => c.id === 'rc1')")
         obs1 = json.loads(rc1.get('sim_obs') or '{}')
-        ok(obs1.get('input', {}).get('cbs') == 9.2 and obs1.get('empate') is True and obs1.get('veredito') == 'MANTENHA',
+        ok(obs1.get('input', {}).get('cbs') == 11.2 and obs1.get('empate') is True and obs1.get('veredito') == 'MANTENHA',
            f'gravada com a CBS de 2027 e o empate técnico (cbs {obs1.get("input", {}).get("cbs")}, empate {obs1.get("empate")})')
         ok(str(rc1.get('fundamento', '')).startswith('Empate técnico'), 'o fundamento automático antigo foi trocado pela frase nova')
         ok(abs(float(rc1.get('sim_custo_dentro') or 0) - 48300) > 1, f'o custo gravado foi recalculado ({rc1.get("sim_custo_dentro")})')
         rc2 = p.evaluate("window.__mockDb.rt_casos.find(c => c.id === 'rc2')")
         ok(json.loads(rc2['sim_obs'])['input'].get('cbs') == 9.3, 'a simulação que não pôde ser refeita ficou como estava')
         p.click('#refazerFechar'); p.wait_for_timeout(300)
+        aviso = p.inner_text('#avisoRefazer') if p.is_visible('#avisoRefazer') else ''
+        ok(aviso.startswith('⚠ 1 simulação gravada usa a CBS de antes (9,3% em 2027).'), f'depois do Refazer, o aviso fica só com a que não pôde ser refeita ({aviso!r})')
         chip = {l['nome']: l for l in linhas(p)}.get('ATELIÊ DE TESTE LTDA', {}).get('chip')
         ok(chip == 'Simulado: empate', f'a lista já mostra o resultado novo ({chip})')
         # de novo: nada a regravar (não reescreve o que já está com o cálculo atual)

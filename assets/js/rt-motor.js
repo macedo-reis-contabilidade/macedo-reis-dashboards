@@ -73,18 +73,45 @@ export function anexo2027(anexo, ipiMantido) {
   return a === 'II' && !ipiMantido ? 'I' : a;
 }
 
+// A REFERÊNCIA DA CBS DE 2027 (28/10/2026): o TCU calculou 11,3468%, arredondada a 11,3% (LC 214, art. 349, §14), e a manda
+// ao Senado, que a fixa por resolução até 15/12/2026 (art. 349, §1º, com a prorrogação de 45 dias do art. 353, §2º); se o
+// Senado passar de 22/12/2026, vale o cálculo do TCU (art. 349, §2º). Até 28/10/2026 o sistema usava a referência de estudo
+// de 9,3% (o exercício do curso) e testava as estimativas que circulavam (8,8% e 9,21%). O número da conta é o do
+// rt_parametros.aliq_ref_2027; daqui saem o de onde veio (os textos da ficha, da análise, do relatório e da confiança).
+// Quando sair a resolução do Senado: fixada: true e os textos dela aqui; se o número mudar, também o rt_parametros e a
+// CBS aplicada de agora em CBS_ANTERIORES (senão as simulações gravadas seguem com ela).
+export const REFERENCIA_CBS_2027 = {
+  valor: 11.3,
+  fixada: false,
+  selo: 'cálculo do TCU',
+  fonte: 'Cálculo do TCU (28/10/2026)',
+  origem: 'calculada pelo TCU em 28/10/2026',
+  pendente: 'o Senado a fixa até 15/12/2026',
+  rodape: 'calculada pelo TCU, pendente de resolução do Senado',
+  motivo: 'Calculada pelo TCU em 28/10/2026: 11,3468%, arredondada ao décimo de ponto (LC 214, art. 349, §14). Falta a resolução do Senado, até 15/12/2026; se ela não sair até 22/12, vale o cálculo do TCU (art. 349, §2º). Em 2027 a CBS é a referência menos 0,1 ponto (ADCT, art. 127, parágrafo único).',
+  motivoCliente: 'Calculada pelo Tribunal de Contas da União em 28/10/2026; falta a confirmação do Senado, até 15/12/2026. Em 2027 a CBS é essa alíquota menos 0,1 ponto, e o IBS é de 0,1%.'
+};
+
 // ALÍQUOTAS DE 2027 (rt_parametros.aliq_ref_2027 = { cbs: referência, cbs_aplicada?, ibs? }): a CBS aplicada é a referência
 // menos 0,1 ponto (ADCT, art. 127, parágrafo único), salvo cbs_aplicada informada, e o IBS é 0,1%. A ficha, o "Refazer
 // simulações" e o chat da Reforma leem daqui.
 export function aliquotas2027(valor) {
   const v = valor || {};
-  const cbsRef = +v.cbs || 9.30;
+  const cbsRef = +v.cbs || REFERENCIA_CBS_2027.valor;
   return { cbsRef, cbs: v.cbs_aplicada != null ? +v.cbs_aplicada : Math.round((cbsRef - 0.1) * 100) / 100, ibs: v.ibs != null ? +v.ibs : 0.10 };
 }
-// simulação gravada com a CBS da referência cheia (antes de 03/10/2026, sem o −0,1 ponto): passa a usar a aplicada
+// a CBS aplicada que o sistema já usou: 9,20 (a referência de estudo de 9,30, até 28/10/2026) e 9,30 (a referência cheia,
+// antes de 03/10/2026, sem o −0,1 ponto)
+const CBS_ANTERIORES = [9.2, 9.3];
+// a simulação gravada com uma delas — ou com a referência de agora, cheia — passa a usar a CBS aplicada de agora; a CBS
+// digitada na ficha (outro número) fica
 export function entradaComAliquotas(e, p) {
-  return (e && +e.cbs === p.cbsRef && +e.ibs === p.ibs) ? { ...e, cbs: p.cbs } : e;
+  if (!e || +e.ibs !== p.ibs) return e;
+  const cbs = +e.cbs;
+  return cbs !== p.cbs && (cbs === p.cbsRef || CBS_ANTERIORES.includes(cbs)) ? { ...e, cbs: p.cbs } : e;
 }
+// a simulação gravada com a CBS de antes (a que o "Refazer simulações" troca pela de agora)
+export const comCbsAnterior = (e, p) => !!e && entradaComAliquotas(e, p) !== e;
 
 const num = (v, def) => {
   if (v == null || v === '') return def;

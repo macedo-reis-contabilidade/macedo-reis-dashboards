@@ -72,7 +72,14 @@ console.log('Premissas da lei não decidem a conclusão:');
   const est = item(av, 'estoque');
   ok(est.categoria === 'premissa' && est.muda && av.premissas.includes(est), 'crédito de estoque (provável, não garantido): premissa que muda o resultado');
   ok(av.conclusao === 'firme' && !av.decisivos.length, 'a premissa aparece, mas não tira a conclusão (a análise trata como tendência a confirmar)');
-  ok(item(av, 'cbs').categoria === 'premissa' && item(av, 'cbs').selo === 'estimativa' && /9,21%/.test(item(av, 'cbs').efeito || item(av, 'cbs').motivo), 'alíquota da CBS: estimativa, com as projeções em circulação');
+  // a CBS de 2027 (28/10/2026): a do TCU não tem estimativa a testar; a digitada na ficha (aqui, a de estudo de antes) é
+  // testada contra a do TCU
+  const tcu = item(avaliarConfianca({ ...drog, cbs: 11.2 }, pr, { tipo: 'comercio', vendeMercadoria: true, podeReduzir: true }), 'cbs');
+  ok(tcu.categoria === 'premissa' && tcu.selo === 'cálculo do TCU' && tcu.nivel === 'media' && tcu.fonte === 'Cálculo do TCU (28/10/2026)' && !tcu.muda && !tcu.efeito
+     && /11,3468%, arredondada ao décimo de ponto/.test(tcu.motivo) && /até 15\/12\/2026/.test(tcu.motivo) && /Tribunal de Contas da União/.test(tcu.motivoCliente)
+     && tcu.valor === '11,2% (referência de 11,3% menos 0,1 ponto)', 'CBS de 2027 do TCU (11,2%): premissa do cálculo do TCU, sem estimativa a testar, à espera do Senado');
+  ok(item(av, 'cbs').categoria === 'premissa' && item(av, 'cbs').selo === 'informada' && /calculada pelo TCU em 28\/10\/2026 é de 11,3%/.test(item(av, 'cbs').motivo)
+     && !/9,21%|8,8%/.test(JSON.stringify(item(av, 'cbs'))), 'CBS digitada (9,2%): informada, com a do TCU no motivo — as estimativas de antes não aparecem mais');
   ok(item(av, 'mix').nivel === 'alta' && /NCM de cada item/.test(item(av, 'mix').motivo), 'mix pelas notas de 12 meses: confiança alta');
 }
 
@@ -156,7 +163,7 @@ console.log('Textos do efeito:');
     pctExcluidoST: 49, pctReceitaMonofasica: 100, partilha: 15.5, cbs: 9.2, ibs: 0.1, pctPJ: 10, creditoEstoqueMes: 1541.67 };
   const av = avaliarConfianca(drog, { receita: { fonte: 'faturamento', meses: M12 }, mix: { fonte: 'notas', meses: M12 } }, { tipo: 'comercio', vendeMercadoria: true, podeReduzir: true });
   ok(/^Sem o crédito de estoque, o resultado/.test(item(av, 'estoque').efeito || '') && !/Com sem/.test(JSON.stringify(av.itens)), 'estoque: "Sem o crédito de estoque, …" (nunca "Com sem")');
-  ok(/a referência de 8,8%/.test(item(av, 'cbs').efeito || ''), 'CBS: "a referência de 8,8%"');
+  ok(/^Com a referência calculada pelo TCU em 28\/10\/2026 \(11,3%, CBS de 11,2%\), o resultado/.test(item(av, 'cbs').efeito || ''), 'CBS digitada: "Com a referência calculada pelo TCU em 28/10/2026 (11,3%, CBS de 11,2%), …"');
   const man = avaliarConfianca({ ...BASE, pctPJ: 70 }, { ...PROC_BASE, pctPJ: { fonte: 'manual' } }, INDUSTRIA);
   ok(item(man, 'pj').fonte === 'Informado, sem relatório' && item(man, 'pj').nivel === 'media', 'PJ digitado na ficha: "Informado, sem relatório", média');
 }

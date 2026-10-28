@@ -15,6 +15,7 @@
 // ============================================================
 
 import { RT_PRAZO, janelaAberta as janelaAbertaEm } from './rt-prazos.js';
+import { REFERENCIA_CBS_2027 } from './rt-motor.js';
 import { formatDocumento } from './utils.js';
 
 const brl = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -255,7 +256,7 @@ export function gerarAnalise(d, opts = {}) {
     P('<p class="numlinha"><b>Faturamento médio:</b> ' + brl0(receita) + '/mês'
       + (!d.consumidor ? ' · <b>Crédito que seus clientes empresa aproveitariam no semestre:</b> ' + brl0(s.aproveitadoDentro) + ' mantendo, ' + brl0(s.aproveitadoFora) + ' por fora' : '') + '</p>');
     if (d.perguntas && d.perguntas.length) P('<h2>Para conversarmos</h2><ol class="perg">' + d.perguntas.slice(0, 3).map(q => '<li>' + q + '</li>').join('') + '</ol>');
-    P('<div class="rodape">Elaborado em ' + hoje + ' pela Macedo &amp; Reis Contabilidade' + (base ? ', com ' + base : '') + ' e as alíquotas de referência de 2027 (CBS pendente de resolução do Senado). A empresa continua no Simples em qualquer caso; a escolha é só a forma de recolher IBS e CBS. Valores estimados; a decisão é do contribuinte. A análise técnica completa fica à disposição no escritório. Base legal: LC 214/2025 · LC 123/2006 · Resoluções CGSN 186/2026 e 194/2026.</div>');
+    P('<div class="rodape">Elaborado em ' + hoje + ' pela Macedo &amp; Reis Contabilidade' + (base ? ', com ' + base : '') + ' e as alíquotas de referência de 2027 (CBS ' + REFERENCIA_CBS_2027.rodape + '). A empresa continua no Simples em qualquer caso; a escolha é só a forma de recolher IBS e CBS. Valores estimados; a decisão é do contribuinte. A análise técnica completa fica à disposição no escritório. Base legal: LC 214/2025 · LC 123/2006 · Resoluções CGSN 186/2026 e 194/2026.</div>');
     return montarHtml();
   }
 
@@ -371,7 +372,8 @@ export function gerarAnalise(d, opts = {}) {
 
   // ---------- 4. simulação ----------
   P('<h2>4. A simulação: os dois caminhos no primeiro semestre de 2027</h2>');
-  P('<p>Alíquotas de 2027: <b>CBS ' + pct1(e.cbs) + '%</b> (a referência, ainda pendente de Resolução do Senado, menos 0,1 ponto, como manda o ADCT, art. 127, parágrafo único) e <b>IBS ' + pct1(e.ibs) + '%</b> (0,05% estadual + 0,05% municipal). Cenário: o IBS/CBS por fora é calculado sobre a receita de hoje e a empresa o <b>absorve</b>, sem repassar ao cliente — se o preço final ficar igual ao de hoje, com o imposto dentro dele, veja a seção 6.</p>');
+  const cbsDoTcu = Math.abs(e.cbs - (REFERENCIA_CBS_2027.valor - 0.1)) < 0.005;
+  P('<p>Alíquotas de 2027: <b>CBS ' + pct1(e.cbs) + '%</b> (' + (cbsDoTcu ? 'a referência ' + REFERENCIA_CBS_2027.origem + (REFERENCIA_CBS_2027.fixada ? '' : ' — ' + REFERENCIA_CBS_2027.pendente) : 'a referência informada na ficha') + ', menos 0,1 ponto, como manda o ADCT, art. 127, parágrafo único) e <b>IBS ' + pct1(e.ibs) + '%</b> (0,05% estadual + 0,05% municipal). Cenário: o IBS/CBS por fora é calculado sobre a receita de hoje e a empresa o <b>absorve</b>, sem repassar ao cliente — se o preço final ficar igual ao de hoje, com o imposto dentro dele, veja a seção 6.</p>');
   if (fat0.mudouAnexo) P('<p class="fonte">Em 2027 a indústria é tributada no Anexo ' + esc(fat0.anexo2027) + ' (LC 123, art. 18, §5º, na redação do art. 517 da LC 214): o DAS por dentro de 2027 sai da tabela do Anexo ' + esc(fat0.anexo2027) + ' — alíquota de ' + pct2(fat0.aliqEfetiva2027 * 100) + '% e partilha CBS/IBS de ' + pct2(fat0.partilha2027) + '% —, contra o Anexo ' + esc(fat0.anexo) + ' do PGDAS de hoje (DAS de ' + brl(m.dasHoje) + '/mês). Só a venda de produto com IPI mantido (Zona Franca de Manaus) segue no Anexo II.</p>');
   if ((m.exclMono || 0) > 0 && (m.das2027 || 0) - (m.dasHoje || 0) > 0.005) P('<p class="fonte">O DAS por dentro de 2027 (' + brl(m.das2027) + '/mês) é maior que o de hoje (' + brl(m.dasHoje) + '): a exclusão do PIS/COFINS monofásico acaba em 2027 e a CBS alcança essa receita (Res. CGSN 140/2018, art. 25, §6º, na redação da Res. CGSN 190/2026). A exclusão do ICMS-ST e do ISS retido continua.</p>');
   if (semConclusaoDoc) P('<p class="fonte">Conta provisória: com os números de confiança baixa que decidem o resultado (ver o resumo e a seção 7), nenhum dos dois caminhos está recomendado.</p>');
@@ -503,7 +505,7 @@ export function gerarAnalise(d, opts = {}) {
 
   P('<div class="rodape">Documento de apoio à decisão, elaborado em ' + hoje + ' pela Macedo &amp; Reis Contabilidade. '
     + 'A empresa permanece no Simples Nacional em qualquer das hipóteses analisadas; discute-se exclusivamente a forma de recolhimento do IBS e da CBS em 2027. '
-    + 'Simulação baseada nas alíquotas de referência de 2027 (CBS pendente de Resolução do Senado). Valores estimativos: a decisão pela opção é do contribuinte.<br>'
+    + 'Simulação baseada nas alíquotas de referência de 2027 (CBS ' + REFERENCIA_CBS_2027.rodape + '). Valores estimativos: a decisão pela opção é do contribuinte.<br>'
     + 'Base legal: LC 214/2025 · LC 123/2006, art. 18 · Resolução CGSN 140/2018 · Resoluções CGSN 186/2026 e 194/2026.</div>');
 
   return montarHtml();

@@ -15,7 +15,7 @@
 // Módulo ES puro, sem DOM — testes em tests/rt-confianca.test.mjs.
 // ============================================================
 
-import { simular } from './rt-motor.js';
+import { simular, REFERENCIA_CBS_2027 } from './rt-motor.js';
 import { rotuloMeses, listaMeses, perfilAtividade, cnaeMaisCompleto, reducaoServicoPorCnae, ramoComZero, ramoComReducao } from './dominio-relatorios.js';
 
 const p1 = v => (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -561,13 +561,18 @@ function itensComplementares(ent, proc, ctx = {}) {
       motivo: 'Provável, não garantido: depende da regulamentação do inventário de 31/12/2026 (LC 214, art. 381).', falta: 'a regulamentação do crédito de estoque',
       variantes: [{ rotulo: 'sem o crédito de estoque', ent: { ...ent, creditoEstoqueMes: 0 } }] });
   }
+  // a CBS de 2027 (28/10/2026): a referência que o TCU calculou (REFERENCIA_CBS_2027, rt-motor.js), à espera da resolução do
+  // Senado — sem estimativa a testar, e as que circulavam antes (8,8% e 9,21%) ficaram superadas. A CBS digitada na ficha
+  // (outro número) é testada contra a do TCU
   const cbs = +ent.cbs;
   if (cbs > 0) {
+    const R = REFERENCIA_CBS_2027, aplicada = Math.round((R.valor - 0.1) * 100) / 100, doTcu = Math.abs(cbs - aplicada) < 0.005;
     out.push({ chave: 'cbs', rotulo: 'Alíquota da CBS em 2027', categoria: 'premissa', valor: p2(cbs) + '% (referência de ' + p2(cbs + 0.1) + '% menos 0,1 ponto)',
-      fonte: 'Estimativa', periodo: '—', nivel: 'baixa', selo: 'estimativa',
-      motivo: 'Ainda não fixada: cabe ao Senado defini-la para 2027, com base em cálculo do TCU (ADCT, art. 130), e pode sair depois do prazo da opção. A conta usa a referência menos 0,1 ponto (ADCT, art. 127, parágrafo único); em circulação há 8,8% (projeção do Ministério da Fazenda) e 9,21% (CGIBS, jul/2026).',
-      falta: 'a alíquota oficial da CBS (Resolução do Senado)',
-      variantes: [8.7, 9.11].filter(v => Math.abs(v - cbs) > 0.005).map(v => ({ rotulo: 'a referência de ' + p2(v + 0.1) + '% (CBS de ' + p2(v) + '%)', ent: { ...ent, cbs: v }, valor: v })) });
+      fonte: doTcu ? R.fonte : 'Informada na ficha', periodo: '—', nivel: doTcu && R.fixada ? 'alta' : 'media', selo: doTcu ? R.selo : 'informada',
+      motivo: doTcu ? R.motivo : 'Informada na ficha. A referência ' + R.origem + ' é de ' + p2(R.valor) + '%: CBS de ' + p2(aplicada) + '% em 2027, com o −0,1 ponto do ADCT, art. 127, parágrafo único.',
+      ...(doTcu ? { motivoCliente: R.motivoCliente } : {}),
+      falta: R.fixada ? null : 'a resolução do Senado com a alíquota da CBS (até 15/12/2026)',
+      variantes: doTcu ? [] : [{ rotulo: 'a referência ' + R.origem + ' (' + p2(R.valor) + '%, CBS de ' + p2(aplicada) + '%)', ent: { ...ent, cbs: aplicada }, valor: aplicada }] });
   }
   return out;
 }

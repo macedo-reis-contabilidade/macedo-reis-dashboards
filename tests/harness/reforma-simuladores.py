@@ -137,7 +137,7 @@ def main():
         ok('ambar' in p.get_attribute('#bVeredito', 'class'), 'veredito em âmbar')
         ok('margem de contribuição' in verd and 'consumidor final e o cliente do Simples pagam mais' in verd,
            'no "opte, se", o aviso de conferir a margem de contribuição (Módulo 01, 12/10)')
-        ok('alíquota oficial de 2027' not in verd, 'sem decisão apertada, sem o aviso da alíquota oficial')
+        ok('calculada pelo TCU' not in verd, 'sem decisão apertada, sem o aviso da referência da CBS (cálculo do TCU, à espera do Senado)')
         ok('ambar' in p.get_attribute('#bRetratos .rt-ret:nth-child(2)', 'class'), 'o retrato "por fora" fica em âmbar')
         ret = br(p.inner_text('#bRetratos'))
         ok('R$ 187.432,80' in ret and 'R$ 215.731,47' in ret, 'custos do curso no Anexo I: R$ 187.432,80 por dentro e R$ 215.731,47 por fora')
@@ -164,13 +164,15 @@ def main():
            f'gravou o resultado, a margem e o anexo de 2027 (veredito {obs1.get("veredito")}, margem {obs1.get("margem")}, anexo2027 {obs1.get("anexo2027")})')
         ok('ipiMantido' not in obs1.get('input', {}), 'sem IPI mantido, o campo não vai pra entrada')
         ok(p.inner_text('#fiTriagem').strip() == 'Simulado: opte, se confirmar', 'a ficha mostra o chip novo')
-        # análise técnica do "opte, se" (Módulo 01, 12/10/2026): margem de contribuição e alíquota oficial que sai no ano anterior
+        # análise técnica do "opte, se" (Módulo 01, 12/10/2026): margem de contribuição e a resolução do Senado (28/10/2026: o TCU
+        # calculou a referência; aqui a conta segue com a de estudo do curso, do parâmetro do teste)
         with p.expect_popup() as pop:
             p.click('#dAnalise')
         an = pop.value; an.wait_for_load_state(); an.wait_for_timeout(400)
         txt = br(an.inner_text('body'))
         ok('margem de contribuição' in txt and 'consumidor final' in txt, 'análise: no "opte, se", conferir se a margem de contribuição comporta o imposto por cima do preço')
-        ok('Fixada pelo Senado no ano anterior, com base em cálculo do TCU' in txt, 'análise: a pendência da alíquota oficial diz quando ela sai')
+        ok('Resolução do Senado com a alíquota da CBS' in txt and 'A referência de 2027 foi calculada pelo TCU em 28/10/2026 (11,3%)' in txt and 'o Senado a fixa até 15/12/2026' in txt,
+           'análise: a pendência é a resolução do Senado, com o cálculo do TCU e o prazo')
         an.close()
         p.click('#fiFechar'); p.wait_for_timeout(300)
         ok({l['nome']: l for l in linhas(p)}.get('INDÚSTRIA DE TESTE LTDA', {}).get('chip') == 'Simulado: opte, se confirmar', 'a lista mostra o resultado gravado')
@@ -185,8 +187,8 @@ def main():
         p.click('#bCalcular'); p.wait_for_timeout(300)
         verd = br(p.inner_text('#bVeredito'))
         ok(verd.startswith('MANTENHA a apuração no Simples.') and p.is_visible('#bVeredito .apertada'), 'consultoria: MANTENHA com o selo "decisão apertada"')
-        ok('A alíquota oficial de 2027 é fixada no ano anterior' in verd and 'cancelar de 03/11 a 20/12/2026' in verd,
-           'decisão apertada: avisa que a alíquota oficial pode sair depois de 30/10 e que a opção pode ser cancelada')
+        ok('A referência da CBS de 2027 (11,3%) foi calculada pelo TCU em 28/10/2026, e o Senado a fixa até 15/12/2026' in verd and 'cancelar de 03/11 a 20/12/2026' in verd,
+           'decisão apertada: avisa que a referência foi calculada pelo TCU, que o Senado a fixa até 15/12 e que a opção pode ser cancelada')
         ok('margem de contribuição' not in verd, 'fora do "opte, se", sem o aviso da margem')
         ok('Sem crédito nas compras de insumos' not in verd, 'fora da indústria, sem a linha das compras de insumos')
         ok('R$ 107.886,79' in br(p.inner_text('#bRetratos')), 'custo por fora do curso, com o ISS do DAS fora da base (R$ 107.886,79)')

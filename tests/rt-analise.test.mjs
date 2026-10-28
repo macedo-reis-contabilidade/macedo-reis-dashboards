@@ -1,7 +1,7 @@
 // Teste da análise técnica da Reforma: o texto certo pro perfil certo (varejo PF, prestador B2B) e o empate técnico.
 // Rodar com: node tests/rt-analise.test.mjs — casos sintéticos, sem dado de cliente.
 import fs from 'fs';
-import { simular } from '../assets/js/rt-motor.js';
+import { simular, REFERENCIA_CBS_2027 } from '../assets/js/rt-motor.js';
 import { gerarAnalise } from '../assets/js/rt-analise.js';
 const page = fs.readFileSync(new URL('../fiscal-reforma.html', import.meta.url), 'utf8');
 const i = page.indexOf('    function montarDadosAnalise('); const j = page.indexOf("\n    $('dGerar').onclick");
@@ -11,7 +11,7 @@ import { RT_PRAZO, janelaAberta as janelaAbertaEm } from '../assets/js/rt-prazos
 import { avaliarConfianca, inferirProcedencia, decisaoDe, ROT_DECISAO } from '../assets/js/rt-confianca.js';
 // o escapeHtml da página (fiscal-reforma.html), o mesmo: o nome do maior cliente vem das notas e entra na análise como texto
 const escapeHtml = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const montarDadosAnalise = new Function('simular', 'ANO_XML', 'location', 'perfilAtividade', 'cnaeMaisCompleto', 'ramoComReducao', 'ramoComZero', 'reducaoServicoPorCnae', 'conferirRbt12', 'RT_PRAZO', 'janelaAbertaEm', 'CREDITO_FORNECEDOR_SIMPLES', 'avaliarConfianca', 'inferirProcedencia', 'decisaoDe', 'ROT_DECISAO', 'escapeHtml', src + '\nreturn montarDadosAnalise;')(simular, 2026, { href: 'http://x/' }, perfilAtividade, cnaeMaisCompleto, ramoComReducao, ramoComZero, reducaoServicoPorCnae, conferirRbt12, RT_PRAZO, janelaAbertaEm, CREDITO_FORNECEDOR_SIMPLES, avaliarConfianca, inferirProcedencia, decisaoDe, ROT_DECISAO, escapeHtml);
+const montarDadosAnalise = new Function('simular', 'ANO_XML', 'location', 'perfilAtividade', 'cnaeMaisCompleto', 'ramoComReducao', 'ramoComZero', 'reducaoServicoPorCnae', 'conferirRbt12', 'RT_PRAZO', 'janelaAbertaEm', 'CREDITO_FORNECEDOR_SIMPLES', 'avaliarConfianca', 'inferirProcedencia', 'decisaoDe', 'ROT_DECISAO', 'escapeHtml', 'REFERENCIA_CBS_2027', src + '\nreturn montarDadosAnalise;')(simular, 2026, { href: 'http://x/' }, perfilAtividade, cnaeMaisCompleto, ramoComReducao, ramoComZero, reducaoServicoPorCnae, conferirRbt12, RT_PRAZO, janelaAbertaEm, CREDITO_FORNECEDOR_SIMPLES, avaliarConfianca, inferirProcedencia, decisaoDe, ROT_DECISAO, escapeHtml, REFERENCIA_CBS_2027);
 // data fixa dentro da janela (até 30/10/2026, Res. CGSN 194/2026): o teste não pode depender do relógio de quem roda
 // (os casos que testam a janela fechada fixam globalThis.__HOJE_ISO__ antes de chamar)
 // proc: a procedência gravada com a simulação (13/10/2026); sem ela a análise deduz do resumo do Domínio (simulação antiga)
@@ -306,11 +306,24 @@ console.log('Seção 6, alertas e seção 7 com o mesmo critério:');
   const sensRec = a.d.sensibilidade.find(x => x.nome === 'Receita mensal');
   const itRec = a.d.confianca.itens.find(i => i.chave === 'receita');
   chk('"opte, se" com receita de um mês: seção 6 e seção 7 dizem que a receita muda o resultado (' + a.sim.veredito.tipo + ')', a.sim.veredito.tipo === 'OPTE_SE' && itRec.muda && /^Sim/.test(sensRec.muda) && a.d.semConclusao);
-  // (b) "manter" com por dentro R$ 80 mais barato: com a CBS de 8,7% fica R$ 100 mais barato por fora — ainda empate, ainda
-  //     "manter". Antes o alerta dizia "o resultado se inverte"
-  const b = caso('COMÉRCIO TESTE', alvo({ ...base0, pctPJ: 0 }, 80), domPg, null, '4744-0/99', undefined, { ...procPg, receita: { fonte: 'faturamento', meses: M12 } });
-  const sensCbs = b.d.sensibilidade.find(x => x.nome === 'Alíquota final da CBS');
-  chk('"manter" perto da virada: CBS de 8,7% não vira alerta nem "Sim" na seção 6, como na seção 7', b.sim.veredito.tipo === 'MANTENHA' && !b.d.alertas.some(x => /CBS de referência de 8,8%/.test(x.texto)) && /^Não/.test(sensCbs.muda) && !b.d.confianca.itens.find(i => i.chave === 'cbs').muda);
+  // (b) A CBS DE 2027 (28/10/2026): a conta usa a referência que o TCU calculou (11,3%, CBS de 11,2%); a seção 6 mostra o que
+  //     dava com a de estudo usada até ali (9,3%, CBS de 9,2%), com o "Sim"/"Não" pelo mesmo critério da seção 7, e as
+  //     estimativas que circulavam antes (8,8% e 9,21%) não aparecem mais, nem em alerta
+  const b = caso('COMÉRCIO TESTE', alvo({ ...base0, pctPJ: 0, cbs: 11.2 }, 80), domPg, null, '4744-0/99', undefined, { ...procPg, receita: { fonte: 'faturamento', meses: M12 } });
+  const sensCbs = b.d.sensibilidade.find(x => x.nome === 'Alíquota da CBS');
+  const antes = decisaoDe(simular({ ...b.args[1], cbs: 9.2 })) !== decisaoDe(b.sim);
+  chk('CBS do TCU na seção 6: "11,2% em 2027 (referência de 11,3% … calculada pelo TCU)" e o efeito da de estudo, com o mesmo critério (' + sensCbs.muda + ')',
+    b.sim.veredito.tipo === 'MANTENHA' && sensCbs.hoje === '11,2% em 2027 (referência de 11,3% menos 0,1 ponto, calculada pelo TCU em 28/10/2026)'
+    && /^com a referência de estudo usada até 28\/10\/2026 \(9,30%, CBS de 9,20%\) → /.test(sensCbs.efeito) && (antes ? /^Sim/ : /^Não/).test(sensCbs.muda)
+    && !b.d.confianca.itens.find(i => i.chave === 'cbs').muda);
+  chk('as estimativas de antes (8,8% e 9,21%) saíram da análise e dos alertas', !/8,8%|9,21%|estimativas em circulação/.test(b.txt) && !b.d.alertas.some(x => /CBS/.test(x.texto)));
+  const pSen = b.d.pendencias.find(x => x.o_que === 'Resolução do Senado com a alíquota da CBS');
+  chk('a pendência é a resolução do Senado, com o cálculo do TCU que a conta já usa (peso baixo)', pSen && pSen.peso === 'baixo' && pSen.nivel === 'alta'
+    && /^A referência de 2027 foi calculada pelo TCU em 28\/10\/2026 \(11,3%\), a que a conta usa, e o Senado a fixa até 15\/12\/2026\. Se não fixar até 22\/12, vale o cálculo do TCU/.test(pSen.porque));
+  // a CBS digitada na ficha (aqui, a de estudo de antes): a seção 6 e a pendência dizem que é a informada
+  const b2 = caso('COMÉRCIO TESTE', alvo({ ...base0, pctPJ: 0 }, 80), domPg, null, '4744-0/99', undefined, { ...procPg, receita: { fonte: 'faturamento', meses: M12 } });
+  chk('CBS digitada na ficha: "informada na ficha" na seção 6 e na pendência', /informada na ficha\)$/.test(b2.d.sensibilidade.find(x => x.nome === 'Alíquota da CBS').hoje)
+    && /a conta usa 9,3%, informada na ficha/.test(b2.d.pendencias.find(x => x.o_que === 'Resolução do Senado com a alíquota da CBS').porque));
 }
 
 // 11) Carteira que perde crédito e compras medidas pelo NCM (13/10/2026): por fora, a venda com alíquota zero não dá crédito
