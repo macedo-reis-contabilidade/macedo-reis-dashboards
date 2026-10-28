@@ -13,12 +13,21 @@
     .ds-sec { background:var(--fill-1); border:1px solid var(--line); border-radius:14px; padding:18px 20px; margin-bottom:18px; }
     .ds-sec h2 { margin:0 0 12px; font-size:16px; color:var(--text); }
     .ds-sec h2 small { color:var(--text-muted); font-weight:400; font-size:13px; margin-left:8px; }
-    /* a importação é de uma vez por mês: um cartão estreito, do tamanho do texto do alto (27/10/2026, pedido do Samuel) */
-    .ds-sec-imp { max-width:760px; }
+    /* o alto (27/10/2026, pedido do Samuel): a importação e o mês, com as abas, lado a lado e da mesma altura; as abas
+       alinhadas embaixo com o botão Importar — com o resultado da importação na tela, logo abaixo do título (sem buraco no
+       meio); abaixo de 1100 px, um embaixo do outro */
+    .ds-alto { display:grid; grid-template-columns:minmax(0,2fr) minmax(0,3fr); gap:18px; margin-bottom:18px; }
+    .ds-alto > .ds-sec { margin-bottom:0; }
+    .ds-sec-mes { display:flex; flex-direction:column; }
+    .ds-sec-mes .fa-focus { margin-top:auto; margin-bottom:0; }
+    .ds-alto.com-relatorio .ds-sec-mes .fa-focus { margin-top:0; }
+    @media (max-width:1100px){ .ds-alto { grid-template-columns:1fr; } }
     .ds-drop { border:2px dashed var(--line-strong); border-radius:12px; padding:16px 20px; text-align:center; color:var(--text-muted); cursor:pointer; transition:border-color .15s, background .15s; font-size:14px; }
     .ds-drop:hover, .ds-drop:focus-visible, .ds-drop.is-over { border-color:var(--brand-primary); background:rgba(91,130,166,.08); color:var(--brand-pale); outline:none; }
     .ds-drop b { color:var(--text); }
     .ds-arqs { margin-top:8px; font-size:13px; color:var(--text-muted); min-height:18px; }
+    .ds-arqs:empty { display:none; }
+    .ds-drop small { display:block; font-size:12.5px; margin-top:2px; }
     .ds-arqs b { color:var(--text); }
     .ds-acoes { display:flex; gap:10px; align-items:center; margin-top:12px; flex-wrap:wrap; }
     .ds-msg { font-size:13px; min-height:18px; }
@@ -28,24 +37,24 @@
     .ds-bar { height:10px; background:var(--fill-2); border-radius:6px; overflow:hidden; }
     .ds-fill { height:100%; width:0%; background:var(--brand-primary); border-radius:6px; transition:width .2s; }
     .ds-prog-txt { margin-top:6px; font-size:12.5px; color:var(--text-muted); }
-    .ds-rel { margin-top:12px; font-size:13px; color:var(--brand-pale); }
+    .ds-rel { margin-top:8px; font-size:13px; color:var(--brand-pale); }
     .ds-rel:empty { display:none; }
-    .ds-rel details { margin-top:6px; }
+    .ds-rel details { display:inline-block; vertical-align:top; margin:4px 18px 0 0; }
     .ds-rel summary { cursor:pointer; color:var(--brand-light); }
     .ds-rel ul { margin:6px 0 0 18px; padding:0; color:var(--text-muted); font-size:12.5px; max-height:200px; overflow:auto; }
-    .ds-topo { display:flex; align-items:flex-end; gap:16px; flex-wrap:wrap; margin-bottom:14px; }
+    .ds-topo { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:14px; }
     .ds-topo h2 { margin:0; }
     .ds-mes label { display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px; }
     .ds-mes input { width:170px; }
     /* as abas da conferência (27/10/2026, pedido da Thalia): os cartões de foco das outras telas, um por grupo de empresas */
     .fa-focus { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-bottom:16px; }
     .fa-focus[hidden] { display:none; }
-    .fa-focus-card { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px 14px; cursor:pointer; text-align:left; transition:border-color .15s, background .15s; display:flex; flex-direction:column; gap:4px; color:inherit; font:inherit; }
+    .fa-focus-card { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px; cursor:pointer; text-align:left; transition:border-color .15s, background .15s; display:flex; flex-direction:column; gap:4px; color:inherit; font:inherit; }
     .fa-focus-card:hover { border-color:rgba(138,174,200,.4); }
     .fa-focus-card.is-active { border-color:var(--brand-primary); background:rgba(91,130,166,.12); }
     .fa-focus-card:focus-visible { outline:2px solid var(--text); outline-offset:2px; }
     .fc-num { font-size:22px; font-weight:700; color:var(--text); line-height:1; font-variant-numeric:tabular-nums; }
-    .fc-lbl { font-size:12.5px; color:var(--text-muted); }
+    .fc-lbl { font-size:12px; color:var(--text-muted); }
     .fa-focus-card.fc-warn .fc-num { color:var(--warn); }
     /* recolher e abrir (27/10/2026, pedido do Samuel: o mês abre recolhido) — a empresa, o diferencial e o ICMS-ST dela, a
        data ou o fornecedor, a nota; a seta aponta pra baixo quando abre */
@@ -168,37 +177,42 @@
         <p>As notas de entrada do mês das empresas da SEDIF/DeSTDA: o que veio de fora do RS com ICMS destacado a 4%, com o diferencial de alíquota (DIFAL) de cada nota já calculado, e o que está nas regras de ICMS-ST na entrada, como a ração pet dos estados da lista, com o ST a recolher. Exporte os XMLs do mês na Domínio e solte aqui uma vez só: cada nota vai pra empresa certa pelo CNPJ.</p>
       </div>
 
-      <section class="ds-sec ds-sec-imp" aria-labelledby="tImportar">
-        <h2 id="tImportar">Importar as notas do mês</h2>
-        <div class="ds-drop" id="drop" role="button" tabindex="0" aria-describedby="arqs">
-          <b>Arraste os XMLs ou ZIPs aqui</b><br>ou clique pra escolher — as empresas todas de uma vez; ZIP pode ter subpastas
-          <input type="file" id="fileInput" multiple accept=".xml,.zip,text/xml,application/xml,application/zip" style="display:none;">
-        </div>
-        <div class="ds-arqs" id="arqs"></div>
-        <div class="ds-acoes">
-          <button class="btn btn-primary" id="btnImportar" disabled>Importar</button>
-          <button class="btn btn-ghost btn-sm" id="btnLimpar" style="display:none;">Limpar seleção</button>
-          <span class="ds-msg" id="msgImp" role="status"></span>
-        </div>
-        <div class="ds-prog" id="prog">
-          <div class="ds-bar"><div class="ds-fill" id="progFill"></div></div>
-          <div class="ds-prog-txt" id="progTxt"></div>
-        </div>
-        <div class="ds-rel" id="rel"></div>
-      </section>
+      <!-- o alto: a importação e o mês, com as abas, lado a lado (27/10/2026, pedido do Samuel); a lista das empresas embaixo -->
+      <div class="ds-alto" id="alto">
+        <section class="ds-sec" aria-labelledby="tImportar">
+          <h2 id="tImportar">Importar as notas do mês</h2>
+          <div class="ds-drop" id="drop" role="button" tabindex="0" aria-describedby="arqs">
+            <b>Arraste os XMLs ou ZIPs aqui</b><small>ou clique pra escolher — as empresas todas de uma vez; ZIP pode ter subpastas</small>
+            <input type="file" id="fileInput" multiple accept=".xml,.zip,text/xml,application/xml,application/zip" style="display:none;">
+          </div>
+          <div class="ds-arqs" id="arqs"></div>
+          <div class="ds-acoes">
+            <button class="btn btn-primary" id="btnImportar" disabled>Importar</button>
+            <button class="btn btn-ghost btn-sm" id="btnLimpar" style="display:none;">Limpar seleção</button>
+            <span class="ds-msg" id="msgImp" role="status"></span>
+          </div>
+          <div class="ds-prog" id="prog">
+            <div class="ds-bar"><div class="ds-fill" id="progFill"></div></div>
+            <div class="ds-prog-txt" id="progTxt"></div>
+          </div>
+          <div class="ds-rel" id="rel"></div>
+        </section>
+        <section class="ds-sec ds-sec-mes" aria-labelledby="tConf">
+          <div class="ds-topo">
+            <h2 id="tConf">Conferência <span id="tMes"></span></h2>
+            <div class="ds-mes"><label for="mes">Mês das notas</label><input type="month" id="mes" class="input"></div>
+          </div>
+          <div class="fa-focus" id="abas" role="group" aria-label="Separar as empresas">
+            <button type="button" class="fa-focus-card" data-aba="difal" aria-pressed="false" title="Nota de fora do RS com ICMS destacado a 4%"><span class="fc-num">—</span><span class="fc-lbl">Com DIFAL</span></button>
+            <button type="button" class="fa-focus-card" data-aba="st" aria-pressed="false" title="Item das regras de ICMS-ST na entrada"><span class="fc-num">—</span><span class="fc-lbl">Com ICMS-ST</span></button>
+            <button type="button" class="fa-focus-card" data-aba="nada" aria-pressed="false" title="Com notas de entrada do mês, nenhuma de fora do RS a 4% nem das regras de ICMS-ST"><span class="fc-num">—</span><span class="fc-lbl">Sem nada a recolher</span></button>
+            <button type="button" class="fa-focus-card" data-aba="importar" aria-pressed="false" title="Sem notas de entrada do mês na base, ou com nota importada antes de 27/10/2026, sem a alíquota"><span class="fc-num">—</span><span class="fc-lbl">Falta importar</span></button>
+            <button type="button" class="fa-focus-card is-active" data-aba="todas" aria-pressed="true" title="Todas as empresas da obrigação SEDIF/DeSTDA"><span class="fc-num">—</span><span class="fc-lbl">Todas</span></button>
+          </div>
+        </section>
+      </div>
 
-      <section class="ds-sec" id="secConf" aria-labelledby="tConf">
-        <div class="ds-topo">
-          <h2 id="tConf">Conferência <span id="tMes"></span></h2>
-          <div class="ds-mes"><label for="mes">Mês das notas</label><input type="month" id="mes" class="input"></div>
-        </div>
-        <div class="fa-focus" id="abas" role="group" aria-label="Separar as empresas">
-          <button type="button" class="fa-focus-card" data-aba="difal" aria-pressed="false" title="Nota de fora do RS com ICMS destacado a 4%"><span class="fc-num">—</span><span class="fc-lbl">Com DIFAL</span></button>
-          <button type="button" class="fa-focus-card" data-aba="st" aria-pressed="false" title="Item das regras de ICMS-ST na entrada"><span class="fc-num">—</span><span class="fc-lbl">Com ICMS-ST</span></button>
-          <button type="button" class="fa-focus-card" data-aba="nada" aria-pressed="false" title="Com notas de entrada do mês, nenhuma de fora do RS a 4% nem das regras de ICMS-ST"><span class="fc-num">—</span><span class="fc-lbl">Sem nada a recolher</span></button>
-          <button type="button" class="fa-focus-card" data-aba="importar" aria-pressed="false" title="Sem notas de entrada do mês na base, ou com nota importada antes de 27/10/2026, sem a alíquota"><span class="fc-num">—</span><span class="fc-lbl">Falta importar</span></button>
-          <button type="button" class="fa-focus-card is-active" data-aba="todas" aria-pressed="true" title="Todas as empresas da obrigação SEDIF/DeSTDA"><span class="fc-num">—</span><span class="fc-lbl">Todas</span></button>
-        </div>
+      <section class="ds-sec" id="secConf" aria-label="As empresas da conferência">
         <div class="ds-ferr" id="ferr" hidden>
           <div class="ds-agrupar"><span id="tAgrupar">Agrupar as notas</span>
             <div class="fd-filtro" id="agrupar" role="group" aria-labelledby="tAgrupar">
@@ -624,13 +638,14 @@ function msgImp(t, tipo){ const el = $('msgImp'); el.textContent = t || ''; el.c
 async function importar(){
   if (rodando || !arquivos.length) return;
   rodando = true; desenharArquivos(); $('btnImportar').textContent = 'Importando…';
+  $('alto').classList.add('com-relatorio');
   $('rel').innerHTML = ''; $('prog').classList.add('is-on'); msgImp('');
   try {
     const r = await importarLote({ supabase, clientes, arquivos, usuario, onProgresso: (n, m, t) => {
       $('progFill').style.width = m ? Math.round(n / m * 100) + '%' : '0%'; $('progTxt').textContent = t;
     } });
     arquivos = []; desenharArquivos();
-    $('progFill').style.width = '100%';
+    $('prog').classList.remove('is-on');
     relatorio(r);
     // a conferência abre no mês da maior parte das notas importadas
     const principal = Object.entries(r.meses || {}).sort((a, b) => b[1] - a[1])[0];
