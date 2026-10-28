@@ -18,10 +18,14 @@ Confere, nos temas escuro e claro (o link público é sempre claro):
      contrato de experiência → admissão, prazo e último dia, com o fim do período e a indenização do art. 479), as
      datas na hora (antecipando o 10º dia em domingo/feriado), prazo vencido avisado, obrigatórios barrados, envio só
      com o ramo respondido, mensagem final com a data do pagamento, "Enviar outra rescisão" mantendo a empresa;
-     formulário indisponível e "muitos envios" avisados.
+     formulário indisponível e "muitos envios" avisados;
+  6. os anexos (28/10/2026): o quadro Arquivos entre a rescisão e as observações, anexar e tirar, vazio, acima de 25 MB
+     e repetido recusados, a lista junto com a rescisão, cada anexo aberto no Drive com a chave e em partes de 2 MB, o
+     envio fechado no fim, a contagem na mensagem final, o anexo que o Drive recusa e a pasta que não deu pra criar
+     pedidos por e-mail; na ficha (2.), a pasta e os arquivos com o link do Drive e o que não chegou.
 Termina com código 1 se alguma checagem falhar. Pré-requisito: pip install playwright e python -m playwright install chromium
 """
-import sys, json, pathlib, datetime
+import sys, json, pathlib, datetime, tempfile
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from conferir import montar_site, servir, FOTOS
@@ -45,12 +49,16 @@ def rescisoes_teste():
         {'id': 'obs', 'rotulo': 'Observações', 'valor': '<img src=x onerror="window.__xss=1">Vai trabalhar normalmente'},
     ]
     base = lambda **k: {'origem': 'externa', 'respostas': [], 'observacoes': None, 'concluida_em': None, 'concluida_por': None, 'data_admissao': None, 'prazo_experiencia': None, 'iniciativa': None,
-                        'empresa_nome': None, 'contato_nome': None, 'clientes': None, 'desconta_aviso': None,
+                        'empresa_nome': None, 'contato_nome': None, 'clientes': None, 'desconta_aviso': None, 'arquivos': [], 'drive_pasta_url': None,
                         'criado_por': 'formulário da empresa', 'atualizado_em': None, **k}
+    # os anexos do link (28/10/2026): um que chegou ao Drive e um que não chegou, com o nome "perigoso" (sai como texto)
+    arq1 = [{'nome': 'cartao-ponto.pdf', 'tamanho': 3 * 1024 * 1024, 'tipo': 'application/pdf', 'status': 'ok', 'drive_id': 'ARQ1'},
+            {'nome': '<img src=x onerror="window.__xss2=1">atestado.jpg', 'tamanho': 2000, 'tipo': 'image/jpeg', 'status': 'erro'}]
     return [
         base(id='r1', cliente_id='c1', clientes=cli1, empresa_nome='Comércio Modelo', contato_nome='CONTATO DE TESTE', funcionario_nome='FULANA DE TESTE',
              tipo='pedido', aviso='trabalhado', data_base='2026-10-06', inicio_aviso='2026-10-07', ultimo_dia='2026-11-05', data_acerto='2026-11-13',
-             responsavel='Vitória', status='recebida', respostas=resp1, criado_em=dia(-1) + 'T13:00:00Z'),
+             responsavel='Vitória', status='recebida', respostas=resp1, criado_em=dia(-1) + 'T13:00:00Z',
+             arquivos=arq1, drive_pasta_url='https://drive.google.com/drive/folders/PASTA1'),
         base(id='r2', cliente_id=None, empresa_nome='PADARIA NOVA DE TESTE LTDA', contato_nome='OUTRO CONTATO', funcionario_nome='SICRANO DE TESTE',
              tipo='dispensa', aviso='indenizado', data_base=dia(-11), inicio_aviso=None, ultimo_dia=dia(-11), data_acerto=dia(-1),
              responsavel='Vitória', status='recebida', criado_em=dia(-12) + 'T12:00:00Z'),
@@ -133,6 +141,12 @@ def modulo(b, base, tema, erros):
     ok('Quando foi o pedido de demissão?' in txt and '06/10/2026' in txt, '2. ficha mostra as respostas da empresa (data em dd/mm/aaaa)')
     ok('<img src=x' in txt and p.evaluate('() => window.__xss === undefined') and p.locator('#fiRespostas img').count() == 0, '2. o que a empresa digitou sai como texto (sem HTML injetado)')
     ok('CONTATO DE TESTE' in p.inner_text('#fiEnvio') and 'COMÉRCIO MODELO ME' in p.inner_text('#fiVinc'), '2. quem enviou e a empresa vinculada')
+    arqs = p.inner_text('#fiArquivos')
+    ok(p.get_attribute('#fiArquivos a >> nth=0', 'href') == 'https://drive.google.com/drive/folders/PASTA1' and 'Abrir a pasta no Drive' in arqs
+       and p.get_attribute('#fiArquivos a >> nth=1', 'href') == 'https://drive.google.com/file/d/ARQ1/view' and 'cartao-ponto.pdf' in arqs and '3 MB' in arqs,
+       '2. arquivos da empresa: a pasta no Drive e o arquivo com o link dele')
+    ok('não chegou' in arqs and '<img src=x' in arqs and p.locator('#fiArquivos img').count() == 0 and p.evaluate('() => window.__xss2 === undefined')
+       and p.locator('#fiArquivos a').count() == 2, '2. o que não chegou ao Drive fica marcado, sem link; o nome sai como texto')
     dt = p.inner_text('#fiDatas')
     ok('07/10/2026' in dt and '05/11/2026' in dt and '13/11/2026' in dt and '15/11/2026' in dt, '2. datas da ficha: aviso 07/10 a 05/11, pagamento 13/11 (15/11 é domingo e feriado)')
     ok(p.input_value('#fiTipo') == 'pedido' and p.input_value('#fiAviso') == 'trabalhado' and p.input_value('#fiData') == '2026-10-06'
@@ -152,6 +166,7 @@ def modulo(b, base, tema, erros):
 
     p.click('#rsLista tr[data-id="r2"] td >> nth=0'); p.wait_for_timeout(500)
     ok('Não encontrada no cadastro' in p.inner_text('#fiVinc') and 'PADARIA NOVA DE TESTE LTDA' in p.inner_text('#fiVinc'), '2. ficha avisa que a empresa não está vinculada')
+    ok('nenhum arquivo anexado' in p.inner_text('#fiArquivos') and p.locator('#fiArquivos a').count() == 0, '2. sem anexo: "nenhum arquivo anexado no formulário"')
     ok('Projeção do aviso' in p.inner_text('#fiDatas') and 'não a data' in p.inner_text('#fiDatas'), '2. indenizado: projeção do aviso e a nota do proporcional')
     p.fill('#fiBusca', 'EXEMPLO'); p.wait_for_timeout(600)
     p.locator('#fiRes button', has_text='EMPRESA EXEMPLO LTDA').click(); p.wait_for_timeout(200)
@@ -212,6 +227,7 @@ def modulo(b, base, tema, erros):
     ok('Se pedido de demissão' in perg and 'Se demissão por parte da empresa' in perg and 'Se contrato de experiência' in perg and '45 + 45 dias' in perg
        and 'Quando foi o pedido de demissão?' in perg and 'último dia de trabalho' in perg.lower(),
        '3. perguntas fixas listadas, com os "se"')
+    ok('Arquivos' in perg and 'cartão ponto' in perg and '25 MB' in perg and 'RESCISÕES' in perg, '3. os arquivos na lista, com os limites e a pasta do Drive')
     p.fill('#edFinal', 'Recebido! O DP já vai preparar a rescisão.')
     ok('Alterações não salvas' in p.inner_text('#edSujo'), '3. avisa que há alteração não salva')
     p.click('#edSalvar'); p.wait_for_timeout(300)
@@ -261,21 +277,33 @@ def agenda(b, base, modelo, erros):
 def publico(b, base, modelo, erros):
     print('[link] 5. formulário que a empresa preenche')
     form = json.dumps({k: modelo[k] for k in ('titulo', 'introducao', 'final', 'rodape', 'email')}, ensure_ascii=False)
-    def pagina(formulario, enviar='{ ok: true, id: "11111111-2222-4333-8444-555555555555", email: "rh@macedoereis.com.br", datas: { inicioAviso: null, ultimoDia: "2026-10-02", limite: "2026-10-09" } }'):
+    # dublê da Edge Function rescisao-link: anota as chamadas; as partes dos anexos chegam com o cabeçalho x-acao: parte;
+    # "falha_parte" faz o Drive recusar o anexo com esse nome
+    def pagina(formulario, enviar='{ ok: true, id: "11111111-2222-4333-8444-555555555555", email: "rh@macedoereis.com.br", datas: { inicioAviso: null, ultimoDia: "2026-10-02", limite: "2026-10-09" } }', falha_parte=''):
         p = b.new_page(viewport={'width': 420, 'height': 900})
         p.on('pageerror', lambda e: erros.append(f'link: {e}'))
-        p.add_init_script("""window.__log = [];
+        p.add_init_script("""window.__log = []; window.__arquivoAtual = {};
 window.__mockInvoke = async (nome, opts) => {
+  const h = opts.headers || {};
+  if (h['x-acao'] === 'parte') {
+    window.__log.push(['parte', { i: h['x-i'], inicio: Number(h['x-inicio']), tamanho: opts.body.size, total: Number(h['x-total']), chave: h['x-chave'], id: h['x-id'] }]);
+    if (window.__arquivoAtual[h['x-i']] === %s) return { data: { error: 'O Drive recusou o arquivo.' }, error: null };
+    return { data: { ok: true }, error: null };
+  }
   const b = opts.body || {};
   window.__log.push([nome, JSON.parse(JSON.stringify(b))]);
   if (b.acao === 'formulario') return { data: %s, error: null };
   if (b.acao === 'enviar') return { data: %s, error: null };
+  if (b.acao === 'arquivo') { window.__arquivoAtual[String(b.i)] = b.nome; return { data: { ok: true }, error: null }; }
+  if (b.acao === 'concluir') return { data: { ok: true }, error: null };
   return { data: null, error: { message: 'ação ' + b.acao } };
-};""" % (formulario, enviar))
+};""" % (json.dumps(falha_parte), formulario, enviar))
         p.goto(base + 'rescisao.html'); p.wait_for_timeout(1200)
         return p
     envios = lambda p: [x for x in p.evaluate('() => window.__log') if x[1].get('acao') == 'enviar']
+    acoes = lambda p, acao: [x[1] for x in p.evaluate('() => window.__log') if (x[0] == 'parte' if acao == 'parte' else x[1].get('acao') == acao)]
     vis = lambda p, sel: p.is_visible(sel)
+    MB = 1024 * 1024
 
     p = pagina(form)
     ok(p.inner_text('.cab h2') == modelo['titulo'] and modelo['introducao'][:30] in p.inner_text('.cab'), '5. título e introdução dos textos do módulo')
@@ -318,6 +346,7 @@ window.__mockInvoke = async (nome, opts) => {
        and a.get('funcionario') == 'FULANA DE TESTE', '5. envia pela função rescisao-link, com a empresa, quem preencheu e o funcionário')
     ok(a.get('tipo') == 'dispensa' and a.get('aviso') == 'indenizado' and a.get('data') == '2026-10-02' and a.get('obs') == 'Funcionário já foi avisado.'
        and 'desconta' not in a, '5. envia só o ramo respondido (sem o desconto do pedido)')
+    ok('arquivos' not in a and not acoes(p, 'arquivo') and not acoes(p, 'concluir'), '5. sem anexo, não manda lista de arquivos nem abre envio')
     txt = p.inner_text('#app')
     ok('Informações recebidas' in txt and modelo['final'] in txt and 'Pagamento da rescisão até 09/10/2026 (sexta-feira)' in txt, '5. mensagem final com a data do pagamento')
     p.screenshot(path=str(FOTOS / 'rescisoes-link-enviado-claro.png'), full_page=True)
@@ -378,6 +407,74 @@ window.__mockInvoke = async (nome, opts) => {
     env = envios(p); a = env[0][1] if env else {}
     ok(len(env) == 1 and a.get('iniciativa') == 'empregado' and a.get('desconta') is True and a.get('data') == '2026-10-10', '5. envia a pedido do funcionário, com o desconto do art. 480')
     p.close()
+
+    print('[link] 6. anexar arquivos (atestados, cartão ponto…)')
+    def preencher(p):
+        p.fill('#id_empresa', 'Comércio Modelo'); p.fill('#id_contato', 'Contato de Teste'); p.fill('#id_funcionario', 'FULANA DE TESTE')
+        p.check('input[name="tipo"][value="pedido"]'); p.check('input[name="avisoPedido"][value="trabalhado"]'); p.fill('#id_dataPedido', '2026-10-06')
+    com_chave = lambda n, chave='"CHAVE"': ('{ ok: true, id: "11111111-2222-4333-8444-55555555555%d", chave: %s, email: "rh@macedoereis.com.br", '
+                                             'datas: { inicioAviso: "2026-10-07", ultimoDia: "2026-11-05", limite: "2026-11-13" } }' % (n, chave))
+    p = pagina(form, enviar=com_chave(7))
+    ordem = p.evaluate("""() => { const a = document.getElementById('blArquivos'), o = document.getElementById('id_obs'), d = document.getElementById('datas');
+      return !!a && !!(d.compareDocumentPosition(a) & Node.DOCUMENT_POSITION_FOLLOWING) && !!(a.compareDocumentPosition(o) & Node.DOCUMENT_POSITION_FOLLOWING); }""")
+    card = p.inner_text('#blArquivos')
+    ok(ordem and 'ARQUIVOS' in card.upper() and 'atestados' in card and 'cartão ponto' in card and 'rh@macedoereis.com.br' in card and vis(p, '.anexo-btn'),
+       '6. o quadro Arquivos fica entre a rescisão e as observações, com o que anexar e o e-mail do DP')
+    p.focus('#id_arquivos')
+    ok(p.evaluate("() => document.activeElement && document.activeElement.id === 'id_arquivos'"), '6. o campo do arquivo é alcançável pelo teclado')
+    p.set_input_files('#id_arquivos', [
+        {'name': 'cartao-ponto.pdf', 'mimeType': 'application/pdf', 'buffer': b'%PDF' + b'0' * (3 * MB - 4)},
+        {'name': 'atestado.jpg', 'mimeType': 'image/jpeg', 'buffer': b'\xff' * 5000}])
+    ok(p.locator('#anxLista .anexo-item').count() == 2 and '3 MB' in p.inner_text('#anxLista') and 'atestado.jpg' in p.inner_text('#anxLista'), '6. anexos listados com o tamanho')
+    p.locator('#anxLista [data-tira="1"]').click(); p.wait_for_timeout(100)
+    ok(p.locator('#anxLista .anexo-item').count() == 1 and 'atestado.jpg' not in p.inner_text('#anxLista'), '6. tirar um anexo')
+    p.set_input_files('#id_arquivos', [
+        {'name': 'atestado.jpg', 'mimeType': 'image/jpeg', 'buffer': b'\xff' * 5000},
+        {'name': 'vazio.pdf', 'mimeType': 'application/pdf', 'buffer': b''},
+        {'name': 'grande.pdf', 'mimeType': 'application/pdf', 'buffer': b'0' * (25 * MB + 1)}])
+    err = p.inner_text('#anxErro')
+    ok(p.locator('#anxLista .anexo-item').count() == 2 and 'vazio.pdf está vazio' in err and 'grande.pdf passa de 25 MB' in err and 'rh@macedoereis.com.br' in err,
+       '6. arquivo vazio ou acima de 25 MB não entra (e diz o e-mail do DP)')
+    with tempfile.TemporaryDirectory() as tmp:   # do disco, o mesmo arquivo escolhido duas vezes é o mesmo (nome, tamanho e data)
+        aviso_pdf = pathlib.Path(tmp) / 'aviso.pdf'
+        aviso_pdf.write_bytes(b'%PDF-aviso' * 100)
+        p.set_input_files('#id_arquivos', str(aviso_pdf))
+        p.set_input_files('#id_arquivos', str(aviso_pdf))
+    ok(p.locator('#anxLista .anexo-item').count() == 3 and 'aviso.pdf já está na lista' in p.inner_text('#anxErro'), '6. o mesmo arquivo duas vezes entra uma só')
+    preencher(p)
+    p.screenshot(path=str(FOTOS / 'rescisoes-link-anexos-claro.png'), full_page=True)
+    p.click('#btnEnviar'); p.wait_for_timeout(1500)
+    env = envios(p); a = env[0][1] if env else {}
+    ok([(x['nome'], x['tamanho'], x['tipo']) for x in a.get('arquivos', [])] == [('cartao-ponto.pdf', 3 * MB, 'application/pdf'), ('atestado.jpg', 5000, 'image/jpeg'), ('aviso.pdf', 1000, 'application/pdf')],
+       '6. avisa os anexos (nome, tamanho e tipo) junto com a rescisão')
+    arqs = acoes(p, 'arquivo'); partes = acoes(p, 'parte')
+    ok([(x['i'], x['nome']) for x in arqs] == [(0, 'cartao-ponto.pdf'), (1, 'atestado.jpg'), (2, 'aviso.pdf')]
+       and all(x['chave'] == 'CHAVE' and x['id'].endswith('557') for x in arqs), '6. abre cada anexo no Drive com a chave do envio')
+    ok([(x['i'], x['inicio'], x['tamanho']) for x in partes] == [('0', 0, 2 * MB), ('0', 2 * MB, MB), ('1', 0, 5000), ('2', 0, 1000)]
+       and all(x['chave'] == 'CHAVE' for x in partes), '6. o de 3 MB sobe em 2 partes (2 MB + 1 MB); os pequenos, numa só')
+    ok(len(acoes(p, 'concluir')) == 1, '6. fecha o envio no fim')
+    txt = p.inner_text('#app')
+    ok('Informações recebidas' in txt and '3 arquivos enviados para o escritório' in txt and 'Pagamento da rescisão até 13/11/2026' in txt and p.locator('.aviso.ok').count() == 1,
+       '6. mensagem final com a data do pagamento e a contagem dos anexos')
+    p.screenshot(path=str(FOTOS / 'rescisoes-link-anexos-enviado-claro.png'), full_page=True)
+    p.click('#btnOutro'); p.wait_for_timeout(300)
+    ok(p.locator('.anexo-item').count() == 0 and vis(p, '#blArquivos') and p.input_value('#id_empresa') == 'Comércio Modelo', '6. "Enviar outra rescisão" começa sem anexos')
+    p.close()
+
+    p = pagina(form, enviar=com_chave(8), falha_parte='atestado.jpg')
+    p.set_input_files('#id_arquivos', [{'name': 'atestado.jpg', 'mimeType': 'image/jpeg', 'buffer': b'\xff' * 700},
+                                       {'name': 'cartao.pdf', 'mimeType': 'application/pdf', 'buffer': b'%PDF' + b'0' * 800}])
+    preencher(p); p.click('#btnEnviar'); p.wait_for_timeout(1000)
+    txt = p.inner_text('#app')
+    ok('1 arquivo enviado' in txt and 'Não conseguimos enviar: atestado.jpg' in txt and 'Mande esse arquivo para rh@macedoereis.com.br' in txt and p.locator('.aviso.ok').count() == 0,
+       '6. anexo que o Drive recusa: avisa qual e pede por e-mail'); p.close()
+
+    p = pagina(form, enviar=com_chave(9, 'null'))
+    p.set_input_files('#id_arquivos', [{'name': 'a.pdf', 'mimeType': 'application/pdf', 'buffer': b'%PDF1'}, {'name': 'b.pdf', 'mimeType': 'application/pdf', 'buffer': b'%PDF2'}])
+    preencher(p); p.click('#btnEnviar'); p.wait_for_timeout(1000)
+    txt = p.inner_text('#app')
+    ok('Informações recebidas' in txt and 'Não conseguimos enviar: a.pdf, b.pdf' in txt and 'Mande esses arquivos' in txt and not acoes(p, 'arquivo') and not acoes(p, 'concluir'),
+       '6. sem a pasta no Drive: a rescisão vai e os arquivos são pedidos por e-mail'); p.close()
 
     p = pagina(form)
     p.check('input[name="tipo"][value="dispensa"]'); p.fill('#id_dataComunicacao', '2025-01-10'); p.check('input[name="avisoDispensa"][value="trabalhado"]'); p.wait_for_timeout(150)

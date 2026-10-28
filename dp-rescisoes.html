@@ -100,7 +100,7 @@
         </div>
         <div class="eyebrow">Departamento Pessoal</div>
         <h1>Rescisões</h1>
-        <p>Desligamento de funcionários das empresas: a empresa responde o formulário pelo link — pedido de demissão, demissão por parte da empresa ou contrato de experiência — e vê na hora a data do pagamento; a rescisão aparece aqui e na agenda.</p>
+        <p>Desligamento de funcionários das empresas: a empresa responde o formulário pelo link — pedido de demissão, demissão por parte da empresa ou contrato de experiência —, anexa o que tiver (atestados, cartão ponto…) e vê na hora a data do pagamento; a rescisão aparece aqui e na agenda, e os arquivos vão pro Drive (RESCISÕES › empresa › funcionário).</p>
       </div>
 
       <div class="rs-abas">
@@ -205,6 +205,9 @@
       <div class="rs-sec">Respostas da empresa</div>
       <div id="fiRespostas"></div>
 
+      <div class="rs-sec">Arquivos enviados pela empresa</div>
+      <div class="rs-nota" id="fiArquivos" style="margin-top:0"></div>
+
       <div class="rs-sec">Na agenda</div>
       <div class="rs-nota" id="fiTarefa" style="margin-top:0"></div>
 
@@ -250,7 +253,7 @@
     const INICIATIVAS = [['empresa', 'A empresa'], ['empregado', 'O funcionário (pediu para sair)']];
     const ROT_DATA = { dataPedido: 'Data do pedido de demissão', ultimoDia: 'Último dia de trabalho', dataComunicacao: 'Data da comunicação ao funcionário',
                        dataDesligamento: 'Último dia de trabalho' };
-    const COLS = 'id, cliente_id, empresa_nome, contato_nome, origem, funcionario_nome, tipo, aviso, desconta_aviso, data_base, data_admissao, prazo_experiencia, iniciativa, inicio_aviso, ultimo_dia, data_acerto, respostas, responsavel, status, observacoes, concluida_em, concluida_por, criado_por, criado_em, atualizado_em, clientes(nome_principal, nome_fantasia, documento)';
+    const COLS = 'id, cliente_id, empresa_nome, contato_nome, origem, funcionario_nome, tipo, aviso, desconta_aviso, data_base, data_admissao, prazo_experiencia, iniciativa, inicio_aviso, ultimo_dia, data_acerto, respostas, drive_pasta_url, arquivos, responsavel, status, observacoes, concluida_em, concluida_por, criado_por, criado_em, atualizado_em, clientes(nome_principal, nome_fantasia, documento)';
     // o caso gravado, do jeito que a conta das datas pede
     const casoDe = r => ({ tipo: r.tipo, aviso: r.aviso, data: r.data_base, admissao: r.data_admissao, prazo: r.prazo_experiencia, iniciativa: r.iniciativa });
 
@@ -417,9 +420,28 @@
       const linhas = [`Rescisão — ${r.funcionario_nome || 'funcionário(a)'} — ${empresaDe(r)}${docEmpresa(r) ? ' (' + docEmpresa(r) + ')' : ''}`];
       if (r.contato_nome) linhas.push(`Enviado por ${r.contato_nome} em ${fmtQuando(r.criado_em)}`);
       listaResp(r).forEach(x => { const v = valorResp(x); linhas.push(`${x.rotulo}: ${v === '' || v == null ? '(em branco)' : v}`); });
+      const arqs = listaArq(r).filter(x => x.status === 'ok');
+      if (arqs.length && pastaDrive(r)) linhas.push(`Arquivos no Drive (${arqs.length}): ${pastaDrive(r)}`);
       const res = resumoDatas(calcularRescisao(casoDe(r)));
       if (res) { linhas.push(''); res.linhas.forEach(l => linhas.push(`${l.rotulo}: ${fmtData(l.data)} (${diaSemana(l.data)})`)); }
       return linhas.join('\n');
+    }
+
+    // os arquivos que a empresa anexou no link (a função rescisao-link sobe pro Drive em RESCISÕES › empresa › funcionário)
+    const listaArq = r => (Array.isArray(r.arquivos) ? r.arquivos : []).filter(x => x && typeof x === 'object');
+    const pastaDrive = r => /^https:\/\/drive\.google\.com\//.test(String(r.drive_pasta_url || '')) ? r.drive_pasta_url : '';
+    const tamanho = n => n >= 1048576 ? (n / 1048576).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' MB' : Math.max(1, Math.round((n || 0) / 1024)) + ' KB';
+    function arquivosHtml(r) {
+      const lista = listaArq(r);
+      const pasta = pastaDrive(r) ? `<a href="${esc(pastaDrive(r))}" target="_blank" rel="noopener">📁 Abrir a pasta no Drive</a>` : '';
+      if (!lista.length) return (pasta ? pasta + ' — ' : '') + (r.origem === 'externa' ? 'nenhum arquivo anexado no formulário.' : 'sem arquivos pelo formulário.');
+      return (pasta ? pasta + '<br>' : '') + lista.map(x => {
+        const nome = esc(x.nome || 'arquivo');
+        const id = /^[\w-]+$/.test(String(x.drive_id || '')) ? x.drive_id : '';
+        const link = x.status === 'ok' && id ? `<a href="https://drive.google.com/file/d/${id}/view" target="_blank" rel="noopener">${nome}</a>` : nome;
+        const st = x.status === 'ok' ? '✓' : '<span class="rs-alerta" title="Não chegou ao Drive — peça o arquivo por WhatsApp ou e-mail">⚠ não chegou</span>';
+        return `${st} ${link} <span class="rs-sub">${tamanho(x.tamanho)}</span>`;
+      }).join('<br>');
     }
 
     // o caso como está na ficha agora
@@ -502,6 +524,7 @@
       $('fiBusca').value = ''; $('fiRes').style.display = 'none';
       $('fiRespostas').innerHTML = respostasHtml(r);
       if ($('fiCopResp')) $('fiCopResp').onclick = () => copiar(respostasTexto(r), $('fiMsg'), 'Respostas copiadas.');
+      $('fiArquivos').innerHTML = arquivosHtml(r);
       $('fiObs').value = r.observacoes || '';
       $('fiMsg').textContent = ''; $('fiMsg').classList.remove('er');
       $('fiTarefa').textContent = 'Consultando a agenda…';
@@ -599,6 +622,7 @@
         + `<li><span class="se">Se contrato de experiência:</span> ${esc(P.iniciativa.rotulo)} <span class="se">(${esc(ops(P.iniciativa))})</span> · ${esc(P.admissao.rotulo)} · ${esc(P.prazoExperiencia.rotulo)} <span class="se">(${esc(ops(P.prazoExperiencia))})</span> · ${esc(P.dataDesligamento.rotulo)}`
         +   `<br><span class="se">a pedido do funcionário, saindo antes do fim →</span> ${esc(P.descontoExperiencia.rotulo)}</li>`
         + '<li>Datas na hora: início e fim do aviso (ou o fim do contrato de experiência), último dia de trabalho e pagamento da rescisão até — na experiência, também se a data cai no fim do prazo ou antes (aí com a indenização do art. 479, ou do art. 480 quando é o funcionário que sai)</li>'
+        + `<li>${esc(P.arquivos.rotulo)} <span class="se">(opcional — atestados, cartão ponto, o pedido ou o aviso assinado; até 25 MB cada, 20 arquivos, 100 MB no total; vão pro Drive em RESCISÕES › empresa › funcionário e aparecem na ficha)</span></li>`
         + `<li>${esc(P.obs.rotulo)} <span class="se">(opcional)</span></li>`
         + '</ol>';
     }

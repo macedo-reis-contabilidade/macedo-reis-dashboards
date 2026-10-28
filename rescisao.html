@@ -11,8 +11,9 @@
      a empresa se identifica, responde e envia; a rescisão nasce no módulo (dp-rescisoes.html) e na agenda do DP.
      As perguntas são fixas (uma depende da outra) e as datas — início do aviso, último dia e prazo do pagamento —
      aparecem na hora, pela mesma conta do módulo e da Edge Function (assets/js/rescisao-datas.js).
-     Só fala com o sistema pela Edge Function rescisao-link. Os textos são editados no módulo; ?previa=1 mostra os
-     textos em edição, guardados pelo módulo no navegador. -->
+     Só fala com o sistema pela Edge Function rescisao-link (formulário, envio e anexos — 28/10/2026: atestados, cartão
+     ponto…, que vão pro Drive em SETOR DP E RH > RESCISÕES > EMPRESA > FUNCIONÁRIO, como os das admissões). Os textos são
+     editados no módulo; ?previa=1 mostra os textos em edição, guardados pelo módulo no navegador. -->
 <style>
   * { box-sizing:border-box; margin:0; padding:0; }
   body { font-family:-apple-system, 'Segoe UI', Roboto, Arial, sans-serif; background:#EEF2F6; color:#1a2330; padding:0 0 60px; }
@@ -64,6 +65,26 @@
   .aviso.ok h2 { color:#2E7D5B; }
   .aviso p { font-size:14px; color:#4a5565; line-height:1.6; white-space:pre-line; }
   .rodape { text-align:center; font-size:11.5px; color:#8a94a3; margin-top:18px; line-height:1.6; white-space:pre-line; }
+  /* os anexos: o mesmo quadro das admissões (admissao.html), com o campo do arquivo alcançável pelo Tab */
+  .anexo-ajuda { font-size:12px; color:#8a94a3; line-height:1.5; margin-bottom:10px; }
+  .anexo { padding:12px; border:1.5px dashed #C9D5E2; border-radius:10px; background:#F7FAFC; }
+  .anexo-btn { position:relative; display:inline-flex; align-items:center; gap:8px; padding:10px 14px; border-radius:10px; background:#fff; border:1.5px solid #5B82A6; color:#3A5878; font-weight:700; font-size:14.5px; cursor:pointer; }
+  .anexo-btn input { position:absolute; width:1px; height:1px; opacity:0; overflow:hidden; pointer-events:none; }
+  .anexo-btn:focus-within { outline:2px solid #5B82A6; outline-offset:2px; }
+  .anexo-lista { margin-top:8px; display:flex; flex-direction:column; gap:6px; }
+  .anexo-lista:empty { display:none; }
+  .anexo-item { display:flex; gap:8px; align-items:center; font-size:13px; color:#33404f; background:#fff; border:1px solid #E3EAF1; border-radius:8px; padding:6px 8px; }
+  .anexo-item span { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .anexo-item small { color:#8a94a3; white-space:nowrap; }
+  .anexo-item button { background:none; border:none; color:#C0564F; font-size:16px; cursor:pointer; padding:0 4px; }
+  .anexo-email { font-size:12.5px; color:#5c6878; margin-top:8px; line-height:1.5; }
+  .anexo-erro { color:#C0564F; font-size:12px; margin-top:6px; }
+  .anexo-erro:empty { display:none; }
+  .progresso { font-size:13px; color:#3A5878; margin-top:12px; text-align:center; }
+  .progresso:empty { display:none; }
+  .barra { height:6px; background:#E3EAF1; border-radius:99px; overflow:hidden; margin-top:6px; }
+  .barra div { height:100%; background:#3A5878; width:0; transition:width .2s; }
+  @media (prefers-reduced-motion: reduce) { .barra div { transition:none; } }
 </style>
 </head>
 <body>
@@ -85,13 +106,19 @@
   const PRIVACIDADE = 'As informações vão direto para o Departamento Pessoal da Macedo & Reis e são usadas só para a rescisão do(a) funcionário(a).';
   const EMAIL_PADRAO = 'rh@macedoereis.com.br';
   const FUNCAO = 'rescisao-link';
+  const PARTE = 2 * 1024 * 1024;                       // anexos sobem em partes de 2 MB (múltiplo de 256 KB, exigência do Drive)
+  const MAX_ARQ = 25 * 1024 * 1024, MAX_QTD = 20, MAX_TOTAL = 100 * 1024 * 1024;
   const PREVIA = new URLSearchParams(location.search).get('previa') === '1';
   const app = document.getElementById('app');
   const $ = id => document.getElementById(id);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
   const hoje = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
-  let modelo = null;
-  const chamar = body => supabase.functions.invoke(FUNCAO, { body });
+  const tam = n => n >= 1048576 ? (n / 1048576).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+  let modelo = null, anexos = [], subindo = false;
+  const email = () => (modelo && modelo.email) || EMAIL_PADRAO;
+  const chamar = (body, headers) => supabase.functions.invoke(FUNCAO, headers ? { body, headers } : { body });
+  // fechar a página no meio do envio dos arquivos: o navegador pergunta antes
+  window.addEventListener('beforeunload', e => { if (subindo) { e.preventDefault(); e.returnValue = ''; } });
 
   function aviso(ic, titulo, texto, classe) {
     app.innerHTML = `<div class="card aviso ${classe || ''}"><div class="ic">${ic}</div><h2>${esc(titulo)}</h2><p>${esc(texto)}</p></div>`;
@@ -110,7 +137,34 @@
     + p.opcoes.map(([v, t, aj]) => `<label class="op"><input type="radio" name="${id}" value="${esc(v)}"><span>${esc(t)}${aj ? `<small>${esc(aj)}</small>` : ''}</span></label>`).join('')
     + '</div><div class="falta-msg">Escolha uma opção.</div></div>';
 
+  // ---------- anexos (atestados, cartão ponto…): sobem pro Drive depois que a rescisão é gravada ----------
+  function pintarAnexos() {
+    const el = $('anxLista');
+    if (!el) return;
+    el.innerHTML = anexos.map((f, n) => `<div class="anexo-item"><span>📄 ${esc(f.name)}</span><small>${tam(f.size)}</small>`
+      + `<button type="button" data-tira="${n}" title="Tirar" aria-label="Tirar ${esc(f.name)}">✕</button></div>`).join('');
+    el.querySelectorAll('[data-tira]').forEach(b => b.addEventListener('click', () => {
+      anexos.splice(Number(b.dataset.tira), 1);
+      $('anxErro').textContent = '';
+      pintarAnexos();
+    }));
+  }
+  function adicionarAnexos(files) {
+    const recusados = [];
+    for (const f of files) {
+      if (anexos.some(a => a.name === f.name && a.size === f.size && a.lastModified === f.lastModified)) { recusados.push(`${f.name} já está na lista`); continue; }
+      if (!f.size) { recusados.push(`${f.name} está vazio`); continue; }
+      if (f.size > MAX_ARQ) { recusados.push(`${f.name} passa de 25 MB`); continue; }
+      if (anexos.length >= MAX_QTD) { recusados.push(`limite de ${MAX_QTD} arquivos`); break; }
+      if (anexos.reduce((s, a) => s + a.size, 0) + f.size > MAX_TOTAL) { recusados.push(`${f.name} passa do total de 100 MB`); continue; }
+      anexos.push(f);
+    }
+    $('anxErro').textContent = recusados.length ? 'Não anexado: ' + recusados.join('; ') + '. Se precisar, mande por e-mail para ' + email() + '.' : '';
+    pintarAnexos();
+  }
+
   function desenhar(ident = {}) {
+    anexos = [];
     let html = '';
     if (PREVIA) html += '<div class="card previa"><b>Prévia</b> — é assim que a empresa vê o formulário. Nada do que for preenchido aqui é enviado.</div>';
     html += '<div class="card cab">'
@@ -132,10 +186,16 @@
       +   '<div id="blDescExp" hidden>' + escolha('descontoExperiencia', PERGUNTAS.descontoExperiencia) + '</div></div>'
       + '<div class="datas" id="datas" hidden></div>'
       + '</div>';
+    html += `<div class="card" id="blArquivos"><h3 class="bloco">${esc(PERGUNTAS.arquivos.rotulo)}</h3><div class="anexo-ajuda">${esc(PERGUNTAS.arquivos.ajuda)}</div>`
+      + '<div class="anexo"><label class="anexo-btn">📎 Anexar arquivos<input type="file" multiple id="id_arquivos"></label>'
+      + '<div class="anexo-lista" id="anxLista"></div><div class="anexo-erro" id="anxErro" role="alert"></div>'
+      + `<div class="anexo-email">Anexe aqui (PDF, foto ou qualquer arquivo) ou envie para <b>${esc(email())}</b>.</div></div></div>`;
     html += `<div class="card"><h3 class="bloco">${esc(PERGUNTAS.obs.rotulo)}</h3><div class="campo" data-id="obs"><label for="id_obs"><small class="ajuda" style="margin:0">${esc(PERGUNTAS.obs.ajuda)}</small></label><textarea id="id_obs"></textarea></div></div>`;
-    html += '<div class="card"><button class="botao" id="btnEnviar">Enviar informações</button><div class="erro" id="msgErro"></div></div>';
+    html += '<div class="card"><button class="botao" id="btnEnviar">Enviar informações</button><div class="erro" id="msgErro"></div>'
+      + '<div class="progresso" id="progresso" aria-live="polite"></div><div class="barra" id="barra" hidden><div></div></div></div>';
     app.innerHTML = html;
     app.querySelectorAll('.campo').forEach(c => { c.addEventListener('input', () => c.classList.remove('falta')); c.addEventListener('change', () => c.classList.remove('falta')); });
+    $('id_arquivos').addEventListener('change', e => { adicionarAnexos([...e.target.files]); e.target.value = ''; });
     $('btnEnviar').addEventListener('click', enviar);
   }
   // as respostas mostram/escondem os "se" e refazem as datas (um ouvinte só, no #app, que sobrevive aos redesenhos)
@@ -212,6 +272,30 @@
     return { ident, caso: c, funcionario: valor('funcionario'), obs: valor('obs'), faltam: [...new Set(faltam.filter(Boolean))] };
   }
 
+  function progresso(texto, fracao) {
+    $('progresso').textContent = texto || '';
+    const barra = $('barra');
+    barra.hidden = fracao == null;
+    if (fracao != null) barra.firstElementChild.style.width = Math.round(Math.min(1, fracao) * 100) + '%';
+  }
+
+  // um anexo: abre o envio no Drive e manda as partes em sequência (tenta de novo a parte que falhar na rede)
+  async function subir(id, chave, i, f, feito, total, qtd) {
+    const r1 = await chamar({ acao: 'arquivo', id, chave, i, nome: f.name, tipo: f.type || 'application/octet-stream', tamanho: f.size });
+    if (r1.error || !r1.data || !r1.data.ok) return false;
+    for (let ini = 0; ini < f.size; ini += PARTE) {
+      const pedaco = f.slice(ini, Math.min(f.size, ini + PARTE));
+      let r = null;
+      for (let tentativa = 0; tentativa < 3; tentativa++) {
+        r = await chamar(pedaco, { 'x-acao': 'parte', 'x-id': id, 'x-chave': chave, 'x-i': String(i), 'x-inicio': String(ini), 'x-total': String(f.size) });
+        if (!r.error) break;
+      }
+      if (r.error || !r.data || !r.data.ok) return false;
+      progresso(`Enviando os arquivos: ${i + 1} de ${qtd} (${f.name})`, (feito + Math.min(f.size, ini + PARTE)) / total);
+    }
+    return true;
+  }
+
   async function enviar() {
     const erro = $('msgErro');
     const btn = $('btnEnviar');
@@ -225,7 +309,9 @@
     }
     if (PREVIA) { erro.textContent = 'Prévia: tudo preenchido. Na prévia nada é enviado.'; return; }
     erro.textContent = '';
+    const lista = anexos.slice();
     btn.disabled = true; btn.textContent = 'Enviando…';
+    progresso(lista.length ? 'Enviando as informações…' : '', null);
     const corpo = { acao: 'enviar', empresa: ident.empresa, contato: ident.contato, funcionario, tipo: caso.tipo, data: caso.data, obs };
     if (caso.tipo === 'experiencia') {
       corpo.iniciativa = caso.iniciativa; corpo.admissao = caso.admissao; corpo.prazo = caso.prazo;
@@ -233,17 +319,40 @@
     }
     else corpo.aviso = caso.aviso;
     if (caso.tipo === 'pedido' && caso.aviso === 'imediato') corpo.desconta = caso.desconta;
+    // os anexos: aqui só a lista (nome, tamanho, tipo); a função cria a pasta no Drive e devolve a chave pra subir cada um
+    if (lista.length) corpo.arquivos = lista.map(f => ({ nome: f.name, tamanho: f.size, tipo: f.type || 'application/octet-stream' }));
     const { data: r, error } = await chamar(corpo);
     if (error || !r || r.error) {
-      btn.disabled = false; btn.textContent = 'Enviar informações';
+      btn.disabled = false; btn.textContent = 'Enviar informações'; progresso('', null);
       erro.textContent = (r && r.error) ? r.error
-        : 'Não foi possível enviar agora (' + ((error && error.message) || 'erro de conexão') + '). Tente de novo; se continuar, mande as informações para ' + ((modelo && modelo.email) || EMAIL_PADRAO) + '.';
+        : 'Não foi possível enviar agora (' + ((error && error.message) || 'erro de conexão') + '). Tente de novo; se continuar, mande as informações para ' + email() + '.';
       return;
+    }
+    const falhas = [];
+    if (lista.length) {
+      if (!r.chave) falhas.push(...lista.map(f => f.name));
+      else {
+        subindo = true;
+        try {
+          const total = lista.reduce((s, f) => s + f.size, 0);
+          let feito = 0;
+          for (const [i, f] of lista.entries()) {
+            progresso(`Enviando os arquivos: ${i + 1} de ${lista.length} (${f.name})`, feito / total);
+            const foi = await subir(r.id, r.chave, i, f, feito, total, lista.length).catch(() => false);
+            if (!foi) falhas.push(f.name);
+            feito += f.size;
+          }
+          await chamar({ acao: 'concluir', id: r.id, chave: r.chave }).catch(() => null);
+        } finally { subindo = false; }
+      }
     }
     let msg = modelo.final || 'Obrigado! O Departamento Pessoal do escritório vai conferir as informações e preparar a rescisão.';
     const lim = r.datas && r.datas.limite;
     if (lim) msg += `\n\nPagamento da rescisão até ${fmtData(lim)} (${diaSemana(lim)}).`;
-    aviso('✅', 'Informações recebidas!', msg, 'ok');
+    const foram = lista.length - falhas.length;
+    if (foram) msg += `\n\n${foram === 1 ? '1 arquivo enviado' : foram + ' arquivos enviados'} para o escritório.`;
+    if (falhas.length) msg += `\n\nNão conseguimos enviar: ${falhas.join(', ')}. Mande ${falhas.length === 1 ? 'esse arquivo' : 'esses arquivos'} para ${r.email || email()}.`;
+    aviso(falhas.length ? '⚠️' : '✅', 'Informações recebidas!', msg, falhas.length ? '' : 'ok');
     const outro = document.createElement('button');
     outro.className = 'botao sec'; outro.id = 'btnOutro'; outro.textContent = 'Enviar outra rescisão';
     outro.addEventListener('click', () => { desenhar(ident); window.scrollTo({ top: 0 }); });

@@ -29,6 +29,18 @@ console.log('Empresa pelo nome igual nas duas funções:');
 for (const nome of ['normNome', 'limpaNome', 'txt', 'SUFIXOS', 'chaveNome', 'acharCliente']) {
   chk(nome, adm.has(nome) && res.has(nome) && adm.get(nome) === res.get(nome));
 }
+// os anexos (28/10/2026): o envio pro Drive em partes é o mesmo das admissões — mudou numa, muda na outra
+console.log('Anexos no Drive iguais nas duas funções:');
+for (const nome of ['cors', 'resp', 'db', 'ENVIOS_HORA', 'DRIVE', 'UPLOAD', 'TOKEN_URL', 'FOLDER', 'MAX_ARQ', 'MAX_QTD', 'MAX_TOTAL', 'HORAS_CHAVE',
+  'tok', 'token', 'seguro', 'hojeBR', 'filhoPorNome', 'criarPasta', 'pastaFilha', 'sessaoResumivel', 'enviarParte']) {
+  chk(nome, adm.has(nome) && res.has(nome) && adm.get(nome) === res.get(nome));
+}
+// carregar/arquivo/parte/concluir: os das admissões, com a tabela das rescisões e sem a lista de documentos (grupo)
+const comoRescisao = s => s.replace(/"admissoes"/g, '"rescisoes"').replace(/\[adm\]/g, '[resc]')
+  .replace(/, grupo: (txt\(b\.grupo, 120\) \|\| null|arq\.grupo|x\.grupo)/g, '');
+for (const nome of ['carregar', 'arquivo', 'parte', 'concluir']) {
+  chk(nome + ' (o das admissões, com a tabela das rescisões)', adm.has(nome) && res.has(nome) && comoRescisao(adm.get(nome)) === res.get(nome));
+}
 
 console.log('Segurança do link:');
 const fonte = readFileSync(raiz + 'supabase/functions/rescisao-link/index.ts', 'utf8');
@@ -38,6 +50,14 @@ chk('não devolve dado do cadastro pra quem envia (sem cliente_id na resposta)',
 const pagina = readFileSync(raiz + 'rescisao.html', 'utf8');
 chk('rescisao.html fala só com a função (sem .from() do banco)', /functions\.invoke/.test(pagina) && !/supabase\.from\(/.test(pagina));
 chk('rescisao.html não importa o auth-guard', !/auth-guard/.test(pagina));
+chk('a chave do envio dos anexos vence (3 horas) e só vale com a pasta criada', /HORAS_CHAVE = 3/.test(fonte) && /chave: pasta \? chave : null/.test(fonte));
+chk('sem anexo, nenhuma pasta no Drive', /if \(chave\) \{\s*try \{\s*const t = await token\(\);/.test(fonte));
+
+console.log('Limites dos anexos iguais nos dois links:');
+const paginaAdm = readFileSync(raiz + 'admissao.html', 'utf8');
+for (const linha of ['const PARTE = 2 * 1024 * 1024;', 'const MAX_ARQ = 25 * 1024 * 1024, MAX_QTD = 20, MAX_TOTAL = 100 * 1024 * 1024;']) {
+  chk(linha, pagina.includes(linha) && paginaAdm.includes(linha));
+}
 
 console.log(falhas ? `\n${falhas} falha(s)` : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);

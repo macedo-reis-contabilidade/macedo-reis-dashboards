@@ -76,6 +76,11 @@ export const PERGUNTAS = {
     opcoes: [['trabalhado', 'Trabalhado', 'o funcionário trabalha os 30 dias do aviso'],
              ['indenizado', 'Indenizado', 'o funcionário sai no dia da comunicação e a empresa paga o aviso']],
   },
+  // os anexos (28/10/2026): quadro próprio no link, logo acima das observações; os arquivos vão pro Drive pela função
+  arquivos: {
+    rotulo: 'Arquivos',
+    ajuda: 'Opcional — anexe o que ajuda a calcular a rescisão: atestados, cartão ponto, o pedido de demissão ou o aviso prévio assinado, por exemplo.',
+  },
   obs: { rotulo: 'Observações', ajuda: 'Opcional — o que mais o DP precisa saber.' },
 };
 
