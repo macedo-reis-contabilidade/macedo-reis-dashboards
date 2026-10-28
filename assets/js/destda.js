@@ -72,6 +72,57 @@ export function regraDoItem(item, ufOrigem, regras) {
     .sort((a, b) => ncmDaRegra(b.ncm).length - ncmDaRegra(a.ncm).length)[0] || null;
 }
 
+// os nomes (28/10/2026, pedido da Thalia e do Samuel: "deduz por nome", como ela faz) — o fornecedor manda a ração de cão
+// e gato com o NCM 2309.90.10 (o da ração completa, o mesmo da ração de cavalo e de bezerro) em vez do 2309.10.00. O item
+// de outro NCM da mesma posição da regra (os 4 primeiros dígitos), vindo dos estados dela, entra no ST quando o nome tem
+// uma palavra de `nomes_entram` (cão, gato, a marca) e fica fora com uma de `nomes_fora` (cavalo, bezerro…); com as
+// duas, entra (o "sabor peixe" da ração de gato); sem nenhuma, fica a conferir — fora das contas até a palavra entrar
+// numa das listas
+export const semAcento = s => String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '');
+// o nome em palavras: maiúsculas, sem acento e sem pontuação ("G. N. ADULTO" → G, N, ADULTO)
+export const palavrasDoNome = s => semAcento(s).toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean);
+// a palavra (ou o trecho, "GRAN NATURE") está no nome: cada pedaço, em sequência, no começo de uma palavra do nome — o
+// plural entra ("GATO" pega "GATOS") —; o pedaço de até 3 letras, só a palavra inteira ("CAT" não pega "CATARINENSE")
+export function nomeTem(nome, termo) {
+  const p = Array.isArray(nome) ? nome : palavrasDoNome(nome), t = palavrasDoNome(termo);
+  if (!t.length) return false;
+  const bate = (a, b) => b.length <= 3 ? a === b : a.startsWith(b);
+  for (let k = 0; k + t.length <= p.length; k++) if (t.every((b, j) => bate(p[k + j], b))) return true;
+  return false;
+}
+// a lista digitada na regra ("cão, gato; GRAN NATURE" ou uma por linha) → em maiúsculas, como os nomes das notas, sem
+// repetir (sem olhar maiúscula e acento), até 300 nomes de até 60 letras
+export function lerNomes(texto) {
+  const vistos = new Set(), out = [];
+  String(texto == null ? '' : texto).split(/[,;\n]+/).map(s => s.trim().replace(/\s+/g, ' ')).forEach(s => {
+    const chave = palavrasDoNome(s).join(' ');
+    if (!chave || s.length > 60 || vistos.has(chave) || out.length >= 300) return;
+    vistos.add(chave); out.push(s.toLocaleUpperCase('pt-BR'));
+  });
+  return out;
+}
+
+// como o item entra no ICMS-ST (28/10/2026): { regra, como } — 'ncm' (o NCM da regra), 'nome' (outro NCM da mesma posição
+// e uma palavra de nomes_entram, em `palavra`), 'fora' (a mesma posição e uma de nomes_fora, em `palavra`: segue como
+// qualquer item — a 4%, vai pro DIFAL) ou 'conferir' (a mesma posição, sem palavra de nenhuma lista); null = sem regra
+export function classificarItem(item, ufOrigem, regras) {
+  const direta = regraDoItem(item, ufOrigem, regras);
+  if (direta) return { regra: direta, como: 'ncm' };
+  const ncm = digitos(item && item.ncm), uf = String(ufOrigem || '').toUpperCase();
+  if (ncm.length < 4 || !uf) return null;
+  const regra = (regras || []).filter(r => {
+    const rn = r && r.ativo !== false && ncmDaRegra(r.ncm);
+    return rn && rn.length > 4 && ncm.slice(0, 4) === rn.slice(0, 4) && (r.ufs || []).includes(uf);
+  }).sort((a, b) => ncmDaRegra(b.ncm).length - ncmDaRegra(a.ncm).length)[0];
+  if (!regra) return null;
+  const nome = palavrasDoNome(item.descricao);
+  const entra = (regra.nomes_entram || []).find(t => nomeTem(nome, t));
+  if (entra) return { regra, como: 'nome', palavra: entra };
+  const fora = (regra.nomes_fora || []).find(t => nomeTem(nome, t));
+  if (fora) return { regra, como: 'fora', palavra: fora };
+  return { regra, como: 'conferir' };
+}
+
 // a nota entra na conferência: entrada autorizada vinda de outro estado em que a empresa é a destinatária (a nota de
 // entrada que a própria empresa emite — a devolução, o retorno do depósito — não é compra de fora)
 export function notaDeFora(doc, docEmpresa) {
@@ -91,24 +142,30 @@ export const semAliquota = i => n(i && i.icms_valor) > 0 && (i.icms_aliquota == 
 
 // a conferência de uma empresa no mês: docs [{ id, tipo, status, emit_uf, emit_doc, dest_doc, data_emissao, numero, … }],
 // itensPorDoc Map(id da nota → itens), regras (destda_regras_st) e o CNPJ da empresa (só dígitos e letras) →
-// { diferencial: [{ doc, itens, difal, valor, base, icms }], st: [{ doc, itens (com .regra), recolher, valor, base, icms,
-// retido }], semAliquota: [doc], totais } — cada nota com os totais dela (o totalizador por nota da tela, 27/10/2026,
-// pedido da Thalia: comparar nota a nota com a conferência dela sem somar produto por produto); no ST, a base e o ICMS
-// são os dos itens que entram na conta (sem o ST retido e com a base do ICMS)
+// { diferencial: [{ doc, itens, difal, valor, base, icms }], st: [{ doc, itens (com .regra, .como e .palavra), recolher,
+// valor, base, icms, retido }], conferir: [{ doc, itens }], fora: [{ doc, itens }], semAliquota: [doc], totais } — cada
+// nota com os totais dela (o totalizador por nota da tela, 27/10/2026, pedido da Thalia: comparar nota a nota com a
+// conferência dela sem somar produto por produto); no ST, a base e o ICMS são os dos itens que entram na conta (sem o ST
+// retido e com a base do ICMS). Os itens da mesma posição do NCM da regra (28/10/2026, classificarItem): pelo nome, no
+// ST; os de nome de fora, em `fora` (e a 4%, no DIFAL); os sem palavra, em `conferir`, fora das duas contas
 export function conferirEmpresa(docs, itensPorDoc, regras, docEmpresa) {
-  const diferencial = [], st = [], incompletas = [];
+  const diferencial = [], st = [], conferir = [], fora = [], incompletas = [];
   const totais = {
     diferencial: { notas: 0, itens: 0, valor: 0, base: 0, icms: 0, difal: 0 },
-    st: { notas: 0, itens: 0, valor: 0, base: 0, icms: 0, retido: 0, semRetencao: 0, recolher: 0, semBase: 0 }
+    st: { notas: 0, itens: 0, valor: 0, base: 0, icms: 0, retido: 0, semRetencao: 0, recolher: 0, semBase: 0, conferir: 0, fora: 0 }
   };
   [...(docs || [])].sort(ordemDasNotas).forEach(d => {
     if (!notaDeFora(d, docEmpresa)) return;
     const itens = [...((itensPorDoc && itensPorDoc.get(d.id)) || [])].sort((a, b) => n(a.n_item) - n(b.n_item));
     if (itens.some(semAliquota)) incompletas.push(d);
-    const comSt = itens.map(i => ({ ...i, regra: regraDoItem(i, d.emit_uf, regras) })).filter(i => i.regra);
+    const cls = itens.map(i => ({ i, c: classificarItem(i, d.emit_uf, regras) }));
+    const comSt = cls.filter(x => x.c && (x.c.como === 'ncm' || x.c.como === 'nome'))
+      .map(x => ({ ...x.i, regra: x.c.regra, como: x.c.como, palavra: x.c.palavra || null }));
+    const duvida = cls.filter(x => x.c && x.c.como === 'conferir').map(x => ({ ...x.i, regra: x.c.regra }));
+    const peloNome = cls.filter(x => x.c && x.c.como === 'fora').map(x => ({ ...x.i, regra: x.c.regra, palavra: x.c.palavra }));
     // o item da regra de ST vai só pro ST, mesmo a 4%: o ST já leva o imposto até a alíquota do RS, e o DIFAL dele seria
-    // cobrado em dobro
-    const a4 = itens.filter(i => ehQuatro(i.icms_aliquota) && !regraDoItem(i, d.emit_uf, regras));
+    // cobrado em dobro; o a conferir fica fora das duas contas; o que o nome tirou da regra segue como qualquer item
+    const a4 = cls.filter(x => ehQuatro(x.i.icms_aliquota) && (!x.c || x.c.como === 'fora')).map(x => x.i);
     if (a4.length) {
       const nota = { doc: d, itens: a4, difal: difalDaNota(a4), valor: soma(a4, 'valor_total'), base: soma(a4, 'icms_base'), icms: soma(a4, 'icms_valor') };
       diferencial.push(nota);
@@ -124,10 +181,12 @@ export function conferirEmpresa(docs, itensPorDoc, regras, docEmpresa) {
       ['valor', 'base', 'icms', 'retido', 'recolher'].forEach(k => { t[k] += nota[k]; });
       comSt.forEach(i => { if (!stRetido(i)) t.semRetencao++; if (stSemBase(i)) t.semBase++; });
     }
+    if (duvida.length) { conferir.push({ doc: d, itens: duvida }); totais.st.conferir += duvida.length; }
+    if (peloNome.length) { fora.push({ doc: d, itens: peloNome }); totais.st.fora += peloNome.length; }
   });
   ['valor', 'base', 'icms', 'difal'].forEach(k => { totais.diferencial[k] = centavos(totais.diferencial[k]); });
   ['valor', 'base', 'icms', 'retido', 'recolher'].forEach(k => { totais.st[k] = centavos(totais.st[k]); });
-  return { diferencial, st, semAliquota: incompletas, totais };
+  return { diferencial, st, conferir, fora, semAliquota: incompletas, totais };
 }
 
 // as notas de uma empresa (o diferencial ou o ST de conferirEmpresa) agrupadas por data ou por fornecedor (o "Agrupar"
@@ -176,6 +235,6 @@ export const rotuloDoMes = comp => /^\d{4}-\d{2}$/.test(String(comp || '')) ? co
 // a situação da empresa no mês, pra ordenar e agrupar a tela: o que tem a recolher primeiro
 export function situacaoDaEmpresa(conf, temNotas) {
   if (!temNotas) return 'sem_notas';
-  if (conf.diferencial.length || conf.st.length || conf.semAliquota.length) return 'a_conferir';
+  if (conf.diferencial.length || conf.st.length || (conf.conferir || []).length || conf.semAliquota.length) return 'a_conferir';
   return 'nada';
 }

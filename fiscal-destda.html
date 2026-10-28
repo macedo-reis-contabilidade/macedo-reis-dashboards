@@ -108,6 +108,13 @@
     .ds-aviso { font-size:12.5px; color:var(--warn); margin:10px 0 0; }
     .ds-so-leitor { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
     .ds-conta { font-size:12.5px; color:var(--text-muted); margin:8px 0 0; }
+    /* a ração de outro NCM da mesma posição (28/10/2026): a que entrou pelo nome diz a palavra; a que o nome não decide
+       fica "a conferir", com o botão das regras; a que o nome tirou, numa linha embaixo */
+    table.ds td small.ds-pelo-nome { color:var(--ok); }
+    .ds-conferir { margin-top:14px; }
+    .ds-conferir .ds-aviso { margin:0 0 6px; line-height:1.6; }
+    .ds-conferir .ds-aviso .btn { margin-left:6px; vertical-align:baseline; }
+    .ds-fora { font-size:12.5px; color:var(--text-muted); margin:10px 0 0; line-height:1.6; }
     /* no celular: os números das abas em duas colunas; a linha da empresa em duas, com o nome em cima e o rótulo de cada valor */
     @media (max-width:720px){
       .fa-focus { grid-template-columns:repeat(2,1fr); }
@@ -146,8 +153,12 @@
     .ds-regra label.ds-ativa { font-size:12.5px; color:var(--brand-pale); display:flex; gap:6px; align-items:center; white-space:nowrap; }
     .ds-regra .ds-botoes { display:flex; gap:6px; }
     .ds-regra-msg { grid-column:1 / -1; font-size:12.5px; min-height:0; }
+    .ds-regra-nomes { grid-column:1 / -1; display:grid; grid-template-columns:1fr 1fr; gap:8px 12px; }
+    .ds-regra-nomes label { display:flex; flex-direction:column; gap:4px; font-size:12px; font-weight:600; color:var(--brand-light); }
+    .ds-regra-nomes label small { font-weight:400; color:var(--text-muted); }
+    .ds-regra-nomes .textarea { width:100%; min-height:62px; font-size:12.5px; }
     .ds-regra-cab { font-size:11px; color:var(--brand-light); font-weight:600; border-bottom:1px solid var(--line); padding-bottom:6px; }
-    @media (max-width:760px){ .ds-regra { grid-template-columns:1fr; } .ds-regra-cab { display:none; } }
+    @media (max-width:760px){ .ds-regra { grid-template-columns:1fr; } .ds-regra-cab { display:none; } .ds-regra-nomes { grid-template-columns:1fr; } }
   </style>
 </head>
 <body>
@@ -233,7 +244,8 @@
 
       <details class="ds-sec" id="secRegras">
         <summary><h2>Regras de ICMS-ST na entrada</h2><div class="ds-regras-resumo" id="regrasResumo"></div></summary>
-        <p class="ds-vazio" style="margin-top:12px;">O NCM (pode ser só o começo dele) vindo destes estados entra na conferência com qualquer alíquota — o ICMS-ST é recolhido aqui, mesmo que a nota não traga. Vale pra todas as empresas da lista.</p>
+        <p class="ds-vazio" style="margin-top:12px;">O NCM (pode ser só o começo dele) vindo destes estados entra na conferência com qualquer alíquota — o ICMS-ST é recolhido aqui, mesmo que a nota não traga. Vale pra todas as empresas da lista.<br>
+          Com o NCM completo, o item de outro NCM da mesma posição (os 4 primeiros dígitos — como a ração pet que o fornecedor pôs no 2309.90.10) é separado pelo nome: com uma palavra de "Nomes que entram", entra na conta; com uma de "Nomes que ficam fora" (de cavalo, de gado), não; sem nenhuma, fica "a conferir". As palavras vão separadas por vírgula, sem diferença de acento e de maiúscula, e valem pelo começo da palavra no nome (GATO acha GATOS); com até 3 letras, só a palavra inteira (CAT não acha CATARINENSE). Com uma palavra de cada lista, entra.</p>
         <div id="regras"></div>
         <div class="ds-acoes"><button class="btn btn-ghost btn-sm" id="btnNovaRegra">+ Nova regra</button></div>
       </details>
@@ -245,7 +257,7 @@ import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
 import { normalizarDocumento, hojeLocal } from './assets/js/utils.js';
 import { nomePorEmail } from './assets/js/equipe.js';
 import { importarLote } from './assets/js/importar-xml.js';
-import { conferirEmpresa, situacaoDaEmpresa, agruparNotas, mesAnterior, limitesDoMes, rotuloDoMes, lerUfs, ncmDaRegra, ncmFormatado, ALIQUOTA_INTERNA_RS, stRetido, stSemBase } from './assets/js/destda.js';
+import { conferirEmpresa, situacaoDaEmpresa, agruparNotas, mesAnterior, limitesDoMes, rotuloDoMes, lerUfs, ncmDaRegra, ncmFormatado, lerNomes, palavrasDoNome, ehQuatro, ALIQUOTA_INTERNA_RS, stRetido, stSemBase } from './assets/js/destda.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -288,7 +300,7 @@ async function carregarBase(){
   const [cs, os, rs] = await Promise.all([
     supabase.todosClientes('id, nome_principal, nome_fantasia, documento'),
     supabase.from('obrigacoes_fiscais').select('id, nome').ilike('nome', '%destda%'),
-    supabase.from('destda_regras_st').select('id, nome, ncm, ufs, ativo, observacao').order('nome')
+    supabase.from('destda_regras_st').select('id, nome, ncm, ufs, ativo, observacao, nomes_entram, nomes_fora').order('nome')
   ]);
   const erro = cs.error || os.error || rs.error;
   if (erro) { $('lista').innerHTML = '<div class="ds-vazio ds-err">Não consegui carregar: ' + esc(erro.message) + '</div>'; return false; }
@@ -336,7 +348,7 @@ async function carregarMes(){
   const itens = new Map();
   for (const f of fatias(docs.map(d => d.id), 150)) {
     const { data, error } = await supabase.todasLinhas(() => supabase.from('nf_itens')
-      .select('documento_id, n_item, ncm, descricao, cfop, valor_total, icms_base, icms_aliquota, icms_valor, icms_st_base, icms_st_valor')
+      .select('documento_id, n_item, ncm, cest, descricao, cfop, valor_total, icms_base, icms_aliquota, icms_valor, icms_st_base, icms_st_valor')
       .in('documento_id', f).order('documento_id').order('n_item'));
     if (error) { $('lista').innerHTML = '<div class="ds-vazio ds-err">Não consegui ler os itens das notas: ' + esc(error.message) + '</div>'; return; }
     (data || []).forEach(i => { if (!itens.has(i.documento_id)) itens.set(i.documento_id, []); itens.get(i.documento_id).push(i); });
@@ -373,7 +385,7 @@ function desenharConferencia(){
   // 27/10/2026, sem a alíquota, também em "Falta importar" (importar de novo completa)
   const g = {
     difal: aConferir.filter(l => l.conf.diferencial.length),
-    st: aConferir.filter(l => l.conf.st.length),
+    st: aConferir.filter(l => l.conf.st.length || l.conf.conferir.length),
     nada: linhas.filter(l => l.situacao === 'nada'),
     semNotas: linhas.filter(l => l.situacao === 'sem_notas'),
     deNovo: aConferir.filter(l => l.conf.semAliquota.length)
@@ -443,6 +455,8 @@ $('btnFecharTudo').addEventListener('click', () => { aberto.clear(); tudoAberto 
 // clicar na linha (ou Enter e espaço no botão dela) abre e recolhe, sem desenhar a tela de novo; o link da ficha não, e
 // quem está selecionando um valor pra copiar também não
 $('secConf').addEventListener('click', ev => {
+  const regra = ev.target.closest('[data-abrir-regras]');
+  if (regra) { abrirRegras(regra.dataset.abrirRegras); return; }
   const alvo = ev.target.closest('[data-alterna]');
   if (!alvo || ev.target.closest('a')) return;
   if (!ev.target.closest('button') && String(window.getSelection ? window.getSelection() : '')) return;
@@ -504,6 +518,9 @@ function listaDeEmpresas(ls, modo){
     + (modo !== 'difal' ? '<span class="num">ICMS-ST a recolher</span>' : '') + '<span></span></div>'
     + ls.map(l => linhaDaEmpresa(l, modo)).join('') + '</div>';
 }
+// o item a 4% a conferir (outro NCM da mesma posição de uma regra de ST, sem nome que decida) fica fora do DIFAL também:
+// na aba Com DIFAL, que não mostra o ST, ele aparece no DIFAL
+const aQuatroAConferir = conf => conf.conferir.reduce((s, x) => s + x.itens.filter(i => ehQuatro(i.icms_aliquota)).length, 0);
 // a nota importada antes de 27/10/2026, sem a alíquota: na aba Com ICMS-ST, só a que tem item da regra
 const notasIncompletas = (conf, modo) => modo === 'st' ? conf.semAliquota.filter(d => conf.st.some(x => x.doc.id === d.id)) : conf.semAliquota;
 function linhaDaEmpresa(l, modo){
@@ -511,16 +528,18 @@ function linhaDaEmpresa(l, modo){
   const td = conf.totais.diferencial, ts = conf.totais.st, incompletas = notasIncompletas(conf, modo);
   montadas.set(String(e.id), { l, modo });
   const valor = (rotulo, tem, total, notas, extra) => '<span class="ds-emp-val" data-rotulo="' + rotulo + '"><span class="ds-so-leitor">' + rotulo + ': </span>'
-    + (tem ? 'R$ ' + BRL(total) + '<small>' + qtd(notas, 'nota', 'notas') + '</small>' + (extra || '') : '<span class="ds-muda">—</span>') + '</span>';
+    + (tem ? 'R$ ' + BRL(total) + '<small>' + qtd(notas, 'nota', 'notas') + '</small>' : '<span class="ds-muda">—</span>') + (extra || '') + '</span>';
   return '<article class="ds-emp' + (abre ? ' is-open' : '') + '" data-empresa="' + esc(e.id) + '">'
     + '<div class="ds-emp-linha" data-alterna="' + esc(k) + '">'
     + '<h3><button type="button" class="ds-abre" aria-expanded="' + abre + '" aria-controls="' + esc(id) + '"><span class="ds-seta" aria-hidden="true"></span>'
     + '<span class="ds-emp-nome">' + esc(nomeDe(e)) + (e.nome_fantasia && e.nome_fantasia !== e.nome_principal ? ' <span class="ds-fant">' + esc(e.nome_fantasia) + '</span>' : '')
     + (incompletas.length ? '<small class="ds-sem">' + qtd(incompletas.length, 'nota de fora do RS sem a alíquota: importe de novo', 'notas de fora do RS sem a alíquota: importe de novo') + '</small>' : '')
     + '</span></button></h3>'
-    + (modo !== 'st' ? valor('DIFAL', conf.diferencial.length, td.difal, td.notas) : '')
+    + (modo !== 'st' ? valor('DIFAL', conf.diferencial.length, td.difal, td.notas,
+        modo === 'difal' && aQuatroAConferir(conf) ? '<small class="ds-sem">' + qtd(aQuatroAConferir(conf), 'item a 4% a conferir', 'itens a 4% a conferir') + '</small>' : '') : '')
     + (modo !== 'difal' ? valor('ICMS-ST a recolher', conf.st.length, ts.recolher, ts.notas,
-        ts.semBase ? '<small class="ds-sem">' + qtd(ts.semBase, 'item fora da conta', 'itens fora da conta') + '</small>' : '') : '')
+        (conf.st.length && ts.semBase ? '<small class="ds-sem">' + qtd(ts.semBase, 'item fora da conta', 'itens fora da conta') + '</small>' : '')
+        + (ts.conferir ? '<small class="ds-sem">' + qtd(ts.conferir, 'item a conferir', 'itens a conferir') + '</small>' : '')) : '')
     + '<a href="clientes/editar.html?id=' + encodeURIComponent(e.id) + '">abrir a ficha</a></div>'
     + '<div class="ds-emp-corpo" id="' + esc(id) + '"' + (abre ? '>' + detalheDaEmpresa(l, modo) : ' hidden>') + '</div>'
     + '</article>';
@@ -536,12 +555,14 @@ function detalheDaEmpresa({ e, conf }, modo){
       + linhasDasNotas(e.id, 'dif', conf.diferencial, { soma: celulasDif, item: i => '<td></td>' + celulasDoItem(i) + '<td></td>' })
       + '</tbody><tfoot><tr><td colspan="3">Total</td>' + celulasDif(td, td.itens) + '</tr></tfoot></table>');
   }
-  if (modo !== 'difal' && conf.st.length) {
-    const nomesRegras = [...new Set(conf.st.flatMap(x => x.itens.map(i => i.regra.nome)))].join(', ');
+  if (modo !== 'difal' && (conf.st.length || conf.conferir.length)) {
+    const nomesRegras = [...new Set([...conf.st, ...conf.conferir].flatMap(x => x.itens.map(i => i.regra.nome)))].join(', ');
     const soDaConta = 'Na linha da nota e no total, só os itens que entram na conta: sem o ST retido e com a base do ICMS na nota';
-    h += categoria(e.id, 'st', 'ICMS-ST na entrada — ' + esc(nomesRegras) + ' · ' + qtd(ts.notas, 'nota', 'notas') + ', ' + qtd(ts.itens, 'item', 'itens') + ' · ST a recolher R$ ' + BRL(ts.recolher)
-        + (ts.semBase ? ' · <span class="ds-sem">' + qtd(ts.semBase, 'item fora da conta, sem a base do ICMS na nota', 'itens fora da conta, sem a base do ICMS na nota') + '</span>' : ''),
-      '<table class="ds ds-st"><thead><tr><th>Data</th><th>Nota</th><th>Fornecedor / item</th><th class="num">Itens</th><th class="num">Valor</th>'
+    h += categoria(e.id, 'st', 'ICMS-ST na entrada — ' + esc(nomesRegras)
+        + (conf.st.length ? ' · ' + qtd(ts.notas, 'nota', 'notas') + ', ' + qtd(ts.itens, 'item', 'itens') + ' · ST a recolher R$ ' + BRL(ts.recolher) : '')
+        + (conf.st.length && ts.semBase ? ' · <span class="ds-sem">' + qtd(ts.semBase, 'item fora da conta, sem a base do ICMS na nota', 'itens fora da conta, sem a base do ICMS na nota') + '</span>' : '')
+        + (ts.conferir ? ' · <span class="ds-sem">' + qtd(ts.conferir, 'item a conferir', 'itens a conferir') + '</span>' : ''),
+      (conf.st.length ? '<table class="ds ds-st"><thead><tr><th>Data</th><th>Nota</th><th>Fornecedor / item</th><th class="num">Itens</th><th class="num">Valor</th>'
       + '<th class="num" title="' + soDaConta + '">Base do ICMS</th><th class="num">Alíq.</th><th class="num" title="' + soDaConta + '">ICMS destacado</th><th class="num">ST retida na nota</th>'
       + '<th class="num" title="' + esc(textoDaContaSt()) + '">ST a recolher</th></tr></thead><tbody>'
       + linhasDasNotas(e.id, 'st', conf.st, {
@@ -549,7 +570,13 @@ function detalheDaEmpresa({ e, conf }, modo){
           item: i => '<td></td>' + celulasDoItem(i) + '<td class="num">' + (stRetido(i) ? BRL(i.icms_st_valor) : '<span class="ds-muda">sem retenção</span>') + '</td><td></td>',
           aviso: i => stSemBase(i) ? 'sem a base do ICMS na nota: fora da conta, confira' : ''
         })
-      + '</tbody><tfoot><tr><td colspan="3">Total</td>' + celulasSt(ts, ts.itens) + '</tr></tfoot></table>');
+      + '</tbody><tfoot><tr><td colspan="3">Total</td>' + celulasSt(ts, ts.itens) + '</tr></tfoot></table>' : '')
+      + itensAConferir(conf) + itensForaPeloNome(conf));
+  }
+  const fora4 = modo === 'difal' ? aQuatroAConferir(conf) : 0;
+  if (fora4) {
+    h += '<p class="ds-aviso">' + (fora4 === 1 ? '1 item a 4% ficou' : fora4 + ' itens a 4% ficaram') + ' fora do DIFAL: ' + (fora4 === 1 ? 'é' : 'são')
+      + ' de outro NCM da mesma posição de uma regra de ICMS-ST, e o nome não diz se ' + (fora4 === 1 ? 'entra' : 'entram') + ' no ST. Veja na aba Com ICMS-ST.</p>';
   }
   const incompletas = notasIncompletas(conf, modo);
   if (incompletas.length) {
@@ -586,6 +613,7 @@ function linhasDasNotas(empId, cat, notas, cel){
           const aviso = cel.aviso ? cel.aviso(i) : '';
           return '<tr class="ds-i" data-n="' + esc(k) + '"' + g + (noGrupo && abre ? '' : ' hidden') + '><td></td><td></td>'
             + '<td>' + esc(i.descricao || '—') + '<small>NCM ' + esc(ncmFormatado(i.ncm) || '—') + (i.cfop ? ' · CFOP ' + esc(i.cfop) : '') + '</small>'
+            + (i.como === 'nome' ? '<small class="ds-pelo-nome">entrou pelo nome: ' + esc(i.palavra) + '</small>' : '')
             + (aviso ? '<small class="ds-sem">' + esc(aviso) + '</small>' : '') + '</td>' + cel.item(i) + '</tr>';
         }).join('');
   };
@@ -606,7 +634,28 @@ function textoDaConta(){
 }
 function textoDaContaSt(){
   return 'ICMS-ST = a base do ICMS dos itens da regra × ' + ALIQUOTA_INTERNA_RS + '% (a alíquota do RS) − o ICMS destacado neles, nota por nota, sem MVA. '
-    + 'O item com o ST já retido pelo fornecedor fica fora da conta.';
+    + 'O item com o ST já retido pelo fornecedor fica fora da conta. O de outro NCM da mesma posição (os 4 primeiros dígitos, como o 2309.90.10 da ração) entra pelo nome, pelas listas da regra.';
+}
+// os itens a conferir (28/10/2026): outro NCM da mesma posição da regra, sem palavra de nenhuma lista dela — fora da conta
+// até a Thalia pôr uma palavra do nome (a marca) numa das listas, em Regras
+const cestFormatado = c => { const d = String(c || '').replace(/\D/g, ''); return d.length === 7 ? d.slice(0, 2) + '.' + d.slice(2, 5) + '.' + d.slice(5) : d; };
+function itensAConferir(conf){
+  if (!conf.conferir.length) return '';
+  const n = conf.totais.st.conferir;
+  return '<div class="ds-conferir"><p class="ds-aviso">' + (n === 1 ? '1 item a conferir: é' : n + ' itens a conferir: são')
+    + ' de outro NCM da mesma posição da regra, e o nome não diz se entra. ' + (n === 1 ? 'Fica' : 'Ficam') + ' fora da conta até uma palavra do nome — a marca, por exemplo — '
+    + 'entrar em "Nomes que entram" ou em "Nomes que ficam fora" da regra. <button type="button" class="btn btn-ghost btn-sm" data-abrir-regras="' + esc(conf.conferir[0].itens[0].regra.id) + '">Abrir as regras</button></p>'
+    + '<table class="ds ds-conf"><thead><tr><th>Data</th><th>Nota</th><th>Fornecedor</th><th>Item</th><th class="num">Valor</th><th class="num">Base do ICMS</th><th class="num">Alíq.</th><th class="num">ICMS destacado</th></tr></thead><tbody>'
+    + conf.conferir.flatMap(x => x.itens.map(i => '<tr><td>' + dataBR(x.doc.data_emissao) + '</td><td>' + esc(x.doc.numero || '—') + '</td>'
+      + '<td>' + esc(x.doc.emit_nome || '—') + '<small>' + esc(x.doc.emit_uf || '') + '</small></td>'
+      + '<td>' + esc(i.descricao || '—') + '<small>NCM ' + esc(ncmFormatado(i.ncm) || '—') + (i.cest ? ' · CEST ' + esc(cestFormatado(i.cest)) : '') + '</small></td>'
+      + celulasDoItem(i) + '</tr>')).join('')
+    + '</tbody></table></div>';
+}
+// os que o nome tirou da regra (o EQUIMIL, de cavalo): a lista embaixo, pra ver o que ficou de fora e por quê
+function itensForaPeloNome(conf){
+  if (!conf.fora.length) return '';
+  return '<p class="ds-fora">Ficou fora pelo nome: ' + conf.fora.flatMap(x => x.itens.map(i => esc(i.descricao || '—') + ' (nota ' + esc(x.doc.numero || '—') + ', por "' + esc(i.palavra) + '")')).join('; ') + '.</p>';
 }
 
 // ---------- importar ----------
@@ -678,15 +727,18 @@ function relatorio(r){
 // ---------- as regras ----------
 $('btnNovaRegra').addEventListener('click', () => {
   if (document.querySelector('.ds-regra[data-id=""]')) return;
-  regras.push({ id: '', nome: '', ncm: '', ufs: [], ativo: true });
+  regras.push({ id: '', nome: '', ncm: '', ufs: [], ativo: true, nomes_entram: [], nomes_fora: [] });
   desenharRegras();
   const nova = document.querySelector('.ds-regra[data-id=""] input');
   if (nova) nova.focus();
 });
 function desenharRegras(){
   const ativas = regras.filter(r => r.id && r.ativo !== false);
+  // com o NCM completo, o resto da posição é separado pelo nome (os 4 primeiros dígitos do NCM da regra)
+  const peloNome = r => { const n = ncmDaRegra(r.ncm) || '', ne = (r.nomes_entram || []).length, nf = (r.nomes_fora || []).length;
+    return n.length > 4 ? ' · o resto do ' + n.slice(0, 4) + ' pelo nome (' + qtd(ne, 'nome que entra', 'nomes que entram') + ', ' + qtd(nf, 'que fica fora', 'que ficam fora') + ')' : ''; };
   $('regrasResumo').textContent = ativas.length
-    ? ativas.map(r => r.nome + ' · NCM ' + ncmFormatado(r.ncm) + ' · ' + (r.ufs || []).join(', ')).join(' — ')
+    ? ativas.map(r => r.nome + ' · NCM ' + ncmFormatado(r.ncm) + ' · ' + (r.ufs || []).join(', ') + peloNome(r)).join(' — ')
     : 'Nenhuma regra ativa.';
   $('regras').innerHTML = '<div class="ds-regra ds-regra-cab"><span>Nome</span><span>NCM</span><span>Estados de origem</span><span></span><span></span></div>'
     + regras.map((r, k) => '<div class="ds-regra" data-id="' + esc(r.id) + '" data-k="' + k + '">'
@@ -695,7 +747,22 @@ function desenharRegras(){
       + '<input class="input" data-campo="ufs" value="' + esc((r.ufs || []).join(', ')) + '" aria-label="Estados de origem" placeholder="SC, BA, GO">'
       + '<label class="ds-ativa"><input type="checkbox" data-campo="ativo"' + (r.ativo !== false ? ' checked' : '') + '> Ativa</label>'
       + '<span class="ds-botoes"><button class="btn btn-primary btn-sm" data-salvar>Salvar</button>' + (r.id ? '<button class="btn btn-ghost btn-sm" data-excluir>Excluir</button>' : '<button class="btn btn-ghost btn-sm" data-cancelar>Cancelar</button>') + '</span>'
+      + '<div class="ds-regra-nomes">'
+      + '<label>Nomes que entram <small>outro NCM da mesma posição com uma destas palavras entra na conta</small>'
+      + '<textarea class="textarea" data-campo="nomes_entram" rows="2" placeholder="CÃO, GATO, a marca da ração…">' + esc((r.nomes_entram || []).join(', ')) + '</textarea></label>'
+      + '<label>Nomes que ficam fora <small>com uma destas e nenhuma da outra lista, fica fora</small>'
+      + '<textarea class="textarea" data-campo="nomes_fora" rows="2" placeholder="CAVALO, BOVINO, AVES…">' + esc((r.nomes_fora || []).join(', ')) + '</textarea></label>'
+      + '</div>'
       + '<span class="ds-regra-msg" role="status"></span></div>').join('');
+}
+// o "Abrir as regras" dos itens a conferir: as regras abertas, o cursor nos nomes que entram da regra deles
+function abrirRegras(id){
+  $('secRegras').open = true;
+  const campo = document.querySelector('.ds-regra[data-id="' + CSS.escape(String(id || '')) + '"] [data-campo="nomes_entram"]')
+    || document.querySelector('.ds-regra:not(.ds-regra-cab) [data-campo="nomes_entram"]');
+  const alvo = campo ? campo.closest('.ds-regra') : $('secRegras');
+  alvo.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  if (campo) { campo.focus({ preventScroll: true }); campo.setSelectionRange(campo.value.length, campo.value.length); }
 }
 $('regras').addEventListener('click', async ev => {
   const linha = ev.target.closest('.ds-regra'); if (!linha || linha.classList.contains('ds-regra-cab')) return;
@@ -715,16 +782,22 @@ $('regras').addEventListener('click', async ev => {
   if (!ncm) { aviso('O NCM tem de ter de 2 a 8 dígitos (pode ser só o começo dele).', 'err'); valor('ncm').focus(); return; }
   if (invalidas.length) { aviso('Não é estado: ' + invalidas.join(', ') + '.', 'err'); valor('ufs').focus(); return; }
   if (!ufs.length) { aviso('Ponha pelo menos um estado de origem.', 'err'); valor('ufs').focus(); return; }
-  const dados = { nome, ncm, ufs, ativo: valor('ativo').checked, atualizado_em: new Date().toISOString() };
+  const nomes_entram = lerNomes(valor('nomes_entram').value), nomes_fora = lerNomes(valor('nomes_fora').value);
+  const chave = t => palavrasDoNome(t).join(' '), nasDuas = nomes_fora.filter(t => nomes_entram.some(e => chave(e) === chave(t)));
+  const dados = { nome, ncm, ufs, ativo: valor('ativo').checked, nomes_entram, nomes_fora, atualizado_em: new Date().toISOString() };
   const consulta = r.id ? supabase.from('destda_regras_st').update(dados).eq('id', r.id) : supabase.from('destda_regras_st').insert(dados);
-  const { data, error } = await consulta.select('id, nome, ncm, ufs, ativo, observacao');
+  const { data, error } = await consulta.select('id, nome, ncm, ufs, ativo, observacao, nomes_entram, nomes_fora');
   if (error) { aviso('Não salvei: ' + error.message, 'err'); return; }
   const salva = (data || [])[0] || { ...r, ...dados };
   regras[k] = salva;
   regras.sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
   desenharRegras(); desenharConferencia();
   const mesma = [...document.querySelectorAll('.ds-regra')].find(l => salva.id && l.dataset.id === String(salva.id));
-  if (mesma) { const m = mesma.querySelector('.ds-regra-msg'); m.textContent = 'Salva — a conferência já usa.'; m.className = 'ds-regra-msg ds-ok'; }
+  if (mesma) {
+    const m = mesma.querySelector('.ds-regra-msg');
+    m.textContent = 'Salva — a conferência já usa.' + (nasDuas.length ? ' ' + nasDuas.join(', ') + (nasDuas.length === 1 ? ' está' : ' estão') + ' nas duas listas: vale a de entrar.' : '');
+    m.className = 'ds-regra-msg ds-ok';
+  }
 });
 </script>
 </body>

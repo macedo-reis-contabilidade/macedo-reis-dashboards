@@ -18,13 +18,18 @@ Confere, nos temas escuro e claro:
      a 4% e o item a 12% não), cada nota numa linha com o total dela e o DIFAL (13% da base dos itens a 4%, na nota
      inteira), os itens abrindo embaixo, o total e a linha da conta; o diferencial, a nota e a empresa recolhem;
      a ração de SP (mesmo a 12%) no ICMS-ST, com o que o fornecedor reteve, o item sem retenção e o ST a recolher da nota
-     (17% da base − o ICMS destacado, a retida fora); a ração do PR e a de cavalo (2309.90.10) não; a
-     empresa sem nada a recolher e a sem notas de entrada;
+     (17% da base − o ICMS destacado, a retida fora); a ração do PR não; a de cavalo (2309.90.10) fica fora pelo nome,
+     numa linha embaixo; a empresa sem nada a recolher e a sem notas de entrada;
   3b. as abas (pedido da Thalia): "Com DIFAL" com só o diferencial, "Com ICMS-ST" com só o ST, "Sem nada a recolher" e
      "Falta importar" com os nomes, cada uma com a conta dela embaixo; pelo teclado (Enter e espaço);
   3c. o recolher (pedido do Samuel): agrupar as notas por fornecedor e por data, com o subtotal e guardado no navegador;
      Expandir tudo e Recolher tudo;
-  4. trocar o mês na aba "Com DIFAL": 08/2026 mostra só a nota de agosto, com o DIFAL dela, e a aba fica;
+  4. trocar o mês na aba "Com DIFAL": 08/2026 mostra só a nota de GO, com o DIFAL dela, e a aba fica; o item a 4% que o
+     nome não decide fica fora do DIFAL, com o aviso;
+  4b. a ração pet de outro NCM (28/10/2026, as notas da Thalia com 2309.90.10): a de gato entra no ST pelo nome, com a
+     palavra; o TERNERON fica fora pelo nome; a marca que nenhuma lista conhece fica "a conferir", fora das duas contas,
+     com o CEST; o "Abrir as regras" leva pros nomes que entram da regra, e pôr a marca lá a põe no ST na hora; a palavra
+     nas duas listas avisa;
   5. as regras: estado que não existe, NCM curto e regra sem nome não gravam; pôr o PR na ração grava e a nota do PR
      entra na hora; a regra nova grava e a excluída sai; a desligada tira o ICMS-ST da conferência;
   6. texto de fora entra como texto (o nome da empresa, do fornecedor, do item e do arquivo com <img onerror>);
@@ -62,9 +67,12 @@ def icms10(aliq, base, base_st, st):
 def nfe(numero, uf, cnpj_emit, nome_emit, cnpj_dest, data, itens, tpnf=1):
     chave = CUF[uf] + data[2:4] + data[5:7] + cnpj_emit + '55' + '001' + str(numero).zfill(9) + '1' + str(numero).zfill(8) + '0'
     assert len(chave) == 44
-    dets = ''.join(f'<det nItem="{i}"><prod><cProd>{i}</cProd><xProd>{xt(desc)}</xProd><NCM>{ncm}</NCM><CFOP>{cfop}</CFOP><uCom>UN</uCom>'
-                   f'<qCom>1</qCom><vUnCom>{valor:.2f}</vUnCom><vProd>{valor:.2f}</vProd></prod><imposto><ICMS>{icms}</ICMS></imposto></det>'
-                   for i, (ncm, desc, cfop, valor, icms) in enumerate(itens, 1))
+    def det(i, it):   # (ncm, descrição, cfop, valor, icms[, cest])
+        ncm, desc, cfop, valor, icms = it[:5]
+        cest = f'<CEST>{it[5]}</CEST>' if len(it) > 5 else ''
+        return (f'<det nItem="{i}"><prod><cProd>{i}</cProd><xProd>{xt(desc)}</xProd><NCM>{ncm}</NCM>{cest}<CFOP>{cfop}</CFOP><uCom>UN</uCom>'
+                f'<qCom>1</qCom><vUnCom>{valor:.2f}</vUnCom><vProd>{valor:.2f}</vProd></prod><imposto><ICMS>{icms}</ICMS></imposto></det>')
+    dets = ''.join(det(i, it) for i, it in enumerate(itens, 1))
     total = sum(i[3] for i in itens)
     return chave, f'''<?xml version="1.0" encoding="UTF-8"?><nfeProc xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00"><NFe><infNFe Id="NFe{chave}" versao="4.00">
 <ide><cUF>{CUF[uf]}</cUF><mod>55</mod><serie>1</serie><nNF>{numero}</nNF><dhEmi>{data}T10:00:00-03:00</dhEmi><tpNF>{tpnf}</tpNF><finNFe>1</finNFe></ide>
@@ -90,12 +98,18 @@ _, N5 = nfe(505, 'MG', '84000000000100', PERIGO_FORNECEDOR, EMP['d2'], '2026-09-
 _, N6 = nfe(606, 'SC', '81000000000100', 'FORNECEDOR SC TESTE SA', EMP['d5'], '2026-09-09', [('19052090', 'PAO', '6102', 200, icms00(12, 200))])
 _, N7 = nfe(707, 'SP', '86000000000100', 'TERCEIRO SA', '87000000000100', '2026-09-10', [('85163100', 'SECADOR', '6102', 90, icms00(4, 90))])
 _, N8 = nfe(808, 'GO', '88000000000100', 'GOIAS TESTE SA', EMP['d1'], '2026-08-20', [('85163100', 'SECADOR', '6102', 700, icms00(4, 700))])
+# agosto, a ração pet que o fornecedor pôs no 2309.90.10 (as notas da Thalia, 28/10/2026): a de gato entra pelo nome (ST de
+# 17% de 200 − 24 = 10,00), o TERNERON fica fora pelo nome e a marca que nenhuma lista conhece, a 4%, fica a conferir
+_, N9 = nfe(909, 'SC', '89000000000100', 'RACOES SC TESTE SA', EMP['d1'], '2026-08-25',
+            [('23099010', 'RACAO GRAN NATURE GATOS CASTRADOS 10KG', '6102', 200, icms00(12, 200)),
+             ('23099010', 'TERNERON 25KG', '6102', 150, icms00(12, 150)),
+             ('23099010', 'RACAO MARCA NOVA 15KG', '6102', 100, icms00(4, 100), '2200100')])
 
 def zip_das_notas():
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
         for nome, xml in (('entradas/101.xml', N1), ('entradas/202.xml', N2), ('entradas/303.xml', N3), ('entradas/404.xml', N4),
-                          ('entradas/606.xml', N6), (ARQ_FORA, N7), ('entradas/agosto/808.xml', N8)):
+                          ('entradas/606.xml', N6), (ARQ_FORA, N7), ('entradas/agosto/808.xml', N8), ('entradas/agosto/909.xml', N9)):
             z.writestr(nome, xml)
         z.writestr('entradas/leia-me.txt', 'não é nota')
     return buf.getvalue()
@@ -114,7 +128,8 @@ DADOS = {
     'vinculos': [{'id': 'v' + c, 'cliente_id': c, 'obrigacao_id': 'oD', 'responsavel': 'Thalia', 'dia_prazo_override': None, 'ativo': c != 'd6'}
                  for c in ('d1', 'd2', 'd3', 'd5', 'd6')],
     'regras': [{'id': 'rg1', 'nome': 'Ração pet (alimento para cães e gatos)', 'ncm': '23091000', 'ufs': ['SC', 'BA', 'GO', 'RN', 'RO', 'SP'],
-                'ativo': True, 'observacao': None}],
+                'ativo': True, 'observacao': None,
+                'nomes_entram': ['CÃO', 'CÃES', 'GATO', 'FILHOTE', 'GRAN NATURE', 'G. N.'], 'nomes_fora': ['CAVALO', 'EQUINO', 'BEZERRO', 'TERNERON', 'AVES']}],
     # a nota de SC importada antes de 27/10/2026 (pela Reforma): os itens sem a base e a alíquota do ICMS
     'docs': [{'id': 'nd1', 'cliente_id': 'd1', 'importacao_id': None, 'chave': CH1, 'modelo': '55', 'numero': '101', 'data_emissao': '2026-09-05',
               'tipo': 'entrada', 'status': 'autorizada', 'emit_doc': '81000000000100', 'emit_nome': 'FORNECEDOR SC TESTE SA', 'emit_uf': 'SC',
@@ -228,7 +243,8 @@ def fluxo(b, base, tema, erros):
     curtas = p.inner_text('#curtas')
     ok('MERCADO SEM NOTAS LTDA' in curtas and 'PADARIA NADA A RECOLHER LTDA' in curtas and 'EX-CLIENTE' not in curtas and 'DISTRIBUIDORA' not in curtas,
        'aberta: as sem notas de entrada; o vínculo desligado e a empresa fora da obrigação, não')
-    ok('Ração pet (alimento para cães e gatos) · NCM 2309.10.00 · SC, BA, GO, RN, RO, SP' in p.inner_text('#regrasResumo'), 'o resumo das regras')
+    ok('Ração pet (alimento para cães e gatos) · NCM 2309.10.00 · SC, BA, GO, RN, RO, SP · o resto do 2309 pelo nome (6 nomes que entram, 5 que ficam fora)' in p.inner_text('#regrasResumo'),
+       f'o resumo das regras, com as listas de nomes ({p.inner_text("#regrasResumo")!r})')
     abrir_aba(p, 'importar')
     imp = p.inner_text('#lista')
     ok(aba_ativa(p) == ['importar'] and cards(p) == [] and p.inner_text('#curtas').strip() == '' and p.inner_text('#conta').strip() == '' and p.is_hidden('#ferr'),
@@ -251,15 +267,15 @@ def fluxo(b, base, tema, erros):
     p.wait_for_function("() => document.getElementById('btnImportar').textContent === 'Importar' && /novas/.test(document.getElementById('msgImp').textContent)", timeout=15000)
     esperar_mes(p, '09/2026')
     msg = p.inner_text('#msgImp')
-    ok(msg == '7 notas novas · 1 já estava na base · notas de 08/2026 (1), 09/2026 (7)', f'o resumo ({msg!r})')
+    ok(msg == '8 notas novas · 1 já estava na base · notas de 08/2026 (2), 09/2026 (7)', f'o resumo ({msg!r})')
     rel = p.text_content('#rel')
-    ok('4 empresas nas notas' in rel and 'AGROPECUÁRIA TESTE LTDA: 4 novas, 1 já na base' in rel, 'o resumo por empresa: a d1 com 4 novas e 1 já na base')
+    ok('4 empresas nas notas' in rel and 'AGROPECUÁRIA TESTE LTDA: 5 novas, 1 já na base' in rel, 'o resumo por empresa: a d1 com 5 novas e 1 já na base')
     ok('DISTRIBUIDORA DO CADASTRO LTDA: 0 novas' not in rel and 'DISTRIBUIDORA DO CADASTRO LTDA: 1 nova, 0 já na base · não está na obrigação SEDIF/DeSTDA' in rel,
        'a empresa do cadastro fora da obrigação, marcada')
     ok('1 nota de empresa fora do cadastro (ignorada)' in rel and 'fora-<img src=z onerror="window.__pego=4">.xml' in rel,
        'a nota de fora do cadastro: ignorada, contada, com o nome do arquivo como texto')
     docs = db(p, 'window.__mockDb.nf_documentos')
-    ok(len(docs) == 8, f'7 notas novas + a que já estava ({len(docs)})')
+    ok(len(docs) == 9, f'8 notas novas + a que já estava ({len(docs)})')
     n4 = sorted((d['cliente_id'], d['tipo']) for d in docs if d.get('numero') == '404')
     ok(n4 == [('d1', 'entrada'), ('d4', 'saida')], f'a nota entre duas empresas do cadastro: compra numa, venda na outra ({n4})')
     ok(not any(d.get('numero') == '707' for d in docs), 'a de fora do cadastro não entra')
@@ -320,7 +336,9 @@ def fluxo(b, base, tema, erros):
        f'os itens: a ração de SP a 12%, a sem e a com a retenção; a do PR e a de cavalo não ({st})')
     ok(linhas(p, '.ds-emp[data-empresa="d1"] table.ds-st tfoot tr') == [['Total', '2', '900,00', '500,00', '', '60,00', '47,20', '25,00']], 'o total do ICMS-ST')
     ok('ICMS-ST na entrada — Ração pet (alimento para cães e gatos) · 1 nota, 2 itens · ST a recolher R$ 25,00' in p.inner_text('.ds-emp[data-empresa="d1"]'), 'o título do ICMS-ST')
-    ok('RACAO CAVALO' not in p.text_content('.ds-emp[data-empresa="d1"]'), 'a ração de cavalo (2309.90.10) não aparece: não é ração pet')
+    ok('RACAO CAVALO' not in p.text_content('.ds-emp[data-empresa="d1"] table.ds-st')
+       and 'Ficou fora pelo nome: RACAO CAVALO 40KG (nota 202, por "CAVALO").' in p.inner_text('.ds-emp[data-empresa="d1"]'),
+       'a ração de cavalo (2309.90.10, outro NCM da posição) fica fora do ST pelo nome, numa linha embaixo')
     c2 = p.inner_text('.ds-emp[data-empresa="d2"]')
     ok(PERIGO_EMPRESA in c2 and '<b>NEGRITO</b>' in c2 and PERIGO_FORNECEDOR in c2 and PERIGO_ITEM in c2 and '32,00' in c2,
        'a compra de MG a 4%, com o nome da empresa, o fantasia, o fornecedor e o item como texto')
@@ -397,7 +415,57 @@ def fluxo(b, base, tema, erros):
     ago = linhas(p, '.ds-emp[data-empresa="d1"] table.ds-dif tbody tr')
     ok(aba_ativa(p) == ['difal'] and cards(p) == ['d1'] and ago == [['20/08/2026', '808', 'GOIAS TESTE SA GO', '1', '700,00', '700,00', '', '28,00', '91,00']],
        f'agosto, na mesma aba: só a nota de GO a 4%, com o DIFAL (13% de 700) ({ago})')
-    ok(abas(p) == {'difal': '1', 'st': '0', 'nada': '0', 'importar': '3', 'todas': '4'}, f'os números de agosto ({abas(p)})')
+    ok(abas(p) == {'difal': '1', 'st': '1', 'nada': '0', 'importar': '3', 'todas': '4'}, f'os números de agosto ({abas(p)})')
+    ok(valores(p, 'd1') == ['DIFAL: R$ 91,00 1 nota 1 item a 4% a conferir']
+       and 'Diferencial de alíquota — ICMS a 4% de fora do RS · 1 nota, 1 item · DIFAL R$ 91,00' in p.inner_text('.ds-emp[data-empresa="d1"]')
+       and '1 item a 4% ficou fora do DIFAL: é de outro NCM da mesma posição de uma regra de ICMS-ST, e o nome não diz se entra no ST. Veja na aba Com ICMS-ST.'
+           in p.inner_text('.ds-emp[data-empresa="d1"]'),
+       f'a ração a 4% que o nome não decide fica fora do DIFAL também, com o aviso na linha e no detalhe ({valores(p, "d1")})')
+
+    print(f'[{tema}] 4b. A ração pet de outro NCM, pelo nome (as notas da Thalia, 28/10/2026)')
+    abrir_aba(p, 'st')
+    ok(cards(p) == ['d1'] and valores(p, 'd1') == ['ICMS-ST a recolher: R$ 10,00 1 nota 1 item a conferir'] and aberta(p, 'd1'),
+       f'"Com ICMS-ST": a d1, com o ST da ração que entrou pelo nome e o item a conferir ({valores(p, "d1")})')
+    c1 = p.inner_text('.ds-emp[data-empresa="d1"]')
+    ok('ICMS-ST na entrada — Ração pet (alimento para cães e gatos) · 1 nota, 1 item · ST a recolher R$ 10,00 · 1 item a conferir' in c1, 'o título do ICMS-ST, com o a conferir')
+    st = linhas(p, '.ds-emp[data-empresa="d1"] table.ds-st tbody tr')
+    ok(st == [['25/08/2026', '909', 'RACOES SC TESTE SA SC', '1', '200,00', '200,00', '', '24,00', '0,00', '10,00']],
+       f'a nota: só a ração de gato na conta (17% de 200 − 24 = 10,00) ({st})')
+    abrir_nota(p, 'd1', 'ds-st', '909')
+    st = linhas(p, '.ds-emp[data-empresa="d1"] table.ds-st tbody tr')
+    ok(st[1:] == [['', '', 'RACAO GRAN NATURE GATOS CASTRADOS 10KG NCM 2309.90.10 · CFOP 6102 entrou pelo nome: GATO', '', '200,00', '200,00', '12%', '24,00', 'sem retenção', '']],
+       f'o item diz a palavra que o pôs no ST ({st[1:]})')
+    conf = linhas(p, '.ds-emp[data-empresa="d1"] table.ds-conf tbody tr')
+    ok(conf == [['25/08/2026', '909', 'RACOES SC TESTE SA SC', 'RACAO MARCA NOVA 15KG NCM 2309.90.10 · CEST 22.001.00', '100,00', '100,00', '4%', '4,00']]
+       and '1 item a conferir: é de outro NCM da mesma posição da regra, e o nome não diz se entra. Fica fora da conta' in c1,
+       f'a marca que nenhuma lista conhece: a conferir, com o CEST, fora da conta ({conf})')
+    ok('Ficou fora pelo nome: TERNERON 25KG (nota 909, por "TERNERON").' in c1 and 'TERNERON' not in p.text_content('.ds-emp[data-empresa="d1"] table.ds-st'),
+       'o TERNERON fica fora pelo nome')
+    p.click('.ds-emp[data-empresa="d1"] [data-abrir-regras]')
+    p.wait_for_function("() => document.activeElement && document.activeElement.dataset.campo === 'nomes_entram'", timeout=3000)
+    ok(p.evaluate("() => document.getElementById('secRegras').open && document.activeElement.closest('.ds-regra').dataset.id") == 'rg1'
+       and p.input_value('.ds-regra[data-id="rg1"] [data-campo="nomes_entram"]') == 'CÃO, CÃES, GATO, FILHOTE, GRAN NATURE, G. N.'
+       and p.input_value('.ds-regra[data-id="rg1"] [data-campo="nomes_fora"]') == 'CAVALO, EQUINO, BEZERRO, TERNERON, AVES',
+       '"Abrir as regras" abre as regras com o cursor nos nomes que entram da regra')
+    p.keyboard.type(', marca nova')
+    salvar_regra(p, 'rg1')
+    p.wait_for_function("() => /Salva/.test(document.querySelector('.ds-regra[data-id=\"rg1\"] .ds-regra-msg').textContent)", timeout=3000)
+    ok(db(p, "window.__mockDb.destda_regras_st.find(r => r.id === 'rg1').nomes_entram") == ['CÃO', 'CÃES', 'GATO', 'FILHOTE', 'GRAN NATURE', 'G. N.', 'MARCA NOVA']
+       and msg_regra(p, 'rg1') == 'Salva — a conferência já usa.', 'a marca entra na lista da regra, em maiúsculas como os nomes das notas')
+    st = linhas(p, '.ds-emp[data-empresa="d1"] table.ds-st tbody tr')
+    ok(valores(p, 'd1') == ['ICMS-ST a recolher: R$ 23,00 1 nota'] and p.locator('.ds-emp[data-empresa="d1"] table.ds-conf').count() == 0
+       and st[0] == ['25/08/2026', '909', 'RACOES SC TESTE SA SC', '2', '300,00', '300,00', '', '28,00', '0,00', '23,00']
+       and st[2][2] == 'RACAO MARCA NOVA 15KG NCM 2309.90.10 · CFOP 6102 entrou pelo nome: MARCA NOVA',
+       f'na hora, a ração da marca nova entra no ST (17% de 300 − 28 = 23,00) e sai do a conferir ({st})')
+    ok(p.input_value('.ds-regra[data-id="rg1"] [data-campo="nomes_entram"]') == 'CÃO, CÃES, GATO, FILHOTE, GRAN NATURE, G. N., MARCA NOVA', 'a lista volta em maiúsculas na tela')
+    p.fill('.ds-regra[data-id="rg1"] [data-campo="nomes_entram"]', 'CÃO, CÃES, GATO, FILHOTE, GRAN NATURE, G. N., MARCA NOVA, Aves')
+    salvar_regra(p, 'rg1')
+    p.wait_for_function("() => /Salva/.test(document.querySelector('.ds-regra[data-id=\"rg1\"] .ds-regra-msg').textContent)", timeout=3000)
+    ok(msg_regra(p, 'rg1') == 'Salva — a conferência já usa. AVES está nas duas listas: vale a de entrar.', f'a palavra nas duas listas avisa ({msg_regra(p, "rg1")!r})')
+    p.click('#secRegras > summary')
+    abrir_aba(p, 'difal')
+    ok(valores(p, 'd1') == ['DIFAL: R$ 91,00 1 nota'] and '4% ficou fora do DIFAL' not in p.inner_text('.ds-emp[data-empresa="d1"]'),
+       'no DIFAL, o aviso some: o item agora é do ST')
     trocar_mes(p, '2026-09')
     ok(aba_ativa(p) == ['difal'] and cards(p) == ['d1', 'd2'], 'de volta a setembro')
     abrir_aba(p, 'todas')

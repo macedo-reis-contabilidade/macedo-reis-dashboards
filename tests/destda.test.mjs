@@ -2,7 +2,8 @@
 // ração pet dos estados da regra (o ICMS-ST na entrada), a leitura dos estados e o mês. Dados inventados (CNPJ com o
 // dígito errado, nada de cliente). Rodar com: node tests/destda.test.mjs
 import { lerUfs, ncmDaRegra, ncmFormatado, ehQuatro, regraDoItem, notaDeFora, conferirEmpresa, mesAnterior, limitesDoMes,
-  rotuloDoMes, situacaoDaEmpresa, difalDaNota, stDaNota, stRetido, stSemBase, agruparNotas, ALIQUOTA_INTERNA_RS, UFS } from '../assets/js/destda.js';
+  rotuloDoMes, situacaoDaEmpresa, difalDaNota, stDaNota, stRetido, stSemBase, agruparNotas, nomeTem, lerNomes, classificarItem,
+  ALIQUOTA_INTERNA_RS, UFS } from '../assets/js/destda.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + JSON.stringify(extra) : '')); };
@@ -70,7 +71,7 @@ chk('o DIFAL da nota: 13% da base dos itens a 4% (o item a 12% fica fora)', c.di
 chk('o ST: a ração de SP (mesmo a 12%) e a de GO', c.st.map(x => x.doc.id).join(',') === 'n3,n4' && c.st[0].itens.length === 1 && c.st[0].itens[0].regra === RACAO);
 chk('o ST a recolher de cada nota: a de SP, 17% de 500 − 60 = 25; a de GO, com o ST retido pelo fornecedor, nada', c.st[0].recolher === 25 && c.st[1].recolher === 0, c.st.map(x => x.recolher));
 chk('os totais do ST, com a base e o ICMS da conta, o que o fornecedor reteve, quantos itens sem retenção e o a recolher',
-  JSON.stringify(c.totais.st) === JSON.stringify({ notas: 2, itens: 2, valor: 700, base: 500, icms: 60, retido: 35.5, semRetencao: 1, recolher: 25, semBase: 0 }), c.totais.st);
+  JSON.stringify(c.totais.st) === JSON.stringify({ notas: 2, itens: 2, valor: 700, base: 500, icms: 60, retido: 35.5, semRetencao: 1, recolher: 25, semBase: 0, conferir: 0, fora: 0 }), c.totais.st);
 const porNota = x => JSON.stringify(Object.fromEntries(Object.entries(x).filter(([k]) => !['doc', 'itens'].includes(k))));
 chk('o totalizador por nota do diferencial: o valor, a base e o ICMS dos itens a 4% da nota e o DIFAL dela',
   porNota(c.diferencial[0]) === JSON.stringify({ difal: 195, valor: 1500, base: 1500, icms: 60 }), porNota(c.diferencial[0]));
@@ -137,6 +138,55 @@ const stAg = agruparNotas(conferirEmpresa([nota('s1', { emit_uf: 'SP' }), nota('
   [RACAO], EMPRESA).st, 'fornecedor');
 chk('no ST, o subtotal leva o retido e o a recolher', stAg.length === 1 && stAg[0].total.recolher === 25 && stAg[0].total.retido === 7.5 && !('difal' in stAg[0].total), stAg[0] && stAg[0].total);
 chk('sem notas, nenhum grupo', agruparNotas([], 'data').length === 0 && agruparNotas(null, 'fornecedor').length === 0);
+
+console.log('Os nomes: a ração de cão e gato com o NCM 2309.90.10 (pedido da Thalia e do Samuel, 28/10/2026):');
+const PET = { ...RACAO, nomes_entram: ['CÃO', 'CÃES', 'GATO', 'CAT', 'GRAN NATURE', 'G. N.', 'SOFT C.'], nomes_fora: ['CAVALO', 'EQUINO', 'EQUIMIL', 'BEZERRO', 'TERNERON', 'PEIXE', 'PÁSSARO'] };
+chk('a palavra no começo de uma palavra do nome: o plural e o acento entram', nomeTem('RACAO GATOS ADULTOS', 'GATO') && nomeTem('RAÇÃO CÃES 15KG', 'CAES') && nomeTem('RACAO CAES', 'CÃES'));
+chk('a palavra de até 3 letras, só inteira: CAT não pega CATARINENSE; CÃO não pega CAOS', !nomeTem('RACAO CATARINENSE BOVINOS', 'CAT') && nomeTem('PREMIUM CAT 10KG', 'CAT') && !nomeTem('CAOS', 'CÃO'));
+chk('o trecho em sequência, sem a pontuação: GRAN NATURE, G. N. e SOFT C.', nomeTem('GRAN NATURE ADULTOS 15 KG', 'GRAN NATURE') && nomeTem('G. N. ADULTO XTREME SUP. PREM. 15 KG', 'G. N.')
+  && nomeTem('SOFT C. PREMIUM FRANGO E ARROZ 10,1 KG', 'SOFT C.') && !nomeTem('GRAN PLUS NATURE', 'GRAN NATURE') && !nomeTem('500 G NUTRI', 'G. N.'));
+chk('a lista digitada: vírgula, ponto e vírgula ou linha, sem repetir (maiúscula e acento não contam), em maiúsculas como os nomes das notas',
+  JSON.stringify(lerNomes('cão, gato; GRAN NATURE\nG. N.,  CAO , Gato,,')) === JSON.stringify(['CÃO', 'GATO', 'GRAN NATURE', 'G. N.']), lerNomes('cão, gato; GRAN NATURE\nG. N.,  CAO , Gato,,'));
+const cl = (descricao, ncm = '23099010', uf = 'SC', regras = [PET]) => classificarItem({ ncm, descricao }, uf, regras);
+chk('o NCM da regra entra direto, sem olhar o nome', cl('EQUIMIL', '23091000').como === 'ncm');
+chk('2309.90.10 com cão ou gato no nome: entra, dizendo a palavra', cl('RACAO CAES ADULTOS ZIGDOG CARNE PREMIUM').como === 'nome' && cl('RACAO CAES ADULTOS').palavra === 'CÃES'
+  && cl('GRAN NATURE GATOS CASTRADOS SALMAO 10,1 KG').como === 'nome');
+chk('pela marca: GRAN NATURE, G. N. e SOFT C. entram', ['GRAN NATURE ADULTOS 15 KG', 'G. N. ADULTO XTREME SUP. PREM. 15 KG', 'SOFT C. PREMIUM FRANGO E ARROZ 10,1 KG'].every(d => cl(d).como === 'nome'));
+chk('cavalo e bezerro ficam fora, dizendo a palavra', cl('EQUIMIL WL SC/40KG').como === 'fora' && cl('EQUIMIL WL SC/40KG').palavra === 'EQUIMIL' && cl('TERNERON 10KG').como === 'fora');
+chk('com as duas palavras, entra: o "sabor peixe" da ração de gato', cl('RACAO GATOS ADULTOS SABOR PEIXE').como === 'nome' && cl('RACAO PEIXES ORNAMENTAIS').como === 'fora');
+chk('sem palavra de nenhuma lista: a conferir', cl('MARCA NOVA ADULTOS 15 KG').como === 'conferir' && cl('MARCA NOVA ADULTOS 15 KG').regra === PET);
+chk('de estado fora da regra ou de outra posição do NCM: sem regra', cl('RACAO GATOS', '23099010', 'PR') === null && cl('RACAO GATOS', '23011000') === null
+  && cl('RACAO GATOS', '') === null);
+chk('a regra com o NCM de 4 dígitos pega a posição toda direto, sem os nomes', cl('EQUIMIL', '23099010', 'SC', [{ ...PET, ncm: '2309' }]).como === 'ncm');
+const nm = conferirEmpresa([nota('p1', { numero: '601' }), nota('p2', { numero: '602', data_emissao: '2026-09-11' })], new Map([
+  ['p1', [item(1, { ncm: '23099010', descricao: 'RACAO GATOS ADULTOS', icms_aliquota: 12, icms_base: 1000, icms_valor: 120, valor_total: 1000 }),
+          item(2, { ncm: '23099010', descricao: 'EQUIMIL WL SC/40KG', icms_aliquota: 12, icms_base: 2000, icms_valor: 240, valor_total: 2000 }),
+          item(3, { ncm: '23099010', descricao: 'MARCA NOVA ADULTOS 15 KG', icms_aliquota: 12, icms_base: 300, icms_valor: 36, valor_total: 300 })]],
+  ['p2', [item(1, { ncm: '23099010', descricao: 'RACAO BEZERRO', icms_aliquota: 4, icms_base: 500, icms_valor: 20, valor_total: 500 }),
+          item(2, { ncm: '23099010', descricao: 'MARCA NOVA FILHOTES', icms_aliquota: 4, icms_base: 100, icms_valor: 4, valor_total: 100 })]]
+]), [PET], EMPRESA);
+chk('na empresa: a de gato no ST (17% de 1.000 − 120 = 50), dizendo como entrou', nm.st.length === 1 && nm.st[0].itens.length === 1 && nm.st[0].recolher === 50
+  && nm.st[0].itens[0].como === 'nome' && nm.st[0].itens[0].palavra === 'GATO', nm.st.map(x => [x.recolher, x.itens.map(i => i.como + ':' + i.palavra)]));
+chk('a sem palavra fica a conferir, fora das duas contas, mesmo a 4%', nm.conferir.length === 2 && nm.conferir.map(x => x.itens.map(i => i.n_item).join()).join('|') === '3|2'
+  && nm.totais.st.conferir === 2 && !nm.diferencial.some(x => x.itens.some(i => /MARCA NOVA/.test(i.descricao))), nm.conferir.map(x => x.itens.map(i => i.descricao)));
+chk('a que o nome tirou da regra segue como qualquer item: a de bezerro a 4% vai pro DIFAL (13% de 500 = 65); o cavalo, a 12%, em nenhuma',
+  nm.diferencial.length === 1 && nm.diferencial[0].difal === 65 && nm.fora.length === 2 && nm.totais.st.fora === 2
+  && nm.fora[0].itens[0].palavra === 'EQUIMIL', [nm.diferencial.map(x => x.difal), nm.fora.map(x => x.itens.map(i => i.palavra))]);
+chk('a empresa só com item a conferir aparece na conferência', situacaoDaEmpresa(conferirEmpresa([nota('q')], new Map([['q', [item(1, { ncm: '23099010', descricao: 'MARCA NOVA', icms_aliquota: 12 })]]]), [PET], EMPRESA), true) === 'a_conferir');
+// as três notas da Thalia (28/10/2026, valores das notas; nomes dos produtos, sem fornecedor): R$ 88,16 + 87,71 + 7,38 = 183,25
+const tres = conferirEmpresa([nota('t1', { numero: '1' }), nota('t2', { numero: '2' }), nota('t3', { numero: '3' })], new Map([
+  ['t1', [item(1, { ncm: '23099010', descricao: 'RACAO CAES ADULTOS ZIGDOG CARNE PREMIUM 21% - 25 KG', icms_aliquota: 12, icms_base: 987.84, icms_valor: 118.54 }),
+          item(2, { ncm: '23099010', descricao: 'RACAO GATOS ADULTOS DUNKO CARNE E FRANGO 26% - 25 KG', icms_aliquota: 12, icms_base: 775.38, icms_valor: 93.05 })]],
+  ['t2', [item(1, { ncm: '23099010', descricao: 'GRAN NATURE ADULTOS 15 KG', icms_aliquota: 12, icms_base: 415.5, icms_valor: 49.86 }),
+          item(2, { ncm: '23099010', descricao: 'GRAN NATURE GATOS CASTRADOS SALMAO 10,1 KG', icms_aliquota: 12, icms_base: 424, icms_valor: 50.88 }),
+          item(3, { ncm: '23099010', descricao: 'SOFT C. PREMIUM FRANGO E ARROZ 10,1 KG', icms_aliquota: 12, icms_base: 277.3, icms_valor: 33.28 }),
+          item(4, { ncm: '23099010', descricao: 'G. N. ADULTO XTREME SUP. PREM. 15 KG', icms_aliquota: 12, icms_base: 637.5, icms_valor: 76.5 })]],
+  ['t3', [item(1, { ncm: '23099010', descricao: 'GRAN NATURE ADULTOS 15 KG', cfop: '6910', icms_aliquota: 12, icms_base: 41.55, icms_valor: 4.99 }),
+          item(2, { ncm: '23099010', descricao: 'GRAN NATURE GATOS CASTRADOS SALMAO 10,1 KG', cfop: '6910', icms_aliquota: 12, icms_base: 42.4, icms_valor: 5.09 }),
+          item(3, { ncm: '23099010', descricao: 'G. N. ADULTO XTREME SUP. PREM. 15 KG', cfop: '6910', icms_aliquota: 12, icms_base: 63.75, icms_valor: 7.65 })]]
+]), [PET], EMPRESA);
+chk('as três notas da Thalia, com a bonificação: 88,16 + 87,71 + 7,38 = 183,25, tudo pelo nome', tres.st.map(x => x.recolher).join('|') === '88.16|87.71|7.38'
+  && tres.totais.st.recolher === 183.25 && tres.conferir.length === 0, [tres.st.map(x => x.recolher), tres.totais.st.recolher]);
 
 console.log('A situação e o mês:');
 chk('sem notas no mês, com algo a conferir, nada', situacaoDaEmpresa(c, false) === 'sem_notas' && situacaoDaEmpresa(c, true) === 'a_conferir'
