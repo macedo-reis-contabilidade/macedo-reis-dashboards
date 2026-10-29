@@ -136,6 +136,11 @@ function q(table){
     if (self._out) return self._out;
     if (self._err) return (self._out = { data:null, error:self._err, count:0 });
     const data = self._ins || rows.filter(passa);
+    // o gatilho da tarefa 💰 faturável (trg_tarefa_faturavel, no banco de verdade): concluir a faturável sem empresa volta
+    // com o erro do banco e o UPDATE inteiro volta atrás — nenhuma linha muda (28/10/2026, faturavel-empresa.py)
+    if (self._patch && table === 'tarefas' && self._patch.status === 'concluida'
+        && data.some(r => r.faturavel && !r.cliente_id && !r.faturavel_de && r.status !== 'concluida'))
+      return (self._out = { data:null, error:{ code:'23502', message:'null value in column "cliente_id" of relation "faturaveis" violates not-null constraint' }, count:0 });
     if (self._patch) { data.forEach(r => Object.assign(r, self._patch)); console.log('MOCK UPDATE', table, data.length); emitir(table, 'UPDATE', data); }
     if (self._del) { data.forEach(r => rows.splice(rows.indexOf(r), 1)); console.log('MOCK DELETE', table, data.length); }
     return (self._out = { data: self._head ? null : copia(data), error:null, count: data.length });

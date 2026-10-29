@@ -21,6 +21,10 @@ export const SETORES = [
   ['irpf', 'IRPF'], ['gestao', 'Gestão'], ['geral', 'Geral'],
 ];
 const EQUIPE_PADRAO = ['Thalia', 'Vitória', 'Adaini', 'Samuel', 'Diego', 'Edna', 'Deize'];
+// A tarefa 💰 faturável precisa da empresa (28/10/2026): ao concluir, o banco cria a cobrança em Faturáveis pela empresa
+// da tarefa, e sem ela o concluir voltava com o erro do banco, em inglês (22 e 23/10, três tarefas que acabaram
+// excluídas). O formulário, o editor da Agenda e o das telas de Tarefas barram antes, com esta frase.
+export const FATURAVEL_SEM_EMPRESA = 'Tarefa 💰 faturável precisa da empresa: ao concluir, a cobrança vai pra ela. Escolha a empresa ou desmarque o Faturável.';
 const esc = t => String(t == null ? '' : t).replace(/[&<>"]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
 const ymd = d => dataLocal(d);   // dia no fuso local: toISOString é UTC e depois das 21h já era amanhã
 
@@ -149,6 +153,7 @@ async function salvar() {
   const titulo = $('ntTitulo').value.trim();
   if (!titulo) { alert('Dá um nome pra tarefa, pelo menos isso.'); $('ntTitulo').focus(); return; }
   const rep = $('ntRep').value;
+  if (rep === 'nao' && $('ntFat').checked && !clis.length) { alert(FATURAVEL_SEM_EMPRESA); $('ntCliBusca').focus(); return; }
   const setor = $('ntSetor').value;
   const responsavel = $('ntResp').value || null;
   const descricao = $('ntDesc').value.trim() || null;

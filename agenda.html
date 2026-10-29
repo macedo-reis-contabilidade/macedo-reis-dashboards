@@ -386,7 +386,7 @@
   <script src="assets/js/tour.js"></script>
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
-    import { abrirNovaTarefa } from './assets/js/nova-tarefa.js';
+    import { abrirNovaTarefa, FATURAVEL_SEM_EMPRESA } from './assets/js/nova-tarefa.js';
     import { formatDocumento, normalizarDocumento } from './assets/js/utils.js';
     import { rotinaDoDia, rotinaFeita } from './assets/js/rotinas-dia.js';
     import { montarChecklist, rotuloDoProgresso } from './assets/js/checklist.js';
@@ -691,7 +691,8 @@
       try {
         if (loteModo === 'concluir') {
           const { error } = await supabase.from('tarefas').update({ status: 'concluida', concluida_em: new Date().toISOString(), concluida_por: usuarioEmail }).in('id', ids);
-          if (error) { alert('Erro ao concluir: ' + error.message); return; }
+          // o erro do banco da 💰 faturável sem empresa (a cobrança vai pra empresa da tarefa): o lote inteiro volta atrás
+          if (error) { alert(/faturaveis/.test(error.message || '') ? 'Nenhuma foi concluída: uma das tarefas é 💰 faturável e não tem empresa. Abra ela, escolha a empresa (ou desmarque o Faturável) e conclua de novo.' : 'Erro ao concluir: ' + error.message); return; }
           window.dispatchEvent(new CustomEvent('mr:feito', { detail: { n: n } }));   // o assistente comemora
         }
         const texto = loteModo === 'concluir'
@@ -1596,6 +1597,8 @@
       };
       const setorMudou = patch.setor !== (procAtual.setor || 'geral');
       if (detCli.mudou) patch.cliente_id = detCli.id;
+      // 💰 faturável sem empresa não concluiria (a cobrança vai pra empresa da tarefa): barra antes de gravar
+      if (!concl && patch.faturavel && !(detCli.mudou ? detCli.id : procAtual.cliente_id)) { alert(FATURAVEL_SEM_EMPRESA); return; }
       if (!concl) patch.status = novoStatus;
       const statusMudou = !concl && procAtual.status !== novoStatus;
       const btn = document.getElementById('dSalvar'); btn.disabled = true;
@@ -1610,6 +1613,7 @@
 
     async function concluirTarefa(){
       if (!procAtual) return;
+      if (procAtual.faturavel && !procAtual.cliente_id) { alert(FATURAVEL_SEM_EMPRESA); return; }
       if (!confirm('Concluir esta tarefa?')) return;
       const { error } = await supabase.from('tarefas').update({ status:'concluida', concluida_em:new Date().toISOString(), concluida_por:usuarioEmail }).eq('id', procAtual.id);
       if (error){ alert('Erro: '+error.message); return; }

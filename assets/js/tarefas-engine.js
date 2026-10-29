@@ -10,7 +10,9 @@
 
 import { supabase, getCurrentUser, signOut } from './supabase.js';
 import { formatDate } from './utils.js';
-import { abrirNovaTarefa } from './nova-tarefa.js';
+import { abrirNovaTarefa, FATURAVEL_SEM_EMPRESA } from './nova-tarefa.js';
+// aqui o editor não troca a empresa: ela se escolhe no editor da tarefa na Agenda
+const FATURAVEL_SEM_EMPRESA_AQUI = FATURAVEL_SEM_EMPRESA + ' A empresa se escolhe no editor da tarefa, na Agenda.';
 import { rotinaDoDia, rotinaFeita } from './rotinas-dia.js';
 import { avisarDependentes } from './tarefas-acoes.js';
 import { montarChecklist, rotuloDoProgresso } from './checklist.js';
@@ -834,7 +836,7 @@ export function initTarefas(userCfg) {
         // clique, o update não pega linha nenhuma — e não sobrescreve a conclusão dela
         const { data: up, error } = await supabase.from('tarefas').update({ status:'concluida', concluida_em:new Date().toISOString(), concluida_por:usuarioEmail })
           .eq('id', id).neq('status', 'concluida').select('id');
-        if (error) { falhas.push(nomeDe(id) + ' (' + error.message + ')'); continue; }
+        if (error) { falhas.push(nomeDe(id) + ' (' + (/faturaveis/.test(error.message || '') ? '💰 faturável sem empresa: escolha a empresa na Agenda' : error.message) + ')'); continue; }
         if (!up || !up.length) { jaEstavam.push(nomeDe(id)); continue; }
         const { error: eHist } = await supabase.from('tarefa_historico').insert({ tarefa_id:id, descricao, autor:usuarioEmail });
         feitas++;   // a conclusão valeu mesmo sem o registro — o histórico é avisado à parte
@@ -1120,6 +1122,8 @@ export function initTarefas(userCfg) {
       descricao: $('dDescricao').value.trim() || null
     };
     const setorMudou = patch.setor !== (procAtual.setor || 'geral');
+    // 💰 faturável sem empresa não concluiria (a cobrança vai pra empresa da tarefa): barra antes de gravar
+    if (!concl && patch.faturavel && !procAtual.cliente_id) { alert(FATURAVEL_SEM_EMPRESA_AQUI); return; }
     if (!concl) patch.status = novoStatus;
     const statusMudou = !concl && procAtual.status !== novoStatus;
     const { error } = await supabase.from('tarefas').update(patch).eq('id', id);
@@ -1143,6 +1147,7 @@ export function initTarefas(userCfg) {
     if (btn.disabled) return;      // reentrada: já está concluindo
     const t = procAtual;           // fecharDetalhe() zera procAtual — segurar a referência
     const id = t.id;
+    if (t.faturavel && !t.cliente_id) { alert(FATURAVEL_SEM_EMPRESA_AQUI); return; }
     const cob = lerCobranca(t);    // valida ANTES do confirm: valor zerado não conclui
     if (cob === false) return;
     if (!confirm(cob ? C.confirmConcluir + '\n\nO serviço vai pra fila de Faturáveis: ' + cob.descricao + ' · ' + fmtBRL(cob.valor) + '.' : C.confirmConcluir)) return;
