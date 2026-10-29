@@ -1850,11 +1850,19 @@ def caso_dominio():
     ok(r.returncode == 0 and 'Tudo certo' in r.stdout, f'tests/ponte.test.py: saiu {r.returncode}')
     if r.returncode != 0:
         print('\n'.join(lin for lin in r.stdout.splitlines() if '✗' in lin))
+    ramo = ''
     if shutil.which('git'):
+        ramo = subprocess.run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], cwd=str(RAIZ), capture_output=True,
+                              encoding='utf-8', errors='replace').stdout.strip()
+    if not shutil.which('git'):
+        print('  (sem o git aqui: não conferi se o arquivo é o mesmo da main)')
+    elif ramo == 'main':
+        # na própria main o teste do Domínio muda quando a ponte do Domínio muda (29/10/2026: os comandos do dominio);
+        # a trava é pros ramos das filas, que não mexem nele
+        print('  (na main: o arquivo é o da main)')
+    else:
         g = subprocess.run(['git', 'diff', '--quiet', 'origin/main', '--', 'tests/ponte.test.py'], cwd=str(RAIZ))
         ok(g.returncode == 0, 'e o arquivo é o mesmo da main')
-    else:
-        print('  (sem o git aqui: não conferi se o arquivo é o mesmo da main)')
 
 
 def main():

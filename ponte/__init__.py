@@ -6,7 +6,8 @@ contado, e o que vier além dos campos do contrato é descartado antes de montar
 
     py -3 -m ponte conferir
     py -3 -m ponte rodar [--falso] [--sem-enviar] [--saida arquivo.json] [--meses N]
+    py -3 -m ponte dominio conexao | tabelas | sql      (a ligação com o banco do Domínio Web, 29/10/2026)
 
 Leia ponte/LEIA-ME.md.
 """
-VERSAO = '0.1.0'
+VERSAO = '0.2.0'

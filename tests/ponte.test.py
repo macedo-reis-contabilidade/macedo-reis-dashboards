@@ -21,6 +21,11 @@ Empresas, chaves e senhas são todas inventadas.
   7. conferir com a configuração incompleta diz o que falta sem mostrar valor; completa, faz o ping (404 = função
      ainda não publicada) e não grava nada
   +  --meses, o [rodada] meses do config.ini e a limpeza dos logs de mais de 60 dias
+  8. a ligação com o Domínio Web (dominio conexao | tabelas | sql, 29/10/2026), com um banco de mentira: a string de
+     conexão montada do que foi digitado (o host:porta colado junto, a senha duas vezes, o que não serve perguntado de
+     novo), gravada só no config.ini e testada; a senha nunca na tela nem no log; sem pyodbc, sem driver ou sem janela
+     que aceite digitação, nada é perguntado nem gravado; o catálogo só lê o SYS (nenhuma tabela do Domínio) e cai na
+     pasta da ponte; o sql só roda leitura, passa o mês nos dois ?, corta nas N linhas e não mostra coluna pessoal
 Termina com código 1 se alguma checagem falhar.
 """
 import datetime
@@ -160,8 +165,9 @@ def ponte(pasta, *args, ip_url=None, timeout_req='5'):
     env = dict(os.environ, PONTE_PASTA=str(pasta), PONTE_ESPERAS='0.05,0.05,0.05', PONTE_TIMEOUT=timeout_req,
                PONTE_IP_URL=ip_url or 'http://127.0.0.1:9/sem-ip', PYTHONIOENCODING='utf-8',
                PYTHONDONTWRITEBYTECODE='1')
+    # stdin vazio: o "dominio conexao" pergunta só numa janela que aceita digitação — aqui ele nunca espera teclado
     r = subprocess.run([sys.executable, '-m', 'ponte', *args], cwd=str(RAIZ), env=env, capture_output=True,
-                       encoding='utf-8', errors='replace', timeout=180)
+                       stdin=subprocess.DEVNULL, encoding='utf-8', errors='replace', timeout=180)
     return r.returncode, (r.stdout or '') + (r.stderr or '')
 
 
@@ -249,7 +255,7 @@ def caso_pacote():
     hora_com_fuso = r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d'
     ok(re.fullmatch(hora_com_fuso, r['inicio']) and re.fullmatch(hora_com_fuso, r['fim']) and r['inicio'] <= r['fim'],
        'inicio e fim com o fuso do PC, inicio <= fim')
-    ok(bool(r['maquina']) and r['ponte'] == '0.1.0', 'maquina preenchida, ponte 0.1.0')
+    ok(bool(r['maquina']) and r['ponte'] == '0.2.0', 'maquina preenchida, ponte 0.2.0')
 
     emp = {e['codigo']: e for e in p['empresas']}
     ok(sorted(emp) == [101, 102, 103, 104], 'as 4 empresas inventadas, pelo código')
@@ -654,11 +660,296 @@ def caso_meses_e_logs(sis):
     (RAIZ / solto).unlink(missing_ok=True)
 
 
+# ---------------------------------------------------------------- 8: a ligação com o Domínio Web
+
+class BancoDeMentira:
+    """Uma conexão ODBC de mentira pros comandos do `dominio`: responde(sql, params) devolve (colunas, linhas) ou
+    levanta. Guarda o que foi executado e quantas vezes as linhas foram lidas."""
+
+    def __init__(self, responde):
+        self.responde, self.executados, self.lidas, self.fechada = responde, [], 0, False
+
+    def cursor(self):
+        dono = self
+
+        class Cursor:
+            description = None
+
+            def execute(self, sql, params=None):
+                dono.executados.append((sql, tuple(params or ())))
+                cols, self._linhas = dono.responde(sql, tuple(params or ()))
+                self.description = [(c,) for c in cols]
+
+            def fetchall(self):
+                dono.lidas += 1
+                return list(self._linhas)
+
+            def fetchmany(self, n):
+                dono.lidas += 1
+                return list(self._linhas[:n])
+
+            def close(self):
+                pass
+
+        return Cursor()
+
+    def close(self):
+        self.fechada = True
+
+
+def catalogo_de_mentira():
+    def responde(sql, params):
+        if '@@version' in sql:
+            return ['versao'], [('17.0.11.7058',)]
+        if 'GROUP BY creator' in sql:
+            return ['dono', 'tabelas'], [('bethadba', 3), ('SYS', 120), ('dbo', 40), ('rs_systabgroup', 2)]
+        if 'FROM SYS.SYSCATALOG' in sql:
+            return ['dono', 'tabela', 'tipo', 'descricao'], [
+                ('bethadba', 'geempre', 'TABLE', 'Cadastro das empresas'),
+                ('bethadba', 'foempregados', 'TABLE', 'Empregados: cadastro'),
+                ('bethadba', 'ctlancto', 'TABLE', None),
+                ('SYS', 'SYSTAB', 'TABLE', 'do sistema')]
+        if 'FROM SYS.SYSCOLUMNS' in sql:
+            return ['dono', 'tabela', 'ordem', 'coluna', 'tipo', 'tamanho', 'escala', 'nulos', 'chave', 'descricao'], [
+                ('bethadba', 'geempre', 2, 'nome_emp', 'char', 80, 0, 'Y', 'N', 'Razão social'),
+                ('bethadba', 'geempre', 1, 'codi_emp', 'integer', 4, 0, 'N', 'Y', 'Código da empresa'),
+                ('bethadba', 'foempregados', 1, 'codi_emp', 'integer', 4, 0, 'N', 'Y', 'Código da empresa'),
+                ('bethadba', 'ctlancto', 1, 'vlor_lan', 'numeric', 15, 2, 'Y', 'N', 'Valor do lançamento'),
+                ('SYS', 'SYSTAB', 1, 'table_id', 'unsigned int', 4, 0, 'N', 'Y', None)]
+        if 'FROM SYS.SYSTABLE' in sql:     # o segundo jeito da contagem (antes do SYSTAB: um é começo do outro)
+            return ['dono', 'tabela', 'linhas'], [('bethadba', 'geempre', 312), ('bethadba', 'foempregados', 0),
+                                                  ('bethadba', 'ctlancto', 1234567), ('SYS', 'SYSTAB', 900)]
+        if 'FROM SYS.SYSTAB' in sql:
+            raise RuntimeError('[SQL Anywhere] Column not found (teste: neste banco o catálogo é o outro)')
+        raise AssertionError(f'consulta fora do catálogo: {sql}')
+    return BancoDeMentira(responde)
+
+
+class Teclado:
+    """Faz as vezes de quem digita na janela: devolve as respostas na ordem; acabou, é a janela fechada (EOFError)."""
+
+    def __init__(self, *respostas):
+        self.respostas, self.perguntas = list(respostas), []
+
+    def __call__(self, texto=''):
+        self.perguntas.append(texto)
+        if not self.respostas:
+            raise EOFError
+        return self.respostas.pop(0)
+
+
+def no_processo(pasta, funcao, *args, **opcoes):
+    """Roda uma função da ponte aqui dentro, com a PONTE_PASTA do teste: (o que ela devolveu, o que foi pra tela)."""
+    import contextlib
+    import io
+    guardado = os.environ.get('PONTE_PASTA')
+    os.environ['PONTE_PASTA'] = str(pasta)
+    tela = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(tela):
+            r = funcao(*args, **opcoes)
+    finally:
+        if guardado is None:
+            os.environ.pop('PONTE_PASTA', None)
+        else:
+            os.environ['PONTE_PASTA'] = guardado
+    return r, tela.getvalue()
+
+
+def caso_dominio():
+    titulo('8. a ligação com o Domínio Web: dominio conexao, tabelas e sql')
+    from ponte import config, dominio
+    url = 'https://exemplo.invalid/functions/v1/ponte'
+
+    def gravada(pasta):
+        return no_processo(pasta, lambda: config.carregar().valor('dominio', 'conexao'))[0]
+
+    def nao_conecta(s):
+        raise AssertionError('não era pra conectar')
+
+    # ---- os pedaços
+    ok(dominio.driver_sql_anywhere(['SQL Server', 'SQL Anywhere 16', 'SQL Anywhere 17', 'Microsoft Access Driver (*.mdb)'])
+       == 'SQL Anywhere 17' and dominio.driver_sql_anywhere(['SQL Server', 'Oracle in OraClient']) is None,
+       'o driver: o SQL Anywhere mais novo que o Python enxerga; sem ele, nenhum')
+    esperado = ('DRIVER={SQL Anywhere 17};UID=EXTERNO;PWD=BoaSenha2026;ServerName=srvteste;DatabaseName=banco1;'
+                'Host=203.0.113.9:2638;CharSet=UTF-8')
+    ok(dominio.montar_conexao('SQL Anywhere 17', '203.0.113.9', '2638', 'srvteste', 'banco1', 'EXTERNO', 'BoaSenha2026')
+       == esperado, 'a string de conexão: o servidor pelo nome e pelo endereço (Host=ip:porta), o banco, o texto em UTF-8')
+    ok(all(dominio.problema_da_senha(s) for s in ('', 'a;b', 'tem{chave}', 'aspas"', ' espaco', 'acentuação')) and
+       dominio.problema_da_senha('Boa-Senha_2026!') is None,
+       'senha em branco, com ; { } ou aspas, espaço nas pontas ou acento não serve; letras, números e símbolos comuns sim')
+    ok(dominio.problema_do_host('http://203.0.113.9') and dominio.problema_do_host('203.0.113.9') is None
+       and dominio.problema_do_host('srv.exemplo.com.br') is None and dominio.problema_da_porta('0')
+       and dominio.problema_da_porta('65536') and dominio.problema_da_porta('2638') is None
+       and dominio.problema_do_nome('srv teste') and dominio.problema_do_nome('srvcontabil1') is None,
+       'host (o IP ou o nome, sem http://), porta (1 a 65535) e servidor (sem espaço) conferidos')
+    pessoais = ['nome', 'NOME_EMP', 'cpf', 'Salário', 'salario_base', 'max(foempregados.nome)', 'data_nascimento',
+                'e_mail', 'telefone', 'endereco']
+    neutras = ['codi_emp', 'quantos', 'count()', 'filial', 'cgce_emp', 'vlor_lan', 'notas_saida', 'competencia']
+    ok(all(dominio.coluna_pessoal(c) for c in pessoais) and not any(dominio.coluna_pessoal(c) for c in neutras),
+       'a trava do sql pega coluna de nome, CPF, salário, nascimento, contato e endereço — e deixa código, contagem e valor')
+    ok(dominio.problema_da_consulta('SELECT 1') is None and dominio.problema_da_consulta('select 1;') is None
+       and dominio.problema_da_consulta("SELECT 'a;b' AS x") is None
+       and dominio.problema_da_consulta('-- comentário\nWITH x AS (SELECT 1 AS n) SELECT n FROM x') is None,
+       'sql: SELECT e WITH passam (o ; dentro de texto e o do fim também)')
+    ok(all(dominio.problema_da_consulta(s) for s in ('UPDATE t SET a = 1', 'SELECT 1; DELETE FROM t', 'SELECT * INTO #t FROM x',
+                                                    'DELETE /* SELECT */ FROM t', '', 'CALL sp_teste()')),
+       'sql: o que não é leitura, duas consultas de uma vez ou consulta em branco não passam')
+    ok(dominio.interrogacoes("SELECT ?, '?' FROM t /* ? */ WHERE d BETWEEN ? AND ?") == 3, 'conta os ? fora de texto e de comentário')
+    sa = '[SAP][ODBC Driver][SQL Anywhere]'      # o começo de toda mensagem do driver
+    ok('usuário ou senha' in dominio.dica_do_erro(RuntimeError('28000', f'[28000] {sa}Invalid user ID or password'))
+       and 'não respondeu' in dominio.dica_do_erro(RuntimeError('08001', f'[08001] {sa}Database server not found'))
+       and 'não achou o banco' in dominio.dica_do_erro(RuntimeError('08001', f'[08001] {sa}Specified database not found'))
+       and 'driver' in dominio.dica_do_erro(RuntimeError('IM002', '[IM002] [Microsoft][ODBC Driver Manager] Data source '
+                                                                  'name not found and no default driver specified'))
+       and dominio.dica_do_erro(RuntimeError('XX000', f'{sa}outra coisa')) is None,
+       'a dica pelo erro do driver: a senha, o servidor, o banco, o driver — e nenhuma quando não dá pra saber')
+
+    # ---- conexao: digitado na janela, gravado, testado
+    pasta = pasta_nova()
+    escrever_config(pasta, url=url, conexao=None)
+    usadas = []
+
+    def conectar(s):
+        usadas.append(s)
+        return catalogo_de_mentira()
+    teclado = Teclado('203.0.113.9:2638', 'srv teste', 'srvteste', 'banco1', 'EXTERNO')
+    senhas = Teclado('Senha;Ruim', 'BoaSenha2026', 'Outra2026', 'BoaSenha2026', 'BoaSenha2026')
+    cod, out = no_processo(pasta, dominio.conexao, perguntar=teclado, senha=senhas, interativa=lambda: True,
+                           drivers=lambda: ['SQL Server', 'SQL Anywhere 17'], conectar=conectar)
+    ok(cod == 0 and gravada(pasta) == esperado, f'conexao: grava no config.ini a string montada do que foi digitado (saiu {cod})')
+    ok(no_processo(pasta, lambda: config.carregar().valor('sistema', 'url'))[0] == url, 'e o resto do config.ini fica como estava')
+    ok(not any(p.startswith('Porta') for p in teclado.perguntas), 'o "endereço:porta" colado de uma vez: a porta não é perguntada')
+    ok(out.count('não serve') == 2 and 'as duas não são iguais' in out,
+       'o que não serve é perguntado de novo (o servidor com espaço, a senha com ;), e a senha confere nas duas vezes')
+    ok(usadas == [esperado] and 'abriu — SQL Anywhere 17.0.11.7058' in out and 'tabela(s) do Domínio (bethadba 3)' in out,
+       'testa na hora: a versão do servidor e quantas tabelas do Domínio o usuário vê (sem as do sistema)')
+    registro = logs(pasta)
+    ok('BoaSenha2026' not in out + registro and 'Senha;Ruim' not in out + registro and '203.0.113.9' not in registro
+       and 'srvteste' not in registro, 'a senha não aparece na tela nem no log — e o log não guarda nem o endereço')
+    ok('conexão do Domínio gravada' in registro and 'abriu — SQL Anywhere' in registro,
+       'o log diz que gravou e que abriu (é por ele que o pedreiro sabe, sem ver a janela)')
+
+    usadas.clear()
+    tec = Teclado('')
+    cod, out = no_processo(pasta, dominio.conexao, esperar=True, perguntar=tec, senha=Teclado(), interativa=lambda: True,
+                           drivers=lambda: ['SQL Anywhere 17'], conectar=conectar)
+    ok(cod == 0 and usadas == [esperado] and 'Não troquei' in out and gravada(pasta) == esperado,
+       'com uma conexão já gravada, o Enter só testa a de agora (nada muda)')
+    ok(any('Aperte Enter' in p for p in tec.perguntas), '--esperar: no fim, espera o Enter pra janela não fechar antes de ler')
+
+    def nao_abre(s):
+        raise RuntimeError('08001', '[08001] [SAP][ODBC Driver][SQL Anywhere]Database server not found (teste)')
+    p2 = pasta_nova()
+    escrever_config(p2, url=url, conexao=None)
+    cod, out = no_processo(p2, dominio.conexao, perguntar=Teclado('203.0.113.9', '2638', 'srvteste', 'banco1', 'EXTERNO'),
+                           senha=Teclado('BoaSenha2026', 'BoaSenha2026'), interativa=lambda: True,
+                           drivers=lambda: ['SQL Anywhere 17'], conectar=nao_abre)
+    ok(cod == 1 and gravada(p2) == esperado and 'não abriu' in out and 'o servidor não respondeu' in out
+       and 'BoaSenha2026' not in out + logs(p2),
+       'não abriu: sai com 1, a conexão fica gravada e a dica diz o que conferir (sem a senha)')
+
+    for nome, opcoes, espera in (('sem o pyodbc', {'drivers': lambda: None}, 'pyodbc'),
+                                 ('sem o driver do SQL Anywhere', {'drivers': lambda: ['SQL Server']}, 'SQL Anywhere 17'),
+                                 ('sem janela que aceite digitação', {'interativa': lambda: False}, 'não aceita digitação')):
+        p3 = pasta_nova()
+        escrever_config(p3, url=url, conexao=None)
+        tec = Teclado('203.0.113.9', '2638', 'srvteste', 'banco1', 'EXTERNO')
+        op = {'perguntar': tec, 'senha': Teclado('BoaSenha2026', 'BoaSenha2026'), 'interativa': lambda: True,
+              'drivers': lambda: ['SQL Anywhere 17'], 'conectar': nao_conecta}
+        op.update(opcoes)
+        cod, out = no_processo(p3, dominio.conexao, **op)
+        ok(cod == 2 and not tec.perguntas and not gravada(p3) and espera in out,
+           f'{nome}: sai com 2, sem perguntar nem gravar nada, dizendo o que falta')
+    p4 = pasta_nova()
+    escrever_config(p4, url=url, conexao=None)
+    cod, out = no_processo(p4, dominio.conexao, perguntar=Teclado('203.0.113.9', '2638'), senha=Teclado(),
+                           interativa=lambda: True, drivers=lambda: ['SQL Anywhere 17'], conectar=nao_conecta)
+    ok(cod == 2 and not gravada(p4) and 'nada foi gravado' in out, 'a janela fechada no meio: nada é gravado')
+
+    # ---- tabelas: só o catálogo, na pasta da ponte
+    banco = catalogo_de_mentira()
+    cod, out = no_processo(pasta, dominio.tabelas, procurar='codigo EMPRESA', conectar=lambda s: banco)
+    arq = pasta / 'dominio-tabelas.txt'
+    texto = arq.read_text(encoding='utf-8-sig') if arq.is_file() else ''
+    ok(cod == 0 and arq.is_file() and not (RAIZ / 'dominio-tabelas.txt').exists(),
+       f'tabelas: o catálogo cai na pasta da ponte, nunca no repositório (saiu {cod})')
+    ok('=== bethadba.geempre — 312 linha(s) — Cadastro das empresas' in texto and '1.234.567 linha(s)' in texto
+       and 'char(80)' in texto and 'numeric(15,2)' in texto and 'Razão social' in texto and 'lançamento' in texto,
+       'o arquivo: cada tabela com as linhas e a descrição; as colunas com o tipo e a descrição, com os acentos certos')
+    ok('=== SYS.' not in texto and 'table_id' not in texto, 'sem as tabelas do próprio SQL Anywhere')
+    bloco = texto.split('=== bethadba.geempre')[1].split('===')[0] if '=== bethadba.geempre' in texto else ''
+    ok(bloco and bloco.index('codi_emp') < bloco.index('nome_emp') and 'PK' in bloco,
+       'as colunas na ordem da tabela, com a chave marcada')
+    ok('3 tabela(s)' in texto and 'a contagem de linhas não veio' not in texto,
+       'a contagem de linhas veio pelo segundo jeito do catálogo (o primeiro deu erro)')
+    ok(banco.executados and all('bethadba' not in s.lower() and ('SYS.' in s or '@@version' in s) for s, _ in banco.executados),
+       'só o catálogo é lido: nenhuma consulta numa tabela do Domínio')
+    ok('bethadba.geempre.codi_emp' in out and 'bethadba.foempregados.codi_emp' in out and 'vlor_lan' not in out,
+       '--procurar acha pelo nome ou pela descrição, sem acento e sem maiúscula, todas as palavras')
+    ok(banco.fechada and 'catálogo do Domínio gravado' in logs(pasta), 'fecha a conexão e anota no log')
+    p5 = pasta_nova()
+    escrever_config(p5, url=url, conexao=None)
+    cod, out = no_processo(p5, dominio.tabelas, conectar=nao_conecta)
+    ok(cod == 2 and 'dominio conexao' in out, 'tabelas sem a conexão no config.ini: manda rodar o dominio conexao, sem tentar conectar')
+
+    # ---- sql: só leitura, até N linhas, sem coluna pessoal
+    def banco_sql(cols, linhas, erro=None):
+        def responde(sql, params):
+            if erro:
+                raise erro
+            return cols, linhas
+        return BancoDeMentira(responde)
+    cod, out = no_processo(pasta, dominio.sql, consulta='UPDATE bethadba.geempre SET x = 1', conectar=nao_conecta)
+    ok(cod == 2 and 'Não rodo' in out, 'sql: o que não é leitura nem chega a conectar')
+    b = banco_sql(['codi_emp', 'quantos'], [(1, 3), (2, 5), (3, 0)])
+    cod, out = no_processo(pasta, dominio.sql, consulta='SELECT codi_emp, COUNT(*) AS quantos FROM bethadba.foempregados '
+                           'GROUP BY codi_emp', linhas=2, conectar=lambda s: b)
+    ok(cod == 0 and 'codi_emp | quantos' in out and '1 | 3' in out and '2 | 5' in out and '3 | 0' not in out and 'e mais' in out,
+       'sql: mostra as colunas e as linhas até o limite (--linhas), avisando que tem mais')
+    b = banco_sql(['nome', 'admissao'], [('FULANO DE TESTE', datetime.date(2026, 1, 5))])
+    cod, out = no_processo(pasta, dominio.sql, consulta='SELECT nome, admissao FROM bethadba.foempregados', conectar=lambda s: b)
+    ok(cod == 2 and 'Não mostro' in out and 'FULANO' not in out + logs(pasta) and b.lidas == 0,
+       'sql: com coluna de nome de funcionário não mostra nada — as linhas nem são lidas')
+    b = banco_sql(['codi_emp', 'admissoes'], [(1, 2)])
+    cod, out = no_processo(pasta, dominio.sql, consulta='SELECT codi_emp, COUNT(*) AS admissoes FROM bethadba.foempregados '
+                           'WHERE admissao BETWEEN ? AND ? GROUP BY codi_emp', mes='2026-09', conectar=lambda s: b)
+    ok(cod == 0 and b.executados and b.executados[0][1] == (datetime.date(2026, 9, 1), datetime.date(2026, 9, 30)),
+       'sql --mes: o primeiro e o último dia do mês nos dois ?, como a rodada')
+    cod, out = no_processo(pasta, dominio.sql, consulta='SELECT COUNT(*) AS n FROM bethadba.geempre WHERE codi_emp = ?',
+                           conectar=nao_conecta)
+    ok(cod == 2 and '--mes' in out, 'sql: consulta com ? e sem o --mes não roda')
+    cod, out = no_processo(pasta, dominio.sql, consulta='SELECT 1 AS n WHERE ? = 1', mes='2026-09', conectar=nao_conecta)
+    ok(cod == 2 and 'dois ?' in out, 'sql --mes com um ? só não roda')
+    b = banco_sql([], [], erro=RuntimeError('42S02', '[42S02] Table not found (teste)'))
+    cod, out = no_processo(pasta, dominio.sql, consulta='SELECT COUNT(*) AS n FROM bethadba.naoexiste', conectar=lambda s: b)
+    ok(cod == 1 and 'deu erro no banco' in out, 'sql: erro do banco sai com 1, com a mensagem')
+    arq_sql = pasta / 'rascunho.sql'
+    arq_sql.write_text('-- A CONFERIR: rascunho\nSELECT codi_emp, COUNT(*) AS quantos FROM bethadba.efsaidas\n'
+                       'WHERE dsai_sai BETWEEN ? AND ? GROUP BY codi_emp\n', encoding='utf-8')
+    b = banco_sql(['codi_emp', 'quantos'], [(1, 10)])
+    cod, out = no_processo(pasta, dominio.sql, arquivo=str(arq_sql), mes='2026-10', conectar=lambda s: b)
+    ok(cod == 0 and '1 | 10' in out and 'dominio sql' in logs(pasta),
+       'sql --arquivo: roda a consulta do arquivo (o rascunho "A CONFERIR" também) e anota no log')
+
+    # ---- pelo programa: os argumentos
+    cod, out = ponte(pasta, 'dominio', 'sql')
+    ok(cod == 2 and 'OU --arquivo' in out, 'dominio sql sem a consulta: diz como passar')
+    cod, out = ponte(pasta, 'dominio', 'sql', '--mes', '2026-13', 'SELECT 1')
+    ok(cod == 2 and 'AAAA-MM' in out, '--mes fora do formato é recusado')
+    cod, out = ponte(pasta, 'dominio', 'conexao')
+    ok(cod == 2 and ('pyodbc' in out or 'não aceita digitação' in out or 'SQL Anywhere 17' in out),
+       'dominio conexao sem janela de verdade (aqui, sem teclado): não pergunta nada e sai com 2')
+    cod, out = ponte(p5, 'dominio', 'tabelas')
+    ok(cod == 2 and 'dominio conexao' in out, 'dominio tabelas sem a conexão: sai com 2, dizendo o que rodar')
+
+
 def main():
     sis = Sistema()
     try:
         for caso in (caso_pacote, lambda: caso_a_conferir(sis), lambda: caso_envio(sis), lambda: caso_segredos(sis),
-                     lambda: caso_conferir(sis), lambda: caso_config_invalida(sis), lambda: caso_meses_e_logs(sis)):
+                     lambda: caso_conferir(sis), lambda: caso_config_invalida(sis), lambda: caso_meses_e_logs(sis),
+                     caso_dominio):
             try:
                 caso()
             except Exception as e:   # um caso que quebra no meio não esconde os outros

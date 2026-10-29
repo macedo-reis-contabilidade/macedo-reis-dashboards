@@ -82,12 +82,9 @@ def conferir():
     elif pyodbc is None:
         tela('Conexão com o Domínio: não testei (falta o pyodbc)')
     else:
-        from .fonte_dominio import abrir_odbc
-        try:
-            abrir_odbc(conexao).close()
-            tela('Conexão com o Domínio: abriu e fechou')
-        except Exception as e:
-            tela(f'Conexão com o Domínio: não abriu — {type(e).__name__}: {e}')
+        from .dominio import testar_conexao
+        for linha in testar_conexao(conexao)[1]:     # a versão do servidor e quantas tabelas o usuário vê
+            tela(linha)
 
     # ---- ping pro sistema
     falta_sistema = cfg.falta(config.CAMPOS_SISTEMA)

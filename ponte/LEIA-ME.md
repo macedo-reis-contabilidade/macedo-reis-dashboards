@@ -12,13 +12,17 @@ montar o pacote. A senha do banco e as chaves nunca vão pra tela nem pro log.
 
 1. **Python 3.11 ou mais novo**, com o lançador `py` (`py -0p` lista os instalados e os bits).
 2. **pyodbc:** `py -3 -m pip install pyodbc`.
-3. **O driver ODBC da Domínio** (SQL Anywhere), com **os mesmos bits do Python** — o `pyodbc` só enxerga driver
-   do mesmo tamanho. O `conferir` mostra os dois.
-4. **A configuração:** copie `ponte\config.exemplo.ini` pra `C:\ponte-dominio\config.ini` e preencha (a string de
-   conexão que a Domínio passar, o endereço da função do sistema — sempre `https://`, a função `ponte`, a mesma das
-   duas pontes: `https://exemplo.supabase.co/functions/v1/ponte` no exemplo, com o endereço do projeto no lugar do
-   `exemplo` — e a chave pública, cada valor numa linha só). Esse arquivo **nunca** entra no repositório. O
-   `instalar.ps1` cria a partir do modelo, se ainda não existir, e o deixa legível só pelo seu usuário.
+3. **O driver ODBC do banco do Domínio: o SQL Anywhere 17**, com **os mesmos bits do Python** — o `pyodbc` só enxerga
+   driver do mesmo tamanho; o `conferir` mostra os dois. É o "client" da SAP, de graça:
+   `https://d5d4ifzqzkhwt.cloudfront.net/sqla17client/SQLA17_Windows_Client.exe` (antes de abrir, confira que o
+   arquivo é assinado pela SAP: `Get-AuthenticodeSignature arquivo.exe`). O instalador pede o administrador; a opção
+   "Typical" põe os drivers de 32 e de 64 bits. O nome que aparece no `conferir` é `SQL Anywhere 17`.
+4. **A configuração:** copie `ponte\config.exemplo.ini` pra `C:\ponte-dominio\config.ini` e preencha o endereço da
+   função do sistema — sempre `https://`, a função `ponte`, a mesma das duas pontes:
+   `https://exemplo.supabase.co/functions/v1/ponte` no exemplo, com o endereço do projeto no lugar do `exemplo` — e a
+   chave pública, cada valor numa linha só. Esse arquivo **nunca** entra no repositório. O `instalar.ps1` cria a
+   partir do modelo, se ainda não existir, e o deixa legível só pelo seu usuário. A conexão com o Domínio não se
+   digita no arquivo: é o `py -3 -m ponte dominio conexao` (abaixo, "A ligação com o Domínio Web").
 5. **A chave da ponte nasce aqui:** `py -3 -m ponte chave` gera a chave (o segredo que vai no cabeçalho `x-chave`),
    grava no `chave_ponte` do `config.ini` — só se ele estiver vazio ou ainda for o do exemplo — e mostra só a
    **impressão digital** (o SHA-256 dela, 64 letras e números). **Mande a impressão pro Claude da sessão do Samuel**:
@@ -67,19 +71,58 @@ seu usuário.
 - `C:\ponte-dominio\pendentes\` — pacote que não foi (sistema fora, sem internet). A rodada seguinte manda antes,
   do mais velho pro mais novo, e apaga cada um que foi; pendente com mais de 30 dias é apagado com aviso no log.
 
-## Quando chegar a documentação da Domínio
+## A ligação com o Domínio Web (29/10/2026)
+
+A Domínio liberou o banco do Domínio Web pro **IP fixo do escritório** (de outro lugar não conecta) e mandou, no
+chamado, onde ele fica: **Host, Porta, Engine** (o nome do servidor) **e Banco**. O usuário é o **externo**, criado no
+próprio Domínio com um usuário GERENTE: *Controle › Permissões › Usuários › Novo › Tipo de acesso: Externo* — só de
+leitura. A senha dele não passa por chat: é digitada só na janela do `dominio conexao`.
+
+```
+py -3 -m ponte dominio conexao --esperar     # numa janela que aceita digitação (abaixo): pergunta, grava e testa
+py -3 -m ponte dominio tabelas               # o catálogo: C:\ponte-dominio\dominio-tabelas.txt
+py -3 -m ponte dominio tabelas --procurar "nota saida"     # as tabelas e colunas com essas palavras no nome ou na descrição
+py -3 -m ponte dominio sql "SELECT stat_emp, COUNT(*) AS quantas FROM bethadba.geempre GROUP BY stat_emp"
+py -3 -m ponte dominio sql --arquivo ponte\consultas\folha.sql --mes 2026-09
+```
+
+- **`conexao`** pergunta o host (pode colar "endereço:porta" de uma vez), a porta, o Engine, o Banco, o usuário e a
+  senha (duas vezes, sem aparecer); monta a conexão com o driver `SQL Anywhere` que o Python enxerga e grava só a
+  linha `conexao` da `[dominio]` do `config.ini`; testa na hora (a versão do servidor e quantas tabelas o usuário vê) e
+  anota no log o resultado — **nunca os valores**. A senha: letras, números e símbolos comuns, sem `;` `{` `}`, aspas
+  ou acento (quebram a conexão). Só pergunta numa janela que aceita digitação; pelo terminal do pedreiro, ele abre uma
+  pro Samuel: `Start-Process py -ArgumentList '-3','-m','ponte','dominio','conexao','--esperar' -WorkingDirectory
+  <a pasta do repositório> -Wait`. Rodado de novo com a conexão gravada, Enter só testa; `s` troca.
+- **`tabelas`** lê **só o catálogo** do banco (as tabelas `SYS`): os nomes das tabelas e das colunas, o tipo, a descrição
+  que o banco guarda e quantas linhas cada tabela tem — **nenhuma linha das tabelas do Domínio**. É o "Busca Tabelas"
+  do Domínio, sem precisar dele nem do Java. O arquivo fica na pasta da ponte, nunca no repositório (é a documentação
+  da Thomson Reuters).
+- **`sql`** roda **uma** consulta só de leitura (SELECT ou WITH) e mostra até 50 linhas (`--linhas` até 500), com o
+  tempo que levou; `--mes AAAA-MM` passa o primeiro e o último dia do mês nos dois `?`, como a rodada. **Só contagem e
+  soma por empresa**: nome, CPF, salário, endereço e contato de funcionário não saem do Domínio, nem pra tela. A trava
+  (pra engano): resultado com coluna de nome, documento pessoal, salário, nascimento, endereço ou contato não é
+  mostrado — as linhas nem são lidas. O nome das empresas sai pelo `rodar --sem-enviar --saida`.
+- O texto (o nome da empresa, as descrições) vem do driver já convertido (UTF-16), com os acentos certos; cada consulta
+  tem até 10 minutos (`TEMPO_CONSULTA`); e o driver que não aceitar a conexão em modo só leitura é aberto sem ele (o
+  usuário externo já é só de leitura).
+
+## Escrever as consultas
 
 As consultas ficam em `ponte\consultas\` (`empresas.sql`, `folha.sql`, `fiscal.sql`, `contabil.sql`). Enquanto a
 consulta tiver a linha `-- A CONFERIR`, ela não roda: o bloco vai pro `faltou` do pacote, e sem a de empresas a
 rodada não manda nada. O que cada uma recebe e devolve está no começo de `ponte\fonte_dominio.py` (folha, fiscal e
 contábil recebem o primeiro e o último dia do mês, nessa ordem, e devolvem **uma linha por empresa, já contada**).
 
-1. Escreva os `.sql` e tire a linha `-- A CONFERIR`.
-2. `py -3 -m ponte rodar --sem-enviar --saida conferencia.json` — o arquivo cai em `C:\ponte-dominio\` (o `--saida`
+1. Ache as tabelas com o `dominio tabelas` e entenda os dados com o `dominio sql` (contagens, mínimos e máximos de
+   datas, os valores de um campo de situação com `GROUP BY`).
+2. Escreva os `.sql` e tire a linha `-- A CONFERIR`. O documento (CNPJ/CPF) sai como texto, com os zeros da frente:
+   guardado como número no banco, `CAST(... AS VARCHAR(20))` e os zeros de volta.
+3. `py -3 -m ponte rodar --sem-enviar --saida conferencia.json` — o arquivo cai em `C:\ponte-dominio\` (o `--saida`
    sem pasta vai sempre pra lá) porque tem **nome e CNPJ dos clientes**: nunca o copie pra dentro do repositório, que
    é público.
-3. **Confira 10 empresas à mão contra o Domínio** — funcionários, admissões, notas, valores, lançamentos — antes
-   de ligar o envio. É o portão da fase 2 do plano: sem isso, não liga.
+4. **Confira 10 empresas à mão contra o Domínio** — funcionários, admissões, notas, valores, lançamentos — antes
+   de ligar o envio. É o portão da fase 2 do plano: sem isso, não liga. Até lá, a função `ponte` do sistema recusa os
+   totais do Domínio (422).
 
 ---
 

@@ -23,7 +23,10 @@ from .fonte import Fonte, ConsultaAConferir
 
 MARCA = '-- A CONFERIR'
 PASTA_CONSULTAS = pathlib.Path(__file__).with_name('consultas')
-TEMPO_CONEXAO = 15   # segundos pra abrir a conexão
+TEMPO_CONEXAO = 15    # segundos pra abrir a conexão
+TEMPO_CONSULTA = 600  # segundos por consulta: uma presa não segura a tarefa até as 2 horas do Agendador
+# o que o driver responde quando não aceita pôr a conexão em só leitura (atributo que ele não conhece)
+SO_LEITURA_RECUSADA = ('HYC00', 'HY092', 'HY024')
 
 
 def a_conferir(texto):
@@ -37,7 +40,21 @@ def limites_do_mes(mes):
 
 def abrir_odbc(conexao):
     import pyodbc   # aqui dentro de propósito: os testes rodam sem o pyodbc
-    con = pyodbc.connect(conexao, autocommit=True, readonly=True, timeout=TEMPO_CONEXAO)
+    try:
+        con = pyodbc.connect(conexao, autocommit=True, readonly=True, timeout=TEMPO_CONEXAO)
+    except pyodbc.Error as e:
+        if not (e.args and str(e.args[0]) in SO_LEITURA_RECUSADA):
+            raise
+        # o driver não aceita o modo só leitura na conexão: o usuário externo do Domínio já é só de leitura
+        con = pyodbc.connect(conexao, autocommit=True, timeout=TEMPO_CONEXAO)
+    # o texto (o nome da empresa, a descrição da tabela) vem do driver já em UTF-16, com os acentos certos, qualquer
+    # que seja a página de código do banco e a do Windows (29/10/2026: o risco do acento, da fila de 22/10)
+    con.setdecoding(pyodbc.SQL_CHAR, encoding='utf-16le', ctype=pyodbc.SQL_WCHAR)
+    con.timeout = TEMPO_CONSULTA
+    try:
+        con.cursor().close()     # o pyodbc aplica o tempo-limite ao criar o cursor: é aqui que um driver recusaria
+    except pyodbc.Error:
+        con.timeout = 0          # sem tempo-limite por consulta: fica o do Agendador
     return con
 
 
