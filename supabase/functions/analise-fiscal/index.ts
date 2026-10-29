@@ -33,9 +33,28 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 // Modelo: para análise fiscal recomenda-se um modelo forte (precisão > custo).
-// Ajuste conforme sua escolha de custo-benefício.
-const MODEL = "claude-sonnet-4-20250514";
+// 28/10/2026: o claude-sonnet-4-20250514 foi aposentado pela Anthropic em 15/06/2026 e a análise parou de funcionar
+// desde então (a API responde que o modelo não existe). O claude-sonnet-4-6 é o mesmo do leitor de documentos e do
+// DRE, ativo até pelo menos 17/02/2027, e responde sem pensar antes (o Sonnet 5.5 pensaria e o pensamento contaria no
+// MAX_TOKENS, cortando o JSON).
+const MODEL = "claude-sonnet-4-6";
 const MAX_TOKENS = 8000;
+
+// O que nunca vai pra IA, mesmo que a tela mande: as credenciais do cliente e os documentos pessoais (28/10/2026: a tela
+// mandava o cadastro inteiro, com o `select('*')`, inclusive as credenciais).
+const NUNCA_PRA_IA = ["credenciais", "rg", "data_nascimento", "estado_civil", "profissao", "nacionalidade",
+  "email_principal", "telefone_principal", "drive_folder_id", "drive_folder_url"];
+function semSensiveis(entrada: Record<string, unknown>): Record<string, unknown> {
+  const limpa = { ...entrada };
+  const cad = limpa.dados_cadastrais_completos;
+  if (cad && typeof cad === "object" && !Array.isArray(cad)) {
+    const c = { ...(cad as Record<string, unknown>) };
+    for (const k of NUNCA_PRA_IA) delete c[k];
+    limpa.dados_cadastrais_completos = c;
+  }
+  for (const k of NUNCA_PRA_IA) delete limpa[k];
+  return limpa;
+}
 
 // O system prompt operacional (system-prompt-agente-fiscal.md) com o marcador
 // {{MANUAL_COMPLETO}} já substituído pelo conteúdo de manual-fiscal-completo.md.
@@ -97,7 +116,8 @@ serve(async (req: Request) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     // 1) Dados de entrada do cliente (vindos do dashboard de Clientes)
-    const clienteInput = await req.json();
+    // deno-lint-ignore no-explicit-any
+    const clienteInput: Record<string, any> = semSensiveis(await req.json());
     // clienteInput esperado: { cnpj, razao_social, regime_tributario, cnaes,
     //   porte, faturamento_12m, municipio, uf, operacoes, cliente_id? }
 

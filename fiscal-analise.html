@@ -112,9 +112,10 @@
         resultado.innerHTML = `<div class="fa-empty">Cliente não informado.</div>`;
         return;
       }
+      // só o cadastro da empresa (28/10/2026): o cliente inteiro ia pra IA, com as credenciais e os documentos pessoais
       const { data, error } = await supabase
         .from('clientes')
-        .select('*')
+        .select('id, tipo_pessoa, nome_principal, nome_fantasia, documento, cidade, uf, regime_tributario, cnae_principal, cnaes_secundarios, porte_empresa, natureza_juridica, data_abertura, capital_social, inscricao_estadual, inscricao_municipal, observacoes')
         .eq('id', clienteId)
         .single();
 
