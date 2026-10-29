@@ -22,6 +22,20 @@
 //   varrer a janela inteira sem erro, as parcelas da janela que a passada não viu são conferidas
 //   uma a uma na API (parcela por id) e só sai do espelho a que o Conta Azul responder 404.
 //   Detalhes em limparSumidas(). Corpo { simular: true } só relata, não apaga.
+//
+// v7 — 29/10/2026 (Claude, com o "vai" do Samuel): os pagamentos de cada parcela (ca_baixas).
+//   A lista do Conta Azul só traz o "pago" acumulado da parcela, e a passada mensal marca um mês só
+//   (o do último pagamento): o empréstimo pago em 300 vezes desde 2022 caía inteiro em outubro/2026 nos
+//   Relatórios Vivos (R$ 335.804,67, quando em outubro foram pagos R$ 50.000,00). Agora a rodada lê a
+//   parcela por id — que traz as baixas, cada uma com o dia, o valor, a conta e a forma — das parcelas
+//   pagas em mais de um pagamento: as parciais (pago e não pago ao mesmo tempo), as que as passadas
+//   mensais desta rodada viram pagas em mais de um mês (ou que já estavam marcadas num mês de fora da
+//   rodada — o pagamento de dezembro e o de janeiro caem em passadas diferentes no domingo) e as que já
+//   têm baixas no espelho (pra acompanhar o pagamento novo e o estorno). No incremental, só as alteradas
+//   na janela; no backfill de domingo, todas — as que ainda não têm baixas primeiro, depois as de leitura
+//   mais antiga —, até o prazo da rodada (o resto fica pra próxima). A visão vw_ca_realizado põe cada
+//   baixa no mês e no dia dela; a parcela sem baixas segue com o pago no mês do pagamento.
+//   Detalhes em sincronizarBaixas().
 // ============================================================
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
@@ -112,12 +126,13 @@ const PATHS = {
   despesa: '/v1/financeiro/eventos-financeiros/contas-a-pagar/buscar'
 };
 
-async function varrer(token: string, natureza: 'receita' | 'despesa', extra: Record<string, string>): Promise<number> {
+async function varrer(token: string, natureza: 'receita' | 'despesa', extra: Record<string, string>, vistas: string[] = []): Promise<number> {
   let pagina = 1, gravadas = 0;
   while (true) {
     const res = await caGet(token, PATHS[natureza], { pagina: String(pagina), tamanho_pagina: String(PAGE), ...extra });
     const itens = res.itens ?? [];
     if (itens.length) {
+      itens.forEach((it: any) => { if (it?.id) vistas.push(it.id); });
       const lote = itens.map((it: any) => mapParcela(it, natureza));
       for (let i = 0; i < lote.length; i += 500) {
         const { error } = await sb.from('ca_parcelas').upsert(lote.slice(i, i + 500));
@@ -184,8 +199,165 @@ async function limparSumidas(token: string, deIso: string, ateIso: string, inici
   };
 }
 
-// Passada mensal de pagamentos: zera a marca do mês e remarca com quem a API diz que foi pago nele
-async function marcarPagamentosDoMes(token: string, natureza: 'receita' | 'despesa', mes: Date): Promise<number> {
+// As baixas (v7). A parcela por id traz a lista "baixas": cada pagamento com o dia, a composição do valor
+// (bruto, juros, multa, desconto, taxa, líquido), a conta financeira e a forma. O "pago" da lista de busca é a
+// soma dos valores BRUTOS das baixas (conferido em 29/10/2026 com parcelas com juros, multa e desconto), então o
+// ca_baixas.valor é o bruto: a soma das baixas de uma parcela fecha com o pago dela, e o realizado não muda de
+// regra — só passa a cair no mês certo.
+//  • só grava parcela que está no espelho (a FK) e apaga as baixas que o Conta Azul não tem mais (estorno);
+//  • 404 = a parcela foi apagada no Conta Azul: fica pra limpeza do domingo;
+//  • erro numa parcela não derruba a rodada: vai pro relatório (falhas) e a próxima rodada tenta de novo;
+//  • para no prazo (PRAZO_BAIXAS_*, contado do começo da rodada): a função tem 150 s pra responder, e as passadas
+//    do domingo já levam uns 45 s. O que não coube fica pra próxima rodada.
+const BAIXAS_MAX = 400; // parcelas por rodada; o resto fica pra próxima
+const PRAZO_BAIXAS_INCREMENTAL = 45_000; // ms desde o começo da rodada
+const PRAZO_BAIXAS_COM_DIARIA = 25_000; // a rodada de hora em hora, em que a passada diária ainda vem depois
+const PRAZO_BAIXAS_BACKFILL = 90_000;
+
+async function caGetParcela(token: string, id: string): Promise<any | null> {
+  for (let tentativa = 0; tentativa < 5; tentativa++) {
+    const resp = await fetch(`${API}${PARCELA_POR_ID}${id}`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+      signal: AbortSignal.timeout(20_000)
+    });
+    if (resp.status === 429) { await resp.body?.cancel(); await new Promise(r => setTimeout(r, 1500 * (tentativa + 1))); continue; }
+    if (resp.status === 404) { await resp.body?.cancel(); return null; }
+    if (!resp.ok) throw new Error(`parcela ${id} respondeu ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+    return resp.json();
+  }
+  throw new Error(`parcela ${id}: limite de requisições do Conta Azul`);
+}
+
+function numero(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function mapBaixa(b: any, parcelaId: string, natureza: string) {
+  const vc = b?.valor_composicao ?? b?.composicao_valor ?? {};
+  const { anexos: _anexos, ...resto } = b ?? {};
+  return {
+    id: b.id,
+    parcela_id: parcelaId,
+    natureza,
+    data_pagamento: String(b.data_pagamento).slice(0, 10),
+    valor: numero(vc.valor_bruto) ?? 0,
+    valor_liquido: numero(vc.valor_liquido),
+    juros: numero(vc.juros),
+    multa: numero(vc.multa),
+    desconto: numero(vc.desconto),
+    taxa: numero(vc.taxa),
+    conta_financeira: b.conta_financeira?.nome ?? null,
+    conta_financeira_id: b.conta_financeira?.id ?? null,
+    metodo_pagamento: b.metodo_pagamento ?? null,
+    dados: resto,
+    sincronizado_em: new Date().toISOString()
+  };
+}
+
+async function idsNoEspelho(ids: string[], filtro?: (q: any) => any): Promise<Map<string, string>> {
+  const achados = new Map<string, string>();
+  for (let i = 0; i < ids.length; i += 300) {
+    let q = sb.from('ca_parcelas').select('id, natureza').in('id', ids.slice(i, i + 300));
+    if (filtro) q = filtro(q);
+    const { data, error } = await q;
+    if (error) throw new Error('leitura das parcelas falhou: ' + error.message);
+    for (const r of data ?? []) achados.set(r.id, r.natureza);
+  }
+  return achados;
+}
+
+async function parcelasComBaixas(ids: string[]): Promise<Set<string>> {
+  const achadas = new Set<string>();
+  for (let i = 0; i < ids.length; i += 300) {
+    const { data, error } = await sb.from('ca_baixas').select('parcela_id').in('parcela_id', ids.slice(i, i + 300));
+    if (error) throw new Error('leitura das baixas falhou: ' + error.message);
+    for (const r of data ?? []) achadas.add(r.parcela_id);
+  }
+  return achadas;
+}
+
+// Todas as parcelas com baixas no espelho, a de leitura mais antiga primeiro (as baixas de uma parcela são
+// regravadas juntas, então a mais antiga delas diz quando a parcela foi lida pela última vez).
+async function parcelasComBaixasPorIdade(): Promise<string[]> {
+  const vistas = new Set<string>();
+  const ordem: string[] = [];
+  for (let de = 0; ; de += 1000) {
+    const { data, error } = await sb.from('ca_baixas').select('parcela_id')
+      .order('sincronizado_em').order('id').range(de, de + 999);
+    if (error) throw new Error('leitura das baixas falhou: ' + error.message);
+    for (const r of data ?? []) if (!vistas.has(r.parcela_id)) { vistas.add(r.parcela_id); ordem.push(r.parcela_id); }
+    if (!data || data.length < 1000) break;
+  }
+  return ordem;
+}
+
+async function parciaisDoEspelho(): Promise<string[]> {
+  const ids: string[] = [];
+  for (let de = 0; ; de += 1000) {
+    const { data, error } = await sb.from('ca_parcelas').select('id').gt('pago', 0.004).gt('nao_pago', 0.004)
+      .order('id').range(de, de + 999);
+    if (error) throw new Error('leitura das parciais falhou: ' + error.message);
+    for (const r of data ?? []) ids.push(r.id);
+    if (!data || data.length < 1000) break;
+  }
+  return ids;
+}
+
+async function sincronizarBaixas(token: string, candidatas: string[], prazo: number) {
+  const natureza = await idsNoEspelho(candidatas);
+  const todas = candidatas.filter((id) => natureza.has(id));
+  const conferir = todas.slice(0, BAIXAS_MAX);
+  let lidas = 0, parcelas = 0, baixas = 0, apagadas = 0, falhas = 0, sumidas = 0, parouNoPrazo = false;
+  for (let i = 0; i < conferir.length; i += 4) {
+    if (Date.now() > prazo) { parouNoPrazo = true; break; }
+    const lote = conferir.slice(i, i + 4);
+    const res = await Promise.allSettled(lote.map((id) => caGetParcela(token, id)));
+    lidas += lote.length;
+    const lidasOk: string[] = [];
+    const linhasPorId = new Map<string, ReturnType<typeof mapBaixa>>();
+    lote.forEach((id, j) => {
+      const r = res[j];
+      if (r.status === 'rejected') {
+        falhas++;
+        console.warn('ca-sync baixas', id, String((r as PromiseRejectedResult).reason?.message ?? r));
+        return;
+      }
+      if (r.value === null) { sumidas++; return; }
+      lidasOk.push(id);
+      (Array.isArray(r.value?.baixas) ? r.value.baixas : [])
+        .filter((b: any) => b?.id && /^\d{4}-\d{2}-\d{2}/.test(String(b.data_pagamento ?? '')))
+        .forEach((b: any) => linhasPorId.set(b.id, mapBaixa(b, id, natureza.get(id)!)));
+    });
+    if (!lidasOk.length) continue;
+    // as baixas que o Conta Azul não tem mais (estornadas ou apagadas) saem do espelho
+    const { data: antes, error: eAntes } = await sb.from('ca_baixas').select('id').in('parcela_id', lidasOk);
+    if (eAntes) throw new Error('leitura das baixas falhou: ' + eAntes.message);
+    const linhas = [...linhasPorId.values()];
+    const sairam = (antes ?? []).map((x: { id: string }) => x.id).filter((x: string) => !linhasPorId.has(x));
+    for (let k = 0; k < linhas.length; k += 500) {
+      const { error } = await sb.from('ca_baixas').upsert(linhas.slice(k, k + 500));
+      if (error) throw new Error('gravar baixas falhou: ' + error.message);
+    }
+    for (let k = 0; k < sairam.length; k += 200) {
+      const { error } = await sb.from('ca_baixas').delete().in('id', sairam.slice(k, k + 200));
+      if (error) throw new Error('apagar baixas falhou: ' + error.message);
+    }
+    parcelas += lidasOk.length; baixas += linhas.length; apagadas += sairam.length;
+  }
+  return {
+    candidatas: todas.length, lidas, sobrou_pra_proxima: todas.length > lidas, parou_no_prazo: parouNoPrazo,
+    parcelas, baixas, apagadas, falhas, sumidas
+  };
+}
+
+// Passada mensal de pagamentos: zera a marca do mês e remarca com quem a API diz que foi pago nele.
+// Devolve os ids pagos no mês (v7: quem aparece em mais de um mês teve mais de um pagamento → baixas) e, com os
+// meses da rodada, os que já estavam marcados num mês de fora dela (pagos também naquele mês → baixas).
+async function marcarPagamentosDoMes(
+  token: string, natureza: 'receita' | 'despesa', mes: Date, mesesDaRodada?: Set<string>
+): Promise<{ ids: string[]; deOutroMes: string[] }> {
   const { ini, fim, ancora } = mesStr(mes);
   const ids: string[] = [];
   let pagina = 1;
@@ -201,6 +373,16 @@ async function marcarPagamentosDoMes(token: string, natureza: 'receita' | 'despe
     pagina++;
     if (pagina > 100) throw new Error('Passada de pagamentos estourou 100 páginas');
   }
+  // só uma pista pras baixas: se a leitura falhar, a marcação do mês segue igual
+  const deOutroMes: string[] = [];
+  if (mesesDaRodada) {
+    for (let i = 0; i < ids.length; i += 300) {
+      const { data, error } = await sb.from('ca_parcelas').select('id, mes_pagamento')
+        .in('id', ids.slice(i, i + 300)).not('mes_pagamento', 'is', null);
+      if (error) break;
+      for (const r of data ?? []) if (!mesesDaRodada.has(String(r.mes_pagamento).slice(0, 10))) deOutroMes.push(r.id);
+    }
+  }
   const { error: eZera } = await sb.from('ca_parcelas').update({ mes_pagamento: null })
     .eq('natureza', natureza).eq('mes_pagamento', ancora);
   if (eZera) throw new Error('Zerar mes_pagamento falhou: ' + eZera.message);
@@ -208,7 +390,7 @@ async function marcarPagamentosDoMes(token: string, natureza: 'receita' | 'despe
     const { error } = await sb.from('ca_parcelas').update({ mes_pagamento: ancora }).in('id', ids.slice(i, i + 300));
     if (error) throw new Error('Marcar mes_pagamento falhou: ' + error.message);
   }
-  return ids.length;
+  return { ids, deOutroMes };
 }
 
 // Passada DIÁRIA de pagamentos — a API filtra por data_pagamento mas não devolve
@@ -378,23 +560,79 @@ Deno.serve(async (req: Request) => {
     }
 
     const inicioPassada = new Date().toISOString();
-    const receitas = await varrer(token, 'receita', extra);
-    const despesas = await varrer(token, 'despesa', extra);
+    const vistas: string[] = [];
+    const receitas = await varrer(token, 'receita', extra, vistas);
+    const despesas = await varrer(token, 'despesa', extra, vistas);
 
     let pagamentosMarcados = 0;
+    const mesesPorParcela = new Map<string, Set<string>>();
+    const mesesDaRodada = new Set(mesesPagamento.map((m) => mesStr(m).ancora));
+    const deOutroMes = new Set<string>();
     for (const mes of mesesPagamento) {
-      pagamentosMarcados += await marcarPagamentosDoMes(token, 'receita', mes);
-      pagamentosMarcados += await marcarPagamentosDoMes(token, 'despesa', mes);
+      for (const natureza of ['receita', 'despesa'] as const) {
+        const marcados = await marcarPagamentosDoMes(token, natureza, mes, mesesDaRodada);
+        pagamentosMarcados += marcados.ids.length;
+        marcados.deOutroMes.forEach((id) => deOutroMes.add(id));
+        const ancora = mesStr(mes).ancora;
+        for (const id of marcados.ids) {
+          let meses = mesesPorParcela.get(id);
+          if (!meses) mesesPorParcela.set(id, meses = new Set());
+          meses.add(ancora);
+        }
+      }
+    }
+
+    // As baixas (v7): as pagas em mais de um mês nas passadas desta rodada (ou já marcadas num mês de fora dela),
+    // as parciais e as que já têm baixas. No backfill, todas (é a conferência da semana): as que ainda não têm
+    // baixas primeiro, depois as de leitura mais antiga. No incremental, de 10 em 10 minutos, só o que pode ter
+    // mudado: as alteradas na janela que são parciais, já têm baixas ou foram pagas em mais de um mês, e as pagas em
+    // mais de um mês que ainda não têm baixas no espelho. Falha aqui não derruba a rodada.
+    // Calibração (Claude web, 02/09/2026): a passada diária roda UMA vez por hora
+    // (na rodada do cron que cai no minuto < 10), não a cada 10 min — mesma janela
+    // de DIAS_REALIZADO dias, custo de API ~480 chamadas/dia em vez de ~2.880.
+    const rodaDiario = new Date().getUTCMinutes() < 10;
+    let baixas: Record<string, unknown> | null = null;
+    try {
+      const multiMes = [...new Set([
+        ...[...mesesPorParcela].filter(([, meses]) => meses.size > 1).map(([id]) => id),
+        ...deOutroMes
+      ])];
+      let candidatas: string[];
+      if (modo === 'backfill') {
+        const parciais = await parciaisDoEspelho();
+        const comBaixas = await parcelasComBaixasPorIdade();
+        const tem = new Set(comBaixas);
+        candidatas = [...new Set([
+          ...multiMes.filter((id) => !tem.has(id)),
+          ...parciais.filter((id) => !tem.has(id)),
+          ...comBaixas
+        ])];
+      } else {
+        const alteradas = [...new Set(vistas)];
+        const multiSet = new Set(multiMes);
+        const parciais = await idsNoEspelho(alteradas, (q) => q.gt('pago', 0.004).gt('nao_pago', 0.004));
+        const jaTem = await parcelasComBaixas([...new Set([...alteradas, ...multiMes])]);
+        candidatas = [...new Set([
+          ...multiMes.filter((id) => !jaTem.has(id)),
+          ...alteradas.filter((id) => parciais.has(id) || jaTem.has(id) || multiSet.has(id))
+        ])];
+      }
+      const prazo = t0 + (modo === 'backfill' ? PRAZO_BAIXAS_BACKFILL
+        : rodaDiario ? PRAZO_BAIXAS_COM_DIARIA : PRAZO_BAIXAS_INCREMENTAL);
+      baixas = candidatas.length
+        ? { pagas_em_mais_de_um_mes: multiMes.length, ...(await sincronizarBaixas(token, candidatas, prazo)) }
+        : { candidatas: 0 };
+    } catch (eB) {
+      baixas = { erro: eB instanceof Error ? eB.message : String(eB) };
+    }
+    if (baixas && (modo === 'backfill' || Number(baixas.candidatas ?? 0) > 0 || baixas.erro)) {
+      console.info('ca-sync baixas', modo, JSON.stringify(baixas));
     }
 
     // Realizado diário: SÓ no incremental, remarcando os últimos DIAS_REALIZADO
     // dias (datas no fuso de SP, como o resto do arquivo). O modo backfill mensal
     // NÃO roda esta passada — histórico de data_pagamento é papel do backfill_dias.
     let pagamentosDia = 0;
-    // Calibração (Claude web, 02/09/2026): a passada diária roda UMA vez por hora
-    // (na rodada do cron que cai no minuto < 10), não a cada 10 min — mesma janela
-    // de DIAS_REALIZADO dias, custo de API ~480 chamadas/dia em vez de ~2.880.
-    const rodaDiario = new Date().getUTCMinutes() < 10;
     if (modo === 'incremental' && rodaDiario) {
       const hojeSp = spIso(new Date()).slice(0, 10);
       const deSp = new Date(new Date(hojeSp + 'T00:00:00Z').getTime() - (DIAS_REALIZADO - 1) * 86400000).toISOString().slice(0, 10);
@@ -430,10 +668,12 @@ Deno.serve(async (req: Request) => {
       parcelas_upsert: receitas + despesas,
       categorias_upsert: categorias,
       sucesso: true,
-      ...(limpeza?.erro ? { erro: 'limpeza: ' + String(limpeza.erro) } : {})
+      ...(limpeza?.erro || baixas?.erro
+        ? { erro: [limpeza?.erro ? 'limpeza: ' + String(limpeza.erro) : '', baixas?.erro ? 'baixas: ' + String(baixas.erro) : ''].filter(Boolean).join(' · ') }
+        : {})
     }).eq('id', logId);
 
-    return json(200, { ok: true, modo, receitas, despesas, pagamentosMarcados, pagamentosDia, categorias, limpeza, ms: Date.now() - t0 });
+    return json(200, { ok: true, modo, receitas, despesas, pagamentosMarcados, pagamentosDia, baixas, categorias, limpeza, ms: Date.now() - t0 });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await sb.from('ca_sync_log').update({ concluido_em: new Date().toISOString(), sucesso: false, erro: msg }).eq('id', logId);

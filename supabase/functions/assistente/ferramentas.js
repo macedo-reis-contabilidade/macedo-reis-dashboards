@@ -234,11 +234,30 @@ export const TABELAS = {
     notas: { status: 'estudo | proposto (reajuste proposto) | aceito | mantido', honorario_atual: 'o de hoje quando revisou (R$/mês)', fonte_atual: 'boletos | conta_azul | informado',
       honorario_sugerido: 'o do motor na revisão (R$/mês)', honorario_novo: 'o combinado (no aceito) ou o proposto (R$/mês)', vigencia: "'AAAA-MM': o mês em que o valor novo começa",
       aplicado_em: 'quando o valor novo entrou no boleto (vazio no aceito = ainda não entrou)', criado_por: 'e-mail de quem revisou' } },
+  // o financeiro do escritório (Conta Azul). O "pago" da parcela é o acumulado de todos os pagamentos, no mês do último
+  // (29/10/2026: o empréstimo pago em 300 vezes desde 2022 caía inteiro em outubro) — o pago num mês sai de vw_ca_realizado
   ca_parcelas: { rotulo: 'o financeiro do escritório', socios: true,
-    desc: 'Contas a receber e a pagar do próprio escritório (Conta Azul). Só os sócios leem.',
+    desc: 'Contas a receber e a pagar do próprio escritório (Conta Azul), uma linha por parcela. Pra saber quanto foi pago ou recebido num mês, NÃO some o pago daqui pelo mes_pagamento: a parcela paga em várias vezes tem aqui o total pago até hoje, no mês do último pagamento — use vw_ca_realizado. Só os sócios leem.',
     cols: ['id', 'natureza', 'descricao', 'data_vencimento', 'data_competencia', 'data_pagamento', 'mes_pagamento', 'status', 'status_traduzido', 'total', 'pago', 'nao_pago', 'fornecedor_cliente_nome', 'categorias'],
     padrao: ['natureza', 'descricao', 'data_vencimento', 'data_pagamento', 'status_traduzido', 'total', 'pago', 'nao_pago', 'fornecedor_cliente_nome'],
-    notas: { natureza: 'receita | despesa (minúsculo)', categorias: 'lista das categorias do Conta Azul' } },
+    notas: { natureza: 'receita | despesa (minúsculo)', categorias: 'lista das categorias do Conta Azul',
+      pago: 'o total pago até hoje, somando todos os pagamentos da parcela (R$)', nao_pago: 'o que falta pagar (R$)',
+      mes_pagamento: "o mês do ÚLTIMO pagamento ('AAAA-MM-01')", data_pagamento: 'o dia do último pagamento',
+      status: 'ACQUITTED (paga ou recebida) | PARTIAL (em parte) | PENDING (em aberto) | OVERDUE (atrasada) | LOST (perdida)' } },
+  ca_baixas: { rotulo: 'os pagamentos das parcelas do financeiro', socios: true,
+    desc: 'Cada pagamento (baixa) das parcelas do financeiro do escritório pagas em mais de uma vez (as pagas em parte e as pagas em mais de um mês), com o dia, o valor, a conta e a forma. A parcela paga de uma vez não tem linha aqui. Só os sócios leem.',
+    cols: ['id', 'parcela_id', 'natureza', 'data_pagamento', 'valor', 'valor_liquido', 'juros', 'multa', 'desconto', 'taxa', 'conta_financeira', 'metodo_pagamento'],
+    padrao: ['parcela_id', 'natureza', 'data_pagamento', 'valor', 'conta_financeira', 'metodo_pagamento'],
+    notas: { parcela_id: 'a parcela (o id em ca_parcelas)', natureza: 'receita | despesa (minúsculo)', valor: 'o valor do pagamento (R$, o bruto: o que entra no pago da parcela)',
+      valor_liquido: 'o que entrou ou saiu da conta, com juros, multa, desconto e taxa (R$)', conta_financeira: 'a conta do Conta Azul em que o pagamento caiu' } },
+  vw_ca_realizado: { rotulo: 'o realizado do financeiro', socios: true, pk: 'id,dia,origem,valor',
+    desc: 'O realizado do financeiro do escritório, como os Relatórios Vivos somam: cada pagamento no mês e no dia em que aconteceu — a parcela paga em várias vezes entra com cada pagamento no mês dele; a paga de uma vez, com o pago no mês do pagamento. "Quanto pagamos (ou recebemos) em tal mês", de tudo ou de uma categoria: some valor com mes = o primeiro dia do mês. A mesma parcela pode ter várias linhas (o id repete). Só os sócios leem.',
+    cols: ['id', 'natureza', 'descricao', 'data_vencimento', 'cat', 'classe', 'dia', 'mes', 'valor', 'origem'],
+    padrao: ['natureza', 'descricao', 'cat', 'dia', 'mes', 'valor', 'origem'],
+    notas: { id: 'a parcela (o id em ca_parcelas); repete quando ela teve mais de um pagamento', natureza: 'receita | despesa (minúsculo)', cat: 'a categoria do Conta Azul',
+      classe: 'a classe dos Relatórios Vivos: operacional_receita | operacional_despesa | prolabore | repasse_entrada | repasse_saida | emprestimo_captacao (empréstimo recebido) | emprestimo_parcelas, emprestimo_giros e emprestimo_parc_cartao (pagamento de empréstimo) | emprestimo_estorno | deducao_receita | excluido_cartao (movimento do cartão, fora do caixa) | excluido_aval | excluido_desp_diversas',
+      mes: "o mês do pagamento ('AAAA-MM-01')", dia: 'o dia do pagamento (vazio quando só se sabe o mês)', valor: 'o valor pago nesse pagamento (R$)',
+      origem: 'baixa (um dos pagamentos da parcela) | parcela (a parcela paga de uma vez: o pago dela) | diferenca (o que o Conta Azul já soma no pago e os pagamentos lidos ainda não explicam)' } },
   ca_categorias: { rotulo: 'as categorias do Conta Azul', socios: true, desc: 'Categorias do financeiro do escritório. Só os sócios leem.', cols: ['id', 'nome', 'tipo', 'id_pai', 'ativo'], padrao: ['nome', 'tipo', 'ativo'] }
 };
 

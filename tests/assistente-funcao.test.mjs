@@ -26,7 +26,10 @@ const SENSIVEIS = { clientes: ['credenciais', 'rg', 'data_nascimento'], socios: 
 chk('o que nunca é lido: credenciais, documentos pessoais e as respostas dos formulários', Object.entries(SENSIVEIS).every(([t, cs]) => cs.every(c => !TABELAS[t].cols.includes(c))));
 chk('tabelas fora: configurações, chats, tokens e o backup pessoal', ['configuracoes_escritorio', 'rt_chat', 'assistente_chat', 'ca_tokens', 'financeiro_backup', 'ca_sync_log'].every(t => !TABELAS[t]));
 chk('as colunas que vêm sem pedir estão entre as lidas', Object.values(TABELAS).every(T => T.padrao.every(c => T.cols.includes(c))));
-chk('o financeiro do escritório marcado como só dos sócios', TABELAS.ca_parcelas.socios === true && TABELAS.ca_categorias.socios === true);
+chk('o financeiro do escritório marcado como só dos sócios', ['ca_parcelas', 'ca_categorias', 'ca_baixas', 'vw_ca_realizado'].every(t => TABELAS[t] && TABELAS[t].socios === true));
+chk('o pago num mês sai do realizado: o pago da parcela é o acumulado, no mês do último pagamento (29/10/2026)',
+  /use vw_ca_realizado/.test(TABELAS.ca_parcelas.desc) && /ÚLTIMO pagamento/.test(TABELAS.ca_parcelas.notas.mes_pagamento)
+  && /some valor com mes = o primeiro dia do mês/.test(TABELAS.vw_ca_realizado.desc) && TABELAS.vw_ca_realizado.pk === 'id,dia,origem,valor');
 chk('as revisões de honorário só dos sócios, sem as respostas do questionário e o cálculo do motor', TABELAS.revisoes_honorario.socios === true
   && !['respostas', 'resultado'].some(c => TABELAS.revisoes_honorario.cols.includes(c)));
 chk('as notícias do feed: sem os critérios, o trecho e o custo da triagem; setores e clientes como listas', TABELAS.noticias && !['criterios', 'trecho', 'tokens_entrada', 'erro', 'modelo'].some(c => TABELAS.noticias.cols.includes(c))
