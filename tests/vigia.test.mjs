@@ -32,6 +32,8 @@ chk('sócio pelo nome: Samuel e Diego', ehSocioPeloNome('samuel') && ehSocioPelo
 
 console.log('De qual tela:');
 chk('o caminho do link, sem a busca', caminhoDoLink('dp-admissoes.html?admissao=x1') === 'dp-admissoes.html' && caminhoDoLink('/agenda.html') === 'agenda.html' && caminhoDoLink(null) === '');
+chk('o caminho do link, sem o # (os Relatórios Vivos abrem o mês)', caminhoDoLink('relatorios-vivos.html#caixa/2026-10-01') === 'relatorios-vivos.html'
+  && eDaTela({ link: 'relatorios-vivos.html#dre/2026-10-01' }, 'relatorios-vivos.html'));
 chk('a tela onde se resolve', eDaTela(LISTA[0], 'dp-admissoes.html') && !eDaTela(LISTA[0], 'agenda.html'));
 chk('na ficha da empresa, o que é dela (qualquer tela)', eDaTela(LISTA[0], 'clientes/editar.html', '?id=' + E1) && eDaTela(LISTA[5], 'clientes/editar.html', '?id=' + E1)
   && !eDaTela(LISTA[1], 'clientes/editar.html', '?id=' + E1) && !eDaTela(LISTA[0], 'clientes/editar.html', ''));
@@ -55,6 +57,8 @@ const comVisto = [{ primeiro_visto: '2026-10-15T12:00:00Z' }, { primeiro_visto: 
 chk('novos: os achados depois da última olhada; sem olhada, nenhum', novosDesde(comVisto, '2026-10-15T10:00:00Z') === 1 && novosDesde(comVisto, null) === 0);
 chk('o link vira endereço só se for página do sistema', linkSeguro('dp-admissoes.html?admissao=7a00-1') === 'dp-admissoes.html?admissao=7a00-1' && linkSeguro('clientes/editar.html?id=' + E1)
   && !linkSeguro('javascript:alert(1)') && !linkSeguro('https://exemplo.com/a.html') && !linkSeguro('//exemplo.com/a.html') && !linkSeguro('../fora.html') && !linkSeguro('a.html?x=<b>') && !linkSeguro(null));
+chk('o # do link só com o caminho do relatório (letras, números, / e -)', linkSeguro('relatorios-vivos.html#caixa/2026-10-01') === 'relatorios-vivos.html#caixa/2026-10-01'
+  && !linkSeguro('relatorios-vivos.html#<img>') && !linkSeguro('relatorios-vivos.html#javascript:alert(1)') && !linkSeguro('relatorios-vivos.html#a b') && !linkSeguro('a.html#x#y'));
 const regrasDaFuncao = TABELAS.vigia_achados.notas.regra.split('|').map(s => s.trim());
 chk('toda regra que a função do assistente conhece tem nome no cartão (e vice-versa)', regrasDaFuncao.every(r => ROTULOS[r]) && Object.keys(ROTULOS).every(r => regrasDaFuncao.includes(r)),
   regrasDaFuncao.filter(r => !ROTULOS[r]).join() + ' / ' + Object.keys(ROTULOS).filter(r => !regrasDaFuncao.includes(r)).join());

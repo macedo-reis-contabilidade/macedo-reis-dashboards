@@ -35,7 +35,8 @@
 //   na janela; no backfill de domingo, todas — as que ainda não têm baixas primeiro, depois as de leitura
 //   mais antiga —, até o prazo da rodada (o resto fica pra próxima). A visão vw_ca_realizado põe cada
 //   baixa no mês e no dia dela; a parcela sem baixas segue com o pago no mês do pagamento.
-//   Detalhes em sincronizarBaixas().
+//   Detalhes em sincronizarBaixas(). Desde a tarde de 29/10, o incremental também relê a parcial que ficou sem os
+//   pagamentos lidos (a rodada que parou no prazo), e o vigia avisa a que continua sem (vigia_regras_relatorios).
 // ============================================================
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
@@ -612,8 +613,13 @@ Deno.serve(async (req: Request) => {
         const multiSet = new Set(multiMes);
         const parciais = await idsNoEspelho(alteradas, (q) => q.gt('pago', 0.004).gt('nao_pago', 0.004));
         const jaTem = await parcelasComBaixas([...new Set([...alteradas, ...multiMes])]);
+        // as parciais que ainda não têm os pagamentos lidos (a rodada que parou no prazo, uma leitura que falhou): a cada
+        // rodada, até ler — sem isso, só no domingo (e o vigia avisa: relatorio_pagamentos_nao_lidos)
+        const todasParciais = await parciaisDoEspelho();
+        const parciaisLidas = await parcelasComBaixas(todasParciais);
         candidatas = [...new Set([
           ...multiMes.filter((id) => !jaTem.has(id)),
+          ...todasParciais.filter((id) => !parciaisLidas.has(id)),
           ...alteradas.filter((id) => parciais.has(id) || jaTem.has(id) || multiSet.has(id))
         ])];
       }

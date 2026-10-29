@@ -27,7 +27,11 @@ export const ROTULOS = {
   // a Receita pela ponte (Integra Contador, 23/10/2026): vigia_regras_receita()
   receita_sem_autorizacao: 'Empresas sem autorização da Receita pro escritório', receita_autorizacao_vencendo: 'Autorizações da Receita vencendo',
   receita_pgdas_atrasado: 'PGDAS não transmitido, segundo a Receita', receita_mensagem: 'Mensagens na Caixa Postal da Receita',
-  receita_pendencia: 'Pendências na Receita', ponte_parada: 'Ponte da Receita parada'
+  receita_pendencia: 'Pendências na Receita', ponte_parada: 'Ponte da Receita parada',
+  // os Relatórios Vivos (29/10/2026): vigia_regras_relatorios()
+  relatorio_salto: 'Categorias acima do normal nos Relatórios Vivos', relatorio_dre_sem_grupo: 'Categorias fora do DRE',
+  relatorio_duplicado: 'Lançamentos em dobro no Conta Azul', relatorio_sync_parado: 'Espelho do Conta Azul parado',
+  relatorio_pagamentos_nao_lidos: 'Pagamentos do Conta Azul não lidos', relatorio_data_estranha: 'Datas estranhas no Conta Azul'
 };
 export const rotuloDaRegra = r => ROTULOS[r] || 'Outros achados';
 const PESO = { alta: 0, media: 1, baixa: 2 };
@@ -44,8 +48,8 @@ export function eDaPessoa(a, { nome, socio } = {}) {
 }
 export const ehSocioPeloNome = nome => ['samuel', 'diego'].includes(normal(nome));
 
-// a tela do achado: o caminho do link, sem a busca
-export const caminhoDoLink = link => String(link || '').split('?')[0].replace(/^\/+/, '');
+// a tela do achado: o caminho do link, sem a busca e sem o # (o dos Relatórios Vivos abre o mês: #caixa/AAAA-MM-01)
+export const caminhoDoLink = link => String(link || '').split(/[?#]/)[0].replace(/^\/+/, '');
 // o achado é desta tela? Na ficha da empresa (clientes/editar.html?id=…), é o que for daquela empresa
 export function eDaTela(a, caminho, busca = '') {
   if (caminho === 'clientes/editar.html') {
@@ -84,8 +88,8 @@ export function novosDesde(lista, visto) {
   return (Array.isArray(lista) ? lista : []).filter(a => a && a.primeiro_visto && String(a.primeiro_visto) > String(visto)).length;
 }
 
-// o link do achado só vira endereço se for uma página do sistema (caminho .html, busca simples)
-export const linkSeguro = link => (/^[a-z0-9][a-z0-9\-/]*\.html(\?[a-z0-9_=&.\-]*)?$/i.test(String(link || '')) && !String(link).includes('..') ? String(link) : null);
+// o link do achado só vira endereço se for uma página do sistema (caminho .html, busca e # simples)
+export const linkSeguro = link => (/^[a-z0-9][a-z0-9\-/]*\.html(\?[a-z0-9_=&.\-]*)?(#[a-z0-9_\-/]*)?$/i.test(String(link || '')) && !String(link).includes('..') ? String(link) : null);
 
 // a última vez que a pessoa abriu o cartão do vigia (pros "novos" da saudação); no navegador, por e-mail
 const CHAVE_VISTO = email => 'mr_vigia_visto:' + String(email || '').toLowerCase();
