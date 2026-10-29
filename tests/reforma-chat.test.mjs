@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { normalizar, radical, tokens, secoesDe, criarIndice, buscar, lerMaterial } from '../supabase/functions/reforma-chat/busca.js';
 import { montarSistema, preambulo, INSTRUCOES } from '../supabase/functions/reforma-chat/prompt.js';
 import { DEFINICOES, criarFerramentas, aplicarAlteracoes, acharCaso, situacaoDoCaso, descreverEtapa } from '../supabase/functions/reforma-chat/ferramentas.js';
-import { responder, criarChamador, comCache, fontesDaResposta, erroDoChat } from '../supabase/functions/reforma-chat/agente.js';
+import { responder, criarChamador, comCache, fontesDaResposta, erroDoChat, MAX_TOKENS } from '../supabase/functions/reforma-chat/agente.js';
 import { criarServidor, limparTela, limparHistorico, hojeBR, LIMITE_DIA, SIMULTANEAS, mensagemDeErro } from '../supabase/functions/reforma-chat/servidor.js';
 import { linhaDaBase, categoriasDaBase, comLinhaDaBase, semLinhaDaBase, diaDaLeitura } from '../supabase/functions/reforma-chat/procedencia.js';
 import { simular, aliquotas2027, entradaComAliquotas } from '../assets/js/rt-motor.js';
@@ -190,6 +190,16 @@ chk('comCache não mexe nas mensagens originais', (() => { const m = [{ role: 'u
     sistema: sis, definicoes: DEFINICOES, ferramentas: { listar_casos: async () => longa }, mensagem: 'x' });
   chk('saída longa de ferramenta: cortada com a dica da própria ferramenta', /…\(cortado: a saída passou de 14 mil caracteres — use filtro, busca ou a página seguinte \(pagina\)\)$/.test(res5vista) && res5vista.length < 14200);
   chk('resposta que bateu no máximo de tokens: marcada como cortada', res5.cortada === true && res5.texto === 'Começo da resposta');
+  // 28/10/2026: o Sonnet 5.5 pensa antes de responder e o pensamento conta no max_tokens — com 2500, a conta do Diego saía
+  // cortada ou vazia. O pedido vai com folga (MAX_TOKENS), e a resposta que acaba só no pensamento pede pra dividir a pergunta
+  let pedidoVisto = null;
+  const res6 = await responder({ chamar: async c => { pedidoVisto = c; return { stop_reason: 'max_tokens', content: [{ type: 'thinking', thinking: '', signature: 'x' }], usage: { output_tokens: 8000 } }; },
+    sistema: sis, definicoes: DEFINICOES, ferramentas: {}, mensagem: 'x' });
+  chk('o pedido ao modelo vai com folga pro pensamento (8000 tokens)', MAX_TOKENS === 8000 && pedidoVisto && pedidoVisto.max_tokens === MAX_TOKENS);
+  chk('acabou só no pensamento: pede pra dividir a pergunta, sem "peça a continuação"', /^A pergunta pediu conta demais/.test(res6.texto) && res6.cortada === false, res6.texto);
+  const res7 = await responder({ chamar: async () => ({ stop_reason: 'end_turn', content: [{ type: 'thinking', thinking: '', signature: 'x' }, { type: 'text', text: 'Resposta.' }], usage: {} }),
+    sistema: sis, definicoes: DEFINICOES, ferramentas: {}, mensagem: 'x' });
+  chk('o bloco de pensamento antes do texto não entra na resposta', res7.texto === 'Resposta.' && res7.cortada === false);
 }
 var res5vista;
 const fsr = fontesDaResposta('Veja [TST-LEI, art. 12; regra TST-REGRA] e [M99-INVENTADO, p. 3] e [nota solta].', new Set(['TST-LEI']), new Set(['TST-REGRA']));

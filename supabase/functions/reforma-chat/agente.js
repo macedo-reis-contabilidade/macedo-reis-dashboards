@@ -68,8 +68,15 @@ export function comCache(msgs) {
 // o que fazer quando a saída de uma ferramenta passa do tamanho
 const DICA_CORTE = { ler_material: 'leia a seção seguinte com ler_material', buscar_base: 'refine a busca', listar_casos: 'use filtro, busca ou a página seguinte (pagina)' };
 
+// O limite de saída de cada chamada. O Sonnet 5.5 pensa antes de responder (o pensamento adaptativo vem ligado quando o
+// pedido não diz nada, no esforço alto) e o pensamento conta no max_tokens, mesmo sem aparecer na resposta. Com 2500, as
+// perguntas de conta gastavam o limite pensando: a resposta saía cortada no meio, ou vazia ("Não consegui montar a
+// resposta") — 8 das perguntas do Diego em 19 e 28/10/2026. 8000 dá folga pro pensamento e pra resposta; o que se paga é
+// o que o modelo usa, não o limite.
+export const MAX_TOKENS = 8000;
+
 export async function responder({ chamar, sistema, definicoes, ferramentas, historico = [], mensagem, aoEtapa = () => {},
-  maxRodadas = 6, prazoMs = 70000, agora = () => Date.now(), maxTokens = 2500, descrever = nome => String(nome) }) {
+  maxRodadas = 6, prazoMs = 70000, agora = () => Date.now(), maxTokens = MAX_TOKENS, descrever = nome => String(nome) }) {
   const inicio = agora();
   const ate = inicio + prazoMs + 30000;   // a chamada que começa perto do prazo ainda tem 30 s pra terminar
   const msgs = [];
@@ -91,7 +98,11 @@ export async function responder({ chamar, sistema, definicoes, ferramentas, hist
     const pedidos = blocos.filter(b => b.type === 'tool_use');
     if (ultima || r.stop_reason !== 'tool_use' || !pedidos.length) {
       const texto = blocos.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
-      return { texto: texto || 'Não consegui montar a resposta. Tente perguntar de outro jeito.', etapas, uso, modelo, rodadas: rodada, cortada: r.stop_reason === 'max_tokens' };
+      // sem texto nenhum e no limite: o pensamento gastou tudo — dividir a pergunta resolve, perguntar de outro jeito não
+      const vazia = r.stop_reason === 'max_tokens' ? 'A pergunta pediu conta demais pra caber numa resposta. Divida em partes menores (uma conta por pergunta).'
+        : 'Não consegui montar a resposta. Tente perguntar de outro jeito.';
+      // "cortada" (a tela sugere pedir a continuação) só quando há o começo de uma resposta pra continuar
+      return { texto: texto || vazia, etapas, uso, modelo, rodadas: rodada, cortada: r.stop_reason === 'max_tokens' && !!texto };
     }
     msgs.push({ role: 'assistant', content: blocos });
     const resultados = [];
