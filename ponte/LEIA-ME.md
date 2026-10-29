@@ -87,7 +87,7 @@ py -3 -m ponte dominio sql --arquivo ponte\consultas\folha.sql --mes 2026-09
 ```
 
 - **`conexao`** pergunta o host (pode colar "endereço:porta" de uma vez), a porta, o Engine, o Banco, o usuário e a
-  senha (duas vezes, sem aparecer); monta a conexão com o driver `SQL Anywhere` que o Python enxerga e grava só a
+  senha (duas vezes, um `*` por letra: o Backspace apaga, colar com o botão direito ou o Ctrl+V vale); monta a conexão com o driver `SQL Anywhere` que o Python enxerga e grava só a
   linha `conexao` da `[dominio]` do `config.ini`; testa na hora (a versão do servidor e quantas tabelas o usuário vê) e
   anota no log o resultado — **nunca os valores**. A senha: letras, números e símbolos comuns, sem `;` `{` `}`, aspas
   ou acento (quebram a conexão). Só pergunta numa janela que aceita digitação; pelo terminal do pedreiro, ele abre uma

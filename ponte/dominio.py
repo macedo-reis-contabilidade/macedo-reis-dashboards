@@ -5,7 +5,7 @@ porta, o nome do servidor (o "Engine") e o do banco. O usuário é o "externo", 
 com um usuário GERENTE (Controle › Permissões › Usuários › Novo › Tipo de acesso: Externo) — só de leitura.
 
     conexao [--esperar]
-        Pergunta o host, a porta, o servidor, o banco, o usuário e a senha (a senha sem aparecer, duas vezes), monta a
+        Pergunta o host, a porta, o servidor, o banco, o usuário e a senha (duas vezes, um * por letra), monta a
         string ODBC do SQL Anywhere com o driver que este Python enxerga, grava no [dominio] conexao do config.ini (só
         essa linha) e testa: abre, diz a versão do servidor e quantas tabelas o usuário vê. Quem digita é o Samuel,
         nesta janela: nada passa por chat. Sem uma janela que aceite digitação (o terminal do pedreiro), não pergunta
@@ -281,7 +281,53 @@ def _pergunta(funcao, texto):
         return None
 
 
-def conexao(esperar=False, perguntar=input, senha=getpass.getpass, interativa=None, drivers=None, conectar=None):
+def senha_com_asteriscos(texto, ler_tecla=None, tem_tecla=None, saida=None):
+    """Pergunta a senha mostrando um * pra cada letra (29/10/2026, o Samuel: sem eco nenhum, não dava pra saber quanto
+    já tinha digitado e quanto tinha apagado). No Windows, tecla por tecla (msvcrt): o Backspace apaga a última, o Enter
+    termina, colar (botão direito ou Ctrl+V) vale como digitado, seta e tecla de função não entram, Ctrl+C desiste.
+    Fora do Windows, o getpass de sempre. ler_tecla/tem_tecla/saida: pros testes."""
+    if ler_tecla is None:
+        try:
+            import msvcrt
+        except ImportError:
+            return getpass.getpass(texto)
+        ler_tecla, tem_tecla = msvcrt.getwch, msvcrt.kbhit
+    tem_tecla = tem_tecla or (lambda: False)
+    saida = saida or sys.stdout
+
+    def mostrar(s):
+        saida.write(s)
+        saida.flush()
+
+    mostrar(texto)
+    letras = []
+    while True:
+        c = ler_tecla()
+        if c in ('\r', '\n'):
+            mostrar('\n')
+            return ''.join(letras)
+        if c == '\x03':                    # Ctrl+C
+            mostrar('\n')
+            raise KeyboardInterrupt
+        if c in ('\x04', '\x1a'):          # Ctrl+D, Ctrl+Z
+            mostrar('\n')
+            raise EOFError
+        if c in ('\x08', '\x7f'):          # Backspace
+            if letras:
+                letras.pop()
+                mostrar('\b \b')
+            continue
+        if c == '\x00' or (c == '\xe0' and tem_tecla()):
+            if tem_tecla():                # seta, F1…: chegam em dois códigos, os dois ficam de fora
+                ler_tecla()
+            continue
+        if c < ' ':                        # outro controle (Tab, o Ctrl+V que o console não colou): fora
+            continue
+        letras.append(c)                   # o "à" sozinho entra e a conferência da senha avisa do acento
+        mostrar('*')
+
+
+def conexao(esperar=False, perguntar=input, senha=senha_com_asteriscos, interativa=None, drivers=None, conectar=None):
     try:
         return _conexao(perguntar, senha, interativa or _interativa, drivers or _drivers_do_pyodbc,
                         conectar or abrir_odbc)
@@ -360,7 +406,7 @@ def _conexao(perguntar, senha, interativa, drivers, conectar):
             break
 
     while True:
-        s1 = _pergunta(senha, 'Senha do usuário externo (não aparece enquanto você digita): ')
+        s1 = _pergunta(senha, 'Senha do usuário externo (um * pra cada letra; o Backspace apaga): ')
         if s1 is None:
             tela('Desisti: nada foi gravado.')
             return NADA_FEITO

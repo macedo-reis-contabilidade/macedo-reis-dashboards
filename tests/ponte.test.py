@@ -805,6 +805,55 @@ def caso_dominio():
        and dominio.dica_do_erro(RuntimeError('XX000', f'{sa}outra coisa')) is None,
        'a dica pelo erro do driver: a senha, o servidor, o banco, o driver — e nenhuma quando não dá pra saber')
 
+    # ---- a senha com um * por letra (29/10/2026, o Samuel: sem eco, não dava pra saber quanto tinha digitado e apagado)
+    import importlib.util
+    import inspect
+    import io
+
+    def digitar(*teclas):
+        """Cada tecla chega sozinha, como quem digita; a seta e o F1 chegam com os dois códigos juntos; o que vem
+        num pedaço só é o colado. Devolve (a senha, o que foi pra tela)."""
+        fila = [list(t) for t in teclas]
+        tela = io.StringIO()
+
+        def ler():
+            while fila and not fila[0]:
+                fila.pop(0)
+            if not fila:
+                raise AssertionError('leu tecla depois do fim')
+            return fila[0].pop(0)
+        r = dominio.senha_com_asteriscos('Senha: ', ler_tecla=ler, tem_tecla=lambda: bool(fila and fila[0]), saida=tela)
+        return r, tela.getvalue()
+
+    ok(digitar('a', 'b', '\x08', 'c', '\r') == ('ac', 'Senha: **\b \b*\n'),
+       'senha: um * por letra, o Backspace apaga a última (na tela também), o Enter termina')
+    ok(digitar('\x08', '\x08', 'x', '\r') == ('x', 'Senha: *\n'), 'o Backspace sem nada digitado não apaga o texto da pergunta')
+    ok(digitar('a', '\xe0K', '\xe0M', '\x00;', '\xe0S', 'b', '\r') == ('ab', 'Senha: **\n'),
+       'as setas, o F1 e o Delete (dois códigos) não entram na senha nem na tela')
+    ok(digitar('a', '\t', '\x16', '\x1b', 'b', '\n') == ('ab', 'Senha: **\n'),
+       'Tab, Esc e o Ctrl+V que o console não colou ficam de fora')
+    colada, na_tela = digitar('Boa-Senha_2026!', '\r')
+    ok(colada == 'Boa-Senha_2026!' and na_tela == 'Senha: ' + '*' * 15 + '\n' and 'Boa' not in na_tela,
+       'colar vale como digitado: um * por letra, e a senha não aparece')
+    acento = digitar('\xe0', '\r')[0]
+    ok(acento == '\xe0' and dominio.problema_da_senha(acento), 'o "à" digitado sozinho entra — e a conferência avisa do acento')
+    parou = []
+    for tecla, erro in (('\x03', KeyboardInterrupt), ('\x1a', EOFError)):
+        try:
+            digitar('a', tecla)
+        except erro:
+            parou.append(erro)
+    ok(parou == [KeyboardInterrupt, EOFError], 'Ctrl+C e Ctrl+Z desistem, como antes (a janela diz que nada foi gravado)')
+    ok(inspect.signature(dominio.conexao).parameters['senha'].default is dominio.senha_com_asteriscos,
+       'a janela da conexão pergunta a senha com os *')
+    if importlib.util.find_spec('msvcrt') is None:    # fora do Windows: o getpass de sempre (no Windows, esperaria o teclado)
+        guardado = dominio.getpass.getpass
+        dominio.getpass.getpass = lambda texto: 'pelo-getpass'
+        try:
+            ok(dominio.senha_com_asteriscos('Senha: ') == 'pelo-getpass', 'fora do Windows, a senha vai pelo getpass')
+        finally:
+            dominio.getpass.getpass = guardado
+
     # ---- conexao: digitado na janela, gravado, testado
     pasta = pasta_nova()
     escrever_config(pasta, url=url, conexao=None)
@@ -822,6 +871,7 @@ def caso_dominio():
     ok(not any(p.startswith('Porta') for p in teclado.perguntas), 'o "endereço:porta" colado de uma vez: a porta não é perguntada')
     ok(out.count('não serve') == 2 and 'as duas não são iguais' in out,
        'o que não serve é perguntado de novo (o servidor com espaço, a senha com ;), e a senha confere nas duas vezes')
+    ok(senhas.perguntas and 'um * pra cada letra' in senhas.perguntas[0], 'a pergunta da senha avisa do * por letra')
     ok(usadas == [esperado] and 'abriu — SQL Anywhere 17.0.11.7058' in out and 'tabela(s) do Domínio (bethadba 3)' in out,
        'testa na hora: a versão do servidor e quantas tabelas do Domínio o usuário vê (sem as do sistema)')
     registro = logs(pasta)
