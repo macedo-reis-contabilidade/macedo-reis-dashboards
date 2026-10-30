@@ -1307,7 +1307,12 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
   const ehMatriz = c => String((c && c.documento) || '').replace(/\D/g, '').slice(8, 12) === '0001';
   // a empresa da campanha pelo nome: só empresa (PJ); das parecidas, a da carteira (sem nenhuma, as ativas); da mesma
   // empresa (a raiz do CNPJ), a matriz — a opção é da empresa; ainda várias, as que começam com o nome, e a de nome exato.
-  // Senão, a lista pra escolher (o "Mercado Muller" que o Samuel pediu em 30/10/2026: o de nome exato estava fora da carteira)
+  // Senão, a lista pra escolher (o "Mercado Muller" que o Samuel pediu em 30/10/2026: o de nome exato estava fora da carteira).
+  // O nome se compara sem o que vem entre parênteses e sem o LTDA, ME, EPP… do fim ("Móveis Raupp" é o nome de uma empresa,
+  // MOVEIS RAUPP LTDA, e a fantasia de outra: as duas batem, e a lista mostra as duas); na lista, a empresa com filiais
+  // aparece pela matriz, e a que já está na campanha vem marcada
+  const semForma = s => normalizarBusca(s).replace(/\([^)]*\)/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim()
+    .replace(/(?:\s+(?:ltda|limitada|me|epp|eireli|mei|ss|sa|s a))+$/, '').replace(/\s+/g, '');
   async function acharParaCampanha(termo) {
     const t = String(termo || '').trim();
     if (!t || UUID.test(t)) return acharEmpresa(t);
@@ -1319,8 +1324,8 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     if (!pool.length) pool = achadas.filter(c => c.status === 'ativo');
     if (!pool.length) pool = achadas;
     if (pool.length === 1) return { id: pool[0].id };
-    const nt = normalizarBusca(t).replace(/[^a-z0-9]/g, '');
-    const nomes = c => [c.nome_principal, c.nome_fantasia].filter(Boolean).map(n => normalizarBusca(n).replace(/[^a-z0-9]/g, ''));
+    const nt = semForma(t);
+    const nomes = c => [c.nome_principal, c.nome_fantasia].filter(Boolean).map(semForma);
     const matrizDe = l => { const rs = new Set(l.map(raizCnpj)); return l.length && rs.size === 1 && !rs.has(null) ? l.find(ehMatriz) || null : null; };
     let m = matrizDe(pool);
     if (m) return { id: m.id };
@@ -1330,8 +1335,25 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     if (m) return { id: m.id };
     const exatas = pool.filter(c => nomes(c).includes(nt));
     if (exatas.length === 1) return { id: exatas[0].id };
-    return { erro: 'Mais de uma empresa com "' + t + '":\n' + pool.map(c => '- ' + c.nome_principal + (c.nome_fantasia ? ' (' + c.nome_fantasia + ')' : '') + ' · ' + fmtDoc(c.documento)
-      + ' · ' + (c.regime_tributario || 'sem regime') + ' · ' + descCarteira(cart.get(c.id)) + ' · id ' + c.id).join('\n') + '\nDiga qual (pelo id) — ou pergunte à pessoa.' };
+    m = matrizDe(exatas);
+    if (m) return { id: m.id };
+    // a lista: as de nome exato, senão as que começam com o nome, senão todas; a empresa com filiais, pela matriz
+    const mostrar = exatas.length ? exatas : comecam.length ? comecam : pool;
+    const { linhas: casos } = await ler('rt_casos?select=cliente_id&cliente_id=in.(' + pool.map(c => c.id).join(',') + ')');
+    const naCampanha = new Set(casos.map(c => c.cliente_id));
+    const vistas = new Set(), linhas = [];
+    for (const c of mostrar) {
+      const r = raizCnpj(c);
+      if (r && vistas.has(r)) continue;
+      const grupo = r ? pool.filter(x => raizCnpj(x) === r) : [c];
+      const matriz = grupo.length > 1 ? grupo.find(ehMatriz) : null;
+      const x = matriz || c;
+      if (matriz) vistas.add(r);
+      linhas.push('- ' + x.nome_principal + (x.nome_fantasia ? ' (' + x.nome_fantasia + ')' : '') + ' · ' + fmtDoc(x.documento) + ' · ' + (x.regime_tributario || 'sem regime')
+        + ' · ' + descCarteira(cart.get(x.id)) + (matriz ? ' · com ' + plural(grupo.length - 1, 'filial', 'filiais') + ' (a opção é da empresa: entra a matriz)' : '')
+        + (naCampanha.has(x.id) ? ' · já na campanha' : '') + ' · id ' + x.id);
+    }
+    return { erro: 'Mais de uma empresa com "' + t + '":\n' + linhas.join('\n') + '\nDiga qual (pelo id) — ou pergunte à pessoa, dizendo a que já está na campanha.' };
   }
 
   async function propor_incluir_reforma(e) {
@@ -1439,7 +1461,8 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     }
     const { linhas: vs, total } = await ler('cliente_obrigacoes?select=id,cliente_id,obrigacao_id,responsavel,dia_prazo_override,ativo&' + f.join('&') + '&order=id.asc&limit=300', { contar: true });
     const quais = [...obrig.values()].map(o => o.nome).join('; ');
-    if (!vs.length) return 'Nenhuma empresa com ' + quais + ' ligada' + (ra ? ' com ' + ra : '') + (empresas.length ? ' entre as pedidas' : '') + ' — nada foi proposto.';
+    if (!vs.length) return 'Nenhuma empresa com ' + quais + ' ligada' + (ra ? ' com ' + ra : '') + (empresas.length ? ' entre as pedidas' : '') + ' — nada foi proposto.'
+      + ' Só o vínculo ligado entra aqui: o desligado não gera tarefa, e religar é na tela Obrigações fiscais.';
     if ((total || 0) > 300) return 'São ' + total + ' empresas com ' + quais + ': afine (as empresas, quem cuida hoje) até 300 — nada foi proposto.';
     const mudam = vs.filter(v => ajusteDoVinculo(v, obrig.get(v.obrigacao_id), mudar));
     const iguais = vs.length - mudam.length;

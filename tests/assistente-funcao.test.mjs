@@ -833,18 +833,28 @@ console.log('Os cadastros (30/10/2026): incluir na Reforma, pôr num mês dos bo
     && /Até 20/.test(await comCadastro(raupp).propor_incluir_reforma({ empresas: Array.from({ length: 21 }, (_, i) => 'x' + i) })) && /Diga quais empresas/.test(await comCadastro(raupp).propor_incluir_reforma({})) && propostas.length === 4);
   const amb = await comCadastro([cli(31, 'PADARIA SOL LTDA', null, '11111111000111', 'Simples Nacional'), cli(32, 'PADARIA SOL NASCENTE LTDA', null, '22222222000122', 'Lucro Presumido')]).propor_incluir_reforma({ empresas: ['Padaria'] });
   chk('Reforma: duas empresas parecidas, nenhuma na carteira: a lista pra escolher, com o regime e a carteira', /Mais de uma empresa com "Padaria"/.test(amb) && /PADARIA SOL NASCENTE LTDA · 22\.222\.222\/0001-22 · Lucro Presumido · fora da carteira · id /.test(amb) && propostas.length === 4, amb);
+  // "Móveis Raupp" (30/10/2026): o nome de uma (MOVEIS RAUPP LTDA — o LTDA não desempata) e a fantasia de outra (a J. Raupp e uma
+  // filial): a lista, com a empresa das filiais pela matriz e a que já está na campanha marcada
+  const mr = await comCadastro(raupp).propor_incluir_reforma({ empresas: ['Móveis Raupp'] });
+  chk('Reforma: o nome que é de uma e a fantasia de outra: a lista, a das filiais pela matriz, a que já está na campanha marcada', /Mais de uma empresa com "Móveis Raupp"/.test(mr)
+    && /- MOVEIS RAUPP LTDA · 01\.921\.789\/0001-86 · Lucro Presumido · na carteira desde 01\/03\/2026 · já na campanha · id /.test(mr)
+    && /- J\. RAUPP COMERCIO DE MOVEIS LTDA \(MATRIZ\) \(MOVEIS RAUPP\) · 05\.586\.949\/0001-39 · Lucro Presumido · na carteira desde 01\/03\/2026 · com 2 filiais \(a opção é da empresa: entra a matriz\) · id /.test(mr)
+    && !/FILIAL/.test(mr) && /dizendo a que já está na campanha/.test(mr) && propostas.length === 4, mr);
+  const ltda = await comCadastro([cli(33, 'DOCES DA VO LTDA', 'DOCES DA VO', '66666666000166', 'Simples Nacional'), cli(34, 'DOCES DA VO LTDA', null, '66666666000247', 'Simples Nacional'),
+    cli(35, 'DOCES DA VOVO MARIA EIRELI', null, '77777777000177', 'Simples Nacional')]).propor_incluir_reforma({ empresas: ['Doces da Vó Ltda'] });
+  chk('Reforma: o LTDA digitado não atrapalha, e de nome exato a matriz e a filial: a matriz', propostas.length === 5 && JSON.stringify(propostas[4].ids) === JSON.stringify([U(33)]), ltda);
 
   // os boletos: pôr num mês
   const cobr = [{ id: U(51), cliente_id: U(41), competencia: '2026-08', valor: 1535, vencimento: '2026-09-25', status: 'pago' }, { id: U(52), cliente_id: U(42), competencia: '2026-09', valor: 1535, vencimento: '2026-10-26', status: 'enviado' }];
   const bases = [{ cliente_id: U(41), valor_base: 1500, dia_vencimento: 25, ativo: true }, { cliente_id: U(43), valor_base: 900, dia_vencimento: 10, ativo: false }];
   const pizz = [cli(41, 'MASSA PIZZARIA LTDA', null, '33333333000133', 'Simples Nacional'), cli(42, 'PIZZARIA ARSENAL LTDA', null, '44444444000144', 'Simples Nacional'), cli(43, 'PIZZARIA SEM BASE LTDA', null, '55555555000155', 'Simples Nacional')];
   const b1 = await comCadastro(pizz, { cobrancas_mensais: cobr, cobrancas_config: bases }).propor_por_na_competencia({ empresas: [U(41), U(42), U(43)], competencia: '2026-09' });
-  chk('boletos: as que faltam no mês, com o valor copiado do mais recente (ou da base) e o vencimento no dia útil; a que já está, à parte', propostas.length === 5
-    && JSON.stringify(propostas[4]) === JSON.stringify({ tipo: 'por_na_competencia', competencia: '2026-09', ids: [U(41), U(43)] })
+  chk('boletos: as que faltam no mês, com o valor copiado do mais recente (ou da base) e o vencimento no dia útil; a que já está, à parte', propostas.length === 6
+    && JSON.stringify(propostas[5]) === JSON.stringify({ tipo: 'por_na_competencia', competencia: '2026-09', ids: [U(41), U(43)] })
     && /MASSA PIZZARIA LTDA · R\$\s?1\.535,00 \(copiado de 08\/2026\) · vence 26\/10\/2026/.test(b1) && /PIZZARIA SEM BASE LTDA · R\$\s?900,00 \(da base de cobrança\) · vence 13\/10\/2026 · a base de cobrança dela está parada/.test(b1)
     && /PIZZARIA ARSENAL LTDA já está em 09\/2026 \(R\$\s?1\.535,00, enviado\)/.test(b1) && /Nada foi gravado ainda/.test(b1), b1);
   chk('boletos: competência fora do formato, ou todas já no mês: não propõe', /'AAAA-MM'/.test(await comCadastro(pizz).propor_por_na_competencia({ empresas: [U(41)], competencia: '09/2026' }))
-    && /Nada foi proposto/.test(await comCadastro(pizz, { cobrancas_mensais: cobr }).propor_por_na_competencia({ empresas: [U(42)], competencia: '2026-09' })) && propostas.length === 5);
+    && /Nada foi proposto/.test(await comCadastro(pizz, { cobrancas_mensais: cobr }).propor_por_na_competencia({ empresas: [U(42)], competencia: '2026-09' })) && propostas.length === 6);
 
   // as obrigações: quem cuida, o dia, desligar
   const OB = n => '7f000000-0000-4000-8000-' + String(n).padStart(12, '0');
@@ -856,22 +866,25 @@ console.log('Os cadastros (30/10/2026): incluir na Reforma, pôr num mês dos bo
     { id: OB(14), cliente_id: U(41), obrigacao_id: OB(3), responsavel: 'Deize', dia_prazo_override: null, ativo: true }];
   const comObrig = () => comCadastro(pizz, { obrigacoes_fiscais: catalogo, cliente_obrigacoes: vinc });
   const o1 = await comObrig().propor_ajustar_obrigacoes({ obrigacoes: ['situação fiscal federal'], responsavel_atual: 'thalia', novo_responsavel: 'deize' });
-  chk('obrigações: a de quem cuida hoje passa pra Deize (sem acento e sem maiúscula); as tarefas abertas vão junto, e o modelo sabe', propostas.length === 6
-    && JSON.stringify(propostas[5]) === JSON.stringify({ tipo: 'ajustar_obrigacoes', ids: [OB(11), OB(12)], mudar: { responsavel: 'Deize' } })
+  chk('obrigações: a de quem cuida hoje passa pra Deize (sem acento e sem maiúscula); as tarefas abertas vão junto, e o modelo sabe', propostas.length === 7
+    && JSON.stringify(propostas[6]) === JSON.stringify({ tipo: 'ajustar_obrigacoes', ids: [OB(11), OB(12)], mudar: { responsavel: 'Deize' } })
     && /quem cuida: THALIA → Deize/.test(o1) && /tarefas abertas dessas obrigações que estavam com quem cuidava vão junto pra Deize/.test(o1) && /Nada mudou ainda/.test(o1), o1);
   const o2 = await comObrig().propor_ajustar_obrigacoes({ obrigacoes: ['NFS-E DJ INSTALAÇÕES'], novo_dia: 30 });
-  chk('obrigações: o dia daqui pra frente (as já criadas ficam com o prazo delas)', propostas.length === 7 && JSON.stringify(propostas[6]) === JSON.stringify({ tipo: 'ajustar_obrigacoes', ids: [OB(14)], mudar: { dia: 30 } })
+  chk('obrigações: o dia daqui pra frente (as já criadas ficam com o prazo delas)', propostas.length === 8 && JSON.stringify(propostas[7]) === JSON.stringify({ tipo: 'ajustar_obrigacoes', ids: [OB(14)], mudar: { dia: 30 } })
     && /dia 1 → 30/.test(o2) && /as já criadas ficam com o prazo delas/.test(o2), o2);
   const o3 = await comObrig().propor_ajustar_obrigacoes({ obrigacoes: ['SITUAÇÃO FISCAL - FEDERAL'], empresas: [U(43)], desligar: true });
-  chk('obrigações: desligar numa empresa', propostas.length === 8 && JSON.stringify(propostas[7]) === JSON.stringify({ tipo: 'ajustar_obrigacoes', ids: [OB(13)], mudar: { desligar: true } }) && /desligar/.test(o3), o3);
+  chk('obrigações: desligar numa empresa', propostas.length === 9 && JSON.stringify(propostas[8]) === JSON.stringify({ tipo: 'ajustar_obrigacoes', ids: [OB(13)], mudar: { desligar: true } }) && /desligar/.test(o3), o3);
   chk('obrigações: o nome que bate em duas pede o completo; desligar com outra mudança, pessoa fora da equipe e "já está assim" não propõem',
     /Mais de uma obrigação com "situação fiscal": SITUAÇÃO FISCAL - ESTADUAL; SITUAÇÃO FISCAL - FEDERAL/.test(await comObrig().propor_ajustar_obrigacoes({ obrigacoes: ['situação fiscal'], novo_dia: 5 }))
     && /Desligar vai sozinho/.test(await comObrig().propor_ajustar_obrigacoes({ obrigacoes: ['NFS-E DJ INSTALAÇÕES'], desligar: true, novo_dia: 5 }))
     && /fora da equipe/.test(await comObrig().propor_ajustar_obrigacoes({ obrigacoes: ['NFS-E DJ INSTALAÇÕES'], novo_responsavel: 'Luana' }))
-    && /já está assim/.test(await comObrig().propor_ajustar_obrigacoes({ obrigacoes: ['NFS-E DJ INSTALAÇÕES'], novo_responsavel: 'Deize' })) && propostas.length === 8);
+    && /já está assim/.test(await comObrig().propor_ajustar_obrigacoes({ obrigacoes: ['NFS-E DJ INSTALAÇÕES'], novo_responsavel: 'Deize' })) && propostas.length === 9);
+  const desl = await comCadastro(pizz, { obrigacoes_fiscais: catalogo, cliente_obrigacoes: [{ ...vinc[0], ativo: false }] }).propor_ajustar_obrigacoes({ obrigacoes: ['SITUAÇÃO FISCAL - FEDERAL'], novo_responsavel: 'Deize' });
+  chk('obrigações: só o vínculo ligado entra — o desligado, a mensagem diz onde religar', /Nenhuma empresa com SITUAÇÃO FISCAL - FEDERAL ligada — nada foi proposto\. Só o vínculo ligado entra aqui: o desligado não gera tarefa, e religar é na tela Obrigações fiscais\./.test(desl) && propostas.length === 9, desl);
   chk('as etapas e o prompt dos cadastros', descreverEtapa('propor_incluir_reforma') === 'Separando as empresas pra campanha da Reforma' && descreverEtapa('propor_por_na_competencia') === 'Montando os boletos pra você conferir'
     && descreverEtapa('propor_ajustar_obrigacoes') === 'Separando as obrigações pra você confirmar' && /propor_incluir_reforma; o nome e o CNPJ de cada uma vão na resposta/.test(INSTRUCOES)
-    && /propor_por_na_competencia/.test(INSTRUCOES) && /propor_ajustar_obrigacoes — o dia novo vale das próximas tarefas/.test(INSTRUCOES) && /incluir empresa na campanha da Reforma, pôr empresa num mês dos boletos/.test(INSTRUCOES));
+    && /propor_por_na_competencia/.test(INSTRUCOES) && /propor_ajustar_obrigacoes — o dia novo vale das próximas tarefas/.test(INSTRUCOES) && /incluir empresa na campanha da Reforma, pôr empresa num mês dos boletos/.test(INSTRUCOES)
+    && /Nas três, chame a proposta direto, com as empresas e as obrigações como a pessoa escreveu \(sem buscar antes\)/.test(INSTRUCOES) && /se a pessoa falou de uma empresa só e são várias, pergunte qual/.test(INSTRUCOES));
 }
 
 console.log('Commit fixado na função (o código cru do GitHub):');
