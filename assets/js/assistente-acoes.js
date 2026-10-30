@@ -27,7 +27,10 @@
 // atrasadas —, o "✎ Mensagem no histórico" abre o campo, e o que a pessoa escrever vai no fim da linha do histórico de cada
 // uma (com o que ela pediu pra anotar, a IA já manda preenchido). E o cartão de só registrar (o "Registrar andamento" da
 // Agenda): a mensagem no histórico, sem concluir nem mudar a tarefa, com o "Desfazer" que tira as linhas.
-// Testes de tela: tests/harness/assistente-acoes.py, tests/harness/assistente-vigia.py e tests/harness/assistente-mensagem.py.
+// Os cadastros (30/10/2026, pedido do Samuel): incluir empresa na campanha da Reforma, pôr empresa num mês dos boletos (com o
+// valor e o vencimento editáveis) e ajustar as obrigações das empresas em lote (quem cuida, o dia do prazo, desligar).
+// Testes de tela: tests/harness/assistente-acoes.py, tests/harness/assistente-vigia.py, tests/harness/assistente-mensagem.py e
+// tests/harness/assistente-cadastros.py.
 // ============================================================
 
 import { supabase } from './supabase.js';
@@ -37,7 +40,9 @@ import { concluirTarefas, desfazerConclusao, marcarPagos, desfazerPagos, criarTa
   descartarProposta, desfazerDescarte, avancarBoletos, voltarBoletos, fecharFicha, reabrirFicha, vincularEmpresa, desvincularEmpresa, buscarEmpresas,
   renovarAlvara, desfazerRenovacao, desativarRegistro, reativarRegistro, obrigacoesParaVincular, vincularObrigacoes, desfazerVinculoObrigacoes,
   dadosDaCobranca, porNaCobranca, desfazerCobranca, acertarCadastro, desfazerCadastro,
-  registrarNoHistorico, desfazerRegistro, limparMensagem, MAX_MENSAGEM, tarefaDoMesDoVinculo, criarTarefaDoMes, religarVinculo } from './tarefas-acoes.js';
+  registrarNoHistorico, desfazerRegistro, limparMensagem, MAX_MENSAGEM, tarefaDoMesDoVinculo, criarTarefaDoMes, religarVinculo,
+  incluirNaCampanha, desfazerInclusaoCampanha, dadosParaCompetencia, porNaCompetencia, desfazerPorNaCompetencia, COMPETENCIA_ISO,
+  limparAjuste, ajusteDoVinculo, ajustarVinculos, desfazerAjusteVinculos } from './tarefas-acoes.js';
 import { EQUIPE, SOCIOS, nomePorEmail } from './equipe.js';
 import { SETORES } from './nova-tarefa.js';
 import { lerAchados, ignorarAchado, reabrirAchado, filtrarAchados, agruparAchados, linkSeguro, ehSocioPeloNome, marcarVisto,
@@ -154,7 +159,8 @@ const linhaDaMensagem = m => (m ? sub('No histórico: “' + trecho(m) + '”') 
 // ============================================================
 export function cartaoDaAcao(acao, ajuda = {}) {
   const fazer = { concluir_tarefas: cartaoConcluir, alterar_tarefas: cartaoAlterar, registrar_historico: cartaoRegistrar, marcar_pago: cartaoPago, criar_tarefa: cartaoCriar,
-    revisar_atrasadas: cartaoRevisao, vigia: cartaoVigia, arquivos: cartaoArquivos, enviar_mensagem: cartaoMensagem }[acao && acao.tipo];
+    revisar_atrasadas: cartaoRevisao, vigia: cartaoVigia, arquivos: cartaoArquivos, enviar_mensagem: cartaoMensagem,
+    incluir_reforma: cartaoReforma, por_na_competencia: cartaoCompetencia, ajustar_obrigacoes: cartaoObrigacoes }[acao && acao.tipo];
   if (!fazer) return null;
   const raiz = h('div', { class: 'as-cartao', role: 'group' });
   const estado = { ...acao };
@@ -1458,6 +1464,286 @@ function cartaoVigia({ raiz, estado, salvar, ajuda, anunciar }) {
     salvar({ feitos: f });
     anunciar('Voltou pra lista.');
     desenhar();
+  }
+  desenhar();
+}
+
+// ============================================================
+// Os cadastros (30/10/2026, pedido do Samuel: "as vezes acho que o assistente ta um pouco limitado nas ações, preciso que
+// esse tipo de coisa ele possa fazer") — o que antes era "só leio": incluir empresa na campanha da Reforma, pôr empresa num
+// mês dos boletos e ajustar as obrigações das empresas em lote. A regra de gravar é a de tarefas-acoes.js; depois, as telas
+// abertas são avisadas: "mr:reforma-mudou" (a lista da Reforma recarrega), "mr:boletos-mudaram" com a competência (a grade
+// do mês recarrega) e "mr:obrigacoes-mudaram" (a tela Obrigações fiscais recarrega) — e "mr:tarefas-mudaram" quando as
+// tarefas abertas da obrigação vão junto pra quem assumiu.
+// ============================================================
+const fmtDocumento = d => { const x = String(d || '').replace(/\D/g, '');
+  return x.length === 14 ? x.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5') : x.length === 11 ? x.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4') : String(d || ''); };
+const naCarteira = (c, hoje) => !!c && !!c.entrada && (!c.saida || String(c.saida).slice(0, 10) > hoje);
+const textoCarteira = (c, hoje) => (naCarteira(c, hoje) ? 'na carteira desde ' + dataBR(c.entrada) : c && c.saida ? 'saiu da carteira em ' + dataBR(c.saida) : 'fora da carteira');
+const quemPede = ajuda => ajuda.nome || nomePorEmail(ajuda.email) || null;
+const erroDeLeitura = (texto, deNovo) => [h('div', { class: 'as-cartao-erro', text: texto }), h('div', { class: 'as-cartao-botoes' }, botao('Tentar de novo', deNovo))];
+async function lerPorColuna(tabela, colunas, coluna, ids) {
+  const out = [];
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data, error } = await supabase.from(tabela).select(colunas).in(coluna, ids.slice(i, i + 100));
+    if (error) throw new Error(error.message);
+    out.push(...(data || []));
+  }
+  return out;
+}
+
+// ---------- incluir na campanha da Reforma ----------
+function cartaoReforma({ raiz, estado, salvar, ajuda, anunciar }) {
+  raiz.setAttribute('aria-label', 'Incluir na campanha da Reforma');
+  const ids = idsDe(estado.ids).slice(0, 20);
+  async function desenhar() {
+    if (estado.estado === 'feita') return desenharFeita();
+    if (estado.estado === 'cancelada') return trocar(raiz, sub('Deixei como estava.'));
+    if (estado.estado === 'desfeita') return desenharDesfeita();
+    trocar(raiz, sub('Lendo as empresas…'));
+    let cli, comCaso, cart;
+    try {
+      cli = await lerPorIds('clientes', 'id, nome_principal, nome_fantasia, documento, regime_tributario, tipo_pessoa', ids);
+      comCaso = new Set((await lerPorColuna('rt_casos', 'cliente_id', 'cliente_id', ids)).map(c => String(c.cliente_id)));
+      cart = new Map((await lerPorColuna('carteira_info', 'cliente_id, entrada, saida', 'cliente_id', ids)).map(c => [String(c.cliente_id), c]));
+    } catch (e) { return trocar(raiz, ...erroDeLeitura('Não consegui ler as empresas agora.', desenhar)); }
+    const ordem = new Map(ids.map((id, i) => [id, i]));
+    const pj = cli.filter(c => c.tipo_pessoa !== 'PF').sort((a, b) => (ordem.get(String(a.id)) ?? 99) - (ordem.get(String(b.id)) ?? 99));
+    const livres = pj.filter(c => !comCaso.has(String(c.id)));
+    const jaTem = pj.filter(c => comCaso.has(String(c.id)));
+    if (!livres.length) return trocar(raiz, sub(jaTem.length === 1 ? 'Essa empresa já está na campanha da Reforma.' : 'Essas empresas já estão na campanha da Reforma.'));
+    const hoje = hojeISO();
+    const tit = h('div', { class: 'as-cartao-tit' });
+    const erro = h('div', { class: 'as-cartao-erro', hidden: true });
+    const obs = h('textarea', { rows: '2', maxlength: '300' });
+    obs.value = typeof estado.observacao === 'string' ? estado.observacao.slice(0, 300) : '';
+    obs.addEventListener('change', () => salvar({ observacao: obs.value.replace(/\s+/g, ' ').trim().slice(0, 300) }));
+    const ok = botao('Incluir', () => confirmar(lista.marcadas(), ok, nao, erro, obs), 'pri');
+    const nao = botao('Agora não', () => { salvar({ estado: 'cancelada' }); desenhar(); });
+    const atualizar = () => { const n = lista.marcadas().length; tit.textContent = 'Incluir ' + qtd(livres.length, 'empresa', 'empresas') + ' na campanha da Reforma?'; ok.textContent = n ? 'Incluir ' + n : 'Incluir'; ok.disabled = !n; };
+    const lista = listaComCaixas(livres.map(c => ({ id: String(c.id), titulo: c.nome_principal || 'empresa',
+      tag: c.regime_tributario && c.regime_tributario !== 'Simples Nacional' ? 'hoje: ' + c.regime_tributario : '',
+      sub: [c.nome_fantasia, fmtDocumento(c.documento), textoCarteira(cart.get(String(c.id)), hoje)].filter(Boolean).join(' · ') })), { aoMudar: () => atualizar() });
+    atualizar();
+    trocar(raiz, tit, sub('A opção IBS/CBS de 2027: o caso entra pendente; a simulação e a decisão seguem na tela Reforma Tributária.'), lista.el,
+      h('div', { class: 'as-cartao-campos' }, h('label', { class: 'as-cartao-campo largo' }, 'Observação no caso (opcional)', obs)),
+      jaTem.length ? sub((jaTem.length === 1 ? 'Já está' : 'Já estão') + ' na campanha: ' + jaTem.map(c => c.nome_principal).join(', ') + '.') : null,
+      h('div', { class: 'as-cartao-botoes' }, ok, nao, alternarTodas(lista, livres.length)), erro);
+  }
+  async function confirmar(marcados, ok, nao, erro, obs) {
+    if (!marcados.length) return;
+    ok.disabled = true; nao.disabled = true; obs.disabled = true; ok.textContent = 'Incluindo…'; erro.hidden = true;
+    const r = await incluirNaCampanha(supabase, marcados, { quem: quemPede(ajuda), observacao: obs.value });
+    if (r.erro && !r.incluidos.length) { erro.textContent = 'Não consegui incluir: ' + r.erro; erro.hidden = false; ok.disabled = false; nao.disabled = false; obs.disabled = false; ok.textContent = 'Incluir ' + marcados.length; return; }
+    salvar({ estado: 'feita', resultado: { incluidos: r.incluidos, ja: r.jaEstavam.length, ...(r.erro ? { erro: r.erro } : {}), em: new Date().toISOString() } });
+    if (r.incluidos.length) { avisarTelas('mr:reforma-mudou', { ids: r.incluidos.map(c => c.id) }); try { ajuda.reagir && ajuda.reagir(); } catch (e) { /* sem carinha */ } }
+    anunciar(qtd(r.incluidos.length, 'empresa incluída', 'empresas incluídas') + ' na campanha da Reforma.');
+    desenhar();
+  }
+  function desenharFeita() {
+    const r = estado.resultado || {};
+    const inc = Array.isArray(r.incluidos) ? r.incluidos : [];
+    const linha = h('div', { class: 'as-cartao-feito' }, h('span', { class: 'as-cartao-ok', text: '✓ ' + (inc.length ? qtd(inc.length, 'empresa incluída', 'empresas incluídas') + ' na campanha da Reforma' : 'Nenhuma empresa entrou') + '.' }));
+    if (r.ja) linha.append(h('span', { class: 'as-cartao-sub', text: qtd(r.ja, 'já estava', 'já estavam') + ' na campanha.' }));
+    if (r.erro) linha.append(h('span', { class: 'as-cartao-aviso', text: 'Parei no meio: ' + r.erro }));
+    if (inc.length) linha.append(h('a', { class: 'as-botao as-botao-link', href: new URL('fiscal-reforma.html' + (inc.length === 1 && ID.test(String(inc[0].id)) ? '#caso-' + inc[0].id : ''), RAIZ).href,
+      text: inc.length === 1 ? 'Abrir o caso' : 'Abrir a Reforma' }));
+    if (inc.length && podeDesfazer(r.em)) linha.append(botao('Desfazer', desfazer, 'link'));
+    trocar(raiz, linha);
+  }
+  async function desfazer(ev) {
+    const b = ev.currentTarget, r = estado.resultado || {};
+    if (!podeDesfazer(r.em)) { trocar(raiz, sub('Passou o tempo de desfazer por aqui: o caso fica na tela Reforma Tributária.')); return; }
+    b.disabled = true; b.textContent = 'Desfazendo…';
+    const d = await desfazerInclusaoCampanha(supabase, r.incluidos || []);
+    if (d.erro && !d.desfeitos.length) { b.disabled = false; b.textContent = 'Desfazer'; raiz.append(h('div', { class: 'as-cartao-erro', text: 'Não consegui desfazer: ' + d.erro })); return; }
+    salvar({ estado: 'desfeita', desfeito: { n: d.desfeitos.length, ficaram: d.ficaram } });
+    if (d.desfeitos.length) avisarTelas('mr:reforma-mudou', { ids: d.desfeitos });
+    anunciar('Desfeito.');
+    desenhar();
+  }
+  function desenharDesfeita() {
+    const d = estado.desfeito || {};
+    trocar(raiz, h('div', { class: 'as-cartao-feito' }, h('span', { text: '↺ Desfeito: ' + qtd(d.n || 0, 'empresa saiu', 'empresas saíram') + ' da campanha.' }),
+      d.ficaram ? h('span', { class: 'as-cartao-sub', text: qtd(d.ficaram, 'ficou', 'ficaram') + ': alguém já mexeu no caso — tire na tela Reforma Tributária, se for o caso.' }) : null));
+  }
+  desenhar();
+}
+
+// ---------- pôr a empresa num mês dos boletos ----------
+// cada empresa com o valor e o vencimento (dá pra editar antes de confirmar); a que já está no mês fica de fora
+const valorBR = v => (v == null || v === '' ? '' : Number(v).toFixed(2).replace('.', ','));
+const lerValor = s => { const t = String(s || '').trim().replace(/\s/g, '').replace(/^R\$/i, ''); if (!t) return NaN; const n = Number(t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t); return Math.round(n * 100) / 100; };
+function cartaoCompetencia({ raiz, estado, salvar, ajuda, anunciar }) {
+  raiz.setAttribute('aria-label', 'Pôr no mês dos boletos');
+  const ids = idsDe(estado.ids).slice(0, 20);
+  const comp = COMPETENCIA_ISO.test(String(estado.competencia || '')) ? estado.competencia : null;
+  async function desenhar() {
+    if (!comp) return trocar(raiz, sub('A competência não veio na proposta: peça de novo, dizendo o mês.'));
+    if (estado.estado === 'feita') return desenharFeita();
+    if (estado.estado === 'cancelada') return trocar(raiz, sub('Deixei como estava.'));
+    if (estado.estado === 'desfeita') return desenharDesfeita();
+    trocar(raiz, sub('Lendo as cobranças…'));
+    let dados, nomes;
+    try { dados = await dadosParaCompetencia(supabase, ids, comp); nomes = await nomesDe(ids); }
+    catch (e) { return trocar(raiz, ...erroDeLeitura('Não consegui ler as cobranças agora.', desenhar)); }
+    const livres = ids.map(id => dados.get(id)).filter(d => d && !d.ja);
+    const ja = ids.map(id => dados.get(id)).filter(d => d && d.ja);
+    if (!livres.length) return trocar(raiz, sub((ja.length === 1 ? 'Essa empresa já está' : 'Essas empresas já estão') + ' em ' + mesBR(comp) + '.'));
+    const tit = h('div', { class: 'as-cartao-tit', text: 'Pôr ' + qtd(livres.length, 'empresa', 'empresas') + ' nos boletos de ' + mesBR(comp) + '?' });
+    const erro = h('div', { class: 'as-cartao-erro', hidden: true });
+    const linhas = livres.map(d => {
+      const cx = h('input', { type: 'checkbox', checked: true, onchange: () => atualizar() });
+      const valor = h('input', { type: 'text', inputmode: 'decimal', value: valorBR(d.valor), placeholder: '0,00', 'aria-label': 'Valor de ' + (nomes.get(d.cliente_id) || 'empresa') });
+      const venc = h('input', { type: 'date', value: d.vencimento || '', 'aria-label': 'Vencimento de ' + (nomes.get(d.cliente_id) || 'empresa') });
+      const fonte = d.fonte === 'copia' ? 'copiado de ' + mesBR(d.de) : d.fonte === 'base' ? 'da base de cobrança' : 'sem cobrança anterior nem base: preencha o valor';
+      const aviso = !d.base ? 'Sem base de cobrança: ganha a base, e os próximos meses passam a gerar.' : d.base.ativo === false ? 'A base de cobrança dela está parada: os próximos meses não geram (volte a cobrar na tela Boletos).' : '';
+      const el = h('li', {}, h('label', { class: 'as-cartao-item' }, cx, h('span', {}, h('b', { text: nomes.get(d.cliente_id) || 'empresa' }), h('small', { text: fonte }))),
+        h('div', { class: 'as-cartao-campos', style: 'margin:0 0 6px 24px' }, h('label', { class: 'as-cartao-campo' }, 'Valor (R$)', valor), h('label', { class: 'as-cartao-campo' }, 'Vencimento', venc)),
+        aviso ? h('div', { class: 'as-cartao-aviso', style: 'margin:0 0 6px 24px', text: aviso }) : null);
+      return { d, cx, valor, venc, el };
+    });
+    const ok = botao('Pôr no mês', () => confirmar(ok, nao, erro), 'pri');
+    const nao = botao('Agora não', () => { salvar({ estado: 'cancelada' }); desenhar(); });
+    function atualizar() { const n = linhas.filter(l => l.cx.checked).length; ok.textContent = n ? 'Pôr ' + n + ' no mês' : 'Pôr no mês'; ok.disabled = !n; }
+    async function confirmar() {
+      const itens = [];
+      for (const l of linhas.filter(x => x.cx.checked)) {
+        const v = lerValor(l.valor.value);
+        if (!(v >= 0) || !Number.isFinite(v)) { erro.textContent = 'Preencha o valor de ' + (nomes.get(l.d.cliente_id) || 'cada empresa') + '.'; erro.hidden = false; l.valor.focus(); return; }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(l.venc.value)) { erro.textContent = 'Preencha o vencimento de ' + (nomes.get(l.d.cliente_id) || 'cada empresa') + '.'; erro.hidden = false; l.venc.focus(); return; }
+        itens.push({ cliente_id: l.d.cliente_id, valor: v, vencimento: l.venc.value, canal: l.d.canal, contato_envio: l.d.contato_envio, destino: l.d.destino, responsavel: l.d.responsavel });
+      }
+      if (!itens.length) return;
+      ok.disabled = true; nao.disabled = true; ok.textContent = 'Gravando…'; erro.hidden = true;
+      linhas.forEach(l => { l.valor.disabled = true; l.venc.disabled = true; l.cx.disabled = true; });
+      const r = await porNaCompetencia(supabase, comp, itens);
+      if (r.erro && !r.postos.length) {
+        erro.textContent = 'Não consegui gravar: ' + r.erro; erro.hidden = false; ok.disabled = false; nao.disabled = false; atualizar();
+        linhas.forEach(l => { l.valor.disabled = false; l.venc.disabled = false; l.cx.disabled = false; });
+        return;
+      }
+      salvar({ estado: 'feita', resultado: { postos: r.postos, bases: r.bases, ja: r.jaEstavam.length, ...(r.erro ? { erro: r.erro } : {}), em: new Date().toISOString() } });
+      if (r.postos.length) avisarTelas('mr:boletos-mudaram', { mudancas: [], competencia: comp, novos: r.postos.map(p => p.id) });
+      anunciar(qtd(r.postos.length, 'boleto posto', 'boletos postos') + ' em ' + mesBR(comp) + '.');
+      desenhar();
+    }
+    atualizar();
+    trocar(raiz, tit, sub('Entram "a emitir", como o "Adicionar empresa" da tela Boletos; o vencimento é no mês seguinte ao da competência.'),
+      h('ul', { class: 'as-cartao-lista' }, linhas.map(l => l.el)),
+      ja.length ? sub((ja.length === 1 ? 'Já está' : 'Já estão') + ' em ' + mesBR(comp) + ': ' + ja.map(d => nomes.get(d.cliente_id) || 'empresa').join(', ') + '.') : null,
+      h('div', { class: 'as-cartao-botoes' }, ok, nao), erro);
+  }
+  function desenharFeita() {
+    const r = estado.resultado || {};
+    const n = (r.postos || []).length;
+    const linha = h('div', { class: 'as-cartao-feito' }, h('span', { class: 'as-cartao-ok', text: '✓ ' + (n ? qtd(n, 'boleto posto', 'boletos postos') + ' em ' + mesBR(comp) + ', a emitir' : 'Nenhum boleto entrou') + '.' }));
+    if ((r.bases || []).length) linha.append(h('span', { class: 'as-cartao-sub', text: qtd(r.bases.length, 'empresa ganhou', 'empresas ganharam') + ' a base de cobrança.' }));
+    if (r.ja) linha.append(h('span', { class: 'as-cartao-sub', text: qtd(r.ja, 'já estava', 'já estavam') + ' no mês.' }));
+    if (r.erro) linha.append(h('span', { class: 'as-cartao-aviso', text: 'Parei no meio: ' + r.erro }));
+    if (n) linha.append(h('a', { class: 'as-botao as-botao-link', href: new URL('financeiro-boletos.html?competencia=' + comp, RAIZ).href, text: 'Abrir Boletos' }));
+    if (n && podeDesfazer(r.em)) linha.append(botao('Desfazer', desfazer, 'link'));
+    trocar(raiz, linha);
+  }
+  async function desfazer(ev) {
+    const b = ev.currentTarget, r = estado.resultado || {};
+    if (!podeDesfazer(r.em)) { trocar(raiz, sub('Passou o tempo de desfazer por aqui: tire o boleto na tela Boletos.')); return; }
+    b.disabled = true; b.textContent = 'Desfazendo…';
+    const d = await desfazerPorNaCompetencia(supabase, { postos: r.postos || [], bases: r.bases || [] });
+    if (d.erro && !d.desfeitos.length) { b.disabled = false; b.textContent = 'Desfazer'; raiz.append(h('div', { class: 'as-cartao-erro', text: 'Não consegui desfazer: ' + d.erro })); return; }
+    salvar({ estado: 'desfeita', desfeito: { n: d.desfeitos.length, ficaram: d.ficaram } });
+    if (d.desfeitos.length) avisarTelas('mr:boletos-mudaram', { mudancas: [], competencia: comp, novos: [] });
+    anunciar('Desfeito.');
+    desenhar();
+  }
+  function desenharDesfeita() {
+    const d = estado.desfeito || {};
+    trocar(raiz, h('div', { class: 'as-cartao-feito' }, h('span', { text: '↺ Desfeito: ' + qtd(d.n || 0, 'boleto saiu', 'boletos saíram') + ' de ' + mesBR(comp) + '.' }),
+      d.ficaram ? h('span', { class: 'as-cartao-sub', text: qtd(d.ficaram, 'ficou', 'ficaram') + ': já tinha mudado (emitido, outro valor) — tire na tela Boletos, se for o caso.' }) : null));
+  }
+  desenhar();
+}
+
+// ---------- as obrigações das empresas, em lote ----------
+const textoDoAjuste = (v, r, d) => ['responsavel' in d ? 'quem cuida: ' + (v.responsavel || 'ninguém') + ' → ' + d.responsavel : null,
+  'dia_prazo_override' in d ? 'dia do prazo: ' + (v.dia_prazo_override || (r && r.dia_prazo) || '—') + ' → ' + (d.dia_prazo_override || (r && r.dia_prazo) || '—') : null,
+  'ativo' in d ? 'desligar' : null].filter(Boolean).join(' · ');
+function cartaoObrigacoes({ raiz, estado, salvar, ajuda, anunciar }) {
+  raiz.setAttribute('aria-label', 'Ajustar as obrigações das empresas');
+  const ids = idsDe(estado.ids).slice(0, 300);
+  const mudar = limparAjuste(estado.mudar);
+  async function desenhar() {
+    if (!mudar) return trocar(raiz, sub('O que muda não veio na proposta: peça de novo.'));
+    if (estado.estado === 'feita') return desenharFeita();
+    if (estado.estado === 'cancelada') return trocar(raiz, sub('Deixei como estava.'));
+    if (estado.estado === 'desfeita') return desenharDesfeita();
+    trocar(raiz, sub('Lendo as obrigações…'));
+    let vs, regras, nomes;
+    try {
+      vs = (await lerPorIds('cliente_obrigacoes', 'id, cliente_id, obrigacao_id, responsavel, dia_prazo_override, ativo', ids)).filter(v => v.ativo !== false);
+      regras = new Map((await lerPorIds('obrigacoes_fiscais', 'id, nome, dia_prazo', [...new Set(vs.map(v => String(v.obrigacao_id)))])).map(r => [String(r.id), r]));
+      nomes = await nomesDe(vs.map(v => v.cliente_id));
+    } catch (e) { return trocar(raiz, ...erroDeLeitura('Não consegui ler as obrigações agora.', desenhar)); }
+    const planos = vs.map(v => ({ v, r: regras.get(String(v.obrigacao_id)), d: ajusteDoVinculo(v, regras.get(String(v.obrigacao_id)), mudar) })).filter(x => x.d)
+      .sort((a, b) => String(nomes.get(String(a.v.cliente_id)) || '').localeCompare(String(nomes.get(String(b.v.cliente_id)) || ''), 'pt-BR'));
+    const fora = ids.length - planos.length;
+    if (!planos.length) return trocar(raiz, sub('Nada a mudar: essas obrigações já estão assim (ou foram desligadas).'));
+    const varias = new Set(planos.map(x => String(x.v.obrigacao_id))).size > 1;
+    const oQue = mudar.desligar ? 'Desligar' : 'Mudar';
+    const tit = h('div', { class: 'as-cartao-tit' });
+    const erro = h('div', { class: 'as-cartao-erro', hidden: true });
+    const ok = botao('Confirmar', () => confirmar(lista.marcadas(), ok, nao, erro), 'pri');
+    const nao = botao('Agora não', () => { salvar({ estado: 'cancelada' }); desenhar(); });
+    const atualizar = () => { const n = lista.marcadas().length;
+      tit.textContent = oQue + ' ' + (varias ? 'as obrigações' : (planos[0].r || {}).nome || 'a obrigação') + ' em ' + qtd(planos.length, 'empresa', 'empresas') + '?';
+      ok.textContent = n ? 'Confirmar ' + n : 'Confirmar'; ok.disabled = !n; };
+    const lista = listaComCaixas(planos.map(({ v, r, d }) => ({ id: String(v.id), titulo: nomes.get(String(v.cliente_id)) || 'empresa',
+      sub: [varias && r ? r.nome : null, textoDoAjuste(v, r, d)].filter(Boolean).join(' · ') })), { aoMudar: () => atualizar() });
+    atualizar();
+    const nota = mudar.desligar ? 'Desligada, a tarefa do mês não nasce mais nessas empresas; as abertas ficam (dá pra concluir ou remarcar).'
+      : [mudar.responsavel ? 'As tarefas abertas dessas obrigações que estavam com quem cuidava vão junto pra ' + mudar.responsavel + ' (a repassada à mão pra outra pessoa fica).' : null,
+        mudar.dia ? 'O dia novo vale das próximas tarefas geradas; as já criadas ficam com o prazo delas.' : null].filter(Boolean).join(' ');
+    trocar(raiz, tit, sub(nota), lista.el, fora > 0 ? sub(qtd(fora, 'outra já está', 'outras já estão') + ' assim (ou foi desligada).') : null,
+      h('div', { class: 'as-cartao-botoes' }, ok, nao, alternarTodas(lista, planos.length)), erro);
+  }
+  async function confirmar(marcados, ok, nao, erro) {
+    if (!marcados.length) return;
+    ok.disabled = true; nao.disabled = true; ok.textContent = 'Gravando…'; erro.hidden = true;
+    const r = await ajustarVinculos(supabase, marcados, mudar, { autor: ajuda.email || null, origem: ORIGEM });
+    if (r.erro && !r.vinculos.length) { erro.textContent = 'Não consegui mudar: ' + r.erro; erro.hidden = false; ok.disabled = false; nao.disabled = false; ok.textContent = 'Confirmar ' + marcados.length; return; }
+    salvar({ estado: 'feita', resultado: { vinculos: r.vinculos, tarefas: r.tarefas, ...(r.erro ? { erro: r.erro } : {}), em: new Date().toISOString() } });
+    if (r.vinculos.length) avisarTelas('mr:obrigacoes-mudaram', { ids: r.vinculos.map(v => v.id) });
+    if (r.tarefas.length) avisarTelas('mr:tarefas-mudaram', { ids: r.tarefas.map(t => t.id) });
+    anunciar(qtd(r.vinculos.length, 'empresa mudou', 'empresas mudaram') + '.');
+    desenhar();
+  }
+  function desenharFeita() {
+    const r = estado.resultado || {};
+    const n = (r.vinculos || []).length, nt = (r.tarefas || []).length;
+    const linha = h('div', { class: 'as-cartao-feito' }, h('span', { class: 'as-cartao-ok', text: '✓ ' + (n ? (mudar && mudar.desligar ? 'Desligada em ' : 'Mudou em ') + qtd(n, 'empresa', 'empresas') : 'Nada mudou') + '.' }));
+    if (nt) linha.append(h('span', { class: 'as-cartao-sub', text: qtd(nt, 'tarefa aberta foi junto', 'tarefas abertas foram junto') + ' pra ' + ((mudar && mudar.responsavel) || 'quem assumiu') + '.' }));
+    if (r.erro) linha.append(h('span', { class: 'as-cartao-aviso', text: 'Parei no meio: ' + r.erro }));
+    if (n) linha.append(h('a', { class: 'as-botao as-botao-link', href: new URL('fiscal-obrigacoes.html', RAIZ).href, text: 'Abrir Obrigações fiscais' }));
+    if (n && podeDesfazer(r.em)) linha.append(botao('Desfazer', desfazer, 'link'));
+    trocar(raiz, linha);
+  }
+  async function desfazer(ev) {
+    const b = ev.currentTarget, r = estado.resultado || {};
+    if (!podeDesfazer(r.em)) { trocar(raiz, sub('Passou o tempo de desfazer por aqui: volte na tela Obrigações fiscais.')); return; }
+    b.disabled = true; b.textContent = 'Desfazendo…';
+    const d = await desfazerAjusteVinculos(supabase, { vinculos: r.vinculos || [], tarefas: r.tarefas || [] }, { autor: ajuda.email || null, origem: ORIGEM });
+    if (d.erro && !d.vinculos) { b.disabled = false; b.textContent = 'Desfazer'; raiz.append(h('div', { class: 'as-cartao-erro', text: 'Não consegui desfazer: ' + d.erro })); return; }
+    salvar({ estado: 'desfeita', desfeito: { n: d.vinculos, total: (r.vinculos || []).length, tarefas: d.tarefas.length } });
+    avisarTelas('mr:obrigacoes-mudaram', { ids: (r.vinculos || []).map(v => v.id) });
+    if (d.tarefas.length) avisarTelas('mr:tarefas-mudaram', { ids: d.tarefas });
+    anunciar('Desfeito.');
+    desenhar();
+  }
+  function desenharDesfeita() {
+    const d = estado.desfeito || {};
+    const ficaram = Math.max(0, (d.total || 0) - (d.n || 0));
+    trocar(raiz, h('div', { class: 'as-cartao-feito' }, h('span', { text: '↺ Desfeito: ' + qtd(d.n || 0, 'empresa voltou', 'empresas voltaram') + ' a como estava' + (d.tarefas ? ', com ' + qtd(d.tarefas, 'tarefa', 'tarefas') : '') + '.' }),
+      ficaram ? h('span', { class: 'as-cartao-sub', text: qtd(ficaram, 'ficou', 'ficaram') + ': alguém mexeu depois — confira na tela Obrigações fiscais.' }) : null));
   }
   desenhar();
 }

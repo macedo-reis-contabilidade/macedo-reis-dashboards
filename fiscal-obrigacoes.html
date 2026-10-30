@@ -363,6 +363,9 @@
       atualizarGeradas();
     }
 
+    // o assistente mudou obrigações das empresas (quem cuida, o dia, desligou — 30/10/2026): a tela recarrega
+    window.addEventListener('mr:obrigacoes-mudaram', () => carregar());
+
     async function carregarStatusMes(){
       statusMes = {};
       const comp = document.getElementById('mesRef').value;

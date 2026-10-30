@@ -6,7 +6,8 @@
 // As propostas (propor_concluir_tarefas, propor_alterar_tarefas — prazo, responsável e prioridade, desde 16/10/2026 —,
 // propor_marcar_pago, propor_criar_tarefa, propor_revisao_atrasadas, propor_ver_vigia, o cartão do vigia, e, desde
 // 19/10/2026, propor_enviar_mensagem, a mensagem no chat da equipe; desde 20/10/2026, a mensagem no histórico das tarefas —
-// junto da conclusão e da mudança, ou sozinha, propor_registrar_historico) não gravam nada: separam o que identifica a mudança
+// junto da conclusão e da mudança, ou sozinha, propor_registrar_historico; desde 30/10/2026, os cadastros que antes eram "só
+// leio": propor_incluir_reforma, propor_por_na_competencia e propor_ajustar_obrigacoes) não gravam nada: separam o que identifica a mudança
 // (ids, a pessoa, os campos da tarefa nova, quem recebe a mensagem e o texto) e o servidor manda junto com a resposta; a
 // tela mostra o cartão e quem grava é ela, com o login da pessoa, depois que ela confirma (assets/js/assistente-acoes.js
 // + assets/js/tarefas-acoes.js — a mensagem, assets/js/chat-equipe.js —, a mesma regra das telas). Uma proposta por
@@ -24,7 +25,8 @@
 
 import { rotinaDoDia, rotinaFeita, ymd } from '../../../assets/js/rotinas-dia.js';
 import { EQUIPE, NOME_POR_EMAIL } from '../../../assets/js/equipe.js';
-import { ficaDeFora, mudancaDe, proximasNascemCom, PRIORIDADES, limparMensagem } from '../../../assets/js/tarefas-acoes.js';
+import { ficaDeFora, mudancaDe, proximasNascemCom, PRIORIDADES, limparMensagem, ajusteDoVinculo, vencimentoDaCompetencia, COMPETENCIA_ISO,
+  pessoaDaEquipe } from '../../../assets/js/tarefas-acoes.js';
 import { rotuloDaRegra } from '../../../assets/js/vigia.js';
 import { ROTULO_SETOR, ROTULO_RELEVANCIA } from '../../../assets/js/noticias.js';
 import { pastaDaUrl, filtrarArquivos } from './drive.js';
@@ -382,7 +384,27 @@ export const DEFINICOES = [
     description: 'Mostra na tela o cartão do vigia: o que ele achou, por grupo, cada achado com "Abrir" (a tela onde se resolve) e "Ignorar" — e, no que se resolve com um clique, o botão ali mesmo, com "Desfazer": o responsável que falta (obrigação sem responsável, que leva as tarefas abertas junto; tarefa e rotina sem responsável), descartar a proposta parada, marcar o boleto parado como enviado ou pago, marcar a admissão como registrada e a rescisão como concluída, vincular a empresa da admissão ou da rescisão sem vínculo (com a busca do cadastro), renovar o alvará (com a data nova), parar a cobrança e desativar a obrigação de ex-cliente, vincular as obrigações do regime ao cliente sem obrigação, pôr na cobrança o cliente sem cobrança e acertar o cadastro que não bate com a carteira. Use quando perguntarem o que o vigia achou, o que está desencontrado, esquecido ou pedindo atenção no sistema (de alguém, de um setor ou de todos), ou pedirem pra resolver um desses achados — chame junto com a resposta: o cartão é a oferta (só mostra; nada muda sem a pessoa).',
     input_schema: { type: 'object', properties: {
       pessoa: { type: 'string', description: 'alguém da equipe, ou "todos" (sem: quem pergunta)' },
-      setor: { type: 'string', description: 'opcional: só um setor (dp, fiscal, contabil, financeiro, comercial, societario, irpf, gestao, clientes, geral)' } } } }
+      setor: { type: 'string', description: 'opcional: só um setor (dp, fiscal, contabil, financeiro, comercial, societario, irpf, gestao, clientes, geral)' } } } },
+  // os cadastros (30/10/2026): o que antes era "só leio"
+  { name: 'propor_incluir_reforma',
+    description: 'Prepara a inclusão de empresas na campanha da Reforma (a opção IBS/CBS de 2027, tela Reforma Tributária) pra pessoa confirmar na tela — nada é incluído aqui: a tela mostra as empresas (CNPJ, regime de hoje, se está na carteira) com o botão "Incluir" e, depois, o "Desfazer". A campanha já tem sozinha as empresas do Simples da carteira; por aqui entram as outras: a que vai pro Simples, a que está fora da carteira, o próprio escritório. Só quando a pessoa pedir pra incluir, pôr ou colocar empresa na campanha ou na lista da Reforma. Diga as empresas pelo nome, CNPJ ou id (de buscar_empresa): das parecidas fica a da carteira; de empresa com filiais, a matriz (a opção é da empresa). O escritório é DIEGO REIS CONTABILIDADE LTDA (MACEDO & REIS CONTABILIDADE). Até 20.',
+    input_schema: { type: 'object', properties: {
+      empresas: { type: 'array', items: { type: 'string' }, description: 'nome, CNPJ ou id de cada empresa' },
+      observacao: { type: 'string', description: 'opcional: o porquê, nas palavras da pessoa, curto (ex.: "vai pro Simples Nacional em 2027") — vai na observação do caso' } }, required: ['empresas'] } },
+  { name: 'propor_por_na_competencia',
+    description: 'Prepara a inclusão de empresas num mês (competência) dos boletos de honorários (tela Boletos) pra pessoa conferir e confirmar — nada é gravado aqui: a tela mostra cada empresa com o valor e o vencimento (dá pra editar), de onde vieram, o botão e, depois, o "Desfazer". O boleto entra "a emitir", como o "Adicionar empresa" da tela: o valor e os dados da cobrança mais recente da empresa (senão, os da base de cobrança); o vencimento no mês seguinte ao da competência, no dia útil. A empresa sem base de cobrança ganha a base (a geração dos próximos meses passa a pegar ela). Só quando a pessoa pedir pra pôr, incluir ou colocar empresa num mês dos boletos (a que ficou de fora). Até 20.',
+    input_schema: { type: 'object', properties: {
+      empresas: { type: 'array', items: { type: 'string' }, description: 'nome, CNPJ ou id de cada empresa' },
+      competencia: { type: 'string', description: "'AAAA-MM' (a competência; o boleto vence no mês seguinte)" } }, required: ['empresas', 'competencia'] } },
+  { name: 'propor_ajustar_obrigacoes',
+    description: 'Prepara a mudança das obrigações das empresas (tela Obrigações fiscais) pra pessoa confirmar na tela — nada muda aqui: a tela mostra cada empresa com o antes e o depois (ela pode desmarcar alguma), o botão e, depois, o "Desfazer". O que muda: quem cuida (novo_responsavel; as tarefas abertas da obrigação que estavam com o de antes vão junto), o dia do prazo daqui pra frente (novo_dia; vale das próximas tarefas geradas — as já criadas ficam com o prazo delas: pra mudar essas, a pessoa pede pra remarcar depois) ou desligar a obrigação na empresa (desligar; a tarefa do mês não nasce mais). Só quando a pessoa pedir pra passar uma obrigação pra outra pessoa, mudar o dia dela ou desligar (desfazer o vínculo). Diga as obrigações pelo nome (como no catálogo) e, se não forem todas as empresas, as empresas e/ou quem cuida hoje. Até 300 empresas.',
+    input_schema: { type: 'object', properties: {
+      obrigacoes: { type: 'array', items: { type: 'string' }, description: 'o nome de cada obrigação (ex.: "SITUAÇÃO FISCAL - FEDERAL"); até 20' },
+      empresas: { type: 'array', items: { type: 'string' }, description: 'opcional: só estas empresas (nome, CNPJ ou id); sem: todas as que têm a obrigação ligada' },
+      responsavel_atual: { type: 'string', description: 'opcional: só os vínculos de quem cuida hoje (alguém da equipe)' },
+      novo_responsavel: { type: 'string', description: 'alguém da equipe, ou "Ambos" (Samuel e Diego)' },
+      novo_dia: { type: 'integer', minimum: 1, maximum: 31, description: 'o dia do prazo no mês, daqui pra frente' },
+      desligar: { type: 'boolean', description: 'desligar a obrigação nessas empresas (sozinho, sem as outras mudanças)' } }, required: ['obrigacoes'] } }
 ];
 
 // ---------- formatação ----------
@@ -1265,6 +1287,178 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     return 'Proposta pronta: a tela mostra o cartão do vigia com ' + plural(total, 'achado aberto', 'achados abertos') + de + (grupos ? ' (' + grupos + ')' : '') + ' — por grupo, cada um com "Abrir" (a tela onde se resolve) e "Ignorar"; no responsável que falta, na proposta e no boleto parados, na admissão a registrar, na rescisão com o pagamento chegando, na ficha sem empresa vinculada, no alvará vencendo, no que é de ex-cliente (cobrança, obrigação), no cliente sem obrigação ou sem cobrança e no cadastro desencontrado, também o botão que resolve ali. Nada muda sem a pessoa. Na resposta: o resumo do que mais pesa e uma frase convidando a abrir o cartão; do que você não leu, diga só o grupo (acima), sem supor de que empresa ou pessoa é.' + nota;
   }
 
+  // ---------- os cadastros (30/10/2026, pedido do Samuel: o que antes era "só leio") ----------
+  // incluir na campanha da Reforma, pôr num mês dos boletos e ajustar as obrigações das empresas: a regra de gravar é a de
+  // assets/js/tarefas-acoes.js (incluirNaCampanha, porNaCompetencia, ajustarVinculos); aqui, só a proposta
+  const mesBR = comp => String(comp).slice(5, 7) + '/' + String(comp).slice(0, 4);
+  const naCarteiraHoje = x => !!x && !!x.entrada && (!x.saida || String(x.saida).slice(0, 10) > hoje);
+  const descCarteira = x => (naCarteiraHoje(x) ? 'na carteira desde ' + dataBR(x.entrada) : x && x.saida ? 'saiu da carteira em ' + dataBR(x.saida) : 'fora da carteira');
+  async function carteiraDe(ids) {
+    const lista = [...new Set(ids.filter(x => UUID.test(String(x))))];
+    const mapa = new Map();
+    for (let i = 0; i < lista.length; i += 80) {
+      const { linhas } = await ler('carteira_info?select=cliente_id,entrada,saida&cliente_id=in.(' + lista.slice(i, i + 80).join(',') + ')');
+      linhas.forEach(l => mapa.set(l.cliente_id, l));
+    }
+    return mapa;
+  }
+  const listaPedida = v => (Array.isArray(v) ? v : v ? [v] : []).map(x => String(x).replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const raizCnpj = c => { const d = String((c && c.documento) || '').replace(/\D/g, ''); return d.length === 14 ? d.slice(0, 8) : null; };
+  const ehMatriz = c => String((c && c.documento) || '').replace(/\D/g, '').slice(8, 12) === '0001';
+  // a empresa da campanha pelo nome: só empresa (PJ); das parecidas, a da carteira (sem nenhuma, as ativas); da mesma
+  // empresa (a raiz do CNPJ), a matriz — a opção é da empresa; ainda várias, as que começam com o nome, e a de nome exato.
+  // Senão, a lista pra escolher (o "Mercado Muller" que o Samuel pediu em 30/10/2026: o de nome exato estava fora da carteira)
+  async function acharParaCampanha(termo) {
+    const t = String(termo || '').trim();
+    if (!t || UUID.test(t)) return acharEmpresa(t);
+    const achadas = (await procurar(t, 10)).filter(c => c.tipo_pessoa !== 'PF');
+    if (!achadas.length) return { erro: 'Nenhuma empresa (PJ) no cadastro com "' + t + '".' };
+    if (achadas.length === 1) return { id: achadas[0].id };
+    const cart = await carteiraDe(achadas.map(c => c.id));
+    let pool = achadas.filter(c => naCarteiraHoje(cart.get(c.id)));
+    if (!pool.length) pool = achadas.filter(c => c.status === 'ativo');
+    if (!pool.length) pool = achadas;
+    if (pool.length === 1) return { id: pool[0].id };
+    const nt = normalizarBusca(t).replace(/[^a-z0-9]/g, '');
+    const nomes = c => [c.nome_principal, c.nome_fantasia].filter(Boolean).map(n => normalizarBusca(n).replace(/[^a-z0-9]/g, ''));
+    const matrizDe = l => { const rs = new Set(l.map(raizCnpj)); return l.length && rs.size === 1 && !rs.has(null) ? l.find(ehMatriz) || null : null; };
+    let m = matrizDe(pool);
+    if (m) return { id: m.id };
+    const comecam = nt.length >= 4 ? pool.filter(c => nomes(c).some(x => x.startsWith(nt))) : [];
+    if (comecam.length === 1) return { id: comecam[0].id };
+    m = matrizDe(comecam);
+    if (m) return { id: m.id };
+    const exatas = pool.filter(c => nomes(c).includes(nt));
+    if (exatas.length === 1) return { id: exatas[0].id };
+    return { erro: 'Mais de uma empresa com "' + t + '":\n' + pool.map(c => '- ' + c.nome_principal + (c.nome_fantasia ? ' (' + c.nome_fantasia + ')' : '') + ' · ' + fmtDoc(c.documento)
+      + ' · ' + (c.regime_tributario || 'sem regime') + ' · ' + descCarteira(cart.get(c.id)) + ' · id ' + c.id).join('\n') + '\nDiga qual (pelo id) — ou pergunte à pessoa.' };
+  }
+
+  async function propor_incluir_reforma(e) {
+    const ja = jaProposto(); if (ja) return ja;
+    const pedidas = listaPedida(e.empresas);
+    if (!pedidas.length) return 'Diga quais empresas (nome, CNPJ ou id).';
+    if (pedidas.length > 20) return 'Até 20 empresas por vez.';
+    const ids = [];
+    for (const p of pedidas) { const a = await acharParaCampanha(p); if (a.erro) return a.erro; if (!ids.includes(a.id)) ids.push(a.id); }
+    const cad = await cadastroDe(ids, ['nome_fantasia', 'documento', 'tipo_pessoa', 'regime_tributario']);
+    const cart = await carteiraDe(ids);
+    const { linhas: casos } = await ler('rt_casos?select=cliente_id,decisao,status&cliente_id=in.(' + ids.join(',') + ')');
+    const temCaso = new Set(casos.map(c => c.cliente_id));
+    const nome = id => (cad.get(id) || {}).nome_principal || '(cadastro não encontrado)';
+    const naoPj = ids.filter(id => cad.has(id) && cad.get(id).tipo_pessoa === 'PF');
+    const jaTem = ids.filter(id => temCaso.has(id));
+    const entram = ids.filter(id => cad.has(id) && !naoPj.includes(id) && !temCaso.has(id));
+    const notas = [jaTem.length ? (jaTem.length === 1 ? 'Já está' : 'Já estão') + ' na campanha: ' + jaTem.map(nome).join(', ') + '.' : null,
+      naoPj.length ? naoPj.map(nome).join(', ') + (naoPj.length === 1 ? ' é pessoa física' : ' são pessoas físicas') + ': a campanha é das empresas.' : null].filter(Boolean);
+    if (!entram.length) return [...notas, 'Nada foi proposto.'].join(' ');
+    const observacao = String(e.observacao || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+    registrar({ tipo: 'incluir_reforma', ids: entram, ...(observacao ? { observacao } : {}) });
+    const linha = id => { const c = cad.get(id) || {};
+      return '- ' + nome(id) + (c.nome_fantasia ? ' (' + c.nome_fantasia + ')' : '') + ' · ' + fmtDoc(c.documento) + ' · hoje ' + (c.regime_tributario || 'sem regime') + ' · ' + descCarteira(cart.get(id)); };
+    return 'Proposta pronta: a tela mostra ' + plural(entram.length, 'empresa', 'empresas') + ' com o botão "Incluir" (a pessoa confirma e pode desmarcar alguma; depois, "Desfazer"). Nada foi incluído ainda.\n'
+      + entram.map(linha).join('\n') + (observacao ? '\nCom a observação no caso: “' + observacao + '”' : '') + (notas.length ? '\n' + notas.join('\n') : '')
+      + '\nO caso entra pendente, com o prazo da opção da campanha; a simulação e a decisão seguem na tela Reforma Tributária.'
+      + '\nNa resposta: uma frase dizendo quais empresas entram quando ela confirmar — o nome e o CNPJ de cada uma, pra ela conferir se é a certa — e o que fica de fora (não diga que já foi).';
+  }
+
+  async function propor_por_na_competencia(e) {
+    const ja = jaProposto(); if (ja) return ja;
+    const comp = String(e.competencia || '').trim();
+    if (!COMPETENCIA_ISO.test(comp)) return "A competência vai em 'AAAA-MM'.";
+    const pedidas = listaPedida(e.empresas);
+    if (!pedidas.length) return 'Diga quais empresas (nome, CNPJ ou id).';
+    if (pedidas.length > 20) return 'Até 20 empresas por vez.';
+    const ids = [];
+    for (const p of pedidas) { const a = await acharEmpresa(p); if (a.erro) return a.erro; if (!ids.includes(a.id)) ids.push(a.id); }
+    const cad = await cadastroDe(ids);
+    const lista = ids.join(',');
+    const { linhas: doMes } = await ler('cobrancas_mensais?select=cliente_id,status,valor&competencia=eq.' + comp + '&cliente_id=in.(' + lista + ')');
+    const { linhas: antes } = await ler('cobrancas_mensais?select=cliente_id,competencia,valor,vencimento&competencia=lt.' + comp + '&cliente_id=in.(' + lista + ')&order=competencia.desc&limit=1000');
+    const { linhas: bases } = await ler('cobrancas_config?select=cliente_id,valor_base,dia_vencimento,ativo&cliente_id=in.(' + lista + ')');
+    const nome = id => (cad.get(id) || {}).nome_principal || '(cadastro não encontrado)';
+    const noMes = new Map(doMes.map(l => [l.cliente_id, l]));
+    const entram = ids.filter(id => cad.has(id) && !noMes.has(id));
+    const notas = [...noMes.values()].map(l => nome(l.cliente_id) + ' já está em ' + mesBR(comp) + ' (' + brl(l.valor) + ', ' + situacao(l.status) + ').');
+    if (!entram.length) return [...notas, 'Nada foi proposto.'].join(' ');
+    registrar({ tipo: 'por_na_competencia', competencia: comp, ids: entram });
+    const desc = id => {
+      const a = antes.filter(l => l.cliente_id === id).sort((x, y) => String(y.competencia).localeCompare(String(x.competencia)))[0];
+      const b = bases.find(x => x.cliente_id === id);
+      const dia = (a && a.vencimento ? +String(a.vencimento).slice(8, 10) : 0) || (b ? +b.dia_vencimento : 0) || 10;
+      const valor = a ? brl(a.valor) + ' (copiado de ' + mesBR(a.competencia) + ')' : b ? brl(b.valor_base) + ' (da base de cobrança)' : 'sem valor (sem cobrança anterior nem base: ela preenche no cartão)';
+      return '- ' + nome(id) + ' · ' + valor + ' · vence ' + dataBR(vencimentoDaCompetencia(comp, dia))
+        + (!b ? ' · sem base de cobrança: ganha a base' : b.ativo === false ? ' · a base de cobrança dela está parada: os próximos meses não geram' : '');
+    };
+    return 'Proposta pronta: a tela mostra ' + plural(entram.length, 'empresa', 'empresas') + ' pra competência ' + mesBR(comp) + ', cada uma com o valor e o vencimento (a pessoa confere e pode editar), o botão pra confirmar e, depois, o "Desfazer". Nada foi gravado ainda.\n'
+      + entram.map(desc).join('\n') + (notas.length ? '\n' + notas.join('\n') : '')
+      + '\nOs boletos entram "a emitir", como o "Adicionar empresa" da tela Boletos. Na resposta: uma frase dizendo o que entra quando ela confirmar (não diga que já foi).';
+  }
+
+  async function propor_ajustar_obrigacoes(e) {
+    const ja = jaProposto(); if (ja) return ja;
+    const mudar = {};
+    if (e.desligar === true) mudar.desligar = true;
+    const nr = e.novo_responsavel != null ? String(e.novo_responsavel).trim() : '';
+    if (nr) {
+      const n = pessoaDaEquipe(nr);
+      if (!n) return 'Novo responsável fora da equipe (' + EQUIPE.join(', ') + ', ou Ambos — Samuel e Diego).';
+      mudar.responsavel = n;
+    }
+    if (e.novo_dia != null && e.novo_dia !== '') { const d = Number(e.novo_dia); if (!Number.isInteger(d) || d < 1 || d > 31) return 'O dia do prazo vai de 1 a 31.'; mudar.dia = d; }
+    if (mudar.desligar && (mudar.responsavel || mudar.dia)) return 'Desligar vai sozinho, sem trocar quem cuida nem o dia.';
+    if (!Object.keys(mudar).length) return 'Diga o que muda: novo_responsavel, novo_dia ou desligar.';
+    const pedidas = listaPedida(e.obrigacoes);
+    if (!pedidas.length) return 'Diga quais obrigações (o nome, como na tela Obrigações fiscais).';
+    if (pedidas.length > 20) return 'Até 20 obrigações por vez.';
+    // o catálogo é pequeno (46 em 30/10/2026): lido inteiro, procurado sem acento e sem maiúscula
+    const { linhas: catalogo } = await ler('obrigacoes_fiscais?select=id,nome,dia_prazo,ativo&order=nome.asc&limit=1000');
+    const chave = s => normalizarBusca(s).replace(/[^a-z0-9]+/g, ' ').trim();
+    const obrig = new Map();
+    for (const p of pedidas) {
+      const k = chave(p), ws = k.split(' ').filter(Boolean);
+      const exatas = catalogo.filter(o => chave(o.nome) === k);
+      const achou = (exatas.length ? exatas : catalogo.filter(o => ws.every(w => chave(o.nome).includes(w)))).sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
+      if (!achou.length) return 'Nenhuma obrigação no catálogo com "' + p + '" — a tela Obrigações fiscais tem a lista.';
+      if (achou.length > 1) return 'Mais de uma obrigação com "' + p + '": ' + achou.slice(0, 15).map(o => o.nome).join('; ') + (achou.length > 15 ? '…' : '') + '. Diga qual, pelo nome completo.';
+      obrig.set(achou[0].id, achou[0]);
+    }
+    const f = ['obrigacao_id=in.(' + [...obrig.keys()].join(',') + ')', 'ativo=eq.true'];
+    const empresas = listaPedida(e.empresas);
+    if (empresas.length > 50) return 'Até 50 empresas por vez (sem dizer as empresas, vão todas as que têm a obrigação).';
+    if (empresas.length) {
+      const cli = [];
+      for (const x of empresas) { const a = await acharEmpresa(x); if (a.erro) return a.erro; cli.push(a.id); }
+      f.push('cliente_id=in.(' + [...new Set(cli)].join(',') + ')');
+    }
+    const ra = e.responsavel_atual != null ? String(e.responsavel_atual).trim() : '';
+    if (ra) {
+      const p = pessoaDaEquipe(ra);
+      if (!p) return 'Pessoa fora da equipe (' + EQUIPE.join(', ') + ').';
+      f.push('responsavel=ilike.' + enc(padraoPessoa(p)));
+    }
+    const { linhas: vs, total } = await ler('cliente_obrigacoes?select=id,cliente_id,obrigacao_id,responsavel,dia_prazo_override,ativo&' + f.join('&') + '&order=id.asc&limit=300', { contar: true });
+    const quais = [...obrig.values()].map(o => o.nome).join('; ');
+    if (!vs.length) return 'Nenhuma empresa com ' + quais + ' ligada' + (ra ? ' com ' + ra : '') + (empresas.length ? ' entre as pedidas' : '') + ' — nada foi proposto.';
+    if ((total || 0) > 300) return 'São ' + total + ' empresas com ' + quais + ': afine (as empresas, quem cuida hoje) até 300 — nada foi proposto.';
+    const mudam = vs.filter(v => ajusteDoVinculo(v, obrig.get(v.obrigacao_id), mudar));
+    const iguais = vs.length - mudam.length;
+    if (!mudam.length) return plural(vs.length, 'empresa já está', 'empresas já estão') + ' assim em ' + quais + ' — nada foi proposto.';
+    registrar({ tipo: 'ajustar_obrigacoes', ids: mudam.map(v => String(v.id)), mudar });
+    const com = await comEmpresa(mudam);
+    const comoFica = v => { const d = ajusteDoVinculo(v, obrig.get(v.obrigacao_id), mudar) || {}; const r = obrig.get(v.obrigacao_id) || {};
+      return ['responsavel' in d ? 'quem cuida: ' + (v.responsavel || 'ninguém') + ' → ' + d.responsavel : null,
+        'dia_prazo_override' in d ? 'dia ' + (v.dia_prazo_override || r.dia_prazo) + ' → ' + (d.dia_prazo_override || r.dia_prazo) : null,
+        'ativo' in d ? 'desligar' : null].filter(Boolean).join(' · '); };
+    return 'Proposta pronta: a tela mostra ' + plural(mudam.length, 'empresa', 'empresas') + ' (' + quais + ') com o antes e o depois e o botão pra confirmar (a pessoa pode desmarcar alguma; depois, "Desfazer"). Nada mudou ainda.\n'
+      + com.slice(0, 12).map(v => '- ' + v.empresa + (obrig.size > 1 ? ' · ' + (obrig.get(v.obrigacao_id) || {}).nome : '') + ' · ' + comoFica(v)).join('\n')
+      + (mudam.length > 12 ? '\n… e mais ' + (mudam.length - 12) : '') + (iguais ? '\n' + plural(iguais, 'empresa já está', 'empresas já estão') + ' assim.' : '')
+      + (mudar.responsavel ? '\nAs tarefas abertas dessas obrigações que estavam com quem cuidava vão junto pra ' + mudar.responsavel + ' (a repassada à mão pra outra pessoa fica).' : '')
+      + (mudar.dia ? '\nO dia novo vale das próximas tarefas geradas; as já criadas ficam com o prazo delas — pra mudar essas, a pessoa pede pra remarcar depois (outra pergunta).' : '')
+      + (mudar.desligar ? '\nDesligada, a tarefa do mês não nasce mais nessas empresas; as abertas ficam (dá pra concluir ou remarcar).' : '')
+      + '\nNa resposta: uma frase dizendo o que muda quando ela confirmar (não diga que já mudou).';
+  }
+
   // ---------- os arquivos da empresa: a pasta dela no Drive e as guias arquivadas ----------
   // A pasta é só a que o cadastro aponta (drive_folder_url): nada de procurar a pasta pelo nome (casaria com a de outro
   // cliente). O cartão "arquivos" mostra os links; aqui volta a lista pro modelo, sem link. Procurar de novo na mesma
@@ -1331,7 +1525,8 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
   }
 
   return { buscar_empresa, ver_empresa, agenda, consultar, perguntar_reforma, buscar_arquivos, propor_concluir_tarefas, propor_alterar_tarefas, propor_registrar_historico,
-    propor_marcar_pago, propor_criar_tarefa, propor_enviar_mensagem, propor_revisao_atrasadas, propor_ver_vigia };
+    propor_marcar_pago, propor_criar_tarefa, propor_enviar_mensagem, propor_revisao_atrasadas, propor_ver_vigia,
+    propor_incluir_reforma, propor_por_na_competencia, propor_ajustar_obrigacoes };
 }
 
 // a etapa que aparece no "digitando…" da tela
@@ -1352,5 +1547,8 @@ export function descreverEtapa(nome, e = {}) {
   if (nome === 'propor_enviar_mensagem') return 'Escrevendo a mensagem pra você conferir';
   if (nome === 'propor_revisao_atrasadas') return 'Preparando a revisão das atrasadas';
   if (nome === 'propor_ver_vigia') return 'Separando o que o vigia achou';
+  if (nome === 'propor_incluir_reforma') return 'Separando as empresas pra campanha da Reforma';
+  if (nome === 'propor_por_na_competencia') return 'Montando os boletos pra você conferir';
+  if (nome === 'propor_ajustar_obrigacoes') return 'Separando as obrigações pra você confirmar';
   return s(nome, 40);
 }

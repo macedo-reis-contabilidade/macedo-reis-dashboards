@@ -177,32 +177,15 @@ import { MODELO, ONDE_IMPORTAR_PLANILHA, ONDE_PDFS, XLSX_MIME, problemasPlanilha
 import { boletoPdf, nomeArquivoBoleto } from './assets/js/boleto-pdf.js';
 // o reajuste aceito na Precificação › Carteira (revisoes_honorario, só os sócios) entra na geração do mês
 import { reajustesDoMes, marcarAplicados } from './assets/js/precificacao-carteira.js';
+import { vencimentoDaCompetencia, COMPETENCIA_ISO } from './assets/js/tarefas-acoes.js';
 
 const $ = id => document.getElementById(id);
 const BRL = n => 'R$ ' + (Number(n)||0).toLocaleString('pt-BR',{minimumFractionDigits:2, maximumFractionDigits:2});
 
-// ---- feriados bancários (2026 nacional + RS) p/ cálculo de dia útil ----
-const FERIADOS = new Set([
-  '2026-01-01','2026-02-16','2026-02-17','2026-04-03','2026-04-21','2026-05-01',
-  '2026-06-04','2026-09-07','2026-09-20','2026-10-12','2026-11-02','2026-11-15',
-  '2026-11-20','2026-12-25','2027-01-01'
-]);
-function ymd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
-function proxDiaUtil(d){
-  while(true){
-    const dow=d.getDay();
-    if(dow!==0 && dow!==6 && !FERIADOS.has(ymd(d))) return d;
-    d.setDate(d.getDate()+1);
-  }
-}
-// vencimento = (competência + 1 mês), no dia alvo, ajustado p/ dia útil
-function calcVencimento(competencia, dia){
-  const [y,m]=competencia.split('-').map(Number);
-  let vy=y, vm=m+1; if(vm>12){ vm=1; vy++; }
-  const lastDay=new Date(vy, vm, 0).getDate();       // último dia do mês de vencimento
-  const dd=Math.min(Math.max(parseInt(dia)||10,1), lastDay);
-  return ymd(proxDiaUtil(new Date(vy, vm-1, dd)));
-}
+// vencimento = (competência + 1 mês), no dia alvo, ajustado p/ dia útil — a conta é uma só (assets/js/tarefas-acoes.js,
+// vencimentoDaCompetencia), a mesma do assistente quando põe uma empresa num mês; os feriados são os da rescisao-datas.js
+// (nacionais, 20/09, Carnaval, Sexta-feira Santa e Corpus Christi, de qualquer ano — a lista daqui era só a de 2026)
+function calcVencimento(competencia, dia){ return vencimentoDaCompetencia(competencia, dia); }
 
 // ---- estado ----
 let clientesMap={};      // id -> {nome, doc}
@@ -224,6 +207,9 @@ async function init(){
   await carregarClientesEConfig();
   const hj = new Date();
   $('comp').value = hj.getFullYear() + '-' + String(hj.getMonth() + 1).padStart(2, '0');
+  // o "Abrir Boletos" do cartão do assistente abre no mês em que ele pôs a empresa (financeiro-boletos.html?competencia=AAAA-MM)
+  const compDoLink = new URLSearchParams(location.search).get('competencia');
+  if (COMPETENCIA_ISO.test(String(compDoLink || ''))) $('comp').value = compDoLink;
   await carregarMes();
   $('comp').addEventListener('change', carregarMes);
   $('btnGerar').addEventListener('click', gerarMes);
@@ -501,6 +487,13 @@ window.addEventListener('mr:boletos-mudaram', ev => {
   let algum = false;
   mud.forEach(m => { const r = rows.find(x => x.id === m.id); if (r && m.status) { r.status = m.status; algum = true; } });
   if (algum) { updateCards(); render(); }
+  // pôs (ou tirou) empresa no mês aberto (30/10/2026): recarrega o mês — salvo com uma linha sendo editada, que um
+  // recarregar perderia: aí o aviso
+  const comp = ev.detail && ev.detail.competencia;
+  if (comp && comp === $('comp').value) {
+    if (rows.some(r => r._dirty)) msg('O assistente mudou as empresas deste mês: quando terminar a edição, recarregue a tela pra ver.');
+    else carregarMes();
+  }
 });
 
 function abrirAdd(){ $('ovBusca').value=''; renderAddList(); $('ov').classList.add('open'); $('ovBusca').focus(); }

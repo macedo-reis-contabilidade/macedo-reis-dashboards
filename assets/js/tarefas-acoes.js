@@ -32,7 +32,15 @@
 //                     mudança (concluirTarefas e alterarTarefas com "mensagem", como a observação do concluir em lote da
 //                     Agenda) ou sozinha, sem mudar a tarefa: registrarNoHistorico (o "Registrar andamento" da Agenda) e
 //                     desfazerRegistro (tira as linhas que entraram, só as de quem registrou).
+//   Os cadastros (30/10/2026, pedido do Samuel: "esse tipo de coisa ele possa fazer") — incluirNaCampanha (empresas na
+//                     campanha da Reforma, como o espelho do banco faz com as do Simples), porNaCompetencia (a empresa que
+//                     ficou de fora de um mês dos boletos, como o "Adicionar empresa" da tela Boletos, com
+//                     vencimentoDaCompetencia, a conta do vencimento da tela) e ajustarVinculos (quem cuida, o dia do
+//                     prazo e o desligar das obrigações das empresas, em lote, como a tela Obrigações fiscais faz uma a
+//                     uma), cada uma com o desfazer que só volta onde ninguém mexeu depois.
 // ============================================================
+
+import { diaUtil, somaDias } from './rescisao-datas.js';
 
 const LOTE = 100;   // ids por chamada: o filtro vai no endereço
 const partes = lista => { const out = []; for (let i = 0; i < lista.length; i += LOTE) out.push(lista.slice(i, i + LOTE)); return out; };
@@ -912,4 +920,315 @@ export async function desfazerPagos(sb, pagos) {
     }
   }
   return { desfeitos, erro: null };
+}
+
+// ============================================================
+// Os cadastros (30/10/2026, pedido do Samuel: "as vezes acho que o assistente ta um pouco limitado nas ações, preciso que
+// esse tipo de coisa ele possa fazer") — o que o assistente recusava por "só leio": incluir empresa na campanha da Reforma,
+// pôr empresa num mês dos boletos e ajustar as obrigações das empresas em lote. Cada uma com o desfazer que só volta onde
+// ninguém mexeu depois.
+// ============================================================
+
+// lê as linhas dos ids, em lotes (o filtro vai no endereço)
+async function lerTodosPorIds(sb, tabela, colunas, ids, coluna = 'id') {
+  const out = [];
+  for (const p of partes(unicos(ids))) {
+    const { data, error } = await sb.from(tabela).select(colunas).in(coluna, p);
+    if (error) throw new Error(msg(error));
+    out.push(...(data || []));
+  }
+  return out;
+}
+
+// ---- incluir na campanha da Reforma ----
+// A campanha da opção IBS/CBS de 2027 se monta sozinha com as empresas do Simples da carteira (o espelho do banco,
+// rt_incluir_na_campanha). A que vai pro Simples e a que está fora da carteira (o próprio escritório) entram por aqui: o caso
+// nasce como o do espelho — triado, pendente, o CNAE do cadastro — com a observação de quem incluiu e por quê. Só empresa
+// (PJ) e uma vez por empresa (o banco tem a chave empresa + campanha). Desfazer apaga o caso em que ninguém mexeu depois: o
+// atualizado_em continua o da inclusão (a tela da Reforma grava a hora a cada mudança) e a decisão, pendente
+export const MAX_OBS_CAMPANHA = 300;
+export function obsDaInclusao({ hoje = hojeLocal(), quem = null, observacao = '' } = {}) {
+  const o = [...String(observacao || '').replace(/\s+/g, ' ').trim()].slice(0, MAX_OBS_CAMPANHA).join('').replace(/[.\s]+$/, '');
+  return 'Entrou na campanha pelo assistente do escritório em ' + dataBR(hoje) + (quem ? ', a pedido de ' + quem : '') + (o ? ': ' + o : '') + '.';
+}
+// → { incluidos: [{ id, cliente_id, atualizado_em }], jaEstavam: [cliente_id], naoPj: [cliente_id], erro }
+export async function incluirNaCampanha(sb, clienteIds, { quem = null, observacao = '', hoje = hojeLocal(), agora = new Date().toISOString() } = {}) {
+  const res = { incluidos: [], jaEstavam: [], naoPj: [], erro: null };
+  const ids = unicos(clienteIds);
+  if (!ids.length) return res;
+  let cli, casos;
+  try {
+    cli = await lerTodosPorIds(sb, 'clientes', 'id, tipo_pessoa, cnae_principal', ids);
+    casos = await lerTodosPorIds(sb, 'rt_casos', 'id, cliente_id', ids, 'cliente_id');
+  } catch (e) { return { ...res, erro: msg(e) }; }
+  const tem = new Set(casos.map(c => String(c.cliente_id)));
+  const porId = new Map(cli.map(c => [String(c.id), c]));
+  const obs = obsDaInclusao({ hoje, quem, observacao });
+  for (const id of ids) {
+    const c = porId.get(id);
+    if (!c) continue;   // saiu do cadastro no meio do caminho
+    if (tem.has(id)) { res.jaEstavam.push(id); continue; }
+    if (c.tipo_pessoa !== 'PJ') { res.naoPj.push(id); continue; }
+    const linha = { cliente_id: id, cnae_base: String(c.cnae_principal || '').slice(0, 9) || null, status: 'triado', decisao: 'pendente', obs, atualizado_em: agora };
+    const { data, error } = await sb.from('rt_casos').insert(linha).select('id, cliente_id, atualizado_em');
+    if (error) {
+      if (error.code === '23505') { res.jaEstavam.push(id); continue; }   // outra pessoa incluiu no meio do caminho
+      return { ...res, erro: msg(error) };
+    }
+    const x = (data || [])[0];
+    if (x) res.incluidos.push({ id: String(x.id), cliente_id: id, atualizado_em: x.atualizado_em || agora });
+  }
+  return res;
+}
+// → { desfeitos: [id do caso], ficaram: quantos alguém já mexeu, erro }
+export async function desfazerInclusaoCampanha(sb, incluidos) {
+  const out = { desfeitos: [], ficaram: 0, erro: null };
+  for (const c of Array.isArray(incluidos) ? incluidos : []) {
+    if (!c || !c.id) continue;
+    let q = sb.from('rt_casos').delete().eq('id', c.id).eq('decisao', 'pendente');
+    if (c.atualizado_em) q = q.eq('atualizado_em', c.atualizado_em);
+    const { data, error } = await q.select('id');
+    if (error) return { ...out, erro: msg(error) };
+    if ((data || []).length) out.desfeitos.push(String(c.id)); else out.ficaram++;
+  }
+  return out;
+}
+
+// ---- pôr a empresa num mês dos boletos ----
+// O vencimento da competência M: no mês seguinte, no dia da cobrança (acima do último dia do mês, o último), no próximo dia
+// útil — sábado, domingo e os feriados da rescisao-datas.js (os mesmos da tela Boletos, que usa esta conta)
+export function vencimentoDaCompetencia(competencia, dia) {
+  const [y, m] = String(competencia || '').split('-').map(Number);
+  if (!(y >= 2000) || !(m >= 1 && m <= 12)) return null;
+  let vy = y, vm = m + 1;
+  if (vm > 12) { vm = 1; vy++; }
+  const ultimo = new Date(vy, vm, 0).getDate();
+  const dd = Math.min(Math.max(parseInt(dia, 10) || 10, 1), ultimo);
+  let iso = vy + '-' + pad2(vm) + '-' + pad2(dd);
+  while (!diaUtil(iso)) iso = somaDias(iso, 1);
+  return iso;
+}
+export const COMPETENCIA_ISO = /^\d{4}-(0[1-9]|1[0-2])$/;
+// O que cada empresa levaria na competência, como a geração do mês da tela Boletos monta: o valor, o dia e os dados de envio
+// da cobrança mais recente dela antes dessa competência (a geração copia a última) — sem nenhuma, os da base de cobrança;
+// sem base, valor em branco e dia 10 (o padrão do "Adicionar empresa"). → Map(cliente_id → { cliente_id, ja (a situação
+// da que já está na competência, ou null), valor, dia, vencimento, canal, contato_envio, destino, responsavel, fonte:
+// 'copia' | 'base' | 'nada', de (a competência copiada), base (a base: { id, ativo } ou null) })
+export async function dadosParaCompetencia(sb, clienteIds, competencia) {
+  const out = new Map();
+  const ids = unicos(clienteIds);
+  if (!ids.length || !COMPETENCIA_ISO.test(String(competencia || ''))) return out;
+  const linhas = await lerTodosPorIds(sb, 'cobrancas_mensais', 'cliente_id, competencia, valor, vencimento, canal, contato_envio, destino, responsavel, status', ids, 'cliente_id');
+  const bases = await lerTodosPorIds(sb, 'cobrancas_config', 'id, cliente_id, valor_base, dia_vencimento, canal, contato_envio, destino, responsavel, ativo', ids, 'cliente_id');
+  const baseDe = new Map(bases.map(b => [String(b.cliente_id), b]));
+  for (const id of ids) {
+    const minhas = linhas.filter(l => String(l.cliente_id) === id);
+    const naComp = minhas.find(l => l.competencia === competencia);
+    const antes = minhas.filter(l => String(l.competencia) < competencia).sort((a, b) => String(b.competencia).localeCompare(String(a.competencia)))[0] || null;
+    const b = baseDe.get(id) || null;
+    const diaDe = v => (v ? parseInt(String(v).slice(8, 10), 10) : null);
+    const fonte = antes ? 'copia' : b ? 'base' : 'nada';
+    const valor = antes ? Number(antes.valor) || 0 : b ? Number(b.valor_base) || 0 : null;
+    const dia = (antes && diaDe(antes.vencimento)) || (b && Number(b.dia_vencimento)) || 10;
+    const de = antes || b || {};
+    out.set(id, { cliente_id: id, ja: naComp ? naComp.status || 'a_emitir' : null, valor, dia, vencimento: vencimentoDaCompetencia(competencia, dia),
+      canal: de.canal || 'whatsapp', contato_envio: de.contato_envio || '', destino: de.destino || '', responsavel: de.responsavel || '',
+      fonte, de: antes ? antes.competencia : null, base: b ? { id: String(b.id), ativo: b.ativo !== false } : null });
+  }
+  return out;
+}
+// itens: [{ cliente_id, valor, vencimento, canal, contato_envio, destino, responsavel }] — a linha nasce "a emitir"; a empresa
+// sem base de cobrança ganha a base com o valor e o dia (senão a geração dos próximos meses a esquece: o caso de Arsenal,
+// Massa e Mirelle em ago/2026, que o "Adicionar empresa" da tela também trata)
+// → { postos: [{ id, cliente_id, valor }], bases: [{ id, cliente_id, valor_base, dia_vencimento }], jaEstavam: [cliente_id], erro }
+export async function porNaCompetencia(sb, competencia, itens) {
+  const res = { postos: [], bases: [], jaEstavam: [], erro: null };
+  if (!COMPETENCIA_ISO.test(String(competencia || ''))) return { ...res, erro: "A competência vai em 'AAAA-MM'." };
+  for (const it of Array.isArray(itens) ? itens : []) {
+    const id = it && it.cliente_id ? String(it.cliente_id) : null;
+    if (!id) continue;
+    const valor = Math.round(Number(it.valor) * 100) / 100;
+    if (!(valor >= 0) || !Number.isFinite(valor)) return { ...res, erro: 'Valor inválido.' };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(it.vencimento || ''))) return { ...res, erro: 'Vencimento inválido.' };
+    const dia = parseInt(String(it.vencimento).slice(8, 10), 10);
+    const envio = { canal: it.canal || 'whatsapp', contato_envio: it.contato_envio || '', destino: it.destino || '', responsavel: it.responsavel || '' };
+    const linha = { cliente_id: id, competencia, valor, vencimento: it.vencimento, ...envio, observacao: '', status: 'a_emitir', itens_extras: [] };
+    const { data, error } = await sb.from('cobrancas_mensais').insert(linha).select('id, cliente_id, valor');
+    if (error) {
+      if (error.code === '23505') { res.jaEstavam.push(id); continue; }   // já estava no mês (outra pessoa pôs no meio)
+      return { ...res, erro: msg(error) };
+    }
+    const x = (data || [])[0];
+    if (!x) continue;
+    res.postos.push({ id: String(x.id), cliente_id: id, valor });
+    // entrou no mês: sem base de cobrança, ganha a base
+    const { data: bs, error: eb } = await sb.from('cobrancas_config').select('id').eq('cliente_id', id);
+    if (eb) return { ...res, erro: 'O boleto entrou, mas não consegui conferir a base de cobrança: ' + msg(eb) };
+    if (!(bs || []).length) {
+      const { data: nb, error: en } = await sb.from('cobrancas_config').insert({ cliente_id: id, valor_base: valor, dia_vencimento: dia, ...envio, ativo: true }).select('id');
+      if (en && en.code !== '23505') return { ...res, erro: 'O boleto entrou, mas a base de cobrança não: ' + msg(en) };
+      if (nb && nb[0]) res.bases.push({ id: String(nb[0].id), cliente_id: id, valor_base: valor, dia_vencimento: dia });
+    }
+  }
+  return res;
+}
+// desfazer: sai a linha que continua "a emitir" com o valor de quando entrou, e a base que nasceu aqui e ninguém mexeu
+// → { desfeitos: [id], ficaram: quantas linhas alguém já mexeu, erro }
+export async function desfazerPorNaCompetencia(sb, feito) {
+  const out = { desfeitos: [], ficaram: 0, erro: null };
+  for (const p of feito && Array.isArray(feito.postos) ? feito.postos : []) {
+    if (!p || !p.id) continue;
+    const { data, error } = await sb.from('cobrancas_mensais').delete().eq('id', p.id).eq('status', 'a_emitir').eq('valor', p.valor).select('id');
+    if (error) return { ...out, erro: msg(error) };
+    if ((data || []).length) out.desfeitos.push(String(p.id)); else out.ficaram++;
+  }
+  for (const b of feito && Array.isArray(feito.bases) ? feito.bases : []) {
+    if (!b || !b.id) continue;
+    const { error } = await sb.from('cobrancas_config').delete().eq('id', b.id).eq('ativo', true).eq('valor_base', b.valor_base).eq('dia_vencimento', b.dia_vencimento).select('id');
+    if (error) return { ...out, erro: msg(error) };
+  }
+  return out;
+}
+
+// ---- as obrigações das empresas, em lote ----
+// Quem cuida, o dia do prazo daqui pra frente e desligar — o que a tela Obrigações fiscais faz vínculo por vínculo (a edição
+// na linha e o liga/desliga), pra vários de uma vez (os pedidos da Thalia de 21 e 27/10/2026). Quem cuida: as tarefas
+// abertas do vínculo vão junto, só as que estavam com o de antes ou sem ninguém (a repassada à mão pra outra pessoa fica — a
+// regra da tela). O dia: o próprio da empresa (dia_prazo_override; igual ao da obrigação = sem dia próprio), da próxima tarefa
+// gerada em diante — as já criadas ficam com o prazo delas. Desligar: a tarefa do mês não nasce mais; as abertas ficam.
+// mudar: { responsavel } e/ou { dia }, ou { desligar: true } sozinho → o limpo, ou null
+export function limparAjuste(m) {
+  if (!m || typeof m !== 'object') return null;
+  if (m.desligar === true) return { desligar: true };
+  const out = {};
+  if (m.responsavel != null && String(m.responsavel).trim()) { const p = pessoaDaEquipe(m.responsavel); if (!p) return null; out.responsavel = p; }
+  if (m.dia != null && m.dia !== '') { const d = Number(m.dia); if (!Number.isInteger(d) || d < 1 || d > 31) return null; out.dia = d; }
+  return Object.keys(out).length ? out : null;
+}
+// o que muda num vínculo (com a obrigação dele: { dia_prazo }) → { responsavel?, dia_prazo_override?, ativo? } ou null (já está assim)
+export function ajusteDoVinculo(v, r, mudar) {
+  const m = limparAjuste(mudar);
+  if (!m || !v || v.ativo === false) return null;
+  if (m.desligar) return { ativo: false };
+  const out = {};
+  if (m.responsavel && semAcento(v.responsavel) !== semAcento(m.responsavel)) out.responsavel = m.responsavel;
+  if (m.dia) {
+    const novo = r && Number(r.dia_prazo) === m.dia ? null : m.dia;
+    if ((v.dia_prazo_override ?? null) !== novo) out.dia_prazo_override = novo;
+  }
+  return Object.keys(out).length ? out : null;
+}
+const chaveDe = (...xs) => JSON.stringify(xs);
+// → { vinculos: [{ id, cliente_id, obrigacao_id, antes: { campo: valor }, depois: { campo: valor } }], tarefas: [{ id, antes }], erro }
+export async function ajustarVinculos(sb, ids, mudar, { autor = null, origem = null } = {}) {
+  const res = { vinculos: [], tarefas: [], erro: null };
+  const m = limparAjuste(mudar);
+  if (!m) return { ...res, erro: 'Diga o que muda: quem cuida (alguém da equipe), o dia do prazo (1 a 31) ou desligar.' };
+  let vs, regras;
+  try {
+    vs = (await lerTodosPorIds(sb, 'cliente_obrigacoes', 'id, cliente_id, obrigacao_id, responsavel, dia_prazo_override, ativo', ids)).filter(v => v.ativo !== false);
+    regras = new Map((await lerTodosPorIds(sb, 'obrigacoes_fiscais', 'id, dia_prazo', vs.map(v => v.obrigacao_id))).map(r => [String(r.id), r]));
+  } catch (e) { return { ...res, erro: msg(e) }; }
+  const feitos = new Map();
+  const anotar = (v, campo, antes, depois) => {
+    const f = feitos.get(String(v.id)) || { id: String(v.id), cliente_id: String(v.cliente_id), obrigacao_id: String(v.obrigacao_id), antes: {}, depois: {} };
+    f.antes[campo] = antes; f.depois[campo] = depois;
+    feitos.set(String(v.id), f);
+  };
+  const pronto = erro => ({ ...res, vinculos: [...feitos.values()], erro });
+  const planos = vs.map(v => ({ v, d: ajusteDoVinculo(v, regras.get(String(v.obrigacao_id)), m) })).filter(x => x.d);
+  // quem cuida — por quem estava (o update confere que ninguém trocou no meio) e, pras tarefas, por obrigação
+  const trocam = planos.filter(x => 'responsavel' in x.d).map(x => x.v);
+  for (const [k, grupo] of porAntes(trocam, 'responsavel')) {
+    const antes = deVolta(k);
+    for (const p of partes(grupo.map(v => String(v.id)))) {
+      let q = sb.from('cliente_obrigacoes').update({ responsavel: m.responsavel }).in('id', p).eq('ativo', true);
+      q = antes == null ? q.is('responsavel', null) : q.eq('responsavel', antes);
+      const { data, error } = await q.select('id');
+      if (error) return pronto(msg(error));
+      const foram = new Set((data || []).map(x => String(x.id)));
+      const mudaram = grupo.filter(v => foram.has(String(v.id)));
+      mudaram.forEach(v => anotar(v, 'responsavel', antes, m.responsavel));
+      const porObrig = new Map();
+      mudaram.forEach(v => { const o = String(v.obrigacao_id); if (!porObrig.has(o)) porObrig.set(o, []); porObrig.get(o).push(String(v.cliente_id)); });
+      for (const [o, clis] of porObrig) {
+        for (const pc of partes(clis)) {
+          let qt = sb.from('tarefas').update({ responsavel: m.responsavel }).eq('obrigacao_id', o).in('cliente_id', pc).neq('status', 'concluida');
+          qt = antes == null ? qt.is('responsavel', null) : qt.eq('responsavel', antes);
+          const { data: ts, error: et } = await qt.select('id');
+          if (et) return pronto('Os vínculos mudaram, mas as tarefas abertas deles não: ' + msg(et));
+          (ts || []).forEach(t => res.tarefas.push({ id: String(t.id), antes }));
+        }
+      }
+    }
+  }
+  // o dia — por (o de antes, o novo)
+  const grupos = new Map();
+  planos.filter(x => 'dia_prazo_override' in x.d).forEach(({ v, d }) => {
+    const k = chaveDe(v.dia_prazo_override ?? null, d.dia_prazo_override);
+    if (!grupos.has(k)) grupos.set(k, { antes: v.dia_prazo_override ?? null, novo: d.dia_prazo_override, vs: [] });
+    grupos.get(k).vs.push(v);
+  });
+  for (const g of grupos.values()) {
+    for (const p of partes(g.vs.map(v => String(v.id)))) {
+      let q = sb.from('cliente_obrigacoes').update({ dia_prazo_override: g.novo }).in('id', p).eq('ativo', true);
+      q = g.antes == null ? q.is('dia_prazo_override', null) : q.eq('dia_prazo_override', g.antes);
+      const { data, error } = await q.select('id');
+      if (error) return pronto(msg(error));
+      const foram = new Set((data || []).map(x => String(x.id)));
+      g.vs.filter(v => foram.has(String(v.id))).forEach(v => anotar(v, 'dia_prazo_override', g.antes, g.novo));
+    }
+  }
+  // desligar
+  const desligam = planos.filter(x => 'ativo' in x.d).map(x => x.v);
+  for (const p of partes(desligam.map(v => String(v.id)))) {
+    const { data, error } = await sb.from('cliente_obrigacoes').update({ ativo: false }).in('id', p).eq('ativo', true).select('id');
+    if (error) return pronto(msg(error));
+    const foram = new Set((data || []).map(x => String(x.id)));
+    desligam.filter(v => foram.has(String(v.id))).forEach(v => anotar(v, 'ativo', true, false));
+  }
+  if (res.tarefas.length) {
+    await sb.from('tarefa_historico').insert(res.tarefas.map(t => ({ tarefa_id: t.id,
+      descricao: 'Responsável trocado na obrigação: ' + (t.antes || 'sem responsável') + ' → ' + m.responsavel + (origem ? ' — pelo ' + origem : '') + '.', autor })));
+  }
+  return pronto(null);
+}
+// desfazer: cada campo volta ao de antes só onde continua como ficou; as tarefas, só as abertas que continuam com quem
+// assumiu → { vinculos: quantos voltaram, tarefas: [ids], erro }
+export async function desfazerAjusteVinculos(sb, feito, { autor = null, origem = null } = {}) {
+  const out = { vinculos: 0, tarefas: [], erro: null };
+  const vs = feito && Array.isArray(feito.vinculos) ? feito.vinculos.filter(v => v && v.id && v.depois) : [];
+  const voltaram = new Set();
+  for (const campo of ['ativo', 'responsavel', 'dia_prazo_override']) {
+    const grupos = new Map();
+    vs.filter(v => campo in v.depois).forEach(v => {
+      const k = chaveDe(v.antes[campo] ?? null, v.depois[campo] ?? null);
+      if (!grupos.has(k)) grupos.set(k, { antes: v.antes[campo] ?? null, depois: v.depois[campo] ?? null, ids: [] });
+      grupos.get(k).ids.push(String(v.id));
+    });
+    for (const g of grupos.values()) {
+      for (const p of partes(g.ids)) {
+        let q = sb.from('cliente_obrigacoes').update({ [campo]: g.antes }).in('id', p);
+        q = g.depois == null ? q.is(campo, null) : q.eq(campo, g.depois);
+        const { data, error } = await q.select('id');
+        if (error) return { ...out, vinculos: voltaram.size, erro: msg(error) };
+        (data || []).forEach(x => voltaram.add(String(x.id)));
+      }
+    }
+  }
+  out.vinculos = voltaram.size;
+  const para = vs.map(v => v.depois.responsavel).find(Boolean);
+  if (para) {
+    for (const [k, ts] of porAntes(feito && Array.isArray(feito.tarefas) ? feito.tarefas : [])) {
+      for (const p of partes(ts.map(t => String(t.id)))) {
+        const { data, error } = await sb.from('tarefas').update({ responsavel: deVolta(k) }).in('id', p).eq('responsavel', para).neq('status', 'concluida').select('id');
+        if (error) return { ...out, erro: msg(error) };
+        (data || []).forEach(x => out.tarefas.push(String(x.id)));
+      }
+    }
+    if (out.tarefas.length) {
+      await sb.from('tarefa_historico').insert(out.tarefas.map(id => ({ tarefa_id: id, descricao: 'Troca do responsável pela obrigação desfeita' + (origem ? ' no ' + origem : '') + '.', autor })));
+    }
+  }
+  return out;
 }

@@ -510,7 +510,7 @@
     const ehDoTcu = cbsRef => Math.abs(+cbsRef - R27.valor) < 0.005;
     $('bNotaAliq').textContent = 'Simulação com as alíquotas de 2027: a referência da CBS ' + R27.origem + (R27.fixada ? '' : ' (' + R27.pendente + ')') + '. Valores estimativos, calculados com os dados informados; a decisão é do cliente.';
     let filtroStatus = 'todos', busca = '', fTri = '', fSeg = '', fDec = '';
-    let sel = new Set(), fichaId = null, simAtual = null, usuarioEmail = '';
+    let sel = new Set(), fichaId = null, simAtual = null, usuarioEmail = '', casoDoLink = null;
 
     getCurrentUser().then(u => { if (!u) return; usuarioEmail = u.email || ''; $('userName').textContent = u.email; $('userAvatar').textContent = (u.email || '?')[0].toUpperCase(); });
     $('btnLogout').onclick = () => signOut();
@@ -544,6 +544,7 @@
       const segs = [...new Set(casos.map(c => c.segmento).filter(Boolean))].sort();
       $('rtFseg').innerHTML = '<option value="">Segmento: todos</option>' + segs.map(s => '<option value="' + escapeHtml(s) + '">' + escapeHtml(SEG_LBL[s] || s) + '</option>').join('');
       render();
+      if (casoDoLink && casos.some(c => c.id === casoDoLink)) { const id = casoDoLink; casoDoLink = null; abrirFicha(id); }
     }
 
     // quantas simulações gravadas seguem com a CBS de antes: o "Refazer simulações" as recalcula com a de agora (28/10/2026)
@@ -2754,6 +2755,17 @@
     });
     // a regra citada numa resposta de outra tela chega aqui: fiscal-reforma.html#regra-COD abre a Base legal nela
     { const m = /^#regra-([A-Za-z0-9-]+)$/.exec(location.hash); if (m) abrirBaseLegal(m[1].toUpperCase()); }
+    // o assistente incluiu empresas na campanha (30/10/2026): a lista recarrega; o "Abrir o caso" do cartão
+    // (fiscal-reforma.html#caso-<id>) abre a ficha — vindo de outra tela, depois de carregar; daqui mesmo, na hora
+    const CASO_DO_LINK = /^#caso-([0-9a-z-]{1,64})$/i;
+    casoDoLink = (CASO_DO_LINK.exec(location.hash) || [])[1] || null;
+    window.addEventListener('mr:reforma-mudou', () => load());
+    window.addEventListener('hashchange', () => {
+      const id = (CASO_DO_LINK.exec(location.hash) || [])[1];
+      if (!id) return;
+      if (casos.some(c => c.id === id)) abrirFicha(id);
+      else { casoDoLink = id; load(); }
+    });
 
     // ---------- importação Domínio ----------
     load();

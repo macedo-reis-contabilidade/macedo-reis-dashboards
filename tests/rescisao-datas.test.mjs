@@ -27,14 +27,19 @@ chk('dia comum é útil (terça 06/10/2026)', diaUtil('2026-10-06'));
 chk('sábado e domingo não são úteis', !diaUtil('2026-10-10') && !diaUtil('2026-10-11'));
 chk('12/10 não é útil', !diaUtil('2026-10-12'));
 
-// mesma lista de feriados bancários de 2026 que o financeiro-boletos usa (nacional + RS)
+// os feriados bancários são os mesmos do financeiro-boletos (nacional + RS): desde 30/10/2026 a tela usa esta lista, pelo
+// vencimentoDaCompetencia de tarefas-acoes.js (a lista dela era só a de 2026, idêntica a esta — conferida antes de trocar)
 const boletos = readFileSync(raiz + 'financeiro-boletos.html', 'utf8');
-const lista = [...(boletos.match(/const FERIADOS = new Set\(\[([\s\S]*?)\]\)/) || [, ''])[1].matchAll(/'(\d{4}-\d{2}-\d{2})'/g)].map(m => m[1]);
-chk('lista do financeiro-boletos encontrada', lista.length >= 14);
-chk('todo feriado do financeiro-boletos é feriado aqui', lista.every(d => feriado(d)));
+const tarefasAcoes = readFileSync(raiz + 'assets/js/tarefas-acoes.js', 'utf8');
+chk('o financeiro-boletos calcula o vencimento pela conta única (vencimentoDaCompetencia), sem lista própria de feriados',
+  /function calcVencimento\(competencia, dia\)\{ return vencimentoDaCompetencia\(competencia, dia\); \}/.test(boletos) && /import \{ vencimentoDaCompetencia, COMPETENCIA_ISO \} from '\.\/assets\/js\/tarefas-acoes\.js'/.test(boletos)
+  && !/const FERIADOS = new Set/.test(boletos));
+chk('e a conta única usa os feriados daqui', /import \{ diaUtil, somaDias \} from '\.\/rescisao-datas\.js'/.test(tarefasAcoes));
+const NACIONAIS_RS_2026 = ['2026-01-01', '2026-02-16', '2026-02-17', '2026-04-03', '2026-04-21', '2026-05-01', '2026-06-04', '2026-09-07', '2026-09-20', '2026-10-12',
+  '2026-11-02', '2026-11-15', '2026-11-20', '2026-12-25'];
 const meus2026 = [];
 for (let d = '2026-01-01'; d <= '2026-12-31'; d = somaDias(d, 1)) if (feriado(d)) meus2026.push(d);
-chk('e todo feriado de 2026 daqui está lá (' + meus2026.length + ')', meus2026.every(d => lista.includes(d)));
+chk('os feriados de 2026 são os da lista que a tela Boletos tinha (' + meus2026.length + ')', meus2026.join() === NACIONAIS_RS_2026.join(), meus2026.join());
 
 console.log('Pedido de demissão, cumprindo o aviso:');
 let c = calcularRescisao({ tipo: 'pedido', aviso: 'trabalhado', data: '2026-10-06' });

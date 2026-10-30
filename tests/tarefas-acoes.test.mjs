@@ -4,7 +4,8 @@
 // alterar prazo, responsável e prioridade; e o que o cartão do vigia resolve ali mesmo (o responsável que falta, a proposta
 // parada, o boleto enviado ou pago), com o desfazer. E a mensagem no histórico (20/10/2026): junto da conclusão e da
 // mudança, ou sozinha (registrar e desfazer o registro). E a quarta leva do vigia (20/10/2026): a tarefa do mês da obrigação
-// (a montagem da tela Obrigações fiscais), criar a do vínculo que ficou sem e religar a obrigação desligada.
+// (a montagem da tela Obrigações fiscais), criar a do vínculo que ficou sem e religar a obrigação desligada. E os cadastros
+// (30/10/2026): incluir na campanha da Reforma, pôr num mês dos boletos e ajustar as obrigações das empresas em lote.
 // Sem rede: o cliente do Supabase é um dublê em memória.
 // Rodar com: node tests/tarefas-acoes.test.mjs
 import { concluirTarefas, desfazerConclusao, criarTarefasAvulsas, excluirTarefasCriadas, marcarPagos, desfazerPagos, avisarDependentes,
@@ -14,7 +15,9 @@ import { concluirTarefas, desfazerConclusao, criarTarefasAvulsas, excluirTarefas
   renovarAlvara, desfazerRenovacao, desativarRegistro, reativarRegistro, sugerirObrigacoes, obrigacoesParaVincular, vincularObrigacoes, desfazerVinculoObrigacoes,
   dadosDaCobranca, porNaCobranca, desfazerCobranca, acertarCadastro, desfazerCadastro,
   limparMensagem, comMensagem, MAX_MENSAGEM, registrarNoHistorico, desfazerRegistro,
-  competenciaFiscal, tarefaDaObrigacao, tarefaDoMesDoVinculo, criarTarefaDoMes, religarVinculo } from '../assets/js/tarefas-acoes.js';
+  competenciaFiscal, tarefaDaObrigacao, tarefaDoMesDoVinculo, criarTarefaDoMes, religarVinculo,
+  obsDaInclusao, incluirNaCampanha, desfazerInclusaoCampanha, vencimentoDaCompetencia, dadosParaCompetencia, porNaCompetencia, desfazerPorNaCompetencia,
+  limparAjuste, ajusteDoVinculo, ajustarVinculos, desfazerAjusteVinculos } from '../assets/js/tarefas-acoes.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + extra : '')); };
@@ -31,6 +34,7 @@ function dubla(tabelas) {
     const exec = () => {
       log.push({ t, op: st.ins ? 'insert' : st.patch ? 'update' : st.del ? 'delete' : 'select', f: st.f.map(x => x.slice()), n: st.f.find(x => x[0] === 'in') ? st.f.find(x => x[0] === 'in')[2].length : null });
       if (sb.falhar === t) { sb.falhar = null; return { data: null, error: { message: 'falhou de propósito' } }; }
+      if (st.ins && sb.unicos && sb.unicos[t] && st.ins.some(n => rows.some(r => sb.unicos[t].every(c => r[c] === n[c])))) return { data: null, error: { code: '23505', message: 'duplicate key value' } };
       if (st.ins) { rows.push(...st.ins); return { data: st.ins.map(r => ({ ...r })), error: null }; }
       if (st.patch && sb.antes) sb.antes(t, rows);
       const alvo = rows.filter(passa);
@@ -514,6 +518,124 @@ console.log('Resolver no cartão do vigia, a terceira leva:');
   const d = await desfazerVinculoObrigacoes(sb, 'k2', r.feitos);
   chk('desfazer o religar: desligada de novo, sem quem cuidava', d.desfeitos === 1 && v2.ativo === false && v2.responsavel === null, JSON.stringify(d));
   chk('religar o vínculo que sumiu: diz', /não existe mais/.test((await religarVinculo(sb, 'vz', 'Thalia')).erro));
+}
+
+console.log('Os cadastros (30/10/2026) — incluir na campanha da Reforma:');
+{
+  chk('a observação do caso: quando, quem e o porquê (sem o ponto final dobrado)', obsDaInclusao({ hoje: '2026-10-30', quem: 'Samuel', observacao: '  vai pro Simples\nem 2027. ' })
+    === 'Entrou na campanha pelo assistente do escritório em 30/10/2026, a pedido de Samuel: vai pro Simples em 2027.' && obsDaInclusao({ hoje: '2026-10-30' }) === 'Entrou na campanha pelo assistente do escritório em 30/10/2026.');
+  const db = { clientes: [{ id: 'k1', tipo_pessoa: 'PJ', cnae_principal: '4711-3/02 - Comércio varejista' }, { id: 'k2', tipo_pessoa: 'PJ', cnae_principal: null },
+      { id: 'k3', tipo_pessoa: 'PF', cnae_principal: null }, { id: 'k4', tipo_pessoa: 'PJ', cnae_principal: '6920-6/01' }],
+    rt_casos: [{ id: 'c4', cliente_id: 'k4', decisao: 'por_fora', status: 'decidido', atualizado_em: '2026-10-01T10:00:00Z' }] };
+  const sb = dubla(db); sb.unicos = { rt_casos: ['cliente_id'] };
+  const r = await incluirNaCampanha(sb, ['k1', 'k2', 'k3', 'k4', 'k1', 'kx'], { quem: 'Samuel', observacao: 'vai pro Simples em 2027', hoje: '2026-10-30', agora: '2026-10-30T18:00:00.000Z' });
+  const c1 = db.rt_casos.find(c => c.cliente_id === 'k1');
+  chk('inclui as empresas sem caso, como o espelho: triado, pendente, o CNAE do cadastro e a observação', r.incluidos.map(c => c.cliente_id).join() === 'k1,k2' && !r.erro
+    && c1.status === 'triado' && c1.decisao === 'pendente' && c1.cnae_base === '4711-3/02' && c1.obs === 'Entrou na campanha pelo assistente do escritório em 30/10/2026, a pedido de Samuel: vai pro Simples em 2027.'
+    && db.rt_casos.find(c => c.cliente_id === 'k2').cnae_base === null, JSON.stringify(r));
+  chk('a que já tem caso e a pessoa física ficam de fora, ditas à parte; a que não existe, nada', r.jaEstavam.join() === 'k4' && r.naoPj.join() === 'k3' && db.rt_casos.length === 3);
+  chk('o caso guarda a hora da inclusão (o desfazer confere)', r.incluidos.every(c => c.atualizado_em === '2026-10-30T18:00:00.000Z'));
+  // outra pessoa incluiu no meio do caminho: a chave do banco recusa e vem como "já estava"
+  const db2 = { clientes: [{ id: 'k5', tipo_pessoa: 'PJ' }], rt_casos: [] };
+  const sb2 = dubla(db2); sb2.unicos = { rt_casos: ['cliente_id'] };
+  let primeira = true;
+  const fromOrig = sb2.from.bind(sb2);
+  sb2.from = t => { if (t === 'rt_casos' && primeira) { primeira = false; const q = fromOrig(t); return q; } if (t === 'rt_casos' && !db2.rt_casos.length) db2.rt_casos.push({ id: 'cx', cliente_id: 'k5' }); return fromOrig(t); };
+  const r2 = await incluirNaCampanha(sb2, ['k5'], { hoje: '2026-10-30' });
+  chk('incluída por outra pessoa no meio: a chave do banco recusa, e ela vem como "já estava"', r2.jaEstavam.join() === 'k5' && !r2.incluidos.length && !r2.erro, JSON.stringify(r2));
+  // desfazer: só o caso que ninguém mexeu
+  db.rt_casos.find(c => c.cliente_id === 'k2').atualizado_em = '2026-10-30T18:05:00.000Z';   // a tela gravou a triagem
+  const d = await desfazerInclusaoCampanha(sb, r.incluidos);
+  chk('desfazer: sai o caso intocado; o que a tela já mexeu fica', d.desfeitos.join() === r.incluidos[0].id && d.ficaram === 1 && !db.rt_casos.some(c => c.cliente_id === 'k1')
+    && db.rt_casos.some(c => c.cliente_id === 'k2'), JSON.stringify(d));
+  chk('nada a incluir: lista vazia, sem consultar', (await incluirNaCampanha(dubla({}), [])).incluidos.length === 0);
+}
+
+console.log('Pôr a empresa num mês dos boletos:');
+{
+  chk('o vencimento: no mês seguinte ao da competência, no dia da cobrança, no dia útil (fim de semana e feriado)',
+    vencimentoDaCompetencia('2026-09', 25) === '2026-10-26' && vencimentoDaCompetencia('2026-10', 20) === '2026-11-23' && vencimentoDaCompetencia('2026-12', 10) === '2027-01-11'
+    && vencimentoDaCompetencia('2027-01', 9) === '2027-02-10' && vencimentoDaCompetencia('2026-01', 31) === '2026-03-02' && vencimentoDaCompetencia('2026-13', 10) === null);
+  const db = { cobrancas_mensais: [
+      { id: 'b1', cliente_id: 'k1', competencia: '2026-08', valor: 1400, vencimento: '2026-09-25', canal: 'whatsapp', contato_envio: 'Fulano', destino: '5551999990000', responsavel: 'Samuel', status: 'pago' },
+      { id: 'b2', cliente_id: 'k1', competencia: '2026-07', valor: 1300, vencimento: '2026-08-25', status: 'pago' },
+      { id: 'b3', cliente_id: 'k3', competencia: '2026-09', valor: 900, vencimento: '2026-10-12', status: 'emitido' },
+      { id: 'b4', cliente_id: 'k1', competencia: '2026-10', valor: 1535, vencimento: '2026-11-25', status: 'a_emitir' }],
+    cobrancas_config: [{ id: 'g1', cliente_id: 'k1', valor_base: 1535, dia_vencimento: 25, canal: 'email', ativo: true }, { id: 'g2', cliente_id: 'k2', valor_base: 800, dia_vencimento: 12, canal: 'whatsapp', ativo: false }] };
+  const sb = dubla(db); sb.unicos = { cobrancas_mensais: ['cliente_id', 'competencia'], cobrancas_config: ['cliente_id'] };
+  const m = await dadosParaCompetencia(sb, ['k1', 'k2', 'k3', 'k4'], '2026-09');
+  const k1 = m.get('k1'), k2 = m.get('k2'), k3 = m.get('k3'), k4 = m.get('k4');
+  chk('de quem tem cobrança antes: copia a mais recente (valor, dia e os dados de envio), como a geração do mês', k1.fonte === 'copia' && k1.de === '2026-08' && k1.valor === 1400 && k1.dia === 25
+    && k1.vencimento === '2026-10-26' && k1.contato_envio === 'Fulano' && k1.destino === '5551999990000' && k1.responsavel === 'Samuel' && k1.ja === null && k1.base.ativo, JSON.stringify(k1));
+  chk('sem cobrança antes: a base (e diz que ela está parada); sem base: valor em branco e dia 10', k2.fonte === 'base' && k2.valor === 800 && k2.dia === 12 && k2.base.ativo === false
+    && k4.fonte === 'nada' && k4.valor === null && k4.dia === 10 && k4.base === null && k4.vencimento === '2026-10-13', JSON.stringify([k2, k4]));
+  chk('a que já está na competência vem com a situação', k3.ja === 'emitido');
+  const r = await porNaCompetencia(sb, '2026-09', [{ ...k1, valor: 1450 }, { cliente_id: 'k4', valor: 600, vencimento: '2026-10-13' }, { cliente_id: 'k3', valor: 1, vencimento: '2026-10-12' }]);
+  const n1 = db.cobrancas_mensais.find(b => b.cliente_id === 'k1' && b.competencia === '2026-09'), n4 = db.cobrancas_mensais.find(b => b.cliente_id === 'k4');
+  chk('grava "a emitir", com o valor editado, o vencimento e os dados de envio', r.postos.map(p => p.cliente_id).join() === 'k1,k4' && n1.status === 'a_emitir' && n1.valor === 1450
+    && n1.vencimento === '2026-10-26' && n1.contato_envio === 'Fulano' && n1.observacao === '' && Array.isArray(n1.itens_extras) && n4.valor === 600, JSON.stringify(r));
+  const base4 = db.cobrancas_config.find(c => c.cliente_id === 'k4');
+  chk('sem base de cobrança: ganha a base, com o valor e o dia (a geração dos próximos meses pega)', r.bases.length === 1 && base4 && base4.valor_base === 600 && base4.dia_vencimento === 13 && base4.ativo === true
+    && !db.cobrancas_config.some(c => c.cliente_id === 'k1' && c.id !== 'g1'));
+  chk('a que já estava no mês: a chave do banco recusa e ela vem à parte', r.jaEstavam.join() === 'k3' && db.cobrancas_mensais.filter(b => b.cliente_id === 'k3').length === 1);
+  chk('competência e valor inválidos não gravam', /AAAA-MM/.test((await porNaCompetencia(sb, '2026-9', [])).erro) && /Valor/.test((await porNaCompetencia(sb, '2026-11', [{ cliente_id: 'k2', valor: 'x', vencimento: '2026-12-10' }])).erro));
+  n4.status = 'emitido';   // a de k4 já foi emitida no Inter
+  const d = await desfazerPorNaCompetencia(sb, r);
+  chk('desfazer: sai a que segue "a emitir" com o mesmo valor; a emitida fica; a base que nasceu aqui sai', d.desfeitos.join() === r.postos[0].id && d.ficaram === 1
+    && !db.cobrancas_mensais.some(b => b.cliente_id === 'k1' && b.competencia === '2026-09') && db.cobrancas_mensais.some(b => b.cliente_id === 'k4') && !db.cobrancas_config.some(c => c.cliente_id === 'k4'), JSON.stringify(d));
+}
+
+console.log('As obrigações das empresas, em lote:');
+{
+  chk('o que muda, limpo: alguém da equipe, o dia de 1 a 31; desligar vai sozinho', JSON.stringify(limparAjuste({ responsavel: 'deize', dia: '30' })) === '{"responsavel":"Deize","dia":30}'
+    && JSON.stringify(limparAjuste({ desligar: true, responsavel: 'Thalia' })) === '{"desligar":true}' && limparAjuste({ responsavel: 'Fulano' }) === null && limparAjuste({ dia: 32 }) === null && limparAjuste({}) === null);
+  const R = { dia_prazo: 20 };
+  chk('o que muda num vínculo: quem cuida (sem maiúscula e acento), o dia (igual ao da obrigação = sem dia próprio), nada quando já está assim',
+    ajusteDoVinculo({ responsavel: 'THALIA', dia_prazo_override: null, ativo: true }, R, { responsavel: 'Thalia', dia: 20 }) === null
+    && JSON.stringify(ajusteDoVinculo({ responsavel: 'Thalia', dia_prazo_override: 1, ativo: true }, R, { responsavel: 'Deize', dia: 20 })) === '{"responsavel":"Deize","dia_prazo_override":null}'
+    && JSON.stringify(ajusteDoVinculo({ responsavel: 'Thalia', dia_prazo_override: null, ativo: true }, R, { dia: 30 })) === '{"dia_prazo_override":30}'
+    && ajusteDoVinculo({ responsavel: 'Thalia', ativo: false }, R, { desligar: true }) === null && JSON.stringify(ajusteDoVinculo({ ativo: true }, R, { desligar: true })) === '{"ativo":false}');
+  const db = { obrigacoes_fiscais: [{ id: 'os', dia_prazo: 20 }, { id: 'on', dia_prazo: 1 }],
+    cliente_obrigacoes: [{ id: 'v1', cliente_id: 'k1', obrigacao_id: 'os', responsavel: 'Thalia', dia_prazo_override: null, ativo: true },
+      { id: 'v2', cliente_id: 'k2', obrigacao_id: 'os', responsavel: 'THALIA', dia_prazo_override: 15, ativo: true },
+      { id: 'v3', cliente_id: 'k3', obrigacao_id: 'os', responsavel: null, dia_prazo_override: null, ativo: true },
+      { id: 'v4', cliente_id: 'k4', obrigacao_id: 'os', responsavel: 'Deize', dia_prazo_override: null, ativo: true },
+      { id: 'v5', cliente_id: 'k5', obrigacao_id: 'os', responsavel: 'Thalia', dia_prazo_override: null, ativo: false },
+      { id: 'v6', cliente_id: 'k1', obrigacao_id: 'on', responsavel: 'Thalia', dia_prazo_override: null, ativo: true }],
+    tarefas: [{ id: 't1', cliente_id: 'k1', obrigacao_id: 'os', responsavel: 'Thalia', status: 'pendente' }, { id: 't2', cliente_id: 'k1', obrigacao_id: 'os', responsavel: 'Thalia', status: 'concluida' },
+      { id: 't3', cliente_id: 'k1', obrigacao_id: 'os', responsavel: 'Vitória', status: 'pendente' }, { id: 't4', cliente_id: 'k2', obrigacao_id: 'os', responsavel: 'THALIA', status: 'em_andamento' },
+      { id: 't5', cliente_id: 'k3', obrigacao_id: 'os', responsavel: null, status: 'pendente' }, { id: 't6', cliente_id: 'k1', obrigacao_id: 'on', responsavel: 'Thalia', status: 'pendente' }],
+    tarefa_historico: [] };
+  const sb = dubla(db);
+  const r = await ajustarVinculos(sb, ['v1', 'v2', 'v3', 'v4', 'v5'], { responsavel: 'Deize' }, { autor: EU, origem: 'assistente do escritório' });
+  const v = id => db.cliente_obrigacoes.find(x => x.id === id), t = id => db.tarefas.find(x => x.id === id);
+  chk('quem cuida: os ligados passam pra Deize; a que já era dela e a desligada ficam', !r.erro && ['v1', 'v2', 'v3'].every(id => v(id).responsavel === 'Deize') && v('v5').responsavel === 'Thalia'
+    && r.vinculos.map(x => x.id).sort().join() === 'v1,v2,v3' && r.vinculos.find(x => x.id === 'v2').antes.responsavel === 'THALIA', JSON.stringify(r));
+  chk('as tarefas abertas daquela obrigação vão junto, só as que estavam com quem cuidava (ou sem ninguém); a concluída, a repassada e a de outra obrigação ficam',
+    ['t1', 't4', 't5'].every(id => t(id).responsavel === 'Deize') && t('t2').responsavel === 'Thalia' && t('t3').responsavel === 'Vitória' && t('t6').responsavel === 'Thalia'
+    && r.tarefas.map(x => x.id).sort().join() === 't1,t4,t5' && db.tarefa_historico.length === 3 && db.tarefa_historico.every(h => /Responsável trocado na obrigação: .* → Deize — pelo assistente do escritório\./.test(h.descricao) && h.autor === EU));
+  t('t4').responsavel = 'Adaini';   // alguém repassou depois
+  const d = await desfazerAjusteVinculos(sb, r, { autor: EU, origem: 'assistente do escritório' });
+  chk('desfazer: cada vínculo volta ao de antes (com a grafia de antes); as tarefas também, menos a que alguém repassou depois',
+    d.vinculos === 3 && v('v1').responsavel === 'Thalia' && v('v2').responsavel === 'THALIA' && v('v3').responsavel === null && t('t1').responsavel === 'Thalia' && t('t5').responsavel === null
+    && t('t4').responsavel === 'Adaini' && d.tarefas.sort().join() === 't1,t5', JSON.stringify(d));
+  const r2 = await ajustarVinculos(sb, ['v1', 'v2', 'v6'], { dia: 30 });
+  chk('o dia: o próprio da empresa; igual ao da obrigação, sem dia próprio', !r2.erro && v('v1').dia_prazo_override === 30 && v('v2').dia_prazo_override === 30 && v('v6').dia_prazo_override === 30
+    && r2.vinculos.find(x => x.id === 'v2').antes.dia_prazo_override === 15 && !r2.tarefas.length, JSON.stringify(r2));
+  const r3 = await ajustarVinculos(sb, ['v1'], { dia: 20 });
+  chk('voltar ao dia da obrigação: o vínculo fica sem dia próprio', v('v1').dia_prazo_override === null && r3.vinculos[0].depois.dia_prazo_override === null);
+  v('v6').dia_prazo_override = 28;   // a tela mudou de novo
+  const d2 = await desfazerAjusteVinculos(sb, r2);
+  chk('desfazer o dia: volta onde ninguém mexeu (v2 aos 15); onde a tela mudou depois fica', v('v2').dia_prazo_override === 15 && v('v6').dia_prazo_override === 28 && d2.vinculos === 1, JSON.stringify(d2));
+  const r4 = await ajustarVinculos(sb, ['v1', 'v5'], { desligar: true });
+  chk('desligar: só a ligada; a tarefa aberta fica', !r4.erro && v('v1').ativo === false && r4.vinculos.map(x => x.id).join() === 'v1' && t('t1').status === 'pendente');
+  const d3 = await desfazerAjusteVinculos(sb, r4);
+  chk('desfazer o desligar: ligada de novo', v('v1').ativo === true && d3.vinculos === 1);
+  sb.antes = (tb, rows) => { if (tb === 'cliente_obrigacoes') { const x = rows.find(y => y.id === 'v4'); x.responsavel = 'Vitória'; } };
+  const r5 = await ajustarVinculos(sb, ['v4'], { responsavel: 'Adaini' });
+  chk('trocado por outra pessoa no meio do caminho: não sobrescreve', v('v4').responsavel === 'Vitória' && !r5.vinculos.length, JSON.stringify(r5));
+  sb.antes = null;
+  chk('sem o que mudar: diz', /Diga o que muda/.test((await ajustarVinculos(sb, ['v1'], {})).erro));
 }
 
 if (falhas) { console.log('\n' + falhas + ' falha(s)'); process.exit(1); }
