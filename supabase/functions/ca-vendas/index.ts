@@ -8,6 +8,6 @@
 // Sem segredo novo: o token do Conta Azul é o do ca-sync (ca_tokens), que esta função só lê.
 // ============================================================
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { criarServidor } from "https://raw.githubusercontent.com/macedo-reis-contabilidade/macedo-reis-dashboards/15a38c63557be929987c7be0527b1840c8a88f0f/supabase/functions/ca-vendas/servidor.js";
+import { criarServidor } from "https://raw.githubusercontent.com/macedo-reis-contabilidade/macedo-reis-dashboards/e4607e98c8906020d8d33405a9e273edbb53af99/supabase/functions/ca-vendas/servidor.js";
 
 Deno.serve(criarServidor({ env: (k: string) => Deno.env.get(k), aguardar: (p: Promise<unknown>) => EdgeRuntime.waitUntil(p) }));
