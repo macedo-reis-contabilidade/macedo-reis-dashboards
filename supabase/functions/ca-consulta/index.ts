@@ -9,7 +9,9 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 //    Se o token estiver perto de vencer, recusa — assim nunca disputa a renovação com o ca-sync.
 //  • Só aceita caminhos de leitura de /v1/pessoas, /v1/contratos e, desde 01/10 à tarde, a parcela por id
 //    (/v1/financeiro/eventos-financeiros/parcelas/<id>) — pra conferir, uma a uma, se uma parcela do espelho
-//    ca_parcelas ainda existe no Conta Azul.
+//    ca_parcelas ainda existe no Conta Azul. Desde 31/10/2026 (o honorário adicional anual), também a leitura
+//    das vendas — a busca, a venda por id ou número, os itens dela e o próximo número — e a busca das contas a
+//    receber (o histórico de anos que o espelho não tem). Continua SÓ LEITURA: nenhum POST, PUT ou DELETE.
 // Modos (corpo JSON):
 //  { modo: 'get', path, params }                       → uma chamada GET, resposta crua
 //  { modo: 'todas', path, params, tamanho }            → percorre todas as páginas da lista, devolve os itens
@@ -22,7 +24,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const API = 'https://api-v2.contaazul.com';
 const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-const PERMITIDO = /^\/v1\/(pessoas|contratos)(\/[0-9a-fA-F-]{36})?$|^\/v1\/financeiro\/eventos-financeiros\/parcelas\/[0-9a-fA-F-]{36}$/;
+const PERMITIDO = /^\/v1\/(pessoas|contratos)(\/[0-9a-fA-F-]{36})?$|^\/v1\/financeiro\/eventos-financeiros\/parcelas\/[0-9a-fA-F-]{36}$|^\/v1\/venda\/(busca|proximo-numero|[0-9a-fA-F-]{36}(\/itens)?|\d{1,12})$|^\/v1\/financeiro\/eventos-financeiros\/contas-a-receber\/buscar$/;
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });

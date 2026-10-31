@@ -27,6 +27,9 @@ const ABERTAS = {
   'ponte': ['a ponte do PC do escritório: a impressão digital da chave dela', s => /x-chave/.test(s) && /ponte_chave_sha256/.test(s)],
   'assistente': ['o assistente: confere o login (e o domínio) por conta própria', s => /auth\/v1\/user/.test(s) && /@macedoereis\.com\.br/.test(s)],
   'reforma-chat': ['o chat da Reforma: confere o login (e o domínio) por conta própria', s => /auth\/v1\/user/.test(s) && /@macedoereis\.com\.br/.test(s)],
+  // 31/10/2026: lança vendas no Conta Azul — só os sócios (o login conferido no Auth e a lista SOCIOS); a consulta também
+  // com a chave do sincronismo (a do ca-sync, que só o servidor lê)
+  'ca-vendas': ['as vendas no Conta Azul: confere o login (só os sócios) por conta própria', s => /auth\/v1\/user/.test(s) && /@macedoereis\.com\.br/.test(s) && /SOCIOS\.includes\(quem\)/.test(s) && /x-sync-key/.test(s)],
   // desligada em 24/10/2026: responde 410 pra todos e não pode voltar a ter Drive, banco ou segredo sem a conferência
   'create-drive-folder': ['desligada: responde 410 pra todos, sem Drive, banco nem segredo', s => /status: 410/.test(s) && !/googleapis|createClient|Deno\.env|fetch\(/.test(s)]
 };
