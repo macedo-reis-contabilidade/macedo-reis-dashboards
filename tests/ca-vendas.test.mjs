@@ -52,8 +52,16 @@ function mundo({ tokenFaltam = 50 * 60 * 1000 } = {}) {
       { id: U(199), nome_principal: 'COM BOLETO (ANTIGO)', documento: '99999999000199', status: 'inativo' },
       { id: U(102), nome_principal: 'PADARIA NOVA LTDA', nome_fantasia: null, documento: '22222222000122', status: 'ativo' },
       { id: U(120), nome_principal: 'REDE SABOR UNIDADE CENTRO LTDA', nome_fantasia: 'REDE SABOR', documento: '12121212000112', status: 'ativo' },
-      { id: U(121), nome_principal: 'REDE SABOR UNIDADE PRAIA LTDA', nome_fantasia: 'REDE SABOR', documento: '12121212000203', status: 'ativo' }
+      { id: U(121), nome_principal: 'REDE SABOR UNIDADE PRAIA LTDA', nome_fantasia: 'REDE SABOR', documento: '12121212000203', status: 'ativo' },
+      // as que entraram em outubro (o contrato da mensalidade): uma sem cadastro no Conta Azul e sem endereço; outra já lá
+      { id: U(130), nome_principal: 'METALIZADORA NOVA LTDA', nome_fantasia: 'METAL NOVA', documento: '30.303.030/0001-30', tipo_pessoa: 'PJ', status: 'em_transicao',
+        email_principal: null, telefone_principal: '(51) 99999-0000', cep: null, logradouro: null, numero: null, complemento: null, bairro: null, cidade: 'Igrejinha', uf: 'RS' },
+      { id: U(131), nome_principal: 'INDUSTRIA DE TESTE LTDA', nome_fantasia: null, documento: '31313131000131', tipo_pessoa: 'PJ', status: 'em_transicao',
+        email_principal: 'contato@teste.com.br', telefone_principal: '5133330000', cep: '95660-000', logradouro: 'RUA DE TESTE', numero: '10', complemento: null, bairro: 'CENTRO', cidade: 'Três Coroas', uf: 'RS' }
     ],
+    cobrancas_config: [{ cliente_id: U(130), valor_base: 1500, dia_vencimento: 10, ativo: true }, { cliente_id: U(131), valor_base: 450, dia_vencimento: 15, ativo: true }],
+    precificacoes: [{ cliente_id: U(131), honorario: 750, status: 'fechada', criado_em: '2026-09-28T10:00:00Z' }, { cliente_id: U(131), honorario: 600, status: 'perdida', criado_em: '2026-09-29T10:00:00Z' }],
+    carteira_info: [{ cliente_id: U(130), entrada: '2026-10-01', saida: null }, { cliente_id: U(131), entrada: '2026-10-01', saida: null }],
     cobrancas_mensais: [
       { id: U(209), cliente_id: U(109), competencia: '2026-10', vencimento: '2026-11-09', status: 'a_emitir', itens_extras: [{ faturavel_id: U(600), descricao: 'Abertura de filial', valor: 300 }] },
       { id: U(210), cliente_id: U(110), competencia: '2026-10', vencimento: '2026-11-10', status: 'emitido', itens_extras: [] }
@@ -73,7 +81,21 @@ function mundo({ tokenFaltam = 50 * 60 * 1000 } = {}) {
     ],
     pessoas: [{ id: P.paulo, nome: 'LOJA DO PAULO LTDA', documento: '11111111000111' }, { id: P.boleto, nome: 'COM BOLETO LTDA', documento: '99999999000199' },
       { id: P.emitido, nome: 'BOLETO EMITIDO LTDA', documento: '10101010000110' }, { id: P.padaria, nome: 'PADARIA NOVA', documento: '' },
-      { id: U(20), nome: 'REDE SABOR', documento: '' }],
+      { id: U(20), nome: 'REDE SABOR', documento: '' }, { id: U(31), nome: 'INDUSTRIA DE TESTE LTDA', documento: '31313131000131' }],
+    // os contratos: dois ativos (o de cima é o modelo) e um inativo da indústria (não conta)
+    contratos: [
+      { id: U(501), numero: 402, status: 'ATIVO', cliente: { id: U(32), nome: 'CLIENTE MODELO LTDA' }, total: 850 },
+      { id: U(502), numero: 401, status: 'ATIVO', cliente: { id: U(33), nome: 'OUTRO CLIENTE LTDA' }, total: 750 },
+      { id: U(503), numero: 300, status: 'INATIVO', cliente: { id: U(31), nome: 'INDUSTRIA DE TESTE LTDA' }, total: 280 }
+    ],
+    contratoDetalhe: new Map([
+      [U(501), { id: U(501), id_ultima_venda_confirmada: U(511), cliente: { id: U(32), nome: 'CLIENTE MODELO LTDA' }, vendedor: { id: U(521), nome: 'DIEGO REIS' }, termos: { numero: 402, dia_emissao_venda: 31 } }],
+      [U(502), { id: U(502), id_ultima_venda_confirmada: U(512), cliente: { id: U(33), nome: 'OUTRO CLIENTE LTDA' }, vendedor: { id: U(522), nome: 'SAMUEL REIS' }, termos: { numero: 401, dia_emissao_venda: 31 } }]
+    ]),
+    proximoContrato: 403,
+    contratosCriados: [],
+    pessoasCriadas: [],
+    exigirPagamento: false,
     vendas: new Map(),
     proximo: 190421459,
     proximosForcados: [],
@@ -89,6 +111,10 @@ function mundo({ tokenFaltam = 50 * 60 * 1000 } = {}) {
     itens: { itens: [{ id: U(402), id_item: U(303), nome: 'HONORÁRIO ADICIONAL ANUAL', tipo: 'SERVICO', quantidade: 1, valor: 530 }] } });
   for (const [id, p, numero] of [[U(411), P.boleto, 190419224], [U(412), P.emitido, 190419225]])
     contaAzul.vendas.set(id, { numero, data: '2025-10-31', pessoa: p, categoria: CAT.adicional, detalhe: { venda: { id, numero, id_categoria: CAT.adicional, condicao_pagamento: { id_conta_financeira: U(305) } } }, itens: { itens: [] } });
+  // a última venda dos contratos: a mensalidade (o serviço HONORÁRIOS MENSAIS), na conta do Inter
+  for (const [id, numero] of [[U(511), 190421457], [U(512), 190421458]])
+    contaAzul.vendas.set(id, { numero, detalhe: { venda: { id, numero, id_categoria: CAT.mensal, condicao_pagamento: { id_conta_financeira: U(302) } } },
+      itens: { itens: [{ id: U(530), id_item: U(531), nome: 'HONORÁRIOS MENSAIS', tipo: 'SERVICO', quantidade: 1, valor: 850 }] } });
   const chamadas = [];
 
   const filtrar = (linhas, sp) => linhas.filter(r => [...sp.entries()].every(([k, v]) => {
@@ -111,7 +137,7 @@ function mundo({ tokenFaltam = 50 * 60 * 1000 } = {}) {
     chamadas.push({ url, metodo, corpo, headers: op.headers || {} });
     if (url.startsWith(URLB + '/auth/v1/user')) {
       const t = String((op.headers || {}).Authorization || '').replace('Bearer ', '');
-      const email = { 'tok-samuel': 'financeiro@macedoereis.com.br', 'tok-thalia': 'fiscal@macedoereis.com.br', 'tok-fora': 'alguem@gmail.com' }[t];
+      const email = { 'tok-samuel': 'financeiro@macedoereis.com.br', 'tok-diego': 'diego@macedoereis.com.br', 'tok-thalia': 'fiscal@macedoereis.com.br', 'tok-fora': 'alguem@gmail.com' }[t];
       return email ? resposta(200, { email }) : resposta(401, { msg: 'invalid' });
     }
     if (url.startsWith(URLB + '/functions/v1/ca-sync')) return resposta(200, { ok: true });
@@ -145,7 +171,35 @@ function mundo({ tokenFaltam = 50 * 60 * 1000 } = {}) {
         const tam = Number(sp.get('tamanho_pagina')), pag = Number(sp.get('pagina'));
         return resposta(200, { itens_totais: lista.length, itens: lista.slice((pag - 1) * tam, pag * tam) });
       }
+      if (caminho === '/v1/pessoas' && metodo === 'POST') {
+        if (!corpo.nome || !corpo.tipo_pessoa) return resposta(400, { error: 'nome e tipo_pessoa são obrigatórios' });
+        const id = novoId();
+        contaAzul.pessoasCriadas.push(corpo);
+        contaAzul.pessoas.push({ id, nome: corpo.nome, documento: corpo.cnpj || corpo.cpf || '' });
+        return resposta(201, { id, nome: corpo.nome, origem: 'API' });
+      }
       if (caminho === '/v1/pessoas') { const tam = Number(sp.get('tamanho_pagina')), pag = Number(sp.get('pagina')); return resposta(200, { totalItems: contaAzul.pessoas.length, items: contaAzul.pessoas.slice((pag - 1) * tam, pag * tam) }); }
+      // os contratos: no máximo 50 por página; a lista exige o início da recorrência
+      if (caminho === '/v1/contratos' && metodo === 'GET') {
+        if (!sp.get('data_inicio')) return resposta(400, { error: 'Data de início da recorrência não pode ser nula' });
+        const tam = Math.min(Number(sp.get('tamanho_pagina')), 50), pag = Number(sp.get('pagina'));
+        return resposta(200, { itens_totais: contaAzul.contratos.length, itens: contaAzul.contratos.slice((pag - 1) * tam, pag * tam) });
+      }
+      if (caminho === '/v1/contratos/proximo-numero') return resposta(200, contaAzul.proximoContrato);
+      if (caminho === '/v1/contratos' && metodo === 'POST') {
+        const t = corpo.termos || {}, cp = corpo.condicao_pagamento || {}, it = (corpo.itens || [])[0] || {};
+        if (!corpo.id_cliente || !t.data_inicio || !t.data_fim || !t.dia_emissao_venda || !t.numero || !t.tipo_expiracao || !t.tipo_frequencia || !t.intervalo_frequencia
+          || !cp.dia_vencimento || !cp.primeira_data_vencimento || !it.id || !(it.valor > 0)) return resposta(400, { error: 'campos obrigatórios' });
+        if (contaAzul.exigirPagamento && !cp.tipo_pagamento) return resposta(400, { error: 'condicao_pagamento.tipo_pagamento: forma de pagamento obrigatória' });
+        if (contaAzul.contratos.some(k => k.numero === t.numero)) return resposta(400, { error: 'Já existe um contrato com este número' });
+        const id = novoId();
+        contaAzul.contratos.push({ id, numero: t.numero, status: 'ATIVO', cliente: { id: corpo.id_cliente }, total: it.valor });
+        contaAzul.contratosCriados.push(corpo);
+        contaAzul.proximoContrato++;
+        return resposta(201, { id, id_legado: 9, id_venda: novoId() });
+      }
+      const mc = /^\/v1\/contratos\/([0-9a-f-]{36})$/.exec(caminho);
+      if (mc) { const d = contaAzul.contratoDetalhe.get(mc[1]); return d ? resposta(200, d) : resposta(404, { error: 'contrato não encontrado' }); }
       if (caminho === '/v1/venda/busca') {
         if (sp.get('termo_busca')) { const n = Number(sp.get('termo_busca')); return resposta(200, { itens: [...contaAzul.vendas.entries()].filter(([, v]) => v.numero === n).map(([id, v]) => ({ id, numero: v.numero })) }); }
         const lista = [...contaAzul.vendas.entries()].filter(([, v]) => v.data && v.data >= sp.get('data_inicio') && v.data <= sp.get('data_fim') && (!sp.get('ids_categorias') || v.categoria === sp.get('ids_categorias')))
@@ -174,6 +228,9 @@ function mundo({ tokenFaltam = 50 * 60 * 1000 } = {}) {
       if (m) { const v = contaAzul.vendas.get(m[1]); if (!v) return resposta(404, { error: 'Venda não encontrada com o ID informado' }); return resposta(200, m[2] ? v.itens : v.detalhe); }
       return resposta(404, { error: 'caminho do teste: ' + caminho });
     }
+    // a Receita (BrasilAPI): o endereço de quem não tem no cadastro
+    if (url.startsWith('https://brasilapi.com.br/api/cnpj/v1/'))
+      return resposta(200, { cep: '95690000', descricao_tipo_de_logradouro: 'RUA', logradouro: 'DAS FLORES', numero: '100', complemento: 'SALA 2', bairro: 'CENTRO', municipio: 'IGREJINHA', uf: 'RS' });
     throw new Error('fetch não esperado: ' + url);
   }
   const aguardados = [];
@@ -411,6 +468,85 @@ console.log('A venda excluída direto no Conta Azul:');
   const de2 = await w.pedir({ modo: 'lancar', competencia: '2026-10', modelo: 190419223, itens: [{ pessoa: w.P.boleto, nome: 'COM BOLETO LTDA', valor: 610, vencimento: '2026-11-09' }] });
   chk('lança de novo, com o valor corrigido, e o extra volta ao boleto', de2.corpo.resultados[0].ok && de2.corpo.resultados[0].boleto.posto
     && w.db.cobrancas_mensais.find(b => b.id === U(209)).itens_extras.some(x => x.adicional_id === de2.corpo.resultados[0].id && x.valor === 610), J(de2.corpo));
+}
+
+console.log('O contrato da mensalidade — a conferência (contrato_prever):');
+{
+  const w = mundo();
+  const r = await w.pedir({ modo: 'contrato_prever', clientes: [U(130), U(131), 'nao-e-id'] }, { token: null, sync: 'chave-sync' });
+  chk('a consulta com a chave do sincronismo: 200', r.status === 200, J(r.corpo));
+  const it = id => r.corpo.itens.find(i => i.cliente_id === id);
+  chk('o modelo: o contrato ativo mais recente da mensalidade, com o serviço', J(r.corpo.modelo) === J({ numero: 402, cliente: 'CLIENTE MODELO LTDA', servico: 'HONORÁRIOS MENSAIS' }), J(r.corpo.modelo));
+  chk('a que não está no Conta Azul: sem pessoa, sem contrato, o valor e o dia da base, a partir da entrada (10/2026), a primeira em 10/11 e o fim do Conta Azul (+335 dias)',
+    it(U(130)).pessoa === null && it(U(130)).contrato_ativo === null && it(U(130)).sugerido.valor === 1500 && it(U(130)).sugerido.dia === 10 && it(U(130)).sugerido.inicio === '2026-10'
+    && it(U(130)).sugerido.primeiro_vencimento === '2026-11-10' && it(U(130)).sugerido.data_fim === '2027-09-01' && it(U(130)).documento === '30303030000130', J(it(U(130))));
+  chk('com a base ativa, a conta do Inter', J(it(U(130)).conta) === J({ id: U(302), nome: 'BANCO INTER - CONTA CORRENTE' }), J(it(U(130)).conta));
+  chk('a que já está no Conta Azul (pelo CNPJ), com um contrato inativo: a pessoa, sem contrato ativo, o valor da proposta fechada (não a perdida) e o dia 15',
+    it(U(131)).pessoa.id === U(31) && it(U(131)).contrato_ativo === null && it(U(131)).sugerido.valor === 750 && it(U(131)).sugerido.de.valor === 'proposta' && it(U(131)).sugerido.dia === 15
+    && it(U(131)).sugerido.primeiro_vencimento === '2026-11-15', J(it(U(131))));
+  chk('o id que não é id fica de fora; sem login de sócio, sem vendedor', r.corpo.itens.length === 2 && r.corpo.vendedor === null);
+  chk('nada criado na conferência', !w.contaAzul.chamadas.some(c => c.startsWith('POST')) && w.contaAzul.contratosCriados.length === 0);
+  chk('a lista dos contratos pede o início da recorrência, 50 por página', w.chamadas.filter(c => c.url.includes('/v1/contratos?')).every(c => /data_inicio=/.test(c.url) && /tamanho_pagina=50/.test(c.url)));
+  const s = await w.pedir({ modo: 'contrato_prever', clientes: [U(130)] });
+  chk('com o login do Samuel, o vendedor é ele (pelo nome, entre os vendedores dos contratos)', J(s.corpo.vendedor) === J({ id: U(522), nome: 'SAMUEL REIS' }), J(s.corpo.vendedor));
+  chk('nenhuma empresa: 400', (await w.pedir({ modo: 'contrato_prever', clientes: [] })).status === 400);
+  const thalia = await w.pedir({ modo: 'contrato_prever', clientes: [U(130)] }, { token: 'tok-thalia' });
+  chk('da equipe, mas não sócio: 403', thalia.status === 403);
+}
+
+console.log('O contrato da mensalidade — criar (contrato):');
+{
+  const w = mundo();
+  const pedido = { modo: 'contrato', itens: [{ cliente_id: U(130), valor: 1500, dia: 10, inicio: '2026-10' }, { cliente_id: U(131), valor: 750, dia: 15, inicio: '2026-10' }] };
+  const semSocio = await w.pedir(pedido, { token: null, sync: 'chave-sync' });
+  chk('com a chave do sincronismo, sem um sócio: 403', semSocio.status === 403 && /só a consulta/.test(semSocio.corpo.erro));
+  chk('o pedido de quem não é sócio no corpo não vale', (await w.pedir({ ...pedido, a_pedido_de: 'fiscal@macedoereis.com.br' }, { token: null, sync: 'chave-sync' })).status === 403);
+  chk('da equipe, mas não sócio: 403', (await w.pedir(pedido, { token: 'tok-thalia' })).status === 403);
+  chk('nada criado até aqui', w.contaAzul.contratosCriados.length === 0 && w.contaAzul.pessoasCriadas.length === 0);
+  const r = await w.pedir(pedido);
+  chk('com o login do Samuel: 200, as duas criadas', r.status === 200 && r.corpo.resultados.length === 2 && r.corpo.resultados.every(x => x.ok), J(r.corpo));
+  const res = id => r.corpo.resultados.find(x => x.cliente_id === id);
+  const pessoa = w.contaAzul.pessoasCriadas[0];
+  chk('a que não estava no Conta Azul: o cadastro, com a razão social, o CNPJ, o fantasia, o telefone, o perfil Cliente e o endereço da Receita (a cidade do cadastro)',
+    w.contaAzul.pessoasCriadas.length === 1 && J(pessoa) === J({ nome: 'METALIZADORA NOVA LTDA', tipo_pessoa: 'Jurídica', cnpj: '30303030000130', nome_fantasia: 'METAL NOVA', telefone_comercial: '51999990000',
+      enderecos: [{ cep: '95690000', logradouro: 'RUA DAS FLORES', numero: '100', complemento: 'SALA 2', bairro: 'CENTRO', cidade: 'Igrejinha', estado: 'RS', pais: 'Brasil' }], perfis: [{ tipo_perfil: 'Cliente' }] })
+    && res(U(130)).pessoa_criada, J(pessoa));
+  const k1 = w.contaAzul.contratosCriados[0], k2 = w.contaAzul.contratosCriados[1];
+  chk('o contrato: mensal, sem fim (NUNCA), do mês de entrada, a venda no dia 31, o vencimento no dia da base a partir do mês seguinte, na conta do Inter, sem forma de pagamento, o serviço e a categoria da mensalidade e o Samuel de vendedor',
+    k1.id_cliente === res(U(130)).pessoa && J(k1.termos) === J({ data_inicio: '2026-10-01', data_fim: '2027-09-01', dia_emissao_venda: 31, intervalo_frequencia: 1, numero: 403, tipo_expiracao: 'NUNCA', tipo_frequencia: 'MENSAL' })
+    && J(k1.condicao_pagamento) === J({ dia_vencimento: 10, primeira_data_vencimento: '2026-11-10', id_conta_financeira: U(302) })
+    && J(k1.itens) === J([{ id: U(531), quantidade: 1, valor: 1500 }]) && k1.id_categoria === CAT.mensal && k1.id_vendedor === U(522), J(k1));
+  chk('a que já estava no Conta Azul (com o contrato antigo inativo): sem cadastro novo, o contrato seguinte (404) na pessoa de lá, 750 no dia 15',
+    !res(U(131)).pessoa_criada && k2.id_cliente === U(31) && k2.termos.numero === 404 && k2.itens[0].valor === 750 && k2.condicao_pagamento.primeira_data_vencimento === '2026-11-15', J(k2));
+  chk('o resultado: o número, o vendedor e quem pediu', res(U(130)).contrato.numero === 403 && res(U(130)).vendedor === 'SAMUEL REIS' && res(U(130)).por === 'financeiro@macedoereis.com.br', J(res(U(130))));
+  const de2 = await w.pedir(pedido);
+  chk('de novo: as duas já têm contrato ativo, nada criado', de2.corpo.resultados.every(x => !x.ok && /já tem o contrato 40[34] ativo/.test(x.erro)) && w.contaAzul.contratosCriados.length === 2 && w.contaAzul.pessoasCriadas.length === 1, J(de2.corpo));
+  w.db.clientes.push({ id: U(132), nome_principal: 'SEM DOCUMENTO LTDA', documento: null, status: 'ativo' });
+  const erros = await w.pedir({ modo: 'contrato', itens: [{ cliente_id: U(130), valor: 0, dia: 10, inicio: '2026-10' }, { cliente_id: U(130), valor: 100, dia: 32, inicio: '2026-10' },
+    { cliente_id: U(130), valor: 100, dia: 10, inicio: '2026-07' }, { cliente_id: 'x', valor: 100, dia: 10, inicio: '2026-10' }, { cliente_id: U(132), valor: 100, dia: 10, inicio: '2026-10' }] });
+  chk('o pedido que não serve: o motivo de cada um (o valor, o dia, o início longe demais, o id, o cadastro sem CNPJ), sem chegar ao Conta Azul',
+    /maior que zero/.test(erros.corpo.resultados[0].erro) && /de 1 a 31/.test(erros.corpo.resultados[1].erro) && /mês passado ao que vem/.test(erros.corpo.resultados[2].erro) && /inválida/.test(erros.corpo.resultados[3].erro)
+    && /sem o CNPJ ou o CPF/.test(erros.corpo.resultados[4].erro) && w.contaAzul.contratosCriados.length === 2 && w.contaAzul.pessoasCriadas.length === 1, J(erros.corpo));
+  chk('mais de 5 por vez: 400', (await w.pedir({ modo: 'contrato', itens: Array.from({ length: 6 }, () => pedido.itens[0]) })).status === 400);
+}
+
+console.log('O contrato da mensalidade — a forma de pagamento, se o Conta Azul exigir:');
+{
+  const w = mundo();
+  w.contaAzul.exigirPagamento = true;
+  const r = await w.pedir({ modo: 'contrato', itens: [{ cliente_id: U(131), valor: 750, dia: 15, inicio: '2026-10' }] });
+  chk('a primeira tentativa sem a forma, a segunda com boleto', r.corpo.resultados[0].ok && w.contaAzul.contratosCriados.length === 1 && w.contaAzul.contratosCriados[0].condicao_pagamento.tipo_pagamento === 'BOLETO_BANCARIO'
+    && w.contaAzul.chamadas.filter(c => c === 'POST /v1/contratos').length === 2, J(r.corpo));
+}
+
+console.log('O contrato da mensalidade — com o Diego:');
+{
+  const w = mundo();
+  const r = await w.pedir({ modo: 'contrato', a_pedido_de: 'financeiro@macedoereis.com.br', itens: [{ cliente_id: U(131), valor: 750, dia: 15, inicio: '2026-10' }] }, { token: 'tok-diego' });
+  chk('com o login do Diego: cria, com ele de vendedor (o "a pedido de" no corpo não muda quem pediu)', r.status === 200 && r.corpo.resultados[0].ok && r.corpo.resultados[0].por === 'diego@macedoereis.com.br'
+    && w.contaAzul.contratosCriados[0].id_vendedor === U(521), J(r.corpo));
+  const sync = await w.pedir({ modo: 'contrato', a_pedido_de: 'diego@macedoereis.com.br', itens: [{ cliente_id: U(130), valor: 1500, dia: 10, inicio: '2026-10' }] }, { token: null, sync: 'chave-sync' });
+  chk('com a chave do sincronismo, nem a pedido de um sócio: 403, nada criado', sync.status === 403 && w.contaAzul.contratosCriados.length === 1 && w.contaAzul.pessoasCriadas.length === 0);
 }
 
 console.log('A mensagem do Conta Azul:');

@@ -30,6 +30,7 @@ import {
   COMPETENCIA, TIPO, CATEGORIA, CATEGORIA_MENSAL, CATEGORIA_MEI, ANOS_HISTORICO, MAX_POR_LOTE, ehUuid, ultimoDia, mesBR,
   parcelaNormal, montarLista, modeloDaVenda, vendaParaApi, limparItem, extraDoAdicional, comExtra, semExtra, temExtra
 } from '../../../assets/js/adicional-anual.js';
+import { DIA_EMISSAO, contratoSugerido, limparPedido, pessoaParaApi, vendedorDoSocio, contratoParaApi } from '../../../assets/js/contrato-ca.js';
 
 export const API = 'https://api-v2.contaazul.com';
 export const DOMINIO = '@macedoereis.com.br';
@@ -470,6 +471,187 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
     return { resultados };
   }
 
+  // ---------- o contrato da mensalidade (31/10/2026): o cliente novo da carteira no Conta Azul ----------
+  // Pedido do Samuel: "pq tu não cadastra e faz o contrato? só seguir o padrão de como são feitos os demais". As regras
+  // (o valor, o dia, o início, o corpo do cadastro e do contrato) ficam em assets/js/contrato-ca.js. O Conta Azul não tem
+  // como excluir contrato pela API: o que foi criado só se desfaz lá (Vendas › Contratos).
+  const POR_PAGINA_CONTRATOS = 50;   // o Conta Azul devolve no máximo 50 contratos por página
+  async function contratosDoContaAzul(token) {
+    const out = [];
+    for (let pagina = 1; pagina <= 40; pagina++) {
+      const resp = await ca(token, '/v1/contratos', { params: { data_inicio: '2000-01-01', data_fim: '2100-12-31', pagina: String(pagina), tamanho_pagina: String(POR_PAGINA_CONTRATOS) } });
+      const lote = itensDe(resp);
+      out.push(...lote);
+      const total = resp && !Array.isArray(resp) ? (resp.itens_totais ?? resp.totalItems ?? resp.total_itens ?? null) : null;
+      if (lote.length < POR_PAGINA_CONTRATOS || (total !== null && out.length >= Number(total))) break;
+    }
+    return out;
+  }
+  const contratoAtivo = c => c && ehUuid(c.id) && String(c.status || '').toUpperCase() === 'ATIVO';
+  const pessoaDoContrato = c => (c && c.cliente && (c.cliente.id || c.cliente.uuid)) || null;
+
+  // o modelo: o contrato ativo mais recente cuja última venda é da categoria HONORÁRIOS MENSAIS, com um serviço só (o
+  // serviço, a categoria, o dia da emissão e a conta); e os vendedores desses contratos (pro sócio que confirma)
+  async function modeloDeContrato(token, cats, contratos) {
+    const ativos = contratos.filter(contratoAtivo).sort((a, b) => Number(b.numero) - Number(a.numero)).slice(0, 12);
+    const vendedores = new Map();
+    let modelo = null;
+    for (const c of ativos) {
+      let d;
+      try { d = await ca(token, '/v1/contratos/' + c.id); } catch (e) { continue; }
+      if (d && d.vendedor && ehUuid(d.vendedor.id) && d.vendedor.nome) vendedores.set(d.vendedor.id, String(d.vendedor.nome));
+      if (modelo || !d || !ehUuid(d.id_ultima_venda_confirmada)) continue;
+      try {
+        const v = await ca(token, '/v1/venda/' + d.id_ultima_venda_confirmada);
+        const it = await ca(token, '/v1/venda/' + d.id_ultima_venda_confirmada + '/itens');
+        const servicos = ((it && it.itens) || []).filter(i => i && String(i.tipo || '').toUpperCase() === 'SERVICO' && ehUuid(i.id_item));
+        if (!v || !v.venda || v.venda.id_categoria !== cats.mensal || servicos.length !== 1) continue;
+        modelo = {
+          numero: Number((d.termos && d.termos.numero) || c.numero) || null, cliente: (d.cliente && d.cliente.nome) || null,
+          id_categoria: cats.mensal, id_servico: servicos[0].id_item, servico: servicos[0].nome || null,
+          dia_emissao_venda: Number(d.termos && d.termos.dia_emissao_venda) || DIA_EMISSAO,
+          id_conta_financeira: v.venda.condicao_pagamento && ehUuid(v.venda.condicao_pagamento.id_conta_financeira) ? v.venda.condicao_pagamento.id_conta_financeira : null
+        };
+      } catch (e) { continue; }
+    }
+    if (!modelo) throw new ErroPublico('Não achei no Conta Azul um contrato de ' + CATEGORIA_MENSAL + ' pra copiar o serviço e a categoria.', 500);
+    return { modelo, vendedores: [...vendedores.entries()].map(([id, nome]) => ({ id, nome })) };
+  }
+
+  // a conta do Inter, pelo nome (o espelho das baixas, como no adicional)
+  async function contaDoInter() {
+    const linhas = await dbTodas('ca_baixas?select=conta_financeira_id,conta_financeira&conta_financeira_id=not.is.null');
+    const nomes = new Map();
+    for (const l of linhas) if (ehUuid(l.conta_financeira_id) && l.conta_financeira && !nomes.has(l.conta_financeira_id)) nomes.set(l.conta_financeira_id, String(l.conta_financeira));
+    const inter = [...nomes.entries()].filter(([, n]) => /\bINTER\b/i.test(n));
+    return inter.length === 1 ? { id: inter[0][0], nome: inter[0][1] } : null;
+  }
+
+  // o endereço da Receita (BrasilAPI), pro cadastro sem endereço — erro ou sem resposta: sem endereço
+  async function enderecoDaReceita(cnpj) {
+    try {
+      const r = await f('https://brasilapi.com.br/api/cnpj/v1/' + cnpj, { headers: { 'User-Agent': 'macedo-reis-dashboards' } });
+      if (!r.ok) return null;
+      return await r.json();
+    } catch (e) { return null; }
+  }
+
+  // o que o sistema sabe das empresas (o cadastro, a base de cobrança, a proposta fechada mais recente, a entrada na carteira)
+  async function dadosDasEmpresas(ids) {
+    const lista = ids.join(',');
+    const cad = (await db('clientes?select=id,nome_principal,nome_fantasia,documento,tipo_pessoa,email_principal,telefone_principal,cep,logradouro,numero,complemento,bairro,cidade,uf&id=in.(' + lista + ')')) || [];
+    const bases = (await db('cobrancas_config?select=cliente_id,valor_base,dia_vencimento,ativo&cliente_id=in.(' + lista + ')')) || [];
+    const props = (await db('precificacoes?select=cliente_id,honorario,criado_em&status=eq.fechada&cliente_id=in.(' + lista + ')&order=criado_em.desc')) || [];
+    const cart = (await db('carteira_info?select=cliente_id,entrada,saida&cliente_id=in.(' + lista + ')')) || [];
+    const por = (arr, k = 'cliente_id') => { const m = new Map(); for (const x of arr) if (!m.has(x[k])) m.set(x[k], x); return m; };
+    return { cad: new Map(cad.map(c => [c.id, c])), bases: por(bases), props: por(props), cart: por(cart) };
+  }
+  const idsDoCorpo = (lista, max) => [...new Set((Array.isArray(lista) ? lista : []).map(x => String((x && x.cliente_id) || x)).filter(ehUuid))].slice(0, max);
+
+  // contrato_prever: empresa por empresa, a pessoa no Conta Azul (pelo CNPJ ou CPF), o contrato ativo dela, e o contrato
+  // que seria criado (o valor, o dia, o início, a conta, o vendedor) — nada é criado
+  async function preverContratos(corpo, quem) {
+    const ids = idsDoCorpo(corpo.clientes, 20);
+    if (!ids.length) throw new ErroPublico('Nenhuma empresa pra conferir.');
+    const hoje = diaBR(agora());
+    const { cad, bases, props, cart } = await dadosDasEmpresas(ids);
+    const token = await tokenCA();
+    const cats = await categorias();
+    const pessoas = await todas(token, '/v1/pessoas', { tipo_perfil: 'Cliente' });
+    const contratos = await contratosDoContaAzul(token);
+    const { modelo, vendedores } = await modeloDeContrato(token, cats, contratos);
+    const inter = await contaDoInter();
+    const vendedor = vendedorDoSocio(vendedores, quem);
+    const itens = ids.filter(id => cad.has(id)).map(id => {
+      const c = cad.get(id);
+      const doc = digitos(c.documento);
+      const pessoa = doc ? pessoas.find(p => p && ehUuid(p.id) && digitos(p.documento) === doc) || null : null;
+      const ativo = pessoa ? contratos.find(k => contratoAtivo(k) && pessoaDoContrato(k) === pessoa.id) || null : null;
+      const base = bases.get(id) || null;
+      const sug = contratoSugerido({ cadastro: c, base, proposta: props.get(id) || null, entrada: (cart.get(id) || {}).entrada || null, hoje });
+      return {
+        cliente_id: id, nome: c.nome_principal, documento: doc,
+        pessoa: pessoa ? { id: pessoa.id, nome: pessoa.nome } : null,
+        contrato_ativo: ativo ? { numero: Number(ativo.numero) || null, valor: Number(ativo.total) || null } : null,
+        sugerido: sug,
+        conta: sug.conta === 'inter' && inter ? inter : modelo.id_conta_financeira ? { id: modelo.id_conta_financeira, nome: 'a do contrato modelo' } : null
+      };
+    });
+    return { hoje, modelo: { numero: modelo.numero, cliente: modelo.cliente, servico: modelo.servico }, vendedor, itens };
+  }
+
+  // contrato: cria o que falta, empresa por empresa (até 5): a pessoa (quando não está no Conta Azul) e o contrato — a que já
+  // tem contrato ativo fica como está
+  async function criarContratos(corpo, quem) {
+    const lista = Array.isArray(corpo.itens) ? corpo.itens : [];
+    if (!lista.length) throw new ErroPublico('Nenhuma empresa marcada.');
+    if (lista.length > 5) throw new ErroPublico('Até 5 empresas por vez.');
+    const hoje = diaBR(agora());
+    const pedidos = lista.map(x => limparPedido(x, { hoje }));
+    const ids = [...new Set(pedidos.filter(p => !p.erro).map(p => p.cliente_id))];
+    const { cad, bases } = ids.length ? await dadosDasEmpresas(ids) : { cad: new Map(), bases: new Map() };
+    const token = await tokenCA();
+    const cats = await categorias();
+    const pessoas = await todas(token, '/v1/pessoas', { tipo_perfil: 'Cliente' });
+    const contratos = await contratosDoContaAzul(token);
+    const { modelo, vendedores } = await modeloDeContrato(token, cats, contratos);
+    const inter = await contaDoInter();
+    const vendedor = vendedorDoSocio(vendedores, quem);
+    const resultados = [];
+    for (const p of pedidos) {
+      if (p.erro) { resultados.push({ ok: false, erro: p.erro }); continue; }
+      const c = cad.get(p.cliente_id);
+      if (!c) { resultados.push({ cliente_id: p.cliente_id, ok: false, erro: 'a empresa não está no cadastro' }); continue; }
+      const doc = digitos(c.documento);
+      if (doc.length !== 14 && doc.length !== 11) { resultados.push({ cliente_id: p.cliente_id, nome: c.nome_principal, ok: false, erro: 'sem o CNPJ ou o CPF no cadastro' }); continue; }
+      let pessoa = pessoas.find(x => x && ehUuid(x.id) && digitos(x.documento) === doc) || null;
+      if (pessoa) {
+        const ativo = contratos.find(k => contratoAtivo(k) && pessoaDoContrato(k) === pessoa.id);
+        if (ativo) { resultados.push({ cliente_id: p.cliente_id, nome: c.nome_principal, ok: false, erro: 'já tem o contrato ' + ativo.numero + ' ativo no Conta Azul' }); continue; }
+      }
+      // 1) a pessoa
+      let pessoaCriada = false;
+      if (!pessoa) {
+        const semEndereco = !String(c.cep || '').trim() && !String(c.logradouro || '').trim();
+        const receita = semEndereco && doc.length === 14 ? await enderecoDaReceita(doc) : null;
+        try {
+          const r = await ca(token, '/v1/pessoas', { method: 'POST', body: pessoaParaApi(c, receita) });
+          if (!r || !ehUuid(r.id)) throw Object.assign(new Error('sem o id da pessoa'), { status: 500 });
+          pessoa = { id: r.id, nome: r.nome || c.nome_principal, documento: doc };
+          pessoas.push(pessoa);
+          pessoaCriada = true;
+        } catch (e) {
+          resultados.push({ cliente_id: p.cliente_id, nome: c.nome_principal, ok: false, erro: 'o Conta Azul não aceitou o cadastro: ' + motivoDoContaAzul(e) });
+          continue;
+        }
+      }
+      // 2) o contrato: o próximo número e o POST (sem forma de pagamento, como os demais; se o Conta Azul exigir, boleto)
+      const base = bases.get(p.cliente_id) || null;
+      const conta = base && base.ativo && inter ? inter.id : modelo.id_conta_financeira;
+      let criado = null, falha = null;
+      for (const tipoPagamento of [null, 'BOLETO_BANCARIO']) {
+        try {
+          const prox = await ca(token, '/v1/contratos/proximo-numero');
+          const numero = Number(typeof prox === 'object' && prox !== null ? (prox.numero ?? prox.proximo_numero) : prox);
+          if (!Number.isInteger(numero) || numero <= 0) throw Object.assign(new Error('próximo número inválido'), { status: 500 });
+          const r = await ca(token, '/v1/contratos', { method: 'POST', body: contratoParaApi({ pessoa: pessoa.id, valor: p.valor, dia: p.dia, inicio: p.inicio, numero, conta, modelo, vendedor: vendedor && vendedor.id, tipoPagamento }) });
+          criado = { id: r && r.id, numero, id_venda: (r && r.id_venda) || null };
+          break;
+        } catch (e) {
+          falha = e;
+          if (!(e.status === 400 && /pagamento/i.test(motivoDoContaAzul(e)))) break;
+        }
+      }
+      if (!criado) {
+        resultados.push({ cliente_id: p.cliente_id, nome: c.nome_principal, ok: false, pessoa_criada: pessoaCriada, pessoa: pessoa.id, erro: 'o Conta Azul não aceitou o contrato: ' + motivoDoContaAzul(falha) });
+        continue;
+      }
+      contratos.push({ id: criado.id, numero: criado.numero, status: 'ATIVO', cliente: { id: pessoa.id } });
+      resultados.push({ cliente_id: p.cliente_id, nome: c.nome_principal, ok: true, pessoa_criada: pessoaCriada, pessoa: pessoa.id, contrato: criado, valor: p.valor, dia: p.dia, inicio: p.inicio, vendedor: vendedor && vendedor.nome, por: quem });
+    }
+    return { resultados };
+  }
+
   // ---------- desfazer ----------
   async function desfazer(corpo, quem) {
     const ids = [...new Set((Array.isArray(corpo.ids) ? corpo.ids : []).map(String).filter(ehUuid))].slice(0, 100);
@@ -506,9 +688,13 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
     let corpo;
     try { corpo = await req.json(); } catch (e) { return resp(400, { erro: 'Pedido inválido.' }); }
     const modo = String((corpo && corpo.modo) || '');
-    if ((soConsulta || quem === 'servidor') && modo !== 'prever') return resp(403, { erro: 'Sem o login de um sócio, só a consulta.' });
+    // o servidor (a chave do sincronismo) só consulta: a lista do adicional e a conferência dos contratos — criar e
+    // lançar, só com o login de um sócio
+    if ((soConsulta || quem === 'servidor') && !['prever', 'contrato_prever'].includes(modo)) return resp(403, { erro: 'Sem o login de um sócio, só a consulta.' });
     try {
       if (modo === 'desfazer') return resp(200, await desfazer(corpo, quem));
+      if (modo === 'contrato_prever') return resp(200, await preverContratos(corpo, quem));
+      if (modo === 'contrato') return resp(200, await criarContratos(corpo, quem));
       const comp = String(corpo.competencia || '');
       if (!COMPETENCIA.test(comp)) return resp(400, { erro: "A competência vai em 'AAAA-MM'." });
       if (modo === 'prever') return resp(200, await prever(comp));
