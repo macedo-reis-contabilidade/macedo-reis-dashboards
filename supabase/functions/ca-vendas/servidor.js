@@ -502,14 +502,7 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
     let corpo;
     try { corpo = await req.json(); } catch (e) { return resp(400, { erro: 'Pedido inválido.' }); }
     const modo = String((corpo && corpo.modo) || '');
-    // o servidor (a chave do sincronismo, que só o banco lê, ou a chave de servidor) consulta; lançar, pôr no boleto e
-    // desfazer, só a pedido de um sócio, que fica registrado (31/10/2026: o Samuel respondeu "essa sim, essa não" na
-    // conversa e o Claude lançou por ele — lancada_por "<e-mail do sócio> (pelo Claude)")
-    if ((soConsulta || quem === 'servidor') && modo !== 'prever') {
-      const pedido = String((corpo && corpo.a_pedido_de) || '').trim().toLowerCase();
-      if (!SOCIOS.includes(pedido)) return resp(403, { erro: 'Sem o login de um sócio, só a consulta.' });
-      quem = pedido + ' (pelo Claude)';
-    }
+    if ((soConsulta || quem === 'servidor') && modo !== 'prever') return resp(403, { erro: 'Sem o login de um sócio, só a consulta.' });
     try {
       if (modo === 'desfazer') return resp(200, await desfazer(corpo, quem));
       const comp = String(corpo.competencia || '');
