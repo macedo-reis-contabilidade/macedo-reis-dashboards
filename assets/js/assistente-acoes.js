@@ -1612,7 +1612,7 @@ function cartaoCompetencia({ raiz, estado, salvar, ajuda, anunciar }) {
         const v = lerValor(l.valor.value);
         if (!(v >= 0) || !Number.isFinite(v)) { erro.textContent = 'Preencha o valor de ' + (nomes.get(l.d.cliente_id) || 'cada empresa') + '.'; erro.hidden = false; l.valor.focus(); return; }
         if (!/^\d{4}-\d{2}-\d{2}$/.test(l.venc.value)) { erro.textContent = 'Preencha o vencimento de ' + (nomes.get(l.d.cliente_id) || 'cada empresa') + '.'; erro.hidden = false; l.venc.focus(); return; }
-        itens.push({ cliente_id: l.d.cliente_id, valor: v, vencimento: l.venc.value, canal: l.d.canal, contato_envio: l.d.contato_envio, destino: l.d.destino, responsavel: l.d.responsavel });
+        itens.push({ cliente_id: l.d.cliente_id, valor: v, vencimento: l.venc.value, dia: l.d.dia, canal: l.d.canal, contato_envio: l.d.contato_envio, destino: l.d.destino, responsavel: l.d.responsavel });
       }
       if (!itens.length) return;
       ok.disabled = true; nao.disabled = true; ok.textContent = 'Gravando…'; erro.hidden = true;

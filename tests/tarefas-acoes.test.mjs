@@ -16,7 +16,7 @@ import { concluirTarefas, desfazerConclusao, criarTarefasAvulsas, excluirTarefas
   dadosDaCobranca, porNaCobranca, desfazerCobranca, acertarCadastro, desfazerCadastro,
   limparMensagem, comMensagem, MAX_MENSAGEM, registrarNoHistorico, desfazerRegistro,
   competenciaFiscal, tarefaDaObrigacao, tarefaDoMesDoVinculo, criarTarefaDoMes, religarVinculo,
-  obsDaInclusao, incluirNaCampanha, desfazerInclusaoCampanha, vencimentoDaCompetencia, dadosParaCompetencia, porNaCompetencia, desfazerPorNaCompetencia,
+  obsDaInclusao, incluirNaCampanha, desfazerInclusaoCampanha, vencimentoDaCompetencia, diaDoContrato, dadosParaCompetencia, porNaCompetencia, desfazerPorNaCompetencia,
   limparAjuste, ajusteDoVinculo, ajustarVinculos, desfazerAjusteVinculos } from '../assets/js/tarefas-acoes.js';
 
 let falhas = 0;
@@ -583,6 +583,29 @@ console.log('Pôr a empresa num mês dos boletos:');
   const d = await desfazerPorNaCompetencia(sb, r);
   chk('desfazer: sai a que segue "a emitir" com o mesmo valor; a emitida fica; a base que nasceu aqui sai', d.desfeitos.join() === r.postos[0].id && d.ficaram === 1
     && !db.cobrancas_mensais.some(b => b.cliente_id === 'k1' && b.competencia === '2026-09') && db.cobrancas_mensais.some(b => b.cliente_id === 'k4') && !db.cobrancas_config.some(c => c.cliente_id === 'k4'), JSON.stringify(d));
+}
+
+console.log('O dia do contrato (31/10/2026: o vencimento que mudou por fim de semana ou feriado não muda o dia):');
+{
+  chk('a data no dia útil antes ou depois do dia do contrato que caiu em fim de semana ou feriado é o dia do contrato',
+    diaDoContrato('2026-10-09', 10) === 10 && diaDoContrato('2026-10-13', 10) === 10 && diaDoContrato('2026-10-26', 25) === 25 && diaDoContrato('2026-10-23', 25) === 25
+    && diaDoContrato('2026-11-16', 15) === 15 && diaDoContrato('2026-11-13', 15) === 15 && diaDoContrato('2026-11-10', 10) === 10 && diaDoContrato('2026-02-28', 30) === 30);
+  chk('outra data é outro dia (a empresa mudou de dia): o dia do contrato útil, ou longe dele', diaDoContrato('2026-11-09', 10) === 9 && diaDoContrato('2026-11-17', 15) === 17
+    && diaDoContrato('2026-10-15', 10) === 15 && diaDoContrato('2026-10-14', 10) === 14);
+  chk('sem o dia do contrato, o dia da data; data inválida, nada', diaDoContrato('2026-11-16') === 16 && diaDoContrato('2026-11-16', 0) === 16 && diaDoContrato('16/11/2026', 15) === null);
+  const db = { cobrancas_mensais: [
+      { id: 'c1', cliente_id: 'k5', competencia: '2026-09', valor: 500, vencimento: '2026-10-09', status: 'enviado' },
+      { id: 'c2', cliente_id: 'k7', competencia: '2026-09', valor: 700, vencimento: '2026-10-26', status: 'enviado' }],
+    cobrancas_config: [{ id: 'g5', cliente_id: 'k5', valor_base: 450, dia_vencimento: 10, canal: 'whatsapp', ativo: true }] };
+  const sb = dubla(db); sb.unicos = { cobrancas_mensais: ['cliente_id', 'competencia'], cobrancas_config: ['cliente_id'] };
+  const m = await dadosParaCompetencia(sb, ['k5', 'k7'], '2026-10');
+  chk('o dia é o da base, não o do boleto anterior que mudou por cair no sábado (09/10 → 10/11); o valor segue o da cobrança anterior',
+    m.get('k5').dia === 10 && m.get('k5').vencimento === '2026-11-10' && m.get('k5').valor === 500 && m.get('k5').fonte === 'copia', JSON.stringify(m.get('k5')));
+  chk('sem base, o dia do boleto anterior', m.get('k7').dia === 26 && m.get('k7').vencimento === '2026-11-26');
+  const r = await porNaCompetencia(sb, '2026-10', [{ cliente_id: 'k8', valor: 300, vencimento: '2026-11-16', dia: 15 }, { cliente_id: 'k9', valor: 300, vencimento: '2026-11-16' }]);
+  const b8 = db.cobrancas_config.find(c => c.cliente_id === 'k8'), b9 = db.cobrancas_config.find(c => c.cliente_id === 'k9');
+  chk('a base que nasce leva o dia do contrato (o 15, que caiu no domingo e feriado e venceu 16/11); sem ele, o dia da data',
+    r.postos.length === 2 && b8 && b8.dia_vencimento === 15 && b9 && b9.dia_vencimento === 16, JSON.stringify([b8, b9]));
 }
 
 console.log('As obrigações das empresas, em lote:');

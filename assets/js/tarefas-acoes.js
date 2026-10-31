@@ -40,7 +40,7 @@
 //                     uma), cada uma com o desfazer que só volta onde ninguém mexeu depois.
 // ============================================================
 
-import { diaUtil, somaDias } from './rescisao-datas.js';
+import { diaUtil, somaDias, isoValida } from './rescisao-datas.js';
 
 const LOTE = 100;   // ids por chamada: o filtro vai no endereço
 const partes = lista => { const out = []; for (let i = 0; i < lista.length; i += LOTE) out.push(lista.slice(i, i + LOTE)); return out; };
@@ -1009,9 +1009,29 @@ export function vencimentoDaCompetencia(competencia, dia) {
   return iso;
 }
 export const COMPETENCIA_ISO = /^\d{4}-(0[1-9]|1[0-2])$/;
-// O que cada empresa levaria na competência, como a geração do mês da tela Boletos monta: o valor, o dia e os dados de envio
-// da cobrança mais recente dela antes dessa competência (a geração copia a última) — sem nenhuma, os da base de cobrança;
-// sem base, valor em branco e dia 10 (o padrão do "Adicionar empresa"). → Map(cliente_id → { cliente_id, ja (a situação
+// O dia do contrato que uma data de vencimento representa (31/10/2026, pedido do Samuel: "as datas deverão ser normais em
+// novembro, vencimentos dia 10, 15 e 25" — a geração copiava o dia do boleto anterior, e o boleto que tinha mudado de dia
+// por cair em fim de semana ou feriado levava o dia mudado pros meses seguintes: 10/10/2026, um sábado, virou 09/10, e
+// outubro sairia todo no dia 9). A data é o dia do contrato no mês dela, ou o dia útil antes ou depois dele quando ele cai
+// em fim de semana ou feriado → o dia do contrato; outra data qualquer → o dia dela (a empresa mudou de dia).
+export function diaDoContrato(iso, dia) {
+  if (!isoValida(String(iso || ''))) return null;
+  const proprio = Number(iso.slice(8, 10));
+  const d = parseInt(dia, 10);
+  if (!(d >= 1 && d <= 31)) return proprio;
+  const [y, m] = iso.split('-').map(Number);
+  const alvo = y + '-' + pad2(m) + '-' + pad2(Math.min(d, new Date(Date.UTC(y, m, 0)).getUTCDate()));
+  if (alvo === iso) return d;
+  if (diaUtil(alvo)) return proprio;
+  let antes = alvo, depois = alvo;
+  for (let i = 0; i < 10 && !diaUtil(antes); i++) antes = somaDias(antes, -1);
+  for (let i = 0; i < 10 && !diaUtil(depois); i++) depois = somaDias(depois, 1);
+  return iso === antes || iso === depois ? d : proprio;
+}
+// O que cada empresa levaria na competência, como a geração do mês da tela Boletos monta: o valor e os dados de envio da
+// cobrança mais recente dela antes dessa competência (a geração copia a última) — sem nenhuma, os da base de cobrança — e o
+// dia do contrato, o da base (sem base, o do boleto anterior); sem nada, valor em branco e dia 10 (o padrão do "Adicionar
+// empresa"). → Map(cliente_id → { cliente_id, ja (a situação
 // da que já está na competência, ou null), valor, dia, vencimento, canal, contato_envio, destino, responsavel, fonte:
 // 'copia' | 'base' | 'nada', de (a competência copiada), base (a base: { id, ativo } ou null) })
 export async function dadosParaCompetencia(sb, clienteIds, competencia) {
@@ -1029,7 +1049,8 @@ export async function dadosParaCompetencia(sb, clienteIds, competencia) {
     const diaDe = v => (v ? parseInt(String(v).slice(8, 10), 10) : null);
     const fonte = antes ? 'copia' : b ? 'base' : 'nada';
     const valor = antes ? Number(antes.valor) || 0 : b ? Number(b.valor_base) || 0 : null;
-    const dia = (antes && diaDe(antes.vencimento)) || (b && Number(b.dia_vencimento)) || 10;
+    // o dia é o do contrato, na base (31/10/2026): o do boleto anterior podia ter mudado por cair em fim de semana ou feriado
+    const dia = (b && Number(b.dia_vencimento)) || (antes && diaDe(antes.vencimento)) || 10;
     const de = antes || b || {};
     out.set(id, { cliente_id: id, ja: naComp ? naComp.status || 'a_emitir' : null, valor, dia, vencimento: vencimentoDaCompetencia(competencia, dia),
       canal: de.canal || 'whatsapp', contato_envio: de.contato_envio || '', destino: de.destino || '', responsavel: de.responsavel || '',
@@ -1050,7 +1071,8 @@ export async function porNaCompetencia(sb, competencia, itens) {
     const valor = Math.round(Number(it.valor) * 100) / 100;
     if (!(valor >= 0) || !Number.isFinite(valor)) return { ...res, erro: 'Valor inválido.' };
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(it.vencimento || ''))) return { ...res, erro: 'Vencimento inválido.' };
-    const dia = parseInt(String(it.vencimento).slice(8, 10), 10);
+    // a base que nasce aqui leva o dia do contrato: o vencimento que só mudou por cair em fim de semana ou feriado não muda o dia
+    const dia = diaDoContrato(it.vencimento, it.dia);
     const envio = { canal: it.canal || 'whatsapp', contato_envio: it.contato_envio || '', destino: it.destino || '', responsavel: it.responsavel || '' };
     const linha = { cliente_id: id, competencia, valor, vencimento: it.vencimento, ...envio, observacao: '', status: 'a_emitir', itens_extras: [] };
     const { data, error } = await sb.from('cobrancas_mensais').insert(linha).select('id, cliente_id, valor');

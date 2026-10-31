@@ -100,7 +100,7 @@
         </div>
         <div class="eyebrow">Faturamento</div>
         <h1>Boletos / Honorários</h1>
-        <p>Grade mensal de cobrança. Gere o mês copiando a última competência (valores e envio vivos; a base entra só pra empresa nova), ajuste valores, vencimentos e dados de envio, e marque o status conforme emite e envia. O vencimento é calculado no próximo dia útil. Em <b>Arquivo do Inter</b>, os boletos marcados viram um arquivo que o Inter importa de uma vez. Em <b>Honorário adicional anual</b> (só os sócios), as vendas do adicional de outubro vão pro Conta Azul e entram no boleto do mês.</p>
+        <p>Grade mensal de cobrança. Gere o mês copiando a última competência (valores e envio vivos; a base entra só pra empresa nova), ajuste valores, vencimentos e dados de envio, e marque o status conforme emite e envia. O vencimento sai no dia de cada empresa (10, 15, 25…), no próximo dia útil quando ele cai em fim de semana ou feriado; mudar a data de uma empresa pra outro dia vale também pros próximos meses. Em <b>Arquivo do Inter</b>, os boletos marcados viram um arquivo que o Inter importa de uma vez. Em <b>Honorário adicional anual</b> (só os sócios), as vendas do adicional de outubro vão pro Conta Azul e entram no boleto do mês.</p>
       </div>
 
       <div class="bo-toolbar">
@@ -178,7 +178,7 @@ import { MODELO, ONDE_IMPORTAR_PLANILHA, ONDE_PDFS, XLSX_MIME, problemasPlanilha
 import { boletoPdf, nomeArquivoBoleto } from './assets/js/boleto-pdf.js';
 // o reajuste aceito na Precificação › Carteira (revisoes_honorario, só os sócios) entra na geração do mês
 import { reajustesDoMes, marcarAplicados } from './assets/js/precificacao-carteira.js';
-import { vencimentoDaCompetencia, COMPETENCIA_ISO } from './assets/js/tarefas-acoes.js';
+import { vencimentoDaCompetencia, diaDoContrato, COMPETENCIA_ISO } from './assets/js/tarefas-acoes.js';
 import { SOCIOS } from './assets/js/equipe.js';
 
 const $ = id => document.getElementById(id);
@@ -292,7 +292,9 @@ async function gerarMes(){
       if(saidasCart.has(c.cliente_id)){ puladasSaida++; return; }
       const f = fonte[c.cliente_id];
       if (f) {
-        const diaVenc = f.vencimento ? parseInt(String(f.vencimento).slice(8,10),10) : c.dia_vencimento;
+        // o dia é o do contrato, o da base (31/10/2026); o do boleto anterior só sem ele — copiar o dia do anterior levava
+        // pros meses seguintes o dia que tinha mudado por cair em fim de semana ou feriado (10/10/2026, sábado → 09/10)
+        const diaVenc = Number(c.dia_vencimento) || (f.vencimento ? parseInt(String(f.vencimento).slice(8,10),10) : 10);
         novos.push({
           cliente_id:c.cliente_id, competencia:comp, valor:Number(f.valor)||0,
           vencimento:calcVencimento(comp, diaVenc), canal:f.canal||c.canal||'whatsapp',
@@ -386,7 +388,7 @@ function render(){
         el.addEventListener('input', ()=>{ apply(); agendarSalvar(r); });
         el.addEventListener('change', ()=>{ apply(); salvarLinha(r); });
       }else{
-        el.addEventListener('change', ()=>{ apply(); salvarLinha(r); });
+        el.addEventListener('change', async ()=>{ apply(); await salvarLinha(r); if(f==='vencimento') acertarDiaDaEmpresa(r); });
       }
     });
     tr.querySelector('.rm').addEventListener('click', ()=>removerRow(r));
@@ -421,6 +423,23 @@ function updateCards(){
     <div class="fa-focus-card"><span class="fc-num" style="color:var(--warn)">${by('emitido')}</span><span class="fc-lbl">Emitido</span></div>
     <div class="fa-focus-card"><span class="fc-num" style="color:var(--ok)">${by('enviado')}</span><span class="fc-lbl">Enviado</span></div>
     <div class="fa-focus-card"><span class="fc-num" style="color:var(--ok)">${by('pago')}</span><span class="fc-lbl">Pago</span></div>`;
+}
+
+// o dia do contrato (31/10/2026): a data mudada na grade pra outro dia vira o dia da empresa nos próximos meses (a base), como
+// a geração fazia ao copiar o dia do boleto anterior — salvo quando ela só foi pro dia útil antes ou depois do dia de sempre,
+// que caiu em fim de semana ou feriado (diaDoContrato), ou quando a empresa já tem boleto num mês depois deste
+async function acertarDiaDaEmpresa(r){
+  const cfg = configMap[r.cliente_id];
+  if(!cfg || !r.vencimento) return;
+  const atual = Number(cfg.dia_vencimento) || null;
+  const novo = diaDoContrato(r.vencimento, atual);
+  if(!novo || novo === atual) return;
+  const { data: depois, error: e1 } = await supabase.from('cobrancas_mensais').select('id').eq('cliente_id', r.cliente_id).gt('competencia', r.competencia).limit(1);
+  if(e1 || (depois && depois.length)) return;
+  const { error } = await supabase.from('cobrancas_config').update({ dia_vencimento: novo }).eq('cliente_id', r.cliente_id);
+  if(error){ msg('O vencimento foi salvo, mas o dia da empresa nos próximos meses não: '+error.message); return; }
+  cfg.dia_vencimento = novo;
+  msg('Vencimento salvo. '+(clientesMap[r.cliente_id]?.nome||'A empresa')+' passa a vencer no dia '+novo+' também nos próximos meses.');
 }
 
 async function removerRow(r){
