@@ -17,12 +17,15 @@
 //  { modo: 'boleto', competencia }  → põe no boleto as lançadas que ainda não estão (o mês gerado depois do lançamento)
 //  { modo: 'desfazer', ids }        → a exclusão em lote no Conta Azul, conferida venda por venda, e o extra sai do
 //     boleto; a que o Conta Azul não excluiu (com nota emitida ou recebida) fica, com o motivo
+// A venda que o sistema lançou e alguém excluiu direto no Conta Azul é achada no prever (conferirExcluidas): a linha vira
+// "excluida", o extra sai do boleto e a empresa pode ser lançada de novo.
 // O token do Conta Azul é o que o ca-sync mantém e renova. Perto de vencer, esta função não renova (nunca disputa a
 // renovação com ele): chama o ca-sync, que renova no começo da rodada, e responde 503 "renovando" — a tela tenta de novo.
 // Puro: env, fetch, relógio, espera e o waitUntil injetados — testes em tests/ca-vendas.test.mjs.
 // ============================================================
 
 import { SOCIOS } from '../../../assets/js/equipe.js';
+import { nomeBase, nomesBatem } from '../../../assets/js/precificacao-carteira.js';
 import {
   COMPETENCIA, TIPO, CATEGORIA, CATEGORIA_MENSAL, CATEGORIA_MEI, ANOS_HISTORICO, MAX_POR_LOTE, ehUuid, ultimoDia, mesBR,
   parcelaNormal, montarLista, modeloDaVenda, vendaParaApi, limparItem, extraDoAdicional, comExtra, semExtra, temExtra
@@ -174,23 +177,57 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
     return modelo;
   }
 
-  // a pessoa do Conta Azul → a empresa do cadastro, pelo CNPJ ou CPF (a ativa, quando há mais de uma)
+  // a pessoa do Conta Azul → a empresa do cadastro: pelo CNPJ ou CPF (a ativa, quando há mais de uma); sem documento
+  // que bata, pelo nome (a regra do vigia e da Carteira, nomeBase/nomesBatem) — só quando uma empresa ativa bate, e só
+  // ela: com duas parecidas (as unidades de uma rede), fica sem
   async function empresasDasPessoas(token) {
     const pessoas = await todas(token, '/v1/pessoas', { tipo_perfil: 'Cliente' });
-    const cad = await db('clientes?select=id,nome_principal,documento,status&documento=not.is.null&limit=10000');
+    const cad = (await db('clientes?select=id,nome_principal,nome_fantasia,documento,status&limit=10000')) || [];
     const porDoc = new Map();
-    for (const c of cad || []) {
+    for (const c of cad) {
       const d = digitos(c.documento);
       if (d.length !== 11 && d.length !== 14) continue;
       const a = porDoc.get(d);
       if (!a || (a.status !== 'ativo' && c.status === 'ativo')) porDoc.set(d, c);
     }
+    const ativos = cad.filter(c => c.status === 'ativo').map(c => ({ c, nomes: [c.nome_principal, c.nome_fantasia].map(nomeBase).filter(Boolean) }));
     const mapa = new Map();
     for (const p of pessoas) {
-      const c = porDoc.get(digitos(p && p.documento));
-      if (p && ehUuid(p.id) && c) mapa.set(p.id, { id: c.id, nome: c.nome_principal });
+      if (!p || !ehUuid(p.id)) continue;
+      let c = porDoc.get(digitos(p.documento));
+      if (!c) {
+        const n = nomeBase(p.nome);
+        const batem = n ? ativos.filter(a => a.nomes.some(x => nomesBatem(x, n))) : [];
+        if (batem.length === 1) c = batem[0].c;
+      }
+      if (c) mapa.set(p.id, { id: c.id, nome: c.nome_principal });
     }
     return mapa;
+  }
+
+  // as contas financeiras: os nomes (o espelho das baixas), a do Inter, e a da venda do adicional mais recente de cada
+  // empresa no ano anterior (o detalhe de cada venda, 4 de cada vez)
+  async function contasDoAdicional(token, ano, cats) {
+    const linhas = (await db('ca_baixas?select=conta_financeira_id,conta_financeira&conta_financeira_id=not.is.null&data_pagamento=gte.' + (ano - 2) + '-01-01&limit=50000')) || [];
+    const nomes = new Map();
+    for (const l of linhas) if (ehUuid(l.conta_financeira_id) && l.conta_financeira && !nomes.has(l.conta_financeira_id)) nomes.set(l.conta_financeira_id, String(l.conta_financeira));
+    const inter = [...nomes.entries()].filter(([, n]) => /\bINTER\b/i.test(n)).map(([id]) => id);
+    const vendas = await todas(token, '/v1/venda/busca', { data_inicio: (ano - 1) + '-01-01', data_fim: (ano - 1) + '-12-31', ids_categorias: cats.adicional });
+    const maisRecente = new Map();
+    vendas.filter(v => v && ehUuid(v.id) && v.cliente && ehUuid(v.cliente.id))
+      .sort((a, b) => String(b.data || '').localeCompare(String(a.data || '')) || Number(b.numero) - Number(a.numero))
+      .forEach(v => { if (!maisRecente.has(v.cliente.id)) maisRecente.set(v.cliente.id, v); });
+    const alvo = [...maisRecente.values()].slice(0, 200);
+    const anterior = new Map();
+    for (let i = 0; i < alvo.length; i += 4) {
+      const lote = alvo.slice(i, i + 4);
+      const res = await Promise.allSettled(lote.map(v => ca(token, '/v1/venda/' + v.id)));
+      res.forEach((r, j) => {
+        const c = r.status === 'fulfilled' && r.value && r.value.venda && r.value.venda.condicao_pagamento ? r.value.venda.condicao_pagamento.id_conta_financeira : null;
+        if (ehUuid(c)) anterior.set(lote[j].cliente.id, c);
+      });
+    }
+    return { nomes, inter: inter.length === 1 ? inter[0] : null, anterior };
   }
 
   async function boletosDaCompetencia(comp) {
@@ -224,26 +261,34 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
     }
     const lancadas = await db('ca_vendas_lancadas?select=*&tipo=eq.' + TIPO + '&competencia=eq.' + comp + '&order=lancada_em.asc');
     await conferirParadas(token, lancadas || [], adicionais, comp);
+    await conferirExcluidas(token, lancadas || [], adicionais, comp);
     const clientes = await empresasDasPessoas(token);
     const boletos = await boletosDaCompetencia(comp);
-    const { itens, anos, resumo } = montarLista({ competencia: comp, hoje, mensais, adicionais, lancadas: lancadas || [], clientes, boletos });
 
-    // a venda modelo: a do adicional mais recente antes da competência — de preferência, do lote do ano anterior
+    // a venda modelo: a do adicional mais recente antes da competência — de preferência, do lote do ano anterior; a que
+    // não existe mais (excluída) ou não serve (outro serviço junto): a seguinte, até 5
     const lote = (ano - 1) + '-' + comp.slice(5, 7);
     const candidatas = adicionais.filter(p => p.numero && p.competencia < comp)
       .sort((a, b) => Number(b.competencia === lote) - Number(a.competencia === lote) || b.competencia.localeCompare(a.competencia) || b.numero - a.numero);
     const avisos = [];
-    // a que não existe mais (excluída) ou não serve (outro serviço junto): a seguinte, até 5
     let modelo = null;
     for (const numero of [...new Set(candidatas.map(p => p.numero))].slice(0, 5)) {
       try { modelo = await modeloPeloNumero(token, numero, cats); break; } catch (e) { if (!(e instanceof ErroPublico)) throw e; }
     }
     if (!modelo) avisos.push('Não achei no Conta Azul uma venda do adicional de anos anteriores pra copiar o serviço e a conta: lance a primeira à mão.');
-    if (!boletos.size) avisos.push('A competência ' + mesBR(comp) + ' ainda não foi gerada em Boletos. Gere antes de lançar, pra o adicional entrar no boleto e a venda vencer no mesmo dia dele.');
+    const contas = await contasDoAdicional(token, ano, cats);
+    contas.padrao = modelo ? modelo.id_conta_financeira : null;
+    if (!contas.inter) avisos.push('Não achei a conta do Inter pelo nome: com o boleto, a conta fica a da venda do ano passado. Confira na coluna Conta.');
+    if (!boletos.size) avisos.push('A competência ' + mesBR(comp) + ' ainda não foi gerada em Boletos. Gere antes de lançar, pra o adicional entrar no boleto, a venda vencer no mesmo dia dele e a conta ser a do Inter.');
+    const { itens, anos, resumo } = montarLista({ competencia: comp, hoje, mensais, adicionais, lancadas: lancadas || [], clientes, boletos, contas });
+    const emUso = new Set(itens.map(i => i.conta && i.conta.id).filter(Boolean));
+    const listaContas = [...new Set([...contas.nomes.keys(), ...emUso])].map(id => ({ id, nome: contas.nomes.get(id) || 'outra conta' }))
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
     return {
       competencia: comp, data_venda: ultimoDia(comp), hoje, anos, itens, resumo, avisos,
-      boletos: boletos.size,
-      modelo: modelo && { numero: modelo.numero, data: modelo.data, cliente: modelo.cliente, servico: modelo.servico, vendedor: modelo.vendedor, conta: !!modelo.id_conta_financeira }
+      boletos: boletos.size, contas: listaContas,
+      modelo: modelo && { numero: modelo.numero, data: modelo.data, cliente: modelo.cliente, servico: modelo.servico, vendedor: modelo.vendedor,
+        conta: modelo.id_conta_financeira ? contas.nomes.get(modelo.id_conta_financeira) || 'outra conta' : null }
     };
   }
 
@@ -267,9 +312,48 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
     }
   }
 
+  // a venda que o sistema lançou e alguém excluiu direto no Conta Azul: sem o adicional da competência daquela empresa na
+  // lista do Conta Azul, a venda é conferida pelo id — excluída (ou cancelada), a linha vira "excluida" (por "conta_azul"),
+  // o extra sai do boleto e a empresa volta à lista, pra lançar de novo. Erro na conferência: fica como está.
+  async function conferirExcluidas(token, lancadas, adicionais, comp) {
+    const comAdicional = new Set(adicionais.filter(p => p.adicional && p.competencia === comp).map(p => p.pessoa));
+    for (const l of lancadas) {
+      if (l.situacao !== 'lancada' || !ehUuid(l.ca_venda_id) || comAdicional.has(l.ca_cliente_id)) continue;
+      if (agora().getTime() - new Date(l.atualizada_em || l.lancada_em).getTime() < LANCANDO_PARADA_MS) continue;
+      let existe;
+      try { existe = await vendaExiste(token, l.ca_venda_id); } catch (e) { continue; }
+      if (existe) continue;
+      const r = await db('ca_vendas_lancadas?id=eq.' + l.id + '&situacao=eq.lancada', { method: 'PATCH', prefer: 'return=representation', body: { situacao: 'excluida', excluida_por: 'conta_azul', excluida_em: agoraIso(), atualizada_em: agoraIso() } });
+      if (!r || !r.length) continue;
+      l.situacao = 'excluida';
+      await tirarDoBoleto(l).catch(() => null);
+    }
+  }
+
+  // a venda ainda existe no Conta Azul? (404 ou 410, ou a situação excluída ou cancelada: não)
+  async function vendaExiste(token, id) {
+    try {
+      const v = await ca(token, '/v1/venda/' + id);
+      return !/EXCLU|CANCEL/.test(String((v && v.venda && v.venda.situacao && v.venda.situacao.nome) || '').toUpperCase());
+    } catch (e) {
+      if (e.status === 404 || e.status === 410) return false;
+      throw e;
+    }
+  }
+
+  // a venda excluída: o extra dela sai do boleto (o pago fica como está) → o que aconteceu, pra quem vê
+  async function tirarDoBoleto(l) {
+    if (!l.cobranca_id) return null;
+    const b = ((await db('cobrancas_mensais?select=id,status,itens_extras&id=eq.' + l.cobranca_id)) || [])[0];
+    if (!b || !temExtra(b.itens_extras, l.id)) return null;
+    if (b.status === 'pago') return 'o boleto já está pago: o extra ficou nele';
+    await db('cobrancas_mensais?id=eq.' + b.id, { method: 'PATCH', body: { itens_extras: semExtra(b.itens_extras, l.id) } });
+    return b.status === 'a_emitir' ? 'saiu do boleto' : 'saiu do boleto, que já estava ' + (STATUS_BOLETO[b.status] || b.status) + ': reemita';
+  }
+
   // ---------- o boleto: o adicional como item extra do boleto a emitir da competência ----------
   async function porNoBoletoUma(linha, comp) {
-    if (!linha.cliente_id) return { posto: false, motivo: 'a empresa não está no cadastro pelo CNPJ' };
+    if (!linha.cliente_id) return { posto: false, motivo: 'a empresa não foi achada no cadastro (pelo CNPJ nem pelo nome)' };
     const b = ((await db('cobrancas_mensais?select=id,status,itens_extras&competencia=eq.' + comp + '&cliente_id=eq.' + linha.cliente_id)) || [])[0];
     if (!b) return { posto: false, motivo: 'sem boleto de ' + mesBR(comp) + ' em Boletos' };
     if (temExtra(b.itens_extras, linha.id)) {
@@ -327,7 +411,7 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
           const prox = await ca(token, '/v1/venda/proximo-numero');
           const numero = Number(typeof prox === 'object' && prox !== null ? (prox.numero ?? prox.proximo_numero) : prox);
           if (!Number.isInteger(numero) || numero <= 0) throw Object.assign(new Error('próximo número inválido'), { status: 500 });
-          const r = await ca(token, '/v1/venda', { method: 'POST', body: vendaParaApi({ modelo, pessoa: it.pessoa, valor: it.valor, vencimento: it.vencimento, numero, dataVenda }) });
+          const r = await ca(token, '/v1/venda', { method: 'POST', body: vendaParaApi({ modelo, pessoa: it.pessoa, valor: it.valor, vencimento: it.vencimento, numero, dataVenda, conta: it.conta || undefined }) });
           venda = { id: r && r.id, numero: Number((r && r.numero) || numero) };
         } catch (e) {
           falha = e;
@@ -380,27 +464,9 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
     await ca(token, '/v1/venda/exclusao-lote', { method: 'POST', body: { ids: linhas.map(l => l.ca_venda_id) } });
     const excluidas = [], ficaram = [];
     for (const l of linhas) {
-      let existe = true;
-      try {
-        const v = await ca(token, '/v1/venda/' + l.ca_venda_id);
-        const sit = String((v && v.venda && v.venda.situacao && v.venda.situacao.nome) || '').toUpperCase();
-        existe = !/EXCLU|CANCEL/.test(sit);
-      } catch (e) {
-        if (e.status === 404 || e.status === 410) existe = false; else throw e;
-      }
-      if (existe) { ficaram.push({ id: l.id, nome: l.cliente_nome, numero: l.ca_venda_numero, motivo: 'o Conta Azul não excluiu (tem nota emitida ou valor recebido?)' }); continue; }
+      if (await vendaExiste(token, l.ca_venda_id)) { ficaram.push({ id: l.id, nome: l.cliente_nome, numero: l.ca_venda_numero, motivo: 'o Conta Azul não excluiu (tem nota emitida ou valor recebido?)' }); continue; }
       await db('ca_vendas_lancadas?id=eq.' + l.id, { method: 'PATCH', body: { situacao: 'excluida', excluida_por: quem, excluida_em: agoraIso(), atualizada_em: agoraIso() } });
-      let boleto = null;
-      if (l.cobranca_id) {
-        const b = ((await db('cobrancas_mensais?select=id,status,itens_extras&id=eq.' + l.cobranca_id)) || [])[0];
-        if (b && temExtra(b.itens_extras, l.id)) {
-          if (b.status === 'pago') boleto = 'o boleto já está pago: o extra ficou nele';
-          else {
-            await db('cobrancas_mensais?id=eq.' + b.id, { method: 'PATCH', body: { itens_extras: semExtra(b.itens_extras, l.id) } });
-            boleto = b.status === 'a_emitir' ? 'saiu do boleto' : 'saiu do boleto, que já estava ' + (STATUS_BOLETO[b.status] || b.status) + ': reemita';
-          }
-        }
-      }
+      const boleto = await tirarDoBoleto(l);
       excluidas.push({ id: l.id, nome: l.cliente_nome, numero: l.ca_venda_numero, boleto });
     }
     return { excluidas, ficaram };

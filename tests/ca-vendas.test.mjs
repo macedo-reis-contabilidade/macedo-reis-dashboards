@@ -42,11 +42,17 @@ function mundo({ tokenFaltam = 50 * 60 * 1000 } = {}) {
       { natureza: 'despesa', fornecedor_cliente_id: U(50), fornecedor_cliente_nome: 'FORNECEDOR', data_competencia: '2026-10-30', total: 99, categorias: cat(CAT.mensal) }
     ],
     ca_vendas_lancadas: [],
+    ca_baixas: [{ conta_financeira_id: U(302), conta_financeira: 'BANCO INTER - CONTA CORRENTE', data_pagamento: '2026-05-10' },
+      { conta_financeira_id: U(305), conta_financeira: 'SICREDI CONTA CORRENTE', data_pagamento: '2026-06-10' },
+      { conta_financeira_id: U(305), conta_financeira: 'SICREDI CONTA CORRENTE', data_pagamento: '2026-07-10' }],
     clientes: [
       { id: U(101), nome_principal: 'LOJA DO PAULO LTDA', documento: '11.111.111/0001-11', status: 'ativo' },
       { id: U(109), nome_principal: 'COM BOLETO LTDA', documento: '99999999000199', status: 'ativo' },
       { id: U(110), nome_principal: 'BOLETO EMITIDO LTDA', documento: '10101010000110', status: 'ativo' },
-      { id: U(199), nome_principal: 'COM BOLETO (ANTIGO)', documento: '99999999000199', status: 'inativo' }
+      { id: U(199), nome_principal: 'COM BOLETO (ANTIGO)', documento: '99999999000199', status: 'inativo' },
+      { id: U(102), nome_principal: 'PADARIA NOVA LTDA', nome_fantasia: null, documento: '22222222000122', status: 'ativo' },
+      { id: U(120), nome_principal: 'REDE SABOR UNIDADE CENTRO LTDA', nome_fantasia: 'REDE SABOR', documento: '12121212000112', status: 'ativo' },
+      { id: U(121), nome_principal: 'REDE SABOR UNIDADE PRAIA LTDA', nome_fantasia: 'REDE SABOR', documento: '12121212000203', status: 'ativo' }
     ],
     cobrancas_mensais: [
       { id: U(209), cliente_id: U(109), competencia: '2026-10', vencimento: '2026-11-09', status: 'a_emitir', itens_extras: [{ faturavel_id: U(600), descricao: 'Abertura de filial', valor: 300 }] },
@@ -65,7 +71,9 @@ function mundo({ tokenFaltam = 50 * 60 * 1000 } = {}) {
       mensalApi(P.emitido, 'BOLETO EMITIDO LTDA', '2025-10', 700), adicionalApi(P.emitido, 'BOLETO EMITIDO LTDA', '2025-10', 700, 190419225),
       mensalApi(P.recusa, 'RECUSADA LTDA', '2025-10', 300), adicionalApi(P.recusa, 'RECUSADA LTDA', '2025-10', 300, 190419226)
     ],
-    pessoas: [{ id: P.paulo, documento: '11111111000111' }, { id: P.boleto, documento: '99999999000199' }, { id: P.emitido, documento: '10101010000110' }, { id: P.padaria, documento: '' }],
+    pessoas: [{ id: P.paulo, nome: 'LOJA DO PAULO LTDA', documento: '11111111000111' }, { id: P.boleto, nome: 'COM BOLETO LTDA', documento: '99999999000199' },
+      { id: P.emitido, nome: 'BOLETO EMITIDO LTDA', documento: '10101010000110' }, { id: P.padaria, nome: 'PADARIA NOVA', documento: '' },
+      { id: U(20), nome: 'REDE SABOR', documento: '' }],
     vendas: new Map(),
     proximo: 190421459,
     proximosForcados: [],
@@ -75,10 +83,12 @@ function mundo({ tokenFaltam = 50 * 60 * 1000 } = {}) {
     chamadas: []
   };
   // a venda modelo (a de 2025 da loja)
-  contaAzul.vendas.set(U(401), { numero: 190419223, detalhe: { cliente: { uuid: P.paulo, nome: 'LOJA DO PAULO LTDA' }, vendedor: { id: U(301), nome: 'Contador' },
+  contaAzul.vendas.set(U(401), { numero: 190419223, data: '2025-10-31', pessoa: P.paulo, categoria: CAT.adicional, detalhe: { cliente: { uuid: P.paulo, nome: 'LOJA DO PAULO LTDA' }, vendedor: { id: U(301), nome: 'Contador' },
     venda: { id: U(401), numero: 190419223, data_compromisso: '2025-10-31', id_categoria: CAT.adicional, id_centro_custo: null, situacao: { nome: 'APROVADO' },
       condicao_pagamento: { tipo_pagamento: null, id_conta_financeira: U(302), opcao_condicao_pagamento: '1x' } } },
     itens: { itens: [{ id: U(402), id_item: U(303), nome: 'HONORÁRIO ADICIONAL ANUAL', tipo: 'SERVICO', quantidade: 1, valor: 530 }] } });
+  for (const [id, p, numero] of [[U(411), P.boleto, 190419224], [U(412), P.emitido, 190419225]])
+    contaAzul.vendas.set(id, { numero, data: '2025-10-31', pessoa: p, categoria: CAT.adicional, detalhe: { venda: { id, numero, id_categoria: CAT.adicional, condicao_pagamento: { id_conta_financeira: U(305) } } }, itens: { itens: [] } });
   const chamadas = [];
 
   const filtrar = (linhas, sp) => linhas.filter(r => [...sp.entries()].every(([k, v]) => {
@@ -129,7 +139,13 @@ function mundo({ tokenFaltam = 50 * 60 * 1000 } = {}) {
         return resposta(200, { itens_totais: lista.length, itens: lista.slice((pag - 1) * tam, pag * tam) });
       }
       if (caminho === '/v1/pessoas') { const tam = Number(sp.get('tamanho_pagina')), pag = Number(sp.get('pagina')); return resposta(200, { totalItems: contaAzul.pessoas.length, items: contaAzul.pessoas.slice((pag - 1) * tam, pag * tam) }); }
-      if (caminho === '/v1/venda/busca') { const n = Number(sp.get('termo_busca')); const achadas = [...contaAzul.vendas.entries()].filter(([, v]) => v.numero === n).map(([id, v]) => ({ id, numero: v.numero })); return resposta(200, { itens: achadas }); }
+      if (caminho === '/v1/venda/busca') {
+        if (sp.get('termo_busca')) { const n = Number(sp.get('termo_busca')); return resposta(200, { itens: [...contaAzul.vendas.entries()].filter(([, v]) => v.numero === n).map(([id, v]) => ({ id, numero: v.numero })) }); }
+        const lista = [...contaAzul.vendas.entries()].filter(([, v]) => v.data && v.data >= sp.get('data_inicio') && v.data <= sp.get('data_fim') && (!sp.get('ids_categorias') || v.categoria === sp.get('ids_categorias')))
+          .map(([id, v]) => ({ id, numero: v.numero, data: v.data, cliente: { id: v.pessoa } }));
+        const tam = Number(sp.get('tamanho_pagina')), pag = Number(sp.get('pagina'));
+        return resposta(200, { total_itens: lista.length, itens: lista.slice((pag - 1) * tam, pag * tam) });
+      }
       if (caminho === '/v1/venda/proximo-numero') return resposta(200, contaAzul.proximosForcados.length ? contaAzul.proximosForcados.shift() : contaAzul.proximo);
       if (caminho === '/v1/venda' && metodo === 'POST') {
         if (contaAzul.recusar.has(corpo.id_cliente)) return resposta(400, { error: 'Cliente bloqueado para vendas' });
@@ -195,13 +211,20 @@ console.log('A lista (prever):');
   chk('a isenta em 2025: desmarcada', it(w.P.isenta).grupo === 'isenta' && !it(w.P.isenta).marcada);
   chk('a do boleto: o CNPJ acha a empresa ativa (não a antiga) e o vencimento é o do boleto', it(w.P.boleto).cliente_id === U(109) && it(w.P.boleto).vencimento === '2026-11-09' && it(w.P.boleto).vencimento_de === 'boleto');
   chk('a despesa e o fornecedor ficam de fora', !r.corpo.itens.some(i => i.pessoa === U(50)));
-  chk('a venda modelo: a do lote de 2025, com o serviço e a conta', J(r.corpo.modelo) === J({ numero: 190419223, data: '2025-10-31', cliente: 'LOJA DO PAULO LTDA', servico: 'HONORÁRIO ADICIONAL ANUAL', vendedor: 'Contador', conta: true }), J(r.corpo.modelo));
+  chk('a venda modelo: a do lote de 2025 (a que não existe mais ou sem serviço fica de lado), com o serviço e a conta',
+    J(r.corpo.modelo) === J({ numero: 190419223, data: '2025-10-31', cliente: 'LOJA DO PAULO LTDA', servico: 'HONORÁRIO ADICIONAL ANUAL', vendedor: 'Contador', conta: 'BANCO INTER - CONTA CORRENTE' }), J(r.corpo.modelo));
+  chk('a conta de cada uma: com o boleto na grade, a do Inter (até a do boleto já emitido); sem ele, a do adicional do ano passado; sem nada, a da modelo',
+    J(it(w.P.boleto).conta) === J({ id: U(302), nome: 'BANCO INTER - CONTA CORRENTE', de: 'boleto' }) && it(w.P.emitido).conta.de === 'boleto'
+    && J(it(w.P.paulo).conta) === J({ id: U(302), nome: 'BANCO INTER - CONTA CORRENTE', de: 'ano_anterior' }) && it(w.P.isenta).conta.de === 'modelo', J([it(w.P.boleto).conta, it(w.P.paulo).conta, it(w.P.isenta).conta]));
+  chk('as contas pra escolher, pelo nome', J(r.corpo.contas) === J([{ id: U(302), nome: 'BANCO INTER - CONTA CORRENTE' }, { id: U(305), nome: 'SICREDI CONTA CORRENTE' }]), J(r.corpo.contas));
+  chk('sem CNPJ no Conta Azul, a empresa do cadastro pelo nome', it(w.P.padaria).cliente_id === U(102));
   chk('a data da venda e o resumo', r.corpo.data_venda === '2026-10-31' && r.corpo.resumo.marcadas === 5 && r.corpo.boletos === 2, J(r.corpo.resumo));
   chk('sem aviso de boleto (a competência já está na grade)', !r.corpo.avisos.some(a => /ainda não foi gerada/.test(a)));
   chk('nenhuma venda criada na consulta', w.contaAzul.criadas.length === 0 && !w.contaAzul.chamadas.some(c => c.startsWith('POST')));
   w.db.cobrancas_mensais.length = 0;
   const sem = await w.pedir({ modo: 'prever', competencia: '2026-10' });
   chk('sem a competência na grade de Boletos: o aviso pra gerar antes', sem.corpo.avisos.some(a => /10\/2026 ainda não foi gerada em Boletos/.test(a)));
+  chk('… e, sem o boleto, a conta é a do adicional do ano passado (o Sicredi)', J(sem.corpo.itens.find(i => i.pessoa === w.P.boleto).conta) === J({ id: U(305), nome: 'SICREDI CONTA CORRENTE', de: 'ano_anterior' }));
 }
 
 console.log('O token do Conta Azul perto de vencer:');
@@ -220,7 +243,7 @@ console.log('Lançar:');
   const itens = [
     { pessoa: w.P.paulo, nome: 'LOJA DO PAULO LTDA', valor: 580, vencimento: '2026-11-10' },
     { pessoa: w.P.boleto, nome: 'COM BOLETO LTDA', valor: 600, vencimento: '2026-11-09' },
-    { pessoa: w.P.emitido, nome: 'BOLETO EMITIDO LTDA', valor: 700, vencimento: '2026-11-10' },
+    { pessoa: w.P.emitido, nome: 'BOLETO EMITIDO LTDA', valor: 700, vencimento: '2026-11-10', conta: U(305) },
     { pessoa: w.P.recusa, nome: 'RECUSADA LTDA', valor: 300, vencimento: '2026-11-10' },
     { pessoa: w.P.padaria, nome: 'PADARIA NOVA LTDA', valor: 183.33, vencimento: '2026-10-30' }
   ];
@@ -234,6 +257,7 @@ console.log('Lançar:');
     && venda.condicao_pagamento.id_conta_financeira === U(302) && venda.condicao_pagamento.opcao_condicao_pagamento === '1x' && venda.id_vendedor === U(301)
     && J(venda.condicao_pagamento.parcelas) === J([{ data_vencimento: '2026-11-10', valor: 580 }]), J(venda));
   chk('os números em sequência, pelo próximo número do Conta Azul', J(w.contaAzul.criadas.map(v => v.numero)) === J([190421459, 190421460, 190421461]));
+  chk('a conta que veio da lista vai na venda (sem ela, a da modelo)', w.contaAzul.criadas[2].condicao_pagamento.id_conta_financeira === U(305) && w.contaAzul.criadas[0].condicao_pagamento.id_conta_financeira === U(302));
   const linha = p => w.db.ca_vendas_lancadas.find(l => l.ca_cliente_id === p);
   chk('o registro: lançada, com o id e o número da venda, quem lançou e a empresa do cadastro',
     linha(w.P.paulo).situacao === 'lancada' && linha(w.P.paulo).ca_venda_numero === 190421459 && !!linha(w.P.paulo).ca_venda_id && linha(w.P.paulo).lancada_por === 'financeiro@macedoereis.com.br' && linha(w.P.paulo).cliente_id === U(101));
@@ -257,6 +281,14 @@ console.log('Lançar:');
   w.contaAzul.vendas.get(U(401)).detalhe.venda.id_categoria = CAT.mensal;
   const outraModelo = await w.pedir({ modo: 'lancar', competencia: '2026-10', modelo: 190419223, itens: [itens[3]] });
   chk('a modelo que não é do adicional: recusada, sem lançar nada', outraModelo.status === 500 && /não serve de modelo/.test(outraModelo.corpo.erro) && w.contaAzul.criadas.length === 3);
+}
+
+console.log('A empresa do cadastro pelo nome: só quando uma bate');
+{
+  const w = mundo();
+  const r = await w.pedir({ modo: 'lancar', competencia: '2026-10', modelo: 190419223, itens: [{ pessoa: U(20), nome: 'REDE SABOR', valor: 300, vencimento: '2026-11-10' }] });
+  chk('duas unidades com o mesmo nome: lança a venda, mas não chuta o boleto', r.corpo.resultados[0].ok && !r.corpo.resultados[0].boleto.posto && /não foi achada no cadastro/.test(r.corpo.resultados[0].boleto.motivo)
+    && w.db.ca_vendas_lancadas[0].cliente_id === null, J(r.corpo.resultados[0]));
 }
 
 console.log('O número repetido e a lançada à mão:');
@@ -319,6 +351,36 @@ console.log('Desfazer:');
     && J(w.db.cobrancas_mensais.find(b => b.id === U(209)).itens_extras.map(x => x.faturavel_id || x.adicional_id)) === J([U(600)]) && d.corpo.excluidas[0].boleto === 'saiu do boleto');
   chk('a que o Conta Azul não excluiu: fica lançada, com o motivo', w.db.ca_vendas_lancadas.find(l => l.id === lp).situacao === 'lancada' && /não excluiu/.test(d.corpo.ficaram[0].motivo));
   chk('sem nada pra desfazer: 400', (await w.pedir({ modo: 'desfazer', ids: [] })).status === 400);
+}
+
+console.log('A venda excluída direto no Conta Azul:');
+{
+  const w = mundo();
+  const r = await w.pedir({ modo: 'lancar', competencia: '2026-10', modelo: 190419223, itens: [
+    { pessoa: w.P.boleto, nome: 'COM BOLETO LTDA', valor: 600, vencimento: '2026-11-09' }, { pessoa: w.P.paulo, nome: 'LOJA DO PAULO LTDA', valor: 580, vencimento: '2026-11-10' },
+    { pessoa: w.P.emitido, nome: 'BOLETO EMITIDO LTDA', valor: 700, vencimento: '2026-11-10' }] });
+  const linha = p => w.db.ca_vendas_lancadas.find(l => l.ca_cliente_id === p);
+  const tirarDoCA = (p, tambemAVenda) => {
+    const n = linha(p).ca_venda_numero;
+    w.contaAzul.parcelas = w.contaAzul.parcelas.filter(x => x.descricao !== 'Venda ' + n);
+    if (tambemAVenda) w.contaAzul.vendas.delete(linha(p).ca_venda_id);
+  };
+  const velho = new Date(AGORA.getTime() - 10 * 60 * 1000).toISOString();
+  // a do boleto: excluída no Conta Azul há 10 minutos · a da loja: a parcela ainda não aparece na lista, mas a venda existe
+  // · a do boleto emitido: excluída agora mesmo (pode ser a lista atrasada: espera a próxima)
+  tirarDoCA(w.P.boleto, true); linha(w.P.boleto).atualizada_em = velho;
+  tirarDoCA(w.P.paulo, false); linha(w.P.paulo).atualizada_em = velho;
+  tirarDoCA(w.P.emitido, true);
+  const lista = await w.pedir({ modo: 'prever', competencia: '2026-10' });
+  chk('conferida pelo id: a linha vira "excluida" (pelo Conta Azul) e o extra sai do boleto, o faturável fica',
+    linha(w.P.boleto).situacao === 'excluida' && linha(w.P.boleto).excluida_por === 'conta_azul'
+    && J(w.db.cobrancas_mensais.find(b => b.id === U(209)).itens_extras.map(x => x.faturavel_id || x.adicional_id)) === J([U(600)]), J(linha(w.P.boleto)));
+  chk('… e a empresa volta à lista pra lançar de novo', lista.corpo.itens.find(i => i.pessoa === w.P.boleto).grupo === 'sugerida');
+  chk('a venda que existe (só a lista atrasada) continua lançada', linha(w.P.paulo).situacao === 'lancada' && lista.corpo.itens.find(i => i.pessoa === w.P.paulo).grupo === 'lancada');
+  chk('a lançada agora mesmo não é conferida (a lista do Conta Azul pode estar atrasada)', linha(w.P.emitido).situacao === 'lancada');
+  const de2 = await w.pedir({ modo: 'lancar', competencia: '2026-10', modelo: 190419223, itens: [{ pessoa: w.P.boleto, nome: 'COM BOLETO LTDA', valor: 610, vencimento: '2026-11-09' }] });
+  chk('lança de novo, com o valor corrigido, e o extra volta ao boleto', de2.corpo.resultados[0].ok && de2.corpo.resultados[0].boleto.posto
+    && w.db.cobrancas_mensais.find(b => b.id === U(209)).itens_extras.some(x => x.adicional_id === de2.corpo.resultados[0].id && x.valor === 610), J(de2.corpo));
 }
 
 console.log('A mensagem do Conta Azul:');

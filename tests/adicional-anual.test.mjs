@@ -4,7 +4,7 @@
 import {
   TIPO, CATEGORIA, ultimoDia, mesBR, maisUmMes, proximoDiaUtil, mesesNoAno, proporcional, numeroDaVenda, parcelaNormal,
   vencimentoSugerido, montarLista, resumoDaLista, modeloDaVenda, vendaParaApi, limparItem, extraDoAdicional, comExtra, semExtra,
-  temExtra, tarefaDasNotas, MAX_POR_LOTE
+  temExtra, tarefaDasNotas, juntarNaTarefa, tirarDaTarefa, MAX_POR_LOTE, contaDaEmpresa
 } from '../assets/js/adicional-anual.js';
 
 let falhas = 0;
@@ -131,11 +131,24 @@ const venda = vendaParaApi({ modelo, pessoa: U(1), valor: 580, vencimento: '2026
 chk('a venda: aprovada, no último dia da competência, 1x, com o serviço e a conta da modelo — sem centro de custo nem tipo de pagamento vazios',
   J(venda) === J({ id_cliente: U(1), numero: 190421459, situacao: 'APROVADO', data_venda: '2026-10-31', id_categoria: U(900), id_vendedor: U(301),
     itens: [{ id: U(303), quantidade: 1, valor: 580 }], condicao_pagamento: { id_conta_financeira: U(302), opcao_condicao_pagamento: '1x', parcelas: [{ data_vencimento: '2026-11-10', valor: 580 }] } }), J(venda));
+chk('a conta: a que a lista mandou; sem ela, a da modelo; a inválida, nenhuma',
+  vendaParaApi({ modelo, pessoa: U(1), valor: 1, vencimento: '2026-11-10', numero: 1, dataVenda: '2026-10-31', conta: U(305) }).condicao_pagamento.id_conta_financeira === U(305)
+  && vendaParaApi({ modelo, pessoa: U(1), valor: 1, vencimento: '2026-11-10', numero: 1, dataVenda: '2026-10-31' }).condicao_pagamento.id_conta_financeira === U(302)
+  && !('id_conta_financeira' in vendaParaApi({ modelo, pessoa: U(1), valor: 1, vencimento: '2026-11-10', numero: 1, dataVenda: '2026-10-31', conta: 'x' }).condicao_pagamento));
+const contas = { inter: U(302), padrao: U(306), anterior: new Map([[U(1), U(305)]]), nomes: new Map([[U(302), 'BANCO INTER - CONTA CORRENTE'], [U(305), 'SICREDI CONTA CORRENTE']]) };
+chk('a conta da empresa: com o boleto, a do Inter; sem ele, a do ano passado; sem nada, a da modelo (sem nome: "outra conta")',
+  J(contaDaEmpresa({ pessoa: U(1), boleto: { id: U(209) }, contas })) === J({ id: U(302), nome: 'BANCO INTER - CONTA CORRENTE', de: 'boleto' })
+  && J(contaDaEmpresa({ pessoa: U(1), contas })) === J({ id: U(305), nome: 'SICREDI CONTA CORRENTE', de: 'ano_anterior' })
+  && J(contaDaEmpresa({ pessoa: U(2), contas })) === J({ id: U(306), nome: 'outra conta', de: 'modelo' })
+  && J(contaDaEmpresa({ pessoa: U(2), boleto: { id: U(209) }, contas: { ...contas, inter: null } })) === J({ id: U(306), nome: 'outra conta', de: 'modelo' })
+  && contaDaEmpresa({ pessoa: U(2) }).id === null);
+chk('na lista, cada uma com a conta dela', J(de(U(9)).conta) === J({ id: null, nome: 'sem conta', de: null }));
 chk('o valor vai ao centavo', vendaParaApi({ modelo, pessoa: U(1), valor: 183.333, vencimento: '2026-11-10', numero: 1, dataVenda: '2026-10-31' }).itens[0].valor === 183.33);
 
 console.log('O item que a tela manda:');
 chk('o item certo passa limpo', J(limparItem({ pessoa: U(1), valor: '580', vencimento: '2026-11-10', nome: '  LOJA   DO PAULO ', cliente_id: U(101) }, { hoje }))
-  === J({ pessoa: U(1), valor: 580, vencimento: '2026-11-10', nome: 'LOJA DO PAULO', cliente_id: U(101) }));
+  === J({ pessoa: U(1), valor: 580, vencimento: '2026-11-10', nome: 'LOJA DO PAULO', cliente_id: U(101), conta: null }));
+chk('a conta do item: o id, ou nada', limparItem({ pessoa: U(1), valor: 1, vencimento: hoje, conta: U(305) }, { hoje }).conta === U(305) && limparItem({ pessoa: U(1), valor: 1, vencimento: hoje, conta: 'x' }, { hoje }).conta === null);
 chk('pessoa inválida, valor zero, acima do teto, vencimento passado ou inválido: o motivo',
   /inválida/.test(limparItem({ pessoa: 'x', valor: 1, vencimento: '2026-11-10' }, { hoje }).erro) && /maior que zero/.test(limparItem({ pessoa: U(1), valor: 0, vencimento: '2026-11-10' }, { hoje }).erro)
   && /100\.000/.test(limparItem({ pessoa: U(1), valor: 100000.01, vencimento: '2026-11-10' }, { hoje }).erro) && /já passou/.test(limparItem({ pessoa: U(1), valor: 1, vencimento: '2026-10-30' }, { hoje }).erro)
@@ -154,6 +167,20 @@ console.log('A tarefa das NFS-e (a Thalia emite no Conta Azul):');
 const t = tarefaDasNotas({ competencia: '2026-10', vendas: [{ nome: 'ZETA LTDA', numero: 2, valor: 1234.5 }, { nome: 'ALFA LTDA', numero: 1, valor: 580 }, { nome: 'SEM NUMERO', numero: null, valor: 1 }] });
 chk('o título com a competência e uma linha ☐ por venda, pelo nome', t.titulo === 'Emitir as NFS-e do honorário adicional anual (10/2026)'
   && /\n☐ ALFA LTDA — venda 1 — R\$ 580,00\n☐ ZETA LTDA — venda 2 — R\$ 1\.234,50$/.test(t.descricao) && !/SEM NUMERO/.test(t.descricao) && /o mesmo de 2025/.test(t.descricao), t.descricao);
+
+const j1 = juntarNaTarefa(t.descricao.replace('☐ ALFA', '☑ ALFA'), [{ nome: 'ALFA LTDA', numero: 1, valor: 580 }, { nome: 'BETA ME', numero: 3, valor: 99.9 }, { nome: 'GAMA', numero: 11, valor: 10 }]);
+chk('a tarefa aberta ganha só as vendas novas (pelo número), no fim, sem desmarcar a feita', j1.novas.length === 2
+  && /☑ ALFA LTDA — venda 1/.test(j1.descricao) && !/☐ ALFA/.test(j1.descricao) && /\n☐ BETA ME — venda 3 — R\$ 99,90\n☐ GAMA — venda 11 — R\$ 10,00$/.test(j1.descricao), j1.descricao);
+const j2 = juntarNaTarefa('☐ X — venda 110 — R$ 1,00', [{ nome: 'Y', numero: 11, valor: 1 }, { nome: 'X', numero: 110, valor: 1 }]);
+chk('o número 11 não confunde com o 110; nada novo, a descrição fica igual', j2.novas.length === 1 && j2.novas[0].numero === 11
+  && juntarNaTarefa('☐ X — venda 110 — R$ 1,00', [{ nome: 'X', numero: 110, valor: 1 }]).novas.length === 0, J(j2));
+
+const d0 = tarefaDasNotas({ competencia: '2026-10', vendas: [{ nome: 'ALFA', numero: 1, valor: 1 }, { nome: 'BETA', numero: 2, valor: 2 }, { nome: 'GAMA', numero: 12, valor: 3 }] }).descricao.replace('☐ BETA', '☑ BETA');
+const r1 = tirarDaTarefa(d0, [1, 2, 99]);
+chk('o desfazer tira da lista as vendas excluídas ainda não marcadas (a marcada fica) e conta o que sobra', r1.tiradas === 1 && !/ALFA/.test(r1.descricao)
+  && /☑ BETA — venda 2/.test(r1.descricao) && /☐ GAMA — venda 12/.test(r1.descricao) && r1.sobram === 2 && /^As vendas/.test(r1.descricao), J(r1));
+const r2 = tirarDaTarefa(d0.replace('☑ BETA', '☐ BETA'), [1, 2, 12]);
+chk('tirou todas: não sobra linha da lista', r2.tiradas === 3 && r2.sobram === 0, J(r2));
 
 console.log(falhas ? '\n' + falhas + ' falha(s).' : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);

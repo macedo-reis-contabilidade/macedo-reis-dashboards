@@ -8,9 +8,12 @@
 //  • quem entrou no ano paga proporcional: 1/12 por mês desde a primeira mensalidade do ano (a MF Orquídeas entrou
 //    em setembro de 2025 e pagou 4/12; com mensalidade em dezembro do ano anterior, o ano inteiro);
 //  • quem tinha mensalidade no outubro anterior e não pagou o adicional é isento (contrato): fica desmarcado;
-//  • a venda: data no último dia da competência, 1x, e a categoria, o serviço, a conta e o vendedor da venda do
-//    adicional mais recente (a "modelo" — em 2025, o serviço HONORÁRIO ADICIONAL ANUAL); vence junto com o boleto da
-//    competência, porque vai no mesmo boleto do honorário (decisão do Samuel, 31/10/2026), como item extra.
+//  • a venda: data no último dia da competência, 1x, e a categoria, o serviço e o vendedor da venda do adicional mais
+//    recente (a "modelo" — em 2025, o serviço HONORÁRIO ADICIONAL ANUAL); vence junto com o boleto da competência,
+//    porque vai no mesmo boleto do honorário (decisão do Samuel, 31/10/2026), como item extra;
+//  • a conta financeira é de cada empresa (em 2025: 40 no Inter, 18 no Sicredi, 7 no Caixa e 1 no Sicoob): com o
+//    boleto da competência na grade, a do Inter (o adicional vai no boleto do Inter); sem ele, a da venda do adicional
+//    anterior da empresa; sem nenhuma, a da modelo. A pessoa troca na lista.
 // Testes: tests/adicional-anual.test.mjs.
 // ============================================================
 import { diaUtil, somaDias, isoValida } from './rescisao-datas.js';
@@ -131,8 +134,10 @@ export const ROTULOS = {
 //  • lancadas: as linhas de ca_vendas_lancadas da competência ({ id, ca_cliente_id, valor, vencimento, ca_venda_numero,
 //    situacao, cobranca_id, cliente_id });
 //  • clientes: Map pessoa → { id, nome } (o cadastro, pelo CNPJ ou CPF);
-//  • boletos: Map cliente_id → { id, vencimento, status, itens_extras } (a grade da competência).
-export function montarLista({ competencia, hoje, mensais = [], adicionais = [], lancadas = [], clientes = new Map(), boletos = new Map() }) {
+//  • boletos: Map cliente_id → { id, vencimento, status, itens_extras } (a grade da competência);
+//  • contas: { anterior: Map pessoa → id da conta da venda do adicional anterior, inter: id da conta do Inter,
+//    padrao: id da conta da modelo, nomes: Map id → nome }.
+export function montarLista({ competencia, hoje, mensais = [], adicionais = [], lancadas = [], clientes = new Map(), boletos = new Map(), contas = {} }) {
   if (!COMPETENCIA.test(String(competencia || ''))) throw new Error('competência inválida');
   const ano = anoDe(competencia);
   const anos = Array.from({ length: ANOS_HISTORICO }, (_, i) => ano - ANOS_HISTORICO + i);
@@ -179,7 +184,8 @@ export function montarLista({ competencia, hoje, mensais = [], adicionais = [], 
       mensal: m ? { valor: m.valor, vencimento: m.vencimento, numeros: m.numeros, mei: m.mei } : null,
       historico, meses, primeira: primeira.get(pessoa) || null,
       vencimento: venc.data, vencimento_de: venc.de, vencimento_antes: venc.antes || null,
-      boleto: bol ? { id: bol.id, vencimento: bol.vencimento, status: bol.status } : null
+      boleto: bol ? { id: bol.id, vencimento: bol.vencimento, status: bol.status } : null,
+      conta: contaDaEmpresa({ pessoa, boleto: boletoAberto, contas })
     };
     const sis = doSistema.get(pessoa);
     const ca = noContaAzul.get(pessoa);
@@ -219,6 +225,18 @@ export function montarLista({ competencia, hoje, mensais = [], adicionais = [], 
   return { itens, anos, resumo: resumoDaLista(itens) };
 }
 
+// a conta financeira da venda: com o boleto da competência (a emitir ou já na grade), a do Inter; senão, a da venda do
+// adicional anterior da empresa; senão, a da modelo
+export function contaDaEmpresa({ pessoa, boleto = null, contas = {} }) {
+  const nomes = contas.nomes instanceof Map ? contas.nomes : new Map();
+  const com = (id, de) => ({ id, nome: nomes.get(id) || 'outra conta', de });
+  if (boleto && ehUuid(contas.inter)) return com(contas.inter, 'boleto');
+  const ant = contas.anterior instanceof Map ? contas.anterior.get(pessoa) : null;
+  if (ehUuid(ant)) return com(ant, 'ano_anterior');
+  if (ehUuid(contas.padrao)) return com(contas.padrao, 'modelo');
+  return { id: null, nome: 'sem conta', de: null };
+}
+
 // os números do alto: quantas em cada grupo e o total das marcadas
 export function resumoDaLista(itens) {
   const r = { total: 0, marcadas: 0, valor: 0, grupos: Object.fromEntries(GRUPOS.map(g => [g, 0])) };
@@ -251,9 +269,10 @@ export function modeloDaVenda(detalhe, itens) {
   };
 }
 
-// a venda pra API do Conta Azul (POST /v1/venda), copiando a modelo
-export function vendaParaApi({ modelo, pessoa, valor, vencimento, numero, dataVenda }) {
+// a venda pra API do Conta Azul (POST /v1/venda), copiando a modelo; a conta é a da empresa (a da modelo, sem ela)
+export function vendaParaApi({ modelo, pessoa, valor, vencimento, numero, dataVenda, conta = undefined }) {
   const v = real(centavos(valor));
+  const idConta = conta === undefined ? modelo.id_conta_financeira : ehUuid(conta) ? conta : null;
   return {
     id_cliente: pessoa,
     numero,
@@ -265,7 +284,7 @@ export function vendaParaApi({ modelo, pessoa, valor, vencimento, numero, dataVe
     itens: [{ id: modelo.id_servico, quantidade: 1, valor: v }],
     condicao_pagamento: {
       ...(modelo.tipo_pagamento ? { tipo_pagamento: modelo.tipo_pagamento } : {}),
-      ...(modelo.id_conta_financeira ? { id_conta_financeira: modelo.id_conta_financeira } : {}),
+      ...(idConta ? { id_conta_financeira: idConta } : {}),
       opcao_condicao_pagamento: '1x',
       parcelas: [{ data_vencimento: vencimento, valor: v }]
     }
@@ -285,7 +304,7 @@ export function limparItem(x, { hoje }) {
   if (!isoValida(venc)) return { erro: 'vencimento inválido' };
   if (venc < hoje) return { erro: 'o vencimento já passou' };
   const nome = String(i.nome || '').replace(/\s+/g, ' ').trim().slice(0, 200);
-  return { pessoa, valor: real(c), vencimento: venc, nome, cliente_id: ehUuid(i.cliente_id) ? String(i.cliente_id) : null };
+  return { pessoa, valor: real(c), vencimento: venc, nome, cliente_id: ehUuid(i.cliente_id) ? String(i.cliente_id) : null, conta: ehUuid(i.conta) ? String(i.conta) : null };
 }
 
 // o item extra do boleto (o mesmo formato dos faturáveis: descrição e valor; o adicional_id liga à venda lançada)
@@ -297,13 +316,37 @@ export const semExtra = (extras, id) => (Array.isArray(extras) ? extras : []).fi
 export const temExtra = (extras, id) => (Array.isArray(extras) ? extras : []).some(x => x && x.adicional_id === id);
 
 // a tarefa da Thalia pras NFS-e (quem emite as notas no Conta Azul): uma linha ☐ por venda, pela ordem do nome
+const brl = v => Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const linhaDaNota = v => '☐ ' + String(v.nome || '').replace(/\s+/g, ' ').trim() + ' — venda ' + v.numero + ' — R$ ' + brl(v.valor);
+const pelaOrdemDoNome = vendas => (vendas || []).filter(v => v && v.numero).slice().sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
 export function tarefaDasNotas({ competencia, vendas }) {
-  const lista = (vendas || []).filter(v => v && v.numero).slice().sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
-  const brl = v => Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return {
     titulo: 'Emitir as NFS-e do honorário adicional anual (' + mesBR(competencia) + ')',
     descricao: 'As vendas do honorário adicional anual que o sistema lançou no Conta Azul (serviço HONORÁRIO ADICIONAL ANUAL, o mesmo de '
       + (anoDe(competencia) - 1) + '). Emita a NFS-e de cada uma no Conta Azul:\n'
-      + lista.map(v => '☐ ' + v.nome + ' — venda ' + v.numero + ' — R$ ' + brl(v.valor)).join('\n')
+      + pelaOrdemDoNome(vendas).map(linhaDaNota).join('\n')
   };
+}
+
+// a tarefa da competência que ainda está aberta ganha as vendas lançadas depois (as que ainda não estão na lista,
+// pelo número da venda) — no fim, sem mexer no que já foi marcado; → { descricao, novas }
+export function juntarNaTarefa(descricao, vendas) {
+  const atual = String(descricao || '');
+  const novas = pelaOrdemDoNome(vendas).filter(v => !new RegExp('\\bvenda ' + Number(v.numero) + '\\b').test(atual));
+  if (!novas.length) return { descricao: atual, novas: [] };
+  return { descricao: atual.replace(/\s+$/, '') + '\n' + novas.map(linhaDaNota).join('\n'), novas };
+}
+
+// o desfazer: as vendas excluídas do Conta Azul saem da lista da tarefa (só as ainda não marcadas: a marcada teve a
+// nota emitida, e o Conta Azul não exclui venda com nota); → { descricao, tiradas, sobram (linhas da lista que ficam) }
+export function tirarDaTarefa(descricao, numeros) {
+  const alvo = new Set((numeros || []).map(Number).filter(n => Number.isInteger(n) && n > 0));
+  const linhas = String(descricao || '').split('\n');
+  let tiradas = 0;
+  const ficam = linhas.filter(l => {
+    const m = /^☐ .* — venda (\d+) — /.exec(l);
+    if (m && alvo.has(Number(m[1]))) { tiradas++; return false; }
+    return true;
+  });
+  return { descricao: ficam.join('\n'), tiradas, sobram: ficam.filter(l => /^[☐☑] /.test(l)).length };
 }

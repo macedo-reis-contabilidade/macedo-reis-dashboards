@@ -100,7 +100,7 @@
         </div>
         <div class="eyebrow">Faturamento</div>
         <h1>Boletos / Honorários</h1>
-        <p>Grade mensal de cobrança. Gere o mês copiando a última competência (valores e envio vivos; a base entra só pra empresa nova), ajuste valores, vencimentos e dados de envio, e marque o status conforme emite e envia. O vencimento é calculado no próximo dia útil. Em <b>Arquivo do Inter</b>, os boletos marcados viram um arquivo que o Inter importa de uma vez.</p>
+        <p>Grade mensal de cobrança. Gere o mês copiando a última competência (valores e envio vivos; a base entra só pra empresa nova), ajuste valores, vencimentos e dados de envio, e marque o status conforme emite e envia. O vencimento é calculado no próximo dia útil. Em <b>Arquivo do Inter</b>, os boletos marcados viram um arquivo que o Inter importa de uma vez. Em <b>Honorário adicional anual</b> (só os sócios), as vendas do adicional de outubro vão pro Conta Azul e entram no boleto do mês.</p>
       </div>
 
       <div class="bo-toolbar">
@@ -111,6 +111,7 @@
           <button class="btn btn-primary" id="btnGerar">Gerar mês a partir da base</button>
           <button class="btn btn-ghost" id="btnAdd">+ Adicionar empresa</button>
           <button class="btn btn-ghost" id="btnInter">Arquivo do Inter</button>
+          <button class="btn btn-ghost" id="btnAdicional" style="display:none;">Honorário adicional anual</button>
         </div>
         <div class="bo-right">
           <input type="text" id="busca" class="input input-search" placeholder="Buscar empresa…">
@@ -178,6 +179,7 @@ import { boletoPdf, nomeArquivoBoleto } from './assets/js/boleto-pdf.js';
 // o reajuste aceito na Precificação › Carteira (revisoes_honorario, só os sócios) entra na geração do mês
 import { reajustesDoMes, marcarAplicados } from './assets/js/precificacao-carteira.js';
 import { vencimentoDaCompetencia, COMPETENCIA_ISO } from './assets/js/tarefas-acoes.js';
+import { SOCIOS } from './assets/js/equipe.js';
 
 const $ = id => document.getElementById(id);
 const BRL = n => 'R$ ' + (Number(n)||0).toLocaleString('pt-BR',{minimumFractionDigits:2, maximumFractionDigits:2});
@@ -216,6 +218,20 @@ async function init(){
   $('btnAdd').addEventListener('click', abrirAdd);
   $('ovClose').addEventListener('click', ()=>$('ov').classList.remove('open'));
   $('btnInter').addEventListener('click', abrirInter);
+  // o honorário adicional anual (31/10/2026): as vendas no Conta Azul e o extra no boleto de outubro — só os sócios (a
+  // função ca-vendas confere de novo); a janela é carregada só no clique
+  if (SOCIOS.includes(String(emailUsuario).toLowerCase())) {
+    $('btnAdicional').style.display = '';
+    $('btnAdicional').addEventListener('click', async () => {
+      const [a, m] = ($('comp').value || '').split('-').map(Number);
+      const competencia = (a && m ? (m >= 10 ? a : a - 1) : new Date().getFullYear()) + '-10';
+      try {
+        const { abrirAdicionalAnual } = await import('./assets/js/adicional-anual-tela.js');
+        abrirAdicionalAnual({ supabase, email: emailUsuario, competencia,
+          aoMudar: () => window.dispatchEvent(new CustomEvent('mr:boletos-mudaram', { detail: { competencia } })) });
+      } catch (e) { msg('Não consegui abrir o honorário adicional anual: recarregue a tela.'); }
+    });
+  }
   $('inFechar').addEventListener('click', ()=>$('ovInter').classList.remove('open'));
   $('busca').addEventListener('input', render);
   $('fStatus').addEventListener('change', render);
@@ -412,7 +428,10 @@ async function removerRow(r){
   // extras vivos: reler do banco — a tela Faturáveis pode ter incluído itens depois desta carga
   let extras = extrasDe(r);
   if(r.id){ const { data: viva } = await supabase.from('cobrancas_mensais').select('itens_extras').eq('id', r.id).maybeSingle(); if(viva && Array.isArray(viva.itens_extras)) extras = viva.itens_extras.filter(Boolean); }
-  const aviso = extras.length ? '\n\nAtenção: esta cobrança tem '+extras.length+' item(ns) extra(s) · '+BRL(extras.reduce((s,x)=>s+(Number(x.valor)||0),0))+' — eles voltam pra fila de Faturáveis.' : '';
+  const nAdic = extras.filter(x=>x.adicional_id).length;
+  const aviso = extras.length ? '\n\nAtenção: esta cobrança tem '+extras.length+' item(ns) extra(s) · '+BRL(extras.reduce((s,x)=>s+(Number(x.valor)||0),0))
+    +(extras.length>nAdic ? ' — os de Faturáveis voltam pra fila de lá' : '')
+    +(nAdic ? (extras.length>nAdic ? '; o' : ' — o')+' honorário adicional anual continua lançado no Conta Azul (pra cobrar de novo, ponha a empresa no mês e use "Pôr no boleto as que faltam", em Honorário adicional anual)' : '')+'.' : '';
   if(!confirm('Remover '+nome+' deste mês?'+aviso)) return;
   const deVez = confirm('Também PARAR DE COBRAR de vez?\n\nOK = não entra mais em nenhuma geração futura (sai da base de cobrança)\nCancelar = remove só deste mês');
   if(r.id){
