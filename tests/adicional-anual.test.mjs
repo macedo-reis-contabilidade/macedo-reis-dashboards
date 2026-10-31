@@ -115,6 +115,48 @@ let deuErro = false;
 try { montarLista({ competencia: '10/2026', hoje }); } catch (e) { deuErro = true; }
 chk('competência fora do formato: erro', deuErro);
 
+console.log('O que o Conta Azul diz de cada venda (31/10/2026): a perdida não foi cobrada, o em aberto aparece');
+{
+  const Q = (pessoa, nome, comp, valor, status, naoPago) => parcelaNormal({ cliente: { id: pessoa, nome }, data_competencia: comp + '-28', total: valor,
+    status, nao_pago: naoPago, descricao: 'Venda 190000001', categorias: [{ nome: A }] });
+  const mens = [
+    // a MIR3F: pagou em 2024; a de 2025 foi lançada e está perdida
+    P(U(21), 'PERDIDA LTDA', '2024-10', 500, M), P(U(21), 'PERDIDA LTDA', '2025-10', 500, M), P(U(21), 'PERDIDA LTDA', '2025-12', 500, M), P(U(21), 'PERDIDA LTDA', '2026-10', 500, M, { venc: '2026-11-10' }),
+    // a Daniela: a de 2025, parcelada, toda em aberto
+    P(U(22), 'EM ABERTO LTDA', '2025-10', 265, M), P(U(22), 'EM ABERTO LTDA', '2025-12', 265, M), P(U(22), 'EM ABERTO LTDA', '2026-10', 265, M, { venc: '2026-11-10' }),
+    // paga em parte: segue marcada
+    P(U(23), 'PAGA EM PARTE LTDA', '2025-10', 600, M), P(U(23), 'PAGA EM PARTE LTDA', '2025-12', 600, M), P(U(23), 'PAGA EM PARTE LTDA', '2026-10', 660, M, { venc: '2026-11-10' })
+  ];
+  const adic = [
+    Q(U(21), 'PERDIDA LTDA', '2024-10', 500, 'ACQUITTED', 0), Q(U(21), 'PERDIDA LTDA', '2025-10', 500, 'LOST', 500),
+    Q(U(22), 'EM ABERTO LTDA', '2025-10', 159, 'PENDING', 159), Q(U(22), 'EM ABERTO LTDA', '2025-10', 106, 'PENDING', 106),
+    Q(U(23), 'PAGA EM PARTE LTDA', '2025-10', 300, 'ACQUITTED', 0), Q(U(23), 'PAGA EM PARTE LTDA', '2025-10', 300, 'OVERDUE', 300),
+    // saiu, e a de 2025 está perdida: fora da lista (não foi cobrada)
+    Q(U(24), 'SAIU E NAO PAGOU LTDA', '2025-10', 400, 'LOST', 400)
+  ];
+  const r = montarLista({ competencia: '2026-10', hoje, mensais: mens, adicionais: adic });
+  const x = p => r.itens.find(i => i.pessoa === p);
+  chk('a perdida: no histórico como perdida, e a empresa vai pras isentas, desmarcada',
+    x(U(21)).grupo === 'isenta' && !x(U(21)).marcada && x(U(21)).historico[2025].perdida && x(U(21)).historico[2025].valor_perdido === 500
+      && x(U(21)).historico[2024].valor === 500 && /perdido no Conta Azul/.test(x(U(21)).motivo), J(x(U(21))));
+  chk('a do ano passado sem nenhum pagamento: cobrada, desmarcada, com o em aberto',
+    x(U(22)).grupo === 'sugerida' && !x(U(22)).marcada && x(U(22)).historico[2025].aberto === 265 && /ainda não foi pago \(R\$ 265,00 em aberto/.test(x(U(22)).motivo), J(x(U(22))));
+  chk('a paga em parte: marcada, e o histórico mostra o que falta', x(U(23)).grupo === 'sugerida' && x(U(23)).marcada && x(U(23)).historico[2025].valor === 600 && x(U(23)).historico[2025].aberto === 300, J(x(U(23))));
+  chk('saiu, e a do ano passado está perdida: fora da lista', !x(U(24)));
+  chk('o resumo: só a paga em parte (660)', r.resumo.marcadas === 1 && r.resumo.valor === 660 && r.resumo.lote_lancado === false, J(r.resumo));
+}
+
+console.log('Depois do lote lançado, o que ficou fora começa desmarcado:');
+{
+  const lan = n => ({ id: U(600 + n), ca_cliente_id: U(700 + n), cliente_nome: 'LANCADA ' + n, valor: 100, vencimento: '2026-11-10', ca_venda_numero: 190421500 + n, situacao: 'lancada' });
+  const umaSo = montarLista({ competencia: '2026-10', hoje, mensais, adicionais, lancadas: [lan(1)], clientes, boletos });
+  chk('só a primeira (a de conferir) lançada: as outras seguem marcadas', umaSo.itens.find(i => i.pessoa === U(1)).marcada && !umaSo.resumo.lote_lancado);
+  const lote = montarLista({ competencia: '2026-10', hoje, mensais, adicionais, lancadas: [lan(1), lan(2)], clientes, boletos });
+  const p1 = lote.itens.find(i => i.pessoa === U(1));
+  chk('duas ou mais lançadas: as que ficaram fora começam desmarcadas, com o porquê',
+    !p1.marcada && /Ficou fora do lote/.test(p1.motivo) && lote.resumo.marcadas === 0 && lote.resumo.lote_lancado === true, J(lote.resumo));
+}
+
 console.log('A venda modelo e a venda pra API:');
 const detalhe = { cliente: { uuid: U(1), nome: 'LOJA DO PAULO LTDA' }, vendedor: { id: U(301), nome: 'Contador' },
   venda: { id: U(401), numero: 190419223, data_compromisso: '2025-10-31', id_categoria: U(900), id_centro_custo: null,

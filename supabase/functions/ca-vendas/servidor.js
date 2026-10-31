@@ -293,6 +293,7 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
     if (!contas.inter) avisos.push('Não achei a conta do Inter pelo nome: com o boleto, a conta fica a da venda do ano passado. Confira na coluna Conta.');
     if (!boletos.size) avisos.push('A competência ' + mesBR(comp) + ' ainda não foi gerada em Boletos. Gere antes de lançar, pra o adicional entrar no boleto, a venda vencer no mesmo dia dele e a conta ser a do Inter.');
     const { itens, anos, resumo } = montarLista({ competencia: comp, hoje, mensais, adicionais, lancadas: lancadas || [], clientes, boletos, contas });
+    if (resumo.lote_lancado) avisos.unshift('O lote de ' + mesBR(comp) + ' já foi lançado pelo sistema: o que ficou fora dele começa desmarcado. Marque só o que ainda vai.');
     const emUso = new Set(itens.map(i => i.conta && i.conta.id).filter(Boolean));
     const listaContas = [...new Set([...contas.nomes.keys(), ...emUso])].map(id => ({ id, nome: contas.nomes.get(id) || 'outra conta' }))
       .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));

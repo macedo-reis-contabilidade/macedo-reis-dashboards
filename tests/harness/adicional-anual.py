@@ -54,6 +54,9 @@ DUBLE = r"""(() => {
       boleto: n === 3 ? { id: 'b3', vencimento: '2026-11-09', status: 'a_emitir' } : n === 4 ? { id: 'b4', vencimento: '2026-11-10', status: 'emitido' } : null,
       conta: n === 3 || n === 4 ? conta(INTER, 'boleto') : conta(SICREDI, 'ano_anterior'), motivo: 'Pagou em 2025. A mensalidade de 10/2026.' });
   }
+  // o que o Conta Azul diz da venda (31/10/2026): a de 2025 da 07 ainda tem R$ 100 em aberto; a de 2024 da 08 está perdida
+  base[6].historico[2025] = { valor: 487, parcelas: 1, aberto: 100 };
+  base[7].historico[2024] = { perdida: true, valor_perdido: 458 };
   base.push({ pessoa: P(30), nome: 'ZZ <img src=x onerror="window.__xss=1"> LTDA', grupo: 'sugerida', marcada: true, valor: 300,
     historico: hist(null, null, { valor: 290, parcelas: 1 }), mensal: { valor: 300, vencimento: '2026-11-10', numeros: [2], mei: false }, meses: 12,
     cliente_id: null, cliente_nome: null, vencimento: '2026-11-10', vencimento_de: 'mensalidade', boleto: null, conta: conta(SICREDI, 'modelo'), motivo: 'Pagou em 2025.' });
@@ -189,6 +192,8 @@ def fluxo(b, base, erros):
     ok(linha(p, 1).locator('select[data-f="conta"]').input_value() == 'c0000000-0000-4000-8000-000000000002' and 'a do ano passado' in l1, '2. sem boleto: a conta do ano passado')
     l50 = linha(p, 50)
     ok(l50.inner_text().count('isento') == 3 and not l50.locator('[data-marcar]').is_checked(), '2. a isenta: "isento" nos três anos, desmarcada')
+    ok('R$ 487,00' in linha(p, 7).inner_text() and 'R$ 100,00 em aberto' in linha(p, 7).inner_text(), '2. o do ano passado com parte em aberto: o valor e o que falta receber')
+    ok('perdido' in linha(p, 8).inner_text() and 'R$ 458' not in linha(p, 8).inner_text(), '2. o perdido no Conta Azul aparece como perdido, não como cobrado')
     l40 = linha(p, 40)
     ok('4/12' in l40.inner_text() and 'a de outubro venceu 28/10' in l40.inner_text() and l40.locator('[data-f="valor"]').input_value() == '183.33', '2. a nova: 4/12, o proporcional e o vencimento ajustado com o porquê')
     ok('MEI' in linha(p, 60).inner_text() and not linha(p, 60).locator('[data-marcar]').is_checked(), '2. o contrato MEI desmarcado')

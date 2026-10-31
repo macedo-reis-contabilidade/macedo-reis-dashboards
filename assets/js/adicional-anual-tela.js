@@ -110,7 +110,9 @@ export async function abrirAdicionalAnual({ supabase, email, competencia, aoMuda
 
   function celulaAno(h) {
     if (!h) return '<span style="color:var(--text-muted)">—</span>';
-    if (h.valor != null) return BRL(h.valor) + (h.parcelas > 1 ? ' <small style="color:var(--text-muted)">(' + h.parcelas + 'x)</small>' : '');
+    if (h.perdida) return '<span style="color:var(--warn)" title="lançado (' + esc(BRL(h.valor_perdido)) + ') e marcado como perdido no Conta Azul: não foi pago">perdido</span>';
+    if (h.valor != null) return BRL(h.valor) + (h.parcelas > 1 ? ' <small style="color:var(--text-muted)">(' + h.parcelas + 'x)</small>' : '')
+      + (h.aberto > 0 ? ' <small style="color:var(--warn)" title="ainda não recebido no Conta Azul">· ' + esc(BRL(h.aberto)) + ' em aberto</small>' : '');
     if (h.mei) return '<span style="color:var(--text-muted)" title="contrato MEI">MEI</span>';
     if (h.isento) return '<span style="color:var(--warn)" title="tinha mensalidade de ' + esc(BRL(h.mensal)) + ' e não pagou">isento</span>';
     return '<span style="color:var(--text-muted)">—</span>';

@@ -43,7 +43,19 @@ ARMADILHA = """(() => {
   let db;
   Object.defineProperty(window, '__mockDb', { configurable: true, get() { return db; }, set(v) {
     db = v; v.clientes = CLI; v.cobrancas_config = BAS; v.cobrancas_mensais = COB; v.configuracoes_escritorio = []; v.carteira_info = []; v.revisoes_honorario = [];
+    // o honorário adicional anual de outubro já lançado no Conta Azul (31/10/2026): o da empresa do dia dez, fora do boleto
+    v.ca_vendas_lancadas = [{ id: 'L10', tipo: 'adicional_anual', competencia: '2026-10', situacao: 'lancada', cobranca_id: null, cliente_id: 'k10', valor: 450, ca_venda_numero: 190421460 }];
   } });
+  // o dublê da função ca-vendas: "pôr no boleto" põe o extra no boleto que acabou de nascer
+  window.__chamadas = [];
+  window.__mockInvoke = async (nome, op) => {
+    const body = (op && op.body) || {};
+    window.__chamadas.push({ nome, ...body });
+    if (nome !== 'ca-vendas' || body.modo !== 'boleto') return { data: null, error: { message: 'fora do teste' } };
+    const b = db.cobrancas_mensais.find(c => c.cliente_id === 'k10' && c.competencia === body.competencia);
+    if (b) b.itens_extras = [{ adicional_id: 'L10', descricao: 'Honorário adicional anual (venda 190421460)', valor: 450 }];
+    return { data: { resultados: [{ id: 'L10', posto: !!b }, { id: 'L99', posto: false, motivo: 'sem boleto de 10/2026 em Boletos' }] }, error: null };
+  };
 })();""" % (json.dumps(CLIENTES, ensure_ascii=False), json.dumps(BASES), json.dumps(SETEMBRO))
 INIT_TEMA = "localStorage.setItem('mr_tema', '%s'); (() => { const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { return String(k).startsWith('mr_tour_') ? 'ok' : g.call(this, k); }; })()"
 
@@ -79,6 +91,11 @@ def fluxo(b, base_url, tema, erros):
     valores = db(p, "window.__mockDb.cobrancas_mensais.filter(c => c.competencia === '2026-10').map(c => c.cliente_id + ':' + c.valor).sort().join()")
     ok(valores == 'k10:450,k15:550,k20:650,k25:750', '1. os valores continuam os de setembro (vivos): ' + valores)
     ok(linha(p, 'DIA DEZ').locator('input[data-f="vencimento"]').input_value() == '2026-11-10', '1. a grade mostra o vencimento novo')
+    chamadas = db(p, "window.__chamadas")
+    extras = db(p, "(window.__mockDb.cobrancas_mensais.find(c => c.cliente_id === 'k10' && c.competencia === '2026-10') || {}).itens_extras")
+    ok(chamadas == [{'nome': 'ca-vendas', 'modo': 'boleto', 'competencia': '2026-10'}] and extras and extras[0]['adicional_id'] == 'L10',
+       '1. o honorário adicional anual já lançado entra sozinho no boleto que nasceu: ' + json.dumps(chamadas))
+    ok('1 com o honorário adicional anual no boleto' in p.inner_text('#msg') and 'não entrou' not in p.inner_text('#msg'), '1. o aviso diz quantos (quem paga por outro banco não é aviso): ' + p.inner_text('#msg'))
     p.screenshot(path=str(FOTOS / f'{tema}-boletos-vencimento.png'))
 
     print(f'[{tema}] 2. mudar a data na grade')

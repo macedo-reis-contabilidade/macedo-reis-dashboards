@@ -326,12 +326,32 @@ async function gerarMes(){
       if(e2) throw e2;
       if(reajustados.length) await marcarAplicados(supabase, reajustados, emailUsuario);
     }
+    // o honorário adicional anual já lançado no Conta Azul nesta competência vai no mesmo boleto (decisão do Samuel,
+    // 31/10/2026): a função ca-vendas põe o de cada empresa no boleto que acabou de nascer. Só os sócios (só eles leem as
+    // vendas lançadas e chamam a função); não deu, fica o "Pôr no boleto as que faltam" da janela do adicional
+    let adicionais = 0, adicionalFicou = false;
+    if(novos.length && SOCIOS.includes(String(emailUsuario).toLowerCase())){
+      try {
+        const { data: pend } = await supabase.from('ca_vendas_lancadas').select('id').eq('competencia', comp).eq('situacao','lancada').is('cobranca_id', null).limit(1);
+        if(pend && pend.length){
+          adicionalFicou = true;
+          const { data: r, error: eF } = await supabase.functions.invoke('ca-vendas', { body: { modo:'boleto', competencia: comp } });
+          // quem não tem boleto do Inter (paga por outro banco) volta "sem boleto": é o esperado, não é aviso
+          if(!eF && r && Array.isArray(r.resultados)){
+            adicionais = r.resultados.filter(x => x && x.posto && !x.ja).length;
+            adicionalFicou = false;
+          }
+        }
+      } catch(e) { /* fica pro "Pôr no boleto as que faltam" */ }
+    }
     await carregarMes();
     const [fa, fm] = fonteComp ? fonteComp.split('-') : [];
     const nomeFonte = fonteComp ? new Date(Number(fa), Number(fm)-1, 1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'}) : null;
     msg(novos.length
       ? `${novos.length} empresa(s) adicionada(s)` + (copiados ? ` — ${copiados} copiada(s) de ${nomeFonte}` : '') + (daBase ? `, ${daBase} da base (sem histórico)` : '') + (puladasSaida ? `; ${puladasSaida} pulada(s) por saída na carteira` : '')
-        + (reajustados.length ? `; ${reajustados.length} com o reajuste combinado na Carteira (Precificação)` : '') + '.'
+        + (reajustados.length ? `; ${reajustados.length} com o reajuste combinado na Carteira (Precificação)` : '')
+        + (adicionais ? `; ${adicionais} com o honorário adicional anual no boleto` : '')
+        + (adicionalFicou ? '; algum adicional anual não entrou no boleto: confira em "Honorário adicional anual" › "Pôr no boleto as que faltam"' : '') + '.'
       : 'Mês já estava completo (nada novo a gerar)' + (puladasSaida ? ` — ${puladasSaida} pulada(s) por saída na carteira.` : '.'));
   }catch(e){ msg('Erro ao gerar: '+(e.message||e)); }
   finally{ btn.disabled=false; btn.textContent='Gerar mês a partir da base'; }

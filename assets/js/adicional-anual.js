@@ -8,6 +8,9 @@
 //  • quem entrou no ano paga proporcional: 1/12 por mês desde a primeira mensalidade do ano (a MF Orquídeas entrou
 //    em setembro de 2025 e pagou 4/12; com mensalidade em dezembro do ano anterior, o ano inteiro);
 //  • quem tinha mensalidade no outubro anterior e não pagou o adicional é isento (contrato): fica desmarcado;
+//  • a venda marcada como perdida no Conta Azul foi lançada e não foi paga: não conta como cobrada (vai pras isentas);
+//    a do ano passado ainda sem nenhum pagamento fica desmarcada; o histórico mostra o perdido e o em aberto;
+//  • depois que o sistema lança o lote da competência, o que ficou fora começa desmarcado;
 //  • a venda: data no último dia da competência, 1x, e a categoria, o serviço e o vendedor da venda do adicional mais
 //    recente (a "modelo" — em 2025, o serviço HONORÁRIO ADICIONAL ANUAL); vence junto com o boleto da competência,
 //    porque vai no mesmo boleto do honorário (decisão do Samuel, 31/10/2026), como item extra;
@@ -71,10 +74,15 @@ const parcelaDe = d => { const m = /^(\d+)\/(\d+)\b/.exec(String(d || '').trim()
 
 // uma parcela do Conta Azul — da API (contas a receber: cliente, categorias) ou do espelho (ca_parcelas:
 // fornecedor_cliente_id) — no mesmo formato
+// A situação no Conta Azul (31/10/2026): a perdida (LOST) foi lançada e não foi paga — não conta como cobrada (a MIR3F
+// de 2025 aparecia como "pagou"); o em aberto é o que falta receber (a parcela pendente, atrasada ou paga em parte).
 export function parcelaNormal(p) {
   const x = p || {};
   const cats = (Array.isArray(x.categorias) ? x.categorias : []).map(c => String((c && c.nome) || '').trim().toUpperCase());
+  const perdida = String(x.status || '').toUpperCase() === 'LOST';
   return {
+    perdida,
+    aberto: perdida ? 0 : Math.max(0, Number(x.nao_pago) || 0),
     pessoa: (x.cliente && x.cliente.id) || x.fornecedor_cliente_id || null,
     nome: String((x.cliente && x.cliente.nome) || x.fornecedor_cliente_nome || '').trim(),
     competencia: String(x.data_competencia || '').slice(0, 7),
@@ -105,8 +113,9 @@ const somaPorPessoa = (lista, filtro) => {
   const m = new Map();
   for (const p of lista) {
     if (!p.pessoa || !filtro(p)) continue;
-    const a = m.get(p.pessoa) || { pessoa: p.pessoa, nome: p.nome, valor: 0, vencimento: null, numeros: [], parcelas: 0, mei: false };
+    const a = m.get(p.pessoa) || { pessoa: p.pessoa, nome: p.nome, valor: 0, aberto: 0, vencimento: null, numeros: [], parcelas: 0, mei: false };
     a.valor = real(centavos(a.valor) + centavos(p.valor));
+    a.aberto = real(centavos(a.aberto) + centavos(p.aberto || 0));
     a.parcelas += 1;
     a.mei = a.mei || p.mei;
     if (p.vencimento && (!a.vencimento || p.vencimento < a.vencimento)) a.vencimento = p.vencimento;
@@ -119,7 +128,7 @@ const somaPorPessoa = (lista, filtro) => {
 
 const GRUPOS = ['sugerida', 'nova', 'isenta', 'sem_mensal', 'mei', 'lancada'];
 export const ROTULOS = {
-  sugerida: 'Pagaram no ano passado',
+  sugerida: 'Cobradas no ano passado',
   nova: 'Novas: confira',
   isenta: 'Isentas no ano passado',
   sem_mensal: 'Sem mensalidade agora',
@@ -152,15 +161,21 @@ export function montarLista({ competencia, hoje, mensais = [], adicionais = [], 
     if (!a || p.competencia < a) primeira.set(p.pessoa, p.competencia);
   }
   const mensalNoAno = new Map(anos.map(y => [y, somaPorPessoa(mensais, p => p.competencia === outubro(y) && (p.mensal || p.mei))]));
-  const adicionalNoAno = new Map(anos.map(y => [y, somaPorPessoa(adicionais, p => p.adicional && anoDe(p.competencia) === y && p.competencia !== competencia)]));
+  // cobrado = lançado e não perdido (a perdida foi lançada e não foi paga: no histórico, à parte)
+  const cobrada = p => p.adicional && !p.perdida;
+  const adicionalNoAno = new Map(anos.map(y => [y, somaPorPessoa(adicionais, p => cobrada(p) && anoDe(p.competencia) === y && p.competencia !== competencia)]));
+  const perdidaNoAno = new Map(anos.map(y => [y, somaPorPessoa(adicionais, p => p.adicional && p.perdida && anoDe(p.competencia) === y && p.competencia !== competencia)]));
   const noContaAzul = somaPorPessoa(adicionais, p => p.adicional && p.competencia === competencia);
   const doSistema = new Map();
   for (const l of lancadas) if (l && ['lancando', 'lancada'].includes(l.situacao)) doSistema.set(l.ca_cliente_id, l);
+  // o lote da competência já foi lançado pelo sistema (duas ou mais: a primeira, sozinha, é a de conferir): o que ficou
+  // fora era decisão — o resto começa desmarcado (31/10/2026: o Samuel tirou 13 da lista de 2026)
+  const loteLancado = [...doSistema.values()].filter(l => l.situacao === 'lancada').length >= 2;
 
   const pagouAntes = adicionalNoAno.get(ano - 1) || new Map();
-  // quem pagou no lote do ano anterior (a competência de outubro) entra na lista mesmo sem a mensalidade de agora; o
-  // adicional cobrado fora do lote (o proporcional de quem saiu no meio do ano) só conta no histórico
-  const pagouNoLote = somaPorPessoa(adicionais, p => p.adicional && p.competencia === outubro(ano - 1));
+  // quem foi cobrado no lote do ano anterior (a competência de outubro) entra na lista mesmo sem a mensalidade de agora;
+  // o adicional cobrado fora do lote (o proporcional de quem saiu no meio do ano) só conta no histórico
+  const pagouNoLote = somaPorPessoa(adicionais, p => cobrada(p) && p.competencia === outubro(ano - 1));
   const pessoas = new Set([...atual.keys(), ...pagouNoLote.keys(), ...noContaAzul.keys(), ...doSistema.keys()]);
   const itens = [];
   for (const pessoa of pessoas) {
@@ -169,8 +184,10 @@ export function montarLista({ competencia, hoje, mensais = [], adicionais = [], 
     const historico = {};
     for (const y of anos) {
       const ad = adicionalNoAno.get(y).get(pessoa);
+      const pe = perdidaNoAno.get(y).get(pessoa);
       const me = mensalNoAno.get(y).get(pessoa);
-      historico[y] = ad ? { valor: ad.valor, parcelas: ad.parcelas }
+      historico[y] = ad ? { valor: ad.valor, parcelas: ad.parcelas, ...(ad.aberto > 0 ? { aberto: ad.aberto } : {}) }
+        : pe ? { perdida: true, valor_perdido: pe.valor }
         : me ? { isento: !me.mei, mei: me.mei, mensal: me.valor }
         : null;
     }
@@ -209,8 +226,14 @@ export function montarLista({ competencia, hoje, mensais = [], adicionais = [], 
       itens.push({ ...base, grupo: 'sem_mensal', marcada: false, valor: antes ? antes.valor : null,
         motivo: 'Pagou em ' + (ano - 1) + ', mas não tem mensalidade de ' + mesBR(competencia) + ' no Conta Azul.' });
     } else if (antes) {
-      itens.push({ ...base, grupo: 'sugerida', marcada: true, valor: proporcional(m.valor, meses),
-        motivo: meses < 12 ? 'Pagou em ' + (ano - 1) + '. Proporcional: ' + meses + '/12.' : 'Pagou em ' + (ano - 1) + '. A mensalidade de ' + mesBR(competencia) + '.' });
+      // o do ano passado ainda sem nenhum pagamento (a Daniela e a JGS de 2025, parceladas até 2026 e 2027): desmarcada
+      const naoPagou = antes.aberto > 0 && centavos(antes.aberto) >= centavos(antes.valor);
+      itens.push({ ...base, grupo: 'sugerida', marcada: !naoPagou, valor: proporcional(m.valor, meses),
+        motivo: naoPagou ? 'O adicional de ' + (ano - 1) + ' ainda não foi pago (R$ ' + brl(antes.aberto) + ' em aberto no Conta Azul): confira antes de lançar.'
+          : meses < 12 ? 'Pagou em ' + (ano - 1) + '. Proporcional: ' + meses + '/12.' : 'Pagou em ' + (ano - 1) + '. A mensalidade de ' + mesBR(competencia) + '.' });
+    } else if (anoAntes && anoAntes.perdida) {
+      itens.push({ ...base, grupo: 'isenta', marcada: false, valor: proporcional(m.valor, meses),
+        motivo: 'O adicional de ' + (ano - 1) + ' foi lançado e está como perdido no Conta Azul (não foi pago): isenta?' });
     } else if (anoAntes && anoAntes.isento) {
       itens.push({ ...base, grupo: 'isenta', marcada: false, valor: proporcional(m.valor, meses),
         motivo: 'Tinha mensalidade em ' + mesBR(outubro(ano - 1)) + ' e não pagou o adicional: isenta?' });
@@ -221,8 +244,15 @@ export function montarLista({ competencia, hoje, mensais = [], adicionais = [], 
           : 'Sem mensalidade em ' + mesBR(outubro(ano - 1)) + ' (ou era MEI): o ano inteiro.' });
     }
   }
+  if (loteLancado) {
+    for (const i of itens) {
+      if (i.grupo === 'lancada' || !i.marcada) continue;
+      i.marcada = false;
+      i.motivo = 'Ficou fora do lote que o sistema já lançou nesta competência. ' + i.motivo;
+    }
+  }
   itens.sort((a, b) => GRUPOS.indexOf(a.grupo) - GRUPOS.indexOf(b.grupo) || a.nome.localeCompare(b.nome, 'pt-BR'));
-  return { itens, anos, resumo: resumoDaLista(itens) };
+  return { itens, anos, resumo: { ...resumoDaLista(itens), lote_lancado: loteLancado } };
 }
 
 // a conta financeira da venda: com o boleto da competência (a emitir ou já na grade), a do Inter; senão, a da venda do
