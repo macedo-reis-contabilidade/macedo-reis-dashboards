@@ -118,7 +118,14 @@ function mundo({ tokenFaltam = 50 * 60 * 1000 } = {}) {
     if (url.startsWith(URLB + '/rest/v1/')) {
       const u = new URL(url); const tabela = u.pathname.replace('/rest/v1/', '');
       const linhas = db[tabela]; if (!linhas) throw new Error('tabela desconhecida: ' + tabela);
-      if (metodo === 'GET') return resposta(200, filtrar(linhas, u.searchParams));
+      // como o PostgREST do Supabase: no máximo mil linhas por consulta (mesmo com limit maior), com order, limit e offset
+      if (metodo === 'GET') {
+        let achadas = filtrar(linhas, u.searchParams);
+        const ordem = u.searchParams.get('order');
+        if (ordem) { const [col, dir] = ordem.split('.'); achadas = [...achadas].sort((x, y) => (String(x[col]) < String(y[col]) ? -1 : String(x[col]) > String(y[col]) ? 1 : 0) * (dir === 'desc' ? -1 : 1)); }
+        const de = Number(u.searchParams.get('offset') || 0), quantas = Math.min(Number(u.searchParams.get('limit') || 1000), 1000);
+        return resposta(200, achadas.slice(de, de + quantas));
+      }
       if (metodo === 'POST') {
         const n = { id: novoId(), lancada_em: AGORA.toISOString(), atualizada_em: AGORA.toISOString(), cobranca_id: null, ca_venda_id: null, ca_venda_numero: null, erro: null, ...corpo };
         if (tabela === 'ca_vendas_lancadas' && linhas.some(l => l.tipo === n.tipo && l.competencia === n.competencia && l.ca_cliente_id === n.ca_cliente_id && ['lancando', 'lancada'].includes(l.situacao)))
@@ -289,6 +296,18 @@ console.log('A empresa do cadastro pelo nome: só quando uma bate');
   const r = await w.pedir({ modo: 'lancar', competencia: '2026-10', modelo: 190419223, itens: [{ pessoa: U(20), nome: 'REDE SABOR', valor: 300, vencimento: '2026-11-10' }] });
   chk('duas unidades com o mesmo nome: lança a venda, mas não chuta o boleto', r.corpo.resultados[0].ok && !r.corpo.resultados[0].boleto.posto && /não foi achada no cadastro/.test(r.corpo.resultados[0].boleto.motivo)
     && w.db.ca_vendas_lancadas[0].cliente_id === null, J(r.corpo.resultados[0]));
+}
+
+console.log('O cadastro com mais de mil empresas (o banco devolve mil por vez):');
+{
+  const w = mundo();
+  // 1.100 empresas inventadas antes, pela ordem do id: a loja e as outras ficam depois das primeiras mil linhas
+  w.db.clientes.unshift(...Array.from({ length: 1100 }, (_, n) => ({ id: '0a000000-0000-4000-8000-' + String(n).padStart(12, '0'), nome_principal: 'OUTRA EMPRESA ' + n + ' LTDA', documento: String(10000000000000 + n), status: 'ativo' })));
+  const r = await w.pedir({ modo: 'prever', competencia: '2026-10' });
+  const it = p => r.corpo.itens.find(i => i.pessoa === p);
+  chk('a empresa depois das primeiras mil linhas é achada (pelo CNPJ e pelo nome)', it(w.P.paulo).cliente_id === U(101) && it(w.P.padaria).cliente_id === U(102), J([it(w.P.paulo).cliente_id, it(w.P.padaria).cliente_id]));
+  const pags = w.chamadas.filter(c => c.url.includes('/rest/v1/clientes?')).map(c => new URL(c.url).searchParams.get('offset'));
+  chk('o cadastro lido em páginas de mil, pela ordem do id', pags.join(',') === '0,1000' && w.chamadas.some(c => c.url.includes('/rest/v1/clientes?') && /order=id\.asc/.test(c.url)), pags.join(','));
 }
 
 console.log('O número repetido e a lançada à mão:');

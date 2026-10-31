@@ -79,6 +79,18 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
     if (!r.ok) { const e = new Error('banco ' + r.status + ': ' + txt.slice(0, 200)); e.status = r.status; e.codigo = dados && dados.code; throw e; }
     return dados;
   }
+  // todas as linhas: o banco devolve no máximo mil por consulta (o limite do Supabase), mesmo pedindo mais — com 1.036
+  // empresas no cadastro, as de depois das mil ficavam sem empresa (31/10/2026). Vai em páginas de mil, pela ordem do id.
+  const POR_PAGINA = 1000;
+  async function dbTodas(caminho) {
+    const out = [];
+    for (let de = 0; de < 200 * POR_PAGINA; de += POR_PAGINA) {
+      const lote = (await db(caminho + '&order=id.asc&limit=' + POR_PAGINA + '&offset=' + de)) || [];
+      out.push(...lote);
+      if (lote.length < POR_PAGINA) break;
+    }
+    return out;
+  }
 
   // ---------- quem chama: o login do escritório (os sócios), ou a chave do sincronismo só pra consulta ----------
   async function quemChama(req) {
@@ -182,7 +194,7 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
   // ela: com duas parecidas (as unidades de uma rede), fica sem
   async function empresasDasPessoas(token) {
     const pessoas = await todas(token, '/v1/pessoas', { tipo_perfil: 'Cliente' });
-    const cad = (await db('clientes?select=id,nome_principal,nome_fantasia,documento,status&limit=10000')) || [];
+    const cad = await dbTodas('clientes?select=id,nome_principal,nome_fantasia,documento,status');
     const porDoc = new Map();
     for (const c of cad) {
       const d = digitos(c.documento);
@@ -208,7 +220,7 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
   // as contas financeiras: os nomes (o espelho das baixas), a do Inter, e a da venda do adicional mais recente de cada
   // empresa no ano anterior (o detalhe de cada venda, 4 de cada vez)
   async function contasDoAdicional(token, ano, cats) {
-    const linhas = (await db('ca_baixas?select=conta_financeira_id,conta_financeira&conta_financeira_id=not.is.null&data_pagamento=gte.' + (ano - 2) + '-01-01&limit=50000')) || [];
+    const linhas = await dbTodas('ca_baixas?select=conta_financeira_id,conta_financeira&conta_financeira_id=not.is.null&data_pagamento=gte.' + (ano - 2) + '-01-01');
     const nomes = new Map();
     for (const l of linhas) if (ehUuid(l.conta_financeira_id) && l.conta_financeira && !nomes.has(l.conta_financeira_id)) nomes.set(l.conta_financeira_id, String(l.conta_financeira));
     const inter = [...nomes.entries()].filter(([, n]) => /\bINTER\b/i.test(n)).map(([id]) => id);
@@ -231,7 +243,7 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
   }
 
   async function boletosDaCompetencia(comp) {
-    const d = await db('cobrancas_mensais?select=id,cliente_id,vencimento,status,itens_extras&competencia=eq.' + comp + '&limit=5000');
+    const d = await dbTodas('cobrancas_mensais?select=id,cliente_id,vencimento,status,itens_extras&competencia=eq.' + comp);
     return new Map((d || []).map(b => [b.cliente_id, b]));
   }
 
@@ -256,7 +268,7 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
     const de = (ano - 1) + '-12-01', ate = ultimoDia(comp);
     for (const nome of [CATEGORIA_MENSAL, CATEGORIA_MEI]) {
       const filtro = 'categorias=cs.' + enc(JSON.stringify([{ nome }]));
-      const d = await db('ca_parcelas?select=fornecedor_cliente_id,fornecedor_cliente_nome,data_competencia,data_vencimento,total,descricao,categorias&natureza=eq.receita&data_competencia=gte.' + de + '&data_competencia=lte.' + ate + '&' + filtro + '&limit=20000');
+      const d = await dbTodas('ca_parcelas?select=fornecedor_cliente_id,fornecedor_cliente_nome,data_competencia,data_vencimento,total,descricao,categorias&natureza=eq.receita&data_competencia=gte.' + de + '&data_competencia=lte.' + ate + '&' + filtro);
       mensais.push(...(d || []).map(parcelaNormal));
     }
     const lancadas = await db('ca_vendas_lancadas?select=*&tipo=eq.' + TIPO + '&competencia=eq.' + comp + '&order=lancada_em.asc');
