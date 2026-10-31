@@ -33,7 +33,7 @@ Confere:
 Termina com código 1 se alguma checagem falhar.
 Pré-requisito: pip install playwright e python -m playwright install chromium
 """
-import sys, json, pathlib
+import sys, json, pathlib, datetime
 sys.dont_write_bytecode = True
 try: sys.stdout.reconfigure(encoding='utf-8')   # o ✓/✗ não passa no console padrão do Windows
 except Exception: pass
@@ -204,7 +204,13 @@ def main():
         # (o cabeçalho da tabela sai em maiúsculas pelo CSS: compara sem caixa)
         ok('O que precisamos pra concluir' in t and 'as notas de compra (entradas) do período' in t and 'conta provisória' in t.lower() and 'não é recomendação' in t.lower(),
            'diz o que falta, nas palavras do cliente, e a conta só como provisória')
-        ok('Nossa recomendação' not in t and 'vou enviar os dados até' in t and 'registrem a opção, pra manter a decisão em aberto' in t, 'sem recomendação: a manifestação é sobre os dados e o prazo')
+        # a porta "registrem a opção" só existe com a janela da opção aberta (até 30/10/2026, RT_PRAZO.opcaoFim de
+        # assets/js/rt-prazos.js); fechada, o comunicado diz que ela fechou e qual é a próxima (31/10/2026: o teste usava
+        # sempre a janela aberta e passou a falhar no dia seguinte ao fim do prazo)
+        aberta = datetime.date.today().isoformat() <= '2026-10-30'
+        porta = ('registrem a opção, pra manter a decisão em aberto' in t) if aberta else ('registrem a opção' not in t and 'A janela da opção para janeiro/2027 fechou em 30/10/2026' in t)
+        ok('Nossa recomendação' not in t and 'vou enviar os dados até' in t and porta,
+           'sem recomendação: a manifestação é sobre os dados e o prazo' + (' (janela aberta: registrar a opção)' if aberta else ' (janela fechada: a próxima)'))
         ok('Domínio' not in t and 'XLS' not in t, 'sem nomes internos no comunicado')
         cm.close()
         p.click('#dMarcar'); p.wait_for_timeout(500)
