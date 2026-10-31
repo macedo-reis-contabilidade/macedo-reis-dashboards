@@ -201,6 +201,8 @@ console.log('Quem chama:');
   const soConsulta = await w.pedir({ modo: 'lancar', competencia: '2026-10', itens: [] }, { token: null, sync: 'chave-sync' });
   chk('com a chave do sincronismo, lançar não: 403', soConsulta.status === 403 && /só a consulta/.test(soConsulta.corpo.erro));
   chk('a chave de servidor também só consulta', (await w.pedir({ modo: 'desfazer', ids: [U(1)] }, { token: 'chave-servidor' })).status === 403);
+  const pedidoDaEquipe = await w.pedir({ modo: 'lancar', competencia: '2026-10', itens: [], a_pedido_de: 'fiscal@macedoereis.com.br' }, { token: null, sync: 'chave-sync' });
+  chk('a pedido de quem não é sócio: 403', pedidoDaEquipe.status === 403 && /só a consulta/.test(pedidoDaEquipe.corpo.erro));
   chk('competência fora do formato: 400', (await w.pedir({ modo: 'prever', competencia: '10/2026' })).status === 400);
   chk('modo desconhecido: 400', (await w.pedir({ modo: 'outro', competencia: '2026-10' })).status === 400);
   chk('nada foi pedido ao Conta Azul nesses casos', w.contaAzul.chamadas.length === 0);
@@ -288,6 +290,18 @@ console.log('Lançar:');
   w.contaAzul.vendas.get(U(401)).detalhe.venda.id_categoria = CAT.mensal;
   const outraModelo = await w.pedir({ modo: 'lancar', competencia: '2026-10', modelo: 190419223, itens: [itens[3]] });
   chk('a modelo que não é do adicional: recusada, sem lançar nada', outraModelo.status === 500 && /não serve de modelo/.test(outraModelo.corpo.erro) && w.contaAzul.criadas.length === 3);
+}
+
+console.log('O Claude lança a pedido de um sócio (a chave do sincronismo, com o pedido registrado):');
+{
+  const w = mundo();
+  const r = await w.pedir({ modo: 'lancar', competencia: '2026-10', modelo: 190419223, a_pedido_de: 'Financeiro@macedoereis.com.br', itens: [{ pessoa: w.P.paulo, nome: 'LOJA DO PAULO LTDA', valor: 580, vencimento: '2026-11-10' }] }, { token: null, sync: 'chave-sync' });
+  chk('lança, e o registro diz a pedido de quem', r.status === 200 && r.corpo.resultados[0].ok && w.db.ca_vendas_lancadas[0].lancada_por === 'financeiro@macedoereis.com.br (pelo Claude)', J(r.corpo));
+  const d = await w.pedir({ modo: 'desfazer', ids: [r.corpo.resultados[0].id], a_pedido_de: 'financeiro@macedoereis.com.br' }, { token: null, sync: 'chave-sync' });
+  chk('desfaz do mesmo jeito', d.status === 200 && d.corpo.excluidas.length === 1 && w.db.ca_vendas_lancadas[0].excluida_por === 'financeiro@macedoereis.com.br (pelo Claude)', J(d.corpo));
+  chk('sem o pedido, a chave errada ou o pedido de fora: nada', (await w.pedir({ modo: 'lancar', competencia: '2026-10', itens: [] }, { token: null, sync: 'chave-sync' })).status === 403
+    && (await w.pedir({ modo: 'lancar', competencia: '2026-10', itens: [], a_pedido_de: 'financeiro@macedoereis.com.br' }, { token: null, sync: 'outra' })).status === 401
+    && (await w.pedir({ modo: 'lancar', competencia: '2026-10', itens: [], a_pedido_de: 'alguem@gmail.com' }, { token: null, sync: 'chave-sync' })).status === 403);
 }
 
 console.log('A empresa do cadastro pelo nome: só quando uma bate');
