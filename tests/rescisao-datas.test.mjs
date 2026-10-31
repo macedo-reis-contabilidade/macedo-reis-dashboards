@@ -32,9 +32,9 @@ chk('12/10 não é útil', !diaUtil('2026-10-12'));
 const boletos = readFileSync(raiz + 'financeiro-boletos.html', 'utf8');
 const tarefasAcoes = readFileSync(raiz + 'assets/js/tarefas-acoes.js', 'utf8');
 chk('o financeiro-boletos calcula o vencimento pela conta única (vencimentoDaCompetencia), sem lista própria de feriados',
-  /function calcVencimento\(competencia, dia\)\{ return vencimentoDaCompetencia\(competencia, dia\); \}/.test(boletos) && /import \{ vencimentoDaCompetencia, COMPETENCIA_ISO \} from '\.\/assets\/js\/tarefas-acoes\.js'/.test(boletos)
+  /function calcVencimento\(competencia, dia\)\{ return vencimentoDaCompetencia\(competencia, dia\); \}/.test(boletos) && /import \{[^}]*\bvencimentoDaCompetencia\b[^}]*\} from '\.\/assets\/js\/tarefas-acoes\.js'/.test(boletos)
   && !/const FERIADOS = new Set/.test(boletos));
-chk('e a conta única usa os feriados daqui', /import \{ diaUtil, somaDias \} from '\.\/rescisao-datas\.js'/.test(tarefasAcoes));
+chk('e a conta única usa os feriados daqui', /import \{(?=[^}]*\bdiaUtil\b)(?=[^}]*\bsomaDias\b)[^}]*\} from '\.\/rescisao-datas\.js'/.test(tarefasAcoes));
 const NACIONAIS_RS_2026 = ['2026-01-01', '2026-02-16', '2026-02-17', '2026-04-03', '2026-04-21', '2026-05-01', '2026-06-04', '2026-09-07', '2026-09-20', '2026-10-12',
   '2026-11-02', '2026-11-15', '2026-11-20', '2026-12-25'];
 const meus2026 = [];
