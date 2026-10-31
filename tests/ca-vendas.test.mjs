@@ -235,6 +235,14 @@ console.log('A lista (prever):');
   const sem = await w.pedir({ modo: 'prever', competencia: '2026-10' });
   chk('sem a competência na grade de Boletos: o aviso pra gerar antes', sem.corpo.avisos.some(a => /10\/2026 ainda não foi gerada em Boletos/.test(a)));
   chk('… e, sem o boleto, a conta é a do adicional do ano passado (o Sicredi)', J(sem.corpo.itens.find(i => i.pessoa === w.P.boleto).conta) === J({ id: U(305), nome: 'SICREDI CONTA CORRENTE', de: 'ano_anterior' }));
+  // o lote já lançado (duas ou mais vendas do sistema na competência): o resto desmarcado, e o aviso do boleto muda
+  for (const n of [1, 2]) w.db.ca_vendas_lancadas.push({ id: U(780 + n), tipo: 'adicional_anual', competencia: '2026-10', ca_cliente_id: U(880 + n), cliente_nome: 'JA LANCADA ' + n,
+    valor: 100, vencimento: '2026-11-10', situacao: 'lancada', lancada_em: '2026-10-31T20:00:00Z', atualizada_em: '2026-10-31T20:00:00Z' });
+  const depois = await w.pedir({ modo: 'prever', competencia: '2026-10' });
+  chk('com o lote lançado: o aviso em cima, o resto desmarcado e o boleto entra sozinho quando gerar',
+    /já foi lançado pelo sistema/.test(depois.corpo.avisos[0]) && depois.corpo.resumo.marcadas === 0 && depois.corpo.resumo.lote_lancado
+      && depois.corpo.avisos.some(a => /10\/2026 ainda não foi gerada em Boletos: quando for, o adicional já lançado entra sozinho/.test(a)) && !depois.corpo.avisos.some(a => /Gere antes de lançar/.test(a)), J(depois.corpo.avisos));
+  w.db.ca_vendas_lancadas.length = 0;
 }
 
 console.log('O token do Conta Azul perto de vencer:');
