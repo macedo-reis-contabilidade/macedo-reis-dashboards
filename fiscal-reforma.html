@@ -468,7 +468,7 @@
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { carregarOperacao, MESES_ABREV, avisosVendasEspeciais } from './assets/js/operacao-xml.js';
     import { lerRelatorio, consolidar, resumirEntradas, GRUPOS, lerPlanilha, perfilAtividade, cnaeMaisCompleto, cnpjsParaConsultar, ramoComReducao, ramoComZero, reducaoServicoPorCnae, conferirRbt12, CREDITO_FORNECEDOR_SIMPLES, rotuloMeses } from './assets/js/dominio-relatorios.js';
-    import { lerXls } from './assets/js/xls-biff.js';
+    import { paginasDoPdf, abasDaPlanilha, rotuloRel } from './assets/js/relatorios-arquivos.js';
     import { importarLote, separarNaoXml } from './assets/js/importar-xml.js';
     import { formatDocumento, normalizarDocumento } from './assets/js/utils.js';
     import { gerarAnalise } from './assets/js/rt-analise.js';
@@ -1125,29 +1125,8 @@
       return a === b ? r(a) : r(a) + '–' + r(b);
     }
 
-    async function paginasDoPdf(file) {
-      if (!window.pdfjsLib) throw new Error('o leitor de PDF não carregou — verifique a conexão e recarregue a página (Ctrl+F5)');
-      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-      const doc = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
-      const paginas = [];
-      for (let p = 1; p <= doc.numPages; p++) {
-        const tc = await (await doc.getPage(p)).getTextContent();
-        const linhas = new Map();
-        for (const it of tc.items) {
-          if (!it.str || !it.str.trim()) continue;
-          const y = Math.round(it.transform[5] / 2) * 2;          // 2pt de tolerância = mesma linha
-          if (!linhas.has(y)) linhas.set(y, []);
-          linhas.get(y).push({ x: it.transform[4], w: it.width, s: it.str });
-        }
-        paginas.push([...linhas.entries()].sort((a, b) => b[0] - a[0]).map(([, its]) => {
-          its.sort((a, b) => a.x - b.x);
-          let out = '', fim = null;
-          for (const it of its) { if (fim != null && it.x - fim > 1.5) out += '  '; out += it.s; fim = it.x + it.w; }
-          return out;
-        }));
-      }
-      return paginas;
-    }
+    // paginasDoPdf, abasDaPlanilha e rotuloRel moram em assets/js/relatorios-arquivos.js (01/11/2026: o Comparativo
+    // tributário lê os mesmos relatórios)
 
     $('bImportarDom').onclick = async () => {
       const c = casoAtual(); if (!c) return;
@@ -1260,18 +1239,9 @@
       const docFicha = cliF && cliF.documento ? normalizarDocumento(cliF.documento) : null;
       for (const f of arquivos) {
         try {
-          const buf = await f.arrayBuffer();
-          if (!buf.byteLength || new Uint8Array(buf).every(b => b === 0)) throw new Error('arquivo vazio (só zeros) — a exportação da Domínio não terminou ou o arquivo foi copiado antes de gravar');
           // .xls da Domínio: leitor próprio (o arquivo é fora do padrão e o SheetJS devolve a aba vazia depois de minutos);
-          // .xlsx/.csv: SheetJS
-          let abas;
-          if (/\.xls$/i.test(f.name)) {
-            try { abas = lerXls(buf).abas; }
-            catch (e1) { const wb = XLSX.read(buf, { type: 'array', raw: true }); abas = wb.SheetNames.map(n => ({ nome: n, linhas: XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: '' }) })); }
-          } else {
-            const wb = XLSX.read(buf, { type: 'array', raw: true });
-            abas = wb.SheetNames.map(n => ({ nome: n, linhas: XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: '' }) }));
-          }
+          // .xlsx/.csv: SheetJS — a regra mora em assets/js/relatorios-arquivos.js
+          const abas = await abasDaPlanilha(f);
           let lido = null, erro = null;
           for (const aba of abas) {
             try { lido = lerPlanilha(aba.linhas); break; } catch (e) { erro = e; }
@@ -1316,12 +1286,6 @@
       renderPreviaDom();
     }
     const domMsgErro = t => { $('domMsg').style.color = 'var(--err)'; $('domMsg').textContent = t; };
-    function rotuloRel(r) {
-      if (r.tipo === 'faturamento') return 'faturamento · ' + r.meses.length + ' mês(es)' + (r.conferido === false ? ' ⚠ soma não fecha' : '');
-      if (r.tipo === 'simples') return 'PGDAS ' + (r.competencia || '?');
-      if (r.tipo === 'saidas' || r.tipo === 'servicos') return (r.tipo === 'saidas' ? 'saídas' : 'serviços') + ' · ' + r.vendas.length + ' nota(s)' + (r.fonte === 'planilha' ? ' · CNPJ do cliente' : '') + (r.conferido === false ? ' ⚠ soma não fecha' : '');
-      return 'entradas · ' + r.lancamentos.length + ' lançamento(s)' + (r.conferido === false ? ' ⚠ soma não fecha' : '');
-    }
 
     function renderPreviaDom() {
       const box = $('domPrevia');

@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fiscal — Comparativo tributário — Macedo & Reis</title>
+  <link rel="icon" href="assets/favicon.ico">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    .page-header { max-width:900px; }
+    .ct-sec { background:var(--fill-1); border:1px solid var(--line); border-radius:14px; padding:18px 20px; margin-bottom:18px; }
+    .ct-sec h2 { margin:0 0 12px; font-size:16px; color:var(--text); }
+    .ct-sec h2 small { color:var(--text-muted); font-weight:400; font-size:13px; margin-left:8px; }
+    /* a empresa: a busca, a escolhida e os relatórios do Domínio */
+    .ct-emp { display:grid; grid-template-columns:minmax(0,3fr) minmax(0,2fr); gap:18px; align-items:start; }
+    @media (max-width:1000px){ .ct-emp { grid-template-columns:minmax(0,1fr); } }
+    .ct-busca { position:relative; max-width:560px; }
+    .ct-busca .input { width:100%; }
+    .ct-sug { list-style:none; margin:4px 0 0; padding:4px; position:absolute; left:0; right:0; z-index:20; background:var(--surface); border:1px solid var(--line-strong); border-radius:10px; max-height:340px; overflow:auto; box-shadow:0 10px 30px rgba(0,0,0,.3); }
+    .ct-sug[hidden] { display:none; }
+    .ct-sug button { display:block; width:100%; text-align:left; background:none; border:0; padding:8px 10px; border-radius:8px; color:var(--text); font:inherit; cursor:pointer; }
+    .ct-sug button:hover, .ct-sug button:focus-visible { background:var(--fill-2); outline:none; }
+    .ct-sug small { display:block; color:var(--text-muted); font-size:12px; }
+    .ct-sug .ct-fora { color:var(--text-muted); }
+    .ct-escolhida { margin-top:12px; }
+    .ct-escolhida h3 { margin:0; font-size:17px; color:var(--text); }
+    .ct-escolhida p { margin:4px 0 0; font-size:13px; color:var(--text-muted); }
+    .ct-escolhida a { color:var(--brand-light); }
+    .ct-linha-acoes { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:10px; font-size:13px; }
+    .ct-linha-acoes label { display:flex; gap:8px; align-items:center; color:var(--brand-pale); white-space:nowrap; }
+    .ct-fontes { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+    .ct-chip { font-size:12px; padding:3px 10px; border-radius:999px; background:var(--fill-2); border:1px solid var(--line); color:var(--brand-pale); }
+    .ct-chip.ct-nao { color:var(--text-muted); border-style:dashed; }
+    .ct-chip.ct-err { color:var(--err); border-color:rgba(224,108,108,.5); }
+    .ct-drop { border:2px dashed var(--line-strong); border-radius:12px; padding:14px 16px; text-align:center; color:var(--text-muted); cursor:pointer; transition:border-color .15s, background .15s; font-size:13.5px; }
+    .ct-drop:hover, .ct-drop:focus-visible, .ct-drop.is-over { border-color:var(--brand-primary); background:rgba(91,130,166,.08); color:var(--brand-pale); outline:none; }
+    .ct-drop b { color:var(--text); display:block; }
+    .ct-lidos { margin-top:8px; display:flex; flex-wrap:wrap; gap:6px; }
+    .ct-lidos:empty { display:none; }
+    .ct-msg { font-size:13px; min-height:18px; margin-top:6px; color:var(--text-muted); }
+    /* os números (esquerda) e o resultado (direita) */
+    .ct-grade { display:grid; grid-template-columns:minmax(380px,5fr) minmax(0,6fr); gap:18px; align-items:start; }
+    .ct-grade[hidden] { display:none; }
+    @media (max-width:1100px){ .ct-grade { grid-template-columns:minmax(0,1fr); } }
+    .ct-res { position:sticky; top:12px; }
+    @media (max-width:1100px){ .ct-res { position:static; } }
+    fieldset.ct-grupo { border:0; padding:0; margin:0 0 16px; }
+    fieldset.ct-grupo > legend { font-size:13px; font-weight:600; color:var(--brand-light); padding:0; margin-bottom:8px; }
+    .ct-campos { display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:10px 14px; }
+    .ct-campo { display:flex; flex-direction:column; gap:3px; font-size:12.5px; color:var(--brand-pale); min-width:0; }
+    .ct-campo .input, .ct-campo .select { width:100%; font-variant-numeric:tabular-nums; }
+    .ct-campo .ct-un { position:relative; }
+    .ct-campo .ct-un .input { padding-right:28px; }
+    .ct-campo .ct-un::after { content:attr(data-un); position:absolute; right:10px; top:50%; transform:translateY(-50%); color:var(--text-muted); font-size:12px; pointer-events:none; }
+    .ct-orig { font-size:11px; color:var(--text-muted); line-height:1.3; }
+    .ct-orig[data-fonte="padrao"] { color:var(--warn); }
+    .ct-orig[data-fonte="digitado"] { color:var(--text-muted); }
+    .ct-orig[data-fonte="reforma"], .ct-orig[data-fonte="dominio"], .ct-orig[data-fonte="fator_r"], .ct-orig[data-fonte="pgdas"], .ct-orig[data-fonte="cadastro"], .ct-orig[data-fonte="gravado"] { color:var(--ok); }
+    .ct-ativ { border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:10px; background:var(--surface); }
+    .ct-ativ-topo { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) auto; gap:10px 12px; align-items:start; }
+    .ct-ativ .ct-campos { margin-top:10px; }
+    .ct-x { background:none; border:1px solid var(--line); color:var(--text-muted); border-radius:8px; width:32px; height:32px; cursor:pointer; margin-top:18px; }
+    .ct-x:hover, .ct-x:focus-visible { color:var(--err); border-color:var(--err); outline:none; }
+    @media (max-width:640px){ .ct-ativ-topo { grid-template-columns:minmax(0,1fr); } .ct-x { margin-top:0; justify-self:end; } .ct-campos { grid-template-columns:minmax(0,1fr); } }
+    details.ct-ajuste { margin-top:8px; font-size:12.5px; }
+    details.ct-ajuste > summary { cursor:pointer; color:var(--brand-light); }
+    .ct-total-rec { font-size:13px; color:var(--brand-pale); margin:2px 0 8px; }
+    .ct-total-rec b { color:var(--text); font-variant-numeric:tabular-nums; }
+    details.ct-mais > summary { cursor:pointer; font-size:13px; font-weight:600; color:var(--brand-light); margin-bottom:8px; }
+    /* o resultado */
+    .ct-frase { font-size:15px; line-height:1.55; color:var(--text); margin:0 0 6px; }
+    .ct-sub { font-size:13px; color:var(--text-muted); margin:0 0 12px; line-height:1.5; }
+    .ct-sub.ct-alerta { color:var(--warn); }
+    .ct-vazio { color:var(--text-muted); font-size:14px; padding:8px 0; }
+    .ct-tab { overflow-x:auto; }
+    table.ct { border-collapse:collapse; width:100%; font-size:13px; }
+    table.ct th { text-align:right; color:var(--brand-light); font-weight:600; font-size:11.5px; padding:6px 8px; border-bottom:1px solid var(--line); white-space:nowrap; }
+    table.ct th:first-child, table.ct td:first-child { text-align:left; }
+    table.ct td { padding:8px; border-bottom:1px solid var(--line); text-align:right; font-variant-numeric:tabular-nums; vertical-align:top; color:var(--text); }
+    table.ct td small { display:block; color:var(--text-muted); font-size:11.5px; }
+    table.ct tr.ct-rec td { color:var(--text-muted); font-size:12px; }
+    table.ct td.ct-melhor { background:rgba(63,176,122,.12); }
+    table.ct td.ct-melhor b { color:var(--ok); }
+    .ct-tag { display:inline-block; font-size:10.5px; font-weight:600; color:var(--ok); border:1px solid rgba(63,176,122,.45); border-radius:999px; padding:0 7px; margin-left:6px; vertical-align:1px; }
+    .ct-hoje { font-size:11px; color:var(--text-muted); font-weight:400; margin-left:4px; }
+    table.ct td.ct-indisp { color:var(--text-muted); font-size:12px; }
+    details.ct-det { margin-top:12px; }
+    details.ct-det > summary { cursor:pointer; font-size:13px; color:var(--brand-light); }
+    .ct-det h4 { margin:12px 0 4px; font-size:12.5px; color:var(--brand-pale); }
+    table.ct-mini { font-size:12px; }
+    table.ct-mini td, table.ct-mini th { padding:4px 8px; }
+    .ct-bloco { margin-top:16px; }
+    .ct-bloco h3 { font-size:13.5px; margin:0 0 6px; color:var(--text); }
+    .ct-bloco ul { margin:0; padding-left:18px; font-size:13px; color:var(--brand-pale); line-height:1.55; }
+    .ct-bloco li + li { margin-top:4px; }
+    .ct-bloco li.ct-muda { color:var(--warn); }
+    .ct-prazos li b { color:var(--text); }
+    .ct-gravado { font-size:12.5px; color:var(--text-muted); margin-top:14px; min-height:18px; }
+    .ct-gravado.ct-erro { color:var(--err); }
+    .ct-so-leitor { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip"><div class="user-avatar" id="userAvatar">—</div><span id="userName">Carregando…</span></div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <a href="fiscal.html">Fiscal</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Comparativo tributário</span>
+        </div>
+        <div class="eyebrow">Fiscal</div>
+        <h1>Comparativo tributário</h1>
+        <p>Quanto a empresa paga de imposto no Simples, no Lucro Presumido e no Lucro Real: os últimos 12 meses pelas regras de 2026 e as projeções de 2027 e 2028, já com a CBS no lugar do PIS/Cofins. O sistema preenche o que já sabe da empresa e diz de onde veio cada número; o que ficou no padrão vem em amarelo.</p>
+      </div>
+
+      <section class="ct-sec" aria-labelledby="tEmpresa">
+        <h2 id="tEmpresa">Empresa</h2>
+        <div class="ct-emp">
+          <div>
+            <div class="ct-busca">
+              <label for="busca" class="ct-so-leitor">Buscar a empresa</label>
+              <input id="busca" class="input" type="search" placeholder="Nome, fantasia ou CNPJ da empresa" autocomplete="off" aria-controls="sugestoes" aria-expanded="false">
+              <ul class="ct-sug" id="sugestoes" role="listbox" aria-label="Empresas" hidden></ul>
+            </div>
+            <div class="ct-linha-acoes"><button type="button" class="btn btn-ghost btn-sm" id="semCadastro">Simular uma empresa sem cadastro</button></div>
+            <div class="ct-escolhida" id="escolhida" hidden></div>
+          </div>
+          <div id="caixaRelatorios" hidden>
+            <div class="ct-drop" id="drop" role="button" tabindex="0" aria-describedby="dropAjuda">
+              <b>Relatórios do Domínio</b>
+              <span id="dropAjuda">Faturamento, Simples Nacional (PGDAS), acompanhamento de entradas, de saídas e de serviços — em PDF ou planilha. Os números deles entram no lugar dos de baixo.</span>
+              <input type="file" id="arquivos" multiple accept=".pdf,.xls,.xlsx,.csv,application/pdf" hidden>
+            </div>
+            <div class="ct-lidos" id="lidos"></div>
+            <div class="ct-msg" id="msgRel" role="status"></div>
+          </div>
+        </div>
+      </section>
+
+      <div class="ct-grade" id="grade" hidden>
+        <section class="ct-sec" aria-labelledby="tNumeros">
+          <h2 id="tNumeros">Os números dos 12 meses</h2>
+          <div id="form"></div>
+        </section>
+        <section class="ct-sec ct-res" aria-labelledby="tResultado">
+          <h2 id="tResultado">Resultado</h2>
+          <div id="resultado" aria-live="polite"></div>
+          <div class="ct-gravado" id="gravado" role="status"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { hojeLocal, formatDocumento, normalizarDocumento } from './assets/js/utils.js';
+    import { nomePorEmail } from './assets/js/equipe.js';
+    import { comparar, testarPremissas, fraseDaDecisao, TIPOS, ANEXOS, ROTULO_REGIME, REGIMES } from './assets/js/comparativo-motor.js';
+    import { entradaDoSistema, aplicarRelatorios, premissasParaTestar, prazosDaEscolha, regimeDoCadastro, FONTES, rotuloComp } from './assets/js/comparativo-dados.js';
+    import { lerRelatorio, consolidar, lerPlanilha, perfilAtividade } from './assets/js/dominio-relatorios.js';
+    import { paginasDoPdf, abasDaPlanilha, rotuloRel } from './assets/js/relatorios-arquivos.js';
+
+    const $ = id => document.getElementById(id);
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const brl = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const moeda = v => (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const pct = (v, d = 1) => (Number(v) || 0).toLocaleString('pt-BR', { maximumFractionDigits: d });
+    const semAcento = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    // "1.234.567,89", "1234567.89", "R$ 1.200" → número; vazio → null
+    function lerNumero(s) {
+      let t = String(s ?? '').replace(/[R$\s%]/g, '');
+      if (!t) return null;
+      if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
+      else if ((t.match(/\./g) || []).length > 1) t = t.replace(/\./g, '');
+      const n = Number(t);
+      return Number.isFinite(n) ? n : null;
+    }
+
+    // ---------- quem entrou ----------
+    const user = await getCurrentUser();
+    const usuario = user ? user.email : null;
+    if (user) { $('userName').textContent = user.email; $('userAvatar').textContent = (user.email || '?').charAt(0).toUpperCase(); }
+    $('btnLogout').addEventListener('click', signOut);
+
+    // ---------- o cadastro, a carteira e a CBS de 2027 ----------
+    const [rCli, rCart, rPar] = await Promise.all([
+      supabase.todosClientes('id, nome_principal, nome_fantasia, documento, regime_tributario, cnae_principal, cidade, uf, status'),
+      supabase.from('carteira_info').select('cliente_id, saida'),
+      supabase.from('rt_parametros').select('chave, valor').eq('chave', 'aliq_ref_2027').maybeSingle()
+    ]);
+    const clientes = (rCli && rCli.data) || [];
+    const naCarteira = new Set(((rCart && rCart.data) || []).filter(c => !c.saida).map(c => c.cliente_id));
+    const aliq2027 = rPar && rPar.data && rPar.data.valor ? rPar.data.valor : null;
+
+    // o estudo aberto
+    const st = { cliente: null, nome: '', entrada: null, origens: {}, notas: [], conferencia: null, rels: [], fontes: [],
+      estudoId: null, gravadoEm: null, gravadoPor: null, semTabela: false };
+
+    // os padrões que a tela mostra (os mesmos do motor): ficam na entrada pra aparecer nos campos
+    const PADROES = { compras: 0, aliqCreditoIcms: 12, pctComprasSimples: 0, despesasCredito: 0, outrasDespesas: 0, difalSimples: 0,
+      folha: 0, proLabore: 0, rat: 2, fap: 1, terceiros: 5.8, cprb: null, crescimentoReceita: 0, crescimentoFolha: 0, semLc224: false,
+      mix: { cheia: 100, red60: 0, red40: 0, red30: 0, zero: 0 }, pctImpostoEmbutido: null, pctComprasComCredito: null };
+    const PADRAO_ATIV = a => ({ aliqIcms: 17, aliqIss: 3, pctST: 0, pctMonofasico: 0, ...a });
+    function comPadroes(e) {
+      const out = { ...PADROES, ...e, mix: { ...PADROES.mix, ...(e && e.mix) } };
+      out.atividades = ((e && e.atividades) || [{ tipo: 'comercio', receita: 0 }]).map(PADRAO_ATIV);
+      return out;
+    }
+    const ORIGENS_PADRAO = {
+      crescimentoReceita: { fonte: 'padrao', texto: 'padrão: sem crescimento', dica: 'os 12 meses se repetem nos anos seguintes' },
+      crescimentoFolha: { fonte: 'padrao', texto: 'padrão: sem crescimento', dica: 'os 12 meses se repetem nos anos seguintes' },
+      fap: { fonte: 'padrao', texto: 'padrão: 1' },
+      pctComprasSimples: { fonte: 'padrao', texto: 'padrão: nenhuma', dica: 'em 2027 o crédito de CBS/IBS de compra de fornecedor do Simples é só o que ele pagou no DAS' },
+      difalSimples: { fonte: 'padrao', texto: 'padrão: nada', dica: 'diferencial de alíquota e antecipação do ICMS que o optante paga fora do DAS no ano' },
+      despesasCredito: { fonte: 'padrao', texto: 'falta no sistema' },
+      cprb: { fonte: 'padrao', texto: 'vazio: sem desoneração', dica: 'preencha a alíquota cheia da CPRB se a empresa está na desoneração da folha' }
+    };
+
+    // ---------- a busca ----------
+    const busca = $('busca'), sug = $('sugestoes');
+    function achar(txt) {
+      const t = semAcento(txt).trim(), dig = String(txt || '').replace(/\D/g, '');
+      if (t.length < 2 && dig.length < 3) return [];
+      return clientes.filter(c => semAcento(c.nome_principal).includes(t) || semAcento(c.nome_fantasia).includes(t) || (dig.length >= 3 && normalizarDocumento(c.documento || '').includes(dig)))
+        .sort((a, b) => (naCarteira.has(b.id) - naCarteira.has(a.id)) || String(a.nome_principal).localeCompare(String(b.nome_principal), 'pt-BR'))
+        .slice(0, 12);
+    }
+    function mostrarSugestoes() {
+      const lista = achar(busca.value);
+      if (!lista.length) { sug.hidden = true; busca.setAttribute('aria-expanded', 'false'); return; }
+      sug.innerHTML = lista.map(c => '<li role="option"><button type="button" data-id="' + esc(c.id) + '"' + (naCarteira.has(c.id) ? '' : ' class="ct-fora"') + '>' + esc(c.nome_principal) +
+        '<small>' + esc([c.nome_fantasia, c.documento ? formatDocumento(c.documento) : null, c.regime_tributario, naCarteira.has(c.id) ? null : 'fora da carteira'].filter(Boolean).join(' · ')) + '</small></button></li>').join('');
+      sug.hidden = false; busca.setAttribute('aria-expanded', 'true');
+    }
+    busca.addEventListener('input', mostrarSugestoes);
+    busca.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { const b = sug.querySelector('button'); if (b) { e.preventDefault(); b.click(); } }
+      if (e.key === 'ArrowDown') { const b = sug.querySelector('button'); if (b) { e.preventDefault(); b.focus(); } }
+      if (e.key === 'Escape') { sug.hidden = true; busca.setAttribute('aria-expanded', 'false'); }
+    });
+    sug.addEventListener('keydown', e => {
+      const bts = [...sug.querySelectorAll('button')], i = bts.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown' && i < bts.length - 1) { e.preventDefault(); bts[i + 1].focus(); }
+      if (e.key === 'ArrowUp') { e.preventDefault(); (i > 0 ? bts[i - 1] : busca).focus(); }
+      if (e.key === 'Escape') { sug.hidden = true; busca.focus(); }
+    });
+    sug.addEventListener('click', e => {
+      const b = e.target.closest('button[data-id]'); if (!b) return;
+      const c = clientes.find(x => x.id === b.dataset.id); if (!c) return;
+      sug.hidden = true; busca.value = ''; busca.setAttribute('aria-expanded', 'false');
+      abrirCliente(c);
+    });
+    document.addEventListener('click', e => { if (!e.target.closest('.ct-busca')) { sug.hidden = true; busca.setAttribute('aria-expanded', 'false'); } });
+
+    $('semCadastro').addEventListener('click', async () => {
+      const nome = (prompt('Nome da empresa (sem cadastro no sistema):') || '').trim();
+      if (!nome) return;
+      await gravarPendente();
+      st.cliente = null; st.nome = nome; st.estudoId = null; st.gravadoEm = null; st.gravadoPor = null; st.rels = []; st.conferencia = null;
+      st.entrada = comPadroes({ atividades: [{ tipo: 'comercio', receita: 0 }] });
+      st.origens = { ...ORIGENS_PADRAO, 'atividades.0.receita': { fonte: 'padrao', texto: 'digite a receita dos 12 meses' }, 'atividades.0.tipo': { fonte: 'padrao' },
+        compras: { fonte: 'padrao', texto: 'digite ou solte os relatórios' }, folha: { fonte: 'padrao', texto: 'digite os 12 meses', dica: 'salários, 13º e férias' }, proLabore: { fonte: 'padrao', texto: 'digite' },
+        aliqCreditoIcms: { fonte: 'padrao', texto: 'padrão: 12% — confira' }, outrasDespesas: { fonte: 'padrao', texto: 'digite: fazem o lucro do Real' }, rat: { fonte: 'padrao', texto: 'padrão: 2% e FAP 1' }, terceiros: { fonte: 'padrao', texto: 'padrão: 5,8%' } };
+      st.notas = []; st.fontes = [];
+      $('lidos').innerHTML = ''; $('msgRel').textContent = '';
+      renderEmpresa(); renderForm(); calcular(); $('gravado').textContent = '';
+    });
+
+    // ---------- abrir a empresa: o que o sistema sabe e o estudo gravado ----------
+    const erroSemTabela = e => !!e && (e.code === 'PGRST205' || e.code === '42P01' || /comparativos/.test(e.message || '') && /(exist|find|schema)/i.test(e.message || ''));
+    async function abrirCliente(c) {
+      await gravarPendente();   // a mudança da empresa de antes grava antes da troca
+      st.cliente = c; st.nome = c.nome_principal; st.rels = []; st.estudoId = null; st.gravadoEm = null; st.gravadoPor = null;
+      $('lidos').innerHTML = ''; $('msgRel').textContent = ''; $('gravado').textContent = '';
+      history.replaceState(null, '', location.pathname + '?cliente=' + encodeURIComponent(c.id));
+      $('escolhida').hidden = false; $('escolhida').innerHTML = '<p>Lendo o que o sistema sabe de ' + esc(c.nome_principal) + '…</p>';
+      const [rCaso, rFr, rPg, rEst] = await Promise.all([
+        supabase.from('rt_casos').select('id, anexo, rbt12, receita_mensal, sim_obs, atualizado_em').eq('cliente_id', c.id).order('atualizado_em', { ascending: false }).limit(1),
+        supabase.from('fr_empresas').select('id').eq('cliente_id', c.id).limit(1),
+        supabase.from('receita_pgdas').select('competencia, receita_mes').eq('cliente_id', c.id).order('competencia', { ascending: false }).limit(12),
+        supabase.from('comparativos').select('id, entrada, atualizado_em, atualizado_por').eq('cliente_id', c.id).order('atualizado_em', { ascending: false }).limit(1)
+      ]);
+      let fr = [];
+      const frEmp = rFr && rFr.data && rFr.data[0];
+      if (frEmp) { const r = await supabase.from('fr_lancamentos').select('competencia, folha_salarios, folha_outros, prolabore').eq('empresa_id', frEmp.id).order('competencia', { ascending: false }).limit(12); fr = (r && r.data) || []; }
+      if (st.cliente !== c) return;   // trocou de empresa no meio da leitura
+      const caso = rCaso && rCaso.data && rCaso.data[0] || null;
+      const pg = (rPg && rPg.data) || [];
+      const sis = entradaDoSistema({ cliente: c, caso, fatorR: fr, pgdas: pg });
+      st.fontes = [
+        { ok: !!caso, txt: caso ? 'caso da Reforma' : 'sem caso na Reforma' },
+        { ok: fr.length > 0, txt: fr.length ? 'Fator R (' + fr.length + (fr.length === 1 ? ' mês)' : ' meses)') : 'sem folha no Fator R' },
+        { ok: pg.length > 0, txt: pg.length ? 'PGDAS na Receita (' + pg.length + (pg.length === 1 ? ' mês)' : ' meses)') : 'sem PGDAS da Receita' }
+      ];
+      st.semTabela = erroSemTabela(rEst && rEst.error);
+      const salvo = !st.semTabela && rEst && rEst.data && rEst.data[0];
+      if (salvo && salvo.entrada && salvo.entrada.entrada) {
+        st.estudoId = salvo.id; st.gravadoEm = salvo.atualizado_em; st.gravadoPor = salvo.atualizado_por;
+        st.entrada = comPadroes(salvo.entrada.entrada); st.origens = salvo.entrada.origens || {}; st.conferencia = salvo.entrada.conferencia || sis.conferencia;
+      } else {
+        st.entrada = comPadroes(sis.entrada); st.origens = { ...ORIGENS_PADRAO, ...sis.origens }; st.conferencia = sis.conferencia;
+      }
+      st.notas = sis.notas;
+      st.sistema = sis;
+      renderEmpresa(); renderForm(); calcular();
+      if (st.estudoId) $('gravado').textContent = 'Estudo gravado em ' + new Date(st.gravadoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) + (st.gravadoPor ? ' por ' + (nomePorEmail(st.gravadoPor) || st.gravadoPor) : '') + '.';
+    }
+
+    function renderEmpresa() {
+      const c = st.cliente;
+      const reg = st.entrada.regimeAtual || '';
+      const opRegime = '<label>Regime de hoje <select class="select" id="regimeAtual"><option value="">—</option>' + REGIMES.map(r => '<option value="' + r + '"' + (r === reg ? ' selected' : '') + '>' + esc(ROTULO_REGIME[r]) + '</option>').join('') + '</select></label>';
+      const fontes = st.fontes.length ? '<div class="ct-fontes">' + st.fontes.map(f => '<span class="ct-chip' + (f.ok ? '' : ' ct-nao') + '">' + esc(f.txt) + '</span>').join('') + '</div>' : '';
+      const recomecar = st.estudoId && c ? '<button type="button" class="btn btn-ghost btn-sm" id="recomecar">Recomeçar com os números do sistema</button>' : '';
+      $('escolhida').hidden = false;
+      $('escolhida').innerHTML = '<h3>' + esc(c ? c.nome_principal : st.nome) + '</h3>' +
+        (c ? '<p>' + esc([c.nome_fantasia, c.documento ? formatDocumento(c.documento) : null, c.cnae_principal ? 'CNAE ' + c.cnae_principal : null, c.cidade ? c.cidade + (c.uf ? '/' + c.uf : '') : null].filter(Boolean).join(' · ')) +
+          ' · <a href="clientes/editar.html?id=' + encodeURIComponent(c.id) + '">abrir a ficha</a></p>' : '<p>sem cadastro no sistema</p>') +
+        '<div class="ct-linha-acoes">' + opRegime + recomecar + '</div>' + fontes;
+      $('caixaRelatorios').hidden = false;
+      $('grade').hidden = false;
+      $('regimeAtual').addEventListener('change', e => { st.entrada.regimeAtual = e.target.value || null; mudou(); });
+      if ($('recomecar')) $('recomecar').addEventListener('click', () => {
+        if (!confirm('Trocar os números deste estudo pelos que o sistema tem hoje? O que foi digitado se perde.')) return;
+        st.entrada = comPadroes(st.sistema.entrada); st.origens = { ...ORIGENS_PADRAO, ...st.sistema.origens }; st.conferencia = st.sistema.conferencia;
+        renderForm(); mudou();
+      });
+    }
+
+    // ---------- o formulário ----------
+    const CAMPOS = {
+      compras: { rotulo: 'Compras de mercadorias e insumos', un: 'R$' },
+      aliqCreditoIcms: { rotulo: 'Crédito de ICMS das compras', un: '%' },
+      pctComprasSimples: { rotulo: 'Compras de fornecedor do Simples', un: '%' },
+      despesasCredito: { rotulo: 'Despesas com crédito (energia, aluguel de empresa, frete)', un: 'R$' },
+      outrasDespesas: { rotulo: 'Outras despesas (o resto dos custos)', un: 'R$' },
+      difalSimples: { rotulo: 'ICMS pago fora do DAS (diferencial e antecipação)', un: 'R$' },
+      folha: { rotulo: 'Folha (salários, 13º e férias)', un: 'R$' },
+      proLabore: { rotulo: 'Pró-labore', un: 'R$' },
+      rat: { rotulo: 'RAT', un: '%' }, fap: { rotulo: 'FAP', un: '' }, terceiros: { rotulo: 'Terceiros (sistema S)', un: '%' },
+      cprb: { rotulo: 'CPRB (desoneração da folha)', un: '%' },
+      crescimentoReceita: { rotulo: 'Crescimento da receita', un: '% ao ano' }, crescimentoFolha: { rotulo: 'Crescimento da folha', un: '% ao ano' },
+      pctImpostoEmbutido: { rotulo: 'Imposto embutido nas compras (ICMS, ST, IPI)', un: '%' },
+      pctComprasComCredito: { rotulo: 'Compras com crédito cheio de CBS/IBS (pelo NCM)', un: '%' },
+      'mix.cheia': { rotulo: 'Vendas com alíquota cheia', un: '%' }, 'mix.red60': { rotulo: 'Com redução de 60%', un: '%' }, 'mix.red30': { rotulo: 'Com redução de 30%', un: '%' },
+      'mix.red40': { rotulo: 'Bares e restaurantes (−40%)', un: '%' }, 'mix.zero': { rotulo: 'Alíquota zero', un: '%' },
+      'ativ.receita': { rotulo: 'Receita dos 12 meses', un: 'R$' }, 'ativ.aliqIcms': { rotulo: 'ICMS das vendas', un: '%' }, 'ativ.pctST': { rotulo: 'Vendas com ICMS-ST', un: '%' },
+      'ativ.pctMonofasico': { rotulo: 'Revenda monofásica (PIS/Cofins)', un: '%' }, 'ativ.aliqIss': { rotulo: 'ISS', un: '%' },
+      'ativ.presIrpj': { rotulo: 'Presunção do IRPJ', un: '%' }, 'ativ.presCsll': { rotulo: 'Presunção da CSLL', un: '%' }
+    };
+    const pegar = (o, caminho) => caminho.split('.').reduce((x, k) => x == null ? x : x[k], o);
+    function definir(o, caminho, v) { const p = caminho.split('.'); let x = o; for (let i = 0; i < p.length - 1; i++) x = x[p[i]] = x[p[i]] ?? {}; x[p[p.length - 1]] = v; }
+    const formatar = (v, un) => v == null || v === '' ? '' : un === 'R$' ? moeda(v) : pct(v, 4);
+    function tag(campo) {
+      const o = st.origens[campo];
+      const f = o ? o.fonte : 'padrao';
+      const visivel = o && o.texto ? o.texto : FONTES[f] || '';
+      return '<small class="ct-orig" data-orig="' + esc(campo) + '" data-fonte="' + esc(f) + '" title="' + esc(o && o.dica ? visivel + ' — ' + o.dica : visivel) + '">' + esc(visivel) + '</small>';
+    }
+    function campo(caminho, def) {
+      const d = CAMPOS[def || caminho];
+      const id = 'f_' + caminho.replace(/\./g, '_');
+      const v = pegar(st.entrada, caminho);
+      return '<label class="ct-campo" for="' + id + '">' + esc(d.rotulo) +
+        '<span class="ct-un" data-un="' + esc(d.un === 'R$' ? '' : d.un) + '"><input class="input" id="' + id + '" data-campo="' + esc(caminho) + '" data-un="' + esc(d.un) + '" inputmode="decimal" value="' + esc(formatar(v, d.un)) + '"></span>' +
+        tag(caminho) + '</label>';
+    }
+    function blocoAtividade(a, i) {
+      const t = TIPOS[a.tipo] || TIPOS.comercio;
+      const tributo = a.tributo || t.tributo;
+      const p = 'atividades.' + i;
+      const opTipos = Object.entries(TIPOS).map(([k, x]) => '<option value="' + k + '"' + (k === a.tipo ? ' selected' : '') + '>' + esc(x.rotulo) + '</option>').join('');
+      const anexo = a.anexo || t.anexo;
+      return '<div class="ct-ativ" data-i="' + i + '">' +
+        '<div class="ct-ativ-topo">' +
+          '<label class="ct-campo" for="f_' + p.replace('.', '_') + '_tipo">Atividade<select class="select" id="f_' + p.replace('.', '_') + '_tipo" data-campo="' + p + '.tipo">' + opTipos + '</select>' + tag(p + '.tipo') + '</label>' +
+          campo(p + '.receita', 'ativ.receita') +
+          (st.entrada.atividades.length > 1 ? '<button type="button" class="ct-x" data-acao="tirar" data-i="' + i + '" aria-label="Tirar esta atividade" title="Tirar esta atividade">✕</button>' : '<span></span>') +
+        '</div>' +
+        '<div class="ct-campos">' +
+          (tributo === 'icms' ? campo(p + '.aliqIcms', 'ativ.aliqIcms') + campo(p + '.pctST', 'ativ.pctST') + (a.tipo === 'comercio' ? campo(p + '.pctMonofasico', 'ativ.pctMonofasico') : '') : campo(p + '.aliqIss', 'ativ.aliqIss')) +
+        '</div>' +
+        '<details class="ct-ajuste"><summary>Anexo do Simples e presunção do Presumido</summary><div class="ct-campos">' +
+          '<label class="ct-campo">Anexo do Simples<select class="select" data-campo="' + p + '.anexo">' + ANEXOS.map(x => '<option' + (x === anexo ? ' selected' : '') + '>' + x + '</option>').join('') + '</select></label>' +
+          (a.tipo === 'servico_r' ? '<label class="ct-campo"><span><input type="checkbox" data-campo="' + p + '.fatorR"' + (a.fatorR === false ? '' : ' checked') + '> Anexo pelo fator r (III com folha ≥ 28%)</span></label>' : '') +
+          campo(p + '.presIrpj', 'ativ.presIrpj').replace('value=""', 'value="' + esc(pct(a.presIrpj ?? t.presIrpj)) + '"') +
+          campo(p + '.presCsll', 'ativ.presCsll').replace('value=""', 'value="' + esc(pct(a.presCsll ?? t.presCsll)) + '"') +
+          '<label class="ct-campo">Tributo da operação<select class="select" data-campo="' + p + '.tributo"><option value="icms"' + (tributo === 'icms' ? ' selected' : '') + '>ICMS</option><option value="iss"' + (tributo === 'iss' ? ' selected' : '') + '>ISS</option></select></label>' +
+          (a.tipo === 'industria' ? '<label class="ct-campo"><span><input type="checkbox" data-campo="' + p + '.ipiMantido"' + (a.ipiMantido ? ' checked' : '') + '> IPI mantido (Zona Franca): segue no Anexo II em 2027</span></label>' : '') +
+        '</div></details>' +
+      '</div>';
+    }
+    function renderForm() {
+      const e = st.entrada;
+      const totalRec = e.atividades.reduce((s, a) => s + (Number(a.receita) || 0), 0);
+      const temIcms = e.atividades.some(a => (a.tributo || (TIPOS[a.tipo] || {}).tributo) === 'icms');
+      $('form').innerHTML =
+        '<fieldset class="ct-grupo"><legend>Receita</legend>' + e.atividades.map(blocoAtividade).join('') +
+          '<div class="ct-total-rec" id="totalRec">Receita dos 12 meses: <b>' + esc(brl(totalRec)) + '</b></div>' +
+          '<button type="button" class="btn btn-ghost btn-sm" data-acao="mais">+ Outra atividade</button></fieldset>' +
+        '<fieldset class="ct-grupo"><legend>Compras e despesas</legend><div class="ct-campos">' +
+          campo('compras') + (temIcms ? campo('aliqCreditoIcms') : '') + campo('pctComprasSimples') + campo('despesasCredito') + campo('outrasDespesas') + (temIcms ? campo('difalSimples') : '') +
+        '</div></fieldset>' +
+        '<fieldset class="ct-grupo"><legend>Folha</legend><div class="ct-campos">' +
+          campo('folha') + campo('proLabore') + campo('rat') + campo('fap') + campo('terceiros') + campo('cprb') +
+        '</div></fieldset>' +
+        '<fieldset class="ct-grupo"><legend>Projeção</legend><div class="ct-campos">' +
+          campo('crescimentoReceita') + campo('crescimentoFolha') +
+          '<label class="ct-campo"><span><input type="checkbox" data-campo="semLc224"' + (e.semLc224 ? ' checked' : '') + '> Empresa com liminar contra o aumento do Presumido (LC 224/2025)</span><small class="ct-orig">o aumento vale na parte da receita acima de R$ 5 milhões por ano</small></label>' +
+        '</div></fieldset>' +
+        '<details class="ct-mais"><summary>Reforma (2027): as alíquotas das vendas e o crédito das compras</summary><div class="ct-campos">' +
+          campo('mix.cheia') + campo('mix.red60') + campo('mix.red30') + campo('mix.red40') + campo('mix.zero') + campo('pctComprasComCredito') + campo('pctImpostoEmbutido') +
+        '</div><small class="ct-orig">O mix soma 100%. Sem o crédito pelo NCM, as compras seguem o mix das vendas; sem o imposto embutido, vale a alíquota do crédito de ICMS.</small></details>';
+    }
+
+    // o que a pessoa muda vira "digitado"
+    $('form').addEventListener('input', e => {
+      const el = e.target.closest('[data-campo]'); if (!el || el.tagName === 'SELECT' || el.type === 'checkbox') return;
+      const caminho = el.dataset.campo;
+      const n = lerNumero(el.value);
+      const vazio = caminho === 'cprb' || caminho === 'pctImpostoEmbutido' || caminho === 'pctComprasComCredito';
+      definir(st.entrada, caminho, n == null ? (vazio ? null : 0) : n);
+      st.origens[caminho] = { fonte: 'digitado', texto: FONTES.digitado };
+      const t = document.querySelector('.ct-orig[data-orig="' + CSS.escape(caminho) + '"]');
+      if (t) { t.dataset.fonte = 'digitado'; t.textContent = FONTES.digitado; t.title = FONTES.digitado; }
+      if (/^atividades\.\d+\.receita$/.test(caminho)) $('totalRec').innerHTML = 'Receita dos 12 meses: <b>' + esc(brl(st.entrada.atividades.reduce((s, a) => s + (Number(a.receita) || 0), 0))) + '</b>';
+      mudou();
+    });
+    $('form').addEventListener('focusout', e => {
+      const el = e.target.closest('input[data-campo]'); if (!el || el.type === 'checkbox') return;
+      el.value = formatar(pegar(st.entrada, el.dataset.campo), el.dataset.un);
+    });
+    $('form').addEventListener('change', e => {
+      const el = e.target.closest('[data-campo]'); if (!el) return;
+      const caminho = el.dataset.campo;
+      if (el.type === 'checkbox') { definir(st.entrada, caminho, el.checked); mudou(); return; }
+      if (el.tagName !== 'SELECT') return;
+      const m = /^atividades\.(\d+)\.tipo$/.exec(caminho);
+      if (m) {
+        // outro tipo: anexo, presunção e tributo voltam aos do tipo novo
+        const i = +m[1], a = st.entrada.atividades[i];
+        st.entrada.atividades[i] = { ...PADRAO_ATIV({}), tipo: el.value, receita: a.receita, aliqIcms: a.aliqIcms, aliqIss: a.aliqIss, pctST: a.pctST, pctMonofasico: a.pctMonofasico };
+        st.origens[caminho] = { fonte: 'digitado' };
+        renderForm(); mudou(); return;
+      }
+      definir(st.entrada, caminho, el.value);
+      st.origens[caminho] = { fonte: 'digitado' };
+      if (/\.tributo$/.test(caminho)) renderForm();
+      mudou();
+    });
+    $('form').addEventListener('click', e => {
+      const b = e.target.closest('[data-acao]'); if (!b) return;
+      if (b.dataset.acao === 'mais') {
+        st.entrada.atividades.push(PADRAO_ATIV({ tipo: 'servico', receita: 0 }));
+        const i = st.entrada.atividades.length - 1;
+        st.origens['atividades.' + i + '.receita'] = { fonte: 'padrao', texto: 'digite a receita desta atividade' };
+        renderForm();
+        const el = $('f_atividades_' + i + '_receita'); if (el) el.focus();
+        mudou();
+      }
+      if (b.dataset.acao === 'tirar') {
+        const i = +b.dataset.i;
+        st.entrada.atividades.splice(i, 1);
+        // as origens das linhas de baixo sobem uma posição
+        const novo = {};
+        Object.entries(st.origens).forEach(([k, v]) => {
+          const m = /^atividades\.(\d+)\.(.+)$/.exec(k);
+          if (!m) { novo[k] = v; return; }
+          const j = +m[1];
+          if (j < i) novo[k] = v; else if (j > i) novo['atividades.' + (j - 1) + '.' + m[2]] = v;
+        });
+        st.origens = novo;
+        renderForm(); mudou();
+      }
+    });
+
+    // ---------- a conta ----------
+    let tCalc = null, tGravar = null;
+    function mudou() {
+      clearTimeout(tCalc); tCalc = setTimeout(calcular, 250);
+      clearTimeout(tGravar); tGravar = setTimeout(gravar, 1500);
+    }
+    // a entrada como o motor lê: os padrões vazios (null) ficam de fora pra o motor usar os dele
+    function entradaDoMotor() {
+      const e = JSON.parse(JSON.stringify(st.entrada));
+      ['cprb', 'pctImpostoEmbutido', 'pctComprasComCredito'].forEach(k => { if (e[k] == null) delete e[k]; });
+      return { ...e, aliq2027 };
+    }
+    let ultimo = null;
+    function calcular() {
+      const box = $('resultado');
+      let c, testes = [];
+      try {
+        c = comparar(entradaDoMotor());
+        testes = testarPremissas(entradaDoMotor(), premissasParaTestar(st.entrada, st.origens));
+      } catch (err) {
+        ultimo = null;
+        box.innerHTML = '<p class="ct-vazio">' + esc(err.message) + '</p>';
+        return;
+      }
+      ultimo = c;
+      const d = c.decisao;
+      const anos = c.anos;
+      const atual = st.entrada.regimeAtual;
+      // a tabela: um regime por linha, um ano por coluna; o mais barato de cada ano em verde
+      const cab = '<tr><th>Regime</th>' + anos.map(r => '<th>' + (r.k === 0 ? 'Últimos 12 meses<br><small>regras de ' + r.ano + '</small>' : r.ano) + '</th>').join('') + '</tr>';
+      const linhaRec = '<tr class="ct-rec"><td>Receita</td>' + anos.map(r => '<td>' + esc(brl(r.receita)) + '</td>').join('') + '</tr>';
+      const linhas = REGIMES.map(g => '<tr><td>' + esc(ROTULO_REGIME[g]) + (g === atual ? '<span class="ct-hoje">(hoje)</span>' : '') + '</td>' + anos.map(r => {
+        const x = r[g];
+        if (!x.disponivel) return '<td class="ct-indisp" title="' + esc(x.motivo || '') + '">fora do limite</td>';
+        const melhor = r.melhor === g;
+        return '<td' + (melhor ? ' class="ct-melhor"' : '') + '><b>' + esc(brl(x.total)) + '</b>' + (melhor ? '<span class="ct-tag">mais barato</span>' : '') + '<small>' + esc(pct(x.aliquota * 100, 2)) + '% da receita</small></td>';
+      }).join('') + '</tr>').join('');
+      // por tributo
+      const det = REGIMES.map(g => {
+        const nomes = [];
+        anos.forEach(r => (r[g].itens || []).forEach(it => { if (!nomes.includes(it.tributo)) nomes.push(it.tributo); }));
+        if (!nomes.length) return '';
+        return '<h4>' + esc(ROTULO_REGIME[g]) + '</h4><div class="ct-tab"><table class="ct ct-mini"><tr><th>Tributo</th>' + anos.map(r => '<th>' + (r.k === 0 ? '12 meses' : r.ano) + '</th>').join('') + '</tr>' +
+          nomes.map(nm => '<tr><td>' + esc(nm) + '</td>' + anos.map(r => { const it = (r[g].itens || []).find(x => x.tributo === nm); return '<td>' + (r[g].disponivel ? esc(it ? moeda(it.valor) : '—') : '—') + '</td>'; }).join('') + '</tr>').join('') +
+          (g === 'real' ? '<tr class="ct-rec"><td>Lucro antes do IR (calculado)</td>' + anos.map(r => '<td>' + esc(moeda(r.real.lucro)) + '</td>').join('') + '</tr>' : '') +
+          (g === 'simples' ? '<tr class="ct-rec"><td>Fator r (média)</td>' + anos.map(r => '<td>' + (r.simples.disponivel && r.simples.fatorR != null && r.simples.anexosServico && r.simples.anexosServico.length ? esc(pct(r.simples.fatorR * 100, 1)) + '%' : '—') + '</td>').join('') + '</tr>' : '') +
+          '</table></div>';
+      }).join('');
+      // a conferência com o PGDAS (a alíquota efetiva declarada × a da conta nos 12 meses)
+      let conf = '';
+      const b0 = anos[0];
+      if (st.conferencia && b0 && b0.simples.disponivel && b0.receita > 0) {
+        const nossa = b0.simples.das / b0.receita * 100, deles = st.conferencia.aliquota;
+        const longe = Math.abs(nossa - deles) > 0.5;
+        conf = '<p class="ct-sub' + (longe ? ' ct-alerta' : '') + '">Conferência: no PGDAS de ' + esc(rotuloComp(st.conferencia.competencia)) + ' a alíquota efetiva foi ' + esc(pct(deles, 2)) + '%; a conta do Simples nos 12 meses dá ' + esc(pct(nossa, 2)) + '%.' +
+          (longe ? ' A diferença pode ser receita em outro anexo, ST ou monofásico, ou o RBT12 — confira as linhas de receita.' : '') + '</p>';
+      }
+      // o que muda o resultado: o lucro do Real e as premissas que ficaram no padrão
+      const muda = [];
+      if (d && d.real) {
+        const ep = d.real.empate.presumido, es = d.real.empate.simples;
+        const lucroTxt = d.real.lucro < 0 ? 'a conta deu prejuízo de ' + brl(-d.real.lucro) : 'a conta usou lucro de ' + brl(d.real.lucro) + (d.real.margem != null ? ' (' + pct(d.real.margem * 100) + '% da receita)' : '');
+        if (ep) muda.push(ep.nunca ? 'Nem com lucro zero o Real fica abaixo do Presumido em ' + d.ano + '.' : 'O Real empata com o Presumido em ' + d.ano + ' com lucro de ' + brl(ep.lucro) + ' antes do IR (' + pct(ep.margem * 100) + '% da receita) — abaixo disso, o Real é mais barato; ' + lucroTxt + '.');
+        if (es && r0(c, 'simples')) muda.push(es.nunca ? 'Nem com lucro zero o Real fica abaixo do Simples em ' + d.ano + '.' : 'O Real empata com o Simples em ' + d.ano + ' com lucro de ' + brl(es.lucro) + ' (' + pct(es.margem * 100) + '% da receita).');
+      }
+      const mudam = testes.filter(t => t.muda), naoMudam = testes.filter(t => !t.muda);
+      // "7%", "50% das compras"
+      const un = t => !t.unidade ? '' : t.unidade.startsWith('%') ? t.unidade : ' ' + t.unidade;
+      mudam.forEach(t => {
+        const v = t.variantes.filter(x => x.melhor !== t.melhorBase).map(x => pct(x.valor, 2) + un(t) + ', o mais barato passa a ser o ' + ROTULO_REGIME[x.melhor]).join('; com ');
+        muda.push({ txt: 'Com ' + t.rotulo + ' em ' + v + '. O número usado é um padrão — confira.', alerta: true });
+      });
+      if (naoMudam.length) muda.push('Não mudam o resultado: ' + naoMudam.map(t => t.rotulo + (t.variantes.length === 1 ? ' em ' + pct(t.variantes[0].valor, 2) + un(t) : ' entre ' + t.variantes.map(x => pct(x.valor, 2)).join(' e ') + un(t))).join('; ') + '.');
+      const temFolha = (Number(st.entrada.folha) || 0) + (Number(st.entrada.proLabore) || 0) > 0;
+      const avisos = [...new Set([...(st.notas || []).filter(n => !(temFolha && /^A folha e o pró-labore não estão no sistema/.test(n))), ...c.avisos, ...REGIMES.flatMap(g => (anos.find(r => r.ano === c.anoDecisao) || anos[0])[g].avisos || [])])];
+      const prazos = prazosDaEscolha(hojeLocal(), atual, c.anoDecisao);
+      box.innerHTML =
+        '<p class="ct-frase">' + esc(fraseDaDecisao(c)) + '</p>' +
+        conf +
+        '<div class="ct-tab"><table class="ct" aria-label="Tributos por regime e por ano">' + cab + linhaRec + linhas + '</table></div>' +
+        '<details class="ct-det"><summary>Por tributo</summary>' + det + '</details>' +
+        (muda.length ? '<div class="ct-bloco"><h3>O que muda o resultado</h3><ul>' + muda.map(m => typeof m === 'string' ? '<li>' + esc(m) + '</li>' : '<li class="ct-muda">' + esc(m.txt) + '</li>').join('') + '</ul></div>' : '') +
+        (prazos.length ? '<div class="ct-bloco ct-prazos"><h3>Prazos pra decidir</h3><ul>' + prazos.map(p => '<li><b>' + esc(p.titulo) + ':</b> ' + esc(p.texto) + '</li>').join('') + '</ul></div>' : '') +
+        '<div class="ct-bloco"><h3>Premissas e avisos</h3><ul>' +
+          '<li>Todo tributo é calculado sobre a receita de hoje e conta como custo da empresa. Em 2027, a CBS/IBS do Presumido e do Real vai destacada na nota e o cliente empresa do regime regular a credita; a opção do Simples por fora está na <a href="fiscal-reforma.html">Reforma Tributária</a>.</li>' +
+          '<li>CBS de 2027: referência de ' + esc(pct((aliq2027 && aliq2027.cbs) || 11.3, 2)) + '%, a calculada pelo TCU, menos 0,1 ponto; IBS de 0,1%. Fora da conta: IPI, receitas financeiras, ajustes do lucro do Real, lucros e dividendos (Lei 15.270) e os anos de 2029 em diante.</li>' +
+          avisos.map(a => '<li>' + esc(a) + '</li>').join('') + '</ul></div>';
+    }
+    const anoDe = (c, ano) => c.anos.find(r => r.ano === ano) || c.anos[0];
+    const r0 = (c, g, ano) => { const r = anoDe(c, ano || c.anoDecisao); return r && r[g] && r[g].disponivel; };
+
+    // ---------- gravar (sem botão: cada mudança grava um instante depois) ----------
+    let gravando = null;
+    // a gravação marcada pra daqui a pouco, já (antes de trocar de empresa)
+    async function gravarPendente() { if (tGravar) { clearTimeout(tGravar); tGravar = null; await gravar(); } }
+    async function gravar() {
+      tGravar = null;
+      if (!st.entrada || (!st.cliente && !st.nome)) return;
+      if (st.semTabela) { $('gravado').textContent = 'Os estudos ainda não ficam gravados: a gravação não foi liberada no banco.'; return; }
+      if (gravando) { await gravando.catch(() => {}); }
+      const c = ultimo;
+      const resultado = c && c.decisao ? {
+        anoDecisao: c.anoDecisao, melhor: c.decisao.melhor, diferenca: c.decisao.diferenca,
+        totais: Object.fromEntries(c.anos.map(r => [r.k === 0 ? 'base' : String(r.ano), Object.fromEntries(REGIMES.map(g => [g, r[g].disponivel ? Math.round(r[g].total * 100) / 100 : null]))]))
+      } : null;
+      const agora = new Date().toISOString();
+      const linha = { cliente_id: st.cliente ? st.cliente.id : null, nome: st.cliente ? null : st.nome,
+        entrada: { v: 1, entrada: st.entrada, origens: st.origens, conferencia: st.conferencia }, resultado, atualizado_por: usuario, atualizado_em: agora };
+      $('gravado').classList.remove('ct-erro'); $('gravado').textContent = 'Gravando…';
+      gravando = (async () => {
+        const r = st.estudoId
+          ? await supabase.from('comparativos').update(linha).eq('id', st.estudoId)
+          : await supabase.from('comparativos').insert({ ...linha, criado_por: usuario }).select('id').single();
+        if (r.error) {
+          if (erroSemTabela(r.error)) { st.semTabela = true; $('gravado').textContent = 'Os estudos ainda não ficam gravados: a gravação não foi liberada no banco.'; return; }
+          $('gravado').classList.add('ct-erro'); $('gravado').textContent = 'Não gravou: ' + (r.error.message || 'erro do banco') + '. A próxima mudança tenta de novo.'; return;
+        }
+        if (!st.estudoId && r.data) st.estudoId = r.data.id;
+        st.gravadoEm = agora;
+        $('gravado').textContent = 'Gravado às ' + new Date(agora).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) + '.';
+      })();
+      await gravando; gravando = null;
+    }
+    window.addEventListener('pagehide', () => { if (tGravar) { clearTimeout(tGravar); tGravar = null; gravar(); } });
+
+    // ---------- os relatórios do Domínio ----------
+    const drop = $('drop'), inp = $('arquivos');
+    drop.addEventListener('click', () => inp.click());
+    drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inp.click(); } });
+    inp.addEventListener('change', () => { const f = [...inp.files]; inp.value = ''; lerRelatorios(f); });
+    ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('is-over'); }));
+    ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('is-over'); }));
+    drop.addEventListener('drop', e => lerRelatorios([...(e.dataTransfer && e.dataTransfer.files || [])]));
+    let lendo = false;
+    async function lerRelatorios(files) {
+      if (lendo || !files.length) return;
+      lendo = true;
+      const docEmpresa = st.cliente && st.cliente.documento ? normalizarDocumento(st.cliente.documento) : null;
+      $('msgRel').textContent = 'Lendo ' + files.length + ' arquivo(s)…';
+      const chip = (txt, err, title) => $('lidos').insertAdjacentHTML('beforeend', '<span class="ct-chip' + (err ? ' ct-err' : '') + '"' + (title ? ' title="' + esc(title) + '"' : '') + '>' + esc(txt) + '</span>');
+      for (const f of files) {
+        try {
+          let rel;
+          if (/\.pdf$/i.test(f.name)) rel = lerRelatorio(await paginasDoPdf(f));
+          else if (/\.(xls|xlsx|csv)$/i.test(f.name)) {
+            const abas = await abasDaPlanilha(f);
+            let erro = null;
+            for (const aba of abas) { try { rel = lerPlanilha(aba.linhas); break; } catch (e) { erro = e; } }
+            if (!rel) throw erro || new Error('planilha sem aba reconhecida');
+          } else { chip(f.name + ' · fora do padrão (PDF ou planilha)', true); continue; }
+          if (docEmpresa && rel.cnpj && rel.cnpj !== docEmpresa) { chip(f.name + ' · de outra empresa (CNPJ ' + formatDocumento(rel.cnpj) + ') — não entrou', true); continue; }
+          st.rels.push(rel);
+          chip(f.name + ' · ' + rotuloRel(rel));
+        } catch (e) { chip(f.name + ' · não lido', true, e.message || ''); }
+      }
+      $('msgRel').textContent = '';
+      lendo = false;
+      if (!st.rels.length) return;
+      const sim = st.rels.filter(r => r.tipo === 'simples').slice(-1)[0];
+      const cnae = st.cliente && st.cliente.cnae_principal || '';
+      const cons = consolidar(st.rels, null, { perfil: perfilAtividade({ cnae, anexo: sim && sim.anexoPredominante }), varejo: String(cnae).replace(/\D/g, '').startsWith('47') });
+      const ap = aplicarRelatorios(st.entrada, st.origens, cons);
+      st.entrada = comPadroes({ ...ap.entrada, regimeAtual: st.entrada.regimeAtual });
+      st.origens = ap.origens;
+      if (ap.conferencia) st.conferencia = ap.conferencia;
+      (cons.avisos || []).forEach(a => { if (!st.notas.includes(a)) st.notas.push(a); });
+      renderForm(); mudou();
+    }
+
+    // ---------- o link direto: ?cliente=<id> ----------
+    const pedido = new URLSearchParams(location.search).get('cliente');
+    if (pedido) { const c = clientes.find(x => x.id === pedido); if (c) abrirCliente(c); }
+  </script>
+</body>
+</html>

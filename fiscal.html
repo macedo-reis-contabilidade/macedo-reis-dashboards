@@ -22,6 +22,7 @@
     a[href="fiscal-sugestoes.html"]  .dashboard-card-icon { background: rgba(224,143,168,.15); color:#E08FA8; }
     a[href="fator-r.html"]           .dashboard-card-icon { background: rgba(82,208,165,.16);  color:#52D0A5; }
     a[href="fiscal-destda.html"]     .dashboard-card-icon { background: rgba(91,184,214,.15);  color:#5BB8D6; }
+    a[href="fiscal-comparativo.html"] .dashboard-card-icon { background: rgba(156,196,107,.16); color:#9CC46B; }
 
     /* Selo "hoje" (urgência do dia) — canto superior direito */
     .badge-hoje { position:absolute; top:14px; right:14px; background:rgba(227,179,65,.18); border:1px solid rgba(227,179,65,.5); color:var(--warn); font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.04em; text-transform:uppercase; box-shadow:0 0 0 3px rgba(227,179,65,.06); }
@@ -96,6 +97,14 @@
           <h3>Reforma Tributária</h3>
           <p>Opção IBS/CBS 2027: triagem dos clientes do Simples, simulador por dentro × por fora, decisão e comunicados — prazo 30/10.</p>
           <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="fiscal-reforma.html">·</span></div>
+        </a>
+        <a href="fiscal-comparativo.html" class="dashboard-card">
+          <div class="dashboard-card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="3" x2="12" y2="21"/><path d="M5 21h14"/><path d="M4 7h16"/><path d="M4 7l-3 7a3 3 0 0 0 6 0z"/><path d="M20 7l-3 7a3 3 0 0 0 6 0z"/></svg>
+          </div>
+          <h3>Comparativo tributário</h3>
+          <p>Quanto a empresa paga no Simples, no Presumido e no Real: os últimos 12 meses e as projeções de 2027 e 2028, já com a CBS no lugar do PIS/Cofins.</p>
+          <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="fiscal-comparativo.html">·</span></div>
         </a>
         <a href="fiscal-regularizacao.html" class="dashboard-card">
           <div class="dashboard-card-icon">&#9878;&#65039;</div>
@@ -191,6 +200,10 @@
         const { count: rtPend } = await supabase.from('rt_casos')
           .select('id', { count: 'exact', head: true }).eq('decisao', 'pendente');
         setBadge('fiscal-reforma.html', (rtPend ?? 0) + ' sem decisão');
+
+        // o Comparativo tributário: quantos estudos gravados (sem a tabela ainda, "—")
+        const { count: estudos, error: eEst } = await supabase.from('comparativos').select('id', { count: 'exact', head: true });
+        setBadge('fiscal-comparativo.html', eEst ? '—' : (estudos ?? 0) + (estudos === 1 ? ' estudo' : ' estudos'));
 
         const { count: regAbertas } = await supabase.from('regularizacoes')
           .select('id', { count: 'exact', head: true }).neq('status', 'regularizado').neq('status', 'sem_acordo');
