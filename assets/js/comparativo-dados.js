@@ -25,8 +25,11 @@ export const FONTES = {
   cadastro: 'cadastro',
   padrao: 'padrão — confira',
   digitado: 'digitado',
+  confirmado: 'conferido',
   gravado: 'estudo gravado'
 };
+// as fontes que vieram de um registro da empresa (o verde da tela)
+export const DO_SISTEMA = ['reforma', 'dominio', 'fator_r', 'pgdas', 'cadastro'];
 // texto: o que fica à vista, curto; dica: a explicação, ao passar o mouse
 const origem = (fonte, texto, dica) => dica ? { fonte, texto: texto || FONTES[fonte], dica } : { fonte, texto: texto || FONTES[fonte] };
 
@@ -60,6 +63,37 @@ export function tipoPeloCnae(cnae) {
   if (FATOR_R_DIVISOES.includes(div)) return 'servico_r';
   return 'servico';
 }
+
+// ---------- a refeição no RS ----------
+// Receita Estadual do RS ("bares e restaurantes", regime geral fora do RDA e Simples): a refeição feita no estabelecimento,
+// pronta pra consumo e vendida direto ao consumidor paga 12% (RICMS-RS, Livro I, art. 27, V, e Apêndice I, Seção II, item
+// XII), com a opção da base reduzida a 60% (art. 23, VI) e o crédito das compras na mesma proporção (art. 33, IV) — ou do
+// crédito presumido (art. 32, IV), fora da conta; no Simples, a mesma base reduzida na receita de refeição, no DAS (LC 123,
+// art. 18, §20). Vale pros bares e restaurantes e pro CNAE 5620-1/04 (preparo pra consumo domiciliar). Bebida revendida e
+// o que não é refeição têm a alíquota deles.
+const CNAE_REFEICAO_RS = ['5611201', '5611203', '5611204', '5611205', '5620104'];
+export const ALIQ_REFEICAO_RS = 12, RED_REFEICAO_RS = 40;
+export const ehRefeicaoRS = (cnae, uf) => CNAE_REFEICAO_RS.includes(digitosCnae(cnae).slice(0, 7)) && (!uf || String(uf).trim().toUpperCase() === 'RS');
+
+// o que o PGDAS lido na Reforma mostrou: a redução do ICMS (o "percentual de redução") e a revenda com ST. O caso guarda o
+// resumo (`dominio.pgdas`) e, nos montados à mão, os textos de `fontes` — lidos aqui só no que está escrito.
+const numBR = t => num(String(t || '').replace(/\./g, '').replace(',', '.'));
+function doPgdasDoCaso(sim) {
+  const pg = (sim && sim.dominio && sim.dominio.pgdas) || {};
+  const fontes = (sim && sim.fontes) || {};
+  const inp = (sim && sim.input) || {};
+  let red = num(pg.reducaoIcms) > 0 ? num(pg.reducaoIcms) : null;
+  if (red == null) {
+    for (const t of Object.values(fontes)) {
+      const m = /redu[çc][ãa]o de ([\d.,]+)\s*% na base do ICMS/i.exec(String(t || ''));
+      if (m && numBR(m[1]) > 0) { red = numBR(m[1]); break; }
+    }
+  }
+  let st = num(pg.pctST) > 0 ? num(pg.pctST) : null;
+  if (st == null && /revenda com ST/i.test(String(fontes.mixCheia || '')) && num(inp.mixCheia) > 0 && num(inp.mixCheia) < 100) st = num(inp.mixCheia);
+  return { red, st, competencia: pg.competencia || null };
+}
+const lerSim = caso => { try { return caso && caso.sim_obs ? (typeof caso.sim_obs === 'string' ? JSON.parse(caso.sim_obs) : caso.sim_obs) : null; } catch (e) { return null; } };
 
 // ---------- a receita de 12 meses ----------
 // meses: [{ competencia 'AAAA-MM', saidas?, servicos?, total }] — os 12 últimos com receita; com menos de 12, anualiza.
@@ -98,8 +132,7 @@ function linhas(receita, mercadorias, servicos, tipoMerc, tipoServ) {
 // [{ competencia 'AAAA-MM-DD', folha_salarios, folha_outros, prolabore }] · pgdas: receita_pgdas [{ competencia, receita_mes }]
 export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgdas = [] } = {}) {
   const origens = {}, notas = [];
-  let sim = null;
-  try { sim = caso && caso.sim_obs ? JSON.parse(caso.sim_obs) : null; } catch (e) { sim = null; }
+  const sim = lerSim(caso);
   const inp = (sim && sim.input) || {};
   const dom = (sim && sim.dominio) || {};
 
@@ -138,17 +171,37 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
   });
   // ST e monofásico (só nas mercadorias): ST das saídas do Domínio, monofásico do PGDAS (caso da Reforma)
   const iMerc = atividades.findIndex(a => TIPOS[a.tipo].tributo === 'icms');
+  let refeicao = false;
   if (iMerc >= 0) {
+    const p = 'atividades.' + iMerc;
     const v = dom.vendas || null;
+    const doPg = doPgdasDoCaso(sim);
+    const quando = doPg.competencia ? 'PGDAS de ' + rotuloComp(doPg.competencia) : 'PGDAS';
     if (v && num(v.mercadorias) > 0 && v.st != null) {
       atividades[iMerc].pctST = Math.min(100, num(v.st) / num(v.mercadorias) * 100);
-      origens['atividades.' + iMerc + '.pctST'] = origem('reforma', 'caso da Reforma: vendas com ST (CFOP x401 a x405) nas saídas do Domínio, ' + brl(v.st) + ' de ' + brl(v.mercadorias));
+      origens[p + '.pctST'] = origem('reforma', 'caso da Reforma: vendas com ST (CFOP x401 a x405) nas saídas do Domínio, ' + brl(v.st) + ' de ' + brl(v.mercadorias));
+    } else if (doPg.st > 0) {
+      atividades[iMerc].pctST = doPg.st;
+      origens[p + '.pctST'] = origem('reforma', quando + ' (caso da Reforma): revenda com ST, ' + pct1(doPg.st) + '% da receita', 'a seção do PGDAS sem ICMS: o ICMS já foi pago por substituição na compra');
     }
     if (num(inp.pctReceitaMonofasica) > 0) {
       atividades[iMerc].pctMonofasico = num(inp.pctReceitaMonofasica);
-      origens['atividades.' + iMerc + '.pctMonofasico'] = origem('reforma', 'caso da Reforma: receita monofásica de PIS/Cofins');
+      origens[p + '.pctMonofasico'] = origem('reforma', 'caso da Reforma: receita monofásica de PIS/Cofins');
     }
-    origens['atividades.' + iMerc + '.aliqIcms'] = origem('padrao', 'padrão: 17%, a interna do RS', 'venda pra outro estado é 12% (7% ou 4% em alguns casos) — confira');
+    refeicao = ehRefeicaoRS(cliente && cliente.cnae_principal, cliente && cliente.uf);
+    if (refeicao) {
+      Object.assign(atividades[iMerc], { aliqIcms: ALIQ_REFEICAO_RS, redIcms: RED_REFEICAO_RS, redIcmsSimples: RED_REFEICAO_RS });
+      origens[p + '.aliqIcms'] = origem('padrao', 'refeição no RS: 12% — confira', 'RICMS-RS, Livro I, art. 27, V: a refeição feita na casa e vendida pronta ao consumidor; bebida e outras revendas têm a alíquota delas');
+      origens[p + '.redIcms'] = origem('padrao', 'base a 60% — confira a opção da empresa', 'RICMS-RS, Livro I, art. 23, VI, com o crédito das compras na mesma proporção (art. 33, IV). A outra opção, o crédito presumido (art. 32, IV), fica fora da conta; sem redução nenhuma, digite 0');
+      origens[p + '.redIcmsSimples'] = origem('padrao', '40% — confira no PGDAS', 'a base reduzida a 60% também vale no DAS, na receita de refeição (Receita Estadual do RS); no PGDAS é o "percentual de redução"');
+    } else {
+      origens[p + '.aliqIcms'] = origem('padrao', 'padrão: 17%, a interna do RS', 'venda pra outro estado é 12% (7% ou 4% em alguns casos) — confira');
+    }
+    if (doPg.red > 0) {
+      atividades[iMerc].redIcmsSimples = doPg.red;
+      origens[p + '.redIcmsSimples'] = origem('reforma', quando + ' (caso da Reforma): ' + pct1(doPg.red) + '% de redução', 'o "percentual de redução" do ICMS que a empresa declara no PGDAS');
+      if (!refeicao) notas.push('O ' + quando + ' tem ' + pct1(doPg.red) + '% de redução do ICMS no DAS. No regime geral, a redução depende do benefício que a dá: se ele valer lá também, preencha a redução da base do ICMS no regime geral.');
+    }
   }
   atividades.forEach((a, i) => { if (TIPOS[a.tipo].tributo === 'iss') origens['atividades.' + i + '.aliqIss'] = origem('padrao', 'padrão: 3% — confira', 'a alíquota do ISS da atividade no município'); });
   atividades.forEach((a, i) => { if (a.tipo === 'industria') origens['atividades.' + i + '.aliqIpi'] = origem('padrao', 'padrão: zero — confira', 'o IPI a recolher no ano, em % da receita da indústria, já com os créditos; só 2026 — em 2027 ele vira zero'); });
@@ -197,7 +250,84 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
   // a conferência do Simples: a alíquota efetiva do último PGDAS lido na Reforma
   const pg = dom.pgdas || null;
   const conferencia = pg && num(pg.aliquotaEfetiva) > 0 ? { competencia: pg.competencia, aliquota: num(pg.aliquotaEfetiva), das: num(pg.dasTotal) } : null;
-  return { entrada: e, origens, notas, conferencia };
+  const sd = serieDaEmpresa({ caso, pgdas });
+  return { entrada: e, origens, notas, conferencia, serie: sd ? sd.serie : null };
+}
+
+// ---------- as outras empresas dos mesmos sócios ----------
+// a série datada da receita: o PGDAS da Receita (o declarado) ou o faturamento do caso da Reforma — [{ competencia, total }]
+export function serieDaEmpresa({ caso = null, pgdas = [] } = {}) {
+  const ok = m => m && /^\d{4}-\d{2}$/.test(m.competencia) && num(m.total) > 0;
+  const ordem = l => l.sort((a, b) => a.competencia < b.competencia ? -1 : 1);
+  const pg = ordem((pgdas || []).map(p => ({ competencia: p && p.competencia, total: num(p && p.receita_mes) })).filter(ok));
+  if (pg.length) return { fonte: 'pgdas', serie: pg };
+  const sim = lerSim(caso), dom = (sim && sim.dominio) || {};
+  const ms = ordem((dom.meses || (dom.vendas && dom.vendas.meses) || []).map(m => ({ competencia: m && m.competencia, total: num(m && m.total) })).filter(ok));
+  return ms.length ? { fonte: 'reforma', serie: ms } : null;
+}
+// a receita de 12 meses de uma empresa do grupo, como o motor lê ({ nome, receita, meses }), com a série e a origem
+export function receitaDaEmpresa({ cliente = null, caso = null, pgdas = [] } = {}) {
+  const nome = cliente ? (cliente.nome_principal || cliente.nome_fantasia || 'outra empresa') + (cliente.nome_fantasia && cliente.nome_principal && cliente.nome_fantasia !== cliente.nome_principal ? ' (' + cliente.nome_fantasia + ')' : '') : 'outra empresa';
+  const sd = serieDaEmpresa({ caso, pgdas });
+  const s = sd ? serieDosMeses(sd.serie) : null;
+  if (s) return { nome, cliente_id: cliente ? cliente.id : null, receita: s.receita, meses: s.meses, serie: sd.serie,
+    origem: origem(sd.fonte, (sd.fonte === 'pgdas' ? 'PGDAS na Receita, de ' : 'caso da Reforma: faturamento do Domínio de ') + periodo(s)) };
+  if (caso && num(caso.receita_mensal) > 0) return { nome, cliente_id: cliente ? cliente.id : null, receita: num(caso.receita_mensal) * 12, meses: null, serie: null,
+    origem: origem('reforma', 'caso da Reforma: receita mensal × 12') };
+  return { nome, cliente_id: cliente ? cliente.id : null, receita: 0, meses: null, serie: null, origem: origem('padrao', 'falta no sistema: digite os 12 meses') };
+}
+// quem é sócio desta e de outra: socios (desta) e outros ([{ cliente_id, nome, cpf }], das outras) — casa pelo CPF (só os
+// dígitos); sem o CPF de um dos lados, pelo nome sem acento. Volta [{ cliente_id, socios: [nomes] }], sem esta.
+const semAcento = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
+export function empresasDosSocios(socios, outros, clienteId) {
+  const meus = (socios || []).filter(s => s && (s.nome || s.cpf)).map(s => ({ nome: s.nome, cpf: String(s.cpf || '').replace(/\D/g, ''), chave: semAcento(s.nome) }));
+  const por = new Map();
+  (outros || []).forEach(o => {
+    if (!o || !o.cliente_id || o.cliente_id === clienteId) return;
+    const cpf = String(o.cpf || '').replace(/\D/g, ''), chave = semAcento(o.nome);
+    const m = meus.find(s => s.cpf && cpf ? s.cpf === cpf : (s.chave && s.chave === chave));
+    if (!m) return;
+    const g = por.get(o.cliente_id) || { cliente_id: o.cliente_id, socios: [] };
+    if (!g.socios.includes(m.nome)) g.socios.push(m.nome);
+    por.set(o.cliente_id, g);
+  });
+  return [...por.values()];
+}
+// o ano-calendário do grupo pelos números do sistema: até o último mês que todas têm, a soma do ano, o ritmo dos últimos
+// 3 meses e, nesse ritmo, o mês em que a soma passa do limite (a exclusão vem no mês seguinte — SC Cosit 135/2026)
+const MES_LONGO = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+export function situacaoDoGrupo(serieEmpresa, outras, limite = 4800000) {
+  const series = [{ nome: 'esta', serie: serieEmpresa || [] }, ...(outras || []).map(o => ({ nome: o.nome, serie: o.serie || [] }))];
+  if (series.some(s => !s.serie.length)) return null;
+  const ate = series.map(s => s.serie[s.serie.length - 1].competencia).sort()[0];
+  const ano = ate.slice(0, 4), mesAte = Number(ate.slice(5, 7));
+  const val = (s, c) => { const m = s.serie.find(x => x.competencia === c); return m ? num(m.total) : null; };
+  const comp = (a, m) => a + '-' + String(m).padStart(2, '0');
+  // os meses do ano até `ate` que todas têm
+  const mesesAno = [];
+  for (let m = 1; m <= mesAte; m++) { const c = comp(ano, m); if (series.every(s => val(s, c) != null)) mesesAno.push(c); }
+  const porEmpresa = series.map(s => ({ nome: s.nome, ano: mesesAno.reduce((t, c) => t + val(s, c), 0) }));
+  const acumulado = porEmpresa.reduce((t, p) => t + p.ano, 0);
+  // os últimos 3 meses que todas têm (podem vir do ano anterior)
+  const ult3 = [];
+  for (let k = 0, a = Number(ano), m = mesAte; ult3.length < 3 && k < 24; k++) {
+    const c = comp(a, m);
+    if (series.every(s => val(s, c) != null)) ult3.push(c);
+    m -= 1; if (m < 1) { m = 12; a -= 1; }
+  }
+  const ritmo = ult3.length ? ult3.reduce((t, c) => t + series.reduce((u, s) => u + val(s, c), 0), 0) / ult3.length : 0;
+  const restantes = 12 - mesAte;
+  // o mês em que a soma passou (já aconteceu) ou, no ritmo dos últimos 3 meses, passaria
+  let passaEm = null, jaPassou = false, acum = 0;
+  for (const c of mesesAno) { acum += series.reduce((u, s) => u + val(s, c), 0); if (acum > limite) { passaEm = Number(c.slice(5, 7)); jaPassou = true; break; } }
+  if (!jaPassou) for (let j = 1; j <= restantes; j++) if (acumulado + ritmo * j > limite) { passaEm = mesAte + j; break; }
+  const saiEm = passaEm ? (passaEm === 12 ? '01/01/' + (Number(ano) + 1) : '01/' + String(passaEm + 1).padStart(2, '0') + '/' + ano) : null;
+  return {
+    ano: Number(ano), ate, meses: mesesAno.length, acumulado, porEmpresa, ritmo, restantes, limite,
+    projecao: acumulado + ritmo * restantes, faltam: Math.max(0, limite - acumulado),
+    porMesAteOLimite: restantes > 0 ? Math.max(0, limite - acumulado) / restantes : null,
+    passaEm: passaEm ? MES_LONGO[passaEm - 1] : null, jaPassou, saiEm
+  };
 }
 
 // ---------- os relatórios do Domínio soltos na tela ----------
@@ -232,6 +362,11 @@ export function aplicarRelatorios(entrada, origens, cons) {
   if (receita > 0 && c.pctMerc != null) { e.compras = c.pctMerc / 100 * receita; o.compras = origem('dominio', (cons.origem && cons.origem.pctMerc) || 'entradas do Domínio'); }
   if (receita > 0 && c.pctDesp != null) { e.despesasCredito = c.pctDesp / 100 * receita; o.despesasCredito = origem('dominio', (cons.origem && cons.origem.pctDesp) || 'entradas do Domínio'); }
   const sim = cons.sim;
+  // o "percentual de redução" do ICMS no PGDAS solto na tela
+  if (sim && num(sim.reducaoIcms) > 0 && iMerc >= 0) {
+    e.atividades[iMerc].redIcmsSimples = num(sim.reducaoIcms);
+    o['atividades.' + iMerc + '.redIcmsSimples'] = origem('dominio', 'PGDAS de ' + rotuloComp(sim.competencia) + ': ' + pct1(sim.reducaoIcms) + '% de redução', 'o "percentual de redução" do ICMS que a empresa declara no PGDAS');
+  }
   const conferencia = sim && sim.aliquotaEfetiva != null ? { competencia: sim.competencia, aliquota: sim.aliquotaEfetiva, das: sim.dasTotal } : null;
   return { entrada: e, origens: o, conferencia };
 }
@@ -248,7 +383,10 @@ export function premissasParaTestar(entrada, origens) {
   ats.forEach((a, i) => {
     const t = TIPOS[a.tipo];
     if (!t || !(num(a.receita) > 0)) return;
-    if (t.tributo === 'icms' && padrao('atividades.' + i + '.aliqIcms')) out.push({ campo: 'atividades.' + i + '.aliqIcms', valores: [12], rotulo: 'o ICMS das vendas' + (ats.length > 1 ? ' (' + t.rotulo.toLowerCase() + ')' : ''), unidade: '%' });
+    const qual = ats.length > 1 ? ' (' + t.rotulo.toLowerCase() + ')' : '';
+    if (t.tributo === 'icms' && padrao('atividades.' + i + '.aliqIcms')) out.push({ campo: 'atividades.' + i + '.aliqIcms', valores: [num(a.aliqIcms, 17) === 12 ? 17 : 12], rotulo: 'o ICMS das vendas' + qual, unidade: '%' });
+    if (t.tributo === 'icms' && num(a.redIcms) > 0 && padrao('atividades.' + i + '.redIcms')) out.push({ campo: 'atividades.' + i + '.redIcms', valores: [0], rotulo: 'a redução da base do ICMS no regime geral' + qual, unidade: '%' });
+    if (t.tributo === 'icms' && num(a.redIcmsSimples) > 0 && padrao('atividades.' + i + '.redIcmsSimples')) out.push({ campo: 'atividades.' + i + '.redIcmsSimples', valores: [0], rotulo: 'a redução do ICMS no DAS' + qual, unidade: '%' });
     if (t.tributo === 'iss' && padrao('atividades.' + i + '.aliqIss')) out.push({ campo: 'atividades.' + i + '.aliqIss', valores: [2, 5], rotulo: 'o ISS' + (ats.length > 1 ? ' (' + t.rotulo.toLowerCase() + ')' : ''), unidade: '%' });
   });
   if (padrao('rat') && num(e.folha) > 0) out.push({ campo: 'rat', valores: [1, 3], rotulo: 'o RAT', unidade: '%' });

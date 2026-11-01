@@ -257,6 +257,49 @@ igual('IPI de 2026 no Presumido (5% da receita)', 60000, item(ipi.presumido, 'IP
 verdade('em 2027 o IPI é zero', !calcularAno({ atividades: [{ tipo: 'industria', receita: 1200000, aliqIpi: 5 }] }, 2027).presumido.itens.some(x => x.tributo === 'IPI'));
 
 // ----------------------------------------------------------------------------------------------------------------
+console.log('=== U · a redução do ICMS: no DAS (o "percentual de redução" do PGDAS) e no regime geral (base reduzida) ===');
+// Simples, Anexo I, RBT12 constante de 2.000.000 (5ª faixa): (2.000.000 × 14,30% − 87.300) ÷ 2.000.000 = 9,935% → 198.700
+// pela tabela. 10% da receita com ST e monofásica, 40% de redução no ICMS do resto: sai 33,5% × (10% + 90% × 40%) =
+// 15,41% e, em 2026, 10% × 15,5% (PIS + Cofins) = 1,55% → 198.700 × 83,04% = 165.000,48. Sem a redução: 33,5% × 10% =
+// 3,35% → 198.700 × 95,10% = 188.963,70. Em 2027 o monofásico não sai: 198.700 × 84,59% = 168.080,33.
+const U1 = { atividades: [{ tipo: 'comercio', receita: 2000000, pctST: 10, pctMonofasico: 10, redIcmsSimples: 40 }], receitaAnoAnterior: 2000000 };
+igual('DAS com 40% de redução do ICMS (2026)', 165000.48, calcularAno(U1, 2026).simples.das);
+igual('DAS sem a redução (2026)', 188963.70, calcularAno({ ...U1, atividades: [{ ...U1.atividades[0], redIcmsSimples: 0 }] }, 2026).simples.das);
+igual('DAS com a redução em 2027 (sem a exclusão do monofásico)', 168080.33, calcularAno(U1, 2027).simples.das);
+// regime geral, a refeição no RS: 12% com a base a 60% (RICMS-RS, Livro I, art. 23, VI) e o crédito proporcional (art. 33, IV):
+// débito 2.000.000 × 90% (sem ST) × 60% × 12% = 129.600 · crédito 1.000.000 × 90% × 12% × 60% = 64.800 → ICMS 64.800.
+// PIS/Cofins cumulativo sobre 2.000.000 − 129.600 = 1.870.400: 12.157,60 + 56.112,00
+const U2 = { atividades: [{ tipo: 'comercio', receita: 2000000, pctST: 10, aliqIcms: 12, redIcms: 40 }], compras: 1000000, aliqCreditoIcms: 12 };
+const u2 = calcularAno(U2, 2026);
+igual('ICMS com a base a 60% e o crédito proporcional', 64800, item(u2.presumido, 'ICMS'));
+igual('PIS sobre a receita menos o ICMS da base reduzida', 12157.60, item(u2.presumido, 'PIS'));
+igual('Cofins sobre a receita menos o ICMS da base reduzida', 56112.00, item(u2.presumido, 'Cofins'));
+// duas atividades: 1.000.000 a 12% com base a 60% + 1.000.000 a 17% cheia → débito 72.000 + 170.000 = 242.000; o crédito
+// cai na proporção da base: (600.000 + 1.000.000) ÷ 2.000.000 = 80% → 1.000.000 × 12% × 80% = 96.000 → ICMS 146.000
+const U3 = { atividades: [{ tipo: 'comercio', receita: 1000000, aliqIcms: 12, redIcms: 40 }, { tipo: 'comercio', receita: 1000000, aliqIcms: 17 }], compras: 1000000, aliqCreditoIcms: 12 };
+igual('duas atividades: o crédito rateado pela base de cada uma', 146000, item(calcularAno(U3, 2026).presumido, 'ICMS'));
+verdade('serviço não tem redução de ICMS', normalizar({ atividades: [{ tipo: 'servico', receita: 1000, redIcms: 40, redIcmsSimples: 40 }] }).atividades[0].redIcms === 0);
+
+// ----------------------------------------------------------------------------------------------------------------
+console.log('=== V · a receita global: as outras empresas dos mesmos sócios (LC 123, art. 3º, §4º, III e IV) ===');
+// 2.500.000 + 2.500.000 no ano anterior = 5.000.000 > 4.800.000 → fora do Simples o ano todo
+const V1 = comparar({ atividades: [{ tipo: 'comercio', receita: 2500000 }], grupo: [{ nome: 'OUTRA', receita: 2500000 }] });
+verdade('a soma do ano anterior passou de 4,8 milhões: Simples fora em todos os anos', V1.anos.every(r => r.simples.disponivel === false) && /§4º/.test(V1.anos[0].simples.motivo));
+// 2.400.000 + 2.350.000 = 4.750.000: dentro, com a folga de 50.000
+const V2 = { atividades: [{ tipo: 'comercio', receita: 2400000 }], grupo: [{ nome: 'OUTRA', receita: 2350000 }] };
+const v2 = calcularAno(V2, 2026);
+verdade('4,75 milhões somadas: Simples disponível, com o aviso da folga de R$ 50.000,00', v2.simples.disponivel && v2.simples.avisos.some(a => /folga é de R\$\s50\.000,00/.test(a)));
+// crescendo 10%: 2027 soma 5.225.000 e passa em dezembro → 2027 inteiro no Simples (a exclusão vale do mês seguinte, em
+// 2028) e 2028 fora (o ano anterior passou)
+const v3 = comparar({ ...V2, crescimentoReceita: 10 });
+verdade('passa em dezembro de 2027: 2027 no Simples, 2028 fora', v3.anos.find(r => r.ano === 2027).simples.disponivel === true && v3.anos.find(r => r.ano === 2028).simples.disponivel === false);
+// crescendo 40%: 2027 soma 6.650.000, 554.166,67 por mês → até setembro 4.987.500 > 4.800.000 → fora a partir de outubro,
+// sem a tolerância de 20% (SC Cosit 135/2026)
+const v4 = calcularAno({ ...V2, crescimentoReceita: 40 }, 2027);
+verdade('passa em setembro: fora a partir de outubro, sem a tolerância', v4.simples.disponivel === false && /setembro/.test(v4.simples.motivo) && /a partir de outubro/.test(v4.simples.motivo));
+verdade('sem outras empresas, nenhum aviso de soma', !calcularAno({ atividades: [{ tipo: 'comercio', receita: 2400000 }] }, 2026).simples.avisos.some(a => /folga/.test(a)));
+
+// ----------------------------------------------------------------------------------------------------------------
 console.log('=== R · entradas inválidas ===');
 let erro = null;
 try { comparar({ atividades: [] }); } catch (e) { erro = e.message; }

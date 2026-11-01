@@ -1,8 +1,10 @@
 // Teste do que o comparativo tributário tira do sistema (assets/js/comparativo-dados.js): o caso da Reforma, o Fator R,
-// o PGDAS da Receita, o cadastro, os relatórios do Domínio, as premissas a testar e os prazos da escolha.
+// o PGDAS da Receita, o cadastro, os relatórios do Domínio, as premissas a testar, os prazos da escolha, a refeição no RS
+// e as outras empresas dos mesmos sócios.
 // Rodar com: node tests/comparativo-dados.test.mjs — dados inventados (o repositório é público).
 
-import { entradaDoSistema, aplicarRelatorios, premissasParaTestar, prazosDaEscolha, serieDosMeses, tipoPeloCnae, tipoPeloAnexo, regimeDoCadastro } from '../assets/js/comparativo-dados.js';
+import { entradaDoSistema, aplicarRelatorios, premissasParaTestar, prazosDaEscolha, serieDosMeses, tipoPeloCnae, tipoPeloAnexo, regimeDoCadastro,
+  ehRefeicaoRS, empresasDosSocios, receitaDaEmpresa, situacaoDoGrupo, serieDaEmpresa } from '../assets/js/comparativo-dados.js';
 import { comparar } from '../assets/js/comparativo-motor.js';
 
 let falhas = 0, total = 0;
@@ -91,6 +93,58 @@ ok('Presumido em 01/11/2026: a janela do Simples de 2027 fechou', /fechou em 30\
 const p3 = prazosDaEscolha('2026-08-15', 'presumido', 2027);
 ok('Presumido em agosto: a janela de setembro ainda vem', /01 a 30\/09\/2026/.test(p3[0].texto));
 ok('sempre diz como escolher entre Presumido e Real', p2.some(p => /Presumido ou Real/.test(p.titulo)));
+
+console.log('=== a refeição no RS e o PGDAS do caso ===');
+ok('5620-1/04 no RS é refeição', ehRefeicaoRS('5620-1/04', 'RS'));
+ok('restaurante sem UF no cadastro conta como RS', ehRefeicaoRS('5611-2/01', null));
+ok('em SC não', !ehRefeicaoRS('5620-1/04', 'SC'));
+ok('mercado não', !ehRefeicaoRS('4711-3/02', 'RS'));
+const mesesRest = Array.from({ length: 12 }, (_, i) => { const d = new Date(2025, 7 + i, 1); const c = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); const v = c >= '2026-01' ? 215000 : 180000; return { competencia: c, total: v, saidas: v, servicos: 0 }; });
+const simRest = JSON.stringify({ v: 1, input: { anexo: 'I', mixCheia: 8, mixRed40: 92, mixRed60: 0, mixRed30: 0, mixZero: 0, pctReceitaMonofasica: 8, pctComprasMercadorias: 45 },
+  fontes: { mixCheia: 'seções do PGDAS 07/2026: revenda com ST (bebidas) — alíquota cheia por fora', pctExcluidoST: 'PGDAS 2026-07: 14% a menos (receita com ST/monofásico e redução de 40% na base do ICMS)' },
+  dominio: { meses: mesesRest, pgdas: { competencia: '2026-07', aliquotaEfetiva: 9, dasTotal: 19000 } } });
+const rest = entradaDoSistema({ cliente: { nome_principal: 'RESTAURANTE INVENTADO', regime_tributario: 'Simples Nacional', cnae_principal: '5620-1/04', uf: 'RS' }, caso: { anexo: 'I', sim_obs: simRest } });
+const ar = rest.entrada.atividades[0];
+ok('refeição no RS: 12% e a base a 60% no regime geral, no padrão', ar.aliqIcms === 12 && ar.redIcms === 40 && rest.origens['atividades.0.aliqIcms'].fonte === 'padrao' && rest.origens['atividades.0.redIcms'].fonte === 'padrao', ar);
+ok('a redução de 40% no DAS, lida do PGDAS do caso (verde)', ar.redIcmsSimples === 40 && rest.origens['atividades.0.redIcmsSimples'].fonte === 'reforma' && /jul\/26/.test(rest.origens['atividades.0.redIcmsSimples'].texto), rest.origens['atividades.0.redIcmsSimples']);
+ok('a revenda com ST: a do PGDAS do caso (8%)', ar.pctST === 8 && rest.origens['atividades.0.pctST'].fonte === 'reforma');
+ok('a série datada da empresa vem junto', Array.isArray(rest.serie) && rest.serie.length === 12 && rest.serie[0].competencia === '2025-08');
+const restSem = entradaDoSistema({ cliente: { regime_tributario: 'Simples Nacional', cnae_principal: '5611-2/01', uf: 'RS' }, caso: { anexo: 'I', sim_obs: JSON.stringify({ v: 1, input: { anexo: 'I' }, dominio: { meses: mesesRest } }) } });
+ok('restaurante sem o PGDAS: os 40% no DAS ficam no padrão', restSem.entrada.atividades[0].redIcmsSimples === 40 && restSem.origens['atividades.0.redIcmsSimples'].fonte === 'padrao');
+const merc = entradaDoSistema({ cliente: { regime_tributario: 'Simples Nacional', cnae_principal: '4711-3/02', uf: 'RS' }, caso: { anexo: 'I', sim_obs: JSON.stringify({ v: 1, input: { anexo: 'I' }, dominio: { meses: mesesRest, pgdas: { competencia: '2026-07', reducaoIcms: 25 } } }) } });
+ok('outro benefício no PGDAS (25%): vale no DAS, não no regime geral, com a nota', merc.entrada.atividades[0].redIcmsSimples === 25 && !merc.entrada.atividades[0].redIcms && merc.notas.some(n => /25% de redução do ICMS/.test(n)));
+const apRed = aplicarRelatorios({ atividades: [{ tipo: 'comercio', receita: 1000000 }] }, {}, { sim: { competencia: '2026-09', reducaoIcms: 40, aliquotaEfetiva: 8 } });
+ok('o PGDAS solto na tela traz a redução', apRed.entrada.atividades[0].redIcmsSimples === 40 && apRed.origens['atividades.0.redIcmsSimples'].fonte === 'dominio');
+const psRest = premissasParaTestar(rest.entrada, rest.origens);
+ok('restaurante: testa a base cheia no regime geral e o ICMS a 17%', psRest.some(p => p.campo === 'atividades.0.redIcms' && p.valores[0] === 0) && psRest.some(p => p.campo === 'atividades.0.aliqIcms' && p.valores[0] === 17));
+ok('a redução medida no PGDAS não é testada', !psRest.some(p => p.campo === 'atividades.0.redIcmsSimples'));
+
+console.log('=== as outras empresas dos mesmos sócios ===');
+const meus = [{ nome: 'Fulano de Tal', cpf: '111.222.333-44' }, { nome: 'Beltrana Souza', cpf: null }];
+const outros = [{ cliente_id: 'x', nome: 'FULANO DE TAL', cpf: '11122233344' }, { cliente_id: 'x', nome: 'BELTRANA SOUZA', cpf: null }, { cliente_id: 'y', nome: 'Ciclano', cpf: '99999999999' },
+  { cliente_id: 'z', nome: 'Fulano de Tal', cpf: '00000000000' }, { cliente_id: 'eu', nome: 'Fulano de Tal', cpf: '11122233344' }];
+const emp = empresasDosSocios(meus, outros, 'eu');
+ok('casa pelo CPF (com ou sem pontos) e, sem CPF, pelo nome', emp.length === 1 && emp[0].cliente_id === 'x' && emp[0].socios.join('|') === 'Fulano de Tal|Beltrana Souza', emp);
+ok('o homônimo com outro CPF não entra, nem a própria empresa', !emp.some(e => e.cliente_id === 'z' || e.cliente_id === 'eu'));
+const cli = { id: 'x', nome_principal: 'PADARIA INVENTADA LTDA', nome_fantasia: 'PÃO BOM' };
+const rPg = receitaDaEmpresa({ cliente: cli, caso: { sim_obs: JSON.stringify({ dominio: { meses: mesesRest } }) }, pgdas: mesesRest.map(m => ({ competencia: m.competencia, receita_mes: 100000 })) });
+ok('a receita da outra: o PGDAS da Receita na frente do caso', perto(rPg.receita, 1200000) && rPg.origem.fonte === 'pgdas' && rPg.nome === 'PADARIA INVENTADA LTDA (PÃO BOM)', rPg);
+const rCaso = receitaDaEmpresa({ cliente: cli, caso: { sim_obs: JSON.stringify({ dominio: { meses: mesesRest } }) } });
+ok('sem PGDAS: o faturamento do caso', perto(rCaso.receita, 5 * 180000 + 7 * 215000) && rCaso.origem.fonte === 'reforma' && rCaso.serie.length === 12);
+ok('só a receita mensal do caso: × 12, sem série', receitaDaEmpresa({ cliente: cli, caso: { receita_mensal: 50000 } }).receita === 600000);
+ok('nada no sistema: zero, pra digitar', receitaDaEmpresa({ cliente: cli }).receita === 0 && receitaDaEmpresa({ cliente: cli }).origem.fonte === 'padrao');
+const serieOutra = mesesRest.map(m => ({ competencia: m.competencia, total: m.competencia >= '2026-01' ? 195000 : 160000 }));
+const sit = situacaoDoGrupo(serieDaEmpresa({ caso: { sim_obs: simRest } }).serie, [{ nome: 'OUTRA', serie: serieOutra }]);
+// 2026 até julho: 7 × (215.000 + 195.000) = 2.870.000; ritmo 410.000 por mês → ago 3.280.000 … nov 4.510.000, dez 4.920.000
+ok('o ano até julho: 2.870.000 somadas', sit && perto(sit.acumulado, 2870000) && sit.meses === 7 && sit.ate === '2026-07', sit);
+ok('o ritmo dos últimos 3 meses: 410.000', perto(sit.ritmo, 410000));
+ok('nesse ritmo, passa em dezembro e sai em 01/01/2027', sit.passaEm === 'dezembro' && sit.saiEm === '01/01/2027' && !sit.jaPassou);
+ok('faltam 1.930.000 — 386.000 por mês até dezembro', perto(sit.faltam, 1930000) && perto(sit.porMesAteOLimite, 386000));
+const seis = Array.from({ length: 6 }, (_, i) => ({ competencia: '2026-0' + (i + 1), total: 450000 }));
+const sit2 = situacaoDoGrupo(seis, [{ nome: 'OUTRA', serie: seis }]);
+ok('já passou: em junho (5,4 milhões até lá), fora a partir de 01/07/2026', sit2.jaPassou && sit2.passaEm === 'junho' && sit2.saiEm === '01/07/2026', sit2);
+ok('a empresa sozinha também tem o ano', situacaoDoGrupo(seis, []).porEmpresa.length === 1);
+ok('sem a série de uma, não há como somar o ano', situacaoDoGrupo(seis, [{ nome: 'OUTRA', serie: [] }]) === null);
 
 console.log('\n' + (total - falhas) + ' de ' + total + ' conferências ok' + (falhas ? ' — ' + falhas + ' FALHA(S)' : ''));
 process.exit(falhas ? 1 : 0);

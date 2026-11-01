@@ -9,7 +9,7 @@ Confere:
   2. a empresa com caso na Reforma: o regime de hoje, a receita (receita mensal do caso × 12) e as compras com a origem
      em verde, o crédito de ICMS e as outras despesas em amarelo (padrão); o resultado — o Simples mais barato, o DAS dos
      12 meses de R$ 105.900,00 (Anexo I, 4ª faixa), a conferência com o PGDAS e o prazo pra sair do Simples até
-     31/12/2026; o detalhe por tributo;
+     31/12/2026; o detalhe por tributo; sem a folha, o resultado é "Provisório" e o próximo passo é a folha;
   3. mudar um número: a origem vira "digitado", a conta refaz e o estudo grava sozinho (cliente, os números e o resumo);
      abrir a empresa de novo traz o estudo gravado;
   4. outra atividade: entra com o ISS, soma na receita e sai no ✕; trocar o tipo pra serviço do fator r troca o ICMS
@@ -17,7 +17,12 @@ Confere:
   5. a empresa só com o Fator R: a folha e o pró-labore dele, a receita pedindo pra digitar; com a receita, o Simples
      no Anexo III (fator r de 31,6%) e o Presumido dos 12 meses;
   6. simular sem cadastro;
-  7. o card no Fiscal: "1 estudo";
+  7. "Por onde começar" (o roteiro do estudo), a refeição no RS e as empresas dos mesmos sócios: o restaurante do RS com
+     12% e a base a 60% (padrão), a redução de 40% no DAS e o ST lidos do PGDAS do caso; a outra empresa do sócio (pelo
+     CPF) com a receita dela e a soma perto do limite — o primeiro passo é "Ela pode ficar no Simples?", com o mês em que
+     a soma passa; "Conferido" leva ao próximo (a folha), "Digitar a folha" põe o cursor nela, a folha digitada tira o
+     passo, e tirar a outra empresa tira o passo do limite; o resultado fica "Provisório" enquanto falta o que decide;
+  8. o card no Fiscal: "1 estudo";
 e nenhum erro de JavaScript.
 Termina com código 1 se alguma checagem falhar. Pré-requisito: pip install playwright e python -m playwright install chromium
 """
@@ -47,6 +52,19 @@ SEMEAR = """
     v.rt_casos = [{ id: 'rc1', cliente_id: 'c1', anexo: 'I', rbt12: 1200000, receita_mensal: 100000, sim_obs: SIM_OBS_JSON, atualizado_em: '2026-10-01T12:00:00Z' }];
     v.fr_empresas = [{ id: 'fe2', cliente_id: 'c2', nome: 'EMPRESA EXEMPLO LTDA', ativo: true }];
     v.fr_lancamentos = Array.from({ length: 12 }, (_, i) => ({ id: 'fl' + i, empresa_id: 'fe2', competencia: (i < 2 ? '2025-' + (11 + i) : '2026-' + String(i - 1).padStart(2, '0')) + '-01', folha_salarios: 10000, folha_outros: 0, prolabore: 5000 }));
+    const mesesDe = (ate, ini, fim) => { const out = []; for (let i = 0; i < 12; i++) { const d = new Date(2025, 7 + i, 1); const c = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); out.push({ competencia: c, total: c >= '2026-01' ? fim : ini, saidas: c >= '2026-01' ? fim : ini, servicos: 0, outros: 0 }); } return out; };
+    v.clientes.push(
+      { id: 'c5', nome_principal: 'RESTAURANTE EXEMPLO LTDA', nome_fantasia: null, documento: '44444444444444', status: 'ativo', regime_tributario: 'Simples Nacional', cnae_principal: '5620-1/04', cidade: 'Três Coroas', uf: 'RS' },
+      { id: 'c6', nome_principal: 'PADARIA IRMA LTDA', nome_fantasia: null, documento: '55555555555555', status: 'ativo', regime_tributario: 'Simples Nacional', cnae_principal: '1091-1/02', cidade: 'Igrejinha', uf: 'RS' });
+    v.socios = [{ id: 's1', cliente_id: 'c5', nome: 'FULANO DE TAL', cpf: '11122233344' }, { id: 's2', cliente_id: 'c5', nome: 'BELTRANA DE TAL', cpf: '55566677788' },
+                { id: 's3', cliente_id: 'c6', nome: 'FULANO DE TAL', cpf: '11122233344' }];
+    v.rt_casos.push(
+      { id: 'rc5', cliente_id: 'c5', anexo: 'I', rbt12: 2405000, receita_mensal: 200416.67, atualizado_em: '2026-10-01T12:00:00Z', sim_obs: JSON.stringify({ v: 1,
+        input: { anexo: 'I', receita: 200416.67, pctComprasMercadorias: 45, mixCheia: 8, mixRed40: 92, mixRed60: 0, mixRed30: 0, mixZero: 0, pctReceitaMonofasica: 8 },
+        fontes: { mixCheia: 'seções do PGDAS 07/2026: revenda com ST (bebidas) — alíquota cheia por fora', pctExcluidoST: 'do Domínio: PGDAS 2026-07: 14% a menos (receita com ST/monofásico e redução de 40% na base do ICMS)' },
+        dominio: { meses: mesesDe('2026-07', 180000, 215000), pgdas: { competencia: '2026-07', aliquotaEfetiva: 9.05, dasTotal: 19457.5 } } }) },
+      { id: 'rc6', cliente_id: 'c6', anexo: 'II', rbt12: 2165000, receita_mensal: 180416.67, atualizado_em: '2026-10-01T12:00:00Z', sim_obs: JSON.stringify({ v: 1, input: { anexo: 'II' },
+        dominio: { meses: mesesDe('2026-07', 160000, 195000) } }) });
     v.comparativos = [{ id: 'est3', cliente_id: 'c3', nome: null, entrada: { v: 1, entrada: { atividades: [{ tipo: 'comercio', receita: 500000 }] }, origens: {} }, resultado: null, atualizado_em: '2026-10-30T12:00:00Z', atualizado_por: 'fiscal@macedoereis.com.br' }];
   } });
 })();
@@ -107,8 +125,12 @@ def main():
         ok(p.input_value('#f_compras') == '720.000,00', 'as compras: 60% da receita, do caso')
         ok(p.get_attribute('.ct-orig[data-orig="aliqCreditoIcms"]', 'data-fonte') == 'padrao' and p.get_attribute('.ct-orig[data-orig="outrasDespesas"]', 'data-fonte') == 'padrao',
            'o crédito de ICMS e as outras despesas ficam no padrão (amarelo)')
-        frase = p.inner_text('.ct-frase')
+        frase = p.evaluate("() => { const f = document.querySelector('.ct-frase').cloneNode(true); f.querySelectorAll('.ct-prov-tag').forEach(x => x.remove()); return f.textContent; }")
         ok(frase.startswith('Em 2027, o Simples Nacional sai mais barato') and 'É o regime de hoje' in frase, f'a frase da decisão ({frase[:90]}…)')
+        ok(p.locator('.ct-frase .ct-prov-tag').count() == 1 and 'a folha e o pró-labore' in p.inner_text('#resultado'), 'sem a folha, o resultado é "Provisório" e diz o que falta')
+        ok(not p.is_hidden('#roteiro') and 'A folha e o pró-labore' in p.inner_text('#passos li.ct-prox') and 'próximo passo' in p.inner_text('#passos li.ct-prox'),
+           'por onde começar: o próximo passo é a folha')
+        ok('Já veio do sistema' in p.inner_text('#rotFeito') and 'a receita' in p.inner_text('#rotFeito'), 'o que já veio do sistema, embaixo do roteiro')
         ok(celula(p, 'Simples Nacional', 1).startswith('R$ 105.900,00'), f'o DAS dos 12 meses: Anexo I, 4ª faixa ({celula(p, "Simples Nacional", 1)!r})')
         ok('mais barato' in celula(p, 'Simples Nacional', 2) and '(hoje)' in p.inner_text('#resultado table.ct'), 'o mais barato de 2027 marcado e o regime de hoje')
         ok('no PGDAS de ago/26 a alíquota efetiva foi 8,83%' in p.inner_text('#resultado'), 'a conferência com o PGDAS do caso')
@@ -170,7 +192,36 @@ def main():
         p.wait_for_selector('#resultado table.ct', timeout=3000)
         ok(celula(p, 'Simples Nacional', 1).startswith('R$ 105.900,00'), 'a conta roda sem cadastro')
 
-        print('7. O card no Fiscal')
+        print('7. Por onde começar: a refeição no RS e as empresas dos mesmos sócios')
+        escolher(p, 'restaurante', 'RESTAURANTE EXEMPLO LTDA')
+        p.wait_for_selector('#grupoSocios', timeout=5000)
+        val = lambda sel: p.input_value(sel)
+        fonte = lambda campo: p.get_attribute('.ct-orig[data-orig="' + campo + '"]', 'data-fonte')
+        ok(val('#f_atividades_0_aliqIcms') == '12' and fonte('atividades.0.aliqIcms') == 'padrao', f'refeição no RS: 12%, padrão a conferir ({val("#f_atividades_0_aliqIcms")!r})')
+        ok(val('#f_atividades_0_redIcms') == '40' and fonte('atividades.0.redIcms') == 'padrao', 'a base a 60% no regime geral (padrão)')
+        ok(val('#f_atividades_0_redIcmsSimples') == '40' and fonte('atividades.0.redIcmsSimples') == 'reforma', 'a redução de 40% no DAS, lida do PGDAS do caso (verde)')
+        ok(val('#f_atividades_0_pctST') == '8' and fonte('atividades.0.pctST') == 'reforma', 'a revenda com ST (as bebidas), lida do PGDAS do caso')
+        g = p.inner_text('#grupoSocios')
+        ok('PADARIA IRMA LTDA' in g and 'sócio em comum: FULANO DE TAL' in g, 'a outra empresa do sócio, achada pelo CPF')
+        ok(val('#f_grupo_0_receita') == '2.165.000,00' and fonte('grupo.0.receita') == 'reforma', f'a receita dela, do caso da Reforma ({val("#f_grupo_0_receita")!r})')
+        ok('R$ 4.570.000,00' in texto(p, '#grupoSocios') and 'passa do limite em dezembro' in g, 'a soma dos 12 meses e o mês em que o ano passa do limite')
+        prox = texto(p, '#passos li.ct-prox')
+        ok('Ela pode ficar no Simples?' in prox and 'R$ 4.570.000' in prox and 'em dezembro' in prox and '01/01/2027' in prox,
+           'o primeiro passo: pode ficar no Simples? — a soma e a saída em 01/01/2027')
+        ok('Estudo provisório' in p.inner_text('#rotStatus'), 'o estudo é provisório')
+        p.click('#passos li.ct-prox [data-conferir]')
+        p.wait_for_function("() => /A folha e o pró-labore/.test(document.querySelector('#passos li.ct-prox').textContent)", timeout=3000)
+        ok('Ela pode ficar no Simples?' not in p.inner_text('#passos'), '"Conferido" tira o passo do limite e o próximo é a folha')
+        p.click('#passos li.ct-prox [data-ir]')
+        ok(p.evaluate("() => document.activeElement && document.activeElement.id") == 'f_folha', '"Digitar a folha" põe o cursor na folha')
+        p.fill('#f_folha', '480000')
+        p.wait_for_function("() => !/A folha e o pró-labore/.test(document.getElementById('passos').textContent)", timeout=3000)
+        ok(True, 'a folha digitada tira o passo dela')
+        p.click('#grupoSocios button[data-acao="tirar-grupo"]')
+        p.wait_for_function("() => !document.getElementById('grupoSocios')", timeout=3000)
+        ok(p.locator('#passos li[data-id="limite"]').count() == 0, 'sem a outra empresa, a receita sozinha fica longe do limite e o passo some')
+
+        print('8. O card no Fiscal')
         p2 = cx.new_page()
         p2.on('pageerror', lambda e: erros.append('fiscal: ' + str(e)))
         p2.add_init_script(TOUR); p2.add_init_script(SEMEAR)

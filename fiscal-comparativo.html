@@ -59,6 +59,42 @@
     .ct-orig[data-fonte="padrao"] { color:var(--warn); }
     .ct-orig[data-fonte="digitado"] { color:var(--text-muted); }
     .ct-orig[data-fonte="reforma"], .ct-orig[data-fonte="dominio"], .ct-orig[data-fonte="fator_r"], .ct-orig[data-fonte="pgdas"], .ct-orig[data-fonte="cadastro"], .ct-orig[data-fonte="gravado"] { color:var(--ok); }
+    .ct-orig[data-fonte="confirmado"] { color:var(--brand-pale); }
+    .ct-campo.ct-aqui .input { border-color:var(--brand-primary); box-shadow:0 0 0 3px rgba(91,130,166,.35); transition:box-shadow .2s; }
+    /* por onde começar: o roteiro do estudo */
+    .ct-roteiro[hidden] { display:none; }
+    .ct-rot-cab { display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 14px; margin-bottom:10px; }
+    .ct-rot-cab h2 { margin:0; }
+    .ct-rot-status { font-size:13px; color:var(--text-muted); }
+    .ct-rot-status.ct-prov { color:var(--warn); }
+    ol.ct-passos { list-style:none; margin:0; padding:0; counter-reset:passo; max-width:980px; }
+    ol.ct-passos > li { counter-increment:passo; border:1px solid var(--line); border-radius:10px; background:var(--surface); margin-bottom:6px; }
+    ol.ct-passos > li.ct-prox { border-color:var(--brand-primary); }
+    ol.ct-passos details > summary { list-style:none; display:grid; grid-template-columns:28px minmax(0,1fr) auto; gap:10px; align-items:center; padding:9px 12px; cursor:pointer; }
+    ol.ct-passos details > summary::-webkit-details-marker { display:none; }
+    ol.ct-passos details > summary::before { content:counter(passo); width:24px; height:24px; border-radius:50%; display:grid; place-items:center; font-size:12px; font-weight:600; background:var(--fill-2); color:var(--brand-pale); }
+    ol.ct-passos li.ct-prox details > summary::before { background:var(--brand-primary); color:#fff; }
+    ol.ct-passos details > summary:focus-visible { outline:2px solid var(--brand-primary); outline-offset:-2px; border-radius:10px; }
+    .ct-p-tit { font-size:14px; color:var(--text); font-weight:600; min-width:0; }
+    .ct-p-tit small { font-weight:400; color:var(--brand-light); font-size:12px; margin-left:8px; }
+    .ct-p-tag { font-size:11px; padding:2px 8px; border-radius:999px; white-space:nowrap; border:1px solid var(--line); color:var(--text-muted); }
+    .ct-p-tag[data-estado="falta"] { color:var(--err); border-color:rgba(224,108,108,.5); }
+    .ct-p-tag[data-peso="decide"][data-estado="conferir"] { color:var(--warn); border-color:rgba(230,180,80,.5); }
+    .ct-p-corpo { padding:0 12px 12px 50px; font-size:13px; line-height:1.55; color:var(--brand-pale); }
+    .ct-p-corpo p { margin:0 0 8px; max-width:78ch; }
+    .ct-p-acoes { display:flex; flex-wrap:wrap; gap:8px; }
+    .ct-rot-feito { font-size:12.5px; color:var(--text-muted); margin:10px 0 0; max-width:980px; }
+    .ct-rot-feito b { color:var(--ok); font-weight:600; }
+    @media (max-width:640px){ .ct-p-corpo { padding-left:12px; } ol.ct-passos details > summary { grid-template-columns:28px minmax(0,1fr); } ol.ct-passos details > summary .ct-p-tag { grid-column:2; justify-self:start; } }
+    .ct-frase .ct-prov-tag { display:inline-block; font-size:11px; font-weight:600; color:var(--warn); border:1px solid rgba(230,180,80,.5); border-radius:999px; padding:0 8px; margin-right:6px; vertical-align:2px; }
+    /* as outras empresas dos sócios */
+    .ct-gr-linha { border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin-bottom:8px; background:var(--surface); display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) auto; gap:8px 12px; align-items:start; }
+    .ct-gr-nome { font-size:13px; color:var(--text); min-width:0; }
+    .ct-gr-nome a { color:var(--brand-light); }
+    .ct-gr-nome small { display:block; color:var(--text-muted); font-size:11.5px; margin-top:2px; }
+    .ct-gr-sit { font-size:12.5px; color:var(--brand-pale); line-height:1.5; margin:2px 0 8px; }
+    .ct-gr-sit.ct-alerta { color:var(--warn); }
+    @media (max-width:640px){ .ct-gr-linha { grid-template-columns:minmax(0,1fr); } }
     .ct-ativ { border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:10px; background:var(--surface); }
     .ct-ativ-topo { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) auto; gap:10px 12px; align-items:start; }
     .ct-ativ .ct-campos { margin-top:10px; }
@@ -154,6 +190,12 @@
         </div>
       </section>
 
+      <section class="ct-sec ct-roteiro" id="roteiro" aria-labelledby="tRoteiro" hidden>
+        <div class="ct-rot-cab"><h2 id="tRoteiro">Por onde começar</h2><span class="ct-rot-status" id="rotStatus" role="status"></span></div>
+        <ol class="ct-passos" id="passos"></ol>
+        <p class="ct-rot-feito" id="rotFeito"></p>
+      </section>
+
       <div class="ct-grade" id="grade" hidden>
         <section class="ct-sec" aria-labelledby="tNumeros">
           <h2 id="tNumeros">Os números dos 12 meses</h2>
@@ -173,7 +215,9 @@
     import { hojeLocal, formatDocumento, normalizarDocumento } from './assets/js/utils.js';
     import { nomePorEmail } from './assets/js/equipe.js';
     import { comparar, testarPremissas, fraseDaDecisao, TIPOS, ANEXOS, ROTULO_REGIME, REGIMES } from './assets/js/comparativo-motor.js';
-    import { entradaDoSistema, aplicarRelatorios, premissasParaTestar, prazosDaEscolha, regimeDoCadastro, FONTES, rotuloComp } from './assets/js/comparativo-dados.js';
+    import { entradaDoSistema, aplicarRelatorios, premissasParaTestar, prazosDaEscolha, regimeDoCadastro, FONTES, rotuloComp,
+      receitaDaEmpresa, empresasDosSocios, situacaoDoGrupo } from './assets/js/comparativo-dados.js';
+    import { roteiroDoEstudo } from './assets/js/comparativo-roteiro.js';
     import { lerRelatorio, consolidar, lerPlanilha, perfilAtividade } from './assets/js/dominio-relatorios.js';
     import { paginasDoPdf, abasDaPlanilha, rotuloRel } from './assets/js/relatorios-arquivos.js';
 
@@ -210,14 +254,16 @@
     const aliq2027 = rPar && rPar.data && rPar.data.valor ? rPar.data.valor : null;
 
     // o estudo aberto
+    // serie: a receita datada da empresa (o sistema) · grupoSeries: a das outras empresas dos sócios ([{ nome, serie }])
+    // rotAbertos: os passos do roteiro que a pessoa abriu
     const st = { cliente: null, nome: '', entrada: null, origens: {}, notas: [], conferencia: null, rels: [], fontes: [],
-      estudoId: null, gravadoEm: null, gravadoPor: null, semTabela: false };
+      estudoId: null, gravadoEm: null, gravadoPor: null, semTabela: false, serie: null, grupoSeries: [], rotAbertos: new Set() };
 
     // os padrões que a tela mostra (os mesmos do motor): ficam na entrada pra aparecer nos campos
     const PADROES = { compras: 0, aliqCreditoIcms: 12, pctComprasSimples: 0, despesasCredito: 0, outrasDespesas: 0, difalSimples: 0,
       folha: 0, proLabore: 0, rat: 2, fap: 1, terceiros: 5.8, cprb: null, crescimentoReceita: 0, crescimentoFolha: 0, semLc224: false,
       mix: { cheia: 100, red60: 0, red40: 0, red30: 0, zero: 0 }, pctImpostoEmbutido: null, pctComprasComCredito: null };
-    const PADRAO_ATIV = a => ({ aliqIcms: 17, aliqIss: 3, pctST: 0, pctMonofasico: 0, aliqIpi: 0, ...a });
+    const PADRAO_ATIV = a => ({ aliqIcms: 17, aliqIss: 3, pctST: 0, pctMonofasico: 0, aliqIpi: 0, redIcms: 0, redIcmsSimples: 0, ...a });
     function comPadroes(e) {
       const out = { ...PADROES, ...e, mix: { ...PADROES.mix, ...(e && e.mix) } };
       out.atividades = ((e && e.atividades) || [{ tipo: 'comercio', receita: 0 }]).map(PADRAO_ATIV);
@@ -274,7 +320,8 @@
       if (!nome) return;
       await gravarPendente();
       st.cliente = null; st.nome = nome; st.estudoId = null; st.gravadoEm = null; st.gravadoPor = null; st.rels = []; st.conferencia = null;
-      st.entrada = comPadroes({ atividades: [{ tipo: 'comercio', receita: 0 }] });
+      st.serie = null; st.grupoSeries = []; st.rotAbertos = new Set();
+      st.entrada = comPadroes({ atividades: [{ tipo: 'comercio', receita: 0 }], grupo: [] });
       st.origens = { ...ORIGENS_PADRAO, 'atividades.0.receita': { fonte: 'padrao', texto: 'digite a receita dos 12 meses' }, 'atividades.0.tipo': { fonte: 'padrao' },
         compras: { fonte: 'padrao', texto: 'digite ou solte os relatórios' }, folha: { fonte: 'padrao', texto: 'digite os 12 meses', dica: 'salários, 13º e férias' }, proLabore: { fonte: 'padrao', texto: 'digite' },
         aliqCreditoIcms: { fonte: 'padrao', texto: 'padrão: 12% — confira' }, outrasDespesas: { fonte: 'padrao', texto: 'digite: fazem o lucro do Real' }, rat: { fonte: 'padrao', texto: 'padrão: 2% e FAP 1' }, terceiros: { fonte: 'padrao', texto: 'padrão: 5,8%' } };
@@ -300,10 +347,40 @@
       let fr = [];
       const frEmp = rFr && rFr.data && rFr.data[0];
       if (frEmp) { const r = await supabase.from('fr_lancamentos').select('competencia, folha_salarios, folha_outros, prolabore').eq('empresa_id', frEmp.id).order('competencia', { ascending: false }).limit(12); fr = (r && r.data) || []; }
+      // as outras empresas dos mesmos sócios (pelo CPF; sem CPF, pelo nome) e a receita de cada uma
+      const grupo = [], grupoSeries = [];
+      try {
+        const rSoc = await supabase.from('socios').select('nome, cpf').eq('cliente_id', c.id);
+        const socios = (rSoc && rSoc.data) || [];
+        const cpfs = [...new Set(socios.map(s => String(s.cpf || '').replace(/\D/g, '')).filter(x => x.length === 11))];
+        const semCpf = socios.filter(s => String(s.cpf || '').replace(/\D/g, '').length !== 11).map(s => s.nome).filter(Boolean);
+        const outros = [];
+        if (cpfs.length) { const r = await supabase.from('socios').select('cliente_id, nome, cpf').in('cpf', cpfs); outros.push(...((r && r.data) || [])); }
+        if (semCpf.length) { const r = await supabase.from('socios').select('cliente_id, nome, cpf').in('nome', semCpf); outros.push(...((r && r.data) || [])); }
+        const empresas = empresasDosSocios(socios, outros, c.id);
+        if (empresas.length) {
+          const ids = empresas.map(x => x.cliente_id);
+          const [rC, rP] = await Promise.all([
+            supabase.from('rt_casos').select('cliente_id, receita_mensal, sim_obs, atualizado_em').in('cliente_id', ids).order('atualizado_em', { ascending: false }),
+            supabase.from('receita_pgdas').select('cliente_id, competencia, receita_mes').in('cliente_id', ids)
+          ]);
+          empresas.forEach(x => {
+            const cli = clientes.find(k => k.id === x.cliente_id) || { id: x.cliente_id, nome_principal: 'empresa sem cadastro aberto' };
+            const caso = ((rC && rC.data) || []).find(k => k.cliente_id === x.cliente_id) || null;
+            const pgs = ((rP && rP.data) || []).filter(k => k.cliente_id === x.cliente_id);
+            const r = receitaDaEmpresa({ cliente: cli, caso, pgdas: pgs });
+            grupo.push({ nome: r.nome, cliente_id: x.cliente_id, socios: x.socios, receita: r.receita, meses: r.meses, origem: r.origem });
+            grupoSeries.push({ nome: r.nome, cliente_id: x.cliente_id, serie: r.serie });
+          });
+        }
+      } catch (err) { /* sem os sócios, a conta segue sem as outras empresas */ }
       if (st.cliente !== c) return;   // trocou de empresa no meio da leitura
       const caso = rCaso && rCaso.data && rCaso.data[0] || null;
       const pg = (rPg && rPg.data) || [];
       const sis = entradaDoSistema({ cliente: c, caso, fatorR: fr, pgdas: pg });
+      sis.entrada.grupo = grupo.map(({ origem, ...g }) => g);
+      grupo.forEach((g, i) => { sis.origens['grupo.' + i + '.receita'] = g.origem; });
+      st.serie = sis.serie; st.grupoSeries = grupoSeries; st.rotAbertos = new Set();
       st.fontes = [
         { ok: !!caso, txt: caso ? 'caso da Reforma' : 'sem caso na Reforma' },
         { ok: fr.length > 0, txt: fr.length ? 'Fator R (' + fr.length + (fr.length === 1 ? ' mês)' : ' meses)') : 'sem folha no Fator R' },
@@ -314,6 +391,8 @@
       if (salvo && salvo.entrada && salvo.entrada.entrada) {
         st.estudoId = salvo.id; st.gravadoEm = salvo.atualizado_em; st.gravadoPor = salvo.atualizado_por;
         st.entrada = comPadroes(salvo.entrada.entrada); st.origens = salvo.entrada.origens || {}; st.conferencia = salvo.entrada.conferencia || sis.conferencia;
+        // o estudo gravado antes da soma das empresas dos sócios: entram as que o sistema achou
+        if (!Array.isArray(salvo.entrada.entrada.grupo)) { st.entrada.grupo = sis.entrada.grupo; grupo.forEach((g, i) => { st.origens['grupo.' + i + '.receita'] = g.origem; }); }
       } else {
         st.entrada = comPadroes(sis.entrada); st.origens = { ...ORIGENS_PADRAO, ...sis.origens }; st.conferencia = sis.conferencia;
       }
@@ -364,7 +443,9 @@
       'ativ.receita': { rotulo: 'Receita dos 12 meses', un: 'R$' }, 'ativ.aliqIcms': { rotulo: 'ICMS das vendas', un: '%' }, 'ativ.pctST': { rotulo: 'Vendas com ICMS-ST', un: '%' },
       'ativ.pctMonofasico': { rotulo: 'Revenda monofásica (PIS/Cofins)', un: '%' }, 'ativ.aliqIss': { rotulo: 'ISS', un: '%' },
       'ativ.presIrpj': { rotulo: 'Presunção do IRPJ', un: '%' }, 'ativ.presCsll': { rotulo: 'Presunção da CSLL', un: '%' },
-      'ativ.aliqIpi': { rotulo: 'IPI a recolher em 2026 (Presumido e Real)', un: '%' }
+      'ativ.aliqIpi': { rotulo: 'IPI a recolher em 2026 (Presumido e Real)', un: '%' },
+      'ativ.redIcms': { rotulo: 'Redução da base do ICMS no regime geral', un: '%' }, 'ativ.redIcmsSimples': { rotulo: 'Redução do ICMS no DAS', un: '%' },
+      'grupo.receita': { rotulo: 'Receita dos 12 meses', un: 'R$' }
     };
     const pegar = (o, caminho) => caminho.split('.').reduce((x, k) => x == null ? x : x[k], o);
     function definir(o, caminho, v) { const p = caminho.split('.'); let x = o; for (let i = 0; i < p.length - 1; i++) x = x[p[i]] = x[p[i]] ?? {}; x[p[p.length - 1]] = v; }
@@ -389,6 +470,9 @@
       const p = 'atividades.' + i;
       const opTipos = Object.entries(TIPOS).map(([k, x]) => '<option value="' + k + '"' + (k === a.tipo ? ' selected' : '') + '>' + esc(x.rotulo) + '</option>').join('');
       const anexo = a.anexo || t.anexo;
+      // as reduções do ICMS: à vista quando há (a refeição no RS, o PGDAS com redução); senão, no "ajuste"
+      const comRed = tributo === 'icms' && ((Number(a.redIcms) || 0) > 0 || (Number(a.redIcmsSimples) || 0) > 0);
+      const reducoes = tributo === 'icms' ? campo(p + '.redIcms', 'ativ.redIcms') + campo(p + '.redIcmsSimples', 'ativ.redIcmsSimples') : '';
       return '<div class="ct-ativ" data-i="' + i + '">' +
         '<div class="ct-ativ-topo">' +
           '<label class="ct-campo" for="f_' + p.replace('.', '_') + '_tipo">Atividade<select class="select" id="f_' + p.replace('.', '_') + '_tipo" data-campo="' + p + '.tipo">' + opTipos + '</select>' + tag(p + '.tipo') + '</label>' +
@@ -398,8 +482,10 @@
         '<div class="ct-campos">' +
           (tributo === 'icms' ? campo(p + '.aliqIcms', 'ativ.aliqIcms') + campo(p + '.pctST', 'ativ.pctST') + (a.tipo === 'comercio' ? campo(p + '.pctMonofasico', 'ativ.pctMonofasico') : '') : campo(p + '.aliqIss', 'ativ.aliqIss')) +
           (a.tipo === 'industria' ? campo(p + '.aliqIpi', 'ativ.aliqIpi') : '') +
+          (comRed ? reducoes : '') +
         '</div>' +
-        '<details class="ct-ajuste"><summary>Anexo do Simples e presunção do Presumido</summary><div class="ct-campos">' +
+        '<details class="ct-ajuste"><summary>' + (tributo === 'icms' && !comRed ? 'Anexo do Simples, presunção do Presumido e redução do ICMS' : 'Anexo do Simples e presunção do Presumido') + '</summary><div class="ct-campos">' +
+          (comRed ? '' : reducoes) +
           '<label class="ct-campo">Anexo do Simples<select class="select" data-campo="' + p + '.anexo">' + ANEXOS.map(x => '<option' + (x === anexo ? ' selected' : '') + '>' + x + '</option>').join('') + '</select></label>' +
           (a.tipo === 'servico_r' ? '<label class="ct-campo"><span><input type="checkbox" data-campo="' + p + '.fatorR"' + (a.fatorR === false ? '' : ' checked') + '> Anexo pelo fator r (III com folha ≥ 28%)</span></label>' : '') +
           campo(p + '.presIrpj', 'ativ.presIrpj').replace('value=""', 'value="' + esc(pct(a.presIrpj ?? t.presIrpj)) + '"') +
@@ -409,6 +495,39 @@
         '</div></details>' +
       '</div>';
     }
+    // o ano-calendário pelos números do sistema: a empresa e as outras dos sócios que vieram do sistema (sem a série de
+    // uma delas, não há como somar o ano)
+    function situacaoAtual() {
+      const g = st.entrada && st.entrada.grupo || [];
+      const series = g.map(x => (st.grupoSeries || []).find(s => s.cliente_id && s.cliente_id === x.cliente_id));
+      if (series.some(s => !s || !s.serie)) return null;
+      return situacaoDoGrupo(st.serie, series.map(s => ({ nome: s.nome, serie: s.serie })));
+    }
+    // a soma das empresas dos sócios: os 12 meses (como estão na tela) e o ano pelos números do sistema
+    function textoGrupo() {
+      const g = st.entrada.grupo || [];
+      const rec = st.entrada.atividades.reduce((s, a) => s + (Number(a.receita) || 0), 0);
+      const soma = rec + g.reduce((s, x) => s + (Number(x.receita) || 0), 0);
+      const sit = situacaoAtual();
+      let txt = 'O limite de R$ 4,8 milhões do Simples vale pra soma (LC 123, art. 3º, §4º, III e IV). Nos 12 meses, somadas: ' + brl(soma) + ' (' + pct(soma / 4800000 * 100, 0) + '% do limite).';
+      if (sit && sit.meses) txt += ' Em ' + sit.ano + ', até ' + rotuloComp(sit.ate) + ', pelos números do sistema: ' + brl(sit.acumulado) + (sit.jaPassou ? ' — passou do limite em ' + sit.passaEm + '.' : sit.passaEm ? '; no ritmo dos últimos 3 meses, passa do limite em ' + sit.passaEm + '.' : '.');
+      return { txt, alerta: soma >= 0.85 * 4800000 || !!(sit && sit.passaEm) };
+    }
+    // as outras empresas dos mesmos sócios: o limite de R$ 4,8 milhões vale pra soma
+    function blocoGrupo() {
+      const g = st.entrada.grupo || [];
+      if (!g.length) return '';
+      const { txt, alerta } = textoGrupo();
+      const linhas = g.map((x, i) => {
+        const p = 'grupo.' + i;
+        const nome = x.cliente_id
+          ? '<span class="ct-gr-nome"><a href="clientes/editar.html?id=' + encodeURIComponent(x.cliente_id) + '">' + esc(x.nome) + '</a>' + (x.socios && x.socios.length ? '<small>' + (x.socios.length === 1 ? 'sócio em comum: ' : 'sócios em comum: ') + esc(x.socios.join(', ')) + '</small>' : '') + '</span>'
+          : '<label class="ct-campo" for="f_grupo_' + i + '_nome">Empresa<input class="input" id="f_grupo_' + i + '_nome" data-campo="' + p + '.nome" value="' + esc(x.nome || '') + '" placeholder="Nome da empresa" autocomplete="off"></label>';
+        return '<div class="ct-gr-linha">' + nome + campo(p + '.receita', 'grupo.receita') +
+          '<button type="button" class="ct-x" data-acao="tirar-grupo" data-i="' + i + '" aria-label="Tirar esta empresa da soma" title="Tirar esta empresa da soma">✕</button></div>';
+      }).join('');
+      return '<fieldset class="ct-grupo" id="grupoSocios"><legend>Empresas dos mesmos sócios</legend><p class="ct-gr-sit' + (alerta ? ' ct-alerta' : '') + '" id="grupoSit">' + esc(txt) + '</p>' + linhas + '</fieldset>';
+    }
     function renderForm() {
       const e = st.entrada;
       const totalRec = e.atividades.reduce((s, a) => s + (Number(a.receita) || 0), 0);
@@ -416,7 +535,9 @@
       $('form').innerHTML =
         '<fieldset class="ct-grupo"><legend>Receita</legend>' + e.atividades.map(blocoAtividade).join('') +
           '<div class="ct-total-rec" id="totalRec">Receita dos 12 meses: <b>' + esc(brl(totalRec)) + '</b></div>' +
-          '<button type="button" class="btn btn-ghost btn-sm" data-acao="mais">+ Outra atividade</button></fieldset>' +
+          '<div class="ct-linha-acoes"><button type="button" class="btn btn-ghost btn-sm" data-acao="mais">+ Outra atividade</button>' +
+          '<button type="button" class="btn btn-ghost btn-sm" data-acao="mais-grupo">+ Empresa dos mesmos sócios</button></div></fieldset>' +
+        blocoGrupo() +
         '<fieldset class="ct-grupo"><legend>Compras e despesas</legend><div class="ct-campos">' +
           campo('compras') + (temIcms ? campo('aliqCreditoIcms') : '') + campo('pctComprasSimples') + campo('despesasCredito') + campo('outrasDespesas') + (temIcms ? campo('difalSimples') : '') +
         '</div></fieldset>' +
@@ -436,6 +557,7 @@
     $('form').addEventListener('input', e => {
       const el = e.target.closest('[data-campo]'); if (!el || el.tagName === 'SELECT' || el.type === 'checkbox') return;
       const caminho = el.dataset.campo;
+      if (/^grupo\.\d+\.nome$/.test(caminho)) { definir(st.entrada, caminho, el.value); mudou(); return; }
       const n = lerNumero(el.value);
       const vazio = caminho === 'cprb' || caminho === 'pctImpostoEmbutido' || caminho === 'pctComprasComCredito';
       definir(st.entrada, caminho, n == null ? (vazio ? null : 0) : n);
@@ -446,7 +568,7 @@
       mudou();
     });
     $('form').addEventListener('focusout', e => {
-      const el = e.target.closest('input[data-campo]'); if (!el || el.type === 'checkbox') return;
+      const el = e.target.closest('input[data-campo]'); if (!el || el.type === 'checkbox' || el.dataset.un == null) return;
       el.value = formatar(pegar(st.entrada, el.dataset.campo), el.dataset.un);
     });
     $('form').addEventListener('change', e => {
@@ -458,7 +580,7 @@
       if (m) {
         // outro tipo: anexo, presunção e tributo voltam aos do tipo novo
         const i = +m[1], a = st.entrada.atividades[i];
-        st.entrada.atividades[i] = { ...PADRAO_ATIV({}), tipo: el.value, receita: a.receita, aliqIcms: a.aliqIcms, aliqIss: a.aliqIss, pctST: a.pctST, pctMonofasico: a.pctMonofasico };
+        st.entrada.atividades[i] = { ...PADRAO_ATIV({}), tipo: el.value, receita: a.receita, aliqIcms: a.aliqIcms, aliqIss: a.aliqIss, pctST: a.pctST, pctMonofasico: a.pctMonofasico, redIcms: a.redIcms, redIcmsSimples: a.redIcmsSimples };
         st.origens[caminho] = { fonte: 'digitado' };
         renderForm(); mudou(); return;
       }
@@ -477,19 +599,27 @@
         const el = $('f_atividades_' + i + '_receita'); if (el) el.focus();
         mudou();
       }
-      if (b.dataset.acao === 'tirar') {
-        const i = +b.dataset.i;
-        st.entrada.atividades.splice(i, 1);
+      if (b.dataset.acao === 'tirar' || b.dataset.acao === 'tirar-grupo') {
+        const i = +b.dataset.i, lista = b.dataset.acao === 'tirar' ? 'atividades' : 'grupo';
+        st.entrada[lista].splice(i, 1);
         // as origens das linhas de baixo sobem uma posição
-        const novo = {};
+        const novo = {}, rx = new RegExp('^' + lista + '\\.(\\d+)\\.(.+)$');
         Object.entries(st.origens).forEach(([k, v]) => {
-          const m = /^atividades\.(\d+)\.(.+)$/.exec(k);
+          const m = rx.exec(k);
           if (!m) { novo[k] = v; return; }
           const j = +m[1];
-          if (j < i) novo[k] = v; else if (j > i) novo['atividades.' + (j - 1) + '.' + m[2]] = v;
+          if (j < i) novo[k] = v; else if (j > i) novo[lista + '.' + (j - 1) + '.' + m[2]] = v;
         });
         st.origens = novo;
         renderForm(); mudou();
+      }
+      if (b.dataset.acao === 'mais-grupo') {
+        st.entrada.grupo = [...(st.entrada.grupo || []), { nome: '', receita: 0 }];
+        const i = st.entrada.grupo.length - 1;
+        st.origens['grupo.' + i + '.receita'] = { fonte: 'padrao', texto: 'digite os 12 meses dela' };
+        renderForm();
+        const el = $('f_grupo_' + i + '_nome'); if (el) el.focus();
+        mudou();
       }
     });
 
@@ -509,15 +639,20 @@
     function calcular() {
       const box = $('resultado');
       let c, testes = [];
+      if ($('grupoSit')) { const tg = textoGrupo(); $('grupoSit').textContent = tg.txt; $('grupoSit').classList.toggle('ct-alerta', tg.alerta); }
       try {
         c = comparar(entradaDoMotor());
         testes = testarPremissas(entradaDoMotor(), premissasParaTestar(st.entrada, st.origens));
       } catch (err) {
         ultimo = null;
         box.innerHTML = '<p class="ct-vazio">' + esc(err.message) + '</p>';
+        renderRoteiro(roteiroDoEstudo({ entrada: st.entrada, origens: st.origens, serie: st.serie }));
         return;
       }
       ultimo = c;
+      const rot = roteiroDoEstudo({ entrada: st.entrada, origens: st.origens, comparacao: c, testes, situacao: situacaoAtual(), serie: st.serie });
+      renderRoteiro(rot);
+      const decidem = rot.passos.filter(p => p.estado !== 'feito' && p.peso === 'decide');
       const d = c.decisao;
       const anos = c.anos;
       const atual = st.entrada.regimeAtual;
@@ -570,7 +705,8 @@
       const avisos = [...new Set([...(st.notas || []).filter(n => !(temFolha && /^A folha e o pró-labore não estão no sistema/.test(n))), ...c.avisos, ...REGIMES.flatMap(g => (anos.find(r => r.ano === c.anoDecisao) || anos[0])[g].avisos || [])])];
       const prazos = prazosDaEscolha(hojeLocal(), atual, c.anoDecisao);
       box.innerHTML =
-        '<p class="ct-frase">' + esc(fraseDaDecisao(c)) + '</p>' +
+        '<p class="ct-frase">' + (rot.provisorio ? '<span class="ct-prov-tag">Provisório</span>' : '') + esc(fraseDaDecisao(c)) + '</p>' +
+        (rot.provisorio ? '<p class="ct-sub ct-alerta">Ainda pode virar: ' + (decidem.length === 1 ? 'falta conferir ' : 'faltam conferir ') + esc(decidem.map(p => p.curto || p.titulo).join(', ').replace(/, ([^,]*)$/, ' e $1')) + ' — veja "Por onde começar".</p>' : '') +
         conf +
         '<div class="ct-tab"><table class="ct" aria-label="Tributos por regime e por ano">' + cab + linhaRec + linhas + '</table></div>' +
         '<details class="ct-det"><summary>Por tributo</summary>' + det + '</details>' +
@@ -580,6 +716,52 @@
           '<li>Todo tributo é calculado sobre a receita de hoje e conta como custo da empresa. Em 2027, a CBS/IBS do Presumido e do Real vai destacada na nota e o cliente empresa do regime regular credita tudo; no Simples por dentro, ele credita só a fatia de CBS/IBS do DAS — essa diferença pro cliente não entra na conta. A opção do Simples por fora está na <a href="fiscal-reforma.html">Reforma Tributária</a>.</li>' +
           '<li>CBS de 2027: referência de ' + esc(pct((aliq2027 && aliq2027.cbs) || 11.3, 2)) + '%, a calculada pelo TCU, menos 0,1 ponto; IBS de 0,1%. Fora da conta: receitas financeiras, ajustes do lucro do Real, lucros e dividendos (Lei 15.270) e os anos de 2029 em diante.</li>' +
           avisos.map(a => '<li>' + esc(a) + '</li>').join('') + '</ul></div>';
+    }
+    // ---------- por onde começar ----------
+    const TAG_PESO = { decide: 'pode virar a decisão', importa: 'muda o tamanho da diferença', detalhe: 'quando der' };
+    function renderRoteiro(rot) {
+      $('roteiro').hidden = false;
+      const pend = rot.passos.filter(p => p.estado !== 'feito');
+      const s = $('rotStatus');
+      s.classList.toggle('ct-prov', rot.provisorio);
+      s.textContent = rot.provisorio ? 'Estudo provisório: ' + (rot.decidem === 1 ? 'falta 1 coisa que pode virar a decisão.' : 'faltam ' + rot.decidem + ' coisas que podem virar a decisão.')
+        : pend.length ? 'O resultado já se sustenta; sobram detalhes pra conferir.' : 'Tudo conferido.';
+      $('passos').innerHTML = pend.map((p, i) => {
+        const prox = i === 0;
+        return '<li' + (prox ? ' class="ct-prox"' : '') + ' data-id="' + esc(p.id) + '"><details' + (prox || st.rotAbertos.has(p.id) ? ' open' : '') + '>' +
+          '<summary><span class="ct-p-tit">' + esc(p.titulo) + (prox ? '<small>próximo passo</small>' : '') + '</span>' +
+            '<span class="ct-p-tag" data-estado="' + esc(p.estado) + '" data-peso="' + esc(p.peso) + '">' + esc(p.estado === 'falta' ? 'falta' : TAG_PESO[p.peso]) + '</span></summary>' +
+          '<div class="ct-p-corpo"><p>' + esc(p.texto) + '</p><div class="ct-p-acoes">' +
+            (p.campo ? '<button type="button" class="btn btn-ghost btn-sm" data-ir="' + esc(p.campo) + '">' + esc(p.irRotulo || 'Ir ao campo') + '</button>' : '') +
+            (p.conferir ? '<button type="button" class="btn btn-ghost btn-sm" data-conferir="' + esc(p.conferir.join(',')) + '">✓ ' + esc(p.conferirRotulo || 'Está certo') + '</button>' : '') +
+          '</div></div></details></li>';
+      }).join('');
+      $('rotFeito').innerHTML = rot.doSistema.length ? '<b>Já veio do sistema:</b> ' + esc(rot.doSistema.join(', ').replace(/, ([^,]*)$/, ' e $1')) + '.' : '';
+    }
+    // abrir e fechar um passo fica lembrado enquanto a empresa está aberta
+    $('passos').addEventListener('toggle', e => {
+      const li = e.target.closest && e.target.closest('li[data-id]'); if (!li) return;
+      if (e.target.open) st.rotAbertos.add(li.dataset.id); else st.rotAbertos.delete(li.dataset.id);
+    }, true);
+    $('passos').addEventListener('click', e => {
+      const ir = e.target.closest('[data-ir]');
+      if (ir) { irAoCampo(ir.dataset.ir); return; }
+      const cf = e.target.closest('[data-conferir]');
+      if (!cf) return;
+      cf.dataset.conferir.split(',').filter(Boolean).forEach(k => { st.origens[k] = { fonte: 'confirmado', texto: FONTES.confirmado }; });
+      renderForm(); calcular();
+      clearTimeout(tGravar); tGravar = setTimeout(gravar, 1500);
+      const prox = document.querySelector('#passos li.ct-prox summary'); if (prox) prox.focus();
+    });
+    // vai ao campo: abre o que está fechado em volta, rola até ele e marca por um instante
+    function irAoCampo(caminho) {
+      const el = document.getElementById('f_' + String(caminho).replace(/\./g, '_'));
+      if (!el) return;
+      for (let d = el.closest('details'); d; d = d.parentElement && d.parentElement.closest('details')) d.open = true;
+      el.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      el.focus({ preventScroll: true });
+      const lab = el.closest('.ct-campo');
+      if (lab) { lab.classList.add('ct-aqui'); setTimeout(() => lab.classList.remove('ct-aqui'), 1800); }
     }
     const anoDe = (c, ano) => c.anos.find(r => r.ano === ano) || c.anos[0];
     const r0 = (c, g, ano) => { const r = anoDe(c, ano || c.anoDecisao); return r && r[g] && r[g].disponivel; };
