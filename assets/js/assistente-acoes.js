@@ -966,6 +966,8 @@ const docBR = v => { const s = String(v || '').replace(/\D/g, ''); return s.leng
   : s.length === 11 ? s.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4') : String(v || ''); };
 const NADA_VOLTOU = 'nada-voltou';   // o desfazer não achou o que voltar: alguém mexeu depois
 // o mês do achado "fora dos boletos": o do endereço dele (financeiro-boletos.html?competencia=AAAA-MM)
+// a rodinha do mouse em cima do campo numérico com o foco muda o número sem a pessoa ver: tira o foco e a página rola
+const semRodinha = el => { el.addEventListener('wheel', () => { if (document.activeElement === el) el.blur(); }, { passive: true }); return el; };
 const compDoLink = link => { const m = /[?&]competencia=(\d{4}-(?:0[1-9]|1[0-2]))(?:[&#]|$)/.exec(String(link || '')); return m ? m[1] : null; };
 // a função ca-vendas (o Conta Azul, só os sócios), com a espera quando o Conta Azul está renovando a conexão (o 503
 // "renovando": o ca-sync renova o token, e a função não disputa a renovação) — o teste de tela encurta por
@@ -1126,8 +1128,11 @@ async function resolverAchado(a, escolha, ajuda) {
     const r = d && Array.isArray(d.resultados) ? d.resultados[0] : null;
     if (!r) return { erro: 'O Conta Azul não disse o que fez: confira lá, em Vendas › Contratos.' };
     if (!r.ok) return { erro: r.erro ? r.erro.charAt(0).toUpperCase() + r.erro.slice(1) + '.' : 'O Conta Azul não aceitou.' };
+    // a API do Conta Azul não preenche o local de prestação do serviço (o município da NFS-e), que os contratos feitos à
+    // mão lá têm (Três Coroas): fica o lembrete
     return { texto: 'Contrato ' + ((r.contrato && r.contrato.numero) || '') + ' criado no Conta Azul' + (r.pessoa_criada ? ', com o cadastro da empresa lá' : '') + ': '
-      + resumoDoContrato({ valor: r.valor, dia: r.dia, inicio: r.inicio }) + '. Pra desfazer, exclua no Conta Azul (Vendas › Contratos).', desfazer: null };
+      + resumoDoContrato({ valor: r.valor, dia: r.dia, inicio: r.inicio }) + '. Lá no contrato, ponha o local de prestação do serviço (Três Coroas), que a API do Conta Azul não preenche.'
+      + ' Pra desfazer, exclua no Conta Azul (Vendas › Contratos).', desfazer: null };
   }
   if (a.regra === 'cliente_sem_boleto') {
     const e = escolha && typeof escolha === 'object' ? escolha : {};
@@ -1364,13 +1369,17 @@ function cartaoVigia({ raiz, estado, salvar, ajuda, anunciar }) {
     const s = it.sugerido || {}, modelos = d.modelos || {};
     const meses = mesesDeInicio(d.hoje || hojeISO());
     const valor = h('input', { type: 'text', inputmode: 'decimal', class: 'as-vigia-valor', 'aria-label': 'Valor da mensalidade, em reais', placeholder: '0,00', value: valorBR(s.valor) });
-    const dia = h('input', { type: 'number', class: 'as-vigia-dia', 'aria-label': 'Dia do vencimento' });
+    const dia = semRodinha(h('input', { type: 'number', class: 'as-vigia-dia', 'aria-label': 'Dia do vencimento' }));
     dia.min = '1'; dia.max = '31'; dia.step = '1'; dia.value = String(s.dia || 10);
     const inicio = h('select', { 'aria-label': 'Mês da primeira mensalidade' }, meses.map(m => h('option', { value: m, text: mesBR(m) })));
     inicio.value = meses.includes(s.inicio) ? s.inicio : meses[1];
     const tipo = h('select', { 'aria-label': 'Tipo do contrato' }, h('option', { value: 'mensal', text: 'Honorários mensais' }), h('option', { value: 'mei', text: 'MEI - contratos' }));
     tipo.value = s.tipo === 'mei' ? 'mei' : 'mensal';
     const resumo = h('div', { class: 'as-cartao-sub' });
+    // o dia diferente do da base de boletos: o boleto e a venda do Conta Azul venceriam em dias diferentes (o caso da Perin,
+    // criada no dia 10 com a base no 15, em 01/11/2026)
+    const diaDaBase = s.de && s.de.dia === 'base' ? Number(s.dia) : null;
+    const avisoDia = h('div', { class: 'as-cartao-aviso', hidden: true });
     const botoes = h('div', { class: 'as-vigia-busca-linha' });
     const criar = botao('Criar no Conta Azul', () => confirmar(), 'pri');
     const lerPedido = () => ({ valor: lerValor(valor.value), dia: Number(dia.value), inicio: inicio.value, tipo: tipo.value });
@@ -1378,6 +1387,9 @@ function cartaoVigia({ raiz, estado, salvar, ajuda, anunciar }) {
       const p = lerPedido(), modelo = modelos[p.tipo];
       const pronto = p.valor > 0 && Number.isInteger(p.dia) && p.dia >= 1 && p.dia <= 31 && !!modelo;
       criar.disabled = !pronto;
+      const outroDia = diaDaBase && Number.isInteger(p.dia) && p.dia !== diaDaBase;
+      avisoDia.hidden = !outroDia;
+      avisoDia.textContent = outroDia ? 'A base de boletos dela vence no dia ' + diaDaBase + ': com o dia ' + p.dia + ' aqui, o boleto e a venda do Conta Azul vencem em dias diferentes.' : '';
       resumo.textContent = !modelo ? 'Não achei no Conta Azul um contrato ativo de ' + (p.tipo === 'mei' ? 'MEI' : 'honorários mensais') + ' pra copiar: crie o primeiro lá.'
         : pronto ? resumoDoContrato(p) + (p.inicio < meses[1] ? '. A venda de ' + mesBR(p.inicio) + ' sai na hora.' : '.') + ' Como o contrato ' + modelo.numero + ': o serviço ' + (modelo.servico || 'dele')
           + ', a venda no último dia de cada mês.' : 'Preencha o valor e o dia.';
@@ -1385,7 +1397,7 @@ function cartaoVigia({ raiz, estado, salvar, ajuda, anunciar }) {
     function confirmar() {
       const p = lerPedido();
       if (criar.disabled) return;
-      botoes.replaceChildren(h('span', { class: 'as-cartao-sub', text: 'Criar o contrato de ' + brl(p.valor) + ' por mês no Conta Azul? Não dá pra desfazer por aqui.' }),
+      botoes.replaceChildren(h('span', { class: 'as-cartao-sub', text: 'Criar o contrato no Conta Azul: ' + resumoDoContrato(p) + '? Não dá pra desfazer por aqui.' }),
         botao('Sim, criar', ev => resolver(a, p, ev.currentTarget), 'pri'), botao('Voltar', () => { botoes.replaceChildren(criar, botao('Cancelar', voltar, 'link')); }, 'link'));
     }
     [valor, dia, inicio, tipo].forEach(x => ['input', 'change'].forEach(t => x.addEventListener(t, conferir)));
@@ -1396,7 +1408,7 @@ function cartaoVigia({ raiz, estado, salvar, ajuda, anunciar }) {
     caixa.replaceChildren(...[sub(pessoa),
       h('div', { class: 'as-cartao-campos' }, h('label', { class: 'as-vigia-campo' }, h('span', { text: 'Valor (R$)' }), valor), h('label', { class: 'as-vigia-campo' }, h('span', { text: 'Vence dia' }), dia),
         h('label', { class: 'as-vigia-campo' }, h('span', { text: 'A partir de' }), inicio), h('label', { class: 'as-vigia-campo' }, h('span', { text: 'Tipo' }), tipo)),
-      resumo, sub('Conta: ' + ((it.conta && it.conta.nome) || 'a do contrato modelo') + ' · vendedor: ' + ((d.vendedor && d.vendedor.nome) || 'nenhum') + '.'),
+      resumo, avisoDia, sub('Conta: ' + ((it.conta && it.conta.nome) || 'a do contrato modelo') + ' · vendedor: ' + ((d.vendedor && d.vendedor.nome) || 'nenhum') + '.'),
       outros.length ? h('div', { class: 'as-cartao-aviso', text: 'Falta ' + outros.join(' e ') + '.' }) : null, botoes].filter(Boolean));
     conferir();
     try { caixa.scrollIntoView({ block: 'nearest' }); } catch (e) { /* sem rolagem */ }
@@ -1504,7 +1516,7 @@ function cartaoVigia({ raiz, estado, salvar, ajuda, anunciar }) {
     const valor = h('input', { type: 'number', class: 'as-vigia-valor', 'aria-label': 'Valor da cobrança, em reais', placeholder: '0,00' });
     valor.min = '0.01'; valor.step = '0.01';
     if (d.valor) valor.value = String(d.valor);
-    const dia = h('input', { type: 'number', class: 'as-vigia-dia', 'aria-label': 'Dia do vencimento' });
+    const dia = semRodinha(h('input', { type: 'number', class: 'as-vigia-dia', 'aria-label': 'Dia do vencimento' }));
     dia.min = '1'; dia.max = '31'; dia.step = '1'; dia.value = String(d.dia || 10);
     const ok = botao('Pôr na cobrança', ev => resolver(a, { valor: valor.value, dia: Number(dia.value) }, ev.currentTarget), 'pri');
     const conferir = () => { ok.disabled = !(Number(valor.value) > 0) || !(Number.isInteger(Number(dia.value)) && Number(dia.value) >= 1 && Number(dia.value) <= 31); };

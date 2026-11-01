@@ -14,8 +14,15 @@
 //    depois; quem entrou antes (o cliente antigo sem contrato) começa no mês de hoje — o Conta Azul emitiria de uma vez as
 //    vendas dos meses que ficaram pra trás;
 //  • o vendedor: o sócio que confirma (SAMUEL REIS, DIEGO REIS), pelo nome, entre os vendedores dos contratos.
-// O cadastro da empresa no Conta Azul, quando ela ainda não está lá: a razão social, o fantasia, o CNPJ (ou o CPF), o
-// e-mail e o telefone do cadastro, o endereço do cadastro (sem ele, o da Receita) e o perfil Cliente.
+// O cadastro da empresa no Conta Azul, quando ela ainda não está lá: a razão social (no nome e, na pessoa jurídica, também
+// no nome fantasia, como nos cadastros feitos à mão lá — conferido em 01/11/2026 com Massa, Arsenal, Vanir, Diones e
+// Perin), o CNPJ (ou o CPF), o e-mail e o telefone do cadastro, o endereço do cadastro (sem ele, o da Receita) e o perfil
+// Cliente.
+// O que a API do Conta Azul não faz (conferido em 01/11/2026 com os contratos 403, 404 e 405, os primeiros criados por
+// aqui, contra o 402, feito à mão): não preenche o local de prestação do serviço (os de lá: Três Coroas — o município da
+// NFS-e; fica pra pôr no contrato, lá), exige a forma de pagamento (os de lá ficam em branco; a segunda tentativa vai com
+// boleto), não edita contrato nem a categoria de uma venda (só cria, encerra e remove) e, com o contrato criado depois do
+// dia da emissão do primeiro mês, a primeira venda sai com a data do início (01/10, não 31/10 — a competência é a mesma).
 // Testes: tests/contrato-ca.test.mjs.
 // ============================================================
 import { nomePorEmail } from './equipe.js';
@@ -113,18 +120,20 @@ export function enderecoDaEmpresa(c, receita = null) {
   return { ...limpo, pais: 'Brasil' };
 }
 
-// o cadastro da empresa no Conta Azul (POST /v1/pessoas), como os de setembro de 2026
+// o cadastro da empresa no Conta Azul (POST /v1/pessoas), como os feitos à mão lá: a razão social no nome e, na pessoa
+// jurídica, também no nome fantasia (o fantasia de verdade fica no cadastro daqui)
 export function pessoaParaApi(c, receita = null) {
   const doc = digitos(c.documento);
   const pj = doc.length === 14;
   const email = String(c.email_principal || '').replace(/;/g, ',').replace(/\s+/g, '').slice(0, 100);
   const fone = digitos(c.telefone_principal);
   const end = enderecoDaEmpresa(c, receita);
+  const nome = String(c.nome_principal || '').replace(/\s+/g, ' ').trim().slice(0, 200);
   return {
-    nome: String(c.nome_principal || '').replace(/\s+/g, ' ').trim().slice(0, 200),
+    nome,
     tipo_pessoa: pj ? 'Jurídica' : 'Física',
     ...(pj ? { cnpj: doc } : { cpf: doc }),
-    ...(c.nome_fantasia && String(c.nome_fantasia).trim() ? { nome_fantasia: String(c.nome_fantasia).replace(/\s+/g, ' ').trim().slice(0, 200) } : {}),
+    ...(pj && nome ? { nome_fantasia: nome } : {}),
     ...(email ? { email, contato_cobranca_faturamento: { emails: email.split(',').filter(Boolean) } } : {}),
     ...(fone.length >= 10 ? { telefone_comercial: fone } : {}),
     ...(end ? { enderecos: [end] } : {}),

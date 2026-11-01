@@ -192,7 +192,8 @@ CA_VENDAS = """
       if (id === 'k62') return { data: { ...base, itens: [{ cliente_id: 'k62', nome: 'MERCADO DE TESTE LTDA', pessoa: { id: 'p62', nome: '12.345.678 FULANO DE TESTE' },
         contrato_ativo: { numero: 398, valor: 850 }, sugerido: { tipo: 'mensal', valor: 850, dia: 10, inicio: MES, faltam: [] }, modelo, conta: { id: 'c1', nome: 'BANCO INTER - CONTA CORRENTE' } }] }, error: null };
       return { data: { ...base, itens: [{ cliente_id: id, nome: 'METALIZADORA DE TESTE LTDA', pessoa: null, contrato_ativo: null,
-        sugerido: { tipo: 'mensal', valor: 1500, dia: 10, inicio: MES, faltam: [] }, modelo, conta: { id: 'c1', nome: 'BANCO INTER - CONTA CORRENTE' } }] }, error: null };
+        sugerido: { tipo: 'mensal', valor: 1500, dia: 10, inicio: MES, faltam: [], de: { valor: 'proposta', dia: 'base', inicio: 'carteira' } }, modelo,
+        conta: { id: 'c1', nome: 'BANCO INTER - CONTA CORRENTE' } }] }, error: null };
     }
     if (body.modo === 'contrato') {
       window.__contratos.push(...body.itens);
@@ -636,16 +637,27 @@ def main():
            and 'R$ 1.500,00 por mês, vencendo dia 10, a partir de ' + HOJE.strftime('%m/%Y') + ' (a primeira em ' + primeira + ')' in caixa6
            and 'Como o contrato 402: o serviço HONORÁRIOS MENSAIS' in caixa6 and 'sai na hora' not in caixa6 and '\nnull\n' not in caixa6,
            f'o que seria criado: o cadastro lá, o valor, o dia, o mês, o tipo, a conta, o vendedor e o modelo ({caixa6!r})')
+        def aviso_dia():
+            loc = p6.locator(it6('METALIZADORA') + ' .as-cartao-aviso')
+            return loc.first.text_content() if loc.count() and loc.first.is_visible() else None
+        sem_aviso = aviso_dia()
+        p6.fill(it6('METALIZADORA') + ' input.as-vigia-dia', '12')
+        com_aviso = aviso_dia()
+        p6.fill(it6('METALIZADORA') + ' input.as-vigia-dia', '10')
+        ok(sem_aviso is None and com_aviso == 'A base de boletos dela vence no dia 10: com o dia 12 aqui, o boleto e a venda do Conta Azul vencem em dias diferentes.' and aviso_dia() is None,
+           f'o dia diferente do da base de boletos avisa (o boleto e a venda venceriam em dias diferentes) e some ao voltar ({com_aviso!r})')
         p6.fill(it6('METALIZADORA') + ' input.as-vigia-valor', '1450')
         p6.click(it6('METALIZADORA') + ' button:has-text("Criar no Conta Azul")')
         p6.wait_for_selector(it6('METALIZADORA') + ' button:has-text("Sim, criar")', timeout=5000)
-        ok('Criar o contrato de R$ 1.450,00 por mês no Conta Azul? Não dá pra desfazer por aqui.' in texto6('METALIZADORA') and p6.evaluate('() => window.__contratos.length') == 0,
-           'criar pede a confirmação, com o valor (nada criado ainda)')
+        conf = 'Criar o contrato no Conta Azul: R$ 1.450,00 por mês, vencendo dia 10, a partir de ' + HOJE.strftime('%m/%Y') + ' (a primeira em ' + primeira + ')? Não dá pra desfazer por aqui.'
+        ok(conf in texto6('METALIZADORA') and p6.evaluate('() => window.__contratos.length') == 0,
+           f'criar pede a confirmação, com o valor, o dia e o mês (nada criado ainda) ({texto6("METALIZADORA")!r})')
         p6.click(it6('METALIZADORA') + ' button:has-text("Sim, criar")')
         p6.wait_for_selector(it6('METALIZADORA') + ' .as-cartao-ok', timeout=5000)
         pedidos = p6.evaluate('() => window.__contratos')
         ok(pedidos == [{'cliente_id': 'k61', 'valor': 1450, 'dia': 10, 'inicio': MES_ATUAL, 'tipo': 'mensal'}]
            and '✓ Contrato 403 criado no Conta Azul, com o cadastro da empresa lá: R$ 1.450,00 por mês' in texto6('METALIZADORA')
+           and 'Lá no contrato, ponha o local de prestação do serviço (Três Coroas), que a API do Conta Azul não preenche.' in texto6('METALIZADORA')
            and 'Pra desfazer, exclua no Conta Azul (Vendas › Contratos).' in texto6('METALIZADORA')
            and not p6.query_selector(it6('METALIZADORA') + ' button:has-text("Desfazer")'),
            f'criado: a função recebe o pedido (o valor mudado), o cartão diz o número e onde desfazer, sem o "Desfazer" ({pedidos})')

@@ -515,8 +515,8 @@ console.log('O contrato da mensalidade — criar (contrato):');
   chk('com o login do Samuel: 200, as duas criadas', r.status === 200 && r.corpo.resultados.length === 2 && r.corpo.resultados.every(x => x.ok), J(r.corpo));
   const res = id => r.corpo.resultados.find(x => x.cliente_id === id);
   const pessoa = w.contaAzul.pessoasCriadas[0];
-  chk('a que não estava no Conta Azul: o cadastro, com a razão social, o CNPJ, o fantasia, o telefone, o perfil Cliente e o endereço da Receita (a cidade do cadastro)',
-    w.contaAzul.pessoasCriadas.length === 1 && J(pessoa) === J({ nome: 'METALIZADORA NOVA LTDA', tipo_pessoa: 'Jurídica', cnpj: '30303030000130', nome_fantasia: 'METAL NOVA', telefone_comercial: '51999990000',
+  chk('a que não estava no Conta Azul: o cadastro, com a razão social (também no nome fantasia, como os feitos à mão lá), o CNPJ, o telefone, o perfil Cliente e o endereço da Receita (a cidade do cadastro)',
+    w.contaAzul.pessoasCriadas.length === 1 && J(pessoa) === J({ nome: 'METALIZADORA NOVA LTDA', tipo_pessoa: 'Jurídica', cnpj: '30303030000130', nome_fantasia: 'METALIZADORA NOVA LTDA', telefone_comercial: '51999990000',
       enderecos: [{ cep: '95690000', logradouro: 'RUA DAS FLORES', numero: '100', complemento: 'SALA 2', bairro: 'CENTRO', cidade: 'Igrejinha', estado: 'RS', pais: 'Brasil' }], perfis: [{ tipo_perfil: 'Cliente' }] })
     && res(U(130)).pessoa_criada, J(pessoa));
   const k1 = w.contaAzul.contratosCriados[0], k2 = w.contaAzul.contratosCriados[1];

@@ -82,12 +82,12 @@ console.log('O endereço:');
 console.log('O cadastro no Conta Azul:');
 {
   const pj = pessoaParaApi({ nome_principal: ' METALIZADORA  NOVA LTDA ', nome_fantasia: 'METAL NOVA', documento: '30.303.030/0001-30', email_principal: 'a@x.com.br; b@x.com.br', telefone_principal: '(51) 99999-0000', cep: '95660-000', logradouro: 'RUA A', cidade: 'Três Coroas', uf: 'RS' });
-  chk('a empresa: razão social, Jurídica, o CNPJ só com os dígitos, o fantasia, os e-mails (também os da cobrança), o telefone, o endereço e o perfil Cliente',
-    J(pj) === J({ nome: 'METALIZADORA NOVA LTDA', tipo_pessoa: 'Jurídica', cnpj: '30303030000130', nome_fantasia: 'METAL NOVA', email: 'a@x.com.br,b@x.com.br',
+  chk('a empresa: a razão social no nome e no nome fantasia (como os cadastros feitos à mão lá), Jurídica, o CNPJ só com os dígitos, os e-mails (também os da cobrança), o telefone, o endereço e o perfil Cliente',
+    J(pj) === J({ nome: 'METALIZADORA NOVA LTDA', tipo_pessoa: 'Jurídica', cnpj: '30303030000130', nome_fantasia: 'METALIZADORA NOVA LTDA', email: 'a@x.com.br,b@x.com.br',
       contato_cobranca_faturamento: { emails: ['a@x.com.br', 'b@x.com.br'] }, telefone_comercial: '51999990000',
       enderecos: [{ cep: '95660000', logradouro: 'RUA A', cidade: 'Três Coroas', estado: 'RS', pais: 'Brasil' }], perfis: [{ tipo_perfil: 'Cliente' }] }), J(pj));
   const pf = pessoaParaApi({ nome_principal: 'FULANO DE TAL', nome_fantasia: '  ', documento: '123.456.789-09', email_principal: null, telefone_principal: '9999' });
-  chk('a pessoa física: Física e o CPF; sem fantasia em branco, sem e-mail, sem telefone curto e sem endereço',
+  chk('a pessoa física: Física e o CPF; sem nome fantasia, sem e-mail, sem telefone curto e sem endereço',
     J(pf) === J({ nome: 'FULANO DE TAL', tipo_pessoa: 'Física', cpf: '12345678909', perfis: [{ tipo_perfil: 'Cliente' }] }), J(pf));
 }
 
