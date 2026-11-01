@@ -4,7 +4,7 @@
 // Leis 9.718, 10.637 e 10.833; Lei 8.212; LC 224/2025; Lei 14.973/2024; LC 214 e Res. CGSN 190/2026), escritas
 // do lado de cada caso. Tolerância: R$ 0,01 por linha. Se não bater, o motor está errado, não o teste.
 
-import { comparar, calcularAno, normalizar, testarPremissas, irpjCsllReal, fraseDaDecisao } from '../assets/js/comparativo-motor.js';
+import { comparar, calcularAno, normalizar, testarPremissas, irpjCsllReal, fraseDaDecisao, excessosLc224 } from '../assets/js/comparativo-motor.js';
 
 let falhas = 0, total = 0;
 function igual(nome, esperado, obtido, tol = 0.01) {
@@ -139,13 +139,17 @@ igual('Simples acima do sublimite: ICMS fora do DAS', 354000, item(k.simples, 'I
 
 // ----------------------------------------------------------------------------------------------------------------
 console.log('=== M · desoneração da folha (CPRB) na transição ===');
-const M = { atividades: [{ tipo: 'industria', receita: 10000000 }], folha: 1000000, cprb: 1.5, rat: 2, terceiros: 5.8 };
+const M = { atividades: [{ tipo: 'industria', receita: 10000000 }], folha: 1000000, proLabore: 120000, cprb: 1.5, rat: 2, terceiros: 5.8 };
 const m26 = calcularAno(M, 2026), m27 = calcularAno(M, 2027), m28 = calcularAno(M, 2028);
-igual('2026: CPP 50% (1.000.000 × 20% × 0,5)', 100000, m26.presumido.inss.cpp);
+// a CPP reduzida não alcança o 13º (Lei 12.546, art. 9º-A, §1º): 13º estimado em 1.000.000 ÷ 13,33 = 75.000
+igual('2026: CPP 50% sem o 13º (925.000 × 20% × 0,5)', 92500, m26.presumido.inss.cpp);
+igual('2026: pró-labore também reduzido (120.000 × 20% × 0,5)', 12000, m26.presumido.inss.proLabore);
 igual('2026: CPRB 60% (10.000.000 × 1,5% × 0,6)', 90000, m26.presumido.inss.cprb);
-igual('2027: CPP 75%', 150000, m27.presumido.inss.cpp);
+igual('2027: CPP 75% sem o 13º', 138750, m27.presumido.inss.cpp);
+igual('2027: pró-labore 75%', 18000, m27.presumido.inss.proLabore);
 igual('2027: CPRB 40%', 60000, m27.presumido.inss.cprb);
-igual('2028: CPP cheia', 200000, m28.presumido.inss.cpp);
+igual('2028: CPP cheia, com o 13º', 200000, m28.presumido.inss.cpp);
+igual('2028: pró-labore cheio', 24000, m28.presumido.inss.proLabore);
 igual('2028: sem CPRB', 0, m28.presumido.inss.cprb);
 
 // ----------------------------------------------------------------------------------------------------------------
@@ -192,6 +196,65 @@ verdade('o RAT não muda o resultado', t[1].muda === false);
 const q17 = calcularAno({ ...Q, aliqCreditoIcms: 17 }, 2027), q7 = calcularAno({ ...Q, aliqCreditoIcms: 7 }, 2027);
 verdade('o crédito de ICMS maior baixa o Presumido', q17.presumido.total < q7.presumido.total);
 verdade('o teste marca "muda" quando o mais barato troca', t[0].muda === (q17.melhor !== q7.melhor || q17.melhor !== t[0].melhorBase));
+
+// ----------------------------------------------------------------------------------------------------------------
+console.log('=== S · as fronteiras do Simples pela receita do ano (revisão de 01/11/2026) ===');
+// 3,3 mi em 2026 crescendo 20%: em 2027 a empresa não está impedida (2026 abaixo de 3,6 mi; em 2027 o excesso não passa de
+// 20%) — o ICMS fica no DAS pela fórmula da 5ª faixa nos meses de RBT12 acima de 3,6 mi. A conta à mão da revisão dá
+// 484.288,61 com a 6ª faixa de 2026 (o motor ainda não tem a de 2027; com ela, 482.638,61). Antes saía 559.717,76.
+const S2 = { atividades: [{ tipo: 'comercio', receita: 3300000, aliqIcms: 17 }], crescimentoReceita: 20, compras: 2310000, aliqCreditoIcms: 12, folha: 300000, outrasDespesas: 400000 };
+const s2 = calcularAno(S2, 2027);
+igual('sublimite sem impedimento: o ICMS no DAS pela 5ª faixa', 484288.61, s2.simples.total);
+igual('... e nada de ICMS fora do DAS', 0, item(s2.simples, 'ICMS fora do DAS (sublimite)'));
+verdade('o aviso diz que não está impedida', s2.simples.avisos.some(a => /sem a empresa estar impedida/.test(a)));
+// 3,5 mi no ano anterior e 4,8 mi no ano: passa de 4,32 mi (o sublimite + 20%) com novembro → impedida em dezembro
+const S3 = { atividades: [{ tipo: 'comercio', receita: 4800000 }], receitaAnoAnterior: 3500000, compras: 3000000 };
+const s3 = calcularAno(S3, 2026);
+verdade('passou de 4,32 mi no ano: o ICMS de dezembro fora do DAS', item(s3.simples, 'ICMS fora do DAS (sublimite)') > 0 && s3.simples.avisos.some(a => /em 1 mês/.test(a)));
+// 4,5 mi crescendo 10%: em 2027 o RBT12 passa de 4,8 mi em dezembro, mas o excesso do ano é de 3% — segue no Simples em
+// 2027 e sai em 2028 (LC 123, art. 3º, §§9º e 9º-A)
+const S4 = { atividades: [{ tipo: 'comercio', receita: 4500000 }], crescimentoReceita: 10, compras: 3000000 };
+verdade('excesso de até 20%: segue no Simples no ano, com o aviso', calcularAno(S4, 2027).simples.disponivel === true && calcularAno(S4, 2027).simples.avisos.some(a => /segue no Simples até o fim do ano/.test(a)));
+verdade('... e sai no ano seguinte', calcularAno(S4, 2028).simples.disponivel === false);
+// 4,7 mi crescendo 40%: em 2027 a receita passa de 5,76 mi (o limite + 20%) com novembro → sai em dezembro
+const S5 = calcularAno({ atividades: [{ tipo: 'comercio', receita: 4700000 }], crescimentoReceita: 40 }, 2027);
+verdade('excesso acima de 20% no ano: fora do Simples, com o mês', S5.simples.disponivel === false && /a partir de dezembro/.test(S5.simples.motivo), S5.simples.motivo);
+
+// ----------------------------------------------------------------------------------------------------------------
+console.log('=== T · os casos da revisão independente (contas à mão de outro revisor, 01/11/2026) ===');
+const T1 = { atividades: [{ tipo: 'comercio', receita: 300000, pctST: 30, pctMonofasico: 20, aliqIcms: 17 }], receitaAnoAnterior: 240000, crescimentoReceita: 25,
+  folha: 40000, proLabore: 18000, rat: 2, fap: 1, terceiros: 5.8, compras: 190000, aliqCreditoIcms: 12, despesasCredito: 12000, outrasDespesas: 30000 };
+const t26 = calcularAno(T1, 2026), t27 = calcularAno(T1, 2027);
+igual('2ª faixa com ST e monofásico: Simples 2026', 13187.39, t26.simples.total);
+igual('Simples 2027 (janela recuada, 3ª faixa em dezembro)', 18469.37, t27.simples.total);
+// o ICMS sai da base do PIS/Cofins só da parte tributada: (300.000 − 35.700) × 80% = 211.440 × 3,65%
+igual('Presumido 2026: PIS + Cofins com monofásico', 7717.56, item(t26.presumido, 'PIS') + item(t26.presumido, 'Cofins'));
+igual('Presumido 2026: total', 49017.56, t26.presumido.total);
+igual('Real 2026: total', 40029.24, t26.real.total);
+igual('Presumido 2027: total', 59965.38, t27.presumido.total);
+igual('Real 2027: total', 51415.38, t27.real.total);
+const T2 = { atividades: [{ tipo: 'servico_r', receita: 2500000, aliqIss: 3 }], folha: 500000, proLabore: 85000, rat: 1, fap: 1, terceiros: 5.8, despesasCredito: 150000, outrasDespesas: 600000, crescimentoFolha: 15 };
+igual('fator r de 25% (Anexo V, 5ª faixa): Simples 2026', 512900, calcularAno(T2, 2026).simples.total);
+igual('2027: dezembro vai ao Anexo III pela FS12 recuada', 503438.33, calcularAno(T2, 2027).simples.total);
+igual('Real 2026 (lucro de 681.625)', 651127.5, calcularAno(T2, 2026).real.total);
+igual('Presumido 2027 (CBS + IBS)', 753725, calcularAno(T2, 2027).presumido.total);
+igual('empate do Real com o Presumido acima de R$ 240 mil', 800000, comparar(T2).decisao.real.empate.presumido.lucro);
+// LC 224 com 40% da receita no 1º trimestre: o excesso anual fica no 1º trimestre (o refazimento da IN 2.306); a CSLL de
+// 2026 conta R$ 3,75 milhões a partir de abril
+const q1 = 2200000 / 3, resto = 1100000 / 3;
+const T3 = { atividades: [{ tipo: 'comercio', receita: 5500000, aliqIcms: 17 }], meses: [q1, q1, q1, resto, resto, resto, resto, resto, resto, resto, resto, resto],
+  folha: 400000, proLabore: 60000, rat: 2, fap: 1, terceiros: 5.8, compras: 3800000, aliqCreditoIcms: 12, despesasCredito: 100000, outrasDespesas: 600000 };
+igual('LC 224 sazonal: IRPJ 2026', 87000, calcularAno(T3, 2026).presumido.irpj);
+igual('LC 224 sazonal: CSLL 2026 (abril a dezembro abaixo de 3,75 mi)', 59400, calcularAno(T3, 2026).presumido.csll);
+igual('LC 224 sazonal: CSLL 2027', 59940, calcularAno(T3, 2027).presumido.csll);
+igual('Presumido 2026: total', 915222.5, calcularAno(T3, 2026).presumido.total);
+const ex = excessosLc224([2200000, 1100000, 1100000, 1100000], 0);
+verdade('o excesso do ano (500 mil) fica no 1º trimestre', ex.join(',') === '500000,0,0,0', ex);
+verdade('a CSLL de 2026 começa em abril', excessosLc224([2200000, 1100000, 1100000, 1100000], 1).every(v => v === 0));
+// o IPI de 2026 da indústria no Presumido e no Real
+const ipi = calcularAno({ atividades: [{ tipo: 'industria', receita: 1200000, aliqIpi: 5 }] }, 2026);
+igual('IPI de 2026 no Presumido (5% da receita)', 60000, item(ipi.presumido, 'IPI'));
+verdade('em 2027 o IPI é zero', !calcularAno({ atividades: [{ tipo: 'industria', receita: 1200000, aliqIpi: 5 }] }, 2027).presumido.itens.some(x => x.tributo === 'IPI'));
 
 // ----------------------------------------------------------------------------------------------------------------
 console.log('=== R · entradas inválidas ===');

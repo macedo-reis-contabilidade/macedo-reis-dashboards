@@ -17,7 +17,8 @@
 // cliente empresa do regime regular a credita; quanto disso vira preço é decisão
 // comercial (a opção do Simples por fora, o "híbrido", é a ficha da Reforma).
 //
-// Fora da conta (nesta versão): IPI (vai por fora na nota e é zero em 2027, salvo
+// Fora da conta (nesta versão): o IPI que a atividade não informa (o de 2026 do
+// Presumido e do Real é o `aliqIpi` da indústria; de 2027 em diante é zero, salvo
 // industrialização incentivada na Zona Franca), Imposto Seletivo, receitas
 // financeiras e ganhos de capital, adições e exclusões do Real, compensação de
 // prejuízo, JCP, a tributação de lucros e dividendos (Lei 15.270), exportação,
@@ -25,7 +26,7 @@
 // diante (falta a alíquota de referência do IBS).
 // ============================================================
 
-import { TAB_SIMPLES, aliqEfetiva, faixaDe, anexo2027, PARTILHA_CBS_IBS_2027, FATIA_ICMS_ISS_2027, aliquotas2027 } from './rt-motor.js';
+import { TAB_SIMPLES, aliqEfetiva, faixaDe, anexo2027, PARTILHA_CBS_IBS_2027, FATIA_ICMS_ISS_2027, ISS_TETO, aliquotas2027 } from './rt-motor.js';
 
 // ---------- as atividades ----------
 // Cada linha de receita tem o anexo do Simples, os percentuais de presunção do Presumido (Lei 9.249/1995, art. 15
@@ -53,7 +54,8 @@ export const FGTS = 0.08;
 // Lucro Presumido: IRPJ 15% + adicional de 10% sobre o que passa de R$ 20 mil por mês do período (Lei 9.249, art. 3º, §1º;
 // Lei 9.430, art. 4º) — no Presumido, trimestral: R$ 60 mil por trimestre. CSLL 9% (Lei 7.689, art. 3º, III).
 export const IRPJ = 0.15, ADICIONAL = 0.10, ADICIONAL_TRIMESTRE = 60000, ADICIONAL_ANO = 240000, CSLL = 0.09;
-// PIS/Cofins: cumulativo no Presumido (Lei 9.718: 0,65% + 3%), não cumulativo no Real (Leis 10.637 e 10.833: 1,65% + 7,6%).
+// PIS/Cofins: cumulativo no Presumido (0,65% da Lei 9.715, art. 8º, I, + 3% da Lei 9.718), não cumulativo no Real (Leis 10.637
+// e 10.833: 1,65% + 7,6%).
 // O ICMS destacado sai da base das saídas (STF, Tema 69) e do crédito das compras (Lei 14.592/2023).
 export const PIS_CUM = 0.0065, COFINS_CUM = 0.03, PIS_NC = 0.0165, COFINS_NC = 0.076;
 // LC 224/2025, art. 4º, §4º, VII, e §5º: no Presumido, os percentuais de presunção sobem 10% sobre a parte da receita
@@ -79,7 +81,6 @@ export const CREDITO_FORNECEDOR_SIMPLES = 0.15;
 // tabelas da LC 123: I 28,27 + 6,13 · II 20,96 + 4,54 · III 16,03 + 3,47 · IV 20,55 + 4,45 · V 16,44 + 3,56.
 const PIS_COFINS_2026_6A = { I: 34.40, II: 25.50, III: 19.50, IV: 25.00, V: 20.00 };
 function fatiaPisCofins2026(anexo, f) { return f === 5 ? PIS_COFINS_2026_6A[anexo] : PARTILHA_CBS_IBS_2027[anexo][f]; }
-function fatiaIcms(anexo, f) { return (anexo === 'I' || anexo === 'II') && f >= 0 && f <= 4 ? FATIA_ICMS_ISS_2027[anexo][f] : 0; }
 
 const num = (v, def = 0) => {
   if (v == null || v === '') return def;
@@ -120,7 +121,10 @@ export function normalizar(e = {}) {
       tributo: a.tributo === 'icms' || a.tributo === 'iss' ? a.tributo : t.tributo,
       aliqIcms: entre(num(a.aliqIcms, 17), 0, 40), aliqIss: entre(num(a.aliqIss, 3), 0, 5),
       pctST: entre(num(a.pctST), 0, 100), pctMonofasico: entre(num(a.pctMonofasico), 0, 100),
-      ipiMantido: !!a.ipiMantido
+      ipiMantido: !!a.ipiMantido,
+      // o IPI a recolher em 2026 no Presumido e no Real, em % da receita da indústria (já com os créditos); no Simples
+      // ele está no DAS (Anexo II). Em 2027 vira zero, salvo industrialização incentivada na Zona Franca (ADCT, art. 126, III)
+      aliqIpi: tipo === 'industria' ? entre(num(a.aliqIpi), 0, 30) : 0
     };
   }).filter(a => a.receita > 0);
   if (!atividades.length) throw new Error('Informe a receita de pelo menos uma atividade.');
@@ -220,14 +224,20 @@ function issDe(d, fracaoDoAno = 1) {
 // e o crédito de ICMS das compras (sai da base do crédito de PIS/Cofins — Lei 14.592/2023)
 
 // ---------- INSS patronal do regime regular ----------
+// Na desoneração (Lei 12.546, art. 9º-A, na redação da Lei 14.973/2024), a contribuição reduzida da transição vale pros
+// empregados e pro pró-labore (art. 22, I e III) e não alcança o 13º (§1º): o 13º fica só na CPRB. A folha da tela traz o
+// 13º junto: ele é estimado em 1/13,33 dela (12 salários, o 13º e o terço de férias). RAT e terceiros, cheios.
+// (Revisão de 01/11/2026: antes o pró-labore pagava 20% cheio e o 13º, a CPP reduzida.)
+export const PARTE_DO_13 = 1 / (13 + 1 / 3);
 function inssRegular(n, d, ano) {
   const t = n.cprb ? (CPRB_TRANSICAO[ano] || (ano < 2025 ? { cpp: 0, cprb: 1 } : { cpp: 1, cprb: 0 })) : { cpp: 1, cprb: 0 };
-  const cpp = d.folha * CPP * t.cpp;
+  const decimo = n.cprb && t.cpp < 1 ? d.folha * PARTE_DO_13 : 0;
+  const cpp = (d.folha - decimo) * CPP * t.cpp;
   const rat = d.folha * (n.rat / 100) * n.fap;
   const terceiros = d.folha * n.terceiros / 100;
-  const proLabore = d.proLabore * CPP_PRO_LABORE;
+  const proLabore = d.proLabore * CPP_PRO_LABORE * (n.cprb ? t.cpp : 1);
   const cprb = n.cprb ? d.receita * (n.cprb / 100) * t.cprb : 0;
-  return { cpp, rat, terceiros, proLabore, cprb, total: cpp + rat + terceiros + proLabore + cprb };
+  return { cpp, rat, terceiros, proLabore, cprb, decimo, total: cpp + rat + terceiros + proLabore + cprb };
 }
 
 // ---------- CBS/IBS do regime regular (2027 em diante) ----------
@@ -248,55 +258,100 @@ function cbsIbsRegular(n, d, ano, icmsDebito, iss) {
 }
 
 // ---------- PIS/Cofins de 2026 ----------
-function baseSaidasPisCofins(d, icmsDebito) {
-  // receita sem a revenda monofásica (alíquota zero na revenda) e sem o ICMS destacado
-  const tributavel = d.atividades.reduce((s, a) => s + a.receita * (1 - (a.tributo === 'icms' ? a.pctMonofasico / 100 : 0)), 0);
-  return Math.max(0, tributavel - icmsDebito);
+// a receita sem a revenda monofásica (alíquota zero na revenda) e sem o ICMS destacado só da parte tributada — o ICMS das
+// vendas monofásicas não sai de novo (revisão de 01/11/2026: antes saía o ICMS de todas as vendas)
+function baseSaidasPisCofins(d) {
+  return Math.max(0, d.atividades.reduce((s, a) => {
+    const mono = a.tributo === 'icms' ? a.pctMonofasico / 100 : 0;
+    const icms = a.tributo === 'icms' ? a.receita * (1 - a.pctST / 100) * a.aliqIcms / 100 : 0;
+    return s + (a.receita - icms) * (1 - mono);
+  }, 0));
 }
+// o IPI a recolher de 2026 (a indústria no Presumido e no Real)
+const ipiDe = (d, ano) => ano >= 2027 ? 0 : d.atividades.reduce((s, a) => s + a.receita * (a.aliqIpi || 0) / 100, 0);
 
 // ---------- SIMPLES NACIONAL ----------
+// AS FRONTEIRAS PELA RECEITA DO ANO-CALENDÁRIO (revisão de 01/11/2026; antes, pelo RBT12 do mês):
+//   · sublimite de R$ 3,6 milhões (LC 123, art. 20, §§1º e 1º-A): a receita do ano passou dele, o ICMS e o ISS saem do
+//     DAS no ano seguinte; passou de R$ 4,32 milhões (20% a mais), já a partir do mês seguinte. Enquanto não está
+//     impedida, com o RBT12 acima de R$ 3,6 milhões o ICMS e o ISS ficam no DAS pela fórmula da 5ª faixa × a fatia deles
+//     na 5ª — o ISS até 5% (as notas dos Anexos da LC 123; Res. CGSN 140, art. 21, IV, que em 2027 junta o IBS);
+//   · limite de R$ 4,8 milhões (art. 3º, §§9º e 9º-A): a receita do ano anterior passou dele, fora do Simples no ano todo;
+//     no ano, passou de R$ 5,76 milhões (20% a mais), fora a partir do mês seguinte. Até lá, o RBT12 acima de R$ 4,8
+//     milhões segue a fórmula da 6ª faixa (a tributação do excesso fica avisada, pra conferir).
+const SUBLIMITE_20 = SUBLIMITE * 1.2, LIMITE_20 = LIMITE_SIMPLES * 1.2;
+const ANEXOS_ISS = ['III', 'IV', 'V'];
+const MESES_NOME = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+// a fatia do IBS no DAS na 5ª faixa em 2027–2028 (Res. CGSN 140, Anexos I a V, na redação da Res. CGSN 190/2026)
+const IBS_5A_2027 = { I: 0.17, II: 0.15, III: 0.17, IV: 0.24, V: 0.19 };
+// a alíquota efetiva com o RBT12 acima de R$ 4,8 milhões: a fórmula da 6ª faixa
+function aliqEfetivaAte6(anexo, rbt12) {
+  const a = aliqEfetiva(anexo, rbt12);
+  if (a != null) return a;
+  const t = TAB_SIMPLES[anexo];
+  return t && rbt12 > 0 ? (rbt12 * t.aliq[5] - t.pd[5]) / rbt12 : null;
+}
+// o ICMS ou o ISS (e, em 2027, o IBS) que fica no DAS na 6ª faixa de quem ainda não está impedido: a fórmula da 5ª × a fatia
+function icmsIssPela5a(anexo, rbt12, ano) {
+  const t = TAB_SIMPLES[anexo];
+  const ae5 = (rbt12 * t.aliq[4] - t.pd[4]) / rbt12;
+  const x = ae5 * (FATIA_ICMS_ISS_2027[anexo][4] + (ano >= 2027 ? IBS_5A_2027[anexo] : 0)) / 100;
+  return ANEXOS_ISS.includes(anexo) ? Math.min(x, ISS_TETO) : x;
+}
+const receitaDoAno = (n, k) => { let s = 0; for (let m = 0; m < 12; m++) s += receitaDoMes(n, k, m); return s; };
+const indisponivel = (motivo, avisos = []) => ({ disponivel: false, motivo, total: null, itens: [], avisos });
+
 function calcSimples(n, d, k, ano) {
   const avisos = [];
-  const r = { das: 0, cppForaIV: 0, icmsFora: 0, issFora: 0, difal: d.difalSimples, porAnexo: {}, fatorR: null, anexosServico: [], faixas: [], acimaSublimite: 0, foraDoLimite: false };
-  // limite do Simples: receita do ano anterior acima de R$ 4,8 milhões exclui no ano seguinte (LC 123, art. 30, IV)
-  const anoAnterior = k === 0 ? (n.receitaAnoAnterior != null ? n.receitaAnoAnterior : n.receita / (1 + n.crescimentoReceita / 100)) : n.receita * Math.pow(1 + n.crescimentoReceita / 100, k - 1);
+  const r = { das: 0, icmsIssDentro: 0, cppForaIV: 0, icmsFora: 0, issFora: 0, difal: d.difalSimples, porAnexo: {}, fatorR: null, anexosServico: [], faixas: [], impedida: 0, faixa6: 0, alemDoLimite: 0 };
+  const anoAnterior = receitaDoAno(n, k - 1);
+  if (anoAnterior > LIMITE_SIMPLES) return indisponivel('A receita do ano anterior (' + brl(anoAnterior) + ') passa do limite de ' + brl(LIMITE_SIMPLES) + ': fora do Simples no ano todo (LC 123, art. 3º, §9º).');
   const rFatores = [];
+  let acum = 0;
   for (let m = 0; m < 12; m++) {
+    if (acum > LIMITE_20) return indisponivel('A receita do ano passa de ' + brl(LIMITE_20) + ' (o limite e mais 20%) até ' + MESES_NOME[m - 1] + ': exclusão do Simples a partir de ' + MESES_NOME[m] + ' (LC 123, art. 3º, §9º-A).');
+    const impedida = anoAnterior > SUBLIMITE || acum > SUBLIMITE_20;
     const rbt12 = janela12(n, k, m, ano, receitaDoMes);
-    const f = faixaDe(rbt12);
+    let f = faixaDe(rbt12);
+    if (f === -1) { r.alemDoLimite++; f = 5; }
     r.faixas.push(f);
-    if (f === -1) { r.foraDoLimite = true; continue; }
+    if (f === 5) r.faixa6++;
+    if (impedida) r.impedida++;
     const fs12 = janela12(n, k, m, ano, folhaDoMes);
     const fr = rbt12 > 0 ? fs12 / rbt12 : 0;
     rFatores.push(fr);
-    const acima = f === 5;
-    if (acima) r.acimaSublimite++;
     for (const a of d.atividades) {
       const recMes = a.receita * n.pesos[m];
       let anexo = ano >= 2027 ? anexo2027(a.anexo, a.ipiMantido) : a.anexo;
       if (a.fatorR) anexo = fr >= FATOR_R ? 'III' : 'V';
-      const aliq = aliqEfetiva(anexo, rbt12);
-      // exclusões: a fatia do ICMS na revenda com ST (Anexos I e II, até a 5ª faixa) e, só até 2026, a de PIS+Cofins
-      // na revenda monofásica (em 2027 a CBS do DAS alcança essa receita — Res. CGSN 140, art. 25, §6º, red. Res. 190)
-      const excl = (a.tributo === 'icms' ? a.pctST / 100 * fatiaIcms(anexo, f) / 100 : 0)
-        + (ano < 2027 && a.tributo === 'icms' ? a.pctMonofasico / 100 * fatiaPisCofins2026(anexo, f) / 100 : 0);
-      const das = recMes * aliq * (1 - excl);
+      const aliq = aliqEfetivaAte6(anexo, rbt12);
+      // a fatia de PIS+Cofins na revenda monofásica sai só até 2026 (em 2027 a CBS do DAS alcança essa receita —
+      // Res. CGSN 140, art. 25, §6º, na redação da Res. 190)
+      const mono = ano < 2027 && a.tributo === 'icms' ? a.pctMonofasico / 100 * fatiaPisCofins2026(anexo, f) / 100 : 0;
+      // até a 5ª faixa o ICMS ou o ISS está no DAS: sai a fatia do ICMS da revenda com ST — ou a fatia inteira, se a
+      // empresa está impedida (aí ele vai pelas regras normais). Na 6ª faixa a tabela já é só dos federais.
+      let excl = 0;
+      if (f <= 4) {
+        const fatia = FATIA_ICMS_ISS_2027[anexo][f] / 100;
+        excl = impedida ? fatia : (a.tributo === 'icms' && (anexo === 'I' || anexo === 'II') ? a.pctST / 100 * fatia : 0);
+      }
+      let das = recMes * aliq * (1 - excl - mono);
+      // 6ª faixa sem impedimento: o ICMS ou o ISS no DAS pela fórmula da 5ª (sem o da revenda com ST)
+      if (f === 5 && !impedida) {
+        const dentro = recMes * icmsIssPela5a(anexo, rbt12, ano) * (a.tributo === 'icms' ? 1 - a.pctST / 100 : 1);
+        r.icmsIssDentro += dentro; das += dentro;
+      }
       r.das += das;
       r.porAnexo[anexo] = (r.porAnexo[anexo] || 0) + das;
       if (a.tipo !== 'comercio' && a.tipo !== 'industria' && !r.anexosServico.includes(anexo)) r.anexosServico.push(anexo);
     }
-    // acima do sublimite o ICMS e o ISS saem do DAS (a tabela da 6ª faixa já não os tem) e vão pelas regras normais
-    if (acima) {
+    // impedida: o ICMS e o ISS do mês pelas regras normais
+    if (impedida) {
       const dMes = { ...d, atividades: d.atividades.map(a => ({ ...a, receita: a.receita * n.pesos[m] })), compras: d.compras * n.pesos[m], creditoIcms: d.creditoIcms != null ? d.creditoIcms * n.pesos[m] : null };
       r.icmsFora += icmsNormal(n, dMes).valor;
       r.issFora += issDe(dMes);
     }
-  }
-  if (r.foraDoLimite) {
-    return { disponivel: false, motivo: 'O RBT12 passa de ' + brl(LIMITE_SIMPLES) + ' (limite do Simples): a empresa não pode ficar no Simples nesse ano.', total: null, itens: [], avisos };
-  }
-  if (anoAnterior > LIMITE_SIMPLES && k > 0) {
-    return { disponivel: false, motivo: 'A receita do ano anterior (' + brl(anoAnterior) + ') passa do limite de ' + brl(LIMITE_SIMPLES) + ': exclusão do Simples a partir deste ano.', total: null, itens: [], avisos };
+    acum += d.receita * n.pesos[m];
   }
   if (rFatores.length) r.fatorR = rFatores.reduce((s, v) => s + v, 0) / rFatores.length;
   // Anexo IV: a CPP fica fora do DAS (20% + RAT, sem terceiros), proporcional à receita do Anexo IV
@@ -304,37 +359,55 @@ function calcSimples(n, d, k, ano) {
   if (recIV > 0) {
     const parte = recIV / d.receita;
     r.cppForaIV = (d.folha * (CPP + n.rat / 100 * n.fap) + d.proLabore * CPP_PRO_LABORE) * parte;
-    if (parte < 0.999) avisos.push('A CPP do Anexo IV foi rateada pela receita (' + pct1(parte * 100) + '% da receita é do Anexo IV) — confira o cálculo da folha.');
+    if (parte < 0.999) avisos.push('A CPP do Anexo IV foi rateada pela receita (' + pct1(parte * 100) + '% da receita é do Anexo IV): certo pra quem trabalha nas duas atividades; quem trabalha só no Anexo IV paga sobre a remuneração inteira.');
   }
-  if (r.acimaSublimite) avisos.push('Em ' + r.acimaSublimite + (r.acimaSublimite === 1 ? ' mês' : ' meses') + ' o RBT12 passa do sublimite de ' + brl(SUBLIMITE) + ': o ICMS e o ISS desses meses foram calculados fora do DAS, pelas regras normais.' + (ano >= 2027 ? ' A tabela da 6ª faixa de 2027 (Res. CGSN 190: alíquotas 0,1 ponto menores) não está no motor: usada a de 2026.' : ''));
+  const nm = q => q + (q === 1 ? ' mês' : ' meses');
+  if (r.impedida) avisos.push('Impedida de recolher o ICMS e o ISS no Simples em ' + nm(r.impedida) + ' (a receita ' + (anoAnterior > SUBLIMITE ? 'do ano anterior passou' : 'do ano passou de ' + brl(SUBLIMITE_20) + ',') + ' do sublimite de ' + brl(SUBLIMITE) + '): esses tributos foram calculados fora do DAS, pelas regras normais.' + (ano >= 2027 ? ' O IBS de 0,1% também sai do DAS e não entrou na conta.' : ''));
+  if (r.faixa6 > r.impedida) avisos.push('RBT12 acima de ' + brl(SUBLIMITE) + ' sem a empresa estar impedida: os federais pela 6ª faixa e o ICMS ou o ISS no DAS pela fórmula da 5ª faixa.' + (ano >= 2027 ? ' A tabela da 6ª faixa de 2027 (Res. CGSN 190: alíquotas 0,1 ponto menores) não está no motor: usada a de 2026.' : ''));
+  else if (r.faixa6 && ano >= 2027) avisos.push('A tabela da 6ª faixa de 2027 (Res. CGSN 190: alíquotas 0,1 ponto menores) não está no motor: usada a de 2026.');
+  if (r.alemDoLimite) avisos.push('O RBT12 passa de ' + brl(LIMITE_SIMPLES) + ' em ' + nm(r.alemDoLimite) + ' e a empresa segue no Simples até o fim do ano (excesso de até 20%): a conta usou a fórmula da 6ª faixa — confira a tributação do excesso. No ano seguinte, fora do Simples.');
   const itens = [{ tributo: 'DAS', valor: r.das }];
   if (r.cppForaIV) itens.push({ tributo: 'CPP fora do DAS (Anexo IV)', valor: r.cppForaIV });
   if (r.icmsFora) itens.push({ tributo: 'ICMS fora do DAS (sublimite)', valor: r.icmsFora });
   if (r.issFora) itens.push({ tributo: 'ISS fora do DAS (sublimite)', valor: r.issFora });
   if (r.difal) itens.push({ tributo: 'ICMS pago fora do DAS (diferencial e antecipação)', valor: r.difal });
   const total = itens.reduce((s, x) => s + x.valor, 0);
-  return { disponivel: true, total, itens, das: r.das, porAnexo: r.porAnexo, fatorR: r.fatorR, anexosServico: r.anexosServico, faixaFinal: r.faixas[11], avisos };
+  return { disponivel: true, total, itens, das: r.das, icmsIssDentro: r.icmsIssDentro, porAnexo: r.porAnexo, fatorR: r.fatorR, anexosServico: r.anexosServico, faixaFinal: r.faixas[11], avisos };
 }
 
 // ---------- LUCRO PRESUMIDO ----------
+// A LC 224 por trimestre (IN RFB 2.305/2025, art. 15, na redação da IN 2.306/2026; revisão de 01/11/2026): o limite de
+// R$ 1,25 milhão por trimestre, com a sobra levada adiante; no fim do ano o imposto é refeito pelo limite anual e o que foi
+// pago a mais nos trimestres de excesso é deduzido. A conta do ano: o excesso anual fica nos trimestres que pagaram
+// excesso, dos primeiros pros últimos. Em 2026 a CSLL majorada começa em abril, com R$ 3,75 milhões contados de lá (P&R
+// da RFB, pergunta 13). Antes, o motor acumulava contra R$ 5 milhões e fazia ajuste negativo em qualquer trimestre.
+export function excessosLc224(recQs, inicio = 0) {
+  const lim = LC224_LIMITE_ANO / 4;
+  let sobra = 0;
+  const pago = recQs.map((r, q) => {
+    if (q < inicio) return 0;
+    const l = lim + sobra;
+    sobra = Math.max(0, l - r);
+    return Math.max(0, r - l);
+  });
+  let resta = Math.max(0, recQs.slice(inicio).reduce((s, r) => s + r, 0) - lim * (4 - inicio));
+  return pago.map(x => { const v = Math.min(x, resta); resta -= v; return v; });
+}
 function calcPresumido(n, d, k, ano) {
   const avisos = [];
   let irpj = 0, csll = 0, baseIrpjAno = 0, baseCsllAno = 0, extraIrpjAno = 0, extraCsllAno = 0;
   // presunção média ponderada pela receita (a LC 224 divide o excesso pelas atividades na proporção da receita)
   const presI = d.atividades.reduce((s, a) => s + a.receita * a.presIrpj / 100, 0) / d.receita;
   const presC = d.atividades.reduce((s, a) => s + a.receita * a.presCsll / 100, 0) / d.receita;
-  let acumulada = 0, excessoAnterior = 0;
+  const recQs = [0, 1, 2, 3].map(q => d.receita * (n.pesos[3 * q] + n.pesos[3 * q + 1] + n.pesos[3 * q + 2]));
+  const exI = n.semLc224 ? [0, 0, 0, 0] : excessosLc224(recQs, 0);
+  const exC = n.semLc224 ? [0, 0, 0, 0] : excessosLc224(recQs, ano === 2026 ? 1 : 0);
   for (let q = 0; q < 4; q++) {
-    const recQ = d.receita * (n.pesos[3 * q] + n.pesos[3 * q + 1] + n.pesos[3 * q + 2]);
-    acumulada += recQ;
-    const excessoAcum = Math.max(0, acumulada - LC224_LIMITE_ANO * (q + 1) / 4);
-    const excessoQ = n.semLc224 ? 0 : excessoAcum - excessoAnterior;   // pode ser negativo: o ajuste do período seguinte
-    excessoAnterior = excessoAcum;
-    const extraI = excessoQ * presI * LC224_ACRESCIMO;
-    // a CSLL majorada só a partir de 01/04/2026 (noventena): em 2026, o 1º trimestre fica de fora
-    const extraC = ano === 2026 && q === 0 ? 0 : excessoQ * presC * LC224_ACRESCIMO;
-    const baseI = Math.max(0, recQ * presI + extraI);
-    const baseC = Math.max(0, recQ * presC + extraC);
+    const recQ = recQs[q];
+    const extraI = exI[q] * presI * LC224_ACRESCIMO;
+    const extraC = exC[q] * presC * LC224_ACRESCIMO;
+    const baseI = recQ * presI + extraI;
+    const baseC = recQ * presC + extraC;
     baseIrpjAno += baseI; baseCsllAno += baseC; extraIrpjAno += extraI; extraCsllAno += extraC;
     irpj += baseI * IRPJ + Math.max(0, baseI - ADICIONAL_TRIMESTRE) * ADICIONAL;
     csll += baseC * CSLL;
@@ -346,9 +419,11 @@ function calcPresumido(n, d, k, ano) {
   const itens = [{ tributo: 'IRPJ', valor: irpj }, { tributo: 'CSLL', valor: csll }];
   let pis = 0, cofins = 0, cbs = null;
   if (ano < 2027) {
-    const base = baseSaidasPisCofins(d, icms.debito);
+    const base = baseSaidasPisCofins(d);
     pis = base * PIS_CUM; cofins = base * COFINS_CUM;
     itens.push({ tributo: 'PIS', valor: pis }, { tributo: 'Cofins', valor: cofins });
+    const ipi = ipiDe(d, ano);
+    if (ipi) itens.push({ tributo: 'IPI', valor: ipi });
   } else {
     cbs = cbsIbsRegular(n, d, ano, icms.debito, iss);
     itens.push({ tributo: 'CBS', valor: cbs.cbs }, { tributo: 'IBS', valor: cbs.ibs });
@@ -378,7 +453,7 @@ function calcReal(n, d, k, ano) {
   const itens = [];
   let pisCofins = 0, pis = 0, cofins = 0, cbs = null, creditoPisCofins = 0;
   if (ano < 2027) {
-    const debito = baseSaidasPisCofins(d, icms.debito) * (PIS_NC + COFINS_NC);
+    const debito = baseSaidasPisCofins(d) * (PIS_NC + COFINS_NC);
     // crédito: compras (sem a revenda monofásica, que não credita, e sem o ICMS) e as despesas com crédito
     const icmsCompras = icms.debito > 0 ? icms.credito : 0;
     const baseCred = Math.max(0, d.compras * (1 - n.pctComprasMonofasico / 100) - icmsCompras * (1 - n.pctComprasMonofasico / 100)) + d.despesasCredito;
@@ -390,13 +465,15 @@ function calcReal(n, d, k, ano) {
     cbs = cbsIbsRegular(n, d, ano, icms.debito, iss);
     if (cbs.sobraCredito > 0.005) avisos.push('Crédito de CBS/IBS maior que o débito em ' + brl(cbs.sobraCredito) + ': a sobra fica para compensar ou pedir ressarcimento — fora da conta.');
   }
-  const tributosReceita = icms.valor + iss + pisCofins + (cbs ? cbs.valor : 0);
+  const ipi = ipiDe(d, ano);
+  const tributosReceita = icms.valor + iss + pisCofins + ipi + (cbs ? cbs.valor : 0);
   const lucro = d.receita - d.compras - d.folha * (1 + FGTS) - inss.total - d.proLabore - d.despesasCredito - d.outrasDespesas - tributosReceita;
   const { irpj, csll } = irpjCsllReal(lucro);
   if (lucro < 0) avisos.push('Prejuízo de ' + brl(-lucro) + ' no ano: sem IRPJ e CSLL — o prejuízo compensa até 30% do lucro dos anos seguintes (fora da conta).');
   itens.push({ tributo: 'IRPJ', valor: irpj }, { tributo: 'CSLL', valor: csll });
   if (cbs) itens.push({ tributo: 'CBS', valor: cbs.cbs }, { tributo: 'IBS', valor: cbs.ibs });
   else itens.push({ tributo: 'PIS', valor: pis }, { tributo: 'Cofins', valor: cofins });
+  if (ipi) itens.push({ tributo: 'IPI', valor: ipi });
   if (icms.valor || icms.debito) itens.push({ tributo: 'ICMS', valor: icms.valor });
   if (iss) itens.push({ tributo: 'ISS', valor: iss });
   itens.push({ tributo: 'INSS patronal (CPP, RAT e terceiros)', valor: inss.cpp + inss.rat + inss.terceiros });
@@ -437,7 +514,9 @@ export function comparar(entrada, opcoes = {}) {
   const avisos = [];
   // folha zerada com serviço do fator r: o Anexo V é certo, e o "Anexo III" depende de folha
   if (n.atividades.some(a => a.fatorR) && !(n.folha + n.proLabore > 0)) avisos.push('Sem folha nem pró-labore informados, o serviço do fator r fica no Anexo V. Informe a folha dos últimos 12 meses.');
-  if (n.atividades.some(a => a.tipo === 'industria')) avisos.push('Indústria: o IPI não entra na conta (vai por fora na nota e em 2027 vira zero, salvo produto com industrialização incentivada na Zona Franca de Manaus). Em 2027 a indústria do Simples passa ao Anexo I (LC 123, art. 18, §5º, na redação da LC 214).');
+  if (n.atividades.some(a => a.tipo === 'industria')) avisos.push('Indústria: em 2026 o IPI do Presumido e do Real é o informado na atividade (no Simples ele está no DAS); em 2027 vira zero, salvo produto com industrialização incentivada na Zona Franca de Manaus. Em 2027 a indústria do Simples passa ao Anexo I (LC 123, art. 18, §5º, na redação da LC 214).');
+  if (n.anoBase < 2027 && n.atividades.some(a => a.tributo === 'icms' && a.pctST > 0)) avisos.push('O ICMS-ST pago na compra pode sair da base do PIS/Cofins de quem revende (STJ, Tema 1125, aceito pela PGFN): fora da conta — o PIS/Cofins de 2026 do Presumido e do Real com ST fica um pouco maior.');
+  if (n.cprb) avisos.push('Desoneração da folha: na transição, a CPP reduzida vale pro pró-labore também, e o 13º fica só na CPRB (Lei 12.546, art. 9º-A, na redação da Lei 14.973) — o 13º foi estimado em 1/13,33 da folha.');
   if (!(n.outrasDespesas > 0)) avisos.push('Sem as outras despesas (aluguel, sistemas, contador, manutenção…), o lucro do Real sai maior que o de verdade e o Real, mais caro. Informe o resto dos custos do ano.');
   return { entrada: n, anos: resultados, anoDecisao, decisao, avisos };
 }

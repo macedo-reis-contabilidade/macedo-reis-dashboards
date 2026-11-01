@@ -217,7 +217,7 @@
     const PADROES = { compras: 0, aliqCreditoIcms: 12, pctComprasSimples: 0, despesasCredito: 0, outrasDespesas: 0, difalSimples: 0,
       folha: 0, proLabore: 0, rat: 2, fap: 1, terceiros: 5.8, cprb: null, crescimentoReceita: 0, crescimentoFolha: 0, semLc224: false,
       mix: { cheia: 100, red60: 0, red40: 0, red30: 0, zero: 0 }, pctImpostoEmbutido: null, pctComprasComCredito: null };
-    const PADRAO_ATIV = a => ({ aliqIcms: 17, aliqIss: 3, pctST: 0, pctMonofasico: 0, ...a });
+    const PADRAO_ATIV = a => ({ aliqIcms: 17, aliqIss: 3, pctST: 0, pctMonofasico: 0, aliqIpi: 0, ...a });
     function comPadroes(e) {
       const out = { ...PADROES, ...e, mix: { ...PADROES.mix, ...(e && e.mix) } };
       out.atividades = ((e && e.atividades) || [{ tipo: 'comercio', receita: 0 }]).map(PADRAO_ATIV);
@@ -363,7 +363,8 @@
       'mix.red40': { rotulo: 'Bares e restaurantes (−40%)', un: '%' }, 'mix.zero': { rotulo: 'Alíquota zero', un: '%' },
       'ativ.receita': { rotulo: 'Receita dos 12 meses', un: 'R$' }, 'ativ.aliqIcms': { rotulo: 'ICMS das vendas', un: '%' }, 'ativ.pctST': { rotulo: 'Vendas com ICMS-ST', un: '%' },
       'ativ.pctMonofasico': { rotulo: 'Revenda monofásica (PIS/Cofins)', un: '%' }, 'ativ.aliqIss': { rotulo: 'ISS', un: '%' },
-      'ativ.presIrpj': { rotulo: 'Presunção do IRPJ', un: '%' }, 'ativ.presCsll': { rotulo: 'Presunção da CSLL', un: '%' }
+      'ativ.presIrpj': { rotulo: 'Presunção do IRPJ', un: '%' }, 'ativ.presCsll': { rotulo: 'Presunção da CSLL', un: '%' },
+      'ativ.aliqIpi': { rotulo: 'IPI a recolher em 2026 (Presumido e Real)', un: '%' }
     };
     const pegar = (o, caminho) => caminho.split('.').reduce((x, k) => x == null ? x : x[k], o);
     function definir(o, caminho, v) { const p = caminho.split('.'); let x = o; for (let i = 0; i < p.length - 1; i++) x = x[p[i]] = x[p[i]] ?? {}; x[p[p.length - 1]] = v; }
@@ -396,6 +397,7 @@
         '</div>' +
         '<div class="ct-campos">' +
           (tributo === 'icms' ? campo(p + '.aliqIcms', 'ativ.aliqIcms') + campo(p + '.pctST', 'ativ.pctST') + (a.tipo === 'comercio' ? campo(p + '.pctMonofasico', 'ativ.pctMonofasico') : '') : campo(p + '.aliqIss', 'ativ.aliqIss')) +
+          (a.tipo === 'industria' ? campo(p + '.aliqIpi', 'ativ.aliqIpi') : '') +
         '</div>' +
         '<details class="ct-ajuste"><summary>Anexo do Simples e presunção do Presumido</summary><div class="ct-campos">' +
           '<label class="ct-campo">Anexo do Simples<select class="select" data-campo="' + p + '.anexo">' + ANEXOS.map(x => '<option' + (x === anexo ? ' selected' : '') + '>' + x + '</option>').join('') + '</select></label>' +
@@ -575,8 +577,8 @@
         (muda.length ? '<div class="ct-bloco"><h3>O que muda o resultado</h3><ul>' + muda.map(m => typeof m === 'string' ? '<li>' + esc(m) + '</li>' : '<li class="ct-muda">' + esc(m.txt) + '</li>').join('') + '</ul></div>' : '') +
         (prazos.length ? '<div class="ct-bloco ct-prazos"><h3>Prazos pra decidir</h3><ul>' + prazos.map(p => '<li><b>' + esc(p.titulo) + ':</b> ' + esc(p.texto) + '</li>').join('') + '</ul></div>' : '') +
         '<div class="ct-bloco"><h3>Premissas e avisos</h3><ul>' +
-          '<li>Todo tributo é calculado sobre a receita de hoje e conta como custo da empresa. Em 2027, a CBS/IBS do Presumido e do Real vai destacada na nota e o cliente empresa do regime regular a credita; a opção do Simples por fora está na <a href="fiscal-reforma.html">Reforma Tributária</a>.</li>' +
-          '<li>CBS de 2027: referência de ' + esc(pct((aliq2027 && aliq2027.cbs) || 11.3, 2)) + '%, a calculada pelo TCU, menos 0,1 ponto; IBS de 0,1%. Fora da conta: IPI, receitas financeiras, ajustes do lucro do Real, lucros e dividendos (Lei 15.270) e os anos de 2029 em diante.</li>' +
+          '<li>Todo tributo é calculado sobre a receita de hoje e conta como custo da empresa. Em 2027, a CBS/IBS do Presumido e do Real vai destacada na nota e o cliente empresa do regime regular credita tudo; no Simples por dentro, ele credita só a fatia de CBS/IBS do DAS — essa diferença pro cliente não entra na conta. A opção do Simples por fora está na <a href="fiscal-reforma.html">Reforma Tributária</a>.</li>' +
+          '<li>CBS de 2027: referência de ' + esc(pct((aliq2027 && aliq2027.cbs) || 11.3, 2)) + '%, a calculada pelo TCU, menos 0,1 ponto; IBS de 0,1%. Fora da conta: receitas financeiras, ajustes do lucro do Real, lucros e dividendos (Lei 15.270) e os anos de 2029 em diante.</li>' +
           avisos.map(a => '<li>' + esc(a) + '</li>').join('') + '</ul></div>';
     }
     const anoDe = (c, ano) => c.anos.find(r => r.ano === ano) || c.anos[0];

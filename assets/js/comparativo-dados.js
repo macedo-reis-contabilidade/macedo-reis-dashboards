@@ -151,6 +151,7 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
     origens['atividades.' + iMerc + '.aliqIcms'] = origem('padrao', 'padrão: 17%, a interna do RS', 'venda pra outro estado é 12% (7% ou 4% em alguns casos) — confira');
   }
   atividades.forEach((a, i) => { if (TIPOS[a.tipo].tributo === 'iss') origens['atividades.' + i + '.aliqIss'] = origem('padrao', 'padrão: 3% — confira', 'a alíquota do ISS da atividade no município'); });
+  atividades.forEach((a, i) => { if (a.tipo === 'industria') origens['atividades.' + i + '.aliqIpi'] = origem('padrao', 'padrão: zero — confira', 'o IPI a recolher no ano, em % da receita da indústria, já com os créditos; só 2026 — em 2027 ele vira zero'); });
 
   const e = { atividades, meses };
   // compras e despesas: o % da receita medido no caso da Reforma (entradas do Domínio ÷ receita dos mesmos meses)
