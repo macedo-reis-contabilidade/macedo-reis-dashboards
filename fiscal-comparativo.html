@@ -290,9 +290,10 @@
 
     // o estudo aberto
     // serie: a receita datada da empresa (o sistema) · grupoSeries: a das outras empresas dos sócios ([{ nome, serie }])
+    // grupoFora: as empresas dos sócios que a regra deixa fora da soma do limite ([{ nome, motivo }])
     // socios: quantos sócios o cadastro tem (null = sem cadastro) · jornada e faseVista: o roteiro (as fases e as missões)
     const st = { cliente: null, nome: '', entrada: null, origens: {}, notas: [], conferencia: null, rels: [], fontes: [],
-      estudoId: null, gravadoEm: null, gravadoPor: null, semTabela: false, serie: null, grupoSeries: [], socios: null,
+      estudoId: null, gravadoEm: null, gravadoPor: null, semTabela: false, serie: null, grupoSeries: [], grupoFora: [], socios: null,
       jornada: { inicial: true, feitas: new Set(), fases: new Set() }, faseVista: null };
     let ultimoRoteiro = null;
 
@@ -340,7 +341,7 @@
       if (!nome) return;
       await gravarPendente();
       st.cliente = null; st.nome = nome; st.estudoId = null; st.gravadoEm = null; st.gravadoPor = null; st.rels = []; st.conferencia = null;
-      st.serie = null; st.grupoSeries = []; st.socios = null; st.faseVista = null; st.jornada = { inicial: true, feitas: new Set(), fases: new Set() };
+      st.serie = null; st.grupoSeries = []; st.grupoFora = []; st.socios = null; st.faseVista = null; st.jornada = { inicial: true, feitas: new Set(), fases: new Set() };
       st.entrada = comPadroes({ atividades: [{ tipo: 'comercio', receita: 0 }], grupo: [] });
       st.origens = { ...ORIGENS_PADRAO, 'atividades.0.receita': { fonte: 'padrao', texto: 'digite a receita dos 12 meses' }, 'atividades.0.tipo': { fonte: 'padrao' },
         compras: { fonte: 'padrao', texto: 'digite ou solte os relatórios' }, folha: { fonte: 'padrao', texto: 'digite os 12 meses', dica: 'salários, 13º e férias' }, proLabore: { fonte: 'padrao', texto: 'digite' },
@@ -370,7 +371,7 @@
       // o gravado ou os números do sistema, e as outras empresas dos mesmos sócios (a lista do cadastro já está aqui)
       const est = await carregarEstudo({ ler: lerDoBanco, cliente: c, cadastroDe: async ids => new Map(clientes.filter(k => ids.includes(k.id)).map(k => [k.id, k])) });
       if (st.cliente !== c) return;   // trocou de empresa no meio da leitura
-      st.serie = est.serie; st.grupoSeries = est.grupoSeries; st.socios = est.socios; st.faseVista = null; st.jornada = { inicial: true, feitas: new Set(), fases: new Set() };
+      st.serie = est.serie; st.grupoSeries = est.grupoSeries; st.grupoFora = est.grupoFora || []; st.socios = est.socios; st.faseVista = null; st.jornada = { inicial: true, feitas: new Set(), fases: new Set() };
       st.fontes = est.fontes; st.semTabela = est.semTabela;
       st.estudoId = est.estudoId; st.gravadoEm = est.gravadoEm; st.gravadoPor = est.gravadoPor;
       st.entrada = est.entrada; st.origens = est.origens; st.conferencia = est.conferencia;
@@ -421,6 +422,13 @@
         '<span class="ct-un" data-un="' + esc(d.un === 'R$' ? '' : d.un) + '"><input class="input" id="' + id + '" data-campo="' + esc(caminho) + '" data-un="' + esc(d.un) + '" inputmode="decimal" value="' + esc(formatar(v, d.un)) + '"></span>' +
         tag(caminho) + '</label>';
     }
+    // o RDA dos bares e restaurantes do RS (Presumido e Real): o sistema marca "o mais barato" pro CNAE 56.1; a equipe troca
+    function campoRda() {
+      const v = st.entrada.rda || '';
+      const op = [['', 'Fora do RDA (débito e crédito)'], ['melhor', 'O mais barato: o RDA ou o débito e crédito'], ['sim', 'Optante do RDA: 3,5% das vendas, sem crédito']];
+      return '<label class="ct-campo" for="f_rda">ICMS do restaurante no Presumido e no Real<select class="select" id="f_rda" data-campo="rda">' +
+        op.map(([k, t]) => '<option value="' + k + '"' + (k === v ? ' selected' : '') + '>' + esc(t) + '</option>').join('') + '</select>' + tag('rda') + '</label>';
+    }
     function blocoAtividade(a, i) {
       const t = TIPOS[a.tipo] || TIPOS.comercio;
       const tributo = a.tributo || t.tributo;
@@ -461,7 +469,7 @@
       const rec = st.entrada.atividades.reduce((s, a) => s + (Number(a.receita) || 0), 0);
       const soma = rec + g.reduce((s, x) => s + (Number(x.receita) || 0), 0);
       const sit = situacaoAtual();
-      let txt = 'O limite de R$ 4,8 milhões do Simples vale pra soma (LC 123, art. 3º, §4º, III e IV). Nos 12 meses, somadas: ' + brl(soma) + ' (' + pct(soma / 4800000 * 100, 0) + '% do limite).';
+      let txt = 'O limite de R$ 4,8 milhões do Simples vale pra soma (LC 123, art. 3º, §4º, III a V). Nos 12 meses, somadas: ' + brl(soma) + ' (' + pct(soma / 4800000 * 100, 0) + '% do limite).';
       if (sit && sit.meses) txt += ' Em ' + sit.ano + ', até ' + rotuloComp(sit.ate) + ', pelos números do sistema: ' + brl(sit.acumulado) + (sit.jaPassou ? ' — passou do limite em ' + sit.passaEm + '.' : sit.passaEm ? '; no ritmo dos últimos 3 meses, passa do limite em ' + sit.passaEm + '.' : '.');
       return { txt, alerta: soma >= 0.85 * 4800000 || !!(sit && sit.passaEm) };
     }
@@ -491,7 +499,8 @@
           '<button type="button" class="btn btn-ghost btn-sm" data-acao="mais-grupo">+ Empresa dos mesmos sócios</button></div></fieldset>' +
         blocoGrupo() +
         '<fieldset class="ct-grupo"><legend>Compras e despesas</legend><div class="ct-campos">' +
-          campo('compras') + (temIcms ? campo('aliqCreditoIcms') : '') + campo('pctComprasSimples') + campo('despesasCredito') + campo('outrasDespesas') + (temIcms ? campo('difalSimples') : '') +
+          campo('compras') + (temIcms ? campo('aliqCreditoIcms') : '') + (temIcms && (e.rda || e.atividades.some(a => Number(a.redIcms) > 0)) ? campoRda() : '') +
+          campo('pctComprasSimples') + campo('despesasCredito') + campo('outrasDespesas') + (temIcms ? campo('difalSimples') : '') +
         '</div></fieldset>' +
         '<fieldset class="ct-grupo"><legend>Folha</legend><div class="ct-campos">' +
           campo('folha') + campo('proLabore') + campo('rat') + campo('fap') + campo('terceiros') + campo('cprb') +
@@ -590,7 +599,7 @@
       if ($('grupoSit')) { const tg = textoGrupo(); $('grupoSit').textContent = tg.txt; $('grupoSit').classList.toggle('ct-alerta', tg.alerta); }
       // a conta inteira (a mesma do assistente do escritório): comparar, as premissas, o roteiro, os prazos, o que muda e os avisos
       const conta = contaDoEstudo({ entrada: st.entrada, origens: st.origens, conferencia: st.conferencia, notas: st.notas, serie: st.serie,
-        grupoSeries: st.grupoSeries, socios: st.socios, aliq2027, hoje: hojeLocal() });
+        grupoSeries: st.grupoSeries, grupoFora: st.grupoFora, socios: st.socios, aliq2027, hoje: hojeLocal() });
       if (!conta.comparacao) {
         ultimo = null;
         box.innerHTML = '<p class="ct-vazio">' + esc(conta.erro) + '</p>';

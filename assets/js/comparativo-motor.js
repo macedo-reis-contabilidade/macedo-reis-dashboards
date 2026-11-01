@@ -61,9 +61,18 @@ export const PIS_CUM = 0.0065, COFINS_CUM = 0.03, PIS_NC = 0.0165, COFINS_NC = 0
 // LC 224/2025, art. 4º, §4º, VII, e §5º: no Presumido, os percentuais de presunção sobem 10% sobre a parte da receita
 // bruta que passa de R$ 5 milhões no ano — limite proporcional a cada período de apuração (R$ 1,25 milhão por trimestre,
 // com ajuste nos seguintes), dividido pelas atividades na proporção da receita. IRPJ desde 01/01/2026, CSLL desde
-// 01/04/2026. Há liminares individuais (TRF-4, AI 5028128-82.2026.4.04.0000) e a ADI 7936 no STF, sem decisão:
-// o motor aplica o aumento; a empresa com liminar o desliga (entrada.semLc224).
+// 01/04/2026. Há liminares individuais (TRF-4, AI 5028128-82.2026.4.04.0000) e três ADIs no STF — 7936 (CNS), 7944
+// (OAB) e 7982 (CNC) —, sem decisão nas notícias do STF até 01/11/2026: o motor aplica o aumento; a empresa com liminar o
+// desliga (entrada.semLc224).
 export const LC224_LIMITE_ANO = 5000000, LC224_ACRESCIMO = 0.10;
+// ICMS no RS (revisão de 01/11/2026, nas orientações da Receita Estadual):
+//   · RDA dos bares e restaurantes (RICMS-RS, Livro I, art. 38-A; Dec. 55.458/2020, com o Dec. 57.930/2024 — vale de
+//     2025 a 2028): 3,5% de todas as vendas de mercadoria, as com ST inclusive, sem crédito nenhum, no lugar do débito e
+//     crédito; só na modalidade geral (não no Simples), CNAE do grupo 56.1, com a alimentação em 60% ou mais das vendas do
+//     ano anterior e sem dívida ativa;
+//   · Simples Gaúcho (Lei 13.036/2008, na redação da Lei 15.576/2020): o optante do RS com a receita bruta dos últimos 12
+//     meses abaixo de R$ 360 mil é isento do ICMS do DAS — não soma com a redução da refeição (ela fica sem efeito).
+export const RDA_RS = 0.035, RDA_ATE = 2028, SIMPLES_GAUCHO = 360000;
 // INSS patronal no Presumido e no Real (Lei 8.212, art. 22): 20% da folha + RAT (1, 2 ou 3%, vezes o FAP) + terceiros
 // (5,8% na maioria dos FPAS) e 20% do pró-labore. No Simples só o Anexo IV paga fora do DAS: 20% + RAT, sem terceiros
 // (LC 123, art. 18, §5º-C, e art. 13, §3º).
@@ -100,7 +109,11 @@ const pct1 = v => (Number(v) || 0).toLocaleString('pt-BR', { maximumFractionDigi
 //     redIcmsSimples: a redução do ICMS no DAS, em % da fatia do ICMS, na receita sem ST (LC 123, art. 18, §20 — o
 //       "percentual de redução" do PGDAS; a refeição no RS: 40)
 //   grupo (opcional): as outras empresas dos mesmos sócios — [{ nome, receita (12 meses), meses? (12, do calendário) }];
-//     o limite de R$ 4,8 milhões vale pra soma (LC 123, art. 3º, §4º, III e IV); elas crescem com a receita desta
+//     o limite de R$ 4,8 milhões vale pra soma (LC 123, art. 3º, §4º, III a V: outra ME ou EPP com qualquer participação,
+//     outra com mais de 10% ou a administrada pelo sócio — quem entra a tela decide); elas crescem com a receita desta
+//   uf (opcional): a UF da empresa — sem ela, RS (o Simples Gaúcho)
+//   rda (opcional): o RDA dos bares e restaurantes do RS no Presumido e no Real — 'melhor' (o mais barato entre ele e o
+//     débito e crédito), 'sim' (a empresa é optante); vazio, fora dele
 //   meses (opcional): a receita de cada um dos 12 meses da base, na ordem — só a forma do ano (trimestres, RBT12)
 //   receitaAnoAnterior (opcional): a receita dos 12 meses antes da base (o RBT12 do primeiro mês, no PGDAS)
 //   folha (salários, 13º e férias — a base do INSS) · proLabore · rat (1 a 3) · fap (padrão 1) · terceiros (padrão 5,8)
@@ -174,6 +187,8 @@ export function normalizar(e = {}) {
     mix,
     crescimentoReceita: entre(num(e.crescimentoReceita), -90, 300), crescimentoFolha: entre(num(e.crescimentoFolha), -90, 300),
     semLc224: !!e.semLc224,
+    uf: String(e.uf || '').trim().toUpperCase() || null,
+    rda: e.rda === 'melhor' || e.rda === 'sim' ? e.rda : null,
     aliq2027: aliquotas2027(e.aliq2027),
     anoBase: ANOS.includes(num(e.anoBase, 2026)) ? num(e.anoBase, 2026) : 2026,
     regimeAtual: REGIMES.includes(e.regimeAtual) ? e.regimeAtual : null
@@ -232,16 +247,39 @@ function janela12(n, k, m, ano, f) {
 // débito: as vendas de mercadoria sem ST × a alíquota delas, na base reduzida quando há redução; crédito: o medido (R$)
 // ou as compras sem ST × a alíquota média do crédito — com a base reduzida, o crédito cai na mesma proporção (RICMS-RS,
 // Livro I, art. 33, IV), rateado pela receita sem ST de cada atividade; o crédito medido é o que a empresa toma, como
-// veio. Saldo credor não vira dinheiro: o ICMS do ano é no mínimo zero.
+// veio. Saldo credor não vira dinheiro: o ICMS do ano é no mínimo zero. icmsCompras: o ICMS que incidiu nas compras,
+// antes do estorno da base reduzida — o que sai da base do crédito de PIS/Cofins (Lei 14.592/2023: "o ICMS que tenha
+// incidido sobre a operação de aquisição"; antes de 01/11/2026 saía o crédito já reduzido).
 function icmsNormal(n, d, fracaoDoAno = 1) {
   const ats = d.atividades.filter(a => a.tributo === 'icms');
   const semST = a => a.receita * (1 - a.pctST / 100);
   const debito = ats.reduce((s, a) => s + semST(a) * (1 - a.redIcms / 100) * a.aliqIcms / 100, 0) * fracaoDoAno;
-  if (!(debito > 0)) return { debito: 0, credito: 0, valor: 0 };
+  if (!(debito > 0)) return { debito: 0, credito: 0, valor: 0, icmsCompras: 0 };
   const baseCheia = ats.reduce((s, a) => s + semST(a), 0);
   const fCred = baseCheia > 0 ? ats.reduce((s, a) => s + semST(a) * (1 - a.redIcms / 100), 0) / baseCheia : 1;
-  const credito = (d.creditoIcms != null ? d.creditoIcms : d.compras * (1 - n.pctComprasST / 100) * n.aliqCreditoIcms / 100 * fCred) * fracaoDoAno;
-  return { debito, credito, valor: Math.max(0, debito - credito) };
+  const icmsCompras = (d.creditoIcms != null ? d.creditoIcms : d.compras * (1 - n.pctComprasST / 100) * n.aliqCreditoIcms / 100) * fracaoDoAno;
+  const credito = d.creditoIcms != null ? icmsCompras : icmsCompras * fCred;
+  return { debito, credito, valor: Math.max(0, debito - credito), icmsCompras };
+}
+// o RDA dos bares e restaurantes do RS: 3,5% de todas as vendas de mercadoria (as com ST também), sem crédito
+const vendasDeMercadoria = d => d.atividades.filter(a => a.tributo === 'icms').reduce((s, a) => s + a.receita, 0);
+// o ICMS do Presumido e do Real: o débito e crédito ou, no restaurante do RS, o RDA — pela opção da empresa ('sim') ou o
+// mais barato dos dois ('melhor'). rda: se a conta usou o RDA · alternativa: o ICMS pelo outro caminho (pro aviso)
+function icmsRegimeGeral(n, d, ano) {
+  const normal = icmsNormal(n, d);
+  const vendas = vendasDeMercadoria(d);
+  if (!n.rda || ano > RDA_ATE || !(vendas > 0)) return { ...normal, rda: false, alternativa: null };
+  const rda = vendas * RDA_RS;
+  const usar = n.rda === 'sim' || rda < normal.valor;
+  return usar ? { debito: rda, credito: 0, valor: rda, icmsCompras: normal.icmsCompras, rda: true, alternativa: normal.valor }
+    : { ...normal, rda: false, alternativa: rda };
+}
+function avisoDoRda(n, icms) {
+  if (!n.rda || icms.alternativa == null) return null;
+  const regra = ' (RICMS-RS, Livro I, art. 38-A: CNAE 56.1, a alimentação em 60% ou mais das vendas do ano anterior e sem dívida ativa)';
+  if (icms.rda && n.rda === 'sim') return 'ICMS pelo RDA dos bares e restaurantes: 3,5% de todas as vendas de mercadoria, sem crédito' + regra + ' — ' + brl(icms.valor) + '; pelo débito e crédito daria ' + brl(icms.alternativa) + '.';
+  if (icms.rda) return 'ICMS pelo RDA dos bares e restaurantes, o mais barato: 3,5% de todas as vendas de mercadoria, sem crédito' + regra + ' — ' + brl(icms.valor) + ', ' + brl(icms.alternativa - icms.valor) + ' a menos que pelo débito e crédito.';
+  return 'O RDA dos bares e restaurantes (3,5% de todas as vendas de mercadoria, sem crédito) daria ' + brl(icms.alternativa) + ' de ICMS; pelo débito e crédito sai ' + brl(icms.valor) + ', e a conta usa o menor.';
 }
 function issDe(d, fracaoDoAno = 1) {
   return d.atividades.filter(a => a.tributo === 'iss').reduce((s, a) => s + a.receita * a.aliqIss / 100, 0) * fracaoDoAno;
@@ -285,11 +323,12 @@ function cbsIbsRegular(n, d, ano, icmsDebito, iss) {
 
 // ---------- PIS/Cofins de 2026 ----------
 // a receita sem a revenda monofásica (alíquota zero na revenda) e sem o ICMS destacado só da parte tributada — o ICMS das
-// vendas monofásicas não sai de novo (revisão de 01/11/2026: antes saía o ICMS de todas as vendas)
-function baseSaidasPisCofins(d) {
+// vendas monofásicas não sai de novo (revisão de 01/11/2026: antes saía o ICMS de todas as vendas). No RDA, o ICMS
+// destacado é 3,5% de todas as vendas de mercadoria.
+function baseSaidasPisCofins(d, rda = false) {
   return Math.max(0, d.atividades.reduce((s, a) => {
     const mono = a.tributo === 'icms' ? a.pctMonofasico / 100 : 0;
-    const icms = a.tributo === 'icms' ? a.receita * (1 - a.pctST / 100) * (1 - a.redIcms / 100) * a.aliqIcms / 100 : 0;
+    const icms = a.tributo !== 'icms' ? 0 : rda ? a.receita * RDA_RS : a.receita * (1 - a.pctST / 100) * (1 - a.redIcms / 100) * a.aliqIcms / 100;
     return s + (a.receita - icms) * (1 - mono);
   }, 0));
 }
@@ -305,10 +344,14 @@ const ipiDe = (d, ano) => ano >= 2027 ? 0 : d.atividades.reduce((s, a) => s + a.
 //   · limite de R$ 4,8 milhões (art. 3º, §§9º e 9º-A): a receita do ano anterior passou dele, fora do Simples no ano todo;
 //     no ano, passou de R$ 5,76 milhões (20% a mais), fora a partir do mês seguinte. Até lá, o RBT12 acima de R$ 4,8
 //     milhões segue a fórmula da 6ª faixa (a tributação do excesso fica avisada, pra conferir);
-//   · a receita global (sócio em outra empresa do Simples, ou com mais de 10% de uma de fora — LC 123, art. 3º, §4º, III
-//     e IV; Res. CGSN 140, art. 15, IV e V): a soma com as outras empresas dos sócios passou de R$ 4,8 milhões no ano, fora
-//     a partir do mês seguinte, sem os 20% de tolerância, e os efeitos vão até o fim do ano seguinte (SC Cosit 135/2026);
-//     a do ano anterior passou, fora no ano todo. O sublimite é da receita da própria empresa (Res. CGSN 140, art. 12).
+//   · a receita global (o sócio também é sócio de outra ME ou EPP, optante ou não, com qualquer participação; tem mais de
+//     10% de outra que não é ME nem EPP; ou administra outra empresa — LC 123, art. 3º, §4º, III, IV e V; Res. CGSN 140,
+//     art. 15, I, IV e V): a soma com as outras empresas dos sócios passou de R$ 4,8 milhões no ano, fora a partir do mês
+//     seguinte, sem os 20% de tolerância — que são só do excesso da própria receita (LC 123, art. 3º, §6º, e art. 31, II;
+//     Res. CGSN 140, art. 81, II, "c"; P&R do Simples 2.15) —, e os efeitos vão até o fim do ano seguinte (SC Cosit
+//     135/2026, itens 10 e 19.1); a do ano anterior passou, fora no ano todo. O sublimite é da receita da própria empresa
+//     (LC 123, art. 13-A; Res. CGSN 140, art. 12). Revisado nas fontes por um agente separado em 01/11/2026.
+//   · o Simples Gaúcho: no RS, com a receita dos últimos 12 meses abaixo de R$ 360 mil, a fatia do ICMS sai do DAS.
 const SUBLIMITE_20 = SUBLIMITE * 1.2, LIMITE_20 = LIMITE_SIMPLES * 1.2;
 const ANEXOS_ISS = ['III', 'IV', 'V'];
 const MESES_NOME = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
@@ -334,18 +377,20 @@ const indisponivel = (motivo, avisos = []) => ({ disponivel: false, motivo, tota
 
 function calcSimples(n, d, k, ano) {
   const avisos = [];
-  const r = { das: 0, icmsIssDentro: 0, cppForaIV: 0, icmsFora: 0, issFora: 0, difal: d.difalSimples, porAnexo: {}, fatorR: null, anexosServico: [], faixas: [], impedida: 0, faixa6: 0, alemDoLimite: 0 };
+  const r = { das: 0, icmsIssDentro: 0, cppForaIV: 0, icmsFora: 0, issFora: 0, difal: d.difalSimples, porAnexo: {}, fatorR: null, anexosServico: [], faixas: [], impedida: 0, faixa6: 0, alemDoLimite: 0, gaucho: 0 };
+  const rs = !n.uf || n.uf === 'RS';
+  const temIcmsNoDas = d.atividades.some(a => a.tributo === 'icms');
   const anoAnterior = receitaDoAno(n, k - 1);
   if (anoAnterior > LIMITE_SIMPLES) return indisponivel('A receita do ano anterior (' + brl(anoAnterior) + ') passa do limite de ' + brl(LIMITE_SIMPLES) + ': fora do Simples no ano todo (LC 123, art. 3º, §9º).');
   const temGrupo = n.grupo.length > 0;
   const nomesGrupo = n.grupo.map(g => g.nome).join(', ');
   const grupoDoAno = kk => { let s = 0; for (let m = 0; m < 12; m++) s += receitaGrupoDoMes(n, kk, m); return s; };
-  if (temGrupo && anoAnterior + grupoDoAno(k - 1) > LIMITE_SIMPLES) return indisponivel('A receita do ano anterior somada à das outras empresas dos sócios (' + nomesGrupo + ') dá ' + brl(anoAnterior + grupoDoAno(k - 1)) + ', acima de ' + brl(LIMITE_SIMPLES) + ': fora do Simples no ano todo (LC 123, art. 3º, §4º, III e IV; os efeitos vão até o fim do ano seguinte ao do excesso — SC Cosit 135/2026).');
+  if (temGrupo && anoAnterior + grupoDoAno(k - 1) > LIMITE_SIMPLES) return indisponivel('A receita do ano anterior somada à das outras empresas dos sócios (' + nomesGrupo + ') dá ' + brl(anoAnterior + grupoDoAno(k - 1)) + ', acima de ' + brl(LIMITE_SIMPLES) + ': fora do Simples no ano todo (LC 123, art. 3º, §4º, III a V; Res. CGSN 140, art. 15, I; os efeitos vão até o fim do ano seguinte ao do excesso — SC Cosit 135/2026).');
   const rFatores = [];
   let acum = 0, acumGrupo = 0;
   for (let m = 0; m < 12; m++) {
     if (acum > LIMITE_20) return indisponivel('A receita do ano passa de ' + brl(LIMITE_20) + ' (o limite e mais 20%) até ' + MESES_NOME[m - 1] + ': exclusão do Simples a partir de ' + MESES_NOME[m] + ' (LC 123, art. 3º, §9º-A).');
-    if (temGrupo && acum + acumGrupo > LIMITE_SIMPLES) return indisponivel('Somada à das outras empresas dos sócios (' + nomesGrupo + '), a receita do ano passa de ' + brl(LIMITE_SIMPLES) + ' em ' + MESES_NOME[m - 1] + ': as empresas saem do Simples a partir de ' + MESES_NOME[m] + ', sem a tolerância de 20% (LC 123, art. 3º, §4º, III e IV; efeito no mês seguinte ao do excesso — SC Cosit 135/2026).');
+    if (temGrupo && acum + acumGrupo > LIMITE_SIMPLES) return indisponivel('Somada à das outras empresas dos sócios (' + nomesGrupo + '), a receita do ano passa de ' + brl(LIMITE_SIMPLES) + ' em ' + MESES_NOME[m - 1] + ': as empresas saem do Simples a partir de ' + MESES_NOME[m] + ', sem a tolerância de 20%, que é só do excesso da própria receita (LC 123, art. 3º, §4º, III a V, e §6º; Res. CGSN 140, art. 81, II, "c"; os efeitos vão até o fim do ano seguinte — SC Cosit 135/2026).');
     const impedida = anoAnterior > SUBLIMITE || acum > SUBLIMITE_20;
     const rbt12 = janela12(n, k, m, ano, receitaDoMes);
     let f = faixaDe(rbt12);
@@ -356,6 +401,10 @@ function calcSimples(n, d, k, ano) {
     const fs12 = janela12(n, k, m, ano, folhaDoMes);
     const fr = rbt12 > 0 ? fs12 / rbt12 : 0;
     rFatores.push(fr);
+    // o Simples Gaúcho: abaixo de R$ 360 mil nos últimos 12 meses, o ICMS do DAS é isento (e a redução da refeição fica
+    // sem efeito — a isenção já tira a fatia inteira)
+    const gaucho = rs && rbt12 < SIMPLES_GAUCHO;
+    if (gaucho && temIcmsNoDas) r.gaucho++;
     for (const a of d.atividades) {
       const recMes = a.receita * n.pesos[m];
       let anexo = ano >= 2027 ? anexo2027(a.anexo, a.ipiMantido) : a.anexo;
@@ -370,7 +419,7 @@ function calcSimples(n, d, k, ano) {
       let excl = 0;
       if (f <= 4) {
         const fatia = FATIA_ICMS_ISS_2027[anexo][f] / 100;
-        excl = impedida ? fatia : (a.tributo === 'icms' && (anexo === 'I' || anexo === 'II') ? fatia * (a.pctST / 100 + (1 - a.pctST / 100) * a.redIcmsSimples / 100) : 0);
+        excl = impedida ? fatia : (a.tributo === 'icms' && (anexo === 'I' || anexo === 'II') ? (gaucho ? fatia : fatia * (a.pctST / 100 + (1 - a.pctST / 100) * a.redIcmsSimples / 100)) : 0);
       }
       let das = recMes * aliq * (1 - excl - mono);
       // 6ª faixa sem impedimento: o ICMS ou o ISS no DAS pela fórmula da 5ª (sem o da revenda com ST, com a redução)
@@ -391,7 +440,8 @@ function calcSimples(n, d, k, ano) {
     acum += d.receita * n.pesos[m];
     if (temGrupo) acumGrupo += receitaGrupoDoMes(n, k, m);
   }
-  if (temGrupo) avisos.push('Com as outras empresas dos sócios (' + nomesGrupo + '), a receita do ano soma ' + brl(acum + acumGrupo) + ': o limite de ' + brl(LIMITE_SIMPLES) + ' vale pra soma (LC 123, art. 3º, §4º, III e IV), e a folga é de ' + brl(LIMITE_SIMPLES - acum - acumGrupo) + '. Se esta empresa sair do Simples, a empresa dos sócios que ficar no Simples segue somando a receita desta no limite dela, quando o sócio em comum tem mais de 10% daqui (inciso IV).');
+  if (temGrupo) avisos.push('Com as outras empresas dos sócios (' + nomesGrupo + '), a receita do ano soma ' + brl(acum + acumGrupo) + ': o limite de ' + brl(LIMITE_SIMPLES) + ' vale pra soma (LC 123, art. 3º, §4º, III a V), e a folga é de ' + brl(LIMITE_SIMPLES - acum - acumGrupo) + '. Se esta empresa sair do Simples, a receita dela segue somando no limite das outras: com qualquer participação enquanto ela for ME ou EPP (até ' + brl(LIMITE_SIMPLES) + ' no ano — inciso III); acima disso, quando o sócio em comum tem mais de 10% dela ou a administra (incisos IV e V).');
+  if (r.gaucho) avisos.push('Simples Gaúcho: com a receita dos últimos 12 meses abaixo de ' + brl(SIMPLES_GAUCHO) + ', o ICMS do DAS é isento no RS (Lei 13.036/2008, na redação da Lei 15.576/2020) — em ' + (r.gaucho === 12 ? 'todos os meses' : r.gaucho + (r.gaucho === 1 ? ' mês' : ' meses')) + ' da conta. A isenção não soma com a redução da refeição.');
   if (rFatores.length) r.fatorR = rFatores.reduce((s, v) => s + v, 0) / rFatores.length;
   // Anexo IV: a CPP fica fora do DAS (20% + RAT, sem terceiros), proporcional à receita do Anexo IV
   const recIV = d.atividades.filter(a => a.anexo === 'IV' && !a.fatorR).reduce((s, a) => s + a.receita, 0);
@@ -418,8 +468,9 @@ function calcSimples(n, d, k, ano) {
 // A LC 224 por trimestre (IN RFB 2.305/2025, art. 15, na redação da IN 2.306/2026; revisão de 01/11/2026): o limite de
 // R$ 1,25 milhão por trimestre, com a sobra levada adiante; no fim do ano o imposto é refeito pelo limite anual e o que foi
 // pago a mais nos trimestres de excesso é deduzido. A conta do ano: o excesso anual fica nos trimestres que pagaram
-// excesso, dos primeiros pros últimos. Em 2026 a CSLL majorada começa em abril, com R$ 3,75 milhões contados de lá (P&R
-// da RFB, pergunta 13). Antes, o motor acumulava contra R$ 5 milhões e fazia ajuste negativo em qualquer trimestre.
+// excesso, na proporção do excesso de cada um. Em 2026 a CSLL majorada começa em abril, com R$ 3,75 milhões contados de lá
+// (P&R da RFB, pergunta 13). Antes, o motor acumulava contra R$ 5 milhões e fazia ajuste negativo em qualquer trimestre.
+// O texto da IN conferido em cópia não oficial (o DOU não abriu); a lei e o P&R, nos documentos da Receita.
 export function excessosLc224(recQs, inicio = 0) {
   const lim = LC224_LIMITE_ANO / 4;
   let sobra = 0;
@@ -429,8 +480,14 @@ export function excessosLc224(recQs, inicio = 0) {
     sobra = Math.max(0, l - r);
     return Math.max(0, r - l);
   });
-  let resta = Math.max(0, recQs.slice(inicio).reduce((s, r) => s + r, 0) - lim * (4 - inicio));
-  return pago.map(x => { const v = Math.min(x, resta); resta -= v; return v; });
+  // o refazimento do último trimestre (IN RFB 2.305, art. 15, §5º, na redação da IN 2.306): o excesso do ano menor que o
+  // dos trimestres = rateado na proporção do excesso de cada um (inciso II — revisão de 01/11/2026: antes ia pros
+  // primeiros); maior = o último trimestre fica com a diferença (inciso III, que a sobra levada adiante já dá)
+  const soma = pago.reduce((s, x) => s + x, 0);
+  const excessoAno = Math.max(0, recQs.slice(inicio).reduce((s, r) => s + r, 0) - lim * (4 - inicio));
+  if (!(soma > 0) || !(excessoAno > 0)) return pago.map(() => 0);
+  const f = Math.min(1, excessoAno / soma);
+  return pago.map(x => x * f);
 }
 function calcPresumido(n, d, k, ano) {
   const avisos = [];
@@ -452,13 +509,15 @@ function calcPresumido(n, d, k, ano) {
     csll += baseC * CSLL;
   }
   if (extraIrpjAno > 0.005) avisos.push('Receita acima de ' + brl(LC224_LIMITE_ANO) + ' no ano: presunção 10% maior sobre o excesso (LC 224/2025) — ' + brl(extraIrpjAno) + ' a mais na base do IRPJ e ' + brl(extraCsllAno) + ' na da CSLL. Há liminares individuais e a ADI 7936 no STF; empresa com liminar: desligue na tela.');
-  const icms = icmsNormal(n, d);
+  const icms = icmsRegimeGeral(n, d, ano);
+  const avRda = avisoDoRda(n, icms);
+  if (avRda) avisos.push(avRda);
   const iss = issDe(d);
   const inss = inssRegular(n, d, ano);
   const itens = [{ tributo: 'IRPJ', valor: irpj }, { tributo: 'CSLL', valor: csll }];
   let pis = 0, cofins = 0, cbs = null;
   if (ano < 2027) {
-    const base = baseSaidasPisCofins(d);
+    const base = baseSaidasPisCofins(d, icms.rda);
     pis = base * PIS_CUM; cofins = base * COFINS_CUM;
     itens.push({ tributo: 'PIS', valor: pis }, { tributo: 'Cofins', valor: cofins });
     const ipi = ipiDe(d, ano);
@@ -486,15 +545,17 @@ export function irpjCsllReal(lucro) {
 }
 function calcReal(n, d, k, ano) {
   const avisos = [];
-  const icms = icmsNormal(n, d);
+  const icms = icmsRegimeGeral(n, d, ano);
+  const avRda = avisoDoRda(n, icms);
+  if (avRda) avisos.push(avRda);
   const iss = issDe(d);
   const inss = inssRegular(n, d, ano);
   const itens = [];
   let pisCofins = 0, pis = 0, cofins = 0, cbs = null, creditoPisCofins = 0;
   if (ano < 2027) {
-    const debito = baseSaidasPisCofins(d) * (PIS_NC + COFINS_NC);
-    // crédito: compras (sem a revenda monofásica, que não credita, e sem o ICMS) e as despesas com crédito
-    const icmsCompras = icms.debito > 0 ? icms.credito : 0;
+    const debito = baseSaidasPisCofins(d, icms.rda) * (PIS_NC + COFINS_NC);
+    // crédito: compras (sem a revenda monofásica, que não credita, e sem o ICMS que incidiu nelas) e as despesas com crédito
+    const icmsCompras = icms.debito > 0 ? icms.icmsCompras : 0;
     const baseCred = Math.max(0, d.compras * (1 - n.pctComprasMonofasico / 100) - icmsCompras * (1 - n.pctComprasMonofasico / 100)) + d.despesasCredito;
     creditoPisCofins = baseCred * (PIS_NC + COFINS_NC);
     pisCofins = Math.max(0, debito - creditoPisCofins);

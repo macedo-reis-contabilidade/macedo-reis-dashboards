@@ -9,7 +9,7 @@
 // ============================================================
 
 import { comparar, testarPremissas, REGIMES, ROTULO_REGIME, TIPOS } from './comparativo-motor.js';
-import { entradaDoSistema, empresasDosSocios, receitaDaEmpresa, situacaoDoGrupo, premissasParaTestar, prazosDaEscolha } from './comparativo-dados.js';
+import { entradaDoSistema, empresasDosSocios, receitaDaEmpresa, situacaoDoGrupo, premissasParaTestar, prazosDaEscolha, foraDaSoma, avisoDaSoma } from './comparativo-dados.js';
 import { roteiroDoEstudo } from './comparativo-roteiro.js';
 
 const brl = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -95,8 +95,9 @@ export async function carregarEstudo({ ler, cliente, cadastroDe = null }) {
   let fr = [];
   const frEmp = rFr && rFr.data && rFr.data[0];
   if (frEmp) { const r = await ler('fr_lancamentos', { cols: 'competencia, folha_salarios, folha_outros, prolabore', eq: { empresa_id: frEmp.id }, ordem: { coluna: 'competencia', desc: true }, limite: 12 }); fr = (r && r.data) || []; }
-  // as outras empresas dos mesmos sócios (pelo CPF; sem CPF, pelo nome) e a receita de cada uma
-  const grupo = [], grupoSeries = [];
+  // as outras empresas dos mesmos sócios (pelo CPF; sem CPF, pelo nome) e a receita de cada uma — a que não entra na soma
+  // pela regra (a que não é ME nem EPP, com o sócio até 10% e sem administrar) fica em grupoFora, com o porquê
+  const grupo = [], grupoSeries = [], grupoFora = [], notasGrupo = [];
   let nSocios = null;
   try {
     const rSoc = await ler('socios', { cols: 'nome, cpf', eq: { cliente_id: c.id } });
@@ -105,8 +106,9 @@ export async function carregarEstudo({ ler, cliente, cadastroDe = null }) {
     const cpfs = [...new Set(socios.map(s => String(s.cpf || '').replace(/\D/g, '')).filter(x => x.length === 11))];
     const semCpf = socios.filter(s => String(s.cpf || '').replace(/\D/g, '').length !== 11).map(s => s.nome).filter(Boolean);
     const outros = [];
-    if (cpfs.length) { const r = await ler('socios', { cols: 'cliente_id, nome, cpf', em: { cpf: cpfs } }); outros.push(...((r && r.data) || [])); }
-    if (semCpf.length) { const r = await ler('socios', { cols: 'cliente_id, nome, cpf', em: { nome: semCpf } }); outros.push(...((r && r.data) || [])); }
+    const colsOutros = 'cliente_id, nome, cpf, participacao_percentual, eh_administrador';
+    if (cpfs.length) { const r = await ler('socios', { cols: colsOutros, em: { cpf: cpfs } }); outros.push(...((r && r.data) || [])); }
+    if (semCpf.length) { const r = await ler('socios', { cols: colsOutros, em: { nome: semCpf } }); outros.push(...((r && r.data) || [])); }
     const empresas = empresasDosSocios(socios, outros, c.id);
     if (empresas.length) {
       const ids = empresas.map(x => x.cliente_id);
@@ -120,6 +122,10 @@ export async function carregarEstudo({ ler, cliente, cadastroDe = null }) {
         const caso = ((rC && rC.data) || []).find(k => k.cliente_id === x.cliente_id) || null;
         const pgs = ((rP && rP.data) || []).filter(k => k.cliente_id === x.cliente_id);
         const r = receitaDaEmpresa({ cliente: cli, caso, pgdas: pgs });
+        const fora = foraDaSoma(x, r.receita);
+        if (fora) { grupoFora.push({ nome: r.nome, cliente_id: x.cliente_id, socios: x.socios, motivo: fora }); return; }
+        const aviso = avisoDaSoma(x, r.receita, r.nome);
+        if (aviso) notasGrupo.push(aviso);
         grupo.push({ nome: r.nome, cliente_id: x.cliente_id, socios: x.socios, receita: r.receita, meses: r.meses, origem: r.origem });
         grupoSeries.push({ nome: r.nome, cliente_id: x.cliente_id, serie: r.serie });
       });
@@ -128,6 +134,8 @@ export async function carregarEstudo({ ler, cliente, cadastroDe = null }) {
   const caso = (rCaso && rCaso.data && rCaso.data[0]) || null;
   const pg = (rPg && rPg.data) || [];
   const sis = entradaDoSistema({ cliente: c, caso, fatorR: fr, pgdas: pg });
+  grupoFora.forEach(g => sis.notas.push(g.nome + ' é dos mesmos sócios, mas fica fora da soma do limite: ' + g.motivo + '.'));
+  sis.notas.push(...notasGrupo);
   sis.entrada.grupo = grupo.map(({ origem, ...g }) => g);
   grupo.forEach((g, i) => { sis.origens['grupo.' + i + '.receita'] = g.origem; });
   const fontes = [
@@ -137,7 +145,7 @@ export async function carregarEstudo({ ler, cliente, cadastroDe = null }) {
   ];
   const semTabela = erroSemTabela(rEst && rEst.error);
   const salvo = !semTabela && rEst && rEst.data && rEst.data[0];
-  const est = { cliente: c, nome: c.nome_principal, notas: sis.notas, serie: sis.serie, grupoSeries, socios: nSocios, sistema: sis, fontes, semTabela,
+  const est = { cliente: c, nome: c.nome_principal, notas: sis.notas, serie: sis.serie, grupoSeries, grupoFora, socios: nSocios, sistema: sis, fontes, semTabela,
     estudoId: null, gravadoEm: null, gravadoPor: null };
   if (salvo && salvo.entrada && salvo.entrada.entrada) {
     Object.assign(est, { estudoId: salvo.id, gravadoEm: salvo.atualizado_em, gravadoPor: salvo.atualizado_por });
@@ -153,7 +161,7 @@ export async function carregarEstudo({ ler, cliente, cadastroDe = null }) {
 export function estudoGravado(linha) {
   const g = (linha && linha.entrada) || {};
   return { cliente: null, nome: (linha && linha.nome) || 'empresa sem cadastro', entrada: comPadroes(g.entrada || {}), origens: g.origens || {}, conferencia: g.conferencia || null,
-    notas: [], serie: null, grupoSeries: [], socios: null, sistema: null, fontes: [], semTabela: false,
+    notas: [], serie: null, grupoSeries: [], grupoFora: [], socios: null, sistema: null, fontes: [], semTabela: false,
     estudoId: (linha && linha.id) || null, gravadoEm: (linha && linha.atualizado_em) || null, gravadoPor: (linha && linha.atualizado_por) || null };
 }
 
@@ -178,13 +186,16 @@ export function oQueMuda(c, testes) {
     if (es && rDec && rDec.simples && rDec.simples.disponivel) muda.push({ txt: es.nunca ? 'Nem com lucro zero o Real fica abaixo do Simples em ' + d.ano + '.' : 'O Real empata com o Simples em ' + d.ano + ' com lucro de ' + brl(es.lucro) + ' (' + pct(es.margem * 100) + '% da receita).', alerta: false });
   }
   const mudam = (testes || []).filter(t => t.muda), naoMudam = (testes || []).filter(t => !t.muda);
-  // "7%", "50% das compras"
+  // "7%", "50% das compras" — ou o nome do valor, quando ele não é número (o RDA: "sem o RDA")
   const un = t => !t.unidade ? '' : t.unidade.startsWith('%') ? t.unidade : ' ' + t.unidade;
+  const comNome = t => !!t.nomes;
+  const valor = (t, v) => comNome(t) ? (t.nomes[v] != null ? t.nomes[v] : String(v)) : pct(v, 2) + un(t);
+  const em = t => comNome(t) ? ' ' : ' em ';
   mudam.forEach(t => {
-    const v = t.variantes.filter(x => x.melhor !== t.melhorBase).map(x => pct(x.valor, 2) + un(t) + ', o mais barato passa a ser o ' + ROTULO_REGIME[x.melhor]).join('; com ');
-    muda.push({ txt: 'Com ' + t.rotulo + ' em ' + v + '. O número usado é um padrão — confira.', alerta: true });
+    const v = t.variantes.filter(x => x.melhor !== t.melhorBase).map(x => valor(t, x.valor) + ', o mais barato passa a ser o ' + ROTULO_REGIME[x.melhor]).join('; com ');
+    muda.push({ txt: 'Com ' + t.rotulo + em(t) + v + '. ' + (t.confira || 'O número usado é um padrão — confira.'), alerta: true });
   });
-  if (naoMudam.length) muda.push({ txt: 'Não mudam o resultado: ' + naoMudam.map(t => t.rotulo + (t.variantes.length === 1 ? ' em ' + pct(t.variantes[0].valor, 2) + un(t) : ' entre ' + t.variantes.map(x => pct(x.valor, 2)).join(' e ') + un(t))).join('; ') + '.', alerta: false });
+  if (naoMudam.length) muda.push({ txt: 'Não mudam o resultado: ' + naoMudam.map(t => t.rotulo + (comNome(t) ? ' ' + t.variantes.map(x => valor(t, x.valor)).join(' ou ') : t.variantes.length === 1 ? ' em ' + valor(t, t.variantes[0].valor) : ' entre ' + t.variantes.map(x => pct(x.valor, 2)).join(' e ') + un(t))).join('; ') + '.', alerta: false });
   return muda;
 }
 // os avisos da conta: as notas do que o sistema trouxe (sem a da folha, quando ela está na conta), os do motor e os do ano
@@ -197,8 +208,9 @@ export function avisosDoEstudo({ notas = [], entrada = {}, comparacao = null } =
   return [...new Set([...(notas || []).filter(n => !(temFolha && /^A folha e o pró-labore não estão no sistema/.test(n))), ...c.avisos, ...REGIMES.flatMap(g => rDec[g].avisos || [])])];
 }
 // a conta repete os últimos 12 meses; o ano de agora, pelos números do sistema, pode já ter passado (ou passar, no ritmo
-// dos últimos 3 meses) do limite de R$ 4,8 milhões — aí o Simples fica fora no ano da decisão inteiro (a exclusão vem no
-// mês seguinte ao do excesso e vale até o fim do ano seguinte, sem a tolerância de 20%: SC Cosit 135/2026) e a escolha é
+// dos últimos 3 meses) do limite de R$ 4,8 milhões — aí o Simples fica fora no ano da decisão inteiro (com as empresas dos
+// sócios, a exclusão vem no mês seguinte ao do excesso, sem a tolerância de 20%, e vale até o fim do ano seguinte — SC
+// Cosit 135/2026; sozinha, o excesso de até 20% a tira no ano seguinte, LC 123, art. 3º, §9º-A) e a escolha é
 // entre o Presumido e o Real. Só quando a conta ainda põe o Simples no ano da decisão e o ano medido é o anterior a ele
 export function alertaDoLimite(c, situacao, grupo) {
   const s = situacao, rDec = c && c.anos ? c.anos.find(r => r.ano === c.anoDecisao) : null;
@@ -215,7 +227,7 @@ export function alertaDoLimite(c, situacao, grupo) {
 // a conta inteira do estudo, como a tela mostra: comparar, as premissas no padrão testadas, o ano-calendário com as
 // empresas dos sócios, o roteiro (as fases e as missões), os prazos, o que muda o resultado e os avisos. Sem receita (ou
 // com o mix fora de 100%), a conta não roda: erro com o porquê, e o roteiro diz o que falta. hoje: 'AAAA-MM-DD'
-export function contaDoEstudo({ entrada, origens = {}, conferencia = null, notas = [], serie = null, grupoSeries = [], socios = null, aliq2027 = null, hoje = null } = {}) {
+export function contaDoEstudo({ entrada, origens = {}, conferencia = null, notas = [], serie = null, grupoSeries = [], grupoFora = [], socios = null, aliq2027 = null, hoje = null } = {}) {
   const achadas = (grupoSeries || []).length;
   let comparacao = null, testes = [], erro = null;
   try {
@@ -224,13 +236,13 @@ export function contaDoEstudo({ entrada, origens = {}, conferencia = null, notas
   } catch (e) { comparacao = null; testes = []; erro = (e && e.message) || 'A conta não rodou.'; }
   if (!comparacao) {
     return { comparacao: null, testes: [], situacao: null, erro, prazos: [], muda: [], avisos: [], limite: null,
-      roteiro: roteiroDoEstudo({ entrada, origens, serie, socios, achadas, conferencia }) };
+      roteiro: roteiroDoEstudo({ entrada, origens, serie, socios, achadas, grupoFora, conferencia }) };
   }
   const situacao = situacaoComGrupo(serie, entrada.grupo, grupoSeries);
   return {
     comparacao, testes, situacao, erro: null,
     limite: alertaDoLimite(comparacao, situacao, entrada.grupo),
-    roteiro: roteiroDoEstudo({ entrada, origens, comparacao, testes, situacao, serie, socios, achadas, conferencia }),
+    roteiro: roteiroDoEstudo({ entrada, origens, comparacao, testes, situacao, serie, socios, achadas, grupoFora, conferencia }),
     prazos: prazosDaEscolha(hoje, entrada.regimeAtual, comparacao.anoDecisao),
     muda: oQueMuda(comparacao, testes),
     avisos: avisosDoEstudo({ notas, entrada, comparacao })

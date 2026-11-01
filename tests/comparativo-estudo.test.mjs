@@ -21,14 +21,14 @@ const RESTAURANTE = { id: 'c5', nome_principal: 'RESTAURANTE EXEMPLO LTDA', nome
 const SIM5 = { v: 1, input: { anexo: 'I', receita: 200416.67, pctComprasMercadorias: 45, mixCheia: 8, mixRed40: 92, mixRed60: 0, mixRed30: 0, mixZero: 0, pctReceitaMonofasica: 8 },
   fontes: { mixCheia: 'seções do PGDAS 07/2026: revenda com ST (bebidas) — alíquota cheia por fora', pctExcluidoST: 'do Domínio: PGDAS 2026-07: 14% a menos (receita com ST/monofásico e redução de 40% na base do ICMS)' },
   dominio: { meses: mesesDe(180000, 215000), pgdas: { competencia: '2026-07', aliquotaEfetiva: 9.05, dasTotal: 19457.5 } } };
-function banco({ comparativos = [], semTabela = false, socios = null } = {}) {
+function banco({ comparativos = [], semTabela = false, socios = null, pgdas = [] } = {}) {
   const T = {
     clientes: [RESTAURANTE, { id: 'c6', nome_principal: 'PADARIA IRMA LTDA', nome_fantasia: null }],
     socios: socios || [{ cliente_id: 'c5', nome: 'FULANO DE TAL', cpf: '111.222.333-44' }, { cliente_id: 'c5', nome: 'BELTRANA DE TAL', cpf: null },
       { cliente_id: 'c6', nome: 'FULANO DE TAL', cpf: '11122233344' }, { cliente_id: 'c7', nome: 'BELTRANA DE TAL', cpf: null }],
     rt_casos: [{ id: 'rc5', cliente_id: 'c5', anexo: 'I', receita_mensal: 200416.67, sim_obs: JSON.stringify(SIM5), atualizado_em: '2026-10-01T12:00:00Z' },
       { id: 'rc6', cliente_id: 'c6', anexo: 'II', receita_mensal: 180416.67, sim_obs: JSON.stringify({ v: 1, input: { anexo: 'II' }, dominio: { meses: mesesDe(160000, 195000) } }), atualizado_em: '2026-10-01T12:00:00Z' }],
-    fr_empresas: [], fr_lancamentos: [], receita_pgdas: [], comparativos
+    fr_empresas: [], fr_lancamentos: [], receita_pgdas: pgdas, comparativos
   };
   const log = [];
   const ler = async (t, o = {}) => {
@@ -153,6 +153,41 @@ console.log('O "e se" do assistente');
   const r7 = aplicarESe(est.entrada, est.origens, { folha_12_meses: 'abc', nada: 3, regime_atual: 'mei' }, { aliq2027: ALIQ });
   chk('o que não é número nem campo conhecido fica de fora', r7.mudancas.length === 0 && r7.entrada.folha === est.entrada.folha);
   chk('os campos do e se têm nome na tela', Object.values(E_SE).every(d => (d.campo ? CAMPOS[d.campo] : d.ativ ? CAMPOS['ativ.' + d.ativ] : d.rotulo)));
+}
+
+console.log('A regra da soma (LC 123, art. 3º, §4º, III a V), o que muda com nome e o aviso do limite sozinha');
+{
+  // a outra empresa do sócio faturou 6 milhões nos 12 meses (não é ME nem EPP)
+  const grande = Array.from({ length: 12 }, (_, i) => { const d = new Date(Date.UTC(2025, 9 + i, 1)); return { cliente_id: 'c6', competencia: d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0'), receita_mes: 500000 }; });
+  const soc = p => [{ cliente_id: 'c5', nome: 'FULANO DE TAL', cpf: '111.222.333-44' }, { cliente_id: 'c6', nome: 'FULANO DE TAL', cpf: '11122233344', ...p }];
+  const { ler, log } = banco({ socios: soc({ participacao_percentual: 5, eh_administrador: false }), pgdas: grande });
+  const est = await carregarEstudo({ ler, cliente: RESTAURANTE });
+  chk('a leitura pede a participação e o administrador das outras', log.some(x => x.t === 'socios' && x.o.em && /participacao_percentual, eh_administrador/.test(x.o.cols)));
+  chk('5% de uma empresa de 6 milhões, sem administrar: fora da soma, com o porquê', !est.entrada.grupo.some(g => g.cliente_id === 'c6') && est.grupoFora.length === 1
+    && /não é ME nem EPP/.test(est.grupoFora[0].motivo) && est.notas.some(n => /fica fora da soma do limite/.test(n)), JSON.stringify(est.grupoFora));
+  const conta = contaDoEstudo({ ...est, aliq2027: ALIQ, hoje: '2026-11-01' });
+  chk('o roteiro diz que ela ficou fora da soma', JSON.stringify(conta.roteiro).includes('fica fora da soma'));
+  const { ler: l2 } = banco({ socios: soc({ participacao_percentual: 20, eh_administrador: false }), pgdas: grande });
+  chk('com 20%, entra (inciso IV)', (await carregarEstudo({ ler: l2, cliente: RESTAURANTE })).entrada.grupo.some(g => g.cliente_id === 'c6'));
+  const { ler: l3 } = banco({ socios: soc({ participacao_percentual: 5, eh_administrador: true }), pgdas: grande });
+  chk('com 5%, administrando, entra (inciso V)', (await carregarEstudo({ ler: l3, cliente: RESTAURANTE })).entrada.grupo.some(g => g.cliente_id === 'c6'));
+  const { ler: l4 } = banco({ socios: soc({}), pgdas: grande });
+  const e4 = await carregarEstudo({ ler: l4, cliente: RESTAURANTE });
+  chk('sem a participação no cadastro: entra, com o aviso pra conferir', e4.entrada.grupo.some(g => g.cliente_id === 'c6') && e4.notas.some(n => /participação não está no cadastro/.test(n)));
+  const { ler: l5 } = banco({ socios: soc({ participacao_percentual: 5, eh_administrador: false }) });
+  chk('a outra ME ou EPP: entra com qualquer participação (inciso III)', (await carregarEstudo({ ler: l5, cliente: RESTAURANTE })).entrada.grupo.some(g => g.cliente_id === 'c6'));
+  // o que muda, quando o valor testado tem nome (o RDA)
+  const teste = { rotulo: 'o ICMS do restaurante no Presumido e no Real', nomes: { null: 'sem o RDA' }, confira: 'A conta supõe que a empresa pode optar pelo RDA — confira.' };
+  const m1 = oQueMuda(null, [{ ...teste, variantes: [{ valor: null, melhor: 'simples' }], melhorBase: 'presumido', muda: true }]);
+  chk('o que muda com nome: sem o "em", sem número e com o confira dele', m1.length === 1 && m1[0].alerta && m1[0].txt === 'Com o ICMS do restaurante no Presumido e no Real sem o RDA, o mais barato passa a ser o Simples Nacional. A conta supõe que a empresa pode optar pelo RDA — confira.', m1[0] && m1[0].txt);
+  const m2 = oQueMuda(null, [{ ...teste, variantes: [{ valor: null, melhor: 'presumido' }], melhorBase: 'presumido', muda: false }]);
+  chk('... e quando não muda', m2.length === 1 && m2[0].txt === 'Não mudam o resultado: o ICMS do restaurante no Presumido e no Real sem o RDA.', m2[0] && m2[0].txt);
+  // sozinha, o excesso de até 20%: o aviso do limite diz que a saída é em 01/01 do ano seguinte
+  const c = comparar(entradaDoMotor({ atividades: [{ tipo: 'comercio', receita: 4000000 }] }, ALIQ));
+  const seis = Array.from({ length: 6 }, (_, i) => ({ competencia: '2026-0' + (i + 1), total: 450000 }));
+  const sit = situacaoComGrupo(seis, [], []);
+  const av = alertaDoLimite(c, sit, []);
+  chk('sozinha, passa em novembro com excesso de até 20%: a saída vale a partir de 01/01/2027', /passa do limite de R\$ 4,8 milhões em novembro/.test(av || '') && /a partir de 01\/01\/2027 e cobre 2027/.test(av || ''), av);
 }
 
 console.log('\n' + (falhas ? falhas + ' falha(s)' : 'tudo certo'));

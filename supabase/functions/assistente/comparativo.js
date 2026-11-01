@@ -101,15 +101,17 @@ function blocoGrupo(estudo, conta) {
   const e = estudo.entrada, g = (e.grupo || []).filter(x => x && Number(x.receita) > 0);
   const receita = (e.atividades || []).reduce((s, a) => s + (Number(a.receita) || 0), 0);
   const achadas = (estudo.grupoSeries || []).length;
+  const fora = (estudo.grupoFora || []).map(x => '- Fica fora da soma: ' + x.nome + ' — ' + x.motivo + '.');
   if (!g.length) {
-    const porque = estudo.cliente == null ? 'empresa sem cadastro: só as que a equipe pôs à mão' : achadas ? 'a equipe tirou da soma a que o sistema achou' : estudo.socios == null ? 'os sócios não foram lidos'
+    const porque = estudo.cliente == null ? 'empresa sem cadastro: só as que a equipe pôs à mão' : achadas ? 'a equipe tirou da soma a que o sistema achou' : fora.length ? 'a regra deixa fora a que o sistema achou' : estudo.socios == null ? 'os sócios não foram lidos'
       : estudo.socios === 0 ? 'o cadastro não tem os sócios desta empresa' : 'o sistema não achou outra empresa dos sócios no cadastro';
-    return ['EMPRESAS DOS MESMOS SÓCIOS: nenhuma na soma do limite (' + porque + ').'];
+    return ['EMPRESAS DOS MESMOS SÓCIOS: nenhuma na soma do limite (' + porque + ').', ...fora];
   }
   const soma = receita + g.reduce((s, x) => s + Number(x.receita), 0);
-  const out = ['EMPRESAS DOS MESMOS SÓCIOS (o limite de R$ 4,8 milhões do Simples vale pra soma — LC 123, art. 3º, §4º, III e IV)'];
+  const out = ['EMPRESAS DOS MESMOS SÓCIOS (o limite de R$ 4,8 milhões do Simples vale pra soma — LC 123, art. 3º, §4º, III a V: outra ME ou EPP com qualquer participação, outra com mais de 10% ou administrada pelo sócio)'];
   g.forEach((x, i) => out.push('- ' + x.nome + (x.socios && x.socios.length ? ' — ' + (x.socios.length === 1 ? 'sócio em comum: ' : 'sócios em comum: ') + x.socios.join(', ') : '')
     + ': ' + brl(x.receita) + ' nos 12 meses [' + origemDe(estudo.origens, 'grupo.' + i + '.receita') + ']'));
+  out.push(...fora);
   out.push('- Nos 12 meses, somadas com esta: ' + brl(soma) + ' (' + pct(soma / 4800000 * 100, 0) + '% do limite).');
   const s = conta.situacao;
   if (s && s.meses) out.push('- O ano de ' + s.ano + ' pelos números do sistema, até ' + rotuloComp(s.ate) + ': ' + brl(s.acumulado)
@@ -143,6 +145,7 @@ function blocoNumeros(estudo) {
     out.push('- Atividade ' + (i + 1) + ': ' + t.rotulo + ' [' + origemDe(o, p + 'tipo') + '] — ' + partes.join('; '));
   });
   ['compras', 'aliqCreditoIcms', 'pctComprasSimples', 'despesasCredito', 'outrasDespesas', 'folha', 'proLabore'].forEach(k => out.push(linha(k)));
+  if (e.rda) out.push('- ICMS do restaurante no Presumido e no Real: ' + (e.rda === 'sim' ? 'optante do RDA (3,5% de todas as vendas de mercadoria, sem crédito)' : 'o mais barato entre o RDA (3,5% das vendas, sem crédito) e o débito e crédito') + ' [' + origemDe(o, 'rda') + ']');
   if (Number(e.difalSimples) > 0) out.push(linha('difalSimples'));
   out.push('- RAT ' + pct(e.rat) + '% · FAP ' + pct(e.fap) + ' · terceiros ' + pct(e.terceiros) + '% [' + origemDe(o, 'rat') + ']' + (Number(e.cprb) > 0 ? ' · CPRB ' + pct(e.cprb) + '% (desoneração da folha)' : ''));
   out.push('- Crescimento: da receita ' + pct(e.crescimentoReceita) + '% ao ano [' + origemDe(o, 'crescimentoReceita') + '] · da folha ' + pct(e.crescimentoFolha) + '% ao ano');

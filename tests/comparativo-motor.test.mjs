@@ -222,7 +222,8 @@ verdade('excesso acima de 20% no ano: fora do Simples, com o mês', S5.simples.d
 
 // ----------------------------------------------------------------------------------------------------------------
 console.log('=== T · os casos da revisão independente (contas à mão de outro revisor, 01/11/2026) ===');
-const T1 = { atividades: [{ tipo: 'comercio', receita: 300000, pctST: 30, pctMonofasico: 20, aliqIcms: 17 }], receitaAnoAnterior: 240000, crescimentoReceita: 25,
+// (fora do RS: aqui, com a receita abaixo de R$ 360 mil, o Simples Gaúcho tiraria o ICMS do DAS — a seção X)
+const T1 = { uf: 'SC', atividades: [{ tipo: 'comercio', receita: 300000, pctST: 30, pctMonofasico: 20, aliqIcms: 17 }], receitaAnoAnterior: 240000, crescimentoReceita: 25,
   folha: 40000, proLabore: 18000, rat: 2, fap: 1, terceiros: 5.8, compras: 190000, aliqCreditoIcms: 12, despesasCredito: 12000, outrasDespesas: 30000 };
 const t26 = calcularAno(T1, 2026), t27 = calcularAno(T1, 2027);
 igual('2ª faixa com ST e monofásico: Simples 2026', 13187.39, t26.simples.total);
@@ -294,10 +295,60 @@ verdade('4,75 milhões somadas: Simples disponível, com o aviso da folga de R$ 
 const v3 = comparar({ ...V2, crescimentoReceita: 10 });
 verdade('passa em dezembro de 2027: 2027 no Simples, 2028 fora', v3.anos.find(r => r.ano === 2027).simples.disponivel === true && v3.anos.find(r => r.ano === 2028).simples.disponivel === false);
 // crescendo 40%: 2027 soma 6.650.000, 554.166,67 por mês → até setembro 4.987.500 > 4.800.000 → fora a partir de outubro,
-// sem a tolerância de 20% (SC Cosit 135/2026)
+// sem a tolerância de 20%, que é só do excesso da própria receita (LC 123, art. 3º, §6º; Res. CGSN 140, art. 81, II, "c")
 const v4 = calcularAno({ ...V2, crescimentoReceita: 40 }, 2027);
 verdade('passa em setembro: fora a partir de outubro, sem a tolerância', v4.simples.disponivel === false && /setembro/.test(v4.simples.motivo) && /a partir de outubro/.test(v4.simples.motivo));
 verdade('sem outras empresas, nenhum aviso de soma', !calcularAno({ atividades: [{ tipo: 'comercio', receita: 2400000 }] }, 2026).simples.avisos.some(a => /folga/.test(a)));
+verdade('o aviso da soma: depois da saída, a receita dela segue somando enquanto for ME ou EPP (inciso III)', v2.simples.avisos.some(a => /enquanto ela for ME ou EPP/.test(a) && /III a V/.test(a)));
+
+// ----------------------------------------------------------------------------------------------------------------
+console.log('=== W · o RDA dos bares e restaurantes do RS (RICMS-RS, Livro I, art. 38-A) ===');
+// restaurante de 3 milhões, 10% com ST, 12% com a base a 60%; compras de 1.050.000 a 12% (10% com ST, como as vendas).
+// Débito e crédito: 3.000.000 × 90% × 60% × 12% = 194.400 − 1.050.000 × 90% × 12% × 60% = 68.040 → 126.360.
+// RDA: 3,5% de todas as vendas de mercadoria, as com ST também: 105.000, sem crédito → o mais barato.
+const W1 = { atividades: [{ tipo: 'comercio', receita: 3000000, pctST: 10, aliqIcms: 12, redIcms: 40 }], compras: 1050000, aliqCreditoIcms: 12, rda: 'melhor' };
+const w1 = calcularAno(W1, 2026);
+igual('RDA mais barato: o ICMS do Presumido', 105000, item(w1.presumido, 'ICMS'));
+igual('... e o do Real', 105000, item(w1.real, 'ICMS'));
+// PIS/Cofins cumulativo sobre a receita menos o ICMS do RDA (3,5% de tudo): 2.895.000 × 0,65% e × 3%
+igual('PIS sobre a receita menos o ICMS do RDA', 18817.50, item(w1.presumido, 'PIS'));
+igual('Cofins sobre a receita menos o ICMS do RDA', 86850, item(w1.presumido, 'Cofins'));
+verdade('o aviso diz que a conta usou o RDA e quanto ficou a menos', w1.presumido.avisos.some(a => /RDA dos bares e restaurantes, o mais barato/.test(a) && /21\.360,00 a menos/.test(a)));
+igual('sem o RDA: o débito e crédito', 126360, item(calcularAno({ ...W1, rda: null }, 2026).presumido, 'ICMS'));
+// compras de 2.500.000: crédito 2.500.000 × 90% × 12% × 60% = 162.000 → débito e crédito 32.400, abaixo do RDA
+const W2 = { ...W1, compras: 2500000 };
+igual('débito e crédito mais barato: a conta fica com ele', 32400, item(calcularAno(W2, 2026).presumido, 'ICMS'));
+igual('optante do RDA: 3,5% mesmo assim', 105000, item(calcularAno({ ...W2, rda: 'sim' }, 2026).presumido, 'ICMS'));
+verdade('o aviso diz quanto o RDA daria', calcularAno(W2, 2026).presumido.avisos.some(a => /daria R\$\s105\.000,00/.test(a)));
+// o Real: o PIS/Cofins não credita o ICMS que incidiu nas compras, antes do estorno da base reduzida (Lei 14.592/2023):
+// débito (3.000.000 − 194.400) × 9,25% = 259.518 · crédito (2.500.000 − 270.000) × 9,25% = 206.275 → 53.243
+const w2r = calcularAno({ ...W2, rda: null }, 2026).real;
+igual('Real: PIS + Cofins sem o ICMS das compras de antes do estorno', 53243, item(w2r, 'PIS') + item(w2r, 'Cofins'));
+verdade('o RDA não vale no Simples', calcularAno(W1, 2026).simples.itens.every(x => !/RDA/.test(x.tributo)) && !calcularAno(W1, 2026).simples.avisos.some(a => /RDA/.test(a)));
+
+// ----------------------------------------------------------------------------------------------------------------
+console.log('=== X · o Simples Gaúcho: abaixo de R$ 360 mil em 12 meses, o ICMS do DAS é isento no RS ===');
+// o T1 no RS: 2026 com o RBT12 de 240.000 a 295.000 (2ª faixa) o ano todo — a fatia do ICMS (34%) sai inteira, e não só a
+// da revenda com ST: Σ 25.000 × (7,3% − 5.940 ÷ RBT12) = 15.210,38 × (1 − 34% − 20% × 15,5%) = 9.567,33
+const X1 = { ...T1, uf: 'RS' };
+igual('2026: o ICMS do DAS isento (12 meses)', 9567.33, calcularAno(X1, 2026).simples.total);
+verdade('o aviso do Simples Gaúcho', calcularAno(X1, 2026).simples.avisos.some(a => /Simples Gaúcho/.test(a) && /todos os meses/.test(a)));
+// 2027: o RBT12 passa de 360.000 em dezembro (362.500): isento de janeiro a novembro, dezembro com o ICMS (contas à mão)
+igual('2027: isento até novembro, dezembro com o ICMS', 13997.27, calcularAno(X1, 2027).simples.total);
+verdade('sem a UF, a conta supõe o RS', Math.abs(calcularAno({ ...T1, uf: null }, 2026).simples.total - 9567.33) < 0.01);
+// a isenção não soma com a redução da refeição: 240.000 no Anexo I, 2ª faixa → 11.580 de DAS pela tabela; no RS sai a
+// fatia inteira do ICMS (34%): 7.642,80; fora do RS, a redução de 40% na fatia: 11.580 × (1 − 13,6%) = 10.005,12
+const X2 = { atividades: [{ tipo: 'comercio', receita: 240000, aliqIcms: 12, redIcmsSimples: 40 }], receitaAnoAnterior: 240000 };
+igual('restaurante pequeno no RS: a isenção, sem somar a redução', 7642.80, calcularAno({ ...X2, uf: 'RS' }, 2026).simples.das);
+igual('fora do RS: só a redução de 40%', 10005.12, calcularAno({ ...X2, uf: 'SC' }, 2026).simples.das);
+
+// ----------------------------------------------------------------------------------------------------------------
+console.log('=== Y · LC 224: o excesso do ano rateado na proporção do excesso de cada trimestre (IN 2.305, art. 15, §5º, II) ===');
+// 2,0 + 2,0 + 0,5 + 0,6 milhões: os trimestres pagaram 750 mil de excesso cada um nos dois primeiros (1,5 milhão); o
+// excesso do ano é 100 mil → 1/15 de cada: 50 mil e 50 mil (antes, os 100 mil iam todos pro 1º)
+verdade('rateio proporcional: 50 mil + 50 mil', excessosLc224([2000000, 2000000, 500000, 600000], 0).map(v => Math.round(v)).join(',') === '50000,50000,0,0');
+// o excesso do ano maior que o dos trimestres anteriores: o último fica com a diferença (inciso III)
+verdade('o último trimestre fica com a diferença', excessosLc224([1000000, 1000000, 1500000, 2500000], 0).map(v => Math.round(v)).join(',') === '0,0,0,1000000');
 
 // ----------------------------------------------------------------------------------------------------------------
 console.log('=== R · entradas inválidas ===');

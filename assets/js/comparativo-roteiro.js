@@ -57,14 +57,15 @@ export const FASES = [
 // entrada e origens: as da tela · comparacao: comparar() (null se a conta não roda) · testes: testarPremissas()
 // situacao: situacaoDoGrupo() (o ano-calendário pelos números do sistema) · serie: a receita datada da empresa
 // socios: quantos sócios o cadastro tem (null = sem cadastro ou não lido) · achadas: quantas empresas dos sócios o sistema
-// achou (a tela pode tirar da soma) · conferencia: o PGDAS lido ({ fonte, … } ou null)
+// achou (a tela pode tirar da soma) · grupoFora: as que o sistema achou e a regra deixa fora da soma ([{ nome, motivo }])
+// · conferencia: o PGDAS lido ({ fonte, … } ou null)
 // Volta { fases, passos, provisorio, decidem, pendentes, proximo, faseAtual, pronto, feitas, total, extras, doSistema }.
 // Cada missão: { id, fase, titulo, curto (o nome na frase do resultado), texto, estado ('feita' | 'aberta'), falta (o
 // número não existe — senão é conferir), peso ('decide' | 'importa' | 'detalhe' — a extra), como (cumprida como), campo
 // (pra onde ir) e irRotulo, relatorio (o relatório do Domínio que cumpre a missão), conferir (os campos que o "está certo"
 // marca) e conferirRotulo, acao ('mais-grupo') e acaoRotulo }. `passos` são as missões com o estado antigo (falta |
 // conferir | feito), na ordem: o que falta e decide primeiro.
-export function roteiroDoEstudo({ entrada = {}, origens = {}, comparacao = null, testes = [], situacao = null, serie = null, socios = null, achadas = 0, conferencia = null } = {}) {
+export function roteiroDoEstudo({ entrada = {}, origens = {}, comparacao = null, testes = [], situacao = null, serie = null, socios = null, achadas = 0, grupoFora = [], conferencia = null } = {}) {
   const e = entrada || {}, o = origens || {};
   const fonte = k => (o[k] && o[k].fonte) || 'padrao';
   const padrao = k => fonte(k) === 'padrao';
@@ -97,12 +98,14 @@ export function roteiroDoEstudo({ entrada = {}, origens = {}, comparacao = null,
     else if (soma12 >= 0.8 * LIMITE_SIMPLES) partes.push('A receita dos 12 meses é ' + brl(receita) + ', ' + pct0(receita / LIMITE_SIMPLES * 100) + '% do limite de R$ 4,8 milhões.');
     if (situacao && situacao.meses > 0) {
       let t = 'Em ' + situacao.ano + ', até ' + rotuloComp(situacao.ate) + ', ' + (grupo.length ? 'as empresas somam ' : 'a receita é de ') + brl(situacao.acumulado) + '.';
-      if (situacao.jaPassou) t += ' Passou do limite em ' + situacao.passaEm + ': a exclusão vale a partir de ' + situacao.saiEm + '.';
-      else if (situacao.passaEm) t += ' No ritmo dos últimos 3 meses (' + brl(situacao.ritmo) + ' por mês), passa do limite em ' + situacao.passaEm + (grupo.length ? ' e as empresas saem' : ' e a empresa sai') + ' do Simples em ' + situacao.saiEm + '.';
+      const tolerancia = situacao.noAnoSeguinte ? ' (sozinha, o excesso de até 20% só tira do Simples no ano seguinte)' : '';
+      if (situacao.jaPassou) t += ' Passou do limite em ' + situacao.passaEm + ': a exclusão vale a partir de ' + situacao.saiEm + tolerancia + '.';
+      else if (situacao.passaEm) t += ' No ritmo dos últimos 3 meses (' + brl(situacao.ritmo) + ' por mês), passa do limite em ' + situacao.passaEm + (grupo.length ? ' e as empresas saem' : ' e a empresa sai') + ' do Simples em ' + situacao.saiEm + tolerancia + '.';
       else if (situacao.restantes > 0) t += ' Faltam ' + brl(situacao.faltam) + ' pro limite, ' + brl(situacao.porMesAteOLimite) + ' por mês até dezembro; o ritmo dos últimos 3 meses é ' + brl(situacao.ritmo) + ' por mês.';
       partes.push(t);
     }
     if (receita >= 0.85 * SUBLIMITE) partes.push('Sozinha, a receita está perto do sublimite de R$ 3,6 milhões: acima dele no ano, o ICMS e o ISS saem do DAS (a conta já faz isso).');
+    (grupoFora || []).forEach(g => partes.push(g.nome + ' é dos mesmos sócios, mas fica fora da soma: ' + g.motivo + '.'));
     if (fora.length) partes.push('Na conta, o Simples fica fora ' + juntar(fora.map(r => r.k === 0 ? 'nos 12 meses' : 'em ' + r.ano)) + ': ' + fora[0].simples.motivo);
     partes.push(situacao ? 'Confira os meses mais recentes no Domínio: eles decidem.' : 'Confira a receita das outras empresas.');
     add({ id: 'limite', fase: 'simples', titulo: grupo.length ? 'A receita somada com as empresas dos sócios' : 'O limite do Simples', curto: 'o limite do Simples',
@@ -114,10 +117,13 @@ export function roteiroDoEstudo({ entrada = {}, origens = {}, comparacao = null,
     // (a empresa que o sistema achou e a tela tirou da soma fica dita)
     const semSocios = !(num(socios) > 0);
     const tirada = num(achadas) > 0 && !grupo.length;
+    const pelaRegra = (grupoFora || []).length > 0 && !grupo.length && !tirada;
     const feita = !semSocios || tirada || conferido('grupo');
     add({ id: 'limite', fase: 'simples', titulo: 'As empresas dos sócios', curto: 'as empresas dos sócios', peso: 'detalhe',
       estado: feita ? 'feita' : 'aberta', como: conferido('grupo') ? 'conferido' : tirada ? 'tirada da soma' : 'o sistema olhou o cadastro',
-      texto: tirada
+      texto: pelaRegra
+        ? grupoFora.map(g => g.nome + ' é dos mesmos sócios, mas fica fora da soma: ' + g.motivo + '.').join(' ')
+        : tirada
         ? 'A empresa dos sócios que o sistema achou ficou fora da soma. Se ela ainda for dos sócios, ponha de volta: o limite de R$ 4,8 milhões vale pra soma.'
         : semSocios
         ? 'O cadastro não tem os sócios desta empresa. Se eles tiverem outra empresa, o limite de R$ 4,8 milhões vale pra soma — longe dele, só pesa se a outra for grande.'

@@ -69,11 +69,18 @@ export function tipoPeloCnae(cnae) {
 // pronta pra consumo e vendida direto ao consumidor paga 12% (RICMS-RS, Livro I, art. 27, V, e Apêndice I, Seção II, item
 // XII), com a opção da base reduzida a 60% (art. 23, VI) e o crédito das compras na mesma proporção (art. 33, IV) — ou do
 // crédito presumido (art. 32, IV), fora da conta; no Simples, a mesma base reduzida na receita de refeição, no DAS (LC 123,
-// art. 18, §20). Vale pros bares e restaurantes e pro CNAE 5620-1/04 (preparo pra consumo domiciliar). Bebida revendida e
-// o que não é refeição têm a alíquota deles.
-const CNAE_REFEICAO_RS = ['5611201', '5611203', '5611204', '5611205', '5620104'];
+// art. 18, §20). Vale pros bares e restaurantes (5611-2/02 é o código antigo dos bares) e pro CNAE 5620-1/04 (preparo pra
+// consumo domiciliar). Bebida revendida e o que não é refeição têm a alíquota deles. Conferido nas orientações da Receita
+// Estadual por um agente separado em 01/11/2026 (o texto do RICMS não abriu). As refeições coletivas pra empresas
+// (5620-1/01) e as cantinas (5620-1/03) podem ter a base a 60% (o art. 23, VI fala em "empresas preparadoras de refeições
+// coletivas"), mas a alíquota de 12% não está confirmada pra elas: ficam com uma nota pra conferir.
+// O RDA dos bares e restaurantes (art. 38-A; o motor, RDA_RS) é só do grupo 56.1 da CNAE, no Presumido e no Real.
+const CNAE_REFEICAO_RS = ['5611201', '5611202', '5611203', '5611204', '5611205', '5620104'];
+const CNAE_REFEICAO_A_CONFERIR = { '5620101': 'refeições pra empresas', '5620103': 'cantina' };
 export const ALIQ_REFEICAO_RS = 12, RED_REFEICAO_RS = 40;
-export const ehRefeicaoRS = (cnae, uf) => CNAE_REFEICAO_RS.includes(digitosCnae(cnae).slice(0, 7)) && (!uf || String(uf).trim().toUpperCase() === 'RS');
+const ehRS = uf => !uf || String(uf).trim().toUpperCase() === 'RS';
+export const ehRefeicaoRS = (cnae, uf) => CNAE_REFEICAO_RS.includes(digitosCnae(cnae).slice(0, 7)) && ehRS(uf);
+export const ehRdaRS = (cnae, uf) => digitosCnae(cnae).startsWith('561') && ehRS(uf);
 
 // o que o PGDAS lido na Reforma mostrou: a redução do ICMS (o "percentual de redução") e a revenda com ST. O caso guarda o
 // resumo (`dominio.pgdas`) e, nos montados à mão, os textos de `fontes` — lidos aqui só no que está escrito.
@@ -193,8 +200,10 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
       Object.assign(atividades[iMerc], { aliqIcms: ALIQ_REFEICAO_RS, redIcms: RED_REFEICAO_RS, redIcmsSimples: RED_REFEICAO_RS });
       origens[p + '.aliqIcms'] = origem('padrao', 'refeição no RS: 12% — confira', 'RICMS-RS, Livro I, art. 27, V: a refeição feita na casa e vendida pronta ao consumidor; bebida e outras revendas têm a alíquota delas');
       origens[p + '.redIcms'] = origem('padrao', 'base a 60% — confira a opção da empresa', 'RICMS-RS, Livro I, art. 23, VI, com o crédito das compras na mesma proporção (art. 33, IV). A outra opção, o crédito presumido (art. 32, IV), fica fora da conta; sem redução nenhuma, digite 0');
-      origens[p + '.redIcmsSimples'] = origem('padrao', '40% — confira no PGDAS', 'a base reduzida a 60% também vale no DAS, na receita de refeição (Receita Estadual do RS); no PGDAS é o "percentual de redução"');
+      origens[p + '.redIcmsSimples'] = origem('padrao', '40% — confira no PGDAS', 'a base reduzida a 60% também vale no DAS, na receita de refeição (Receita Estadual do RS; RICMS-RS, Livro I, art. 23, VI, nota do Simples); no PGDAS é o "percentual de redução". Abaixo de R$ 360 mil em 12 meses, o Simples Gaúcho isenta o ICMS do DAS, e a redução fica sem efeito');
     } else {
+      const conferir = cliente && ehRS(cliente.uf) ? CNAE_REFEICAO_A_CONFERIR[digitosCnae(cliente.cnae_principal).slice(0, 7)] : null;
+      if (conferir) notas.push('CNAE de ' + conferir + ': no RS a base do ICMS pode ser reduzida a 60% (RICMS-RS, Livro I, art. 23, VI, que fala em "empresas preparadoras de refeições coletivas"), mas a alíquota de 12% da refeição não está confirmada pro caso. A conta usou 17% sem redução: confira e preencha a alíquota e as reduções.');
       origens[p + '.aliqIcms'] = origem('padrao', 'padrão: 17%, a interna do RS', 'venda pra outro estado é 12% (7% ou 4% em alguns casos) — confira');
     }
     if (doPg.red > 0) {
@@ -207,6 +216,12 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
   atividades.forEach((a, i) => { if (a.tipo === 'industria') origens['atividades.' + i + '.aliqIpi'] = origem('padrao', 'padrão: zero — confira', 'o IPI a recolher no ano, em % da receita da indústria, já com os créditos; só 2026 — em 2027 ele vira zero'); });
 
   const e = { atividades, meses };
+  if (cliente && cliente.uf) e.uf = String(cliente.uf).trim().toUpperCase();
+  // o RDA dos bares e restaurantes (Presumido e Real): a conta usa o mais barato entre ele e o débito e crédito
+  if (iMerc >= 0 && ehRdaRS(cliente && cliente.cnae_principal, cliente && cliente.uf)) {
+    e.rda = 'melhor';
+    origens.rda = origem('padrao', 'RDA: a conta usa o mais barato — confira', 'RICMS-RS, Livro I, art. 38-A (Dec. 55.458/2020; o Dec. 57.930/2024 o estendeu até 2028): 3,5% de todas as vendas de mercadoria, as com ST também, sem crédito, no Presumido e no Real. Exige a alimentação em 60% ou mais das vendas do ano anterior e nenhuma dívida ativa');
+  }
   // compras e despesas: o % da receita medido no caso da Reforma (entradas do Domínio ÷ receita dos mesmos meses)
   if (receita > 0 && inp.pctComprasMercadorias != null && inp.pctComprasMercadorias !== '') {
     e.compras = num(inp.pctComprasMercadorias) / 100 * receita;
@@ -276,8 +291,10 @@ export function receitaDaEmpresa({ cliente = null, caso = null, pgdas = [] } = {
     origem: origem('reforma', 'caso da Reforma: receita mensal × 12') };
   return { nome, cliente_id: cliente ? cliente.id : null, receita: 0, meses: null, serie: null, origem: origem('padrao', 'falta no sistema: digite os 12 meses') };
 }
-// quem é sócio desta e de outra: socios (desta) e outros ([{ cliente_id, nome, cpf }], das outras) — casa pelo CPF (só os
-// dígitos); sem o CPF de um dos lados, pelo nome sem acento. Volta [{ cliente_id, socios: [nomes] }], sem esta.
+// quem é sócio desta e de outra: socios (desta) e outros ([{ cliente_id, nome, cpf, participacao_percentual?,
+// eh_administrador? }], das outras) — casa pelo CPF (só os dígitos); sem o CPF de um dos lados, pelo nome sem acento.
+// Volta [{ cliente_id, socios: [nomes], participacao, administrador }], sem esta — participacao: a maior entre os sócios em
+// comum, na outra (nula = não está no cadastro); administrador: algum deles administra a outra (LC 123, art. 3º, §4º, V).
 const semAcento = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
 export function empresasDosSocios(socios, outros, clienteId) {
   const meus = (socios || []).filter(s => s && (s.nome || s.cpf)).map(s => ({ nome: s.nome, cpf: String(s.cpf || '').replace(/\D/g, ''), chave: semAcento(s.nome) }));
@@ -287,14 +304,36 @@ export function empresasDosSocios(socios, outros, clienteId) {
     const cpf = String(o.cpf || '').replace(/\D/g, ''), chave = semAcento(o.nome);
     const m = meus.find(s => s.cpf && cpf ? s.cpf === cpf : (s.chave && s.chave === chave));
     if (!m) return;
-    const g = por.get(o.cliente_id) || { cliente_id: o.cliente_id, socios: [] };
+    const g = por.get(o.cliente_id) || { cliente_id: o.cliente_id, socios: [], participacao: null, administrador: false };
     if (!g.socios.includes(m.nome)) g.socios.push(m.nome);
+    const p = o.participacao_percentual == null || o.participacao_percentual === '' ? null : num(o.participacao_percentual, null);
+    if (p != null && (g.participacao == null || p > g.participacao)) g.participacao = p;
+    if (o.eh_administrador === true) g.administrador = true;
     por.set(o.cliente_id, g);
   });
   return [...por.values()];
 }
-// o ano-calendário do grupo pelos números do sistema: até o último mês que todas têm, a soma do ano, o ritmo dos últimos
-// 3 meses e, nesse ritmo, o mês em que a soma passa do limite (a exclusão vem no mês seguinte — SC Cosit 135/2026)
+// quem entra na soma do limite (LC 123, art. 3º, §4º): a outra ME ou EPP — optante ou não — com qualquer participação
+// (inciso III); a que não é ME nem EPP (faturou mais de R$ 4,8 milhões nos 12 meses), só com o sócio acima de 10% (IV) ou
+// administrando (V). Sem a participação no cadastro, ou sem a receita da outra, entra (a conta fica do lado seguro).
+// Volta null (entra) ou o porquê de ficar fora.
+export function foraDaSoma(empresa, receita12) {
+  const e = empresa || {};
+  if (!(num(receita12) > LIMITE_DO_SIMPLES)) return null;
+  if (e.administrador || e.participacao == null || num(e.participacao) > 10) return null;
+  return 'ela faturou ' + brl(receita12) + ' nos 12 meses (não é ME nem EPP) e o sócio em comum tem ' + pct1(e.participacao) + '% dela, sem administrar — só conta acima de 10% ou com o sócio administrador (LC 123, art. 3º, §4º, IV e V)';
+}
+const LIMITE_DO_SIMPLES = 4800000;
+// a outra que faturou mais de R$ 4,8 milhões e entrou na soma sem a participação no cadastro: o aviso pra conferir
+export function avisoDaSoma(empresa, receita12, nome) {
+  const e = empresa || {};
+  if (!(num(receita12) > LIMITE_DO_SIMPLES) || e.administrador || e.participacao != null) return null;
+  return (nome || 'A outra empresa dos sócios') + ' faturou ' + brl(receita12) + ' nos 12 meses (não é ME nem EPP): ela só conta na soma do limite se o sócio em comum tiver mais de 10% dela ou a administrar (LC 123, art. 3º, §4º, IV e V). A participação não está no cadastro, e a conta somou — confira.';
+}
+// o ano-calendário pelos números do sistema: até o último mês que todas têm, a soma do ano, o ritmo dos últimos 3 meses e,
+// nesse ritmo, o mês em que a soma passa do limite. Com as empresas dos sócios, a saída vem no mês seguinte, sem a
+// tolerância (LC 123, art. 3º, §6º; Res. CGSN 140, art. 81, II, "c"); sozinha, o excesso de até 20% (R$ 5,76 milhões) só
+// tira do Simples no ano seguinte, e acima disso, no mês seguinte ao que passou dos 20% (art. 3º, §§9º e 9º-A).
 const MES_LONGO = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 export function situacaoDoGrupo(serieEmpresa, outras, limite = 4800000) {
   const series = [{ nome: 'esta', serie: serieEmpresa || [] }, ...(outras || []).map(o => ({ nome: o.nome, serie: o.serie || [] }))];
@@ -318,15 +357,26 @@ export function situacaoDoGrupo(serieEmpresa, outras, limite = 4800000) {
   const ritmo = ult3.length ? ult3.reduce((t, c) => t + series.reduce((u, s) => u + val(s, c), 0), 0) / ult3.length : 0;
   const restantes = 12 - mesAte;
   // o mês em que a soma passou (já aconteceu) ou, no ritmo dos últimos 3 meses, passaria
-  let passaEm = null, jaPassou = false, acum = 0;
-  for (const c of mesesAno) { acum += series.reduce((u, s) => u + val(s, c), 0); if (acum > limite) { passaEm = Number(c.slice(5, 7)); jaPassou = true; break; } }
-  if (!jaPassou) for (let j = 1; j <= restantes; j++) if (acumulado + ritmo * j > limite) { passaEm = mesAte + j; break; }
-  const saiEm = passaEm ? (passaEm === 12 ? '01/01/' + (Number(ano) + 1) : '01/' + String(passaEm + 1).padStart(2, '0') + '/' + ano) : null;
+  // o mês (1 a 12) em que a soma passa de um valor: já aconteceu ou, no ritmo dos últimos 3 meses, aconteceria
+  const mesEmQuePassa = lim => {
+    let acum = 0;
+    for (const c of mesesAno) { acum += series.reduce((u, s) => u + val(s, c), 0); if (acum > lim) return { mes: Number(c.slice(5, 7)), ja: true }; }
+    for (let j = 1; j <= restantes; j++) if (acumulado + ritmo * j > lim) return { mes: mesAte + j, ja: false };
+    return null;
+  };
+  const p = mesEmQuePassa(limite);
+  const passaEm = p ? p.mes : null, jaPassou = !!(p && p.ja);
+  const sozinha = series.length === 1;
+  const p20 = sozinha && p ? mesEmQuePassa(limite * 1.2) : null;
+  const mesSeguinte = m => m === 12 ? '01/01/' + (Number(ano) + 1) : '01/' + String(m + 1).padStart(2, '0') + '/' + ano;
+  const noAnoSeguinte = !!(sozinha && p && !p20);
+  const saiEm = !passaEm ? null : noAnoSeguinte ? '01/01/' + (Number(ano) + 1) : mesSeguinte(sozinha ? p20.mes : passaEm);
   return {
     ano: Number(ano), ate, meses: mesesAno.length, acumulado, porEmpresa, ritmo, restantes, limite,
     projecao: acumulado + ritmo * restantes, faltam: Math.max(0, limite - acumulado),
     porMesAteOLimite: restantes > 0 ? Math.max(0, limite - acumulado) / restantes : null,
-    passaEm: passaEm ? MES_LONGO[passaEm - 1] : null, jaPassou, saiEm
+    passaEm: passaEm ? MES_LONGO[passaEm - 1] : null, jaPassou, saiEm, noAnoSeguinte,
+    passa20Em: p20 ? MES_LONGO[p20.mes - 1] : null
   };
 }
 
@@ -390,6 +440,7 @@ export function premissasParaTestar(entrada, origens) {
     if (t.tributo === 'iss' && padrao('atividades.' + i + '.aliqIss')) out.push({ campo: 'atividades.' + i + '.aliqIss', valores: [2, 5], rotulo: 'o ISS' + (ats.length > 1 ? ' (' + t.rotulo.toLowerCase() + ')' : ''), unidade: '%' });
   });
   if (padrao('rat') && num(e.folha) > 0) out.push({ campo: 'rat', valores: [1, 3], rotulo: 'o RAT', unidade: '%' });
+  if (temIcms && e.rda === 'melhor' && padrao('rda')) out.push({ campo: 'rda', valores: [null], rotulo: 'o ICMS do restaurante no Presumido e no Real', nomes: { null: 'sem o RDA' }, confira: 'A conta supõe que a empresa pode optar pelo RDA (alimentação em 60% ou mais das vendas, sem dívida ativa) — confira.' });
   if (num(e.compras) > 0 && padrao('pctComprasSimples')) out.push({ campo: 'pctComprasSimples', valores: [50], rotulo: 'as compras de fornecedor do Simples (crédito menor de CBS/IBS)', unidade: '% das compras' });
   return out;
 }

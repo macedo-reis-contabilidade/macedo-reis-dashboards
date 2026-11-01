@@ -4,7 +4,7 @@
 // Rodar com: node tests/comparativo-dados.test.mjs — dados inventados (o repositório é público).
 
 import { entradaDoSistema, aplicarRelatorios, premissasParaTestar, prazosDaEscolha, serieDosMeses, tipoPeloCnae, tipoPeloAnexo, regimeDoCadastro,
-  ehRefeicaoRS, empresasDosSocios, receitaDaEmpresa, situacaoDoGrupo, serieDaEmpresa } from '../assets/js/comparativo-dados.js';
+  ehRefeicaoRS, ehRdaRS, empresasDosSocios, receitaDaEmpresa, situacaoDoGrupo, serieDaEmpresa, foraDaSoma, avisoDaSoma } from '../assets/js/comparativo-dados.js';
 import { comparar } from '../assets/js/comparativo-motor.js';
 
 let falhas = 0, total = 0;
@@ -145,6 +145,37 @@ const sit2 = situacaoDoGrupo(seis, [{ nome: 'OUTRA', serie: seis }]);
 ok('já passou: em junho (5,4 milhões até lá), fora a partir de 01/07/2026', sit2.jaPassou && sit2.passaEm === 'junho' && sit2.saiEm === '01/07/2026', sit2);
 ok('a empresa sozinha também tem o ano', situacaoDoGrupo(seis, []).porEmpresa.length === 1);
 ok('sem a série de uma, não há como somar o ano', situacaoDoGrupo(seis, [{ nome: 'OUTRA', serie: [] }]) === null);
+
+console.log('=== a revisão de 01/11/2026: a saída sozinha, a regra da soma, o RDA e os CNAEs ===');
+// sozinha, 450.000 por mês de janeiro a junho (2,7 milhões) e no ritmo: passa de 4,8 milhões em novembro (4,95) e fecha
+// em 5,4 milhões — o excesso fica em até 20% (5,76): a saída vale no ano seguinte (LC 123, art. 3º, §9º-A)
+const s1 = situacaoDoGrupo(seis, []);
+ok('sozinha, excesso de até 20%: passa em novembro e sai em 01/01/2027', s1.passaEm === 'novembro' && s1.saiEm === '01/01/2027' && s1.noAnoSeguinte === true && s1.passa20Em === null, s1);
+// sozinha, 600.000 por mês: passa de 4,8 em setembro (5,4) e de 5,76 em outubro (6,0) → sai em 01/11/2026
+const seis600 = seis.map(m => ({ ...m, total: 600000 }));
+const s2 = situacaoDoGrupo(seis600, []);
+ok('sozinha, acima de 20%: sai no mês seguinte ao que passou de 5,76 milhões', s2.passaEm === 'setembro' && s2.passa20Em === 'outubro' && s2.saiEm === '01/11/2026' && s2.noAnoSeguinte === false, s2);
+ok('com outra empresa dos sócios, sem a tolerância: o mês seguinte ao que a soma passa', sit2.saiEm === '01/07/2026' && sit2.noAnoSeguinte === false);
+const outrosP = [{ cliente_id: 'x', nome: 'FULANO DE TAL', cpf: '11122233344', participacao_percentual: 5, eh_administrador: false },
+  { cliente_id: 'x', nome: 'BELTRANA SOUZA', cpf: null, participacao_percentual: '8', eh_administrador: true }];
+const empP = empresasDosSocios(meus, outrosP, 'eu');
+ok('a participação (a maior dos sócios em comum) e se algum administra', empP[0].participacao === 8 && empP[0].administrador === true, empP);
+ok('sem a participação no cadastro: nula', empresasDosSocios(meus, [{ cliente_id: 'x', nome: 'FULANO DE TAL', cpf: '11122233344' }], 'eu')[0].participacao === null);
+ok('a outra ME ou EPP entra com qualquer participação (inciso III)', foraDaSoma({ participacao: 1, administrador: false }, 4000000) === null);
+ok('a que não é ME nem EPP, com o sócio até 10% e sem administrar, fica fora', /não é ME nem EPP/.test(foraDaSoma({ participacao: 10, administrador: false }, 6000000) || ''));
+ok('com mais de 10% (inciso IV) ou administrando (inciso V), entra', foraDaSoma({ participacao: 10.5, administrador: false }, 6000000) === null && foraDaSoma({ participacao: 2, administrador: true }, 6000000) === null);
+ok('sem a participação: entra, com o aviso pra conferir', foraDaSoma({ participacao: null }, 6000000) === null && /participação não está no cadastro/.test(avisoDaSoma({ participacao: null }, 6000000, 'A GRANDE') || ''));
+ok('ME ou EPP sem a participação: sem aviso', avisoDaSoma({ participacao: null }, 3000000) === null);
+ok('5611-2/02 (o código antigo dos bares) é refeição', ehRefeicaoRS('5611-2/02', 'RS'));
+ok('o RDA é do grupo 56.1, no RS', ehRdaRS('5611-2/01', 'RS') && ehRdaRS('5611-2/03', null) && !ehRdaRS('5620-1/04', 'RS') && !ehRdaRS('5611-2/01', 'SC'));
+const bar = entradaDoSistema({ cliente: { regime_tributario: 'Simples Nacional', cnae_principal: '5611-2/01', uf: 'rs' }, caso: { anexo: 'I', sim_obs: JSON.stringify({ v: 1, input: { anexo: 'I' }, dominio: { meses: mesesRest } }) } });
+ok('restaurante (56.1): o RDA no "mais barato", no padrão, e a UF na entrada', bar.entrada.rda === 'melhor' && bar.origens.rda.fonte === 'padrao' && /38-A/.test(bar.origens.rda.dica) && bar.entrada.uf === 'RS', bar.entrada);
+ok('5620-1/04 é refeição, mas não tem RDA', rest.entrada.rda == null && rest.entrada.atividades[0].aliqIcms === 12);
+const psBar = premissasParaTestar(bar.entrada, bar.origens);
+ok('o RDA no padrão é testado (sem ele)', psBar.some(p => p.campo === 'rda' && p.valores[0] === null && p.nomes && p.nomes[null] === 'sem o RDA'));
+ok('o RDA escolhido pela equipe não é testado', !premissasParaTestar(bar.entrada, { ...bar.origens, rda: { fonte: 'digitado' } }).some(p => p.campo === 'rda'));
+const coletiva = entradaDoSistema({ cliente: { regime_tributario: 'Lucro Presumido', cnae_principal: '5620-1/01', uf: 'RS' }, caso: { anexo: 'I', sim_obs: JSON.stringify({ v: 1, input: { anexo: 'I' }, dominio: { meses: mesesRest } }) } });
+ok('refeições pra empresas: 17% sem redução, com a nota pra conferir a base a 60%', coletiva.entrada.atividades[0].aliqIcms !== 12 && coletiva.notas.some(n => /refeições pra empresas/.test(n) && /art\. 23, VI/.test(n)) && coletiva.entrada.rda == null, coletiva.notas);
 
 console.log('\n' + (total - falhas) + ' de ' + total + ' conferências ok' + (falhas ? ' — ' + falhas + ' FALHA(S)' : ''));
 process.exit(falhas ? 1 : 0);
