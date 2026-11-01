@@ -221,6 +221,9 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
   if (iMerc >= 0 && ehRdaRS(cliente && cliente.cnae_principal, cliente && cliente.uf)) {
     e.rda = 'melhor';
     origens.rda = origem('padrao', 'RDA: a conta usa o mais barato — confira', 'RICMS-RS, Livro I, art. 38-A (Dec. 55.458/2020; o Dec. 57.930/2024 o estendeu até 2028): 3,5% de todas as vendas de mercadoria, as com ST também, sem crédito, no Presumido e no Real. Exige a alimentação em 60% ou mais das vendas do ano anterior e nenhuma dívida ativa');
+  } else if (refeicao) {
+    // a refeição fora do grupo 56.1 (o 5620-1/04, a pizzaria de entrega): sem o RDA, e a tela diz por quê
+    origens.rda = origem('cadastro', 'fora do RDA: o CNAE ' + (cliente.cnae_principal || '') + ' não é do grupo 56.1', 'o RDA dos bares e restaurantes (3,5% das vendas, sem crédito) é só pra CNAE do grupo 56.1 (RICMS-RS, Livro I, art. 38-A); com o CNAE principal de restaurante, ele vira opção');
   }
   // compras e despesas: o % da receita medido no caso da Reforma (entradas do Domínio ÷ receita dos mesmos meses)
   if (receita > 0 && inp.pctComprasMercadorias != null && inp.pctComprasMercadorias !== '') {

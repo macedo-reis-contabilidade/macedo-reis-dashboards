@@ -145,7 +145,7 @@ function blocoNumeros(estudo) {
     out.push('- Atividade ' + (i + 1) + ': ' + t.rotulo + ' [' + origemDe(o, p + 'tipo') + '] — ' + partes.join('; '));
   });
   ['compras', 'aliqCreditoIcms', 'pctComprasSimples', 'despesasCredito', 'outrasDespesas', 'folha', 'proLabore'].forEach(k => out.push(linha(k)));
-  if (e.rda) out.push('- ICMS do restaurante no Presumido e no Real: ' + (e.rda === 'sim' ? 'optante do RDA (3,5% de todas as vendas de mercadoria, sem crédito)' : 'o mais barato entre o RDA (3,5% das vendas, sem crédito) e o débito e crédito') + ' [' + origemDe(o, 'rda') + ']');
+  if (e.rda || o.rda) out.push('- ICMS do restaurante no Presumido e no Real: ' + (e.rda === 'sim' ? 'optante do RDA (3,5% de todas as vendas de mercadoria, sem crédito)' : e.rda === 'melhor' ? 'o mais barato entre o RDA (3,5% das vendas, sem crédito) e o débito e crédito — os avisos dizem qual a conta usou' : 'débito e crédito, sem o RDA') + ' [' + origemDe(o, 'rda') + ']');
   if (Number(e.difalSimples) > 0) out.push(linha('difalSimples'));
   out.push('- RAT ' + pct(e.rat) + '% · FAP ' + pct(e.fap) + ' · terceiros ' + pct(e.terceiros) + '% [' + origemDe(o, 'rat') + ']' + (Number(e.cprb) > 0 ? ' · CPRB ' + pct(e.cprb) + '% (desoneração da folha)' : ''));
   out.push('- Crescimento: da receita ' + pct(e.crescimentoReceita) + '% ao ano [' + origemDe(o, 'crescimentoReceita') + '] · da folha ' + pct(e.crescimentoFolha) + '% ao ano');

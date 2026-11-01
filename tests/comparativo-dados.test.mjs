@@ -170,7 +170,7 @@ ok('5611-2/02 (o código antigo dos bares) é refeição', ehRefeicaoRS('5611-2/
 ok('o RDA é do grupo 56.1, no RS', ehRdaRS('5611-2/01', 'RS') && ehRdaRS('5611-2/03', null) && !ehRdaRS('5620-1/04', 'RS') && !ehRdaRS('5611-2/01', 'SC'));
 const bar = entradaDoSistema({ cliente: { regime_tributario: 'Simples Nacional', cnae_principal: '5611-2/01', uf: 'rs' }, caso: { anexo: 'I', sim_obs: JSON.stringify({ v: 1, input: { anexo: 'I' }, dominio: { meses: mesesRest } }) } });
 ok('restaurante (56.1): o RDA no "mais barato", no padrão, e a UF na entrada', bar.entrada.rda === 'melhor' && bar.origens.rda.fonte === 'padrao' && /38-A/.test(bar.origens.rda.dica) && bar.entrada.uf === 'RS', bar.entrada);
-ok('5620-1/04 é refeição, mas não tem RDA', rest.entrada.rda == null && rest.entrada.atividades[0].aliqIcms === 12);
+ok('5620-1/04 é refeição, mas não tem RDA — e a origem diz por quê', rest.entrada.rda == null && rest.entrada.atividades[0].aliqIcms === 12 && rest.origens.rda.fonte === 'cadastro' && /não é do grupo 56\.1/.test(rest.origens.rda.texto), rest.origens.rda);
 const psBar = premissasParaTestar(bar.entrada, bar.origens);
 ok('o RDA no padrão é testado (sem ele)', psBar.some(p => p.campo === 'rda' && p.valores[0] === null && p.nomes && p.nomes[null] === 'sem o RDA'));
 ok('o RDA escolhido pela equipe não é testado', !premissasParaTestar(bar.entrada, { ...bar.origens, rda: { fonte: 'digitado' } }).some(p => p.campo === 'rda'));
