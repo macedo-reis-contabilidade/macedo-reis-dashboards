@@ -198,7 +198,9 @@ function cabecalho(estudo) {
     : 'Ainda não há estudo gravado: os números são os que o sistema tem hoje, como a tela mostra ao abrir a empresa (' + (estudo.fontes || []).map(f => f.txt).join(' · ') + ').';
   return ['COMPARATIVO TRIBUTÁRIO — ' + nome, de, 'Regime de hoje: ' + (ROTULO_REGIME[estudo.entrada.regimeAtual] || 'não informado no estudo') + '.'];
 }
-const FIM = 'Na resposta: o resultado em uma ou duas frases (o mais barato no ano da decisão e quanto), o porquê pelos tributos que mais pesam e, se ainda pode virar, o quê (as missões que decidem, as premissas no padrão — diga que são padrão a conferir). Use os números daqui, sem refazer conta: outro cenário é outra chamada, com e_se. Mudar o estudo é na tela Comparativo tributário.';
+// com o aviso do limite, ele é a notícia: a conta põe o Simples, mas o ano de agora tira a empresa dele
+const LIMITE_PRIMEIRO = 'o aviso do limite vem na primeira frase, junto com o resultado (a conta dos 12 meses põe o Simples, mas pelo ano de agora a empresa sai dele: diga desde quando e qual fica mais barato entre o Presumido e o Real); depois, ';
+const fim = conta => 'Na resposta: ' + (conta.limite ? LIMITE_PRIMEIRO : '') + 'o resultado em uma ou duas frases (o mais barato no ano da decisão e quanto), o porquê pelos tributos que mais pesam e, se ainda pode virar, o quê (as missões que decidem, as premissas no padrão — diga que são padrão a conferir). Use os números daqui, sem refazer conta: outro cenário é outra chamada, com e_se. Mudar o estudo é na tela Comparativo tributário.';
 
 export function textoDoComparativo({ estudo, conta }) {
   const out = [...cabecalho(estudo)];
@@ -220,7 +222,7 @@ export function textoDoComparativo({ estudo, conta }) {
   if (conta.avisos.length) out.push('', 'AVISOS DA CONTA', ...conta.avisos.map(a => '- ' + a));
   const hoje = blocoSistemaHoje(estudo);
   if (hoje.length) out.push('', ...hoje);
-  out.push('', FIM);
+  out.push('', fim(conta));
   return out.join('\n');
 }
 
@@ -246,7 +248,7 @@ export function textoDoESe({ estudo, conta, eSe, contaESe }) {
   const rot = conta.roteiro;
   out.push('O estudo em si (sem a mudança): ' + (rot.pronto ? 'pronto pra apresentar.' : rot.provisorio ? 'provisório — faltam ' + rot.passos.filter(p => p.estado !== 'feito' && p.peso === 'decide').map(p => p.curto || p.titulo).join('; ') + '.' : 'quase lá.'));
   if (contaESe.avisos.length) out.push('', 'AVISOS DA CONTA, COM A MUDANÇA', ...contaESe.avisos.map(a => '- ' + a));
-  out.push('', 'Na resposta: o que muda com o "e se" (o mais barato antes e depois, e a diferença), sem refazer conta, e que nada foi gravado.');
+  out.push('', 'Na resposta: ' + (contaESe.limite ? LIMITE_PRIMEIRO : '') + 'o que muda com o "e se" (o mais barato antes e depois, e a diferença), sem refazer conta, e que nada foi gravado.');
   return out.join('\n');
 }
 
