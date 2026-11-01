@@ -26,7 +26,10 @@ Confere:
      falta; sem a outra empresa, a missão vira extra; cumpridas as missões, "Pronto pra apresentar", o aviso final e o
      veredito; o resultado fica "Provisório" enquanto falta o que decide;
   8. o card no Fiscal: "1 estudo";
-e nenhum erro de JavaScript.
+  9. o assistente do escritório: a faixa "Sobre o estudo aberto", as perguntas prontas do estudo e a pergunta que vai com
+     a empresa e o estudo (comparativo_id), depois da gravação que estava marcada (o número mudado já gravado);
+e nenhum erro de JavaScript. No 7, também o aviso do limite no resultado: a conta põe o Simples em 2027, mas o ano de 2026
+passa do limite.
 Termina com código 1 se alguma checagem falhar. Pré-requisito: pip install playwright e python -m playwright install chromium
 """
 import sys, pathlib, json
@@ -212,6 +215,9 @@ def main():
         ok('PADARIA IRMA LTDA' in g and 'sócio em comum: FULANO DE TAL' in g, 'a outra empresa do sócio, achada pelo CPF')
         ok(val('#f_grupo_0_receita') == '2.165.000,00' and fonte('grupo.0.receita') == 'reforma', f'a receita dela, do caso da Reforma ({val("#f_grupo_0_receita")!r})')
         ok('R$ 4.570.000,00' in texto(p, '#grupoSocios') and 'passa do limite em dezembro' in g, 'a soma dos 12 meses e o mês em que o ano passa do limite')
+        al = texto(p, '#alertaLimite') if p.locator('#alertaLimite').count() else ''
+        ok('passa do limite de R$ 4,8 milhões em dezembro' in al and '01/01/2027' in al and 'a escolha é entre o Presumido e o Real' in al,
+           f'no resultado, o aviso: a conta põe o Simples em 2027, mas o ano de 2026 passa do limite ({al[:90]}…)')
         p.evaluate("() => { window.__festa = []; window.addEventListener('mr:comemorar', e => window.__festa.push(e.detail)); }")
         ok('Ela pode ficar no Simples?' in p.inner_text('#trilha li[aria-current="step"]'), 'a fase de agora é a 1: pode ficar no Simples?')
         prox = texto(p, '#fase .ct-m.ct-prox')
@@ -265,6 +271,34 @@ def main():
         p2.wait_for_function("() => { const b = document.querySelector('.card-status[data-mod=\"fiscal-comparativo.html\"]'); return b && !b.classList.contains('st-load'); }", timeout=5000)
         selo = p2.text_content('.card-status[data-mod="fiscal-comparativo.html"]')
         ok(selo == '1 estudo', f'o card: "1 estudo" ({selo!r})')
+
+        print('9. O assistente do escritório: "esta empresa" é a do estudo aberto')
+        p3 = cx.new_page()
+        p3.on('pageerror', lambda e: erros.append('assistente: ' + str(e)))
+        p3.add_init_script(TOUR); p3.add_init_script(SEMEAR)
+        # a função do assistente de mentira: guarda o corpo e o estudo gravado na hora da pergunta
+        p3.add_init_script("""(() => { window.__chamadas = []; window.__mockInvoke = async (nome, opts) => {
+          const est = (window.__mockDb.comparativos || []).find(r => r.cliente_id === 'c5');
+          window.__chamadas.push({ nome, body: JSON.parse(JSON.stringify(opts.body || {})), folhaGravada: est ? est.entrada.entrada.folha : null });
+          const ev = o => 'data: ' + JSON.stringify(o) + '\\n\\n';
+          return { data: ev({ tipo: 'resposta', texto: 'Resposta pra: ' + opts.body.pergunta }), error: null }; }; })()""")
+        p3.goto(base + 'fiscal-comparativo.html?cliente=c5')
+        p3.wait_for_function("() => document.querySelector('#escolhida h3') && document.querySelector('#escolhida h3').textContent === 'RESTAURANTE EXEMPLO LTDA'", timeout=8000)
+        p3.wait_for_selector('.as-lancador', timeout=5000)
+        p3.click('.as-lancador'); p3.wait_for_selector('.as-painel:not([hidden])', timeout=3000)
+        ok(p3.inner_text('.as-ctx') == 'Sobre o estudo aberto: RESTAURANTE EXEMPLO LTDA', f'a faixa do assistente diz qual estudo ({p3.inner_text(".as-ctx")!r})')
+        chips = p3.eval_on_selector_all('.as-msgs .as-chip', 'bs => bs.map(b => b.textContent)')
+        ok('E se a folha for R$ 30 mil por mês?' in chips, f'as perguntas prontas do estudo ({chips})')
+        # muda um número e pergunta logo: a gravação marcada vai antes, e a pergunta leva o estudo gravado
+        p3.fill('#f_folha', '240000')
+        p3.fill('.as-entrada textarea', 'Por que este regime sai mais barato?'); p3.press('.as-entrada textarea', 'Enter')
+        p3.wait_for_function("() => (window.__chamadas || []).length === 1", timeout=5000)
+        ch = p3.evaluate('window.__chamadas[0]')
+        est = p3.evaluate("() => (window.__mockDb.comparativos.find(r => r.cliente_id === 'c5') || {}).id")
+        ctx = ch['body']['contexto']
+        ok(ch['nome'] == 'assistente' and ctx.get('cliente_id') == 'c5' and est and ctx.get('comparativo_id') == est and ctx['pagina']['caminho'] == 'fiscal-comparativo.html',
+           f'a pergunta vai com a empresa e o estudo ({ctx})')
+        ok(ch['folhaGravada'] == 240000, f'o número mudado já estava gravado quando a pergunta saiu ({ch["folhaGravada"]!r})')
 
         ok(not erros, 'nenhum erro de JavaScript' + ('' if not erros else ': ' + ' | '.join(erros[:3])))
         b.close()

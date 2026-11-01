@@ -248,10 +248,11 @@
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { hojeLocal, formatDocumento, normalizarDocumento } from './assets/js/utils.js';
     import { nomePorEmail } from './assets/js/equipe.js';
-    import { comparar, testarPremissas, fraseDaDecisao, TIPOS, ANEXOS, ROTULO_REGIME, REGIMES } from './assets/js/comparativo-motor.js';
-    import { entradaDoSistema, aplicarRelatorios, premissasParaTestar, prazosDaEscolha, regimeDoCadastro, FONTES, rotuloComp,
-      receitaDaEmpresa, empresasDosSocios, situacaoDoGrupo } from './assets/js/comparativo-dados.js';
-    import { roteiroDoEstudo } from './assets/js/comparativo-roteiro.js';
+    import { fraseDaDecisao, TIPOS, ANEXOS, ROTULO_REGIME, REGIMES } from './assets/js/comparativo-motor.js';
+    import { aplicarRelatorios, FONTES, rotuloComp } from './assets/js/comparativo-dados.js';
+    // o estudo (o gravado ou os números do sistema, as empresas dos sócios) e a conta: a mesma regra do assistente do escritório
+    import { PADRAO_ATIV, comPadroes, ORIGENS_PADRAO, CAMPOS, erroSemTabela, carregarEstudo, contaDoEstudo, situacaoComGrupo, resumoParaGravar } from './assets/js/comparativo-estudo.js';
+    import { assistenteDaTela } from './assets/js/assistente-escritorio.js';
     import { lerRelatorio, consolidar, lerPlanilha, perfilAtividade } from './assets/js/dominio-relatorios.js';
     import { paginasDoPdf, abasDaPlanilha, rotuloRel } from './assets/js/relatorios-arquivos.js';
 
@@ -295,25 +296,8 @@
       jornada: { inicial: true, feitas: new Set(), fases: new Set() }, faseVista: null };
     let ultimoRoteiro = null;
 
-    // os padrões que a tela mostra (os mesmos do motor): ficam na entrada pra aparecer nos campos
-    const PADROES = { compras: 0, aliqCreditoIcms: 12, pctComprasSimples: 0, despesasCredito: 0, outrasDespesas: 0, difalSimples: 0,
-      folha: 0, proLabore: 0, rat: 2, fap: 1, terceiros: 5.8, cprb: null, crescimentoReceita: 0, crescimentoFolha: 0, semLc224: false,
-      mix: { cheia: 100, red60: 0, red40: 0, red30: 0, zero: 0 }, pctImpostoEmbutido: null, pctComprasComCredito: null };
-    const PADRAO_ATIV = a => ({ aliqIcms: 17, aliqIss: 3, pctST: 0, pctMonofasico: 0, aliqIpi: 0, redIcms: 0, redIcmsSimples: 0, ...a });
-    function comPadroes(e) {
-      const out = { ...PADROES, ...e, mix: { ...PADROES.mix, ...(e && e.mix) } };
-      out.atividades = ((e && e.atividades) || [{ tipo: 'comercio', receita: 0 }]).map(PADRAO_ATIV);
-      return out;
-    }
-    const ORIGENS_PADRAO = {
-      crescimentoReceita: { fonte: 'padrao', texto: 'padrão: sem crescimento', dica: 'os 12 meses se repetem nos anos seguintes' },
-      crescimentoFolha: { fonte: 'padrao', texto: 'padrão: sem crescimento', dica: 'os 12 meses se repetem nos anos seguintes' },
-      fap: { fonte: 'padrao', texto: 'padrão: 1' },
-      pctComprasSimples: { fonte: 'padrao', texto: 'padrão: nenhuma', dica: 'em 2027 o crédito de CBS/IBS de compra de fornecedor do Simples é só o que ele pagou no DAS' },
-      difalSimples: { fonte: 'padrao', texto: 'padrão: nada', dica: 'diferencial de alíquota e antecipação do ICMS que o optante paga fora do DAS no ano' },
-      despesasCredito: { fonte: 'padrao', texto: 'falta no sistema' },
-      cprb: { fonte: 'padrao', texto: 'vazio: sem desoneração', dica: 'preencha a alíquota cheia da CPRB se a empresa está na desoneração da folha' }
-    };
+    // os padrões que a tela mostra (PADROES, PADRAO_ATIV, comPadroes, ORIGENS_PADRAO) e os campos (CAMPOS) moram em
+    // assets/js/comparativo-estudo.js: o assistente do escritório fala dos mesmos números com os mesmos nomes
 
     // ---------- a busca ----------
     const busca = $('busca'), sug = $('sugestoes');
@@ -364,80 +348,37 @@
       st.notas = []; st.fontes = [];
       $('lidos').innerHTML = ''; $('msgRel').textContent = '';
       renderEmpresa(); renderForm(); calcular(); $('gravado').textContent = '';
+      contextoDoAssistente();
     });
 
     // ---------- abrir a empresa: o que o sistema sabe e o estudo gravado ----------
-    const erroSemTabela = e => !!e && (e.code === 'PGRST205' || e.code === '42P01' || /comparativos/.test(e.message || '') && /(exist|find|schema)/i.test(e.message || ''));
+    // a leitura do banco que o estudo usa (assets/js/comparativo-estudo.js lê pela mesma função, aqui e no assistente)
+    function lerDoBanco(tabela, o = {}) {
+      let q = supabase.from(tabela).select(o.cols);
+      Object.entries(o.eq || {}).forEach(([k, v]) => { q = q.eq(k, v); });
+      Object.entries(o.em || {}).forEach(([k, v]) => { q = q.in(k, v); });
+      if (o.ordem) q = q.order(o.ordem.coluna, { ascending: !o.ordem.desc });
+      if (o.limite) q = q.limit(o.limite);
+      return q;
+    }
     async function abrirCliente(c) {
       await gravarPendente();   // a mudança da empresa de antes grava antes da troca
       st.cliente = c; st.nome = c.nome_principal; st.rels = []; st.estudoId = null; st.gravadoEm = null; st.gravadoPor = null;
       $('lidos').innerHTML = ''; $('msgRel').textContent = ''; $('gravado').textContent = '';
       history.replaceState(null, '', location.pathname + '?cliente=' + encodeURIComponent(c.id));
       $('escolhida').hidden = false; $('escolhida').innerHTML = '<p>Lendo o que o sistema sabe de ' + esc(c.nome_principal) + '…</p>';
-      const [rCaso, rFr, rPg, rEst] = await Promise.all([
-        supabase.from('rt_casos').select('id, anexo, rbt12, receita_mensal, sim_obs, atualizado_em').eq('cliente_id', c.id).order('atualizado_em', { ascending: false }).limit(1),
-        supabase.from('fr_empresas').select('id').eq('cliente_id', c.id).limit(1),
-        supabase.from('receita_pgdas').select('competencia, receita_mes').eq('cliente_id', c.id).order('competencia', { ascending: false }).limit(12),
-        supabase.from('comparativos').select('id, entrada, atualizado_em, atualizado_por').eq('cliente_id', c.id).order('atualizado_em', { ascending: false }).limit(1)
-      ]);
-      let fr = [];
-      const frEmp = rFr && rFr.data && rFr.data[0];
-      if (frEmp) { const r = await supabase.from('fr_lancamentos').select('competencia, folha_salarios, folha_outros, prolabore').eq('empresa_id', frEmp.id).order('competencia', { ascending: false }).limit(12); fr = (r && r.data) || []; }
-      // as outras empresas dos mesmos sócios (pelo CPF; sem CPF, pelo nome) e a receita de cada uma
-      const grupo = [], grupoSeries = [];
-      let nSocios = null;
-      try {
-        const rSoc = await supabase.from('socios').select('nome, cpf').eq('cliente_id', c.id);
-        const socios = (rSoc && rSoc.data) || [];
-        if (rSoc && !rSoc.error) nSocios = socios.length;
-        const cpfs = [...new Set(socios.map(s => String(s.cpf || '').replace(/\D/g, '')).filter(x => x.length === 11))];
-        const semCpf = socios.filter(s => String(s.cpf || '').replace(/\D/g, '').length !== 11).map(s => s.nome).filter(Boolean);
-        const outros = [];
-        if (cpfs.length) { const r = await supabase.from('socios').select('cliente_id, nome, cpf').in('cpf', cpfs); outros.push(...((r && r.data) || [])); }
-        if (semCpf.length) { const r = await supabase.from('socios').select('cliente_id, nome, cpf').in('nome', semCpf); outros.push(...((r && r.data) || [])); }
-        const empresas = empresasDosSocios(socios, outros, c.id);
-        if (empresas.length) {
-          const ids = empresas.map(x => x.cliente_id);
-          const [rC, rP] = await Promise.all([
-            supabase.from('rt_casos').select('cliente_id, receita_mensal, sim_obs, atualizado_em').in('cliente_id', ids).order('atualizado_em', { ascending: false }),
-            supabase.from('receita_pgdas').select('cliente_id, competencia, receita_mes').in('cliente_id', ids)
-          ]);
-          empresas.forEach(x => {
-            const cli = clientes.find(k => k.id === x.cliente_id) || { id: x.cliente_id, nome_principal: 'empresa sem cadastro aberto' };
-            const caso = ((rC && rC.data) || []).find(k => k.cliente_id === x.cliente_id) || null;
-            const pgs = ((rP && rP.data) || []).filter(k => k.cliente_id === x.cliente_id);
-            const r = receitaDaEmpresa({ cliente: cli, caso, pgdas: pgs });
-            grupo.push({ nome: r.nome, cliente_id: x.cliente_id, socios: x.socios, receita: r.receita, meses: r.meses, origem: r.origem });
-            grupoSeries.push({ nome: r.nome, cliente_id: x.cliente_id, serie: r.serie });
-          });
-        }
-      } catch (err) { /* sem os sócios, a conta segue sem as outras empresas */ }
+      // o gravado ou os números do sistema, e as outras empresas dos mesmos sócios (a lista do cadastro já está aqui)
+      const est = await carregarEstudo({ ler: lerDoBanco, cliente: c, cadastroDe: async ids => new Map(clientes.filter(k => ids.includes(k.id)).map(k => [k.id, k])) });
       if (st.cliente !== c) return;   // trocou de empresa no meio da leitura
-      const caso = rCaso && rCaso.data && rCaso.data[0] || null;
-      const pg = (rPg && rPg.data) || [];
-      const sis = entradaDoSistema({ cliente: c, caso, fatorR: fr, pgdas: pg });
-      sis.entrada.grupo = grupo.map(({ origem, ...g }) => g);
-      grupo.forEach((g, i) => { sis.origens['grupo.' + i + '.receita'] = g.origem; });
-      st.serie = sis.serie; st.grupoSeries = grupoSeries; st.socios = nSocios; st.faseVista = null; st.jornada = { inicial: true, feitas: new Set(), fases: new Set() };
-      st.fontes = [
-        { ok: !!caso, txt: caso ? 'caso da Reforma' : 'sem caso na Reforma' },
-        { ok: fr.length > 0, txt: fr.length ? 'Fator R (' + fr.length + (fr.length === 1 ? ' mês)' : ' meses)') : 'sem folha no Fator R' },
-        { ok: pg.length > 0, txt: pg.length ? 'PGDAS na Receita (' + pg.length + (pg.length === 1 ? ' mês)' : ' meses)') : 'sem PGDAS da Receita' }
-      ];
-      st.semTabela = erroSemTabela(rEst && rEst.error);
-      const salvo = !st.semTabela && rEst && rEst.data && rEst.data[0];
-      if (salvo && salvo.entrada && salvo.entrada.entrada) {
-        st.estudoId = salvo.id; st.gravadoEm = salvo.atualizado_em; st.gravadoPor = salvo.atualizado_por;
-        st.entrada = comPadroes(salvo.entrada.entrada); st.origens = salvo.entrada.origens || {}; st.conferencia = salvo.entrada.conferencia || sis.conferencia;
-        // o estudo gravado antes da soma das empresas dos sócios: entram as que o sistema achou
-        if (!Array.isArray(salvo.entrada.entrada.grupo)) { st.entrada.grupo = sis.entrada.grupo; grupo.forEach((g, i) => { st.origens['grupo.' + i + '.receita'] = g.origem; }); }
-      } else {
-        st.entrada = comPadroes(sis.entrada); st.origens = { ...ORIGENS_PADRAO, ...sis.origens }; st.conferencia = sis.conferencia;
-      }
-      st.notas = sis.notas;
-      st.sistema = sis;
+      st.serie = est.serie; st.grupoSeries = est.grupoSeries; st.socios = est.socios; st.faseVista = null; st.jornada = { inicial: true, feitas: new Set(), fases: new Set() };
+      st.fontes = est.fontes; st.semTabela = est.semTabela;
+      st.estudoId = est.estudoId; st.gravadoEm = est.gravadoEm; st.gravadoPor = est.gravadoPor;
+      st.entrada = est.entrada; st.origens = est.origens; st.conferencia = est.conferencia;
+      st.notas = est.notas;
+      st.sistema = est.sistema;
       renderEmpresa(); renderForm(); calcular();
       if (st.estudoId) $('gravado').textContent = 'Estudo gravado em ' + new Date(st.gravadoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) + (st.gravadoPor ? ' por ' + (nomePorEmail(st.gravadoPor) || st.gravadoPor) : '') + '.';
+      contextoDoAssistente();
     }
 
     function renderEmpresa() {
@@ -462,29 +403,7 @@
     }
 
     // ---------- o formulário ----------
-    const CAMPOS = {
-      compras: { rotulo: 'Compras de mercadorias e insumos', un: 'R$' },
-      aliqCreditoIcms: { rotulo: 'Crédito de ICMS das compras', un: '%' },
-      pctComprasSimples: { rotulo: 'Compras de fornecedor do Simples', un: '%' },
-      despesasCredito: { rotulo: 'Despesas com crédito (energia, aluguel de empresa, frete)', un: 'R$' },
-      outrasDespesas: { rotulo: 'Outras despesas (o resto dos custos)', un: 'R$' },
-      difalSimples: { rotulo: 'ICMS pago fora do DAS (diferencial e antecipação)', un: 'R$' },
-      folha: { rotulo: 'Folha (salários, 13º e férias)', un: 'R$' },
-      proLabore: { rotulo: 'Pró-labore', un: 'R$' },
-      rat: { rotulo: 'RAT', un: '%' }, fap: { rotulo: 'FAP', un: '' }, terceiros: { rotulo: 'Terceiros (sistema S)', un: '%' },
-      cprb: { rotulo: 'CPRB (desoneração da folha)', un: '%' },
-      crescimentoReceita: { rotulo: 'Crescimento da receita', un: '% ao ano' }, crescimentoFolha: { rotulo: 'Crescimento da folha', un: '% ao ano' },
-      pctImpostoEmbutido: { rotulo: 'Imposto embutido nas compras (ICMS, ST, IPI)', un: '%' },
-      pctComprasComCredito: { rotulo: 'Compras com crédito cheio de CBS/IBS (pelo NCM)', un: '%' },
-      'mix.cheia': { rotulo: 'Vendas com alíquota cheia', un: '%' }, 'mix.red60': { rotulo: 'Com redução de 60%', un: '%' }, 'mix.red30': { rotulo: 'Com redução de 30%', un: '%' },
-      'mix.red40': { rotulo: 'Bares e restaurantes (−40%)', un: '%' }, 'mix.zero': { rotulo: 'Alíquota zero', un: '%' },
-      'ativ.receita': { rotulo: 'Receita dos 12 meses', un: 'R$' }, 'ativ.aliqIcms': { rotulo: 'ICMS das vendas', un: '%' }, 'ativ.pctST': { rotulo: 'Vendas com ICMS-ST', un: '%' },
-      'ativ.pctMonofasico': { rotulo: 'Revenda monofásica (PIS/Cofins)', un: '%' }, 'ativ.aliqIss': { rotulo: 'ISS', un: '%' },
-      'ativ.presIrpj': { rotulo: 'Presunção do IRPJ', un: '%' }, 'ativ.presCsll': { rotulo: 'Presunção da CSLL', un: '%' },
-      'ativ.aliqIpi': { rotulo: 'IPI a recolher em 2026 (Presumido e Real)', un: '%' },
-      'ativ.redIcms': { rotulo: 'Redução da base do ICMS no regime geral', un: '%' }, 'ativ.redIcmsSimples': { rotulo: 'Redução do ICMS no DAS', un: '%' },
-      'grupo.receita': { rotulo: 'Receita dos 12 meses', un: 'R$' }
-    };
+    // os campos (o nome e a unidade de cada um): CAMPOS, de assets/js/comparativo-estudo.js
     const pegar = (o, caminho) => caminho.split('.').reduce((x, k) => x == null ? x : x[k], o);
     function definir(o, caminho, v) { const p = caminho.split('.'); let x = o; for (let i = 0; i < p.length - 1; i++) x = x[p[i]] = x[p[i]] ?? {}; x[p[p.length - 1]] = v; }
     const formatar = (v, un) => v == null || v === '' ? '' : un === 'R$' ? moeda(v) : pct(v, 4);
@@ -535,12 +454,7 @@
     }
     // o ano-calendário pelos números do sistema: a empresa e as outras dos sócios que vieram do sistema (sem a série de
     // uma delas, não há como somar o ano)
-    function situacaoAtual() {
-      const g = st.entrada && st.entrada.grupo || [];
-      const series = g.map(x => (st.grupoSeries || []).find(s => s.cliente_id && s.cliente_id === x.cliente_id));
-      if (series.some(s => !s || !s.serie)) return null;
-      return situacaoDoGrupo(st.serie, series.map(s => ({ nome: s.nome, serie: s.serie })));
-    }
+    const situacaoAtual = () => situacaoComGrupo(st.serie, st.entrada && st.entrada.grupo, st.grupoSeries);
     // a soma das empresas dos sócios: os 12 meses (como estão na tela) e o ano pelos números do sistema
     function textoGrupo() {
       const g = st.entrada.grupo || [];
@@ -670,33 +584,26 @@
       clearTimeout(tCalc); tCalc = setTimeout(calcular, 250);
       clearTimeout(tGravar); tGravar = setTimeout(gravar, 1500);
     }
-    // a entrada como o motor lê: os padrões vazios (null) ficam de fora pra o motor usar os dele
-    function entradaDoMotor() {
-      const e = JSON.parse(JSON.stringify(st.entrada));
-      ['cprb', 'pctImpostoEmbutido', 'pctComprasComCredito'].forEach(k => { if (e[k] == null) delete e[k]; });
-      return { ...e, aliq2027 };
-    }
     let ultimo = null;
     function calcular() {
       const box = $('resultado');
-      let c, testes = [];
       if ($('grupoSit')) { const tg = textoGrupo(); $('grupoSit').textContent = tg.txt; $('grupoSit').classList.toggle('ct-alerta', tg.alerta); }
-      try {
-        c = comparar(entradaDoMotor());
-        testes = testarPremissas(entradaDoMotor(), premissasParaTestar(st.entrada, st.origens));
-      } catch (err) {
+      // a conta inteira (a mesma do assistente do escritório): comparar, as premissas, o roteiro, os prazos, o que muda e os avisos
+      const conta = contaDoEstudo({ entrada: st.entrada, origens: st.origens, conferencia: st.conferencia, notas: st.notas, serie: st.serie,
+        grupoSeries: st.grupoSeries, socios: st.socios, aliq2027, hoje: hojeLocal() });
+      if (!conta.comparacao) {
         ultimo = null;
-        box.innerHTML = '<p class="ct-vazio">' + esc(err.message) + '</p>';
-        ultimoRoteiro = roteiroDoEstudo({ entrada: st.entrada, origens: st.origens, serie: st.serie, socios: st.socios, achadas: (st.grupoSeries || []).length, conferencia: st.conferencia });
+        box.innerHTML = '<p class="ct-vazio">' + esc(conta.erro) + '</p>';
+        ultimoRoteiro = conta.roteiro;
         renderJornada(ultimoRoteiro);
         return;
       }
+      const c = conta.comparacao;
       ultimo = c;
-      const rot = roteiroDoEstudo({ entrada: st.entrada, origens: st.origens, comparacao: c, testes, situacao: situacaoAtual(), serie: st.serie, socios: st.socios, achadas: (st.grupoSeries || []).length, conferencia: st.conferencia });
+      const rot = conta.roteiro;
       ultimoRoteiro = rot;
       renderJornada(rot);
       const decidem = rot.passos.filter(p => p.estado !== 'feito' && p.peso === 'decide');
-      const d = c.decisao;
       const anos = c.anos;
       const atual = st.entrada.regimeAtual;
       // a tabela: um regime por linha, um ano por coluna; o mais barato de cada ano em verde
@@ -728,32 +635,17 @@
         conf = '<p class="ct-sub' + (longe ? ' ct-alerta' : '') + '">Conferência: no PGDAS de ' + esc(rotuloComp(st.conferencia.competencia)) + ' a alíquota efetiva foi ' + esc(pct(deles, 2)) + '%; a conta do Simples nos 12 meses dá ' + esc(pct(nossa, 2)) + '%.' +
           (longe ? ' A diferença pode ser receita em outro anexo, ST ou monofásico, ou o RBT12 — confira as linhas de receita.' : '') + '</p>';
       }
-      // o que muda o resultado: o lucro do Real e as premissas que ficaram no padrão
-      const muda = [];
-      if (d && d.real) {
-        const ep = d.real.empate.presumido, es = d.real.empate.simples;
-        const lucroTxt = d.real.lucro < 0 ? 'a conta deu prejuízo de ' + brl(-d.real.lucro) : 'a conta usou lucro de ' + brl(d.real.lucro) + (d.real.margem != null ? ' (' + pct(d.real.margem * 100) + '% da receita)' : '');
-        if (ep) muda.push(ep.nunca ? 'Nem com lucro zero o Real fica abaixo do Presumido em ' + d.ano + '.' : 'O Real empata com o Presumido em ' + d.ano + ' com lucro de ' + brl(ep.lucro) + ' antes do IR (' + pct(ep.margem * 100) + '% da receita) — abaixo disso, o Real é mais barato; ' + lucroTxt + '.');
-        if (es && r0(c, 'simples')) muda.push(es.nunca ? 'Nem com lucro zero o Real fica abaixo do Simples em ' + d.ano + '.' : 'O Real empata com o Simples em ' + d.ano + ' com lucro de ' + brl(es.lucro) + ' (' + pct(es.margem * 100) + '% da receita).');
-      }
-      const mudam = testes.filter(t => t.muda), naoMudam = testes.filter(t => !t.muda);
-      // "7%", "50% das compras"
-      const un = t => !t.unidade ? '' : t.unidade.startsWith('%') ? t.unidade : ' ' + t.unidade;
-      mudam.forEach(t => {
-        const v = t.variantes.filter(x => x.melhor !== t.melhorBase).map(x => pct(x.valor, 2) + un(t) + ', o mais barato passa a ser o ' + ROTULO_REGIME[x.melhor]).join('; com ');
-        muda.push({ txt: 'Com ' + t.rotulo + ' em ' + v + '. O número usado é um padrão — confira.', alerta: true });
-      });
-      if (naoMudam.length) muda.push('Não mudam o resultado: ' + naoMudam.map(t => t.rotulo + (t.variantes.length === 1 ? ' em ' + pct(t.variantes[0].valor, 2) + un(t) : ' entre ' + t.variantes.map(x => pct(x.valor, 2)).join(' e ') + un(t))).join('; ') + '.');
-      const temFolha = (Number(st.entrada.folha) || 0) + (Number(st.entrada.proLabore) || 0) > 0;
-      const avisos = [...new Set([...(st.notas || []).filter(n => !(temFolha && /^A folha e o pró-labore não estão no sistema/.test(n))), ...c.avisos, ...REGIMES.flatMap(g => (anos.find(r => r.ano === c.anoDecisao) || anos[0])[g].avisos || [])])];
-      const prazos = prazosDaEscolha(hojeLocal(), atual, c.anoDecisao);
+      // o que muda o resultado (o lucro do Real e as premissas que ficaram no padrão), os avisos e os prazos: da conta
+      const { muda, avisos, prazos } = conta;
       box.innerHTML =
         '<p class="ct-frase">' + (rot.provisorio ? '<span class="ct-prov-tag">Provisório</span>' : rot.pronto ? '<span class="ct-pronto-tag">Pronto pra apresentar</span>' : '') + esc(fraseDaDecisao(c)) + '</p>' +
         (rot.provisorio ? '<p class="ct-sub ct-alerta">Ainda pode virar. ' + (decidem.length === 1 ? 'Missão que falta: ' : 'Missões que faltam: ') + esc(decidem.map(p => p.curto || p.titulo).join('; ')) + ' (veja "Por onde começar").</p>' : '') +
+        // o ano de agora já passou (ou passa, no ritmo de hoje) do limite: a saída do Simples cobre o ano da decisão
+        (conta.limite ? '<p class="ct-sub ct-alerta" id="alertaLimite">' + esc(conta.limite) + '</p>' : '') +
         conf +
         '<div class="ct-tab"><table class="ct" aria-label="Tributos por regime e por ano">' + cab + linhaRec + linhas + '</table></div>' +
         '<details class="ct-det"><summary>Por tributo</summary>' + det + '</details>' +
-        (muda.length ? '<div class="ct-bloco"><h3>O que muda o resultado</h3><ul>' + muda.map(m => typeof m === 'string' ? '<li>' + esc(m) + '</li>' : '<li class="ct-muda">' + esc(m.txt) + '</li>').join('') + '</ul></div>' : '') +
+        (muda.length ? '<div class="ct-bloco"><h3>O que muda o resultado</h3><ul>' + muda.map(m => '<li' + (m.alerta ? ' class="ct-muda"' : '') + '>' + esc(m.txt) + '</li>').join('') + '</ul></div>' : '') +
         (prazos.length ? '<div class="ct-bloco ct-prazos"><h3>Prazos pra decidir</h3><ul>' + prazos.map(p => '<li><b>' + esc(p.titulo) + ':</b> ' + esc(p.texto) + '</li>').join('') + '</ul></div>' : '') +
         '<div class="ct-bloco"><h3>Premissas e avisos</h3><ul>' +
           '<li>Todo tributo é calculado sobre a receita de hoje e conta como custo da empresa. Em 2027, a CBS/IBS do Presumido e do Real vai destacada na nota e o cliente empresa do regime regular credita tudo; no Simples por dentro, ele credita só a fatia de CBS/IBS do DAS — essa diferença pro cliente não entra na conta. A opção do Simples por fora está na <a href="fiscal-reforma.html">Reforma Tributária</a>.</li>' +
@@ -874,8 +766,6 @@
       const lab = el.closest('.ct-campo');
       if (lab) { lab.classList.add('ct-aqui'); setTimeout(() => lab.classList.remove('ct-aqui'), 1800); }
     }
-    const anoDe = (c, ano) => c.anos.find(r => r.ano === ano) || c.anos[0];
-    const r0 = (c, g, ano) => { const r = anoDe(c, ano || c.anoDecisao); return r && r[g] && r[g].disponivel; };
 
     // ---------- gravar (sem botão: cada mudança grava um instante depois) ----------
     let gravando = null;
@@ -887,10 +777,7 @@
       if (st.semTabela) { $('gravado').textContent = 'Os estudos ainda não ficam gravados: a gravação não foi liberada no banco.'; return; }
       if (gravando) { await gravando.catch(() => {}); }
       const c = ultimo;
-      const resultado = c && c.decisao ? {
-        anoDecisao: c.anoDecisao, melhor: c.decisao.melhor, diferenca: c.decisao.diferenca,
-        totais: Object.fromEntries(c.anos.map(r => [r.k === 0 ? 'base' : String(r.ano), Object.fromEntries(REGIMES.map(g => [g, r[g].disponivel ? Math.round(r[g].total * 100) / 100 : null]))]))
-      } : null;
+      const resultado = resumoParaGravar(c);
       const agora = new Date().toISOString();
       const linha = { cliente_id: st.cliente ? st.cliente.id : null, nome: st.cliente ? null : st.nome,
         entrada: { v: 1, entrada: st.entrada, origens: st.origens, conferencia: st.conferencia }, resultado, atualizado_por: usuario, atualizado_em: agora };
@@ -953,6 +840,23 @@
       if (ap.conferencia) st.conferencia = ap.conferencia;
       (cons.avisos || []).forEach(a => { if (!st.notas.includes(a)) st.notas.push(a); });
       renderForm(); mudou();
+    }
+
+    // ---------- o assistente do escritório: "esta empresa" é a do estudo aberto ----------
+    // a pergunta leva a empresa (e o estudo, que pode ser de empresa sem cadastro) e sai depois da gravação que estava
+    // marcada: o assistente lê o estudo como está na tela e faz a mesma conta (a ferramenta comparativo da função assistente)
+    const assistente = assistenteDaTela({
+      recadoContexto: c => ({ texto: 'Dúvida no estudo de ' + c.nome + '? Eu explico o resultado e faço o "e se" com outros números.', exemplos: ['Por que este regime sai mais barato?'] }),
+      exemplos: c => (c ? ['Por que este regime sai mais barato?', 'O que falta pra fechar o estudo?', 'E se a folha for R$ 30 mil por mês?']
+        : ['Quais empresas já têm estudo no comparativo?', 'O que o comparativo leva em conta?']),
+      seguintes: c => (c ? ['A partir de que lucro o Real compensa?', 'E se a receita crescer 15% ao ano?'] : []),
+      contexto: c => (c ? { ...(c.clienteId ? { cliente_id: c.clienteId } : {}), ...(st.estudoId ? { comparativo_id: st.estudoId } : {}) } : {}),
+      antes: () => gravarPendente()
+    });
+    function contextoDoAssistente() {
+      const c = st.cliente;
+      assistente.definirContexto({ id: 'comparativo:' + (c ? c.id : 'nome:' + st.nome), tipo: 'comparativo', clienteId: c ? c.id : null,
+        nome: c ? c.nome_principal : st.nome, rotulo: 'Sobre o estudo aberto', nota: 'Sobre o estudo de ' });
     }
 
     // ---------- o link direto: ?cliente=<id> ----------

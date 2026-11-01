@@ -38,7 +38,7 @@ chk('o prompt: as notícias (triadas, a principal do grupo, a leitura da IA a co
   /as que valem são as triadas \(situacao = triada\)/.test(INSTRUCOES) && /consultar noticias com clientes contem o id dela/.test(INSTRUCOES) && /são a leitura da IA do feed/.test(INSTRUCOES)
   && /as revisões de honorário são só dos sócios/.test(INSTRUCOES));
 chk('o dicionário do prompt lista as tabelas e não tem credenciais', Object.keys(TABELAS).every(t => dicionario().includes('## ' + t + ' ')) && !/credenciais/.test(dicionario()));
-chk('as definições: as seis de ler e as onze propostas, consultar só com as tabelas da lista', DEFINICOES.map(d => d.name).join() === 'buscar_empresa,ver_empresa,agenda,consultar,perguntar_reforma,buscar_arquivos,propor_concluir_tarefas,propor_alterar_tarefas,propor_registrar_historico,propor_marcar_pago,propor_criar_tarefa,propor_enviar_mensagem,propor_revisao_atrasadas,propor_ver_vigia,propor_incluir_reforma,propor_por_na_competencia,propor_ajustar_obrigacoes'
+chk('as definições: as sete de ler e as onze propostas, consultar só com as tabelas da lista', DEFINICOES.map(d => d.name).join() === 'buscar_empresa,ver_empresa,agenda,consultar,perguntar_reforma,buscar_arquivos,comparativo,propor_concluir_tarefas,propor_alterar_tarefas,propor_registrar_historico,propor_marcar_pago,propor_criar_tarefa,propor_enviar_mensagem,propor_revisao_atrasadas,propor_ver_vigia,propor_incluir_reforma,propor_por_na_competencia,propor_ajustar_obrigacoes'
   && JSON.stringify(DEFINICOES.find(d => d.name === 'consultar').input_schema.properties.tabela.enum) === JSON.stringify(Object.keys(TABELAS)));
 chk('o prompt: a Reforma sozinha na rodada (a resposta dela vai direto, com as fontes); a tela pelo nome e a situação por extenso',
   /Chame sozinha na rodada/.test(INSTRUCOES) && /mantenha as fontes dele entre colchetes/.test(INSTRUCOES) && /não financeiro-boletos\.html/.test(INSTRUCOES) && /não em_transicao/.test(INSTRUCOES)
@@ -639,7 +639,8 @@ const usarFerramenta = (name, input) => ({ stop_reason: 'tool_use', content: [{ 
   chk('avaliação usada, velha ou inventada: 403', (await criarServidor({ env: k => ENV[k], fetch: f2, agora: () => AGORA, chamar: final('x') })(pedido({ avaliacao: linhaAv.id }, 'anon'))).status === 403);
 }
 chk('contexto: só o que a tela pode mandar', JSON.stringify(limparContexto({ pagina: { caminho: '../x.html' }, cliente_id: 'nao-uuid', caso_id: CASO, tela: { input: {} }, outro: 1 }))
-  === JSON.stringify({ pagina: null, cliente_id: null, caso_id: CASO, tela: { input: {} } }));
+  === JSON.stringify({ pagina: null, cliente_id: null, caso_id: CASO, tela: { input: {} }, comparativo_id: null }));
+chk('contexto: o estudo aberto no Comparativo tributário, só com id de verdade', limparContexto({ comparativo_id: ID_A }).comparativo_id === ID_A && limparContexto({ comparativo_id: 'x' }).comparativo_id === null);
 chk('página: caminho de tela do sistema, nome sem marcação, setor da lista', JSON.stringify(limparPagina({ caminho: 'clientes/editar.html', nome: 'Ficha <b>x</b>\n', setor: 'hacker' }))
   === JSON.stringify({ caminho: 'clientes/editar.html', nome: 'Ficha b x /b', setor: null }));
 chk('cálculo da tela só com a ficha da Reforma', limparContexto({ tela: { input: {} } }).tela === null);
@@ -885,6 +886,81 @@ console.log('Os cadastros (30/10/2026): incluir na Reforma, pôr num mês dos bo
     && descreverEtapa('propor_ajustar_obrigacoes') === 'Separando as obrigações pra você confirmar' && /propor_incluir_reforma; o nome e o CNPJ de cada uma vão na resposta/.test(INSTRUCOES)
     && /propor_por_na_competencia/.test(INSTRUCOES) && /propor_ajustar_obrigacoes — o dia novo vale das próximas tarefas/.test(INSTRUCOES) && /incluir empresa na campanha da Reforma, pôr empresa num mês dos boletos/.test(INSTRUCOES)
     && /Nas três, chame a proposta direto, com as empresas e as obrigações como a pessoa escreveu \(sem buscar antes\)/.test(INSTRUCOES) && /se a pessoa falou de uma empresa só e são várias, pergunte qual/.test(INSTRUCOES));
+}
+
+console.log('O comparativo tributário (a mesma conta da tela, com o "e se"):');
+{
+  // o restaurante do RS (o caso da Reforma com o faturamento do Domínio) e a padaria do mesmo sócio (achada pelo CPF)
+  const ID_R = '77777777-7777-4777-8777-777777777777', ID_P = '88888888-8888-4888-8888-888888888888', ID_PF = '99999999-9999-4999-8999-999999999999';
+  const EST_SEM = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', EST_P = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  const meses = (ini, fim) => Array.from({ length: 12 }, (_, i) => { const d = new Date(Date.UTC(2025, 7 + i, 1)); const c = d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
+    return { competencia: c, total: c >= '2026-01' ? fim : ini, saidas: c >= '2026-01' ? fim : ini, servicos: 0, outros: 0 }; });
+  const sim = { v: 1, input: { anexo: 'I', receita: 200416.67, pctComprasMercadorias: 45, mixCheia: 8, mixRed40: 92, mixRed60: 0, mixRed30: 0, mixZero: 0, pctReceitaMonofasica: 8 },
+    fontes: { mixCheia: 'seções do PGDAS 07/2026: revenda com ST (bebidas)', pctExcluidoST: 'do Domínio: PGDAS 2026-07: 14% a menos (receita com ST/monofásico e redução de 40% na base do ICMS)' },
+    dominio: { meses: meses(180000, 215000), pgdas: { competencia: '2026-07', aliquotaEfetiva: 9.05, dasTotal: 19457.5 } } };
+  const extras = {
+    clientes: [...CLIENTES, { id: ID_R, nome_principal: 'RESTAURANTE EXEMPLO LTDA', nome_fantasia: 'EXEMPLO', documento: '44444444000144', tipo_pessoa: 'PJ', regime_tributario: 'Simples Nacional', status: 'ativo', cnae_principal: '5620-1/04', cidade: 'Três Coroas', uf: 'RS' },
+      { id: ID_P, nome_principal: 'PADARIA IRMA LTDA', nome_fantasia: null, documento: '55555555000155', tipo_pessoa: 'PJ', regime_tributario: 'Simples Nacional', status: 'ativo', cnae_principal: '1091-1/02', cidade: 'Igrejinha', uf: 'RS' },
+      { id: ID_PF, nome_principal: 'JOAO DA SILVA', nome_fantasia: null, documento: '12345678909', tipo_pessoa: 'PF', regime_tributario: null, status: 'ativo' }],
+    socios: [{ cliente_id: ID_R, nome: 'FULANO DE TAL', cpf: '11122233344', participacao_percentual: 100 }, { cliente_id: ID_P, nome: 'FULANO DE TAL', cpf: '11122233344', participacao_percentual: 50 }],
+    rt_casos: [{ id: CASO, cliente_id: ID_R, anexo: 'I', receita_mensal: 200416.67, sim_obs: JSON.stringify(sim), atualizado_em: '2026-10-01T12:00:00Z' },
+      { id: 'rc-p', cliente_id: ID_P, anexo: 'II', receita_mensal: 180416.67, sim_obs: JSON.stringify({ v: 1, input: { anexo: 'II' }, dominio: { meses: meses(160000, 195000) } }), atualizado_em: '2026-10-01T12:00:00Z' }],
+    rt_parametros: [{ chave: 'aliq_ref_2027', valor: { cbs: 11.3, cbs_aplicada: 11.2, ibs: 0.1 } }],
+    fr_empresas: [], fr_lancamentos: [], receita_pgdas: [],
+    comparativos: [{ id: EST_SEM, cliente_id: null, nome: 'PROSPECT DO DIEGO LTDA', entrada: { v: 1, entrada: { atividades: [{ tipo: 'servico', receita: 900000 }], folha: 120000, regimeAtual: 'presumido' }, origens: { folha: { fonte: 'digitado', texto: 'digitado' } } },
+        resultado: null, atualizado_em: '2026-11-01T13:00:00Z', atualizado_por: 'diego@macedoereis.com.br' },
+      { id: EST_P, cliente_id: ID_P, nome: null, entrada: { v: 1, entrada: { atividades: [{ tipo: 'industria', receita: 2000000 }], grupo: [] }, origens: {} },
+        resultado: { anoDecisao: 2027, melhor: 'presumido', diferenca: 1234.5, totais: { base: { simples: 1, presumido: 2, real: 3 }, 2027: { simples: null, presumido: 200000, real: 201234.5 }, 2028: { simples: null, presumido: 1, real: 1 } } },
+        atualizado_em: '2026-11-01T14:00:00Z', atualizado_por: 'financeiro@macedoereis.com.br' }]
+  };
+  const { banco, log } = bancoFalso({ extras });
+  const fs = criarFerramentas({ banco, hoje: '2026-11-01', contexto: { cliente_id: ID_R }, usuario: { email: 'fiscal@macedoereis.com.br', nome: 'Thalia', socio: false } });
+  const t = await fs.comparativo({});
+  chk('sem empresa: a aberta na tela, com os números do sistema (sem estudo gravado)', /^COMPARATIVO TRIBUTÁRIO — RESTAURANTE EXEMPLO LTDA \(EXEMPLO\) · id 7777/.test(t) && /Ainda não há estudo gravado: os números são os que o sistema tem hoje/.test(t), t.slice(0, 300));
+  chk('o resultado por ano e regime, a decisão e por tributo', /- Simples Nacional \(o regime de hoje\): últimos 12 meses R\$\s?[\d.]+,\d\d \([\d,]+% da receita\)/.test(t) && /A decisão \(2027\): Em 2027, o /.test(t)
+    && /POR TRIBUTO \(R\$ no ano: últimos 12 meses · 2027 · 2028\)/.test(t) && /- Lucro Presumido: IRPJ [\d.]+,\d\d · /.test(t) && /lucro antes do IR calculado/.test(t));
+  chk('o aviso do limite: a soma com a padaria passa em dezembro e o Simples sai em 2027', /ATENÇÃO, O LIMITE DO SIMPLES: .*passa do limite de R\$ 4,8 milhões em dezembro: a saída do Simples vale a partir de 01\/01\/2027/.test(t));
+  chk('as empresas dos sócios, com o sócio em comum pelo nome', /EMPRESAS DOS MESMOS SÓCIOS/.test(t) && /- PADARIA IRMA LTDA — sócio em comum: FULANO DE TAL: R\$\s?2\.165\.000,00 nos 12 meses \[caso da Reforma: faturamento do Domínio/.test(t));
+  chk('os números e de onde veio cada um (a refeição no RS, o padrão a conferir)', /OS NÚMEROS DO ESTUDO/.test(t) && /ICMS das vendas 12% \[refeição no RS: 12% — confira\]/.test(t) && /- Folha \(salários, 13º e férias\): R\$\s?0,00 \[falta no sistema: digite\]/.test(t));
+  chk('as fases e as missões, com o provisório e o que decide', /Situação: PROVISÓRIO: faltam missões que podem virar o resultado — .*a folha e o pró-labore/.test(t) && /\[falta · decide o resultado\] A folha e o pró-labore/.test(t) && /Próximo passo: /.test(t));
+  chk('o que muda, os prazos, os avisos e o recado de como responder', /O QUE MUDA O RESULTADO/.test(t) && /\[premissa no padrão que vira o resultado\] Com o crédito de ICMS das compras em 17%/.test(t)
+    && /- Sair do Simples em 2027: Comunicar a exclusão por opção no Portal do Simples até 31\/12\/2026/.test(t) && /AVISOS DA CONTA/.test(t) && /Use os números daqui, sem refazer conta: outro cenário é outra chamada, com e_se/.test(t));
+  chk('o CPF casa as empresas lá dentro e não sai na resposta', log.some(x => /^socios\?select=nome,cpf/.test(x.caminho)) && !/11122233344|111\.222\.333-44/.test(t));
+  chk('a CBS de 2027 do rt_parametros', log.some(x => x.caminho.startsWith('rt_parametros?select=valor&chave=eq.aliq_ref_2027')));
+  const nEscritas = log.length;
+  const es = await fs.comparativo({ e_se: { folha_12_meses: 480000, pro_labore_12_meses: 60000, margem_lucro_real: 6 } });
+  chk('o "e se": o que mudou, nada gravado, o resultado com a mudança e o de antes', /— E SE\nSó nesta conta: nada foi gravado\. Pra valer, a pessoa muda o campo na tela Comparativo tributário\./.test(es)
+    && /- Folha \(salários, 13º e férias\): R\$\s?0,00 → R\$\s?480\.000,00/.test(es) && /pra o lucro do Real antes do IR dar 6% da receita em 2027/.test(es)
+    && /RESULTADO COM A MUDANÇA/.test(es) && /SEM A MUDANÇA \(o estudo\), em 2027: Simples Nacional R\$/.test(es) && /2027 R\$\s?144\.300,00/.test(es), es.slice(0, 900));
+  chk('o "e se" só lê', log.slice(nEscritas).every(x => /^(clientes|rt_casos|fr_empresas|fr_lancamentos|receita_pgdas|comparativos|socios|rt_parametros)\?/.test(x.caminho)));
+  const fsP = criarFerramentas({ banco, hoje: '2026-11-01', contexto: {}, usuario: { socio: true } });
+  const gr = await fsP.comparativo({ empresa: ID_P });
+  chk('o estudo gravado vale: quem gravou e quando, e os números dele', /O estudo gravado na tela Comparativo tributário em 01\/11\/2026, 11:00 por Samuel: os números são os dele/.test(gr) && /Atividade 1: Indústria/.test(gr)
+    && /EMPRESAS DOS MESMOS SÓCIOS: nenhuma na soma do limite \(a equipe tirou da soma a que o sistema achou\)/.test(gr), gr.slice(0, 400));
+  chk('o sistema hoje com outra receita: diz qual, e onde recomeçar', /O SISTEMA HOJE tem números diferentes dos do estudo gravado: receita dos 12 meses R\$\s?2\.165\.000,00 \(o estudo usa R\$\s?2\.000\.000,00\)\. Na tela, "Recomeçar com os números do sistema" troca/.test(gr),
+    gr.split('\n').find(l => /SISTEMA HOJE/.test(l)));
+  const sc = await criarFerramentas({ banco, hoje: '2026-11-01', contexto: { comparativo_id: EST_SEM } }).comparativo({});
+  chk('o estudo aberto de empresa sem cadastro (o da tela)', /^COMPARATIVO TRIBUTÁRIO — PROSPECT DO DIEGO LTDA \(empresa sem cadastro no sistema\)/.test(sc) && /por Diego/.test(sc) && /Regime de hoje: Lucro Presumido\./.test(sc), sc.slice(0, 300));
+  const pn = await fsP.comparativo({ empresa: 'prospect do diego' });
+  chk('pelo nome, o estudo de empresa sem cadastro', /^COMPARATIVO TRIBUTÁRIO — PROSPECT DO DIEGO LTDA/.test(pn), pn.slice(0, 200));
+  chk('pessoa física: o comparativo é de empresa', /JOAO DA SILVA é pessoa física \(IRPF\): o comparativo tributário é de empresa\./.test(await fsP.comparativo({ empresa: ID_PF })));
+  const ve = await fsP.ver_empresa({ empresa: ID_P });
+  chk('ver_empresa: o estudo gravado, numa linha, e onde ver o resto', /Comparativo tributário: estudo gravado em 01\/11\/2026 por Samuel — em 2027 o mais barato é o Lucro Presumido \(Simples Nacional fora · Lucro Presumido R\$\s?200\.000,00 · Lucro Real R\$\s?201\.234,50\), R\$\s?1\.234,50 a menos que o segundo \(os números, o porquê, o que falta e o "e se": comparativo\)/.test(ve), ve.split('\n').find(l => /Comparativo/.test(l)));
+  chk('consultar: os estudos, sem a entrada', TABELAS.comparativos && !TABELAS.comparativos.cols.includes('entrada') && TABELAS.comparativos.cols.includes('resultado'));
+  chk('a etapa do comparativo e a do "e se"', descreverEtapa('comparativo', {}) === 'Fazendo a conta do comparativo' && descreverEtapa('comparativo', { empresa: 'Arsenal', e_se: { folha_12_meses: 1 } }) === 'Refazendo o comparativo com o "e se" de Arsenal');
+  chk('o prompt: a tela no mapa e quando usar o comparativo (e o "e se" que não grava)', /Comparativo tributário \(fiscal-comparativo\.html — /.test(montarSistema()[0].text) && /use comparativo\. É a mesma conta da tela Comparativo tributário/.test(INSTRUCOES)
+    && /outro número é outra chamada, com e_se, que não grava nada/.test(INSTRUCOES) && /é da Reforma \(perguntar_reforma\)/.test(INSTRUCOES));
+  chk('o preâmbulo com o estudo de empresa sem cadastro', /Estudo do Comparativo tributário aberto na tela: PROSPECT LTDA, empresa sem cadastro — "esta empresa" é ela/.test(preambulo({ hoje: '2026-11-01', estudo: 'PROSPECT LTDA' })));
+}
+{
+  // o servidor: o estudo da tela vira a empresa aberta (ou, sem cadastro, vai pelo nome no preâmbulo)
+  const EST = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  const { f } = servidorFalso();
+  const f2 = async (url, o = {}) => (String(url).includes('/rest/v1/comparativos') ? new Response(JSON.stringify(String(url).includes(EST) ? [{ id: EST, cliente_id: null, nome: 'PROSPECT [LTDA]' }] : []), { status: 200, headers: { 'Content-Type': 'application/json' } }) : f(url, o));
+  let corpoModelo = null;
+  await criarServidor({ env: k => ENV[k], fetch: f2, agora: () => AGORA, chamar: async c => { corpoModelo = c; return final('ok')(); } })(pedido({ pergunta: 'Qual o mais barato?', contexto: { pagina: { caminho: 'fiscal-comparativo.html', nome: 'Comparativo tributário', setor: 'fiscal' }, comparativo_id: EST } }));
+  const msg = corpoModelo.messages[corpoModelo.messages.length - 1].content.map(b => b.text).join('');
+  chk('o servidor: o estudo sem cadastro aberto vai no preâmbulo pelo nome (sem colchete)', /Estudo do Comparativo tributário aberto na tela: PROSPECT  LTDA , empresa sem cadastro/.test(msg) && /Tela aberta: Comparativo tributário — fiscal-comparativo\.html \(setor fiscal\)/.test(msg), msg);
 }
 
 console.log('Commit fixado na função (o código cru do GitHub):');

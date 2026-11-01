@@ -632,8 +632,9 @@ export function montarAssistente(op) {
       // o histórico que vai junto é só o do mesmo contexto: a conversa sobre uma empresa não entra na de outra
       // com a hora de cada pergunta: a de outro dia vai marcada pra IA ("amanhã", dito ontem, não vira erro hoje)
       const historico = est.historico.filter(h => h.ctxId === cid).slice(-6).map(h => ({ pergunta: h.pergunta, resposta: h.resposta, ...(h.em ? { em: h.em } : {}) }));
-      const corpo = { pergunta: t, historico, conversa: est.conversa, ...(pedido ? { pedido } : {}), contexto: (op.contexto ? op.contexto(c) : null) || {} };
+      // o preparo da tela vem antes do contexto: o que ele grava (o estudo do Comparativo) já vai na pergunta
       if (op.antes) await Promise.resolve().then(op.antes).catch(() => {});
+      const corpo = { pergunta: t, historico, conversa: est.conversa, ...(pedido ? { pedido } : {}), contexto: (op.contexto ? op.contexto(c) : null) || {} };
       res = await op.perguntar(corpo, e => { if (g !== geracao) return; etapas.push(e); ultimaEtapa = e; atualizarDigitando(); });
     } catch (e) { erro = (e && e.message) || 'Erro no assistente.'; }
     if (g !== geracao) return;   // a conversa mudou enquanto esperava

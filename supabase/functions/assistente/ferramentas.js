@@ -13,6 +13,8 @@
 // + assets/js/tarefas-acoes.js — a mensagem, assets/js/chat-equipe.js —, a mesma regra das telas). Uma proposta por
 // pergunta (a mensagem com arquivo toma o lugar do cartão dos arquivos que a buscou).
 // O vigia do sistema (vigia_achados) entra na lista e no ver_empresa: o que o banco achou de desencontrado ou parado.
+// Desde 01/11/2026, o comparativo tributário (a ferramenta comparativo, em comparativo.js: o estudo como a tela abre e a
+// mesma conta, com o "e se" que não grava nada) e os estudos gravados (comparativos, só o resumo) — e no ver_empresa.
 // Desde 20/10/2026, o feed de notícias (noticias, com a fonte pelo nome e as empresas que cada uma alcança pelo nome) e a
 // revisão do honorário dos clientes (revisoes_honorario, só dos sócios) também — e as duas no ver_empresa.
 // Lista branca: só as tabelas e colunas daqui são lidas. Ficam fora a senha/credencial do cadastro, o RG e o nascimento
@@ -30,6 +32,7 @@ import { ficaDeFora, mudancaDe, proximasNascemCom, PRIORIDADES, limparMensagem, 
 import { rotuloDaRegra } from '../../../assets/js/vigia.js';
 import { ROTULO_SETOR, ROTULO_RELEVANCIA } from '../../../assets/js/noticias.js';
 import { pastaDaUrl, filtrarArquivos } from './drive.js';
+import { comparativoDaEmpresa, resumoDoResultado } from './comparativo.js';
 
 // ---------- a lista branca: tabela → colunas lidas, as que vêm sem pedir, o que é cada coisa ----------
 // notas: o que o modelo precisa saber da coluna (valores possíveis, unidade); enums: colunas de tipo enumerado no banco
@@ -186,6 +189,15 @@ export const TABELAS = {
       'sim_custo_dentro', 'sim_custo_fora', 'obs', 'atualizado_em'],
     padrao: ['cliente_id', 'triagem', 'decisao', 'status', 'comunicado_em'],
     notas: { decisao: 'pendente | por_dentro | por_fora', status: 'triado | validado | simulado | decidido | comunicado | opcao_registrada' } },
+  // o comparativo tributário (01/11/2026): o estudo que a tela grava sozinha; aqui só o resumo — os números, a conta, o
+  // porquê e o "e se" vêm da ferramenta comparativo
+  comparativos: { rotulo: 'os estudos do comparativo tributário',
+    desc: 'Os estudos da tela Comparativo tributário (Simples × Presumido × Real: os últimos 12 meses e 2027 e 2028), um por empresa; a de fora do cadastro, pelo nome. Aqui só o resumo do resultado: os números, o porquê, o que falta e o "e se", pela ferramenta comparativo.',
+    cols: ['id', 'cliente_id', 'nome', 'resultado', 'criado_por', 'criado_em', 'atualizado_por', 'atualizado_em'],
+    padrao: ['cliente_id', 'nome', 'resultado', 'atualizado_por', 'atualizado_em'],
+    notas: { cliente_id: 'vazio = empresa sem cadastro (o nome dela em nome)', nome: 'só no estudo de empresa sem cadastro',
+      resultado: '{ anoDecisao, melhor (simples | presumido | real: o mais barato no ano da decisão), diferenca (R$ no ano, pro segundo mais barato), totais: { base (os últimos 12 meses), "2027", "2028": { simples, presumido, real } } } — R$ de tributos no ano; vazio = fora do Simples',
+      atualizado_por: 'e-mail de quem mexeu por último', criado_por: 'e-mail de quem começou o estudo' } },
   nf_documentos: { rotulo: 'as notas fiscais importadas', desc: 'Notas importadas (XML) por empresa.',
     cols: ['id', 'cliente_id', 'modelo', 'numero', 'data_emissao', 'tipo', 'natureza_operacao', 'emit_nome', 'emit_doc', 'dest_nome', 'dest_doc', 'valor_total', 'cfop_principal', 'status'],
     padrao: ['cliente_id', 'modelo', 'data_emissao', 'tipo', 'emit_nome', 'dest_nome', 'valor_total'] },
@@ -317,6 +329,27 @@ export const DEFINICOES = [
     input_schema: { type: 'object', properties: {
       empresa: { type: 'string', description: 'id, nome ou CNPJ (sem: a empresa aberta na tela)' },
       termo: { type: 'string', description: 'palavras do nome do arquivo ou da pasta, sem o nome da empresa (ex.: "contrato social", "alvará", "DAS setembro 2026"); sem: os mais recentes' } } } },
+  { name: 'comparativo',
+    description: 'O comparativo tributário de uma empresa (a tela Comparativo tributário, no Fiscal): os tributos a recolher no Simples Nacional, no Lucro Presumido e no Lucro Real nos últimos 12 meses (regras de 2026) e em 2027 e 2028, o mais barato de cada ano e a decisão, por tributo, o lucro em que o Real empata, as premissas no padrão que viram o resultado, o limite do Simples com as empresas dos mesmos sócios, os prazos pra mudar de regime, o que falta no estudo (as fases e as missões da tela) e de onde veio cada número. Lê o estudo gravado na tela (sem ele, os números do sistema, como a tela ao abrir a empresa) e faz a mesma conta da tela. Com e_se, refaz com os números trocados — só na resposta, nada é gravado. Sem "empresa", a aberta na tela.',
+    input_schema: { type: 'object', properties: {
+      empresa: { type: 'string', description: 'id, nome ou CNPJ (sem: a empresa ou o estudo aberto na tela); estudo de empresa sem cadastro: o nome dele' },
+      e_se: { type: 'object', description: 'opcional: só os números que a pessoa quer trocar. Valores em R$ dos 12 meses (o mensal × 12); percentuais como a equipe fala (17 = 17%)',
+        properties: {
+          receita_12_meses: { type: 'number', description: 'a receita dos 12 meses: as compras e as despesas acompanham (o mesmo % da receita); a folha e o pró-labore ficam' },
+          folha_12_meses: { type: 'number', description: 'salários, 13º e férias dos 12 meses' },
+          pro_labore_12_meses: { type: 'number' },
+          compras_12_meses: { type: 'number', description: 'mercadorias e insumos dos 12 meses' },
+          outras_despesas_12_meses: { type: 'number', description: 'o resto dos custos (aluguel, sistemas, contador, manutenção…): fazem o lucro do Real' },
+          margem_lucro_real: { type: 'number', description: 'o lucro do Real antes do IR, em % da receita do ano da decisão: a conta acha as outras despesas que dão esse lucro' },
+          crescimento_receita: { type: 'number', description: '% ao ano nas projeções (2027 e 2028)' },
+          crescimento_folha: { type: 'number', description: '% ao ano nas projeções' },
+          credito_icms_compras: { type: 'number', description: '% do crédito de ICMS das compras' },
+          icms_vendas: { type: 'number', description: '% do ICMS das vendas (todas as atividades com ICMS)' },
+          iss: { type: 'number', description: '% do ISS (todas as atividades com ISS)' },
+          compras_fornecedor_simples: { type: 'number', description: '% das compras feitas de fornecedor do Simples' },
+          rat: { type: 'number', description: 'o RAT, de 1 a 3 (%)' },
+          sem_empresas_dos_socios: { type: 'boolean', description: 'tirar da soma do limite do Simples as outras empresas dos sócios' },
+          regime_atual: { type: 'string', enum: ['simples', 'presumido', 'real'], description: 'o regime de hoje (muda os prazos)' } } } } } },
   // as propostas: nada muda aqui — a tela mostra o cartão, a pessoa confirma (e pode desfazer)
   { name: 'propor_concluir_tarefas',
     description: 'Prepara a conclusão de tarefas pra pessoa confirmar na tela — nada é concluído aqui: a tela mostra a lista (ela pode desmarcar alguma) com o botão "Concluir" e, depois, o "Desfazer". Só quando a pessoa pedir pra concluir ou marcar como feita(s). Diga quais: ids (de consultar), ou empresa, pessoa e/ou parte do título — prazo, setor e "atrasadas" afinam. Só tarefas abertas; até 300. Pediu pra deixar escrito no histórico o que foi feito ("conclui e anota que…"): mensagem — vai no histórico de cada uma, junto com a conclusão (a pessoa confere e edita no cartão).',
@@ -697,7 +730,7 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     const id = a.id;
     const q = (caminho, op) => ler(caminho, op).then(r => r, err => ({ erro: (err && err.message) || 'erro' }));
     const desde30 = inicioBR(maisDias(hoje, -30));
-    const [cad, cart, soc, cont, serv, cobC, cobM, tar, rec, obr, alv, cert, adm, res, rt, reu, trE, reg, prec, fat, dre, fr, vig, nots, rev, rcE, rcP, rcM] = await Promise.all([
+    const [cad, cart, soc, cont, serv, cobC, cobM, tar, rec, obr, alv, cert, adm, res, rt, reu, trE, reg, prec, fat, dre, fr, vig, nots, rev, rcE, rcP, rcM, cmp] = await Promise.all([
       q('clientes?select=' + TABELAS.clientes.cols.join(',') + '&id=eq.' + id),
       q('carteira_info?select=entrada,saida,motivo_saida,segmento,sistemas,contab_digital,contato,ramo,observacao,inadimplente_desde&cliente_id=eq.' + id),
       q('socios?select=nome,qualificacao,participacao_percentual,eh_administrador,telefone,email&cliente_id=eq.' + id + '&order=participacao_percentual.desc.nullslast'),
@@ -730,7 +763,9 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
       // a Receita pela ponte (Integra Contador): a autorização, a situação fiscal, o PGDAS e a Caixa Postal
       q('receita_empresas?select=autorizacao,autorizacao_ate,autorizacao_em,pgdas_em,pendencias,situacao_fiscal_em&cliente_id=eq.' + id),
       q('receita_pgdas?select=competencia,transmitida_em,das_pago,receita_mes,receita_12_meses&cliente_id=eq.' + id + '&order=competencia.desc&limit=6'),
-      q('receita_mensagens?select=assunto,enviada_em,origem,lida&cliente_id=eq.' + id + '&order=enviada_em.desc.nullslast,recebida_em.desc&limit=5')
+      q('receita_mensagens?select=assunto,enviada_em,origem,lida&cliente_id=eq.' + id + '&order=enviada_em.desc.nullslast,recebida_em.desc&limit=5'),
+      // o comparativo tributário: o estudo gravado (só o resumo; o porquê e o "e se", pela ferramenta comparativo)
+      q('comparativos?select=resultado,atualizado_em,atualizado_por&cliente_id=eq.' + id + '&order=atualizado_em.desc&limit=1')
     ]);
     if (cad.erro) throw new Error(cad.erro);
     const c = cad.linhas[0];
@@ -811,6 +846,9 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     if (!fat.erro && fat.linhas.length) partes.push('Faturáveis a cobrar: ' + fat.linhas.map(x => valorCurto(x.descricao, 60) + ' ' + brl(x.valor) + ' (' + dataBR(x.executado_em) + ')').join(' · '));
     if (!dre.erro && dre.linhas.length) partes.push('DRE: ' + dre.linhas.map(x => x.periodo).join(', '));
     if (!fr.erro && fr.linhas.length) partes.push('Fator R: acompanhada' + (fr.linhas.some(x => x.ativo === false) ? ' (inativa)' : ''));
+    if (!cmp.erro && cmp.linhas.length) partes.push('Comparativo tributário: estudo gravado em ' + diaDoMomento(cmp.linhas[0].atualizado_em)
+      + (cmp.linhas[0].atualizado_por ? ' por ' + (NOME_POR_EMAIL[String(cmp.linhas[0].atualizado_por).toLowerCase()] || cmp.linhas[0].atualizado_por) : '') + ' — ' + resumoDoResultado(cmp.linhas[0].resultado)
+      + ' (os números, o porquê, o que falta e o "e se": comparativo)');
     // o que o vigia achou dela e ainda está aberto (desencontro, coisa parada)
     if (!vig.erro && vig.linhas.length) partes.push('O vigia (a conferir): ' + vig.linhas.map(x => valorCurto(x.titulo, 140) + (x.gravidade === 'alta' ? ' (URGENTE)' : '')
       + (x.detalhe ? ' — ' + valorCurto(x.detalhe, 180) : '') + ' · com ' + (x.responsavel || '—')).join(' | '));
@@ -1487,6 +1525,13 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
   // cliente). O cartão "arquivos" mostra os links; aqui volta a lista pro modelo, sem link. Procurar de novo na mesma
   // pergunta não lê o Drive outra vez (a pasta fica guardada) e troca o cartão — salvo quando o de antes era melhor: a
   // busca com palavras que achou algo vale mais que "os mais recentes", que vale mais que a busca que não achou nada
+  // o comparativo tributário: o estudo como a tela abre e a mesma conta (comparativo.js); com o "e se", os números trocados
+  // só na conta — nada é gravado
+  async function comparativo(e) {
+    const x = e && typeof e === 'object' ? e : {};
+    return comparativoDaEmpresa({ banco, termo: x.empresa, eSe: x.e_se && typeof x.e_se === 'object' && !Array.isArray(x.e_se) ? x.e_se : null, contexto, acharEmpresa, hoje });
+  }
+
   const arvores = new Map();
   let pesoCartao = -1, termoCartao = null;
   // os arquivos que as buscas desta pergunta mostraram ao modelo (pelo nome sem acento): a mensagem do chat leva o link deles
@@ -1547,7 +1592,7 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
       + ' Na resposta: o que achou — o nome, a pasta e a data do que mais interessa —, sem colar link e sem inventar arquivo; nada encontrado, diga e sugira outras palavras.';
   }
 
-  return { buscar_empresa, ver_empresa, agenda, consultar, perguntar_reforma, buscar_arquivos, propor_concluir_tarefas, propor_alterar_tarefas, propor_registrar_historico,
+  return { buscar_empresa, ver_empresa, agenda, consultar, perguntar_reforma, buscar_arquivos, comparativo, propor_concluir_tarefas, propor_alterar_tarefas, propor_registrar_historico,
     propor_marcar_pago, propor_criar_tarefa, propor_enviar_mensagem, propor_revisao_atrasadas, propor_ver_vigia,
     propor_incluir_reforma, propor_por_na_competencia, propor_ajustar_obrigacoes };
 }
@@ -1562,6 +1607,8 @@ export function descreverEtapa(nome, e = {}) {
   if (nome === 'consultar') { const T = TABELAS[x.tabela]; return 'Consultando ' + (T ? T.rotulo : s(x.tabela, 40)); }
   if (nome === 'perguntar_reforma') return 'Perguntando à base da Reforma';
   if (nome === 'buscar_arquivos') return 'Procurando no Drive' + (x.empresa && !UUID.test(String(x.empresa)) ? ' de ' + s(x.empresa, 60) : ' da empresa');
+  if (nome === 'comparativo') return (x.e_se && typeof x.e_se === 'object' && Object.keys(x.e_se).length ? 'Refazendo o comparativo com o "e se"' : 'Fazendo a conta do comparativo')
+    + (x.empresa && !UUID.test(String(x.empresa)) ? ' de ' + s(x.empresa, 60) : '');
   if (nome === 'propor_concluir_tarefas') return 'Separando as tarefas pra você confirmar';
   if (nome === 'propor_alterar_tarefas') return 'Separando o que muda pra você confirmar';
   if (nome === 'propor_registrar_historico') return 'Preparando a mensagem pro histórico';

@@ -61,14 +61,15 @@ export function limparPagina(p) {
   return { caminho, nome: nome || null, setor: SETORES.includes(p.setor) ? p.setor : null };
 }
 
-// o contexto que a tela manda: a página, a empresa aberta, a ficha da Reforma e o cálculo da ficha (a Reforma confere)
+// o contexto que a tela manda: a página, a empresa aberta, a ficha da Reforma e o cálculo da ficha (a Reforma confere) e o
+// estudo aberto no Comparativo tributário (01/11/2026: pode ser de empresa sem cadastro)
 export function limparContexto(c) {
   const x = c && typeof c === 'object' && !Array.isArray(c) ? c : {};
   const uuid = v => (UUID.test(String(v || '')) ? String(v) : null);
   const caso = uuid(x.caso_id);
   let tela = null;
   if (caso && x.tela && typeof x.tela === 'object' && !Array.isArray(x.tela)) { try { if (JSON.stringify(x.tela).length < 60000) tela = x.tela; } catch (e) { tela = null; } }
-  return { pagina: limparPagina(x.pagina), cliente_id: uuid(x.cliente_id), caso_id: caso, tela };
+  return { pagina: limparPagina(x.pagina), cliente_id: uuid(x.cliente_id), caso_id: caso, tela, comparativo_id: uuid(x.comparativo_id) };
 }
 
 export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => new Date(), chamar = null, prazoMs = 70000, aguardar = p => p }) {
@@ -173,7 +174,15 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
     try {
       const banco = bancoDe(avaliacao ? null : usuario.jwt);
       const hoje = diaBR(agora());
-      let empresa = null, ficha = null;
+      let empresa = null, ficha = null, estudo = null;
+      // o estudo aberto no Comparativo tributário: o de uma empresa do cadastro vira a empresa aberta; o de empresa sem
+      // cadastro vai pelo nome
+      if (ctx.comparativo_id) {
+        const { linhas } = await banco.ler('comparativos?select=id,cliente_id,nome&id=eq.' + ctx.comparativo_id);
+        if (!linhas[0]) ctx.comparativo_id = null;
+        else if (linhas[0].cliente_id) { if (!ctx.cliente_id) ctx.cliente_id = linhas[0].cliente_id; }
+        else estudo = String(linhas[0].nome || 'empresa sem cadastro').replace(/[\r\n[\]]/g, ' ').slice(0, 120);
+      }
       if (ctx.cliente_id) {
         const { linhas } = await banco.ler('clientes?select=id,nome_principal&id=eq.' + ctx.cliente_id);
         if (linhas[0]) empresa = linhas[0].nome_principal + ' (id ' + linhas[0].id + ')'; else ctx.cliente_id = null;
@@ -194,7 +203,7 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
         deveFinalizar: () => agora().getTime() - t0 > prazoMs - 15000,
         // a proposta de ação (uma por pergunta) vai junto com a resposta: a tela mostra o cartão
         aoPropor: a => { acao = a; }, drive });
-      const mensagem = preambulo({ hoje, quem, tela, empresa, ficha }) + pergunta;
+      const mensagem = preambulo({ hoje, quem, tela, empresa, ficha, estudo }) + pergunta;
       // a pergunta anterior de outro dia leva a data em que foi feita (a aba pode ter ficado aberta de um dia pro outro)
       const anteriores = historico.map(h => ({ pergunta: marcaOutroDia(h.em, hoje) + h.pergunta, resposta: h.resposta }));
       res = await responder({ chamar: chamarModelo, sistema, definicoes: DEFINICOES, ferramentas, historico: anteriores, mensagem, aoEtapa, prazoMs, descrever: descreverEtapa });

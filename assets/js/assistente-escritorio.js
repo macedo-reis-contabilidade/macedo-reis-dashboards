@@ -9,7 +9,9 @@
 // de quem entrou). A carinha comemora quando alguém conclui tarefa ou rotina (evento "mr:feito", da agenda e das telas de
 // tarefas) e quando uma tela comemora uma conquista (evento "mr:comemorar", o Comparativo tributário: a fase do estudo que
 // fechou; com `recado`, diz o texto) e fica discreta quando uma janela está aberta. Na ficha da empresa (clientes/editar.html?id=…), "esta empresa"
-// é ela. Uma tela com coisa própria (a Reforma: a ficha, o cálculo, a Base legal) chama assistenteDaTela({...}).
+// é ela. Uma tela com coisa própria (a Reforma: a ficha, o cálculo, a Base legal; o Comparativo tributário: o estudo aberto,
+// 01/11/2026) chama assistenteDaTela({ saudacaoExtra, recadoContexto, exemplos, seguintes, contexto, aoClicar, antes }) —
+// antes: o preparo que vai antes de cada pergunta (o Comparativo grava o estudo que estava pra gravar).
 // Ações (concluir, remarcar ou passar tarefas, marcar boleto pago, criar tarefa): a resposta traz a proposta e o cartão dela
 // (assets/js/assistente-acoes.js) pede a confirmação; a saudação do dia e o recado da Agenda perguntam pelas atrasadas
 // ("Revisar as atrasadas": o assistente pergunta, grupo por grupo, o que já foi feito) — e a coluna "Seu dia" da Agenda
@@ -179,6 +181,7 @@ const TELAS = {
   'fiscal-regularizacao.html': { nome: 'Regularizações', exemplos: ['Quais regularizações estão em aberto?'] },
   'fiscal-xml.html': { nome: 'Notas fiscais (XML)' }, 'fiscal-analise.html': { nome: 'Análise fiscal' }, 'fiscal-clientes.html': { nome: 'Fiscal por cliente' },
   'fiscal-destda.html': { nome: 'Conferência SEDIF/DeSTDA' },
+  'fiscal-comparativo.html': { nome: 'Comparativo tributário', exemplos: ['Quais empresas já têm estudo no comparativo?', 'O que o comparativo leva em conta?'] },
   'contabil-dre.html': { nome: 'DRE do cliente' }, 'fator-r.html': { nome: 'Fator R' },
   'societario-alvaras.html': { nome: 'Alvarás', exemplos: ['Quais alvarás vencem nos próximos 60 dias?', 'Algum alvará vencido?'],
     dica: async () => {
@@ -305,8 +308,9 @@ function montar() {
     // a ação proposta na resposta: o cartão pede a confirmação (e grava com o login de quem está na tela); a mensagem
     // enviada pelo cartão abre a conversa na aba Equipe
     cartao: (acao, ajuda) => cartaoDaAcao(acao, { ...ajuda, email, nome: nomePessoa, abrirConversa: id => { if (chat && chat.abrirConversa) chat.abrirConversa(id); } }),
-    // na tela da Reforma as respostas citam a base: os códigos vêm antes (nas outras, só quando uma resposta cita)
-    antes: () => (caminho === 'fiscal-reforma.html' ? carregarFontes() : null),
+    // na tela da Reforma as respostas citam a base: os códigos vêm antes (nas outras, só quando uma resposta cita); a tela
+    // pode ter o preparo dela (o Comparativo tributário grava o estudo que estava pra gravar, pra pergunta ler o da tela)
+    antes: () => Promise.all([caminho === 'fiscal-reforma.html' ? carregarFontes() : null, tela.antes ? Promise.resolve().then(tela.antes).catch(() => null) : null]),
     aoClicar: ev => (tela.aoClicar ? tela.aoClicar(ev) : false),
     // a aba do chat da equipe: conversas a dois e grupos, com o aviso no computador; a das notícias: o feed (o número dela
     // fica só na barra das abas, o do balão é do chat)
