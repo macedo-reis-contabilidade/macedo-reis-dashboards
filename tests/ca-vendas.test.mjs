@@ -57,11 +57,14 @@ function mundo({ tokenFaltam = 50 * 60 * 1000 } = {}) {
       { id: U(130), nome_principal: 'METALIZADORA NOVA LTDA', nome_fantasia: 'METAL NOVA', documento: '30.303.030/0001-30', tipo_pessoa: 'PJ', status: 'em_transicao',
         email_principal: null, telefone_principal: '(51) 99999-0000', cep: null, logradouro: null, numero: null, complemento: null, bairro: null, cidade: 'Igrejinha', uf: 'RS' },
       { id: U(131), nome_principal: 'INDUSTRIA DE TESTE LTDA', nome_fantasia: null, documento: '31313131000131', tipo_pessoa: 'PJ', status: 'em_transicao',
-        email_principal: 'contato@teste.com.br', telefone_principal: '5133330000', cep: '95660-000', logradouro: 'RUA DE TESTE', numero: '10', complemento: null, bairro: 'CENTRO', cidade: 'Três Coroas', uf: 'RS' }
+        email_principal: 'contato@teste.com.br', telefone_principal: '5133330000', cep: '95660-000', logradouro: 'RUA DE TESTE', numero: '10', complemento: null, bairro: 'CENTRO', cidade: 'Três Coroas', uf: 'RS' },
+      { id: U(133), nome_principal: '33.333.333 FULANA DE TAL', nome_fantasia: null, documento: '33333333000133', tipo_pessoa: 'PJ', regime_tributario: 'MEI', status: 'ativo',
+        email_principal: null, telefone_principal: null, cep: '95660-000', logradouro: 'RUA B', numero: '1', complemento: null, bairro: 'CENTRO', cidade: 'Três Coroas', uf: 'RS' }
     ],
-    cobrancas_config: [{ cliente_id: U(130), valor_base: 1500, dia_vencimento: 10, ativo: true }, { cliente_id: U(131), valor_base: 450, dia_vencimento: 15, ativo: true }],
+    cobrancas_config: [{ cliente_id: U(130), valor_base: 1500, dia_vencimento: 10, ativo: true }, { cliente_id: U(131), valor_base: 450, dia_vencimento: 15, ativo: true },
+      { cliente_id: U(133), valor_base: 120, dia_vencimento: 20, ativo: true }],
     precificacoes: [{ cliente_id: U(131), honorario: 750, status: 'fechada', criado_em: '2026-09-28T10:00:00Z' }, { cliente_id: U(131), honorario: 600, status: 'perdida', criado_em: '2026-09-29T10:00:00Z' }],
-    carteira_info: [{ cliente_id: U(130), entrada: '2026-10-01', saida: null }, { cliente_id: U(131), entrada: '2026-10-01', saida: null }],
+    carteira_info: [{ cliente_id: U(130), entrada: '2026-10-01', saida: null }, { cliente_id: U(131), entrada: '2026-10-01', saida: null }, { cliente_id: U(133), entrada: '2026-10-01', saida: null }],
     cobrancas_mensais: [
       { id: U(209), cliente_id: U(109), competencia: '2026-10', vencimento: '2026-11-09', status: 'a_emitir', itens_extras: [{ faturavel_id: U(600), descricao: 'Abertura de filial', valor: 300 }] },
       { id: U(210), cliente_id: U(110), competencia: '2026-10', vencimento: '2026-11-10', status: 'emitido', itens_extras: [] }
@@ -82,15 +85,17 @@ function mundo({ tokenFaltam = 50 * 60 * 1000 } = {}) {
     pessoas: [{ id: P.paulo, nome: 'LOJA DO PAULO LTDA', documento: '11111111000111' }, { id: P.boleto, nome: 'COM BOLETO LTDA', documento: '99999999000199' },
       { id: P.emitido, nome: 'BOLETO EMITIDO LTDA', documento: '10101010000110' }, { id: P.padaria, nome: 'PADARIA NOVA', documento: '' },
       { id: U(20), nome: 'REDE SABOR', documento: '' }, { id: U(31), nome: 'INDUSTRIA DE TESTE LTDA', documento: '31313131000131' }],
-    // os contratos: dois ativos (o de cima é o modelo) e um inativo da indústria (não conta)
+    // os contratos: três ativos (o de cima é o modelo da mensalidade; o 395, o do MEI) e um inativo da indústria (não conta)
     contratos: [
       { id: U(501), numero: 402, status: 'ATIVO', cliente: { id: U(32), nome: 'CLIENTE MODELO LTDA' }, total: 850 },
       { id: U(502), numero: 401, status: 'ATIVO', cliente: { id: U(33), nome: 'OUTRO CLIENTE LTDA' }, total: 750 },
+      { id: U(504), numero: 395, status: 'ATIVO', cliente: { id: U(34), nome: '44.444.444 CICLANO MEI' }, total: 120 },
       { id: U(503), numero: 300, status: 'INATIVO', cliente: { id: U(31), nome: 'INDUSTRIA DE TESTE LTDA' }, total: 280 }
     ],
     contratoDetalhe: new Map([
       [U(501), { id: U(501), id_ultima_venda_confirmada: U(511), cliente: { id: U(32), nome: 'CLIENTE MODELO LTDA' }, vendedor: { id: U(521), nome: 'DIEGO REIS' }, termos: { numero: 402, dia_emissao_venda: 31 } }],
-      [U(502), { id: U(502), id_ultima_venda_confirmada: U(512), cliente: { id: U(33), nome: 'OUTRO CLIENTE LTDA' }, vendedor: { id: U(522), nome: 'SAMUEL REIS' }, termos: { numero: 401, dia_emissao_venda: 31 } }]
+      [U(502), { id: U(502), id_ultima_venda_confirmada: U(512), cliente: { id: U(33), nome: 'OUTRO CLIENTE LTDA' }, vendedor: { id: U(522), nome: 'SAMUEL REIS' }, termos: { numero: 401, dia_emissao_venda: 31 } }],
+      [U(504), { id: U(504), id_ultima_venda_confirmada: U(514), cliente: { id: U(34), nome: '44.444.444 CICLANO MEI' }, vendedor: { id: U(522), nome: 'SAMUEL REIS' }, termos: { numero: 395, dia_emissao_venda: 31 } }]
     ]),
     proximoContrato: 403,
     contratosCriados: [],
@@ -115,6 +120,9 @@ function mundo({ tokenFaltam = 50 * 60 * 1000 } = {}) {
   for (const [id, numero] of [[U(511), 190421457], [U(512), 190421458]])
     contaAzul.vendas.set(id, { numero, detalhe: { venda: { id, numero, id_categoria: CAT.mensal, condicao_pagamento: { id_conta_financeira: U(302) } } },
       itens: { itens: [{ id: U(530), id_item: U(531), nome: 'HONORÁRIOS MENSAIS', tipo: 'SERVICO', quantidade: 1, valor: 850 }] } });
+  // … e a do contrato de MEI (MEI - CONTRATOS), no Sicredi
+  contaAzul.vendas.set(U(514), { numero: 190421456, detalhe: { venda: { id: U(514), numero: 190421456, id_categoria: CAT.mei, condicao_pagamento: { id_conta_financeira: U(305) } } },
+    itens: { itens: [{ id: U(533), id_item: U(532), nome: 'CONTRATO MEI', tipo: 'SERVICO', quantidade: 1, valor: 120 }] } });
   const chamadas = [];
 
   const filtrar = (linhas, sp) => linhas.filter(r => [...sp.entries()].every(([k, v]) => {
@@ -528,6 +536,26 @@ console.log('O contrato da mensalidade — criar (contrato):');
     /maior que zero/.test(erros.corpo.resultados[0].erro) && /de 1 a 31/.test(erros.corpo.resultados[1].erro) && /mês passado ao que vem/.test(erros.corpo.resultados[2].erro) && /inválida/.test(erros.corpo.resultados[3].erro)
     && /sem o CNPJ ou o CPF/.test(erros.corpo.resultados[4].erro) && w.contaAzul.contratosCriados.length === 2 && w.contaAzul.pessoasCriadas.length === 1, J(erros.corpo));
   chk('mais de 5 por vez: 400', (await w.pedir({ modo: 'contrato', itens: Array.from({ length: 6 }, () => pedido.itens[0]) })).status === 400);
+}
+
+console.log('O contrato do MEI:');
+{
+  const w = mundo();
+  const p = await w.pedir({ modo: 'contrato_prever', clientes: [U(133)] });
+  const it = p.corpo.itens[0];
+  chk('o regime MEI no cadastro: o contrato de MEI, com o modelo de MEI (o 395, o serviço dele)', it.sugerido.tipo === 'mei' && it.sugerido.valor === 120 && it.sugerido.dia === 20
+    && J(it.modelo) === J({ numero: 395, cliente: '44.444.444 CICLANO MEI', servico: 'CONTRATO MEI' }) && J(p.corpo.modelos.mensal) === J({ numero: 402, cliente: 'CLIENTE MODELO LTDA', servico: 'HONORÁRIOS MENSAIS' }), J(p.corpo));
+  const r = await w.pedir({ modo: 'contrato', itens: [{ cliente_id: U(133), valor: 120, dia: 20, inicio: '2026-10', tipo: 'mei' }] });
+  const k = w.contaAzul.contratosCriados[0];
+  chk('criado com o serviço e a categoria do MEI; com a base ativa, na conta do Inter', r.corpo.resultados[0].ok && r.corpo.resultados[0].tipo === 'mei'
+    && k.itens[0].id === U(532) && k.id_categoria === CAT.mei && k.condicao_pagamento.id_conta_financeira === U(302) && k.condicao_pagamento.primeira_data_vencimento === '2026-11-20', J(k));
+  const w2 = mundo();
+  w2.contaAzul.contratos = w2.contaAzul.contratos.filter(c => c.numero !== 395);
+  const p2 = await w2.pedir({ modo: 'contrato_prever', clientes: [U(133)] });
+  chk('sem um contrato de MEI ativo pra copiar: a conferência diz o que falta', p2.corpo.itens[0].modelo === null && p2.corpo.itens[0].sugerido.faltam.some(f => /MEI - CONTRATOS/.test(f)), J(p2.corpo.itens[0]));
+  const r2 = await w2.pedir({ modo: 'contrato', itens: [{ cliente_id: U(133), valor: 120, dia: 20, inicio: '2026-10', tipo: 'mei' }, { cliente_id: U(131), valor: 750, dia: 15, inicio: '2026-10' }] });
+  chk('… e criar não cria o de MEI (o motivo), mas cria a mensalidade da outra', !r2.corpo.resultados[0].ok && /MEI - CONTRATOS/.test(r2.corpo.resultados[0].erro) && r2.corpo.resultados[1].ok
+    && w2.contaAzul.contratosCriados.length === 1 && w2.contaAzul.pessoasCriadas.length === 0, J(r2.corpo));
 }
 
 console.log('O contrato da mensalidade — a forma de pagamento, se o Conta Azul exigir:');

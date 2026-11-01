@@ -7,10 +7,12 @@
 //    nos de setembro), a venda emitida no dia 31 (a competência no último dia do mês), sem forma de pagamento;
 //  • o vencimento no dia da base de cobrança (o da tela Boletos; sem base, 10), a primeira no mês seguinte ao do início;
 //  • a conta do Inter pra quem tem boleto do Inter (a base ativa); sem base, a da última venda do contrato modelo;
-//  • o serviço e a categoria HONORÁRIOS MENSAIS (os da última venda de um contrato ativo — o modelo);
+//  • o serviço e a categoria HONORÁRIOS MENSAIS (os da última venda de um contrato ativo — o modelo); o MEI (o regime no
+//    cadastro), MEI - CONTRATOS, com o modelo de um contrato de MEI;
 //  • o valor: o honorário da proposta fechada, senão o da base de cobrança;
-//  • o início: o mês de entrada na carteira (a primeira mensalidade é a desse mês), nunca antes do mês passado — o
-//    Conta Azul emitiria de uma vez as vendas dos meses que ficaram pra trás;
+//  • o início: o mês de entrada na carteira (a primeira mensalidade é a desse mês), se ela entrou no mês passado ou
+//    depois; quem entrou antes (o cliente antigo sem contrato) começa no mês de hoje — o Conta Azul emitiria de uma vez as
+//    vendas dos meses que ficaram pra trás;
 //  • o vendedor: o sócio que confirma (SAMUEL REIS, DIEGO REIS), pelo nome, entre os vendedores dos contratos.
 // O cadastro da empresa no Conta Azul, quando ela ainda não está lá: a razão social, o fantasia, o CNPJ (ou o CPF), o
 // e-mail e o telefone do cadastro, o endereço do cadastro (sem ele, o da Receita) e o perfil Cliente.
@@ -19,6 +21,9 @@
 import { nomePorEmail } from './equipe.js';
 
 export const DIA_EMISSAO = 31;
+// os tipos de contrato: a categoria da mensalidade no Conta Azul (o modelo é um contrato ativo dessa categoria)
+export const TIPOS = { mensal: 'HONORÁRIOS MENSAIS', mei: 'MEI - CONTRATOS' };
+export const tipoPeloRegime = regime => (/^\s*MEI\s*$/i.test(String(regime || '')) ? 'mei' : 'mensal');
 export const DIAS_ATE_O_FIM = 335;
 export const MAX_VALOR = 100000;
 const COMPETENCIA = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -39,16 +44,19 @@ export function primeiroVencimento(inicio, dia) {
 }
 export const fimDoContrato = inicio => somaDias(inicio + '-01', DIAS_ATE_O_FIM);
 
-// o mês de início: o da entrada na carteira, nunca antes do mês passado nem depois do que vem
+// o mês de início: o da entrada na carteira, se foi do mês passado ao que vem; entrou antes, o mês de hoje (sem as vendas
+// dos meses pra trás); depois, o mês que vem
 export function inicioDoContrato(entrada, hoje) {
   const mes = String(hoje).slice(0, 7);
   const de = /^\d{4}-\d{2}/.test(String(entrada || '')) ? String(entrada).slice(0, 7) : mes;
   const minimo = mesAnterior(mes), maximo = mesSeguinte(mes);
-  return de < minimo ? minimo : de > maximo ? maximo : de;
+  return de < minimo ? mes : de > maximo ? maximo : de;
 }
+// os meses que o pedido aceita: o passado, o de hoje e o que vem
+export const mesesDeInicio = hoje => { const mes = String(hoje).slice(0, 7); return [mesAnterior(mes), mes, mesSeguinte(mes)]; };
 
-// o que o contrato vai ter, pelo que o sistema sabe da empresa → { valor, dia, inicio, primeiro_vencimento, data_fim,
-// conta: 'inter' | 'modelo', de: { valor, dia, inicio }, faltam: [o que falta pra criar] }
+// o que o contrato vai ter, pelo que o sistema sabe da empresa → { tipo: 'mensal' | 'mei', valor, dia, inicio,
+// primeiro_vencimento, data_fim, conta: 'inter' | 'modelo', de: { valor, dia, inicio }, faltam: [o que falta pra criar] }
 export function contratoSugerido({ cadastro = null, base = null, proposta = null, entrada = null, hoje }) {
   const faltam = [];
   const hon = proposta && Number(proposta.honorario) > 0 ? Number(proposta.honorario) : null;
@@ -61,7 +69,7 @@ export function contratoSugerido({ cadastro = null, base = null, proposta = null
   if (doc.length !== 14 && doc.length !== 11) faltam.push('o CNPJ ou o CPF no cadastro');
   const inicio = inicioDoContrato(entrada, hoje);
   return {
-    valor, dia, inicio,
+    tipo: tipoPeloRegime(cadastro && cadastro.regime_tributario), valor, dia, inicio,
     primeiro_vencimento: primeiroVencimento(inicio, dia),
     data_fim: fimDoContrato(inicio),
     conta: base && base.ativo ? 'inter' : 'modelo',
@@ -82,8 +90,10 @@ export function limparPedido(x, { hoje }) {
   if (!Number.isInteger(dia) || dia < 1 || dia > 31) return { erro: 'o dia do vencimento vai de 1 a 31' };
   const inicio = String(i.inicio || '');
   if (!COMPETENCIA.test(inicio)) return { erro: "o mês de início vai em 'AAAA-MM'" };
-  if (inicioDoContrato(inicio, hoje) !== inicio) return { erro: 'o início vai do mês passado ao que vem' };
-  return { cliente_id: cliente, valor, dia, inicio };
+  if (!mesesDeInicio(hoje).includes(inicio)) return { erro: 'o início vai do mês passado ao que vem' };
+  const tipo = i.tipo == null || i.tipo === '' ? 'mensal' : String(i.tipo);
+  if (!Object.keys(TIPOS).includes(tipo)) return { erro: 'o tipo do contrato é mensal ou mei' };
+  return { cliente_id: cliente, valor, dia, inicio, tipo };
 }
 
 // o endereço: o do cadastro; sem ele, o da Receita (BrasilAPI), com a cidade do cadastro quando ele tem

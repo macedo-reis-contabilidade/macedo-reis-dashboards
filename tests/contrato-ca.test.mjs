@@ -1,7 +1,7 @@
 // Testes de assets/js/contrato-ca.js — o contrato da mensalidade no Conta Azul (31/10/2026): o padrão dos contratos de
 // setembro de 2026, o que o sistema sugere (o valor, o dia, o início), o pedido limpo e o corpo do cadastro e do contrato.
 import {
-  DIA_EMISSAO, DIAS_ATE_O_FIM, primeiroVencimento, fimDoContrato, inicioDoContrato, contratoSugerido, limparPedido,
+  DIA_EMISSAO, DIAS_ATE_O_FIM, TIPOS, tipoPeloRegime, primeiroVencimento, fimDoContrato, inicioDoContrato, mesesDeInicio, contratoSugerido, limparPedido,
   enderecoDaEmpresa, pessoaParaApi, vendedorDoSocio, contratoParaApi, resumoDoContrato, mesBR
 } from '../assets/js/contrato-ca.js';
 
@@ -20,17 +20,21 @@ chk('o mês por escrito', mesBR('2026-10') === '10/2026');
 
 console.log('O mês de início:');
 chk('o da entrada na carteira', inicioDoContrato('2026-10-01', '2026-10-31') === '2026-10');
-chk('nunca antes do mês passado (o Conta Azul emitiria de uma vez os meses pra trás)', inicioDoContrato('2026-07-01', '2026-10-31') === '2026-09');
+chk('quem entrou no mês passado começa nele (a primeira mensalidade é a do mês de entrada)', inicioDoContrato('2026-09-15', '2026-10-31') === '2026-09');
+chk('quem entrou antes (o cliente antigo sem contrato): o mês de hoje, sem as vendas dos meses pra trás', inicioDoContrato('2026-07-01', '2026-10-31') === '2026-10'
+  && inicioDoContrato('2024-05-09', '2026-10-31') === '2026-10');
+chk('os meses que dá pra escolher', J(mesesDeInicio('2026-10-31')) === J(['2026-09', '2026-10', '2026-11']) && J(mesesDeInicio('2027-01-02')) === J(['2026-12', '2027-01', '2027-02']));
 chk('nem depois do mês que vem', inicioDoContrato('2027-03-01', '2026-10-31') === '2026-11');
 chk('sem a entrada, o mês de hoje', inicioDoContrato(null, '2026-10-31') === '2026-10' && inicioDoContrato('', '2026-10-31') === '2026-10');
-chk('na virada do ano: dezembro em janeiro vale', inicioDoContrato('2026-12-15', '2027-01-05') === '2026-12' && inicioDoContrato('2026-11-15', '2027-01-05') === '2026-12');
+chk('na virada do ano: dezembro em janeiro vale; novembro já é antigo', inicioDoContrato('2026-12-15', '2027-01-05') === '2026-12' && inicioDoContrato('2026-11-15', '2027-01-05') === '2027-01');
 
 console.log('O que o sistema sugere:');
 {
   const cad = { documento: '30.303.030/0001-30' };
   const s = contratoSugerido({ cadastro: cad, base: { valor_base: 1500, dia_vencimento: 10, ativo: true }, proposta: null, entrada: '2026-10-01', hoje: '2026-10-31' });
-  chk('a base de cobrança: o valor, o dia, a conta do Inter; a partir da entrada',
-    J(s) === J({ valor: 1500, dia: 10, inicio: '2026-10', primeiro_vencimento: '2026-11-10', data_fim: '2027-09-01', conta: 'inter', de: { valor: 'base', dia: 'base', inicio: 'carteira' }, faltam: [] }), J(s));
+  chk('a base de cobrança: a mensalidade, o valor, o dia, a conta do Inter; a partir da entrada',
+    J(s) === J({ tipo: 'mensal', valor: 1500, dia: 10, inicio: '2026-10', primeiro_vencimento: '2026-11-10', data_fim: '2027-09-01', conta: 'inter', de: { valor: 'base', dia: 'base', inicio: 'carteira' }, faltam: [] }), J(s));
+  chk('o MEI (o regime no cadastro): o contrato de MEI', contratoSugerido({ cadastro: { ...cad, regime_tributario: 'MEI' }, base: { valor_base: 120, dia_vencimento: 20, ativo: true }, hoje: '2026-10-31' }).tipo === 'mei');
   const p = contratoSugerido({ cadastro: cad, base: { valor_base: 450, dia_vencimento: 15, ativo: true }, proposta: { honorario: 750 }, entrada: '2026-10-01', hoje: '2026-10-31' });
   chk('a proposta fechada vale mais que a base (o valor); o dia segue o da base', p.valor === 750 && p.de.valor === 'proposta' && p.dia === 15);
   const sem = contratoSugerido({ cadastro: { documento: '' }, base: null, proposta: null, entrada: null, hoje: '2026-10-31' });
@@ -40,10 +44,18 @@ console.log('O que o sistema sugere:');
   chk('o CPF também serve', contratoSugerido({ cadastro: { documento: '123.456.789-09' }, base: { valor_base: 100, dia_vencimento: 5, ativo: true }, hoje: '2026-10-31' }).faltam.length === 0);
 }
 
+console.log('Os tipos de contrato:');
+chk('a mensalidade e o MEI, pelas categorias do Conta Azul', J(TIPOS) === J({ mensal: 'HONORÁRIOS MENSAIS', mei: 'MEI - CONTRATOS' }));
+chk('o MEI pelo regime do cadastro; o resto é a mensalidade', tipoPeloRegime('MEI') === 'mei' && tipoPeloRegime(' mei ') === 'mei' && tipoPeloRegime('Simples Nacional') === 'mensal'
+  && tipoPeloRegime(null) === 'mensal' && tipoPeloRegime('Simples Nacional (ex-MEI)') === 'mensal');
+
 console.log('O pedido de criar:');
 {
   const hoje = '2026-10-31';
-  chk('o pedido certo', J(limparPedido({ cliente_id: ID, valor: '1500', dia: 10, inicio: '2026-10' }, { hoje })) === J({ cliente_id: ID, valor: 1500, dia: 10, inicio: '2026-10' }));
+  chk('o pedido certo (sem o tipo, a mensalidade)', J(limparPedido({ cliente_id: ID, valor: '1500', dia: 10, inicio: '2026-10' }, { hoje })) === J({ cliente_id: ID, valor: 1500, dia: 10, inicio: '2026-10', tipo: 'mensal' }));
+  chk('o tipo: o MEI vale; outro não (nem o nome de uma propriedade do objeto)', limparPedido({ cliente_id: ID, valor: 120, dia: 10, inicio: '2026-10', tipo: 'mei' }, { hoje }).tipo === 'mei'
+    && /mensal ou mei/.test(limparPedido({ cliente_id: ID, valor: 120, dia: 10, inicio: '2026-10', tipo: 'avulso' }, { hoje }).erro)
+    && /mensal ou mei/.test(limparPedido({ cliente_id: ID, valor: 120, dia: 10, inicio: '2026-10', tipo: 'constructor' }, { hoje }).erro));
   chk('os centavos', limparPedido({ cliente_id: ID, valor: 183.333, dia: 10, inicio: '2026-10' }, { hoje }).valor === 183.33);
   chk('o id', /inválida/.test(limparPedido({ cliente_id: 'abc', valor: 10, dia: 10, inicio: '2026-10' }, { hoje }).erro) && /inválida/.test(limparPedido(null, { hoje }).erro));
   chk('o valor zero, negativo ou absurdo', /maior que zero/.test(limparPedido({ cliente_id: ID, valor: 0, dia: 10, inicio: '2026-10' }, { hoje }).erro)

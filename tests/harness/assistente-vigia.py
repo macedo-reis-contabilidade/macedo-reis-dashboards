@@ -28,6 +28,10 @@ Confere:
   9. a terceira: vincular as obrigações do regime (as sugeridas marcadas), pôr na cobrança, o cadastro que segue a carteira;
  10. a quarta (20/10/2026): religar a obrigação comum desligada (quem cuida e, se ela vence no mês, a tarefa dele) e criar a
      tarefa do mês do vínculo que ficou sem — a mesma montagem da tela Obrigações fiscais —, com o "Desfazer";
+ 11. a quinta (31/10/2026): o cliente sem a mensalidade no Conta Azul — a função ca-vendas (dublê) confere e diz o que
+     seria criado (o cadastro lá, o valor, o dia, o mês, o tipo, a conta, o vendedor), "Criar no Conta Azul" pede a
+     confirmação e não tem "Desfazer"; o que já tem contrato ativo diz qual; e o cliente novo fora dos boletos do mês, posto
+     no mês com o valor da base (com o "Desfazer");
   e sem erro de JavaScript.
 Termina com código 1 se alguma checagem falhar.
 Pré-requisito: pip install playwright e python -m playwright install chromium
@@ -155,6 +159,51 @@ EXTRA4 = {
         'cliente_obrigacoes': [{'id': 'v51', 'cliente_id': 'k51', 'obrigacao_id': 'o51', 'responsavel': None, 'dia_prazo_override': None, 'ativo': False},
                                {'id': 'v52', 'cliente_id': 'k52', 'obrigacao_id': 'o51', 'responsavel': 'Thalia', 'dia_prazo_override': 15, 'ativo': True},
                                {'id': 'v53', 'cliente_id': 'k53', 'obrigacao_id': 'o52', 'responsavel': 'Adaini', 'dia_prazo_override': None, 'ativo': False}]}}
+# o 11: a quinta leva — o cliente sem a mensalidade no Conta Azul (a função ca-vendas entra como dublê, por
+# window.__caVendas) e o cliente novo fora dos boletos do último mês gerado
+MES_ATUAL = HOJE.strftime('%Y-%m')
+COMP = (HOJE.replace(day=1) - datetime.timedelta(days=1)).strftime('%Y-%m')
+MM_COMP = COMP[5:7] + '/' + COMP[:4]
+PROX = (HOJE.replace(day=28) + datetime.timedelta(days=4)).replace(day=10)
+EXTRA5 = {
+    'achados': [
+        A('61', 'cliente_sem_contrato', 'METALIZADORA DE TESTE LTDA não tem a mensalidade no Conta Azul', 'Na carteira desde o começo do mês e nenhuma mensalidade no Conta Azul.',
+          'financeiro', 'Samuel', 'media', 'financeiro-boletos.html', cliente_id='k61', ref_tabela='clientes', ref_id='k61', so_socios=True),
+        A('62', 'cliente_sem_contrato', 'MERCADO DE TESTE LTDA não tem a mensalidade no Conta Azul', 'Na carteira desde o mês passado e nenhuma mensalidade no Conta Azul.',
+          'financeiro', 'Samuel', 'media', 'financeiro-boletos.html', cliente_id='k62', ref_tabela='clientes', ref_id='k62', so_socios=True),
+        A('63', 'cliente_sem_boleto', 'BOLETO DE TESTE LTDA ficou fora dos boletos de ' + MM_COMP, 'Com a base de boletos ativa e sem o boleto do mês.',
+          'financeiro', 'Samuel', 'alta', 'financeiro-boletos.html?competencia=' + COMP, cliente_id='k63', ref_tabela='clientes', ref_id='k63')],
+    'tabelas': {
+        'clientes': [{'id': 'k61', 'nome_principal': 'METALIZADORA DE TESTE LTDA', 'status': 'ativo', 'documento': '30303030000130'},
+                     {'id': 'k62', 'nome_principal': 'MERCADO DE TESTE LTDA', 'status': 'ativo', 'documento': '12345678000190'},
+                     {'id': 'k63', 'nome_principal': 'BOLETO DE TESTE LTDA', 'status': 'ativo', 'documento': '20202020000120'}],
+        'cobrancas_config': [{'id': 'cc63', 'cliente_id': 'k63', 'valor_base': 1500, 'dia_vencimento': 10, 'canal': 'whatsapp', 'contato_envio': 'Fulano', 'destino': '51999990000',
+                              'responsavel': 'Samuel', 'ativo': True}]}}
+CA_VENDAS = """
+(() => {
+  const MES = %s;
+  const modelo = { numero: 402, cliente: 'CLIENTE MODELO LTDA', servico: 'HONORÁRIOS MENSAIS' };
+  window.__contratos = [];
+  window.__caVendas = async body => {
+    if (body.modo === 'contrato_prever') {
+      const id = body.clientes[0];
+      const d = new Date(), p2 = n => String(n).padStart(2, '0');
+      const base = { hoje: d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()), modelo, modelos: { mensal: modelo, mei: null }, vendedor: { id: 'v2', nome: 'SAMUEL REIS' } };
+      if (id === 'k62') return { data: { ...base, itens: [{ cliente_id: 'k62', nome: 'MERCADO DE TESTE LTDA', pessoa: { id: 'p62', nome: '12.345.678 FULANO DE TESTE' },
+        contrato_ativo: { numero: 398, valor: 850 }, sugerido: { tipo: 'mensal', valor: 850, dia: 10, inicio: MES, faltam: [] }, modelo, conta: { id: 'c1', nome: 'BANCO INTER - CONTA CORRENTE' } }] }, error: null };
+      return { data: { ...base, itens: [{ cliente_id: id, nome: 'METALIZADORA DE TESTE LTDA', pessoa: null, contrato_ativo: null,
+        sugerido: { tipo: 'mensal', valor: 1500, dia: 10, inicio: MES, faltam: [] }, modelo, conta: { id: 'c1', nome: 'BANCO INTER - CONTA CORRENTE' } }] }, error: null };
+    }
+    if (body.modo === 'contrato') {
+      window.__contratos.push(...body.itens);
+      const it = body.itens[0];
+      return { data: { resultados: [{ cliente_id: it.cliente_id, nome: 'METALIZADORA DE TESTE LTDA', ok: true, pessoa_criada: true, pessoa: 'p61', contrato: { id: 'k403', numero: 403, id_venda: 'v1' },
+        tipo: it.tipo, valor: it.valor, dia: it.dia, inicio: it.inicio, vendedor: 'SAMUEL REIS', por: 'financeiro@macedoereis.com.br' }] }, error: null };
+    }
+    return { data: { erro: 'Modo desconhecido.' }, error: null };
+  };
+})();
+""" % json.dumps(MES_ATUAL)
 ACOES = {'O que o vigia achou no fiscal?': {'tipo': 'vigia', 'ver': 'todos', 'setor': 'fiscal'}, 'O que dá pra resolver do vigia?': {'tipo': 'vigia', 'ver': 'todos'}}
 SEMEAR = """
 (() => {
@@ -171,6 +220,7 @@ SEMEAR = """
   window.__chamadas = [];
   window.__mockInvoke = async (nome, opts) => {
     window.__chamadas.push({ nome, body: JSON.parse(JSON.stringify(opts.body || {})) });
+    if (nome === 'ca-vendas') return window.__caVendas ? window.__caVendas(opts.body || {}) : { data: null, error: { message: 'ca-vendas fora do teste' } };
     const ev = o => 'data: ' + JSON.stringify(o) + '\\n\\n';
     const acao = ACOES[opts.body.pergunta] || null;
     return { data: ev({ tipo: 'resposta', texto: 'O vigia achou 3 coisas no Fiscal.', ...(acao ? { acao } : {}) }), error: null };
@@ -551,6 +601,74 @@ def main():
         p5.wait_for_selector(it5('EMPRESA 53') + ' button:has-text("Desfazer")', timeout=5000)
         ok(l5('cliente_obrigacoes', 'v53')['ativo'] is True and l5('cliente_obrigacoes', 'v53')['responsavel'] == 'Adaini' and tarefas_de('k53') == []
            and '✓ Religada, com Adaini.' in p5.inner_text(it5('EMPRESA 53')), 'religada, sem tarefa (ela sai na geração do mês em que vence)')
+
+        # 11) a quinta leva: o contrato no Conta Azul (a função ca-vendas, dublê) e o boleto do mês que ficou sem a empresa nova
+        p6 = b.new_page(viewport={'width': 1400, 'height': 900})
+        p6.on('pageerror', lambda e: erros.append(str(e)))
+        p6.add_init_script(TOUR); p6.add_init_script('window.__vigiaExtra = ' + json.dumps(EXTRA5, ensure_ascii=False)); p6.add_init_script(SEMEAR); p6.add_init_script(CA_VENDAS)
+        it6 = lambda trecho: card + ' li.as-vigia-item:has-text("' + trecho + '")'
+        abrir6 = lambda: p6.evaluate("() => document.querySelectorAll('.as-cartao-vigia details.as-vigia-grupo').forEach(d => { d.open = true; })")
+        texto6 = lambda trecho: p6.inner_text(it6(trecho)).replace('\xa0', ' ')
+        p6.goto(base + 'index.html'); p6.wait_for_selector('.as-lancador', timeout=5000)
+        p6.click('.as-lancador'); p6.wait_for_timeout(200)
+        p6.fill('.as-entrada textarea', 'O que dá pra resolver do vigia?'); p6.press('.as-entrada textarea', 'Enter')
+        p6.wait_for_selector(card + ' .as-vigia-grupo', timeout=6000); abrir6(); p6.wait_for_timeout(100)
+        rot6 = lambda trecho: p6.eval_on_selector_all(it6(trecho) + ' .as-vigia-resolver button', 'bs => bs.map(b => b.textContent)')
+        grupos6 = p6.eval_on_selector_all(card + ' .as-vigia-grupo > summary', 'ss => ss.map(s => s.textContent)')
+        ok(rot6('METALIZADORA') == ['Criar no Conta Azul'] and rot6('MERCADO DE TESTE') == ['Criar no Conta Azul'] and rot6('BOLETO DE TESTE') == ['Pôr no boleto de ' + MM_COMP]
+           and any(g.startswith('Clientes sem a mensalidade no Conta Azul · 2') for g in grupos6) and any(g.startswith('Clientes novos fora dos boletos do mês · 1') for g in grupos6),
+           f'os botões da quinta leva, nos grupos com o nome das regras ({rot6("BOLETO DE TESTE")}, {grupos6})')
+
+        p6.click(it6('MERCADO DE TESTE') + ' button:has-text("Criar no Conta Azul")')
+        p6.wait_for_selector(it6('MERCADO DE TESTE') + ' .as-cartao-ok', timeout=5000)
+        ok('Ela já tem o contrato 398 ativo no Conta Azul (R$ 850,00 por mês), em nome de 12.345.678 FULANO DE TESTE.' in texto6('MERCADO DE TESTE')
+           and not p6.query_selector(it6('MERCADO DE TESTE') + ' button:has-text("Sim, criar")'),
+           'a que já tem contrato ativo (com outro nome lá): diz qual, sem criar outro')
+
+        p6.click(it6('METALIZADORA') + ' button:has-text("Criar no Conta Azul")')
+        p6.wait_for_selector(it6('METALIZADORA') + ' input.as-vigia-valor', timeout=5000)
+        caixa6 = texto6('METALIZADORA')
+        primeira = PROX.strftime('%d/%m/%Y')
+        ok(p6.input_value(it6('METALIZADORA') + ' input.as-vigia-valor') == '1500,00' and p6.input_value(it6('METALIZADORA') + ' input.as-vigia-dia') == '10'
+           and p6.input_value(it6('METALIZADORA') + ' select[aria-label="Mês da primeira mensalidade"]') == MES_ATUAL
+           and p6.input_value(it6('METALIZADORA') + ' select[aria-label="Tipo do contrato"]') == 'mensal'
+           and 'Ainda não está no Conta Azul' in caixa6 and 'Conta: BANCO INTER - CONTA CORRENTE · vendedor: SAMUEL REIS.' in caixa6
+           and 'R$ 1.500,00 por mês, vencendo dia 10, a partir de ' + HOJE.strftime('%m/%Y') + ' (a primeira em ' + primeira + ')' in caixa6
+           and 'Como o contrato 402: o serviço HONORÁRIOS MENSAIS' in caixa6 and 'sai na hora' not in caixa6 and '\nnull\n' not in caixa6,
+           f'o que seria criado: o cadastro lá, o valor, o dia, o mês, o tipo, a conta, o vendedor e o modelo ({caixa6!r})')
+        p6.fill(it6('METALIZADORA') + ' input.as-vigia-valor', '1450')
+        p6.click(it6('METALIZADORA') + ' button:has-text("Criar no Conta Azul")')
+        p6.wait_for_selector(it6('METALIZADORA') + ' button:has-text("Sim, criar")', timeout=5000)
+        ok('Criar o contrato de R$ 1.450,00 por mês no Conta Azul? Não dá pra desfazer por aqui.' in texto6('METALIZADORA') and p6.evaluate('() => window.__contratos.length') == 0,
+           'criar pede a confirmação, com o valor (nada criado ainda)')
+        p6.click(it6('METALIZADORA') + ' button:has-text("Sim, criar")')
+        p6.wait_for_selector(it6('METALIZADORA') + ' .as-cartao-ok', timeout=5000)
+        pedidos = p6.evaluate('() => window.__contratos')
+        ok(pedidos == [{'cliente_id': 'k61', 'valor': 1450, 'dia': 10, 'inicio': MES_ATUAL, 'tipo': 'mensal'}]
+           and '✓ Contrato 403 criado no Conta Azul, com o cadastro da empresa lá: R$ 1.450,00 por mês' in texto6('METALIZADORA')
+           and 'Pra desfazer, exclua no Conta Azul (Vendas › Contratos).' in texto6('METALIZADORA')
+           and not p6.query_selector(it6('METALIZADORA') + ' button:has-text("Desfazer")'),
+           f'criado: a função recebe o pedido (o valor mudado), o cartão diz o número e onde desfazer, sem o "Desfazer" ({pedidos})')
+
+        p6.click(it6('BOLETO DE TESTE') + ' button:has-text("Pôr no boleto de ' + MM_COMP + '")')
+        p6.wait_for_selector(it6('BOLETO DE TESTE') + ' input.as-vigia-valor', timeout=5000)
+        venc = p6.input_value(it6('BOLETO DE TESTE') + ' input[type=date]')
+        ok(p6.input_value(it6('BOLETO DE TESTE') + ' input.as-vigia-valor') == '1500,00' and venc[:7] == (datetime.date(int(COMP[:4]), int(COMP[5:]), 28) + datetime.timedelta(days=4)).strftime('%Y-%m')
+           and 'O valor da base de cobrança.' in texto6('BOLETO DE TESTE'),
+           f'pôr no boleto: o valor da base e o vencimento no mês seguinte ao da competência ({venc})')
+        p6.click(it6('BOLETO DE TESTE') + ' .as-vigia-resolver button.as-botao-pri')
+        p6.wait_for_selector(it6('BOLETO DE TESTE') + ' button:has-text("Desfazer")', timeout=5000)
+        linha63 = p6.evaluate("c => window.__mockDb.cobrancas_mensais.filter(x => x.cliente_id === 'k63' && x.competencia === c)", COMP)
+        evs = [e for e in p6.evaluate('() => window.__eventos') if e[0] == 'mr:boletos-mudaram']
+        ok(len(linha63) == 1 and linha63[0]['valor'] == 1500 and linha63[0]['status'] == 'a_emitir' and linha63[0]['vencimento'] == venc and linha63[0]['destino'] == '51999990000'
+           and '✓ No boleto de ' + MM_COMP + ': R$ 1.500,00, vence ' + '/'.join(reversed(venc.split('-'))) + ', a emitir.' in texto6('BOLETO DE TESTE')
+           and any(e[1].get('competencia') == COMP for e in evs),
+           f'posto no mês: a linha "a emitir" com o envio da base, e a tela Boletos fica sabendo ({linha63})')
+        p6.click(it6('BOLETO DE TESTE') + ' button:has-text("Desfazer")')
+        p6.wait_for_selector(it6('BOLETO DE TESTE') + ' button:has-text("Pôr no boleto de ' + MM_COMP + '")', timeout=5000)
+        ok(p6.evaluate("c => window.__mockDb.cobrancas_mensais.filter(x => x.cliente_id === 'k63' && x.competencia === c).length", COMP) == 0
+           and p6.evaluate("() => window.__mockDb.cobrancas_config.filter(x => x.cliente_id === 'k63').length") == 1,
+           'desfazer: o boleto sai do mês (a base, que já existia, fica)')
 
         ok(not erros, f'sem erro de JavaScript ({erros[:2]})')
         b.close()

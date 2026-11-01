@@ -17,6 +17,11 @@
 //  { modo: 'boleto', competencia }  → põe no boleto as lançadas que ainda não estão (o mês gerado depois do lançamento)
 //  { modo: 'desfazer', ids }        → a exclusão em lote no Conta Azul, conferida venda por venda, e o extra sai do
 //     boleto; a que o Conta Azul não excluiu (com nota emitida ou recebida) fica, com o motivo
+//  { modo: 'contrato_prever', clientes } → o contrato da mensalidade do cliente novo (31/10/2026, o cartão do vigia): a
+//     pessoa no Conta Azul (pelo CNPJ ou CPF), o contrato ativo dela e o que seria criado (assets/js/contrato-ca.js) —
+//     também com a chave do sincronismo
+//  { modo: 'contrato', itens }      → cria o que falta (até 5): o cadastro da empresa no Conta Azul, quando ela não está
+//     lá, e o contrato, no padrão dos demais; contrato não se exclui pela API: desfaz-se no Conta Azul (Vendas › Contratos)
 // A venda que o sistema lançou e alguém excluiu direto no Conta Azul é achada no prever (conferirExcluidas): a linha vira
 // "excluida", o extra sai do boleto e a empresa pode ser lançada de novo.
 // O token do Conta Azul é o que o ca-sync mantém e renova. Perto de vencer, esta função não renova (nunca disputa a
@@ -30,7 +35,7 @@ import {
   COMPETENCIA, TIPO, CATEGORIA, CATEGORIA_MENSAL, CATEGORIA_MEI, ANOS_HISTORICO, MAX_POR_LOTE, ehUuid, ultimoDia, mesBR,
   parcelaNormal, montarLista, modeloDaVenda, vendaParaApi, limparItem, extraDoAdicional, comExtra, semExtra, temExtra
 } from '../../../assets/js/adicional-anual.js';
-import { DIA_EMISSAO, contratoSugerido, limparPedido, pessoaParaApi, vendedorDoSocio, contratoParaApi } from '../../../assets/js/contrato-ca.js';
+import { DIA_EMISSAO, TIPOS, contratoSugerido, limparPedido, pessoaParaApi, vendedorDoSocio, contratoParaApi } from '../../../assets/js/contrato-ca.js';
 
 export const API = 'https://api-v2.contaazul.com';
 export const DOMINIO = '@macedoereis.com.br';
@@ -490,33 +495,42 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
   const contratoAtivo = c => c && ehUuid(c.id) && String(c.status || '').toUpperCase() === 'ATIVO';
   const pessoaDoContrato = c => (c && c.cliente && (c.cliente.id || c.cliente.uuid)) || null;
 
-  // o modelo: o contrato ativo mais recente cuja última venda é da categoria HONORÁRIOS MENSAIS, com um serviço só (o
-  // serviço, a categoria, o dia da emissão e a conta); e os vendedores desses contratos (pro sócio que confirma)
-  async function modeloDeContrato(token, cats, contratos) {
-    const ativos = contratos.filter(contratoAtivo).sort((a, b) => Number(b.numero) - Number(a.numero)).slice(0, 12);
-    const vendedores = new Map();
-    let modelo = null;
-    for (const c of ativos) {
+  // os modelos: por tipo (a mensalidade, HONORÁRIOS MENSAIS; o MEI, MEI - CONTRATOS), o contrato ativo mais recente cuja
+  // última venda é da categoria do tipo, com um serviço só (o serviço, a categoria, o dia da emissão e a conta); e os
+  // vendedores dos 12 contratos ativos mais recentes (pro sócio que confirma). Faltando o modelo de MEI entre esses 12,
+  // mais 20 dos de valor baixo (o plano MEI)
+  async function modelosDeContrato(token, cats, contratos, tipos) {
+    const quer = [...new Set(tipos)].filter(t => Object.keys(TIPOS).includes(t));
+    const catDe = { mensal: cats.mensal, mei: cats.mei };
+    const ativos = contratos.filter(contratoAtivo).sort((a, b) => Number(b.numero) - Number(a.numero));
+    const fila = [...ativos.slice(0, 12), ...ativos.slice(12).filter(c => Number(c.total) > 0 && Number(c.total) <= 300).slice(0, 20)];
+    const vendedores = new Map(), modelos = {};
+    const achouTudo = () => quer.every(t => modelos[t]);
+    for (const [i, c] of fila.entries()) {
+      if (i >= 12 && achouTudo()) break;
       let d;
       try { d = await ca(token, '/v1/contratos/' + c.id); } catch (e) { continue; }
       if (d && d.vendedor && ehUuid(d.vendedor.id) && d.vendedor.nome) vendedores.set(d.vendedor.id, String(d.vendedor.nome));
-      if (modelo || !d || !ehUuid(d.id_ultima_venda_confirmada)) continue;
+      if (achouTudo() || !d || !ehUuid(d.id_ultima_venda_confirmada)) continue;
       try {
         const v = await ca(token, '/v1/venda/' + d.id_ultima_venda_confirmada);
+        const tipo = v && v.venda ? quer.find(t => !modelos[t] && catDe[t] && v.venda.id_categoria === catDe[t]) : null;
+        if (!tipo) continue;
         const it = await ca(token, '/v1/venda/' + d.id_ultima_venda_confirmada + '/itens');
-        const servicos = ((it && it.itens) || []).filter(i => i && String(i.tipo || '').toUpperCase() === 'SERVICO' && ehUuid(i.id_item));
-        if (!v || !v.venda || v.venda.id_categoria !== cats.mensal || servicos.length !== 1) continue;
-        modelo = {
-          numero: Number((d.termos && d.termos.numero) || c.numero) || null, cliente: (d.cliente && d.cliente.nome) || null,
-          id_categoria: cats.mensal, id_servico: servicos[0].id_item, servico: servicos[0].nome || null,
+        const servicos = ((it && it.itens) || []).filter(x => x && String(x.tipo || '').toUpperCase() === 'SERVICO' && ehUuid(x.id_item));
+        if (servicos.length !== 1) continue;
+        modelos[tipo] = {
+          tipo, numero: Number((d.termos && d.termos.numero) || c.numero) || null, cliente: (d.cliente && d.cliente.nome) || null,
+          id_categoria: catDe[tipo], id_servico: servicos[0].id_item, servico: servicos[0].nome || null,
           dia_emissao_venda: Number(d.termos && d.termos.dia_emissao_venda) || DIA_EMISSAO,
           id_conta_financeira: v.venda.condicao_pagamento && ehUuid(v.venda.condicao_pagamento.id_conta_financeira) ? v.venda.condicao_pagamento.id_conta_financeira : null
         };
       } catch (e) { continue; }
     }
-    if (!modelo) throw new ErroPublico('Não achei no Conta Azul um contrato de ' + CATEGORIA_MENSAL + ' pra copiar o serviço e a categoria.', 500);
-    return { modelo, vendedores: [...vendedores.entries()].map(([id, nome]) => ({ id, nome })) };
+    return { modelos, vendedores: [...vendedores.entries()].map(([id, nome]) => ({ id, nome })) };
   }
+  const semModelo = tipo => 'não achei no Conta Azul um contrato ativo de ' + TIPOS[tipo] + ' pra copiar o serviço e a categoria';
+  const resumoDoModelo = m => (m ? { numero: m.numero, cliente: m.cliente, servico: m.servico } : null);
 
   // a conta do Inter, pelo nome (o espelho das baixas, como no adicional)
   async function contaDoInter() {
@@ -539,7 +553,7 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
   // o que o sistema sabe das empresas (o cadastro, a base de cobrança, a proposta fechada mais recente, a entrada na carteira)
   async function dadosDasEmpresas(ids) {
     const lista = ids.join(',');
-    const cad = (await db('clientes?select=id,nome_principal,nome_fantasia,documento,tipo_pessoa,email_principal,telefone_principal,cep,logradouro,numero,complemento,bairro,cidade,uf&id=in.(' + lista + ')')) || [];
+    const cad = (await db('clientes?select=id,nome_principal,nome_fantasia,documento,tipo_pessoa,regime_tributario,email_principal,telefone_principal,cep,logradouro,numero,complemento,bairro,cidade,uf&id=in.(' + lista + ')')) || [];
     const bases = (await db('cobrancas_config?select=cliente_id,valor_base,dia_vencimento,ativo&cliente_id=in.(' + lista + ')')) || [];
     const props = (await db('precificacoes?select=cliente_id,honorario,criado_em&status=eq.fechada&cliente_id=in.(' + lista + ')&order=criado_em.desc')) || [];
     const cart = (await db('carteira_info?select=cliente_id,entrada,saida&cliente_id=in.(' + lista + ')')) || [];
@@ -549,7 +563,7 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
   const idsDoCorpo = (lista, max) => [...new Set((Array.isArray(lista) ? lista : []).map(x => String((x && x.cliente_id) || x)).filter(ehUuid))].slice(0, max);
 
   // contrato_prever: empresa por empresa, a pessoa no Conta Azul (pelo CNPJ ou CPF), o contrato ativo dela, e o contrato
-  // que seria criado (o valor, o dia, o início, a conta, o vendedor) — nada é criado
+  // que seria criado (o tipo, o valor, o dia, o início, a conta, o modelo, o vendedor) — nada é criado
   async function preverContratos(corpo, quem) {
     const ids = idsDoCorpo(corpo.clientes, 20);
     if (!ids.length) throw new ErroPublico('Nenhuma empresa pra conferir.');
@@ -559,25 +573,28 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
     const cats = await categorias();
     const pessoas = await todas(token, '/v1/pessoas', { tipo_perfil: 'Cliente' });
     const contratos = await contratosDoContaAzul(token);
-    const { modelo, vendedores } = await modeloDeContrato(token, cats, contratos);
+    const sugs = new Map(ids.filter(id => cad.has(id)).map(id => [id, contratoSugerido({ cadastro: cad.get(id), base: bases.get(id) || null,
+      proposta: props.get(id) || null, entrada: (cart.get(id) || {}).entrada || null, hoje })]));
+    // os dois modelos: a tela pode trocar o tipo sugerido
+    const { modelos, vendedores } = await modelosDeContrato(token, cats, contratos, ['mensal', ...[...sugs.values()].map(x => x.tipo)]);
     const inter = await contaDoInter();
     const vendedor = vendedorDoSocio(vendedores, quem);
-    const itens = ids.filter(id => cad.has(id)).map(id => {
+    const itens = [...sugs.entries()].map(([id, sug]) => {
       const c = cad.get(id);
       const doc = digitos(c.documento);
       const pessoa = doc ? pessoas.find(p => p && ehUuid(p.id) && digitos(p.documento) === doc) || null : null;
       const ativo = pessoa ? contratos.find(k => contratoAtivo(k) && pessoaDoContrato(k) === pessoa.id) || null : null;
-      const base = bases.get(id) || null;
-      const sug = contratoSugerido({ cadastro: c, base, proposta: props.get(id) || null, entrada: (cart.get(id) || {}).entrada || null, hoje });
+      const modelo = modelos[sug.tipo] || null;
+      if (!modelo) sug.faltam.push(semModelo(sug.tipo));
       return {
-        cliente_id: id, nome: c.nome_principal, documento: doc,
+        cliente_id: id, nome: c.nome_principal, documento: doc, regime: c.regime_tributario || null,
         pessoa: pessoa ? { id: pessoa.id, nome: pessoa.nome } : null,
         contrato_ativo: ativo ? { numero: Number(ativo.numero) || null, valor: Number(ativo.total) || null } : null,
-        sugerido: sug,
-        conta: sug.conta === 'inter' && inter ? inter : modelo.id_conta_financeira ? { id: modelo.id_conta_financeira, nome: 'a do contrato modelo' } : null
+        sugerido: sug, modelo: resumoDoModelo(modelo),
+        conta: sug.conta === 'inter' && inter ? inter : modelo && modelo.id_conta_financeira ? { id: modelo.id_conta_financeira, nome: 'a do contrato modelo' } : null
       };
     });
-    return { hoje, modelo: { numero: modelo.numero, cliente: modelo.cliente, servico: modelo.servico }, vendedor, itens };
+    return { hoje, modelo: resumoDoModelo(modelos.mensal), modelos: { mensal: resumoDoModelo(modelos.mensal), mei: resumoDoModelo(modelos.mei) }, vendedor, itens };
   }
 
   // contrato: cria o que falta, empresa por empresa (até 5): a pessoa (quando não está no Conta Azul) e o contrato — a que já
@@ -594,7 +611,7 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
     const cats = await categorias();
     const pessoas = await todas(token, '/v1/pessoas', { tipo_perfil: 'Cliente' });
     const contratos = await contratosDoContaAzul(token);
-    const { modelo, vendedores } = await modeloDeContrato(token, cats, contratos);
+    const { modelos, vendedores } = await modelosDeContrato(token, cats, contratos, pedidos.filter(p => !p.erro).map(p => p.tipo));
     const inter = await contaDoInter();
     const vendedor = vendedorDoSocio(vendedores, quem);
     const resultados = [];
@@ -609,6 +626,8 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
         const ativo = contratos.find(k => contratoAtivo(k) && pessoaDoContrato(k) === pessoa.id);
         if (ativo) { resultados.push({ cliente_id: p.cliente_id, nome: c.nome_principal, ok: false, erro: 'já tem o contrato ' + ativo.numero + ' ativo no Conta Azul' }); continue; }
       }
+      const modelo = modelos[p.tipo];
+      if (!modelo) { resultados.push({ cliente_id: p.cliente_id, nome: c.nome_principal, ok: false, erro: semModelo(p.tipo) }); continue; }
       // 1) a pessoa
       let pessoaCriada = false;
       if (!pessoa) {
@@ -647,7 +666,8 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
         continue;
       }
       contratos.push({ id: criado.id, numero: criado.numero, status: 'ATIVO', cliente: { id: pessoa.id } });
-      resultados.push({ cliente_id: p.cliente_id, nome: c.nome_principal, ok: true, pessoa_criada: pessoaCriada, pessoa: pessoa.id, contrato: criado, valor: p.valor, dia: p.dia, inicio: p.inicio, vendedor: vendedor && vendedor.nome, por: quem });
+      resultados.push({ cliente_id: p.cliente_id, nome: c.nome_principal, ok: true, pessoa_criada: pessoaCriada, pessoa: pessoa.id, contrato: criado, tipo: p.tipo,
+        valor: p.valor, dia: p.dia, inicio: p.inicio, vendedor: vendedor && vendedor.nome, por: quem });
     }
     return { resultados };
   }

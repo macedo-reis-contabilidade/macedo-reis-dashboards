@@ -48,6 +48,7 @@ import { SETORES } from './nova-tarefa.js';
 import { lerAchados, ignorarAchado, reabrirAchado, filtrarAchados, agruparAchados, linkSeguro, ehSocioPeloNome, marcarVisto,
   resolvidosAgora, marcarResolvidoAgora, desmarcarResolvidoAgora, COLUNAS } from './vigia.js';
 import { linkDoDrive, conversaDe, enviarMensagem, apagarMensagem, MAX_TEXTO } from './chat-equipe.js';
+import { resumoDoContrato, mesesDeInicio } from './contrato-ca.js';
 
 const RAIZ = new URL('../../', import.meta.url);   // a raiz do site (este arquivo mora em assets/js/)
 const PRAZO_DESFAZER = 10 * 60e3;   // o "Desfazer" vale por 10 minutos
@@ -954,7 +955,7 @@ const REF_DA_REGRA = { obrigacao_sem_responsavel: 'clientes', tarefa_responsavel
   boleto_parado: 'cobrancas_mensais', admissao_nao_registrada: 'admissoes', admissao_sem_vinculo: 'admissoes', rescisao_pagamento: 'rescisoes',
   rescisao_sem_vinculo: 'rescisoes', alvara_vencendo: 'alvaras', cobranca_ex_cliente: 'cobrancas_config', obrigacao_ex_cliente: 'cliente_obrigacoes',
   cliente_sem_obrigacao: 'clientes', cliente_sem_cobranca: 'clientes', cadastro_desencontrado: 'clientes',
-  obrigacao_desligada: 'cliente_obrigacoes', obrigacao_sem_tarefa: 'cliente_obrigacoes' };
+  obrigacao_desligada: 'cliente_obrigacoes', obrigacao_sem_tarefa: 'cliente_obrigacoes', cliente_sem_contrato: 'clientes', cliente_sem_boleto: 'clientes' };
 const resolvivel = a => !!a && ID.test(String(a.ref_id || '')) && !!REF_DA_REGRA[a.regra] && REF_DA_REGRA[a.regra] === a.ref_tabela;
 // o mês do achado "sem a tarefa do mês": o do prazo dele (o dia do vínculo naquele mês) → { ano, mes } | null
 const mesDoAchado = a => { const m = /^(\d{4})-(\d{2})/.exec(String((a && a.prazo) || '')); return m ? { ano: Number(m[1]), mes: Number(m[2]) } : null; };
@@ -964,6 +965,29 @@ const maisDias = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(
 const docBR = v => { const s = String(v || '').replace(/\D/g, ''); return s.length === 14 ? s.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')
   : s.length === 11 ? s.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4') : String(v || ''); };
 const NADA_VOLTOU = 'nada-voltou';   // o desfazer não achou o que voltar: alguém mexeu depois
+// o mês do achado "fora dos boletos": o do endereço dele (financeiro-boletos.html?competencia=AAAA-MM)
+const compDoLink = link => { const m = /[?&]competencia=(\d{4}-(?:0[1-9]|1[0-2]))(?:[&#]|$)/.exec(String(link || '')); return m ? m[1] : null; };
+// a função ca-vendas (o Conta Azul, só os sócios), com a espera quando o Conta Azul está renovando a conexão (o 503
+// "renovando": o ca-sync renova o token, e a função não disputa a renovação) — o teste de tela encurta por
+// window.__adicionalEsperaMs, como na janela do adicional
+const ESPERA_RENOVANDO_MS = 20000;
+async function chamarVendas(corpo, tentativas = 4) {
+  const espera = (typeof window !== 'undefined' && Number(window.__adicionalEsperaMs)) || ESPERA_RENOVANDO_MS;
+  for (let t = 0; t < tentativas; t++) {
+    let data = null, error = null;
+    try { ({ data, error } = await supabase.functions.invoke('ca-vendas', { body: corpo })); }
+    catch (e) { throw new Error('Não consegui falar com o sistema. Confira a internet e tente de novo.'); }
+    if (!error && data && !data.erro) return data;
+    let texto = data && data.erro ? String(data.erro) : '', renovando = !!(data && data.renovando);
+    const r = error && error.context;
+    try { if (r && typeof r.json === 'function') { const j = await (typeof r.clone === 'function' ? r.clone() : r).json(); if (j && j.erro) { texto = String(j.erro); renovando = !!j.renovando; } } } catch (e) { /* sem corpo */ }
+    if (!texto) texto = r && r.status === 403 ? 'Só os sócios mexem no Conta Azul.' : r && r.status === 401 ? 'Sua sessão expirou: saia e entre de novo no sistema.'
+      : 'Não consegui falar com o Conta Azul agora. Tente de novo em instantes.';
+    if (!renovando || t === tentativas - 1) throw new Error(texto);
+    await new Promise(res => setTimeout(res, espera));
+  }
+  throw new Error('O Conta Azul não respondeu. Tente de novo em alguns minutos.');
+}
 // resolve e devolve { texto, desfazer, segue? } (o que o cartão guarda pro "Desfazer"; segue = o vigia continua avisando) ou { erro }
 async function resolverAchado(a, escolha, ajuda) {
   const autor = ajuda.email || null;
@@ -1091,6 +1115,31 @@ async function resolverAchado(a, escolha, ajuda) {
     return { texto: 'Tarefa de ' + mesBR(t.tarefa.competencia) + ' criada' + (t.tarefa.responsavel ? ' pra ' + t.tarefa.responsavel : ' (sem responsável)') + ', prazo ' + dataBR(t.tarefa.prazo) + '.',
       desfazer: { tipo: 'tarefa_mes', tarefas: [t.tarefa.id] } };
   }
+  // a quinta leva (31/10/2026, pedido do Samuel: "clientes novos que não tiverem contrato no conta azul … e também nos
+  // boletos"): o contrato da mensalidade no Conta Azul (o cadastro dela lá, se falta, e o contrato no padrão dos demais —
+  // a função ca-vendas, com o login do sócio; contrato não se desfaz pela API) e o boleto do mês que ficou sem ela
+  if (a.regra === 'cliente_sem_contrato') {
+    const e = escolha && typeof escolha === 'object' ? escolha : {};
+    let d;
+    try { d = await chamarVendas({ modo: 'contrato', itens: [{ cliente_id: String(a.ref_id), valor: e.valor, dia: e.dia, inicio: e.inicio, tipo: e.tipo }] }); }
+    catch (err) { return { erro: (err && err.message) || 'erro' }; }
+    const r = d && Array.isArray(d.resultados) ? d.resultados[0] : null;
+    if (!r) return { erro: 'O Conta Azul não disse o que fez: confira lá, em Vendas › Contratos.' };
+    if (!r.ok) return { erro: r.erro ? r.erro.charAt(0).toUpperCase() + r.erro.slice(1) + '.' : 'O Conta Azul não aceitou.' };
+    return { texto: 'Contrato ' + ((r.contrato && r.contrato.numero) || '') + ' criado no Conta Azul' + (r.pessoa_criada ? ', com o cadastro da empresa lá' : '') + ': '
+      + resumoDoContrato({ valor: r.valor, dia: r.dia, inicio: r.inicio }) + '. Pra desfazer, exclua no Conta Azul (Vendas › Contratos).', desfazer: null };
+  }
+  if (a.regra === 'cliente_sem_boleto') {
+    const e = escolha && typeof escolha === 'object' ? escolha : {};
+    if (!COMPETENCIA_ISO.test(String(e.competencia || '')) || !e.item) return { erro: 'Não sei de que mês é: ponha na tela Boletos.' };
+    const r = await porNaCompetencia(supabase, e.competencia, [e.item]);
+    if (r.erro && !r.postos.length) return { erro: r.erro };
+    if (!r.postos.length) return { erro: r.jaEstavam.length ? 'Ela já está em ' + mesBR(e.competencia) + ': confira na tela Boletos.' : 'Nada entrou: confira na tela Boletos.' };
+    avisarTelas('mr:boletos-mudaram', { mudancas: [], competencia: e.competencia, novos: r.postos.map(x => x.id) });
+    return { texto: 'No boleto de ' + mesBR(e.competencia) + ': ' + brl(r.postos[0].valor) + ', vence ' + dataBR(e.item.vencimento) + ', a emitir.'
+      + (r.bases.length ? ' Ela ganhou a base de cobrança: os próximos meses saem sozinhos.' : ''), aviso: r.erro || null,
+      desfazer: { tipo: 'competencia', competencia: e.competencia, feito: { postos: r.postos, bases: r.bases } } };
+  }
   return { erro: 'Esse achado se resolve na tela dele.' };
 }
 // desfaz e devolve { erro } — erro também quando nada voltou (alguém mexeu depois)
@@ -1128,6 +1177,11 @@ async function desfazerResolucao(d, ajuda) {
   if (d.tipo === 'desativado') { const r = await reativarRegistro(supabase, d.feito); return nada(r, r.desfeita); }
   if (d.tipo === 'obrigacoes_vinc') { const r = await desfazerVinculoObrigacoes(supabase, d.cliente_id, d.feitos); return nada(r, r.desfeitos > 0); }
   if (d.tipo === 'cobranca') { const r = await desfazerCobranca(supabase, d.feito); return nada(r, r.desfeita); }
+  if (d.tipo === 'competencia') {
+    const r = await desfazerPorNaCompetencia(supabase, d.feito || {});
+    if (r.desfeitos.length) avisarTelas('mr:boletos-mudaram', { mudancas: [], competencia: d.competencia, novos: [] });
+    return nada(r, r.desfeitos.length > 0);
+  }
   if (d.tipo === 'cadastro') { const r = await desfazerCadastro(supabase, d.cliente); return nada(r, r.desfeita); }
   // a tarefa do mês criada aqui sai (só a que continua pendente); a obrigação religada desliga de novo, com quem cuidava
   if (d.tipo === 'tarefa_mes' || d.tipo === 'religada') {
@@ -1232,7 +1286,7 @@ function cartaoVigia({ raiz, estado, salvar, ajuda, anunciar }) {
       acoes = [h('span', { class: 'as-cartao-sub', text: 'Ignorado.' }), botao('Desfazer', ev => reabrir(a, ev.currentTarget), 'link')];
     } else if (a._resolvido) {
       acoes = [h('span', { class: 'as-cartao-ok', text: '✓ ' + String(a._resolvido.texto || 'Resolvido.') }),
-        h('span', { class: 'as-cartao-sub', text: 'Sai da lista na conferência seguinte.' }), botao('Desfazer', ev => desfazerUm(a, ev.currentTarget), 'link')];
+        h('span', { class: 'as-cartao-sub', text: 'Sai da lista na conferência seguinte.' }), a._resolvido.desfazer ? botao('Desfazer', ev => desfazerUm(a, ev.currentTarget), 'link') : null];
     } else {
       acoes = [href ? h('a', { class: 'as-botao as-botao-link', href: new URL(href, RAIZ).href, text: 'Abrir' }) : null, botao('Ignorar', ev => ignorar(a, ev.currentTarget), 'link')];
     }
@@ -1281,8 +1335,99 @@ function cartaoVigia({ raiz, estado, salvar, ajuda, anunciar }) {
     } else if (a.regra === 'obrigacao_sem_tarefa') {
       const m = mesDoAchado(a);
       linha.append(botao(m ? 'Criar a tarefa de ' + pad(m.mes) + '/' + m.ano : 'Criar a tarefa do mês', ev => resolver(a, null, ev.currentTarget)));
+    } else if (a.regra === 'cliente_sem_contrato') {
+      linha.append(botao('Criar no Conta Azul', () => abrirContrato(a, linha)));
+    } else if (a.regra === 'cliente_sem_boleto') {
+      const comp = compDoLink(a.link);
+      linha.append(botao(comp ? 'Pôr no boleto de ' + mesBR(comp) : 'Pôr no boleto do mês', () => abrirBoletoDoMes(a, linha)));
     }
     return linha;
+  }
+  // o contrato da mensalidade no Conta Azul (a quinta leva, 31/10/2026): a função confere a empresa lá (pelo CNPJ) e diz o
+  // que seria criado — o tipo (a mensalidade, ou o MEI pelo regime), o valor (a proposta fechada, senão a base), o dia (o da
+  // base), o mês da primeira mensalidade (o da entrada na carteira), a conta e o vendedor; tudo editável menos a conta e o
+  // vendedor. Criar pede a confirmação: contrato não se desfaz por aqui
+  async function abrirContrato(a, linha) {
+    const caixa = h('div', { class: 'as-vigia-resolver as-vigia-busca' }, sub('Lendo o Conta Azul: o cadastro dela lá e os contratos (leva uns segundos)…'));
+    linha.replaceWith(caixa);
+    const voltar = () => caixa.replaceWith(controlesDeResolver(a));
+    let d;
+    try { d = await chamarVendas({ modo: 'contrato_prever', clientes: [String(a.ref_id)] }); } catch (e) { d = { erro: (e && e.message) || 'erro' }; }
+    const it = d && !d.erro && Array.isArray(d.itens) ? d.itens[0] : null;
+    if (!it) { caixa.replaceChildren(h('div', { class: 'as-cartao-erro', text: (d && d.erro) || 'A empresa não está no cadastro.' }), botao('Voltar', voltar, 'link')); return; }
+    if (it.contrato_ativo) {
+      caixa.replaceChildren(h('div', { class: 'as-cartao-ok', text: '✓ Ela já tem o contrato ' + it.contrato_ativo.numero + ' ativo no Conta Azul'
+        + (it.contrato_ativo.valor ? ' (' + brl(it.contrato_ativo.valor) + ' por mês)' : '') + (it.pessoa && it.pessoa.nome ? ', em nome de ' + it.pessoa.nome : '') + '.' }),
+        sub('O vigia procura a mensalidade pelo nome: com outro nome lá, ele não acha. Se está tudo certo, ignore este aviso.'), botao('Voltar', voltar, 'link'));
+      return;
+    }
+    const s = it.sugerido || {}, modelos = d.modelos || {};
+    const meses = mesesDeInicio(d.hoje || hojeISO());
+    const valor = h('input', { type: 'text', inputmode: 'decimal', class: 'as-vigia-valor', 'aria-label': 'Valor da mensalidade, em reais', placeholder: '0,00', value: valorBR(s.valor) });
+    const dia = h('input', { type: 'number', class: 'as-vigia-dia', 'aria-label': 'Dia do vencimento' });
+    dia.min = '1'; dia.max = '31'; dia.step = '1'; dia.value = String(s.dia || 10);
+    const inicio = h('select', { 'aria-label': 'Mês da primeira mensalidade' }, meses.map(m => h('option', { value: m, text: mesBR(m) })));
+    inicio.value = meses.includes(s.inicio) ? s.inicio : meses[1];
+    const tipo = h('select', { 'aria-label': 'Tipo do contrato' }, h('option', { value: 'mensal', text: 'Honorários mensais' }), h('option', { value: 'mei', text: 'MEI - contratos' }));
+    tipo.value = s.tipo === 'mei' ? 'mei' : 'mensal';
+    const resumo = h('div', { class: 'as-cartao-sub' });
+    const botoes = h('div', { class: 'as-vigia-busca-linha' });
+    const criar = botao('Criar no Conta Azul', () => confirmar(), 'pri');
+    const lerPedido = () => ({ valor: lerValor(valor.value), dia: Number(dia.value), inicio: inicio.value, tipo: tipo.value });
+    const conferir = () => {
+      const p = lerPedido(), modelo = modelos[p.tipo];
+      const pronto = p.valor > 0 && Number.isInteger(p.dia) && p.dia >= 1 && p.dia <= 31 && !!modelo;
+      criar.disabled = !pronto;
+      resumo.textContent = !modelo ? 'Não achei no Conta Azul um contrato ativo de ' + (p.tipo === 'mei' ? 'MEI' : 'honorários mensais') + ' pra copiar: crie o primeiro lá.'
+        : pronto ? resumoDoContrato(p) + (p.inicio < meses[1] ? '. A venda de ' + mesBR(p.inicio) + ' sai na hora.' : '.') + ' Como o contrato ' + modelo.numero + ': o serviço ' + (modelo.servico || 'dele')
+          + ', a venda no último dia de cada mês.' : 'Preencha o valor e o dia.';
+    };
+    function confirmar() {
+      const p = lerPedido();
+      if (criar.disabled) return;
+      botoes.replaceChildren(h('span', { class: 'as-cartao-sub', text: 'Criar o contrato de ' + brl(p.valor) + ' por mês no Conta Azul? Não dá pra desfazer por aqui.' }),
+        botao('Sim, criar', ev => resolver(a, p, ev.currentTarget), 'pri'), botao('Voltar', () => { botoes.replaceChildren(criar, botao('Cancelar', voltar, 'link')); }, 'link'));
+    }
+    [valor, dia, inicio, tipo].forEach(x => ['input', 'change'].forEach(t => x.addEventListener(t, conferir)));
+    botoes.append(criar, botao('Cancelar', voltar, 'link'));
+    const pessoa = it.pessoa ? 'Já está no Conta Azul, como ' + it.pessoa.nome + ': o contrato entra no cadastro dela lá.'
+      : 'Ainda não está no Conta Azul: entra o cadastro dela (a razão social, o CNPJ, o e-mail, o telefone e o endereço do cadastro daqui — sem endereço, o da Receita).';
+    const outros = (s.faltam || []).filter(f => !/contrato ativo de/.test(f));
+    caixa.replaceChildren(...[sub(pessoa),
+      h('div', { class: 'as-cartao-campos' }, h('label', { class: 'as-vigia-campo' }, h('span', { text: 'Valor (R$)' }), valor), h('label', { class: 'as-vigia-campo' }, h('span', { text: 'Vence dia' }), dia),
+        h('label', { class: 'as-vigia-campo' }, h('span', { text: 'A partir de' }), inicio), h('label', { class: 'as-vigia-campo' }, h('span', { text: 'Tipo' }), tipo)),
+      resumo, sub('Conta: ' + ((it.conta && it.conta.nome) || 'a do contrato modelo') + ' · vendedor: ' + ((d.vendedor && d.vendedor.nome) || 'nenhum') + '.'),
+      outros.length ? h('div', { class: 'as-cartao-aviso', text: 'Falta ' + outros.join(' e ') + '.' }) : null, botoes].filter(Boolean));
+    conferir();
+    try { caixa.scrollIntoView({ block: 'nearest' }); } catch (e) { /* sem rolagem */ }
+  }
+  // o boleto do mês que ficou sem ela (a quinta leva): o valor e o vencimento como a geração do mês montaria (a cobrança
+  // mais recente, senão a base; sem nenhuma, a proposta fechada), editáveis — como o "Adicionar empresa" da tela Boletos
+  async function abrirBoletoDoMes(a, linha) {
+    const comp = compDoLink(a.link), id = String(a.ref_id);
+    const caixa = h('div', { class: 'as-vigia-resolver' }, sub('Lendo as cobranças…'));
+    linha.replaceWith(caixa);
+    const voltar = () => caixa.replaceWith(controlesDeResolver(a));
+    if (!comp) { caixa.replaceChildren(h('div', { class: 'as-cartao-erro', text: 'Não sei de que mês é: ponha na tela Boletos.' }), botao('Voltar', voltar, 'link')); return; }
+    let d;
+    try {
+      d = (await dadosParaCompetencia(supabase, [id], comp)).get(id) || null;
+      if (d && !(d.valor > 0)) { const c = await dadosDaCobranca(supabase, id); if (c && c.valor > 0) d = { ...d, valor: c.valor, fonte: 'proposta' }; }
+    } catch (e) { d = { erro: (e && e.message) || 'erro' }; }
+    if (!d || d.erro) { caixa.replaceChildren(h('div', { class: 'as-cartao-erro', text: 'Não consegui ler as cobranças: ' + ((d && d.erro) || 'erro') }), botao('Voltar', voltar, 'link')); return; }
+    if (d.ja) { caixa.replaceChildren(h('div', { class: 'as-cartao-ok', text: '✓ Ela já está em ' + mesBR(comp) + ': some na conferência seguinte.' }), botao('Voltar', voltar, 'link')); return; }
+    const valor = h('input', { type: 'text', inputmode: 'decimal', class: 'as-vigia-valor', 'aria-label': 'Valor do boleto, em reais', placeholder: '0,00', value: valorBR(d.valor) });
+    const venc = h('input', { type: 'date', 'aria-label': 'Vencimento do boleto', value: d.vencimento || '' });
+    const ok = botao('Pôr no boleto', ev => resolver(a, { competencia: comp, item: { cliente_id: id, valor: lerValor(valor.value), vencimento: venc.value, dia: d.dia,
+      canal: d.canal, contato_envio: d.contato_envio, destino: d.destino, responsavel: d.responsavel } }, ev.currentTarget), 'pri');
+    const conferir = () => { ok.disabled = !(lerValor(valor.value) > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(venc.value); };
+    [valor, venc].forEach(x => ['input', 'change'].forEach(t => x.addEventListener(t, conferir)));
+    const fonte = d.fonte === 'copia' ? 'O valor e o envio copiados de ' + mesBR(d.de) + '.' : d.fonte === 'base' ? 'O valor da base de cobrança.'
+      : d.fonte === 'proposta' ? 'O valor da proposta fechada.' : 'Sem cobrança anterior nem base: preencha o valor.';
+    caixa.replaceChildren(h('label', { class: 'as-vigia-campo' }, h('span', { text: 'Valor (R$)' }), valor), h('label', { class: 'as-vigia-campo' }, h('span', { text: 'Vencimento' }), venc),
+      ok, botao('Cancelar', voltar, 'link'), sub(fonte + ' Entra "a emitir"' + (!d.base ? ', e ela ganha a base de cobrança (os próximos meses saem sozinhos).' : '.')));
+    conferir();
+    valor.focus({ preventScroll: true });
   }
   // religar a obrigação desligada (a quarta leva, 20/10/2026): quem vai cuidar (o dono já escolhido) e, se ela vence neste
   // mês e a empresa ainda não tem a tarefa dele, "Criar já a tarefa de MM/AAAA" marcada — como o religar da tela Obrigações
@@ -1418,7 +1563,7 @@ function cartaoVigia({ raiz, estado, salvar, ajuda, anunciar }) {
     salvar({ resolvidos: { ...resolvidos(), [a.id]: { em: new Date().toISOString(), texto: r.texto + (r.aviso ? ' ' + r.aviso : ''), desfazer: r.desfazer } } });
     if (!r.segue) marcarResolvidoAgora(email, String(a.id));   // o que o vigia continua avisando não sai desta máquina
     try { ajuda.reagir && ajuda.reagir(); } catch (e) { /* sem carinha */ }
-    anunciar(r.texto + ' Dá pra desfazer por 10 minutos.');
+    anunciar(r.texto + (r.desfazer ? ' Dá pra desfazer por 10 minutos.' : ''));
     desenhar();
   }
   async function desfazerUm(a, b) {

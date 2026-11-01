@@ -17,6 +17,8 @@ export const ROTULOS = {
   alvara_vencendo: 'Alvarás vencidos ou vencendo', certificado_vencendo: 'Certificados digitais pra avisar o cliente',
   cliente_sem_cobranca: 'Clientes sem cobrança', boletos_nao_gerados: 'Boletos do mês não gerados', boleto_parado: 'Boletos parados',
   cobranca_ex_cliente: 'Cobrança de ex-cliente', faturavel_parado: 'Serviços a faturar parados', reajuste_nao_aplicado: 'Reajustes aceitos fora da cobrança',
+  // os clientes novos (31/10/2026): vigia_regras_clientes_novos()
+  cliente_sem_contrato: 'Clientes sem a mensalidade no Conta Azul', cliente_sem_boleto: 'Clientes novos fora dos boletos do mês',
   cadastro_desencontrado: 'Carteira e cadastro desencontrados', carteira_sem_cadastro: 'Na carteira sem cadastro', proposta_parada: 'Propostas paradas',
   transicao_atrasada: 'Transições atrasadas',
   cliente_sem_obrigacao: 'Clientes sem obrigação fiscal', obrigacao_sem_responsavel: 'Obrigações sem responsável', obrigacao_ex_cliente: 'Obrigações de ex-cliente',
