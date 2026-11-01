@@ -9,7 +9,8 @@ Confere:
   2. a empresa com caso na Reforma: o regime de hoje, a receita (receita mensal do caso × 12) e as compras com a origem
      em verde, o crédito de ICMS e as outras despesas em amarelo (padrão); o resultado — o Simples mais barato, o DAS dos
      12 meses de R$ 105.900,00 (Anexo I, 4ª faixa), a conferência com o PGDAS e o prazo pra sair do Simples até
-     31/12/2026; o detalhe por tributo; sem a folha, o resultado é "Provisório" e o próximo passo é a folha;
+     31/12/2026; o detalhe por tributo; sem a folha, o resultado é "Provisório", a fase 1 já vem concluída e a missão do
+     próximo passo é a folha, na fase 2;
   3. mudar um número: a origem vira "digitado", a conta refaz e o estudo grava sozinho (cliente, os números e o resumo);
      abrir a empresa de novo traz o estudo gravado;
   4. outra atividade: entra com o ISS, soma na receita e sai no ✕; trocar o tipo pra serviço do fator r troca o ICMS
@@ -17,11 +18,13 @@ Confere:
   5. a empresa só com o Fator R: a folha e o pró-labore dele, a receita pedindo pra digitar; com a receita, o Simples
      no Anexo III (fator r de 31,6%) e o Presumido dos 12 meses;
   6. simular sem cadastro;
-  7. "Por onde começar" (o roteiro do estudo), a refeição no RS e as empresas dos mesmos sócios: o restaurante do RS com
+  7. "Por onde começar" em fases e missões, a refeição no RS e as empresas dos mesmos sócios: o restaurante do RS com
      12% e a base a 60% (padrão), a redução de 40% no DAS e o ST lidos do PGDAS do caso; a outra empresa do sócio (pelo
-     CPF) com a receita dela e a soma perto do limite — o primeiro passo é "Ela pode ficar no Simples?", com o mês em que
-     a soma passa; "Conferido" leva ao próximo (a folha), "Digitar a folha" põe o cursor nela, a folha digitada tira o
-     passo, e tirar a outra empresa tira o passo do limite; o resultado fica "Provisório" enquanto falta o que decide;
+     CPF) com a receita dela e a soma perto do limite — a fase 1 abre com a missão da soma, com o mês em que passa;
+     "Conferido" fecha a fase 1 (o aviso, com o alerta do limite, e a carinha comemora) e a tela segue pra fase 2, com a
+     folha; "Digitar a folha" põe o cursor nela e a folha digitada cumpre a missão; a fase 4 vista antes da hora diz o que
+     falta; sem a outra empresa, a missão vira extra; cumpridas as missões, "Pronto pra apresentar", o aviso final e o
+     veredito; o resultado fica "Provisório" enquanto falta o que decide;
   8. o card no Fiscal: "1 estudo";
 e nenhum erro de JavaScript.
 Termina com código 1 se alguma checagem falhar. Pré-requisito: pip install playwright e python -m playwright install chromium
@@ -125,12 +128,16 @@ def main():
         ok(p.input_value('#f_compras') == '720.000,00', 'as compras: 60% da receita, do caso')
         ok(p.get_attribute('.ct-orig[data-orig="aliqCreditoIcms"]', 'data-fonte') == 'padrao' and p.get_attribute('.ct-orig[data-orig="outrasDespesas"]', 'data-fonte') == 'padrao',
            'o crédito de ICMS e as outras despesas ficam no padrão (amarelo)')
-        frase = p.evaluate("() => { const f = document.querySelector('.ct-frase').cloneNode(true); f.querySelectorAll('.ct-prov-tag').forEach(x => x.remove()); return f.textContent; }")
+        frase = p.evaluate("() => { const f = document.querySelector('.ct-frase').cloneNode(true); f.querySelectorAll('.ct-prov-tag, .ct-pronto-tag').forEach(x => x.remove()); return f.textContent; }")
         ok(frase.startswith('Em 2027, o Simples Nacional sai mais barato') and 'É o regime de hoje' in frase, f'a frase da decisão ({frase[:90]}…)')
         ok(p.locator('.ct-frase .ct-prov-tag').count() == 1 and 'a folha e o pró-labore' in p.inner_text('#resultado'), 'sem a folha, o resultado é "Provisório" e diz o que falta')
-        ok(not p.is_hidden('#roteiro') and 'A folha e o pró-labore' in p.inner_text('#passos li.ct-prox') and 'próximo passo' in p.inner_text('#passos li.ct-prox'),
-           'por onde começar: o próximo passo é a folha')
-        ok('Já veio do sistema' in p.inner_text('#rotFeito') and 'a receita' in p.inner_text('#rotFeito'), 'o que já veio do sistema, embaixo do roteiro')
+        ok(not p.is_hidden('#roteiro') and p.locator('#trilha li').count() == 4 and p.get_attribute('#trilha li:nth-child(1)', 'data-estado') == 'feita',
+           'por onde começar: as 4 fases, a 1ª já concluída (a receita veio do caso)')
+        ok('Os números da empresa' in p.inner_text('#trilha li[aria-current="step"]'), 'a fase de agora é a 2, os números da empresa')
+        ok('A folha e o pró-labore' in p.inner_text('#fase .ct-m.ct-prox') and 'próximo passo' in p.inner_text('#fase .ct-m.ct-prox'), 'a missão do próximo passo: a folha')
+        ok(p.get_attribute('#fase .ct-m[data-id="compras"]', 'data-estado') == 'feita' and 'veio do caso da Reforma' in p.inner_text('#fase .ct-m[data-id="compras"]'),
+           'a missão das compras, cumprida pelo caso da Reforma')
+        ok('Missões:' in p.inner_text('#placar') and 'Provisório' in p.inner_text('#placar'), 'o placar: as missões cumpridas e o estudo provisório')
         ok(celula(p, 'Simples Nacional', 1).startswith('R$ 105.900,00'), f'o DAS dos 12 meses: Anexo I, 4ª faixa ({celula(p, "Simples Nacional", 1)!r})')
         ok('mais barato' in celula(p, 'Simples Nacional', 2) and '(hoje)' in p.inner_text('#resultado table.ct'), 'o mais barato de 2027 marcado e o regime de hoje')
         ok('no PGDAS de ago/26 a alíquota efetiva foi 8,83%' in p.inner_text('#resultado'), 'a conferência com o PGDAS do caso')
@@ -205,21 +212,50 @@ def main():
         ok('PADARIA IRMA LTDA' in g and 'sócio em comum: FULANO DE TAL' in g, 'a outra empresa do sócio, achada pelo CPF')
         ok(val('#f_grupo_0_receita') == '2.165.000,00' and fonte('grupo.0.receita') == 'reforma', f'a receita dela, do caso da Reforma ({val("#f_grupo_0_receita")!r})')
         ok('R$ 4.570.000,00' in texto(p, '#grupoSocios') and 'passa do limite em dezembro' in g, 'a soma dos 12 meses e o mês em que o ano passa do limite')
-        prox = texto(p, '#passos li.ct-prox')
-        ok('Ela pode ficar no Simples?' in prox and 'R$ 4.570.000' in prox and 'em dezembro' in prox and '01/01/2027' in prox,
-           'o primeiro passo: pode ficar no Simples? — a soma e a saída em 01/01/2027')
-        ok('Estudo provisório' in p.inner_text('#rotStatus'), 'o estudo é provisório')
-        p.click('#passos li.ct-prox [data-conferir]')
-        p.wait_for_function("() => /A folha e o pró-labore/.test(document.querySelector('#passos li.ct-prox').textContent)", timeout=3000)
-        ok('Ela pode ficar no Simples?' not in p.inner_text('#passos'), '"Conferido" tira o passo do limite e o próximo é a folha')
-        p.click('#passos li.ct-prox [data-ir]')
+        p.evaluate("() => { window.__festa = []; window.addEventListener('mr:comemorar', e => window.__festa.push(e.detail)); }")
+        ok('Ela pode ficar no Simples?' in p.inner_text('#trilha li[aria-current="step"]'), 'a fase de agora é a 1: pode ficar no Simples?')
+        prox = texto(p, '#fase .ct-m.ct-prox')
+        ok('A receita somada com as empresas dos sócios' in prox and 'R$ 4.570.000' in prox and 'em dezembro' in prox and '01/01/2027' in prox,
+           'a missão do próximo passo: a soma com a outra empresa e a saída em 01/01/2027')
+        ok('Provisório' in p.inner_text('#placar'), 'o estudo é provisório')
+        p.click('#fase .ct-m.ct-prox [data-conferir]')
+        p.wait_for_function("() => !document.getElementById('banner').hidden", timeout=3000)
+        ban = texto(p, '#banner')
+        ok('Fase 1 concluída' in ban and 'passa do limite em dezembro' in ban and 'ct-alerta' in (p.get_attribute('#banner', 'class') or ''),
+           f'"Conferido": a fase 1 fecha, com o aviso do limite ({ban[:80]}…)')
+        ok(p.evaluate("() => window.__festa.length") == 1, 'a carinha do assistente comemora (o evento mr:comemorar)')
+        ok(p.get_attribute('#trilha li:nth-child(1)', 'data-estado') == 'feita' and 'A folha e o pró-labore' in p.inner_text('#fase .ct-m.ct-prox'),
+           'passou de fase: a tela segue pra fase 2 e o próximo passo é a folha')
+        p.click('#fase .ct-m.ct-prox [data-ir]')
         ok(p.evaluate("() => document.activeElement && document.activeElement.id") == 'f_folha', '"Digitar a folha" põe o cursor na folha')
         p.fill('#f_folha', '480000')
-        p.wait_for_function("() => !/A folha e o pró-labore/.test(document.getElementById('passos').textContent)", timeout=3000)
-        ok(True, 'a folha digitada tira o passo dela')
+        p.wait_for_function("() => { const m = document.querySelector('#fase .ct-m[data-id=\"folha\"]'); return (m && m.dataset.estado === 'feita') || document.querySelector('#trilha li:nth-child(2)').dataset.estado === 'feita'; }", timeout=3000)
+        p.click('#trilha button[data-fase="1"]')
+        ok(p.get_attribute('#fase .ct-m[data-id="folha"]', 'data-estado') == 'feita' and 'digitado' in p.inner_text('#fase .ct-m[data-id="folha"]'), 'a folha digitada cumpre a missão (marcada como digitada)')
+        p.click('#trilha button[data-fase="3"]')
+        ok('Faltam' in p.inner_text('#fase') and p.get_attribute('#trilha button[data-fase="3"]', 'aria-pressed') == 'true', 'a fase 4, vista antes da hora, diz o que falta')
         p.click('#grupoSocios button[data-acao="tirar-grupo"]')
         p.wait_for_function("() => !document.getElementById('grupoSocios')", timeout=3000)
-        ok(p.locator('#passos li[data-id="limite"]').count() == 0, 'sem a outra empresa, a receita sozinha fica longe do limite e o passo some')
+        p.wait_for_timeout(500)   # a conta refaz um instante depois
+        p.click('#trilha button[data-fase="0"]')
+        p.wait_for_function("() => { const m = document.querySelector('#fase .ct-m[data-id=\"limite\"]'); return m && /As empresas dos sócios/.test(m.textContent); }", timeout=3000)
+        lim = p.inner_text('#fase .ct-m[data-id="limite"]')
+        ok('ficou fora da soma' in lim and p.get_attribute('#fase .ct-m[data-id="limite"]', 'data-estado') == 'feita',
+           'sem a outra empresa: longe do limite, a missão vira extra e diz que a empresa achada ficou fora da soma')
+        # jogar até o fim: cumprir as missões abertas (o "está certo") até o estudo ficar pronto
+        for _ in range(14):
+            if 'Pronto pra apresentar' in p.inner_text('#placar'): break
+            feito = p.evaluate("""() => {
+              const b = document.querySelector('#fase .ct-m[data-estado="aberta"] [data-conferir]');
+              if (b) { b.click(); return 'conferiu'; }
+              const atual = document.querySelector('#trilha li[aria-current="step"] button');
+              if (atual && atual.getAttribute('aria-pressed') !== 'true') { atual.click(); return 'fase'; }
+              return null; }""")
+            if not feito: break
+            p.wait_for_timeout(350)
+        ok('Pronto pra apresentar' in p.inner_text('#placar') and p.locator('.ct-frase .ct-pronto-tag').count() == 1, 'cumpridas as missões, o estudo fica "Pronto pra apresentar"')
+        ok('Estudo pronto pra apresentar' in texto(p, '#banner') and p.evaluate("() => window.__festa.some(d => d.recado)"), 'o aviso final, e a carinha dá o recado')
+        ok('Ver o resultado' in p.inner_text('#fase') and 'sai mais barato' in p.inner_text('#fase .ct-veredito'), 'o veredito, na fase 4')
 
         print('8. O card no Fiscal')
         p2 = cx.new_page()

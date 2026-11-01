@@ -249,7 +249,7 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
   if (tipoAnexo === 'servico' && fr.length) notas.push('Serviço no Anexo III no PGDAS: se a atividade é do fator r (vai pro Anexo V quando a folha não chega a 28% da receita), troque o tipo pra "Serviços do fator r".');
   // a conferência do Simples: a alíquota efetiva do último PGDAS lido na Reforma
   const pg = dom.pgdas || null;
-  const conferencia = pg && num(pg.aliquotaEfetiva) > 0 ? { competencia: pg.competencia, aliquota: num(pg.aliquotaEfetiva), das: num(pg.dasTotal) } : null;
+  const conferencia = pg && num(pg.aliquotaEfetiva) > 0 ? { competencia: pg.competencia, aliquota: num(pg.aliquotaEfetiva), das: num(pg.dasTotal), fonte: 'reforma' } : null;
   const sd = serieDaEmpresa({ caso, pgdas });
   return { entrada: e, origens, notas, conferencia, serie: sd ? sd.serie : null };
 }
@@ -367,7 +367,7 @@ export function aplicarRelatorios(entrada, origens, cons) {
     e.atividades[iMerc].redIcmsSimples = num(sim.reducaoIcms);
     o['atividades.' + iMerc + '.redIcmsSimples'] = origem('dominio', 'PGDAS de ' + rotuloComp(sim.competencia) + ': ' + pct1(sim.reducaoIcms) + '% de redução', 'o "percentual de redução" do ICMS que a empresa declara no PGDAS');
   }
-  const conferencia = sim && sim.aliquotaEfetiva != null ? { competencia: sim.competencia, aliquota: sim.aliquotaEfetiva, das: sim.dasTotal } : null;
+  const conferencia = sim && sim.aliquotaEfetiva != null ? { competencia: sim.competencia, aliquota: sim.aliquotaEfetiva, das: sim.dasTotal, fonte: 'dominio' } : null;
   return { entrada: e, origens: o, conferencia };
 }
 

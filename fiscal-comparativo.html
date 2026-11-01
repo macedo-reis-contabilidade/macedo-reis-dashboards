@@ -61,31 +61,64 @@
     .ct-orig[data-fonte="reforma"], .ct-orig[data-fonte="dominio"], .ct-orig[data-fonte="fator_r"], .ct-orig[data-fonte="pgdas"], .ct-orig[data-fonte="cadastro"], .ct-orig[data-fonte="gravado"] { color:var(--ok); }
     .ct-orig[data-fonte="confirmado"] { color:var(--brand-pale); }
     .ct-campo.ct-aqui .input { border-color:var(--brand-primary); box-shadow:0 0 0 3px rgba(91,130,166,.35); transition:box-shadow .2s; }
-    /* por onde começar: o roteiro do estudo */
+    /* por onde começar: as fases e as missões do estudo */
     .ct-roteiro[hidden] { display:none; }
-    .ct-rot-cab { display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 14px; margin-bottom:10px; }
+    .ct-rot-cab { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 16px; margin-bottom:6px; }
     .ct-rot-cab h2 { margin:0; }
-    .ct-rot-status { font-size:13px; color:var(--text-muted); }
-    .ct-rot-status.ct-prov { color:var(--warn); }
-    ol.ct-passos { list-style:none; margin:0; padding:0; counter-reset:passo; max-width:980px; }
-    ol.ct-passos > li { counter-increment:passo; border:1px solid var(--line); border-radius:10px; background:var(--surface); margin-bottom:6px; }
-    ol.ct-passos > li.ct-prox { border-color:var(--brand-primary); }
-    ol.ct-passos details > summary { list-style:none; display:grid; grid-template-columns:28px minmax(0,1fr) auto; gap:10px; align-items:center; padding:9px 12px; cursor:pointer; }
-    ol.ct-passos details > summary::-webkit-details-marker { display:none; }
-    ol.ct-passos details > summary::before { content:counter(passo); width:24px; height:24px; border-radius:50%; display:grid; place-items:center; font-size:12px; font-weight:600; background:var(--fill-2); color:var(--brand-pale); }
-    ol.ct-passos li.ct-prox details > summary::before { background:var(--brand-primary); color:#fff; }
-    ol.ct-passos details > summary:focus-visible { outline:2px solid var(--brand-primary); outline-offset:-2px; border-radius:10px; }
-    .ct-p-tit { font-size:14px; color:var(--text); font-weight:600; min-width:0; }
-    .ct-p-tit small { font-weight:400; color:var(--brand-light); font-size:12px; margin-left:8px; }
-    .ct-p-tag { font-size:11px; padding:2px 8px; border-radius:999px; white-space:nowrap; border:1px solid var(--line); color:var(--text-muted); }
-    .ct-p-tag[data-estado="falta"] { color:var(--err); border-color:rgba(224,108,108,.5); }
-    .ct-p-tag[data-peso="decide"][data-estado="conferir"] { color:var(--warn); border-color:rgba(230,180,80,.5); }
-    .ct-p-corpo { padding:0 12px 12px 50px; font-size:13px; line-height:1.55; color:var(--brand-pale); }
-    .ct-p-corpo p { margin:0 0 8px; max-width:78ch; }
-    .ct-p-acoes { display:flex; flex-wrap:wrap; gap:8px; }
-    .ct-rot-feito { font-size:12.5px; color:var(--text-muted); margin:10px 0 0; max-width:980px; }
-    .ct-rot-feito b { color:var(--ok); font-weight:600; }
-    @media (max-width:640px){ .ct-p-corpo { padding-left:12px; } ol.ct-passos details > summary { grid-template-columns:28px minmax(0,1fr); } ol.ct-passos details > summary .ct-p-tag { grid-column:2; justify-self:start; } }
+    .ct-placar { display:flex; align-items:center; gap:10px; font-size:12.5px; color:var(--text-muted); }
+    .ct-placar b { color:var(--text); font-variant-numeric:tabular-nums; }
+    .ct-barra { width:150px; height:6px; border-radius:999px; background:var(--fill-2); overflow:hidden; }
+    .ct-barra > span { display:block; height:100%; border-radius:999px; background:var(--brand-primary); transition:width .4s ease; }
+    .ct-placar[data-pronto="sim"] .ct-barra > span { background:var(--ok); }
+    .ct-placar-est { font-size:11px; font-weight:600; border-radius:999px; padding:1px 9px; border:1px solid rgba(230,180,80,.5); color:var(--warn); }
+    .ct-placar[data-pronto="sim"] .ct-placar-est { border-color:rgba(63,176,122,.5); color:var(--ok); }
+    ol.ct-trilha { list-style:none; margin:10px 0 14px; padding:0; display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); max-width:980px; }
+    .ct-tr { position:relative; }
+    .ct-tr + .ct-tr::before { content:''; position:absolute; top:20px; left:-50%; width:100%; height:2px; background:var(--line); z-index:0; }
+    .ct-tr[data-estado="feita"] + .ct-tr::before { background:var(--ok); }
+    .ct-tr button { position:relative; z-index:1; width:100%; background:none; border:0; padding:4px 4px 6px; display:grid; justify-items:center; gap:4px; color:var(--brand-pale); font:inherit; cursor:pointer; border-radius:10px; }
+    .ct-tr button:focus-visible { outline:2px solid var(--brand-primary); outline-offset:2px; }
+    .ct-tr-n { width:32px; height:32px; border-radius:50%; display:grid; place-items:center; font-size:13px; font-weight:700; background:var(--surface); border:2px solid var(--line-strong); color:var(--brand-pale); }
+    .ct-tr[data-estado="feita"] .ct-tr-n { background:var(--ok); border-color:var(--ok); color:#0e1f16; }
+    .ct-tr[data-estado="atual"] .ct-tr-n { border-color:var(--brand-primary); color:var(--text); box-shadow:0 0 0 4px rgba(91,130,166,.28); }
+    .ct-tr-t { font-size:12.5px; line-height:1.25; text-align:center; max-width:16ch; }
+    .ct-tr[data-estado="futura"] .ct-tr-t { color:var(--text-muted); }
+    .ct-tr button[aria-pressed="true"] .ct-tr-t { color:var(--text); font-weight:600; }
+    .ct-tr-p { font-size:11px; color:var(--text-muted); font-variant-numeric:tabular-nums; }
+    .ct-banner { border:1px solid rgba(63,176,122,.5); background:rgba(63,176,122,.10); border-radius:10px; padding:10px 12px; margin:0 0 12px; font-size:13.5px; color:var(--text); max-width:980px; }
+    .ct-banner[hidden] { display:none; }
+    .ct-banner.ct-alerta { border-color:rgba(230,180,80,.55); background:rgba(230,180,80,.10); }
+    .ct-banner b { color:var(--ok); }
+    .ct-banner.ct-alerta b { color:var(--warn); }
+    .ct-fase { max-width:980px; }
+    .ct-fase-obj { margin:0 0 10px; font-size:13px; color:var(--text-muted); }
+    .ct-conquista { margin:0 0 10px; font-size:13.5px; color:var(--ok); }
+    .ct-conquista.ct-alerta { color:var(--warn); }
+    ul.ct-missoes { list-style:none; margin:0; padding:0; }
+    .ct-m { display:grid; grid-template-columns:24px minmax(0,1fr); gap:10px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--surface); margin-bottom:6px; }
+    .ct-m.ct-prox { border-color:var(--brand-primary); }
+    .ct-m-mark { width:22px; height:22px; margin-top:1px; border-radius:50%; border:2px solid var(--line-strong); display:grid; place-items:center; font-size:12px; font-weight:700; color:#0e1f16; }
+    .ct-m[data-falta="sim"] .ct-m-mark { border-color:rgba(224,108,108,.7); }
+    .ct-m[data-estado="feita"] .ct-m-mark { background:var(--ok); border-color:var(--ok); }
+    .ct-m-tit { font-size:14px; font-weight:600; color:var(--text); }
+    .ct-m-tit small { font-weight:400; font-size:12px; color:var(--brand-light); margin-left:8px; }
+    .ct-m[data-estado="feita"] .ct-m-tit { color:var(--brand-pale); font-weight:500; }
+    .ct-m-como { font-size:12px; color:var(--ok); margin-left:8px; font-weight:400; }
+    .ct-m-txt { margin:4px 0 0; font-size:13px; line-height:1.55; color:var(--brand-pale); max-width:78ch; }
+    .ct-m[data-estado="feita"] .ct-m-txt { color:var(--text-muted); font-size:12.5px; }
+    .ct-m-acoes { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+    .ct-m-sep { font-size:12px; color:var(--text-muted); margin:12px 0 6px; }
+    .ct-veredito { font-size:15px; line-height:1.55; color:var(--text); margin:0 0 10px; }
+    .ct-drop.ct-chama { border-color:var(--brand-primary); background:rgba(91,130,166,.12); color:var(--brand-pale); }
+    @media (prefers-reduced-motion: no-preference) {
+      .ct-m.ct-m-nova .ct-m-mark { animation:ct-pop .55s ease-out; }
+      .ct-banner:not([hidden]) { animation:ct-surge .35s ease-out; }
+      .ct-tr.ct-tr-nova .ct-tr-n { animation:ct-pop .6s ease-out; }
+    }
+    @keyframes ct-pop { 0% { transform:scale(.5); } 60% { transform:scale(1.2); } 100% { transform:scale(1); } }
+    @keyframes ct-surge { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
+    @media (max-width:640px){ .ct-tr-t { font-size:11px; } .ct-tr-p { display:none; } .ct-barra { width:90px; } }
+    .ct-frase .ct-pronto-tag { display:inline-block; font-size:11px; font-weight:600; color:var(--ok); border:1px solid rgba(63,176,122,.5); border-radius:999px; padding:0 8px; margin-right:6px; vertical-align:2px; }
     .ct-frase .ct-prov-tag { display:inline-block; font-size:11px; font-weight:600; color:var(--warn); border:1px solid rgba(230,180,80,.5); border-radius:999px; padding:0 8px; margin-right:6px; vertical-align:2px; }
     /* as outras empresas dos sócios */
     .ct-gr-linha { border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin-bottom:8px; background:var(--surface); display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) auto; gap:8px 12px; align-items:start; }
@@ -191,9 +224,10 @@
       </section>
 
       <section class="ct-sec ct-roteiro" id="roteiro" aria-labelledby="tRoteiro" hidden>
-        <div class="ct-rot-cab"><h2 id="tRoteiro">Por onde começar</h2><span class="ct-rot-status" id="rotStatus" role="status"></span></div>
-        <ol class="ct-passos" id="passos"></ol>
-        <p class="ct-rot-feito" id="rotFeito"></p>
+        <div class="ct-rot-cab"><h2 id="tRoteiro">Por onde começar</h2><div class="ct-placar" id="placar"></div></div>
+        <ol class="ct-trilha" id="trilha" aria-label="As fases do estudo"></ol>
+        <div class="ct-banner" id="banner" role="status" hidden></div>
+        <div class="ct-fase" id="fase"></div>
       </section>
 
       <div class="ct-grade" id="grade" hidden>
@@ -255,9 +289,11 @@
 
     // o estudo aberto
     // serie: a receita datada da empresa (o sistema) · grupoSeries: a das outras empresas dos sócios ([{ nome, serie }])
-    // rotAbertos: os passos do roteiro que a pessoa abriu
+    // socios: quantos sócios o cadastro tem (null = sem cadastro) · jornada e faseVista: o roteiro (as fases e as missões)
     const st = { cliente: null, nome: '', entrada: null, origens: {}, notas: [], conferencia: null, rels: [], fontes: [],
-      estudoId: null, gravadoEm: null, gravadoPor: null, semTabela: false, serie: null, grupoSeries: [], rotAbertos: new Set() };
+      estudoId: null, gravadoEm: null, gravadoPor: null, semTabela: false, serie: null, grupoSeries: [], socios: null,
+      jornada: { inicial: true, feitas: new Set(), fases: new Set() }, faseVista: null };
+    let ultimoRoteiro = null;
 
     // os padrões que a tela mostra (os mesmos do motor): ficam na entrada pra aparecer nos campos
     const PADROES = { compras: 0, aliqCreditoIcms: 12, pctComprasSimples: 0, despesasCredito: 0, outrasDespesas: 0, difalSimples: 0,
@@ -320,7 +356,7 @@
       if (!nome) return;
       await gravarPendente();
       st.cliente = null; st.nome = nome; st.estudoId = null; st.gravadoEm = null; st.gravadoPor = null; st.rels = []; st.conferencia = null;
-      st.serie = null; st.grupoSeries = []; st.rotAbertos = new Set();
+      st.serie = null; st.grupoSeries = []; st.socios = null; st.faseVista = null; st.jornada = { inicial: true, feitas: new Set(), fases: new Set() };
       st.entrada = comPadroes({ atividades: [{ tipo: 'comercio', receita: 0 }], grupo: [] });
       st.origens = { ...ORIGENS_PADRAO, 'atividades.0.receita': { fonte: 'padrao', texto: 'digite a receita dos 12 meses' }, 'atividades.0.tipo': { fonte: 'padrao' },
         compras: { fonte: 'padrao', texto: 'digite ou solte os relatórios' }, folha: { fonte: 'padrao', texto: 'digite os 12 meses', dica: 'salários, 13º e férias' }, proLabore: { fonte: 'padrao', texto: 'digite' },
@@ -349,9 +385,11 @@
       if (frEmp) { const r = await supabase.from('fr_lancamentos').select('competencia, folha_salarios, folha_outros, prolabore').eq('empresa_id', frEmp.id).order('competencia', { ascending: false }).limit(12); fr = (r && r.data) || []; }
       // as outras empresas dos mesmos sócios (pelo CPF; sem CPF, pelo nome) e a receita de cada uma
       const grupo = [], grupoSeries = [];
+      let nSocios = null;
       try {
         const rSoc = await supabase.from('socios').select('nome, cpf').eq('cliente_id', c.id);
         const socios = (rSoc && rSoc.data) || [];
+        if (rSoc && !rSoc.error) nSocios = socios.length;
         const cpfs = [...new Set(socios.map(s => String(s.cpf || '').replace(/\D/g, '')).filter(x => x.length === 11))];
         const semCpf = socios.filter(s => String(s.cpf || '').replace(/\D/g, '').length !== 11).map(s => s.nome).filter(Boolean);
         const outros = [];
@@ -380,7 +418,7 @@
       const sis = entradaDoSistema({ cliente: c, caso, fatorR: fr, pgdas: pg });
       sis.entrada.grupo = grupo.map(({ origem, ...g }) => g);
       grupo.forEach((g, i) => { sis.origens['grupo.' + i + '.receita'] = g.origem; });
-      st.serie = sis.serie; st.grupoSeries = grupoSeries; st.rotAbertos = new Set();
+      st.serie = sis.serie; st.grupoSeries = grupoSeries; st.socios = nSocios; st.faseVista = null; st.jornada = { inicial: true, feitas: new Set(), fases: new Set() };
       st.fontes = [
         { ok: !!caso, txt: caso ? 'caso da Reforma' : 'sem caso na Reforma' },
         { ok: fr.length > 0, txt: fr.length ? 'Fator R (' + fr.length + (fr.length === 1 ? ' mês)' : ' meses)') : 'sem folha no Fator R' },
@@ -613,15 +651,18 @@
         st.origens = novo;
         renderForm(); mudou();
       }
-      if (b.dataset.acao === 'mais-grupo') {
-        st.entrada.grupo = [...(st.entrada.grupo || []), { nome: '', receita: 0 }];
-        const i = st.entrada.grupo.length - 1;
-        st.origens['grupo.' + i + '.receita'] = { fonte: 'padrao', texto: 'digite os 12 meses dela' };
-        renderForm();
-        const el = $('f_grupo_' + i + '_nome'); if (el) el.focus();
-        mudou();
-      }
+      if (b.dataset.acao === 'mais-grupo') maisGrupo();
     });
+    // uma empresa dos mesmos sócios, à mão (a de fora do cadastro)
+    function maisGrupo() {
+      st.entrada.grupo = [...(st.entrada.grupo || []), { nome: '', receita: 0 }];
+      const i = st.entrada.grupo.length - 1;
+      st.origens['grupo.' + i + '.receita'] = { fonte: 'padrao', texto: 'digite os 12 meses dela' };
+      renderForm();
+      const el = $('f_grupo_' + i + '_nome');
+      if (el) { el.scrollIntoView({ block: 'center' }); el.focus(); }
+      mudou();
+    }
 
     // ---------- a conta ----------
     let tCalc = null, tGravar = null;
@@ -646,12 +687,14 @@
       } catch (err) {
         ultimo = null;
         box.innerHTML = '<p class="ct-vazio">' + esc(err.message) + '</p>';
-        renderRoteiro(roteiroDoEstudo({ entrada: st.entrada, origens: st.origens, serie: st.serie }));
+        ultimoRoteiro = roteiroDoEstudo({ entrada: st.entrada, origens: st.origens, serie: st.serie, socios: st.socios, achadas: (st.grupoSeries || []).length, conferencia: st.conferencia });
+        renderJornada(ultimoRoteiro);
         return;
       }
       ultimo = c;
-      const rot = roteiroDoEstudo({ entrada: st.entrada, origens: st.origens, comparacao: c, testes, situacao: situacaoAtual(), serie: st.serie });
-      renderRoteiro(rot);
+      const rot = roteiroDoEstudo({ entrada: st.entrada, origens: st.origens, comparacao: c, testes, situacao: situacaoAtual(), serie: st.serie, socios: st.socios, achadas: (st.grupoSeries || []).length, conferencia: st.conferencia });
+      ultimoRoteiro = rot;
+      renderJornada(rot);
       const decidem = rot.passos.filter(p => p.estado !== 'feito' && p.peso === 'decide');
       const d = c.decisao;
       const anos = c.anos;
@@ -705,8 +748,8 @@
       const avisos = [...new Set([...(st.notas || []).filter(n => !(temFolha && /^A folha e o pró-labore não estão no sistema/.test(n))), ...c.avisos, ...REGIMES.flatMap(g => (anos.find(r => r.ano === c.anoDecisao) || anos[0])[g].avisos || [])])];
       const prazos = prazosDaEscolha(hojeLocal(), atual, c.anoDecisao);
       box.innerHTML =
-        '<p class="ct-frase">' + (rot.provisorio ? '<span class="ct-prov-tag">Provisório</span>' : '') + esc(fraseDaDecisao(c)) + '</p>' +
-        (rot.provisorio ? '<p class="ct-sub ct-alerta">Ainda pode virar: ' + (decidem.length === 1 ? 'falta conferir ' : 'faltam conferir ') + esc(decidem.map(p => p.curto || p.titulo).join(', ').replace(/, ([^,]*)$/, ' e $1')) + ' — veja "Por onde começar".</p>' : '') +
+        '<p class="ct-frase">' + (rot.provisorio ? '<span class="ct-prov-tag">Provisório</span>' : rot.pronto ? '<span class="ct-pronto-tag">Pronto pra apresentar</span>' : '') + esc(fraseDaDecisao(c)) + '</p>' +
+        (rot.provisorio ? '<p class="ct-sub ct-alerta">Ainda pode virar. ' + (decidem.length === 1 ? 'Missão que falta: ' : 'Missões que faltam: ') + esc(decidem.map(p => p.curto || p.titulo).join('; ')) + ' (veja "Por onde começar").</p>' : '') +
         conf +
         '<div class="ct-tab"><table class="ct" aria-label="Tributos por regime e por ano">' + cab + linhaRec + linhas + '</table></div>' +
         '<details class="ct-det"><summary>Por tributo</summary>' + det + '</details>' +
@@ -717,33 +760,93 @@
           '<li>CBS de 2027: referência de ' + esc(pct((aliq2027 && aliq2027.cbs) || 11.3, 2)) + '%, a calculada pelo TCU, menos 0,1 ponto; IBS de 0,1%. Fora da conta: receitas financeiras, ajustes do lucro do Real, lucros e dividendos (Lei 15.270) e os anos de 2029 em diante.</li>' +
           avisos.map(a => '<li>' + esc(a) + '</li>').join('') + '</ul></div>';
     }
-    // ---------- por onde começar ----------
-    const TAG_PESO = { decide: 'pode virar a decisão', importa: 'muda o tamanho da diferença', detalhe: 'quando der' };
-    function renderRoteiro(rot) {
-      $('roteiro').hidden = false;
-      const pend = rot.passos.filter(p => p.estado !== 'feito');
-      const s = $('rotStatus');
-      s.classList.toggle('ct-prov', rot.provisorio);
-      s.textContent = rot.provisorio ? 'Estudo provisório: ' + (rot.decidem === 1 ? 'falta 1 coisa que pode virar a decisão.' : 'faltam ' + rot.decidem + ' coisas que podem virar a decisão.')
-        : pend.length ? 'O resultado já se sustenta; sobram detalhes pra conferir.' : 'Tudo conferido.';
-      $('passos').innerHTML = pend.map((p, i) => {
-        const prox = i === 0;
-        return '<li' + (prox ? ' class="ct-prox"' : '') + ' data-id="' + esc(p.id) + '"><details' + (prox || st.rotAbertos.has(p.id) ? ' open' : '') + '>' +
-          '<summary><span class="ct-p-tit">' + esc(p.titulo) + (prox ? '<small>próximo passo</small>' : '') + '</span>' +
-            '<span class="ct-p-tag" data-estado="' + esc(p.estado) + '" data-peso="' + esc(p.peso) + '">' + esc(p.estado === 'falta' ? 'falta' : TAG_PESO[p.peso]) + '</span></summary>' +
-          '<div class="ct-p-corpo"><p>' + esc(p.texto) + '</p><div class="ct-p-acoes">' +
-            (p.campo ? '<button type="button" class="btn btn-ghost btn-sm" data-ir="' + esc(p.campo) + '">' + esc(p.irRotulo || 'Ir ao campo') + '</button>' : '') +
-            (p.conferir ? '<button type="button" class="btn btn-ghost btn-sm" data-conferir="' + esc(p.conferir.join(',')) + '">✓ ' + esc(p.conferirRotulo || 'Está certo') + '</button>' : '') +
-          '</div></div></details></li>';
-      }).join('');
-      $('rotFeito').innerHTML = rot.doSistema.length ? '<b>Já veio do sistema:</b> ' + esc(rot.doSistema.join(', ').replace(/, ([^,]*)$/, ' e $1')) + '.' : '';
+    // ---------- por onde começar: as fases e as missões ----------
+    // st.jornada: o que já estava cumprido no desenho anterior (pra mostrar o que acabou de ser cumprido e comemorar a fase
+    // que fechou) — na primeira vez de cada empresa, só anota. st.faseVista: a fase que a pessoa escolheu ver (null = a de agora)
+    let tBanner = null;
+    function comemorar(texto, alerta, recado) {
+      const b = $('banner');
+      b.className = 'ct-banner' + (alerta ? ' ct-alerta' : '');
+      b.innerHTML = texto; b.hidden = false;
+      clearTimeout(tBanner); tBanner = setTimeout(() => { b.hidden = true; }, 12000);
+      // a carinha do assistente comemora junto (sem contar como tarefa concluída)
+      try { window.dispatchEvent(new CustomEvent('mr:comemorar', { detail: { texto: b.textContent, recado: !!recado } })); } catch (e) { /* sem o assistente, segue */ }
     }
-    // abrir e fechar um passo fica lembrado enquanto a empresa está aberta
-    $('passos').addEventListener('toggle', e => {
-      const li = e.target.closest && e.target.closest('li[data-id]'); if (!li) return;
-      if (e.target.open) st.rotAbertos.add(li.dataset.id); else st.rotAbertos.delete(li.dataset.id);
-    }, true);
-    $('passos').addEventListener('click', e => {
+    function renderJornada(rot) {
+      $('roteiro').hidden = false;
+      const j = st.jornada;
+      const feitasAgora = new Set(rot.fases.flatMap(f => f.missoes).filter(m => m.estado === 'feita').map(m => m.id));
+      const fechadasAgora = new Set(rot.fases.filter(f => f.concluida).map(f => f.id));
+      const novas = j.inicial ? new Set() : new Set([...feitasAgora].filter(x => !j.feitas.has(x)));
+      const fechou = j.inicial ? [] : rot.fases.filter(f => f.concluida && !j.fases.has(f.id));
+      if (fechou.length) {
+        st.faseVista = null;   // passou de fase: a tela acompanha a de agora
+        const f = fechou[fechou.length - 1];
+        if (f.id === 'veredito') comemorar('<b>Estudo pronto pra apresentar.</b> ' + esc(f.conquista || ''), false, true);
+        else comemorar('<b>Fase ' + (rot.fases.indexOf(f) + 1) + ' concluída.</b> ' + esc(f.conquista || ''), !!f.alerta);
+      }
+      st.jornada = { inicial: false, feitas: feitasAgora, fases: fechadasAgora };
+      // o placar
+      const pctFeito = rot.total ? Math.round(rot.feitas / rot.total * 100) : 0;
+      $('placar').dataset.pronto = rot.pronto ? 'sim' : 'nao';
+      $('placar').innerHTML = '<span>Missões: <b>' + rot.feitas + '</b> de ' + rot.total + (rot.extras ? ' · extras ' + rot.extrasFeitas + ' de ' + rot.extras : '') + '</span>' +
+        '<span class="ct-barra" role="progressbar" aria-label="Missões cumpridas" aria-valuemin="0" aria-valuemax="' + rot.total + '" aria-valuenow="' + rot.feitas + '"><span style="width:' + pctFeito + '%"></span></span>' +
+        '<span class="ct-placar-est">' + (rot.pronto ? 'Pronto pra apresentar' : rot.provisorio ? 'Provisório' : 'Quase lá') + '</span>';
+      // a trilha das fases
+      const vista = st.faseVista != null ? st.faseVista : rot.faseAtual;
+      $('trilha').innerHTML = rot.fases.map((f, i) => {
+        const estado = f.concluida ? 'feita' : i === rot.faseAtual ? 'atual' : 'futura';
+        const nova = fechou.some(x => x.id === f.id);
+        return '<li class="ct-tr' + (nova ? ' ct-tr-nova' : '') + '" data-estado="' + estado + '"' + (i === rot.faseAtual ? ' aria-current="step"' : '') + '>' +
+          '<button type="button" data-fase="' + i + '" aria-pressed="' + (i === vista) + '"><span class="ct-tr-n">' + (f.concluida ? '✓' : i + 1) + '</span>' +
+          '<span class="ct-tr-t">' + esc(f.titulo) + '</span>' + (f.total ? '<span class="ct-tr-p">' + f.feitas + ' de ' + f.total + '</span>' : '<span class="ct-tr-p">' + (f.concluida ? 'pronto' : '') + '</span>') + '</button></li>';
+      }).join('');
+      // a fase vista: o objetivo, o que ela conquistou e as missões (as abertas antes; as extras no fim)
+      const f = rot.fases[vista];
+      let html = '<p class="ct-fase-obj">' + esc(f.objetivo) + '</p>';
+      if (f.id === 'veredito') {
+        if (rot.pronto) html += '<p class="ct-veredito">' + esc(f.conquista) + '</p><button type="button" class="btn btn-ghost btn-sm" data-ver-resultado="1">Ver o resultado</button>';
+        else {
+          const faltam = rot.passos.filter(p => p.estado !== 'feito' && p.peso !== 'detalhe');
+          html += '<p class="ct-m-txt">Faltam ' + faltam.length + (faltam.length === 1 ? ' missão: ' : ' missões: ') + esc(faltam.map(p => p.curto || p.titulo).join(', ').replace(/, ([^,]*)$/, ' e $1')) + '.</p>' +
+            (rot.faseAtual < 3 ? '<button type="button" class="btn btn-ghost btn-sm" data-fase="' + rot.faseAtual + '">Ir à fase ' + (rot.faseAtual + 1) + '</button>' : '');
+        }
+      } else {
+        if (f.concluida && f.conquista) html += '<p class="ct-conquista' + (f.alerta ? ' ct-alerta' : '') + '">' + esc(f.conquista) + '</p>';
+        const ordem = m => (m.estado === 'feita' ? 2 : 0) + (m.peso === 'detalhe' ? 4 : 0);
+        const ms = f.missoes.slice().sort((a, b) => ordem(a) - ordem(b));
+        const lis = [];
+        let sep = false;
+        ms.forEach(m => {
+          if (m.peso === 'detalhe' && !sep) { lis.push('<li class="ct-m-sep">Extras: não seguram a fase</li>'); sep = true; }
+          const prox = rot.proximo && rot.proximo.id === m.id;
+          const acoes = m.estado === 'feita' ? '' : '<div class="ct-m-acoes">' +
+            (m.relatorio ? '<button type="button" class="btn btn-ghost btn-sm" data-relatorio="1">Soltar ' + esc(m.relatorio) + '</button>' : '') +
+            (m.campo ? '<button type="button" class="btn btn-ghost btn-sm" data-ir="' + esc(m.campo) + '">' + esc(m.irRotulo || 'Ir ao campo') + '</button>' : '') +
+            (m.acao === 'mais-grupo' ? '<button type="button" class="btn btn-ghost btn-sm" data-mais-grupo="1">' + esc(m.acaoRotulo) + '</button>' : '') +
+            (m.conferir ? '<button type="button" class="btn btn-ghost btn-sm" data-conferir="' + esc(m.conferir.join(',')) + '">✓ ' + esc(m.conferirRotulo || 'Está certo') + '</button>' : '') + '</div>';
+          lis.push('<li class="ct-m' + (prox ? ' ct-prox' : '') + (novas.has(m.id) ? ' ct-m-nova' : '') + '" data-id="' + esc(m.id) + '" data-estado="' + m.estado + '" data-falta="' + (m.falta && m.estado !== 'feita' ? 'sim' : 'nao') + '">' +
+            '<span class="ct-m-mark" aria-hidden="true">' + (m.estado === 'feita' ? '✓' : '') + '</span><div>' +
+            '<div class="ct-m-tit">' + esc(m.titulo) + (m.estado === 'feita' ? '<span class="ct-m-como">' + esc(m.como || 'feito') + '</span>' : prox ? '<small>próximo passo</small>' : '') +
+            '<span class="ct-so-leitor">' + (m.estado === 'feita' ? ' (cumprida)' : ' (a cumprir)') + '</span></div>' +
+            '<p class="ct-m-txt">' + esc(m.texto) + '</p>' + acoes + '</div></li>');
+        });
+        html += '<ul class="ct-missoes">' + lis.join('') + '</ul>';
+      }
+      $('fase').innerHTML = html;
+    }
+    $('trilha').addEventListener('click', e => {
+      const b = e.target.closest('button[data-fase]'); if (!b) return;
+      st.faseVista = +b.dataset.fase;
+      if (ultimoRoteiro) renderJornada(ultimoRoteiro);
+      const bt = document.querySelector('#trilha button[data-fase="' + st.faseVista + '"]'); if (bt) bt.focus();
+    });
+    $('fase').addEventListener('click', e => {
+      const fb = e.target.closest('button[data-fase]');
+      if (fb) { st.faseVista = +fb.dataset.fase; if (ultimoRoteiro) renderJornada(ultimoRoteiro); return; }
+      if (e.target.closest('[data-ver-resultado]')) { $('tResultado').scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); return; }
+      if (e.target.closest('[data-relatorio]')) { chamarRelatorio(); return; }
+      if (e.target.closest('[data-mais-grupo]')) { maisGrupo(); return; }
       const ir = e.target.closest('[data-ir]');
       if (ir) { irAoCampo(ir.dataset.ir); return; }
       const cf = e.target.closest('[data-conferir]');
@@ -751,8 +854,16 @@
       cf.dataset.conferir.split(',').filter(Boolean).forEach(k => { st.origens[k] = { fonte: 'confirmado', texto: FONTES.confirmado }; });
       renderForm(); calcular();
       clearTimeout(tGravar); tGravar = setTimeout(gravar, 1500);
-      const prox = document.querySelector('#passos li.ct-prox summary'); if (prox) prox.focus();
+      const prox = document.querySelector('#fase .ct-m.ct-prox, #fase .ct-m[data-estado="aberta"]');
+      if (prox) { const b = prox.querySelector('button'); if (b) b.focus(); }
     });
+    // a missão de soltar um relatório: a caixa dos relatórios acende e o seletor de arquivos abre
+    function chamarRelatorio() {
+      const d = $('drop');
+      d.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      d.classList.add('ct-chama'); setTimeout(() => d.classList.remove('ct-chama'), 2500);
+      $('arquivos').click();
+    }
     // vai ao campo: abre o que está fechado em volta, rola até ele e marca por um instante
     function irAoCampo(caminho) {
       const el = document.getElementById('f_' + String(caminho).replace(/\./g, '_'));

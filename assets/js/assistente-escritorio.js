@@ -7,7 +7,8 @@
 // Por tela: o nome e o setor (a função sabe onde a pessoa está), as perguntas prontas e o recado do dia — uma vez por dia
 // em cada tela, o que ela tem de novo, contado direto do banco, sem IA (na primeira tela do dia, a saudação com a agenda
 // de quem entrou). A carinha comemora quando alguém conclui tarefa ou rotina (evento "mr:feito", da agenda e das telas de
-// tarefas) e fica discreta quando uma janela está aberta. Na ficha da empresa (clientes/editar.html?id=…), "esta empresa"
+// tarefas) e quando uma tela comemora uma conquista (evento "mr:comemorar", o Comparativo tributário: a fase do estudo que
+// fechou; com `recado`, diz o texto) e fica discreta quando uma janela está aberta. Na ficha da empresa (clientes/editar.html?id=…), "esta empresa"
 // é ela. Uma tela com coisa própria (a Reforma: a ficha, o cálculo, a Base legal) chama assistenteDaTela({...}).
 // Ações (concluir, remarcar ou passar tarefas, marcar boleto pago, criar tarefa): a resposta traz a proposta e o cartão dela
 // (assets/js/assistente-acoes.js) pede a confirmação; a saudação do dia e o recado da Agenda perguntam pelas atrasadas
@@ -424,6 +425,14 @@ function ligarVida() {
     const antes = +(guardado.ler(k) || 0), depois = antes + n;
     guardado.gravar(k, String(depois));
     if (Math.floor(depois / 5) > Math.floor(antes / 5)) api.avisar({ texto: 'Já são ' + Math.floor(depois / 5) * 5 + ' concluídas hoje. Bom ritmo!', ms: 6000 });
+  });
+  // uma tela comemora uma conquista (o Comparativo tributário: a fase do estudo que fechou) — a carinha pula, sem contar como
+  // tarefa concluída; com recado, diz o texto (o estudo pronto pra apresentar)
+  window.addEventListener('mr:comemorar', ev => {
+    if (!api) return;
+    api.reagir();
+    const t = ev && ev.detail && ev.detail.recado && ev.detail.texto;
+    if (t) api.avisar({ texto: String(t).slice(0, 240), ms: 7000 });
   });
   // a Agenda pede a revisão das atrasadas (o "Revisar com o assistente" da coluna Seu dia): de quem está no filtro, senão
   // de quem entrou. Marca "atendido" pra Agenda não cair na lista dela
