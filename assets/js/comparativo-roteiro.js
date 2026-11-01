@@ -92,23 +92,23 @@ export function roteiroDoEstudo({ entrada = {}, origens = {}, comparacao = null,
   // 3. a folha e o pró-labore
   const semFolha = !(num(e.folha) + num(e.proLabore) > 0);
   if (receita > 0 && semFolha && !(conferido('folha') || fonte('folha') === 'digitado')) {
-    add({ id: 'folha', titulo: 'A folha e o pró-labore', curto: 'a folha e o pró-labore', texto: 'Faltam. Sem eles, o INSS patronal do Presumido e do Real sai zero — cerca de 28% da folha e 20% do pró-labore — e esses regimes parecem mais baratos do que são.' +
+    add({ id: 'folha', titulo: 'A folha e o pró-labore', curto: 'a folha e o pró-labore', texto: 'Faltam. Sem eles, o INSS patronal (cerca de 28% da folha e 20% do pró-labore) sai zero: o Presumido parece mais barato do que é e, no Real, o lucro sai maior do que é.' +
       (ats.some(a => a.tipo === 'servico_r') ? ' No Simples, o serviço do fator r fica no Anexo V sem folha.' : '') + ' É o número que mais falta: preencha antes de conferir o resto.',
       estado: 'falta', peso: 'decide', campo: 'folha', irRotulo: 'Digitar a folha', conferir: ['folha', 'proLabore'], conferirRotulo: 'Não tem folha nem pró-labore' });
   }
 
-  // 4. as premissas no padrão que viram o resultado (sem a folha, a virada pro Presumido ou pro Real ainda não diz muito:
-  // a folha os encarece)
+  // 4. as premissas no padrão que viram o resultado (sem a folha, a virada pro Presumido ainda não diz muito: o INSS da
+  // folha o encarece; no Real, a folha abate o lucro e o IR a menos passa o INSS a mais — a virada pro Real fica de pé)
   const ROT = r => ROTULO_REGIME[r] || r;
   const faltaFolha = semFolha && !conferido('folha') && fonte('folha') !== 'digitado';
   (testes || []).filter(t => t.muda).forEach(t => {
     const v = t.variantes.filter(x => x.melhor !== t.melhorBase);
     const un = !t.unidade ? '' : t.unidade.startsWith('%') ? t.unidade : ' ' + t.unidade;
     const atual = pegar(e, t.campo);
-    const pelaFolha = faltaFolha && v.every(x => x.melhor === 'presumido' || x.melhor === 'real');
+    const pelaFolha = faltaFolha && v.every(x => x.melhor === 'presumido');
     add({ id: 'premissa:' + t.campo, titulo: maiuscula(t.rotulo), curto: t.rotulo,
       texto: 'Está no padrão' + (atual != null ? ' (' + pct(atual, 2) + un + ')' : '') + '. Com ' + v.map(x => pct(x.valor, 2) + un + ', o mais barato passa a ser o ' + ROT(x.melhor)).join('; com ') + '.' +
-        (pelaFolha ? ' Sem a folha na conta, isso ainda não diz muito: confira depois dela.' : ''),
+        (pelaFolha ? ' Sem a folha na conta, isso ainda não diz muito: o INSS dela encarece o Presumido. Confira depois dela.' : ''),
       estado: 'conferir', peso: pelaFolha ? 'importa' : 'decide', campo: t.campo, irRotulo: 'Ir ao campo', conferir: [t.campo], conferirRotulo: 'Está certo' });
   });
 

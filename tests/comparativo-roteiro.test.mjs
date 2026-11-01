@@ -48,8 +48,9 @@ ok('a folha falta e decide', folha && folha.estado === 'falta' && folha.peso ===
 ok('o estudo é provisório', r1.provisorio && r1.decidem >= 2);
 const cres = r1.passos.find(p => p.id === 'crescimento');
 ok('perto do limite, o crescimento decide e traz o medido', cres && cres.peso === 'decide' && /19%/.test(cres.texto), cres && cres.texto);
-const prem = r1.passos.filter(p => p.id.startsWith('premissa:') && /Presumido|Real/.test(p.texto));
-ok('sem a folha, a virada pro Presumido ou pro Real não decide (e diz por quê)', prem.every(p => p.peso === 'importa' && /Sem a folha na conta/.test(p.texto)), prem.map(p => p.id));
+const prem = r1.passos.filter(p => p.id.startsWith('premissa:') && /passa a ser o Lucro Presumido/.test(p.texto));
+ok('sem a folha, a virada pro Presumido não decide (o INSS da folha o encarece) e diz por quê', prem.length > 0 && prem.every(p => p.peso === 'importa' && /Sem a folha na conta/.test(p.texto)), prem.map(p => p.id));
+ok('o texto da folha: o Presumido parece mais barato e, no Real, o lucro sai maior', /Presumido parece mais barato/.test(folha.texto) && /no Real, o lucro sai maior/.test(folha.texto));
 ok('o que veio do sistema', ['a receita', 'o ST', 'o monofásico', 'a redução do ICMS no DAS', 'as compras', 'a receita de PADARIA INVENTADA'].every(x => r1.doSistema.includes(x)), r1.doSistema);
 ok('a ordem: o que decide antes do que importa, e o detalhe por último', (() => { const P = { decide: 0, importa: 1, detalhe: 2 }; const ps = r1.passos.filter(p => p.estado !== 'feito'); return ps.every((p, i) => i === 0 || P[ps[i - 1].peso] <= P[p.peso]); })());
 
