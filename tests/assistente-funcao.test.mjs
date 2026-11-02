@@ -863,13 +863,13 @@ console.log('Os cadastros (30/10/2026): incluir na Reforma, pôr num mês dos bo
     { id: OB(3), nome: 'NFS-E DJ INSTALAÇÕES', dia_prazo: 1, ativo: true }];
   const vinc = [{ id: OB(11), cliente_id: U(41), obrigacao_id: OB(1), responsavel: 'Thalia', dia_prazo_override: null, ativo: true },
     { id: OB(12), cliente_id: U(42), obrigacao_id: OB(1), responsavel: 'THALIA', dia_prazo_override: null, ativo: true },
-    { id: OB(13), cliente_id: U(43), obrigacao_id: OB(1), responsavel: 'Deize', dia_prazo_override: null, ativo: true },
-    { id: OB(14), cliente_id: U(41), obrigacao_id: OB(3), responsavel: 'Deize', dia_prazo_override: null, ativo: true }];
+    { id: OB(13), cliente_id: U(43), obrigacao_id: OB(1), responsavel: 'Vitória', dia_prazo_override: null, ativo: true },
+    { id: OB(14), cliente_id: U(41), obrigacao_id: OB(3), responsavel: 'Vitória', dia_prazo_override: null, ativo: true }];
   const comObrig = () => comCadastro(pizz, { obrigacoes_fiscais: catalogo, cliente_obrigacoes: vinc });
-  const o1 = await comObrig().propor_ajustar_obrigacoes({ obrigacoes: ['situação fiscal federal'], responsavel_atual: 'thalia', novo_responsavel: 'deize' });
-  chk('obrigações: a de quem cuida hoje passa pra Deize (sem acento e sem maiúscula); as tarefas abertas vão junto, e o modelo sabe', propostas.length === 7
-    && JSON.stringify(propostas[6]) === JSON.stringify({ tipo: 'ajustar_obrigacoes', ids: [OB(11), OB(12)], mudar: { responsavel: 'Deize' } })
-    && /quem cuida: THALIA → Deize/.test(o1) && /tarefas abertas dessas obrigações que estavam com quem cuidava vão junto pra Deize/.test(o1) && /Nada mudou ainda/.test(o1), o1);
+  const o1 = await comObrig().propor_ajustar_obrigacoes({ obrigacoes: ['situação fiscal federal'], responsavel_atual: 'thalia', novo_responsavel: 'vitoria' });
+  chk('obrigações: a de quem cuida hoje passa pra Vitória (sem acento e sem maiúscula); as tarefas abertas vão junto, e o modelo sabe', propostas.length === 7
+    && JSON.stringify(propostas[6]) === JSON.stringify({ tipo: 'ajustar_obrigacoes', ids: [OB(11), OB(12)], mudar: { responsavel: 'Vitória' } })
+    && /quem cuida: THALIA → Vitória/.test(o1) && /tarefas abertas dessas obrigações que estavam com quem cuidava vão junto pra Vitória/.test(o1) && /Nada mudou ainda/.test(o1), o1);
   const o2 = await comObrig().propor_ajustar_obrigacoes({ obrigacoes: ['NFS-E DJ INSTALAÇÕES'], novo_dia: 30 });
   chk('obrigações: o dia daqui pra frente (as já criadas ficam com o prazo delas)', propostas.length === 8 && JSON.stringify(propostas[7]) === JSON.stringify({ tipo: 'ajustar_obrigacoes', ids: [OB(14)], mudar: { dia: 30 } })
     && /dia 1 → 30/.test(o2) && /as já criadas ficam com o prazo delas/.test(o2), o2);
@@ -879,8 +879,8 @@ console.log('Os cadastros (30/10/2026): incluir na Reforma, pôr num mês dos bo
     /Mais de uma obrigação com "situação fiscal": SITUAÇÃO FISCAL - ESTADUAL; SITUAÇÃO FISCAL - FEDERAL/.test(await comObrig().propor_ajustar_obrigacoes({ obrigacoes: ['situação fiscal'], novo_dia: 5 }))
     && /Desligar vai sozinho/.test(await comObrig().propor_ajustar_obrigacoes({ obrigacoes: ['NFS-E DJ INSTALAÇÕES'], desligar: true, novo_dia: 5 }))
     && /fora da equipe/.test(await comObrig().propor_ajustar_obrigacoes({ obrigacoes: ['NFS-E DJ INSTALAÇÕES'], novo_responsavel: 'Luana' }))
-    && /já está assim/.test(await comObrig().propor_ajustar_obrigacoes({ obrigacoes: ['NFS-E DJ INSTALAÇÕES'], novo_responsavel: 'Deize' })) && propostas.length === 9);
-  const desl = await comCadastro(pizz, { obrigacoes_fiscais: catalogo, cliente_obrigacoes: [{ ...vinc[0], ativo: false }] }).propor_ajustar_obrigacoes({ obrigacoes: ['SITUAÇÃO FISCAL - FEDERAL'], novo_responsavel: 'Deize' });
+    && /já está assim/.test(await comObrig().propor_ajustar_obrigacoes({ obrigacoes: ['NFS-E DJ INSTALAÇÕES'], novo_responsavel: 'Vitória' })) && propostas.length === 9);
+  const desl = await comCadastro(pizz, { obrigacoes_fiscais: catalogo, cliente_obrigacoes: [{ ...vinc[0], ativo: false }] }).propor_ajustar_obrigacoes({ obrigacoes: ['SITUAÇÃO FISCAL - FEDERAL'], novo_responsavel: 'Vitória' });
   chk('obrigações: só o vínculo ligado entra — o desligado, a mensagem diz onde religar', /Nenhuma empresa com SITUAÇÃO FISCAL - FEDERAL ligada — nada foi proposto\. Só o vínculo ligado entra aqui: o desligado não gera tarefa, e religar é na tela Obrigações fiscais\./.test(desl) && propostas.length === 9, desl);
   chk('as etapas e o prompt dos cadastros', descreverEtapa('propor_incluir_reforma') === 'Separando as empresas pra campanha da Reforma' && descreverEtapa('propor_por_na_competencia') === 'Montando os boletos pra você conferir'
     && descreverEtapa('propor_ajustar_obrigacoes') === 'Separando as obrigações pra você confirmar' && /propor_incluir_reforma; o nome e o CNPJ de cada uma vão na resposta/.test(INSTRUCOES)

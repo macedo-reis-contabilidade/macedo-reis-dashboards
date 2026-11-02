@@ -2117,7 +2117,7 @@
         </label>`).join('') || '';
       // responsável = alguém da equipe (vínculo sem responsável gera tarefa que não aparece na agenda de ninguém);
       // quem já é responsável em algum vínculo também entra na lista
-      const nomesVo = ['Thalia', 'Adaini', 'Vitória', 'Samuel', 'Diego', 'Edna', 'Deize'];
+      const nomesVo = ['Thalia', 'Adaini', 'Vitória', 'Samuel', 'Diego', 'Edna'];
       (vincs || []).forEach(v => { if (v.responsavel && !nomesVo.some(n => n.toLowerCase() === v.responsavel.trim().toLowerCase())) nomesVo.push(v.responsavel.trim()); });
       const escVo = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
       document.getElementById('voResp').innerHTML = '<option value="">— escolha —</option>' + nomesVo.map(n => '<option value="' + escVo(n) + '">' + escVo(n) + '</option>').join('');

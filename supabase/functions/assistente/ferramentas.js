@@ -114,7 +114,7 @@ export const TABELAS = {
   alvara_historico: { rotulo: 'o histórico dos alvarás', desc: 'O que aconteceu em cada alvará.', cols: ['alvara_id', 'descricao', 'autor', 'created_at'], padrao: ['alvara_id', 'descricao', 'autor', 'created_at'] },
   // os certificados digitais dos clientes (Societário › Certificados digitais, 22/10/2026): o escritório só avisa o cliente
   certificados_digitais: { rotulo: 'os certificados digitais dos clientes',
-    desc: 'Os certificados digitais A1 e A3 dos clientes e a validade (tela Certificados digitais, no Societário). O escritório não emite nem agenda o certificado: só avisa o cliente antes de vencer (a 30 dias e, se não renovou, a 7), e quem avisa é a Deize. Renovado = a validade nova no lugar da antiga.',
+    desc: 'Os certificados digitais A1 e A3 dos clientes e a validade (tela Certificados digitais, no Societário). O escritório não emite nem agenda o certificado: só avisa o cliente antes de vencer (a 30 dias e, se não renovou, a 7), e quem avisa é a Adaini. Renovado = a validade nova no lugar da antiga.',
     cols: ['id', 'cliente_id', 'titular', 'tipo', 'certificadora', 'validade', 'acompanhar', 'avisado_em', 'avisado_por', 'observacao', 'atualizado_em'],
     padrao: ['cliente_id', 'titular', 'tipo', 'certificadora', 'validade', 'avisado_em', 'avisado_por'],
     notas: { tipo: 'A1 (arquivo) | A3 (cartão ou token) | vazio = não informado', titular: 'o nome no certificado (empresa ou pessoa)', cliente_id: 'vazio = sem empresa vinculada',

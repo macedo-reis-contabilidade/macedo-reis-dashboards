@@ -20,7 +20,7 @@ export const SETORES = [
   ['societario', 'Societário'], ['financeiro', 'Financeiro'], ['comercial', 'Comercial'],
   ['irpf', 'IRPF'], ['gestao', 'Gestão'], ['geral', 'Geral'],
 ];
-const EQUIPE_PADRAO = ['Thalia', 'Vitória', 'Adaini', 'Samuel', 'Diego', 'Edna', 'Deize'];
+const EQUIPE_PADRAO = ['Thalia', 'Vitória', 'Adaini', 'Samuel', 'Diego', 'Edna'];
 // A tarefa 💰 faturável precisa da empresa (28/10/2026): ao concluir, o banco cria a cobrança em Faturáveis pela empresa
 // da tarefa, e sem ela o concluir voltava com o erro do banco, em inglês (22 e 23/10, três tarefas que acabaram
 // excluídas). O formulário, o editor da Agenda e o das telas de Tarefas barram antes, com esta frase.

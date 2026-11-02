@@ -2,7 +2,7 @@
 // MACEDO & REIS — Certificados digitais dos clientes (Societário › Certificados digitais, 22/10/2026, pedido do Samuel)
 // O escritório não emite nem agenda o certificado: avisa o cliente antes de vencer, pra ele renovar a tempo (o certificado
 // vencido trava o trabalho do escritório também). Quando avisar é a mesma regra do vigia (certificado_vencendo, em
-// vigia_regras_societario), que manda o recado pra Deize:
+// vigia_regras_societario), que manda o recado pra Adaini (até 02/11/2026, pra Deize):
 //   - a 30 dias ou menos do vencimento, sem aviso nessa janela;
 //   - a 7 dias ou menos, sem aviso depois dos 7 dias (o primeiro aviso não bastou: o certificado não foi renovado);
 //   - vencido há até 30 dias, sem aviso depois do vencimento (depois disso, só a lista mostra).

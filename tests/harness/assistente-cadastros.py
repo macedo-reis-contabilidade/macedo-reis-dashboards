@@ -16,7 +16,7 @@ Confere:
   2. na tela Boletos: o valor copiado da cobrança mais recente e o vencimento no mês seguinte, no dia útil; a empresa sem
      nada pede o valor (e avisa que ganha a base); pôr grava "a emitir", cria a base de quem não tinha e a grade do mês
      recarrega; desfazer tira as duas coisas;
-  3. na tela Obrigações fiscais: passar a obrigação pra Deize — a desligada fica de fora; grava, as tarefas abertas que
+  3. na tela Obrigações fiscais: passar a obrigação pra Vitória — a desligada fica de fora; grava, as tarefas abertas que
      estavam com quem cuidava vão junto (a concluída fica), com o histórico, e a tela recarrega; desfazer volta; o dia do
      prazo daqui pra frente; desligar e desfazer (liga de novo).
 Termina com código 1 se alguma checagem falhar.
@@ -59,7 +59,7 @@ ACOES = {
     'Inclui na Reforma o mercado, a oficina e o escritório': {'tipo': 'incluir_reforma', 'ids': [E1, E2, E4], 'observacao': 'vai pro Simples Nacional em 2027'},
     'Inclui só o mercado na Reforma': {'tipo': 'incluir_reforma', 'ids': [E1]},
     'Põe nos boletos do mês': {'tipo': 'por_na_competencia', 'competencia': COMP, 'ids': [E1, E2, E4]},
-    'Passa a EFD pra Deize': {'tipo': 'ajustar_obrigacoes', 'ids': ['v1', 'v2', 'v3'], 'mudar': {'responsavel': 'Deize'}},
+    'Passa a EFD pra Vitória': {'tipo': 'ajustar_obrigacoes', 'ids': ['v1', 'v2', 'v3'], 'mudar': {'responsavel': 'Vitória'}},
     'Muda o dia da EFD da Exemplo pra 30': {'tipo': 'ajustar_obrigacoes', 'ids': ['v2'], 'mudar': {'dia': 30}},
     'Desliga a EFD do Modelo': {'tipo': 'ajustar_obrigacoes', 'ids': ['v1'], 'mudar': {'desligar': True}}}
 SEMEAR = """
@@ -190,22 +190,22 @@ def main():
         ok(resp_tela('v2') == 'Thalia', 'antes: a EFD da EMPRESA EXEMPLO está com a Thalia')
         # as tarefas abertas da EFD que vão junto: as do COMÉRCIO MODELO sem ninguém e as da EXEMPLO com a Thalia (as nossas e as do mock)
         juntas = db("() => window.__mockDb.tarefas.filter(x => x.obrigacao_id === 'o1' && x.status !== 'concluida' && ((x.cliente_id === 'c1' && x.responsavel == null) || (x.cliente_id === 'c2' && x.responsavel === 'Thalia'))).map(x => x.id)")
-        perguntar('Passa a EFD pra Deize'); p.wait_for_selector(ultimo + ' .as-cartao-lista', timeout=6000)
+        perguntar('Passa a EFD pra Vitória'); p.wait_for_selector(ultimo + ' .as-cartao-lista', timeout=6000)
         card = p.inner_text(ultimo)
-        ok(card.startswith('Mudar EFD TESTE MENSAL em 2 empresas?') and 'COMÉRCIO MODELO ME' in card and 'quem cuida: ninguém → Deize' in card and 'quem cuida: Thalia → Deize' in card
-           and '1 outra já está assim (ou foi desligada).' in card and 'vão junto pra Deize' in card, f'o cartão: as duas ligadas com o antes e o depois; a desligada fica de fora ({card[:260]!r})')
+        ok(card.startswith('Mudar EFD TESTE MENSAL em 2 empresas?') and 'COMÉRCIO MODELO ME' in card and 'quem cuida: ninguém → Vitória' in card and 'quem cuida: Thalia → Vitória' in card
+           and '1 outra já está assim (ou foi desligada).' in card and 'vão junto pra Vitória' in card, f'o cartão: as duas ligadas com o antes e o depois; a desligada fica de fora ({card[:260]!r})')
         p.click(ultimo + ' .as-botao-pri'); p.wait_for_selector(ultimo + ' .as-cartao-ok', timeout=6000)
         v = lambda i: db('i => window.__mockDb.cliente_obrigacoes.find(x => x.id === i)', i)
         t = lambda i: db('i => window.__mockDb.tarefas.find(x => x.id === i)', i)
-        ok(v('v1')['responsavel'] == 'Deize' and v('v2')['responsavel'] == 'Deize' and v('v3')['responsavel'] is None, 'gravou: as duas ligadas com a Deize; a desligada como estava')
-        ok(t('yt-1')['responsavel'] == 'Deize' and t('yt-3')['responsavel'] == 'Deize' and t('yt-2')['responsavel'] == 'Thalia', 'as tarefas abertas vão junto (a que estava com a Thalia e a sem ninguém); a concluída fica')
+        ok(v('v1')['responsavel'] == 'Vitória' and v('v2')['responsavel'] == 'Vitória' and v('v3')['responsavel'] is None, 'gravou: as duas ligadas com a Vitória; a desligada como estava')
+        ok(t('yt-1')['responsavel'] == 'Vitória' and t('yt-3')['responsavel'] == 'Vitória' and t('yt-2')['responsavel'] == 'Thalia', 'as tarefas abertas vão junto (a que estava com a Thalia e a sem ninguém); a concluída fica')
         hist = db('() => window.__mockDb.tarefa_historico.filter(h => h.tarefa_id === "yt-1").map(h => h.descricao)')
-        ok(hist == ['Responsável trocado na obrigação: Thalia → Deize — pelo assistente do escritório.'], f'a linha no histórico da tarefa ({hist})')
-        p.wait_for_function("() => (document.querySelector('.obr-cli[data-vid=\"v2\"] .dt-edit[data-edit=\"resp\"]') || {}).innerText === 'Deize'", timeout=6000)
-        ok(True, 'a tela Obrigações fiscais recarrega sozinha (a EMPRESA EXEMPLO com a Deize)')
+        ok(hist == ['Responsável trocado na obrigação: Thalia → Vitória — pelo assistente do escritório.'], f'a linha no histórico da tarefa ({hist})')
+        p.wait_for_function("() => (document.querySelector('.obr-cli[data-vid=\"v2\"] .dt-edit[data-edit=\"resp\"]') || {}).innerText === 'Vitória'", timeout=6000)
+        ok(True, 'a tela Obrigações fiscais recarrega sozinha (a EMPRESA EXEMPLO com a Vitória)')
         txt = p.inner_text(ultimo)
-        ok(txt.startswith('✓ Mudou em 2 empresas.') and f'{len(juntas)} tarefas abertas foram junto pra Deize.' in txt and len(juntas) >= 2
-           and all(t(i)['responsavel'] == 'Deize' for i in juntas), f'o cartão diz o que fez e quantas tarefas foram junto ({txt!r}, {juntas})')
+        ok(txt.startswith('✓ Mudou em 2 empresas.') and f'{len(juntas)} tarefas abertas foram junto pra Vitória.' in txt and len(juntas) >= 2
+           and all(t(i)['responsavel'] == 'Vitória' for i in juntas), f'o cartão diz o que fez e quantas tarefas foram junto ({txt!r}, {juntas})')
         p.click(ultimo + ' button.as-botao-link'); espera_texto(ultimo, '↺ Desfeito')
         ok(v('v1')['responsavel'] is None and v('v2')['responsavel'] == 'Thalia' and t('yt-1')['responsavel'] == 'Thalia' and t('yt-3')['responsavel'] is None,
            'desfazer: os vínculos e as tarefas voltam a quem estava')

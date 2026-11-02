@@ -610,19 +610,19 @@ console.log('O dia do contrato (31/10/2026: o vencimento que mudou por fim de se
 
 console.log('As obrigações das empresas, em lote:');
 {
-  chk('o que muda, limpo: alguém da equipe, o dia de 1 a 31; desligar vai sozinho', JSON.stringify(limparAjuste({ responsavel: 'deize', dia: '30' })) === '{"responsavel":"Deize","dia":30}'
+  chk('o que muda, limpo: alguém da equipe, o dia de 1 a 31; desligar vai sozinho', JSON.stringify(limparAjuste({ responsavel: 'diego', dia: '30' })) === '{"responsavel":"Diego","dia":30}'
     && JSON.stringify(limparAjuste({ desligar: true, responsavel: 'Thalia' })) === '{"desligar":true}' && limparAjuste({ responsavel: 'Fulano' }) === null && limparAjuste({ dia: 32 }) === null && limparAjuste({}) === null);
   const R = { dia_prazo: 20 };
   chk('o que muda num vínculo: quem cuida (sem maiúscula e acento), o dia (igual ao da obrigação = sem dia próprio), nada quando já está assim',
     ajusteDoVinculo({ responsavel: 'THALIA', dia_prazo_override: null, ativo: true }, R, { responsavel: 'Thalia', dia: 20 }) === null
-    && JSON.stringify(ajusteDoVinculo({ responsavel: 'Thalia', dia_prazo_override: 1, ativo: true }, R, { responsavel: 'Deize', dia: 20 })) === '{"responsavel":"Deize","dia_prazo_override":null}'
+    && JSON.stringify(ajusteDoVinculo({ responsavel: 'Thalia', dia_prazo_override: 1, ativo: true }, R, { responsavel: 'Diego', dia: 20 })) === '{"responsavel":"Diego","dia_prazo_override":null}'
     && JSON.stringify(ajusteDoVinculo({ responsavel: 'Thalia', dia_prazo_override: null, ativo: true }, R, { dia: 30 })) === '{"dia_prazo_override":30}'
     && ajusteDoVinculo({ responsavel: 'Thalia', ativo: false }, R, { desligar: true }) === null && JSON.stringify(ajusteDoVinculo({ ativo: true }, R, { desligar: true })) === '{"ativo":false}');
   const db = { obrigacoes_fiscais: [{ id: 'os', dia_prazo: 20 }, { id: 'on', dia_prazo: 1 }],
     cliente_obrigacoes: [{ id: 'v1', cliente_id: 'k1', obrigacao_id: 'os', responsavel: 'Thalia', dia_prazo_override: null, ativo: true },
       { id: 'v2', cliente_id: 'k2', obrigacao_id: 'os', responsavel: 'THALIA', dia_prazo_override: 15, ativo: true },
       { id: 'v3', cliente_id: 'k3', obrigacao_id: 'os', responsavel: null, dia_prazo_override: null, ativo: true },
-      { id: 'v4', cliente_id: 'k4', obrigacao_id: 'os', responsavel: 'Deize', dia_prazo_override: null, ativo: true },
+      { id: 'v4', cliente_id: 'k4', obrigacao_id: 'os', responsavel: 'Diego', dia_prazo_override: null, ativo: true },
       { id: 'v5', cliente_id: 'k5', obrigacao_id: 'os', responsavel: 'Thalia', dia_prazo_override: null, ativo: false },
       { id: 'v6', cliente_id: 'k1', obrigacao_id: 'on', responsavel: 'Thalia', dia_prazo_override: null, ativo: true }],
     tarefas: [{ id: 't1', cliente_id: 'k1', obrigacao_id: 'os', responsavel: 'Thalia', status: 'pendente' }, { id: 't2', cliente_id: 'k1', obrigacao_id: 'os', responsavel: 'Thalia', status: 'concluida' },
@@ -630,13 +630,13 @@ console.log('As obrigações das empresas, em lote:');
       { id: 't5', cliente_id: 'k3', obrigacao_id: 'os', responsavel: null, status: 'pendente' }, { id: 't6', cliente_id: 'k1', obrigacao_id: 'on', responsavel: 'Thalia', status: 'pendente' }],
     tarefa_historico: [] };
   const sb = dubla(db);
-  const r = await ajustarVinculos(sb, ['v1', 'v2', 'v3', 'v4', 'v5'], { responsavel: 'Deize' }, { autor: EU, origem: 'assistente do escritório' });
+  const r = await ajustarVinculos(sb, ['v1', 'v2', 'v3', 'v4', 'v5'], { responsavel: 'Diego' }, { autor: EU, origem: 'assistente do escritório' });
   const v = id => db.cliente_obrigacoes.find(x => x.id === id), t = id => db.tarefas.find(x => x.id === id);
-  chk('quem cuida: os ligados passam pra Deize; a que já era dela e a desligada ficam', !r.erro && ['v1', 'v2', 'v3'].every(id => v(id).responsavel === 'Deize') && v('v5').responsavel === 'Thalia'
+  chk('quem cuida: os ligados passam pra Diego; a que já era dela e a desligada ficam', !r.erro && ['v1', 'v2', 'v3'].every(id => v(id).responsavel === 'Diego') && v('v5').responsavel === 'Thalia'
     && r.vinculos.map(x => x.id).sort().join() === 'v1,v2,v3' && r.vinculos.find(x => x.id === 'v2').antes.responsavel === 'THALIA', JSON.stringify(r));
   chk('as tarefas abertas daquela obrigação vão junto, só as que estavam com quem cuidava (ou sem ninguém); a concluída, a repassada e a de outra obrigação ficam',
-    ['t1', 't4', 't5'].every(id => t(id).responsavel === 'Deize') && t('t2').responsavel === 'Thalia' && t('t3').responsavel === 'Vitória' && t('t6').responsavel === 'Thalia'
-    && r.tarefas.map(x => x.id).sort().join() === 't1,t4,t5' && db.tarefa_historico.length === 3 && db.tarefa_historico.every(h => /Responsável trocado na obrigação: .* → Deize — pelo assistente do escritório\./.test(h.descricao) && h.autor === EU));
+    ['t1', 't4', 't5'].every(id => t(id).responsavel === 'Diego') && t('t2').responsavel === 'Thalia' && t('t3').responsavel === 'Vitória' && t('t6').responsavel === 'Thalia'
+    && r.tarefas.map(x => x.id).sort().join() === 't1,t4,t5' && db.tarefa_historico.length === 3 && db.tarefa_historico.every(h => /Responsável trocado na obrigação: .* → Diego — pelo assistente do escritório\./.test(h.descricao) && h.autor === EU));
   t('t4').responsavel = 'Adaini';   // alguém repassou depois
   const d = await desfazerAjusteVinculos(sb, r, { autor: EU, origem: 'assistente do escritório' });
   chk('desfazer: cada vínculo volta ao de antes (com a grafia de antes); as tarefas também, menos a que alguém repassou depois',
