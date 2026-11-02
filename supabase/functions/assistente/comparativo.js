@@ -165,8 +165,16 @@ function blocoFases(rot) {
     'Missões: ' + rot.feitas + ' de ' + rot.total + (rot.extras ? ' (extras, que não seguram a fase: ' + rot.extrasFeitas + ' de ' + rot.extras + ')' : '') + '.'];
   rot.fases.forEach((f, i) => {
     out.push((i + 1) + '. ' + f.titulo + ' — ' + (f.concluida ? 'concluída' + (f.conquista ? ': ' + f.conquista : '') : i === rot.faseAtual ? 'a fase de agora' : 'por fazer'));
+    // a missão aberta diz o que a tela oferece pra cumprir: soltar o relatório na caixa dos relatórios do Domínio (o jeito
+    // preferido: a origem fica verde), digitar ou marcar como conferido
+    const comoCumprir = m => {
+      if (m.estado === 'feita') return '';
+      const jeitos = [m.relatorio ? 'soltar ' + m.relatorio + ' na caixa dos relatórios do Domínio' : null, m.campo ? (m.irRotulo || 'ir ao campo').toLowerCase() : null,
+        m.conferir ? 'marcar "' + (m.conferirRotulo || 'Está certo') + '"' : null].filter(Boolean);
+      return jeitos.length ? ' (na tela: ' + jeitos.join(', ou ') + ')' : '';
+    };
     f.missoes.forEach(m => out.push('   - [' + (m.estado === 'feita' ? 'cumprida' + (m.como ? ': ' + m.como : '') : (m.falta ? 'falta' : 'a conferir') + ' · ' + (m.peso === 'decide' ? 'decide o resultado' : m.peso === 'detalhe' ? 'extra' : 'importa'))
-      + '] ' + m.titulo + ': ' + m.texto));
+      + '] ' + m.titulo + ': ' + m.texto + comoCumprir(m)));
     // o que usar na fase: onde buscar cada informação hoje e o que vai chegar sozinho pelas pontes
     (f.fontes || []).forEach(x => out.push('   - Fonte: ' + x.info + ' [' + (x.situacao || x.rotuloEstado) + '] — onde buscar: ' + x.onde + (x.auto ? ' ' + x.auto : '')));
   });
