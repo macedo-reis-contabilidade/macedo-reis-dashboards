@@ -299,7 +299,7 @@ function montar() {
     status: () => 'Vê tudo do sistema · ' + nomeTela(),
     saudacao: () => '<p>Oi' + (nomePessoa ? ', ' + escapeHtml(nomePessoa) : '') + '! Eu vejo tudo do sistema — empresas, agenda, boletos, DP, fiscal, comercial — '
       + 'e a base da Reforma, em qualquer tela. Pergunte com as suas palavras.</p><p>Só leio: pra mudar alguma coisa, eu digo em que tela se faz.</p>' + (tela.saudacaoExtra || ''),
-    exemplos: c => (tela.exemplos && tela.exemplos(c)) || (c && c.tipo === 'cliente' ? ['Me resume esta empresa', 'O que está pendente com ela?', 'Ela está em dia com os honorários?'] : null)
+    exemplos: c => (tela.exemplos && tela.exemplos(c)) || (c && c.tipo === 'cliente' ? ['Me resume esta empresa', 'O que está pendente com ela?', 'Ela está em dia com os honorários?', 'Como estão a folha e as notas dela no Domínio?'] : null)
       || cfg.exemplos || EXEMPLOS_SETOR[setor] || EXEMPLOS_GERAIS,
     seguintes: c => (tela.seguintes ? tela.seguintes(c) : c && c.tipo === 'cliente' ? ['O que está pendente com ela?', 'Ela está em dia com os honorários?'] : []),
     recadoContexto: c => (tela.recadoContexto ? tela.recadoContexto(c) : c && c.tipo === 'cliente' ? { texto: 'Quer um resumo de ' + c.nome + '? Eu junto tudo o que o sistema tem dela.', exemplos: ['Me resume esta empresa'] } : null),
