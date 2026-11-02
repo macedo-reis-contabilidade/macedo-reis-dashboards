@@ -32,7 +32,7 @@ Confere:
      seria criado (o cadastro lá, o valor, o dia, o mês, o tipo, a conta, o vendedor), "Criar no Conta Azul" pede a
      confirmação e não tem "Desfazer"; o que já tem contrato ativo diz qual; e o cliente novo fora dos boletos do mês, posto
      no mês com o valor da base (com o "Desfazer");
- 12. as perguntas do gerente (02/11/2026): o link ?vigia=meus (o botão da cobrança no chat) abre o cartão; a pergunta de
+ 12. as perguntas pra equipe (02/11/2026): o link ?vigia=meus (o botão da cobrança no chat) abre o cartão; a pergunta de
      quem entrou tem "Responder" (as opções, o texto livre) e não tem "Ignorar"; a resposta grava a opção e o texto, com o
      "Desfazer"; a de outra pessoa (na aba de todos) diz pra quem é e espera por ela, sem "Responder";
   e sem erro de JavaScript.
@@ -208,7 +208,7 @@ CA_VENDAS = """
   };
 })();
 """ % json.dumps(MES_ATUAL)
-# o 12: as perguntas do gerente — uma pra quem está na tela (o Samuel, financeiro@) e uma pra Vitória
+# o 12: as perguntas pra equipe — uma pra quem está na tela (o Samuel, financeiro@) e uma pra Vitória
 EXTRA6 = {
     'achados': [
         A('71', 'pergunta_aberta', 'Pergunta pra você: De qual mês é a tarefa de teste', 'A tarefa de teste de cada mês cuida de qual mês?', 'dp', 'Samuel', 'media',
@@ -698,7 +698,7 @@ def main():
            and p6.evaluate("() => window.__mockDb.cobrancas_config.filter(x => x.cliente_id === 'k63').length") == 1,
            'desfazer: o boleto sai do mês (a base, que já existia, fica)')
 
-        # 12) as perguntas do gerente: o link do botão da cobrança abre o cartão de quem entrou; responder e desfazer
+        # 12) as perguntas pra equipe: o link do botão da cobrança abre o cartão de quem entrou; responder e desfazer
         p7 = b.new_page(viewport={'width': 1400, 'height': 900})
         p7.on('pageerror', lambda e: erros.append(str(e)))
         p7.add_init_script(TOUR); p7.add_init_script('window.__vigiaExtra = ' + json.dumps(EXTRA6, ensure_ascii=False)); p7.add_init_script(SEMEAR)

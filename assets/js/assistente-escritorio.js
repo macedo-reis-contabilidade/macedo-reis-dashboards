@@ -290,7 +290,7 @@ export function iniciarAssistente({ email: e } = {}) {
   ligarVida();
   return api;
 }
-// o botão dos avisos do gerente no chat (02/11/2026): ?vigia=meus abre o cartão com as pendências de quem entrou e,
+// o botão do recado da manhã no chat (02/11/2026): ?vigia=meus abre o cartão com as pendências de quem entrou e,
 // pros sócios, ?vigia=todos, o de todos (o recado do dia não entra por cima: o painel já está aberto)
 function vigiaDoEndereco() {
   let v = null;

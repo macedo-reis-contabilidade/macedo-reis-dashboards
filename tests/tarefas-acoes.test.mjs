@@ -661,7 +661,7 @@ console.log('As obrigações das empresas, em lote:');
   chk('sem o que mudar: diz', /Diga o que muda/.test((await ajustarVinculos(sb, ['v1'], {})).erro));
 }
 
-console.log('As perguntas do gerente (02/11/2026):');
+console.log('As perguntas pra equipe (02/11/2026):');
 {
   const P = (id, extra = {}) => ({ id, para: 'rh@macedoereis.com.br', situacao: 'aberta', opcoes: ['Do mês anterior', 'Do próprio mês'], aceita_texto: true, resposta: null, resposta_texto: null, ...extra });
   const db = { perguntas_equipe: [P('p1'), P('p2', { aceita_texto: false }), P('p3', { situacao: 'respondida', resposta: 'Do próprio mês' })] };

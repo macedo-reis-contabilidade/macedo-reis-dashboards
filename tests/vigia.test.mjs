@@ -112,7 +112,7 @@ console.log('Leitura e "ignorar" (banco falso):');
   chk('erro do banco: vira erro com a mensagem (o cartão mostra "Tentar de novo")', msg === 'sem acesso');
 }
 
-console.log('As perguntas do gerente (02/11/2026):');
+console.log('As perguntas pra equipe (02/11/2026):');
 {
   const pq = { regra: 'pergunta_aberta', responsavel: 'Vitória', titulo: 'Pergunta pra você: De qual mês' };
   chk('a pergunta é de quem recebe (sem acento e sem maiúscula)', !perguntaDeOutro(pq, 'vitoria') && !perguntaDeOutro(pq, 'Vitória'));

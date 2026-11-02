@@ -1146,7 +1146,7 @@ async function resolverAchado(a, escolha, ajuda) {
       + (r.bases.length ? ' Ela ganhou a base de cobrança: os próximos meses saem sozinhos.' : ''), aviso: r.erro || null,
       desfazer: { tipo: 'competencia', competencia: e.competencia, feito: { postos: r.postos, bases: r.bases } } };
   }
-  // a pergunta do gerente (02/11/2026): a resposta de quem recebeu — uma das opções e/ou o texto
+  // a pergunta pra equipe (02/11/2026): a resposta de quem recebeu — uma das opções e/ou o texto
   if (a.regra === 'pergunta_aberta') {
     const e = escolha && typeof escolha === 'object' ? escolha : {};
     const r = await responderPergunta(supabase, a.ref_id, { opcao: e.opcao, texto: e.texto });
@@ -1366,7 +1366,7 @@ function cartaoVigia({ raiz, estado, salvar, ajuda, anunciar }) {
     }
     return linha;
   }
-  // a pergunta do gerente (02/11/2026): a pergunta inteira, as opções (cada uma responde com um clique) e, se ela aceita,
+  // a pergunta pra equipe (02/11/2026): a pergunta inteira, as opções (cada uma responde com um clique) e, se ela aceita,
   // o texto livre — sozinho ou junto da opção marcada
   async function abrirPergunta(a, linha) {
     const caixa = h('div', { class: 'as-vigia-resolver as-vigia-busca' }, sub('Lendo a pergunta…'));

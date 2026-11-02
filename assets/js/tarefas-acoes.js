@@ -1255,7 +1255,7 @@ export async function desfazerAjusteVinculos(sb, feito, { autor = null, origem =
   return out;
 }
 
-// ---------- as perguntas do gerente (02/11/2026, pedido do Samuel: "você é como um gerente … cobra elas, me relata") ----------
+// ---------- as perguntas pra equipe (02/11/2026, pedido do Samuel: o que é da área delas, elas decidem) ----------
 // A pergunta pra alguém da equipe (perguntas_equipe) aparece no cartão do vigia de quem responde, com as opções e o texto
 // livre. Responder grava só a resposta (o banco grava quando e quem, e confere que a opção é uma das da pergunta); o
 // "Desfazer" volta a pergunta pra aberta, só se ela segue com a resposta que entrou aqui.
