@@ -9,6 +9,7 @@
 
 import { TIPOS } from './comparativo-motor.js';
 import { digitosCnae } from './dominio-relatorios.js';
+import { diaUtil, somaDias, fmtData } from './rescisao-datas.js';
 
 const num = (v, def = 0) => { if (v == null || v === '') return def; const n = Number(v); return Number.isFinite(n) ? n : def; };
 const MES_CURTO = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
@@ -465,11 +466,50 @@ export function premissasParaTestar(entrada, origens) {
 // em vigor desde 01/01/2027; até 2026 a comunicação de dezembro já valia pra janeiro seguinte e a de janeiro, pro
 // próprio ano). Presumido: a opção é o pagamento da 1ª quota do IRPJ do 1º trimestre (Lei 9.430, art. 26, §1º); Real
 // anual: a estimativa de janeiro, paga até o fim de fevereiro (art. 3º, parágrafo único, e art. 6º); Real trimestral: o 1º trimestre.
-export function prazosDaEscolha(hoje, regimeAtual, ano = 2027) {
+// A exclusão obrigatória, pelo ano-calendário (situacao: situacaoDoGrupo): com as empresas dos sócios (a receita global é
+// uma vedação, art. 3º, §4º), comunicar até o último dia útil do mês seguinte ao que a soma passou, com efeito no 1º dia
+// desse mês (LC 123, art. 30, §1º, II, e art. 31, II); sozinha, com o excesso de até 20%, até o último dia útil de janeiro
+// do ano seguinte, com efeito em 01/01 (art. 30, §1º, IV, "b"); acima dos 20%, até o último dia útil do mês seguinte ao que
+// passou deles, com efeito nesse mês (art. 30, §1º, IV, "a"). Sem a comunicação, a multa do art. 36: 10% dos tributos do
+// Simples do mês anterior ao efeito, no mínimo R$ 200. O último dia útil, pelos feriados de rescisao-datas.js.
+export function ultimoDiaUtil(ano, mes) {
+  let iso = new Date(Date.UTC(Number(ano), Number(mes), 0)).toISOString().slice(0, 10);
+  while (!diaUtil(iso)) iso = somaDias(iso, -1);
+  return iso;
+}
+export function exclusaoObrigatoria(situacao) {
+  const s = situacao;
+  if (!s || !s.passaEm) return null;
+  const mesDe = nome => MES_LONGO.indexOf(nome) + 1;
+  const seguinte = m => (m === 12 ? [s.ano + 1, 1] : [s.ano, m + 1]);
+  const multa = ' Sem a comunicação, a multa é de 10% dos tributos do Simples do mês anterior ao efeito, no mínimo R$ 200 (art. 36).';
+  const quando = s.jaPassou ? ' passou' : ', no ritmo dos últimos 3 meses, passa';
+  if ((s.porEmpresa || []).length > 1) {
+    const [a, m] = seguinte(mesDe(s.passaEm));
+    return { titulo: 'Comunicar a exclusão do Simples', ate: ultimoDiaUtil(a, m),
+      texto: 'A soma com as empresas dos sócios' + quando + ' do limite em ' + s.passaEm + ': a exclusão é obrigatória, com efeito em ' + s.saiEm
+        + ', comunicada no Portal do Simples até ' + fmtData(ultimoDiaUtil(a, m)) + ' (LC 123, art. 30, §1º, II, e art. 31, II).' + multa };
+  }
+  if (s.noAnoSeguinte) {
+    return { titulo: 'Comunicar a exclusão do Simples', ate: ultimoDiaUtil(s.ano + 1, 1),
+      texto: 'A receita do ano' + quando + ' do limite em ' + s.passaEm + ', sem passar dos 20% a mais: a exclusão é obrigatória, com efeito em ' + s.saiEm
+        + ', comunicada no Portal do Simples até ' + fmtData(ultimoDiaUtil(s.ano + 1, 1)) + ' (LC 123, art. 30, §1º, IV, "b").' + multa };
+  }
+  if (s.passa20Em) {
+    const [a, m] = seguinte(mesDe(s.passa20Em));
+    return { titulo: 'Comunicar a exclusão do Simples', ate: ultimoDiaUtil(a, m),
+      texto: 'A receita do ano' + quando + ' dos 20% acima do limite (R$ 5,76 milhões) em ' + s.passa20Em
+        + ': a exclusão é obrigatória, com efeito em ' + s.saiEm + ', comunicada no Portal do Simples até ' + fmtData(ultimoDiaUtil(a, m)) + ' (LC 123, art. 30, §1º, IV, "a").' + multa };
+  }
+  return null;
+}
+export function prazosDaEscolha(hoje, regimeAtual, ano = 2027, situacao = null) {
   const h = String(hoje || '').slice(0, 10);
   const antes = (d) => h <= d;
   const out = [];
   if (regimeAtual === 'simples') {
+    const obrig = exclusaoObrigatoria(situacao);
+    if (obrig) out.push({ titulo: obrig.titulo, texto: obrig.texto });
     out.push(antes((ano - 1) + '-12-31')
       ? { titulo: 'Sair do Simples em ' + ano, texto: 'Comunicar a exclusão por opção no Portal do Simples até 31/12/' + (ano - 1) + ', com efeito em 01/01/' + ano + '. Em janeiro de ' + ano + ' a comunicação já vale só pra ' + (ano + 1) + ' (Res. CGSN 140, art. 81, I, na redação da Res. CGSN 190/2026).' }
       : { titulo: 'Sair do Simples', texto: 'A exclusão por opção comunicada agora vale a partir de 01/01 do ano seguinte (Res. CGSN 140, art. 81, I, na redação da Res. CGSN 190/2026).' });

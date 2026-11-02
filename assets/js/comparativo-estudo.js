@@ -246,7 +246,7 @@ export function contaDoEstudo({ entrada, origens = {}, conferencia = null, notas
     comparacao, testes, situacao, erro: null,
     limite: alertaDoLimite(comparacao, situacao, entrada.grupo),
     roteiro: roteiroDoEstudo({ entrada, origens, comparacao, testes, situacao, serie, socios, achadas, grupoFora, conferencia, hoje }),
-    prazos: prazosDaEscolha(hoje, entrada.regimeAtual, comparacao.anoDecisao),
+    prazos: prazosDaEscolha(hoje, entrada.regimeAtual, comparacao.anoDecisao, situacao),
     muda: oQueMuda(comparacao, testes),
     avisos: avisosDoEstudo({ notas, entrada, comparacao })
   };

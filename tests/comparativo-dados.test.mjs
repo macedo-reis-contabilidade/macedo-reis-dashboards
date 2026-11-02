@@ -3,7 +3,7 @@
 // e as outras empresas dos mesmos sócios.
 // Rodar com: node tests/comparativo-dados.test.mjs — dados inventados (o repositório é público).
 
-import { entradaDoSistema, aplicarRelatorios, premissasParaTestar, prazosDaEscolha, serieDosMeses, tipoPeloCnae, tipoPeloAnexo, regimeDoCadastro,
+import { entradaDoSistema, aplicarRelatorios, premissasParaTestar, prazosDaEscolha, exclusaoObrigatoria, ultimoDiaUtil, serieDosMeses, tipoPeloCnae, tipoPeloAnexo, regimeDoCadastro,
   ehRefeicaoRS, ehRdaRS, empresasDosSocios, receitaDaEmpresa, situacaoDoGrupo, serieDaEmpresa, foraDaSoma, avisoDaSoma, mesclarSerie } from '../assets/js/comparativo-dados.js';
 import { comparar } from '../assets/js/comparativo-motor.js';
 
@@ -93,6 +93,27 @@ ok('Presumido em 01/11/2026: a janela do Simples de 2027 fechou', /fechou em 30\
 const p3 = prazosDaEscolha('2026-08-15', 'presumido', 2027);
 ok('Presumido em agosto: a janela de setembro ainda vem', /01 a 30\/09\/2026/.test(p3[0].texto));
 ok('sempre diz como escolher entre Presumido e Real', p2.some(p => /Presumido ou Real/.test(p.titulo)));
+console.log('=== a exclusão obrigatória (o limite) ===');
+ok('o último dia útil: janeiro de 2027 é dia 29 (o 30 e o 31 caem no fim de semana)', ultimoDiaUtil(2027, 1) === '2027-01-29', ultimoDiaUtil(2027, 1));
+ok('o último dia útil pula o Carnaval: fevereiro de 2028 é dia 25', ultimoDiaUtil(2028, 2) === '2028-02-25', ultimoDiaUtil(2028, 2));
+const mesesAte = (mensal, ate = 8) => Array.from({ length: ate }, (_, i) => ({ competencia: '2026-' + String(i + 1).padStart(2, '0'), total: mensal }));
+const sGrupo = situacaoDoGrupo(mesesAte(250000), [{ nome: 'OUTRA', serie: mesesAte(160000) }]);
+const eGrupo = exclusaoObrigatoria(sGrupo);
+ok('com as empresas dos sócios, passando em dezembro: comunicar até o último dia útil de janeiro, com efeito em 01/01/2027',
+  sGrupo.passaEm === 'dezembro' && eGrupo.ate === '2027-01-29' && /com efeito em 01\/01\/2027/.test(eGrupo.texto) && /até 29\/01\/2027/.test(eGrupo.texto)
+  && /art\. 30, §1º, II, e art\. 31, II/.test(eGrupo.texto) && /^A soma com as empresas dos sócios, no ritmo dos últimos 3 meses, passa do limite em dezembro: /.test(eGrupo.texto) && /art\. 36/.test(eGrupo.texto), eGrupo && eGrupo.texto);
+const sSo = situacaoDoGrupo(mesesAte(450000), []);
+const eSo = exclusaoObrigatoria(sSo);
+ok('sozinha, com o excesso de até 20%: até o último dia útil de janeiro do ano seguinte (art. 30, §1º, IV, "b")',
+  sSo.passaEm === 'novembro' && sSo.noAnoSeguinte && eSo.ate === '2027-01-29' && /IV, "b"/.test(eSo.texto) && /sem passar dos 20%/.test(eSo.texto), eSo && eSo.texto);
+const s20 = situacaoDoGrupo(mesesAte(600000), []);
+const e20 = exclusaoObrigatoria(s20);
+ok('sozinha, acima dos 20% em outubro: com efeito em 01/11/2026, comunicada até 30/11/2026 (art. 30, §1º, IV, "a")',
+  s20.passa20Em === 'outubro' && e20.ate === '2026-11-30' && /com efeito em 01\/11\/2026/.test(e20.texto) && /IV, "a"/.test(e20.texto), e20 && e20.texto);
+ok('longe do limite, nada', exclusaoObrigatoria(situacaoDoGrupo(mesesAte(100000), [])) === null && exclusaoObrigatoria(null) === null);
+const pObrig = prazosDaEscolha('2026-11-01', 'simples', 2027, sGrupo);
+ok('nos prazos do Simples, a exclusão obrigatória vem primeiro', /Comunicar a exclusão/.test(pObrig[0].titulo) && pObrig.some(p => /31\/12\/2026/.test(p.texto)), pObrig.map(p => p.titulo));
+ok('no Presumido, não há exclusão a comunicar', !prazosDaEscolha('2026-11-01', 'presumido', 2027, sGrupo).some(p => /Comunicar a exclusão/.test(p.titulo)));
 const pr = p2.find(p => /Presumido ou Real/.test(p.titulo));
 ok('o prazo da escolha: o Presumido e o Real trimestral no fim de abril; o Real anual, na estimativa de janeiro, no fim de fevereiro',
   /fim de abril/.test(pr.texto) && /Real anual, a estimativa de janeiro, que vence no fim de fevereiro/.test(pr.texto) && /art\. 3º, parágrafo único/.test(pr.texto), pr.texto);

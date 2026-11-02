@@ -218,6 +218,9 @@ def main():
         al = texto(p, '#alertaLimite') if p.locator('#alertaLimite').count() else ''
         ok('passa do limite de R$ 4,8 milhões em dezembro' in al and '01/01/2027' in al and 'a escolha é entre o Presumido e o Real' in al,
            f'no resultado, o aviso: a conta põe o Simples em 2027, mas o ano de 2026 passa do limite ({al[:90]}…)')
+        prz = texto(p, '.ct-prazos')
+        ok('Comunicar a exclusão do Simples' in prz and 'até 29/01/2027' in prz and 'com efeito em 01/01/2027' in prz,
+           f'nos prazos, a exclusão obrigatória: comunicar até o último dia útil de janeiro ({prz[:120]}…)')
         p.evaluate("() => { window.__festa = []; window.addEventListener('mr:comemorar', e => window.__festa.push(e.detail)); }")
         ok('Ela pode ficar no Simples?' in p.inner_text('#trilha li[aria-current="step"]'), 'a fase de agora é a 1: pode ficar no Simples?')
         fts = texto(p, '#fase .ct-usar')
