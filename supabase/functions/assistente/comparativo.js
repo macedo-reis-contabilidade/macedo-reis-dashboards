@@ -167,6 +167,8 @@ function blocoFases(rot) {
     out.push((i + 1) + '. ' + f.titulo + ' — ' + (f.concluida ? 'concluída' + (f.conquista ? ': ' + f.conquista : '') : i === rot.faseAtual ? 'a fase de agora' : 'por fazer'));
     f.missoes.forEach(m => out.push('   - [' + (m.estado === 'feita' ? 'cumprida' + (m.como ? ': ' + m.como : '') : (m.falta ? 'falta' : 'a conferir') + ' · ' + (m.peso === 'decide' ? 'decide o resultado' : m.peso === 'detalhe' ? 'extra' : 'importa'))
       + '] ' + m.titulo + ': ' + m.texto));
+    // o que usar na fase: onde buscar cada informação hoje e o que vai chegar sozinho pelas pontes
+    (f.fontes || []).forEach(x => out.push('   - Fonte: ' + x.info + ' [' + (x.situacao || x.rotuloEstado) + '] — onde buscar: ' + x.onde + (x.auto ? ' ' + x.auto : '')));
   });
   if (rot.proximo) out.push('Próximo passo: ' + rot.proximo.titulo + '.');
   return out;

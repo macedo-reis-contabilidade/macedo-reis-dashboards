@@ -3,7 +3,7 @@
 // conquistou, e o estudo provisório até as missões que decidem estarem cumpridas.
 // Rodar com: node tests/comparativo-roteiro.test.mjs — dados inventados (o repositório é público).
 
-import { roteiroDoEstudo, crescimentoMedido, FASES } from '../assets/js/comparativo-roteiro.js';
+import { roteiroDoEstudo, crescimentoMedido, FASES, fontesDoEstudo, ultimoMesFechado, AUTOMATICO } from '../assets/js/comparativo-roteiro.js';
 import { entradaDoSistema, premissasParaTestar, situacaoDoGrupo } from '../assets/js/comparativo-dados.js';
 import { comparar, testarPremissas, fraseDaDecisao } from '../assets/js/comparativo-motor.js';
 
@@ -105,6 +105,36 @@ const lucro = missao(rg, 'lucro');
 ok('o lucro do Real decide: o empate e o lucro que a conta usou', lucro && lucro.estado === 'aberta' && lucro.peso === 'decide' && /empata com o Lucro Presumido/.test(lucro.texto) && lucro.campo === 'outrasDespesas', lucro && lucro.texto);
 ok('fora do Simples pelo limite: a missão do limite diz isso', /fica fora/.test((missao(rg, 'limite') || {}).texto || ''));
 ok('com as outras despesas digitadas, a missão do lucro é cumprida', missao(rodar({ ...grande, outrasDespesas: 300000 }, { ...oGrande, outrasDespesas: { fonte: 'digitado' } }), 'lucro').estado === 'feita');
+
+console.log('=== o que usar em cada fase (pedido do Samuel, 01/11/2026) ===');
+ok('o último mês fechado: até o dia 20, o de dois meses atrás; depois, o anterior', ultimoMesFechado('2026-11-01') === '2026-09' && ultimoMesFechado('2026-11-21') === '2026-10' && ultimoMesFechado('2026-01-10') === '2025-11' && ultimoMesFechado(null) === null);
+const rF = rodar(ent, ori, { ...base, hoje: '2026-11-01' });
+const fonte = (r, fase, id) => (r.fases.find(f => f.id === fase).fontes || []).find(x => x.id === id);
+const fRec = fonte(rF, 'simples', 'receita');
+ok('cada fase tem as suas fontes', rF.fases.every(f => Array.isArray(f.fontes) && f.fontes.length > 0), rF.fases.map(f => f.id + ':' + f.fontes.length));
+ok('a receita: o relatório do Domínio, até jul/26, e os meses que faltam até o último fechado', fRec.estado === 'antigo' && /Relatório de Faturamento/.test(fRec.onde) && fRec.relatorio === true
+  && /caso da Reforma, até jul\/26 — faltam ago\/26 e set\/26/.test(fRec.situacao), fRec.situacao);
+ok('no Simples, a receita vai chegar pela ponte da Receita (o PGDAS)', /ponte da Receita \(Integra Contador\)/.test(fRec.auto) && /PGDAS/.test(fRec.auto), fRec.auto);
+ok('com os meses em dia, a receita fica "tem"', fonte(rodar(ent, ori, { ...base, hoje: '2026-08-25' }), 'simples', 'receita').estado === 'tem');
+ok('os sócios: o contrato social na ficha, que as pontes não trazem', fonte(rF, 'simples', 'socios').estado === 'tem' && fonte(rF, 'simples', 'socios').ficha && fonte(rF, 'simples', 'socios').auto === AUTOMATICO.contrato);
+ok('sem os sócios no cadastro, falta; sem cadastro, a linha não aparece', fonte(rodar(ent, ori, { ...base, socios: 0, hoje: '2026-11-01' }), 'simples', 'socios').estado === 'falta' && !fonte(rodar(ent, ori, { ...base, socios: null, hoje: '2026-11-01' }), 'simples', 'socios'));
+const fGr = fonte(rF, 'simples', 'grupo');
+ok('as outras empresas: somadas até o mês que todas têm, com os que faltam', fGr.estado === 'antigo' && /as 2 empresas somadas até jul\/26 — faltam ago\/26 e set\/26/.test(fGr.situacao), fGr.situacao);
+ok('a outra sem a receita: falta, com o nome', /falta a receita de PADARIA INVENTADA/.test(fonte(rodar(ent, { ...ori, 'grupo.0.receita': { fonte: 'padrao' } }, { ...base, hoje: '2026-11-01' }), 'simples', 'grupo').situacao));
+const fFolha = fonte(rF, 'numeros', 'folha');
+ok('a folha: o resumo da folha do Domínio, que falta, pra digitar', fFolha.estado === 'falta' && /Domínio Folha: o resumo da folha/.test(fFolha.onde) && fFolha.campo === 'folha' && fFolha.auto === AUTOMATICO.dominio);
+ok('as compras: o Acompanhamento de Entradas, cumpridas pelo caso da Reforma', fonte(rF, 'numeros', 'compras').estado === 'tem' && /Acompanhamento de Entradas/.test(fonte(rF, 'numeros', 'compras').onde));
+ok('o PGDAS: de jul/26, e a Receita só vai trazer a receita e o RBT12', fonte(rF, 'numeros', 'pgdas').estado === 'tem' && /jul\/26/.test(fonte(rF, 'numeros', 'pgdas').situacao) && /ST, o monofásico e a redução seguem pelo relatório/.test(fonte(rF, 'numeros', 'pgdas').auto));
+ok('as despesas: o balancete ou a DRE do Domínio Contabilidade', /balancete ou a DRE/.test(fonte(rF, 'numeros', 'despesas').onde) && ['falta', 'dispensa'].includes(fonte(rF, 'numeros', 'despesas').estado));
+ok('o crédito de ICMS e o ICMS do restaurante, no padrão', fonte(rF, 'premissas', 'credito').estado === 'padrao' && /no padrão: 12% das compras/.test(fonte(rF, 'premissas', 'credito').situacao)
+  && fonte(rF, 'premissas', 'icms').info === 'O ICMS das vendas e a opção do restaurante' && /o RDA, a base reduzida ou o crédito presumido/.test(fonte(rF, 'premissas', 'icms').onde));
+ok('sem folha, sem a linha do RAT; o crescimento é conversa com o cliente', !fonte(rF, 'premissas', 'rat') && fonte(rF, 'premissas', 'crescimento').auto === AUTOMATICO.conversa);
+ok('com a folha, o RAT no padrão pede o resumo da folha', fonte(rodar(ent3, o3, { ...base, hoje: '2026-11-01' }), 'premissas', 'rat').estado === 'padrao');
+const fConv = fonte(rF, 'veredito', 'conversa');
+ok('o veredito: a reunião, com as escolhas do restaurante e da Reforma', fConv.estado === 'conversa' && /a opção do ICMS do restaurante e o Simples por dentro ou por fora na Reforma/.test(fConv.onde), fConv.onde);
+const fPres = fontesDoEstudo({ entrada: comPadroes({ atividades: [{ tipo: 'servico', receita: 900000 }], regimeAtual: 'presumido' }), origens: { 'atividades.0.receita': { fonte: 'digitado' } }, hoje: '2026-11-01' });
+ok('no Presumido, a receita vai chegar pela ponte do Domínio; digitada, sem o "até"', fPres.simples[0].auto === AUTOMATICO.dominio && fPres.simples[0].estado === 'tem' && fPres.simples[0].situacao === 'digitado');
+ok('serviço: o ISS e nenhuma linha de ICMS nem de PGDAS', fPres.premissas.some(x => x.id === 'iss') && !fPres.premissas.some(x => x.id === 'icms' || x.id === 'credito') && !fPres.numeros.some(x => x.id === 'pgdas'));
 
 console.log('=== o crescimento medido ===');
 const g = crescimentoMedido(mesesDe(100000, 120000));

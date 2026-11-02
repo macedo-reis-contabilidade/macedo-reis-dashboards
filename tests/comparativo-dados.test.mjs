@@ -4,7 +4,7 @@
 // Rodar com: node tests/comparativo-dados.test.mjs — dados inventados (o repositório é público).
 
 import { entradaDoSistema, aplicarRelatorios, premissasParaTestar, prazosDaEscolha, serieDosMeses, tipoPeloCnae, tipoPeloAnexo, regimeDoCadastro,
-  ehRefeicaoRS, ehRdaRS, empresasDosSocios, receitaDaEmpresa, situacaoDoGrupo, serieDaEmpresa, foraDaSoma, avisoDaSoma } from '../assets/js/comparativo-dados.js';
+  ehRefeicaoRS, ehRdaRS, empresasDosSocios, receitaDaEmpresa, situacaoDoGrupo, serieDaEmpresa, foraDaSoma, avisoDaSoma, mesclarSerie } from '../assets/js/comparativo-dados.js';
 import { comparar } from '../assets/js/comparativo-motor.js';
 
 let falhas = 0, total = 0;
@@ -176,6 +176,11 @@ ok('o RDA no padrão é testado (sem ele)', psBar.some(p => p.campo === 'rda' &&
 ok('o RDA escolhido pela equipe não é testado', !premissasParaTestar(bar.entrada, { ...bar.origens, rda: { fonte: 'digitado' } }).some(p => p.campo === 'rda'));
 const coletiva = entradaDoSistema({ cliente: { regime_tributario: 'Lucro Presumido', cnae_principal: '5620-1/01', uf: 'RS' }, caso: { anexo: 'I', sim_obs: JSON.stringify({ v: 1, input: { anexo: 'I' }, dominio: { meses: mesesRest } }) } });
 ok('refeições pra empresas: 17% sem redução, com a nota pra conferir a base a 60%', coletiva.entrada.atividades[0].aliqIcms !== 12 && coletiva.notas.some(n => /refeições pra empresas/.test(n) && /art\. 23, VI/.test(n)) && coletiva.entrada.rda == null, coletiva.notas);
+
+console.log('=== o faturamento solto na tela entra na série ===');
+const ms = mesclarSerie([{ competencia: '2026-07', total: 1 }, { competencia: '2026-08', total: 2 }], [{ competencia: '2026-09', total: 6, saidas: 6 }, { competencia: '2026-08', total: 5 }, { competencia: 'x', total: 9 }]);
+ok('junta pelo mês, o relatório vale no mês que os dois têm, em ordem, só competência e total', JSON.stringify(ms) === '[{"competencia":"2026-07","total":1},{"competencia":"2026-08","total":5},{"competencia":"2026-09","total":6}]', ms);
+ok('sem nada, nulo', mesclarSerie(null, []) === null);
 
 console.log('\n' + (total - falhas) + ' de ' + total + ' conferências ok' + (falhas ? ' — ' + falhas + ' FALHA(S)' : ''));
 process.exit(falhas ? 1 : 0);

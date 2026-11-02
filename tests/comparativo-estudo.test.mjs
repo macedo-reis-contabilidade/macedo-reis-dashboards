@@ -190,5 +190,20 @@ console.log('A regra da soma (LC 123, art. 3º, §4º, III a V), o que muda com 
   chk('sozinha, passa em novembro com excesso de até 20%: a saída vale a partir de 01/01/2027', /passa do limite de R\$ 4,8 milhões em novembro/.test(av || '') && /a partir de 01\/01\/2027 e cobre 2027/.test(av || ''), av);
 }
 
+console.log('O faturamento solto na tela, gravado com o estudo');
+{
+  const salvo = { id: 'est2', cliente_id: 'c5', entrada: { v: 1, entrada: { atividades: [{ tipo: 'comercio', receita: 2600000 }], grupo: [] }, origens: { 'atividades.0.receita': { fonte: 'dominio' } }, conferencia: null,
+    serieRel: [{ competencia: '2026-08', total: 230000 }, { competencia: '2026-09', total: 240000 }] }, atualizado_em: '2026-11-01T15:00:00Z', atualizado_por: 'financeiro@macedoereis.com.br' };
+  const { ler } = banco({ comparativos: [salvo], socios: [] });
+  const est = await carregarEstudo({ ler, cliente: RESTAURANTE });
+  const ult = est.serie[est.serie.length - 1];
+  chk('os meses do relatório entram na série do sistema (o de agosto troca, setembro entra)', ult.competencia === '2026-09' && ult.total === 240000 && est.serie.find(m => m.competencia === '2026-08').total === 230000 && est.serieRel.length === 2);
+  const conta = contaDoEstudo({ ...est, aliq2027: ALIQ, hoje: '2026-11-01' });
+  const fr = conta.roteiro.fases[0].fontes.find(x => x.id === 'receita');
+  chk('com setembro, a receita da fase 1 fica em dia em 01/11', fr.estado === 'tem' && /até set\/26/.test(fr.situacao), fr.situacao);
+  const g = estudoGravado({ id: 'e8', nome: 'PROSPECT', entrada: { v: 1, entrada: { atividades: [{ tipo: 'comercio', receita: 1 }] }, serieRel: [{ competencia: '2026-09', total: 1 }] } });
+  chk('o estudo sem cadastro volta com a série que foi solta nele', g.serie && g.serie.length === 1 && g.serieRel.length === 1);
+}
+
 console.log('\n' + (falhas ? falhas + ' falha(s)' : 'tudo certo'));
 process.exit(falhas ? 1 : 0);

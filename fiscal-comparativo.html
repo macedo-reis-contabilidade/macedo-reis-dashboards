@@ -109,6 +109,26 @@
     .ct-m-acoes { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
     .ct-m-sep { font-size:12px; color:var(--text-muted); margin:12px 0 6px; }
     .ct-veredito { font-size:15px; line-height:1.55; color:var(--text); margin:0 0 10px; }
+    /* o que usar em cada fase: a informação, onde buscar, a situação e o que vai chegar sozinho pelas pontes */
+    .ct-usar { border:1px solid var(--line); border-radius:12px; background:var(--surface); padding:10px 14px 6px; margin:0 0 14px; }
+    .ct-usar-tit { margin:0 0 4px; font-family:var(--font-body); font-size:13px; font-weight:600; color:var(--text); }
+    ul.ct-usar-lista { list-style:none; margin:0; padding:0; }
+    .ct-usar-item { display:grid; grid-template-columns:18px minmax(0,1fr); gap:10px; padding:8px 0; border-top:1px solid var(--line); }
+    .ct-usar-item:first-child { border-top:0; }
+    .ct-usar-mark { width:16px; height:16px; margin-top:2px; border-radius:50%; border:2px solid var(--line-strong); display:grid; place-items:center; font-size:10px; font-weight:700; color:#0e1f16; }
+    .ct-usar-item[data-estado="tem"] .ct-usar-mark { background:var(--ok); border-color:var(--ok); }
+    .ct-usar-item[data-estado="falta"] .ct-usar-mark { border-color:rgba(224,108,108,.8); }
+    .ct-usar-item[data-estado="antigo"] .ct-usar-mark, .ct-usar-item[data-estado="padrao"] .ct-usar-mark { border-color:rgba(230,180,80,.8); }
+    .ct-usar-cab { display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 10px; font-size:13.5px; color:var(--text); }
+    .ct-usar-cab b { font-weight:600; }
+    .ct-usar-sit { font-size:12px; color:var(--text-muted); }
+    .ct-usar-item[data-estado="tem"] .ct-usar-sit { color:var(--ok); }
+    .ct-usar-item[data-estado="falta"] .ct-usar-sit { color:var(--err); }
+    .ct-usar-item[data-estado="antigo"] .ct-usar-sit, .ct-usar-item[data-estado="padrao"] .ct-usar-sit { color:var(--warn); }
+    .ct-usar-onde { margin:2px 0 0; font-size:12.5px; line-height:1.5; color:var(--brand-pale); max-width:86ch; }
+    .ct-usar-auto { font-size:12px; color:var(--text-muted); }
+    .ct-usar-onde a { color:var(--brand-light); white-space:nowrap; }
+    .ct-usar > .ct-m-acoes { margin:2px 0 6px; }
     .ct-drop.ct-chama { border-color:var(--brand-primary); background:rgba(91,130,166,.12); color:var(--brand-pale); }
     @media (prefers-reduced-motion: no-preference) {
       .ct-m.ct-m-nova .ct-m-mark { animation:ct-pop .55s ease-out; }
@@ -249,7 +269,7 @@
     import { hojeLocal, formatDocumento, normalizarDocumento } from './assets/js/utils.js';
     import { nomePorEmail } from './assets/js/equipe.js';
     import { fraseDaDecisao, TIPOS, ANEXOS, ROTULO_REGIME, REGIMES } from './assets/js/comparativo-motor.js';
-    import { aplicarRelatorios, FONTES, rotuloComp } from './assets/js/comparativo-dados.js';
+    import { aplicarRelatorios, FONTES, rotuloComp, mesclarSerie } from './assets/js/comparativo-dados.js';
     // o estudo (o gravado ou os números do sistema, as empresas dos sócios) e a conta: a mesma regra do assistente do escritório
     import { PADRAO_ATIV, comPadroes, ORIGENS_PADRAO, CAMPOS, erroSemTabela, carregarEstudo, contaDoEstudo, situacaoComGrupo, resumoParaGravar } from './assets/js/comparativo-estudo.js';
     import { assistenteDaTela } from './assets/js/assistente-escritorio.js';
@@ -291,9 +311,10 @@
     // o estudo aberto
     // serie: a receita datada da empresa (o sistema) · grupoSeries: a das outras empresas dos sócios ([{ nome, serie }])
     // grupoFora: as empresas dos sócios que a regra deixa fora da soma do limite ([{ nome, motivo }])
+    // serieRel: os meses do faturamento solto na tela (entram na série e ficam gravados no estudo)
     // socios: quantos sócios o cadastro tem (null = sem cadastro) · jornada e faseVista: o roteiro (as fases e as missões)
     const st = { cliente: null, nome: '', entrada: null, origens: {}, notas: [], conferencia: null, rels: [], fontes: [],
-      estudoId: null, gravadoEm: null, gravadoPor: null, semTabela: false, serie: null, grupoSeries: [], grupoFora: [], socios: null,
+      estudoId: null, gravadoEm: null, gravadoPor: null, semTabela: false, serie: null, serieRel: null, grupoSeries: [], grupoFora: [], socios: null,
       jornada: { inicial: true, feitas: new Set(), fases: new Set() }, faseVista: null };
     let ultimoRoteiro = null;
 
@@ -341,7 +362,7 @@
       if (!nome) return;
       await gravarPendente();
       st.cliente = null; st.nome = nome; st.estudoId = null; st.gravadoEm = null; st.gravadoPor = null; st.rels = []; st.conferencia = null;
-      st.serie = null; st.grupoSeries = []; st.grupoFora = []; st.socios = null; st.faseVista = null; st.jornada = { inicial: true, feitas: new Set(), fases: new Set() };
+      st.serie = null; st.serieRel = null; st.grupoSeries = []; st.grupoFora = []; st.socios = null; st.faseVista = null; st.jornada = { inicial: true, feitas: new Set(), fases: new Set() };
       st.entrada = comPadroes({ atividades: [{ tipo: 'comercio', receita: 0 }], grupo: [] });
       st.origens = { ...ORIGENS_PADRAO, 'atividades.0.receita': { fonte: 'padrao', texto: 'digite a receita dos 12 meses' }, 'atividades.0.tipo': { fonte: 'padrao' },
         compras: { fonte: 'padrao', texto: 'digite ou solte os relatórios' }, folha: { fonte: 'padrao', texto: 'digite os 12 meses', dica: 'salários, 13º e férias' }, proLabore: { fonte: 'padrao', texto: 'digite' },
@@ -371,7 +392,7 @@
       // o gravado ou os números do sistema, e as outras empresas dos mesmos sócios (a lista do cadastro já está aqui)
       const est = await carregarEstudo({ ler: lerDoBanco, cliente: c, cadastroDe: async ids => new Map(clientes.filter(k => ids.includes(k.id)).map(k => [k.id, k])) });
       if (st.cliente !== c) return;   // trocou de empresa no meio da leitura
-      st.serie = est.serie; st.grupoSeries = est.grupoSeries; st.grupoFora = est.grupoFora || []; st.socios = est.socios; st.faseVista = null; st.jornada = { inicial: true, feitas: new Set(), fases: new Set() };
+      st.serie = est.serie; st.serieRel = est.serieRel || null; st.grupoSeries = est.grupoSeries; st.grupoFora = est.grupoFora || []; st.socios = est.socios; st.faseVista = null; st.jornada = { inicial: true, feitas: new Set(), fases: new Set() };
       st.fontes = est.fontes; st.semTabela = est.semTabela;
       st.estudoId = est.estudoId; st.gravadoEm = est.gravadoEm; st.gravadoPor = est.gravadoPor;
       st.entrada = est.entrada; st.origens = est.origens; st.conferencia = est.conferencia;
@@ -399,6 +420,7 @@
       if ($('recomecar')) $('recomecar').addEventListener('click', () => {
         if (!confirm('Trocar os números deste estudo pelos que o sistema tem hoje? O que foi digitado se perde.')) return;
         st.entrada = comPadroes(st.sistema.entrada); st.origens = { ...ORIGENS_PADRAO, ...st.sistema.origens }; st.conferencia = st.sistema.conferencia;
+        st.serie = st.sistema.serie || null; st.serieRel = null;
         renderForm(); mudou();
       });
     }
@@ -704,7 +726,7 @@
       }).join('');
       // a fase vista: o objetivo, o que ela conquistou e as missões (as abertas antes; as extras no fim)
       const f = rot.fases[vista];
-      let html = '<p class="ct-fase-obj">' + esc(f.objetivo) + '</p>';
+      let html = '<p class="ct-fase-obj">' + esc(f.objetivo) + '</p>' + blocoFontes(f.fontes);
       if (f.id === 'veredito') {
         if (rot.pronto) html += '<p class="ct-veredito">' + esc(f.conquista) + '</p><button type="button" class="btn btn-ghost btn-sm" data-ver-resultado="1">Ver o resultado</button>';
         else {
@@ -735,6 +757,22 @@
         html += '<ul class="ct-missoes">' + lis.join('') + '</ul>';
       }
       $('fase').innerHTML = html;
+    }
+    // o que usar na fase: cada informação, onde buscar hoje, como está e o que vai chegar sozinho pelas pontes (a da Receita e a
+    // do Domínio) — duas linhas por item; as ações ficam nas missões, e o "Soltar os relatórios" vem no fim quando falta um
+    // relatório que a tela lê (os sócios que faltam levam à ficha da empresa)
+    function blocoFontes(fontes) {
+      if (!fontes || !fontes.length) return '';
+      const resolver = x => !['tem', 'dispensa', 'conversa'].includes(x.estado);
+      const lis = fontes.map(x => {
+        const ficha = x.ficha && resolver(x) && st.cliente ? ' <a href="clientes/editar.html?id=' + encodeURIComponent(st.cliente.id) + '" target="_blank" rel="noopener">Abrir a ficha</a>' : '';
+        return '<li class="ct-usar-item" data-id="' + esc(x.id) + '" data-estado="' + esc(x.estado) + '">' +
+          '<span class="ct-usar-mark" aria-hidden="true">' + (x.estado === 'tem' ? '✓' : '') + '</span><div>' +
+          '<div class="ct-usar-cab"><b>' + esc(x.info) + '</b><span class="ct-usar-sit">' + esc(x.situacao || x.rotuloEstado) + '</span></div>' +
+          '<p class="ct-usar-onde">' + esc(x.onde) + (x.auto ? ' <span class="ct-usar-auto">' + esc(x.auto) + '</span>' : '') + ficha + '</p></div></li>';
+      }).join('');
+      const soltar = fontes.some(x => x.relatorio && resolver(x)) ? '<div class="ct-m-acoes"><button type="button" class="btn btn-ghost btn-sm" data-relatorio="1">Soltar os relatórios do Domínio</button></div>' : '';
+      return '<section class="ct-usar" aria-label="O que usar nesta fase"><h3 class="ct-usar-tit">O que usar nesta fase</h3><ul class="ct-usar-lista">' + lis + '</ul>' + soltar + '</section>';
     }
     $('trilha').addEventListener('click', e => {
       const b = e.target.closest('button[data-fase]'); if (!b) return;
@@ -789,7 +827,7 @@
       const resultado = resumoParaGravar(c);
       const agora = new Date().toISOString();
       const linha = { cliente_id: st.cliente ? st.cliente.id : null, nome: st.cliente ? null : st.nome,
-        entrada: { v: 1, entrada: st.entrada, origens: st.origens, conferencia: st.conferencia }, resultado, atualizado_por: usuario, atualizado_em: agora };
+        entrada: { v: 1, entrada: st.entrada, origens: st.origens, conferencia: st.conferencia, ...(st.serieRel ? { serieRel: st.serieRel } : {}) }, resultado, atualizado_por: usuario, atualizado_em: agora };
       $('gravado').classList.remove('ct-erro'); $('gravado').textContent = 'Gravando…';
       gravando = (async () => {
         const r = st.estudoId
@@ -847,6 +885,10 @@
       st.entrada = comPadroes({ ...ap.entrada, regimeAtual: st.entrada.regimeAtual });
       st.origens = ap.origens;
       if (ap.conferencia) st.conferencia = ap.conferencia;
+      // os meses do faturamento entram na série datada (o ano do limite, o crescimento e o "até quando" das fases) e ficam
+      // gravados com o estudo
+      const mesesRel = (cons.fat && cons.fat.meses) || (cons.resVen && cons.resVen.meses) || null;
+      if (mesesRel && mesesRel.length) { st.serieRel = mesclarSerie(st.serieRel, mesesRel); st.serie = mesclarSerie(st.serie, mesesRel); }
       (cons.avisos || []).forEach(a => { if (!st.notas.includes(a)) st.notas.push(a); });
       renderForm(); mudou();
     }

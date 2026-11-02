@@ -220,6 +220,16 @@ def main():
            f'no resultado, o aviso: a conta põe o Simples em 2027, mas o ano de 2026 passa do limite ({al[:90]}…)')
         p.evaluate("() => { window.__festa = []; window.addEventListener('mr:comemorar', e => window.__festa.push(e.detail)); }")
         ok('Ela pode ficar no Simples?' in p.inner_text('#trilha li[aria-current="step"]'), 'a fase de agora é a 1: pode ficar no Simples?')
+        fts = texto(p, '#fase .ct-usar')
+        ok('O que usar nesta fase' in fts and 'Relatório de Faturamento' in fts and 'até jul/26 — faltam ago/26 e set/26' in fts
+           and p.get_attribute('#fase .ct-usar-item[data-id="receita"]', 'data-estado') == 'antigo',
+           'fase 1, o que usar: o faturamento do Domínio, até jul/26, com os meses que faltam até o último fechado')
+        ok('2 sócios no cadastro' in fts and 'as 2 empresas somadas até jul/26' in fts and 'Automático quando a ponte da Receita (Integra Contador) ligar' in fts,
+           'os sócios, as empresas somadas e o que vai chegar sozinho pela ponte da Receita')
+        ok(p.locator('#fase .ct-usar > .ct-m-acoes [data-relatorio]').count() == 1 and p.locator('#fase .ct-usar-item[data-id="socios"] a').count() == 0,
+           'com a receita a atualizar, o "Soltar os relatórios do Domínio" embaixo; os sócios, que já estão, sem o link da ficha')
+        p.click('#fase .ct-usar > .ct-m-acoes [data-relatorio]')
+        ok('ct-chama' in (p.get_attribute('#drop', 'class') or ''), 'o "Soltar os relatórios" acende a caixa dos relatórios')
         prox = texto(p, '#fase .ct-m.ct-prox')
         ok('A receita somada com as empresas dos sócios' in prox and 'R$ 4.570.000' in prox and 'em dezembro' in prox and '01/01/2027' in prox,
            'a missão do próximo passo: a soma com a outra empresa e a saída em 01/01/2027')
@@ -232,6 +242,9 @@ def main():
         ok(p.evaluate("() => window.__festa.length") == 1, 'a carinha do assistente comemora (o evento mr:comemorar)')
         ok(p.get_attribute('#trilha li:nth-child(1)', 'data-estado') == 'feita' and 'A folha e o pró-labore' in p.inner_text('#fase .ct-m.ct-prox'),
            'passou de fase: a tela segue pra fase 2 e o próximo passo é a folha')
+        ok(p.get_attribute('#fase .ct-usar-item[data-id="folha"]', 'data-estado') == 'falta' and 'Domínio Folha: o resumo da folha' in texto(p, '#fase .ct-usar-item[data-id="folha"]'),
+           'fase 2, o que usar: o resumo da folha do Domínio, que falta')
+        ok('Automático quando a ponte do Domínio ligar' in texto(p, '#fase .ct-usar-item[data-id="folha"]'), 'a folha vai chegar pela ponte do Domínio')
         p.click('#fase .ct-m.ct-prox [data-ir]')
         ok(p.evaluate("() => document.activeElement && document.activeElement.id") == 'f_folha', '"Digitar a folha" põe o cursor na folha')
         p.fill('#f_folha', '480000')

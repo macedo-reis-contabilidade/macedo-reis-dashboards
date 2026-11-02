@@ -272,6 +272,16 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
   return { entrada: e, origens, notas, conferencia, serie: sd ? sd.serie : null };
 }
 
+// junta duas séries datadas ([{ competencia 'AAAA-MM', total }]) — a de b vale no mês que as duas têm —, em ordem. É o que a
+// tela faz com o faturamento solto nela: os meses do relatório entram na série do sistema (o ano do limite, o crescimento
+// medido e o "até quando" de cada fase passam a contar com eles), e a parte do relatório fica gravada no estudo (serieRel)
+export function mesclarSerie(a, b) {
+  const m = new Map();
+  [...(a || []), ...(b || [])].forEach(x => { if (x && /^\d{4}-\d{2}$/.test(x.competencia) && num(x.total) > 0) m.set(x.competencia, { competencia: x.competencia, total: num(x.total) }); });
+  const l = [...m.values()].sort((x, y) => (x.competencia < y.competencia ? -1 : 1));
+  return l.length ? l : null;
+}
+
 // ---------- as outras empresas dos mesmos sócios ----------
 // a série datada da receita: o PGDAS da Receita (o declarado) ou o faturamento do caso da Reforma — [{ competencia, total }]
 export function serieDaEmpresa({ caso = null, pgdas = [] } = {}) {

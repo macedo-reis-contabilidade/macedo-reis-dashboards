@@ -45,6 +45,179 @@ export function crescimentoMedido(serie) {
   return ini > 0 ? { pct: (fim / ini - 1) * 100, ini: [a[0].competencia, a[2].competencia], fim: [b[0].competencia, b[2].competencia] } : null;
 }
 
+// ---------- o que usar em cada fase ----------
+// Pedido do Samuel, 01/11/2026: "o bom seria se a cada fase você indicasse qual informação ou relatório seria ideal de ser
+// usado, apesar que conseguindo integrar dominio e receita federal pelo integra o sistema passaria a ter informações sobre
+// tudo". Cada fase diz a informação que pede, onde buscar hoje (o relatório do Domínio que a tela lê, o contrato social, a
+// conversa com o cliente), como ela está na empresa aberta (e até que mês, quando vem do sistema) e o que vai chegar sozinho
+// quando as pontes estiverem ligadas — a da Receita, pelo Integra Contador, e a do Domínio (dominio/plano-integracao.md e
+// integra-contador/plano.md, no Projeto). Os nomes dos relatórios são os que a tela reconhece (dominio-relatorios.js) e os
+// que o Fator R lê.
+export const AUTOMATICO = {
+  receita: 'Automático quando a ponte da Receita (Integra Contador) ligar.',
+  dominio: 'Automático quando a ponte do Domínio ligar.',
+  contrato: 'As pontes não trazem: está no contrato.',
+  conversa: 'Nenhum sistema tem: é conversa com o cliente.'
+};
+export const ESTADO_FONTE = { tem: 'tem', antigo: 'faltam meses', falta: 'falta', padrao: 'no padrão', dispensa: 'não muda a decisão', conversa: 'na reunião' };
+// o último mês fechado: o do PGDAS que já venceu (dia 20) — até o dia 20, o de dois meses atrás. hoje: 'AAAA-MM-DD'
+export function ultimoMesFechado(hoje) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(hoje || ''));
+  if (!m) return null;
+  let a = +m[1], mes = +m[2] - (+m[3] > 20 ? 1 : 2);
+  while (mes < 1) { mes += 12; a -= 1; }
+  return a + '-' + String(mes).padStart(2, '0');
+}
+// os meses depois de `ate` até o `fechado` (os que faltam), no máximo 12
+function mesesDepois(ate, fechado) {
+  const out = [];
+  if (!ate || !fechado || ate >= fechado) return out;
+  let a = +ate.slice(0, 4), m = +ate.slice(5, 7);
+  while (out.length < 12) {
+    m += 1; if (m > 12) { m = 1; a += 1; }
+    const c = a + '-' + String(m).padStart(2, '0');
+    if (c > fechado) break;
+    out.push(c);
+  }
+  return out;
+}
+const faltamMeses = l => (l.length === 1 ? 'falta ' : 'faltam ') + juntar(l.map(rotuloComp));
+// Volta { simples, numeros, premissas, veredito }: as linhas de cada fase — { id, info, onde, auto, estado (tem | antigo |
+// falta | padrao | dispensa | conversa), rotuloEstado, situacao, relatorio (a tela lê o relatório), campo (onde digitar),
+// ficha (o contrato vai na ficha da empresa) }
+export function fontesDoEstudo({ entrada = {}, origens = {}, comparacao = null, situacao = null, serie = null, socios = null, conferencia = null, hoje = null } = {}) {
+  const e = entrada || {}, o = origens || {};
+  const fonte = k => (o[k] && o[k].fonte) || 'padrao';
+  const padrao = k => fonte(k) === 'padrao';
+  const conferido = k => fonte(k) === 'confirmado';
+  const como = k => COMO[fonte(k)] || 'feito';
+  const ats = (e.atividades || []).filter(a => a && TIPOS[a.tipo]);
+  const tributo = a => a.tributo || TIPOS[a.tipo].tributo;
+  const comRec = ats.map((a, i) => ({ a, i })).filter(x => num(x.a.receita) > 0);
+  const receita = comRec.reduce((t, x) => t + num(x.a.receita), 0);
+  const temIcms = comRec.some(x => tributo(x.a) === 'icms');
+  const temIss = comRec.some(x => tributo(x.a) === 'iss');
+  const restaurante = !!e.rda || comRec.some(x => tributo(x.a) === 'icms' && num(x.a.redIcms) > 0);
+  const simples = e.regimeAtual === 'simples';
+  const fechado = ultimoMesFechado(hoje);
+  const grupo = (e.grupo || []).map((g, i) => ({ g, i })).filter(x => x.g && num(x.g.receita) > 0);
+  const out = { simples: [], numeros: [], premissas: [], veredito: [] };
+  const add = (fase, x) => { const l = { estado: 'tem', situacao: '', auto: null, ...x }; l.rotuloEstado = ESTADO_FONTE[l.estado]; out[fase].push(l); };
+
+  // ===== fase 1: a receita, os sócios e as outras empresas deles =====
+  {
+    const ks = comRec.map(x => 'atividades.' + x.i + '.receita');
+    let estado = 'tem', sit = 'falta';
+    if (!(receita > 0) || ks.some(padrao)) estado = 'falta';
+    else {
+      const ate = DO_SISTEMA.includes(fonte(ks[0])) && serie && serie.length ? serie[serie.length - 1].competencia : null;
+      const faltam = mesesDepois(ate, fechado);
+      if (faltam.length) estado = 'antigo';
+      sit = como(ks[0]) + (ate ? ', até ' + rotuloComp(ate) : '') + (faltam.length ? ' — ' + faltamMeses(faltam) : '');
+    }
+    add('simples', { id: 'receita', info: 'A receita dos últimos 12 meses', estado, situacao: sit, relatorio: true,
+      onde: 'Domínio Escrita Fiscal: o Relatório de Faturamento ou o Demonstrativo Mensal, até o último mês fechado.',
+      auto: simples ? 'Automático quando a ponte da Receita (Integra Contador) ligar: sai do PGDAS de cada mês.' : AUTOMATICO.dominio });
+  }
+  if (socios != null) {
+    add('simples', { id: 'socios', info: 'Os sócios e a participação de cada um', estado: socios > 0 ? 'tem' : 'falta', ficha: true,
+      situacao: socios > 0 ? socios + (socios === 1 ? ' sócio no cadastro' : ' sócios no cadastro') : 'o cadastro não tem os sócios',
+      onde: 'O contrato social ou a última alteração, lido na ficha da empresa ("Ler o documento"), com o CPF e a participação.',
+      auto: AUTOMATICO.contrato });
+  }
+  if (grupo.length) {
+    const ks = grupo.map(x => 'grupo.' + x.i + '.receita');
+    let estado = ks.some(padrao) ? 'falta' : 'tem';
+    let sit = estado === 'falta' ? 'falta a receita de ' + juntar(grupo.filter(x => padrao('grupo.' + x.i + '.receita')).map(x => x.g.nome || 'uma delas')) : como(ks[0]);
+    if (estado === 'tem' && situacao && situacao.ate) {
+      const faltam = mesesDepois(situacao.ate, fechado);
+      sit = 'as ' + (grupo.length + 1) + ' empresas somadas até ' + rotuloComp(situacao.ate) + (faltam.length ? ' — ' + faltamMeses(faltam) : '');
+      if (faltam.length) estado = 'antigo';
+    }
+    add('simples', { id: 'grupo', info: 'A receita das outras empresas dos sócios', estado, situacao: sit,
+      onde: 'O faturamento de cada uma até o mesmo mês: o relatório do Domínio na ficha da Reforma dela, ou o total dos 12 meses digitado aqui.',
+      auto: 'Automático quando as pontes ligarem: as do Simples pela Receita, as outras pelo Domínio.' });
+  }
+
+  // ===== fase 2: os números da empresa =====
+  const semFolha = !(num(e.folha) + num(e.proLabore) > 0);
+  const folhaOk = (!semFolha && !padrao('folha')) || conferido('folha') || fonte('folha') === 'digitado';
+  add('numeros', { id: 'folha', info: 'A folha e o pró-labore dos 12 meses', estado: folhaOk ? 'tem' : 'falta', campo: 'folha',
+    situacao: folhaOk ? (semFolha ? 'sem folha nem pró-labore' : como('folha')) : 'falta',
+    onde: 'Domínio Folha: o resumo da folha de cada mês (salários, 13º, férias e pró-labore); por enquanto, digite o total dos 12 meses.',
+    auto: AUTOMATICO.dominio });
+  if (receita > 0) {
+    const comprasOk = !padrao('compras') && (num(e.compras) > 0 || conferido('compras') || fonte('compras') === 'digitado');
+    add('numeros', { id: 'compras', info: 'As compras de mercadorias e insumos', estado: comprasOk ? 'tem' : 'falta', relatorio: true,
+      situacao: comprasOk ? como('compras') : 'falta',
+      onde: 'Domínio Escrita Fiscal: o Acompanhamento de Entradas dos mesmos 12 meses.',
+      auto: AUTOMATICO.dominio });
+  }
+  if (simples && receita > 0) {
+    const pgOk = !!(conferencia && num(conferencia.aliquota) > 0);
+    add('numeros', { id: 'pgdas', info: 'O PGDAS mais recente', estado: pgOk ? 'tem' : 'falta', relatorio: true,
+      situacao: pgOk ? (COMO[conferencia.fonte] || 'veio do sistema') + (conferencia.competencia ? ', de ' + rotuloComp(conferencia.competencia) : '') : 'falta',
+      onde: 'Domínio Escrita Fiscal: o Simples Nacional do último mês (a apuração do PGDAS), que mostra o ST, o monofásico e a redução do ICMS.',
+      auto: 'A ponte da Receita vai trazer a receita e o RBT12; o ST, o monofásico e a redução seguem pelo relatório.' });
+  }
+  const d = comparacao && comparacao.decisao;
+  if (d && d.real) {
+    const alvo = d.melhor === 'real' ? d.segundo : d.melhor;
+    const emp = alvo && d.real.empate[alvo];
+    const despOk = !padrao('outrasDespesas') || num(e.outrasDespesas) > 0;
+    const estado = despOk ? 'tem' : emp && emp.nunca ? 'dispensa' : 'falta';
+    add('numeros', { id: 'despesas', info: 'As outras despesas (fazem o lucro do Real)', estado, campo: 'outrasDespesas',
+      situacao: despOk ? como('outrasDespesas') : estado === 'dispensa' ? 'nem com lucro zero o Real ganha' : 'falta',
+      onde: 'Domínio Contabilidade: o balancete ou a DRE dos 12 meses (as despesas além das compras e da folha); as sem nota, com o cliente.',
+      auto: 'A ponte do Domínio vai trazer os lançamentos; as despesas sem nota seguem com o cliente.' });
+  }
+
+  // ===== fase 3: as premissas =====
+  if (temIcms && num(e.compras) > 0) {
+    add('premissas', { id: 'credito', info: 'O crédito de ICMS das compras', estado: padrao('aliqCreditoIcms') ? 'padrao' : 'tem', campo: 'aliqCreditoIcms',
+      situacao: padrao('aliqCreditoIcms') ? 'no padrão: ' + pct(num(e.aliqCreditoIcms, 12), 2) + '% das compras' : como('aliqCreditoIcms'),
+      onde: 'Domínio Escrita Fiscal: a apuração do ICMS (o crédito das entradas) ou as notas de entrada em XML.',
+      auto: AUTOMATICO.dominio });
+  }
+  if (temIcms) {
+    const ks = comRec.filter(x => tributo(x.a) === 'icms').map(x => 'atividades.' + x.i + '.aliqIcms');
+    const noPadrao = ks.filter(padrao);
+    add('premissas', { id: 'icms', info: restaurante ? 'O ICMS das vendas e a opção do restaurante' : 'O ICMS das vendas: a alíquota, o ST e as reduções',
+      estado: noPadrao.length ? 'padrao' : 'tem', campo: ks[0], situacao: noPadrao.length ? 'no padrão' : como(ks[0]),
+      onde: 'Domínio Escrita Fiscal: o Acompanhamento de Saídas (as vendas com ST, CFOP x401 a x405) e a apuração do ICMS' +
+        (restaurante ? '; a opção do restaurante no regime geral (o RDA, a base reduzida ou o crédito presumido), na apuração ou com o cliente.' : '.'),
+      auto: AUTOMATICO.dominio });
+  }
+  if (temIss) {
+    const ks = comRec.filter(x => tributo(x.a) === 'iss').map(x => 'atividades.' + x.i + '.aliqIss');
+    const noPadrao = ks.filter(padrao);
+    add('premissas', { id: 'iss', info: 'O ISS da atividade', estado: noPadrao.length ? 'padrao' : 'tem', campo: ks[0],
+      situacao: noPadrao.length ? 'no padrão' : como(ks[0]),
+      onde: 'A alíquota do município, nas notas de serviço (o Acompanhamento de Serviços do Domínio).',
+      auto: AUTOMATICO.dominio });
+  }
+  if (!semFolha) {
+    add('premissas', { id: 'rat', info: 'O RAT, o FAP e terceiros', estado: padrao('rat') ? 'padrao' : 'tem', campo: 'rat',
+      situacao: padrao('rat') ? 'no padrão: RAT 2%, FAP 1 e terceiros 5,8%' : como('rat'),
+      onde: 'Domínio Folha: o resumo da folha ou a guia da DCTFWeb do último mês.',
+      auto: AUTOMATICO.dominio });
+  }
+  if (receita > 0) {
+    add('premissas', { id: 'crescimento', info: 'O crescimento', estado: padrao('crescimentoReceita') ? 'padrao' : 'tem', campo: 'crescimentoReceita',
+      situacao: padrao('crescimentoReceita') ? 'no padrão: sem crescimento' : como('crescimentoReceita'),
+      onde: 'A conversa com o cliente (contratar, abrir loja, ganhar ou perder um cliente grande); o sistema mostra o ritmo dos últimos meses.',
+      auto: AUTOMATICO.conversa });
+  }
+
+  // ===== fase 4: o veredito =====
+  const escolhas = [restaurante ? 'a opção do ICMS do restaurante' : null, 'o Simples por dentro ou por fora na Reforma',
+    receita * (1 + num(e.crescimentoReceita) / 100) > 5000000 ? 'a liminar contra o aumento do Presumido (LC 224)' : null].filter(Boolean);
+  add('veredito', { id: 'conversa', info: 'As escolhas e os planos do cliente', estado: 'conversa', situacao: 'na reunião',
+    onde: 'A reunião: a projeção, as despesas sem nota e as escolhas — ' + juntar(escolhas) + '.',
+    auto: AUTOMATICO.conversa });
+  return out;
+}
+
 // ---------- as fases ----------
 export const FASES = [
   { id: 'simples', titulo: 'Ela pode ficar no Simples?', objetivo: 'A receita, o limite de R$ 4,8 milhões e as empresas dos sócios: o Simples é uma opção em 2027 e 2028?' },
@@ -58,14 +231,15 @@ export const FASES = [
 // situacao: situacaoDoGrupo() (o ano-calendário pelos números do sistema) · serie: a receita datada da empresa
 // socios: quantos sócios o cadastro tem (null = sem cadastro ou não lido) · achadas: quantas empresas dos sócios o sistema
 // achou (a tela pode tirar da soma) · grupoFora: as que o sistema achou e a regra deixa fora da soma ([{ nome, motivo }])
-// · conferencia: o PGDAS lido ({ fonte, … } ou null)
+// · conferencia: o PGDAS lido ({ fonte, … } ou null) · hoje: 'AAAA-MM-DD' (o último mês fechado, pro "até quando" das fontes)
+// Cada fase leva as fontes dela (fontesDoEstudo): o que usar, onde buscar e o que vai chegar sozinho.
 // Volta { fases, passos, provisorio, decidem, pendentes, proximo, faseAtual, pronto, feitas, total, extras, doSistema }.
 // Cada missão: { id, fase, titulo, curto (o nome na frase do resultado), texto, estado ('feita' | 'aberta'), falta (o
 // número não existe — senão é conferir), peso ('decide' | 'importa' | 'detalhe' — a extra), como (cumprida como), campo
 // (pra onde ir) e irRotulo, relatorio (o relatório do Domínio que cumpre a missão), conferir (os campos que o "está certo"
 // marca) e conferirRotulo, acao ('mais-grupo') e acaoRotulo }. `passos` são as missões com o estado antigo (falta |
 // conferir | feito), na ordem: o que falta e decide primeiro.
-export function roteiroDoEstudo({ entrada = {}, origens = {}, comparacao = null, testes = [], situacao = null, serie = null, socios = null, achadas = 0, grupoFora = [], conferencia = null } = {}) {
+export function roteiroDoEstudo({ entrada = {}, origens = {}, comparacao = null, testes = [], situacao = null, serie = null, socios = null, achadas = 0, grupoFora = [], conferencia = null, hoje = null } = {}) {
   const e = entrada || {}, o = origens || {};
   const fonte = k => (o[k] && o[k].fonte) || 'padrao';
   const padrao = k => fonte(k) === 'padrao';
@@ -225,10 +399,11 @@ export function roteiroDoEstudo({ entrada = {}, origens = {}, comparacao = null,
 
   // ===== as fases, o progresso e o veredito =====
   const conta = m => m.peso !== 'detalhe';
+  const fontes = fontesDoEstudo({ entrada, origens, comparacao, situacao, serie, socios, conferencia, hoje });
   const fases = FASES.map(f => {
     const ms = missoes.filter(m => m.fase === f.id);
     const valem = ms.filter(conta);
-    return { ...f, missoes: ms, feitas: valem.filter(m => m.estado === 'feita').length, total: valem.length,
+    return { ...f, missoes: ms, fontes: fontes[f.id] || [], feitas: valem.filter(m => m.estado === 'feita').length, total: valem.length,
       extras: ms.filter(m => !conta(m)).length, extrasFeitas: ms.filter(m => !conta(m) && m.estado === 'feita').length,
       concluida: valem.every(m => m.estado === 'feita') };
   });
