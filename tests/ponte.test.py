@@ -804,6 +804,20 @@ def caso_dominio():
                                                                   'name not found and no default driver specified'))
        and dominio.dica_do_erro(RuntimeError('XX000', f'{sa}outra coisa')) is None,
        'a dica pelo erro do driver: a senha, o servidor, o banco, o driver — e nenhuma quando não dá pra saber')
+    recusa = dominio.dica_do_erro(RuntimeError('28000', f'[28000] {sa}Invalid user ID or password'))
+    ok('maiúscula de minúscula' in recusa and 'Externo' in recusa and 'umas horas' in recusa
+       and 'Não teste seguidas vezes' in recusa and 'bloqueado' in recusa,
+       'usuário ou senha recusados (-103): a dica fala da maiúscula, do Externo, do tempo pra valer e do bloqueio por '
+       'tentativas (02/11/2026)')
+    ok(dominio.forma_da_senha('ABCDE123') == '8 caracteres: 5 letras maiúsculas e 3 números'
+       and dominio.forma_da_senha('BoaSenha2026') == '12 caracteres: 2 letras maiúsculas, 6 letras minúsculas e 4 números'
+       and dominio.forma_da_senha('Boa-Senha_2026!') == ('15 caracteres: 2 letras maiúsculas, 6 letras minúsculas, '
+                                                         '4 números e 3 símbolos')
+       and dominio.forma_da_senha('a1') == '2 caracteres: 1 letra minúscula e 1 número'
+       and dominio.forma_da_senha('12345678') == '8 caracteres: 8 números'
+       and dominio.forma_da_senha('x') == '1 caractere: 1 letra minúscula'
+       and dominio.forma_da_senha('') == 'nenhum caractere',
+       'a forma da senha: quantos caracteres e de que tipo, no singular e no plural — sem mostrar a senha')
 
     # ---- a senha com um * por letra (29/10/2026, o Samuel: sem eco, não dava pra saber quanto tinha digitado e apagado)
     import importlib.util
@@ -862,8 +876,11 @@ def caso_dominio():
     def conectar(s):
         usadas.append(s)
         return catalogo_de_mentira()
-    teclado = Teclado('203.0.113.9:2638', 'srv teste', 'srvteste', 'banco1', 'EXTERNO')
-    senhas = Teclado('Senha;Ruim', 'BoaSenha2026', 'Outra2026', 'BoaSenha2026', 'BoaSenha2026')
+    # a senha com o Caps Lock trocado ('boasenha2026') bate nas duas vezes, a janela mostra a forma dela, o "n" digita
+    # de novo — e só a que confere é testada (02/11/2026: cada teste é uma tentativa de login)
+    teclado = Teclado('203.0.113.9:2638', 'srv teste', 'srvteste', 'banco1', 'EXTERNO', 'n', '')
+    senhas = Teclado('Senha;Ruim', 'BoaSenha2026', 'Outra2026', 'boasenha2026', 'boasenha2026', 'BoaSenha2026',
+                     'BoaSenha2026')
     cod, out = no_processo(pasta, dominio.conexao, perguntar=teclado, senha=senhas, interativa=lambda: True,
                            drivers=lambda: ['SQL Server', 'SQL Anywhere 17'], conectar=conectar)
     ok(cod == 0 and gravada(pasta) == esperado, f'conexao: grava no config.ini a string montada do que foi digitado (saiu {cod})')
@@ -872,11 +889,18 @@ def caso_dominio():
     ok(out.count('não serve') == 2 and 'as duas não são iguais' in out,
        'o que não serve é perguntado de novo (o servidor com espaço, a senha com ;), e a senha confere nas duas vezes')
     ok(senhas.perguntas and 'um * pra cada letra' in senhas.perguntas[0], 'a pergunta da senha avisa do * por letra')
+    ok('A senha digitada tem 12 caracteres: 8 letras minúsculas e 4 números.' in out
+       and 'A senha digitada tem 12 caracteres: 2 letras maiúsculas, 6 letras minúsculas e 4 números.' in out
+       and 'Caps Lock' in out and len(senhas.perguntas) == 7
+       and sum('n digita a senha de novo' in p for p in teclado.perguntas) == 2,
+       'antes de testar, a janela mostra como é a senha (o Caps Lock trocado aparece) e o "n" pede a senha de novo')
     ok(usadas == [esperado] and 'abriu — SQL Anywhere 17.0.11.7058' in out and 'tabela(s) do Domínio (bethadba 3)' in out,
-       'testa na hora: a versão do servidor e quantas tabelas do Domínio o usuário vê (sem as do sistema)')
+       'testa na hora — uma vez só, com a senha que conferiu: a versão do servidor e quantas tabelas do Domínio o '
+       'usuário vê (sem as do sistema)')
     registro = logs(pasta)
-    ok('BoaSenha2026' not in out + registro and 'Senha;Ruim' not in out + registro and '203.0.113.9' not in registro
-       and 'srvteste' not in registro, 'a senha não aparece na tela nem no log — e o log não guarda nem o endereço')
+    ok('BoaSenha2026' not in out + registro and 'boasenha2026' not in out + registro and 'Senha;Ruim' not in out + registro
+       and '203.0.113.9' not in registro and 'srvteste' not in registro and 'caracteres' not in registro,
+       'a senha não aparece na tela nem no log (nem a forma dela, no log) — e o log não guarda nem o endereço')
     ok('conexão do Domínio gravada' in registro and 'abriu — SQL Anywhere' in registro,
        'o log diz que gravou e que abriu (é por ele que o pedreiro sabe, sem ver a janela)')
 
@@ -892,7 +916,7 @@ def caso_dominio():
         raise RuntimeError('08001', '[08001] [SAP][ODBC Driver][SQL Anywhere]Database server not found (teste)')
     p2 = pasta_nova()
     escrever_config(p2, url=url, conexao=None)
-    cod, out = no_processo(p2, dominio.conexao, perguntar=Teclado('203.0.113.9', '2638', 'srvteste', 'banco1', 'EXTERNO'),
+    cod, out = no_processo(p2, dominio.conexao, perguntar=Teclado('203.0.113.9', '2638', 'srvteste', 'banco1', 'EXTERNO', ''),
                            senha=Teclado('BoaSenha2026', 'BoaSenha2026'), interativa=lambda: True,
                            drivers=lambda: ['SQL Anywhere 17'], conectar=nao_abre)
     ok(cod == 1 and gravada(p2) == esperado and 'não abriu' in out and 'o servidor não respondeu' in out
@@ -916,6 +940,13 @@ def caso_dominio():
     cod, out = no_processo(p4, dominio.conexao, perguntar=Teclado('203.0.113.9', '2638'), senha=Teclado(),
                            interativa=lambda: True, drivers=lambda: ['SQL Anywhere 17'], conectar=nao_conecta)
     ok(cod == 2 and not gravada(p4) and 'nada foi gravado' in out, 'a janela fechada no meio: nada é gravado')
+    p6 = pasta_nova()
+    escrever_config(p6, url=url, conexao=None)
+    cod, out = no_processo(p6, dominio.conexao, perguntar=Teclado('203.0.113.9', '2638', 'srvteste', 'banco1', 'EXTERNO'),
+                           senha=Teclado('BoaSenha2026', 'BoaSenha2026'), interativa=lambda: True,
+                           drivers=lambda: ['SQL Anywhere 17'], conectar=nao_conecta)
+    ok(cod == 2 and not gravada(p6) and 'nada foi gravado' in out and 'A senha digitada tem 12 caracteres' in out,
+       'a janela fechada na conferência da senha: nada é gravado nem testado')
 
     # ---- tabelas: só o catálogo, na pasta da ponte
     banco = catalogo_de_mentira()

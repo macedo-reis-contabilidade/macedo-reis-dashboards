@@ -90,9 +90,21 @@ py -3 -m ponte dominio sql --arquivo ponte\consultas\folha.sql --mes 2026-09
   senha (duas vezes, um `*` por letra: o Backspace apaga, colar com o botão direito ou o Ctrl+V vale); monta a conexão com o driver `SQL Anywhere` que o Python enxerga e grava só a
   linha `conexao` da `[dominio]` do `config.ini`; testa na hora (a versão do servidor e quantas tabelas o usuário vê) e
   anota no log o resultado — **nunca os valores**. A senha: letras, números e símbolos comuns, sem `;` `{` `}`, aspas
-  ou acento (quebram a conexão). Só pergunta numa janela que aceita digitação; pelo terminal do pedreiro, ele abre uma
-  pro Samuel: `Start-Process py -ArgumentList '-3','-m','ponte','dominio','conexao','--esperar' -WorkingDirectory
-  <a pasta do repositório> -Wait`. Rodado de novo com a conexão gravada, Enter só testa; `s` troca.
+  ou acento (quebram a conexão). Antes de testar, a janela mostra como é a senha digitada — "12 caracteres: 2 letras
+  maiúsculas, 6 letras minúsculas e 4 números", nunca ela — pra conferir com a do Domínio: a senha do banco diferencia maiúscula de
+  minúscula, e com o Caps Lock trocado elas aparecem invertidas ali; `n` digita de novo, Enter testa. Só pergunta numa
+  janela que aceita digitação; pelo terminal do pedreiro, ele abre uma pro Samuel: `Start-Process py -ArgumentList
+  '-3','-m','ponte','dominio','conexao','--esperar' -WorkingDirectory <a pasta do repositório> -Wait`. Rodado de novo
+  com a conexão gravada, Enter só testa; `s` troca.
+- **Usuário ou senha recusados** (`Invalid user ID or password`, -103 — o caso de 30/10 a 02/11/2026): o servidor e o
+  banco do chamado estão certos (senão o erro seria "server not found" ou "database not found"); o que não bateu foi o
+  par usuário + senha naquele banco, e o -103 não diz o porquê. **Cada teste é uma tentativa de login** — o `conferir`,
+  o `dominio conexao` e o `dominio tabelas` —, e o usuário bloqueado por tentativas erradas responde com o mesmo erro,
+  até com a senha certa: um teste por vez, nunca seguidos. Usuário ou senha novos no Domínio podem levar até o horário
+  seguinte de atualização do banco (quem integra com o Domínio Web fala em 10h, 12h, 16h e 19h, ou 24 horas): teste
+  com folga depois dele. Persistindo: um usuário externo novo (não herda bloqueio), com uma senha simples de digitar e
+  dentro do tamanho que o campo do Domínio aceita, e o chamado da Domínio — só eles veem no servidor se o usuário
+  existe naquele banco e se está bloqueado.
 - **`tabelas`** lê **só o catálogo** do banco (as tabelas `SYS`): os nomes das tabelas e das colunas, o tipo, a descrição
   que o banco guarda e quantas linhas cada tabela tem — **nenhuma linha das tabelas do Domínio**. É o "Busca Tabelas"
   do Domínio, sem precisar dele nem do Java. O arquivo fica na pasta da ponte, nunca no repositório (é a documentação

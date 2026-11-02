@@ -5,11 +5,13 @@ porta, o nome do servidor (o "Engine") e o do banco. O usuário é o "externo", 
 com um usuário GERENTE (Controle › Permissões › Usuários › Novo › Tipo de acesso: Externo) — só de leitura.
 
     conexao [--esperar]
-        Pergunta o host, a porta, o servidor, o banco, o usuário e a senha (duas vezes, um * por letra), monta a
-        string ODBC do SQL Anywhere com o driver que este Python enxerga, grava no [dominio] conexao do config.ini (só
-        essa linha) e testa: abre, diz a versão do servidor e quantas tabelas o usuário vê. Quem digita é o Samuel,
-        nesta janela: nada passa por chat. Sem uma janela que aceite digitação (o terminal do pedreiro), não pergunta
-        nada e diz como abrir uma. --esperar: no fim, espera o Enter (a janela não fecha antes de ele ler).
+        Pergunta o host, a porta, o servidor, o banco, o usuário e a senha (duas vezes, um * por letra), mostra como é
+        a senha digitada ("12 caracteres: 2 letras maiúsculas, 6 minúsculas…") e pergunta se confere com a do Domínio
+        antes de testar — cada teste é uma tentativa de login —, monta a string ODBC do SQL Anywhere com o driver que
+        este Python enxerga, grava no [dominio] conexao do config.ini (só essa linha) e testa: abre, diz a versão do
+        servidor e quantas tabelas o usuário vê. Quem digita é o Samuel, nesta janela: nada passa por chat. Sem uma
+        janela que aceite digitação (o terminal do pedreiro), não pergunta nada e diz como abrir uma. --esperar: no
+        fim, espera o Enter (a janela não fecha antes de ele ler).
     tabelas [--procurar termo] [--saida arquivo.txt]
         O catálogo do banco: as tabelas e as colunas, o tipo, a descrição que o banco guarda e quantas linhas cada
         tabela tem. NENHUM dado das tabelas: só o catálogo (SYS). Grava em C:\\ponte-dominio\\dominio-tabelas.txt (nunca
@@ -28,6 +30,7 @@ import datetime
 import getpass
 import pathlib
 import re
+import string
 import struct
 import sys
 import time
@@ -128,6 +131,24 @@ def problema_da_senha(v):
     return None
 
 
+def forma_da_senha(s):
+    """Como a senha é, sem mostrá-la: quantos caracteres e de que tipo — "12 caracteres: 2 letras maiúsculas, 6 letras
+    minúsculas e 4 números". A janela mostra antes de testar (02/11/2026: o banco recusava o usuário e a senha, e com
+    os asteriscos não dava pra ver o Caps Lock trocado — a senha do SQL Anywhere diferencia maiúscula de minúscula —
+    nem uma senha maior que a que o campo do Domínio aceitou)."""
+    if not s:
+        return 'nenhum caractere'
+    tipos = ((sum(c in string.ascii_uppercase for c in s), 'letra maiúscula', 'letras maiúsculas'),
+             (sum(c in string.ascii_lowercase for c in s), 'letra minúscula', 'letras minúsculas'),
+             (sum(c in string.digits for c in s), 'número', 'números'))
+    partes = [f'{n} {um if n == 1 else varios}' for n, um, varios in tipos if n]
+    outros = len(s) - sum(n for n, _, _ in tipos)
+    if outros:
+        partes.append(f'{outros} {"símbolo" if outros == 1 else "símbolos"}')
+    lista = partes[0] if len(partes) == 1 else ', '.join(partes[:-1]) + ' e ' + partes[-1]
+    return f'{len(s)} {"caractere" if len(s) == 1 else "caracteres"}: {lista}'
+
+
 def do_sistema(dono):
     d = str(dono or '').strip().upper()
     return d in DONOS_DO_SISTEMA or d.startswith('SYS_')
@@ -172,8 +193,13 @@ def dica_do_erro(e):
         return ('o Windows não achou o driver: instale o SQL Anywhere 17 com os mesmos bits do Python (o LEIA-ME diz '
                 'onde) e rode de novo')
     if estado == '28000' or 'user id' in texto or 'password' in texto:
-        return ('usuário ou senha recusados: confira os dois e se o usuário está ativo no Domínio, com o Tipo de acesso '
-                'Externo (Controle › Permissões › Usuários)')
+        # 02/11/2026: o -103 não diz qual dos dois, de propósito — e o usuário bloqueado por tentativas erradas responde
+        # com ele também (nos bancos da SAP), até com a senha certa: testar de novo seguidas vezes só piora
+        return ('usuário ou senha recusados: a senha diferencia maiúscula de minúscula; confira se o usuário está '
+                'ativo no Domínio, com o Tipo de acesso Externo (Controle › Permissões › Usuários). Usuário ou senha '
+                'novos podem levar umas horas pra valer no banco (o horário seguinte de atualização do Domínio). Não '
+                'teste seguidas vezes: o usuário bloqueado por tentativas erradas responde com este mesmo erro — aí, '
+                'um usuário externo novo ou o chamado da Domínio')
     if 'database not found' in texto:          # o "Specified database not found" (o "Database server not found" não)
         return 'o servidor respondeu, mas não achou o banco: confira o Banco do chamado da Domínio'
     if estado == 'HYT00' or 'timeout' in texto or 'timed out' in texto:
@@ -420,6 +446,16 @@ def _conexao(perguntar, senha, interativa, drivers, conectar):
             return NADA_FEITO
         if s1 != s2:
             tela('  as duas não são iguais — de novo:')
+            continue
+        # cada teste é uma tentativa de login, e a errada pode bloquear o usuário: confere antes de gastar uma
+        tela(f'A senha digitada tem {forma_da_senha(s1)}.')
+        tela('  Confira com a do usuário no Domínio: maiúscula e minúscula contam (com o Caps Lock trocado, elas '
+             'aparecem invertidas aqui).')
+        r = _pergunta(perguntar, 'Enter testa; n digita a senha de novo: ')
+        if r is None:
+            tela('Desisti: nada foi gravado.')
+            return NADA_FEITO
+        if r.strip().lower() == 'n':
             continue
         break
 
