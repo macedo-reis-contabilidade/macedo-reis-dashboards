@@ -99,7 +99,10 @@ py -3 -m ponte dominio sql --arquivo ponte\consultas\folha.sql --mes 2026-09
   minúscula, e com o Caps Lock trocado elas aparecem invertidas ali; `n` digita de novo, Enter testa. Só pergunta numa
   janela que aceita digitação; pelo terminal do pedreiro, ele abre uma pro Samuel: `Start-Process py -ArgumentList
   '-3','-m','ponte','dominio','conexao','--esperar' -WorkingDirectory <a pasta do repositório> -Wait`. Rodado de novo
-  com a conexão gravada, Enter só testa; `s` troca.
+  com a conexão gravada, Enter só testa; `s` troca — e aí o Enter mantém o host, a porta, o Engine, o Banco e o usuário
+  gravados (aparecem entre colchetes; a senha é sempre perguntada): trocar só o usuário e a senha não pede de novo os
+  dados do chamado (02/11/2026). Na conferência da senha, só Enter (testa) ou `n` (digita de novo): o que se digita ali
+  aparece na tela.
 - **Usuário ou senha recusados** (`Invalid user ID or password`, -103 — o caso de 30/10 a 02/11/2026): o servidor e o
   banco do chamado estão certos (senão o erro seria "server not found" ou "database not found"); o que não bateu foi o
   par usuário + senha naquele banco, e o -103 não diz o porquê. **Cada teste é uma tentativa de login** — o `conferir`,

@@ -101,6 +101,23 @@ def montar_conexao(driver, host, porta, servidor, banco, usuario, senha):
             f'Host={host}:{porta};CharSet=UTF-8')
 
 
+def partes_da_conexao(conexao):
+    """Do que a janela gravou, o que dá pra reaproveitar ao trocar: o host, a porta, o servidor, o banco e o usuário —
+    nunca a senha. Só os que ainda passam na conferência de cada campo (02/11/2026: pra trocar só o usuário e a senha
+    sem buscar de novo os dados do chamado)."""
+    lido = {}
+    for pedaco in str(conexao or '').split(';'):
+        chave, _, valor = pedaco.partition('=')
+        lido[chave.strip().lower()] = valor.strip()
+    partes = {'usuario': lido.get('uid', ''), 'servidor': lido.get('servername', ''),
+              'banco': lido.get('databasename', '')}
+    host, _, porta = lido.get('host', '').rpartition(':')
+    partes['host'], partes['porta'] = (host, porta) if host else ('', '')
+    conferir = {'host': problema_do_host, 'porta': problema_da_porta, 'servidor': problema_do_nome,
+                'banco': problema_do_nome, 'usuario': problema_do_usuario}
+    return {c: v for c, v in partes.items() if v and not conferir[c](v)}
+
+
 def problema_do_host(v):
     return None if _HOST.fullmatch(v) else 'só letras, números, ponto e hífen — o IP ou o nome, sem http:// e sem espaço'
 
@@ -405,16 +422,26 @@ def _conexao(perguntar, senha, interativa, drivers, conectar):
                 tela(linha)
             return OK if abriu else NAO_ABRIU
 
+    # trocando a que está gravada, o Enter mantém o host, a porta, o servidor, o banco e o usuário de agora (a senha é
+    # sempre perguntada): trocar só o usuário e a senha não pede de novo os dados do chamado
+    gravados = {}
+    if cfg.situacao('dominio', 'conexao') == 'preenchido':
+        gravados = partes_da_conexao(cfg.valor('dominio', 'conexao'))
+    if gravados:
+        tela('Enter mantém o que está gravado (aparece entre colchetes); a senha é sempre perguntada.')
     valores = {}
     for campo, texto, problema in PERGUNTAS:
         if campo in valores:          # a porta, quando veio colada no host
             continue
         while True:
-            v = _pergunta(perguntar, f'{texto}: ')
+            antes = gravados.get(campo)
+            v = _pergunta(perguntar, f'{texto}' + (f' [{antes}]' if antes else '') + ': ')
             if v is None:
                 tela('Desisti: nada foi gravado.')
                 return NADA_FEITO
             v = v.strip().strip('"').strip()
+            if not v and antes:
+                v = antes
             porta = None
             if campo == 'host':
                 m = re.fullmatch(r'(.+):(\d{1,5})', v)
@@ -451,11 +478,18 @@ def _conexao(perguntar, senha, interativa, drivers, conectar):
         tela(f'A senha digitada tem {forma_da_senha(s1)}.')
         tela('  Confira com a do usuário no Domínio: maiúscula e minúscula contam (com o Caps Lock trocado, elas '
              'aparecem invertidas aqui).')
-        r = _pergunta(perguntar, 'Enter testa; n digita a senha de novo: ')
-        if r is None:
-            tela('Desisti: nada foi gravado.')
-            return NADA_FEITO
-        if r.strip().lower() == 'n':
+        while True:
+            r = _pergunta(perguntar, 'Aperte só Enter pra testar, ou n pra digitar a senha de novo: ')
+            if r is None:
+                tela('Desisti: nada foi gravado.')
+                return NADA_FEITO
+            r = r.strip().lower()
+            if r in ('', 'n'):
+                break
+            # 02/11/2026: aqui o Samuel digitou o usuário — o que se digita nesta pergunta aparece na tela
+            tela('  aqui é só Enter (testa) ou n (digita a senha de novo) — o que se digita aqui aparece na tela, então '
+                 'nunca a senha:')
+        if r == 'n':
             continue
         break
 
