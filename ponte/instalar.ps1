@@ -8,7 +8,7 @@
   2. Cria C:\ponte-dominio\logs\ e C:\ponte-dominio\pendentes\.
   3. Se ainda não existe C:\ponte-dominio\config.ini, cria a partir do config.exemplo.ini (pra você preencher) e
      deixa o arquivo legível só pelo seu usuário (icacls).
-  4. Registra a tarefa do Windows "Ponte Domínio": todo dia no horário de -Hora, "py -3 -m ponte rodar" com a pasta
+  4. Registra a tarefa do Windows "Ponte Domínio": todo dia no horário de -Hora, "py -3 -m ponte rodar --meses 14" com a pasta
      de trabalho C:\ponte-dominio\app. Roda sem ninguém logado e sem guardar a senha do Windows (S4U) e, se o PC
      estava desligado no horário, roda assim que puder. Quem tenta de novo quando o envio falha é a própria ponte,
      não o agendador.
@@ -161,6 +161,7 @@ if ($Receita) {
     @{ campo = 'cnpj_escritorio'; texto = 'O CNPJ do escritório (só números)'; seguro = $false }
   )
   $mudou = $false
+  $respostas = [ordered]@{}
   foreach ($q in $perguntas) {
     $atual = Ler-Ini $linhas.ToArray() 'integra' $q.campo
     if ($atual -and $atual -ne (Ler-Ini $exemplo 'integra' $q.campo)) { continue }
@@ -184,12 +185,19 @@ if ($Receita) {
         Write-Host "  Aviso: guarde o .pfx dentro de $Base (só você, o SISTEMA e os administradores leem essa pasta)."
       }
     }
-    Por-Ini $linhas 'integra' $q.campo $valor
+    $respostas[$q.campo] = $valor
     $valor = $null
     $mudou = $true
   }
   if ($mudou) {
+    # o config.ini é lido de novo só agora: a janela pode ficar horas esperando as respostas, e o que mudou nele nesse
+    # meio tempo não pode voltar ao que era quando ela abriu (02/11/2026: a conexão do Domínio trocada às 13h49, com a
+    # janela aberta desde as 13h36, voltaria à antiga). Só os campos respondidos são trocados.
+    $linhas = New-Object 'System.Collections.Generic.List[string]'
+    foreach ($l in @(Get-Content -Encoding UTF8 $config)) { $linhas.Add([string]$l) }
+    foreach ($campo in @($respostas.Keys)) { Por-Ini $linhas 'integra' $campo ($respostas[$campo]) }
     [IO.File]::WriteAllLines($config, $linhas.ToArray(), (New-Object Text.UTF8Encoding $false))
+    $respostas.Clear()
     Write-Host "A [integra] de $config foi preenchida (os valores não aparecem aqui)."
   } else {
     Write-Host "A [integra] de $config já tinha as chaves, o certificado e o CNPJ: não perguntei nada."
@@ -213,10 +221,12 @@ if ($Receita) {
   $limite = New-TimeSpan -Hours 4
   $descricao = 'Consulta a Receita pelo Integra Contador do Serpro (só consulta) e manda pro sistema só os campos do contrato. Logs em C:\ponte-dominio\logs.'
 } else {
-  $acao = New-ScheduledTaskAction -Execute $py -Argument '-3 -m ponte rodar' -WorkingDirectory $App
+  # 14 meses: o mês de hoje, o passado (ainda em fechamento) e os 12 de antes deles, que a precificação usa — lidos de
+  # novo todo dia, pra nota e lançamento que entram atrasados no Domínio chegarem ao sistema (02/11/2026)
+  $acao = New-ScheduledTaskAction -Execute $py -Argument '-3 -m ponte rodar --meses 14' -WorkingDirectory $App
   $gatilho = New-ScheduledTaskTrigger -Daily -At $Hora
   $limite = New-TimeSpan -Hours 2
-  $descricao = 'Lê a cópia do Domínio, soma por empresa e por mês e manda só os totais pro sistema. Logs em C:\ponte-dominio\logs.'
+  $descricao = 'Lê o banco do Domínio Web, soma por empresa e por mês (os últimos 14 meses) e manda só os totais pro sistema. Logs em C:\ponte-dominio\logs.'
 }
 $quem = New-ScheduledTaskPrincipal -UserId $Usuario -LogonType S4U -RunLevel Limited
 $ajustes = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
@@ -227,8 +237,8 @@ Register-ScheduledTask -TaskName $NomeTarefa -Action $acao -Trigger $gatilho -Pr
 if ($Receita) {
   Write-Host "Tarefa '$NomeTarefa' registrada: de segunda a sexta às $Hora, como $Usuario (sem guardar senha)."
   if ($ambiente -ne 'producao') {
-    Write-Host "Atenção: o [integra] ambiente ainda não é producao — a tarefa não manda nada até você trocar, depois de"
-    Write-Host '  conferir as 5 primeiras empresas no e-CAC (o LEIA-ME explica).'
+    Write-Host "Atenção: o [integra] ambiente ainda não é producao — a tarefa não manda nada até ele ser trocado (o LEIA-ME,"
+    Write-Host '  "O primeiro uso": liga direto na carteira toda e a conferência é pelo sistema, depois da primeira rodada).'
   }
   # a chave da ponte nasce aqui: com o chave_ponte vazio (ou o do exemplo), o "ponte chave" gera e grava no config.ini
   # e mostra só a impressão digital, que o sistema guarda — a chave mesmo não aparece
@@ -242,11 +252,11 @@ if ($Receita) {
   } else {
     Write-Host 'A chave da ponte já existe no config.ini (py -3 -m ponte chave mostra a impressão digital).'
   }
-  Write-Host "Antes de ligar, rode, em $App :"
+  Write-Host "Depois de trocar o ambiente pra producao, rode, em $App :"
   Write-Host '  py -3 -m ponte receita conferir'
-  Write-Host '  py -3 -m ponte receita rodar --so autorizacao,pgdas,faturamento,situacao_fiscal --empresas 5 --sem-enviar --saida conferencia.json'
+  Write-Host '  py -3 -m ponte receita rodar'
 } else {
-  Write-Host "Tarefa '$NomeTarefa' registrada: todo dia às $Hora, como $Usuario (sem guardar senha)."
+  Write-Host "Tarefa '$NomeTarefa' registrada: todo dia às $Hora (os últimos 14 meses), como $Usuario (sem guardar senha)."
   Write-Host "Antes da primeira rodada: preencha $config e rode, em $App :"
   Write-Host '  py -3 -m ponte conferir'
   Write-Host '  py -3 -m ponte rodar --sem-enviar'

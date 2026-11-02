@@ -63,7 +63,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ponte\instalar.ps1 -Hora 07:
 powershell -NoProfile -ExecutionPolicy Bypass -File ponte\instalar.ps1 -Remover
 ```
 
-A tarefa "Ponte Domínio" roda a **cópia instalada** em `C:\ponte-dominio\app\ponte` — nunca a pasta do repositório,
+A tarefa "Ponte Domínio" roda `py -3 -m ponte rodar --meses 14` (o mês de hoje, o passado e os 12 de antes, que a
+precificação usa — lidos de novo todo dia, pra nota e lançamento que entram atrasados chegarem ao sistema) na **cópia
+instalada** em `C:\ponte-dominio\app\ponte` — nunca a pasta do repositório,
 que muda de branch. Pra atualizar a ponte, rode o `instalar.ps1` de novo — **o da pasta do repositório** (o da cópia
 instalada se recusa: apagaria a própria pasta antes de copiá-la). Com o banco ao vivo, o horário não depende de cópia:
 às 07:00 o dia anterior já está inteiro (o `dados_ate` do pacote é o dia da rodada). A pasta `C:\ponte-dominio` fica só pro seu usuário, o sistema e os administradores; o `config.ini`, só pro
@@ -153,10 +155,9 @@ contábil recebem o primeiro e o último dia do mês, nessa ordem, e devolvem **
 3. `py -3 -m ponte rodar --sem-enviar --saida conferencia.json` — o arquivo cai em `C:\ponte-dominio\` (o `--saida`
    sem pasta vai sempre pra lá) porque tem **nome e CNPJ dos clientes**: nunca o copie pra dentro do repositório, que
    é público.
-4. **Confira 10 empresas à mão contra o Domínio** — funcionários, admissões, notas, valores, lançamentos — antes
-   de ligar o envio. É o portão da fase 2 do plano: sem isso, não liga. Até lá, a função `ponte` do sistema recusa os
-   totais do Domínio (422). A folha das 10 empresas de 09/2026 ficou em `C:\ponte-dominio\conferencia-10.txt`
-   (02/11/2026): o DP confere a folha, o fiscal as notas e o contábil os lançamentos.
+4. **A conferência é pelo sistema** (decisão do Samuel, 02/11/2026: sem conferência à mão): o que o Domínio diz é
+   cruzado com o que o sistema já sabe por outro caminho, e só o que não bate vai pra uma pessoa. A função `ponte`
+   grava os totais do Domínio desde 02/11/2026 (`dominio_empresas`, `dominio_mensal`, `dominio_rodadas`).
 
 ---
 
@@ -247,7 +248,8 @@ prévia de 5 empresas no e-CAC; o e-CAC, só onde o cruzamento do sistema não b
    do repositório): as chaves, o caminho do `.pfx`, a senha dele e o CNPJ do escritório são digitados na janela; ele
    registra a tarefa **"Ponte Receita"**, de segunda a sexta às 08:30 (`-Hora` muda; `-Remover -Receita` tira só
    ela). Com o `chave_ponte` ainda vazio (ou o do exemplo), roda o `py -3 -m ponte chave` no fim e mostra a impressão
-   digital: mande-a pro Claude da sessão do Samuel.
+   digital: mande-a pro Claude da sessão do Samuel. Ele lê o `config.ini` de novo só na hora de gravar e troca só os
+   campos respondidos: a janela pode esperar horas sem desfazer o que mudou no arquivo nesse meio tempo (02/11/2026).
 2. O `ambiente = producao` no `config.ini` — só essa linha, pelo `gravar_campo` da ponte (o arquivo não se abre).
 3. `py -3 -m ponte receita conferir` — tudo "preenchido", o certificado em dia e "Token: ok".
 4. A primeira rodada, mandando pro sistema: `py -3 -m ponte receita rodar` (alguns minutos). O Claude da sessão do
