@@ -606,6 +606,36 @@ def caso_conferir(sis):
        'mostra a versão e os bits do Python e os drivers (ou como instalar o pyodbc)')
     ok(sorted(a.name for a in pasta.iterdir()) == ['config.ini'], 'conferir não grava nada (nem log)')
 
+    # a conexão com o Domínio testada (aqui, com um pyodbc e um teste de mentira): a que não abre não termina em "Tudo
+    # certo" (02/11/2026, o Code: o "Tudo certo na configuração" do fim parecia dizer que ela tinha aberto)
+    import types
+    from ponte import conferir as mod_conferir, dominio
+    guardados = (sys.modules.get('pyodbc'), dominio.testar_conexao, os.environ.get('PONTE_IP_URL'))
+    falso = types.ModuleType('pyodbc')
+    falso.drivers = lambda: ['SQL Anywhere 17']
+    sys.modules['pyodbc'] = falso
+    os.environ['PONTE_IP_URL'] = sis.ip_url
+    try:
+        dominio.testar_conexao = lambda c: (False, ['Conexão com o Domínio: não abriu — RuntimeError: (teste)'])
+        cod, out = no_processo(pasta, mod_conferir.conferir)
+        ok(cod == 1 and 'não abriu — RuntimeError: (teste)' in out and 'Tudo certo' not in out
+           and 'a conexão com o Domínio não abriu' in out,
+           'conferir com a conexão que não abre: sai com 1 e o fim diz que ela não abriu (não "Tudo certo")')
+        dominio.testar_conexao = lambda c: (True, ['Conexão com o Domínio: abriu — SQL Anywhere 17 (teste)'])
+        cod, out = no_processo(pasta, mod_conferir.conferir)
+        ok(cod == 0 and 'abriu — SQL Anywhere 17 (teste)' in out and 'Tudo certo na configuração' in out,
+           'com a conexão que abre: "Tudo certo na configuração" e sai com 0')
+    finally:
+        if guardados[0] is None:
+            sys.modules.pop('pyodbc', None)
+        else:
+            sys.modules['pyodbc'] = guardados[0]
+        dominio.testar_conexao = guardados[1]
+        if guardados[2] is None:
+            os.environ.pop('PONTE_IP_URL', None)
+        else:
+            os.environ['PONTE_IP_URL'] = guardados[2]
+
 
 def caso_config_invalida(sis):
     titulo('+ configuração que não dá pra usar: url sem https://, chave em duas linhas')

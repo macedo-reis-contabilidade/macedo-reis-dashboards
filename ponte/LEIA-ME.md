@@ -46,6 +46,10 @@ py -3 -m ponte rodar --falso --sem-enviar       # o mesmo, com o Domínio de men
 `--meses N` muda quantos meses a rodada manda, contando o atual (padrão 3; até 24, pra carga inicial). O
 `--falso` só manda pra um sistema de mentira (endereço local) — nunca empresa inventada pro sistema de verdade.
 
+O `conferir` testa a conexão com o Domínio (é uma tentativa de login, como a janela do `dominio conexao`) e termina em
+"Tudo certo na configuração." só quando ela abriu ou não deu pra testar; com a conexão recusada, diz que ela não abriu
+e sai com 1.
+
 Código de saída do `rodar`: **0** mandou (ou não tinha o que mandar); **1** não conseguiu e guardou pra mandar na
 próxima; **2** o sistema recusou ou a configuração não deixa rodar (repetir do mesmo jeito não adianta).
 

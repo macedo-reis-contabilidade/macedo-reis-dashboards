@@ -4,7 +4,8 @@
     o IP de saída (só na tela) · os drivers ODBC que o Python enxerga · a conexão com o Domínio (abre e fecha) ·
     o ping pro sistema ({"versao": 1, "ping": true} — o sistema só responde, sem gravar)
 
-Código de saída: 0 com a configuração completa; 1 quando falta alguma coisa nela.
+Código de saída: 0 com a configuração completa; 1 quando falta alguma coisa nela ou quando a conexão com o Domínio
+não abriu (02/11/2026: o "Tudo certo na configuração" do fim parecia dizer que ela tinha aberto).
 O endereço que diz o IP pode ser trocado pela variável PONTE_IP_URL (é pros testes).
 """
 import json
@@ -77,13 +78,15 @@ def conferir():
         tela('  o driver da Domínio precisa ter os mesmos bits do Python')
 
     conexao = cfg.valor('dominio', 'conexao')
+    abriu = None                                      # None: não testou (falta a conexão ou o pyodbc)
     if cfg.situacao('dominio', 'conexao') != 'preenchido':
         tela('Conexão com o Domínio: não testei (falta a [dominio] conexao)')
     elif pyodbc is None:
         tela('Conexão com o Domínio: não testei (falta o pyodbc)')
     else:
         from .dominio import testar_conexao
-        for linha in testar_conexao(conexao)[1]:     # a versão do servidor e quantas tabelas o usuário vê
+        abriu, linhas = testar_conexao(conexao)       # a versão do servidor e quantas tabelas o usuário vê
+        for linha in linhas:
             tela(linha)
 
     # ---- ping pro sistema
@@ -109,5 +112,11 @@ def conferir():
             tela(f'Sistema: sem resposta ({detalhe})')
 
     tela('')
-    tela('Tudo certo na configuração.' if not problemas else f'{problemas} coisa(s) a acertar na configuração.')
-    return 0 if not problemas else 1
+    if problemas:
+        tela(f'{problemas} coisa(s) a acertar na configuração.')
+    elif abriu is False:
+        tela('A configuração está preenchida, mas a conexão com o Domínio não abriu — a linha dela, acima, diz o que '
+             'conferir.')
+    else:
+        tela('Tudo certo na configuração.')
+    return 0 if not problemas and abriu is not False else 1
