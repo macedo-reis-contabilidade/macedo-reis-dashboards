@@ -480,6 +480,14 @@
           <div id="receitaConteudo"></div>
         </section>
 
+        <section class="form-section" id="sectionDominio" hidden>
+          <div class="form-section-head">
+            <h2>Domínio</h2>
+            <span class="form-section-sub">O que a ponte do Domínio leu desta empresa: a folha, as notas e os lançamentos dos últimos meses</span>
+          </div>
+          <div id="dominioConteudo"></div>
+        </section>
+
         <section class="form-section" id="sectionProcessos">
           <div class="form-section-head">
             <h2>Processos / atualizações</h2>
@@ -727,6 +735,7 @@
     import { vincularObrigacoes } from '../assets/js/tarefas-acoes.js';
     import { retirantesDe, sociosQueFicam, retiranteQueE, mesmaPessoa, avisoDaSoma, linhaDoRetirante } from '../assets/js/leitura-socios.js';
     import { carregarReceita, htmlDaReceita } from '../assets/js/receita-ficha.js';
+    import { carregarDominio, htmlDoDominio } from '../assets/js/dominio-ficha.js';
     import {
       bindMask, maskCNPJ, maskCPF, maskTelefone, maskCEP,
       formatCNPJ, formatCPF, formatDocumento, formatTelefone,
@@ -1253,6 +1262,7 @@
 
       renderSocios();
       renderContatos();
+      mostrarDominio();
     }
 
     // ============================================================
@@ -2642,6 +2652,14 @@
       const html = htmlDaReceita(await carregarReceita(supabase, clienteId));
       document.getElementById('receitaConteudo').innerHTML = html;
       document.getElementById('sectionReceita').hidden = !html;
+    }
+
+    // o Domínio pela ponte (02/11/2026): a seção só aparece com a empresa ligada ao Domínio (pelo CNPJ ou CPF do cadastro)
+    async function mostrarDominio(){
+      const hoje = hojeLocal();
+      const html = htmlDoDominio(await carregarDominio(supabase, clienteId, hoje), hoje);
+      document.getElementById('dominioConteudo').innerHTML = html;
+      document.getElementById('sectionDominio').hidden = !html;
     }
 
     async function carregarHistorico(){
