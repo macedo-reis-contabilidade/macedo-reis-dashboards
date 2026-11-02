@@ -24,7 +24,7 @@ from .fonte import Fonte, ConsultaAConferir
 MARCA = '-- A CONFERIR'
 PASTA_CONSULTAS = pathlib.Path(__file__).with_name('consultas')
 TEMPO_CONEXAO = 15    # segundos pra abrir a conexão
-TEMPO_CONSULTA = 600  # segundos por consulta: uma presa não segura a tarefa até as 2 horas do Agendador
+TEMPO_CONSULTA = 600  # segundos por consulta, quando o driver aceita (o do SQL Anywhere 17 recusa: fica o do Agendador)
 # o que o driver responde quando não aceita pôr a conexão em só leitura (atributo que ele não conhece)
 SO_LEITURA_RECUSADA = ('HYC00', 'HY092', 'HY024')
 
@@ -50,11 +50,16 @@ def abrir_odbc(conexao):
     # o texto (o nome da empresa, a descrição da tabela) vem do driver já em UTF-16, com os acentos certos, qualquer
     # que seja a página de código do banco e a do Windows (29/10/2026: o risco do acento, da fila de 22/10)
     con.setdecoding(pyodbc.SQL_CHAR, encoding='utf-16le', ctype=pyodbc.SQL_WCHAR)
-    con.timeout = TEMPO_CONSULTA
     try:
-        con.cursor().close()     # o pyodbc aplica o tempo-limite ao criar o cursor: é aqui que um driver recusaria
+        con.timeout = TEMPO_CONSULTA   # o pyodbc pede ao driver (SQLSetConnectAttr) e aplica a cada cursor
+        con.cursor().close()
     except pyodbc.Error:
-        con.timeout = 0          # sem tempo-limite por consulta: fica o do Agendador
+        # 02/11/2026: o driver do SQL Anywhere 17 recusa o tempo-limite na conexão ("Driver not capable", HYC00) —
+        # com o login já feito, a conexão dava "não abriu". Sem tempo-limite por consulta: fica o do Agendador
+        try:
+            con.timeout = 0
+        except pyodbc.Error:
+            pass
     return con
 
 
