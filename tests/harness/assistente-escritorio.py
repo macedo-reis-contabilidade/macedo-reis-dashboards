@@ -82,6 +82,12 @@ def main():
         p.click('.as-lancador'); p.wait_for_timeout(250)
         ex = p.eval_on_selector_all('.as-msgs .as-chip', 'bs => bs.map(b => b.textContent)')
         ok(ex == ['O que tenho pra hoje?', 'O que tenho esta semana?', 'O que está atrasado, por pessoa?'] and 'Eu vejo tudo do sistema' in p.inner_text('.as-msgs'), f'na Agenda, as perguntas prontas da Agenda ({ex})')
+        # a tela que registra o recado dela depois de o balão já estar montado (o PC mais lento, 02/11/2026: a Reforma
+        # aparecia sem "Nesta tela, as perguntas da Reforma…"): a saudação é desenhada de novo, com o recado
+        p.evaluate("async () => { const m = await import('./assets/js/assistente-escritorio.js'); m.assistenteDaTela({ saudacaoExtra: '<p>Recado da tela que chegou depois.</p>' }); }")
+        p.wait_for_timeout(150)
+        ok('Recado da tela que chegou depois.' in p.inner_text('.as-msgs') and 'Eu vejo tudo do sistema' in p.inner_text('.as-msgs'),
+           'a tela que registra depois do balão montado: a saudação ganha o recado dela')
         p.click('.as-lancador'); p.wait_for_timeout(150)
 
         # 2) os recados do dia (o 1º, a saudação, já saiu no index; agora o de Boletos)

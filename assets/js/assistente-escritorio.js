@@ -268,7 +268,9 @@ const nomeTela = () => cfg.nome || nomeDoTitulo() || caminho;
 // a tela registra o que é dela; vale antes ou depois da montagem
 export function assistenteDaTela(config = {}) {
   Object.assign(tela, config);
-  if (api) api.atualizar();
+  // o assistente já montado (a tela registrou depois do auth-guard — no PC mais lento, 02/11/2026): a saudação foi
+  // desenhada sem o recado da tela; com ele, redesenha a conversa (a saudação junto), senão só as perguntas prontas
+  if (api) { if (config.saudacaoExtra != null) api.redesenhar(); else api.atualizar(); }
   return {
     definirContexto(c) { ctxPendente = c || null; if (api) api.definirContexto(ctxPendente); },
     atualizar() { if (api) api.atualizar(); }
