@@ -963,6 +963,11 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(4px); 
 .as-vigia-abas .as-vigia-aba-atual { color:var(--text); text-decoration:none; font-weight:600; }
 /* resolver ali mesmo (16/10/2026): quem vai cuidar, descartar a proposta, o boleto enviado ou pago */
 .as-vigia-resolver { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:7px; }
+/* a pergunta do gerente no cartão do vigia (02/11/2026): a pergunta inteira, as opções (a marcada em destaque) e o texto */
+.as-pergunta { flex-basis:100%; white-space:pre-wrap; color:var(--text); margin:2px 0 4px; }
+.as-pergunta-opcoes { flex-basis:100%; }
+.as-pergunta-opcoes .as-chip { text-align:left; }
+.as-chip[aria-pressed="true"] { background:var(--sel); border-color:var(--brand-primary); color:var(--text); font-weight:600; }
 .as-vigia-resolver select { font:12.5px/1.2 var(--font-body); color:var(--text); background:var(--surface); border:1px solid var(--border); border-radius:8px;
   padding:5px 8px; min-width:0; max-width:100%; }
 .as-vigia-resolver select:focus { outline:none; border-color:var(--brand-primary); box-shadow:0 0 0 3px var(--sel); }

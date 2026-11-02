@@ -42,11 +42,11 @@ import { concluirTarefas, desfazerConclusao, marcarPagos, desfazerPagos, criarTa
   dadosDaCobranca, porNaCobranca, desfazerCobranca, acertarCadastro, desfazerCadastro,
   registrarNoHistorico, desfazerRegistro, limparMensagem, MAX_MENSAGEM, tarefaDoMesDoVinculo, criarTarefaDoMes, religarVinculo,
   incluirNaCampanha, desfazerInclusaoCampanha, dadosParaCompetencia, porNaCompetencia, desfazerPorNaCompetencia, COMPETENCIA_ISO,
-  limparAjuste, ajusteDoVinculo, ajustarVinculos, desfazerAjusteVinculos } from './tarefas-acoes.js';
+  limparAjuste, ajusteDoVinculo, ajustarVinculos, desfazerAjusteVinculos, responderPergunta, desfazerResposta } from './tarefas-acoes.js';
 import { EQUIPE, SOCIOS, nomePorEmail } from './equipe.js';
 import { SETORES } from './nova-tarefa.js';
 import { lerAchados, ignorarAchado, reabrirAchado, filtrarAchados, agruparAchados, linkSeguro, ehSocioPeloNome, marcarVisto,
-  resolvidosAgora, marcarResolvidoAgora, desmarcarResolvidoAgora, COLUNAS } from './vigia.js';
+  resolvidosAgora, marcarResolvidoAgora, desmarcarResolvidoAgora, COLUNAS, perguntaDeOutro } from './vigia.js';
 import { linkDoDrive, conversaDe, enviarMensagem, apagarMensagem, MAX_TEXTO } from './chat-equipe.js';
 import { resumoDoContrato, mesesDeInicio } from './contrato-ca.js';
 
@@ -955,7 +955,8 @@ const REF_DA_REGRA = { obrigacao_sem_responsavel: 'clientes', tarefa_responsavel
   boleto_parado: 'cobrancas_mensais', admissao_nao_registrada: 'admissoes', admissao_sem_vinculo: 'admissoes', rescisao_pagamento: 'rescisoes',
   rescisao_sem_vinculo: 'rescisoes', alvara_vencendo: 'alvaras', cobranca_ex_cliente: 'cobrancas_config', obrigacao_ex_cliente: 'cliente_obrigacoes',
   cliente_sem_obrigacao: 'clientes', cliente_sem_cobranca: 'clientes', cadastro_desencontrado: 'clientes',
-  obrigacao_desligada: 'cliente_obrigacoes', obrigacao_sem_tarefa: 'cliente_obrigacoes', cliente_sem_contrato: 'clientes', cliente_sem_boleto: 'clientes' };
+  obrigacao_desligada: 'cliente_obrigacoes', obrigacao_sem_tarefa: 'cliente_obrigacoes', cliente_sem_contrato: 'clientes', cliente_sem_boleto: 'clientes',
+  pergunta_aberta: 'perguntas_equipe' };
 const resolvivel = a => !!a && ID.test(String(a.ref_id || '')) && !!REF_DA_REGRA[a.regra] && REF_DA_REGRA[a.regra] === a.ref_tabela;
 // o mês do achado "sem a tarefa do mês": o do prazo dele (o dia do vínculo naquele mês) → { ano, mes } | null
 const mesDoAchado = a => { const m = /^(\d{4})-(\d{2})/.exec(String((a && a.prazo) || '')); return m ? { ano: Number(m[1]), mes: Number(m[2]) } : null; };
@@ -1145,6 +1146,15 @@ async function resolverAchado(a, escolha, ajuda) {
       + (r.bases.length ? ' Ela ganhou a base de cobrança: os próximos meses saem sozinhos.' : ''), aviso: r.erro || null,
       desfazer: { tipo: 'competencia', competencia: e.competencia, feito: { postos: r.postos, bases: r.bases } } };
   }
+  // a pergunta do gerente (02/11/2026): a resposta de quem recebeu — uma das opções e/ou o texto
+  if (a.regra === 'pergunta_aberta') {
+    const e = escolha && typeof escolha === 'object' ? escolha : {};
+    const r = await responderPergunta(supabase, a.ref_id, { opcao: e.opcao, texto: e.texto });
+    if (r.erro) return { erro: r.erro };
+    if (!r.pergunta) return { erro: r.ja === 'cancelada' ? 'A pergunta foi cancelada.' : 'Ela já foi respondida.' };
+    const dita = [r.pergunta.resposta, r.pergunta.resposta_texto ? '“' + trecho(r.pergunta.resposta_texto, 160) + '”' : null].filter(Boolean).join(' — ');
+    return { texto: 'Resposta enviada: ' + dita + '. Obrigado!', desfazer: { tipo: 'pergunta', pergunta: r.pergunta } };
+  }
   return { erro: 'Esse achado se resolve na tela dele.' };
 }
 // desfaz e devolve { erro } — erro também quando nada voltou (alguém mexeu depois)
@@ -1188,6 +1198,7 @@ async function desfazerResolucao(d, ajuda) {
     return nada(r, r.desfeitos.length > 0);
   }
   if (d.tipo === 'cadastro') { const r = await desfazerCadastro(supabase, d.cliente); return nada(r, r.desfeita); }
+  if (d.tipo === 'pergunta') { const r = await desfazerResposta(supabase, d.pergunta); return nada(r, r.desfeita); }
   // a tarefa do mês criada aqui sai (só a que continua pendente); a obrigação religada desliga de novo, com quem cuidava
   if (d.tipo === 'tarefa_mes' || d.tipo === 'religada') {
     let voltou = false, erro = null;
@@ -1280,7 +1291,10 @@ function cartaoVigia({ raiz, estado, salvar, ajuda, anunciar }) {
   // um achado: o que é, o porquê, de quem (fora dos meus) e o que fazer
   function itemAchado(a, m) {
     const href = linkSeguro(a.link);
-    const linhas = [h('b', {}, a.titulo || 'Achado', a.gravidade === 'alta' && m !== 'ignorados' && !a._agora ? h('span', { class: 'as-tag', text: 'urgente' }) : null),
+    // a pergunta de outra pessoa (os sócios veem na aba de todos): "pra você" é de quem recebe, e só ela responde
+    const deOutro = perguntaDeOutro(a, ajuda.nome);
+    const titulo = deOutro ? String(a.titulo || '').replace(/^Pergunta pra você/, 'Pergunta pra ' + (a.responsavel || 'a equipe')) : a.titulo;
+    const linhas = [h('b', {}, titulo || 'Achado', a.gravidade === 'alta' && m !== 'ignorados' && !a._agora ? h('span', { class: 'as-tag', text: 'urgente' }) : null),
       a.detalhe ? h('small', { text: a.detalhe }) : null, m !== 'meus' && a.responsavel && !a._resolvido ? h('small', { text: 'Com ' + a.responsavel + '.' }) : null];
     let acoes;
     if (m === 'ignorados') {
@@ -1293,9 +1307,11 @@ function cartaoVigia({ raiz, estado, salvar, ajuda, anunciar }) {
       acoes = [h('span', { class: 'as-cartao-ok', text: '✓ ' + String(a._resolvido.texto || 'Resolvido.') }),
         h('span', { class: 'as-cartao-sub', text: 'Sai da lista na conferência seguinte.' }), a._resolvido.desfazer ? botao('Desfazer', ev => desfazerUm(a, ev.currentTarget), 'link') : null];
     } else {
-      acoes = [href ? h('a', { class: 'as-botao as-botao-link', href: new URL(href, RAIZ).href, text: 'Abrir' }) : null, botao('Ignorar', ev => ignorar(a, ev.currentTarget), 'link')];
+      // a pergunta não se ignora: responde quem recebeu (a de outra pessoa espera por ela)
+      acoes = [href ? h('a', { class: 'as-botao as-botao-link', href: new URL(href, RAIZ).href, text: 'Abrir' }) : null,
+        a.regra === 'pergunta_aberta' ? (deOutro ? h('span', { class: 'as-cartao-sub', text: 'Esperando a resposta.' }) : null) : botao('Ignorar', ev => ignorar(a, ev.currentTarget), 'link')];
     }
-    const controles = m !== 'ignorados' && !a._agora && !a._resolvido && resolvivel(a) ? controlesDeResolver(a) : null;
+    const controles = m !== 'ignorados' && !a._agora && !a._resolvido && resolvivel(a) && !deOutro ? controlesDeResolver(a) : null;
     return h('li', { class: 'as-vigia-item' + (a._agora || a._resolvido ? ' as-vigia-ignorado' : '') }, linhas, controles, h('div', { class: 'as-vigia-acoes' }, acoes));
   }
   // os botões que resolvem ali mesmo: quem vai cuidar (o dono do setor já marcado), descartar a proposta, o boleto enviado
@@ -1345,8 +1361,40 @@ function cartaoVigia({ raiz, estado, salvar, ajuda, anunciar }) {
     } else if (a.regra === 'cliente_sem_boleto') {
       const comp = compDoLink(a.link);
       linha.append(botao(comp ? 'Pôr no boleto de ' + mesBR(comp) : 'Pôr no boleto do mês', () => abrirBoletoDoMes(a, linha)));
+    } else if (a.regra === 'pergunta_aberta') {
+      linha.append(botao('Responder', () => abrirPergunta(a, linha), 'pri'));
     }
     return linha;
+  }
+  // a pergunta do gerente (02/11/2026): a pergunta inteira, as opções (cada uma responde com um clique) e, se ela aceita,
+  // o texto livre — sozinho ou junto da opção marcada
+  async function abrirPergunta(a, linha) {
+    const caixa = h('div', { class: 'as-vigia-resolver as-vigia-busca' }, sub('Lendo a pergunta…'));
+    linha.replaceWith(caixa);
+    const voltar = () => caixa.replaceWith(controlesDeResolver(a));
+    const { data, error } = await supabase.from('perguntas_equipe').select('id, pergunta, opcoes, aceita_texto, situacao').eq('id', a.ref_id).maybeSingle();
+    if (error || !data) { caixa.replaceChildren(h('div', { class: 'as-cartao-erro', text: error ? 'Não consegui ler a pergunta: ' + error.message : 'A pergunta não existe mais.' }), botao('Voltar', voltar, 'link')); return; }
+    if (data.situacao !== 'aberta') { caixa.replaceChildren(h('div', { class: 'as-cartao-ok', text: '✓ Ela já foi respondida.' }), botao('Voltar', voltar, 'link')); return; }
+    const opcoes = Array.isArray(data.opcoes) ? data.opcoes.filter(o => typeof o === 'string' && o.trim()) : [];
+    let marcada = null;
+    const texto = data.aceita_texto !== false ? h('textarea', { rows: '3', maxlength: '2000', 'aria-label': 'A sua resposta, com as suas palavras' }) : null;
+    const enviar = botao('Enviar a resposta', ev => resolver(a, { opcao: marcada, texto: texto ? texto.value : null }, ev.currentTarget), 'pri');
+    const conferir = () => { enviar.disabled = !marcada && !(texto && texto.value.trim()); };
+    const botoes = opcoes.map(o => {
+      const b = h('button', { type: 'button', class: 'as-chip', 'aria-pressed': 'false', text: o });
+      b.addEventListener('click', () => {
+        marcada = marcada === o ? null : o;
+        botoes.forEach(x => x.setAttribute('aria-pressed', String(x.textContent === marcada)));
+        conferir();
+      });
+      return b;
+    });
+    if (texto) ['input', 'change'].forEach(t => texto.addEventListener(t, conferir));
+    caixa.replaceChildren(h('div', { class: 'as-cartao-sub as-pergunta', text: data.pergunta || '' }),
+      opcoes.length ? h('div', { class: 'as-cartao-botoes as-pergunta-opcoes', role: 'group', 'aria-label': 'As opções' }, botoes) : null,
+      texto ? h('div', { class: 'as-cartao-campos' }, h('label', { class: 'as-cartao-campo largo' }, opcoes.length ? 'Quer explicar? (opcional)' : 'A sua resposta', texto)) : null,
+      h('div', { class: 'as-cartao-botoes' }, enviar, botao('Cancelar', voltar, 'link')));
+    conferir();
   }
   // o contrato da mensalidade no Conta Azul (a quinta leva, 31/10/2026): a função confere a empresa lá (pelo CNPJ) e diz o
   // que seria criado — o tipo (a mensalidade, ou o MEI pelo regime), o valor (a proposta fechada, senão a base), o dia (o da

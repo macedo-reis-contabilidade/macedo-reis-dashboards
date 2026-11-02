@@ -32,6 +32,9 @@ Confere:
      seria criado (o cadastro lá, o valor, o dia, o mês, o tipo, a conta, o vendedor), "Criar no Conta Azul" pede a
      confirmação e não tem "Desfazer"; o que já tem contrato ativo diz qual; e o cliente novo fora dos boletos do mês, posto
      no mês com o valor da base (com o "Desfazer");
+ 12. as perguntas do gerente (02/11/2026): o link ?vigia=meus (o botão da cobrança no chat) abre o cartão; a pergunta de
+     quem entrou tem "Responder" (as opções, o texto livre) e não tem "Ignorar"; a resposta grava a opção e o texto, com o
+     "Desfazer"; a de outra pessoa (na aba de todos) diz pra quem é e espera por ela, sem "Responder";
   e sem erro de JavaScript.
 Termina com código 1 se alguma checagem falhar.
 Pré-requisito: pip install playwright e python -m playwright install chromium
@@ -205,6 +208,19 @@ CA_VENDAS = """
   };
 })();
 """ % json.dumps(MES_ATUAL)
+# o 12: as perguntas do gerente — uma pra quem está na tela (o Samuel, financeiro@) e uma pra Vitória
+EXTRA6 = {
+    'achados': [
+        A('71', 'pergunta_aberta', 'Pergunta pra você: De qual mês é a tarefa de teste', 'A tarefa de teste de cada mês cuida de qual mês?', 'dp', 'Samuel', 'media',
+          'dp-regras.html', ref_tabela='perguntas_equipe', ref_id='pq71'),
+        A('72', 'pergunta_aberta', 'Pergunta pra você: Concluir a tarefa de teste sozinho', 'Quando o sistema vir feito, pode concluir?', 'dp', 'Vitória', 'media',
+          'agenda.html', ref_tabela='perguntas_equipe', ref_id='pq72')],
+    'tabelas': {
+        'perguntas_equipe': [
+            {'id': 'pq71', 'para': 'financeiro@macedoereis.com.br', 'assunto': 'De qual mês é a tarefa de teste', 'pergunta': 'A tarefa de teste de cada mês cuida de qual mês?',
+             'opcoes': ['Do mês anterior', 'Do próprio mês'], 'aceita_texto': True, 'situacao': 'aberta', 'resposta': None, 'resposta_texto': None},
+            {'id': 'pq72', 'para': 'rh@macedoereis.com.br', 'assunto': 'Concluir a tarefa de teste sozinho', 'pergunta': 'Quando o sistema vir feito, pode concluir?',
+             'opcoes': ['Pode', 'Não pode'], 'aceita_texto': True, 'situacao': 'aberta', 'resposta': None, 'resposta_texto': None}]}}
 ACOES = {'O que o vigia achou no fiscal?': {'tipo': 'vigia', 'ver': 'todos', 'setor': 'fiscal'}, 'O que dá pra resolver do vigia?': {'tipo': 'vigia', 'ver': 'todos'}}
 SEMEAR = """
 (() => {
@@ -681,6 +697,47 @@ def main():
         ok(p6.evaluate("c => window.__mockDb.cobrancas_mensais.filter(x => x.cliente_id === 'k63' && x.competencia === c).length", COMP) == 0
            and p6.evaluate("() => window.__mockDb.cobrancas_config.filter(x => x.cliente_id === 'k63').length") == 1,
            'desfazer: o boleto sai do mês (a base, que já existia, fica)')
+
+        # 12) as perguntas do gerente: o link do botão da cobrança abre o cartão de quem entrou; responder e desfazer
+        p7 = b.new_page(viewport={'width': 1400, 'height': 900})
+        p7.on('pageerror', lambda e: erros.append(str(e)))
+        p7.add_init_script(TOUR); p7.add_init_script('window.__vigiaExtra = ' + json.dumps(EXTRA6, ensure_ascii=False)); p7.add_init_script(SEMEAR)
+        it7 = lambda trecho: card + ' li.as-vigia-item:has-text("' + trecho + '")'
+        pq = lambda i: p7.evaluate('i => window.__mockDb.perguntas_equipe.find(x => x.id === i)', i)
+        p7.goto(base + 'index.html?vigia=meus'); p7.wait_for_selector('.as-painel:not([hidden]) ' + card + ' .as-vigia-grupo', timeout=6000)
+        p7.evaluate("() => document.querySelectorAll('.as-cartao-vigia details.as-vigia-grupo').forEach(d => { d.open = true; })"); p7.wait_for_timeout(100)
+        tit7 = p7.inner_text(card + ' .as-cartao-tit')
+        grupos7 = p7.eval_on_selector_all(card + ' .as-vigia-grupo > summary', 'ss => ss.map(s => s.textContent)')
+        botoes71 = p7.eval_on_selector_all(it7('tarefa de teste') + ' button', 'bs => bs.map(b => b.textContent)')
+        ok(tit7 == 'O que o vigia achou pra você: 4' and any(g.startswith('Perguntas pra responder · 1') for g in grupos7) and botoes71 == ['Responder']
+           and not p7.query_selector(it7('Concluir a tarefa de teste')),
+           f'?vigia=meus abre o cartão de quem entrou; a pergunta dele com "Responder" e sem "Ignorar" ({tit7!r}, {grupos7}, {botoes71})')
+        p7.click(it7('De qual mês') + ' button:has-text("Responder")')
+        p7.wait_for_selector(it7('De qual mês') + ' .as-pergunta', timeout=5000)
+        enviar = it7('De qual mês') + ' button:has-text("Enviar a resposta")'
+        chips = p7.eval_on_selector_all(it7('De qual mês') + ' .as-pergunta-opcoes .as-chip', 'bs => bs.map(b => b.textContent)')
+        ok(p7.inner_text(it7('De qual mês') + ' .as-pergunta') == 'A tarefa de teste de cada mês cuida de qual mês?' and chips == ['Do mês anterior', 'Do próprio mês']
+           and p7.is_visible(it7('De qual mês') + ' textarea') and p7.is_disabled(enviar),
+           f'responder: a pergunta inteira, as opções e o texto, e "Enviar" só com uma resposta ({chips})')
+        p7.click(it7('De qual mês') + ' .as-chip:has-text("Do mês anterior")')
+        ok(p7.get_attribute(it7('De qual mês') + ' .as-chip:has-text("Do mês anterior")', 'aria-pressed') == 'true' and not p7.is_disabled(enviar), 'a opção marcada fica em destaque e libera o "Enviar"')
+        p7.fill(it7('De qual mês') + ' textarea', '  a de outubro é a de setembro ')
+        p7.click(enviar)
+        p7.wait_for_selector(it7('De qual mês') + ' button:has-text("Desfazer")', timeout=5000)
+        r71 = pq('pq71')
+        ok(r71['situacao'] == 'respondida' and r71['resposta'] == 'Do mês anterior' and r71['resposta_texto'] == 'a de outubro é a de setembro'
+           and '✓ Resposta enviada: Do mês anterior — “a de outubro é a de setembro”. Obrigado!' in p7.inner_text(it7('De qual mês')),
+           f'enviar: grava a opção e o texto (sem espaço sobrando) e agradece, com o "Desfazer" ({r71})')
+        p7.click(it7('De qual mês') + ' button:has-text("Desfazer")')
+        p7.wait_for_selector(it7('De qual mês') + ' button:has-text("Responder")', timeout=5000)
+        ok(pq('pq71')['situacao'] == 'aberta', 'desfazer: a pergunta volta a esperar a resposta')
+        p7.click(card + ' .as-vigia-abas button:has-text("De todos")')
+        p7.wait_for_selector(it7('Concluir a tarefa de teste'), timeout=5000)
+        p7.evaluate("() => document.querySelectorAll('.as-cartao-vigia details.as-vigia-grupo').forEach(d => { d.open = true; })"); p7.wait_for_timeout(100)
+        txt72 = p7.inner_text(it7('Concluir a tarefa de teste'))
+        ok('Pergunta pra Vitória: Concluir a tarefa de teste sozinho' in txt72 and 'Esperando a resposta.' in txt72 and 'Com Vitória.' in txt72
+           and not p7.query_selector(it7('Concluir a tarefa de teste') + ' button'),
+           f'a pergunta de outra pessoa: diz pra quem é e espera por ela, sem "Responder" e sem "Ignorar" ({txt72!r})')
 
         ok(not erros, f'sem erro de JavaScript ({erros[:2]})')
         b.close()

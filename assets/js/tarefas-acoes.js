@@ -1254,3 +1254,38 @@ export async function desfazerAjusteVinculos(sb, feito, { autor = null, origem =
   }
   return out;
 }
+
+// ---------- as perguntas do gerente (02/11/2026, pedido do Samuel: "você é como um gerente … cobra elas, me relata") ----------
+// A pergunta pra alguém da equipe (perguntas_equipe) aparece no cartão do vigia de quem responde, com as opções e o texto
+// livre. Responder grava só a resposta (o banco grava quando e quem, e confere que a opção é uma das da pergunta); o
+// "Desfazer" volta a pergunta pra aberta, só se ela segue com a resposta que entrou aqui.
+export const limparResposta = (t, max = 2000) => String(t == null ? '' : t).replace(/\r\n?/g, '\n').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim().slice(0, max);
+// → { pergunta: { id, resposta, resposta_texto } | null, ja?: 'respondida' | 'cancelada', erro }
+export async function responderPergunta(sb, id, { opcao = null, texto = null } = {}) {
+  const resposta = opcao == null ? null : limparResposta(opcao, 200) || null;
+  const resposta_texto = texto == null ? null : limparResposta(texto) || null;
+  if (!resposta && !resposta_texto) return { pergunta: null, erro: 'Escolha uma opção ou escreva a resposta.' };
+  const { data, error } = await sb.from('perguntas_equipe').select('id, situacao, opcoes, aceita_texto').eq('id', id);
+  if (error) return { pergunta: null, erro: msg(error) };
+  const p = (data || [])[0];
+  if (!p) return { pergunta: null, erro: 'A pergunta não existe mais.' };
+  if (p.situacao !== 'aberta') return { pergunta: null, ja: p.situacao, erro: null };
+  if (resposta && !(p.opcoes || []).includes(resposta)) return { pergunta: null, erro: 'Essa resposta não está entre as opções.' };
+  if (resposta_texto && p.aceita_texto === false) return { pergunta: null, erro: 'Esta pergunta se responde só pelas opções.' };
+  const { data: foi, error: e2 } = await sb.from('perguntas_equipe').update({ situacao: 'respondida', resposta, resposta_texto })
+    .eq('id', id).eq('situacao', 'aberta').select('id, resposta, resposta_texto');
+  if (e2) return { pergunta: null, erro: msg(e2) };
+  const r = (foi || [])[0];
+  return r ? { pergunta: { id: String(r.id), resposta: r.resposta ?? null, resposta_texto: r.resposta_texto ?? null }, erro: null }
+    : { pergunta: null, ja: 'respondida', erro: null };
+}
+// → { desfeita, erro }
+export async function desfazerResposta(sb, pergunta) {
+  if (!pergunta || !pergunta.id) return { desfeita: false, erro: null };
+  let q = sb.from('perguntas_equipe').update({ situacao: 'aberta' }).eq('id', pergunta.id).eq('situacao', 'respondida');
+  q = pergunta.resposta == null ? q.is('resposta', null) : q.eq('resposta', pergunta.resposta);
+  q = pergunta.resposta_texto == null ? q.is('resposta_texto', null) : q.eq('resposta_texto', pergunta.resposta_texto);
+  const { data, error } = await q.select('id');
+  if (error) return { desfeita: false, erro: msg(error) };
+  return { desfeita: (data || []).length > 0, erro: null };
+}

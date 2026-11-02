@@ -17,7 +17,7 @@ import { concluirTarefas, desfazerConclusao, criarTarefasAvulsas, excluirTarefas
   limparMensagem, comMensagem, MAX_MENSAGEM, registrarNoHistorico, desfazerRegistro,
   competenciaFiscal, tarefaDaObrigacao, tarefaDoMesDoVinculo, criarTarefaDoMes, religarVinculo,
   obsDaInclusao, incluirNaCampanha, desfazerInclusaoCampanha, vencimentoDaCompetencia, diaDoContrato, dadosParaCompetencia, porNaCompetencia, desfazerPorNaCompetencia,
-  limparAjuste, ajusteDoVinculo, ajustarVinculos, desfazerAjusteVinculos } from '../assets/js/tarefas-acoes.js';
+  limparAjuste, ajusteDoVinculo, ajustarVinculos, desfazerAjusteVinculos, responderPergunta, desfazerResposta, limparResposta } from '../assets/js/tarefas-acoes.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + extra : '')); };
@@ -659,6 +659,26 @@ console.log('As obrigações das empresas, em lote:');
   chk('trocado por outra pessoa no meio do caminho: não sobrescreve', v('v4').responsavel === 'Vitória' && !r5.vinculos.length, JSON.stringify(r5));
   sb.antes = null;
   chk('sem o que mudar: diz', /Diga o que muda/.test((await ajustarVinculos(sb, ['v1'], {})).erro));
+}
+
+console.log('As perguntas do gerente (02/11/2026):');
+{
+  const P = (id, extra = {}) => ({ id, para: 'rh@macedoereis.com.br', situacao: 'aberta', opcoes: ['Do mês anterior', 'Do próprio mês'], aceita_texto: true, resposta: null, resposta_texto: null, ...extra });
+  const db = { perguntas_equipe: [P('p1'), P('p2', { aceita_texto: false }), P('p3', { situacao: 'respondida', resposta: 'Do próprio mês' })] };
+  const sb = dubla(db);
+  chk('sem opção e sem texto: pede', /Escolha uma opção/.test((await responderPergunta(sb, 'p1', {})).erro) && db.perguntas_equipe[0].situacao === 'aberta');
+  chk('opção fora das da pergunta: recusa', /não está entre as opções/.test((await responderPergunta(sb, 'p1', { opcao: 'Outra coisa' })).erro));
+  chk('texto na que só aceita as opções: recusa', /só pelas opções/.test((await responderPergunta(sb, 'p2', { texto: 'acho que sim' })).erro));
+  const r = await responderPergunta(sb, 'p1', { opcao: ' Do mês anterior ', texto: '  a de outubro\r\n é a de setembro  ' });
+  chk('responde: a opção e o texto limpos, só a resposta muda', r.pergunta && r.pergunta.resposta === 'Do mês anterior' && r.pergunta.resposta_texto === 'a de outubro\n é a de setembro'
+    && db.perguntas_equipe[0].situacao === 'respondida' && sb.log.filter(x => x.op === 'update').every(x => x.f.some(f => f[1] === 'situacao' && f[2] === 'aberta')), JSON.stringify(r));
+  chk('a já respondida: diz, sem mexer', (await responderPergunta(sb, 'p3', { opcao: 'Do mês anterior' })).ja === 'respondida' && db.perguntas_equipe[2].resposta === 'Do próprio mês');
+  chk('a que não existe: diz', /não existe mais/.test((await responderPergunta(sb, 'p9', { opcao: 'x' })).erro));
+  const d = await desfazerResposta(sb, r.pergunta);
+  chk('desfazer: volta pra aberta (a resposta o banco apaga)', d.desfeita && db.perguntas_equipe[0].situacao === 'aberta');
+  db.perguntas_equipe[0].situacao = 'respondida'; db.perguntas_equipe[0].resposta = 'Do próprio mês';
+  chk('desfazer depois de outra resposta: não volta', !(await desfazerResposta(sb, r.pergunta)).desfeita && db.perguntas_equipe[0].situacao === 'respondida');
+  chk('o texto: sem espaço sobrando, até o limite', limparResposta('  a   b \n\n\n\n c ') === 'a b \n\n c' && limparResposta('x'.repeat(3000)).length === 2000);
 }
 
 if (falhas) { console.log('\n' + falhas + ' falha(s)'); process.exit(1); }

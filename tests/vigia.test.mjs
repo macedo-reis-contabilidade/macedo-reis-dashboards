@@ -4,7 +4,8 @@
 // (só página do sistema), o nome de cada regra (as da função do assistente, todas com nome), o resolvido agora pelo cartão
 // (fora da lista até a conferência seguinte) e a leitura e o "ignorar" com um banco falso. Rodar com: node tests/vigia.test.mjs
 import { ROTULOS, rotuloDaRegra, eDaPessoa, ehSocioPeloNome, caminhoDoLink, eDaTela, filtrarAchados, agruparAchados, novosDesde, linkSeguro,
-  lerAchados, ignorarAchado, reabrirAchado, lerVisto, marcarVisto, resolvidosAgora, marcarResolvidoAgora, desmarcarResolvidoAgora, semResolvidosAgora } from '../assets/js/vigia.js';
+  lerAchados, ignorarAchado, reabrirAchado, lerVisto, marcarVisto, resolvidosAgora, marcarResolvidoAgora, desmarcarResolvidoAgora, semResolvidosAgora,
+  perguntaDeOutro } from '../assets/js/vigia.js';
 import { TABELAS } from '../supabase/functions/assistente/ferramentas.js';
 
 let falhas = 0;
@@ -109,6 +110,15 @@ console.log('Leitura e "ignorar" (banco falso):');
   const erro = { from: () => ({ select() { return this; }, in() { return this; }, order() { return this; }, limit() { return this; }, then: (res) => res({ data: null, error: { message: 'sem acesso' } }) }) };
   let msg = null; try { await lerAchados(erro); } catch (e) { msg = e.message; }
   chk('erro do banco: vira erro com a mensagem (o cartão mostra "Tentar de novo")', msg === 'sem acesso');
+}
+
+console.log('As perguntas do gerente (02/11/2026):');
+{
+  const pq = { regra: 'pergunta_aberta', responsavel: 'Vitória', titulo: 'Pergunta pra você: De qual mês' };
+  chk('a pergunta é de quem recebe (sem acento e sem maiúscula)', !perguntaDeOutro(pq, 'vitoria') && !perguntaDeOutro(pq, 'Vitória'));
+  chk('pros outros, inclusive os sócios, é de outra pessoa', perguntaDeOutro(pq, 'Samuel') && perguntaDeOutro(pq, 'Thalia') && perguntaDeOutro(pq, null));
+  chk('a pergunta pra "Ambos" não vira dos sócios só por ser deles no vigia: só quem recebe responde', perguntaDeOutro({ ...pq, responsavel: 'Ambos' }, 'Samuel'));
+  chk('o que não é pergunta não muda nada', !perguntaDeOutro({ regra: 'alvara_vencendo', responsavel: 'Adaini' }, 'Samuel') && !perguntaDeOutro(null, 'Samuel'));
 }
 
 console.log(falhas ? '\n' + falhas + ' falha(s).' : '\nTudo certo.');

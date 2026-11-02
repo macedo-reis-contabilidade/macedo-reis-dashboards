@@ -31,7 +31,7 @@ import { montarAssistente, perguntarFuncao, textoParaHtml, escapeHtml } from './
 import { nomePorEmail, SOCIOS } from './equipe.js';
 import { janelaDeCima } from './janelas.js';
 import { cartaoDaAcao } from './assistente-acoes.js';
-import { lerAchados, filtrarAchados, eDaTela, novosDesde, lerVisto, semResolvidosAgora } from './vigia.js';
+import { lerAchados, filtrarAchados, eDaTela, novosDesde, lerVisto, semResolvidosAgora, perguntaDeOutro } from './vigia.js';
 import { montarChatEquipe } from './chat-equipe.js';
 import { montarNoticias } from './noticias.js';
 
@@ -285,9 +285,19 @@ export function iniciarAssistente({ email: e } = {}) {
   try { api = montar(); } catch (err) { console.error('Assistente do escritório fora do ar:', err); api = null; return null; }
   if (ctxPendente !== undefined) api.definirContexto(ctxPendente);
   else if (caminho === 'clientes/editar.html') contextoDaEmpresa();
+  vigiaDoEndereco();
   setTimeout(recadoDoDia, 1600);
   ligarVida();
   return api;
+}
+// o botão dos avisos do gerente no chat (02/11/2026): ?vigia=meus abre o cartão com as pendências de quem entrou e,
+// pros sócios, ?vigia=todos, o de todos (o recado do dia não entra por cima: o painel já está aberto)
+function vigiaDoEndereco() {
+  let v = null;
+  try { v = new URLSearchParams(location.search).get('vigia'); } catch (e) { v = null; }
+  if (v !== 'meus' && v !== 'todos') return;
+  const todos = v === 'todos' && socio;
+  setTimeout(() => abrirVigia({ ver: todos ? 'todos' : 'meus' }, todos ? 'O que o vigia achou, de todos:' : 'As suas pendências no vigia:'), 300);
 }
 
 function montar() {
@@ -404,7 +414,7 @@ async function vigiaDaTela() {
   const naFicha = caminho === 'clientes/editar.html';
   const lista = await lerAbertos();
   if (!lista) return null;
-  const vistos = filtrarAchados(lista, { nome: nomePessoa, socio, todos: socio || naFicha });
+  const vistos = filtrarAchados(lista, { nome: nomePessoa, socio, todos: socio || naFicha }).filter(a => !perguntaDeOutro(a, nomePessoa));
   const daqui = hub ? vistos.filter(a => a.setor === hub[1]) : vistos.filter(a => eDaTela(a, caminho, location.search));
   if (!daqui.length) return null;
   const n = daqui.length, urg = daqui.filter(a => a.gravidade === 'alta').length;

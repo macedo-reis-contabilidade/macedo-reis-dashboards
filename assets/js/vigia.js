@@ -32,6 +32,10 @@ export const ROTULOS = {
   receita_pendencia: 'Pendências na Receita', ponte_parada: 'Ponte da Receita parada',
   // o Domínio pela ponte (02/11/2026): vigia_regras_dominio()
   dominio_folha_sem_tarefa: 'Funcionários no Domínio sem as tarefas de folha do DP', ponte_dominio_parada: 'Ponte do Domínio parada',
+  dominio_notas_paradas: 'Notas de saída que pararam no Domínio', dominio_contabil_parada: 'Contabilidade parada no Domínio',
+  dominio_prolabore_parado: 'Pró-labore que parou de ser calculado no Domínio',
+  // o gerente (02/11/2026): vigia_regras_gerente() — as perguntas pra alguém da equipe, respondidas no cartão
+  pergunta_aberta: 'Perguntas pra responder',
   // os Relatórios Vivos (29/10/2026): vigia_regras_relatorios()
   relatorio_salto: 'Categorias acima do normal nos Relatórios Vivos', relatorio_dre_sem_grupo: 'Categorias fora do DRE',
   relatorio_duplicado: 'Lançamentos em dobro no Conta Azul', relatorio_sync_parado: 'Espelho do Conta Azul parado',
@@ -51,6 +55,9 @@ export function eDaPessoa(a, { nome, socio } = {}) {
   return !!socio && (!r || r === 'ambos' || r === 'edna');
 }
 export const ehSocioPeloNome = nome => ['samuel', 'diego'].includes(normal(nome));
+// a pergunta do gerente (02/11/2026) é só de quem a recebe: só ela responde (o banco também só deixa ela), ninguém a ignora
+// por ela, e o recado da tela não a mostra aos outros
+export const perguntaDeOutro = (a, nome) => !!a && a.regra === 'pergunta_aberta' && !eDaPessoa(a, { nome });
 
 // a tela do achado: o caminho do link, sem a busca e sem o # (o dos Relatórios Vivos abre o mês: #caixa/AAAA-MM-01)
 export const caminhoDoLink = link => String(link || '').split(/[?#]/)[0].replace(/^\/+/, '');
