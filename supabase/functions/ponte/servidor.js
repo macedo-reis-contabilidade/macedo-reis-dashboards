@@ -10,11 +10,15 @@
 //                                                              do ambiente de demonstração, nada é gravado; o bloco de
 //                                                              uma empresa fora do contrato fica de fora sozinho e volta
 //                                                              em `recusadas` (a rodada não trava por causa dele)
-//   o pacote do Domínio (sem tipo)                            → 422: o recebimento dele ainda não foi ligado
+//   o pacote do Domínio (sem tipo: rodada, empresas, mensal, faltou)
+//                                                            → gravado pelo banco (dominio_gravar), já conferido
+//                                                              (dominio.js); a linha de um mês fora do contrato fica
+//                                                              de fora sozinha e volta em `recusadas` (02/11/2026)
 // Respostas que a ponte entende (ponte/envio.py): 2xx foi · 4xx recusado (não repete) · 5xx tenta de novo.
 // Puro: env, banco e relógio injetados (index.ts monta). Testes: tests/ponte-funcao.test.mjs.
 // ============================================================
 import { validarPacote, empresasDaCarteira, hojeEmBrasilia, sha256Hex, iguais, LIMITES } from './receita.js';
+import { validarPacoteDominio } from './dominio.js';
 
 const CABECALHOS = { 'Content-Type': 'application/json' };
 const resposta = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: CABECALHOS });
@@ -67,7 +71,11 @@ export function criarServidor({ criarDb, agora = () => Date.now() }) {
         return resposta({ ok: true, gravado: true, ...(data || {}), recusadas: v.recusadas });
       }
       if (corpo.tipo == null && Array.isArray(corpo.mensal)) {
-        return resposta({ erro: 'O recebimento do Domínio ainda não foi ligado no sistema.' }, 422);
+        const v = validarPacoteDominio(corpo);
+        if (!v.ok) return resposta({ erro: 'Pacote do Domínio recusado: ' + v.erro + ' (' + v.campo + ').' }, 422);
+        const { data, error } = await db.rpc('dominio_gravar', { p: v.pacote });
+        if (error) throw error;
+        return resposta({ ok: true, gravado: true, ...(data || {}), recusadas: v.recusadas, linhas_recusadas: v.linhas_recusadas });
       }
       return resposta({ erro: 'Nada pra fazer com este pacote.' }, 422);
     } catch (e) {

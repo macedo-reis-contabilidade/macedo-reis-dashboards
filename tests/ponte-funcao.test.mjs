@@ -1,6 +1,7 @@
 // A função ponte (supabase/functions/ponte, 23/10/2026): a porta de entrada dos pacotes da ponte do PC do escritório.
-// O pacote da Receita conferido campo a campo, a lista de empresas da carteira, a chave da ponte pela impressão digital
-// e o commit fixado no index.ts. Dados inventados (CNPJ com o dígito verificador errado). Rodar com: node tests/ponte-funcao.test.mjs
+// O pacote da Receita conferido campo a campo, o do Domínio (02/11/2026: o vazio que vira 0, o bloco do faltou que não
+// apaga nada, a linha fora do contrato que fica de fora sozinha), a lista de empresas da carteira, a chave da ponte pela
+// impressão digital e o commit fixado no index.ts. Dados inventados (CNPJ com o dígito verificador errado). Rodar com: node tests/ponte-funcao.test.mjs
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -8,6 +9,7 @@ import { posix } from 'node:path';
 import { createHash } from 'node:crypto';
 import { validarPacote, empresasDaCarteira, documento, hojeEmBrasilia, sha256Hex, iguais, LIMITES } from '../supabase/functions/ponte/receita.js';
 import { criarServidor } from '../supabase/functions/ponte/servidor.js';
+import { validarPacoteDominio, LIMITES_DOMINIO } from '../supabase/functions/ponte/dominio.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + JSON.stringify(extra) : '')); };
@@ -129,6 +131,79 @@ const h = await sha256Hex('segredo');
 chk('a impressão digital é o SHA-256 em hexadecimal', h === createHash('sha256').update('segredo').digest('hex'));
 chk('comparação: igual só quando é igual', iguais(h, h) && !iguais(h, h.slice(0, 63) + '0') && !iguais('', '') && !iguais(h, h + '0'));
 
+console.log('O pacote do Domínio:');
+// como a ponte do PC manda (ponte/pacote.py): números de verdade, null onde a consulta não trouxe linha
+function DOMINIO() {
+  const vazio = { funcionarios_ativos: null, admissoes: null, desligamentos: null, afastados: null, pro_labore: null,
+    notas_saida: null, valor_saidas: null, notas_entrada: null, valor_entradas: null, lancamentos: null, ultimo_lancamento: null };
+  return {
+    versao: 1,
+    rodada: { id: '7B1E0C2A-2222-4A2B-9C3D-000000000002', inicio: '2026-11-03T07:00:02-03:00', fim: '2026-11-03T07:01:10-03:00',
+      dados_ate: '2026-11-03', maquina: 'PC-PONTE', ponte: '0.2.0', extra: 'some' },
+    empresas: [
+      { codigo: 10, documento: '11.222.333/0001-00', nome: '  EMPRESA  ATIVA ', ativa: true, segredo: 'x' },
+      { codigo: 11, documento: '99888777000166', nome: 'INATIVA', ativa: false },
+      { codigo: 12, documento: '123456789012', nome: 'CEI', ativa: true },
+      { codigo: 10, documento: '00000000000000', nome: 'REPETIDA', ativa: false }
+    ],
+    mensal: [
+      { codigo: 10, competencia: '2026-10', ...vazio, funcionarios_ativos: 7, admissoes: 1, pro_labore: 2, notas_saida: 120,
+        valor_saidas: 84211.504, notas_entrada: 40, valor_entradas: 30000, lancamentos: 310, ultimo_lancamento: '2026-10-31', salario: 9999 },
+      { codigo: 10, competencia: '2026-11', ...vazio },
+      { codigo: 11, competencia: '2026-10', ...vazio },
+      { codigo: 12, competencia: '2026-10', ...vazio, notas_saida: 3, valor_saidas: 900 },
+      { codigo: 12, competencia: '2026-11', ...vazio },
+      { codigo: 99, competencia: '2026-10', ...vazio }
+    ],
+    faltou: []
+  };
+}
+const vd = validarPacoteDominio(DOMINIO());
+chk('o pacote do contrato passa', vd.ok, vd);
+const pd = vd.ok && vd.pacote;
+const lin = (c, m) => pd.mensal.find(l => l.codigo === c && l.competencia === m);
+chk('as empresas pelo código, a repetida fica de fora (fica a primeira)', pd && pd.empresas.length === 3 && pd.empresas[0].nome === 'EMPRESA ATIVA' && pd.empresas[0].ativa === true);
+chk('o documento sai só com letras e dígitos; o CEI (12) também entra', pd && pd.empresas[0].documento === '11222333000100' && pd.empresas[2].documento === '123456789012');
+chk('o que o contrato não prevê fica de fora (campos a mais da rodada, da empresa e da linha)',
+  pd && !('extra' in pd.rodada) && !('segredo' in pd.empresas[0]) && !('salario' in lin(10, '2026-10')));
+chk('o id da rodada em minúscula', pd && pd.rodada.id === '7b1e0c2a-2222-4a2b-9c3d-000000000002');
+chk('dinheiro com centavos', pd && lin(10, '2026-10').valor_saidas === 84211.5);
+chk('sem nota nem lançamento no mês = 0 (o bloco foi lido inteiro); o último lançamento segue vazio',
+  pd && lin(10, '2026-11').notas_saida === 0 && lin(10, '2026-11').valor_entradas === 0 && lin(10, '2026-11').lancamentos === 0 && lin(10, '2026-11').ultimo_lancamento === null);
+chk('a folha vazia da empresa ativa = 0; da inativa fica null (o Domínio não diz)',
+  pd && lin(10, '2026-11').funcionarios_ativos === 0 && lin(12, '2026-10').pro_labore === 0 && lin(11, '2026-10').funcionarios_ativos === null && lin(11, '2026-10').notas_saida === 0);
+chk('os blocos lidos inteiros vão pro banco (o do faltou não apaga o que já estava gravado)', pd && pd.blocos_ok.folha && pd.blocos_ok.fiscal && pd.blocos_ok.contabil);
+chk('a linha de empresa que não está na lista fica de fora e volta em recusadas', vd.ok && vd.linhas_recusadas === 1 && vd.recusadas[0].codigo === 99 && !lin(99, '2026-10'));
+{
+  const p = DOMINIO(); p.faltou = [{ bloco: 'fiscal', motivo: 'erro na consulta' }];
+  const r2 = validarPacoteDominio(p);
+  chk('bloco no faltou: os campos dele saem null em todas as linhas, e o banco não troca o que já tinha',
+    r2.ok && r2.pacote.blocos_ok.fiscal === false && r2.pacote.mensal.every(l => l.notas_saida === null && l.valor_saidas === null)
+    && r2.pacote.mensal.find(l => l.codigo === 10 && l.competencia === '2026-10').funcionarios_ativos === 7, r2);
+}
+{
+  const p = DOMINIO();
+  p.mensal.push({ codigo: 12, competencia: '2026-09', notas_saida: -1 });
+  p.mensal.push({ codigo: 12, competencia: '2026-08', notas_saida: '5' });
+  p.mensal.push({ codigo: 12, competencia: '2023-01' });
+  p.mensal.push({ codigo: 12, competencia: '2026-12' });
+  p.mensal.push({ codigo: 12, competencia: '2026-07', ultimo_lancamento: '2026-08-01' });
+  p.mensal.push({ codigo: 10, competencia: '2026-10' });
+  const r2 = validarPacoteDominio(p);
+  chk('cada linha fora do contrato fica de fora sozinha (contagem negativa ou texto, mês fora da janela ou depois de dados_ate, lançamento fora do mês, repetida)',
+    r2.ok && r2.linhas_recusadas === 7 && r2.pacote.mensal.length === 5 && r2.recusadas.some(x => /mensal\[\d+\]\.notas_saida/.test(x.campo)), r2);
+}
+const recusaD = (mudar, campo) => { const p = DOMINIO(); mudar(p); const r2 = validarPacoteDominio(p); return !r2.ok && (!campo || r2.campo === campo) ? r2 : null; };
+chk('rodada sem uuid recusa o pacote', !!recusaD(p => { p.rodada.id = 'abc'; }, 'rodada.id'));
+chk('rodada sem dados_ate recusa o pacote', !!recusaD(p => { delete p.rodada.dados_ate; }, 'rodada.dados_ate'));
+chk('data e hora da rodada sem fuso recusa o pacote', !!recusaD(p => { p.rodada.fim = '2026-11-03 07:01'; }, 'rodada.fim'));
+chk('sem empresas recusa o pacote', !!recusaD(p => { p.empresas = []; }, 'empresas'));
+chk('empresa com código que não é inteiro recusa o pacote', !!recusaD(p => { p.empresas[1].codigo = '11'; }, 'empresas[1].codigo'));
+chk('ativa que não é verdadeiro ou falso recusa o pacote', !!recusaD(p => { p.empresas[1].ativa = 'A'; }, 'empresas[1].ativa'));
+chk('bloco desconhecido no faltou recusa o pacote', !!recusaD(p => { p.faltou = [{ bloco: 'estoque', motivo: 'x' }]; }, 'faltou[0].bloco'));
+chk('mensal que não é lista recusa o pacote', !!recusaD(p => { p.mensal = {}; }, 'mensal'));
+chk('lista do mês longa demais recusa o pacote', !!recusaD(p => { p.mensal = { length: LIMITES_DOMINIO.mensal + 1 }; p.mensal = Array.from(p.mensal, () => ({})); }, 'mensal'));
+
 console.log('A porta de entrada:');
 function fakeDb({ hash = h, cfgErro = null, rpcErro = null } = {}) {
   const chamadas = [];
@@ -195,8 +270,13 @@ db = fakeDb();
     r.status === 200 && r.corpo.gravado === true && r.corpo.recusadas.length === 2 && g && g.empresas.length === 1 && !('pgdas' in g.empresas[0]) && 'faturamento' in g.empresas[0]
     && g.faltou.some(x => x.servico === 'pgdas' && x.motivo === 'erro' && x.documento === DOC), r);
 }
+db = fakeDb();
+r = await pedir(db, DOMINIO());
+chk('o pacote do Domínio vai pro banco já conferido (dominio_gravar), com o que ficou de fora na resposta',
+  r.status === 200 && r.corpo.gravado === true && db.chamadas.length === 1 && db.chamadas[0].nome === 'dominio_gravar'
+  && db.chamadas[0].args.p.mensal.length === 5 && db.chamadas[0].args.p.blocos_ok.fiscal === true && r.corpo.linhas_recusadas === 1, r);
 r = await pedir(fakeDb(), { versao: 1, rodada: { id: 'x' }, empresas: [], mensal: [] });
-chk('o pacote do Domínio: 422, ainda não ligado', r.status === 422 && /Domínio/.test(r.corpo.erro), r);
+chk('o pacote do Domínio fora do contrato: 422 com o campo', r.status === 422 && /Domínio/.test(r.corpo.erro) && /rodada\.id/.test(r.corpo.erro), r);
 r = await pedir(fakeDb({ rpcErro: { message: 'falhou' } }), BOM());
 chk('o banco falhou: 500 (a ponte tenta de novo e guarda nos pendentes)', r.status === 500, r);
 r = await pedir(fakeDb(), 'x'.repeat(LIMITES.corpo + 1));
