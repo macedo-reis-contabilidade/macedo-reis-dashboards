@@ -124,9 +124,10 @@ py -3 -m ponte dominio sql --arquivo ponte\consultas\folha.sql --mes 2026-09
   soma por empresa**: nome, CPF, salário, endereço e contato de funcionário não saem do Domínio, nem pra tela. A trava
   (pra engano): resultado com coluna de nome, documento pessoal, salário, nascimento, endereço ou contato não é
   mostrado — as linhas nem são lidas. O nome das empresas sai pelo `rodar --sem-enviar --saida`.
-- O texto (o nome da empresa, as descrições) vem do driver já convertido (UTF-16), com os acentos certos; cada consulta
-  tem até 10 minutos (`TEMPO_CONSULTA`); e o driver que não aceitar a conexão em modo só leitura é aberto sem ele (o
-  usuário externo já é só de leitura).
+- O texto (o nome da empresa, as descrições) vem do driver já convertido (UTF-16), com os acentos certos; o driver
+  que não aceitar a conexão em modo só leitura é aberto sem ele (o usuário externo já é só de leitura), e o que não
+  aceitar o tempo-limite de 10 minutos por consulta (`TEMPO_CONSULTA`) também — o do SQL Anywhere 17 recusa os dois
+  ("Driver not capable", HYC00, visto em 02/11/2026, com o login já feito), e aí o limite é o da tarefa do Agendador.
 
 ## Escrever as consultas
 

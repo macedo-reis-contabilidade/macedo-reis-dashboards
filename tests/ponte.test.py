@@ -865,6 +865,59 @@ def caso_dominio():
        and dominio.forma_da_senha('') == 'nenhum caractere',
        'a forma da senha: quantos caracteres e de que tipo, no singular e no plural — sem mostrar a senha')
 
+    # ---- abrir a conexão com o driver do SQL Anywhere de verdade (02/11/2026): ele recusa o modo só leitura e o
+    # tempo-limite na conexão ("Driver not capable", HYC00) — depois do login feito, isso não pode virar "não abriu"
+    import sys as _sys
+    import types
+    from ponte import fonte_dominio
+
+    class _Erro(Exception):
+        pass
+
+    class _Cursor:
+        def close(self):
+            pass
+
+    class _Conexao:
+        def __init__(self):
+            self.ajustes = []
+
+        def setdecoding(self, *a, **k):
+            pass
+
+        def cursor(self):
+            return _Cursor()
+
+        @property
+        def timeout(self):
+            return 0
+
+        @timeout.setter
+        def timeout(self, valor):
+            self.ajustes.append(valor)
+            raise _Erro('HYC00', '[HYC00] [SAP][ODBC Driver]Driver not capable (0) (SQLSetConnectAttr)')
+
+    abertas = []
+
+    def _connect(conexao, autocommit=False, readonly=False, timeout=0):
+        if readonly:
+            raise _Erro('HYC00', '[HYC00] [SAP][ODBC Driver]Driver not capable (0) (SQLSetConnectAttr)')
+        abertas.append(_Conexao())
+        return abertas[-1]
+    falso = types.ModuleType('pyodbc')
+    falso.Error, falso.connect, falso.SQL_CHAR, falso.SQL_WCHAR = _Erro, _connect, 1, -8
+    guardado = _sys.modules.get('pyodbc')
+    _sys.modules['pyodbc'] = falso
+    try:
+        con = fonte_dominio.abrir_odbc('DRIVER={SQL Anywhere 17};UID=X;PWD=Y')
+        ok(con is abertas[-1] and len(abertas) == 1 and con.ajustes == [fonte_dominio.TEMPO_CONSULTA, 0],
+           'o driver que recusa o só leitura e o tempo-limite na conexão (HYC00): a conexão abre sem eles')
+    finally:
+        if guardado is None:
+            _sys.modules.pop('pyodbc', None)
+        else:
+            _sys.modules['pyodbc'] = guardado
+
     # ---- a senha com um * por letra (29/10/2026, o Samuel: sem eco, não dava pra saber quanto tinha digitado e apagado)
     import importlib.util
     import inspect
