@@ -20,7 +20,8 @@ Confere:
   6. o MEI: a revisão na aba MEI (os dados do cadastro, o plano comparado com o de hoje), gravada com o plano;
   7. "Nova" sai da revisão (o botão volta a ser de proposta);
   8. o faturamento pela Receita: com a declaração do PGDAS que a ponte trouxe, o faturamento mensal sai dos 12 meses
-     dela, com a etiqueta "Receita (PGDAS)" (sem ela, o da Reforma — o cenário 2);
+     dela, com a etiqueta "Receita (PGDAS)" (sem ela, o da Reforma — o cenário 2); e os funcionários pelo Domínio (a
+     ponte do PC, 02/11/2026): os do último dia do mês passado, com a etiqueta "Domínio";
   9. o link direto (?aba=carteira) e quem não é sócio;
 e nenhum erro de JavaScript. Termina com código 1 se alguma checagem falhar.
 Pré-requisito: pip install playwright e python -m playwright install chromium
@@ -99,6 +100,9 @@ REVISOES = [{'id': 'rv-f', 'cliente_id': CF, 'respostas': {'A1': 'MERCADO DE TES
 # o faturamento que a ponte da Receita trouxe do PGDAS (23/10/2026): a declaração mais recente com os 12 meses vale
 RECEITA = [{'cliente_id': CD, 'competencia': '2026-09', 'receita_mes': 41000, 'receita_12_meses': 480000},
     {'cliente_id': CD, 'competencia': '2026-08', 'receita_mes': 39000, 'receita_12_meses': 470000}]
+# o que o Domínio diz da mesma empresa (02/11/2026): 14 meses, 6 funcionários no mês passado
+DOMINIO = [{'cliente_id': CD, 'competencia': mais_meses(COMP, n), 'funcionarios_ativos': 6 if n == -1 else 5, 'admissoes': 0, 'desligamentos': 0,
+    'afastados': 0, 'pro_labore': 1, 'notas_saida': 80, 'notas_entrada': 20} for n in range(-13, 1)]
 MEI_PLANOS = [{'id': 'mp1', 'nome': 'MEI ESSENCIAL (TESTE)', 'slogan': 'o básico', 'valor_mensal': 120, 'ativo': True, 'ordem': 1}]
 MEI_SERV = [{'id': 'ms1', 'nome': 'DAS mensal', 'grupo': 'mensal', 'valor_avulso': 30, 'tipo': None, 'ativo': True, 'ordem': 1}]
 SEMEAR = """
@@ -111,7 +115,7 @@ SEMEAR = """
     v.mei_planos = X.MEI_PLANOS; v.mei_servicos = X.MEI_SERV; v.mei_plano_servicos = [{ plano_id: 'mp1', servico_id: 'ms1' }];
     v.clientes.push(...X.CLIENTES); v.carteira_info = X.CARTEIRA; v.obrigacoes_fiscais = X.OBRIG; v.cliente_obrigacoes = X.VINCULOS;
     v.cobrancas_mensais = X.COBRANCAS; v.cobrancas_config = X.CONFIG; v.ca_parcelas = X.PARCELAS; v.tarefas = X.TAREFAS; v.revisoes_honorario = X.REVISOES;
-    v.receita_pgdas = X.RECEITA;
+    v.receita_pgdas = X.RECEITA; v.dominio_mensal = X.DOMINIO;
     v.socios = [{ id: 's1', cliente_id: '%s', nome: 'SOCIO UM' }, { id: 's2', cliente_id: '%s', nome: 'SOCIO DOIS' }];
     v.fr_empresas = []; v.regularizacoes = [{ id: 'rg1', cliente_id: '%s', status: 'parcelado' }];
     v.rt_casos = [{ id: 'rt1', cliente_id: '%s', receita_mensal: 25000, rbt12: 300000, decisao: 'por_fora' }];
@@ -125,7 +129,7 @@ SEMEAR = """
   } });
 })();
 """ % (json.dumps({'QUESTOES': QUESTOES, 'PARAMS': PARAMS, 'OBRIG_PREC': OBRIG_PREC, 'MEI_PLANOS': MEI_PLANOS, 'MEI_SERV': MEI_SERV, 'CLIENTES': CLIENTES, 'CARTEIRA': CARTEIRA,
-      'OBRIG': OBRIG, 'VINCULOS': VINCULOS, 'COBRANCAS': COBRANCAS, 'CONFIG': CONFIG, 'PARCELAS': PARCELAS, 'TAREFAS': TAREFAS, 'REVISOES': REVISOES, 'RECEITA': RECEITA},
+      'OBRIG': OBRIG, 'VINCULOS': VINCULOS, 'COBRANCAS': COBRANCAS, 'CONFIG': CONFIG, 'PARCELAS': PARCELAS, 'TAREFAS': TAREFAS, 'REVISOES': REVISOES, 'RECEITA': RECEITA, 'DOMINIO': DOMINIO},
       ensure_ascii=False), CA, CA, CA, CA, PROX)
 TOUR = "(() => { const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { return String(k).startsWith('mr_tour_') ? 'ok' : g.call(this, k); }; })()"
 
@@ -322,6 +326,7 @@ def main():
         p.click(linha(CD) + ' [data-abrir]'); p.wait_for_selector('#prQuestionario .pr-cart-banner', timeout=5000)
         ok(val('A2M') == '40000' and chip('A2M') == 'Receita (PGDAS)',
            f'o faturamento mensal pela declaração mais recente do PGDAS: 480 mil nos 12 meses ÷ 12 ({val("A2M")!r}, {chip("A2M")!r})')
+        ok(val('C1') == '6' and chip('C1') == 'Domínio', f'os funcionários pelo Domínio: o último dia do mês passado ({val("C1")!r}, {chip("C1")!r})')
 
         print('9. O link direto e quem não é sócio')
         for email, socio in (('financeiro@macedoereis.com.br', True), ('fiscal@macedoereis.com.br', False)):

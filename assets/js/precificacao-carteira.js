@@ -2,7 +2,7 @@
 // MACEDO & REIS — Precificação › Carteira (19/10/2026, pedido do Samuel): a revisão do honorário dos clientes da casa
 // O motor (assets/js/precificacao-motor.js) com o que o sistema já sabe de cada cliente — o cadastro, os sócios, as
 // obrigações vinculadas, a carteira (o sistema que a empresa usa), a ficha da Reforma (o faturamento e a decisão), as
-// regularizações, o Fator R — e o honorário de hoje (o boleto; sem boleto, o Conta Azul, que só os sócios leem). O que
+// regularizações, o Fator R, o Domínio (as notas, a folha e o pró-labore, 02/11/2026) — e o honorário de hoje (o boleto; sem boleto, o Conta Azul, que só os sócios leem). O que
 // falta responder quase sempre soma: o resultado só com o que o sistema sabe é o "piso". A tela é a aba Carteira de
 // comercial-precificacao.html; a revisão grava em revisoes_honorario (só os sócios). Puro: tests/precificacao-carteira.test.mjs.
 // ============================================================
@@ -12,7 +12,7 @@ const norm = s => semAcento(s).toUpperCase().replace(/\s+/g, ' ').trim();
 
 // de onde veio cada resposta (a etiqueta ao lado da pergunta)
 export const FONTES = { cadastro: 'cadastro', socios: 'sócios', obrigacoes: 'obrigações', carteira: 'carteira', reforma: 'Reforma', regularizacoes: 'regularizações',
-  fatorR: 'Fator R', boletos: 'boleto', conta_azul: 'Conta Azul', receita: 'Receita (PGDAS)' };
+  fatorR: 'Fator R', boletos: 'boleto', conta_azul: 'Conta Azul', receita: 'Receita (PGDAS)', dominio: 'Domínio' };
 
 // o regime do cadastro → a opção da pergunta A10 (MEI fica com a aba MEI)
 export const REGIME_DO_CADASTRO = { 'Simples Nacional': 'Simples Nacional', 'Lucro Presumido': 'Lucro Presumido', 'Lucro Real': 'Lucro Real',
@@ -59,10 +59,12 @@ export function regimesDasQuestoes(obrigacoesPrec) {
 //   dados: { cliente (o cadastro), socios (quantos), obrigacoes ([nomes das vinculadas e ativas]), fatorR (bool),
 //            regularizacoes ([status]), reforma ({ receita_mensal, rbt12, decisao } | null), carteira ({ sistemas, ramo }),
 //            hoje ({ valor, fonte } | null), receita ({ competencia, receita_mes, receita_12_meses } | null — a última
-//            declaração do PGDAS lida pela ponte da Receita, 23/10/2026: o faturamento dela vem antes do da Reforma) }
+//            declaração do PGDAS lida pela ponte da Receita, 23/10/2026: o faturamento dela vem antes do da Reforma),
+//            dominio ([linhas de dominio_mensal] | null — os números do Domínio, 02/11/2026: respostasDoDominio) }
+//   hoje: 'AAAA-MM-DD' (o dia de hoje, pros meses do Domínio)
 //   origem: pergunta → a fonte (FONTES)
 // ============================================================
-export function respostasDoSistema(d, { regimesDaQuestao = new Map() } = {}) {
+export function respostasDoSistema(d, { regimesDaQuestao = new Map(), hoje = null } = {}) {
   const c = d.cliente || {};
   const respostas = {}, origem = {};
   const por = (id, valor, fonte) => { if (valor == null || valor === '') return; respostas[id] = valor; origem[id] = fonte; };
@@ -116,7 +118,62 @@ export function respostasDoSistema(d, { regimesDaQuestao = new Map() } = {}) {
     if (aparece('D17') && /^86/.test(cnae)) por('D17', 'Sim', 'cadastro');
     if (aparece('D18') && /^682[12]/.test(cnae)) por('D18', 'Sim', 'cadastro');
   }
+  if (d.dominio && hoje) {
+    const dm = respostasDoDominio(d.dominio, hoje);
+    Object.entries(dm.respostas).forEach(([id, v]) => por(id, v, 'dominio'));
+  }
   return { respostas, origem };
+}
+
+// ============================================================
+// respostasDoDominio(linhas, hoje) → { respostas, periodo } — o que o Domínio diz (dominio_mensal, a ponte do PC do
+// escritório, 02/11/2026) nas perguntas que mexem no preço:
+//   B1, B2  as notas emitidas e recebidas por mês: a média dos 12 meses fechados antes do mês passado (o mês passado
+//           ainda está em fechamento: as notas entram até o dia 20), na faixa do formulário
+//   C1, C3  os funcionários ativos e os afastados no último dia do mês passado (pela data de admissão e de rescisão, que
+//           não espera a folha ser calculada); sem o mês passado, o mais recente dos 12
+//   C4      a rotatividade: admissões + desligamentos por mês, na média dos mesmos 12 meses — abaixo de 1, Baixa; de 1
+//           a 3, Média; acima de 3, Alta
+//   C5, C6  o pró-labore: os sócios com a folha calculada, o maior dos 3 meses mais recentes antes deste (a folha do
+//           mês passado pode ainda não ter sido calculada)
+// linhas: as do cliente (mais de uma empresa do Domínio no mesmo mês — o mesmo documento duas vezes — fica com o maior
+// de cada número); null = o Domínio não disse, e a pergunta fica como estava. periodo: { de, ate, mes } ('AAAA-MM').
+// ============================================================
+const mesMais = (mes, n) => { const [a, m] = mes.split('-').map(Number); const t = a * 12 + (m - 1) + n; return String(Math.floor(t / 12)).padStart(4, '0') + '-' + String(t % 12 + 1).padStart(2, '0'); };
+export const FAIXAS_NOTAS = [[50, '0-50'], [150, '51-150'], [300, '151-300'], [600, '301-600'], [Infinity, '600+']];
+export const faixaDeNotas = media => (FAIXAS_NOTAS.find(([ate]) => Math.round(media) <= ate) || [])[1] || null;
+export const rotatividade = porMes => (porMes < 1 ? 'Baixa' : porMes <= 3 ? 'Média' : 'Alta');
+export function respostasDoDominio(linhas, hoje) {
+  const mesHoje = String(hoje || '').slice(0, 7);
+  const respostas = {};
+  if (!/^\d{4}-\d{2}$/.test(mesHoje) || !Array.isArray(linhas) || !linhas.length) return { respostas, periodo: null };
+  const mesPassado = mesMais(mesHoje, -1), ate = mesMais(mesHoje, -2), de = mesMais(mesHoje, -13);
+  const CAMPOS = ['funcionarios_ativos', 'admissoes', 'desligamentos', 'afastados', 'pro_labore', 'notas_saida', 'notas_entrada'];
+  const porMes = new Map();
+  linhas.forEach(l => {
+    if (!l || !/^\d{4}-\d{2}$/.test(String(l.competencia))) return;
+    const a = porMes.get(l.competencia) || {};
+    CAMPOS.forEach(c => { const v = l[c] == null ? null : Number(l[c]); if (v != null && Number.isFinite(v) && (a[c] == null || v > a[c])) a[c] = v; });
+    porMes.set(l.competencia, a);
+  });
+  const janela = []; for (let m = de; m <= ate; m = mesMais(m, 1)) janela.push(m);
+  const valores = (campo, meses) => meses.map(m => (porMes.get(m) || {})[campo]).filter(v => v != null);
+  const media = vs => (vs.length ? vs.reduce((s, v) => s + v, 0) / vs.length : null);
+  const ns = media(valores('notas_saida', janela)), ne = media(valores('notas_entrada', janela));
+  if (ns != null) respostas.B1 = faixaDeNotas(ns);
+  if (ne != null) respostas.B2 = faixaDeNotas(ne);
+  // a folha: o mês passado, senão o mais recente da janela que tem número
+  const mesFolha = [mesPassado, ...janela.slice().reverse()].find(m => (porMes.get(m) || {}).funcionarios_ativos != null);
+  if (mesFolha) {
+    const f = porMes.get(mesFolha);
+    respostas.C1 = f.funcionarios_ativos;
+    if (f.afastados != null) respostas.C3 = f.afastados;
+  }
+  const mov = janela.map(m => porMes.get(m) || {}).filter(x => x.admissoes != null && x.desligamentos != null).map(x => x.admissoes + x.desligamentos);
+  if (mov.length) respostas.C4 = rotatividade(media(mov));
+  const pl = valores('pro_labore', [mesPassado, ate, mesMais(mesHoje, -3)]);
+  if (pl.length) { const n = Math.max(...pl); respostas.C5 = n > 0 ? 'Sim' : 'Não'; if (n > 0) respostas.C6 = n; }
+  return { respostas, periodo: { de, ate, mes: mesFolha || mesPassado } };
 }
 
 /** A última declaração do PGDAS com o faturamento, por cliente (receita_pgdas: { cliente_id, competencia, receita_mes,

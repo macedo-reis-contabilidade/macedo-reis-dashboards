@@ -1562,9 +1562,11 @@
         // cliente de hoje: entrou e não saiu (ou a saída é no futuro)
         const ativos = (cs || []).filter(k => k.cliente_id && (!k.saida || String(k.saida) > hoje));
         const ids = [...new Set(ativos.map(k => k.cliente_id))];
-        const emLotes = async montar => { const out = []; for (let i = 0; i < ids.length; i += 100) { const { data, error } = await montar(ids.slice(i, i + 100)); if (error) throw error; out.push(...(data || [])); } return out; };
+        const emLotes = async (montar, n = 100) => { const out = []; for (let i = 0; i < ids.length; i += n) { const { data, error } = await montar(ids.slice(i, i + n)); if (error) throw error; out.push(...(data || [])); } return out; };
+        // os 14 meses do Domínio que a precificação usa: o de hoje, o passado e os 12 de antes deles
+        const desdeDominio = (() => { const [a, m] = hoje.slice(0, 7).split('-').map(Number); const t = a * 12 + (m - 1) - 13; return Math.floor(t / 12) + '-' + String(t % 12 + 1).padStart(2, '0'); })();
         const tudo = async montar => { const { data, error } = await supabase.todasLinhas(montar); if (error) throw error; return data || []; };
-        const [clis, socs, vincs, obrF, frs, regs, rts, cobM, cobC, revs, tars, parcelas, rcs] = await Promise.all([
+        const [clis, socs, vincs, obrF, frs, regs, rts, cobM, cobC, revs, tars, parcelas, rcs, doms] = await Promise.all([
           emLotes(l => supabase.from('clientes').select('id, nome_principal, nome_fantasia, documento, tipo_pessoa, regime_tributario, natureza_juridica, cnae_principal, logradouro, numero, bairro, cidade, uf, cep, telefone_principal').in('id', l)),
           emLotes(l => supabase.from('socios').select('cliente_id').in('cliente_id', l)),
           emLotes(l => supabase.from('cliente_obrigacoes').select('cliente_id, obrigacao_id').eq('ativo', true).in('cliente_id', l)),
@@ -1580,10 +1582,14 @@
           tudo(() => supabase.from('ca_parcelas').select('natureza, fornecedor_cliente_nome, total, data_vencimento, categorias').eq('natureza', 'receita')
             .gte('data_vencimento', dia(-120)).lte('data_vencimento', dia(5)).order('id')).catch(() => []),
           // o faturamento do PGDAS, que a ponte da Receita lê (a última declaração com os 12 meses); sem ela, a Reforma
-          emLotes(l => supabase.from('receita_pgdas').select('cliente_id, competencia, receita_mes, receita_12_meses').not('receita_12_meses', 'is', null).in('cliente_id', l)).catch(() => [])
+          emLotes(l => supabase.from('receita_pgdas').select('cliente_id, competencia, receita_mes, receita_12_meses').not('receita_12_meses', 'is', null).in('cliente_id', l)).catch(() => []),
+          // o que o Domínio diz (a ponte do PC do escritório, 02/11/2026): as notas, a folha e o pró-labore de cada mês —
+          // de 50 em 50 clientes, que os 14 meses de 100 passariam das 1.000 linhas de uma leitura
+          emLotes(l => supabase.from('dominio_mensal').select('cliente_id, competencia, funcionarios_ativos, admissoes, desligamentos, afastados, pro_labore, notas_saida, notas_entrada')
+            .gte('competencia', desdeDominio).in('cliente_id', l), 50).catch(() => [])
         ]);
         const porCli = lista => { const m = new Map(); lista.forEach(x => { const a = m.get(x.cliente_id) || []; a.push(x); m.set(x.cliente_id, a); }); return m; };
-        const mSoc = porCli(socs), mVinc = porCli(vincs), mFr = porCli(frs), mReg = porCli(regs), mRt = porCli(rts), mCobM = porCli(cobM), mCobC = porCli(cobC), mTar = porCli(tars);
+        const mSoc = porCli(socs), mVinc = porCli(vincs), mFr = porCli(frs), mReg = porCli(regs), mRt = porCli(rts), mCobM = porCli(cobM), mCobC = porCli(cobC), mTar = porCli(tars), mDom = porCli(doms);
         const nomeObr = new Map(obrF.map(o => [o.id, o.nome]));
         const ultima = ultimaPorCliente(revs);
         const mRc = ultimaDeclaracaoPorCliente(rcs);
@@ -1600,8 +1606,8 @@
           const hojeH = honorarioDeHoje({ boleto: boletos[0] || null, base, contaAzul: parcelaDoCliente(c, prep, ate) });
           const dados = { cliente: c, socios: (mSoc.get(c.id) || []).length, obrigacoes: (mVinc.get(c.id) || []).map(v => nomeObr.get(v.obrigacao_id)).filter(Boolean),
             fatorR: (mFr.get(c.id) || []).length > 0, regularizacoes: (mReg.get(c.id) || []).map(r => r.status), reforma: (mRt.get(c.id) || [])[0] || null,
-            carteira: { sistemas: k.sistemas, ramo: k.ramo }, hoje: hojeH, receita: mRc.get(c.id) || null };
-          const pre = respostasDoSistema(dados, { regimesDaQuestao: regQ });
+            carteira: { sistemas: k.sistemas, ramo: k.ramo }, hoje: hojeH, receita: mRc.get(c.id) || null, dominio: mDom.get(c.id) || null };
+          const pre = respostasDoSistema(dados, { regimesDaQuestao: regQ, hoje });
           const mei = ehMei(c);
           const ts = mTar.get(c.id) || [];
           return { cliente: c, pre, hoje: hojeH, mei, piso: mei ? null : calcularMotor(pre.respostas, P).honorario, boletos, temCobranca: cfgs.length > 0,

@@ -6,7 +6,7 @@
 import { indexarParams, calcularMotor, faturamentoAnual } from '../assets/js/precificacao-motor.js';
 import { respostasDoSistema, regimesDasQuestoes, tipoSocietario, erpDaCarteira, honorarioDeHoje, nomeBase, nomesBatem, parcelasDeHonorario, parcelaDoCliente,
   faltamResponder, ultimaPorCliente, mesesDaVigencia, mesBR, diferenca, ehMei, rotuloSituacao, mesesLivres, reajustesDoMes, aplicarReajusteAgora,
-  referenciaDaLinha, pagaMenosQueOMotor, resumoDaCarteira, ultimaDeclaracaoPorCliente, FONTES } from '../assets/js/precificacao-carteira.js';
+  referenciaDaLinha, pagaMenosQueOMotor, resumoDaCarteira, ultimaDeclaracaoPorCliente, FONTES, respostasDoDominio, faixaDeNotas, rotatividade } from '../assets/js/precificacao-carteira.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + extra : '')); };
@@ -96,6 +96,35 @@ chk('declaração sem os 12 meses: fica a Reforma', s5.respostas.A2M === 35000 &
 const ud = ultimaDeclaracaoPorCliente([{ cliente_id: 'a', competencia: '2026-08', receita_12_meses: 10 }, { cliente_id: 'a', competencia: '2026-09', receita_12_meses: 20 },
   { cliente_id: 'a', competencia: '2026-10', receita_12_meses: null }, { cliente_id: 'b', competencia: '2026-07', receita_12_meses: 0 }]);
 chk('a última declaração de cada cliente, só com os 12 meses', ud.get('a').competencia === '2026-09' && !ud.has('b'));
+// o Domínio (a ponte do PC do escritório, 02/11/2026): as notas, a folha e o pró-labore de cada mês
+const MES = (n) => { const t = 2026 * 12 + 10 + n; return Math.floor(t / 12) + '-' + String(t % 12 + 1).padStart(2, '0'); };   // MES(0) = 2026-11
+const DOM = [];
+for (let n = -13; n <= 0; n++) DOM.push({ competencia: MES(n), funcionarios_ativos: n === -1 ? 6 : 5, admissoes: n % 3 === 0 ? 2 : 0, desligamentos: n % 4 === 0 ? 1 : 0,
+  afastados: n === -1 ? 1 : 0, pro_labore: n === -1 ? 0 : 2, notas_saida: n >= -1 ? 3 : 160, notas_entrada: 40 });
+const dm = respostasDoDominio(DOM, '2026-11-02');
+chk('as notas por mês: a média dos 12 meses antes do mês passado (o passado e o de hoje, em fechamento, ficam de fora), na faixa',
+  dm.respostas.B1 === '151-300' && dm.respostas.B2 === '0-50' && dm.periodo.de === '2025-10' && dm.periodo.ate === '2026-09', dm);
+chk('os funcionários e os afastados: o último dia do mês passado', dm.respostas.C1 === 6 && dm.respostas.C3 === 1 && dm.periodo.mes === '2026-10');
+chk('a rotatividade: admissões + desligamentos por mês na média dos 12 (11 em 12 meses = Baixa)', dm.respostas.C4 === 'Baixa');
+chk('o pró-labore: o maior dos 3 meses antes deste (a folha do mês passado ainda sem cálculo não zera)', dm.respostas.C5 === 'Sim' && dm.respostas.C6 === 2);
+chk('as faixas das notas e da rotatividade', faixaDeNotas(50) === '0-50' && faixaDeNotas(50.4) === '0-50' && faixaDeNotas(50.6) === '51-150' && faixaDeNotas(600) === '301-600'
+  && faixaDeNotas(601) === '600+' && rotatividade(0.99) === 'Baixa' && rotatividade(1) === 'Média' && rotatividade(3) === 'Média' && rotatividade(3.01) === 'Alta');
+{
+  const semFolha = DOM.map(l => ({ ...l, funcionarios_ativos: null, admissoes: null, desligamentos: null, afastados: null, pro_labore: null }));
+  const r = respostasDoDominio(semFolha, '2026-11-02');
+  chk('sem a folha no Domínio (a empresa inativa lá): as perguntas da folha ficam como estavam', !('C1' in r.respostas) && !('C4' in r.respostas) && !('C5' in r.respostas) && r.respostas.B1 === '151-300');
+  const semMesPassado = DOM.map(l => (l.competencia === '2026-10' ? { ...l, funcionarios_ativos: null, afastados: null } : l));
+  chk('sem o mês passado, os funcionários do mais recente que tem', respostasDoDominio(semMesPassado, '2026-11-02').respostas.C1 === 5);
+  const semPl = DOM.map(l => ({ ...l, pro_labore: 0 }));
+  const r2 = respostasDoDominio(semPl, '2026-11-02');
+  chk('ninguém com pró-labore: "Não", sem a quantidade', r2.respostas.C5 === 'Não' && !('C6' in r2.respostas));
+  const dobrada = respostasDoDominio([...DOM, ...DOM.map(l => ({ ...l, funcionarios_ativos: 1, notas_saida: 1 }))], '2026-11-02');
+  chk('a mesma empresa duas vezes no Domínio (o mesmo documento): fica o maior de cada número, sem somar', dobrada.respostas.C1 === 6 && dobrada.respostas.B1 === '151-300');
+  chk('sem linhas ou sem o dia de hoje: nada', !Object.keys(respostasDoDominio([], '2026-11-02').respostas).length && !Object.keys(respostasDoDominio(DOM, null).respostas).length);
+}
+const s6 = respostasDoSistema({ cliente: SIMPLES, obrigacoes: [], carteira: {}, dominio: DOM }, { regimesDaQuestao: REG, hoje: '2026-11-02' });
+chk('na carteira: as respostas do Domínio com a etiqueta "Domínio"', s6.respostas.C1 === 6 && s6.origem.C1 === 'dominio' && s6.origem.B1 === 'dominio' && FONTES.dominio === 'Domínio');
+chk('sem o dia de hoje, o Domínio não entra (os meses dependem dele)', !('C1' in respostasDoSistema({ cliente: SIMPLES, obrigacoes: [], carteira: {}, dominio: DOM }, { regimesDaQuestao: REG }).respostas));
 chk('MEI fica com a aba MEI', ehMei({ regime_tributario: 'MEI' }) && !ehMei({ regime_tributario: 'Simples Nacional' }) && !ehMei(null));
 chk('o que falta responder: só as que mexem no preço, em branco e visíveis', JSON.stringify(faltamResponder({ A2M: 1, B8: 'x', C1: '' }, id => id.startsWith('A') || id === 'C1'))
   === JSON.stringify(['A5', 'A7', 'A8', 'A9', 'A10', 'A11B', 'C1']));
