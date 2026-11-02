@@ -109,9 +109,12 @@ py -3 -m ponte dominio sql --arquivo ponte\consultas\folha.sql --mes 2026-09
   o `dominio conexao` e o `dominio tabelas` —, e o usuário bloqueado por tentativas erradas responde com o mesmo erro,
   até com a senha certa: um teste por vez, nunca seguidos. Usuário ou senha novos no Domínio podem levar até o horário
   seguinte de atualização do banco (quem integra com o Domínio Web fala em 10h, 12h, 16h e 19h, ou 24 horas): teste
-  com folga depois dele. Persistindo: um usuário externo novo (não herda bloqueio), com uma senha simples de digitar e
-  dentro do tamanho que o campo do Domínio aceita, e o chamado da Domínio — só eles veem no servidor se o usuário
-  existe naquele banco e se está bloqueado.
+  com folga depois dele. Persistindo: um usuário externo novo (não herda bloqueio), com uma senha simples de digitar, e
+  o chamado da Domínio — só eles veem no servidor se o usuário existe naquele banco e se está bloqueado. O campo de senha
+  do Domínio mostra sempre a mesma quantidade de asteriscos, qualquer que seja o tamanho da senha: não serve pra
+  conferir a senha. No caso de 29/10 a 02/11, o artigo de suporte da Domínio fala da conexão direta com o usuário
+  externo no Domínio **instalado**; no Domínio Web, se o usuário criado na tela chega ao banco liberado pro IP do
+  escritório é a pergunta do chamado.
 - **`tabelas`** lê **só o catálogo** do banco (as tabelas `SYS`): os nomes das tabelas e das colunas, o tipo, a descrição
   que o banco guarda e quantas linhas cada tabela tem — **nenhuma linha das tabelas do Domínio**. É o "Busca Tabelas"
   do Domínio, sem precisar dele nem do Java. O arquivo fica na pasta da ponte, nunca no repositório (é a documentação

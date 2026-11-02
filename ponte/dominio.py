@@ -151,8 +151,9 @@ def problema_da_senha(v):
 def forma_da_senha(s):
     """Como a senha é, sem mostrá-la: quantos caracteres e de que tipo — "12 caracteres: 2 letras maiúsculas, 6 letras
     minúsculas e 4 números". A janela mostra antes de testar (02/11/2026: o banco recusava o usuário e a senha, e com
-    os asteriscos não dava pra ver o Caps Lock trocado — a senha do SQL Anywhere diferencia maiúscula de minúscula —
-    nem uma senha maior que a que o campo do Domínio aceitou)."""
+    os asteriscos não dava pra ver o Caps Lock trocado — a senha do SQL Anywhere diferencia maiúscula de minúscula).
+    Não dá pra comparar com o campo de senha do Domínio: ele mostra sempre a mesma quantidade de asteriscos, qualquer
+    que seja o tamanho da senha (o Samuel, 29/10/2026)."""
     if not s:
         return 'nenhum caractere'
     tipos = ((sum(c in string.ascii_uppercase for c in s), 'letra maiúscula', 'letras maiúsculas'),
