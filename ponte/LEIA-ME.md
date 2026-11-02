@@ -99,16 +99,22 @@ py -3 -m ponte dominio sql --arquivo ponte\consultas\folha.sql --mes 2026-09
   minúscula, e com o Caps Lock trocado elas aparecem invertidas ali; `n` digita de novo, Enter testa. Só pergunta numa
   janela que aceita digitação; pelo terminal do pedreiro, ele abre uma pro Samuel: `Start-Process py -ArgumentList
   '-3','-m','ponte','dominio','conexao','--esperar' -WorkingDirectory <a pasta do repositório> -Wait`. Rodado de novo
-  com a conexão gravada, Enter só testa; `s` troca.
+  com a conexão gravada, Enter só testa; `s` troca — e aí o Enter mantém o host, a porta, o Engine, o Banco e o usuário
+  gravados (aparecem entre colchetes; a senha é sempre perguntada): trocar só o usuário e a senha não pede de novo os
+  dados do chamado (02/11/2026). Na conferência da senha, só Enter (testa) ou `n` (digita de novo): o que se digita ali
+  aparece na tela.
 - **Usuário ou senha recusados** (`Invalid user ID or password`, -103 — o caso de 30/10 a 02/11/2026): o servidor e o
   banco do chamado estão certos (senão o erro seria "server not found" ou "database not found"); o que não bateu foi o
   par usuário + senha naquele banco, e o -103 não diz o porquê. **Cada teste é uma tentativa de login** — o `conferir`,
   o `dominio conexao` e o `dominio tabelas` —, e o usuário bloqueado por tentativas erradas responde com o mesmo erro,
   até com a senha certa: um teste por vez, nunca seguidos. Usuário ou senha novos no Domínio podem levar até o horário
   seguinte de atualização do banco (quem integra com o Domínio Web fala em 10h, 12h, 16h e 19h, ou 24 horas): teste
-  com folga depois dele. Persistindo: um usuário externo novo (não herda bloqueio), com uma senha simples de digitar e
-  dentro do tamanho que o campo do Domínio aceita, e o chamado da Domínio — só eles veem no servidor se o usuário
-  existe naquele banco e se está bloqueado.
+  com folga depois dele. Persistindo: um usuário externo novo (não herda bloqueio), com uma senha simples de digitar, e
+  o chamado da Domínio — só eles veem no servidor se o usuário existe naquele banco e se está bloqueado. O campo de senha
+  do Domínio mostra sempre a mesma quantidade de asteriscos, qualquer que seja o tamanho da senha: não serve pra
+  conferir a senha. No caso de 29/10 a 02/11, o artigo de suporte da Domínio fala da conexão direta com o usuário
+  externo no Domínio **instalado**; no Domínio Web, se o usuário criado na tela chega ao banco liberado pro IP do
+  escritório é a pergunta do chamado.
 - **`tabelas`** lê **só o catálogo** do banco (as tabelas `SYS`): os nomes das tabelas e das colunas, o tipo, a descrição
   que o banco guarda e quantas linhas cada tabela tem — **nenhuma linha das tabelas do Domínio**. É o "Busca Tabelas"
   do Domínio, sem precisar dele nem do Java. O arquivo fica na pasta da ponte, nunca no repositório (é a documentação

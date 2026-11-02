@@ -938,7 +938,7 @@ def caso_dominio():
     ok('A senha digitada tem 12 caracteres: 8 letras minúsculas e 4 números.' in out
        and 'A senha digitada tem 12 caracteres: 2 letras maiúsculas, 6 letras minúsculas e 4 números.' in out
        and 'Caps Lock' in out and len(senhas.perguntas) == 7
-       and sum('n digita a senha de novo' in p for p in teclado.perguntas) == 2,
+       and sum('n pra digitar a senha de novo' in p for p in teclado.perguntas) == 2,
        'antes de testar, a janela mostra como é a senha (o Caps Lock trocado aparece) e o "n" pede a senha de novo')
     ok(usadas == [esperado] and 'abriu — SQL Anywhere 17.0.11.7058' in out and 'tabela(s) do Domínio (bethadba 3)' in out,
        'testa na hora — uma vez só, com a senha que conferiu: a versão do servidor e quantas tabelas do Domínio o '
@@ -957,6 +957,29 @@ def caso_dominio():
     ok(cod == 0 and usadas == [esperado] and 'Não troquei' in out and gravada(pasta) == esperado,
        'com uma conexão já gravada, o Enter só testa a de agora (nada muda)')
     ok(any('Aperte Enter' in p for p in tec.perguntas), '--esperar: no fim, espera o Enter pra janela não fechar antes de ler')
+
+    # trocando a gravada, o Enter mantém o host, a porta, o servidor, o banco e o usuário (02/11/2026: trocar só o usuário
+    # e a senha sem buscar de novo os dados do chamado); a senha é sempre perguntada e nunca aparece
+    ok(dominio.partes_da_conexao(esperado) == {'usuario': 'EXTERNO', 'servidor': 'srvteste', 'banco': 'banco1',
+                                               'host': '203.0.113.9', 'porta': '2638'}
+       and dominio.partes_da_conexao('') == {} and dominio.partes_da_conexao('DRIVER={x};Host=semporta') == {}
+       and 'BoaSenha2026' not in str(dominio.partes_da_conexao(esperado)),
+       'da conexão gravada, o que dá pra reaproveitar: host, porta, servidor, banco e usuário — nunca a senha')
+    p7 = pasta_nova()
+    escrever_config(p7, url=url, conexao=esperado)
+    usadas.clear()
+    tec = Teclado('s', '', '', '', '', 'OUTRO', 'CLAUDE', '')
+    cod, out = no_processo(p7, dominio.conexao, perguntar=tec, senha=Teclado('NOVA2026X', 'NOVA2026X'),
+                           interativa=lambda: True, drivers=lambda: ['SQL Anywhere 17'], conectar=conectar)
+    trocada = dominio.montar_conexao('SQL Anywhere 17', '203.0.113.9', '2638', 'srvteste', 'banco1', 'OUTRO', 'NOVA2026X')
+    ok(cod == 0 and gravada(p7) == trocada and usadas == [trocada],
+       f'trocar só o usuário e a senha: Enter mantém o host, a porta, o Engine e o Banco gravados (saiu {cod})')
+    ok(any('[203.0.113.9]' in p for p in tec.perguntas) and any('[2638]' in p for p in tec.perguntas)
+       and any('[EXTERNO]' in p for p in tec.perguntas) and not any('BoaSenha2026' in p for p in tec.perguntas)
+       and 'Enter mantém o que está gravado' in out and 'NOVA2026X' not in out + logs(p7),
+       'as perguntas mostram o gravado entre colchetes (nunca a senha), e a senha nova não aparece na tela nem no log')
+    ok(sum('Aperte só Enter pra testar' in p for p in tec.perguntas) == 2 and 'aqui é só Enter (testa) ou n' in out,
+       'na conferência da senha, o que não é Enter nem n é perguntado de novo (o que se digita ali aparece na tela)')
 
     def nao_abre(s):
         raise RuntimeError('08001', '[08001] [SAP][ODBC Driver][SQL Anywhere]Database server not found (teste)')
