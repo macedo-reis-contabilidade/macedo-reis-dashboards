@@ -161,10 +161,25 @@ def escrever_config(pasta, url=None, conexao=CONEXAO, chave_publica=CHAVE_PUBLIC
     (pasta / 'config.ini').write_text('\n'.join(linhas) + '\n', encoding='utf-8')
 
 
+_SEM_PYODBC = []
+
+
+def sem_pyodbc():
+    """Uma pasta com um pyodbc que não importa, na frente do PYTHONPATH da ponte rodada à parte: ela age como num
+    computador sem o pyodbc, e nenhum teste tenta uma conexão ODBC de verdade — nem no PC da ponte, onde o pyodbc e o
+    driver estão instalados (02/11/2026: lá, o conferir do teste tentava abrir a conexão inventada e saía com 1)."""
+    if not _SEM_PYODBC:
+        p = pasta_nova()
+        (p / 'pyodbc.py').write_text("raise ImportError('nos testes da ponte, o pyodbc fica de fora')\n", encoding='utf-8')
+        _SEM_PYODBC.append(p)
+    return _SEM_PYODBC[0]
+
+
 def ponte(pasta, *args, ip_url=None, timeout_req='5'):
+    caminho = os.pathsep.join(c for c in (str(sem_pyodbc()), os.environ.get('PYTHONPATH')) if c)
     env = dict(os.environ, PONTE_PASTA=str(pasta), PONTE_ESPERAS='0.05,0.05,0.05', PONTE_TIMEOUT=timeout_req,
                PONTE_IP_URL=ip_url or 'http://127.0.0.1:9/sem-ip', PYTHONIOENCODING='utf-8',
-               PYTHONDONTWRITEBYTECODE='1')
+               PYTHONDONTWRITEBYTECODE='1', PYTHONPATH=caminho)
     # stdin vazio: o "dominio conexao" pergunta só numa janela que aceita digitação — aqui ele nunca espera teclado
     r = subprocess.run([sys.executable, '-m', 'ponte', *args], cwd=str(RAIZ), env=env, capture_output=True,
                        stdin=subprocess.DEVNULL, encoding='utf-8', errors='replace', timeout=180)
@@ -597,7 +612,8 @@ def caso_conferir(sis):
     escrever_config(pasta, url=sis.url)
     sis.zerar(404)
     cod, out = ponte(pasta, 'conferir', ip_url=sis.ip_url)
-    ok(cod == 0 and 'Tudo certo na configuração' in out, f'completo: sai com 0 (saiu {cod})')
+    ok(cod == 0 and 'Tudo certo na configuração' in out and 'não testei (falta o pyodbc)' in out,
+       f'completo: sai com 0 (saiu {cod}) — e a conexão inventada do teste não é testada, nem onde há pyodbc')
     ok('função do sistema ainda não publicada' in out, 'ping com 404: "função do sistema ainda não publicada", sem erro')
     ok(len(sis.recebidos) == 1 and sis.recebidos[0]['corpo'] == {'versao': 1, 'ping': True}
        and sis.recebidos[0]['cabecalhos'].get('x-chave') == SEGREDO, 'o ping é {"versao": 1, "ping": true}, com a chave')
