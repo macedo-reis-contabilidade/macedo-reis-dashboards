@@ -4,7 +4,8 @@
 // Rodar com: node tests/comparativo-dados.test.mjs — dados inventados (o repositório é público).
 
 import { entradaDoSistema, aplicarRelatorios, premissasParaTestar, prazosDaEscolha, exclusaoObrigatoria, ultimoDiaUtil, serieDosMeses, tipoPeloCnae, tipoPeloAnexo, regimeDoCadastro,
-  ehRefeicaoRS, ehRdaRS, empresasDosSocios, receitaDaEmpresa, situacaoDoGrupo, serieDaEmpresa, foraDaSoma, avisoDaSoma, mesclarSerie } from '../assets/js/comparativo-dados.js';
+  ehRefeicaoRS, ehRdaRS, empresasDosSocios, receitaDaEmpresa, situacaoDoGrupo, serieDaEmpresa, foraDaSoma, avisoDaSoma, mesclarSerie,
+  pareceFolha, cnpjsDoCabecalho, juntarFolha, folhaDoAno, aplicarFolha } from '../assets/js/comparativo-dados.js';
 import { comparar } from '../assets/js/comparativo-motor.js';
 
 let falhas = 0, total = 0;
@@ -205,6 +206,38 @@ console.log('=== o faturamento solto na tela entra na série ===');
 const ms = mesclarSerie([{ competencia: '2026-07', total: 1 }, { competencia: '2026-08', total: 2 }], [{ competencia: '2026-09', total: 6, saidas: 6 }, { competencia: '2026-08', total: 5 }, { competencia: 'x', total: 9 }]);
 ok('junta pelo mês, o relatório vale no mês que os dois têm, em ordem, só competência e total', JSON.stringify(ms) === '[{"competencia":"2026-07","total":1},{"competencia":"2026-08","total":5},{"competencia":"2026-09","total":6}]', ms);
 ok('sem nada, nulo', mesclarSerie(null, []) === null);
+
+console.log('=== o resumo da folha do Domínio ===');
+// um resumo da folha inventado, como o pdf.js devolve as linhas (nomes e números de mentira)
+const linhasFolha = ['EMPRESA DE TESTE LTDA  Página: 0001', 'CNPJ: 12.345.678/0001-90  Competência: 09/2026', 'RESUMO DA FOLHA', 'Código  Descrição  Proventos  Descontos',
+  '001  Salário  10.000,00', '005  Pró-Labore  5.000,00', '210  INSS  1.100,00', '220  IRRF  300,00', 'Base FGTS  10.000,00  FGTS  800,00', 'Total de Proventos  15.000,00  Líquido  13.600,00'];
+ok('o resumo da folha é reconhecido pelo título e as rubricas', pareceFolha(linhasFolha));
+ok('sem o título, só com muitas rubricas', pareceFolha(['Salário 1', 'Pró-labore 2', 'FGTS 3', 'INSS 4', 'Líquido 5']) && !pareceFolha(['Salário 1', 'INSS 2']));
+ok('o relatório fiscal não parece folha', !pareceFolha(['RELATORIO DE FATURAMENTO', 'Mês  Vendas  Serviços  Total', '01/2026  100,00  0,00  100,00']));
+ok('os CNPJs do cabeçalho, sem a pontuação', JSON.stringify(cnpjsDoCabecalho(linhasFolha)) === '["12345678000190"]' && cnpjsDoCabecalho(['sem CNPJ']).length === 0);
+const mesF = (c, extra = {}) => ({ competencia: c, folha_salarios: 10000, prolabore: 5000, fgts: 800, inss_patronal: null, folha_outros: c.endsWith('-12') ? 10000 : null, ...extra });
+const lidaF = { meses: ['2025-08', '2025-09', '2025-10', '2025-11', '2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09'].map(c => mesF(c)) };
+const jF = juntarFolha(null, lidaF);
+ok('junta só os três totais (salários, pró-labore e outros), em ordem', jF.length === 14 && jF[0].competencia === '2025-08' && !('fgts' in jF[0]) && jF.find(x => x.competencia === '2025-12').folha_outros === 10000, jF[0]);
+const aF = folhaDoAno(jF, '2026-08');
+ok('os 12 meses que terminam no último mês da receita: salários + 13º, e o pró-labore', aF.ok && aF.n === 12 && aF.de === '2025-09' && aF.ate === '2026-08' && aF.folha === 130000 && aF.proLabore === 60000 && !aF.anualizado, aF);
+ok('sem a receita, os 12 últimos meses lidos', folhaDoAno(jF).ate === '2026-09');
+ok('o mesmo resumo solto de novo não soma em dobro', folhaDoAno(juntarFolha(jF, lidaF), '2026-08').folha === 130000);
+const jSo = juntarFolha(null, { meses: ['2026-07', '2026-08', '2026-09'].map(c => ({ competencia: c, folha_salarios: 8000, prolabore: null })) });
+const jPro = juntarFolha(jSo, { meses: ['2026-07', '2026-08', '2026-09'].map(c => ({ competencia: c, folha_salarios: 0, prolabore: 3000 })) });
+ok('o resumo do pró-labore solto à parte completa o dos salários, e o zero dele não apaga os salários', jPro.every(x => x.folha_salarios === 8000 && x.prolabore === 3000), jPro);
+const aSo = folhaDoAno(jSo, '2026-09');
+ok('com 3 meses, anualizado; sem pró-labore no resumo', aSo.ok && aSo.n === 3 && aSo.anualizado && aSo.folha === 96000 && aSo.proLabore === 0 && aSo.temSalarios && !aSo.temPro, aSo);
+ok('com menos de 3 meses, não usa e diz por quê', !folhaDoAno(jSo.slice(0, 2), '2026-09').ok && /só 2 meses/.test(folhaDoAno(jSo.slice(0, 2), '2026-09').motivo));
+ok('o que veio pelo mês do pagamento volta pra competência anterior', juntarFolha(null, { meses: [], meses_caixa: [{ competencia: '2026-01', folha_salarios: 7000 }] })[0].competencia === '2025-12');
+const fora = folhaDoAno(juntarFolha(null, { meses: ['2025-01', '2025-02', '2025-03'].map(c => mesF(c)) }), '2026-08');
+ok('o resumo de outro período: usa os meses dele e avisa', fora.ok && fora.foraDoPeriodo && fora.ate === '2025-03');
+const apF = aplicarFolha({ folha: 0, proLabore: 0, atividades: [] }, { folha: { fonte: 'padrao' } }, aF);
+ok('na entrada: a folha e o pró-labore, a origem no relatório do Domínio com o período', apF.entrada.folha === 130000 && apF.entrada.proLabore === 60000 && apF.origens.folha.fonte === 'dominio'
+  && apF.origens.folha.texto === 'resumo da folha do Domínio de set/25 a ago/26' && apF.origens.proLabore.fonte === 'dominio' && !apF.notas.length, apF.origens);
+const apSo = aplicarFolha({}, {}, aSo);
+ok('sem pró-labore no resumo: zero, a origem diz, e a nota pede pra conferir', apSo.entrada.proLabore === 0 && /sem pró-labore/.test(apSo.origens.proLabore.texto) && /anualizado/.test(apSo.origens.folha.texto) && apSo.notas.some(n => /não trouxe pró-labore/.test(n)), apSo);
+ok('leitura que não deu: a entrada fica como estava', aplicarFolha({ folha: 5 }, {}, { ok: false }).entrada.folha === 5);
 
 console.log('\n' + (total - falhas) + ' de ' + total + ' conferências ok' + (falhas ? ' — ' + falhas + ' FALHA(S)' : ''));
 process.exit(falhas ? 1 : 0);

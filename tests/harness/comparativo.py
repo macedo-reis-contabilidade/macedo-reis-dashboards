@@ -28,6 +28,10 @@ Confere:
   8. o card no Fiscal: "1 estudo";
   9. o assistente do escritório: a faixa "Sobre o estudo aberto", as perguntas prontas do estudo e a pergunta que vai com
      a empresa e o estudo (comparativo_id), depois da gravação que estava marcada (o número mudado já gravado);
+ 10. o resumo da folha do Domínio solto na tela (o pdf.js e a leitura com IA, dublês): vai pra função extract-document no
+     modo fator_r, a folha e o pró-labore dos 12 meses entram com a origem verde e o período, a missão da folha fica
+     cumprida, o estudo grava só os totais do mês; o resumo de outra empresa (pelo CNPJ) não entra nem vai pra leitura;
+     a leitura que falha deixa os números como estavam;
 e nenhum erro de JavaScript. No 7, também o aviso do limite no resultado: a conta põe o Simples em 2027, mas o ano de 2026
 passa do limite.
 Termina com código 1 se alguma checagem falhar. Pré-requisito: pip install playwright e python -m playwright install chromium
@@ -315,6 +319,74 @@ def main():
         ok(ch['nome'] == 'assistente' and ctx.get('cliente_id') == 'c5' and est and ctx.get('comparativo_id') == est and ctx['pagina']['caminho'] == 'fiscal-comparativo.html',
            f'a pergunta vai com a empresa e o estudo ({ctx})')
         ok(ch['folhaGravada'] == 240000, f'o número mudado já estava gravado quando a pergunta saiu ({ch["folhaGravada"]!r})')
+
+        print('10. O resumo da folha do Domínio solto na tela')
+        p4 = cx.new_page()
+        p4.on('pageerror', lambda e: erros.append('folha: ' + str(e)))
+        p4.add_init_script(TOUR); p4.add_init_script(SEMEAR)
+        # o pdf.js de mentira (as linhas de window.__pdfLinhas) e a leitura com IA de mentira: 14 meses inventados, com o 13º
+        # em dezembro; guarda as chamadas
+        p4.add_init_script(r'''(() => {
+          window.pdfjsLib = { GlobalWorkerOptions: {}, getDocument: () => ({ promise: Promise.resolve({ numPages: 1, getPage: async () => ({ getTextContent: async () => ({
+            items: (window.__pdfLinhas || []).map((s, i) => ({ str: s, transform: [1, 0, 0, 1, 20, 800 - i * 14], width: s.length * 4 })) }) }) }) }) };
+          window.__leituras = [];
+          window.__mockInvoke = async (nome, opts) => {
+            window.__leituras.push({ nome, body: JSON.parse(JSON.stringify(opts.body || {})) });
+            if (window.__leituraFalha) return { data: null, error: { message: 'Edge Function returned a non-2xx status code' } };
+            const meses = [];
+            for (let i = 0; i < 14; i++) { const d = new Date(Date.UTC(2025, 7 + i, 1)); const c = d.toISOString().slice(0, 7);
+              meses.push({ competencia: c, folha_salarios: 10000, prolabore: 5000, inss_patronal: null, fgts: 800, folha_outros: c.endsWith('-12') ? 10000 : null }); }
+            return { data: { data: { tipo: 'folha', empresa: 'COMÉRCIO MODELO ME', meses, meses_caixa: null, confianca: 'alta', avisos: ['folha pelo resumo por competência'] }, modo: 'fator_r' }, error: null };
+          };
+        })()''')
+        p4.goto(base + 'fiscal-comparativo.html?cliente=c1')
+        p4.wait_for_function("() => document.querySelector('#escolhida h3') && document.querySelector('#escolhida h3').textContent === 'COMÉRCIO MODELO ME'", timeout=8000)
+        p4.wait_for_selector('#resultado table.ct', timeout=5000)
+        mf = '#fase .ct-m[data-id="folha"]'
+        ok(p4.get_attribute(mf, 'data-estado') == 'aberta' and p4.locator(mf + ' [data-relatorio]').inner_text() == 'Soltar o resumo da folha',
+           'a missão da folha, aberta, com o "Soltar o resumo da folha"')
+        folha_pdf = ['COMÉRCIO MODELO ME  Página: 0001', 'CNPJ: 00.000.000/0000-00  Competência: 09/2026', 'RESUMO DA FOLHA', 'Código  Descrição  Proventos  Descontos',
+                     '001  Salário  10.000,00', '005  Pró-Labore  5.000,00', '210  INSS  1.100,00', 'Base FGTS  10.000,00  FGTS  800,00', 'Total de Proventos  15.000,00  Líquido  13.600,00']
+        p4.evaluate('l => { window.__pdfLinhas = l; }', folha_pdf)
+        p4.set_input_files('#arquivos', files=[{ 'name': 'resumo-folha.pdf', 'mimeType': 'application/pdf', 'buffer': b'%PDF-1.4 resumo inventado' }])
+        p4.wait_for_function("() => [...document.querySelectorAll('#lidos .ct-chip')].some(c => /resumo da folha · 12 meses/.test(c.textContent))", timeout=8000)
+        lei = p4.evaluate('window.__leituras')
+        doc = lei[0]['body']['documents'][0] if lei and lei[0]['body'].get('documents') else {}
+        import base64 as _b64
+        ok(len(lei) == 1 and lei[0]['nome'] == 'extract-document' and lei[0]['body']['modo'] == 'fator_r' and doc.get('media_type') == 'application/pdf'
+           and doc.get('filename') == 'resumo-folha.pdf' and _b64.b64decode(doc.get('data', '')) == b'%PDF-1.4 resumo inventado',
+           'o resumo vai pra leitura do Fator R (extract-document, modo fator_r), com o PDF')
+        chip = p4.locator('#lidos .ct-chip', has_text='resumo da folha').first
+        ok('(out/25 a set/26)' in chip.inner_text() and 'folha pelo resumo por competência' in (chip.get_attribute('title') or ''),
+           f'o chip diz os meses usados e a leitura vai no título ({chip.inner_text()!r})')
+        p4.wait_for_function("() => document.getElementById('f_folha').value === '130.000,00'", timeout=3000)
+        ok(p4.input_value('#f_folha') == '130.000,00' and p4.input_value('#f_proLabore') == '60.000,00',
+           f'a folha (salários + o 13º) e o pró-labore dos 12 meses ({p4.input_value("#f_folha")} e {p4.input_value("#f_proLabore")})')
+        o_f = p4.locator('.ct-orig[data-orig="folha"]')
+        ok(o_f.get_attribute('data-fonte') == 'dominio' and 'resumo da folha do Domínio de out/25 a set/26' in (o_f.inner_text() + ' ' + (o_f.get_attribute('title') or '')),
+           'a origem da folha em verde: o resumo da folha do Domínio, com o período')
+        p4.wait_for_function("() => { const m = document.querySelector('#fase .ct-m[data-id=\"folha\"]'); return (m && m.dataset.estado === 'feita') || document.querySelector('#trilha li:nth-child(2)').dataset.estado === 'feita'; }", timeout=3000)
+        p4.click('#trilha button[data-fase="1"]')
+        ok(p4.get_attribute(mf, 'data-estado') == 'feita' and 'veio do relatório do Domínio' in p4.inner_text(mf), 'a missão da folha cumprida: veio do relatório do Domínio')
+        p4.wait_for_function("() => { const r = (window.__mockDb.comparativos || []).find(x => x.cliente_id === 'c1'); return r && r.entrada && r.entrada.folhaRel; }", timeout=5000)
+        gr = p4.evaluate("() => (window.__mockDb.comparativos || []).find(x => x.cliente_id === 'c1').entrada")
+        fr = gr.get('folhaRel') or []
+        ok(len(fr) == 14 and all(set(x.keys()) <= {'competencia', 'folha_salarios', 'prolabore', 'folha_outros'} for x in fr) and gr['entrada']['folha'] == 130000,
+           f'o estudo grava só os totais do mês, sem o FGTS nem nome ({sorted(fr[0].keys()) if fr else None})')
+        # o resumo de outra empresa: não entra nem vai pra leitura
+        p4.evaluate('l => { window.__pdfLinhas = l; }', [x.replace('00.000.000/0000-00', '99.999.999/0001-99') for x in folha_pdf])
+        p4.set_input_files('#arquivos', files=[{ 'name': 'folha-outra.pdf', 'mimeType': 'application/pdf', 'buffer': b'%PDF-1.4 outra' }])
+        p4.wait_for_function("() => [...document.querySelectorAll('#lidos .ct-chip')].some(c => /folha-outra\\.pdf/.test(c.textContent))", timeout=5000)
+        ch2 = p4.locator('#lidos .ct-chip', has_text='folha-outra.pdf').inner_text().replace('\xa0', ' ')
+        ok('resumo da folha de outra empresa (CNPJ 99.999.999/0001-99)' in ch2 and p4.evaluate('window.__leituras.length') == 1,
+           f'o resumo de outra empresa não entra nem vai pra leitura ({ch2!r})')
+        # a leitura que falha: os números ficam como estavam
+        p4.evaluate('l => { window.__pdfLinhas = l; window.__leituraFalha = true; }', folha_pdf)
+        p4.set_input_files('#arquivos', files=[{ 'name': 'folha-falha.pdf', 'mimeType': 'application/pdf', 'buffer': b'%PDF-1.4 falha' }])
+        p4.wait_for_function("() => [...document.querySelectorAll('#lidos .ct-chip')].some(c => /folha-falha\\.pdf/.test(c.textContent))", timeout=5000)
+        ch3 = p4.locator('#lidos .ct-chip', has_text='folha-falha.pdf')
+        ok('a leitura da folha não deu certo' in ch3.inner_text() and 'ct-err' in (ch3.get_attribute('class') or '') and p4.input_value('#f_folha') == '130.000,00',
+           'a leitura que falha avisa e deixa a folha como estava')
 
         ok(not erros, 'nenhum erro de JavaScript' + ('' if not erros else ': ' + ' | '.join(erros[:3])))
         b.close()

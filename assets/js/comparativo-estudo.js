@@ -145,12 +145,14 @@ export async function carregarEstudo({ ler, cliente, cadastroDe = null }) {
   ];
   const semTabela = erroSemTabela(rEst && rEst.error);
   const salvo = !semTabela && rEst && rEst.data && rEst.data[0];
-  const est = { cliente: c, nome: c.nome_principal, notas: sis.notas, serie: sis.serie, serieRel: null, grupoSeries, grupoFora, socios: nSocios, sistema: sis, fontes, semTabela,
+  const est = { cliente: c, nome: c.nome_principal, notas: sis.notas, serie: sis.serie, serieRel: null, folhaRel: null, grupoSeries, grupoFora, socios: nSocios, sistema: sis, fontes, semTabela,
     estudoId: null, gravadoEm: null, gravadoPor: null };
   if (salvo && salvo.entrada && salvo.entrada.entrada) {
     Object.assign(est, { estudoId: salvo.id, gravadoEm: salvo.atualizado_em, gravadoPor: salvo.atualizado_por });
     // os meses do faturamento que a equipe soltou na tela (serieRel) entram na série do sistema
     if (Array.isArray(salvo.entrada.serieRel) && salvo.entrada.serieRel.length) { est.serieRel = salvo.entrada.serieRel; est.serie = mesclarSerie(sis.serie, salvo.entrada.serieRel); }
+    // os meses do resumo da folha solto na tela (só os totais), pra o próximo resumo solto se juntar a eles
+    if (Array.isArray(salvo.entrada.folhaRel) && salvo.entrada.folhaRel.length) est.folhaRel = salvo.entrada.folhaRel;
     est.entrada = comPadroes(salvo.entrada.entrada); est.origens = salvo.entrada.origens || {}; est.conferencia = salvo.entrada.conferencia || sis.conferencia;
     // o estudo gravado antes da soma das empresas dos sócios: entram as que o sistema achou
     if (!Array.isArray(salvo.entrada.entrada.grupo)) { est.entrada.grupo = sis.entrada.grupo; grupo.forEach((g, i) => { est.origens['grupo.' + i + '.receita'] = g.origem; }); }
@@ -163,8 +165,9 @@ export async function carregarEstudo({ ler, cliente, cadastroDe = null }) {
 export function estudoGravado(linha) {
   const g = (linha && linha.entrada) || {};
   const serieRel = Array.isArray(g.serieRel) && g.serieRel.length ? g.serieRel : null;
+  const folhaRel = Array.isArray(g.folhaRel) && g.folhaRel.length ? g.folhaRel : null;
   return { cliente: null, nome: (linha && linha.nome) || 'empresa sem cadastro', entrada: comPadroes(g.entrada || {}), origens: g.origens || {}, conferencia: g.conferencia || null,
-    notas: [], serie: serieRel ? mesclarSerie(null, serieRel) : null, serieRel, grupoSeries: [], grupoFora: [], socios: null, sistema: null, fontes: [], semTabela: false,
+    notas: [], serie: serieRel ? mesclarSerie(null, serieRel) : null, serieRel, folhaRel, grupoSeries: [], grupoFora: [], socios: null, sistema: null, fontes: [], semTabela: false,
     estudoId: (linha && linha.id) || null, gravadoEm: (linha && linha.atualizado_em) || null, gravadoPor: (linha && linha.atualizado_por) || null };
 }
 

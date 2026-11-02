@@ -435,6 +435,86 @@ export function aplicarRelatorios(entrada, origens, cons) {
   return { entrada: e, origens: o, conferencia };
 }
 
+// ---------- o resumo da folha do Domínio (01/11/2026) ----------
+// O Comparativo lê o resumo da folha com a leitura do Fator R: a função extract-document, no modo fator_r, devolve por
+// competência os salários (brutos), o pró-labore, a CPP, o FGTS e os outros (13º em dezembro, autônomos). Daqui sai só o
+// total do ano: nenhum nome nem valor de funcionário fica na tela ou no estudo.
+const semAcentoMai = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+// o relatório que o leitor dos relatórios fiscais não reconheceu parece uma folha: o título e as rubricas
+export function pareceFolha(linhas) {
+  const t = semAcentoMai((linhas || []).slice(0, 400).join(' | '));
+  const titulo = /RESUMO (GERAL )?DA FOLHA|FOLHA DE PAGAMENTO|EXTRATO (MENSAL|DA FOLHA)|RESUMO MENSAL|RELACAO DE CALCULO|RESUMO DO CALCULO|FOLHA MENSAL/.test(t);
+  const sinais = [/PRO[- ]?LABORE/, /\bFGTS\b/, /\bINSS\b/, /SALARIO/, /PROVENTOS/, /DESCONTOS/, /LIQUIDO/, /\bIRRF\b/].filter(r => r.test(t)).length;
+  return (titulo && sinais >= 2) || sinais >= 5;
+}
+// os CNPJs do cabeçalho (as 16 primeiras linhas), sem a pontuação: pra conferir se o relatório é da empresa do estudo
+export function cnpjsDoCabecalho(linhas) {
+  const out = [];
+  (linhas || []).slice(0, 16).forEach(l => (String(l).toUpperCase().match(/[0-9A-Z]{2}\.[0-9A-Z]{3}\.[0-9A-Z]{3}\/[0-9A-Z]{4}-\d{2}/g) || [])
+    .forEach(c => { const d = c.replace(/[.\/-]/g, ''); if (!out.includes(d)) out.push(d); }));
+  return out;
+}
+const CAMPOS_FOLHA = ['folha_salarios', 'prolabore', 'folha_outros'];
+const mesAntes = c => { const a = Number(c.slice(0, 4)), m = Number(c.slice(5, 7)); return m === 1 ? (a - 1) + '-12' : a + '-' + String(m - 1).padStart(2, '0'); };
+// junta uma leitura às de antes, mês a mês e campo a campo: o campo que a leitura trouxe vale (o mesmo relatório solto duas
+// vezes não soma em dobro; o resumo do pró-labore solto à parte completa o dos salários), e um zero não apaga um valor de
+// antes. O que veio pelo mês do pagamento (meses_caixa) volta pra competência anterior. Só os três totais ficam.
+export function juntarFolha(atual, dados) {
+  const m = new Map((atual || []).filter(x => x && /^\d{4}-\d{2}$/.test(x.competencia)).map(x => [x.competencia, { ...x }]));
+  const por = (lista, desloca) => (Array.isArray(lista) ? lista : []).forEach(x => {
+    if (!x || !/^\d{4}-\d{2}$/.test(String(x.competencia || ''))) return;
+    const c = desloca ? mesAntes(x.competencia) : x.competencia;
+    const o = m.get(c) || { competencia: c };
+    CAMPOS_FOLHA.forEach(k => {
+      const v = x[k] == null || x[k] === '' ? NaN : Number(x[k]);
+      if (!Number.isFinite(v) || v < 0) return;
+      if (v === 0 && num(o[k]) > 0) return;
+      o[k] = Math.round(v * 100) / 100;
+    });
+    if (CAMPOS_FOLHA.some(k => o[k] != null)) m.set(c, o);
+  });
+  por(dados && dados.meses, false);
+  por(dados && dados.meses_caixa, true);
+  const l = [...m.values()].map(x => Object.fromEntries([['competencia', x.competencia], ...CAMPOS_FOLHA.filter(k => x[k] != null).map(k => [k, x[k]])]))
+    .sort((a, b) => (a.competencia < b.competencia ? -1 : 1));
+  return l.length ? l : null;
+}
+// a folha (salários + outros) e o pró-labore do ano pelos meses lidos: os 12 meses que terminam no último mês da receita
+// (ate; sem ele, no último mês lido); com menos de 12 e pelo menos 3, anualizado; com menos de 3, não usa
+export function folhaDoAno(meses, ate = null) {
+  const l = (meses || []).filter(x => x && /^\d{4}-\d{2}$/.test(x.competencia)).sort((a, b) => (a.competencia < b.competencia ? -1 : 1));
+  if (!l.length) return { ok: false, motivo: 'a leitura não trouxe nenhum mês da folha' };
+  const fim = ate && /^\d{4}-\d{2}$/.test(ate) ? ate : l[l.length - 1].competencia;
+  let ini = fim;
+  for (let i = 0; i < 11; i++) ini = mesAntes(ini);
+  let usados = l.filter(x => x.competencia >= ini && x.competencia <= fim), foraDoPeriodo = false;
+  if (!usados.length) { usados = l.slice(-12); foraDoPeriodo = true; }
+  const n = usados.length;
+  if (n < 3) return { ok: false, motivo: 'a leitura trouxe só ' + n + (n === 1 ? ' mês' : ' meses') + ' da folha' + (foraDoPeriodo ? '' : ' nos 12 meses da receita') + ': solte o resumo da folha mês a mês' };
+  const soma = k => usados.reduce((t, x) => t + num(x[k]), 0);
+  const f = 12 / n;
+  return { ok: true, n, de: usados[0].competencia, ate: usados[n - 1].competencia, anualizado: n < 12, foraDoPeriodo,
+    folha: Math.round((soma('folha_salarios') + soma('folha_outros')) * f * 100) / 100,
+    proLabore: Math.round(soma('prolabore') * f * 100) / 100,
+    temSalarios: usados.some(x => x.folha_salarios != null || x.folha_outros != null), temPro: usados.some(x => x.prolabore != null) };
+}
+// a folha e o pró-labore do resumo na entrada, com a origem (o relatório do Domínio) e as notas do que falta conferir
+export function aplicarFolha(entrada, origens, r) {
+  const e = JSON.parse(JSON.stringify(entrada || {}));
+  const o = { ...(origens || {}) };
+  const notas = [];
+  if (!r || !r.ok) return { entrada: e, origens: o, notas };
+  const per = rotuloComp(r.de) + ' a ' + rotuloComp(r.ate) + (r.anualizado ? ' (' + r.n + ' meses, anualizado)' : '');
+  e.folha = r.folha;
+  e.proLabore = r.proLabore;
+  o.folha = origem('dominio', 'resumo da folha do Domínio de ' + per + (r.temSalarios ? '' : ': sem salários'), 'os salários brutos, as férias, o 13º e os autônomos de cada mês');
+  o.proLabore = origem('dominio', 'resumo da folha do Domínio de ' + per + (r.temPro ? '' : ': sem pró-labore'));
+  if (!r.temSalarios) notas.push('O resumo da folha não trouxe salários: a conta usou a folha zero. Se a empresa tem empregados, solte o resumo da folha deles também.');
+  if (!r.temPro) notas.push('O resumo da folha não trouxe pró-labore: a conta usou zero. Se os sócios retiram pró-labore e ele é calculado à parte no Domínio, solte esse resumo também.');
+  if (r.foraDoPeriodo) notas.push('O resumo da folha é de ' + per + ', fora dos 12 meses da receita: a conta usou os meses dele. Confira o período exportado.');
+  return { entrada: e, origens: o, notas };
+}
+
 // ---------- as premissas que valem um teste ----------
 // as que ficaram no padrão e mexem na conta: o motor refaz o ano da decisão com os valores de cada lado
 export function premissasParaTestar(entrada, origens) {

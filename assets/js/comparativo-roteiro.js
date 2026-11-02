@@ -142,9 +142,9 @@ export function fontesDoEstudo({ entrada = {}, origens = {}, comparacao = null, 
   // ===== fase 2: os números da empresa =====
   const semFolha = !(num(e.folha) + num(e.proLabore) > 0);
   const folhaOk = (!semFolha && !padrao('folha')) || conferido('folha') || fonte('folha') === 'digitado';
-  add('numeros', { id: 'folha', info: 'A folha e o pró-labore dos 12 meses', estado: folhaOk ? 'tem' : 'falta', campo: 'folha',
+  add('numeros', { id: 'folha', info: 'A folha e o pró-labore dos 12 meses', estado: folhaOk ? 'tem' : 'falta', campo: 'folha', relatorio: true,
     situacao: folhaOk ? (semFolha ? 'sem folha nem pró-labore' : como('folha')) : 'falta',
-    onde: 'Domínio Folha: o resumo da folha de cada mês (salários, 13º, férias e pró-labore); por enquanto, digite o total dos 12 meses.',
+    onde: 'Domínio Folha: o resumo da folha mês a mês dos 12 meses (salários, 13º, férias e pró-labore), lido com IA como no Fator R.',
     auto: AUTOMATICO.dominio });
   if (receita > 0) {
     const comprasOk = !padrao('compras') && (num(e.compras) > 0 || conferido('compras') || fonte('compras') === 'digitado');
@@ -314,7 +314,7 @@ export function roteiroDoEstudo({ entrada = {}, origens = {}, comparacao = null,
       ? (semFolha ? 'A empresa não tem folha nem pró-labore.' : 'Folha de ' + brl(e.folha) + ' e pró-labore de ' + brl(e.proLabore) + ' nos 12 meses.')
       : 'Faltam. Sem eles, o INSS patronal (cerca de 28% da folha e 20% do pró-labore) sai zero: o Presumido parece mais barato do que é e, no Real, o lucro sai maior do que é.' +
         (ats.some(a => a.tipo === 'servico_r') ? ' No Simples, o serviço do fator r fica no Anexo V sem folha.' : '') + ' É o número que mais falta.',
-    campo: 'folha', irRotulo: 'Digitar a folha', conferir: folhaOk ? null : ['folha', 'proLabore'], conferirRotulo: 'Não tem folha nem pró-labore' });
+    campo: 'folha', irRotulo: 'Digitar a folha', relatorio: 'o resumo da folha', conferir: folhaOk ? null : ['folha', 'proLabore'], conferirRotulo: 'Não tem folha nem pró-labore' });
   const faltaFolha = !folhaOk;
 
   if (receita > 0) {

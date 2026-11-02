@@ -205,5 +205,22 @@ console.log('O faturamento solto na tela, gravado com o estudo');
   chk('o estudo sem cadastro volta com a série que foi solta nele', g.serie && g.serie.length === 1 && g.serieRel.length === 1);
 }
 
+console.log('O resumo da folha solto na tela, gravado com o estudo (só os totais do mês)');
+{
+  const folhaRel = [{ competencia: '2026-08', folha_salarios: 10000, prolabore: 5000 }, { competencia: '2026-09', folha_salarios: 10000, prolabore: 5000 }];
+  const salvo = { id: 'est4', cliente_id: 'c5', entrada: { v: 1, entrada: { atividades: [{ tipo: 'comercio', receita: 2600000 }], grupo: [], folha: 120000, proLabore: 60000 },
+    origens: { folha: { fonte: 'dominio', texto: 'resumo da folha do Domínio de out/25 a set/26' } }, conferencia: null, folhaRel }, atualizado_em: '2026-11-01T15:00:00Z', atualizado_por: 'fiscal@macedoereis.com.br' };
+  const { ler } = banco({ comparativos: [salvo], socios: [] });
+  const est = await carregarEstudo({ ler, cliente: RESTAURANTE });
+  chk('os meses da folha voltam com o estudo, pro próximo resumo se juntar a eles', est.folhaRel && est.folhaRel.length === 2 && est.entrada.folha === 120000 && est.origens.folha.fonte === 'dominio');
+  const conta = contaDoEstudo({ ...est, aliq2027: ALIQ, hoje: '2026-11-01' });
+  const fF = conta.roteiro.fases[1].fontes.find(x => x.id === 'folha');
+  chk('na fase 2, a folha do resumo do Domínio fica "tem"', fF.estado === 'tem' && /relatório do Domínio/.test(fF.situacao), fF);
+  const g = estudoGravado({ id: 'e9', nome: 'PROSPECT', entrada: { v: 1, entrada: { atividades: [{ tipo: 'comercio', receita: 1 }] }, folhaRel } });
+  chk('o estudo sem cadastro também', g.folhaRel && g.folhaRel.length === 2);
+  const novo = await carregarEstudo({ ler: banco({ comparativos: [], socios: [] }).ler, cliente: RESTAURANTE });
+  chk('sem estudo gravado, sem meses da folha', novo.folhaRel === null);
+}
+
 console.log('\n' + (falhas ? falhas + ' falha(s)' : 'tudo certo'));
 process.exit(falhas ? 1 : 0);

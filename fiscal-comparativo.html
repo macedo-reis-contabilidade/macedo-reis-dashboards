@@ -234,7 +234,7 @@
           <div id="caixaRelatorios" hidden>
             <div class="ct-drop" id="drop" role="button" tabindex="0" aria-describedby="dropAjuda">
               <b>Relatórios do Domínio</b>
-              <span id="dropAjuda">Faturamento, Simples Nacional (PGDAS), acompanhamento de entradas, de saídas e de serviços — em PDF ou planilha. Os números deles entram no lugar dos de baixo.</span>
+              <span id="dropAjuda">Faturamento, Simples Nacional (PGDAS), acompanhamento de entradas, de saídas e de serviços e o resumo da folha — em PDF ou planilha. Os números deles entram no lugar dos de baixo.</span>
               <input type="file" id="arquivos" multiple accept=".pdf,.xls,.xlsx,.csv,application/pdf" hidden>
             </div>
             <div class="ct-lidos" id="lidos"></div>
@@ -269,7 +269,7 @@
     import { hojeLocal, formatDocumento, normalizarDocumento } from './assets/js/utils.js';
     import { nomePorEmail } from './assets/js/equipe.js';
     import { fraseDaDecisao, TIPOS, ANEXOS, ROTULO_REGIME, REGIMES } from './assets/js/comparativo-motor.js';
-    import { aplicarRelatorios, FONTES, rotuloComp, mesclarSerie } from './assets/js/comparativo-dados.js';
+    import { aplicarRelatorios, FONTES, rotuloComp, mesclarSerie, pareceFolha, cnpjsDoCabecalho, juntarFolha, folhaDoAno, aplicarFolha } from './assets/js/comparativo-dados.js';
     // o estudo (o gravado ou os números do sistema, as empresas dos sócios) e a conta: a mesma regra do assistente do escritório
     import { PADRAO_ATIV, comPadroes, ORIGENS_PADRAO, CAMPOS, erroSemTabela, carregarEstudo, contaDoEstudo, situacaoComGrupo, resumoParaGravar } from './assets/js/comparativo-estudo.js';
     import { assistenteDaTela } from './assets/js/assistente-escritorio.js';
@@ -312,9 +312,10 @@
     // serie: a receita datada da empresa (o sistema) · grupoSeries: a das outras empresas dos sócios ([{ nome, serie }])
     // grupoFora: as empresas dos sócios que a regra deixa fora da soma do limite ([{ nome, motivo }])
     // serieRel: os meses do faturamento solto na tela (entram na série e ficam gravados no estudo)
+    // folhaRel: os meses do resumo da folha solto na tela, só os totais (salários, pró-labore e outros), gravados no estudo
     // socios: quantos sócios o cadastro tem (null = sem cadastro) · jornada e faseVista: o roteiro (as fases e as missões)
     const st = { cliente: null, nome: '', entrada: null, origens: {}, notas: [], conferencia: null, rels: [], fontes: [],
-      estudoId: null, gravadoEm: null, gravadoPor: null, semTabela: false, serie: null, serieRel: null, grupoSeries: [], grupoFora: [], socios: null,
+      estudoId: null, gravadoEm: null, gravadoPor: null, semTabela: false, serie: null, serieRel: null, folhaRel: null, grupoSeries: [], grupoFora: [], socios: null,
       jornada: { inicial: true, feitas: new Set(), fases: new Set() }, faseVista: null };
     let ultimoRoteiro = null;
 
@@ -362,7 +363,7 @@
       if (!nome) return;
       await gravarPendente();
       st.cliente = null; st.nome = nome; st.estudoId = null; st.gravadoEm = null; st.gravadoPor = null; st.rels = []; st.conferencia = null;
-      st.serie = null; st.serieRel = null; st.grupoSeries = []; st.grupoFora = []; st.socios = null; st.faseVista = null; st.jornada = { inicial: true, feitas: new Set(), fases: new Set() };
+      st.serie = null; st.serieRel = null; st.folhaRel = null; st.grupoSeries = []; st.grupoFora = []; st.socios = null; st.faseVista = null; st.jornada = { inicial: true, feitas: new Set(), fases: new Set() };
       st.entrada = comPadroes({ atividades: [{ tipo: 'comercio', receita: 0 }], grupo: [] });
       st.origens = { ...ORIGENS_PADRAO, 'atividades.0.receita': { fonte: 'padrao', texto: 'digite a receita dos 12 meses' }, 'atividades.0.tipo': { fonte: 'padrao' },
         compras: { fonte: 'padrao', texto: 'digite ou solte os relatórios' }, folha: { fonte: 'padrao', texto: 'digite os 12 meses', dica: 'salários, 13º e férias' }, proLabore: { fonte: 'padrao', texto: 'digite' },
@@ -392,7 +393,7 @@
       // o gravado ou os números do sistema, e as outras empresas dos mesmos sócios (a lista do cadastro já está aqui)
       const est = await carregarEstudo({ ler: lerDoBanco, cliente: c, cadastroDe: async ids => new Map(clientes.filter(k => ids.includes(k.id)).map(k => [k.id, k])) });
       if (st.cliente !== c) return;   // trocou de empresa no meio da leitura
-      st.serie = est.serie; st.serieRel = est.serieRel || null; st.grupoSeries = est.grupoSeries; st.grupoFora = est.grupoFora || []; st.socios = est.socios; st.faseVista = null; st.jornada = { inicial: true, feitas: new Set(), fases: new Set() };
+      st.serie = est.serie; st.serieRel = est.serieRel || null; st.folhaRel = est.folhaRel || null; st.grupoSeries = est.grupoSeries; st.grupoFora = est.grupoFora || []; st.socios = est.socios; st.faseVista = null; st.jornada = { inicial: true, feitas: new Set(), fases: new Set() };
       st.fontes = est.fontes; st.semTabela = est.semTabela;
       st.estudoId = est.estudoId; st.gravadoEm = est.gravadoEm; st.gravadoPor = est.gravadoPor;
       st.entrada = est.entrada; st.origens = est.origens; st.conferencia = est.conferencia;
@@ -420,7 +421,7 @@
       if ($('recomecar')) $('recomecar').addEventListener('click', () => {
         if (!confirm('Trocar os números deste estudo pelos que o sistema tem hoje? O que foi digitado se perde.')) return;
         st.entrada = comPadroes(st.sistema.entrada); st.origens = { ...ORIGENS_PADRAO, ...st.sistema.origens }; st.conferencia = st.sistema.conferencia;
-        st.serie = st.sistema.serie || null; st.serieRel = null;
+        st.serie = st.sistema.serie || null; st.serieRel = null; st.folhaRel = null;
         renderForm(); mudou();
       });
     }
@@ -827,7 +828,7 @@
       const resultado = resumoParaGravar(c);
       const agora = new Date().toISOString();
       const linha = { cliente_id: st.cliente ? st.cliente.id : null, nome: st.cliente ? null : st.nome,
-        entrada: { v: 1, entrada: st.entrada, origens: st.origens, conferencia: st.conferencia, ...(st.serieRel ? { serieRel: st.serieRel } : {}) }, resultado, atualizado_por: usuario, atualizado_em: agora };
+        entrada: { v: 1, entrada: st.entrada, origens: st.origens, conferencia: st.conferencia, ...(st.serieRel ? { serieRel: st.serieRel } : {}), ...(st.folhaRel ? { folhaRel: st.folhaRel } : {}) }, resultado, atualizado_por: usuario, atualizado_em: agora };
       $('gravado').classList.remove('ct-erro'); $('gravado').textContent = 'Gravando…';
       gravando = (async () => {
         const r = st.estudoId
@@ -854,21 +855,44 @@
     ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('is-over'); }));
     drop.addEventListener('drop', e => lerRelatorios([...(e.dataTransfer && e.dataTransfer.files || [])]));
     let lendo = false;
+    // o arquivo em base64, pra leitura com IA
+    const base64 = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = () => rej(new Error('a leitura do arquivo falhou')); r.readAsDataURL(f); });
+    // as abas da planilha em texto (a planilha da folha vai pra IA como texto, sem o arquivo)
+    const textoDasAbas = abas => abas.map(a => '# ' + a.nome + '\n' + (a.linhas || []).map(l => (l || []).map(c => String(c ?? '').trim()).join(' ; ')).join('\n')).join('\n\n');
     async function lerRelatorios(files) {
       if (lendo || !files.length) return;
       lendo = true;
       const docEmpresa = st.cliente && st.cliente.documento ? normalizarDocumento(st.cliente.documento) : null;
       $('msgRel').textContent = 'Lendo ' + files.length + ' arquivo(s)…';
       const chip = (txt, err, title) => $('lidos').insertAdjacentHTML('beforeend', '<span class="ct-chip' + (err ? ' ct-err' : '') + '"' + (title ? ' title="' + esc(title) + '"' : '') + '>' + esc(txt) + '</span>');
+      // o resumo da folha não é dos relatórios fiscais: vai pra leitura com IA do Fator R, no fim
+      const folhas = [];
+      const daEmpresa = cnpjs => !docEmpresa || !cnpjs.length || cnpjs.includes(docEmpresa);
       for (const f of files) {
         try {
           let rel;
-          if (/\.pdf$/i.test(f.name)) rel = lerRelatorio(await paginasDoPdf(f));
-          else if (/\.(xls|xlsx|csv)$/i.test(f.name)) {
+          if (/\.pdf$/i.test(f.name)) {
+            const paginas = await paginasDoPdf(f);
+            try { rel = lerRelatorio(paginas); } catch (e) {
+              const linhas = paginas.flat();
+              if (!pareceFolha(linhas)) throw e;
+              const cnpjs = cnpjsDoCabecalho(paginas[0] || []);
+              if (!daEmpresa(cnpjs)) { chip(f.name + ' · resumo da folha de outra empresa (CNPJ ' + formatDocumento(cnpjs[0]) + ') — não entrou', true); continue; }
+              folhas.push({ nome: f.name, arquivo: f });
+              continue;
+            }
+          } else if (/\.(xls|xlsx|csv)$/i.test(f.name)) {
             const abas = await abasDaPlanilha(f);
             let erro = null;
             for (const aba of abas) { try { rel = lerPlanilha(aba.linhas); break; } catch (e) { erro = e; } }
-            if (!rel) throw erro || new Error('planilha sem aba reconhecida');
+            if (!rel) {
+              const linhas = abas.flatMap(a => (a.linhas || []).map(l => (l || []).map(c => String(c ?? '')).join('  ')));
+              if (!pareceFolha(linhas)) throw erro || new Error('planilha sem aba reconhecida');
+              const cnpjs = cnpjsDoCabecalho(linhas);
+              if (!daEmpresa(cnpjs)) { chip(f.name + ' · resumo da folha de outra empresa (CNPJ ' + formatDocumento(cnpjs[0]) + ') — não entrou', true); continue; }
+              folhas.push({ nome: f.name, texto: textoDasAbas(abas) });
+              continue;
+            }
           } else { chip(f.name + ' · fora do padrão (PDF ou planilha)', true); continue; }
           if (docEmpresa && rel.cnpj && rel.cnpj !== docEmpresa) { chip(f.name + ' · de outra empresa (CNPJ ' + formatDocumento(rel.cnpj) + ') — não entrou', true); continue; }
           st.rels.push(rel);
@@ -876,21 +900,56 @@
         } catch (e) { chip(f.name + ' · não lido', true, e.message || ''); }
       }
       $('msgRel').textContent = '';
+      let mudouAlgo = false;
+      if (st.rels.length) {
+        const sim = st.rels.filter(r => r.tipo === 'simples').slice(-1)[0];
+        const cnae = st.cliente && st.cliente.cnae_principal || '';
+        const cons = consolidar(st.rels, null, { perfil: perfilAtividade({ cnae, anexo: sim && sim.anexoPredominante }), varejo: String(cnae).replace(/\D/g, '').startsWith('47') });
+        const ap = aplicarRelatorios(st.entrada, st.origens, cons);
+        st.entrada = comPadroes({ ...ap.entrada, regimeAtual: st.entrada.regimeAtual });
+        st.origens = ap.origens;
+        if (ap.conferencia) st.conferencia = ap.conferencia;
+        // os meses do faturamento entram na série datada (o ano do limite, o crescimento e o "até quando" das fases) e ficam
+        // gravados com o estudo
+        const mesesRel = (cons.fat && cons.fat.meses) || (cons.resVen && cons.resVen.meses) || null;
+        if (mesesRel && mesesRel.length) { st.serieRel = mesclarSerie(st.serieRel, mesesRel); st.serie = mesclarSerie(st.serie, mesesRel); }
+        (cons.avisos || []).forEach(a => { if (!st.notas.includes(a)) st.notas.push(a); });
+        mudouAlgo = true;
+      }
+      if (folhas.length && await lerFolhas(folhas, chip)) mudouAlgo = true;
       lendo = false;
-      if (!st.rels.length) return;
-      const sim = st.rels.filter(r => r.tipo === 'simples').slice(-1)[0];
-      const cnae = st.cliente && st.cliente.cnae_principal || '';
-      const cons = consolidar(st.rels, null, { perfil: perfilAtividade({ cnae, anexo: sim && sim.anexoPredominante }), varejo: String(cnae).replace(/\D/g, '').startsWith('47') });
-      const ap = aplicarRelatorios(st.entrada, st.origens, cons);
-      st.entrada = comPadroes({ ...ap.entrada, regimeAtual: st.entrada.regimeAtual });
+      if (mudouAlgo) { renderForm(); mudou(); }
+    }
+    // o resumo da folha: a leitura com IA do Fator R (a função extract-document, modo fator_r), os totais do mês juntados
+    // aos de antes (st.folhaRel) e, dos 12 meses da receita, a folha e o pró-labore do ano. Nenhum nome de funcionário fica.
+    async function lerFolhas(folhas, chip) {
+      const nomes = folhas.map(x => x.nome).join(', ');
+      if (folhas.reduce((t, x) => t + (x.arquivo ? x.arquivo.size : x.texto.length), 0) > 9 * 1024 * 1024) {
+        chip(nomes + ' · passa de 9 MB: solte menos meses por vez', true); return false;
+      }
+      $('msgRel').textContent = 'Lendo o resumo da folha com IA… (10 a 40 segundos)';
+      let resp;
+      try {
+        const documents = [];
+        for (const x of folhas) documents.push(x.arquivo ? { media_type: 'application/pdf', data: await base64(x.arquivo), filename: x.nome } : { media_type: 'text/plain', data: x.texto, filename: x.nome });
+        resp = await supabase.functions.invoke('extract-document', { body: { modo: 'fator_r', documents } });
+      } catch (e) { resp = { data: null, error: e }; }
+      $('msgRel').textContent = '';
+      const { data, error } = resp || {};
+      if (error || !data || data.error || !data.data) { chip(nomes + ' · a leitura da folha não deu certo — tente de novo ou digite a folha', true, (error && error.message) || (data && data.error) || ''); return false; }
+      const d = data.data;
+      const avisos = [].concat(d.avisos || []).filter(Boolean).join(' · ');
+      const juntos = juntarFolha(st.folhaRel, d);
+      const ate = st.serie && st.serie.length ? st.serie[st.serie.length - 1].competencia : null;
+      const r = folhaDoAno(juntos, ate);
+      if (!r.ok) { chip(nomes + ' · ' + r.motivo, true, avisos); return false; }
+      st.folhaRel = juntos;
+      const ap = aplicarFolha(st.entrada, st.origens, r);
+      st.entrada = comPadroes({ ...ap.entrada });
       st.origens = ap.origens;
-      if (ap.conferencia) st.conferencia = ap.conferencia;
-      // os meses do faturamento entram na série datada (o ano do limite, o crescimento e o "até quando" das fases) e ficam
-      // gravados com o estudo
-      const mesesRel = (cons.fat && cons.fat.meses) || (cons.resVen && cons.resVen.meses) || null;
-      if (mesesRel && mesesRel.length) { st.serieRel = mesclarSerie(st.serieRel, mesesRel); st.serie = mesclarSerie(st.serie, mesesRel); }
-      (cons.avisos || []).forEach(a => { if (!st.notas.includes(a)) st.notas.push(a); });
-      renderForm(); mudou();
+      ap.notas.forEach(n => { if (!st.notas.includes(n)) st.notas.push(n); });
+      chip(nomes + ' · resumo da folha · ' + r.n + (r.n === 1 ? ' mês' : ' meses') + ' (' + rotuloComp(r.de) + ' a ' + rotuloComp(r.ate) + ')', false, avisos ? 'Leitura: ' + avisos : '');
+      return true;
     }
 
     // ---------- o assistente do escritório: "esta empresa" é a do estudo aberto ----------

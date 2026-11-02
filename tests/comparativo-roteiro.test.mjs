@@ -52,7 +52,9 @@ ok('com a soma, o mês em que passa e a data de saída', /R\$\s4\.570\.000/.test
 ok('vai pra lista das empresas e tem o "Conferido"', lim.campo === 'grupo.0.receita' && lim.conferir.join() === 'grupo');
 ok('a receita, cumprida pelo sistema', missao(r1, 'receita').estado === 'feita' && /caso da Reforma/.test(missao(r1, 'receita').como));
 const folha = missao(r1, 'folha');
-ok('a folha falta e decide (fase 2)', folha.fase === 'numeros' && folha.estado === 'aberta' && folha.falta && folha.peso === 'decide' && folha.conferir.join() === 'folha,proLabore');
+ok('a folha falta e decide (fase 2), com o resumo da folha pra soltar', folha.fase === 'numeros' && folha.estado === 'aberta' && folha.falta && folha.peso === 'decide' && folha.conferir.join() === 'folha,proLabore' && folha.relatorio === 'o resumo da folha');
+ok('a folha do resumo do Domínio cumpre a missão', missao(rodar({ ...ent, folha: 130000, proLabore: 60000 }, { ...ori, folha: { fonte: 'dominio', texto: 'resumo da folha do Domínio de set/25 a ago/26' }, proLabore: { fonte: 'dominio' } }, base), 'folha').estado === 'feita'
+  && missao(rodar({ ...ent, folha: 130000, proLabore: 60000 }, { ...ori, folha: { fonte: 'dominio' }, proLabore: { fonte: 'dominio' } }, base), 'folha').como === 'veio do relatório do Domínio');
 ok('o texto da folha: o Presumido parece mais barato e, no Real, o lucro sai maior', /Presumido parece mais barato/.test(folha.texto) && /no Real, o lucro sai maior/.test(folha.texto));
 ok('as compras e o PGDAS, cumpridos pelo caso da Reforma', missao(r1, 'compras').estado === 'feita' && missao(r1, 'pgdas').estado === 'feita' && /9%/.test(missao(r1, 'pgdas').texto));
 ok('o estudo é provisório', r1.provisorio && r1.decidem >= 2 && !r1.pronto);
@@ -122,7 +124,7 @@ const fGr = fonte(rF, 'simples', 'grupo');
 ok('as outras empresas: somadas até o mês que todas têm, com os que faltam', fGr.estado === 'antigo' && /as 2 empresas somadas até jul\/26 — faltam ago\/26 e set\/26/.test(fGr.situacao), fGr.situacao);
 ok('a outra sem a receita: falta, com o nome', /falta a receita de PADARIA INVENTADA/.test(fonte(rodar(ent, { ...ori, 'grupo.0.receita': { fonte: 'padrao' } }, { ...base, hoje: '2026-11-01' }), 'simples', 'grupo').situacao));
 const fFolha = fonte(rF, 'numeros', 'folha');
-ok('a folha: o resumo da folha do Domínio, que falta, pra digitar', fFolha.estado === 'falta' && /Domínio Folha: o resumo da folha/.test(fFolha.onde) && fFolha.campo === 'folha' && fFolha.auto === AUTOMATICO.dominio);
+ok('a folha: o resumo da folha do Domínio, que falta, pra soltar (lido com IA, como no Fator R)', fFolha.estado === 'falta' && /Domínio Folha: o resumo da folha mês a mês/.test(fFolha.onde) && /lido com IA como no Fator R/.test(fFolha.onde) && fFolha.relatorio === true && fFolha.campo === 'folha' && fFolha.auto === AUTOMATICO.dominio, fFolha.onde);
 ok('as compras: o Acompanhamento de Entradas, cumpridas pelo caso da Reforma', fonte(rF, 'numeros', 'compras').estado === 'tem' && /Acompanhamento de Entradas/.test(fonte(rF, 'numeros', 'compras').onde));
 ok('o PGDAS: de jul/26, e a Receita só vai trazer a receita e o RBT12', fonte(rF, 'numeros', 'pgdas').estado === 'tem' && /jul\/26/.test(fonte(rF, 'numeros', 'pgdas').situacao) && /ST, o monofásico e a redução seguem pelo relatório/.test(fonte(rF, 'numeros', 'pgdas').auto));
 ok('as despesas: o balancete ou a DRE do Domínio Contabilidade', /balancete ou a DRE/.test(fonte(rF, 'numeros', 'despesas').onde) && ['falta', 'dispensa'].includes(fonte(rF, 'numeros', 'despesas').estado));
