@@ -296,6 +296,8 @@ function vigiaDoEndereco() {
   let v = null;
   try { v = new URLSearchParams(location.search).get('vigia'); } catch (e) { v = null; }
   if (v !== 'meus' && v !== 'todos') return;
+  // lido, sai do endereço: recarregar a tela não abre o cartão de novo
+  try { const u = new URL(location.href); u.searchParams.delete('vigia'); history.replaceState(history.state, '', u.pathname + u.search + u.hash); } catch (e) { /* fica no endereço */ }
   const todos = v === 'todos' && socio;
   setTimeout(() => abrirVigia({ ver: todos ? 'todos' : 'meus' }, todos ? 'O que o vigia achou, de todos:' : 'As suas pendências no vigia:'), 300);
 }

@@ -710,8 +710,8 @@ def main():
         grupos7 = p7.eval_on_selector_all(card + ' .as-vigia-grupo > summary', 'ss => ss.map(s => s.textContent)')
         botoes71 = p7.eval_on_selector_all(it7('tarefa de teste') + ' button', 'bs => bs.map(b => b.textContent)')
         ok(tit7 == 'O que o vigia achou pra você: 4' and any(g.startswith('Perguntas pra responder · 1') for g in grupos7) and botoes71 == ['Responder']
-           and not p7.query_selector(it7('Concluir a tarefa de teste')),
-           f'?vigia=meus abre o cartão de quem entrou; a pergunta dele com "Responder" e sem "Ignorar" ({tit7!r}, {grupos7}, {botoes71})')
+           and not p7.query_selector(it7('Concluir a tarefa de teste')) and 'vigia=' not in p7.url,
+           f'?vigia=meus abre o cartão de quem entrou (e sai do endereço: recarregar não abre de novo); a pergunta dele com "Responder" e sem "Ignorar" ({tit7!r}, {grupos7}, {botoes71}, {p7.url})')
         p7.click(it7('De qual mês') + ' button:has-text("Responder")')
         p7.wait_for_selector(it7('De qual mês') + ' .as-pergunta', timeout=5000)
         enviar = it7('De qual mês') + ' button:has-text("Enviar a resposta")'
