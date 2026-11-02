@@ -93,6 +93,9 @@ ok('Presumido em 01/11/2026: a janela do Simples de 2027 fechou', /fechou em 30\
 const p3 = prazosDaEscolha('2026-08-15', 'presumido', 2027);
 ok('Presumido em agosto: a janela de setembro ainda vem', /01 a 30\/09\/2026/.test(p3[0].texto));
 ok('sempre diz como escolher entre Presumido e Real', p2.some(p => /Presumido ou Real/.test(p.titulo)));
+const pr = p2.find(p => /Presumido ou Real/.test(p.titulo));
+ok('o prazo da escolha: o Presumido e o Real trimestral no fim de abril; o Real anual, na estimativa de janeiro, no fim de fevereiro',
+  /fim de abril/.test(pr.texto) && /Real anual, a estimativa de janeiro, que vence no fim de fevereiro/.test(pr.texto) && /art\. 3º, parágrafo único/.test(pr.texto), pr.texto);
 
 console.log('=== a refeição no RS e o PGDAS do caso ===');
 ok('5620-1/04 no RS é refeição', ehRefeicaoRS('5620-1/04', 'RS'));

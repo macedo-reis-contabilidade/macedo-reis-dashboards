@@ -463,7 +463,8 @@ export function premissasParaTestar(entrada, origens) {
 // (LC 123, art. 16, na redação da LC 214; Res. CGSN 140, art. 6º, na redação da Res. CGSN 190/2026). Saída por opção:
 // a qualquer tempo, com efeitos em 1º de janeiro do ano seguinte (Res. CGSN 140, art. 81, I, na redação da Res. 190,
 // em vigor desde 01/01/2027; até 2026 a comunicação de dezembro já valia pra janeiro seguinte e a de janeiro, pro
-// próprio ano). Presumido: a opção é o pagamento da 1ª quota do IRPJ do 1º trimestre (Lei 9.430, art. 26, §1º).
+// próprio ano). Presumido: a opção é o pagamento da 1ª quota do IRPJ do 1º trimestre (Lei 9.430, art. 26, §1º); Real
+// anual: a estimativa de janeiro, paga até o fim de fevereiro (art. 3º, parágrafo único, e art. 6º); Real trimestral: o 1º trimestre.
 export function prazosDaEscolha(hoje, regimeAtual, ano = 2027) {
   const h = String(hoje || '').slice(0, 10);
   const antes = (d) => h <= d;
@@ -478,6 +479,6 @@ export function prazosDaEscolha(hoje, regimeAtual, ano = 2027) {
       ? { titulo: 'Entrar no Simples em ' + ano, texto: 'A opção vai de 01 a 30/09/' + (ano - 1) + ', no Portal do Simples (LC 123, art. 16, na redação da LC 214).' }
       : { titulo: 'Entrar no Simples', texto: 'A janela de ' + ano + ' fechou em 30/09/' + (ano - 1) + '. A próxima é de 01 a 30/09/' + ano + ', pra ' + (ano + 1) + '.' });
   }
-  if (regimeAtual !== 'mei') out.push({ titulo: 'Presumido ou Real em ' + ano, texto: 'A escolha se faz no primeiro pagamento do IRPJ de ' + ano + ': no Presumido, a quota do 1º trimestre, que vence no fim de abril (Lei 9.430, art. 26, §1º).' });
+  if (regimeAtual !== 'mei') out.push({ titulo: 'Presumido ou Real em ' + ano, texto: 'A escolha se faz no primeiro pagamento do IRPJ de ' + ano + ': no Presumido e no Real trimestral, a quota do 1º trimestre, que vence no fim de abril (Lei 9.430, art. 26, §1º); no Real anual, a estimativa de janeiro, que vence no fim de fevereiro (Lei 9.430, art. 3º, parágrafo único).' });
   return out;
 }
