@@ -30,6 +30,8 @@ export const ROTULOS = {
   receita_sem_autorizacao: 'Empresas sem autorização da Receita pro escritório', receita_autorizacao_vencendo: 'Autorizações da Receita vencendo',
   receita_pgdas_atrasado: 'PGDAS não transmitido, segundo a Receita', receita_mensagem: 'Mensagens na Caixa Postal da Receita',
   receita_pendencia: 'Pendências na Receita', ponte_parada: 'Ponte da Receita parada',
+  // o Domínio pela ponte (02/11/2026): vigia_regras_dominio()
+  dominio_folha_sem_tarefa: 'Funcionários no Domínio sem as tarefas de folha do DP', ponte_dominio_parada: 'Ponte do Domínio parada',
   // os Relatórios Vivos (29/10/2026): vigia_regras_relatorios()
   relatorio_salto: 'Categorias acima do normal nos Relatórios Vivos', relatorio_dre_sem_grupo: 'Categorias fora do DRE',
   relatorio_duplicado: 'Lançamentos em dobro no Conta Azul', relatorio_sync_parado: 'Espelho do Conta Azul parado',

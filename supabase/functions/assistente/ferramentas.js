@@ -17,6 +17,8 @@
 // mesma conta, com o "e se" que não grava nada) e os estudos gravados (comparativos, só o resumo) — e no ver_empresa.
 // Desde 20/10/2026, o feed de notícias (noticias, com a fonte pelo nome e as empresas que cada uma alcança pelo nome) e a
 // revisão do honorário dos clientes (revisoes_honorario, só dos sócios) também — e as duas no ver_empresa.
+// Desde 02/11/2026, o Domínio pela ponte do PC do escritório (dominio_empresas, dominio_mensal, dominio_rodadas: a folha,
+// as notas e os lançamentos de cada empresa por mês, só os totais) — e os últimos meses no ver_empresa.
 // Lista branca: só as tabelas e colunas daqui são lidas. Ficam fora a senha/credencial do cadastro, o RG e o nascimento
 // das pessoas físicas do cadastro (o CPF e o endereço do cadastro entram: são o dado de trabalho do IRPF), os documentos
 // pessoais dos sócios (CPF, RG, endereço, nascimento), as respostas dos formulários de admissão e rescisão, as
@@ -143,6 +145,29 @@ export const TABELAS = {
     cols: ['inicio', 'fim', 'maquina', 'ambiente', 'chamadas_mes', 'empresas', 'sem_cadastro', 'faltou', 'recebida_em'],
     padrao: ['recebida_em', 'chamadas_mes', 'empresas', 'sem_cadastro', 'faltou'],
     notas: { faltou: 'lista [{documento, servico, motivo}] · motivo: sem_autorizacao | teto | erro | a_conferir' } },
+  // o Domínio pela ponte (02/11/2026): todo dia às 7h a ponte do PC do escritório lê o banco do Domínio Web (o sistema
+  // contábil, fiscal e da folha do escritório) e manda só os totais por empresa e mês — nunca dado de funcionário
+  dominio_empresas: { rotulo: 'as empresas do Domínio', pk: 'codigo',
+    desc: 'As empresas do banco do Domínio (o sistema contábil, fiscal e da folha do escritório), como a ponte do PC do escritório leu, ligadas ao cadastro pelo CNPJ ou CPF. O Domínio guarda também as empresas que já saíram do escritório (ativa = false). cliente_id vazio = não bateu com o cadastro.',
+    cols: ['codigo', 'cliente_id', 'nome', 'ativa', 'atualizado_em'],
+    padrao: ['codigo', 'cliente_id', 'nome', 'ativa'],
+    notas: { codigo: 'o código da empresa no Domínio', ativa: 'true = ativa no Domínio · false = inativa ou encerrada lá', cliente_id: 'vazio = não ligada ao cadastro do sistema' } },
+  dominio_mensal: { rotulo: 'os números do Domínio por mês', pk: 'codigo,competencia',
+    desc: 'Por empresa e mês, o que o Domínio diz (a ponte lê todo dia às 7h os 14 meses até hoje, então o que entra atrasado no Domínio aparece no dia seguinte): a folha (os empregados ativos no último dia do mês, as admissões, os desligamentos, os afastados, quantos sócios tiveram o pró-labore calculado), as notas (quantas saídas, com o serviço prestado, e quantas entradas, com o serviço tomado, e o valor contábil de cada lado) e os lançamentos contábeis. O mês de hoje e o passado ainda estão em fechamento no Domínio: os números deles são parciais. Null = o Domínio não disse (a folha de empresa inativa lá, ou um bloco que não foi lido).',
+    cols: ['codigo', 'competencia', 'cliente_id', 'funcionarios_ativos', 'admissoes', 'desligamentos', 'afastados', 'pro_labore', 'notas_saida', 'valor_saidas',
+      'notas_entrada', 'valor_entradas', 'lancamentos', 'ultimo_lancamento', 'atualizado_em'],
+    padrao: ['cliente_id', 'competencia', 'funcionarios_ativos', 'admissoes', 'desligamentos', 'pro_labore', 'notas_saida', 'valor_saidas', 'notas_entrada', 'valor_entradas', 'lancamentos'],
+    notas: { competencia: 'AAAA-MM', funcionarios_ativos: 'empregados (categorias 101 a 111 do eSocial, com o doméstico) ativos no último dia do mês',
+      afastados: 'empregados afastados no último dia do mês (fora férias)', pro_labore: 'QUANTOS sócios tiveram o pró-labore calculado no mês (uma contagem de pessoas, não um valor em R$)',
+      valor_saidas: 'o valor contábil das notas de saída (mercadoria e serviço prestado, fora as canceladas): NÃO é o faturamento — entram devolução, remessa e transferência · o faturamento vem do PGDAS (receita_pgdas)',
+      valor_entradas: 'o valor contábil do que o fiscal lançou na entrada do Domínio (as notas de compra, o serviço tomado e os outros documentos de entrada), fora os cancelados · notas_entrada pode passar das notas de compra em XML por isso',
+      lancamentos: 'quantos lançamentos contábeis no mês (fora o zeramento) · 0 com o mês já fechado = a contabilidade do mês não foi feita',
+      ultimo_lancamento: 'o dia do último lançamento do mês', cliente_id: 'vazio = a empresa do Domínio não bate com o cadastro' } },
+  dominio_rodadas: { rotulo: 'as leituras do Domínio',
+    desc: 'Cada leitura do Domínio que a ponte do PC do escritório mandou (a tarefa diária das 7h): quando, o dia dos dados, quantas empresas, quantas ligadas ao cadastro, quantas linhas de mês e o que faltou. Sem leitura há dias = o PC do escritório ficou desligado ou a ponte parou (o vigia avisa em 4 dias).',
+    cols: ['id', 'inicio', 'fim', 'dados_ate', 'maquina', 'ponte', 'empresas', 'ligadas', 'linhas', 'faltou', 'recebida_em'],
+    padrao: ['recebida_em', 'dados_ate', 'empresas', 'ligadas', 'linhas', 'faltou'],
+    notas: { dados_ate: 'o dia dos dados (a ponte lê o Domínio ao vivo)', faltou: 'lista [{bloco, motivo}] · bloco: folha | fiscal | contabil — o que não deu pra ler nesta leitura (o que já estava gravado fica)' } },
   admissoes: { rotulo: 'as admissões', desc: 'Admissões de funcionários que as empresas mandam pelo link (tela Admissões). As respostas do formulário não são lidas.',
     cols: ['id', 'cliente_id', 'empresa_nome', 'contato_nome', 'origem', 'funcionario_nome', 'data_inicio', 'responsavel', 'status', 'documentos', 'drive_pasta_url', 'observacoes',
       'respondida_em', 'registrada_em', 'registrada_por', 'criado_em', 'atualizado_em'],
@@ -220,12 +245,12 @@ export const TABELAS = {
   // o filtro fixo tira)
   vigia_achados: { rotulo: 'o que o vigia achou', fixoNaoSocio: 'so_socios=eq.false',
     notaNaoSocio: 'Pra quem não é sócio, os achados só dos sócios (o cliente da carteira sem cobrança e o cliente sem a mensalidade no Conta Azul, que usam o financeiro do escritório) não entram nesta leitura: desses, não diga que não há nenhum — diga que só os sócios veem.',
-    desc: 'O vigia do sistema: regras que rodam de hora em hora e acham o que ficou pra trás ou desencontrado (admissão sem registro, rescisão com pagamento chegando, alvará vencido, certificado digital do cliente vencendo sem aviso, boleto parado, cliente da carteira sem cobrança ou sem obrigação fiscal, o cliente com cobrança e sem a mensalidade (o contrato) no Conta Azul, o cliente novo fora dos boletos do mês já gerado, reajuste aceito na Precificação que não entrou no boleto ou no Conta Azul, obrigação, tarefa ou rotina sem responsável, a obrigação que as outras empresas do mesmo regime têm e esta tem desligada, a obrigação ligada que ficou sem a tarefa do mês, o prazo que uma notícia do feed traz chegando, proposta parada, cadastro desencontrado da carteira e, pela ponte da Receita (Integra Contador), a empresa que não autorizou o escritório, o PGDAS não transmitido depois do prazo, mensagem nova na Caixa Postal do e-CAC e pendência na situação fiscal e, nos Relatórios Vivos, só pros sócios, a categoria com o mês muito acima do normal, a categoria fora do DRE, o lançamento em dobro, o espelho do Conta Azul parado, os pagamentos não lidos e as datas estranhas...). Cada achado diz quem cuida e a tela onde se resolve. Arrumou na tela, ele some sozinho na rodada seguinte (resolvido); ignorado = alguém marcou que não é problema. O que precisa de atenção agora: situacao = aberto.',
+    desc: 'O vigia do sistema: regras que rodam de hora em hora e acham o que ficou pra trás ou desencontrado (admissão sem registro, rescisão com pagamento chegando, alvará vencido, certificado digital do cliente vencendo sem aviso, boleto parado, cliente da carteira sem cobrança ou sem obrigação fiscal, o cliente com cobrança e sem a mensalidade (o contrato) no Conta Azul, o cliente novo fora dos boletos do mês já gerado, reajuste aceito na Precificação que não entrou no boleto ou no Conta Azul, obrigação, tarefa ou rotina sem responsável, a obrigação que as outras empresas do mesmo regime têm e esta tem desligada, a obrigação ligada que ficou sem a tarefa do mês, o prazo que uma notícia do feed traz chegando, proposta parada, cadastro desencontrado da carteira e, pela ponte da Receita (Integra Contador), a empresa que não autorizou o escritório, o PGDAS não transmitido depois do prazo, mensagem nova na Caixa Postal do e-CAC e pendência na situação fiscal e, nos Relatórios Vivos, só pros sócios, a categoria com o mês muito acima do normal, a categoria fora do DRE, o lançamento em dobro, o espelho do Conta Azul parado, os pagamentos não lidos e as datas estranhas e, pela ponte do Domínio, a empresa com funcionários no Domínio sem as tarefas de folha do DP e a ponte parada...). Cada achado diz quem cuida e a tela onde se resolve. Arrumou na tela, ele some sozinho na rodada seguinte (resolvido); ignorado = alguém marcou que não é problema. O que precisa de atenção agora: situacao = aberto.',
     cols: ['id', 'regra', 'titulo', 'detalhe', 'setor', 'responsavel', 'gravidade', 'cliente_id', 'link', 'prazo', 'situacao', 'primeiro_visto', 'ultimo_visto', 'resolvido_em', 'ignorado_em', 'ignorado_por', 'motivo_ignorado'],
     padrao: ['regra', 'titulo', 'detalhe', 'responsavel', 'gravidade', 'situacao', 'primeiro_visto'],
     notas: { situacao: 'aberto (a conferir) | resolvido | ignorado', gravidade: 'alta (urgente) | media | baixa', responsavel: 'quem cuida; "Ambos" = Samuel e Diego',
       link: 'a tela onde se resolve', primeiro_visto: 'quando o vigia achou', ignorado_por: 'e-mail de quem ignorou',
-      regra: 'admissao_nao_registrada | admissao_sem_vinculo | rescisao_pagamento | rescisao_sem_vinculo | alvara_vencendo | certificado_vencendo | cliente_sem_cobranca | cliente_sem_contrato | cliente_sem_boleto | boletos_nao_gerados | boleto_parado | cobranca_ex_cliente | faturavel_parado | reajuste_nao_aplicado | cadastro_desencontrado | carteira_sem_cadastro | proposta_parada | transicao_atrasada | cliente_sem_obrigacao | obrigacao_sem_responsavel | obrigacao_ex_cliente | obrigacao_desligada | obrigacao_sem_tarefa | reforma_prazo | noticia_prazo | tarefa_responsavel | tarefa_repetida | tarefa_ex_cliente | recorrente_ex_cliente | rotina_sem_responsavel | receita_sem_autorizacao | receita_autorizacao_vencendo | receita_pgdas_atrasado | receita_mensagem | receita_pendencia | ponte_parada | relatorio_salto | relatorio_dre_sem_grupo | relatorio_duplicado | relatorio_sync_parado | relatorio_pagamentos_nao_lidos | relatorio_data_estranha' } },
+      regra: 'admissao_nao_registrada | admissao_sem_vinculo | rescisao_pagamento | rescisao_sem_vinculo | alvara_vencendo | certificado_vencendo | cliente_sem_cobranca | cliente_sem_contrato | cliente_sem_boleto | boletos_nao_gerados | boleto_parado | cobranca_ex_cliente | faturavel_parado | reajuste_nao_aplicado | cadastro_desencontrado | carteira_sem_cadastro | proposta_parada | transicao_atrasada | cliente_sem_obrigacao | obrigacao_sem_responsavel | obrigacao_ex_cliente | obrigacao_desligada | obrigacao_sem_tarefa | reforma_prazo | noticia_prazo | tarefa_responsavel | tarefa_repetida | tarefa_ex_cliente | recorrente_ex_cliente | rotina_sem_responsavel | receita_sem_autorizacao | receita_autorizacao_vencendo | receita_pgdas_atrasado | receita_mensagem | receita_pendencia | ponte_parada | relatorio_salto | relatorio_dre_sem_grupo | relatorio_duplicado | relatorio_sync_parado | relatorio_pagamentos_nao_lidos | relatorio_data_estranha | dominio_folha_sem_tarefa | ponte_dominio_parada' } },
   // o feed de notícias (20/10/2026): de hora em hora a função noticias lê as fontes e a IA diz se interessa, a importância,
   // os setores, o resumo, por que importa, o que fazer e quais clientes da carteira a notícia alcança (pelo cadastro)
   noticias: { rotulo: 'as notícias do feed', arrays: ['setores', 'clientes'], empresas: 'clientes', fonte: true,
@@ -295,7 +320,7 @@ export const DEFINICOES = [
     input_schema: { type: 'object', properties: { termo: { type: 'string', description: 'nome, parte do nome ou CNPJ/CPF' },
       limite: { type: 'integer', minimum: 1, maximum: 15, description: 'quantas (padrão 8)' } }, required: ['termo'] } },
   { name: 'ver_empresa',
-    description: 'Tudo o que o sistema tem de uma empresa num lugar só: cadastro, carteira, sócios, contatos, serviços contratados, honorários (base e últimos boletos), tarefas abertas, tarefas recorrentes, obrigações, alvarás, admissões e rescisões, Reforma (situação do caso), reuniões, transições, regularizações, propostas, faturáveis, DRE, Fator R, o que o vigia achou dela, as notícias do feed que a alcançam (30 dias) e, pros sócios, a revisão do honorário. Sem "empresa", usa a empresa aberta na tela.',
+    description: 'Tudo o que o sistema tem de uma empresa num lugar só: cadastro, carteira, sócios, contatos, serviços contratados, honorários (base e últimos boletos), tarefas abertas, tarefas recorrentes, obrigações, alvarás, admissões e rescisões, Reforma (situação do caso), reuniões, transições, regularizações, propostas, faturáveis, DRE, Fator R, o que o vigia achou dela, as notícias do feed que a alcançam (30 dias), o que a ponte da Receita consultou, os números do Domínio dos últimos meses (a folha, as notas e os lançamentos) e, pros sócios, a revisão do honorário. Sem "empresa", usa a empresa aberta na tela.',
     input_schema: { type: 'object', properties: { empresa: { type: 'string', description: 'id, nome ou CNPJ; vazio = a empresa aberta na tela' } } } },
   { name: 'agenda',
     description: 'A agenda de uma pessoa da equipe (ou de todos) num dia ou período: as tarefas não concluídas com prazo no período, as atrasadas (prazo antes de hoje) e as rotinas do escritório que caem no período (com a regra da agenda: dia útil, adiamento, fim de semana sem rotina). Sem "pessoa", é a agenda de quem pergunta.',
@@ -464,6 +489,49 @@ const fmtDoc = d => { const x = String(d || '').replace(/\D/g, ''); return x.len
 const maisDias = (iso, n) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 const diaSeguinte = iso => maisDias(iso, 1);
 const inicioBR = iso => iso + 'T00:00:00-03:00';
+// o mês 'AAAA-MM' de n meses antes do dia 'AAAA-MM-DD'
+export const mesAntes = (iso, n) => { const y = +String(iso).slice(0, 4), m = +String(iso).slice(5, 7) - 1 - n; const a = y + Math.floor(m / 12), mm = ((m % 12) + 12) % 12; return a + '-' + String(mm + 1).padStart(2, '0'); };
+
+// o Domínio na ver_empresa (02/11/2026): os meses que a ponte leu, do mais recente pro mais antigo, um por pedaço curto.
+// A empresa com dois códigos no Domínio (o mesmo documento) fica com o maior de cada número, como na Precificação.
+// O mês de hoje e o passado ainda estão em fechamento lá. Sem empresa e sem linha: '' (não está no Domínio ou não bateu)
+const CAMPOS_DOMINIO = ['funcionarios_ativos', 'admissoes', 'desligamentos', 'afastados', 'pro_labore', 'notas_saida', 'valor_saidas', 'notas_entrada', 'valor_entradas', 'lancamentos', 'ultimo_lancamento'];
+export function textoDoDominio(empresas, linhas, hoje) {
+  const emps = empresas || [], ls = linhas || [];
+  if (!emps.length && !ls.length) return '';
+  const porMes = new Map();
+  let lido = '';
+  for (const l of ls) {
+    if (!l || !l.competencia) continue;
+    const m = porMes.get(l.competencia) || {};
+    for (const c of CAMPOS_DOMINIO) {
+      const v = l[c];
+      if (v == null) continue;
+      const maior = c === 'ultimo_lancamento' ? String(v) > String(m[c] || '') : m[c] == null || +v > +m[c];
+      if (maior) m[c] = c === 'ultimo_lancamento' ? String(v) : +v;
+    }
+    porMes.set(l.competencia, m);
+    if (l.atualizado_em && String(l.atualizado_em) > lido) lido = String(l.atualizado_em);
+  }
+  const mesHoje = String(hoje).slice(0, 7), mesPassado = mesAntes(hoje, 1);
+  const n = (v, um, varios) => v + ' ' + (v === 1 ? um : varios);
+  const mes = (comp, m) => {
+    const p = [];
+    if (m.funcionarios_ativos != null) p.push('folha: ' + n(m.funcionarios_ativos, 'empregado ativo', 'empregados ativos')
+      + ' (' + n(m.admissoes || 0, 'admissão', 'admissões') + ', ' + n(m.desligamentos || 0, 'desligamento', 'desligamentos') + ', ' + n(m.afastados || 0, 'afastado', 'afastados') + ')'
+      + ' e ' + n(m.pro_labore || 0, 'sócio', 'sócios') + ' com pró-labore calculado');
+    if (m.notas_saida != null || m.notas_entrada != null) p.push('notas: ' + (m.notas_saida || 0) + ' de saída (' + brl(m.valor_saidas || 0) + ' de valor contábil) e '
+      + (m.notas_entrada || 0) + ' de entrada (' + brl(m.valor_entradas || 0) + ')');
+    if (m.lancamentos != null) p.push(n(m.lancamentos, 'lançamento contábil', 'lançamentos contábeis') + (m.ultimo_lancamento ? ', o último em ' + dataBR(m.ultimo_lancamento) : ''));
+    return comp.slice(5, 7) + '/' + comp.slice(0, 4) + (comp === mesHoje || comp === mesPassado ? ' (em fechamento)' : '') + ': ' + (p.join(' · ') || 'sem número');
+  };
+  const meses = [...porMes.keys()].sort().reverse();
+  const quem = emps.map(e => 'código ' + e.codigo + (e.ativa === false ? ', inativa lá' : e.ativa === true ? '' : ', situação lá não informada')).join(' e ');
+  return 'Domínio (pela ponte do PC do escritório, só os totais' + (lido ? '; lido em ' + diaDoMomento(lido) : '') + (quem ? ' · ' + quem : '') + '): '
+    + (meses.length ? meses.map(c => mes(c, porMes.get(c))).join(' | ')
+      + ' — o valor contábil das saídas não é o faturamento (esse vem do PGDAS); mais meses: consultar dominio_mensal'
+      : 'sem movimento nos últimos meses');
+}
 // a situação como a equipe fala (o banco grava em_transicao, a_emitir...)
 const SITUACAO = { em_transicao: 'em transição', a_emitir: 'a emitir', em_andamento: 'em andamento', em_registro: 'em registro', concluida: 'concluída',
   em_preparacao: 'em preparação', opcao_registrada: 'opção registrada', por_dentro: 'por dentro', por_fora: 'por fora', a_confirmar: 'a confirmar', sem_acordo: 'sem acordo',
@@ -730,7 +798,7 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     const id = a.id;
     const q = (caminho, op) => ler(caminho, op).then(r => r, err => ({ erro: (err && err.message) || 'erro' }));
     const desde30 = inicioBR(maisDias(hoje, -30));
-    const [cad, cart, soc, cont, serv, cobC, cobM, tar, rec, obr, alv, cert, adm, res, rt, reu, trE, reg, prec, fat, dre, fr, vig, nots, rev, rcE, rcP, rcM, cmp] = await Promise.all([
+    const [cad, cart, soc, cont, serv, cobC, cobM, tar, rec, obr, alv, cert, adm, res, rt, reu, trE, reg, prec, fat, dre, fr, vig, nots, rev, rcE, rcP, rcM, cmp, dmE, dmM] = await Promise.all([
       q('clientes?select=' + TABELAS.clientes.cols.join(',') + '&id=eq.' + id),
       q('carteira_info?select=entrada,saida,motivo_saida,segmento,sistemas,contab_digital,contato,ramo,observacao,inadimplente_desde&cliente_id=eq.' + id),
       q('socios?select=nome,qualificacao,participacao_percentual,eh_administrador,telefone,email&cliente_id=eq.' + id + '&order=participacao_percentual.desc.nullslast'),
@@ -765,7 +833,11 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
       q('receita_pgdas?select=competencia,transmitida_em,das_pago,receita_mes,receita_12_meses&cliente_id=eq.' + id + '&order=competencia.desc&limit=6'),
       q('receita_mensagens?select=assunto,enviada_em,origem,lida&cliente_id=eq.' + id + '&order=enviada_em.desc.nullslast,recebida_em.desc&limit=5'),
       // o comparativo tributário: o estudo gravado (só o resumo; o porquê e o "e se", pela ferramenta comparativo)
-      q('comparativos?select=resultado,atualizado_em,atualizado_por&cliente_id=eq.' + id + '&order=atualizado_em.desc&limit=1')
+      q('comparativos?select=resultado,atualizado_em,atualizado_por&cliente_id=eq.' + id + '&order=atualizado_em.desc&limit=1'),
+      // o Domínio pela ponte (02/11/2026): a folha, as notas e os lançamentos dos últimos 6 meses
+      q('dominio_empresas?select=codigo,ativa&cliente_id=eq.' + id + '&order=codigo.asc'),
+      q('dominio_mensal?select=codigo,competencia,' + CAMPOS_DOMINIO.join(',') + ',atualizado_em&cliente_id=eq.' + id + '&competencia=gte.' + mesAntes(hoje, 5)
+        + '&order=competencia.desc,codigo.asc&limit=60')
     ]);
     if (cad.erro) throw new Error(cad.erro);
     const c = cad.linhas[0];
@@ -830,6 +902,8 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
       if (rcM.linhas.length) pedacos.push('Caixa Postal: ' + rcM.linhas.map(m => valorCurto(m.assunto, 90) + (m.enviada_em ? ' (' + dataBR(m.enviada_em) + ')' : '') + (m.origem && m.origem !== 'Receita' ? ' [' + m.origem + ']' : '') + (m.lida ? '' : ', não lida')).join(' · '));
       partes.push('Receita (pela ponte do Integra Contador, só consulta): ' + (pedacos.join(' | ') || 'consultada, sem dado') + (r.pgdas_em ? ' — PGDAS consultado em ' + diaDoMomento(r.pgdas_em) : ''));
     }
+    // o Domínio pela ponte: sem empresa ligada, não está no Domínio (ou o documento não bate com o cadastro)
+    if (!dmE.erro && !dmM.erro) { const t = textoDoDominio(dmE.linhas, dmM.linhas, hoje); if (t) partes.push(t); }
     sec('Admissões', adm, (ls, total) => (total || ls.length) + ' — ' + ls.map(x => x.funcionario_nome + ' (início ' + dataBR(x.data_inicio) + ', ' + (x.status === 'respondida' ? 'recebida, a registrar' : situacao(x.status)) + ')').join(' · '), 'nenhuma');
     sec('Rescisões', res, (ls, total) => (total || ls.length) + ' — ' + ls.map(x => x.funcionario_nome + ' (' + situacao(x.tipo) + ', último dia ' + dataBR(x.ultimo_dia) + ', pagar até ' + dataBR(x.data_acerto) + ', '
       + (x.status === 'recebida' ? 'recebida, a calcular' : situacao(x.status)) + ')').join(' · '), 'nenhuma');

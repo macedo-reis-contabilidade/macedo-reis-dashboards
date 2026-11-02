@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { TABELAS, OPS, DEFINICOES, filtroUrl, montarConsulta, criarFerramentas, descreverEtapa, normalizarBusca } from '../supabase/functions/assistente/ferramentas.js';
+import { TABELAS, OPS, DEFINICOES, filtroUrl, montarConsulta, criarFerramentas, descreverEtapa, normalizarBusca, textoDoDominio, mesAntes } from '../supabase/functions/assistente/ferramentas.js';
 import { montarSistema, preambulo, dicionario, INSTRUCOES, marcaOutroDia } from '../supabase/functions/assistente/prompt.js';
 import { criarServidor, limparContexto, limparPagina, limparHistorico, diaBR, LIMITE_DIA } from '../supabase/functions/assistente/servidor.js';
 import { responder, erroDoChat } from '../supabase/functions/reforma-chat/agente.js';
@@ -963,6 +963,42 @@ console.log('O comparativo tributário (a mesma conta da tela, com o "e se"):');
   await criarServidor({ env: k => ENV[k], fetch: f2, agora: () => AGORA, chamar: async c => { corpoModelo = c; return final('ok')(); } })(pedido({ pergunta: 'Qual o mais barato?', contexto: { pagina: { caminho: 'fiscal-comparativo.html', nome: 'Comparativo tributário', setor: 'fiscal' }, comparativo_id: EST } }));
   const msg = corpoModelo.messages[corpoModelo.messages.length - 1].content.map(b => b.text).join('');
   chk('o servidor: o estudo sem cadastro aberto vai no preâmbulo pelo nome (sem colchete)', /Estudo do Comparativo tributário aberto na tela: PROSPECT  LTDA , empresa sem cadastro/.test(msg) && /Tela aberta: Comparativo tributário — fiscal-comparativo\.html \(setor fiscal\)/.test(msg), msg);
+}
+
+{
+  // o Domínio pela ponte (02/11/2026): a lista branca sem o documento, as notas do que é parcial e do que não é faturamento,
+  // e os últimos meses no ver_empresa
+  console.log('O Domínio:');
+  chk('a lista branca: as três tabelas, sem o documento da empresa; a ordem estável pelo código e o mês',
+    ['dominio_empresas', 'dominio_mensal', 'dominio_rodadas'].every(t => TABELAS[t]) && !TABELAS.dominio_empresas.cols.includes('documento')
+    && TABELAS.dominio_mensal.pk === 'codigo,competencia' && TABELAS.dominio_empresas.pk === 'codigo');
+  chk('as notas: o valor das saídas não é o faturamento e o pró-labore é uma contagem de sócios', /NÃO é o faturamento/.test(TABELAS.dominio_mensal.notas.valor_saidas)
+    && /QUANTOS sócios/.test(TABELAS.dominio_mensal.notas.pro_labore) && /em fechamento/.test(TABELAS.dominio_mensal.desc));
+  chk('o prompt diz quando usar o Domínio e o que ele não é', /Os números do Domínio/.test(INSTRUCOES) && /não o faturamento/.test(INSTRUCOES) && /nome de funcionário nem salário/.test(INSTRUCOES));
+  chk('o mês de n meses antes (virando o ano)', mesAntes('2026-11-02', 0) === '2026-11' && mesAntes('2026-11-02', 5) === '2026-06' && mesAntes('2026-02-10', 3) === '2025-11' && mesAntes('2026-01-31', 13) === '2024-12');
+  const L = (comp, x = {}) => ({ codigo: 7, competencia: comp, funcionarios_ativos: 6, admissoes: 1, desligamentos: 0, afastados: 0, pro_labore: 2, notas_saida: 120, valor_saidas: 300000,
+    notas_entrada: 80, valor_entradas: 150000.5, lancamentos: 250, ultimo_lancamento: comp + '-28', atualizado_em: '2026-11-02T10:05:00Z', ...x });
+  const t = textoDoDominio([{ codigo: 7, ativa: true }], [L('2026-11', { funcionarios_ativos: 6, admissoes: 0, notas_saida: 3, valor_saidas: 900, notas_entrada: 0, valor_entradas: 0, lancamentos: 0, ultimo_lancamento: null }),
+    L('2026-10'), L('2026-09', { admissoes: 0, desligamentos: 1, afastados: 1, pro_labore: 1 })], '2026-11-02');
+  chk('ver_empresa: os meses do mais recente pro mais antigo, os dois em fechamento marcados, a folha, as notas e os lançamentos',
+    /^Domínio \(pela ponte do PC do escritório, só os totais; lido em 02\/11\/2026 · código 7\): 11\/2026 \(em fechamento\): /.test(t)
+    && /10\/2026 \(em fechamento\): folha: 6 empregados ativos \(1 admissão, 0 desligamentos, 0 afastados\) e 2 sócios com pró-labore calculado · notas: 120 de saída \(R\$\s?300\.000,00 de valor contábil\) e 80 de entrada \(R\$\s?150\.000,50\) · 250 lançamentos contábeis, o último em 28\/10\/2026/.test(t)
+    && /09\/2026: folha: 6 empregados ativos \(0 admissões, 1 desligamento, 1 afastado\) e 1 sócio com pró-labore calculado/.test(t) && !/09\/2026 \(em fechamento\)/.test(t)
+    && t.indexOf('11/2026') < t.indexOf('10/2026') && t.indexOf('10/2026') < t.indexOf('09/2026') && /não é o faturamento/.test(t), t);
+  const dois = textoDoDominio([{ codigo: 7, ativa: false }, { codigo: 9, ativa: true }], [L('2026-08', { codigo: 7, funcionarios_ativos: 0, notas_saida: 0 }), L('2026-08', { codigo: 9, funcionarios_ativos: 4, notas_saida: 50, valor_saidas: 1000 })], '2026-11-02');
+  chk('dois códigos com o mesmo documento: o maior de cada número, e o inativo lá dito', /código 7, inativa lá e código 9/.test(dois) && /08\/2026: folha: 6 empregados ativos/.test(dois) === false
+    && /08\/2026: folha: 4 empregados ativos/.test(dois) && /50 de saída \(R\$\s?300\.000,00/.test(dois), dois);
+  chk('sem movimento: diz; sem empresa e sem linha: nada', /código 7\): sem movimento nos últimos meses$/.test(textoDoDominio([{ codigo: 7, ativa: true }], [], '2026-11-02')) && textoDoDominio([], [], '2026-11-02') === '');
+  const semFolha = textoDoDominio([{ codigo: 7, ativa: false }], [L('2026-08', { funcionarios_ativos: null, admissoes: null, desligamentos: null, afastados: null, pro_labore: null })], '2026-11-02');
+  chk('a folha que o Domínio não disse (null) não vira zero no texto', !/folha:/.test(semFolha) && /notas: 120 de saída/.test(semFolha), semFolha);
+  const { banco, log } = bancoFalso({ extras: { dominio_empresas: [{ codigo: 7, cliente_id: ID_A, ativa: true }],
+    dominio_mensal: [{ ...L('2026-10'), cliente_id: ID_A }, { ...L('2026-04'), cliente_id: ID_A }, { ...L('2026-10', { codigo: 8, notas_saida: 999 }), cliente_id: ID_B }] } });
+  const v = await criarFerramentas({ banco, hoje: '2026-11-02', usuario: { nome: 'Vitória', socio: false } }).ver_empresa({ empresa: ID_A });
+  const linha = v.split('\n').find(x => x.startsWith('Domínio')) || '';
+  chk('ver_empresa: a linha do Domínio, só os 6 meses e só desta empresa', /10\/2026 \(em fechamento\): folha: 6 empregados ativos/.test(linha) && !/04\/2026/.test(linha) && !/999/.test(linha)
+    && log.some(x => x.caminho.startsWith('dominio_mensal?') && x.caminho.includes('competencia=gte.2026-06')), linha || v.slice(-400));
+  const sem = await criarFerramentas({ banco: bancoFalso().banco, hoje: '2026-11-02', usuario: {} }).ver_empresa({ empresa: ID_A });
+  chk('ver_empresa: a empresa fora do Domínio não ganha a linha', !/^Domínio/m.test(sem));
 }
 
 console.log('Commit fixado na função (o código cru do GitHub):');
