@@ -1,8 +1,9 @@
 # Ponte do Domínio
 
-Programa que roda **no PC do escritório** (ligado o tempo todo). Todo dia, num horário marcado, lê a cópia do banco
-do Domínio (por ODBC, só leitura — a Domínio atualiza a cópia uma vez por dia, com os dados até o dia anterior),
-soma **por empresa e por mês** e manda **só os totais** pro sistema.
+Programa que roda **no PC do escritório** (ligado o tempo todo). Todo dia, num horário marcado, lê o banco do
+Domínio Web (por ODBC, só leitura — o de produção, ao vivo: o plano esperava uma cópia do dia anterior, e em
+02/11/2026 o banco mostrou as notas e os lançamentos do próprio dia), soma **por empresa e por mês** e manda **só os
+totais** pro sistema.
 
 **O que não sai deste PC:** nome, CPF e salário de funcionário, ou qualquer coisa além dos campos do contrato
 (`ponte/fonte.py` e `ponte/pacote.py`). As consultas já devolvem contado; o que vier a mais é jogado fora antes de
@@ -64,8 +65,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ponte\instalar.ps1 -Remover
 
 A tarefa "Ponte Domínio" roda a **cópia instalada** em `C:\ponte-dominio\app\ponte` — nunca a pasta do repositório,
 que muda de branch. Pra atualizar a ponte, rode o `instalar.ps1` de novo — **o da pasta do repositório** (o da cópia
-instalada se recusa: apagaria a própria pasta antes de copiá-la). O horário certo depende de quando a cópia da Domínio
-atualiza. A pasta `C:\ponte-dominio` fica só pro seu usuário, o sistema e os administradores; o `config.ini`, só pro
+instalada se recusa: apagaria a própria pasta antes de copiá-la). Com o banco ao vivo, o horário não depende de cópia:
+às 07:00 o dia anterior já está inteiro (o `dados_ate` do pacote é o dia da rodada). A pasta `C:\ponte-dominio` fica só pro seu usuário, o sistema e os administradores; o `config.ini`, só pro
 seu usuário.
 
 ## Onde ficam as coisas
@@ -131,6 +132,15 @@ py -3 -m ponte dominio sql --arquivo ponte\consultas\folha.sql --mes 2026-09
 
 ## Escrever as consultas
 
+**As quatro estão prontas desde 02/11/2026** (a fila de 29/10; as tabelas, as regras, os números de conferência e o
+que a equipe confirma estão em `docs/FILA-CODE-2026-10-29-DUVIDAS.md`). Cada uma roda em 1 a 3 segundos. Duas regras
+que não estavam no plano: a nota com mais de um acumulador ou CFOP fica em várias linhas no Domínio (os segmentos, cada
+um com a sua parte do valor) — conta uma vez e soma as linhas —; e a folha só entra pra empresa ativa no Domínio ou
+com a folha mensal calculada no mês (sem o corte, 261 empregados sem rescisão, de 37 empresas que saíram do
+escritório, contariam como ativos todo mês). O `valor_saidas` é o valor contábil de tudo que saiu (devolução, remessa,
+transferência, bonificação), não o faturamento. Mudou uma consulta: `py -3 tests/ponte.test.py` confere que ela
+segue com o comentário no começo, as colunas do contrato e os parâmetros.
+
 As consultas ficam em `ponte\consultas\` (`empresas.sql`, `folha.sql`, `fiscal.sql`, `contabil.sql`). Enquanto a
 consulta tiver a linha `-- A CONFERIR`, ela não roda: o bloco vai pro `faltou` do pacote, e sem a de empresas a
 rodada não manda nada. O que cada uma recebe e devolve está no começo de `ponte\fonte_dominio.py` (folha, fiscal e
@@ -145,7 +155,8 @@ contábil recebem o primeiro e o último dia do mês, nessa ordem, e devolvem **
    é público.
 4. **Confira 10 empresas à mão contra o Domínio** — funcionários, admissões, notas, valores, lançamentos — antes
    de ligar o envio. É o portão da fase 2 do plano: sem isso, não liga. Até lá, a função `ponte` do sistema recusa os
-   totais do Domínio (422).
+   totais do Domínio (422). A folha das 10 empresas de 09/2026 ficou em `C:\ponte-dominio\conferencia-10.txt`
+   (02/11/2026): o DP confere a folha, o fiscal as notas e o contábil os lançamentos.
 
 ---
 
@@ -229,15 +240,19 @@ py -3 -m ponte receita rodar --falso --sem-enviar                 # o Serpro de 
 
 ## O primeiro uso (com o contrato)
 
-1. `py -3 -m ponte receita conferir` — tudo "preenchido", o certificado em dia e "Token: ok".
-2. Com o `ambiente = producao` no `config.ini`:
-   `py -3 -m ponte receita rodar --so autorizacao,pgdas,faturamento,situacao_fiscal --empresas 5 --sem-enviar --saida conferencia.json`
-3. **O Samuel confere as 5 empresas no e-CAC** (procuração, meses declarados, DAS pago, a receita do mês e dos 12
-   meses, as pendências) contra o `C:\ponte-dominio\conferencia.json`. Sem isso, não liga.
-4. Liga: `powershell -NoProfile -ExecutionPolicy Bypass -File ponte\instalar.ps1 -Receita` (como administrador) —
-   a tarefa **"Ponte Receita"**, de segunda a sexta às 08:30 (`-Hora` muda). `-Remover -Receita` tira só ela. Com o
-   `chave_ponte` ainda vazio (ou o do exemplo), ele roda o `py -3 -m ponte chave` no fim e mostra a impressão digital:
-   mande-a pro Claude da sessão do Samuel.
+**Decisão do Samuel (28/10/2026): liga direto na carteira toda e confere depois, pelo sistema** — sem a conferência
+prévia de 5 empresas no e-CAC; o e-CAC, só onde o cruzamento do sistema não bater.
+
+1. `powershell -NoProfile -ExecutionPolicy Bypass -File ponte\instalar.ps1 -Receita` (como administrador, na pasta
+   do repositório): as chaves, o caminho do `.pfx`, a senha dele e o CNPJ do escritório são digitados na janela; ele
+   registra a tarefa **"Ponte Receita"**, de segunda a sexta às 08:30 (`-Hora` muda; `-Remover -Receita` tira só
+   ela). Com o `chave_ponte` ainda vazio (ou o do exemplo), roda o `py -3 -m ponte chave` no fim e mostra a impressão
+   digital: mande-a pro Claude da sessão do Samuel.
+2. O `ambiente = producao` no `config.ini` — só essa linha, pelo `gravar_campo` da ponte (o arquivo não se abre).
+3. `py -3 -m ponte receita conferir` — tudo "preenchido", o certificado em dia e "Token: ok".
+4. A primeira rodada, mandando pro sistema: `py -3 -m ponte receita rodar` (alguns minutos). O Claude da sessão do
+   Samuel cruza o que veio com o que o sistema já sabe — o PGDAS com as tarefas da Agenda, o faturamento com a ficha da
+   Reforma, as autorizações, a Caixa Postal, as pendências — e aponta só o que não bate.
 
 ## Onde ficam as coisas
 

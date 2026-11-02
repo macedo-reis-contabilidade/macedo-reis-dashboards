@@ -23,8 +23,8 @@
   Rode num PowerShell aberto como administrador (registrar a tarefa pede).
 
 .PARAMETER Hora
-  O horário da rodada, HH:mm (padrão 07:00; com -Receita, 08:30). O do Domínio depende da hora em que a cópia da
-  Domínio atualiza.
+  O horário da rodada, HH:mm (padrão 07:00; com -Receita, 08:30). O banco do Domínio Web é ao vivo (02/11/2026):
+  às 07:00 o dia anterior já está inteiro.
 
 .PARAMETER Remover
   Tira a tarefa (com -Receita, só a "Ponte Receita"). Não apaga C:\ponte-dominio: a configuração, os logs e os

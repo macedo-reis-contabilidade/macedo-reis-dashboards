@@ -1,4 +1,4 @@
-"""O Domínio de verdade: a cópia do banco (SQL Anywhere) por ODBC, só leitura.
+"""O Domínio de verdade: o banco do Domínio Web (SQL Anywhere 17, o de produção, ao vivo) por ODBC, só leitura.
 
 Cada bloco tem a sua consulta num arquivo em ponte/consultas/ — empresas.sql, folha.sql, fiscal.sql, contabil.sql.
 Consulta que ainda tem a linha "-- A CONFERIR" não roda: o bloco fica de fora da rodada (vai pro `faltou` do

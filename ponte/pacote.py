@@ -14,7 +14,8 @@ Regras:
   - Um bloco entra inteiro ou fica de fora inteiro: se a consulta está a conferir, deu erro, ou devolveu mais de uma
     linha pra mesma empresa no mês (sinal de que não veio contada), os campos dele ficam null em todas as linhas e
     o bloco vai pro `faltou`.
-  - `dados_ate` é ontem (a cópia do Domínio é do dia anterior); as horas, com o fuso do PC.
+  - `dados_ate` é o dia da rodada: o banco do Domínio Web é o de produção, ao vivo (02/11/2026 — o plano era uma
+    cópia do dia anterior, e a ponte usava ontem); as horas, com o fuso do PC.
 """
 import datetime
 import re
@@ -37,8 +38,8 @@ def agora():
     return datetime.datetime.now().astimezone().isoformat(timespec='seconds')
 
 
-def ontem():
-    return datetime.date.today() - datetime.timedelta(days=1)
+def hoje():
+    return datetime.date.today()
 
 
 def competencias(dados_ate, meses):
@@ -224,7 +225,7 @@ def ler(fonte, comps, registro):
 def montar(fonte, meses, registro, inicio=None, dados_ate=None):
     """O pacote inteiro, pronto pra virar JSON."""
     inicio = inicio or agora()
-    dados_ate = dados_ate or ontem()
+    dados_ate = dados_ate or hoje()
     comps = competencias(dados_ate, meses)
     empresas, mensal, faltou = ler(fonte, comps, registro)
     return {

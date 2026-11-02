@@ -7,7 +7,7 @@ Cada caso usa uma pasta temporária em PONTE_PASTA e um sistema de mentira (http
 também responde o "IP de saída" do conferir (203.0.113.7, endereço de documentação — não é de ninguém).
 Empresas, chaves e senhas são todas inventadas.
 
-  1. rodar --falso --sem-enviar: as empresas, as linhas dos 3 meses, os tipos, dados_ate = ontem e null onde a fonte
+  1. rodar --falso --sem-enviar: as empresas, as linhas dos 3 meses, os tipos, dados_ate = hoje e null onde a fonte
      não trouxe (um 0 de verdade continua 0)
   2. campo a mais vindo da fonte (nome de funcionário, salário) não sai no pacote
   3. consulta "-- A CONFERIR" fica de fora e vai pro faltou; sem a de empresas, nada é mandado (e nem conecta);
@@ -222,12 +222,12 @@ def logs(pasta):
     return '\n'.join(a.read_text(encoding='utf-8') for a in sorted(p.glob('*.log'))) if p.is_dir() else ''
 
 
-def ontem():
-    return datetime.date.today() - datetime.timedelta(days=1)
+def hoje():
+    return datetime.date.today()
 
 
 def comps_esperadas(n, ate=None):
-    d = ate or ontem()
+    d = ate or hoje()
     ano, mes, saida = d.year, d.month, []
     for _ in range(n):
         saida.append(f'{ano:04d}-{mes:02d}')
@@ -265,7 +265,7 @@ def caso_pacote():
     ok(p['versao'] == 1 and set(p) == {'versao', 'rodada', 'empresas', 'mensal', 'faltou'}, 'versão 1, só as cinco chaves do contrato')
     r = p['rodada']
     ok(set(r) == {'id', 'inicio', 'fim', 'dados_ate', 'maquina', 'ponte'}, 'rodada com id, inicio, fim, dados_ate, maquina, ponte')
-    ok(r['dados_ate'] == ontem().isoformat(), f"dados_ate é ontem ({r['dados_ate']})")
+    ok(r['dados_ate'] == hoje().isoformat(), f"dados_ate é hoje — o banco do Domínio Web é ao vivo ({r['dados_ate']})")
     ok(re.fullmatch(r'[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}', r['id']) is not None, 'id é um uuid4')
     hora_com_fuso = r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d'
     ok(re.fullmatch(hora_com_fuso, r['inicio']) and re.fullmatch(hora_com_fuso, r['fim']) and r['inicio'] <= r['fim'],
@@ -283,7 +283,7 @@ def caso_pacote():
 
     comps = comps_esperadas(3)
     ok(len(p['mensal']) == 12, f"12 linhas mensais = 4 empresas × 3 meses (vieram {len(p['mensal'])})")
-    ok(sorted({l['competencia'] for l in p['mensal']}) == comps, f'as 3 competências até o mês de ontem: {", ".join(comps)}')
+    ok(sorted({l['competencia'] for l in p['mensal']}) == comps, f'as 3 competências até o mês de hoje: {", ".join(comps)}')
     ok(all(list(l) == CONTRATO_MENSAL for l in p['mensal']), 'cada linha mensal com os campos do contrato da fila, nessa ordem')
     inteiros = ('funcionarios_ativos', 'admissoes', 'desligamentos', 'afastados', 'pro_labore', 'notas_saida', 'notas_entrada', 'lancamentos')
     ok(all(l[c] is None or type(l[c]) is int for l in p['mensal'] for c in inteiros), 'contagens: inteiro ou null')
@@ -443,8 +443,24 @@ def caso_a_conferir(sis):
     escrever_config(pasta, url=sis.url)
     sis.zerar()
     cod, out = ponte(pasta, 'rodar')                 # o Domínio de verdade, com as consultas do repositório
-    ok(cod == 0 and len(sis.recebidos) == 0, f'pelo programa, com as consultas do repositório (todas a conferir): sai com 0 e nada é mandado (saiu {cod}, {len(sis.recebidos)} envio(s))')
-    ok('A CONFERIR' in out and 'A CONFERIR' in logs(pasta), 'e avisa na tela e no log')
+    # 02/11/2026: as quatro prontas — a rodada tenta abrir o Domínio; aqui, sem o pyodbc, não abre e diz o que falta
+    ok(cod == 2 and len(sis.recebidos) == 0,
+       f'pelo programa, com as consultas do repositório (prontas) e sem o pyodbc: sai com 2 e nada é mandado (saiu {cod}, {len(sis.recebidos)} envio(s))')
+    ok('falta o pyodbc' in out and 'falta o pyodbc' in logs(pasta) and 'Traceback' not in out,
+       'e diz na tela e no log que falta o pyodbc, sem o rastro do Python')
+
+    # as consultas do repositório: prontas, cada uma com o comentário no começo, as colunas do contrato (AS) e os
+    # parâmetros que a fonte manda (empresas, nenhum; as outras, o primeiro e o último dia do mês, uma vez cada)
+    from ponte.fonte import CAMPOS_EMPRESA, CAMPOS_MES
+    from ponte.fonte_dominio import PASTA_CONSULTAS, a_conferir
+    for bloco, campos in (('empresas', CAMPOS_EMPRESA),) + tuple((b, ('codigo',) + c) for b, c in CAMPOS_MES.items()):
+        texto = (PASTA_CONSULTAS / f'{bloco}.sql').read_text(encoding='utf-8-sig')
+        codigo = '\n'.join(l.split('--', 1)[0] for l in texto.splitlines())
+        faltam = [c for c in campos if not re.search(rf'\bAS\s+{c}\b', codigo, re.I)]
+        ok(not a_conferir(texto) and texto.lstrip().startswith('--') and not faltam
+           and codigo.count('?') == (0 if bloco == 'empresas' else 2),
+           f'{bloco}.sql pronta: o comentário no começo, as colunas do contrato e {"nenhum parâmetro" if bloco == "empresas" else "os 2 parâmetros"}'
+           + (f' (faltam: {", ".join(faltam)})' if faltam else ''))
 
 
 # ---------------------------------------------------------------- 4 e 5: o envio
@@ -553,7 +569,7 @@ def caso_segredos(sis):
     saidas.append(ponte(pasta, 'rodar', '--falso', '--saida', str(pasta / 'saida.json'))[1])
     saidas.append(rodar_dentro(pasta, porta_fechada())[1])             # a rodada de verdade, rede fora: grava pendente
     escrever_config(pasta, url=sis.url, conexao=CONEXAO + ';LINKS=tcpip(host=srv-inexistente)')
-    saidas.append(ponte(pasta, 'rodar')[1])                            # o Domínio de verdade (consultas a conferir)
+    saidas.append(ponte(pasta, 'rodar')[1])                            # o Domínio de verdade (sem o pyodbc, não abre)
     arquivos = [a for a in pasta.rglob('*') if a.is_file() and a.name != 'config.ini']
     ok(any(a.parent.name == 'logs' for a in arquivos) and any(a.parent.name == 'pendentes' for a in arquivos),
        'houve log e pendente pra conferir')

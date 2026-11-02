@@ -47,7 +47,7 @@ def rodar(falso=False, sem_enviar=False, saida=None, meses=None):
             reg(problema, 'aviso')
 
     inicio = pacote.agora()
-    reg(f'rodada da ponte {VERSAO}: {meses} mes(es), dados até {pacote.ontem():%d/%m/%Y}'
+    reg(f'rodada da ponte {VERSAO}: {meses} mes(es), dados até {pacote.hoje():%d/%m/%Y}'
         + (' — Domínio de mentira' if falso else '') + (' — sem enviar' if sem_enviar else ''))
 
     # ---- lê e monta
@@ -63,6 +63,10 @@ def rodar(falso=False, sem_enviar=False, saida=None, meses=None):
         reg('a consulta de empresas ainda está "A CONFERIR" (falta a documentação da Domínio): nada a mandar', 'aviso')
         return OK
     except Exception as e:
+        if isinstance(e, ImportError) and 'pyodbc' in f'{getattr(e, "name", "") or ""} {e}':
+            # sem o pyodbc (ou com ele quebrado), tentar de novo amanhã não adianta: é o PC que precisa dele
+            reg('falta o pyodbc neste PC (py -3 -m pip install pyodbc): sem ele, a ponte não lê o Domínio', 'erro')
+            return NAO_ADIANTA
         reg(f'não consegui ler o Domínio: {type(e).__name__}: {e}', 'erro')
         reg(traceback.format_exc().rstrip(), 'erro')
         return TENTAR_DE_NOVO
