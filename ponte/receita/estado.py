@@ -92,6 +92,10 @@ class Estado:
         elif servico == 'situacao_fiscal':
             self.d['situacao_fiscal'][doc] = hoje.isoformat()
 
+    def conhece_autorizacao(self, doc):
+        """Alguma consulta da autorização já disse a situação da empresa (ativa, vencida ou sem)."""
+        return bool((self.d['autorizacao'].get(doc) or {}).get('situacao'))
+
     def sem_autorizacao(self, doc, hoje):
         """A última consulta disse sem procuração, ou vencida (ou ela venceu desde então) — ou disse ativa só pro CPF do
         procurador e a rodada não tem o procurador (tirado do config.ini): a Receita negaria em nome do escritório."""

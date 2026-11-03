@@ -106,7 +106,12 @@ def executar(cli, empresas, est, hoje, so, pasta, reg):
             falta(doc, 'autorizacao', f)
             if f.feita:
                 # o Serpro respondeu: até o próximo dia marcado não pergunta de novo ('sem' = toda segunda pergunta)
-                est.marcar_consulta('autorizacao', doc, hoje, situacao='sem' if f.motivo == 'sem_autorizacao' else None)
+                situacao = 'sem' if f.motivo == 'sem_autorizacao' else None
+                if f.procurador and not est.conhece_autorizacao(doc):
+                    # sem o procurador nesta rodada, a empresa de que o estado não lembra nada fica com a resposta do
+                    # escritório (sem a procuração): fora das outras consultas, que a Receita negaria
+                    situacao = 'sem'
+                est.marcar_consulta('autorizacao', doc, hoje, situacao=situacao)
             if f.motivo == 'sem_autorizacao':
                 negados.add(doc)
     # a empresa cuja última consulta da autorização disse sem (ou vencida) e que hoje não teve resposta também fica de

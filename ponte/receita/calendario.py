@@ -18,13 +18,16 @@ empresa que nunca foi consultada roda na primeira rodada.
     faturamento      Simples: quando o pgdas mostra um mês declarado cuja declaração ainda não foi lida
                      (decidido depois do pgdas, em servicos.py)
     caixa_postal     todas: todo dia útil
-    situacao_fiscal  todas: o dia 5 (ou o próximo dia útil)
+    situacao_fiscal  todas: o dia 5 (ou o próximo dia útil); a consulta feita nos 7 dias antes dele vale por ele
 """
 import calendar
 import datetime
 
 UM_DIA = datetime.timedelta(days=1)
 PRAZO_PGDAS = 20
+# a situação fiscal feita até 7 dias antes do dia marcado vale por ele (03/11/2026: as empresas que passaram a ser
+# consultadas no dia 3, com o procurador, repetiriam tudo no dia 5 — umas 240 chamadas pagas pelo mesmo retrato)
+FOLGA_SITUACAO = 7
 
 
 def dia_util(d):
@@ -221,7 +224,9 @@ def servicos_do_dia(hoje, empresa, estado):
         s.add('autorizacao')
     if simples and pendente(estado.consultada_em('pgdas', doc), marca_pgdas(hoje, estado.meses_declarados(doc))):
         s.add('pgdas')
-    if pendente(estado.consultada_em('situacao_fiscal', doc), marca_situacao(hoje)):
+    marca = marca_situacao(hoje)
+    if pendente(estado.consultada_em('situacao_fiscal', doc),
+                marca - datetime.timedelta(days=FOLGA_SITUACAO) if marca else None):
         s.add('situacao_fiscal')
     return s
 

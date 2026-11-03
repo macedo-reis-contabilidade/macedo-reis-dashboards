@@ -136,6 +136,12 @@ def autorizacao(cli, empresa, hoje):
             # a autorização dela fica sem resposta nesta rodada
             raise Falta('erro', 'a procuração pro CPF do procurador não pôde ser conferida: '
                         + (f.detalhe or 'acesso negado'), feita=f.feita)
+        if f.procurador:
+            # sem o token do procurador nesta rodada (o e-CPF vencido ou de outro CPF, a senha errada, o termo recusado):
+            # a parte do escritório já foi respondida — a autorização conta como feita e volta no próximo dia marcado,
+            # com o estado como estava. Sem isso, enquanto o procurador não fosse acertado, a consulta do escritório se
+            # repetiria em toda rodada, uma chamada paga por empresa (80 por dia), e o teto do mês acabaria
+            raise Falta('erro', f.detalhe, feita=True, procurador=True)
         raise
     pelo_cpf = dict(pelo_cpf, via='procurador')
     if pelo_cpf['situacao'] == 'ativa':

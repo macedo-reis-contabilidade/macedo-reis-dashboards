@@ -184,7 +184,7 @@ mesmo que recusando; o teto e o Serpro fora deixam pra próxima rodada.
 | As declarações do PGDAS-D do ano | `pgdas`: cada mês declarado, quando, e se o DAS foi pago | Simples: o primeiro dia útil **depois** do prazo do mês anterior (o prazo é o dia 20 ou, sem expediente, o próximo dia útil — com os feriados nacionais, o 20/09, o Carnaval, a Sexta-feira Santa e o Corpus Christi) e, só pra quem ainda tem mês sem declaração, o último dia útil do mês; em janeiro, o ano anterior também. Ex.: 10/2026 — prazo segunda, 23/11 (o 20/11 é feriado) → consulta terça, 24/11. No próprio dia do prazo não consulta: o vigia do sistema avisaria "PGDAS não transmitido" pra quem transmite naquele dia |
 | A última declaração de um mês (o PDF) | `faturamento`: a receita do mês (RPA) e a dos 12 meses (RBT12), com os centavos | Simples: toda rodada confere, sem custo, se há declaração a ler — o mês novo (ou retificado) que o PGDAS mostrou; uma por rodada, a mais antiga primeiro (nenhum mês fica pra trás quando o de antes não veio); na primeira vez, só a do mês mais recente. A que o Serpro respondeu sem a receita (o PDF ilegível, a recusa) volta só no dia do PGDAS |
 | A Caixa Postal | `caixa_postal`: id, assunto, data, origem (Receita, Estado, Município) e se foi lida | todo dia útil: o "quem teve novidade" em lote (até 1.000 CNPJs por pedido, o CNPJ com letras também) e as mensagens só de quem teve — o evento é só o dia da última novidade, então no dia seguinte a uma leitura, com o mesmo dia, lê de novo uma vez (a mensagem que chegou depois da rodada); as 100 mais recentes por empresa; na primeira leitura de uma empresa, só as dos últimos 90 dias (as antigas ficam no e-CAC); a já mandada não vai de novo, salvo a mandada como não lida que depois aparece lida |
-| A situação fiscal (o relatório em PDF) | `situacao_fiscal`: o título de cada pendência e o órgão (Receita ou PGFN); sem pendência = lista vazia | o dia 5 (ou o próximo dia útil) |
+| A situação fiscal (o relatório em PDF) | `situacao_fiscal`: o título de cada pendência e o órgão (Receita ou PGFN); sem pendência = lista vazia | o dia 5 (ou o próximo dia útil); a feita até 7 dias antes vale por ele (03/11/2026: a empresa consultada no dia 3 não repete no dia 5) |
 
 Sem procuração (ou vencida), as outras consultas da empresa nem são feitas: vão pro `faltou` como `sem_autorizacao` — também nos dias em que a autorização dela não é consultada (o `estado.json` lembra a última resposta; cada recusa seria uma chamada paga), até a próxima consulta da autorização.
 
@@ -228,7 +228,10 @@ token no ETag.
 - **Sem o token nesta rodada** (o e-CPF de outro CPF, vencido, a senha errada — aí o termo nem sai do PC —, ou o Serpro
   recusando o termo, inclusive com o 500 que traz mensagem, que não é o Serpro fora): o termo é tentado uma vez só, o
   log diz o porquê **uma vez**, e as consultas em nome do procurador vão pro `faltou` como `erro` sem chamar a Receita
-  — e voltam na próxima rodada. As do escritório seguem.
+  — e voltam na próxima rodada. As do escritório seguem. A autorização, não: a parte do escritório já foi respondida,
+  então ela conta como feita, com o estado como estava (a empresa de que o estado não lembrava nada fica `sem`), e
+  volta no próximo dia marcado — senão, até alguém acertar o procurador, cada rodada repetiria a consulta do escritório
+  de todas, uma chamada paga por empresa.
 - **Desligado** (os três campos em branco, o padrão): a ponte faz como antes. Tirado do `config.ini` depois de usado, a
   empresa autorizada só pro CPF fica de fora das consultas (a Receita negaria em nome do escritório) até a segunda
   seguinte, quando a autorização dela é consultada de novo. Pela metade (um campo sem os outros): a rodada segue sem

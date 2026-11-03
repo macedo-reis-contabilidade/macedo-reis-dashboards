@@ -1249,7 +1249,8 @@ def caso_calendario(srp, sis):
     rodar(pasta, srp, hoje='2026-10-05')                              # segunda, dia 5
     ok(not srp.servicos('MSGCONTRIBUINTE61') and srp.servicos('SOLICEVENTOSPJ132'),
        'a mesma data de novidade, já lida depois dela: não pede as mensagens de novo')
-    ok(sorted(srp.servicos('SOLICITARPROTOCOLO91')) == sorted([A, B, C]), 'dia 5: a situação fiscal de todas')
+    ok(not srp.servicos('SOLICITARPROTOCOLO91'),
+       'dia 5: a situação fiscal feita no dia 1 (a primeira rodada, 4 dias antes) vale pelo mês — não repete')
     ok(not srp.servicos('OBTERPROCURACAO41') and not srp.servicos('CONSDECLARACAO13'),
        'sem autorização (já feita no mês) e sem pgdas')
 
@@ -1321,7 +1322,7 @@ def caso_calendario(srp, sis):
     escrever_config(p5, sis)
     srp.zerar()
     sis.zerar()
-    rodar(p5, srp, hoje='2026-10-02')
+    rodar(p5, srp, hoje='2026-09-25')       # mais de 7 dias antes do dia 5 (a de 7 dias antes valeria por ele)
     srp.zerar()
     sis.zerar()
     rodar(p5, srp, hoje='2026-10-06')                                 # terça: desligado na segunda, dia 5
@@ -2155,6 +2156,35 @@ def caso_virada_do_ano(srp, sis):
     ok(anos == ['2026', '2027'], f'a consulta de dezembro recuperada em 01/02/2027 pede 2026 também ({anos})')
 
 
+def caso_folga_situacao():
+    titulo('+ a situação fiscal feita até 7 dias antes do dia 5 vale por ele (03/11/2026: sem repetir no dia 5)')
+    from ponte.receita import calendario
+    d = datetime.date
+
+    class Est:
+        def __init__(self, situacao_em):
+            self.situacao_em = situacao_em
+
+        def consultada_em(self, servico, doc):
+            return {'autorizacao': '2026-11-02', 'pgdas': None, 'situacao_fiscal': self.situacao_em}[servico]
+
+        def sem_autorizacao(self, doc, hoje):
+            return False
+
+        def meses_declarados(self, doc):
+            return {}
+
+    def roda(hoje, situacao_em):
+        return 'situacao_fiscal' in calendario.servicos_do_dia(hoje, {'documento': A, 'regime': 'presumido'},
+                                                                Est(situacao_em))
+    ok(not roda(d(2026, 11, 5), '2026-11-03') and not roda(d(2026, 11, 5), '2026-10-29'),
+       'feita em 03/11 (ou em 29/10, 7 dias antes): não repete no dia 5')
+    ok(roda(d(2026, 11, 5), '2026-10-28') and roda(d(2026, 11, 5), None),
+       'feita em 28/10 (8 dias antes), ou nunca feita: roda no dia 5')
+    ok(roda(d(2026, 12, 7), '2026-11-03') and not roda(d(2026, 12, 4), '2026-11-03'),
+       'a de 03/11 vale por novembro: em dezembro roda no dia 7 (o dia 5 é sábado), e não antes')
+
+
 def caso_certificado_do_serpro(srp, sis):
     titulo('+ revisão: o certificado do Serpro que não confere é configuração (sai com 2), não o Serpro fora')
     import ssl
@@ -2520,6 +2550,32 @@ def caso_procurador(srp, sis):
        and (empresa(pac, C) or {}).get('autorizacao', {}).get('situacao') == 'ativa',
        'a rodada: o termo nem sai; a autorização de A e B fica sem resposta (erro), a de C vem')
     ok(sum('o e-CPF do procurador é de outro CPF' in lin for lin in logs(r).splitlines()) == 1, '  o log diz uma vez')
+    est_r = (estado(r) or {}).get('autorizacao', {})
+    ok(all(est_r.get(x, {}).get('consultada_em') == '2026-10-01' and est_r.get(x, {}).get('situacao') == 'sem'
+           for x in (A, B)),
+       '  a autorização de A e B conta como feita, com a resposta do escritório ("sem"): o estado não lembrava nada delas')
+    # no dia seguinte, com o procurador ainda errado: a autorização não é repetida (seria uma chamada paga por empresa
+    # em toda rodada até alguém acertar o procurador) e A e B ficam de fora, sem chamar a Receita
+    preparar({A: '261002', B: '261002', C: '261002'})
+    rodar(r, srp, hoje='2026-10-02')
+    ok(not pedidos_de(srp, 'OBTERPROCURACAO41') and not srp.termos
+       and not {A, B} & {x['doc'] for x in srp.pedidos if x['servico'] != 'SOLICEVENTOSPJ132'}
+       and srp.lotes == [(CNPJ_ESCRITORIO, [C])],
+       '  no dia seguinte: a autorização não se repete, e A e B ficam de fora sem chamar a Receita; C segue')
+    # a empresa que estava ativa pelo CPF continua assim quando o procurador falha no dia da autorização
+    t = pasta_nova()
+    pastas.append(t)
+    config_com_procurador(t, sis)
+    preparar({})
+    rodar(t, srp, '--so', 'autorizacao', hoje='2026-10-01')
+    escrever_config(t, sis, procurador_cpf=CPF_PROCURADOR, procurador_certificado=str(t / 'procurador.pfx'),
+                    procurador_senha='Senha-Errada-Do-E-CPF-123')
+    preparar({})
+    rodar(t, srp, '--so', 'autorizacao', hoje='2026-11-02')
+    est_t = (estado(t) or {}).get('autorizacao', {})
+    ok(est_t.get(A, {}).get('via') == 'procurador' and est_t.get(A, {}).get('situacao') == 'ativa'
+       and est_t.get(A, {}).get('consultada_em') == '2026-11-02' and not srp.termos,
+       '  a senha do e-CPF errada no dia da autorização: A segue ativa pelo CPF (o estado como estava), consultada no dia')
 
     # pela metade, ou o CPF errado: o conferir diz, a rodada segue sem ele
     s = pasta_nova()
@@ -2635,7 +2691,7 @@ def main():
                      caso_feriados, lambda: caso_autorizacao_segunda(srp, sis), lambda: caso_caixa_postal(srp, sis),
                      lambda: caso_eventos_formatos(srp, sis), lambda: caso_caixa_postal_ponteiro(srp, sis),
                      lambda: caso_respostas_da_funcao(srp, sis), lambda: caso_faturamento_pendente(srp, sis),
-                     lambda: caso_virada_do_ano(srp, sis), lambda: caso_certificado_do_serpro(srp, sis),
+                     lambda: caso_virada_do_ano(srp, sis), caso_folga_situacao, lambda: caso_certificado_do_serpro(srp, sis),
                      lambda: caso_caixa_postal_revisao(srp, sis), caso_termo, lambda: caso_procurador(srp, sis),
                      lambda: caso_validacoes(sis), caso_dominio):
             try:
