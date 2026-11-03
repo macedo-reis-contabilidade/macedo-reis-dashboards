@@ -93,7 +93,8 @@ que o Claude da sessão do Samuel tem de decidir. O registro preenchido, `py -3 
 ## Registro de progresso
 | Data | Item | Situação / observação |
 |---|---|---|
-| | 1 · As tabelas | |
-| | 2 · As contagens | |
-| | 3 · Os rascunhos | |
-| | 4 · Push | |
+| 03/11/2026 | Antes de começar | `main` em 942da35; branch `fila-notas-entrada`; `py -3 tests/ponte.test.py`: "Tudo certo.". |
+| 03/11/2026 | 1 · As tabelas | Feito. Itens: `efmvepro` (ligados ao segmento por `codi_emp` + `codi_ent`); produto, descrição, NCM e EAN: o cadastro `efprodutos` (o item não tem descrição nem NCM próprios); código do fornecedor: o de-para da importação (`EFPRODUTOS_IMPORTACAO_ENTRADAS` + `_PRODUTOS`); chave: `chave_nfe_ent`; XML: `EFATENDIMENTO_NFE_XML_V2` (compactado), pelo `EFATENDIMENTO_NFE_CATALOGO`, **apagado depois de uns dois meses**; emitente: `effornece`; modelo: `efespecies.codigo_modelo`; própria: `emitente_ent` P. Detalhes no DUVIDAS. |
+| 03/11/2026 | 2 · As contagens | Feito, só números. 09/2026, o escritório: 5.000 notas de entrada, 2.292 NF-e de terceiros (todas com chave; 1.889 com XML; 2.105 com itens), 12.336 itens (todos com NCM; 8.571 com EAN). Empresa 65, 10/2025 a 09/2026: 545 notas (bate com o sistema), 498 NF-e de terceiros, 11.152 itens, 9.680 com EAN, XML só em 09/2026 (46). XML: de 6,8 a 212 KB compactado, média 14,9 KB. |
+| 03/11/2026 | 3 · Os rascunhos | `ponte/rascunhos/notas_entrada.sql` (1.293 itens, 50 notas, 1.093 com EAN — bate; 1,7 s; o IPI dos itens não bate com o da nota em 16 das 50) e `notas_entrada_xml.sql` (46 notas — bate; 1,3 s). |
+| 03/11/2026 | 4 · Push | DUVIDAS escrito; `py -3 tests/ponte.test.py` verde; commit e push em `fila-notas-entrada`. |
