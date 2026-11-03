@@ -55,6 +55,15 @@ export function montarAtalhos(lista, doc = document) {
     img.alt = '';
     img.width = 26;
     img.height = 26;
+    // O ícone que não carrega (o arquivo ainda não publicado — 03/11/2026, o deploy do Serpro falhou no GitHub) vira a
+    // letra do nome, em vez da imagem quebrada; <b>, e não <span>, pra seguir à mostra quando a tela estreita esconde os nomes.
+    img.addEventListener('error', () => {
+      const letra = doc.createElement('b');
+      letra.className = 'tb-atalho-letra';
+      letra.setAttribute('aria-hidden', 'true');
+      letra.textContent = a.nome.charAt(0).toUpperCase();
+      img.replaceWith(letra);
+    }, { once: true });
     const nome = doc.createElement('span');
     nome.textContent = a.nome;
     link.append(img, nome);

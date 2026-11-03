@@ -9,6 +9,7 @@ Confere:
      (sem passar o endereço do sistema), o nome à mostra e o ícone carregado de assets/atalhos/;
   2. numa tela de dentro de uma pasta (clientes/editar.html): os mesmos atalhos, com os ícones achados;
   3. o item com endereço que não é http(s) ou ícone com caminho fica de fora; nome com HTML aparece como texto;
+     o ícone que não carrega (o arquivo ainda não publicado) vira a letra do nome, também na tela estreita;
   4. a lista fica guardada na aba: na tela seguinte, os atalhos aparecem antes de o banco responder;
   5. tela estreita: só os ícones (1000 px); celular: sem os atalhos (600 px);
   6. as telas públicas (admissão, rescisão) não têm atalhos;
@@ -30,7 +31,8 @@ LISTA = [
     {'nome': 'Script', 'url': 'javascript:alert(1)', 'icone': 'onvio.png'},
     {'nome': 'Caminho', 'url': 'https://exemplo.com/', 'icone': '../../js/supabase.js'},
 ]
-SEMEAR = """
+def semear(lista):
+    return """
 (() => {
   let db;
   Object.defineProperty(window, '__mockDb', { configurable: true, get() { return db; }, set(v) {
@@ -38,7 +40,8 @@ SEMEAR = """
     v.configuracoes_escritorio = (v.configuracoes_escritorio || []).concat([{ chave: 'atalhos', valor: %s, descricao: 'teste' }]);
   } });
 })();
-""" % json.dumps(json.dumps(LISTA))
+""" % json.dumps(json.dumps(lista))
+SEMEAR = semear(LISTA)
 TOUR = "(() => { const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { return String(k).startsWith('mr_tour_') ? 'ok' : g.call(this, k); }; })()"
 
 falhas = 0
@@ -100,6 +103,20 @@ def main():
         print('3. O que fica de fora')
         ok(p.evaluate("() => [...document.querySelectorAll('.tb-atalhos a')].every(a => /^https?:/.test(a.getAttribute('href')))") and len(a) == 4,
            'o javascript: e o ícone com caminho ficaram de fora')
+        p3 = cx.new_page(); p3.on('pageerror', lambda e: erros.append(str(e)))
+        p3.add_init_script(TOUR)
+        p3.add_init_script(semear([LISTA[0], {'nome': 'serpro', 'url': 'https://cliente.exemplo.gov.br/', 'icone': 'nao-publicado.png'}]))
+        p3.goto(base + 'index.html')
+        p3.wait_for_function("() => document.querySelectorAll('.topbar .tb-atalhos a').length === 2 && !!document.querySelector('.tb-atalho-letra')", timeout=8000)
+        r = p3.evaluate("""() => { const l = document.querySelectorAll('.tb-atalhos a')[1], b = l.querySelector('.tb-atalho-letra');
+          return { img: !!l.querySelector('img'), letra: b.textContent, larg: Math.round(b.getBoundingClientRect().width), oculta: b.getAttribute('aria-hidden'),
+                   nome: l.querySelector('span').textContent, outro: !!document.querySelectorAll('.tb-atalhos a')[0].querySelector('img') }; }""")
+        ok(not r['img'] and r['letra'] == 'S' and r['larg'] == 26 and r['oculta'] == 'true' and r['nome'] == 'serpro' and r['outro'],
+           f'o ícone que não carrega vira a letra do nome, sem imagem quebrada; o outro segue com o ícone ({r})')
+        p3.set_viewport_size({'width': 1000, 'height': 800}); p3.wait_for_timeout(200)
+        ok(p3.evaluate("() => document.querySelector('.tb-atalho-letra').getBoundingClientRect().width") > 20 and
+           p3.evaluate("() => document.querySelector('.tb-atalhos span').offsetWidth") == 0, 'na tela estreita (só os ícones), a letra segue à mostra')
+        p3.close()
 
         print('4. Guardada na aba')
         guardada = p.evaluate("() => sessionStorage.getItem('mr_atalhos')")
