@@ -116,7 +116,8 @@ const BLOCOS = {
     return { consultada_em: em, pendencias: lista(s.pendencias, LIMITES.pendencias, onde + '.pendencias').map((x, j) => {
       const w = onde + '.pendencias[' + j + ']';
       objeto(x, w);
-      const titulo = texto(x.titulo, 200);
+      // sem os traços que o relatório põe até a margem ("Pendência - Débito (SIEF) ______", 03/11/2026)
+      const titulo = texto(x.titulo == null ? null : String(x.titulo).replace(/[\s_.\-–—]+$/u, ''), 200);
       if (!titulo) recusar(w + '.titulo', 'pendência sem título');
       return { orgao: texto(x.orgao, 30) || 'Receita', titulo };
     }) };

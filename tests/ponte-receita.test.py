@@ -1086,8 +1086,8 @@ def caso_servicos(srp, sis):
         'Receita bruta acumulada nos doze meses anteriores ao PA (RBT12)   912.000,07   0,00   912.000,07',
         'Receita bruta acumulada nos doze meses anteriores ao PA proporcionalizada (RBT12p)   1,00   0,00   1,00']))]
     srp.filas['RELATORIOSITFIS92'] = [com_pdf(srp, 'RELATORIOSITFIS92', pdf_simples([
-        'Diagnóstico Fiscal na Receita Federal', 'Pendência - Débito (SIEF)', 'Omissão de declaração',
-        'Diagnóstico Fiscal na Procuradoria-Geral da Fazenda Nacional', 'Pendência - Inscrição (SIDA)']))]
+        'Diagnóstico Fiscal na Receita Federal', 'Pendência - Débito (SIEF) ' + '_' * 87, 'Omissão de declaração',
+        'Diagnóstico Fiscal na Procuradoria-Geral da Fazenda Nacional', 'Pendência - Inscrição (SIDA) ' + '_' * 84]))]
     sis.zerar()
     pasta2 = pasta_nova()
     escrever_config(pasta2, sis)
@@ -1098,7 +1098,7 @@ def caso_servicos(srp, sis):
     ok(e.get('situacao_fiscal', {}).get('pendencias') == [
         {'orgao': 'Receita', 'titulo': 'Pendência - Débito (SIEF)'}, {'orgao': 'Receita', 'titulo': 'Omissão de declaração'},
         {'orgao': 'PGFN', 'titulo': 'Pendência - Inscrição (SIDA)'}],
-       'as pendências: o título de cada uma e o órgão (Receita ou PGFN)')
+       'as pendências: o título de cada uma, sem os traços que o relatório põe até a margem, e o órgão (Receita ou PGFN)')
 
     # o relatório que ainda não ficou pronto: 204 com a espera no ETag, e pede de novo
     srp.zerar()

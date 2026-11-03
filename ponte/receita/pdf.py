@@ -65,7 +65,8 @@ def ler_situacao(txt):
     secoes = sorted([(m.start(), 'Receita') for m in _SECAO_RECEITA.finditer(txt)] +
                     [(m.start(), 'PGFN') for m in _SECAO_PGFN.finditer(txt)])
     for m in _PENDENCIA.finditer(txt):
-        titulo = re.sub(r'\s+', ' ', m.group(1)).strip()
+        # o relatório completa a linha com traços até a margem ("Pendência - Débito (SIEF) ______"): saem (03/11/2026)
+        titulo = re.sub(r'[\s_.\-–—]+$', '', re.sub(r'\s+', ' ', m.group(1))).strip()
         antes = [o for pos, o in secoes if pos < m.start()]
         orgao = antes[-1] if antes else ('PGFN' if re.search(r'SIDA|Inscri[çc][ãa]o', titulo, re.I) else 'Receita')
         if (orgao, titulo) not in vistas:
