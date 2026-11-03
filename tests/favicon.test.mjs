@@ -6,7 +6,8 @@ import { join, relative, dirname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const raiz = fileURLToPath(new URL('../', import.meta.url));
-const FORA = new Set(['tests', '.harness', '.git', 'node_modules']);
+// .claude: as cópias de trabalho dos agentes (worktrees), que não são o site
+const FORA = new Set(['tests', '.harness', '.git', 'node_modules', '.claude']);
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + JSON.stringify(extra) : '')); };
 
