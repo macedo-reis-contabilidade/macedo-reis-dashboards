@@ -141,8 +141,12 @@ Campo a campo (o que estiver fora disso numa nota faz a nota voltar em `recusada
   do dia 1º do mês de três meses atrás até hoje — a nota que entra atrasada na Domínio e o XML, que ela guarda uns dois
   meses —, nunca antes de `desde`. Mês a mês, pela data de entrada.
 - **O estado**, em `C:\ponte-dominio\notas\estado.json` (fora do repositório): por código, o documento e, por chave, a
-  data de entrada, a impressão digital da nota (o SHA-256 do JSON dela, com o XML) e quando foi mandada. Manda só a nota
-  nova ou que mudou. A empresa que sai da lista some do estado. O estado não guarda nada da nota além disso.
+  data de entrada, a impressão digital da nota (o SHA-256 do JSON dela, com o XML), o `origem` e quando foi mandada.
+  Manda só a nota nova ou que mudou. **A nota mandada do XML não vai de novo pela Domínio**: quando a Domínio apaga o XML
+  (uns dois meses depois), a nota passa a sair da Domínio, mas o destino fica com a do XML de qualquer jeito (desde a
+  v1.1 dele, 03/11/2026: a nota do XML só é trocada por outra do XML) — então ela não vai, e o estado continua com a do
+  XML. A nota que mudou e segue com o XML vai. A empresa que sai da lista some do estado. O estado não guarda nada da
+  nota além disso.
 - **As consultas**: os dois rascunhos de `ponte/rascunhos/` viram `ponte/consultas/notas_itens.sql` e
   `ponte/consultas/notas_xml.sql`, com o comentário do começo atualizado (o XML é texto; o emitente CPF sai na ponte). A
   do XML liga o catálogo pela chave filtrando antes pela empresa (a fila do XML mediu 14 s em 46 notas). E a do
@@ -178,8 +182,8 @@ recusa**:
 - de fora: o emitente CPF, o destinatário diferente, o `finNFe` 4; o XML ilegível e o sem a autorização vão pela Domínio;
 - o XML compactado com zlib abre;
 - a divisão em pacotes (200 notas, 4 MB);
-- o estado: a segunda rodada não manda de novo; a nota que mudou vai; a recusada não vai de novo; a empresa que sai da
-  lista some do estado;
+- o estado: a segunda rodada não manda de novo; a nota que mudou vai; a recusada não vai de novo; a nota mandada do XML
+  que perde o XML não vai de novo (e a que ganha o XML vai); a empresa que sai da lista some do estado;
 - as respostas: o 503 do destino para sem marcar; o 502 não marca e vai na próxima; o 403 não repete;
 - a janela: na primeira vez e no domingo, de `desde`; nos outros dias, três meses;
 - nada de chave, CNPJ, nome de fornecedor, produto ou valor no log (o teste lê o log inteiro).

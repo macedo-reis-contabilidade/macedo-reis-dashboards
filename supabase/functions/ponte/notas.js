@@ -93,8 +93,13 @@ function cpfValido(d) {
   const dv = n => { let s = 0; for (let i = 0; i < n; i++) s += Number(d[i]) * (n + 1 - i); const r = (s * 10) % 11; return r === 10 ? 0 : r; };
   return dv(9) === Number(d[9]) && dv(10) === Number(d[10]);
 }
-/** Na chave da nota de emitente pessoa física, o lugar do CNPJ leva o CPF com zeros na frente. */
-export const pareceCpf = cnpj => typeof cnpj === 'string' && cnpj.startsWith('000') && cpfValido(cnpj.slice(3));
+/** O CNPJ de 14 caracteres (12 letras ou dígitos e os 2 dígitos verificadores): a mesma conta da chave. */
+const cnpjValido = c => /^[0-9A-Z]{12}\d{2}$/.test(c) && dvDaChave(c.slice(0, 12)) === Number(c[12]) && dvDaChave(c.slice(0, 13)) === Number(c[13]);
+/** Na chave da nota de emitente pessoa física, o lugar do CNPJ leva o CPF com zeros na frente. Um CNPJ de verdade também
+ *  pode começar com 000 e terminar em 11 dígitos que formam um CPF (o do Banco do Brasil, 00.000.000/0001-91): só é CPF
+ *  quando os 14 não formam um CNPJ. Quem decide com certeza é a ponte (o documento do fornecedor na Domínio, o emit/CPF
+ *  do XML); esta é a segunda conferência. */
+export const pareceCpf = cnpj => typeof cnpj === 'string' && cnpj.startsWith('000') && cpfValido(cnpj.slice(3)) && !cnpjValido(cnpj);
 
 const gtin = v => { const s = String(v == null ? '' : v).trim(); return /^(\d{8}|\d{12,14})$/.test(s) ? s : null; };   // "SEM GTIN" e o resto: null
 const medidaOuNulo = (v, campo) => (v == null || v === '' ? null : medida(v, campo));

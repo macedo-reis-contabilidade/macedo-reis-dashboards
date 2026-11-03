@@ -369,6 +369,7 @@ console.log('As notas de entrada das empresas autorizadas (03/11/2026):');
     chk('o EAN "SEM GTIN" e o NCM que não é NCM viram nulo, sem recusar a nota', r2.ok && r2.recusadas.length === 0 && r2.pacote.notas[0].itens[0].ean === null && r2.pacote.notas[0].itens[0].ncm === null, r2);
   }
   chk('o CPF com zeros na frente parece CPF; o CNPJ, não', pareceCpf('00012345678909') && !pareceCpf(FORN) && !pareceCpf(EMP));
+  chk('o CNPJ que começa com 000 e termina num CPF válido segue CNPJ (o do Banco do Brasil)', !pareceCpf('00000000000191'));
   {
     const comp = [
       { cliente_id: 'a', destino: 'um', escopo: 'nfe_entrada', notas_desde: '2025-10-01', revogado_em: null },
