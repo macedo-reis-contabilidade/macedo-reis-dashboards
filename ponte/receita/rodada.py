@@ -72,6 +72,8 @@ def executar(cli, empresas, est, hoje, so, pasta, reg):
                 proc_avisado.append(1)
                 reg(f'receita: {cli.procurador_erro or f.detalhe} — as consultas em nome do procurador ficam de fora '
                     f'nesta rodada (vão como erro e voltam na próxima)', 'erro')
+        elif f.motivo == 'erro' and getattr(f, 'repetido', False):
+            pass                                   # o serviço saiu da rodada: o log já disse, numa linha só
         elif f.motivo == 'erro' and not (cli.fora and fora_avisado):
             reg(f'receita: {servico} de {doc} não veio: {f.detalhe}', 'erro')
             if cli.fora:

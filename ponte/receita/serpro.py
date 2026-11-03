@@ -10,8 +10,11 @@ nunca vai aberta pro disco.
 
 Chamar: POST <gateway>/<Consultar|Emitir|Apoiar|Monitorar> com Bearer e jwt_token. A resposta traz status, mensagens
 ([{codigo, texto}]) e dados (JSON em texto). Acesso negado (403 ou mensagem AcessoNegado) = o cliente não autorizou o
-escritório; 429, 5xx, tempo esgotado ou rede fora = tenta de novo 3 vezes (10 s, 60 s e 5 min — PONTE_ESPERAS); outra
-recusa = erro, com a mensagem. Redirecionamento não é seguido. Uma chamada por vez, com 1 s entre elas
+escritório; 429, 502, 503, 504, tempo esgotado ou rede fora = tenta de novo 3 vezes (10 s, 60 s e 5 min — PONTE_ESPERAS)
+e a rodada para; o 500 (o erro interno de um pedido) tenta 2 vezes (10 s e 60 s) e fica só naquele pedido, e o
+mesmo serviço com 500 em 3 pedidos seguidos tira o sistema dele (o SITFIS, o PGDASD…) da rodada, sem parar as outras
+consultas (03/11/2026: o RELATORIOSITFIS92 de uma empresa deu 500 e a rodada inteira parou); outra recusa = erro, com
+a mensagem. Redirecionamento não é seguido. Uma chamada por vez, com 1 s entre elas
 (PONTE_RECEITA_INTERVALO). O teto do mês é contado em estado.Contador.
 
 O gateway do Serpro não manda o certificado intermediário dele (AC SERPRO AR46 OV TLS CA 2025, da GlobalSign): o
@@ -51,6 +54,7 @@ URL_TOKEN = 'https://autenticacao.sapi.serpro.gov.br/authenticate'
 GATEWAY_PRODUCAO = 'https://gateway.apiserpro.serpro.gov.br/integra-contador/v1/'
 CADEIA = pathlib.Path(__file__).with_name('ac-serpro-2025.pem')
 ESPERAS = (10, 60, 300)
+FALHAS_SEGUIDAS_500 = 3       # o mesmo serviço com 500 em tantos pedidos seguidos: o sistema dele sai da rodada
 TIMEOUT = 60
 
 
@@ -59,7 +63,12 @@ class ErroConfig(Exception):
 
 
 class SerproFora(Exception):
-    """O Serpro não respondeu depois das novas tentativas."""
+    """O Serpro não respondeu depois das novas tentativas (ou o serviço já tinha caído nesta rodada: `repetido`, e o
+    log já disse, numa linha só)."""
+
+    def __init__(self, mensagem='', repetido=False):
+        super().__init__(mensagem)
+        self.repetido = repetido
 
 
 class ProcuradorIndisponivel(Exception):
@@ -246,6 +255,8 @@ class Cliente:
         self._renovar_em = 0.0
         self._ultima = 0.0
         self.fora = False                              # o Serpro parou de responder nesta rodada
+        self._falhas_500 = {}                          # serviço -> pedidos seguidos que acabaram em 500
+        self._sistemas_fora = set()                    # os sistemas tirados da rodada (o mesmo serviço, 500 seguidos)
         self._abridor_gateway = self._abridor(self.gateway, None)
         # o procurador ({cpf, certificado, senha} do config.ini, ou None): só em produção
         self.hoje = hoje or datetime.date.today()
@@ -404,6 +415,8 @@ class Cliente:
         com autor='procurador', ProcuradorIndisponivel (sem chamar o Serpro) quando o token dele não saiu."""
         if self.fora:
             raise SerproFora('o Serpro já não respondia nesta rodada')
+        if sistema in self._sistemas_fora:
+            raise SerproFora(f'{sistema}: o Serpro já não respondia esse serviço nesta rodada', repetido=True)
         token_proc = None
         if autor == 'procurador' and sistema != proc_mod.SISTEMA:
             token_proc = self.token_procurador()
@@ -446,10 +459,12 @@ class Cliente:
                 continue
             if status == 304:
                 # o "não mudou" do Autentica Procurador (o mesmo termo, ainda válido): sem corpo, o token vem no ETag
+                self._falhas_500.pop(servico, None)
                 return Resposta(304, {}, cabecalhos)
             if status is not None and 300 <= status < 400:
                 raise ErroConfig(f'o Serpro redirecionou o pedido (HTTP {status}) — o endereço do gateway mudou?')
             if status is not None and status != 429 and status < 500:
+                self._falhas_500.pop(servico, None)
                 return Resposta(status, _corpo_json(texto), cabecalhos)
             if status is not None and status >= 500 and sistema == proc_mod.SISTEMA:
                 # a recusa do termo vem como 500 com a mensagem do Serpro (o login, o certificado que não valida): é do
@@ -458,11 +473,23 @@ class Cliente:
                 if corpo_resp.get('mensagens'):
                     return Resposta(status, corpo_resp, cabecalhos)
             motivo = motivo or f'HTTP {status}'
-            if tentativa < len(esperas):
-                self.registro(f'receita: {servico} sem resposta ({motivo}) — tento de novo em {esperas[tentativa]:g} s', 'aviso')
-                time.sleep(esperas[tentativa])
+            # o 500 é o erro interno de um pedido (o Serpro respondeu): duas novas tentativas e ele fica só neste pedido
+            so_este = status == 500
+            limite = esperas[:2] if so_este else esperas
+            if tentativa < len(limite):
+                self.registro(f'receita: {servico} sem resposta ({motivo}) — tento de novo em {limite[tentativa]:g} s', 'aviso')
+                time.sleep(limite[tentativa])
                 tentativa += 1
                 continue
+            if so_este:
+                n = self._falhas_500.get(servico, 0) + 1
+                self._falhas_500[servico] = n
+                if n >= FALHAS_SEGUIDAS_500:
+                    self._sistemas_fora.add(sistema)
+                    self.registro(f'receita: {servico} deu HTTP 500 em {n} pedidos seguidos — o {sistema} fica de fora '
+                                  f'nesta rodada (vai como erro e volta na próxima); as outras consultas seguem', 'erro')
+                raise SerproFora(f'{servico}: o Serpro respondeu HTTP 500 em {tentativa + 1} tentativas (fica só este '
+                                 f'pedido; a rodada segue)')
             self.fora = True
             raise SerproFora(f'{servico}: o Serpro não respondeu depois de {len(esperas) + 1} tentativas ({motivo})')
 

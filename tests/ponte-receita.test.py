@@ -1991,6 +1991,67 @@ def caso_caixa_postal_ponteiro(srp, sis):
     ok(not (estado(p) or {}).get('eventos', {}).get(A), '  e o evento não fica guardado: a próxima rodada lê de novo')
 
 
+def caso_erro_500(srp, sis):
+    titulo('10d. o 500 de um pedido fica só nele; o mesmo serviço com 500 em 3 pedidos seguidos sai da rodada (03/11/2026)')
+    D = '44555666000100'
+    quatro = EMPRESAS + [{'documento': D, 'regime': 'simples'}]
+
+    def linhas_nao_veio(pasta):
+        return [l for l in logs(pasta).splitlines() if 'situacao_fiscal de' in l and 'não veio' in l]
+
+    # o RELATORIOSITFIS92 de A dá 500: só a situação fiscal de A fica pra trás; a de B, C e D e a Caixa Postal seguem
+    p = pasta_nova()
+    escrever_config(p, sis)
+    srp.zerar()
+    srp.eventos = {A: '261022', D: '261022'}
+    srp.por_doc[('RELATORIOSITFIS92', A)] = [500, 500, 500]
+    sis.zerar(empresas=quatro)
+    cod, saida = rodar(p, srp, '--so', 'situacao_fiscal,caixa_postal')
+    pac = sis.ultimo()
+    ok(cod == 0 and srp.servicos('RELATORIOSITFIS92').count(A) == 3
+       and all((empresa(pac, d) or {}).get('situacao_fiscal') is not None for d in (B, C, D)),
+       f'o 500 de A: três tentativas (a primeira e duas novas), e B, C e D seguem ({srp.servicos("RELATORIOSITFIS92")})')
+    ok(faltou(pac) == [(A, 'situacao_fiscal', 'erro')] and srp.servicos('SOLICEVENTOSPJ132')
+       and ((empresa(pac, A) or {}).get('caixa_postal') or {}).get('mensagens'),
+       f'  só a situação fiscal de A vai como erro; a Caixa Postal roda ({faltou(pac)})')
+    log = logs(p)
+    ok('fica só este pedido' in log and 'parou de responder' not in log and 'fica de fora nesta rodada' not in log
+       and len(linhas_nao_veio(p)) == 1,
+       '  o log diz que foi só aquele pedido, e não que o Serpro parou')
+    sf = (estado(p) or {}).get('situacao_fiscal', {})
+    ok(not sf.get(A) and sf.get(B), '  e a de A não conta como feita: volta na próxima rodada')
+    # A, B e C com 500 seguidos: o SITFIS sai da rodada (D nem pede o protocolo), e a Caixa Postal segue
+    p = pasta_nova()
+    escrever_config(p, sis)
+    srp.zerar()
+    srp.eventos = {D: '261022'}
+    for d in (A, B, C):
+        srp.por_doc[('RELATORIOSITFIS92', d)] = [500, 500, 500]
+    sis.zerar(empresas=quatro)
+    cod, saida = rodar(p, srp, '--so', 'situacao_fiscal,caixa_postal')
+    pac = sis.ultimo()
+    ok(cod == 0 and D not in srp.servicos('SOLICITARPROTOCOLO91') and D not in srp.servicos('RELATORIOSITFIS92')
+       and (D, 'situacao_fiscal', 'erro') in faltou(pac),
+       'três 500 seguidos no mesmo serviço: o SITFIS sai da rodada (D nem pede o protocolo) e vai como erro')
+    ok(srp.servicos('SOLICEVENTOSPJ132') and ((empresa(pac, D) or {}).get('caixa_postal') or {}).get('mensagens'),
+       '  e a Caixa Postal roda')
+    log = logs(p)
+    ok(log.count('fica de fora nesta rodada') == 1 and 'parou de responder' not in log and len(linhas_nao_veio(p)) == 3,
+       f'  o log diz uma vez que o SITFIS saiu; da empresa pulada, nenhuma linha a mais ({len(linhas_nao_veio(p))})')
+    # o 500 intercalado com respostas boas do mesmo serviço não tira o serviço: A e C com 500, B e D bem
+    p = pasta_nova()
+    escrever_config(p, sis)
+    srp.zerar()
+    for d in (A, C):
+        srp.por_doc[('RELATORIOSITFIS92', d)] = [500, 500, 500]
+    sis.zerar(empresas=quatro)
+    rodar(p, srp, '--so', 'situacao_fiscal')
+    pac = sis.ultimo()
+    ok(sorted(x for x, _, _ in faltou(pac)) == sorted([A, C]) and (empresa(pac, D) or {}).get('situacao_fiscal') is not None
+       and 'fica de fora nesta rodada' not in logs(p),
+       'o 500 de A e de C, com B e D bem no meio: o serviço segue, só A e C vão como erro')
+
+
 # ---------------------------------------------------------------- 10. o item 4: as respostas da função
 
 def caso_respostas_da_funcao(srp, sis):
@@ -2689,7 +2750,7 @@ def main():
                      lambda: caso_o_que_sai(srp, sis), lambda: caso_segredos(srp, sis),
                      lambda: caso_pdf_ilegivel(srp, sis), lambda: caso_envio(srp, sis), lambda: caso_chave(srp, sis),
                      caso_feriados, lambda: caso_autorizacao_segunda(srp, sis), lambda: caso_caixa_postal(srp, sis),
-                     lambda: caso_eventos_formatos(srp, sis), lambda: caso_caixa_postal_ponteiro(srp, sis),
+                     lambda: caso_eventos_formatos(srp, sis), lambda: caso_caixa_postal_ponteiro(srp, sis), lambda: caso_erro_500(srp, sis),
                      lambda: caso_respostas_da_funcao(srp, sis), lambda: caso_faturamento_pendente(srp, sis),
                      lambda: caso_virada_do_ano(srp, sis), caso_folga_situacao, lambda: caso_certificado_do_serpro(srp, sis),
                      lambda: caso_caixa_postal_revisao(srp, sis), caso_termo, lambda: caso_procurador(srp, sis),

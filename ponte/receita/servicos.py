@@ -46,12 +46,13 @@ PONTEIRO_INICIAL = '0' * 24
 
 
 class Falta(Exception):
-    def __init__(self, motivo, detalhe='', feita=True, procurador=False):
+    def __init__(self, motivo, detalhe='', feita=True, procurador=False, repetido=False):
         super().__init__(motivo)
         self.motivo = motivo
         self.detalhe = detalhe
         self.feita = feita              # o Serpro respondeu (a consulta conta como feita no calendário)
         self.procurador = procurador    # faltou o token do procurador (o log diz uma vez, não uma por empresa)
+        self.repetido = repetido        # o serviço já tinha saído da rodada (o log já disse, uma vez)
 
 
 def consultar(cli, endpoint, sistema, servico, contribuinte, dados, versao='1.0', tipo=None, autor=None):
@@ -60,7 +61,7 @@ def consultar(cli, endpoint, sistema, servico, contribuinte, dados, versao='1.0'
     try:
         return cli.chamar(endpoint, sistema, servico, contribuinte, dados, versao, tipo, autor=autor)
     except SerproFora as e:
-        raise Falta('erro', str(e), feita=False)
+        raise Falta('erro', str(e), feita=False, repetido=getattr(e, 'repetido', False))
     except ProcuradorIndisponivel as e:
         raise Falta('erro', f'sem o procurador nesta rodada: {e}', feita=False, procurador=True)
 
