@@ -15,6 +15,7 @@ volta no próximo dia marcado) ou não (o teto, o Serpro fora, o relatório que 
 """
 import base64
 import datetime
+import json
 import re
 
 from . import calendario, estado as est_mod, pdf
@@ -26,6 +27,10 @@ MAX_MENSAGENS = 100                # por empresa num pacote (as mais recentes)
 DIAS_PRIMEIRA = 90                 # na primeira leitura da empresa, só as enviadas nesses dias
 MAX_PENDENCIAS = 100               # por empresa (o limite da função do sistema)
 ORIGEM = {'1': 'Receita', '2': 'Estado', '3': 'Município'}
+# a versão do SITFIS: a 1.0 foi desligada pela Receita (03/11/2026, na primeira rodada de produção: "[EntradaIncorreta-
+# Sitfis-EI03] Requisição inválida. Versão Descontinuada."); a 2.0 é a da documentação do Serpro, com o mesmo pedido
+# e a mesma resposta (protocoloRelatorio, tempoEspera, pdf)
+VERSAO_SITFIS = '2.0'
 
 
 class Falta(Exception):
@@ -185,16 +190,54 @@ def faturamento(cli, empresa, mes, pasta):
 
 # ---------------------------------------------------------------- Caixa Postal
 
+def _json_fundo(valor, camadas=3):
+    """O 'dados' é um JSON dentro de um texto — às vezes em mais de uma camada (o texto com o texto do JSON dentro):
+    desembrulha até achar o que não é texto, ou até o texto não ser JSON."""
+    for _ in range(camadas):
+        if not isinstance(valor, str):
+            break
+        try:
+            valor = json.loads(valor)
+        except ValueError:
+            break
+    return valor
+
+
+def _numero(valor, padrao):
+    try:
+        n = int(float(valor))
+        return n if n >= 0 else padrao
+    except (TypeError, ValueError):
+        return padrao
+
+
 def _protocolo(r):
-    """O pedido de eventos devolve {"protocolo", "TempoEsperaMedioEmMs"} — e o próprio exemplo do Serpro vem sem a chave
-    de fechar; por isso, se o JSON não fecha, lê os dois campos pelo texto."""
-    d = r.dados()
-    if isinstance(d, dict) and d.get('protocolo'):
-        return str(d['protocolo']), d.get('TempoEsperaMedioEmMs') or 1000
-    txt = r.dados_texto if isinstance(r.dados_texto, str) else ''
-    p = re.search(r'"protocolo"\s*:\s*"([^"]+)"', txt)
-    t = re.search(r'"TempoEsperaMedioEmMs"\s*:\s*(\d+)', txt)
+    """O pedido de eventos devolve {"protocolo", "TempoEsperaMedioEmMs", "TempoLimiteEmMin"} no 'dados' — que pode vir
+    em mais de uma camada de texto, com a chave em outra caixa, ou (no próprio exemplo do Serpro) sem a chave de fechar:
+    lê o objeto e, não dando, os dois campos pelo texto, sem as barras do escape."""
+    d = _json_fundo(r.dados_texto)
+    if isinstance(d, dict):
+        campos = {str(k).lower(): v for k, v in d.items()}
+        if campos.get('protocolo'):
+            return str(campos['protocolo']), _numero(campos.get('tempoesperamedioemms'), 1000)
+    txt = d if isinstance(d, str) else (r.dados_texto if isinstance(r.dados_texto, str) else '')
+    txt = txt.replace('\\"', '"')
+    p = re.search(r'"protocolo"\s*:\s*"([^"]+)"', txt, re.I)
+    t = re.search(r'"TempoEsperaMedioEmMs"\s*:\s*"?(\d+)', txt, re.I)
     return (p.group(1) if p else None), (int(t.group(1)) if t else 1000)
+
+
+def _forma(valor):
+    """Como o 'dados' veio, sem o conteúdo (pro log quando falta o que se esperava): vazio, as chaves do objeto, o
+    tamanho da lista ou do texto. As chaves são nomes de campo do Serpro, não dado de cliente."""
+    v = _json_fundo(valor)
+    if v is None or v == '':
+        return 'dados vazio'
+    if isinstance(v, dict):
+        return 'dados com as chaves ' + ', '.join(sorted(str(k) for k in v))[:150]
+    if isinstance(v, list):
+        return f'dados com uma lista de {len(v)} item(ns)'
+    return f'dados em texto de {len(str(v))} caractere(s)'
 
 
 def eventos_caixa_postal(cli, docs):
@@ -207,7 +250,8 @@ def eventos_caixa_postal(cli, docs):
         _conferir_resposta(r)
         protocolo, espera = _protocolo(r)
         if not protocolo:
-            raise Falta('erro', 'o pedido de eventos não devolveu o protocolo')
+            raise Falta('erro', f'o pedido de eventos não devolveu o protocolo (HTTP {r.http_status}; '
+                                f'{r.resumo() or "sem mensagem"}; {_forma(r.dados_texto)})')
         cli.esperar(espera)
         r2 = consultar(cli, 'Monitorar', 'EVENTOSATUALIZACAO', 'OBTEREVENTOSPJ134', '',
                        {'protocolo': protocolo, 'evento': EVENTO_CAIXA_POSTAL}, tipo=4)
@@ -282,17 +326,19 @@ def situacao_fiscal(cli, empresa, hoje, pasta, tentativas=6):
     """(bloco, problema, aviso): problema = o PDF não deu pra ler (o bloco não vai, fica a_conferir); aviso = a lista
     foi lida mas cortada no limite (o bloco vai)."""
     doc = empresa['documento']
-    r = consultar(cli, 'Apoiar', 'SITFIS', 'SOLICITARPROTOCOLO91', doc, '')
+    r = consultar(cli, 'Apoiar', 'SITFIS', 'SOLICITARPROTOCOLO91', doc, '', versao=VERSAO_SITFIS)
     _conferir_resposta(r)
     d = r.dados() or {}
     protocolo = d.get('protocoloRelatorio') if isinstance(d, dict) else None
     espera = (d.get('tempoEspera') if isinstance(d, dict) else None) or 4000
     if not protocolo:
-        raise Falta('erro', 'o pedido do relatório não devolveu o protocolo')
+        raise Falta('erro', f'o pedido do relatório não devolveu o protocolo (HTTP {r.http_status}; '
+                            f'{r.resumo() or "sem mensagem"}; {_forma(r.dados_texto)})')
     pdf_b64 = None
     for _ in range(tentativas):
         cli.esperar(espera)
-        r2 = consultar(cli, 'Emitir', 'SITFIS', 'RELATORIOSITFIS92', doc, {'protocoloRelatorio': protocolo})
+        r2 = consultar(cli, 'Emitir', 'SITFIS', 'RELATORIOSITFIS92', doc, {'protocoloRelatorio': protocolo},
+                       versao=VERSAO_SITFIS)
         if r2.http_status == 204 or r2.status == 204:          # ainda processando: a espera nova vem no ETag
             espera = _espera_do_etag(r2.cabecalhos) or espera
             continue

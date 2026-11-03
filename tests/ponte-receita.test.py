@@ -766,6 +766,10 @@ def caso_servicos(srp, sis):
     ok([p['endpoint'] for p in srp.pedidos if p['servico'] == 'SOLICITARPROTOCOLO91'] == ['Apoiar']
        and [p['endpoint'] for p in srp.pedidos if p['servico'] == 'RELATORIOSITFIS92'] == ['Emitir'],
        'os endpoints certos')
+    versoes = {p['servico']: p['pedido']['pedidoDados']['versaoSistema'] for p in srp.pedidos
+               if p['servico'] in ('SOLICITARPROTOCOLO91', 'RELATORIOSITFIS92')}
+    ok(versoes == {'SOLICITARPROTOCOLO91': '2.0', 'RELATORIOSITFIS92': '2.0'},
+       f'situacao_fiscal: a versão 2.0 do SITFIS (a 1.0 a Receita desligou em 11/2026) — {versoes}')
     ok(faltou(pac) == [], 'nada no faltou')
     ok(pac and pac['tipo'] == 'receita' and pac['versao'] == 1 and pac['rodada']['ponte'] == '0.2.0'
        and pac['rodada']['ambiente'] == 'producao', 'o pacote: tipo receita, versão 1, ponte 0.2.0, produção')
@@ -846,6 +850,10 @@ def caso_respostas(srp, sis):
        and A not in srp.servicos('CONSDECLARACAO13') + srp.servicos('SOLICITARPROTOCOLO91'),
        'a procuração com acesso negado: as outras da empresa nem são chamadas')
     ok(empresa(pac, B) and empresa(pac, B).get('situacao_fiscal') is not None, 'as outras empresas seguem')
+    # daqui pra frente, uma pasta nova: a A ficou "sem" no estado.json acima, e a empresa sem autorização não é mais
+    # consultada até a próxima consulta da autorização (03/11/2026)
+    pasta = pasta_nova()
+    escrever_config(pasta, sis)
     srp.zerar()
     srp.filas['MSGCONTRIBUINTE61'] = [{'status': 200, 'dados': '', 'mensagens': [
         {'codigo': '[AcessoNegado-CAIXAPOSTAL-01]', 'texto': 'sem autorização'}]}]
@@ -1532,6 +1540,17 @@ def caso_autorizacao_segunda(srp, sis):
     sis.zerar()
     rodar(p, srp, hoje='2026-10-02')
     ok(not srp.servicos('OBTERPROCURACAO41'), 'sexta: não pergunta de novo (nem o do acesso negado)')
+    lote = next((x['doc'].split(',') for x in srp.pedidos if x['servico'] == 'SOLICEVENTOSPJ132'), [])
+    ok(lote and A not in lote and B not in lote
+       and {(A, 'caixa_postal', 'sem_autorizacao'), (B, 'caixa_postal', 'sem_autorizacao')} <= set(faltou(sis.ultimo())),
+       '  e as que estavam sem ficam fora do lote da Caixa Postal (a recusa seria uma chamada paga), com o motivo')
+    srp.zerar()
+    sis.zerar()
+    rodar(p, srp, '--so', 'situacao_fiscal', hoje='2026-10-02')
+    ok(A not in srp.servicos('SOLICITARPROTOCOLO91') and B not in srp.servicos('SOLICITARPROTOCOLO91')
+       and srp.servicos('SOLICITARPROTOCOLO91')
+       and (A, 'situacao_fiscal', 'sem_autorizacao') in faltou(sis.ultimo()),
+       '  e, com o --so, a situação fiscal também não é pedida pra elas (as outras empresas, sim)')
     srp.zerar()
     sis.zerar()
     rodar(p, srp, hoje='2026-10-06')                                  # terça: desligado na segunda, dia 5
@@ -1593,6 +1612,42 @@ def caso_caixa_postal(srp, sis):
     ok(any(m['id'] == 'R000' and m['lida'] is True for m in msgs2), 'a mandada como não lida que aparece lida vai de novo')
     ok(sobraram <= ids and not any(i.startswith('V0') for i in ids) and len(msgs2) == len(sobraram) + 1,
        f'as que sobraram da primeira vão agora; as antigas, nunca ({len(msgs2)})')
+
+
+def caso_eventos_formatos(srp, sis):
+    titulo('10b. o protocolo dos eventos em outros formatos; sem ele, o log diz o que veio (03/11/2026)')
+    variantes = [
+        ('em duas camadas de texto', json.dumps(json.dumps({'protocolo': 'P-DUAS-CAMADAS', 'TempoEsperaMedioEmMs': 5,
+                                                              'TempoLimiteEmMin': 5})), 'P-DUAS-CAMADAS'),
+        ('com a chave em outra caixa', json.dumps({'Protocolo': 'P-CAIXA', 'tempoEsperaMedioEmMs': '7'}), 'P-CAIXA'),
+        ('sem a chave de fechar (o exemplo do Serpro)', '{"protocolo": "P-SEM-FECHAR", "TempoEsperaMedioEmMs": 9',
+         'P-SEM-FECHAR'),
+    ]
+    sucesso = [{'codigo': '[Sucesso-EVENTOSATUALIZACAO-001]', 'texto': 'Requisição efetuada com sucesso.'}]
+    for nome, dados, esperado in variantes:
+        p = pasta_nova()
+        escrever_config(p, sis)
+        srp.zerar()
+        srp.eventos = {A: '261022'}
+        srp.filas['SOLICEVENTOSPJ132'] = [{'status': 200, 'mensagens': sucesso, 'dados': dados}]
+        sis.zerar()
+        rodar(p, srp, '--so', 'caixa_postal', '--empresas', '1')
+        pedidos = [json.loads(x['pedido']['pedidoDados']['dados']).get('protocolo')
+                   for x in srp.pedidos if x['servico'] == 'OBTEREVENTOSPJ134']
+        ok(pedidos == [esperado] and ((empresa(sis.ultimo(), A) or {}).get('caixa_postal') or {}).get('mensagens'),
+           f'o protocolo {nome}: os eventos são pedidos com ele e as mensagens vêm ({pedidos})')
+    p = pasta_nova()
+    escrever_config(p, sis)
+    srp.zerar()
+    srp.filas['SOLICEVENTOSPJ132'] = [{'status': 200, 'dados': '', 'mensagens': [
+        {'codigo': '[Aviso-EVENTOSATUALIZACAO-005]', 'texto': '998 requisições restantes para consultas de eventos'}]}]
+    sis.zerar()
+    rodar(p, srp, '--so', 'caixa_postal', '--empresas', '1')
+    ok(faltou(sis.ultimo(), A) == [(A, 'caixa_postal', 'erro')] and not srp.servicos('OBTEREVENTOSPJ134'),
+       'sem o protocolo: erro na caixa_postal, e os eventos não são pedidos')
+    linha = next((l for l in logs(p).splitlines() if 'não devolveu o protocolo' in l), '')
+    ok('HTTP 200' in linha and 'Aviso-EVENTOSATUALIZACAO-005' in linha and 'dados vazio' in linha,
+       f'o log diz o HTTP, a mensagem do Serpro e como veio o dados ({linha[-170:]})')
 
 
 # ---------------------------------------------------------------- 10. o item 4: as respostas da função
@@ -1882,6 +1937,7 @@ def main():
                      lambda: caso_o_que_sai(srp, sis), lambda: caso_segredos(srp, sis),
                      lambda: caso_pdf_ilegivel(srp, sis), lambda: caso_envio(srp, sis), lambda: caso_chave(srp, sis),
                      caso_feriados, lambda: caso_autorizacao_segunda(srp, sis), lambda: caso_caixa_postal(srp, sis),
+                     lambda: caso_eventos_formatos(srp, sis),
                      lambda: caso_respostas_da_funcao(srp, sis), lambda: caso_faturamento_pendente(srp, sis),
                      lambda: caso_virada_do_ano(srp, sis), lambda: caso_certificado_do_serpro(srp, sis),
                      lambda: caso_caixa_postal_revisao(srp, sis), lambda: caso_validacoes(sis), caso_dominio):

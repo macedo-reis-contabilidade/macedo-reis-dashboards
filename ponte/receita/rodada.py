@@ -87,6 +87,15 @@ def executar(cli, empresas, est, hoje, so, pasta, reg):
                 est.marcar_consulta('autorizacao', doc, hoje, situacao='sem' if f.motivo == 'sem_autorizacao' else None)
             if f.motivo == 'sem_autorizacao':
                 negados.add(doc)
+    # a empresa cuja última consulta da autorização disse sem (ou vencida) e que hoje não foi consultada também fica de
+    # fora das outras consultas: a Receita negaria, e cada recusa é uma chamada paga (03/11/2026: sem isto, nos dias sem
+    # a consulta da autorização, as 80 sem procuração entrariam no lote da Caixa Postal e na situação fiscal do dia 5).
+    # Elas voltam na consulta da autorização (toda segunda e no primeiro dia útil do mês), como o LEIA-ME diz.
+    if cli.ambiente == 'producao':
+        for e in empresas:
+            doc = e['documento']
+            if 'autorizacao' not in planos[doc] and est.sem_autorizacao(doc, hoje):
+                negados.add(doc)
 
     # 2. por empresa: PGDAS, a declaração (faturamento) e a situação fiscal
     def mes_pendente(doc, plano):
