@@ -10,6 +10,7 @@ import { createHash } from 'node:crypto';
 import { validarPacote, empresasDaCarteira, documento, hojeEmBrasilia, sha256Hex, iguais, LIMITES } from '../supabase/functions/ponte/receita.js';
 import { criarServidor } from '../supabase/functions/ponte/servidor.js';
 import { validarPacoteDominio, LIMITES_DOMINIO } from '../supabase/functions/ponte/dominio.js';
+import { validarPacoteNotas, empresasAutorizadas, destinosDaConfig, dvDaChave, pareceCpf, LIMITES_NOTAS, SEM_DESTINO, SEM_AUTORIZACAO, DESTINO_FORA } from '../supabase/functions/ponte/notas.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + JSON.stringify(extra) : '')); };
@@ -283,6 +284,189 @@ r = await pedir(fakeDb({ rpcErro: { message: 'falhou' } }), BOM());
 chk('o banco falhou: 500 (a ponte tenta de novo e guarda nos pendentes)', r.status === 500, r);
 r = await pedir(fakeDb(), 'x'.repeat(LIMITES.corpo + 1));
 chk('pacote grande demais: 413', r.status === 413, r);
+
+console.log('As notas de entrada das empresas autorizadas (03/11/2026):');
+{
+  const EMP = '11222333000100', FORN = '44555666000100';   // inventados, com o dígito verificador errado de propósito
+  const chaveCom = (numero, cnpj = FORN, serie = 1) => {
+    const base = '43' + '2609' + cnpj + '55' + String(serie).padStart(3, '0') + String(numero).padStart(9, '0') + '1' + '00001234';
+    return base + dvDaChave(base);
+  };
+  const xmlDe = chave => Buffer.from('<?xml version="1.0" encoding="UTF-8"?><nfeProc versao="4.00"><NFe><infNFe Id="NFe' + chave
+    + '" versao="4.00"><ide><mod>55</mod></ide></infNFe></NFe></nfeProc>', 'utf8').toString('base64');
+  const NOTA = (numero, mudar) => {
+    const n = {
+      chave: chaveCom(numero), modelo: '55', numero: String(numero), serie: '001', emissao: '2026-09-15', entrada: '2026-09-16',
+      emitente: { cnpj: FORN, nome: '  FORNECEDOR\nEXEMPLO LTDA ', uf: 'sc' }, destinatario: { cnpj: '11.222.333/0001-00' },
+      totais: { produtos: 1000, desconto: 0, frete: 50, ipi: 52.5, icms_st: 0, total: 1102.5 }, origem: 'dominio',
+      itens: [{ n: 1, codigo: 'ABC-10', codigo_produto: '123', ean: '7890000000000', descricao: 'PARAFUSO SEXTAVADO 1/4 X 2', ncm: '7318.15.00',
+        cfop: '1102', unidade: 'CX', quantidade: 10, valor_unitario: 100, valor_total: 1000, desconto: 0, ipi: null, icms_st: 0, extra: 'some' }],
+      xml: null, sobra: 'x'
+    };
+    if (mudar) mudar(n);
+    return n;
+  };
+  const PACOTE = mudar => {
+    const p = { versao: 1, tipo: 'notas', rodada: { id: '9D0C5C56-1111-4A2B-9C3D-000000000002', inicio: '2026-11-04T07:05:00-03:00', maquina: 'PC-PONTE', ponte: '0.3.0' },
+      empresa: { codigo: 901, documento: EMP },
+      notas: [NOTA(1234), NOTA(1235, n => { n.origem = 'xml'; n.xml = xmlDe(n.chave); n.entrada = '2026-09-17'; }), NOTA(1236, n => { n.emissao = '2025-09-19'; n.entrada = '2025-09-20'; })] };
+    if (mudar) mudar(p);
+    return p;
+  };
+  const vn = validarPacoteNotas(PACOTE());
+  chk('o pacote do contrato passa, sem recusa', vn.ok && vn.pacote.notas.length === 3 && vn.recusadas.length === 0, vn);
+  const n0 = vn.ok && vn.pacote.notas[0], i0 = n0 && n0.itens[0];
+  chk('o que o contrato não prevê fica de fora, e o texto numa linha', n0 && !('sobra' in n0) && !('extra' in i0) && n0.emitente.nome === 'FORNECEDOR EXEMPLO LTDA' && n0.emitente.uf === 'SC', n0);
+  chk('o destinatário é a empresa do pacote, só com letras e dígitos; o número e a série sem os zeros da frente',
+    n0 && n0.destinatario.cnpj === EMP && n0.numero === '1234' && n0.serie === '1');
+  chk('o NCM só com os dígitos, e o IPI do item que a Domínio não guardou segue nulo', i0 && i0.ncm === '73181500' && i0.ipi === null && i0.cfop === '1102');
+  chk('a nota com o XML leva o XML', vn.ok && vn.pacote.notas[1].origem === 'xml' && typeof vn.pacote.notas[1].xml === 'string');
+  const recusaN = (mudar, campo) => { const r2 = validarPacoteNotas(PACOTE(mudar)); return !r2.ok && r2.campo === campo ? r2 : null; };
+  chk('versão desconhecida recusa o pacote', !!recusaN(p => { p.versao = 2; }, 'versao'));
+  chk('outro tipo recusa o pacote', !!recusaN(p => { p.tipo = 'receita'; }, 'tipo'));
+  chk('rodada sem uuid recusa o pacote', !!recusaN(p => { p.rodada.id = 'x'; }, 'rodada.id'));
+  chk('o código da empresa que não é inteiro recusa o pacote', !!recusaN(p => { p.empresa.codigo = '901'; }, 'empresa.codigo'));
+  chk('pacote sem nota é recusado', !!recusaN(p => { p.notas = []; }, 'notas'));
+  chk('notas demais num pacote: recusado', !!recusaN(p => { p.notas = Array.from({ length: LIMITES_NOTAS.notas + 1 }, (_, k) => NOTA(k + 1)); }, 'notas'));
+  // a nota fora do contrato fica de fora sozinha
+  const deForaN = (mudar, campo) => {
+    const r2 = validarPacoteNotas(PACOTE(p => mudar(p.notas[0], p)));
+    return r2.ok && r2.pacote.notas.length === 2 && r2.recusadas.length === 1 && r2.recusadas[0].campo === campo ? r2 : null;
+  };
+  chk('a chave com o dígito verificador errado fica de fora', !!deForaN(n => { n.chave = n.chave.slice(0, 43) + ((+n.chave[43] + 1) % 10); }, 'notas[0].chave'));
+  chk('o número que não é o da chave fica de fora', !!deForaN(n => { n.numero = '999'; }, 'notas[0].numero'));
+  chk('o CNPJ do emitente que não é o da chave fica de fora', !!deForaN(n => { n.emitente.cnpj = '55666777000100'; }, 'notas[0].emitente.cnpj'));
+  chk('a nota de emitente pessoa física (o CPF na chave) fica de fora', !!deForaN(n => { n.chave = chaveCom(1234, '00012345678909'); n.emitente.cnpj = '00012345678909'; }, 'notas[0].emitente.cnpj'));
+  chk('a nota de outra empresa fica de fora', !!deForaN(n => { n.destinatario.cnpj = '22333444000100'; }, 'notas[0].destinatario.cnpj'));
+  chk('origem xml sem o XML fica de fora', !!deForaN(n => { n.origem = 'xml'; }, 'notas[0].xml'));
+  chk('o XML de outra nota fica de fora', !!deForaN(n => { n.origem = 'xml'; n.xml = xmlDe(chaveCom(9)); }, 'notas[0].xml'));
+  chk('o XML que não está em base64 fica de fora', !!deForaN(n => { n.origem = 'xml'; n.xml = '<nfeProc>'; }, 'notas[0].xml'));
+  chk('origem dominio com o XML fica de fora', !!deForaN(n => { n.xml = xmlDe(n.chave); }, 'notas[0].xml'));
+  chk('o CFOP do fornecedor no lugar do da entrada fica de fora', !!deForaN(n => { n.itens[0].cfop = '5102'; }, 'notas[0].itens[0].cfop'));
+  chk('a nota sem itens fica de fora', !!deForaN(n => { n.itens = []; }, 'notas[0].itens'));
+  chk('o item sem o valor total fica de fora', !!deForaN(n => { n.itens[0].valor_total = null; }, 'notas[0].itens[0].valor_total'));
+  {
+    const r2 = validarPacoteNotas(PACOTE(p => { p.notas.push(NOTA(1234)); }));
+    chk('a mesma nota duas vezes no pacote: a segunda fica de fora', r2.ok && r2.pacote.notas.length === 3 && r2.recusadas.length === 1 && /repetida/.test(r2.recusadas[0].erro), r2);
+  }
+  {
+    const r2 = validarPacoteNotas(PACOTE(p => { p.notas[0].itens[0].ean = 'SEM GTIN'; p.notas[0].itens[0].ncm = '0'; }));
+    chk('o EAN "SEM GTIN" e o NCM que não é NCM viram nulo, sem recusar a nota', r2.ok && r2.recusadas.length === 0 && r2.pacote.notas[0].itens[0].ean === null && r2.pacote.notas[0].itens[0].ncm === null, r2);
+  }
+  chk('o CPF com zeros na frente parece CPF; o CNPJ, não', pareceCpf('00012345678909') && !pareceCpf(FORN) && !pareceCpf(EMP));
+  {
+    const comp = [
+      { cliente_id: 'a', destino: 'um', escopo: 'nfe_entrada', notas_desde: '2025-10-01', revogado_em: null },
+      { cliente_id: 'a', destino: 'dois', escopo: 'nfe_entrada', notas_desde: '2025-06-01', revogado_em: '2026-12-01' },
+      { cliente_id: 'b', destino: 'um', escopo: 'nfe_entrada', notas_desde: '2025-10-01', revogado_em: '2026-11-04' },
+      { cliente_id: 'c', destino: 'um', escopo: 'outro', notas_desde: '2025-10-01', revogado_em: null },
+      { cliente_id: 'd', destino: 'um', escopo: 'nfe_entrada', notas_desde: '2026-01-01', revogado_em: null }
+    ];
+    const emp = [{ codigo: 902, cliente_id: 'a' }, { codigo: 901, cliente_id: 'a' }, { codigo: 903, cliente_id: 'b' }, { codigo: 904, cliente_id: 'c' }, { codigo: 905, cliente_id: 'd' }];
+    const cli = [{ id: 'a', documento: '11.222.333/0001-00' }, { id: 'b', documento: '22333444000100' }, { id: 'c', documento: '33444555000100' }, { id: 'd', documento: '44555666000100' }];
+    const um = { um: { url: 'https://destino.exemplo/um', chave: 'k'.repeat(40) } };
+    const lista2 = empresasAutorizadas(comp, emp, cli, '2026-11-04', um);
+    chk('as autorizadas: as ativas hoje (a revogada hoje fica de fora, a revogação marcada pra depois não), pelos dois códigos, com a menor data',
+      JSON.stringify(lista2.map(x => [x.codigo, x.documento, x.desde])) === JSON.stringify([[901, EMP, '2025-06-01'], [902, EMP, '2025-06-01'], [905, '44555666000100', '2026-01-01']]), lista2);
+    chk('pronta só quando o destino de cada autorização dela está configurado', lista2[0].pronta === false && lista2[1].pronta === false && lista2[2].pronta === true, lista2);
+  }
+  {
+    const d = destinosDaConfig(JSON.stringify({ bom: { url: 'https://destino.exemplo/notas', chave: 'k'.repeat(40) }, http: { url: 'http://destino.exemplo', chave: 'k'.repeat(40) },
+      curta: { url: 'https://destino.exemplo', chave: 'curta' } }));
+    chk('o destino só com https e chave de 32 caracteres ou mais', Object.keys(d).join(',') === 'bom', d);
+    chk('a configuração que não é JSON não tem destino', Object.keys(destinosDaConfig('{x')).length === 0);
+  }
+
+  // a porta de entrada, com um banco e um destino de mentira
+  const SERVIDOR_AGORA = () => Date.parse('2026-11-04T07:10:00-03:00');
+  function dbNotas({ destinos = null, docCadastro = EMP, revogado = null } = {}) {
+    const t = {
+      configuracoes_escritorio: [{ chave: 'ponte_chave_sha256', valor: h }, ...(destinos ? [{ chave: 'compartilhamentos_destinos', valor: JSON.stringify(destinos) }] : [])],
+      compartilhamentos: [{ id: 'comp-1', cliente_id: 'a', destino: 'parceiro', escopo: 'nfe_entrada', notas_desde: '2025-10-01', revogado_em: revogado }],
+      dominio_empresas: [{ codigo: 901, cliente_id: 'a' }],
+      clientes: [{ id: 'a', documento: docCadastro }],
+      compartilhamentos_envios: []
+    };
+    return {
+      envios: t.compartilhamentos_envios,
+      from(tabela) {
+        const filtros = [];
+        let modo = 'select', dados = null;
+        const linhas = () => (t[tabela] || []).filter(l => filtros.every(([op, c, x]) => (op === 'eq' ? l[c] === x : x.includes(l[c]))));
+        const api = {
+          select() { return api; },
+          eq(c, x) { filtros.push(['eq', c, x]); return api; },
+          in(c, x) { filtros.push(['in', c, x]); return api; },
+          not() { return api; },
+          insert(obj) { modo = 'insert'; dados = obj; return api; },
+          update(obj) { modo = 'update'; dados = obj; return api; },
+          async maybeSingle() { return { data: linhas()[0] || null, error: null }; },
+          async single() {
+            if (modo === 'insert') { const linha = { id: 'env-' + (t[tabela].length + 1), ...dados }; t[tabela].push(linha); return { data: { id: linha.id }, error: null }; }
+            return { data: linhas()[0] || null, error: null };
+          },
+          then(ok, erro) {
+            if (modo === 'update') { linhas().forEach(l => Object.assign(l, dados)); return Promise.resolve({ data: null, error: null }).then(ok, erro); }
+            return Promise.resolve({ data: linhas(), error: null }).then(ok, erro);
+          }
+        };
+        return api;
+      },
+      async rpc() { return { data: null, error: { message: 'as notas não são gravadas' } }; }
+    };
+  }
+  const DESTINOS = { parceiro: { url: 'https://destino.exemplo/notas', chave: 'k'.repeat(40) } };
+  const pedirN = async (db, corpo, enviar) => {
+    const atender = criarServidor({ criarDb: () => db, agora: SERVIDOR_AGORA, enviar });
+    const r2 = await atender(new Request('http://local/ponte', { method: 'POST', headers: { 'x-chave': 'segredo' }, body: JSON.stringify(corpo) }));
+    return { status: r2.status, corpo: await r2.json() };
+  };
+  const enviadas = [];
+  const destinoOk = (corpoResp = { gravadas: 2, repetidas: 0, recusadas: [] }, status = 200) => async (url, init) => {
+    enviadas.push({ url, init, corpo: JSON.parse(init.body) });
+    return new Response(JSON.stringify(corpoResp), { status });
+  };
+  let rn = await pedirN(dbNotas(), { versao: 1, tipo: 'notas', pedir: 'autorizadas' }, destinoOk());
+  chk('a lista das autorizadas, pelo código do Domínio — sem o destino, ainda não pronta',
+    rn.status === 200 && JSON.stringify(rn.corpo.empresas) === JSON.stringify([{ codigo: 901, documento: EMP, desde: '2025-10-01', pronta: false }]), rn);
+  rn = await pedirN(dbNotas({ destinos: DESTINOS }), { versao: 1, tipo: 'notas', pedir: 'autorizadas' }, destinoOk());
+  chk('com o destino configurado, pronta', rn.status === 200 && rn.corpo.empresas[0].pronta === true, rn);
+  rn = await pedirN(dbNotas({ revogado: '2026-11-04' }), { versao: 1, tipo: 'notas', pedir: 'autorizadas' }, destinoOk());
+  chk('revogada hoje: a lista vem vazia', rn.status === 200 && rn.corpo.empresas.length === 0, rn);
+  rn = await pedirN(dbNotas({ destinos: DESTINOS }), PACOTE(p => { p.empresa.codigo = 999; }), destinoOk());
+  chk('empresa que não está na lista: 403 (a ponte não repete)', rn.status === 403 && rn.corpo.erro === SEM_AUTORIZACAO && enviadas.length === 0, rn);
+  rn = await pedirN(dbNotas({ destinos: DESTINOS, docCadastro: '99888777000100' }), PACOTE(), destinoOk());
+  chk('o documento do cadastro diferente do pacote: 403', rn.status === 403 && enviadas.length === 0, rn);
+  rn = await pedirN(dbNotas({ destinos: DESTINOS, revogado: '2026-11-04' }), PACOTE(), destinoOk());
+  chk('autorização revogada: 403', rn.status === 403 && enviadas.length === 0, rn);
+  let dbn = dbNotas();
+  rn = await pedirN(dbn, PACOTE(), destinoOk());
+  chk('sem o destino configurado: 503, sem mandar nem registrar nada (a ponte tenta na próxima rodada)', rn.status === 503 && rn.corpo.erro === SEM_DESTINO && enviadas.length === 0 && dbn.envios.length === 0, rn);
+  rn = await pedirN(dbNotas({ destinos: DESTINOS }), PACOTE(p => { p.tipo = 'notas'; p.rodada.id = 'x'; }), destinoOk());
+  chk('pacote fora do contrato: 422 com o campo', rn.status === 422 && /rodada\.id/.test(rn.corpo.erro), rn);
+  dbn = dbNotas({ destinos: DESTINOS });
+  rn = await pedirN(dbn, PACOTE(), destinoOk());
+  const ida = enviadas[0];
+  chk('com o destino: 200, e vão só as de entrada a partir da data da autorização', rn.status === 200 && rn.corpo.ok && rn.corpo.notas === 3 && rn.corpo.mandadas === 2
+    && ida && ida.corpo.notas.length === 2 && ida.corpo.notas.every(n => n.entrada >= '2025-10-01'), rn);
+  chk('o destino recebe a chave dele, sem seguir redirecionamento, e o id do envio', ida && ida.url === 'https://destino.exemplo/notas' && ida.init.headers['x-chave'] === 'k'.repeat(40)
+    && ida.init.redirect === 'manual' && ida.corpo.versao === 1 && ida.corpo.envio === 'env-1');
+  chk('o envio fica registrado: o período, quantas notas, itens e com o XML, e o que o destino respondeu',
+    dbn.envios.length === 1 && dbn.envios[0].situacao === 'ok' && dbn.envios[0].notas === 2 && dbn.envios[0].itens === 2 && dbn.envios[0].com_xml === 1
+    && dbn.envios[0].de === '2026-09-16' && dbn.envios[0].ate === '2026-09-17' && dbn.envios[0].gravadas === 2 && dbn.envios[0].http_status === 200 && !!dbn.envios[0].concluido_em, dbn.envios);
+  chk('nada das notas é gravado no banco', !dbn.envios.some(x => 'itens_lista' in x || 'xml' in x));
+  dbn = dbNotas({ destinos: DESTINOS });
+  rn = await pedirN(dbn, PACOTE(), destinoOk({ erro: 'fora' }, 500));
+  chk('o destino fora: 502 (a ponte manda de novo na próxima rodada) e o envio registrado com o erro',
+    rn.status === 502 && rn.corpo.erro === DESTINO_FORA && dbn.envios[0].situacao === 'erro' && dbn.envios[0].http_status === 500 && /500/.test(dbn.envios[0].erro), dbn.envios);
+  dbn = dbNotas({ destinos: DESTINOS });
+  rn = await pedirN(dbn, PACOTE(), async () => { throw new TypeError('rede'); });
+  chk('sem falar com o destino: 502, registrado', rn.status === 502 && dbn.envios[0].situacao === 'erro' && /não consegui/.test(dbn.envios[0].erro), dbn.envios);
+  dbn = dbNotas({ destinos: DESTINOS });
+  rn = await pedirN(dbn, PACOTE(), destinoOk({ gravadas: 1, repetidas: 0, recusadas: [{ chave: chaveCom(1234), motivo: 'sem itens que comparar' }] }));
+  chk('o que o destino recusou volta pra ponte, com o motivo', rn.status === 200 && rn.corpo.recusadas.length === 1 && rn.corpo.recusadas[0].campo === 'destino'
+    && rn.corpo.recusadas[0].erro === 'sem itens que comparar' && dbn.envios[0].recusadas.length === 1, rn);
+}
 
 console.log('O código que a função roda:');
 {

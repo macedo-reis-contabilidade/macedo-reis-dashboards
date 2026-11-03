@@ -14,11 +14,19 @@
 //                                                            → gravado pelo banco (dominio_gravar), já conferido
 //                                                              (dominio.js); a linha de um mês fora do contrato fica
 //                                                              de fora sozinha e volta em `recusadas` (02/11/2026)
+//   { versao: 1, tipo: 'notas', pedir: 'autorizadas' }       → as empresas cujo cliente autorizou mandar as notas de
+//                                                              entrada (compartilhamentos), pelo código do Domínio
+//   { versao: 1, tipo: 'notas', rodada, empresa, notas }     → as notas de uma empresa, conferidas (notas.js) e mandadas
+//                                                              ao destino de cada autorização ativa, só as de entrada a
+//                                                              partir da data dela; nada das notas fica no sistema, só o
+//                                                              registro do envio (compartilhamentos_envios) (03/11/2026)
 // Respostas que a ponte entende (ponte/envio.py): 2xx foi · 4xx recusado (não repete) · 5xx tenta de novo.
-// Puro: env, banco e relógio injetados (index.ts monta). Testes: tests/ponte-funcao.test.mjs.
+// Puro: env, banco, relógio e o envio ao destino injetados (index.ts monta). Testes: tests/ponte-funcao.test.mjs.
 // ============================================================
 import { validarPacote, empresasDaCarteira, hojeEmBrasilia, sha256Hex, iguais, LIMITES } from './receita.js';
 import { validarPacoteDominio } from './dominio.js';
+import { validarPacoteNotas, empresasAutorizadas, autorizacaoAtiva, corpoDoDestino, destinosDaConfig, respostaDoDestino,
+  SEM_DESTINO, SEM_AUTORIZACAO, DESTINO_FORA, LIMITES_NOTAS } from './notas.js';
 
 const CABECALHOS = { 'Content-Type': 'application/json' };
 const resposta = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: CABECALHOS });
@@ -36,7 +44,92 @@ async function empresasParaConsultar(db, agora) {
   return empresasDaCarteira(k, clientes, hojeEmBrasilia(agora()));
 }
 
-export function criarServidor({ criarDb, agora = () => Date.now() }) {
+async function destinosConfigurados(db) {
+  const { data: cfg, error } = await db.from('configuracoes_escritorio').select('valor').eq('chave', 'compartilhamentos_destinos').maybeSingle();
+  if (error) throw error;
+  return destinosDaConfig(cfg && cfg.valor);
+}
+
+async function autorizadasHoje(db, hoje) {
+  const { data: comp, error: e1 } = await db.from('compartilhamentos').select('cliente_id, destino, escopo, notas_desde, revogado_em').eq('escopo', 'nfe_entrada');
+  if (e1) throw e1;
+  const ativas = (comp || []).filter(c => autorizacaoAtiva(c, hoje));
+  const ids = [...new Set(ativas.map(c => c.cliente_id).filter(Boolean))];
+  if (!ids.length) return [];
+  const { data: emp, error: e2 } = await db.from('dominio_empresas').select('codigo, cliente_id').in('cliente_id', ids);
+  if (e2) throw e2;
+  const { data: cli, error: e3 } = await db.from('clientes').select('id, documento').in('id', ids);
+  if (e3) throw e3;
+  return empresasAutorizadas(ativas, emp, cli, hoje, await destinosConfigurados(db));
+}
+
+// as notas de uma empresa: a autorização conferida de novo aqui (o código do Domínio, o documento do cadastro e a
+// autorização ativa hoje), e cada destino recebe só as de entrada a partir da data da autorização dele
+async function encaminharNotas(db, v, hoje, agora, enviar) {
+  const { empresa, rodada } = v.pacote;
+  const { data: emp, error: e1 } = await db.from('dominio_empresas').select('codigo, cliente_id').eq('codigo', empresa.codigo);
+  if (e1) throw e1;
+  const clienteId = emp && emp[0] && emp[0].cliente_id;
+  if (!clienteId) return resposta({ erro: SEM_AUTORIZACAO }, 403);
+  const { data: cli, error: e2 } = await db.from('clientes').select('id, documento').eq('id', clienteId);
+  if (e2) throw e2;
+  const docCadastro = String((cli && cli[0] && cli[0].documento) || '').replace(/[^0-9A-Za-z]/g, '').toUpperCase();
+  if (docCadastro !== empresa.documento) return resposta({ erro: SEM_AUTORIZACAO }, 403);
+  const { data: comp, error: e3 } = await db.from('compartilhamentos').select('id, destino, escopo, notas_desde, revogado_em').eq('cliente_id', clienteId);
+  if (e3) throw e3;
+  const ativas = (comp || []).filter(c => autorizacaoAtiva(c, hoje));
+  if (!ativas.length) return resposta({ erro: SEM_AUTORIZACAO }, 403);
+  const destinos = await destinosConfigurados(db);
+  if (ativas.some(c => !destinos[c.destino])) return resposta({ erro: SEM_DESTINO }, 503);
+
+  const recusadas = v.recusadas.slice();
+  let falhou = false, mandadas = 0;
+  for (const c of ativas) {
+    const corpoDest = corpoDoDestino(v.pacote, String(c.notas_desde).slice(0, 10), null);
+    if (!corpoDest.notas.length) continue;
+    const entradas = corpoDest.notas.map(n => n.entrada).sort();
+    const { data: env, error: e5 } = await db.from('compartilhamentos_envios').insert({
+      destino: c.destino, compartilhamento_id: c.id, cliente_id: clienteId, tipo: 'notas', rodada_id: rodada.id,
+      de: entradas[0], ate: entradas[entradas.length - 1], notas: corpoDest.notas.length,
+      itens: corpoDest.notas.reduce((s, n) => s + n.itens.length, 0), com_xml: corpoDest.notas.filter(n => n.xml).length,
+      situacao: 'enviando'
+    }).select('id').single();
+    if (e5) throw e5;
+    corpoDest.envio = env.id;
+    const concluir = async dados => {
+      const { error } = await db.from('compartilhamentos_envios').update({ ...dados, concluido_em: new Date(agora()).toISOString() }).eq('id', env.id);
+      if (error) console.error('ponte: o registro do envio', error);
+    };
+    let status = null, corpoResp = null, erro = null;
+    try {
+      const r = await enviar(destinos[c.destino].url, {
+        method: 'POST', redirect: 'manual',
+        headers: { 'Content-Type': 'application/json', 'x-chave': destinos[c.destino].chave },
+        body: JSON.stringify(corpoDest), signal: AbortSignal.timeout(LIMITES_NOTAS.prazo)
+      });
+      status = r.status;
+      const txt = await r.text();
+      try { corpoResp = JSON.parse(txt); } catch { corpoResp = null; }
+      if (status < 200 || status >= 300) erro = 'o destino respondeu ' + status + (corpoResp && corpoResp.erro ? ': ' + String(corpoResp.erro).slice(0, 200) : '');
+    } catch (e) {
+      erro = e && e.name === 'TimeoutError' ? 'o destino não respondeu em ' + (LIMITES_NOTAS.prazo / 1000) + ' s' : 'não consegui falar com o destino';
+    }
+    if (erro) {
+      falhou = true;
+      console.error('ponte: notas pro destino', erro);
+      await concluir({ situacao: 'erro', http_status: status, erro });
+      continue;
+    }
+    const rd = respostaDoDestino(corpoResp);
+    await concluir({ situacao: 'ok', http_status: status, gravadas: rd.gravadas, repetidas: rd.repetidas, recusadas: rd.recusadas });
+    mandadas += corpoDest.notas.length;
+    rd.recusadas.forEach(x => recusadas.push({ chave: x.chave, campo: 'destino', erro: x.motivo || 'recusada pelo destino' }));
+  }
+  if (falhou) return resposta({ erro: DESTINO_FORA }, 502);
+  return resposta({ ok: true, notas: v.pacote.notas.length, mandadas, recusadas: recusadas.slice(0, LIMITES_NOTAS.recusadas), total_recusadas: recusadas.length });
+}
+
+export function criarServidor({ criarDb, agora = () => Date.now(), enviar = (url, init) => fetch(url, init) }) {
   return async function atender(req) {
     if (req.method !== 'POST') return resposta({ erro: 'Use POST.' }, 405);
     const bruto = await req.text();
@@ -76,6 +169,14 @@ export function criarServidor({ criarDb, agora = () => Date.now() }) {
         const { data, error } = await db.rpc('dominio_gravar', { p: v.pacote });
         if (error) throw error;
         return resposta({ ok: true, gravado: true, ...(data || {}), recusadas: v.recusadas, linhas_recusadas: v.linhas_recusadas });
+      }
+      if (corpo.tipo === 'notas' && corpo.pedir === 'autorizadas') {
+        return resposta({ empresas: await autorizadasHoje(db, hojeEmBrasilia(agora())) });
+      }
+      if (corpo.tipo === 'notas') {
+        const v = validarPacoteNotas(corpo);
+        if (!v.ok) return resposta({ erro: 'Pacote de notas recusado: ' + v.erro + ' (' + v.campo + ').' }, 422);
+        return await encaminharNotas(db, v, hojeEmBrasilia(agora()), agora, enviar);
       }
       return resposta({ erro: 'Nada pra fazer com este pacote.' }, 422);
     } catch (e) {
