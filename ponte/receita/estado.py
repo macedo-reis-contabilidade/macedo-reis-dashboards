@@ -1,9 +1,10 @@
 """O que a ponte da Receita lembra de uma rodada pra outra, em C:\\ponte-dominio\\receita\\:
 
-    estado.json             o que já foi consultado e mandado: a última autorização de cada empresa, os meses
-                            declarados no PGDAS, a declaração já lida de cada mês, a última data de novidade na
-                            Caixa Postal e as mensagens já mandadas (pelo id), e a data da última consulta da
-                            autorização, do PGDAS e da situação fiscal (o calendário "a partir do dia")
+    estado.json             o que já foi consultado e mandado: a última autorização de cada empresa (com o via
+                            'procurador' quando a procuração é pro CPF do procurador), os meses declarados no PGDAS,
+                            a declaração já lida de cada mês, a última data de novidade na Caixa Postal e as
+                            mensagens já mandadas (pelo id), e a data da última consulta da autorização, do PGDAS e
+                            da situação fiscal (o calendário "a partir do dia")
     chamadas-AAAA-MM.json   quantas chamadas ao Serpro no mês, por serviço — o teto_mes
     pdfs\\                   os PDFs da declaração e da situação fiscal (apagados depois de 30 dias)
 
@@ -46,10 +47,25 @@ class Estado:
         self.gravar_no_fim = gravar
         lido = _ler_json(self.arq, {})
         self.d = {k: dict(lido.get(k) or {}) for k in self.VAZIO}
+        # a rodada tem o procurador (a rodada diz): sem ele, a empresa autorizada só pro CPF dele está sem autorização
+        self.com_procurador = False
 
     # — autorização
     def guardar_autorizacao(self, doc, bloco, hoje):
         self.d['autorizacao'][doc] = {'consultada_em': hoje.isoformat(), **bloco}
+
+    def via_procurador(self, doc):
+        """A última consulta disse ativa pela procuração pro CPF do procurador: as consultas vão em nome dele."""
+        a = self.d['autorizacao'].get(doc) or {}
+        return a.get('via') == 'procurador' and a.get('situacao') == 'ativa'
+
+    def liberar_consultas(self, doc):
+        """A empresa que estava sem a procuração e agora tem: o PGDAS e a situação fiscal marcados como feitos enquanto
+        ela estava sem (sem chamar o Serpro) voltam a contar como não feitos, e a declaração tentada sem a procuração,
+        como não tentada — assim elas rodam já, e não só no próximo dia marcado."""
+        self.d['pgdas_consultado'].pop(doc, None)
+        self.d['situacao_fiscal'].pop(doc, None)
+        self.d['declaracoes_tentadas'].pop(doc, None)
 
     # — a data da última consulta (o calendário "a partir do dia")
     def consultada_em(self, servico, doc):
@@ -66,7 +82,9 @@ class Estado:
         não há procuração): não roda de novo até o próximo dia marcado. Na autorização que não veio, a `situacao` diz o
         que lembrar ('sem' = a segunda-feira seguinte consulta de novo)."""
         if servico == 'autorizacao':
-            antes = self.d['autorizacao'].get(doc) or {}
+            antes = dict(self.d['autorizacao'].get(doc) or {})
+            if situacao:
+                antes.pop('via', None)          # a situação nova não é mais a da procuração pro procurador
             self.d['autorizacao'][doc] = {**antes, 'consultada_em': hoje.isoformat(),
                                           **({'situacao': situacao} if situacao else {})}
         elif servico == 'pgdas':
@@ -75,9 +93,12 @@ class Estado:
             self.d['situacao_fiscal'][doc] = hoje.isoformat()
 
     def sem_autorizacao(self, doc, hoje):
-        """A última consulta disse sem procuração, ou vencida (ou ela venceu desde então)."""
+        """A última consulta disse sem procuração, ou vencida (ou ela venceu desde então) — ou disse ativa só pro CPF do
+        procurador e a rodada não tem o procurador (tirado do config.ini): a Receita negaria em nome do escritório."""
         a = self.d['autorizacao'].get(doc) or {}
         ate = a.get('valida_ate')
+        if a.get('via') == 'procurador' and not self.com_procurador:
+            return True
         return a.get('situacao') in ('sem', 'vencida') or bool(ate and str(ate) < hoje.isoformat())
 
     # — PGDAS e a declaração de cada mês

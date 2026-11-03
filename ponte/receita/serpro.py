@@ -19,8 +19,17 @@ Windows o acha sozinho, o Python não. Ele vai junto, em ac-serpro-2025.pem (pú
 que o Windows já tem). Se o Serpro trocar de intermediário, o conferir avisa e o LEIA-ME diz como trocar o arquivo.
 
 Pros testes, PONTE_SERPRO_TOKEN_URL e PONTE_SERPRO_GATEWAY trocam os endereços — só pra endereço local.
+
+O procurador (o Autentica Procurador, 03/11/2026 — procurador.py): com o [integra] procurador_* preenchido e em
+produção, o chamar(…, autor='procurador') vai com o autorPedidoDados = o CPF dele (tipo 1) e o cabeçalho
+autenticar_procurador_token. O token sai do termo de autorização assinado com o e-CPF A1 dele (AUTENTICAPROCURADOR ·
+ENVIOXMLASSINADO81, no Apoiar, com o autor = o CPF e o contribuinte = o escritório), uma vez por rodada, e fica só na
+memória — registrado como segredo. O mesmo termo de novo no mesmo dia volta 304, com o token no ETag. A recusa do
+termo (o e-CPF de outro CPF, vencido, a senha errada, a mensagem do Serpro — inclusive o 500 com mensagem, que não é o
+Serpro fora) vira ProcuradorIndisponivel uma vez só: as consultas em nome dele param nesta rodada, as outras seguem.
 """
 import base64
+import datetime
 import http.client
 import json
 import os
@@ -36,6 +45,7 @@ import urllib.request
 
 from .. import config
 from . import demonstracao
+from . import procurador as proc_mod
 
 URL_TOKEN = 'https://autenticacao.sapi.serpro.gov.br/authenticate'
 GATEWAY_PRODUCAO = 'https://gateway.apiserpro.serpro.gov.br/integra-contador/v1/'
@@ -50,6 +60,11 @@ class ErroConfig(Exception):
 
 class SerproFora(Exception):
     """O Serpro não respondeu depois das novas tentativas."""
+
+
+class ProcuradorIndisponivel(Exception):
+    """O token do procurador não saiu nesta rodada (o porquê na mensagem, sem segredo): as consultas em nome dele param
+    até a próxima rodada; as do escritório seguem."""
 
 
 class Resposta:
@@ -177,6 +192,14 @@ def _certificado_nao_confere(e):
                          f'mudado: o LEIA-ME diz como trocar o ac-serpro-2025.pem')
 
 
+def _corpo_json(texto):
+    try:
+        corpo = json.loads(texto.decode('utf-8')) if texto else {}
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        corpo = {}
+    return corpo if isinstance(corpo, dict) else {}
+
+
 def _esperas():
     bruto = os.environ.get('PONTE_ESPERAS')
     if not bruto:
@@ -208,7 +231,7 @@ def gateway_de(ambiente):
 
 class Cliente:
     def __init__(self, ambiente, cnpj_escritorio, registro, contador, pasta_tmp, consumer_key='', consumer_secret='',
-                 certificado='', senha_certificado='', url_token=None, url_gateway=None):
+                 certificado='', senha_certificado='', url_token=None, url_gateway=None, procurador=None, hoje=None):
         self.ambiente = ambiente                       # 'producao', 'demonstracao' ou 'falso'
         self.cnpj = re.sub(r'[./\s-]', '', cnpj_escritorio or '').upper()
         self.registro = registro
@@ -224,6 +247,17 @@ class Cliente:
         self._ultima = 0.0
         self.fora = False                              # o Serpro parou de responder nesta rodada
         self._abridor_gateway = self._abridor(self.gateway, None)
+        # o procurador ({cpf, certificado, senha} do config.ini, ou None): só em produção
+        self.hoje = hoje or datetime.date.today()
+        proc = procurador if ambiente == 'producao' and procurador else {}
+        self.procurador_cpf = proc_mod.so_digitos(proc.get('cpf'))
+        self._proc_pfx, self._proc_senha = proc.get('certificado') or '', proc.get('senha') or ''
+        for s in (self.procurador_cpf, self._proc_pfx, self._proc_senha):
+            self._segredo(s)
+        self._token_proc = None
+        self._proc_expira = None
+        self._nome_contratante = None
+        self.procurador_erro = None                    # o porquê, quando o token do procurador não saiu nesta rodada
 
     # ---------- conexão
     def _abridor(self, url, ctx):
@@ -235,6 +269,59 @@ class Cliente:
     def _segredo(self, valor):
         if valor and valor not in self.registro.segredos:
             self.registro.segredos.append(valor)
+
+    # ---------- o procurador
+    def tem_procurador(self):
+        """O procurador está configurado (o CPF, o .pfx e a senha) e a rodada é de produção."""
+        return self.ambiente == 'producao' and bool(self.procurador_cpf and self._proc_pfx and self._proc_senha)
+
+    def procurador_com_token(self):
+        """O termo de autorização foi aceito nesta rodada (há o token do procurador na memória)."""
+        return bool(self._token_proc)
+
+    def nome_contratante(self):
+        """O nome do escritório no termo: o CN do e-CNPJ dele, antes do ":" (o nome que o certificado traz)."""
+        if self._nome_contratante is None:
+            _, cert, _ = _abrir(self._pfx, self._senha)
+            nome = proc_mod.nome_e_documento(cert)[0] if cert is not None else ''
+            if not nome:
+                raise proc_mod.ErroTermo('o certificado do escritório não tem o nome (o CN)')
+            self._nome_contratante = nome
+        return self._nome_contratante
+
+    def _sem_procurador(self, porque):
+        self.procurador_erro = porque
+        raise ProcuradorIndisponivel(porque)
+
+    def token_procurador(self):
+        """O autenticar_procurador_token desta rodada — pedido na primeira consulta em nome do procurador e guardado
+        só na memória. Levanta ProcuradorIndisponivel (uma vez decidido, a rodada inteira), SerproFora ou ErroConfig."""
+        agora = datetime.datetime.now(datetime.timezone.utc)
+        if self._token_proc and (self._proc_expira is None
+                                 or agora < self._proc_expira - datetime.timedelta(minutes=5)):
+            return self._token_proc
+        if self.procurador_erro:
+            raise ProcuradorIndisponivel(self.procurador_erro)
+        if not self.tem_procurador():
+            self._sem_procurador('o procurador não está configurado')
+        try:
+            chave, cert, _ = _abrir(self._proc_pfx, self._proc_senha)
+            xml, _vigencia = proc_mod.termo_assinado(chave, cert, self.procurador_cpf, self.cnpj,
+                                                     self.nome_contratante(), self.hoje)
+        except proc_mod.ErroTermo as e:
+            self._sem_procurador(str(e))
+        except ErroConfig as e:
+            # a senha errada do e-CPF, o .pfx que sumiu, o certificado do escritório que não abre: o termo não sai
+            self._sem_procurador(f'o termo de autorização não pôde ser assinado ({e})')
+        r = self.chamar('Apoiar', proc_mod.SISTEMA, proc_mod.SERVICO, self.cnpj,
+                        {'xml': base64.b64encode(xml.encode('utf-8')).decode('ascii')}, versao='1.0', autor='procurador')
+        token, expira = proc_mod.token_da_resposta(r)
+        if not token:
+            self._sem_procurador('o Serpro recusou o termo de autorização do procurador ('
+                                 + (r.resumo() or f'HTTP {r.http_status}') + ')')
+        self._segredo(token)
+        self._token_proc, self._proc_expira = token, expira
+        return token
 
     # ---------- token
     def token(self, forcar=False):
@@ -295,25 +382,32 @@ class Cliente:
             time.sleep(falta)
         self._ultima = time.monotonic()
 
-    def corpo(self, sistema, servico, contribuinte, dados, versao='1.0', tipo=None):
-        """tipo do contribuinte: 1 CPF, 2 CNPJ (pelo tamanho, se não vier); 4 = lista de CNPJs (o lote de eventos)."""
+    def corpo(self, sistema, servico, contribuinte, dados, versao='1.0', tipo=None, autor=None):
+        """tipo do contribuinte: 1 CPF, 2 CNPJ (pelo tamanho, se não vier); 4 = lista de CNPJs (o lote de eventos).
+        autor: None = o escritório (o CNPJ, tipo 2); 'procurador' = o CPF do procurador (tipo 1)."""
         if self.ambiente == 'demonstracao':
             c = demonstracao.corpo(servico)
             if c is None:
                 raise ErroConfig(f'o ambiente de demonstração não tem cenário pro serviço {servico}')
             return c
         contrib = re.sub(r'[./\s-]', '', contribuinte or '')
+        autor_pedido = ({'numero': self.procurador_cpf, 'tipo': 1} if autor == 'procurador'
+                        else {'numero': self.cnpj, 'tipo': 2})
         return {'contratante': {'numero': self.cnpj, 'tipo': 2},
-                'autorPedidoDados': {'numero': self.cnpj, 'tipo': 2},
+                'autorPedidoDados': autor_pedido,
                 'contribuinte': {'numero': contrib, 'tipo': tipo or (1 if len(contrib) == 11 else 2)},
                 'pedidoDados': {'idSistema': sistema, 'idServico': servico, 'versaoSistema': versao,
                                 'dados': dados if isinstance(dados, str) else json.dumps(dados, ensure_ascii=False)}}
 
-    def chamar(self, endpoint, sistema, servico, contribuinte, dados, versao='1.0', tipo=None):
-        """Uma consulta ao Serpro, com as novas tentativas. Devolve Resposta; levanta SerproFora ou ErroConfig."""
+    def chamar(self, endpoint, sistema, servico, contribuinte, dados, versao='1.0', tipo=None, autor=None):
+        """Uma consulta ao Serpro, com as novas tentativas. Devolve Resposta; levanta SerproFora ou ErroConfig — e,
+        com autor='procurador', ProcuradorIndisponivel (sem chamar o Serpro) quando o token dele não saiu."""
         if self.fora:
             raise SerproFora('o Serpro já não respondia nesta rodada')
-        corpo = self.corpo(sistema, servico, contribuinte, dados, versao, tipo)
+        token_proc = None
+        if autor == 'procurador' and sistema != proc_mod.SISTEMA:
+            token_proc = self.token_procurador()
+        corpo = self.corpo(sistema, servico, contribuinte, dados, versao, tipo, autor)
         bruto = json.dumps(corpo, ensure_ascii=False).encode('utf-8')
         esperas = _esperas()
         renovado = False
@@ -322,6 +416,8 @@ class Cliente:
             self._devagar()
             access, jwt = self.token()
             cab = {'Authorization': f'Bearer {access}', 'jwt_token': jwt, 'Content-Type': 'application/json'}
+            if token_proc:
+                cab['autenticar_procurador_token'] = token_proc
             motivo = None
             try:
                 req = urllib.request.Request(self.gateway + endpoint, data=bruto, method='POST', headers=cab)
@@ -348,14 +444,19 @@ class Cliente:
                 renovado = True
                 self.token(forcar=True)
                 continue
+            if status == 304:
+                # o "não mudou" do Autentica Procurador (o mesmo termo, ainda válido): sem corpo, o token vem no ETag
+                return Resposta(304, {}, cabecalhos)
             if status is not None and 300 <= status < 400:
                 raise ErroConfig(f'o Serpro redirecionou o pedido (HTTP {status}) — o endereço do gateway mudou?')
             if status is not None and status != 429 and status < 500:
-                try:
-                    corpo_resp = json.loads(texto.decode('utf-8')) if texto else {}
-                except (UnicodeDecodeError, json.JSONDecodeError):
-                    corpo_resp = {}
-                return Resposta(status, corpo_resp, cabecalhos)
+                return Resposta(status, _corpo_json(texto), cabecalhos)
+            if status is not None and status >= 500 and sistema == proc_mod.SISTEMA:
+                # a recusa do termo vem como 500 com a mensagem do Serpro (o login, o certificado que não valida): é do
+                # termo, não o Serpro fora — volta sem as novas tentativas e sem parar a rodada
+                corpo_resp = _corpo_json(texto)
+                if corpo_resp.get('mensagens'):
+                    return Resposta(status, corpo_resp, cabecalhos)
             motivo = motivo or f'HTTP {status}'
             if tentativa < len(esperas):
                 self.registro(f'receita: {servico} sem resposta ({motivo}) — tento de novo em {esperas[tentativa]:g} s', 'aviso')

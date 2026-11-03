@@ -25,7 +25,11 @@ CAMPOS_SISTEMA = (('sistema', 'url'), ('sistema', 'chave_publica'), ('sistema', 
 # a ponte da Receita (Integra Contador do Serpro) — 23/10/2026
 CAMPOS_INTEGRA = (('integra', 'ambiente'), ('integra', 'consumer_key'), ('integra', 'consumer_secret'),
                   ('integra', 'certificado'), ('integra', 'senha_certificado'), ('integra', 'cnpj_escritorio'))
-SEGREDOS_INTEGRA = ('consumer_key', 'consumer_secret', 'certificado', 'senha_certificado')
+# o procurador (o Autentica Procurador, 03/11/2026): opcional — os três em branco = desligado
+CAMPOS_PROCURADOR = (('integra', 'procurador_cpf'), ('integra', 'procurador_certificado'),
+                     ('integra', 'procurador_senha'))
+SEGREDOS_INTEGRA = ('consumer_key', 'consumer_secret', 'certificado', 'senha_certificado', 'procurador_cpf',
+                    'procurador_certificado', 'procurador_senha')
 # o ambiente e o teto do exemplo são valores de verdade: igual ao exemplo não é "ainda é o do exemplo"
 VALEM_COMO_NO_EXEMPLO = (('integra', 'ambiente'), ('integra', 'teto_mes'))
 TETO_PADRAO = 1500
@@ -106,6 +110,19 @@ class Config:
             return (('integra', 'cnpj_escritorio'),)
         return CAMPOS_INTEGRA
 
+    def procurador(self):
+        """(dados, problema) do procurador: ({cpf, certificado, senha}, None) com os três certos; (None, None) com os
+        três em branco (desligado); (None, 'o porquê') quando está pela metade — sem mostrar valor nenhum."""
+        situacoes = [(campo, self.situacao(secao, campo)) for secao, campo in CAMPOS_PROCURADOR]
+        if all(s == 'falta' for _, s in situacoes):
+            return None, None
+        ruins = [f'{campo} ({s})' for campo, s in situacoes if s != 'preenchido']
+        if ruins:
+            return None, 'o procurador está pela metade: ' + ', '.join(ruins)
+        return {'cpf': re.sub(r'\D', '', self.valor('integra', 'procurador_cpf')),
+                'certificado': self.valor('integra', 'procurador_certificado'),
+                'senha': self.valor('integra', 'procurador_senha')}, None
+
     def teto(self):
         """(teto de chamadas no mês, problema)."""
         bruto = self.valor('integra', 'teto_mes')
@@ -143,6 +160,8 @@ class Config:
         for m in re.finditer(r'(?i)\b(?:pwd|password)\s*=\s*([^;]*)', conexao):
             lista.append(m.group(1).strip().strip('{}'))
         lista += [self.valor('integra', c) for c in SEGREDOS_INTEGRA]
+        # o CPF do procurador também só com os números (é assim que ele vai nos pedidos e pode voltar numa mensagem)
+        lista.append(re.sub(r'\D', '', self.valor('integra', 'procurador_cpf')))
         return [s for s in lista if s]
 
 
@@ -199,8 +218,14 @@ def problema_da_integra(campo, v):
         doc = re.sub(r'[./\s-]', '', v).upper()
         if not re.fullmatch(r'[0-9A-Z]{12}[0-9]{2}', doc):
             return 'tem que ter os 14 caracteres do CNPJ'
-    if campo == 'certificado' and not pathlib.Path(v).is_file():
+    if campo in ('certificado', 'procurador_certificado') and not pathlib.Path(v).is_file():
         return 'o arquivo .pfx não está nesse caminho'
+    if campo == 'procurador_cpf':
+        cpf = re.sub(r'[.\s-]', '', v)
+        if not re.fullmatch(r'\d{11}', cpf):
+            return 'tem que ter os 11 números do CPF'
+        if not documento_valido(cpf):
+            return 'o dígito verificador não confere'
     if campo in ('consumer_key', 'consumer_secret') and not v.isascii():
         return 'tem acento ou caractere fora do padrão'
     return None

@@ -5,8 +5,10 @@
     segredo; a chave nunca aparece) · o certificado do escritório (o titular e quantos dias faltam pra vencer —
     vencido ou a menos de 30 dias, em destaque) · a conexão com o Serpro (o certificado dele confere com o
     ac-serpro-2025.pem) · o token (em produção, pede um e diz "ok" ou o erro, sem mostrar o token; em demonstração,
-    "demonstração") · o ping pro sistema, como no conferir do Domínio, com a mensagem da função como veio (o 503 da
-    chave ainda não cadastrada, o 401 da chave recusada)
+    "demonstração") · o procurador (opcional: os três campos, o titular e a validade do e-CPF dele, se ele é do CPF
+    configurado e, em produção, o token dele — manda o termo de autorização assinado, que não tem dado de cliente, e diz
+    "ok" ou a recusa do Serpro) · o ping pro sistema, como no conferir do Domínio, com a mensagem da função como veio
+    (o 503 da chave ainda não cadastrada, o 401 da chave recusada)
 
 Código de saída: 0 com a configuração completa pro ambiente do config.ini; 1 quando falta alguma coisa.
 """
@@ -17,7 +19,8 @@ import re
 from .. import config, envio
 from ..chave import RECADO, impressao
 from ..log import Registro
-from . import VERSAO, serpro, sistema
+from . import VERSAO, procurador as proc_mod, serpro, sistema
+from .rodada import hoje_local
 
 AVISO_DIAS = 30
 
@@ -82,6 +85,15 @@ def conferir():
     else:
         tela('  [integra] teto_mes: ' + ('preenchido' if cfg.valor('integra', 'teto_mes') else
                                          f'em branco (usa {config.TETO_PADRAO})') + f' — {teto} chamadas por mês')
+    proc, problema_proc = cfg.procurador()
+    if proc is None and problema_proc is None:
+        tela('  [integra] procurador_cpf, procurador_certificado, procurador_senha: em branco (o procurador é opcional — '
+             'o LEIA-ME explica)')
+    else:
+        for secao, campo in config.CAMPOS_PROCURADOR:
+            tela(f'  [{secao}] {campo}: {cfg.situacao(secao, campo)}')
+        if problema_proc:
+            problemas += 1
     for secao, campo in config.CAMPOS_SISTEMA:
         situacao = cfg.situacao(secao, campo)
         if situacao != 'preenchido':
@@ -123,15 +135,51 @@ def conferir():
             if ambiente == 'producao':
                 problemas += 1
 
+    # ---- o e-CPF do procurador (opcional)
+    proc_cert_ok = False
+    if proc:
+        if 'cryptography' in faltam:
+            tela('Procurador: não abri o e-CPF (falta o cryptography)')
+        else:
+            try:
+                _, cert_p, _ = serpro._abrir(proc['certificado'], proc['senha'])
+                if cert_p is None:
+                    raise serpro.ErroConfig('o .pfx não tem certificado dentro')
+                nome, numero = proc_mod.nome_e_documento(cert_p)
+                dias = (cert_p.not_valid_after_utc.date() - datetime.datetime.now(datetime.timezone.utc).date()).days
+                if numero and numero != proc['cpf']:
+                    tela(f'Procurador: {nome} — ATENÇÃO: o e-CPF é de outro CPF (não o do procurador_cpf)')
+                    problemas += 1
+                elif dias < 0:
+                    tela(f'Procurador: {nome} — ATENÇÃO: o e-CPF VENCEU há {-dias} dia(s)')
+                    problemas += 1
+                elif dias < AVISO_DIAS:
+                    tela(f'Procurador: {nome} — o e-CPF é do procurador_cpf — ATENÇÃO: vence em {dias} dia(s); '
+                         f'renove antes')
+                    proc_cert_ok = True
+                else:
+                    tela(f'Procurador: {nome} — o e-CPF é do procurador_cpf e vence em {dias} dias'
+                         if numero else f'Procurador: {nome} — o e-CPF vence em {dias} dias')
+                    proc_cert_ok = True
+                if not numero:
+                    tela('  não achei o CPF no nome do certificado: quem confere se é o do procurador_cpf é o Serpro, '
+                         'no token do procurador')
+            except serpro.ErroConfig as e:
+                tela(f'Procurador: o e-CPF não abriu — {e}')
+                problemas += 1
+
     # ---- a conexão com o Serpro (só abre e fecha; nenhum pedido)
     gateway = serpro.gateway_de(ambiente or 'producao')
     problema = serpro.conferir_tls(gateway)
     tela('Conexão com o Serpro: ' + (problema or ('o certificado do gateway confere' if gateway.startswith('https://')
                                                     else 'endereço de teste')))
 
-    # ---- o token
+    # ---- o token (e o do procurador)
+    cli = None
     if ambiente == 'demonstracao':
         tela('Token: demonstração (o token público do ambiente de demonstração)')
+        if proc:
+            tela('Token do procurador: só em produção (a demonstração não tem o procurador)')
     elif ambiente == 'producao':
         falta = cfg.falta(config.CAMPOS_INTEGRA)
         if falta or not cert_ok:
@@ -141,13 +189,24 @@ def conferir():
             cli = serpro.Cliente('producao', cfg.valor('integra', 'cnpj_escritorio'), reg, _SemContar(),
                                  config.pasta() / 'receita' / 'tmp', consumer_key=cfg.valor('integra', 'consumer_key'),
                                  consumer_secret=cfg.valor('integra', 'consumer_secret'), certificado=pfx,
-                                 senha_certificado=senha)
+                                 senha_certificado=senha, procurador=proc, hoje=hoje_local())
             try:
                 cli.token()
                 tela('Token: ok')
             except (serpro.ErroConfig, serpro.SerproFora) as e:
                 tela(f'Token: {e}')
                 problemas += 1
+                cli = None
+        if proc:
+            if cli is None or not proc_cert_ok:
+                tela('Token do procurador: não pedi (o token do escritório ou o e-CPF do procurador não estão prontos)')
+            else:
+                try:
+                    cli.token_procurador()
+                    tela('Token do procurador: ok')
+                except (serpro.ProcuradorIndisponivel, serpro.ErroConfig, serpro.SerproFora) as e:
+                    tela(f'Token do procurador: {e}')
+                    problemas += 1
 
     # ---- ping pro sistema (como no conferir do Domínio)
     falta_sistema = cfg.falta(config.CAMPOS_SISTEMA)

@@ -20,6 +20,11 @@
   [sistema] chave_ponte vazia (ou a do exemplo), gera a chave da ponte ("py -3 -m ponte chave") e mostra só a
   impressão digital, pra mandar pro Claude da sessão do Samuel (ela não é segredo; a chave nunca aparece).
 
+  Com -Receita -Procurador, pergunta também o procurador (o Autentica Procurador — o LEIA-ME explica): o CPF do
+  contador a quem os clientes deram a procuração no e-CAC, o caminho do e-CPF A1 dele (.pfx, que tem de existir) e a
+  senha (sem aparecer na tela). Pergunta sempre (é pra configurar ou trocar, como na renovação do e-CPF); com valor no
+  config.ini, o Enter mantém o que está lá. Grava só esses campos, lendo o config.ini de novo na hora de gravar.
+
   Rode num PowerShell aberto como administrador (registrar a tarefa pede).
 
 .PARAMETER Hora
@@ -32,6 +37,12 @@
 
 .PARAMETER Receita
   A ponte da Receita (o LEIA-ME explica): pergunta o que falta na [integra] e registra a tarefa "Ponte Receita".
+
+.PARAMETER Procurador
+  Com -Receita: pergunta o CPF do procurador, o caminho do e-CPF A1 dele (.pfx) e a senha, e grava na [integra].
+
+.EXAMPLE
+  powershell -NoProfile -ExecutionPolicy Bypass -File ponte\instalar.ps1 -Receita -Procurador
 
 .EXAMPLE
   powershell -NoProfile -ExecutionPolicy Bypass -File ponte\instalar.ps1 -Hora 07:30
@@ -49,10 +60,14 @@ param(
   [ValidatePattern('^([01][0-9]|2[0-3]):[0-5][0-9]$')]
   [string]$Hora = '07:00',
   [switch]$Remover,
-  [switch]$Receita
+  [switch]$Receita,
+  [switch]$Procurador
 )
 
 $ErrorActionPreference = 'Stop'
+if ($Procurador -and -not $Receita -and -not $Remover) {
+  throw 'O -Procurador vai junto com o -Receita: powershell -NoProfile -ExecutionPolicy Bypass -File ponte\instalar.ps1 -Receita -Procurador'
+}
 $Base = 'C:\ponte-dominio'
 $App = Join-Path $Base 'app'
 $NomeTarefa = if ($Receita) { 'Ponte Receita' } else { 'Ponte Domínio' }
@@ -149,6 +164,18 @@ if ($Receita) {
     try { return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($p) }
     finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($p) }
   }
+  # o CPF com os dois dígitos verificadores certos (a mesma conta do config.py da ponte)
+  function Cpf-Valido([string]$c) {
+    if ($c -notmatch '^\d{11}$') { return $false }
+    foreach ($n in @(9, 10)) {
+      $soma = 0
+      for ($i = 0; $i -lt $n; $i++) { $soma += [int][string]$c[$i] * ($n + 1 - $i) }
+      $resto = ($soma * 10) % 11
+      if ($resto -eq 10) { $resto = 0 }
+      if ($resto -ne [int][string]$c[$n]) { return $false }
+    }
+    return $true
+  }
 
   $exemplo = @(Get-Content -Encoding UTF8 (Join-Path $PSScriptRoot 'config.exemplo.ini'))
   $linhas = New-Object 'System.Collections.Generic.List[string]'
@@ -189,6 +216,51 @@ if ($Receita) {
     $valor = $null
     $mudou = $true
   }
+  if ($Procurador) {
+    # o procurador (o Autentica Procurador): pergunta sempre — é pra configurar ou trocar (a renovação do e-CPF) —; com
+    # valor que serve no config.ini, o Enter mantém. A senha vem sem aparecer na tela, como as chaves.
+    Write-Host ''
+    Write-Host 'O procurador: o CPF do contador a quem os clientes deram a procuração no e-CAC, o e-CPF A1 dele e a senha.'
+    Write-Host '  Pra colar a senha, use o botão direito do mouse (o Ctrl+V não cola nela: entra um asterisco só).'
+    $perguntasProc = @(
+      @{ campo = 'procurador_cpf'; texto = 'O CPF do procurador (só números)'; seguro = $false },
+      @{ campo = 'procurador_certificado'; texto = 'O caminho do e-CPF A1 do procurador (.pfx)'; seguro = $false },
+      @{ campo = 'procurador_senha'; texto = 'A senha do e-CPF do procurador'; seguro = $true }
+    )
+    foreach ($q in $perguntasProc) {
+      $atual = Ler-Ini $linhas.ToArray() 'integra' $q.campo
+      $atualServe = [bool]$atual
+      if ($q.campo -eq 'procurador_cpf') { $atualServe = Cpf-Valido ($atual -replace '[.\s-]', '') }
+      elseif ($q.campo -eq 'procurador_certificado') { $atualServe = [bool]$atual -and (Test-Path -LiteralPath $atual -PathType Leaf) }
+      $texto = $q.texto
+      if ($atualServe) { $texto = $texto + ' (Enter mantém o que está no config.ini)' }
+      $atual = $null
+      do {
+        if ($q.seguro) {
+          $valor = (Texto-Do-Seguro (Read-Host -AsSecureString $texto)).Trim()
+        } else {
+          $valor = (Read-Host $texto).Trim().Trim('"')
+        }
+        $problema = $null
+        if (-not $valor) { if (-not $atualServe) { $problema = 'em branco' } }
+        elseif ($valor -match '[\r\n]') { $problema = 'tem quebra de linha' }
+        elseif ($q.campo -eq 'procurador_cpf' -and -not (Cpf-Valido ($valor -replace '[.\s-]', ''))) { $problema = 'não é um CPF: 11 números, com o dígito verificador certo' }
+        elseif ($q.campo -eq 'procurador_certificado' -and -not (Test-Path -LiteralPath $valor -PathType Leaf)) { $problema = 'o arquivo não está nesse caminho' }
+        if ($problema) { Write-Host "  não serve ($problema) — de novo:" }
+      } while ($problema)
+      if (-not $valor) { continue }                       # o Enter: fica o que está no config.ini
+      if ($q.campo -eq 'procurador_cpf') { $valor = $valor -replace '[.\s-]', '' }
+      if ($q.campo -eq 'procurador_certificado') {
+        $valor = [IO.Path]::GetFullPath($valor)
+        if (-not $valor.StartsWith($Base + '\', [StringComparison]::OrdinalIgnoreCase)) {
+          Write-Host "  Aviso: guarde o .pfx dentro de $Base (só você, o SISTEMA e os administradores leem essa pasta)."
+        }
+      }
+      $respostas[$q.campo] = $valor
+      $valor = $null
+      $mudou = $true
+    }
+  }
   if ($mudou) {
     # o config.ini é lido de novo só agora: a janela pode ficar horas esperando as respostas, e o que mudou nele nesse
     # meio tempo não pode voltar ao que era quando ela abriu (02/11/2026: a conexão do Domínio trocada às 13h49, com a
@@ -199,6 +271,8 @@ if ($Receita) {
     [IO.File]::WriteAllLines($config, $linhas.ToArray(), (New-Object Text.UTF8Encoding $false))
     $respostas.Clear()
     Write-Host "A [integra] de $config foi preenchida (os valores não aparecem aqui)."
+  } elseif ($Procurador) {
+    Write-Host "A [integra] de $config ficou como estava (o Enter manteve o procurador)."
   } else {
     Write-Host "A [integra] de $config já tinha as chaves, o certificado e o CNPJ: não perguntei nada."
   }
@@ -255,6 +329,10 @@ if ($Receita) {
   Write-Host "Depois de trocar o ambiente pra producao, rode, em $App :"
   Write-Host '  py -3 -m ponte receita conferir'
   Write-Host '  py -3 -m ponte receita rodar'
+  if ($Procurador) {
+    Write-Host 'No conferir, o procurador: os três campos "preenchido", a linha "Procurador:" com o titular e a validade do'
+    Write-Host '  e-CPF, e "Token do procurador: ok".'
+  }
 } else {
   Write-Host "Tarefa '$NomeTarefa' registrada: todo dia às $Hora (os últimos 14 meses), como $Usuario (sem guardar senha)."
   Write-Host "Antes da primeira rodada: preencha $config e rode, em $App :"

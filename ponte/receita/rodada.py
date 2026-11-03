@@ -13,6 +13,12 @@ nos pendentes e só mandam pra um sistema de mentira (endereço local). O estado
 
 O que não deu pra ler do PDF (a declaração, o relatório da situação fiscal) não vai no pacote: vai só o `faltou` com
 `a_conferir` (24/10/2026). O estado.json guarda também o dia de cada consulta feita (o calendário "a partir do dia").
+
+O procurador (03/11/2026, o Autentica Procurador): com o [integra] procurador_* preenchido, a autorização confere
+também a procuração pro CPF dele; a empresa ativa por ela é consultada em nome dele (o autor de cada consulta), e o lote
+de eventos da Caixa Postal sai um por autor. Sem o token dele nesta rodada, essas consultas vão pro `faltou` como erro
+(o log diz uma vez) e voltam na próxima. A empresa que estava sem a procuração e passou a ter não espera o próximo dia
+marcado: as consultas que ficaram de fora por isso entram na mesma rodada (no calendário; com o --so, vale o --so).
 """
 import datetime
 import json
@@ -42,10 +48,17 @@ def agora():
     return datetime.datetime.now().astimezone().isoformat(timespec='seconds')
 
 
+def _plano(hoje, e, est, so):
+    s = set(so) if so else calendario.servicos_do_dia(hoje, e, est)
+    if e.get('regime') != 'simples':
+        s -= {'pgdas', 'faturamento'}
+    return s
+
+
 def executar(cli, empresas, est, hoje, so, pasta, reg):
     """Faz as consultas. Devolve ({documento: {servico: bloco}}, faltou)."""
     dados, faltou = {}, []
-    teto_avisado, fora_avisado = [], []        # uma linha só no log, não uma por empresa
+    teto_avisado, fora_avisado, proc_avisado = [], [], []        # uma linha só no log, não uma por empresa
 
     def falta(doc, servico, f):
         faltou.append({'documento': doc, 'servico': servico, 'motivo': f.motivo})
@@ -54,6 +67,11 @@ def executar(cli, empresas, est, hoje, so, pasta, reg):
                 teto_avisado.append(1)
                 reg(f'receita: o teto de {cli.contador.teto} chamadas do mês chegou — o resto fica de fora '
                     f'(sobe o [integra] teto_mes se for o caso)', 'erro')
+        elif f.motivo == 'erro' and getattr(f, 'procurador', False):
+            if not proc_avisado:
+                proc_avisado.append(1)
+                reg(f'receita: {cli.procurador_erro or f.detalhe} — as consultas em nome do procurador ficam de fora '
+                    f'nesta rodada (vão como erro e voltam na próxima)', 'erro')
         elif f.motivo == 'erro' and not (cli.fora and fora_avisado):
             reg(f'receita: {servico} de {doc} não veio: {f.detalhe}', 'erro')
             if cli.fora:
@@ -61,25 +79,29 @@ def executar(cli, empresas, est, hoje, so, pasta, reg):
         elif f.motivo == 'a_conferir':
             reg(f'receita: {servico} de {doc} a conferir: {f.detalhe}', 'aviso')
 
-    planos = {}
-    for e in empresas:
-        s = set(so) if so else calendario.servicos_do_dia(hoje, e, est)
-        if e.get('regime') != 'simples':
-            s -= {'pgdas', 'faturamento'}
-        planos[e['documento']] = s
+    planos = {e['documento']: _plano(hoje, e, est, so) for e in empresas}
+    producao = cli.ambiente == 'producao'
 
     # 1. a autorização primeiro: sem ela (em produção), as outras consultas nem são feitas
-    negados = set()
+    negados, respondidas = set(), set()
     for e in empresas:
         doc = e['documento']
         if 'autorizacao' not in planos[doc]:
             continue
+        sem_antes = est.sem_autorizacao(doc, hoje)
         try:
             bloco = servicos.autorizacao(cli, e, hoje)
             dados.setdefault(doc, {})['autorizacao'] = bloco
             est.guardar_autorizacao(doc, bloco, hoje)
-            if bloco['situacao'] in ('sem', 'vencida') and cli.ambiente == 'producao':
+            respondidas.add(doc)
+            if bloco['situacao'] in ('sem', 'vencida') and producao:
                 negados.add(doc)
+            elif bloco['situacao'] == 'ativa' and sem_antes and producao:
+                # estava sem e agora tem (o cliente autorizou, ou a procuração é pro CPF do procurador): o que ficou de
+                # fora por falta da procuração não espera o próximo dia marcado — no calendário, entra hoje
+                est.liberar_consultas(doc)
+                if not so:
+                    planos[doc] |= _plano(hoje, e, est, so) - {'autorizacao'}
         except servicos.Falta as f:
             falta(doc, 'autorizacao', f)
             if f.feita:
@@ -87,15 +109,20 @@ def executar(cli, empresas, est, hoje, so, pasta, reg):
                 est.marcar_consulta('autorizacao', doc, hoje, situacao='sem' if f.motivo == 'sem_autorizacao' else None)
             if f.motivo == 'sem_autorizacao':
                 negados.add(doc)
-    # a empresa cuja última consulta da autorização disse sem (ou vencida) e que hoje não foi consultada também fica de
+    # a empresa cuja última consulta da autorização disse sem (ou vencida) e que hoje não teve resposta também fica de
     # fora das outras consultas: a Receita negaria, e cada recusa é uma chamada paga (03/11/2026: sem isto, nos dias sem
     # a consulta da autorização, as 80 sem procuração entrariam no lote da Caixa Postal e na situação fiscal do dia 5).
     # Elas voltam na consulta da autorização (toda segunda e no primeiro dia útil do mês), como o LEIA-ME diz.
-    if cli.ambiente == 'producao':
+    if producao:
         for e in empresas:
             doc = e['documento']
-            if 'autorizacao' not in planos[doc] and est.sem_autorizacao(doc, hoje):
+            if doc not in respondidas and est.sem_autorizacao(doc, hoje):
                 negados.add(doc)
+    # o autor de cada consulta: o procurador, pra quem a procuração ativa é a pro CPF dele; o escritório, pras outras
+    autores = {e['documento']: 'procurador' for e in empresas
+               if e['documento'] not in negados and cli.tem_procurador() and est.via_procurador(e['documento'])}
+    if autores:
+        reg(f'receita: {len(autores)} empresa(s) consultada(s) em nome do procurador (a procuração delas é pro CPF dele)')
 
     # 2. por empresa: PGDAS, a declaração (faturamento) e a situação fiscal
     def mes_pendente(doc, plano):
@@ -107,6 +134,7 @@ def executar(cli, empresas, est, hoje, so, pasta, reg):
 
     for e in empresas:
         doc, plano = e['documento'], planos[e['documento']]
+        autor = autores.get(doc)
         # o faturamento não depende do dia: toda rodada do calendário confere se há declaração a ler (com o --so, só
         # quando ele pede o faturamento)
         quer_faturamento = e.get('regime') == 'simples' and ('faturamento' in plano if so else True)
@@ -124,7 +152,7 @@ def executar(cli, empresas, est, hoje, so, pasta, reg):
             continue
         if 'pgdas' in plano:
             try:
-                bloco = servicos.pgdas(cli, e, hoje)
+                bloco = servicos.pgdas(cli, e, hoje, autor=autor)
                 dados.setdefault(doc, {})['pgdas'] = bloco
                 est.guardar_meses(doc, bloco['meses'])
                 est.marcar_consulta('pgdas', doc, hoje)
@@ -136,7 +164,7 @@ def executar(cli, empresas, est, hoje, so, pasta, reg):
             mes = mes_pendente(doc, plano)
             if mes:
                 try:
-                    bloco, problema = servicos.faturamento(cli, e, mes, pasta)
+                    bloco, problema = servicos.faturamento(cli, e, mes, pasta, autor=autor)
                     if problema:
                         # o que não deu pra ler não vai: só o faltou com a_conferir (o PDF fica guardado)
                         falta(doc, 'faturamento', servicos.Falta('a_conferir', problema))
@@ -150,7 +178,7 @@ def executar(cli, empresas, est, hoje, so, pasta, reg):
                         est.guardar_declaracao_tentada(doc, mes['competencia'], mes['transmitida_em'])
         if 'situacao_fiscal' in plano:
             try:
-                bloco, problema, aviso = servicos.situacao_fiscal(cli, e, hoje, pasta)
+                bloco, problema, aviso = servicos.situacao_fiscal(cli, e, hoje, pasta, autor=autor)
                 est.marcar_consulta('situacao_fiscal', doc, hoje)
                 if problema:
                     falta(doc, 'situacao_fiscal', servicos.Falta('a_conferir', problema))
@@ -172,13 +200,23 @@ def executar(cli, empresas, est, hoje, so, pasta, reg):
         if 'caixa_postal' in planos[doc]:
             faltou.append({'documento': doc, 'servico': 'caixa_postal', 'motivo': 'sem_autorizacao'})
     if cnpjs:
-        try:
-            eventos = servicos.eventos_caixa_postal(cli, [e['documento'] for e in cnpjs])
-        except servicos.Falta as f:
-            eventos = {}
-            for e in cnpjs:
-                falta(e['documento'], 'caixa_postal', f)
-            cnpjs = []
+        # um lote por autor: o do escritório e o do procurador (o serviço só responde de quem deu a procuração ao autor)
+        eventos, falharam = {}, set()
+        grupos = {}
+        for e in cnpjs:
+            grupos.setdefault(autores.get(e['documento']), []).append(e['documento'])
+        for autor in sorted(grupos, key=lambda a: a or ''):
+            try:
+                eventos.update(servicos.eventos_caixa_postal(cli, grupos[autor], autor=autor))
+            except servicos.Falta as f:
+                for doc in grupos[autor]:
+                    falta(doc, 'caixa_postal', f)
+                falharam.update(grupos[autor])
+        if len(grupos) > 1:
+            reg('receita: caixa postal — os lotes: ' + ', '.join(
+                f"{len(grupos[a])} em nome do {'procurador' if a else 'escritório'}"
+                for a in sorted(grupos, key=lambda a: a or '')))
+        cnpjs = [e for e in cnpjs if e['documento'] not in falharam]
         com_novidade = mensagens_novas = 0
         sumidas = []
         for e in cnpjs:
@@ -201,7 +239,7 @@ def executar(cli, empresas, est, hoje, so, pasta, reg):
                 continue
             com_novidade += 1
             try:
-                bloco, lembrar, _sobrou, _velhas = servicos.mensagens(cli, e, est, hoje)
+                bloco, lembrar, _sobrou, _velhas = servicos.mensagens(cli, e, est, hoje, autor=autores.get(doc))
                 dados.setdefault(doc, {})['caixa_postal'] = bloco
                 est.guardar_mensagens(doc, lembrar)
                 est.guardar_evento(doc, v)
@@ -325,12 +363,25 @@ def rodar(demonstracao=False, falso=False, sem_enviar=False, saida=None, so=None
         if empresas_max:
             empresas = empresas[:empresas_max]
         reg(f'receita: {len(empresas)} empresa(s) na lista')
+        procurador = None
+        if ambiente == 'producao':
+            procurador, problema_proc = cfg.procurador()
+            if problema_proc:
+                reg(f'receita: {problema_proc} — a rodada segue sem ele (a empresa com a procuração só pro CPF dele '
+                    f'fica sem autorização)', 'erro')
         cli = serpro.Cliente(
             ambiente, cfg.valor('integra', 'cnpj_escritorio'), reg, cont, pasta / 'tmp',
             consumer_key=cfg.valor('integra', 'consumer_key'), consumer_secret=cfg.valor('integra', 'consumer_secret'),
             certificado=cfg.valor('integra', 'certificado'), senha_certificado=cfg.valor('integra', 'senha_certificado'),
-            url_token=srv_falso.url_token if srv_falso else None, url_gateway=srv_falso.url_gateway if srv_falso else None)
+            url_token=srv_falso.url_token if srv_falso else None, url_gateway=srv_falso.url_gateway if srv_falso else None,
+            procurador=procurador, hoje=hoje)
+        est.com_procurador = cli.tem_procurador()
+        if cli.tem_procurador():
+            reg('receita: com o procurador — a procuração pro CPF dele é conferida quando falta a do escritório, e '
+                'essas empresas são consultadas em nome dele')
         dados, faltou = executar(cli, empresas, est, hoje, so, pasta, reg)
+        if cli.procurador_com_token():
+            reg('receita: procurador — o termo de autorização foi aceito (o token valeu pra rodada)')
         if cli.fora:
             reg('receita: o Serpro parou de responder no meio da rodada — o que faltou vai como erro', 'erro')
     except serpro.ErroConfig as e:

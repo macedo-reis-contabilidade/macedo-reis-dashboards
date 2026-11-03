@@ -1,6 +1,7 @@
 """O que cada consulta ao Serpro vira no pacote (o contrato em pacote.py).
 
-    autorizacao      PROCURACOES · OBTERPROCURACAO41 — até quando o cliente autorizou o escritório
+    autorizacao      PROCURACOES · OBTERPROCURACAO41 — até quando o cliente autorizou o escritório (ou, sem essa, o
+                     procurador: a procuração pro CPF dele, conferida em nome dele)
     pgdas            PGDASD · CONSDECLARACAO13 — cada mês declarado no ano, quando, e se o DAS foi pago
     faturamento      PGDASD · CONSULTIMADECREC14 — a última declaração de um mês: do PDF, a receita do mês (RPA) e a
                      dos 12 meses (RBT12)
@@ -12,6 +13,11 @@ Toda consulta passa por consultar(): o teto do mês, o Serpro fora do ar, o aces
 e a recusa viram Falta, que a rodada põe no `faltou` com o motivo (sem_autorizacao, teto, erro, a_conferir). A Falta
 diz também se a consulta foi FEITA (o Serpro respondeu, mesmo que recusando — no calendário "a partir do dia", ela só
 volta no próximo dia marcado) ou não (o teto, o Serpro fora, o relatório que não ficou pronto — tenta na próxima rodada).
+
+O autor (03/11/2026, o Autentica Procurador — procurador.py): cada consulta vai em nome do escritório (autor=None) ou
+do procurador (autor='procurador': o CPF dele e o token do termo de autorização), conforme de quem é a procuração que
+a empresa deu. Sem o token do procurador nesta rodada, a consulta em nome dele vira Falta('erro', procurador=True), sem
+chamar o Serpro e sem contar como feita — volta na próxima rodada.
 """
 import base64
 import datetime
@@ -19,7 +25,7 @@ import json
 import re
 
 from . import calendario, estado as est_mod, pdf
-from .serpro import SerproFora
+from .serpro import ProcuradorIndisponivel, SerproFora
 
 EVENTO_CAIXA_POSTAL = 'E0601'      # o E0301 do cenário de demonstração é o da DCTFWeb
 LOTE_EVENTOS = 1000
@@ -40,20 +46,23 @@ PONTEIRO_INICIAL = '0' * 24
 
 
 class Falta(Exception):
-    def __init__(self, motivo, detalhe='', feita=True):
+    def __init__(self, motivo, detalhe='', feita=True, procurador=False):
         super().__init__(motivo)
         self.motivo = motivo
         self.detalhe = detalhe
         self.feita = feita              # o Serpro respondeu (a consulta conta como feita no calendário)
+        self.procurador = procurador    # faltou o token do procurador (o log diz uma vez, não uma por empresa)
 
 
-def consultar(cli, endpoint, sistema, servico, contribuinte, dados, versao='1.0', tipo=None):
+def consultar(cli, endpoint, sistema, servico, contribuinte, dados, versao='1.0', tipo=None, autor=None):
     if cli.contador.acabou():
         raise Falta('teto', 'o teto de chamadas do mês chegou', feita=False)
     try:
-        return cli.chamar(endpoint, sistema, servico, contribuinte, dados, versao, tipo)
+        return cli.chamar(endpoint, sistema, servico, contribuinte, dados, versao, tipo, autor=autor)
     except SerproFora as e:
         raise Falta('erro', str(e), feita=False)
+    except ProcuradorIndisponivel as e:
+        raise Falta('erro', f'sem o procurador nesta rodada: {e}', feita=False, procurador=True)
 
 
 def _conferir_resposta(r):
@@ -87,11 +96,11 @@ def _tipo_doc(doc):
 
 # ---------------------------------------------------------------- autorização
 
-def autorizacao(cli, empresa, hoje):
-    doc = empresa['documento']
+def _procuracao(cli, doc, outorgado, tipo_outorgado, hoje, autor=None):
+    """A procuração da empresa pra um outorgado (o CNPJ do escritório, tipo '2', ou o CPF do procurador, tipo '1')."""
     r = consultar(cli, 'Consultar', 'PROCURACOES', 'OBTERPROCURACAO41', doc,
-                  {'outorgante': doc, 'tipoOutorgante': _tipo_doc(doc), 'outorgado': cli.cnpj, 'tipoOutorgado': '2'},
-                  versao='1')
+                  {'outorgante': doc, 'tipoOutorgante': _tipo_doc(doc), 'outorgado': outorgado,
+                   'tipoOutorgado': tipo_outorgado}, versao='1', autor=autor)
     if '40400' in r.codigos():                                  # "Não possui procuração ativa."
         return {'situacao': 'sem', 'valida_ate': None}
     _conferir_resposta(r)
@@ -104,13 +113,48 @@ def autorizacao(cli, empresa, hoje):
     return {'situacao': 'ativa' if valida_ate >= hoje.isoformat() else 'vencida', 'valida_ate': valida_ate}
 
 
+def autorizacao(cli, empresa, hoje):
+    """A procuração da empresa pro escritório (o CNPJ) e, sem ela ativa e com o procurador configurado, a pro CPF do
+    procurador — conferida em nome dele (só o próprio procurador vê as procurações que recebeu). Vale a ativa (a do
+    escritório primeiro); senão a vencida mais recente; senão "sem". A que vem do CPF leva via 'procurador': o estado
+    guarda, e as outras consultas da empresa vão em nome dele (o pacote não leva o via)."""
+    doc = empresa['documento']
+    negado = None
+    try:
+        escritorio = _procuracao(cli, doc, cli.cnpj, '2', hoje)
+    except Falta as f:
+        if f.motivo != 'sem_autorizacao' or not cli.tem_procurador():
+            raise
+        negado, escritorio = f, None                              # o acesso negado pro escritório: o CPF ainda pode ter
+    if not cli.tem_procurador() or (escritorio and escritorio['situacao'] == 'ativa'):
+        return escritorio
+    try:
+        pelo_cpf = _procuracao(cli, doc, cli.procurador_cpf, '1', hoje, autor='procurador')
+    except Falta as f:
+        if f.motivo == 'sem_autorizacao':
+            # o acesso negado em nome do procurador não diz que a empresa não tem a procuração (o token não valeu):
+            # a autorização dela fica sem resposta nesta rodada
+            raise Falta('erro', 'a procuração pro CPF do procurador não pôde ser conferida: '
+                        + (f.detalhe or 'acesso negado'), feita=f.feita)
+        raise
+    pelo_cpf = dict(pelo_cpf, via='procurador')
+    if pelo_cpf['situacao'] == 'ativa':
+        return pelo_cpf
+    vencidas = [b for b in (escritorio, pelo_cpf) if b and b['situacao'] == 'vencida']
+    if vencidas:
+        return max(vencidas, key=lambda b: b['valida_ate'] or '')
+    if escritorio is None:
+        raise negado
+    return escritorio
+
+
 # ---------------------------------------------------------------- PGDAS-D
 
-def pgdas(cli, empresa, hoje):
+def pgdas(cli, empresa, hoje, autor=None):
     doc = empresa['documento']
     meses, anos = {}, []
     for ano in calendario.anos_do_pgdas(hoje):
-        r = consultar(cli, 'Consultar', 'PGDASD', 'CONSDECLARACAO13', doc, {'anoCalendario': str(ano)})
+        r = consultar(cli, 'Consultar', 'PGDASD', 'CONSDECLARACAO13', doc, {'anoCalendario': str(ano)}, autor=autor)
         _conferir_resposta(r)
         d = r.dados() or {}
         if not isinstance(d, dict):
@@ -172,10 +216,10 @@ def mes_a_ler(meses, estado, doc, tentar_de_novo=False):
     return None
 
 
-def faturamento(cli, empresa, mes, pasta):
+def faturamento(cli, empresa, mes, pasta, autor=None):
     doc = empresa['documento']
     r = consultar(cli, 'Consultar', 'PGDASD', 'CONSULTIMADECREC14', doc,
-                  {'periodoApuracao': mes['competencia'].replace('-', '')})
+                  {'periodoApuracao': mes['competencia'].replace('-', '')}, autor=autor)
     _conferir_resposta(r)
     d = r.dados() or {}
     pdf_b64 = (d.get('declaracao') or {}).get('pdf') if isinstance(d, dict) else None
@@ -246,13 +290,14 @@ def _forma(valor):
     return f'dados em texto de {len(str(v))} caractere(s)'
 
 
-def eventos_caixa_postal(cli, docs):
-    """{cnpj: 'AAMMDD' (data da última novidade, até 60 dias) | '' (nenhuma) | 'x' (sem autorização)} — em lote."""
+def eventos_caixa_postal(cli, docs, autor=None):
+    """{cnpj: 'AAMMDD' (data da última novidade, até 60 dias) | '' (nenhuma) | 'x' (sem autorização)} — em lote, todos
+    do mesmo autor (o pedido e a resposta do lote vão com ele: o serviço só responde de quem deu a procuração a ele)."""
     resultado = {}
     for i in range(0, len(docs), LOTE_EVENTOS):
         lote = docs[i:i + LOTE_EVENTOS]
         r = consultar(cli, 'Monitorar', 'EVENTOSATUALIZACAO', 'SOLICEVENTOSPJ132', ','.join(lote),
-                      {'evento': EVENTO_CAIXA_POSTAL}, tipo=4)
+                      {'evento': EVENTO_CAIXA_POSTAL}, tipo=4, autor=autor)
         _conferir_resposta(r)
         protocolo, espera = _protocolo(r)
         if not protocolo:
@@ -260,7 +305,7 @@ def eventos_caixa_postal(cli, docs):
                                 f'{r.resumo() or "sem mensagem"}; {_forma(r.dados_texto)})')
         cli.esperar(espera)
         r2 = consultar(cli, 'Monitorar', 'EVENTOSATUALIZACAO', 'OBTEREVENTOSPJ134', '',
-                       {'protocolo': protocolo, 'evento': EVENTO_CAIXA_POSTAL}, tipo=4)
+                       {'protocolo': protocolo, 'evento': EVENTO_CAIXA_POSTAL}, tipo=4, autor=autor)
         _conferir_resposta(r2)
         for linha in r2.dados() or []:
             if isinstance(linha, list) and len(linha) >= 2:
@@ -277,7 +322,7 @@ def _origem(m):
     return 'Receita' if 'RECEITA' in descricao else None
 
 
-def mensagens(cli, empresa, estado, hoje):
+def mensagens(cli, empresa, estado, hoje, autor=None):
     """As mensagens a mandar (o bloco) e o que lembrar delas ([(id, lida | 'antiga')]).
 
     Vai: a que nunca foi mandada e a mandada como não lida que agora aparece lida (o sistema atualiza o "lida" e o
@@ -287,7 +332,7 @@ def mensagens(cli, empresa, estado, hoje):
     pedido = {'statusLeitura': '0', 'indicadorPagina': '0'}
     if not getattr(cli, 'caixa_sem_ponteiro', False):
         r = consultar(cli, 'Consultar', 'CAIXAPOSTAL', 'MSGCONTRIBUINTE61', doc,
-                      dict(pedido, ponteiroPagina=PONTEIRO_INICIAL))
+                      dict(pedido, ponteiroPagina=PONTEIRO_INICIAL), autor=autor)
         if r.ok() or r.acesso_negado() or 'ponteiropagina' not in (r.resumo() or '').lower():
             pedido = None
         else:
@@ -295,7 +340,7 @@ def mensagens(cli, empresa, estado, hoje):
             cli.registro(f'receita: a lista da Caixa Postal recusou o ponteiro da página ({r.resumo()}) — vai sem ele',
                          'aviso')
     if pedido is not None:
-        r = consultar(cli, 'Consultar', 'CAIXAPOSTAL', 'MSGCONTRIBUINTE61', doc, pedido)
+        r = consultar(cli, 'Consultar', 'CAIXAPOSTAL', 'MSGCONTRIBUINTE61', doc, pedido, autor=autor)
     _conferir_resposta(r)
     d = r.dados() or {}
     conteudo = d.get('conteudo') if isinstance(d, dict) else None
@@ -338,11 +383,11 @@ def _espera_do_etag(cabecalhos):
     return None
 
 
-def situacao_fiscal(cli, empresa, hoje, pasta, tentativas=6):
+def situacao_fiscal(cli, empresa, hoje, pasta, tentativas=6, autor=None):
     """(bloco, problema, aviso): problema = o PDF não deu pra ler (o bloco não vai, fica a_conferir); aviso = a lista
     foi lida mas cortada no limite (o bloco vai)."""
     doc = empresa['documento']
-    r = consultar(cli, 'Apoiar', 'SITFIS', 'SOLICITARPROTOCOLO91', doc, '', versao=VERSAO_SITFIS)
+    r = consultar(cli, 'Apoiar', 'SITFIS', 'SOLICITARPROTOCOLO91', doc, '', versao=VERSAO_SITFIS, autor=autor)
     _conferir_resposta(r)
     d = r.dados() or {}
     protocolo = d.get('protocoloRelatorio') if isinstance(d, dict) else None
@@ -354,7 +399,7 @@ def situacao_fiscal(cli, empresa, hoje, pasta, tentativas=6):
     for _ in range(tentativas):
         cli.esperar(espera)
         r2 = consultar(cli, 'Emitir', 'SITFIS', 'RELATORIOSITFIS92', doc, {'protocoloRelatorio': protocolo},
-                       versao=VERSAO_SITFIS)
+                       versao=VERSAO_SITFIS, autor=autor)
         if r2.http_status == 204 or r2.status == 204:          # ainda processando: a espera nova vem no ETag
             espera = _espera_do_etag(r2.cabecalhos) or espera
             continue

@@ -33,6 +33,16 @@ dígito verificador errado; o do escritório, com letras, montado aqui).
       dias na primeira leitura, a lida que vai de novo), as mensagens do 503 e do 401 e as recusadas
   +  a lista de empresas que não vem, os pendentes, o --falso, a demonstração e o --saida — e todo pacote que a ponte
      mandou passou pelo validarPacote de verdade sem nenhuma recusa
+  11. o termo de autorização do procurador (o Autentica Procurador): o modelo do Serpro (os textos fixos escritos aqui),
+      o DigestValue e a SignatureValue conferidos por fora da ponte (a C14N da biblioteca padrão e a do libxml2, se o
+      lxml estiver instalado, e o signxml, se estiver), o mexido que não passa, a vigência, o e-CPF de outro CPF ou
+      vencido, e a resposta do token (o 200 e o 304 com o ETag)
+  12. o procurador na rodada: o Serpro de mentira confere o termo como o de verdade (o 011, o 012), só responde a
+      procuração pro CPF em nome do próprio procurador e com o token, e nega em nome de quem não tem a procuração; a
+      autorização pelo CPF quando falta a do escritório, o via no estado.json (fora do pacote), as consultas e o lote da
+      Caixa Postal em nome dele, o 304 do conferir e da rodada do mesmo dia, o termo recusado (um pedido só, o log uma
+      vez, as consultas dele pra próxima rodada), o CPF que não é o do e-CPF, a configuração pela metade, a empresa que
+      passou a ter a procuração (as consultas na mesma rodada), o procurador tirado do config.ini, e nada dele na saída
 Termina com código 1 se alguma checagem falhar.
 """
 import base64
@@ -113,6 +123,132 @@ def cnpj_com_dv(base):
 
 CNPJ_ESCRITORIO = cnpj_com_dv('TESTEPONTE01')     # com letras: não é de ninguém
 
+
+def cpf_com_dv(base):
+    """Os dois dígitos verificadores do CPF — montado aqui, de propósito, sem a ponte."""
+    v = [int(c) for c in base]
+    for n in (9, 10):
+        r = sum(a * p for a, p in zip(v, range(n + 1, 1, -1))) * 10 % 11
+        v.append(0 if r == 10 else r)
+    return base + ''.join(str(d) for d in v[9:])
+
+
+# o procurador (o Autentica Procurador): o CPF 000.000.001-91, o de exemplo de sempre, e outro que não é o do certificado
+CPF_PROCURADOR = cpf_com_dv('000000001')
+CPF_OUTRO = cpf_com_dv('000000002')
+SENHA_PROC = 'Senha-Do-Procurador-Longa-9b1e44d0'     # longa e única: procurada em tudo que a ponte escreve
+TITULAR_PROC = f'PROCURADOR DE TESTE DA PONTE:{CPF_PROCURADOR}'     # o CN do e-CPF: "NOME:CPF"
+# o modelo do termo de autorização da documentação do Serpro (Autentica Procurador · Dados de Domínio), escrito aqui e
+# não importado da ponte: um texto que mude na ponte tem que derrubar o teste
+TEXTOS_DO_TERMO = {
+    'termo': 'Autorizo a empresa CONTRATANTE, identificada neste termo de autorização como DESTINATÁRIO, a executar as '
+             'requisições dos serviços web disponibilizados pela API INTEGRA CONTADOR, onde terei o papel de AUTOR '
+             'PEDIDO DE DADOS no corpo da mensagem enviada na requisição do serviço web. Esse termo de autorização está '
+             'assinado digitalmente com o certificado digital do PROCURADOR ou OUTORGADO DO CONTRIBUINTE responsável, '
+             'identificado como AUTOR DO PEDIDO DE DADOS.',
+    'avisoLegal': 'O acesso a estas informações foi autorizado pelo próprio PROCURADOR ou OUTORGADO DO CONTRIBUINTE, '
+                  'responsável pela informação, via assinatura digital. É dever do destinatário da autorização e '
+                  'consumidor deste acesso observar a adoção de base legal para o tratamento dos dados recebidos conforme '
+                  'artigos 7º ou 11º da LGPD (Lei n.º 13.709, de 14 de agosto de 2018), aos direitos do titular dos '
+                  'dados (art. 9º, 17 e 18, da LGPD) e aos princípios que norteiam todos os tratamentos de dados no '
+                  'Brasil (art. 6º, da LGPD).',
+    'finalidade': 'A finalidade única e exclusiva desse TERMO DE AUTORIZAÇÃO, é garantir que o CONTRATANTE apresente a '
+                  'API INTEGRA CONTADOR esse consentimento do PROCURADOR ou OUTORGADO DO CONTRIBUINTE assinado '
+                  'digitalmente, para que possa realizar as requisições dos serviços web da API INTEGRA CONTADOR em nome '
+                  'do AUTOR PEDIDO DE DADOS (PROCURADOR ou OUTORGADO DO CONTRIBUINTE).',
+}
+DS = 'http://www.w3.org/2000/09/xmldsig#'
+ALG_C14N = 'http://www.w3.org/TR/2001/REC-xml-c14n-20010315'
+ALG_RSA_SHA256 = 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256'
+ALG_SHA256 = 'http://www.w3.org/2001/04/xmlenc#sha256'
+ALG_ENVELOPED = 'http://www.w3.org/2000/09/xmldsig#enveloped-signature'
+
+
+def conferir_termo(bruto):
+    """Confere um termo de autorização assinado como o Serpro conferiria, sem nada da ponte: o modelo (a declaração XML
+    na primeira linha, as tags, os textos fixos, os papéis), a assinatura XMLDSig do jeito pedido (enveloped, C14N 1.0,
+    RSA-SHA256, digest SHA-256, um Reference com URI vazio, um X509Certificate), o DigestValue (o documento sem a
+    <Signature>, canonizado) e a SignatureValue (o SignedInfo canonizado, com o namespace que ele herda da <Signature>)
+    com a chave do certificado do KeyInfo. A canonização é a da biblioteca padrão (C14N 2.0 — num XML sem namespace no
+    termo e com o namespace padrão só na Signature, dá o mesmo que a 1.0; o caso 11 confere com o lxml, que é 1.0)."""
+    import xml.etree.ElementTree as ET
+    from cryptography import x509
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import padding
+    from cryptography.x509.oid import NameOID
+    info = {'ok': False, 'problema': None}
+
+    def ruim(problema):
+        info['problema'] = problema
+        return info
+    try:
+        texto = bruto.decode('utf-8')
+    except UnicodeDecodeError:
+        return ruim('não é UTF-8')
+    if not texto.startswith('<?xml version="1.0" encoding="UTF-8"?><termoDeAutorizacao>'):
+        return ruim('a primeira linha não é a declaração XML seguida do termoDeAutorizacao')
+    if '\n' in texto or '\r' in texto:
+        return ruim('tem quebra de linha')
+    try:
+        raiz = ET.fromstring(bruto)
+    except ET.ParseError as e:
+        return ruim(f'XML mal formado ({e})')
+    filhos = list(raiz)
+    if raiz.tag != 'termoDeAutorizacao' or [f.tag for f in filhos] != ['dados', f'{{{DS}}}Signature']:
+        return ruim('o termoDeAutorizacao tem que ter o dados e, no fim, a Signature (com o namespace dela)')
+    tags = [f.tag for f in filhos[0]]
+    if tags != ['sistema', 'termo', 'avisoLegal', 'finalidade', 'dataAssinatura', 'vigencia', 'destinatario',
+                'assinadoPor']:
+        return ruim(f'as tags do dados não são as do modelo ({tags})')
+    el = {f.tag: f for f in filhos[0]}
+    info.update(sistema=el['sistema'].get('id'), dataAssinatura=el['dataAssinatura'].get('data'),
+                vigencia=el['vigencia'].get('data'), destinatario=el['destinatario'].get('numero'),
+                destinatario_attrs=dict(el['destinatario'].attrib), assinadoPor=el['assinadoPor'].get('numero'),
+                assinadoPor_attrs=dict(el['assinadoPor'].attrib),
+                textos={k: el[k].get('texto') for k in TEXTOS_DO_TERMO})
+    if info['sistema'] != 'API Integra Contador' or info['textos'] != TEXTOS_DO_TERMO:
+        return ruim('o sistema ou os textos fixos não são os do modelo')
+    if el['destinatario'].get('papel') != 'contratante' or el['assinadoPor'].get('papel') != 'autor pedido de dados':
+        return ruim('os papéis não são os do modelo')
+    if not (re.fullmatch(r'\d{8}', info['dataAssinatura'] or '') and re.fullmatch(r'\d{8}', info['vigencia'] or '')
+            and info['dataAssinatura'] <= info['vigencia']):
+        return ruim('as datas não estão no formato AAAAMMDD, ou a vigência é antes da assinatura')
+    sig = filhos[1]
+    si = sig.find(f'{{{DS}}}SignedInfo')
+    refs = si.findall(f'{{{DS}}}Reference') if si is not None else []
+    if si is None or len(refs) != 1 or refs[0].get('URI') != '':
+        return ruim('um Reference só, com o URI vazio (a assinatura do documento inteiro)')
+    if (si.find(f'{{{DS}}}CanonicalizationMethod').get('Algorithm') != ALG_C14N
+            or si.find(f'{{{DS}}}SignatureMethod').get('Algorithm') != ALG_RSA_SHA256
+            or refs[0].find(f'{{{DS}}}DigestMethod').get('Algorithm') != ALG_SHA256
+            or [t.get('Algorithm') for t in refs[0].findall(f'{{{DS}}}Transforms/{{{DS}}}Transform')]
+            != [ALG_ENVELOPED, ALG_C14N]):
+        return ruim('os algoritmos não são os pedidos (C14N 1.0, RSA-SHA256, SHA-256, enveloped + C14N)')
+    certs = sig.findall(f'{{{DS}}}KeyInfo/{{{DS}}}X509Data/{{{DS}}}X509Certificate')
+    if len(certs) != 1:
+        return ruim('um KeyInfo/X509Data/X509Certificate só')
+    raiz.remove(sig)                                          # a transformação enveloped
+    canonico = ET.canonicalize(ET.tostring(raiz, encoding='unicode'))
+    digest = base64.b64encode(hashlib.sha256(canonico.encode('utf-8')).digest()).decode('ascii')
+    if refs[0].findtext(f'{{{DS}}}DigestValue') != digest:
+        return ruim('o DigestValue não confere com o termo')
+    m = re.search(r'<SignedInfo>.*?</SignedInfo>', texto)
+    if not m:
+        return ruim('o SignedInfo não está dentro da Signature como o modelo')
+    si_canonico = ET.canonicalize(m.group(0).replace('<SignedInfo>', f'<SignedInfo xmlns="{DS}">', 1))
+    try:
+        cert = x509.load_der_x509_certificate(base64.b64decode(certs[0].text or ''))
+        cert.public_key().verify(base64.b64decode(sig.findtext(f'{{{DS}}}SignatureValue') or ''),
+                                 si_canonico.encode('utf-8'), padding.PKCS1v15(), hashes.SHA256())
+    except (InvalidSignature, ValueError):
+        return ruim('a SignatureValue não confere (o SignedInfo canonizado, com a chave do certificado do KeyInfo)')
+    cn = cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
+    m = re.match(r'^.*:(\d{11})$', str(cn[0].value) if cn else '')
+    info.update(ok=True, cpf_certificado=m.group(1) if m else None, canonico=canonico, si_canonico=si_canonico,
+                certificado=cert)
+    return info
+
 falhas = 0
 PASTAS = []
 
@@ -189,12 +325,20 @@ class Serpro:
                     if recusa:
                         return self._enviar(400, {'status': 400, 'mensagens': [
                             {'codigo': 'EntradaIncorreta-CAIXAPOSTAL-0C', 'texto': recusa}]})
+                    if servico == 'ENVIOXMLASSINADO81':
+                        return self._enviar(*dono.termo(pedido, cab))
+                    negado = dono.negado(servico, pedido, cab)
+                    if negado:
+                        codigo, texto = negado.split(' ', 1)
+                        return self._enviar(403, {'status': 403, 'mensagens': [{'codigo': codigo, 'texto': texto}]})
                     fila = dono.por_doc.get((servico, doc)) or dono.filas.get(servico)
                     resposta = fila.pop(0) if fila else None
                     if servico == 'SOLICEVENTOSPJ132':
                         dono.ultimo_lote = doc.split(',')
+                        dono.ultimo_autor = (pedido.get('autorPedidoDados') or {}).get('tipo')
+                        dono.lotes.append(((pedido.get('autorPedidoDados') or {}).get('numero'), doc.split(',')))
                 if resposta is None:
-                    return self._enviar(200, dono.padrao(servico))
+                    return self._enviar(200, dono.padrao(servico, pedido))
                 if isinstance(resposta, int):
                     if resposta == 403:
                         return self._enviar(403, {'status': 403, 'mensagens': [
@@ -229,6 +373,17 @@ class Serpro:
             # o ponteiroPagina da lista de mensagens: 'producao' = como a Receita em 03/11/2026 (se vier, 24 dígitos);
             # 'nenhum' = recusa qualquer ponteiro; 'sempre' = recusa até sem ele
             self.ponteiro = 'producao'
+            # o procurador (o Autentica Procurador): as empresas que deram a procuração pro CPF dele (doc → a validade,
+            # 'AAAAMMDD'; fora daqui, 40400) e as que não deram pro CNPJ do escritório (a consulta da procuração dá
+            # 40400 e as outras consultas em nome do escritório, acesso negado)
+            self.procuracao_cpf = {}
+            self.sem_cnpj = set()
+            self.termos = []                   # cada termo recebido, como o conferir_termo leu (e o ok do Serpro)
+            self.respostas_termo = []          # o HTTP de cada resposta ao termo, na ordem
+            self.tokens_proc = []              # os tokens que o Serpro de mentira deu
+            self.termo_token = {}              # o termo (bytes) → o token: o mesmo termo de novo = 304 com o token no ETag
+            self.lotes = []                    # (o autor, [os CNPJs]) de cada pedido de eventos
+            self.ultimo_autor = None
 
     def recusa_do_ponteiro(self, servico, pedido):
         if servico != 'MSGCONTRIBUINTE61':
@@ -248,11 +403,106 @@ class Serpro:
             return texto
         return None
 
-    def padrao(self, servico):
+    def termo(self, pedido, cab):
+        """O AUTENTICAPROCURADOR · ENVIOXMLASSINADO81, como o Serpro: confere o termo (o modelo, o digest e a assinatura
+        — conferir_termo), o NI do procurador (o do certificado = o autor do pedido, 011) e o do contratante (012), e
+        responde o token (200), o mesmo token no ETag pro mesmo termo de novo (304) ou a recusa. A fila do serviço
+        passa na frente da resposta (não da conferência)."""
+        try:
+            xml = base64.b64decode(json.loads(pedido['pedidoDados']['dados'])['xml'], validate=True)
+            info = conferir_termo(xml)
+        except (KeyError, TypeError, ValueError) as e:
+            xml, info = b'', {'ok': False, 'problema': f'o dados não tem o xml em base64 ({type(e).__name__})'}
+        autor = pedido.get('autorPedidoDados') or {}
+        info.update(autor=autor, contribuinte=pedido.get('contribuinte'), contratante=pedido.get('contratante'),
+                    sistema=pedido['pedidoDados'].get('idSistema'), versao=pedido['pedidoDados'].get('versaoSistema'),
+                    cabecalho_token='autenticar_procurador_token' in cab)
+        if info['ok'] and autor != {'numero': info['cpf_certificado'], 'tipo': 1}:
+            info.update(ok=False, problema='011 NI do procurador diferente do NI do certificado')
+        elif info['ok'] and (pedido.get('contratante') or {}).get('numero') != info['destinatario']:
+            info.update(ok=False, problema='012 NI do contratante diferente do NI do contratante do XML assinado')
+        self.termos.append(info)
+        fila = self.filas.get('ENVIOXMLASSINADO81')
+        if fila:
+            r = fila.pop(0)
+            if isinstance(r, tuple):
+                resposta = r
+            elif isinstance(r, int):
+                resposta = (r, {'status': r, 'mensagens': [{'codigo': '[Erro-TESTE]', 'texto': f'HTTP {r} do teste'}]}, {})
+            else:
+                resposta = (200, r, {})
+        elif not info['ok']:
+            resposta = (403, {'status': 403, 'mensagens': [{'codigo': '[AcessoNegado-AUTENTICAPROCURADOR-013]',
+                                                             'texto': f"Acesso negado, XML assinado inválido: {info['problema']}"}]}, {})
+        else:
+            expira = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)
+            if xml in self.termo_token:
+                tok = self.termo_token[xml]
+                import email.utils
+                resposta = (304, None, {'ETag': f'"autenticar_procurador_token:{tok}"', 'Cache-Control': 'termo_autorizacao',
+                                        'Expires': email.utils.format_datetime(expira, usegmt=True)})
+            else:
+                tok = f'TOKEN-PROCURADOR-DE-TESTE-{len(self.tokens_proc) + 1}'
+                self.tokens_proc.append(tok)
+                self.termo_token[xml] = tok
+                brasilia = expira.astimezone(datetime.timezone(datetime.timedelta(hours=-3)))
+                resposta = (200, {'status': 200, 'mensagens': [{'codigo': '[Sucesso-AUTENTICAPROCURADOR]',
+                                                                'texto': 'Requisição efetuada com sucesso.'}],
+                                  'dados': json.dumps({'autenticar_procurador_token': tok,
+                                                       'data_hora_expiracao': brasilia.strftime('%Y-%m-%dT%H:%M:%S')})},
+                            {})
+        self.respostas_termo.append(resposta[0])
+        return resposta
+
+    def negado(self, servico, pedido, cab):
+        """O acesso negado do Serpro: em nome do procurador, sem o token dele que vale, ou a empresa que não deu a
+        procuração pro CPF dele; em nome do escritório, a que não deu pro CNPJ (as do sem_cnpj). A consulta da procuração
+        pro CPF só o próprio procurador faz (40300). Os lotes de eventos respondem o 'x' na matriz."""
+        from ponte.receita import demonstracao
+        if pedido == demonstracao.corpo(servico):
+            return None         # o corpo fixo do cenário de demonstração (o autor e o outorgado são os do exemplo)
+        autor = pedido.get('autorPedidoDados') or {}
+        doc = str(pedido['contribuinte']['numero'])
+        dados = pedido['pedidoDados'].get('dados') or ''
+        d = json.loads(dados) if servico == 'OBTERPROCURACAO41' and dados else {}
+        if autor.get('tipo') == 1:
+            if cab.get('autenticar_procurador_token') not in self.tokens_proc:
+                return '[AcessoNegado-AUTENTICAPROCURADOR-TESTE] o token do procurador não veio ou não vale'
+            if servico == 'OBTERPROCURACAO41':
+                if d.get('outorgado') != autor.get('numero') or d.get('tipoOutorgado') != '1':
+                    return '[AcessoNegado-PROCURACOES-40300] Procurador diferente do Autor do pedido'
+                return None
+            if servico in ('SOLICEVENTOSPJ132', 'OBTEREVENTOSPJ134') or doc in self.procuracao_cpf:
+                return None
+            return '[AcessoNegado-ICGERENCIADOR-022] Procuração não encontrada.'
+        if servico == 'OBTERPROCURACAO41':
+            return '[AcessoNegado-PROCURACOES-40300] Procurador diferente do Autor do pedido' \
+                if d.get('tipoOutorgado') == '1' else None
+        if servico not in ('SOLICEVENTOSPJ132', 'OBTEREVENTOSPJ134') and doc in self.sem_cnpj:
+            return '[AcessoNegado-ICGERENCIADOR-022] Procuração não encontrada.'
+        return None
+
+    def _evento(self, doc):
+        if self.ultimo_autor == 1:
+            return self.eventos.get(doc, '') if doc in self.procuracao_cpf else 'x'
+        return 'x' if doc in self.sem_cnpj else self.eventos.get(doc, '')
+
+    def padrao(self, servico, pedido=None):
         if servico == 'OBTEREVENTOSPJ134':
-            matriz = [[d, self.eventos.get(d, '')] for d in self.ultimo_lote if d and d not in self.fora_do_lote]
+            matriz = [[d, self._evento(d)] for d in self.ultimo_lote if d and d not in self.fora_do_lote]
             return {'status': 200, 'mensagens': [{'codigo': '[Sucesso-EVENTOSATUALIZACAO]', 'texto': 'ok'}],
                     'dados': json.dumps(matriz)}
+        if servico == 'OBTERPROCURACAO41' and pedido is not None:
+            d = json.loads(pedido['pedidoDados'].get('dados') or '{}')
+            if (pedido.get('autorPedidoDados') or {}).get('tipo') == 1:      # em nome do procurador: a pro CPF dele
+                ate = self.procuracao_cpf.get(d.get('outorgante'))
+                if ate is None:
+                    return copy.deepcopy(SEM_PROCURACAO)
+                r = copy.deepcopy(self.fixtures[servico])
+                r['dados'] = r['dados'].replace('20230414', ate)
+                return r
+            if d.get('outorgante') in self.sem_cnpj:
+                return copy.deepcopy(SEM_PROCURACAO)
         r = copy.deepcopy(self.fixtures[servico])
         if servico == 'OBTERPROCURACAO41' and self.procuracao_ate:
             r['dados'] = r['dados'].replace('20230414', self.procuracao_ate)
@@ -401,12 +651,11 @@ def pasta_nova():
     return p
 
 
-def gerar_pfx(caminho, senha=SENHA_PFX, dias=400, titular=TITULAR):
-    """Um .pfx autoassinado, com senha, que vence daqui a `dias` dias (negativo = já vencido), ao meio-dia UTC."""
+def gerar_certificado(titular=TITULAR, dias=400):
+    """A chave e um certificado autoassinado que vence daqui a `dias` dias (negativo = já vencido), ao meio-dia UTC."""
     from cryptography import x509
-    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.asymmetric import rsa
-    from cryptography.hazmat.primitives.serialization import pkcs12
     from cryptography.x509.oid import NameOID
     chave = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     nome = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, titular)])
@@ -416,6 +665,14 @@ def gerar_pfx(caminho, senha=SENHA_PFX, dias=400, titular=TITULAR):
     cert = (x509.CertificateBuilder().subject_name(nome).issuer_name(nome).public_key(chave.public_key())
             .serial_number(x509.random_serial_number()).not_valid_before(inicio).not_valid_after(vence)
             .sign(chave, hashes.SHA256()))
+    return chave, cert
+
+
+def gerar_pfx(caminho, senha=SENHA_PFX, dias=400, titular=TITULAR):
+    """Um .pfx autoassinado, com senha, que vence daqui a `dias` dias (negativo = já vencido), ao meio-dia UTC."""
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.serialization import pkcs12
+    chave, cert = gerar_certificado(titular, dias)
     caminho.write_bytes(pkcs12.serialize_key_and_certificates(
         b'teste', chave, cert, None, serialization.BestAvailableEncryption(senha.encode())))
     return caminho
@@ -1978,6 +2235,362 @@ def caso_caixa_postal_revisao(srp, sis):
     ok(not srp.servicos('MSGCONTRIBUINTE61'), '  e depois, com o mesmo evento, não lê mais')
 
 
+# ---------------------------------------------------------------- 11 e 12. o procurador (o Autentica Procurador)
+
+AUTOR_ESCRITORIO = {'numero': CNPJ_ESCRITORIO, 'tipo': 2}
+AUTOR_PROCURADOR = {'numero': CPF_PROCURADOR, 'tipo': 1}
+
+
+def pedidos_de(srp, servico):
+    with srp.trava:
+        return [p for p in srp.pedidos if p['servico'] == servico]
+
+
+def config_com_procurador(pasta, sis, cpf=CPF_PROCURADOR, **extra):
+    pfx = gerar_pfx(pasta / 'procurador.pfx', senha=SENHA_PROC, titular=TITULAR_PROC)
+    escrever_config(pasta, sis, procurador_cpf=cpf, procurador_certificado=str(pfx), procurador_senha=SENHA_PROC,
+                    **extra)
+    return pfx
+
+
+def caso_termo():
+    titulo('11. o termo de autorização do procurador: o modelo do Serpro, o digest e a assinatura (XMLDSig enveloped, '
+           'C14N 1.0, RSA-SHA256); a resposta do token (200 e 304)')
+    from cryptography.hazmat.primitives import serialization
+    from ponte.receita import procurador, serpro
+    d = datetime.date
+    chave, cert = gerar_certificado(TITULAR_PROC, dias=400)
+    nome_escritorio = 'ESCRITORIO & CIA <TESTE> "UM"'          # com o que o C14N escapa
+    xml, vig = procurador.termo_assinado(chave, cert, CPF_PROCURADOR, CNPJ_ESCRITORIO, nome_escritorio, d(2026, 10, 23))
+    info = conferir_termo(xml.encode('utf-8'))
+    ok(info['ok'], f"o termo confere: o modelo, os textos fixos, o DigestValue e a SignatureValue ({info['problema']})")
+    ok(vig == d(2027, 10, 23) and info.get('dataAssinatura') == '20261023' and info.get('vigencia') == '20271023',
+       f"assinado no dia, com um ano de vigência ({info.get('dataAssinatura')} → {info.get('vigencia')})")
+    ok(info.get('destinatario_attrs') == {'numero': CNPJ_ESCRITORIO, 'nome': nome_escritorio, 'tipo': 'PJ',
+                                          'papel': 'contratante'},
+       'o destinatário: o CNPJ do escritório (com as letras), o nome (o & e o < escapados), PJ, contratante')
+    ok(info.get('assinadoPor_attrs') == {'numero': CPF_PROCURADOR, 'nome': 'PROCURADOR DE TESTE DA PONTE', 'tipo': 'PF',
+                                         'papel': 'autor pedido de dados'},
+       'quem assina: o CPF do procurador, o nome do e-CPF (sem o ":CPF"), PF, autor pedido de dados')
+    ok(info.get('cpf_certificado') == CPF_PROCURADOR, 'o certificado no KeyInfo é o do procurador')
+    ok(xml == procurador.termo_assinado(chave, cert, CPF_PROCURADOR, CNPJ_ESCRITORIO, nome_escritorio,
+                                        d(2026, 10, 23))[0],
+       'o mesmo termo no mesmo dia sai igual byte a byte (o Serpro responde 304, com o mesmo token)')
+    mexido = xml.replace('ESCRITORIO &amp; CIA', 'ESCRITORIO &amp; CIB')
+    ok(mexido != xml and conferir_termo(mexido.encode('utf-8'))['problema'] == 'o DigestValue não confere com o termo',
+       'mexido depois de assinado: o digest não confere')
+    _, outro = gerar_certificado(TITULAR_PROC, dias=400)
+    trocado = re.sub(r'<X509Certificate>[^<]+</X509Certificate>', '<X509Certificate>' + base64.b64encode(
+        outro.public_bytes(serialization.Encoding.DER)).decode('ascii') + '</X509Certificate>', xml)
+    ok('SignatureValue não confere' in (conferir_termo(trocado.encode('utf-8'))['problema'] or ''),
+       'o certificado de outra chave no KeyInfo: a assinatura não confere')
+
+    # a C14N 1.0 de verdade (a do libxml2, pelo lxml, no documento inteiro): o mesmo termo e o mesmo SignedInfo
+    try:
+        from lxml import etree
+    except ImportError:
+        etree = None
+        print('  (sem o lxml aqui: a conferência com a C14N 1.0 do libxml2 foi pulada)')
+    if etree is not None:
+        doc = etree.fromstring(xml.encode('utf-8'))
+        doc.remove(doc.find(f'{{{DS}}}Signature'))
+        si = re.search(r'<SignedInfo>.*?</SignedInfo>', xml).group(0).replace('<SignedInfo>', f'<SignedInfo xmlns="{DS}">', 1)
+        ok(etree.tostring(doc, method='c14n') == info['canonico'].encode('utf-8')
+           and etree.tostring(etree.fromstring(si.encode('utf-8')), method='c14n') == info['si_canonico'].encode('utf-8'),
+           'a C14N 1.0 do libxml2 (lxml) dá o mesmo termo e o mesmo SignedInfo que a canonização da conferência')
+
+    # o signxml, se estiver instalado
+    try:
+        from signxml import XMLVerifier
+    except ImportError:
+        XMLVerifier = None
+        print('  (sem o signxml aqui: a conferência com ele foi pulada)')
+    if XMLVerifier is not None:
+        pem = cert.public_bytes(serialization.Encoding.PEM)
+
+        def verificador():
+            v = XMLVerifier()
+            # o lxml (com o libxml2 2.12 e o 2.14, ao menos) põe um xmlns="" nos netos ao canonizar uma subárvore com
+            # o namespace padrão: o SignedInfo sairia com <Transforms xmlns="">, e nenhuma assinatura com a
+            # <Signature xmlns="…"> (a do modelo do Serpro, a da NF-e) passaria. O excise tira esses xmlns="" — no
+            # SignedInfo deste termo não há nenhum de verdade (o signxml, issue 193)
+            v.excise_empty_xmlns_declarations = True
+            return v
+        try:
+            r = verificador().verify(xml.encode('utf-8'), x509_cert=pem)
+            ok(r.signed_xml is not None and r.signed_xml.find('dados') is not None,
+               'o signxml confere o termo (o digest e a assinatura) e devolve o termo assinado')
+        except Exception as e:
+            ok(False, f'o signxml recusou o termo: {type(e).__name__}: {e}')
+        try:
+            verificador().verify(mexido.encode('utf-8'), x509_cert=pem)
+            ok(False, 'o signxml devia recusar o termo mexido')
+        except Exception:
+            ok(True, '  e recusa o mexido')
+
+    # a vigência e o que para o termo
+    hoje = datetime.date.today()
+    chave100, cert100 = gerar_certificado(TITULAR_PROC, dias=100)
+    _, vig100 = procurador.termo_assinado(chave100, cert100, CPF_PROCURADOR, CNPJ_ESCRITORIO, 'X', hoje)
+    ok(vig100 == procurador.vencimento(cert100) and vig100 < hoje + datetime.timedelta(days=365),
+       f'o e-CPF que vence antes de um ano: a vigência vai até ele ({vig100})')
+    vencido = gerar_certificado(TITULAR_PROC, dias=-5)
+    for nome, args, espera in (('de outro CPF', (chave, cert, CPF_OUTRO), 'outro CPF'),
+                               ('vencido', (vencido[0], vencido[1], CPF_PROCURADOR), 'venceu em'),
+                               ('sem a chave', (None, cert, CPF_PROCURADOR), 'a chave e o certificado')):
+        try:
+            procurador.termo_assinado(*args, CNPJ_ESCRITORIO, 'X', hoje)
+            ok(False, f'o e-CPF {nome} devia parar o termo')
+        except procurador.ErroTermo as e:
+            ok(espera in str(e) and CPF_PROCURADOR not in str(e) and CPF_OUTRO not in str(e),
+               f'o e-CPF {nome} para o termo: "{e}"')
+    chave_s, cert_s = gerar_certificado('SO O NOME NO CERTIFICADO', dias=400)
+    info_s = conferir_termo(procurador.termo_assinado(chave_s, cert_s, CPF_PROCURADOR, CNPJ_ESCRITORIO, 'X', hoje)[0]
+                            .encode('utf-8'))
+    ok(info_s['ok'] and info_s['assinadoPor_attrs']['nome'] == 'SO O NOME NO CERTIFICADO',
+       'o certificado sem o CPF no nome: o termo sai (quem confere o CPF é o Serpro), com o nome inteiro')
+    _, cert_pj = gerar_certificado(f'ESCRITORIO DE TESTE LTDA:{CNPJ_ESCRITORIO}', dias=400)
+    ok(procurador.nome_e_documento(cert_pj) == ('ESCRITORIO DE TESTE LTDA', CNPJ_ESCRITORIO)
+       and procurador.nome_e_documento(cert) == ('PROCURADOR DE TESTE DA PONTE', CPF_PROCURADOR),
+       'o nome do e-CNPJ do escritório (o do termo) e o do e-CPF: o CN antes do ":", o CNPJ com letras também')
+
+    # a resposta do ENVIOXMLASSINADO81
+    R, utc = serpro.Resposta, datetime.timezone.utc
+    t, e = procurador.token_da_resposta(R(200, {'status': 200, 'mensagens': [
+        {'codigo': '[Sucesso-AUTENTICAPROCURADOR]', 'texto': 'Requisição efetuada com sucesso.'}], 'dados': json.dumps(
+        {'autenticar_procurador_token': 'TOK-200', 'data_hora_expiracao': '2026-11-04T23:59:59'})}, {}))
+    ok(t == 'TOK-200' and e == datetime.datetime(2026, 11, 5, 2, 59, 59, tzinfo=utc),
+       '200: o token e a expiração (a hora de Brasília) do dados')
+    t, e = procurador.token_da_resposta(R(304, {}, {'cache-control': 'termo_autorizacao',
+                                                    'ETag': '"autenticar_procurador_token:ab87df0b-6d08-3d78"',
+                                                    'Expires': 'Sat, 15 Oct 2022 00:00:01 GMT'}))
+    ok(t == 'ab87df0b-6d08-3d78' and e == datetime.datetime(2022, 10, 15, 0, 0, 1, tzinfo=utc),
+       '304 (o mesmo termo de novo): o token do ETag e a expiração do Expires')
+    ok(procurador.token_da_resposta(R(304, {}, {'etag': 'W/"autenticar_procurador_token:XYZ-1"'}))[0] == 'XYZ-1',
+       '  o ETag fraco (W/) também')
+    ok(procurador.token_da_resposta(R(403, {'status': 403, 'mensagens': [
+        {'codigo': '[AcessoNegado-AUTENTICAPROCURADOR-011]', 'texto': 'Acesso negado.'}]}, {})) == (None, None)
+       and procurador.token_da_resposta(R(304, {}, {})) == (None, None),
+       'a recusa e o 304 sem o ETag: sem token')
+
+
+def caso_procurador(srp, sis):
+    titulo('12. o procurador: a procuração pro CPF dele, conferida em nome dele; as consultas e o lote da Caixa Postal '
+           'em nome dele; o 304; o termo recusado; quem passou a ter a procuração não espera o dia marcado')
+    inicio = len(SAIDAS)
+    pastas = []
+
+    def autores(servico):
+        return {x['doc']: (x['pedido']['autorPedidoDados'], x['cabecalhos'].get('autenticar_procurador_token'))
+                for x in pedidos_de(srp, servico)}
+
+    p = pasta_nova()
+    pastas.append(p)
+    config_com_procurador(p, sis)
+
+    def preparar(eventos):
+        srp.zerar()
+        srp.sem_cnpj = {A, B}                                  # A e B deram a procuração só pro CPF (a de B venceu)
+        srp.procuracao_cpf = {A: '20271231', B: '20250630'}
+        srp.eventos = dict(eventos)
+        sis.zerar()
+
+    # quinta, 01/10/2026: a primeira rodada
+    preparar({A: '261001', C: '261001'})
+    cod, saida = rodar(p, srp, '--saida', 'procurador.json', hoje='2026-10-01')
+    pac = sis.ultimo()
+    t = srp.termos[0] if srp.termos else {}
+    ok(cod == 0 and len(srp.termos) == 1 and t.get('ok'),
+       f"um termo só na rodada, e ele confere: o modelo, o digest e a assinatura ({t.get('problema')})")
+    ok(t.get('autor') == AUTOR_PROCURADOR and t.get('contribuinte') == AUTOR_ESCRITORIO
+       and t.get('contratante') == AUTOR_ESCRITORIO and t.get('sistema') == 'AUTENTICAPROCURADOR'
+       and t.get('versao') == '1.0' and not t.get('cabecalho_token')
+       and [x['endpoint'] for x in pedidos_de(srp, 'ENVIOXMLASSINADO81')] == ['Apoiar'],
+       'o termo vai no Apoiar, com o autor = o CPF (tipo 1), o contribuinte e o contratante = o escritório, sem o '
+       'cabeçalho do token')
+    ok(t.get('dataAssinatura') == '20261001' and t.get('vigencia') == '20271001'
+       and (t.get('destinatario_attrs') or {}).get('nome') == TITULAR,
+       '  assinado no dia da rodada, com um ano de vigência; o nome do escritório é o do e-CNPJ dele')
+    tok = srp.tokens_proc[0] if srp.tokens_proc else '?'
+    proc = pedidos_de(srp, 'OBTERPROCURACAO41')
+    pelo_cpf = [x for x in proc if x['pedido']['autorPedidoDados'] == AUTOR_PROCURADOR]
+    ok(sorted(x['doc'] for x in proc if x['pedido']['autorPedidoDados'] == AUTOR_ESCRITORIO) == sorted([A, B, C])
+       and sorted(x['doc'] for x in pelo_cpf) == sorted([A, B]),
+       'a procuração: de todas pro escritório; pro CPF, só das que não têm a do escritório (A e B; a C não)')
+    ok(pelo_cpf and all(json.loads(x['pedido']['pedidoDados']['dados']) == {
+        'outorgante': x['doc'], 'tipoOutorgante': '2', 'outorgado': CPF_PROCURADOR, 'tipoOutorgado': '1'}
+        and x['cabecalhos'].get('autenticar_procurador_token') == tok for x in pelo_cpf),
+       '  a pro CPF: o outorgado é o CPF (tipo 1), em nome do próprio procurador e com o token dele')
+    ok((empresa(pac, A) or {}).get('autorizacao') == {'situacao': 'ativa', 'valida_ate': '2027-12-31'}
+       and (empresa(pac, B) or {}).get('autorizacao') == {'situacao': 'vencida', 'valida_ate': '2025-06-30'}
+       and (empresa(pac, C) or {}).get('autorizacao') == {'situacao': 'ativa', 'valida_ate': '2027-12-31'},
+       'no pacote: A ativa e B vencida (as do CPF), C ativa (a do escritório) — sem o via, que não é do contrato')
+    est = (estado(p) or {}).get('autorizacao', {})
+    ok(est.get(A, {}).get('via') == 'procurador' and est.get(B, {}).get('via') == 'procurador'
+       and 'via' not in est.get(C, {}), 'o estado.json lembra de quem é a procuração (o via procurador)')
+    ok(autores('CONSDECLARACAO13') == {A: (AUTOR_PROCURADOR, tok)}
+       and autores('CONSULTIMADECREC14') == {A: (AUTOR_PROCURADOR, tok)},
+       'o PGDAS e a declaração de A, em nome do procurador e com o token')
+    ok(autores('SOLICITARPROTOCOLO91') == {A: (AUTOR_PROCURADOR, tok), C: (AUTOR_ESCRITORIO, None)}
+       and autores('RELATORIOSITFIS92') == {A: (AUTOR_PROCURADOR, tok), C: (AUTOR_ESCRITORIO, None)},
+       'a situação fiscal: a de A em nome do procurador, a de C do escritório; a de B (vencida) nem é pedida')
+    ok(srp.lotes == [(CNPJ_ESCRITORIO, [C]), (CPF_PROCURADOR, [A])], f'a Caixa Postal: um lote por autor ({srp.lotes})')
+    ok([x['pedido']['autorPedidoDados'] for x in pedidos_de(srp, 'OBTEREVENTOSPJ134')]
+       == [AUTOR_ESCRITORIO, AUTOR_PROCURADOR], '  e a resposta de cada lote é pedida com o autor do lote')
+    ok(autores('MSGCONTRIBUINTE61') == {A: (AUTOR_PROCURADOR, tok), C: (AUTOR_ESCRITORIO, None)}
+       and len(((empresa(pac, A) or {}).get('caixa_postal') or {}).get('mensagens', [])) == 50,
+       '  e as mensagens de A, em nome do procurador')
+    ok(faltou(pac) == [(B, 'caixa_postal', 'sem_autorizacao'), (B, 'situacao_fiscal', 'sem_autorizacao')],
+       f'no faltou, só a B (vencida) — nenhum acesso negado ({faltou(pac)})')
+    log = logs(p)
+    ok('1 empresa(s) consultada(s) em nome do procurador' in log and 'o termo de autorização foi aceito' in log,
+       'o log diz quantas foram em nome do procurador e que o termo valeu')
+
+    # sexta, 02/10: sem a consulta da autorização, o estado.json diz que A vai em nome do procurador
+    preparar({A: '261002'})
+    rodar(p, srp, hoje='2026-10-02')
+    ok(not pedidos_de(srp, 'OBTERPROCURACAO41') and srp.lotes == [(CNPJ_ESCRITORIO, [C]), (CPF_PROCURADOR, [A])]
+       and [x['pedido']['autorPedidoDados'] for x in pedidos_de(srp, 'MSGCONTRIBUINTE61')] == [AUTOR_PROCURADOR]
+       and srp.respostas_termo == [200],
+       'no dia seguinte, sem a consulta da autorização: A segue em nome do procurador (um termo novo, uma rodada nova)')
+
+    # segunda, 05/10: o conferir e a rodada do mesmo dia — o mesmo termo, o 304, o token do ETag
+    preparar({})
+    cod, saida = ponte(p, srp, 'receita', 'conferir', hoje='2026-10-05')
+    ok(cod == 0 and 'Token do procurador: ok' in saida and 'procurador_cpf: preenchido' in saida
+       and 'procurador_senha: preenchido' in saida
+       and 'Procurador: PROCURADOR DE TESTE DA PONTE — o e-CPF é do procurador_cpf e vence em 400 dias' in saida,
+       f'o conferir: os três campos, o titular e a validade do e-CPF e o token do procurador (saiu {cod})')
+    ok(srp.respostas_termo == [200] and not [x for x in srp.pedidos if x['servico'] != 'ENVIOXMLASSINADO81'],
+       '  o conferir só manda o termo (nenhuma consulta de empresa)')
+    rodar(p, srp, '--so', 'autorizacao', hoje='2026-10-05')
+    tok = srp.tokens_proc[0] if srp.tokens_proc else '?'
+    pelo_cpf = [x for x in pedidos_de(srp, 'OBTERPROCURACAO41') if x['pedido']['autorPedidoDados'] == AUTOR_PROCURADOR]
+    ok(srp.respostas_termo == [200, 304] and len(srp.tokens_proc) == 1 and pelo_cpf
+       and all(x['cabecalhos'].get('autenticar_procurador_token') == tok for x in pelo_cpf)
+       and (empresa(sis.ultimo(), A) or {}).get('autorizacao', {}).get('situacao') == 'ativa',
+       f'a rodada do mesmo dia manda o mesmo termo: 304, e o token do ETag vale ({srp.respostas_termo})')
+
+    # terça, 06/10: o Serpro recusa o termo — um pedido só; as consultas em nome do procurador ficam pra próxima
+    preparar({A: '261006', C: '261006'})
+    srp.filas['ENVIOXMLASSINADO81'] = [(403, {'status': 403, 'mensagens': [
+        {'codigo': '[AcessoNegado-AUTENTICAPROCURADOR-011]',
+         'texto': 'Acesso negado, NI do procurador diferente do NI do certificado.'}]}, {})]
+    cod, saida = rodar(p, srp, '--so', 'situacao_fiscal,caixa_postal', hoje='2026-10-06')
+    pac = sis.ultimo()
+    ok(cod == 0 and srp.respostas_termo == [403], f'o termo recusado: um pedido só, não um por empresa (saiu {cod})')
+    ok(srp.servicos('SOLICITARPROTOCOLO91') == [C] and srp.lotes == [(CNPJ_ESCRITORIO, [C])],
+       '  as consultas em nome do procurador nem são feitas; as do escritório seguem')
+    ok({(A, 'situacao_fiscal', 'erro'), (A, 'caixa_postal', 'erro')} <= set(faltou(pac)),
+       '  as de A vão pro faltou como erro')
+    linhas = [lin for lin in logs(p).splitlines() if 'em nome do procurador ficam de fora' in lin]
+    ok(len(linhas) == 1 and 'AUTENTICAPROCURADOR-011' in linhas[0],
+       f'  o log diz uma vez, com a mensagem do Serpro ({len(linhas)})')
+    ok((estado(p) or {}).get('situacao_fiscal', {}).get(A) == '2026-10-01',
+       '  e a situação fiscal de A não conta como feita: volta na próxima rodada')
+    # o 500 com a mensagem do Serpro (o certificado que não valida) é do termo, não o Serpro fora
+    preparar({C: '261007'})
+    srp.filas['ENVIOXMLASSINADO81'] = [(500, {'status': 500, 'mensagens': [
+        {'codigo': '[Erro-AUTENTICAPROCURADOR-008]', 'texto': 'Erro ao validar o certificado digital.'}]}, {})]
+    cod, saida = rodar(p, srp, '--so', 'situacao_fiscal,caixa_postal', hoje='2026-10-07')
+    ok(cod == 0 and srp.respostas_termo == [500] and srp.servicos('SOLICITARPROTOCOLO91') == [C]
+       and 'tento de novo' not in saida and 'AUTENTICAPROCURADOR-008' in saida and 'parou de responder' not in saida,
+       'o 500 com a mensagem do Serpro: o termo não é repetido e a rodada segue (não é o Serpro fora)')
+    # a senha do e-CPF errada: o termo nem sai, e a rodada segue
+    escrever_config(p, sis, procurador_cpf=CPF_PROCURADOR, procurador_certificado=str(p / 'procurador.pfx'),
+                    procurador_senha='Senha-Errada-Do-E-CPF-123')
+    preparar({})
+    cod, saida = rodar(p, srp, '--so', 'situacao_fiscal', hoje='2026-10-08')
+    ok(cod == 0 and not srp.termos and srp.servicos('SOLICITARPROTOCOLO91') == [C] and 'a senha está errada' in saida
+       and 'Senha-Errada-Do-E-CPF-123' not in saida and (A, 'situacao_fiscal', 'erro') in faltou(sis.ultimo()),
+       'a senha do e-CPF errada: o termo nem sai, o log diz o porquê (sem a senha) e as do escritório seguem')
+    config_com_procurador(p, sis)
+
+    # o CPF do config.ini não é o do e-CPF: o termo nem sai
+    r = pasta_nova()
+    pastas.append(r)
+    config_com_procurador(r, sis, cpf=CPF_OUTRO)
+    preparar({})
+    cod, saida = ponte(r, srp, 'receita', 'conferir', hoje='2026-10-01')
+    ok(cod == 1 and 'ATENÇÃO: o e-CPF é de outro CPF' in saida and 'Token do procurador: não pedi' in saida
+       and not srp.termos, f'o conferir com o CPF que não é o do e-CPF: diz, não manda o termo e sai com 1 (saiu {cod})')
+    cod, saida = rodar(r, srp, '--so', 'autorizacao', hoje='2026-10-01')
+    pac = sis.ultimo()
+    ok(cod == 0 and not srp.termos and {(A, 'autorizacao', 'erro'), (B, 'autorizacao', 'erro')} <= set(faltou(pac))
+       and (empresa(pac, C) or {}).get('autorizacao', {}).get('situacao') == 'ativa',
+       'a rodada: o termo nem sai; a autorização de A e B fica sem resposta (erro), a de C vem')
+    ok(sum('o e-CPF do procurador é de outro CPF' in lin for lin in logs(r).splitlines()) == 1, '  o log diz uma vez')
+
+    # pela metade, ou o CPF errado: o conferir diz, a rodada segue sem ele
+    s = pasta_nova()
+    pastas.append(s)
+    escrever_config(s, sis, procurador_cpf=CPF_PROCURADOR)
+    preparar({})
+    cod, saida = ponte(s, srp, 'receita', 'conferir', hoje='2026-10-01')
+    ok(cod == 1 and 'procurador_cpf: preenchido' in saida and 'procurador_certificado: falta' in saida
+       and 'procurador_senha: falta' in saida, f'pela metade: o conferir diz o que falta e sai com 1 (saiu {cod})')
+    cod, saida = rodar(s, srp, '--so', 'autorizacao', hoje='2026-10-01')
+    ok(cod == 0 and 'o procurador está pela metade' in saida and not srp.termos
+       and (empresa(sis.ultimo(), A) or {}).get('autorizacao') == {'situacao': 'sem', 'valida_ate': None},
+       '  a rodada segue sem ele, com o aviso no log: A fica "sem"')
+    config_com_procurador(s, sis, cpf=CPF_PROCURADOR[:-1] + str((int(CPF_PROCURADOR[-1]) + 1) % 10))
+    cod, saida = ponte(s, srp, 'receita', 'conferir', hoje='2026-10-01')
+    ok(cod == 1 and 'procurador_cpf: inválido (o dígito verificador não confere)' in saida,
+       'o CPF com o dígito errado: inválido')
+
+    # quem passou a ter a procuração não espera o próximo dia marcado (no calendário)
+    q = pasta_nova()
+    pastas.append(q)
+    config_com_procurador(q, sis)
+    so_a = [{'documento': A, 'regime': 'simples'}]
+
+    def preparar_q(cpf, eventos=None):
+        srp.zerar()
+        srp.sem_cnpj = {A}
+        srp.procuracao_cpf = dict(cpf)
+        srp.eventos = dict(eventos or {})
+        sis.zerar(empresas=so_a)
+
+    preparar_q({})
+    rodar(q, srp, hoje='2026-10-01')                            # quinta: A sem procuração nenhuma
+    ok((empresa(sis.ultimo(), A) or {}).get('autorizacao') == {'situacao': 'sem', 'valida_ate': None}
+       and not srp.servicos('CONSDECLARACAO13'), 'A sem procuração nenhuma: "sem", e o PGDAS nem é pedido')
+    preparar_q({})
+    rodar(q, srp, hoje='2026-10-05')                            # segunda, dia 5: ainda sem
+    preparar_q({A: '20271231'})
+    rodar(q, srp, hoje='2026-10-12')                            # a segunda seguinte: deu a procuração pro CPF
+    e = empresa(sis.ultimo(), A) or {}
+    consultas = [x for x in srp.pedidos if x['servico'] in ('CONSDECLARACAO13', 'CONSULTIMADECREC14',
+                                                           'SOLICITARPROTOCOLO91', 'RELATORIOSITFIS92')]
+    ok(e.get('autorizacao', {}).get('situacao') == 'ativa' and srp.servicos('CONSDECLARACAO13') == [A]
+       and srp.servicos('CONSULTIMADECREC14') == [A] and srp.servicos('SOLICITARPROTOCOLO91') == [A]
+       and e.get('pgdas') and e.get('faturamento') and e.get('situacao_fiscal'),
+       'a segunda depois de autorizar: o PGDAS, a declaração e a situação fiscal na mesma rodada, sem esperar o dia '
+       'marcado')
+    ok(consultas and all(x['pedido']['autorPedidoDados'] == AUTOR_PROCURADOR for x in consultas),
+       '  todas em nome do procurador')
+    # o procurador tirado do config.ini: a empresa autorizada só pro CPF fica de fora (a Receita negaria)
+    escrever_config(q, sis)
+    preparar_q({A: '20271231'}, {A: '261013'})
+    rodar(q, srp, hoje='2026-10-13')                            # terça
+    ok(not srp.pedidos and (A, 'caixa_postal', 'sem_autorizacao') in faltou(sis.ultimo()),
+       'tirado o procurador do config.ini: a empresa da procuração só pro CPF fica de fora, sem chamar a Receita')
+    preparar_q({A: '20271231'})
+    rodar(q, srp, hoje='2026-10-19')                            # a segunda seguinte
+    ok([x['pedido']['autorPedidoDados'] for x in pedidos_de(srp, 'OBTERPROCURACAO41')] == [AUTOR_ESCRITORIO]
+       and (empresa(sis.ultimo(), A) or {}).get('autorizacao', {}).get('situacao') == 'sem',
+       '  e na segunda a autorização dela é consultada de novo, só a do escritório: "sem"')
+
+    # nada do procurador sai: a senha do e-CPF, o CPF e o token, nem na tela, nem no log, nem no pacote ou na --saida
+    tudo = '\n'.join(SAIDAS[inicio:])
+    for pasta in pastas:
+        tudo += '\n'.join(a.read_text(encoding='utf-8', errors='replace') for a in pasta.rglob('*')
+                          if a.is_file() and a.suffix in ('.log', '.json'))
+    ok((p / 'procurador.json').is_file() and all(s not in tudo for s in (SENHA_PROC, CPF_PROCURADOR, CPF_OUTRO,
+                                                                           'TOKEN-PROCURADOR-DE-TESTE')),
+       'a senha do e-CPF, o CPF e o token do procurador não estão na tela, no log, no estado, no pacote nem na --saida')
+
+
 # ---------------------------------------------------------------- 9. a ponte do Domínio
 
 def caso_dominio():
@@ -2023,7 +2636,8 @@ def main():
                      lambda: caso_eventos_formatos(srp, sis), lambda: caso_caixa_postal_ponteiro(srp, sis),
                      lambda: caso_respostas_da_funcao(srp, sis), lambda: caso_faturamento_pendente(srp, sis),
                      lambda: caso_virada_do_ano(srp, sis), lambda: caso_certificado_do_serpro(srp, sis),
-                     lambda: caso_caixa_postal_revisao(srp, sis), lambda: caso_validacoes(sis), caso_dominio):
+                     lambda: caso_caixa_postal_revisao(srp, sis), caso_termo, lambda: caso_procurador(srp, sis),
+                     lambda: caso_validacoes(sis), caso_dominio):
             try:
                 caso()
             except Exception as e:   # um caso que quebra no meio não esconde os outros

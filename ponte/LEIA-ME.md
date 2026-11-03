@@ -180,7 +180,7 @@ mesmo que recusando; o teto e o Serpro fora deixam pra próxima rodada.
 
 | Consulta | No pacote | Dias marcados (a tarefa roda de segunda a sexta) |
 |---|---|---|
-| A procuração do cliente pro escritório | `autorizacao`: `ativa`, `vencida` ou `sem`, e até quando | o primeiro dia útil do mês e, pra quem estava sem (ou vencida), toda segunda-feira — o cliente autoriza e o escritório vê na mesma semana |
+| A procuração do cliente pro escritório (ou, sem ela, pro CPF do procurador — abaixo, "O procurador") | `autorizacao`: `ativa`, `vencida` ou `sem`, e até quando | o primeiro dia útil do mês e, pra quem estava sem (ou vencida), toda segunda-feira — o cliente autoriza e o escritório vê na mesma semana: a empresa que passou a ter a procuração tem o PGDAS, a declaração e a situação fiscal consultados na mesma rodada, sem esperar o próximo dia marcado deles |
 | As declarações do PGDAS-D do ano | `pgdas`: cada mês declarado, quando, e se o DAS foi pago | Simples: o primeiro dia útil **depois** do prazo do mês anterior (o prazo é o dia 20 ou, sem expediente, o próximo dia útil — com os feriados nacionais, o 20/09, o Carnaval, a Sexta-feira Santa e o Corpus Christi) e, só pra quem ainda tem mês sem declaração, o último dia útil do mês; em janeiro, o ano anterior também. Ex.: 10/2026 — prazo segunda, 23/11 (o 20/11 é feriado) → consulta terça, 24/11. No próprio dia do prazo não consulta: o vigia do sistema avisaria "PGDAS não transmitido" pra quem transmite naquele dia |
 | A última declaração de um mês (o PDF) | `faturamento`: a receita do mês (RPA) e a dos 12 meses (RBT12), com os centavos | Simples: toda rodada confere, sem custo, se há declaração a ler — o mês novo (ou retificado) que o PGDAS mostrou; uma por rodada, a mais antiga primeiro (nenhum mês fica pra trás quando o de antes não veio); na primeira vez, só a do mês mais recente. A que o Serpro respondeu sem a receita (o PDF ilegível, a recusa) volta só no dia do PGDAS |
 | A Caixa Postal | `caixa_postal`: id, assunto, data, origem (Receita, Estado, Município) e se foi lida | todo dia útil: o "quem teve novidade" em lote (até 1.000 CNPJs por pedido, o CNPJ com letras também) e as mensagens só de quem teve — o evento é só o dia da última novidade, então no dia seguinte a uma leitura, com o mesmo dia, lê de novo uma vez (a mensagem que chegou depois da rodada); as 100 mais recentes por empresa; na primeira leitura de uma empresa, só as dos últimos 90 dias (as antigas ficam no e-CAC); a já mandada não vai de novo, salvo a mandada como não lida que depois aparece lida |
@@ -188,7 +188,7 @@ mesmo que recusando; o teto e o Serpro fora deixam pra próxima rodada.
 
 Sem procuração (ou vencida), as outras consultas da empresa nem são feitas: vão pro `faltou` como `sem_autorizacao` — também nos dias em que a autorização dela não é consultada (o `estado.json` lembra a última resposta; cada recusa seria uma chamada paga), até a próxima consulta da autorização.
 
-**A primeira rodada de produção (03/11/2026)** ensinou quatro coisas: a situação fiscal só aceita a versão **2.0** do SITFIS (a 1.0 a Receita desligou: "Versão Descontinuada"); o pedido de eventos da Caixa Postal pode devolver o protocolo em outro formato, e quando não devolve o log diz o HTTP, a mensagem do Serpro e como veio o `dados`; a lista das mensagens só aceita o `ponteiroPagina` com **24 dígitos** (a documentação e a demonstração dizem 14) — vão 24 zeros na página inicial e, se a Receita recusar o ponteiro de novo, a consulta vai sem ele, com um aviso no log; e 80 das 105 empresas não têm procuração pro CNPJ do escritório — a maioria dos clientes deu a procuração pro CPF do Diego, e a consulta em nome dele é o **Autentica Procurador** do Integra (o termo de autorização assinado com o e-CPF dele), a próxima parte da ponte.
+**A primeira rodada de produção (03/11/2026)** ensinou quatro coisas: a situação fiscal só aceita a versão **2.0** do SITFIS (a 1.0 a Receita desligou: "Versão Descontinuada"); o pedido de eventos da Caixa Postal pode devolver o protocolo em outro formato, e quando não devolve o log diz o HTTP, a mensagem do Serpro e como veio o `dados`; a lista das mensagens só aceita o `ponteiroPagina` com **24 dígitos** (a documentação e a demonstração dizem 14) — vão 24 zeros na página inicial e, se a Receita recusar o ponteiro de novo, a consulta vai sem ele, com um aviso no log; e 80 das 105 empresas não têm procuração pro CNPJ do escritório — a maioria dos clientes deu a procuração pro CPF do Diego, e a consulta em nome dele é o **Autentica Procurador** do Integra (o termo de autorização assinado com o e-CPF dele), que entrou na ponte no mesmo dia (abaixo, "O procurador").
 O `faltou` diz também o que parou no `teto`, o que deu `erro` e o que ficou `a_conferir` — o PDF que a ponte não
 conseguiu ler: o bloco **não vai** no pacote (nada de `null` que no sistema viraria "sem pendência" ou apagaria o
 faturamento do mês; nunca um número inventado), só o `faltou`, e o PDF fica guardado. A lista de pendências maior que
@@ -203,7 +203,57 @@ impressão digital ser cadastrada.
 
 **O que sai do PC:** só os campos do contrato (`ponte\receita\pacote.py`); o que vier a mais do Serpro é jogado fora
 antes de montar o pacote. **Não sai:** o PDF (nem em base64), o texto das mensagens, as chaves, a senha do
-certificado, os tokens. No log, das mensagens só quantas — nunca o assunto.
+certificado, os tokens. No log, das mensagens só quantas — nunca o assunto. Do procurador, nada vai pro sistema: o
+termo e o token ficam na memória da rodada, o CPF, o caminho do e-CPF e a senha viram `***` no log, e o pacote não diz
+por qual procuração a empresa foi consultada (o `via` fica só no `estado.json`).
+
+## O procurador (as procurações pro CPF do contador)
+
+Na primeira rodada, 80 das 105 empresas não tinham procuração pro CNPJ do escritório: os clientes deram a procuração
+do e-CAC pro **CPF do Diego**. O Integra consulta em nome dele com o **Autentica Procurador**: um *termo de
+autorização* (um XML do modelo do Serpro) assinado com o e-CPF dele, que o serviço `AUTENTICAPROCURADOR ·
+ENVIOXMLASSINADO81` troca por um token; cada consulta em nome dele vai com o `autorPedidoDados` = o CPF e o cabeçalho
+`autenticar_procurador_token`. Com o **e-CPF A1** (o `.pfx` — o do Diego é A1, e o ok dele veio em 03/11/2026), a
+ponte assina o termo sozinha a cada rodada (XMLDSig: enveloped, C14N 1.0, RSA-SHA256, só com o `cryptography`), com
+um ano de vigência — ou até o e-CPF vencer, o que vier antes. O token vale até a meia-noite do dia seguinte e fica só na
+memória: um termo por rodada. O mesmo termo de novo no mesmo dia (o `conferir` e depois a rodada) volta 304, com o
+token no ETag.
+
+- **A autorização:** primeiro a procuração pro escritório, como sempre; faltando ela (sem, vencida ou acesso negado),
+  a pro CPF do procurador, conferida **em nome dele** (só o próprio procurador vê as procurações que recebeu). Vale a
+  ativa; senão a vencida mais recente; senão `sem`. A empresa ativa pela procuração pro CPF tem o PGDAS, a declaração,
+  a situação fiscal e a Caixa Postal consultados em nome dele, e o lote de eventos da Caixa Postal sai um por autor (o
+  do escritório e o do procurador). O `estado.json` lembra de quem é a procuração (`via: procurador`); o pacote não leva
+  isso — o sistema vê só `ativa`.
+- **Sem o token nesta rodada** (o e-CPF de outro CPF, vencido, a senha errada — aí o termo nem sai do PC —, ou o Serpro
+  recusando o termo, inclusive com o 500 que traz mensagem, que não é o Serpro fora): o termo é tentado uma vez só, o
+  log diz o porquê **uma vez**, e as consultas em nome do procurador vão pro `faltou` como `erro` sem chamar a Receita
+  — e voltam na próxima rodada. As do escritório seguem.
+- **Desligado** (os três campos em branco, o padrão): a ponte faz como antes. Tirado do `config.ini` depois de usado, a
+  empresa autorizada só pro CPF fica de fora das consultas (a Receita negaria em nome do escritório) até a segunda
+  seguinte, quando a autorização dela é consultada de novo. Pela metade (um campo sem os outros): a rodada segue sem
+  ele, com o aviso no log, e o `conferir` aponta o que falta.
+
+**Montar:**
+
+1. O e-CPF A1 do procurador (o `.pfx` do Diego) **dentro de `C:\ponte-dominio\`** (só o seu usuário, o sistema e os
+   administradores leem essa pasta) — nunca no repositório.
+2. Num PowerShell **como administrador**, na pasta do repositório:
+   `powershell -NoProfile -ExecutionPolicy Bypass -File ponte\instalar.ps1 -Receita -Procurador` — ele pergunta o
+   **CPF do procurador** (só números; o dígito verificador é conferido), o **caminho do `.pfx`** (tem de existir) e a
+   **senha do e-CPF** (sem aparecer na tela). Pra colar a senha, **o botão direito do mouse — nunca o Ctrl+V**: ali o
+   Ctrl+V entra como um caractere (um asterisco só = não colou nada). Ele pergunta sempre (é o mesmo caminho pra trocar
+   o e-CPF quando o Diego renovar); com valor no `config.ini`, o Enter mantém o que está lá. Grava só esses três
+   campos, lendo o `config.ini` de novo na hora de gravar.
+3. `py -3 -m ponte receita conferir` — os três campos "preenchido", a linha **"Procurador:"** com o nome do titular
+   ("o e-CPF é do procurador_cpf e vence em N dias") e **"Token do procurador: ok"** (o `conferir` manda o termo
+   assinado ao Serpro — não tem dado de cliente — e mais nada).
+4. A rodada: `py -3 -m ponte receita rodar --so autorizacao` consulta a autorização de todas (a do escritório e,
+   faltando, a do CPF). Depois, `py -3 -m ponte receita rodar` (o calendário) consulta o PGDAS, a declaração e a
+   situação fiscal das que passaram a ter a procuração — e só delas, sem repetir as que já foram consultadas no dia.
+
+Os campos (`[integra]`, opcionais, em branco = desligado): `procurador_cpf`, `procurador_certificado` (o caminho do
+`.pfx`) e `procurador_senha` — segredos como as chaves: nunca em chat, tela, log ou repositório.
 
 ## Montar
 
@@ -231,7 +281,8 @@ py -3 -m ponte receita rodar --falso --sem-enviar                 # o Serpro de 
   "falta", "ainda é o do exemplo" ou "inválido" — nunca o valor), a **impressão digital da chave da ponte**, o
   **titular do certificado e quantos dias faltam pra vencer** (vencido ou a menos de 30 dias, em destaque), se o
   certificado do Serpro confere, o token (em produção, pede um e diz "ok" ou o erro; em demonstração,
-  "demonstração") e o ping do sistema, com a mensagem da função como veio (o 503 e o 401 da chave).
+  "demonstração"), o procurador (os três campos, o titular e a validade do e-CPF, se ele é do `procurador_cpf` e, em
+  produção, o "Token do procurador") e o ping do sistema, com a mensagem da função como veio (o 503 e o 401 da chave).
 - O **`--demonstracao`** usa o ambiente de demonstração do Serpro: respostas fixas de exemplo, sem certificado, sem
   contrato e sem custo — só o `cnpj_escritorio` é exigido (o do exemplo serve). Não conta no teto, não lembra nada no
   `estado.json` e só manda pra um sistema de mentira (use `--sem-enviar`).
@@ -260,9 +311,10 @@ prévia de 5 empresas no e-CAC; o e-CAC, só onde o cruzamento do sistema não b
 
 ## Onde ficam as coisas
 
-- `C:\ponte-dominio\receita\estado.json` — o que já foi consultado e mandado: a última procuração de cada empresa, os
-  meses declarados, a declaração já lida de cada mês, a última novidade da Caixa Postal, as mensagens já mandadas e o
-  dia da última consulta da procuração, do PGDAS e da situação fiscal (o "a partir do dia").
+- `C:\ponte-dominio\receita\estado.json` — o que já foi consultado e mandado: a última procuração de cada empresa (e se
+  ela é pro CPF do procurador, `via: procurador`), os meses declarados, a declaração já lida de cada mês, a última
+  novidade da Caixa Postal, as mensagens já mandadas e o dia da última consulta da procuração, do PGDAS e da situação
+  fiscal (o "a partir do dia").
   Só é gravado quando o pacote foi (ou ficou em pendentes) — um envio recusado não perde nada.
 - `C:\ponte-dominio\receita\chamadas-AAAA-MM.json` — as chamadas ao Serpro no mês, por serviço (o teto).
 - `C:\ponte-dominio\receita\pdfs\` — os PDFs da declaração e da situação fiscal, apagados depois de 30 dias. Nunca no
