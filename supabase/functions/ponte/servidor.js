@@ -91,7 +91,7 @@ async function encaminharNotas(db, v, hoje, agora, enviar) {
     const { data: env, error: e5 } = await db.from('compartilhamentos_envios').insert({
       destino: c.destino, compartilhamento_id: c.id, cliente_id: clienteId, tipo: 'notas', rodada_id: rodada.id,
       de: entradas[0], ate: entradas[entradas.length - 1], notas: corpoDest.notas.length,
-      itens: corpoDest.notas.reduce((s, n) => s + n.itens.length, 0), com_xml: corpoDest.notas.filter(n => n.xml).length,
+      itens: corpoDest.notas.reduce((s, n) => s + n.itens.length, 0), com_xml: corpoDest.notas.filter(n => n.origem === 'xml').length,
       situacao: 'enviando'
     }).select('id').single();
     if (e5) throw e5;
@@ -121,12 +121,13 @@ async function encaminharNotas(db, v, hoje, agora, enviar) {
       continue;
     }
     const rd = respostaDoDestino(corpoResp);
-    await concluir({ situacao: 'ok', http_status: status, gravadas: rd.gravadas, repetidas: rd.repetidas, recusadas: rd.recusadas });
+    await concluir({ situacao: 'ok', http_status: status, gravadas: rd.gravadas, repetidas: rd.repetidas, recusadas: rd.recusadas, resposta: rd.resposta });
     mandadas += corpoDest.notas.length;
     rd.recusadas.forEach(x => recusadas.push({ chave: x.chave, campo: 'destino', erro: x.motivo || 'recusada pelo destino' }));
   }
   if (falhou) return resposta({ erro: DESTINO_FORA }, 502);
-  return resposta({ ok: true, notas: v.pacote.notas.length, mandadas, recusadas: recusadas.slice(0, LIMITES_NOTAS.recusadas), total_recusadas: recusadas.length });
+  return resposta({ ok: true, notas: v.pacote.notas.length, mandadas, itens_fora: v.itensFora,
+    recusadas: recusadas.slice(0, LIMITES_NOTAS.recusadas), total_recusadas: recusadas.length });
 }
 
 export function criarServidor({ criarDb, agora = () => Date.now(), enviar = (url, init) => fetch(url, init) }) {

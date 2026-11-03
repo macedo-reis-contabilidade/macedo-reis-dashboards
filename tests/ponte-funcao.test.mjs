@@ -292,8 +292,11 @@ console.log('As notas de entrada das empresas autorizadas (03/11/2026):');
     const base = '43' + '2609' + cnpj + '55' + String(serie).padStart(3, '0') + String(numero).padStart(9, '0') + '1' + '00001234';
     return base + dvDaChave(base);
   };
-  const xmlDe = chave => Buffer.from('<?xml version="1.0" encoding="UTF-8"?><nfeProc versao="4.00"><NFe><infNFe Id="NFe' + chave
-    + '" versao="4.00"><ide><mod>55</mod></ide></infNFe></NFe></nfeProc>', 'utf8').toString('base64');
+  const DO_XML = n => {   // a nota cujos itens vieram do XML: a unidade tributável junto; o XML em si não viaja
+    n.origem = 'xml';
+    n.xml = 'PG5mZVByb2M+PC9uZmVQcm9jPg==';
+    Object.assign(n.itens[0], { ean_trib: '7890000000017', unidade_trib: 'UN', quantidade_trib: 100, valor_unitario_trib: 10, ipi: 52.5 });
+  };
   const NOTA = (numero, mudar) => {
     const n = {
       chave: chaveCom(numero), modelo: '55', numero: String(numero), serie: '001', emissao: '2026-09-15', entrada: '2026-09-16',
@@ -309,7 +312,7 @@ console.log('As notas de entrada das empresas autorizadas (03/11/2026):');
   const PACOTE = mudar => {
     const p = { versao: 1, tipo: 'notas', rodada: { id: '9D0C5C56-1111-4A2B-9C3D-000000000002', inicio: '2026-11-04T07:05:00-03:00', maquina: 'PC-PONTE', ponte: '0.3.0' },
       empresa: { codigo: 901, documento: EMP },
-      notas: [NOTA(1234), NOTA(1235, n => { n.origem = 'xml'; n.xml = xmlDe(n.chave); n.entrada = '2026-09-17'; }), NOTA(1236, n => { n.emissao = '2025-09-19'; n.entrada = '2025-09-20'; })] };
+      notas: [NOTA(1234), NOTA(1235, n => { DO_XML(n); n.entrada = '2026-09-17'; }), NOTA(1236, n => { n.emissao = '2025-09-19'; n.entrada = '2025-09-20'; })] };
     if (mudar) mudar(p);
     return p;
   };
@@ -320,7 +323,13 @@ console.log('As notas de entrada das empresas autorizadas (03/11/2026):');
   chk('o destinatário é a empresa do pacote, só com letras e dígitos; o número e a série sem os zeros da frente',
     n0 && n0.destinatario.cnpj === EMP && n0.numero === '1234' && n0.serie === '1');
   chk('o NCM só com os dígitos, e o IPI do item que a Domínio não guardou segue nulo', i0 && i0.ncm === '73181500' && i0.ipi === null && i0.cfop === '1102');
-  chk('a nota com o XML leva o XML', vn.ok && vn.pacote.notas[1].origem === 'xml' && typeof vn.pacote.notas[1].xml === 'string');
+  chk('o código do produto no cadastro do cliente não vai (o destino não usa)', i0 && !('codigo_produto' in i0));
+  {
+    const nx = vn.ok && vn.pacote.notas[1], ix = nx && nx.itens[0];
+    chk('a nota com os itens do XML: origem "xml", sem o XML (ele não viaja) e com a unidade tributável',
+      nx && nx.origem === 'xml' && !('xml' in nx) && ix.ean_trib === '7890000000017' && ix.unidade_trib === 'UN' && ix.quantidade_trib === 100 && ix.valor_unitario_trib === 10 && ix.ipi === 52.5, nx);
+    chk('sem o XML, a unidade tributável vai nula', i0 && i0.ean_trib === null && i0.unidade_trib === null && i0.quantidade_trib === null && i0.valor_unitario_trib === null);
+  }
   const recusaN = (mudar, campo) => { const r2 = validarPacoteNotas(PACOTE(mudar)); return !r2.ok && r2.campo === campo ? r2 : null; };
   chk('versão desconhecida recusa o pacote', !!recusaN(p => { p.versao = 2; }, 'versao'));
   chk('outro tipo recusa o pacote', !!recusaN(p => { p.tipo = 'receita'; }, 'tipo'));
@@ -338,11 +347,17 @@ console.log('As notas de entrada das empresas autorizadas (03/11/2026):');
   chk('o CNPJ do emitente que não é o da chave fica de fora', !!deForaN(n => { n.emitente.cnpj = '55666777000100'; }, 'notas[0].emitente.cnpj'));
   chk('a nota de emitente pessoa física (o CPF na chave) fica de fora', !!deForaN(n => { n.chave = chaveCom(1234, '00012345678909'); n.emitente.cnpj = '00012345678909'; }, 'notas[0].emitente.cnpj'));
   chk('a nota de outra empresa fica de fora', !!deForaN(n => { n.destinatario.cnpj = '22333444000100'; }, 'notas[0].destinatario.cnpj'));
-  chk('origem xml sem o XML fica de fora', !!deForaN(n => { n.origem = 'xml'; }, 'notas[0].xml'));
-  chk('o XML de outra nota fica de fora', !!deForaN(n => { n.origem = 'xml'; n.xml = xmlDe(chaveCom(9)); }, 'notas[0].xml'));
-  chk('o XML que não está em base64 fica de fora', !!deForaN(n => { n.origem = 'xml'; n.xml = '<nfeProc>'; }, 'notas[0].xml'));
-  chk('origem dominio com o XML fica de fora', !!deForaN(n => { n.xml = xmlDe(n.chave); }, 'notas[0].xml'));
   chk('o CFOP do fornecedor no lugar do da entrada fica de fora', !!deForaN(n => { n.itens[0].cfop = '5102'; }, 'notas[0].itens[0].cfop'));
+  chk('o item sem o CFOP fica de fora', !!deForaN(n => { n.itens[0].cfop = null; }, 'notas[0].itens[0].cfop'));
+  chk('o item sem descrição fica de fora', !!deForaN(n => { n.itens[0].descricao = '  '; }, 'notas[0].itens[0].descricao'));
+  chk('o item com a quantidade zero fica de fora', !!deForaN(n => { n.itens[0].quantidade = 0; }, 'notas[0].itens[0].quantidade'));
+  chk('a nota sem nenhum item de compra (só devolução) fica de fora', !!deForaN(n => { n.itens[0].cfop = '1202'; }, 'notas[0].itens'));
+  {
+    const r2 = validarPacoteNotas(PACOTE(p => { p.notas[0].itens.push({ ...p.notas[0].itens[0], n: 2, cfop: '1910' }, { ...p.notas[0].itens[0], n: 3, cfop: '2102' }); }));
+    const it = r2.ok && r2.pacote.notas[0].itens;
+    chk('só vão os itens com CFOP de compra: a bonificação sai e entra na conta dos de fora', r2.ok && r2.recusadas.length === 0 && it.length === 2
+      && it.map(x => x.cfop).join() === '1102,2102' && r2.itensFora === 1, r2);
+  }
   chk('a nota sem itens fica de fora', !!deForaN(n => { n.itens = []; }, 'notas[0].itens'));
   chk('o item sem o valor total fica de fora', !!deForaN(n => { n.itens[0].valor_total = null; }, 'notas[0].itens[0].valor_total'));
   {
@@ -422,7 +437,7 @@ console.log('As notas de entrada das empresas autorizadas (03/11/2026):');
     return { status: r2.status, corpo: await r2.json() };
   };
   const enviadas = [];
-  const destinoOk = (corpoResp = { gravadas: 2, repetidas: 0, recusadas: [] }, status = 200) => async (url, init) => {
+  const destinoOk = (corpoResp = { gravadas: 1, atualizadas: 1, repetidas: 0, itens_ignorados: 0, recusadas: [] }, status = 200) => async (url, init) => {
     enviadas.push({ url, init, corpo: JSON.parse(init.body) });
     return new Response(JSON.stringify(corpoResp), { status });
   };
@@ -451,10 +466,13 @@ console.log('As notas de entrada das empresas autorizadas (03/11/2026):');
     && ida && ida.corpo.notas.length === 2 && ida.corpo.notas.every(n => n.entrada >= '2025-10-01'), rn);
   chk('o destino recebe a chave dele, sem seguir redirecionamento, e o id do envio', ida && ida.url === 'https://destino.exemplo/notas' && ida.init.headers['x-chave'] === 'k'.repeat(40)
     && ida.init.redirect === 'manual' && ida.corpo.versao === 1 && ida.corpo.envio === 'env-1');
-  chk('o envio fica registrado: o período, quantas notas, itens e com o XML, e o que o destino respondeu',
+  chk('o destino não recebe o XML nem o código do produto do cliente', ida && ida.corpo.notas.every(n => !('xml' in n) && n.itens.every(i => !('codigo_produto' in i))));
+  chk('o envio fica registrado: o período, quantas notas, itens e com os itens do XML, e o que o destino respondeu',
     dbn.envios.length === 1 && dbn.envios[0].situacao === 'ok' && dbn.envios[0].notas === 2 && dbn.envios[0].itens === 2 && dbn.envios[0].com_xml === 1
-    && dbn.envios[0].de === '2026-09-16' && dbn.envios[0].ate === '2026-09-17' && dbn.envios[0].gravadas === 2 && dbn.envios[0].http_status === 200 && !!dbn.envios[0].concluido_em, dbn.envios);
+    && dbn.envios[0].de === '2026-09-16' && dbn.envios[0].ate === '2026-09-17' && dbn.envios[0].gravadas === 1 && dbn.envios[0].http_status === 200 && !!dbn.envios[0].concluido_em
+    && JSON.stringify(dbn.envios[0].resposta) === JSON.stringify({ atualizadas: 1, itens_ignorados: 0 }), dbn.envios);
   chk('nada das notas é gravado no banco', !dbn.envios.some(x => 'itens_lista' in x || 'xml' in x));
+  chk('a resposta diz quantos itens ficaram de fora por não serem de compra', rn.corpo.itens_fora === 0, rn);
   dbn = dbNotas({ destinos: DESTINOS });
   rn = await pedirN(dbn, PACOTE(), destinoOk({ erro: 'fora' }, 500));
   chk('o destino fora: 502 (a ponte manda de novo na próxima rodada) e o envio registrado com o erro',

@@ -12,10 +12,15 @@
   na ponte o módulo que lê da Domínio as notas **só dessas empresas**, nota a nota, com os itens e, enquanto a Domínio
   guarda, o XML — e manda pro sistema, que confere tudo de novo e entrega ao destino.
 - É a exceção ao "só os totais saem do PC" (`ponte/fonte.py`), e só nestas condições: só as empresas que a função `ponte`
-  disser que estão autorizadas, só NF-e de compra (modelo 55, de fornecedor), nunca dado de funcionário.
+  disser que estão autorizadas, só NF-e de compra (modelo 55, de fornecedor), só os itens com CFOP de compra, nunca dado
+  de funcionário.
+- **O XML não sai do PC.** A ponte lê o XML guardado na Domínio, só em código, pra tirar os itens dele (o destino quer os
+  itens do XML, não o XML: ele traz muito mais do que a comparação usa). No pacote vão só os campos do contrato.
 - **O lado do sistema já está pronto** (na `main`): `supabase/functions/ponte/notas.js` (o `validarPacoteNotas`, que
-  confere o pacote campo a campo — o contrato abaixo é o dele) e o `servidor.js` (a lista e o envio ao destino). O destino
-  ainda não existe: até ele ser configurado, a lista vem com `pronta: false` e o pacote recebe 503 — é o normal agora.
+  confere o pacote campo a campo — o contrato abaixo é o dele) e o `servidor.js` (a lista e o envio ao destino). **O
+  destino já está configurado e testado** (03/11/2026): a empresa do teste vem na lista com `pronta: true`, e um pacote
+  mandado de verdade chega lá. Por isso, nesta fila, **nada de rodar sem `--sem-enviar`** — o primeiro envio é decisão da
+  sessão do Samuel, depois da revisão.
 
 ## Regras (as das filas de 29/10 e de 03/11, que valem todas, mais estas)
 - O módulo lê dado de cliente (os itens e o XML) **só em código**. **Nunca** apareça na conversa, no log ou em arquivo do
@@ -69,13 +74,13 @@ Lista vazia: nada a fazer, nem abre a conexão com a Domínio.
     "emitente": { "cnpj": "<o da chave>", "nome": "FORNECEDOR EXEMPLO LTDA", "uf": "SC" },
     "destinatario": { "cnpj": "11222333000100" },
     "totais": { "produtos": 1000.00, "desconto": 0, "frete": 50.00, "ipi": 52.50, "icms_st": 0, "total": 1102.50 },
-    "origem": "dominio",
+    "origem": "xml",
     "itens": [{
-      "n": 1, "codigo": "ABC-10", "codigo_produto": "123", "ean": "7890000000000", "descricao": "PARAFUSO SEXTAVADO 1/4 X 2",
+      "n": 1, "codigo": "ABC-10", "ean": "7890000000000", "descricao": "PARAFUSO SEXTAVADO 1/4 X 2",
       "ncm": "73181500", "cfop": "1102", "unidade": "CX", "quantidade": 10, "valor_unitario": 100.00,
-      "valor_total": 1000.00, "desconto": 0, "ipi": null, "icms_st": 0
-    }],
-    "xml": null
+      "valor_total": 1000.00, "desconto": 0, "ipi": 52.50, "icms_st": 0,
+      "ean_trib": "7890000000017", "unidade_trib": "UN", "quantidade_trib": 100, "valor_unitario_trib": 10.00
+    }]
   }]
 }
 ```
@@ -89,28 +94,41 @@ Campo a campo (o que estiver fora disso numa nota faz a nota voltar em `recusada
 - `totais`: com o XML, do `ICMSTot` (`vProd`, `vDesc`, `vFrete`, `vIPI`, `vST`, `vNF`); sem, as somas dos segmentos da
   Domínio (as do rascunho). Em reais, com centavos; o `total` é obrigatório.
 - `origem`: `"xml"` quando o XML existe, abre e é desta nota (o `Id` do `infNFe` com a chave e o `cStat` 100 ou 150 no
-  `protNFe`) — aí `xml` leva o conteúdo; senão `"dominio"`, com `xml` nulo.
-- `itens` com `origem: "xml"`: um por `det`, do XML — `n` = `nItem`, `codigo` = `cProd`, `ean` = `cEAN` (se não for um
-  GTIN, o `cEANTrib`; senão nulo), `descricao` = `xProd`, `ncm` = `NCM`, `unidade` = `uCom`, `quantidade` = `qCom`,
-  `valor_unitario` = `vUnCom`, `valor_total` = `vProd`, `desconto` = `vDesc` (0 sem ele), `ipi` = o `vIPI` do item (0 sem
-  ele), `icms_st` = o `vICMSST` do item (0 sem ele). O `codigo_produto` e o `cfop` vêm da Domínio, do item de mesmo número
-  (`SEQUENCIAL_ITEM_MEP` = `nItem`, como a fila do XML pareou); sem o item na Domínio, nulos.
+  `protNFe`) — aí os itens saem dele; senão `"dominio"`. O XML é o `CONTEUDO_XML` como veio (o texto UTF-8 do `nfeProc`,
+  sem compactar, como a fila do XML viu); se ele não começar por `<`, tente zlib e gzip antes de desistir; não abriu = a
+  nota vai pela Domínio e conta "XML ilegível". **O XML não entra no pacote.**
+- `itens` com `origem: "xml"`: um por `det`, do XML — `n` = `nItem`, `codigo` = `cProd`, `ean` = `cEAN`,
+  `descricao` = `xProd`, `ncm` = `NCM`, `unidade` = `uCom`, `quantidade` = `qCom`, `valor_unitario` = `vUnCom`,
+  `valor_total` = `vProd`, `desconto` = `vDesc` (0 sem ele), `ipi` = o `vIPI` do item (0 sem ele), `icms_st` = o
+  `vICMSST` do item (0 sem ele), e a unidade tributável: `ean_trib` = `cEANTrib`, `unidade_trib` = `uTrib`,
+  `quantidade_trib` = `qTrib`, `valor_unitario_trib` = `vUnTrib` (com ela, o destino converte a embalagem: 1 CX = 100 UN).
+  O `cfop` vem da Domínio, do item de mesmo número (`SEQUENCIAL_ITEM_MEP` = `nItem`, como a fila do XML pareou); na nota
+  que não tem os itens na Domínio, o CFOP de entrada da própria nota na Domínio (procure no catálogo onde fica o CFOP do
+  lançamento da nota de entrada), quando ela tem um só — com mais de um, a nota fica de fora (conte "CFOP da nota
+  incerto").
 - `itens` com `origem: "dominio"`: os do rascunho `notas_entrada.sql`, com o `ipi` de cada item **nulo** quando a soma
   dos `vipi_mep` da nota não bate (até R$ 0,01) com o IPI dela — nunca o 0 que a Domínio não disse; quando bate, o valor.
-- `cfop`: o da entrada, como a nota foi lançada (1, 2 ou 3 na frente). O do fornecedor fica no XML.
-- `ean`: só dígitos, 8, 12, 13 ou 14; "SEM GTIN" e o resto vão nulos.
-- `xml`: o `CONTEUDO_XML` como veio, em base64 (é o texto UTF-8 do `nfeProc`, sem compactar, como a fila do XML viu).
-  Se ele não começar por `<`, tente zlib e gzip antes de desistir; não abriu = a nota vai pela Domínio e conta "XML
-  ilegível".
+  Sem a unidade tributável (a Domínio não guarda): `ean_trib`, `unidade_trib`, `quantidade_trib` e
+  `valor_unitario_trib` nulos.
+- `cfop`: obrigatório, o da entrada, como a nota foi lançada (1, 2 ou 3 na frente). O do fornecedor fica no XML.
+- **Só os itens de compra**: os com o CFOP em `CFOPS_DE_COMPRA` de `supabase/functions/ponte/notas.js` (1101, 1102,
+  1111, 1113, 1116, 1117, 1118, 1120, 1121, 1122, 1126, 1128, 1401, 1403, 1406, 1407, 1551 e 1556, e os mesmos com 2 e 3
+  na frente). Os outros (devolução, bonificação, remessa, transferência, comodato, consignação, simples faturamento,
+  industrialização por terceiros) não vão; a nota que fica sem nenhum não vai (conte "sem item de compra"). A função
+  confere de novo.
+- `descricao` obrigatória e `quantidade` maior que zero (o item sem elas faz a nota voltar recusada).
+- `ean` e `ean_trib`: só dígitos, 8, 12, 13 ou 14; "SEM GTIN" e o resto vão nulos.
+- O código do produto no cadastro do cliente **não vai** (o destino não usa).
 - Fica de fora, e conta por motivo: o emitente pessoa física (o `cgce_for` com 11 dígitos, ou o `emit/CPF` no XML); o
   destinatário diferente; a nota sem itens na Domínio e sem o XML; a nota cujo XML tem `finNFe` diferente de 1
-  (complementar, ajuste, devolução). O XML sem o `cStat` 100 ou 150 não serve: a nota vai pela Domínio (conte "XML sem a
-  autorização").
+  (complementar, ajuste, devolução); a nota sem item de compra; a do CFOP incerto. O XML sem o `cStat` 100 ou 150 não
+  serve: a nota vai pela Domínio (conte "XML sem a autorização").
 
 ### 1.3 As respostas
-- **200** `{"ok": true, "notas": N, "mandadas": N, "recusadas": [{"chave", "campo", "erro"}]}`: as notas do pacote ficam
-  como mandadas — as recusadas também, e só vão de novo se mudarem. O log: quantas recusadas e os campos e erros, nunca
-  a chave.
+- **200** `{"ok": true, "notas": N, "mandadas": N, "itens_fora": N, "recusadas": [{"chave", "campo", "erro"}]}`: as notas
+  do pacote ficam como mandadas — as recusadas também, e só vão de novo se mudarem. O log: quantas recusadas e os campos
+  e erros, nunca a chave; e os `itens_fora` (o item que não era de compra e passou: devia ter ficado na ponte).
+- Um pacote de cada vez (o destino não aceita pedidos em paralelo).
 - **403** (a empresa não está autorizada) e **422** (o pacote fora do contrato): não repete; o log diz o erro.
 - **503** "O destino das notas ainda não foi configurado no sistema.": para as notas nesta rodada, sem tentar de novo, e
   nada fica como mandado.
@@ -152,10 +170,11 @@ Campo a campo (o que estiver fora disso numa nota faz a nota voltar em `recusada
 `tests/ponte-receita.test.py`, e **todo pacote passando pelo `validarPacoteNotas` de verdade, no node, sem nenhuma
 recusa**:
 - só as empresas da lista, só as prontas (no `--sem-enviar`, todas), e só com o documento igual ao da `geempre`;
-- os itens do XML (o `cEANTrib` quando o `cEAN` é "SEM GTIN", o IPI e o ICMS-ST do item), com o `codigo_produto` e o
-  `cfop` da Domínio;
+- os itens do XML (o `cEAN` "SEM GTIN" vai nulo, a unidade tributável, o IPI e o ICMS-ST do item), com o `cfop` da
+  Domínio, e **o XML fora do pacote** (o teste procura o `nfeProc` no JSON mandado);
 - sem o XML: `origem` "dominio", o IPI do item nulo quando não bate com o da nota, e o valor quando bate;
-- a nota sem itens na Domínio vai com o XML, e sem ele, não;
+- a nota sem itens na Domínio vai com o XML (com o CFOP da nota, quando é um só), e sem ele, não;
+- só os itens de compra: a bonificação e a devolução não vão, e a nota só com elas fica de fora;
 - de fora: o emitente CPF, o destinatário diferente, o `finNFe` 4; o XML ilegível e o sem a autorização vão pela Domínio;
 - o XML compactado com zlib abre;
 - a divisão em pacotes (200 notas, 4 MB);

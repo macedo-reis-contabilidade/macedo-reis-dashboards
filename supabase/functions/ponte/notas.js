@@ -8,10 +8,16 @@
 // sistema: só o registro de cada envio (compartilhamentos_envios). O contrato: docs/FILA-CODE-2026-11-03-NOTAS-PONTE.md.
 // Recusa o pacote inteiro (422) só o que é do pacote (versão, tipo, rodada, empresa, a lista); a nota fora do contrato
 // fica de fora sozinha e volta em `recusadas` ({ chave, campo, erro }), pra ponte anotar e não mandar de novo.
+// O XML da nota não viaja (03/11/2026, o contrato do destino: os itens já saem dele) — o que vier em `xml` é jogado
+// fora; só vão os itens com CFOP de compra (`CFOPS_DE_COMPRA`), e a nota que fica sem nenhum é recusada.
 // Sem import: testes no node em tests/ponte-funcao.test.mjs.
 // ============================================================
 
-export const LIMITES_NOTAS = { notas: 200, itens: 990, xml: 2 * 1024 * 1024, recusadas: 50, prazo: 60000 };
+export const LIMITES_NOTAS = { notas: 200, itens: 990, recusadas: 50, prazo: 60000 };
+// os CFOP de compra (com 1, 2 e 3 na frente): fora devolução, bonificação, remessa, transferência, comodato, consignação,
+// simples faturamento e industrialização por terceiros — o que a comparação de preços não usa
+export const CFOPS_DE_COMPRA = new Set(['101', '102', '111', '113', '116', '117', '118', '120', '121', '122', '126', '128', '401',
+  '403', '406', '407', '551', '556'].flatMap(f => ['1' + f, '2' + f, '3' + f]));
 export const SEM_DESTINO = 'O destino das notas ainda não foi configurado no sistema.';
 export const SEM_AUTORIZACAO = 'Esta empresa não tem autorização ativa pra mandar as notas.';
 export const DESTINO_FORA = 'O destino das notas não recebeu agora: elas vão na próxima rodada.';
@@ -90,41 +96,40 @@ function cpfValido(d) {
 /** Na chave da nota de emitente pessoa física, o lugar do CNPJ leva o CPF com zeros na frente. */
 export const pareceCpf = cnpj => typeof cnpj === 'string' && cnpj.startsWith('000') && cpfValido(cnpj.slice(3));
 
-function xmlDe(v, chave, campo) {
-  if (typeof v !== 'string' || !v) recusar(campo, "a nota com origem 'xml' traz o XML, em base64");
-  if (v.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(v)) recusar(campo, 'o XML não está em base64');
-  if (v.length / 4 * 3 > LIMITES_NOTAS.xml) recusar(campo, 'XML grande demais');
-  let bin = '';
-  try { bin = atob(v); } catch { recusar(campo, 'o XML não está em base64'); }
-  if (!bin.replace(/^\xEF\xBB\xBF/, '').trimStart().startsWith('<')) recusar(campo, 'o conteúdo não é um XML');
-  if (!bin.includes('NFe' + chave)) recusar(campo, 'o XML não é o desta nota');
-  return v;
-}
+const gtin = v => { const s = String(v == null ? '' : v).trim(); return /^(\d{8}|\d{12,14})$/.test(s) ? s : null; };   // "SEM GTIN" e o resto: null
+const medidaOuNulo = (v, campo) => (v == null || v === '' ? null : medida(v, campo));
 
 function item(it, j, onde) {
   const w = onde + '.itens[' + j + ']';
   objeto(it, w);
   if (!Number.isInteger(it.n) || it.n < 1 || it.n > LIMITES_NOTAS.itens) recusar(w + '.n', 'o número do item vai de 1 a ' + LIMITES_NOTAS.itens);
-  const cfop = it.cfop == null || it.cfop === '' ? null : String(it.cfop);
+  const cfop = String(it.cfop == null ? '' : it.cfop).trim();
   // o CFOP é o da entrada, como a nota foi lançada na Domínio (1, 2 ou 3 na frente) — o do fornecedor está no XML
-  if (cfop != null && !/^[123]\d{3}$/.test(cfop)) recusar(w + '.cfop', 'o CFOP é o da entrada (começa por 1, 2 ou 3)');
-  const ean = String(it.ean == null ? '' : it.ean).trim();
+  if (!/^[123]\d{3}$/.test(cfop)) recusar(w + '.cfop', 'o CFOP é o da entrada (4 dígitos, começando por 1, 2 ou 3)');
+  const descricao = texto(it.descricao, 500);
+  if (!descricao) recusar(w + '.descricao', 'item sem descrição');
+  const quantidade = medida(it.quantidade, w + '.quantidade');
+  if (!(quantidade > 0)) recusar(w + '.quantidade', 'a quantidade tem que ser maior que zero');
   const ncm = String(it.ncm == null ? '' : it.ncm).replace(/\D/g, '');
   return {
     n: it.n,
     codigo: texto(it.codigo, 60),
-    codigo_produto: texto(it.codigo_produto, 60),
-    ean: /^(\d{8}|\d{12,14})$/.test(ean) ? ean : null,   // "SEM GTIN" e o que não for GTIN viram null
-    descricao: texto(it.descricao, 500),
+    ean: gtin(it.ean),
+    descricao,
     ncm: /^\d{8}$/.test(ncm) ? ncm : null,
     cfop,
     unidade: texto(it.unidade, 6),
-    quantidade: medida(it.quantidade, w + '.quantidade'),
+    quantidade,
     valor_unitario: medida(it.valor_unitario, w + '.valor_unitario'),
     valor_total: dinheiro(it.valor_total, w + '.valor_total', true),
     desconto: dinheiro(it.desconto, w + '.desconto'),
     ipi: dinheiro(it.ipi, w + '.ipi'),
-    icms_st: dinheiro(it.icms_st, w + '.icms_st')
+    icms_st: dinheiro(it.icms_st, w + '.icms_st'),
+    // a unidade tributável do XML (cEANTrib, uTrib, qTrib, vUnTrib): converte a embalagem (1 CX = 100 UN); sem XML, nulos
+    ean_trib: gtin(it.ean_trib),
+    unidade_trib: texto(it.unidade_trib, 6),
+    quantidade_trib: medidaOuNulo(it.quantidade_trib, w + '.quantidade_trib'),
+    valor_unitario_trib: medidaOuNulo(it.valor_unitario_trib, w + '.valor_unitario_trib')
   };
 }
 
@@ -152,18 +157,20 @@ function nota(n, i, doc) {
   const totais = {};
   for (const k of TOTAIS) totais[k] = dinheiro(t[k], onde + '.totais.' + k, k === 'total');
   if (n.origem !== 'xml' && n.origem !== 'dominio') recusar(onde + '.origem', "tem que ser 'xml' ou 'dominio'");
-  let xml = null;
-  if (n.origem === 'xml') xml = xmlDe(n.xml, chave, onde + '.xml');
-  else if (n.xml != null) recusar(onde + '.xml', "a nota com origem 'dominio' vai sem o XML");
   if (!Array.isArray(n.itens) || !n.itens.length) recusar(onde + '.itens', 'a nota vai com os itens');
   if (n.itens.length > LIMITES_NOTAS.itens) recusar(onde + '.itens', 'itens demais (até ' + LIMITES_NOTAS.itens + ')');
-  const itens = n.itens.map((it, j) => item(it, j, onde));
-  if (new Set(itens.map(x => x.n)).size !== itens.length) recusar(onde + '.itens', 'número de item repetido');
+  const todos = n.itens.map((it, j) => item(it, j, onde));
+  if (new Set(todos.map(x => x.n)).size !== todos.length) recusar(onde + '.itens', 'número de item repetido');
+  const itens = todos.filter(x => CFOPS_DE_COMPRA.has(x.cfop));
+  if (!itens.length) recusar(onde + '.itens', 'nenhum item com CFOP de compra');
   return {
-    chave, modelo: '55', numero: String(Number(numero)), serie: String(Number(serie)), emissao, entrada,
-    emitente: { cnpj, nome: texto(em.nome, 200), uf },
-    destinatario: { cnpj: doc },
-    totais, origem: n.origem, itens, xml
+    nota: {
+      chave, modelo: '55', numero: String(Number(numero)), serie: String(Number(serie)), emissao, entrada,
+      emitente: { cnpj, nome: texto(em.nome, 200), uf },
+      destinatario: { cnpj: doc },
+      totais, origem: n.origem, itens
+    },
+    itensFora: todos.length - itens.length
   };
 }
 
@@ -184,19 +191,21 @@ export function validarPacoteNotas(p) {
     if (!p.notas.length) recusar('notas', 'o pacote não tem nota');
     if (p.notas.length > LIMITES_NOTAS.notas) recusar('notas', 'notas demais num pacote (até ' + LIMITES_NOTAS.notas + ')');
     const notas = [], recusadas = [], vistas = new Set();
+    let itensFora = 0;
     p.notas.forEach((n, i) => {
       try {
-        const x = nota(n, i, doc);
+        const { nota: x, itensFora: fora } = nota(n, i, doc);
         if (vistas.has(x.chave)) { recusadas.push({ chave: x.chave, campo: 'notas[' + i + '].chave', erro: 'nota repetida no pacote' }); return; }
         vistas.add(x.chave);
         notas.push(x);
+        itensFora += fora;
       } catch (err) {
         if (!(err instanceof Recusa)) throw err;
         const ch = n && typeof n === 'object' ? String(n.chave == null ? '' : n.chave).trim().toUpperCase() : '';
         recusadas.push({ chave: /^[0-9A-Z]{44}$/.test(ch) ? ch : null, campo: err.campo, erro: err.message });
       }
     });
-    return { ok: true, pacote: { versao: 1, tipo: 'notas', rodada, empresa: { codigo: e.codigo, documento: doc }, notas }, recusadas };
+    return { ok: true, pacote: { versao: 1, tipo: 'notas', rodada, empresa: { codigo: e.codigo, documento: doc }, notas }, recusadas, itensFora };
   } catch (err) {
     if (err instanceof Recusa) return { ok: false, campo: err.campo, erro: err.message };
     throw err;
@@ -251,7 +260,8 @@ export function destinosDaConfig(valor) {
   return out;
 }
 
-/** O que o destino respondeu: { gravadas, repetidas, recusadas: [{ chave, motivo }] } — o que não for isso, nulo. */
+/** O que o destino respondeu: { gravadas, repetidas, recusadas: [{ chave, motivo }], resposta: { atualizadas,
+ *  itens_ignorados, apagadas } } — só números (o que não for, nulo; a `resposta` só com o que veio). */
 export function respostaDoDestino(obj) {
   const inteiro = v => (Number.isInteger(v) && v >= 0 && v < 1e7 ? v : null);
   const o = obj && typeof obj === 'object' && !Array.isArray(obj) ? obj : {};
@@ -259,5 +269,7 @@ export function respostaDoDestino(obj) {
     chave: x && /^[0-9A-Z]{44}$/.test(String(x.chave || '')) ? String(x.chave) : null,
     motivo: texto(x && x.motivo, 200)
   }));
-  return { gravadas: inteiro(o.gravadas), repetidas: inteiro(o.repetidas), recusadas };
+  const resposta = {};
+  for (const k of ['atualizadas', 'itens_ignorados', 'apagadas']) if (inteiro(o[k]) != null) resposta[k] = o[k];
+  return { gravadas: inteiro(o.gravadas), repetidas: inteiro(o.repetidas), recusadas, resposta };
 }
