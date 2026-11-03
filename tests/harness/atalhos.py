@@ -26,6 +26,7 @@ LISTA = [
     {'nome': 'Onvio', 'url': 'https://onvio.exemplo.com.br/login/#/', 'icone': 'onvio.png'},
     {'nome': 'Drive', 'url': 'https://drive.exemplo.com/drive/u/1/folders/PASTA-INVENTADA', 'icone': 'drive.png'},
     {'nome': 'Webmail', 'url': 'http://webmail.exemplo.com.br/', 'icone': 'webmail.png'},
+    {'nome': 'Serpro', 'url': 'https://cliente.exemplo.gov.br/', 'icone': 'serpro.png'},
     {'nome': 'Script', 'url': 'javascript:alert(1)', 'icone': 'onvio.png'},
     {'nome': 'Caminho', 'url': 'https://exemplo.com/', 'icone': '../../js/supabase.js'},
 ]
@@ -54,7 +55,7 @@ def atalhos(p):
       nomeVisivel: !!(a.querySelector('span') && a.querySelector('span').offsetWidth > 0) }))""")
 
 def esperar_atalhos(p):
-    p.wait_for_function("() => document.querySelectorAll('.topbar .tb-atalhos a img').length >= 3 && [...document.querySelectorAll('.topbar .tb-atalhos img')].every(i => i.complete)", timeout=8000)
+    p.wait_for_function("() => document.querySelectorAll('.topbar .tb-atalhos a img').length >= 4 && [...document.querySelectorAll('.topbar .tb-atalhos img')].every(i => i.complete)", timeout=8000)
 
 def main():
     from playwright.sync_api import sync_playwright
@@ -71,10 +72,10 @@ def main():
         print('1. No Painel')
         p.goto(base + 'index.html'); esperar_atalhos(p)
         a = atalhos(p)
-        ok([x['nome'] for x in a] == ['Onvio', 'Drive', 'Webmail'], f'os três, na ordem da lista ({[x["nome"] for x in a]})')
-        ok([x['href'] for x in a] == [LISTA[0]['url'], LISTA[1]['url'], LISTA[2]['url']], 'o endereço de cada um, como está no banco (o webmail em http)')
+        ok([x['nome'] for x in a] == ['Onvio', 'Drive', 'Webmail', 'Serpro'], f'os quatro, na ordem da lista ({[x["nome"] for x in a]})')
+        ok([x['href'] for x in a] == [LISTA[0]['url'], LISTA[1]['url'], LISTA[2]['url'], LISTA[3]['url']], 'o endereço de cada um, como está no banco (o webmail em http)')
         ok(all(x['target'] == '_blank' and 'noopener' in x['rel'] and 'noreferrer' in x['rel'] for x in a), 'abrem em aba nova, sem levar o endereço do sistema')
-        ok(all(x['carregou'] for x in a) and all(x['img'].endswith('/assets/atalhos/' + n + '.png') for x, n in zip(a, ['onvio', 'drive', 'webmail'])), 'os ícones carregam, de assets/atalhos/')
+        ok(all(x['carregou'] for x in a) and all(x['img'].endswith('/assets/atalhos/' + n + '.png') for x, n in zip(a, ['onvio', 'drive', 'webmail', 'serpro'])), 'os ícones carregam, de assets/atalhos/')
         ok(all(x['nomeVisivel'] for x in a), 'com o nome à mostra na tela larga')
         ok(p.evaluate("() => { const n = document.querySelector('.tb-atalhos'); return !!n && n.previousElementSibling.classList.contains('topbar-brand') && n.getAttribute('aria-label') === 'Atalhos'; }"),
            'logo depois da marca, num <nav> "Atalhos"')
@@ -94,27 +95,27 @@ def main():
         print('2. Numa tela dentro de uma pasta')
         p.goto(base + 'clientes/editar.html?id=c1'); esperar_atalhos(p)
         a = atalhos(p)
-        ok(len(a) == 3 and all(x['carregou'] for x in a), 'clientes/editar.html: os três, com os ícones achados')
+        ok(len(a) == 4 and all(x['carregou'] for x in a), 'clientes/editar.html: os quatro, com os ícones achados')
 
         print('3. O que fica de fora')
-        ok(p.evaluate("() => [...document.querySelectorAll('.tb-atalhos a')].every(a => /^https?:/.test(a.getAttribute('href')))") and len(a) == 3,
+        ok(p.evaluate("() => [...document.querySelectorAll('.tb-atalhos a')].every(a => /^https?:/.test(a.getAttribute('href')))") and len(a) == 4,
            'o javascript: e o ícone com caminho ficaram de fora')
 
         print('4. Guardada na aba')
         guardada = p.evaluate("() => sessionStorage.getItem('mr_atalhos')")
-        ok(bool(guardada) and len(json.loads(guardada)) == 5, 'a lista lida fica na aba (sessionStorage)')
+        ok(bool(guardada) and len(json.loads(guardada)) == 6, 'a lista lida fica na aba (sessionStorage)')
         p2 = cx.new_page(); p2.on('pageerror', lambda e: erros.append(str(e)))
         p2.add_init_script(TOUR); p2.add_init_script("window.__mockDelay = 5000"); p2.add_init_script(SEMEAR)
         p2.add_init_script("sessionStorage.setItem('mr_atalhos', %s)" % json.dumps(guardada))
         p2.goto(base + 'agenda.html')
-        p2.wait_for_function("() => document.querySelectorAll('.topbar .tb-atalhos a').length === 3", timeout=3000)
-        ok(len(atalhos(p2)) == 3, 'com o banco demorando 5 s, a tela nova já mostra os atalhos pela lista guardada')
+        p2.wait_for_function("() => document.querySelectorAll('.topbar .tb-atalhos a').length === 4", timeout=3000)
+        ok(len(atalhos(p2)) == 4, 'com o banco demorando 5 s, a tela nova já mostra os atalhos pela lista guardada')
         p2.close()
 
         print('5. Tela estreita e celular')
         p.set_viewport_size({'width': 1000, 'height': 800}); p.goto(base + 'index.html'); esperar_atalhos(p)
         a = atalhos(p)
-        ok(len(a) == 3 and not any(x['nomeVisivel'] for x in a) and p.is_visible('.tb-atalhos'), '1000 px: só os ícones')
+        ok(len(a) == 4 and not any(x['nomeVisivel'] for x in a) and p.is_visible('.tb-atalhos'), '1000 px: só os ícones')
         p.set_viewport_size({'width': 600, 'height': 800}); p.wait_for_timeout(200)
         ok(not p.is_visible('.tb-atalhos'), '600 px: sem os atalhos')
         p.set_viewport_size({'width': 1400, 'height': 900})
