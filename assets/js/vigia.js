@@ -29,7 +29,8 @@ export const ROTULOS = {
   // a Receita pela ponte (Integra Contador, 23/10/2026): vigia_regras_receita()
   receita_sem_autorizacao: 'Empresas sem autorização da Receita pro escritório', receita_autorizacao_vencendo: 'Autorizações da Receita vencendo',
   receita_pgdas_atrasado: 'PGDAS não transmitido, segundo a Receita', receita_mensagem: 'Mensagens na Caixa Postal da Receita',
-  receita_pendencia: 'Pendências na Receita', ponte_parada: 'Ponte da Receita parada',
+  receita_pendencia: 'Pendências na Receita', receita_pendencia_dp: 'Pendências do DP na Receita',
+  receita_das_nao_pago: 'DAS sem pagar, segundo a Receita', ponte_parada: 'Ponte da Receita parada',
   // o Domínio pela ponte (02/11/2026): vigia_regras_dominio()
   dominio_folha_sem_tarefa: 'Funcionários no Domínio sem as tarefas de folha do DP', ponte_dominio_parada: 'Ponte do Domínio parada',
   dominio_notas_paradas: 'Notas de saída que pararam no Domínio', dominio_contabil_parada: 'Contabilidade parada no Domínio',
