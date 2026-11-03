@@ -31,6 +31,12 @@ ORIGEM = {'1': 'Receita', '2': 'Estado', '3': 'Município'}
 # Sitfis-EI03] Requisição inválida. Versão Descontinuada."); a 2.0 é a da documentação do Serpro, com o mesmo pedido
 # e a mesma resposta (protocoloRelatorio, tempoEspera, pdf)
 VERSAO_SITFIS = '2.0'
+# o ponteiro da página da lista de mensagens: a documentação do Serpro (e o cenário de demonstração) diz 14 dígitos, mas
+# a produção recusa (03/11/2026, na rodada da Caixa Postal: "EntradaIncorreta-CAIXAPOSTAL-0C Erro de validação. | O
+# campo ponteiroPagina deve conter somente dígitos e ter tamanho igual a 24"). Na página inicial ele não é usado: vão
+# 24 zeros; se a Receita recusar o ponteiro de novo, a mesma consulta vai sem ele (a documentação diz que ele só é
+# preciso na página não inicial), e assim segue até o fim da rodada
+PONTEIRO_INICIAL = '0' * 24
 
 
 class Falta(Exception):
@@ -278,8 +284,18 @@ def mensagens(cli, empresa, estado, hoje):
     aviso some). Na primeira leitura da empresa, só as enviadas nos últimos DIAS_PRIMEIRA dias — as antigas ficam no
     e-CAC e são lembradas como 'antiga', pra não irem depois. No máximo MAX_MENSAGENS (as mais recentes) por pacote."""
     doc = empresa['documento']
-    r = consultar(cli, 'Consultar', 'CAIXAPOSTAL', 'MSGCONTRIBUINTE61', doc,
-                  {'statusLeitura': '0', 'indicadorPagina': '0', 'ponteiroPagina': '00000000000000'})
+    pedido = {'statusLeitura': '0', 'indicadorPagina': '0'}
+    if not getattr(cli, 'caixa_sem_ponteiro', False):
+        r = consultar(cli, 'Consultar', 'CAIXAPOSTAL', 'MSGCONTRIBUINTE61', doc,
+                      dict(pedido, ponteiroPagina=PONTEIRO_INICIAL))
+        if r.ok() or r.acesso_negado() or 'ponteiropagina' not in (r.resumo() or '').lower():
+            pedido = None
+        else:
+            cli.caixa_sem_ponteiro = True
+            cli.registro(f'receita: a lista da Caixa Postal recusou o ponteiro da página ({r.resumo()}) — vai sem ele',
+                         'aviso')
+    if pedido is not None:
+        r = consultar(cli, 'Consultar', 'CAIXAPOSTAL', 'MSGCONTRIBUINTE61', doc, pedido)
     _conferir_resposta(r)
     d = r.dados() or {}
     conteudo = d.get('conteudo') if isinstance(d, dict) else None

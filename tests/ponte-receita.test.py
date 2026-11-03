@@ -185,6 +185,10 @@ class Serpro:
                 with dono.trava:
                     dono.pedidos.append({'endpoint': self.path.rsplit('/', 1)[-1], 'servico': servico, 'doc': doc,
                                          'cabecalhos': cab, 'pedido': pedido})
+                    recusa = dono.recusa_do_ponteiro(servico, pedido)
+                    if recusa:
+                        return self._enviar(400, {'status': 400, 'mensagens': [
+                            {'codigo': 'EntradaIncorreta-CAIXAPOSTAL-0C', 'texto': recusa}]})
                     fila = dono.por_doc.get((servico, doc)) or dono.filas.get(servico)
                     resposta = fila.pop(0) if fila else None
                     if servico == 'SOLICEVENTOSPJ132':
@@ -222,6 +226,27 @@ class Serpro:
             # nada — aqui a mais nova é desta data e as outras, um dia pra trás cada, na mesma ordem
             self.mensagens_ate = datetime.date(2026, 10, 1)
             self.fora_do_lote = set()          # CNPJs pedidos no lote de eventos que não voltam na resposta
+            # o ponteiroPagina da lista de mensagens: 'producao' = como a Receita em 03/11/2026 (se vier, 24 dígitos);
+            # 'nenhum' = recusa qualquer ponteiro; 'sempre' = recusa até sem ele
+            self.ponteiro = 'producao'
+
+    def recusa_do_ponteiro(self, servico, pedido):
+        if servico != 'MSGCONTRIBUINTE61':
+            return None
+        from ponte.receita import demonstracao
+        if pedido['pedidoDados'].get('dados') == (demonstracao.corpo(servico) or {}).get('pedidoDados', {}).get('dados'):
+            return None         # o trial só aceita o corpo do cenário (com o ponteiro de 14 dígitos), e aceita
+        try:
+            dados = json.loads(pedido['pedidoDados']['dados'] or '{}')
+        except (TypeError, ValueError):
+            dados = {}
+        p = dados.get('ponteiroPagina')
+        texto = 'Erro de validação. | O campo ponteiroPagina deve conter somente dígitos e ter tamanho igual a 24'
+        if self.ponteiro == 'sempre' or (self.ponteiro == 'nenhum' and p is not None):
+            return texto
+        if p is not None and not re.fullmatch(r'\d{24}', str(p)):
+            return texto
+        return None
 
     def padrao(self, servico):
         if servico == 'OBTEREVENTOSPJ134':
@@ -1650,6 +1675,64 @@ def caso_eventos_formatos(srp, sis):
        f'o log diz o HTTP, a mensagem do Serpro e como veio o dados ({linha[-170:]})')
 
 
+def caso_caixa_postal_ponteiro(srp, sis):
+    titulo('10c. a lista da Caixa Postal: o ponteiro da página com 24 dígitos; recusado, vai sem ele (03/11/2026)')
+    hoje = datetime.date(2026, 10, 23)
+
+    def lista_pedida():
+        return [(x['doc'], json.loads(x['pedido']['pedidoDados']['dados'])) for x in srp.pedidos
+                if x['servico'] == 'MSGCONTRIBUINTE61']
+
+    def ids(doc):
+        return [m['id'] for m in ((empresa(sis.ultimo(), doc) or {}).get('caixa_postal') or {}).get('mensagens', [])]
+
+    # como a produção de 03/11/2026: o ponteiro, se vier, com 24 dígitos — os 24 zeros passam
+    p = pasta_nova()
+    escrever_config(p, sis)
+    srp.zerar()
+    srp.eventos = {A: '261022'}
+    srp.por_doc[('MSGCONTRIBUINTE61', A)] = [_caixa([_msg('P1', hoje)])]
+    sis.zerar()
+    rodar(p, srp, '--so', 'caixa_postal', '--empresas', '1')
+    pedidos = lista_pedida()
+    ok(len(pedidos) == 1 and pedidos[0][1].get('ponteiroPagina') == '0' * 24 and pedidos[0][1].get('indicadorPagina') == '0'
+       and ids(A) == ['P1'] and not faltou(sis.ultimo(), A),
+       f'a página inicial vai com 24 zeros no ponteiro, e as mensagens vêm ({[d.get("ponteiroPagina") for _, d in pedidos]})')
+    # a Receita recusa qualquer ponteiro: a mesma consulta vai sem ele; a segunda empresa já vai sem, sem a tentativa
+    p = pasta_nova()
+    escrever_config(p, sis)
+    srp.zerar()
+    srp.ponteiro = 'nenhum'
+    srp.eventos = {A: '261022', B: '261021'}
+    srp.por_doc[('MSGCONTRIBUINTE61', A)] = [_caixa([_msg('PA', hoje)])]
+    srp.por_doc[('MSGCONTRIBUINTE61', B)] = [_caixa([_msg('PB', hoje)])]
+    sis.zerar()
+    rodar(p, srp, '--so', 'caixa_postal', '--empresas', '2')
+    pedidos = lista_pedida()
+    com = [doc for doc, d in pedidos if 'ponteiroPagina' in d]
+    sem = [doc for doc, d in pedidos if 'ponteiroPagina' not in d]
+    ok(com == [pedidos[0][0]] and sorted(sem) == sorted([A, B]) and len(pedidos) == 3,
+       f'recusado o ponteiro: a mesma consulta sem ele, e a outra empresa vai direto sem ({len(pedidos)} pedidos)')
+    ok(ids(A) == ['PA'] and ids(B) == ['PB'] and not faltou(sis.ultimo()), '  e as mensagens das duas vêm')
+    linha = [l for l in logs(p).splitlines() if 'recusou o ponteiro' in l]
+    ok(len(linha) == 1 and 'EntradaIncorreta-CAIXAPOSTAL-0C' in linha[0] and 'vai sem ele' in linha[0],
+       f'o log diz uma vez só, com a mensagem da Receita ({len(linha)})')
+    # recusado com ele e sem ele: uma tentativa a mais, e o erro vai pro faltou com a mensagem da Receita
+    p = pasta_nova()
+    escrever_config(p, sis)
+    srp.zerar()
+    srp.ponteiro = 'sempre'
+    srp.eventos = {A: '261022'}
+    sis.zerar()
+    rodar(p, srp, '--so', 'caixa_postal', '--empresas', '1')
+    pedidos = lista_pedida()
+    ok(len(pedidos) == 2 and faltou(sis.ultimo(), A) == [(A, 'caixa_postal', 'erro')],
+       f'recusado com e sem o ponteiro: duas consultas e erro na caixa_postal ({len(pedidos)})')
+    ok(any('ponteiroPagina deve conter somente dígitos' in l for l in logs(p).splitlines() if 'não veio' in l),
+       '  e o log do "não veio" traz a mensagem da Receita')
+    ok(not (estado(p) or {}).get('eventos', {}).get(A), '  e o evento não fica guardado: a próxima rodada lê de novo')
+
+
 # ---------------------------------------------------------------- 10. o item 4: as respostas da função
 
 def caso_respostas_da_funcao(srp, sis):
@@ -1937,7 +2020,7 @@ def main():
                      lambda: caso_o_que_sai(srp, sis), lambda: caso_segredos(srp, sis),
                      lambda: caso_pdf_ilegivel(srp, sis), lambda: caso_envio(srp, sis), lambda: caso_chave(srp, sis),
                      caso_feriados, lambda: caso_autorizacao_segunda(srp, sis), lambda: caso_caixa_postal(srp, sis),
-                     lambda: caso_eventos_formatos(srp, sis),
+                     lambda: caso_eventos_formatos(srp, sis), lambda: caso_caixa_postal_ponteiro(srp, sis),
                      lambda: caso_respostas_da_funcao(srp, sis), lambda: caso_faturamento_pendente(srp, sis),
                      lambda: caso_virada_do_ano(srp, sis), lambda: caso_certificado_do_serpro(srp, sis),
                      lambda: caso_caixa_postal_revisao(srp, sis), lambda: caso_validacoes(sis), caso_dominio):
