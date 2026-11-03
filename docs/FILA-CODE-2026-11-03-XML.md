@@ -83,7 +83,8 @@ e o que o Claude da sessão do Samuel tem de decidir. O registro preenchido, `py
 ## Registro de progresso
 | Data | Item | Situação / observação |
 |---|---|---|
-| | 1 · Descompactar o XML | |
-| | 2 · Cadastro × XML | |
-| | 3 · O IPI do item | |
-| | 4 · Push | |
+| 03/11/2026 | Antes de começar | `main` em 6b824a4; branch `fila-notas-xml`; `py -3 tests/ponte.test.py`: "Tudo certo.". Script em `C:\ponte-dominio\xml_teste.py` (fora do repositório), só contagens na tela. |
+| 03/11/2026 | 1 · Descompactar o XML | Feito. O `CONTEUDO_XML` é o XML em texto UTF-8, **sem compactar**: no Python, texto puro abre as 46 (zlib, gzip, deflate e zipfile, 0); no banco, o `DECOMPRESS` dá "Input data is corrupt (-960)" nas 46, com e sem algoritmo. As 46: `nfeProc`, `cStat` 100, a chave igual à da Domínio, `finNFe` 1; 1.263 itens, 1.086 com `cEAN`; média de 38 KB. |
+| 03/11/2026 | 2 · Cadastro × XML | Feito. 1.263 itens dos dois lados, pareados pelo número do item nas 46 notas. Descrição igual ao `xProd` em 1.127 (20 cortadas, 116 diferentes); EAN igual ao `cEAN` em 1.024 (38 diferentes, 200 sem EAN no cadastro); de-para igual ao `cProd` em 976 (188 diferentes, 99 sem); NCM igual em 1.241 (22 diferentes); quantidade e valor unitário iguais em todos. |
+| 03/11/2026 | 3 · O IPI do item | Feito. Nas 16 notas, nenhuma coluna da `efmvepro` bate (as 6 testadas, 0 de 16); o `vIPI` do XML bate nas 15 que têm XML; os 419 itens com `vIPI` no XML estão zerados na Domínio. Rascunho **não mudou**. |
+| 03/11/2026 | 4 · Push | DUVIDAS escrito; `py -3 tests/ponte.test.py` verde; commit e push em `fila-notas-xml`. O script ficou no PC. |
