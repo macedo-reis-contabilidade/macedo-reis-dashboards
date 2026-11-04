@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Societário — Aberturas de MEI — Macedo & Reis</title>
+  <link rel="icon" href="assets/favicon.ico">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+</head>
+<body>
+  <!-- Aberturas de MEI (04/11/2026, pedido do Samuel): os pedidos que chegam pelo link público (mei.html) — quem quer abrir
+       o CNPJ como MEI responde e manda os documentos. Cada pedido nasce aqui e, pelo gatilho do banco
+       (mei_sincronizar_tarefa), na agenda de quem recebe (o Samuel), com o aviso na conversa Avisos do sistema; a tarefa
+       acompanha a situação da ficha (aberta = concluída; cancelada = sai da agenda). A sugestão de CNAE é da IA (a Edge
+       Function mei-link), só pro escritório e a conferir no Portal do Empreendedor; "Sugerir de novo" refaz. As perguntas e
+       o que a ficha mostra são de assets/js/mei-abertura.js. Tudo o que veio do formulário entra escapado. ?mei=<id> abre a
+       ficha (o botão do aviso no chat). -->
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip"><div class="user-avatar" id="userAvatar">—</div><span id="userName">Carregando…</span></div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <a href="societario.html">Societário</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Aberturas de MEI</span>
+        </div>
+        <div class="eyebrow">Link público</div>
+        <h1>Aberturas de MEI</h1>
+        <p>Os pedidos de quem quer abrir o CNPJ como MEI: as respostas, os documentos no Drive e a sugestão de CNAE (só pra você, a conferir no Portal do Empreendedor). Mande o link do formulário pra pessoa; cada pedido vira uma tarefa na agenda.</p>
+      </div>
+
+      <div class="mm-link">
+        <div><span class="mm-link-rot">Link do formulário</span> <code id="linkForm"></code></div>
+        <div class="mm-link-acoes"><button class="btn btn-primary btn-sm" id="btnCopiarLink">Copiar o link</button><a class="btn btn-ghost btn-sm" id="btnAbrirForm" target="_blank" rel="noopener">Ver o formulário</a></div>
+      </div>
+      <div id="linkStatus" class="mm-status" role="status" aria-live="polite"></div>
+
+      <div class="fa-focus">
+        <button class="fa-focus-card fc-danger" data-f="afazer"><span class="fc-num" id="cAfazer">0</span><span class="fc-lbl">A fazer</span></button>
+        <button class="fa-focus-card" data-f="aberta"><span class="fc-num" id="cAberta">0</span><span class="fc-lbl">Abertas</span></button>
+        <button class="fa-focus-card" data-f="cancelada"><span class="fc-num" id="cCancelada">0</span><span class="fc-lbl">Canceladas</span></button>
+        <button class="fa-focus-card" data-f="todos"><span class="fc-num" id="cTodos">0</span><span class="fc-lbl">Todos</span></button>
+      </div>
+
+      <div class="toolbar">
+        <div class="toolbar-filters">
+          <input type="text" id="busca" class="input input-search" placeholder="Buscar por nome, CPF ou atividade…" aria-label="Buscar pedido">
+        </div>
+      </div>
+
+      <div id="lista"></div>
+      <div id="vazio" class="empty-state" hidden>Nenhum pedido neste filtro.</div>
+    </main>
+  </div>
+
+  <!-- A FICHA -->
+  <div class="fa-modal-overlay" id="ovFicha">
+    <div class="fa-modal" role="dialog" aria-modal="true" aria-labelledby="fTitulo" style="max-width:760px;">
+      <div class="fa-modal-head"><h3 id="fTitulo">Pedido</h3><button class="fa-modal-close" id="fClose" aria-label="Fechar">&times;</button></div>
+      <div class="fa-modal-body">
+        <div id="fRecebido" class="mm-dica"></div>
+        <div id="fAlertas"></div>
+        <section class="mm-sug" aria-labelledby="sugTit">
+          <div class="mm-sug-cab"><h4 id="sugTit">Sugestão de CNAE</h4><div class="mm-sug-acoes"><button class="btn btn-ghost btn-sm" id="btnCopiarCnae">Copiar</button><button class="btn btn-ghost btn-sm" id="btnSugerir">Sugerir de novo</button></div></div>
+          <div id="fSugestao"></div>
+          <p class="mm-dica">Sugestão da IA a partir do que a pessoa escreveu, só pra você: confira no Portal do Empreendedor, que só aceita as ocupações permitidas ao MEI (uma principal e até 15 secundárias).</p>
+        </section>
+        <section aria-labelledby="respTit"><h4 class="mm-h4" id="respTit">Respostas</h4><dl class="mm-resp" id="fRespostas"></dl></section>
+        <section aria-labelledby="docTit"><h4 class="mm-h4" id="docTit">Documentos</h4><div id="fDocs"></div></section>
+        <section class="mm-acomp" aria-labelledby="acTit">
+          <h4 class="mm-h4" id="acTit">Acompanhamento</h4>
+          <div class="fa-field-row">
+            <label class="fa-field"><span>Situação</span><select id="fSituacao" class="input"></select></label>
+            <label class="fa-field"><span>CNPJ (depois de aberto)</span><input type="text" id="fCnpj" class="input" inputmode="numeric" maxlength="18" placeholder="00.000.000/0000-00"></label>
+          </div>
+          <label class="fa-field"><span>Observações do escritório</span><textarea id="fObs" class="input" rows="3" placeholder="Só aparece aqui."></textarea></label>
+          <div id="fErro" class="mm-erro" role="alert"></div>
+          <div class="mm-acoes">
+            <button class="btn btn-primary btn-sm" id="btnSalvar">Salvar</button>
+            <a class="btn btn-ghost btn-sm" id="btnTarefa" hidden>Ver a tarefa na agenda</a>
+            <a class="btn btn-ghost btn-sm" href="https://www.gov.br/empresas-e-negocios/pt-br/empreendedor/quero-ser-mei" target="_blank" rel="noopener noreferrer">Abrir o Portal do Empreendedor</a>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { SITUACOES, rotuloSituacao, respostasDoPedido, formatarCpf } from './assets/js/mei-abertura.js';
+
+    const COLS = 'id, criado_em, situacao, nome, cpf, telefone, email, pedido, alertas, atividade, cnaes_sugeridos, cnpj, drive_pasta_url, arquivos, responsavel, tarefa_id, observacoes, concluida_em, concluida_por, atualizado_em';
+    const $ = id => document.getElementById(id);
+    const esc = t => String(t == null ? '' : t).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    const quando = iso => { const d = new Date(iso || ''); return isNaN(d) ? '—' : d.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) + ' às ' + d.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' }); };
+    const trecho = (s, n = 140) => { const a = [...String(s || '')]; return a.length > n ? a.slice(0, n - 1).join('') + '…' : a.join(''); };
+    const linkDrive = id => (/^[\w-]{10,}$/.test(String(id || '')) ? 'https://drive.google.com/file/d/' + id + '/view' : null);
+    const pastaSegura = u => (/^https:\/\/drive\.google\.com\//.test(String(u || '')) ? u : null);
+    let pedidos = [], filtro = 'afazer', atual = null, eu = null;
+
+    const URL_FORM = new URL('mei.html', location.href).href;
+    $('linkForm').textContent = URL_FORM;
+    $('btnAbrirForm').href = URL_FORM;
+    $('btnCopiarLink').addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(URL_FORM); $('linkStatus').textContent = 'Link copiado: é só colar no WhatsApp da pessoa.'; }
+      catch (e) { $('linkStatus').textContent = 'Não consegui copiar: selecione o link e copie.'; }
+    });
+    $('fSituacao').innerHTML = SITUACOES.map(([v, r]) => '<option value="' + esc(v) + '">' + esc(r) + '</option>').join('');
+
+    (async () => {
+      const user = await getCurrentUser();
+      if (user) {
+        eu = String(user.email || '').toLowerCase();
+        const n = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário';
+        $('userName').textContent = n; $('userAvatar').textContent = n.charAt(0).toUpperCase();
+      }
+      await carregar();
+      const pedido = new URLSearchParams(location.search).get('mei');
+      if (pedido && pedidos.some(p => p.id === pedido)) abrir(pedido);
+    })();
+    $('btnLogout').addEventListener('click', signOut);
+
+    async function carregar() {
+      const { data, error } = await supabase.from('aberturas_mei').select(COLS).order('criado_em', { ascending: false });
+      if (error) { $('lista').innerHTML = '<p class="mm-erro">Não consegui carregar os pedidos: ' + esc(error.message) + '</p>'; return; }
+      pedidos = data || [];
+      contar(); marcarFiltro(); render();
+    }
+    const noFiltro = { afazer: p => p.situacao === 'recebida' || p.situacao === 'em_andamento', aberta: p => p.situacao === 'aberta', cancelada: p => p.situacao === 'cancelada', todos: () => true };
+    function contar() { [['afazer', 'cAfazer'], ['aberta', 'cAberta'], ['cancelada', 'cCancelada'], ['todos', 'cTodos']].forEach(([f, id]) => { $(id).textContent = pedidos.filter(noFiltro[f]).length; }); }
+    function marcarFiltro() { document.querySelectorAll('.fa-focus-card').forEach(b => { const a = b.dataset.f === filtro; b.classList.toggle('is-active', a); b.setAttribute('aria-pressed', a ? 'true' : 'false'); }); }
+    document.querySelectorAll('.fa-focus-card').forEach(b => b.addEventListener('click', () => { filtro = b.dataset.f; marcarFiltro(); render(); }));
+    $('busca').addEventListener('input', render);
+
+    const PILL = { recebida: 'pill-nova', em_andamento: 'pill-and', aberta: 'pill-ok', cancelada: 'pill-canc' };
+    function render() {
+      const q = $('busca').value.trim().toLowerCase(), qd = q.replace(/\D/g, '');
+      let itens = pedidos.filter(noFiltro[filtro] || noFiltro.todos);
+      if (q) itens = itens.filter(p => (p.nome + ' ' + (p.atividade || '')).toLowerCase().includes(q) || (qd.length >= 3 && String(p.cpf || '').includes(qd)));
+      if (!itens.length) { $('lista').innerHTML = ''; $('vazio').hidden = false; return; }
+      $('vazio').hidden = true;
+      $('lista').innerHTML = itens.map(p => {
+        const s = p.cnaes_sugeridos && p.cnaes_sugeridos.principal;
+        const nAlertas = (Array.isArray(p.alertas) ? p.alertas.length : 0) + (p.cnaes_sugeridos && Array.isArray(p.cnaes_sugeridos.alertas) ? p.cnaes_sugeridos.alertas.length : 0);
+        return '<div class="mm-card" data-id="' + esc(p.id) + '" tabindex="0" role="button" aria-label="Abrir o pedido de ' + esc(p.nome) + '">'
+          + '<div class="mm-top"><span class="mm-nome">' + esc(p.nome) + '</span> <span class="pill ' + (PILL[p.situacao] || '') + '">' + esc(rotuloSituacao(p.situacao)) + '</span>'
+          + (nAlertas ? ' <span class="pill pill-alerta">' + nAlertas + (nAlertas === 1 ? ' alerta' : ' alertas') + '</span>' : '') + '</div>'
+          + '<div class="mm-ativ">' + esc(trecho(p.atividade)) + '</div>'
+          + '<div class="mm-meta"><span>CPF ' + esc(formatarCpf(p.cpf)) + '</span><span>Recebido em ' + esc(quando(p.criado_em)) + '</span>'
+          + (s ? '<span>Sugestão: ' + esc(s.cnae + ' · ' + s.ocupacao) + '</span>' : p.cnaes_sugeridos && p.cnaes_sugeridos.erro ? '<span class="mm-falta">Sem sugestão de CNAE</span>' : !p.cnaes_sugeridos ? '<span class="mm-falta">Sugestão de CNAE a caminho</span>' : '')
+          + (p.cnpj ? '<span>CNPJ ' + esc(p.cnpj) + '</span>' : '') + '</div></div>';
+      }).join('');
+      $('lista').querySelectorAll('.mm-card').forEach(el => {
+        el.addEventListener('click', () => abrir(el.dataset.id));
+        el.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === el) { e.preventDefault(); abrir(el.dataset.id); } });
+      });
+    }
+
+    // ---------- a ficha ----------
+    const ov = $('ovFicha');
+    function fechar() { ov.classList.remove('is-open'); atual = null; $('fErro').textContent = ''; }
+    $('fClose').addEventListener('click', fechar);
+    ov.addEventListener('click', e => { if (e.target === ov) fechar(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && ov.classList.contains('is-open')) fechar(); });
+
+    function pintarSugestao(s) {
+      const el = $('fSugestao');
+      if (!s) { el.innerHTML = '<p class="mm-dica">A sugestão ainda está sendo preparada (leva uns segundos depois que o pedido chega). Clique em "Sugerir de novo" se não aparecer.</p>'; return; }
+      if (s.erro) { el.innerHTML = '<p class="mm-erro">' + esc(s.erro) + ' Clique em "Sugerir de novo".</p>'; return; }
+      const linha = (o, rot) => '<li><span class="mm-cnae">' + esc(o.cnae) + '</span> <b>' + esc(o.ocupacao) + '</b>' + (rot ? ' <span class="pill pill-ok">' + esc(rot) + '</span>' : '')
+        + (o.porque ? '<small>' + esc(o.porque) + '</small>' : '') + '</li>';
+      el.innerHTML = (s.resumo ? '<p class="mm-resumo">' + esc(s.resumo) + '</p>' : '')
+        + (!s.pode_ser_mei ? '<div class="mm-banner mm-banner-err">Pela descrição, a atividade não cabe no MEI.</div>' : '')
+        + (s.principal || (s.secundarios || []).length ? '<ul class="mm-cnaes">' + (s.principal ? linha(s.principal, 'principal') : '') + (s.secundarios || []).map(o => linha(o, '')).join('') + '</ul>' : '')
+        + ((s.alertas || []).length ? '<ul class="mm-alertas">' + s.alertas.map(a => '<li>' + esc(a) + '</li>').join('') + '</ul>' : '')
+        + '<p class="mm-dica">' + esc([s.modelo ? 'Modelo ' + s.modelo : '', s.em ? 'em ' + quando(s.em) : ''].filter(Boolean).join(' ')) + '</p>';
+    }
+    function textoDosCnaes(s) {
+      if (!s || !s.principal) return '';
+      return ['Principal: ' + s.principal.cnae + ' — ' + s.principal.ocupacao, ...(s.secundarios || []).map(o => 'Secundária: ' + o.cnae + ' — ' + o.ocupacao)].join('\n');
+    }
+    function abrir(id) {
+      atual = pedidos.find(p => p.id === id);
+      if (!atual) return;
+      const p = atual;
+      $('fTitulo').textContent = 'Abertura de MEI — ' + p.nome;
+      $('fRecebido').textContent = 'Recebido pelo link em ' + quando(p.criado_em) + (p.concluida_em ? ' · aberto em ' + quando(p.concluida_em) + (p.concluida_por ? ' por ' + p.concluida_por : '') : '') + '.';
+      const al = Array.isArray(p.alertas) ? p.alertas : [];
+      $('fAlertas').innerHTML = al.length ? '<div class="mm-banner mm-banner-warn"><b>Antes de abrir</b><ul>' + al.map(a => '<li>' + esc(a) + '</li>').join('') + '</ul></div>' : '';
+      pintarSugestao(p.cnaes_sugeridos);
+      $('btnCopiarCnae').hidden = !textoDosCnaes(p.cnaes_sugeridos);
+      $('fRespostas').innerHTML = respostasDoPedido(p.pedido || {}).map(r => '<dt>' + esc(r.rotulo) + '</dt><dd>' + esc(r.valor) + '</dd>').join('');
+      const arqs = Array.isArray(p.arquivos) ? p.arquivos.filter(Boolean) : [];
+      const pasta = pastaSegura(p.drive_pasta_url);
+      $('fDocs').innerHTML = (arqs.length ? '<ul class="mm-docs">' + arqs.map(a => {
+        const l = a.status === 'ok' ? linkDrive(a.drive_id) : null;
+        return '<li>' + (l ? '<a href="' + esc(l) + '" target="_blank" rel="noopener noreferrer">📄 ' + esc(a.nome) + '</a>' : '📄 ' + esc(a.nome) + ' <span class="mm-falta">não chegou</span>') + '</li>';
+      }).join('') + '</ul>' : '<p class="mm-dica">Nenhum documento enviado pelo link: peça pelo WhatsApp.</p>')
+        + (pasta ? '<p><a href="' + esc(pasta) + '" target="_blank" rel="noopener noreferrer">Abrir a pasta no Drive</a></p>' : '');
+      $('fSituacao').value = p.situacao || 'recebida';
+      $('fCnpj').value = p.cnpj || '';
+      $('fObs').value = p.observacoes || '';
+      const t = $('btnTarefa');
+      t.hidden = !p.tarefa_id; if (p.tarefa_id) t.href = 'agenda.html?tarefa=' + encodeURIComponent(p.tarefa_id);
+      $('fErro').textContent = '';
+      ov.classList.add('is-open');
+      $('fClose').focus();
+    }
+    $('btnCopiarCnae').addEventListener('click', async () => {
+      const t = atual && textoDosCnaes(atual.cnaes_sugeridos);
+      if (!t) return;
+      try { await navigator.clipboard.writeText(t); $('btnCopiarCnae').textContent = 'Copiado'; setTimeout(() => { $('btnCopiarCnae').textContent = 'Copiar'; }, 1500); } catch (e) { /* sem área de transferência */ }
+    });
+    $('btnSugerir').addEventListener('click', async () => {
+      if (!atual) return;
+      const b = $('btnSugerir'), id = atual.id;
+      b.disabled = true; b.textContent = 'Pensando…';
+      $('fSugestao').innerHTML = '<p class="mm-dica">Lendo a descrição e procurando as ocupações do MEI…</p>';
+      const { data, error } = await supabase.functions.invoke('mei-link', { body: { acao: 'sugerir', id } });
+      b.disabled = false; b.textContent = 'Sugerir de novo';
+      const s = data && data.sugestao ? data.sugestao : { erro: (data && data.error) || (error && error.message) || 'Não consegui a sugestão agora.' };
+      const p = pedidos.find(x => x.id === id);
+      if (p && data && data.sugestao) p.cnaes_sugeridos = data.sugestao;
+      if (atual && atual.id === id) { pintarSugestao(s); $('btnCopiarCnae').hidden = !textoDosCnaes(s); }
+      render();
+    });
+    $('btnSalvar').addEventListener('click', async () => {
+      if (!atual) return;
+      const situacao = $('fSituacao').value, cnpj = $('fCnpj').value.trim() || null, obs = $('fObs').value.trim() || null;
+      if (cnpj && cnpj.replace(/\D/g, '').length !== 14) { $('fErro').textContent = 'Confira o CNPJ (14 números).'; $('fCnpj').focus(); return; }
+      const patch = { situacao, cnpj, observacoes: obs, atualizado_em: new Date().toISOString() };
+      if (situacao === 'aberta' && atual.situacao !== 'aberta') { patch.concluida_em = new Date().toISOString(); patch.concluida_por = eu; }
+      if (situacao !== 'aberta' && atual.situacao === 'aberta') { patch.concluida_em = null; patch.concluida_por = null; }
+      const b = $('btnSalvar'); b.disabled = true;
+      const { data, error } = await supabase.from('aberturas_mei').update(patch).eq('id', atual.id).select(COLS);
+      b.disabled = false;
+      if (error) { $('fErro').textContent = 'Não consegui salvar: ' + error.message; return; }
+      const nova = (data && data[0]) || { ...atual, ...patch };
+      const i = pedidos.findIndex(x => x.id === nova.id); if (i >= 0) pedidos[i] = nova;
+      try { window.dispatchEvent(new CustomEvent('mr:tarefas-mudaram', { detail: { ids: nova.tarefa_id ? [nova.tarefa_id] : [] } })); } catch (e) { /* sem ouvinte */ }
+      contar(); render(); fechar();
+    });
+  </script>
+  <style>
+    .mm-link { display:flex; gap:14px; align-items:center; justify-content:space-between; flex-wrap:wrap; background:var(--fill-1); border:1px solid var(--line); border-radius:14px; padding:12px 16px; margin-bottom:6px; }
+    .mm-link-rot { font-size:13px; color:var(--text-muted); }
+    .mm-link code { font-size:13px; color:var(--brand-light); overflow-wrap:anywhere; }
+    .mm-link-acoes { display:flex; gap:8px; flex-wrap:wrap; }
+    .mm-status { font-size:13px; color:var(--ok); min-height:1.2em; margin-bottom:12px; }
+    .fa-focus { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:22px; }
+    .fa-focus-card { background:var(--fill-1); border:1px solid var(--line); border-radius:14px; padding:14px 16px; cursor:pointer; text-align:left; transition:border-color .15s, background .15s; display:flex; flex-direction:column; gap:4px; color:inherit; font:inherit; }
+    .fa-focus-card:hover { border-color:rgba(138,174,200,.4); }
+    .fa-focus-card.is-active { border-color:var(--brand-primary); background:rgba(91,130,166,.10); }
+    .fc-num { font-size:24px; font-weight:700; color:var(--text); line-height:1; }
+    .fc-lbl { font-size:12px; color:var(--text-muted); }
+    .fa-focus-card.fc-danger .fc-num { color:var(--warn); }
+
+    .mm-card { background:var(--fill-1); border:1px solid var(--line); border-radius:14px; padding:14px 18px; margin-bottom:10px; cursor:pointer; transition:border-color .15s; }
+    .mm-card:hover, .mm-card:focus-visible { border-color:rgba(138,174,200,.45); }
+    .mm-top { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .mm-nome { font-weight:600; color:var(--text); font-size:15px; }
+    .mm-ativ { color:var(--brand-pale); font-size:14px; margin-top:4px; overflow-wrap:anywhere; }
+    .mm-meta { color:var(--text-muted); font-size:13px; margin-top:6px; display:flex; gap:16px; flex-wrap:wrap; }
+    .mm-falta { color:var(--text-dim); }
+    .pill { font-size:12px; padding:2px 10px; border-radius:999px; border:1px solid; }
+    .pill-nova { color:var(--warn); border-color:rgba(227,179,65,.45); }
+    .pill-and { color:var(--brand-light); border-color:rgba(91,130,166,.45); }
+    .pill-ok { color:var(--ok); border-color:rgba(63,176,122,.45); }
+    .pill-canc { color:var(--text-muted); border-color:rgba(138,147,166,.45); }
+    .pill-alerta { color:var(--err); border-color:rgba(224,108,108,.5); }
+
+    .fa-modal-overlay { position:fixed; inset:0; background:var(--overlay); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
+    .fa-modal-overlay.is-open { display:flex; }
+    .fa-modal { width:100%; max-height:calc(100vh - 40px); overflow:auto; background:var(--surface); border:1px solid var(--fill-3); border-radius:16px; }
+    .fa-modal-head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--surface); z-index:1; }
+    .fa-modal-head h3 { margin:0; color:var(--text); font-size:18px; }
+    .fa-modal-close { background:none; border:none; color:var(--text-muted); font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }
+    .fa-modal-close:hover { color:var(--text); }
+    .fa-modal-body { padding:22px; display:flex; flex-direction:column; gap:18px; }
+    .fa-field { display:flex; flex-direction:column; gap:6px; }
+    .fa-field > span { font-size:13px; color:var(--brand-light); }
+    .fa-field-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .fa-modal textarea.input { resize:vertical; font-family:inherit; }
+
+    .mm-h4, .mm-sug h4 { margin:0 0 8px; font-size:14px; color:var(--text); }
+    .mm-dica { margin:0; font-size:12.5px; color:var(--text-dim); }
+    .mm-erro { color:var(--err); font-size:13px; margin:0; }
+    .mm-erro:empty { display:none; }
+    .mm-banner { border-radius:10px; padding:10px 12px; font-size:13px; border:1px solid; }
+    .mm-banner ul { margin:6px 0 0 18px; }
+    .mm-banner-warn { background:rgba(227,179,65,.12); border-color:rgba(227,179,65,.4); color:var(--warn); }
+    .mm-banner-err { background:rgba(224,108,108,.12); border-color:rgba(224,108,108,.4); color:var(--err); margin-bottom:8px; }
+    .mm-sug { border:1px solid var(--line); border-radius:12px; padding:14px; background:var(--fill-1); display:flex; flex-direction:column; gap:8px; }
+    .mm-sug-cab { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+    .mm-sug-cab h4 { margin:0; }
+    .mm-sug-acoes { display:flex; gap:8px; }
+    .mm-resumo { margin:0; font-size:13.5px; color:var(--text); }
+    .mm-cnaes { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; }
+    .mm-cnaes li { font-size:13.5px; color:var(--text); }
+    .mm-cnaes small { display:block; font-size:12px; color:var(--text-muted); margin-left:84px; }
+    .mm-cnae { display:inline-block; min-width:78px; font-variant-numeric:tabular-nums; color:var(--brand-light); }
+    .mm-alertas { margin:0 0 0 18px; font-size:13px; color:var(--warn); }
+    .mm-resp { display:grid; grid-template-columns:200px 1fr; gap:6px 14px; margin:0; font-size:13.5px; }
+    .mm-resp dt { color:var(--text-muted); }
+    .mm-resp dd { margin:0; color:var(--text); white-space:pre-line; overflow-wrap:anywhere; }
+    .mm-docs { margin:0 0 6px 0; padding:0; list-style:none; display:flex; flex-direction:column; gap:4px; font-size:13.5px; }
+    .mm-acomp { border-top:1px solid var(--line); padding-top:14px; display:flex; flex-direction:column; gap:12px; }
+    .mm-acoes { display:flex; gap:10px; flex-wrap:wrap; }
+    @media (max-width:720px) {
+      .fa-focus { grid-template-columns:repeat(2,1fr); }
+      .fa-field-row { grid-template-columns:1fr; }
+      .mm-resp { grid-template-columns:1fr; }
+      .mm-resp dd { margin-bottom:6px; }
+      .mm-cnaes small { margin-left:0; }
+    }
+  </style>
+</body>
+</html>

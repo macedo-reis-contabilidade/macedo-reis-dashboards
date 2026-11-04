@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Abertura de MEI — Macedo & Reis Contabilidade</title>
+<link rel="icon" href="assets/favicon.ico">
+<!-- Link público da abertura de MEI (04/11/2026, pedido do Samuel), o mesmo pra todo mundo: a pessoa que quer abrir o CNPJ
+     como Microempreendedor Individual responde e manda os documentos; o pedido nasce na ficha do Societário
+     (societario-mei.html) e na agenda do Samuel. As perguntas e a conferência são as de assets/js/mei-abertura.js (as do
+     folder "MEI: como funciona?" do escritório), as mesmas da Edge Function mei-link, a única com que esta página fala.
+     A senha do gov.br não é pedida: a página só avisa que a abertura precisa da conta nível prata ou ouro. A sugestão de
+     CNAE é só pro escritório: a pessoa não vê. Nunca importar o auth-guard.js aqui. -->
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system, 'Segoe UI', Roboto, Arial, sans-serif; background:#EEF2F6; color:#1a2330; padding:0 0 60px; }
+  .topo { background:linear-gradient(135deg, #3A5878, #5B82A6); color:#fff; padding:22px 20px 24px; text-align:center; }
+  .topo img { width:46px; height:46px; object-fit:contain; background:#fff; border-radius:12px; padding:5px; display:block; margin:0 auto 8px; }
+  .topo h1 { font-size:18px; font-weight:700; letter-spacing:.02em; }
+  .topo p { font-size:12px; opacity:.85; margin-top:3px; }
+  .wrap { max-width:600px; margin:-14px auto 0; padding:0 14px; }
+  .card { background:#fff; border-radius:14px; box-shadow:0 4px 18px rgba(26,35,48,.08); padding:20px 18px; margin-bottom:14px; }
+  .cab h2 { font-size:17px; color:#3A5878; line-height:1.35; }
+  .cab .intro { font-size:13.5px; color:#4a5565; line-height:1.55; margin-top:10px; }
+  .gov { margin-top:14px; background:#FFF7E0; border:1.5px solid #E8C25A; border-radius:12px; padding:12px 14px; font-size:13.5px; color:#5C4300; line-height:1.5; }
+  .gov b { display:block; margin-bottom:2px; }
+  h3.bloco { font-size:12.5px; color:#3A5878; text-transform:uppercase; letter-spacing:.06em; margin:0 0 12px; padding-bottom:8px; border-bottom:2px solid #E3EAF1; }
+  h4.sub { font-size:13px; color:#3A5878; margin:4px 0 10px; }
+  .campo { margin-bottom:16px; }
+  .campo:last-child { margin-bottom:0; }
+  .campo > label, .campo > .lbl { display:block; font-size:13.5px; color:#33404f; font-weight:600; margin-bottom:6px; }
+  .campo small.ajuda { display:block; font-weight:400; color:#8a94a3; font-size:12px; margin-top:2px; }
+  .campo input[type=text], .campo input[type=email], .campo input[type=tel], .campo textarea, .campo select { width:100%; font:inherit; font-size:15px; padding:11px 12px; border:1.5px solid #D5DEE7; border-radius:10px; background:#FBFCFE; color:#1a2330; }
+  .campo textarea { min-height:90px; resize:vertical; }
+  .campo input:focus, .campo textarea:focus, .campo select:focus { outline:none; border-color:#5B82A6; background:#fff; }
+  .linha { display:grid; grid-template-columns:1fr 1fr; gap:0 12px; }
+  .linha.l3 { grid-template-columns:2fr 1fr; }
+  .ops { display:flex; flex-direction:column; gap:6px; }
+  .op { display:flex; gap:10px; align-items:flex-start; padding:10px 12px; border:1.5px solid #D5DEE7; border-radius:10px; background:#FBFCFE; cursor:pointer; font-size:14.5px; }
+  .op input { margin-top:3px; width:18px; height:18px; accent-color:#3A5878; flex:none; }
+  .op:has(input:checked) { border-color:#5B82A6; background:#EEF4FA; }
+  .obr::after { content:' *'; color:#C0564F; }
+  .falta input[type=text], .falta input[type=email], .falta input[type=tel], .falta textarea, .falta select, .falta .op { border-color:#C0564F; }
+  .falta-msg { display:none; color:#C0564F; font-size:12px; margin-top:5px; }
+  .falta .falta-msg { display:block; }
+  .ramo { border-left:3px solid #CFDDEA; padding-left:12px; margin:4px 0 16px; }
+  .botao { width:100%; font:inherit; font-size:16px; font-weight:700; padding:14px; border:none; border-radius:12px; background:#3A5878; color:#fff; cursor:pointer; }
+  .botao.sec { background:#fff; color:#3A5878; border:1.5px solid #3A5878; margin-top:16px; }
+  .botao:active { transform:scale(.99); }
+  .botao[disabled] { opacity:.6; }
+  .botao:focus-visible, .op:focus-within { outline:2px solid #5B82A6; outline-offset:2px; }
+  .erro { color:#C0564F; font-size:13px; margin-top:10px; min-height:18px; text-align:center; }
+  .aviso { text-align:center; padding:30px 20px; }
+  .aviso .ic { font-size:42px; }
+  .aviso h2 { font-size:18px; color:#3A5878; margin:10px 0 8px; }
+  .aviso.ok h2 { color:#2E7D5B; }
+  .aviso p { font-size:14px; color:#4a5565; line-height:1.6; white-space:pre-line; }
+  .rodape { text-align:center; font-size:11.5px; color:#8a94a3; margin-top:18px; line-height:1.6; white-space:pre-line; }
+  .anexo-ajuda { font-size:12px; color:#8a94a3; line-height:1.5; margin-bottom:10px; }
+  .anexo { padding:12px; border:1.5px dashed #C9D5E2; border-radius:10px; background:#F7FAFC; }
+  .anexo-btn { position:relative; display:inline-flex; align-items:center; gap:8px; padding:10px 14px; border-radius:10px; background:#fff; border:1.5px solid #5B82A6; color:#3A5878; font-weight:700; font-size:14.5px; cursor:pointer; }
+  .anexo-btn input { position:absolute; width:1px; height:1px; opacity:0; overflow:hidden; pointer-events:none; }
+  .anexo-btn:focus-within { outline:2px solid #5B82A6; outline-offset:2px; }
+  .anexo-lista { margin-top:8px; display:flex; flex-direction:column; gap:6px; }
+  .anexo-lista:empty { display:none; }
+  .anexo-item { display:flex; gap:8px; align-items:center; font-size:13px; color:#33404f; background:#fff; border:1px solid #E3EAF1; border-radius:8px; padding:6px 8px; }
+  .anexo-item span { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .anexo-item small { color:#8a94a3; white-space:nowrap; }
+  .anexo-item button { background:none; border:none; color:#C0564F; font-size:16px; cursor:pointer; padding:0 4px; }
+  .anexo-erro { color:#C0564F; font-size:12px; margin-top:6px; }
+  .anexo-erro:empty { display:none; }
+  .progresso { font-size:13px; color:#3A5878; margin-top:12px; text-align:center; }
+  .progresso:empty { display:none; }
+  .barra { height:6px; background:#E3EAF1; border-radius:99px; overflow:hidden; margin-top:6px; }
+  .barra div { height:100%; background:#3A5878; width:0; transition:width .2s; }
+  @media (prefers-reduced-motion: reduce) { .barra div { transition:none; } }
+  @media (max-width:480px) { .linha, .linha.l3 { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+  <div class="topo">
+    <img src="assets/logo-mr.png" alt="">
+    <h1>Macedo &amp; Reis Contabilidade</h1>
+    <p>Abertura de MEI · Três Coroas – RS</p>
+  </div>
+  <div class="wrap">
+    <div id="app"><div class="card"><p style="color:#8a94a3;font-size:13.5px;">Carregando o formulário…</p></div></div>
+    <div class="rodape" id="rodape"></div>
+  </div>
+
+<script type="module">
+  import { supabase } from './assets/js/supabase.js';
+  import { PERGUNTAS, FORMAS, UFS, CAMPOS_ENDERECO, AVISO_GOV, AVISO_GOV_AJUDA, conferirPedido } from './assets/js/mei-abertura.js';
+
+  const RODAPE = 'Macedo e Reis Contabilidade Ltda · Rua Luiz Volkart, 35, 1º andar – Centro – Três Coroas/RS · CEP 95660-000 · (51) 3546-1385'
+    + '\nAs informações vão direto para o escritório Macedo & Reis e são usadas só para a abertura do seu MEI.';
+  const FUNCAO = 'mei-link';
+  const PARTE = 2 * 1024 * 1024;                       // os documentos sobem em partes de 2 MB (múltiplo de 256 KB, exigência do Drive)
+  const MAX_ARQ = 25 * 1024 * 1024, MAX_QTD = 20, MAX_TOTAL = 100 * 1024 * 1024;
+  const app = document.getElementById('app');
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const tam = n => n >= 1048576 ? (n / 1048576).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+  let anexos = [], subindo = false;
+  const chamar = (body, headers) => supabase.functions.invoke(FUNCAO, headers ? { body, headers } : { body });
+  window.addEventListener('beforeunload', e => { if (subindo) { e.preventDefault(); e.returnValue = ''; } });
+  $('rodape').textContent = RODAPE;
+
+  function aviso(ic, titulo, texto, classe) {
+    app.innerHTML = `<div class="card aviso ${classe || ''}"><div class="ic">${ic}</div><h2>${esc(titulo)}</h2><p>${esc(texto)}</p></div>`;
+  }
+
+  // ---------- campos (o data-id é o mesmo que a conferência devolve em "faltam") ----------
+  const ajuda = t => (t ? `<small class="ajuda">${esc(t)}</small>` : '');
+  const idCampo = id => 'id_' + id.replace('.', '_');
+  const caixa = (id, rotulo, { tipo = 'text', obrig = true, dica = '', modo = '', auto = '' } = {}) =>
+    `<div class="campo" data-id="${id}"><label for="${idCampo(id)}"><span class="${obrig ? 'obr' : ''}">${esc(rotulo)}</span>${ajuda(dica)}</label>`
+    + `<input type="${tipo}" id="${idCampo(id)}"${modo ? ` inputmode="${modo}"` : ''}${auto ? ` autocomplete="${auto}"` : ''}><div class="falta-msg">${obrig ? 'Preencha este campo.' : ''}</div></div>`;
+  const escolha = (id, p) =>
+    `<div class="campo" data-id="${id}"><div class="lbl"><span class="obr">${esc(p.rotulo)}</span>${ajuda(p.ajuda)}</div><div class="ops">`
+    + p.opcoes.map(([v, t]) => `<label class="op"><input type="radio" name="${id}" value="${esc(v)}"><span>${esc(t)}</span></label>`).join('')
+    + '</div><div class="falta-msg">Escolha uma opção.</div></div>';
+  const MSG_CAMPO = { nome: 'Escreva o nome completo.', cpf: 'Confira o CPF.', telefone: 'Informe o telefone com o DDD.', email: 'Confira o e-mail.',
+    atividade: 'Conte um pouco mais do que você vai fazer.', formas: 'Marque pelo menos uma.' };
+  function endereco(prefixo, titulo) {
+    const ufs = '<option value="">—</option>' + UFS.map(u => `<option${u === 'RS' ? ' selected' : ''}>${u}</option>`).join('');
+    const c = (k, extra = {}) => caixa(prefixo + '.' + k, (CAMPOS_ENDERECO.find(([x]) => x === k) || [k, k])[1], extra);
+    return `<h4 class="sub">${esc(titulo)}</h4>`
+      + `<div class="linha">${c('cep', { modo: 'numeric', auto: 'postal-code' })}<div></div></div>`
+      + c('logradouro', { auto: 'address-line1' })
+      + `<div class="linha">${c('numero', { dica: 'Sem número: S/N' })}${c('complemento', { obrig: false })}</div>`
+      + c('bairro')
+      + `<div class="linha l3">${c('cidade', { auto: 'address-level2' })}<div class="campo" data-id="${prefixo}.uf"><label for="${idCampo(prefixo + '.uf')}"><span class="obr">Estado (UF)</span></label><select id="${idCampo(prefixo + '.uf')}">${ufs}</select><div class="falta-msg">Escolha o estado.</div></div></div>`;
+  }
+
+  function desenhar() {
+    anexos = [];
+    let html = '<div class="card cab"><h2>Abertura de MEI</h2>'
+      + '<div class="intro">Preencha pra gente abrir o seu CNPJ como Microempreendedor Individual. Leva uns 5 minutos — depois a gente fala com você pelo WhatsApp.</div>'
+      + `<div class="gov" role="note"><b>⚠ ${esc(AVISO_GOV)}</b>${esc(AVISO_GOV_AJUDA)}</div></div>`;
+    html += '<div class="card"><h3 class="bloco">Seus dados</h3>'
+      + caixa('nome', PERGUNTAS.nome.rotulo, { auto: 'name' }) + caixa('cpf', PERGUNTAS.cpf.rotulo, { modo: 'numeric' })
+      + caixa('telefone', PERGUNTAS.telefone.rotulo, { tipo: 'tel', dica: PERGUNTAS.telefone.ajuda, auto: 'tel' }) + caixa('email', PERGUNTAS.email.rotulo, { tipo: 'email', auto: 'email' })
+      + '</div>';
+    html += '<div class="card"><h3 class="bloco">Antes de abrir</h3>'
+      + escolha('empresa', PERGUNTAS.empresa)
+      + '<div class="ramo" id="blEmpresa" hidden>' + caixa('empresaQual', PERGUNTAS.empresaQual.rotulo, { obrig: false, dica: PERGUNTAS.empresaQual.ajuda }) + '</div>'
+      + escolha('seguro', PERGUNTAS.seguro) + escolha('irpf', PERGUNTAS.irpf) + '</div>';
+    html += '<div class="card"><h3 class="bloco">O seu negócio</h3>'
+      + `<div class="campo" data-id="atividade"><label for="id_atividade"><span class="obr">${esc(PERGUNTAS.atividade.rotulo)}</span>${ajuda(PERGUNTAS.atividade.ajuda)}</label><textarea id="id_atividade" maxlength="2000"></textarea><div class="falta-msg"></div></div>`
+      + `<div class="campo" data-id="formas"><div class="lbl"><span class="obr">${esc(PERGUNTAS.formas.rotulo)}</span>${ajuda(PERGUNTAS.formas.ajuda)}</div><div class="ops">`
+      + FORMAS.map(([v, t]) => `<label class="op"><input type="checkbox" name="formas" value="${esc(v)}"><span>${esc(t)}</span></label>`).join('')
+      + '</div><div class="falta-msg"></div></div>'
+      + caixa('fantasia', PERGUNTAS.fantasia.rotulo, { obrig: false, dica: PERGUNTAS.fantasia.ajuda })
+      + caixa('capital', PERGUNTAS.capital.rotulo, { obrig: false, dica: PERGUNTAS.capital.ajuda, modo: 'decimal' })
+      + '</div>';
+    html += '<div class="card"><h3 class="bloco">Endereço</h3>' + endereco('residencial', PERGUNTAS.residencial.rotulo)
+      + escolha('mesmoEndereco', PERGUNTAS.mesmoEndereco)
+      + '<div class="ramo" id="blComercial" hidden>' + endereco('comercial', PERGUNTAS.comercial.rotulo) + '</div></div>';
+    html += `<div class="card"><h3 class="bloco">${esc(PERGUNTAS.arquivos.rotulo)}</h3><div class="anexo-ajuda">${esc(PERGUNTAS.arquivos.ajuda)}</div>`
+      + '<div class="anexo"><label class="anexo-btn">📎 Anexar arquivos<input type="file" multiple id="id_arquivos" accept="image/*,application/pdf"></label>'
+      + '<div class="anexo-lista" id="anxLista"></div><div class="anexo-erro" id="anxErro" role="alert"></div></div></div>';
+    html += `<div class="card"><h3 class="bloco">${esc(PERGUNTAS.obs.rotulo)}</h3><div class="campo" data-id="obs"><label for="id_obs"><small class="ajuda" style="margin:0">${esc(PERGUNTAS.obs.ajuda)}</small></label><textarea id="id_obs" maxlength="2000"></textarea></div></div>`;
+    html += '<div class="card"><button class="botao" id="btnEnviar">Enviar pedido</button><div class="erro" id="msgErro" role="alert"></div>'
+      + '<div class="progresso" id="progresso" aria-live="polite"></div><div class="barra" id="barra" hidden><div></div></div></div>';
+    app.innerHTML = html;
+    app.querySelectorAll('.campo').forEach(c => { c.addEventListener('input', () => c.classList.remove('falta')); c.addEventListener('change', () => c.classList.remove('falta')); });
+    $('id_arquivos').addEventListener('change', e => { adicionarAnexos([...e.target.files]); e.target.value = ''; });
+    $('btnEnviar').addEventListener('click', enviar);
+  }
+  app.addEventListener('change', () => {
+    if (!$('blEmpresa')) return;
+    const emp = marcado('empresa');
+    $('blEmpresa').hidden = !(emp === 'tem' || emp === 'teve');
+    $('blComercial').hidden = marcado('mesmoEndereco') !== 'nao';
+  });
+
+  // ---------- os documentos: sobem pro Drive depois que o pedido é gravado ----------
+  function pintarAnexos() {
+    const el = $('anxLista');
+    el.innerHTML = anexos.map((f, n) => `<div class="anexo-item"><span>📄 ${esc(f.name)}</span><small>${tam(f.size)}</small>`
+      + `<button type="button" data-tira="${n}" title="Tirar" aria-label="Tirar ${esc(f.name)}">✕</button></div>`).join('');
+    el.querySelectorAll('[data-tira]').forEach(b => b.addEventListener('click', () => { anexos.splice(Number(b.dataset.tira), 1); $('anxErro').textContent = ''; pintarAnexos(); }));
+  }
+  function adicionarAnexos(files) {
+    const recusados = [];
+    for (const f of files) {
+      if (anexos.some(a => a.name === f.name && a.size === f.size && a.lastModified === f.lastModified)) { recusados.push(`${f.name} já está na lista`); continue; }
+      if (!f.size) { recusados.push(`${f.name} está vazio`); continue; }
+      if (f.size > MAX_ARQ) { recusados.push(`${f.name} passa de 25 MB`); continue; }
+      if (anexos.length >= MAX_QTD) { recusados.push(`limite de ${MAX_QTD} arquivos`); break; }
+      if (anexos.reduce((s, a) => s + a.size, 0) + f.size > MAX_TOTAL) { recusados.push(`${f.name} passa do total de 100 MB`); continue; }
+      anexos.push(f);
+    }
+    $('anxErro').textContent = recusados.length ? 'Não anexado: ' + recusados.join('; ') + '.' : '';
+    pintarAnexos();
+  }
+
+  const marcado = nome => (app.querySelector(`input[name="${nome}"]:checked`) || {}).value || '';
+  const valor = id => (($(idCampo(id)) || {}).value || '').trim();
+  const endereco_ = p => Object.fromEntries(CAMPOS_ENDERECO.map(([k]) => [k, valor(p + '.' + k)]));
+  function coletar() {
+    return { nome: valor('nome'), cpf: valor('cpf'), telefone: valor('telefone'), email: valor('email'), empresa: marcado('empresa'), empresaQual: valor('empresaQual'),
+      seguro: marcado('seguro'), irpf: marcado('irpf'), atividade: ($('id_atividade').value || '').trim(),
+      formas: [...app.querySelectorAll('input[name="formas"]:checked')].map(x => x.value), fantasia: valor('fantasia'), capital: valor('capital'),
+      residencial: endereco_('residencial'), mesmoEndereco: marcado('mesmoEndereco'), comercial: endereco_('comercial'), obs: ($('id_obs').value || '').trim() };
+  }
+
+  function progresso(texto, fracao) {
+    $('progresso').textContent = texto || '';
+    const barra = $('barra');
+    barra.hidden = fracao == null;
+    if (fracao != null) barra.firstElementChild.style.width = Math.round(Math.min(1, fracao) * 100) + '%';
+  }
+  // um documento: abre o envio no Drive e manda as partes em sequência (tenta de novo a parte que falhar na rede)
+  async function subir(id, chave, i, f, feito, total, qtd) {
+    const r1 = await chamar({ acao: 'arquivo', id, chave, i, nome: f.name, tipo: f.type || 'application/octet-stream', tamanho: f.size });
+    if (r1.error || !r1.data || !r1.data.ok) return false;
+    for (let ini = 0; ini < f.size; ini += PARTE) {
+      const pedaco = f.slice(ini, Math.min(f.size, ini + PARTE));
+      let r = null;
+      for (let tentativa = 0; tentativa < 3; tentativa++) {
+        r = await chamar(pedaco, { 'x-acao': 'parte', 'x-id': id, 'x-chave': chave, 'x-i': String(i), 'x-inicio': String(ini), 'x-total': String(f.size) });
+        if (!r.error) break;
+      }
+      if (r.error || !r.data || !r.data.ok) return false;
+      progresso(`Enviando os documentos: ${i + 1} de ${qtd} (${f.name})`, (feito + Math.min(f.size, ini + PARTE)) / total);
+    }
+    return true;
+  }
+
+  async function enviar() {
+    const erro = $('msgErro'), btn = $('btnEnviar');
+    app.querySelectorAll('.campo.falta').forEach(c => c.classList.remove('falta'));
+    const corpo = coletar();
+    const c = conferirPedido(corpo);
+    if (!c.pedido) {
+      const campos = c.faltam.map(id => app.querySelector(`.campo[data-id="${id}"]`)).filter(Boolean);
+      campos.forEach(el => { el.classList.add('falta'); const m = el.querySelector('.falta-msg'); if (m && MSG_CAMPO[el.dataset.id]) m.textContent = MSG_CAMPO[el.dataset.id]; });
+      erro.textContent = c.faltam.length === 1 ? 'Falta 1 resposta (marcada em vermelho).' : `Faltam ${c.faltam.length} respostas (marcadas em vermelho).`;
+      if (campos[0]) campos[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    erro.textContent = '';
+    const lista = anexos.slice();
+    btn.disabled = true; btn.textContent = 'Enviando…';
+    progresso(lista.length ? 'Enviando o pedido…' : '', null);
+    if (lista.length) corpo.arquivos = lista.map(f => ({ nome: f.name, tamanho: f.size, tipo: f.type || 'application/octet-stream' }));
+    const { data: r, error } = await chamar({ acao: 'enviar', ...corpo });
+    if (error || !r || r.error) {
+      btn.disabled = false; btn.textContent = 'Enviar pedido'; progresso('', null);
+      erro.textContent = (r && r.error) ? r.error : 'Não foi possível enviar agora (' + ((error && error.message) || 'erro de conexão') + '). Tente de novo em instantes.';
+      return;
+    }
+    const falhas = [];
+    if (lista.length) {
+      if (!r.chave) falhas.push(...lista.map(f => f.name));
+      else {
+        subindo = true;
+        try {
+          const total = lista.reduce((s, f) => s + f.size, 0);
+          let feito = 0;
+          for (const [i, f] of lista.entries()) {
+            progresso(`Enviando os documentos: ${i + 1} de ${lista.length} (${f.name})`, feito / total);
+            const foi = await subir(r.id, r.chave, i, f, feito, total, lista.length).catch(() => false);
+            if (!foi) falhas.push(f.name);
+            feito += f.size;
+          }
+          await chamar({ acao: 'concluir', id: r.id, chave: r.chave }).catch(() => null);
+        } finally { subindo = false; }
+      }
+    }
+    let msg = 'Obrigado! O escritório vai conferir as informações e falar com você pelo WhatsApp pra combinar a abertura.\n\nLembre: ' + AVISO_GOV.charAt(0).toLowerCase() + AVISO_GOV.slice(1);
+    const foram = lista.length - falhas.length;
+    if (foram) msg += `\n\n${foram === 1 ? '1 documento enviado' : foram + ' documentos enviados'} para o escritório.`;
+    if (falhas.length) msg += `\n\nNão conseguimos enviar: ${falhas.join(', ')}. A gente pede ${falhas.length === 1 ? 'esse arquivo' : 'esses arquivos'} pelo WhatsApp.`;
+    aviso(falhas.length ? '⚠️' : '✅', 'Pedido recebido!', msg, falhas.length ? '' : 'ok');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  desenhar();
+</script>
+</body>
+</html>

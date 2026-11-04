@@ -20,6 +20,8 @@ const tudo = f => arquivos(f).map(a => ler(f, a)).join('\n');
 const ABERTAS = {
   'admissao-link': ['o link público das admissões (sem login), com a trava de envios por hora', s => /hora/i.test(s)],
   'rescisao-link': ['o link público das rescisões (sem login), com a trava de envios por hora', s => /hora/i.test(s)],
+  // 04/11/2026: o link público da abertura de MEI; a sugestão de CNAE de novo (a IA) só com o login do escritório
+  'mei-link': ['o link público da abertura de MEI (sem login), com a trava de envios por hora; a sugestão de novo só com o login do escritório', s => /hora/i.test(s) && /auth\/v1\/user/.test(s) && /@macedoereis\.com\.br/.test(s) && /status: 401/.test(s)],
   'ca-sync': ['o sincronismo do Conta Azul: a chave x-sync-key', s => /x-sync-key/.test(s)],
   'ca-consulta': ['a consulta ao Conta Azul: a chave x-sync-key', s => /x-sync-key/.test(s)],
   'ca-oauth': ['o retorno da autorização do Conta Azul: o state guardado no banco', s => /ca_oauth_state/.test(s)],
