@@ -196,7 +196,7 @@ parâmetros).
   quantas com o XML, quantas de fora por motivo, as recusadas que o `validarPacoteNotas` daria (rode o pacote do
   `--saida` por ele no node, num script que imprime só quantas e, de cada uma, o campo e o erro — **nunca a chave**, e
   sem abrir o arquivo na conversa) e o tempo.
-- Não mande nada (o destino ainda não existe).
+- Não mande nada: o primeiro envio é decisão da sessão do Samuel, depois da revisão.
 
 ## 6. LEIA-ME, DUVIDAS e push
 - O `ponte/LEIA-ME.md` ganha a seção das notas: o que sai, de quem, quando, onde fica o estado, os comandos e as
@@ -205,7 +205,7 @@ parâmetros).
   decide.
 - O registro preenchido, `py -3 tests/ponte.test.py`, `py -3 tests/ponte-notas.test.py` e `node tests/ponte-funcao.test.mjs`
   verdes, commit e `git push origin fila-notas-ponte`. A cópia instalada em `C:\ponte-dominio\app` fica como está: ela é
-  atualizada depois, quando o destino existir.
+  atualizada depois da revisão, junto com o primeiro envio.
 
 ## Registro de progresso
 | Data | Item | Situação / observação |
