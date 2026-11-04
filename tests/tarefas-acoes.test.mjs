@@ -17,7 +17,8 @@ import { concluirTarefas, desfazerConclusao, criarTarefasAvulsas, excluirTarefas
   limparMensagem, comMensagem, MAX_MENSAGEM, registrarNoHistorico, desfazerRegistro,
   competenciaFiscal, tarefaDaObrigacao, tarefaDoMesDoVinculo, criarTarefaDoMes, religarVinculo,
   obsDaInclusao, incluirNaCampanha, desfazerInclusaoCampanha, vencimentoDaCompetencia, diaDoContrato, dadosParaCompetencia, porNaCompetencia, desfazerPorNaCompetencia,
-  limparAjuste, ajusteDoVinculo, ajustarVinculos, desfazerAjusteVinculos, responderPergunta, desfazerResposta, limparResposta } from '../assets/js/tarefas-acoes.js';
+  limparAjuste, ajusteDoVinculo, ajustarVinculos, desfazerAjusteVinculos, responderPergunta, desfazerResposta, limparResposta,
+  REPETICOES, limparLembrete, quandoDeBrasilia, emBrasilia, horaDoLembrete, textoDaHora, criarLembrete, cancelarLembretes, reativarLembretes, lembretesPendentes } from '../assets/js/tarefas-acoes.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + extra : '')); };
@@ -679,6 +680,51 @@ console.log('As perguntas pra equipe (02/11/2026):');
   db.perguntas_equipe[0].situacao = 'respondida'; db.perguntas_equipe[0].resposta = 'Do próprio mês';
   chk('desfazer depois de outra resposta: não volta', !(await desfazerResposta(sb, r.pergunta)).desfeita && db.perguntas_equipe[0].situacao === 'respondida');
   chk('o texto: sem espaço sobrando, até o limite', limparResposta('  a   b \n\n\n\n c ') === 'a b \n\n c' && limparResposta('x'.repeat(3000)).length === 2000);
+}
+
+console.log('Os lembretes (04/11/2026):');
+{
+  const agora = new Date('2026-11-04T13:30:00Z');   // quarta, 04/11, 10:30 em Brasília
+  chk('a hora de Brasília: 11:00 do dia 04/11 é 14:00 UTC', quandoDeBrasilia('2026-11-04', '11:00') === '2026-11-04T11:00:00-03:00'
+    && new Date(quandoDeBrasilia('2026-11-04', '11:00')).toISOString() === '2026-11-04T14:00:00.000Z');
+  chk('data ou hora inválida: null', quandoDeBrasilia('2026-02-30', '11:00') === null && quandoDeBrasilia('2026-11-04', '25:00') === null && quandoDeBrasilia('', '') === null);
+  chk('de volta pra Brasília', JSON.stringify(emBrasilia('2026-11-05T02:15:00Z')) === JSON.stringify({ data: '2026-11-04', hora: '23:15' }) && emBrasilia('x') === null);
+  chk('o texto da hora: hoje, amanhã, o dia da semana', textoDaHora('2026-11-04T14:00:00Z', agora) === 'hoje às 11:00' && textoDaHora('2026-11-05T12:00:00Z', agora) === 'amanhã às 09:00'
+    && textoDaHora('2026-11-06T11:00:00Z', agora) === 'sexta, 06/11 às 08:00' && textoDaHora('2027-01-04T11:00:00Z', agora) === 'segunda, 04/01/2027 às 08:00', textoDaHora('2026-11-06T11:00:00Z', agora));
+  const tarefa = { prazo: '2026-11-05', hora: '14:00:00' };
+  chk('com a tarefa e a antecedência: a hora da tarefa menos os minutos', horaDoLembrete({ antecedencia_min: 15, quando: '2026-11-05T16:45:00Z' }, tarefa) === '2026-11-05T16:45:00.000Z'
+    && horaDoLembrete({ antecedencia_min: 15, quando: '2026-11-05T16:45:00Z', tarefas: { prazo: '2026-11-06', hora: '09:00' } }) === '2026-11-06T11:45:00.000Z');
+  chk('a tarefa sem hora: vale o quando', horaDoLembrete({ antecedencia_min: 15, quando: '2026-11-05T12:00:00Z' }, { prazo: '2026-11-05', hora: null }) === '2026-11-05T12:00:00.000Z');
+  chk('o texto: numa linha, até 500', limparLembrete('  ligar  pro\n cliente ') === 'ligar pro cliente' && limparLembrete('x'.repeat(900)).length === 500);
+  chk('as repetições', Object.keys(REPETICOES).join(',') === 'uma_vez,diario,dias_uteis,semanal');
+  const db = { lembretes: [] };
+  const sb = dubla(db);
+  const r = await criarLembrete(sb, { id: 'l1', para: 'Financeiro@macedoereis.com.br', texto: '  ligar pro cliente ', quando: '2026-11-04T14:00:00Z' }, { agora });
+  chk('cria: o e-mail em minúsculas, o texto limpo, uma vez', r.lembrete && r.lembrete.id === 'l1' && db.lembretes[0].para === 'financeiro@macedoereis.com.br' && db.lembretes[0].texto === 'ligar pro cliente'
+    && db.lembretes[0].repeticao === 'uma_vez' && db.lembretes[0].quando === '2026-11-04T14:00:00.000Z', JSON.stringify(db.lembretes));
+  const passou = await criarLembrete(sb, { id: 'l2', para: 'financeiro@macedoereis.com.br', texto: 'x', quando: '2026-11-04T13:00:00Z' }, { agora });
+  chk('hora que já passou: não grava e diz a hora de agora', passou.passou && /já passou \(agora são 10:30\)/.test(passou.erro) && db.lembretes.length === 1, JSON.stringify(passou));
+  chk('fora da equipe, sem texto ou sem hora: não grava', /equipe/.test((await criarLembrete(sb, { para: 'alguem@gmail.com', texto: 'x', quando: '2026-11-05T12:00:00Z' }, { agora })).erro)
+    && /o que lembrar/.test((await criarLembrete(sb, { para: 'rh@macedoereis.com.br', texto: '  ', quando: '2026-11-05T12:00:00Z' }, { agora })).erro)
+    && /dia e a hora/.test((await criarLembrete(sb, { para: 'rh@macedoereis.com.br', texto: 'x', quando: null }, { agora })).erro) && db.lembretes.length === 1);
+  await criarLembrete(sb, { id: 'l3', para: 'rh@macedoereis.com.br', texto: 'reunião', quando: '2026-11-05T16:45:00Z', repeticao: 'diario', tarefa_id: 't9', antecedencia_min: 15 }, { agora });
+  const l3 = db.lembretes.find(x => x.id === 'l3');
+  chk('com a tarefa: só uma vez, com a antecedência', l3 && l3.repeticao === 'uma_vez' && l3.tarefa_id === 't9' && l3.antecedencia_min === 15, JSON.stringify(l3));
+  await criarLembrete(sb, { id: 'l4', para: 'rh@macedoereis.com.br', texto: 'ponto', quando: '2026-11-05T11:00:00Z', repeticao: 'dias_uteis', antecedencia_min: 10 }, { agora });
+  const l4 = db.lembretes.find(x => x.id === 'l4');
+  chk('sem a tarefa: a repetição fica e a antecedência não', l4 && l4.repeticao === 'dias_uteis' && l4.antecedencia_min === null, JSON.stringify(l4));
+  sb.unicos = { lembretes: ['id'] };
+  const de = await criarLembrete(sb, { id: 'l1', para: 'financeiro@macedoereis.com.br', texto: 'ligar pro cliente', quando: '2026-11-04T14:00:00Z' }, { agora });
+  chk('tentar de novo com o mesmo id: não duplica', de.lembrete && de.lembrete.id === 'l1' && !de.erro && db.lembretes.filter(x => x.id === 'l1').length === 1, JSON.stringify(de));
+  db.lembretes.forEach(x => { x.situacao = x.situacao || 'pendente'; });
+  db.lembretes.find(x => x.id === 'l4').situacao = 'enviado';
+  const c = await cancelarLembretes(sb, ['l1', 'l4', 'l1']);
+  chk('cancelar: só o que ainda vai chegar', c.ids.join() === 'l1' && db.lembretes.find(x => x.id === 'l1').situacao === 'cancelado' && db.lembretes.find(x => x.id === 'l4').situacao === 'enviado', JSON.stringify(c));
+  const v = await reativarLembretes(sb, ['l1', 'l3']);
+  chk('desfazer: só o cancelado volta', v.ids.join() === 'l1' && db.lembretes.find(x => x.id === 'l1').situacao === 'pendente', JSON.stringify(v));
+  db.lembretes.find(x => x.id === 'l3').tarefas = { prazo: '2026-11-04', hora: '12:00' };
+  const { lembretes } = await lembretesPendentes(sb);
+  chk('os que vão chegar, pela hora de chegar (o da tarefa pela hora dela)', lembretes.map(x => x.id).join() === 'l1,l3' && lembretes[1].hora === '2026-11-04T14:45:00.000Z', JSON.stringify(lembretes.map(x => [x.id, x.hora])));
 }
 
 if (falhas) { console.log('\n' + falhas + ' falha(s)'); process.exit(1); }

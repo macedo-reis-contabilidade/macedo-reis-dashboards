@@ -1289,3 +1289,85 @@ export async function desfazerResposta(sb, pergunta) {
   if (error) return { desfeita: false, erro: msg(error) };
   return { desfeita: (data || []).length > 0, erro: null };
 }
+
+// ---------- os lembretes (04/11/2026, pedido do Samuel: "me avisa hoje às 11h") ----------
+// O assistente propõe; o cartão mostra o lembrete preenchido (o texto, pra quem, quando, se repete) e a pessoa confirma.
+// Na hora, o banco manda pela conversa Avisos do sistema do chat (lembretes_disparar, de minuto em minuto), e o chat dá o
+// aviso de sempre (o recado da carinha, o bipe e o aviso do Windows de quem está com a tela atrás). A hora é a de Brasília
+// (sem horário de verão desde 2019: −03:00). Com a tarefa e a antecedência, a hora é a da tarefa menos os minutos — o banco
+// olha a hora da tarefa no disparo, então o lembrete acompanha a tarefa que mudar de hora. Só quem recebe e quem criou veem
+// e cancelam; o "Desfazer" do cartão cancela (lembrete não se apaga).
+export const MAX_LEMBRETE = 500;
+export const REPETICOES = { uma_vez: 'Só uma vez', diario: 'Todo dia', dias_uteis: 'Todo dia útil', semanal: 'Toda semana' };
+export const limparLembrete = s => [...String(s == null ? '' : s).replace(/\s+/g, ' ').trim()].slice(0, MAX_LEMBRETE).join('').trim();
+const EMAIL_DA_EQUIPE = /^[a-z0-9._%+-]+@macedoereis\.com\.br$/;
+// 'AAAA-MM-DD' + 'HH:MM' de Brasília → o instante (ISO com o fuso), ou null
+export function quandoDeBrasilia(data, hora) {
+  if (!isoValida(String(data || '')) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(String(hora || ''))) return null;
+  return data + 'T' + hora + ':00-03:00';
+}
+// o instante → { data: 'AAAA-MM-DD', hora: 'HH:MM' } em Brasília (ou null)
+export function emBrasilia(iso) {
+  const t = new Date(iso || '').getTime();
+  if (!iso || !Number.isFinite(t)) return null;
+  const s = new Date(t - 3 * 3600e3).toISOString();
+  return { data: s.slice(0, 10), hora: s.slice(11, 16) };
+}
+// quando o lembrete chega: com a tarefa (que tem hora) e a antecedência, a hora da tarefa menos os minutos; senão, o quando
+export function horaDoLembrete(l, tarefa = null) {
+  const t = tarefa || (l && l.tarefas) || null;
+  if (l && l.antecedencia_min != null && t && t.prazo && t.hora) {
+    const base = quandoDeBrasilia(String(t.prazo).slice(0, 10), String(t.hora).slice(0, 5));
+    if (base) return new Date(new Date(base).getTime() - Number(l.antecedencia_min) * 60e3).toISOString();
+  }
+  return l && l.quando ? new Date(l.quando).toISOString() : null;
+}
+// "hoje às 11:00", "amanhã às 09:30", "sexta, 06/11 às 08:00" (o ano só quando é outro)
+const SEMANA_CURTA = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+export function textoDaHora(iso, agora = new Date()) {
+  const b = emBrasilia(iso), h = emBrasilia(agora.toISOString());
+  if (!b || !h) return '';
+  const dias = Math.round((Date.parse(b.data + 'T12:00:00Z') - Date.parse(h.data + 'T12:00:00Z')) / 864e5);
+  const dia = dias === 0 ? 'hoje' : dias === 1 ? 'amanhã'
+    : SEMANA_CURTA[new Date(b.data + 'T12:00:00Z').getUTCDay()] + ', ' + b.data.slice(8, 10) + '/' + b.data.slice(5, 7) + (b.data.slice(0, 4) !== h.data.slice(0, 4) ? '/' + b.data.slice(0, 4) : '');
+  return dia + ' às ' + b.hora;
+}
+// → { lembrete: { id, quando } | null, passou?: true, erro }. O id vem da tela: tentar de novo não cria outro (23505 = já
+// tinha entrado). Hora que já passou não grava: o cartão avisa e a pessoa escolhe outra.
+export async function criarLembrete(sb, { id, para, texto, quando, repeticao = 'uma_vez', tarefa_id = null, antecedencia_min = null } = {}, { agora = new Date() } = {}) {
+  const t = limparLembrete(texto);
+  if (!t) return { lembrete: null, erro: 'Escreva o que lembrar.' };
+  const email = String(para || '').trim().toLowerCase();
+  if (!EMAIL_DA_EQUIPE.test(email)) return { lembrete: null, erro: 'Escolha alguém da equipe.' };
+  if (!Object.prototype.hasOwnProperty.call(REPETICOES, repeticao)) return { lembrete: null, erro: 'Escolha se o lembrete repete.' };
+  const ms = new Date(quando || '').getTime();
+  if (!quando || !Number.isFinite(ms)) return { lembrete: null, erro: 'Escolha o dia e a hora.' };
+  if (ms <= agora.getTime()) return { lembrete: null, passou: true, erro: 'Esse horário já passou (agora são ' + emBrasilia(agora.toISOString()).hora + '). Escolha outro.' };
+  const ant = tarefa_id && antecedencia_min != null && Number.isInteger(Number(antecedencia_min)) ? Math.max(0, Math.min(10080, Number(antecedencia_min))) : null;
+  const linha = { ...(id ? { id: String(id) } : {}), para: email, texto: t, quando: new Date(ms).toISOString(), repeticao: tarefa_id ? 'uma_vez' : repeticao,
+    tarefa_id: tarefa_id ? String(tarefa_id) : null, antecedencia_min: ant };
+  const { data, error } = await sb.from('lembretes').insert(linha).select('id, quando');
+  if (error && error.code !== '23505') return { lembrete: null, erro: msg(error) };
+  const r = (data || [])[0];
+  return { lembrete: { id: String((r && r.id) || linha.id || ''), quando: (r && r.quando) || linha.quando }, erro: null };
+}
+// → { ids (os que saíram ou voltaram), erro } — só o que ainda está como estava (o que já chegou não muda)
+async function trocarLembretes(sb, ids, de, para) {
+  const out = [];
+  for (const p of partes(unicos(ids))) {
+    const { data, error } = await sb.from('lembretes').update({ situacao: para }).in('id', p).eq('situacao', de).select('id');
+    if (error) return { ids: out, erro: msg(error) };
+    out.push(...(data || []).map(r => String(r.id)));
+  }
+  return { ids: out, erro: null };
+}
+export const cancelarLembretes = (sb, ids) => trocarLembretes(sb, ids, 'pendente', 'cancelado');
+export const reativarLembretes = (sb, ids) => trocarLembretes(sb, ids, 'cancelado', 'pendente');
+// os que ainda vão chegar — os da pessoa e os que ela criou pra alguém (o banco só mostra esses) —, na ordem da hora
+export async function lembretesPendentes(sb) {
+  const { data, error } = await sb.from('lembretes').select('id, para, texto, quando, repeticao, tarefa_id, antecedencia_min, criado_por, tarefas(titulo, prazo, hora, status)')
+    .eq('situacao', 'pendente').order('quando', { ascending: true }).limit(100);
+  if (error) return { lembretes: [], erro: msg(error) };
+  const ls = (data || []).map(l => ({ ...l, hora: horaDoLembrete(l) })).sort((a, b) => String(a.hora || '').localeCompare(String(b.hora || '')));
+  return { lembretes: ls, erro: null };
+}

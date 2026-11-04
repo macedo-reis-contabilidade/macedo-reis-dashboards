@@ -286,6 +286,7 @@ export function iniciarAssistente({ email: e } = {}) {
   if (ctxPendente !== undefined) api.definirContexto(ctxPendente);
   else if (caminho === 'clientes/editar.html') contextoDaEmpresa();
   vigiaDoEndereco();
+  lembretesDoEndereco();
   setTimeout(recadoDoDia, 1600);
   ligarVida();
   return api;
@@ -300,6 +301,16 @@ function vigiaDoEndereco() {
   try { const u = new URL(location.href); u.searchParams.delete('vigia'); history.replaceState(history.state, '', u.pathname + u.search + u.hash); } catch (e) { /* fica no endereço */ }
   const todos = v === 'todos' && socio;
   setTimeout(() => abrirVigia({ ver: todos ? 'todos' : 'meus' }, todos ? 'O que o vigia achou, de todos:' : 'As suas pendências no vigia:'), 300);
+}
+
+// o botão "Ver os lembretes" do lembrete que chega no chat (04/11/2026): ?lembretes=1 abre o cartão dos lembretes que vão
+// chegar, cada um com "Cancelar" — é por ele que se para um lembrete que repete
+function lembretesDoEndereco() {
+  let v = null;
+  try { v = new URLSearchParams(location.search).get('lembretes'); } catch (e) { v = null; }
+  if (v !== '1') return;
+  try { const u = new URL(location.href); u.searchParams.delete('lembretes'); history.replaceState(history.state, '', u.pathname + u.search + u.hash); } catch (e) { /* fica no endereço */ }
+  setTimeout(() => { if (api && !api.mostrarAcao({ texto: 'Os seus lembretes:', acao: { tipo: 'lembretes' } })) api.abrir(); }, 300);
 }
 
 function montar() {

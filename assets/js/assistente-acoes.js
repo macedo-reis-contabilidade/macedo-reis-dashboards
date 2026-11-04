@@ -29,6 +29,10 @@
 // Agenda): a mensagem no histórico, sem concluir nem mudar a tarefa, com o "Desfazer" que tira as linhas.
 // Os cadastros (30/10/2026, pedido do Samuel): incluir empresa na campanha da Reforma, pôr empresa num mês dos boletos (com o
 // valor e o vencimento editáveis) e ajustar as obrigações das empresas em lote (quem cuida, o dia do prazo, desligar).
+// Os lembretes (04/11/2026, pedido do Samuel): o cartão do lembrete já preenchido (o texto, pra quem, o dia e a hora de
+// Brasília, se repete; o da tarefa, quantos minutos antes da hora dela) com o "Criar lembrete" e o "Desfazer" — hora que
+// já passou não grava —, e o cartão dos lembretes que vão chegar, cada um com "Cancelar" (e "Desfazer"). Na hora, o banco
+// manda pela conversa Avisos do sistema do chat.
 // Testes de tela: tests/harness/assistente-acoes.py, tests/harness/assistente-vigia.py, tests/harness/assistente-mensagem.py e
 // tests/harness/assistente-cadastros.py.
 // ============================================================
@@ -42,8 +46,9 @@ import { concluirTarefas, desfazerConclusao, marcarPagos, desfazerPagos, criarTa
   dadosDaCobranca, porNaCobranca, desfazerCobranca, acertarCadastro, desfazerCadastro,
   registrarNoHistorico, desfazerRegistro, limparMensagem, MAX_MENSAGEM, tarefaDoMesDoVinculo, criarTarefaDoMes, religarVinculo,
   incluirNaCampanha, desfazerInclusaoCampanha, dadosParaCompetencia, porNaCompetencia, desfazerPorNaCompetencia, COMPETENCIA_ISO,
-  limparAjuste, ajusteDoVinculo, ajustarVinculos, desfazerAjusteVinculos, responderPergunta, desfazerResposta } from './tarefas-acoes.js';
-import { EQUIPE, SOCIOS, nomePorEmail } from './equipe.js';
+  limparAjuste, ajusteDoVinculo, ajustarVinculos, desfazerAjusteVinculos, responderPergunta, desfazerResposta,
+  MAX_LEMBRETE, REPETICOES, quandoDeBrasilia, emBrasilia, horaDoLembrete, textoDaHora, criarLembrete, cancelarLembretes, reativarLembretes, lembretesPendentes } from './tarefas-acoes.js';
+import { EQUIPE, SOCIOS, NOME_POR_EMAIL, nomePorEmail } from './equipe.js';
 import { SETORES } from './nova-tarefa.js';
 import { lerAchados, ignorarAchado, reabrirAchado, filtrarAchados, agruparAchados, linkSeguro, ehSocioPeloNome, marcarVisto,
   resolvidosAgora, marcarResolvidoAgora, desmarcarResolvidoAgora, COLUNAS, perguntaDeOutro } from './vigia.js';
@@ -161,7 +166,8 @@ const linhaDaMensagem = m => (m ? sub('No histórico: “' + trecho(m) + '”') 
 export function cartaoDaAcao(acao, ajuda = {}) {
   const fazer = { concluir_tarefas: cartaoConcluir, alterar_tarefas: cartaoAlterar, registrar_historico: cartaoRegistrar, marcar_pago: cartaoPago, criar_tarefa: cartaoCriar,
     revisar_atrasadas: cartaoRevisao, vigia: cartaoVigia, arquivos: cartaoArquivos, enviar_mensagem: cartaoMensagem,
-    incluir_reforma: cartaoReforma, por_na_competencia: cartaoCompetencia, ajustar_obrigacoes: cartaoObrigacoes }[acao && acao.tipo];
+    incluir_reforma: cartaoReforma, por_na_competencia: cartaoCompetencia, ajustar_obrigacoes: cartaoObrigacoes,
+    criar_lembrete: cartaoLembrete, lembretes: cartaoLembretes }[acao && acao.tipo];
   if (!fazer) return null;
   const raiz = h('div', { class: 'as-cartao', role: 'group' });
   const estado = { ...acao };
@@ -575,6 +581,139 @@ function cartaoCriar({ raiz, estado, salvar, ajuda, anunciar }) {
     salvar({ estado: 'desfeita', desfeito: { n: d.excluidas.length } });
     if (d.excluidas.length) avisarTelas('mr:tarefas-mudaram', { ids: d.excluidas });
     anunciar('Desfeito.');
+    desenhar();
+  }
+  desenhar();
+}
+
+// ---------- os lembretes (04/11/2026): o cartão do lembrete novo e o dos que vão chegar ----------
+// quem tem login (a Edna não tem; quem saiu não está na EQUIPE): o lembrete chega pelo chat
+const COM_LOGIN = EQUIPE.map(n => [Object.keys(NOME_POR_EMAIL).find(e => NOME_POR_EMAIL[e] === n), n]).filter(([e]) => e);
+const novoUuid = () => (globalThis.crypto && crypto.randomUUID ? crypto.randomUUID()
+  : 'xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx'.replace(/x/g, () => Math.floor(Math.random() * 16).toString(16)));
+const pessoaDoLembrete = (email, eu) => (String(email || '').toLowerCase() === eu ? 'você' : nomePorEmail(email) || String(email || 'alguém'));
+const repeteTexto = r => (r && r !== 'uma_vez' && REPETICOES[r] ? REPETICOES[r].toLowerCase() : '');
+function cartaoLembrete({ raiz, estado, salvar, ajuda, anunciar }) {
+  raiz.setAttribute('aria-label', 'Lembrete');
+  const l = estado.lembrete && typeof estado.lembrete === 'object' ? estado.lembrete : {};
+  const tarefa = l.tarefa && l.tarefa.id ? { id: String(l.tarefa.id), titulo: String(l.tarefa.titulo || 'a tarefa'), prazo: l.tarefa.prazo || null, hora: l.tarefa.hora || null } : null;
+  const eu = String(ajuda.email || '').toLowerCase();
+  function desenhar() {
+    if (estado.estado === 'feita') return desenharFeita();
+    if (estado.estado === 'cancelada') return trocar(raiz, sub('Deixei como estava: nenhum lembrete criado.'));
+    if (estado.estado === 'desfeita') return trocar(raiz, h('span', { text: '↺ Desfeito: o lembrete não vai chegar.' }));
+    const campo = (rotulo, el, largo) => h('label', { class: 'as-cartao-campo' + (largo ? ' largo' : '') }, rotulo, el);
+    const texto = h('input', { type: 'text', value: String(l.texto || ''), maxlength: String(MAX_LEMBRETE), 'aria-required': 'true' });
+    const para = h('select', {}, COM_LOGIN.map(([e, n]) => h('option', { value: e, text: e === eu ? n + ' (você)' : n })));
+    const pedido = String((l.para && l.para.email) || '').toLowerCase();
+    para.value = COM_LOGIN.some(([e]) => e === pedido) ? pedido : COM_LOGIN.some(([e]) => e === eu) ? eu : COM_LOGIN[0][0];
+    const comAntes = !!(tarefa && tarefa.hora && Number.isInteger(Number(l.antecedencia_min)));
+    const base = emBrasilia(l.quando) || emBrasilia(new Date(Date.now() + 3600e3).toISOString());
+    const data = h('input', { type: 'date', value: base.data }), hora = h('input', { type: 'time', value: base.hora });
+    const antes = comAntes ? h('input', { type: 'number', min: '0', max: '10080', step: '5', value: String(l.antecedencia_min) }) : null;
+    const rep = tarefa ? null : h('select', {}, Object.entries(REPETICOES).map(([v, r]) => h('option', { value: v, text: r })));
+    if (rep) rep.value = Object.prototype.hasOwnProperty.call(REPETICOES, l.repeticao) ? l.repeticao : 'uma_vez';
+    const quandoAgora = () => (comAntes ? horaDoLembrete({ antecedencia_min: Math.max(0, parseInt(antes.value, 10) || 0), quando: null }, tarefa) : quandoDeBrasilia(data.value, hora.value));
+    const previa = h('div', { class: 'as-cartao-sub', 'aria-live': 'polite' });
+    const erro = h('div', { class: 'as-cartao-erro', hidden: true });
+    const atualizar = () => {
+      const q = quandoAgora();
+      previa.textContent = !q ? 'Escolha o dia e a hora.' : new Date(q).getTime() <= Date.now() ? 'Esse horário já passou: escolha outro.'
+        : 'Chega ' + textoDaHora(q) + (rep && rep.value !== 'uma_vez' ? ' e depois ' + repeteTexto(rep.value) : '') + ', na conversa Avisos do sistema do chat.';
+    };
+    [data, hora, antes, rep].filter(Boolean).forEach(x => { x.addEventListener('input', atualizar); x.addEventListener('change', atualizar); });
+    atualizar();
+    const ok = botao('Criar lembrete', criar, 'pri');
+    const nao = botao('Agora não', () => { salvar({ estado: 'cancelada' }); desenhar(); });
+    async function criar() {
+      const q = quandoAgora();
+      if (!texto.value.trim()) { erro.textContent = 'Escreva o que lembrar.'; erro.hidden = false; texto.focus(); return; }
+      if (!q) { erro.textContent = 'Escolha o dia e a hora.'; erro.hidden = false; (comAntes ? antes : data).focus(); return; }
+      if (!estado.idNovo) salvar({ idNovo: novoUuid() });
+      ok.disabled = true; nao.disabled = true; ok.textContent = 'Criando…'; erro.hidden = true;
+      const r = await criarLembrete(supabase, { id: estado.idNovo, para: para.value, texto: texto.value, quando: q, repeticao: rep ? rep.value : 'uma_vez',
+        tarefa_id: tarefa ? tarefa.id : null, antecedencia_min: comAntes ? Math.max(0, parseInt(antes.value, 10) || 0) : null });
+      if (r.erro || !r.lembrete) {
+        erro.textContent = r.passou ? r.erro : 'Não consegui criar: ' + (r.erro || 'o banco não devolveu o lembrete');
+        erro.hidden = false; ok.disabled = false; nao.disabled = false; ok.textContent = 'Criar lembrete'; if (r.passou) hora.focus(); return;
+      }
+      salvar({ estado: 'feita', resultado: { id: r.lembrete.id, para: para.value, quando: q, repeticao: rep ? rep.value : 'uma_vez', texto: texto.value.trim(), tarefa: tarefa ? tarefa.titulo : null, em: new Date().toISOString() } });
+      try { ajuda.reagir && ajuda.reagir(); } catch (e) { /* sem carinha */ }
+      anunciar('Lembrete criado.');
+      desenhar();
+    }
+    trocar(raiz, h('div', { class: 'as-cartao-tit', text: 'Novo lembrete' }),
+      h('div', { class: 'as-cartao-campos' }, campo('O que lembrar', texto, true), campo('Pra quem', para),
+        comAntes ? campo('Minutos antes da hora da tarefa', antes) : [campo('Dia', data), campo('Hora (Brasília)', hora)], rep ? campo('Repete', rep) : null),
+      tarefa ? sub('Sobre a tarefa: ' + tarefa.titulo + (tarefa.prazo ? ' (' + dataBR(tarefa.prazo) + (tarefa.hora ? ' às ' + String(tarefa.hora).slice(0, 5) : '') + ')' : '')) : null,
+      previa, h('div', { class: 'as-cartao-botoes' }, ok, nao), erro);
+  }
+  function desenharFeita() {
+    const r = estado.resultado || {};
+    const linha = h('div', { class: 'as-cartao-feito' }, h('span', { class: 'as-cartao-ok', text: '✓ Lembrete criado.' }),
+      h('span', { class: 'as-cartao-sub', text: 'Chega ' + textoDaHora(r.quando) + (repeteTexto(r.repeticao) ? ' e depois ' + repeteTexto(r.repeticao) : '')
+        + (String(r.para || '').toLowerCase() === eu ? '' : ', pra ' + pessoaDoLembrete(r.para, eu)) + ': “' + trecho(r.texto, 120) + '”' }));
+    if (r.id && podeDesfazer(r.em)) linha.append(botao('Desfazer', desfazer, 'link'));
+    trocar(raiz, linha);
+  }
+  async function desfazer(ev) {
+    const b = ev.currentTarget, r = estado.resultado || {};
+    if (!podeDesfazer(r.em)) { trocar(raiz, sub('Passou o tempo de desfazer por aqui: pergunte "quais lembretes eu tenho?" e cancele lá.')); return; }
+    b.disabled = true; b.textContent = 'Desfazendo…';
+    const d = await cancelarLembretes(supabase, [r.id]);
+    if (d.erro) { b.disabled = false; b.textContent = 'Desfazer'; raiz.append(h('div', { class: 'as-cartao-erro', text: 'Não consegui desfazer: ' + d.erro })); return; }
+    if (!d.ids.length) { trocar(raiz, sub('O lembrete já chegou: não deu pra desfazer.')); return; }
+    salvar({ estado: 'desfeita' });
+    anunciar('Desfeito.');
+    desenhar();
+  }
+  desenhar();
+}
+
+function cartaoLembretes({ raiz, estado, salvar, ajuda, anunciar }) {
+  raiz.setAttribute('aria-label', 'Lembretes');
+  const eu = String(ajuda.email || '').toLowerCase();
+  const cancelados = () => (estado.cancelados && typeof estado.cancelados === 'object' ? estado.cancelados : {});
+  async function desenhar() {
+    trocar(raiz, sub('Lendo os lembretes…'));
+    const { lembretes, erro } = await lembretesPendentes(supabase);
+    if (erro) return trocar(raiz, h('div', { class: 'as-cartao-erro', text: 'Não consegui ler os lembretes agora.' }), h('div', { class: 'as-cartao-botoes' }, botao('Tentar de novo', desenhar)));
+    // os cancelados aqui há menos de 10 minutos ficam na lista, com o "Desfazer"
+    const voltaveis = Object.entries(cancelados()).filter(([id, c]) => c && podeDesfazer(c.em) && !lembretes.some(l => String(l.id) === id))
+      .map(([id, c]) => ({ id, ...c, cancelado: true }));
+    const todos = [...lembretes.map(l => ({ id: String(l.id), texto: l.texto, hora: l.hora, para: l.para, criado_por: l.criado_por, repeticao: l.repeticao,
+      tarefa: l.tarefas && l.tarefas.titulo ? l.tarefas.titulo : null })), ...voltaveis].sort((a, b) => String(a.hora || '').localeCompare(String(b.hora || '')));
+    if (!todos.length) return trocar(raiz, h('div', { class: 'as-cartao-tit', text: 'Lembretes' }), sub('Nenhum lembrete pra chegar. Pra criar, é só pedir: "me lembra amanhã às 9h de…".'));
+    const ul = h('ul', { class: 'as-cartao-lista' }, todos.map(l => {
+      const quem = [String(l.para || '').toLowerCase() !== eu ? 'pra ' + pessoaDoLembrete(l.para, eu) : '',
+        String(l.criado_por || '').toLowerCase() !== eu && l.criado_por ? 'de ' + pessoaDoLembrete(l.criado_por, eu) : '',
+        repeteTexto(l.repeticao), l.tarefa ? 'tarefa: ' + trecho(l.tarefa, 60) : ''].filter(Boolean).join(' · ');
+      const acao = l.cancelado
+        ? [h('span', { class: 'as-cartao-sub', text: 'Cancelado.' }), botao('Desfazer', ev => voltar(ev, l), 'link')]
+        : [botao('Cancelar', ev => cancelar(ev, l), 'link')];
+      return h('li', {}, h('div', { class: 'as-cartao-item' }, h('span', { style: 'flex:1' }, h('b', { text: (l.hora ? textoDaHora(l.hora) : '—') + ' · ' + trecho(l.texto, 140) }), quem ? h('small', { text: quem }) : null), acao));
+    }));
+    const n = lembretes.length;
+    trocar(raiz, h('div', { class: 'as-cartao-tit', text: n ? qtd(n, 'lembrete pra chegar', 'lembretes pra chegar') : 'Lembretes' }), ul,
+      sub('Chegam na conversa Avisos do sistema do chat, na hora.'));
+  }
+  async function cancelar(ev, l) {
+    const b = ev.currentTarget; b.disabled = true; b.textContent = 'Cancelando…';
+    const d = await cancelarLembretes(supabase, [l.id]);
+    if (d.erro) { b.disabled = false; b.textContent = 'Cancelar'; raiz.append(h('div', { class: 'as-cartao-erro', text: 'Não consegui cancelar: ' + d.erro })); return; }
+    if (d.ids.length) {
+      salvar({ cancelados: { ...cancelados(), [l.id]: { em: new Date().toISOString(), texto: l.texto, hora: l.hora, para: l.para, criado_por: l.criado_por, repeticao: l.repeticao, tarefa: l.tarefa } } });
+      anunciar('Lembrete cancelado.');
+    }
+    desenhar();
+  }
+  async function voltar(ev, l) {
+    const b = ev.currentTarget; b.disabled = true; b.textContent = 'Desfazendo…';
+    const d = await reativarLembretes(supabase, [l.id]);
+    if (d.erro) { b.disabled = false; b.textContent = 'Desfazer'; raiz.append(h('div', { class: 'as-cartao-erro', text: 'Não consegui desfazer: ' + d.erro })); return; }
+    const c = { ...cancelados() }; delete c[l.id];
+    salvar({ cancelados: c });
+    if (d.ids.length) anunciar('Desfeito: o lembrete volta a valer.');
     desenhar();
   }
   desenhar();
