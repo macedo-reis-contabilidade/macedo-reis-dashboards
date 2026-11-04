@@ -497,6 +497,13 @@ export const OCUPACOES = [
 ];
 
 const texto = (v, n) => [...String(v == null ? '' : v).replace(/\s+/g, ' ').trim()].slice(0, n).join('').trim();
+// o texto longo da IA (alerta, resumo): cortado na última palavra inteira, com reticências — nunca no meio da palavra
+const curto = (v, n) => {
+  const t = [...String(v == null ? '' : v).replace(/\s+/g, ' ').trim()];
+  if (t.length <= n) return t.join('');
+  const s = t.slice(0, n - 1).join('');
+  return s.replace(/\s+\S*$/, '').replace(/[\s,;:.—-]+$/, '') + '…';
+};
 const sem = s => String(s == null ? '' : s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
 const POR_NOME = new Map(OCUPACOES.map((o, i) => [sem(o[0]), i + 1]));
 
@@ -547,8 +554,8 @@ export function limparSugestao(s) {
     if (x && secundarios.length < MAX_SECUNDARIAS) secundarios.push(x);
   }
   if (!principal && secundarios.length && s.pode_ser_mei !== false) principal = secundarios.shift();
-  const alertas = (Array.isArray(s.alertas) ? s.alertas : []).map(x => texto(x, 400)).filter(Boolean).slice(0, 8);
+  const alertas = (Array.isArray(s.alertas) ? s.alertas : []).map(x => curto(x, 700)).filter(Boolean).slice(0, 8);
   if (fora) alertas.push(fora === 1 ? 'Uma ocupação sugerida pela IA ficou de fora: não está na lista oficial do MEI.' : fora + ' ocupações sugeridas pela IA ficaram de fora: não estão na lista oficial do MEI.');
   const pode = s.pode_ser_mei !== false && !!principal;
-  return { pode_ser_mei: pode, principal: pode ? principal : null, secundarios: pode ? secundarios : [], alertas, resumo: texto(s.resumo, 600), lista: LIDA_EM };
+  return { pode_ser_mei: pode, principal: pode ? principal : null, secundarios: pode ? secundarios : [], alertas, resumo: curto(s.resumo, 700), lista: LIDA_EM };
 }
