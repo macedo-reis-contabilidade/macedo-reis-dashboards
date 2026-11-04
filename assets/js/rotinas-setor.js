@@ -11,6 +11,8 @@
 // =====================================================================
 import { supabase, getCurrentUser, signOut } from './supabase.js';
 import { hojeLocal } from './utils.js';
+import { somaDias, fmtData } from './rescisao-datas.js';
+import { nesimoDiaUtil } from './dias-uteis.js';
 
 const CSS = `
   .rv { display:grid; grid-template-columns:minmax(240px, 320px) minmax(0, 1fr); gap:16px; align-items:start; }
@@ -116,8 +118,10 @@ export function initRotinasSetor(cfg) {
             <select class="input" id="ovResp"></select></label>
         </div>
         <div class="row">
-          <label class="f">Dia
+          <label class="f"><span id="ovDiaRot">Dia</span>
             <input class="input" id="ovDia" type="number" min="1" max="31" placeholder="ex.: 20"></label>
+          <label class="f" id="ovTipoWrap">Contar
+            <select class="input" id="ovTipo"><option value="dia">pelo dia do mês</option><option value="util">pelos dias úteis (ex.: 5º dia útil)</option></select></label>
           <label class="f" id="ovMesWrap">Mês
             <select class="input" id="ovMes">
               <option value="1">Janeiro</option><option value="2">Fevereiro</option><option value="3">Março</option><option value="4">Abril</option>
@@ -125,7 +129,8 @@ export function initRotinasSetor(cfg) {
               <option value="9">Setembro</option><option value="10">Outubro</option><option value="11">Novembro</option><option value="12">Dezembro</option>
             </select></label>
         </div>
-        <label style="display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--text-2);cursor:pointer"><input type="checkbox" id="ovUtil" checked> Se cair no fim de semana, vale o próximo dia útil</label>
+        <label id="ovUtilWrap" style="display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--text-2);cursor:pointer"><input type="checkbox" id="ovUtil" checked> Se cair no fim de semana, vale o próximo dia útil</label>
+        <div class="dica" id="ovUtilDica" style="display:none"></div>
         <label class="f">Observação <span class="dica">${esc(C.dicaObs)}</span>
           <input class="input" id="ovObs"></label>
       </div>
@@ -179,7 +184,8 @@ export function initRotinasSetor(cfg) {
   }
 
   const mes6 = m => ((m + 5) % 12) + 1;
-  const dataTxt = v => v.periodicidade === 'anual' ? `${v.dia_vencimento || '?'}/${MESES[v.mes_vencimento] || '?'} de cada ano`
+  const dataTxt = v => v.periodicidade === 'mensal' && v.dia_util_n ? `${v.dia_util_n}º dia útil de cada mês`
+    : v.periodicidade === 'anual' ? `${v.dia_vencimento || '?'}/${MESES[v.mes_vencimento] || '?'} de cada ano`
     : v.periodicidade === 'semestral' ? `dia ${v.dia_vencimento || '?'} de ${MESES[v.mes_vencimento] || '?'} e ${MESES[mes6(v.mes_vencimento)] || '?'}`
     : v.periodicidade === 'mensal' ? `dia ${v.dia_vencimento || '?'} de cada mês`
     : `${esc(v.periodicidade || '?')} <span class="dim">(fora do padrão — edite pra mensal, semestral ou anual)</span>`;
@@ -200,7 +206,7 @@ export function initRotinasSetor(cfg) {
       ${vs.length ? `<table class="rv-tab"><thead><tr><th><input type="checkbox" id="rvTodas" ${n && n === vs.length ? 'checked' : ''}></th><th>Empresa</th><th>Quando</th><th>Responsável</th><th>Observação</th><th>Próxima tarefa</th><th></th></tr></thead><tbody>
         ${vs.map(v => `<tr><td><input type="checkbox" data-sel="${v.id}" ${marcados.has(v.id) ? 'checked' : ''}></td>
           <td>${esc(v.clientes?.nome_principal || '—')}</td>
-          <td>${dataTxt(v)}${v.dia_util ? '' : ' <span class="dim">(dia exato)</span>'}</td>
+          <td>${dataTxt(v)}${v.dia_util || (v.periodicidade === 'mensal' && v.dia_util_n) ? '' : ' <span class="dim">(dia exato)</span>'}</td>
           <td>${esc(v.responsavel || '—')}</td>
           <td class="dim">${esc(v.observacao || '')}</td>
           <td class="dim">${proximas[v.id] ? fdata(proximas[v.id]) : 'nasce até 31 dias antes'}</td>
@@ -294,7 +300,8 @@ export function initRotinasSetor(cfg) {
     $('ovAlvo').textContent = m === 'alterar' ? lista.map(v => v.clientes?.nome_principal || '—').join(' · ') : '';
     const base = lista[0] || {};
     $('ovPer').value = ['mensal', 'semestral', 'anual'].includes(base.periodicidade) ? base.periodicidade : 'mensal';
-    $('ovDia').value = base.dia_vencimento || '';
+    $('ovTipo').value = base.periodicidade === 'mensal' && base.dia_util_n ? 'util' : 'dia';
+    $('ovDia').value = (base.periodicidade === 'mensal' && base.dia_util_n) || base.dia_vencimento || '';
     $('ovMes').value = String(base.mes_vencimento || 1);
     $('ovUtil').checked = base.dia_util !== false;
     $('ovResp').value = base.responsavel && EQUIPE.includes(base.responsavel) ? base.responsavel : '';
@@ -307,12 +314,32 @@ export function initRotinasSetor(cfg) {
   const fechar = () => $('rvOv').classList.remove('on');
   $('ovX').onclick = fechar; $('ovCancelar').onclick = fechar;
   $('rvOv').addEventListener('click', e => { if (e.target.id === 'rvOv') fechar(); });
+  // a dica da janela: o N-ésimo dia útil deste mês e do que vem, pela conta da CLT de dias-uteis.js — a mesma do
+  // dia_util_do_mes do banco, que gera as tarefas
+  const tipoTroca = () => {
+    const util = $('ovPer').value === 'mensal' && $('ovTipo').value === 'util';
+    $('ovDiaRot').textContent = util ? 'Qual dia útil (1 a 22)' : 'Dia';
+    $('ovDia').max = util ? '22' : '31';
+    $('ovDia').placeholder = util ? 'ex.: 5' : 'ex.: 20';
+    $('ovUtilWrap').style.display = util ? 'none' : 'flex';
+    const n = parseInt($('ovDia').value, 10), dica = $('ovUtilDica');
+    if (!util) { dica.style.display = 'none'; return; }
+    const hoje = hojeLocal(), m1 = hoje.slice(0, 7), m2 = somaDias(m1 + '-28', 7).slice(0, 7);
+    const d1 = n >= 1 && n <= 22 ? nesimoDiaUtil(m1, n) : null, d2 = n >= 1 && n <= 22 ? nesimoDiaUtil(m2, n) : null;
+    dica.textContent = 'Conta como a CLT: o sábado conta, o domingo e os feriados nacionais e do RS não. Caiu no sábado, a tarefa vem na sexta (o dia útil anterior).'
+      + (d1 && d2 ? ` O ${n}º dia útil deste mês fica em ${fmtData(d1)}; o do mês que vem, em ${fmtData(d2)}.` : '');
+    dica.style.display = '';
+  };
   const perTroca = () => {
     const p = $('ovPer').value;
-    $('ovMesWrap').style.visibility = p === 'mensal' ? 'hidden' : 'visible';
+    $('ovMesWrap').style.display = p === 'mensal' ? 'none' : '';
+    $('ovTipoWrap').style.display = p === 'mensal' ? '' : 'none';
     $('ovMesWrap').firstChild.textContent = p === 'semestral' ? 'Primeiro mês (repete 6 meses depois)' : 'Mês';
+    tipoTroca();
   };
   $('ovPer').addEventListener('change', perTroca);
+  $('ovTipo').addEventListener('change', tipoTroca);
+  $('ovDia').addEventListener('input', tipoTroca);
 
   function renderChips() {
     $('ovChips').innerHTML = clis.map(c => `<span class="chip">🏢 ${esc(c.nome)} <a href="#" data-tira="${c.id}" title="Tirar">✕</a></span>`).join('');
@@ -343,9 +370,12 @@ export function initRotinasSetor(cfg) {
   $('ovSalvar').onclick = async () => {
     const per = $('ovPer').value, dia = parseInt($('ovDia').value, 10), mes = parseInt($('ovMes').value, 10);
     const resp = $('ovResp').value, obs = $('ovObs').value.trim(), util = $('ovUtil').checked;
-    if (!(dia >= 1 && dia <= 31)) { alert('Informe o dia (1 a 31).'); return; }
+    const porUteis = per === 'mensal' && $('ovTipo').value === 'util';
+    if (porUteis && !(dia >= 1 && dia <= 22)) { alert('Informe qual dia útil (1 a 22).'); return; }
+    if (!porUteis && !(dia >= 1 && dia <= 31)) { alert('Informe o dia (1 a 31).'); return; }
     if (!resp) { alert('Escolha o responsável — a tarefa vai pra agenda dessa pessoa.'); return; }
-    const campos = { periodicidade: per, dia_vencimento: dia, mes_vencimento: per === 'mensal' ? null : mes, dia_util: util, responsavel: resp };
+    const campos = { periodicidade: per, dia_vencimento: porUteis ? null : dia, dia_util_n: porUteis ? dia : null,
+      mes_vencimento: per === 'mensal' ? null : mes, dia_util: porUteis ? true : util, responsavel: resp };
     const r = rotinas.find(x => x.id === sel);
     const b = $('ovSalvar'); b.disabled = true;
     try {

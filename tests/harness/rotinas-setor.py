@@ -14,6 +14,10 @@ Confere, nos temas escuro e claro:
     5. "transformar em rotina" (avulsa) cria a rotina no Contábil e passa o vínculo pra ela.
   DP (dp-regras.html)
     6. lista só a rotina do DP; vincular grava com setor 'dp'.
+   11. pelos dias úteis (04/11/2026, a folha no 5º dia útil): "Contar pelos dias úteis" troca o campo por "Qual dia
+       útil", tira a caixa do fim de semana, a dica explica a conta da CLT (o sábado conta, caiu no sábado vem na sexta)
+       com a data deste mês pela conta de dias-uteis.js; grava dia_util_n sem o dia do mês, a lista mostra "5º dia útil
+       de cada mês", editar abre pelos dias úteis e voltar pro dia do mês limpa o dia útil.
   Hub (contabil.html)
     7. tem o card "Tarefas recorrentes" apontando pra contabil-regras.html.
   Financeiro (financeiro-regras.html e financeiro.html)
@@ -115,6 +119,25 @@ def main():
             vincular(p, 'emp', 'c2', 20, 'Vitória')
             novo = p.evaluate("() => window.__mockDb.tarefas_recorrentes.find(v => v.cliente_id === 'c2' && v.modelo_id === 'rm1')")
             ok(bool(novo) and novo['setor'] == 'dp' and novo['responsavel'] == 'Vitória', '6. vincular no DP grava com setor dp')
+            # 11. pelos dias úteis (04/11/2026: a folha da Vitória no 5º dia útil, contado como a CLT)
+            p.locator('[data-ed="tr1"]').click(); p.wait_for_timeout(300)
+            ok(p.locator('#ovTipoWrap').is_visible() and p.input_value('#ovTipo') == 'dia', '11. mensal: "Contar" aparece, pelo dia do mês')
+            p.select_option('#ovTipo', 'util'); p.fill('#ovDia', '5'); p.wait_for_timeout(200)
+            dica = p.inner_text('#ovUtilDica')
+            esperado = p.evaluate("""async () => { const { nesimoDiaUtil } = await import('./assets/js/dias-uteis.js'); const { fmtData } = await import('./assets/js/rescisao-datas.js');
+              const h = new Date(), m1 = h.getFullYear() + '-' + String(h.getMonth() + 1).padStart(2, '0'); return fmtData(nesimoDiaUtil(m1, 5)); }""")
+            ok('o sábado conta' in dica and 'vem na sexta' in dica and bool(esperado) and esperado in dica, f'11. a dica explica a conta da CLT e dá a data deste mês ({esperado})')
+            ok(p.locator('#ovUtilWrap').is_hidden() and p.inner_text('#ovDiaRot').startswith('Qual dia útil'), '11. pelos dias úteis: sem a caixa do fim de semana, o campo vira "Qual dia útil"')
+            p.screenshot(path=str(FOTOS / f'rotinas-dia-util-{tema}.png'))
+            p.click('#ovSalvar'); p.wait_for_timeout(700)
+            v = p.evaluate("() => window.__mockDb.tarefas_recorrentes.find(x => x.id === 'tr1')")
+            ok(v.get('dia_util_n') == 5 and v.get('dia_vencimento') is None and v.get('dia_util') is True, f'11. gravou o 5º dia útil, sem o dia do mês ({v})')
+            ok('5º dia útil de cada mês' in p.inner_text('#rvPainel'), '11. a lista mostra "5º dia útil de cada mês"')
+            p.locator('[data-ed="tr1"]').click(); p.wait_for_timeout(300)
+            ok(p.input_value('#ovTipo') == 'util' and p.input_value('#ovDia') == '5', '11. editar de novo abre pelos dias úteis, no 5')
+            p.select_option('#ovTipo', 'dia'); p.fill('#ovDia', '20'); p.click('#ovSalvar'); p.wait_for_timeout(700)
+            v = p.evaluate("() => window.__mockDb.tarefas_recorrentes.find(x => x.id === 'tr1')")
+            ok(v.get('dia_util_n') is None and v.get('dia_vencimento') == 20, '11. de volta pro dia do mês: dia 20, sem o dia útil')
             p.close()
 
             print(f'[{tema}] Hub do Contábil')
