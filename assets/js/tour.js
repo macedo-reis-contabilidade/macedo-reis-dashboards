@@ -41,28 +41,46 @@
     document.head.appendChild(st);
   }
 
+  // O passo: { el, titulo, texto } — el é o seletor do que o passo mostra (ou uma função que devolve o elemento).
+  // Opcionais (04/11/2026, o tour do Controle das contabilidades): antes() prepara a tela pro passo (abre o que ele mostra:
+  // uma janela, as opções de um mês) e se() diz se o passo vale quando o que ele mostra só existe depois do antes().
+  // No iniciar, { aoTerminar } arruma a tela quando o tour acaba (Concluir, Pular ou Esc). Erro num deles não trava o tour.
+  function alvoDe(p) {
+    try { return typeof p.el === 'function' ? p.el() : document.querySelector(p.el); } catch (e) { return null; }
+  }
+  function vale(p) {
+    try { return p.se ? !!p.se() : !!alvoDe(p); } catch (e) { return false; }
+  }
+  function chamar(f) {
+    if (typeof f === 'function') { try { f(); } catch (e) { /* o gancho da página não trava o tour */ } }
+  }
+
   function limpar() {
     if (!estado) return;
     ['block', 'spot', 'box'].forEach(k => estado[k] && estado[k].remove());
     window.removeEventListener('resize', reposicionar);
     window.removeEventListener('scroll', reposicionar, true);
-    document.removeEventListener('keydown', teclas);
+    document.removeEventListener('keydown', teclas, true);
+    const fim = estado.aoTerminar;
     estado = null;
+    chamar(fim);
   }
 
   function terminar(concluiu) {
-    if (estado) localStorage.setItem(chaveStorage(estado.chave), concluiu ? 'ok' : 'pulado');
+    if (estado) { try { localStorage.setItem(chaveStorage(estado.chave), concluiu ? 'ok' : 'pulado'); } catch (e) {} }
     limpar();
   }
 
+  // na captura e sem a ação padrão: com o tour aberto, o Enter não aperta o botão que estava com o foco na tela
   function teclas(e) {
-    if (e.key === 'Escape') terminar(false);
-    if (e.key === 'ArrowRight' || e.key === 'Enter') avancar(1);
-    if (e.key === 'ArrowLeft') avancar(-1);
+    if (!estado) return;
+    if (e.key === 'Escape') { e.preventDefault(); terminar(false); }
+    else if (e.key === 'ArrowRight' || e.key === 'Enter') { e.preventDefault(); avancar(1); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); avancar(-1); }
   }
 
   function passoValido(i) {
-    while (i >= 0 && i < estado.passos.length && !document.querySelector(estado.passos[i].el)) i += estado.dir;
+    while (i >= 0 && i < estado.passos.length && !vale(estado.passos[i])) i += estado.dir;
     return i;
   }
 
@@ -77,7 +95,7 @@
 
   function reposicionar() {
     if (!estado) return;
-    const alvo = document.querySelector(estado.passos[estado.i].el);
+    const alvo = alvoDe(estado.passos[estado.i]);
     if (!alvo) return;
     const r = alvo.getBoundingClientRect();
     Object.assign(estado.spot.style, {
@@ -96,10 +114,21 @@
 
   function mostrar() {
     const p = estado.passos[estado.i];
-    const alvo = document.querySelector(p.el);
+    chamar(p.antes);
+    if (!estado) return;
+    const alvo = alvoDe(p);
+    if (!alvo) {   // o preparo não abriu o que o passo mostra: segue pro próximo
+      estado.dir = 1;
+      const prox = passoValido(estado.i + 1);
+      if (prox >= estado.passos.length) { terminar(true); return; }
+      estado.i = prox;
+      mostrar();
+      return;
+    }
     alvo.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    const vistos = estado.passos.filter(x => document.querySelector(x.el)).length;
-    const pos = estado.passos.slice(0, estado.i + 1).filter(x => document.querySelector(x.el)).length;
+    const validos = estado.passos.map(vale);
+    const vistos = validos.filter(Boolean).length;
+    const pos = validos.slice(0, estado.i + 1).filter(Boolean).length;
     estado.box.innerHTML =
       '<h4>' + p.titulo + '</h4><p>' + p.texto + '</p>' +
       '<div class="mrt-foot"><span class="mrt-passo">' + pos + ' de ' + vistos + '</span>' +
@@ -117,14 +146,16 @@
     return 'mr_tour_' + chave + (usuarioAtual ? '::' + usuarioAtual : '');
   }
 
-  function iniciar(passos, chave, forca, usuario) {
+  function iniciar(passos, chave, forca, usuario, opcoes) {
     if (usuario) usuarioAtual = String(usuario);
-    registrado = { passos, chave };
+    registrado = { passos, chave, opcoes: opcoes || {} };
     if (estado) return;
-    if (!forca && localStorage.getItem(chaveStorage(chave))) return;
-    if (!passos.some(p => document.querySelector(p.el))) return;
+    let visto = null;
+    try { visto = localStorage.getItem(chaveStorage(chave)); } catch (e) {}
+    if (!forca && visto) return;
+    if (!passos.some(vale)) return;
     montar();
-    estado = { passos, chave, i: -1, dir: 1,
+    estado = { passos, chave, i: -1, dir: 1, aoTerminar: (opcoes || {}).aoTerminar,
       block: document.createElement('div'),
       spot: document.createElement('div'),
       box: document.createElement('div') };
@@ -134,7 +165,7 @@
     document.body.append(estado.block, estado.spot, estado.box);
     window.addEventListener('resize', reposicionar);
     window.addEventListener('scroll', reposicionar, true);
-    document.addEventListener('keydown', teclas);
+    document.addEventListener('keydown', teclas, true);
     avancar(1);
   }
 
@@ -158,7 +189,7 @@
     });
     menu.querySelector('[data-a="rever"]').addEventListener('click', () => {
       menu.classList.remove('is-open');
-      if (registrado && !estado) iniciar(registrado.passos, registrado.chave, true);
+      if (registrado && !estado) iniciar(registrado.passos, registrado.chave, true, '', registrado.opcoes);
     });
     document.addEventListener('click', e => {
       if (!menu.contains(e.target) && e.target !== a) menu.classList.remove('is-open');

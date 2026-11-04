@@ -137,10 +137,12 @@
     </div>
   </div>
 
+  <script src="assets/js/tour.js"></script>
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { hojeLocal } from './assets/js/utils.js';
     import { EQUIPE, nomePorEmail } from './assets/js/equipe.js';
+    import { assistenteDaTela } from './assets/js/assistente-escritorio.js';
     import { SITUACOES, AGUARDANDO, NOMES_MES, mesValido, somaMes, mesesEntre, rotuloMes, mesPorExtenso, dataBR, ultimoFechavel, mapaDosMeses,
       estadoDoMes, resumoDaEmpresa, textoDasFaixas, textoDeMeses, mesesAteAqui, linhasParaMarcar, desfazerDe, dominioPorMes, textoDoDominio,
       dicaDoDominio, avisosDaEmpresa, limparPendencia, rotuloAguardando, textoDaPendencia, ordenarPendencias, nomeDaEmpresa, semAcento,
@@ -178,8 +180,88 @@
       catch (e) { $('gradeWrap').innerHTML = ''; $('erroGeral').textContent = 'Não consegui carregar o controle: ' + (e && e.message ? e.message : e); return; }
       desenhar();
       const emp = new URLSearchParams(location.search).get('empresa');
-      if (emp && st.empresas.has(emp)) abrirEmpresa(emp);
+      const comFicha = !!(emp && st.empresas.has(emp));
+      if (comFicha) abrirEmpresa(emp);
+      iniciarTour(comFicha);
     })();
+
+    // ---------- o assistente do escritório: com a ficha aberta, "esta empresa" é a da ficha ----------
+    // (sem o recado a cada ficha aberta: a Adaini abre muitas em seguida)
+    const assistente = assistenteDaTela({
+      exemplos: c => (c ? ['O que falta pra fechar esta empresa?', 'Como estão os lançamentos e as notas dela no Domínio?'] : null),
+      seguintes: c => (c ? ['O que falta pra fechar esta empresa?'] : []),
+      recadoContexto: () => null
+    });
+
+    // ---------- o tour (04/11/2026, pedido do Samuel pra explicar a tela à Adaini) ----------
+    // O tour da casa (assets/js/tour.js): começa sozinho na primeira visita de cada pessoa, o ? do canto revê e ?tour=1
+    // força. Ele mesmo abre as opções de um mês e a ficha de uma empresa pra mostrar, sem gravar nada, e fecha tudo no fim.
+    // Na tela aberta pelo link de uma ficha (?empresa=), não começa sozinho por cima dela.
+    const tour = { cel: null, emp: null };
+    function celulaDoTour() {
+      if (tour.cel && document.body.contains(tour.cel)) return tour.cel;
+      // um mês a fazer de quem tem mais de um mês aberto até ele (o "feita até aqui" aparece), senão qualquer mês
+      const cs = [...$('gradeWrap').querySelectorAll('button.cc-c.is-afazer:not([disabled])')];
+      tour.cel = cs.find(b => mesesAteAqui(st.empresas.get(b.dataset.id), mesesDe(b.dataset.id), b.dataset.c, 'feita').length > 1)
+        || cs[0] || $('gradeWrap').querySelector('button.cc-c:not([disabled])');
+      return tour.cel;
+    }
+    function empresaDoTour() {
+      const ids = [...$('gradeWrap').querySelectorAll('[data-emp]')].map(b => b.dataset.emp);
+      if (tour.emp && ids.includes(tour.emp)) return tour.emp;
+      // de preferência uma com pendência aberta, pra ficha mostrar o que falta pra fechar
+      tour.emp = ids.find(id => pendAbertas(id).length && st.empresas.get(id).faz !== false) || ids[0] || null;
+      return tour.emp;
+    }
+    // a tela de cada passo: nada aberto, as opções do mês ou a ficha
+    function telaDoTour(qual) {
+      if (qual !== 'mes') fecharPop(false);
+      if (qual !== 'ficha' && st.aberta) fecharEmpresa();
+      if (qual === 'mes') { const b = celulaDoTour(); if (b && $('pop').hidden) abrirMes(b.dataset.id, b.dataset.c, b); }
+      if (qual === 'ficha') { const id = empresaDoTour(); if (id && st.aberta !== id) abrirEmpresa(id); }
+      // o foco que a tela pôs num botão sai: no meio do tour, nenhuma tecla aperta nada na tela
+      const a = document.activeElement;
+      if (a && a !== document.body && typeof a.blur === 'function') a.blur();
+    }
+    const naFicha = sel => () => (st.aberta ? document.querySelector(sel) : null);
+    const PASSOS_TOUR = [
+      { el: '#focos', antes: () => telaDoTour(), titulo: 'As empresas, por situação',
+        texto: 'Os cartões separam o controle: em dia, com o ano passado aberto, com pendência, saindo e as que não fazemos. Clique num cartão pra ver só essas; <b>Todas</b> volta pra lista inteira. Logo embaixo, quantos meses foram feitos neste mês.' },
+      { el: () => ($('fora').hidden ? null : $('fora')), antes: () => telaDoTour(), titulo: 'Da carteira, fora do controle',
+        texto: 'As empresas da carteira que ainda não estão aqui. Abra a lista: <b>Incluir</b> põe a empresa no controle a partir do mês da entrada; <b>Não fazemos</b> guarda o motivo e tira a empresa da lista.' },
+      { el: '.cc-barra', antes: () => telaDoTour(), titulo: 'Busca, ano e ordem',
+        texto: 'Busque pelo nome ou pelo código do Domínio. Os anos são as abas da planilha. A ordem põe primeiro quem tem mais meses a fazer, ou quem foi feita há mais tempo.' },
+      { el: '.cc-legenda', antes: () => telaDoTour(), titulo: 'As cores dos meses',
+        texto: 'Verde é feita, com o dia em que foi feita; tracejado, em andamento; amarelo, sem movimento; vazio, a fazer; listrado, fora do controle. O pontinho no alto do mês é uma dica do Domínio; o vermelho, embaixo, uma pendência daquele mês.' },
+      { el: () => $('gradeWrap').querySelector('.cc-emp'), antes: () => telaDoTour(), titulo: 'Cada linha é uma empresa',
+        texto: 'Embaixo do nome, o regime e o código do Domínio. As etiquetas avisam pendência, saída da carteira e empresa inativa.' },
+      { el: () => celulaDoTour(), antes: () => telaDoTour(), titulo: 'Clique num mês pra marcar',
+        texto: 'Cada quadradinho é um mês da contabilidade daquela empresa. O clique abre as opções do mês.' },
+      { el: () => ($('pop').hidden ? null : $('pop')), se: () => !!celulaDoTour(), antes: () => telaDoTour('mes'), titulo: 'As opções do mês',
+        texto: '<b>Feita até aqui</b> fecha de uma vez todos os meses abertos até este, com o dia de hoje (se foi outro dia, troque antes). Tem também só este mês, em andamento, sem movimento e voltar pra a fazer. Marcou errado? O aviso que aparece embaixo tem o <b>Desfazer</b>.' },
+      { el: () => $('gradeWrap').querySelector('td.cc-falta'), antes: () => telaDoTour(), titulo: 'Feita até e a fazer',
+        texto: '<b>Feita até</b> é o último mês fechado em sequência desde o início do controle. <b>A fazer</b> conta, em faixas, os meses abertos até o mês passado, que é o último que dá pra fechar (sublinhado no cabeçalho).' },
+      { el: naFicha('#eResumo'), se: () => !!empresaDoTour(), antes: () => telaDoTour('ficha'), titulo: 'A ficha da empresa',
+        texto: 'Clicando no nome, abre a ficha. No alto, até quando está feita, o que falta e os avisos: a empresa que saiu da carteira vem com o botão pra encerrar o controle no mês da saída.' },
+      { el: naFicha('section[aria-labelledby="pendTit"]'), se: () => !!empresaDoTour(), antes: () => telaDoTour('ficha'), titulo: 'O que falta pra fechar',
+        texto: 'Cada pendência diz de quem se espera (o cliente, o Diego, o Samuel ou o escritório), desde quando e de qual mês. Resolveu? Marque a caixa. A nova entra pelo formulário logo abaixo.' },
+      { el: naFicha('section[aria-labelledby="mesTit"]'), se: () => !!empresaDoTour(), antes: () => telaDoTour('ficha'), titulo: 'O Domínio e o PGDAS, mês a mês',
+        texto: 'Os lançamentos, as notas, os funcionários e o pró-labore que a ponte lê do Domínio, e o faturamento do PGDAS. Lançamento no Domínio não quer dizer contabilidade feita: a integração das notas e da folha também lança.' },
+      { el: naFicha('section.cc-controle'), se: () => !!empresaDoTour(), antes: () => telaDoTour('ficha'), titulo: 'O controle desta empresa',
+        texto: 'Quando começa, quando termina (saída ou baixa) e quem cuida. Se o escritório não faz a contabilidade, desmarque a caixa e diga o motivo. A observação, mais acima, grava sozinha.' },
+      { el: '.as-lancador', antes: () => telaDoTour(), titulo: 'Pergunte ao assistente',
+        texto: 'Ele lê o controle: “quais empresas têm o ano passado aberto?”, “quais pendências esperam o cliente?”. Com a ficha aberta, “esta empresa” é a da ficha.' },
+      { el: '.mrt-help', antes: () => telaDoTour(), titulo: 'Pra ver de novo',
+        texto: 'Este tour fica aqui: clique no <b>?</b> e em <b>Rever o tour desta página</b>.' }
+    ];
+    async function iniciarTour(comFicha) {
+      if (!window.MRTour) return;
+      const forca = new URLSearchParams(location.search).has('tour');
+      if (comFicha && !forca) return;
+      // o balão do assistente nasce um pouco depois da tela: espera até 3 s, pro passo dele entrar na conta dos passos
+      for (let t = 0; t < 15 && !document.querySelector('.as-lancador'); t++) await new Promise(r => setTimeout(r, 200));
+      MRTour.iniciar(PASSOS_TOUR, 'contabil_controle_v1', forca, EU || '', { aoTerminar: () => telaDoTour() });
+    }
 
     // ---------- leitura ----------
     async function lerTudo(tabela, cols, filtro = q => q) {
@@ -459,7 +541,11 @@
     }
     $('popX').addEventListener('click', () => fecharPop());
     document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && !$('pop').hidden) { ev.stopPropagation(); fecharPop(); } }, true);
-    document.addEventListener('mousedown', ev => { if (!$('pop').hidden && !$('pop').contains(ev.target) && !(st.pop && st.pop.ancora.contains(ev.target))) fecharPop(false); });
+    // o clique fora fecha as opções do mês (o clique no tour, não: quem abre e fecha no tour é o passo)
+    document.addEventListener('mousedown', ev => {
+      if (ev.target.closest && ev.target.closest('.mrt-box, .mrt-block')) return;
+      if (!$('pop').hidden && !$('pop').contains(ev.target) && !(st.pop && st.pop.ancora.contains(ev.target))) fecharPop(false);
+    });
     window.addEventListener('resize', () => fecharPop(false));
     $('popCorpo').addEventListener('click', async ev => {
       const b = ev.target.closest('[data-pa]'); if (!b || !st.pop) return;
@@ -543,6 +629,7 @@
       $('eFaz').checked = emp.faz !== false; $('eMotivo').value = emp.motivo || ''; $('eMotivoBox').hidden = emp.faz !== false;
       desenharFicha(id);
       $('eClose').focus();
+      assistente.definirContexto({ id: 'cliente:' + id, tipo: 'cliente', clienteId: id, nome: nomeDe(id), rotulo: 'Sobre a empresa aberta', nota: 'Sobre ' });
       // os extras, lidos na hora: o PGDAS e as tarefas abertas do Contábil
       const [pg, ta] = await Promise.all([
         supabase.from('receita_pgdas').select('competencia, receita_mes, das_pago, transmitida_em').eq('cliente_id', id),
@@ -606,6 +693,7 @@
       $('ovEmp').classList.remove('is-open');
       const id = st.aberta;
       st.aberta = null; st.pgdas = null; st.tarefas = null;
+      assistente.definirContexto(null);
       const b = $('gradeWrap').querySelector('[data-emp="' + CSS.escape(id) + '"]');
       if (b) b.focus();
     }

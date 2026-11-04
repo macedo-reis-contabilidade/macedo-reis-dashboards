@@ -14,7 +14,10 @@ Confere:
   3. a ficha da empresa: o resumo, a pendência (o texto de fora como texto), o mês a mês com o Domínio e o PGDAS, as
      tarefas abertas do Contábil; a pendência nova (vazia barra), resolver, a observação que grava sozinha;
   4. o aviso de quem saiu da carteira encerra o controle no mês da saída; incluir quem estava fora do controle;
-  5. o ano de 2025, a busca, ?empresa= e ?ano=; o card no hub do Contábil, com as pendências.
+  5. o ano de 2025, a busca, ?empresa= e ?ano=; o card no hub do Contábil, com as pendências;
+  6. o tour: começa sozinho na primeira visita, anda pelos passos, abre as opções de um mês e a ficha de uma empresa (o
+     assistente fica sabendo dela) e fecha tudo no Esc e no Concluir, sem gravar nada; o Enter não aperta o botão da tela;
+     a visita seguinte não começa de novo, o ? revê, ?tour=1 força, e pelo link de uma ficha ele não começa.
 Termina com código 1 se alguma checagem falhar.
 Pré-requisito: pip install playwright e python -m playwright install chromium
 """
@@ -99,13 +102,23 @@ def ok(cond, msg):
     print(('  ✓ ' if cond else '  ✗ ') + msg)
     if not cond: falhas += 1
 
-def nova(b, base, erros, caminho, rotulo, largura=1500):
-    p = b.new_page(viewport={'width': largura, 'height': 950})
+def nova(b, base, erros, caminho, rotulo, largura=1500, ctx=None, tour_visto=True):
+    p = (ctx or b).new_page(viewport={'width': largura, 'height': 950})
     p.on('pageerror', lambda e: erros.append(f'{rotulo}: {e}'))
     p.clock.set_fixed_time('2026-11-04T12:00:00')
-    p.add_init_script(TOUR); p.add_init_script(SEMEAR)
+    if tour_visto: p.add_init_script(TOUR)
+    p.add_init_script(SEMEAR)
     p.goto(base + caminho)
     return p
+
+def tour_tit(p): return p.inner_text('.mrt-box h4') if p.locator('.mrt-box').count() else ''
+def tour_prox(p):
+    p.click('.mrt-box [data-a="prox"]'); p.wait_for_timeout(350)
+def chave_tour(p): return p.evaluate("() => Object.keys(localStorage).filter(k => k.startsWith('mr_tour_contabil_controle_v1')).map(k => localStorage.getItem(k)).join(',')")
+def dentro(p, a, b):
+    """o retângulo do holofote do tour cobre o elemento"""
+    return p.evaluate("""([a, b]) => { const s = document.querySelector(a).getBoundingClientRect(), e = document.querySelector(b).getBoundingClientRect();
+      return e.width > 0 && s.left <= e.left + 1 && s.top <= e.top + 1 && s.right >= e.right - 1 && s.bottom >= e.bottom - 1; }""", [a, b])
 
 def cel(p, cid, c): return p.locator(f'button.cc-c[data-id="{cid}"][data-c="{c}"]')
 def classes(p, cid, c): return cel(p, cid, c).get_attribute('class') or ''
@@ -242,6 +255,55 @@ def main():
         p.wait_for_function("() => { const e = document.querySelector('[data-mod=\"contabil-controle.html\"]'); return e && !e.classList.contains('st-load'); }", timeout=6000)
         card = p.locator('a.dashboard-card[href="contabil-controle.html"]')
         ok(card.count() == 1 and 'Controle das contabilidades' in card.inner_text() and '1 pendência' in card.inner_text().lower(), f'o card no hub do Contábil, com as pendências ({card.inner_text() if card.count() else ""!r})')
+        p.close()
+
+        print('6. O tour')
+        p = nova(b, base, erros, 'contabil-controle.html', 'tour', tour_visto=False)
+        p.wait_for_selector('.mrt-box', timeout=8000)
+        antes_db = {t: db(p, t) for t in ('contabil_meses', 'contabil_pendencias', 'contabil_empresas')}
+        ok(tour_tit(p) == 'As empresas, por situação' and p.inner_text('.mrt-passo') == '1 de 14' and dentro(p, '.mrt-spot', '#focos'),
+           f'na primeira visita, o tour começa sozinho, nos cartões do alto ({p.inner_text(".mrt-passo")!r})')
+        titulos = [tour_tit(p)]
+        while tour_tit(p) != 'As opções do mês' and len(titulos) < 20:
+            tour_prox(p); titulos.append(tour_tit(p))
+        ok(titulos == ['As empresas, por situação', 'Da carteira, fora do controle', 'Busca, ano e ordem', 'As cores dos meses', 'Cada linha é uma empresa',
+                       'Clique num mês pra marcar', 'As opções do mês'], f'os passos da grade, na ordem ({titulos})')
+        ok(p.is_visible('#pop') and 'Feita até aqui (2 meses)' in p.inner_text('#pop') and 'ASSOCIACAO DE TESTE' in p.inner_text('#pop') and dentro(p, '.mrt-spot', '#pop'),
+           'o tour abre as opções de um mês com mais de um mês aberto, com o feita até aqui')
+        p.screenshot(path=str(FOTOS / 'contabil-controle-tour.png'))
+        p.focus('[data-pa="feita-ate"]'); p.keyboard.press('Enter'); p.wait_for_timeout(350)
+        ok(tour_tit(p) == 'Feita até e a fazer' and p.is_hidden('#pop') and db(p, 'contabil_meses') == antes_db['contabil_meses'],
+           'o Enter anda o tour e não aperta o botão do mês que estava com o foco: nada gravado')
+        tour_prox(p)
+        ok(tour_tit(p) == 'A ficha da empresa' and p.is_visible('#ovEmp') and 'PADARIA EXEMPLO' in p.inner_text('#eTitulo') and dentro(p, '.mrt-spot', '#eResumo'),
+           'o tour abre a ficha de uma empresa com pendência aberta')
+        ok(p.get_attribute('.as-ctx', 'hidden') is None and (p.text_content('.as-ctx b') or '') == 'PADARIA EXEMPLO' and 'empresa aberta' in (p.text_content('.as-ctx-rot') or ''),
+           'com a ficha aberta, o assistente sabe a empresa ("esta empresa")')
+        tour_prox(p)
+        ok(tour_tit(p) == 'O que falta pra fechar' and dentro(p, '.mrt-spot', 'section[aria-labelledby="pendTit"]'), 'as pendências, com o holofote na seção')
+        p.screenshot(path=str(FOTOS / 'contabil-controle-tour-ficha.png'))
+        p.keyboard.press('Escape'); p.wait_for_timeout(300)
+        ok(p.locator('.mrt-box').count() == 0 and not p.is_visible('#ovEmp') and p.is_hidden('#pop') and chave_tour(p) == 'pulado' and p.get_attribute('.as-ctx', 'hidden') is not None,
+           'Esc fecha o tour e a ficha que ele abriu (o assistente esquece a empresa); fica marcado como visto')
+        ok(all(db(p, t) == antes_db[t] for t in antes_db), 'o tour não gravou nada')
+        p.reload(); p.wait_for_selector('table.cc-grade', timeout=8000); p.wait_for_timeout(3500)
+        ok(p.locator('.mrt-box').count() == 0, 'na visita seguinte ele não começa sozinho')
+        p.click('.mrt-help'); p.click('.mrt-menu [data-a="rever"]'); p.wait_for_selector('.mrt-box', timeout=3000)
+        n, ult = 0, ''
+        while p.locator('.mrt-box').count() and n < 20:
+            ult = tour_tit(p); tour_prox(p); n += 1
+        ok(n == 14 and ult == 'Pra ver de novo' and chave_tour(p) == 'ok' and not p.is_visible('#ovEmp') and p.is_hidden('#pop'),
+           f'o ? revê o tour inteiro até o Concluir, e fecha o que abriu ({n} passos, o último: {ult!r})')
+        p.close()
+        p = nova(b, base, erros, 'contabil-controle.html?empresa=c-b', 'tour-ficha', tour_visto=False)
+        p.wait_for_selector('#ovEmp.is-open', timeout=8000); p.wait_for_timeout(3500)
+        ok(p.locator('.mrt-box').count() == 0, 'aberta pelo link de uma ficha, o tour não começa por cima dela')
+        p.close()
+        p = nova(b, base, erros, 'contabil-controle.html?tour=1', 'tour-forca')
+        p.wait_for_selector('.mrt-box', timeout=8000)
+        ok(tour_tit(p) == 'As empresas, por situação', '?tour=1 começa o tour mesmo já visto')
+        p.click('.mrt-box [data-a="pular"]'); p.wait_for_timeout(200)
+        ok(p.locator('.mrt-box').count() == 0, 'Pular fecha')
         p.close()
         b.close()
     srv.shutdown()
