@@ -23,6 +23,8 @@
 //   arquivo  — abre o envio de um documento no Drive (sessão resumível)
 //   concluir — fecha o envio (a chave deixa de valer)
 //   sugerir  — refaz a sugestão de CNAE de um pedido (só quem entrou com e-mail do escritório)
+//   teste    — diagnóstico interno (exige x-sync-key): acha (ou cria) a pasta ABERTURAS MEI, sobe um arquivo de teste em
+//              2 partes e manda a pasta de teste pra lixeira
 // Partes dos documentos: corpo binário com o cabeçalho x-acao: parte (x-id, x-chave, x-i, x-inicio, x-total).
 // ============================================================
 
@@ -378,6 +380,30 @@ async function concluir(b: any) {
   return { ok: true };
 }
 
+// diagnóstico interno (como o do rescisao-link; exige x-sync-key, que só o servidor lê): a conta Google, a pasta ABERTURAS
+// MEI (achada ou criada na primeira vez), uma pasta de teste com um arquivo em 2 partes; a pasta de teste vai pra lixeira
+async function teste(req: Request) {
+  const supa = db();
+  const { data: k } = await supa.from("configuracoes_escritorio").select("valor").eq("chave", "ca_sync_key").maybeSingle();
+  if (!k?.valor || req.headers.get("x-sync-key") !== k.valor) return { error: "sem permissão" };
+  const t = await token();
+  const raiz = await raizMei(supa, t);
+  const m = await fetch(`${DRIVE}/${raiz}?fields=id,name,trashed,parents`, { headers: { Authorization: `Bearer ${t}` } });
+  if (!m.ok) return { error: "pasta ABERTURAS MEI inacessível: " + (await m.text()).slice(0, 200) };
+  const meta = await m.json();
+  const acima = meta.parents?.[0] ? await fetch(`${DRIVE}/${meta.parents[0]}?fields=name`, { headers: { Authorization: `Bearer ${t}` } }) : null;
+  const pTeste = await criarPasta(t, "TESTE DO SISTEMA (APAGAR)", raiz);
+  const bytes = new Uint8Array(300 * 1024).map((_, i) => i % 251);
+  const sessao = await sessaoResumivel(t, pTeste, "teste.bin", "application/octet-stream", bytes.length);
+  const p1 = await enviarParte(sessao, bytes.subarray(0, 256 * 1024), 0, bytes.length);
+  const p2 = await enviarParte(sessao, bytes.subarray(256 * 1024), 256 * 1024, bytes.length);
+  const lixo = await fetch(`${DRIVE}/${pTeste}`, {
+    method: "PATCH", headers: { Authorization: `Bearer ${t}`, "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }),
+  });
+  return { ok: true, raiz: meta.name, pasta_acima: acima && acima.ok ? (await acima.json()).name : null, raiz_na_lixeira: meta.trashed,
+    parte1_pronto: p1.pronto, arquivo: p2.pronto ? p2.meta : null, teste_na_lixeira: lixo.ok };
+}
+
 Deno.serve(async (req: Request) => {
   const origin = req.headers.get("origin");
   if (req.method === "OPTIONS") return new Response(null, { headers: cors(origin) });
@@ -388,6 +414,7 @@ Deno.serve(async (req: Request) => {
     if (b.acao === "enviar") return resp(origin, await enviar(b));
     if (b.acao === "arquivo") return resp(origin, await arquivo(b));
     if (b.acao === "concluir") return resp(origin, await concluir(b));
+    if (b.acao === "teste") return resp(origin, await teste(req));
     if (b.acao === "sugerir") {
       if (!(await doEscritorio(req))) return new Response(JSON.stringify({ error: "Só quem entrou no sistema do escritório." }), { status: 401, headers: cors(origin) });
       if (!/^[0-9a-f-]{36}$/.test(String(b.id || ""))) return resp(origin, { error: "Pedido inválido." });
