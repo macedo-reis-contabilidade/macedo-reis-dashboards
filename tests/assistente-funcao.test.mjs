@@ -1055,6 +1055,9 @@ console.log('O comparativo tributário (a mesma conta da tela, com o "e se"):');
     && /controle encerrado em 06\/2026/.test(textoDaContabilidade({ faz: true, inicio: '2026-06', fim: '2026-06' }, [{ competencia: '2026-06', situacao: 'feita', feita_em: '2026-07-10' }], [], '2026-11-04'))
     && /NÃO faz a contabilidade desta empresa \(Centralizada na matriz\)/.test(textoDaContabilidade({ faz: false, motivo: 'Centralizada na matriz', inicio: '2025-01' }, [], [], '2026-11-04'))
     && textoDaContabilidade(null, [], [], '2026-11-04') === '');
+  const longa = 'Extratos de 2026 das aplicações do Sicoob, pro ajuste do saldo de 2025: pedidos pelo WhatsApp em 15/07/2026. A contabilidade de 2025 está digitada, faltam só esses ajustes, e o saldo final tem de bater com o informe de rendimentos.';
+  chk('a pendência de uns 250 caracteres vai inteira (cortada, o modelo dizia que o sistema corta o texto)',
+    textoDaContabilidade(emp, meses, [{ texto: longa, aguardando: 'cliente', desde: '2026-07-15', competencia: '2025-12' }], '2026-11-04').includes(longa + ' (esperando o cliente'));
   const { banco, log } = bancoFalso({ extras: { contabil_empresas: [{ cliente_id: ID_A, ...emp }], contabil_meses: meses.map(m => ({ ...m, cliente_id: ID_A })),
     contabil_pendencias: [{ cliente_id: ID_A, texto: 'Extratos do Sicoob', aguardando: 'cliente', desde: '2026-10-15', competencia: null, resolvida_em: null },
       { cliente_id: ID_A, texto: 'Já resolvida', aguardando: 'diego', desde: null, competencia: null, resolvida_em: '2026-10-01T10:00:00Z' }] } });

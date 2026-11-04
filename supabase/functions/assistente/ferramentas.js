@@ -560,8 +560,9 @@ export function textoDaContabilidade(emp, meses, pendencias, hoje) {
   if (r.ultimaFeita) p.push('a última vez que alguma coisa foi feita: ' + dataBR(r.ultimaFeita));
   if (emp.fim && !r.encerrada) p.push('o controle termina em ' + rotuloMes(emp.fim) + ' (saída ou baixa)');
   const ps = pendencias || [];
-  if (ps.length) p.push(ps.length + (ps.length === 1 ? ' pendência aberta' : ' pendências abertas') + ': ' + ps.slice(0, 6).map(x => valorCurto(x.texto, 160) + ' (' + textoDaPendencia(x, hoje).replace(/^Esperando/, 'esperando') + ')').join(' | '));
-  if (emp.observacao) p.push('obs.: ' + valorCurto(emp.observacao, 300));
+  // a pendência vai inteira até 500 caracteres (o texto da tela vai até 1000): cortada, o modelo dizia que o sistema corta
+  if (ps.length) p.push(ps.length + (ps.length === 1 ? ' pendência aberta' : ' pendências abertas') + ': ' + ps.slice(0, 6).map(x => valorCurto(x.texto, 500) + ' (' + textoDaPendencia(x, hoje).replace(/^Esperando/, 'esperando') + ')').join(' | '));
+  if (emp.observacao) p.push('obs.: ' + valorCurto(emp.observacao, 800));
   return 'Contabilidade (controle das contabilidades, desde ' + rotuloMes(emp.inicio) + (emp.responsavel ? ', com a ' + emp.responsavel : '') + '): ' + p.join(' · ');
 }
 
