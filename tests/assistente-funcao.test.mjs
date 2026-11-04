@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { TABELAS, OPS, DEFINICOES, filtroUrl, montarConsulta, criarFerramentas, descreverEtapa, normalizarBusca, textoDoDominio, mesAntes } from '../supabase/functions/assistente/ferramentas.js';
+import { TABELAS, OPS, DEFINICOES, filtroUrl, montarConsulta, criarFerramentas, descreverEtapa, normalizarBusca, textoDoDominio, mesAntes, textoDaContabilidade } from '../supabase/functions/assistente/ferramentas.js';
 import { montarSistema, preambulo, dicionario, INSTRUCOES, marcaOutroDia } from '../supabase/functions/assistente/prompt.js';
 import { criarServidor, limparContexto, limparPagina, limparHistorico, diaBR, LIMITE_DIA } from '../supabase/functions/assistente/servidor.js';
 import { responder, erroDoChat } from '../supabase/functions/reforma-chat/agente.js';
@@ -1035,6 +1035,35 @@ console.log('O comparativo tributário (a mesma conta da tela, com o "e se"):');
     && log.some(x => x.caminho.startsWith('dominio_mensal?') && x.caminho.includes('competencia=gte.2026-06')), linha || v.slice(-400));
   const sem = await criarFerramentas({ banco: bancoFalso().banco, hoje: '2026-11-02', usuario: {} }).ver_empresa({ empresa: ID_A });
   chk('ver_empresa: a empresa fora do Domínio não ganha a linha', !/^Domínio/m.test(sem));
+}
+
+{
+  // o controle das contabilidades (04/11/2026): a lista branca e a linha do ver_empresa, com a conta da tela
+  console.log('O controle das contabilidades:');
+  chk('a lista branca: as três tabelas, com o que é a fazer (o mês sem linha) e o que os lançamentos do Domínio não dizem',
+    ['contabil_empresas', 'contabil_meses', 'contabil_pendencias'].every(t => TABELAS[t]) && TABELAS.contabil_meses.pk === 'cliente_id,competencia'
+    && /SEM LINHA, entre o início e o fim do controle \(contabil_empresas\), está A FAZER/.test(TABELAS.contabil_meses.desc) && /NÃO quer dizer feita/.test(TABELAS.dominio_mensal.notas.lancamentos));
+  const emp = { faz: true, inicio: '2025-01', fim: null, responsavel: 'Adaini', observacao: 'Conferir o caixa.' };
+  const meses = [...Array.from({ length: 12 }, (_, i) => ({ competencia: '2025-' + String(i + 1).padStart(2, '0'), situacao: 'feita', feita_em: '2026-01-31' })),
+    { competencia: '2026-01', situacao: 'feita', feita_em: '2026-02-28' }, { competencia: '2026-02', situacao: 'andamento', feita_em: '2026-03-31' }, { competencia: '2026-05', situacao: 'feita', feita_em: '2026-10-30' }];
+  const t = textoDaContabilidade(emp, meses, [{ texto: 'Extratos do Sicoob', aguardando: 'cliente', desde: '2026-10-15', competencia: '2026-02' }], '2026-11-04');
+  chk('o texto: feita até, o que falta em faixas (o em andamento junto), o último fechado depois do buraco, a pendência e a observação',
+    /^Contabilidade \(controle das contabilidades, desde 01\/2025, com a Adaini\): feita até 01\/2026 · a fazer: 8 meses \(02\/2026 a 04\/2026, 06\/2026 a 10\/2026\), 1 em andamento/.test(t)
+    && /o último mês fechado é 05\/2026/.test(t) && /a última vez que alguma coisa foi feita: 30\/10\/2026/.test(t)
+    && /1 pendência aberta: Extratos do Sicoob \(esperando o cliente, desde 15\/10\/2026 \(há 20 dias\), de 02\/2026\)/.test(t) && /obs\.: Conferir o caixa\./.test(t), t);
+  chk('em dia, encerrada e não fazemos', /em dia até 10\/2026/.test(textoDaContabilidade({ faz: true, inicio: '2026-10', fim: null }, [{ competencia: '2026-10', situacao: 'sem_movimento' }], [], '2026-11-04'))
+    && /controle encerrado em 06\/2026/.test(textoDaContabilidade({ faz: true, inicio: '2026-06', fim: '2026-06' }, [{ competencia: '2026-06', situacao: 'feita', feita_em: '2026-07-10' }], [], '2026-11-04'))
+    && /NÃO faz a contabilidade desta empresa \(Centralizada na matriz\)/.test(textoDaContabilidade({ faz: false, motivo: 'Centralizada na matriz', inicio: '2025-01' }, [], [], '2026-11-04'))
+    && textoDaContabilidade(null, [], [], '2026-11-04') === '');
+  const { banco, log } = bancoFalso({ extras: { contabil_empresas: [{ cliente_id: ID_A, ...emp }], contabil_meses: meses.map(m => ({ ...m, cliente_id: ID_A })),
+    contabil_pendencias: [{ cliente_id: ID_A, texto: 'Extratos do Sicoob', aguardando: 'cliente', desde: '2026-10-15', competencia: null, resolvida_em: null },
+      { cliente_id: ID_A, texto: 'Já resolvida', aguardando: 'diego', desde: null, competencia: null, resolvida_em: '2026-10-01T10:00:00Z' }] } });
+  const v = await criarFerramentas({ banco, hoje: '2026-11-04', usuario: { nome: 'Adaini', socio: false } }).ver_empresa({ empresa: ID_A });
+  const linha = v.split('\n').find(x => x.startsWith('Contabilidade')) || '';
+  chk('ver_empresa: a linha da contabilidade, só com as pendências abertas', /feita até 01\/2026/.test(linha) && /Extratos do Sicoob/.test(linha) && !/Já resolvida/.test(linha)
+    && log.some(x => x.caminho.startsWith('contabil_pendencias?') && x.caminho.includes('resolvida_em=is.null')), linha || v.slice(-400));
+  const fora = await criarFerramentas({ banco: bancoFalso().banco, hoje: '2026-11-04', usuario: {} }).ver_empresa({ empresa: ID_A });
+  chk('ver_empresa: a empresa fora do controle não ganha a linha', !/^Contabilidade/m.test(fora));
 }
 
 console.log('Commit fixado na função (o código cru do GitHub):');

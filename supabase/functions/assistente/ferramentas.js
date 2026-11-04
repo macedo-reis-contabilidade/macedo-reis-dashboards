@@ -20,6 +20,8 @@
 // revisão do honorário dos clientes (revisoes_honorario, só dos sócios) também — e as duas no ver_empresa.
 // Desde 02/11/2026, o Domínio pela ponte do PC do escritório (dominio_empresas, dominio_mensal, dominio_rodadas: a folha,
 // as notas e os lançamentos de cada empresa por mês, só os totais) — e os últimos meses no ver_empresa.
+// Desde 04/11/2026, o controle das contabilidades (contabil_empresas, contabil_meses, contabil_pendencias: até quando a
+// contabilidade de cada empresa está feita, mês a mês, e o que falta pra fechar) — e a linha dele no ver_empresa.
 // Lista branca: só as tabelas e colunas daqui são lidas. Ficam fora a senha/credencial do cadastro, o RG e o nascimento
 // das pessoas físicas do cadastro (o CPF e o endereço do cadastro entram: são o dado de trabalho do IRPF), os documentos
 // pessoais dos sócios (CPF, RG, endereço, nascimento), as respostas dos formulários de admissão e rescisão, as
@@ -36,6 +38,7 @@ import { rotuloDaRegra } from '../../../assets/js/vigia.js';
 import { ROTULO_SETOR, ROTULO_RELEVANCIA } from '../../../assets/js/noticias.js';
 import { pastaDaUrl, filtrarArquivos } from './drive.js';
 import { comparativoDaEmpresa, resumoDoResultado } from './comparativo.js';
+import { resumoDaEmpresa, textoDasFaixas, rotuloMes, textoDeMeses, textoDaPendencia } from '../../../assets/js/contabil-controle.js';
 
 // ---------- a lista branca: tabela → colunas lidas, as que vêm sem pedir, o que é cada coisa ----------
 // notas: o que o modelo precisa saber da coluna (valores possíveis, unidade); enums: colunas de tipo enumerado no banco
@@ -172,13 +175,32 @@ export const TABELAS = {
       afastados: 'empregados afastados no último dia do mês (fora férias)', pro_labore: 'QUANTOS sócios tiveram o pró-labore calculado no mês (uma contagem de pessoas, não um valor em R$)',
       valor_saidas: 'o valor contábil das notas de saída (mercadoria e serviço prestado, fora as canceladas): NÃO é o faturamento — entram devolução, remessa e transferência · o faturamento vem do PGDAS (receita_pgdas)',
       valor_entradas: 'o valor contábil do que o fiscal lançou na entrada do Domínio (as notas de compra, o serviço tomado e os outros documentos de entrada), fora os cancelados · notas_entrada pode passar das notas de compra em XML por isso',
-      lancamentos: 'quantos lançamentos contábeis no mês (fora o zeramento) · 0 com o mês já fechado = a contabilidade do mês não foi feita',
+      lancamentos: 'quantos lançamentos contábeis no mês (fora o zeramento) · 0 com o mês já fechado = a contabilidade do mês não foi feita · mais que 0 NÃO quer dizer feita: a integração das notas e da folha também lança · se a contabilidade do mês foi feita, quem diz é o controle das contabilidades (contabil_meses)',
       ultimo_lancamento: 'o dia do último lançamento do mês', cliente_id: 'vazio = a empresa do Domínio não bate com o cadastro' } },
   dominio_rodadas: { rotulo: 'as leituras do Domínio',
     desc: 'Cada leitura do Domínio que a ponte do PC do escritório mandou (a tarefa diária das 7h): quando, o dia dos dados, quantas empresas, quantas ligadas ao cadastro, quantas linhas de mês e o que faltou. Sem leitura há dias = o PC do escritório ficou desligado ou a ponte parou (o vigia avisa em 4 dias).',
     cols: ['id', 'inicio', 'fim', 'dados_ate', 'maquina', 'ponte', 'empresas', 'ligadas', 'linhas', 'faltou', 'recebida_em'],
     padrao: ['recebida_em', 'dados_ate', 'empresas', 'ligadas', 'linhas', 'faltou'],
     notas: { dados_ate: 'o dia dos dados (a ponte lê o Domínio ao vivo)', faltou: 'lista [{bloco, motivo}] · bloco: folha | fiscal | contabil — o que não deu pra ler nesta leitura (o que já estava gravado fica)' } },
+  // o controle das contabilidades (Contábil › Controle das contabilidades, 04/11/2026, a planilha da Adaini no sistema)
+  contabil_empresas: { rotulo: 'o controle das contabilidades', pk: 'cliente_id',
+    desc: 'As empresas do controle das contabilidades (tela Controle das contabilidades, no Contábil; quem cuida é a Adaini): desde e até quando o escritório faz a contabilidade de cada uma, se faz (faz = false: não fazemos, com o motivo) e a observação. Não é rotina mensal (não nasce tarefa): a Adaini marca os meses quando faz, muitas vezes vários de uma vez. Empresa sem linha aqui = fora do controle.',
+    cols: ['cliente_id', 'faz', 'motivo', 'inicio', 'fim', 'responsavel', 'observacao', 'atualizado_em', 'atualizado_por'],
+    padrao: ['cliente_id', 'faz', 'inicio', 'fim', 'responsavel', 'observacao'],
+    notas: { inicio: 'AAAA-MM, o primeiro mês do controle (antes dele, fora do controle)', fim: 'AAAA-MM, o último mês (a saída ou a baixa) · vazio = sem fim',
+      faz: 'false = o escritório não faz a contabilidade desta empresa (o motivo diz por quê)' } },
+  contabil_meses: { rotulo: 'os meses das contabilidades', pk: 'cliente_id,competencia',
+    desc: 'Cada mês da contabilidade das empresas do controle: feita (feita_em = o dia em que foi feita), em andamento (digitada, falta fechar) ou sem movimento. O mês SEM LINHA, entre o início e o fim do controle (contabil_empresas), está A FAZER. "Feita até" = o último mês da sequência fechada (feita ou sem movimento) desde o início; o último mês que dá pra fechar é o mês passado. De uma empresa, ver_empresa já diz o feita até e o que falta.',
+    cols: ['cliente_id', 'competencia', 'situacao', 'feita_em', 'por', 'em'],
+    padrao: ['cliente_id', 'competencia', 'situacao', 'feita_em'],
+    notas: { competencia: 'AAAA-MM', situacao: 'feita | andamento (digitada, falta fechar) | sem_movimento', feita_em: 'o dia em que foi feita (ou, em andamento, digitada)',
+      por: 'quem marcou (e-mail) · planilha = veio da planilha de controle da Adaini (04/11/2026)' } },
+  contabil_pendencias: { rotulo: 'as pendências das contabilidades',
+    desc: 'O que falta pra fechar a contabilidade das empresas (o controle das contabilidades): o quê, de quem se espera, desde quando e de qual mês. Aberta = resolvida_em vazio.',
+    cols: ['id', 'cliente_id', 'competencia', 'texto', 'aguardando', 'desde', 'resolvida_em', 'resolvida_por', 'criado_por', 'criado_em'],
+    padrao: ['cliente_id', 'texto', 'aguardando', 'desde', 'competencia', 'resolvida_em'],
+    notas: { aguardando: 'cliente | diego | samuel | escritorio (de quem se espera)', resolvida_em: 'vazio = aberta', competencia: 'AAAA-MM, o mês que ela segura · vazio = a contabilidade toda',
+      criado_por: 'quem anotou (e-mail) · planilha = tirada das observações da planilha de controle' } },
   admissoes: { rotulo: 'as admissões', desc: 'Admissões de funcionários que as empresas mandam pelo link (tela Admissões). As respostas do formulário não são lidas.',
     cols: ['id', 'cliente_id', 'empresa_nome', 'contato_nome', 'origem', 'funcionario_nome', 'data_inicio', 'responsavel', 'status', 'documentos', 'drive_pasta_url', 'observacoes',
       'respondida_em', 'registrada_em', 'registrada_por', 'criado_em', 'atualizado_em'],
@@ -523,6 +545,26 @@ const inicioBR = iso => iso + 'T00:00:00-03:00';
 // o mês 'AAAA-MM' de n meses antes do dia 'AAAA-MM-DD'
 export const mesAntes = (iso, n) => { const y = +String(iso).slice(0, 4), m = +String(iso).slice(5, 7) - 1 - n; const a = y + Math.floor(m / 12), mm = ((m % 12) + 12) % 12; return a + '-' + String(mm + 1).padStart(2, '0'); };
 
+// o controle das contabilidades na ver_empresa (04/11/2026): feita até, o que falta (em faixas, até o mês passado ou o fim
+// do controle), as pendências abertas e a observação — a mesma conta da tela (assets/js/contabil-controle.js). Sem a
+// empresa no controle: '' (fora do controle)
+export function textoDaContabilidade(emp, meses, pendencias, hoje) {
+  if (!emp) return '';
+  if (emp.faz === false) return 'Contabilidade (controle das contabilidades): o escritório NÃO faz a contabilidade desta empresa' + (emp.motivo ? ' (' + valorCurto(emp.motivo, 200) + ')' : '') + '.';
+  const r = resumoDaEmpresa(emp, meses || [], hoje);
+  const p = [r.feitaAte ? 'feita até ' + rotuloMes(r.feitaAte) : 'nada fechado desde o início do controle (' + rotuloMes(emp.inicio) + ')'];
+  if (r.encerrada) p.push('controle encerrado em ' + rotuloMes(emp.fim) + ' (tudo fechado até lá)');
+  else if (!r.faltam) p.push('em dia até ' + rotuloMes(r.alvo) + ' (o último mês que dá pra fechar)');
+  else p.push('a fazer: ' + textoDeMeses(r.faltam) + ' (' + textoDasFaixas(r.abertos, 4) + ')' + (r.andamento.length ? ', ' + r.andamento.length + ' em andamento (digitados, falta fechar)' : ''));
+  if (r.ultimoFechado && r.ultimoFechado !== r.feitaAte) p.push('o último mês fechado é ' + rotuloMes(r.ultimoFechado) + ' (com meses abertos antes dele)');
+  if (r.ultimaFeita) p.push('a última vez que alguma coisa foi feita: ' + dataBR(r.ultimaFeita));
+  if (emp.fim && !r.encerrada) p.push('o controle termina em ' + rotuloMes(emp.fim) + ' (saída ou baixa)');
+  const ps = pendencias || [];
+  if (ps.length) p.push(ps.length + (ps.length === 1 ? ' pendência aberta' : ' pendências abertas') + ': ' + ps.slice(0, 6).map(x => valorCurto(x.texto, 160) + ' (' + textoDaPendencia(x, hoje).replace(/^Esperando/, 'esperando') + ')').join(' | '));
+  if (emp.observacao) p.push('obs.: ' + valorCurto(emp.observacao, 300));
+  return 'Contabilidade (controle das contabilidades, desde ' + rotuloMes(emp.inicio) + (emp.responsavel ? ', com a ' + emp.responsavel : '') + '): ' + p.join(' · ');
+}
+
 // o Domínio na ver_empresa (02/11/2026): os meses que a ponte leu, do mais recente pro mais antigo, um por pedaço curto.
 // A empresa com dois códigos no Domínio (o mesmo documento) fica com o maior de cada número, como na Precificação.
 // O mês de hoje e o passado ainda estão em fechamento lá. Sem empresa e sem linha: '' (não está no Domínio ou não bateu)
@@ -829,7 +871,7 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, ago
     const id = a.id;
     const q = (caminho, op) => ler(caminho, op).then(r => r, err => ({ erro: (err && err.message) || 'erro' }));
     const desde30 = inicioBR(maisDias(hoje, -30));
-    const [cad, cart, soc, cont, serv, cobC, cobM, tar, rec, obr, alv, cert, adm, res, rt, reu, trE, reg, prec, fat, dre, fr, vig, nots, rev, rcE, rcP, rcM, cmp, dmE, dmM] = await Promise.all([
+    const [cad, cart, soc, cont, serv, cobC, cobM, tar, rec, obr, alv, cert, adm, res, rt, reu, trE, reg, prec, fat, dre, fr, vig, nots, rev, rcE, rcP, rcM, cmp, dmE, dmM, ctE, ctM, ctP] = await Promise.all([
       q('clientes?select=' + TABELAS.clientes.cols.join(',') + '&id=eq.' + id),
       q('carteira_info?select=entrada,saida,motivo_saida,segmento,sistemas,contab_digital,contato,ramo,observacao,inadimplente_desde&cliente_id=eq.' + id),
       q('socios?select=nome,qualificacao,participacao_percentual,eh_administrador,telefone,email&cliente_id=eq.' + id + '&order=participacao_percentual.desc.nullslast'),
@@ -868,7 +910,11 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, ago
       // o Domínio pela ponte (02/11/2026): a folha, as notas e os lançamentos dos últimos 6 meses
       q('dominio_empresas?select=codigo,ativa&cliente_id=eq.' + id + '&order=codigo.asc'),
       q('dominio_mensal?select=codigo,competencia,' + CAMPOS_DOMINIO.join(',') + ',atualizado_em&cliente_id=eq.' + id + '&competencia=gte.' + mesAntes(hoje, 5)
-        + '&order=competencia.desc,codigo.asc&limit=60')
+        + '&order=competencia.desc,codigo.asc&limit=60'),
+      // o controle das contabilidades (04/11/2026): até quando está feita e o que falta pra fechar
+      q('contabil_empresas?select=faz,motivo,inicio,fim,responsavel,observacao&cliente_id=eq.' + id),
+      q('contabil_meses?select=competencia,situacao,feita_em&cliente_id=eq.' + id + '&order=competencia.asc&limit=1200'),
+      q('contabil_pendencias?select=texto,aguardando,desde,competencia,criado_em&cliente_id=eq.' + id + '&resolvida_em=is.null&order=desde.asc.nullslast&limit=20')
     ]);
     if (cad.erro) throw new Error(cad.erro);
     const c = cad.linhas[0];
@@ -935,6 +981,8 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, ago
     }
     // o Domínio pela ponte: sem empresa ligada, não está no Domínio (ou o documento não bate com o cadastro)
     if (!dmE.erro && !dmM.erro) { const t = textoDoDominio(dmE.linhas, dmM.linhas, hoje); if (t) partes.push(t); }
+    // o controle das contabilidades: sem linha, a empresa está fora do controle (o MEI e a pessoa física quase sempre)
+    if (!ctE.erro && !ctM.erro && !ctP.erro) { const t = textoDaContabilidade(ctE.linhas[0], ctM.linhas, ctP.linhas, hoje); if (t) partes.push(t); }
     sec('Admissões', adm, (ls, total) => (total || ls.length) + ' — ' + ls.map(x => x.funcionario_nome + ' (início ' + dataBR(x.data_inicio) + ', ' + (x.status === 'respondida' ? 'recebida, a registrar' : situacao(x.status)) + ')').join(' · '), 'nenhuma');
     sec('Rescisões', res, (ls, total) => (total || ls.length) + ' — ' + ls.map(x => x.funcionario_nome + ' (' + situacao(x.tipo) + ', último dia ' + dataBR(x.ultimo_dia) + ', pagar até ' + dataBR(x.data_acerto) + ', '
       + (x.status === 'recebida' ? 'recebida, a calcular' : situacao(x.status)) + ')').join(' · '), 'nenhuma');

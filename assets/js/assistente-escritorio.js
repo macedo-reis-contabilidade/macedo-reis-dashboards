@@ -182,6 +182,12 @@ const TELAS = {
   'fiscal-xml.html': { nome: 'Notas fiscais (XML)' }, 'fiscal-analise.html': { nome: 'Análise fiscal' }, 'fiscal-clientes.html': { nome: 'Fiscal por cliente' },
   'fiscal-destda.html': { nome: 'Conferência SEDIF/DeSTDA' },
   'fiscal-comparativo.html': { nome: 'Comparativo tributário', exemplos: ['Quais empresas já têm estudo no comparativo?', 'O que o comparativo leva em conta?'] },
+  'contabil-controle.html': { nome: 'Controle das contabilidades', exemplos: ['Quais empresas ainda têm meses de 2025 a fazer?', 'Quais pendências das contabilidades estão esperando o cliente há mais de 30 dias?'],
+    dica: async () => {
+      const { count, error } = await supabase.from('contabil_pendencias').select('id', { count: 'exact', head: true }).is('resolvida_em', null);
+      if (error || !count) return null;
+      return { texto: qtd(count, 'pendência aberta nas contabilidades', 'pendências abertas nas contabilidades') + '.', exemplos: ['Quais pendências das contabilidades estão esperando o cliente?'] };
+    } },
   'contabil-dre.html': { nome: 'DRE do cliente' }, 'fator-r.html': { nome: 'Fator R' },
   'societario-alvaras.html': { nome: 'Alvarás', exemplos: ['Quais alvarás vencem nos próximos 60 dias?', 'Algum alvará vencido?'],
     dica: async () => {

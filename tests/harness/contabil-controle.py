@@ -1,0 +1,253 @@
+"""Teste do controle das contabilidades (04/11/2026, pedido do Samuel com a planilha da Adaini): a tela
+contabil-controle.html com o banco falso (dados inventados) e o relógio parado em 04/11/2026. As regras puras têm teste
+próprio em tests/contabil-controle.test.mjs.
+
+    python tests/harness/contabil-controle.py
+
+Confere:
+  1. a grade: os focos do alto, a linha de cada empresa (os meses feitos com o dia, a fazer, fora, em andamento), o
+     "feita até" e o "a fazer" em faixas, as dicas do Domínio (o sem movimento que tem nota lá; o mês sem nada lá), a
+     marca da pendência no mês, o nome que veio de fora como texto e a lista de quem está na carteira e fora do controle
+     (sem o MEI);
+  2. o mês: "feita até aqui" grava os meses abertos com o dia, o aviso tem o Desfazer, que volta tudo; "sem movimento"
+     grava sem o dia; "voltar pra a fazer" apaga a linha; Esc fecha e o foco volta pra célula;
+  3. a ficha da empresa: o resumo, a pendência (o texto de fora como texto), o mês a mês com o Domínio e o PGDAS, as
+     tarefas abertas do Contábil; a pendência nova (vazia barra), resolver, a observação que grava sozinha;
+  4. o aviso de quem saiu da carteira encerra o controle no mês da saída; incluir quem estava fora do controle;
+  5. o ano de 2025, a busca, ?empresa= e ?ano=; o card no hub do Contábil, com as pendências.
+Termina com código 1 se alguma checagem falhar.
+Pré-requisito: pip install playwright e python -m playwright install chromium
+"""
+import sys, json, pathlib
+sys.dont_write_bytecode = True
+try: sys.stdout.reconfigure(encoding='utf-8')
+except Exception: pass
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from conferir import montar_site, servir, FOTOS
+
+def meses(a, b):
+    out, y, m = [], int(a[:4]), int(a[5:])
+    while f'{y}-{m:02d}' <= b:
+        out.append(f'{y}-{m:02d}'); m += 1
+        if m > 12: y, m = y + 1, 1
+    return out
+
+CLIENTES = [
+    {'id': 'c-a', 'nome_principal': 'PADARIA EXEMPLO LTDA', 'nome_fantasia': 'PADARIA EXEMPLO', 'regime_tributario': 'Simples Nacional', 'status': 'ativo', 'tipo_pessoa': 'PJ'},
+    {'id': 'c-b', 'nome_principal': 'COMERCIO MODELO LTDA', 'nome_fantasia': None, 'regime_tributario': 'Lucro Presumido', 'status': 'ativo', 'tipo_pessoa': 'PJ'},
+    {'id': 'c-c', 'nome_principal': 'ASSOCIACAO DE TESTE', 'nome_fantasia': None, 'regime_tributario': 'Imune', 'status': 'ativo', 'tipo_pessoa': 'PJ'},
+    {'id': 'c-d', 'nome_principal': 'LOJA QUE SAIU LTDA', 'nome_fantasia': None, 'regime_tributario': 'Simples Nacional', 'status': 'inativo', 'tipo_pessoa': 'PJ'},
+    {'id': 'c-e', 'nome_principal': 'FILIAL DE TESTE LTDA', 'nome_fantasia': None, 'regime_tributario': 'Lucro Presumido', 'status': 'ativo', 'tipo_pessoa': 'PJ'},
+    {'id': 'c-f', 'nome_principal': 'NOVA NA CARTEIRA LTDA', 'nome_fantasia': None, 'regime_tributario': 'Simples Nacional', 'status': 'ativo', 'tipo_pessoa': 'PJ'},
+    {'id': 'c-g', 'nome_principal': 'FULANO DE TESTE 12345678901', 'nome_fantasia': None, 'regime_tributario': 'MEI', 'status': 'ativo', 'tipo_pessoa': 'PJ'},
+    {'id': 'c-h', 'nome_principal': 'EMPRESA <img src=x onerror="window.__xss=1"> LTDA', 'nome_fantasia': None, 'regime_tributario': 'Simples Nacional', 'status': 'ativo', 'tipo_pessoa': 'PJ'},
+    {'id': 'c-i', 'nome_principal': 'MOVEIS FILIAL DOIS LTDA', 'nome_fantasia': None, 'regime_tributario': 'Lucro Presumido', 'status': 'ativo', 'tipo_pessoa': 'PJ'},
+    {'id': 'c-j', 'nome_principal': 'PESSOA FISICA DE TESTE', 'nome_fantasia': None, 'regime_tributario': None, 'status': 'ativo', 'tipo_pessoa': 'PF'},
+]
+EMPRESAS = [
+    {'cliente_id': 'c-a', 'faz': True, 'motivo': None, 'inicio': '2025-01', 'fim': None, 'responsavel': 'Adaini', 'observacao': None},
+    {'cliente_id': 'c-b', 'faz': True, 'motivo': None, 'inicio': '2025-01', 'fim': None, 'responsavel': 'Adaini', 'observacao': 'Até o mês 05/2026 tudo ok.'},
+    {'cliente_id': 'c-c', 'faz': True, 'motivo': None, 'inicio': '2026-03', 'fim': None, 'responsavel': 'Adaini', 'observacao': None},
+    {'cliente_id': 'c-d', 'faz': True, 'motivo': None, 'inicio': '2025-01', 'fim': None, 'responsavel': 'Adaini', 'observacao': None},
+    {'cliente_id': 'c-e', 'faz': False, 'motivo': 'Centralizada na matriz', 'inicio': '2025-01', 'fim': None, 'responsavel': 'Adaini', 'observacao': None},
+    {'cliente_id': 'c-h', 'faz': True, 'motivo': None, 'inicio': '2025-01', 'fim': None, 'responsavel': 'Adaini', 'observacao': None},
+]
+MESES = ([{'cliente_id': 'c-a', 'competencia': c, 'situacao': 'feita', 'feita_em': '2026-01-31', 'por': 'planilha'} for c in meses('2025-01', '2025-12')]
+         + [{'cliente_id': 'c-a', 'competencia': c, 'situacao': 'feita', 'feita_em': '2026-10-23', 'por': 'contabil@macedoereis.com.br'} for c in meses('2026-01', '2026-09')]
+         + [{'cliente_id': 'c-b', 'competencia': '2025-01', 'situacao': 'feita', 'feita_em': '2026-01-31', 'por': 'planilha'}]
+         + [{'cliente_id': 'c-b', 'competencia': c, 'situacao': 'feita', 'feita_em': '2026-08-18', 'por': 'planilha'} for c in meses('2026-01', '2026-06')]
+         + [{'cliente_id': 'c-b', 'competencia': '2026-07', 'situacao': 'sem_movimento', 'feita_em': None, 'por': 'planilha'}]
+         + [{'cliente_id': 'c-d', 'competencia': c, 'situacao': 'feita', 'feita_em': '2026-01-31', 'por': 'planilha'} for c in meses('2025-01', '2025-12')]
+         + [{'cliente_id': 'c-h', 'competencia': c, 'situacao': 'andamento', 'feita_em': '2026-07-24', 'por': 'planilha'} for c in meses('2025-01', '2025-12')])
+PENDENCIAS = [
+    {'id': 'p1', 'cliente_id': 'c-a', 'competencia': '2026-10', 'texto': 'Extratos do banco de outubro <b>x</b>', 'aguardando': 'cliente', 'desde': '2026-10-15', 'resolvida_em': None, 'resolvida_por': None, 'criado_por': 'planilha', 'criado_em': '2026-11-04T10:00:00Z'},
+    {'id': 'p2', 'cliente_id': 'c-b', 'competencia': None, 'texto': 'Dúvidas com o Diego', 'aguardando': 'diego', 'desde': '2026-08-04', 'resolvida_em': '2026-09-01T10:00:00Z', 'resolvida_por': 'contabil@macedoereis.com.br', 'criado_por': 'planilha', 'criado_em': '2026-08-04T10:00:00Z'},
+]
+CARTEIRA = [
+    {'cliente_id': 'c-a', 'entrada': '2020-01-01', 'saida': None}, {'cliente_id': 'c-b', 'entrada': '2020-01-01', 'saida': None},
+    {'cliente_id': 'c-c', 'entrada': '2026-03-01', 'saida': None}, {'cliente_id': 'c-d', 'entrada': '2020-01-01', 'saida': '2026-05-08'},
+    {'cliente_id': 'c-e', 'entrada': '2020-01-01', 'saida': None}, {'cliente_id': 'c-f', 'entrada': '2026-08-01', 'saida': None},
+    {'cliente_id': 'c-g', 'entrada': '2020-01-01', 'saida': None}, {'cliente_id': 'c-h', 'entrada': '2020-01-01', 'saida': None},
+    {'cliente_id': 'c-i', 'entrada': '2026-03-01', 'saida': None}, {'cliente_id': 'c-j', 'entrada': '2020-01-01', 'saida': None},
+]
+DOM_EMP = [{'codigo': 101, 'cliente_id': 'c-a', 'ativa': True}, {'codigo': 102, 'cliente_id': 'c-b', 'ativa': True}, {'codigo': 103, 'cliente_id': 'c-c', 'ativa': True},
+           {'codigo': 104, 'cliente_id': 'c-d', 'ativa': False}, {'codigo': 108, 'cliente_id': 'c-h', 'ativa': True}]
+z = {'lancamentos': 0, 'notas_saida': 0, 'valor_saidas': 0, 'notas_entrada': 0, 'valor_entradas': 0, 'funcionarios_ativos': 0, 'pro_labore': 0, 'ultimo_lancamento': None}
+DOM_MES = [
+    {'codigo': 101, 'cliente_id': 'c-a', 'competencia': '2026-10', **z, 'lancamentos': 150, 'notas_saida': 12, 'valor_saidas': 23456.78, 'funcionarios_ativos': 3, 'pro_labore': 1, 'ultimo_lancamento': '2026-10-30'},
+    {'codigo': 102, 'cliente_id': 'c-b', 'competencia': '2026-07', **z, 'lancamentos': 20, 'notas_saida': 5, 'valor_saidas': 900},
+    {'codigo': 103, 'cliente_id': 'c-c', 'competencia': '2026-08', **z},
+]
+PGDAS = [{'cliente_id': 'c-a', 'competencia': '2026-09', 'receita_mes': 45000, 'das_pago': True, 'transmitida_em': '2026-10-15'}]
+TAREFAS = [{'id': 't-cont-1', 'setor': 'contabil', 'cliente_id': 'c-a', 'titulo': 'Balancete', 'prazo': '2026-11-10', 'responsavel': 'Adaini', 'status': 'pendente'},
+           {'id': 't-cont-2', 'setor': 'contabil', 'cliente_id': 'c-a', 'titulo': 'Já feita', 'prazo': '2026-10-10', 'responsavel': 'Adaini', 'status': 'concluida'},
+           {'id': 't-dp-1', 'setor': 'dp', 'cliente_id': 'c-a', 'titulo': 'Folha', 'prazo': '2026-11-06', 'responsavel': 'Vitória', 'status': 'pendente'}]
+
+SEMEAR = """
+(() => { const T = %s; let db;
+  Object.defineProperty(window, '__mockDb', { configurable: true, get() { return db; }, set(v) { db = v;
+    v.clientes = T.clientes; v.contabil_empresas = T.empresas; v.contabil_meses = T.meses; v.contabil_pendencias = T.pendencias;
+    v.carteira_info = T.carteira; v.dominio_empresas = T.domEmp; v.dominio_mensal = T.domMes; v.receita_pgdas = T.pgdas; v.tarefas = T.tarefas; } });
+})();
+""" % json.dumps({'clientes': CLIENTES, 'empresas': EMPRESAS, 'meses': MESES, 'pendencias': PENDENCIAS, 'carteira': CARTEIRA, 'domEmp': DOM_EMP,
+                  'domMes': DOM_MES, 'pgdas': PGDAS, 'tarefas': TAREFAS}, ensure_ascii=False)
+TOUR = "(() => { const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { return String(k).startsWith('mr_tour_') ? 'ok' : g.call(this, k); }; })()"
+
+falhas = 0
+def ok(cond, msg):
+    global falhas
+    print(('  ✓ ' if cond else '  ✗ ') + msg)
+    if not cond: falhas += 1
+
+def nova(b, base, erros, caminho, rotulo, largura=1500):
+    p = b.new_page(viewport={'width': largura, 'height': 950})
+    p.on('pageerror', lambda e: erros.append(f'{rotulo}: {e}'))
+    p.clock.set_fixed_time('2026-11-04T12:00:00')
+    p.add_init_script(TOUR); p.add_init_script(SEMEAR)
+    p.goto(base + caminho)
+    return p
+
+def cel(p, cid, c): return p.locator(f'button.cc-c[data-id="{cid}"][data-c="{c}"]')
+def classes(p, cid, c): return cel(p, cid, c).get_attribute('class') or ''
+def db(p, tabela): return p.evaluate(f"() => JSON.parse(JSON.stringify(window.__mockDb.{tabela}))")
+def foco(p, k): return p.inner_text(f'[data-foco="{k}"] .fc-num')
+
+def main():
+    from playwright.sync_api import sync_playwright
+    montar_site(); FOTOS.mkdir(parents=True, exist_ok=True)
+    srv, porta = servir(); base = f'http://127.0.0.1:{porta}/'
+    erros = []
+    with sync_playwright() as pw:
+        b = pw.chromium.launch()
+
+        print('1. A grade')
+        p = nova(b, base, erros, 'contabil-controle.html', 'grade')
+        p.wait_for_selector('table.cc-grade', timeout=8000)
+        ok([foco(p, k) for k in ('todas', 'em_dia', 'ano_passado', 'pendencia', 'saindo', 'nao_faz')] == ['5', '0', '2', '1', '0', '1'],
+           'os focos: 5 empresas, nenhuma em dia, 2 com o ano passado aberto, 1 com pendência, nenhuma saindo, 1 que não fazemos')
+        ok(p.locator('.cc-grade tbody tr').count() == 5 and p.locator('[data-ano="2026"].is-on').count() == 1, 'a grade de 2026 com as 5 empresas do controle')
+        ok(all('is-feita' in classes(p, 'c-a', c) for c in meses('2026-01', '2026-09')) and cel(p, 'c-a', '2026-09').inner_text() == '23/10',
+           'os meses feitos mostram o dia em que foram feitos')
+        ok('is-afazer' in classes(p, 'c-a', '2026-10') and cel(p, 'c-a', '2026-10').locator('.cc-pend').count() == 1 and 'is-agora' in classes(p, 'c-a', '2026-11')
+           and cel(p, 'c-a', '2026-12').is_disabled(), 'outubro a fazer, com a marca da pendência; novembro correndo; dezembro ainda não chegou')
+        linha_a = p.locator('tr', has=p.locator('[data-emp="c-a"]')).inner_text()
+        ok('09/2026' in linha_a and '1 mês' in linha_a and '10/2026' in linha_a and 'PADARIA EXEMPLO' in linha_a and 'Domínio 101' in linha_a and '1 pendência' in linha_a,
+           f'a linha: feita até 09/2026, a fazer 1 mês (10/2026), o código do Domínio e a pendência ({linha_a[:160]!r})')
+        linha_b = p.locator('tr', has=p.locator('[data-emp="c-b"]')).inner_text()
+        ok('01/2025' in linha_b and '02/2025 a 12/2025' in linha_b and '08/2026 a 10/2026' in linha_b, f'o buraco: feita até 01/2025, a fazer em faixas ({linha_b[:200]!r})')
+        ok(cel(p, 'c-b', '2026-07').locator('.cc-dica:not(.is-leve)').count() == 1 and 'Domínio tem 20 lançamentos, 5 notas de saída' in (cel(p, 'c-b', '2026-07').get_attribute('title') or ''),
+           'o sem movimento que tem nota no Domínio ganha a dica de conferir')
+        ok(cel(p, 'c-c', '2026-08').locator('.cc-dica.is-leve').count() == 1 and all('is-fora' in classes(p, 'c-c', c) for c in ('2026-01', '2026-02')),
+           'o mês sem nada no Domínio sugere sem movimento; antes do início do controle, fora')
+        ok(p.evaluate('window.__xss') is None and 'EMPRESA <img src=x onerror="window.__xss=1"> LTDA' in p.inner_text('.cc-grade'), 'o nome que veio de fora aparece como texto')
+        ok(p.locator('tr', has=p.locator('[data-emp="c-d"]')).locator('.cc-chip', has_text='Saiu da carteira').count() == 1
+           and 'Inativa no Domínio' in p.locator('tr', has=p.locator('[data-emp="c-d"]')).inner_text(), 'quem saiu da carteira e está inativa no Domínio ganha os avisos na linha')
+        ok(p.is_visible('#fora') and '2 empresas da carteira não estão' in p.inner_text('#foraTit') and p.is_hidden('#foraLista'), 'a carteira fora do controle: sem o MEI e a pessoa física, fechada')
+        ok('Nenhum mês feito ainda em novembro' in p.inner_text('#progresso'), 'o que foi feito no mês: nada ainda')
+        p.screenshot(path=str(FOTOS / 'contabil-controle.png'), full_page=False)
+
+        print('2. O mês')
+        cel(p, 'c-c', '2026-10').click(); p.wait_for_selector('#pop:not([hidden])', timeout=3000)
+        pop = p.inner_text('#pop')
+        ok('Outubro de 2026' in pop and 'ASSOCIACAO DE TESTE' in pop and 'Feita até aqui (8 meses)' in pop and '03/2026 a 10/2026' in pop, f'o mês a fazer: feita até aqui, com quantos meses e quais ({pop[:200]!r})')
+        p.click('[data-pa="feita-ate"]'); p.wait_for_selector('#pop[hidden]', state='attached', timeout=3000)
+        linhas = [m for m in db(p, 'contabil_meses') if m['cliente_id'] == 'c-c']
+        ok(len(linhas) == 8 and all(m['situacao'] == 'feita' and m['feita_em'] == '2026-11-04' for m in linhas) and sorted(m['competencia'] for m in linhas) == meses('2026-03', '2026-10'),
+           'feita até aqui grava os 8 meses abertos, com o dia de hoje')
+        ok('8 meses' in p.inner_text('#toast') and p.is_visible('#toastDesfazer') and foco(p, 'em_dia') == '1' and 'Em dia até 10/2026' in p.locator('tr', has=p.locator('[data-emp="c-c"]')).inner_text(),
+           'o aviso com o Desfazer; a empresa fica em dia')
+        ok('Em novembro: 8 meses feitos em 1 empresa' in p.inner_text('#progresso'), 'o que foi feito no mês acompanha')
+        p.click('#toastDesfazer'); p.wait_for_function("() => document.querySelector('#toastTxt').innerText.startsWith('Desfeito')", timeout=3000)
+        ok(not [m for m in db(p, 'contabil_meses') if m['cliente_id'] == 'c-c'] and foco(p, 'em_dia') == '0' and p.is_hidden('#toastDesfazer'), 'o Desfazer volta tudo como estava (e o aviso fica sem o botão)')
+        cel(p, 'c-c', '2026-08').click(); p.wait_for_selector('#pop:not([hidden])', timeout=3000)
+        ok('sem movimento?' in p.inner_text('#pop'), 'o mês sem nada no Domínio: a dica aparece no mês')
+        p.click('[data-pa="sem_movimento"]'); p.wait_for_timeout(300)
+        m = [x for x in db(p, 'contabil_meses') if x['cliente_id'] == 'c-c' and x['competencia'] == '2026-08']
+        ok(len(m) == 1 and m[0]['situacao'] == 'sem_movimento' and m[0]['feita_em'] is None and 'is-sem_movimento' in classes(p, 'c-c', '2026-08'), 'sem movimento grava sem o dia')
+        cel(p, 'c-a', '2026-09').click(); p.wait_for_selector('#pop:not([hidden])', timeout=3000)
+        ok('Feita em 23/10/2026' in p.inner_text('#pop') and 'No Domínio' not in p.inner_text('#pop'), 'o mês feito: o dia e quem fez')
+        p.click('[data-pa="limpar"]'); p.wait_for_timeout(300)
+        ok(not [x for x in db(p, 'contabil_meses') if x['cliente_id'] == 'c-a' and x['competencia'] == '2026-09'] and 'is-afazer' in classes(p, 'c-a', '2026-09'), 'voltar pra a fazer apaga a linha')
+        p.click('#toastDesfazer'); p.wait_for_timeout(300)
+        ok([x for x in db(p, 'contabil_meses') if x['cliente_id'] == 'c-a' and x['competencia'] == '2026-09'][0]['feita_em'] == '2026-10-23', 'e o Desfazer devolve o dia de antes')
+        cel(p, 'c-a', '2026-10').click(); p.wait_for_selector('#pop:not([hidden])', timeout=3000)
+        ok('150 lançamentos, 12 notas de saída, 3 funcionários, 1 pró-labore' in p.inner_text('#pop') and 'Extratos do banco de outubro <b>x</b>' in p.inner_text('#pop'), 'o mês: o Domínio e a pendência do mês, como texto')
+        p.keyboard.press('Escape'); p.wait_for_timeout(150)
+        ok(p.is_hidden('#pop') and p.evaluate("() => document.activeElement && document.activeElement.dataset.c") == '2026-10', 'Esc fecha e o foco volta pra célula')
+
+        print('3. A ficha da empresa')
+        p.click('[data-emp="c-a"]'); p.wait_for_selector('#ovEmp.is-open', timeout=3000)
+        p.wait_for_function("() => document.querySelector('#eMeses').innerText.includes('45.000,00')", timeout=3000)
+        f = p.inner_text('#ovEmp')
+        ok('Feita até 09/2026' in f and 'A fazer: 1 mês (10/2026)' in f, 'o resumo: feita até e o que falta')
+        ok('Extratos do banco de outubro <b>x</b>' in f and 'Esperando o cliente, desde 15/10/2026 (há 20 dias), de 10/2026' in f, 'a pendência, como texto, com quem e desde quando')
+        ok('R$ 23.456,78' in f and 'R$ 45.000,00' in f and p.get_attribute('#eTarefas a', 'href') == 'agenda.html?tarefa=t-cont-1' and p.locator('#eTarefas li').count() == 1,
+           'o mês a mês com o Domínio e o PGDAS; só a tarefa aberta do Contábil')
+        ok(p.get_attribute('#eSub a', 'href') == 'clientes/editar.html?id=c-a' and p.is_hidden('#eMotivoBox') and p.is_checked('#eFaz'), 'o link da ficha da empresa; quem faz, sem o campo do motivo')
+        p.screenshot(path=str(FOTOS / 'contabil-controle-ficha.png'))
+        p.click('#pAdd'); p.wait_for_timeout(150)
+        ok('Escreva o que falta' in p.inner_text('#pErro'), 'a pendência vazia barra')
+        p.fill('#pTexto', 'Extrato da aplicação'); p.select_option('#pAguardando', 'diego'); p.fill('#pMes', '2026-09')
+        p.click('#pAdd'); p.wait_for_timeout(300)
+        nv = [x for x in db(p, 'contabil_pendencias') if x['texto'] == 'Extrato da aplicação']
+        ok(len(nv) == 1 and nv[0]['aguardando'] == 'diego' and nv[0]['competencia'] == '2026-09' and nv[0]['desde'] == '2026-11-04' and nv[0]['cliente_id'] == 'c-a',
+           'a pendência nova grava o texto, de quem se espera, desde hoje e o mês')
+        ok(p.locator('#ePend .cc-pend-item').count() == 2 and foco(p, 'pendencia') == '1', 'a lista acompanha')
+        p.click('#ePend [data-resolver="p1"]'); p.wait_for_timeout(300)
+        ok(db(p, 'contabil_pendencias')[0]['resolvida_em'] and p.locator('#ePend .cc-pend-item').count() == 1 and '1 resolvida' in p.inner_text('#eResolvidasTit'), 'resolver: grava quando e vai pras resolvidas')
+        p.fill('#eObs', 'Conferir o caixa de março.'); p.wait_for_timeout(1100)
+        ok([e for e in db(p, 'contabil_empresas') if e['cliente_id'] == 'c-a'][0]['observacao'] == 'Conferir o caixa de março.' and 'Gravada' in p.inner_text('#eObsStatus'), 'a observação grava sozinha')
+        p.keyboard.press('Escape'); p.wait_for_timeout(200)
+        ok(not p.is_visible('#ovEmp'), 'Esc fecha a ficha')
+
+        print('4. Quem saiu e quem estava fora do controle')
+        p.click('[data-emp="c-d"]'); p.wait_for_selector('#ovEmp.is-open', timeout=3000)
+        ok('Saiu da carteira em 08/05/2026' in p.inner_text('#eAvisos'), 'o aviso de quem saiu da carteira')
+        p.click('[data-encerrar="2026-05"]'); p.wait_for_timeout(300)
+        ok([e for e in db(p, 'contabil_empresas') if e['cliente_id'] == 'c-d'][0]['fim'] == '2026-05' and 'Controle salvo' in p.inner_text('#eCtlStatus'), 'encerrar no mês da saída grava o fim')
+        p.click('#eClose'); p.wait_for_timeout(150)
+        ok('is-fora' in classes(p, 'c-d', '2026-06') and 'is-afazer' in classes(p, 'c-d', '2026-05') and foco(p, 'saindo') == '1', 'depois do fim, fora; a empresa fica em "saindo ou baixadas"')
+        p.click('#foraAbrir')
+        ok(p.is_visible('#foraLista') and p.is_hidden('[data-form="c-i"]') and 'Incluir a partir de 08/2026' in p.inner_text('#foraLista'), 'a lista abre, com o mês da entrada; o motivo só aparece no "não fazemos"')
+        p.click('[data-naofaz="c-i"]'); p.wait_for_timeout(100)
+        ok(p.is_visible('[data-form="c-i"]'), '"não fazemos" pede o motivo')
+        p.fill('[data-form="c-i"] input', 'Centralizada na matriz'); p.click('[data-form="c-i"] button'); p.wait_for_timeout(300)
+        nv = [e for e in db(p, 'contabil_empresas') if e['cliente_id'] == 'c-i']
+        ok(len(nv) == 1 and nv[0]['faz'] is False and nv[0]['motivo'] == 'Centralizada na matriz' and foco(p, 'nao_faz') == '2' and p.is_visible('#foraLista'), 'grava como "não fazemos", com o motivo; a lista segue aberta')
+        p.click('[data-incluir="c-f"]'); p.wait_for_timeout(300)
+        nv = [e for e in db(p, 'contabil_empresas') if e['cliente_id'] == 'c-f']
+        ok(len(nv) == 1 and nv[0]['inicio'] == '2026-08' and nv[0]['faz'] is True and p.is_hidden('#fora') and foco(p, 'todas') == '6', 'incluir quem estava fora: a partir do mês da entrada; a lista some')
+        p.click('[data-foco="nao_faz"]'); p.wait_for_timeout(150)
+        ok(p.locator('.cc-grade tbody tr').count() == 2 and 'Centralizada na matriz' in p.inner_text('.cc-grade'), 'não fazemos: o motivo na linha')
+        p.close()
+
+        print('5. O ano, a busca, os endereços e o hub')
+        p = nova(b, base, erros, 'contabil-controle.html?ano=2025&empresa=c-b', 'endereco')
+        p.wait_for_selector('#ovEmp.is-open', timeout=8000)
+        ok('COMERCIO MODELO LTDA' in p.inner_text('#eTitulo') and '1 resolvida' in p.inner_text('#eResolvidasTit') and p.input_value('#eObs') == 'Até o mês 05/2026 tudo ok.', '?empresa= abre a ficha, com a resolvida e a observação')
+        p.click('#eClose')
+        ok(p.locator('[data-ano="2025"].is-on').count() == 1 and all('is-andamento' in classes(p, 'c-h', c) for c in meses('2025-01', '2025-12')) and cel(p, 'c-h', '2025-03').inner_text() == '24/07',
+           '?ano=2025 abre em 2025: em andamento com o dia')
+        p.fill('#busca', 'padaría'); p.wait_for_timeout(150)
+        ok(p.locator('.cc-grade tbody tr').count() == 1, 'a busca sem acento')
+        p.fill('#busca', '108'); p.wait_for_timeout(150)
+        ok(p.locator('.cc-grade tbody tr').count() == 1 and p.locator('[data-emp="c-h"]').count() == 1, 'a busca pelo código do Domínio')
+        p.close()
+        p = nova(b, base, erros, 'contabil-controle.html', 'celular', largura=390)
+        p.wait_for_selector('table.cc-grade', timeout=8000)
+        ok(p.evaluate('() => document.documentElement.scrollWidth <= window.innerWidth + 1'), 'no celular, a página não rola de lado (só a grade)')
+        p.screenshot(path=str(FOTOS / 'contabil-controle-celular.png'))
+        p.close()
+        p = nova(b, base, erros, 'contabil.html', 'hub')
+        p.wait_for_function("() => { const e = document.querySelector('[data-mod=\"contabil-controle.html\"]'); return e && !e.classList.contains('st-load'); }", timeout=6000)
+        card = p.locator('a.dashboard-card[href="contabil-controle.html"]')
+        ok(card.count() == 1 and 'Controle das contabilidades' in card.inner_text() and '1 pendência' in card.inner_text().lower(), f'o card no hub do Contábil, com as pendências ({card.inner_text() if card.count() else ""!r})')
+        p.close()
+        b.close()
+    srv.shutdown()
+    ok(not erros, 'nenhum erro de JavaScript' + (': ' + '; '.join(erros[:3]) if erros else ''))
+    print('\nResultado:', 'TUDO OK' if not falhas else f'{falhas} FALHA(S)')
+    sys.exit(1 if falhas else 0)
+
+if __name__ == '__main__':
+    main()
