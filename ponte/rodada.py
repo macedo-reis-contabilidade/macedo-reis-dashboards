@@ -16,10 +16,19 @@ OK, TENTAR_DE_NOVO, NAO_ADIANTA = 0, 1, 2
 
 
 def rodar(falso=False, sem_enviar=False, saida=None, meses=None):
+    """A rodada dos totais e, no fim, a etapa das notas das empresas autorizadas (ponte/notas/), no mesmo modo — um erro
+    nela vai pro log e não muda o que a rodada dos totais fez nem o código de saída dela."""
     base = config.pasta()
     cfg = config.carregar()
     reg = Registro(base / 'logs', segredos=cfg.segredos())
     reg.limpar_antigos()
+    codigo = _rodar_totais(base, cfg, reg, falso, sem_enviar, saida, meses)
+    from .notas.rodada import etapa
+    etapa(falso=falso, sem_enviar=sem_enviar, registro=reg)
+    return codigo
+
+
+def _rodar_totais(base, cfg, reg, falso, sem_enviar, saida, meses):
 
     # ---- o que a configuração precisa ter pra esta rodada
     precisa = []

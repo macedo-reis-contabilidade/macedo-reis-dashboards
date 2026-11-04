@@ -210,9 +210,10 @@ parâmetros).
 ## Registro de progresso
 | Data | Item | Situação / observação |
 |---|---|---|
-| | 1 · O contrato | |
-| | 2 · O que ler, e quando | |
-| | 3 · O módulo | |
-| | 4 · Os testes | |
-| | 5 · No PC, com a empresa do teste | |
-| | 6 · LEIA-ME, DUVIDAS e push | |
+| 04/11/2026 | Antes de começar | `main` em 0fe7e1f; branch `fila-notas-ponte`; `py -3 tests/ponte.test.py` e `node tests/ponte-funcao.test.mjs`: "Tudo certo.". |
+| 04/11/2026 | 1 · O contrato | Feito: a lista (`pedir: autorizadas`), o pacote por empresa (até 200 notas e 4 MB) e as respostas (200 com as recusadas; 403 e 422 sem repetir; 503 do destino parando as notas sem marcar; 502 e o resto pelas tentativas do envio, sem os pendentes). O CFOP da nota sem itens é a `codi_nat` da `efentradas` (conferido: 2.605 de 2.605 segmentos de 09/2026 de 1000 a 3999). |
+| 04/11/2026 | 2 · O que ler, e quando | Feito: a janela (primeira vez e domingo, de `desde`; nos outros dias, três meses), o estado em `C:\ponte-dominio\notas\estado.json` e as consultas `notas_itens.sql`, `notas_xml.sql` e `notas_empresa.sql` (o `xml` é palavra reservada: a coluna é `conteudo`). Um mês da empresa do teste: os itens em 6,5 s, o XML em ~20 s (DUVIDAS, item 3). |
+| 04/11/2026 | 3 · O módulo | Feito: `ponte/notas/` (`xml.py`, `fonte.py`, `pacote.py`, `estado.py`, `sistema.py`, `rodada.py`, `falso.py`), o `py -3 -m ponte notas rodar`, a etapa no fim do `ponte rodar` (um erro nela não muda a rodada dos totais) e a linha no `conferir`. |
+| 04/11/2026 | 4 · Os testes | `tests/ponte-notas.test.py`: os 12 casos da fila, todo pacote pelo `validarPacoteNotas` de verdade sem nenhuma recusa (19 pacotes) e o `CFOPS_DE_COMPRA` igual ao da função. O `tests/ponte.test.py` confere as três consultas novas e o sistema de mentira dele responde a lista das notas vazia. |
+| 04/11/2026 | 5 · No PC, com a empresa do teste | `--sem-enviar --tudo`: 1 empresa autorizada e pronta; de 01/10/2025 a 04/11/2026, 533 notas lidas, 73 com o XML (09 e 10/2026), 464 no pacote; de fora, 68 sem item de compra (as bonificações) e 1 com item sem descrição ou quantidade. Os 3 pacotes pelo `validarPacoteNotas`: 464 aceitas (73 do XML, 391 da Domínio, 11.710 itens), 0 recusadas. 183 s. Nada mandado. |
+| 04/11/2026 | 6 · LEIA-ME, DUVIDAS e push | LEIA-ME com a seção das notas; DUVIDAS escrito; os três testes verdes; commit e push em `fila-notas-ponte`. A cópia instalada ficou como estava. |

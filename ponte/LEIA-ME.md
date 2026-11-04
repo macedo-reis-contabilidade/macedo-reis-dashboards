@@ -77,6 +77,7 @@ seu usuário.
 - `C:\ponte-dominio\logs\` — um arquivo por dia (`AAAA-MM-DD.log`); os de mais de 60 dias são apagados sozinhos.
 - `C:\ponte-dominio\pendentes\` — pacote que não foi (sistema fora, sem internet). A rodada seguinte manda antes,
   do mais velho pro mais novo, e apaga cada um que foi; pendente com mais de 30 dias é apagado com aviso no log.
+- `C:\ponte-dominio\notas\estado.json` — o que a ponte das notas já mandou (abaixo, "As notas de compra").
 
 ## A ligação com o Domínio Web (29/10/2026)
 
@@ -158,6 +159,55 @@ contábil recebem o primeiro e o último dia do mês, nessa ordem, e devolvem **
 4. **A conferência é pelo sistema** (decisão do Samuel, 02/11/2026: sem conferência à mão): o que o Domínio diz é
    cruzado com o que o sistema já sabe por outro caminho, e só o que não bate vai pra uma pessoa. A função `ponte`
    grava os totais do Domínio desde 02/11/2026 (`dominio_empresas`, `dominio_mensal`, `dominio_rodadas`).
+
+## As notas de compra das empresas autorizadas (03/11/2026)
+
+A exceção ao "só os totais saem do PC" (`ponte\notas\`, a fila `docs/FILA-CODE-2026-11-03-NOTAS-PONTE.md`). Alguns
+clientes autorizaram o escritório a mandar as notas de compra deles a um projeto de fora, que compara preços. **O que
+sai**, só destas condições: só as empresas que a função `ponte` diz que estão autorizadas (a lista,
+`{"tipo": "notas", "pedir": "autorizadas"}`), só NF-e de compra (modelo 55, emitida por fornecedor, fora a cancelada,
+denegada e inutilizada), só os itens com CFOP de compra (o `CFOPS_DE_COMPRA` de `supabase/functions/ponte/notas.js`,
+que o teste confere igual ao da ponte), nunca dado de funcionário. Fica de fora a nota de emitente pessoa física, a de
+outro destinatário, a do XML com finalidade que não é a normal, a sem item de compra e a do CFOP incerto. O código do
+produto no cadastro do cliente não vai.
+
+**De onde sai cada nota**: do XML guardado na Domínio (`EFATENDIMENTO_NFE_XML_V2`, o texto do `nfeProc`, sem
+compactar), quando ele existe, abre e é desta nota (a chave do `infNFe` e o `cStat` 100 ou 150) — os itens dele, com o
+CFOP de entrada da Domínio pelo número do item —; senão, das linhas da Domínio (`efmvepro`, com a descrição e o código
+de barras do cadastro de produtos, e o IPI do item só quando a soma bate com o da nota). **O XML é lido só em código e
+nunca sai do PC**: no pacote vão só os campos do contrato. A Domínio apaga o XML uns dois meses depois — por isso a
+rodada é diária.
+
+**Quando**: no fim do `py -3 -m ponte rodar` (a tarefa das 7h), no mesmo modo (`--sem-enviar`, `--falso`) — um erro
+nela vai pro log e não muda o que a rodada dos totais fez nem o código de saída dela —, ou sozinha:
+
+    py -3 -m ponte notas rodar [--sem-enviar] [--saida arquivo.json] [--falso] [--tudo] [--empresa CODIGO]
+
+- `--sem-enviar` pede a lista, lê e conta (todas as autorizadas, também as que não estão prontas) e não manda nem grava
+  o estado; sem ele, só as `pronta` (o destino delas configurado no sistema);
+- `--saida` grava os pacotes em `C:\ponte-dominio\` (sem pasta, lá) — **tem dado de cliente: não abra na conversa e
+  nunca copie pro repositório**;
+- `--tudo` lê desde a data da autorização; sem ele, na primeira vez da empresa e aos domingos também, e nos outros dias
+  do dia 1º do mês de três meses atrás até hoje (a nota que entra atrasada e o XML, que a Domínio guarda uns dois meses);
+- `--empresa` só a empresa daquele código do Domínio, se estiver na lista; `--falso` a Domínio de mentira (só manda pra
+  um sistema de mentira, endereço local).
+
+A empresa só é lida se o documento do cadastro do sistema for o `cgce_emp` dela na Domínio (`notas_empresa.sql`). As
+consultas: `notas_itens.sql` (uma linha por item) e `notas_xml.sql` (o XML), as duas com o código da empresa e o
+período. Na empresa do teste, 14 meses levaram uns 3 minutos (o XML de um mês, uns 20 s: o catálogo das notas e o
+conteúdo de cada XML, que o ODBC traz um por um).
+
+**O estado** fica em `C:\ponte-dominio\notas\estado.json`: por empresa, o documento e, por nota, a data de entrada, a
+impressão digital (o SHA-256 da nota, com o XML), de onde ela saiu e quando foi. Vai só a nota nova ou que mudou; a que
+foi do XML não vai de novo pela Domínio (o destino fica com a do XML); a empresa que sai da lista some do estado.
+
+**As respostas** do sistema (um pacote de cada vez, até 200 notas e 4 MB): 200 — as notas ficam como mandadas, as
+recusadas também (o log diz o campo e o erro, nunca a chave) e só vão de novo se mudarem; 403 (a empresa não está
+autorizada) e 422 (fora do contrato) — não repete, as outras empresas seguem; 503 "O destino das notas ainda não foi
+configurado no sistema." — para as notas nesta rodada, nada fica como mandado; 502 e o resto do 5xx, tempo esgotado e
+rede fora — as tentativas de sempre e, não indo, vai na próxima rodada (as notas não usam os pendentes); 401 e o 503 da
+chave — como nos totais. O `conferir` mostra quantas empresas o sistema tem autorizadas e quantas prontas. O log de
+cada empresa sai pelo código, só com números.
 
 ---
 

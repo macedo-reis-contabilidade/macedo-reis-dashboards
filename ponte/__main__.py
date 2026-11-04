@@ -1,6 +1,8 @@
 """py -3 -m ponte conferir | rodar [--falso] [--sem-enviar] [--saida arquivo.json] [--meses N]
    py -3 -m ponte receita conferir | rodar [--demonstracao | --falso] [--sem-enviar] [--saida arquivo.json]
                                            [--so servico,servico] [--empresas N]   (a ponte da Receita)
+   py -3 -m ponte notas rodar [--sem-enviar] [--saida arquivo.json] [--falso] [--tudo] [--empresa CODIGO]
+                                            (as notas de compra das empresas autorizadas — ponte/notas/)
    py -3 -m ponte chave [--trocar]          (gera a chave da ponte no config.ini e mostra só a impressão digital)
    py -3 -m ponte dominio conexao [--esperar] | tabelas [--procurar termo] [--saida arquivo.txt]
                           | sql "SELECT …" | --arquivo consulta.sql [--mes AAAA-MM] [--linhas N]
@@ -88,6 +90,14 @@ def main(argv=None):
     rr.add_argument('--so', type=_servicos, metavar='servico,servico',
                     help='roda só estes, agora, fora do calendário: autorizacao,pgdas,faturamento,caixa_postal,situacao_fiscal')
     rr.add_argument('--empresas', type=_empresas, metavar='N', help='só as N primeiras empresas da lista')
+    nt = sub.add_parser('notas', help='as notas de compra das empresas autorizadas (ponte/notas/) — o LEIA-ME explica')
+    nsub = nt.add_subparsers(dest='acao', required=True)
+    nr = nsub.add_parser('rodar', help='pede a lista ao sistema, lê as notas da Domínio, manda, registra')
+    nr.add_argument('--sem-enviar', action='store_true', help='lê e conta (todas as autorizadas); não manda nem grava o estado')
+    nr.add_argument('--saida', metavar='arquivo.json', help='grava os pacotes neste arquivo (sem pasta = na pasta da ponte)')
+    nr.add_argument('--falso', action='store_true', help='lê da Domínio de mentira (só manda pra endereço local)')
+    nr.add_argument('--tudo', action='store_true', help='a janela inteira, desde a data da autorização')
+    nr.add_argument('--empresa', type=_empresas, metavar='CODIGO', help='só esta empresa (o código do Domínio), se estiver na lista')
     ch = sub.add_parser('chave', help='gera a chave da ponte (x-chave) no config.ini e mostra só a impressão digital')
     ch.add_argument('--trocar', action='store_true', help='troca a chave que existe (pede confirmação)')
     dom = sub.add_parser('dominio', help='a ligação com o banco do Domínio Web: conexao, tabelas, sql — o LEIA-ME explica')
@@ -117,6 +127,11 @@ def main(argv=None):
         if bool(args.consulta) == bool(args.arquivo):
             p.error('dominio sql: passe a consulta entre aspas OU --arquivo consulta.sql')
         return dominio.sql(consulta=args.consulta, arquivo=args.arquivo, mes=args.mes, linhas=args.linhas)
+
+    if args.comando == 'notas':
+        from .notas.rodada import rodar as rodar_notas
+        return rodar_notas(sem_enviar=args.sem_enviar, saida=args.saida, falso=args.falso, tudo=args.tudo,
+                           empresa=args.empresa)
 
     if args.comando == 'receita':
         if args.acao == 'conferir':
