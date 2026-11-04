@@ -1,12 +1,12 @@
 // ============================================================
 // MACEDO & REIS — Abertura de MEI (04/11/2026, pedido do Samuel): o link público (mei.html) pra quem quer abrir o CNPJ
 // como Microempreendedor Individual responder e mandar os documentos, e a ficha no Societário (societario-mei.html).
-// Aqui ficam as perguntas, a conferência do pedido, o que a ficha mostra, os avisos pro escritório e a conferência da
-// sugestão de CNAE da IA — um arquivo só pro link, pra ficha e pra Edge Function mei-link, que leva uma cópia idêntica
-// (tests/mei-abertura.test.mjs confere). As perguntas são as do folder "MEI: como funciona?" do escritório. A senha do
-// gov.br não é pedida (decisão do Samuel): o link só avisa que a abertura precisa da conta gov.br nível prata ou ouro.
-// A sugestão de CNAE é só pro escritório (a pessoa não vê) e é uma sugestão: quem decide é quem abre, no Portal do
-// Empreendedor, que só aceita as ocupações permitidas ao MEI.
+// Aqui ficam as perguntas, a conferência do pedido, o que a ficha mostra e os avisos pro escritório — um arquivo só pro
+// link, pra ficha e pra Edge Function mei-link, que leva uma cópia idêntica (tests/mei-abertura.test.mjs confere). As
+// perguntas são as do folder "MEI: como funciona?" do escritório. A senha do gov.br não é pedida (decisão do Samuel): o
+// link só avisa que a abertura precisa da conta gov.br nível prata ou ouro. A sugestão de CNAE é só pro escritório (a
+// pessoa não vê), sai só das ocupações da lista oficial do MEI (./mei-ocupacoes.js) e é uma sugestão: quem decide é quem
+// abre, no Portal do Empreendedor.
 // ============================================================
 
 export const AVISO_GOV = 'Necessário ter acesso ao gov.br com a conta nível prata ou ouro para poder abrir o CNPJ.';
@@ -145,31 +145,9 @@ export function alertasDoPedido(p = {}) {
   return a;
 }
 
-// ---------- a sugestão de CNAE (a IA, na Edge Function): conferida antes de gravar e antes de mostrar ----------
-// o CNAE da subclasse: "4781-4/00" (aceita só os dígitos)
+// o CNAE da subclasse: "4781-4/00" (aceita só os dígitos). A sugestão de CNAE da IA e a conferência dela, pela lista
+// oficial das ocupações do MEI, ficam em ./mei-ocupacoes.js (o link público não carrega a lista).
 export function formatarCnae(c) {
   const d = soDigitos(c);
   return d.length === 7 ? d.slice(0, 4) + '-' + d.slice(4, 5) + '/' + d.slice(5) : null;
-}
-const ocupacao = o => {
-  if (!o || typeof o !== 'object') return null;
-  const cnae = formatarCnae(o.cnae);
-  const nome = texto(o.ocupacao, 160);
-  return cnae && nome ? { cnae, ocupacao: nome, porque: texto(o.porque, 300) } : null;
-};
-// → { pode_ser_mei, principal, secundarios (até 15, sem repetir o CNAE da principal nem entre si), alertas, resumo } ou null
-export function limparSugestao(s) {
-  if (!s || typeof s !== 'object') return null;
-  const principal = ocupacao(s.principal);
-  const vistos = new Set(principal ? [principal.cnae + '|' + principal.ocupacao] : []);
-  const secundarios = [];
-  for (const o of Array.isArray(s.secundarios) ? s.secundarios : []) {
-    const x = ocupacao(o);
-    if (!x || vistos.has(x.cnae + '|' + x.ocupacao)) continue;
-    vistos.add(x.cnae + '|' + x.ocupacao);
-    if (secundarios.length < MAX_SECUNDARIAS) secundarios.push(x);
-  }
-  const alertas = (Array.isArray(s.alertas) ? s.alertas : []).map(x => texto(x, 400)).filter(Boolean).slice(0, 8);
-  const pode = s.pode_ser_mei !== false && !!principal;
-  return { pode_ser_mei: pode, principal: pode ? principal : null, secundarios: pode ? secundarios : [], alertas, resumo: texto(s.resumo, 600) };
 }

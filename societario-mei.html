@@ -76,7 +76,7 @@
         <section class="mm-sug" aria-labelledby="sugTit">
           <div class="mm-sug-cab"><h4 id="sugTit">Sugestão de CNAE</h4><div class="mm-sug-acoes"><button class="btn btn-ghost btn-sm" id="btnCopiarCnae">Copiar</button><button class="btn btn-ghost btn-sm" id="btnSugerir">Sugerir de novo</button></div></div>
           <div id="fSugestao"></div>
-          <p class="mm-dica">Sugestão da IA a partir do que a pessoa escreveu, só pra você: confira no Portal do Empreendedor, que só aceita as ocupações permitidas ao MEI (uma principal e até 15 secundárias).</p>
+          <p class="mm-dica">Sugestão da IA a partir do que a pessoa escreveu, só pra você, escolhida na <a href="https://www.gov.br/empresas-e-negocios/pt-br/empreendedor/quero-ser-mei/atividades-permitidas" target="_blank" rel="noopener noreferrer">lista oficial das ocupações do MEI</a> (uma principal e até 15 secundárias). Confira antes de abrir.</p>
         </section>
         <section aria-labelledby="respTit"><h4 class="mm-h4" id="respTit">Respostas</h4><dl class="mm-resp" id="fRespostas"></dl></section>
         <section aria-labelledby="docTit"><h4 class="mm-h4" id="docTit">Documentos</h4><div id="fDocs"></div></section>
@@ -181,12 +181,13 @@
       if (!s) { el.innerHTML = '<p class="mm-dica">A sugestão ainda está sendo preparada (leva uns segundos depois que o pedido chega). Clique em "Sugerir de novo" se não aparecer.</p>'; return; }
       if (s.erro) { el.innerHTML = '<p class="mm-erro">' + esc(s.erro) + ' Clique em "Sugerir de novo".</p>'; return; }
       const linha = (o, rot) => '<li><span class="mm-cnae">' + esc(o.cnae) + '</span> <b>' + esc(o.ocupacao) + '</b>' + (rot ? ' <span class="pill pill-ok">' + esc(rot) + '</span>' : '')
+        + (o.tabela === 'B' ? ' <span class="pill pill-nova" title="Transportador autônomo de cargas: limite de R$ 251.600 por ano e INSS de 12%, com o transporte de cargas como ocupação exclusiva">Tabela B · MEI caminhoneiro</span>' : '')
         + (o.porque ? '<small>' + esc(o.porque) + '</small>' : '') + '</li>';
       el.innerHTML = (s.resumo ? '<p class="mm-resumo">' + esc(s.resumo) + '</p>' : '')
         + (!s.pode_ser_mei ? '<div class="mm-banner mm-banner-err">Pela descrição, a atividade não cabe no MEI.</div>' : '')
         + (s.principal || (s.secundarios || []).length ? '<ul class="mm-cnaes">' + (s.principal ? linha(s.principal, 'principal') : '') + (s.secundarios || []).map(o => linha(o, '')).join('') + '</ul>' : '')
         + ((s.alertas || []).length ? '<ul class="mm-alertas">' + s.alertas.map(a => '<li>' + esc(a) + '</li>').join('') + '</ul>' : '')
-        + '<p class="mm-dica">' + esc([s.modelo ? 'Modelo ' + s.modelo : '', s.em ? 'em ' + quando(s.em) : ''].filter(Boolean).join(' ')) + '</p>';
+        + '<p class="mm-dica">' + esc([s.modelo ? 'Modelo ' + s.modelo : '', s.em ? 'em ' + quando(s.em) : '', /^\d{4}-\d{2}-\d{2}$/.test(s.lista || '') ? '· lista oficial lida em ' + s.lista.split('-').reverse().join('/') : ''].filter(Boolean).join(' ')) + '</p>';
     }
     function textoDosCnaes(s) {
       if (!s || !s.principal) return '';

@@ -26,9 +26,11 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from conferir import montar_site, servir, FOTOS
 
 ID = '11111111-2222-4333-8444-555555555555'
-SUG = {'pode_ser_mei': True, 'principal': {'cnae': '4781-4/00', 'ocupacao': 'Comerciante de artigos do vestuário e acessórios', 'porque': 'vende roupas'},
-       'secundarios': [{'cnae': '4782-2/01', 'ocupacao': 'Comerciante de calçados', 'porque': 'também sapatos'}], 'alertas': ['Confira se vende em feira com licença da prefeitura.'],
-       'resumo': 'Comércio de roupas pela internet e em feiras.', 'modelo': 'claude-sonnet-5-5', 'em': '2026-11-04T14:00:00Z'}
+SUG = {'pode_ser_mei': True, 'principal': {'numero': 91, 'cnae': '4781-4/00', 'ocupacao': 'Comerciante de artigos do vestuário e acessórios', 'tabela': 'A', 'porque': 'vende roupas'},
+       'secundarios': [{'numero': 108, 'cnae': '4782-2/01', 'ocupacao': 'Comerciante de calçados', 'tabela': 'A', 'porque': 'também sapatos'},
+                       {'numero': 459, 'cnae': '4930-2/01', 'ocupacao': 'TRANSPORTADOR AUTÔNOMO DE CARGA - MUNICIPAL', 'tabela': 'B', 'porque': 'faz frete'}],
+       'alertas': ['Confira se vende em feira com licença da prefeitura.'],
+       'resumo': 'Comércio de roupas pela internet e em feiras.', 'modelo': 'claude-sonnet-5-5', 'em': '2026-11-04T14:00:00Z', 'lista': '2026-11-04'}
 PEDIDO = {'nome': 'MARIA DE TESTE <b>X</b>', 'cpf': '52998224725', 'telefone': '51999990000', 'email': 'maria@exemplo.com', 'empresa': 'tem', 'empresaQual': 'Loja Antiga',
           'seguro': 'sim', 'irpf': 'sim', 'atividade': 'Vendo roupas <img src=x onerror="window.__xss=1"> pela internet', 'formas': ['internet', 'porta_a_porta'],
           'fantasia': '', 'capital': None, 'residencial': {'cep': '95660000', 'logradouro': 'Rua das Flores', 'numero': '100', 'complemento': '', 'bairro': 'Centro', 'cidade': 'Três Coroas', 'uf': 'RS'},
@@ -150,6 +152,10 @@ window.__mockInvoke = async (nome, opts) => {
         ok('Antes de abrir' in ficha and 'não pode ser MEI' in ficha, 'a ficha: os avisos de antes de abrir')
         ok('4781-4/00' in ficha and 'Comerciante de artigos do vestuário' in ficha and 'principal' in ficha and '4782-2/01' in ficha and 'licença da prefeitura' in ficha and 'Portal do Empreendedor' in ficha,
            'a sugestão: a principal, a secundária, os alertas da IA e o "a conferir no Portal"')
+        sug = p.inner_text('#fSugestao')
+        ok(sug.count('Tabela B · MEI caminhoneiro') == 1 and 'lista oficial lida em 04/11/2026' in sug
+           and p.get_attribute('.mm-sug a[href*="atividades-permitidas"]', 'href') == 'https://www.gov.br/empresas-e-negocios/pt-br/empreendedor/quero-ser-mei/atividades-permitidas',
+           'a ocupação da Tabela B marcada (o MEI caminhoneiro), o dia da lista oficial e o link dela')
         ok('Forma de atuação' in ficha and 'Internet, Porta a porta' in ficha and '529.982.247-25' in ficha and 'O mesmo do residencial' in ficha, 'as respostas como texto, com o CPF e o endereço')
         ok(p.get_attribute('#fDocs a[href*="ARQUIVO_RG_FRENTE_1"]', 'href') == 'https://drive.google.com/file/d/ARQUIVO_RG_FRENTE_1/view' and 'não chegou' in p.inner_text('#fDocs')
            and p.locator('#fDocs a[href*="PASTA_MEI_1"]').count() == 1, 'os documentos: o que chegou com o link do Drive, o que não chegou, a pasta')
