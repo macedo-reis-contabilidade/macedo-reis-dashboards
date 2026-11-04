@@ -11,7 +11,8 @@
 // =====================================================================
 import { supabase, getCurrentUser, signOut } from './supabase.js';
 import { hojeLocal } from './utils.js';
-import { diaUtil, somaDias, fmtData } from './rescisao-datas.js';
+import { somaDias, fmtData } from './rescisao-datas.js';
+import { nesimoDiaUtil } from './dias-uteis.js';
 
 const CSS = `
   .rv { display:grid; grid-template-columns:minmax(240px, 320px) minmax(0, 1fr); gap:16px; align-items:start; }
@@ -129,7 +130,7 @@ export function initRotinasSetor(cfg) {
             </select></label>
         </div>
         <label id="ovUtilWrap" style="display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--text-2);cursor:pointer"><input type="checkbox" id="ovUtil" checked> Se cair no fim de semana, vale o próximo dia útil</label>
-        <div class="dica" id="ovUtilDica" style="display:none">Conta só os dias úteis do mês, sem fim de semana e sem os feriados nacionais e do RS (os mesmos do vigia). O 5º dia útil de novembro de 2026 é 09/11.</div>
+        <div class="dica" id="ovUtilDica" style="display:none"></div>
         <label class="f">Observação <span class="dica">${esc(C.dicaObs)}</span>
           <input class="input" id="ovObs"></label>
       </div>
@@ -313,18 +314,8 @@ export function initRotinasSetor(cfg) {
   const fechar = () => $('rvOv').classList.remove('on');
   $('ovX').onclick = fechar; $('ovCancelar').onclick = fechar;
   $('rvOv').addEventListener('click', e => { if (e.target.id === 'rvOv') fechar(); });
-  // o N-ésimo dia útil de um mês (AAAA-MM), pelos feriados de rescisao-datas.js — os mesmos do vigia_dia_util do banco,
-  // que o gerar_tarefas_recorrentes usa; aqui é só pra dica da janela. Mês com menos dias úteis que N (fevereiro com
-  // Carnaval tem 18): o último dia útil, como no banco (dia_util_do_mes)
-  const nesimoDiaUtil = (anoMes, n) => {
-    let d = anoMes + '-01', vistos = 0, ultimo = null;
-    for (let i = 0; i < 31 && d.startsWith(anoMes); i++, d = somaDias(d, 1)) {
-      if (!diaUtil(d)) continue;
-      ultimo = d;
-      if (++vistos === n) return d;
-    }
-    return ultimo;
-  };
+  // a dica da janela: o N-ésimo dia útil deste mês e do que vem, pela conta da CLT de dias-uteis.js — a mesma do
+  // dia_util_do_mes do banco, que gera as tarefas
   const tipoTroca = () => {
     const util = $('ovPer').value === 'mensal' && $('ovTipo').value === 'util';
     $('ovDiaRot').textContent = util ? 'Qual dia útil (1 a 22)' : 'Dia';
@@ -335,8 +326,8 @@ export function initRotinasSetor(cfg) {
     if (!util) { dica.style.display = 'none'; return; }
     const hoje = hojeLocal(), m1 = hoje.slice(0, 7), m2 = somaDias(m1 + '-28', 7).slice(0, 7);
     const d1 = n >= 1 && n <= 22 ? nesimoDiaUtil(m1, n) : null, d2 = n >= 1 && n <= 22 ? nesimoDiaUtil(m2, n) : null;
-    dica.textContent = 'Conta só os dias úteis do mês: sem fim de semana e sem os feriados nacionais e do RS.'
-      + (d1 && d2 ? ` O ${n}º dia útil deste mês é ${fmtData(d1)}; o do mês que vem, ${fmtData(d2)}.` : '');
+    dica.textContent = 'Conta como a CLT: o sábado conta, o domingo e os feriados nacionais e do RS não. Caiu no sábado, a tarefa vem na sexta (o dia útil anterior).'
+      + (d1 && d2 ? ` O ${n}º dia útil deste mês fica em ${fmtData(d1)}; o do mês que vem, em ${fmtData(d2)}.` : '');
     dica.style.display = '';
   };
   const perTroca = () => {
