@@ -94,6 +94,8 @@ console.log('A sugestão de CNAE (o que a IA devolve, conferido contra a lista):
     && s.secundarios.length === MAX_SECUNDARIAS && s.secundarios[0].numero === CALCADO && s.secundarios[0].cnae === '4782-2/01', JSON.stringify(s.secundarios.slice(0, 2)));
   chk('a que não está na lista sai, com o aviso; os alertas limpos, o resumo, o dia da lista', JSON.stringify(s.alertas) === JSON.stringify(['confira o alvará', 'Uma ocupação sugerida pela IA ficou de fora: não está na lista oficial do MEI.'])
     && s.resumo === 'Comércio de roupas.' && s.lista === LIDA_EM, JSON.stringify(s.alertas));
+  const longo = limparSugestao({ pode_ser_mei: true, principal: { numero: ROUPA }, secundarios: [], alertas: [('Confira a licença da prefeitura antes de abrir. ').repeat(20)], resumo: 'x' }).alertas[0];
+  chk('o alerta longo da IA corta na palavra inteira, com reticências (nunca no meio da palavra)', [...longo].length <= 700 && longo.endsWith('…') && /\b(Confira|a|licença|da|prefeitura|antes|de|abrir)…$/.test(longo), longo.slice(-40));
   const sobe = limparSugestao({ pode_ser_mei: true, principal: { numero: 9999, ocupacao: 'Inventada' }, secundarios: [{ numero: CALCADO }], alertas: [], resumo: '' });
   chk('sem a principal da lista, a primeira secundária sobe', sobe.pode_ser_mei && sobe.principal.numero === CALCADO && !sobe.secundarios.length && sobe.alertas.length === 1);
   const nao = limparSugestao({ pode_ser_mei: false, principal: null, secundarios: [], alertas: ['Profissão regulamentada.'], resumo: 'Não cabe no MEI.' });
