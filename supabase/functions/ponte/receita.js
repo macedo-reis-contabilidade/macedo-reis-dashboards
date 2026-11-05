@@ -9,7 +9,9 @@
 // Sem import: testes no node em tests/ponte-funcao.test.mjs.
 // ============================================================
 
-export const LIMITES = { empresas: 3000, meses: 36, mensagens: 300, pendencias: 100, faltou: 6000, corpo: 5 * 1024 * 1024 };
+// corpo: o maior pacote que a função aceita (05/11/2026: de 5 pra 16 MB — o do Domínio da versão 2, 14 meses de 474
+// empresas com os valores em reais, passou dos 5; o banco o recebe em partes, gravarDominio em servidor.js)
+export const LIMITES = { empresas: 3000, meses: 36, mensagens: 300, pendencias: 100, faltou: 6000, corpo: 16 * 1024 * 1024 };
 export const SERVICOS = ['autorizacao', 'pgdas', 'faturamento', 'caixa_postal', 'situacao_fiscal'];
 export const MOTIVOS = ['sem_autorizacao', 'teto', 'erro', 'a_conferir'];
 export const REGIME = { 'Simples Nacional': 'simples', MEI: 'mei', 'Lucro Presumido': 'presumido', 'Lucro Real': 'real' };

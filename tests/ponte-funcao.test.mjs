@@ -285,6 +285,7 @@ function fakeDb({ hash = h, cfgErro = null, rpcErro = null } = {}) {
       const api = {
         select() { return api; },
         eq(c, x) { filtros.push(['eq', c, x]); return api; },
+        update(x) { chamadas.push({ nome: 'update:' + tabela, args: x, filtros }); return api; },
         not(c, op, x) { filtros.push(['not', c, op, x]); return api; },
         in(c, x) { filtros.push(['in', c, x]); return api; },
         async maybeSingle() {
@@ -361,6 +362,29 @@ r = await pedir(fakeDb({ rpcErro: { message: 'falhou' } }), BOM());
 chk('o banco falhou: 500 (a ponte tenta de novo e guarda nos pendentes)', r.status === 500, r);
 r = await pedir(fakeDb(), 'x'.repeat(LIMITES.corpo + 1));
 chk('pacote grande demais: 413', r.status === 413, r);
+chk('o limite do corpo: 16 MB (o pacote do Domínio da versão 2 passou dos 5 em 05/11/2026)', LIMITES.corpo === 16 * 1024 * 1024);
+{
+  // o pacote do Domínio grande vai pro banco em partes de LINHAS_POR_PARTE linhas (05/11/2026)
+  const p = DOMINIO2();
+  const vazio = Object.fromEntries(Object.keys(p.mensal[0]).filter(k => !['codigo', 'competencia'].includes(k)).map(k => [k, null]));
+  delete vazio.salario; delete vazio.salario_do_fulano;
+  p.empresas = Array.from({ length: 150 }, (_, i) => ({ codigo: 1000 + i, documento: String(11222333000100 + i).padStart(14, '0'), nome: 'EMPRESA ' + i, ativa: true }));
+  p.mensal = [];
+  p.empresas.forEach(e => { for (let m = 0; m < 12; m++) p.mensal.push({ codigo: e.codigo, competencia: '2025-' + String(m + 1).padStart(2, '0'), ...vazio, notas_saida: 1, receita_bruta: 10 }); });
+  const dbP = fakeDb();
+  dbP.rpc = async (nome, args) => { dbP.chamadas.push({ nome, args }); return { data: { empresas: args.p.empresas.length, ligadas: args.p.empresas.length ? 100 : 0, sem_cadastro: args.p.empresas.length ? 50 : 0, linhas: args.p.mensal.length }, error: null }; };
+  const rp = await pedir(dbP, p);
+  const rpcs = dbP.chamadas.filter(c => c.nome === 'dominio_gravar'), upd = dbP.chamadas.find(c => c.nome === 'update:dominio_rodadas');
+  chk('1.800 linhas: 3 partes de até 800, a primeira com as empresas, as outras sem; a rodada fica com o total; a resposta soma',
+    rp.status === 200 && rpcs.length === 3 && rpcs[0].args.p.empresas.length === 150 && rpcs[1].args.p.empresas.length === 0 && rpcs[2].args.p.mensal.length === 200
+    && rpcs.every(c => c.args.p.rodada.id === p.rodada.id.toLowerCase() || c.args.p.rodada.id === p.rodada.id) && rpcs.every(c => c.args.p.blocos_ok.faturamento === true)
+    && upd && upd.args.linhas === 1800 && rp.corpo.linhas === 1800 && rp.corpo.empresas === 150 && rp.corpo.ligadas === 100 && rp.corpo.partes === 3, { status: rp.status, corpo: rp.corpo, n: rpcs.length });
+  const dbE = fakeDb();
+  let n = 0;
+  dbE.rpc = async (nome, args) => { n++; return n === 2 ? { data: null, error: { message: 'falhou no meio' } } : { data: { empresas: 1, linhas: args.p.mensal.length }, error: null }; };
+  const re = await pedir(dbE, p);
+  chk('uma parte que falha: 500 (a ponte manda de novo; o banco troca pelos mesmos números)', re.status === 500 && n === 2, re);
+}
 
 console.log('As notas de entrada das empresas autorizadas (03/11/2026):');
 {

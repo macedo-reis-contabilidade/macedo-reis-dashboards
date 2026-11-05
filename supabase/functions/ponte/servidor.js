@@ -132,6 +132,29 @@ async function encaminharNotas(db, v, hoje, agora, enviar) {
     recusadas: recusadas.slice(0, LIMITES_NOTAS.recusadas), total_recusadas: recusadas.length });
 }
 
+// O pacote do Domínio vai pro banco em partes (05/11/2026: o primeiro da versão 2, com os 14 meses de 474 empresas e os
+// valores em reais, passou dos 5 MB e voltou 413): a primeira parte leva as empresas (que as linhas de mês precisam), as
+// outras só as linhas; a rodada nasce na primeira (o banco não a repete: on conflict do nothing) e, no fim, fica com o
+// total de linhas. Uma parte que falha devolve o erro (5xx: a ponte manda de novo, e o banco troca pelos mesmos números).
+export const LINHAS_POR_PARTE = 800;
+export async function gravarDominio(db, p) {
+  const total = { empresas: 0, ligadas: 0, sem_cadastro: 0, linhas: 0 };
+  const n = Math.max(1, Math.ceil(p.mensal.length / LINHAS_POR_PARTE));
+  for (let i = 0; i < n; i++) {
+    const parte = { ...p, empresas: i === 0 ? p.empresas : [], mensal: p.mensal.slice(i * LINHAS_POR_PARTE, (i + 1) * LINHAS_POR_PARTE) };
+    const { data, error } = await db.rpc('dominio_gravar', { p: parte });
+    if (error) throw error;
+    const d = data || {};
+    if (i === 0) Object.assign(total, { empresas: d.empresas || 0, ligadas: d.ligadas || 0, sem_cadastro: d.sem_cadastro || 0 });
+    total.linhas += d.linhas || 0;
+  }
+  if (n > 1) {
+    const { error } = await db.from('dominio_rodadas').update({ linhas: total.linhas }).eq('id', p.rodada.id);
+    if (error) console.error('ponte: o total de linhas da rodada', error);
+  }
+  return { ...total, partes: n };
+}
+
 export function criarServidor({ criarDb, agora = () => Date.now(), enviar = (url, init) => fetch(url, init) }) {
   return async function atender(req) {
     if (req.method !== 'POST') return resposta({ erro: 'Use POST.' }, 405);
@@ -171,9 +194,8 @@ export function criarServidor({ criarDb, agora = () => Date.now(), enviar = (url
       if (doDominio) {
         const v = validarPacoteDominio(corpo);
         if (!v.ok) return resposta({ erro: 'Pacote do Domínio recusado: ' + v.erro + ' (' + v.campo + ').' }, 422);
-        const { data, error } = await db.rpc('dominio_gravar', { p: v.pacote });
-        if (error) throw error;
-        return resposta({ ok: true, gravado: true, ...(data || {}), recusadas: v.recusadas, linhas_recusadas: v.linhas_recusadas });
+        const data = await gravarDominio(db, v.pacote);
+        return resposta({ ok: true, gravado: true, ...data, recusadas: v.recusadas, linhas_recusadas: v.linhas_recusadas });
       }
       if (corpo.tipo === 'notas' && corpo.pedir === 'autorizadas') {
         return resposta({ empresas: await autorizadasHoje(db, hojeEmBrasilia(agora())) });
