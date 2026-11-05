@@ -278,6 +278,9 @@ console.log('=== o Domínio pela ponte (05/11/2026, a versão 2) ===');
   ok('o ST e o monofásico sobre a receita de mercadoria da apuração (pelos anexos)', perto(s1.entrada.atividades[0].pctST, 20) && perto(s1.entrada.atividades[0].pctMonofasico, 10)
     && s1.origens['atividades.0.pctST'].fonte === 'ponte' && /20% das vendas de mercadoria com ICMS-ST na apuração do Simples/.test(s1.origens['atividades.0.pctST'].texto), [s1.entrada.atividades[0].pctST, s1.origens['atividades.0.pctST']]);
   const s2 = entradaDoSistema({ cliente: { regime_tributario: 'Simples Nacional', cnae_principal: '4711-3/02' }, pgdas: pg12.slice(-6), dominio: simp });
+  const saiu = entradaDoSistema({ cliente: { regime_tributario: 'Lucro Presumido', cnae_principal: '4711-3/02' }, dominio: simp.map((l, i) => (i >= 9 ? { ...l, receita_simples: null, receita_bruta: 100000 } : l)) });
+  ok('a empresa que saiu do Simples no meio da janela: o faturamento, com a apuração nos meses do Simples', /Domínio, pela ponte: o faturamento, com a apuração do Simples nos meses em que a empresa estava nele, de out\/25 a set\/26/.test(saiu.origens['atividades.0.receita'].texto)
+    && perto(saiu.entrada.atividades.reduce((t, a) => t + a.receita, 0), 9 * 120000 + 3 * 100000), saiu.origens['atividades.0.receita']);
   ok('o PGDAS com menos meses que a ponte: a ponte vale, pela apuração do Simples', s2.origens['atividades.0.receita'].fonte === 'ponte' && /a receita da apuração do Simples de out\/25 a set\/26/.test(s2.origens['atividades.0.receita'].texto)
     && perto(s2.entrada.atividades.reduce((t, a) => t + a.receita, 0), 1440000));
   const fr = entradaDoSistema({ cliente: { regime_tributario: 'Simples Nacional', cnae_principal: '6201-5/01' }, dominio: simp.map(l => ({ ...l, receita_anexo_1: 0, receita_anexo_2: 0, receita_anexo_3: 120000, receita_mercadorias: 0, receita_servicos: 100000, receita_st: 0, receita_monofasica: 0 })) });

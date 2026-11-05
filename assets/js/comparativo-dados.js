@@ -160,8 +160,11 @@ export function seriePonte(meses) {
   const serie = j.filter(m => receitaDaPonte(m) > 0).map(m => ({ competencia: m.competencia, total: num(receitaDaPonte(m)) }));
   return { n, npos: serie.length, de: j[0].competencia, ate: j[n - 1].competencia, receita: soma(receitaDaPonte) * fator,
     mercadorias: soma(m => m.receita_mercadorias) * fator, servicos: soma(m => m.receita_servicos) * fator, meses: calendario, serie,
-    simples: j.some(m => m.receita_simples != null), janela: j };
+    simples: j.every(m => m.receita_simples != null) ? 'todos' : j.some(m => m.receita_simples != null) ? 'parte' : null, janela: j };
 }
+// o que a receita da ponte é, pra origem: a apuração do Simples (todos os meses), o faturamento com a apuração nos meses
+// em que a empresa estava no Simples (a que saiu ou entrou no meio da janela), ou o faturamento
+const oQueDaPonte = s => (s.simples === 'todos' ? 'a receita da apuração do Simples' : s.simples === 'parte' ? 'o faturamento, com a apuração do Simples nos meses em que a empresa estava nele,' : 'o faturamento');
 // a soma de 12 meses de uns campos pela ponte: os 12 meses mais recentes em que algum deles veio (os zeros contam),
 // anualizada; com menos de 3 meses, null (pouco pra anualizar)
 export function somaDaPonte(meses, campos) {
@@ -243,7 +246,7 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
   const pgdasVale = !!sPgdas && (!sPonte || sPgdas.n >= sPonte.npos);
   if (sPonte) {
     if (sPonte.mercadorias + sPonte.servicos > 0) { merc = sPonte.mercadorias; serv = sPonte.servicos; divisao = 'do Domínio, pela ponte'; }
-    if (!pgdasVale) { receita = sPonte.receita; meses = sPonte.meses; fonteRec = 'ponte'; textoRec = 'Domínio, pela ponte: ' + (sPonte.simples ? 'a receita da apuração do Simples' : 'o faturamento') + ' de ' + periodo(sPonte); }
+    if (!pgdasVale) { receita = sPonte.receita; meses = sPonte.meses; fonteRec = 'ponte'; textoRec = 'Domínio, pela ponte: ' + oQueDaPonte(sPonte) + ' de ' + periodo(sPonte); }
   }
   if (pgdasVale) {
     receita = sPgdas.receita; meses = sPgdas.meses; fonteRec = 'pgdas'; textoRec = 'PGDAS na Receita, de ' + periodo(sPgdas) + (divisao ? ' (a divisão mercadoria × serviço é a ' + divisao + ')' : '');
@@ -422,7 +425,7 @@ export function receitaDaEmpresa({ cliente = null, caso = null, pgdas = [], domi
   if (sd && sd.fonte === 'ponte') {
     const sp = sd.ponte;
     return { nome, cliente_id: cliente ? cliente.id : null, receita: sp.receita, meses: sp.meses, serie: sd.serie,
-      origem: origem('ponte', 'Domínio, pela ponte: ' + (sp.simples ? 'a receita da apuração do Simples' : 'o faturamento') + ' de ' + periodo(sp)) };
+      origem: origem('ponte', 'Domínio, pela ponte: ' + oQueDaPonte(sp) + ' de ' + periodo(sp)) };
   }
   const s = sd ? serieDosMeses(sd.serie) : null;
   if (s) return { nome, cliente_id: cliente ? cliente.id : null, receita: s.receita, meses: s.meses, serie: sd.serie,
