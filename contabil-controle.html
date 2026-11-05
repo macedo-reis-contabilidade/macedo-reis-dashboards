@@ -490,7 +490,25 @@
           + '<td class="cc-falta">' + colunaFalta(l) + '</td></tr>';
       }).join('');
       $('gradeWrap').innerHTML = '<table class="cc-grade">' + cab + '<tbody>' + corpo + '</tbody></table>';
+      acertarRolagem();
     }
+    // a grade cabe na largura: a página rola e o cabeçalho dos meses prende embaixo da barra do alto; não cabe (tela estreita,
+    // zoom): ela rola dentro dela, com o cabeçalho e as empresas presos (o CSS de .cc-grade-wrap)
+    function acertarRolagem() {
+      const w = $('gradeWrap'), t = w.querySelector('table');
+      w.classList.toggle('cc-rola', !!t && t.scrollWidth > w.clientWidth + 1);
+    }
+    (() => {
+      // a altura da barra do alto (muda com a largura da tela e quando os atalhos entram): o cabeçalho prende logo abaixo dela
+      // — pra baixo, nunca com folga: meio pixel de vão mostraria as linhas passando
+      const barra = document.querySelector('.topbar');
+      const acertarTopo = () => document.documentElement.style.setProperty('--cc-topo', Math.floor(barra ? barra.getBoundingClientRect().height : 0) + 'px');
+      acertarTopo();
+      if (typeof ResizeObserver === 'function') {
+        if (barra) new ResizeObserver(acertarTopo).observe(barra);
+        new ResizeObserver(acertarRolagem).observe($('gradeWrap'));
+      } else window.addEventListener('resize', () => { acertarTopo(); acertarRolagem(); });
+    })();
     $('gradeWrap').addEventListener('click', ev => {
       const e = ev.target.closest('[data-emp]'); if (e) { abrirEmpresa(e.dataset.emp); return; }
       const c = ev.target.closest('button[data-c]'); if (c && !c.disabled) abrirMes(c.dataset.id, c.dataset.c, c);
@@ -573,6 +591,17 @@
       if (!$('pop').hidden && !$('pop').contains(ev.target) && !(st.pop && st.pop.ancora.contains(ev.target))) fecharPop(false);
     });
     window.addEventListener('resize', () => fecharPop(false));
+    // a grade que rola dentro dela (a tela estreita, cc-rola): as opções do mês acompanham a célula e fecham quando ela sai
+    // da parte visível — por baixo do cabeçalho ou da coluna das empresas, que ficam presos, ou pra fora da grade
+    $('gradeWrap').addEventListener('scroll', () => {
+      if ($('pop').hidden || !st.pop) return;
+      const w = $('gradeWrap'), r = w.getBoundingClientRect(), a = st.pop.ancora;
+      const cab = w.querySelector('thead'), emp = w.querySelector('.cc-th-emp');
+      const ra = document.body.contains(a) ? a.getBoundingClientRect() : null;
+      const vis = ra && ra.bottom > r.top + (cab ? cab.getBoundingClientRect().height : 0) + 4 && ra.top < r.bottom - 4
+        && ra.right > r.left + (emp ? emp.getBoundingClientRect().width : 0) + 4 && ra.left < r.right - 4;
+      if (vis) posicionar($('pop'), a); else fecharPop(false);
+    }, { passive: true });
     $('popCorpo').addEventListener('click', async ev => {
       const b = ev.target.closest('[data-pa]'); if (!b || !st.pop) return;
       const { id, c } = st.pop, emp = st.empresas.get(id), acao = b.dataset.pa;
@@ -865,13 +894,20 @@
     .cc-legenda span { display:inline-flex; align-items:center; gap:7px; }
     .cc-amostra { display:inline-flex; align-items:center; justify-content:center; width:40px; height:22px; border-radius:6px; border:1px solid var(--line); font-style:normal; font-size:10.5px; position:relative; }
 
-    .cc-grade-wrap { overflow-x:auto; border:1px solid var(--line); border-radius:14px; background:var(--fill-1); }
+    /* o cabeçalho dos meses fica preso ao rolar, como o congelar painéis do Excel (05/11/2026, pedido da Adaini): com a grade
+       inteira na largura, quem rola é a página e o cabeçalho prende logo abaixo da barra do alto (--cc-topo, a altura dela);
+       o overflow clip corta como antes, sem virar uma área de rolagem — senão o cabeçalho prenderia nela, não na tela. A
+       grade que não cabe na largura (cc-rola, conferido a cada desenho e quando a tela muda de tamanho) rola dentro dela,
+       nos dois sentidos, com o cabeçalho e a coluna das empresas presos */
+    .cc-grade-wrap { overflow:clip; border:1px solid var(--line); border-radius:14px; background:var(--fill-1); }
+    .cc-grade-wrap.cc-rola { overflow:auto; max-height:calc(100vh - var(--cc-topo, 0px) - 56px); } /* com a folga de baixo da página: rolada até o fim, a grade inteira fica à vista, com o cabeçalho */
     .cc-carregando { padding:28px; color:var(--text-muted); font-size:14px; }
     .cc-grade { border-collapse:separate; border-spacing:0; width:100%; min-width:1080px; font-size:13px; }
     .cc-grade th, .cc-grade td { padding:5px 3px; border-bottom:1px solid var(--line); vertical-align:middle; }
-    .cc-grade thead th { position:sticky; top:0; background:var(--surface); color:var(--text-muted); font-weight:600; font-size:12px; text-transform:none; padding:10px 3px; z-index:2; }
+    .cc-grade thead th { position:sticky; top:var(--cc-topo, 0px); background:var(--surface); color:var(--text-muted); font-weight:600; font-size:12px; text-transform:none; padding:10px 3px; z-index:2; }
     .cc-th-emp, .cc-emp { position:sticky; left:0; z-index:1; background:var(--surface); text-align:left; padding-left:14px !important; min-width:230px; max-width:280px; }
     .cc-grade thead .cc-th-emp { z-index:3; }
+    .cc-grade-wrap.cc-rola .cc-grade thead th { top:0; }
     .cc-th-m { width:56px; text-align:center; }
     .cc-th-m.is-ultimo { color:var(--text); box-shadow:inset 0 -2px 0 var(--brand-primary); }
     .cc-th-ate { width:84px; text-align:left; padding-left:10px !important; }

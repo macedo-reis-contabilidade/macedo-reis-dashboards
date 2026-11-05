@@ -733,6 +733,7 @@
   <script type="module">
     import { supabase, getCurrentUser, signOut } from '../assets/js/supabase.js';
     import { vincularObrigacoes } from '../assets/js/tarefas-acoes.js';
+    import { saiuDaEquipe } from '../assets/js/equipe.js';
     import { retirantesDe, sociosQueFicam, retiranteQueE, mesmaPessoa, avisoDaSoma, linhaDoRetirante } from '../assets/js/leitura-socios.js';
     import { carregarReceita, htmlDaReceita } from '../assets/js/receita-ficha.js';
     import { carregarDominio, htmlDoDominio } from '../assets/js/dominio-ficha.js';
@@ -2118,7 +2119,7 @@
       // responsável = alguém da equipe (vínculo sem responsável gera tarefa que não aparece na agenda de ninguém);
       // quem já é responsável em algum vínculo também entra na lista
       const nomesVo = ['Thalia', 'Adaini', 'Vitória', 'Samuel', 'Diego', 'Edna'];
-      (vincs || []).forEach(v => { if (v.responsavel && !nomesVo.some(n => n.toLowerCase() === v.responsavel.trim().toLowerCase())) nomesVo.push(v.responsavel.trim()); });
+      (vincs || []).forEach(v => { if (v.responsavel && !saiuDaEquipe(v.responsavel) && !nomesVo.some(n => n.toLowerCase() === v.responsavel.trim().toLowerCase())) nomesVo.push(v.responsavel.trim()); });
       const escVo = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
       document.getElementById('voResp').innerHTML = '<option value="">— escolha —</option>' + nomesVo.map(n => '<option value="' + escVo(n) + '">' + escVo(n) + '</option>').join('');
       document.getElementById('voVincular').disabled = !aplicaveis.length;

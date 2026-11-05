@@ -97,7 +97,7 @@
           </div>
           <div id="utCampos" style="display:none;">
             <div class="ut-grid">
-              <label class="fa-field"><span>Responsável</span><input id="utResp" class="input" list="respList"></label>
+              <label class="fa-field"><span>Responsável</span><input id="utResp" class="input" list="respList" autocomplete="off"></label>
               <label class="fa-field"><span>Prazo</span><input id="utPrazo" type="date" class="input"></label>
               <label class="fa-field"><span>Prioridade</span><select id="utPrio" class="select"><option value="alta">Alta</option><option value="media">Média</option><option value="baixa">Baixa</option></select></label>
               <label class="fa-field" id="utStatusWrap"><span>Status</span><select id="utStatus" class="select"><option value="pendente">Pendente</option><option value="em_andamento">Em andamento</option></select></label>
@@ -138,7 +138,7 @@
         <label for="renDe">De</label>
         <select id="renDe" class="input" style="width:100%;"></select>
         <label for="renPara">Para</label>
-        <input type="text" id="renPara" class="input" list="respList" placeholder="Ex.: Fernanda" style="width:100%;">
+        <input type="text" id="renPara" class="input" list="respList" autocomplete="off" placeholder="Ex.: Fernanda" style="width:100%;">
         <label style="display:flex;align-items:center;gap:8px;margin-top:14px;cursor:pointer;">
           <input type="checkbox" id="renTarefas" checked> Atualizar também as tarefas pendentes já geradas
         </label>
@@ -328,6 +328,7 @@
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
     import { vincularObrigacoes, pessoaDaEquipe, alterarTarefas, desfazerAlteracao, tarefaDaObrigacao } from './assets/js/tarefas-acoes.js';
+    import { saiuDaEquipe } from './assets/js/equipe.js';
 
     const user = await getCurrentUser();
     if (user) { const el = document.getElementById('userName'); if (el) el.textContent = user.email; const av = document.getElementById('userAvatar'); if (av) av.textContent = (user.email || '?').charAt(0).toUpperCase(); }
@@ -387,14 +388,15 @@
     function opcoesResp(atual){
       const nomes = ['Thalia', 'Adaini', 'Vitória', 'Samuel', 'Diego', 'Edna'];
       const tem = n => nomes.some(x => x.toLowerCase() === String(n).trim().toLowerCase());
-      vinculos.forEach(v => { if (v.responsavel && !tem(v.responsavel)) nomes.push(v.responsavel.trim()); });
-      if (atual && !tem(atual)) nomes.push(String(atual).trim());
+      // quem saiu do escritório (a Deize) não vira opção, nem pelo nome gravado num vínculo (05/11/2026)
+      vinculos.forEach(v => { if (v.responsavel && !tem(v.responsavel) && !saiuDaEquipe(v.responsavel)) nomes.push(v.responsavel.trim()); });
+      if (atual && !tem(atual) && !saiuDaEquipe(atual)) nomes.push(String(atual).trim());
       return '<option value="">— escolha —</option>' + nomes.map(n => '<option value="' + escR(n) + '">' + escR(n) + '</option>').join('');
     }
 
     function preencherRespList(){
       document.getElementById('respList').innerHTML =
-        [...new Set(vinculos.map(v => v.responsavel).filter(Boolean))].sort()
+        [...new Set(vinculos.map(v => v.responsavel).filter(r => r && !saiuDaEquipe(r)))].sort()
           .map(r => '<option value="' + r.replace(/"/g, '&quot;') + '">').join('');
     }
 

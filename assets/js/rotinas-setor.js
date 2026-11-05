@@ -13,6 +13,7 @@ import { supabase, getCurrentUser, signOut } from './supabase.js';
 import { hojeLocal } from './utils.js';
 import { somaDias, fmtData } from './rescisao-datas.js';
 import { nesimoDiaUtil } from './dias-uteis.js';
+import { saiuDaEquipe } from './equipe.js';
 
 const CSS = `
   .rv { display:grid; grid-template-columns:minmax(240px, 320px) minmax(0, 1fr); gap:16px; align-items:start; }
@@ -68,7 +69,7 @@ export function initRotinasSetor(cfg) {
   };
   if (!C.setor || !C.nomeSetor || !C.hub) throw new Error('initRotinasSetor: informe setor, nomeSetor e hub');
   const SETOR = C.setor;
-  const EQUIPE = C.equipe;
+  const EQUIPE = C.equipe.filter(n => !saiuDaEquipe(n));   // a lista da página, sem quem saiu do escritório
   const $ = id => document.getElementById(id);
   const esc = t => String(t == null ? '' : t).replace(/[&<>"]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
   const fdata = d => d ? String(d).slice(0, 10).split('-').reverse().join('/') : '—';

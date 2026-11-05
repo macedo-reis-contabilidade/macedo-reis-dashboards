@@ -22,7 +22,10 @@ Confere:
      (a folha fora da contabilidade, o banco parado antes do mês) ganha a dica forte, a linha ganha o aviso e o foco
      "O Domínio discorda" as acha; o mês mostra as origens dos lançamentos e o que mais o Domínio diz; a ficha mostra "No
      Domínio" (o banco, o extrato, o caixa, o fechamento e o zeramento) e o mês a mês com a escrita fiscal, a folha, a
-     receita e o fim do mês.
+     receita e o fim do mês;
+  8. o cabeçalho dos meses preso ao rolar, como o congelar painéis do Excel (05/11/2026, pedido da Adaini): com a grade
+     inteira na largura, a página rola e o cabeçalho fica logo abaixo da barra do alto, por cima das linhas; na tela
+     estreita, a grade rola dentro dela, com o cabeçalho e a coluna das empresas presos, e as opções do mês fecham ao rolar.
 Termina com código 1 se alguma checagem falhar.
 Pré-requisito: pip install playwright e python -m playwright install chromium
 """
@@ -122,8 +125,8 @@ def ok(cond, msg):
     print(('  ✓ ' if cond else '  ✗ ') + msg)
     if not cond: falhas += 1
 
-def nova(b, base, erros, caminho, rotulo, largura=1500, ctx=None, tour_visto=True):
-    p = (ctx or b).new_page(viewport={'width': largura, 'height': 950})
+def nova(b, base, erros, caminho, rotulo, largura=1500, ctx=None, tour_visto=True, altura=950):
+    p = (ctx or b).new_page(viewport={'width': largura, 'height': altura})
     p.on('pageerror', lambda e: erros.append(f'{rotulo}: {e}'))
     p.clock.set_fixed_time('2026-11-04T12:00:00')
     if tour_visto: p.add_init_script(TOUR)
@@ -372,6 +375,50 @@ def main():
         p = nova(b, base, erros, 'contabil-controle.html?empresa=c-c', 'sem-andamento')
         p.wait_for_selector('#ovEmp.is-open', timeout=8000)
         ok(p.is_hidden('#eDominioBox'), 'sem a foto do Domínio (a ponte ainda sem a versão 3), a ficha não mostra "No Domínio"')
+        p.close()
+
+        print('8. O cabeçalho dos meses preso ao rolar (o congelar painéis do Excel)')
+        p = nova(b, base, erros, 'contabil-controle.html', 'congelar', altura=420)
+        p.wait_for_selector('.cc-grade tbody tr', timeout=8000); p.wait_for_timeout(200)
+        topo = p.evaluate("() => Math.floor(document.querySelector('.topbar').getBoundingClientRect().height)")
+        ok(not p.evaluate("() => document.getElementById('gradeWrap').classList.contains('cc-rola')"), 'a grade inteira na largura: quem rola é a página')
+        y = p.evaluate("() => document.getElementById('gradeWrap').getBoundingClientRect().top + window.scrollY")
+        p.evaluate(f"() => window.scrollTo(0, {y} - {topo} + 160)"); p.wait_for_timeout(200)
+        cab = p.evaluate("() => document.querySelector('.cc-grade thead th.cc-th-m').getBoundingClientRect().top")
+        lin = p.evaluate("() => document.querySelector('.cc-grade tbody tr').getBoundingClientRect().top")
+        por_cima = p.evaluate("(y) => { const e = document.elementFromPoint(760, y + 8); return !!(e && e.closest('thead')); }", cab)
+        ok(abs(cab - topo) <= 1 and lin < cab and por_cima, f'rolando a página, os meses ficam logo abaixo da barra do alto ({cab} × {topo}), por cima das linhas')
+        p.screenshot(path=str(FOTOS / 'contabil-controle-congelado.png'))
+        p.close()
+        p = nova(b, base, erros, 'contabil-controle.html', 'congelar-estreita', largura=1000, altura=420)
+        p.wait_for_selector('.cc-grade tbody tr', timeout=8000); p.wait_for_timeout(200)
+        ok(p.evaluate("() => document.getElementById('gradeWrap').classList.contains('cc-rola')"), 'na tela estreita, a grade rola dentro dela')
+        p.evaluate("() => window.scrollTo(0, document.documentElement.scrollHeight)"); p.wait_for_timeout(200)
+        topo = p.evaluate("() => Math.floor(document.querySelector('.topbar').getBoundingClientRect().height)")
+        dif = p.evaluate("() => document.getElementById('gradeWrap').getBoundingClientRect().top") - topo
+        ok(dif >= 0, f'… e, com a página rolada até o fim, a grade inteira fica à vista, com o cabeçalho (o alto dela {dif:.0f} px abaixo da barra)')
+        p.evaluate("() => { const w = document.getElementById('gradeWrap'); w.scrollTop = 60; w.scrollLeft = 120; }"); p.wait_for_timeout(200)
+        pos = p.evaluate("""() => { const w = document.getElementById('gradeWrap').getBoundingClientRect();
+          const th = document.querySelector('.cc-grade thead th.cc-th-m').getBoundingClientRect();
+          const emp = document.querySelector('.cc-grade tbody .cc-emp').getBoundingClientRect();
+          return { dt: th.top - w.top, de: emp.left - w.left, rolou: document.getElementById('gradeWrap').scrollTop }; }""")
+        ok(pos['rolou'] > 0 and 0 <= pos['dt'] <= 2 and 0 <= pos['de'] <= 2, f'rolando a grade, o cabeçalho e a coluna das empresas ficam presos nela ({pos})')
+        # as opções de um mês visível: acompanham a célula quando a grade rola um pouco, e fecham quando ela sai de vista
+        alvo = p.evaluate("""() => { const w = document.getElementById('gradeWrap').getBoundingClientRect();
+          const cab = document.querySelector('.cc-grade thead').getBoundingClientRect().bottom, emp = document.querySelector('.cc-th-emp').getBoundingClientRect().right;
+          const b = [...document.querySelectorAll('button.cc-c:not([disabled])')].find(x => { const r = x.getBoundingClientRect();
+            return r.top > cab + 30 && r.bottom < w.bottom - 30 && r.left > emp + 80 && r.right < w.right - 80; });
+          return b ? [b.dataset.id, b.dataset.c] : null; }""")
+        ok(alvo is not None, 'há um mês inteiro à vista pra abrir')
+        if alvo:
+            cel(p, alvo[0], alvo[1]).click(); p.wait_for_selector('#pop:not([hidden])', timeout=3000)
+            antes = p.evaluate("() => document.getElementById('pop').getBoundingClientRect().left")
+            p.evaluate("() => { document.getElementById('gradeWrap').scrollLeft += 30; }"); p.wait_for_timeout(250)
+            depois = p.evaluate("() => document.getElementById('pop').getBoundingClientRect().left")
+            ok(p.is_visible('#pop') and abs((antes - depois) - 30) <= 2, f'as opções do mês acompanham a célula quando a grade rola ({antes} → {depois})')
+            p.evaluate("() => { const w = document.getElementById('gradeWrap'); w.scrollLeft = w.scrollWidth; w.scrollTop = w.scrollHeight; }"); p.wait_for_timeout(250)
+            ok(p.is_hidden('#pop'), 'e fecham quando o mês sai de vista')
+        p.screenshot(path=str(FOTOS / 'contabil-controle-congelado-estreita.png'))
         p.close()
         b.close()
     srv.shutdown()

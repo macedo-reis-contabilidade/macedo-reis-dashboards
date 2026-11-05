@@ -399,7 +399,7 @@
         <p class="vo-sub" id="voSub">Sugestões pro regime do cliente — marca/desmarca à vontade.</p>
         <div class="vo-lista" id="voLista">Carregando…</div>
         <label class="vo-resp-l" for="voResp">Responsável (aplicado a todas as selecionadas — opcional)</label>
-        <input type="text" id="voResp" class="input" list="voRespList" placeholder="Ex.: Thalia">
+        <input type="text" id="voResp" class="input" list="voRespList" autocomplete="off" placeholder="Ex.: Thalia">
         <datalist id="voRespList"></datalist>
       </div>
       <div class="vo-foot">
@@ -416,6 +416,7 @@
       onlyDigits, normalizarDocumento, cnpjValido, buscarCEP, ESTADOS_BR
     } from '../assets/js/utils.js';
     import { retirantesDe, sociosQueFicam, avisoDaSoma, textoDosRetirantes } from '../assets/js/leitura-socios.js';
+    import { saiuDaEquipe } from '../assets/js/equipe.js';
 
     (async () => {
       const user = await getCurrentUser();
@@ -701,7 +702,7 @@
             <span class="vv-freq">${a.n ? a.n + ' cliente(s) do regime usam' : 'nenhum ainda'}</span>
           </label>`).join('');
         document.getElementById('voRespList').innerHTML =
-          [...new Set((vincs || []).map(v => v.responsavel).filter(Boolean))].sort()
+          [...new Set((vincs || []).map(v => v.responsavel).filter(r => r && !saiuDaEquipe(r)))].sort()
             .map(x => '<option value="' + x.replace(/"/g, '&quot;') + '">').join('');
 
         document.getElementById('voPular').onclick = irParaEdicao;

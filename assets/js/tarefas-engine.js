@@ -16,6 +16,7 @@ const FATURAVEL_SEM_EMPRESA_AQUI = FATURAVEL_SEM_EMPRESA + ' A empresa se escolh
 import { rotinaDoDia, rotinaFeita } from './rotinas-dia.js';
 import { avisarDependentes } from './tarefas-acoes.js';
 import { montarChecklist, rotuloDoProgresso } from './checklist.js';
+import { EQUIPE as EQUIPE_ATUAL, saiuDaEquipe } from './equipe.js';
 
 const CSS = `
   .fa-focus { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:22px; }
@@ -207,7 +208,10 @@ export function initTarefas(userCfg) {
   // campo de responsável: texto livre (padrão) ou select fixo quando a casca informa C.responsaveis
   const campoResp = (id, placeholder) => C.responsaveis
     ? '<select id="' + id + '" class="select"><option value="">—</option>' + C.responsaveis.map(n => '<option value="' + escA(n) + '">' + esc(n) + '</option>').join('') + '</select>'
-    : '<input type="text" id="' + id + '" class="input" placeholder="' + escA(placeholder) + '">';
+    : '<input type="text" id="' + id + '" class="input" list="teRespLista" autocomplete="off" placeholder="' + escA(placeholder) + '">';
+  // as sugestões do texto livre: só a equipe de hoje (05/11/2026) — sem o autocomplete do navegador, que lembrava de quem
+  // saiu (a Deize) por ter sido digitada antes
+  const listaResp = '<datalist id="teRespLista">' + [...EQUIPE_ATUAL, 'Ambos'].map(n => '<option value="' + escA(n) + '">').join('') + '</datalist>';
 
   // ---------- esqueleto ----------
   // No modo rotinas o esqueleto é o mesmo (todos os ids continuam existindo — nada de
@@ -216,6 +220,7 @@ export function initTarefas(userCfg) {
   const raiz = $(C.containerId);
   raiz.innerHTML = `
     <div id="teRotFaixa"></div>
+    ${listaResp}
 
     ${MODO_ROTINAS ? '' : `<div class="fa-focus">
       <button class="fa-focus-card fc-danger" data-periodo="atrasadas"><span class="fc-num" id="cAtras">0</span><span class="fc-lbl">Atrasadas</span></button>
@@ -334,7 +339,7 @@ export function initTarefas(userCfg) {
           <div class="alv-conc-banner" id="dConcBanner" style="display:none;"></div>
           <div class="det-empresa"><span>${esc(C.clienteLabel)}</span><strong id="dEmpresa"></strong></div>
           <div class="fa-field-row">
-            <label class="fa-field"><span>Responsável</span><input type="text" id="dResp" class="input"></label>
+            <label class="fa-field"><span>Responsável</span><input type="text" id="dResp" class="input" list="teRespLista" autocomplete="off"></label>
             <label class="fa-field"><span>Prazo</span><input type="date" id="dPrazo" class="input"></label>
           </div>
           <div class="fa-field-row">
@@ -672,7 +677,8 @@ export function initTarefas(userCfg) {
     const { data, error } = await q.order('prazo', { ascending: true, nullsFirst: false });
     if (error) { elGrupos.innerHTML = '<div style="text-align:center;color:var(--danger);padding:40px;">Erro ao carregar: ' + esc(error.message) + '</div>'; return; }
     tarefas = data || [];
-    const resps = [...new Set(tarefas.map(t => t.responsavel).filter(Boolean))].sort();
+    // quem saiu do escritório não vira opção (as tarefas antigas dela continuam na lista, com o nome)
+    const resps = [...new Set(tarefas.map(t => t.responsavel).filter(r => r && !saiuDaEquipe(r)))].sort();
     const cur = filterResp.value;
     filterResp.innerHTML = '<option value="">Todos os responsáveis</option>' + resps.map(r => '<option value="'+escA(r)+'">'+esc(r)+'</option>').join('');
     filterResp.value = cur;
