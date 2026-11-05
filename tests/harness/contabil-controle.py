@@ -135,10 +135,17 @@ def tour_tit(p): return p.inner_text('.mrt-box h4') if p.locator('.mrt-box').cou
 def tour_prox(p):
     p.click('.mrt-box [data-a="prox"]'); p.wait_for_timeout(350)
 def chave_tour(p): return p.evaluate("() => Object.keys(localStorage).filter(k => k.startsWith('mr_tour_contabil_controle_v1')).map(k => localStorage.getItem(k)).join(',')")
-def dentro(p, a, b):
-    """o retângulo do holofote do tour cobre o elemento"""
-    return p.evaluate("""([a, b]) => { const s = document.querySelector(a).getBoundingClientRect(), e = document.querySelector(b).getBoundingClientRect();
-      return e.width > 0 && s.left <= e.left + 1 && s.top <= e.top + 1 && s.right >= e.right - 1 && s.bottom >= e.bottom - 1; }""", [a, b])
+def dentro(p, a, b, espera=4000):
+    """o retângulo do holofote do tour cobre o elemento. Espera o holofote assentar: ele acompanha a rolagem suave até o
+    alvo, e com os testes 4 ao mesmo tempo a rolagem até a seção das pendências (mais abaixo desde que a ficha ganhou o
+    "No Domínio", 05/11/2026) ainda andava 350 ms depois do clique"""
+    try:
+        p.wait_for_function("""([a, b]) => { const x = document.querySelector(a), y = document.querySelector(b); if (!x || !y) return false;
+          const s = x.getBoundingClientRect(), e = y.getBoundingClientRect();
+          return e.width > 0 && s.left <= e.left + 1 && s.top <= e.top + 1 && s.right >= e.right - 1 && s.bottom >= e.bottom - 1; }""", arg=[a, b], timeout=espera)
+        return True
+    except Exception:
+        return False
 
 def cel(p, cid, c): return p.locator(f'button.cc-c[data-id="{cid}"][data-c="{c}"]')
 def classes(p, cid, c): return cel(p, cid, c).get_attribute('class') or ''
