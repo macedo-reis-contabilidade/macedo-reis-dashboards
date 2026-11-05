@@ -10,7 +10,7 @@ import { createHash } from 'node:crypto';
 import { validarPacote, empresasDaCarteira, documento, hojeEmBrasilia, sha256Hex, iguais, LIMITES } from '../supabase/functions/ponte/receita.js';
 import { criarServidor } from '../supabase/functions/ponte/servidor.js';
 import { validarPacoteDominio, LIMITES_DOMINIO } from '../supabase/functions/ponte/dominio.js';
-import { validarPacoteNotas, empresasAutorizadas, destinosDaConfig, dvDaChave, pareceCpf, LIMITES_NOTAS, SEM_DESTINO, SEM_AUTORIZACAO, DESTINO_FORA } from '../supabase/functions/ponte/notas.js';
+import { validarPacoteNotas, empresasAutorizadas, destinosDaConfig, dvDaChave, pareceCpf, semCpf, LIMITES_NOTAS, SEM_DESTINO, SEM_AUTORIZACAO, DESTINO_FORA } from '../supabase/functions/ponte/notas.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + JSON.stringify(extra) : '')); };
@@ -207,6 +207,74 @@ chk('bloco desconhecido no faltou recusa o pacote', !!recusaD(p => { p.faltou = 
 chk('mensal que não é lista recusa o pacote', !!recusaD(p => { p.mensal = {}; }, 'mensal'));
 chk('lista do mês longa demais recusa o pacote', !!recusaD(p => { p.mensal = { length: LIMITES_DOMINIO.mensal + 1 }; p.mensal = Array.from(p.mensal, () => ({})); }, 'mensal'));
 
+console.log('O pacote do Domínio, versão 2 (05/11/2026: o faturamento, as compras e a folha em reais):');
+// a versão 2: a 10 (ativa) com tudo em 2026-10 e nada em 2026-11; a 11 (inativa) sem nada; a 12 (ativa) só com notas
+function DOMINIO2() {
+  const p = DOMINIO();
+  p.versao = 2;
+  const l = p.mensal.find(x => x.codigo === 10 && x.competencia === '2026-10');
+  Object.assign(l, {
+    receita_bruta: 80211.504, receita_mercadorias: 80711.5, receita_servicos: 0, devolucoes: 500, receita_simples: 92000,
+    receita_simples_propria: 80211.5, receita_st: 30000, receita_monofasica: 0, receita_exportacao: 0, receita_anexo_1: 92000,
+    receita_anexo_2: 0, receita_anexo_3: 0, receita_anexo_4: 0, receita_anexo_5: 0, rbt12: 1020000, meses_rbt12: 12,
+    compras: 45000, compras_st: 15000, servicos_tomados: 1200, ativo_e_consumo: 300, devolucoes_de_venda: 500, outras_entradas: 4003.1,
+    salarios: 14800, ferias: 0, rescisoes: 0, decimo_terceiro: 0, pro_labore_valor: 6000, base_inss: 14100, base_fgts: 14100,
+    fgts: 1128, inss_empresa: 0, inss_rat: 0, inss_terceiros: 0, salario_do_fulano: 1234.56
+  });
+  return p;
+}
+const v2 = validarPacoteDominio(DOMINIO2());
+chk('o pacote da versão 2 passa, com a versão no que vai pro banco', v2.ok && v2.pacote.versao === 2, v2);
+const p2 = v2.ok && v2.pacote;
+const lin2 = (c, m) => p2.mensal.find(l => l.codigo === c && l.competencia === m);
+chk('os seis blocos lidos vão pro banco', p2 && ['folha', 'fiscal', 'contabil', 'faturamento', 'compras', 'folha_valores'].every(b => p2.blocos_ok[b] === true), p2 && p2.blocos_ok);
+chk('o faturamento, as compras e a folha em reais chegam, com centavos; o meses_rbt12 inteiro; o campo a mais fica de fora',
+  p2 && lin2(10, '2026-10').receita_bruta === 80211.5 && lin2(10, '2026-10').receita_simples === 92000 && lin2(10, '2026-10').meses_rbt12 === 12
+  && lin2(10, '2026-10').compras_st === 15000 && lin2(10, '2026-10').fgts === 1128 && !('salario_do_fulano' in lin2(10, '2026-10')));
+chk('sem nota no mês: a receita pelas notas e as compras = 0 em toda empresa; o que é da apuração do Simples segue null',
+  p2 && lin2(10, '2026-11').receita_bruta === 0 && lin2(10, '2026-11').devolucoes === 0 && lin2(10, '2026-11').compras === 0
+  && lin2(10, '2026-11').receita_simples === null && lin2(10, '2026-11').rbt12 === null && lin2(10, '2026-11').meses_rbt12 === null
+  && lin2(11, '2026-10').receita_bruta === 0 && lin2(11, '2026-10').outras_entradas === 0);
+chk('a folha em reais vazia: 0 na empresa ativa, null na inativa (como a folha)',
+  p2 && lin2(10, '2026-11').salarios === 0 && lin2(12, '2026-10').pro_labore_valor === 0 && lin2(12, '2026-10').inss_terceiros === 0
+  && lin2(11, '2026-10').salarios === null && lin2(11, '2026-10').fgts === null);
+{
+  const p = DOMINIO2(); p.faltou = [{ bloco: 'faturamento', motivo: 'erro na consulta' }];
+  const r2 = validarPacoteDominio(p);
+  chk('bloco novo no faltou: só ele sai null e fica falso pro banco (os outros entram)',
+    r2.ok && r2.pacote.blocos_ok.faturamento === false && r2.pacote.blocos_ok.compras === true
+    && r2.pacote.mensal.every(l => l.receita_bruta === null && l.rbt12 === null)
+    && r2.pacote.mensal.find(l => l.codigo === 10 && l.competencia === '2026-10').compras === 45000, r2);
+}
+{
+  const p = DOMINIO2(); p.versao = 1;
+  const r2 = validarPacoteDominio(p);
+  chk('a versão 1 (a ponte antiga): os três blocos novos não foram lidos — saem null e falsos pro banco, mesmo que venham',
+    r2.ok && r2.pacote.versao === 1 && r2.pacote.blocos_ok.faturamento === false && r2.pacote.blocos_ok.compras === false
+    && r2.pacote.blocos_ok.folha_valores === false && r2.pacote.blocos_ok.fiscal === true
+    && r2.pacote.mensal.every(l => l.receita_bruta === null && l.compras === null && l.salarios === null), r2);
+}
+chk('na versão 1, bloco novo no faltou recusa o pacote (ela não tem esse bloco)', !!recusaD(p => { p.faltou = [{ bloco: 'compras', motivo: 'x' }]; }, 'faltou[0].bloco'));
+chk('versão 3 recusa o pacote', !!recusaD(p => { p.versao = 3; }, 'versao'));
+{
+  const p = DOMINIO2();
+  p.mensal.push({ codigo: 12, competencia: '2026-09', meses_rbt12: 2.5 });
+  p.mensal.push({ codigo: 12, competencia: '2026-08', receita_bruta: '100' });
+  p.mensal.push({ codigo: 12, competencia: '2026-07', salarios: 1e14 });
+  p.mensal.push({ codigo: 12, competencia: '2026-06', meses_rbt12: 13 });
+  const r2 = validarPacoteDominio(p);
+  chk('a linha com valor fora do contrato num bloco novo fica de fora sozinha (meses que não é inteiro ou passa de 12, receita em texto, valor absurdo)',
+    r2.ok && r2.linhas_recusadas === 5 && r2.recusadas.filter(x => /meses_rbt12/.test(x.campo)).length === 2 && r2.recusadas.some(x => /receita_bruta/.test(x.campo))
+    && r2.recusadas.some(x => /salarios/.test(x.campo)), r2);
+}
+{
+  const p = DOMINIO2();
+  p.mensal.find(x => x.codigo === 12 && x.competencia === '2026-10').receita_bruta = -350.25;
+  const r2 = validarPacoteDominio(p);
+  chk('receita bruta negativa (mais devolução que venda no mês) entra como veio',
+    r2.ok && r2.pacote.mensal.find(l => l.codigo === 12 && l.competencia === '2026-10').receita_bruta === -350.25, r2);
+}
+
 console.log('A porta de entrada:');
 function fakeDb({ hash = h, cfgErro = null, rpcErro = null } = {}) {
   const chamadas = [];
@@ -278,6 +346,15 @@ r = await pedir(db, DOMINIO());
 chk('o pacote do Domínio vai pro banco já conferido (dominio_gravar), com o que ficou de fora na resposta',
   r.status === 200 && r.corpo.gravado === true && db.chamadas.length === 1 && db.chamadas[0].nome === 'dominio_gravar'
   && db.chamadas[0].args.p.mensal.length === 5 && db.chamadas[0].args.p.blocos_ok.fiscal === true && r.corpo.linhas_recusadas === 1, r);
+db = fakeDb();
+r = await pedir(db, DOMINIO2());
+chk('o pacote do Domínio da versão 2 também vai pro banco, com os blocos novos',
+  r.status === 200 && r.corpo.gravado === true && db.chamadas.length === 1 && db.chamadas[0].args.p.versao === 2
+  && db.chamadas[0].args.p.blocos_ok.faturamento === true && db.chamadas[0].args.p.mensal.some(l => l.receita_bruta === 80211.5), r);
+r = await pedir(fakeDb(), { ...BOM(), versao: 2 });
+chk('a versão 2 é só do pacote do Domínio: a da Receita recusa (422)', r.status === 422 && /Versão do pacote/.test(r.corpo.erro), r);
+r = await pedir(fakeDb(), { versao: 2, ping: true });
+chk('o ping na versão 2 também recusa (só o pacote do Domínio tem a 2)', r.status === 422, r);
 r = await pedir(fakeDb(), { versao: 1, rodada: { id: 'x' }, empresas: [], mensal: [] });
 chk('o pacote do Domínio fora do contrato: 422 com o campo', r.status === 422 && /Domínio/.test(r.corpo.erro) && /rodada\.id/.test(r.corpo.erro), r);
 r = await pedir(fakeDb({ rpcErro: { message: 'falhou' } }), BOM());
@@ -320,6 +397,14 @@ console.log('As notas de entrada das empresas autorizadas (03/11/2026):');
   chk('o pacote do contrato passa, sem recusa', vn.ok && vn.pacote.notas.length === 3 && vn.recusadas.length === 0, vn);
   const n0 = vn.ok && vn.pacote.notas[0], i0 = n0 && n0.itens[0];
   chk('o que o contrato não prevê fica de fora, e o texto numa linha', n0 && !('sobra' in n0) && !('extra' in i0) && n0.emitente.nome === 'FORNECEDOR EXEMPLO LTDA' && n0.emitente.uf === 'SC', n0);
+  {
+    const p = PACOTE(); p.notas[0].emitente.nome = 'FULANO DE TAL 123.456.789-09 ME';
+    const r2 = validarPacoteNotas(p);
+    const nm = r2.ok && r2.pacote.notas[0].emitente.nome;
+    chk('o nome do fornecedor sai sem o CPF que o MEI antigo tem no nome (o CNPJ basta pra comparar)', nm === 'FULANO DE TAL ME', r2);
+  }
+  chk('o CPF sai do nome com ou sem pontuação, e o resto do nome (o CNPJ da empresa no nome do MEI novo) fica',
+    semCpf('JOAO 12345678909') === 'JOAO' && semCpf('57.453.038 DIONES') === '57.453.038 DIONES' && semCpf('12345678909') === null && semCpf(null) === null);
   chk('o destinatário é a empresa do pacote, só com letras e dígitos; o número e a série sem os zeros da frente',
     n0 && n0.destinatario.cnpj === EMP && n0.numero === '1234' && n0.serie === '1');
   chk('o NCM só com os dígitos, e o IPI do item que a Domínio não guardou segue nulo', i0 && i0.ncm === '73181500' && i0.ipi === null && i0.cfop === '1102');

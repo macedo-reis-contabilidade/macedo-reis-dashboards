@@ -1,4 +1,4 @@
--- faturamento.sql (RASCUNHO: a ponte não lê esta pasta): por empresa, a receita bruta do mês como o próprio Domínio
+-- faturamento.sql: por empresa, a receita bruta do mês como o próprio Domínio
 -- a conta pra apurar os impostos. Os dois parâmetros são o primeiro e o último dia do mês.
 -- Tabelas: bethadba.EFACUMULADOR_VIGENCIA ("Acumuladores - Cadastro", a vigência mais recente até o fim do mês:
 -- IFAT_ACU "Incide sobre Faturamento", IDEV_ACU "Incide sobre Devolucao"), bethadba.efsaidas e bethadba.efservicos

@@ -13,7 +13,9 @@
 //   o pacote do Domínio (sem tipo: rodada, empresas, mensal, faltou)
 //                                                            → gravado pelo banco (dominio_gravar), já conferido
 //                                                              (dominio.js); a linha de um mês fora do contrato fica
-//                                                              de fora sozinha e volta em `recusadas` (02/11/2026)
+//                                                              de fora sozinha e volta em `recusadas` (02/11/2026);
+//                                                              versão 1, ou 2 com o faturamento, as compras e a
+//                                                              folha em reais (05/11/2026)
 //   { versao: 1, tipo: 'notas', pedir: 'autorizadas' }       → as empresas cujo cliente autorizou mandar as notas de
 //                                                              entrada (compartilhamentos), pelo código do Domínio
 //   { versao: 1, tipo: 'notas', rodada, empresa, notas }     → as notas de uma empresa, conferidas (notas.js) e mandadas
@@ -147,7 +149,9 @@ export function criarServidor({ criarDb, agora = () => Date.now(), enviar = (url
     let corpo;
     try { corpo = JSON.parse(bruto); } catch { return resposta({ erro: 'O corpo não é um JSON.' }, 400); }
     if (!corpo || typeof corpo !== 'object' || Array.isArray(corpo)) return resposta({ erro: 'O corpo não é um objeto.' }, 400);
-    if (corpo.versao !== 1) return resposta({ erro: 'Versão do pacote desconhecida (esta função lê a 1).' }, 422);
+    // a versão 2 é só do pacote do Domínio (05/11/2026: o faturamento, as compras e a folha em reais); o resto lê a 1
+    const doDominio = corpo.tipo == null && Array.isArray(corpo.mensal);
+    if (corpo.versao !== 1 && !(doDominio && corpo.versao === 2)) return resposta({ erro: 'Versão do pacote desconhecida (esta função lê a 1; o pacote do Domínio, também a 2).' }, 422);
     try {
       if (corpo.ping === true) return resposta({ ok: true, ponte: 'ok' });
       if (corpo.tipo === 'receita' && corpo.pedir === 'empresas') {
@@ -164,7 +168,7 @@ export function criarServidor({ criarDb, agora = () => Date.now(), enviar = (url
         if (error) throw error;
         return resposta({ ok: true, gravado: true, ...(data || {}), recusadas: v.recusadas });
       }
-      if (corpo.tipo == null && Array.isArray(corpo.mensal)) {
+      if (doDominio) {
         const v = validarPacoteDominio(corpo);
         if (!v.ok) return resposta({ erro: 'Pacote do Domínio recusado: ' + v.erro + ' (' + v.campo + ').' }, 422);
         const { data, error } = await db.rpc('dominio_gravar', { p: v.pacote });

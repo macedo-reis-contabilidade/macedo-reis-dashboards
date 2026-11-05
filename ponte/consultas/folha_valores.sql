@@ -1,4 +1,4 @@
--- folha_valores.sql (RASCUNHO: a ponte não lê esta pasta): por empresa, a folha do mês em reais, somada (nunca por
+-- folha_valores.sql: por empresa, a folha do mês em reais, somada (nunca por
 -- pessoa). Os dois parâmetros são o primeiro e o último dia do mês. Tabelas: bethadba.fobasesserv ("Bases - Calculo",
 -- um cálculo por pessoa, mês e tipo: 11 Mensal, 41 Adiantamento, 42 Complementar, 51 Adiantamento do 13º, 52 13º
 -- salário, 60 e 61 Férias; sem simulação), bethadba.foempregados (a categoria eSocial, como no folha.sql),

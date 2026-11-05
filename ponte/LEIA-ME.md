@@ -7,7 +7,8 @@ totais** pro sistema.
 
 **O que não sai deste PC:** nome, CPF e salário de funcionário, ou qualquer coisa além dos campos do contrato
 (`ponte/fonte.py` e `ponte/pacote.py`). As consultas já devolvem contado; o que vier a mais é jogado fora antes de
-montar o pacote. A senha do banco e as chaves nunca vão pra tela nem pro log.
+montar o pacote. A folha em reais (desde a versão 2 do pacote, 05/11/2026) sai **somada por empresa e mês**, nunca
+por pessoa. A senha do banco e as chaves nunca vão pra tela nem pro log.
 
 ## Montar o PC
 
@@ -143,10 +144,21 @@ escritório, contariam como ativos todo mês). O `valor_saidas` é o valor cont�
 transferência, bonificação), não o faturamento. Mudou uma consulta: `py -3 tests/ponte.test.py` confere que ela
 segue com o comentário no começo, as colunas do contrato e os parâmetros.
 
-As consultas ficam em `ponte\consultas\` (`empresas.sql`, `folha.sql`, `fiscal.sql`, `contabil.sql`). Enquanto a
+**O faturamento, as compras e a folha em reais** (a versão 2 do pacote, 05/11/2026): `faturamento.sql`,
+`compras.sql` e `folha_valores.sql`, as que a fila de 03/11 escreveu e conferiu dentro do próprio Domínio (as tabelas,
+as regras e os números do escritório inteiro em `docs/FILA-CODE-2026-11-03-DUVIDAS.md`; 3 a 5 segundos cada). O
+faturamento é a receita bruta pelos acumuladores de faturamento menos a devolução (bateu com a apuração do Simples em
+71 de 71 empresas, pela linha de cada estabelecimento) e, de quem apura o Simples, a apuração com as filiais, o RBT12
+(calculado: a receita anterior informada, senão a apuração; com menos de 12 meses, a média vezes 12), a parte com ST,
+a monofásica, a exportação e cada anexo; as compras, pelo CFOP; a folha em reais, os proventos (só o rateio 0: o
+rateio por serviço repete o cálculo), o 13º, o pró-labore, as bases e as guias do FGTS e do INSS. A versão 2 diz ao
+sistema que esses três blocos foram lidos; a versão 1 (a ponte antiga) não mexe neles lá.
+
+As consultas ficam em `ponte\consultas\` (`empresas.sql`, `folha.sql`, `fiscal.sql`, `contabil.sql`,
+`faturamento.sql`, `compras.sql`, `folha_valores.sql`). Enquanto a
 consulta tiver a linha `-- A CONFERIR`, ela não roda: o bloco vai pro `faltou` do pacote, e sem a de empresas a
-rodada não manda nada. O que cada uma recebe e devolve está no começo de `ponte\fonte_dominio.py` (folha, fiscal e
-contábil recebem o primeiro e o último dia do mês, nessa ordem, e devolvem **uma linha por empresa, já contada**).
+rodada não manda nada. O que cada uma recebe e devolve está no começo de `ponte\fonte_dominio.py` (as do mês recebem
+o primeiro e o último dia do mês, nessa ordem, e devolvem **uma linha por empresa, já contada**).
 
 1. Ache as tabelas com o `dominio tabelas` e entenda os dados com o `dominio sql` (contagens, mínimos e máximos de
    datas, os valores de um campo de situação com `GROUP BY`).

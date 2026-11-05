@@ -1,12 +1,22 @@
-"""Monta o pacote — o contrato com o sistema (versão 1).
+"""Monta o pacote — o contrato com o sistema (versão 2, desde 05/11/2026).
 
-    { "versao": 1,
+    { "versao": 2,
       "rodada":   { id, inicio, fim, dados_ate, maquina, ponte },
       "empresas": [ { codigo, documento, nome, ativa } ],
       "mensal":   [ { codigo, competencia 'AAAA-MM', funcionarios_ativos, admissoes, desligamentos, afastados,
                       pro_labore, notas_saida, valor_saidas, notas_entrada, valor_entradas,
-                      lancamentos, ultimo_lancamento } ],
+                      lancamentos, ultimo_lancamento,
+                      + faturamento: receita_bruta, receita_mercadorias, receita_servicos, devolucoes,
+                        receita_simples, receita_simples_propria, receita_st, receita_monofasica, receita_exportacao,
+                        receita_anexo_1 … receita_anexo_5, rbt12, meses_rbt12
+                      + compras: compras, compras_st, servicos_tomados, ativo_e_consumo, devolucoes_de_venda,
+                        outras_entradas
+                      + folha_valores: salarios, ferias, rescisoes, decimo_terceiro, pro_labore_valor, base_inss,
+                        base_fgts, fgts, inss_empresa, inss_rat, inss_terceiros } ],
       "faltou":   [ { bloco, motivo } ] }
+
+A versão 1 (até 04/11/2026) era a mesma sem os três blocos novos. A versão diz ao sistema que eles foram lidos: na 1,
+ele não mexe nos valores desses blocos que já tinha.
 
 Regras:
   - Só esses campos saem. O que a fonte devolver a mais é descartado aqui (a trava do dado pessoal).
@@ -26,7 +36,7 @@ from decimal import Decimal, InvalidOperation
 from . import VERSAO
 from .fonte import (BLOCOS, CAMPOS_DATA, CAMPOS_INTEIROS, CAMPOS_MES, CAMPOS_VALOR, ConsultaAConferir)
 
-VERSAO_PACOTE = 1
+VERSAO_PACOTE = 2
 ORDEM_MENSAL = ('codigo', 'competencia') + tuple(c for b in BLOCOS for c in CAMPOS_MES[b])
 
 
