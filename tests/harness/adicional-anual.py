@@ -156,6 +156,9 @@ def abrir(b, base, tema, erros, email=None, sem_modelo=False):
     p.add_init_script("window.confirm = m => { (window.__perguntas ||= []).push(String(m)); return !window.__recusarDialogo; };")
     p.add_init_script(INIT_TEMA % tema)
     p.add_init_script('window.__adicionalEsperaMs = 300;' + (f'window.__mockEmail = {json.dumps(email)};' if email else ''))
+    # o aviso do "renovando" fica 300 ms na tela: quem anota que ele apareceu é a página (com 4 testes ao mesmo tempo, o
+    # teste chegava depois de ele sumir — 05/11/2026)
+    p.add_init_script("new MutationObserver(() => { const c = document.querySelector('#aaBody'); if (c && /renovando a conexão/.test(c.textContent)) window.__viuRenovando = true; }).observe(document, { subtree: true, childList: true, characterData: true });")
     p.add_init_script(DUBLE)
     if sem_modelo:
         p.add_init_script('window.__ca.semModelo = true; window.__ca.renovando = 0;')
@@ -175,7 +178,7 @@ def fluxo(b, base, erros):
     p.click('#btnAdicional')
     p.wait_for_selector('#aaOv')
     ok(p.inner_text('#aaTitulo') == 'Honorário adicional anual de 10/2026', '1. a tela em 11/2026 abre a competência 10/2026: ' + p.inner_text('#aaTitulo'))
-    p.wait_for_function('() => /renovando a conexão/.test(document.querySelector("#aaBody").textContent)', timeout=5000)
+    p.wait_for_function('() => window.__viuRenovando === true', timeout=15000)
     ok(True, '1. o Conta Azul renovando: a janela avisa e espera')
     p.wait_for_selector('#aaBody table.bo tbody tr[data-pessoa]', timeout=8000)
     prev = [c for c in ca(p, 'window.__ca.chamadas') if c.get('modo') == 'prever']
