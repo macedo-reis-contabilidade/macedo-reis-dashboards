@@ -110,6 +110,13 @@ def conferir():
             tela(f'Sistema: respondeu HTTP {status}' + (f' — {detalhe}' if detalhe else ''))
         else:
             tela(f'Sistema: sem resposta ({detalhe})')
+        if resultado == envio.FOI:
+            # as notas das empresas autorizadas (ponte/notas/): só os números
+            from .notas.sistema import pedir_autorizadas
+            lista, status = pedir_autorizadas(cfg, lambda msg, nivel='info': tela(msg))
+            if lista is not None:
+                tela(f'Notas: {len(lista)} empresa(s) autorizada(s) no sistema, '
+                     f'{sum(1 for e in lista if e["pronta"])} pronta(s)')
 
     tela('')
     if problemas:
