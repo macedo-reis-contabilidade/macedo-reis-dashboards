@@ -261,7 +261,10 @@ def main():
         p = nova(b, base, erros, 'contabil-controle.html', 'tour', tour_visto=False)
         p.wait_for_selector('.mrt-box', timeout=8000)
         antes_db = {t: db(p, t) for t in ('contabil_meses', 'contabil_pendencias', 'contabil_empresas')}
-        ok(tour_tit(p) == 'As empresas, por situação' and p.inner_text('.mrt-passo') == '1 de 14' and dentro(p, '.mrt-spot', '#focos'),
+        # o passo do assistente conta quando o balão já está na tela: a página espera até 6 s por ele; num computador
+        # ocupado (os testes 4 ao mesmo tempo, 05/11/2026) ele pode chegar depois, e a conta sobe no passo seguinte —
+        # os 14 inteiros são conferidos no "Rever o tour", adiante
+        ok(tour_tit(p) == 'As empresas, por situação' and p.inner_text('.mrt-passo') in ('1 de 14', '1 de 13') and dentro(p, '.mrt-spot', '#focos'),
            f'na primeira visita, o tour começa sozinho, nos cartões do alto ({p.inner_text(".mrt-passo")!r})')
         titulos = [tour_tit(p)]
         while tour_tit(p) != 'As opções do mês' and len(titulos) < 20:
