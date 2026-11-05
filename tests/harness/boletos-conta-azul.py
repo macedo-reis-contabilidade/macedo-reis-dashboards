@@ -8,17 +8,20 @@ dublê em window.__mockInvoke (empresas e valores inventados).
 
 Confere:
   1. o botão só aparece pros sócios; o campo do valor mostra o total (a mensalidade e o adicional), com o aviso dos
-     extras e a mensalidade embaixo;
+     extras e a mensalidade embaixo; ao abrir o mês, a tela confere sozinha (o "renovando" espera e tenta de novo) e diz
+     no alto quantos boletos a emitir o Conta Azul mudaria — pra Thalia, nem aviso nem chamada;
   2. a janela: o Conta Azul "renovando" na primeira chamada (avisa e tenta de novo); o resumo; os grupos (sobem, descem,
      muda a composição); marcadas, salvo a que pede conferência (o total que cai mais de 30%); o que já estava no boleto;
      a mensalidade de outro mês fica fora, com o aviso; o MEI com a guia do MEI no boleto não muda; a sem nada lá, a já
      emitida, a empresa sem boleto aqui e a pessoa sem empresa; o nome com HTML vem como texto;
   3. "Aplicar": o valor e os extras de cada marcada no banco (a desmarcada fica), a grade com os totais novos, e a
-     conferência de novo mostra que batem; "Desfazer" volta tudo;
+     conferência de novo mostra que batem; "Desfazer" volta tudo; o aviso do alto se refaz, e o "Ver e aplicar" dele abre a
+     janela sem ler o Conta Azul de novo;
   4. na grade: o aviso abre a lista (a mensalidade e cada extra); "Tirar do boleto" tira o item do Conta Azul (fica
      riscado, não soma) e "Voltar pro boleto" o põe de volta;
   5. digitar o total: a mensalidade é o total menos os extras; o total menor que os extras não grava e volta;
-  6. gerar um mês novo abre a conferência sozinha.
+  6. trocar de mês confere de novo; gerar o mês aplica sozinho, nos boletos que acabaram de nascer, o que vence no Conta
+     Azul (o boleto que já estava no mês fica, marcado na janela pro "Aplicar"); "Desfazer" volta o novo.
 Termina com código 1 se alguma checagem falhar. Pré-requisito: pip install playwright e python -m playwright install chromium
 """
 import sys, json, pathlib
@@ -58,7 +61,10 @@ ITENS = [it('k1', 'p1m', 660, M, '2026-10-31', 'Venda 190421415 / NFS-e:1110 - R
          it('k7', 'p7m', 300, M, '2026-10-31'),
          it('k8', 'p8m', 100, M, '2026-10-31'), it('k8', 'p8x', 50, X, '2026-10-20', 'Venda <b>190421999</b>'),
          it('k9', 'p9m', 700, M, '2026-10-31'),
-         it('k10', 'p10m', 500, M, '2026-10-31')]
+         it('k10', 'p10m', 500, M, '2026-10-31'),
+         # dezembro: o que vence nos boletos de 11/2026 (a mensalidade de novembro e a parcela 2/4 da Adega; a do Agro)
+         it('k1', 'p1m12', 660, M, '2026-11-30', 'Venda 190421600', venc='2026-12-10'), it('k1', 'p1x2', 200, X, '2026-10-15', '2/4 - Venda 190421319', venc='2026-12-10'),
+         it('k2', 'p2m12', 825, M, '2026-11-30', 'Venda 190421601', venc='2026-12-10')]
 ARMADILHA = """(() => {
   const CLI = %s, BAS = %s, COB = %s, ITENS = %s;
   let db;
@@ -108,15 +114,25 @@ def abrir(b, base_url, tema, erros, email=None):
 def fluxo(b, base_url, tema, erros):
     print(f'[{tema}] 1. quem vê e o valor da grade')
     t = abrir(b, base_url, tema, erros, email='fiscal@macedoereis.com.br')
+    t.wait_for_timeout(500)
     ok(not t.locator('#btnContaAzul').is_visible(), '1. a Thalia não vê o botão (só os sócios)')
+    ok(not t.locator('#caResumo').is_visible() and db(t, 'window.__chamadas.length') == 0, '1. … nem o aviso do alto: a tela não chama o Conta Azul pra ela')
     t.close()
     p = abrir(b, base_url, tema, erros)
     ok(p.locator('#btnContaAzul').is_visible(), '1. o sócio vê "Conferir com o Conta Azul"')
+    p.wait_for_function('() => /outro valor/.test((document.querySelector("#caResumo") || {}).textContent || "")', timeout=8000)
+    aviso = p.inner_text('#caResumo')
+    ok('O Conta Azul tem outro valor em 5 boletos a emitir (o que vence em 11/2026): 2 sobem, 2 descem, 1 muda só a composição · 1 pede a sua conferência.' in aviso
+       and p.locator('#caResumoVer').is_visible(), '1. ao abrir, a tela confere sozinha e avisa no alto: ' + aviso.replace('\n', ' ')[:200])
+    ok(db(p, 'window.__chamadas.filter(c => c.modo === "boletos").length') == 2 and db(p, "(window.__mockDb.cobrancas_mensais.find(c => c.cliente_id === 'k1') || {}).valor") == 660,
+       '1. … o "renovando" esperou e tentou de novo, e nada foi gravado')
+    p.screenshot(path=str(FOTOS / f'{tema}-boletos-aviso-conta-azul.png'), clip={'x': 0, 'y': 520, 'width': 1440, 'height': 400})
     l1 = linha(p, 'ADEGA DE TESTE')
     ok(l1.locator('input[data-f="valor"]').input_value() == '1320', '1. o campo do valor mostra o total (660 + 660 do adicional): ' + l1.locator('input[data-f="valor"]').input_value())
     ok('+1 extra(s) · R$ 660,00' in l1.inner_text() and 'mensalidade R$ 660,00' in l1.inner_text(), '1. o aviso do extra e a mensalidade embaixo: ' + l1.inner_text().replace('\n', ' | ')[:120])
 
     print(f'[{tema}] 2. a janela')
+    p.evaluate('() => { window.__renovando = 1; window.__chamadas = []; window.__viuRenovando = false; }')
     p.click('#btnContaAzul')
     p.wait_for_selector('#caOv')
     p.wait_for_function('() => /boletos:/.test((document.querySelector("#caBody") || {}).textContent || "")', timeout=10000)
@@ -162,6 +178,15 @@ def fluxo(b, base_url, tema, erros):
     p.keyboard.press('Escape')
     p.wait_for_timeout(300)
     ok(p.locator('#caOv').count() == 0, '3. Esc fecha a janela')
+    aviso = p.inner_text('#caResumo')
+    ok('outro valor em 1 boleto a emitir (o que vence em 11/2026): 1 desce · 1 pede a sua conferência.' in aviso, '3. o aviso do alto se refaz: sobra só a que pede conferência: ' + aviso.replace('\n', ' ')[:200])
+    antes = db(p, 'window.__chamadas.filter(c => c.modo === "boletos").length')
+    p.click('#caResumoVer')
+    p.wait_for_function('() => /boletos:/.test((document.querySelector("#caBody") || {}).textContent || "")', timeout=8000)
+    ok(db(p, 'window.__chamadas.filter(c => c.modo === "boletos").length') == antes and 'QUEDA DE TESTE' in p.inner_text('#caBody'),
+       '3. "Ver e aplicar" abre a janela sem ler o Conta Azul de novo (leu há menos de 10 minutos)')
+    p.keyboard.press('Escape')
+    p.wait_for_timeout(300)
 
     print(f'[{tema}] 4. tirar do boleto e voltar')
     l1 = linha(p, 'ADEGA DE TESTE')
@@ -186,13 +211,29 @@ def fluxo(b, base_url, tema, erros):
     ok(cobr(p, 'k1')['valor'] == 740 and linha(p, 'ADEGA DE TESTE').locator('input[data-f="valor"]').input_value() == '1600' and 'não pode ser menor que os extras' in p.inner_text('#msg'),
        '5. o total menor que os extras não grava e volta, com o aviso')
 
-    print(f'[{tema}] 6. gerar um mês novo abre a conferência')
+    print(f'[{tema}] 6. trocar de mês e gerar')
+    # um boleto de 11/2026 que já estava lá antes de gerar o mês (posto à mão): a geração não mexe nele
+    p.evaluate("""() => window.__mockDb.cobrancas_mensais.push({ id: 'mk2n', cliente_id: 'k2', competencia: '2026-11', valor: 905, vencimento: '2026-12-10', canal: 'whatsapp',
+      contato_envio: '', destino: '', responsavel: '', observacao: null, status: 'a_emitir', itens_extras: [], created_at: '2026-12-01T12:00:00Z' })""")
     p.fill('#comp', '2026-11'); p.dispatch_event('#comp', 'change')
-    p.wait_for_timeout(500)
+    p.wait_for_function('() => /12\\/2026/.test((document.querySelector("#caResumo") || {}).textContent || "")', timeout=8000)
+    ok('outro valor em 1 boleto a emitir (o que vence em 12/2026): 1 desce.' in p.inner_text('#caResumo'), '6. trocar de mês confere de novo: ' + p.inner_text('#caResumo').replace('\n', ' ')[:160])
     p.click('#btnGerar')
     p.wait_for_selector('#caOv', timeout=8000)
-    p.wait_for_function('() => /boletos:/.test((document.querySelector("#caBody") || {}).textContent || "")', timeout=8000)
+    p.wait_for_function('() => /Ao gerar o mês/.test((document.querySelector("#caAviso") || {}).textContent || "")', timeout=10000)
     ok('Conferir com o Conta Azul · boletos de 11/2026' in p.inner_text('#caTitulo') and db(p, 'window.__chamadas.at(-1).meses') == ['2026-12'], '6. gerou 11/2026 e a conferência abriu sozinha (o que vence em 12/2026)')
+    k1n, k2n = cobr(p, 'k1', '2026-11'), cobr(p, 'k2', '2026-11')
+    ok(k1n['valor'] == 660 and [x.get('ca_parcela_id') for x in k1n['itens_extras']] == ['p1x2'], '6. o boleto que nasceu já ficou com o que vence lá, sem clicar em nada (a mensalidade 660 e a parcela 2/4): ' + json.dumps(k1n, ensure_ascii=False)[:160])
+    ok(k2n['valor'] == 905 and k2n['itens_extras'] == [], '6. o boleto que já estava no mês não muda sozinho (pode ter ajuste à mão)')
+    aviso = p.inner_text('#caAviso')
+    ok('Ao gerar o mês, 1 boleto ficou com tudo o que vence no Conta Azul (+ R$ 120,00 no mês).' in aviso and '1 boleto que já estava no mês tem outro valor no Conta Azul' in aviso,
+       '6. o aviso da janela: ' + aviso[:240])
+    ok(p.locator('.ca-marca[data-id="mk2n"]').is_checked() and p.locator('#caDesfazer').is_visible(), '6. … o que já estava fica marcado pro "Aplicar", e há o "Desfazer"')
+    ok(linha(p, 'ADEGA DE TESTE').locator('input[data-f="valor"]').input_value() == '860', '6. a grade já mostra o total novo (860)')
+    p.click('#caDesfazer')
+    p.wait_for_function('() => /voltou ao que era/.test((document.querySelector("#caAviso") || {}).textContent || "")', timeout=8000)
+    k1n = cobr(p, 'k1', '2026-11')
+    ok(k1n['valor'] == 740 and k1n['itens_extras'] == [], '6. "Desfazer" volta o boleto novo como a geração o criou')
     p.close()
 
 def main():

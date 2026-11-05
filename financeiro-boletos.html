@@ -105,7 +105,7 @@
         </div>
         <div class="eyebrow">Faturamento</div>
         <h1>Boletos / Honorários</h1>
-        <p>Grade mensal de cobrança. Gere o mês copiando a última competência (valores e envio vivos; a base entra só pra empresa nova), ajuste valores, vencimentos e dados de envio, e marque o status conforme emite e envia. O vencimento sai no dia de cada empresa (10, 15, 25…), no próximo dia útil quando ele cai em fim de semana ou feriado; mudar a data de uma empresa pra outro dia vale também pros próximos meses. Em <b>Arquivo do Inter</b>, os boletos marcados viram um arquivo que o Inter importa de uma vez. Em <b>Honorário adicional anual</b> (só os sócios), as vendas do adicional de outubro vão pro Conta Azul e entram no boleto do mês. Em <b>Conferir com o Conta Azul</b> (só os sócios), cada boleto fica com tudo o que vence da empresa no mês lá — a mensalidade, os serviços extras, as parcelas —, e o valor da grade mostra o total, com os extras no aviso embaixo.</p>
+        <p>Grade mensal de cobrança. Gere o mês copiando a última competência (valores e envio vivos; a base entra só pra empresa nova), ajuste valores, vencimentos e dados de envio, e marque o status conforme emite e envia. O vencimento sai no dia de cada empresa (10, 15, 25…), no próximo dia útil quando ele cai em fim de semana ou feriado; mudar a data de uma empresa pra outro dia vale também pros próximos meses. Em <b>Arquivo do Inter</b>, os boletos marcados viram um arquivo que o Inter importa de uma vez. Em <b>Honorário adicional anual</b> (só os sócios), as vendas do adicional de outubro vão pro Conta Azul e entram no boleto do mês. Com o login de um sócio, o Conta Azul entra sozinho: ao gerar o mês, cada boleto já nasce com tudo o que vence da empresa no mês lá — a mensalidade, os serviços extras, as parcelas —, e, ao abrir um mês com boleto a emitir, a tela confere de novo e avisa aqui em cima o que mudou lá (aplicar é com você, porque o boleto pode ter um ajuste à mão). O valor da grade mostra o total, com os extras no aviso embaixo.</p>
       </div>
 
       <div class="bo-toolbar">
@@ -131,6 +131,8 @@
           </select>
         </div>
       </div>
+
+      <div id="caResumo" role="status" aria-live="polite" style="display:none;margin:0 0 14px;padding:9px 12px;border-radius:10px;font-size:13px;line-height:1.55;border:1px solid var(--line);"></div>
 
       <div class="fa-focus" id="cards"></div>
 
@@ -186,7 +188,7 @@ import { boletoPdf, nomeArquivoBoleto } from './assets/js/boleto-pdf.js';
 import { reajustesDoMes, marcarAplicados } from './assets/js/precificacao-carteira.js';
 import { vencimentoDaCompetencia, diaDoContrato, COMPETENCIA_ISO } from './assets/js/tarefas-acoes.js';
 import { SOCIOS } from './assets/js/equipe.js';
-import { somaExtras as somaDosExtras, extrasAtivos, totalDoBoleto, valorParaTotal } from './assets/js/boletos-conta-azul.js';
+import { somaExtras as somaDosExtras, extrasAtivos, totalDoBoleto, valorParaTotal, conferirMes, resumoDaConferencia, mesBR } from './assets/js/boletos-conta-azul.js';
 
 const $ = id => document.getElementById(id);
 const BRL = n => 'R$ ' + (Number(n)||0).toLocaleString('pt-BR',{minimumFractionDigits:2, maximumFractionDigits:2});
@@ -220,7 +222,8 @@ async function init(){
   const compDoLink = new URLSearchParams(location.search).get('competencia');
   if (COMPETENCIA_ISO.test(String(compDoLink || ''))) $('comp').value = compDoLink;
   await carregarMes();
-  $('comp').addEventListener('change', carregarMes);
+  conferirAoAbrir();
+  $('comp').addEventListener('change', async () => { await carregarMes(); conferirAoAbrir(); });
   $('btnGerar').addEventListener('click', gerarMes);
   $('btnAdd').addEventListener('click', abrirAdd);
   $('ovClose').addEventListener('click', ()=>$('ov').classList.remove('open'));
@@ -366,8 +369,9 @@ async function gerarMes(){
         + (adicionais ? `; ${adicionais} com o honorário adicional anual no boleto` : '')
         + (adicionalFicou ? '; algum adicional anual não entrou no boleto: confira em "Honorário adicional anual" › "Pôr no boleto as que faltam"' : '') + '.'
       : 'Mês já estava completo (nada novo a gerar)' + (puladasSaida ? ` — ${puladasSaida} pulada(s) por saída na carteira.` : '.'));
-    // o passo seguinte (05/11/2026): conferir com o Conta Azul o que vence no mês de cada empresa — abre sozinha pros sócios
-    if(novos.length && SOCIOS.includes(String(emailUsuario).toLowerCase())) abrirContaAzul();
+    // o passo seguinte (05/11/2026): o que vence no Conta Azul no mês de cada empresa entra sozinho nos boletos que acabaram
+    // de nascer (ainda sem ajuste à mão) — a janela abre com o que foi feito, pro Desfazer. Só os sócios (a função confere)
+    if(novos.length && SOCIOS.includes(String(emailUsuario).toLowerCase())) abrirContaAzul({ aplicarEm: new Set(novos.map(n => n.cliente_id)) });
   }catch(e){ msg('Erro ao gerar: '+(e.message||e)); }
   finally{ btn.disabled=false; btn.textContent='Gerar mês a partir da base'; }
 }
@@ -449,6 +453,7 @@ function render(){
     }
   }
   updateCards();
+  atualizarResumo();
 }
 
 // itens_extras = [{ faturavel_id | adicional_id | ca_parcela_id, descricao, valor, ignorado? }] — a tela Faturáveis, a
@@ -599,17 +604,86 @@ window.addEventListener('mr:boletos-mudaram', ev => {
   }
 });
 
-async function abrirContaAzul(){
+const ehMeiDe = id => String(clientesMap[id]?.regime || '').toUpperCase() === 'MEI';
+
+// op.dados: o que a conferência ao abrir já leu (a janela não lê de novo se tem menos de 10 minutos); op.aplicarEm: os
+// cliente_id dos boletos que a geração acabou de criar (a janela aplica sozinha neles)
+async function abrirContaAzul(op = {}){
   const pendentes = rows.filter(r => r._dirty || r._saving);
   for (const r of pendentes) await salvarLinha(r);
   if (rows.some(r => r._dirty)) { msg('Há valores que ainda não foram gravados: espere o "Salvo ✓" e confira de novo.'); return; }
+  const comp = $('comp').value;
   try {
     const { abrirConferenciaCA } = await import('./assets/js/boletos-conta-azul-tela.js');
-    await abrirConferenciaCA({ supabase, competencia: $('comp').value, linhas: rows.filter(r => r.id),
-      nomeDe: id => clientesMap[id]?.nome || '',
-      ehMei: id => String(clientesMap[id]?.regime || '').toUpperCase() === 'MEI',
+    await abrirConferenciaCA({ supabase, competencia: comp, linhas: rows.filter(r => r.id),
+      nomeDe: id => clientesMap[id]?.nome || '', ehMei: ehMeiDe, dados: op.dados || null, aplicarEm: op.aplicarEm || null,
+      aoLer: dados => { if (comp === $('comp').value) { conferenciaDoMes = { comp, dados }; atualizarResumo(); } },
       aoAplicar: mud => { mud.forEach(m => { const r = rows.find(x => x.id === m.id); if (r) { r.valor = m.valor; r.itens_extras = m.itens_extras; } }); render(); } });
   } catch (e) { msg('Não consegui abrir a conferência com o Conta Azul: recarregue a tela.'); }
+}
+
+// ---- a conferência ao abrir o mês (05/11/2026) ----
+// Só os sócios (a função ca-vendas confere): com boleto a emitir no mês, lê em silêncio o que vence no Conta Azul e diz
+// aqui em cima quantos boletos ele mudaria. Não grava: o boleto pode ter um ajuste à mão (o que ainda falta no Conta
+// Azul), que a conferência desfaria — aplicar é na janela, com um clique. O aviso se refaz a cada desenho da grade
+// (render), com o que já foi lido; ler de novo é ao abrir, ao trocar o mês e na janela.
+let conferenciaDoMes = null;   // { comp, dados: { itens, soltas, em } } ou { comp, erro: true } ou { comp, lendo: true }
+let vezDaConferencia = 0;
+async function conferirAoAbrir(){
+  const comp = $('comp').value;
+  conferenciaDoMes = null;
+  if (!SOCIOS.includes(String(emailUsuario).toLowerCase())) { atualizarResumo(); return; }
+  const linhas = rows.filter(r => r.id);
+  if (!linhas.some(r => r.status === 'a_emitir')) { atualizarResumo(); return; }
+  const vez = ++vezDaConferencia;
+  conferenciaDoMes = { comp, lendo: true };
+  atualizarResumo();
+  let r = null;
+  try {
+    const { conferirEmSilencio } = await import('./assets/js/boletos-conta-azul-tela.js');
+    r = await conferirEmSilencio({ supabase, linhas, ehMei: ehMeiDe });
+  } catch (e) { r = null; }
+  if (vez !== vezDaConferencia || comp !== $('comp').value) return;
+  // a janela pode ter lido enquanto isso (o que ela leu é mais novo)
+  if (conferenciaDoMes && conferenciaDoMes.comp === comp && conferenciaDoMes.dados) return;
+  conferenciaDoMes = r ? { comp, dados: r.dados } : { comp, erro: true };
+  atualizarResumo();
+}
+
+function atualizarResumo(){
+  const el = $('caResumo');
+  if (!el) return;
+  const c = conferenciaDoMes;
+  if (!c || c.comp !== $('comp').value) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  const cor = (borda, fundo) => { el.style.borderColor = borda; el.style.background = fundo; };
+  el.style.display = '';
+  if (c.lendo) {
+    cor('var(--line)', 'transparent');
+    el.innerHTML = '<span style="color:var(--text-muted);"><span class="spin"></span>Conferindo os boletos a emitir com o Conta Azul…</span>';
+    return;
+  }
+  if (c.erro) {
+    cor('var(--line)', 'transparent');
+    el.innerHTML = '<span style="color:var(--text-muted);">Não consegui conferir com o Conta Azul agora.</span> <button type="button" class="btn btn-ghost btn-sm" id="caResumoDeNovo" style="margin-left:6px;">Tentar de novo</button>';
+    el.querySelector('#caResumoDeNovo').addEventListener('click', () => conferirAoAbrir());
+    return;
+  }
+  const res = resumoDaConferencia(conferirMes(rows.filter(r => r.id), c.dados, { ehMei: ehMeiDe }));
+  // tudo já emitido (marcado na grade depois de ler): não há o que aplicar, e o aviso sai
+  if (!res.aEmitir) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  const mes = res.meses.length ? ' (o que vence em ' + res.meses.map(mesBR).join(' e ') + ')' : '';
+  if (!res.muda) {
+    cor('rgba(87,171,90,.35)', 'rgba(87,171,90,.08)');
+    el.innerHTML = '<span style="color:var(--text);">✓ ' + (res.aEmitir === 1 ? 'O boleto a emitir bate' : 'Os ' + res.aEmitir + ' boletos a emitir batem') + ' com o Conta Azul' + esc(mes) + '.</span>';
+    return;
+  }
+  const n = (q, um, varios) => q + ' ' + (q === 1 ? um : varios);
+  const partes = [res.sobe ? n(res.sobe, 'sobe', 'sobem') : '', res.desce ? n(res.desce, 'desce', 'descem') : '', res.recompoe ? n(res.recompoe, 'muda só a composição', 'mudam só a composição') : ''].filter(Boolean);
+  cor('var(--warn)', 'rgba(224,168,0,.08)');
+  el.innerHTML = '<span style="color:var(--text);">O Conta Azul tem outro valor em <b>' + n(res.muda, 'boleto a emitir', 'boletos a emitir') + '</b>' + esc(mes) + ': ' + esc(partes.join(', '))
+    + (res.confira ? ' · ' + n(res.confira, 'pede', 'pedem') + ' a sua conferência' : '') + '.</span>'
+    + ' <button type="button" class="btn btn-primary btn-sm" id="caResumoVer" style="margin-left:6px;">Ver e aplicar</button>';
+  el.querySelector('#caResumoVer').addEventListener('click', () => abrirContaAzul({ dados: c.dados }));
 }
 
 function abrirAdd(){ $('ovBusca').value=''; renderAddList(); $('ov').classList.add('open'); $('ovBusca').focus(); }

@@ -220,4 +220,15 @@ export function gravacaoDaProposta(p) {
 }
 
 // a proposta que já vem marcada na janela: a que muda o boleto a emitir, salvo a que pede conferência
-export const marcadaPorPadrao = p => !!p && ['sobe', 'desce', 'recompoe'].includes(p.situacao) && !p.confira;
+export const APLICAVEIS = ['desce', 'sobe', 'recompoe'];
+export const marcadaPorPadrao = p => !!p && APLICAVEIS.includes(p.situacao) && !p.confira;
+
+// o aviso do alto da tela (a conferência ao abrir o mês): quantos boletos a emitir o Conta Azul mudaria, e como
+export function resumoDaConferencia(conf) {
+  const props = (conf && Array.isArray(conf.propostas)) ? conf.propostas : [];
+  const muda = props.filter(x => APLICAVEIS.includes(x.proposta.situacao));
+  const conta = s => muda.filter(x => x.proposta.situacao === s).length;
+  return { aEmitir: props.filter(x => x.proposta.situacao !== 'fechado').length, muda: muda.length,
+    sobe: conta('sobe'), desce: conta('desce'), recompoe: conta('recompoe'), confira: muda.filter(x => x.proposta.confira).length,
+    meses: [...new Set(props.map(x => x.proposta.mes).filter(Boolean))].sort() };
+}

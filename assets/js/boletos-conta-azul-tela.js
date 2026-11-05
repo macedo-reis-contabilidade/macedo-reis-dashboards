@@ -6,17 +6,21 @@
 // boleto. A janela mostra as que sobem, as que descem e as que só mudam a composição — marcadas, salvo as que pedem
 // conferência —, as que não têm nada lá, as já emitidas e o que vence lá sem boleto aqui; "Aplicar" grava o valor e os
 // extras dos boletos a emitir, com "Desfazer" enquanto a janela está aberta.
+// Sem depender de botão (05/11/2026, o Samuel: "nem mesmo a Adega puxou corretamente" — a conferência era só um botão, e
+// outubro já estava gerado): ao gerar o mês, a janela abre e aplica sozinha nos boletos que acabaram de nascer
+// (aplicarEm), que ainda não têm ajuste à mão; e, ao abrir um mês com boleto a emitir, a tela confere em silêncio
+// (conferirEmSilencio) e avisa no alto o que o Conta Azul tem de diferente — aplicar aí é com a pessoa, porque o boleto pode
+// ter um ajuste à mão (o que ainda falta no Conta Azul, por exemplo), que a conferência desfaria.
 // Usa as classes da tela Boletos (.ov, .ov-box, .ov-head, .ov-body) e estilo em linha no resto.
 // Teste de tela: tests/harness/boletos-conta-azul.py.
 // ============================================================
-import { conferirMes, gravacaoDaProposta, marcadaPorPadrao, mesDoBoleto, mesBR, centavos, extrasDeFora } from './boletos-conta-azul.js';
+import { conferirMes, gravacaoDaProposta, marcadaPorPadrao, mesDoBoleto, mesBR, centavos, extrasDeFora, APLICAVEIS } from './boletos-conta-azul.js';
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const BRL = n => 'R$ ' + (Number(n) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const sinal = n => (n > 0 ? '+ ' : n < 0 ? '− ' : '') + BRL(Math.abs(n));
 const plural = (n, um, varios) => n + ' ' + (n === 1 ? um : varios);
 const ESPERA_RENOVANDO_MS = 20000;
-const APLICAVEIS = ['desce', 'sobe', 'recompoe'];
 const TITULO = { desce: 'Descem', sobe: 'Sobem', recompoe: 'O total fica, muda a composição' };
 const COR = { desce: 'var(--warn)', sobe: 'var(--ok)', recompoe: 'var(--brand-light)' };
 
@@ -30,16 +34,52 @@ async function mensagemDe(error) {
   return { texto: 'Não consegui falar com o Conta Azul agora. Tente de novo em instantes.' };
 }
 
+// a função ca-vendas, modo 'boletos': o "renovando" (o token do Conta Azul sendo renovado, 503) espera e tenta de novo
+async function chamarBoletos(supabase, meses, { esperaRenovando = ESPERA_RENOVANDO_MS, tentativas = 7, aoEsperar = () => {} } = {}) {
+  for (let t = 0; t < tentativas; t++) {
+    let data = null, error = null;
+    try { ({ data, error } = await supabase.functions.invoke('ca-vendas', { body: { modo: 'boletos', meses } })); }
+    catch (e) { throw new Error('Não consegui falar com o sistema. Confira a internet e tente de novo.'); }
+    if (!error && data && !data.erro) return { itens: Array.isArray(data.itens) ? data.itens : [], soltas: Array.isArray(data.soltas) ? data.soltas : [], em: Date.now() };
+    const m = error ? await mensagemDe(error) : { texto: String((data && data.erro) || 'Erro'), renovando: !!(data && data.renovando) };
+    if (!m.renovando || t === tentativas - 1) throw new Error(m.texto);
+    aoEsperar(Math.round(esperaRenovando / 1000));
+    await new Promise(r => setTimeout(r, esperaRenovando));
+  }
+  throw new Error('O Conta Azul não respondeu. Tente de novo em alguns minutos.');
+}
+
+// os meses do vencimento dos boletos (o que a função lê no Conta Azul)
+export const mesesDosBoletos = linhas => [...new Set((linhas || []).map(mesDoBoleto).filter(Boolean))].sort();
+const esperaPadrao = () => (typeof window !== 'undefined' && Number(window.__boletosEsperaMs)) || ESPERA_RENOVANDO_MS;
+
+/**
+ * A conferência sem janela, ao abrir o mês: lê o Conta Azul e diz o que mudaria em cada boleto, sem gravar nada.
+ * Devolve { dados: { itens, soltas, em }, conf } — conf como o de conferirMes — ou null (sem boleto, ou o Conta Azul fora).
+ */
+export async function conferirEmSilencio({ supabase, linhas, ehMei = () => false, esperaRenovando = esperaPadrao() }) {
+  const meses = mesesDosBoletos(linhas);
+  if (!meses.length) return null;
+  try {
+    const dados = await chamarBoletos(supabase, meses, { esperaRenovando, tentativas: 3 });
+    return { dados, conf: conferirMes(linhas, dados, { ehMei }) };
+  } catch (e) { return null; }
+}
+
 /**
  * Abre a janela. linhas: os boletos da grade (os objetos da tela, já gravados); nomeDe(cliente_id): o nome da empresa;
  * ehMei(cliente_id): o MEI do cadastro (a guia do MEI vai junto no boleto: o valor de hoje, maior que o contrato, fica);
  * aoAplicar([{ id, valor, itens_extras }]): a grade troca o valor e os extras das linhas, sem ler o mês de novo.
+ * dados: o que a conferência em silêncio já leu do Conta Azul ({ itens, soltas, em }) — sem ele, ou com mais de 10 minutos,
+ * a janela lê de novo. aplicarEm: os cliente_id dos boletos que acabaram de nascer (a geração do mês) — a janela aplica
+ * sozinha, neles, o que vem marcado; o resto fica pra pessoa decidir. aoLer({ itens, soltas, em }): o que a janela leu (o
+ * aviso do alto da tela se refaz com ele).
  */
 export async function abrirConferenciaCA({ supabase, competencia, linhas, nomeDe = () => '', ehMei = () => false, aoAplicar = () => {},
-  esperaRenovando = (typeof window !== 'undefined' && Number(window.__boletosEsperaMs)) || ESPERA_RENOVANDO_MS }) {
+  dados = null, aplicarEm = null, aoLer = () => {}, esperaRenovando = esperaPadrao() }) {
   const antiga = document.getElementById('caOv');
   if (antiga) antiga.remove();
-  const meses = [...new Set((linhas || []).map(mesDoBoleto).filter(Boolean))].sort();
+  const meses = mesesDosBoletos(linhas);
   const mesTitulo = meses.length ? meses.map(mesBR).join(' e ') : '';
   const ov = document.createElement('div');
   ov.className = 'ov open';
@@ -59,7 +99,8 @@ export async function abrirConferenciaCA({ supabase, competencia, linhas, nomeDe
   const corpo = ov.querySelector('#caBody');
   ov.querySelector('#caFechar').focus();
   // itens e soltas: o que a função trouxe (refaz a conferência depois de aplicar e de desfazer, sem ler o Conta Azul de novo)
-  const est = { conf: null, itens: [], soltas: [], marcadas: new Set(), rodando: false, aplicadas: null, aviso: null };
+  const est = { conf: null, itens: [], soltas: [], marcadas: new Set(), rodando: false, aplicadas: null, aviso: null, automatico: false };
+  const recente = dados && Number(dados.em) && Date.now() - Number(dados.em) < 10 * 60 * 1000;
 
   const fechar = () => {
     if (est.rodando) return;
@@ -68,32 +109,35 @@ export async function abrirConferenciaCA({ supabase, competencia, linhas, nomeDe
   };
   ov.querySelector('#caFechar').addEventListener('click', fechar);
 
-  async function chamar(corpoPedido, aoEsperar = () => {}) {
-    for (let t = 0; t < 7; t++) {
-      let data = null, error = null;
-      try { ({ data, error } = await supabase.functions.invoke('ca-vendas', { body: corpoPedido })); }
-      catch (e) { throw new Error('Não consegui falar com o sistema. Confira a internet e tente de novo.'); }
-      if (!error && data && !data.erro) return data;
-      const m = error ? await mensagemDe(error) : { texto: String((data && data.erro) || 'Erro'), renovando: !!(data && data.renovando) };
-      if (!m.renovando || t === 6) throw new Error(m.texto);
-      aoEsperar(Math.round(esperaRenovando / 1000));
-      await new Promise(r => setTimeout(r, esperaRenovando));
-    }
-    throw new Error('O Conta Azul não respondeu. Tente de novo em alguns minutos.');
-  }
-
   async function carregar() {
     if (!meses.length) { corpo.innerHTML = '<p style="color:var(--text-muted);font-size:13.5px;">Nenhum boleto neste mês pra conferir.</p>'; return; }
     corpo.innerHTML = '<p style="color:var(--text-muted);font-size:13px;margin:6px 0 14px;"><span class="spin"></span>Lendo o Conta Azul: o que vence em '
       + esc(mesTitulo) + ' de cada empresa.</p>';
     try {
-      const dados = await chamar({ modo: 'boletos', meses }, s => {
+      const lidos = recente && !est.itens.length ? dados : await chamarBoletos(supabase, meses, { esperaRenovando, aoEsperar: s => {
         corpo.innerHTML = '<p style="color:var(--text-muted);font-size:13px;"><span class="spin"></span>O Conta Azul está renovando a conexão. Tento de novo em ' + s + ' s.</p>';
-      });
-      est.itens = Array.isArray(dados.itens) ? dados.itens : [];
-      est.soltas = Array.isArray(dados.soltas) ? dados.soltas : [];
+      } });
+      est.itens = Array.isArray(lidos.itens) ? lidos.itens : [];
+      est.soltas = Array.isArray(lidos.soltas) ? lidos.soltas : [];
+      try { aoLer({ itens: est.itens, soltas: est.soltas, em: lidos.em || Date.now() }); } catch (e) { /* a tela se vira */ }
       est.conf = conferirMes(linhas, { itens: est.itens, soltas: est.soltas }, { ehMei });
       est.marcadas = new Set(est.conf.propostas.filter(x => marcadaPorPadrao(x.proposta)).map(x => x.cobranca.id));
+      // a geração do mês: os boletos que acabaram de nascer recebem sozinhos o que vem marcado (ainda não têm ajuste à mão)
+      if (aplicarEm && !est.automatico) {
+        est.automatico = true;
+        const novos = est.conf.propostas.filter(x => est.marcadas.has(x.cobranca.id) && aplicarEm.has(x.cobranca.cliente_id));
+        if (novos.length) {
+          est.marcadas = new Set(novos.map(x => x.cobranca.id));
+          await aplicar(true);
+          return;
+        }
+        const confira = est.conf.propostas.filter(x => aplicarEm.has(x.cobranca.cliente_id) && x.proposta.confira).length;
+        const restam = marcadasAgora().length;
+        est.aviso = (confira
+          ? 'Ao gerar o mês, nenhum boleto novo mudou sozinho: ' + plural(confira, 'pede', 'pedem') + ' a sua conferência (desmarcado' + (confira === 1 ? '' : 's') + ' abaixo).'
+          : 'Ao gerar o mês, os boletos novos já estavam com o que vence no Conta Azul.')
+          + (restam ? ' ' + plural(restam, 'boleto que já estava no mês tem', 'boletos que já estavam no mês têm') + ' outro valor no Conta Azul (pode ter ajuste à mão): ' + (restam === 1 ? 'está marcado' : 'estão marcados') + ' abaixo, pro "Aplicar".' : '');
+      }
       desenhar();
     } catch (e) {
       corpo.innerHTML = '<p style="color:var(--err);font-size:13.5px;">' + esc(e.message) + '</p><button class="btn btn-ghost btn-sm" id="caDeNovo">Tentar de novo</button>';
@@ -163,16 +207,17 @@ export async function abrirConferenciaCA({ supabase, competencia, linhas, nomeDe
       if (de) de.focus();
     }));
     const ap = corpo.querySelector('#caAplicar');
-    if (ap) ap.addEventListener('click', aplicar);
+    if (ap) ap.addEventListener('click', () => aplicar());
     const df = corpo.querySelector('#caDesfazer');
     if (df) df.addEventListener('click', desfazer);
   }
 
   // grava o valor e os extras de cada boleto marcado, só se ele segue a emitir; guarda o de antes pro Desfazer
-  async function aplicar() {
+  async function aplicar(automatico = false) {
     if (est.rodando) return;
     const alvo = marcadasAgora();
     if (!alvo.length) return;
+    const confira = automatico ? est.conf.propostas.filter(x => aplicarEm.has(x.cobranca.cliente_id) && x.proposta.confira).length : 0;
     est.rodando = true;
     const btn = corpo.querySelector('#caAplicar');
     if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spin"></span>Aplicando…'; }
@@ -188,10 +233,18 @@ export async function abrirConferenciaCA({ supabase, competencia, linhas, nomeDe
     est.rodando = false;
     est.aplicadas = feitas;
     if (feitas.length) aoAplicar(feitas.map(f => ({ id: f.id, ...f.depois })));
+    const feitasIds = new Set(feitas.map(f => f.id));
+    const dif = alvo.filter(x => feitasIds.has(x.cobranca.id)).reduce((t, x) => t + centavos(x.proposta.total) - centavos(x.proposta.antes.total), 0) / 100;
     // depois de aplicar, a conferência é refeita com o que ficou gravado (o que foi aplicado vira "igual")
     est.conf = conferirMes(linhas, { itens: est.itens, soltas: est.soltas }, { ehMei });
-    est.aviso = plural(feitas.length, 'boleto atualizado', 'boletos atualizados') + '.' + (ficaram.length ? ' Não mudaram (já não estavam a emitir, ou a gravação falhou): ' + esc(ficaram.join(', ')) + '.' : '');
     est.marcadas = new Set(est.conf.propostas.filter(x => marcadaPorPadrao(x.proposta)).map(x => x.cobranca.id));
+    const restam = automatico ? marcadasAgora().length : 0;
+    est.aviso = (automatico
+      ? 'Ao gerar o mês, ' + plural(feitas.length, 'boleto ficou', 'boletos ficaram') + ' com tudo o que vence no Conta Azul' + (dif ? ' (' + sinal(dif) + ' no mês)' : '') + '.'
+        + (confira ? ' ' + plural(confira, 'boleto novo pede', 'boletos novos pedem') + ' a sua conferência e não ' + (confira === 1 ? 'mudou' : 'mudaram') + ' (desmarcado abaixo).' : '')
+        + (restam ? ' ' + plural(restam, 'boleto que já estava no mês tem', 'boletos que já estavam no mês têm') + ' outro valor no Conta Azul e não ' + (restam === 1 ? 'mudou' : 'mudaram') + ' sozinho' + (restam === 1 ? '' : 's') + ' (pode ter ajuste à mão): ' + (restam === 1 ? 'está marcado' : 'estão marcados') + ' abaixo, pro "Aplicar".' : '')
+      : plural(feitas.length, 'boleto atualizado', 'boletos atualizados') + '.')
+      + (ficaram.length ? ' Não mudaram (já não estavam a emitir, ou a gravação falhou): ' + esc(ficaram.join(', ')) + '.' : '');
     desenhar();
   }
 

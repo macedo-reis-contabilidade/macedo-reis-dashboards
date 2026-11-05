@@ -3,7 +3,7 @@
 // composição, e a conferência do mês inteiro. Os casos são os de novembro de 2026 (os nomes, de mentira: o repositório é
 // público). Rodar com: node tests/boletos-conta-azul.test.mjs
 import {
-  mesDoBoleto, mesSeguinte, ehMensalidade, vendaDe, rotuloDoItem, propostaDoBoleto, conferirMes, mensalidadeDoMes,
+  mesDoBoleto, mesSeguinte, ehMensalidade, vendaDe, rotuloDoItem, propostaDoBoleto, conferirMes, mensalidadeDoMes, resumoDaConferencia, APLICAVEIS,
   valorParaTotal, totalDoBoleto, somaExtras, gravacaoDaProposta, marcadaPorPadrao, ehParcela
 } from '../assets/js/boletos-conta-azul.js';
 
@@ -131,6 +131,31 @@ console.log('A conferência do mês:');
   chk('o resumo: quantas sobem, descem, sem o Conta Azul, e a diferença do total', r.resumo.sobe === 1 && r.resumo.desce === 1 && r.resumo.sem_conta_azul === 1 && r.resumo.diferenca === 80, J(r.resumo));
   chk('a empresa com coisa vencendo lá e sem boleto aqui', r.semBoleto.length === 1 && r.semBoleto[0].nome === 'EMPRESA SEM BOLETO LTDA' && r.semBoleto[0].valor === 700);
   chk('as pessoas do Conta Azul sem empresa, a maior primeiro', r.soltas.map(s => s.nome).join(',') === 'PESSOA B,PESSOA A');
+}
+
+console.log('O aviso do alto da tela (a conferência ao abrir o mês, 05/11/2026)');
+{
+  const cobs = [
+    { id: 'b1', cliente_id: 'c1', competencia: '2026-10', vencimento: '2026-11-10', valor: 500, status: 'a_emitir', itens_extras: [] },
+    { id: 'b2', cliente_id: 'c2', competencia: '2026-10', vencimento: '2026-11-10', valor: 1000, status: 'a_emitir', itens_extras: [] },
+    { id: 'b3', cliente_id: 'c3', competencia: '2026-10', vencimento: '2026-11-10', valor: 400, status: 'a_emitir', itens_extras: [] },
+    { id: 'b4', cliente_id: 'c4', competencia: '2026-10', vencimento: '2026-11-10', valor: 300, status: 'emitido', itens_extras: [] },
+    { id: 'b5', cliente_id: 'c5', competencia: '2026-10', vencimento: '2026-11-10', valor: 250, status: 'a_emitir', itens_extras: [] }
+  ];
+  const dados = { itens: [
+    { ...it('m1', 500, MENSAL, '2026-10-31'), cliente_id: 'c1' }, { ...it('x1', 100, EXTRA, '2026-10-20'), cliente_id: 'c1' },
+    { ...it('m2', 500, MENSAL, '2026-10-31'), cliente_id: 'c2' },
+    { ...it('m4', 340, MENSAL, '2026-10-31'), cliente_id: 'c4' },
+    { ...it('m5', 250, MENSAL, '2026-10-31'), cliente_id: 'c5' }
+  ], soltas: [] };
+  const res = resumoDaConferencia(conferirMes(cobs, dados));
+  chk('conta os boletos a emitir que o Conta Azul mudaria (o já emitido não entra), e como', res.aEmitir === 4 && res.muda === 2 && res.sobe === 1 && res.desce === 1 && res.recompoe === 0, J(res));
+  chk('a queda de mais de 30% conta como "pede a sua conferência"', res.confira === 1, J(res));
+  chk('o mês do vencimento lido', J(res.meses) === '["2026-11"]', J(res.meses));
+  const igual = resumoDaConferencia(conferirMes([cobs[4]], dados));
+  chk('tudo batendo: nada muda', igual.muda === 0 && igual.aEmitir === 1, J(igual));
+  chk('sem conferência: zero', resumoDaConferencia(null).muda === 0 && resumoDaConferencia(null).aEmitir === 0);
+  chk('as que mudam o boleto: as que sobem, descem e só mudam a composição', J(APLICAVEIS) === '["desce","sobe","recompoe"]');
 }
 
 if (falhas) { console.log('\n' + falhas + ' falha(s)'); process.exit(1); }
