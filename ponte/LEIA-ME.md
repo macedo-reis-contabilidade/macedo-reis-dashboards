@@ -198,10 +198,16 @@ produto no cadastro do cliente não vai.
 
 **De onde sai cada nota**: do XML guardado na Domínio (`EFATENDIMENTO_NFE_XML_V2`, o texto do `nfeProc`, sem
 compactar), quando ele existe, abre e é desta nota (a chave do `infNFe` e o `cStat` 100 ou 150) — os itens dele, com o
-CFOP de entrada da Domínio pelo número do item —; senão, das linhas da Domínio (`efmvepro`, com a descrição e o código
+CFOP de entrada do mesmo item na Domínio —; senão, das linhas da Domínio (`efmvepro`, com a descrição e o código
 de barras do cadastro de produtos, e o IPI do item só quando a soma bate com o da nota). **O XML é lido só em código e
 nunca sai do PC**: no pacote vão só os campos do contrato. A Domínio apaga o XML uns dois meses depois — por isso a
 rodada é diária.
+
+**O mesmo item na Domínio** (a revisão de 05/11/2026): o do mesmo número, se a quantidade e o valor batem; senão, o
+único com a mesma quantidade e o mesmo valor; senão, o CFOP da nota, quando ela tem um só (o log conta o item sem
+par); senão, a nota fica de fora ("CFOP da nota incerto"). Pelo número sozinho, a Domínio numerada em outra ordem
+mandaria o brinde como compra. As conferências do item (sem descrição ou quantidade) olham só os itens de compra, e o
+nome do fornecedor sai sem o CPF que o MEI antigo tem no nome.
 
 **Quando**: no fim do `py -3 -m ponte rodar` (a tarefa das 7h), no mesmo modo (`--sem-enviar`, `--falso`) — um erro
 nela vai pro log e não muda o que a rodada dos totais fez nem o código de saída dela —, ou sozinha:

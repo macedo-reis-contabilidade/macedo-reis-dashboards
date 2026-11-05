@@ -2,7 +2,7 @@
 divisão em pacotes de até 200 notas e 4 MB.
 
 Cada nota sai do XML guardado na Domínio, quando ele existe, abre e é desta nota (o Id do infNFe com a chave e o cStat
-100 ou 150) — `origem: "xml"`, com os itens dele e o CFOP de entrada da Domínio, pelo número do item —, senão das linhas
+100 ou 150) — `origem: "xml"`, com os itens dele e o CFOP de entrada do mesmo item na Domínio (`_montar`) —, senão das linhas
 da Domínio (`origem: "dominio"`). Só vão os itens de compra (`CFOPS_DE_COMPRA`, o mesmo conjunto do notas.js); o
 código do produto no cadastro do cliente não vai. O que fica de fora volta com o motivo (a rodada conta, sem dizer
 qual nota). Antes de ir, cada nota é conferida aqui com as regras do validarPacoteNotas que dependem só dela — o que
