@@ -161,7 +161,7 @@ const TELAS = {
       return partes.length ? { texto: 'Rescisões: ' + partes.join(', ') + '.', exemplos: ['Quais rescisões têm pagamento até o fim da semana?'] } : null;
     } },
   'dp-convencoes.html': { nome: 'Convenções coletivas', exemplos: ['Quais convenções vencem este ano?', 'Qual o piso do comércio?'] },
-  'dp-pareceres.html': { nome: 'Pareceres' }, 'dp-custo.html': { nome: 'Custo do funcionário' },
+  'dp-pareceres.html': { nome: 'Pareceres' }, 'dp-custo.html': { nome: 'Custo do funcionário' }, 'dp-folha.html': { nome: 'Folha de pagamento' },
   'fiscal-obrigacoes.html': { nome: 'Obrigações', exemplos: ['Quais obrigações vencem esta semana?', 'Quais obrigações estão atrasadas, por pessoa?'],
     dica: async () => {
       const hoje = hojeISO();

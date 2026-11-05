@@ -22,6 +22,7 @@
     a[href="dp-custo.html"] .dashboard-card-icon { background: rgba(224,143,168,.16); color:#E08FA8; }
     a[href="dp-pareceres.html"] .dashboard-card-icon { background: rgba(82,180,198,.16); color:#52B4C6; }
     a[href="fator-r.html"] .dashboard-card-icon { background: rgba(82,208,165,.16); color:#52D0A5; }
+    a[href="dp-folha.html"] .dashboard-card-icon { background: rgba(214,170,98,.16); color:#D6AA62; }
 
     /* Selo "hoje" (urgência do dia) — canto superior direito */
     .badge-hoje { position:absolute; top:14px; right:14px; background:rgba(227,179,65,.18); border:1px solid rgba(227,179,65,.5); color:var(--warn); font-size:11px; font-weight:700; padding:3px 10px; border-radius:999px; letter-spacing:.04em; text-transform:uppercase; box-shadow:0 0 0 3px rgba(227,179,65,.06); }
@@ -59,7 +60,7 @@
         </div>
         <div class="eyebrow">Setor</div>
         <h1>Departamento Pessoal</h1>
-        <p>Módulos do setor: tarefas, admissões, rescisões, tarefas recorrentes, relatórios, sugestões de melhoria, convenções, custo do funcionário, pareceres.</p>
+        <p>Módulos do setor: tarefas, admissões, rescisões, folha de pagamento, tarefas recorrentes, relatórios, sugestões de melhoria, convenções, custo do funcionário, pareceres.</p>
       </div>
 
       <div class="dashboard-grid">
@@ -88,6 +89,15 @@
           <h3>Rescisões</h3>
           <p>Desligamento de funcionários: a empresa responde pelo link se é pedido de demissão, demissão pela empresa ou contrato de experiência, já vê a data do pagamento, e a rescisão chega aqui e na agenda.</p>
           <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="dp-rescisoes.html">·</span></div>
+        </a>
+
+        <a href="dp-folha.html" class="dashboard-card">
+          <div class="dashboard-card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2h16v20l-3-2-3 2-2-2-2 2-3-2-3 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="12" y2="15"/></svg>
+          </div>
+          <h3>Folha de pagamento</h3>
+          <p>Os recibos feitos fora do Domínio (os frios): o funcionário cadastrado uma vez e o recibo do mês, de adiantamento, de férias, de 13º ou de rescisão, em PDF.</p>
+          <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="dp-folha.html">·</span></div>
         </a>
 
         <a href="fator-r.html" class="dashboard-card">
@@ -206,6 +216,12 @@
               card.appendChild(pill);
             }
           }
+        }
+        {
+          // a Folha de pagamento: os funcionários dos recibos frios que seguem na empresa (sem saída, ou saída de hoje em diante)
+          const { data: fs, error: eFs } = await supabase.from('folha_funcionarios').select('id, saida');
+          if (eFs) setBadge('dp-folha.html', '—');
+          else { const n = (fs || []).filter(f => !f.saida || f.saida >= hojeLocal()).length; setBadge('dp-folha.html', n + (n === 1 ? ' funcionário' : ' funcionários')); }
         }
         ["dp-regras.html", "dp-relatorios.html", "dp-sugestoes.html", "dp-convencoes.html", "dp-custo.html", "dp-pareceres.html"].forEach(h => setBadge(h, '—'));
       } catch (e) { console.error(e); }

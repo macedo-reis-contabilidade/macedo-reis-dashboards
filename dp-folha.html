@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DP — Folha de pagamento — Macedo & Reis</title>
+  <link rel="icon" href="assets/favicon.ico">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+  <style>
+    /* o hidden vale também nos botões e nos campos (o .btn e o .fa-field têm display próprio) */
+    [hidden] { display:none !important; }
+
+    /* o alto: a empresa e a competência */
+    .fp-topo { display:grid; grid-template-columns:minmax(0,3fr) minmax(0,2fr); gap:18px; align-items:end; margin-bottom:20px; }
+    .fp-campo { display:flex; flex-direction:column; gap:6px; }
+    .fp-campo > label { font-size:13px; color:var(--brand-light); }
+    .fp-busca { position:relative; max-width:620px; }
+    .fp-busca .input { width:100%; }
+    .fp-sug { list-style:none; margin:4px 0 0; padding:4px; position:absolute; left:0; right:0; top:100%; z-index:20; background:var(--surface); border:1px solid var(--line-strong); border-radius:10px; max-height:340px; overflow:auto; box-shadow:0 10px 30px rgba(0,0,0,.3); }
+    .fp-sug[hidden] { display:none; }
+    .fp-sug button { display:block; width:100%; text-align:left; background:none; border:0; padding:8px 10px; border-radius:8px; color:var(--text); font:inherit; cursor:pointer; }
+    .fp-sug button:hover, .fp-sug button:focus-visible { background:var(--fill-2); outline:none; }
+    .fp-sug small { display:block; color:var(--text-muted); font-size:12px; }
+    .fp-sug .fp-fora-carteira { color:var(--text-muted); }
+    .fp-mes { display:flex; gap:6px; align-items:center; }
+    .fp-mes select { flex:1; min-width:0; }
+
+    .fp-vazio { color:var(--text-muted); font-size:14px; }
+    .fp-atalhos { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+    .fp-atalho { background:var(--fill-1); border:1px solid var(--line); border-radius:999px; padding:6px 14px; color:var(--text); font:inherit; font-size:13px; cursor:pointer; }
+    .fp-atalho:hover, .fp-atalho:focus-visible { border-color:var(--brand-primary); outline:none; }
+    .fp-atalho small { color:var(--text-muted); margin-left:4px; }
+
+    /* a empresa aberta */
+    .fp-empresa { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; margin-bottom:6px; }
+    .fp-empresa h2 { margin:0; font-size:19px; color:var(--text); }
+    .fp-empresa p { margin:4px 0 0; color:var(--text-muted); font-size:13px; }
+    .fp-acoes { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .fp-check { display:flex; gap:7px; align-items:center; font-size:13px; color:var(--brand-pale); cursor:pointer; white-space:nowrap; }
+    .fp-resumo { color:var(--text-muted); font-size:13.5px; margin:0 0 16px; }
+    .fp-resumo b { color:var(--text); }
+
+    .fp-func { display:flex; gap:16px; align-items:center; justify-content:space-between; flex-wrap:wrap; background:var(--fill-1); border:1px solid var(--line); border-radius:14px; padding:12px 16px; margin-bottom:10px; }
+    .fp-func-info { min-width:220px; flex:1; }
+    .fp-nome { background:none; border:0; padding:0; color:var(--text); font:inherit; font-weight:600; font-size:15px; cursor:pointer; text-align:left; }
+    .fp-nome:hover, .fp-nome:focus-visible { color:var(--brand-light); text-decoration:underline; outline:none; }
+    .fp-meta { display:block; color:var(--text-muted); font-size:12.5px; margin-top:3px; }
+    .fp-func-recibos { display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
+    .fp-chip { background:rgba(63,176,122,.10); border:1px solid rgba(63,176,122,.4); color:var(--text); border-radius:999px; padding:5px 12px; font:inherit; font-size:13px; cursor:pointer; }
+    .fp-chip:hover, .fp-chip:focus-visible { border-color:var(--ok); outline:none; }
+    .fp-chip b { color:var(--ok); font-weight:600; margin-left:4px; }
+    .fp-novo { width:auto; min-width:150px; font-size:13px; padding:6px 10px; }
+    .fp-sem-recibo { color:var(--text-dim); font-size:12.5px; }
+    .fp-fora { margin-top:14px; }
+    .fp-fora summary { cursor:pointer; color:var(--text-muted); font-size:13.5px; padding:6px 0; }
+    .fp-fora .fp-func { opacity:.75; }
+
+    /* as janelas (o padrão da casa nos módulos recentes) */
+    .fa-modal-overlay { position:fixed; inset:0; background:var(--overlay); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
+    .fa-modal-overlay.is-open { display:flex; }
+    .fa-modal { width:100%; max-width:560px; max-height:calc(100vh - 40px); overflow:auto; background:var(--surface); border:1px solid var(--fill-3); border-radius:16px; }
+    .fa-modal.fp-largo { max-width:860px; }
+    .fa-modal-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:18px 22px; border-bottom:1px solid var(--line); }
+    .fa-modal-head h3 { margin:0; color:var(--text); font-size:18px; }
+    .fa-modal-close { background:none; border:none; color:var(--text-muted); font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }
+    .fa-modal-close:hover { color:var(--text); }
+    .fa-modal-body { padding:20px 22px; display:flex; flex-direction:column; gap:14px; }
+    .fa-field { display:flex; flex-direction:column; gap:6px; min-width:0; }
+    .fa-field > span { font-size:13px; color:var(--brand-light); }
+    .fa-modal-foot { display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid var(--line); flex-wrap:wrap; }
+    .fp-g2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .fp-g3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; }
+    .fp-g4 { display:grid; grid-template-columns:1.3fr 1.3fr 1fr 1fr; gap:14px; }
+    .fp-excluir { margin-right:auto; }
+    .fp-erro { color:var(--err); font-size:13px; }
+    .fp-erro:empty { display:none; }
+    .fp-aviso { border-radius:10px; padding:8px 12px; font-size:13px; border:1px solid rgba(227,179,65,.4); background:rgba(227,179,65,.10); color:var(--warn); }
+    .fp-aviso:empty { display:none; }
+    .fp-dica { margin:0; font-size:12.5px; color:var(--text-dim); }
+    .fp-link { background:none; border:0; padding:0; color:var(--brand-light); font:inherit; font-size:13px; cursor:pointer; text-decoration:underline; }
+    .fp-link:hover, .fp-link:focus-visible { color:var(--text); outline:none; }
+
+    /* o recibo: a base, as linhas e os totais */
+    .fp-base { font-size:13.5px; color:var(--text-muted); display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; }
+    .fp-base b { color:var(--text); }
+    .fp-base-edit { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; background:var(--fill-1); border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
+    .fp-base-edit[hidden] { display:none; }
+    .fp-base-edit .fp-dica { grid-column:1 / -1; }
+    .fp-tab { width:100%; border-collapse:collapse; font-size:14px; }
+    .fp-tab th { text-align:left; font-size:12px; font-weight:600; color:var(--text-muted); padding:6px 8px; border-bottom:1px solid var(--line); }
+    .fp-tab td { padding:7px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+    .fp-tab .fp-num { text-align:right; white-space:nowrap; }
+    .fp-tab td.fp-num { padding-top:13px; font-variant-numeric:tabular-nums; color:var(--text); }
+    .fp-tab td.fp-num.fp-d { color:var(--err); }
+    .fp-ev { color:var(--text); display:block; padding-top:6px; }
+    .fp-ev-desc { margin-top:6px; width:100%; }
+    .fp-q-cel { white-space:nowrap; }
+    .fp-q { width:110px; text-align:right; font-variant-numeric:tabular-nums; }
+    .fp-un { color:var(--text-dim); font-size:12px; margin-left:6px; }
+    .fp-dica-linha { font-size:12px; color:var(--text-dim); margin-top:4px; }
+    .fp-dica-linha .fp-link { font-size:12px; margin-left:4px; }
+    .fp-tirar { background:none; border:0; color:var(--text-dim); font-size:15px; cursor:pointer; padding:6px 4px; }
+    .fp-tirar:hover, .fp-tirar:focus-visible { color:var(--err); outline:none; }
+    .fp-auto td { color:var(--text-muted); }
+    .fp-add { display:flex; }
+    .fp-add select { width:auto; min-width:220px; }
+    .fp-totais { display:grid; grid-template-columns:repeat(4, auto); gap:8px 22px; align-items:center; justify-content:end; background:var(--fill-1); border:1px solid var(--line); border-radius:12px; padding:12px 16px; }
+    .fp-totais > div { display:flex; flex-direction:column; align-items:flex-end; gap:2px; font-size:12px; color:var(--text-muted); }
+    .fp-totais b { font-size:15px; color:var(--text); font-variant-numeric:tabular-nums; }
+    .fp-totais .fp-total b { font-size:20px; color:var(--ok); }
+    .fp-extenso { grid-column:1 / -1; margin:0; text-align:right; font-size:12.5px; color:var(--text-muted); }
+    .fp-hist { display:flex; flex-direction:column; gap:6px; }
+    .fp-hist-linha { display:flex; justify-content:space-between; gap:10px; background:var(--fill-1); border:1px solid var(--line); border-radius:10px; padding:7px 12px; color:var(--text); font:inherit; font-size:13px; cursor:pointer; text-align:left; }
+    .fp-hist-linha:hover, .fp-hist-linha:focus-visible { border-color:var(--brand-primary); outline:none; }
+    .fp-hist-linha span:last-child { color:var(--ok); font-variant-numeric:tabular-nums; }
+    .fp-so-leitor { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+
+    @media (max-width:900px) {
+      .fp-topo { grid-template-columns:1fr; }
+      .fp-g4 { grid-template-columns:1fr 1fr; }
+      .fp-totais { grid-template-columns:1fr 1fr; justify-content:stretch; }
+    }
+    @media (max-width:640px) {
+      .fp-g2, .fp-g3, .fp-base-edit { grid-template-columns:1fr; }
+      .fp-totais > div:nth-child(3), .fp-totais .fp-total { grid-column:1 / -1; }
+      .fp-totais .fp-total b { font-size:18px; white-space:nowrap; }
+      .fp-tab td, .fp-tab th { padding-left:4px; padding-right:4px; }
+      .fa-modal-body { padding:16px 14px; }
+      .fp-func { flex-direction:column; align-items:stretch; }
+      .fp-func-recibos { justify-content:flex-start; }
+      .fp-q { width:86px; }
+      .fp-excluir { margin-right:0; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Folha de pagamento (DP, 05/11/2026, pedido do Samuel: "fazemos muitos recibos frios aqui atualmente no Excel… poder
+       cadastrar funcionários frios seria uma boa, teríamos histórico, puxaríamos o nome"): os recibos que o escritório faz
+       fora da folha do Domínio. O funcionário é cadastrado uma vez por empresa (o valor da hora ou o salário do mês, a
+       admissão, a saída) e cada recibo fica gravado com as linhas e os valores como foram impressos. As contas são as da
+       planilha do DP (assets/js/folha-recibos.js) e o PDF sai com dois recibos por folha (assets/js/folha-recibos-pdf.js).
+       Tabelas folha_funcionarios e folha_recibos: só quem entra com o e-mail do escritório. -->
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip"><div class="user-avatar" id="userAvatar">—</div><span id="userName">Carregando…</span></div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <a href="dp.html">Departamento Pessoal</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Folha de pagamento</span>
+        </div>
+        <div class="eyebrow">Recibos fora do Domínio</div>
+        <h1>Folha de pagamento</h1>
+        <p>Os recibos que o escritório faz fora da folha do Domínio, os frios. Cadastre o funcionário uma vez, com o valor da hora ou o salário, e faça o recibo do mês (folha, adiantamento, horas extras, férias, 13º ou rescisão) em PDF, pronto pra assinar.</p>
+      </div>
+
+      <section class="fp-topo" aria-label="Empresa e competência">
+        <div class="fp-campo fp-busca">
+          <label for="busca">Empresa</label>
+          <input id="busca" class="input" type="search" placeholder="Nome, fantasia ou CNPJ da empresa" autocomplete="off" aria-controls="sugestoes" aria-expanded="false">
+          <ul class="fp-sug" id="sugestoes" role="listbox" aria-label="Empresas" hidden></ul>
+        </div>
+        <div class="fp-campo">
+          <label for="competencia">Competência</label>
+          <div class="fp-mes">
+            <button type="button" class="btn btn-ghost btn-sm" id="mesAntes" aria-label="Mês anterior">‹</button>
+            <select id="competencia" class="input"></select>
+            <button type="button" class="btn btn-ghost btn-sm" id="mesDepois" aria-label="Mês seguinte">›</button>
+          </div>
+        </div>
+      </section>
+
+      <div id="semEmpresa" class="fp-vazio">
+        <p>Escolha a empresa pra ver os funcionários e os recibos do mês.</p>
+        <div id="atalhosEmp" class="fp-atalhos"></div>
+      </div>
+
+      <section id="painel" hidden aria-labelledby="empNome">
+        <div class="fp-empresa">
+          <div><h2 id="empNome"></h2><p id="empInfo"></p></div>
+          <div class="fp-acoes">
+            <button type="button" class="btn btn-ghost" id="btnNovoFunc">+ Funcionário</button>
+            <label class="fp-check" title="Cada recibo sai duas vezes: a via do empregador e a do funcionário"><input type="checkbox" id="duasVias"> Duas vias</label>
+            <button type="button" class="btn btn-primary" id="btnImprimirMes">Imprimir os recibos do mês</button>
+          </div>
+        </div>
+        <p class="fp-resumo" id="resumo" aria-live="polite"></p>
+        <div id="lista"></div>
+        <details class="fp-fora" id="fora" hidden><summary id="foraTitulo"></summary><div id="listaFora"></div></details>
+      </section>
+    </main>
+  </div>
+
+  <!-- O FUNCIONÁRIO -->
+  <div class="fa-modal-overlay" id="ovFunc">
+    <div class="fa-modal" role="dialog" aria-modal="true" aria-labelledby="fTitulo">
+      <div class="fa-modal-head"><h3 id="fTitulo">Funcionário</h3><button class="fa-modal-close" id="fClose" aria-label="Fechar">&times;</button></div>
+      <div class="fa-modal-body">
+        <label class="fa-field"><span>Nome *</span><input type="text" id="fNome" class="input" maxlength="120" autocomplete="off"></label>
+        <label class="fa-field"><span>Função</span><input type="text" id="fFuncao" class="input" maxlength="80" placeholder="Ex.: auxiliar de produção" autocomplete="off"></label>
+        <div class="fp-g2">
+          <label class="fa-field"><span>Admissão</span><input type="date" id="fAdmissao" class="input"></label>
+          <label class="fa-field"><span>Saída</span><input type="date" id="fSaida" class="input"></label>
+        </div>
+        <div class="fp-g3">
+          <label class="fa-field"><span>Recebe</span><select id="fTipoValor" class="input"><option value="hora">por hora</option><option value="mes">por mês</option></select></label>
+          <label class="fa-field"><span id="fValorRot">Valor da hora (R$) *</span><input type="text" id="fValor" class="input" inputmode="decimal" autocomplete="off" placeholder="0,00"></label>
+          <label class="fa-field"><span>Horas por semana</span><input type="text" id="fHoras" class="input" inputmode="decimal" autocomplete="off" placeholder="44"></label>
+        </div>
+        <label class="fa-field"><span>Observação interna (não sai no recibo)</span><textarea id="fObs" class="input" rows="2" maxlength="1000"></textarea></label>
+        <div id="fHistBox" hidden>
+          <div class="fa-field"><span>Recibos</span></div>
+          <div class="fp-hist" id="fHist"></div>
+        </div>
+        <div id="fErro" class="fp-erro" role="alert"></div>
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-danger btn-sm fp-excluir" id="fExcluir" hidden>Excluir</button>
+        <button class="btn btn-ghost" id="fCancelar">Cancelar</button>
+        <button class="btn btn-primary" id="fSalvar">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- O RECIBO -->
+  <div class="fa-modal-overlay" id="ovRec">
+    <div class="fa-modal fp-largo" role="dialog" aria-modal="true" aria-labelledby="rTitulo">
+      <div class="fa-modal-head"><h3 id="rTitulo">Recibo</h3><button class="fa-modal-close" id="rClose" aria-label="Fechar">&times;</button></div>
+      <div class="fa-modal-body">
+        <div class="fp-g4">
+          <label class="fa-field"><span>Tipo</span><select id="rTipo" class="input"></select></label>
+          <label class="fa-field"><span>Competência</span><select id="rComp" class="input"></select></label>
+          <label class="fa-field fp-periodo"><span>Período de</span><input type="date" id="rDe" class="input"></label>
+          <label class="fa-field fp-periodo"><span>até</span><input type="date" id="rAte" class="input"></label>
+        </div>
+        <div class="fp-base"><span id="rBaseTxt"></span><button type="button" class="fp-link" id="rBaseMudar">mudar neste recibo</button></div>
+        <div class="fp-base-edit" id="rBaseEdit" hidden>
+          <label class="fa-field"><span>Recebe</span><select id="rTipoValor" class="input"><option value="hora">por hora</option><option value="mes">por mês</option></select></label>
+          <label class="fa-field"><span id="rValorRot">Valor da hora (R$)</span><input type="text" id="rValor" class="input" inputmode="decimal" autocomplete="off"></label>
+          <label class="fa-field"><span>Horas por semana</span><input type="text" id="rHoras" class="input" inputmode="decimal" autocomplete="off"></label>
+          <p class="fp-dica">Vale só pra este recibo: o cadastro do funcionário não muda.</p>
+        </div>
+        <div id="rAviso" class="fp-aviso" role="status"></div>
+        <table class="fp-tab">
+          <thead><tr><th scope="col">Evento</th><th scope="col">Referência</th><th scope="col" class="fp-num">Valor (R$)</th><th scope="col"><span class="fp-so-leitor">Tirar a linha</span></th></tr></thead>
+          <tbody id="rLinhas"></tbody>
+        </table>
+        <div class="fp-add"><select id="rAdd" class="input" aria-label="Pôr outro evento no recibo"></select></div>
+        <div class="fp-totais">
+          <div><span>Proventos</span><b id="rProv">0,00</b></div>
+          <div><span>Descontos</span><b id="rDesc">0,00</b></div>
+          <div><label class="fp-check"><input type="checkbox" id="rArredondar"> Arredondar pro real de cima</label><b id="rArred">0,00</b></div>
+          <div class="fp-total"><span>Total</span><b id="rTotal">R$ 0,00</b></div>
+          <p class="fp-extenso" id="rExtenso"></p>
+        </div>
+        <div class="fp-g2">
+          <label class="fa-field"><span>Data do pagamento (sai no recibo)</span><input type="date" id="rPag" class="input"></label>
+          <label class="fa-field"><span>Observação interna (não sai no recibo)</span><input type="text" id="rObs" class="input" maxlength="1000" autocomplete="off"></label>
+        </div>
+        <div id="rErro" class="fp-erro" role="alert"></div>
+      </div>
+      <div class="fa-modal-foot">
+        <button class="btn btn-danger btn-sm fp-excluir" id="rExcluir" hidden>Excluir</button>
+        <button class="btn btn-ghost" id="rCancelar">Cancelar</button>
+        <button class="btn btn-ghost" id="rSalvar">Salvar</button>
+        <button class="btn btn-primary" id="rSalvarImprimir">Salvar e imprimir</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { hojeLocal, formatDocumento, normalizarDocumento } from './assets/js/utils.js';
+    import { nomePorEmail } from './assets/js/equipe.js';
+    import { TIPOS, EVENTOS, COM_PERIODO, competenciaPadrao, competenciaTexto, competenciaValida, mudarMes, periodoPadrao, primeiroDia, ultimoDia,
+      diasDoSalario, diasDeDescanso, dsrSugerido, avos13, avosFerias, inicioAquisitivo, mesesDeFerias, jaPago, linhasIniciais, calcularRecibo,
+      itensParaGravar, quantidadeTexto, lerQuantidade, lerNumero, horasTexto, fmtValor, fmtData, centavos, porExtenso, problemaDoFuncionario,
+      problemaDoRecibo, totaisDoMes, ordenarRecibos, ativoNoMes } from './assets/js/folha-recibos.js';
+    import { recibosPdf, nomeDoArquivo } from './assets/js/folha-recibos-pdf.js';
+
+    const $ = id => document.getElementById(id);
+    const esc = t => String(t == null ? '' : t).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    const semAcento = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    const guardar = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* sem armazenamento */ } };
+    const ler = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+    const reais = c => 'R$ ' + fmtValor(c);
+    const arred2 = v => Math.round(Number(v) * 100) / 100;
+
+    const HOJE = hojeLocal();
+    const COLS_F = 'id, cliente_id, nome, funcao, admissao, saida, tipo_valor, valor, horas_semana, observacao, criado_em, atualizado_em';
+    const COLS_R = 'id, cliente_id, funcionario_id, nome, tipo, competencia, periodo_de, periodo_ate, tipo_valor, valor, horas_semana, itens, arredondar, arredondamento, total, pagamento, observacao, criado_por, criado_em, atualizado_em';
+    const CHAVE_EMPRESA = 'mr_folha_empresa', CHAVE_ARRED = 'mr_folha_arredondar', CHAVE_VIAS = 'mr_folha_vias';
+    let clientes = [], naCarteira = new Set(), comFuncionarios = new Map();
+    let empresa = null, funcs = [], recibos = [];
+    const params = new URLSearchParams(location.search);
+    let comp = competenciaValida(params.get('competencia')) ? params.get('competencia') : competenciaPadrao(HOJE);
+
+    (async () => {
+      const user = await getCurrentUser();
+      if (user) {
+        const n = user.user_metadata?.full_name || nomePorEmail(user.email) || user.email?.split('@')[0] || 'Usuário';
+        $('userName').textContent = n;
+        $('userAvatar').textContent = n.charAt(0).toUpperCase();
+      }
+    })();
+    $('btnLogout').addEventListener('click', signOut);
+    $('duasVias').checked = ler(CHAVE_VIAS) === '2';
+    $('duasVias').addEventListener('change', () => guardar(CHAVE_VIAS, $('duasVias').checked ? '2' : '1'));
+
+    // ---------- a competência ----------
+    function mesesDoSeletor(atual) {
+      const fim = mudarMes(HOJE.slice(0, 7), 2);
+      let ini = mudarMes(HOJE.slice(0, 7), -24);
+      if (atual < ini) ini = atual;
+      const lista = [];
+      for (let m = atual > fim ? atual : fim; m >= ini; m = mudarMes(m, -1)) lista.push(m);
+      return lista;
+    }
+    function preencherMeses(sel, atual) {
+      sel.innerHTML = mesesDoSeletor(atual).map(m => '<option value="' + m + '">' + esc(competenciaTexto(m)) + '</option>').join('');
+      sel.value = atual;
+    }
+    function trocarMes(novo) {
+      if (!competenciaValida(novo)) return;
+      comp = novo;
+      preencherMeses($('competencia'), comp);
+      atualizarEndereco();
+      render();
+    }
+    preencherMeses($('competencia'), comp);
+    $('competencia').addEventListener('change', () => trocarMes($('competencia').value));
+    $('mesAntes').addEventListener('click', () => trocarMes(mudarMes(comp, -1)));
+    $('mesDepois').addEventListener('click', () => trocarMes(mudarMes(comp, 1)));
+    function atualizarEndereco() {
+      const q = new URLSearchParams();
+      if (empresa) q.set('cliente', empresa.id);
+      q.set('competencia', comp);
+      history.replaceState(null, '', location.pathname + '?' + q.toString());
+    }
+
+    // ---------- o cadastro, a carteira e quem já tem funcionário aqui ----------
+    const [rCli, rCart, rFun] = await Promise.all([
+      supabase.todosClientes('id, nome_principal, nome_fantasia, documento, cidade, uf, status'),
+      supabase.from('carteira_info').select('cliente_id, saida'),
+      supabase.from('folha_funcionarios').select('id, cliente_id, saida')
+    ]);
+    clientes = (rCli && rCli.data) || [];
+    naCarteira = new Set(((rCart && rCart.data) || []).filter(c => !c.saida).map(c => c.cliente_id));
+    ((rFun && rFun.data) || []).forEach(f => { if (!f.saida || f.saida >= primeiroDia(HOJE.slice(0, 7))) comFuncionarios.set(f.cliente_id, (comFuncionarios.get(f.cliente_id) || 0) + 1); });
+    function atalhos() {
+      const lista = [...comFuncionarios.entries()].map(([id, n]) => ({ c: clientes.find(x => x.id === id), n })).filter(x => x.c)
+        .sort((a, b) => String(a.c.nome_principal).localeCompare(String(b.c.nome_principal), 'pt-BR'));
+      $('atalhosEmp').innerHTML = lista.length
+        ? lista.map(x => '<button type="button" class="fp-atalho" data-id="' + esc(x.c.id) + '">' + esc(x.c.nome_fantasia || x.c.nome_principal) + '<small>' + x.n + (x.n === 1 ? ' funcionário' : ' funcionários') + '</small></button>').join('')
+        : '';
+    }
+    atalhos();
+    $('atalhosEmp').addEventListener('click', e => { const b = e.target.closest('[data-id]'); if (b) { const c = clientes.find(x => x.id === b.dataset.id); if (c) abrirEmpresa(c); } });
+
+    // ---------- a busca da empresa ----------
+    const busca = $('busca'), sug = $('sugestoes');
+    function achar(txt) {
+      const t = semAcento(txt).trim(), dig = String(txt || '').replace(/\D/g, '');
+      if (t.length < 2 && dig.length < 3) return [];
+      return clientes.filter(c => semAcento(c.nome_principal).includes(t) || semAcento(c.nome_fantasia).includes(t) || (dig.length >= 3 && normalizarDocumento(c.documento || '').includes(dig)))
+        .sort((a, b) => (naCarteira.has(b.id) - naCarteira.has(a.id)) || String(a.nome_principal).localeCompare(String(b.nome_principal), 'pt-BR'))
+        .slice(0, 12);
+    }
+    function fecharSugestoes() { sug.hidden = true; busca.setAttribute('aria-expanded', 'false'); }
+    busca.addEventListener('input', () => {
+      const lista = achar(busca.value);
+      if (!lista.length) { fecharSugestoes(); return; }
+      sug.innerHTML = lista.map(c => '<li role="option"><button type="button" data-id="' + esc(c.id) + '"' + (naCarteira.has(c.id) ? '' : ' class="fp-fora-carteira"') + '>' + esc(c.nome_principal)
+        + '<small>' + esc([c.nome_fantasia, c.documento ? formatDocumento(c.documento) : null, comFuncionarios.get(c.id) ? comFuncionarios.get(c.id) + ' com recibo aqui' : null, naCarteira.has(c.id) ? null : 'fora da carteira'].filter(Boolean).join(' · ')) + '</small></button></li>').join('');
+      sug.hidden = false; busca.setAttribute('aria-expanded', 'true');
+    });
+    busca.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { const b = sug.querySelector('button'); if (b && !sug.hidden) { e.preventDefault(); b.click(); } }
+      if (e.key === 'ArrowDown') { const b = sug.querySelector('button'); if (b && !sug.hidden) { e.preventDefault(); b.focus(); } }
+      if (e.key === 'Escape') fecharSugestoes();
+    });
+    sug.addEventListener('keydown', e => {
+      const bts = [...sug.querySelectorAll('button')], i = bts.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown' && i < bts.length - 1) { e.preventDefault(); bts[i + 1].focus(); }
+      if (e.key === 'ArrowUp') { e.preventDefault(); (i > 0 ? bts[i - 1] : busca).focus(); }
+      if (e.key === 'Escape') { fecharSugestoes(); busca.focus(); }
+    });
+    sug.addEventListener('click', e => {
+      const b = e.target.closest('button[data-id]'); if (!b) return;
+      const c = clientes.find(x => x.id === b.dataset.id); if (!c) return;
+      fecharSugestoes(); busca.value = '';
+      abrirEmpresa(c);
+    });
+    document.addEventListener('click', e => { if (!e.target.closest('.fp-busca')) fecharSugestoes(); });
+
+    // ---------- a empresa ----------
+    async function abrirEmpresa(c) {
+      empresa = c;
+      guardar(CHAVE_EMPRESA, c.id);
+      atualizarEndereco();
+      $('semEmpresa').hidden = true; $('painel').hidden = false;
+      $('empNome').textContent = c.nome_principal || '';
+      $('empInfo').textContent = [c.nome_fantasia, c.documento ? formatDocumento(c.documento) : null, c.cidade ? c.cidade + (c.uf ? '/' + c.uf : '') : null].filter(Boolean).join(' · ');
+      $('lista').innerHTML = '<p class="fp-vazio">Carregando…</p>';
+      $('resumo').textContent = '';
+      $('fora').hidden = true;
+      const [rf, rr] = await Promise.all([
+        supabase.from('folha_funcionarios').select(COLS_F).eq('cliente_id', c.id),
+        supabase.from('folha_recibos').select(COLS_R).eq('cliente_id', c.id)
+      ]);
+      if (empresa !== c) return;   // trocou de empresa no meio
+      const erro = rf.error || rr.error;
+      if (erro) { $('lista').innerHTML = '<p class="fp-erro">Não consegui carregar os funcionários: ' + esc(erro.message) + '</p>'; return; }
+      funcs = (rf.data || []).sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
+      recibos = rr.data || [];
+      render();
+    }
+    const valorTexto = f => f.tipo_valor === 'mes' ? reais(centavos(f.valor)) + ' por mês' : reais(centavos(f.valor)) + ' por hora';
+    const opcoesTipos = Object.entries(TIPOS).map(([k, t]) => '<option value="' + k + '">' + esc(t.rotulo) + '</option>').join('');
+    function linhaFunc(f) {
+      const recs = ordenarRecibos(recibos.filter(r => r.funcionario_id === f.id && r.competencia === comp));
+      const meta = [f.funcao, f.admissao ? 'desde ' + fmtData(f.admissao) : null, f.saida ? 'saída em ' + fmtData(f.saida) : null, valorTexto(f)].filter(Boolean).join(' · ');
+      return '<div class="fp-func" data-id="' + esc(f.id) + '">'
+        + '<div class="fp-func-info"><button type="button" class="fp-nome" data-acao="func" data-id="' + esc(f.id) + '">' + esc(f.nome) + '</button><span class="fp-meta">' + esc(meta) + '</span></div>'
+        + '<div class="fp-func-recibos">'
+        + (recs.length ? recs.map(r => '<button type="button" class="fp-chip" data-acao="recibo" data-id="' + esc(r.id) + '">' + esc((TIPOS[r.tipo] || {}).rotulo || r.tipo) + '<b>' + reais(centavos(r.total)) + '</b></button>').join('') : '<span class="fp-sem-recibo">sem recibo no mês</span>')
+        + '<select class="input fp-novo" data-acao="novo" data-id="' + esc(f.id) + '" aria-label="Novo recibo de ' + esc(f.nome) + '"><option value="">+ Recibo</option>' + opcoesTipos + '</select>'
+        + '</div></div>';
+    }
+    function render() {
+      if (!empresa) return;
+      const ativos = funcs.filter(f => ativoNoMes(f, comp, recibos));
+      const fora = funcs.filter(f => !ativoNoMes(f, comp, recibos));
+      const t = totaisDoMes(recibos, comp);
+      const mes = competenciaTexto(comp);
+      $('resumo').innerHTML = (ativos.length ? '<b>' + ativos.length + '</b> ' + (ativos.length === 1 ? 'funcionário' : 'funcionários') + ' em ' + esc(mes) + ' · ' : '')
+        + (t.quantos ? '<b>' + t.quantos + '</b> ' + (t.quantos === 1 ? 'recibo' : 'recibos') + ', total de <b>' + reais(t.total) + '</b>' : 'nenhum recibo em ' + esc(mes) + ' ainda');
+      $('btnImprimirMes').disabled = !t.quantos;
+      const nomeMes = mes.split(' ')[0].toLowerCase();
+      $('btnImprimirMes').textContent = !t.quantos ? 'Imprimir os recibos do mês' : t.quantos === 1 ? 'Imprimir o recibo de ' + nomeMes : 'Imprimir os ' + t.quantos + ' recibos de ' + nomeMes;
+      $('lista').innerHTML = ativos.length ? ativos.map(linhaFunc).join('')
+        : '<div class="empty-state">' + (funcs.length ? 'Ninguém desta empresa trabalhou em ' + esc(mes) + '.' : 'Nenhum funcionário cadastrado nesta empresa. Clique em "+ Funcionário" pra começar.') + '</div>';
+      $('fora').hidden = !fora.length;
+      $('foraTitulo').textContent = fora.length + (fora.length === 1 ? ' funcionário fora deste mês' : ' funcionários fora deste mês') + ' (entrou depois ou já saiu)';
+      $('listaFora').innerHTML = fora.map(linhaFunc).join('');
+    }
+    function cliqueNaLista(e) {
+      const b = e.target.closest('[data-acao]');
+      if (!b || b.tagName === 'SELECT') return;
+      if (b.dataset.acao === 'func') abrirFunc(b.dataset.id);
+      if (b.dataset.acao === 'recibo') abrirRecibo(b.dataset.id);
+    }
+    function trocaNaLista(e) {
+      const s = e.target.closest('select[data-acao="novo"]');
+      if (!s || !s.value) return;
+      const tipo = s.value; s.value = '';
+      novoRecibo(s.dataset.id, tipo);
+    }
+    ['lista', 'listaFora'].forEach(id => { $(id).addEventListener('click', cliqueNaLista); $(id).addEventListener('change', trocaNaLista); });
+
+    // ---------- o funcionário ----------
+    const ovFunc = $('ovFunc');
+    let funcAtual = null;
+    function rotuloValor(selTipo, rot) { $(rot).textContent = $(selTipo).value === 'mes' ? 'Salário do mês (R$) *' : 'Valor da hora (R$) *'; }
+    $('fTipoValor').addEventListener('change', () => rotuloValor('fTipoValor', 'fValorRot'));
+    function abrirFunc(id) {
+      funcAtual = id ? funcs.find(f => f.id === id) || null : null;
+      const f = funcAtual || {};
+      $('fTitulo').textContent = funcAtual ? funcAtual.nome : 'Novo funcionário';
+      $('fNome').value = f.nome || '';
+      $('fFuncao').value = f.funcao || '';
+      $('fAdmissao').value = f.admissao || '';
+      $('fSaida').value = f.saida || '';
+      $('fTipoValor').value = f.tipo_valor || 'hora';
+      rotuloValor('fTipoValor', 'fValorRot');
+      $('fValor').value = f.valor != null ? fmtValor(centavos(f.valor)) : '';
+      $('fHoras').value = f.horas_semana != null ? String(Number(f.horas_semana)).replace('.', ',') : '44';
+      $('fObs').value = f.observacao || '';
+      $('fErro').textContent = '';
+      const hist = funcAtual ? recibos.filter(r => r.funcionario_id === funcAtual.id).sort((a, b) => String(b.competencia).localeCompare(String(a.competencia))) : [];
+      $('fHistBox').hidden = !hist.length;
+      $('fHist').innerHTML = hist.map(r => '<button type="button" class="fp-hist-linha" data-id="' + esc(r.id) + '"><span>' + esc(competenciaTexto(r.competencia) + ' · ' + ((TIPOS[r.tipo] || {}).rotulo || r.tipo)) + '</span><span>' + reais(centavos(r.total)) + '</span></button>').join('');
+      $('fExcluir').hidden = !funcAtual || hist.length > 0;
+      ovFunc.classList.add('is-open');
+      $('fNome').focus();
+    }
+    function fecharFunc() { ovFunc.classList.remove('is-open'); funcAtual = null; }
+    $('fClose').addEventListener('click', fecharFunc);
+    $('fCancelar').addEventListener('click', fecharFunc);
+    ovFunc.addEventListener('click', e => { if (e.target === ovFunc) fecharFunc(); });
+    $('fHist').addEventListener('click', e => { const b = e.target.closest('[data-id]'); if (b) { fecharFunc(); abrirRecibo(b.dataset.id); } });
+    $('btnNovoFunc').addEventListener('click', () => abrirFunc(null));
+    const CAMPO_FUNC = { nome: 'fNome', valor: 'fValor', horas_semana: 'fHoras', saida: 'fSaida' };
+    $('fSalvar').addEventListener('click', async () => {
+      if (!empresa) return;
+      const valor = lerNumero($('fValor').value), horas = lerNumero($('fHoras').value);
+      const f = { nome: $('fNome').value.trim().replace(/\s+/g, ' '), funcao: $('fFuncao').value.trim() || null, admissao: $('fAdmissao').value || null, saida: $('fSaida').value || null,
+        tipo_valor: $('fTipoValor').value, valor: valor == null || Number.isNaN(valor) ? null : arred2(valor), horas_semana: horas == null ? 44 : horas, observacao: $('fObs').value.trim() || null };
+      const p = problemaDoFuncionario(f);
+      if (p) { $('fErro').textContent = p.texto; $(CAMPO_FUNC[p.campo] || 'fNome').focus(); return; }
+      const xara = funcs.find(x => x.id !== (funcAtual && funcAtual.id) && semAcento(x.nome) === semAcento(f.nome));
+      if (xara && !confirm('Já tem um funcionário com esse nome nesta empresa (' + xara.nome + '). Cadastrar outro mesmo assim?')) return;
+      const btn = $('fSalvar'); btn.disabled = true;
+      const { data, error } = funcAtual
+        ? await supabase.from('folha_funcionarios').update(f).eq('id', funcAtual.id).select(COLS_F).single()
+        : await supabase.from('folha_funcionarios').insert({ ...f, cliente_id: empresa.id }).select(COLS_F).single();
+      btn.disabled = false;
+      if (error) { $('fErro').textContent = 'Não consegui salvar: ' + error.message; return; }
+      const salvo = data || { ...funcAtual, ...f };
+      const i = funcs.findIndex(x => x.id === salvo.id);
+      if (i >= 0) funcs[i] = salvo; else funcs.push(salvo);
+      funcs.sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
+      if (!funcAtual) { comFuncionarios.set(empresa.id, (comFuncionarios.get(empresa.id) || 0) + 1); atalhos(); }
+      fecharFunc();
+      render();
+    });
+    $('fExcluir').addEventListener('click', async () => {
+      if (!funcAtual) return;
+      if (!confirm('Excluir ' + funcAtual.nome + ' do cadastro? Se ele só saiu da empresa, preencha a saída e salve.')) return;
+      const { error } = await supabase.from('folha_funcionarios').delete().eq('id', funcAtual.id);
+      if (error) { $('fErro').textContent = 'Não consegui excluir: ' + error.message; return; }
+      funcs = funcs.filter(x => x.id !== funcAtual.id);
+      fecharFunc();
+      render();
+    });
+
+    // ---------- o recibo ----------
+    const ovRec = $('ovRec');
+    let ed = null;   // o recibo aberto: { id, func, tipo, comp, de, ate, tipo_valor, valor, horas_semana, linhas: [{ ev, q, desc, txt, auto }], arredondar, pagamento, observacao, sujo }
+    $('rTipo').innerHTML = opcoesTipos;
+    const GRUPOS_ADD = [['Proventos', ['horas', 'salario', 'dsr', 'he50', 'he100', 'atestado', 'reflexo_dsr', 'adiantamento_salarial', 'ferias', 'decimo1', 'decimo', 'aviso', 'decimo_aviso', 'ferias_aviso', 'diferenca', 'outras']],
+      ['Descontos', ['faltas', 'adiantamento', 'decimo_pago', 'desconto']]];
+    $('rAdd').innerHTML = '<option value="">+ Pôr outro evento…</option>' + GRUPOS_ADD.map(([g, evs]) => '<optgroup label="' + g + '">' + evs.map(ev => '<option value="' + ev + '">' + esc(EVENTOS[ev].rotulo) + '</option>').join('') + '</optgroup>').join('');
+    const COM_DESCRICAO = ev => (EVENTOS[ev] || {}).un === 'R$';
+    const UNIDADE = { h: 'h', dias: 'dias', meses: '/12', '%': '%', 'R$': '' };
+    const PLACEHOLDER = { h: '0:00', dias: '0', meses: '0', '%': '0', 'R$': '0,00' };
+
+    const reciboDoEditor = () => ({ competencia: ed.comp, periodo_de: ed.de || null, periodo_ate: ed.ate || null, tipo_valor: ed.tipo_valor, valor: ed.valor, horas_semana: ed.horas_semana,
+      itens: ed.linhas.map(l => ({ ev: l.ev, q: l.q, desc: l.desc })), arredondar: ed.arredondar });
+    const comTexto = linhas => linhas.map(l => ({ ...l, txt: l.q == null ? '' : quantidadeTexto((EVENTOS[l.ev] || {}).un, l.q) }));
+    const fimDoPeriodo = () => (ed.ate || ultimoDia(ed.comp));
+    const pagoDoEditor = () => jaPago(recibos, ed.func.id, ed.comp, ed.id);
+
+    function novoRecibo(funcId, tipo) {
+      const f = funcs.find(x => x.id === funcId);
+      if (!f) return;
+      const per = periodoPadrao(f, comp);
+      const pago = jaPago(recibos, f.id, comp);
+      ed = { id: null, func: f, tipo, comp, de: per.vazio ? primeiroDia(comp) : per.de, ate: per.vazio ? ultimoDia(comp) : per.ate,
+        tipo_valor: f.tipo_valor, valor: Number(f.valor) || 0, horas_semana: Number(f.horas_semana) || 44,
+        linhas: comTexto(linhasIniciais(tipo, f, comp, pago).map(l => ({ ...l, desc: null, auto: (l.ev === 'adiantamento' || l.ev === 'decimo_pago') && l.q != null }))),
+        arredondar: ler(CHAVE_ARRED) !== 'nao', pagamento: null, observacao: '', sujo: false };
+      mostrarEditor();
+    }
+    function abrirRecibo(id) {
+      const r = recibos.find(x => x.id === id);
+      if (!r) return;
+      const f = funcs.find(x => x.id === r.funcionario_id) || { id: r.funcionario_id, nome: r.nome, tipo_valor: r.tipo_valor, valor: r.valor, horas_semana: r.horas_semana };
+      ed = { id: r.id, func: f, tipo: r.tipo, comp: r.competencia, de: r.periodo_de || '', ate: r.periodo_ate || '', tipo_valor: r.tipo_valor, valor: Number(r.valor) || 0,
+        horas_semana: Number(r.horas_semana) || 44, linhas: comTexto((r.itens || []).filter(l => l.ev !== 'terco' && EVENTOS[l.ev]).map(l => ({ ev: l.ev, q: l.q, desc: l.desc || null }))),
+        arredondar: r.arredondar !== false, pagamento: r.pagamento || '', observacao: r.observacao || '', sujo: false };
+      mostrarEditor();
+    }
+    function mostrarEditor() {
+      $('rTitulo').textContent = (ed.id ? '' : 'Novo recibo: ') + ed.func.nome;
+      $('rTipo').value = ed.tipo;
+      preencherMeses($('rComp'), ed.comp);
+      $('rDe').value = ed.de || ''; $('rAte').value = ed.ate || '';
+      $('rPag').value = ed.pagamento || ''; $('rObs').value = ed.observacao || '';
+      $('rArredondar').checked = ed.arredondar;
+      $('rBaseEdit').hidden = true; $('rBaseMudar').hidden = false;
+      $('rExcluir').hidden = !ed.id;
+      $('rErro').textContent = '';
+      mostrarPeriodo();
+      desenharLinhas();
+      ovRec.classList.add('is-open');
+      const primeiro = $('rLinhas').querySelector('.fp-q');
+      if (primeiro && !ed.id) primeiro.focus();
+    }
+    function mostrarPeriodo() { document.querySelectorAll('.fp-periodo').forEach(el => { el.hidden = !COM_PERIODO.includes(ed.tipo); }); }
+    function textoDaBase() {
+      return '<b>' + (ed.tipo_valor === 'mes' ? reais(centavos(ed.valor)) + ' por mês' : reais(centavos(ed.valor)) + ' por hora') + '</b> · '
+        + String(ed.horas_semana).replace('.', ',') + ' horas por semana' + (ed.id ? ' (do recibo)' : ' (do cadastro)');
+    }
+    // as sugestões ao lado de cada linha (o que o sistema sabe calcular); "usar" põe o número na linha
+    function sugestao(l) {
+      const f = ed.func, fim = fimDoPeriodo();
+      if (l.ev === 'dsr' && ed.de && ed.ate) {
+        const d = diasDeDescanso(ed.de, ed.ate), s = dsrSugerido(ed.de, ed.ate, ed.horas_semana);
+        const partes = [d.domingos ? d.domingos + (d.domingos === 1 ? ' domingo' : ' domingos') : '', d.feriados ? d.feriados + (d.feriados === 1 ? ' feriado' : ' feriados') : ''].filter(Boolean).join(' e ');
+        return { q: s, texto: d.total ? partes + ' de ' + fmtData(ed.de).slice(0, 5) + ' a ' + fmtData(ed.ate).slice(0, 5) + ': ' + horasTexto(s) : 'Sem domingo nem feriado no período.' };
+      }
+      if (l.ev === 'salario' && ed.de && ed.ate) { const s = diasDoSalario(ed.de, ed.ate, ed.comp); return { q: s, texto: 'Dias do período: ' + s }; }
+      if ((l.ev === 'decimo' || l.ev === 'decimo1') && f.admissao) {
+        const ate = ed.tipo === 'decimo2' ? (f.saida && f.saida < ed.comp.slice(0, 4) + '-12-31' ? f.saida : ed.comp.slice(0, 4) + '-12-31') : fim;
+        const s = avos13(f.admissao, ate); return { q: s, texto: 'Pela admissão (' + fmtData(f.admissao) + '): ' + s + (s === 1 ? ' mês' : ' meses') };
+      }
+      if (l.ev === 'ferias' && f.admissao) {
+        const s = ed.tipo === 'rescisao' ? avosFerias(inicioAquisitivo(f.admissao, fim), fim) : mesesDeFerias(f.admissao, fim);
+        return { q: s, texto: 'Pela admissão (' + fmtData(f.admissao) + '): ' + s + (s === 1 ? ' mês' : ' meses') };
+      }
+      if (l.ev === 'adiantamento') { const p = pagoDoEditor().adiantamento; return p ? { q: p / 100, texto: 'Recibo de adiantamento de ' + competenciaTexto(ed.comp) + ': ' + reais(p) } : null; }
+      if (l.ev === 'decimo_pago') { const p = pagoDoEditor(); return p.decimoPago ? { q: p.decimoPago / 100, texto: '1ª parcela paga (' + competenciaTexto(p.decimoPagoEm) + '): ' + reais(p.decimoPago) } : null; }
+      if (l.ev === 'aviso') return { q: null, texto: '30 dias, mais 3 por ano completo de casa.' };
+      if (l.ev === 'adiantamento_salarial') return { q: null, texto: 'Sobre o salário do mês: ' + reais(centavos(calcularRecibo({ ...reciboDoEditor(), itens: [] }).base.salarioDoMes)) };
+      return null;
+    }
+    function desenharLinhas() {
+      const calc = calcularRecibo(reciboDoEditor());
+      const b = calc.base;
+      const ultimaFerias = ed.linhas.map(l => l.ev === 'ferias' || l.ev === 'ferias_aviso').lastIndexOf(true);
+      const terco = calc.linhas.find(l => l.ev === 'terco');
+      let html = '';
+      ed.linhas.forEach((l, i) => {
+        const ev = EVENTOS[l.ev];
+        const q = l.q == null || l.q === '' ? null : Number(l.q);
+        const v = q == null || !isFinite(q) ? 0 : centavos(ev.conta(q, b));
+        const s = sugestao(l);
+        const usar = s && s.q != null && (q == null || Math.abs(q - s.q) > 1e-6) ? ' <button type="button" class="fp-link" data-usar="' + i + '">usar</button>' : '';
+        html += '<tr data-i="' + i + '"><td><span class="fp-ev">' + esc(ev.rotulo) + '</span>'
+          + (COM_DESCRICAO(l.ev) ? '<input type="text" class="input fp-ev-desc" data-desc="' + i + '" maxlength="80" placeholder="Descrição no recibo (opcional)" value="' + esc(l.desc || '') + '" aria-label="Descrição de ' + esc(ev.rotulo) + '">' : '')
+          + (s ? '<div class="fp-dica-linha">' + esc(s.texto) + usar + '</div>' : '') + '</td>'
+          + '<td class="fp-q-cel"><input type="text" class="input fp-q" data-q="' + i + '" inputmode="decimal" autocomplete="off" placeholder="' + PLACEHOLDER[ev.un] + '" value="' + esc(l.txt) + '" aria-label="' + esc(ev.rotulo) + ': ' + (ev.un === 'h' ? 'horas' : ev.un === 'R$' ? 'valor' : ev.un) + '">'
+          + (UNIDADE[ev.un] ? '<span class="fp-un">' + UNIDADE[ev.un] + '</span>' : '') + '</td>'
+          + '<td class="fp-num' + (ev.nat === 'D' ? ' fp-d' : '') + '" data-v="' + i + '">' + (q != null && !isFinite(q) ? '?' : (ev.nat === 'D' && v ? '− ' : '') + fmtValor(v)) + '</td>'
+          + '<td><button type="button" class="fp-tirar" data-tirar="' + i + '" aria-label="Tirar ' + esc(ev.rotulo) + '">✕</button></td></tr>';
+        if (i === ultimaFerias && terco) html += '<tr class="fp-auto"><td><span class="fp-ev">1/3 de férias</span></td><td></td><td class="fp-num" id="rTerco">' + fmtValor(terco.v) + '</td><td></td></tr>';
+      });
+      $('rLinhas').innerHTML = html || '<tr><td colspan="4" class="fp-dica">Nenhuma linha: escolha um evento logo abaixo.</td></tr>';
+      $('rBaseTxt').innerHTML = textoDaBase();
+      mostrarTotais(calc);
+      avisoDoRecibo();
+    }
+    function mostrarTotais(calc) {
+      $('rProv').textContent = fmtValor(calc.proventos);
+      $('rDesc').textContent = fmtValor(calc.descontos);
+      $('rArred').textContent = fmtValor(calc.arredondamento);
+      $('rTotal').textContent = reais(calc.total);
+      $('rExtenso').textContent = calc.total > 0 ? '(' + porExtenso(calc.total / 100) + ')' : '';
+      const t = $('rTerco'); const terco = calc.linhas.find(l => l.ev === 'terco'); if (t && terco) t.textContent = fmtValor(terco.v);
+    }
+    // só o número de uma linha mudou: o valor dela e os totais, sem redesenhar (o cursor fica onde está)
+    function atualizarLinha(i) {
+      const calc = calcularRecibo(reciboDoEditor());
+      const l = ed.linhas[i], ev = EVENTOS[l.ev];
+      const q = l.q == null || l.q === '' ? null : Number(l.q);
+      const v = q == null || !isFinite(q) ? 0 : centavos(ev.conta(q, calc.base));
+      const cel = $('rLinhas').querySelector('[data-v="' + i + '"]');
+      if (cel) cel.textContent = q != null && !isFinite(q) ? '?' : (ev.nat === 'D' && v ? '− ' : '') + fmtValor(v);
+      const temTerco = !!$('rTerco'), precisa = calc.linhas.some(x => x.ev === 'terco');
+      if (temTerco !== precisa) { desenharLinhas(); return; }
+      mostrarTotais(calc);
+    }
+    function avisoDoRecibo() {
+      const r = recibos.find(x => x.id !== ed.id && x.funcionario_id === ed.func.id && x.competencia === ed.comp && x.tipo === ed.tipo);
+      $('rAviso').textContent = r ? 'Já tem ' + (TIPOS[ed.tipo] || {}).rotulo.toLowerCase() + ' de ' + competenciaTexto(ed.comp) + ' pra ' + ed.func.nome + ': ' + reais(centavos(r.total)) + '.' : '';
+    }
+    $('rLinhas').addEventListener('input', e => {
+      const iq = e.target.dataset.q, id = e.target.dataset.desc;
+      if (iq != null) {
+        const l = ed.linhas[iq];
+        l.txt = e.target.value;
+        l.q = lerQuantidade(EVENTOS[l.ev].un, l.txt);
+        l.auto = false;
+        ed.sujo = true;
+        atualizarLinha(Number(iq));
+      } else if (id != null) { ed.linhas[id].desc = e.target.value.trim() || null; ed.sujo = true; }
+    });
+    $('rLinhas').addEventListener('focusout', e => {
+      const iq = e.target.dataset.q;
+      if (iq == null) return;
+      const l = ed.linhas[iq];
+      if (l && l.q != null && isFinite(l.q)) { l.txt = quantidadeTexto(EVENTOS[l.ev].un, l.q); e.target.value = l.txt; }
+    });
+    $('rLinhas').addEventListener('click', e => {
+      const u = e.target.closest('[data-usar]'), t = e.target.closest('[data-tirar]');
+      if (u) {
+        const i = Number(u.dataset.usar), s = sugestao(ed.linhas[i]);
+        if (s && s.q != null) { ed.linhas[i].q = s.q; ed.linhas[i].txt = quantidadeTexto(EVENTOS[ed.linhas[i].ev].un, s.q); ed.sujo = true; desenharLinhas(); }
+      }
+      if (t) { ed.linhas.splice(Number(t.dataset.tirar), 1); ed.sujo = true; desenharLinhas(); }
+    });
+    $('rAdd').addEventListener('change', () => {
+      const ev = $('rAdd').value; $('rAdd').value = '';
+      if (!EVENTOS[ev]) return;
+      const s = sugestao({ ev });
+      const q = s && s.q != null && ['adiantamento', 'decimo_pago', 'ferias', 'decimo', 'decimo1', 'salario'].includes(ev) ? s.q : null;
+      ed.linhas.push({ ev, q, desc: null, txt: q == null ? '' : quantidadeTexto(EVENTOS[ev].un, q), auto: false });
+      ed.sujo = true;
+      desenharLinhas();
+      const campos = $('rLinhas').querySelectorAll('.fp-q');
+      if (campos.length) campos[campos.length - 1].focus();
+    });
+    $('rTipo').addEventListener('change', () => {
+      const novo = $('rTipo').value;
+      if (!ed.id) {
+        const preenchido = ed.linhas.some(l => l.q != null && !l.auto);
+        if (preenchido && !confirm('Trocar o tipo do recibo começa as linhas de novo. Continuar?')) { $('rTipo').value = ed.tipo; return; }
+        ed.linhas = comTexto(linhasIniciais(novo, ed.func, ed.comp, jaPago(recibos, ed.func.id, ed.comp)).map(l => ({ ...l, desc: null, auto: (l.ev === 'adiantamento' || l.ev === 'decimo_pago') && l.q != null })));
+      }
+      ed.tipo = novo; ed.sujo = true;
+      mostrarPeriodo();
+      desenharLinhas();
+    });
+    $('rComp').addEventListener('change', () => {
+      ed.comp = $('rComp').value; ed.sujo = true;
+      if (!ed.id) {
+        const per = periodoPadrao(ed.func, ed.comp);
+        ed.de = per.vazio ? primeiroDia(ed.comp) : per.de; ed.ate = per.vazio ? ultimoDia(ed.comp) : per.ate;
+        $('rDe').value = ed.de; $('rAte').value = ed.ate;
+        // o que já foi pago no mês novo, nas linhas que vieram sozinhas
+        const pago = jaPago(recibos, ed.func.id, ed.comp);
+        ed.linhas = ed.linhas.filter(l => {
+          if (!l.auto) return true;
+          const v = l.ev === 'adiantamento' ? pago.adiantamento : pago.decimoPago;
+          if (!v) return false;
+          l.q = v / 100; l.txt = quantidadeTexto('R$', l.q); return true;
+        });
+        if (pago.adiantamento && ['mensal', 'rescisao'].includes(ed.tipo) && !ed.linhas.some(l => l.ev === 'adiantamento')) ed.linhas.push({ ev: 'adiantamento', q: pago.adiantamento / 100, desc: null, txt: quantidadeTexto('R$', pago.adiantamento / 100), auto: true });
+      }
+      desenharLinhas();
+    });
+    ['rDe', 'rAte'].forEach(id => $(id).addEventListener('change', () => { ed.de = $('rDe').value; ed.ate = $('rAte').value; ed.sujo = true; desenharLinhas(); }));
+    $('rPag').addEventListener('change', () => { ed.pagamento = $('rPag').value; ed.sujo = true; });
+    $('rObs').addEventListener('input', () => { ed.observacao = $('rObs').value; ed.sujo = true; });
+    $('rArredondar').addEventListener('change', () => { ed.arredondar = $('rArredondar').checked; guardar(CHAVE_ARRED, ed.arredondar ? 'sim' : 'nao'); ed.sujo = true; mostrarTotais(calcularRecibo(reciboDoEditor())); });
+    $('rBaseMudar').addEventListener('click', () => {
+      $('rTipoValor').value = ed.tipo_valor; rotuloValor('rTipoValor', 'rValorRot');
+      $('rValor').value = fmtValor(centavos(ed.valor)); $('rHoras').value = String(ed.horas_semana).replace('.', ',');
+      $('rBaseEdit').hidden = false; $('rBaseMudar').hidden = true; $('rValor').focus();
+    });
+    function lerBase() {
+      const v = lerNumero($('rValor').value), h = lerNumero($('rHoras').value);
+      ed.tipo_valor = $('rTipoValor').value;
+      ed.valor = v == null || Number.isNaN(v) ? 0 : arred2(v);
+      ed.horas_semana = h && h >= 1 && h <= 60 ? h : 44;
+      ed.sujo = true;
+      desenharLinhas();
+    }
+    $('rTipoValor').addEventListener('change', () => { rotuloValor('rTipoValor', 'rValorRot'); lerBase(); });
+    ['rValor', 'rHoras'].forEach(id => $(id).addEventListener('change', lerBase));
+
+    function fecharRecibo(forcar = false) {
+      if (!forcar && ed && ed.sujo && !confirm('Fechar sem salvar este recibo?')) return;
+      ovRec.classList.remove('is-open');
+      ed = null;
+    }
+    $('rClose').addEventListener('click', () => fecharRecibo());
+    $('rCancelar').addEventListener('click', () => fecharRecibo());
+    ovRec.addEventListener('click', e => { if (e.target === ovRec) fecharRecibo(); });
+
+    async function salvarRecibo(imprimirDepois) {
+      if (!ed || !empresa) return;
+      const r = reciboDoEditor();
+      const calc = calcularRecibo(r);
+      const p = problemaDoRecibo(r, calc);
+      if (p) {
+        $('rErro').textContent = p.texto;
+        const linha = p.ev != null ? ed.linhas.findIndex(l => l.ev === p.ev) : -1;
+        const alvo = p.campo === 'periodo' ? $('rAte') : p.campo === 'valor' ? ($('rBaseEdit').hidden ? $('rBaseMudar') : $('rValor')) : linha >= 0 ? $('rLinhas').querySelector('[data-q="' + linha + '"]') : $('rLinhas').querySelector('.fp-q');
+        if (alvo && !alvo.hidden) alvo.focus();
+        return;
+      }
+      if (!ed.id) {
+        const igual = recibos.find(x => x.funcionario_id === ed.func.id && x.competencia === ed.comp && x.tipo === ed.tipo);
+        if (igual && !confirm('Já tem ' + TIPOS[ed.tipo].rotulo.toLowerCase() + ' de ' + competenciaTexto(ed.comp) + ' pra ' + ed.func.nome + '. Fazer outro mesmo assim?')) return;
+      }
+      const dados = { cliente_id: empresa.id, funcionario_id: ed.func.id, nome: ed.func.nome, tipo: ed.tipo, competencia: ed.comp,
+        periodo_de: COM_PERIODO.includes(ed.tipo) ? ed.de || null : null, periodo_ate: COM_PERIODO.includes(ed.tipo) ? ed.ate || null : null,
+        tipo_valor: ed.tipo_valor, valor: ed.valor, horas_semana: ed.horas_semana, itens: itensParaGravar(calc), arredondar: ed.arredondar,
+        arredondamento: calc.arredondamento / 100, total: calc.total / 100, pagamento: ed.pagamento || null, observacao: (ed.observacao || '').trim() || null };
+      const botoes = [$('rSalvar'), $('rSalvarImprimir')];
+      botoes.forEach(b => { b.disabled = true; });
+      const { data, error } = ed.id
+        ? await supabase.from('folha_recibos').update(dados).eq('id', ed.id).select(COLS_R).single()
+        : await supabase.from('folha_recibos').insert(dados).select(COLS_R).single();
+      botoes.forEach(b => { b.disabled = false; });
+      if (error) { $('rErro').textContent = 'Não consegui salvar: ' + error.message; return; }
+      const salvo = data || { ...dados, id: ed.id };
+      const i = recibos.findIndex(x => x.id === salvo.id);
+      if (i >= 0) recibos[i] = salvo; else recibos.push(salvo);
+      if (salvo.competencia !== comp) trocarMes(salvo.competencia); else render();
+      fecharRecibo(true);
+      if (imprimirDepois) imprimir([salvo]);
+    }
+    $('rSalvar').addEventListener('click', () => salvarRecibo(false));
+    $('rSalvarImprimir').addEventListener('click', () => salvarRecibo(true));
+    $('rExcluir').addEventListener('click', async () => {
+      if (!ed || !ed.id) return;
+      if (!confirm('Excluir este recibo de ' + ed.func.nome + '?')) return;
+      const { error } = await supabase.from('folha_recibos').delete().eq('id', ed.id);
+      if (error) { $('rErro').textContent = 'Não consegui excluir: ' + error.message; return; }
+      recibos = recibos.filter(x => x.id !== ed.id);
+      fecharRecibo(true);
+      render();
+    });
+
+    // ---------- o PDF ----------
+    function imprimir(lista) {
+      const J = window.jspdf && window.jspdf.jsPDF;
+      if (!J) { alert('O gerador de PDF ainda está carregando: tente de novo em 2 segundos.'); return; }
+      const ordem = ordenarRecibos(lista);
+      const itens = ordem.map(r => ({ empresa: { nome: empresa.nome_principal, documento: empresa.documento, cidade: empresa.cidade }, funcionario: funcs.find(f => f.id === r.funcionario_id) || { nome: r.nome }, recibo: r }));
+      const doc = recibosPdf(J, itens, { vias: $('duasVias').checked ? 2 : 1 });
+      doc.save(ordem.length > 1 ? nomeDoArquivo({ empresa: empresa.nome_fantasia || empresa.nome_principal, recibo: { competencia: comp }, varios: true })
+        : nomeDoArquivo({ funcionario: ordem[0].nome, recibo: ordem[0] }));
+    }
+    $('btnImprimirMes').addEventListener('click', () => {
+      const doMes = recibos.filter(r => r.competencia === comp);
+      if (doMes.length) imprimir(doMes);
+    });
+
+    // ---------- a empresa do endereço (?cliente=) ou a última aberta neste navegador ----------
+    {
+      const id = params.get('cliente') || ler(CHAVE_EMPRESA);
+      const c = id && clientes.find(x => x.id === id);
+      if (c) abrirEmpresa(c);
+    }
+  </script>
+</body>
+</html>
