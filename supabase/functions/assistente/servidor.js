@@ -31,6 +31,7 @@ const SETORES = ['dp', 'fiscal', 'contabil', 'financeiro', 'comercial', 'societa
 
 // o dia no fuso de Brasília (UTC−3, sem horário de verão)
 export const diaBR = d => new Date(d.getTime() - 3 * 3600e3).toISOString().slice(0, 10);
+export const horaBR = d => new Date(d.getTime() - 3 * 3600e3).toISOString().slice(11, 16);
 const inicioDoDiaBR = d => diaBR(d) + 'T03:00:00Z';
 
 export function mensagemDeErro(e) {
@@ -197,13 +198,13 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
       const p = ctx.pagina;
       const tela = p ? (p.nome ? p.nome + ' — ' : '') + p.caminho + (p.setor ? ' (setor ' + p.setor + ')' : '') : null;
       const quem = avaliacao ? null : (usuario.nome ? usuario.nome + ' (' + usuario.email + ')' + (usuario.socio ? ', sócio' : '') : usuario.email);
-      const ferramentas = criarFerramentas({ banco, contexto: ctx, usuario: { email: usuario.email, nome: usuario.nome, socio: !!usuario.socio }, hoje,
+      const ferramentas = criarFerramentas({ banco, contexto: ctx, usuario: { email: usuario.email, nome: usuario.nome, socio: !!usuario.socio }, hoje, agora,
         perguntarReforma: pr => perguntarReforma({ pergunta: pr, contexto: ctx, jwt: usuario.jwt, conversa, aoEtapa, avaliacao, t0 }),
         // passou do tempo de outra rodada do modelo: a resposta da Reforma vai direto pro usuário
         deveFinalizar: () => agora().getTime() - t0 > prazoMs - 15000,
         // a proposta de ação (uma por pergunta) vai junto com a resposta: a tela mostra o cartão
         aoPropor: a => { acao = a; }, drive });
-      const mensagem = preambulo({ hoje, quem, tela, empresa, ficha, estudo }) + pergunta;
+      const mensagem = preambulo({ hoje, hora: horaBR(agora()), quem, tela, empresa, ficha, estudo }) + pergunta;
       // a pergunta anterior de outro dia leva a data em que foi feita (a aba pode ter ficado aberta de um dia pro outro)
       const anteriores = historico.map(h => ({ pergunta: marcaOutroDia(h.em, hoje) + h.pergunta, resposta: h.resposta }));
       res = await responder({ chamar: chamarModelo, sistema, definicoes: DEFINICOES, ferramentas, historico: anteriores, mensagem, aoEtapa, prazoMs, descrever: descreverEtapa });

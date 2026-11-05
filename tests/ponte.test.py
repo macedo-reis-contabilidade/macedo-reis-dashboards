@@ -53,7 +53,16 @@ sys.path.insert(0, str(RAIZ))
 # o contrato da fila (2.4), escrito aqui e não importado da ponte: um campo a mais na ponte tem que derrubar o teste
 CONTRATO_EMPRESA = {'codigo', 'documento', 'nome', 'ativa'}
 CONTRATO_MENSAL = ['codigo', 'competencia', 'funcionarios_ativos', 'admissoes', 'desligamentos', 'afastados', 'pro_labore',
-                   'notas_saida', 'valor_saidas', 'notas_entrada', 'valor_entradas', 'lancamentos', 'ultimo_lancamento']
+                   'notas_saida', 'valor_saidas', 'notas_entrada', 'valor_entradas', 'lancamentos', 'ultimo_lancamento',
+                   # a versão 2 (05/11/2026): o faturamento, as compras e a folha em reais
+                   'receita_bruta', 'receita_mercadorias', 'receita_servicos', 'devolucoes', 'receita_simples',
+                   'receita_simples_propria', 'receita_st', 'receita_monofasica', 'receita_exportacao',
+                   'receita_anexo_1', 'receita_anexo_2', 'receita_anexo_3', 'receita_anexo_4', 'receita_anexo_5',
+                   'rbt12', 'meses_rbt12',
+                   'compras', 'compras_st', 'servicos_tomados', 'ativo_e_consumo', 'devolucoes_de_venda', 'outras_entradas',
+                   'salarios', 'ferias', 'rescisoes', 'decimo_terceiro', 'pro_labore_valor', 'base_inss', 'base_fgts',
+                   'fgts', 'inss_empresa', 'inss_rat', 'inss_terceiros']
+VALORES_V2 = [c for c in CONTRATO_MENSAL[CONTRATO_MENSAL.index('receita_bruta'):] if c != 'meses_rbt12']
 
 SEGREDO = 'SEGREDO-DE-TESTE'
 SENHA = 'SENHA-DE-TESTE'
@@ -273,7 +282,7 @@ def caso_pacote():
         return
     texto = saida.read_text(encoding='utf-8')
     p = json.loads(texto)
-    ok(p['versao'] == 1 and set(p) == {'versao', 'rodada', 'empresas', 'mensal', 'faltou'}, 'versão 1, só as cinco chaves do contrato')
+    ok(p['versao'] == 2 and set(p) == {'versao', 'rodada', 'empresas', 'mensal', 'faltou'}, 'versão 2, só as cinco chaves do contrato')
     r = p['rodada']
     ok(set(r) == {'id', 'inicio', 'fim', 'dados_ate', 'maquina', 'ponte'}, 'rodada com id, inicio, fim, dados_ate, maquina, ponte')
     ok(r['dados_ate'] == hoje().isoformat(), f"dados_ate é hoje — o banco do Domínio Web é ao vivo ({r['dados_ate']})")
@@ -296,10 +305,11 @@ def caso_pacote():
     ok(len(p['mensal']) == 12, f"12 linhas mensais = 4 empresas × 3 meses (vieram {len(p['mensal'])})")
     ok(sorted({l['competencia'] for l in p['mensal']}) == comps, f'as 3 competências até o mês de hoje: {", ".join(comps)}')
     ok(all(list(l) == CONTRATO_MENSAL for l in p['mensal']), 'cada linha mensal com os campos do contrato da fila, nessa ordem')
-    inteiros = ('funcionarios_ativos', 'admissoes', 'desligamentos', 'afastados', 'pro_labore', 'notas_saida', 'notas_entrada', 'lancamentos')
+    inteiros = ('funcionarios_ativos', 'admissoes', 'desligamentos', 'afastados', 'pro_labore', 'notas_saida', 'notas_entrada', 'lancamentos',
+                'meses_rbt12')
     ok(all(l[c] is None or type(l[c]) is int for l in p['mensal'] for c in inteiros), 'contagens: inteiro ou null')
-    ok(all(l[c] is None or type(l[c]) is float for l in p['mensal'] for c in ('valor_saidas', 'valor_entradas')),
-       'valores: número com casas (o Decimal do ODBC vira número) ou null')
+    ok(all(l[c] is None or type(l[c]) is float for l in p['mensal'] for c in ('valor_saidas', 'valor_entradas', *VALORES_V2)),
+       'valores (também o faturamento, as compras e a folha em reais): número com casas (o Decimal do ODBC vira número) ou null')
     ok(all(l['ultimo_lancamento'] is None or re.fullmatch(r'\d{4}-\d\d-\d\d', l['ultimo_lancamento']) for l in p['mensal']),
        'ultimo_lancamento: data AAAA-MM-DD ou null')
     ok(all(l['ultimo_lancamento'] is None or l['ultimo_lancamento'] <= r['dados_ate'] for l in p['mensal']),
@@ -326,13 +336,35 @@ def caso_pacote():
     ok(all(linhas[(101, c)]['funcionarios_ativos'] == 4 + m(c) % 3 and linhas[(101, c)]['admissoes'] == m(c) % 2
            and linhas[(101, c)]['pro_labore'] == 2 and linhas[(102, c)]['pro_labore'] == 1 for c in comps),
        'a folha: funcionários, admissões e pró-labore de cada empresa')
-    ok(p['faltou'] == [], 'faltou vazio (o Domínio de mentira tem os quatro blocos)')
+    ok(all(linhas[(101, c)]['receita_bruta'] == round(80000 + m(c), 2) and linhas[(101, c)]['receita_simples'] == round(92000 + m(c), 2)
+           and linhas[(101, c)]['receita_simples_propria'] == round(80000 + m(c), 2) and linhas[(101, c)]['receita_st'] == 30000.0
+           and linhas[(101, c)]['devolucoes'] == 500.0 and linhas[(101, c)]['rbt12'] == 1020000.0 and linhas[(101, c)]['meses_rbt12'] == 12
+           for c in comps),
+       'o faturamento da 101: a receita bruta, a do Simples com a filial, a própria, a com ST, a devolução e o RBT12 de 12 meses')
+    ok(all(linhas[(104, c)]['receita_bruta'] == 18000.0 and linhas[(104, c)]['receita_servicos'] == 18000.0
+           and all(linhas[(104, c)][k] is None for k in ('receita_simples', 'receita_st', 'rbt12', 'meses_rbt12', 'receita_anexo_3'))
+           for c in comps),
+       'a 104, do Presumido: a receita bruta e a de serviços; o que é da apuração do Simples fica null')
+    ok(all(linhas[(102, c)]['receita_bruta'] is None and linhas[(102, c)]['compras'] is None for c in sem_nota)
+       and all(linhas[(102, c)]['receita_monofasica'] == 7300.4 and linhas[(102, c)]['meses_rbt12'] == 7 and linhas[(102, c)]['compras'] == 2100.0
+               for c in com_nota),
+       'a 102 no mês sem nota: o faturamento e as compras null (quem põe o 0 é o sistema); nos outros, o monofásico e o RBT12 de 7 meses')
+    ok(all(linhas[(101, c)]['compras'] == round(45000 + m(c), 2) and linhas[(101, c)]['compras_st'] == 15000.0
+           and linhas[(101, c)]['outras_entradas'] == 4003.1 and linhas[(104, c)]['servicos_tomados'] == 950.25 for c in comps),
+       'as compras: a da 101 com a parte com ST e as outras entradas; os serviços tomados da 104')
+    ok(all(linhas[(101, c)]['salarios'] == round(14800 + m(c), 2) and linhas[(101, c)]['pro_labore_valor'] == 6000.0
+           and linhas[(101, c)]['fgts'] == 1128.0 and linhas[(104, c)]['inss_terceiros'] == 255.2
+           and linhas[(102, c)]['pro_labore_valor'] == 1518.0 and linhas[(102, c)]['fgts'] is None for c in comps),
+       'a folha em reais: os salários, o pró-labore e as guias; sem a guia do FGTS (a 102), null')
+    ok(p['faltou'] == [], 'faltou vazio (o Domínio de mentira tem os sete blocos)')
     ok('4 empresa(s)' in out and '12 linha(s)' in out, 'mostra o resumo na tela')
     ok(pendentes(pasta) == [], '--sem-enviar não deixa nada em pendentes')
 
     titulo('2. campo a mais vindo da fonte não sai no pacote')
-    ok('nome_funcionario' not in texto and 'FULANO' not in texto and 'salario' not in texto and '1234.56' not in texto,
-       'o nome e o salário de funcionário que a folha de mentira devolve não estão no pacote')
+    ok('nome_funcionario' not in texto and 'FULANO' not in texto and 'salario_base' not in texto and '1234.56' not in texto,
+       'o nome e o salário de funcionário que a folha e a folha em reais de mentira devolvem não estão no pacote')
+    ok('maior_cliente' not in texto and 'COMPRADOR' not in texto and 'fornecedor' not in texto and 'FORNECEDOR' not in texto,
+       'o cliente e o fornecedor que o faturamento e as compras de mentira devolvem também não')
     from ponte.fonte_falsa import FonteFalsa
     from ponte import pacote
 
@@ -386,8 +418,9 @@ class ConexaoFalsa:
 
 
 def consultas(pasta, **sql):
+    from ponte.fonte import BLOCOS
     pasta.mkdir(parents=True, exist_ok=True)
-    for bloco in ('empresas', 'folha', 'fiscal', 'contabil'):
+    for bloco in ('empresas',) + BLOCOS:
         (pasta / f'{bloco}.sql').write_text(sql.get(bloco, '-- A CONFERIR: falta a documentação da Domínio\n'), encoding='utf-8')
     return pasta
 
@@ -412,7 +445,10 @@ def caso_a_conferir(sis):
     reg = Anotador()
     pc = pacote.montar(fonte, 2, reg, dados_ate=ate)
     fonte.fechar()
-    ok(pc['faltou'] == [{'bloco': 'fiscal', 'motivo': 'consulta a conferir'}], 'o fiscal "A CONFERIR" vai pro faltou')
+    ok(pc['faltou'] == [{'bloco': b, 'motivo': 'consulta a conferir'} for b in ('fiscal', 'faturamento', 'compras', 'folha_valores')],
+       'o fiscal "A CONFERIR" vai pro faltou (e os três blocos da versão 2, que este caso deixa "A CONFERIR")')
+    ok(all(l['receita_bruta'] is None and l['compras'] is None and l['salarios'] is None for l in pc['mensal']),
+       'e os campos dos blocos a conferir saem null')
     ok(all(l['notas_saida'] is None and l['valor_entradas'] is None for l in pc['mensal']), 'e os campos dele saem null')
     ok(not any(b == 'fiscal' for b, _ in con.executados), 'a consulta a conferir não roda')
     ok(all(l['funcionarios_ativos'] == 3 for l in pc['mensal'] if l['codigo'] == 1) and
@@ -512,7 +548,7 @@ def caso_envio(sis):
     ok(cab.get('apikey') == CHAVE_PUBLICA and cab.get('authorization') == f'Bearer {CHAVE_PUBLICA}',
        'apikey e Authorization: Bearer = a chave pública')
     ok(cab.get('content-type', '').startswith('application/json'), 'Content-Type: application/json')
-    ok(sis.recebidos[-1]['corpo']['versao'] == 1 and len(sis.recebidos[-1]['corpo']['empresas']) == 4, 'o corpo é o pacote')
+    ok(sis.recebidos[-1]['corpo']['versao'] == 2 and len(sis.recebidos[-1]['corpo']['empresas']) == 4, 'o corpo é o pacote')
 
     titulo('4. (continuação)')
     sis.zerar(401)

@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contábil — Controle das contabilidades — Macedo & Reis</title>
+  <link rel="icon" href="assets/favicon.ico">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/auth-guard.js"></script>
+</head>
+<body>
+  <!-- Controle das contabilidades (04/11/2026, pedido do Samuel, com a planilha de controle da Adaini): até quando a
+       contabilidade de cada empresa está feita, mês a mês, e o que falta pra fechar. Contínuo, sem tarefa mensal: cada mês
+       é feito (com o dia em que foi feito), em andamento, sem movimento ou a fazer; "feita até aqui" fecha de uma vez os
+       meses abertos até o mês clicado, com o Desfazer. As regras são de assets/js/contabil-controle.js; os números do
+       Domínio (dominio_mensal) e do PGDAS (receita_pgdas) entram como dica e na ficha da empresa. Tudo o que vem do banco
+       entra escapado. ?empresa=<cliente_id> abre a ficha; ?ano=AAAA abre no ano. -->
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-logo"><img src="assets/logo-mr.png" alt="Macedo & Reis" width="32" height="32" style="display:block;object-fit:contain;"></div>
+        <div class="topbar-name">Macedo <span>&</span> Reis</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="user-chip"><div class="user-avatar" id="userAvatar">—</div><span id="userName">Carregando…</span></div>
+        <button class="btn btn-ghost btn-sm" id="btnLogout">Sair</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="index.html">Painel central</a>
+          <span class="breadcrumb-sep">/</span>
+          <a href="contabil.html">Contábil</a>
+          <span class="breadcrumb-sep">/</span>
+          <span>Controle das contabilidades</span>
+        </div>
+        <h1>Controle das contabilidades</h1>
+        <p>Até quando a contabilidade de cada empresa está feita e o que falta pra fechar. Clique num mês pra marcar: <strong>feita até aqui</strong> fecha de uma vez todos os meses abertos até ele.</p>
+      </div>
+
+      <div class="fa-focus" id="focos" role="group" aria-label="Filtrar as empresas"></div>
+      <p class="cc-progresso" id="progresso" aria-live="polite"></p>
+
+      <section class="cc-fora" id="fora" hidden aria-labelledby="foraTit">
+        <button class="cc-fora-cab" id="foraAbrir" aria-expanded="false" aria-controls="foraLista"><span id="foraTit"></span><span class="cc-fora-seta" aria-hidden="true">▸</span></button>
+        <div id="foraLista" hidden></div>
+      </section>
+
+      <div class="cc-barra">
+        <input type="search" id="busca" class="input input-search" placeholder="Buscar empresa ou código do Domínio…" aria-label="Buscar empresa">
+        <div class="cc-seg" id="anos" role="group" aria-label="Ano"></div>
+        <label class="cc-ordem"><span>Ordem</span>
+          <select id="ordem" class="input"><option value="nome">Empresa, de A a Z</option><option value="faltam">Mais meses a fazer primeiro</option><option value="feita">Feita há mais tempo primeiro</option></select>
+        </label>
+      </div>
+      <div class="cc-legenda" aria-hidden="true">
+        <span><i class="cc-amostra is-feita">31/01</i>Feita (o dia em que foi feita)</span>
+        <span><i class="cc-amostra is-andamento">24/07</i>Em andamento</span>
+        <span><i class="cc-amostra is-sem_movimento">s/ mov</i>Sem movimento</span>
+        <span><i class="cc-amostra is-afazer"></i>A fazer</span>
+        <span><i class="cc-amostra is-fora"></i>Fora do controle</span>
+        <span><i class="cc-amostra is-afazer"><b class="cc-dica"></b></i>Dica do Domínio</span>
+        <span><i class="cc-amostra is-afazer"><b class="cc-pend"></b></i>Pendência no mês</span>
+      </div>
+
+      <div id="erroGeral" class="cc-erro" role="alert"></div>
+      <div class="cc-grade-wrap" id="gradeWrap"><div class="cc-carregando">Carregando as contabilidades…</div></div>
+      <div id="vazio" class="empty-state" hidden>Nenhuma empresa neste filtro.</div>
+    </main>
+  </div>
+
+  <!-- O MÊS (popover junto da célula) -->
+  <div class="cc-pop" id="pop" role="dialog" aria-modal="false" aria-labelledby="popTit" hidden>
+    <div class="cc-pop-cab"><div><h3 id="popTit"></h3><div class="cc-pop-emp" id="popEmp"></div></div><button class="cc-pop-x" id="popX" aria-label="Fechar">&times;</button></div>
+    <div id="popCorpo"></div>
+  </div>
+
+  <!-- AVISO COM O DESFAZER -->
+  <div class="cc-toast" id="toast" role="status" aria-live="polite" hidden><span id="toastTxt"></span><button class="btn btn-ghost btn-sm" id="toastDesfazer">Desfazer</button></div>
+
+  <!-- A FICHA DA EMPRESA -->
+  <div class="fa-modal-overlay" id="ovEmp">
+    <div class="fa-modal" role="dialog" aria-modal="true" aria-labelledby="eTitulo" style="max-width:900px;">
+      <div class="fa-modal-head"><div><h3 id="eTitulo">Empresa</h3><div class="cc-e-sub" id="eSub"></div></div><button class="fa-modal-close" id="eClose" aria-label="Fechar">&times;</button></div>
+      <div class="fa-modal-body">
+        <div id="eResumo" class="cc-e-resumo"></div>
+        <div id="eAvisos"></div>
+
+        <section aria-labelledby="pendTit">
+          <h4 class="cc-h4" id="pendTit">O que falta pra fechar</h4>
+          <ul class="cc-pends" id="ePend"></ul>
+          <form class="cc-pend-form" id="pendForm">
+            <label class="fa-field cc-pf-texto"><span>Pendência nova</span><textarea id="pTexto" class="input" rows="2" maxlength="1000" placeholder="Ex.: extratos do Sicoob de setembro, pedidos pelo WhatsApp"></textarea></label>
+            <div class="cc-pf-linha">
+              <label class="fa-field"><span>Esperando</span><select id="pAguardando" class="input"></select></label>
+              <label class="fa-field"><span>Desde</span><input type="date" id="pDesde" class="input"></label>
+              <label class="fa-field"><span>Mês (opcional)</span><input type="month" id="pMes" class="input"></label>
+              <button type="submit" class="btn btn-primary btn-sm" id="pAdd">Adicionar</button>
+            </div>
+            <p class="cc-erro" id="pErro" role="alert"></p>
+          </form>
+          <details class="cc-resolvidas" id="eResolvidasBox" hidden><summary id="eResolvidasTit"></summary><ul class="cc-pends" id="eResolvidas"></ul></details>
+        </section>
+
+        <section aria-labelledby="obsTit">
+          <h4 class="cc-h4" id="obsTit">Observação</h4>
+          <textarea id="eObs" class="input" rows="3" maxlength="4000" placeholder="O que vale lembrar desta contabilidade. Grava sozinho."></textarea>
+          <p class="cc-dica-txt" id="eObsStatus" aria-live="polite"></p>
+        </section>
+
+        <section aria-labelledby="mesTit">
+          <h4 class="cc-h4" id="mesTit">Mês a mês</h4>
+          <div class="cc-mm-wrap"><table class="cc-mm" id="eMeses"></table></div>
+          <p class="cc-dica-txt">Os números do Domínio são os que a ponte do PC do escritório lê todo dia: os lançamentos contábeis, as notas (o valor contábil, que não é o faturamento), os funcionários ativos no fim do mês e os sócios com pró-labore. O faturamento é o da declaração do PGDAS que a Receita mostra. Traço: o sistema não tem o número.</p>
+        </section>
+
+        <section aria-labelledby="tarTit" id="eTarefasBox" hidden>
+          <h4 class="cc-h4" id="tarTit">Tarefas abertas do Contábil</h4>
+          <ul class="cc-tarefas" id="eTarefas"></ul>
+        </section>
+
+        <section class="cc-controle" aria-labelledby="ctlTit">
+          <h4 class="cc-h4" id="ctlTit">O controle desta empresa</h4>
+          <div class="cc-ctl-linha">
+            <label class="fa-field"><span>Começa em</span><input type="month" id="eInicio" class="input"></label>
+            <label class="fa-field"><span>Termina em (saída ou baixa)</span><input type="month" id="eFim" class="input"></label>
+            <label class="fa-field"><span>Quem cuida</span><select id="eResp" class="input"></select></label>
+          </div>
+          <label class="cc-check"><input type="checkbox" id="eFaz"> O escritório faz a contabilidade desta empresa</label>
+          <label class="fa-field" id="eMotivoBox" hidden><span>Por que não fazemos</span><input type="text" id="eMotivo" class="input" maxlength="500" placeholder="Ex.: a contabilidade é centralizada na matriz"></label>
+          <div class="cc-ctl-acoes"><button class="btn btn-primary btn-sm" id="eSalvarCtl">Salvar o controle</button><span class="cc-dica-txt" id="eCtlStatus" aria-live="polite"></span></div>
+          <p class="cc-erro" id="eCtlErro" role="alert"></p>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <script src="assets/js/tour.js"></script>
+  <script type="module">
+    import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { hojeLocal } from './assets/js/utils.js';
+    import { EQUIPE, nomePorEmail } from './assets/js/equipe.js';
+    import { assistenteDaTela } from './assets/js/assistente-escritorio.js';
+    import { SITUACOES, AGUARDANDO, NOMES_MES, mesValido, somaMes, mesesEntre, rotuloMes, mesPorExtenso, dataBR, ultimoFechavel, mapaDosMeses,
+      estadoDoMes, resumoDaEmpresa, textoDasFaixas, textoDeMeses, mesesAteAqui, linhasParaMarcar, desfazerDe, dominioPorMes, textoDoDominio,
+      dicaDoDominio, avisosDaEmpresa, limparPendencia, rotuloAguardando, textoDaPendencia, ordenarPendencias, nomeDaEmpresa, semAcento,
+      FOCOS, focosDaEmpresa, anosDoControle, inicioSugerido, feitoNoMes, dinheiro, mesDoDia } from './assets/js/contabil-controle.js';
+
+    const $ = id => document.getElementById(id);
+    const esc = t => String(t == null ? '' : t).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    const HOJE = hojeLocal();
+    const MES_HOJE = mesDoDia(HOJE);
+    const ULTIMO = ultimoFechavel(HOJE);
+    const REGIME_CURTO = { 'Simples Nacional': 'Simples', 'Lucro Presumido': 'Presumido', 'Lucro Real': 'Real', 'MEI': 'MEI', 'Imune': 'Imune', 'Isento': 'Isento' };
+    const quem = e => (e === 'planilha' ? 'da planilha' : nomePorEmail(e) || (e ? String(e).split('@')[0] : ''));
+    const inteiro = v => Number(v).toLocaleString('pt-BR');
+
+    // o estado da tela
+    const st = { empresas: new Map(), meses: new Map(), pend: new Map(), clientes: new Map(), carteira: new Map(), domEmp: new Map(), dominio: new Map(),
+      ano: +HOJE.slice(0, 4), foco: 'todas', busca: '', ordem: 'nome', aberta: null, pop: null, desfazer: null };
+    let EU = null;
+    try { const a = +localStorage.getItem('mr_contabil_ano'); if (a >= 2000 && a <= +HOJE.slice(0, 4)) st.ano = a; } catch (e) {}
+    const pAno = +new URLSearchParams(location.search).get('ano');
+    if (pAno >= 2000 && pAno <= +HOJE.slice(0, 4)) st.ano = pAno;
+
+    $('btnLogout').addEventListener('click', signOut);
+    $('pAguardando').innerHTML = AGUARDANDO.map(([v, r]) => '<option value="' + esc(v) + '">' + esc(r) + '</option>').join('');
+    $('eResp').innerHTML = EQUIPE.map(n => '<option value="' + esc(n) + '">' + esc(n) + '</option>').join('');
+
+    (async () => {
+      const user = await getCurrentUser();
+      if (user) {
+        EU = String(user.email || '').toLowerCase();
+        const n = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário';
+        $('userName').textContent = n; $('userAvatar').textContent = n.charAt(0).toUpperCase();
+      }
+      try { await carregar(); }
+      catch (e) { $('gradeWrap').innerHTML = ''; $('erroGeral').textContent = 'Não consegui carregar o controle: ' + (e && e.message ? e.message : e); return; }
+      desenhar();
+      const emp = new URLSearchParams(location.search).get('empresa');
+      const comFicha = !!(emp && st.empresas.has(emp));
+      if (comFicha) abrirEmpresa(emp);
+      iniciarTour(comFicha);
+    })();
+
+    // ---------- o assistente do escritório: com a ficha aberta, "esta empresa" é a da ficha ----------
+    // (sem o recado a cada ficha aberta: a Adaini abre muitas em seguida)
+    const assistente = assistenteDaTela({
+      exemplos: c => (c ? ['O que falta pra fechar esta empresa?', 'Como estão os lançamentos e as notas dela no Domínio?'] : null),
+      seguintes: c => (c ? ['O que falta pra fechar esta empresa?'] : []),
+      recadoContexto: () => null
+    });
+
+    // ---------- o tour (04/11/2026, pedido do Samuel pra explicar a tela à Adaini) ----------
+    // O tour da casa (assets/js/tour.js): começa sozinho na primeira visita de cada pessoa, o ? do canto revê e ?tour=1
+    // força. Ele mesmo abre as opções de um mês e a ficha de uma empresa pra mostrar, sem gravar nada, e fecha tudo no fim.
+    // Na tela aberta pelo link de uma ficha (?empresa=), não começa sozinho por cima dela.
+    const tour = { cel: null, emp: null };
+    function celulaDoTour() {
+      if (tour.cel && document.body.contains(tour.cel)) return tour.cel;
+      // um mês a fazer de quem tem mais de um mês aberto até ele (o "feita até aqui" aparece), senão qualquer mês
+      const cs = [...$('gradeWrap').querySelectorAll('button.cc-c.is-afazer:not([disabled])')];
+      tour.cel = cs.find(b => mesesAteAqui(st.empresas.get(b.dataset.id), mesesDe(b.dataset.id), b.dataset.c, 'feita').length > 1)
+        || cs[0] || $('gradeWrap').querySelector('button.cc-c:not([disabled])');
+      return tour.cel;
+    }
+    function empresaDoTour() {
+      const ids = [...$('gradeWrap').querySelectorAll('[data-emp]')].map(b => b.dataset.emp);
+      if (tour.emp && ids.includes(tour.emp)) return tour.emp;
+      // de preferência uma com pendência aberta, pra ficha mostrar o que falta pra fechar
+      tour.emp = ids.find(id => pendAbertas(id).length && st.empresas.get(id).faz !== false) || ids[0] || null;
+      return tour.emp;
+    }
+    // a tela de cada passo: nada aberto, as opções do mês ou a ficha
+    function telaDoTour(qual) {
+      if (qual !== 'mes') fecharPop(false);
+      if (qual !== 'ficha' && st.aberta) fecharEmpresa();
+      if (qual === 'mes') { const b = celulaDoTour(); if (b && $('pop').hidden) abrirMes(b.dataset.id, b.dataset.c, b); }
+      if (qual === 'ficha') { const id = empresaDoTour(); if (id && st.aberta !== id) abrirEmpresa(id); }
+      // o foco que a tela pôs num botão sai: no meio do tour, nenhuma tecla aperta nada na tela
+      const a = document.activeElement;
+      if (a && a !== document.body && typeof a.blur === 'function') a.blur();
+    }
+    const naFicha = sel => () => (st.aberta ? document.querySelector(sel) : null);
+    const PASSOS_TOUR = [
+      { el: '#focos', antes: () => telaDoTour(), titulo: 'As empresas, por situação',
+        texto: 'Os cartões separam o controle: em dia, com o ano passado aberto, com pendência, saindo e as que não fazemos. Clique num cartão pra ver só essas; <b>Todas</b> volta pra lista inteira. Logo embaixo, quantos meses foram feitos neste mês.' },
+      { el: () => ($('fora').hidden ? null : $('fora')), antes: () => telaDoTour(), titulo: 'Da carteira, fora do controle',
+        texto: 'As empresas da carteira que ainda não estão aqui. Abra a lista: <b>Incluir</b> põe a empresa no controle a partir do mês da entrada; <b>Não fazemos</b> guarda o motivo e tira a empresa da lista.' },
+      { el: '.cc-barra', antes: () => telaDoTour(), titulo: 'Busca, ano e ordem',
+        texto: 'Busque pelo nome ou pelo código do Domínio. Os anos são as abas da planilha. A ordem põe primeiro quem tem mais meses a fazer, ou quem foi feita há mais tempo.' },
+      { el: '.cc-legenda', antes: () => telaDoTour(), titulo: 'As cores dos meses',
+        texto: 'Verde é feita, com o dia em que foi feita; tracejado, em andamento; amarelo, sem movimento; vazio, a fazer; listrado, fora do controle. O pontinho no alto do mês é uma dica do Domínio; o vermelho, embaixo, uma pendência daquele mês.' },
+      { el: () => $('gradeWrap').querySelector('.cc-emp'), antes: () => telaDoTour(), titulo: 'Cada linha é uma empresa',
+        texto: 'Embaixo do nome, o regime e o código do Domínio. As etiquetas avisam pendência, saída da carteira e empresa inativa.' },
+      { el: () => celulaDoTour(), antes: () => telaDoTour(), titulo: 'Clique num mês pra marcar',
+        texto: 'Cada quadradinho é um mês da contabilidade daquela empresa. O clique abre as opções do mês.' },
+      { el: () => ($('pop').hidden ? null : $('pop')), se: () => !!celulaDoTour(), antes: () => telaDoTour('mes'), titulo: 'As opções do mês',
+        texto: '<b>Feita até aqui</b> fecha de uma vez todos os meses abertos até este, com o dia de hoje (se foi outro dia, troque antes). Tem também só este mês, em andamento, sem movimento e voltar pra a fazer. Marcou errado? O aviso que aparece embaixo tem o <b>Desfazer</b>.' },
+      { el: () => $('gradeWrap').querySelector('td.cc-falta'), antes: () => telaDoTour(), titulo: 'Feita até e a fazer',
+        texto: '<b>Feita até</b> é o último mês fechado em sequência desde o início do controle. <b>A fazer</b> conta, em faixas, os meses abertos até o mês passado, que é o último que dá pra fechar (sublinhado no cabeçalho).' },
+      { el: naFicha('#eResumo'), se: () => !!empresaDoTour(), antes: () => telaDoTour('ficha'), titulo: 'A ficha da empresa',
+        texto: 'Clicando no nome, abre a ficha. No alto, até quando está feita, o que falta e os avisos: a empresa que saiu da carteira vem com o botão pra encerrar o controle no mês da saída.' },
+      { el: naFicha('section[aria-labelledby="pendTit"]'), se: () => !!empresaDoTour(), antes: () => telaDoTour('ficha'), titulo: 'O que falta pra fechar',
+        texto: 'Cada pendência diz de quem se espera (o cliente, o Diego, o Samuel ou o escritório), desde quando e de qual mês. Resolveu? Marque a caixa. A nova entra pelo formulário logo abaixo.' },
+      { el: naFicha('section[aria-labelledby="mesTit"]'), se: () => !!empresaDoTour(), antes: () => telaDoTour('ficha'), titulo: 'O Domínio e o PGDAS, mês a mês',
+        texto: 'Os lançamentos, as notas, os funcionários e o pró-labore que a ponte lê do Domínio, e o faturamento do PGDAS. Lançamento no Domínio não quer dizer contabilidade feita: a integração das notas e da folha também lança.' },
+      { el: naFicha('section.cc-controle'), se: () => !!empresaDoTour(), antes: () => telaDoTour('ficha'), titulo: 'O controle desta empresa',
+        texto: 'Quando começa, quando termina (saída ou baixa) e quem cuida. Se o escritório não faz a contabilidade, desmarque a caixa e diga o motivo. A observação, mais acima, grava sozinha.' },
+      { el: '.as-lancador', antes: () => telaDoTour(), titulo: 'Pergunte ao assistente',
+        texto: 'Ele lê o controle: “quais empresas têm o ano passado aberto?”, “quais pendências esperam o cliente?”. Com a ficha aberta, “esta empresa” é a da ficha.' },
+      { el: '.mrt-help', antes: () => telaDoTour(), titulo: 'Pra ver de novo',
+        texto: 'Este tour fica aqui: clique no <b>?</b> e em <b>Rever o tour desta página</b>.' }
+    ];
+    async function iniciarTour(comFicha) {
+      if (!window.MRTour) return;
+      const forca = new URLSearchParams(location.search).has('tour');
+      if (comFicha && !forca) return;
+      // o balão do assistente nasce um pouco depois da tela: espera até 3 s, pro passo dele entrar na conta dos passos
+      for (let t = 0; t < 15 && !document.querySelector('.as-lancador'); t++) await new Promise(r => setTimeout(r, 200));
+      MRTour.iniciar(PASSOS_TOUR, 'contabil_controle_v1', forca, EU || '', { aoTerminar: () => telaDoTour() });
+    }
+
+    // ---------- leitura ----------
+    async function lerTudo(tabela, cols, filtro = q => q) {
+      const out = [];
+      for (let de = 0; de < 50000; de += 1000) {
+        const { data, error } = await filtro(supabase.from(tabela).select(cols)).range(de, de + 999);
+        if (error) throw error;
+        out.push(...(data || []));
+        if (!data || data.length < 1000) break;
+      }
+      return out;
+    }
+    async function emPartes(ids, n, ler) {
+      const out = [];
+      for (let i = 0; i < ids.length; i += n) out.push(...await ler(ids.slice(i, i + n)));
+      return out;
+    }
+    async function carregar() {
+      const [emps, meses, pends, cart, domEmp] = await Promise.all([
+        lerTudo('contabil_empresas', 'cliente_id, faz, motivo, inicio, fim, responsavel, observacao, criado_por, criado_em, atualizado_por, atualizado_em'),
+        lerTudo('contabil_meses', 'cliente_id, competencia, situacao, feita_em, por, em'),
+        lerTudo('contabil_pendencias', 'id, cliente_id, competencia, texto, aguardando, desde, resolvida_em, resolvida_por, criado_por, criado_em'),
+        lerTudo('carteira_info', 'cliente_id, entrada, saida'),
+        lerTudo('dominio_empresas', 'codigo, cliente_id, ativa'),
+      ]);
+      emps.forEach(e => st.empresas.set(e.cliente_id, e));
+      meses.forEach(l => { if (!st.meses.has(l.cliente_id)) st.meses.set(l.cliente_id, new Map()); st.meses.get(l.cliente_id).set(l.competencia, l); });
+      pends.forEach(p => { if (!st.pend.has(p.cliente_id)) st.pend.set(p.cliente_id, []); st.pend.get(p.cliente_id).push(p); });
+      cart.forEach(c => st.carteira.set(c.cliente_id, c));
+      domEmp.forEach(d => { if (!d.cliente_id) return; if (!st.domEmp.has(d.cliente_id)) st.domEmp.set(d.cliente_id, []); st.domEmp.get(d.cliente_id).push(d); });
+      // os clientes do controle e os de hoje da carteira (pra lista de quem está fora do controle)
+      const ids = new Set(st.empresas.keys());
+      for (const c of cart) if (c.entrada && (!c.saida || String(c.saida) > HOJE)) ids.add(c.cliente_id);
+      const clis = await emPartes([...ids], 100, parte => lerTudo('clientes', 'id, nome_principal, nome_fantasia, regime_tributario, status, tipo_pessoa', q => q.in('id', parte)));
+      clis.forEach(c => st.clientes.set(c.id, c));
+      // o Domínio mês a mês das empresas do controle
+      const doms = await emPartes([...st.empresas.keys()], 50, parte => lerTudo('dominio_mensal', 'codigo, cliente_id, competencia, lancamentos, ultimo_lancamento, notas_saida, valor_saidas, notas_entrada, valor_entradas, funcionarios_ativos, pro_labore', q => q.in('cliente_id', parte)));
+      const porCli = new Map();
+      doms.forEach(l => { if (!porCli.has(l.cliente_id)) porCli.set(l.cliente_id, []); porCli.get(l.cliente_id).push(l); });
+      porCli.forEach((ls, id) => st.dominio.set(id, dominioPorMes(ls)));
+    }
+
+    // ---------- contas da tela ----------
+    const mesesDe = id => st.meses.get(id) || new Map();
+    const pendAbertas = id => (st.pend.get(id) || []).filter(p => !p.resolvida_em);
+    const resumoDe = id => resumoDaEmpresa(st.empresas.get(id), mesesDe(id), HOJE);
+    const ctxDe = id => ({ cliente: st.clientes.get(id) || null, carteira: st.carteira.get(id) || null, dominio: st.domEmp.get(id) || [] });
+    const nomeDe = id => nomeDaEmpresa(st.clientes.get(id));
+    const codigosDe = id => (st.domEmp.get(id) || []).map(d => d.codigo).sort((a, b) => a - b);
+    function linhaDaEmpresa(id) {
+      const emp = st.empresas.get(id), r = resumoDe(id), pa = pendAbertas(id);
+      return { id, emp, r, pend: pa, focos: focosDaEmpresa(emp, r, pa.length, HOJE), nome: nomeDe(id), cli: st.clientes.get(id) };
+    }
+    function todasAsLinhas() { return [...st.empresas.keys()].map(linhaDaEmpresa); }
+    function filtradas(linhas) {
+      const b = semAcento(st.busca.trim());
+      return linhas.filter(l => {
+        if (!l.focos.has(st.foco)) return false;
+        if (!b) return true;
+        const alvo = semAcento([l.nome, l.cli && l.cli.nome_principal, l.cli && l.cli.nome_fantasia, codigosDe(l.id).join(' ')].join(' '));
+        return alvo.includes(b);
+      }).sort((a, b2) => {
+        if (st.ordem === 'faltam' && a.r.faltam !== b2.r.faltam) return b2.r.faltam - a.r.faltam;
+        if (st.ordem === 'feita') { const x = a.r.ultimaFeita || '0000', y = b2.r.ultimaFeita || '0000'; if (x !== y) return x < y ? -1 : 1; }
+        return semAcento(a.nome).localeCompare(semAcento(b2.nome));
+      });
+    }
+
+    // ---------- desenho ----------
+    function desenhar() { desenharFocos(); desenharProgresso(); desenharFora(); desenharAnos(); desenharGrade(); }
+
+    function desenharFocos() {
+      const linhas = todasAsLinhas();
+      $('focos').innerHTML = FOCOS.map(([k, r]) => {
+        const n = linhas.filter(l => l.focos.has(k)).length;
+        return '<button class="fa-focus-card' + (k === st.foco ? ' is-active' : '') + (k === 'ano_passado' || k === 'saindo' ? ' fc-danger' : '') + '" data-foco="' + k + '" aria-pressed="' + (k === st.foco) + '"><span class="fc-num">' + n + '</span><span class="fc-lbl">' + esc(r) + '</span></button>';
+      }).join('');
+    }
+    $('focos').addEventListener('click', ev => { const b = ev.target.closest('[data-foco]'); if (!b) return; st.foco = b.dataset.foco; desenharFocos(); desenharGrade(); });
+
+    function desenharProgresso() {
+      const todas = []; st.meses.forEach(m => m.forEach(l => todas.push(l)));
+      const f = feitoNoMes(todas, HOJE);
+      $('progresso').textContent = f.meses ? 'Em ' + mesPorExtenso(MES_HOJE).toLowerCase().replace(/ de \d{4}$/, '') + ': ' + textoDeMeses(f.meses) + ' feitos em ' + f.empresas + (f.empresas === 1 ? ' empresa.' : ' empresas.') : 'Nenhum mês feito ainda em ' + mesPorExtenso(MES_HOJE).toLowerCase().replace(/ de \d{4}$/, '') + '.';
+    }
+
+    // as empresas de hoje da carteira (PJ, fora do MEI) que não estão no controle
+    function foraDoControle() {
+      const out = [];
+      st.carteira.forEach((c, id) => {
+        if (!c.entrada || (c.saida && String(c.saida) <= HOJE) || st.empresas.has(id)) return;
+        const cli = st.clientes.get(id);
+        if (!cli || cli.tipo_pessoa === 'PF' || cli.regime_tributario === 'MEI') return;
+        out.push({ id, cli, entrada: c.entrada });
+      });
+      return out.sort((a, b) => semAcento(nomeDaEmpresa(a.cli)).localeCompare(semAcento(nomeDaEmpresa(b.cli))));
+    }
+    function desenharFora() {
+      const fora = foraDoControle();
+      $('fora').hidden = !fora.length;
+      if (!fora.length) return;
+      $('foraTit').textContent = (fora.length === 1 ? '1 empresa da carteira não está' : fora.length + ' empresas da carteira não estão') + ' no controle';
+      $('foraLista').innerHTML = '<p class="cc-dica-txt">Clientes de hoje da carteira, fora do MEI. Inclua quem tem a contabilidade feita aqui; quem não tem, marque "Não fazemos" com o motivo.</p><ul class="cc-fora-lista">' + fora.map(f =>
+        '<li data-id="' + esc(f.id) + '"><div><strong>' + esc(nomeDaEmpresa(f.cli)) + '</strong><span class="cc-mut"> · ' + esc(REGIME_CURTO[f.cli.regime_tributario] || f.cli.regime_tributario || 'sem regime') + ', na carteira desde ' + esc(dataBR(f.entrada)) + '</span></div>'
+        + '<div class="cc-fora-acoes"><button class="btn btn-primary btn-sm" data-incluir="' + esc(f.id) + '">Incluir a partir de ' + esc(rotuloMes(inicioSugerido(f.entrada, HOJE))) + '</button><button class="btn btn-ghost btn-sm" data-naofaz="' + esc(f.id) + '">Não fazemos</button></div>'
+        + '<form class="cc-naofaz" data-form="' + esc(f.id) + '" hidden><input type="text" class="input" maxlength="500" placeholder="Por que não fazemos (ex.: centralizada na matriz)" aria-label="Por que não fazemos"><button class="btn btn-primary btn-sm" type="submit">Gravar</button></form></li>').join('') + '</ul>';
+    }
+    $('foraAbrir').addEventListener('click', () => { const ab = $('foraLista').hidden; $('foraLista').hidden = !ab; $('foraAbrir').setAttribute('aria-expanded', String(ab)); $('fora').classList.toggle('is-aberta', ab); });
+    $('foraLista').addEventListener('click', async ev => {
+      const inc = ev.target.closest('[data-incluir]'), nf = ev.target.closest('[data-naofaz]');
+      if (inc) {
+        const id = inc.dataset.incluir, c = st.carteira.get(id);
+        inc.disabled = true;
+        await incluir(id, { faz: true, inicio: inicioSugerido(c && c.entrada, HOJE) });
+      } else if (nf) {
+        const f = $('foraLista').querySelector('[data-form="' + CSS.escape(nf.dataset.naofaz) + '"]');
+        f.hidden = false; f.querySelector('input').focus();
+      }
+    });
+    $('foraLista').addEventListener('submit', async ev => {
+      ev.preventDefault();
+      const f = ev.target.closest('[data-form]'); if (!f) return;
+      const motivo = f.querySelector('input').value.trim();
+      if (!motivo) { f.querySelector('input').focus(); return; }
+      const id = f.dataset.form, c = st.carteira.get(id);
+      await incluir(id, { faz: false, motivo, inicio: inicioSugerido(c && c.entrada, HOJE) });
+    });
+    async function incluir(id, campos) {
+      const linha = { cliente_id: id, faz: campos.faz, motivo: campos.motivo || null, inicio: campos.inicio, fim: null, responsavel: 'Adaini', observacao: null };
+      const { error } = await supabase.from('contabil_empresas').insert(linha);
+      if (error) { $('erroGeral').textContent = 'Não consegui incluir: ' + error.message; return; }
+      $('erroGeral').textContent = '';
+      st.empresas.set(id, { ...linha, criado_por: EU, atualizado_por: EU });
+      mostrarAviso(nomeDe(id) + (campos.faz ? ' entrou no controle a partir de ' + rotuloMes(campos.inicio) + '.' : ' ficou como "não fazemos".'), null);
+      const ab = !$('foraLista').hidden;
+      desenhar();
+      if (ab && !$('fora').hidden) { $('foraLista').hidden = false; $('foraAbrir').setAttribute('aria-expanded', 'true'); $('fora').classList.add('is-aberta'); }
+    }
+
+    function desenharAnos() {
+      const anos = anosDoControle([...st.empresas.values()], HOJE);
+      if (!anos.includes(st.ano)) st.ano = anos[anos.length - 1];
+      $('anos').innerHTML = anos.map(a => '<button class="cc-seg-b' + (a === st.ano ? ' is-on' : '') + '" data-ano="' + a + '" aria-pressed="' + (a === st.ano) + '">' + a + '</button>').join('');
+    }
+    $('anos').addEventListener('click', ev => {
+      const b = ev.target.closest('[data-ano]'); if (!b) return;
+      st.ano = +b.dataset.ano;
+      try { localStorage.setItem('mr_contabil_ano', String(st.ano)); } catch (e) {}
+      desenharAnos(); desenharGrade();
+    });
+    $('busca').addEventListener('input', () => { st.busca = $('busca').value; desenharGrade(); });
+    $('ordem').addEventListener('change', () => { st.ordem = $('ordem').value; desenharGrade(); });
+
+    function celula(id, emp, c) {
+      const e = estadoDoMes(emp, mesesDe(id), c, HOJE);
+      const dom = (st.dominio.get(id) || new Map()).get(c);
+      const dica = emp.faz === false ? null : dicaDoDominio(e, dom, c, HOJE);
+      const temPend = pendAbertas(id).some(p => p.competencia === c);
+      const tipo = emp.faz === false ? 'fora' : e.tipo;
+      let txt = '', aria = mesPorExtenso(c) + ': ';
+      if (tipo === 'feita') { txt = dataBR(e.feita_em).slice(0, 5); aria += 'feita' + (e.feita_em ? ' em ' + dataBR(e.feita_em) : ''); }
+      else if (tipo === 'andamento') { txt = dataBR(e.feita_em).slice(0, 5) || '…'; aria += 'em andamento'; }
+      else if (tipo === 'sem_movimento') { txt = 's/ mov'; aria += 'sem movimento'; }
+      else if (tipo === 'afazer') aria += 'a fazer';
+      else if (tipo === 'futuro') aria += 'ainda não chegou';
+      else aria += emp.faz === false ? 'não fazemos' : e.porque === 'antes' ? 'antes do início do controle' : 'depois do fim do controle';
+      if (dica) aria += '. ' + dica.texto;
+      if (temPend) aria += '. Tem pendência neste mês';
+      const cls = 'cc-c is-' + tipo + (c === MES_HOJE && tipo === 'afazer' ? ' is-agora' : '');
+      const off = tipo === 'futuro' || emp.faz === false;
+      const dica_ = (tipo === 'feita' || tipo === 'andamento') && e.feita_em ? (tipo === 'feita' ? 'Feita em ' : 'Em andamento desde ') + dataBR(e.feita_em) + (e.por ? ', ' + quem(e.por) : '') : '';
+      const titulo = [dica_, dica ? dica.texto : ''].filter(Boolean).join('. ');
+      return '<td><button class="' + cls + '" data-c="' + c + '" data-id="' + esc(id) + '"' + (off ? ' disabled' : '') + ' aria-label="' + esc(aria) + '"' + (titulo ? ' title="' + esc(titulo) + '"' : '') + '>' + esc(txt)
+        + (dica ? '<b class="cc-dica' + (dica.tipo === 'sem_movimento' ? ' is-leve' : '') + '"></b>' : '') + (temPend ? '<b class="cc-pend"></b>' : '') + '</button></td>';
+    }
+    function colunaFalta(l) {
+      if (l.emp.faz === false) return '<span class="cc-mut">Não fazemos' + (l.emp.motivo ? ': ' + esc(l.emp.motivo) : '') + '</span>';
+      if (l.r.encerrada) return '<span class="cc-mut">Encerrada em ' + esc(rotuloMes(l.emp.fim)) + '</span>';
+      if (!l.r.faltam) return '<span class="cc-ok">Em dia até ' + esc(rotuloMes(l.r.alvo)) + '</span>';
+      return '<strong>' + esc(textoDeMeses(l.r.faltam)) + '</strong>' + (l.r.andamento.length ? ' <span class="cc-mut">(' + l.r.andamento.length + ' em andamento)</span>' : '') + '<small>' + esc(textoDasFaixas(l.r.abertos)) + '</small>';
+    }
+    function chipsDe(l) {
+      const ch = [];
+      if (l.pend.length) ch.push('<span class="cc-chip cc-chip-pend">' + (l.pend.length === 1 ? '1 pendência' : l.pend.length + ' pendências') + '</span>');
+      for (const a of avisosDaEmpresa(l.emp, ctxDe(l.id))) {
+        const curto = { saida: 'Saiu da carteira', carteira: 'Fora da carteira', dominio: 'Inativa no Domínio', cadastro: 'Inativa no cadastro', mei: 'MEI' }[a.tipo];
+        if (curto) ch.push('<span class="cc-chip" title="' + esc(a.texto) + '">' + esc(curto) + '</span>');
+      }
+      return ch.join('');
+    }
+    function desenharGrade() {
+      const linhas = filtradas(todasAsLinhas());
+      $('vazio').hidden = !!linhas.length;
+      if (!linhas.length) { $('gradeWrap').innerHTML = ''; return; }
+      const meses = mesesEntre(st.ano + '-01', st.ano + '-12');
+      const cab = '<thead><tr><th class="cc-th-emp" scope="col">Empresa</th>' + meses.map(c => '<th scope="col" class="cc-th-m' + (c === ULTIMO ? ' is-ultimo' : '') + '"' + (c === ULTIMO ? ' title="O último mês que dá pra fechar"' : '') + '>' + NOMES_MES[+c.slice(5, 7) - 1] + '</th>').join('')
+        + '<th scope="col" class="cc-th-ate">Feita até</th><th scope="col" class="cc-th-falta">A fazer</th></tr></thead>';
+      const corpo = linhas.map(l => {
+        const cli = l.cli, cods = codigosDe(l.id);
+        const sub = [REGIME_CURTO[cli && cli.regime_tributario] || (cli && cli.regime_tributario) || '', cods.length ? 'Domínio ' + cods.join(', ') : ''].filter(Boolean).join(', ');
+        return '<tr' + (l.emp.faz === false ? ' class="is-naofaz"' : '') + '><th scope="row" class="cc-emp"><button class="cc-emp-b" data-emp="' + esc(l.id) + '"><span class="cc-emp-nome">' + esc(l.nome) + '</span><span class="cc-emp-sub">' + esc(sub) + '</span></button><div class="cc-chips">' + chipsDe(l) + '</div></th>'
+          + meses.map(c => celula(l.id, l.emp, c)).join('')
+          + '<td class="cc-ate">' + (l.emp.faz === false ? '' : l.r.feitaAte ? esc(rotuloMes(l.r.feitaAte)) : '<span class="cc-mut" title="Nada fechado desde o início do controle (' + esc(rotuloMes(l.emp.inicio)) + ')">—</span>') + '</td>'
+          + '<td class="cc-falta">' + colunaFalta(l) + '</td></tr>';
+      }).join('');
+      $('gradeWrap').innerHTML = '<table class="cc-grade">' + cab + '<tbody>' + corpo + '</tbody></table>';
+    }
+    $('gradeWrap').addEventListener('click', ev => {
+      const e = ev.target.closest('[data-emp]'); if (e) { abrirEmpresa(e.dataset.emp); return; }
+      const c = ev.target.closest('button[data-c]'); if (c && !c.disabled) abrirMes(c.dataset.id, c.dataset.c, c);
+    });
+
+    // ---------- o mês ----------
+    function abrirMes(id, c, ancora) {
+      const emp = st.empresas.get(id); if (!emp) return;
+      st.pop = { id, c, ancora };
+      const e = estadoDoMes(emp, mesesDe(id), c, HOJE);
+      const dom = (st.dominio.get(id) || new Map()).get(c);
+      const dica = dicaDoDominio(e, dom, c, HOJE);
+      $('popTit').textContent = mesPorExtenso(c);
+      $('popEmp').textContent = nomeDe(id);
+      let h = '<p class="cc-pop-estado">';
+      if (e.tipo === 'feita') h += 'Feita' + (e.feita_em ? ' em ' + esc(dataBR(e.feita_em)) : '') + (e.por ? ', ' + esc(quem(e.por)) : '') + '.';
+      else if (e.tipo === 'andamento') h += 'Em andamento' + (e.feita_em ? ' desde ' + esc(dataBR(e.feita_em)) : '') + (e.por ? ', ' + esc(quem(e.por)) : '') + ': digitada, falta fechar.';
+      else if (e.tipo === 'sem_movimento') h += 'Sem movimento' + (e.por ? ' (' + esc(quem(e.por)) + ')' : '') + '.';
+      else if (e.tipo === 'fora') h += e.porque === 'antes' ? 'Antes do início do controle (' + esc(rotuloMes(emp.inicio)) + ').' : 'Depois do fim do controle (' + esc(rotuloMes(emp.fim)) + ').';
+      else h += c === MES_HOJE ? 'A fazer (o mês ainda está correndo).' : 'A fazer.';
+      h += '</p>';
+      const tDom = textoDoDominio(dom);
+      if (tDom) h += '<p class="cc-pop-dom">No Domínio: ' + esc(tDom) + (dom.ultimo_lancamento ? ' (o último lançamento em ' + esc(dataBR(dom.ultimo_lancamento)) + ')' : '') + '.</p>';
+      if (dica) h += '<p class="cc-pop-dica' + (dica.tipo === 'conferir' ? ' is-forte' : '') + '">' + esc(dica.texto) + '</p>';
+      const pm = pendAbertas(id).filter(p => p.competencia === c);
+      if (pm.length) h += '<ul class="cc-pop-pends">' + pm.map(p => '<li>' + esc(p.texto) + '</li>').join('') + '</ul>';
+      if (e.tipo === 'fora') {
+        h += '<div class="cc-pop-acoes"><button class="btn btn-ghost btn-sm" data-pa="ficha">Ajustar o início e o fim</button></div>';
+      } else {
+        const ateF = mesesAteAqui(emp, mesesDe(id), c, 'feita'), ateS = mesesAteAqui(emp, mesesDe(id), c, 'sem_movimento');
+        const so = e.tipo !== 'feita';
+        h += '<label class="cc-pop-dia"><span>Feita em</span><input type="date" id="popDia" class="input" value="' + esc(HOJE) + '" max="' + esc(HOJE) + '"></label><div class="cc-pop-acoes">';
+        if (ateF.length > 1) h += '<button class="btn btn-primary btn-sm" data-pa="feita-ate">Feita até aqui (' + esc(textoDeMeses(ateF.length)) + ')</button>';
+        if (so) h += '<button class="btn ' + (ateF.length > 1 ? 'btn-ghost' : 'btn-primary') + ' btn-sm" data-pa="feita">' + (ateF.length > 1 ? 'Só este mês' : 'Feita') + '</button>';
+        else h += '<button class="btn btn-ghost btn-sm" data-pa="feita">Trocar pro dia escolhido</button>';
+        if (e.tipo !== 'andamento') h += '<button class="btn btn-ghost btn-sm" data-pa="andamento">Em andamento</button>';
+        if (e.tipo !== 'sem_movimento') h += '<button class="btn btn-ghost btn-sm" data-pa="sem_movimento">Sem movimento</button>';
+        if (ateS.length > 1) h += '<button class="btn btn-ghost btn-sm" data-pa="sem-ate">Sem movimento até aqui (' + esc(textoDeMeses(ateS.length)) + ')</button>';
+        if (e.tipo === 'feita' || e.tipo === 'andamento' || e.tipo === 'sem_movimento') h += '<button class="btn btn-ghost btn-sm" data-pa="limpar">Voltar pra a fazer</button>';
+        h += '</div>';
+        if (ateF.length > 1) h += '<p class="cc-dica-txt">Feita até aqui marca ' + esc(textoDasFaixas(ateF)) + '.</p>';
+      }
+      h += '<p class="cc-erro" id="popErro" role="alert"></p>';
+      $('popCorpo').innerHTML = h;
+      const pop = $('pop');
+      pop.hidden = false;
+      posicionar(pop, ancora);
+      const primeiro = pop.querySelector('[data-pa]') || $('popX');
+      primeiro.focus();
+    }
+    function posicionar(pop, ancora) {
+      const r = ancora.getBoundingClientRect(), w = Math.min(380, window.innerWidth - 24);
+      pop.style.width = w + 'px';
+      const ph = pop.offsetHeight;
+      let left = r.left + window.scrollX + r.width / 2 - w / 2;
+      left = Math.max(window.scrollX + 12, Math.min(left, window.scrollX + window.innerWidth - w - 12));
+      let top = r.bottom + window.scrollY + 8;
+      if (r.bottom + ph + 16 > window.innerHeight && r.top - ph - 8 > 0) top = r.top + window.scrollY - ph - 8;
+      pop.style.left = left + 'px'; pop.style.top = top + 'px';
+    }
+    function fecharPop(voltarFoco = true) {
+      if ($('pop').hidden) return;
+      $('pop').hidden = true;
+      const p = st.pop;
+      st.pop = null;
+      if (!voltarFoco || !p) return;
+      // a grade pode ter sido desenhada de novo: o foco volta pra célula do mesmo mês
+      const a = document.body.contains(p.ancora) ? p.ancora : $('gradeWrap').querySelector('button[data-id="' + CSS.escape(p.id) + '"][data-c="' + CSS.escape(p.c) + '"]');
+      if (a) a.focus();
+    }
+    $('popX').addEventListener('click', () => fecharPop());
+    document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && !$('pop').hidden) { ev.stopPropagation(); fecharPop(); } }, true);
+    // o clique fora fecha as opções do mês (o clique no tour, não: quem abre e fecha no tour é o passo)
+    document.addEventListener('mousedown', ev => {
+      if (ev.target.closest && ev.target.closest('.mrt-box, .mrt-block')) return;
+      if (!$('pop').hidden && !$('pop').contains(ev.target) && !(st.pop && st.pop.ancora.contains(ev.target))) fecharPop(false);
+    });
+    window.addEventListener('resize', () => fecharPop(false));
+    $('popCorpo').addEventListener('click', async ev => {
+      const b = ev.target.closest('[data-pa]'); if (!b || !st.pop) return;
+      const { id, c } = st.pop, emp = st.empresas.get(id), acao = b.dataset.pa;
+      if (acao === 'ficha') { fecharPop(false); abrirEmpresa(id); return; }
+      const dia = ($('popDia') && $('popDia').value) || HOJE;
+      let meses, situacao;
+      if (acao === 'feita-ate') { meses = mesesAteAqui(emp, mesesDe(id), c, 'feita'); situacao = 'feita'; }
+      else if (acao === 'sem-ate') { meses = mesesAteAqui(emp, mesesDe(id), c, 'sem_movimento'); situacao = 'sem_movimento'; }
+      else if (acao === 'limpar') { meses = [c]; situacao = null; }
+      else { meses = [c]; situacao = acao; }
+      b.disabled = true;
+      const erro = await marcar(id, meses, situacao, dia);
+      if (erro) { b.disabled = false; $('popErro').textContent = erro; return; }
+      fecharPop();
+    });
+
+    // grava os meses (situacao null = volta pra a fazer) e guarda o desfazer
+    async function marcar(id, meses, situacao, dia) {
+      if (!meses.length) return 'Nada a marcar.';
+      const antes = new Map([...mesesDe(id)].filter(([c]) => meses.includes(c)));
+      let linhas = [];
+      if (situacao) {
+        try { linhas = linhasParaMarcar(id, meses, situacao, dia); } catch (e) { return e.message; }
+        const { error } = await supabase.from('contabil_meses').upsert(linhas, { onConflict: 'cliente_id,competencia' });
+        if (error) return 'Não consegui gravar: ' + error.message;
+      } else {
+        const { error } = await supabase.from('contabil_meses').delete().eq('cliente_id', id).in('competencia', meses);
+        if (error) return 'Não consegui gravar: ' + error.message;
+      }
+      if (!st.meses.has(id)) st.meses.set(id, new Map());
+      const m = st.meses.get(id), agora = new Date().toISOString();
+      if (situacao) linhas.forEach(l => m.set(l.competencia, { ...l, por: EU, em: agora })); else meses.forEach(c => m.delete(c));
+      st.desfazer = { id, meses, antes };
+      const rot = situacao === 'feita' ? 'feito' + (meses.length > 1 ? 's' : '') + ' em ' + dataBR(dia) : situacao === 'sem_movimento' ? 'sem movimento' : situacao === 'andamento' ? 'em andamento' : 'de volta pra a fazer';
+      mostrarAviso(nomeDe(id) + ': ' + (meses.length === 1 ? rotuloMes(meses[0]) : textoDeMeses(meses.length) + ' (' + textoDasFaixas(meses) + ')') + ' ' + rot + '.', 'desfazer');
+      redesenharEmpresa(id);
+      return null;
+    }
+    async function desfazer() {
+      const d = st.desfazer; if (!d) return;
+      st.desfazer = null;
+      $('toastDesfazer').disabled = true;
+      const { apagar, voltar } = desfazerDe(d.id, d.meses, d.antes);
+      if (apagar.length) { const { error } = await supabase.from('contabil_meses').delete().eq('cliente_id', d.id).in('competencia', apagar); if (error) { mostrarAviso('Não consegui desfazer: ' + error.message, null); return; } }
+      if (voltar.length) { const { error } = await supabase.from('contabil_meses').upsert(voltar, { onConflict: 'cliente_id,competencia' }); if (error) { mostrarAviso('Não consegui desfazer: ' + error.message, null); return; } }
+      const m = mesesDe(d.id);
+      apagar.forEach(c => m.delete(c));
+      voltar.forEach(l => m.set(l.competencia, d.antes.get(l.competencia)));
+      st.meses.set(d.id, m);
+      mostrarAviso('Desfeito: ' + nomeDe(d.id) + ' voltou como estava.', null);
+      redesenharEmpresa(d.id);
+    }
+    function redesenharEmpresa(id) {
+      desenharFocos(); desenharProgresso(); desenharGrade();
+      if (st.aberta === id) desenharFicha(id);
+    }
+    let timerAviso = null;
+    function mostrarAviso(txt, acao) {
+      $('toastTxt').textContent = txt;
+      $('toastDesfazer').hidden = acao !== 'desfazer';
+      $('toastDesfazer').disabled = false;
+      $('toast').hidden = false;
+      clearTimeout(timerAviso);
+      timerAviso = setTimeout(() => { $('toast').hidden = true; if (acao === 'desfazer') st.desfazer = null; }, acao === 'desfazer' ? 15000 : 6000);
+    }
+    $('toastDesfazer').addEventListener('click', desfazer);
+
+    // ---------- a ficha da empresa ----------
+    async function abrirEmpresa(id) {
+      if (!st.empresas.has(id)) return;
+      fecharPop(false);
+      st.aberta = id;
+      $('ovEmp').classList.add('is-open');
+      $('pErro').textContent = ''; $('pTexto').value = ''; $('pDesde').value = HOJE; $('pMes').value = ''; $('pAguardando').value = 'cliente';
+      $('eCtlErro').textContent = ''; $('eCtlStatus').textContent = ''; $('eObsStatus').textContent = '';
+      const emp = st.empresas.get(id);
+      $('eObs').value = emp.observacao || '';
+      $('eInicio').value = emp.inicio || ''; $('eFim').value = emp.fim || '';
+      $('eResp').value = EQUIPE.includes(emp.responsavel) ? emp.responsavel : 'Adaini';
+      $('eFaz').checked = emp.faz !== false; $('eMotivo').value = emp.motivo || ''; $('eMotivoBox').hidden = emp.faz !== false;
+      desenharFicha(id);
+      $('eClose').focus();
+      assistente.definirContexto({ id: 'cliente:' + id, tipo: 'cliente', clienteId: id, nome: nomeDe(id), rotulo: 'Sobre a empresa aberta', nota: 'Sobre ' });
+      // os extras, lidos na hora: o PGDAS e as tarefas abertas do Contábil
+      const [pg, ta] = await Promise.all([
+        supabase.from('receita_pgdas').select('competencia, receita_mes, das_pago, transmitida_em').eq('cliente_id', id),
+        supabase.from('tarefas').select('id, titulo, prazo, responsavel, status').eq('cliente_id', id).eq('setor', 'contabil').neq('status', 'concluida'),
+      ]);
+      if (st.aberta !== id) return;
+      st.pgdas = new Map(((pg && pg.data) || []).map(p => [p.competencia, p]));
+      st.tarefas = ((ta && ta.data) || []).sort((a, b) => String(a.prazo || '9').localeCompare(String(b.prazo || '9')));
+      desenharFicha(id);
+    }
+    function desenharFicha(id) {
+      const emp = st.empresas.get(id), cli = st.clientes.get(id), r = resumoDe(id);
+      $('eTitulo').textContent = nomeDe(id);
+      const cods = codigosDe(id);
+      $('eSub').innerHTML = esc([cli && cli.nome_principal !== nomeDe(id) ? cli.nome_principal : '', REGIME_CURTO[cli && cli.regime_tributario] || (cli && cli.regime_tributario) || '', cods.length ? 'código ' + cods.join(', ') + ' no Domínio' : 'sem código no Domínio'].filter(Boolean).join(', '))
+        + ' <a href="clientes/editar.html?id=' + encodeURIComponent(id) + '">Abrir a ficha da empresa</a>';
+      // o resumo
+      let res;
+      if (emp.faz === false) res = '<p><strong>Não fazemos a contabilidade desta empresa.</strong>' + (emp.motivo ? ' ' + esc(emp.motivo) : '') + '</p>';
+      else {
+        res = '<p>' + (r.feitaAte ? 'Feita até <strong>' + esc(rotuloMes(r.feitaAte)) + '</strong>.' : 'Nada fechado desde o início do controle (' + esc(rotuloMes(emp.inicio)) + ').');
+        if (r.encerrada) res += ' Controle encerrado em ' + esc(rotuloMes(emp.fim)) + '.';
+        else if (!r.faltam) res += ' Em dia até ' + esc(rotuloMes(r.alvo)) + '.';
+        else res += ' A fazer: <strong>' + esc(textoDeMeses(r.faltam)) + '</strong> (' + esc(textoDasFaixas(r.abertos, 4)) + ')' + (r.andamento.length ? ', ' + r.andamento.length + ' em andamento' : '') + '.';
+        if (r.ultimoFechado && r.ultimoFechado !== r.feitaAte) res += ' O último mês fechado é ' + esc(rotuloMes(r.ultimoFechado)) + '.';
+        if (r.ultimaFeita) res += ' A última vez que alguma coisa foi feita: ' + esc(dataBR(r.ultimaFeita)) + '.';
+        res += '</p>';
+      }
+      $('eResumo').innerHTML = res;
+      const av = avisosDaEmpresa(emp, ctxDe(id));
+      $('eAvisos').innerHTML = av.length ? '<ul class="cc-avisos">' + av.map(a => '<li>' + esc(a.texto) + (a.acao ? ' <button class="btn btn-ghost btn-sm" data-encerrar="' + esc(a.acao.fim) + '">' + esc(a.acao.rotulo) + '</button>' : '') + '</li>').join('') + '</ul>' : '';
+      // as pendências
+      const { abertas, resolvidas } = ordenarPendencias(st.pend.get(id) || []);
+      $('ePend').innerHTML = abertas.length ? abertas.map(p => itemPend(p, false)).join('') : '<li class="cc-pend-vazia">Nada pendente: tudo o que falta é fazer os meses.</li>';
+      $('eResolvidasBox').hidden = !resolvidas.length;
+      $('eResolvidasTit').textContent = resolvidas.length === 1 ? '1 resolvida' : resolvidas.length + ' resolvidas';
+      $('eResolvidas').innerHTML = resolvidas.slice(0, 30).map(p => itemPend(p, true)).join('');
+      // mês a mês, no ano da grade
+      const dom = st.dominio.get(id) || new Map(), mapa = mesesDe(id), pg = st.pgdas || new Map();
+      const nd = v => (v == null ? '<span class="cc-mut">—</span>' : esc(inteiro(v)));
+      const vd = v => (v == null ? '<span class="cc-mut">—</span>' : esc(dinheiro(v)));
+      const linhas = mesesEntre(st.ano + '-01', st.ano + '-12').filter(c => c <= MES_HOJE).reverse().map(c => {
+        const e = estadoDoMes(emp, mapa, c, HOJE), d = dom.get(c) || {}, p = pg.get(c);
+        const sit = emp.faz === false ? '—' : e.tipo === 'feita' ? 'Feita' + (e.feita_em ? ' em ' + dataBR(e.feita_em) : '') : e.tipo === 'andamento' ? 'Em andamento' : e.tipo === 'sem_movimento' ? 'Sem movimento' : e.tipo === 'fora' ? 'Fora do controle' : 'A fazer';
+        return '<tr><th scope="row">' + esc(rotuloMes(c)) + '</th><td class="cc-mm-sit is-' + esc(e.tipo) + '">' + esc(sit) + '</td><td>' + nd(d.lancamentos) + '</td><td>' + nd(d.notas_saida) + '</td><td>' + vd(d.valor_saidas) + '</td><td>' + nd(d.notas_entrada) + '</td><td>' + vd(d.valor_entradas) + '</td><td>' + nd(d.funcionarios_ativos) + '</td><td>' + nd(d.pro_labore) + '</td><td>' + vd(p ? p.receita_mes : null) + '</td></tr>';
+      }).join('');
+      $('eMeses').innerHTML = '<thead><tr><th scope="col">Mês</th><th scope="col">Contabilidade</th><th scope="col">Lançamentos</th><th scope="col">Notas de saída</th><th scope="col">Valor das saídas</th><th scope="col">Notas de entrada</th><th scope="col">Valor das entradas</th><th scope="col">Funcionários</th><th scope="col">Pró-labore</th><th scope="col">Faturamento (PGDAS)</th></tr></thead><tbody>' + linhas + '</tbody>';
+      // as tarefas abertas do Contábil
+      const ta = st.tarefas || [];
+      $('eTarefasBox').hidden = !ta.length;
+      $('eTarefas').innerHTML = ta.map(t => '<li><a href="agenda.html?tarefa=' + encodeURIComponent(t.id) + '">' + esc(t.titulo) + '</a><span class="cc-mut">' + esc([t.prazo ? 'prazo ' + dataBR(t.prazo) : 'sem prazo', t.responsavel || ''].filter(Boolean).join(', ')) + '</span></li>').join('');
+    }
+    function itemPend(p, resolvida) {
+      return '<li class="cc-pend-item' + (resolvida ? ' is-resolvida' : '') + '" data-pid="' + esc(p.id) + '"><label class="cc-pend-check"><input type="checkbox" data-resolver="' + esc(p.id) + '"' + (resolvida ? ' checked' : '') + ' aria-label="' + (resolvida ? 'Reabrir' : 'Marcar como resolvida') + '"></label>'
+        + '<div><div class="cc-pend-txt">' + esc(p.texto) + '</div><div class="cc-mut">' + esc(textoDaPendencia(p, HOJE)) + (resolvida && p.resolvida_em ? '. Resolvida em ' + esc(dataBR(String(p.resolvida_em).slice(0, 10))) + (p.resolvida_por ? ', ' + esc(quem(p.resolvida_por)) : '') : '') + '</div></div>'
+        + '<button class="cc-pend-x" data-apagar="' + esc(p.id) + '" aria-label="Apagar a pendência" title="Apagar (escrita errada)">&times;</button></li>';
+    }
+    function fecharEmpresa() {
+      if (!st.aberta) return;
+      gravarObs();
+      $('ovEmp').classList.remove('is-open');
+      const id = st.aberta;
+      st.aberta = null; st.pgdas = null; st.tarefas = null;
+      assistente.definirContexto(null);
+      const b = $('gradeWrap').querySelector('[data-emp="' + CSS.escape(id) + '"]');
+      if (b) b.focus();
+    }
+    $('eClose').addEventListener('click', fecharEmpresa);
+    $('ovEmp').addEventListener('mousedown', ev => { if (ev.target === $('ovEmp')) fecharEmpresa(); });
+    $('eAvisos').addEventListener('click', async ev => {
+      const b = ev.target.closest('[data-encerrar]'); if (!b || !st.aberta) return;
+      $('eFim').value = b.dataset.encerrar;
+      await salvarControle();
+    });
+
+    // a pendência nova, resolver, reabrir e apagar
+    $('pendForm').addEventListener('submit', async ev => {
+      ev.preventDefault();
+      const id = st.aberta; if (!id) return;
+      const r = limparPendencia({ texto: $('pTexto').value, aguardando: $('pAguardando').value, desde: $('pDesde').value, competencia: $('pMes').value });
+      if (r.erro) { $('pErro').textContent = r.erro; $('pTexto').focus(); return; }
+      $('pAdd').disabled = true;
+      const { data, error } = await supabase.from('contabil_pendencias').insert({ cliente_id: id, ...r.valor }).select().single();
+      $('pAdd').disabled = false;
+      if (error) { $('pErro').textContent = 'Não consegui gravar: ' + error.message; return; }
+      $('pErro').textContent = '';
+      if (!st.pend.has(id)) st.pend.set(id, []);
+      st.pend.get(id).push({ ...(data || {}), cliente_id: id, ...r.valor, id: (data && data.id) || ('tmp' + Date.now()), criado_por: EU, criado_em: new Date().toISOString(), resolvida_em: null });
+      $('pTexto').value = ''; $('pMes').value = '';
+      redesenharEmpresa(id);
+      $('pTexto').focus();
+    });
+    $('ePend').parentElement.addEventListener('change', async ev => {
+      const cb = ev.target.closest('[data-resolver]'); if (!cb || !st.aberta) return;
+      const id = st.aberta, p = (st.pend.get(id) || []).find(x => x.id === cb.dataset.resolver); if (!p) return;
+      const resolver = cb.checked, agora = new Date().toISOString();
+      cb.disabled = true;
+      const { error } = await supabase.from('contabil_pendencias').update({ resolvida_em: resolver ? agora : null }).eq('id', p.id);
+      cb.disabled = false;
+      if (error) { cb.checked = !resolver; $('pErro').textContent = 'Não consegui gravar: ' + error.message; return; }
+      p.resolvida_em = resolver ? agora : null; p.resolvida_por = resolver ? EU : null;
+      redesenharEmpresa(id);
+    });
+    $('ePend').parentElement.addEventListener('click', async ev => {
+      const x = ev.target.closest('[data-apagar]'); if (!x || !st.aberta) return;
+      const id = st.aberta, lista = st.pend.get(id) || [], p = lista.find(q => q.id === x.dataset.apagar); if (!p) return;
+      if (!confirm('Apagar a pendência "' + p.texto.slice(0, 80) + '"? Pra quando ela se resolveu, marque a caixa em vez de apagar.')) return;
+      const { error } = await supabase.from('contabil_pendencias').delete().eq('id', p.id);
+      if (error) { $('pErro').textContent = 'Não consegui apagar: ' + error.message; return; }
+      lista.splice(lista.indexOf(p), 1);
+      redesenharEmpresa(id);
+    });
+
+    // a observação grava sozinha
+    let timerObs = null;
+    $('eObs').addEventListener('input', () => { clearTimeout(timerObs); $('eObsStatus').textContent = ''; timerObs = setTimeout(gravarObs, 800); });
+    $('eObs').addEventListener('blur', () => gravarObs());
+    async function gravarObs() {
+      clearTimeout(timerObs);
+      const id = st.aberta; if (!id) return;
+      const emp = st.empresas.get(id), v = $('eObs').value.trim() || null;
+      if ((emp.observacao || null) === v) return;
+      const { error } = await supabase.from('contabil_empresas').update({ observacao: v }).eq('cliente_id', id);
+      if (error) { $('eObsStatus').textContent = 'Não consegui gravar a observação: ' + error.message; return; }
+      emp.observacao = v;
+      if (st.aberta === id) $('eObsStatus').textContent = 'Gravada.';
+    }
+
+    // o controle: início, fim, quem cuida, faz ou não
+    $('eFaz').addEventListener('change', () => { $('eMotivoBox').hidden = $('eFaz').checked; if (!$('eFaz').checked) $('eMotivo').focus(); });
+    $('eSalvarCtl').addEventListener('click', salvarControle);
+    async function salvarControle() {
+      const id = st.aberta; if (!id) return;
+      const inicio = $('eInicio').value, fim = $('eFim').value || null, faz = $('eFaz').checked, motivo = $('eMotivo').value.trim() || null;
+      $('eCtlErro').textContent = ''; $('eCtlStatus').textContent = '';
+      if (!mesValido(inicio)) { $('eCtlErro').textContent = 'Diga em que mês o controle começa.'; $('eInicio').focus(); return; }
+      if (fim && !mesValido(fim)) { $('eCtlErro').textContent = 'O mês do fim não é um mês.'; $('eFim').focus(); return; }
+      if (fim && fim < inicio) { $('eCtlErro').textContent = 'O fim não pode vir antes do começo.'; $('eFim').focus(); return; }
+      if (!faz && !motivo) { $('eCtlErro').textContent = 'Diga por que não fazemos a contabilidade desta empresa.'; $('eMotivo').focus(); return; }
+      const campos = { inicio, fim, faz, motivo: faz ? null : motivo, responsavel: $('eResp').value || 'Adaini' };
+      $('eSalvarCtl').disabled = true;
+      const { error } = await supabase.from('contabil_empresas').update(campos).eq('cliente_id', id);
+      $('eSalvarCtl').disabled = false;
+      if (error) { $('eCtlErro').textContent = 'Não consegui gravar: ' + error.message; return; }
+      Object.assign(st.empresas.get(id), campos);
+      redesenharEmpresa(id);
+      $('eCtlStatus').textContent = 'Controle salvo.';
+    }
+  </script>
+  <style>
+    [hidden] { display:none !important; }   /* o .btn e as caixas com display próprio não podem vencer o hidden */
+    .fa-focus { display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin-bottom:10px; }
+    .fa-focus-card { background:var(--fill-1); border:1px solid var(--line); border-radius:14px; padding:14px 16px; cursor:pointer; text-align:left; transition:border-color .15s, background .15s; display:flex; flex-direction:column; gap:4px; color:inherit; font:inherit; }
+    .fa-focus-card:hover { border-color:rgba(138,174,200,.4); }
+    .fa-focus-card.is-active { border-color:var(--brand-primary); background:rgba(91,130,166,.10); }
+    .fc-num { font-size:24px; font-weight:700; color:var(--text); line-height:1; }
+    .fc-lbl { font-size:12px; color:var(--text-muted); }
+    .fa-focus-card.fc-danger .fc-num { color:var(--warn); }
+    .cc-progresso { margin:0 0 18px; font-size:13px; color:var(--text-muted); }
+
+    .cc-fora { border:1px solid rgba(227,179,65,.35); background:rgba(227,179,65,.06); border-radius:14px; margin-bottom:18px; }
+    .cc-fora-cab { width:100%; display:flex; justify-content:space-between; align-items:center; gap:10px; background:none; border:none; color:var(--warn); font:inherit; font-size:14px; font-weight:600; padding:12px 16px; cursor:pointer; text-align:left; }
+    .cc-fora-seta { transition:transform .15s; }
+    .cc-fora.is-aberta .cc-fora-seta { transform:rotate(90deg); }
+    #foraLista { padding:0 16px 14px; }
+    .cc-fora-lista { list-style:none; margin:8px 0 0; padding:0; display:flex; flex-direction:column; gap:8px; }
+    .cc-fora-lista li { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 14px; padding:10px 12px; border-radius:10px; background:var(--fill-1); border:1px solid var(--line); font-size:13.5px; }
+    .cc-fora-acoes { display:flex; gap:8px; flex-wrap:wrap; }
+    .cc-naofaz { flex-basis:100%; display:flex; gap:8px; }
+    .cc-naofaz .input { flex:1; }
+
+    .cc-barra { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:10px; }
+    .cc-barra .input-search { flex:1 1 260px; max-width:420px; }
+    .cc-seg { display:inline-flex; border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+    .cc-seg-b { background:transparent; border:none; color:var(--text-muted); font:inherit; font-size:13.5px; padding:8px 14px; cursor:pointer; font-variant-numeric:tabular-nums; }
+    .cc-seg-b + .cc-seg-b { border-left:1px solid var(--line); }
+    .cc-seg-b.is-on { background:var(--sel); color:var(--text); font-weight:600; }
+    .cc-ordem { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-muted); }
+    .cc-ordem .input { width:auto; }
+    .cc-legenda { display:flex; flex-wrap:wrap; gap:6px 18px; font-size:12px; color:var(--text-muted); margin-bottom:12px; }
+    .cc-legenda span { display:inline-flex; align-items:center; gap:7px; }
+    .cc-amostra { display:inline-flex; align-items:center; justify-content:center; width:40px; height:22px; border-radius:6px; border:1px solid var(--line); font-style:normal; font-size:10.5px; position:relative; }
+
+    .cc-grade-wrap { overflow-x:auto; border:1px solid var(--line); border-radius:14px; background:var(--fill-1); }
+    .cc-carregando { padding:28px; color:var(--text-muted); font-size:14px; }
+    .cc-grade { border-collapse:separate; border-spacing:0; width:100%; min-width:1080px; font-size:13px; }
+    .cc-grade th, .cc-grade td { padding:5px 3px; border-bottom:1px solid var(--line); vertical-align:middle; }
+    .cc-grade thead th { position:sticky; top:0; background:var(--surface); color:var(--text-muted); font-weight:600; font-size:12px; text-transform:none; padding:10px 3px; z-index:2; }
+    .cc-th-emp, .cc-emp { position:sticky; left:0; z-index:1; background:var(--surface); text-align:left; padding-left:14px !important; min-width:230px; max-width:280px; }
+    .cc-grade thead .cc-th-emp { z-index:3; }
+    .cc-th-m { width:56px; text-align:center; }
+    .cc-th-m.is-ultimo { color:var(--text); box-shadow:inset 0 -2px 0 var(--brand-primary); }
+    .cc-th-ate { width:84px; text-align:left; padding-left:10px !important; }
+    .cc-th-falta { min-width:190px; text-align:left; padding-right:14px !important; }
+    .cc-grade tbody tr:hover > * { background:var(--fill-1); }
+    .cc-grade tbody tr:hover > .cc-emp { background:var(--surface-hover); }
+    .cc-grade tbody tr:last-child > * { border-bottom:none; }
+    .cc-emp-b { display:flex; flex-direction:column; gap:1px; background:none; border:none; padding:2px 0; color:inherit; font:inherit; text-align:left; cursor:pointer; max-width:100%; }
+    .cc-emp-nome { font-weight:600; color:var(--text); font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:250px; }
+    .cc-emp-b:hover .cc-emp-nome, .cc-emp-b:focus-visible .cc-emp-nome { color:var(--brand-pale); text-decoration:underline; text-underline-offset:3px; }
+    .cc-emp-sub { font-size:11.5px; color:var(--text-dim); }
+    .cc-chips { display:flex; flex-wrap:wrap; gap:4px; margin-top:3px; }
+    .cc-chip { font-size:10.5px; padding:1px 7px; border-radius:999px; border:1px solid var(--line-strong); color:var(--text-muted); }
+    .cc-chip-pend { border-color:rgba(224,108,108,.5); color:var(--err); }
+    tr.is-naofaz .cc-emp-nome { color:var(--text-muted); }
+    .cc-grade td { text-align:center; }
+    .cc-ate { text-align:left !important; padding-left:10px !important; font-variant-numeric:tabular-nums; color:var(--text); white-space:nowrap; }
+    .cc-falta { text-align:left !important; padding-right:14px !important; font-size:12.5px; line-height:1.35; }
+    .cc-falta strong { color:var(--text); }
+    .cc-falta small { display:block; color:var(--text-muted); font-size:11.5px; }
+    .cc-mut { color:var(--text-muted); }
+    .cc-ok { color:var(--ok); }
+
+    .cc-c { width:50px; height:32px; border-radius:7px; border:1px solid var(--line); background:transparent; color:var(--text-dim); font:inherit; font-size:11px; font-variant-numeric:tabular-nums; cursor:pointer; position:relative; padding:0; }
+    .cc-c:focus-visible, .cc-emp-b:focus-visible { outline:2px solid var(--brand-light); outline-offset:2px; }
+    .cc-c.is-feita, .cc-amostra.is-feita { background:rgba(63,176,122,.16); border-color:rgba(63,176,122,.38); color:var(--ok); font-weight:600; }
+    .cc-c.is-andamento, .cc-amostra.is-andamento { background:rgba(82,180,198,.10); border:1px dashed rgba(82,180,198,.65); color:var(--accent); }
+    .cc-c.is-sem_movimento, .cc-amostra.is-sem_movimento { background:rgba(227,179,65,.12); border-color:rgba(227,179,65,.35); color:var(--warn); }
+    .cc-c.is-afazer, .cc-amostra.is-afazer { border-color:var(--line-strong); }
+    .cc-c.is-afazer:hover { background:var(--fill-2); }
+    .cc-c.is-agora { border-style:dotted; }
+    .cc-c.is-futuro { border-color:transparent; background:var(--fill-1); opacity:.45; cursor:default; }
+    .cc-c.is-fora, .cc-amostra.is-fora { border-color:transparent; background:repeating-linear-gradient(135deg, var(--fill-2) 0 3px, transparent 3px 7px); }
+    .cc-c:disabled { cursor:default; }
+    .cc-dica { position:absolute; top:3px; right:3px; width:6px; height:6px; border-radius:50%; background:var(--warn); }
+    .cc-dica.is-leve { background:var(--text-muted); }
+    .cc-pend { position:absolute; bottom:3px; left:3px; width:6px; height:6px; border-radius:50%; background:var(--err); }
+    .cc-erro { color:var(--err); font-size:13px; margin:0; }
+    .cc-erro:empty { display:none; }
+    .cc-dica-txt { margin:0; font-size:12.5px; color:var(--text-dim); }
+
+    .cc-pop { position:absolute; z-index:120; background:var(--surface); border:1px solid var(--fill-3); border-radius:14px; box-shadow:var(--shadow-lg); padding:14px 16px; display:flex; flex-direction:column; gap:8px; }
+    .cc-pop[hidden] { display:none; }
+    .cc-pop-cab { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+    .cc-pop-cab h3 { margin:0; font-size:15px; color:var(--text); }
+    .cc-pop-emp { font-size:12.5px; color:var(--text-muted); margin-top:2px; }
+    .cc-pop-x { background:none; border:none; color:var(--text-muted); font-size:22px; line-height:1; cursor:pointer; padding:0 2px; }
+    #popCorpo { display:flex; flex-direction:column; gap:8px; }
+    .cc-pop-estado { margin:0; font-size:13.5px; color:var(--text); }
+    .cc-pop-dom { margin:0; font-size:12.5px; color:var(--text-muted); }
+    .cc-pop-dica { margin:0; font-size:12.5px; color:var(--text-2); padding:6px 9px; border-radius:8px; background:var(--fill-2); }
+    .cc-pop-dica.is-forte { color:var(--warn); background:rgba(227,179,65,.10); }
+    .cc-pop-pends { margin:0; padding-left:18px; font-size:12.5px; color:var(--err); }
+    .cc-pop-dia { display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--text-muted); }
+    .cc-pop-dia .input { width:auto; padding:6px 8px; }
+    .cc-pop-acoes { display:flex; flex-wrap:wrap; gap:6px; }
+
+    .cc-toast { position:fixed; left:24px; bottom:24px; z-index:130; display:flex; align-items:center; gap:12px; max-width:min(620px, calc(100vw - 140px)); background:var(--pop); border:1px solid var(--fill-3); color:var(--text); border-radius:12px; padding:10px 12px 10px 16px; box-shadow:var(--shadow-lg); font-size:13.5px; }
+    .cc-toast[hidden] { display:none; }
+
+    .fa-modal-overlay { position:fixed; inset:0; background:var(--overlay); display:none; align-items:center; justify-content:center; padding:20px; z-index:100; }
+    .fa-modal-overlay.is-open { display:flex; }
+    .fa-modal { width:100%; max-height:calc(100vh - 40px); overflow:auto; background:var(--surface); border:1px solid var(--fill-3); border-radius:16px; }
+    .fa-modal-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:18px 22px; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--surface); z-index:1; }
+    .fa-modal-head h3 { margin:0; color:var(--text); font-size:19px; font-family:var(--font-display); }
+    .fa-modal-close { background:none; border:none; color:var(--text-muted); font-size:26px; line-height:1; cursor:pointer; padding:0 4px; }
+    .fa-modal-close:hover { color:var(--text); }
+    .fa-modal-body { padding:20px 22px 24px; display:flex; flex-direction:column; gap:22px; }
+    .fa-field { display:flex; flex-direction:column; gap:6px; }
+    .fa-field > span { font-size:13px; color:var(--brand-light); }
+    .fa-modal textarea.input { resize:vertical; font-family:inherit; }
+    .cc-e-sub { font-size:12.5px; color:var(--text-muted); margin-top:4px; }
+    .cc-e-sub a { color:var(--brand-light); margin-left:6px; }
+    .cc-e-resumo p { margin:0; font-size:14.5px; color:var(--text-2); line-height:1.5; }
+    .cc-e-resumo strong { color:var(--text); }
+    .cc-avisos { margin:0; padding:10px 14px 10px 30px; border-radius:10px; border:1px solid rgba(227,179,65,.35); background:rgba(227,179,65,.08); color:var(--warn); font-size:13px; display:flex; flex-direction:column; gap:4px; }
+    .cc-h4 { margin:0 0 10px; font-size:14px; color:var(--text); }
+    .cc-pends { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; }
+    .cc-pend-item { display:grid; grid-template-columns:auto 1fr auto; gap:10px; align-items:flex-start; padding:9px 10px; border:1px solid var(--line); border-radius:10px; background:var(--fill-1); font-size:13px; }
+    .cc-pend-item.is-resolvida .cc-pend-txt { text-decoration:line-through; color:var(--text-muted); }
+    .cc-pend-txt { color:var(--text); overflow-wrap:anywhere; }
+    .cc-pend-item .cc-mut { font-size:12px; margin-top:2px; }
+    .cc-pend-check input { width:16px; height:16px; margin-top:2px; accent-color:var(--ok); }
+    .cc-pend-x { background:none; border:none; color:var(--text-dim); font-size:18px; line-height:1; cursor:pointer; padding:0 2px; }
+    .cc-pend-x:hover { color:var(--err); }
+    .cc-pend-vazia { font-size:13px; color:var(--text-muted); }
+    .cc-pend-form { margin-top:10px; display:flex; flex-direction:column; gap:8px; }
+    .cc-pf-linha { display:grid; grid-template-columns:1fr 1fr 1fr auto; gap:10px; align-items:end; }
+    .cc-resolvidas { margin-top:10px; font-size:13px; color:var(--text-muted); }
+    .cc-resolvidas summary { cursor:pointer; margin-bottom:8px; }
+    .cc-mm-wrap { overflow-x:auto; border:1px solid var(--line); border-radius:10px; }
+    .cc-mm { border-collapse:collapse; width:100%; min-width:900px; font-size:12.5px; font-variant-numeric:tabular-nums; }
+    .cc-mm th, .cc-mm td { padding:6px 9px; border-bottom:1px solid var(--line); text-align:right; white-space:nowrap; }
+    .cc-mm thead th { color:var(--text-muted); font-weight:600; font-size:11.5px; white-space:normal; vertical-align:bottom; }
+    .cc-mm th[scope="row"], .cc-mm thead th:first-child, .cc-mm td.cc-mm-sit, .cc-mm thead th:nth-child(2) { text-align:left; }
+    .cc-mm tbody tr:last-child > * { border-bottom:none; }
+    .cc-mm-sit.is-feita { color:var(--ok); }
+    .cc-mm-sit.is-andamento { color:var(--accent); }
+    .cc-mm-sit.is-sem_movimento { color:var(--warn); }
+    .cc-mm-sit.is-afazer { color:var(--text-2); }
+    .cc-mm-sit.is-fora { color:var(--text-dim); }
+    .cc-tarefas { margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:6px; font-size:13px; }
+    .cc-tarefas li { display:flex; flex-wrap:wrap; gap:4px 10px; }
+    .cc-tarefas a { color:var(--brand-light); }
+    .cc-controle { border-top:1px solid var(--line); padding-top:16px; display:flex; flex-direction:column; gap:12px; }
+    .cc-ctl-linha { display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; }
+    .cc-check { display:flex; align-items:center; gap:8px; font-size:13.5px; color:var(--text); }
+    .cc-check input { width:16px; height:16px; accent-color:var(--brand-primary); }
+    .cc-ctl-acoes { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+
+    @media (max-width:1100px) { .fa-focus { grid-template-columns:repeat(3,1fr); } }
+    @media (max-width:720px) {
+      .fa-focus { grid-template-columns:repeat(2,1fr); }
+      .cc-th-emp, .cc-emp { min-width:150px; max-width:170px; }
+      .cc-emp-nome { max-width:150px; }
+      .cc-pf-linha, .cc-ctl-linha { grid-template-columns:1fr; }
+      .cc-toast { left:12px; right:12px; bottom:84px; max-width:none; }
+      .fa-modal-overlay { padding:0; }
+      .fa-modal { max-height:100vh; border-radius:0; }
+    }
+    @media (prefers-reduced-motion: reduce) { .cc-fora-seta, .fa-focus-card { transition:none; } }
+  </style>
+</body>
+</html>

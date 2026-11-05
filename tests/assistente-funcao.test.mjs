@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { TABELAS, OPS, DEFINICOES, filtroUrl, montarConsulta, criarFerramentas, descreverEtapa, normalizarBusca, textoDoDominio, mesAntes } from '../supabase/functions/assistente/ferramentas.js';
+import { TABELAS, OPS, DEFINICOES, filtroUrl, montarConsulta, criarFerramentas, descreverEtapa, normalizarBusca, textoDoDominio, mesAntes, textoDaContabilidade } from '../supabase/functions/assistente/ferramentas.js';
 import { montarSistema, preambulo, dicionario, INSTRUCOES, marcaOutroDia } from '../supabase/functions/assistente/prompt.js';
 import { criarServidor, limparContexto, limparPagina, limparHistorico, diaBR, LIMITE_DIA } from '../supabase/functions/assistente/servidor.js';
 import { responder, erroDoChat } from '../supabase/functions/reforma-chat/agente.js';
@@ -38,7 +38,7 @@ chk('o prompt: as notícias (triadas, a principal do grupo, a leitura da IA a co
   /as que valem são as triadas \(situacao = triada\)/.test(INSTRUCOES) && /consultar noticias com clientes contem o id dela/.test(INSTRUCOES) && /são a leitura da IA do feed/.test(INSTRUCOES)
   && /as revisões de honorário são só dos sócios/.test(INSTRUCOES));
 chk('o dicionário do prompt lista as tabelas e não tem credenciais', Object.keys(TABELAS).every(t => dicionario().includes('## ' + t + ' ')) && !/credenciais/.test(dicionario()));
-chk('as definições: as sete de ler e as onze propostas, consultar só com as tabelas da lista', DEFINICOES.map(d => d.name).join() === 'buscar_empresa,ver_empresa,agenda,consultar,perguntar_reforma,buscar_arquivos,comparativo,propor_concluir_tarefas,propor_alterar_tarefas,propor_registrar_historico,propor_marcar_pago,propor_criar_tarefa,propor_enviar_mensagem,propor_revisao_atrasadas,propor_ver_vigia,propor_incluir_reforma,propor_por_na_competencia,propor_ajustar_obrigacoes'
+chk('as definições: as sete de ler e as treze propostas, consultar só com as tabelas da lista', DEFINICOES.map(d => d.name).join() === 'buscar_empresa,ver_empresa,agenda,consultar,perguntar_reforma,buscar_arquivos,comparativo,propor_concluir_tarefas,propor_alterar_tarefas,propor_registrar_historico,propor_marcar_pago,propor_criar_tarefa,propor_enviar_mensagem,propor_revisao_atrasadas,propor_ver_vigia,propor_criar_lembrete,propor_ver_lembretes,propor_incluir_reforma,propor_por_na_competencia,propor_ajustar_obrigacoes'
   && JSON.stringify(DEFINICOES.find(d => d.name === 'consultar').input_schema.properties.tabela.enum) === JSON.stringify(Object.keys(TABELAS)));
 chk('o prompt: a Reforma sozinha na rodada (a resposta dela vai direto, com as fontes); a tela pelo nome e a situação por extenso',
   /Chame sozinha na rodada/.test(INSTRUCOES) && /mantenha as fontes dele entre colchetes/.test(INSTRUCOES) && /não financeiro-boletos\.html/.test(INSTRUCOES) && /não em_transicao/.test(INSTRUCOES)
@@ -323,6 +323,42 @@ console.log('As propostas (nada muda aqui: a tela mostra e a pessoa confirma):')
     && /Nada foi criado ainda/.test(t), JSON.stringify(propostas[3]));
   chk('criar: responsável fora da equipe, prazo fora do formato e setor que não existe não propõem', /fora da equipe/.test(await nova().propor_criar_tarefa({ titulo: 'x', responsavel: 'Luana' }))
     && /AAAA-MM-DD/.test(await nova().propor_criar_tarefa({ titulo: 'x', prazo: '15/10' })) && /Setor:/.test(await nova().propor_criar_tarefa({ titulo: 'x', setor: 'compras' })) && propostas.length === 4);
+  {
+    // os lembretes (04/11/2026): o quando de Brasília, quem recebe, a hora que já passou, a tarefa com a antecedência
+    const lp = [];
+    const agora = () => new Date('2026-10-14T13:30:00Z');   // 14/10, 10:30 em Brasília
+    const tLemb = [{ id: U(50), titulo: 'Reunião com o cliente', prazo: '2026-10-14', hora: '15:00:00', status: 'pendente', responsavel: 'Thalia' },
+      { id: U(51), titulo: 'Sem hora', prazo: '2026-10-15', hora: null, status: 'pendente', responsavel: 'Thalia' },
+      { id: U(52), titulo: 'Feita', prazo: '2026-10-15', hora: '09:00:00', status: 'concluida', responsavel: 'Thalia' }];
+    const lembretes = [{ id: U(60), para: 'fiscal@macedoereis.com.br', texto: 'Ligar pro contador anterior', quando: '2026-10-15T12:00:00Z', repeticao: 'uma_vez', situacao: 'pendente', criado_por: 'financeiro@macedoereis.com.br' }];
+    const bl = bancoFalso({ tarefas: tLemb, extras: { lembretes } }).banco;
+    const nl = (usuario = { email: 'fiscal@macedoereis.com.br', nome: 'Thalia' }) => criarFerramentas({ banco: bl, hoje: '2026-10-14', agora, usuario, aoPropor: a => lp.push(a) });
+    const l1 = await nl().propor_criar_lembrete({ texto: ' Lembrete: ligar   pro cliente ', quando: '2026-10-14T11:00' });
+    chk('lembrete: o quando de Brasília vira o instante certo, pra quem pede, uma vez; diz que nada foi criado', lp.length === 1 && JSON.stringify(lp[0]) === JSON.stringify({ tipo: 'criar_lembrete',
+      lembrete: { texto: 'ligar pro cliente', para: { email: 'fiscal@macedoereis.com.br', nome: 'Thalia' }, quando: '2026-10-14T14:00:00.000Z', repeticao: 'uma_vez', tarefa: null, antecedencia_min: null } })
+      && /14\/10 às 11:00/.test(l1) && /Nada foi criado ainda/.test(l1), JSON.stringify(lp[0]) + ' ' + l1);
+    const l2 = await nl().propor_criar_lembrete({ texto: 'bater o ponto', quando: '2026-10-15T08:00', para: 'vitoria', repeticao: 'dias_uteis' });
+    chk('lembrete pra outra pessoa da equipe, todo dia útil', lp.length === 2 && lp[1].lembrete.para.email === 'rh@macedoereis.com.br' && lp[1].lembrete.para.nome === 'Vitória'
+      && lp[1].lembrete.repeticao === 'dias_uteis' && /todo dia útil/.test(l2), l2);
+    chk('lembrete: a hora que já passou, a Edna (sem login), alguém de fora e sem hora não propõem', /já passou — agora são 10:30 de 14\/10/.test(await nl().propor_criar_lembrete({ texto: 'x', quando: '2026-10-14T09:00' }))
+      && /não tem login/.test(await nl().propor_criar_lembrete({ texto: 'x', quando: '2026-10-15T09:00', para: 'Edna' }))
+      && /alguém da equipe/.test(await nl().propor_criar_lembrete({ texto: 'x', quando: '2026-10-15T09:00', para: 'Luana' }))
+      && /pergunte a hora/.test(await nl().propor_criar_lembrete({ texto: 'x', quando: '2026-10-15' })) && lp.length === 2);
+    const l3 = await nl().propor_criar_lembrete({ texto: 'reunião', tarefa: U(50), antecedencia_min: 15 });
+    chk('lembrete sobre a tarefa com hora: a hora dela menos a antecedência, uma vez', lp.length === 3 && lp[2].lembrete.quando === '2026-10-14T17:45:00.000Z' && lp[2].lembrete.antecedencia_min === 15
+      && lp[2].lembrete.tarefa.id === U(50) && lp[2].lembrete.tarefa.hora === '15:00' && /15 minutos antes da tarefa/.test(l3), JSON.stringify(lp[2]) + ' ' + l3);
+    chk('lembrete: a tarefa sem hora pede o quando, a concluída não precisa', /não tem hora marcada/.test(await nl().propor_criar_lembrete({ texto: 'x', tarefa: U(51), antecedencia_min: 10 }))
+      && /já está concluída/.test(await nl().propor_criar_lembrete({ texto: 'x', tarefa: U(52), antecedencia_min: 10 })) && lp.length === 3);
+    const fl = nl();
+    await fl.propor_criar_lembrete({ texto: 'x', quando: '2026-10-14T16:00' });
+    chk('lembrete: uma proposta por pergunta', /Já há uma proposta/.test(await fl.propor_ver_lembretes({})) && lp.length === 4);
+    const vl = await nl().propor_ver_lembretes({});
+    chk('os lembretes: o cartão (só mostra) e a lista pra resposta, com quem criou', lp.length === 5 && lp[4].tipo === 'lembretes' && /1 lembrete pra chegar/.test(vl)
+      && /15\/10 às 09:00 · Ligar pro contador anterior · pra você · de Samuel/.test(vl), vl);
+    chk('os lembretes: as etapas e o prompt (com hora, o lembrete; sem hora, a tarefa)', descreverEtapa('propor_criar_lembrete') === 'Preparando o lembrete pra você conferir'
+      && descreverEtapa('propor_ver_lembretes') === 'Separando os seus lembretes' && /propor_criar_lembrete, com o quando em AAAA-MM-DDTHH:MM/.test(INSTRUCOES)
+      && /sem hora \("de manhã", "cedo", "amanhã"\), pergunte a hora antes/.test(INSTRUCOES) && /propor_ver_lembretes/.test(INSTRUCOES) && !!TABELAS.lembretes && TABELAS.tarefas_recorrentes.cols.includes('dia_util_n'));
+  }
   const r1 = await nova().propor_revisao_atrasadas({});
   chk('revisão: sem pessoa, as de quem pergunta', propostas.length === 5 && JSON.stringify(propostas[4]) === JSON.stringify({ tipo: 'revisar_atrasadas', pessoa: 'Thalia' }) && /revisão das 2 atrasadas de Thalia/.test(r1), r1);
   chk('revisão: de outra pessoa; sem atrasadas não propõe; sem saber de quem, pergunta', JSON.stringify((await nova().propor_revisao_atrasadas({ pessoa: 'vitória' }), propostas[5])) === JSON.stringify({ tipo: 'revisar_atrasadas', pessoa: 'Vitória' })
@@ -401,7 +437,7 @@ console.log('As propostas (nada muda aqui: a tela mostra e a pessoa confirma):')
   chk('a etapa e o prompt: junto da conclusão ou da mudança, a mensagem; sem mudar nada, o registrar; anotar uma tarefa nova é criar',
     descreverEtapa('propor_registrar_historico') === 'Preparando a mensagem pro histórico'
     && /junto da conclusão ou da mudança, vai em mensagem, na mesma proposta; sem concluir nem mudar nada, propor_registrar_historico/.test(INSTRUCOES)
-    && /só com o que ela disse — sem inventar detalhe/.test(INSTRUCOES) && /Pediram pra criar uma tarefa nova \(anotar ou lembrar de fazer algo\): propor_criar_tarefa/.test(INSTRUCOES));
+    && /só com o que ela disse — sem inventar detalhe/.test(INSTRUCOES) && /Pediram pra criar uma tarefa nova \(anotar algo pra fazer num dia, sem hora pra avisar\): propor_criar_tarefa/.test(INSTRUCOES));
 }
 console.log('O vigia (o que o banco achou de desencontrado ou parado):');
 {
@@ -536,7 +572,7 @@ const usarFerramenta = (name, input) => ({ stop_reason: 'tool_use', content: [{ 
   const aberta = log.find(x => x.metodo === 'POST' && x.url.includes('assistente_chat'));
   chk('a linha nasce com o id que a tela mandou, a página e a empresa aberta', aberta && aberta.corpo.id === PEDIDO && aberta.corpo.situacao === 'rodando' && aberta.corpo.pagina === 'financeiro-boletos.html' && aberta.corpo.cliente_id === ID_A);
   const msg = corpoModelo.messages[corpoModelo.messages.length - 1].content.map(b => b.text).join('');
-  chk('o contexto da pergunta: o dia, quem pergunta (sócio), a tela e a empresa aberta', /Hoje: quarta-feira, 14\/10\/2026 \(semana de 12\/10\/2026 a 18\/10\/2026\)/.test(msg) && /Quem pergunta: Samuel \(financeiro@macedoereis.com.br\), sócio/.test(msg)
+  chk('o contexto da pergunta: o dia, quem pergunta (sócio), a tela e a empresa aberta', /Hoje: quarta-feira, 14\/10\/2026, 12:00 em Brasília \(semana de 12\/10\/2026 a 18\/10\/2026\)/.test(msg) && /Quem pergunta: Samuel \(financeiro@macedoereis.com.br\), sócio/.test(msg)
     && /Tela aberta: Boletos — financeiro-boletos.html \(setor financeiro\)/.test(msg) && /Empresa aberta na tela: LOJA DA ESQUINA LTDA/.test(msg) && /Quais boletos estão em aberto\?$/.test(msg), msg);
   chk('o histórico vai antes da pergunta; o sistema vai com cache de 1 hora', corpoModelo.messages[0].content === 'a' && corpoModelo.system[0].cache_control.ttl === '1h');
   const dados = log.filter(x => x.url.includes('/rest/v1/') && !x.url.includes('assistente_chat'));
@@ -999,6 +1035,38 @@ console.log('O comparativo tributário (a mesma conta da tela, com o "e se"):');
     && log.some(x => x.caminho.startsWith('dominio_mensal?') && x.caminho.includes('competencia=gte.2026-06')), linha || v.slice(-400));
   const sem = await criarFerramentas({ banco: bancoFalso().banco, hoje: '2026-11-02', usuario: {} }).ver_empresa({ empresa: ID_A });
   chk('ver_empresa: a empresa fora do Domínio não ganha a linha', !/^Domínio/m.test(sem));
+}
+
+{
+  // o controle das contabilidades (04/11/2026): a lista branca e a linha do ver_empresa, com a conta da tela
+  console.log('O controle das contabilidades:');
+  chk('a lista branca: as três tabelas, com o que é a fazer (o mês sem linha) e o que os lançamentos do Domínio não dizem',
+    ['contabil_empresas', 'contabil_meses', 'contabil_pendencias'].every(t => TABELAS[t]) && TABELAS.contabil_meses.pk === 'cliente_id,competencia'
+    && /SEM LINHA, entre o início e o fim do controle \(contabil_empresas\), está A FAZER/.test(TABELAS.contabil_meses.desc) && /NÃO quer dizer feita/.test(TABELAS.dominio_mensal.notas.lancamentos));
+  const emp = { faz: true, inicio: '2025-01', fim: null, responsavel: 'Adaini', observacao: 'Conferir o caixa.' };
+  const meses = [...Array.from({ length: 12 }, (_, i) => ({ competencia: '2025-' + String(i + 1).padStart(2, '0'), situacao: 'feita', feita_em: '2026-01-31' })),
+    { competencia: '2026-01', situacao: 'feita', feita_em: '2026-02-28' }, { competencia: '2026-02', situacao: 'andamento', feita_em: '2026-03-31' }, { competencia: '2026-05', situacao: 'feita', feita_em: '2026-10-30' }];
+  const t = textoDaContabilidade(emp, meses, [{ texto: 'Extratos do Sicoob', aguardando: 'cliente', desde: '2026-10-15', competencia: '2026-02' }], '2026-11-04');
+  chk('o texto: feita até, o que falta em faixas (o em andamento junto), o último fechado depois do buraco, a pendência e a observação',
+    /^Contabilidade \(controle das contabilidades, desde 01\/2025, com a Adaini\): feita até 01\/2026 · a fazer: 8 meses \(02\/2026 a 04\/2026, 06\/2026 a 10\/2026\), 1 em andamento/.test(t)
+    && /o último mês fechado é 05\/2026/.test(t) && /a última vez que alguma coisa foi feita: 30\/10\/2026/.test(t)
+    && /1 pendência aberta: Extratos do Sicoob \(esperando o cliente, desde 15\/10\/2026 \(há 20 dias\), de 02\/2026\)/.test(t) && /obs\.: Conferir o caixa\./.test(t), t);
+  chk('em dia, encerrada e não fazemos', /em dia até 10\/2026/.test(textoDaContabilidade({ faz: true, inicio: '2026-10', fim: null }, [{ competencia: '2026-10', situacao: 'sem_movimento' }], [], '2026-11-04'))
+    && /controle encerrado em 06\/2026/.test(textoDaContabilidade({ faz: true, inicio: '2026-06', fim: '2026-06' }, [{ competencia: '2026-06', situacao: 'feita', feita_em: '2026-07-10' }], [], '2026-11-04'))
+    && /NÃO faz a contabilidade desta empresa \(Centralizada na matriz\)/.test(textoDaContabilidade({ faz: false, motivo: 'Centralizada na matriz', inicio: '2025-01' }, [], [], '2026-11-04'))
+    && textoDaContabilidade(null, [], [], '2026-11-04') === '');
+  const longa = 'Extratos de 2026 das aplicações do Sicoob, pro ajuste do saldo de 2025: pedidos pelo WhatsApp em 15/07/2026. A contabilidade de 2025 está digitada, faltam só esses ajustes, e o saldo final tem de bater com o informe de rendimentos.';
+  chk('a pendência de uns 250 caracteres vai inteira (cortada, o modelo dizia que o sistema corta o texto)',
+    textoDaContabilidade(emp, meses, [{ texto: longa, aguardando: 'cliente', desde: '2026-07-15', competencia: '2025-12' }], '2026-11-04').includes(longa + ' (esperando o cliente'));
+  const { banco, log } = bancoFalso({ extras: { contabil_empresas: [{ cliente_id: ID_A, ...emp }], contabil_meses: meses.map(m => ({ ...m, cliente_id: ID_A })),
+    contabil_pendencias: [{ cliente_id: ID_A, texto: 'Extratos do Sicoob', aguardando: 'cliente', desde: '2026-10-15', competencia: null, resolvida_em: null },
+      { cliente_id: ID_A, texto: 'Já resolvida', aguardando: 'diego', desde: null, competencia: null, resolvida_em: '2026-10-01T10:00:00Z' }] } });
+  const v = await criarFerramentas({ banco, hoje: '2026-11-04', usuario: { nome: 'Adaini', socio: false } }).ver_empresa({ empresa: ID_A });
+  const linha = v.split('\n').find(x => x.startsWith('Contabilidade')) || '';
+  chk('ver_empresa: a linha da contabilidade, só com as pendências abertas', /feita até 01\/2026/.test(linha) && /Extratos do Sicoob/.test(linha) && !/Já resolvida/.test(linha)
+    && log.some(x => x.caminho.startsWith('contabil_pendencias?') && x.caminho.includes('resolvida_em=is.null')), linha || v.slice(-400));
+  const fora = await criarFerramentas({ banco: bancoFalso().banco, hoje: '2026-11-04', usuario: {} }).ver_empresa({ empresa: ID_A });
+  chk('ver_empresa: a empresa fora do controle não ganha a linha', !/^Contabilidade/m.test(fora));
 }
 
 console.log('Commit fixado na função (o código cru do GitHub):');

@@ -14,6 +14,7 @@
     /* Cor de identidade por setor (no ícone) */
     a[href="contabil-tarefas.html"] .dashboard-card-icon { background: rgba(138,174,200,.16); color:#8AAEC8; }
     a[href="contabil-regras.html"] .dashboard-card-icon { background: rgba(63,176,122,.16); color:#3FB07A; }
+    a[href="contabil-controle.html"] .dashboard-card-icon { background: rgba(82,180,198,.16); color:#52B4C6; }
     a[href="contabil-relatorios.html"] .dashboard-card-icon { background: rgba(133,151,224,.16); color:#8597E0; }
     a[href="contabil-sugestoes.html"] .dashboard-card-icon { background: rgba(164,143,224,.16); color:#A48FE0; }
 
@@ -64,6 +65,15 @@
           <h3>Tarefas</h3>
           <p>Tarefas do dia a dia do setor, com faixa de foco por vencimento.</p>
           <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="contabil-tarefas.html">·</span></div>
+        </a>
+
+        <a href="contabil-controle.html" class="dashboard-card">
+          <div class="dashboard-card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/><path d="M7 14l2 2 4-4"/></svg>
+          </div>
+          <h3>Controle das contabilidades</h3>
+          <p>Até quando a contabilidade de cada empresa está feita, mês a mês, e o que falta pra fechar.</p>
+          <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="contabil-controle.html">·</span></div>
         </a>
 
         <a href="contabil-regras.html" class="dashboard-card">
@@ -130,6 +140,11 @@
           card.appendChild(pill);
         }
         ["contabil-regras.html", "contabil-relatorios.html", "contabil-sugestoes.html"].forEach(h => setBadge(h, '—'));
+        // o controle das contabilidades: as pendências abertas (o que falta pra fechar)
+        const { count: pend, error: ePend } = await supabase.from('contabil_pendencias').select('id', { count: 'exact', head: true }).is('resolvida_em', null);
+        const elPend = document.querySelector('.card-status[data-mod="contabil-controle.html"]');
+        if (ePend) setBadge('contabil-controle.html', '—');
+        else { setBadge('contabil-controle.html', pend ? pend + (pend === 1 ? ' pendência' : ' pendências') : 'sem pendência'); if (elPend) elPend.classList.add(pend ? 'st-open' : 'st-clear'); }
       } catch (e) { console.error(e); }
     }
     pintar();

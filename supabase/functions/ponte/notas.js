@@ -138,6 +138,11 @@ function item(it, j, onde) {
   };
 }
 
+// o nome do fornecedor sem o CPF: o MEI antigo tem o CPF do dono no nome empresarial ("FULANO DE TAL 12345678900") —
+// a comparação de preços usa o CNPJ, e o CPF não precisa sair (05/11/2026, a revisão da fila das notas)
+export const semCpf = nome => nome == null ? null : (String(nome).replace(/(?<![0-9])[0-9]{3}\.?[0-9]{3}\.?[0-9]{3}-?[0-9]{2}(?![0-9])/g, ' ')
+  .replace(/\s+/g, ' ').trim() || null);
+
 function nota(n, i, doc) {
   const onde = 'notas[' + i + ']';
   objeto(n, onde);
@@ -171,7 +176,7 @@ function nota(n, i, doc) {
   return {
     nota: {
       chave, modelo: '55', numero: String(Number(numero)), serie: String(Number(serie)), emissao, entrada,
-      emitente: { cnpj, nome: texto(em.nome, 200), uf },
+      emitente: { cnpj, nome: semCpf(texto(em.nome, 200)), uf },
       destinatario: { cnpj: doc },
       totais, origem: n.origem, itens
     },

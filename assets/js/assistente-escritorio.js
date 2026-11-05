@@ -182,6 +182,12 @@ const TELAS = {
   'fiscal-xml.html': { nome: 'Notas fiscais (XML)' }, 'fiscal-analise.html': { nome: 'Análise fiscal' }, 'fiscal-clientes.html': { nome: 'Fiscal por cliente' },
   'fiscal-destda.html': { nome: 'Conferência SEDIF/DeSTDA' },
   'fiscal-comparativo.html': { nome: 'Comparativo tributário', exemplos: ['Quais empresas já têm estudo no comparativo?', 'O que o comparativo leva em conta?'] },
+  'contabil-controle.html': { nome: 'Controle das contabilidades', exemplos: ['Quais empresas ainda têm meses de 2025 a fazer?', 'Quais pendências das contabilidades estão esperando o cliente há mais de 30 dias?'],
+    dica: async () => {
+      const { count, error } = await supabase.from('contabil_pendencias').select('id', { count: 'exact', head: true }).is('resolvida_em', null);
+      if (error || !count) return null;
+      return { texto: qtd(count, 'pendência aberta nas contabilidades', 'pendências abertas nas contabilidades') + '.', exemplos: ['Quais pendências das contabilidades estão esperando o cliente?'] };
+    } },
   'contabil-dre.html': { nome: 'DRE do cliente' }, 'fator-r.html': { nome: 'Fator R' },
   'societario-alvaras.html': { nome: 'Alvarás', exemplos: ['Quais alvarás vencem nos próximos 60 dias?', 'Algum alvará vencido?'],
     dica: async () => {
@@ -286,6 +292,7 @@ export function iniciarAssistente({ email: e } = {}) {
   if (ctxPendente !== undefined) api.definirContexto(ctxPendente);
   else if (caminho === 'clientes/editar.html') contextoDaEmpresa();
   vigiaDoEndereco();
+  lembretesDoEndereco();
   setTimeout(recadoDoDia, 1600);
   ligarVida();
   return api;
@@ -300,6 +307,16 @@ function vigiaDoEndereco() {
   try { const u = new URL(location.href); u.searchParams.delete('vigia'); history.replaceState(history.state, '', u.pathname + u.search + u.hash); } catch (e) { /* fica no endereço */ }
   const todos = v === 'todos' && socio;
   setTimeout(() => abrirVigia({ ver: todos ? 'todos' : 'meus' }, todos ? 'O que o vigia achou, de todos:' : 'As suas pendências no vigia:'), 300);
+}
+
+// o botão "Ver os lembretes" do lembrete que chega no chat (04/11/2026): ?lembretes=1 abre o cartão dos lembretes que vão
+// chegar, cada um com "Cancelar" — é por ele que se para um lembrete que repete
+function lembretesDoEndereco() {
+  let v = null;
+  try { v = new URLSearchParams(location.search).get('lembretes'); } catch (e) { v = null; }
+  if (v !== '1') return;
+  try { const u = new URL(location.href); u.searchParams.delete('lembretes'); history.replaceState(history.state, '', u.pathname + u.search + u.hash); } catch (e) { /* fica no endereço */ }
+  setTimeout(() => { if (api && !api.mostrarAcao({ texto: 'Os seus lembretes:', acao: { tipo: 'lembretes' } })) api.abrir(); }, 300);
 }
 
 function montar() {

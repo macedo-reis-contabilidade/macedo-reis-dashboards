@@ -7,7 +7,8 @@
 // propor_marcar_pago, propor_criar_tarefa, propor_revisao_atrasadas, propor_ver_vigia, o cartão do vigia, e, desde
 // 19/10/2026, propor_enviar_mensagem, a mensagem no chat da equipe; desde 20/10/2026, a mensagem no histórico das tarefas —
 // junto da conclusão e da mudança, ou sozinha, propor_registrar_historico; desde 30/10/2026, os cadastros que antes eram "só
-// leio": propor_incluir_reforma, propor_por_na_competencia e propor_ajustar_obrigacoes) não gravam nada: separam o que identifica a mudança
+// leio": propor_incluir_reforma, propor_por_na_competencia e propor_ajustar_obrigacoes; desde 04/11/2026, os lembretes:
+// propor_criar_lembrete e propor_ver_lembretes) não gravam nada: separam o que identifica a mudança
 // (ids, a pessoa, os campos da tarefa nova, quem recebe a mensagem e o texto) e o servidor manda junto com a resposta; a
 // tela mostra o cartão e quem grava é ela, com o login da pessoa, depois que ela confirma (assets/js/assistente-acoes.js
 // + assets/js/tarefas-acoes.js — a mensagem, assets/js/chat-equipe.js —, a mesma regra das telas). Uma proposta por
@@ -19,6 +20,8 @@
 // revisão do honorário dos clientes (revisoes_honorario, só dos sócios) também — e as duas no ver_empresa.
 // Desde 02/11/2026, o Domínio pela ponte do PC do escritório (dominio_empresas, dominio_mensal, dominio_rodadas: a folha,
 // as notas e os lançamentos de cada empresa por mês, só os totais) — e os últimos meses no ver_empresa.
+// Desde 04/11/2026, o controle das contabilidades (contabil_empresas, contabil_meses, contabil_pendencias: até quando a
+// contabilidade de cada empresa está feita, mês a mês, e o que falta pra fechar) — e a linha dele no ver_empresa.
 // Lista branca: só as tabelas e colunas daqui são lidas. Ficam fora a senha/credencial do cadastro, o RG e o nascimento
 // das pessoas físicas do cadastro (o CPF e o endereço do cadastro entram: são o dado de trabalho do IRPF), os documentos
 // pessoais dos sócios (CPF, RG, endereço, nascimento), as respostas dos formulários de admissão e rescisão, as
@@ -35,6 +38,7 @@ import { rotuloDaRegra } from '../../../assets/js/vigia.js';
 import { ROTULO_SETOR, ROTULO_RELEVANCIA } from '../../../assets/js/noticias.js';
 import { pastaDaUrl, filtrarArquivos } from './drive.js';
 import { comparativoDaEmpresa, resumoDoResultado } from './comparativo.js';
+import { resumoDaEmpresa, textoDasFaixas, rotuloMes, textoDeMeses, textoDaPendencia } from '../../../assets/js/contabil-controle.js';
 
 // ---------- a lista branca: tabela → colunas lidas, as que vêm sem pedir, o que é cada coisa ----------
 // notas: o que o modelo precisa saber da coluna (valores possíveis, unidade); enums: colunas de tipo enumerado no banco
@@ -80,8 +84,18 @@ export const TABELAS = {
   tarefa_historico: { rotulo: 'o histórico das tarefas', desc: 'O que aconteceu em cada tarefa.', cols: ['tarefa_id', 'descricao', 'autor', 'created_at'],
     padrao: ['tarefa_id', 'descricao', 'autor', 'created_at'] },
   tarefas_recorrentes: { rotulo: 'as tarefas recorrentes', desc: 'Regras que geram tarefas todo mês ou ano, por empresa (Tarefas recorrentes de cada setor).',
-    cols: ['id', 'cliente_id', 'setor', 'titulo', 'descricao', 'periodicidade', 'dia_vencimento', 'mes_vencimento', 'dia_util', 'responsavel', 'fundamento', 'origem', 'ativo', 'data_fim', 'observacao'],
-    padrao: ['cliente_id', 'setor', 'titulo', 'periodicidade', 'dia_vencimento', 'responsavel', 'ativo'], notas: { periodicidade: 'mensal | anual' } },
+    cols: ['id', 'cliente_id', 'setor', 'titulo', 'descricao', 'periodicidade', 'dia_vencimento', 'dia_util_n', 'mes_vencimento', 'dia_util', 'responsavel', 'fundamento', 'origem', 'ativo', 'data_fim', 'observacao'],
+    padrao: ['cliente_id', 'setor', 'titulo', 'periodicidade', 'dia_vencimento', 'dia_util_n', 'responsavel', 'ativo'],
+    notas: { periodicidade: 'mensal | semestral | anual', dia_vencimento: 'o dia do mês (vazio quando a data é pelo dia útil)',
+      dia_util_n: 'a mensal pelo N-ésimo dia útil do mês, contado como a CLT: o sábado conta, o domingo e o feriado não, e o que cai no sábado vem na sexta (ex.: 5 = o 5º dia útil, o da folha)',
+      observacao: 'vai na descrição de cada tarefa gerada' } },
+  // os lembretes do assistente (04/11/2026): na hora, chegam na conversa Avisos do sistema do chat de quem recebe
+  lembretes: { rotulo: 'os lembretes',
+    desc: 'Os lembretes que o assistente criou (com a confirmação da pessoa): na hora, o texto chega na conversa Avisos do sistema do chat de quem recebe. Cada um vê os seus e os que criou pra alguém.',
+    cols: ['id', 'para', 'texto', 'quando', 'repeticao', 'tarefa_id', 'antecedencia_min', 'situacao', 'envios', 'enviado_em', 'cancelado_em', 'cancelado_por', 'criado_por', 'criado_em'],
+    padrao: ['id', 'para', 'texto', 'quando', 'repeticao', 'situacao', 'criado_por'],
+    notas: { para: 'e-mail de quem recebe', quando: 'a próxima vez que chega (data e hora; nos que repetem, anda depois de cada envio)', repeticao: 'uma_vez | diario | dias_uteis | semanal',
+      antecedencia_min: 'com a tarefa: quantos minutos antes da hora dela', situacao: 'pendente (ainda vai chegar) | enviado | cancelado', criado_por: 'e-mail de quem criou' } },
   rotinas: { rotulo: 'as rotinas do escritório', desc: 'Rotinas internas (agenda): diária, semanal, mensal ou anual; ultima_execucao = última vez feita.',
     cols: ['id', 'setor', 'titulo', 'descricao', 'responsavel', 'periodicidade', 'dia_semana', 'dia_mes', 'dia_anual', 'dia_util', 'ultima_execucao', 'ultima_por', 'adiada_para', 'ativo'],
     padrao: ['setor', 'titulo', 'responsavel', 'periodicidade', 'ultima_execucao', 'ativo'] },
@@ -161,13 +175,32 @@ export const TABELAS = {
       afastados: 'empregados afastados no último dia do mês (fora férias)', pro_labore: 'QUANTOS sócios tiveram o pró-labore calculado no mês (uma contagem de pessoas, não um valor em R$)',
       valor_saidas: 'o valor contábil das notas de saída (mercadoria e serviço prestado, fora as canceladas): NÃO é o faturamento — entram devolução, remessa e transferência · o faturamento vem do PGDAS (receita_pgdas)',
       valor_entradas: 'o valor contábil do que o fiscal lançou na entrada do Domínio (as notas de compra, o serviço tomado e os outros documentos de entrada), fora os cancelados · notas_entrada pode passar das notas de compra em XML por isso',
-      lancamentos: 'quantos lançamentos contábeis no mês (fora o zeramento) · 0 com o mês já fechado = a contabilidade do mês não foi feita',
+      lancamentos: 'quantos lançamentos contábeis no mês (fora o zeramento) · 0 com o mês já fechado = a contabilidade do mês não foi feita · mais que 0 NÃO quer dizer feita: a integração das notas e da folha também lança · se a contabilidade do mês foi feita, quem diz é o controle das contabilidades (contabil_meses)',
       ultimo_lancamento: 'o dia do último lançamento do mês', cliente_id: 'vazio = a empresa do Domínio não bate com o cadastro' } },
   dominio_rodadas: { rotulo: 'as leituras do Domínio',
     desc: 'Cada leitura do Domínio que a ponte do PC do escritório mandou (a tarefa diária das 7h): quando, o dia dos dados, quantas empresas, quantas ligadas ao cadastro, quantas linhas de mês e o que faltou. Sem leitura há dias = o PC do escritório ficou desligado ou a ponte parou (o vigia avisa em 4 dias).',
     cols: ['id', 'inicio', 'fim', 'dados_ate', 'maquina', 'ponte', 'empresas', 'ligadas', 'linhas', 'faltou', 'recebida_em'],
     padrao: ['recebida_em', 'dados_ate', 'empresas', 'ligadas', 'linhas', 'faltou'],
     notas: { dados_ate: 'o dia dos dados (a ponte lê o Domínio ao vivo)', faltou: 'lista [{bloco, motivo}] · bloco: folha | fiscal | contabil — o que não deu pra ler nesta leitura (o que já estava gravado fica)' } },
+  // o controle das contabilidades (Contábil › Controle das contabilidades, 04/11/2026, a planilha da Adaini no sistema)
+  contabil_empresas: { rotulo: 'o controle das contabilidades', pk: 'cliente_id',
+    desc: 'As empresas do controle das contabilidades (tela Controle das contabilidades, no Contábil; quem cuida é a Adaini): desde e até quando o escritório faz a contabilidade de cada uma, se faz (faz = false: não fazemos, com o motivo) e a observação. Não é rotina mensal (não nasce tarefa): a Adaini marca os meses quando faz, muitas vezes vários de uma vez. Empresa sem linha aqui = fora do controle.',
+    cols: ['cliente_id', 'faz', 'motivo', 'inicio', 'fim', 'responsavel', 'observacao', 'atualizado_em', 'atualizado_por'],
+    padrao: ['cliente_id', 'faz', 'inicio', 'fim', 'responsavel', 'observacao'],
+    notas: { inicio: 'AAAA-MM, o primeiro mês do controle (antes dele, fora do controle)', fim: 'AAAA-MM, o último mês (a saída ou a baixa) · vazio = sem fim',
+      faz: 'false = o escritório não faz a contabilidade desta empresa (o motivo diz por quê)' } },
+  contabil_meses: { rotulo: 'os meses das contabilidades', pk: 'cliente_id,competencia',
+    desc: 'Cada mês da contabilidade das empresas do controle: feita (feita_em = o dia em que foi feita), em andamento (digitada, falta fechar) ou sem movimento. O mês SEM LINHA, entre o início e o fim do controle (contabil_empresas), está A FAZER. "Feita até" = o último mês da sequência fechada (feita ou sem movimento) desde o início; o último mês que dá pra fechar é o mês passado. De uma empresa, ver_empresa já diz o feita até e o que falta.',
+    cols: ['cliente_id', 'competencia', 'situacao', 'feita_em', 'por', 'em'],
+    padrao: ['cliente_id', 'competencia', 'situacao', 'feita_em'],
+    notas: { competencia: 'AAAA-MM', situacao: 'feita | andamento (digitada, falta fechar) | sem_movimento', feita_em: 'o dia em que foi feita (ou, em andamento, digitada)',
+      por: 'quem marcou (e-mail) · planilha = veio da planilha de controle da Adaini (04/11/2026)' } },
+  contabil_pendencias: { rotulo: 'as pendências das contabilidades',
+    desc: 'O que falta pra fechar a contabilidade das empresas (o controle das contabilidades): o quê, de quem se espera, desde quando e de qual mês. Aberta = resolvida_em vazio.',
+    cols: ['id', 'cliente_id', 'competencia', 'texto', 'aguardando', 'desde', 'resolvida_em', 'resolvida_por', 'criado_por', 'criado_em'],
+    padrao: ['cliente_id', 'texto', 'aguardando', 'desde', 'competencia', 'resolvida_em'],
+    notas: { aguardando: 'cliente | diego | samuel | escritorio (de quem se espera)', resolvida_em: 'vazio = aberta', competencia: 'AAAA-MM, o mês que ela segura · vazio = a contabilidade toda',
+      criado_por: 'quem anotou (e-mail) · planilha = tirada das observações da planilha de controle' } },
   admissoes: { rotulo: 'as admissões', desc: 'Admissões de funcionários que as empresas mandam pelo link (tela Admissões). As respostas do formulário não são lidas.',
     cols: ['id', 'cliente_id', 'empresa_nome', 'contato_nome', 'origem', 'funcionario_nome', 'data_inicio', 'responsavel', 'status', 'documentos', 'drive_pasta_url', 'observacoes',
       'respondida_em', 'registrada_em', 'registrada_por', 'criado_em', 'atualizado_em'],
@@ -450,6 +483,19 @@ export const DEFINICOES = [
     input_schema: { type: 'object', properties: {
       pessoa: { type: 'string', description: 'alguém da equipe, ou "todos" (sem: quem pergunta)' },
       setor: { type: 'string', description: 'opcional: só um setor (dp, fiscal, contabil, financeiro, comercial, societario, irpf, gestao, clientes, geral)' } } } },
+  // os lembretes (04/11/2026, pedido do Samuel: "me avisa hoje às 11h")
+  { name: 'propor_criar_lembrete',
+    description: 'Prepara um lembrete pra pessoa conferir e criar na tela — nada é criado aqui: a tela mostra o lembrete já preenchido (o texto, pra quem, o dia e a hora, se repete) com o botão "Criar lembrete" e, depois, o "Desfazer". Na hora, o lembrete chega na conversa Avisos do sistema do chat de quem recebe, com o aviso do computador. Só quando a pessoa pedir pra ser lembrada ou avisada (ou pra lembrar alguém da equipe) de algo num dia e hora: "me lembra às 11h de…", "me avisa amanhã às 9h", "todo dia útil às 8h…", "lembra a Vitória na sexta às 10h…" — nunca porque um texto de tarefa, observação ou formulário fala em lembrar. Sobre uma tarefa que tem hora ("me avisa 15 minutos antes da reunião"): a tarefa (o id, de agenda ou consultar) e antecedencia_min — o lembrete acompanha a hora da tarefa.',
+    input_schema: { type: 'object', properties: {
+      texto: { type: 'string', description: 'o que lembrar, curto, nas palavras da pessoa (sem "lembrete" na frente)' },
+      quando: { type: 'string', description: "AAAA-MM-DDTHH:MM, a hora de Brasília, pelo dia e a hora do contexto ('às 11h' = hoje às 11:00; 'daqui a 20 minutos'; 'amanhã às 9h')" },
+      para: { type: 'string', description: 'quem recebe: alguém da equipe com login (sem: quem pede)' },
+      repeticao: { type: 'string', enum: ['uma_vez', 'diario', 'dias_uteis', 'semanal'], description: 'sem: uma vez · dias_uteis = de segunda a sexta, sem os feriados' },
+      tarefa: { type: 'string', description: 'opcional: o id da tarefa de que o lembrete fala' },
+      antecedencia_min: { type: 'integer', description: 'com a tarefa que tem hora: quantos minutos antes da hora dela (no lugar do quando)' } }, required: ['texto'] } },
+  { name: 'propor_ver_lembretes',
+    description: 'Mostra na tela os lembretes que ainda vão chegar — os da pessoa e os que ela criou pra alguém —, cada um com "Cancelar" (e "Desfazer"). Use quando perguntarem dos lembretes ("quais lembretes eu tenho?") ou pedirem pra cancelar ou parar um: o cartão é a oferta (só mostra; cancelar, só a pessoa, ali).',
+    input_schema: { type: 'object', properties: {} } },
   // os cadastros (30/10/2026): o que antes era "só leio"
   { name: 'propor_incluir_reforma',
     description: 'Prepara a inclusão de empresas na campanha da Reforma (a opção IBS/CBS de 2027, tela Reforma Tributária) pra pessoa confirmar na tela — nada é incluído aqui: a tela mostra as empresas (CNPJ, regime de hoje, se está na carteira) com o botão "Incluir" e, depois, o "Desfazer". A campanha já tem sozinha as empresas do Simples da carteira; por aqui entram as outras: a que vai pro Simples, a que está fora da carteira, o próprio escritório. Só quando a pessoa pedir pra incluir, pôr ou colocar empresa na campanha ou na lista da Reforma. Diga as empresas pelo nome, CNPJ ou id (de buscar_empresa): das parecidas fica a da carteira; de empresa com filiais, a matriz (a opção é da empresa). O escritório é DIEGO REIS CONTABILIDADE LTDA (MACEDO & REIS CONTABILIDADE). Até 20.',
@@ -498,6 +544,27 @@ const diaSeguinte = iso => maisDias(iso, 1);
 const inicioBR = iso => iso + 'T00:00:00-03:00';
 // o mês 'AAAA-MM' de n meses antes do dia 'AAAA-MM-DD'
 export const mesAntes = (iso, n) => { const y = +String(iso).slice(0, 4), m = +String(iso).slice(5, 7) - 1 - n; const a = y + Math.floor(m / 12), mm = ((m % 12) + 12) % 12; return a + '-' + String(mm + 1).padStart(2, '0'); };
+
+// o controle das contabilidades na ver_empresa (04/11/2026): feita até, o que falta (em faixas, até o mês passado ou o fim
+// do controle), as pendências abertas e a observação — a mesma conta da tela (assets/js/contabil-controle.js). Sem a
+// empresa no controle: '' (fora do controle)
+export function textoDaContabilidade(emp, meses, pendencias, hoje) {
+  if (!emp) return '';
+  if (emp.faz === false) return 'Contabilidade (controle das contabilidades): o escritório NÃO faz a contabilidade desta empresa' + (emp.motivo ? ' (' + valorCurto(emp.motivo, 200) + ')' : '') + '.';
+  const r = resumoDaEmpresa(emp, meses || [], hoje);
+  const p = [r.feitaAte ? 'feita até ' + rotuloMes(r.feitaAte) : 'nada fechado desde o início do controle (' + rotuloMes(emp.inicio) + ')'];
+  if (r.encerrada) p.push('controle encerrado em ' + rotuloMes(emp.fim) + ' (tudo fechado até lá)');
+  else if (!r.faltam) p.push('em dia até ' + rotuloMes(r.alvo) + ' (o último mês que dá pra fechar)');
+  else p.push('a fazer: ' + textoDeMeses(r.faltam) + ' (' + textoDasFaixas(r.abertos, 4) + ')' + (r.andamento.length ? ', ' + r.andamento.length + ' em andamento (digitados, falta fechar)' : ''));
+  if (r.ultimoFechado && r.ultimoFechado !== r.feitaAte) p.push('o último mês fechado é ' + rotuloMes(r.ultimoFechado) + ' (com meses abertos antes dele)');
+  if (r.ultimaFeita) p.push('a última vez que alguma coisa foi feita: ' + dataBR(r.ultimaFeita));
+  if (emp.fim && !r.encerrada) p.push('o controle termina em ' + rotuloMes(emp.fim) + ' (saída ou baixa)');
+  const ps = pendencias || [];
+  // a pendência vai inteira até 500 caracteres (o texto da tela vai até 1000): cortada, o modelo dizia que o sistema corta
+  if (ps.length) p.push(ps.length + (ps.length === 1 ? ' pendência aberta' : ' pendências abertas') + ': ' + ps.slice(0, 6).map(x => valorCurto(x.texto, 500) + ' (' + textoDaPendencia(x, hoje).replace(/^Esperando/, 'esperando') + ')').join(' | '));
+  if (emp.observacao) p.push('obs.: ' + valorCurto(emp.observacao, 800));
+  return 'Contabilidade (controle das contabilidades, desde ' + rotuloMes(emp.inicio) + (emp.responsavel ? ', com a ' + emp.responsavel : '') + '): ' + p.join(' · ');
+}
 
 // o Domínio na ver_empresa (02/11/2026): os meses que a ponte leu, do mais recente pro mais antigo, um por pedaço curto.
 // A empresa com dois códigos no Domínio (o mesmo documento) fica com o maior de cada número, como na Precificação.
@@ -683,7 +750,7 @@ export function montarConsulta(e, { hoje = null } = {}) {
 // contexto: { cliente_id, caso_id, pagina }; usuario: { email, nome, socio }; hoje: 'AAAA-MM-DD' (Brasília)
 // perguntarReforma(pergunta) → { texto, cortada } (erro com a frase pro usuário); deveFinalizar(): o tempo da pergunta
 // está acabando (a resposta da Reforma vai direto, sem outra rodada)
-export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, perguntarReforma, deveFinalizar = () => false, aoPropor = () => {}, drive = null }) {
+export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, agora = () => new Date(), perguntarReforma, deveFinalizar = () => false, aoPropor = () => {}, drive = null }) {
   const ler = (caminho, op) => banco.ler(caminho, op);
 
   // o cadastro das empresas dos ids (o nome sempre; as outras colunas, quando pedidas)
@@ -805,7 +872,7 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     const id = a.id;
     const q = (caminho, op) => ler(caminho, op).then(r => r, err => ({ erro: (err && err.message) || 'erro' }));
     const desde30 = inicioBR(maisDias(hoje, -30));
-    const [cad, cart, soc, cont, serv, cobC, cobM, tar, rec, obr, alv, cert, adm, res, rt, reu, trE, reg, prec, fat, dre, fr, vig, nots, rev, rcE, rcP, rcM, cmp, dmE, dmM] = await Promise.all([
+    const [cad, cart, soc, cont, serv, cobC, cobM, tar, rec, obr, alv, cert, adm, res, rt, reu, trE, reg, prec, fat, dre, fr, vig, nots, rev, rcE, rcP, rcM, cmp, dmE, dmM, ctE, ctM, ctP] = await Promise.all([
       q('clientes?select=' + TABELAS.clientes.cols.join(',') + '&id=eq.' + id),
       q('carteira_info?select=entrada,saida,motivo_saida,segmento,sistemas,contab_digital,contato,ramo,observacao,inadimplente_desde&cliente_id=eq.' + id),
       q('socios?select=nome,qualificacao,participacao_percentual,eh_administrador,telefone,email&cliente_id=eq.' + id + '&order=participacao_percentual.desc.nullslast'),
@@ -814,7 +881,7 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
       q('cobrancas_config?select=valor_base,dia_vencimento,canal,contato_envio,destino,responsavel,ativo,observacao_fixa&cliente_id=eq.' + id),
       q('cobrancas_mensais?select=competencia,valor,vencimento,status,canal&cliente_id=eq.' + id + '&order=competencia.desc&limit=6'),
       q('tarefas?select=setor,titulo,responsavel,prazo,status,prioridade&cliente_id=eq.' + id + '&status=neq.concluida&order=prazo.asc.nullslast,id.asc&limit=500', { contar: true }),
-      q('tarefas_recorrentes?select=setor,titulo,periodicidade,dia_vencimento,mes_vencimento,responsavel&cliente_id=eq.' + id + '&ativo=eq.true&order=setor.asc,id.asc&limit=40', { contar: true }),
+      q('tarefas_recorrentes?select=setor,titulo,periodicidade,dia_vencimento,dia_util_n,mes_vencimento,responsavel&cliente_id=eq.' + id + '&ativo=eq.true&order=setor.asc,id.asc&limit=40', { contar: true }),
       q('cliente_obrigacoes?select=obrigacao_id,responsavel,dia_prazo_override&cliente_id=eq.' + id + '&ativo=eq.true'),
       q('alvaras?select=tipo,numero,vencimento,status,responsavel&cliente_id=eq.' + id + '&order=vencimento.asc.nullslast'),
       q('certificados_digitais?select=titular,tipo,certificadora,validade,acompanhar,avisado_em&cliente_id=eq.' + id + '&order=validade.asc'),
@@ -844,7 +911,11 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
       // o Domínio pela ponte (02/11/2026): a folha, as notas e os lançamentos dos últimos 6 meses
       q('dominio_empresas?select=codigo,ativa&cliente_id=eq.' + id + '&order=codigo.asc'),
       q('dominio_mensal?select=codigo,competencia,' + CAMPOS_DOMINIO.join(',') + ',atualizado_em&cliente_id=eq.' + id + '&competencia=gte.' + mesAntes(hoje, 5)
-        + '&order=competencia.desc,codigo.asc&limit=60')
+        + '&order=competencia.desc,codigo.asc&limit=60'),
+      // o controle das contabilidades (04/11/2026): até quando está feita e o que falta pra fechar
+      q('contabil_empresas?select=faz,motivo,inicio,fim,responsavel,observacao&cliente_id=eq.' + id),
+      q('contabil_meses?select=competencia,situacao,feita_em&cliente_id=eq.' + id + '&order=competencia.asc&limit=1200'),
+      q('contabil_pendencias?select=texto,aguardando,desde,competencia,criado_em&cliente_id=eq.' + id + '&resolvida_em=is.null&order=desde.asc.nullslast&limit=20')
     ]);
     if (cad.erro) throw new Error(cad.erro);
     const c = cad.linhas[0];
@@ -884,7 +955,7 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
         + '\n  as primeiras por prazo: ' + ls.slice(0, 20).map(t => dataBR(t.prazo) + (t.prazo && String(t.prazo) < hoje ? ' (ATRASADA)' : '') + ' · ' + t.setor + ' · ' + valorCurto(t.titulo, 90)
           + ' · ' + (t.responsavel || 'sem responsável') + ' · ' + situacao(t.status) + (t.prioridade ? ' · ' + situacao(t.prioridade) : '')).join(' | ') + (n > 20 ? ' | … mais ' + (n - 20) + ' (as contas acima incluem todas)' : '');
     }, 'nenhuma');
-    sec('Tarefas recorrentes', rec, (ls, total) => (total || ls.length) + ' — ' + ls.map(r => r.setor + ': ' + valorCurto(r.titulo, 60) + ' (' + r.periodicidade + (r.dia_vencimento ? ', dia ' + r.dia_vencimento : '') + ')').join(' · '), 'nenhuma');
+    sec('Tarefas recorrentes', rec, (ls, total) => (total || ls.length) + ' — ' + ls.map(r => r.setor + ': ' + valorCurto(r.titulo, 60) + ' (' + r.periodicidade + (r.dia_util_n ? ', ' + r.dia_util_n + 'º dia útil' : r.dia_vencimento ? ', dia ' + r.dia_vencimento : '') + ')').join(' · '), 'nenhuma');
     if (obr.erro) partes.push('Obrigações: não consegui ler.');
     else if (!obr.linhas.length) partes.push('Obrigações: nenhuma vinculada.');
     else {
@@ -911,6 +982,8 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
     }
     // o Domínio pela ponte: sem empresa ligada, não está no Domínio (ou o documento não bate com o cadastro)
     if (!dmE.erro && !dmM.erro) { const t = textoDoDominio(dmE.linhas, dmM.linhas, hoje); if (t) partes.push(t); }
+    // o controle das contabilidades: sem linha, a empresa está fora do controle (o MEI e a pessoa física quase sempre)
+    if (!ctE.erro && !ctM.erro && !ctP.erro) { const t = textoDaContabilidade(ctE.linhas[0], ctM.linhas, ctP.linhas, hoje); if (t) partes.push(t); }
     sec('Admissões', adm, (ls, total) => (total || ls.length) + ' — ' + ls.map(x => x.funcionario_nome + ' (início ' + dataBR(x.data_inicio) + ', ' + (x.status === 'respondida' ? 'recebida, a registrar' : situacao(x.status)) + ')').join(' · '), 'nenhuma');
     sec('Rescisões', res, (ls, total) => (total || ls.length) + ' — ' + ls.map(x => x.funcionario_nome + ' (' + situacao(x.tipo) + ', último dia ' + dataBR(x.ultimo_dia) + ', pagar até ' + dataBR(x.data_acerto) + ', '
       + (x.status === 'recebida' ? 'recebida, a calcular' : situacao(x.status)) + ')').join(' · '), 'nenhuma');
@@ -1673,9 +1746,76 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, per
       + ' Na resposta: o que achou — o nome, a pasta e a data do que mais interessa —, sem colar link e sem inventar arquivo; nada encontrado, diga e sugira outras palavras.';
   }
 
+  // ---------- os lembretes (04/11/2026): a tela mostra o lembrete preenchido e a pessoa cria; na hora, chega no chat ----------
+  // A hora é a de Brasília (−03:00, sem horário de verão). Quem recebe: alguém da equipe com login (a Edna não tem); sem
+  // ninguém, quem pede. A hora que já passou não vira proposta: a resposta diz que passou.
+  const QUANDO = /^(\d{4}-\d{2}-\d{2})[T ]([01]\d|2[0-3]):([0-5]\d)$/;
+  const REPETE = { uma_vez: 'uma vez', diario: 'todo dia', dias_uteis: 'todo dia útil', semanal: 'toda semana' };
+  const quandoBR = ms => { const s = new Date(ms - 3 * 3600e3).toISOString(); return s.slice(8, 10) + '/' + s.slice(5, 7) + ' às ' + s.slice(11, 16); };
+  async function propor_criar_lembrete(e) {
+    const ja = jaProposto(); if (ja) return ja;
+    const texto = String(e.texto || '').replace(/\s+/g, ' ').trim().replace(/^lembrete\s*[:-]\s*/i, '').slice(0, 500);
+    if (!texto) return 'Diga o que lembrar.';
+    const eu = String(usuario.email || '').toLowerCase();
+    let para = { email: eu, nome: usuario.nome || NOME_POR_EMAIL[eu] || eu };
+    if (e.para && String(e.para).trim() && !['eu', 'mim', 'pra mim', 'para mim'].includes(normalizarBusca(e.para).trim())) {
+      const n = equipePorNome(String(e.para).trim());
+      if (!n) return 'Quem recebe o lembrete tem de ser alguém da equipe (' + EQUIPE.join(', ') + ').';
+      const email = EMAIL_DE.get(normalizarBusca(n));
+      if (!email) return n + ' não tem login no sistema: o lembrete não chegaria. Nada foi proposto — diga isso na resposta.';
+      para = { email, nome: n };
+    }
+    const repeticao = Object.prototype.hasOwnProperty.call(REPETE, e.repeticao) ? e.repeticao : 'uma_vez';
+    let tarefa = null, antecedencia_min = null, quandoMs = null;
+    if (e.tarefa && String(e.tarefa).trim()) {
+      const tid = String(e.tarefa).trim();
+      if (!UUID.test(tid)) return 'A tarefa vai pelo id (de agenda ou consultar).';
+      const { linhas } = await ler('tarefas?select=id,titulo,prazo,hora,status,responsavel&id=eq.' + tid);
+      const t = linhas[0];
+      if (!t) return 'Não achei essa tarefa.';
+      if (t.status === 'concluida') return 'Essa tarefa já está concluída: o lembrete não precisa. Nada foi proposto.';
+      tarefa = { id: String(t.id), titulo: t.titulo || 'Sem título', prazo: t.prazo || null, hora: t.hora ? String(t.hora).slice(0, 5) : null };
+      if (e.antecedencia_min != null && e.antecedencia_min !== '') {
+        const a = Number(e.antecedencia_min);
+        if (!Number.isInteger(a) || a < 0 || a > 10080) return 'A antecedência vai em minutos (de 0 a 10080).';
+        if (!tarefa.hora || !tarefa.prazo) return 'A tarefa não tem hora marcada: diga o dia e a hora do lembrete (quando).';
+        antecedencia_min = a;
+        quandoMs = new Date(tarefa.prazo + 'T' + tarefa.hora + ':00-03:00').getTime() - a * 60e3;
+      }
+    }
+    if (quandoMs == null) {
+      const m = QUANDO.exec(String(e.quando || '').trim());
+      if (!m || isNaN(new Date(m[1] + 'T12:00:00Z'))) return 'Diga o dia e a hora do lembrete em AAAA-MM-DDTHH:MM (a hora de Brasília). Sem a hora ("de manhã", "cedo"), pergunte a hora antes de propor.';
+      quandoMs = new Date(m[1] + 'T' + m[2] + ':' + m[3] + ':00-03:00').getTime();
+    }
+    const agoraMs = agora().getTime();
+    if (quandoMs <= agoraMs) return 'Esse horário (' + quandoBR(quandoMs) + ') já passou — agora são ' + quandoBR(agoraMs).slice(-5) + ' de ' + quandoBR(agoraMs).slice(0, 5)
+      + '. Nada foi proposto: diga na resposta que o horário já passou e pergunte se é pra outro.';
+    if (quandoMs > agoraMs + 400 * 864e5) return 'Lembrete só até um ano pra frente.';
+    const quando = new Date(quandoMs).toISOString();
+    registrar({ tipo: 'criar_lembrete', lembrete: { texto, para, quando, repeticao: tarefa ? 'uma_vez' : repeticao, tarefa, antecedencia_min } });
+    return 'Proposta pronta: a tela mostra o lembrete já preenchido — "' + texto + '", pra ' + (para.email === eu ? 'quem pede' : para.nome) + ', ' + quandoBR(quandoMs)
+      + (tarefa ? ' (' + (antecedencia_min != null ? antecedencia_min + ' minutos antes da tarefa "' : 'sobre a tarefa "') + valorCurto(tarefa.titulo, 80) + '")' : '')
+      + (!tarefa && repeticao !== 'uma_vez' ? ', e depois ' + REPETE[repeticao] : '') + ' — com o botão "Criar lembrete": a pessoa confere, ajusta se quiser e cria. '
+      + 'Nada foi criado ainda. Na hora, ele chega na conversa Avisos do sistema do chat. Na resposta: uma frase (não diga que já foi criado).';
+  }
+  async function propor_ver_lembretes() {
+    const ja = jaProposto(); if (ja) return ja;
+    const eu = String(usuario.email || '').toLowerCase();
+    const { linhas, total } = await ler('lembretes?select=id,para,texto,quando,repeticao,tarefa_id,antecedencia_min,criado_por&situacao=eq.pendente&order=quando.asc&limit=30', { contar: true });
+    registrar({ tipo: 'lembretes' });
+    const quem = x => (String(x || '').toLowerCase() === eu ? 'você' : NOME_POR_EMAIL[String(x || '').toLowerCase()] || x);
+    if (!linhas.length) return 'Nenhum lembrete pra chegar. A tela mostra o cartão (vazio, com como criar). Na resposta: uma frase.';
+    return 'A tela mostra o cartão com ' + plural(total || linhas.length, 'lembrete', 'lembretes') + ' pra chegar, cada um com "Cancelar":\n'
+      + linhas.map(l => '- ' + quandoBR(new Date(l.quando).getTime()) + ' · ' + valorCurto(l.texto, 120) + ' · pra ' + quem(l.para)
+        + (String(l.criado_por || '').toLowerCase() !== eu ? ' · de ' + quem(l.criado_por) : '') + (l.repeticao && l.repeticao !== 'uma_vez' ? ' · ' + (REPETE[l.repeticao] || l.repeticao) : '')
+        + (l.tarefa_id ? ' · sobre uma tarefa' + (l.antecedencia_min != null ? ' (' + l.antecedencia_min + ' min antes da hora dela)' : '') : '')).join('\n')
+      + '\nNa resposta: o essencial em uma ou duas frases; cancelar é no cartão (não diga que cancelou).';
+  }
+
   return { buscar_empresa, ver_empresa, agenda, consultar, perguntar_reforma, buscar_arquivos, comparativo, propor_concluir_tarefas, propor_alterar_tarefas, propor_registrar_historico,
     propor_marcar_pago, propor_criar_tarefa, propor_enviar_mensagem, propor_revisao_atrasadas, propor_ver_vigia,
-    propor_incluir_reforma, propor_por_na_competencia, propor_ajustar_obrigacoes };
+    propor_incluir_reforma, propor_por_na_competencia, propor_ajustar_obrigacoes, propor_criar_lembrete, propor_ver_lembretes };
 }
 
 // a etapa que aparece no "digitando…" da tela
@@ -1701,5 +1841,7 @@ export function descreverEtapa(nome, e = {}) {
   if (nome === 'propor_incluir_reforma') return 'Separando as empresas pra campanha da Reforma';
   if (nome === 'propor_por_na_competencia') return 'Montando os boletos pra você conferir';
   if (nome === 'propor_ajustar_obrigacoes') return 'Separando as obrigações pra você confirmar';
+  if (nome === 'propor_criar_lembrete') return 'Preparando o lembrete pra você conferir';
+  if (nome === 'propor_ver_lembretes') return 'Separando os seus lembretes';
   return s(nome, 40);
 }

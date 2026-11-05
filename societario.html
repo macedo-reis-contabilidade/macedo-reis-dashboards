@@ -16,6 +16,7 @@
     a[href="societario-regras.html"] .dashboard-card-icon { background: rgba(63,176,122,.16); color:#3FB07A; }
     a[href="societario-alvaras.html"] .dashboard-card-icon { background: rgba(63,176,122,.16); color:#3FB07A; }
     a[href="societario-certificados.html"] .dashboard-card-icon { background: rgba(227,179,65,.16); color:#E3B341; }
+    a[href="societario-mei.html"] .dashboard-card-icon { background: rgba(91,130,166,.18); color:#8AAEC8; }
     a[href="societario-relatorios.html"] .dashboard-card-icon { background: rgba(133,151,224,.16); color:#8597E0; }
 
     /* Selo "hoje" (urgência do dia) — canto superior direito */
@@ -94,6 +95,15 @@
           <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="societario-certificados.html">·</span></div>
         </a>
 
+        <a href="societario-mei.html" class="dashboard-card">
+          <div class="dashboard-card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 11h6M19 8v6"/></svg>
+          </div>
+          <h3>Aberturas de MEI</h3>
+          <p>Os pedidos de quem quer abrir o MEI pelo link: as respostas, os documentos e a sugestão de CNAE.</p>
+          <div class="dashboard-card-footer"><span>Acessar →</span><span class="badge card-status st-load" data-mod="societario-mei.html">·</span></div>
+        </a>
+
         <a href="societario-relatorios.html" class="dashboard-card">
           <div class="dashboard-card-icon">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
@@ -140,6 +150,12 @@
         const n = (data || []).filter(c => etapaDoAviso(c, hojeLocal())).length;
         setBadge('societario-certificados.html', n ? n + ' a avisar' : 'nenhum a avisar');
       } catch (e) { setBadge('societario-certificados.html', '—'); }
+      // aberturas de MEI: os pedidos a fazer (recebidos ou em andamento)
+      try {
+        const { count, error } = await supabase.from('aberturas_mei').select('id', { count: 'exact', head: true }).in('situacao', ['recebida', 'em_andamento']);
+        if (error) throw error;
+        setBadge('societario-mei.html', count ? count + ' a fazer' : 'nenhum a fazer');
+      } catch (e) { setBadge('societario-mei.html', '—'); }
     }
     pintar();
   </script>

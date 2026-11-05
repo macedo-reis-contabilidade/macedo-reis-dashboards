@@ -10,7 +10,7 @@
 // ============================================================
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
-import { criarServidor } from "https://raw.githubusercontent.com/macedo-reis-contabilidade/macedo-reis-dashboards/a10f2630f614053c4aa08f5ae4af4a60e00a30fa/supabase/functions/ponte/servidor.js";
+import { criarServidor } from "https://raw.githubusercontent.com/macedo-reis-contabilidade/macedo-reis-dashboards/81514bc882f7fbef706e1580935fd6014dd558f5/supabase/functions/ponte/servidor.js";
 
 Deno.serve(criarServidor({
   criarDb: () => createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } }),
