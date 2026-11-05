@@ -35,6 +35,8 @@ export const ROTULOS = {
   dominio_folha_sem_tarefa: 'Funcionários no Domínio sem as tarefas de folha do DP', ponte_dominio_parada: 'Ponte do Domínio parada',
   dominio_notas_paradas: 'Notas de saída que pararam no Domínio', dominio_contabil_parada: 'Contabilidade parada no Domínio',
   dominio_prolabore_parado: 'Pró-labore que parou de ser calculado no Domínio',
+  // 05/11/2026: o faturamento do Domínio contra o PGDAS da Receita
+  dominio_pgdas_diferente: 'Faturamento do Domínio diferente do PGDAS',
   // as perguntas pra equipe (02/11/2026): vigia_regras_gerente() (o nome é só interno) — respondidas no cartão
   pergunta_aberta: 'Perguntas pra responder',
   // os Relatórios Vivos (29/10/2026): vigia_regras_relatorios()
