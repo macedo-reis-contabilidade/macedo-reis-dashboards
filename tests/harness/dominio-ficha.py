@@ -38,7 +38,8 @@ DADOS = {
                          {'codigo': 99, 'cliente_id': 'c2', 'nome': 'X', 'ativa': None}],
     'dominio_mensal': [
         linha(HOJE, admissoes=0, notas_saida=0, valor_saidas=0, notas_entrada=0, valor_entradas=0, lancamentos=0, ultimo_lancamento=None),
-        linha(PASSADO),
+        linha(PASSADO, receita_bruta=98765.4, receita_simples=98765.4, rbt12=1100000, meses_rbt12=12, compras=41000, servicos_tomados=0, salarios=18000,
+              rescisoes=0, decimo_terceiro=0, pro_labore_valor=3036, fgts=1440, inss_empresa=3600, inss_rat=360, inss_terceiros=1044),
         linha(ANTES, admissoes=0, desligamentos=1, afastados=1, pro_labore=1),
         linha(mes_antes(8))],
 }
@@ -79,7 +80,7 @@ def main():
         p.goto(base + 'clientes/editar.html?id=c1')
         p.wait_for_selector('#sectionDominio:not([hidden])', timeout=8000)
         t = p.inner_text('#dominioConteudo')
-        linhas = p.locator('#dominioConteudo tbody tr')
+        linhas = p.locator('#dominioConteudo table.dm-qtd tbody tr')
         ok('Empresa no Domínio: código 41' in t, 'o código da empresa no Domínio')
         ok(linhas.count() == 3 and br(HOJE) in linhas.nth(0).inner_text() and br(PASSADO) in linhas.nth(1).inner_text() and br(ANTES) in linhas.nth(2).inner_text(),
            f'os meses do mais recente pro mais antigo, só os da janela ({linhas.count()} linhas)')
@@ -90,6 +91,12 @@ def main():
         l2 = ' '.join(linhas.nth(2).inner_text().split())
         ok('−1 desl. · 1 afast.' in l2, f'o desligamento e o afastado do mês ({l2})')
         ok('nenhum dado de funcionário sai do Domínio' in t and 'não o faturamento' in t, 'o rodapé: de onde veio e que o valor não é o faturamento')
+        val = p.locator('#dominioConteudo table.dm-valor tbody tr')
+        v1 = ' '.join(val.nth(1).inner_text().split()) if val.count() > 1 else ''
+        ok(val.count() == 3 and 'R$ 98.765,40' in v1 and 'R$ 41.000,00' in v1 and 'R$ 18.000,00' in v1 and 'R$ 3.036,00' in v1 and 'R$ 6.444,00' in v1,
+           f'em reais: o faturamento, as compras, a folha, o pró-labore e os encargos do mês ({v1})')
+        ok('RBT12 de ' + br(PASSADO) in t and 'R$ 1.100.000,00' in t, 'o RBT12 do Simples no Domínio')
+        ok(' '.join(val.nth(2).inner_text().split()).count('—') == 5, 'o mês que a versão 2 ainda não leu: traços')
         ok(p.locator('#sectionDominio').evaluate('s => { const r = s.getBoundingClientRect(); return r.width > 0 && r.height > 0; }'), 'a seção na tela')
         p.locator('#sectionDominio').screenshot(path=str(SITE.parent / 'dominio-ficha.png'))
 

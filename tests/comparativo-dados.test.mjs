@@ -5,7 +5,7 @@
 
 import { entradaDoSistema, aplicarRelatorios, premissasParaTestar, prazosDaEscolha, exclusaoObrigatoria, ultimoDiaUtil, serieDosMeses, tipoPeloCnae, tipoPeloAnexo, regimeDoCadastro,
   ehRefeicaoRS, ehRdaRS, empresasDosSocios, receitaDaEmpresa, situacaoDoGrupo, serieDaEmpresa, foraDaSoma, avisoDaSoma, mesclarSerie,
-  pareceFolha, cnpjsDoCabecalho, juntarFolha, folhaDoAno, aplicarFolha } from '../assets/js/comparativo-dados.js';
+  pareceFolha, cnpjsDoCabecalho, juntarFolha, folhaDoAno, aplicarFolha, mesesDaPonte, seriePonte, somaDaPonte } from '../assets/js/comparativo-dados.js';
 import { comparar } from '../assets/js/comparativo-motor.js';
 
 let falhas = 0, total = 0;
@@ -238,6 +238,66 @@ ok('na entrada: a folha e o pró-labore, a origem no relatório do Domínio com 
 const apSo = aplicarFolha({}, {}, aSo);
 ok('sem pró-labore no resumo: zero, a origem diz, e a nota pede pra conferir', apSo.entrada.proLabore === 0 && /sem pró-labore/.test(apSo.origens.proLabore.texto) && /anualizado/.test(apSo.origens.folha.texto) && apSo.notas.some(n => /não trouxe pró-labore/.test(n)), apSo);
 ok('leitura que não deu: a entrada fica como estava', aplicarFolha({ folha: 5 }, {}, { ok: false }).entrada.folha === 5);
+
+console.log('=== o Domínio pela ponte (05/11/2026, a versão 2) ===');
+{
+  // 12 meses fechados de out/25 a set/26, uma empresa do Presumido: mercadoria e serviço, compras, folha e pró-labore
+  const comps = ['2025-10', '2025-11', '2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09'];
+  const PL = (c, x = {}) => ({ codigo: 7, competencia: c, receita_bruta: 100000, receita_mercadorias: 80000, receita_servicos: 20000, receita_simples: null, receita_st: null,
+    receita_monofasica: null, receita_exportacao: null, compras: 50000, servicos_tomados: 3000, ativo_e_consumo: 1000, salarios: 20000, decimo_terceiro: 0, pro_labore_valor: 5000, ...x });
+  const dom = comps.map(c => PL(c, c === '2025-12' ? { decimo_terceiro: 20000 } : c === '2026-02' ? { receita_bruta: 0, receita_mercadorias: 0, receita_servicos: 0 } : {}));
+  dom.push(PL('2026-03', { codigo: 9, receita_bruta: 1, compras: 999999 }));   // o mesmo documento noutro código: fica o maior
+  const mp = mesesDaPonte(dom);
+  ok('os meses da ponte: um por mês, em ordem; dois códigos: o maior de cada número', mp.length === 12 && mp[0].competencia === '2025-10' && mp[5].receita_bruta === 100000 && mp[5].compras === 999999, mp[5]);
+  const sp = seriePonte(mp);
+  ok('a receita de 12 meses pela ponte: o mês sem faturamento conta como zero (não anualiza)', sp.n === 12 && sp.npos === 11 && sp.receita === 1100000 && sp.meses && sp.meses[1] === 0 && !sp.simples, sp);
+  ok('a soma de 12 meses: anualiza com menos; com menos de 3, nada', somaDaPonte(mp.slice(-6), ['compras']).soma === 600000 && somaDaPonte(mp.slice(-2), ['compras']) === null
+    && somaDaPonte(mp, ['salarios', 'decimo_terceiro']).soma === 260000);
+  const pres = entradaDoSistema({ cliente: { regime_tributario: 'Lucro Presumido', cnae_principal: '4711-3/02', uf: 'RS' }, dominio: dom,
+    fatorR: [{ competencia: '2026-09-01', folha_salarios: 1, folha_outros: 0, prolabore: 0 }] });
+  const ativ = pres.entrada.atividades;
+  ok('sem PGDAS: a receita do Domínio pela ponte, com a divisão mercadoria × serviço dele', ativ.length === 2 && perto(ativ[0].receita + ativ[1].receita, 1100000) && perto(ativ[0].receita, 880000)
+    && pres.origens['atividades.0.receita'].fonte === 'ponte' && pres.origens['atividades.0.receita'].texto === 'Domínio, pela ponte: o faturamento de out/25 a set/26', pres.origens['atividades.0.receita']);
+  ok('as compras e as despesas com crédito pela ponte (12 meses; o maior dos dois códigos no mês)', pres.entrada.compras === 11 * 50000 + 999999 && pres.entrada.despesasCredito === 48000
+    && pres.origens.compras.fonte === 'ponte' && /compras de mercadorias e insumos de out\/25 a set\/26/.test(pres.origens.compras.texto) && /energia, comunicação, frete/.test(pres.origens.despesasCredito.texto), pres.origens.compras);
+  ok('a folha e o pró-labore pela ponte, no lugar do Fator R com menos meses (os proventos com o 13º)', pres.entrada.folha === 260000 && pres.entrada.proLabore === 60000
+    && pres.origens.folha.fonte === 'ponte' && /salários, férias, rescisões e 13º de out\/25 a set\/26/.test(pres.origens.folha.texto) && /pró-labore de out\/25/.test(pres.origens.proLabore.texto), pres.origens.folha);
+  ok('a série da empresa (o limite, o crescimento): os meses com receita, pela ponte', pres.serie.length === 11 && pres.serie[0].competencia === '2025-10' && pres.ponte && pres.ponte.n === 12);
+  const fr12 = comps.map(c => ({ competencia: c + '-01', folha_salarios: 30000, folha_outros: 0, prolabore: 7000 }));
+  const comFr = entradaDoSistema({ cliente: { regime_tributario: 'Lucro Presumido', cnae_principal: '4711-3/02' }, dominio: dom.slice(-6), fatorR: fr12 });
+  ok('o Fator R com mais meses que a ponte fica', comFr.entrada.folha === 360000 && comFr.origens.folha.fonte === 'fator_r');
+  // o Simples: o PGDAS com os mesmos 12 meses vale (o declarado); a divisão e o resto vêm da ponte
+  const simp = dom.slice(0, 12).map(l => ({ ...l, receita_bruta: 100000, receita_simples: 120000, receita_anexo_1: 30000, receita_anexo_2: 66000, receita_anexo_3: 24000,
+    receita_anexo_4: 0, receita_anexo_5: 0, receita_st: 19200, receita_monofasica: 9600, receita_exportacao: 0 }));
+  const pg12 = comps.map(c => ({ competencia: c, receita_mes: 120000 }));
+  const s1 = entradaDoSistema({ cliente: { regime_tributario: 'Simples Nacional', cnae_principal: '4711-3/02' }, pgdas: pg12, dominio: simp });
+  ok('PGDAS e ponte com os mesmos meses: o PGDAS vale; a divisão é a do Domínio pela ponte', s1.origens['atividades.0.receita'].fonte === 'pgdas'
+    && /a divisão mercadoria × serviço é a do Domínio, pela ponte/.test(s1.origens['atividades.0.receita'].texto) && perto(s1.entrada.atividades[0].receita, 1440000 * 0.8), s1.origens['atividades.0.receita']);
+  ok('o anexo de cada receita pela apuração do Simples: o II maior que o I é indústria; o III, serviço', s1.entrada.atividades[0].tipo === 'industria' && s1.entrada.atividades[1].tipo === 'servico'
+    && s1.origens['atividades.0.tipo'].fonte === 'ponte' && s1.origens['atividades.0.tipo'].texto === 'Domínio, pela ponte: Anexo II na apuração do Simples', s1.origens['atividades.0.tipo']);
+  ok('o ST e o monofásico sobre a receita de mercadoria da apuração (pelos anexos)', perto(s1.entrada.atividades[0].pctST, 20) && perto(s1.entrada.atividades[0].pctMonofasico, 10)
+    && s1.origens['atividades.0.pctST'].fonte === 'ponte' && /20% das vendas de mercadoria com ICMS-ST na apuração do Simples/.test(s1.origens['atividades.0.pctST'].texto), [s1.entrada.atividades[0].pctST, s1.origens['atividades.0.pctST']]);
+  const s2 = entradaDoSistema({ cliente: { regime_tributario: 'Simples Nacional', cnae_principal: '4711-3/02' }, pgdas: pg12.slice(-6), dominio: simp });
+  ok('o PGDAS com menos meses que a ponte: a ponte vale, pela apuração do Simples', s2.origens['atividades.0.receita'].fonte === 'ponte' && /a receita da apuração do Simples de out\/25 a set\/26/.test(s2.origens['atividades.0.receita'].texto)
+    && perto(s2.entrada.atividades.reduce((t, a) => t + a.receita, 0), 1440000));
+  const fr = entradaDoSistema({ cliente: { regime_tributario: 'Simples Nacional', cnae_principal: '6201-5/01' }, dominio: simp.map(l => ({ ...l, receita_anexo_1: 0, receita_anexo_2: 0, receita_anexo_3: 120000, receita_mercadorias: 0, receita_servicos: 100000, receita_st: 0, receita_monofasica: 0 })) });
+  ok('o serviço no Anexo III com o CNAE do fator r fica no fator r (o motor põe no III ou no V pela folha), sem a nota de trocar o tipo', fr.entrada.atividades.length === 1 && fr.entrada.atividades[0].tipo === 'servico_r'
+    && /\(o CNAE é do fator r\)/.test(fr.origens['atividades.0.tipo'].texto) && !fr.notas.some(n => /Serviço no Anexo III/.test(n)), [fr.entrada.atividades, fr.origens['atividades.0.tipo']]);
+  const so3 = entradaDoSistema({ cliente: { regime_tributario: 'Simples Nacional', cnae_principal: '8211-3/00' }, dominio: simp.map(l => ({ ...l, receita_anexo_1: 0, receita_anexo_2: 0, receita_anexo_3: 120000, receita_mercadorias: 0, receita_servicos: 100000, receita_st: 0, receita_monofasica: 0 })) });
+  ok('o serviço no Anexo III com outro CNAE: serviço do III, com a nota de conferir o fator r', so3.entrada.atividades[0].tipo === 'servico' && so3.notas.some(n => /Serviço no Anexo III/.test(n)), so3.entrada.atividades);
+  const semSt = entradaDoSistema({ cliente: { regime_tributario: 'Simples Nacional', cnae_principal: '4711-3/02' }, dominio: simp.map(l => ({ ...l, receita_st: 0, receita_exportacao: 5000 })),
+    caso: { anexo: 'I', sim_obs: JSON.stringify({ v: 1, input: { anexo: 'I' }, dominio: { vendas: { mercadorias: 100, st: 30, meses: [] } } }) } });
+  ok('a ponte sem venda com ST: valem as saídas do caso da Reforma (a venda com ST não separada na apuração)', perto(semSt.entrada.atividades[0].pctST, 30) && semSt.origens['atividades.0.pctST'].fonte === 'reforma');
+  ok('a exportação na apuração: a nota pede pra conferir', semSt.notas.some(n => /receita de exportação nos 12 meses/.test(n)));
+  const semSt2 = entradaDoSistema({ cliente: { regime_tributario: 'Simples Nacional', cnae_principal: '4711-3/02' }, dominio: simp.map(l => ({ ...l, receita_st: 0 })) });
+  ok('a ponte sem venda com ST e sem o caso: zero, dito', semSt2.entrada.atividades[0].pctST === 0 && /sem venda com ICMS-ST/.test(semSt2.origens['atividades.0.pctST'].texto));
+  // as outras empresas dos sócios: a receita pela ponte quando não tem PGDAS
+  const rp = receitaDaEmpresa({ cliente: { id: 'g1', nome_principal: 'OUTRA INVENTADA' }, dominio: dom });
+  ok('a receita de outra empresa dos sócios pela ponte, com a série', rp.receita === 1100000 && rp.origem.fonte === 'ponte' && rp.serie.length === 11 && serieDaEmpresa({ dominio: dom }).fonte === 'ponte');
+  ok('sem nada da ponte, como antes', serieDaEmpresa({ dominio: [] }) === null && entradaDoSistema({ cliente: { regime_tributario: 'Lucro Presumido' }, dominio: [] }).ponte === null);
+  const dDom = dom.map(l => ({ ...l, salarios: null, decimo_terceiro: null, pro_labore_valor: null }));
+  ok('a folha que o Domínio não disse (a empresa inativa lá) não vira zero: segue o Fator R ou o padrão', entradaDoSistema({ cliente: { regime_tributario: 'Lucro Presumido' }, dominio: dDom }).origens.folha.fonte === 'padrao');
+}
 
 console.log('\n' + (total - falhas) + ' de ' + total + ' conferências ok' + (falhas ? ' — ' + falhas + ' FALHA(S)' : ''));
 process.exit(falhas ? 1 : 0);

@@ -116,7 +116,7 @@ const fRec = fonte(rF, 'simples', 'receita');
 ok('cada fase tem as suas fontes', rF.fases.every(f => Array.isArray(f.fontes) && f.fontes.length > 0), rF.fases.map(f => f.id + ':' + f.fontes.length));
 ok('a receita: o relatório do Domínio, até jul/26, e os meses que faltam até o último fechado', fRec.estado === 'antigo' && /Relatório de Faturamento/.test(fRec.onde) && fRec.relatorio === true
   && /caso da Reforma, até jul\/26 — faltam ago\/26 e set\/26/.test(fRec.situacao), fRec.situacao);
-ok('no Simples, a receita vai chegar pela ponte da Receita (o PGDAS)', /ponte da Receita \(Integra Contador\)/.test(fRec.auto) && /PGDAS/.test(fRec.auto), fRec.auto);
+ok('no Simples, a receita chega pela ponte da Receita (o PGDAS) e pela do Domínio (a apuração)', fRec.auto === AUTOMATICO.receita && /ponte da Receita traz o PGDAS/.test(fRec.auto) && /a do Domínio, a apuração/.test(fRec.auto), fRec.auto);
 ok('com os meses em dia, a receita fica "tem"', fonte(rodar(ent, ori, { ...base, hoje: '2026-08-25' }), 'simples', 'receita').estado === 'tem');
 ok('os sócios: o contrato social na ficha, que as pontes não trazem', fonte(rF, 'simples', 'socios').estado === 'tem' && fonte(rF, 'simples', 'socios').ficha && fonte(rF, 'simples', 'socios').auto === AUTOMATICO.contrato);
 ok('sem os sócios no cadastro, falta; sem cadastro, a linha não aparece', fonte(rodar(ent, ori, { ...base, socios: 0, hoje: '2026-11-01' }), 'simples', 'socios').estado === 'falta' && !fonte(rodar(ent, ori, { ...base, socios: null, hoje: '2026-11-01' }), 'simples', 'socios'));
@@ -124,9 +124,9 @@ const fGr = fonte(rF, 'simples', 'grupo');
 ok('as outras empresas: somadas até o mês que todas têm, com os que faltam', fGr.estado === 'antigo' && /as 2 empresas somadas até jul\/26 — faltam ago\/26 e set\/26/.test(fGr.situacao), fGr.situacao);
 ok('a outra sem a receita: falta, com o nome', /falta a receita de PADARIA INVENTADA/.test(fonte(rodar(ent, { ...ori, 'grupo.0.receita': { fonte: 'padrao' } }, { ...base, hoje: '2026-11-01' }), 'simples', 'grupo').situacao));
 const fFolha = fonte(rF, 'numeros', 'folha');
-ok('a folha: o resumo da folha do Domínio, que falta, pra soltar (lido com IA, como no Fator R)', fFolha.estado === 'falta' && /Domínio Folha: o resumo da folha mês a mês/.test(fFolha.onde) && /lido com IA como no Fator R/.test(fFolha.onde) && fFolha.relatorio === true && fFolha.campo === 'folha' && fFolha.auto === AUTOMATICO.dominio, fFolha.onde);
+ok('a folha: o resumo da folha do Domínio, que falta, pra soltar (lido com IA, como no Fator R)', fFolha.estado === 'falta' && /Domínio Folha: o resumo da folha mês a mês/.test(fFolha.onde) && /lido com IA como no Fator R/.test(fFolha.onde) && fFolha.relatorio === true && fFolha.campo === 'folha' && fFolha.auto === AUTOMATICO.ponte && /a ponte do Domínio traz todo dia/.test(AUTOMATICO.ponte), fFolha.onde);
 ok('as compras: o Acompanhamento de Entradas, cumpridas pelo caso da Reforma', fonte(rF, 'numeros', 'compras').estado === 'tem' && /Acompanhamento de Entradas/.test(fonte(rF, 'numeros', 'compras').onde));
-ok('o PGDAS: de jul/26, e a Receita só vai trazer a receita e o RBT12', fonte(rF, 'numeros', 'pgdas').estado === 'tem' && /jul\/26/.test(fonte(rF, 'numeros', 'pgdas').situacao) && /ST, o monofásico e a redução seguem pelo relatório/.test(fonte(rF, 'numeros', 'pgdas').auto));
+ok('o PGDAS: de jul/26; as pontes trazem a receita, o RBT12, o ST e o monofásico, e a alíquota efetiva segue pelo relatório', fonte(rF, 'numeros', 'pgdas').estado === 'tem' && /jul\/26/.test(fonte(rF, 'numeros', 'pgdas').situacao) && /o ST e o monofásico; a alíquota efetiva e a redução do ICMS seguem pelo relatório/.test(fonte(rF, 'numeros', 'pgdas').auto));
 ok('as despesas: o balancete ou a DRE do Domínio Contabilidade', /balancete ou a DRE/.test(fonte(rF, 'numeros', 'despesas').onde) && ['falta', 'dispensa'].includes(fonte(rF, 'numeros', 'despesas').estado));
 ok('o crédito de ICMS e o ICMS do restaurante, no padrão', fonte(rF, 'premissas', 'credito').estado === 'padrao' && /no padrão: 12% das compras/.test(fonte(rF, 'premissas', 'credito').situacao)
   && fonte(rF, 'premissas', 'icms').info === 'O ICMS das vendas e a opção do restaurante' && /o RDA, a base reduzida ou o crédito presumido/.test(fonte(rF, 'premissas', 'icms').onde));
@@ -135,7 +135,7 @@ ok('com a folha, o RAT no padrão pede o resumo da folha', fonte(rodar(ent3, o3,
 const fConv = fonte(rF, 'veredito', 'conversa');
 ok('o veredito: a reunião, com as escolhas do restaurante e da Reforma', fConv.estado === 'conversa' && /a opção do ICMS do restaurante e o Simples por dentro ou por fora na Reforma/.test(fConv.onde), fConv.onde);
 const fPres = fontesDoEstudo({ entrada: comPadroes({ atividades: [{ tipo: 'servico', receita: 900000 }], regimeAtual: 'presumido' }), origens: { 'atividades.0.receita': { fonte: 'digitado' } }, hoje: '2026-11-01' });
-ok('no Presumido, a receita vai chegar pela ponte do Domínio; digitada, sem o "até"', fPres.simples[0].auto === AUTOMATICO.dominio && fPres.simples[0].estado === 'tem' && fPres.simples[0].situacao === 'digitado');
+ok('no Presumido, a receita chega pela ponte do Domínio; digitada, sem o "até"', fPres.simples[0].auto === AUTOMATICO.ponte && fPres.simples[0].estado === 'tem' && fPres.simples[0].situacao === 'digitado');
 ok('serviço: o ISS e nenhuma linha de ICMS nem de PGDAS', fPres.premissas.some(x => x.id === 'iss') && !fPres.premissas.some(x => x.id === 'icms' || x.id === 'credito') && !fPres.numeros.some(x => x.id === 'pgdas'));
 
 console.log('=== o crescimento medido ===');

@@ -231,8 +231,8 @@ def main():
         ok('O que usar nesta fase' in fts and 'Relatório de Faturamento' in fts and 'até jul/26 — faltam ago/26 e set/26' in fts
            and p.get_attribute('#fase .ct-usar-item[data-id="receita"]', 'data-estado') == 'antigo',
            'fase 1, o que usar: o faturamento do Domínio, até jul/26, com os meses que faltam até o último fechado')
-        ok('2 sócios no cadastro' in fts and 'as 2 empresas somadas até jul/26' in fts and 'Automático quando a ponte da Receita (Integra Contador) ligar' in fts,
-           'os sócios, as empresas somadas e o que vai chegar sozinho pela ponte da Receita')
+        ok('2 sócios no cadastro' in fts and 'as 2 empresas somadas até jul/26' in fts and 'Automático: a ponte da Receita traz o PGDAS' in fts,
+           'os sócios, as empresas somadas e o que chega sozinho pela ponte da Receita')
         ok(p.locator('#fase .ct-usar > .ct-m-acoes [data-relatorio]').count() == 1 and p.locator('#fase .ct-usar-item[data-id="socios"] a').count() == 0,
            'com a receita a atualizar, o "Soltar os relatórios do Domínio" embaixo; os sócios, que já estão, sem o link da ficha')
         p.click('#fase .ct-usar > .ct-m-acoes [data-relatorio]')
@@ -251,7 +251,7 @@ def main():
            'passou de fase: a tela segue pra fase 2 e o próximo passo é a folha')
         ok(p.get_attribute('#fase .ct-usar-item[data-id="folha"]', 'data-estado') == 'falta' and 'Domínio Folha: o resumo da folha' in texto(p, '#fase .ct-usar-item[data-id="folha"]'),
            'fase 2, o que usar: o resumo da folha do Domínio, que falta')
-        ok('Automático quando a ponte do Domínio ligar' in texto(p, '#fase .ct-usar-item[data-id="folha"]'), 'a folha vai chegar pela ponte do Domínio')
+        ok('Automático: a ponte do Domínio traz todo dia' in texto(p, '#fase .ct-usar-item[data-id="folha"]'), 'a folha chega pela ponte do Domínio')
         p.click('#fase .ct-m.ct-prox [data-ir]')
         ok(p.evaluate("() => document.activeElement && document.activeElement.id") == 'f_folha', '"Digitar a folha" põe o cursor na folha')
         p.fill('#f_folha', '480000')

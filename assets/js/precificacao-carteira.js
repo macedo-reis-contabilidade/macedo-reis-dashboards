@@ -77,11 +77,14 @@ export function respostasDoSistema(d, { regimesDaQuestao = new Map(), hoje = nul
   const end = [[c.logradouro, c.numero].filter(Boolean).join(', '), c.bairro, local].filter(Boolean).join(' · ') + (c.cep ? ' · CEP ' + c.cep : '');
   por('A1C', c.logradouro ? end : null, 'cadastro');
   const rf = d.reforma || null;
-  // o faturamento médio do mês: a declaração do PGDAS que a ponte da Receita leu (os 12 meses ÷ 12), senão a ficha da Reforma
+  // o faturamento médio do mês: a declaração do PGDAS que a ponte da Receita leu (os 12 meses ÷ 12), senão o faturamento
+  // do Domínio (a média dos meses fechados, 05/11/2026 — o Presumido e o Real não têm PGDAS), senão a ficha da Reforma
   const rc = d.receita || null;
   const mensalRc = rc && Number(rc.receita_12_meses) > 0 ? Number(rc.receita_12_meses) / 12 : 0;
+  const fatDom = d.dominio && hoje ? faturamentoDoDominio(d.dominio, hoje) : null;
   const mensal = rf ? (Number(rf.receita_mensal) > 0 ? Number(rf.receita_mensal) : Number(rf.rbt12) > 0 ? Number(rf.rbt12) / 12 : 0) : 0;
   if (mensalRc > 0) por('A2M', Math.round(mensalRc * 100) / 100, 'receita');
+  else if (fatDom) por('A2M', Math.round(fatDom.media * 100) / 100, 'dominio');
   else por('A2M', mensal > 0 ? Math.round(mensal * 100) / 100 : null, 'reforma');
   por('A4', tipoSocietario(c.natureza_juridica, c.regime_tributario), 'cadastro');
   por('A5', Number(d.socios) > 0 ? Number(d.socios) : null, 'socios');
@@ -174,6 +177,34 @@ export function respostasDoDominio(linhas, hoje) {
   const pl = valores('pro_labore', [mesPassado, ate, mesMais(mesHoje, -3)]);
   if (pl.length) { const n = Math.max(...pl); respostas.C5 = n > 0 ? 'Sim' : 'Não'; if (n > 0) respostas.C6 = n; }
   return { respostas, periodo: { de, ate, mes: mesFolha || mesPassado } };
+}
+
+// faturamentoDoDominio(linhas, hoje) → { media, meses, de, ate } | null — o faturamento médio do mês pelo Domínio (a versão
+// 2 da ponte, 05/11/2026): os mesmos 12 meses fechados das notas (antes do mês passado), cada mês com a apuração do Simples
+// (com as filiais, como no PGDAS) ou, sem ela, a receita bruta pelos acumuladores de faturamento; dois códigos no mesmo
+// mês, o maior. A média começa no primeiro mês com faturamento (a empresa que começou no meio da janela não fica com os
+// zeros de antes); o mês que o Domínio não disse (null) fica de fora; nenhum mês com faturamento = null (fica a pergunta).
+export function faturamentoDoDominio(linhas, hoje) {
+  const mesHoje = String(hoje || '').slice(0, 7);
+  if (!/^\d{4}-\d{2}$/.test(mesHoje) || !Array.isArray(linhas) || !linhas.length) return null;
+  const ate = mesMais(mesHoje, -2), de = mesMais(mesHoje, -13);
+  const porMes = new Map();
+  linhas.forEach(l => {
+    if (!l || !/^\d{4}-\d{2}$/.test(String(l.competencia)) || l.competencia < de || l.competencia > ate) return;
+    const a = porMes.get(l.competencia) || {};
+    ['receita_simples', 'receita_bruta'].forEach(c => { const v = l[c] == null ? null : Number(l[c]); if (v != null && Number.isFinite(v) && (a[c] == null || v > a[c])) a[c] = v; });
+    porMes.set(l.competencia, a);
+  });
+  const vals = [];
+  for (let m = de; m <= ate; m = mesMais(m, 1)) {
+    const a = porMes.get(m);
+    const v = a ? (a.receita_simples != null ? a.receita_simples : a.receita_bruta) : null;
+    if (v == null) continue;
+    if (!vals.length && !(v > 0)) continue;
+    vals.push({ m, v });
+  }
+  if (!vals.length) return null;
+  return { media: vals.reduce((s, x) => s + x.v, 0) / vals.length, meses: vals.length, de: vals[0].m, ate: vals[vals.length - 1].m };
 }
 
 /** A última declaração do PGDAS com o faturamento, por cliente (receita_pgdas: { cliente_id, competencia, receita_mes,

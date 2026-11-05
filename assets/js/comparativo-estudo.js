@@ -9,8 +9,8 @@
 // ============================================================
 
 import { comparar, testarPremissas, REGIMES, ROTULO_REGIME, TIPOS } from './comparativo-motor.js';
-import { entradaDoSistema, empresasDosSocios, receitaDaEmpresa, situacaoDoGrupo, premissasParaTestar, prazosDaEscolha, foraDaSoma, avisoDaSoma, mesclarSerie } from './comparativo-dados.js';
-import { roteiroDoEstudo } from './comparativo-roteiro.js';
+import { entradaDoSistema, empresasDosSocios, receitaDaEmpresa, situacaoDoGrupo, premissasParaTestar, prazosDaEscolha, foraDaSoma, avisoDaSoma, mesclarSerie, CAMPOS_PONTE } from './comparativo-dados.js';
+import { roteiroDoEstudo, ultimoMesFechado } from './comparativo-roteiro.js';
 
 const brl = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const pct = (v, d = 1) => (Number(v) || 0).toLocaleString('pt-BR', { maximumFractionDigits: d });
@@ -84,14 +84,21 @@ async function lerCadastro(ler, ids) {
   const r = await ler('clientes', { cols: 'id, nome_principal, nome_fantasia', em: { id: ids } });
   return new Map(((r && r.data) || []).map(k => [k.id, k]));
 }
-export async function carregarEstudo({ ler, cliente, cadastroDe = null }) {
+// o dia de hoje em Brasília ('AAAA-MM-DD'), pros meses fechados do Domínio
+const hojeEmBrasilia = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+// o Domínio pela ponte (05/11/2026): só os meses fechados — o último mês fechado é o do roteiro (o do PGDAS que já venceu)
+const soFechados = (linhas, fechado) => (linhas || []).filter(l => l && fechado && String(l.competencia) <= fechado);
+export async function carregarEstudo({ ler, cliente, cadastroDe = null, hoje = null }) {
   const c = cliente;
-  const [rCaso, rFr, rPg, rEst] = await Promise.all([
+  const fechado = ultimoMesFechado(hoje || hojeEmBrasilia());
+  const [rCaso, rFr, rPg, rEst, rDom] = await Promise.all([
     ler('rt_casos', { cols: 'id, anexo, rbt12, receita_mensal, sim_obs, atualizado_em', eq: { cliente_id: c.id }, ordem: { coluna: 'atualizado_em', desc: true }, limite: 1 }),
     ler('fr_empresas', { cols: 'id', eq: { cliente_id: c.id }, limite: 1 }),
     ler('receita_pgdas', { cols: 'competencia, receita_mes', eq: { cliente_id: c.id }, ordem: { coluna: 'competencia', desc: true }, limite: 12 }),
-    ler('comparativos', { cols: 'id, entrada, atualizado_em, atualizado_por', eq: { cliente_id: c.id }, ordem: { coluna: 'atualizado_em', desc: true }, limite: 1 })
+    ler('comparativos', { cols: 'id, entrada, atualizado_em, atualizado_por', eq: { cliente_id: c.id }, ordem: { coluna: 'atualizado_em', desc: true }, limite: 1 }),
+    ler('dominio_mensal', { cols: 'codigo, competencia, ' + CAMPOS_PONTE.join(', '), eq: { cliente_id: c.id }, ordem: { coluna: 'competencia', desc: true }, limite: 48 })
   ]);
+  const dominio = soFechados(rDom && !rDom.error ? rDom.data : [], fechado);
   let fr = [];
   const frEmp = rFr && rFr.data && rFr.data[0];
   if (frEmp) { const r = await ler('fr_lancamentos', { cols: 'competencia, folha_salarios, folha_outros, prolabore', eq: { empresa_id: frEmp.id }, ordem: { coluna: 'competencia', desc: true }, limite: 12 }); fr = (r && r.data) || []; }
@@ -112,16 +119,18 @@ export async function carregarEstudo({ ler, cliente, cadastroDe = null }) {
     const empresas = empresasDosSocios(socios, outros, c.id);
     if (empresas.length) {
       const ids = empresas.map(x => x.cliente_id);
-      const [rC, rP, cad] = await Promise.all([
+      const [rC, rP, cad, rD] = await Promise.all([
         ler('rt_casos', { cols: 'cliente_id, receita_mensal, sim_obs, atualizado_em', em: { cliente_id: ids }, ordem: { coluna: 'atualizado_em', desc: true } }),
         ler('receita_pgdas', { cols: 'cliente_id, competencia, receita_mes', em: { cliente_id: ids } }),
-        cadastroDe ? cadastroDe(ids) : lerCadastro(ler, ids)
+        cadastroDe ? cadastroDe(ids) : lerCadastro(ler, ids),
+        ler('dominio_mensal', { cols: 'cliente_id, competencia, receita_bruta, receita_simples', em: { cliente_id: ids } })
       ]);
+      const domGrupo = soFechados(rD && !rD.error ? rD.data : [], fechado);
       empresas.forEach(x => {
         const cli = (cad && cad.get(x.cliente_id)) || { id: x.cliente_id, nome_principal: 'empresa sem cadastro aberto' };
         const caso = ((rC && rC.data) || []).find(k => k.cliente_id === x.cliente_id) || null;
         const pgs = ((rP && rP.data) || []).filter(k => k.cliente_id === x.cliente_id);
-        const r = receitaDaEmpresa({ cliente: cli, caso, pgdas: pgs });
+        const r = receitaDaEmpresa({ cliente: cli, caso, pgdas: pgs, dominio: domGrupo.filter(k => k.cliente_id === x.cliente_id) });
         const fora = foraDaSoma(x, r.receita);
         if (fora) { grupoFora.push({ nome: r.nome, cliente_id: x.cliente_id, socios: x.socios, motivo: fora }); return; }
         const aviso = avisoDaSoma(x, r.receita, r.nome);
@@ -133,7 +142,7 @@ export async function carregarEstudo({ ler, cliente, cadastroDe = null }) {
   } catch (err) { /* sem os sócios, a conta segue sem as outras empresas */ }
   const caso = (rCaso && rCaso.data && rCaso.data[0]) || null;
   const pg = (rPg && rPg.data) || [];
-  const sis = entradaDoSistema({ cliente: c, caso, fatorR: fr, pgdas: pg });
+  const sis = entradaDoSistema({ cliente: c, caso, fatorR: fr, pgdas: pg, dominio });
   grupoFora.forEach(g => sis.notas.push(g.nome + ' é dos mesmos sócios, mas fica fora da soma do limite: ' + g.motivo + '.'));
   sis.notas.push(...notasGrupo);
   sis.entrada.grupo = grupo.map(({ origem, ...g }) => g);
@@ -141,7 +150,8 @@ export async function carregarEstudo({ ler, cliente, cadastroDe = null }) {
   const fontes = [
     { ok: !!caso, txt: caso ? 'caso da Reforma' : 'sem caso na Reforma' },
     { ok: fr.length > 0, txt: fr.length ? 'Fator R (' + fr.length + (fr.length === 1 ? ' mês)' : ' meses)') : 'sem folha no Fator R' },
-    { ok: pg.length > 0, txt: pg.length ? 'PGDAS na Receita (' + pg.length + (pg.length === 1 ? ' mês)' : ' meses)') : 'sem PGDAS da Receita' }
+    { ok: pg.length > 0, txt: pg.length ? 'PGDAS na Receita (' + pg.length + (pg.length === 1 ? ' mês)' : ' meses)') : 'sem PGDAS da Receita' },
+    { ok: !!sis.ponte, txt: sis.ponte ? 'Domínio pela ponte (' + sis.ponte.n + (sis.ponte.n === 1 ? ' mês fechado)' : ' meses fechados)') : 'sem o Domínio pela ponte' }
   ];
   const semTabela = erroSemTabela(rEst && rEst.error);
   const salvo = !semTabela && rEst && rEst.data && rEst.data[0];

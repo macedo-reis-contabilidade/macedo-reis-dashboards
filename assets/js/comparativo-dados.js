@@ -2,7 +2,8 @@
 // MACEDO & REIS — Comparativo tributário: os números que o sistema já tem
 // Módulo ES puro, sem DOM: monta a entrada do motor (comparativo-motor.js) com o que o sistema sabe da empresa —
 // o cadastro, o caso da Reforma (os relatórios do Domínio e as notas que já foram lidos lá), o Fator R, o PGDAS que a
-// ponte da Receita traz e os relatórios do Domínio soltos na tela — e diz de onde veio cada número (`origens`), como a
+// ponte da Receita traz, o Domínio pela ponte (05/11/2026: a receita, as compras e a folha dos meses fechados) e os
+// relatórios do Domínio soltos na tela — e diz de onde veio cada número (`origens`), como a
 // procedência da Reforma: o que não veio de lugar nenhum é "padrão — confira". Testado por
 // tests/comparativo-dados.test.mjs.
 // ============================================================
@@ -21,6 +22,7 @@ const pct1 = v => (Number(v) || 0).toLocaleString('pt-BR', { maximumFractionDigi
 export const FONTES = {
   reforma: 'caso da Reforma',
   dominio: 'relatório do Domínio',
+  ponte: 'Domínio (pela ponte)',
   fator_r: 'Fator R',
   pgdas: 'PGDAS (Receita)',
   cadastro: 'cadastro',
@@ -30,7 +32,7 @@ export const FONTES = {
   gravado: 'estudo gravado'
 };
 // as fontes que vieram de um registro da empresa (o verde da tela)
-export const DO_SISTEMA = ['reforma', 'dominio', 'fator_r', 'pgdas', 'cadastro'];
+export const DO_SISTEMA = ['reforma', 'dominio', 'ponte', 'fator_r', 'pgdas', 'cadastro'];
 // texto: o que fica à vista, curto; dica: a explicação, ao passar o mouse
 const origem = (fonte, texto, dica) => dica ? { fonte, texto: texto || FONTES[fonte], dica } : { fonte, texto: texto || FONTES[fonte] };
 
@@ -123,6 +125,67 @@ export function serieDosMeses(meses) {
 }
 const periodo = s => s.n === 12 ? rotuloComp(s.de) + ' a ' + rotuloComp(s.ate) : rotuloComp(s.de) + ' a ' + rotuloComp(s.ate) + ' (' + s.n + (s.n === 1 ? ' mês' : ' meses') + ', anualizado)';
 
+// ---------- o Domínio pela ponte (05/11/2026, a versão 2 da ponte) ----------
+// linhas: as de dominio_mensal da empresa, só os meses fechados (quem chama corta: carregarEstudo). Dois códigos com o
+// mesmo documento no mesmo mês ficam com o maior de cada número, como na ficha da empresa. Null = o Domínio não disse
+// (o bloco não foi lido, a folha de empresa inativa lá, a apuração do Simples de quem não apura): nunca vira zero.
+export const CAMPOS_PONTE = ['receita_bruta', 'receita_mercadorias', 'receita_servicos', 'receita_simples', 'receita_st', 'receita_monofasica', 'receita_exportacao',
+  'receita_anexo_1', 'receita_anexo_2', 'receita_anexo_3', 'receita_anexo_4', 'receita_anexo_5', 'compras', 'servicos_tomados', 'ativo_e_consumo',
+  'salarios', 'decimo_terceiro', 'pro_labore_valor'];
+export function mesesDaPonte(linhas) {
+  const por = new Map();
+  (linhas || []).forEach(l => {
+    if (!l || !/^\d{4}-\d{2}$/.test(String(l.competencia))) return;
+    const m = por.get(l.competencia) || { competencia: l.competencia };
+    CAMPOS_PONTE.forEach(c => { const v = l[c] == null ? null : Number(l[c]); if (v != null && Number.isFinite(v) && (m[c] == null || v > m[c])) m[c] = v; });
+    por.set(l.competencia, m);
+  });
+  return [...por.values()].sort((a, b) => (a.competencia < b.competencia ? -1 : 1));
+}
+// a receita do mês pela ponte: a apuração do Simples (com as filiais, como no PGDAS), senão a receita bruta pelos
+// acumuladores de faturamento do Domínio (menos as devoluções)
+const receitaDaPonte = m => (m.receita_simples != null ? m.receita_simples : m.receita_bruta);
+// a receita de 12 meses pela ponte: os 12 meses mais recentes com o número — o mês sem faturamento conta como zero (o
+// bloco foi lido) —, a partir do primeiro com receita (a empresa mais nova anualiza). Como serieDosMeses, mais: npos (os
+// meses com receita, pra comparar com o PGDAS), serie (os meses com receita, [{ competencia, total }]), simples (veio da
+// apuração do Simples) e janela (os meses usados)
+export function seriePonte(meses) {
+  const com = (meses || []).filter(m => receitaDaPonte(m) != null).slice(-12);
+  const i0 = com.findIndex(m => receitaDaPonte(m) > 0);
+  if (i0 < 0) return null;
+  const j = com.slice(i0), n = j.length, fator = 12 / n;
+  const soma = f => j.reduce((s, m) => s + num(f(m)), 0);
+  let calendario = null;
+  if (n === 12) { calendario = Array(12).fill(0); j.forEach(m => { calendario[Number(m.competencia.slice(5, 7)) - 1] += num(receitaDaPonte(m)); }); }
+  const serie = j.filter(m => receitaDaPonte(m) > 0).map(m => ({ competencia: m.competencia, total: num(receitaDaPonte(m)) }));
+  return { n, npos: serie.length, de: j[0].competencia, ate: j[n - 1].competencia, receita: soma(receitaDaPonte) * fator,
+    mercadorias: soma(m => m.receita_mercadorias) * fator, servicos: soma(m => m.receita_servicos) * fator, meses: calendario, serie,
+    simples: j.some(m => m.receita_simples != null), janela: j };
+}
+// a soma de 12 meses de uns campos pela ponte: os 12 meses mais recentes em que algum deles veio (os zeros contam),
+// anualizada; com menos de 3 meses, null (pouco pra anualizar)
+export function somaDaPonte(meses, campos) {
+  const com = (meses || []).filter(m => campos.some(c => m[c] != null)).slice(-12);
+  if (com.length < 3) return null;
+  const soma = com.reduce((s, m) => s + campos.reduce((t, c) => t + num(m[c]), 0), 0) * 12 / com.length;
+  return { soma, n: com.length, de: com[0].competencia, ate: com[com.length - 1].competencia };
+}
+// a receita de cada anexo na apuração do Simples (a janela da receita) e, sobre a receita de mercadoria dela, a parte
+// com ICMS-ST e a monofásica de PIS/Cofins. Sem apuração do Simples, null
+export function simplesDaPonte(janela) {
+  const ms = (janela || []).filter(m => m.receita_simples != null);
+  if (!ms.length) return null;
+  const s = c => ms.reduce((t, m) => t + num(m[c]), 0);
+  const anexos = { I: s('receita_anexo_1'), II: s('receita_anexo_2'), III: s('receita_anexo_3'), IV: s('receita_anexo_4'), V: s('receita_anexo_5') };
+  const somaAnexos = anexos.I + anexos.II + anexos.III + anexos.IV + anexos.V;
+  const merc = s('receita_mercadorias'), serv = s('receita_servicos');
+  // a parte de mercadoria da apuração: pelos anexos (a mesma base, com as filiais); sem eles, pela divisão do faturamento
+  const parte = somaAnexos > 0 ? (anexos.I + anexos.II) / somaAnexos : merc + serv > 0 ? merc / (merc + serv) : 0;
+  const baseMerc = s('receita_simples') * parte;
+  const pct = c => (baseMerc > 0 && ms.some(m => m[c] != null) ? Math.min(100, s(c) / baseMerc * 100) : null);
+  return { anexos, somaAnexos, pctST: pct('receita_st'), pctMono: pct('receita_monofasica'), exportacao: s('receita_exportacao') };
+}
+
 // as linhas de receita a partir do total e da divisão mercadoria × serviço
 function linhas(receita, mercadorias, servicos, tipoMerc, tipoServ) {
   const out = [];
@@ -138,11 +201,15 @@ function linhas(receita, mercadorias, servicos, tipoMerc, tipoServ) {
 // ---------- o que o sistema sabe ----------
 // cliente: a linha do cadastro · caso: a linha de rt_casos (com sim_obs) · fatorR: lançamentos do Fator R
 // [{ competencia 'AAAA-MM-DD', folha_salarios, folha_outros, prolabore }] · pgdas: receita_pgdas [{ competencia, receita_mes }]
-export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgdas = [] } = {}) {
+// · dominio: as linhas de dominio_mensal da empresa, só os meses fechados (o Domínio pela ponte, 05/11/2026)
+export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgdas = [], dominio = [] } = {}) {
   const origens = {}, notas = [];
   const sim = lerSim(caso);
   const inp = (sim && sim.input) || {};
   const dom = (sim && sim.dominio) || {};
+  const mp = mesesDaPonte(dominio);
+  const sPonte = seriePonte(mp);
+  const smp = sPonte ? simplesDaPonte(sPonte.janela) : null;
 
   // o tipo da atividade: o anexo do PGDAS (o da Reforma) vale sobre o CNAE
   const anexoPgdas = inp.anexo || (caso && caso.anexo) || null;
@@ -156,14 +223,30 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
     if ((tipoCnae === 'comercio' || tipoCnae === 'industria') && !(tipoAnexo === 'comercio' || tipoAnexo === 'industria')) tipoMerc = tipoCnae;
     if (!(tipoCnae === 'comercio' || tipoCnae === 'industria') && !tipoAnexo) tipoServ = tipoCnae;
   }
+  // a apuração do Simples no Domínio (a ponte) diz o anexo de cada receita dos 12 meses: vale sobre o anexo do caso e o
+  // CNAE (o serviço no Anexo III com o CNAE do fator r fica no fator r: o motor põe no III ou no V pela folha)
+  const doAnexo = {};
+  if (smp && smp.somaAnexos > 0) {
+    const a = smp.anexos;
+    if (a.I + a.II > 0) { tipoMerc = a.II > a.I ? 'industria' : 'comercio'; doAnexo[tipoMerc] = a.II > a.I ? 'II' : 'I'; }
+    const s = [['servico', 'III', a.III], ['servico_iv', 'IV', a.IV], ['servico_r', 'V', a.V]].filter(x => x[2] > 0).sort((x, y) => y[2] - x[2])[0];
+    if (s) { tipoServ = s[0] === 'servico' && tipoCnae === 'servico_r' ? 'servico_r' : s[0]; doAnexo[tipoServ] = s[1]; }
+  }
 
-  // a receita: o PGDAS da Receita (o declarado), o faturamento do caso da Reforma ou a receita mensal dele
+  // a receita: o PGDAS da Receita (o declarado) ou o Domínio pela ponte — o que tem mais meses; empatados, o PGDAS —,
+  // senão o faturamento do caso da Reforma ou a receita mensal dele. A divisão mercadoria × serviço: a da ponte, senão a
+  // do caso
   const sPgdas = serieDosMeses((pgdas || []).map(p => ({ competencia: p.competencia, total: p.receita_mes })));
   const sDom = serieDosMeses(dom.meses || (dom.vendas && dom.vendas.meses) || []);
-  let receita = 0, merc = 0, serv = 0, meses = null, textoRec = null, fonteRec = 'padrao';
-  if (sDom) { receita = sDom.receita; merc = sDom.mercadorias; serv = sDom.servicos; meses = sDom.meses; fonteRec = 'reforma'; textoRec = 'caso da Reforma: faturamento do Domínio de ' + periodo(sDom); }
-  if (sPgdas) {
-    receita = sPgdas.receita; meses = sPgdas.meses; fonteRec = 'pgdas'; textoRec = 'PGDAS na Receita, de ' + periodo(sPgdas) + (sDom ? ' (a divisão mercadoria × serviço é a do faturamento do Domínio)' : '');
+  let receita = 0, merc = 0, serv = 0, meses = null, textoRec = null, fonteRec = 'padrao', divisao = null;
+  if (sDom) { receita = sDom.receita; merc = sDom.mercadorias; serv = sDom.servicos; meses = sDom.meses; fonteRec = 'reforma'; textoRec = 'caso da Reforma: faturamento do Domínio de ' + periodo(sDom); divisao = 'do faturamento do Domínio'; }
+  const pgdasVale = !!sPgdas && (!sPonte || sPgdas.n >= sPonte.npos);
+  if (sPonte) {
+    if (sPonte.mercadorias + sPonte.servicos > 0) { merc = sPonte.mercadorias; serv = sPonte.servicos; divisao = 'do Domínio, pela ponte'; }
+    if (!pgdasVale) { receita = sPonte.receita; meses = sPonte.meses; fonteRec = 'ponte'; textoRec = 'Domínio, pela ponte: ' + (sPonte.simples ? 'a receita da apuração do Simples' : 'o faturamento') + ' de ' + periodo(sPonte); }
+  }
+  if (pgdasVale) {
+    receita = sPgdas.receita; meses = sPgdas.meses; fonteRec = 'pgdas'; textoRec = 'PGDAS na Receita, de ' + periodo(sPgdas) + (divisao ? ' (a divisão mercadoria × serviço é a ' + divisao + ')' : '');
   }
   if (!receita && num(inp.receita) > 0) { receita = num(inp.receita) * 12; fonteRec = 'reforma'; textoRec = 'caso da Reforma: receita mensal de ' + brl(num(inp.receita)) + ' × 12'; }
   if (!receita && caso && num(caso.receita_mensal) > 0) { receita = num(caso.receita_mensal) * 12; fonteRec = 'reforma'; textoRec = 'caso da Reforma: receita mensal × 12'; }
@@ -174,10 +257,12 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
   }
   const atividades = linhas(receita, merc, serv, tipoMerc, tipoServ);
   atividades.forEach((a, i) => {
-    origens['atividades.' + i + '.tipo'] = tipoAnexo && (a.tipo === tipoAnexo) ? origem('reforma', 'Anexo ' + anexoPgdas + ' do PGDAS (caso da Reforma)') : tipoCnae && a.tipo === tipoCnae ? origem('cadastro', 'pelo CNAE do cadastro (' + (cliente && cliente.cnae_principal || '') + ') — confira o anexo') : origem('padrao');
+    origens['atividades.' + i + '.tipo'] = doAnexo[a.tipo] ? origem('ponte', 'Domínio, pela ponte: Anexo ' + doAnexo[a.tipo] + ' na apuração do Simples' + (a.tipo === 'servico_r' && doAnexo[a.tipo] === 'III' ? ' (o CNAE é do fator r)' : ''))
+      : tipoAnexo && (a.tipo === tipoAnexo) ? origem('reforma', 'Anexo ' + anexoPgdas + ' do PGDAS (caso da Reforma)') : tipoCnae && a.tipo === tipoCnae ? origem('cadastro', 'pelo CNAE do cadastro (' + (cliente && cliente.cnae_principal || '') + ') — confira o anexo') : origem('padrao');
     origens['atividades.' + i + '.receita'] = receita > 0 ? origem(fonteRec, textoRec) : origem('padrao', 'falta no sistema: digite os 12 meses');
   });
-  // ST e monofásico (só nas mercadorias): ST das saídas do Domínio, monofásico do PGDAS (caso da Reforma)
+  // ST e monofásico (só nas mercadorias): a apuração do Simples no Domínio (a ponte), senão as saídas do Domínio e o
+  // PGDAS do caso da Reforma
   const iMerc = atividades.findIndex(a => TIPOS[a.tipo].tributo === 'icms');
   let refeicao = false;
   if (iMerc >= 0) {
@@ -185,14 +270,27 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
     const v = dom.vendas || null;
     const doPg = doPgdasDoCaso(sim);
     const quando = doPg.competencia ? 'PGDAS de ' + rotuloComp(doPg.competencia) : 'PGDAS';
-    if (v && num(v.mercadorias) > 0 && v.st != null) {
+    const perP = sPonte ? periodo(sPonte) : '';
+    // a ponte vale quando mostra a venda com ST; quando mostra zero, as saídas do caso da Reforma (a venda com ST que
+    // não foi separada na apuração ainda conta pro planejamento) e, sem elas, o zero da ponte
+    if (smp && smp.pctST > 0) {
+      atividades[iMerc].pctST = smp.pctST;
+      origens[p + '.pctST'] = origem('ponte', 'Domínio, pela ponte: ' + pct1(smp.pctST) + '% das vendas de mercadoria com ICMS-ST na apuração do Simples, de ' + perP,
+        'a receita da apuração com a partilha do ICMS zerada: o ICMS já foi pago por substituição na compra');
+    } else if (v && num(v.mercadorias) > 0 && v.st != null) {
       atividades[iMerc].pctST = Math.min(100, num(v.st) / num(v.mercadorias) * 100);
       origens[p + '.pctST'] = origem('reforma', 'caso da Reforma: vendas com ST (CFOP x401 a x405) nas saídas do Domínio, ' + brl(v.st) + ' de ' + brl(v.mercadorias));
     } else if (doPg.st > 0) {
       atividades[iMerc].pctST = doPg.st;
       origens[p + '.pctST'] = origem('reforma', quando + ' (caso da Reforma): revenda com ST, ' + pct1(doPg.st) + '% da receita', 'a seção do PGDAS sem ICMS: o ICMS já foi pago por substituição na compra');
+    } else if (smp && smp.pctST === 0) {
+      atividades[iMerc].pctST = 0;
+      origens[p + '.pctST'] = origem('ponte', 'Domínio, pela ponte: sem venda com ICMS-ST na apuração do Simples, de ' + perP);
     }
-    if (num(inp.pctReceitaMonofasica) > 0) {
+    if (smp && smp.pctMono != null && smp.pctMono > 0) {
+      atividades[iMerc].pctMonofasico = smp.pctMono;
+      origens[p + '.pctMonofasico'] = origem('ponte', 'Domínio, pela ponte: ' + pct1(smp.pctMono) + '% das vendas de mercadoria com PIS e Cofins monofásicos na apuração do Simples, de ' + perP);
+    } else if (num(inp.pctReceitaMonofasica) > 0) {
       atividades[iMerc].pctMonofasico = num(inp.pctReceitaMonofasica);
       origens[p + '.pctMonofasico'] = origem('reforma', 'caso da Reforma: receita monofásica de PIS/Cofins');
     }
@@ -242,13 +340,32 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
     const soma = e.mix.cheia + e.mix.red60 + e.mix.red40 + e.mix.red30 + e.mix.zero;
     if (Math.abs(soma - 100) > 0.5) { delete e.mix; } else origens.mix = origem('reforma', 'caso da Reforma: alíquotas da Reforma nas vendas');
   }
+  // as compras e as despesas com crédito pela ponte (os 12 meses fechados do Domínio, pelo CFOP): valem sobre o % do caso
+  const cp = somaDaPonte(mp, ['compras']), dp = somaDaPonte(mp, ['servicos_tomados', 'ativo_e_consumo']);
+  if (cp) {
+    e.compras = cp.soma;
+    origens.compras = origem('ponte', 'Domínio, pela ponte: compras de mercadorias e insumos de ' + periodo(cp), 'pelo CFOP das entradas: revenda, industrialização e as mesmas com ST; fora remessa, retorno, devolução e transferência');
+  }
+  if (dp) {
+    e.despesasCredito = dp.soma;
+    origens.despesasCredito = origem('ponte', 'Domínio, pela ponte: energia, comunicação, frete, serviços tomados e ativo e uso e consumo de ' + periodo(dp));
+  }
+  if (smp && smp.exportacao > 0) notas.push('A apuração do Simples no Domínio tem receita de exportação nos 12 meses (' + brl(smp.exportacao) + '): o comparativo não separa a exportação — confira.');
   if (!origens.compras) origens.compras = origem('padrao', 'falta no sistema', 'solte o acompanhamento de entradas do Domínio ou digite as compras dos 12 meses');
   origens.aliqCreditoIcms = origem('padrao', 'padrão: 12% — confira', 'fornecedor do RS no regime normal dá 17%, de outro estado 12%, do Simples bem menos');
   origens.outrasDespesas = origem('padrao', 'falta no sistema: fazem o lucro do Real', 'aluguel de pessoa física, sistemas, contador, manutenção — o resto dos custos do ano, sem compras nem folha');
 
-  // a folha: o Fator R (os últimos 12 meses lançados), senão em branco
+  // a folha: o Domínio pela ponte (os proventos dos empregados, com as férias, as rescisões e o 13º, e o pró-labore, dos
+  // 12 meses fechados) quando tem pelo menos os meses do Fator R; senão o Fator R (os últimos 12 meses lançados); senão
+  // em branco
   const fr = (fatorR || []).filter(l => l && l.competencia).sort((a, b) => a.competencia < b.competencia ? 1 : -1).slice(0, 12);
-  if (fr.length) {
+  const fp = somaDaPonte(mp, ['salarios', 'decimo_terceiro']), pp = somaDaPonte(mp, ['pro_labore_valor']);
+  if (fp && fp.n >= fr.length) {
+    e.folha = fp.soma;
+    e.proLabore = pp ? pp.soma : 0;
+    origens.folha = origem('ponte', 'Domínio, pela ponte: ' + (fp.soma > 0 ? 'salários, férias, rescisões e 13º' : 'sem empregados na folha') + ' de ' + periodo(fp), 'a soma dos proventos de todos os empregados no mês (nunca o de uma pessoa), mais o 13º');
+    origens.proLabore = origem('ponte', 'Domínio, pela ponte: ' + (pp && pp.soma > 0 ? 'pró-labore de ' + periodo(pp) : 'sem pró-labore na folha' + (pp ? ' de ' + periodo(pp) : '')));
+  } else if (fr.length) {
     const f = 12 / fr.length;
     e.folha = fr.reduce((s, l) => s + num(l.folha_salarios) + num(l.folha_outros), 0) * f;
     e.proLabore = fr.reduce((s, l) => s + num(l.prolabore), 0) * f;
@@ -265,12 +382,12 @@ export function entradaDoSistema({ cliente = null, caso = null, fatorR = [], pgd
 
   e.regimeAtual = cliente ? ['simples', 'presumido', 'real'].includes(regimeDoCadastro(cliente.regime_tributario)) ? regimeDoCadastro(cliente.regime_tributario) : null : null;
   if (cliente && regimeDoCadastro(cliente.regime_tributario) === 'mei') notas.push('A empresa é MEI hoje: o comparativo é pra quando ela passar do limite do MEI (Simples como ME × Presumido × Real).');
-  if (tipoAnexo === 'servico' && fr.length) notas.push('Serviço no Anexo III no PGDAS: se a atividade é do fator r (vai pro Anexo V quando a folha não chega a 28% da receita), troque o tipo pra "Serviços do fator r".');
+  if ((tipoAnexo === 'servico' || doAnexo.servico === 'III') && (fr.length || fp)) notas.push('Serviço no Anexo III no PGDAS: se a atividade é do fator r (vai pro Anexo V quando a folha não chega a 28% da receita), troque o tipo pra "Serviços do fator r".');
   // a conferência do Simples: a alíquota efetiva do último PGDAS lido na Reforma
   const pg = dom.pgdas || null;
   const conferencia = pg && num(pg.aliquotaEfetiva) > 0 ? { competencia: pg.competencia, aliquota: num(pg.aliquotaEfetiva), das: num(pg.dasTotal), fonte: 'reforma' } : null;
-  const sd = serieDaEmpresa({ caso, pgdas });
-  return { entrada: e, origens, notas, conferencia, serie: sd ? sd.serie : null };
+  const sd = serieDaEmpresa({ caso, pgdas, dominio: mp });
+  return { entrada: e, origens, notas, conferencia, serie: sd ? sd.serie : null, ponte: sPonte ? { de: sPonte.de, ate: sPonte.ate, n: sPonte.n } : null };
 }
 
 // junta duas séries datadas ([{ competencia 'AAAA-MM', total }]) — a de b vale no mês que as duas têm —, em ordem. É o que a
@@ -284,20 +401,29 @@ export function mesclarSerie(a, b) {
 }
 
 // ---------- as outras empresas dos mesmos sócios ----------
-// a série datada da receita: o PGDAS da Receita (o declarado) ou o faturamento do caso da Reforma — [{ competencia, total }]
-export function serieDaEmpresa({ caso = null, pgdas = [] } = {}) {
+// a série datada da receita: o PGDAS da Receita (o declarado) ou o Domínio pela ponte — o que tem mais meses dos 12;
+// empatados, o PGDAS —, senão o faturamento do caso da Reforma — [{ competencia, total }]. dominio: as linhas de
+// dominio_mensal da empresa (os meses fechados)
+export function serieDaEmpresa({ caso = null, pgdas = [], dominio = [] } = {}) {
   const ok = m => m && /^\d{4}-\d{2}$/.test(m.competencia) && num(m.total) > 0;
   const ordem = l => l.sort((a, b) => a.competencia < b.competencia ? -1 : 1);
   const pg = ordem((pgdas || []).map(p => ({ competencia: p && p.competencia, total: num(p && p.receita_mes) })).filter(ok));
-  if (pg.length) return { fonte: 'pgdas', serie: pg };
+  const sp = seriePonte(mesesDaPonte(dominio));
+  if (pg.length && (!sp || pg.slice(-12).length >= sp.npos)) return { fonte: 'pgdas', serie: pg };
+  if (sp) return { fonte: 'ponte', serie: sp.serie, ponte: sp };
   const sim = lerSim(caso), dom = (sim && sim.dominio) || {};
   const ms = ordem((dom.meses || (dom.vendas && dom.vendas.meses) || []).map(m => ({ competencia: m && m.competencia, total: num(m && m.total) })).filter(ok));
   return ms.length ? { fonte: 'reforma', serie: ms } : null;
 }
 // a receita de 12 meses de uma empresa do grupo, como o motor lê ({ nome, receita, meses }), com a série e a origem
-export function receitaDaEmpresa({ cliente = null, caso = null, pgdas = [] } = {}) {
+export function receitaDaEmpresa({ cliente = null, caso = null, pgdas = [], dominio = [] } = {}) {
   const nome = cliente ? (cliente.nome_principal || cliente.nome_fantasia || 'outra empresa') + (cliente.nome_fantasia && cliente.nome_principal && cliente.nome_fantasia !== cliente.nome_principal ? ' (' + cliente.nome_fantasia + ')' : '') : 'outra empresa';
-  const sd = serieDaEmpresa({ caso, pgdas });
+  const sd = serieDaEmpresa({ caso, pgdas, dominio });
+  if (sd && sd.fonte === 'ponte') {
+    const sp = sd.ponte;
+    return { nome, cliente_id: cliente ? cliente.id : null, receita: sp.receita, meses: sp.meses, serie: sd.serie,
+      origem: origem('ponte', 'Domínio, pela ponte: ' + (sp.simples ? 'a receita da apuração do Simples' : 'o faturamento') + ' de ' + periodo(sp)) };
+  }
   const s = sd ? serieDosMeses(sd.serie) : null;
   if (s) return { nome, cliente_id: cliente ? cliente.id : null, receita: s.receita, meses: s.meses, serie: sd.serie,
     origem: origem(sd.fonte, (sd.fonte === 'pgdas' ? 'PGDAS na Receita, de ' : 'caso da Reforma: faturamento do Domínio de ') + periodo(s)) };

@@ -1027,6 +1027,21 @@ console.log('O comparativo tributário (a mesma conta da tela, com o "e se"):');
   chk('sem movimento: diz; sem empresa e sem linha: nada', /código 7\): sem movimento nos últimos meses$/.test(textoDoDominio([{ codigo: 7, ativa: true }], [], '2026-11-02')) && textoDoDominio([], [], '2026-11-02') === '');
   const semFolha = textoDoDominio([{ codigo: 7, ativa: false }], [L('2026-08', { funcionarios_ativos: null, admissoes: null, desligamentos: null, afastados: null, pro_labore: null })], '2026-11-02');
   chk('a folha que o Domínio não disse (null) não vira zero no texto', !/folha:/.test(semFolha) && /notas: 120 de saída/.test(semFolha), semFolha);
+  // a versão 2 da ponte (05/11/2026): os valores em reais
+  chk('a lista branca: os valores da versão 2, com as notas do faturamento, da apuração do Simples, da folha somada e do pró-labore em R$',
+    ['receita_bruta', 'receita_simples', 'rbt12', 'meses_rbt12', 'compras', 'salarios', 'decimo_terceiro', 'pro_labore_valor', 'fgts', 'inss_rat', 'receita_anexo_5', 'outras_entradas'].every(c => TABELAS.dominio_mensal.cols.includes(c))
+    && /menos as devoluções/.test(TABELAS.dominio_mensal.notas.receita_bruta) && /COM as filiais/.test(TABELAS.dominio_mensal.notas.receita_simples)
+    && /SOMADOS \(nunca de uma pessoa\)/.test(TABELAS.dominio_mensal.notas.salarios) && /pro_labore_valor/.test(TABELAS.dominio_mensal.notas.pro_labore)
+    && /nunca trate null como zero/.test(TABELAS.dominio_mensal.desc) && /folha_valores/.test(TABELAS.dominio_rodadas.notas.faltou));
+  chk('o prompt: o faturamento do Domínio e o declarado do PGDAS, e o pró-labore em R$', /receita_bruta do Domínio/.test(INSTRUCOES) && /pro_labore_valor/.test(INSTRUCOES) && /nunca zero/.test(INSTRUCOES));
+  const V = (comp, x = {}) => L(comp, { receita_bruta: 100000, receita_simples: 100000, rbt12: 1150000, meses_rbt12: 12, compras: 40000, servicos_tomados: 0, salarios: 18000, rescisoes: 0,
+    decimo_terceiro: 0, pro_labore_valor: 3036, fgts: 1440, inss_empresa: 3600, inss_rat: 360, inss_terceiros: 1044, ...x });
+  const tv = textoDoDominio([{ codigo: 7, ativa: true }], [V('2026-10', { rbt12: null }), V('2026-09', { receita_simples: 130000, servicos_tomados: 2500, decimo_terceiro: 9000 }), L('2026-08')], '2026-11-02');
+  chk('ver_empresa em reais: o RBT12 do mês mais recente que o tem, o faturamento (e a apuração do Simples quando é outra), as compras, a folha com o 13º, o pró-labore e os encargos',
+    /código 7\): RBT12 de 09\/2026 no Simples, como o Domínio calcula: R\$\s?1\.150\.000,00 \| 10\/2026/.test(tv)
+    && /10\/2026 \(em fechamento\): .* em reais: faturamento R\$\s?100\.000,00, compras R\$\s?40\.000,00, folha R\$\s?18\.000,00, pró-labore R\$\s?3\.036,00, encargos da folha R\$\s?6\.444,00 \(FGTS R\$\s?1\.440,00, INSS da empresa R\$\s?5\.004,00\)/.test(tv)
+    && /09\/2026: .* faturamento R\$\s?100\.000,00 \(na apuração do Simples, com as filiais: R\$\s?130\.000,00\), compras R\$\s?40\.000,00 \(mais R\$\s?2\.500,00 de serviços tomados\), folha R\$\s?27\.000,00 \(com R\$\s?9\.000,00 de 13º\)/.test(tv)
+    && !/08\/2026: [^|]*em reais/.test(tv) && /o faturamento é a receita bruta do Domínio/.test(tv) && /não é o faturamento/.test(tv), tv);
   const { banco, log } = bancoFalso({ extras: { dominio_empresas: [{ codigo: 7, cliente_id: ID_A, ativa: true }],
     dominio_mensal: [{ ...L('2026-10'), cliente_id: ID_A }, { ...L('2026-04'), cliente_id: ID_A }, { ...L('2026-10', { codigo: 8, notas_saida: 999 }), cliente_id: ID_B }] } });
   const v = await criarFerramentas({ banco, hoje: '2026-11-02', usuario: { nome: 'Vitória', socio: false } }).ver_empresa({ empresa: ID_A });

@@ -32,7 +32,7 @@ const NOMES = {
 };
 const nomeDoCampo = c => NOMES[c] || NOMES[String(c).split('.').pop()] || c;
 // como a missão foi cumprida, pela origem do número
-const COMO = { reforma: 'veio do caso da Reforma', dominio: 'veio do relatório do Domínio', pgdas: 'veio do PGDAS da Receita', fator_r: 'veio do Fator R',
+const COMO = { reforma: 'veio do caso da Reforma', dominio: 'veio do relatório do Domínio', ponte: 'veio do Domínio pela ponte', pgdas: 'veio do PGDAS da Receita', fator_r: 'veio do Fator R',
   cadastro: 'veio do cadastro', digitado: 'digitado', confirmado: 'conferido', gravado: 'do estudo gravado' };
 
 // ---------- o crescimento que o sistema mediu ----------
@@ -52,10 +52,12 @@ export function crescimentoMedido(serie) {
 // conversa com o cliente), como ela está na empresa aberta (e até que mês, quando vem do sistema) e o que vai chegar sozinho
 // quando as pontes estiverem ligadas — a da Receita, pelo Integra Contador, e a do Domínio (dominio/plano-integracao.md e
 // integra-contador/plano.md, no Projeto). Os nomes dos relatórios são os que a tela reconhece (dominio-relatorios.js) e os
-// que o Fator R lê.
+// que o Fator R lê. Desde 05/11/2026 as duas pontes estão ligadas: a do Domínio traz a receita, as compras e a folha
+// (a versão 2) e a da Receita, o PGDAS das empresas com procuração; o resto ainda segue pelo relatório.
 export const AUTOMATICO = {
-  receita: 'Automático quando a ponte da Receita (Integra Contador) ligar.',
-  dominio: 'Automático quando a ponte do Domínio ligar.',
+  receita: 'Automático: a ponte da Receita traz o PGDAS de cada mês (das empresas com procuração), e a do Domínio, a apuração.',
+  ponte: 'Automático: a ponte do Domínio traz todo dia, até o último mês fechado.',
+  dominio: 'A ponte do Domínio ainda não traz este número: pelo relatório.',
   contrato: 'As pontes não trazem: está no contrato.',
   conversa: 'Nenhum sistema tem: é conversa com o cliente.'
 };
@@ -117,7 +119,7 @@ export function fontesDoEstudo({ entrada = {}, origens = {}, comparacao = null, 
     }
     add('simples', { id: 'receita', info: 'A receita dos últimos 12 meses', estado, situacao: sit, relatorio: true,
       onde: 'Domínio Escrita Fiscal: o Relatório de Faturamento ou o Demonstrativo Mensal, até o último mês fechado.',
-      auto: simples ? 'Automático quando a ponte da Receita (Integra Contador) ligar: sai do PGDAS de cada mês.' : AUTOMATICO.dominio });
+      auto: simples ? AUTOMATICO.receita : AUTOMATICO.ponte });
   }
   if (socios != null) {
     add('simples', { id: 'socios', info: 'Os sócios e a participação de cada um', estado: socios > 0 ? 'tem' : 'falta', ficha: true,
@@ -136,7 +138,7 @@ export function fontesDoEstudo({ entrada = {}, origens = {}, comparacao = null, 
     }
     add('simples', { id: 'grupo', info: 'A receita das outras empresas dos sócios', estado, situacao: sit,
       onde: 'O faturamento de cada uma até o mesmo mês: o relatório do Domínio na ficha da Reforma dela, ou o total dos 12 meses digitado aqui.',
-      auto: 'Automático quando as pontes ligarem: as do Simples pela Receita, as outras pelo Domínio.' });
+      auto: 'Automático pelas pontes: as do Simples pela Receita e pelo Domínio, as outras pelo Domínio.' });
   }
 
   // ===== fase 2: os números da empresa =====
@@ -145,20 +147,20 @@ export function fontesDoEstudo({ entrada = {}, origens = {}, comparacao = null, 
   add('numeros', { id: 'folha', info: 'A folha e o pró-labore dos 12 meses', estado: folhaOk ? 'tem' : 'falta', campo: 'folha', relatorio: true,
     situacao: folhaOk ? (semFolha ? 'sem folha nem pró-labore' : como('folha')) : 'falta',
     onde: 'Domínio Folha: o resumo da folha mês a mês dos 12 meses (salários, 13º, férias e pró-labore), lido com IA como no Fator R.',
-    auto: AUTOMATICO.dominio });
+    auto: AUTOMATICO.ponte });
   if (receita > 0) {
     const comprasOk = !padrao('compras') && (num(e.compras) > 0 || conferido('compras') || fonte('compras') === 'digitado');
     add('numeros', { id: 'compras', info: 'As compras de mercadorias e insumos', estado: comprasOk ? 'tem' : 'falta', relatorio: true,
       situacao: comprasOk ? como('compras') : 'falta',
       onde: 'Domínio Escrita Fiscal: o Acompanhamento de Entradas dos mesmos 12 meses.',
-      auto: AUTOMATICO.dominio });
+      auto: AUTOMATICO.ponte });
   }
   if (simples && receita > 0) {
     const pgOk = !!(conferencia && num(conferencia.aliquota) > 0);
     add('numeros', { id: 'pgdas', info: 'O PGDAS mais recente', estado: pgOk ? 'tem' : 'falta', relatorio: true,
       situacao: pgOk ? (COMO[conferencia.fonte] || 'veio do sistema') + (conferencia.competencia ? ', de ' + rotuloComp(conferencia.competencia) : '') : 'falta',
       onde: 'Domínio Escrita Fiscal: o Simples Nacional do último mês (a apuração do PGDAS), que mostra o ST, o monofásico e a redução do ICMS.',
-      auto: 'A ponte da Receita vai trazer a receita e o RBT12; o ST, o monofásico e a redução seguem pelo relatório.' });
+      auto: 'As pontes trazem a receita, o RBT12, o ST e o monofásico; a alíquota efetiva e a redução do ICMS seguem pelo relatório.' });
   }
   const d = comparacao && comparacao.decisao;
   if (d && d.real) {
@@ -169,7 +171,7 @@ export function fontesDoEstudo({ entrada = {}, origens = {}, comparacao = null, 
     add('numeros', { id: 'despesas', info: 'As outras despesas (fazem o lucro do Real)', estado, campo: 'outrasDespesas',
       situacao: despOk ? como('outrasDespesas') : estado === 'dispensa' ? 'nem com lucro zero o Real ganha' : 'falta',
       onde: 'Domínio Contabilidade: o balancete ou a DRE dos 12 meses (as despesas além das compras e da folha); as sem nota, com o cliente.',
-      auto: 'A ponte do Domínio vai trazer os lançamentos; as despesas sem nota seguem com o cliente.' });
+      auto: 'A ponte do Domínio ainda não traz as despesas; as sem nota seguem com o cliente.' });
   }
 
   // ===== fase 3: as premissas =====

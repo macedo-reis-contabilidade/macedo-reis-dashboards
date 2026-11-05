@@ -52,7 +52,7 @@ console.log('A leitura: sem estudo gravado, os números do sistema');
     && est.entrada.grupo.some(g => g.cliente_id === 'c6' && g.socios.includes('FULANO DE TAL')), JSON.stringify(est.entrada.grupo));
   chk('a sem caso nem PGDAS entra com zero e "falta no sistema" (e sem nome no cadastro)', (() => { const g = est.entrada.grupo.find(x => x.cliente_id === 'c7'); return !g || (g.receita === 0 && g.nome === 'empresa sem cadastro aberto'); })());
   chk('as séries das outras empresas e os sócios contados', est.grupoSeries.some(s => s.cliente_id === 'c6' && s.serie.length === 12) && est.socios === 2);
-  chk('as fontes, como a tela mostra', JSON.stringify(est.fontes.map(f => f.txt)) === '["caso da Reforma","sem folha no Fator R","sem PGDAS da Receita"]');
+  chk('as fontes, como a tela mostra', JSON.stringify(est.fontes.map(f => f.txt)) === '["caso da Reforma","sem folha no Fator R","sem PGDAS da Receita","sem o Domínio pela ponte"]', JSON.stringify(est.fontes.map(f => f.txt)));
   chk('o CPF casa as empresas e não sai da leitura', !/11122233344|111\.222\.333-44/.test(JSON.stringify(est)));
   chk('o CPF vai à busca só em dígitos; sem CPF, pelo nome', log.some(x => x.t === 'socios' && x.o.em && JSON.stringify(x.o.em.cpf) === '["11122233344"]')
     && log.some(x => x.t === 'socios' && x.o.em && JSON.stringify(x.o.em.nome) === '["BELTRANA DE TAL"]'));

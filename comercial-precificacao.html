@@ -1583,9 +1583,10 @@
             .gte('data_vencimento', dia(-120)).lte('data_vencimento', dia(5)).order('id')).catch(() => []),
           // o faturamento do PGDAS, que a ponte da Receita lê (a última declaração com os 12 meses); sem ela, a Reforma
           emLotes(l => supabase.from('receita_pgdas').select('cliente_id, competencia, receita_mes, receita_12_meses').not('receita_12_meses', 'is', null).in('cliente_id', l)).catch(() => []),
-          // o que o Domínio diz (a ponte do PC do escritório, 02/11/2026): as notas, a folha e o pró-labore de cada mês —
-          // de 50 em 50 clientes, que os 14 meses de 100 passariam das 1.000 linhas de uma leitura
-          emLotes(l => supabase.from('dominio_mensal').select('cliente_id, competencia, funcionarios_ativos, admissoes, desligamentos, afastados, pro_labore, notas_saida, notas_entrada')
+          // o que o Domínio diz (a ponte do PC do escritório, 02/11/2026): as notas, a folha e o pró-labore de cada mês e,
+          // desde 05/11/2026, o faturamento (o do PGDAS vem antes) — de 50 em 50 clientes, que os 14 meses de 100 passariam
+          // das 1.000 linhas de uma leitura
+          emLotes(l => supabase.from('dominio_mensal').select('cliente_id, competencia, funcionarios_ativos, admissoes, desligamentos, afastados, pro_labore, notas_saida, notas_entrada, receita_bruta, receita_simples')
             .gte('competencia', desdeDominio).in('cliente_id', l), 50).catch(() => [])
         ]);
         const porCli = lista => { const m = new Map(); lista.forEach(x => { const a = m.get(x.cliente_id) || []; a.push(x); m.set(x.cliente_id, a); }); return m; };

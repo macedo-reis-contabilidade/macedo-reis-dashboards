@@ -167,13 +167,26 @@ export const TABELAS = {
     padrao: ['codigo', 'cliente_id', 'nome', 'ativa'],
     notas: { codigo: 'o código da empresa no Domínio', ativa: 'true = ativa no Domínio · false = inativa ou encerrada lá', cliente_id: 'vazio = não ligada ao cadastro do sistema' } },
   dominio_mensal: { rotulo: 'os números do Domínio por mês', pk: 'codigo,competencia',
-    desc: 'Por empresa e mês, o que o Domínio diz (a ponte lê todo dia às 7h os 14 meses até hoje, então o que entra atrasado no Domínio aparece no dia seguinte): a folha (os empregados ativos no último dia do mês, as admissões, os desligamentos, os afastados, quantos sócios tiveram o pró-labore calculado), as notas (quantas saídas, com o serviço prestado, e quantas entradas, com o serviço tomado, e o valor contábil de cada lado) e os lançamentos contábeis. Só o mês do dia do contexto e o anterior a ele ainda estão em fechamento no Domínio (parciais — no dia 02/11, novembro e outubro); os meses de antes estão fechados. Null = o Domínio não disse (a folha de empresa inativa lá, ou um bloco que não foi lido).',
+    desc: 'Por empresa e mês, o que o Domínio diz (a ponte lê todo dia às 7h os 14 meses até hoje, então o que entra atrasado no Domínio aparece no dia seguinte): a folha (os empregados ativos no último dia do mês, as admissões, os desligamentos, os afastados, quantos sócios tiveram o pró-labore calculado), as notas (quantas saídas, com o serviço prestado, e quantas entradas, com o serviço tomado, e o valor contábil de cada lado) e os lançamentos contábeis. Desde 05/11/2026 (a versão 2 da ponte), também em reais: o faturamento (receita_bruta, com a divisão em mercadorias e serviços, e, de quem apura o Simples no Domínio, a apuração do mês, o RBT12, a parte com ST, a monofásica, a exportação e cada anexo), as compras pelo CFOP e a folha da empresa (os proventos dos empregados, o 13º, o pró-labore, as bases e as guias do FGTS e do INSS) — sempre a soma da empresa no mês, nunca o de uma pessoa. Só o mês do dia do contexto e o anterior a ele ainda estão em fechamento no Domínio (parciais — no dia 02/11, novembro e outubro); os meses de antes estão fechados. Null = o Domínio não disse (a folha de empresa inativa lá, a apuração do Simples de quem não apura o Simples no Domínio, ou um bloco que não foi lido) — nunca trate null como zero.',
     cols: ['codigo', 'competencia', 'cliente_id', 'funcionarios_ativos', 'admissoes', 'desligamentos', 'afastados', 'pro_labore', 'notas_saida', 'valor_saidas',
-      'notas_entrada', 'valor_entradas', 'lancamentos', 'ultimo_lancamento', 'atualizado_em'],
-    padrao: ['cliente_id', 'competencia', 'funcionarios_ativos', 'admissoes', 'desligamentos', 'pro_labore', 'notas_saida', 'valor_saidas', 'notas_entrada', 'valor_entradas', 'lancamentos'],
+      'notas_entrada', 'valor_entradas', 'lancamentos', 'ultimo_lancamento',
+      'receita_bruta', 'receita_mercadorias', 'receita_servicos', 'devolucoes', 'receita_simples', 'receita_simples_propria', 'receita_st', 'receita_monofasica', 'receita_exportacao',
+      'receita_anexo_1', 'receita_anexo_2', 'receita_anexo_3', 'receita_anexo_4', 'receita_anexo_5', 'rbt12', 'meses_rbt12',
+      'compras', 'compras_st', 'servicos_tomados', 'ativo_e_consumo', 'devolucoes_de_venda', 'outras_entradas',
+      'salarios', 'ferias', 'rescisoes', 'decimo_terceiro', 'pro_labore_valor', 'base_inss', 'base_fgts', 'fgts', 'inss_empresa', 'inss_rat', 'inss_terceiros', 'atualizado_em'],
+    padrao: ['cliente_id', 'competencia', 'funcionarios_ativos', 'admissoes', 'desligamentos', 'pro_labore', 'notas_saida', 'valor_saidas', 'notas_entrada', 'valor_entradas', 'lancamentos',
+      'receita_bruta', 'compras', 'salarios', 'pro_labore_valor'],
     notas: { competencia: 'AAAA-MM', funcionarios_ativos: 'empregados (categorias 101 a 111 do eSocial, com o doméstico) ativos no último dia do mês',
-      afastados: 'empregados afastados no último dia do mês (fora férias)', pro_labore: 'QUANTOS sócios tiveram o pró-labore calculado no mês (uma contagem de pessoas, não um valor em R$)',
-      valor_saidas: 'o valor contábil das notas de saída (mercadoria e serviço prestado, fora as canceladas): NÃO é o faturamento — entram devolução, remessa e transferência · o faturamento vem do PGDAS (receita_pgdas)',
+      afastados: 'empregados afastados no último dia do mês (fora férias)', pro_labore: 'QUANTOS sócios tiveram o pró-labore calculado no mês (uma contagem de pessoas, não um valor em R$) · o valor em R$ é pro_labore_valor',
+      valor_saidas: 'o valor contábil das notas de saída (mercadoria e serviço prestado, fora as canceladas): NÃO é o faturamento — entram devolução, remessa e transferência · o faturamento é receita_bruta (o do Domínio) ou o do PGDAS (receita_pgdas, o declarado)',
+      receita_bruta: 'o faturamento do mês: a receita bruta pelos acumuladores de faturamento do Domínio, menos as devoluções (= receita_mercadorias + receita_servicos − devolucoes) · é a receita sobre a qual o Presumido aplica a presunção · no Simples bateu com a apuração (por estabelecimento) · 0 = sem faturamento no mês',
+      receita_simples: 'de quem apura o Simples no Domínio: a receita da apuração do mês COM as filiais, como no PGDAS (pode passar da receita_bruta da matriz por isso) · null = não apura o Simples no Domínio · receita_simples_propria = só a do próprio código',
+      rbt12: 'o RBT12 do mês (a receita dos 12 meses anteriores, que dá a faixa do Simples), como o Domínio calcula · meses_rbt12 < 12 = empresa com menos de 12 meses de atividade (a média × 12)',
+      receita_st: 'do Simples: a receita do mês com ICMS por substituição tributária (a partilha do ICMS zerada na apuração)', receita_monofasica: 'do Simples: a receita do mês com PIS e Cofins monofásicos',
+      compras: 'as compras do mês (mercadorias e insumos), pelo CFOP, com compras_st (a parte com ST) dentro · servicos_tomados, ativo_e_consumo, devolucoes_de_venda e outras_entradas são à parte',
+      salarios: 'a folha do mês: os proventos de todos os empregados da empresa, SOMADOS (nunca de uma pessoa), já com as férias e as rescisões do mês (ferias e rescisoes são o "dos quais") · o 13º é à parte (decimo_terceiro)',
+      pro_labore_valor: 'o pró-labore do mês em R$, somado dos sócios', fgts: 'o FGTS do mês (a guia)', inss_empresa: 'o INSS patronal do mês (20%)', inss_rat: 'o RAT × FAP do mês', inss_terceiros: 'os terceiros (Sistema S, salário-educação) do mês',
+      base_inss: 'a base do INSS da empresa no mês', base_fgts: 'a base do FGTS no mês',
       valor_entradas: 'o valor contábil do que o fiscal lançou na entrada do Domínio (as notas de compra, o serviço tomado e os outros documentos de entrada), fora os cancelados · notas_entrada pode passar das notas de compra em XML por isso',
       lancamentos: 'quantos lançamentos contábeis no mês (fora o zeramento) · 0 com o mês já fechado = a contabilidade do mês não foi feita · mais que 0 NÃO quer dizer feita: a integração das notas e da folha também lança · se a contabilidade do mês foi feita, quem diz é o controle das contabilidades (contabil_meses)',
       ultimo_lancamento: 'o dia do último lançamento do mês', cliente_id: 'vazio = a empresa do Domínio não bate com o cadastro' } },
@@ -181,7 +194,7 @@ export const TABELAS = {
     desc: 'Cada leitura do Domínio que a ponte do PC do escritório mandou (a tarefa diária das 7h): quando, o dia dos dados, quantas empresas, quantas ligadas ao cadastro, quantas linhas de mês e o que faltou. Sem leitura há dias = o PC do escritório ficou desligado ou a ponte parou (o vigia avisa em 4 dias).',
     cols: ['id', 'inicio', 'fim', 'dados_ate', 'maquina', 'ponte', 'empresas', 'ligadas', 'linhas', 'faltou', 'recebida_em'],
     padrao: ['recebida_em', 'dados_ate', 'empresas', 'ligadas', 'linhas', 'faltou'],
-    notas: { dados_ate: 'o dia dos dados (a ponte lê o Domínio ao vivo)', faltou: 'lista [{bloco, motivo}] · bloco: folha | fiscal | contabil — o que não deu pra ler nesta leitura (o que já estava gravado fica)' } },
+    notas: { dados_ate: 'o dia dos dados (a ponte lê o Domínio ao vivo)', faltou: 'lista [{bloco, motivo}] · bloco: folha | fiscal | contabil | faturamento | compras | folha_valores (os três últimos desde a versão 2, 05/11/2026) — o que não deu pra ler nesta leitura (o que já estava gravado fica)' } },
   // o controle das contabilidades (Contábil › Controle das contabilidades, 04/11/2026, a planilha da Adaini no sistema)
   contabil_empresas: { rotulo: 'o controle das contabilidades', pk: 'cliente_id',
     desc: 'As empresas do controle das contabilidades (tela Controle das contabilidades, no Contábil; quem cuida é a Adaini): desde e até quando o escritório faz a contabilidade de cada uma, se faz (faz = false: não fazemos, com o motivo) e a observação. Não é rotina mensal (não nasce tarefa): a Adaini marca os meses quando faz, muitas vezes vários de uma vez. Empresa sem linha aqui = fora do controle.',
@@ -569,7 +582,11 @@ export function textoDaContabilidade(emp, meses, pendencias, hoje) {
 // o Domínio na ver_empresa (02/11/2026): os meses que a ponte leu, do mais recente pro mais antigo, um por pedaço curto.
 // A empresa com dois códigos no Domínio (o mesmo documento) fica com o maior de cada número, como na Precificação.
 // O mês de hoje e o passado ainda estão em fechamento lá. Sem empresa e sem linha: '' (não está no Domínio ou não bateu)
-const CAMPOS_DOMINIO = ['funcionarios_ativos', 'admissoes', 'desligamentos', 'afastados', 'pro_labore', 'notas_saida', 'valor_saidas', 'notas_entrada', 'valor_entradas', 'lancamentos', 'ultimo_lancamento'];
+// Desde 05/11/2026 (a versão 2 da ponte), também em reais: o faturamento, as compras, a folha, o pró-labore e os encargos,
+// e o RBT12 do Simples do mês mais recente que o tem (o null — o que o Domínio não disse — não vira zero)
+const CAMPOS_DOMINIO = ['funcionarios_ativos', 'admissoes', 'desligamentos', 'afastados', 'pro_labore', 'notas_saida', 'valor_saidas', 'notas_entrada', 'valor_entradas', 'lancamentos', 'ultimo_lancamento',
+  'receita_bruta', 'receita_simples', 'rbt12', 'meses_rbt12', 'compras', 'servicos_tomados', 'salarios', 'rescisoes', 'decimo_terceiro', 'pro_labore_valor', 'fgts', 'inss_empresa', 'inss_rat', 'inss_terceiros'];
+const somaQueVeio = (...vs) => (vs.some(v => v != null) ? vs.reduce((s, v) => s + (v == null ? 0 : +v), 0) : null);
 export function textoDoDominio(empresas, linhas, hoje) {
   const emps = empresas || [], ls = linhas || [];
   if (!emps.length && !ls.length) return '';
@@ -597,13 +614,30 @@ export function textoDoDominio(empresas, linhas, hoje) {
     if (m.notas_saida != null || m.notas_entrada != null) p.push('notas: ' + (m.notas_saida || 0) + ' de saída (' + brl(m.valor_saidas || 0) + ' de valor contábil) e '
       + (m.notas_entrada || 0) + ' de entrada (' + brl(m.valor_entradas || 0) + ')');
     if (m.lancamentos != null) p.push(n(m.lancamentos, 'lançamento contábil', 'lançamentos contábeis') + (m.ultimo_lancamento ? ', o último em ' + dataBR(m.ultimo_lancamento) : ''));
+    // em reais (a versão 2): só o que o Domínio disse
+    const r = [];
+    if (m.receita_bruta != null) r.push('faturamento ' + brl(m.receita_bruta)
+      + (m.receita_simples != null && Math.abs(m.receita_simples - m.receita_bruta) >= 1 ? ' (na apuração do Simples, com as filiais: ' + brl(m.receita_simples) + ')' : ''));
+    if (m.compras != null) r.push('compras ' + brl(m.compras) + (m.servicos_tomados > 0 ? ' (mais ' + brl(m.servicos_tomados) + ' de serviços tomados)' : ''));
+    const folha = somaQueVeio(m.salarios, m.decimo_terceiro);
+    if (folha != null) r.push('folha ' + brl(folha) + (m.decimo_terceiro > 0 ? ' (com ' + brl(m.decimo_terceiro) + ' de 13º)' : '') + (m.rescisoes > 0 ? ' (com ' + brl(m.rescisoes) + ' de rescisões)' : ''));
+    if (m.pro_labore_valor != null) r.push('pró-labore ' + brl(m.pro_labore_valor));
+    const enc = somaQueVeio(m.fgts, m.inss_empresa, m.inss_rat, m.inss_terceiros);
+    if (enc != null) r.push('encargos da folha ' + brl(enc) + ' (FGTS ' + brl(m.fgts || 0) + ', INSS da empresa ' + brl(somaQueVeio(m.inss_empresa, m.inss_rat, m.inss_terceiros) || 0) + ')');
+    if (r.length) p.push('em reais: ' + r.join(', '));
     return comp.slice(5, 7) + '/' + comp.slice(0, 4) + (comp === mesHoje || comp === mesPassado ? ' (em fechamento)' : '') + ': ' + (p.join(' · ') || 'sem número');
   };
   const meses = [...porMes.keys()].sort().reverse();
   const quem = emps.map(e => 'código ' + e.codigo + (e.ativa === false ? ', inativa lá' : e.ativa === true ? '' : ', situação lá não informada')).join(' e ');
+  const comRbt = meses.find(c => porMes.get(c).rbt12 != null);
+  const rbt = comRbt ? 'RBT12 de ' + comRbt.slice(5, 7) + '/' + comRbt.slice(0, 4) + ' no Simples, como o Domínio calcula: ' + brl(porMes.get(comRbt).rbt12)
+    + (porMes.get(comRbt).meses_rbt12 != null && porMes.get(comRbt).meses_rbt12 < 12 ? ' (com ' + porMes.get(comRbt).meses_rbt12 + ' meses de atividade: a média × 12)' : '') + ' | ' : '';
+  const comValores = meses.some(c => porMes.get(c).receita_bruta != null);
   return 'Domínio (pela ponte do PC do escritório, só os totais' + (lido ? '; lido em ' + diaDoMomento(lido) : '') + (quem ? ' · ' + quem : '') + '): '
-    + (meses.length ? meses.map(c => mes(c, porMes.get(c))).join(' | ')
-      + ' — o valor contábil das saídas não é o faturamento (esse vem do PGDAS); mais meses: consultar dominio_mensal'
+    + (meses.length ? rbt + meses.map(c => mes(c, porMes.get(c))).join(' | ')
+      + (comValores
+        ? ' — o valor contábil das saídas não é o faturamento: o faturamento é a receita bruta do Domínio (o declarado é o do PGDAS, na seção Receita); a folha e os encargos são o total da empresa; mais meses: consultar dominio_mensal'
+        : ' — o valor contábil das saídas não é o faturamento (esse vem do PGDAS); mais meses: consultar dominio_mensal')
       : 'sem movimento nos últimos meses');
 }
 // a situação como a equipe fala (o banco grava em_transicao, a_emitir...)

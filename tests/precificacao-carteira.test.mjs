@@ -6,7 +6,7 @@
 import { indexarParams, calcularMotor, faturamentoAnual } from '../assets/js/precificacao-motor.js';
 import { respostasDoSistema, regimesDasQuestoes, tipoSocietario, erpDaCarteira, honorarioDeHoje, nomeBase, nomesBatem, parcelasDeHonorario, parcelaDoCliente,
   faltamResponder, ultimaPorCliente, mesesDaVigencia, mesBR, diferenca, ehMei, rotuloSituacao, mesesLivres, reajustesDoMes, aplicarReajusteAgora,
-  referenciaDaLinha, pagaMenosQueOMotor, resumoDaCarteira, ultimaDeclaracaoPorCliente, FONTES, respostasDoDominio, faixaDeNotas, rotatividade } from '../assets/js/precificacao-carteira.js';
+  referenciaDaLinha, pagaMenosQueOMotor, resumoDaCarteira, ultimaDeclaracaoPorCliente, FONTES, respostasDoDominio, faixaDeNotas, rotatividade, faturamentoDoDominio } from '../assets/js/precificacao-carteira.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + extra : '')); };
@@ -125,6 +125,29 @@ chk('as faixas das notas e da rotatividade', faixaDeNotas(50) === '0-50' && faix
 const s6 = respostasDoSistema({ cliente: SIMPLES, obrigacoes: [], carteira: {}, dominio: DOM }, { regimesDaQuestao: REG, hoje: '2026-11-02' });
 chk('na carteira: as respostas do Domínio com a etiqueta "Domínio"', s6.respostas.C1 === 6 && s6.origem.C1 === 'dominio' && s6.origem.B1 === 'dominio' && FONTES.dominio === 'Domínio');
 chk('sem o dia de hoje, o Domínio não entra (os meses dependem dele)', !('C1' in respostasDoSistema({ cliente: SIMPLES, obrigacoes: [], carteira: {}, dominio: DOM }, { regimesDaQuestao: REG }).respostas));
+// o faturamento do Domínio (a versão 2 da ponte, 05/11/2026): entre o PGDAS e a Reforma
+{
+  const FAT = DOM.map((l, i) => ({ ...l, receita_bruta: 50000 + i * 1000, receita_simples: null }));   // de 2025-10 (i = 0) a 2026-11
+  const f = faturamentoDoDominio(FAT, '2026-11-02');
+  chk('o faturamento médio: os 12 meses fechados antes do mês passado (de 10/2025 a 09/2026)', f && f.meses === 12 && f.de === '2025-10' && f.ate === '2026-09'
+    && Math.abs(f.media - 55500) < 0.001, f);
+  const comSimples = FAT.map(l => (l.competencia === '2026-09' ? { ...l, receita_simples: 70000 } : l));
+  chk('o mês com a apuração do Simples (com as filiais) vale ela', Math.abs(faturamentoDoDominio(comSimples, '2026-11-02').media - (55500 + (70000 - 61000) / 12)) < 0.001);
+  const nova = FAT.map(l => (l.competencia < '2026-06' ? { ...l, receita_bruta: 0 } : l));
+  const fn = faturamentoDoDominio(nova, '2026-11-02');
+  chk('a empresa que começou no meio da janela: a média desde o primeiro mês com faturamento', fn.meses === 4 && fn.de === '2026-06' && Math.abs(fn.media - 59500) < 0.001, fn);
+  const buraco = FAT.map(l => (l.competencia === '2026-03' ? { ...l, receita_bruta: null } : l));
+  chk('o mês que o Domínio não disse (null) fica de fora, sem virar zero', faturamentoDoDominio(buraco, '2026-11-02').meses === 11);
+  chk('sem faturamento nenhum (zeros ou nulls): null', faturamentoDoDominio(DOM, '2026-11-02') === null && faturamentoDoDominio(FAT.map(l => ({ ...l, receita_bruta: 0 })), '2026-11-02') === null);
+  const dobro = faturamentoDoDominio([...FAT, ...FAT.map(l => ({ ...l, receita_bruta: 1 }))], '2026-11-02');
+  chk('dois códigos no mesmo mês: o maior, sem somar', Math.abs(dobro.media - 55500) < 0.001);
+  const s7 = respostasDoSistema({ cliente: { ...SIMPLES, regime_tributario: 'Lucro Presumido' }, obrigacoes: [], carteira: {}, dominio: FAT, reforma: { receita_mensal: 35000, rbt12: 0 } },
+    { regimesDaQuestao: REG, hoje: '2026-11-02' });
+  chk('na carteira: sem o PGDAS, o faturamento médio do Domínio (antes da Reforma), com a etiqueta', s7.respostas.A2M === 55500 && s7.origem.A2M === 'dominio', s7.respostas.A2M);
+  const s8 = respostasDoSistema({ cliente: SIMPLES, obrigacoes: [], carteira: {}, dominio: FAT, receita: { competencia: '2026-09', receita_mes: 1, receita_12_meses: 912000.07 } },
+    { regimesDaQuestao: REG, hoje: '2026-11-02' });
+  chk('com o PGDAS, o declarado continua valendo', s8.respostas.A2M === 76000.01 && s8.origem.A2M === 'receita');
+}
 chk('MEI fica com a aba MEI', ehMei({ regime_tributario: 'MEI' }) && !ehMei({ regime_tributario: 'Simples Nacional' }) && !ehMei(null));
 chk('o que falta responder: só as que mexem no preço, em branco e visíveis', JSON.stringify(faltamResponder({ A2M: 1, B8: 'x', C1: '' }, id => id.startsWith('A') || id === 'C1'))
   === JSON.stringify(['A5', 'A7', 'A8', 'A9', 'A10', 'A11B', 'C1']));

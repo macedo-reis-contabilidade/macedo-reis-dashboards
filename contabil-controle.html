@@ -258,8 +258,9 @@
       if (!window.MRTour) return;
       const forca = new URLSearchParams(location.search).has('tour');
       if (comFicha && !forca) return;
-      // o balão do assistente nasce um pouco depois da tela: espera até 3 s, pro passo dele entrar na conta dos passos
-      for (let t = 0; t < 15 && !document.querySelector('.as-lancador'); t++) await new Promise(r => setTimeout(r, 200));
+      // o balão do assistente nasce um pouco depois da tela: espera até 6 s, pro passo dele entrar na conta dos passos
+      // (com 3 s, num computador ocupado o tour começava sem ele: "1 de 13" no teste de 05/11/2026, com 4 testes ao mesmo tempo)
+      for (let t = 0; t < 30 && !document.querySelector('.as-lancador'); t++) await new Promise(r => setTimeout(r, 200));
       MRTour.iniciar(PASSOS_TOUR, 'contabil_controle_v1', forca, EU || '', { aoTerminar: () => telaDoTour() });
     }
 
