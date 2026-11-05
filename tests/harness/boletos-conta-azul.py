@@ -11,7 +11,8 @@ Confere:
      extras e a mensalidade embaixo;
   2. a janela: o Conta Azul "renovando" na primeira chamada (avisa e tenta de novo); o resumo; os grupos (sobem, descem,
      muda a composição); marcadas, salvo a que pede conferência (o total que cai mais de 30%); o que já estava no boleto;
-     a sem nada lá, a já emitida, a empresa sem boleto aqui e a pessoa sem empresa; o nome com HTML vem como texto;
+     a mensalidade de outro mês fica fora, com o aviso; o MEI com a guia do MEI no boleto não muda; a sem nada lá, a já
+     emitida, a empresa sem boleto aqui e a pessoa sem empresa; o nome com HTML vem como texto;
   3. "Aplicar": o valor e os extras de cada marcada no banco (a desmarcada fica), a grade com os totais novos, e a
      conferência de novo mostra que batem; "Desfazer" volta tudo;
   4. na grade: o aviso abre a lista (a mensalidade e cada extra); "Tirar do boleto" tira o item do Conta Azul (fica
@@ -33,28 +34,31 @@ def ok(cond, msg):
 
 NOMES = {'k1': 'ADEGA DE TESTE LTDA', 'k2': 'AGRO DE TESTE LTDA', 'k3': 'GOLDEN DE TESTE LTDA', 'k4': 'MEI DE TESTE 12345678',
          'k5': 'SEM CONTA AZUL LTDA', 'k6': 'JA EMITIDA LTDA', 'k7': 'IGUAL DE TESTE LTDA', 'k8': 'ZZ <img src=x onerror="window.__xss=1"> LTDA',
-         'k9': 'FORA DA GRADE LTDA'}
+         'k9': 'FORA DA GRADE LTDA', 'k10': 'QUEDA DE TESTE LTDA'}
 CLIENTES = [{'id': k, 'nome_principal': n, 'documento': '1%013d' % i} for i, (k, n) in enumerate(NOMES.items())]
 BASES = [{'id': 'g' + k, 'cliente_id': k, 'valor_base': 100, 'dia_vencimento': 10, 'canal': 'whatsapp', 'contato_envio': '', 'destino': '', 'responsavel': '', 'ativo': True}
-         for k in ['k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'k8']]
+         for k in ['k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'k8', 'k10']]
 def cob(k, valor, status='a_emitir', extras=None, venc='2026-11-10'):
     return {'id': 'm' + k, 'cliente_id': k, 'competencia': '2026-10', 'valor': valor, 'vencimento': venc, 'canal': 'whatsapp', 'contato_envio': '',
             'destino': '', 'responsavel': '', 'observacao': None, 'status': status, 'itens_extras': extras or [], 'created_at': '2026-11-01T12:00:00Z'}
 adic = lambda valor, venda: {'adicional_id': 'L' + venda, 'descricao': 'Honorário adicional anual (venda %s)' % venda, 'valor': valor}
 OUTUBRO = [cob('k1', 660, extras=[adic(660, '190421461')]), cob('k2', 905), cob('k3', 320, extras=[adic(300, '190421487')]), cob('k4', 175, venc='2026-11-16'),
-           cob('k5', 450), cob('k6', 500, status='emitido'), cob('k7', 300), cob('k8', 100)]
+           cob('k5', 450), cob('k6', 500, status='emitido'), cob('k7', 300), cob('k8', 100), cob('k10', 1000)]
 M, X, A = ['HONORÁRIOS MENSAIS'], ['SERVIÇOS EXTRAS'], ['HONORÁRIO ADICIONAL ANUAL']
 def it(k, pid, valor, cats, comp, desc='Venda 190421000', venc='2026-11-10'):
     return {'cliente_id': k, 'cliente_nome': NOMES[k], 'parcela_id': pid, 'valor': valor, 'categorias': cats, 'competencia': comp, 'vencimento': venc, 'descricao': desc}
 ITENS = [it('k1', 'p1m', 660, M, '2026-10-31', 'Venda 190421415 / NFS-e:1110 - RPS:1110'), it('k1', 'p1x', 200, X, '2026-10-15', '1/4 - Venda 190421319'),
          it('k1', 'p1a', 660, A, '2026-10-31', 'Venda 190421461'),
+         # a mensalidade de setembro que vence em novembro: fica fora (decisão do Samuel, 05/11/2026)
+         it('k1', 'p1s', 660, M, '2026-09-30', 'Venda 190421224 / NFS-e:1039 - RPS:1039', venc='2026-11-06'),
          it('k2', 'p2m', 825, M, '2026-10-31'), it('k2', 'p2x', 80, X, '2026-10-05', 'Venda 190421336'),
          it('k3', 'p3m', 300, M, '2026-10-31'), it('k3', 'p3a', 300, A, '2026-10-31', 'Venda 190421487'),
          it('k4', 'p4m', 87.95, ['MEI - CONTRATOS'], '2026-10-31', venc='2026-11-15'),
          it('k6', 'p6m', 500, M, '2026-10-31'), it('k6', 'p6x', 40, X, '2026-10-20'),
          it('k7', 'p7m', 300, M, '2026-10-31'),
          it('k8', 'p8m', 100, M, '2026-10-31'), it('k8', 'p8x', 50, X, '2026-10-20', 'Venda <b>190421999</b>'),
-         it('k9', 'p9m', 700, M, '2026-10-31')]
+         it('k9', 'p9m', 700, M, '2026-10-31'),
+         it('k10', 'p10m', 500, M, '2026-10-31')]
 ARMADILHA = """(() => {
   const CLI = %s, BAS = %s, COB = %s, ITENS = %s;
   let db;
@@ -119,14 +123,16 @@ def fluxo(b, base_url, tema, erros):
     ok(db(p, 'window.__viuRenovando') is True and db(p, 'window.__chamadas.filter(c => c.modo === "boletos").length') == 2, '2. o "renovando": avisa e tenta de novo sozinha')
     ok(db(p, 'window.__chamadas[0].meses') == ['2026-11'], '2. pede o mês do vencimento dos boletos (11/2026)')
     corpo = p.inner_text('#caBody')
-    ok('8 boletos: 1 igual ao Conta Azul, 2 sobem, 2 descem, 1 muda só a composição, 1 sem nada vencendo lá, 1 já emitido.' in corpo, '2. o resumo: ' + next((x for x in corpo.split('\n') if 'boletos:' in x), corpo[:200])[:200])
+    ok('9 boletos: 2 iguais ao Conta Azul, 2 sobem, 2 descem, 1 muda só a composição, 1 sem nada vencendo lá, 1 já emitido.' in corpo, '2. o resumo: ' + next((x for x in corpo.split('\n') if 'boletos:' in x), corpo[:200])[:200])
     adega = p.locator('.ca-linha', has_text='ADEGA DE TESTE')
     ok('hoje R$ 1.320,00' in adega.inner_text() and 'R$ 1.520,00' in adega.inner_text() and '+ R$ 200,00' in adega.inner_text(), '2. a Adega: 1.320,00 → 1.520,00 (+ 200,00)')
     ok('Serviços extras · 1/4 - Venda 190421319' in adega.inner_text() and '(já estava no boleto)' in adega.inner_text(), '2. o item novo e o adicional que já estava no boleto')
+    ok('Fica fora: Honorários de 09/2026 · Venda 190421224 (R$ 660,00) — mensalidade de outro mês não entra no boleto.' in adega.inner_text(), '2. a mensalidade de setembro que vence em novembro fica fora, com o aviso')
+    ok(p.locator('.ca-linha', has_text='MEI DE TESTE').count() == 0, '2. o MEI com a guia do MEI no boleto (175, o contrato 87,95 no Conta Azul) não muda')
     marcadas = db(p, '[...document.querySelectorAll(".ca-marca")].filter(c => c.checked).map(c => c.dataset.id).sort()')
     ok(marcadas == ['mk1', 'mk2', 'mk3', 'mk8'], '2. marcadas: as que sobem, descem e mudam a composição, salvo a que cai mais de 30%: ' + json.dumps(marcadas))
-    mei = p.locator('.ca-linha', has_text='MEI DE TESTE')
-    ok('mais de 30%' in mei.inner_text() and not mei.locator('.ca-marca').is_checked(), '2. a que cai mais de 30% pede conferência e começa desmarcada')
+    queda = p.locator('.ca-linha', has_text='QUEDA DE TESTE')
+    ok('mais de 30%' in queda.inner_text() and not queda.locator('.ca-marca').is_checked(), '2. a que cai mais de 30% pede conferência e começa desmarcada')
     ok(p.locator('.ca-linha', has_text='AGRO DE TESTE').count() == 1 and 'o total fica' in p.locator('.ca-linha', has_text='AGRO DE TESTE').inner_text(), '2. a que só muda a composição: "o total fica"')
     ok(db(p, 'window.__xss') is None and 'ZZ <img' in p.inner_text('#caBody'), '2. o nome com HTML vem como texto')
     p.click('#caBody summary:has-text("Sem nada vencendo")')
@@ -143,8 +149,8 @@ def fluxo(b, base_url, tema, erros):
     k1, k2, k3, k4, k8 = cobr(p, 'k1'), cobr(p, 'k2'), cobr(p, 'k3'), cobr(p, 'k4'), cobr(p, 'k8')
     ok(k1['valor'] == 660 and [x.get('ca_parcela_id') or x.get('adicional_id') for x in k1['itens_extras']] == ['L190421461', 'p1x'], '3. a Adega: a mensalidade 660, o adicional e a parcela de 200: ' + json.dumps(k1['itens_extras'], ensure_ascii=False)[:160])
     ok(k2['valor'] == 825 and len(k2['itens_extras']) == 1 and k2['itens_extras'][0]['valor'] == 80, '3. a composição: 825 de mensalidade e o extra de 80 à parte')
-    ok(k3['valor'] == 300 and k4['valor'] == 175 and k8['valor'] == 100 and len(k8['itens_extras']) == 1, '3. a que desce aplicada; a desmarcada (cai mais de 30%) fica como estava')
-    ok('4 boletos atualizados.' in p.inner_text('#caAviso') and '8 boletos: 5 iguais ao Conta Azul, 1 desce' in p.inner_text('#caBody'), '3. o aviso e a conferência de novo: agora batem')
+    ok(k3['valor'] == 300 and k4['valor'] == 175 and k8['valor'] == 100 and len(k8['itens_extras']) == 1 and cobr(p, 'k10')['valor'] == 1000, '3. a que desce aplicada; o MEI e a desmarcada (cai mais de 30%) ficam como estavam')
+    ok('4 boletos atualizados.' in p.inner_text('#caAviso') and '9 boletos: 6 iguais ao Conta Azul, 1 desce' in p.inner_text('#caBody'), '3. o aviso e a conferência de novo: agora batem')
     ok(linha(p, 'ADEGA DE TESTE').locator('input[data-f="valor"]').input_value() == '1520' and '+2 extra(s) · R$ 860,00' in linha(p, 'ADEGA DE TESTE').inner_text(), '3. a grade com o total novo, sem ler o mês de novo')
     p.click('#caDesfazer')
     p.wait_for_function('() => /voltaram ao que era/.test((document.querySelector("#caAviso") || {}).textContent || "")', timeout=8000)

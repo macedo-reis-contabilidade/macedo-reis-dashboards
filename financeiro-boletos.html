@@ -254,14 +254,14 @@ async function init(){
 async function carregarClientesEConfig(){
   let from=0, lote=1000, all=[];
   while(true){
-    const { data, error } = await supabase.from('clientes').select('id,nome_principal,documento').order('nome_principal').range(from, from+lote-1);
+    const { data, error } = await supabase.from('clientes').select('id,nome_principal,documento,regime_tributario').order('nome_principal').range(from, from+lote-1);
     if(error){ console.error(error); break; }
     all=all.concat(data||[]);
     if(!data || data.length<lote) break;
     from+=lote;
   }
-  clientesList = all.map(c=>({id:c.id, nome:c.nome_principal, doc:c.documento}));
-  clientesMap = Object.fromEntries(clientesList.map(c=>[c.id,{nome:c.nome,doc:c.doc}]));
+  clientesList = all.map(c=>({id:c.id, nome:c.nome_principal, doc:c.documento, regime:c.regime_tributario||''}));
+  clientesMap = Object.fromEntries(clientesList.map(c=>[c.id,{nome:c.nome,doc:c.doc,regime:c.regime}]));
   const { data: cfg } = await supabase.from('cobrancas_config').select('*');
   configMap = Object.fromEntries((cfg||[]).map(c=>[c.cliente_id,c]));
 }
@@ -607,6 +607,7 @@ async function abrirContaAzul(){
     const { abrirConferenciaCA } = await import('./assets/js/boletos-conta-azul-tela.js');
     await abrirConferenciaCA({ supabase, competencia: $('comp').value, linhas: rows.filter(r => r.id),
       nomeDe: id => clientesMap[id]?.nome || '',
+      ehMei: id => String(clientesMap[id]?.regime || '').toUpperCase() === 'MEI',
       aoAplicar: mud => { mud.forEach(m => { const r = rows.find(x => x.id === m.id); if (r) { r.valor = m.valor; r.itens_extras = m.itens_extras; } }); render(); } });
   } catch (e) { msg('Não consegui abrir a conferência com o Conta Azul: recarregue a tela.'); }
 }

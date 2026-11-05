@@ -14,7 +14,9 @@
 // não vai junto pro outro (até 05/11/2026, o extra somado à mão no valor seguia nos meses seguintes). O extra que não
 // veio do Conta Azul (o adicional anual que a janela do adicional pôs, o faturável) fica como está; o adicional não entra
 // de novo pela venda dele. O item do Conta Azul tirado do boleto na tela fica marcado (ignorado) e não volta na
-// conferência seguinte.
+// conferência seguinte. Decisões do Samuel na primeira conferência (05/11/2026): a mensalidade de outro mês que vence
+// neste não entra no boleto (a parcela de uma venda parcelada entra, mesmo de honorário); e, no MEI, o escritório paga a
+// guia do MEI e cobra junto — a guia não está no Conta Azul, então o valor de hoje, maior que o contrato de lá, fica.
 // ============================================================
 
 const semAcento = s => String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -95,7 +97,7 @@ export function valorParaTotal(total, extras) {
  *    mensalidade vencendo no mês: fica o valor de hoje);
  *  - avisos: textos curtos pra tela.
  */
-export function propostaDoBoleto(cob, itens) {
+export function propostaDoBoleto(cob, itens, { mei = false } = {}) {
   const mes = mesDoBoleto(cob);
   const comp = String((cob && cob.competencia) || '');
   const antes = { valor: real(centavos(cob && cob.valor)), total: totalDoBoleto(cob) };
@@ -104,18 +106,30 @@ export function propostaDoBoleto(cob, itens) {
     .filter(i => i && i.parcela_id && String(i.vencimento || '').slice(0, 7) === mes && centavos(i.valor) > 0);
   // a venda que já está no boleto por fora (o adicional da janela do adicional): não entra de novo
   const vendasDeFora = new Set(extrasDeFora(extrasHoje).map(x => vendaDe(x.descricao)).filter(Boolean));
-  const novos = doMes.filter(i => !(vendaDe(i.descricao) && vendasDeFora.has(vendaDe(i.descricao))));
-  const mensalidade = mensalidadeDoMes(novos, comp, antes.valor);
+  const semAsDeFora = doMes.filter(i => !(vendaDe(i.descricao) && vendasDeFora.has(vendaDe(i.descricao))));
+  const mensalidade = mensalidadeDoMes(semAsDeFora, comp, antes.valor);
+  // a mensalidade de outro mês que vence neste não entra no boleto (decisão do Samuel, 05/11/2026: "mensalidade de outros
+  // meses não devem ser somadas aos boletos"); a parcela de uma venda parcelada ("2/4 - Venda …") entra, mesmo de honorário
+  const deOutroMes = semAsDeFora.filter(i => ehMensalidade(i) && !mensalidade.includes(i) && !ehParcela(i));
+  const novos = semAsDeFora.filter(i => !deOutroMes.includes(i));
   const ignorados = new Set(extrasHoje.filter(x => x.ca_parcela_id && x.ignorado).map(x => String(x.ca_parcela_id)));
   const avisos = [];
+  if (deOutroMes.length) avisos.push('Fica fora: ' + deOutroMes.map(i => rotuloDoItem(i, comp) + ' (' + brl(i.valor) + ')').join(', ')
+    + ' — mensalidade de outro mês não entra no boleto.');
 
   const fechado = !!(cob && cob.status && cob.status !== 'a_emitir');
   if (!doMes.length) {
     return { mes, valor: antes.valor, itens_extras: extrasHoje, total: antes.total, antes, situacao: fechado ? 'fechado' : 'sem_conta_azul',
-      mensalidade: 'mantida', avisos: ['Nada desta empresa vence em ' + mesBR(mes) + ' no Conta Azul (ou ela não está ligada lá pelo CNPJ).'], itens: [] };
+      mensalidade: 'mantida', confira: false, avisos: ['Nada desta empresa vence em ' + mesBR(mes) + ' no Conta Azul (ou ela não está ligada lá pelo CNPJ).'], itens: [], fora: [] };
   }
-  const valor = mensalidade.length ? real(mensalidade.reduce((s, i) => s + centavos(i.valor), 0)) : antes.valor;
+  const doContrato = real(mensalidade.reduce((s, i) => s + centavos(i.valor), 0));
+  // o MEI: o escritório paga a guia do MEI (o DAS) e cobra junto, no boleto (o Samuel, 05/11/2026) — a guia não está no
+  // Conta Azul, então o valor de hoje, maior que o contrato de lá, fica
+  const ehMei = !!mei || mensalidade.some(i => categoriasDo(i).some(c => norm(c) === 'MEI - CONTRATOS'));
+  const comGuia = ehMei && mensalidade.length && centavos(antes.valor) > centavos(doContrato);
+  const valor = !mensalidade.length || comGuia ? antes.valor : doContrato;
   if (!mensalidade.length) avisos.push('O Conta Azul não tem a mensalidade vencendo em ' + mesBR(mes) + ': fica a de hoje, ' + brl(antes.valor) + '.');
+  else if (comGuia) avisos.push('O valor de hoje fica: ' + brl(real(centavos(antes.valor) - centavos(doContrato))) + ' a mais que o contrato do Conta Azul (' + brl(doContrato) + '), a guia do MEI cobrada junto.');
   else if (centavos(valor) !== centavos(antes.valor)) avisos.push('A mensalidade passa de ' + brl(antes.valor) + ' para ' + brl(valor) + ', a do Conta Azul.');
   const doCA = novos.filter(i => !mensalidade.includes(i)).map(i => ({
     ca_parcela_id: String(i.parcela_id), descricao: rotuloDoItem(i, comp), valor: real(centavos(i.valor)),
@@ -135,27 +149,30 @@ export function propostaDoBoleto(cob, itens) {
   const confira = !fechado && situacao !== 'igual' && (!mensalidade.length || (situacao === 'desce' && centavos(total) < centavos(antes.total) * 0.7));
   if (confira && mensalidade.length) avisos.push('O total cai mais de 30%: confira se o Conta Azul não está sem algum item desta empresa.');
   return { mes, valor, itens_extras, total, antes, situacao, confira, mensalidade: mensalidade.length ? 'conta_azul' : 'mantida', avisos,
-    itens: [...mensalidade.map(i => ({ rotulo: rotuloDoItem(i, comp), valor: real(centavos(i.valor)), mensalidade: true })),
-      ...doCA.map(x => ({ rotulo: x.descricao, valor: x.valor, ignorado: !!x.ignorado }))] };
+    itens: [...(comGuia ? [{ rotulo: 'Mensalidade com a guia do MEI', valor, mensalidade: true }]
+      : mensalidade.map(i => ({ rotulo: rotuloDoItem(i, comp), valor: real(centavos(i.valor)), mensalidade: true }))),
+      ...doCA.map(x => ({ rotulo: x.descricao, valor: x.valor, ignorado: !!x.ignorado }))],
+    fora: deOutroMes.map(i => ({ rotulo: rotuloDoItem(i, comp), valor: real(centavos(i.valor)) })) };
 }
 
 /**
- * A mensalidade entre o que vence no mês: a das categorias da mensalidade com a competência do boleto; sem ela, a única
- * dessas categorias no mês; sem nenhuma, o item com o mesmo valor do boleto de hoje (o contrato lançado noutra
- * categoria — o MEI em "MEI - SERVIÇOS PRESTADOS", a MU em "SERVIÇOS EXTRAS"), da competência do boleto de preferência,
- * fora o adicional anual. Nada disso: [] (fica o valor de hoje, e a proposta pede conferência).
+ * A mensalidade entre o que vence no mês: a das categorias da mensalidade com a competência do boleto; sem ela, o item
+ * com o mesmo valor do boleto de hoje — o contrato lançado noutra categoria (o MEI em "MEI - SERVIÇOS PRESTADOS", a MU em
+ * "SERVIÇOS EXTRAS") ou com a competência noutro mês —, da competência do boleto de preferência, fora o adicional anual e
+ * as parcelas. Nada disso: [] (fica o valor de hoje, e a proposta pede conferência).
  */
 export function mensalidadeDoMes(itens, competencia, valorDeHoje) {
   const daComp = i => String(i.competencia || '').slice(0, 7) === competencia;
   const mensais = itens.filter(ehMensalidade);
   if (mensais.some(daComp)) return mensais.filter(daComp);
-  if (mensais.length === 1) return mensais;
-  if (mensais.length) return [];
-  const mesmoValor = itens.filter(i => centavos(i.valor) === centavos(valorDeHoje) && centavos(valorDeHoje) > 0
+  const mesmoValor = itens.filter(i => centavos(i.valor) === centavos(valorDeHoje) && centavos(valorDeHoje) > 0 && !ehParcela(i)
     && !categoriasDo(i).some(c => /ADICIONAL/.test(norm(c))));
-  const escolhido = mesmoValor.find(daComp) || mesmoValor[0];
+  const escolhido = mesmoValor.find(daComp) || mesmoValor.find(ehMensalidade) || mesmoValor[0];
   return escolhido ? [escolhido] : [];
 }
+
+// a parcela de uma venda parcelada: "2/4 - Venda 190421319", "1/2 - Venda 190416834 1/2"
+export const ehParcela = item => /^\s*\d+\s*\/\s*\d+\s*-/.test(String((item && item.descricao) || ''));
 
 // a mesma lista de extras (o que muda o boleto: o item, o valor e se está tirado)
 function chaveDoExtra(x) {
@@ -173,14 +190,14 @@ const brl = v => 'R$ ' + (Number(v) || 0).toLocaleString('pt-BR', { minimumFract
  * soltas }). Devolve { propostas: [{ cobranca, proposta }], soltas, resumo }, a ordem: o que sobe e o que desce primeiro.
  */
 export const ORDEM = ['desce', 'sobe', 'recompoe', 'sem_conta_azul', 'fechado', 'igual'];
-export function conferirMes(cobrancas, dados) {
+export function conferirMes(cobrancas, dados, { ehMei = () => false } = {}) {
   const porCliente = new Map();
   for (const i of (dados && Array.isArray(dados.itens) ? dados.itens : [])) {
     if (!i || !i.cliente_id) continue;
     if (!porCliente.has(i.cliente_id)) porCliente.set(i.cliente_id, []);
     porCliente.get(i.cliente_id).push(i);
   }
-  const propostas = (cobrancas || []).filter(c => c && c.cliente_id).map(c => ({ cobranca: c, proposta: propostaDoBoleto(c, porCliente.get(c.cliente_id) || []) }));
+  const propostas = (cobrancas || []).filter(c => c && c.cliente_id).map(c => ({ cobranca: c, proposta: propostaDoBoleto(c, porCliente.get(c.cliente_id) || [], { mei: !!ehMei(c.cliente_id) }) }));
   propostas.sort((a, b) => ORDEM.indexOf(a.proposta.situacao) - ORDEM.indexOf(b.proposta.situacao));
   const comBoleto = new Set((cobrancas || []).map(c => c && c.cliente_id));
   // o que vence no mês lá de empresa sem boleto aqui (ligada a uma empresa do cadastro que não está na grade)

@@ -4,7 +4,7 @@
 // público). Rodar com: node tests/boletos-conta-azul.test.mjs
 import {
   mesDoBoleto, mesSeguinte, ehMensalidade, vendaDe, rotuloDoItem, propostaDoBoleto, conferirMes, mensalidadeDoMes,
-  valorParaTotal, totalDoBoleto, somaExtras, gravacaoDaProposta, marcadaPorPadrao
+  valorParaTotal, totalDoBoleto, somaExtras, gravacaoDaProposta, marcadaPorPadrao, ehParcela
 } from '../assets/js/boletos-conta-azul.js';
 
 let falhas = 0;
@@ -71,8 +71,16 @@ console.log('A composição, o que desce e o que pede conferência:');
     [it('m', 300, MENSAL, '2026-10-31'), it('a', 300, ADIC, '2026-10-31', { descricao: 'Venda 190421487' })]);
   chk('desce de 620 para 600 (o extra antigo saiu), marcada', d.situacao === 'desce' && d.total === 600 && !d.confira && marcadaPorPadrao(d), J(d));
   // cai mais de 30%: pede conferência
-  const q = propostaDoBoleto({ competencia: '2026-10', vencimento: '2026-11-16', valor: 175, status: 'a_emitir', itens_extras: [] }, [it('m', 87.95, ['MEI - CONTRATOS'], '2026-10-31', { vencimento: '2026-11-15' })]);
+  const q = propostaDoBoleto({ competencia: '2026-10', vencimento: '2026-11-16', valor: 1000, status: 'a_emitir', itens_extras: [] }, [it('m', 500, MENSAL, '2026-10-31', { vencimento: '2026-11-15' })]);
   chk('o total que cai mais de 30% pede conferência e começa desmarcado', q.situacao === 'desce' && q.confira && !marcadaPorPadrao(q) && /mais de 30%/.test(q.avisos.join(' ')), J(q));
+  // o MEI: o escritório paga a guia do MEI e cobra junto (a guia não está no Conta Azul) — o valor de hoje, maior, fica
+  const g = propostaDoBoleto({ competencia: '2026-10', vencimento: '2026-11-16', valor: 175, status: 'a_emitir', itens_extras: [] }, [it('m', 87.95, ['MEI - CONTRATOS'], '2026-10-31', { vencimento: '2026-11-15' })]);
+  chk('o MEI (pela categoria MEI - CONTRATOS): o valor de hoje fica, com a guia do MEI — nada muda, nada a conferir',
+    g.situacao === 'igual' && g.valor === 175 && !g.confira && /R\$\s87,05 a mais que o contrato do Conta Azul \(R\$\s87,95\), a guia do MEI/.test(g.avisos.join(' ')) && g.itens[0].rotulo === 'Mensalidade com a guia do MEI', J(g));
+  const gc = propostaDoBoleto({ competencia: '2026-10', vencimento: '2026-11-10', valor: 225, status: 'a_emitir', itens_extras: [] }, [it('m', 137.95, MENSAL, '2026-10-31'), it('x', 30, EXTRA, '2026-10-20')], { mei: true });
+  chk('o MEI do cadastro (o contrato em HONORÁRIOS MENSAIS): a guia fica no valor e o extra entra', gc.valor === 225 && gc.total === 255 && gc.situacao === 'sobe', J(gc));
+  const gm = propostaDoBoleto({ competencia: '2026-10', vencimento: '2026-11-10', valor: 80, status: 'a_emitir', itens_extras: [] }, [it('m', 87.95, ['MEI - CONTRATOS'], '2026-10-31')], { mei: true });
+  chk('o MEI com o boleto abaixo do contrato: vale o contrato', gm.valor === 87.95 && gm.situacao === 'sobe', J(gm));
   // sem a mensalidade lá (nem com o mesmo valor): fica o valor de hoje e os itens entram por cima — pede conferência
   const s = propostaDoBoleto({ competencia: '2026-10', vencimento: '2026-11-10', valor: 450, status: 'a_emitir', itens_extras: [] }, [it('x', 300, EXTRA, '2026-10-20')]);
   chk('sem a mensalidade no Conta Azul: fica a de hoje, o item entra por cima, e pede conferência',
@@ -81,10 +89,20 @@ console.log('A composição, o que desce e o que pede conferência:');
   const v = propostaDoBoleto({ competencia: '2026-10', vencimento: '2026-11-10', valor: 165, status: 'a_emitir', itens_extras: [] }, [it('m', 165, ['MEI - SERVIÇOS PRESTADOS'], '2026-10-31')]);
   chk('o contrato noutra categoria, com o mesmo valor do boleto, é a mensalidade (não soma duas vezes)', v.situacao === 'igual' && v.total === 165 && v.mensalidade === 'conta_azul', J(v));
   chk('… mas o adicional com o mesmo valor não vira mensalidade', mensalidadeDoMes([it('a', 165, ADIC, '2026-10-31')], '2026-10', 165).length === 0);
-  // a mensalidade de outro mês que vence neste: entra como extra, com o mês dela
+  // a mensalidade de outro mês que vence neste: fica fora (decisão do Samuel, 05/11/2026), com o aviso
   const c = propostaDoBoleto({ competencia: '2026-10', vencimento: '2026-11-10', valor: 575, status: 'a_emitir', itens_extras: [] },
     [it('m10', 575, MENSAL, '2026-10-31'), it('m09', 575, MENSAL, '2026-09-30', { vencimento: '2026-11-06', descricao: 'Venda 190421224 / NFS-e:1039 - RPS:1039' })]);
-  chk('a mensalidade de outro mês que vence neste entra à parte, com o mês dela', c.valor === 575 && c.total === 1150 && c.itens_extras.length === 1 && c.itens_extras[0].descricao === 'Honorários de 09/2026 · Venda 190421224', J(c));
+  chk('a mensalidade de outro mês que vence neste fica fora do boleto, com o aviso', c.situacao === 'igual' && c.total === 575 && c.itens_extras.length === 0
+    && /Fica fora: Honorários de 09\/2026 · Venda 190421224 \(R\$\s575,00\) — mensalidade de outro mês não entra no boleto/.test(c.avisos.join(' ')) && c.fora.length === 1, J(c));
+  // … mas a parcela de uma venda parcelada de honorário entra
+  const pp = propostaDoBoleto({ competencia: '2026-10', vencimento: '2026-11-10', valor: 1007.25, status: 'a_emitir', itens_extras: [] },
+    [it('m', 750, MENSAL, '2026-10-31'), it('p1', 87, MENSAL, '2024-02-29', { descricao: '4/4 - Venda 190400001' }), it('p2', 170.25, MENSAL, '2024-07-31', { descricao: '1/4 - Venda 190400002' })]);
+  chk('a parcela de uma venda parcelada de honorário entra (o total fica, a composição muda)', pp.situacao === 'recompoe' && pp.total === 1007.25 && pp.valor === 750 && pp.itens_extras.length === 2
+    && pp.itens_extras.some(x => x.descricao === 'Honorários de 02/2024 · 4/4 - Venda 190400001'), J(pp));
+  chk('o que é parcela', ehParcela({ descricao: '2/4 - Venda 190421319' }) && ehParcela({ descricao: '1/2 - Venda 190416834 1/2' }) && !ehParcela({ descricao: 'Venda 190421224 / NFS-e:1039' }));
+  // sem a mensalidade da competência: a de outro mês com o mesmo valor do boleto é a mensalidade (não fica fora)
+  const so = propostaDoBoleto({ competencia: '2026-10', vencimento: '2026-11-10', valor: 850, status: 'a_emitir', itens_extras: [] }, [it('m09', 850, MENSAL, '2026-09-30')]);
+  chk('sem a mensalidade da competência, a de outro mês com o mesmo valor do boleto é a mensalidade', so.situacao === 'igual' && so.mensalidade === 'conta_azul' && so.fora.length === 0, J(so));
   // o faturável fica
   const f = propostaDoBoleto({ competencia: '2026-10', vencimento: '2026-11-10', valor: 500, status: 'a_emitir', itens_extras: [{ faturavel_id: 'f1', descricao: 'Abertura de filial', valor: 300 }] },
     [it('m', 500, MENSAL, '2026-10-31')]);

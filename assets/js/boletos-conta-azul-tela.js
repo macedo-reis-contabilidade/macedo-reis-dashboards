@@ -32,9 +32,10 @@ async function mensagemDe(error) {
 
 /**
  * Abre a janela. linhas: os boletos da grade (os objetos da tela, já gravados); nomeDe(cliente_id): o nome da empresa;
+ * ehMei(cliente_id): o MEI do cadastro (a guia do MEI vai junto no boleto: o valor de hoje, maior que o contrato, fica);
  * aoAplicar([{ id, valor, itens_extras }]): a grade troca o valor e os extras das linhas, sem ler o mês de novo.
  */
-export async function abrirConferenciaCA({ supabase, competencia, linhas, nomeDe = () => '', aoAplicar = () => {},
+export async function abrirConferenciaCA({ supabase, competencia, linhas, nomeDe = () => '', ehMei = () => false, aoAplicar = () => {},
   esperaRenovando = (typeof window !== 'undefined' && Number(window.__boletosEsperaMs)) || ESPERA_RENOVANDO_MS }) {
   const antiga = document.getElementById('caOv');
   if (antiga) antiga.remove();
@@ -91,7 +92,7 @@ export async function abrirConferenciaCA({ supabase, competencia, linhas, nomeDe
       });
       est.itens = Array.isArray(dados.itens) ? dados.itens : [];
       est.soltas = Array.isArray(dados.soltas) ? dados.soltas : [];
-      est.conf = conferirMes(linhas, { itens: est.itens, soltas: est.soltas });
+      est.conf = conferirMes(linhas, { itens: est.itens, soltas: est.soltas }, { ehMei });
       est.marcadas = new Set(est.conf.propostas.filter(x => marcadaPorPadrao(x.proposta)).map(x => x.cobranca.id));
       desenhar();
     } catch (e) {
@@ -188,7 +189,7 @@ export async function abrirConferenciaCA({ supabase, competencia, linhas, nomeDe
     est.aplicadas = feitas;
     if (feitas.length) aoAplicar(feitas.map(f => ({ id: f.id, ...f.depois })));
     // depois de aplicar, a conferência é refeita com o que ficou gravado (o que foi aplicado vira "igual")
-    est.conf = conferirMes(linhas, { itens: est.itens, soltas: est.soltas });
+    est.conf = conferirMes(linhas, { itens: est.itens, soltas: est.soltas }, { ehMei });
     est.aviso = plural(feitas.length, 'boleto atualizado', 'boletos atualizados') + '.' + (ficaram.length ? ' Não mudaram (já não estavam a emitir, ou a gravação falhou): ' + esc(ficaram.join(', ')) + '.' : '');
     est.marcadas = new Set(est.conf.propostas.filter(x => marcadaPorPadrao(x.proposta)).map(x => x.cobranca.id));
     desenhar();
@@ -215,7 +216,7 @@ export async function abrirConferenciaCA({ supabase, competencia, linhas, nomeDe
     est.rodando = false;
     est.aplicadas = null;
     if (voltaram.length) aoAplicar(voltaram);
-    est.conf = conferirMes(linhas, { itens: est.itens, soltas: est.soltas });
+    est.conf = conferirMes(linhas, { itens: est.itens, soltas: est.soltas }, { ehMei });
     est.aviso = plural(voltaram.length, 'boleto voltou', 'boletos voltaram') + ' ao que era.' + (nao.length ? ' ' + plural(nao.length, 'não voltou', 'não voltaram') + ': alguém mexeu depois.' : '');
     est.marcadas = new Set(est.conf.propostas.filter(x => marcadaPorPadrao(x.proposta)).map(x => x.cobranca.id));
     desenhar();
