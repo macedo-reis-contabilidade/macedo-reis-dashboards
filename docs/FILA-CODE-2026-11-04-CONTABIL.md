@@ -2,9 +2,9 @@
 
 > **Para o Code do PC do escritório.** **Leia este arquivo inteiro antes de começar**, junto com o
 > `docs/FILA-CODE-2026-10-29-DUVIDAS.md` (a consulta `contabil` e a `bethadba.ctlancto`, com as origens) e o
-> DUVIDAS da fila de 03/11, que está na branch `fila-03-11` e ainda não foi pra `main`
-> (`git show origin/fila-03-11:docs/FILA-CODE-2026-11-03-DUVIDAS.md`; os rascunhos de lá, que o item 5 usa:
-> `git show origin/fila-03-11:ponte/rascunhos/faturamento.sql` e `.../folha_valores.sql`).
+> `docs/FILA-CODE-2026-11-03-DUVIDAS.md` (o faturamento, as compras e a folha em reais). As consultas de lá que o
+> item 5 usa já estão na `main`, em `ponte/consultas/faturamento.sql` e `ponte/consultas/folha_valores.sql` (a versão
+> 2 da ponte, que a fila de 05/11, feita antes desta, instalou).
 > Faça os itens **inteiros, sem parar pra perguntar**: nenhum item precisa do Samuel na frente do PC. Na dúvida, a
 > opção que **muda menos**, anotada em `docs/FILA-CODE-2026-11-04-CONTABIL-DUVIDAS.md`. Ao terminar: o **Registro de
 > progresso** (fim deste arquivo) preenchido, commit e `git push origin fila-04-11-contabil`. **Nunca** push em `main`
@@ -21,8 +21,8 @@
   - **o encerramento do exercício** (o zeramento) de cada ano;
   - **os saldos estranhos do balancete** no fim do mês: o caixa negativo, a conta com saldo contra a natureza e a
     conta transitória ou "a classificar" com saldo;
-  - **a receita e a folha lançadas no contábil**, pra cruzar com o faturamento e a folha do próprio Domínio (os
-    rascunhos da fila de 03/11).
+  - **a receita e a folha lançadas no contábil**, pra cruzar com o faturamento e a folha do próprio Domínio (as
+    consultas `faturamento.sql` e `folha_valores.sql` da fila de 03/11, hoje em `ponte/consultas/`).
 - Esta fila **só descobre e escreve rascunhos**, numa pasta que a ponte **não lê** (`ponte/rascunhos/`). O contrato
   do pacote, a função do sistema e as tabelas do banco **não mudam aqui**: quem decide o contrato novo e liga no
   sistema é o Claude da sessão do Samuel, depois de revisar. A conferência com a marcação da Adaini é dele, no sistema,
@@ -150,8 +150,8 @@ inteira no mês.
    - `encargos_lancados`: o débito do mês nas de INSS e FGTS da empresa.
 2. **A conferência dentro do Domínio**, com `--mes 2026-09`, as duas somas na mesma consulta e um `CASE` que diz
    "bate"/"não bate"/"o contábil sem"/"o fiscal sem" (mostre só a contagem por resultado):
-   - a `receita_lancada` contra a `receita_bruta` do `faturamento.sql` da fila de 03/11, até R$ 1,00;
-   - a `folha_lancada` contra a soma dos proventos e do pró-labore do `folha_valores.sql` de lá, até R$ 1,00.
+   - a `receita_lancada` contra a `receita_bruta` do `ponte/consultas/faturamento.sql`, até R$ 1,00;
+   - a `folha_lancada` contra a soma dos proventos e do pró-labore do `ponte/consultas/folha_valores.sql`, até R$ 1,00.
    Onde não bate, procure o porquê pela origem dos lançamentos e pelas contas (só contagens e somas do escritório
    inteiro) e anote no DUVIDAS.
 3. **O rascunho** `ponte/rascunhos/contabil_cruzamentos.sql` (os mesmos `?` do mês): `codigo`, `receita_lancada`,
