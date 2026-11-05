@@ -1,4 +1,4 @@
--- compras.sql (RASCUNHO: a ponte não lê esta pasta): por empresa, as entradas do mês separadas pelo CFOP. Os dois
+-- compras.sql: por empresa, as entradas do mês separadas pelo CFOP. Os dois
 -- parâmetros são o primeiro e o último dia do mês. Tabela: bethadba.efentradas ("Notas Fiscais de Entrada", uma linha
 -- por segmento da nota; codi_nat "Natureza" = o CFOP de 4 dígitos, vcon_ent "Valor contabil", dent_ent a data de
 -- entrada, a do livro, como o fiscal.sql). Fica de fora a cancelada, denegada ou inutilizada (situacao 2 a 5).

@@ -1,15 +1,20 @@
 // ============================================================
 // MACEDO & REIS — Edge Function ponte: o pacote do Domínio (02/11/2026)
 // O que a ponte do PC do escritório lê do banco do Domínio Web (o contrato está em ponte/pacote.py e ponte/fonte.py):
-// as empresas do Domínio e, por empresa e mês, a folha, as notas e os lançamentos — só totais. Conferido campo a campo
-// e montado de novo só com o que o contrato prevê; quem grava é o banco (dominio_gravar), com o pacote que sai daqui.
+// as empresas do Domínio e, por empresa e mês, a folha, as notas e os lançamentos — só totais. Desde a versão 2 do
+// pacote (05/11/2026), também o faturamento, as compras e a folha em reais (somada por empresa, nunca por pessoa).
+// Conferido campo a campo e montado de novo só com o que o contrato prevê; quem grava é o banco (dominio_gravar),
+// com o pacote que sai daqui. A versão 1 (a ponte antiga) segue aceita: nela, os três blocos novos não foram lidos
+// (blocos_ok falso) e o banco não mexe no que já tinha deles.
 // O que é da rodada fora do contrato recusa o pacote inteiro (422); a linha de um mês fora do contrato fica de fora
 // sozinha e volta em `recusadas`.
 // O vazio: a consulta não traz linha pra empresa sem nota ou sem lançamento no mês, e a ponte manda null (nunca um 0
 // inventado). Aqui, com o bloco lido inteiro (fora do `faltou`), o null vira 0 — nas notas e nos lançamentos de toda
 // empresa, e na folha só da empresa ativa no Domínio (a consulta da folha olha a ativa e a que teve folha calculada no
 // mês; a inativa sem folha fica null: o Domínio não diz). O bloco do `faltou` segue null e não apaga o que já estava
-// gravado (blocos_ok vai pro banco).
+// gravado (blocos_ok vai pro banco). Nos blocos da versão 2: no faturamento, o null vira 0 só na receita pelas notas
+// (receita_bruta, receita_mercadorias, receita_servicos, devolucoes) — o que é da apuração do Simples segue null na
+// empresa que não apura; nas compras, em toda empresa; na folha em reais, só na empresa ativa, como a folha.
 // Sem import: testes no node em tests/ponte-funcao.test.mjs.
 // ============================================================
 
@@ -17,10 +22,27 @@ export const LIMITES_DOMINIO = { empresas: 5000, mensal: 60000, faltou: 20, mese
 export const BLOCOS_DOMINIO = {
   folha: ['funcionarios_ativos', 'admissoes', 'desligamentos', 'afastados', 'pro_labore'],
   fiscal: ['notas_saida', 'valor_saidas', 'notas_entrada', 'valor_entradas'],
-  contabil: ['lancamentos', 'ultimo_lancamento']
+  contabil: ['lancamentos', 'ultimo_lancamento'],
+  // a versão 2 (05/11/2026)
+  faturamento: ['receita_bruta', 'receita_mercadorias', 'receita_servicos', 'devolucoes', 'receita_simples',
+    'receita_simples_propria', 'receita_st', 'receita_monofasica', 'receita_exportacao', 'receita_anexo_1',
+    'receita_anexo_2', 'receita_anexo_3', 'receita_anexo_4', 'receita_anexo_5', 'rbt12', 'meses_rbt12'],
+  compras: ['compras', 'compras_st', 'servicos_tomados', 'ativo_e_consumo', 'devolucoes_de_venda', 'outras_entradas'],
+  folha_valores: ['salarios', 'ferias', 'rescisoes', 'decimo_terceiro', 'pro_labore_valor', 'base_inss', 'base_fgts',
+    'fgts', 'inss_empresa', 'inss_rat', 'inss_terceiros']
 };
-const INTEIROS = new Set(['funcionarios_ativos', 'admissoes', 'desligamentos', 'afastados', 'pro_labore', 'notas_saida', 'notas_entrada', 'lancamentos']);
-const VALORES = new Set(['valor_saidas', 'valor_entradas']);
+// os blocos de cada versão do pacote
+export const BLOCOS_DA_VERSAO = { 1: ['folha', 'fiscal', 'contabil'], 2: Object.keys(BLOCOS_DOMINIO) };
+const INTEIROS = new Set(['funcionarios_ativos', 'admissoes', 'desligamentos', 'afastados', 'pro_labore', 'notas_saida', 'notas_entrada', 'lancamentos', 'meses_rbt12']);
+const VALORES = new Set(['valor_saidas', 'valor_entradas',
+  ...['faturamento', 'compras', 'folha_valores'].flatMap(b => BLOCOS_DOMINIO[b]).filter(c => c !== 'meses_rbt12')]);
+// o vazio de um bloco lido inteiro: o que vira 0 em toda empresa (o resto do bloco segue null)
+const ZERO_EM_TODA = {
+  fiscal: BLOCOS_DOMINIO.fiscal, contabil: ['lancamentos'],
+  faturamento: ['receita_bruta', 'receita_mercadorias', 'receita_servicos', 'devolucoes'], compras: BLOCOS_DOMINIO.compras
+};
+// … e o que vira 0 só na empresa ativa no Domínio (a inativa sem folha: o Domínio não diz)
+const ZERO_NA_ATIVA = { folha: BLOCOS_DOMINIO.folha, folha_valores: BLOCOS_DOMINIO.folha_valores };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const COMPETENCIA = /^([0-9]{4})-(0[1-9]|1[0-2])$/;
@@ -77,7 +99,7 @@ const objeto = (v, campo) => {
 const mesesEntre = (a, b) => { const [ya, ma] = a.split('-').map(Number), [yb, mb] = b.split('-').map(Number); return (ya - yb) * 12 + (ma - mb); };
 
 // uma linha do mês: o que o contrato prevê, conferido (fora dele, Recusa com o campo)
-function linhaDoMes(l, onde, ateMes) {
+function linhaDoMes(l, onde, ateMes, blocos) {
   objeto(l, onde);
   const codigo = l.codigo;
   if (typeof codigo !== 'number' || !Number.isInteger(codigo) || codigo <= 0) recusar(onde + '.codigo', 'código que não é um inteiro positivo');
@@ -86,10 +108,15 @@ function linhaDoMes(l, onde, ateMes) {
   const atras = mesesEntre(ateMes, competencia);
   if (atras < 0 || atras >= LIMITES_DOMINIO.meses) recusar(onde + '.competencia', 'competência fora dos ' + LIMITES_DOMINIO.meses + ' meses até dados_ate');
   const saida = { codigo, competencia };
-  for (const campos of Object.values(BLOCOS_DOMINIO)) {
+  for (const [bloco, campos] of Object.entries(BLOCOS_DOMINIO)) {
     for (const c of campos) {
+      if (!blocos.includes(bloco)) { saida[c] = null; continue; }
       const v = l[c];
-      if (INTEIROS.has(c)) saida[c] = inteiroDe(v, onde + '.' + c);
+      if (INTEIROS.has(c)) {
+        saida[c] = inteiroDe(v, onde + '.' + c);
+        // os meses que entraram no RBT12: de 0 a 12 (o banco recusa o resto, e a rodada inteira não gravaria)
+        if (c === 'meses_rbt12' && saida[c] != null && saida[c] > 12) recusar(onde + '.' + c, 'meses do RBT12 acima de 12');
+      }
       else if (VALORES.has(c)) saida[c] = valorDe(v, onde + '.' + c);
       else {
         const d = dataDe(v, onde + '.' + c);
@@ -102,11 +129,13 @@ function linhaDoMes(l, onde, ateMes) {
 }
 
 // validarPacoteDominio(corpo) → { ok: true, pacote, recusadas } | { ok: false, erro, campo }
-// pacote = { versao, rodada, empresas, mensal, faltou, blocos_ok } — o que vai pra dominio_gravar
+// pacote = { versao, rodada, empresas, mensal, faltou, blocos_ok } — o que vai pra dominio_gravar (blocos_ok com os seis
+// blocos: o que a versão do pacote não tem vai falso, e o banco não mexe nele)
 export function validarPacoteDominio(corpo) {
   try {
     objeto(corpo, 'pacote');
-    if (corpo.versao !== 1) recusar('versao', 'versão desconhecida (esta função lê a 1)');
+    if (![1, 2].includes(corpo.versao)) recusar('versao', 'versão desconhecida (esta função lê a 1 e a 2)');
+    const blocos = BLOCOS_DA_VERSAO[corpo.versao];
     const r = objeto(corpo.rodada, 'rodada');
     const id = String(r.id || '');
     if (!UUID.test(id)) recusar('rodada.id', 'tem que ser um uuid');
@@ -117,13 +146,13 @@ export function validarPacoteDominio(corpo) {
       dados_ate: dadosAte, maquina: texto(r.maquina, 100), ponte: texto(r.ponte, 20)
     };
 
-    // o que faltou: só os três blocos do mês (a de empresas, sem ela a ponte nem manda)
+    // o que faltou: só os blocos do mês da versão (a de empresas, sem ela a ponte nem manda)
     const faltou = lista(corpo.faltou == null ? [] : corpo.faltou, LIMITES_DOMINIO.faltou, 'faltou').map((f, i) => {
       objeto(f, 'faltou[' + i + ']');
-      if (!(f.bloco in BLOCOS_DOMINIO)) recusar('faltou[' + i + '].bloco', 'tem que ser folha, fiscal ou contabil');
+      if (!blocos.includes(f.bloco)) recusar('faltou[' + i + '].bloco', 'tem que ser um destes: ' + blocos.join(', '));
       return { bloco: f.bloco, motivo: texto(f.motivo, 200) };
     });
-    const blocosOk = Object.fromEntries(Object.keys(BLOCOS_DOMINIO).map(b => [b, !faltou.some(f => f.bloco === b)]));
+    const blocosOk = Object.fromEntries(Object.keys(BLOCOS_DOMINIO).map(b => [b, blocos.includes(b) && !faltou.some(f => f.bloco === b)]));
 
     // as empresas: o código do Domínio é a chave (repetido, fica o primeiro)
     const empresas = [], ativa = new Map();
@@ -152,7 +181,7 @@ export function validarPacoteDominio(corpo) {
     };
     lista(corpo.mensal, LIMITES_DOMINIO.mensal, 'mensal').forEach((l, i) => {
       let linha;
-      try { linha = linhaDoMes(l, 'mensal[' + i + ']', ateMes); } catch (e) {
+      try { linha = linhaDoMes(l, 'mensal[' + i + ']', ateMes, blocos); } catch (e) {
         if (!(e instanceof Recusa)) throw e;
         anotar(l, e.campo, e.message); return;
       }
@@ -160,18 +189,19 @@ export function validarPacoteDominio(corpo) {
       const chave = linha.codigo + '|' + linha.competencia;
       if (vistas.has(chave)) { anotar(l, 'mensal[' + i + ']', 'empresa e mês repetidos'); return; }
       vistas.add(chave);
-      // o vazio de um bloco lido inteiro é zero (a nota, o lançamento; a folha só da empresa ativa)
+      // o vazio de um bloco lido inteiro é zero (a nota, o lançamento, a receita pelas notas, as compras; a folha e a
+      // folha em reais só da empresa ativa); o bloco que não foi lido sai null inteiro
       for (const [bloco, campos] of Object.entries(BLOCOS_DOMINIO)) {
         if (!blocosOk[bloco]) { campos.forEach(c => { linha[c] = null; }); continue; }
-        if (bloco === 'folha' && ativa.get(linha.codigo) !== true) continue;
-        for (const c of campos) if (linha[c] == null && c !== 'ultimo_lancamento') linha[c] = 0;
+        const zerar = ZERO_EM_TODA[bloco] || (ativa.get(linha.codigo) === true ? ZERO_NA_ATIVA[bloco] : null) || [];
+        for (const c of zerar) if (linha[c] == null) linha[c] = 0;
       }
       mensal.push(linha);
     });
 
     return {
       ok: true,
-      pacote: { versao: 1, rodada, empresas, mensal, faltou, blocos_ok: blocosOk },
+      pacote: { versao: corpo.versao, rodada, empresas, mensal, faltou, blocos_ok: blocosOk },
       recusadas, linhas_recusadas: foraDaLista
     };
   } catch (e) {
