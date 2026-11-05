@@ -19,6 +19,9 @@ Confere:
   8. trocar de mês mostra quem trabalhou nele; o endereço (?cliente=&competencia=) abre direto;
   9. texto de fora entra como texto (o nome com <img onerror>);
  10. o card no DP: "N funcionários";
+ 11. a insalubridade: o grau no cadastro (com quanto dá no mês), a linha "Insalubridade 20%" que vem sozinha no recibo do
+     mês pelos dias do período, a extra com o adicional, a base do recibo com o grau, gravar com a coluna, o PDF com a
+     linha, e o grau só deste recibo ("mudar neste recibo": sem grau a linha sai, com 40% volta);
 e nenhum erro de JavaScript. Termina com código 1 se alguma checagem falhar.
 Pré-requisito: pip install playwright e python -m playwright install chromium
 """
@@ -261,6 +264,53 @@ def main():
         p.wait_for_function("() => { const el = document.querySelector('.card-status[data-mod=\"dp-folha.html\"]'); return el && el.textContent !== '·'; }", timeout=5000)
         badge = p.text_content('.card-status[data-mod="dp-folha.html"]')
         ok(badge == '3 funcionários', f'o card da Folha de pagamento ({badge!r})')
+
+        print('11. A insalubridade')
+        p.goto(base + 'dp-folha.html?cliente=c1&competencia=2026-10')
+        p.wait_for_selector('#lista .fp-func', timeout=5000)
+        p.click('#btnNovoFunc'); p.wait_for_selector('#ovFunc.is-open', timeout=3000)
+        ok(p.input_value('#fInsal') == '0' and 'vem sozinha no recibo do mês' in p.inner_text('#fInsalDica'), f'o funcionário novo começa sem insalubridade ({p.inner_text("#fInsalDica")!r})')
+        p.fill('#fNome', 'INSALUBRE DE TESTE'); p.select_option('#fTipoValor', 'mes'); p.fill('#fValor', '1.800,00'); p.fill('#fAdmissao', '2026-10-19')
+        p.select_option('#fInsal', '20')
+        dica = p.inner_text('#fInsalDica')
+        ok('20% de R$ 1.621,00 (o salário mínimo de 2026) = R$ 324,20 por mês' in dica, f'o grau diz quanto dá no mês ({dica!r})')
+        p.click('#fSalvar'); p.wait_for_selector('#ovFunc:not(.is-open)', state='attached', timeout=3000)
+        f4 = p.evaluate("() => JSON.parse(JSON.stringify(window.__mockDb.folha_funcionarios.find(f => f.nome === 'INSALUBRE DE TESTE')))")
+        ok(f4 and f4['insalubridade'] == 20 and f4['valor'] == 1800, f'grava o grau no cadastro ({f4 and f4.get("insalubridade")})')
+        ok('insalubridade 20%' in p.inner_text(f'.fp-func[data-id="{f4["id"]}"]'), 'a lista mostra o grau')
+        p.select_option(f'.fp-func[data-id="{f4["id"]}"] select.fp-novo', 'mensal')
+        p.wait_for_selector('#ovRec.is-open', timeout=3000)
+        evs = p.eval_on_selector_all('#rLinhas tr[data-i]', 'els => els.map(e => e.querySelector(".fp-ev").textContent)')
+        ok(evs == ['Salário', 'Insalubridade 20%', 'Horas extras 50%', 'Faltas'], f'a linha da insalubridade vem sozinha, logo depois do salário ({evs})')
+        ok(p.input_value('#rLinhas [data-q="0"]') == '13' and p.input_value('#rLinhas [data-q="1"]') == '13', 'os 13 dias do período nas duas')
+        ok(linha_ed(p, 0).locator('td.fp-num').inner_text() == '780,00' and linha_ed(p, 1).locator('td.fp-num').inner_text() == '140,49', 'o salário (780,00) e a insalubridade de 13 dias (324,20 × 13 ÷ 30 = 140,49)')
+        ok('Dias do período: 13 · 20% do salário mínimo (R$ 1.621,00)' in linha_ed(p, 1).inner_text(), f'de onde vem a insalubridade ({linha_ed(p, 1).inner_text()!r})')
+        ok('insalubridade 20%' in p.inner_text('#rBaseTxt'), f'a base do recibo mostra o grau ({p.inner_text("#rBaseTxt")!r})')
+        p.fill('#rLinhas [data-q="2"]', '2'); p.click('#rTitulo')
+        ok(linha_ed(p, 2).locator('td.fp-num').inner_text() == '28,97', f'a extra com o adicional: (1.800 + 324,20) ÷ 220 × 1,5 × 2 = 28,97 ({linha_ed(p, 2).locator("td.fp-num").inner_text()})')
+        ok(p.inner_text('#rProv') == '949,46' and p.inner_text('#rTotal') == 'R$ 950,00', f'os totais ({p.inner_text("#rProv")}, {p.inner_text("#rTotal")})')
+        opcoes = p.eval_on_selector_all('#rAdd option', 'els => els.map(e => e.value)')
+        ok(opcoes.index('insalubridade') == opcoes.index('salario') + 1, 'a insalubridade também está em "+ Pôr outro evento…", logo depois do salário')
+        p.click('#rSalvarImprimir')
+        p.wait_for_selector('#ovRec:not(.is-open)', state='attached', timeout=3000)
+        r4 = recibos_de(p, f4['id'])
+        ok(len(r4) == 1 and r4[0]['insalubridade'] == 20 and [(i['ev'], i['v']) for i in r4[0]['itens']] == [('salario', 78000), ('insalubridade', 14049), ('he50', 2897)] and r4[0]['total'] == 950,
+           f'grava o grau e as linhas com o valor de cada uma ({r4 and (r4[0].get("insalubridade"), r4[0]["itens"])})')
+        textos = ' | '.join(p.evaluate('() => window.__pdfTextos'))
+        ok('Insalubridade 20%' in textos and '13 dias' in textos and '140,49' in textos and '28,97' in textos, 'o PDF tem a linha "Insalubridade 20%" com os 13 dias')
+        p.click(f'.fp-chip[data-id="{r4[0]["id"]}"]')
+        p.wait_for_selector('#ovRec.is-open', timeout=3000)
+        p.click('#rBaseMudar')
+        ok(p.input_value('#rInsal') == '20', 'o recibo gravado volta com o grau dele')
+        p.select_option('#rInsal', '0')
+        evs = p.eval_on_selector_all('#rLinhas tr[data-i]', 'els => els.map(e => e.querySelector(".fp-ev").textContent)')
+        ok('Insalubridade' not in ' '.join(evs) and linha_ed(p, 1).locator('td.fp-num').inner_text() == '24,55', f'sem grau neste recibo, a linha sai e a extra fica sem o adicional ({evs}, {linha_ed(p, 1).locator("td.fp-num").inner_text()})')
+        p.select_option('#rInsal', '40')
+        evs = p.eval_on_selector_all('#rLinhas tr[data-i]', 'els => els.map(e => e.querySelector(".fp-ev").textContent)')
+        ok(evs[:2] == ['Salário', 'Insalubridade 40%'] and linha_ed(p, 1).locator('td.fp-num').inner_text() == '280,97', f'com 40%, a linha volta depois do salário (648,40 × 13 ÷ 30 = 280,97) ({evs}, {linha_ed(p, 1).locator("td.fp-num").inner_text()})')
+        p.click('#rCancelar')
+        p.wait_for_selector('#ovRec:not(.is-open)', state='attached', timeout=3000)
+        ok(recibos_de(p, f4['id'])[0]['insalubridade'] == 20, 'cancelar não muda o recibo gravado')
 
         ok(not erros, f'nenhum erro de JavaScript ({erros[:3]})')
         b.close()

@@ -6,7 +6,7 @@ import { centavos, lerNumero, lerHoras, horasTexto, fmtValor, competenciaTexto, 
   horasMes, horasDoMes, base, EVENTOS, TIPOS, periodoPadrao, diasDoSalario, diasDeDescanso, dsrSugerido, somaMeses, avos13,
   inicioAquisitivo, avosFerias, mesesDeFerias, jaPago, linhasIniciais, calcularRecibo, itensParaGravar, referenciaTexto,
   quantidadeTexto, lerQuantidade, problemaDoFuncionario, problemaDoRecibo, numeroPorExtenso, porExtenso, totaisDoMes,
-  ordenarRecibos, ativoNoMes } from '../assets/js/folha-recibos.js';
+  ordenarRecibos, ativoNoMes, SALARIO_MINIMO, salarioMinimo, GRAUS_INSALUBRIDADE, grauInsalubridade, rotuloDoEvento } from '../assets/js/folha-recibos.js';
 import { recibosPdf, nomeDoArquivo } from '../assets/js/folha-recibos-pdf.js';
 
 let falhas = 0;
@@ -73,6 +73,38 @@ const g = itensParaGravar(calcularRecibo(recibo({ valor: 11.47, arredondar: fals
 chk('o que vai pro banco: as linhas com quantidade ou valor, com o valor de cada uma (o 1/3 também)',
   JSON.stringify(g) === JSON.stringify([{ ev: 'ferias', q: 9, desc: null, v: 189255 }, { ev: 'terco', q: null, desc: null, v: 63085 }, { ev: 'faltas', q: 0, desc: null, v: 0 }]), g);
 
+console.log('A insalubridade (os números do extrato de uma folha de setembro de 2026, sem os nomes):');
+chk('o salário mínimo do ano da competência; o ano fora da lista usa o mais recente', salarioMinimo('2025-06') === 1518 && salarioMinimo('2026-10') === 1621
+  && salarioMinimo('2031-01') === SALARIO_MINIMO[Math.max(...Object.keys(SALARIO_MINIMO).map(Number))] && salarioMinimo('lixo') === salarioMinimo('2031-01'));
+chk('o grau: só 10, 20 ou 40 (o resto é "não tem")', grauInsalubridade('20') === 20 && grauInsalubridade(40) === 40 && grauInsalubridade(15) === 0 && grauInsalubridade(null) === 0
+  && GRAUS_INSALUBRIDADE.map(g => g.v).join() === '0,10,20,40');
+chk('o nome da linha leva o grau', rotuloDoEvento('insalubridade', 20) === 'Insalubridade 20%' && rotuloDoEvento('insalubridade', 0) === 'Insalubridade'
+  && rotuloDoEvento('he50', 20) === 'Horas extras 50%' && rotuloDoEvento('nao-existe', 20) === 'nao-existe');
+const mensalista = o => ({ tipo_valor: 'mes', valor: 1842, horas_semana: 44, competencia: '2026-09', arredondar: false, insalubridade: 20, ...o });
+const bIns = base(mensalista({}));
+chk('a base com 20%: o adicional do mês (324,20), a hora das extras com ele e a remuneração do mês', quase(bIns.adicionalMes, 324.2) && quase(bIns.vhExtra, (1842 + 324.2) / 220)
+  && quase(bIns.remuneracaoMes, 2166.2) && bIns.insal === 20 && bIns.sm === 1621, bIns);
+c = calcularRecibo(mensalista({ itens: [{ ev: 'salario', q: 30 }, { ev: 'insalubridade', q: 30 }, { ev: 'he50', q: 36 }] }));
+chk('mês cheio: o salário, a insalubridade de 324,20 e 36 h de extra a 50% = 531,70 (a do extrato)', c.linhas[0].v === 184200 && c.linhas[1].v === 32420 && c.linhas[2].v === 53170
+  && c.linhas[1].rotulo === 'Insalubridade 20%', c.linhas);
+c = calcularRecibo(mensalista({ valor: 5000, itens: [{ ev: 'he50', q: 30 }, { ev: 'he100', q: 9 }] }));
+chk('salário de 5.000,00 com 20%: 30 h a 50% = 1.089,04 e 9 h a 100% = 435,62 (as do extrato)', c.linhas[0].v === 108904 && c.linhas[1].v === 43562, c.linhas);
+c = calcularRecibo(mensalista({ valor: 2675.8, itens: [{ ev: 'insalubridade', q: 3 }] }));
+chk('admissão com 3 dias no mês: a insalubridade de 32,42 (a do extrato)', c.linhas[0].v === 3242, c.linhas);
+c = calcularRecibo(mensalista({ itens: [{ ev: 'faltas', q: 9 }, { ev: 'decimo', q: 1 }, { ev: 'ferias', q: 1 }, { ev: 'aviso', q: 30 }] }));
+chk('as faltas com o adicional; o 13º, as férias (e o 1/3) e o aviso sobre o salário mais o adicional', c.linhas.find(l => l.ev === 'faltas').v === centavos(2166.2 / 220 * 9)
+  && c.linhas.find(l => l.ev === 'decimo').v === centavos(2166.2 / 12) && c.linhas.find(l => l.ev === 'ferias').v === centavos(2166.2 / 12)
+  && c.linhas.find(l => l.ev === 'terco').v === Math.round(centavos(2166.2 / 12) / 3) && c.linhas.find(l => l.ev === 'aviso').v === 216620, c.linhas);
+c = calcularRecibo(mensalista({ itens: [{ ev: 'adiantamento_salarial', q: 40 }] }));
+chk('o adiantamento segue só sobre o salário (a regra da planilha)', c.linhas[0].v === centavos(1842 * 0.4), c.linhas);
+const sem = base(mensalista({ insalubridade: 0 }));
+chk('sem insalubridade, tudo como antes: a hora das extras é a hora e a remuneração é o salário', sem.vhExtra === sem.vh && sem.remuneracaoMes === sem.salarioMes && sem.adicionalMes === 0
+  && calcularRecibo(mensalista({ insalubridade: 0, itens: [{ ev: 'insalubridade', q: 30 }] })).linhas[0].v === 0);
+const porHora = base({ tipo_valor: 'hora', valor: 10, horas_semana: 44, competencia: '2026-10', insalubridade: 40 });
+chk('quem recebe por hora: a hora das extras leva o adicional do mês ÷ 220', quase(porHora.vhExtra, 10 + 1621 * 0.4 / 220) && quase(porHora.remuneracaoMes, 2200 + 648.4));
+chk('a insalubridade sem o grau não grava', problemaDoRecibo(mensalista({ insalubridade: 0, itens: [{ ev: 'salario', q: 30 }, { ev: 'insalubridade', q: 30 }] }),
+  calcularRecibo(mensalista({ insalubridade: 0, itens: [{ ev: 'salario', q: 30 }, { ev: 'insalubridade', q: 30 }] }))).texto.startsWith('A insalubridade está sem o grau'));
+
 console.log('O período e o descanso:');
 const func = { id: 'f1', nome: 'FUNCIONÁRIA DE TESTE', tipo_valor: 'hora', valor: 8.37, horas_semana: 44, admissao: '2026-10-19', saida: null };
 chk('o período: da admissão ao fim do mês', JSON.stringify(periodoPadrao(func, '2026-10')) === JSON.stringify({ de: '2026-10-19', ate: '2026-10-31', vazio: false }));
@@ -120,6 +152,15 @@ ini = linhasIniciais('rescisao', { ...func, admissao: '2026-08-07', saida: '2026
 chk('rescisão: saldo, descanso, aviso, os meses de 13º e de férias até a saída e o adiantamento',
   JSON.stringify(ini) === JSON.stringify([{ ev: 'horas', q: null }, { ev: 'dsr', q: null }, { ev: 'aviso', q: null }, { ev: 'decimo', q: 3 }, { ev: 'ferias', q: 3 }, { ev: 'adiantamento', q: 910 }]), ini);
 chk('todos os tipos têm o recibo novo', Object.keys(TIPOS).every(t => linhasIniciais(t, func, '2026-10').length > 0));
+ini = linhasIniciais('mensal', { ...func, tipo_valor: 'mes', valor: 1800, insalubridade: 20 }, '2026-10', {});
+chk('com insalubridade no cadastro, por mês: a linha logo depois do salário, com os dias do período', JSON.stringify(ini) === JSON.stringify([{ ev: 'salario', q: 13 },
+  { ev: 'insalubridade', q: 13 }, { ev: 'he50', q: null }, { ev: 'faltas', q: null }]), ini);
+ini = linhasIniciais('mensal', { ...func, insalubridade: 20 }, '2026-10', pago);
+chk('por hora: depois das horas e do descanso', JSON.stringify(ini) === JSON.stringify([{ ev: 'horas', q: null }, { ev: 'dsr', q: null }, { ev: 'insalubridade', q: 13 },
+  { ev: 'he50', q: null }, { ev: 'adiantamento', q: 910 }]), ini);
+ini = linhasIniciais('rescisao', { ...func, admissao: '2026-08-07', saida: '2026-10-21', insalubridade: 40 }, '2026-10', {});
+chk('na rescisão também, até a saída (21 dias)', ini[2] && ini[2].ev === 'insalubridade' && ini[2].q === 21, ini);
+chk('no adiantamento, nas férias e no 13º, não', ['adiantamento', 'ferias', 'decimo1', 'decimo2'].every(t => !linhasIniciais(t, { ...func, admissao: '2026-01-10', insalubridade: 20 }, '2026-10').some(l => l.ev === 'insalubridade')));
 
 console.log('A referência e os campos:');
 chk('a referência no recibo', referenciaTexto('h', 53.5) === '53:30' && referenciaTexto('meses', 9) === '9/12' && referenciaTexto('%', 40) === '40%'
@@ -204,6 +245,12 @@ const t3 = pdf.textos.map(x => x.t).join(' | ');
 chk('sem travessão (a fonte do PDF não tem), sem cidade e sem data: as linhas pra preencher; o 13º sem o período',
   !t3.includes('—') && t3.includes('EMPRESA - TESTE') && t3.includes('13º salário - 1ª parcela') && t3.includes('____/____/________') && !t3.includes('Período:')
   && t3.includes('referente à 1ª parcela do 13º salário de 2026'), t3);
+const cIns = calcularRecibo(mensalista({ valor: 1800, competencia: '2026-10', insalubridade: 20, arredondar: true, itens: [{ ev: 'salario', q: 13 }, { ev: 'insalubridade', q: 13 }, { ev: 'he50', q: 2 }] }));
+pdf = recibosPdf(DocFalso, [{ empresa, funcionario: {}, recibo: { tipo: 'mensal', competencia: '2026-10', nome: 'Teste Insalubre', tipo_valor: 'mes', valor: 1800, horas_semana: 44, insalubridade: 20,
+  itens: itensParaGravar(cIns), arredondamento: cIns.arredondamento / 100, total: cIns.total / 100 } }]);
+const ti = pdf.textos.map(x => x.t).join(' | ');
+chk('o PDF: a linha "Insalubridade 20%" com os dias, e a extra com o adicional', ti.includes('Insalubridade 20%') && ti.includes('13 dias') && ti.includes('140,49') && ti.includes('28,97')
+  && ti.includes('Valor líquido   R$ 950,00'), ti);
 chk('o nome do arquivo', nomeDoArquivo({ funcionario: 'Bruna Teste', recibo: salvo }) === 'Recibo Bruna Teste Folha mensal 2026-10.pdf'
   && nomeDoArquivo({ empresa: 'EMPRESA DE TESTE LTDA', recibo: { competencia: '2026-10' }, varios: true }) === 'Recibos EMPRESA DE TESTE LTDA 2026-10.pdf');
 

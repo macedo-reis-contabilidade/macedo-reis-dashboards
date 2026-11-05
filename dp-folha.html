@@ -84,7 +84,8 @@
     /* o recibo: a base, as linhas e os totais */
     .fp-base { font-size:13.5px; color:var(--text-muted); display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; }
     .fp-base b { color:var(--text); }
-    .fp-base-edit { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; background:var(--fill-1); border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
+    .fp-base-edit { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:14px; background:var(--fill-1); border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
+    .fp-insal-dica { align-self:end; margin:0 0 10px; }
     .fp-base-edit[hidden] { display:none; }
     .fp-base-edit .fp-dica { grid-column:1 / -1; }
     .fp-tab { width:100%; border-collapse:collapse; font-size:14px; }
@@ -220,6 +221,10 @@
           <label class="fa-field"><span id="fValorRot">Valor da hora (R$) *</span><input type="text" id="fValor" class="input" inputmode="decimal" autocomplete="off" placeholder="0,00"></label>
           <label class="fa-field"><span>Horas por semana</span><input type="text" id="fHoras" class="input" inputmode="decimal" autocomplete="off" placeholder="44"></label>
         </div>
+        <div class="fp-g2">
+          <label class="fa-field"><span>Insalubridade</span><select id="fInsal" class="input"></select></label>
+          <p class="fp-dica fp-insal-dica" id="fInsalDica"></p>
+        </div>
         <label class="fa-field"><span>Observação interna (não sai no recibo)</span><textarea id="fObs" class="input" rows="2" maxlength="1000"></textarea></label>
         <div id="fHistBox" hidden>
           <div class="fa-field"><span>Recibos</span></div>
@@ -251,6 +256,7 @@
           <label class="fa-field"><span>Recebe</span><select id="rTipoValor" class="input"><option value="hora">por hora</option><option value="mes">por mês</option></select></label>
           <label class="fa-field"><span id="rValorRot">Valor da hora (R$)</span><input type="text" id="rValor" class="input" inputmode="decimal" autocomplete="off"></label>
           <label class="fa-field"><span>Horas por semana</span><input type="text" id="rHoras" class="input" inputmode="decimal" autocomplete="off"></label>
+          <label class="fa-field"><span>Insalubridade</span><select id="rInsal" class="input"></select></label>
           <p class="fp-dica">Vale só pra este recibo: o cadastro do funcionário não muda.</p>
         </div>
         <div id="rAviso" class="fp-aviso" role="status"></div>
@@ -289,7 +295,7 @@
     import { TIPOS, EVENTOS, COM_PERIODO, competenciaPadrao, competenciaTexto, competenciaValida, mudarMes, periodoPadrao, primeiroDia, ultimoDia,
       diasDoSalario, diasDeDescanso, dsrSugerido, avos13, avosFerias, inicioAquisitivo, mesesDeFerias, jaPago, linhasIniciais, calcularRecibo,
       itensParaGravar, quantidadeTexto, lerQuantidade, lerNumero, horasTexto, fmtValor, fmtData, centavos, porExtenso, problemaDoFuncionario,
-      problemaDoRecibo, totaisDoMes, ordenarRecibos, ativoNoMes } from './assets/js/folha-recibos.js';
+      problemaDoRecibo, totaisDoMes, ordenarRecibos, ativoNoMes, rotuloDoEvento, GRAUS_INSALUBRIDADE, grauInsalubridade, salarioMinimo } from './assets/js/folha-recibos.js';
     import { recibosPdf, nomeDoArquivo } from './assets/js/folha-recibos-pdf.js';
 
     const $ = id => document.getElementById(id);
@@ -301,8 +307,8 @@
     const arred2 = v => Math.round(Number(v) * 100) / 100;
 
     const HOJE = hojeLocal();
-    const COLS_F = 'id, cliente_id, nome, funcao, admissao, saida, tipo_valor, valor, horas_semana, observacao, criado_em, atualizado_em';
-    const COLS_R = 'id, cliente_id, funcionario_id, nome, tipo, competencia, periodo_de, periodo_ate, tipo_valor, valor, horas_semana, itens, arredondar, arredondamento, total, pagamento, observacao, criado_por, criado_em, atualizado_em';
+    const COLS_F = 'id, cliente_id, nome, funcao, admissao, saida, tipo_valor, valor, horas_semana, insalubridade, observacao, criado_em, atualizado_em';
+    const COLS_R = 'id, cliente_id, funcionario_id, nome, tipo, competencia, periodo_de, periodo_ate, tipo_valor, valor, horas_semana, insalubridade, itens, arredondar, arredondamento, total, pagamento, observacao, criado_por, criado_em, atualizado_em';
     const CHAVE_EMPRESA = 'mr_folha_empresa', CHAVE_ARRED = 'mr_folha_arredondar', CHAVE_VIAS = 'mr_folha_vias';
     let clientes = [], naCarteira = new Set(), comFuncionarios = new Map();
     let empresa = null, funcs = [], recibos = [];
@@ -433,7 +439,8 @@
     const opcoesTipos = Object.entries(TIPOS).map(([k, t]) => '<option value="' + k + '">' + esc(t.rotulo) + '</option>').join('');
     function linhaFunc(f) {
       const recs = ordenarRecibos(recibos.filter(r => r.funcionario_id === f.id && r.competencia === comp));
-      const meta = [f.funcao, f.admissao ? 'desde ' + fmtData(f.admissao) : null, f.saida ? 'saída em ' + fmtData(f.saida) : null, valorTexto(f)].filter(Boolean).join(' · ');
+      const meta = [f.funcao, f.admissao ? 'desde ' + fmtData(f.admissao) : null, f.saida ? 'saída em ' + fmtData(f.saida) : null, valorTexto(f),
+        grauInsalubridade(f.insalubridade) ? 'insalubridade ' + grauInsalubridade(f.insalubridade) + '%' : null].filter(Boolean).join(' · ');
       return '<div class="fp-func" data-id="' + esc(f.id) + '">'
         + '<div class="fp-func-info"><button type="button" class="fp-nome" data-acao="func" data-id="' + esc(f.id) + '">' + esc(f.nome) + '</button><span class="fp-meta">' + esc(meta) + '</span></div>'
         + '<div class="fp-func-recibos">'
@@ -477,6 +484,16 @@
     let funcAtual = null;
     function rotuloValor(selTipo, rot) { $(rot).textContent = $(selTipo).value === 'mes' ? 'Salário do mês (R$) *' : 'Valor da hora (R$) *'; }
     $('fTipoValor').addEventListener('change', () => rotuloValor('fTipoValor', 'fValorRot'));
+    // a insalubridade: o grau (CLT, art. 192) e quanto ele dá por mês, pelo salário mínimo do ano da competência aberta
+    const opcoesInsal = GRAUS_INSALUBRIDADE.map(g => '<option value="' + g.v + '">' + esc(g.rotulo) + '</option>').join('');
+    $('fInsal').innerHTML = opcoesInsal;
+    $('rInsal').innerHTML = opcoesInsal;
+    function dicaInsal() {
+      const g = grauInsalubridade($('fInsal').value), sm = salarioMinimo(comp);
+      $('fInsalDica').textContent = g ? g + '% de ' + reais(centavos(sm)) + ' (o salário mínimo de ' + comp.slice(0, 4) + ') = ' + reais(centavos(sm * g / 100)) + ' por mês, pelos dias trabalhados.'
+        : 'Com o grau, a linha da insalubridade vem sozinha no recibo do mês, e as extras saem com o adicional.';
+    }
+    $('fInsal').addEventListener('change', dicaInsal);
     function abrirFunc(id) {
       funcAtual = id ? funcs.find(f => f.id === id) || null : null;
       const f = funcAtual || {};
@@ -489,6 +506,8 @@
       rotuloValor('fTipoValor', 'fValorRot');
       $('fValor').value = f.valor != null ? fmtValor(centavos(f.valor)) : '';
       $('fHoras').value = f.horas_semana != null ? String(Number(f.horas_semana)).replace('.', ',') : '44';
+      $('fInsal').value = String(grauInsalubridade(f.insalubridade));
+      dicaInsal();
       $('fObs').value = f.observacao || '';
       $('fErro').textContent = '';
       const hist = funcAtual ? recibos.filter(r => r.funcionario_id === funcAtual.id).sort((a, b) => String(b.competencia).localeCompare(String(a.competencia))) : [];
@@ -509,7 +528,8 @@
       if (!empresa) return;
       const valor = lerNumero($('fValor').value), horas = lerNumero($('fHoras').value);
       const f = { nome: $('fNome').value.trim().replace(/\s+/g, ' '), funcao: $('fFuncao').value.trim() || null, admissao: $('fAdmissao').value || null, saida: $('fSaida').value || null,
-        tipo_valor: $('fTipoValor').value, valor: valor == null || Number.isNaN(valor) ? null : arred2(valor), horas_semana: horas == null ? 44 : horas, observacao: $('fObs').value.trim() || null };
+        tipo_valor: $('fTipoValor').value, valor: valor == null || Number.isNaN(valor) ? null : arred2(valor), horas_semana: horas == null ? 44 : horas,
+        insalubridade: grauInsalubridade($('fInsal').value), observacao: $('fObs').value.trim() || null };
       const p = problemaDoFuncionario(f);
       if (p) { $('fErro').textContent = p.texto; $(CAMPO_FUNC[p.campo] || 'fNome').focus(); return; }
       const xara = funcs.find(x => x.id !== (funcAtual && funcAtual.id) && semAcento(x.nome) === semAcento(f.nome));
@@ -542,14 +562,14 @@
     const ovRec = $('ovRec');
     let ed = null;   // o recibo aberto: { id, func, tipo, comp, de, ate, tipo_valor, valor, horas_semana, linhas: [{ ev, q, desc, txt, auto }], arredondar, pagamento, observacao, sujo }
     $('rTipo').innerHTML = opcoesTipos;
-    const GRUPOS_ADD = [['Proventos', ['horas', 'salario', 'dsr', 'he50', 'he100', 'atestado', 'reflexo_dsr', 'adiantamento_salarial', 'ferias', 'decimo1', 'decimo', 'aviso', 'decimo_aviso', 'ferias_aviso', 'diferenca', 'outras']],
+    const GRUPOS_ADD = [['Proventos', ['horas', 'salario', 'insalubridade', 'dsr', 'he50', 'he100', 'atestado', 'reflexo_dsr', 'adiantamento_salarial', 'ferias', 'decimo1', 'decimo', 'aviso', 'decimo_aviso', 'ferias_aviso', 'diferenca', 'outras']],
       ['Descontos', ['faltas', 'adiantamento', 'decimo_pago', 'desconto']]];
     $('rAdd').innerHTML = '<option value="">+ Pôr outro evento…</option>' + GRUPOS_ADD.map(([g, evs]) => '<optgroup label="' + g + '">' + evs.map(ev => '<option value="' + ev + '">' + esc(EVENTOS[ev].rotulo) + '</option>').join('') + '</optgroup>').join('');
     const COM_DESCRICAO = ev => (EVENTOS[ev] || {}).un === 'R$';
     const UNIDADE = { h: 'h', dias: 'dias', meses: '/12', '%': '%', 'R$': '' };
     const PLACEHOLDER = { h: '0:00', dias: '0', meses: '0', '%': '0', 'R$': '0,00' };
 
-    const reciboDoEditor = () => ({ competencia: ed.comp, periodo_de: ed.de || null, periodo_ate: ed.ate || null, tipo_valor: ed.tipo_valor, valor: ed.valor, horas_semana: ed.horas_semana,
+    const reciboDoEditor = () => ({ competencia: ed.comp, periodo_de: ed.de || null, periodo_ate: ed.ate || null, tipo_valor: ed.tipo_valor, valor: ed.valor, horas_semana: ed.horas_semana, insalubridade: ed.insalubridade,
       itens: ed.linhas.map(l => ({ ev: l.ev, q: l.q, desc: l.desc })), arredondar: ed.arredondar });
     const comTexto = linhas => linhas.map(l => ({ ...l, txt: l.q == null ? '' : quantidadeTexto((EVENTOS[l.ev] || {}).un, l.q) }));
     const fimDoPeriodo = () => (ed.ate || ultimoDia(ed.comp));
@@ -561,7 +581,7 @@
       const per = periodoPadrao(f, comp);
       const pago = jaPago(recibos, f.id, comp);
       ed = { id: null, func: f, tipo, comp, de: per.vazio ? primeiroDia(comp) : per.de, ate: per.vazio ? ultimoDia(comp) : per.ate,
-        tipo_valor: f.tipo_valor, valor: Number(f.valor) || 0, horas_semana: Number(f.horas_semana) || 44,
+        tipo_valor: f.tipo_valor, valor: Number(f.valor) || 0, horas_semana: Number(f.horas_semana) || 44, insalubridade: grauInsalubridade(f.insalubridade),
         linhas: comTexto(linhasIniciais(tipo, f, comp, pago).map(l => ({ ...l, desc: null, auto: (l.ev === 'adiantamento' || l.ev === 'decimo_pago') && l.q != null }))),
         arredondar: ler(CHAVE_ARRED) !== 'nao', pagamento: null, observacao: '', sujo: false };
       mostrarEditor();
@@ -569,9 +589,9 @@
     function abrirRecibo(id) {
       const r = recibos.find(x => x.id === id);
       if (!r) return;
-      const f = funcs.find(x => x.id === r.funcionario_id) || { id: r.funcionario_id, nome: r.nome, tipo_valor: r.tipo_valor, valor: r.valor, horas_semana: r.horas_semana };
+      const f = funcs.find(x => x.id === r.funcionario_id) || { id: r.funcionario_id, nome: r.nome, tipo_valor: r.tipo_valor, valor: r.valor, horas_semana: r.horas_semana, insalubridade: r.insalubridade };
       ed = { id: r.id, func: f, tipo: r.tipo, comp: r.competencia, de: r.periodo_de || '', ate: r.periodo_ate || '', tipo_valor: r.tipo_valor, valor: Number(r.valor) || 0,
-        horas_semana: Number(r.horas_semana) || 44, linhas: comTexto((r.itens || []).filter(l => l.ev !== 'terco' && EVENTOS[l.ev]).map(l => ({ ev: l.ev, q: l.q, desc: l.desc || null }))),
+        horas_semana: Number(r.horas_semana) || 44, insalubridade: grauInsalubridade(r.insalubridade), linhas: comTexto((r.itens || []).filter(l => l.ev !== 'terco' && EVENTOS[l.ev]).map(l => ({ ev: l.ev, q: l.q, desc: l.desc || null }))),
         arredondar: r.arredondar !== false, pagamento: r.pagamento || '', observacao: r.observacao || '', sujo: false };
       mostrarEditor();
     }
@@ -594,7 +614,7 @@
     function mostrarPeriodo() { document.querySelectorAll('.fp-periodo').forEach(el => { el.hidden = !COM_PERIODO.includes(ed.tipo); }); }
     function textoDaBase() {
       return '<b>' + (ed.tipo_valor === 'mes' ? reais(centavos(ed.valor)) + ' por mês' : reais(centavos(ed.valor)) + ' por hora') + '</b> · '
-        + String(ed.horas_semana).replace('.', ',') + ' horas por semana' + (ed.id ? ' (do recibo)' : ' (do cadastro)');
+        + String(ed.horas_semana).replace('.', ',') + ' horas por semana' + (ed.insalubridade ? ' · insalubridade ' + ed.insalubridade + '%' : '') + (ed.id ? ' (do recibo)' : ' (do cadastro)');
     }
     // as sugestões ao lado de cada linha (o que o sistema sabe calcular); "usar" põe o número na linha
     function sugestao(l) {
@@ -605,6 +625,11 @@
         return { q: s, texto: d.total ? partes + ' de ' + fmtData(ed.de).slice(0, 5) + ' a ' + fmtData(ed.ate).slice(0, 5) + ': ' + horasTexto(s) : 'Sem domingo nem feriado no período.' };
       }
       if (l.ev === 'salario' && ed.de && ed.ate) { const s = diasDoSalario(ed.de, ed.ate, ed.comp); return { q: s, texto: 'Dias do período: ' + s }; }
+      if (l.ev === 'insalubridade') {
+        if (!ed.insalubridade) return { q: null, texto: 'Sem o grau: escolha a insalubridade no cadastro do funcionário ou em "mudar neste recibo".' };
+        const s = ed.de && ed.ate ? diasDoSalario(ed.de, ed.ate, ed.comp) : 30;
+        return { q: s, texto: (ed.de && ed.ate ? 'Dias do período: ' + s : 'O mês inteiro: 30 dias') + ' · ' + ed.insalubridade + '% do salário mínimo (' + reais(centavos(salarioMinimo(ed.comp))) + ')' };
+      }
       if ((l.ev === 'decimo' || l.ev === 'decimo1') && f.admissao) {
         const ate = ed.tipo === 'decimo2' ? (f.saida && f.saida < ed.comp.slice(0, 4) + '-12-31' ? f.saida : ed.comp.slice(0, 4) + '-12-31') : fim;
         const s = avos13(f.admissao, ate); return { q: s, texto: 'Pela admissão (' + fmtData(f.admissao) + '): ' + s + (s === 1 ? ' mês' : ' meses') };
@@ -631,13 +656,14 @@
         const v = q == null || !isFinite(q) ? 0 : centavos(ev.conta(q, b));
         const s = sugestao(l);
         const usar = s && s.q != null && (q == null || Math.abs(q - s.q) > 1e-6) ? ' <button type="button" class="fp-link" data-usar="' + i + '">usar</button>' : '';
-        html += '<tr data-i="' + i + '"><td><span class="fp-ev">' + esc(ev.rotulo) + '</span>'
-          + (COM_DESCRICAO(l.ev) ? '<input type="text" class="input fp-ev-desc" data-desc="' + i + '" maxlength="80" placeholder="Descrição no recibo (opcional)" value="' + esc(l.desc || '') + '" aria-label="Descrição de ' + esc(ev.rotulo) + '">' : '')
+        const rot = rotuloDoEvento(l.ev, ed.insalubridade);
+        html += '<tr data-i="' + i + '"><td><span class="fp-ev">' + esc(rot) + '</span>'
+          + (COM_DESCRICAO(l.ev) ? '<input type="text" class="input fp-ev-desc" data-desc="' + i + '" maxlength="80" placeholder="Descrição no recibo (opcional)" value="' + esc(l.desc || '') + '" aria-label="Descrição de ' + esc(rot) + '">' : '')
           + (s ? '<div class="fp-dica-linha">' + esc(s.texto) + usar + '</div>' : '') + '</td>'
-          + '<td class="fp-q-cel"><input type="text" class="input fp-q" data-q="' + i + '" inputmode="decimal" autocomplete="off" placeholder="' + PLACEHOLDER[ev.un] + '" value="' + esc(l.txt) + '" aria-label="' + esc(ev.rotulo) + ': ' + (ev.un === 'h' ? 'horas' : ev.un === 'R$' ? 'valor' : ev.un) + '">'
+          + '<td class="fp-q-cel"><input type="text" class="input fp-q" data-q="' + i + '" inputmode="decimal" autocomplete="off" placeholder="' + PLACEHOLDER[ev.un] + '" value="' + esc(l.txt) + '" aria-label="' + esc(rot) + ': ' + (ev.un === 'h' ? 'horas' : ev.un === 'R$' ? 'valor' : ev.un) + '">'
           + (UNIDADE[ev.un] ? '<span class="fp-un">' + UNIDADE[ev.un] + '</span>' : '') + '</td>'
           + '<td class="fp-num' + (ev.nat === 'D' ? ' fp-d' : '') + '" data-v="' + i + '">' + (q != null && !isFinite(q) ? '?' : (ev.nat === 'D' && v ? '− ' : '') + fmtValor(v)) + '</td>'
-          + '<td><button type="button" class="fp-tirar" data-tirar="' + i + '" aria-label="Tirar ' + esc(ev.rotulo) + '">✕</button></td></tr>';
+          + '<td><button type="button" class="fp-tirar" data-tirar="' + i + '" aria-label="Tirar ' + esc(rot) + '">✕</button></td></tr>';
         if (i === ultimaFerias && terco) html += '<tr class="fp-auto"><td><span class="fp-ev">1/3 de férias</span></td><td></td><td class="fp-num" id="rTerco">' + fmtValor(terco.v) + '</td><td></td></tr>';
       });
       $('rLinhas').innerHTML = html || '<tr><td colspan="4" class="fp-dica">Nenhuma linha: escolha um evento logo abaixo.</td></tr>';
@@ -698,7 +724,7 @@
       const ev = $('rAdd').value; $('rAdd').value = '';
       if (!EVENTOS[ev]) return;
       const s = sugestao({ ev });
-      const q = s && s.q != null && ['adiantamento', 'decimo_pago', 'ferias', 'decimo', 'decimo1', 'salario'].includes(ev) ? s.q : null;
+      const q = s && s.q != null && ['adiantamento', 'decimo_pago', 'ferias', 'decimo', 'decimo1', 'salario', 'insalubridade'].includes(ev) ? s.q : null;
       ed.linhas.push({ ev, q, desc: null, txt: q == null ? '' : quantidadeTexto(EVENTOS[ev].un, q), auto: false });
       ed.sujo = true;
       desenharLinhas();
@@ -710,7 +736,7 @@
       if (!ed.id) {
         const preenchido = ed.linhas.some(l => l.q != null && !l.auto);
         if (preenchido && !confirm('Trocar o tipo do recibo começa as linhas de novo. Continuar?')) { $('rTipo').value = ed.tipo; return; }
-        ed.linhas = comTexto(linhasIniciais(novo, ed.func, ed.comp, jaPago(recibos, ed.func.id, ed.comp)).map(l => ({ ...l, desc: null, auto: (l.ev === 'adiantamento' || l.ev === 'decimo_pago') && l.q != null })));
+        ed.linhas = comTexto(linhasIniciais(novo, { ...ed.func, insalubridade: ed.insalubridade }, ed.comp, jaPago(recibos, ed.func.id, ed.comp)).map(l => ({ ...l, desc: null, auto: (l.ev === 'adiantamento' || l.ev === 'decimo_pago') && l.q != null })));
       }
       ed.tipo = novo; ed.sujo = true;
       mostrarPeriodo();
@@ -741,6 +767,7 @@
     $('rBaseMudar').addEventListener('click', () => {
       $('rTipoValor').value = ed.tipo_valor; rotuloValor('rTipoValor', 'rValorRot');
       $('rValor').value = fmtValor(centavos(ed.valor)); $('rHoras').value = String(ed.horas_semana).replace('.', ',');
+      $('rInsal').value = String(ed.insalubridade || 0);
       $('rBaseEdit').hidden = false; $('rBaseMudar').hidden = true; $('rValor').focus();
     });
     function lerBase() {
@@ -753,6 +780,19 @@
     }
     $('rTipoValor').addEventListener('change', () => { rotuloValor('rTipoValor', 'rValorRot'); lerBase(); });
     ['rValor', 'rHoras'].forEach(id => $(id).addEventListener('change', lerBase));
+    // o grau só deste recibo: com grau, a linha da insalubridade entra no recibo do mês e na rescisão (pelos dias do
+    // período); sem grau, sai
+    $('rInsal').addEventListener('change', () => {
+      ed.insalubridade = grauInsalubridade($('rInsal').value);
+      const i = ed.linhas.findIndex(l => l.ev === 'insalubridade');
+      if (!ed.insalubridade && i >= 0) ed.linhas.splice(i, 1);
+      if (ed.insalubridade && i < 0 && ['mensal', 'rescisao'].includes(ed.tipo)) {
+        const s = sugestao({ ev: 'insalubridade' });
+        const depois = Math.max(ed.linhas.map(l => ['salario', 'horas', 'dsr'].includes(l.ev)).lastIndexOf(true), -1);
+        ed.linhas.splice(depois + 1, 0, { ev: 'insalubridade', q: s.q, desc: null, txt: s.q == null ? '' : quantidadeTexto('dias', s.q), auto: false });
+      }
+      lerBase();
+    });
 
     function fecharRecibo(forcar = false) {
       if (!forcar && ed && ed.sujo && !confirm('Fechar sem salvar este recibo?')) return;
@@ -781,7 +821,7 @@
       }
       const dados = { cliente_id: empresa.id, funcionario_id: ed.func.id, nome: ed.func.nome, tipo: ed.tipo, competencia: ed.comp,
         periodo_de: COM_PERIODO.includes(ed.tipo) ? ed.de || null : null, periodo_ate: COM_PERIODO.includes(ed.tipo) ? ed.ate || null : null,
-        tipo_valor: ed.tipo_valor, valor: ed.valor, horas_semana: ed.horas_semana, itens: itensParaGravar(calc), arredondar: ed.arredondar,
+        tipo_valor: ed.tipo_valor, valor: ed.valor, horas_semana: ed.horas_semana, insalubridade: ed.insalubridade || 0, itens: itensParaGravar(calc), arredondar: ed.arredondar,
         arredondamento: calc.arredondamento / 100, total: calc.total / 100, pagamento: ed.pagamento || null, observacao: (ed.observacao || '').trim() || null };
       const botoes = [$('rSalvar'), $('rSalvarImprimir')];
       botoes.forEach(b => { b.disabled = true; });

@@ -7,7 +7,7 @@
 // colunas, como um holerite. Puro: recebe o construtor do jsPDF (window.jspdf.jsPDF) e os recibos gravados (os valores
 // de cada linha já calculados — o PDF não refaz conta). Os textos vão sem travessão: a fonte padrão do jsPDF não tem.
 // ============================================================
-import { TIPOS, COM_PERIODO, EVENTOS, COD_ARREDONDAMENTO, fmtValor, fmtData, competenciaTexto, referenciaTexto, porExtenso, centavos, base } from './folha-recibos.js';
+import { TIPOS, COM_PERIODO, EVENTOS, COD_ARREDONDAMENTO, fmtValor, fmtData, competenciaTexto, referenciaTexto, porExtenso, centavos, base, rotuloDoEvento } from './folha-recibos.js';
 
 const X = 10, L = 190, ALTURA = 133.5;
 const DIREITA = X + L - 5;
@@ -22,7 +22,7 @@ const documentoTexto = d => {
 };
 
 // cada item: { empresa: { nome, documento, cidade }, funcionario: { nome, funcao, admissao }, recibo: a linha gravada
-// (tipo, competencia, periodo_de, periodo_ate, tipo_valor, valor, itens, arredondamento, total, pagamento, nome) }
+// (tipo, competencia, periodo_de, periodo_ate, tipo_valor, valor, insalubridade, itens, arredondamento, total, pagamento, nome) }
 export function recibosPdf(JsPDF, lista, { vias = 1 } = {}) {
   const doc = new JsPDF({ unit: 'mm', format: 'a4' });
   const blocos = [];
@@ -81,7 +81,8 @@ export function desenharRecibo(doc, { empresa = {}, funcionario = {}, recibo = {
   // a tabela
   const linhas = (recibo.itens || []).filter(l => centavos(l.v ? l.v / 100 : 0) || l.q != null).map(l => {
     const ev = EVENTOS[l.ev] || { cod: '', rotulo: l.ev, un: 'R$', nat: 'P' };
-    return { cod: ev.cod, rotulo: semTravessao(l.desc || ev.rotulo), ref: referenciaTexto(ev.un, l.q), nat: ev.nat, v: Number(l.v) || 0 };
+    const rotulo = l.desc || (EVENTOS[l.ev] ? rotuloDoEvento(l.ev, recibo.insalubridade) : ev.rotulo);   // a insalubridade com o grau do recibo
+    return { cod: ev.cod, rotulo: semTravessao(rotulo), ref: referenciaTexto(ev.un, l.q), nat: ev.nat, v: Number(l.v) || 0 };
   });
   const arred = centavos(recibo.arredondamento);
   if (arred) linhas.push({ cod: COD_ARREDONDAMENTO, rotulo: 'Arredondamento', ref: '', nat: arred > 0 ? 'P' : 'D', v: Math.abs(arred) });

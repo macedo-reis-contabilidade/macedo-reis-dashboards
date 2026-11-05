@@ -14,6 +14,12 @@
 // 1ª parcela do 13º já pagos (descontados), e o valor por extenso.
 // Quem recebe por mês: a hora é o salário ÷ as horas do mês comercial (220 com 44 por semana) e o salário do mês sai
 // pelos dias (÷ 30; o mês inteiro conta 30).
+// A insalubridade (05/11/2026, pedido do Samuel pros frios da Esmero): o grau fica no cadastro do funcionário (10, 20 ou
+// 40% do salário mínimo — CLT, art. 192) e o recibo guarda a sua cópia, como o valor e as horas por semana. A linha
+// "Insalubridade 20%" vem sozinha no recibo do mês e na rescisão, pelos dias do período (÷ 30; o mês inteiro conta 30). A
+// hora das extras e das faltas leva o adicional (o salário mais o adicional do mês ÷ as horas do mês comercial — OJ 47 da
+// SDI-1 do TST), e o 13º, as férias e o aviso saem sobre o salário mais o adicional (Súmula 139 do TST). O adiantamento
+// segue só sobre o salário, como na planilha. O salário mínimo é o do ano da competência (SALARIO_MINIMO).
 // Dinheiro sempre em centavos inteiros (nada de 0,1 + 0,2).
 // ============================================================
 import { feriado, isoValida, somaDias, diasEntre } from './rescisao-datas.js';
@@ -72,7 +78,23 @@ export const horasMes = (hs = 44) => arred2(hs * 5);
 // as do mês do calendário, pro adiantamento: 44 ÷ 6 × os dias (227,33 em outubro, 205,33 em fevereiro de 2026)
 export const horasDoMes = (comp, hs = 44) => arred2(hs / 6 * diasNoMes(comp));
 
-// a hora, o salário do mês comercial (férias, 13º, aviso) e o do mês do calendário (o adiantamento)
+// ---------- a insalubridade ----------
+// o salário mínimo nacional de cada ano (o de 2026: o extrato da folha de setembro mostra a insalubridade de 20% = 324,20);
+// ano que não está aqui usa o mais recente da lista — ano novo, ponha o valor do decreto
+export const SALARIO_MINIMO = { 2025: 1518, 2026: 1621 };
+export function salarioMinimo(comp) {
+  const anos = Object.keys(SALARIO_MINIMO).map(Number).sort((a, b) => a - b);
+  const ano = Number(String(comp || '').slice(0, 4));
+  return SALARIO_MINIMO[ano] || SALARIO_MINIMO[anos[anos.length - 1]];
+}
+// os graus (CLT, art. 192): 0 = não tem
+export const GRAUS_INSALUBRIDADE = [
+  { v: 0, rotulo: 'Não tem' }, { v: 10, rotulo: '10% (grau mínimo)' }, { v: 20, rotulo: '20% (grau médio)' }, { v: 40, rotulo: '40% (grau máximo)' },
+];
+export const grauInsalubridade = g => ([10, 20, 40].includes(Number(g)) ? Number(g) : 0);
+
+// a hora, o salário do mês comercial (férias, 13º, aviso) e o do mês do calendário (o adiantamento); com a insalubridade,
+// o adicional do mês, a hora das extras e das faltas com ele e a remuneração do mês (salário + adicional)
 export function base(r) {
   const hs = Number(r.horas_semana) > 0 ? Number(r.horas_semana) : 44;
   const valor = Number(r.valor) || 0;
@@ -80,37 +102,52 @@ export function base(r) {
   const hm = horasMes(hs);
   const vh = porMes ? valor / hm : valor;
   const hMes = competenciaValida(r.competencia) ? horasDoMes(r.competencia, hs) : hm;
-  return { porMes, hs, hm, vh, salarioMes: porMes ? valor : vh * hm, salarioDoMes: porMes ? valor : vh * hMes, horasDoMes: hMes };
+  const salarioMes = porMes ? valor : vh * hm;
+  const insal = grauInsalubridade(r.insalubridade);
+  const sm = salarioMinimo(r.competencia);
+  const adicionalMes = sm * insal / 100;
+  return { porMes, hs, hm, vh, salarioMes, salarioDoMes: porMes ? valor : vh * hMes, horasDoMes: hMes,
+    insal, sm, adicionalMes, vhExtra: vh + adicionalMes / hm, remuneracaoMes: salarioMes + adicionalMes };
 }
 
 // ---------- os eventos (o "EVENTO" da planilha: os códigos são os dela, e os novos vêm depois) ----------
 // un: h (horas), dias, meses (os avos), % (do salário do mês), R$ (o valor digitado), auto (a conta faz: 1/3 de férias)
 // nat: P = provento, D = desconto
+// Com a insalubridade, as extras e as faltas usam a hora com o adicional (vhExtra) e o 13º, as férias e o aviso, a
+// remuneração do mês (remuneracaoMes); sem ela, as duas são a hora e o salário de sempre.
 export const EVENTOS = {
   horas:        { cod: 1,  rotulo: 'Horas normais', un: 'h', nat: 'P', conta: (q, b) => q * b.vh },
   salario:      { cod: 1,  rotulo: 'Salário', un: 'dias', nat: 'P', conta: (q, b) => q * b.salarioMes / 30 },
+  insalubridade: { cod: 23, rotulo: 'Insalubridade', un: 'dias', nat: 'P', conta: (q, b) => q * b.adicionalMes / 30 },
   dsr:          { cod: 2,  rotulo: 'Descanso remunerado', un: 'h', nat: 'P', conta: (q, b) => q * b.vh },
-  he50:         { cod: 3,  rotulo: 'Horas extras 50%', un: 'h', nat: 'P', conta: (q, b) => q * b.vh * 1.5 },
-  he100:        { cod: 10, rotulo: 'Horas extras 100%', un: 'h', nat: 'P', conta: (q, b) => q * b.vh * 2 },
+  he50:         { cod: 3,  rotulo: 'Horas extras 50%', un: 'h', nat: 'P', conta: (q, b) => q * b.vhExtra * 1.5 },
+  he100:        { cod: 10, rotulo: 'Horas extras 100%', un: 'h', nat: 'P', conta: (q, b) => q * b.vhExtra * 2 },
   atestado:     { cod: 4,  rotulo: 'Atestado', un: 'h', nat: 'P', conta: (q, b) => q * b.vh },
   adiantamento_salarial: { cod: 9, rotulo: 'Adiantamento salarial', un: '%', nat: 'P', conta: (q, b) => q / 100 * b.salarioDoMes },
-  ferias:       { cod: 7,  rotulo: 'Férias', un: 'meses', nat: 'P', conta: (q, b) => q * b.salarioMes / 12 },
+  ferias:       { cod: 7,  rotulo: 'Férias', un: 'meses', nat: 'P', conta: (q, b) => q * b.remuneracaoMes / 12 },
   terco:        { cod: 8,  rotulo: '1/3 de férias', un: 'auto', nat: 'P' },
-  decimo1:      { cod: 6,  rotulo: '13º salário - 1ª parcela', un: 'meses', nat: 'P', conta: (q, b) => q * b.salarioMes / 12 / 2 },
-  decimo:       { cod: 6,  rotulo: '13º salário', un: 'meses', nat: 'P', conta: (q, b) => q * b.salarioMes / 12 },
-  aviso:        { cod: 16, rotulo: 'Aviso prévio indenizado', un: 'dias', nat: 'P', conta: (q, b) => q * b.salarioMes / 30 },
-  decimo_aviso: { cod: 17, rotulo: '13º sobre o aviso', un: 'meses', nat: 'P', conta: (q, b) => q * b.salarioMes / 12 },
-  ferias_aviso: { cod: 18, rotulo: 'Férias sobre o aviso', un: 'meses', nat: 'P', conta: (q, b) => q * b.salarioMes / 12 },
+  decimo1:      { cod: 6,  rotulo: '13º salário - 1ª parcela', un: 'meses', nat: 'P', conta: (q, b) => q * b.remuneracaoMes / 12 / 2 },
+  decimo:       { cod: 6,  rotulo: '13º salário', un: 'meses', nat: 'P', conta: (q, b) => q * b.remuneracaoMes / 12 },
+  aviso:        { cod: 16, rotulo: 'Aviso prévio indenizado', un: 'dias', nat: 'P', conta: (q, b) => q * b.remuneracaoMes / 30 },
+  decimo_aviso: { cod: 17, rotulo: '13º sobre o aviso', un: 'meses', nat: 'P', conta: (q, b) => q * b.remuneracaoMes / 12 },
+  ferias_aviso: { cod: 18, rotulo: 'Férias sobre o aviso', un: 'meses', nat: 'P', conta: (q, b) => q * b.remuneracaoMes / 12 },
   reflexo_dsr:  { cod: 15, rotulo: 'Reflexo das extras no descanso', un: 'R$', nat: 'P', conta: q => q },
   diferenca:    { cod: 13, rotulo: 'Diferença salarial', un: 'R$', nat: 'P', conta: q => q },
   outras:       { cod: 14, rotulo: 'Outras verbas', un: 'R$', nat: 'P', conta: q => q },
-  faltas:       { cod: 19, rotulo: 'Faltas', un: 'h', nat: 'D', conta: (q, b) => q * b.vh },
+  faltas:       { cod: 19, rotulo: 'Faltas', un: 'h', nat: 'D', conta: (q, b) => q * b.vhExtra },
   adiantamento: { cod: 9,  rotulo: 'Adiantamento', un: 'R$', nat: 'D', conta: q => q },
   decimo_pago:  { cod: 21, rotulo: '13º - 1ª parcela já paga', un: 'R$', nat: 'D', conta: q => q },
   desconto:     { cod: 22, rotulo: 'Outros descontos', un: 'R$', nat: 'D', conta: q => q },
 };
 export const COD_ARREDONDAMENTO = 11;
 const EH_FERIAS = ev => ev === 'ferias' || ev === 'ferias_aviso';
+// o nome da linha: a insalubridade leva o grau do recibo ("Insalubridade 20%"); o resto, o nome do evento
+export function rotuloDoEvento(ev, insal) {
+  const e = EVENTOS[ev];
+  if (!e) return String(ev || '');
+  const g = grauInsalubridade(insal);
+  return ev === 'insalubridade' && g ? e.rotulo + ' ' + g + '%' : e.rotulo;
+}
 
 // os tipos de recibo (as abas da planilha: folha mensal, adiantamento, extras, férias, 13º e rescisão); o "referente"
 // completa o "Recibi de … a importância de R$ …, referente …" do recibo, com a crase de cada um
@@ -220,9 +257,12 @@ export function linhasIniciais(tipo, f, comp, pago = {}) {
   const porMes = f.tipo_valor === 'mes';
   const nulo = n => (n ? n : null);
   const adiant = pago.adiantamento ? [{ ev: 'adiantamento', q: pago.adiantamento / 100 }] : [];
+  const dias = per.vazio ? null : nulo(diasDoSalario(per.de, per.ate, comp));
+  // a insalubridade do cadastro: a linha logo depois do salário (ou das horas e do descanso), pelos dias do período
+  const insal = grauInsalubridade(f.insalubridade) ? [{ ev: 'insalubridade', q: dias }] : [];
   const salarioOuHoras = porMes
-    ? [{ ev: 'salario', q: per.vazio ? null : nulo(diasDoSalario(per.de, per.ate, comp)) }]
-    : [{ ev: 'horas', q: null }, { ev: 'dsr', q: null }];
+    ? [{ ev: 'salario', q: dias }, ...insal]
+    : [{ ev: 'horas', q: null }, { ev: 'dsr', q: null }, ...insal];
   switch (tipo) {
     case 'mensal': return [...salarioOuHoras, { ev: 'he50', q: null }, ...(porMes ? [{ ev: 'faltas', q: null }] : []), ...adiant];
     case 'adiantamento': return [{ ev: 'adiantamento_salarial', q: 40 }];
@@ -241,7 +281,7 @@ export function linhasIniciais(tipo, f, comp, pago = {}) {
 }
 
 // ---------- a conta ----------
-// r = { tipo_valor, valor, horas_semana, competencia, itens: [{ ev, q, desc }], arredondar }
+// r = { tipo_valor, valor, horas_semana, insalubridade, competencia, itens: [{ ev, q, desc }], arredondar }
 // → as linhas com o valor de cada uma (centavos), o 1/3 de férias logo depois das férias, os proventos, os descontos,
 // o arredondamento (até o real de cima, quando ligado e o líquido é positivo) e o total
 export function calcularRecibo(r) {
@@ -253,7 +293,7 @@ export function calcularRecibo(r) {
     const q = it.q == null || it.q === '' ? null : Number(it.q);
     const v = q == null || !isFinite(q) ? 0 : centavos(ev.conta(q, b));
     const desc = it.desc == null ? '' : String(it.desc).trim().slice(0, 80);
-    linhas.push({ ev: it.ev, cod: ev.cod, rotulo: desc || ev.rotulo, desc: desc || null, q, un: ev.un, nat: ev.nat, v });
+    linhas.push({ ev: it.ev, cod: ev.cod, rotulo: desc || rotuloDoEvento(it.ev, b.insal), desc: desc || null, q, un: ev.un, nat: ev.nat, v });
   }
   const ferias = linhas.filter(l => EH_FERIAS(l.ev)).reduce((s, l) => s + l.v, 0);
   if (ferias > 0) {
@@ -312,6 +352,9 @@ export function problemaDoRecibo(r, calc) {
   }
   const longa = (r.itens || []).find(it => (EVENTOS[it.ev] || {}).un === 'h' && Number(it.q) > 744);
   if (longa) return { campo: 'linha', ev: longa.ev, texto: 'Mais de 744 horas em "' + EVENTOS[longa.ev].rotulo + '": confira.' };
+  if (!grauInsalubridade(r.insalubridade) && (r.itens || []).some(it => it.ev === 'insalubridade' && Number(it.q))) {
+    return { campo: 'linha', ev: 'insalubridade', texto: 'A insalubridade está sem o grau: escolha no cadastro do funcionário ou em "mudar neste recibo".' };
+  }
   if (!(Number(r.valor) > 0) && calc.linhas.some(l => !['R$', 'auto'].includes(l.un) && l.q)) {
     return { campo: 'valor', texto: 'Sem o valor da hora (ou o salário), as horas não têm valor.' };
   }
