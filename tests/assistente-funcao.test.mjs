@@ -970,7 +970,7 @@ console.log('O comparativo tributário (a mesma conta da tela, com o "e se"):');
   chk('o "e se": o que mudou, nada gravado, o resultado com a mudança e o de antes', /— E SE\nSó nesta conta: nada foi gravado\. Pra valer, a pessoa muda o campo na tela Comparativo tributário\./.test(es)
     && /- Folha \(salários, 13º e férias\): R\$\s?0,00 → R\$\s?480\.000,00/.test(es) && /pra o lucro do Real antes do IR dar 6% da receita em 2027/.test(es)
     && /RESULTADO COM A MUDANÇA/.test(es) && /SEM A MUDANÇA \(o estudo\), em 2027: Simples Nacional R\$/.test(es) && /2027 R\$\s?144\.300,00/.test(es), es.slice(0, 900));
-  chk('o "e se" só lê', log.slice(nEscritas).every(x => /^(clientes|rt_casos|fr_empresas|fr_lancamentos|receita_pgdas|comparativos|socios|rt_parametros)\?/.test(x.caminho)));
+  chk('o "e se" só lê', log.slice(nEscritas).every(x => /^(clientes|rt_casos|fr_empresas|fr_lancamentos|receita_pgdas|comparativos|socios|rt_parametros|dominio_mensal)\?/.test(x.caminho)));
   const fsP = criarFerramentas({ banco, hoje: '2026-11-01', contexto: {}, usuario: { socio: true } });
   const gr = await fsP.comparativo({ empresa: ID_P });
   chk('o estudo gravado vale: quem gravou e quando, e os números dele', /O estudo gravado na tela Comparativo tributário em 01\/11\/2026, 11:00 por Samuel: os números são os dele/.test(gr) && /Atividade 1: Indústria/.test(gr)
