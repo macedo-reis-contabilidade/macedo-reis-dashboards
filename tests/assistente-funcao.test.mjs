@@ -38,7 +38,7 @@ chk('o prompt: as notícias (triadas, a principal do grupo, a leitura da IA a co
   /as que valem são as triadas \(situacao = triada\)/.test(INSTRUCOES) && /consultar noticias com clientes contem o id dela/.test(INSTRUCOES) && /são a leitura da IA do feed/.test(INSTRUCOES)
   && /as revisões de honorário são só dos sócios/.test(INSTRUCOES));
 chk('o dicionário do prompt lista as tabelas e não tem credenciais', Object.keys(TABELAS).every(t => dicionario().includes('## ' + t + ' ')) && !/credenciais/.test(dicionario()));
-chk('as definições: as sete de ler e as treze propostas, consultar só com as tabelas da lista', DEFINICOES.map(d => d.name).join() === 'buscar_empresa,ver_empresa,agenda,consultar,perguntar_reforma,buscar_arquivos,comparativo,propor_concluir_tarefas,propor_alterar_tarefas,propor_registrar_historico,propor_marcar_pago,propor_criar_tarefa,propor_enviar_mensagem,propor_revisao_atrasadas,propor_ver_vigia,propor_criar_lembrete,propor_ver_lembretes,propor_incluir_reforma,propor_por_na_competencia,propor_ajustar_obrigacoes'
+chk('as definições: as oito de ler e as treze propostas, consultar só com as tabelas da lista', DEFINICOES.map(d => d.name).join() === 'buscar_empresa,ver_empresa,agenda,consultar,perguntar_reforma,buscar_arquivos,comparativo,conferir_boletos,propor_concluir_tarefas,propor_alterar_tarefas,propor_registrar_historico,propor_marcar_pago,propor_criar_tarefa,propor_enviar_mensagem,propor_revisao_atrasadas,propor_ver_vigia,propor_criar_lembrete,propor_ver_lembretes,propor_incluir_reforma,propor_por_na_competencia,propor_ajustar_obrigacoes'
   && JSON.stringify(DEFINICOES.find(d => d.name === 'consultar').input_schema.properties.tabela.enum) === JSON.stringify(Object.keys(TABELAS)));
 chk('o prompt: a Reforma sozinha na rodada (a resposta dela vai direto, com as fontes); a tela pelo nome e a situação por extenso',
   /Chame sozinha na rodada/.test(INSTRUCOES) && /mantenha as fontes dele entre colchetes/.test(INSTRUCOES) && /não financeiro-boletos\.html/.test(INSTRUCOES) && /não em_transicao/.test(INSTRUCOES)
@@ -502,8 +502,10 @@ console.log('O servidor:');
 const ENV = { SUPABASE_URL: 'https://banco.teste', SUPABASE_SERVICE_ROLE_KEY: 'servico', SUPABASE_ANON_KEY: 'anon', ANTHROPIC_API_KEY: 'k' };
 const AGORA = new Date('2026-10-14T15:00:00Z');
 const PEDIDO = '44444444-4444-4444-8444-444444444444';
-function servidorFalso({ contagem = 0, rodando = 0, reformaSse = null, avaliacao = null } = {}) {
+function servidorFalso({ contagem = 0, rodando = 0, reformaSse = null, avaliacao = null, caVendas = null } = {}) {
   const log = [], linhas = [];
+  // a função ca-vendas (a conferência dos boletos): as respostas na ordem, [status, corpo]; sem roteiro, nada vence lá
+  const caResp = caVendas ? caVendas.slice() : [];
   const json = (x, h = {}, status = 200) => new Response(JSON.stringify(x), { status, headers: { 'Content-Type': 'application/json', ...h } });
   const f = async (url, o = {}) => {
     const u = String(url), metodo = o.method || 'GET';
@@ -541,6 +543,8 @@ function servidorFalso({ contagem = 0, rodando = 0, reformaSse = null, avaliacao
     if (u.includes('/rest/v1/rt_casos')) return json([{ id: CASO, cliente_id: ID_A }]);
     if (u.includes('/rest/v1/cobrancas_mensais')) return json([{ competencia: '2026-10', valor: 450, status: 'enviado', cliente_id: ID_A }], { 'Content-Range': '0-0/1' });
     if (u.includes('/rest/v1/ca_parcelas')) return json([{ descricao: 'Honorários', total: 100 }], { 'Content-Range': '0-0/1' });
+    if (u.includes('/rest/v1/cobrancas_config')) return json([]);
+    if (u.includes('/functions/v1/ca-vendas')) { const [st, corpo] = caResp.shift() || [200, { meses: ['2026-11'], itens: [], soltas: [] }]; return json(corpo, {}, st); }
     if (u.includes('/rest/v1/tarefas')) return json([{ id: '7a000000-0000-4000-8000-000000000001' }], { 'Content-Range': '0-0/3' });
     return new Response('?', { status: 404 });
   };
@@ -1127,6 +1131,78 @@ console.log('O comparativo tributário (a mesma conta da tela, com o "e se"):');
   chk('ver_empresa: sem a foto do Domínio, sem a linha', !/^A contabilidade no Domínio/m.test(sem));
 }
 
+console.log('A conferência dos boletos com o Conta Azul (05/11/2026: as perguntas que acabavam sem resposta):');
+{
+  // dados inventados: um boleto que sobe (o extra que vence lá), o MEI com a guia, a mensalidade de outro mês que fica
+  // fora, um já emitido com outro valor, a empresa sem boleto com a base ativa e a sem base, e o que está lá sem empresa
+  const C = n => 'c0000000-0000-4000-8000-00000000000' + n;
+  const clientes = [['LOJA DO TESTE LTDA', 'Simples Nacional'], ['FULANO DE TAL 00000000000', 'MEI'], ['PADARIA INVENTADA LTDA', 'Simples Nacional'],
+    ['OFICINA DE MENTIRA LTDA', 'Lucro Presumido'], ['MERCADO SEM BOLETO LTDA', 'Simples Nacional'], ['SALAO SEM BASE LTDA', 'Simples Nacional']]
+    .map(([nome_principal, regime_tributario], i) => ({ id: C(i + 1), nome_principal, regime_tributario }));
+  const cob = (n, valor, extras = [], status = 'a_emitir', vencimento = '2026-11-10', competencia = '2026-10') => ({ id: 'b' + n + competencia, cliente_id: C(n), competencia, valor, vencimento, status, itens_extras: extras });
+  const cobrancas_mensais = [cob(1, 500), cob(2, 175), cob(3, 600, [{ valor: 600, descricao: 'Honorário adicional anual (venda 190400001)', adicional_id: 'ad1' }]), cob(4, 300, [], 'emitido'),
+    cob(1, 500, [], 'pago', '2026-10-10', '2026-09'), cob(6, 250, [], 'cancelado')];
+  const it = (n, valor, cat, desc, competencia = '2026-10-31') => ({ parcela_id: 'p' + n + desc, cliente_id: C(n), cliente_nome: clientes[n - 1].nome_principal, valor, categorias: [cat], descricao: desc, competencia, vencimento: '2026-11-10' });
+  const dadosCA = { meses: ['2026-11'], itens: [it(1, 500, 'HONORÁRIOS MENSAIS', 'Venda 190400010'), it(1, 80, 'SERVIÇOS EXTRAS', 'Venda 190400011'), it(2, 87.95, 'MEI - CONTRATOS', 'Venda 190400020'),
+    it(3, 600, 'HONORÁRIOS MENSAIS', 'Venda 190400030'), it(3, 600, 'HONORÁRIO ADICIONAL ANUAL', 'Venda 190400001'), it(3, 600, 'HONORÁRIOS MENSAIS', 'Venda 190399999', '2026-09-30'),
+    it(4, 350, 'HONORÁRIOS MENSAIS', 'Venda 190400040'), it(5, 400, 'HONORÁRIOS MENSAIS', 'Venda 190400050'), it(6, 250, 'HONORÁRIOS MENSAIS', 'Venda 190400060')],
+    soltas: [{ pessoa: null, nome: '', valor: 6000, itens: 1 }, { pessoa: 'x', nome: 'PESSOA SEM CADASTRO', valor: 50, itens: 1 }] };
+  const { banco } = bancoFalso({ extras: { clientes, cobrancas_mensais, cobrancas_config: [{ cliente_id: C(5), ativo: true }, { cliente_id: C(6), ativo: false }] } });
+  const chamadas = [];
+  const contaAzul = async corpo => { chamadas.push(corpo); return dadosCA; };
+  const samuel = (extra = {}) => criarFerramentas({ banco, hoje: '2026-11-05', usuario: { email: 'financeiro@macedoereis.com.br', nome: 'Samuel', socio: true }, contaAzul, ...extra });
+  chk('a ferramenta está nas definições, com a descrição pro modelo, e o prompt manda usá-la (sem cruzar à mão)', DEFINICOES.some(d => d.name === 'conferir_boletos' && /CNPJ/.test(d.description))
+    && /conferir_boletos/.test(INSTRUCOES) && /Nunca cruze os boletos com o financeiro do Conta Azul à mão/.test(INSTRUCOES));
+  chk('a etapa na tela', descreverEtapa('conferir_boletos', {}) === 'Conferindo os boletos com o Conta Azul' && descreverEtapa('conferir_boletos', { empresa: 'Loja' }) === 'Conferindo os boletos com o Conta Azul (Loja)');
+  const thalia = await criarFerramentas({ banco, hoje: '2026-11-05', usuario: { email: 'fiscal@macedoereis.com.br', nome: 'Thalia', socio: false }, contaAzul }).conferir_boletos({ competencia: '2026-10' });
+  chk('quem não é sócio: só dos sócios, e o Conta Azul nem é lido', /só dos sócios/.test(thalia) && chamadas.length === 0, thalia);
+  const semCA = await samuel({ contaAzul: null }).conferir_boletos({ competencia: '2026-10' });
+  chk('sem o login de um sócio (a avaliação): diz que não roda aqui e aponta o botão da tela', /não roda aqui/.test(semCA) && /Conferir com o Conta Azul/.test(semCA), semCA);
+  chk('competência fora do formato', /'AAAA-MM'/.test(await samuel().conferir_boletos({ competencia: 'outubro' })));
+  const t = await samuel().conferir_boletos({});
+  chk('sem competência: a mais recente com boleto a emitir; o Conta Azul lido uma vez, no mês do vencimento', JSON.stringify(chamadas) === JSON.stringify([{ modo: 'boletos', meses: ['2026-11'] }])
+    && /competência 10\/2026 \(vencem em 11\/2026\)/.test(t), JSON.stringify(chamadas));
+  chk('o resumo: quantos batem, sobem e já emitidos (o cancelado fica fora); o total de hoje e a diferença', /^4 boletos: 2 batem · 1 sobe · 1 já emitido \(1 com outro valor lá\)\.$/m.test(t)
+    && /Total dos boletos hoje: R\$\s2\.175,00 · aplicando o que o Conta Azul tem: \+ R\$\s80,00\./.test(t), t);
+  chk('o que sobe: o boleto, o Conta Azul e os itens de lá', /- LOJA DO TESTE LTDA, vence 10\/11\/2026 · sobe · boleto R\$\s500,00 \(mensalidade R\$\s500,00\) → pelo Conta Azul R\$\s580,00 · lá: Honorários · Venda 190400010 R\$\s500,00; Serviços extras · Venda 190400011 R\$\s80,00/.test(t), t);
+  chk('o já emitido com outro valor: não muda, e a diferença aparece', /- OFICINA DE MENTIRA LTDA · emitido · boleto R\$\s300,00 · lá R\$\s350,00/.test(t), t);
+  chk('batem com observação: a guia do MEI junto e a mensalidade de outro mês fora', /Batem, com observação/.test(t) && /FULANO DE TAL 00000000000 · R\$\s175,00 · O valor de hoje fica/.test(t)
+    && /PADARIA INVENTADA LTDA · R\$\s1\.200,00 · Fica fora: Honorários de 09\/2026/.test(t), t);
+  chk('sem boleto nesta competência: a com a base ativa "devia ter boleto"; a sem base, à parte', /com a base de cobrança ativa — deviam ter boleto[^\n]*MERCADO SEM BOLETO LTDA R\$\s400,00/.test(t)
+    && /sem a base de cobrança ativa[^\n]*SALAO SEM BASE LTDA R\$\s250,00/.test(t), t);
+  chk('o que está lá sem empresa do cadastro', /sem empresa do cadastro[^\n]*\(sem cliente lá\) R\$\s6\.000,00; PESSOA SEM CADASTRO R\$\s50,00/.test(t), t);
+  chk('a resposta só lê: aplicar é na tela Boletos', /Aplicar é na tela Boletos, no botão "Conferir com o Conta Azul" — você não muda nada\./.test(t));
+  const uma = await samuel().conferir_boletos({ competencia: '2026-10', empresa: C(1) });
+  chk('uma empresa: o boleto, o Conta Azul e o veredito com a diferença — sem as outras', /^O boleto de LOJA DO TESTE LTDA da competência 10\/2026 \(a emitir, vence 10\/11\/2026\): R\$\s500,00 \(mensalidade R\$\s500,00\)\./.test(uma)
+    && /Não bate: pelo Conta Azul, o boleto sobe R\$\s80,00\./.test(uma) && !/MERCADO|PADARIA|sem empresa do cadastro/.test(uma), uma);
+  chk('uma empresa que bate', /\nBate\.\n/.test(await samuel().conferir_boletos({ competencia: '2026-10', empresa: C(2) })));
+  const semBoleto = await samuel().conferir_boletos({ competencia: '2026-10', empresa: C(5) });
+  chk('a empresa sem boleto na competência: o que vence dela lá', /^MERCADO SEM BOLETO LTDA não tem boleto na competência 10\/2026\. No Conta Azul, em aberto e vencendo em 11\/2026: R\$\s400,00 — Venda 190400050 R\$\s400,00 \(10\/11\/2026\)\./.test(semBoleto), semBoleto);
+  const fora = await samuel({ contaAzul: async () => { throw new Error('o acesso ao Conta Azul está sendo renovado; tente de novo em um minuto'); } }).conferir_boletos({ competencia: '2026-10' });
+  chk('o Conta Azul fora: o motivo, e o botão da tela como saída', /^Não consegui ler o Conta Azul agora \(o acesso ao Conta Azul está sendo renovado/.test(fora) && /Conferir com o Conta Azul/.test(fora), fora);
+}
+{
+  // no servidor: a ca-vendas com o login de quem pergunta; o "renovando" espera e tenta de novo; quem não é sócio, nada
+  const { f, log } = servidorFalso({ caVendas: [[503, { erro: 'O Conta Azul está renovando o acesso.', renovando: true }], [200, { meses: ['2026-11'], itens: [], soltas: [] }]] });
+  const esperas = [];
+  const srv = criarServidor({ env: k => ENV[k], fetch: f, agora: () => AGORA, esperar: async ms => { esperas.push(ms); },
+    chamar: roteiro([usarFerramenta('conferir_boletos', { competencia: '2026-10' }), final('Batem.')]) });
+  const r = await srv(pedido({ pergunta: 'os boletos de outubro batem com o Conta Azul?' }));
+  const j = await r.json();
+  const ca = log.filter(x => x.url.includes('/functions/v1/ca-vendas'));
+  chk('sócio: a função do Conta Azul com o login de quem pergunta (modo boletos); o "renovando" espera e tenta de novo', r.status === 200 && j.resposta === 'Batem.' && ca.length === 2
+    && ca.every(x => x.headers.Authorization === 'Bearer jwt-samuel' && x.corpo.modo === 'boletos' && x.corpo.meses[0] === '2026-11') && esperas.length === 1, JSON.stringify(ca.map(x => x.headers.Authorization)));
+  const { f: f2, log: log2 } = servidorFalso();
+  const srv2 = criarServidor({ env: k => ENV[k], fetch: f2, agora: () => AGORA, chamar: roteiro([usarFerramenta('conferir_boletos', {}), final('É só dos sócios.')]) });
+  await (await srv2(pedido({ pergunta: 'os boletos batem com o Conta Azul?' }, 'jwt-thalia'))).json();
+  chk('quem não é sócio: a função do Conta Azul nem é chamada', !log2.some(x => x.url.includes('ca-vendas')));
+  const { f: f3, linhas } = servidorFalso();
+  const srv3 = criarServidor({ env: k => ENV[k], fetch: f3, agora: () => AGORA, chamar: async () => ({ stop_reason: 'end_turn', content: [{ type: 'thinking', thinking: '', signature: 's' }], usage: { output_tokens: 900 } }) });
+  const r3 = await (await srv3(pedido({ pergunta: 'oi' }))).json();
+  chk('a resposta sem texto: o histórico guarda por quê (o motivo e os blocos)', /^Não consegui montar a resposta/.test(r3.resposta) && linhas[0] && linhas[0].fontes && linhas[0].fontes.vazia
+    && linhas[0].fontes.vazia.motivo === 'end_turn' && linhas[0].fontes.vazia.blocos[0] === 'thinking', JSON.stringify(linhas[0] && linhas[0].fontes));
+}
+
 console.log('Commit fixado na função (o código cru do GitHub):');
 const idx = readFileSync(raiz + 'supabase/functions/assistente/index.ts', 'utf8');
 const m = /raw\.githubusercontent\.com\/macedo-reis-contabilidade\/macedo-reis-dashboards\/([0-9a-f]{40})\/supabase\/functions\/assistente\/servidor\.js/.exec(idx);
@@ -1143,8 +1219,8 @@ function importados(inicio) {
   return [...vistos];
 }
 const ARQS = importados('supabase/functions/assistente/servidor.js');
-chk('a trava segue os imports: o servidor, as ferramentas, o prompt, o laço da Reforma, as rotinas, a equipe e os eventos', ['supabase/functions/assistente/ferramentas.js', 'supabase/functions/assistente/prompt.js',
-  'supabase/functions/reforma-chat/agente.js', 'assets/js/rotinas-dia.js', 'assets/js/equipe.js', 'assets/js/eventos-sse.js'].every(a => ARQS.includes(a)), ARQS.join(', '));
+chk('a trava segue os imports: o servidor, as ferramentas, o prompt, o laço da Reforma, as rotinas, a equipe, os eventos e os boletos × Conta Azul', ['supabase/functions/assistente/ferramentas.js', 'supabase/functions/assistente/prompt.js',
+  'supabase/functions/reforma-chat/agente.js', 'assets/js/rotinas-dia.js', 'assets/js/equipe.js', 'assets/js/eventos-sse.js', 'assets/js/boletos-conta-azul.js'].every(a => ARQS.includes(a)), ARQS.join(', '));
 if (m) {
   const atrasados = ARQS.filter(a => {
     let noCommit = null;

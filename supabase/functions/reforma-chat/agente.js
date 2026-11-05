@@ -1,7 +1,8 @@
 // ============================================================
 // MACEDO & REIS — Chat da Reforma: a conversa com o modelo (Messages API da Anthropic) e o laço das ferramentas
 // O modelo pede ferramenta → o servidor roda → devolve o resultado → … até a resposta final (no máximo 6 rodadas ou o
-// prazo do servidor, 70 s; na última, sem ferramenta). Cada chamada à API tem prazo próprio (a que começa perto do fim
+// prazo do servidor, 70 s; na última, sem ferramenta e, quando as consultas acabaram no meio, com o recado de responder com
+// o que já tem — RECADO_ULTIMA). Cada chamada à API tem prazo próprio (a que começa perto do fim
 // ainda tem 30 s): a pergunta inteira cabe no limite de tempo da Edge Function. O contexto fixo (instruções, índice, Base
 // legal, sínteses) e a conversa até a última mensagem vão com cache. Puro: o "chamar" é injetado (testes roteirizados).
 // Também é o laço do assistente do escritório (função assistente). Quem chama passa a descrição das próprias ferramentas
@@ -75,6 +76,13 @@ const DICA_CORTE = { ler_material: 'leia a seção seguinte com ler_material', b
 // o que o modelo usa, não o limite.
 export const MAX_TOKENS = 8000;
 
+// A última rodada (o limite de rodadas ou de tempo) vai sem ferramenta — e, quando as consultas acabaram no meio do
+// trabalho, com o recado de responder com o que já tem. Sem ele, o modelo que ainda queria consultar terminava sem texto
+// nenhum: "Não consegui montar a resposta" depois de 9 e de 11 consultas, nas duas perguntas do Samuel de 05/11/2026 (a
+// conferência dos boletos com o Conta Azul, cruzada à mão, página por página).
+export const RECADO_ULTIMA = 'Acabaram as consultas desta pergunta (o limite de rodadas ou de tempo). Responda agora, só com o que as consultas já trouxeram: '
+  + 'o que você conferiu e o que deu. Se não deu pra concluir, diga o que faltou e como afinar a pergunta (uma empresa, um mês). Não diga que vai consultar mais.';
+
 export async function responder({ chamar, sistema, definicoes, ferramentas, historico = [], mensagem, aoEtapa = () => {},
   maxRodadas = 6, prazoMs = 70000, agora = () => Date.now(), maxTokens = MAX_TOKENS, descrever = nome => String(nome) }) {
   const inicio = agora();
@@ -87,7 +95,10 @@ export async function responder({ chamar, sistema, definicoes, ferramentas, hist
   let modelo = null;
   for (let rodada = 1; ; rodada++) {
     const ultima = rodada >= maxRodadas || agora() - inicio > prazoMs;
-    const corpo = { max_tokens: maxTokens, system: sistema, tools: definicoes, messages: comCache(msgs) };
+    // as consultas acabaram no meio (a última mensagem é a dos resultados das ferramentas): o recado vai depois deles
+    const noMeio = ultima && rodada > 1 && Array.isArray(msgs[msgs.length - 1].content);
+    const enviar = noMeio ? [...msgs.slice(0, -1), { role: 'user', content: [...msgs[msgs.length - 1].content, { type: 'text', text: RECADO_ULTIMA }] }] : msgs;
+    const corpo = { max_tokens: maxTokens, system: sistema, tools: definicoes, messages: comCache(enviar) };
     if (ultima) corpo.tool_choice = { type: 'none' };
     const r = await chamar(corpo, { ate });
     modelo = r._modelo || modelo;
@@ -100,9 +111,13 @@ export async function responder({ chamar, sistema, definicoes, ferramentas, hist
       const texto = blocos.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
       // sem texto nenhum e no limite: o pensamento gastou tudo — dividir a pergunta resolve, perguntar de outro jeito não
       const vazia = r.stop_reason === 'max_tokens' ? 'A pergunta pediu conta demais pra caber numa resposta. Divida em partes menores (uma conta por pergunta).'
+        : etapas.length ? 'Não consegui fechar a resposta: as consultas desta pergunta acabaram antes de eu concluir (fiz ' + etapas.length + '). '
+          + 'Pergunte de um jeito mais específico — uma empresa, um mês — ou divida em partes.'
         : 'Não consegui montar a resposta. Tente perguntar de outro jeito.';
-      // "cortada" (a tela sugere pedir a continuação) só quando há o começo de uma resposta pra continuar
-      return { texto: texto || vazia, etapas, uso, modelo, rodadas: rodada, cortada: r.stop_reason === 'max_tokens' && !!texto };
+      // "cortada" (a tela sugere pedir a continuação) só quando há o começo de uma resposta pra continuar; "vazia": por que
+      // não veio texto (o motivo da parada e os blocos que vieram), pro histórico
+      return { texto: texto || vazia, etapas, uso, modelo, rodadas: rodada, cortada: r.stop_reason === 'max_tokens' && !!texto,
+        ...(texto ? {} : { vazia: { motivo: r.stop_reason || null, blocos: blocos.map(b => b.type), ultima } }) };
     }
     msgs.push({ role: 'assistant', content: blocos });
     const resultados = [];

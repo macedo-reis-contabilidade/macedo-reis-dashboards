@@ -105,7 +105,9 @@ const TELAS = {
   'clientes/index.html': { nome: 'Clientes' },
   'clientes/editar.html': { nome: 'Ficha da empresa' },
   'clientes/novo.html': { nome: 'Novo cliente' },
-  'financeiro-boletos.html': { nome: 'Boletos', exemplos: ['Quais boletos deste mês ainda não foram pagos?', 'Quanto vamos cobrar este mês no total?', 'Quem está inadimplente e desde quando?'],
+  // pros sócios, a conferência com o Conta Azul (05/11/2026: a ferramenta conferir_boletos da função assistente)
+  'financeiro-boletos.html': { nome: 'Boletos', exemplos: () => socio ? ['Os boletos a emitir batem com o que vence no Conta Azul?', 'Quais boletos deste mês ainda não foram pagos?', 'Quanto vamos cobrar este mês no total?']
+    : ['Quais boletos deste mês ainda não foram pagos?', 'Quanto vamos cobrar este mês no total?', 'Quem está inadimplente e desde quando?'],
     // os boletos que vencem este mês são os da competência do mês passado (gerados no começo do mês). O "pago" quase
     // nunca é marcado (a baixa não vem do Inter pela planilha), então "vencido sem pago" não entra: seria quase tudo
     dica: async () => {
@@ -118,7 +120,7 @@ const TELAS = {
       const aEmitir = data.filter(x => x.status === 'a_emitir').length;
       const semana = data.filter(x => (x.status === 'emitido' || x.status === 'enviado') && x.vencimento && x.vencimento >= hoje && x.vencimento <= maisDias(hoje, 7)).length;
       const partes = [aEmitir ? qtd(aEmitir, 'boleto a emitir', 'boletos a emitir') : '', semana ? qtd(semana, 'vence nos próximos 7 dias', 'vencem nos próximos 7 dias') : ''].filter(Boolean);
-      return partes.length ? { texto: 'Boletos de ' + mes + ': ' + partes.join(', ') + '.', exemplos: ['Quais boletos deste mês ainda não foram pagos?'] } : null;
+      return partes.length ? { texto: 'Boletos de ' + mes + ': ' + partes.join(', ') + '.', exemplos: [aEmitir && socio ? 'Os boletos a emitir batem com o que vence no Conta Azul?' : 'Quais boletos deste mês ainda não foram pagos?'] } : null;
     } },
   'financeiro-faturaveis.html': { nome: 'Faturáveis', exemplos: ['O que tem a faturar e de quem?', 'Quanto tem a faturar no total?'],
     dica: async () => { const n = await contar(supabase.from('faturaveis').select('id', { count: 'exact', head: true }).eq('status', 'a_faturar'));
@@ -329,7 +331,7 @@ function montar() {
     saudacao: () => '<p>Oi' + (nomePessoa ? ', ' + escapeHtml(nomePessoa) : '') + '! Eu vejo tudo do sistema — empresas, agenda, boletos, DP, fiscal, comercial — '
       + 'e a base da Reforma, em qualquer tela. Pergunte com as suas palavras.</p><p>Só leio: pra mudar alguma coisa, eu digo em que tela se faz.</p>' + (tela.saudacaoExtra || ''),
     exemplos: c => (tela.exemplos && tela.exemplos(c)) || (c && c.tipo === 'cliente' ? ['Me resume esta empresa', 'O que está pendente com ela?', 'Ela está em dia com os honorários?', 'Como estão a folha e as notas dela no Domínio?'] : null)
-      || cfg.exemplos || EXEMPLOS_SETOR[setor] || EXEMPLOS_GERAIS,
+      || (typeof cfg.exemplos === 'function' ? cfg.exemplos() : cfg.exemplos) || EXEMPLOS_SETOR[setor] || EXEMPLOS_GERAIS,
     seguintes: c => (tela.seguintes ? tela.seguintes(c) : c && c.tipo === 'cliente' ? ['O que está pendente com ela?', 'Ela está em dia com os honorários?'] : []),
     recadoContexto: c => (tela.recadoContexto ? tela.recadoContexto(c) : c && c.tipo === 'cliente' ? { texto: 'Quer um resumo de ' + c.nome + '? Eu junto tudo o que o sistema tem dela.', exemplos: ['Me resume esta empresa'] } : null),
     contexto: c => ({ pagina: { caminho, nome: nomeTela(), setor }, ...(c && c.tipo === 'cliente' ? { cliente_id: c.clienteId } : {}), ...(tela.contexto ? tela.contexto(c) || {} : {}) }),

@@ -25,6 +25,8 @@
 // Desde 05/11/2026 (a versão 3 da ponte), o andamento das contabilidades no Domínio (os campos novos de dominio_mensal,
 // dominio_andamento e dominio_encerramento) — no ver_empresa, a linha "A contabilidade no Domínio" (o banco, o extrato,
 // o caixa, o fechamento, o zeramento e os meses em que a marcação e o Domínio não batem) e, em cada mês, o contábil.
+// Desde 05/11/2026, a conferência dos boletos com o Conta Azul (conferir_boletos: a mesma da tela Boletos, pela função
+// ca-vendas com o login de quem pergunta — só os sócios —, e a regra de assets/js/boletos-conta-azul.js).
 // Lista branca: só as tabelas e colunas daqui são lidas. Ficam fora a senha/credencial do cadastro, o RG e o nascimento
 // das pessoas físicas do cadastro (o CPF e o endereço do cadastro entram: são o dado de trabalho do IRPF), os documentos
 // pessoais dos sócios (CPF, RG, endereço, nascimento), as respostas dos formulários de admissão e rescisão, as
@@ -43,6 +45,7 @@ import { pastaDaUrl, filtrarArquivos } from './drive.js';
 import { comparativoDaEmpresa, resumoDoResultado } from './comparativo.js';
 import { resumoDaEmpresa, textoDasFaixas, rotuloMes, textoDeMeses, textoDaPendencia, andamentoDaEmpresa, encerramentoDaEmpresa, textoDoAndamento,
   mesesQueDiscordam, mapaDosMeses, dominioPorMes, folhaCalculada } from '../../../assets/js/contabil-controle.js';
+import { conferirMes, totalDoBoleto, mesDoBoleto, mesSeguinte, mesBR, centavos, extrasDeFora, somaExtras } from '../../../assets/js/boletos-conta-azul.js';
 
 // ---------- a lista branca: tabela → colunas lidas, as que vêm sem pedir, o que é cada coisa ----------
 // notas: o que o modelo precisa saber da coluna (valores possíveis, unidade); enums: colunas de tipo enumerado no banco
@@ -106,10 +109,12 @@ export const TABELAS = {
   cobrancas_config: { rotulo: 'a base de cobrança', desc: 'Quem é cobrado (honorários): valor base, dia do vencimento, canal.',
     cols: ['id', 'cliente_id', 'valor_base', 'dia_vencimento', 'canal', 'contato_envio', 'destino', 'responsavel', 'ativo', 'observacao_fixa'],
     padrao: ['cliente_id', 'valor_base', 'dia_vencimento', 'canal', 'ativo'] },
-  cobrancas_mensais: { rotulo: 'os boletos', desc: 'Boletos de honorários do mês (tela Boletos).',
+  cobrancas_mensais: { rotulo: 'os boletos', desc: 'Boletos de honorários do mês (tela Boletos). O total do boleto é o valor (a mensalidade) mais os itens_extras — o que vence no Conta Azul vem como extra. Bate com o Conta Azul? Use conferir_boletos.',
     cols: ['id', 'cliente_id', 'competencia', 'valor', 'vencimento', 'canal', 'contato_envio', 'destino', 'responsavel', 'observacao', 'status', 'itens_extras'],
     padrao: ['cliente_id', 'competencia', 'valor', 'vencimento', 'status', 'canal'],
-    notas: { competencia: "'AAAA-MM'", status: 'a_emitir | emitido | enviado | pago | cancelado (pago = recebido; a_emitir, emitido e enviado = em aberto)' } },
+    notas: { competencia: "'AAAA-MM' (o boleto da competência M vence no mês seguinte)", valor: 'a mensalidade — sozinha, não é o total do boleto',
+      itens_extras: 'os extras do boleto, somados à mensalidade no total: [{descricao, valor, ca_parcela_id (veio do Conta Azul) ou adicional_id (o adicional anual), ignorado (tirado do boleto: fora da soma)}]',
+      status: 'a_emitir | emitido | enviado | pago | cancelado (pago = recebido; a_emitir, emitido e enviado = em aberto)' } },
   faturaveis: { rotulo: 'os faturáveis', desc: 'Serviços extras a cobrar no boleto (tela Faturáveis).',
     cols: ['id', 'cliente_id', 'setor', 'descricao', 'valor', 'executado_por', 'executado_em', 'destino', 'status', 'competencia_boleto', 'referencia', 'obs'],
     padrao: ['cliente_id', 'setor', 'descricao', 'valor', 'executado_em', 'status'], notas: { status: 'a_faturar | lancado' } },
@@ -358,7 +363,7 @@ export const TABELAS = {
   // o financeiro do escritório (Conta Azul). O "pago" da parcela é o acumulado de todos os pagamentos, no mês do último
   // (29/10/2026: o empréstimo pago em 300 vezes desde 2022 caía inteiro em outubro) — o pago num mês sai de vw_ca_realizado
   ca_parcelas: { rotulo: 'o financeiro do escritório', socios: true,
-    desc: 'Contas a receber e a pagar do próprio escritório (Conta Azul), uma linha por parcela. Pra saber quanto foi pago ou recebido num mês, NÃO some o pago daqui pelo mes_pagamento: a parcela paga em várias vezes tem aqui o total pago até hoje, no mês do último pagamento — use vw_ca_realizado. Só os sócios leem.',
+    desc: 'Contas a receber e a pagar do próprio escritório (Conta Azul), uma linha por parcela. Pra saber quanto foi pago ou recebido num mês, NÃO some o pago daqui pelo mes_pagamento: a parcela paga em várias vezes tem aqui o total pago até hoje, no mês do último pagamento — use vw_ca_realizado. O cliente aqui é o nome da pessoa no Conta Azul (fornecedor_cliente_nome), que nem sempre é o do cadastro: a ligação com a empresa é pelo CNPJ — pra comparar com os boletos, conferir_boletos. Só os sócios leem.',
     cols: ['id', 'natureza', 'descricao', 'data_vencimento', 'data_competencia', 'data_pagamento', 'mes_pagamento', 'status', 'status_traduzido', 'total', 'pago', 'nao_pago', 'fornecedor_cliente_nome', 'categorias'],
     padrao: ['natureza', 'descricao', 'data_vencimento', 'data_pagamento', 'status_traduzido', 'total', 'pago', 'nao_pago', 'fornecedor_cliente_nome'],
     notas: { natureza: 'receita | despesa (minúsculo)', categorias: 'lista das categorias do Conta Azul',
@@ -457,6 +462,11 @@ export const DEFINICOES = [
           rat: { type: 'number', description: 'o RAT, de 1 a 3 (%)' },
           sem_empresas_dos_socios: { type: 'boolean', description: 'tirar da soma do limite do Simples as outras empresas dos sócios' },
           regime_atual: { type: 'string', enum: ['simples', 'presumido', 'real'], description: 'o regime de hoje (muda os prazos)' } } } } } },
+  { name: 'conferir_boletos',
+    description: 'Confere os boletos de honorários de uma competência (tela Boletos) com o Conta Azul, empresa por empresa: o total de cada boleto (a mensalidade e os extras) contra tudo o que vence da empresa no Conta Azul no mês do vencimento do boleto e está em aberto — a mensalidade, os serviços extras, as parcelas, a renegociação, o adicional anual. É a mesma conferência do botão "Conferir com o Conta Azul" da tela (a pessoa do Conta Azul ligada à empresa pelo CNPJ ou CPF; a mensalidade de outro mês fica fora; no MEI, a guia vai junto). Diz quantos batem, os que sobem, descem ou só mudam a composição (com o antes, o depois e os itens), os sem nada lá, os já emitidos, o que vence lá de empresa sem boleto (e se ela tem a base de cobrança ativa) e o que está lá sem empresa do cadastro. Só lê: aplicar é na tela Boletos. Só os sócios. Use pra "os boletos batem com o Conta Azul?", "confere o boleto da empresa X", "falta algum extra nos boletos?" — nunca cruze os boletos com o financeiro do Conta Azul à mão: a ligação da pessoa de lá com a empresa é pelo CNPJ, que só esta ferramenta faz.',
+    input_schema: { type: 'object', properties: {
+      competencia: { type: 'string', description: "'AAAA-MM': a competência dos boletos (os de outubro, 2026-10, vencem em novembro); sem: a mais recente com boleto a emitir" },
+      empresa: { type: 'string', description: 'opcional: só o boleto desta empresa (id, nome ou CNPJ)' } } } },
   // as propostas: nada muda aqui — a tela mostra o cartão, a pessoa confirma (e pode desfazer)
   { name: 'propor_concluir_tarefas',
     description: 'Prepara a conclusão de tarefas pra pessoa confirmar na tela — nada é concluído aqui: a tela mostra a lista (ela pode desmarcar alguma) com o botão "Concluir" e, depois, o "Desfazer". Só quando a pessoa pedir pra concluir ou marcar como feita(s). Diga quais: ids (de consultar), ou empresa, pessoa e/ou parte do título — prazo, setor e "atrasadas" afinam. Só tarefas abertas; até 300. Pediu pra deixar escrito no histórico o que foi feito ("conclui e anota que…"): mensagem — vai no histórico de cada uma, junto com a conclusão (a pessoa confere e edita no cartão).',
@@ -827,7 +837,8 @@ export function montarConsulta(e, { hoje = null } = {}) {
 // contexto: { cliente_id, caso_id, pagina }; usuario: { email, nome, socio }; hoje: 'AAAA-MM-DD' (Brasília)
 // perguntarReforma(pergunta) → { texto, cortada } (erro com a frase pro usuário); deveFinalizar(): o tempo da pergunta
 // está acabando (a resposta da Reforma vai direto, sem outra rodada)
-export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, agora = () => new Date(), perguntarReforma, deveFinalizar = () => false, aoPropor = () => {}, drive = null }) {
+export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, agora = () => new Date(), perguntarReforma, deveFinalizar = () => false, aoPropor = () => {}, drive = null,
+  contaAzul = null }) {
   const ler = (caminho, op) => banco.ler(caminho, op);
 
   // o cadastro das empresas dos ids (o nome sempre; as outras colunas, quando pedidas)
@@ -1774,6 +1785,140 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, ago
     return comparativoDaEmpresa({ banco, termo: x.empresa, eSe: x.e_se && typeof x.e_se === 'object' && !Array.isArray(x.e_se) ? x.e_se : null, contexto, acharEmpresa, hoje });
   }
 
+  // ---------- os boletos × o Conta Azul (05/11/2026) ----------
+  // As duas perguntas do Samuel ("os boletos de outubro batem com o que vence em novembro no Conta Azul?") acabavam sem
+  // resposta: o modelo cruzava os boletos com o financeiro do Conta Azul à mão, página por página, sem o CNPJ que liga a
+  // pessoa de lá à empresa. Aqui é a conferência da tela Boletos: a função ca-vendas (modo 'boletos', com o login de quem
+  // pergunta — só os sócios passam lá; contaAzul, injetado pelo servidor) traz o que vence no mês do boleto e está em aberto,
+  // empresa por empresa, e a regra de assets/js/boletos-conta-azul.js diz o que mudaria em cada boleto. Só lê.
+  const SITUACAO_BOLETO = { sobe: 'sobe', desce: 'desce', recompoe: 'o total fica, muda a composição' };
+  async function conferir_boletos(e) {
+    const x = e && typeof e === 'object' ? e : {};
+    if (!usuario.socio) return 'A conferência dos boletos com o Conta Azul é só dos sócios (o financeiro do escritório): diga isso na resposta.';
+    if (!contaAzul) return 'A conferência com o Conta Azul não roda aqui (precisa do login de um sócio). Diga isso na resposta: na tela Boletos, o botão "Conferir com o Conta Azul" faz a mesma conferência.';
+    let comp = String(x.competencia || '').trim();
+    if (comp && !COMPETENCIA_ISO.test(comp)) return "A competência vai em 'AAAA-MM' (a dos boletos: os de outubro, 2026-10, vencem em novembro).";
+    let empresa = null;
+    if (x.empresa && String(x.empresa).trim()) {
+      const a = await acharEmpresa(x.empresa);
+      if (a.erro) return a.erro;
+      empresa = a.id;
+    }
+    const daEmpresa = empresa ? '&cliente_id=eq.' + empresa : '';
+    if (!comp) {
+      // sem competência: a mais recente com boleto a emitir (a que ainda vai sair); sem nenhuma, a mais recente
+      const q = 'cobrancas_mensais?select=competencia' + daEmpresa + '&order=competencia.desc&limit=1';
+      comp = ((await ler(q + '&status=eq.a_emitir')).linhas[0] || (await ler(q + '&status=neq.cancelado')).linhas[0] || {}).competencia || '';
+      if (!COMPETENCIA_ISO.test(comp)) return empresa ? 'Essa empresa não tem boleto no sistema.' : 'Não há boletos no sistema.';
+    }
+    const { linhas: boletos } = await ler('cobrancas_mensais?select=id,cliente_id,competencia,valor,vencimento,status,itens_extras&competencia=eq.' + comp
+      + daEmpresa + '&status=neq.cancelado&order=vencimento.asc&limit=1000');
+    const cad = await cadastroDe([...boletos.map(b => b.cliente_id), ...(empresa ? [empresa] : [])], ['regime_tributario']);
+    const nome = id => (cad.get(id) || {}).nome_principal || '(cadastro não encontrado)';
+    const ehMei = id => String((cad.get(id) || {}).regime_tributario || '').trim().toUpperCase() === 'MEI';
+    // o mês do vencimento de cada boleto (o que a função lê lá); a empresa sem boleto: o mês seguinte ao da competência
+    const todos = [...new Set(boletos.map(mesDoBoleto).filter(Boolean))].sort();
+    const meses = todos.length ? todos.slice(0, 3) : [mesSeguinte(comp)];
+    if (!boletos.length && !empresa) return 'Nenhum boleto na competência ' + mesBR(comp) + '.';
+    let dados;
+    try { dados = await contaAzul({ modo: 'boletos', meses }); }
+    catch (err) {
+      return 'Não consegui ler o Conta Azul agora (' + valorCurto((err && err.message) || 'erro', 200) + '). Diga isso na resposta: dá pra tentar de novo em um minuto, ou usar o botão '
+        + '"Conferir com o Conta Azul" da tela Boletos.';
+    }
+    const itens = (dados && Array.isArray(dados.itens) ? dados.itens : []).filter(i => i && (!empresa || i.cliente_id === empresa));
+    const conf = conferirMes(boletos, { itens, soltas: empresa ? [] : (dados && Array.isArray(dados.soltas) ? dados.soltas : []) }, { ehMei });
+    const emMeses = 'em ' + meses.map(mesBR).join(' e ');
+    const deFora = c => extrasDeFora(c.itens_extras).filter(y => !y.ignorado);
+    const composicao = c => 'mensalidade ' + brl(c.valor) + (somaExtras(c.itens_extras) ? ' + extras ' + brl(somaExtras(c.itens_extras)) : '');
+    const itensLa = p => p.itens.map(i => valorCurto(i.rotulo, 90) + ' ' + brl(i.valor) + (i.ignorado ? ' (tirado do boleto na tela)' : '')).join('; ');
+    const ficaNoBoleto = c => deFora(c).length ? ' · fica no boleto, de fora do Conta Azul: ' + deFora(c).map(y => valorCurto(y.descricao, 70) + ' ' + brl(y.valor)).join('; ') : '';
+    const venc = c => c.vencimento ? ', vence ' + dataBR(c.vencimento) : '';
+
+    // uma empresa: o boleto inteiro, mesmo quando bate
+    if (empresa) {
+      const n = nome(empresa);
+      if (!conf.propostas.length) {
+        const soma = itens.reduce((s, i) => s + centavos(i.valor), 0) / 100;
+        return n + ' não tem boleto na competência ' + mesBR(comp) + '. No Conta Azul, em aberto e vencendo em ' + mesBR(meses[0]) + ': '
+          + (itens.length ? brl(soma) + ' — ' + itens.map(i => valorCurto(i.descricao, 80) + ' ' + brl(i.valor) + ' (' + dataBR(i.vencimento) + ')').join('; ') : 'nada') + '.'
+          + '\nNa resposta: diga isso; pôr a empresa no mês é a proposta de pôr na competência (se a pessoa pedir).';
+      }
+      const { cobranca: c, proposta: p } = conf.propostas[0];
+      const dif = (centavos(p.total) - centavos(p.antes.total)) / 100;
+      const veredito = p.situacao === 'igual' ? 'Bate.'
+        : p.situacao === 'recompoe' ? 'O total bate; só a composição muda (a mensalidade e os extras são outros no Conta Azul).'
+        : p.situacao === 'sem_conta_azul' ? 'Nada dela vence lá no mês (ou ela não está ligada lá pelo CNPJ): o boleto fica como está.'
+        : p.situacao === 'fechado' ? (dif ? 'Não bate (' + (dif > 0 ? 'lá é ' + brl(dif) + ' a mais' : 'lá é ' + brl(-dif) + ' a menos') + '), mas o boleto já está ' + c.status + ': não muda mais.' : 'Bate (o boleto já está ' + c.status + ').')
+        : 'Não bate: pelo Conta Azul, o boleto ' + (dif > 0 ? 'sobe ' + brl(dif) : 'desce ' + brl(-dif)) + '.';
+      return 'O boleto de ' + n + ' da competência ' + mesBR(comp) + ' (' + c.status.replace('_', ' ') + venc(c) + '): ' + brl(p.antes.total) + ' (' + composicao(c) + ').'
+        + '\nNo Conta Azul, o que vence ' + emMeses + ' e está em aberto dá ' + brl(p.total) + (p.itens.length ? ': ' + itensLa(p) : '') + ficaNoBoleto(c) + '.'
+        + '\n' + veredito
+        + (p.avisos.length ? '\nObservações: ' + p.avisos.join(' ') : '')
+        + '\nNa resposta: diga se bate e, se não, a diferença e o porquê. Aplicar é na tela Boletos (botão "Conferir com o Conta Azul") — você não muda nada.';
+    }
+
+    // o mês inteiro
+    const P = conf.propostas, r = conf.resumo;
+    const fechados = P.filter(y => y.proposta.situacao === 'fechado');
+    const fechadoDifere = fechados.filter(y => centavos(y.proposta.total) !== centavos(y.proposta.antes.total));
+    const muda = P.filter(y => SITUACAO_BOLETO[y.proposta.situacao]);
+    const totalHoje = P.reduce((s, y) => s + centavos(totalDoBoleto(y.cobranca)), 0) / 100;
+    const partes = [r.igual ? plural(r.igual, 'bate', 'batem') : '', r.sobe ? plural(r.sobe, 'sobe', 'sobem') : '', r.desce ? plural(r.desce, 'desce', 'descem') : '',
+      r.recompoe ? plural(r.recompoe, 'só muda a composição (o total fica)', 'só mudam a composição (o total fica)') : '',
+      r.sem_conta_azul ? plural(r.sem_conta_azul, 'sem nada no Conta Azul no mês', 'sem nada no Conta Azul no mês') : '',
+      fechados.length ? plural(fechados.length, 'já emitido', 'já emitidos') + (fechadoDifere.length ? ' (' + fechadoDifere.length + ' com outro valor lá)' : ' (batem)') : ''].filter(Boolean);
+    const L = ['Conferência dos boletos da competência ' + mesBR(comp) + ' (vencem ' + emMeses + ') com o Conta Azul — o que vence lá no mês do boleto e está em aberto, empresa por empresa, '
+      + 'pela regra da tela Boletos:',
+      plural(P.length, 'boleto', 'boletos') + ': ' + partes.join(' · ') + '.',
+      'Total dos boletos hoje: ' + brl(totalHoje) + (r.diferenca ? ' · aplicando o que o Conta Azul tem: ' + (r.diferenca > 0 ? '+ ' : '− ') + brl(Math.abs(r.diferenca)) : '') + '.'];
+    if (todos.length > 3) L.push('Os boletos vencem em ' + todos.length + ' meses diferentes: só ' + meses.map(mesBR).join(', ') + ' foram conferidos.');
+    const MAX = 30;
+    if (muda.length) {
+      L.push('', 'Diferem do Conta Azul (' + muda.length + '; a tela aplica, no "Conferir com o Conta Azul"' + (muda.some(y => y.proposta.confira) ? ' — os marcados "confira" a tela deixa pra pessoa decidir' : '') + '):');
+      muda.slice(0, MAX).forEach(({ cobranca: c, proposta: p }) => L.push('- ' + nome(c.cliente_id) + venc(c) + ' · ' + SITUACAO_BOLETO[p.situacao] + (p.confira ? ' · confira' : '')
+        + ' · boleto ' + brl(p.antes.total) + ' (' + composicao(c) + ') → pelo Conta Azul ' + brl(p.total) + ' · lá: ' + (itensLa(p) || 'nada') + ficaNoBoleto(c)
+        + (p.avisos.length ? ' · ' + p.avisos.join(' ') : '')));
+      if (muda.length > MAX) L.push('… e mais ' + (muda.length - MAX) + '.');
+    }
+    const semNada = P.filter(y => y.proposta.situacao === 'sem_conta_azul');
+    if (semNada.length) {
+      L.push('', 'Sem nada vencendo no Conta Azul no mês (o boleto fica como está; ou a empresa não está ligada lá pelo CNPJ): '
+        + semNada.slice(0, MAX).map(y => nome(y.cobranca.cliente_id) + ' ' + brl(y.proposta.antes.total)).join('; ') + (semNada.length > MAX ? '; e mais ' + (semNada.length - MAX) : '') + '.');
+    }
+    if (fechadoDifere.length) {
+      L.push('', 'Já emitidos (não mudam) com outro valor no Conta Azul:');
+      fechadoDifere.slice(0, MAX).forEach(({ cobranca: c, proposta: p }) => L.push('- ' + nome(c.cliente_id) + ' · ' + c.status + ' · boleto ' + brl(p.antes.total) + ' · lá ' + brl(p.total) + ': ' + (itensLa(p) || 'nada')));
+    }
+    const comAviso = P.filter(y => y.proposta.situacao === 'igual' && y.proposta.avisos.length);
+    if (comAviso.length) {
+      L.push('', 'Batem, com observação (a regra combinada: a mensalidade de outro mês não entra no boleto; no MEI, a guia vai junto):');
+      comAviso.slice(0, MAX).forEach(({ cobranca: c, proposta: p }) => L.push('- ' + nome(c.cliente_id) + ' · ' + brl(p.total) + ' · ' + p.avisos.join(' ')));
+    }
+    if (conf.semBoleto.length) {
+      // a empresa com coisa vencendo lá e sem boleto aqui: com a base de cobrança ativa, devia ter boleto; sem ela, não é
+      // cobrada pelos boletos do sistema
+      const ids = conf.semBoleto.map(y => y.cliente_id).filter(id => UUID.test(String(id)));
+      const ativa = new Set();
+      try {
+        for (let i = 0; i < ids.length; i += 80) (await ler('cobrancas_config?select=cliente_id&ativo=eq.true&cliente_id=in.(' + ids.slice(i, i + 80).join(',') + ')')).linhas.forEach(y => ativa.add(y.cliente_id));
+      } catch (err) { /* sem a base: a lista vai sem a marca */ }
+      const comBase = conf.semBoleto.filter(y => ativa.has(y.cliente_id)), semBase = conf.semBoleto.filter(y => !ativa.has(y.cliente_id));
+      const soma = l => l.reduce((s, y) => s + centavos(y.valor), 0) / 100;
+      const lista = l => l.slice(0, 10).map(y => (String(y.nome || '').trim() || nome(y.cliente_id)) + ' ' + brl(y.valor)).join('; ') + (l.length > 10 ? '; e mais ' + (l.length - 10) : '');
+      L.push('', 'No Conta Azul, vencendo no mês, de ' + plural(conf.semBoleto.length, 'empresa', 'empresas') + ' sem boleto nesta competência (' + brl(soma(conf.semBoleto)) + '):');
+      if (comBase.length) L.push('- com a base de cobrança ativa — deviam ter boleto (confira se ficaram de fora da geração): ' + lista(comBase) + '.');
+      if (semBase.length) L.push('- sem a base de cobrança ativa (não são cobradas pelos boletos do sistema): ' + plural(semBase.length, 'empresa', 'empresas') + ', ' + brl(soma(semBase)) + ' — as maiores: ' + lista(semBase.slice(0, 5)) + '.');
+    }
+    if (conf.soltas.length) {
+      L.push('', 'No Conta Azul sem empresa do cadastro (a pessoa lá não bate pelo CNPJ ou CPF): ' + conf.soltas.slice(0, 5).map(y => (String(y.nome || '').trim() || '(sem cliente lá)') + ' ' + brl(y.valor)).join('; ')
+        + (conf.soltas.length > 5 ? '; e mais ' + (conf.soltas.length - 5) : '') + '.');
+    }
+    L.push('', 'Na resposta: a primeira frase diz se os boletos batem com o Conta Azul (quantos de quantos). Depois, só o que não bate ou pede atenção, empresa por empresa, '
+      + 'com o boleto, o Conta Azul e o porquê. As observações da regra combinada, no máximo uma linha. Aplicar é na tela Boletos, no botão "Conferir com o Conta Azul" — você não muda nada.');
+    return L.join('\n');
+  }
+
   const arvores = new Map();
   let pesoCartao = -1, termoCartao = null;
   // os arquivos que as buscas desta pergunta mostraram ao modelo (pelo nome sem acento): a mensagem do chat leva o link deles
@@ -1901,7 +2046,7 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, ago
       + '\nNa resposta: o essencial em uma ou duas frases; cancelar é no cartão (não diga que cancelou).';
   }
 
-  return { buscar_empresa, ver_empresa, agenda, consultar, perguntar_reforma, buscar_arquivos, comparativo, propor_concluir_tarefas, propor_alterar_tarefas, propor_registrar_historico,
+  return { buscar_empresa, ver_empresa, agenda, consultar, perguntar_reforma, buscar_arquivos, comparativo, conferir_boletos, propor_concluir_tarefas, propor_alterar_tarefas, propor_registrar_historico,
     propor_marcar_pago, propor_criar_tarefa, propor_enviar_mensagem, propor_revisao_atrasadas, propor_ver_vigia,
     propor_incluir_reforma, propor_por_na_competencia, propor_ajustar_obrigacoes, propor_criar_lembrete, propor_ver_lembretes };
 }
@@ -1918,6 +2063,7 @@ export function descreverEtapa(nome, e = {}) {
   if (nome === 'buscar_arquivos') return 'Procurando no Drive' + (x.empresa && !UUID.test(String(x.empresa)) ? ' de ' + s(x.empresa, 60) : ' da empresa');
   if (nome === 'comparativo') return (x.e_se && typeof x.e_se === 'object' && Object.keys(x.e_se).length ? 'Refazendo o comparativo com o "e se"' : 'Fazendo a conta do comparativo')
     + (x.empresa && !UUID.test(String(x.empresa)) ? ' de ' + s(x.empresa, 60) : '');
+  if (nome === 'conferir_boletos') return 'Conferindo os boletos com o Conta Azul' + (x.empresa && !UUID.test(String(x.empresa)) ? ' (' + s(x.empresa, 60) + ')' : '');
   if (nome === 'propor_concluir_tarefas') return 'Separando as tarefas pra você confirmar';
   if (nome === 'propor_alterar_tarefas') return 'Separando o que muda pra você confirmar';
   if (nome === 'propor_registrar_historico') return 'Preparando a mensagem pro histórico';

@@ -192,7 +192,8 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
     const texto = res ? comLinhaDaBase(corpo, linhaDaBase({ fontes: fs.fontes, etapas: res.etapas, materiais: base ? base.porCodigo : null })) : null;
     const detalhe = erro ? String((erro && erro.message) || erro).slice(0, 1000) : null;
     const linha = { usuario, conversa: conversa || null, caso_id: ctx.caso_id || null, pergunta, resposta: texto,
-      fontes: res ? { citadas: fs.fontes, desconhecidas: fs.desconhecidas, base: categoriasDaBase({ fontes: fs.fontes, etapas: res.etapas }), ...(res.cortada ? { cortada: true } : {}) } : null,
+      fontes: res ? { citadas: fs.fontes, desconhecidas: fs.desconhecidas, base: categoriasDaBase({ fontes: fs.fontes, etapas: res.etapas }), ...(res.cortada ? { cortada: true } : {}),
+        ...(res.vazia ? { vazia: res.vazia } : {}) } : null,
       etapas: res ? res.etapas : null, modelo: res ? res.modelo : null,
       tokens_entrada: res ? res.uso.entrada : null, tokens_saida: res ? res.uso.saida : null, tokens_cache_leitura: res ? res.uso.cacheLeitura : null,
       tokens_cache_escrita: res ? res.uso.cacheEscrita : null, duracao_ms: agora().getTime() - t0, situacao: erro ? 'erro' : 'ok', erro: detalhe };

@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { normalizar, radical, tokens, secoesDe, criarIndice, buscar, lerMaterial } from '../supabase/functions/reforma-chat/busca.js';
 import { montarSistema, preambulo, INSTRUCOES } from '../supabase/functions/reforma-chat/prompt.js';
 import { DEFINICOES, criarFerramentas, aplicarAlteracoes, acharCaso, situacaoDoCaso, descreverEtapa } from '../supabase/functions/reforma-chat/ferramentas.js';
-import { responder, criarChamador, comCache, fontesDaResposta, erroDoChat, MAX_TOKENS } from '../supabase/functions/reforma-chat/agente.js';
+import { responder, criarChamador, comCache, fontesDaResposta, erroDoChat, MAX_TOKENS, RECADO_ULTIMA } from '../supabase/functions/reforma-chat/agente.js';
 import { criarServidor, limparTela, limparHistorico, hojeBR, LIMITE_DIA, SIMULTANEAS, mensagemDeErro } from '../supabase/functions/reforma-chat/servidor.js';
 import { linhaDaBase, categoriasDaBase, comLinhaDaBase, semLinhaDaBase, diaDaLeitura } from '../supabase/functions/reforma-chat/procedencia.js';
 import { simular, aliquotas2027, entradaComAliquotas } from '../assets/js/rt-motor.js';
@@ -172,6 +172,20 @@ const ch2 = [];
 const res2 = await responder({ chamar: async c => { ch2.push(c); return c.tool_choice ? { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Final.' }], usage: {} } : sempre; },
   sistema: sis, definicoes: DEFINICOES, ferramentas: fe, mensagem: 'x', maxRodadas: 3 });
 chk('na última rodada, sem ferramenta (tool_choice none) e responde com o que tem', res2.texto === 'Final.' && ch2.length === 3 && ch2[2].tool_choice && ch2[2].tool_choice.type === 'none' && !ch2[1].tool_choice);
+// 05/11/2026: as consultas acabaram no meio — a última rodada leva, depois dos resultados, o recado de responder com o que tem
+// (sem ele, o modelo que ainda queria consultar terminava sem texto nenhum)
+const fimDe = c => { const u = c.messages.at(-1).content; return Array.isArray(u) ? u.at(-1) : null; };
+chk('a última rodada leva o recado de responder com o que tem, depois dos resultados das ferramentas (e só ela)', fimDe(ch2[2]) && fimDe(ch2[2]).type === 'text' && fimDe(ch2[2]).text === RECADO_ULTIMA
+  && ch2[2].messages.at(-1).content[0].type === 'tool_result' && fimDe(ch2[1]).type === 'tool_result' && /Responda agora, só com o que as consultas já trouxeram/.test(RECADO_ULTIMA));
+{
+  const semTexto = await responder({ chamar: async c => c.tool_choice ? { stop_reason: 'end_turn', content: [{ type: 'thinking', thinking: '', signature: 's' }], usage: {} } : sempre,
+    sistema: sis, definicoes: DEFINICOES, ferramentas: fe, mensagem: 'x', maxRodadas: 3 });
+  chk('mesmo assim sem texto: diz quantas consultas fez e pede pra afinar; o porquê vai junto (vazia)', /^Não consegui fechar a resposta: as consultas desta pergunta acabaram antes de eu concluir \(fiz 2\)\. Pergunte de um jeito mais específico/.test(semTexto.texto)
+    && semTexto.vazia && semTexto.vazia.motivo === 'end_turn' && semTexto.vazia.blocos.join() === 'thinking' && semTexto.vazia.ultima === true, semTexto.texto);
+  const deCara = await responder({ chamar: async () => ({ stop_reason: 'end_turn', content: [], usage: {} }), sistema: sis, definicoes: DEFINICOES, ferramentas: fe, mensagem: 'x' });
+  chk('sem consulta nenhuma e sem texto: a frase de sempre', deCara.texto === 'Não consegui montar a resposta. Tente perguntar de outro jeito.' && deCara.vazia.ultima === false);
+  chk('com texto, sem "vazia"', !res2.vazia);
+}
 chk('comCache não mexe nas mensagens originais', (() => { const m = [{ role: 'user', content: 'a' }]; comCache(m); return m[0].content === 'a'; })());
 {
   // o prazo: passou dele, a rodada seguinte já é a última (sem ferramenta); cada chamada recebe o fim do prazo
@@ -179,7 +193,8 @@ chk('comCache não mexe nas mensagens originais', (() => { const m = [{ role: 'u
   const ch3 = [], opcoes = [];
   const res3 = await responder({ chamar: async (c, o) => { ch3.push(c); opcoes.push(o); relogio += 80000; return c.tool_choice ? { stop_reason: 'end_turn', content: [{ type: 'text', text: 'No prazo.' }], usage: {} } : sempre; },
     agora: () => relogio, sistema: sis, definicoes: DEFINICOES, ferramentas: fe, mensagem: 'x', prazoMs: 70000 });
-  chk('passou do prazo: a rodada seguinte responde sem ferramenta', res3.texto === 'No prazo.' && ch3.length === 2 && ch3[1].tool_choice && ch3[1].tool_choice.type === 'none');
+  chk('passou do prazo: a rodada seguinte responde sem ferramenta, com o recado', res3.texto === 'No prazo.' && ch3.length === 2 && ch3[1].tool_choice && ch3[1].tool_choice.type === 'none'
+    && ch3[1].messages.at(-1).content.at(-1).text === RECADO_ULTIMA);
   chk('cada chamada leva o fim do prazo (+30 s pra última)', opcoes.every(o => o && o.ate === 70000 + 30000));
   const etapasEstranhas = [];
   const res4 = await responder({ chamar: (() => { let n = 0; return async () => ++n === 1 ? { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'q', name: 'listar_casos', input: { filtro: ['sem_conclusao'] } }, { type: 'tool_use', id: 'r', name: 'constructor', input: {} }], usage: {} } : { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Ok.' }], usage: {} }; })(),

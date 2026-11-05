@@ -73,7 +73,8 @@ export function limparContexto(c) {
   return { pagina: limparPagina(x.pagina), cliente_id: uuid(x.cliente_id), caso_id: caso, tela, comparativo_id: uuid(x.comparativo_id) };
 }
 
-export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => new Date(), chamar = null, prazoMs = 70000, aguardar = p => p }) {
+export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => new Date(), chamar = null, prazoMs = 70000, aguardar = p => p,
+  esperar = ms => new Promise(r => setTimeout(r, ms)) }) {
   const URLB = env('SUPABASE_URL'), SERVICO = env('SUPABASE_SERVICE_ROLE_KEY'), ANON = env('SUPABASE_ANON_KEY');
   const chamarModelo = chamar || criarChamador({ fetch: f, chave: env('ANTHROPIC_API_KEY') });
   // o Drive (só leitura, a pasta da empresa): a mesma autorização do Google do "Registrar processo"
@@ -169,6 +170,28 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
     return { texto: String(resposta.texto || ''), cortada: !!resposta.cortada };
   }
 
+  // a conferência dos boletos com o Conta Azul (05/11/2026, a ferramenta conferir_boletos): a função ca-vendas, modo
+  // 'boletos', com o login de quem pergunta — lá, só os sócios passam. O "renovando" (o token do Conta Azul sendo renovado,
+  // 503) espera e tenta de novo uma vez, se o tempo da pergunta deixar; o erro volta em português, pra ferramenta dizer
+  function contaAzulDe(jwt, t0) {
+    return async corpo => {
+      for (let tentativa = 0; ; tentativa++) {
+        const resta = t0 + prazoMs - agora().getTime();
+        if (resta < 8000) throw new Error('acabou o tempo da pergunta');
+        let r;
+        try {
+          r = await f(URLB + '/functions/v1/ca-vendas', { method: 'POST', headers: { apikey: ANON, Authorization: 'Bearer ' + jwt, 'Content-Type': 'application/json' },
+            body: JSON.stringify(corpo), signal: AbortSignal.timeout(Math.min(45000, resta)) });
+        } catch (e) { throw new Error(e && (e.name === 'TimeoutError' || e.name === 'AbortError') ? 'o Conta Azul demorou demais pra responder' : 'sem conexão com a função do Conta Azul'); }
+        const j = await r.json().catch(() => null);
+        if (r.ok && j && !j.erro) return j;
+        const renovando = r.status === 503 && j && j.renovando;
+        if (renovando && tentativa === 0 && resta > 35000) { await esperar(15000); continue; }
+        throw new Error(renovando ? 'o acesso ao Conta Azul está sendo renovado; tente de novo em um minuto' : (j && j.erro) || 'a função do Conta Azul respondeu ' + r.status);
+      }
+    };
+  }
+
   async function executar({ usuario, pergunta, historico, contexto, conversa, id, t0, aoEtapa = () => {}, avaliacao = false }) {
     let res = null, erro = null, acao = null;
     const ctx = { ...contexto };
@@ -203,7 +226,9 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
         // passou do tempo de outra rodada do modelo: a resposta da Reforma vai direto pro usuário
         deveFinalizar: () => agora().getTime() - t0 > prazoMs - 15000,
         // a proposta de ação (uma por pergunta) vai junto com a resposta: a tela mostra o cartão
-        aoPropor: a => { acao = a; }, drive });
+        aoPropor: a => { acao = a; }, drive,
+        // o Conta Azul (a conferência dos boletos): só com o login de um sócio; na avaliação, não
+        contaAzul: !avaliacao && usuario.socio && usuario.jwt ? contaAzulDe(usuario.jwt, t0) : null });
       const mensagem = preambulo({ hoje, hora: horaBR(agora()), quem, tela, empresa, ficha, estudo }) + pergunta;
       // a pergunta anterior de outro dia leva a data em que foi feita (a aba pode ter ficado aberta de um dia pro outro)
       const anteriores = historico.map(h => ({ pergunta: marcaOutroDia(h.em, hoje) + h.pergunta, resposta: h.resposta }));
@@ -212,7 +237,9 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
     const detalhe = erro ? String((erro && erro.message) || erro).slice(0, 1000) : null;
     const aviso = erro ? mensagemDeErro(erro) : null;
     if (erro) acao = null;
-    const linha = { resposta: res ? res.texto : null, aviso, etapas: res ? res.etapas : null, fontes: res ? { reforma: !!res.final, ...(res.cortada ? { cortada: true } : {}), ...(acao ? { acao } : {}) } : null,
+    // vazia: a resposta que veio sem texto (o motivo da parada e os blocos), pra entender depois por que não respondeu
+    const linha = { resposta: res ? res.texto : null, aviso, etapas: res ? res.etapas : null,
+      fontes: res ? { reforma: !!res.final, ...(res.cortada ? { cortada: true } : {}), ...(acao ? { acao } : {}), ...(res.vazia ? { vazia: res.vazia } : {}) } : null,
       modelo: res ? res.modelo : null, tokens_entrada: res ? res.uso.entrada : null, tokens_saida: res ? res.uso.saida : null, tokens_cache_leitura: res ? res.uso.cacheLeitura : null,
       tokens_cache_escrita: res ? res.uso.cacheEscrita : null, duracao_ms: agora().getTime() - t0, situacao: erro ? 'erro' : 'ok', erro: detalhe };
     try { await fecharLinha(id, linha); }
