@@ -105,6 +105,7 @@ class Sistema:
         self.respostas = []      # o que responder aos POST, na ordem (200, 302, 401, 503, 'lento'…); acabou -> 200
         self.recebidos = []
         self.gets = []           # os GET que não são o do IP (um redirecionamento seguido apareceria aqui)
+        self.pedidos_notas = 0   # os pedidos da lista das notas (a etapa das notas e o conferir)
         self.trava = threading.Lock()
         dono = self
 
@@ -133,6 +134,16 @@ class Sistema:
             def do_POST(self):
                 n = int(self.headers.get('Content-Length') or 0)
                 bruto = self.rfile.read(n)
+                try:
+                    pedido = json.loads(bruto.decode('utf-8'))
+                except (ValueError, UnicodeDecodeError):
+                    pedido = None
+                if isinstance(pedido, dict) and pedido.get('tipo') == 'notas' and pedido.get('pedir') == 'autorizadas':
+                    # a etapa das notas, no fim da rodada e no conferir, pede a lista: aqui, nenhuma empresa autorizada
+                    # (o teste das notas é o tests/ponte-notas.test.py) — e não conta nos envios desta suíte
+                    with dono.trava:
+                        dono.pedidos_notas += 1
+                    return self._responder(200, b'{"empresas":[]}')
                 with dono.trava:
                     dono.recebidos.append({'cabecalhos': {k.lower(): v for k, v in self.headers.items()},
                                            'corpo': json.loads(bruto.decode('utf-8'))})
@@ -543,6 +554,26 @@ def caso_a_conferir(sis):
            and codigo.count('?') == (0 if bloco == 'empresas' else 2),
            f'{bloco}.sql pronta: o comentário no começo, as colunas do contrato e {"nenhum parâmetro" if bloco == "empresas" else "os 2 parâmetros"}'
            + (f' (faltam: {", ".join(faltam)})' if faltam else ''))
+    # as das notas das empresas autorizadas (ponte/notas/fonte.py): o código da empresa e o período, e as colunas que
+    # o pacote.py lê
+    notas = {
+        'notas_empresa': (('documento',), 1),
+        'notas_itens': (('chave', 'segmento', 'emissao', 'entrada', 'emitente_doc', 'emitente_tipo', 'emitente_nome',
+                         'emitente_uf', 'nota_produtos', 'nota_desconto', 'nota_frete', 'nota_ipi', 'nota_icms_st',
+                         'nota_total', 'nota_cfops', 'nota_cfop', 'item', 'item_seq', 'produto_fornecedor', 'descricao',
+                         'ean', 'ncm', 'cfop', 'unidade', 'quantidade', 'valor_unitario', 'valor_total', 'desconto',
+                         'ipi', 'icms_st'), 3),
+        'notas_xml': (('chave', 'conteudo'), 3),
+    }
+    for nome, (campos, params) in notas.items():
+        texto = (PASTA_CONSULTAS / f'{nome}.sql').read_text(encoding='utf-8-sig')
+        codigo = '\n'.join(l.split('--', 1)[0] for l in texto.splitlines())
+        comentario = '\n'.join(l for l in texto.splitlines() if l.lstrip().startswith('--'))
+        faltam = [c for c in campos if not re.search(rf'\bAS\s+{c}\b', codigo, re.I)]
+        ok(not a_conferir(texto) and texto.lstrip().startswith('--') and not faltam and codigo.count('?') == params
+           and '?' not in comentario,
+           f'{nome}.sql pronta: o comentário no começo (sem ?), as colunas que a ponte das notas lê e os {params} '
+           f'parâmetro(s)' + (f' (faltam: {", ".join(faltam)})' if faltam else ''))
 
 
 # ---------------------------------------------------------------- 4 e 5: o envio
