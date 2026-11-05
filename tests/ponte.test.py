@@ -61,8 +61,21 @@ CONTRATO_MENSAL = ['codigo', 'competencia', 'funcionarios_ativos', 'admissoes', 
                    'rbt12', 'meses_rbt12',
                    'compras', 'compras_st', 'servicos_tomados', 'ativo_e_consumo', 'devolucoes_de_venda', 'outras_entradas',
                    'salarios', 'ferias', 'rescisoes', 'decimo_terceiro', 'pro_labore_valor', 'base_inss', 'base_fgts',
-                   'fgts', 'inss_empresa', 'inss_rat', 'inss_terceiros']
-VALORES_V2 = [c for c in CONTRATO_MENSAL[CONTRATO_MENSAL.index('receita_bruta'):] if c != 'meses_rbt12']
+                   'fgts', 'inss_empresa', 'inss_rat', 'inss_terceiros',
+                   # a versão 3 (05/11/2026): o andamento das contabilidades
+                   'lanc_normais', 'lanc_extrato', 'lanc_fiscal', 'lanc_folha', 'lanc_apuracao', 'lanc_outros',
+                   'incluido_ate', 'receita_lancada', 'folha_lancada', 'encargos_lancados',
+                   'caixa_negativo', 'contra_natureza', 'sem_natureza', 'transitorias', 'transitorias_valor']
+VALORES_V2 = [c for c in CONTRATO_MENSAL[CONTRATO_MENSAL.index('receita_bruta'):CONTRATO_MENSAL.index('lanc_normais')]
+              if c != 'meses_rbt12']
+VALORES_V3 = ['receita_lancada', 'folha_lancada', 'encargos_lancados', 'transitorias_valor']
+INTEIROS_V3 = ['lanc_normais', 'lanc_extrato', 'lanc_fiscal', 'lanc_folha', 'lanc_apuracao', 'lanc_outros',
+               'caixa_negativo', 'contra_natureza', 'sem_natureza', 'transitorias']
+CONTRATO_ANDAMENTO = ['codigo', 'banco_contas', 'banco_ate', 'banco_ultimo', 'banco_ultimo_geral', 'caixa_ate',
+                      'caixa_contador_ate', 'extrato_contas', 'extrato_ate', 'extrato_pendentes', 'conciliadas',
+                      'conciliado_ate', 'fechamento_em']
+CONTRATO_ENCERRAMENTO = ['codigo', 'ano', 'zerado_em', 'zeramentos', 'zerado_incluido_em', 'lancados_depois',
+                         'lancamentos_do_ano']
 
 SEGREDO = 'SEGREDO-DE-TESTE'
 SENHA = 'SENHA-DE-TESTE'
@@ -271,7 +284,8 @@ def caso_pacote():
         return
     texto = saida.read_text(encoding='utf-8')
     p = json.loads(texto)
-    ok(p['versao'] == 2 and set(p) == {'versao', 'rodada', 'empresas', 'mensal', 'faltou'}, 'versão 2, só as cinco chaves do contrato')
+    ok(p['versao'] == 3 and set(p) == {'versao', 'rodada', 'empresas', 'mensal', 'andamento', 'encerramento', 'faltou'},
+       'versão 3, só as sete chaves do contrato')
     r = p['rodada']
     ok(set(r) == {'id', 'inicio', 'fim', 'dados_ate', 'maquina', 'ponte'}, 'rodada com id, inicio, fim, dados_ate, maquina, ponte')
     ok(r['dados_ate'] == hoje().isoformat(), f"dados_ate é hoje — o banco do Domínio Web é ao vivo ({r['dados_ate']})")
@@ -279,7 +293,7 @@ def caso_pacote():
     hora_com_fuso = r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d'
     ok(re.fullmatch(hora_com_fuso, r['inicio']) and re.fullmatch(hora_com_fuso, r['fim']) and r['inicio'] <= r['fim'],
        'inicio e fim com o fuso do PC, inicio <= fim')
-    ok(bool(r['maquina']) and r['ponte'] == '0.2.0', 'maquina preenchida, ponte 0.2.0')
+    ok(bool(r['maquina']) and r['ponte'] == '0.3.0', 'maquina preenchida, ponte 0.3.0')
 
     emp = {e['codigo']: e for e in p['empresas']}
     ok(sorted(emp) == [101, 102, 103, 104], 'as 4 empresas inventadas, pelo código')
@@ -295,9 +309,9 @@ def caso_pacote():
     ok(sorted({l['competencia'] for l in p['mensal']}) == comps, f'as 3 competências até o mês de hoje: {", ".join(comps)}')
     ok(all(list(l) == CONTRATO_MENSAL for l in p['mensal']), 'cada linha mensal com os campos do contrato da fila, nessa ordem')
     inteiros = ('funcionarios_ativos', 'admissoes', 'desligamentos', 'afastados', 'pro_labore', 'notas_saida', 'notas_entrada', 'lancamentos',
-                'meses_rbt12')
+                'meses_rbt12', *INTEIROS_V3)
     ok(all(l[c] is None or type(l[c]) is int for l in p['mensal'] for c in inteiros), 'contagens: inteiro ou null')
-    ok(all(l[c] is None or type(l[c]) is float for l in p['mensal'] for c in ('valor_saidas', 'valor_entradas', *VALORES_V2)),
+    ok(all(l[c] is None or type(l[c]) is float for l in p['mensal'] for c in ('valor_saidas', 'valor_entradas', *VALORES_V2, *VALORES_V3)),
        'valores (também o faturamento, as compras e a folha em reais): número com casas (o Decimal do ODBC vira número) ou null')
     ok(all(l['ultimo_lancamento'] is None or re.fullmatch(r'\d{4}-\d\d-\d\d', l['ultimo_lancamento']) for l in p['mensal']),
        'ultimo_lancamento: data AAAA-MM-DD ou null')
@@ -345,7 +359,34 @@ def caso_pacote():
            and linhas[(101, c)]['fgts'] == 1128.0 and linhas[(104, c)]['inss_terceiros'] == 255.2
            and linhas[(102, c)]['pro_labore_valor'] == 1518.0 and linhas[(102, c)]['fgts'] is None for c in comps),
        'a folha em reais: os salários, o pró-labore e as guias; sem a guia do FGTS (a 102), null')
-    ok(p['faltou'] == [], 'faltou vazio (o Domínio de mentira tem os sete blocos)')
+    ok(all(l['incluido_ate'] is None or (re.fullmatch(r'\d{4}-\d\d-\d\d', l['incluido_ate']) and l['incluido_ate'] <= r['dados_ate'])
+           for l in p['mensal']), 'incluido_ate: data AAAA-MM-DD (até dados_ate) ou null — o datetime do ODBC vira data')
+    ok(all(linhas[(101, c)]['lanc_fiscal'] == 340 + m(c) and linhas[(101, c)]['lanc_extrato'] == 25 and linhas[(101, c)]['lanc_folha'] == 15
+           and linhas[(101, c)]['receita_lancada'] == round(80000 + m(c), 2) and linhas[(101, c)]['contra_natureza'] == 2 for c in comps),
+       'a versão 3, da 101: os lançamentos por origem, a receita lançada (igual ao faturamento) e as contas contra a natureza')
+    ok(all(linhas[(102, c)]['caixa_negativo'] == 1 and linhas[(102, c)]['transitorias_valor'] == 350.75 for c in comps)
+       and all(linhas[(102, c)]['lanc_fiscal'] == 0 and linhas[(102, c)]['receita_lancada'] is None for c in sem_nota)
+       and all(linhas[(102, c)]['lanc_fiscal'] == 30 and linhas[(102, c)]['folha_lancada'] == 0.0 for c in com_nota),
+       'a 102: o caixa negativo e a transitória; no mês sem nota, sem escrita fiscal e sem cruzamento (null, quem põe o 0 é o sistema)')
+    ok(all(linhas[(103, c)]['lanc_normais'] is None and linhas[(103, c)]['caixa_negativo'] is None for c in comps),
+       'a 103 segue toda null também nos blocos da versão 3')
+    and_ = {a['codigo']: a for a in p['andamento']}
+    ok(sorted(and_) == [101, 102, 103] and all(list(a) == CONTRATO_ANDAMENTO for a in p['andamento']),
+       'o andamento (a foto do dia): uma linha por empresa que a consulta trouxe, com os campos do contrato, nessa ordem')
+    ok(and_[101]['banco_contas'] == 2 and and_[101]['extrato_pendentes'] == 4 and and_[101]['fechamento_em'] == f'{hoje().year - 1}-12-31'
+       and all(v is None or re.fullmatch(r'\d{4}-\d\d-\d\d', v) for v in (and_[101][k] for k in ('banco_ate', 'banco_ultimo', 'caixa_ate', 'extrato_ate'))),
+       'a 101 na foto: dois bancos, as linhas do extrato sem lançamento, a data do fechamento e as datas em AAAA-MM-DD')
+    ok(and_[102]['banco_ate'] is None and and_[102]['banco_ultimo_geral'] == f'{hoje().year - 2}-06-30' and and_[103]['caixa_ate'] is None,
+       'a 102 sem banco há anos (null nos 12 meses, o último de todo o tempo) e a 103 sem nada')
+    anos = [hoje().year - 2, hoje().year - 1]
+    ok(sorted({(e['ano'], e['codigo']) for e in p['encerramento']}) == [(a, c) for a in anos for c in (101, 102)]
+       and all(list(e) == CONTRATO_ENCERRAMENTO for e in p['encerramento']),
+       f'o encerramento dos dois anos antes do de hoje ({anos[0]} e {anos[1]}), com os campos do contrato')
+    enc = {(e['codigo'], e['ano']): e for e in p['encerramento']}
+    ok(enc[(101, anos[1])]['zerado_em'] == f'{anos[1]}-12-31' and enc[(101, anos[1])]['lancados_depois'] == 12
+       and enc[(102, anos[1])]['zerado_em'] is None and enc[(102, anos[1])]['lancados_depois'] is None,
+       'a 101 zerou (com 12 lançamentos depois do zeramento); a 102, não (null, nunca 0)')
+    ok(p['faltou'] == [], 'faltou vazio (o Domínio de mentira tem os doze blocos)')
     ok('4 empresa(s)' in out and '12 linha(s)' in out, 'mostra o resumo na tela')
     ok(pendentes(pasta) == [], '--sem-enviar não deixa nada em pendentes')
 
@@ -354,6 +395,8 @@ def caso_pacote():
        'o nome e o salário de funcionário que a folha e a folha em reais de mentira devolvem não estão no pacote')
     ok('maior_cliente' not in texto and 'COMPRADOR' not in texto and 'fornecedor' not in texto and 'FORNECEDOR' not in texto,
        'o cliente e o fornecedor que o faturamento e as compras de mentira devolvem também não')
+    ok('usuario' not in texto and 'nome_conta' not in texto and 'nome_banco' not in texto and 'SOCIO' not in texto and 'CC 12345' not in texto,
+       'nem o usuário que lançou, o nome da conta (com o sócio) e o do banco (com a conta corrente) que a versão 3 de mentira devolve')
     from ponte.fonte_falsa import FonteFalsa
     from ponte import pacote
 
@@ -407,9 +450,9 @@ class ConexaoFalsa:
 
 
 def consultas(pasta, **sql):
-    from ponte.fonte import BLOCOS
+    from ponte.fonte import BLOCOS, BLOCOS_FOTO
     pasta.mkdir(parents=True, exist_ok=True)
-    for bloco in ('empresas',) + BLOCOS:
+    for bloco in ('empresas',) + BLOCOS + BLOCOS_FOTO:
         (pasta / f'{bloco}.sql').write_text(sql.get(bloco, '-- A CONFERIR: falta a documentação da Domínio\n'), encoding='utf-8')
     return pasta
 
@@ -434,8 +477,10 @@ def caso_a_conferir(sis):
     reg = Anotador()
     pc = pacote.montar(fonte, 2, reg, dados_ate=ate)
     fonte.fechar()
-    ok(pc['faltou'] == [{'bloco': b, 'motivo': 'consulta a conferir'} for b in ('fiscal', 'faturamento', 'compras', 'folha_valores')],
-       'o fiscal "A CONFERIR" vai pro faltou (e os três blocos da versão 2, que este caso deixa "A CONFERIR")')
+    ok(pc['faltou'] == [{'bloco': b, 'motivo': 'consulta a conferir'} for b in ('fiscal', 'faturamento', 'compras', 'folha_valores',
+                                                                                'origens', 'cruzamentos', 'saldos', 'andamento', 'encerramento')],
+       'o fiscal "A CONFERIR" vai pro faltou (e os blocos das versões 2 e 3, que este caso deixa "A CONFERIR")')
+    ok(pc['andamento'] == [] and pc['encerramento'] == [], 'o andamento e o encerramento a conferir saem como listas vazias')
     ok(all(l['receita_bruta'] is None and l['compras'] is None and l['salarios'] is None for l in pc['mensal']),
        'e os campos dos blocos a conferir saem null')
     ok(all(l['notas_saida'] is None and l['valor_entradas'] is None for l in pc['mensal']), 'e os campos dele saem null')
@@ -487,9 +532,10 @@ def caso_a_conferir(sis):
 
     # as consultas do repositório: prontas, cada uma com o comentário no começo, as colunas do contrato (AS) e os
     # parâmetros que a fonte manda (empresas, nenhum; as outras, o primeiro e o último dia do mês, uma vez cada)
-    from ponte.fonte import CAMPOS_EMPRESA, CAMPOS_MES
+    from ponte.fonte import CAMPOS_ANDAMENTO, CAMPOS_EMPRESA, CAMPOS_ENCERRAMENTO, CAMPOS_MES
     from ponte.fonte_dominio import PASTA_CONSULTAS, a_conferir
-    for bloco, campos in (('empresas', CAMPOS_EMPRESA),) + tuple((b, ('codigo',) + c) for b, c in CAMPOS_MES.items()):
+    for bloco, campos in ((('empresas', CAMPOS_EMPRESA),) + tuple((b, ('codigo',) + c) for b, c in CAMPOS_MES.items())
+                          + (('andamento', ('codigo',) + CAMPOS_ANDAMENTO), ('encerramento', ('codigo',) + CAMPOS_ENCERRAMENTO))):
         texto = (PASTA_CONSULTAS / f'{bloco}.sql').read_text(encoding='utf-8-sig')
         codigo = '\n'.join(l.split('--', 1)[0] for l in texto.splitlines())
         faltam = [c for c in campos if not re.search(rf'\bAS\s+{c}\b', codigo, re.I)]
@@ -517,7 +563,7 @@ def caso_envio(sis):
     ok(cab.get('apikey') == CHAVE_PUBLICA and cab.get('authorization') == f'Bearer {CHAVE_PUBLICA}',
        'apikey e Authorization: Bearer = a chave pública')
     ok(cab.get('content-type', '').startswith('application/json'), 'Content-Type: application/json')
-    ok(sis.recebidos[-1]['corpo']['versao'] == 2 and len(sis.recebidos[-1]['corpo']['empresas']) == 4, 'o corpo é o pacote')
+    ok(sis.recebidos[-1]['corpo']['versao'] == 3 and len(sis.recebidos[-1]['corpo']['empresas']) == 4, 'o corpo é o pacote')
 
     titulo('4. (continuação)')
     sis.zerar(401)

@@ -1,7 +1,8 @@
 """O Domínio de verdade: o banco do Domínio Web (SQL Anywhere 17, o de produção, ao vivo) por ODBC, só leitura.
 
-Cada bloco tem a sua consulta num arquivo em ponte/consultas/ — empresas.sql, folha.sql, fiscal.sql, contabil.sql
-e, desde a versão 2 do pacote (05/11/2026), faturamento.sql, compras.sql e folha_valores.sql.
+Cada bloco tem a sua consulta num arquivo em ponte/consultas/ — empresas.sql, folha.sql, fiscal.sql, contabil.sql,
+desde a versão 2 do pacote (05/11/2026) faturamento.sql, compras.sql e folha_valores.sql e, desde a versão 3 (também
+05/11/2026), origens.sql, cruzamentos.sql, saldos.sql, andamento.sql e encerramento.sql.
 Consulta que ainda tem a linha "-- A CONFERIR" não roda: o bloco fica de fora da rodada (vai pro `faltou` do
 pacote) e o resto segue. Sem a de empresas, a rodada não manda nada.
 
@@ -10,7 +11,9 @@ O que cada consulta recebe e devolve (o contrato está em fonte.py):
     folha.sql      ? = primeiro dia do mês (date),    -> codigo + os campos do bloco, UMA linha por empresa
     fiscal.sql     ? = último dia do mês (date),         (já contado: COUNT/SUM com GROUP BY da empresa)
     contabil.sql   nessa ordem
-    faturamento.sql, compras.sql, folha_valores.sql: o mesmo
+    faturamento.sql, compras.sql, folha_valores.sql, origens.sql, cruzamentos.sql, saldos.sql: o mesmo
+    andamento.sql  o primeiro e o último dia do mês de hoje (a foto do dia, uma vez por rodada)
+    encerramento.sql  ? = 1º de janeiro, ? = 31 de dezembro do ano (uma vez por ano lido)
 Se a consulta precisar das datas mais de uma vez, use um WITH no começo que as receba uma vez só.
 Os nomes das colunas do resultado têm que ser os do contrato (use AS); maiúscula ou minúscula tanto faz.
 
@@ -122,6 +125,22 @@ class FonteDominio(Fonte):
 
     def folha_valores(self, mes):
         return self._consultar('folha_valores', limites_do_mes(mes))
+
+    # a versão 3 (05/11/2026): o andamento das contabilidades
+    def origens(self, mes):
+        return self._consultar('origens', limites_do_mes(mes))
+
+    def cruzamentos(self, mes):
+        return self._consultar('cruzamentos', limites_do_mes(mes))
+
+    def saldos(self, mes):
+        return self._consultar('saldos', limites_do_mes(mes))
+
+    def andamento(self, mes):
+        return self._consultar('andamento', limites_do_mes(mes))
+
+    def encerramento(self, ano):
+        return self._consultar('encerramento', (datetime.date(int(ano), 1, 1), datetime.date(int(ano), 12, 31)))
 
     def fechar(self):
         if self._con is not None:

@@ -1,6 +1,6 @@
-"""Monta o pacote — o contrato com o sistema (versão 2, desde 05/11/2026).
+"""Monta o pacote — o contrato com o sistema (versão 3, desde 05/11/2026).
 
-    { "versao": 2,
+    { "versao": 3,
       "rodada":   { id, inicio, fim, dados_ate, maquina, ponte },
       "empresas": [ { codigo, documento, nome, ativa } ],
       "mensal":   [ { codigo, competencia 'AAAA-MM', funcionarios_ativos, admissoes, desligamentos, afastados,
@@ -12,18 +12,29 @@
                       + compras: compras, compras_st, servicos_tomados, ativo_e_consumo, devolucoes_de_venda,
                         outras_entradas
                       + folha_valores: salarios, ferias, rescisoes, decimo_terceiro, pro_labore_valor, base_inss,
-                        base_fgts, fgts, inss_empresa, inss_rat, inss_terceiros } ],
+                        base_fgts, fgts, inss_empresa, inss_rat, inss_terceiros
+                      + origens: lanc_normais, lanc_extrato, lanc_fiscal, lanc_folha, lanc_apuracao, lanc_outros,
+                        incluido_ate
+                      + cruzamentos: receita_lancada, folha_lancada, encargos_lancados
+                      + saldos: caixa_negativo, contra_natureza, sem_natureza, transitorias, transitorias_valor } ],
+      "andamento":    [ { codigo, banco_contas, banco_ate, banco_ultimo, banco_ultimo_geral, caixa_ate,
+                          caixa_contador_ate, extrato_contas, extrato_ate, extrato_pendentes, conciliadas,
+                          conciliado_ate, fechamento_em } ],                 (a foto do dia)
+      "encerramento": [ { codigo, ano, zerado_em, zeramentos, zerado_incluido_em, lancados_depois,
+                          lancamentos_do_ano } ],                            (os dois anos antes do de hoje)
       "faltou":   [ { bloco, motivo } ] }
 
-A versão 1 (até 04/11/2026) era a mesma sem os três blocos novos. A versão diz ao sistema que eles foram lidos: na 1,
-ele não mexe nos valores desses blocos que já tinha.
+A versão 1 (até 04/11/2026) não tinha o faturamento, as compras e a folha em reais; a 2 (05/11/2026), o andamento das
+contabilidades (origens, cruzamentos, saldos, andamento e encerramento). A versão diz ao sistema quais blocos foram
+lidos: o que uma versão antiga não tem, ele não mexe no que já tinha.
 
 Regras:
   - Só esses campos saem. O que a fonte devolver a mais é descartado aqui (a trava do dado pessoal).
   - `mensal`: uma linha por empresa e competência; campo que não veio sai null, nunca um 0 inventado.
   - Um bloco entra inteiro ou fica de fora inteiro: se a consulta está a conferir, deu erro, ou devolveu mais de uma
     linha pra mesma empresa no mês (sinal de que não veio contada), os campos dele ficam null em todas as linhas e
-    o bloco vai pro `faltou`.
+    o bloco vai pro `faltou`. No `andamento` e no `encerramento`, o mesmo: a lista sai vazia e o bloco vai pro
+    `faltou` (o sistema não mexe no que tinha deles).
   - `dados_ate` é o dia da rodada: o banco do Domínio Web é o de produção, ao vivo (02/11/2026 — o plano era uma
     cópia do dia anterior, e a ponte usava ontem); as horas, com o fuso do PC.
 """
@@ -34,9 +45,10 @@ import uuid
 from decimal import Decimal, InvalidOperation
 
 from . import VERSAO
-from .fonte import (BLOCOS, CAMPOS_DATA, CAMPOS_INTEIROS, CAMPOS_MES, CAMPOS_VALOR, ConsultaAConferir)
+from .fonte import (ANOS_ENCERRAMENTO, BLOCOS, CAMPOS_ANDAMENTO, CAMPOS_DATA, CAMPOS_ENCERRAMENTO, CAMPOS_INTEIROS,
+                    CAMPOS_MES, CAMPOS_VALOR, ConsultaAConferir)
 
-VERSAO_PACOTE = 2
+VERSAO_PACOTE = 3
 ORDEM_MENSAL = ('codigo', 'competencia') + tuple(c for b in BLOCOS for c in CAMPOS_MES[b])
 
 
@@ -232,12 +244,72 @@ def ler(fonte, comps, registro):
     return empresas, [{c: l[c] for c in ORDEM_MENSAL} for l in ordenadas], faltou
 
 
+def _ler_lista(fonte, bloco, chamadas, campos, codigos, registro):
+    """Um bloco que não é do mês (a foto do dia, o encerramento): `chamadas` é a lista de (argumento, extra) — o
+    argumento vai pra fonte e o extra (ex.: {'ano': 2025}) entra em cada linha. Devolve (linhas, motivo): com motivo,
+    o bloco fica de fora inteiro."""
+    linhas, vistas = [], set()
+    sem_empresa = estranhos = 0
+    try:
+        for arg, extra in chamadas:
+            for bruta in getattr(fonte, bloco)(arg):
+                linha = _minusculas(bruta)
+                codigo = _inteiro(linha.get('codigo'))
+                if codigo not in codigos:
+                    sem_empresa += 1
+                    continue
+                chave = (codigo,) + tuple(extra.values())
+                if chave in vistas:
+                    return [], 'mais de uma linha por empresa (a consulta não veio contada)'
+                vistas.add(chave)
+                saida = {'codigo': codigo, **extra}
+                for c in campos:
+                    v = linha.get(c)
+                    saida[c] = _converter(c, v)
+                    if saida[c] is None and v is not None:
+                        estranhos += 1
+                linhas.append(saida)
+    except ConsultaAConferir:
+        return [], 'consulta a conferir'
+    except Exception as e:   # erro do banco/driver: o bloco fica de fora, o resto segue
+        registro(f'bloco {bloco}: a consulta deu erro ({type(e).__name__}: {e})', 'erro')
+        return [], 'erro na consulta'
+    if sem_empresa:
+        registro(f'bloco {bloco}: {sem_empresa} linha(s) de empresa que não está na lista de empresas ficaram de fora', 'aviso')
+    if estranhos:
+        registro(f'bloco {bloco}: {estranhos} valor(es) que não deu pra entender foram em branco (null)', 'aviso')
+    linhas.sort(key=lambda l: (l.get('ano', 0), l['codigo']))
+    return linhas, None
+
+
+def ler_fotos(fonte, dados_ate, codigos, registro):
+    """A foto do dia (o mês de hoje) e o encerramento dos ANOS_ENCERRAMENTO anos antes do de hoje.
+    Devolve (andamento, encerramento, faltou)."""
+    faltou = []
+    mes = f'{dados_ate.year:04d}-{dados_ate.month:02d}'
+    andamento, motivo = _ler_lista(fonte, 'andamento', [(mes, {})], CAMPOS_ANDAMENTO, codigos, registro)
+    if motivo:
+        faltou.append({'bloco': 'andamento', 'motivo': motivo})
+        if motivo != 'consulta a conferir':
+            registro(f'bloco andamento ficou de fora: {motivo}', 'aviso')
+    anos = [dados_ate.year - n for n in range(ANOS_ENCERRAMENTO, 0, -1)]
+    encerramento, motivo = _ler_lista(fonte, 'encerramento', [(a, {'ano': a}) for a in anos], CAMPOS_ENCERRAMENTO,
+                                      codigos, registro)
+    if motivo:
+        faltou.append({'bloco': 'encerramento', 'motivo': motivo})
+        if motivo != 'consulta a conferir':
+            registro(f'bloco encerramento ficou de fora: {motivo}', 'aviso')
+    return andamento, encerramento, faltou
+
+
 def montar(fonte, meses, registro, inicio=None, dados_ate=None):
     """O pacote inteiro, pronto pra virar JSON."""
     inicio = inicio or agora()
     dados_ate = dados_ate or hoje()
     comps = competencias(dados_ate, meses)
     empresas, mensal, faltou = ler(fonte, comps, registro)
+    andamento, encerramento, faltou_fotos = ler_fotos(fonte, dados_ate, {e['codigo'] for e in empresas}, registro)
+    faltou = faltou + faltou_fotos
     return {
         'versao': VERSAO_PACOTE,
         'rodada': {
@@ -250,6 +322,8 @@ def montar(fonte, meses, registro, inicio=None, dados_ate=None):
         },
         'empresas': empresas,
         'mensal': mensal,
+        'andamento': andamento,
+        'encerramento': encerramento,
         'faltou': faltou,
     }
 
@@ -261,6 +335,11 @@ def resumo(pacote):
              f"{len(pacote['mensal'])} linha(s) mensal(is)")
     if comps:
         texto += f' de {comps[0]} a {comps[-1]}'
+    if pacote.get('andamento'):
+        texto += f"; o andamento de {len(pacote['andamento'])} empresa(s)"
+    anos = sorted({l['ano'] for l in pacote.get('encerramento') or []})
+    if anos:
+        texto += f"; o encerramento de {' e '.join(str(a) for a in anos)}"
     if pacote['faltou']:
         texto += '; faltou: ' + ', '.join(f"{f['bloco']} ({f['motivo']})" for f in pacote['faltou'])
     return texto

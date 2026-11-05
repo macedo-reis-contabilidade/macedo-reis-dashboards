@@ -14,11 +14,17 @@
 // mês; a inativa sem folha fica null: o Domínio não diz). O bloco do `faltou` segue null e não apaga o que já estava
 // gravado (blocos_ok vai pro banco). Nos blocos da versão 2: no faturamento, o null vira 0 só na receita pelas notas
 // (receita_bruta, receita_mercadorias, receita_servicos, devolucoes) — o que é da apuração do Simples segue null na
-// empresa que não apura; nas compras, em toda empresa; na folha em reais, só na empresa ativa, como a folha.
+// empresa sem apuração; nas compras, em toda empresa; na folha em reais, só na empresa ativa, como a folha.
+// A versão 3 (05/11/2026): o andamento das contabilidades. Por mês, os lançamentos por origem (origens), a receita, a
+// folha e os encargos lançados (cruzamentos) e os saldos estranhos no fim do mês (saldos) — o vazio deles vira 0 em
+// toda empresa, menos o incluido_ate —; e duas listas fora do mês: `andamento` (a foto do dia, uma linha por empresa:
+// até onde o banco, o extrato e o caixa estão lançados e a data do fechamento) e `encerramento` (o zeramento de cada
+// empresa nos anos lidos). Um item delas fora do contrato fica de fora sozinho (volta em `recusadas`); o bloco que veio
+// no `faltou` não mexe no que o banco tinha.
 // Sem import: testes no node em tests/ponte-funcao.test.mjs.
 // ============================================================
 
-export const LIMITES_DOMINIO = { empresas: 5000, mensal: 60000, faltou: 20, meses: 36, recusadas: 50 };
+export const LIMITES_DOMINIO = { empresas: 5000, mensal: 60000, andamento: 5000, encerramento: 20000, anos: 5, faltou: 20, meses: 36, recusadas: 50 };
 export const BLOCOS_DOMINIO = {
   folha: ['funcionarios_ativos', 'admissoes', 'desligamentos', 'afastados', 'pro_labore'],
   fiscal: ['notas_saida', 'valor_saidas', 'notas_entrada', 'valor_entradas'],
@@ -29,17 +35,36 @@ export const BLOCOS_DOMINIO = {
     'receita_anexo_2', 'receita_anexo_3', 'receita_anexo_4', 'receita_anexo_5', 'rbt12', 'meses_rbt12'],
   compras: ['compras', 'compras_st', 'servicos_tomados', 'ativo_e_consumo', 'devolucoes_de_venda', 'outras_entradas'],
   folha_valores: ['salarios', 'ferias', 'rescisoes', 'decimo_terceiro', 'pro_labore_valor', 'base_inss', 'base_fgts',
-    'fgts', 'inss_empresa', 'inss_rat', 'inss_terceiros']
+    'fgts', 'inss_empresa', 'inss_rat', 'inss_terceiros'],
+  // a versão 3 (05/11/2026)
+  origens: ['lanc_normais', 'lanc_extrato', 'lanc_fiscal', 'lanc_folha', 'lanc_apuracao', 'lanc_outros', 'incluido_ate'],
+  cruzamentos: ['receita_lancada', 'folha_lancada', 'encargos_lancados'],
+  saldos: ['caixa_negativo', 'contra_natureza', 'sem_natureza', 'transitorias', 'transitorias_valor']
 };
+// as listas fora do mês (a versão 3): a foto do dia e o encerramento de cada ano
+export const CAMPOS_ANDAMENTO = ['banco_contas', 'banco_ate', 'banco_ultimo', 'banco_ultimo_geral', 'caixa_ate',
+  'caixa_contador_ate', 'extrato_contas', 'extrato_ate', 'extrato_pendentes', 'conciliadas', 'conciliado_ate', 'fechamento_em'];
+export const CAMPOS_ENCERRAMENTO = ['zerado_em', 'zeramentos', 'zerado_incluido_em', 'lancados_depois', 'lancamentos_do_ano'];
+const BLOCOS_FOTO = ['andamento', 'encerramento'];
 // os blocos de cada versão do pacote
-export const BLOCOS_DA_VERSAO = { 1: ['folha', 'fiscal', 'contabil'], 2: Object.keys(BLOCOS_DOMINIO) };
-const INTEIROS = new Set(['funcionarios_ativos', 'admissoes', 'desligamentos', 'afastados', 'pro_labore', 'notas_saida', 'notas_entrada', 'lancamentos', 'meses_rbt12']);
-const VALORES = new Set(['valor_saidas', 'valor_entradas',
+export const BLOCOS_DA_VERSAO = {
+  1: ['folha', 'fiscal', 'contabil'],
+  2: ['folha', 'fiscal', 'contabil', 'faturamento', 'compras', 'folha_valores'],
+  3: [...Object.keys(BLOCOS_DOMINIO), ...BLOCOS_FOTO]
+};
+const TODOS_OS_BLOCOS = [...Object.keys(BLOCOS_DOMINIO), ...BLOCOS_FOTO];
+const INTEIROS = new Set(['funcionarios_ativos', 'admissoes', 'desligamentos', 'afastados', 'pro_labore', 'notas_saida', 'notas_entrada', 'lancamentos', 'meses_rbt12',
+  'lanc_normais', 'lanc_extrato', 'lanc_fiscal', 'lanc_folha', 'lanc_apuracao', 'lanc_outros',
+  'caixa_negativo', 'contra_natureza', 'sem_natureza', 'transitorias',
+  'banco_contas', 'extrato_contas', 'extrato_pendentes', 'conciliadas', 'zeramentos', 'lancados_depois', 'lancamentos_do_ano']);
+const VALORES = new Set(['valor_saidas', 'valor_entradas', 'receita_lancada', 'folha_lancada', 'encargos_lancados', 'transitorias_valor',
   ...['faturamento', 'compras', 'folha_valores'].flatMap(b => BLOCOS_DOMINIO[b]).filter(c => c !== 'meses_rbt12')]);
 // o vazio de um bloco lido inteiro: o que vira 0 em toda empresa (o resto do bloco segue null)
 const ZERO_EM_TODA = {
   fiscal: BLOCOS_DOMINIO.fiscal, contabil: ['lancamentos'],
-  faturamento: ['receita_bruta', 'receita_mercadorias', 'receita_servicos', 'devolucoes'], compras: BLOCOS_DOMINIO.compras
+  faturamento: ['receita_bruta', 'receita_mercadorias', 'receita_servicos', 'devolucoes'], compras: BLOCOS_DOMINIO.compras,
+  origens: BLOCOS_DOMINIO.origens.filter(c => c !== 'incluido_ate'), cruzamentos: BLOCOS_DOMINIO.cruzamentos,
+  saldos: BLOCOS_DOMINIO.saldos
 };
 // … e o que vira 0 só na empresa ativa no Domínio (a inativa sem folha: o Domínio não diz)
 const ZERO_NA_ATIVA = { folha: BLOCOS_DOMINIO.folha, folha_valores: BLOCOS_DOMINIO.folha_valores };
@@ -97,9 +122,17 @@ const objeto = (v, campo) => {
 };
 // quantos meses do mês `b` até o `a` ('AAAA-MM'): positivo = `a` depois
 const mesesEntre = (a, b) => { const [ya, ma] = a.split('-').map(Number), [yb, mb] = b.split('-').map(Number); return (ya - yb) * 12 + (ma - mb); };
+// as datas que não são do mês da linha (o dia em que entrou no Domínio, a foto do dia, o fechamento, o zeramento): de
+// 1990 até o fim do ano depois do de dados_ate — o que cai fora disso é lixo e fica de fora
+const DATA_MIN = '1990-01-01';
+const dataLarga = (v, campo, dadosAte) => {
+  const d = dataDe(v, campo);
+  if (d && (d < DATA_MIN || d > (+dadosAte.slice(0, 4) + 1) + '-12-31')) recusar(campo, 'data fora de 1990 até o ano que vem');
+  return d;
+};
 
 // uma linha do mês: o que o contrato prevê, conferido (fora dele, Recusa com o campo)
-function linhaDoMes(l, onde, ateMes, blocos) {
+function linhaDoMes(l, onde, ateMes, blocos, dadosAte) {
   objeto(l, onde);
   const codigo = l.codigo;
   if (typeof codigo !== 'number' || !Number.isInteger(codigo) || codigo <= 0) recusar(onde + '.codigo', 'código que não é um inteiro positivo');
@@ -118,23 +151,44 @@ function linhaDoMes(l, onde, ateMes, blocos) {
         if (c === 'meses_rbt12' && saida[c] != null && saida[c] > 12) recusar(onde + '.' + c, 'meses do RBT12 acima de 12');
       }
       else if (VALORES.has(c)) saida[c] = valorDe(v, onde + '.' + c);
-      else {
+      else if (c === 'ultimo_lancamento') {
         const d = dataDe(v, onde + '.' + c);
         if (d && d.slice(0, 7) !== competencia) recusar(onde + '.' + c, 'último lançamento fora do mês da linha');
         saida[c] = d;
       }
+      else saida[c] = dataLarga(v, onde + '.' + c, dadosAte);
     }
   }
   return saida;
 }
 
+// um item da foto do dia: o código e os campos do contrato
+function itemDoAndamento(a, onde, dadosAte) {
+  objeto(a, onde);
+  if (typeof a.codigo !== 'number' || !Number.isInteger(a.codigo) || a.codigo <= 0) recusar(onde + '.codigo', 'código que não é um inteiro positivo');
+  const saida = { codigo: a.codigo };
+  for (const c of CAMPOS_ANDAMENTO) saida[c] = INTEIROS.has(c) ? inteiroDe(a[c], onde + '.' + c) : dataLarga(a[c], onde + '.' + c, dadosAte);
+  return saida;
+}
+// um item do encerramento: o código, o ano (dos LIMITES_DOMINIO.anos até o de dados_ate) e o zeramento dentro do ano
+function itemDoEncerramento(z, onde, dadosAte) {
+  objeto(z, onde);
+  if (typeof z.codigo !== 'number' || !Number.isInteger(z.codigo) || z.codigo <= 0) recusar(onde + '.codigo', 'código que não é um inteiro positivo');
+  const anoHoje = +dadosAte.slice(0, 4);
+  if (typeof z.ano !== 'number' || !Number.isInteger(z.ano) || z.ano > anoHoje || z.ano < anoHoje - LIMITES_DOMINIO.anos) recusar(onde + '.ano', 'ano fora dos ' + LIMITES_DOMINIO.anos + ' anos até o de dados_ate');
+  const saida = { codigo: z.codigo, ano: z.ano };
+  for (const c of CAMPOS_ENCERRAMENTO) saida[c] = INTEIROS.has(c) ? inteiroDe(z[c], onde + '.' + c) : dataLarga(z[c], onde + '.' + c, dadosAte);
+  if (saida.zerado_em && saida.zerado_em.slice(0, 4) !== String(z.ano)) recusar(onde + '.zerado_em', 'zeramento fora do ano do item');
+  return saida;
+}
+
 // validarPacoteDominio(corpo) → { ok: true, pacote, recusadas } | { ok: false, erro, campo }
-// pacote = { versao, rodada, empresas, mensal, faltou, blocos_ok } — o que vai pra dominio_gravar (blocos_ok com os seis
-// blocos: o que a versão do pacote não tem vai falso, e o banco não mexe nele)
+// pacote = { versao, rodada, empresas, mensal, andamento, encerramento, faltou, blocos_ok } — o que vai pra dominio_gravar
+// (blocos_ok com todos os blocos: o que a versão do pacote não tem vai falso, e o banco não mexe nele)
 export function validarPacoteDominio(corpo) {
   try {
     objeto(corpo, 'pacote');
-    if (![1, 2].includes(corpo.versao)) recusar('versao', 'versão desconhecida (esta função lê a 1 e a 2)');
+    if (![1, 2, 3].includes(corpo.versao)) recusar('versao', 'versão desconhecida (esta função lê a 1, a 2 e a 3)');
     const blocos = BLOCOS_DA_VERSAO[corpo.versao];
     const r = objeto(corpo.rodada, 'rodada');
     const id = String(r.id || '');
@@ -146,13 +200,13 @@ export function validarPacoteDominio(corpo) {
       dados_ate: dadosAte, maquina: texto(r.maquina, 100), ponte: texto(r.ponte, 20)
     };
 
-    // o que faltou: só os blocos do mês da versão (a de empresas, sem ela a ponte nem manda)
+    // o que faltou: só os blocos da versão (a de empresas, sem ela a ponte nem manda)
     const faltou = lista(corpo.faltou == null ? [] : corpo.faltou, LIMITES_DOMINIO.faltou, 'faltou').map((f, i) => {
       objeto(f, 'faltou[' + i + ']');
       if (!blocos.includes(f.bloco)) recusar('faltou[' + i + '].bloco', 'tem que ser um destes: ' + blocos.join(', '));
       return { bloco: f.bloco, motivo: texto(f.motivo, 200) };
     });
-    const blocosOk = Object.fromEntries(Object.keys(BLOCOS_DOMINIO).map(b => [b, blocos.includes(b) && !faltou.some(f => f.bloco === b)]));
+    const blocosOk = Object.fromEntries(TODOS_OS_BLOCOS.map(b => [b, blocos.includes(b) && !faltou.some(f => f.bloco === b)]));
 
     // as empresas: o código do Domínio é a chave (repetido, fica o primeiro)
     const empresas = [], ativa = new Map();
@@ -181,7 +235,7 @@ export function validarPacoteDominio(corpo) {
     };
     lista(corpo.mensal, LIMITES_DOMINIO.mensal, 'mensal').forEach((l, i) => {
       let linha;
-      try { linha = linhaDoMes(l, 'mensal[' + i + ']', ateMes, blocos); } catch (e) {
+      try { linha = linhaDoMes(l, 'mensal[' + i + ']', ateMes, blocos, dadosAte); } catch (e) {
         if (!(e instanceof Recusa)) throw e;
         anotar(l, e.campo, e.message); return;
       }
@@ -199,9 +253,31 @@ export function validarPacoteDominio(corpo) {
       mensal.push(linha);
     });
 
+    // a foto do dia e o encerramento (a versão 3): o item fora do contrato, de empresa que não está na lista ou repetido
+    // fica de fora sozinho; o bloco que não foi lido (versão antiga ou no faltou) vai vazio, e o banco não mexe nele
+    const lerLista = (bloco, chave, item) => {
+      if (!blocosOk[bloco]) return [];
+      const saida = [], vistos = new Set();
+      lista(corpo[bloco] == null ? [] : corpo[bloco], LIMITES_DOMINIO[bloco], bloco).forEach((x, i) => {
+        let it;
+        try { it = item(x, bloco + '[' + i + ']', dadosAte); } catch (e) {
+          if (!(e instanceof Recusa)) throw e;
+          anotar(x && typeof x === 'object' ? { codigo: x.codigo } : null, e.campo, e.message); return;
+        }
+        if (!ativa.has(it.codigo)) { anotar(it, bloco + '[' + i + '].codigo', 'empresa que não está na lista de empresas'); return; }
+        const k = chave(it);
+        if (vistos.has(k)) { anotar(it, bloco + '[' + i + ']', 'item repetido'); return; }
+        vistos.add(k);
+        saida.push(it);
+      });
+      return saida;
+    };
+    const andamento = lerLista('andamento', it => it.codigo, itemDoAndamento);
+    const encerramento = lerLista('encerramento', it => it.codigo + '|' + it.ano, itemDoEncerramento);
+
     return {
       ok: true,
-      pacote: { versao: corpo.versao, rodada, empresas, mensal, faltou, blocos_ok: blocosOk },
+      pacote: { versao: corpo.versao, rodada, empresas, mensal, andamento, encerramento, faltou, blocos_ok: blocosOk },
       recusadas, linhas_recusadas: foraDaLista
     };
   } catch (e) {

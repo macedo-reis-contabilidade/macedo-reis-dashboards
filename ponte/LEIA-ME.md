@@ -154,11 +154,24 @@ a monofásica, a exportação e cada anexo; as compras, pelo CFOP; a folha em re
 rateio por serviço repete o cálculo), o 13º, o pró-labore, as bases e as guias do FGTS e do INSS. A versão 2 diz ao
 sistema que esses três blocos foram lidos; a versão 1 (a ponte antiga) não mexe neles lá.
 
+**O andamento das contabilidades** (a versão 3 do pacote, 05/11/2026, ponte 0.3.0): as consultas que a fila de 04/11
+escreveu e conferiu no Domínio (o plano de contas, as origens, o extrato e os números do escritório inteiro em
+`docs/FILA-CODE-2026-11-04-CONTABIL-DUVIDAS.md`). Por mês: `origens.sql` (os lançamentos por origem — o do contador, o
+extrato importado, a escrita fiscal, a folha, a apuração — e o dia em que o último entrou), `cruzamentos.sql` (a
+receita, a folha e os encargos lançados, pra cruzar com o faturamento e a folha) e `saldos.sql` (o caixa negativo, as
+contas contra a natureza e as transitórias com saldo no último dia do mês; 7 segundos por mês, a parte cara). Uma vez
+por rodada: `andamento.sql` (a foto do dia: até onde o banco, o extrato e o caixa estão lançados e a data do
+fechamento dos parâmetros; uns 19 segundos) e `encerramento.sql` (o zeramento de cada um dos dois anos antes do de
+hoje). O caixa e os bancos saem pela classificação do plano modelo (1.1.1.01 e 1.1.1.02); a descrição das contas só
+entra em filtro, nunca sai. A rodada de 14 meses fica uns 3 minutos mais longa.
+
 As consultas ficam em `ponte\consultas\` (`empresas.sql`, `folha.sql`, `fiscal.sql`, `contabil.sql`,
-`faturamento.sql`, `compras.sql`, `folha_valores.sql`). Enquanto a
+`faturamento.sql`, `compras.sql`, `folha_valores.sql`, `origens.sql`, `cruzamentos.sql`, `saldos.sql`, `andamento.sql`,
+`encerramento.sql`). Enquanto a
 consulta tiver a linha `-- A CONFERIR`, ela não roda: o bloco vai pro `faltou` do pacote, e sem a de empresas a
 rodada não manda nada. O que cada uma recebe e devolve está no começo de `ponte\fonte_dominio.py` (as do mês recebem
-o primeiro e o último dia do mês, nessa ordem, e devolvem **uma linha por empresa, já contada**).
+o primeiro e o último dia do mês, nessa ordem, e devolvem **uma linha por empresa, já contada**; o `andamento.sql`, os
+do mês de hoje; o `encerramento.sql`, o 1º de janeiro e o 31 de dezembro do ano).
 
 1. Ache as tabelas com o `dominio tabelas` e entenda os dados com o `dominio sql` (contagens, mínimos e máximos de
    datas, os valores de um campo de situação com `GROUP BY`).

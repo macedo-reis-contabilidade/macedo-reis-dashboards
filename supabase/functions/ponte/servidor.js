@@ -15,7 +15,10 @@
 //                                                              (dominio.js); a linha de um mês fora do contrato fica
 //                                                              de fora sozinha e volta em `recusadas` (02/11/2026);
 //                                                              versão 1, ou 2 com o faturamento, as compras e a
-//                                                              folha em reais (05/11/2026)
+//                                                              folha em reais (05/11/2026), ou 3 com o andamento das
+//                                                              contabilidades (também 05/11/2026: os lançamentos por
+//                                                              origem, os cruzamentos, os saldos, a foto do dia e o
+//                                                              encerramento)
 //   { versao: 1, tipo: 'notas', pedir: 'autorizadas' }       → as empresas cujo cliente autorizou mandar as notas de
 //                                                              entrada (compartilhamentos), pelo código do Domínio
 //   { versao: 1, tipo: 'notas', rodada, empresa, notas }     → as notas de uma empresa, conferidas (notas.js) e mandadas
@@ -136,16 +139,26 @@ async function encaminharNotas(db, v, hoje, agora, enviar) {
 // valores em reais, passou dos 5 MB e voltou 413): a primeira parte leva as empresas (que as linhas de mês precisam), as
 // outras só as linhas; a rodada nasce na primeira (o banco não a repete: on conflict do nothing) e, no fim, fica com o
 // total de linhas. Uma parte que falha devolve o erro (5xx: a ponte manda de novo, e o banco troca pelos mesmos números).
+// A foto do dia e o encerramento (a versão 3) vão só na primeira parte; nas outras, as listas vazias e as marcas deles
+// falsas — o banco apaga da foto a empresa que não veio, e uma parte sem a foto não pode parecer uma foto vazia.
 export const LINHAS_POR_PARTE = 800;
 export async function gravarDominio(db, p) {
-  const total = { empresas: 0, ligadas: 0, sem_cadastro: 0, linhas: 0 };
+  const total = { empresas: 0, ligadas: 0, sem_cadastro: 0, linhas: 0, andamento: 0, encerramento: 0 };
   const n = Math.max(1, Math.ceil(p.mensal.length / LINHAS_POR_PARTE));
   for (let i = 0; i < n; i++) {
-    const parte = { ...p, empresas: i === 0 ? p.empresas : [], mensal: p.mensal.slice(i * LINHAS_POR_PARTE, (i + 1) * LINHAS_POR_PARTE) };
+    const primeira = i === 0;
+    const parte = {
+      ...p,
+      empresas: primeira ? p.empresas : [],
+      andamento: primeira ? (p.andamento || []) : [],
+      encerramento: primeira ? (p.encerramento || []) : [],
+      blocos_ok: primeira ? p.blocos_ok : { ...p.blocos_ok, andamento: false, encerramento: false },
+      mensal: p.mensal.slice(i * LINHAS_POR_PARTE, (i + 1) * LINHAS_POR_PARTE)
+    };
     const { data, error } = await db.rpc('dominio_gravar', { p: parte });
     if (error) throw error;
     const d = data || {};
-    if (i === 0) Object.assign(total, { empresas: d.empresas || 0, ligadas: d.ligadas || 0, sem_cadastro: d.sem_cadastro || 0 });
+    if (primeira) Object.assign(total, { empresas: d.empresas || 0, ligadas: d.ligadas || 0, sem_cadastro: d.sem_cadastro || 0, andamento: d.andamento || 0, encerramento: d.encerramento || 0 });
     total.linhas += d.linhas || 0;
   }
   if (n > 1) {
@@ -172,9 +185,10 @@ export function criarServidor({ criarDb, agora = () => Date.now(), enviar = (url
     let corpo;
     try { corpo = JSON.parse(bruto); } catch { return resposta({ erro: 'O corpo não é um JSON.' }, 400); }
     if (!corpo || typeof corpo !== 'object' || Array.isArray(corpo)) return resposta({ erro: 'O corpo não é um objeto.' }, 400);
-    // a versão 2 é só do pacote do Domínio (05/11/2026: o faturamento, as compras e a folha em reais); o resto lê a 1
+    // as versões 2 e 3 são só do pacote do Domínio (05/11/2026: o faturamento, as compras e a folha em reais; o
+    // andamento das contabilidades); o resto lê a 1
     const doDominio = corpo.tipo == null && Array.isArray(corpo.mensal);
-    if (corpo.versao !== 1 && !(doDominio && corpo.versao === 2)) return resposta({ erro: 'Versão do pacote desconhecida (esta função lê a 1; o pacote do Domínio, também a 2).' }, 422);
+    if (corpo.versao !== 1 && !(doDominio && (corpo.versao === 2 || corpo.versao === 3))) return resposta({ erro: 'Versão do pacote desconhecida (esta função lê a 1; o pacote do Domínio, também a 2 e a 3).' }, 422);
     try {
       if (corpo.ping === true) return resposta({ ok: true, ponte: 'ok' });
       if (corpo.tipo === 'receita' && corpo.pedir === 'empresas') {

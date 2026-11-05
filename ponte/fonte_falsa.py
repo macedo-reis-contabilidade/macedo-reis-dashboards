@@ -7,6 +7,10 @@ Os CNPJs têm o dígito verificador errado de propósito (não batem com empresa
     102  sem funcionário (0 de verdade, não em branco) e sem nota nos meses ímpares
     103  inativa e sem nada no mês: tudo em branco no pacote
     104  documento com pontuação (sai sem) e sem contabilidade lançada
+Desde a versão 3 (05/11/2026), o andamento das contabilidades: a 101 com dois bancos, extrato e o zeramento, a 102 sem
+banco há anos, com o caixa negativo, uma transitória com saldo e o pró-labore fora da contabilidade; a 103 só na foto,
+sem nada. Os campos a mais que uma consulta mal escrita traria (o usuário que lançou, o nome da conta e o do banco) têm
+que ficar no PC.
 """
 import calendar
 import datetime
@@ -122,4 +126,72 @@ class FonteFalsa(Fonte):
             {'codigo': 104, 'salarios': 4600, 'ferias': 0, 'rescisoes': 2300 if m == 9 else 0, 'decimo_terceiro': 0,
              'pro_labore_valor': 3000, 'base_inss': 4400, 'base_fgts': 4400, 'fgts': 352,
              'inss_empresa': 880, 'inss_rat': 88, 'inss_terceiros': 255.2},
+        ]
+
+    # desde a versão 3 do pacote (05/11/2026): o andamento das contabilidades
+    def origens(self, mes):
+        ano, m = _ano_mes(mes)
+        ontem = datetime.date.today() - datetime.timedelta(days=1)
+        fim = datetime.date(ano, m, calendar.monthrange(ano, m)[1])
+        return [
+            {'codigo': 101, 'lanc_normais': 4, 'lanc_extrato': 25, 'lanc_fiscal': 340 + m, 'lanc_folha': 15,
+             'lanc_apuracao': 3, 'lanc_outros': 1, 'incluido_ate': min(fim + datetime.timedelta(days=5), ontem),
+             # o que uma consulta mal escrita devolveria — não pode sair deste PC
+             'usuario': 'FULANO (INVENTADO)'},
+            {'codigo': 102, 'lanc_normais': 1, 'lanc_extrato': 0, 'lanc_fiscal': 30 if m % 2 == 0 else 0, 'lanc_folha': 0,
+             'lanc_apuracao': 0, 'lanc_outros': 0,
+             'incluido_ate': datetime.datetime(min(fim, ontem).year, min(fim, ontem).month, min(fim, ontem).day, 18, 5)},
+        ]
+
+    def cruzamentos(self, mes):
+        _, m = _ano_mes(mes)
+        linhas = [
+            # 101: a receita e a folha lançadas batem com o faturamento e a folha
+            {'codigo': 101, 'receita_lancada': Decimal('80000.00') + m,
+             'folha_lancada': Decimal('20800.00') + m + (Decimal('12500.00') if m == 12 else 0),
+             'encargos_lancados': Decimal('1128.00')},
+        ]
+        if m % 2 == 0:   # 102: a receita lançada; o pró-labore (1518) ficou fora da contabilidade
+            linhas.append({'codigo': 102, 'receita_lancada': 7300.4, 'folha_lancada': 0, 'encargos_lancados': 0})
+        return linhas
+
+    def saldos(self, mes):
+        return [
+            {'codigo': 101, 'caixa_negativo': 0, 'contra_natureza': 2, 'sem_natureza': 0, 'transitorias': 0,
+             'transitorias_valor': 0,
+             # o que uma consulta mal escrita devolveria — não pode sair deste PC
+             'nome_conta': 'EMPRESTIMO DO SOCIO FULANO (INVENTADO)'},
+            {'codigo': 102, 'caixa_negativo': 1, 'contra_natureza': 0, 'sem_natureza': 1, 'transitorias': 1,
+             'transitorias_valor': Decimal('350.75')},
+        ]
+
+    def andamento(self, mes):
+        ano, m = _ano_mes(mes)
+        ini = datetime.date(ano, m, 1)
+        ontem = datetime.date.today() - datetime.timedelta(days=1)
+        return [
+            {'codigo': 101, 'banco_contas': 2, 'banco_ate': ini - datetime.timedelta(days=40),
+             'banco_ultimo': ini - datetime.timedelta(days=5), 'banco_ultimo_geral': ini - datetime.timedelta(days=5),
+             'caixa_ate': ontem, 'caixa_contador_ate': ini - datetime.timedelta(days=20), 'extrato_contas': 1,
+             'extrato_ate': ini - datetime.timedelta(days=5), 'extrato_pendentes': 4, 'conciliadas': 1,
+             'conciliado_ate': ini - datetime.timedelta(days=40), 'fechamento_em': datetime.date(ano - 1, 12, 31),
+             # o que uma consulta mal escrita devolveria — não pode sair deste PC
+             'nome_banco': 'BANCO DO FULANO AG 0001 CC 12345 (INVENTADO)'},
+            {'codigo': 102, 'banco_contas': 0, 'banco_ate': None, 'banco_ultimo': None,
+             'banco_ultimo_geral': datetime.date(ano - 2, 6, 30), 'caixa_ate': ontem, 'caixa_contador_ate': None,
+             'extrato_contas': 0, 'extrato_ate': None, 'extrato_pendentes': 0, 'conciliadas': 0, 'conciliado_ate': None,
+             'fechamento_em': None},
+            {'codigo': 103, 'banco_contas': 0, 'banco_ate': None, 'banco_ultimo': None, 'banco_ultimo_geral': None,
+             'caixa_ate': None, 'caixa_contador_ate': None, 'extrato_contas': 0, 'extrato_ate': None,
+             'extrato_pendentes': 0, 'conciliadas': 0, 'conciliado_ate': None, 'fechamento_em': None},
+        ]
+
+    def encerramento(self, ano):
+        ontem = datetime.date.today() - datetime.timedelta(days=1)
+        return [
+            {'codigo': 101, 'zerado_em': datetime.date(ano, 12, 31), 'zeramentos': 1,
+             'zerado_incluido_em': min(datetime.date(ano + 1, 3, 10), ontem), 'lancados_depois': 12,
+             'lancamentos_do_ano': 4300},
+            {'codigo': 102, 'zerado_em': None, 'zeramentos': 0, 'zerado_incluido_em': None, 'lancados_depois': None,
+             'lancamentos_do_ano': 420},
         ]

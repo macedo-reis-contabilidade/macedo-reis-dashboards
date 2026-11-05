@@ -1,4 +1,4 @@
--- contabil_saldos.sql (RASCUNHO: a ponte não lê esta pasta): por empresa, os saldos estranhos do balancete no último
+-- saldos.sql (versão 3 do pacote, 05/11/2026; o rascunho da fila de 04/11): por empresa, os saldos estranhos do balancete no último
 -- dia do mês. Os dois parâmetros são o primeiro e o último dia do mês, como nas outras consultas da ponte — só o
 -- último é usado. Tabelas: bethadba.ctlancto ("Lancamentos Contabeis": cdeb_lan, ccre_lan, vlor_lan, data_lan, com o
 -- plano da CODI_EMP_PLANO), bethadba.ctcontas ("Contas Contabeis - Cadastro": clas_cta, tipo_cta e, só nos filtros,

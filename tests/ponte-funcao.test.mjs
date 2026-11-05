@@ -255,7 +255,7 @@ chk('a folha em reais vazia: 0 na empresa ativa, null na inativa (como a folha)'
     && r2.pacote.mensal.every(l => l.receita_bruta === null && l.compras === null && l.salarios === null), r2);
 }
 chk('na versão 1, bloco novo no faltou recusa o pacote (ela não tem esse bloco)', !!recusaD(p => { p.faltou = [{ bloco: 'compras', motivo: 'x' }]; }, 'faltou[0].bloco'));
-chk('versão 3 recusa o pacote', !!recusaD(p => { p.versao = 3; }, 'versao'));
+chk('versão 4 recusa o pacote', !!recusaD(p => { p.versao = 4; }, 'versao'));
 {
   const p = DOMINIO2();
   p.mensal.push({ codigo: 12, competencia: '2026-09', meses_rbt12: 2.5 });
@@ -273,6 +273,98 @@ chk('versão 3 recusa o pacote', !!recusaD(p => { p.versao = 3; }, 'versao'));
   const r2 = validarPacoteDominio(p);
   chk('receita bruta negativa (mais devolução que venda no mês) entra como veio',
     r2.ok && r2.pacote.mensal.find(l => l.codigo === 12 && l.competencia === '2026-10').receita_bruta === -350.25, r2);
+}
+
+console.log('O pacote do Domínio, versão 3 (05/11/2026: o andamento das contabilidades):');
+// a versão 3: a 10 com os lançamentos por origem, os cruzamentos e os saldos em 2026-10 (nada em 2026-11); a foto do dia
+// da 10 e da 11; o encerramento de 2024 e 2025 da 10
+function DOMINIO3() {
+  const p = DOMINIO2();
+  p.versao = 3;
+  Object.assign(p.mensal.find(x => x.codigo === 10 && x.competencia === '2026-10'), {
+    lanc_normais: 4, lanc_extrato: 25, lanc_fiscal: 340, lanc_folha: 15, lanc_apuracao: 3, lanc_outros: 1,
+    incluido_ate: '2026-11-03', receita_lancada: 80211.504, folha_lancada: 20800, encargos_lancados: 1128,
+    caixa_negativo: 0, contra_natureza: 2, sem_natureza: 0, transitorias: 1, transitorias_valor: 350.75, usuario: 'FULANO'
+  });
+  p.andamento = [
+    { codigo: 10, banco_contas: 2, banco_ate: '2026-08-31', banco_ultimo: '2026-09-30', banco_ultimo_geral: '2026-09-30',
+      caixa_ate: '2026-10-31', caixa_contador_ate: '2026-09-15', extrato_contas: 1, extrato_ate: '2026-09-30', extrato_pendentes: 3,
+      conciliadas: 1, conciliado_ate: '2026-08-31', fechamento_em: '2025-12-31', nome_banco: 'BANCO DO FULANO' },
+    { codigo: 11, banco_contas: 0, banco_ate: null, banco_ultimo: null, banco_ultimo_geral: '2023-05-31', caixa_ate: null,
+      caixa_contador_ate: null, extrato_contas: 0, extrato_ate: null, extrato_pendentes: 0, conciliadas: 0, conciliado_ate: null, fechamento_em: null }
+  ];
+  p.encerramento = [
+    { codigo: 10, ano: 2024, zerado_em: '2024-12-31', zeramentos: 1, zerado_incluido_em: '2025-03-15', lancados_depois: 0, lancamentos_do_ano: 4000 },
+    { codigo: 10, ano: 2025, zerado_em: null, zeramentos: 0, zerado_incluido_em: null, lancados_depois: null, lancamentos_do_ano: 4300 }
+  ];
+  return p;
+}
+const v3 = validarPacoteDominio(DOMINIO3());
+chk('o pacote da versão 3 passa, com a versão no que vai pro banco', v3.ok && v3.pacote.versao === 3, v3);
+const p3 = v3.ok && v3.pacote;
+const lin3 = (c, m) => p3.mensal.find(l => l.codigo === c && l.competencia === m);
+chk('os blocos da versão 3 lidos vão pro banco: os três do mês, a foto do dia e o encerramento',
+  p3 && ['origens', 'cruzamentos', 'saldos', 'andamento', 'encerramento'].every(b => p3.blocos_ok[b] === true) && p3.blocos_ok.faturamento === true, p3 && p3.blocos_ok);
+chk('os lançamentos por origem, os cruzamentos (com centavos) e os saldos chegam; o campo a mais (o usuário) fica de fora',
+  p3 && lin3(10, '2026-10').lanc_fiscal === 340 && lin3(10, '2026-10').incluido_ate === '2026-11-03' && lin3(10, '2026-10').receita_lancada === 80211.5
+  && lin3(10, '2026-10').transitorias_valor === 350.75 && lin3(10, '2026-10').contra_natureza === 2 && !('usuario' in lin3(10, '2026-10')));
+chk('o incluido_ate pode ser depois do mês da linha (a integração entra no mês seguinte)', p3 && lin3(10, '2026-10').incluido_ate > '2026-10-31');
+chk('sem lançamento no mês: as origens, os cruzamentos e os saldos = 0 em toda empresa; o incluido_ate segue null',
+  p3 && lin3(10, '2026-11').lanc_fiscal === 0 && lin3(10, '2026-11').receita_lancada === 0 && lin3(10, '2026-11').caixa_negativo === 0
+  && lin3(10, '2026-11').transitorias_valor === 0 && lin3(10, '2026-11').incluido_ate === null && lin3(11, '2026-10').folha_lancada === 0);
+chk('a foto do dia: uma por empresa, com os campos do contrato (o nome do banco fica de fora)',
+  p3 && p3.andamento.length === 2 && p3.andamento[0].banco_ate === '2026-08-31' && p3.andamento[0].extrato_pendentes === 3
+  && p3.andamento[0].fechamento_em === '2025-12-31' && !('nome_banco' in p3.andamento[0]) && p3.andamento[1].banco_ultimo_geral === '2023-05-31');
+chk('o encerramento por empresa e ano; sem zeramento, null (nunca 0)',
+  p3 && p3.encerramento.length === 2 && p3.encerramento[0].zerado_em === '2024-12-31' && p3.encerramento[1].zerado_em === null
+  && p3.encerramento[1].lancados_depois === null && p3.encerramento[1].lancamentos_do_ano === 4300);
+{
+  const p = DOMINIO3();
+  p.andamento.push({ codigo: 99, banco_contas: 1 });                                   // empresa fora da lista
+  p.andamento.push({ codigo: 10, banco_contas: 5 });                                   // repetida
+  p.andamento.push({ codigo: 12, banco_ate: '31/08/2026' });                           // data fora do formato
+  p.andamento.push({ codigo: 12, fechamento_em: '1899-12-30' });                       // data de lixo
+  p.encerramento.push({ codigo: 12, ano: 2019, zerado_em: '2019-12-31' });             // ano velho demais
+  p.encerramento.push({ codigo: 12, ano: 2025, zerado_em: '2024-12-31' });             // zeramento fora do ano
+  p.encerramento.push({ codigo: 10, ano: 2025, zerado_em: null });                     // repetido
+  p.mensal.push({ codigo: 12, competencia: '2026-09', incluido_ate: '2030-01-01' });   // o dia em que entrou, no futuro
+  p.mensal.push({ codigo: 12, competencia: '2026-08', lanc_fiscal: -1 });
+  const r2 = validarPacoteDominio(p);
+  chk('o item da foto ou do encerramento fora do contrato fica de fora sozinho (fora da lista, repetido, data errada, ano velho, zeramento fora do ano), e a linha do mês também',
+    // 10 = os 9 daqui e a linha da empresa 99 que o pacote de base já traz
+    r2.ok && r2.pacote.andamento.length === 2 && r2.pacote.encerramento.length === 2 && r2.linhas_recusadas === 10
+    && r2.recusadas.some(x => x.campo === 'andamento[4].banco_ate') && r2.recusadas.some(x => x.campo === 'encerramento[3].zerado_em')
+    && r2.recusadas.some(x => /incluido_ate/.test(x.campo)), r2);
+}
+{
+  const p = DOMINIO3(); p.faltou = [{ bloco: 'andamento', motivo: 'erro na consulta' }, { bloco: 'saldos', motivo: 'consulta a conferir' }];
+  const r2 = validarPacoteDominio(p);
+  chk('a foto e os saldos no faltou: a foto vai vazia e falsa (o banco não apaga a que tinha), os saldos saem null; o resto entra',
+    r2.ok && r2.pacote.blocos_ok.andamento === false && r2.pacote.andamento.length === 0 && r2.pacote.blocos_ok.saldos === false
+    && r2.pacote.mensal.every(l => l.caixa_negativo === null) && r2.pacote.blocos_ok.encerramento === true && r2.pacote.encerramento.length === 2, r2);
+}
+{
+  const p = DOMINIO3(); p.versao = 2;
+  const r2 = validarPacoteDominio(p);
+  chk('a versão 2 (a ponte de antes): o andamento não foi lido — os campos novos saem null, as listas vazias, tudo falso pro banco',
+    r2.ok && r2.pacote.blocos_ok.origens === false && r2.pacote.blocos_ok.andamento === false && r2.pacote.blocos_ok.encerramento === false
+    && r2.pacote.andamento.length === 0 && r2.pacote.encerramento.length === 0 && r2.pacote.mensal.every(l => l.lanc_fiscal === null && l.receita_lancada === null)
+    && r2.pacote.blocos_ok.faturamento === true, r2);
+}
+chk('na versão 2, bloco da versão 3 no faltou recusa o pacote', !!recusaD(p => { p.versao = 2; p.faltou = [{ bloco: 'andamento', motivo: 'x' }]; }, 'faltou[0].bloco'));
+chk('a foto que não é lista recusa o pacote', !!recusaD(p => { p.versao = 3; p.andamento = {}; }, 'andamento'));
+{
+  // os dois lados do contrato juntos: o pacote que a ponte do PC monta (ponte/pacote.py, com o Domínio de mentira e os
+  // 14 meses da tarefa) passa aqui inteiro, sem nenhuma linha nem item recusado
+  const raiz = fileURLToPath(new URL('..', import.meta.url));
+  const py = process.platform === 'win32' ? 'py' : 'python3';
+  const args = (process.platform === 'win32' ? ['-3'] : []).concat(['-c', 'import sys, json; sys.dont_write_bytecode = True; sys.path.insert(0, sys.argv[1]); from ponte import pacote; from ponte.fonte_falsa import FonteFalsa; print(json.dumps(pacote.montar(FonteFalsa(), 14, lambda m, n="info": None)))', raiz]);
+  const doPc = JSON.parse(execFileSync(py, args, { encoding: 'utf8' }));
+  const vp = validarPacoteDominio(doPc);
+  chk('o pacote da ponte do PC (a versão ' + doPc.versao + ', 14 meses do Domínio de mentira) passa inteiro: nenhuma linha nem item recusado',
+    vp.ok && vp.pacote.versao === 3 && vp.linhas_recusadas === 0 && vp.pacote.mensal.length === doPc.mensal.length
+    && vp.pacote.andamento.length === doPc.andamento.length && vp.pacote.encerramento.length === doPc.encerramento.length
+    && Object.values(vp.pacote.blocos_ok).every(Boolean), vp.ok ? { recusadas: vp.recusadas, blocos_ok: vp.pacote.blocos_ok } : vp);
 }
 
 console.log('A porta de entrada:');
@@ -384,6 +476,20 @@ chk('o limite do corpo: 16 MB (o pacote do Domínio da versão 2 passou dos 5 em
   dbE.rpc = async (nome, args) => { n++; return n === 2 ? { data: null, error: { message: 'falhou no meio' } } : { data: { empresas: 1, linhas: args.p.mensal.length }, error: null }; };
   const re = await pedir(dbE, p);
   chk('uma parte que falha: 500 (a ponte manda de novo; o banco troca pelos mesmos números)', re.status === 500 && n === 2, re);
+  // a versão 3: a foto do dia e o encerramento só na primeira parte; nas outras, vazios e falsos (o banco apaga da foto a
+  // empresa que não veio, e uma parte sem a foto não pode parecer uma foto vazia)
+  p.versao = 3;
+  p.andamento = p.empresas.map(e => ({ codigo: e.codigo, banco_contas: 1, banco_ate: '2025-11-30' }));
+  p.encerramento = p.empresas.slice(0, 10).map(e => ({ codigo: e.codigo, ano: 2025, zerado_em: '2025-12-31', zeramentos: 1, lancamentos_do_ano: 9 }));
+  const db3 = fakeDb();
+  db3.rpc = async (nome, args) => { db3.chamadas.push({ nome, args }); return { data: { empresas: args.p.empresas.length, linhas: args.p.mensal.length, andamento: args.p.blocos_ok.andamento ? args.p.andamento.length : 0, encerramento: args.p.blocos_ok.encerramento ? args.p.encerramento.length : 0 }, error: null }; };
+  const r3 = await pedir(db3, p);
+  const c3 = db3.chamadas.filter(c => c.nome === 'dominio_gravar');
+  chk('a versão 3 em partes: a foto e o encerramento só na primeira; nas outras, vazios e com as marcas falsas; a resposta diz quantos',
+    r3.status === 200 && c3.length === 3 && c3[0].args.p.andamento.length === 150 && c3[0].args.p.blocos_ok.andamento === true
+    && c3[0].args.p.encerramento.length === 10 && c3.slice(1).every(c => c.args.p.andamento.length === 0 && c.args.p.encerramento.length === 0
+      && c.args.p.blocos_ok.andamento === false && c.args.p.blocos_ok.encerramento === false && c.args.p.blocos_ok.saldos === true)
+    && r3.corpo.andamento === 150 && r3.corpo.encerramento === 10, { status: r3.status, corpo: r3.corpo });
 }
 
 console.log('As notas de entrada das empresas autorizadas (03/11/2026):');

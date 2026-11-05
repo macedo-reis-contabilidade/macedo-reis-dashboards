@@ -1,4 +1,4 @@
-"""O que a ponte lê do Domínio: sete funções, cada uma devolve uma lista de dicionários.
+"""O que a ponte lê do Domínio: doze funções, cada uma devolve uma lista de dicionários.
 
     empresas()     -> codigo (o código da empresa no Domínio, número), documento (sem pontuação), nome, ativa
     folha(mes)     -> por empresa: codigo, funcionarios_ativos, admissoes, desligamentos, afastados,
@@ -14,9 +14,20 @@
     folha_valores(mes) -> por empresa: codigo, a folha do mês em reais, SOMADA (salarios, ferias, rescisoes,
                       decimo_terceiro, pro_labore_valor, base_inss, base_fgts, fgts, inss_empresa, inss_rat,
                       inss_terceiros) — nunca por pessoa
+    origens(mes)       -> por empresa (desde a versão 3 do pacote, 05/11/2026): codigo, os lançamentos contábeis do mês
+                      por origem (lanc_normais, lanc_extrato, lanc_fiscal, lanc_folha, lanc_apuracao, lanc_outros) e
+                      incluido_ate (o dia em que o último entrou no Domínio)
+    cruzamentos(mes)   -> por empresa: codigo, receita_lancada, folha_lancada, encargos_lancados (o que o contábil
+                      lançou no mês, pra cruzar com o faturamento e a folha)
+    saldos(mes)        -> por empresa: codigo, os saldos estranhos no último dia do mês (caixa_negativo,
+                      contra_natureza, sem_natureza, transitorias, transitorias_valor)
+    andamento(mes)     -> a foto do dia (uma vez por rodada, com o mês de hoje), por empresa: codigo, até onde o banco,
+                      o extrato e o caixa estão lançados e a data do fechamento (CAMPOS_ANDAMENTO)
+    encerramento(ano)  -> por empresa, no ano: codigo, o zeramento (CAMPOS_ENCERRAMENTO); a ponte lê os dois anos
+                      antes do de hoje
 
-`mes` é a competência, 'AAAA-MM'. Uma linha por empresa no mês — já contado. Empresa sem linha no mês fica com
-os campos daquele bloco em branco (null) no pacote: a ponte nunca inventa um 0.
+`mes` é a competência, 'AAAA-MM'; `ano`, o ano (número). Uma linha por empresa no mês — já contado. Empresa sem
+linha no mês fica com os campos daquele bloco em branco (null) no pacote: a ponte nunca inventa um 0.
 
 Duas fontes cumprem este contrato: fonte_falsa.FonteFalsa (o Domínio de mentira, pros testes e pro --falso) e
 fonte_dominio.FonteDominio (o de verdade, por ODBC).
@@ -40,14 +51,33 @@ CAMPOS_MES = {
                 'outras_entradas'),
     'folha_valores': ('salarios', 'ferias', 'rescisoes', 'decimo_terceiro', 'pro_labore_valor', 'base_inss',
                       'base_fgts', 'fgts', 'inss_empresa', 'inss_rat', 'inss_terceiros'),
+    # desde a versão 3 (05/11/2026): o andamento das contabilidades, que a fila de 04/11 descobriu e conferiu no Domínio
+    'origens': ('lanc_normais', 'lanc_extrato', 'lanc_fiscal', 'lanc_folha', 'lanc_apuracao', 'lanc_outros',
+                'incluido_ate'),
+    'cruzamentos': ('receita_lancada', 'folha_lancada', 'encargos_lancados'),
+    'saldos': ('caixa_negativo', 'contra_natureza', 'sem_natureza', 'transitorias', 'transitorias_valor'),
 }
-BLOCOS = tuple(CAMPOS_MES)   # a ordem em que a rodada lê: folha, fiscal, contabil, faturamento, compras, folha_valores
+BLOCOS = tuple(CAMPOS_MES)   # a ordem em que a rodada lê: folha, fiscal, contabil, faturamento, compras, folha_valores…
+
+# os blocos que não são do mês (versão 3): a foto do dia, uma vez por rodada, e o encerramento de cada ano
+CAMPOS_ANDAMENTO = ('banco_contas', 'banco_ate', 'banco_ultimo', 'banco_ultimo_geral', 'caixa_ate', 'caixa_contador_ate',
+                    'extrato_contas', 'extrato_ate', 'extrato_pendentes', 'conciliadas', 'conciliado_ate', 'fechamento_em')
+CAMPOS_ENCERRAMENTO = ('zerado_em', 'zeramentos', 'zerado_incluido_em', 'lancados_depois', 'lancamentos_do_ano')
+BLOCOS_FOTO = ('andamento', 'encerramento')
+ANOS_ENCERRAMENTO = 2   # os dois anos antes do de hoje
 
 CAMPOS_INTEIROS = {'funcionarios_ativos', 'admissoes', 'desligamentos', 'afastados', 'pro_labore',
-                   'notas_saida', 'notas_entrada', 'lancamentos', 'meses_rbt12'}
-CAMPOS_VALOR = {'valor_saidas', 'valor_entradas'} | {
+                   'notas_saida', 'notas_entrada', 'lancamentos', 'meses_rbt12',
+                   'lanc_normais', 'lanc_extrato', 'lanc_fiscal', 'lanc_folha', 'lanc_apuracao', 'lanc_outros',
+                   'caixa_negativo', 'contra_natureza', 'sem_natureza', 'transitorias',
+                   'banco_contas', 'extrato_contas', 'extrato_pendentes', 'conciliadas',
+                   'zeramentos', 'lancados_depois', 'lancamentos_do_ano'}
+CAMPOS_VALOR = {'valor_saidas', 'valor_entradas', 'receita_lancada', 'folha_lancada', 'encargos_lancados',
+                'transitorias_valor'} | {
     c for b in ('faturamento', 'compras', 'folha_valores') for c in CAMPOS_MES[b] if c != 'meses_rbt12'}
-CAMPOS_DATA = {'ultimo_lancamento'}
+CAMPOS_DATA = {'ultimo_lancamento', 'incluido_ate', 'banco_ate', 'banco_ultimo', 'banco_ultimo_geral', 'caixa_ate',
+               'caixa_contador_ate', 'extrato_ate', 'conciliado_ate', 'fechamento_em', 'zerado_em',
+               'zerado_incluido_em'}
 
 
 class ConsultaAConferir(Exception):
@@ -59,7 +89,7 @@ class ConsultaAConferir(Exception):
 
 
 class Fonte:
-    """O contrato. Cada fonte implementa as sete funções; fechar() solta o que estiver aberto."""
+    """O contrato. Cada fonte implementa as doze funções; fechar() solta o que estiver aberto."""
 
     def empresas(self):
         raise NotImplementedError
@@ -80,6 +110,21 @@ class Fonte:
         raise NotImplementedError
 
     def folha_valores(self, mes):
+        raise NotImplementedError
+
+    def origens(self, mes):
+        raise NotImplementedError
+
+    def cruzamentos(self, mes):
+        raise NotImplementedError
+
+    def saldos(self, mes):
+        raise NotImplementedError
+
+    def andamento(self, mes):
+        raise NotImplementedError
+
+    def encerramento(self, ano):
         raise NotImplementedError
 
     def fechar(self):

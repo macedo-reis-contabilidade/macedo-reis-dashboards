@@ -1,4 +1,4 @@
--- contabil_encerramento.sql (RASCUNHO: a ponte não lê esta pasta): por empresa, o encerramento do exercício (o
+-- encerramento.sql (versão 3 do pacote, 05/11/2026; o rascunho da fila de 04/11): por empresa, o encerramento do exercício (o
 -- zeramento) num ano. Os dois parâmetros são o primeiro e o último dia do ano. Tabela: bethadba.ctlancto
 -- ("Lancamentos Contabeis": orig_lan 2 = "Zeramento", data_lan, dorig_lan "Data Original", a data em que o lançamento
 -- entrou no Domínio).

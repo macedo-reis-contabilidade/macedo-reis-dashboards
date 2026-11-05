@@ -1,16 +1,18 @@
--- contabil_andamento.sql (RASCUNHO: a ponte não lê esta pasta): por empresa, até onde a contabilidade está lançada no
--- fim do mês. Os dois parâmetros são o primeiro e o último dia do mês. Tabelas: bethadba.ctlancto ("Lancamentos
--- Contabeis": data_lan, cdeb_lan e ccre_lan, as contas reduzidas do plano da CODI_EMP_PLANO, orig_lan, dorig_lan
--- "Data Original"), bethadba.ctcontas ("Contas Contabeis - Cadastro": clas_cta, tipo_cta e, só no filtro, nome_cta),
--- bethadba.ctparmto ("Parametros", uma linha por empresa com contabilidade) e o extrato:
--- bethadba.CTEXTRATO_BANCARIO_LANCAMENTO ("Lançamento de extrato bancário": CODI_CTA "Conta contábil do banco"), _ITEM
--- ("… - lançamentos": DATA_ITEM "Data", cada linha do extrato), _ITEM_LANCTO ("… - lançamentos contábeis": o lançamento
--- de cada linha) e bethadba.CTCONCILIACAO_BANCARIA ("Conciliação bancária": a linha do extrato com o lançamento e as
--- marcas CONCILIADO_DEB/CONCILIADO_CRE).
+-- andamento.sql (versão 3 do pacote, 05/11/2026): por empresa, até onde a contabilidade está lançada — a foto do dia: a
+-- ponte roda esta consulta uma vez por rodada, com o primeiro e o último dia do mês de hoje. Escrita a partir do
+-- rascunho contabil_andamento.sql da fila de 04/11 (docs/FILA-CODE-2026-11-04-CONTABIL-DUVIDAS.md, seção 2), sem as
+-- contagens do mês (que estão em origens.sql) e com a data do fechamento dos parâmetros.
+-- Tabelas: bethadba.ctlancto ("Lancamentos Contabeis": data_lan, cdeb_lan e ccre_lan, as contas reduzidas do plano da
+-- CODI_EMP_PLANO, orig_lan), bethadba.ctcontas ("Contas Contabeis - Cadastro": clas_cta, tipo_cta e, só no filtro,
+-- nome_cta), bethadba.ctparmto ("Parametros", uma linha por empresa com contabilidade: FECHAMENTO_DATA "Data do
+-- fechamento") e o extrato: bethadba.CTEXTRATO_BANCARIO_LANCAMENTO ("Lançamento de extrato bancário": CODI_CTA "Conta
+-- contábil do banco"), _ITEM ("… - lançamentos": DATA_ITEM "Data", cada linha do extrato), _ITEM_LANCTO ("… - lançamentos
+-- contábeis": o lançamento de cada linha) e bethadba.CTCONCILIACAO_BANCARIA ("Conciliação bancária": a linha do extrato
+-- com o lançamento e as marcas CONCILIADO_DEB/CONCILIADO_CRE).
 -- O caixa e os bancos pela classificação do plano (o plano modelo do escritório, que as empresas copiam): as analíticas
 -- do 1.1.1.01 (CAIXA) e do 1.1.1.02 (BANCOS CONTA MOVIMENTO), fora a conta transitória ou "a classificar" que algumas
 -- empresas têm dentro do caixa (pela descrição, só no filtro). As contas do extrato estão todas no 1.1.1.02 e a conta
--- caixa dos parâmetros (ccxa_par), no 1.1.1.01. Ficam de fora as aplicações (1.1.1.03) e a conta vinculada (1.1.3.01).
+-- caixa dos parâmetros, no 1.1.1.01. Ficam de fora as aplicações (1.1.1.03) e a conta vinculada (1.1.3.01).
 -- Fora o zeramento (orig_lan 2) em tudo; nada depois do último dia do mês.
 -- banco_contas: as contas de banco com movimento nos 12 meses que terminam no mês (a sem movimento neles é a encerrada e
 --   fica de fora); banco_ate: o último lançamento da mais atrasada delas; banco_ultimo: o da mais adiantada;
@@ -19,18 +21,13 @@
 -- caixa_ate: o último lançamento no caixa (qualquer origem, de todo o tempo); caixa_contador_ate: o último que não veio
 --   de integração (fora a escrita fiscal 4 a 11 e 21 a 29, a folha 13, o patrimônio 3 e os honorários 14 a 20) — o caixa
 --   recebe a integração das notas à vista, que entra sozinha.
--- extrato_contas: as contas de banco com extrato nos 12 meses (importado ou digitado; em 2026 todo importado);
---   extrato_ate: o último dia do extrato da mais atrasada; extrato_pendentes: as linhas do extrato até o fim do mês (nos
---   12 meses) ainda sem lançamento. O extrato da Contabilidade Digital (as tabelas _ICEBERG) fica de fora.
+-- extrato_contas: as contas de banco com extrato nos 12 meses; extrato_ate: o último dia do extrato da mais atrasada;
+--   extrato_pendentes: as linhas do extrato até o fim do mês (nos 12 meses) ainda sem lançamento. O extrato da
+--   Contabilidade Digital (as tabelas _ICEBERG) fica de fora.
 -- conciliadas e conciliado_ate: as contas com linha do extrato conciliada nos 12 meses e o último dia conciliado da mais
---   atrasada. A conciliação nasce sozinha quando o extrato é contabilizado pela configuração (o lançamento feito à mão a
---   partir do extrato não ganha), então ela diz menos que o extrato.
--- lanc_*: as linhas do mês por origem — lanc_normais (1), lanc_extrato (39, o extrato importado: 98% delas estão no
---   _ITEM_LANCTO), lanc_fiscal (4 a 7), lanc_folha (13), lanc_apuracao (10) e lanc_outros (o resto, fora o zeramento).
--- incluido_ate: a maior dorig_lan dos lançamentos do mês (a data em que o lançamento entrou no Domínio; a hora não
---   existe). A ctlancto não guarda a data de alteração.
--- Entra a empresa com contabilidade (ctparmto) que tem lançamento no mês, movimento no caixa ou no banco até o mês, ou
--- extrato nos 12 meses.
+--   atrasada. A conciliação nasce sozinha quando o extrato é contabilizado pela configuração.
+-- fechamento_em: a data do fechamento dos parâmetros da contabilidade (a confirmar com a Adaini se é o "fechado até").
+-- Uma linha por empresa com contabilidade (ctparmto), com ou sem movimento.
 WITH p AS (SELECT CAST(? AS DATE) AS ini, CAST(? AS DATE) AS fim),
 j AS (SELECT p.ini, p.fim, DATEADD(month, -11, p.ini) AS de FROM p),
 cta AS (
@@ -88,25 +85,8 @@ extrato AS (
     SELECT codi_emp, COUNT(*) AS n, MIN(ult_item) AS ate, SUM(sem_lanc) AS pendentes,
            COUNT(ult_conc) AS conciliadas, MIN(ult_conc) AS conciliado_ate
       FROM itconta GROUP BY codi_emp
-),
-mes AS (
-    SELECT l.codi_emp,
-           SUM(CASE WHEN l.orig_lan = 1 THEN 1 ELSE 0 END) AS normais,
-           SUM(CASE WHEN l.orig_lan = 39 THEN 1 ELSE 0 END) AS extrato,
-           SUM(CASE WHEN l.orig_lan BETWEEN 4 AND 7 THEN 1 ELSE 0 END) AS fiscal,
-           SUM(CASE WHEN l.orig_lan = 13 THEN 1 ELSE 0 END) AS folha,
-           SUM(CASE WHEN l.orig_lan = 10 THEN 1 ELSE 0 END) AS apuracao,
-           SUM(CASE WHEN l.orig_lan NOT IN (1, 39, 4, 5, 6, 7, 13, 10) THEN 1 ELSE 0 END) AS outros,
-           MAX(l.dorig_lan) AS incluido
-      FROM bethadba.ctlancto l, j
-     WHERE l.data_lan BETWEEN j.ini AND j.fim AND l.orig_lan <> 2
-     GROUP BY l.codi_emp
-),
-emp AS (
-    SELECT codi_emp FROM bgeral UNION SELECT codi_emp FROM caixa
-    UNION SELECT codi_emp FROM extrato UNION SELECT codi_emp FROM mes
 )
-SELECT emp.codi_emp AS codigo,
+SELECT par.codi_emp AS codigo,
        COALESCE(bancos.n, 0) AS banco_contas,
        bancos.ate AS banco_ate,
        bancos.ultimo AS banco_ultimo,
@@ -118,18 +98,10 @@ SELECT emp.codi_emp AS codigo,
        COALESCE(extrato.pendentes, 0) AS extrato_pendentes,
        COALESCE(extrato.conciliadas, 0) AS conciliadas,
        extrato.conciliado_ate AS conciliado_ate,
-       COALESCE(mes.normais, 0) AS lanc_normais,
-       COALESCE(mes.extrato, 0) AS lanc_extrato,
-       COALESCE(mes.fiscal, 0) AS lanc_fiscal,
-       COALESCE(mes.folha, 0) AS lanc_folha,
-       COALESCE(mes.apuracao, 0) AS lanc_apuracao,
-       COALESCE(mes.outros, 0) AS lanc_outros,
-       mes.incluido AS incluido_ate
-  FROM emp
-  JOIN bethadba.ctparmto par ON par.codi_emp = emp.codi_emp
-  LEFT JOIN bancos ON bancos.codi_emp = emp.codi_emp
-  LEFT JOIN bgeral ON bgeral.codi_emp = emp.codi_emp
-  LEFT JOIN caixa ON caixa.codi_emp = emp.codi_emp
-  LEFT JOIN extrato ON extrato.codi_emp = emp.codi_emp
-  LEFT JOIN mes ON mes.codi_emp = emp.codi_emp
- ORDER BY emp.codi_emp
+       par.FECHAMENTO_DATA AS fechamento_em
+  FROM bethadba.ctparmto par
+  LEFT JOIN bancos ON bancos.codi_emp = par.codi_emp
+  LEFT JOIN bgeral ON bgeral.codi_emp = par.codi_emp
+  LEFT JOIN caixa ON caixa.codi_emp = par.codi_emp
+  LEFT JOIN extrato ON extrato.codi_emp = par.codi_emp
+ ORDER BY par.codi_emp

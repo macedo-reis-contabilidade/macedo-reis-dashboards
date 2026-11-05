@@ -1,4 +1,4 @@
--- contabil_cruzamentos.sql (RASCUNHO: a ponte não lê esta pasta): por empresa, a receita e a folha lançadas no contábil
+-- cruzamentos.sql (versão 3 do pacote, 05/11/2026; o rascunho da fila de 04/11): por empresa, a receita e a folha lançadas no contábil
 -- no mês, pra cruzar com o faturamento (consultas/faturamento.sql, a receita_bruta) e com a folha do próprio Domínio
 -- (consultas/folha_valores.sql). Os dois parâmetros são o primeiro e o último dia do mês. Tabelas: bethadba.ctlancto
 -- ("Lancamentos Contabeis": cdeb_lan, ccre_lan, vlor_lan, data_lan, com o plano da CODI_EMP_PLANO) e bethadba.ctcontas
