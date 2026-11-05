@@ -22,6 +22,9 @@
 // as notas e os lançamentos de cada empresa por mês, só os totais) — e os últimos meses no ver_empresa.
 // Desde 04/11/2026, o controle das contabilidades (contabil_empresas, contabil_meses, contabil_pendencias: até quando a
 // contabilidade de cada empresa está feita, mês a mês, e o que falta pra fechar) — e a linha dele no ver_empresa.
+// Desde 05/11/2026 (a versão 3 da ponte), o andamento das contabilidades no Domínio (os campos novos de dominio_mensal,
+// dominio_andamento e dominio_encerramento) — no ver_empresa, a linha "A contabilidade no Domínio" (o banco, o extrato,
+// o caixa, o fechamento, o zeramento e os meses em que a marcação e o Domínio não batem) e, em cada mês, o contábil.
 // Lista branca: só as tabelas e colunas daqui são lidas. Ficam fora a senha/credencial do cadastro, o RG e o nascimento
 // das pessoas físicas do cadastro (o CPF e o endereço do cadastro entram: são o dado de trabalho do IRPF), os documentos
 // pessoais dos sócios (CPF, RG, endereço, nascimento), as respostas dos formulários de admissão e rescisão, as
@@ -38,7 +41,8 @@ import { rotuloDaRegra } from '../../../assets/js/vigia.js';
 import { ROTULO_SETOR, ROTULO_RELEVANCIA } from '../../../assets/js/noticias.js';
 import { pastaDaUrl, filtrarArquivos } from './drive.js';
 import { comparativoDaEmpresa, resumoDoResultado } from './comparativo.js';
-import { resumoDaEmpresa, textoDasFaixas, rotuloMes, textoDeMeses, textoDaPendencia } from '../../../assets/js/contabil-controle.js';
+import { resumoDaEmpresa, textoDasFaixas, rotuloMes, textoDeMeses, textoDaPendencia, andamentoDaEmpresa, encerramentoDaEmpresa, textoDoAndamento,
+  mesesQueDiscordam, mapaDosMeses, dominioPorMes, folhaCalculada } from '../../../assets/js/contabil-controle.js';
 
 // ---------- a lista branca: tabela → colunas lidas, as que vêm sem pedir, o que é cada coisa ----------
 // notas: o que o modelo precisa saber da coluna (valores possíveis, unidade); enums: colunas de tipo enumerado no banco
@@ -167,15 +171,17 @@ export const TABELAS = {
     padrao: ['codigo', 'cliente_id', 'nome', 'ativa'],
     notas: { codigo: 'o código da empresa no Domínio', ativa: 'true = ativa no Domínio · false = inativa ou encerrada lá', cliente_id: 'vazio = não ligada ao cadastro do sistema' } },
   dominio_mensal: { rotulo: 'os números do Domínio por mês', pk: 'codigo,competencia',
-    desc: 'Por empresa e mês, o que o Domínio diz (a ponte lê todo dia às 7h os 14 meses até hoje, então o que entra atrasado no Domínio aparece no dia seguinte): a folha (os empregados ativos no último dia do mês, as admissões, os desligamentos, os afastados, quantos sócios tiveram o pró-labore calculado), as notas (quantas saídas, com o serviço prestado, e quantas entradas, com o serviço tomado, e o valor contábil de cada lado) e os lançamentos contábeis. Desde 05/11/2026 (a versão 2 da ponte), também em reais: o faturamento (receita_bruta, com a divisão em mercadorias e serviços, e, de quem apura o Simples no Domínio, a apuração do mês, o RBT12, a parte com ST, a monofásica, a exportação e cada anexo), as compras pelo CFOP e a folha da empresa (os proventos dos empregados, o 13º, o pró-labore, as bases e as guias do FGTS e do INSS) — sempre a soma da empresa no mês, nunca o de uma pessoa. Só o mês do dia do contexto e o anterior a ele ainda estão em fechamento no Domínio (parciais — no dia 02/11, novembro e outubro); os meses de antes estão fechados. Null = o Domínio não disse (a folha de empresa inativa lá, a apuração do Simples de quem não apura o Simples no Domínio, ou um bloco que não foi lido) — nunca trate null como zero.',
+    desc: 'Por empresa e mês, o que o Domínio diz (a ponte lê todo dia às 7h os 14 meses até hoje, então o que entra atrasado no Domínio aparece no dia seguinte): a folha (os empregados ativos no último dia do mês, as admissões, os desligamentos, os afastados, quantos sócios tiveram o pró-labore calculado), as notas (quantas saídas, com o serviço prestado, e quantas entradas, com o serviço tomado, e o valor contábil de cada lado) e os lançamentos contábeis. Desde 05/11/2026 (a versão 2 da ponte), também em reais: o faturamento (receita_bruta, com a divisão em mercadorias e serviços, e, de quem apura o Simples no Domínio, a apuração do mês, o RBT12, a parte com ST, a monofásica, a exportação e cada anexo), as compras pelo CFOP e a folha da empresa (os proventos dos empregados, o 13º, o pró-labore, as bases e as guias do FGTS e do INSS) — sempre a soma da empresa no mês, nunca o de uma pessoa. Desde a versão 3 (também 05/11/2026), o andamento da contabilidade do mês: os lançamentos por origem (lanc_*: a escrita fiscal, a folha, o extrato importado, os digitados), a receita, a folha e os encargos lançados no contábil (pra cruzar com receita_bruta e a folha calculada) e os saldos estranhos no último dia (caixa negativo, contas contra a natureza, transitórias com saldo). Só o mês do dia do contexto e o anterior a ele ainda estão em fechamento no Domínio (parciais — no dia 02/11, novembro e outubro); os meses de antes estão fechados. Null = o Domínio não disse (a folha de empresa inativa lá, a apuração do Simples de quem não apura o Simples no Domínio, ou um bloco que não foi lido) — nunca trate null como zero.',
     cols: ['codigo', 'competencia', 'cliente_id', 'funcionarios_ativos', 'admissoes', 'desligamentos', 'afastados', 'pro_labore', 'notas_saida', 'valor_saidas',
       'notas_entrada', 'valor_entradas', 'lancamentos', 'ultimo_lancamento',
       'receita_bruta', 'receita_mercadorias', 'receita_servicos', 'devolucoes', 'receita_simples', 'receita_simples_propria', 'receita_st', 'receita_monofasica', 'receita_exportacao',
       'receita_anexo_1', 'receita_anexo_2', 'receita_anexo_3', 'receita_anexo_4', 'receita_anexo_5', 'rbt12', 'meses_rbt12',
       'compras', 'compras_st', 'servicos_tomados', 'ativo_e_consumo', 'devolucoes_de_venda', 'outras_entradas',
-      'salarios', 'ferias', 'rescisoes', 'decimo_terceiro', 'pro_labore_valor', 'base_inss', 'base_fgts', 'fgts', 'inss_empresa', 'inss_rat', 'inss_terceiros', 'atualizado_em'],
+      'salarios', 'ferias', 'rescisoes', 'decimo_terceiro', 'pro_labore_valor', 'base_inss', 'base_fgts', 'fgts', 'inss_empresa', 'inss_rat', 'inss_terceiros',
+      'lanc_normais', 'lanc_extrato', 'lanc_fiscal', 'lanc_folha', 'lanc_apuracao', 'lanc_outros', 'incluido_ate', 'receita_lancada', 'folha_lancada', 'encargos_lancados',
+      'caixa_negativo', 'contra_natureza', 'sem_natureza', 'transitorias', 'transitorias_valor', 'atualizado_em'],
     padrao: ['cliente_id', 'competencia', 'funcionarios_ativos', 'admissoes', 'desligamentos', 'pro_labore', 'notas_saida', 'valor_saidas', 'notas_entrada', 'valor_entradas', 'lancamentos',
-      'receita_bruta', 'compras', 'salarios', 'pro_labore_valor'],
+      'receita_bruta', 'compras', 'salarios', 'pro_labore_valor', 'lanc_fiscal', 'receita_lancada', 'folha_lancada', 'caixa_negativo'],
     notas: { competencia: 'AAAA-MM', funcionarios_ativos: 'empregados (categorias 101 a 111 do eSocial, com o doméstico) ativos no último dia do mês',
       afastados: 'empregados afastados no último dia do mês (fora férias)', pro_labore: 'QUANTOS sócios tiveram o pró-labore calculado no mês (uma contagem de pessoas, não um valor em R$) · o valor em R$ é pro_labore_valor',
       valor_saidas: 'o valor contábil das notas de saída (mercadoria e serviço prestado, fora as canceladas): NÃO é o faturamento — entram devolução, remessa e transferência · o faturamento é receita_bruta (o do Domínio) ou o do PGDAS (receita_pgdas, o declarado)',
@@ -189,12 +195,35 @@ export const TABELAS = {
       base_inss: 'a base do INSS da empresa no mês', base_fgts: 'a base do FGTS no mês',
       valor_entradas: 'o valor contábil do que o fiscal lançou na entrada do Domínio (as notas de compra, o serviço tomado e os outros documentos de entrada), fora os cancelados · notas_entrada pode passar das notas de compra em XML por isso',
       lancamentos: 'quantos lançamentos contábeis no mês (fora o zeramento) · 0 com o mês já fechado = a contabilidade do mês não foi feita · mais que 0 NÃO quer dizer feita: a integração das notas e da folha também lança · se a contabilidade do mês foi feita, quem diz é o controle das contabilidades (contabil_meses)',
-      ultimo_lancamento: 'o dia do último lançamento do mês', cliente_id: 'vazio = a empresa do Domínio não bate com o cadastro' } },
+      ultimo_lancamento: 'o dia do último lançamento do mês', cliente_id: 'vazio = a empresa do Domínio não bate com o cadastro',
+      lanc_fiscal: 'os lançamentos do mês que vieram da escrita fiscal (as notas de saída, entrada e serviço), sem a apuração · 0 com nota no mês = a escrita fiscal do mês não entrou na contabilidade',
+      lanc_folha: 'os lançamentos do mês que vieram da folha', lanc_extrato: 'os lançamentos do mês que vieram do extrato bancário importado', lanc_normais: 'os lançamentos digitados no mês (o trabalho do contador)',
+      incluido_ate: 'o dia em que o último lançamento do mês entrou no Domínio (a integração gerada de novo troca a data)',
+      receita_lancada: 'a receita bruta lançada no contábil do mês (as contas de receita menos a devolução) · igual à receita_bruta (até R$ 1) = a escrita fiscal entrou inteira',
+      folha_lancada: 'os salários, o 13º, as férias e o pró-labore lançados no contábil do mês · 0 com salarios + decimo_terceiro + pro_labore_valor maior que 0 = a folha do mês não entrou na contabilidade',
+      encargos_lancados: 'a despesa de INSS, FGTS e previdência lançada no contábil do mês (pela descrição da conta: a conferir antes de concluir algo)',
+      caixa_negativo: 'quantas contas de caixa fecharam o mês com saldo credor (o caixa não pode ficar negativo)', contra_natureza: 'quantas contas fecharam o mês com saldo contra a natureza (a retificadora, do lado do grupo)',
+      transitorias: 'quantas contas transitórias ou a classificar fecharam o mês com saldo', transitorias_valor: 'a soma do saldo delas, em valor absoluto' } },
+  // o andamento das contabilidades (a versão 3 da ponte, 05/11/2026): a foto do dia e o zeramento de cada ano
+  dominio_andamento: { rotulo: 'até onde cada contabilidade está lançada no Domínio', pk: 'codigo',
+    desc: 'A foto do dia do Domínio, por empresa (a ponte lê todo dia): até onde o banco, o extrato importado e o caixa estão lançados e a data do fechamento dos parâmetros da contabilidade. Em 05/11/2026, de 110 empresas com contabilidade no Domínio, 70 não tinham movimento de banco nos 12 meses (50 nunca tiveram): nelas, a contabilidade é a integração das notas e da folha. Quem diz que um mês está feito é o controle das contabilidades (contabil_meses), não esta tabela.',
+    cols: ['codigo', 'cliente_id', 'banco_contas', 'banco_ate', 'banco_ultimo', 'banco_ultimo_geral', 'caixa_ate', 'caixa_contador_ate', 'extrato_contas', 'extrato_ate', 'extrato_pendentes', 'conciliadas', 'conciliado_ate', 'fechamento_em', 'dados_ate', 'atualizado_em'],
+    padrao: ['cliente_id', 'banco_contas', 'banco_ate', 'banco_ultimo', 'caixa_contador_ate', 'extrato_ate', 'extrato_pendentes', 'fechamento_em', 'dados_ate'],
+    notas: { banco_contas: 'quantas contas de banco tiveram lançamento nos últimos 12 meses (0 = banco parado há mais de um ano ou nunca teve)', banco_ate: 'o último lançamento da conta de banco mais atrasada',
+      banco_ultimo: 'o último lançamento da conta de banco mais adiantada (antes de um mês = o banco daquele mês não foi lançado)', banco_ultimo_geral: 'o último lançamento em conta de banco de todo o tempo · null = nunca teve banco',
+      caixa_ate: 'o último lançamento no caixa, de qualquer origem (a integração das notas à vista entra sozinha)', caixa_contador_ate: 'o último lançamento no caixa que não veio de integração (o trabalho do contador)',
+      extrato_ate: 'o último dia do extrato bancário importado (a conta mais atrasada)', extrato_pendentes: 'as linhas do extrato importado ainda sem lançamento',
+      fechamento_em: 'a data do fechamento nos parâmetros da contabilidade do Domínio (a confirmar com a Adaini se é o "fechado até" dela)', dados_ate: 'o dia da leitura' } },
+  dominio_encerramento: { rotulo: 'o zeramento de cada ano no Domínio', pk: 'codigo,ano',
+    desc: 'O encerramento do exercício (o zeramento) de cada empresa nos dois anos antes do de hoje, como o Domínio mostra: o dia do último zeramento do ano, quantos (4 = trimestral), quando entrou no Domínio, e quantos lançamentos do ano entraram depois do zeramento do período deles (o resultado pode estar diferente do que o zeramento levou ao patrimônio líquido). zerado_em null com lançamentos no ano = o ano não foi encerrado.',
+    cols: ['codigo', 'cliente_id', 'ano', 'zerado_em', 'zeramentos', 'zerado_incluido_em', 'lancados_depois', 'lancamentos_do_ano', 'atualizado_em'],
+    padrao: ['cliente_id', 'ano', 'zerado_em', 'zeramentos', 'zerado_incluido_em', 'lancados_depois', 'lancamentos_do_ano'],
+    notas: { zerado_em: 'o último dia com zeramento no ano · null = sem zeramento', lancados_depois: 'lançamentos do ano que entraram depois do zeramento do período (null sem zeramento)' } },
   dominio_rodadas: { rotulo: 'as leituras do Domínio',
     desc: 'Cada leitura do Domínio que a ponte do PC do escritório mandou (a tarefa diária das 7h): quando, o dia dos dados, quantas empresas, quantas ligadas ao cadastro, quantas linhas de mês e o que faltou. Sem leitura há dias = o PC do escritório ficou desligado ou a ponte parou (o vigia avisa em 4 dias).',
     cols: ['id', 'inicio', 'fim', 'dados_ate', 'maquina', 'ponte', 'empresas', 'ligadas', 'linhas', 'faltou', 'recebida_em'],
     padrao: ['recebida_em', 'dados_ate', 'empresas', 'ligadas', 'linhas', 'faltou'],
-    notas: { dados_ate: 'o dia dos dados (a ponte lê o Domínio ao vivo)', faltou: 'lista [{bloco, motivo}] · bloco: folha | fiscal | contabil | faturamento | compras | folha_valores (os três últimos desde a versão 2, 05/11/2026) — o que não deu pra ler nesta leitura (o que já estava gravado fica)' } },
+    notas: { dados_ate: 'o dia dos dados (a ponte lê o Domínio ao vivo)', faltou: 'lista [{bloco, motivo}] · bloco: folha | fiscal | contabil | faturamento | compras | folha_valores (a versão 2, 05/11/2026) | origens | cruzamentos | saldos | andamento | encerramento (a versão 3) — o que não deu pra ler nesta leitura (o que já estava gravado fica)' } },
   // o controle das contabilidades (Contábil › Controle das contabilidades, 04/11/2026, a planilha da Adaini no sistema)
   contabil_empresas: { rotulo: 'o controle das contabilidades', pk: 'cliente_id',
     desc: 'As empresas do controle das contabilidades (tela Controle das contabilidades, no Contábil; quem cuida é a Adaini): desde e até quando o escritório faz a contabilidade de cada uma, se faz (faz = false: não fazemos, com o motivo) e a observação. Não é rotina mensal (não nasce tarefa): a Adaini marca os meses quando faz, muitas vezes vários de uma vez. Empresa sem linha aqui = fora do controle.',
@@ -585,7 +614,9 @@ export function textoDaContabilidade(emp, meses, pendencias, hoje) {
 // Desde 05/11/2026 (a versão 2 da ponte), também em reais: o faturamento, as compras, a folha, o pró-labore e os encargos,
 // e o RBT12 do Simples do mês mais recente que o tem (o null — o que o Domínio não disse — não vira zero)
 const CAMPOS_DOMINIO = ['funcionarios_ativos', 'admissoes', 'desligamentos', 'afastados', 'pro_labore', 'notas_saida', 'valor_saidas', 'notas_entrada', 'valor_entradas', 'lancamentos', 'ultimo_lancamento',
-  'receita_bruta', 'receita_simples', 'rbt12', 'meses_rbt12', 'compras', 'servicos_tomados', 'salarios', 'rescisoes', 'decimo_terceiro', 'pro_labore_valor', 'fgts', 'inss_empresa', 'inss_rat', 'inss_terceiros'];
+  'receita_bruta', 'receita_simples', 'rbt12', 'meses_rbt12', 'compras', 'servicos_tomados', 'salarios', 'rescisoes', 'decimo_terceiro', 'pro_labore_valor', 'fgts', 'inss_empresa', 'inss_rat', 'inss_terceiros',
+  // a versão 3 (05/11/2026): o andamento da contabilidade do mês
+  'lanc_fiscal', 'receita_lancada', 'folha_lancada', 'caixa_negativo', 'contra_natureza', 'transitorias', 'transitorias_valor'];
 const somaQueVeio = (...vs) => (vs.some(v => v != null) ? vs.reduce((s, v) => s + (v == null ? 0 : +v), 0) : null);
 export function textoDoDominio(empresas, linhas, hoje) {
   const emps = empresas || [], ls = linhas || [];
@@ -625,6 +656,18 @@ export function textoDoDominio(empresas, linhas, hoje) {
     const enc = somaQueVeio(m.fgts, m.inss_empresa, m.inss_rat, m.inss_terceiros);
     if (enc != null) r.push('encargos da folha ' + brl(enc) + ' (FGTS ' + brl(m.fgts || 0) + ', INSS da empresa ' + brl(somaQueVeio(m.inss_empresa, m.inss_rat, m.inss_terceiros) || 0) + ')');
     if (r.length) p.push('em reais: ' + r.join(', '));
+    // o contábil do mês (a versão 3): a escrita fiscal e a folha entraram? a receita e a folha lançadas batem? o fim do mês
+    const ct = [];
+    if (m.lanc_fiscal != null) { const notas = (m.notas_saida || 0) + (m.notas_entrada || 0); if (notas > 0) ct.push(m.lanc_fiscal > 0 ? 'a escrita fiscal entrou (' + n(m.lanc_fiscal, 'lançamento', 'lançamentos') + ')' : 'a escrita fiscal NÃO entrou'); }
+    const fc = folhaCalculada(m);
+    if (m.folha_lancada != null && fc > 0) ct.push(m.folha_lancada === 0 ? 'a folha NÃO entrou' : Math.abs(fc - m.folha_lancada) <= 1 ? 'a folha entrou e bate' : 'a folha lançada (' + brl(m.folha_lancada) + ') difere da calculada (' + brl(fc) + ')');
+    if (m.receita_lancada != null && m.receita_bruta > 0 && m.lanc_fiscal !== 0) ct.push(Math.abs(m.receita_bruta - m.receita_lancada) <= 1 ? 'a receita lançada bate com o faturamento' : 'a receita lançada (' + brl(m.receita_lancada) + ') difere do faturamento');
+    const fim = [];
+    if (m.caixa_negativo > 0) fim.push('o caixa negativo');
+    if (m.transitorias > 0) fim.push('transitória com saldo de ' + brl(m.transitorias_valor || 0));
+    if (m.contra_natureza > 0) fim.push(n(m.contra_natureza, 'conta', 'contas') + ' contra a natureza');
+    if (fim.length) ct.push('no último dia: ' + fim.join(', '));
+    if (ct.length) p.push('no contábil: ' + ct.join(', '));
     return comp.slice(5, 7) + '/' + comp.slice(0, 4) + (comp === mesHoje || comp === mesPassado ? ' (em fechamento)' : '') + ': ' + (p.join(' · ') || 'sem número');
   };
   const meses = [...porMes.keys()].sort().reverse();
@@ -906,7 +949,7 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, ago
     const id = a.id;
     const q = (caminho, op) => ler(caminho, op).then(r => r, err => ({ erro: (err && err.message) || 'erro' }));
     const desde30 = inicioBR(maisDias(hoje, -30));
-    const [cad, cart, soc, cont, serv, cobC, cobM, tar, rec, obr, alv, cert, adm, res, rt, reu, trE, reg, prec, fat, dre, fr, vig, nots, rev, rcE, rcP, rcM, cmp, dmE, dmM, ctE, ctM, ctP] = await Promise.all([
+    const [cad, cart, soc, cont, serv, cobC, cobM, tar, rec, obr, alv, cert, adm, res, rt, reu, trE, reg, prec, fat, dre, fr, vig, nots, rev, rcE, rcP, rcM, cmp, dmE, dmM, ctE, ctM, ctP, dmA, dmZ] = await Promise.all([
       q('clientes?select=' + TABELAS.clientes.cols.join(',') + '&id=eq.' + id),
       q('carteira_info?select=entrada,saida,motivo_saida,segmento,sistemas,contab_digital,contato,ramo,observacao,inadimplente_desde&cliente_id=eq.' + id),
       q('socios?select=nome,qualificacao,participacao_percentual,eh_administrador,telefone,email&cliente_id=eq.' + id + '&order=participacao_percentual.desc.nullslast'),
@@ -949,7 +992,10 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, ago
       // o controle das contabilidades (04/11/2026): até quando está feita e o que falta pra fechar
       q('contabil_empresas?select=faz,motivo,inicio,fim,responsavel,observacao&cliente_id=eq.' + id),
       q('contabil_meses?select=competencia,situacao,feita_em&cliente_id=eq.' + id + '&order=competencia.asc&limit=1200'),
-      q('contabil_pendencias?select=texto,aguardando,desde,competencia,criado_em&cliente_id=eq.' + id + '&resolvida_em=is.null&order=desde.asc.nullslast&limit=20')
+      q('contabil_pendencias?select=texto,aguardando,desde,competencia,criado_em&cliente_id=eq.' + id + '&resolvida_em=is.null&order=desde.asc.nullslast&limit=20'),
+      // o andamento das contabilidades no Domínio (a versão 3 da ponte, 05/11/2026): a foto do dia e o zeramento
+      q('dominio_andamento?select=banco_contas,banco_ate,banco_ultimo,banco_ultimo_geral,caixa_ate,caixa_contador_ate,extrato_contas,extrato_ate,extrato_pendentes,conciliadas,conciliado_ate,fechamento_em,dados_ate&cliente_id=eq.' + id),
+      q('dominio_encerramento?select=codigo,ano,zerado_em,zeramentos,zerado_incluido_em,lancados_depois,lancamentos_do_ano&cliente_id=eq.' + id + '&order=ano.desc&limit=10')
     ]);
     if (cad.erro) throw new Error(cad.erro);
     const c = cad.linhas[0];
@@ -1018,6 +1064,14 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, ago
     if (!dmE.erro && !dmM.erro) { const t = textoDoDominio(dmE.linhas, dmM.linhas, hoje); if (t) partes.push(t); }
     // o controle das contabilidades: sem linha, a empresa está fora do controle (o MEI e a pessoa física quase sempre)
     if (!ctE.erro && !ctM.erro && !ctP.erro) { const t = textoDaContabilidade(ctE.linhas[0], ctM.linhas, ctP.linhas, hoje); if (t) partes.push(t); }
+    // a contabilidade no Domínio: até onde está lançada, o zeramento e os meses (dos últimos 6) em que o controle e o Domínio não batem
+    if (!dmA.erro && !dmZ.erro) {
+      const and = andamentoDaEmpresa(dmA.linhas), linhas = textoDoAndamento(and, encerramentoDaEmpresa(dmZ.linhas));
+      const empCtl = !ctE.erro && ctE.linhas[0];
+      const disc = empCtl && !ctM.erro && !dmM.erro ? mesesQueDiscordam(empCtl, mapaDosMeses(ctM.linhas), dominioPorMes(dmM.linhas), and, hoje).filter(c => c >= mesAntes(hoje, 5)) : [];
+      if (disc.length) linhas.unshift('a marcação do controle e o Domínio não batem em ' + textoDasFaixas(disc) + ' (nos últimos 6 meses; o porquê, em cada mês da linha do Domínio)');
+      if (linhas.length) partes.push('A contabilidade no Domínio' + (and && and.dados_ate ? ' (pela ponte, dados de ' + dataBR(and.dados_ate) + ')' : '') + ': ' + linhas.join(' · '));
+    }
     sec('Admissões', adm, (ls, total) => (total || ls.length) + ' — ' + ls.map(x => x.funcionario_nome + ' (início ' + dataBR(x.data_inicio) + ', ' + (x.status === 'respondida' ? 'recebida, a registrar' : situacao(x.status)) + ')').join(' · '), 'nenhuma');
     sec('Rescisões', res, (ls, total) => (total || ls.length) + ' — ' + ls.map(x => x.funcionario_nome + ' (' + situacao(x.tipo) + ', último dia ' + dataBR(x.ultimo_dia) + ', pagar até ' + dataBR(x.data_acerto) + ', '
       + (x.status === 'recebida' ? 'recebida, a calcular' : situacao(x.status)) + ')').join(' · '), 'nenhuma');

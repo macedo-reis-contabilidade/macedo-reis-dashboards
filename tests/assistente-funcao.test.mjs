@@ -1083,6 +1083,49 @@ console.log('O comparativo tributário (a mesma conta da tela, com o "e se"):');
   const fora = await criarFerramentas({ banco: bancoFalso().banco, hoje: '2026-11-04', usuario: {} }).ver_empresa({ empresa: ID_A });
   chk('ver_empresa: a empresa fora do controle não ganha a linha', !/^Contabilidade/m.test(fora));
 }
+{
+  // o andamento das contabilidades no Domínio (05/11/2026, a versão 3 da ponte): a lista branca, o contábil de cada mês
+  // e a linha "A contabilidade no Domínio" do ver_empresa, com os meses em que a marcação e o Domínio não batem
+  console.log('O andamento das contabilidades no Domínio:');
+  chk('a lista branca: dominio_andamento e dominio_encerramento, e as colunas da versão 3 em dominio_mensal',
+    TABELAS.dominio_andamento && TABELAS.dominio_encerramento && TABELAS.dominio_encerramento.pk === 'codigo,ano'
+    && ['lanc_fiscal', 'folha_lancada', 'receita_lancada', 'caixa_negativo', 'contra_natureza', 'transitorias', 'incluido_ate'].every(c => TABELAS.dominio_mensal.cols.includes(c)));
+  const L = (comp, o) => ({ codigo: 7, competencia: comp, atualizado_em: '2026-11-05T10:00:00Z', ...o });
+  const t = textoDoDominio([{ codigo: 7, ativa: true }], [
+    L('2026-08', { notas_saida: 40, notas_entrada: 12, lancamentos: 300, lanc_fiscal: 0, salarios: 4000, pro_labore_valor: 1518, folha_lancada: 0, receita_bruta: 50000, receita_lancada: 0, caixa_negativo: 1, contra_natureza: 2, transitorias: 1, transitorias_valor: 350.75 }),
+    L('2026-07', { notas_saida: 38, notas_entrada: 10, lancamentos: 280, lanc_fiscal: 220, salarios: 4000, pro_labore_valor: 1518, folha_lancada: 5518, receita_bruta: 48000, receita_lancada: 48000, caixa_negativo: 0, contra_natureza: 0, transitorias: 0 }),
+    L('2026-06', { notas_saida: 30, lancamentos: 200, lanc_fiscal: 150, salarios: 4000, folha_lancada: 3200, receita_bruta: 40000, receita_lancada: 39000 })], '2026-11-05');
+  chk('o contábil do mês: a escrita fiscal e a folha que não entraram, o caixa negativo, a transitória e as contas contra a natureza',
+    /08\/2026: [^|]*no contábil: a escrita fiscal NÃO entrou, a folha NÃO entrou, no último dia: o caixa negativo, transitória com saldo de R\$\s350,75, 2 contas contra a natureza/.test(t)
+    && !/08\/2026: [^|]*a receita lançada/.test(t), t);
+  chk('o mês em dia: a escrita fiscal entrou, a folha e a receita batem; o que difere, com os dois valores',
+    /07\/2026: [^|]*no contábil: a escrita fiscal entrou \(220 lançamentos\), a folha entrou e bate, a receita lançada bate com o faturamento/.test(t)
+    && /06\/2026: [^|]*a folha lançada \(R\$\s3\.200,00\) difere da calculada \(R\$\s4\.000,00\), a receita lançada \(R\$\s39\.000,00\) difere do faturamento/.test(t), t);
+  chk('sem a versão 3 (os campos nulos): nada de contábil', !/no contábil/.test(textoDoDominio([{ codigo: 7, ativa: true }], [L('2026-08', { notas_saida: 40, lancamentos: 300 })], '2026-11-05')));
+  const emp = { faz: true, inicio: '2026-06', fim: null, responsavel: 'Adaini' };
+  const { banco, log } = bancoFalso({ extras: {
+    contabil_empresas: [{ cliente_id: ID_A, ...emp }],
+    contabil_meses: ['2026-06', '2026-07', '2026-08'].map(c => ({ cliente_id: ID_A, competencia: c, situacao: 'feita', feita_em: '2026-10-30' })),
+    contabil_pendencias: [],
+    dominio_empresas: [{ codigo: 7, ativa: true, cliente_id: ID_A }],
+    dominio_mensal: [L('2026-08', { cliente_id: ID_A, notas_saida: 40, notas_entrada: 12, lancamentos: 300, lanc_fiscal: 0 }),
+      L('2026-07', { cliente_id: ID_A, notas_saida: 38, lancamentos: 280, lanc_fiscal: 220 })],
+    dominio_andamento: [{ codigo: 7, cliente_id: ID_A, banco_contas: 2, banco_ate: '2026-08-31', banco_ultimo: '2026-09-30', caixa_contador_ate: '2026-09-30', extrato_contas: 1, extrato_ate: '2026-10-31', extrato_pendentes: 4, fechamento_em: '2026-08-31', dados_ate: '2026-11-05' }],
+    dominio_encerramento: [{ codigo: 7, cliente_id: ID_A, ano: 2025, zerado_em: '2025-12-31', zeramentos: 1, zerado_incluido_em: '2026-03-10', lancados_depois: 3, lancamentos_do_ano: 3000 },
+      { codigo: 7, cliente_id: ID_A, ano: 2024, zerado_em: null, zeramentos: 0, lancamentos_do_ano: 2800 }] } });
+  const v = await criarFerramentas({ banco, hoje: '2026-11-05', usuario: { nome: 'Adaini', socio: false } }).ver_empresa({ empresa: ID_A });
+  const linha = v.split('\n').find(x => x.startsWith('A contabilidade no Domínio')) || '';
+  chk('ver_empresa: a linha da contabilidade no Domínio, com o dia da foto, o banco, o extrato, o caixa, o fechamento e o zeramento',
+    /^A contabilidade no Domínio \(pela ponte, dados de 05\/11\/2026\): /.test(linha) && /Banco: 2 contas com movimento nos últimos 12 meses, lançadas até 31\/08\/2026 \(a mais atrasada\) e 30\/09\/2026 \(a mais adiantada\)/.test(linha)
+    && /Extrato importado até 31\/10\/2026, com 4 linhas ainda sem lançamento/.test(linha) && /Data do fechamento nos parâmetros do Domínio: 31\/08\/2026/.test(linha)
+    && /2025: zerado em 31\/12\/2025, feito em 10\/03\/2026; 3 lançamentos entraram depois do zeramento/.test(linha) && /2024: sem o zeramento \(2\.800 lançamentos no ano\)/.test(linha), linha || v.slice(-600));
+  chk('ver_empresa: os meses em que a marcação e o Domínio não batem (o 08/2026 feito sem a escrita fiscal), só os dos últimos 6',
+    /a marcação do controle e o Domínio não batem em 08\/2026/.test(linha) && !/não batem em [^·]*07\/2026/.test(linha), linha);
+  chk('ver_empresa: as duas leituras pelo cliente', log.some(x => x.caminho.startsWith('dominio_andamento?') && x.caminho.includes('cliente_id=eq.' + ID_A))
+    && log.some(x => x.caminho.startsWith('dominio_encerramento?') && x.caminho.includes('cliente_id=eq.' + ID_A)));
+  const sem = await criarFerramentas({ banco: bancoFalso().banco, hoje: '2026-11-05', usuario: {} }).ver_empresa({ empresa: ID_A });
+  chk('ver_empresa: sem a foto do Domínio, sem a linha', !/^A contabilidade no Domínio/m.test(sem));
+}
 
 console.log('Commit fixado na função (o código cru do GitHub):');
 const idx = readFileSync(raiz + 'supabase/functions/assistente/index.ts', 'utf8');

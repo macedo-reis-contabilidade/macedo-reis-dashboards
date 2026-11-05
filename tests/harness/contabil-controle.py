@@ -17,7 +17,12 @@ Confere:
   5. o ano de 2025, a busca, ?empresa= e ?ano=; o card no hub do Contábil, com as pendências;
   6. o tour: começa sozinho na primeira visita, anda pelos passos, abre as opções de um mês e a ficha de uma empresa (o
      assistente fica sabendo dela) e fecha tudo no Esc e no Concluir, sem gravar nada; o Enter não aperta o botão da tela;
-     a visita seguinte não começa de novo, o ? revê, ?tour=1 força, e pelo link de uma ficha ele não começa.
+     a visita seguinte não começa de novo, o ? revê, ?tour=1 força, e pelo link de uma ficha ele não começa;
+  7. o andamento das contabilidades no Domínio (a versão 3 da ponte, 05/11/2026): o mês feito em que o Domínio discorda
+     (a folha fora da contabilidade, o banco parado antes do mês) ganha a dica forte, a linha ganha o aviso e o foco
+     "O Domínio discorda" as acha; o mês mostra as origens dos lançamentos e o que mais o Domínio diz; a ficha mostra "No
+     Domínio" (o banco, o extrato, o caixa, o fechamento e o zeramento) e o mês a mês com a escrita fiscal, a folha, a
+     receita e o fim do mês.
 Termina com código 1 se alguma checagem falhar.
 Pré-requisito: pip install playwright e python -m playwright install chromium
 """
@@ -76,12 +81,26 @@ CARTEIRA = [
 DOM_EMP = [{'codigo': 101, 'cliente_id': 'c-a', 'ativa': True}, {'codigo': 102, 'cliente_id': 'c-b', 'ativa': True}, {'codigo': 103, 'cliente_id': 'c-c', 'ativa': True},
            {'codigo': 104, 'cliente_id': 'c-d', 'ativa': False}, {'codigo': 108, 'cliente_id': 'c-h', 'ativa': True}]
 z = {'lancamentos': 0, 'notas_saida': 0, 'valor_saidas': 0, 'notas_entrada': 0, 'valor_entradas': 0, 'funcionarios_ativos': 0, 'pro_labore': 0, 'ultimo_lancamento': None}
+# a versão 3 da ponte (o andamento das contabilidades): a c-a em 08/2026, marcada feita, com a folha fora da contabilidade
+V3 = {'receita_bruta': 5000, 'salarios': 4000, 'decimo_terceiro': 0, 'pro_labore_valor': 1518, 'lanc_normais': 2, 'lanc_extrato': 10, 'lanc_fiscal': 40,
+      'lanc_folha': 0, 'lanc_apuracao': 1, 'lanc_outros': 0, 'incluido_ate': '2026-09-05', 'receita_lancada': 5000, 'folha_lancada': 0, 'encargos_lancados': 0,
+      'caixa_negativo': 0, 'contra_natureza': 2, 'sem_natureza': 0, 'transitorias': 0, 'transitorias_valor': 0}
 DOM_MES = [
     {'codigo': 101, 'cliente_id': 'c-a', 'competencia': '2026-10', **z, 'lancamentos': 150, 'notas_saida': 12, 'valor_saidas': 23456.78, 'funcionarios_ativos': 3, 'pro_labore': 1, 'ultimo_lancamento': '2026-10-30'},
+    {'codigo': 101, 'cliente_id': 'c-a', 'competencia': '2026-08', **z, 'lancamentos': 53, 'notas_saida': 10, 'valor_saidas': 5000, 'funcionarios_ativos': 2, 'pro_labore': 1, 'ultimo_lancamento': '2026-08-31', **V3},
     {'codigo': 102, 'cliente_id': 'c-b', 'competencia': '2026-07', **z, 'lancamentos': 20, 'notas_saida': 5, 'valor_saidas': 900},
     {'codigo': 103, 'cliente_id': 'c-c', 'competencia': '2026-08', **z},
 ]
 PGDAS = [{'cliente_id': 'c-a', 'competencia': '2026-09', 'receita_mes': 45000, 'das_pago': True, 'transmitida_em': '2026-10-15'}]
+# a foto do dia: a c-a com o banco em dia até setembro; a c-b com o banco parado em abril (os feitos de maio e junho discordam)
+DOM_AND = [{'codigo': 101, 'cliente_id': 'c-a', 'banco_contas': 1, 'banco_ate': '2026-09-30', 'banco_ultimo': '2026-09-30', 'banco_ultimo_geral': '2026-09-30',
+            'caixa_ate': '2026-10-31', 'caixa_contador_ate': '2026-09-20', 'extrato_contas': 1, 'extrato_ate': '2026-09-30', 'extrato_pendentes': 2, 'conciliadas': 1,
+            'conciliado_ate': '2026-09-30', 'fechamento_em': '2025-12-31', 'dados_ate': '2026-11-04'},
+           {'codigo': 102, 'cliente_id': 'c-b', 'banco_contas': 1, 'banco_ate': '2026-04-30', 'banco_ultimo': '2026-04-30', 'banco_ultimo_geral': '2026-04-30',
+            'caixa_ate': None, 'caixa_contador_ate': None, 'extrato_contas': 0, 'extrato_ate': None, 'extrato_pendentes': 0, 'conciliadas': 0, 'conciliado_ate': None,
+            'fechamento_em': None, 'dados_ate': '2026-11-04'}]
+DOM_ENC = [{'codigo': 101, 'cliente_id': 'c-a', 'ano': 2025, 'zerado_em': '2025-12-31', 'zeramentos': 1, 'zerado_incluido_em': '2026-03-10', 'lancados_depois': 12, 'lancamentos_do_ano': 1500},
+           {'codigo': 101, 'cliente_id': 'c-a', 'ano': 2024, 'zerado_em': None, 'zeramentos': 0, 'zerado_incluido_em': None, 'lancados_depois': None, 'lancamentos_do_ano': 900}]
 TAREFAS = [{'id': 't-cont-1', 'setor': 'contabil', 'cliente_id': 'c-a', 'titulo': 'Balancete', 'prazo': '2026-11-10', 'responsavel': 'Adaini', 'status': 'pendente'},
            {'id': 't-cont-2', 'setor': 'contabil', 'cliente_id': 'c-a', 'titulo': 'Já feita', 'prazo': '2026-10-10', 'responsavel': 'Adaini', 'status': 'concluida'},
            {'id': 't-dp-1', 'setor': 'dp', 'cliente_id': 'c-a', 'titulo': 'Folha', 'prazo': '2026-11-06', 'responsavel': 'Vitória', 'status': 'pendente'}]
@@ -90,10 +109,11 @@ SEMEAR = """
 (() => { const T = %s; let db;
   Object.defineProperty(window, '__mockDb', { configurable: true, get() { return db; }, set(v) { db = v;
     v.clientes = T.clientes; v.contabil_empresas = T.empresas; v.contabil_meses = T.meses; v.contabil_pendencias = T.pendencias;
-    v.carteira_info = T.carteira; v.dominio_empresas = T.domEmp; v.dominio_mensal = T.domMes; v.receita_pgdas = T.pgdas; v.tarefas = T.tarefas; } });
+    v.carteira_info = T.carteira; v.dominio_empresas = T.domEmp; v.dominio_mensal = T.domMes; v.receita_pgdas = T.pgdas; v.tarefas = T.tarefas;
+    v.dominio_andamento = T.domAnd; v.dominio_encerramento = T.domEnc; } });
 })();
 """ % json.dumps({'clientes': CLIENTES, 'empresas': EMPRESAS, 'meses': MESES, 'pendencias': PENDENCIAS, 'carteira': CARTEIRA, 'domEmp': DOM_EMP,
-                  'domMes': DOM_MES, 'pgdas': PGDAS, 'tarefas': TAREFAS}, ensure_ascii=False)
+                  'domMes': DOM_MES, 'pgdas': PGDAS, 'tarefas': TAREFAS, 'domAnd': DOM_AND, 'domEnc': DOM_ENC}, ensure_ascii=False)
 TOUR = "(() => { const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { return String(k).startsWith('mr_tour_') ? 'ok' : g.call(this, k); }; })()"
 
 falhas = 0
@@ -307,6 +327,44 @@ def main():
         ok(tour_tit(p) == 'As empresas, por situação', '?tour=1 começa o tour mesmo já visto')
         p.click('.mrt-box [data-a="pular"]'); p.wait_for_timeout(200)
         ok(p.locator('.mrt-box').count() == 0, 'Pular fecha')
+        p.close()
+
+        print('7. O andamento das contabilidades no Domínio')
+        p = nova(b, base, erros, 'contabil-controle.html', 'andamento')
+        p.wait_for_selector('table.cc-grade', timeout=8000)
+        ok(foco(p, 'discorda') == '2', 'o foco "O Domínio discorda": a c-a (a folha de agosto) e a c-b (o banco parado e o sem movimento com lançamento)')
+        t_ago = cel(p, 'c-a', '2026-08').get_attribute('title') or ''
+        ok(cel(p, 'c-a', '2026-08').locator('.cc-dica:not(.is-leve)').count() == 1 and 'Marcado como feito, mas no Domínio a folha (R$ 5.518,00) não entrou na contabilidade.' in t_ago,
+           f'o mês feito com a folha fora da contabilidade ganha a dica forte ({t_ago[:160]!r})')
+        t_jun = cel(p, 'c-b', '2026-06').get_attribute('title') or ''
+        ok('o banco não tem lançamento neste mês (o último é de 30/04/2026)' in t_jun and cel(p, 'c-b', '2026-04').locator('.cc-dica').count() == 0,
+           'o mês feito depois do banco parado ganha a dica; o mês do último lançamento, não')
+        ok(p.locator('tr', has=p.locator('[data-emp="c-a"]')).locator('.cc-chip-dom').inner_text() == 'O Domínio discorda: 1 mês'
+           and p.locator('tr', has=p.locator('[data-emp="c-b"]')).locator('.cc-chip-dom').inner_text() == 'O Domínio discorda: 3 meses',
+           'a linha avisa em quantos meses a marcação e o Domínio discordam')
+        p.click('[data-foco="discorda"]'); p.wait_for_timeout(150)
+        ok(p.locator('.cc-grade tbody tr').count() == 2, 'o foco mostra só as duas')
+        cel(p, 'c-a', '2026-08').click(); p.wait_for_selector('#pop:not([hidden])', timeout=3000)
+        pop = p.inner_text('#pop')
+        ok('Desses lançamentos: 40 da escrita fiscal, 10 do extrato importado, 2 digitados, 1 da apuração.' in pop and 'O último entrou no Domínio em 05/09/2026.' in pop
+           and 'Marcado como feito, mas no Domínio a folha (R$ 5.518,00)' in pop and 'Também no Domínio: 2 contas com saldo contra a natureza no fim do mês.' in pop,
+           f'o mês: as origens dos lançamentos, o dia em que entraram, o que discorda e o que mais o Domínio diz ({pop[:300]!r})')
+        p.keyboard.press('Escape'); p.wait_for_timeout(150)
+        p.click('[data-emp="c-a"]'); p.wait_for_selector('#ovEmp.is-open', timeout=3000)
+        p.wait_for_function("() => document.querySelector('#eMeses').innerText.includes('45.000,00')", timeout=3000)
+        dom = p.inner_text('#eDominioBox')
+        ok(p.is_visible('#eDominioBox') and 'A marcação e o Domínio não batem em 08/2026' in dom and 'Banco: 1 conta com movimento nos últimos 12 meses, lançada até 30/09/2026.' in dom
+           and 'Extrato importado até 30/09/2026, com 2 linhas ainda sem lançamento.' in dom and 'Caixa lançado pelo contador até 20/09/2026 (com a integração das notas, até 31/10/2026).' in dom
+           and 'Data do fechamento nos parâmetros do Domínio: 31/12/2025.' in dom and '2025: zerado em 31/12/2025, feito em 10/03/2026; 12 lançamentos entraram depois do zeramento.' in dom
+           and '2024: sem o zeramento (900 lançamentos no ano).' in dom and 'Pela ponte do Domínio, com os dados de 04/11/2026.' in dom, f'a ficha: "No Domínio" ({dom[:500]!r})')
+        ago = p.locator('#eMeses tbody tr', has=p.locator('th', has_text='08/2026')).inner_text()
+        ok('não entrou' in ago and '40' in ago and 'bate' in ago and '2 contra a natureza' in ago and 'R$ 5.000,00' in ago,
+           f'o mês a mês: a escrita fiscal entrou, a folha não, a receita bate, o fim do mês e o valor das notas ({ago!r})')
+        p.screenshot(path=str(FOTOS / 'contabil-controle-dominio.png'))
+        p.close()
+        p = nova(b, base, erros, 'contabil-controle.html?empresa=c-c', 'sem-andamento')
+        p.wait_for_selector('#ovEmp.is-open', timeout=8000)
+        ok(p.is_hidden('#eDominioBox'), 'sem a foto do Domínio (a ponte ainda sem a versão 3), a ficha não mostra "No Domínio"')
         p.close()
         b.close()
     srv.shutdown()

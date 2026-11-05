@@ -4,7 +4,8 @@
 import { mesValido, diaValido, somaMes, mesesEntre, rotuloMes, mesPorExtenso, ultimoFechavel, diasEntre, mapaDosMeses, estadoDoMes,
   alvoDaEmpresa, resumoDaEmpresa, faixas, textoDasFaixas, mesesAteAqui, linhasParaMarcar, desfazerDe, dominioPorMes, textoDoDominio,
   dicaDoDominio, avisosDaEmpresa, limparPendencia, textoDaPendencia, ordenarPendencias, nomeDaEmpresa, semAcento, focosDaEmpresa,
-  anosDoControle, inicioSugerido, feitoNoMes, textoDeMeses } from '../assets/js/contabil-controle.js';
+  anosDoControle, inicioSugerido, feitoNoMes, textoDeMeses, andamentoDaEmpresa, folhaCalculada, problemasDoMes, mesesQueDiscordam,
+  textoDoAndamento, FOCOS, encerramentoDaEmpresa, textoDasOrigens } from '../assets/js/contabil-controle.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + JSON.stringify(extra) : '')); };
@@ -120,6 +121,77 @@ chk('os anos da grade: do início mais antigo até hoje', anosDoControle([{ inic
 chk('o início sugerido: o mês da entrada, nunca antes de janeiro do ano passado', inicioSugerido('2026-03-05', HOJE) === '2026-03' && inicioSugerido('2023-01-09', HOJE) === '2025-01' && inicioSugerido(null, HOJE) === '2026-11');
 const nm = feitoNoMes([feita('2025-01', '2026-11-02'), { ...feita('2025-02', '2026-11-03'), cliente_id: 'e2' }, feita('2025-03', '2026-10-30'), semMov('2025-04')], HOJE);
 chk('o que foi feito no mês de hoje', nm.meses === 2 && nm.empresas === 2);
+
+console.log('O andamento das contabilidades no Domínio (a versão 3 da ponte, 05/11/2026):');
+{
+  const dm = dominioPorMes([
+    { codigo: 1, competencia: '2026-09', lanc_fiscal: 40, incluido_ate: '2026-10-04', receita_lancada: 1000, receita_bruta: 1000 },
+    { codigo: 2, competencia: '2026-09', lanc_fiscal: 5, incluido_ate: '2026-10-09', caixa_negativo: 1 }
+  ]).get('2026-09');
+  chk('dois códigos no mês: o maior de cada (também o dia em que a integração entrou)', dm.lanc_fiscal === 40 && dm.incluido_ate === '2026-10-09' && dm.caixa_negativo === 1 && dm.receita_lancada === 1000);
+  const a = andamentoDaEmpresa([
+    { codigo: 1, banco_contas: 2, banco_ate: '2026-08-31', banco_ultimo: '2026-09-30', extrato_ate: '2026-09-30', extrato_pendentes: 3, caixa_ate: '2026-10-31' },
+    { codigo: 2, banco_contas: 1, banco_ate: '2026-07-31', banco_ultimo: '2026-07-31', extrato_ate: '2026-07-31', extrato_pendentes: 0, caixa_ate: '2026-09-30' }
+  ]);
+  chk('a foto de dois códigos: a conta mais atrasada fica a menor, as outras datas a maior, as contagens a maior',
+    a.banco_ate === '2026-07-31' && a.banco_ultimo === '2026-09-30' && a.extrato_ate === '2026-07-31' && a.caixa_ate === '2026-10-31' && a.banco_contas === 2 && a.extrato_pendentes === 3);
+  chk('sem foto, null', andamentoDaEmpresa([]) === null && andamentoDaEmpresa(null) === null);
+  chk('a folha calculada: os proventos, o 13º e o pró-labore (null sem nenhum)', folhaCalculada({ salarios: 4000, decimo_terceiro: null, pro_labore_valor: 1518 }) === 5518 && folhaCalculada({}) === null && folhaCalculada({ salarios: 0 }) === 0);
+  const tipos = (d, c = '2026-09', and = null) => problemasDoMes(d, c, and).map(p => p.tipo).join();
+  chk('a escrita fiscal que não entrou (nota no mês, nenhum lançamento da integração): e aí não compara a receita',
+    tipos({ notas_saida: 12, notas_entrada: 3, lanc_fiscal: 0, receita_bruta: 5000, receita_lancada: 0 }) === 'fiscal'
+    && problemasDoMes({ notas_saida: 12, notas_entrada: 3, lanc_fiscal: 0 }, '2026-09')[0].texto === 'a escrita fiscal (15 notas) não entrou na contabilidade');
+  chk('a folha que não entrou e a que entrou diferente (mais de R$ 1,00)',
+    tipos({ salarios: 4000, pro_labore_valor: 1518, folha_lancada: 0 }) === 'folha'
+    && tipos({ salarios: 4000, folha_lancada: 3990 }) === 'folha_difere' && tipos({ salarios: 4000, folha_lancada: 3999.5 }) === '');
+  chk('a receita lançada diferente do faturamento; igual (até R$ 1,00), nada', tipos({ notas_saida: 2, lanc_fiscal: 10, receita_bruta: 5000, receita_lancada: 4200 }) === 'receita'
+    && tipos({ notas_saida: 2, lanc_fiscal: 10, receita_bruta: 5000, receita_lancada: 4999.2 }) === '');
+  chk('o fim do mês: o caixa negativo, a transitória (com o valor) e as contas contra a natureza (leve)',
+    tipos({ caixa_negativo: 1, transitorias: 2, transitorias_valor: 350.75, contra_natureza: 3 }) === 'caixa,transitoria,natureza'
+    && problemasDoMes({ transitorias: 2, transitorias_valor: 350.75 }, '2026-09')[0].texto === '2 contas transitórias ou a classificar com saldo no fim do mês (R$ 350,75)'
+    && problemasDoMes({ contra_natureza: 3 }, '2026-09')[0].forte === false);
+  const and = { banco_contas: 2, banco_ultimo: '2026-07-31' };
+  chk('o banco sem lançamento no mês (nenhuma conta do mês em diante); o mês de antes do último, não; sem conta no ano, não',
+    tipos({}, '2026-09', and) === 'banco' && tipos({}, '2026-07', and) === '' && tipos({}, '2026-09', { banco_contas: 0, banco_ultimo_geral: '2023-05-31' }) === ''
+    && problemasDoMes({}, '2026-09', and)[0].texto === 'o banco não tem lançamento neste mês (o último é de 31/07/2026)');
+  chk('o que o Domínio não disse (a ponte de antes, sem a versão 3) não vira problema', tipos({ notas_saida: 12, salarios: 4000, receita_bruta: 5000 }) === '');
+  const feito = { tipo: 'feita', feita_em: '2026-10-20' };
+  const dc = dicaDoDominio(feito, { notas_saida: 12, lanc_fiscal: 0, caixa_negativo: 1, contra_natureza: 4 }, '2026-09', HOJE);
+  chk('o mês feito em que o Domínio discorda: conferir, com o que não bate (as contas contra a natureza ficam de fora)',
+    dc && dc.tipo === 'conferir' && dc.texto === 'Marcado como feito, mas no Domínio a escrita fiscal (12 notas) não entrou na contabilidade; o caixa fechou o mês negativo.', dc);
+  chk('o mês feito só com contas contra a natureza, ou sem nada: sem dica', dicaDoDominio(feito, { contra_natureza: 4 }, '2026-09', HOJE) === null && dicaDoDominio(feito, { lanc_fiscal: 3, notas_saida: 2 }, '2026-09', HOJE) === null);
+  chk('o mês feito com o banco parado antes dele: conferir', dicaDoDominio(feito, null, '2026-09', HOJE, and).tipo === 'conferir');
+  const empD = { cliente_id: 'e1', faz: true, inicio: '2026-07', fim: null };
+  const mapaD = mapaDosMeses([{ competencia: '2026-07', situacao: 'feita' }, { competencia: '2026-08', situacao: 'feita' }, { competencia: '2026-09', situacao: 'sem_movimento' }, { competencia: '2026-10', situacao: 'feita' }]);
+  const domD = dominioPorMes([
+    { competencia: '2026-07', notas_saida: 3, lanc_fiscal: 9 },
+    { competencia: '2026-08', salarios: 2000, folha_lancada: 0 },
+    { competencia: '2026-09', lancamentos: 12, notas_saida: 0, notas_entrada: 0 },
+    { competencia: '2026-10', notas_saida: 2, lanc_fiscal: 6 }
+  ]);
+  chk('os meses em que a marcação e o Domínio discordam: o feito com problema e o sem movimento com lançamento',
+    mesesQueDiscordam(empD, mapaD, domD, null, HOJE).join() === '2026-08,2026-09' && mesesQueDiscordam({ ...empD, faz: false }, mapaD, domD, null, HOJE).length === 0);
+  chk('o foco "O Domínio discorda"', FOCOS.some(([k]) => k === 'discorda') && focosDaEmpresa(empD, resumoDaEmpresa(empD, mapaD, HOJE), 0, HOJE, 2).has('discorda')
+    && !focosDaEmpresa(empD, resumoDaEmpresa(empD, mapaD, HOJE), 0, HOJE).has('discorda'));
+  const tx = textoDoAndamento({ banco_contas: 2, banco_ate: '2026-08-31', banco_ultimo: '2026-09-30', extrato_contas: 1, extrato_ate: '2026-09-30', extrato_pendentes: 3,
+    caixa_ate: '2026-10-31', caixa_contador_ate: '2026-09-15', fechamento_em: '2025-12-31' },
+    [{ ano: 2024, zerado_em: '2024-12-31', zeramentos: 1, zerado_incluido_em: '2025-03-15', lancados_depois: 0 }, { ano: 2025, zerado_em: null, lancamentos_do_ano: 4300 }]);
+  chk('a foto em texto, pra ficha', tx.join(' | ') === 'Banco: 2 contas com movimento nos últimos 12 meses, lançadas até 31/08/2026 (a mais atrasada) e 30/09/2026 (a mais adiantada).'
+    + ' | Extrato importado até 30/09/2026, com 3 linhas ainda sem lançamento.'
+    + ' | Caixa lançado pelo contador até 15/09/2026 (com a integração das notas, até 31/10/2026).'
+    + ' | Data do fechamento nos parâmetros do Domínio: 31/12/2025.'
+    + ' | 2025: sem o zeramento (4.300 lançamentos no ano).'
+    + ' | 2024: zerado em 31/12/2024, feito em 15/03/2025.', tx);
+  const enc = encerramentoDaEmpresa([{ codigo: 1, ano: 2025, zerado_em: null, lancamentos_do_ano: 10 }, { codigo: 2, ano: 2025, zerado_em: '2025-12-31', lancamentos_do_ano: 3 },
+    { codigo: 1, ano: 2024, zerado_em: null, lancamentos_do_ano: 5 }, { codigo: 2, ano: 2024, zerado_em: null, lancamentos_do_ano: 9 }]);
+  chk('o encerramento de dois códigos: no ano, o que zerou, senão o de mais lançamentos; o ano mais novo primeiro',
+    enc.map(z => z.ano + ':' + z.codigo).join() === '2025:2,2024:2');
+  chk('as origens em texto (só as que têm); sem a versão 3, null', textoDasOrigens({ lanc_fiscal: 340, lanc_folha: 15, lanc_extrato: 25, lanc_normais: 1, lanc_apuracao: 0, lanc_outros: 0 })
+    === '340 da escrita fiscal, 15 da folha, 25 do extrato importado, 1 digitado' && textoDasOrigens({ lancamentos: 5 }) === null && textoDasOrigens({ lanc_fiscal: 0 }) === null);
+  chk('sem banco no ano, nunca teve banco, só a integração no caixa',
+    textoDoAndamento({ banco_contas: 0, banco_ultimo_geral: '2023-05-31' })[0] === 'Banco: sem movimento nos últimos 12 meses (o último lançamento em conta de banco é de 31/05/2023).'
+    && textoDoAndamento({ banco_contas: 0, caixa_ate: '2026-10-31' }).join(' | ') === 'Banco: nenhum lançamento em conta de banco no Domínio. | Caixa: só a integração das notas (até 31/10/2026).');
+}
 
 console.log(falhas ? '\n' + falhas + ' falha(s).' : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);

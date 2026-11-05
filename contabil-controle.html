@@ -13,8 +13,11 @@
        contabilidade de cada empresa está feita, mês a mês, e o que falta pra fechar. Contínuo, sem tarefa mensal: cada mês
        é feito (com o dia em que foi feito), em andamento, sem movimento ou a fazer; "feita até aqui" fecha de uma vez os
        meses abertos até o mês clicado, com o Desfazer. As regras são de assets/js/contabil-controle.js; os números do
-       Domínio (dominio_mensal) e do PGDAS (receita_pgdas) entram como dica e na ficha da empresa. Tudo o que vem do banco
-       entra escapado. ?empresa=<cliente_id> abre a ficha; ?ano=AAAA abre no ano. -->
+       Domínio (dominio_mensal) e do PGDAS (receita_pgdas) entram como dica e na ficha da empresa. Desde 05/11/2026 (a
+       versão 3 da ponte), o andamento das contabilidades (dominio_andamento, a foto do dia; dominio_encerramento, o
+       zeramento): o mês feito em que o Domínio discorda ganha a dica forte, a linha o aviso e o foco "O Domínio
+       discorda"; a ficha mostra "No Domínio" — sem trocar a marcação. Tudo o que vem do banco entra escapado.
+       ?empresa=<cliente_id> abre a ficha; ?ano=AAAA abre no ano. -->
   <div class="app-shell">
     <header class="topbar">
       <div class="topbar-brand">
@@ -88,6 +91,12 @@
         <div id="eResumo" class="cc-e-resumo"></div>
         <div id="eAvisos"></div>
 
+        <section aria-labelledby="domTit" id="eDominioBox" hidden>
+          <h4 class="cc-h4" id="domTit">No Domínio</h4>
+          <ul class="cc-dom" id="eDominio"></ul>
+          <p class="cc-dica-txt" id="eDominioRodape"></p>
+        </section>
+
         <section aria-labelledby="pendTit">
           <h4 class="cc-h4" id="pendTit">O que falta pra fechar</h4>
           <ul class="cc-pends" id="ePend"></ul>
@@ -113,7 +122,7 @@
         <section aria-labelledby="mesTit">
           <h4 class="cc-h4" id="mesTit">Mês a mês</h4>
           <div class="cc-mm-wrap"><table class="cc-mm" id="eMeses"></table></div>
-          <p class="cc-dica-txt">Os números do Domínio são os que a ponte do PC do escritório lê todo dia: os lançamentos contábeis, as notas (o valor contábil, que não é o faturamento), os funcionários ativos no fim do mês e os sócios com pró-labore. O faturamento é o da declaração do PGDAS que a Receita mostra. Traço: o sistema não tem o número.</p>
+          <p class="cc-dica-txt">Os números do Domínio são os que a ponte do PC do escritório lê todo dia. Escrita fiscal, folha e receita: o que entrou na contabilidade do mês (os lançamentos da escrita fiscal; a folha e a receita lançadas contra a folha calculada e o faturamento do Domínio). Fim do mês: o caixa negativo, a conta transitória com saldo e as contas contra a natureza no último dia. As notas, com o valor contábil (que não é o faturamento); os funcionários ativos no fim do mês e os sócios com pró-labore. O faturamento é o da declaração do PGDAS que a Receita mostra. Traço: o sistema não tem o número.</p>
         </section>
 
         <section aria-labelledby="tarTit" id="eTarefasBox" hidden>
@@ -146,7 +155,8 @@
     import { SITUACOES, AGUARDANDO, NOMES_MES, mesValido, somaMes, mesesEntre, rotuloMes, mesPorExtenso, dataBR, ultimoFechavel, mapaDosMeses,
       estadoDoMes, resumoDaEmpresa, textoDasFaixas, textoDeMeses, mesesAteAqui, linhasParaMarcar, desfazerDe, dominioPorMes, textoDoDominio,
       dicaDoDominio, avisosDaEmpresa, limparPendencia, rotuloAguardando, textoDaPendencia, ordenarPendencias, nomeDaEmpresa, semAcento,
-      FOCOS, focosDaEmpresa, anosDoControle, inicioSugerido, feitoNoMes, dinheiro, mesDoDia } from './assets/js/contabil-controle.js';
+      FOCOS, focosDaEmpresa, anosDoControle, inicioSugerido, feitoNoMes, dinheiro, mesDoDia, CAMPOS_DOMINIO, andamentoDaEmpresa,
+      encerramentoDaEmpresa, problemasDoMes, mesesQueDiscordam, textoDoAndamento, textoDasOrigens, folhaCalculada } from './assets/js/contabil-controle.js';
 
     const $ = id => document.getElementById(id);
     const esc = t => String(t == null ? '' : t).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
@@ -159,6 +169,7 @@
 
     // o estado da tela
     const st = { empresas: new Map(), meses: new Map(), pend: new Map(), clientes: new Map(), carteira: new Map(), domEmp: new Map(), dominio: new Map(),
+      andamento: new Map(), encerramento: new Map(),
       ano: +HOJE.slice(0, 4), foco: 'todas', busca: '', ordem: 'nome', aberta: null, pop: null, desfazer: null };
     let EU = null;
     try { const a = +localStorage.getItem('mr_contabil_ano'); if (a >= 2000 && a <= +HOJE.slice(0, 4)) st.ano = a; } catch (e) {}
@@ -299,10 +310,17 @@
       const clis = await emPartes([...ids], 100, parte => lerTudo('clientes', 'id, nome_principal, nome_fantasia, regime_tributario, status, tipo_pessoa', q => q.in('id', parte)));
       clis.forEach(c => st.clientes.set(c.id, c));
       // o Domínio mês a mês das empresas do controle
-      const doms = await emPartes([...st.empresas.keys()], 50, parte => lerTudo('dominio_mensal', 'codigo, cliente_id, competencia, lancamentos, ultimo_lancamento, notas_saida, valor_saidas, notas_entrada, valor_entradas, funcionarios_ativos, pro_labore', q => q.in('cliente_id', parte)));
-      const porCli = new Map();
-      doms.forEach(l => { if (!porCli.has(l.cliente_id)) porCli.set(l.cliente_id, []); porCli.get(l.cliente_id).push(l); });
-      porCli.forEach((ls, id) => st.dominio.set(id, dominioPorMes(ls)));
+      const idsCtl = [...st.empresas.keys()];
+      const [doms, ands, encs] = await Promise.all([
+        emPartes(idsCtl, 50, parte => lerTudo('dominio_mensal', 'codigo, cliente_id, competencia, ultimo_lancamento, incluido_ate, ' + CAMPOS_DOMINIO.join(', '), q => q.in('cliente_id', parte))),
+        // o andamento das contabilidades (a versão 3 da ponte): a foto do dia e o zeramento de cada ano
+        emPartes(idsCtl, 100, parte => lerTudo('dominio_andamento', 'codigo, cliente_id, banco_contas, banco_ate, banco_ultimo, banco_ultimo_geral, caixa_ate, caixa_contador_ate, extrato_contas, extrato_ate, extrato_pendentes, conciliadas, conciliado_ate, fechamento_em, dados_ate', q => q.in('cliente_id', parte))),
+        emPartes(idsCtl, 100, parte => lerTudo('dominio_encerramento', 'codigo, cliente_id, ano, zerado_em, zeramentos, zerado_incluido_em, lancados_depois, lancamentos_do_ano', q => q.in('cliente_id', parte))),
+      ]);
+      const agrupar = ls => { const m = new Map(); ls.forEach(l => { if (!m.has(l.cliente_id)) m.set(l.cliente_id, []); m.get(l.cliente_id).push(l); }); return m; };
+      agrupar(doms).forEach((ls, id) => st.dominio.set(id, dominioPorMes(ls)));
+      agrupar(ands).forEach((ls, id) => st.andamento.set(id, andamentoDaEmpresa(ls)));
+      agrupar(encs).forEach((ls, id) => st.encerramento.set(id, encerramentoDaEmpresa(ls)));
     }
 
     // ---------- contas da tela ----------
@@ -312,9 +330,11 @@
     const ctxDe = id => ({ cliente: st.clientes.get(id) || null, carteira: st.carteira.get(id) || null, dominio: st.domEmp.get(id) || [] });
     const nomeDe = id => nomeDaEmpresa(st.clientes.get(id));
     const codigosDe = id => (st.domEmp.get(id) || []).map(d => d.codigo).sort((a, b) => a - b);
+    const andDe = id => st.andamento.get(id) || null;
+    const discordamDe = id => mesesQueDiscordam(st.empresas.get(id), mesesDe(id), st.dominio.get(id), andDe(id), HOJE);
     function linhaDaEmpresa(id) {
-      const emp = st.empresas.get(id), r = resumoDe(id), pa = pendAbertas(id);
-      return { id, emp, r, pend: pa, focos: focosDaEmpresa(emp, r, pa.length, HOJE), nome: nomeDe(id), cli: st.clientes.get(id) };
+      const emp = st.empresas.get(id), r = resumoDe(id), pa = pendAbertas(id), disc = discordamDe(id);
+      return { id, emp, r, pend: pa, disc, focos: focosDaEmpresa(emp, r, pa.length, HOJE, disc.length), nome: nomeDe(id), cli: st.clientes.get(id) };
     }
     function todasAsLinhas() { return [...st.empresas.keys()].map(linhaDaEmpresa); }
     function filtradas(linhas) {
@@ -419,7 +439,7 @@
     function celula(id, emp, c) {
       const e = estadoDoMes(emp, mesesDe(id), c, HOJE);
       const dom = (st.dominio.get(id) || new Map()).get(c);
-      const dica = emp.faz === false ? null : dicaDoDominio(e, dom, c, HOJE);
+      const dica = emp.faz === false ? null : dicaDoDominio(e, dom, c, HOJE, andDe(id));
       const temPend = pendAbertas(id).some(p => p.competencia === c);
       const tipo = emp.faz === false ? 'fora' : e.tipo;
       let txt = '', aria = mesPorExtenso(c) + ': ';
@@ -447,6 +467,7 @@
     function chipsDe(l) {
       const ch = [];
       if (l.pend.length) ch.push('<span class="cc-chip cc-chip-pend">' + (l.pend.length === 1 ? '1 pendência' : l.pend.length + ' pendências') + '</span>');
+      if (l.disc && l.disc.length) ch.push('<span class="cc-chip cc-chip-dom" title="' + esc('A marcação e o Domínio não batem em ' + textoDasFaixas(l.disc, 4) + '. Clique no mês pra ver o porquê.') + '">O Domínio discorda: ' + esc(textoDeMeses(l.disc.length)) + '</span>');
       for (const a of avisosDaEmpresa(l.emp, ctxDe(l.id))) {
         const curto = { saida: 'Saiu da carteira', carteira: 'Fora da carteira', dominio: 'Inativa no Domínio', cadastro: 'Inativa no cadastro', mei: 'MEI' }[a.tipo];
         if (curto) ch.push('<span class="cc-chip" title="' + esc(a.texto) + '">' + esc(curto) + '</span>');
@@ -481,7 +502,7 @@
       st.pop = { id, c, ancora };
       const e = estadoDoMes(emp, mesesDe(id), c, HOJE);
       const dom = (st.dominio.get(id) || new Map()).get(c);
-      const dica = dicaDoDominio(e, dom, c, HOJE);
+      const dica = dicaDoDominio(e, dom, c, HOJE, andDe(id));
       $('popTit').textContent = mesPorExtenso(c);
       $('popEmp').textContent = nomeDe(id);
       let h = '<p class="cc-pop-estado">';
@@ -491,9 +512,13 @@
       else if (e.tipo === 'fora') h += e.porque === 'antes' ? 'Antes do início do controle (' + esc(rotuloMes(emp.inicio)) + ').' : 'Depois do fim do controle (' + esc(rotuloMes(emp.fim)) + ').';
       else h += c === MES_HOJE ? 'A fazer (o mês ainda está correndo).' : 'A fazer.';
       h += '</p>';
-      const tDom = textoDoDominio(dom);
-      if (tDom) h += '<p class="cc-pop-dom">No Domínio: ' + esc(tDom) + (dom.ultimo_lancamento ? ' (o último lançamento em ' + esc(dataBR(dom.ultimo_lancamento)) + ')' : '') + '.</p>';
+      const tDom = textoDoDominio(dom), tOrig = textoDasOrigens(dom);
+      if (tDom) h += '<p class="cc-pop-dom">No Domínio: ' + esc(tDom) + (dom.ultimo_lancamento ? ' (o último lançamento em ' + esc(dataBR(dom.ultimo_lancamento)) + ')' : '') + '.'
+        + (tOrig ? ' Desses lançamentos: ' + esc(tOrig) + '.' : '') + (dom.incluido_ate ? ' O último entrou no Domínio em ' + esc(dataBR(dom.incluido_ate)) + '.' : '') + '</p>';
       if (dica) h += '<p class="cc-pop-dica' + (dica.tipo === 'conferir' ? ' is-forte' : '') + '">' + esc(dica.texto) + '</p>';
+      // o resto do que o Domínio diz do mês: no feito, o que a dica não leva (as contas contra a natureza); nos outros, tudo
+      const probs = problemasDoMes(dom, c, andDe(id)).filter(p => !(e.tipo === 'feita' && p.forte));
+      if (probs.length && c <= ULTIMO) h += '<p class="cc-pop-dom">' + (e.tipo === 'feita' ? 'Também no Domínio: ' : 'No Domínio, falta ou não bate: ') + esc(probs.map(p => p.texto).join('; ')) + '.</p>';
       const pm = pendAbertas(id).filter(p => p.competencia === c);
       if (pm.length) h += '<ul class="cc-pop-pends">' + pm.map(p => '<li>' + esc(p.texto) + '</li>').join('') + '</ul>';
       if (e.tipo === 'fora') {
@@ -662,6 +687,13 @@
       $('eResumo').innerHTML = res;
       const av = avisosDaEmpresa(emp, ctxDe(id));
       $('eAvisos').innerHTML = av.length ? '<ul class="cc-avisos">' + av.map(a => '<li>' + esc(a.texto) + (a.acao ? ' <button class="btn btn-ghost btn-sm" data-encerrar="' + esc(a.acao.fim) + '">' + esc(a.acao.rotulo) + '</button>' : '') + '</li>').join('') + '</ul>' : '';
+      // no Domínio: até onde o banco, o extrato e o caixa estão lançados, o fechamento, o zeramento e onde discorda
+      const and = andDe(id), enc = st.encerramento.get(id) || [], disc = discordamDe(id);
+      const linhasDom = textoDoAndamento(and, enc);
+      if (disc.length) linhasDom.unshift('A marcação e o Domínio não batem em ' + textoDasFaixas(disc, 6) + ': clique no mês, na grade ou no mês a mês, pra ver o porquê.');
+      $('eDominioBox').hidden = !linhasDom.length;
+      $('eDominio').innerHTML = linhasDom.map((x, i) => '<li' + (i === 0 && disc.length ? ' class="is-forte"' : '') + '>' + esc(x) + '</li>').join('');
+      $('eDominioRodape').textContent = and && and.dados_ate ? 'Pela ponte do Domínio, com os dados de ' + dataBR(and.dados_ate) + '. Quem diz que o mês está fechado é a marcação, não o Domínio.' : '';
       // as pendências
       const { abertas, resolvidas } = ordenarPendencias(st.pend.get(id) || []);
       $('ePend').innerHTML = abertas.length ? abertas.map(p => itemPend(p, false)).join('') : '<li class="cc-pend-vazia">Nada pendente: tudo o que falta é fazer os meses.</li>';
@@ -672,12 +704,31 @@
       const dom = st.dominio.get(id) || new Map(), mapa = mesesDe(id), pg = st.pgdas || new Map();
       const nd = v => (v == null ? '<span class="cc-mut">—</span>' : esc(inteiro(v)));
       const vd = v => (v == null ? '<span class="cc-mut">—</span>' : esc(dinheiro(v)));
+      // as notas: quantas e o valor contábil delas, numa célula só
+      const notasCel = (n, v) => (n == null ? nd(null) : esc(inteiro(n)) + (+v ? '<span class="cc-mut"> · ' + esc(dinheiro(v)) + '</span>' : ''));
       const linhas = mesesEntre(st.ano + '-01', st.ano + '-12').filter(c => c <= MES_HOJE).reverse().map(c => {
         const e = estadoDoMes(emp, mapa, c, HOJE), d = dom.get(c) || {}, p = pg.get(c);
         const sit = emp.faz === false ? '—' : e.tipo === 'feita' ? 'Feita' + (e.feita_em ? ' em ' + dataBR(e.feita_em) : '') : e.tipo === 'andamento' ? 'Em andamento' : e.tipo === 'sem_movimento' ? 'Sem movimento' : e.tipo === 'fora' ? 'Fora do controle' : 'A fazer';
-        return '<tr><th scope="row">' + esc(rotuloMes(c)) + '</th><td class="cc-mm-sit is-' + esc(e.tipo) + '">' + esc(sit) + '</td><td>' + nd(d.lancamentos) + '</td><td>' + nd(d.notas_saida) + '</td><td>' + vd(d.valor_saidas) + '</td><td>' + nd(d.notas_entrada) + '</td><td>' + vd(d.valor_entradas) + '</td><td>' + nd(d.funcionarios_ativos) + '</td><td>' + nd(d.pro_labore) + '</td><td>' + vd(p ? p.receita_mes : null) + '</td></tr>';
+        const pr = problemasDoMes(d, c, null), tem = tipo => pr.find(x => x.tipo === tipo);
+        const sim = (txt, titulo) => '<span class="cc-ok"' + (titulo ? ' title="' + esc(titulo) + '"' : '') + '>' + esc(txt) + '</span>';
+        const nao = (txt, titulo) => '<span class="cc-mm-nao"' + (titulo ? ' title="' + esc(titulo) + '"' : '') + '>' + esc(txt) + '</span>';
+        const notas = (+d.notas_saida || 0) + (+d.notas_entrada || 0), folha = folhaCalculada(d);
+        // a escrita fiscal, a folha e a receita no contábil; o fim do mês (o caixa, as transitórias, a natureza)
+        const cFiscal = d.lanc_fiscal == null ? nd(null) : tem('fiscal') ? nao('não entrou', inteiro(notas) + ' notas no fiscal') : notas > 0 ? sim(inteiro(d.lanc_fiscal)) : '<span class="cc-mut">sem notas</span>';
+        const cFolha = d.folha_lancada == null || folha == null ? nd(null) : tem('folha') ? nao('não entrou', 'A folha calculada: ' + dinheiro(folha)) : tem('folha_difere') ? nao('difere', tem('folha_difere').texto) : folha > 0 ? sim('bate', dinheiro(folha)) : '<span class="cc-mut">sem folha</span>';
+        const cRec = d.receita_lancada == null || d.receita_bruta == null ? nd(null) : tem('receita') ? nao('difere', tem('receita').texto) : tem('fiscal') ? nao('—', 'A escrita fiscal não entrou') : +d.receita_bruta > 0 ? sim('bate', dinheiro(d.receita_bruta)) : '<span class="cc-mut">sem receita</span>';
+        const fim = pr.filter(x => ['caixa', 'transitoria', 'natureza'].includes(x.tipo));
+        let cFim;
+        if (d.caixa_negativo == null) cFim = nd(null);
+        else if (!fim.length) cFim = sim('ok');
+        else {
+          const curto = fim.map(x => ({ caixa: 'caixa negativo', transitoria: 'transitória', natureza: d.contra_natureza + ' contra a natureza' })[x.tipo]).join(', ');
+          const longo = fim.map(x => x.texto).join('; ');
+          cFim = fim.some(x => x.forte) ? nao(curto, longo) : '<span class="cc-mut" title="' + esc(longo) + '">' + esc(curto) + '</span>';
+        }
+        return '<tr><th scope="row">' + esc(rotuloMes(c)) + '</th><td class="cc-mm-sit is-' + esc(e.tipo) + '">' + esc(sit) + '</td><td>' + nd(d.lancamentos) + '</td><td>' + cFiscal + '</td><td>' + cFolha + '</td><td>' + cRec + '</td><td>' + cFim + '</td><td>' + notasCel(d.notas_saida, d.valor_saidas) + '</td><td>' + notasCel(d.notas_entrada, d.valor_entradas) + '</td><td>' + nd(d.funcionarios_ativos) + '</td><td>' + nd(d.pro_labore) + '</td><td>' + vd(p ? p.receita_mes : null) + '</td></tr>';
       }).join('');
-      $('eMeses').innerHTML = '<thead><tr><th scope="col">Mês</th><th scope="col">Contabilidade</th><th scope="col">Lançamentos</th><th scope="col">Notas de saída</th><th scope="col">Valor das saídas</th><th scope="col">Notas de entrada</th><th scope="col">Valor das entradas</th><th scope="col">Funcionários</th><th scope="col">Pró-labore</th><th scope="col">Faturamento (PGDAS)</th></tr></thead><tbody>' + linhas + '</tbody>';
+      $('eMeses').innerHTML = '<thead><tr><th scope="col">Mês</th><th scope="col">Contabilidade</th><th scope="col">Lançamentos</th><th scope="col" title="Os lançamentos da escrita fiscal na contabilidade do mês">Escrita fiscal</th><th scope="col" title="A folha calculada no Domínio entrou na contabilidade?">Folha</th><th scope="col" title="A receita lançada na contabilidade bate com o faturamento?">Receita</th><th scope="col" title="O caixa, as transitórias e as contas contra a natureza no último dia do mês">Fim do mês</th><th scope="col">Notas de saída</th><th scope="col">Notas de entrada</th><th scope="col">Funcionários</th><th scope="col">Pró-labore</th><th scope="col">Faturamento (PGDAS)</th></tr></thead><tbody>' + linhas + '</tbody>';
       // as tarefas abertas do Contábil
       const ta = st.tarefas || [];
       $('eTarefasBox').hidden = !ta.length;
@@ -835,6 +886,10 @@
     .cc-chips { display:flex; flex-wrap:wrap; gap:4px; margin-top:3px; }
     .cc-chip { font-size:10.5px; padding:1px 7px; border-radius:999px; border:1px solid var(--line-strong); color:var(--text-muted); }
     .cc-chip-pend { border-color:rgba(224,108,108,.5); color:var(--err); }
+    .cc-chip-dom { border-color:rgba(227,179,65,.5); color:var(--warn); }
+    .cc-dom { margin:0; padding:0 0 0 18px; display:flex; flex-direction:column; gap:4px; font-size:13px; color:var(--text-2); line-height:1.45; }
+    .cc-dom li.is-forte { color:var(--warn); }
+    .cc-mm-nao { color:var(--warn); font-weight:600; }
     tr.is-naofaz .cc-emp-nome { color:var(--text-muted); }
     .cc-grade td { text-align:center; }
     .cc-ate { text-align:left !important; padding-left:10px !important; font-variant-numeric:tabular-nums; color:var(--text); white-space:nowrap; }
@@ -912,7 +967,7 @@
     .cc-resolvidas { margin-top:10px; font-size:13px; color:var(--text-muted); }
     .cc-resolvidas summary { cursor:pointer; margin-bottom:8px; }
     .cc-mm-wrap { overflow-x:auto; border:1px solid var(--line); border-radius:10px; }
-    .cc-mm { border-collapse:collapse; width:100%; min-width:900px; font-size:12.5px; font-variant-numeric:tabular-nums; }
+    .cc-mm { border-collapse:collapse; width:100%; min-width:1100px; font-size:12.5px; font-variant-numeric:tabular-nums; }
     .cc-mm th, .cc-mm td { padding:6px 9px; border-bottom:1px solid var(--line); text-align:right; white-space:nowrap; }
     .cc-mm thead th { color:var(--text-muted); font-weight:600; font-size:11.5px; white-space:normal; vertical-align:bottom; }
     .cc-mm th[scope="row"], .cc-mm thead th:first-child, .cc-mm td.cc-mm-sit, .cc-mm thead th:nth-child(2) { text-align:left; }
