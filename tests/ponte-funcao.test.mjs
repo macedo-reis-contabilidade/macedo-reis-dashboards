@@ -10,7 +10,7 @@ import { createHash } from 'node:crypto';
 import { validarPacote, empresasDaCarteira, documento, hojeEmBrasilia, sha256Hex, iguais, LIMITES } from '../supabase/functions/ponte/receita.js';
 import { criarServidor } from '../supabase/functions/ponte/servidor.js';
 import { validarPacoteDominio, LIMITES_DOMINIO } from '../supabase/functions/ponte/dominio.js';
-import { validarPacoteNotas, empresasAutorizadas, destinosDaConfig, dvDaChave, pareceCpf, LIMITES_NOTAS, SEM_DESTINO, SEM_AUTORIZACAO, DESTINO_FORA } from '../supabase/functions/ponte/notas.js';
+import { validarPacoteNotas, empresasAutorizadas, destinosDaConfig, dvDaChave, pareceCpf, semCpf, LIMITES_NOTAS, SEM_DESTINO, SEM_AUTORIZACAO, DESTINO_FORA } from '../supabase/functions/ponte/notas.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + JSON.stringify(extra) : '')); };
@@ -397,6 +397,14 @@ console.log('As notas de entrada das empresas autorizadas (03/11/2026):');
   chk('o pacote do contrato passa, sem recusa', vn.ok && vn.pacote.notas.length === 3 && vn.recusadas.length === 0, vn);
   const n0 = vn.ok && vn.pacote.notas[0], i0 = n0 && n0.itens[0];
   chk('o que o contrato não prevê fica de fora, e o texto numa linha', n0 && !('sobra' in n0) && !('extra' in i0) && n0.emitente.nome === 'FORNECEDOR EXEMPLO LTDA' && n0.emitente.uf === 'SC', n0);
+  {
+    const p = PACOTE(); p.notas[0].emitente.nome = 'FULANO DE TAL 123.456.789-09 ME';
+    const r2 = validarPacoteNotas(p);
+    const nm = r2.ok && r2.pacote.notas[0].emitente.nome;
+    chk('o nome do fornecedor sai sem o CPF que o MEI antigo tem no nome (o CNPJ basta pra comparar)', nm === 'FULANO DE TAL ME', r2);
+  }
+  chk('o CPF sai do nome com ou sem pontuação, e o resto do nome (o CNPJ da empresa no nome do MEI novo) fica',
+    semCpf('JOAO 12345678909') === 'JOAO' && semCpf('57.453.038 DIONES') === '57.453.038 DIONES' && semCpf('12345678909') === null && semCpf(null) === null);
   chk('o destinatário é a empresa do pacote, só com letras e dígitos; o número e a série sem os zeros da frente',
     n0 && n0.destinatario.cnpj === EMP && n0.numero === '1234' && n0.serie === '1');
   chk('o NCM só com os dígitos, e o IPI do item que a Domínio não guardou segue nulo', i0 && i0.ncm === '73181500' && i0.ipi === null && i0.cfop === '1102');
