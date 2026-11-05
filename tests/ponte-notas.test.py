@@ -158,7 +158,9 @@ class Sistema:
                 with dono.trava:
                     for ch in dono.recusar:
                         if any(x['chave'] == ch for x in corpo['notas']):
-                            recusadas.append({'chave': ch, 'campo': 'notas[0].itens', 'erro': 'recusada pelo teste'})
+                            # o motivo que o destino escreve pode trazer o CNPJ: a ponte não o põe no log
+                            recusadas.append({'chave': ch, 'campo': 'notas[0].itens',
+                                              'erro': f'recusada pelo teste (fornecedor {ch[6:20]})'})
                 return self._enviar(200, {'ok': True, 'notas': v['notas'], 'mandadas': v['notas'],
                                           'itens_fora': v['itensFora'], 'recusadas': recusadas})
 
@@ -184,9 +186,10 @@ class Sistema:
 
 # ---------------------------------------------------------------- o cenário e a ponte
 
-def item(n, cfop=1102, descricao=None, ipi='0', icms_st='0', total='100.00', forn_cod=None, ean='7891000100103'):
+def item(n, cfop=1102, descricao=None, ipi='0', icms_st='0', total='100.00', forn_cod=None, ean='7891000100103',
+         quantidade='10'):
     return {'item': n, 'produto_fornecedor': forn_cod or f'C{n}', 'descricao': descricao or f'{PROD} {n}',
-            'ean': ean, 'ncm': '73181500', 'cfop': cfop, 'unidade': 'CX', 'quantidade': '10', 'valor_unitario': '10.00',
+            'ean': ean, 'ncm': '73181500', 'cfop': cfop, 'unidade': 'CX', 'quantidade': quantidade, 'valor_unitario': '10.00',
             'valor_total': total, 'desconto': '0', 'ipi': ipi, 'icms_st': icms_st}
 
 
@@ -305,7 +308,7 @@ def caso_xml(sis):
            'quantidade_trib': '24', 'valor_unitario_trib': '4.1666666667', 'ipi': '5.25', 'icms_st': '3.10'},
           {'n': 2, 'codigo': 'FORN-2', 'descricao': 'DESCRICAO DO XML 2', 'quantidade': '1', 'valor_unitario': '100.00',
            'valor_total': '100.00', 'ean': '7891000100103'}]
-    n = nota(10, itens=[item(1, cfop=1102), item(2, cfop=2102)], com_xml=True, xml_itens=xi,
+    n = nota(10, itens=[item(1, cfop=1102, quantidade='2'), item(2, cfop=2102, quantidade='1')], com_xml=True, xml_itens=xi,
              totais={'produtos': '200.00', 'ipi': '5.25', 'icms_st': '3.10', 'total': '208.35', 'frete': '0', 'desconto': '0'})
     arq = cenario(pasta, {901: (DOC_A, [n])})
     sis.zerar(lista((901, DOC_A, '2026-01-01', True)))
@@ -328,6 +331,45 @@ def caso_xml(sis):
     ok(bruto and 'nfeProc' not in bruto and 'infNFe' not in bruto and 'xmlns' not in bruto, 'o XML não está no pacote mandado')
     ok('produto_empresa' not in bruto and 'C1' not in json.dumps([i.get('codigo') for i in (x or {}).get('itens', [])]),
        'o código do produto no cadastro do cliente não vai')
+
+
+def caso_par(sis):
+    titulo('2b. o CFOP do item do XML: o mesmo item da Domínio (a quantidade e o valor), não só o número')
+    pasta = pasta_nova()
+    config_ini(pasta, sis)
+    xi = [{'n': 1, 'codigo': 'F1', 'descricao': 'COMPRA', 'quantidade': '2', 'valor_unitario': '50.00', 'valor_total': '100.00'},
+          {'n': 2, 'codigo': 'F2', 'descricao': 'BRINDE', 'quantidade': '1', 'valor_unitario': '50.00', 'valor_total': '50.00'}]
+    # a Domínio numerou ao contrário: o 1 dela é o brinde, o 2 é a compra
+    invertida = nota(40, itens=[item(1, cfop=1910, quantidade='1', total='50.00'), item(2, cfop=1102, quantidade='2', total='100.00')],
+                     com_xml=True, xml_itens=xi)
+    # nenhum item da Domínio com a quantidade e o valor do XML: um CFOP só na nota (vai com ele) e dois (fica de fora)
+    xs = [{'n': 1, 'codigo': 'F1', 'descricao': 'COMPRA', 'quantidade': '3', 'valor_unitario': '10.00', 'valor_total': '30.00'}]
+    um_cfop = nota(41, itens=[item(1, cfop=1102)], cfops=[1102], com_xml=True, xml_itens=xs)
+    dois_cfops = nota(42, itens=[item(1, cfop=1102), item(2, cfop=1910)], cfops=[1102, 1910], com_xml=True, xml_itens=xs)
+    arq = cenario(pasta, {901: (DOC_A, [invertida, um_cfop, dois_cfops])})
+    sis.zerar(lista((901, DOC_A, '2026-01-01', True)))
+    cod, out = notas(pasta, arq=arq)
+    r = por_chave(sis.notas())
+    a, b = r.get(invertida['chave']), r.get(um_cfop['chave'])
+    ok(cod == 0 and a and [(i['descricao'], i['cfop']) for i in a['itens']] == [('COMPRA', '1102')],
+       'a Domínio numerada em outra ordem: a compra vai com o CFOP dela e o brinde fica (não vai como compra)')
+    ok(b and b['itens'][0]['cfop'] == '1102', 'sem o mesmo item na Domínio e um CFOP só na nota: vai com o CFOP da nota')
+    ok(dois_cfops['chave'] not in r, 'sem o mesmo item e dois CFOPs na nota: fica de fora (CFOP incerto)')
+    log = logs(pasta)
+    ok('1 item(ns) do XML sem o mesmo item na Domínio' in log and 'CFOP da nota incerto' in log,
+       'o log conta o item sem par e a nota de CFOP incerto')
+
+    # o MEI antigo tem o CPF do dono no nome empresarial: o nome sai sem ele (a comparação usa o CNPJ)
+    pasta = pasta_nova()
+    config_ini(pasta, sis)
+    mei = nota(43)
+    mei['emitente_nome'] = 'FULANO DE TAL 123.456.789-09'
+    arq = cenario(pasta, {901: (DOC_A, [mei])})
+    sis.zerar(lista((901, DOC_A, '2026-01-01', True)))
+    cod, out = notas(pasta, arq=arq)
+    x = (sis.notas() or [None])[0]
+    ok(cod == 0 and x and x['emitente']['nome'] == 'FULANO DE TAL' and '123.456.789-09' not in (sis.pacotes[0]['bruto'] if sis.pacotes else 'x'),
+       'o nome do fornecedor sai sem o CPF que o MEI antigo tem no nome empresarial')
 
 
 def caso_dominio(sis):
@@ -438,6 +480,8 @@ def caso_estado(sis):
     sis.zerar(lista((901, DOC_A, '2026-01-01', True), (902, DOC_B, '2026-01-01', True)), recusar=[rec['chave']])
     cod, out = notas(pasta, arq=arq)
     ok(cod == 0 and len(sis.notas()) == 4, f'a primeira rodada manda as 4 ({len(sis.notas())})')
+    ok('recusada pelo teste (fornecedor …)' in logs(pasta) and rec['chave'][6:20] not in logs(pasta),
+       'a recusa vai pro log sem os números que o destino escreveu (o CNPJ, a chave)')
     e = estado(pasta)
     campos = set(e['empresas']['901']['notas'][a['chave']]) if e else set()
     ok(campos == {'entrada', 'impressao', 'origem', 'mandada_em'}, 'o estado guarda só a entrada, a impressão, o origem e quando')
@@ -462,6 +506,11 @@ def caso_estado(sis):
     r = por_chave(sis.notas())
     ok(set(r) == {c_ganha['chave']} and r[c_ganha['chave']]['origem'] == 'xml', 'a que ganhou o XML vai')
     ok('902' not in estado(pasta)['empresas'], 'a empresa que saiu da lista saiu do estado')
+    (pasta / 'notas' / 'estado.json').write_text('{isto não é json', encoding='utf-8')
+    sis.zerar(lista((901, DOC_A, '2026-01-01', True)))
+    cod, out = notas(pasta, arq=arq)
+    ok(cod == 0 and 'não consegui ler o que já foi mandado (o arquivo está ilegível)' in logs(pasta) and len(sis.notas()) == 4,
+       'o estado ilegível: o log avisa, e a janela inteira vai de novo (o destino conta como repetidas)')
 
 
 def caso_respostas(sis):
@@ -574,7 +623,7 @@ def main():
         "itensFora: r.itensFora || 0, notas: r.ok ? r.pacote.notas.length : 0 })); });\n", encoding='utf-8')
     SIS = Sistema()
     try:
-        for caso in (caso_lista, caso_xml, caso_dominio, caso_sem_itens, caso_compra, caso_de_fora, caso_pacotes,
+        for caso in (caso_lista, caso_xml, caso_par, caso_dominio, caso_sem_itens, caso_compra, caso_de_fora, caso_pacotes,
                      caso_estado, caso_respostas, caso_janela, caso_rodar, caso_segredos):
             try:
                 caso(SIS)

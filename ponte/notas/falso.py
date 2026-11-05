@@ -20,7 +20,7 @@ from decimal import Decimal
 from .pacote import dv_da_chave
 
 DOC_PADRAO = '11222333000100'
-FORNECEDOR_PADRAO = '99888777000100'
+FORNECEDOR_PADRAO = '99888777000199'   # o dígito verificador errado de propósito: não bate com empresa de verdade
 
 
 def chave(cnpj_emitente, numero, serie=1, uf='42', aamm='2609', modelo='55', codigo='12345678'):

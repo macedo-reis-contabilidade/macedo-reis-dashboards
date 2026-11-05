@@ -23,8 +23,11 @@ def rodar(falso=False, sem_enviar=False, saida=None, meses=None):
     reg = Registro(base / 'logs', segredos=cfg.segredos())
     reg.limpar_antigos()
     codigo = _rodar_totais(base, cfg, reg, falso, sem_enviar, saida, meses)
-    from .notas.rodada import etapa
-    etapa(falso=falso, sem_enviar=sem_enviar, registro=reg)
+    try:
+        from .notas.rodada import etapa
+        etapa(falso=falso, sem_enviar=sem_enviar, registro=reg)
+    except Exception as e:   # o import das notas (ou o da Receita, que elas usam) quebrado: só o log
+        reg(f'notas: a etapa das notas não abriu ({type(e).__name__}) — a rodada dos totais segue como foi', 'erro')
     return codigo
 
 

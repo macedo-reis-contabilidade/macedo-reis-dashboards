@@ -18,12 +18,19 @@ class Estado:
         self.arquivo = pasta / 'estado.json'
         self.pode_gravar = gravar
         self.dados = {'versao': 1, 'empresas': {}}
+        self.problema = None          # o porquê de não ter lido o arquivo que existe (a rodada avisa no log)
         try:
             lido = json.loads(self.arquivo.read_text(encoding='utf-8'))
             if isinstance(lido, dict) and isinstance(lido.get('empresas'), dict):
                 self.dados = lido
-        except (FileNotFoundError, ValueError, UnicodeDecodeError):
-            pass
+            else:
+                self.problema = 'o arquivo não tem o formato esperado'
+        except FileNotFoundError:
+            pass                      # a primeira vez
+        except (ValueError, UnicodeDecodeError):
+            self.problema = 'o arquivo está ilegível'
+        except OSError as e:
+            self.problema = f'o arquivo não abriu ({type(e).__name__})'
 
     def _empresa(self, codigo):
         return self.dados['empresas'].get(str(codigo))

@@ -70,12 +70,13 @@ class EnvioReceita(envio.Envio):
         super().__init__(*a, **k)
         self.ultima_resposta = None
         self.chave_nao_cadastrada = False
+        self.tempo = None             # o prazo de cada envio (None = o da ponte, 60 s ou o PONTE_TIMEOUT)
 
     def uma_vez(self, corpo):
         self.ultima_resposta = None
         try:
             req = urllib.request.Request(self.url, data=corpo, method='POST', headers=self.cabecalhos)
-            with _ABRIR.open(req, timeout=envio._timeout()) as r:
+            with _ABRIR.open(req, timeout=self.tempo or envio._timeout()) as r:
                 status, bruto = r.status, r.read(1024 * 1024)
             try:
                 obj = json.loads(bruto.decode('utf-8'))

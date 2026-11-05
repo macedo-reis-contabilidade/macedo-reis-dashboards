@@ -43,6 +43,12 @@ AVISOS_XML = {
     'xml_sem_autorizacao': 'XML sem a autorização',
     'xml_de_outra_nota': 'XML de outra nota',
 }
+# o que aconteceu com um item do XML (a nota segue pelo XML)
+AVISOS_ITENS = {
+    'item_sem_par': 'item(ns) do XML sem o mesmo item na Domínio (foi o CFOP da nota)',
+}
+# o CPF que o MEI antigo tem no nome empresarial ("FULANO DE TAL 12345678900"): não sai do PC (a comparação usa o CNPJ)
+_CPF_NO_NOME = re.compile(r'(?<![0-9])[0-9]{3}\.?[0-9]{3}\.?[0-9]{3}-?[0-9]{2}(?![0-9])')
 
 
 class Fora(Exception):
@@ -131,6 +137,11 @@ def _texto(v):
     return s or None
 
 
+def _nome_sem_cpf(v):
+    s = _texto(v)
+    return _texto(_CPF_NO_NOME.sub(' ', s)) if s else None
+
+
 def _cfop(v):
     d = _dec(v)
     if d is None or d != d.to_integral_value():
@@ -188,17 +199,35 @@ def _montar(linhas, xml_bruto, doc_empresa, avisos):
             raise Fora('finalidade')
         if documento(x['dest_cnpj'] or x['dest_cpf']) != doc_empresa:
             raise Fora('destinatario')
-        por_numero = {}
+        # o CFOP de cada item do XML vem do mesmo item na Domínio: o do mesmo número, se a quantidade e o valor batem;
+        # senão, o único com a mesma quantidade e o mesmo valor; senão, o CFOP da nota (quando ela tem um só). O número
+        # sozinho não basta: a Domínio pode numerar em outra ordem, e o brinde iria como compra (a revisão de 05/11/2026)
+        dom = []
         for l in com_item:
             n = _dec(l.get('item'))
-            c = _cfop(l.get('cfop'))
+            dom.append((int(n) if n is not None and n == n.to_integral_value() else None, _cfop(l.get('cfop')),
+                        _dec(l.get('quantidade')), _dec(l.get('valor_total'))))
+        por_numero = {}
+        for n, c, q, v in dom:
             if n is not None and c:
-                por_numero.setdefault(int(n), c)
+                por_numero.setdefault(n, (c, q, v))
+
+        def bate(a, b):
+            return a is not None and b is not None and abs(a - b) <= TOLERANCIA
+
         itens = []
         for it in x['itens']:
-            cfop = por_numero.get(it['n']) or cfop_nota
-            if not cfop:
-                raise Fora('cfop_incerto')
+            par = por_numero.get(it['n'])
+            if par and bate(par[1], it['quantidade']) and bate(par[2], it['valor_total']):
+                cfop = par[0]
+            else:
+                iguais = {c for _, c, q, v in dom if c and bate(q, it['quantidade']) and bate(v, it['valor_total'])}
+                cfop = iguais.pop() if len(iguais) == 1 else None
+                if not cfop:
+                    if not cfop_nota:
+                        raise Fora('cfop_incerto')
+                    cfop = cfop_nota
+                    avisos.append('item_sem_par')
             itens.append({
                 'n': it['n'], 'codigo': _texto(it['codigo']), 'ean': gtin(it['ean']), 'descricao': _texto(it['descricao']),
                 'ncm': _texto(it['ncm']), 'cfop': cfop, 'unidade': _texto(it['unidade']),
@@ -212,9 +241,9 @@ def _montar(linhas, xml_bruto, doc_empresa, avisos):
         totais = {k: _num(t[k]) for k in ('produtos', 'desconto', 'frete', 'ipi', 'icms_st', 'total')}
         if totais['total'] is None:
             totais['total'] = _num(primeira.get('nota_total'))
-        emitente = {'cnpj': cnpj_chave, 'nome': _texto(x['emit_nome']) or _texto(primeira.get('emitente_nome')),
+        emitente = {'cnpj': cnpj_chave, 'nome': _nome_sem_cpf(x['emit_nome']) or _nome_sem_cpf(primeira.get('emitente_nome')),
                     'uf': (x['emit_uf'] or primeira.get('emitente_uf') or '').strip().upper()}
-        emissao = x['emissao'] or emissao_dom
+        emissao = _data(x['emissao']) or emissao_dom
         origem = 'xml'
     else:
         if not com_item:
@@ -242,18 +271,19 @@ def _montar(linhas, xml_bruto, doc_empresa, avisos):
         totais = {'produtos': _num(primeira.get('nota_produtos')), 'desconto': _num(primeira.get('nota_desconto')),
                   'frete': _num(primeira.get('nota_frete')), 'ipi': _num(primeira.get('nota_ipi')),
                   'icms_st': _num(primeira.get('nota_icms_st')), 'total': _num(primeira.get('nota_total'))}
-        emitente = {'cnpj': cnpj_chave, 'nome': _texto(primeira.get('emitente_nome')),
+        emitente = {'cnpj': cnpj_chave, 'nome': _nome_sem_cpf(primeira.get('emitente_nome')),
                     'uf': str(primeira.get('emitente_uf') or '').strip().upper()}
         emissao = emissao_dom
         origem = 'dominio'
 
-    if len(itens) > LIMITE_ITENS:
-        raise Fora('itens_demais')
-    if any(not it['descricao'] or not (it['quantidade'] or 0) > 0 for it in itens):
-        raise Fora('item_incompleto')
+    # as conferências só nos itens que vão: o brinde sem descrição não derruba a nota (a revisão de 05/11/2026)
     compra = [it for it in itens if it['cfop'] in CFOPS_DE_COMPRA]
     if not compra:
         raise Fora('sem_compra')
+    if len(compra) > LIMITE_ITENS:
+        raise Fora('itens_demais')
+    if any(not it['descricao'] or not (it['quantidade'] or 0) > 0 for it in compra):
+        raise Fora('item_incompleto')
     nota = {
         'chave': chave, 'modelo': '55', 'numero': str(int(chave[25:34])), 'serie': str(int(chave[22:25])),
         'emissao': emissao, 'entrada': entrada,

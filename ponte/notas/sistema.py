@@ -79,6 +79,9 @@ def pedir_autorizadas(cfg, reg):
     return lista, None
 
 
+TEMPO_ENVIO = 120
+
+
 class EnvioNotas(EnvioReceita):
     """O envio da Receita (a resposta lida, o 503 da chave sem insistir), sem insistir também no 503 do destino não
     configurado; a resposta fica em `ultima_resposta` pra rodada anotar (nada dela vai pro log aqui)."""
@@ -86,6 +89,9 @@ class EnvioNotas(EnvioReceita):
     def __init__(self, *a, **k):
         super().__init__(*a, **k)
         self.sem_destino = False
+        # a função dá 60 s ao destino: a ponte espera até 120 s, pra não desistir quando ela está terminando
+        # (o PONTE_TIMEOUT dos testes manda)
+        self.tempo = None if os.environ.get('PONTE_TIMEOUT') else TEMPO_ENVIO
 
     def anotar_resposta(self, rotulo):
         pass

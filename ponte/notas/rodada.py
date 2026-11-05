@@ -21,6 +21,7 @@ rodada) · 2 (configuração, chave recusada).
 import calendar
 import datetime
 import json
+import re
 import os
 import pathlib
 import socket
@@ -70,6 +71,14 @@ def meses(ini, fim):
 
 def _contar(contagem, chave, n=1):
     contagem[chave] = contagem.get(chave, 0) + n
+
+
+_NUMEROS = re.compile(r'[0-9][0-9./-]{3,}[0-9]')
+
+
+def _sem_numeros(texto):
+    """O texto que veio de fora sem as sequências de 5 ou mais dígitos (um CNPJ, uma chave, um número de nota)."""
+    return _NUMEROS.sub('…', texto)
 
 
 def _texto_contagem(contagem, rotulos):
@@ -139,10 +148,13 @@ def mandar_empresa(env, emp, novas, rodada, est, reg, saidas):
             est.gravar()
             mandadas += len(pac['notas'])
             rec = [x for x in (resp.get('recusadas') or []) if isinstance(x, dict)]
-            recusadas += len(rec)
+            total = resp.get('total_recusadas')
+            # a função manda até 50 na lista; o número certo vem no total
+            recusadas += total if isinstance(total, int) and not isinstance(total, bool) and total >= len(rec) else len(rec)
             for x in rec[:30]:
-                campo = str(x.get('campo') or '')[:120]
-                erro = ' '.join(str(x.get('erro') or '').split())[:200]
+                # o motivo é texto de fora (o destino escreve): sem as sequências de números (CNPJ, chave)
+                campo = _sem_numeros(str(x.get('campo') or ''))[:120]
+                erro = _sem_numeros(' '.join(str(x.get('erro') or '').split()))[:200]
                 reg(f'notas {cod}: recusada — {campo}: {erro}', 'aviso')
             fora = resp.get('itens_fora')
             if isinstance(fora, int) and not isinstance(fora, bool) and fora > 0:
@@ -189,6 +201,9 @@ def rodar(sem_enviar=False, saida=None, falso=False, tudo=False, empresa=None, e
     if lista is None:
         return NAO_ADIANTA if status in (401, 403) else TENTAR_DE_NOVO
     est = est_mod.Estado(base / 'notas', gravar=pode_mandar)
+    if est.problema:
+        # sem o que já foi, a janela inteira vai de novo (o destino conta como repetidas): o log tem de dizer
+        reg(f'notas: não consegui ler o que já foi mandado ({est.problema}) — a janela inteira vai de novo', 'aviso')
     if empresa is None and pode_mandar:
         saiu = est.manter_so([e['codigo'] for e in lista])
         if saiu:
@@ -225,7 +240,7 @@ def rodar(sem_enviar=False, saida=None, falso=False, tudo=False, empresa=None, e
                                  cfg.valor('sistema', 'chave_ponte'), reg)
     rodada = {'id': str(uuid.uuid4()), 'inicio': agora(), 'maquina': socket.gethostname()[:60], 'ponte': VERSAO}
     codigo, saidas, diferentes = OK, [], 0
-    rotulos = dict(pacote.MOTIVOS, **pacote.AVISOS_XML)
+    rotulos = dict(pacote.MOTIVOS, **pacote.AVISOS_XML, **pacote.AVISOS_ITENS)
     try:
         for emp in escolhidas:
             cod = emp['codigo']
@@ -258,8 +273,12 @@ def rodar(sem_enviar=False, saida=None, falso=False, tudo=False, empresa=None, e
             reg(f'notas {cod}: por mês — {mes}')
             if r['fora']:
                 reg(f'notas {cod}: de fora — {_texto_contagem(r["fora"], rotulos)}')
-            if r['avisos']:
-                reg(f'notas {cod}: pela Domínio — {_texto_contagem(r["avisos"], rotulos)}')
+            avisos_xml = {k: n for k, n in r['avisos'].items() if k in pacote.AVISOS_XML}
+            avisos_itens = {k: n for k, n in r['avisos'].items() if k not in pacote.AVISOS_XML}
+            if avisos_xml:
+                reg(f'notas {cod}: pela Domínio — {_texto_contagem(avisos_xml, rotulos)}')
+            if avisos_itens:
+                reg(f'notas {cod}: {_texto_contagem(avisos_itens, rotulos)}')
             if r['itens_fora']:
                 reg(f'notas {cod}: {r["itens_fora"]} item(ns) que não são de compra ficaram na ponte')
             if not novas:
