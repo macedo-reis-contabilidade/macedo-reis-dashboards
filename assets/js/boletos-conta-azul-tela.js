@@ -145,9 +145,9 @@ export async function abrirConferenciaCA({ supabase, competencia, linhas, nomeDe
         doGrupo('sem_conta_azul').map(x => '<li>' + esc(nomeDe(x.cobranca.cliente_id)) + ' — ' + BRL(x.proposta.total) + '</li>'))}
       ${lista('Já emitidos, com outro valor no Conta Azul (' + fechadosDif.length + '): não mudam',
         fechadosDif.map(x => '<li>' + esc(nomeDe(x.cobranca.cliente_id)) + ' — boleto ' + BRL(x.proposta.antes.total) + ', Conta Azul ' + BRL(x.proposta.total) + '</li>'))}
-      ${lista('Vence no Conta Azul, sem boleto aqui (' + (est.conf.semBoleto.length + est.conf.soltas.length) + ')',
-        [...est.conf.semBoleto.map(s => '<li>' + esc(s.nome) + ' — ' + BRL(s.valor) + ' <i>(empresa do cadastro fora da grade deste mês)</i></li>'),
-          ...est.conf.soltas.map(s => '<li>' + esc(s.nome) + ' — ' + BRL(s.valor) + ' <i>(no Conta Azul, sem empresa do cadastro com o mesmo CNPJ)</i></li>')])}
+      ${lista('Vence no Conta Azul, de quem não tem boleto aqui (' + (est.conf.semBoleto.length + est.conf.soltas.length) + '): paga por outro banco, ou falta na grade',
+        [...est.conf.semBoleto.map(s => '<li>' + esc(s.nome) + ' — ' + BRL(s.valor) + '</li>'),
+          ...est.conf.soltas.map(s => '<li>' + esc(s.nome || '(sem cliente no Conta Azul)') + ' — ' + BRL(s.valor) + ' <i>(no Conta Azul, sem empresa do cadastro com o mesmo CNPJ)</i></li>')])}
       <div style="position:sticky;bottom:-14px;background:var(--surface);padding:12px 0 2px;margin-top:12px;border-top:1px solid var(--line);display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
         ${aplic.length ? `<button class="btn btn-primary" id="caAplicar"${marcadas.length && !est.rodando ? '' : ' disabled'}>Aplicar ${plural(marcadas.length, 'marcada', 'marcadas')}</button>
         <span style="font-size:12.5px;color:var(--text-muted);">no mês: ${difMarcadas ? sinal(difMarcadas) : 'o total fica'}</span>` : ''}

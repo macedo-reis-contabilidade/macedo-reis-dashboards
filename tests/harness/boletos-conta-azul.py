@@ -131,7 +131,7 @@ def fluxo(b, base_url, tema, erros):
     ok(db(p, 'window.__xss') is None and 'ZZ <img' in p.inner_text('#caBody'), '2. o nome com HTML vem como texto')
     p.click('#caBody summary:has-text("Sem nada vencendo")')
     p.click('#caBody summary:has-text("Já emitidos")')
-    p.click('#caBody summary:has-text("sem boleto aqui")')
+    p.click('#caBody summary:has-text("não tem boleto aqui")')
     corpo = p.inner_text('#caBody')
     ok('SEM CONTA AZUL LTDA' in corpo and 'JA EMITIDA LTDA — boleto R$ 500,00, Conta Azul R$ 540,00' in corpo, '2. a sem nada lá e a já emitida, com o valor de lá')
     ok('FORA DA GRADE LTDA — R$ 700,00' in corpo and 'PESSOA SOLTA — R$ 90,00' in corpo, '2. a empresa sem boleto aqui e a pessoa sem empresa no cadastro')
