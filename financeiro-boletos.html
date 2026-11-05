@@ -22,6 +22,13 @@
     .bo-left, .bo-right { display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; }
     .bo-right { padding-left:14px; border-left:1px solid var(--line); }
     .bo-right .input-search { width:240px; } .bo-right .select { width:170px; }
+    /* o estado da conferência com o Conta Azul no botão (05/11/2026): lendo, ✓ quando nada muda, o número de boletos com outro
+       valor lá (e o aviso embaixo da barra), ! quando não deu pra ler */
+    .bo-ca-st { display:inline-flex; align-items:center; justify-content:center; min-width:18px; height:18px; margin:-3px 0 -3px 8px; padding:0 6px; border-radius:999px; font-size:11px; font-weight:700; line-height:1; vertical-align:middle; }
+    .bo-ca-st.is-ok { color:var(--ok); background:rgba(87,171,90,.16); }
+    .bo-ca-st.is-dif { color:var(--warn); background:rgba(227,179,65,.2); }
+    .bo-ca-st.is-erro { color:var(--text-muted); background:var(--fill-2); }
+    .bo-ca-st .spin { margin:0; width:11px; height:11px; }
     .bo-comp { display:flex; flex-direction:column; gap:5px; font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--brand-light); }
 
     .bo-tablewrap { background:var(--fill-1); border:1px solid var(--line); border-radius:14px; overflow-x:auto; }
@@ -105,7 +112,7 @@
         </div>
         <div class="eyebrow">Faturamento</div>
         <h1>Boletos / Honorários</h1>
-        <p>Grade mensal de cobrança. Gere o mês copiando a última competência (valores e envio vivos; a base entra só pra empresa nova), ajuste valores, vencimentos e dados de envio, e marque o status conforme emite e envia. O vencimento sai no dia de cada empresa (10, 15, 25…), no próximo dia útil quando ele cai em fim de semana ou feriado; mudar a data de uma empresa pra outro dia vale também pros próximos meses. Em <b>Arquivo do Inter</b>, os boletos marcados viram um arquivo que o Inter importa de uma vez. Em <b>Honorário adicional anual</b> (só os sócios), as vendas do adicional de outubro vão pro Conta Azul e entram no boleto do mês. Com o login de um sócio, o Conta Azul entra sozinho: ao gerar o mês, cada boleto já nasce com tudo o que vence da empresa no mês lá — a mensalidade, os serviços extras, as parcelas —, e, ao abrir um mês com boleto a emitir, a tela confere de novo e avisa aqui em cima o que mudou lá (aplicar é com você, porque o boleto pode ter um ajuste à mão). O valor da grade mostra o total, com os extras no aviso embaixo.</p>
+        <p>Os boletos de honorários de cada mês: gere a competência, confira os valores e os vencimentos e acompanhe cada um, do a emitir ao pago. Com o login de um sócio, o que vence no Conta Azul entra sozinho nos boletos.</p>
       </div>
 
       <div class="bo-toolbar">
@@ -117,7 +124,7 @@
           <button class="btn btn-ghost" id="btnAdd">+ Adicionar empresa</button>
           <button class="btn btn-ghost" id="btnInter">Arquivo do Inter</button>
           <button class="btn btn-ghost" id="btnAdicional" style="display:none;">Honorário adicional anual</button>
-          <button class="btn btn-ghost" id="btnContaAzul" style="display:none;">Conferir com o Conta Azul</button>
+          <button class="btn btn-ghost" id="btnContaAzul" style="display:none;">Conferir com o Conta Azul<span class="bo-ca-st" id="caSt" aria-hidden="true" hidden></span></button>
         </div>
         <div class="bo-right">
           <input type="text" id="busca" class="input input-search" placeholder="Buscar empresa…">
@@ -623,8 +630,9 @@ async function abrirContaAzul(op = {}){
 }
 
 // ---- a conferência ao abrir o mês (05/11/2026) ----
-// Só os sócios (a função ca-vendas confere): com boleto a emitir no mês, lê em silêncio o que vence no Conta Azul e diz
-// aqui em cima quantos boletos ele mudaria. Não grava: o boleto pode ter um ajuste à mão (o que ainda falta no Conta
+// Só os sócios (a função ca-vendas confere): com boleto a emitir no mês, lê em silêncio o que vence no Conta Azul e mostra
+// no botão "Conferir com o Conta Azul" (o selo: ✓, o número, !) e, havendo diferença, no aviso embaixo da barra, quantos
+// boletos ele mudaria. Não grava: o boleto pode ter um ajuste à mão (o que ainda falta no Conta
 // Azul), que a conferência desfaria — aplicar é na janela, com um clique. O aviso se refaz a cada desenho da grade
 // (render), com o que já foi lido; ler de novo é ao abrir, ao trocar o mês e na janela.
 let conferenciaDoMes = null;   // { comp, dados: { itens, soltas, em } } ou { comp, erro: true } ou { comp, lendo: true }
@@ -651,35 +659,29 @@ async function conferirAoAbrir(){
 }
 
 function atualizarResumo(){
-  const el = $('caResumo');
+  const el = $('caResumo'), st = $('caSt'), bt = $('btnContaAzul');
   if (!el) return;
   const c = conferenciaDoMes;
-  if (!c || c.comp !== $('comp').value) { el.style.display = 'none'; el.innerHTML = ''; return; }
-  const cor = (borda, fundo) => { el.style.borderColor = borda; el.style.background = fundo; };
-  el.style.display = '';
-  if (c.lendo) {
-    cor('var(--line)', 'transparent');
-    el.innerHTML = '<span style="color:var(--text-muted);"><span class="spin"></span>Conferindo os boletos a emitir com o Conta Azul…</span>';
-    return;
-  }
-  if (c.erro) {
-    cor('var(--line)', 'transparent');
-    el.innerHTML = '<span style="color:var(--text-muted);">Não consegui conferir com o Conta Azul agora.</span> <button type="button" class="btn btn-ghost btn-sm" id="caResumoDeNovo" style="margin-left:6px;">Tentar de novo</button>';
-    el.querySelector('#caResumoDeNovo').addEventListener('click', () => conferirAoAbrir());
-    return;
-  }
+  // o selo do botão: o que a conferência ao abrir achou; o aviso embaixo da barra só quando há o que aplicar
+  const selo = (cls, html, texto) => {
+    if (st) { st.hidden = !cls; st.className = 'bo-ca-st' + (cls ? ' ' + cls : ''); st.innerHTML = html || ''; }
+    if (bt) { if (texto) { bt.title = texto; bt.setAttribute('aria-label', 'Conferir com o Conta Azul: ' + texto); } else { bt.removeAttribute('title'); bt.removeAttribute('aria-label'); } }
+  };
+  const semAviso = () => { el.style.display = 'none'; el.innerHTML = ''; };
+  if (!c || c.comp !== $('comp').value) { semAviso(); selo(null); return; }
+  if (c.lendo) { semAviso(); selo('is-lendo', '<span class="spin"></span>', 'conferindo os boletos a emitir com o Conta Azul…'); return; }
+  if (c.erro) { semAviso(); selo('is-erro', '!', 'não consegui conferir agora; clique pra tentar de novo'); return; }
   const res = resumoDaConferencia(conferirMes(rows.filter(r => r.id), c.dados, { ehMei: ehMeiDe }));
-  // tudo já emitido (marcado na grade depois de ler): não há o que aplicar, e o aviso sai
-  if (!res.aEmitir) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  // tudo já emitido (marcado na grade depois de ler): não há o que aplicar
+  if (!res.aEmitir) { semAviso(); selo(null); return; }
   const mes = res.meses.length ? ' (o que vence em ' + res.meses.map(mesBR).join(' e ') + ')' : '';
-  if (!res.muda) {
-    cor('rgba(87,171,90,.35)', 'rgba(87,171,90,.08)');
-    el.innerHTML = '<span style="color:var(--text);">✓ ' + (res.aEmitir === 1 ? 'O boleto a emitir bate' : 'Os ' + res.aEmitir + ' boletos a emitir batem') + ' com o Conta Azul' + esc(mes) + '.</span>';
-    return;
-  }
+  if (!res.muda) { semAviso(); selo('is-ok', '✓', 'nenhum boleto a emitir tem outro valor no Conta Azul' + mes); return; }
   const n = (q, um, varios) => q + ' ' + (q === 1 ? um : varios);
   const partes = [res.sobe ? n(res.sobe, 'sobe', 'sobem') : '', res.desce ? n(res.desce, 'desce', 'descem') : '', res.recompoe ? n(res.recompoe, 'muda só a composição', 'mudam só a composição') : ''].filter(Boolean);
-  cor('var(--warn)', 'rgba(224,168,0,.08)');
+  const frase = 'O Conta Azul tem outro valor em ' + n(res.muda, 'boleto a emitir', 'boletos a emitir') + mes + ': ' + partes.join(', ') + (res.confira ? ' · ' + n(res.confira, 'pede', 'pedem') + ' a sua conferência' : '') + '.';
+  selo('is-dif', String(res.muda), frase);
+  el.style.display = '';
+  el.style.borderColor = 'var(--warn)'; el.style.background = 'rgba(224,168,0,.08)';
   el.innerHTML = '<span style="color:var(--text);">O Conta Azul tem outro valor em <b>' + n(res.muda, 'boleto a emitir', 'boletos a emitir') + '</b>' + esc(mes) + ': ' + esc(partes.join(', '))
     + (res.confira ? ' · ' + n(res.confira, 'pede', 'pedem') + ' a sua conferência' : '') + '.</span>'
     + ' <button type="button" class="btn btn-primary btn-sm" id="caResumoVer" style="margin-left:6px;">Ver e aplicar</button>';

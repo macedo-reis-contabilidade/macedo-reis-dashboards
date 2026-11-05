@@ -116,7 +116,7 @@ def fluxo(b, base_url, tema, erros):
     t = abrir(b, base_url, tema, erros, email='fiscal@macedoereis.com.br')
     t.wait_for_timeout(500)
     ok(not t.locator('#btnContaAzul').is_visible(), '1. a Thalia não vê o botão (só os sócios)')
-    ok(not t.locator('#caResumo').is_visible() and db(t, 'window.__chamadas.length') == 0, '1. … nem o aviso do alto: a tela não chama o Conta Azul pra ela')
+    ok(not t.locator('#caResumo').is_visible() and not t.locator('#caSt').is_visible() and db(t, 'window.__chamadas.length') == 0, '1. … nem o aviso do alto: a tela não chama o Conta Azul pra ela')
     t.close()
     p = abrir(b, base_url, tema, erros)
     ok(p.locator('#btnContaAzul').is_visible(), '1. o sócio vê "Conferir com o Conta Azul"')
@@ -126,6 +126,8 @@ def fluxo(b, base_url, tema, erros):
        and p.locator('#caResumoVer').is_visible(), '1. ao abrir, a tela confere sozinha e avisa no alto: ' + aviso.replace('\n', ' ')[:200])
     ok(db(p, 'window.__chamadas.filter(c => c.modo === "boletos").length') == 2 and db(p, "(window.__mockDb.cobrancas_mensais.find(c => c.cliente_id === 'k1') || {}).valor") == 660,
        '1. … o "renovando" esperou e tentou de novo, e nada foi gravado')
+    ok(p.inner_text('#caSt') == '5' and 'is-dif' in (p.get_attribute('#caSt', 'class') or '') and 'outro valor em 5 boletos' in (p.get_attribute('#btnContaAzul', 'title') or ''),
+       '1. … e o botão mostra o número, com a frase no título: ' + str(p.get_attribute('#btnContaAzul', 'title')))
     p.screenshot(path=str(FOTOS / f'{tema}-boletos-aviso-conta-azul.png'), clip={'x': 0, 'y': 520, 'width': 1440, 'height': 400})
     l1 = linha(p, 'ADEGA DE TESTE')
     ok(l1.locator('input[data-f="valor"]').input_value() == '1320', '1. o campo do valor mostra o total (660 + 660 do adicional): ' + l1.locator('input[data-f="valor"]').input_value())
@@ -185,8 +187,14 @@ def fluxo(b, base_url, tema, erros):
     p.wait_for_function('() => /boletos:/.test((document.querySelector("#caBody") || {}).textContent || "")', timeout=8000)
     ok(db(p, 'window.__chamadas.filter(c => c.modo === "boletos").length') == antes and 'QUEDA DE TESTE' in p.inner_text('#caBody'),
        '3. "Ver e aplicar" abre a janela sem ler o Conta Azul de novo (leu há menos de 10 minutos)')
+    # aplicando também a que pedia conferência, nada mais difere: o aviso sai e o botão mostra o ✓
+    p.check('.ca-marca[data-id="mk10"]'); p.click('#caAplicar')
+    p.wait_for_function('() => /boleto atualizado/.test((document.querySelector("#caAviso") || {}).textContent || "")', timeout=8000)
     p.keyboard.press('Escape')
     p.wait_for_timeout(300)
+    ok(not p.locator('#caResumo').is_visible() and p.inner_text('#caSt') == '✓' and 'is-ok' in (p.get_attribute('#caSt', 'class') or '')
+       and 'nenhum boleto a emitir tem outro valor no Conta Azul' in (p.get_attribute('#btnContaAzul', 'title') or ''),
+       '3. sem diferença: o aviso sai e o botão mostra o ✓ (' + str(p.get_attribute('#btnContaAzul', 'title')) + ')')
 
     print(f'[{tema}] 4. tirar do boleto e voltar')
     l1 = linha(p, 'ADEGA DE TESTE')
