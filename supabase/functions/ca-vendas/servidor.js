@@ -3,7 +3,7 @@
 // (31/10/2026, pedido do Samuel: "automatizar a criação dessas vendas no conta azul … não tem muito como errar").
 // Quem chama: a janela "Honorário adicional anual" da tela Boletos (assets/js/adicional-anual-tela.js), só os sócios — o
 // login do escritório conferido no Auth (/auth/v1/user) e o e-mail na lista dos sócios (SOCIOS, assets/js/equipe.js). A
-// consulta (prever) também aceita a chave do sincronismo (o cabeçalho x-sync-key, a do ca-sync, que só o servidor lê): é a
+// consulta (prever, contrato_prever e boletos) também aceita a chave do sincronismo (o cabeçalho x-sync-key, a do ca-sync, que só o servidor lê): é a
 // que o arquiteto usa pra conferir a lista no banco. Lançar, pôr no boleto e desfazer: só os sócios, com o login deles.
 // Modos (corpo JSON):
 //  { modo: 'prever', competencia }  → a lista empresa por empresa (montarLista, assets/js/adicional-anual.js): a
@@ -22,6 +22,9 @@
 //     também com a chave do sincronismo
 //  { modo: 'contrato', itens }      → cria o que falta (até 5): o cadastro da empresa no Conta Azul, quando ela não está
 //     lá, e o contrato, no padrão dos demais; contrato não se exclui pela API: desfaz-se no Conta Azul (Vendas › Contratos)
+//  { modo: 'boletos', meses }       → a conferência dos boletos (05/11/2026, o botão "Conferir com o Conta Azul" da tela
+//     Boletos): o que vence em cada mês pedido (até 3, 'AAAA-MM') e está em aberto no espelho, empresa por empresa (a
+//     pessoa ligada pelo CNPJ ou CPF), e as pessoas sem empresa — só consulta, também com a chave do sincronismo
 // A venda que o sistema lançou e alguém excluiu direto no Conta Azul é achada no prever (conferirExcluidas): a linha vira
 // "excluida", o extra sai do boleto e a empresa pode ser lançada de novo.
 // O token do Conta Azul é o que o ca-sync mantém e renova. Perto de vencer, esta função não renova (nunca disputa a
@@ -672,6 +675,38 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
     return { resultados };
   }
 
+  // ---------- a conferência dos boletos com o Conta Azul (05/11/2026) ----------
+  // O que o Conta Azul tem a receber com vencimento nos meses pedidos (os meses do vencimento dos boletos da grade), em
+  // aberto — o nao_pago do espelho ca_parcelas, fora a perdida —, ligado à empresa do cadastro pela pessoa: o CNPJ ou o
+  // CPF (empresasDasPessoas). A pessoa que não liga a nenhuma empresa volta em "soltas", com a soma, pra conferir. Só
+  // consulta: quem grava o boleto é a tela (assets/js/boletos-conta-azul.js)
+  async function boletosDoMes(corpo) {
+    const meses = [...new Set((Array.isArray(corpo.meses) ? corpo.meses : []).map(String))].filter(m => COMPETENCIA.test(m)).slice(0, 3);
+    if (!meses.length) throw new ErroPublico("Os meses do vencimento vão em 'AAAA-MM'.");
+    const token = await tokenCA();
+    const mapa = await empresasDasPessoas(token);
+    const itens = [], soltas = new Map();
+    for (const mes of meses) {
+      const linhas = await dbTodas('ca_parcelas?select=id,descricao,data_vencimento,data_competencia,status,nao_pago,fornecedor_cliente_id,fornecedor_cliente_nome,categorias'
+        + '&natureza=eq.receita&nao_pago=gt.0&status=neq.LOST&data_vencimento=gte.' + mes + '-01&data_vencimento=lte.' + ultimoDia(mes));
+      for (const p of linhas) {
+        const valor = Math.round((Number(p.nao_pago) || 0) * 100) / 100;
+        if (!(valor > 0) || !p.id) continue;
+        const item = { parcela_id: p.id, descricao: String(p.descricao || ''), vencimento: p.data_vencimento || null, competencia: p.data_competencia || null, valor,
+          status: p.status || null, categorias: (Array.isArray(p.categorias) ? p.categorias : []).map(c => String((c && c.nome) || '')).filter(Boolean),
+          pessoa: p.fornecedor_cliente_id || null, pessoa_nome: String(p.fornecedor_cliente_nome || '') };
+        const emp = p.fornecedor_cliente_id ? mapa.get(p.fornecedor_cliente_id) : null;
+        if (emp) { itens.push({ ...item, cliente_id: emp.id, cliente_nome: emp.nome }); continue; }
+        const k = p.fornecedor_cliente_id || item.pessoa_nome || '?';
+        const s = soltas.get(k) || { pessoa: item.pessoa, nome: item.pessoa_nome, valor: 0, itens: 0 };
+        s.valor = Math.round((s.valor + valor) * 100) / 100;
+        s.itens++;
+        soltas.set(k, s);
+      }
+    }
+    return { meses, itens, soltas: [...soltas.values()] };
+  }
+
   // ---------- desfazer ----------
   async function desfazer(corpo, quem) {
     const ids = [...new Set((Array.isArray(corpo.ids) ? corpo.ids : []).map(String).filter(ehUuid))].slice(0, 100);
@@ -708,13 +743,14 @@ export function criarServidor({ env, fetch: f = globalThis.fetch, agora = () => 
     let corpo;
     try { corpo = await req.json(); } catch (e) { return resp(400, { erro: 'Pedido inválido.' }); }
     const modo = String((corpo && corpo.modo) || '');
-    // o servidor (a chave do sincronismo) só consulta: a lista do adicional e a conferência dos contratos — criar e
-    // lançar, só com o login de um sócio
-    if ((soConsulta || quem === 'servidor') && !['prever', 'contrato_prever'].includes(modo)) return resp(403, { erro: 'Sem o login de um sócio, só a consulta.' });
+    // o servidor (a chave do sincronismo) só consulta: a lista do adicional, a conferência dos contratos e a dos boletos
+    // — criar e lançar, só com o login de um sócio
+    if ((soConsulta || quem === 'servidor') && !['prever', 'contrato_prever', 'boletos'].includes(modo)) return resp(403, { erro: 'Sem o login de um sócio, só a consulta.' });
     try {
       if (modo === 'desfazer') return resp(200, await desfazer(corpo, quem));
       if (modo === 'contrato_prever') return resp(200, await preverContratos(corpo, quem));
       if (modo === 'contrato') return resp(200, await criarContratos(corpo, quem));
+      if (modo === 'boletos') return resp(200, await boletosDoMes(corpo));
       const comp = String(corpo.competencia || '');
       if (!COMPETENCIA.test(comp)) return resp(400, { erro: "A competência vai em 'AAAA-MM'." });
       if (modo === 'prever') return resp(200, await prever(comp));

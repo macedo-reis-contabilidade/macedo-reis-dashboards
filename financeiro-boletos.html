@@ -55,6 +55,11 @@
     .bo-extras { display:flex; flex-wrap:wrap; gap:6px 18px; font-size:12px; color:var(--brand-pale); align-items:center; }
     .bo-extras span b { color:var(--text); margin-left:6px; }
     .bo-extras-tot { margin-left:auto; color:var(--brand-light); }
+    .bo-extras span.bo-fora { text-decoration:line-through; opacity:.6; }
+    .bo-extras span.bo-fora .bo-tira { text-decoration:none; }
+    .bo-tira { margin-left:8px; background:none; border:1px solid var(--fill-3); color:var(--brand-light); border-radius:999px; padding:1px 8px; font-size:11px; cursor:pointer; font-family:inherit; }
+    .bo-tira:hover { border-color:var(--brand-primary); color:var(--text); }
+    .ci.ci-erro { border-color:var(--err); }
     .bo-total small { font-size:13px; color:var(--text-muted); font-weight:400; }
 
     .bo-foot { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-top:14px; }
@@ -100,7 +105,7 @@
         </div>
         <div class="eyebrow">Faturamento</div>
         <h1>Boletos / Honorários</h1>
-        <p>Grade mensal de cobrança. Gere o mês copiando a última competência (valores e envio vivos; a base entra só pra empresa nova), ajuste valores, vencimentos e dados de envio, e marque o status conforme emite e envia. O vencimento sai no dia de cada empresa (10, 15, 25…), no próximo dia útil quando ele cai em fim de semana ou feriado; mudar a data de uma empresa pra outro dia vale também pros próximos meses. Em <b>Arquivo do Inter</b>, os boletos marcados viram um arquivo que o Inter importa de uma vez. Em <b>Honorário adicional anual</b> (só os sócios), as vendas do adicional de outubro vão pro Conta Azul e entram no boleto do mês.</p>
+        <p>Grade mensal de cobrança. Gere o mês copiando a última competência (valores e envio vivos; a base entra só pra empresa nova), ajuste valores, vencimentos e dados de envio, e marque o status conforme emite e envia. O vencimento sai no dia de cada empresa (10, 15, 25…), no próximo dia útil quando ele cai em fim de semana ou feriado; mudar a data de uma empresa pra outro dia vale também pros próximos meses. Em <b>Arquivo do Inter</b>, os boletos marcados viram um arquivo que o Inter importa de uma vez. Em <b>Honorário adicional anual</b> (só os sócios), as vendas do adicional de outubro vão pro Conta Azul e entram no boleto do mês. Em <b>Conferir com o Conta Azul</b> (só os sócios), cada boleto fica com tudo o que vence da empresa no mês lá — a mensalidade, os serviços extras, as parcelas —, e o valor da grade mostra o total, com os extras no aviso embaixo.</p>
       </div>
 
       <div class="bo-toolbar">
@@ -112,6 +117,7 @@
           <button class="btn btn-ghost" id="btnAdd">+ Adicionar empresa</button>
           <button class="btn btn-ghost" id="btnInter">Arquivo do Inter</button>
           <button class="btn btn-ghost" id="btnAdicional" style="display:none;">Honorário adicional anual</button>
+          <button class="btn btn-ghost" id="btnContaAzul" style="display:none;">Conferir com o Conta Azul</button>
         </div>
         <div class="bo-right">
           <input type="text" id="busca" class="input input-search" placeholder="Buscar empresa…">
@@ -180,6 +186,7 @@ import { boletoPdf, nomeArquivoBoleto } from './assets/js/boleto-pdf.js';
 import { reajustesDoMes, marcarAplicados } from './assets/js/precificacao-carteira.js';
 import { vencimentoDaCompetencia, diaDoContrato, COMPETENCIA_ISO } from './assets/js/tarefas-acoes.js';
 import { SOCIOS } from './assets/js/equipe.js';
+import { somaExtras as somaDosExtras, extrasAtivos, totalDoBoleto, valorParaTotal } from './assets/js/boletos-conta-azul.js';
 
 const $ = id => document.getElementById(id);
 const BRL = n => 'R$ ' + (Number(n)||0).toLocaleString('pt-BR',{minimumFractionDigits:2, maximumFractionDigits:2});
@@ -231,6 +238,12 @@ async function init(){
           aoMudar: () => window.dispatchEvent(new CustomEvent('mr:boletos-mudaram', { detail: { competencia } })) });
       } catch (e) { msg('Não consegui abrir o honorário adicional anual: recarregue a tela.'); }
     });
+  }
+  // a conferência com o Conta Azul (05/11/2026): o que vence no mês lá, empresa por empresa — só os sócios (a função
+  // ca-vendas confere de novo); a janela é carregada só no clique
+  if (SOCIOS.includes(String(emailUsuario).toLowerCase())) {
+    $('btnContaAzul').style.display = '';
+    $('btnContaAzul').addEventListener('click', () => abrirContaAzul());
   }
   $('inFechar').addEventListener('click', ()=>$('ovInter').classList.remove('open'));
   $('busca').addEventListener('input', render);
@@ -353,6 +366,8 @@ async function gerarMes(){
         + (adicionais ? `; ${adicionais} com o honorário adicional anual no boleto` : '')
         + (adicionalFicou ? '; algum adicional anual não entrou no boleto: confira em "Honorário adicional anual" › "Pôr no boleto as que faltam"' : '') + '.'
       : 'Mês já estava completo (nada novo a gerar)' + (puladasSaida ? ` — ${puladasSaida} pulada(s) por saída na carteira.` : '.'));
+    // o passo seguinte (05/11/2026): conferir com o Conta Azul o que vence no mês de cada empresa — abre sozinha pros sócios
+    if(novos.length && SOCIOS.includes(String(emailUsuario).toLowerCase())) abrirContaAzul();
   }catch(e){ msg('Erro ao gerar: '+(e.message||e)); }
   finally{ btn.disabled=false; btn.textContent='Gerar mês a partir da base'; }
 }
@@ -376,7 +391,7 @@ function render(){
     tr.innerHTML=`
       <td class="num">${i}</td>
       <td class="bo-emp">${esc(c.nome)}<small>${fmtDoc(c.doc)}</small></td>
-      <td><input class="ci val" type="number" step="0.01" value="${r.valor??0}" data-f="valor">${extrasDe(r).length ? `<button type="button" class="bo-extra" data-extras title="ver os itens extras">+${extrasDe(r).length} extra(s) · ${BRL(somaExtras(r))}</button><span class="bo-tot">= ${BRL(totalLinha(r))}</span>` : ''}</td>
+      <td><input class="ci val" type="number" step="0.01" value="${totalLinha(r)}" data-f="valor" aria-label="Valor do boleto${extrasAtivos(r.itens_extras).length ? ' (com os extras)' : ''}"${extrasAtivos(r.itens_extras).length ? ` title="O total do boleto: a mensalidade (${BRL(r.valor)}) e os extras"` : ''}>${extrasDe(r).length ? `<button type="button" class="bo-extra" data-extras aria-expanded="${r._open ? 'true' : 'false'}" title="ver o que está no boleto">${extrasAtivos(r.itens_extras).length ? `+${extrasAtivos(r.itens_extras).length} extra(s) · ${BRL(somaExtras(r))}` : 'extras fora do boleto'}</button><span class="bo-tot">mensalidade ${BRL(r.valor)}</span>` : ''}</td>
       <td><input class="ci dt" type="date" value="${r.vencimento||''}" data-f="vencimento"></td>
       <td><select class="ci sel" data-f="canal">
             <option value="whatsapp"${r.canal==='whatsapp'?' selected':''}>WhatsApp</option>
@@ -392,21 +407,30 @@ function render(){
     tr.querySelectorAll('[data-f]').forEach(el=>{
       const f=el.dataset.f;
       const apply=()=>{
-        r[f] = (f==='valor') ? (parseFloat(el.value)||0) : el.value;
+        if(f==='valor'){
+          // o campo mostra o total: a mensalidade é o total menos os extras (os extras saem no aviso, um por um)
+          const base = valorParaTotal(parseFloat(el.value)||0, r.itens_extras);
+          if(base===null){ el.classList.add('ci-erro'); el.title='O total não pode ser menor que os extras ('+BRL(somaExtras(r))+'): pra tirar um extra, abra o aviso embaixo.'; return false; }
+          el.classList.remove('ci-erro');
+          r.valor = base;
+        } else r[f] = el.value;
         r._dirty=true;
         if(f==='status'){ el.className='st st-'+r.status; updateCards(); render(); }
         if(f==='valor'){
           updateCards();
           // total da linha e sub-linha acompanham o honorário digitado (sem re-render)
-          const tot=tr.querySelector('.bo-tot'); if(tot) tot.textContent='= '+BRL(totalLinha(r));
+          const tot=tr.querySelector('.bo-tot'); if(tot) tot.textContent='mensalidade '+BRL(r.valor);
           const sub=tr.nextElementSibling;
-          if(sub && sub.classList.contains('bo-extras-row')){ const st=sub.querySelector('.bo-extras-tot'); if(st) st.innerHTML=`honorário ${BRL(r.valor)} + extras ${BRL(somaExtras(r))} = <b>${BRL(totalLinha(r))}</b>`; }
+          if(sub && sub.classList.contains('bo-extras-row')){ const st=sub.querySelector('.bo-extras-tot'); if(st) st.innerHTML=`mensalidade ${BRL(r.valor)} + extras ${BRL(somaExtras(r))} = <b>${BRL(totalLinha(r))}</b>`; }
         }
       };
       const isTexto = (el.tagName==='INPUT' && el.type!=='date');
       if(isTexto){
-        el.addEventListener('input', ()=>{ apply(); agendarSalvar(r); });
-        el.addEventListener('change', ()=>{ apply(); salvarLinha(r); });
+        el.addEventListener('input', ()=>{ if(apply()===false) return; agendarSalvar(r); });
+        el.addEventListener('change', ()=>{
+          if(apply()===false){ el.value=totalLinha(r); el.classList.remove('ci-erro'); msg('O total não pode ser menor que os extras ('+BRL(somaExtras(r))+'): pra tirar um extra, abra o aviso embaixo do valor.'); return; }
+          salvarLinha(r);
+        });
       }else{
         el.addEventListener('change', async ()=>{ apply(); await salvarLinha(r); if(f==='vencimento') acertarDiaDaEmpresa(r); });
       }
@@ -418,17 +442,22 @@ function render(){
     if(chip) chip.addEventListener('click', ()=>{ r._open=!r._open; render(); });
     if(r._open && extrasDe(r).length){
       const sub=document.createElement('tr'); sub.className='bo-extras-row';
-      sub.innerHTML=`<td></td><td colspan="8"><div class="bo-extras">${extrasDe(r).map(x=>`<span>${esc(x.descricao||'item extra')}<b>${BRL(x.valor)}</b></span>`).join('')}<span class="bo-extras-tot">honorário ${BRL(r.valor)} + extras ${BRL(somaExtras(r))} = <b>${BRL(totalLinha(r))}</b></span></div></td>`;
+      const podeTirar = r.status==='a_emitir' && r.id;
+      sub.innerHTML=`<td></td><td colspan="8"><div class="bo-extras"><span>Mensalidade<b>${BRL(r.valor)}</b></span>${extrasDe(r).map((x,i)=>`<span class="${x.ignorado?'bo-fora':''}">${esc(x.descricao||'item extra')}<b>${BRL(x.valor)}</b>${x.ca_parcela_id && podeTirar ? `<button type="button" class="bo-tira" data-tira="${i}">${x.ignorado?'Voltar pro boleto':'Tirar do boleto'}</button>` : ''}</span>`).join('')}<span class="bo-extras-tot">mensalidade ${BRL(r.valor)} + extras ${BRL(somaExtras(r))} = <b>${BRL(totalLinha(r))}</b></span></div></td>`;
+      sub.querySelectorAll('[data-tira]').forEach(bt=>bt.addEventListener('click', ()=>tirarExtra(r, Number(bt.dataset.tira))));
       tb.appendChild(sub);
     }
   }
   updateCards();
 }
 
-// itens_extras = [{ faturavel_id, descricao, valor }] — gravado pela tela Faturáveis
+// itens_extras = [{ faturavel_id | adicional_id | ca_parcela_id, descricao, valor, ignorado? }] — a tela Faturáveis, a
+// janela do adicional anual e a conferência com o Conta Azul (05/11/2026, assets/js/boletos-conta-azul.js). O item do Conta
+// Azul tirado do boleto (ignorado) fica na lista e não soma. O valor (r.valor) é a mensalidade; o campo da grade mostra o
+// total (a mensalidade e os extras), que é o que vai pro arquivo do Inter
 const extrasDe = r => Array.isArray(r.itens_extras) ? r.itens_extras.filter(Boolean) : [];
-const somaExtras = r => extrasDe(r).reduce((s,x)=>s+(Number(x.valor)||0),0);
-const totalLinha = r => (Number(r.valor)||0) + somaExtras(r);
+const somaExtras = r => somaDosExtras(r.itens_extras);
+const totalLinha = r => totalDoBoleto(r);
 
 function updateCards(){
   const honor=rows.reduce((s,r)=>s+(Number(r.valor)||0),0);
@@ -460,6 +489,22 @@ async function acertarDiaDaEmpresa(r){
   if(error){ msg('O vencimento foi salvo, mas o dia da empresa nos próximos meses não: '+error.message); return; }
   cfg.dia_vencimento = novo;
   msg('Vencimento salvo. '+(clientesMap[r.cliente_id]?.nome||'A empresa')+' passa a vencer no dia '+novo+' também nos próximos meses.');
+}
+
+// o item do Conta Azul tirado do boleto fica marcado (ignorado): não soma, e a conferência seguinte não o põe de volta
+async function tirarExtra(r, i){
+  const alvo = extrasDe(r)[i];
+  if(!alvo || !alvo.ca_parcela_id || !r.id) return;
+  const { data: viva, error: e0 } = await supabase.from('cobrancas_mensais').select('itens_extras, status').eq('id', r.id).maybeSingle();
+  if(e0 || !viva){ msg('Não consegui ler o boleto: '+((e0&&e0.message)||'tente de novo')); return; }
+  if(viva.status!=='a_emitir'){ msg('O boleto já não está a emitir: os extras não mudam mais.'); return; }
+  const tirar = !alvo.ignorado;
+  const extras = (Array.isArray(viva.itens_extras)?viva.itens_extras:[]).filter(Boolean).map(x => x.ca_parcela_id===alvo.ca_parcela_id ? (tirar ? { ...x, ignorado:true } : (({ ignorado, ...resto }) => resto)(x)) : x);
+  const { error } = await supabase.from('cobrancas_mensais').update({ itens_extras: extras }).eq('id', r.id).eq('status','a_emitir');
+  if(error){ msg('Não consegui mudar o boleto: '+error.message); return; }
+  r.itens_extras = extras;
+  render();
+  msg((tirar ? 'Tirado do boleto: ' : 'De volta ao boleto: ')+(alvo.descricao||'item extra')+' ('+BRL(alvo.valor)+'). O boleto fica em '+BRL(totalLinha(r))+'.');
 }
 
 async function removerRow(r){
@@ -553,6 +598,18 @@ window.addEventListener('mr:boletos-mudaram', ev => {
     else carregarMes();
   }
 });
+
+async function abrirContaAzul(){
+  const pendentes = rows.filter(r => r._dirty || r._saving);
+  for (const r of pendentes) await salvarLinha(r);
+  if (rows.some(r => r._dirty)) { msg('Há valores que ainda não foram gravados: espere o "Salvo ✓" e confira de novo.'); return; }
+  try {
+    const { abrirConferenciaCA } = await import('./assets/js/boletos-conta-azul-tela.js');
+    await abrirConferenciaCA({ supabase, competencia: $('comp').value, linhas: rows.filter(r => r.id),
+      nomeDe: id => clientesMap[id]?.nome || '',
+      aoAplicar: mud => { mud.forEach(m => { const r = rows.find(x => x.id === m.id); if (r) { r.valor = m.valor; r.itens_extras = m.itens_extras; } }); render(); } });
+  } catch (e) { msg('Não consegui abrir a conferência com o Conta Azul: recarregue a tela.'); }
+}
 
 function abrirAdd(){ $('ovBusca').value=''; renderAddList(); $('ov').classList.add('open'); $('ovBusca').focus(); }
 function renderAddList(){

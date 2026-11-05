@@ -93,8 +93,14 @@ def fluxo(b, base_url, tema, erros):
     ok(linha(p, 'DIA DEZ').locator('input[data-f="vencimento"]').input_value() == '2026-11-10', '1. a grade mostra o vencimento novo')
     chamadas = db(p, "window.__chamadas")
     extras = db(p, "(window.__mockDb.cobrancas_mensais.find(c => c.cliente_id === 'k10' && c.competencia === '2026-10') || {}).itens_extras")
-    ok(chamadas == [{'nome': 'ca-vendas', 'modo': 'boleto', 'competencia': '2026-10'}] and extras and extras[0]['adicional_id'] == 'L10',
+    ok(chamadas[:1] == [{'nome': 'ca-vendas', 'modo': 'boleto', 'competencia': '2026-10'}] and extras and extras[0]['adicional_id'] == 'L10',
        '1. o honorário adicional anual já lançado entra sozinho no boleto que nasceu: ' + json.dumps(chamadas))
+    # depois de gerar, a conferência com o Conta Azul abre sozinha pros sócios (05/11/2026; o teste dela é o
+    # boletos-conta-azul.py): aqui, só fecha
+    p.wait_for_selector('#caOv', timeout=8000)
+    ok(db(p, "window.__chamadas.filter(c => c.modo === 'boletos').map(c => c.meses)") == [['2026-11']],
+       '1. … e a conferência com o Conta Azul abre sozinha (o que vence em 11/2026)')
+    p.keyboard.press('Escape'); p.wait_for_timeout(200)
     ok('1 com o honorário adicional anual no boleto' in p.inner_text('#msg') and 'não entrou' not in p.inner_text('#msg'), '1. o aviso diz quantos (quem paga por outro banco não é aviso): ' + p.inner_text('#msg'))
     p.screenshot(path=str(FOTOS / f'{tema}-boletos-vencimento.png'))
 

@@ -132,6 +132,8 @@ function mundo({ tokenFaltam = 50 * 60 * 1000 } = {}) {
     if (op === 'eq') return String(cel) === val;
     if (op === 'gte') return cel != null && String(cel) >= val;
     if (op === 'lte') return cel != null && String(cel) <= val;
+    if (op === 'gt') return cel != null && Number(cel) > Number(val);
+    if (op === 'neq') return String(cel) !== val;
     if (op === 'in') return val.replace(/^\(|\)$/g, '').split(',').map(s => s.replace(/^"|"$/g, '')).includes(String(cel));
     if (op === 'not') return val === 'is.null' ? cel != null : true;
     if (op === 'cs') return JSON.parse(val).every(w => (cel || []).some(c => Object.entries(w).every(([kk, vv]) => c[kk] === vv)));
@@ -580,6 +582,45 @@ console.log('O contrato da mensalidade — com o Diego:');
 console.log('A mensagem do Conta Azul:');
 chk('o error, o message, a lista de errors, ou o código', motivoDoContaAzul({ dados: { error: 'X' } }) === 'X' && motivoDoContaAzul({ dados: { message: 'Y' } }) === 'Y'
   && motivoDoContaAzul({ dados: { errors: [{ message: 'a' }, { mensagem: 'b' }] } }) === 'a; b' && motivoDoContaAzul({ status: 502 }) === 'código 502');
+
+console.log('A conferência dos boletos (boletos):');
+{
+  const w = mundo();
+  // o que vence em novembro: a mensalidade e a 1ª parcela de um parcelamento da loja (ligada pelo CNPJ); a 2ª parcela, de
+  // dezembro (outro mês, mesma competência); uma já paga e uma perdida (fora); a da padaria (sem documento lá: pelo nome);
+  // a de uma pessoa sem empresa no cadastro; e uma despesa (fora)
+  const EXTRA = [{ id: U(904), nome: 'SERVIÇOS EXTRAS' }];
+  const parc = (id, p, nome, venc, comp, valor, cats, extra = {}) => ({ id, natureza: 'receita', fornecedor_cliente_id: p, fornecedor_cliente_nome: nome,
+    data_vencimento: venc, data_competencia: comp, total: valor, nao_pago: valor, status: 'PENDING', descricao: 'Venda 190421000', categorias: cats, ...extra });
+  w.db.ca_parcelas = [
+    parc(U(700), w.P.paulo, 'LOJA DO PAULO LTDA', '2026-11-10', '2026-10-31', 660, cat(CAT.mensal), { descricao: 'Venda 190421415 / NFS-e:1110 - RPS:1110' }),
+    parc(U(701), w.P.paulo, 'LOJA DO PAULO LTDA', '2026-11-10', '2026-10-15', 200, EXTRA, { descricao: '1/4 - Venda 190421319' }),
+    parc(U(702), w.P.paulo, 'LOJA DO PAULO LTDA', '2026-12-10', '2026-10-15', 200, EXTRA, { descricao: '2/4 - Venda 190421319' }),
+    parc(U(703), w.P.paulo, 'LOJA DO PAULO LTDA', '2026-11-10', '2026-09-30', 0, cat(CAT.mensal), { status: 'ACQUITTED', total: 660 }),
+    parc(U(704), w.P.paulo, 'LOJA DO PAULO LTDA', '2026-11-10', '2026-08-31', 99, cat(CAT.mensal), { status: 'LOST' }),
+    parc(U(705), w.P.padaria, 'PADARIA NOVA', '2026-11-20', '2026-10-31', 550, cat(CAT.mensal)),
+    parc(U(706), U(77), 'PESSOA SEM EMPRESA', '2026-11-05', '2026-10-31', 80, EXTRA),
+    parc(U(707), U(77), 'PESSOA SEM EMPRESA', '2026-11-25', '2026-10-31', 45.5, EXTRA),
+    { ...parc(U(708), U(50), 'FORNECEDOR', '2026-11-10', '2026-10-31', 99, EXTRA), natureza: 'despesa' }
+  ];
+  const r = await w.pedir({ modo: 'boletos', meses: ['2026-11', 'x', '2026-11'] });
+  const da = id => (r.corpo.itens || []).filter(i => i.cliente_id === id).map(i => i.parcela_id).sort();
+  chk('os meses válidos, sem repetir', r.status === 200 && J(r.corpo.meses) === J(['2026-11']), J(r.corpo));
+  chk('a loja (pelo CNPJ): a mensalidade e a 1ª parcela, com a categoria, o vencimento, a competência e o valor em aberto — sem a de dezembro, a paga e a perdida',
+    J(da(U(101))) === J([U(700), U(701)].sort())
+    && r.corpo.itens.some(i => i.parcela_id === U(701) && J(i.categorias) === J(['SERVIÇOS EXTRAS']) && i.vencimento === '2026-11-10' && i.competencia === '2026-10-15' && i.valor === 200 && i.cliente_nome === 'LOJA DO PAULO LTDA'),
+    J(r.corpo.itens));
+  chk('a padaria (sem documento no Conta Azul): pelo nome, a única empresa ativa que bate', J(da(U(102))) === J([U(705)]));
+  chk('a pessoa sem empresa: em "soltas", com a soma e quantos itens', (r.corpo.soltas || []).length === 1 && r.corpo.soltas[0].nome === 'PESSOA SEM EMPRESA' && r.corpo.soltas[0].valor === 125.5 && r.corpo.soltas[0].itens === 2,
+    J(r.corpo.soltas));
+  chk('a despesa fica de fora', !(r.corpo.itens || []).some(i => i.parcela_id === U(708)));
+  chk('a chave do sincronismo consulta', (await w.pedir({ modo: 'boletos', meses: ['2026-11'] }, { token: null, sync: 'chave-sync' })).status === 200);
+  chk('quem não é sócio: 403', (await w.pedir({ modo: 'boletos', meses: ['2026-11'] }, { token: 'tok-thalia' })).status === 403);
+  chk('sem mês: 400', (await w.pedir({ modo: 'boletos', meses: [] })).status === 400);
+  const rv = mundo({ tokenFaltam: 60 * 1000 });
+  const ren = await rv.pedir({ modo: 'boletos', meses: ['2026-11'] });
+  chk('o token perto de vencer: 503 "renovando" (a tela tenta de novo)', ren.status === 503 && ren.corpo.renovando === true);
+}
 
 console.log('Commit fixado na função (o código cru do GitHub):');
 const idx = readFileSync(raiz + 'supabase/functions/ca-vendas/index.ts', 'utf8');
