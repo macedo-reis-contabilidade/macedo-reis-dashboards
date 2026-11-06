@@ -5,7 +5,7 @@ import { mesValido, diaValido, somaMes, mesesEntre, rotuloMes, mesPorExtenso, ul
   alvoDaEmpresa, resumoDaEmpresa, faixas, textoDasFaixas, mesesAteAqui, linhasParaMarcar, desfazerDe, dominioPorMes, textoDoDominio,
   dicaDoDominio, avisosDaEmpresa, limparPendencia, textoDaPendencia, ordenarPendencias, nomeDaEmpresa, semAcento, focosDaEmpresa,
   anosDoControle, inicioSugerido, feitoNoMes, textoDeMeses, andamentoDaEmpresa, folhaCalculada, problemasDoMes, mesesQueDiscordam,
-  textoDoAndamento, FOCOS, encerramentoDaEmpresa, textoDasOrigens } from '../assets/js/contabil-controle.js';
+  textoDoAndamento, FOCOS, encerramentoDaEmpresa, textoDasOrigens, compensaNoVizinho } from '../assets/js/contabil-controle.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + JSON.stringify(extra) : '')); };
@@ -171,6 +171,21 @@ console.log('O andamento das contabilidades no Domínio (a versão 3 da ponte, 0
   ]);
   chk('os meses em que a marcação e o Domínio discordam: o feito com problema e o sem movimento com lançamento',
     mesesQueDiscordam(empD, mapaD, domD, null, HOJE).join() === '2026-08,2026-09' && mesesQueDiscordam({ ...empD, faz: false }, mapaD, domD, null, HOJE).length === 0);
+  // a diferença que se compensa no mês do lado (06/11/2026): aviso leve, com o mês
+  const domV = dominioPorMes([
+    { competencia: '2026-07', notas_saida: 2, lanc_fiscal: 6, receita_bruta: 5000, receita_lancada: 5800 },
+    { competencia: '2026-08', notas_saida: 2, lanc_fiscal: 6, receita_bruta: 5000, receita_lancada: 4200.4, salarios: 3000, folha_lancada: 2500 },
+    { competencia: '2026-09', notas_saida: 2, lanc_fiscal: 6, receita_bruta: 5000, receita_lancada: 4000, salarios: 3000, folha_lancada: 3200 }
+  ]);
+  const pv = problemasDoMes(domV.get('2026-08'), '2026-08', null, domV);
+  chk('a receita que sobra num mês e falta no do lado (até R$ 1,00 somando): leve, com o mês em que compensa',
+    compensaNoVizinho(domV, '2026-08', d => d && d.receita_lancada - d.receita_bruta) === '2026-07'
+    && pv.find(x => x.tipo === 'receita').forte === false && pv.find(x => x.tipo === 'receita').texto.endsWith('se compensa em 07/2026 (lançamento no mês errado?)'), pv);
+  chk('a folha que não compensa (falta 500 aqui, sobra 200 depois) segue forte',
+    pv.find(x => x.tipo === 'folha_difere').forte === true);
+  chk('sem os meses (a chamada antiga), segue forte', problemasDoMes(domV.get('2026-08'), '2026-08').find(x => x.tipo === 'receita').forte === true);
+  chk('o mês feito com a diferença que se compensa: sem o "conferir"', dicaDoDominio(feito, domV.get('2026-07'), '2026-07', HOJE, null, domV) === null
+    && dicaDoDominio(feito, domV.get('2026-09'), '2026-09', HOJE, null, domV).tipo === 'conferir');
   chk('o foco "O Domínio discorda"', FOCOS.some(([k]) => k === 'discorda') && focosDaEmpresa(empD, resumoDaEmpresa(empD, mapaD, HOJE), 0, HOJE, 2).has('discorda')
     && !focosDaEmpresa(empD, resumoDaEmpresa(empD, mapaD, HOJE), 0, HOJE).has('discorda'));
   const tx = textoDoAndamento({ banco_contas: 2, banco_ate: '2026-08-31', banco_ultimo: '2026-09-30', extrato_contas: 1, extrato_ate: '2026-09-30', extrato_pendentes: 3,

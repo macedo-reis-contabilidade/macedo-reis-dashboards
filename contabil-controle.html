@@ -439,7 +439,7 @@
     function celula(id, emp, c) {
       const e = estadoDoMes(emp, mesesDe(id), c, HOJE);
       const dom = (st.dominio.get(id) || new Map()).get(c);
-      const dica = emp.faz === false ? null : dicaDoDominio(e, dom, c, HOJE, andDe(id));
+      const dica = emp.faz === false ? null : dicaDoDominio(e, dom, c, HOJE, andDe(id), st.dominio.get(id));
       const temPend = pendAbertas(id).some(p => p.competencia === c);
       const tipo = emp.faz === false ? 'fora' : e.tipo;
       let txt = '', aria = mesPorExtenso(c) + ': ';
@@ -520,7 +520,7 @@
       st.pop = { id, c, ancora };
       const e = estadoDoMes(emp, mesesDe(id), c, HOJE);
       const dom = (st.dominio.get(id) || new Map()).get(c);
-      const dica = dicaDoDominio(e, dom, c, HOJE, andDe(id));
+      const dica = dicaDoDominio(e, dom, c, HOJE, andDe(id), st.dominio.get(id));
       $('popTit').textContent = mesPorExtenso(c);
       $('popEmp').textContent = nomeDe(id);
       let h = '<p class="cc-pop-estado">';
@@ -535,7 +535,7 @@
         + (tOrig ? ' Desses lançamentos: ' + esc(tOrig) + '.' : '') + (dom.incluido_ate ? ' O último entrou no Domínio em ' + esc(dataBR(dom.incluido_ate)) + '.' : '') + '</p>';
       if (dica) h += '<p class="cc-pop-dica' + (dica.tipo === 'conferir' ? ' is-forte' : '') + '">' + esc(dica.texto) + '</p>';
       // o resto do que o Domínio diz do mês: no feito, o que a dica não leva (as contas contra a natureza); nos outros, tudo
-      const probs = problemasDoMes(dom, c, andDe(id)).filter(p => !(e.tipo === 'feita' && p.forte));
+      const probs = problemasDoMes(dom, c, andDe(id), st.dominio.get(id)).filter(p => !(e.tipo === 'feita' && p.forte));
       if (probs.length && c <= ULTIMO) h += '<p class="cc-pop-dom">' + (e.tipo === 'feita' ? 'Também no Domínio: ' : 'No Domínio, falta ou não bate: ') + esc(probs.map(p => p.texto).join('; ')) + '.</p>';
       const pm = pendAbertas(id).filter(p => p.competencia === c);
       if (pm.length) h += '<ul class="cc-pop-pends">' + pm.map(p => '<li>' + esc(p.texto) + '</li>').join('') + '</ul>';
@@ -738,7 +738,7 @@
       const linhas = mesesEntre(st.ano + '-01', st.ano + '-12').filter(c => c <= MES_HOJE).reverse().map(c => {
         const e = estadoDoMes(emp, mapa, c, HOJE), d = dom.get(c) || {}, p = pg.get(c);
         const sit = emp.faz === false ? '—' : e.tipo === 'feita' ? 'Feita' + (e.feita_em ? ' em ' + dataBR(e.feita_em) : '') : e.tipo === 'andamento' ? 'Em andamento' : e.tipo === 'sem_movimento' ? 'Sem movimento' : e.tipo === 'fora' ? 'Fora do controle' : 'A fazer';
-        const pr = problemasDoMes(d, c, null), tem = tipo => pr.find(x => x.tipo === tipo);
+        const pr = problemasDoMes(d, c, null, dom), tem = tipo => pr.find(x => x.tipo === tipo);
         const sim = (txt, titulo) => '<span class="cc-ok"' + (titulo ? ' title="' + esc(titulo) + '"' : '') + '>' + esc(txt) + '</span>';
         const nao = (txt, titulo) => '<span class="cc-mm-nao"' + (titulo ? ' title="' + esc(titulo) + '"' : '') + '>' + esc(txt) + '</span>';
         const notas = (+d.notas_saida || 0) + (+d.notas_entrada || 0), folha = folhaCalculada(d);

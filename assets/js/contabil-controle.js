@@ -237,14 +237,37 @@ const somaOuNull = (...v) => (v.some(x => x != null) ? v.reduce((s, x) => s + (+
 /** A folha do mês que o Domínio calculou: os proventos, o 13º e o pró-labore (null sem nenhum dos três). */
 export const folhaCalculada = d => (d ? somaOuNull(d.salarios, d.decimo_terceiro, d.pro_labore_valor) : null);
 
+// Quanto a receita e a folha lançadas sobram (positivo) ou faltam (negativo) contra o faturamento e a folha calculada;
+// null quando o Domínio não disse os dois.
+const sobraDaReceita = d => (d && d.receita_lancada != null && d.receita_bruta != null ? +d.receita_lancada - +d.receita_bruta : null);
+const sobraDaFolha = d => {
+  const f = d ? folhaCalculada(d) : null;
+  return d && d.folha_lancada != null && f != null ? +d.folha_lancada - f : null;
+};
+/** O mês do lado (o de antes, senão o de depois) em que a diferença do mês `c` se compensa: as duas com mais de R$ 1,00,
+ * de sinais contrários, e a soma até R$ 1,00. null sem os meses ou sem compensação. */
+export function compensaNoVizinho(meses, c, sobra) {
+  if (!meses || typeof meses.get !== 'function' || !mesValido(c)) return null;
+  const aqui = sobra(meses.get(c));
+  if (aqui == null || Math.abs(aqui) <= 1) return null;
+  for (const v of [somaMes(c, -1), somaMes(c, 1)]) {
+    const la = sobra(meses.get(v));
+    if (la != null && Math.abs(la) > 1 && Math.sign(la) !== Math.sign(aqui) && Math.abs(aqui + la) <= 1) return v;
+  }
+  return null;
+}
+
 /**
  * O que o Domínio diz do mês pelo andamento da contabilidade (a versão 3 da ponte): a escrita fiscal ou a folha que não
  * entraram na contabilidade, a receita e a folha lançadas diferentes do faturamento e da folha calculada (mais de
  * R$ 1,00), o caixa negativo e a transitória com saldo no fim do mês, o banco sem lançamento no mês (nenhuma conta com
  * lançamento do mês em diante: `and` é a foto do dia) e as contas contra a natureza (leve: o resto é forte). Só o que o
  * Domínio disse: o null (a ponte antiga, o bloco que faltou) não vira problema. Cada um: { tipo, forte, texto }.
+ * Com os meses da empresa (`meses`, o Map do `dominioPorMes`), a receita ou a folha que sobra num mês e falta no mês do
+ * lado (as duas diferenças somam até R$ 1,00) vira aviso leve, com o mês em que compensa (06/11/2026, decisão do Samuel:
+ * quase sempre é o lançamento no mês errado — mostrar leve, sem esconder).
  */
-export function problemasDoMes(d, c, and) {
+export function problemasDoMes(d, c, and, meses = null) {
   const out = [];
   const n = v => (v == null ? null : +v);
   if (d) {
@@ -253,10 +276,16 @@ export function problemasDoMes(d, c, and) {
     if (fiscalFora) out.push({ tipo: 'fiscal', forte: true, texto: 'a escrita fiscal (' + inteiro(notas) + (notas === 1 ? ' nota' : ' notas') + ') não entrou na contabilidade' });
     const folha = folhaCalculada(d);
     if (folha > 0 && n(d.folha_lancada) === 0) out.push({ tipo: 'folha', forte: true, texto: 'a folha (' + dinheiro(folha) + ') não entrou na contabilidade' });
-    else if (folha > 0 && n(d.folha_lancada) > 0 && Math.abs(folha - d.folha_lancada) > 1)
-      out.push({ tipo: 'folha_difere', forte: true, texto: 'a folha lançada (' + dinheiro(d.folha_lancada) + ') é diferente da calculada (' + dinheiro(folha) + ')' });
-    if (!fiscalFora && n(d.receita_bruta) > 0 && d.receita_lancada != null && Math.abs(d.receita_bruta - d.receita_lancada) > 1)
-      out.push({ tipo: 'receita', forte: true, texto: 'a receita lançada (' + dinheiro(d.receita_lancada) + ') é diferente do faturamento (' + dinheiro(d.receita_bruta) + ')' });
+    else if (folha > 0 && n(d.folha_lancada) > 0 && Math.abs(folha - d.folha_lancada) > 1) {
+      const viz = compensaNoVizinho(meses, c, sobraDaFolha);
+      out.push({ tipo: 'folha_difere', forte: !viz, texto: 'a folha lançada (' + dinheiro(d.folha_lancada) + ') é diferente da calculada (' + dinheiro(folha) + ')'
+        + (viz ? ', e a diferença se compensa em ' + rotuloMes(viz) + ' (lançamento no mês errado?)' : '') });
+    }
+    if (!fiscalFora && n(d.receita_bruta) > 0 && d.receita_lancada != null && Math.abs(d.receita_bruta - d.receita_lancada) > 1) {
+      const viz = compensaNoVizinho(meses, c, sobraDaReceita);
+      out.push({ tipo: 'receita', forte: !viz, texto: 'a receita lançada (' + dinheiro(d.receita_lancada) + ') é diferente do faturamento (' + dinheiro(d.receita_bruta) + ')'
+        + (viz ? ', e a diferença se compensa em ' + rotuloMes(viz) + ' (lançamento no mês errado?)' : '') });
+    }
     if (n(d.caixa_negativo) > 0) out.push({ tipo: 'caixa', forte: true, texto: 'o caixa fechou o mês negativo' });
     if (n(d.transitorias) > 0) out.push({ tipo: 'transitoria', forte: true, texto: (d.transitorias === 1 ? 'uma conta transitória ou a classificar' : d.transitorias + ' contas transitórias ou a classificar') + ' com saldo no fim do mês' + (n(d.transitorias_valor) > 0 ? ' (' + dinheiro(d.transitorias_valor) + ')' : '') });
     if (n(d.contra_natureza) > 0) out.push({ tipo: 'natureza', forte: false, texto: (d.contra_natureza === 1 ? 'uma conta' : d.contra_natureza + ' contas') + ' com saldo contra a natureza no fim do mês' });
@@ -286,10 +315,11 @@ export function textoDoDominio(d) {
  * em que o Domínio não tem lançamento, nota, funcionário nem pró-labore (sem movimento?). O Domínio que não disse
  * (null) não vira dica.
  */
-export function dicaDoDominio(estado, d, c, hoje, and = null) {
+export function dicaDoDominio(estado, d, c, hoje, and = null, meses = null) {
   if (estado && estado.tipo === 'feita') {
-    // o mês marcado como feito em que o Domínio discorda (o forte: as contas contra a natureza ficam na ficha)
-    const p = problemasDoMes(d, c, and).filter(x => x.forte);
+    // o mês marcado como feito em que o Domínio discorda (o forte: as contas contra a natureza e a diferença que se
+    // compensa no mês do lado ficam na ficha)
+    const p = problemasDoMes(d, c, and, meses).filter(x => x.forte);
     if (p.length) return { tipo: 'conferir', texto: 'Marcado como feito, mas no Domínio ' + p.map(x => x.texto).join('; ') + '.' };
   }
   if (!estado || !d) return null;
@@ -404,7 +434,7 @@ export function mesesQueDiscordam(emp, mapa, dominio, and, hoje) {
   return mesesEntre(emp.inicio, ate).filter(c => {
     const e = estadoDoMes(emp, mapa, c, hoje);
     if (e.tipo !== 'feita' && e.tipo !== 'sem_movimento') return false;
-    const dica = dicaDoDominio(e, dominio && dominio.get(c), c, hoje, and);
+    const dica = dicaDoDominio(e, dominio && dominio.get(c), c, hoje, and, dominio);
     return !!(dica && dica.tipo === 'conferir');
   });
 }
