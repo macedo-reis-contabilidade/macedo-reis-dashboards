@@ -5,7 +5,7 @@ import { mesValido, diaValido, somaMes, mesesEntre, rotuloMes, mesPorExtenso, ul
   alvoDaEmpresa, resumoDaEmpresa, faixas, textoDasFaixas, mesesAteAqui, linhasParaMarcar, desfazerDe, dominioPorMes, textoDoDominio,
   dicaDoDominio, avisosDaEmpresa, limparPendencia, textoDaPendencia, ordenarPendencias, nomeDaEmpresa, semAcento, focosDaEmpresa,
   anosDoControle, inicioSugerido, feitoNoMes, textoDeMeses, andamentoDaEmpresa, folhaCalculada, problemasDoMes, mesesQueDiscordam,
-  textoDoAndamento, FOCOS, encerramentoDaEmpresa, textoDasOrigens, compensaNoVizinho } from '../assets/js/contabil-controle.js';
+  textoDoAndamento, FOCOS, encerramentoDaEmpresa, textoDasOrigens, compensaNoVizinho, causaDaReceita } from '../assets/js/contabil-controle.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + JSON.stringify(extra) : '')); };
@@ -186,6 +186,27 @@ console.log('O andamento das contabilidades no Domínio (a versão 3 da ponte, 0
   chk('sem os meses (a chamada antiga), segue forte', problemasDoMes(domV.get('2026-08'), '2026-08').find(x => x.tipo === 'receita').forte === true);
   chk('o mês feito com a diferença que se compensa: sem o "conferir"', dicaDoDominio(feito, domV.get('2026-07'), '2026-07', HOJE, null, domV) === null
     && dicaDoDominio(feito, domV.get('2026-09'), '2026-09', HOJE, null, domV).tipo === 'conferir');
+  // a causa da diferença da receita (06/11/2026, o caso que a Adaini mandou: a saída que não é venda lançada como devolução de venda)
+  const snv = { notas_saida: 356, lanc_fiscal: 724, receita_bruta: 45521.61, devolucoes: 0, valor_saidas: 50363.73, receita_lancada: 40679.49, receita_simples_propria: 45521.61 };
+  const cs = causaDaReceita(snv), ps = problemasDoMes(snv, '2025-11').find(x => x.tipo === 'receita');
+  chk('a contabilidade com menos exatamente nas saídas que não são venda: a causa, forte, com o que acertar',
+    cs && cs.tipo === 'saida_nao_venda' && Math.abs(cs.valor - 4842.12) < 0.005 && ps.forte === true && ps.causa === 'saida_nao_venda'
+    && ps.texto === 'a receita lançada (R$ 40.679,49) é menor que o faturamento (R$ 45.521,61) exatamente nas saídas do mês que não são venda (R$ 4.842,12): elas entraram na contabilidade como devolução de venda (quase sempre, a devolução a fornecedor), e a receita ficou menor que a venda. O faturamento está certo; o acerto é na conta dessas saídas', ps);
+  chk('o mês feito com essa causa: conferir, com a causa', dicaDoDominio(feito, snv, '2025-11', HOJE).texto.startsWith('Marcado como feito, mas no Domínio a receita lançada (R$ 40.679,49) é menor que o faturamento'));
+  chk('as saídas que não são venda que não fecham a diferença: sem causa (o texto de sempre)', causaDaReceita({ ...snv, valor_saidas: 52000 }) === null
+    && problemasDoMes({ ...snv, valor_saidas: 52000 }, '2025-11').find(x => x.tipo === 'receita').texto === 'a receita lançada (R$ 40.679,49) é diferente do faturamento (R$ 45.521,61)'
+    && causaDaReceita({ ...snv, valor_saidas: null }) === null);
+  const dfs = { notas_saida: 40, lanc_fiscal: 90, receita_bruta: 9000, devolucoes: 500, receita_lancada: 9500, receita_simples_propria: 9500, valor_saidas: 9500 };
+  const pdfs = problemasDoMes(dfs, '2026-03').find(x => x.tipo === 'receita');
+  chk('a contabilidade com mais exatamente na devolução que só o faturamento desconta, igual ao Simples: leve, sem o conferir',
+    causaDaReceita(dfs).tipo === 'devolucao_fora_do_simples' && pdfs.forte === false
+    && pdfs.texto.includes('exatamente na devolução do mês (R$ 500,00), que só o faturamento desconta') && dicaDoDominio(feito, dfs, '2026-03', HOJE) === null, pdfs);
+  chk('a mesma devolução com o Simples descontando (ou sem Simples): a devolução que não entrou na contabilidade, forte',
+    causaDaReceita({ ...dfs, receita_simples_propria: 9000 }).tipo === 'devolucao_sem_lancamento' && causaDaReceita({ ...dfs, receita_simples_propria: null }).forte === true
+    && problemasDoMes({ ...dfs, receita_simples_propria: 9000 }, '2026-03').find(x => x.tipo === 'receita').texto === 'a receita lançada (R$ 9.500,00) é maior que o faturamento (R$ 9.000,00) exatamente na devolução de venda do mês (R$ 500,00): o faturamento a desconta, mas ela não entrou na contabilidade');
+  chk('a diferença com causa não vira "mês do lado"; a sem causa, sim (como antes)', causaDaReceita(domV.get('2026-08')) === null
+    && problemasDoMes(domV.get('2026-08'), '2026-08', null, domV).find(x => x.tipo === 'receita').causa === null);
+  chk('dois códigos: a devolução e o Simples entram no mês (o maior de cada)', (() => { const mm = dominioPorMes([{ competencia: '2026-03', devolucoes: 500, receita_simples_propria: 9500 }, { competencia: '2026-03', devolucoes: 20 }]).get('2026-03'); return mm.devolucoes === 500 && mm.receita_simples_propria === 9500; })());
   chk('o foco "O Domínio discorda"', FOCOS.some(([k]) => k === 'discorda') && focosDaEmpresa(empD, resumoDaEmpresa(empD, mapaD, HOJE), 0, HOJE, 2).has('discorda')
     && !focosDaEmpresa(empD, resumoDaEmpresa(empD, mapaD, HOJE), 0, HOJE).has('discorda'));
   const tx = textoDoAndamento({ banco_contas: 2, banco_ate: '2026-08-31', banco_ultimo: '2026-09-30', extrato_contas: 1, extrato_ate: '2026-09-30', extrato_pendentes: 3,

@@ -745,7 +745,9 @@
         // a escrita fiscal, a folha e a receita no contábil; o fim do mês (o caixa, as transitórias, a natureza)
         const cFiscal = d.lanc_fiscal == null ? nd(null) : tem('fiscal') ? nao('não entrou', inteiro(notas) + ' notas no fiscal') : notas > 0 ? sim(inteiro(d.lanc_fiscal)) : '<span class="cc-mut">sem notas</span>';
         const cFolha = d.folha_lancada == null || folha == null ? nd(null) : tem('folha') ? nao('não entrou', 'A folha calculada: ' + dinheiro(folha)) : tem('folha_difere') ? nao('difere', tem('folha_difere').texto) : folha > 0 ? sim('bate', dinheiro(folha)) : '<span class="cc-mut">sem folha</span>';
-        const cRec = d.receita_lancada == null || d.receita_bruta == null ? nd(null) : tem('receita') ? nao('difere', tem('receita').texto) : tem('fiscal') ? nao('—', 'A escrita fiscal não entrou') : +d.receita_bruta > 0 ? sim('bate', dinheiro(d.receita_bruta)) : '<span class="cc-mut">sem receita</span>';
+        // a diferença leve (a que se compensa no mês do lado, a devolução que só o faturamento desconta) fica apagada, com o porquê
+        const cRec = d.receita_lancada == null || d.receita_bruta == null ? nd(null)
+          : tem('receita') ? (tem('receita').forte ? nao('difere', tem('receita').texto) : '<span class="cc-mut" title="' + esc(tem('receita').texto) + '">difere</span>') : tem('fiscal') ? nao('—', 'A escrita fiscal não entrou') : +d.receita_bruta > 0 ? sim('bate', dinheiro(d.receita_bruta)) : '<span class="cc-mut">sem receita</span>';
         const fim = pr.filter(x => ['caixa', 'transitoria', 'natureza'].includes(x.tipo));
         let cFim;
         if (d.caixa_negativo == null) cFim = nd(null);

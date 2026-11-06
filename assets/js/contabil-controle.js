@@ -173,7 +173,7 @@ export function desfazerDe(clienteId, meses, antes) {
 
 /** O que a tela lê de dominio_mensal (com a versão 3 da ponte: as origens, os cruzamentos e os saldos do fim do mês). */
 export const CAMPOS_DOMINIO = ['lancamentos', 'notas_saida', 'valor_saidas', 'notas_entrada', 'valor_entradas', 'funcionarios_ativos', 'pro_labore',
-  'receita_bruta', 'salarios', 'decimo_terceiro', 'pro_labore_valor',
+  'receita_bruta', 'devolucoes', 'receita_simples', 'receita_simples_propria', 'salarios', 'decimo_terceiro', 'pro_labore_valor',
   'lanc_normais', 'lanc_extrato', 'lanc_fiscal', 'lanc_folha', 'lanc_apuracao', 'lanc_outros',
   'receita_lancada', 'folha_lancada', 'encargos_lancados', 'caixa_negativo', 'contra_natureza', 'sem_natureza', 'transitorias', 'transitorias_valor'];
 
@@ -258,6 +258,48 @@ export function compensaNoVizinho(meses, c, sobra) {
 }
 
 /**
+ * A causa da diferença entre a receita lançada e o faturamento, quando os números do mês a fecham sozinhos, até R$ 1,00
+ * (06/11/2026, o caso que a Adaini mandou: a contabilidade com R$ 4.842,12 a menos, igual às saídas do mês que não são
+ * venda; as causas contadas pelo pedreiro em docs/FILA-CODE-2026-11-05-DIFERENCAS-DUVIDAS.md, a "c"):
+ *  - 'saida_nao_venda': a contabilidade tem a menos exatamente as saídas que não são venda (as notas de saída menos o
+ *    faturamento antes da devolução). Elas entraram como devolução de venda — quase sempre a devolução a fornecedor — e
+ *    tiraram da receita o que não foi venda. O faturamento (e o Simples) está certo: forte, o acerto é na contabilidade.
+ *  - 'devolucao_fora_do_simples': a contabilidade tem a mais exatamente a devolução que o faturamento desconta, e está
+ *    igual ao Simples: a entrada de devolução com o acumulador sem a marca de faturamento, que nem o Simples nem a
+ *    contabilidade descontam. Leve: a contabilidade segue o Simples, e se é devolução de venda o acerto é no acumulador.
+ *  - 'devolucao_sem_lancamento': a mesma devolução a mais, com o Simples descontando (ou sem Simples): a devolução de
+ *    venda que não entrou na contabilidade. Forte.
+ * null quando os números não fecham a diferença (ou o Domínio não disse).
+ */
+export function causaDaReceita(d) {
+  if (!d || d.receita_lancada == null || d.receita_bruta == null) return null;
+  const falta = +d.receita_bruta - +d.receita_lancada;   // positivo: a contabilidade tem menos que o faturamento
+  if (Math.abs(falta) <= 1) return null;
+  const dev = +d.devolucoes || 0;
+  if (falta > 0 && d.valor_saidas != null) {
+    const naoVenda = Math.round((+d.valor_saidas - +d.receita_bruta - dev) * 100) / 100;
+    if (naoVenda > 1 && Math.abs(naoVenda - falta) <= 1) return { tipo: 'saida_nao_venda', valor: naoVenda, forte: true };
+  }
+  if (falta < 0 && dev > 1 && Math.abs(dev + falta) <= 1) {
+    const simples = d.receita_simples_propria != null ? +d.receita_simples_propria : d.receita_simples != null ? +d.receita_simples : null;
+    const igualAoSimples = simples != null && Math.abs(simples - +d.receita_lancada) <= 1;
+    return { tipo: igualAoSimples ? 'devolucao_fora_do_simples' : 'devolucao_sem_lancamento', valor: dev, forte: !igualAoSimples };
+  }
+  return null;
+}
+function textoDaReceita(d, causa, viz) {
+  const lanc = dinheiro(d.receita_lancada), fat = dinheiro(d.receita_bruta);
+  if (causa && causa.tipo === 'saida_nao_venda')
+    return 'a receita lançada (' + lanc + ') é menor que o faturamento (' + fat + ') exatamente nas saídas do mês que não são venda (' + dinheiro(causa.valor)
+      + '): elas entraram na contabilidade como devolução de venda (quase sempre, a devolução a fornecedor), e a receita ficou menor que a venda. O faturamento está certo; o acerto é na conta dessas saídas';
+  if (causa && causa.tipo === 'devolucao_sem_lancamento')
+    return 'a receita lançada (' + lanc + ') é maior que o faturamento (' + fat + ') exatamente na devolução de venda do mês (' + dinheiro(causa.valor) + '): o faturamento a desconta, mas ela não entrou na contabilidade';
+  if (causa && causa.tipo === 'devolucao_fora_do_simples')
+    return 'a receita lançada (' + lanc + ') é maior que o faturamento (' + fat + ') exatamente na devolução do mês (' + dinheiro(causa.valor) + '), que só o faturamento desconta: o acumulador da entrada de devolução está sem a marca de faturamento, e nem o Simples nem a contabilidade a descontam (a contabilidade está igual ao Simples). Se é devolução de venda, o acerto é no acumulador';
+  return 'a receita lançada (' + lanc + ') é diferente do faturamento (' + fat + ')' + (viz ? ', e a diferença se compensa em ' + rotuloMes(viz) + ' (lançamento no mês errado?)' : '');
+}
+
+/**
  * O que o Domínio diz do mês pelo andamento da contabilidade (a versão 3 da ponte): a escrita fiscal ou a folha que não
  * entraram na contabilidade, a receita e a folha lançadas diferentes do faturamento e da folha calculada (mais de
  * R$ 1,00), o caixa negativo e a transitória com saldo no fim do mês, o banco sem lançamento no mês (nenhuma conta com
@@ -265,7 +307,8 @@ export function compensaNoVizinho(meses, c, sobra) {
  * Domínio disse: o null (a ponte antiga, o bloco que faltou) não vira problema. Cada um: { tipo, forte, texto }.
  * Com os meses da empresa (`meses`, o Map do `dominioPorMes`), a receita ou a folha que sobra num mês e falta no mês do
  * lado (as duas diferenças somam até R$ 1,00) vira aviso leve, com o mês em que compensa (06/11/2026, decisão do Samuel:
- * quase sempre é o lançamento no mês errado — mostrar leve, sem esconder).
+ * quase sempre é o lançamento no mês errado — mostrar leve, sem esconder). A diferença da receita que os números do mês
+ * explicam (`causaDaReceita`: as saídas que não são venda, a devolução) sai com a causa e o que acertar, e a força dela.
  */
 export function problemasDoMes(d, c, and, meses = null) {
   const out = [];
@@ -282,9 +325,9 @@ export function problemasDoMes(d, c, and, meses = null) {
         + (viz ? ', e a diferença se compensa em ' + rotuloMes(viz) + ' (lançamento no mês errado?)' : '') });
     }
     if (!fiscalFora && n(d.receita_bruta) > 0 && d.receita_lancada != null && Math.abs(d.receita_bruta - d.receita_lancada) > 1) {
-      const viz = compensaNoVizinho(meses, c, sobraDaReceita);
-      out.push({ tipo: 'receita', forte: !viz, texto: 'a receita lançada (' + dinheiro(d.receita_lancada) + ') é diferente do faturamento (' + dinheiro(d.receita_bruta) + ')'
-        + (viz ? ', e a diferença se compensa em ' + rotuloMes(viz) + ' (lançamento no mês errado?)' : '') });
+      const causa = causaDaReceita(d);
+      const viz = causa ? null : compensaNoVizinho(meses, c, sobraDaReceita);
+      out.push({ tipo: 'receita', forte: causa ? causa.forte : !viz, causa: causa ? causa.tipo : null, texto: textoDaReceita(d, causa, viz) });
     }
     if (n(d.caixa_negativo) > 0) out.push({ tipo: 'caixa', forte: true, texto: 'o caixa fechou o mês negativo' });
     if (n(d.transitorias) > 0) out.push({ tipo: 'transitoria', forte: true, texto: (d.transitorias === 1 ? 'uma conta transitória ou a classificar' : d.transitorias + ' contas transitórias ou a classificar') + ' com saldo no fim do mês' + (n(d.transitorias_valor) > 0 ? ' (' + dinheiro(d.transitorias_valor) + ')' : '') });

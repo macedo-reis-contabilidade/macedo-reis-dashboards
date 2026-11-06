@@ -624,7 +624,7 @@ export function textoDaContabilidade(emp, meses, pendencias, hoje) {
 // Desde 05/11/2026 (a versão 2 da ponte), também em reais: o faturamento, as compras, a folha, o pró-labore e os encargos,
 // e o RBT12 do Simples do mês mais recente que o tem (o null — o que o Domínio não disse — não vira zero)
 const CAMPOS_DOMINIO = ['funcionarios_ativos', 'admissoes', 'desligamentos', 'afastados', 'pro_labore', 'notas_saida', 'valor_saidas', 'notas_entrada', 'valor_entradas', 'lancamentos', 'ultimo_lancamento',
-  'receita_bruta', 'receita_simples', 'rbt12', 'meses_rbt12', 'compras', 'servicos_tomados', 'salarios', 'rescisoes', 'decimo_terceiro', 'pro_labore_valor', 'fgts', 'inss_empresa', 'inss_rat', 'inss_terceiros',
+  'receita_bruta', 'devolucoes', 'receita_simples', 'receita_simples_propria', 'rbt12', 'meses_rbt12', 'compras', 'servicos_tomados', 'salarios', 'rescisoes', 'decimo_terceiro', 'pro_labore_valor', 'fgts', 'inss_empresa', 'inss_rat', 'inss_terceiros',
   // a versão 3 (05/11/2026): o andamento da contabilidade do mês
   'lanc_fiscal', 'receita_lancada', 'folha_lancada', 'caixa_negativo', 'contra_natureza', 'transitorias', 'transitorias_valor'];
 const somaQueVeio = (...vs) => (vs.some(v => v != null) ? vs.reduce((s, v) => s + (v == null ? 0 : +v), 0) : null);
