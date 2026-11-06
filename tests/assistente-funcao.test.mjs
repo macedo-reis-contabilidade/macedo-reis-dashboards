@@ -1105,6 +1105,12 @@ console.log('O comparativo tributário (a mesma conta da tela, com o "e se"):');
   chk('o mês em dia: a escrita fiscal entrou, a folha e a receita batem; o que difere, com os dois valores',
     /07\/2026: [^|]*no contábil: a escrita fiscal entrou \(220 lançamentos\), a folha entrou e bate, a receita lançada bate com o faturamento/.test(t)
     && /06\/2026: [^|]*a folha lançada \(R\$\s3\.200,00\) difere da calculada \(R\$\s4\.000,00\), a receita lançada \(R\$\s39\.000,00\) difere do faturamento/.test(t), t);
+  const tc = textoDoDominio([{ codigo: 7, ativa: true }], [
+    L('2025-11', { notas_saida: 356, lancamentos: 741, lanc_fiscal: 724, receita_bruta: 45521.61, devolucoes: 0, valor_saidas: 50363.73, receita_lancada: 40679.49, receita_simples_propria: 45521.61 }),
+    L('2025-10', { notas_saida: 40, lanc_fiscal: 90, receita_bruta: 9000, devolucoes: 500, receita_lancada: 9500, receita_simples_propria: 9500, valor_saidas: 9500 })], '2025-12-10');
+  chk('a receita que difere com a causa (a regra do Controle): as saídas que não são venda e a devolução que só o faturamento desconta',
+    /11\/2025[^|]*a receita lançada \(R\$\s40\.679,49\) difere do faturamento \(a diferença, R\$\s4\.842,12, é igual às saídas do mês que não são venda/.test(tc)
+    && /10\/2025[^|]*difere do faturamento \(a diferença, R\$\s500,00, é a devolução que só o faturamento desconta/.test(tc), tc);
   chk('sem a versão 3 (os campos nulos): nada de contábil', !/no contábil/.test(textoDoDominio([{ codigo: 7, ativa: true }], [L('2026-08', { notas_saida: 40, lancamentos: 300 })], '2026-11-05')));
   const emp = { faz: true, inicio: '2026-06', fim: null, responsavel: 'Adaini' };
   const { banco, log } = bancoFalso({ extras: {

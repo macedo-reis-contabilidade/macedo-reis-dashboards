@@ -44,7 +44,7 @@ import { ROTULO_SETOR, ROTULO_RELEVANCIA } from '../../../assets/js/noticias.js'
 import { pastaDaUrl, filtrarArquivos } from './drive.js';
 import { comparativoDaEmpresa, resumoDoResultado } from './comparativo.js';
 import { resumoDaEmpresa, textoDasFaixas, rotuloMes, textoDeMeses, textoDaPendencia, andamentoDaEmpresa, encerramentoDaEmpresa, textoDoAndamento,
-  mesesQueDiscordam, mapaDosMeses, dominioPorMes, folhaCalculada } from '../../../assets/js/contabil-controle.js';
+  mesesQueDiscordam, mapaDosMeses, dominioPorMes, folhaCalculada, causaDaReceita } from '../../../assets/js/contabil-controle.js';
 import { conferirMes, totalDoBoleto, mesDoBoleto, mesSeguinte, mesBR, centavos, extrasDeFora, somaExtras } from '../../../assets/js/boletos-conta-azul.js';
 
 // ---------- a lista branca: tabela → colunas lidas, as que vêm sem pedir, o que é cada coisa ----------
@@ -627,6 +627,12 @@ const CAMPOS_DOMINIO = ['funcionarios_ativos', 'admissoes', 'desligamentos', 'af
   'receita_bruta', 'devolucoes', 'receita_simples', 'receita_simples_propria', 'rbt12', 'meses_rbt12', 'compras', 'servicos_tomados', 'salarios', 'rescisoes', 'decimo_terceiro', 'pro_labore_valor', 'fgts', 'inss_empresa', 'inss_rat', 'inss_terceiros',
   // a versão 3 (05/11/2026): o andamento da contabilidade do mês
   'lanc_fiscal', 'receita_lancada', 'folha_lancada', 'caixa_negativo', 'contra_natureza', 'transitorias', 'transitorias_valor'];
+// a causa da diferença da receita, em texto pro modelo (06/11/2026)
+const CAUSA_DA_RECEITA = {
+  saida_nao_venda: v => 'a diferença, ' + v + ', é igual às saídas do mês que não são venda: entraram na contabilidade como devolução de venda, quase sempre a devolução a fornecedor; o faturamento está certo e o acerto é na conta dessas saídas',
+  devolucao_fora_do_simples: v => 'a diferença, ' + v + ', é a devolução que só o faturamento desconta: o acumulador da entrada de devolução está sem a marca de faturamento, e nem o Simples nem a contabilidade a descontam; a contabilidade está igual ao Simples, aviso leve',
+  devolucao_sem_lancamento: v => 'a diferença, ' + v + ', é a devolução de venda do mês, que o faturamento desconta e não entrou na contabilidade'
+};
 const somaQueVeio = (...vs) => (vs.some(v => v != null) ? vs.reduce((s, v) => s + (v == null ? 0 : +v), 0) : null);
 export function textoDoDominio(empresas, linhas, hoje) {
   const emps = empresas || [], ls = linhas || [];
@@ -671,7 +677,12 @@ export function textoDoDominio(empresas, linhas, hoje) {
     if (m.lanc_fiscal != null) { const notas = (m.notas_saida || 0) + (m.notas_entrada || 0); if (notas > 0) ct.push(m.lanc_fiscal > 0 ? 'a escrita fiscal entrou (' + n(m.lanc_fiscal, 'lançamento', 'lançamentos') + ')' : 'a escrita fiscal NÃO entrou'); }
     const fc = folhaCalculada(m);
     if (m.folha_lancada != null && fc > 0) ct.push(m.folha_lancada === 0 ? 'a folha NÃO entrou' : Math.abs(fc - m.folha_lancada) <= 1 ? 'a folha entrou e bate' : 'a folha lançada (' + brl(m.folha_lancada) + ') difere da calculada (' + brl(fc) + ')');
-    if (m.receita_lancada != null && m.receita_bruta > 0 && m.lanc_fiscal !== 0) ct.push(Math.abs(m.receita_bruta - m.receita_lancada) <= 1 ? 'a receita lançada bate com o faturamento' : 'a receita lançada (' + brl(m.receita_lancada) + ') difere do faturamento');
+    if (m.receita_lancada != null && m.receita_bruta > 0 && m.lanc_fiscal !== 0) {
+      // a causa, quando os números do mês a fecham (a mesma regra do Controle das contabilidades, causaDaReceita)
+      const causa = Math.abs(m.receita_bruta - m.receita_lancada) <= 1 ? null : causaDaReceita(m);
+      ct.push(Math.abs(m.receita_bruta - m.receita_lancada) <= 1 ? 'a receita lançada bate com o faturamento'
+        : 'a receita lançada (' + brl(m.receita_lancada) + ') difere do faturamento' + (causa ? ' (' + CAUSA_DA_RECEITA[causa.tipo](brl(causa.valor)) + ')' : ''));
+    }
     const fim = [];
     if (m.caixa_negativo > 0) fim.push('o caixa negativo');
     if (m.transitorias > 0) fim.push('transitória com saldo de ' + brl(m.transitorias_valor || 0));
