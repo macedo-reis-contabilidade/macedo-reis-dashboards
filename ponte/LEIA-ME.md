@@ -166,6 +166,17 @@ fechamento dos parâmetros; uns 19 segundos) e `encerramento.sql` (o zeramento d
 hoje). O caixa e os bancos saem pela classificação do plano modelo (1.1.1.01 e 1.1.1.02); a descrição das contas só
 entra em filtro, nunca sai. A rodada de 14 meses fica uns 3 minutos mais longa.
 
+**Os cruzamentos corrigidos** (06/11/2026, ponte 0.3.2; o pacote segue na versão 3): o `cruzamentos.sql` passou a
+seguir o que a fila de 05/11 achou no Domínio (as causas contadas em
+`docs/FILA-CODE-2026-11-05-DIFERENCAS-DUVIDAS.md`). No plano em que a receita fica no grupo 3 e a despesa no 4 (pela
+natureza dos grupos), a receita, a devolução, a folha e os encargos saem dos grupos certos; a receita da escrita fiscal
+conta na empresa da nota (a filial integrada no contábil da matriz); e a folha integrada conta na competência dela (a
+rescisão paga no mês seguinte, as férias integradas noutro mês). De 10/2025 a 09/2026, dos 136 meses-empresa com a
+receita lançada diferente do faturamento, 14 deixam de diferir; dos 69 com a folha lançada diferente da calculada, 11
+deixam e 3 passam. O que continua diferente é problema da contabilidade (a nota sem lançamento, a devolução fora da
+conta, o lançamento manual). De 3,8 a 4,8 segundos por mês (antes, 1,6): a rodada de 14 meses fica uns 40 segundos
+mais longa.
+
 As consultas ficam em `ponte\consultas\` (`empresas.sql`, `folha.sql`, `fiscal.sql`, `contabil.sql`,
 `faturamento.sql`, `compras.sql`, `folha_valores.sql`, `origens.sql`, `cruzamentos.sql`, `saldos.sql`, `andamento.sql`,
 `encerramento.sql`). Enquanto a

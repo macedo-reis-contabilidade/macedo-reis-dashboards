@@ -304,7 +304,7 @@ def caso_pacote():
     hora_com_fuso = r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d'
     ok(re.fullmatch(hora_com_fuso, r['inicio']) and re.fullmatch(hora_com_fuso, r['fim']) and r['inicio'] <= r['fim'],
        'inicio e fim com o fuso do PC, inicio <= fim')
-    ok(bool(r['maquina']) and r['ponte'] == '0.3.1', 'maquina preenchida, ponte 0.3.1')
+    ok(bool(r['maquina']) and r['ponte'] == '0.3.2', 'maquina preenchida, ponte 0.3.2')
 
     emp = {e['codigo']: e for e in p['empresas']}
     ok(sorted(emp) == [101, 102, 103, 104], 'as 4 empresas inventadas, pelo código')
