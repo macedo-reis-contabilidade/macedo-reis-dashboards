@@ -41,7 +41,7 @@ import { supabase } from './supabase.js';
 import { concluirTarefas, desfazerConclusao, marcarPagos, desfazerPagos, criarTarefasAvulsas, excluirTarefasCriadas,
   alterarTarefas, desfazerAlteracao, limparMudanca, mudancaDe, fichaDeOrigem, ficaDeFora, proximasNascemCom,
   pessoaDaEquipe, definirResponsavelObrigacoes, desfazerResponsavelObrigacoes, definirResponsavelRotina, desfazerResponsavelRotina,
-  descartarProposta, desfazerDescarte, avancarBoletos, voltarBoletos, fecharFicha, reabrirFicha, vincularEmpresa, desvincularEmpresa, buscarEmpresas,
+  descartarProposta, desfazerDescarte, avancarBoletos, voltarBoletos, ORDEM_BOLETO, fecharFicha, reabrirFicha, vincularEmpresa, desvincularEmpresa, buscarEmpresas,
   renovarAlvara, desfazerRenovacao, desativarRegistro, reativarRegistro, obrigacoesParaVincular, vincularObrigacoes, desfazerVinculoObrigacoes,
   dadosDaCobranca, porNaCobranca, desfazerCobranca, acertarCadastro, desfazerCadastro,
   registrarNoHistorico, desfazerRegistro, limparMensagem, MAX_MENSAGEM, tarefaDoMesDoVinculo, criarTarefaDoMes, religarVinculo,
@@ -54,6 +54,7 @@ import { lerAchados, ignorarAchado, reabrirAchado, filtrarAchados, agruparAchado
   resolvidosAgora, marcarResolvidoAgora, desmarcarResolvidoAgora, COLUNAS, perguntaDeOutro } from './vigia.js';
 import { linkDoDrive, conversaDe, enviarMensagem, apagarMensagem, MAX_TEXTO } from './chat-equipe.js';
 import { resumoDoContrato, mesesDeInicio } from './contrato-ca.js';
+import { totalDoBoleto, centavos } from './boletos-conta-azul.js';
 
 const RAIZ = new URL('../../', import.meta.url);   // a raiz do site (este arquivo mora em assets/js/)
 const PRAZO_DESFAZER = 10 * 60e3;   // o "Desfazer" vale por 10 minutos
@@ -65,6 +66,11 @@ const brl = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', cur
 const qtd = (n, um, varios) => n + ' ' + (n === 1 ? um : varios);
 const normal = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 const SITUACAO_BOLETO = { a_emitir: 'a emitir', emitido: 'emitido', enviado: 'enviado', pago: 'pago', cancelado: 'cancelado' };
+// a linha do boleto nos cartões: o valor é o total, como a grade da tela Boletos mostra — a mensalidade e os extras que
+// estão nele (o adicional anual, o que veio do Conta Azul; o tirado do boleto não)
+const COLUNAS_BOLETO = 'id, cliente_id, competencia, valor, itens_extras, vencimento, status';
+const valorDoBoleto = b => { const t = totalDoBoleto(b); return brl(t) + (centavos(t) !== centavos(b.valor) ? ' com os extras' : ''); };
+const linhaDoBoleto = b => 'competência ' + mesBR(b.competencia) + ' · ' + valorDoBoleto(b) + ' · vence ' + dataBR(b.vencimento) + ' · ' + (SITUACAO_BOLETO[b.status] || b.status);
 const podeDesfazer = em => !!em && Date.now() - new Date(em).getTime() < PRAZO_DESFAZER;
 const avisarTelas = (nome, detail) => { try { window.dispatchEvent(new CustomEvent(nome, { detail })); } catch (e) { /* fora do navegador */ } };
 const ID = /^[0-9a-z-]{1,64}$/i;
@@ -164,7 +170,7 @@ const linhaDaMensagem = m => (m ? sub('No histórico: “' + trecho(m) + '”') 
 //   ajuda: { salvar(acao), anunciar(texto), reagir(), email, nome } — salvar guarda o estado do cartão na conversa
 // ============================================================
 export function cartaoDaAcao(acao, ajuda = {}) {
-  const fazer = { concluir_tarefas: cartaoConcluir, alterar_tarefas: cartaoAlterar, registrar_historico: cartaoRegistrar, marcar_pago: cartaoPago, criar_tarefa: cartaoCriar,
+  const fazer = { concluir_tarefas: cartaoConcluir, alterar_tarefas: cartaoAlterar, registrar_historico: cartaoRegistrar, marcar_pago: cartaoPago, avancar_boletos: cartaoAvancar, criar_tarefa: cartaoCriar,
     revisar_atrasadas: cartaoRevisao, vigia: cartaoVigia, arquivos: cartaoArquivos, enviar_mensagem: cartaoMensagem,
     incluir_reforma: cartaoReforma, por_na_competencia: cartaoCompetencia, ajustar_obrigacoes: cartaoObrigacoes,
     criar_lembrete: cartaoLembrete, lembretes: cartaoLembretes }[acao && acao.tipo];
@@ -475,7 +481,7 @@ function cartaoPago({ raiz, estado, salvar, anunciar }) {
     trocar(raiz, sub('Lendo os boletos…'));
     let boletos, nomes;
     try {
-      boletos = (await lerPorIds('cobrancas_mensais', 'id, cliente_id, competencia, valor, vencimento, status', ids)).filter(b => !['pago', 'cancelado'].includes(b.status));
+      boletos = (await lerPorIds('cobrancas_mensais', COLUNAS_BOLETO, ids)).filter(b => !['pago', 'cancelado'].includes(b.status));
       nomes = await nomesDe(boletos.map(b => b.cliente_id));
     } catch (e) { return trocar(raiz, h('div', { class: 'as-cartao-erro', text: 'Não consegui ler os boletos agora.' }), h('div', { class: 'as-cartao-botoes' }, botao('Tentar de novo', desenhar))); }
     if (!boletos.length) return trocar(raiz, sub(ids.length === 1 ? 'Esse boleto já está pago (ou cancelado).' : 'Esses boletos já estão pagos (ou cancelados).'));
@@ -484,8 +490,7 @@ function cartaoPago({ raiz, estado, salvar, anunciar }) {
     const ok = botao('Marcar como pago', () => confirmar(lista.marcadas(), ok, nao, erro), 'pri');
     const nao = botao('Agora não', () => { salvar({ estado: 'cancelada' }); desenhar(); });
     const atualizar = () => { const n = lista.marcadas().length; tit.textContent = 'Marcar ' + qtd(boletos.length, 'boleto', 'boletos') + ' como pago?'; ok.textContent = n > 1 ? 'Marcar ' + n + ' como pagos' : 'Marcar como pago'; ok.disabled = !n; };
-    const lista = listaComCaixas(boletos.map(b => ({ id: String(b.id), titulo: nomes.get(String(b.cliente_id)) || 'empresa',
-      sub: 'competência ' + mesBR(b.competencia) + ' · ' + brl(b.valor) + ' · vence ' + dataBR(b.vencimento) + ' · ' + (SITUACAO_BOLETO[b.status] || b.status) })), { aoMudar: () => atualizar() });
+    const lista = listaComCaixas(boletos.map(b => ({ id: String(b.id), titulo: nomes.get(String(b.cliente_id)) || 'empresa', sub: linhaDoBoleto(b) })), { aoMudar: () => atualizar() });
     atualizar();
     trocar(raiz, tit, lista.el, h('div', { class: 'as-cartao-botoes' }, ok, nao, alternarTodas(lista, boletos.length)), erro);
   }
@@ -516,6 +521,80 @@ function cartaoPago({ raiz, estado, salvar, anunciar }) {
     salvar({ estado: 'desfeita', desfeito: { n: d.desfeitos.length } });
     const antes = new Map((r.pagos || []).map(p => [p.id, p.status_antes]));
     if (d.desfeitos.length) mudou(d.desfeitos.map(id => ({ id, status: antes.get(id) || 'enviado' })));
+    anunciar('Desfeito.');
+    desenhar();
+  }
+  desenhar();
+}
+
+// ---------- os boletos pra frente: emitido ou enviado (07/11/2026) ----------
+// O Samuel: "o vigia avisar como fez mas o assistente poder fazer essa alteração, é muito simples". A regra é a da grade e do
+// cartão do vigia (avancarBoletos: só os que estão antes da situação nova; o cancelado e o que já passou ficam), com o
+// "Desfazer" por 10 minutos (voltarBoletos: só onde ninguém mexeu depois).
+const ROTULO_AVANCO = { emitido: ['emitido', 'emitidos'], enviado: ['enviado', 'enviados'] };
+function cartaoAvancar({ raiz, estado, salvar, anunciar }) {
+  const nova = ROTULO_AVANCO[estado.situacao] ? estado.situacao : null;
+  raiz.setAttribute('aria-label', 'Marcar boletos como ' + (nova ? ROTULO_AVANCO[nova][1] : 'emitidos'));
+  if (!nova) { trocar(raiz, sub('Essa proposta veio sem a situação nova: peça de novo.')); return; }
+  const [um, varios] = ROTULO_AVANCO[nova];
+  const como = n => (n === 1 ? um : varios);
+  const alvo = ORDEM_BOLETO.indexOf(nova);
+  const ids = idsDe(estado.ids).slice(0, 300);
+  const mudou = mudancas => avisarTelas('mr:boletos-mudaram', { mudancas });
+  async function desenhar() {
+    if (estado.estado === 'feita') return desenharFeita();
+    if (estado.estado === 'cancelada') return trocar(raiz, sub('Deixei como estava.'));
+    if (estado.estado === 'desfeita') return trocar(raiz, h('span', { text: '↺ Desfeito: ' + qtd((estado.desfeito || {}).n || 0, 'boleto voltou', 'boletos voltaram') + ' pra situação de antes.' }));
+    trocar(raiz, sub('Lendo os boletos…'));
+    let boletos, nomes;
+    try {
+      boletos = (await lerPorIds('cobrancas_mensais', COLUNAS_BOLETO, ids)).filter(b => { const i = ORDEM_BOLETO.indexOf(b.status); return i >= 0 && i < alvo; });
+      nomes = await nomesDe(boletos.map(b => b.cliente_id));
+    } catch (e) { return trocar(raiz, h('div', { class: 'as-cartao-erro', text: 'Não consegui ler os boletos agora.' }), h('div', { class: 'as-cartao-botoes' }, botao('Tentar de novo', desenhar))); }
+    if (!boletos.length) return trocar(raiz, sub(ids.length === 1 ? 'Esse boleto já está ' + um + ' ou mais à frente.' : 'Esses boletos já estão ' + varios + ' ou mais à frente.'));
+    const nomeDe = b => nomes.get(String(b.cliente_id)) || 'empresa';
+    boletos.sort((a, b) => nomeDe(a).localeCompare(nomeDe(b), 'pt-BR') || String(a.competencia).localeCompare(String(b.competencia)));
+    const tit = h('div', { class: 'as-cartao-tit' });
+    const erro = h('div', { class: 'as-cartao-erro', hidden: true });
+    const ok = botao('Marcar como ' + um, () => confirmar(lista.marcadas(), ok, nao, erro), 'pri');
+    const nao = botao('Agora não', () => { salvar({ estado: 'cancelada' }); desenhar(); });
+    const atualizar = () => {
+      const marcados = new Set(lista.marcadas());
+      const soma = boletos.filter(b => marcados.has(String(b.id))).reduce((s, b) => s + centavos(totalDoBoleto(b)), 0) / 100;
+      tit.textContent = 'Marcar ' + qtd(boletos.length, 'boleto', 'boletos') + ' como ' + como(boletos.length) + '?';
+      ok.textContent = marcados.size > 1 ? 'Marcar ' + marcados.size + ' como ' + varios + ' (' + brl(soma) + ')' : 'Marcar como ' + um;
+      ok.disabled = !marcados.size;
+    };
+    const lista = listaComCaixas(boletos.map(b => ({ id: String(b.id), titulo: nomeDe(b), sub: linhaDoBoleto(b) })), { aoMudar: () => atualizar() });
+    atualizar();
+    trocar(raiz, tit, lista.el, h('div', { class: 'as-cartao-botoes' }, ok, nao, alternarTodas(lista, boletos.length)), erro);
+  }
+  async function confirmar(marcados, ok, nao, erro) {
+    if (!marcados.length) return;
+    ok.disabled = true; nao.disabled = true; ok.textContent = 'Marcando…'; erro.hidden = true;
+    const r = await avancarBoletos(supabase, marcados, nova);
+    if (r.erro && !r.mudados.length) { erro.textContent = 'Não consegui marcar: ' + r.erro; erro.hidden = false; ok.disabled = false; nao.disabled = false; ok.textContent = 'Marcar como ' + um; return; }
+    salvar({ estado: 'feita', resultado: { mudados: r.mudados, ja: r.jaEstavam.length, em: new Date().toISOString() } });
+    if (r.mudados.length) mudou(r.mudados.map(b => ({ id: b.id, status: nova })));
+    anunciar(qtd(r.mudados.length, 'boleto marcado', 'boletos marcados') + ' como ' + como(r.mudados.length) + '.');
+    desenhar();
+  }
+  function desenharFeita() {
+    const r = estado.resultado || {};
+    const n = (r.mudados || []).length;
+    const linha = h('div', { class: 'as-cartao-feito' }, h('span', { class: 'as-cartao-ok', text: '✓ ' + (n ? qtd(n, 'boleto marcado', 'boletos marcados') + ' como ' + como(n) : 'Nenhum boleto mudou') + '.' }));
+    if (r.ja) linha.append(h('span', { class: 'as-cartao-sub', text: qtd(r.ja, 'já estava ' + um + ' ou mais à frente', 'já estavam ' + varios + ' ou mais à frente') + '.' }));
+    if (n && podeDesfazer(r.em)) linha.append(botao('Desfazer', desfazer, 'link'));
+    trocar(raiz, linha);
+  }
+  async function desfazer(ev) {
+    const b = ev.currentTarget, r = estado.resultado || {};
+    if (!podeDesfazer(r.em)) { trocar(raiz, sub('Passou o tempo de desfazer por aqui: troque a situação na tela Boletos.')); return; }
+    b.disabled = true; b.textContent = 'Desfazendo…';
+    const d = await voltarBoletos(supabase, r.mudados || [], nova);
+    if (d.erro && !d.desfeitos.length) { b.disabled = false; b.textContent = 'Desfazer'; raiz.append(h('div', { class: 'as-cartao-erro', text: 'Não consegui desfazer: ' + d.erro })); return; }
+    salvar({ estado: 'desfeita', desfeito: { n: d.desfeitos.length } });
+    if (d.desfeitos.length) mudou(d.desfeitos.map(x => ({ id: x.id, status: x.status })));
     anunciar('Desfeito.');
     desenhar();
   }

@@ -81,6 +81,8 @@ ACOES = {
     'Conclui o extrato de hoje': {'tipo': 'concluir_tarefas', 'ids': ['xa-h1']},
     'Os boletos foram pagos': {'tipo': 'marcar_pago', 'ids': ['xb-1', 'xb-2', 'xb-3']},
     'De novo os boletos': {'tipo': 'marcar_pago', 'ids': ['xb-1', 'xb-2']},
+    'Os boletos foram emitidos': {'tipo': 'avancar_boletos', 'situacao': 'emitido', 'ids': ['xb-1', 'xb-2', 'xb-3']},
+    'Os boletos foram enviados': {'tipo': 'avancar_boletos', 'situacao': 'enviado', 'ids': ['xb-1', 'xb-2', 'xb-3']},
     'Cria uma tarefa pra Vitória': {'tipo': 'criar_tarefa', 'tarefa': {'titulo': 'Ligar pra padaria sobre a admissão', 'responsavel': 'Vitória', 'prazo': D(1), 'setor': 'dp',
                                     'prioridade': 'alta', 'descricao': 'Confirmar a data de início.', 'empresa': {'id': E1, 'nome': 'PADARIA DO TESTE LTDA'}}},
     'Revisa as minhas atrasadas': {'tipo': 'revisar_atrasadas', 'pessoa': 'Samuel'},
@@ -191,6 +193,45 @@ def main():
         perguntar('De novo os boletos'); p.wait_for_selector(ultimo + ' .as-botao-pri', timeout=5000)
         p.click(ultimo + ' .as-botao:not(.as-botao-pri)'); p.wait_for_timeout(200)
         ok(p.inner_text(ultimo) == 'Deixei como estava.' and boleto('xb-1')['status'] == 'enviado', '"Agora não": nada muda')
+
+        # 3b) emitido e enviado (07/11/2026, o Samuel: "o assistente poder fazer essa alteração, é muito simples"): só os
+        # boletos que estão antes da situação nova; o valor é o total do boleto (a mensalidade e os extras), como a grade
+        txt = lambda sel: p.inner_text(sel).replace('\xa0', ' ')
+        grade = lambda: sorted(p.eval_on_selector_all('tr select.st', 'ss => ss.map(s => s.value)'))
+        perguntar('Os boletos foram emitidos'); p.wait_for_selector(ultimo + ' .as-cartao-lista', timeout=5000)
+        card = txt(ultimo)
+        ok(card.startswith('Marcar 1 boleto como emitido?') and 'OFICINA DE TESTE LTDA' in card and 'R$ 300,50 · vence' in card and 'a emitir' in card
+           and 'PADARIA DO TESTE' not in card and 'MERCADO DE TESTE' not in card, f'emitido: só o a emitir (o enviado e o pago ficam de fora) ({card[:160]!r})')
+        ok(txt(ultimo + ' .as-botao-pri') == 'Marcar como emitido', 'o botão diz a situação nova')
+        p.click(ultimo + ' .as-botao-pri'); p.wait_for_selector(ultimo + ' .as-cartao-ok', timeout=5000)
+        g = grade()
+        ok(boleto('xb-2')['status'] == 'emitido' and boleto('xb-1')['status'] == 'enviado' and boleto('xb-3')['status'] == 'pago' and g == ['emitido', 'enviado', 'pago'],
+           f'marcado como emitido, e a grade troca a situação na hora ({g})')
+        ok(txt(ultimo).startswith('✓ 1 boleto marcado como emitido.'), f'o cartão diz o que fez ({txt(ultimo)[:80]!r})')
+        p.click(ultimo + ' .as-botao-link'); p.wait_for_function(f"() => document.querySelector('{ultimo}').innerText.startsWith('↺ Desfeito')", timeout=5000)
+        g = grade()
+        ok(boleto('xb-2')['status'] == 'a_emitir' and g == ['a_emitir', 'enviado', 'pago'], f'desfazer: volta pra a emitir, na grade também ({g})')
+        # enviado: o a emitir e o emitido; um deles com extras (o tirado do boleto fica fora da soma)
+        p.evaluate("""() => { const b = window.__mockDb.cobrancas_mensais.find(x => x.id === 'xb-1'); b.status = 'emitido';
+          b.itens_extras = [{ descricao: 'Honorário adicional anual', valor: 450 }, { descricao: 'Tirado do boleto', valor: 99, ignorado: true }]; }""")
+        perguntar('Os boletos foram enviados'); p.wait_for_selector(ultimo + ' .as-cartao-lista', timeout=5000)
+        card = txt(ultimo)
+        ok(card.startswith('Marcar 2 boletos como enviados?') and card.index('OFICINA DE TESTE LTDA') < card.index('PADARIA DO TESTE LTDA') and 'R$ 900,00 com os extras' in card
+           and 'MERCADO DE TESTE' not in card, f'enviado: o a emitir e o emitido, pela ordem do nome, com o total do boleto ({card[:220]!r})')
+        ok(txt(ultimo + ' .as-botao-pri') == 'Marcar 2 como enviados (R$ 1.200,50)', f'o botão diz quantos e a soma dos totais ({txt(ultimo + " .as-botao-pri")!r})')
+        p.uncheck(ultimo + ' input[data-id="xb-2"]')
+        ok(txt(ultimo + ' .as-botao-pri') == 'Marcar como enviado', 'desmarcar um: o botão acompanha')
+        p.check(ultimo + ' input[data-id="xb-2"]')
+        p.click(ultimo + ' .as-botao-pri'); p.wait_for_selector(ultimo + ' .as-cartao-ok', timeout=5000)
+        g = grade()
+        ok(boleto('xb-1')['status'] == 'enviado' and boleto('xb-2')['status'] == 'enviado' and g == ['enviado', 'enviado', 'pago'], f'os dois marcados como enviados ({g})')
+        p.click(ultimo + ' .as-botao-link'); p.wait_for_function(f"() => document.querySelector('{ultimo}').innerText.startsWith('↺ Desfeito')", timeout=5000)
+        g = grade()
+        ok(boleto('xb-1')['status'] == 'emitido' and boleto('xb-2')['status'] == 'a_emitir' and g == ['a_emitir', 'emitido', 'pago'] and txt(ultimo).startswith('↺ Desfeito: 2 boletos voltaram'),
+           f'desfazer: cada um volta pra situação de antes ({g})')
+        perguntar('Os boletos foram enviados'); p.wait_for_selector(ultimo + ' .as-botao-pri', timeout=5000)
+        p.click(ultimo + ' .as-botao:not(.as-botao-pri)'); p.wait_for_timeout(200)
+        ok(p.inner_text(ultimo) == 'Deixei como estava.' and boleto('xb-1')['status'] == 'emitido' and boleto('xb-2')['status'] == 'a_emitir', '"Agora não": nada muda')
 
         # 4) criar
         p.goto(base + 'index.html'); p.wait_for_selector('.as-painel:not([hidden])', timeout=5000)

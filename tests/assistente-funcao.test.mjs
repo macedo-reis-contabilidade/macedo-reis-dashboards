@@ -38,7 +38,7 @@ chk('o prompt: as notícias (triadas, a principal do grupo, a leitura da IA a co
   /as que valem são as triadas \(situacao = triada\)/.test(INSTRUCOES) && /consultar noticias com clientes contem o id dela/.test(INSTRUCOES) && /são a leitura da IA do feed/.test(INSTRUCOES)
   && /as revisões de honorário são só dos sócios/.test(INSTRUCOES));
 chk('o dicionário do prompt lista as tabelas e não tem credenciais', Object.keys(TABELAS).every(t => dicionario().includes('## ' + t + ' ')) && !/credenciais/.test(dicionario()));
-chk('as definições: as oito de ler e as treze propostas, consultar só com as tabelas da lista', DEFINICOES.map(d => d.name).join() === 'buscar_empresa,ver_empresa,agenda,consultar,perguntar_reforma,buscar_arquivos,comparativo,conferir_boletos,propor_concluir_tarefas,propor_alterar_tarefas,propor_registrar_historico,propor_marcar_pago,propor_criar_tarefa,propor_enviar_mensagem,propor_revisao_atrasadas,propor_ver_vigia,propor_criar_lembrete,propor_ver_lembretes,propor_incluir_reforma,propor_por_na_competencia,propor_ajustar_obrigacoes'
+chk('as definições: as oito de ler e as catorze propostas, consultar só com as tabelas da lista', DEFINICOES.map(d => d.name).join() === 'buscar_empresa,ver_empresa,agenda,consultar,perguntar_reforma,buscar_arquivos,comparativo,conferir_boletos,propor_concluir_tarefas,propor_alterar_tarefas,propor_registrar_historico,propor_marcar_pago,propor_avancar_boletos,propor_criar_tarefa,propor_enviar_mensagem,propor_revisao_atrasadas,propor_ver_vigia,propor_criar_lembrete,propor_ver_lembretes,propor_incluir_reforma,propor_por_na_competencia,propor_ajustar_obrigacoes'
   && JSON.stringify(DEFINICOES.find(d => d.name === 'consultar').input_schema.properties.tabela.enum) === JSON.stringify(Object.keys(TABELAS)));
 chk('o prompt: a Reforma sozinha na rodada (a resposta dela vai direto, com as fontes); a tela pelo nome e a situação por extenso',
   /Chame sozinha na rodada/.test(INSTRUCOES) && /mantenha as fontes dele entre colchetes/.test(INSTRUCOES) && /não financeiro-boletos\.html/.test(INSTRUCOES) && /não em_transicao/.test(INSTRUCOES)
@@ -317,6 +317,25 @@ console.log('As propostas (nada muda aqui: a tela mostra e a pessoa confirma):')
   chk('marcar pago: só os em aberto da empresa e competência', propostas.length === 3 && propostas[2].tipo === 'marcar_pago' && JSON.stringify(propostas[2].ids) === JSON.stringify([U(11)])
     && /1 boleto com o botão "Marcar como pago"/.test(p) && /2026-09 · R\$\s?450,00 · vence 10\/10\/2026 · enviado/.test(p), p);
   chk('marcar pago: competência fora do formato não propõe', /'AAAA-MM'/.test(await nova().propor_marcar_pago({ empresas: [ID_A], competencia: '09/2026' })) && propostas.length === 3);
+  // os boletos pra frente (07/11/2026): todos de uma competência, só os que estão antes da situação nova (numa lista à
+  // parte, pra não mexer na contagem das propostas dos testes de baixo)
+  const pb = [];
+  const novaB = () => criarFerramentas({ banco, hoje: '2026-10-14', usuario: { email: 'financeiro@macedoereis.com.br', nome: 'Samuel' }, aoPropor: a => pb.push(a) });
+  const av = await novaB().propor_avancar_boletos({ situacao: 'enviado', competencia: '2026-09' });
+  chk('avançar: enviado pega os a emitir e os emitidos da competência (o enviado e o pago ficam)', pb.length === 1 && pb[0].tipo === 'avancar_boletos' && pb[0].situacao === 'enviado'
+    && JSON.stringify(pb[0].ids) === JSON.stringify([U(13)]) && /1 boleto \(R\$\s?300,00, o total dos boletos, com os extras\) com o botão "Marcar como enviado"/.test(av) && /Nada mudou ainda/.test(av), av);
+  chk('avançar: emitido sem nenhum a emitir não propõe e diz o porquê', /Nenhum boleto a emitir/.test(await novaB().propor_avancar_boletos({ situacao: 'emitido', competencia: '2026-09' })) && pb.length === 1);
+  chk('avançar: situação fora da lista, competência fora do formato ou sem critério não propõem', /'emitido' ou 'enviado'/.test(await novaB().propor_avancar_boletos({ situacao: 'pago', competencia: '2026-09' }))
+    && /'AAAA-MM'/.test(await novaB().propor_avancar_boletos({ situacao: 'enviado', competencia: '09/2026' })) && /Diga quais boletos/.test(await novaB().propor_avancar_boletos({ situacao: 'enviado' })) && pb.length === 1);
+  const muitosB = Array.from({ length: 301 }, (_, i) => ({ id: U(5000 + i), cliente_id: ID_A, competencia: '2026-10', valor: 100, vencimento: '2026-11-10', status: 'a_emitir' }));
+  // o valor é o total do boleto, como a grade: a mensalidade e os extras que estão nele (o tirado do boleto não)
+  muitosB[0].itens_extras = [{ descricao: 'Honorário adicional anual', valor: 50 }, { descricao: 'Tirado do boleto', valor: 20, ignorado: true }];
+  const fsb = criarFerramentas({ banco: bancoFalso({ tarefas: [], extras: { cobrancas_mensais: muitosB } }).banco, hoje: '2026-11-07', usuario: { nome: 'Samuel' }, aoPropor: a => pb.push(a) });
+  chk('avançar: mais de 300 pede pra afinar e não propõe', /São 301 boletos a emitir/.test(await fsb.propor_avancar_boletos({ situacao: 'emitido', competencia: '2026-10' })) && pb.length === 1);
+  const fs73 = criarFerramentas({ banco: bancoFalso({ tarefas: [], extras: { cobrancas_mensais: muitosB.slice(0, 73) } }).banco, hoje: '2026-11-07', usuario: { nome: 'Samuel' }, aoPropor: a => pb.push(a) });
+  const av73 = await fs73.propor_avancar_boletos({ situacao: 'emitido', competencia: '2026-10' });
+  chk('avançar: os 73 a emitir de outubro numa proposta só, com a soma e "e mais" na lista', pb.length === 2 && pb[1].ids.length === 73 && /73 boletos \(R\$\s?7\.350,00, o total dos boletos, com os extras\)/.test(av73) && /R\$\s?150,00 \(com os extras\) · vence/.test(av73) && /… e mais 58/.test(av73), av73);
+  chk('etapa: avançar boletos também separa os boletos', descreverEtapa('propor_avancar_boletos', {}) === 'Separando os boletos pra você confirmar');
   const t = await nova().propor_criar_tarefa({ titulo: '  Ligar   pra   empresa ', responsavel: 'vitoria', prazo: '2026-10-15', setor: 'DP', prioridade: 'alta', empresa: 'LOJA DA ESQUINA LTDA', descricao: 'Sobre a admissão' });
   chk('criar: os campos arrumados (título, responsável da equipe, setor, empresa do cadastro)', propostas.length === 4 && JSON.stringify(propostas[3]) === JSON.stringify({ tipo: 'criar_tarefa',
     tarefa: { titulo: 'Ligar pra empresa', responsavel: 'Vitória', prazo: '2026-10-15', setor: 'dp', prioridade: 'alta', descricao: 'Sobre a admissão', empresa: { id: ID_A, nome: 'LOJA DA ESQUINA LTDA' } } })

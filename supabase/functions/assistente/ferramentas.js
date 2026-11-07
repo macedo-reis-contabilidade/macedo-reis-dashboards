@@ -8,7 +8,8 @@
 // 19/10/2026, propor_enviar_mensagem, a mensagem no chat da equipe; desde 20/10/2026, a mensagem no histórico das tarefas —
 // junto da conclusão e da mudança, ou sozinha, propor_registrar_historico; desde 30/10/2026, os cadastros que antes eram "só
 // leio": propor_incluir_reforma, propor_por_na_competencia e propor_ajustar_obrigacoes; desde 04/11/2026, os lembretes:
-// propor_criar_lembrete e propor_ver_lembretes) não gravam nada: separam o que identifica a mudança
+// propor_criar_lembrete e propor_ver_lembretes; desde 07/11/2026, os boletos pra frente — emitido ou enviado —,
+// propor_avancar_boletos) não gravam nada: separam o que identifica a mudança
 // (ids, a pessoa, os campos da tarefa nova, quem recebe a mensagem e o texto) e o servidor manda junto com a resposta; a
 // tela mostra o cartão e quem grava é ela, com o login da pessoa, depois que ela confirma (assets/js/assistente-acoes.js
 // + assets/js/tarefas-acoes.js — a mensagem, assets/js/chat-equipe.js —, a mesma regra das telas). Uma proposta por
@@ -510,6 +511,13 @@ export const DEFINICOES = [
       empresas: { type: 'array', items: { type: 'string' }, description: 'id, nome ou CNPJ de cada empresa' },
       competencia: { type: 'string', description: "'AAAA-MM'" },
       ids: { type: 'array', items: { type: 'string' }, description: 'ids dos boletos (de consultar)' } } } },
+  { name: 'propor_avancar_boletos',
+    description: 'Prepara boletos de honorários pra pessoa passar pra frente na tela: emitido (gerado no banco) ou enviado (mandado ao cliente) — nada muda aqui: a tela mostra os boletos com o botão e, depois, o "Desfazer". Só quando a pessoa disser que foram emitidos ou enviados (pago é propor_marcar_pago). Diga quais: a competência (todos os dela), a empresa (uma ou várias) e/ou os ids. Só os que estão antes da situação nova (pra emitido, os a emitir; pra enviado, os a emitir e os emitidos); até 300.',
+    input_schema: { type: 'object', properties: {
+      situacao: { type: 'string', enum: ['emitido', 'enviado'] },
+      competencia: { type: 'string', description: "'AAAA-MM' — a competência do boleto (a de outubro vence em novembro)" },
+      empresas: { type: 'array', items: { type: 'string' }, description: 'id, nome ou CNPJ de cada empresa' },
+      ids: { type: 'array', items: { type: 'string' }, description: 'ids dos boletos (de consultar)' } }, required: ['situacao'] } },
   { name: 'propor_criar_tarefa',
     description: 'Prepara uma tarefa nova pra pessoa conferir e criar na tela — nada é criado aqui: a tela mostra a tarefa já preenchida (título, responsável, prazo, prioridade, setor) com o botão "Criar tarefa". Só quando a pessoa pedir pra criar, anotar ou lembrar de fazer algo.',
     input_schema: { type: 'object', properties: {
@@ -1462,14 +1470,52 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, ago
     }
     if (!criterio) return 'Diga quais boletos: a empresa (uma ou várias) e a competência, ou os ids.';
     if (e.competencia) { if (!/^\d{4}-\d{2}$/.test(String(e.competencia))) return "A competência vai em 'AAAA-MM'."; f.push('competencia=eq.' + e.competencia); }
-    const { linhas, total } = await ler('cobrancas_mensais?select=id,cliente_id,competencia,valor,vencimento,status&' + f.join('&') + '&order=competencia.desc,id.asc&limit=100', { contar: true });
+    const { linhas, total } = await ler('cobrancas_mensais?select=id,cliente_id,competencia,valor,itens_extras,vencimento,status&' + f.join('&') + '&order=competencia.desc,id.asc&limit=100', { contar: true });
     if (!linhas.length) return 'Nenhum boleto em aberto (a emitir, emitido ou enviado) com esses critérios — nada foi proposto.';
     if ((total || 0) > 100) return 'São ' + total + ' boletos em aberto com esses critérios: afine (empresa, competência) até 100 — nada foi proposto.';
     registrar({ tipo: 'marcar_pago', ids: linhas.map(b => String(b.id)) });
     const com = await comEmpresa(linhas);
     return 'Proposta pronta: a tela mostra ' + plural(linhas.length, 'boleto', 'boletos') + ' com o botão "Marcar como pago" (a pessoa confirma e pode desmarcar algum). Nada mudou ainda.\n'
-      + com.map(b => '- ' + b.empresa + ' · ' + b.competencia + ' · ' + brl(b.valor) + ' · vence ' + dataBR(b.vencimento) + ' · ' + situacao(b.status)).join('\n')
+      + com.map(b => '- ' + b.empresa + ' · ' + b.competencia + ' · ' + valorDoBoleto(b) + ' · vence ' + dataBR(b.vencimento) + ' · ' + situacao(b.status)).join('\n')
       + '\nNa resposta: uma frase dizendo o que será marcado como pago quando ela confirmar (não diga que já foi).';
+  }
+
+  // o valor do boleto é o total, como a grade da tela Boletos mostra: a mensalidade e os extras que estão nele (o tirado do
+  // boleto não) — a mensalidade sozinha (o valor) deixava de fora o adicional anual e o que veio do Conta Azul
+  const valorDoBoleto = b => { const t = totalDoBoleto(b); return brl(t) + (centavos(t) !== centavos(b.valor) ? ' (com os extras)' : ''); };
+
+  // os boletos pra frente (07/11/2026, o Samuel: "o vigia avisar como fez mas o assistente poder fazer essa alteração, é
+  // muito simples"): emitido ou enviado, como a grade da tela Boletos e o cartão do vigia (avancarBoletos); todos de uma
+  // competência valem ("todos os boletos foram emitidos")
+  const ANTES_DE = { emitido: ['a_emitir'], enviado: ['a_emitir', 'emitido'] };
+  async function propor_avancar_boletos(e) {
+    const ja = jaProposto(); if (ja) return ja;
+    const nova = String(e.situacao || '');
+    if (!ANTES_DE[nova]) return "A situação vai em 'emitido' ou 'enviado' (pago é propor_marcar_pago).";
+    const f = ['status=in.(' + ANTES_DE[nova].join(',') + ')'];
+    let criterio = false;
+    const ids = idsDe(e.ids);
+    if (Array.isArray(e.ids) && e.ids.length && !ids.length) return 'Esses ids não são de boletos (use os de consultar).';
+    if (ids.length) { if (ids.length > 300) return 'Até 300 boletos por vez.'; f.push('id=in.(' + ids.join(',') + ')'); criterio = true; }
+    const nomes = (Array.isArray(e.empresas) ? e.empresas : e.empresas ? [e.empresas] : []).map(String).filter(s => s.trim()).slice(0, 20);
+    if (nomes.length) {
+      const cli = [];
+      for (const n of nomes) { const a = await acharEmpresa(n); if (a.erro) return a.erro; cli.push(a.id); }
+      f.push('cliente_id=in.(' + [...new Set(cli)].join(',') + ')'); criterio = true;
+    }
+    if (e.competencia) { if (!/^\d{4}-\d{2}$/.test(String(e.competencia))) return "A competência vai em 'AAAA-MM'."; f.push('competencia=eq.' + e.competencia); criterio = true; }
+    if (!criterio) return 'Diga quais boletos: a competência (todos os dela), a empresa (uma ou várias) ou os ids.';
+    const quais = nova === 'emitido' ? 'a emitir' : 'a emitir ou emitido';
+    const { linhas, total } = await ler('cobrancas_mensais?select=id,cliente_id,competencia,valor,itens_extras,vencimento,status&' + f.join('&') + '&order=competencia.desc,id.asc&limit=300', { contar: true });
+    if (!linhas.length) return 'Nenhum boleto ' + quais + ' com esses critérios — nada foi proposto (os que já estão ' + nova + ' ou mais à frente ficam como estão).';
+    if ((total || 0) > 300) return 'São ' + total + ' boletos ' + quais + ' com esses critérios: afine (empresa, competência) até 300 — nada foi proposto.';
+    registrar({ tipo: 'avancar_boletos', situacao: nova, ids: linhas.map(b => String(b.id)) });
+    const com = await comEmpresa(linhas);
+    const soma = linhas.reduce((s, b) => s + centavos(totalDoBoleto(b)), 0) / 100;
+    return 'Proposta pronta: a tela mostra ' + plural(linhas.length, 'boleto', 'boletos') + ' (' + brl(soma) + ', o total dos boletos, com os extras) com o botão "Marcar como ' + nova + '" (a pessoa confirma e pode desmarcar algum; depois, "Desfazer"). Nada mudou ainda.\n'
+      + com.slice(0, 15).map(b => '- ' + b.empresa + ' · ' + b.competencia + ' · ' + valorDoBoleto(b) + ' · vence ' + dataBR(b.vencimento) + ' · ' + situacao(b.status)).join('\n')
+      + (com.length > 15 ? '\n… e mais ' + (com.length - 15) : '')
+      + '\nNa resposta: uma frase dizendo o que passa pra ' + nova + ' quando ela confirmar (não diga que já passou).';
   }
 
   const SETORES_TAREFA = ['clientes', 'dp', 'fiscal', 'contabil', 'societario', 'financeiro', 'comercial', 'irpf', 'gestao', 'geral'];
@@ -2058,7 +2104,7 @@ export function criarFerramentas({ banco, contexto = {}, usuario = {}, hoje, ago
   }
 
   return { buscar_empresa, ver_empresa, agenda, consultar, perguntar_reforma, buscar_arquivos, comparativo, conferir_boletos, propor_concluir_tarefas, propor_alterar_tarefas, propor_registrar_historico,
-    propor_marcar_pago, propor_criar_tarefa, propor_enviar_mensagem, propor_revisao_atrasadas, propor_ver_vigia,
+    propor_marcar_pago, propor_avancar_boletos, propor_criar_tarefa, propor_enviar_mensagem, propor_revisao_atrasadas, propor_ver_vigia,
     propor_incluir_reforma, propor_por_na_competencia, propor_ajustar_obrigacoes, propor_criar_lembrete, propor_ver_lembretes };
 }
 
@@ -2078,7 +2124,7 @@ export function descreverEtapa(nome, e = {}) {
   if (nome === 'propor_concluir_tarefas') return 'Separando as tarefas pra você confirmar';
   if (nome === 'propor_alterar_tarefas') return 'Separando o que muda pra você confirmar';
   if (nome === 'propor_registrar_historico') return 'Preparando a mensagem pro histórico';
-  if (nome === 'propor_marcar_pago') return 'Separando os boletos pra você confirmar';
+  if (nome === 'propor_marcar_pago' || nome === 'propor_avancar_boletos') return 'Separando os boletos pra você confirmar';
   if (nome === 'propor_criar_tarefa') return 'Preparando a tarefa pra você conferir';
   if (nome === 'propor_enviar_mensagem') return 'Escrevendo a mensagem pra você conferir';
   if (nome === 'propor_revisao_atrasadas') return 'Preparando a revisão das atrasadas';
