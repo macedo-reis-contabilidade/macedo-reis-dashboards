@@ -21,8 +21,9 @@ Confere:
      (o que é dela, depois do recado do resumo);
   6. o cartão proposto pela função, embaixo da resposta (o vigia no Fiscal);
   7. resolver ali mesmo (16/10/2026): quem vai cuidar da obrigação (leva a tarefa aberta junto, como em Obrigações
-     fiscais), da tarefa e da rotina, descartar a proposta parada, o boleto enviado ou pago — com "Desfazer", o aviso às
-     telas abertas e, passados os 10 minutos, fora da lista, da saudação e dos recados até a conferência seguinte;
+     fiscais), da tarefa e da rotina, descartar a proposta parada, os boletos do mês sem enviar (07/11/2026: um aviso por
+     mês, com a lista do mês pra marcar como enviados) — com "Desfazer", o aviso às telas abertas e, passados os 10
+     minutos, fora da lista, da saudação e dos recados até a conferência seguinte;
   8. a segunda leva: admissão registrada, rescisão concluída, a empresa da ficha sem vínculo (com a busca), o alvará
      renovado e o que é de ex-cliente (cobrança, obrigação), com o "nada voltou" quando mexeram depois;
   9. a terceira: vincular as obrigações do regime (as sugeridas marcadas), pôr na cobrança, o cadastro que segue a carteira;
@@ -61,7 +62,8 @@ ACHADOS = [
     A('1', 'admissao_nao_registrada', 'Admissão de FULANA DE TESTE (PADARIA DO TESTE LTDA) ainda não registrada', 'Começou a trabalhar e no sistema a admissão segue "recebida — a registrar".',
       'dp', 'Vitória', 'alta', 'dp-admissoes.html?admissao=ad-1', cliente_id=E1),
     A('2', 'admissao_sem_vinculo', 'Admissão de BELTRANO DE TESTE sem empresa vinculada', 'A empresa digitou "PADARIA TESTE" e o nome não bateu com o cadastro.', 'dp', 'Vitória', 'media', 'dp-admissoes.html?admissao=ad-2'),
-    A('3', 'boleto_parado', 'Boleto de PADARIA DO TESTE LTDA (09/2026) ainda a emitir', 'Venceu e segue "a emitir" na grade.', 'financeiro', 'Samuel', 'alta', 'financeiro-boletos.html', cliente_id=E1),
+    A('3', 'boleto_parado', 'Boletos de agosto/2026 sem enviar: 1 já venceu', 'Somam R$ 200,00 (o total de cada boleto, com os extras), ainda a emitir na grade. Falta: PADARIA DO TESTE.',
+      'financeiro', 'Samuel', 'alta', 'financeiro-boletos.html', cliente_id=E1),
     A('4', 'cliente_sem_cobranca', 'OFICINA DE TESTE LTDA está na carteira e não tem cobrança', 'Nenhuma cobrança ativa na base de boletos.', 'financeiro', 'Samuel', 'media', 'financeiro-boletos.html', cliente_id=E2, so_socios=True),
     A('5', 'reforma_prazo', 'Opção do IBS/CBS por fora: faltam 15 dias e 3 casos estão sem decisão', 'Prazo 30/10.', 'fiscal', 'Ambos', 'media', 'fiscal-reforma.html'),
     A('6', 'tarefa_responsavel', 'Tarefa sem responsável: GIA DE TESTE', 'setor Fiscal', 'fiscal', 'Thalia', 'baixa', 'fiscal-tarefas.html'),
@@ -82,14 +84,21 @@ EXTRA = {
         A('13', 'rotina_sem_responsavel', 'Rotina sem responsável: BACKUP DE TESTE', 'Rotina da Gestão.', 'gestao', 'Ambos', 'baixa', 'gestao-rotinas.html', ref_tabela='rotinas', ref_id='r9'),
         A('14', 'proposta_parada', 'Proposta de PADARIA FICTÍCIA LTDA parada', 'Está "apresentada" e sem mudança.', 'comercial', 'Samuel', 'baixa', 'comercial-precificacao.html',
           ref_tabela='precificacoes', ref_id='pp1'),
-        A('15', 'boleto_parado', 'Boleto de OFICINA DE TESTE LTDA (09/2026) ainda a emitir', 'Vence amanhã.', 'financeiro', 'Samuel', 'media', 'financeiro-boletos.html',
-          cliente_id=E2, ref_tabela='cobrancas_mensais', ref_id='cb9')],
+        # os boletos do mês sem enviar (07/11/2026): um aviso por mês, sem o registro de um boleto — o mês vem no endereço
+        A('15', 'boleto_parado', 'Boletos de setembro/2026 sem enviar: 1 vence em ' + '/'.join(reversed(DIA(1).split('-')))[:5],
+          'Somam R$ 350,00 (o total de cada boleto, com os extras), ainda a emitir na grade. Falta: OFICINA DE TESTE. O outro do mês vence depois.',
+          'financeiro', 'Samuel', 'media', 'financeiro-boletos.html?competencia=2026-09', cliente_id=E2, ref_tabela='cobrancas_mensais', ref_id=None)],
     'tabelas': {
         'tarefas': [{'id': 't91', 'titulo': 'DCTF DE TESTE', 'setor': 'fiscal', 'responsavel': 'Fulano', 'prazo': DIA(3), 'status': 'pendente', 'prioridade': 'media', 'cliente_id': None,
                      'proposta_id': None, 'hora': None, 'transicao_id': None, 'posicao': 910, 'concluida_em': None, 'concluida_por': None}],
         'rotinas': [{'id': 'r9', 'titulo': 'BACKUP DE TESTE', 'setor': 'gestao', 'responsavel': None, 'ativo': True, 'periodicidade': 'semanal', 'dia_semana': 1,
                      'ultima_execucao': None, 'adiada_para': None}],
-        'cobrancas_mensais': [{'id': 'cb9', 'cliente_id': E2, 'competencia': '2026-09', 'valor': 350, 'vencimento': DIA(1), 'status': 'a_emitir', 'canal': None, 'responsavel': 'Samuel'}]}}
+        'cobrancas_mensais': [{'id': 'cb9', 'cliente_id': E2, 'competencia': '2026-09', 'valor': 350, 'vencimento': DIA(1), 'status': 'a_emitir', 'canal': None, 'responsavel': 'Samuel', 'itens_extras': []},
+                              # o do mesmo mês que vence depois (emitido, com um extra e um tirado do boleto), o já enviado e o de outro mês: só o primeiro entra na lista
+                              {'id': 'cb10', 'cliente_id': E1, 'competencia': '2026-09', 'valor': 200, 'vencimento': DIA(12), 'status': 'emitido', 'canal': None, 'responsavel': 'Samuel',
+                               'itens_extras': [{'descricao': 'Honorário adicional anual', 'valor': 150}, {'descricao': 'Tirado do boleto', 'valor': 40, 'ignorado': True}]},
+                              {'id': 'cb11', 'cliente_id': E1, 'competencia': '2026-09', 'valor': 90, 'vencimento': DIA(1), 'status': 'enviado', 'canal': None, 'responsavel': 'Samuel', 'itens_extras': []},
+                              {'id': 'cb12', 'cliente_id': E1, 'competencia': '2026-08', 'valor': 80, 'vencimento': DIA(-20), 'status': 'a_emitir', 'canal': None, 'responsavel': 'Samuel', 'itens_extras': []}]}}
 # o 8: a segunda leva — a admissão registrada, a rescisão concluída, a empresa da admissão sem vínculo (com a busca), o
 # alvará renovado e o que segue ativo de quem saiu da carteira; e um achado com o registro de outra tabela (sem botão)
 EXTRA2 = {
@@ -284,10 +293,10 @@ def main():
         grupos = p.eval_on_selector_all(card + ' .as-vigia-grupo > summary', 'ss => ss.map(s => s.textContent)')
         ok(tit() == 'O que o vigia achou pra você: 3' and 'O que o vigia achou pra você conferir:' in p.inner_text('.as-lista .as-msg.ia:last-child'),
            f'o cartão abre na conversa, com a conta de quem entrou ({tit()!r})')
-        ok(grupos == ['Boletos parados · 1urgente', 'Clientes sem cobrança · 1', 'Prazo da opção da Reforma · 1'] and p.evaluate("() => [...document.querySelectorAll('.as-cartao-vigia details')].every(d => d.open)"),
+        ok(grupos == ['Boletos sem enviar · 1urgente', 'Clientes sem cobrança · 1', 'Prazo da opção da Reforma · 1'] and p.evaluate("() => [...document.querySelectorAll('.as-cartao-vigia details')].every(d => d.open)"),
            f'os grupos, o urgente primeiro, abertos (poucos achados) ({grupos})')
-        href = p.get_attribute(item('Boleto de PADARIA') + ' a', 'href')
-        ok(href == base + 'financeiro-boletos.html' and 'Venceu e segue "a emitir" na grade.' in p.inner_text(item('Boleto de PADARIA')) and p.is_visible(item('Boleto de PADARIA') + ' .as-tag'),
+        href = p.get_attribute(item('Boletos de agosto') + ' a', 'href')
+        ok(href == base + 'financeiro-boletos.html' and 'Falta: PADARIA DO TESTE.' in p.inner_text(item('Boletos de agosto')) and p.is_visible(item('Boletos de agosto') + ' .as-tag'),
            f'cada achado com o porquê, "Abrir" (a tela onde se resolve) e a marca de urgente ({href})')
         ok(bool(p.evaluate("() => localStorage.getItem('mr_vigia_visto:financeiro@macedoereis.com.br')")) and 'Conferido ' in p.inner_text(card),
            'a última olhada fica guardada; o cartão diz quando o vigia conferiu')
@@ -369,11 +378,12 @@ def main():
         p2.wait_for_selector(card + ' .as-vigia-grupo', timeout=6000); abrir_grupos(); p2.wait_for_timeout(100)
         sel_obr = it2('COMÉRCIO MODELO ME: obrigação') + ' .as-vigia-resolver select'
         nomes = p2.eval_on_selector(sel_obr, 's => [...s.options].map(o => o.value)')
-        boleto = p2.eval_on_selector_all(it2('Boleto de OFICINA') + ' .as-vigia-resolver button', 'bs => bs.map(b => b.textContent)')
+        BOL = 'Boletos de setembro/2026 sem enviar'
+        boleto = p2.eval_on_selector_all(it2(BOL) + ' .as-vigia-resolver button', 'bs => bs.map(b => b.textContent)')
         ok(tit2() == 'O que o vigia achou: 12' and p2.input_value(sel_obr) == 'Thalia' and 'Ambos' not in nomes and p2.input_value(it2('BACKUP DE TESTE') + ' .as-vigia-resolver select') == 'Ambos'
-           and p2.is_visible(it2('Proposta de PADARIA') + ' button:has-text("Descartar proposta")') and boleto == ['Marcar como enviado', 'Marcar como pago']
-           and not p2.query_selector(it2('Boleto de PADARIA') + ' .as-vigia-resolver') and not p2.query_selector(it2('GIA DE TESTE') + ' .as-vigia-resolver'),
-           f'os botões: quem vai cuidar (com o dono do setor já escolhido; na obrigação, sem "Ambos"), descartar a proposta, o boleto enviado ou pago; achado sem o registro, sem botão ({tit2()!r}, {nomes}, {boleto})')
+           and p2.is_visible(it2('Proposta de PADARIA') + ' button:has-text("Descartar proposta")') and boleto == ['Marcar como enviados']
+           and not p2.query_selector(it2('Boletos de agosto') + ' .as-vigia-resolver') and not p2.query_selector(it2('GIA DE TESTE') + ' .as-vigia-resolver'),
+           f'os botões: quem vai cuidar (com o dono do setor já escolhido; na obrigação, sem "Ambos"), descartar a proposta, os boletos do mês enviados; achado sem o registro, sem botão ({tit2()!r}, {nomes}, {boleto})')
 
         clicar_e_esperar('COMÉRCIO MODELO ME: obrigação', 'Definir responsável', 'Desfazer')
         ok(linha('cliente_obrigacoes', 'v1')['responsavel'] == 'Thalia' and linha('tarefas', 't71')['responsavel'] == 'Thalia' and linha('tarefas', 't72')['responsavel'] == 'Adaini'
@@ -399,17 +409,34 @@ def main():
         ok(linha('precificacoes', 'pp1')['status'] == 'apresentada' and linha('precificacoes', 'pp1')['atualizado_em'] == data_pp1,
            'desfazer: volta a "apresentada" com a mesma data (pro vigia, parada desde o mesmo dia)')
 
-        clicar_e_esperar('Boleto de OFICINA', 'Marcar como enviado', 'Desfazer')
+        # os boletos do mês sem enviar: quantos faltam naquele mês e o total (o enviado e o de outro mês ficam de fora; o extra
+        # tirado do boleto não soma), "Marcar os N como enviados" num clique e, no "Escolher quais", a lista com as caixas
+        p2.click(it2(BOL) + ' button:has-text("Marcar como enviados")')
+        p2.wait_for_selector(it2(BOL) + ' button:has-text("Escolher quais")', timeout=5000)
+        txt2 = lambda sel: p2.inner_text(sel).replace('\xa0', ' ')
+        ok('2 boletos de 09/2026 ainda sem enviar, R$ 700,00 no total.' in txt2(it2(BOL)) and txt2(it2(BOL) + ' .as-botao-pri') == 'Marcar os 2 como enviados'
+           and not p2.query_selector(it2(BOL) + ' .as-vigia-resolver .as-cartao-lista'),
+           f'o resumo do mês: quantos faltam e o total, com o botão de todos, sem a lista ({txt2(it2(BOL))[-160:]!r})')
+        p2.click(it2(BOL) + ' button:has-text("Escolher quais")')
+        p2.wait_for_selector(it2(BOL) + ' .as-vigia-resolver .as-cartao-lista', timeout=5000)
+        lst = p2.eval_on_selector_all(it2(BOL) + ' .as-vigia-resolver .as-cartao-lista input', 'cs => cs.map(c => c.dataset.id + (c.checked ? "+" : "-"))')
+        ok(lst == ['cb9+', 'cb10+'] and txt2(it2(BOL) + ' .as-botao-pri') == 'Marcar 2 como enviados (R$ 700,00)' and 'R$ 350,00 com os extras' in txt2(it2(BOL) + ' .as-vigia-resolver .as-cartao-lista')
+           and not p2.query_selector(it2(BOL) + ' button:has-text("Escolher quais")'),
+           f'escolher quais: a lista do mês, o primeiro a vencer em cima, todos marcados, e o botão com a soma dos totais ({lst}, {txt2(it2(BOL) + " .as-botao-pri")!r})')
+        p2.uncheck(it2(BOL) + ' input[data-id="cb10"]')
+        ok(txt2(it2(BOL) + ' .as-botao-pri') == 'Marcar como enviado', 'desmarcar um: o botão acompanha')
+        p2.click(it2(BOL) + ' .as-botao-pri'); p2.wait_for_selector(it2(BOL) + ' button:has-text("Desfazer")', timeout=5000)
         eventos = p2.evaluate('() => window.__eventos')
-        ok(linha('cobrancas_mensais', 'cb9')['status'] == 'enviado' and ['mr:boletos-mudaram', {'mudancas': [{'id': 'cb9', 'status': 'enviado'}]}] in eventos
-           and any(e[0] == 'mr:tarefas-mudaram' for e in eventos) and tit2() == 'O que o vigia achou: 9',
-           f'boleto: enviado; as telas abertas ficam sabendo (a grade de boletos, a Agenda) ({tit2()!r})')
+        ok(linha('cobrancas_mensais', 'cb9')['status'] == 'enviado' and linha('cobrancas_mensais', 'cb10')['status'] == 'emitido'
+           and linha('cobrancas_mensais', 'cb12')['status'] == 'a_emitir' and ['mr:boletos-mudaram', {'mudancas': [{'id': 'cb9', 'status': 'enviado'}]}] in eventos
+           and '✓ Boleto marcado como enviado.' in p2.inner_text(it2(BOL)) and any(e[0] == 'mr:tarefas-mudaram' for e in eventos) and tit2() == 'O que o vigia achou: 9',
+           f'boletos: só o marcado vira enviado; as telas abertas ficam sabendo (a grade de boletos, a Agenda) ({tit2()!r})')
         # a conferência de hora em hora roda dentro dos 10 minutos e tira o achado do banco: o "Desfazer" continua no cartão
         p2.evaluate("() => { window.__mockDb.vigia_achados.find(a => a.id === 'vg-15').situacao = 'resolvido'; }")
         p2.click(card + ' .as-vigia-abas button:has-text("De todos")'); p2.wait_for_timeout(500); abrir_grupos(); p2.wait_for_timeout(100)
-        ok(p2.is_visible(it2('Boleto de OFICINA') + ' button:has-text("Desfazer")') and tit2() == 'O que o vigia achou: 9',
+        ok(p2.is_visible(it2(BOL) + ' button:has-text("Desfazer")') and tit2() == 'O que o vigia achou: 9',
            f'a conferência rodou dentro dos 10 minutos: o resolvido continua no cartão, com o "Desfazer" ({tit2()!r})')
-        p2.click(it2('Boleto de OFICINA') + ' button:has-text("Desfazer")')
+        p2.click(it2(BOL) + ' button:has-text("Desfazer")')
         p2.wait_for_selector(it2('Desfeito. O vigia já tinha conferido'), timeout=5000)
         ok(linha('cobrancas_mensais', 'cb9')['status'] == 'a_emitir' and 'vg-15' not in guardados(),
            'desfazer depois da conferência: o boleto volta a "a emitir" e o cartão diz que o achado volta na conferência seguinte')
@@ -422,7 +449,7 @@ def main():
           j.msgs.forEach(m => { if (m.acao && m.acao.resolvidos) Object.values(m.acao.resolvidos).forEach(x => { x.em = antes; }); });
           sessionStorage.setItem(k, JSON.stringify(j)); }""")
         p2.reload(); p2.wait_for_selector('.as-painel:not([hidden]) ' + card + ' .as-vigia-grupo', timeout=6000); abrir_grupos(); p2.wait_for_timeout(100)
-        ok(not p2.query_selector(it2('DCTF DE TESTE')) and not p2.query_selector(it2('BACKUP DE TESTE')) and p2.is_visible(it2('Boleto de OFICINA') + ' button:has-text("Marcar como enviado")')
+        ok(not p2.query_selector(it2('DCTF DE TESTE')) and not p2.query_selector(it2('BACKUP DE TESTE')) and p2.is_visible(it2(BOL) + ' button:has-text("Marcar como enviados")')
            and tit2() == 'O que o vigia achou: 10', f'passados os 10 minutos: os resolvidos saem da lista até a conferência seguinte (o desfeito, não) ({tit2()!r})')
         p2.click('.as-acao[data-a="fechar"]'); p2.wait_for_timeout(150)
         p2.add_init_script('window.__assistenteRecados = true')

@@ -1162,7 +1162,7 @@ const horaDe = iso => { const d = new Date(iso); return isNaN(d) ? '' : pad(d.ge
 // ---------- resolver no próprio cartão do vigia (16/10/2026) ----------
 // O que dá pra resolver com um clique, pela mesma regra das telas (assets/js/tarefas-acoes.js): o responsável que falta
 // (obrigação — leva as tarefas abertas junto, como em Obrigações fiscais —, tarefa e rotina), a proposta parada
-// (descartar), o boleto parado (enviado, pago) e, na segunda leva, a admissão registrada, a rescisão concluída, a empresa
+// (descartar), os boletos do mês sem enviar (enviados, pela lista do mês) e, na segunda leva, a admissão registrada, a rescisão concluída, a empresa
 // da admissão e da rescisão sem vínculo (com a busca das fichas), o alvará renovado (com a data nova) e o que segue ativo
 // de quem saiu da carteira (a cobrança, a obrigação). O achado só sai do banco na conferência seguinte (de hora em hora):
 // aqui ele fica "resolvido", com o "Desfazer" por 10 minutos, e depois some desta máquina até a conferência
@@ -1175,7 +1175,9 @@ const REF_DA_REGRA = { obrigacao_sem_responsavel: 'clientes', tarefa_responsavel
   cliente_sem_obrigacao: 'clientes', cliente_sem_cobranca: 'clientes', cadastro_desencontrado: 'clientes',
   obrigacao_desligada: 'cliente_obrigacoes', obrigacao_sem_tarefa: 'cliente_obrigacoes', cliente_sem_contrato: 'clientes', cliente_sem_boleto: 'clientes',
   pergunta_aberta: 'perguntas_equipe' };
-const resolvivel = a => !!a && ID.test(String(a.ref_id || '')) && !!REF_DA_REGRA[a.regra] && REF_DA_REGRA[a.regra] === a.ref_tabela;
+// (os boletos do mês sem enviar são um aviso por mês, sem o registro de um boleto: o mês vem no endereço do achado)
+const resolvivel = a => !!a && !!REF_DA_REGRA[a.regra] && REF_DA_REGRA[a.regra] === a.ref_tabela
+  && (ID.test(String(a.ref_id || '')) || (a.regra === 'boleto_parado' && !!compDoLink(a.link)));
 // o mês do achado "sem a tarefa do mês": o do prazo dele (o dia do vínculo naquele mês) → { ano, mes } | null
 const mesDoAchado = a => { const m = /^(\d{4})-(\d{2})/.exec(String((a && a.prazo) || '')); return m ? { ano: Number(m[1]), mes: Number(m[2]) } : null; };
 const SITUACAO_FICHA = { respondida: 'recebida — a registrar', em_registro: 'em registro', registrada: 'registrada', recebida: 'recebida — a calcular',
@@ -1244,11 +1246,19 @@ async function resolverAchado(a, escolha, ajuda) {
     return { texto: 'Proposta descartada' + (r.proposta.tarefas.length ? ' (e a tarefa dela, concluída)' : '') + '.', desfazer: { tipo: 'proposta', proposta: r.proposta } };
   }
   if (a.regra === 'boleto_parado') {
-    const r = await avancarBoletos(supabase, [a.ref_id], escolha);
-    if (r.erro) return { erro: r.erro };
-    if (!r.mudados.length) return { erro: 'O boleto já estava assim (ou mais à frente).' };
-    avisarTelas('mr:boletos-mudaram', { mudancas: r.mudados.map(b => ({ id: b.id, status: escolha })) });
-    return { texto: 'Boleto marcado como ' + (SITUACAO_BOLETO[escolha] || escolha) + '.', desfazer: { tipo: 'boleto', status: escolha, mudados: r.mudados } };
+    // os boletos do mês sem enviar (07/11/2026, um aviso por mês): os que ficaram marcados na lista, como enviados; o
+    // achado antigo, de um boleto só, vem com a situação ("enviado" ou "pago")
+    const lista = escolha && typeof escolha === 'object' && Array.isArray(escolha.ids) ? escolha.ids : [a.ref_id];
+    const st = typeof escolha === 'string' && ORDEM_BOLETO.includes(escolha) ? escolha : 'enviado';
+    const r = await avancarBoletos(supabase, lista, st);
+    if (r.erro && !r.mudados.length) return { erro: r.erro };
+    if (!r.mudados.length) return { erro: lista.length === 1 ? 'O boleto já estava assim (ou mais à frente).' : 'Os boletos já estavam assim (ou mais à frente).' };
+    avisarTelas('mr:boletos-mudaram', { mudancas: r.mudados.map(b => ({ id: b.id, status: st })) });
+    const n = r.mudados.length, como = SITUACAO_BOLETO[st] || st;
+    return { texto: (n === 1 ? 'Boleto marcado como ' + como : n + ' boletos marcados como ' + como + 's') + '.',
+      aviso: r.erro || (r.jaEstavam.length ? qtd(r.jaEstavam.length, 'já estava assim', 'já estavam assim') + '.' : null),
+      // o que ficou sem marcar e vence nos próximos 3 dias: o vigia segue avisando, e o achado não sai desta máquina
+      segue: !!(escolha && escolha.segue), desfazer: { tipo: 'boleto', status: st, mudados: r.mudados } };
   }
   if (a.regra === 'admissao_nao_registrada' || a.regra === 'rescisao_pagamento') {
     const adm = a.ref_tabela === 'admissoes';
@@ -1532,8 +1542,8 @@ function cartaoVigia({ raiz, estado, salvar, ajuda, anunciar }) {
     const controles = m !== 'ignorados' && !a._agora && !a._resolvido && resolvivel(a) && !deOutro ? controlesDeResolver(a) : null;
     return h('li', { class: 'as-vigia-item' + (a._agora || a._resolvido ? ' as-vigia-ignorado' : '') }, linhas, controles, h('div', { class: 'as-vigia-acoes' }, acoes));
   }
-  // os botões que resolvem ali mesmo: quem vai cuidar (o dono do setor já marcado), descartar a proposta, o boleto enviado
-  // ou pago (o vigia pega o "a emitir" e o "emitido" — marcar como emitido não tiraria o achado)
+  // os botões que resolvem ali mesmo: quem vai cuidar (o dono do setor já marcado), descartar a proposta, os boletos do mês
+  // enviados (o vigia pega o "a emitir" e o "emitido" — marcar como emitido não tiraria o achado)
   function controlesDeResolver(a) {
     const linha = h('div', { class: 'as-vigia-resolver' });
     if (RESOLVE_RESPONSAVEL.includes(a.regra)) {
@@ -1548,7 +1558,7 @@ function cartaoVigia({ raiz, estado, salvar, ajuda, anunciar }) {
     } else if (a.regra === 'proposta_parada') {
       linha.append(botao('Descartar proposta', ev => resolver(a, 'descartar', ev.currentTarget)));
     } else if (a.regra === 'boleto_parado') {
-      ['enviado', 'pago'].forEach(st => linha.append(botao('Marcar como ' + SITUACAO_BOLETO[st], ev => resolver(a, st, ev.currentTarget))));
+      linha.append(botao('Marcar como enviados', () => abrirBoletosSemEnviar(a, linha)));
     } else if (a.regra === 'admissao_nao_registrada' || a.regra === 'rescisao_pagamento') {
       linha.append(botao(a.regra === 'admissao_nao_registrada' ? 'Marcar como registrada' : 'Marcar como concluída', ev => resolver(a, null, ev.currentTarget)));
     } else if (a.regra === 'admissao_sem_vinculo' || a.regra === 'rescisao_sem_vinculo') {
@@ -1678,6 +1688,58 @@ function cartaoVigia({ raiz, estado, salvar, ajuda, anunciar }) {
       outros.length ? h('div', { class: 'as-cartao-aviso', text: 'Falta ' + outros.join(' e ') + '.' }) : null, botoes].filter(Boolean));
     conferir();
     try { caixa.scrollIntoView({ block: 'nearest' }); } catch (e) { /* sem rolagem */ }
+  }
+  // os boletos do mês sem enviar (07/11/2026, um aviso por mês — o Samuel manda o lote inteiro de uma vez): quantos ainda
+  // não foram enviados naquele mês e o total, com "Marcar os N como enviados" num clique, pela regra do assistente
+  // (avancarBoletos); "Escolher quais" abre a lista com as caixas (os que vencem primeiro em cima, todos marcados) pra
+  // desmarcar o que não foi. O achado antigo, de um boleto só, mostra só ele
+  async function abrirBoletosSemEnviar(a, linha) {
+    const comp = compDoLink(a.link), um = ID.test(String(a.ref_id || '')) ? String(a.ref_id) : null;
+    const caixa = h('div', { class: 'as-vigia-resolver as-vigia-busca' }, sub('Lendo os boletos…'));
+    linha.replaceWith(caixa);
+    const voltar = () => caixa.replaceWith(controlesDeResolver(a));
+    let boletos, nomes;
+    try {
+      const base = supabase.from('cobrancas_mensais').select(COLUNAS_BOLETO).in('status', ['a_emitir', 'emitido']);
+      const { data, error } = await (um ? base.eq('id', um) : base.eq('competencia', comp)).order('vencimento', { ascending: true }).limit(300);
+      if (error) throw error;
+      boletos = data || [];
+      nomes = await nomesDe(boletos.map(b => b.cliente_id));
+    } catch (e) {
+      caixa.replaceChildren(h('div', { class: 'as-cartao-erro', text: 'Não consegui ler os boletos: ' + ((e && e.message) || 'erro') }), botao('Voltar', voltar, 'link'));
+      return;
+    }
+    if (!boletos.length) { caixa.replaceChildren(h('div', { class: 'as-cartao-ok', text: '✓ Não falta nenhum: o aviso some na conferência seguinte.' }), botao('Voltar', voltar, 'link')); return; }
+    const nomeDe = b => nomes.get(String(b.cliente_id)) || 'empresa';
+    boletos.sort((x, y) => String(x.vencimento || '').localeCompare(String(y.vencimento || '')) || nomeDe(x).localeCompare(nomeDe(y), 'pt-BR'));
+    const somaDe = bs => bs.reduce((t, b) => t + centavos(totalDoBoleto(b)), 0) / 100;
+    let lista = null;   // a lista com as caixas só aparece no "Escolher quais"
+    const marcadas = () => (lista ? lista.marcadas() : boletos.map(b => String(b.id)));
+    // o que ficar sem marcar e vencer até daqui a 3 dias (ou já venceu): o vigia segue avisando
+    const limite = maisDias(hojeISO(), 3);
+    const sobra = () => { const m = new Set(marcadas()); return boletos.some(b => !m.has(String(b.id)) && String(b.vencimento || '') <= limite); };
+    const ok = botao('Marcar como enviado', ev => resolver(a, { ids: marcadas(), segue: sobra() }, ev.currentTarget), 'pri');
+    const atualizar = () => {
+      const m = new Set(marcadas()), n = m.size;
+      ok.textContent = n === 1 ? 'Marcar como enviado' : !lista ? 'Marcar os ' + n + ' como enviados'
+        : 'Marcar ' + n + ' como enviados (' + brl(somaDe(boletos.filter(b => m.has(String(b.id))))) + ')';
+      ok.disabled = !n;
+    };
+    // a lista entra antes dos botões: desmarca e confirma embaixo, como no cartão do assistente
+    const escolher = boletos.length > 1 ? botao('Escolher quais', () => {
+      lista = listaComCaixas(boletos.map(b => ({ id: String(b.id), titulo: nomeDe(b), sub: linhaDoBoleto(b) })), { aoMudar: () => atualizar() });
+      const todas = alternarTodas(lista, boletos.length);
+      if (todas) escolher.replaceWith(todas); else escolher.remove();
+      botoes.before(lista.el);
+      atualizar();
+      try { lista.el.scrollIntoView({ block: 'nearest' }); } catch (e) { /* sem rolagem */ }
+    }, 'link') : null;
+    const botoes = h('div', { class: 'as-cartao-botoes' }, ok, escolher, botao('Cancelar', voltar, 'link'));
+    const so = boletos.length === 1 ? boletos[0] : null;
+    caixa.replaceChildren(sub(so ? '1 boleto de ' + mesBR(so.competencia) + ' ainda sem enviar: ' + nomeDe(so) + ', ' + valorDoBoleto(so) + ', vence ' + dataBR(so.vencimento) + '.'
+      : qtd(boletos.length, 'boleto', 'boletos') + (comp && !um ? ' de ' + mesBR(comp) : '') + ' ainda sem enviar, ' + brl(somaDe(boletos)) + ' no total.'), botoes);
+    atualizar();
+    try { (caixa.closest('li') || caixa).scrollIntoView({ block: 'nearest' }); } catch (e) { /* sem rolagem */ }
   }
   // o boleto do mês que ficou sem ela (a quinta leva): o valor e o vencimento como a geração do mês montaria (a cobrança
   // mais recente, senão a base; sem nenhuma, a proposta fechada), editáveis — como o "Adicionar empresa" da tela Boletos

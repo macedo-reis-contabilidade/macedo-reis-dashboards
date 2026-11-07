@@ -1,7 +1,7 @@
 // ============================================================
 // MACEDO & REIS — O vigia do sistema, do lado da tela (15/10/2026)
 // O banco roda as regras de hora em hora (vigia_rodar, pelo pg_cron) e guarda em vigia_achados o que
-// ficou pra trás ou está desencontrado — admissão sem registro, alvará vencido, boleto parado, cliente sem cobrança,
+// ficou pra trás ou está desencontrado — admissão sem registro, alvará vencido, boletos sem enviar, cliente sem cobrança,
 // obrigação sem responsável… —, com quem cuida e a tela onde se resolve. Arrumou na tela, o achado some sozinho na
 // rodada seguinte; o que não é problema a pessoa ignora (e pode voltar atrás).
 // Aqui ficam as contas puras que o assistente usa (de quem é, de qual tela, os grupos) e a leitura e o "ignorar" — quem
@@ -15,7 +15,7 @@ export const ROTULOS = {
   admissao_nao_registrada: 'Admissões não registradas', admissao_sem_vinculo: 'Admissões sem empresa vinculada',
   rescisao_pagamento: 'Rescisões com pagamento chegando', rescisao_sem_vinculo: 'Rescisões sem empresa vinculada',
   alvara_vencendo: 'Alvarás vencidos ou vencendo', certificado_vencendo: 'Certificados digitais pra avisar o cliente',
-  cliente_sem_cobranca: 'Clientes sem cobrança', boletos_nao_gerados: 'Boletos do mês não gerados', boleto_parado: 'Boletos parados',
+  cliente_sem_cobranca: 'Clientes sem cobrança', boletos_nao_gerados: 'Boletos do mês não gerados', boleto_parado: 'Boletos sem enviar',
   cobranca_ex_cliente: 'Cobrança de ex-cliente', faturavel_parado: 'Serviços a faturar parados', reajuste_nao_aplicado: 'Reajustes aceitos fora da cobrança',
   // os clientes novos (31/10/2026): vigia_regras_clientes_novos()
   cliente_sem_contrato: 'Clientes sem a mensalidade no Conta Azul', cliente_sem_boleto: 'Clientes novos fora dos boletos do mês',

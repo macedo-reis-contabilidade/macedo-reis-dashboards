@@ -63,7 +63,7 @@ chk('o # do link só com o caminho do relatório (letras, números, / e -)', lin
 const regrasDaFuncao = TABELAS.vigia_achados.notas.regra.split('|').map(s => s.trim());
 chk('toda regra que a função do assistente conhece tem nome no cartão (e vice-versa)', regrasDaFuncao.every(r => ROTULOS[r]) && Object.keys(ROTULOS).every(r => regrasDaFuncao.includes(r)),
   regrasDaFuncao.filter(r => !ROTULOS[r]).join() + ' / ' + Object.keys(ROTULOS).filter(r => !regrasDaFuncao.includes(r)).join());
-chk('nome da regra', rotuloDaRegra('boleto_parado') === 'Boletos parados' && rotuloDaRegra('xyz') === 'Outros achados');
+chk('nome da regra', rotuloDaRegra('boleto_parado') === 'Boletos sem enviar' && rotuloDaRegra('xyz') === 'Outros achados');
 chk('a última olhada fora do navegador: sem erro, sem valor', (marcarVisto('a@b'), lerVisto('a@b')) === null);
 
 console.log('O resolvido agora pelo cartão (até a conferência seguinte):');
