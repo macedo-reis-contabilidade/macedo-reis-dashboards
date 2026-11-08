@@ -324,6 +324,64 @@ export function pagaMenosQueOMotor(linha) {
   const hoje = linha && linha.hoje ? Number(linha.hoje.valor) : 0;
   return !!ref && (ref.tipo === 'piso' || ref.tipo === 'revisado') && hoje > 0 && ref.valor > hoje;
 }
+// ---------- a ordem da lista (08/11/2026, pedido do Samuel: "permita que eu clique nos títulos [...] pra poder reorganizar a
+// ordem das empresas como eu quiser") ----------
+// ORDENS_CARTEIRA: as colunas que ordenam e o sentido do primeiro clique (a empresa de A a Z; o de hoje, o motor e as tarefas
+// do maior pro menor; a situação pelo caminho da revisão: sem revisão, estudo, proposto, aceito, aceito no boleto, mantido)
+export const ORDENS_CARTEIRA = { empresa: 'asc', hoje: 'desc', motor: 'desc', tarefas: 'desc', situacao: 'asc' };
+const PASSO_DA_SITUACAO = { estudo: 1, proposto: 2, aceito: 3, mantido: 5 };
+export function passoDaSituacao(revisao) {
+  if (!revisao) return 0;
+  if (revisao.status === 'aceito' && revisao.aplicado_em) return 4;
+  return PASSO_DA_SITUACAO[revisao.status] ?? 6;
+}
+// proximaOrdem(atual, coluna): o clique no título — a coluna nova começa no sentido dela, a mesma inverte e o terceiro clique
+// volta à ordem de sempre ({ coluna: null })
+export function proximaOrdem(atual, coluna) {
+  const ini = ORDENS_CARTEIRA[coluna];
+  if (!ini) return { coluna: null, sentido: null };
+  if (!atual || atual.coluna !== coluna) return { coluna, sentido: ini };
+  if (atual.sentido === ini) return { coluna, sentido: ini === 'asc' ? 'desc' : 'asc' };
+  return { coluna: null, sentido: null };
+}
+// a ordem guardada no navegador vale só se for uma das colunas, com um dos dois sentidos
+export function ordemValida(o) {
+  return o && ORDENS_CARTEIRA[o.coluna] && (o.sentido === 'asc' || o.sentido === 'desc') ? { coluna: o.coluna, sentido: o.sentido } : { coluna: null, sentido: null };
+}
+const porNome = (x, y) => String((x.cliente && x.cliente.nome_principal) || '').localeCompare(String((y.cliente && y.cliente.nome_principal) || ''), 'pt-BR', { sensitivity: 'base' });
+const VALOR_DA_COLUNA = {
+  hoje: l => (l.hoje && Number(l.hoje.valor) > 0 ? Number(l.hoje.valor) : null),
+  motor: l => { const r = referenciaDaLinha(l); return r ? r.valor : null; },
+  tarefas: l => Number(l.tarefas) || 0,
+  situacao: l => passoDaSituacao(l.revisao),
+};
+// ordenarCarteira(linhas, { coluna, sentido }) → uma cópia em ordem. Sem coluna, a ordem de sempre: quem está mais abaixo do
+// motor primeiro (o piso; depois de revisado, a revisão; aceito, o combinado) e, sem como comparar (sem o de hoje, o MEI sem
+// revisão), no fim. Com coluna, por ela; quem não tem o número (sem cobrança, o MEI sem revisão) fica no fim nos dois
+// sentidos. O empate, pelo nome
+export function ordenarCarteira(linhas, ordem = null) {
+  const ls = [...(linhas || [])];
+  const o = ordemValida(ordem);
+  if (!o.coluna) {
+    const chave = l => { const ref = referenciaDaLinha(l); return l.hoje && ref ? ref.valor - Number(l.hoje.valor) : null; };
+    return ls.sort((x, y) => {
+      const a = chave(x), z = chave(y);
+      if (a != null && z != null && a !== z) return z - a;
+      if ((a == null) !== (z == null)) return a == null ? 1 : -1;
+      return porNome(x, y);
+    });
+  }
+  const s = o.sentido === 'desc' ? -1 : 1;
+  if (o.coluna === 'empresa') return ls.sort((x, y) => s * porNome(x, y));
+  const v = VALOR_DA_COLUNA[o.coluna];
+  return ls.sort((x, y) => {
+    const a = v(x), z = v(y);
+    if ((a == null) !== (z == null)) return a == null ? 1 : -1;
+    if (a != null && a !== z) return s * (a - z);
+    return porNome(x, y);
+  });
+}
+
 // resumoDaCarteira(linhas) → os números do alto da aba: o de hoje, quantos revisados, quem paga menos que o motor e quanto
 // falta até ele (e quanto disso já vem de revisões conferidas), os reajustes aceitos e o ganho deles
 export function resumoDaCarteira(linhas) {

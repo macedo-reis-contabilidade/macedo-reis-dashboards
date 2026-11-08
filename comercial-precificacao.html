@@ -142,6 +142,13 @@
     .ct-rolagem { overflow-x:auto; }
     .ct-acoes { display:flex; flex-direction:column; align-items:flex-start; gap:6px; }
     .ct-rolagem .pr-tab { min-width:760px; }
+    /* o título da coluna ordena a lista (08/11/2026): a seta apagada diz que dá; a acesa, a ordem de agora */
+    .pr-tab th .ct-ordem { background:none; border:0; padding:0; margin:0; font:inherit; color:inherit; text-transform:inherit; letter-spacing:inherit; cursor:pointer; display:inline-flex; align-items:center; gap:5px; white-space:nowrap; }
+    .pr-tab th .ct-ordem:hover, .pr-tab th[aria-sort="ascending"] .ct-ordem, .pr-tab th[aria-sort="descending"] .ct-ordem { color:var(--text); }
+    .pr-tab th .ct-ordem:focus-visible { outline:2px solid var(--accent); outline-offset:3px; border-radius:4px; }
+    .ct-seta::after { content:'↕'; font-size:11px; opacity:.45; }
+    .pr-tab th[aria-sort="ascending"] .ct-seta::after { content:'▲'; font-size:9px; opacity:1; color:var(--accent); }
+    .pr-tab th[aria-sort="descending"] .ct-seta::after { content:'▼'; font-size:9px; opacity:1; color:var(--accent); }
     @media (max-width: 640px) { .seg { flex-wrap:wrap; } .ct-filtros .input { width:100%; } }
 
     /* Status no rodapé: backlog de tarefas abertas (ou "em dia") */
@@ -264,14 +271,20 @@
 
         <div id="vCarteira" style="display:none;">
           <div class="ct-resumo" id="ctResumo" aria-live="polite"></div>
-          <p class="ct-nota">Cada cliente da carteira com o que paga <b>hoje</b> (o boleto; sem boleto, o Conta Azul) e o <b>motor</b>. Antes da revisão, o motor é o <b>piso</b>: o cálculo só com o que o sistema já sabe dele — regime, faturamento da ficha da Reforma, obrigações vinculadas, o sistema que usa, parcelamentos, Fator R; o que falta responder quase sempre soma. Depois de revisado, vale o valor da revisão (e, aceito, o combinado). A lista começa por quem está mais abaixo do motor; clique no cliente pra revisar — a revisão grava sozinha.</p>
+          <p class="ct-nota">Cada cliente da carteira com o que paga <b>hoje</b> (o boleto; sem boleto, o Conta Azul) e o <b>motor</b>. Antes da revisão, o motor é o <b>piso</b>: o cálculo só com o que o sistema já sabe dele — regime, faturamento da ficha da Reforma, obrigações vinculadas, o sistema que usa, parcelamentos, Fator R; o que falta responder quase sempre soma. Depois de revisado, vale o valor da revisão (e, aceito, o combinado). A lista começa por quem está mais abaixo do motor; clique no título de uma coluna pra ordenar por ela (de novo, inverte; a terceira vez volta a essa ordem). Clique no cliente pra revisar — a revisão grava sozinha.</p>
           <div class="ct-filtros">
             <select id="ctRegime" class="st-sel" aria-label="Regime"><option value="">Todos os regimes</option></select>
             <label><input type="checkbox" id="ctAbaixo"> Só quem paga menos que o motor</label>
             <label><input type="checkbox" id="ctSemRev"> Só sem revisão</label>
             <input type="search" id="ctBusca" class="input" placeholder="Buscar empresa" aria-label="Buscar empresa">
           </div>
-          <div class="ct-rolagem"><table class="pr-tab"><thead><tr><th>Empresa</th><th>Hoje</th><th title="Revisado: o valor da revisão (aceito: o combinado). Sem revisão: o piso — o motor só com o que o sistema já sabe do cliente">Motor</th><th>Tarefas (90 dias)</th><th>Situação</th></tr></thead>
+          <div class="ct-rolagem"><table class="pr-tab"><thead id="ctCabecalho"><tr>
+            <th data-col="empresa" aria-sort="none"><button type="button" class="ct-ordem" data-ordem="empresa">Empresa<span class="ct-seta" aria-hidden="true"></span></button></th>
+            <th data-col="hoje" aria-sort="none"><button type="button" class="ct-ordem" data-ordem="hoje">Hoje<span class="ct-seta" aria-hidden="true"></span></button></th>
+            <th data-col="motor" aria-sort="none" title="Revisado: o valor da revisão (aceito: o combinado). Sem revisão: o piso — o motor só com o que o sistema já sabe do cliente"><button type="button" class="ct-ordem" data-ordem="motor">Motor<span class="ct-seta" aria-hidden="true"></span></button></th>
+            <th data-col="tarefas" aria-sort="none"><button type="button" class="ct-ordem" data-ordem="tarefas">Tarefas (90 dias)<span class="ct-seta" aria-hidden="true"></span></button></th>
+            <th data-col="situacao" aria-sort="none"><button type="button" class="ct-ordem" data-ordem="situacao">Situação<span class="ct-seta" aria-hidden="true"></span></button></th>
+          </tr></thead>
           <tbody id="ctLista"></tbody></table></div>
           <div class="pr-vazio" id="ctMsg">Lendo a carteira…</div>
         </div>
@@ -323,7 +336,7 @@
     import { indexarParams as indexarParametros, calcularMotor, faturamentoAnual } from './assets/js/precificacao-motor.js';
     import { respostasDoSistema, regimesDasQuestoes, ehMei, honorarioDeHoje, parcelasDeHonorario, parcelaDoCliente, faltamResponder, ultimaPorCliente, mesesDaVigencia,
       mesesLivres, mesBR, diferenca, SITUACOES, rotuloSituacao, FONTES, aplicarReajusteAgora, referenciaDaLinha, pagaMenosQueOMotor, resumoDaCarteira,
-      ultimaDeclaracaoPorCliente } from './assets/js/precificacao-carteira.js';
+      ultimaDeclaracaoPorCliente, ordenarCarteira, proximaOrdem, ordemValida } from './assets/js/precificacao-carteira.js';
     import { SOCIOS } from './assets/js/equipe.js';
     const escHtml = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));   // texto do banco nunca vira HTML (o nome que veio do formulário público, por exemplo)
     const user = await getCurrentUser();
@@ -1541,6 +1554,9 @@
     let cart = null;                         // a revisão aberta: { linha, revisaoId, mei }
     let carteira = [], carteiraLida = false;
     const filtrosCart = { regime: '', abaixo: false, semRevisao: false, busca: '' };
+    // a ordem da lista: a de sempre (quem está mais abaixo do motor primeiro) ou a coluna escolhida no título, guardada neste navegador
+    const CHAVE_ORDEM_CART = 'mr_carteira_ordem';
+    let ordemCart = (() => { try { return ordemValida(JSON.parse(localStorage.getItem(CHAVE_ORDEM_CART) || 'null')); } catch (e) { return ordemValida(null); } })();
     const NOME_REGIME = { 'Simples Nacional': 'Simples', 'Lucro Presumido': 'Presumido', 'Lucro Real': 'Real', 'MEI': 'MEI', 'Imune': 'Imune', 'Isento': 'Isento' };
     const semAcento = s => String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
     const pct = x => (x == null ? '' : (x > 0 ? '+' : '') + Math.round(x * 100) + '%');
@@ -1626,14 +1642,22 @@
       const f = filtrosCart, b = semAcento(f.busca).trim();
       const lista = carteira.filter(l => (!f.regime || l.cliente.regime_tributario === f.regime) && (!f.abaixo || pagaMenosQueOMotor(l)) && (!f.semRevisao || !l.revisao)
         && (!b || semAcento(l.cliente.nome_principal + ' ' + (l.cliente.nome_fantasia || '')).includes(b)));
-      // quem está mais abaixo do motor primeiro (o piso; depois de revisado, a revisão; aceito, o combinado); sem como
-      // comparar (sem o de hoje, o MEI sem revisão), no fim, por nome
-      const chave = l => { const ref = referenciaDaLinha(l); return l.hoje && ref ? ref.valor - l.hoje.valor : null; };
-      return lista.sort((x, y) => { const a = chave(x), z = chave(y);
-        if (a != null && z != null && a !== z) return z - a;
-        if ((a == null) !== (z == null)) return a == null ? 1 : -1;
-        return String(x.cliente.nome_principal).localeCompare(String(y.cliente.nome_principal), 'pt-BR'); });
+      // sem coluna escolhida, quem está mais abaixo do motor primeiro; com coluna, por ela (ordenarCarteira)
+      return ordenarCarteira(lista, ordemCart);
     }
+    // o título de cada coluna diz a ordem de agora (aria-sort, e a seta acesa)
+    function marcarCabecalho(){
+      document.querySelectorAll('#ctCabecalho th[data-col]').forEach(th => {
+        th.setAttribute('aria-sort', th.dataset.col === ordemCart.coluna ? (ordemCart.sentido === 'asc' ? 'ascending' : 'descending') : 'none');
+      });
+    }
+    document.getElementById('ctCabecalho').addEventListener('click', e => {
+      const bt = e.target.closest('[data-ordem]');
+      if (!bt) return;
+      ordemCart = proximaOrdem(ordemCart, bt.dataset.ordem);
+      try { if (ordemCart.coluna) localStorage.setItem(CHAVE_ORDEM_CART, JSON.stringify(ordemCart)); else localStorage.removeItem(CHAVE_ORDEM_CART); } catch (er) { /* a ordem vale só nesta tela */ }
+      desenharCarteira();
+    });
 
     function desenharCarteira(){
       const tb = document.getElementById('ctLista'), msg = document.getElementById('ctMsg');
@@ -1647,6 +1671,7 @@
       const sel = document.getElementById('ctRegime');
       if (sel.options.length <= 1) [...new Set(carteira.map(l => l.cliente.regime_tributario).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')).forEach(r => sel.add(new Option(r, r)));
       const lista = linhasDaCarteira();
+      marcarCabecalho();
       msg.style.display = lista.length ? 'none' : 'block';
       msg.textContent = carteira.length ? 'Nenhum cliente com esses filtros.' : 'Nenhum cliente na carteira.';
       tb.innerHTML = lista.map(linhaDaCarteira).join('');

@@ -6,7 +6,8 @@
 import { indexarParams, calcularMotor, faturamentoAnual } from '../assets/js/precificacao-motor.js';
 import { respostasDoSistema, regimesDasQuestoes, tipoSocietario, erpDaCarteira, honorarioDeHoje, nomeBase, nomesBatem, parcelasDeHonorario, parcelaDoCliente,
   faltamResponder, ultimaPorCliente, mesesDaVigencia, mesBR, diferenca, ehMei, rotuloSituacao, mesesLivres, reajustesDoMes, aplicarReajusteAgora,
-  referenciaDaLinha, pagaMenosQueOMotor, resumoDaCarteira, ultimaDeclaracaoPorCliente, FONTES, respostasDoDominio, faixaDeNotas, rotatividade, faturamentoDoDominio } from '../assets/js/precificacao-carteira.js';
+  referenciaDaLinha, pagaMenosQueOMotor, resumoDaCarteira, ultimaDeclaracaoPorCliente, FONTES, respostasDoDominio, faixaDeNotas, rotatividade, faturamentoDoDominio,
+  ordenarCarteira, proximaOrdem, ordemValida, passoDaSituacao } from '../assets/js/precificacao-carteira.js';
 
 let falhas = 0;
 const chk = (nome, cond, extra) => { if (!cond) falhas++; console.log((cond ? '  ✓ ' : '  ✗ ') + nome + (!cond && extra !== undefined ? ' → ' + extra : '')); };
@@ -263,6 +264,42 @@ console.log('O número que vale na lista e no resumo:');
   linhas[0].revisao = r({ cliente_id: 'a', honorario_sugerido: 480 });
   const z2 = resumoDaCarteira(linhas);
   chk('revisou: o que falta passa a ser o da revisão (480 − 300 = 180, não mais 350)', z2.falta === 300 && z2.faltaRevisados === 300 && z2.revisados === 4, JSON.stringify(z2));
+}
+
+console.log('\nA ordem da lista pelo título das colunas (08/11/2026)');
+{
+  const hoje = v => ({ valor: v, fonte: 'boleto' });
+  const L = (id, nome, { piso = null, revisao = null, h = null, tarefas = 0 } = {}) => ({ cliente: { id, nome_principal: nome }, piso, revisao, hoje: h == null ? null : hoje(h), tarefas });
+  const linhas = [
+    L('a', 'PADARIA DO TESTE LTDA', { piso: 650, h: 300, tarefas: 4 }),                                                             // falta 350
+    L('b', 'OFICINA DE TESTE LTDA', { piso: 500, h: 900, tarefas: 0 }),                                                             // acima do motor
+    L('c', 'Ótica de Teste', { piso: null, h: 100, tarefas: 1 }),                                                                   // MEI sem revisão: sem motor
+    L('d', 'SEM COBRANÇA TESTE LTDA', { piso: 480, h: null, tarefas: 2 }),                                                          // sem o de hoje
+    L('f', 'MERCADO DE TESTE LTDA', { piso: 700, revisao: { status: 'proposto', honorario_sugerido: 520 }, h: 400, tarefas: 4 }),   // revisado: falta 120
+    L('g', 'ACOUGUE TESTE', { piso: 600, revisao: { status: 'aceito', honorario_novo: 450, aplicado_em: '2026-11-01' }, h: 450, tarefas: 1 }),
+  ];
+  const ids = ls => ls.map(l => l.cliente.id).join(',');
+  chk('sem coluna: quem está mais abaixo do motor primeiro, e quem não tem como comparar no fim, pelo nome', ids(ordenarCarteira(linhas)) === 'a,f,g,b,c,d', ids(ordenarCarteira(linhas)));
+  chk('a ordem guardada que não vale é a de sempre', ids(ordenarCarteira(linhas, { coluna: 'nada', sentido: 'asc' })) === 'a,f,g,b,c,d');
+  chk('não mexe na lista de quem chama', ids(linhas) === 'a,b,c,d,f,g');
+  chk('a empresa de A a Z, sem acento nem maiúscula atrapalhar (a Ótica depois da Oficina, antes da Padaria)', ids(ordenarCarteira(linhas, { coluna: 'empresa', sentido: 'asc' })) === 'g,f,b,c,a,d', ids(ordenarCarteira(linhas, { coluna: 'empresa', sentido: 'asc' })));
+  chk('e de Z a A', ids(ordenarCarteira(linhas, { coluna: 'empresa', sentido: 'desc' })) === 'd,a,c,b,f,g');
+  chk('o de hoje do maior pro menor, sem cobrança no fim', ids(ordenarCarteira(linhas, { coluna: 'hoje', sentido: 'desc' })) === 'b,g,f,a,c,d', ids(ordenarCarteira(linhas, { coluna: 'hoje', sentido: 'desc' })));
+  chk('do menor pro maior, sem cobrança continua no fim', ids(ordenarCarteira(linhas, { coluna: 'hoje', sentido: 'asc' })) === 'c,a,f,g,b,d', ids(ordenarCarteira(linhas, { coluna: 'hoje', sentido: 'asc' })));
+  chk('o motor é o número da coluna (o piso, a revisão, o combinado); o MEI sem revisão no fim', ids(ordenarCarteira(linhas, { coluna: 'motor', sentido: 'desc' })) === 'a,f,b,d,g,c', ids(ordenarCarteira(linhas, { coluna: 'motor', sentido: 'desc' })));
+  chk('as tarefas, o empate pelo nome', ids(ordenarCarteira(linhas, { coluna: 'tarefas', sentido: 'desc' })) === 'f,a,d,g,c,b', ids(ordenarCarteira(linhas, { coluna: 'tarefas', sentido: 'desc' })));
+  chk('a situação pelo caminho da revisão: sem revisão, proposto, aceito no boleto', ids(ordenarCarteira(linhas, { coluna: 'situacao', sentido: 'asc' })) === 'b,c,a,d,f,g', ids(ordenarCarteira(linhas, { coluna: 'situacao', sentido: 'asc' })));
+  chk('o caminho: estudo < proposto < aceito < aceito no boleto < mantido', [null, { status: 'estudo' }, { status: 'proposto' }, { status: 'aceito' }, { status: 'aceito', aplicado_em: 'x' }, { status: 'mantido' }].map(passoDaSituacao).join() === '0,1,2,3,4,5');
+  // o clique no título
+  let o = ordemValida(null);
+  chk('começa na ordem de sempre', o.coluna === null);
+  o = proximaOrdem(o, 'empresa'); chk('o 1º clique na empresa: de A a Z', o.coluna === 'empresa' && o.sentido === 'asc');
+  o = proximaOrdem(o, 'empresa'); chk('o 2º inverte', o.coluna === 'empresa' && o.sentido === 'desc');
+  o = proximaOrdem(o, 'empresa'); chk('o 3º volta à ordem de sempre', o.coluna === null);
+  o = proximaOrdem(o, 'hoje'); chk('o 1º clique no de hoje: do maior pro menor', o.coluna === 'hoje' && o.sentido === 'desc');
+  o = proximaOrdem(o, 'tarefas'); chk('outra coluna começa no sentido dela', o.coluna === 'tarefas' && o.sentido === 'desc');
+  chk('coluna que não existe: a ordem de sempre', proximaOrdem(o, 'xx').coluna === null);
+  chk('a ordem guardada é conferida', ordemValida({ coluna: 'hoje', sentido: 'lado' }).coluna === null && ordemValida('{}').coluna === null && ordemValida({ coluna: 'motor', sentido: 'asc' }).coluna === 'motor');
 }
 
 console.log(falhas ? '\n' + falhas + ' falha(s).' : '\nTudo certo.');
