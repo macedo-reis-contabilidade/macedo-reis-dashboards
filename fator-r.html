@@ -101,6 +101,9 @@
           <thead id="painelCab"></thead>
           <tbody id="painelCorpo"></tbody>
         </table>
+        <div class="fr-secao" id="monTitulo">Acompanhadas pelo sistema</div>
+        <p class="fr-dim" style="margin:-4px 0 12px;font-size:13px;">O sistema acha sozinho as empresas do Simples que são do fator r: o CNAE da atividade e a receita no Anexo V na apuração do Domínio. O fator sai da folha (salários, 13º, pró-labore e encargos) e da receita que a ponte do Domínio lê todo dia, e do RBT12 do Domínio ou do PGDAS. Nada aqui é digitado.</p>
+        <div id="frMonitor"><p class="fr-dim">Carregando…</p></div>
         <div class="fr-nota" id="notaMetodo"></div>
       </section>
 
@@ -171,6 +174,7 @@
 
   <script type="module">
     import { supabase, getCurrentUser, signOut } from './assets/js/supabase.js';
+    import { linhaDaEmpresa, ordenarLinhas, proximoPA } from './assets/js/fator-r-monitor.js';
     const escHtml = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));   // texto do banco nunca vira HTML (o nome que veio do formulário público, por exemplo)
 
     const el = (id) => document.getElementById(id);
@@ -888,9 +892,62 @@
     el('btnIrCadastro').addEventListener('click', () => { location.hash = 'cadastro'; });
     ['btnVoltarPainel', 'btnVoltarPainel2', 'btnVoltarPainel3'].forEach(b => el(b).addEventListener('click', () => { location.hash = ''; }));
 
+    // ---------------- acompanhadas pelo sistema (08/11/2026) ----------------
+    const COLS_DOM = 'cliente_id, competencia, receita_simples, receita_bruta, receita_anexo_3, receita_anexo_5, receita_servicos, rbt12, meses_rbt12, salarios, decimo_terceiro, pro_labore_valor, fgts, inss_empresa, inss_rat, inss_terceiros';
+    async function lerTudo(montar) {
+      const todas = [];
+      for (let de = 0; de < 20000; de += 1000) {
+        const { data, error } = await montar().range(de, de + 999);
+        if (error) throw error;
+        todas.push(...(data || []));
+        if (!data || data.length < 1000) break;
+      }
+      return todas;
+    }
+    const FAIXA_MON = { folga: ['fr-ok', 'Anexo III, com folga'], fio: ['fr-fio', 'Anexo III, no fio'], perto: ['fr-perto', 'Anexo V, perto dos 28%'], longe: ['fr-longe', 'Anexo V'], nd: ['fr-nd', 'Sem dados'] };
+    const mesCurto = (c) => c.slice(5, 7) + '/' + c.slice(2, 4);
+    async function carregarMonitor() {
+      const caixa = el('frMonitor');
+      try {
+        const { data: cli, error } = await supabase.from('clientes')
+          .select('id, nome_principal, nome_fantasia, cnae_principal, cnaes_secundarios')
+          .eq('regime_tributario', 'Simples Nacional').eq('tipo_pessoa', 'PJ').neq('status', 'inativo');
+        if (error) throw error;
+        const ids = (cli || []).map(c => c.id);
+        const desde = (() => { const d = new Date(); d.setUTCMonth(d.getUTCMonth() - 16); return d.toISOString().slice(0, 7); })();
+        const dom = [], pg = [];
+        for (let i = 0; i < ids.length; i += 50) {
+          const lote = ids.slice(i, i + 50);
+          dom.push(...await lerTudo(() => supabase.from('dominio_mensal').select(COLS_DOM).in('cliente_id', lote).gte('competencia', desde).order('competencia')));
+          pg.push(...await lerTudo(() => supabase.from('receita_pgdas').select('cliente_id, competencia, receita_12_meses').in('cliente_id', lote).gte('competencia', desde).order('competencia')));
+        }
+        const porCli = (lista) => { const m = new Map(); lista.forEach(x => { if (!m.has(x.cliente_id)) m.set(x.cliente_id, []); m.get(x.cliente_id).push(x); }); return m; };
+        const D = porCli(dom), P = porCli(pg);
+        const hojeIso = new Date().toISOString().slice(0, 10);
+        const linhas = ordenarLinhas((cli || []).map(c => linhaDaEmpresa({ cliente: c, linhas: D.get(c.id), pgdas: P.get(c.id), hoje: hojeIso })).filter(Boolean));
+        el('monTitulo').textContent = 'Acompanhadas pelo sistema · ' + linhas.length + ' empresas · PA de ' + mesCurto(proximoPA(hojeIso));
+        if (!linhas.length) { caixa.innerHTML = '<p class="fr-dim">Nenhuma empresa do Simples com atividade do fator r encontrada.</p>'; return; }
+        caixa.innerHTML = '<table class="fr-tab"><thead><tr><th>Empresa</th><th>Por que acompanha</th><th class="fr-num">Fator r</th><th>Anexo</th><th>Últimos PAs</th><th>Avisos</th></tr></thead><tbody>'
+          + linhas.map(l => {
+            const u = l.ultimo, f = FAIXA_MON[l.faixa] || FAIXA_MON.nd;
+            const nome = l.cliente.nome_fantasia || l.cliente.nome_principal || '';
+            const pas = l.pas.map(p => '<span class="fr-mini ' + (p.anexo === 'III' ? 'fr-ok' : 'fr-longe') + '" title="' + escHtml(mesCurto(p.competencia) + ': ' + pct(p.fator) + ' · FS12 ' + brl(p.fs12) + ' ÷ RBT12 ' + brl(p.rbt12) + (p.declarado ? ' · apurado no ' + p.declarado : '')) + '">' + escHtml(mesCurto(p.competencia)) + ' ' + escHtml(p.anexo) + '</span>').join('');
+            return '<tr><td><a href="clientes/editar.html?id=' + encodeURIComponent(l.cliente.id) + '">' + escHtml(nome) + '</a></td>'
+              + '<td class="fr-dim" style="font-size:12.5px;">' + l.motivos.map(m => escHtml(m.texto)).join('<br>') + '</td>'
+              + '<td class="fr-num">' + (u ? escHtml(pct(u.fator)) : '—') + (u ? '<br><span class="fr-dim" style="font-size:11px;">' + escHtml(mesCurto(u.competencia)) + (u.fonteRbt === 'ponte' ? ' · RBT12 pela ponte' : u.fonteRbt === 'pgdas' ? ' · RBT12 do PGDAS' : ' · RBT12 do Domínio') + '</span>' : '') + '</td>'
+              + '<td><span class="fr-badge ' + f[0] + '">' + escHtml(f[1]) + '</span></td>'
+              + '<td>' + (pas || '<span class="fr-dim">—</span>') + '</td>'
+              + '<td class="fr-alerta">' + l.avisos.map(a => escHtml(a)).join('<br>') + '</td></tr>';
+          }).join('') + '</tbody></table>';
+      } catch (e) {
+        caixa.innerHTML = '<p class="fr-erro">Não deu pra ler as empresas acompanhadas: ' + escHtml(e.message || e) + '</p>';
+      }
+    }
+
     await carregarTudo();
     rotear();
     gerarAlertasFatorR();
+    carregarMonitor();
   </script>
 </body>
 </html>
